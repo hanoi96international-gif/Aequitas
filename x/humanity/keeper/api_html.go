@@ -45,13 +45,19 @@ header::before{content:'';position:absolute;top:0;left:0;right:0;height:2px;back
 .badge{display:flex;align-items:center;gap:5px;padding:5px 11px;border-radius:20px;font-size:0.58rem;letter-spacing:0.5px;font-weight:600}
 .badge-live{background:rgba(4,120,87,0.08);border:1px solid rgba(4,120,87,0.25);color:var(--neon)}
 .badge-dag{background:rgba(107,70,193,0.08);border:1px solid rgba(107,70,193,0.2);color:var(--purple)}
+.badge-health{cursor:help;transition:background 0.3s,border-color 0.3s,color 0.3s}
+.badge-health-healthy{background:rgba(4,120,87,0.08);border:1px solid rgba(4,120,87,0.25);color:var(--neon)}
+.badge-health-warn{background:rgba(240,180,41,0.1);border:1px solid rgba(240,180,41,0.3);color:var(--gold)}
+.badge-health-unhealthy{background:rgba(248,113,113,0.1);border:1px solid rgba(248,113,113,0.35);color:var(--red);animation:healthPulse 1.6s infinite}
+@keyframes healthPulse{0%,100%{opacity:1}50%{opacity:0.55}}
 .pulse{width:5px;height:5px;border-radius:50%;background:var(--neon);box-shadow:0 0 6px var(--neon);animation:pulse 2s infinite}
 @keyframes pulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:0.4;transform:scale(0.7)}}
 .lang-sel{background:rgba(255,255,255,0.06);color:var(--muted);border:1px solid rgba(255,255,255,0.1);border-radius:6px;padding:5px 10px;font-family:var(--font-body);font-size:0.62rem;outline:none;cursor:pointer}
-.tabs{background:rgba(13,15,22,0.9);border-bottom:1px solid rgba(255,255,255,0.08);padding:0 24px;display:flex;overflow-x:auto;-webkit-overflow-scrolling:touch;scrollbar-width:none;gap:2px;position:relative;z-index:1}
+.tabs{background:rgba(13,15,22,0.9);border-bottom:1px solid rgba(255,255,255,0.08);padding:8px 18px;display:flex;overflow-x:auto;-webkit-overflow-scrolling:touch;scrollbar-width:none;gap:6px;position:relative;z-index:1}
 .tabs::-webkit-scrollbar{display:none}
-.tab{padding:16px 16px;font-size:0.65rem;color:var(--muted);cursor:pointer;border-bottom:2px solid transparent;letter-spacing:0.5px;font-weight:600;white-space:nowrap;transition:all 0.2s;flex-shrink:0}
-.tab:hover{color:var(--purple)}.tab.active{color:var(--purple);border-bottom-color:var(--purple);background:rgba(155,114,246,0.08)}
+.tab{padding:10px 16px;font-size:0.65rem;color:var(--muted);cursor:pointer;border-radius:20px;letter-spacing:0.5px;font-weight:600;white-space:nowrap;transition:all 0.2s;flex-shrink:0;border:1px solid transparent}
+.tab:hover{color:var(--text);background:rgba(255,255,255,0.04)}
+.tab.active{color:#fff;background:var(--grad);box-shadow:var(--glow-purple);border-color:transparent}
 .tab-content{display:none;position:relative;z-index:1}.tab-content.active{display:block}
 .hero{padding:20px 20px 0;position:relative;z-index:1}
 .section-label{font-size:0.6rem;color:var(--muted);letter-spacing:3px;text-transform:uppercase;margin-bottom:14px;font-weight:600}
@@ -111,10 +117,11 @@ header::before{content:'';position:absolute;top:0;left:0;right:0;height:2px;back
 .exp-search button:hover{opacity:0.85}
 .exp-stats{display:grid;grid-template-columns:repeat(4,1fr);gap:1px;background:var(--border);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden;margin:16px 20px 0}
 @media(max-width:600px){.exp-stats{grid-template-columns:repeat(2,1fr)}}
-.exp-stat{background:var(--card2);padding:14px 16px}
-.exp-stat-lbl{font-size:0.55rem;color:var(--muted);text-transform:uppercase;letter-spacing:1.5px;margin-bottom:6px;font-weight:600}
-.exp-stat-val{font-size:1.15rem;font-weight:800;color:var(--text);font-family:var(--font-mono);line-height:1}
-.exp-stat-sub{font-size:0.5rem;color:var(--muted);margin-top:4px;line-height:1.4}
+.exp-stat{background:var(--card2);padding:16px 18px;transition:background 0.2s}
+.exp-stat:hover{background:#202437}
+.exp-stat-lbl{font-size:0.55rem;color:var(--muted);text-transform:uppercase;letter-spacing:1.5px;margin-bottom:7px;font-weight:600}
+.exp-stat-val{font-size:1.4rem;font-weight:800;color:var(--text);font-family:var(--font-display);line-height:1;background:var(--grad);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}
+.exp-stat-sub{font-size:0.5rem;color:var(--muted);margin-top:5px;line-height:1.4}
 .exp-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;padding:16px 20px 24px}
 @media(max-width:860px){.exp-grid{grid-template-columns:1fr}}
 .exp-panel{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden;display:flex;flex-direction:column}
@@ -345,7 +352,7 @@ input[type=number]::-webkit-inner-spin-button{opacity:0.5}
   </select>
   <div class="header-right">
     <div class="badge badge-live"><span class="pulse"></span><span data-i18n="live">LIVE</span></div>
-    <div class="badge badge-dag">● BLOCKDAG</div>
+    <div class="badge badge-health badge-health-healthy" id="health-badge" title="Checking network health…">● GHOSTDAG</div>
   </div>
 </header>
 <div class="tabs">
@@ -539,7 +546,7 @@ input[type=number]::-webkit-inner-spin-button{opacity:0.5}
   <div class="exp-stat">
     <div class="exp-stat-lbl" data-i18n="s-uptime">Uptime</div>
     <div class="exp-stat-val" id="s-uptime" style="font-size:0.75rem">—</div>
-    <div class="exp-stat-sub">Railway (Primary) + Contabo VPS</div>
+    <div class="exp-stat-sub">Multi-validator network</div>
   </div>
 </div>
 <!-- Two-panel explorer grid -->
@@ -3966,6 +3973,32 @@ function startUBITimer(secsRemaining) {
   }, 1000);
 }
 
+// loadHealth polls /api/health/combined and reflects the node's real
+// sync/consensus health on the header badge — surfacing the same signals
+// (degraded state, synthetic-checkpoint trust mode, StateRoot mismatches)
+// an operator would otherwise only see in server logs.
+async function loadHealth() {
+  const badge = document.getElementById('health-badge');
+  if (!badge) return;
+  try {
+    const r = await fetch('/api/health/combined');
+    const d = await r.json();
+    const c = d.chain || {};
+    const status = c.status || 'healthy';
+    badge.classList.remove('badge-health-healthy', 'badge-health-warn', 'badge-health-unhealthy');
+    badge.classList.add('badge-health-' + status);
+    const label = status === 'healthy' ? '● GHOSTDAG' : (status === 'warn' ? '● GHOSTDAG ⚠' : '● GHOSTDAG ✕');
+    badge.textContent = label;
+    const notes = Array.isArray(c.notes) && c.notes.length ? c.notes.join(' · ') : 'All systems nominal — height ' + fmt(c.height) + ', ' + fmt(c.dag_tips_count) + ' active tip(s)';
+    badge.title = notes;
+  } catch (e) {
+    badge.classList.remove('badge-health-healthy', 'badge-health-warn');
+    badge.classList.add('badge-health-unhealthy');
+    badge.textContent = '● GHOSTDAG ✕';
+    badge.title = 'Could not reach /api/health/combined';
+  }
+}
+
 async function loadStatus() {
   try {
     const d = await (await fetch('/api/status')).json();
@@ -5965,9 +5998,11 @@ async function restoreWalletFromStorage() {
 checkProofParams();
 restoreWalletFromStorage();
 loadStatus();
+loadHealth();
 loadBlocks();
 loadHumans();
 setInterval(loadStatus, 6000);
+setInterval(loadHealth, 30000);
 setInterval(loadBlocks, 6000);
 setInterval(loadHumans, 10000);
 setInterval(loadPoolStatus, 8000);
