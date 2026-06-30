@@ -1811,6 +1811,21 @@ dag.mu.RLock()
 defer dag.mu.RUnlock()
 result := make([]*Block, 0, len(dag.blocks))
 for _, b := range dag.blocks {
+// FIX (2026-06-30, confirmed live in production): synthetic-checkpoint
+// stubs (BridgeHistoricalGap / the orphan-bridge retry path) were being
+// served here and then over /api/blocks like real blocks. A stub's Hash
+// field is borrowed from whatever it was bridging (the real hash of the
+// block it's standing in for) — it was never produced by calculateHash
+// from the stub's own (mostly empty) fields, so it can NEVER pass a
+// peer's hash-mismatch check. Every peer fetching one rejected it, and
+// everything built on top of it (the real block that legitimately
+// references that parent hash) got stuck behind that rejection forever.
+// Stubs exist only to satisfy THIS node's own internal parent-existence
+// lookups (dag.blocks[hash] != nil) — never to be handed to a peer as if
+// they were a verifiable block.
+if b.Proposer == "synthetic-checkpoint" {
+continue
+}
 result = append(result, b)
 }
 // P1-03 (audit): stable tie-breaker prevents non-deterministic pagination
@@ -1850,6 +1865,14 @@ func (dag *BlockDAG) GetBlockByHeight(height int64) *Block {
 	var best *Block
 	for _, b := range dag.blocks {
 		if b.Height != height {
+			continue
+		}
+		// FIX (2026-06-30, confirmed live in production): never return a
+		// synthetic-checkpoint stub here — see GetBlocks' identical
+		// fix/comment. Both callers of this function (api.go's /api/block
+		// and evm_rpc.go's eth_getBlockByNumber) are peer/RPC-facing, so
+		// unlike GetBlockByHash there's no internal-only caller to preserve.
+		if b.Proposer == "synthetic-checkpoint" {
 			continue
 		}
 		if best == nil || len(b.ParentHashes) > len(best.ParentHashes) {

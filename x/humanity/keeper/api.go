@@ -645,6 +645,14 @@ func (a *APIServer) handleBlockByHash(w http.ResponseWriter, r *http.Request) {
 	var block *Block
 	if hash != "" {
 		block = a.blockchain.GetBlockByHash(hash)
+		// FIX (2026-06-30, confirmed live in production): never hand a
+		// synthetic-checkpoint stub to a peer — see GetBlocks' identical
+		// fix/comment. A peer requesting this exact hash genuinely needs to
+		// know "no node has the real block", not receive a placeholder that
+		// can never pass its own hash-mismatch check.
+		if block != nil && block.Proposer == "synthetic-checkpoint" {
+			block = nil
+		}
 	} else if heightStr := r.URL.Query().Get("height"); heightStr != "" {
 		var height int64
 		if _, err := fmt.Sscanf(heightStr, "%d", &height); err != nil {
@@ -717,7 +725,13 @@ func (a *APIServer) handleBlocksByHash(w http.ResponseWriter, r *http.Request) {
 		if _, hexErr := hex.DecodeString(h); hexErr != nil {
 			continue
 		}
-		if b := a.blockchain.GetBlockByHash(h); b != nil {
+		// FIX (2026-06-30, confirmed live in production): never hand a
+		// synthetic-checkpoint stub to a peer — see GetBlocks' identical
+		// fix/comment. fetchMissingAncestors (this endpoint's caller) needs
+		// to know "no node has the real block" so its own abandonment/bridge
+		// logic can take over, not receive a placeholder that can never pass
+		// the requester's own hash-mismatch check.
+		if b := a.blockchain.GetBlockByHash(h); b != nil && b.Proposer != "synthetic-checkpoint" {
 			found = append(found, b)
 		}
 	}
