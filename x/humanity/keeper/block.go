@@ -429,18 +429,18 @@ replayedBlocks:         make(map[string]bool),
 	softRetryBlocks:        make(map[string]*Block),
 	softRetryFirstAt:       make(map[string]time.Time),
 }
-if pk := strings.TrimPrefix(os.Getenv("RELAYER_PRIVATE_KEY"), "0x"); pk != "" {
-	if key, err := crypto.HexToECDSA(pk); err == nil {
-		dag.signingKey = key
-		// Always authorize ourselves — derived from the signing key, not the nodeID.
-		selfAddr := strings.ToLower(crypto.PubkeyToAddress(key.PublicKey).Hex())
-		dag.authorizedValidators[selfAddr] = true
-		fmt.Printf("✓ Block signing enabled (RELAYER_PRIVATE_KEY loaded), proposer addr: %s\n", selfAddr)
+if key, generated, err := loadOrCreateRelayerKey(); err != nil {
+	fmt.Printf("[BLOCK] Warning: RELAYER_PRIVATE_KEY invalid, blocks will be unsigned: %v\n", err)
+} else if key != nil {
+	dag.signingKey = key
+	// Always authorize ourselves — derived from the signing key, not the nodeID.
+	selfAddr := strings.ToLower(crypto.PubkeyToAddress(key.PublicKey).Hex())
+	dag.authorizedValidators[selfAddr] = true
+	if generated {
+		fmt.Printf("✓ Block signing enabled (auto-generated key — see SAVE THIS warning above), proposer addr: %s\n", selfAddr)
 	} else {
-		fmt.Printf("[BLOCK] Warning: RELAYER_PRIVATE_KEY invalid, blocks will be unsigned: %v\n", err)
+		fmt.Printf("✓ Block signing enabled (RELAYER_PRIVATE_KEY loaded), proposer addr: %s\n", selfAddr)
 	}
-} else {
-	fmt.Println("[BLOCK] ⚠ RELAYER_PRIVATE_KEY not set — blocks will be unsigned. Peer nodes will reject unsigned blocks.")
 }
 
 dag.createGenesisBlock()
@@ -627,6 +627,45 @@ return dag
 // validator-pool reward despite producing them correctly. Every
 // RELAYER_ADDRESS call site should go through this helper instead of
 // reading the env var directly.
+// loadOrCreateRelayerKey loads RELAYER_PRIVATE_KEY if set, otherwise
+// generates a fresh secp256k1 key and prints it once so the operator can
+// save it. Setup simplification (scale audit): until now, an operator had
+// to generate an Ethereum-compatible private key through some external tool
+// before a node could produce signed blocks at all -- the ONE genuinely
+// required value with no in-repo path to get one (p2p.go's NODE_KEY already
+// auto-generates the same way; this closes the same gap for the chain's own
+// signing key). Returns (key, wasGenerated, error). A generated key is NOT
+// persisted anywhere by this process — losing it before the operator saves
+// RELAYER_PRIVATE_KEY means a new identity (and therefore a fresh
+// authorization/binding cycle) next restart, which is why the warning below
+// is deliberately loud, mirroring loadOrCreateKey's NODE_KEY warning in
+// p2p.go. The simplest path for most operators remains setting
+// RELAYER_PRIVATE_KEY to the private key of their already-verified-human
+// NODE_OPERATOR_WALLET (the single-key deployment pattern documented in
+// sync_blocks.go's registerAndDiscover) — auto-generation exists as a
+// zero-config fallback, not the recommended flow.
+func loadOrCreateRelayerKey() (key *ecdsa.PrivateKey, wasGenerated bool, err error) {
+	if pkHex := strings.TrimPrefix(os.Getenv("RELAYER_PRIVATE_KEY"), "0x"); pkHex != "" {
+		key, err = crypto.HexToECDSA(pkHex)
+		return key, false, err
+	}
+	key, err = crypto.GenerateKey()
+	if err != nil {
+		return nil, false, err
+	}
+	encoded := hex.EncodeToString(crypto.FromECDSA(key))
+	addr := strings.ToLower(crypto.PubkeyToAddress(key.PublicKey).Hex())
+	fmt.Fprintln(os.Stderr, "════════════════════════════════════════")
+	fmt.Fprintln(os.Stderr, "⚠ No RELAYER_PRIVATE_KEY found — generated a new one.")
+	fmt.Fprintln(os.Stderr, "⚠ This key is visible in hosted log dashboards. Treat it as a secret.")
+	fmt.Fprintln(os.Stderr, "⚠ SAVE IT NOW — if this process restarts before you do, your validator")
+	fmt.Fprintln(os.Stderr, "⚠ identity changes and any pending authorization/rewards binding is lost.")
+	fmt.Fprintf(os.Stderr, "SET THIS AS RELAYER_PRIVATE_KEY, then restart the service:\n0x%s\n", encoded)
+	fmt.Fprintf(os.Stderr, "Its address (for RELAYER_ADDRESS / NODE_OPERATOR_WALLET, if this is also your verified-human wallet): %s\n", addr)
+	fmt.Fprintln(os.Stderr, "════════════════════════════════════════")
+	return key, true, nil
+}
+
 func relayerAddressFromEnv() string {
 	if addr := strings.ToLower(strings.TrimSpace(os.Getenv("RELAYER_ADDRESS"))); addr != "" {
 		return addr

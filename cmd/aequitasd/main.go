@@ -16,6 +16,75 @@ _ "time/tzdata" // embed IANA timezone DB so Europe/Berlin works on Alpine witho
 "github.com/hanoi96international-gif/aequitas-chain/x/humanity/keeper"
 )
 
+// ── ENVIRONMENT VARIABLES ──────────────────────────────────────────────────
+// Setup-simplification audit: this node reads ~30 env vars total, but the
+// overwhelming majority are advanced/recovery-only and must never be touched
+// by someone just standing up a validator node on their own VPS (Contabo or
+// similar -- Railway is this project's test/demo deployment, not the target
+// for "any human can run a node"). Tiered here once as the single source of
+// truth for the node operator guide (see api_html.go's Network tab and
+// build/generate_all_guides.py).
+//
+// REQUIRED (3 vars -- a fresh VPS, a fresh Postgres, nothing else):
+//   DATABASE_URL        Postgres connection string for this node's own DB.
+//   SELF_URL             This node's own public URL (e.g. https://1.2.3.4:8080
+//                         or a domain you point at the VPS). Needed so peers
+//                         can be told where to reach you.
+//   NODE_OPERATOR_WALLET Your own wallet address -- MUST belong to a
+//                         verified human (completed biometric registration
+//                         first). This is what enforces one human = one
+//                         validator: rewards are tied to a verified person,
+//                         not to however many servers someone can rent.
+//                         Recommended: also set RELAYER_PRIVATE_KEY to this
+//                         same wallet's private key (the simple single-key
+//                         setup) -- see RELAYER_PRIVATE_KEY below.
+//
+// AUTO-GENERATED ON FIRST RUN IF UNSET -- save the printed value, then set
+// it explicitly so your node's identity survives a restart:
+//   NODE_KEY              P2P network identity.
+//   RELAYER_PRIVATE_KEY   Block-signing key (0x... hex). If this is also
+//                          your NODE_OPERATOR_WALLET's own private key,
+//                          rewards and block-signing use the same identity
+//                          with no extra configuration (recommended). A
+//                          freshly generated key still produces valid
+//                          signed blocks with zero setup -- just bind
+//                          NODE_OPERATOR_WALLET to it afterward if you want
+//                          this same node to earn validator rewards.
+//
+// AUTO-DEFAULTED -- only set these to override the default:
+//   PRIMARY_NODE_URL / PRIMARY_NODE_URLS   Defaults to the public Aequitas
+//                          network. Only set if running a private/test
+//                          deployment that must not reach the public chain.
+//   RELAYER_ADDRESS       Derived automatically from RELAYER_PRIVATE_KEY.
+//                          Only set if your block-signing key and your
+//                          contract-deploy-authorized key intentionally
+//                          differ (advanced).
+//   PEER_NODES             Legacy static comma-separated peer list. Not
+//                          needed -- peer discovery is automatic.
+//
+// ADVANCED / SINGLE-OPERATOR-ONLY -- a normal validator node never sets these:
+//   DISTRIBUTION_ENABLED, IS_PRIMARY_NODE   Exactly ONE node in the whole
+//                          network sets DISTRIBUTION_ENABLED=true. Setting
+//                          it on more than one node double-pays pool
+//                          distributions. Leave unset.
+//   BOOTSTRAP_SNAPSHOT_URL, BOOTSTRAP_SIGNER   For fast state bootstrap from
+//                          a snapshot instead of full historical replay.
+//   SNAPSHOT_TOKEN, SNAPSHOT_MAX_AGE_SECONDS, SNAPSHOT_RESTRICT_TO_PRIVATE_NETWORK
+//                          Snapshot serving/verification tuning.
+//   PEER_SECRET, ALLOW_PEER_SECRET_BYPASS, ALLOW_SIGN_VALIDATOR_CHALLENGE
+//                          Legacy/manual peer-auth fallbacks; the automatic
+//                          signature-based flow covers normal operation.
+//   AUTHORIZED_VALIDATORS  Auto-synced from peers; manual config not needed.
+//   PROOF_SERVER_URL, CHAIN_SERVICE_TOKEN   Only relevant if integrating
+//                          with the mobile-app registration backend.
+//   RESET_DB_STATE, RESET_STATE, CLEAR_REGISTRATIONS,
+//   CLEAR_REGISTRATIONS_CONFIRM, RESYNC_FROM_SNAPSHOT,
+//   ALLOW_DESTRUCTIVE_MAINTENANCE, ALLOW_RUNTIME_ORPHAN_BRIDGE
+//                          Destructive recovery operations. Each requires an
+//                          explicit, separate opt-in flag and is refused by
+//                          default -- never set these for routine operation.
+//   LOG_LEVEL              Optional log verbosity (debug/info/warn/error).
+
 const (
 VERSION       = "v0.3.0"
 // NOTE: the actually-active contract addresses (V6, V7, bio verifier) live
