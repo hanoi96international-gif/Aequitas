@@ -299,6 +299,11 @@ Aequitas runs on a custom-built Layer 1 blockchain written in **Go 1.24**, with 
 - Blocks are merged into merge blocks with multiple parents
 - Higher throughput, lower latency, better fault tolerance
 
+**GHOSTDAG (Sompolinsky-Zohar, 2018):**
+Damit alle Nodes trotz gleichzeitiger Blockproduktion zur selben Reihenfolge und zum selben Zustand konvergieren, berechnet jeder Node einen deterministischen "Blue Score" für jeden Block (über Selected-Parent-Auswahl und Blue/Red-Klassifizierung im Merge-Set). Daraus ergibt sich eine kanonische Gesamtordnung (Höhe, dann Blue Score, dann Hash), die auf jedem Node identisch ist — unabhängig davon, in welcher Reihenfolge Blöcke per P2P/HTTP eintreffen.
+
+To ensure every node converges on the same order and state despite concurrent block production, each node computes a deterministic "blue score" for every block (via selected-parent selection and blue/red classification within the merge set). This yields a canonical total order (height, then blue score, then hash) that is identical on every node, regardless of the order blocks arrive via P2P/HTTP.
+
 **Dual-Ledger:**
 Aequitas führt zwei synchronisierte Ledger parallel:
 - **Go-Ledger**: PostgreSQL-gesichert, primäre Wahrheit für Salden und Menschen
@@ -534,10 +539,11 @@ Aequitas is in Phase 0 with two operated nodes. The protocol is designed for any
 | Phase | Status | DE | EN |
 |-------|--------|----|----|
 | 0 | ✅ | Smart Contracts · ZKP · Android App · Proof Server | Smart Contracts · ZKP · Android App · Proof Server |
-| 0+ | ✅ | Aequitas Layer 1 · BlockDAG · P2P · Explorer | Aequitas Layer 1 · BlockDAG · P2P · Explorer |
+| 0+ | ✅ | Aequitas Layer 1 · BlockDAG + GHOSTDAG · P2P · Explorer | Aequitas Layer 1 · BlockDAG + GHOSTDAG · P2P · Explorer |
 | V7 | ✅ | EVM · Dual-Ledger · Exchange/AMM · UBI · Demurrage · Wealth Cap · Lorenz/Gini | EVM · Dual-Ledger · Exchange/AMM · UBI · Demurrage · Wealth Cap · Lorenz/Gini |
-| 1 | 🔄 | APK-Veröffentlichung · Community-Aufbau · Grant-Anträge | APK Release · Community Growth · Grant Applications |
-| 2 | ⬜ | iOS App · Proof of Alive · Guardian-System live | iOS App · Proof of Alive · Guardian System live |
+| V7.x | ✅ | Proof of Alive · Guardian-System (Eskrow + UBI-Freigabe) live | Proof of Alive · Guardian System (escrow + UBI release) live |
+| 1 | 🔄 | APK-Veröffentlichung · Community-Aufbau · Grant-Anträge · Mehr-Knoten-Skalierung | APK Release · Community Growth · Grant Applications · Multi-Node Scaling |
+| 2 | ⬜ | iOS App | iOS App |
 | 3 | ⬜ | Cross-Chain Bridges · Externe DEX-Integration | Cross-Chain Bridges · External DEX Integration |
 | 4 | ⬜ | Vollständige Dezentralisierung · Community Governance | Full Decentralization · Community Governance |
 

@@ -156,10 +156,10 @@ No mining. No staking. No protocol emissions.
                        │ pA, pB, pC, pubSignals, nullifier
 ┌──────────────────────▼──────────────────────────────────┐
 │           Aequitas Layer 1 (Go 1.24)                   │
-│    Node 1 (Railway) ←─ libp2p ─→ Node 2 (Railway/VPS)       │
-│    BlockDAG Consensus · EVM Engine (go-ethereum)        │
+│    Mehrere Validator-Nodes ←── libp2p + HTTP ──→         │
+│    BlockDAG + GHOSTDAG Konsens · EVM Engine (go-eth)    │
 │    JSON-RPC · Dual-Ledger (Go + EVM)                    │
-│    PostgreSQL (shared persistent state)                 │
+│    PostgreSQL (je Node eigene persistente DB)           │
 └──────────────────────┬──────────────────────────────────┘
                        │
 ┌──────────────────────▼──────────────────────────────────┐
@@ -177,7 +177,7 @@ No mining. No staking. No protocol emissions.
 | Parameter | Wert / Value |
 |-----------|-------------|
 | Sprache / Language | Go 1.24 (Chain) · Node.js (Proof Server) |
-| Konsens / Consensus | BlockDAG + Proof of Humanity |
+| Konsens / Consensus | BlockDAG + GHOSTDAG (Sompolinsky-Zohar) + Proof of Humanity |
 | Blockzeit / Block Time | ~6 Sekunden / seconds |
 | Chain ID | 1926 (0x786) |
 | EVM | Ja / Yes — go-ethereum Engine |
@@ -256,10 +256,11 @@ The answer is simple: **Money exists because people exist. Therefore, every pers
 | Phase | Status | Beschreibung / Description |
 |-------|--------|---------------------------|
 | 0 | ✅ | Smart Contracts · ZKP · Android App · Proof Server |
-| 0+ | ✅ | Aequitas Layer 1 (Go) · BlockDAG · P2P · Explorer |
+| 0+ | ✅ | Aequitas Layer 1 (Go) · BlockDAG + GHOSTDAG · P2P · Explorer |
 | V7 | ✅ | EVM · Dual-Ledger · Exchange/AMM · Lorenz-Kurve · Gini-Index · UBI · Demurrage |
-| 1 | 🔄 | APK-Release · Community-Wachstum · Grant-Anträge |
-| 2 | ⬜ | iOS App · Proof of Alive Aktivierung · Guardian System live |
+| V7.x | ✅ | Proof of Alive · Guardian-System (Eskrow + UBI-Freigabe) live |
+| 1 | 🔄 | APK-Release · Community-Wachstum · Grant-Anträge · Mehr-Knoten-Skalierung |
+| 2 | ⬜ | iOS App |
 | 3 | ⬜ | Cross-Chain Bridges · Externe DEX-Integration |
 | 4 | ⬜ | Vollständige Dezentralisierung · Community Governance |
 
