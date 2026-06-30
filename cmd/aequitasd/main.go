@@ -63,10 +63,11 @@ _ "time/tzdata" // embed IANA timezone DB so Europe/Berlin works on Alpine witho
 //                          needed -- peer discovery is automatic.
 //
 // ADVANCED / SINGLE-OPERATOR-ONLY -- a normal validator node never sets these:
-//   DISTRIBUTION_ENABLED, IS_PRIMARY_NODE   Exactly ONE node in the whole
-//                          network sets DISTRIBUTION_ENABLED=true. Setting
-//                          it on more than one node double-pays pool
-//                          distributions. Leave unset.
+//   DISTRIBUTION_ENABLED   Set to "false" to opt this node out of running
+//                          daily pool distributions. All nodes are eligible
+//                          by default; cross-node dedup (last_ubi_at replay +
+//                          pre-pass in replayTransactions) prevents double-
+//                          credit even when multiple nodes fire simultaneously.
 //   BOOTSTRAP_SNAPSHOT_URL, BOOTSTRAP_SIGNER   For fast state bootstrap from
 //                          a snapshot instead of full historical replay.
 //   SNAPSHOT_TOKEN, SNAPSHOT_MAX_AGE_SECONDS, SNAPSHOT_RESTRICT_TO_PRIVATE_NETWORK
@@ -394,16 +395,18 @@ case <-ctx.Done():
 return
 case <-time.After(time.Until(firstTarget)):
 }
-// Only the primary actually executes distribution — see the comment
-// above this goroutine for why every node previously did, and why
-// that was a critical bug. Secondaries fall straight to rescheduling
-// Decentralized distribution: every node is eligible to trigger the daily
-// round. TryLockDistribution (intra-node dedup) plus the cross-node
-// last_ubi_at guard in TryLockDistribution prevent double-firing within
-// and across nodes. The distribution idempotency pre-pass in
-// replayTransactions ensures competing distribution blocks each apply
-// credits exactly once. Set DISTRIBUTION_ENABLED=false to opt a specific
-// node out (e.g. a resource-constrained or untrusted replica).
+// Decentralized distribution: every node is eligible to trigger the
+// daily round. Three dedup layers prevent double-credit:
+//   1. TryLockDistribution: cross-node guard reads last_ubi_at (set by
+//      TX replay) — if another node already ran this round and its block
+//      propagated, this node returns false immediately. Intra-node CAS
+//      on distribution_lock_at prevents the goroutine firing twice.
+//   2. distributionSyncHealthIssue: nodes with incomplete history skip
+//      rather than distribute with wrong validator reward weights.
+//   3. replayTransactions pre-pass: when replaying a block from a
+//      competing node, skips all distribution TXs if last_ubi_at is
+//      within 24h of the block's DistributionAt (same-round window).
+// Set DISTRIBUTION_ENABLED=false to opt a specific node out.
 if os.Getenv("DISTRIBUTION_ENABLED") == "false" {
 	fmt.Println("[POOLS] Distribution disabled on this node (DISTRIBUTION_ENABLED=false)")
 } else if syncIssue := distributionSyncHealthIssue(bc); syncIssue != "" {

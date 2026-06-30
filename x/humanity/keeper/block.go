@@ -2361,17 +2361,24 @@ func (dag *BlockDAG) replayTransactions(block *Block) bool {
 	}
 
 	// Distribution idempotency pre-pass: if this block contains a
-	// ubi_distribution_finalize TX for a round we have already applied
-	// (last_ubi_at ≥ DistributionAt), skip ALL distribution TXs in the
-	// block so a competing distribution from another node doesn't double-
-	// credit every human. Plain DB read before cs.mu — same pattern as the
-	// snapshot_import_height read above.
+	// ubi_distribution_finalize TX for a round we've already applied,
+	// skip ALL distribution TXs in the block so a competing distribution
+	// from another node doesn't double-credit every human.
+	//
+	// Same-round detection uses a 24h window instead of exact equality:
+	// two nodes firing at 20:00:01 and 20:00:03 produce DistributionAt
+	// values that differ by 2 seconds. "lastUBIAt >= tx.DistributionAt"
+	// would miss this case (1 < 3 → false → no skip → double credit).
+	// "tx.DistributionAt - lastUBIAt < 24*3600" captures anything within
+	// the same daily window; the negative case (lastUBIAt > DistributionAt)
+	// is also correctly skipped since negative int64 < 86400.
+	// Plain DB read before cs.mu — same pattern as snapshot_import_height.
 	skipDistributionRound := int64(0)
 	for _, tx := range block.Transactions {
 		if tx.Type == "ubi_distribution_finalize" && tx.DistributionAt > 0 {
 			var lastUBIAt int64
 			fmt.Sscan(dag.state.getConfigValueDB("last_ubi_at"), &lastUBIAt)
-			if lastUBIAt >= tx.DistributionAt {
+			if lastUBIAt > 0 && tx.DistributionAt-lastUBIAt < 24*3600 {
 				skipDistributionRound = tx.DistributionAt
 			}
 			break
