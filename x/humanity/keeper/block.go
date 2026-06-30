@@ -136,7 +136,23 @@ replayedMu             sync.Mutex
 	// not just a latency tradeoff.
 	replayMu            sync.Mutex
 	stateRootMismatches map[string]int // per-proposer StateRoot mismatch counters
-	stateRootMismatchesMu sync.Mutex   // protects stateRootMismatches (written under replayMu+cs.mu, read independently by TotalStateRootMismatches)
+	// stateRootMismatchLastAt (audit 2026-06-30 monster audit, P2-03): Unix
+	// timestamp of each proposer's most recent mismatch. stateRootMismatches
+	// only resets a proposer's counter to 0 on that SAME proposer's next
+	// matching block — a proposer that stops producing (offline, lost a
+	// GHOSTDAG race, network split) leaves its count stuck at whatever it
+	// last reached, forever, with no future block from it ever arriving to
+	// either raise or clear it. Confirmed live 2026-06-30: after a clean
+	// dual-restart-at-genesis with both nodes converged and producing in
+	// sync (heights matching, total_supply/total_humans identical, mismatch
+	// counts flat for 150s+), /api/health still reported "unhealthy" with
+	// stale counts (228/89) from the initial multi-validator startup race —
+	// indistinguishable, from this counter alone, from a node actively
+	// diverging right now. TotalStateRootMismatches uses this timestamp to
+	// report only mismatches from proposers that have mismatched recently
+	// (see its own comment), not every proposer's lifetime peak.
+	stateRootMismatchLastAt map[string]int64
+	stateRootMismatchesMu sync.Mutex   // protects stateRootMismatches/stateRootMismatchLastAt (written under replayMu+cs.mu, read independently by TotalStateRootMismatches)
 	// lastSuccessfulPeerSyncAt is the Unix timestamp of the last time this
 	// node successfully accepted a peer block via AddPeerBlock. Read/written
 	// with atomic.Int64 (not dag.mu) since it's set from AddPeerBlock's
@@ -155,6 +171,31 @@ replayedMu             sync.Mutex
 	// CPU sustained for minutes with chain length ~50,000 and ~8,500 distinct
 	// missing parents pending abandonment.
 	lastDeepScanAt atomic.Int64
+	// syntheticCheckpointCount (audit 2026-06-30 monster audit, P1-05) is a
+	// running counter of synthetic-checkpoint stubs currently trusted by
+	// this node, maintained incrementally at each insertion site
+	// (BridgeHistoricalGap, queueOrphan's runtime-bridge branch) instead of
+	// recomputed by scanning dag.blocks on every read. Read by both
+	// SyntheticCheckpointCount() (health, takes dag.mu RLock) and
+	// ProduceBlock's production gate (already holds dag.mu write-locked,
+	// so it reads this atomic directly — see ProduceBlock's comment for
+	// why a full dag.blocks scan there specifically would be wrong: O(chain
+	// length) on every single block produced, the same class of cost that
+	// made the stub-tips bug pathological earlier this session).
+	syntheticCheckpointCount atomic.Int32
+	// ghostdagMigrationPending (audit 2026-06-30 monster audit, P1-03) is
+	// true from the moment LoadBlocksFromDB finds blocks needing GHOSTDAG
+	// backfill until the background migration goroutine finishes. Backgrounding
+	// the migration (see LoadBlocksFromDB's own comment) fixed startup
+	// liveness, but opened a consistency window the audit correctly flagged:
+	// for however long the migration runs, ProduceBlock/AddPeerBlock could
+	// pick a SelectedParent by comparing a fully-migrated block's real
+	// BlueScore against an old block's not-yet-migrated zero-value
+	// SelectedParent/BlueScore — a different GHOSTDAG view than what the
+	// same chain converges to once migration finishes, which a restart at
+	// the wrong moment could bake in permanently. Gates production and peer
+	// acceptance until migration completes (or there was nothing to migrate).
+	ghostdagMigrationPending atomic.Bool
 	// orphans holds blocks whose parent isn't known yet, keyed by the missing
 	// parent's hash. When that parent is later added, every block waiting on
 	// it is retried automatically. See AddPeerBlock for why this exists —
@@ -379,6 +420,7 @@ warnedUnknownProposers: make(map[string]bool),
 peerChallenges:         make(map[string]peerChallenge),
 replayedBlocks:         make(map[string]bool),
 	stateRootMismatches:    make(map[string]int),
+	stateRootMismatchLastAt: make(map[string]int64),
 	orphans:                make(map[string][]*Block),
 	orphanFirstSeen:        make(map[string]time.Time),
 	orphanLastAttempt:      make(map[string]time.Time),
@@ -490,7 +532,9 @@ if len(loaded) > 0 {
 		// migration's own !exists-style skip isn't needed — computeGHOSTDAGState
 		// is idempotent and just recomputes the same deterministic result.
 		fmt.Printf("[BLOCK] GHOSTDAG migration: computing real blue scores for %d blocks in the background...\n", len(sortedForGHOSTDAG))
+		dag.ghostdagMigrationPending.Store(true)
 		go func(blocks []*Block, d *BlockDAG, s *ChainState) {
+			defer d.ghostdagMigrationPending.Store(false)
 			for i, b := range blocks {
 				d.mu.Lock()
 				d.computeGHOSTDAGState(b)
@@ -511,7 +555,26 @@ if len(loaded) > 0 {
 					time.Sleep(5 * time.Millisecond)
 				}
 				if s != nil {
-					s.SaveGHOSTDAGState(b)
+					// FIX (audit 2026-06-30 monster audit, P1-03): used to
+					// discard SaveGHOSTDAGState's error — a failure here means
+					// this block's freshly-computed SelectedParent/BlueScore
+					// exist in memory (dag.blocks already has them, set by
+					// computeGHOSTDAGState above) but never made it to disk.
+					// A restart before this block's turn comes around again
+					// would silently fall back to its stale pre-migration
+					// values, the exact divergence-after-restart class
+					// degradedReason exists to surface (see ProduceBlock's
+					// degraded gate). Mark degraded instead of continuing
+					// silently — same treatment AddPeerBlock's own
+					// SaveGHOSTDAGState failure already gets.
+					if err := s.SaveGHOSTDAGState(b); err != nil {
+						d.degradedMu.Lock()
+						if d.degradedReason == "" {
+							d.degradedReason = fmt.Sprintf("GHOSTDAG migration: could not persist block #%d: %v", b.Height, err)
+						}
+						d.degradedMu.Unlock()
+						fmt.Printf("[BLOCK] ✗ GHOSTDAG migration: persist failed for block #%d: %v — node marked degraded\n", b.Height, err)
+					}
 				}
 			}
 			fmt.Printf("[BLOCK] GHOSTDAG migration: computed and persisted %d blocks\n", len(blocks))
@@ -798,6 +861,15 @@ func (dag *BlockDAG) BridgeHistoricalGap(peerURLs []string) {
 				displayHash = displayHash[:16]
 			}
 			fmt.Printf("[BRIDGE] ✓ Synthetic checkpoint at height %d (hash %s...) — bridging permanent gap in block history\n", stubH, displayHash)
+			dag.syntheticCheckpointCount.Add(1)
+			// FIX (audit 2026-06-30 monster audit, P1-05): durable audit trail
+			// for every stub this node has ever trusted instead of verified —
+			// see RecordSyntheticCheckpointEvent's own comment. Best-effort,
+			// must not block the bridge on a DB hiccup, so this runs
+			// fire-and-forget rather than under dag.mu (already held here).
+			if dag.state != nil {
+				go dag.state.RecordSyntheticCheckpointEvent(ph, stubH, "startup-bridge")
+			}
 		}
 	}
 
@@ -890,6 +962,28 @@ dr := dag.degradedReason
 dag.degradedMu.Unlock()
 if dr != "" {
 	fmt.Printf("[BLOCK] ✗ Node is degraded (%s) — block production halted. Restart to recover.\n", dr)
+	return nil
+}
+
+// FIX (audit 2026-06-30 monster audit, P1-03): refuse to mint new blocks
+// (which means picking a SelectedParent by BlueScore comparison) while
+// the background GHOSTDAG migration is still backfilling old blocks'
+// scores — see ghostdagMigrationPending's struct comment for the
+// consistency window this closes.
+if dag.ghostdagMigrationPending.Load() {
+	fmt.Printf("[BLOCK] ✗ GHOSTDAG migration still in progress — block production paused until it completes.\n")
+	return nil
+}
+
+// FIX (audit 2026-06-30 monster audit, P1-05): refuse to mint new blocks
+// while this node is still trusting one or more synthetic-checkpoint
+// stubs instead of having verified that part of its ancestry. Producing
+// on top of unverified history would let a peer-induced trust bypass
+// silently propagate into newly-minted, otherwise-fully-verified blocks.
+// SyntheticCheckpointCount() now just reads an atomic counter (no lock),
+// safe to call here even though dag.mu is already held write-locked.
+if syntheticCount := dag.SyntheticCheckpointCount(); syntheticCount > 0 {
+	fmt.Printf("[BLOCK] ✗ Node is bridging %d synthetic checkpoint(s) — block production halted until real history syncs in behind them.\n", syntheticCount)
 	return nil
 }
 
@@ -1209,6 +1303,25 @@ func (dag *BlockDAG) queueOrphan(missingParent string, block *Block) {
 			// checkpoint stub, BlueScore 0 — see its P1-05 comment for why),
 			// then retry every block that was waiting on it through the normal
 			// AddPeerBlock path instead of dropping them.
+			//
+			// FIX (audit 2026-06-30 monster audit, P1-05): unlike
+			// BridgeHistoricalGap (which only ever runs once, at startup,
+			// against the boot-time snapshot gap), this branch could fire
+			// silently at any point during normal long-running operation —
+			// turning an ordinary sync hiccup into a permanent trust-bypass
+			// stub with no operator visibility or opt-in. Gate it behind an
+			// explicit flag so this stays a deliberate operational decision
+			// (the same way it was when we manually used it to unstick
+			// Contabo) rather than something the node does to itself by
+			// default. Default-off: an operator who hits this without the
+			// flag set still gets the OLD behavior (drop `waiting`, the gap
+			// surfaces as repeated orphan-queue log lines instead of being
+			// silently bridged) until they explicitly opt in.
+			if os.Getenv("ALLOW_RUNTIME_ORPHAN_BRIDGE") != "true" {
+				fmt.Printf("[DAG] ✗ Abandoning %d block(s) waiting on permanently-unresolvable parent %s... — set ALLOW_RUNTIME_ORPHAN_BRIDGE=true to bridge gaps like this automatically (trust bypass, see synthetic_checkpoint_events for the audit trail any bridge would leave)\n",
+					len(waiting), missingParent[:min(16, len(missingParent))])
+				return
+			}
 			minWaitingHeight := waiting[0].Height
 			for _, b := range waiting {
 				if b.Height < minWaitingHeight {
@@ -1220,6 +1333,7 @@ func (dag *BlockDAG) queueOrphan(missingParent string, block *Block) {
 				stubH = 0
 			}
 			dag.mu.Lock()
+			stubInserted := false
 			if _, exists := dag.blocks[missingParent]; !exists {
 				dag.blocks[missingParent] = &Block{
 					Hash:         missingParent,
@@ -1234,10 +1348,21 @@ func (dag *BlockDAG) queueOrphan(missingParent string, block *Block) {
 				// future ProduceBlock's merge-set computation enough to starve
 				// the whole node. The stub only needs to exist in dag.blocks to
 				// satisfy AddPeerBlock's parent-existence check.
+				stubInserted = true
 			}
 			dag.mu.Unlock()
 			fmt.Printf("[DAG] (housekeeping) bridged permanently-unresolvable parent %s... (height ~%d) with a synthetic checkpoint — retrying %d block(s) that were waiting on it in the background, no effect on account balances\n",
 				missingParent[:min(16, len(missingParent))], stubH, len(waiting))
+			if stubInserted {
+				dag.syntheticCheckpointCount.Add(1)
+				// FIX (audit 2026-06-30 monster audit, P1-05): see
+				// RecordSyntheticCheckpointEvent's comment — durable audit trail,
+				// tagged "runtime-orphan-bridge" so it's distinguishable from a
+				// startup-time BridgeHistoricalGap stub.
+				if dag.state != nil {
+					go dag.state.RecordSyntheticCheckpointEvent(missingParent, stubH, "runtime-orphan-bridge")
+				}
+			}
 			// FIX (2026-06-30, confirmed live on Contabo): retrying `waiting`
 			// SYNCHRONOUSLY here (calling AddPeerBlock directly in this call
 			// stack) could cascade into many nested AddPeerBlock calls — each
@@ -1355,6 +1480,39 @@ dag.mu.Lock()
 
 // Skip if already known
 if _, exists := dag.blocks[block.Hash]; exists {
+dag.mu.Unlock()
+return false
+}
+
+// FIX (audit 2026-06-30 monster audit, P1-04): degraded means a prior
+// persistence failure left this node's in-memory DAG ahead of what's
+// durably saved (see ProduceBlock's own degraded gate above and
+// degradedReason's struct comment). ProduceBlock already refuses to make
+// the gap worse by minting new blocks on top of unconfirmed state — but
+// AddPeerBlock had no equivalent gate, so a degraded node kept accepting
+// and replaying peer blocks (mutating cs.accounts, advancing dag.height)
+// on top of a DAG it already couldn't durably reconstruct. That widens
+// the repair surface every block instead of freezing it. Reject outright;
+// the peer's sync loop retries later once an operator restarts/resyncs
+// this node and degradedReason clears.
+dag.degradedMu.Lock()
+dr := dag.degradedReason
+dag.degradedMu.Unlock()
+if dr != "" {
+fmt.Printf("[DAG] ✗ Rejected peer block #%d: node is degraded (%s) — restart to recover\n", block.Height, dr)
+dag.mu.Unlock()
+return false
+}
+
+// FIX (audit 2026-06-30 monster audit, P1-03): see
+// ghostdagMigrationPending's struct comment and ProduceBlock's matching
+// gate — accepting and replaying a peer block while old blocks' GHOSTDAG
+// scores are still being backfilled risks computing this block's
+// SelectedParent against a DAG view that won't match what the same chain
+// converges to once migration finishes. The peer's own sync/retry loop
+// re-delivers this block once migration completes and the gate clears.
+if dag.ghostdagMigrationPending.Load() {
+fmt.Printf("[DAG] ✗ Rejected peer block #%d: GHOSTDAG migration still in progress — retry after it completes\n", block.Height)
 dag.mu.Unlock()
 return false
 }
@@ -1738,23 +1896,34 @@ func (dag *BlockDAG) TipsCount() int {
 // derivative) in /api/health makes it visible without a log dive, without
 // requiring a new mandatory env flag that operators could forget to set on a
 // node that genuinely needs it (as Contabo did on 2026-06-30).
+// FIX (audit 2026-06-30 monster audit, P1-05): used to scan every entry in
+// dag.blocks on every call — O(chain length), and ProduceBlock now needs
+// this exact count on every single block it produces (see ProduceBlock's
+// gate). Reads the running counter maintained at each insertion site
+// instead.
 func (dag *BlockDAG) SyntheticCheckpointCount() int {
-	dag.mu.RLock()
-	defer dag.mu.RUnlock()
-	count := 0
-	for _, b := range dag.blocks {
-		if b.Proposer == "synthetic-checkpoint" {
-			count++
-		}
-	}
-	return count
+	return int(dag.syntheticCheckpointCount.Load())
 }
+
+// stateRootMismatchActiveWindow (audit 2026-06-30 monster audit, P2-03): a
+// proposer's mismatch count only counts toward health/alerting if it
+// mismatched within this window. Wide enough to span a real, sustained
+// divergence (which keeps refreshing the timestamp every block, easily
+// clearing this window) while letting a one-off startup-race count age out
+// instead of marking an otherwise-converged, healthy node "unhealthy"
+// forever — see stateRootMismatchLastAt's struct comment for the incident
+// this fixes.
+const stateRootMismatchActiveWindow = 10 * time.Minute
 
 func (dag *BlockDAG) TotalStateRootMismatches() int {
 	dag.stateRootMismatchesMu.Lock()
 	defer dag.stateRootMismatchesMu.Unlock()
+	cutoff := time.Now().Add(-stateRootMismatchActiveWindow).Unix()
 	total := 0
-	for _, n := range dag.stateRootMismatches {
+	for proposer, n := range dag.stateRootMismatches {
+		if dag.stateRootMismatchLastAt[proposer] < cutoff {
+			continue // stale — that proposer hasn't mismatched recently
+		}
 		total += n
 	}
 	return total
@@ -2436,6 +2605,7 @@ func (dag *BlockDAG) replayTransactions(block *Block) bool {
 				block.Height, block.Proposer, block.StateRoot[:min(16, len(block.StateRoot))], localRoot[:min(16, len(localRoot))])
 			dag.stateRootMismatchesMu.Lock()
 			dag.stateRootMismatches[block.Proposer]++
+			dag.stateRootMismatchLastAt[block.Proposer] = time.Now().Unix()
 			alert := dag.stateRootMismatches[block.Proposer] >= 5
 			dag.stateRootMismatchesMu.Unlock()
 			if alert {

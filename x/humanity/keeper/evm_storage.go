@@ -2119,6 +2119,27 @@ func (cs *ChainState) SaveRegistrationRecovery(wallet, evmTxHash, nullifier stri
 	return dbErr
 }
 
+// RecordSyntheticCheckpointEvent persists a durable audit trail entry every
+// time this node bridges a permanently-missing parent with a
+// synthetic-checkpoint stub (audit 2026-06-30 monster audit, P1-05). source
+// identifies which code path inserted the stub ("startup-bridge" for
+// BridgeHistoricalGap, "runtime-orphan-bridge" for queueOrphan's TTL
+// branch) so a later DB query can distinguish "trusted a known historical
+// gap once at boot" from "kept trusting new gaps during normal operation."
+// Best-effort: a failure here must never block the bridge itself (the stub
+// already exists in memory regardless) — only logged.
+func (cs *ChainState) RecordSyntheticCheckpointEvent(stubHash string, stubHeight int64, source string) {
+	if cs.db == nil {
+		return
+	}
+	if _, err := cs.db.Exec(
+		`INSERT INTO synthetic_checkpoint_events (stub_hash, stub_height, source, created_at) VALUES ($1, $2, $3, $4)`,
+		stubHash, stubHeight, source, time.Now().Unix(),
+	); err != nil {
+		fmt.Printf("[AUDIT] ⚠ Could not persist synthetic-checkpoint event for %s: %v\n", stubHash, err)
+	}
+}
+
 // CountUnrecoveredRegistrations returns the number of registration_recovery
 // rows that have not yet been successfully replayed (recovered_at IS NULL).
 func (cs *ChainState) CountUnrecoveredRegistrations() int {

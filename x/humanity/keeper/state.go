@@ -258,13 +258,25 @@ func NewChainState(dataFile string) *ChainState {
 		// blocking the same way. connect_timeout bounds the initial TCP/auth
 		// handshake the same way for a connection that hasn't been
 		// established yet.
-		if !strings.Contains(dbURL, "statement_timeout") {
+		// FIX (audit 2026-06-30 monster audit, P2-01): used to gate BOTH
+		// params on a single `strings.Contains(dbURL, "statement_timeout")`
+		// check — a DSN that already specified statement_timeout (but not
+		// connect_timeout) skipped appending connect_timeout entirely, and a
+		// DSN with connect_timeout but not statement_timeout got both
+		// appended, duplicating connect_timeout as a query parameter. Checked
+		// independently now so each is added iff it's actually missing.
+		appendParam := func(url, param, value string) string {
+			if strings.Contains(url, param) {
+				return url
+			}
 			sep := "&"
-			if !strings.Contains(dbURL, "?") {
+			if !strings.Contains(url, "?") {
 				sep = "?"
 			}
-			dbURL += sep + "statement_timeout=30000&connect_timeout=10"
+			return url + sep + param + "=" + value
 		}
+		dbURL = appendParam(dbURL, "statement_timeout", "30000")
+		dbURL = appendParam(dbURL, "connect_timeout", "10")
 		db, err := sql.Open("postgres", dbURL)
 		if err == nil {
 			// Bound the pool itself: an unlimited pool under a burst of
@@ -447,6 +459,22 @@ registered_at TIMESTAMP DEFAULT NOW()
 	dbExec(`CREATE TABLE IF NOT EXISTS chain_config (
 key TEXT PRIMARY KEY,
 value TEXT NOT NULL
+)`)
+	// synthetic_checkpoint_events: durable audit trail for every
+	// synthetic-checkpoint stub this node has ever inserted (see
+	// BridgeHistoricalGap and queueOrphan's runtime-bridge branch). A stub
+	// is a trust bypass — it satisfies a parent-existence check without any
+	// verified header/signature/StateRoot behind it (audit 2026-06-30
+	// monster audit, P0-02/P1-05). Previously the only record was a stdout
+	// log line that scrolled away; this makes "did this node ever trust a
+	// gap instead of proving it, and which hash/height" answerable after
+	// the fact via a DB query, independent of log retention.
+	dbExec(`CREATE TABLE IF NOT EXISTS synthetic_checkpoint_events (
+id BIGSERIAL PRIMARY KEY,
+stub_hash TEXT NOT NULL,
+stub_height BIGINT NOT NULL,
+source TEXT NOT NULL,
+created_at BIGINT NOT NULL DEFAULT EXTRACT(EPOCH FROM NOW())
 )`)
 	// registration_recovery: written by registerOnV7 when the EVM transaction
 	// succeeds but RegisterHumanAtomic fails after 3 retries. The background
@@ -1603,14 +1631,23 @@ func (cs *ChainState) settleDemurrageLocked(acc *AccountState) (Decimal, error) 
 // be replaying months-old transactions all at the "current" wall-clock
 // instant, which would otherwise decay them by the wrong amount entirely).
 // Caller must hold cs.mu (write lock).
-func (cs *ChainState) applyDemurrageLossLocked(acc *AccountState, lost float64) {
+// FIX (audit 2026-06-30 monster audit, P1-02): used to swallow
+// distributeSwapFee's error as a warn-only log line — the same class of bug
+// already fixed for settleDemurrageLocked and enforceWealthCapLocked (see
+// ApplyTransferDelta's comment). A failure here means acc.Balance was
+// already decremented in-memory but the matching pool credit never
+// persisted: exactly the silent value-loss / StateRoot-divergence risk the
+// audit flagged. Now returns the error so every Delta-replay call site can
+// reject the block instead of continuing on divergent state.
+func (cs *ChainState) applyDemurrageLossLocked(acc *AccountState, lost float64) error {
 	if lost <= 0 || isTokenomicsPoolAddress(acc.Address) {
-		return
+		return nil
 	}
 	acc.Balance = NewDecimal(round6(acc.Balance.Float() - lost))
 	if err := cs.distributeSwapFee(lost, true); err != nil {
-		fmt.Printf("[DEMURRAGE] Warning: could not persist pool credits for %s demurrage delta: %v\n", acc.Address, err)
+		return fmt.Errorf("could not persist pool credits for %s demurrage delta: %w", acc.Address, err)
 	}
+	return nil
 }
 
 func (cs *ChainState) GetBalance(address string) float64 {
@@ -4243,7 +4280,9 @@ func (cs *ChainState) applyTransferDeltaLocked(from, to string, netAmount, fromL
 	if fromAcc.Balance.Float()-fromLost < netAmount {
 		return fmt.Errorf("insufficient balance (have %.6f after demurrage, need %.6f)", fromAcc.Balance.Float()-fromLost, netAmount)
 	}
-	cs.applyDemurrageLossLocked(fromAcc, fromLost)
+	if err := cs.applyDemurrageLossLocked(fromAcc, fromLost); err != nil {
+		return fmt.Errorf("transfer: could not settle sender %s demurrage: %w", from, err)
+	}
 	fromAcc.Balance = NewDecimal(round6(fromAcc.Balance.Float() - netAmount))
 	// FIX (audit recheck2, P0 #3): this and every other saveAccountToDB/
 	// savePoolToDB call in this function used to discard the returned error
@@ -4262,9 +4301,13 @@ func (cs *ChainState) applyTransferDeltaLocked(from, to string, netAmount, fromL
 		cs.accounts[to] = &AccountState{Address: to}
 	}
 	toAcc := cs.accounts[to]
-	cs.applyDemurrageLossLocked(toAcc, toLost)
+	if err := cs.applyDemurrageLossLocked(toAcc, toLost); err != nil {
+		return fmt.Errorf("transfer: could not settle recipient %s demurrage: %w", to, err)
+	}
 	toAcc.Balance = NewDecimal(round6(toAcc.Balance.Float() + netAmount))
-	cs.enforceWealthCapLocked(toAcc)
+	if err := cs.enforceWealthCapLocked(toAcc); err != nil {
+		return fmt.Errorf("transfer: could not enforce wealth cap for recipient %s: %w", to, err)
+	}
 	if err := cs.saveAccountToDB(toAcc); err != nil {
 		return fmt.Errorf("transfer: could not save recipient %s: %w", to, err)
 	}
@@ -4306,7 +4349,9 @@ func (cs *ChainState) applySwapDeltaLocked(wallet string, amountIn, amountOut fl
 			return fmt.Errorf("insufficient tUSD balance")
 		}
 	}
-	cs.applyDemurrageLossLocked(acc, demurrageLost)
+	if err := cs.applyDemurrageLossLocked(acc, demurrageLost); err != nil {
+		return fmt.Errorf("swap: could not settle %s demurrage: %w", wallet, err)
+	}
 	if aeqToTusd {
 		acc.Balance = NewDecimal(round6(acc.Balance.Float() - amountIn))
 		acc.TUsdBalance = NewDecimal(round6(acc.TUsdBalance.Float() + amountOut))
@@ -4381,7 +4426,9 @@ func (cs *ChainState) addLiquidityDeltaLocked(wallet string, aeqAmount, tusdAmou
 	if acc.TUsdBalance.Float() < tusdAmount {
 		return fmt.Errorf("insufficient tUSD balance")
 	}
-	cs.applyDemurrageLossLocked(acc, demurrageLost)
+	if err := cs.applyDemurrageLossLocked(acc, demurrageLost); err != nil {
+		return fmt.Errorf("add_liquidity: could not settle %s demurrage: %w", wallet, err)
+	}
 
 	// Use the stored LP shares from the primary node when available.
 	// Fall back to recomputing (from pool state or geometric mean) for
@@ -4443,7 +4490,9 @@ func (cs *ChainState) removeLiquidityDeltaLocked(wallet string, sharesToBurn, de
 	if acc.LPShares.Float() < sharesToBurn {
 		return fmt.Errorf("insufficient LP shares")
 	}
-	cs.applyDemurrageLossLocked(acc, demurrageLost)
+	if err := cs.applyDemurrageLossLocked(acc, demurrageLost); err != nil {
+		return fmt.Errorf("remove_liquidity: could not settle %s demurrage: %w", wallet, err)
+	}
 	// Mirror F17 + F18 caps from primary RemoveLiquidity
 	if sharesToBurn > cs.pool.TotalLPShares.Float() {
 		sharesToBurn = cs.pool.TotalLPShares.Float()
@@ -4578,7 +4627,9 @@ func (cs *ChainState) applyUBIRewardDeltaLocked(wallet string, amount, demurrage
 	if !ok {
 		return fmt.Errorf("ubi reward: account not found: %s", wallet)
 	}
-	cs.applyDemurrageLossLocked(acc, demurrageLost)
+	if err := cs.applyDemurrageLossLocked(acc, demurrageLost); err != nil {
+		return fmt.Errorf("ubi reward: could not settle %s demurrage: %w", wallet, err)
+	}
 	acc.Balance = NewDecimal(round6(acc.Balance.Float() + amount))
 	touchActivity(acc)
 	if err := cs.enforceWealthCapLocked(acc); err != nil {
@@ -4646,7 +4697,9 @@ func (cs *ChainState) applyValidatorRewardDeltaLocked(wallet string, amount, dem
 		cs.accounts[wallet] = &AccountState{Address: wallet}
 	}
 	acc := cs.accounts[wallet]
-	cs.applyDemurrageLossLocked(acc, demurrageLost)
+	if err := cs.applyDemurrageLossLocked(acc, demurrageLost); err != nil {
+		return fmt.Errorf("validator reward: could not settle %s demurrage: %w", wallet, err)
+	}
 	acc.Balance = NewDecimal(round6(acc.Balance.Float() + amount))
 	touchActivity(acc)
 	if err := cs.enforceWealthCapLocked(acc); err != nil {
@@ -4711,7 +4764,9 @@ func (cs *ChainState) applyLPRewardDeltaLocked(wallet string, amount, demurrageL
 		cs.accounts[wallet] = &AccountState{Address: wallet}
 	}
 	acc := cs.accounts[wallet]
-	cs.applyDemurrageLossLocked(acc, demurrageLost)
+	if err := cs.applyDemurrageLossLocked(acc, demurrageLost); err != nil {
+		return fmt.Errorf("lp reward: could not settle %s demurrage: %w", wallet, err)
+	}
 	acc.Balance = NewDecimal(round6(acc.Balance.Float() + amount))
 	touchActivity(acc)
 	if err := cs.enforceWealthCapLocked(acc); err != nil {
@@ -4767,7 +4822,9 @@ func (cs *ChainState) applyEscrowMoveDeltaLocked(wallet string, demurrageLost fl
 	if !ok {
 		return fmt.Errorf("escrow move: account not found: %s", wallet)
 	}
-	cs.applyDemurrageLossLocked(acc, demurrageLost)
+	if err := cs.applyDemurrageLossLocked(acc, demurrageLost); err != nil {
+		return fmt.Errorf("escrow move: could not settle %s demurrage: %w", wallet, err)
+	}
 	acc.Balance = NewDecimal(0)
 	// FIX (audit recheck2, P0 #3): see ApplyTransferDelta's comment.
 	if err := cs.saveAccountToDB(acc); err != nil {
