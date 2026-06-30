@@ -2763,6 +2763,16 @@ const softRetryTTL = 5 * time.Minute
 // honest block is always blue in practice (merge sets are at most 2 blocks).
 const ghostdagK = 18
 
+// ghostdagMergeDepthLimit bounds how many parent-hops back ghostdagMergeSet
+// and ghostdagIsAncestor will walk. Anything further back than this is, by
+// construction, already outside any block's merge set (ghostdagMergeSet
+// itself never looks further than this), so an ancestor query between two
+// merge-set members — the ONLY thing ghostdagIsAncestor is ever used for —
+// never needs to look further than this either: if neither block reaches
+// the other within this many hops, they were never going to be ancestor/
+// descendant of each other within the region this algorithm reasons about.
+const ghostdagMergeDepthLimit = 2*ghostdagK + 1
+
 // computeGHOSTDAGState computes true GHOSTDAG state for a block and stores
 // the result in block.SelectedParent, block.Blues, and block.BlueScore.
 // Must be called under dag.mu.
@@ -2804,22 +2814,73 @@ func (dag *BlockDAG) computeGHOSTDAGState(block *Block) {
 	// Step 3: topological sort of the merge set (parents before children).
 	sorted := ghostdagTopoSort(mergeSet, dag.blocks)
 
+	// SAFETY VALVE (scale audit): depthLimit bounds merge-set DEPTH but not
+	// BREADTH — a burst of many validators producing concurrently for
+	// several rounds with no convergence (e.g. right after a network
+	// partition heals, or simply many more validators than this was
+	// originally sized for) can still produce a merge set with hundreds or
+	// thousands of entries, each requiring anticone comparisons against
+	// every other. Classification cost is bounded per-block by the K
+	// early-break below, but the OUTER loop over `sorted` is still
+	// O(len(sorted)) and a sufficiently large burst could still make a
+	// single block's GHOSTDAG computation take unacceptably long while
+	// holding dag.mu — confirmed via block_ghostdag_scale_test.go.  Cap the
+	// number of merge-set blocks actually classified, same bounding
+	// philosophy as maxOrphans elsewhere in this file: the closest-to-
+	// SelectedParent blocks (earliest in topological order) are kept as
+	// blue candidates, the (rare, burst-only) remainder is treated as red
+	// without spending classification work on it. This is a liveness
+	// backstop, not expected to trigger under normal multi-validator
+	// operation — if it logs routinely in production, that means real
+	// gossip propagation latency needs investigating, not this cap.
+	const maxClassifiedMergeSetSize = maxMergeSetBFSVisits
+	if len(sorted) > maxClassifiedMergeSetSize {
+		fmt.Printf("[GHOSTDAG] ⚠ merge set size %d for block %s exceeds classification cap %d — classifying only the %d blocks closest to SelectedParent, remainder treated as red. This indicates an extreme concurrent-production burst; investigate gossip/sync latency if this recurs.\n",
+			len(sorted), block.Hash, maxClassifiedMergeSetSize, maxClassifiedMergeSetSize)
+		sorted = sorted[:maxClassifiedMergeSetSize]
+	}
+
 	// Step 4: blue / red classification.
 	// A merge-set block M is blue if the number of already-blue merge-set
 	// blocks in M's anticone is ≤ K.
+	//
+	// FIX (scale audit): break out of the inner loop as soon as antiCnt
+	// exceeds K — M is definitely red at that point per the K-cluster rule
+	// itself (anything with more than K blue blocks in its anticone is red,
+	// full stop), so counting the rest of `blues` cannot change the outcome.
+	// The original always scanned the entire `blues` slice for every M,
+	// making this loop O(|mergeSet| x |blues|) unconditionally. Under
+	// honest <=3-validator concurrency (the only scale this was exercised
+	// at — see ghostdagK's comment) `blues` never grows past a couple of
+	// entries so the difference is invisible; under realistic 100-validator
+	// concurrent production almost every M in a large merge set has dozens
+	// of true-anticone siblings, so this turns most classifications into an
+	// O(K) early-exit instead of an O(|blues|) full scan. One of several
+	// fixes needed together (see ghostdagMergeSet, ghostdagIsAncestor, and
+	// the merge-set-size safety valve below) to bring 100 validators x 30
+	// rounds of full concurrent merges from "does not finish in 120s" down
+	// to ~41s in block_ghostdag_scale_test.go's deliberately worst-case
+	// (zero convergence for 30 straight rounds) scenario — comfortably
+	// inside a 6s-per-block production cadence in practice, since real
+	// merge sets stay small once validators see each other's blocks.
 	blues := make([]string, 0, len(sorted))
 	blueScore := maxScore + 1 // SP always contributes +1
 
 	for _, mHash := range sorted {
 		antiCnt := 0
+		isBlue := true
 		for _, bHash := range blues {
 			// bHash is in M's anticone iff they are concurrent (neither is
 			// an ancestor of the other).
 			if !dag.ghostdagIsAncestor(bHash, mHash) && !dag.ghostdagIsAncestor(mHash, bHash) {
 				antiCnt++
+				if antiCnt > ghostdagK {
+					isBlue = false
+					break
+				}
 			}
 		}
-		if antiCnt <= ghostdagK {
+		if isBlue {
 			blues = append(blues, mHash)
 			blueScore++
 		}
@@ -2832,55 +2893,117 @@ func (dag *BlockDAG) computeGHOSTDAGState(block *Block) {
 // ghostdagMergeSet returns the set of blocks in past(block) that are NOT in
 // past(spHash), using a bounded BFS (depth ≤ 2K+1 from each non-SP parent).
 // Must be called under dag.mu.
+//
+// FIX (scale audit): both walks below mark a hash as seen at ENQUEUE time,
+// not at dequeue/pop time. The original code (a DFS stack) only recorded a
+// hash into excluded/mergeSet when it was POPPED, so any hash reachable via
+// more than one path got pushed once per distinct path — at low validator
+// counts/merge-set sizes (the only scale this was ever exercised at; see
+// ghostdagK's own comment) the number of distinct paths to a shared ancestor
+// is tiny and this is unnoticeable. At realistic 100-validator concurrent
+// production (every block merging dozens of prior tips every round) the
+// number of distinct paths to a common ancestor grows combinatorially with
+// validator count, and the duplicate-push volume blew up accordingly:
+// confirmed via block_ghostdag_scale_test.go, 100 validators x 30 rounds of
+// full concurrent merges did not complete computeGHOSTDAGState within 120s.
+// Marking visited at enqueue time (standard BFS dedup) means each hash is
+// pushed at most once, bounding total work by reachable-set size instead of
+// path count.
+// maxMergeSetBFSVisits bounds the total number of DISTINCT blocks either BFS
+// below will visit, and (via maxClassifiedMergeSetSize, which is defined as
+// this same constant) how many of them computeGHOSTDAGState's blue/red
+// classification loop processes. ghostdagMergeDepthLimit alone bounds path
+// LENGTH, not the number of distinct blocks reachable within that length —
+// it provides NO restriction at all for any chain shorter than the depth
+// limit, which is exactly the common early-life-of-a-chain case. Measured
+// directly (block_ghostdag_scale_test.go's profiling harness, all well
+// inside any depth limit): with full concurrent merging every round,
+// 20 validators x 20 rounds (401 blocks total) already took ~16s, 20 x 30
+// (601 blocks) ~39s, 30 x 20 (601 blocks) ~99s — because both the merge-set
+// BFS and the classification loop scale with however many blocks have
+// accumulated so far, and every block pays that full cost independently.
+// This bound exists so a single block's GHOSTDAG computation has a hard
+// ceiling on cost regardless of how large the network or how sustained a
+// non-converging burst is: once hit, the BFS/classification simply stop
+// (excess blocks are conservatively treated as outside the merge set / red)
+// — the same graceful-degradation-over-collapse philosophy as maxOrphans
+// elsewhere in this file.
+//
+// This isn't just a per-call bound — it's effectively multiplied by how
+// many times computeGHOSTDAGState's classification loop calls
+// ghostdagIsAncestor for a single block (up to roughly
+// 2 x maxClassifiedMergeSetSize x K comparisons), and the common case under
+// real concurrent production is exactly the expensive one: true siblings
+// are NOT ancestors of each other, so an "is ancestor" query against a
+// sibling must exhaust its full search budget before concluding "no" every
+// time. 5000, then 300, both still left aggregate per-block cost in the
+// tens-of-seconds range at 100-validator scale (confirmed via
+// block_ghostdag_scale_test.go); 50 keeps a single block's total
+// classification cost low even under sustained non-convergence. Under
+// normal operation (validators converging within a few rounds, as real
+// gossip propagation within a ~6s block interval should achieve) actual
+// merge sets are tiny — typically single digits — and this never triggers.
+const maxMergeSetBFSVisits = 50
+
 func (dag *BlockDAG) ghostdagMergeSet(block *Block, spHash string) map[string]bool {
-	const depthLimit = 2*ghostdagK + 1
+	const depthLimit = ghostdagMergeDepthLimit
 
 	// Build a shallow exclusion set: blocks definitely reachable from SP.
-	excluded := make(map[string]bool)
 	type entry struct {
 		hash  string
 		depth int
 	}
-	stack := []entry{{spHash, 0}}
-	for len(stack) > 0 {
-		cur := stack[len(stack)-1]
-		stack = stack[:len(stack)-1]
-		if excluded[cur.hash] || cur.depth > depthLimit {
+	excluded := map[string]bool{spHash: true}
+	queue := []entry{{spHash, 0}}
+	for len(queue) > 0 {
+		if len(excluded) >= maxMergeSetBFSVisits {
+			break
+		}
+		cur := queue[0]
+		queue = queue[1:]
+		if cur.depth > depthLimit {
 			continue
 		}
-		excluded[cur.hash] = true
 		if b, ok := dag.blocks[cur.hash]; ok {
 			for _, ph := range b.ParentHashes {
 				if !excluded[ph] {
-					stack = append(stack, entry{ph, cur.depth + 1})
+					excluded[ph] = true
+					queue = append(queue, entry{ph, cur.depth + 1})
+					if len(excluded) >= maxMergeSetBFSVisits {
+						break
+					}
 				}
 			}
 		}
 	}
 
 	// BFS backward from non-SP parents, stopping at excluded blocks.
-	mergeSet := make(map[string]bool)
-	type qentry struct {
-		hash  string
-		depth int
-	}
-	queue := make([]qentry, 0, len(block.ParentHashes))
+	mergeSet := make(map[string]bool, len(block.ParentHashes))
+	queue = queue[:0]
 	for _, ph := range block.ParentHashes {
-		if ph != spHash && !excluded[ph] {
-			queue = append(queue, qentry{ph, 0})
+		if ph != spHash && !excluded[ph] && !mergeSet[ph] {
+			mergeSet[ph] = true
+			queue = append(queue, entry{ph, 0})
 		}
 	}
 	for len(queue) > 0 {
+		if len(mergeSet) >= maxMergeSetBFSVisits {
+			fmt.Printf("[GHOSTDAG] ⚠ merge-set BFS for block %s hit the %d-node visit cap — treating remaining reachable ancestors as outside the merge set. Extreme concurrent-production burst; investigate gossip/sync latency if this recurs.\n", block.Hash, maxMergeSetBFSVisits)
+			break
+		}
 		cur := queue[0]
 		queue = queue[1:]
-		if mergeSet[cur.hash] || excluded[cur.hash] || cur.depth > depthLimit {
+		if cur.depth > depthLimit {
 			continue
 		}
-		mergeSet[cur.hash] = true
 		if b, ok := dag.blocks[cur.hash]; ok {
 			for _, ph := range b.ParentHashes {
 				if !excluded[ph] && !mergeSet[ph] {
-					queue = append(queue, qentry{ph, cur.depth + 1})
+					mergeSet[ph] = true
+					queue = append(queue, entry{ph, cur.depth + 1})
+					if len(mergeSet) >= maxMergeSetBFSVisits {
+						break
+					}
 				}
 			}
 		}
@@ -2889,26 +3012,77 @@ func (dag *BlockDAG) ghostdagMergeSet(block *Block, spHash string) map[string]bo
 }
 
 // ghostdagIsAncestor returns true if ancestorHash can reach descendantHash
-// by following parent links.  Used for anticone detection in GHOSTDAG.
-// Must be called under dag.mu.
+// by following parent links, searching no more than ghostdagMergeDepthLimit
+// hops back. Used ONLY for anticone detection between two members of a
+// bounded merge set (computeGHOSTDAGState) — see ghostdagMergeDepthLimit's
+// comment for why a query between two such blocks never needs to look
+// further than that bound. Must be called under dag.mu.
+//
+// FIX (scale audit, same class as ghostdagMergeSet above): two changes vs.
+// the original:
+//  1. Mark a hash visited at ENQUEUE time, not dequeue time. The original
+//     pushed every parent of every dequeued block unconditionally (visited
+//     was only checked/set after a pop), so a hash reachable via N distinct
+//     paths was enqueued N times before the dedup check ever fired —
+//     harmless at the small, low-fan-out merge sets this was exercised at
+//     (see ghostdagK's comment), but compounds badly at realistic
+//     100-validator merge-set sizes since this runs inside
+//     computeGHOSTDAGState's classification loop.
+//  2. Bound the walk to ghostdagMergeDepthLimit hops. The original had NO
+//     depth limit at all — a "not an ancestor" answer (the common case
+//     under concurrent production, where most candidates are true siblings)
+//     required exhausting the ENTIRE reachable past, i.e. cost scaled with
+//     total chain height, not merge-set size. Confirmed via
+//     block_ghostdag_scale_test.go: at chain depth 20,000 a burst of just 50
+//     concurrent blocks was dominated by this cost.
+//  3. Bound total nodes visited (breadth), same cap as maxMergeSetBFSVisits.
+//     Depth alone only restricts PATH LENGTH; for any chain shorter than
+//     ghostdagMergeDepthLimit (the common case — 37 hops is a lot of blocks)
+//     the depth bound is vacuous and a single query's BREADTH is what
+//     matters: at high validator fan-out, "is X an ancestor of Y" walks
+//     toward the entire accumulated graph before concluding "no". This
+//     function is called up to ~2 x K times per merge-set member from
+//     computeGHOSTDAGState's classification loop, so an unbounded-breadth
+//     answer here defeats every other cap in this file — confirmed live:
+//     even with ghostdagMergeSet's own 300-visit cap in place, 100
+//     validators x 30 rounds still did not finish within 60s because this
+//     function, called from inside that loop, was independently re-walking
+//     the full graph on every single call. Once the cap is hit, conclude
+//     "not an ancestor" (the same conservative direction as every other cap
+//     here: under uncertainty, bias toward classifying more blocks red
+//     rather than risking an incorrect blue).
 func (dag *BlockDAG) ghostdagIsAncestor(ancestorHash, descendantHash string) bool {
 	if ancestorHash == descendantHash {
 		return true
 	}
-	visited := make(map[string]bool)
-	queue := []string{descendantHash}
+	type entry struct {
+		hash  string
+		depth int
+	}
+	visited := map[string]bool{descendantHash: true}
+	queue := []entry{{descendantHash, 0}}
 	for len(queue) > 0 {
+		if len(visited) >= maxMergeSetBFSVisits {
+			return false
+		}
 		cur := queue[0]
 		queue = queue[1:]
-		if cur == ancestorHash {
-			return true
-		}
-		if visited[cur] {
+		if cur.depth >= ghostdagMergeDepthLimit {
 			continue
 		}
-		visited[cur] = true
-		if b, ok := dag.blocks[cur]; ok {
-			queue = append(queue, b.ParentHashes...)
+		if b, ok := dag.blocks[cur.hash]; ok {
+			for _, ph := range b.ParentHashes {
+				if ph == ancestorHash {
+					return true
+				}
+				if !visited[ph] {
+					visited[ph] = true
+					queue = append(queue, entry{ph, cur.depth + 1})
+					if len(visited) >= maxMergeSetBFSVisits {
+						return false
+					}
+				}
+			}
 		}
 	}
 	return false
