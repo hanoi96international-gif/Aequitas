@@ -1773,9 +1773,20 @@ blocks_produced BIGINT NOT NULL DEFAULT 0
 )`)
 	cs.db.Exec(`ALTER TABLE registered_nodes ADD COLUMN IF NOT EXISTS blocks_produced BIGINT NOT NULL DEFAULT 0`)
 	cs.db.Exec(`ALTER TABLE registered_nodes ADD COLUMN IF NOT EXISTS signing_address TEXT DEFAULT ''`)
+	// FIX (setup-simplification audit): used to read RELAYER_ADDRESS
+	// directly with no fallback, writing an EMPTY signing_address whenever
+	// an operator set RELAYER_PRIVATE_KEY + NODE_OPERATOR_WALLET but not
+	// the (now optional) RELAYER_ADDRESS — exactly the simplified setup
+	// this audit pass aims for. An empty signing_address never matches this
+	// node's real block proposer address, so IncrementBlockCount credits
+	// zero rows for every block this operator produces: correctly
+	// authorized to validate, silently never paid. relayerAddressFromEnv
+	// (block.go) derives the same address from RELAYER_PRIVATE_KEY that
+	// already signs this node's blocks, so the common single-key setup
+	// works correctly with no separate RELAYER_ADDRESS at all.
 	_, err := cs.db.Exec(
 		`INSERT INTO registered_nodes (wallet_address, signing_address) VALUES ($1, $2) ON CONFLICT (wallet_address) DO UPDATE SET signing_address = EXCLUDED.signing_address`,
-		wallet, strings.ToLower(os.Getenv("RELAYER_ADDRESS")),
+		wallet, relayerAddressFromEnv(),
 	)
 	if err != nil {
 		fmt.Printf("[NODE] Warning: could not register node wallet %s: %v\n", wallet, err)

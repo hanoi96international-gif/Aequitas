@@ -44,12 +44,21 @@ func TestSeedURLs_NormalizesSchemelessURLs(t *testing.T) {
 	}
 }
 
-func TestSeedURLs_EmptyWhenUnset(t *testing.T) {
+func TestSeedURLs_DefaultsToPublicSeedWhenUnset(t *testing.T) {
 	os.Unsetenv("PRIMARY_NODE_URL")
 	os.Unsetenv("PRIMARY_NODE_URLS")
 	got := seedURLs("https://self.example.com")
+	if len(got) != 1 || got[0] != defaultPublicSeed {
+		t.Fatalf("got %v, want [%s] (a fresh operator with no config must default to joining the public network)", got, defaultPublicSeed)
+	}
+}
+
+func TestSeedURLs_DefaultExcludedWhenSelfIsThePublicSeed(t *testing.T) {
+	os.Unsetenv("PRIMARY_NODE_URL")
+	os.Unsetenv("PRIMARY_NODE_URLS")
+	got := seedURLs(defaultPublicSeed)
 	if len(got) != 0 {
-		t.Fatalf("got %v, want empty", got)
+		t.Fatalf("got %v, want empty (the public seed node itself must not try to register with itself)", got)
 	}
 }
 

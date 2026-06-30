@@ -7,11 +7,8 @@ import (
 	"io"
 	"math/big"
 	"net/http"
-	"os"
 	"strings"
 	"sync"
-
-	"github.com/ethereum/go-ethereum/crypto"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
@@ -552,10 +549,7 @@ func (s *EVMRPCServer) sendRawTransaction(params []json.RawMessage) (interface{}
 	// Open deployment allows arbitrary bytecode execution and DB writes with
 	// no balance check — a trivial CPU/DB DoS vector.
 	if tx.To() == nil && len(tx.Data()) > 0 && s.evm != nil {
-		allowedDeployer := strings.ToLower(os.Getenv("RELAYER_ADDRESS"))
-		if allowedDeployer == "" && s.dag != nil && s.dag.GetSigningKey() != nil {
-			allowedDeployer = strings.ToLower(crypto.PubkeyToAddress(s.dag.GetSigningKey().PublicKey).Hex())
-		}
+		allowedDeployer := relayerAddressFromEnv()
 		if senderAddr != allowedDeployer {
 			fmt.Printf("[RPC] ✗ Deploy rejected from %s (only %s may deploy)\n", senderAddr, allowedDeployer)
 			// FIX (audit 2026-06-29, Brutal-Audit P2-04): nonce already
@@ -647,11 +641,7 @@ func (s *EVMRPCServer) sendRawTransaction(params []json.RawMessage) (interface{}
 			// relayer itself (i.e. called internally by /api/register). External wallets
 			// must go through /api/register so Go-state is updated atomically.
 			if sel == "13b81eb0" {
-				// Derive relayer from RELAYER_ADDRESS; fallback to signing key address
-				relayerAddr := strings.ToLower(os.Getenv("RELAYER_ADDRESS"))
-				if relayerAddr == "" && s.dag != nil && s.dag.GetSigningKey() != nil {
-					relayerAddr = strings.ToLower(crypto.PubkeyToAddress(s.dag.GetSigningKey().PublicKey).Hex())
-				}
+				relayerAddr := relayerAddressFromEnv()
 				if relayerAddr == "" || strings.ToLower(senderAddr) != relayerAddr {
 					// FIX (audit 2026-06-29, Brutal-Audit P2-04): same
 					// receipt-less-but-nonce-consumed gap as the !isV7 branch above.

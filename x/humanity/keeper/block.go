@@ -442,6 +442,7 @@ if pk := strings.TrimPrefix(os.Getenv("RELAYER_PRIVATE_KEY"), "0x"); pk != "" {
 } else {
 	fmt.Println("[BLOCK] ⚠ RELAYER_PRIVATE_KEY not set — blocks will be unsigned. Peer nodes will reject unsigned blocks.")
 }
+
 dag.createGenesisBlock()
 
 // FIX (audit 2026-06-28 recheck 5, P1-2): recover any pending_txs row left
@@ -610,6 +611,35 @@ if persisted := state.getConfigValueDB("max_block_height"); persisted != "" {
 // processing begins — see bootHeight's field comment.
 dag.bootHeight = dag.height
 return dag
+}
+
+// relayerAddressFromEnv returns RELAYER_ADDRESS if explicitly set (an
+// override for advanced setups where the deploy/operator address
+// intentionally differs from the block-signing key), otherwise derives the
+// address directly from RELAYER_PRIVATE_KEY — the same key that already
+// signs this node's blocks (see NewBlockchain above). Setup simplification
+// (scale audit): operators running the common single-key setup (one VPS,
+// one key pair, signs blocks AND owns the validator reward wallet) never
+// need to set RELAYER_ADDRESS at all. It was previously effectively
+// required because some call sites read it directly with no fallback —
+// state.go's RegisterNode silently wrote an empty signing_address when
+// unset, meaning that operator's blocks were never credited toward their
+// validator-pool reward despite producing them correctly. Every
+// RELAYER_ADDRESS call site should go through this helper instead of
+// reading the env var directly.
+func relayerAddressFromEnv() string {
+	if addr := strings.ToLower(strings.TrimSpace(os.Getenv("RELAYER_ADDRESS"))); addr != "" {
+		return addr
+	}
+	pk := strings.TrimPrefix(os.Getenv("RELAYER_PRIVATE_KEY"), "0x")
+	if pk == "" {
+		return ""
+	}
+	key, err := crypto.HexToECDSA(pk)
+	if err != nil {
+		return ""
+	}
+	return strings.ToLower(crypto.PubkeyToAddress(key.PublicKey).Hex())
 }
 
 // RefreshBootHeightAfterSnapshotImport re-reads max_block_height/

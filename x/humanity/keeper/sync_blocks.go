@@ -750,6 +750,19 @@ func NormalizeNodeURL(rawURL string) string {
 // PRIMARY_NODE_URLS (see StartPeerDiscovery's comment for why having more
 // than one matters at scale). selfURL is excluded so a node never tries to
 // register with itself.
+// defaultPublicSeed is the well-known public Aequitas network entry point.
+// Setup simplification (scale audit): a brand-new operator joining the
+// existing public network should not have to look up or be handed a
+// PRIMARY_NODE_URL before their node can do anything — that is exactly the
+// kind of extra required variable this audit pass set out to eliminate. If
+// the operator hasn't configured anything, default to this. PRIMARY_NODE_URL
+// / PRIMARY_NODE_URLS remain available to override or extend it (e.g. a
+// private/test deployment that must never reach the public network sets
+// PRIMARY_NODE_URL to its own seed instead). Safe even for the official
+// primary itself: seedURLs always excludes selfURL, so a node whose own
+// SELF_URL happens to equal this default simply filters it out below.
+const defaultPublicSeed = "https://aequitas.digital"
+
 func seedURLs(selfURL string) []string {
 	seen := map[string]bool{selfURL: true}
 	var out []string
@@ -764,6 +777,9 @@ func seedURLs(selfURL string) []string {
 	add(os.Getenv("PRIMARY_NODE_URL"))
 	for _, raw := range strings.Split(os.Getenv("PRIMARY_NODE_URLS"), ",") {
 		add(raw)
+	}
+	if len(out) == 0 {
+		add(defaultPublicSeed)
 	}
 	return out
 }
