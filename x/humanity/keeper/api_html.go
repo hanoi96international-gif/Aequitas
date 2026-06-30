@@ -15,6 +15,7 @@ const explorerHTML = `<!DOCTYPE html>
 <meta name="apple-mobile-web-app-title" content="Aequitas">
 <link rel="preconnect" href="https://fonts.bunny.net">
 <link href="https://fonts.bunny.net/css?family=inter:400,500,600,700,900|dm-serif-display:400|jetbrains-mono:400,600&display=swap" rel="stylesheet">
+<script src="https://unpkg.com/lightweight-charts@4.1.3/dist/lightweight-charts.standalone.production.js"></script>
 <style>
 :root{
   --font-body:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
@@ -665,18 +666,26 @@ input[type=number]::-webkit-inner-spin-button{opacity:0.5}
 <div id="exch-swap" class="stab-panel active">
 <div style="padding:16px 20px 0">
   <div class="idx">
-    <div class="idx-title" data-i18n="swap-price-title">AEQ / tUSD — Live Price</div>
-    <div style="font-size:0.63rem;color:var(--muted);margin-bottom:12px" data-i18n="swap-price-desc">Real-time price derived from pool reserves (x·y=k). Updates every 8 seconds as new pool data arrives.</div>
-    <div style="display:flex;gap:4px;margin-bottom:6px">
+    <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:12px">
+      <div>
+        <div class="idx-title" data-i18n="swap-price-title" style="margin-bottom:4px">AEQ / tUSD</div>
+        <div style="font-size:0.58rem;color:var(--muted)" data-i18n="swap-price-desc">x·y=k AMM · updates every 8s</div>
+      </div>
+      <div style="text-align:right;flex-shrink:0;margin-left:12px">
+        <div id="price-current" style="font-size:1.25rem;font-weight:800;font-family:var(--font-mono);color:var(--text);line-height:1.2">—</div>
+        <div id="price-change" style="font-size:0.65rem;font-weight:600;margin-top:2px;color:var(--muted)">— tUSD</div>
+      </div>
+    </div>
+    <div style="display:flex;gap:3px;margin-bottom:8px">
       <button onclick="setChartInterval(60000)" id="ci-1m" class="ci-btn">1m</button>
       <button onclick="setChartInterval(300000)" id="ci-5m" class="ci-btn">5m</button>
       <button onclick="setChartInterval(1800000)" id="ci-30m" class="ci-btn">30m</button>
-      <button onclick="setChartInterval(3600000)" id="ci-1h" class="ci-btn">1h</button>
+      <button onclick="setChartInterval(3600000)" id="ci-1h" class="ci-btn ci-active">1h</button>
       <button onclick="setChartInterval(14400000)" id="ci-4h" class="ci-btn">4h</button>
-      <button onclick="setChartInterval(0)" id="ci-all" class="ci-btn ci-active">All</button>
+      <button onclick="setChartInterval(0)" id="ci-all" class="ci-btn">All</button>
     </div>
-    <canvas id="price-chart" height="160" style="width:100%;border-radius:6px;background:var(--card2)"></canvas>
-    <div id="price-chart-empty" style="display:none;text-align:center;padding:24px;color:var(--muted);font-size:0.63rem" data-i18n="swap-price-empty">No pool data yet — add liquidity to see the price chart.</div>
+    <div id="price-chart" style="width:100%;height:260px;border-radius:6px;overflow:hidden;background:#0A0C16"></div>
+    <div id="price-chart-empty" style="display:none;text-align:center;padding:40px;color:var(--muted);font-size:0.63rem" data-i18n="swap-price-empty">No pool data yet — add liquidity to see the price chart.</div>
   </div>
 </div>
 <div class="rs">
@@ -4569,82 +4578,78 @@ function drawWcapSlideChart() {
   ctx.fillText('WEALTH CAP  —  BOOTSTRAP MULTIPLIER  ·  max(5, min(N, 25))×', pad.l, 20);
 }
 
-function drawPriceChart() {
-  const canvas = document.getElementById('price-chart');
-  if (!canvas || !priceHistory.length || !canvas.offsetParent) return;
-  canvas.width = canvas.offsetWidth;
-  const ctx = canvas.getContext('2d');
-  const W = canvas.width, H = canvas.height;
-  ctx.clearRect(0, 0, W, H);
-  const pad = {l:58, r:24, t:36, b:36};
+// ── PRICE CHART (TradingView Lightweight Charts) ─────────────────────────
+var lwChart = null, lwCandleSeries = null, lwVolSeries = null;
+// Candle bucket size (ms) for each interval filter
+var CANDLE_BUCKET = {60000:10000,300000:30000,1800000:120000,3600000:300000,14400000:900000,0:300000};
+
+function buildOHLC(pts, filterMs, bucketMs) {
   var now = Date.now();
-  var ciMs = (typeof chartIntervalMs !== 'undefined') ? chartIntervalMs : 0;
-  var pts = ciMs > 0
-    ? priceHistory.filter(function(p){ return now - p.t <= ciMs; })
-    : priceHistory;
-  if (!pts.length) {
-    ctx.fillStyle='rgba(139,92,246,0.45)'; ctx.font='11px Inter,sans-serif'; ctx.textAlign='center';
-    ctx.fillText('No price data in this interval yet — wait a few minutes or select a wider range', W/2, H/2);
+  var data = filterMs > 0 ? pts.filter(function(p){return now-p.t<=filterMs&&p.p>0;}) : pts.filter(function(p){return p.p>0;});
+  if (!data.length) return [];
+  var buckets = {};
+  data.forEach(function(pt) {
+    var b = Math.floor(pt.t/bucketMs)*bucketMs;
+    if (!buckets[b]) { buckets[b]={time:Math.floor(b/1000),open:pt.p,high:pt.p,low:pt.p,close:pt.p,vol:1}; }
+    else { buckets[b].high=Math.max(buckets[b].high,pt.p); buckets[b].low=Math.min(buckets[b].low,pt.p); buckets[b].close=pt.p; buckets[b].vol++; }
+  });
+  return Object.values(buckets).sort(function(a,b){return a.time-b.time;});
+}
+
+function initPriceChart() {
+  var el = document.getElementById('price-chart');
+  if (!el || lwChart || !window.LightweightCharts) return;
+  lwChart = LightweightCharts.createChart(el, {
+    width:el.clientWidth, height:260,
+    layout:{background:{color:'#0A0C16'},textColor:'#8892A4',fontSize:11,fontFamily:'JetBrains Mono,monospace'},
+    grid:{vertLines:{color:'rgba(255,255,255,0.03)'},horzLines:{color:'rgba(255,255,255,0.03)'}},
+    crosshair:{mode:LightweightCharts.CrosshairMode.Normal,
+      vertLine:{color:'rgba(155,114,246,0.55)',width:1,style:0,labelBackgroundColor:'#9B72F6'},
+      horzLine:{color:'rgba(155,114,246,0.55)',width:1,style:0,labelBackgroundColor:'#9B72F6'}},
+    rightPriceScale:{borderColor:'rgba(255,255,255,0.07)'},
+    timeScale:{borderColor:'rgba(255,255,255,0.07)',timeVisible:true,secondsVisible:false,rightOffset:4},
+    handleScroll:true, handleScale:true,
+  });
+  lwCandleSeries = lwChart.addCandlestickSeries({
+    upColor:'#34D399',downColor:'#F87171',
+    borderUpColor:'#34D399',borderDownColor:'#F87171',
+    wickUpColor:'#34D399',wickDownColor:'#F87171',
+    priceFormat:{type:'price',precision:6,minMove:0.000001},
+  });
+  lwVolSeries = lwChart.addHistogramSeries({
+    priceFormat:{type:'volume'},priceScaleId:'vol',
+    scaleMargins:{top:0.78,bottom:0},
+  });
+  try { lwChart.priceScale('vol').applyOptions({scaleMargins:{top:0.78,bottom:0},autoScale:false}); } catch(_){}
+  new ResizeObserver(function(e){ if(lwChart&&e[0]) lwChart.applyOptions({width:e[0].contentRect.width}); }).observe(el);
+}
+
+function updatePriceDisplay(candles) {
+  var pEl=document.getElementById('price-current'), cEl=document.getElementById('price-change');
+  if (!pEl) return;
+  if (!candles.length) { pEl.textContent='—'; return; }
+  var last=candles[candles.length-1], first=candles[0];
+  var chg = first.open>0 ? (last.close-first.open)/first.open*100 : 0;
+  pEl.textContent = last.close.toFixed(6)+' tUSD';
+  if (cEl) { cEl.textContent=(chg>=0?'▲ +':'▼ ')+Math.abs(chg).toFixed(2)+'%'; cEl.style.color=chg>=0?'var(--neon)':'var(--red)'; }
+}
+
+function drawPriceChart() {
+  var el=document.getElementById('price-chart');
+  if (!el||!el.offsetParent) return;
+  if (!lwChart) initPriceChart();
+  if (!lwChart) return;
+  var bms = CANDLE_BUCKET[chartIntervalMs] || 300000;
+  var candles = buildOHLC(priceHistory, chartIntervalMs, bms);
+  updatePriceDisplay(candles);
+  if (!candles.length) {
+    if (lwCandleSeries) lwCandleSeries.setData([]);
+    if (lwVolSeries) lwVolSeries.setData([]);
     return;
   }
-  pts = pts.filter(function(p){return p.p>0;}); const prices = pts.map(function(p){return p.p;});
-  const minP = Math.min.apply(null,prices), maxP = Math.max.apply(null,prices);
-  const range = maxP - minP || minP * 0.01 || 0.0001;
-  const padR = range * 0.1;
-  const lo = minP - padR, hi = maxP + padR;
-  const cW = W-pad.l-pad.r, cH = H-pad.t-pad.b;
-  const toX = function(i){return pad.l + cW * i / Math.max(pts.length - 1, 1);};
-  const toY = function(p){return pad.t + cH * (1 - (p - lo) / (hi - lo));};
-  // grid
-  for (var gi=0;gi<=4;gi++) {
-    var gy = pad.t + cH*gi/4;
-    ctx.strokeStyle = gi===4?'rgba(139,92,246,0.2)':'rgba(139,92,246,0.08)'; ctx.lineWidth=1;
-    ctx.beginPath(); ctx.moveTo(pad.l,gy); ctx.lineTo(W-pad.r,gy); ctx.stroke();
-    var gv = hi - (hi-lo)*gi/4;
-    ctx.fillStyle='rgba(139,92,246,0.75)'; ctx.font='10px JetBrains Mono,monospace'; ctx.textAlign='right';
-    ctx.fillText(gv.toFixed(4), pad.l-5, gy+4);
-  }
-  // bezier fill
-  ctx.beginPath(); ctx.moveTo(toX(0),toY(pts[0].p));
-  for (var bi=1;bi<pts.length-1;bi++) {
-    var mx=(toX(bi)+toX(bi+1))/2, my=(toY(pts[bi].p)+toY(pts[bi+1].p))/2;
-    ctx.quadraticCurveTo(toX(bi),toY(pts[bi].p),mx,my);
-  }
-  if (pts.length>1) ctx.lineTo(toX(pts.length-1),toY(pts[pts.length-1].p));
-  ctx.lineTo(toX(pts.length-1),H-pad.b); ctx.lineTo(toX(0),H-pad.b); ctx.closePath();
-  var grad=ctx.createLinearGradient(0,pad.t,0,H-pad.b);
-  grad.addColorStop(0,'rgba(139,92,246,0.38)'); grad.addColorStop(0.65,'rgba(139,92,246,0.1)'); grad.addColorStop(1,'rgba(139,92,246,0.01)');
-  ctx.fillStyle=grad; ctx.fill();
-  // glowing bezier line
-  ctx.save(); ctx.shadowColor='rgba(139,92,246,0.7)'; ctx.shadowBlur=12;
-  ctx.strokeStyle='#8B5CF6'; ctx.lineWidth=2.5;
-  ctx.beginPath(); ctx.moveTo(toX(0),toY(pts[0].p));
-  for (var li=1;li<pts.length-1;li++) {
-    var mx2=(toX(li)+toX(li+1))/2, my2=(toY(pts[li].p)+toY(pts[li+1].p))/2;
-    ctx.quadraticCurveTo(toX(li),toY(pts[li].p),mx2,my2);
-  }
-  if (pts.length>1) ctx.lineTo(toX(pts.length-1),toY(pts[pts.length-1].p));
-  ctx.stroke(); ctx.restore();
-  // last price dot
-  var lx=toX(pts.length-1), ly=toY(prices[prices.length-1]);
-  ctx.save(); ctx.shadowColor='rgba(139,92,246,0.9)'; ctx.shadowBlur=16;
-  ctx.beginPath(); ctx.arc(lx,ly,5,0,2*Math.PI); ctx.fillStyle='#8B5CF6'; ctx.fill(); ctx.restore();
-  ctx.beginPath(); ctx.arc(lx,ly,2.5,0,2*Math.PI); ctx.fillStyle='#fff'; ctx.fill();
-  var pLabel=prices[prices.length-1].toFixed(6)+' tUSD';
-  ctx.fillStyle='rgba(139,92,246,0.95)'; ctx.font='bold 11px JetBrains Mono,monospace';
-  ctx.textAlign = lx>W*0.75?'right':'left';
-  ctx.fillText(pLabel, lx+(lx>W*0.75?-8:8), ly-9);
-  // x-axis time labels
-  ctx.fillStyle='rgba(139,92,246,0.5)'; ctx.font='9px JetBrains Mono,monospace'; ctx.textAlign='center';
-  [0, Math.floor(pts.length/2), pts.length-1].forEach(function(i){
-    if (i<0||i>=pts.length) return;
-    var dd=new Date(pts[i].t);
-    var ts=dd.getHours().toString().padStart(2,'0')+':'+dd.getMinutes().toString().padStart(2,'0')+':'+dd.getSeconds().toString().padStart(2,'0');
-    ctx.fillText(ts, toX(i), H-pad.b+16);
-  });
-  // title
-  ctx.fillStyle='rgba(139,92,246,0.38)'; ctx.font='10px Inter,sans-serif'; ctx.textAlign='left';
-  ctx.fillText('AEQ / tUSD  —  LIVE PRICE  (x·y = k  AMM)', pad.l, 20);
+  lwCandleSeries.setData(candles.map(function(c){return {time:c.time,open:c.open,high:c.high,low:c.low,close:c.close};}));
+  lwVolSeries.setData(candles.map(function(c){return {time:c.time,value:c.vol,color:c.close>=c.open?'rgba(52,211,153,0.22)':'rgba(248,113,113,0.22)'};}));
+  lwChart.timeScale().fitContent();
 }
 
 let allBlocks = [];
@@ -4983,7 +4988,7 @@ let currentPoolTUSD = 0;
 let myAEQBalance = 0;
 let myTUSDBalance = 0;
 var priceHistory = [];
-var chartIntervalMs = 0;
+var chartIntervalMs = 3600000;
 var priceHistoryLoaded = false;
 
 // Preload price history from DB so interval buttons show real historical data.

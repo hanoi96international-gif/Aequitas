@@ -2,344 +2,897 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Aequitas — Decentralized Human Currency</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="theme-color" content="#0C0E16">
+<title>Aequitas Beta</title>
+<link rel="preconnect" href="https://fonts.bunny.net">
+<link href="https://fonts.bunny.net/css?family=inter:400,500,600,700,900|jetbrains-mono:400,600&display=swap" rel="stylesheet">
+<script src="https://unpkg.com/lightweight-charts@4.1.3/dist/lightweight-charts.standalone.production.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/ethers/6.7.0/ethers.umd.min.js"></script>
 <style>
-  * { margin: 0; padding: 0; box-sizing: border-box; }
-  :root { --gold: #C9A84C; --dark: #0A0E1A; --dark2: #111827; --blue: #1E2D45; --green: #22C55E; --gray: #6B7A99; --light: #E8EDF5; --red: #EF4444; }
-  body { background: var(--dark); color: var(--light); font-family: 'Courier New', monospace; min-height: 100vh; }
-  .container { max-width: 900px; margin: 0 auto; padding: 20px; }
-  header { text-align: center; padding: 40px 20px 30px; border-bottom: 1px solid var(--blue); }
-  header h1 { font-size: 48px; color: var(--gold); letter-spacing: 12px; }
-  header p { color: var(--gray); font-size: 11px; letter-spacing: 3px; margin-top: 8px; }
-  .network-badge { display: inline-flex; align-items: center; gap: 6px; background: #0D2010; border: 1px solid #1A4020; border-radius: 4px; padding: 4px 12px; margin-top: 12px; font-size: 10px; color: var(--green); letter-spacing: 2px; }
-  .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--green); animation: pulse 2s infinite; }
-  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.4} }
-  .card { background: var(--dark2); border: 1px solid var(--blue); border-radius: 12px; padding: 24px; margin: 16px 0; }
-  .card-title { font-size: 10px; color: var(--gray); letter-spacing: 3px; margin-bottom: 16px; }
-  .wallet-section { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
-  #walletStatus { flex: 1; font-size: 11px; color: var(--gray); }
-  .wallet-address { color: var(--gold); font-size: 12px; }
-  .btn { padding: 12px 24px; border: none; border-radius: 8px; cursor: pointer; font-family: 'Courier New', monospace; font-size: 11px; letter-spacing: 2px; font-weight: bold; transition: opacity 0.2s; }
-  .btn:hover { opacity: 0.85; }
-  .btn-gold { background: var(--gold); color: var(--dark); }
-  .btn-green { background: var(--green); color: var(--dark); }
-  .btn-outline { background: transparent; border: 1px solid var(--blue); color: var(--gray); }
-  .btn:disabled { opacity: 0.4; cursor: not-allowed; }
-  .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 12px; }
-  .stat-box { background: #0D1020; border: 1px solid var(--blue); border-radius: 8px; padding: 14px; }
-  .stat-label { font-size: 9px; color: var(--gray); letter-spacing: 2px; margin-bottom: 6px; }
-  .stat-value { font-size: 16px; color: var(--gold); font-weight: bold; }
-  .stat-sub { font-size: 9px; color: var(--gray); margin-top: 4px; }
-  .privacy-badge { background: #0D1A0D; border: 1px solid #1A3020; border-radius: 6px; padding: 10px; margin-bottom: 20px; font-size: 11px; color: var(--green); }
-  .already-registered { background: #0D1A0D; border: 1px solid var(--green); border-radius: 8px; padding: 16px; text-align: center; }
-  .already-registered h3 { color: var(--green); margin-bottom: 8px; }
-  .steps { margin: 16px 0; }
-  .step { display: flex; align-items: center; gap: 12px; padding: 10px 0; border-bottom: 1px solid var(--blue); font-size: 11px; color: var(--gray); }
-  .step-icon { font-size: 16px; width: 24px; }
-  .log { background: #060810; border: 1px solid var(--blue); border-radius: 8px; padding: 16px; max-height: 250px; overflow-y: auto; font-size: 10px; }
-  .log-entry { padding: 2px 0; }
-  .log-info { color: var(--gold); }
-  .log-success { color: var(--green); }
-  .log-error { color: var(--red); }
-  .progress-bar { width: 100%; height: 6px; background: var(--blue); border-radius: 3px; margin: 10px 0; overflow: hidden; }
-  .progress-fill { height: 100%; background: var(--gold); border-radius: 3px; transition: width 0.3s; }
-  .phase-bar { display: flex; gap: 4px; margin-top: 12px; }
-  .phase-item { flex: 1; height: 4px; border-radius: 2px; background: var(--blue); }
-  .phase-item.active { background: var(--gold); }
-  footer { text-align: center; padding: 40px 20px; color: var(--gray); font-size: 10px; line-height: 20px; border-top: 1px solid var(--blue); margin-top: 20px; }
-  footer a { color: var(--gold); text-decoration: none; }
+*{margin:0;padding:0;box-sizing:border-box}
+:root{
+  --bg:#0C0E16;--card:#131620;--card2:#1A1E2E;
+  --border:rgba(255,255,255,0.07);--border2:rgba(255,255,255,0.04);
+  --purple:#9B72F6;--teal:#22D3EE;--neon:#34D399;--gold:#F0B429;--red:#F87171;
+  --text:#E8EAED;--sub:#9CA3AF;--muted:#6B7280;
+  --font:'Inter',sans-serif;--mono:'JetBrains Mono',monospace;
+}
+html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--font);-webkit-font-smoothing:antialiased}
+#app{display:flex;flex-direction:column;height:100dvh;max-width:480px;margin:0 auto;position:relative}
+
+/* HEADER */
+#header{display:flex;align-items:center;gap:10px;padding:14px 16px 10px;border-bottom:1px solid var(--border2);flex-shrink:0;background:var(--bg)}
+.logo{font-size:1rem;font-weight:900;letter-spacing:2px;background:linear-gradient(135deg,var(--purple),var(--teal));-webkit-background-clip:text;-webkit-text-fill-color:transparent}
+.beta-tag{font-size:0.5rem;font-weight:700;letter-spacing:1.5px;padding:2px 6px;border-radius:3px;background:rgba(155,114,246,0.18);color:var(--purple);border:1px solid rgba(155,114,246,0.3);margin-top:1px}
+.header-mid{flex:1;overflow:hidden}
+.wallet-addr{font-size:0.62rem;font-family:var(--mono);color:var(--sub);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;cursor:pointer}
+.wallet-addr:hover{color:var(--teal)}
+#connect-btn{font-size:0.65rem;font-weight:600;padding:6px 14px;border-radius:6px;border:1px solid rgba(155,114,246,0.4);background:rgba(155,114,246,0.12);color:var(--purple);cursor:pointer;white-space:nowrap;transition:all .15s}
+#connect-btn:hover{background:rgba(155,114,246,0.22)}
+#connect-btn.connected{border-color:rgba(52,211,153,0.35);background:rgba(52,211,153,0.1);color:var(--neon)}
+
+/* CHAIN BANNER */
+.chain-banner{display:flex;align-items:center;gap:8px;padding:10px 16px;background:rgba(52,211,153,0.05);border-bottom:1px solid rgba(52,211,153,0.12);font-size:0.65rem;font-family:var(--mono);color:var(--sub)}
+.dot-green{width:7px;height:7px;border-radius:50%;background:var(--neon);flex-shrink:0;animation:pulse 2s infinite}
+@keyframes pulse{0%,100%{opacity:1;box-shadow:0 0 0 0 rgba(52,211,153,.5)}50%{opacity:.8;box-shadow:0 0 0 4px rgba(52,211,153,0)}}
+
+/* MAIN SCROLL */
+#main{flex:1;overflow-y:auto;overflow-x:hidden}
+.tab-content{display:none;padding:14px 14px 80px}
+.tab-content.active{display:block}
+
+/* CARDS */
+.card{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:14px;margin-bottom:12px}
+.card-header{display:flex;align-items:center;gap:8px;margin-bottom:12px}
+.card-title{font-size:0.7rem;font-weight:700;letter-spacing:.8px;text-transform:uppercase;color:var(--sub)}
+.card-row{display:flex;justify-content:space-between;align-items:center;padding:5px 0;border-top:1px solid var(--border2);font-size:0.68rem}
+.card-row:first-of-type{border-top:none}
+
+/* STAT GRID */
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px}
+.stat-card{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:12px}
+.stat-label{font-size:0.53rem;letter-spacing:.8px;text-transform:uppercase;color:var(--muted);margin-bottom:4px}
+.stat-val{font-size:1.25rem;font-weight:800;font-family:var(--mono);line-height:1.1}
+.stat-sub{font-size:0.58rem;color:var(--muted);margin-top:2px}
+
+/* TAGS */
+.tag{font-size:0.52rem;font-weight:700;letter-spacing:.8px;padding:2px 7px;border-radius:4px}
+.tag-purple{background:rgba(155,114,246,0.15);color:var(--purple);border:1px solid rgba(155,114,246,0.25)}
+.tag-neon{background:rgba(52,211,153,0.12);color:var(--neon);border:1px solid rgba(52,211,153,0.25)}
+.tag-muted{background:rgba(255,255,255,0.05);color:var(--muted);border:1px solid var(--border)}
+
+/* UBI */
+.ubi-countdown{text-align:center;padding:14px 0 10px}
+.ubi-time{font-size:2rem;font-weight:900;font-family:var(--mono);color:var(--teal);letter-spacing:2px}
+.ubi-label{font-size:0.58rem;color:var(--muted);margin-top:4px}
+.progress-bar{height:4px;background:rgba(255,255,255,0.06);border-radius:2px;overflow:hidden;margin:8px 0}
+.progress-fill{height:100%;background:linear-gradient(90deg,var(--purple),var(--teal));border-radius:2px;transition:width .4s}
+
+/* PHASE */
+.phase-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:6px}
+.phase-item{background:var(--card2);border:1px solid var(--border);border-radius:6px;padding:8px 4px;text-align:center;font-size:0.55rem;font-weight:700;letter-spacing:.3px;color:var(--muted);transition:all .2s}
+.phase-item span{display:block;font-size:0.5rem;font-weight:400;margin-top:2px;letter-spacing:0}
+.phase-item.active{background:rgba(155,114,246,0.15);border-color:rgba(155,114,246,0.4);color:var(--purple)}
+
+/* PRICE HEADER */
+.price-header{display:flex;align-items:flex-start;justify-content:space-between;padding:14px 14px 0;margin-bottom:0}
+.pair-name{font-size:1rem;font-weight:800;letter-spacing:.5px}
+.pair-sub{font-size:0.58rem;color:var(--muted);margin-top:2px}
+.price-right{text-align:right}
+.price-big{font-size:1.3rem;font-weight:800;font-family:var(--mono)}
+.price-change{font-size:0.65rem;font-weight:600;margin-top:2px}
+
+/* INTERVAL BUTTONS */
+.interval-bar{display:flex;gap:3px;padding:10px 14px 8px}
+.ci-btn{font-size:0.62rem;font-weight:600;font-family:var(--mono);padding:4px 10px;border-radius:5px;border:1px solid var(--border);background:transparent;color:var(--muted);cursor:pointer;transition:all .15s}
+.ci-btn:hover{border-color:rgba(155,114,246,0.4);color:var(--purple)}
+.ci-btn.ci-active{background:rgba(155,114,246,0.18);border-color:rgba(155,114,246,0.5);color:var(--purple)}
+
+/* SWAP */
+.swap-dir-row{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:12px}
+.dir-btn{font-size:0.65rem;font-weight:600;font-family:var(--mono);padding:8px;border-radius:7px;border:1px solid var(--border);background:var(--card2);color:var(--muted);cursor:pointer;transition:all .15s}
+.dir-btn.active{background:rgba(155,114,246,0.15);border-color:rgba(155,114,246,0.45);color:var(--purple)}
+.input-group{margin-bottom:10px}
+.input-label{display:block;font-size:0.58rem;letter-spacing:.5px;color:var(--muted);margin-bottom:5px}
+input[type=text],input[type=number]{width:100%;background:var(--card2);border:1px solid var(--border);border-radius:8px;padding:10px 12px;font-size:0.85rem;font-family:var(--mono);color:var(--text);outline:none;transition:border-color .15s}
+input[type=text]:focus,input[type=number]:focus{border-color:rgba(155,114,246,0.5)}
+input[type=number]::-webkit-inner-spin-button{-webkit-appearance:none}
+.preview-box{background:var(--card2);border:1px solid var(--border2);border-radius:8px;padding:10px;margin-bottom:12px}
+.preview-row{display:flex;justify-content:space-between;font-size:0.62rem;padding:3px 0;color:var(--sub)}
+.preview-row:first-child{padding-top:0}
+
+/* BUTTONS */
+.btn{display:block;width:100%;padding:12px;border-radius:9px;border:none;font-size:0.75rem;font-weight:700;font-family:var(--font);letter-spacing:.5px;cursor:pointer;transition:all .15s;text-align:center}
+.btn:disabled{opacity:.38;cursor:not-allowed}
+.btn-purple{background:linear-gradient(135deg,rgba(155,114,246,.9),rgba(34,211,238,.6));color:#fff}
+.btn-purple:hover:not(:disabled){background:linear-gradient(135deg,var(--purple),var(--teal));box-shadow:0 4px 20px rgba(155,114,246,.3)}
+.btn-neon{background:rgba(52,211,153,0.18);border:1px solid rgba(52,211,153,0.4);color:var(--neon)}
+.btn-neon:hover:not(:disabled){background:rgba(52,211,153,0.28)}
+.btn-outline{background:transparent;border:1px solid var(--border);color:var(--sub);margin-bottom:8px}
+.btn-outline:hover{border-color:rgba(155,114,246,0.4);color:var(--purple)}
+.status-line{min-height:18px;margin-top:8px;font-size:0.62rem;text-align:center;padding:2px 0}
+.status-line.ok{color:var(--neon)}
+.status-line.err{color:var(--red)}
+.status-line.info{color:var(--sub)}
+
+/* WALLET TAB */
+.connect-prompt{text-align:center;padding:60px 20px}
+.connect-icon{font-size:3rem;margin-bottom:16px}
+.connect-text{font-size:0.8rem;color:var(--sub);margin-bottom:24px;line-height:1.6}
+.balance-card{background:linear-gradient(135deg,var(--card),var(--card2));border:1px solid var(--border);border-radius:14px;padding:20px;margin-bottom:10px;position:relative;overflow:hidden}
+.balance-card::before{content:'';position:absolute;top:-30px;right:-30px;width:120px;height:120px;border-radius:50%;background:rgba(155,114,246,0.08)}
+.balance-card.tusd::before{background:rgba(34,211,238,0.08)}
+.balance-label{font-size:0.58rem;letter-spacing:.8px;text-transform:uppercase;color:var(--muted);margin-bottom:6px}
+.balance-big{font-size:2rem;font-weight:900;font-family:var(--mono)}
+.balance-sub{font-size:0.6rem;color:var(--muted);margin-top:3px}
+.warn-box{background:rgba(248,113,113,0.08);border:1px solid rgba(248,113,113,0.25);border-radius:8px;padding:10px 12px;font-size:0.65rem;color:var(--red);margin-bottom:10px}
+
+/* IDENTITY TAB */
+.id-badge{display:flex;align-items:center;gap:14px;padding:16px;border-radius:12px;margin-bottom:12px}
+.id-badge.verified{background:rgba(52,211,153,0.08);border:1px solid rgba(52,211,153,0.3)}
+.id-badge.unverified{background:rgba(248,113,113,0.06);border:1px solid rgba(248,113,113,0.2)}
+.id-badge-icon{font-size:2rem;width:44px;height:44px;border-radius:50%;display:flex;align-items:center;justify-content:center;flex-shrink:0;font-weight:900}
+.id-badge.verified .id-badge-icon{background:rgba(52,211,153,0.2);color:var(--neon)}
+.id-badge.unverified .id-badge-icon{background:rgba(248,113,113,0.15);color:var(--red)}
+.id-badge-title{font-size:0.85rem;font-weight:700;margin-bottom:3px}
+.id-badge-sub{font-size:0.6rem;color:var(--sub)}
+.privacy-note{font-size:0.62rem;color:var(--neon);background:rgba(52,211,153,0.07);border:1px solid rgba(52,211,153,0.18);border-radius:6px;padding:8px 10px;margin-bottom:14px}
+.steps-list{margin-bottom:14px}
+.step-item{display:flex;align-items:flex-start;gap:12px;padding:9px 0;border-bottom:1px solid var(--border2);font-size:0.68rem;color:var(--sub)}
+.step-item:last-child{border-bottom:none}
+.step-item.done{color:var(--neon)}
+.step-num{width:20px;height:20px;border-radius:50%;border:1px solid var(--border);display:flex;align-items:center;justify-content:center;font-size:0.6rem;font-weight:700;flex-shrink:0;color:var(--muted)}
+.step-item.done .step-num{background:rgba(52,211,153,0.2);border-color:rgba(52,211,153,0.4);color:var(--neon)}
+.proof-ready-banner{background:rgba(52,211,153,0.1);border:1px solid rgba(52,211,153,0.3);border-radius:7px;padding:9px 12px;font-size:0.65rem;color:var(--neon);font-weight:600;margin-bottom:12px}
+.progress-text{font-size:0.62rem;text-align:center;color:var(--sub);margin-top:6px}
+
+/* BOTTOM NAV */
+.bottom-nav{display:flex;padding:8px 0 max(8px,env(safe-area-inset-bottom));background:var(--card);border-top:1px solid var(--border);flex-shrink:0}
+.nav-btn{flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;padding:4px 0;border:none;background:transparent;cursor:pointer;transition:all .12s}
+.nav-icon{font-size:1.25rem;line-height:1}
+.nav-label{font-size:0.53rem;font-weight:600;letter-spacing:.3px;color:var(--muted)}
+.nav-btn.active .nav-label{color:var(--purple)}
+.nav-btn.active .nav-icon{filter:drop-shadow(0 0 6px rgba(155,114,246,.6))}
 </style>
 </head>
 <body>
-<div class="container">
+<div id="app">
 
-  <header>
-    <h1>AEQUITAS</h1>
-    <p>DECENTRALIZED HUMAN CURRENCY — V5</p>
-    <div class="network-badge"><div class="dot"></div>SEPOLIA TESTNET</div>
-  </header>
+<!-- ── HEADER ── -->
+<header id="header">
+  <div>
+    <div style="display:flex;align-items:center;gap:8px">
+      <div class="logo">AEQUITAS</div>
+      <div class="beta-tag">BETA</div>
+    </div>
+  </div>
+  <div class="header-mid">
+    <div class="wallet-addr" id="wallet-addr-display" onclick="copyWalletAddr()"></div>
+  </div>
+  <button id="connect-btn" onclick="connectWallet()">Connect</button>
+</header>
 
-  <div class="card">
-    <div class="card-title">WALLET</div>
-    <div class="wallet-section">
-      <div id="walletStatus">Not connected</div>
-      <button class="btn btn-gold" id="connectBtn" onclick="connectWallet()">CONNECT WALLET</button>
-      <button class="btn btn-outline" id="disconnectBtn" onclick="disconnectWallet()" style="display:none">DISCONNECT</button>
+<!-- ── MAIN ── -->
+<main id="main">
+
+<!-- HOME TAB -->
+<div id="tab-home" class="tab-content active">
+  <div class="chain-banner">
+    <div class="dot-green"></div>
+    <span>Aequitas Mainnet · Block <span id="h-height" style="color:var(--text);font-weight:600">—</span></span>
+    <div style="margin-left:auto">Chain ID 1926</div>
+  </div>
+
+  <div style="height:14px"></div>
+
+  <div class="grid2">
+    <div class="stat-card">
+      <div class="stat-label">Verified Humans</div>
+      <div class="stat-val" id="h-humans" style="color:var(--neon)">—</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Total Supply</div>
+      <div class="stat-val" id="h-supply">—</div>
+      <div class="stat-sub">AEQ</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Aequitas Index</div>
+      <div class="stat-val" id="h-index" style="color:var(--purple)">—</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Gini Index</div>
+      <div class="stat-val" id="h-gini" style="color:var(--teal)">—</div>
+      <div class="stat-sub">0 = equal</div>
     </div>
   </div>
 
   <div class="card">
-    <div class="card-title">NETWORK STATUS</div>
-    <div class="stats-grid">
-      <div class="stat-box"><div class="stat-label">VERIFIED HUMANS</div><div class="stat-value" id="statHumans">—</div><div class="stat-sub">registered</div></div>
-      <div class="stat-box"><div class="stat-label">TOTAL SUPPLY</div><div class="stat-value" id="statSupply">—</div><div class="stat-sub">AEQ</div></div>
-      <div class="stat-box"><div class="stat-label">GINI INDEX</div><div class="stat-value" id="statGini">—</div><div class="stat-sub">0=equal</div></div>
-      <div class="stat-box"><div class="stat-label">AEQUITAS INDEX</div><div class="stat-value" id="statIndex">—</div><div class="stat-sub">&lt;40 inflate</div></div>
-      <div class="stat-box"><div class="stat-label">PHASE</div><div class="stat-value" id="statPhase">—</div><div class="stat-sub">activation</div></div>
-      <div class="stat-box"><div class="stat-label">YOUR BALANCE</div><div class="stat-value" id="statBalance">—</div><div class="stat-sub">AEQ</div></div>
+    <div class="card-header">
+      <span class="card-title">UBI Distribution</span>
+      <span class="tag tag-purple">Every 24 h</span>
     </div>
-    <div class="phase-bar">
-      <div class="phase-item" id="p0"></div>
-      <div class="phase-item" id="p1"></div>
-      <div class="phase-item" id="p2"></div>
-      <div class="phase-item" id="p3"></div>
-      <div class="phase-item" id="p4"></div>
+    <div class="ubi-countdown">
+      <div class="ubi-time" id="h-ubi-time">—</div>
+      <div class="ubi-label">until next eligible distribution</div>
     </div>
-    <button class="btn btn-outline" style="margin-top:12px;font-size:9px;padding:8px 16px" onclick="loadStats()">↻ REFRESH</button>
+    <div class="progress-bar"><div class="progress-fill" id="h-ubi-bar" style="width:0%"></div></div>
+    <div class="card-row"><span style="color:var(--muted);font-size:0.63rem">UBI Pool</span><span id="h-pool-ubi" style="font-family:var(--mono);font-size:0.65rem">—</span></div>
+    <div class="card-row"><span style="color:var(--muted);font-size:0.63rem">Treasury</span><span id="h-pool-treasury" style="font-family:var(--mono);font-size:0.65rem">—</span></div>
+    <div class="card-row"><span style="color:var(--muted);font-size:0.63rem">Validators</span><span id="h-pool-validators" style="font-family:var(--mono);font-size:0.65rem">—</span></div>
   </div>
 
   <div class="card">
-    <div class="card-title">PROVE HUMANITY</div>
-
-    <div id="notConnectedMsg" style="text-align:center">
-      <p style="color:var(--light);font-size:13px;line-height:22px;margin-bottom:20px">Connect your wallet to register and receive 1,000 AEQ.</p>
-      <button class="btn btn-gold" onclick="connectWallet()">🔐 CONNECT TO REGISTER</button>
+    <div class="card-header"><span class="card-title">System Phase</span></div>
+    <div class="phase-grid">
+      <div class="phase-item" id="ph-0">Phase 0<span>Bootstrap</span></div>
+      <div class="phase-item" id="ph-1">Phase 1<span>Growth</span></div>
+      <div class="phase-item" id="ph-2">Phase 2<span>Stability</span></div>
+      <div class="phase-item" id="ph-3">Phase 3<span>Maturity</span></div>
     </div>
-
-    <div id="alreadyRegistered" class="already-registered" style="display:none">
-      <h3>✓ Verified Human</h3>
-      <p style="color:var(--gray);font-size:11px;margin-top:4px">You are registered. Your 1,000 AEQ have been allocated.</p>
-    </div>
-
-    <div id="proofSection" style="display:none">
-      <div id="mobileOnlyMsg">
-        <div class="privacy-badge">🔒 Real Groth16 ZKP · Hardware Secure Element · Zero Biometric Data</div>
-        <p style="color:var(--light);font-size:12px;margin-bottom:16px">Registration requires the Aequitas mobile app to generate a biometric proof.</p>
-        <p style="color:var(--gray);font-size:10px">Open app → Prove Humanity → Register On-Chain</p>
-      </div>
-
-      <div id="proofReady" style="display:none">
-        <div class="privacy-badge">🔒 Biometric proof from app · Real Groth16 ZKP via secure server</div>
-        <div class="steps">
-          <div class="step"><span class="step-icon">✅</span>Biometric hash received from app</div>
-          <div class="step"><span class="step-icon" id="zkpStep">⬜</span>Generate real Groth16 proof</div>
-          <div class="step"><span class="step-icon" id="submitStep">⬜</span>Submit proof on-chain → 1,000 AEQ</div>
-        </div>
-        <div id="progressContainer" style="display:none;margin-top:12px">
-          <div class="progress-bar"><div class="progress-fill" id="progressFill" style="width:0%"></div></div>
-          <p style="color:var(--gold);font-size:10px;text-align:center;margin-top:4px" id="progressText">Initializing...</p>
-        </div>
-        <button class="btn btn-green" onclick="generateAndSubmit()" id="submitBtn" style="margin-top:16px;width:100%">🔐 GENERATE PROOF & REGISTER</button>
-      </div>
-    </div>
+    <div style="font-size:0.62rem;color:var(--muted);margin-top:10px;text-align:center" id="h-phase-desc"></div>
   </div>
 
-  <div class="card">
-    <div class="card-title">ACTIVITY LOG</div>
-    <div class="log" id="log">
-      <div class="log-entry log-info">// Aequitas V5 ready</div>
-      <div class="log-entry log-info">// Contract: 0x4f147d5B3388AF07993CC4fC548502A78Af0B8b5</div>
-    </div>
-  </div>
-
-  <footer>
-    <p>"Money exists because people exist. Nothing more, nothing less."</p><br>
-    <a href="https://github.com/hanoi96international-gif/Aequitas" target="_blank">github.com/hanoi96international-gif/Aequitas</a><br><br>
-    <p>V5: <a href="https://sepolia.etherscan.io/address/0x4f147d5B3388AF07993CC4fC548502A78Af0B8b5" target="_blank">0x4f147d5B3388AF07993CC4fC548502A78Af0B8b5</a></p>
-  </footer>
 </div>
 
-<script>
-const CONTRACT = "0x4f147d5B3388AF07993CC4fC548502A78Af0B8b5";
-const PROOF_SERVER = "https://aequitas-proof-server-production.up.railway.app";
-const FIELD_SIZE = BigInt("21888242871839275222246405745257275088548364400416034343698204186575808495617");
+<!-- TRADE TAB -->
+<div id="tab-trade" class="tab-content">
 
-const ABI = [
-  "function registerHuman(uint[2] _pA, uint[2][2] _pB, uint[2] _pC, uint[2] _pubSignals) external",
-  "function isHuman(address) view returns (bool)",
-  "function balanceOf(address) view returns (uint256)",
-  "function totalHumans() view returns (uint256)",
-  "function totalSupply() view returns (uint256)",
-  "function calculateGini() view returns (uint256)",
-  "function aequitasIndex() view returns (uint256)",
-  "function getPhase() view returns (uint256)",
-  "function getStatus() view returns (uint256 humans, uint256 supply, uint256 cap, uint256 gini, uint256 index, uint256 wealthCap, uint256 inflationBps, uint256 vPool, uint256 lPool, uint256 uPool, uint256 tPool)",
+  <div class="price-header">
+    <div>
+      <div class="pair-name">AEQ / tUSD</div>
+      <div class="pair-sub">Aequitas AMM · x·y=k</div>
+    </div>
+    <div class="price-right">
+      <div class="price-big" id="t-price">—</div>
+      <div class="price-change" id="t-change" style="color:var(--muted)">—</div>
+    </div>
+  </div>
+
+  <div class="interval-bar">
+    <button onclick="setChartInterval(60000)" id="ci-1m" class="ci-btn">1m</button>
+    <button onclick="setChartInterval(300000)" id="ci-5m" class="ci-btn">5m</button>
+    <button onclick="setChartInterval(1800000)" id="ci-30m" class="ci-btn">30m</button>
+    <button onclick="setChartInterval(3600000)" id="ci-1h" class="ci-btn ci-active">1h</button>
+    <button onclick="setChartInterval(14400000)" id="ci-4h" class="ci-btn">4h</button>
+    <button onclick="setChartInterval(0)" id="ci-all" class="ci-btn">All</button>
+  </div>
+
+  <div id="price-chart" style="width:100%;height:240px;background:#0A0C16"></div>
+
+  <div style="padding:0 14px">
+
+    <div class="card" style="margin-top:12px">
+      <div class="card-header">
+        <span class="card-title">Swap</span>
+        <span class="tag tag-muted">0.1% fee</span>
+        <span id="t-pool-info" style="margin-left:auto;font-size:0.58rem;color:var(--muted)"></span>
+      </div>
+
+      <div class="swap-dir-row">
+        <button class="dir-btn active" id="dir-aeq-to-tusd" onclick="setSwapDir('AEQ_TO_TUSD')">AEQ → tUSD</button>
+        <button class="dir-btn" id="dir-tusd-to-aeq" onclick="setSwapDir('TUSD_TO_AEQ')">tUSD → AEQ</button>
+      </div>
+
+      <div class="input-group">
+        <label class="input-label" id="swap-from-label">Amount (AEQ)</label>
+        <input type="number" id="swap-amount" placeholder="0.000000" min="0" step="any" oninput="calcSwapPreview()">
+      </div>
+
+      <div class="preview-box">
+        <div class="preview-row"><span>Estimated output</span><span id="swap-out" style="font-family:var(--mono)">—</span></div>
+        <div class="preview-row"><span>Min received (1% slip)</span><span id="swap-min" style="font-family:var(--mono)">—</span></div>
+        <div class="preview-row"><span>Pool reserves</span><span id="swap-pool" style="font-family:var(--mono)">—</span></div>
+      </div>
+
+      <button class="btn btn-purple" id="swap-btn" onclick="doSwap()">Swap</button>
+      <div id="swap-status" class="status-line"></div>
+    </div>
+
+  </div>
+</div>
+
+<!-- WALLET TAB -->
+<div id="tab-wallet" class="tab-content">
+
+  <div id="wallet-not-connected" class="connect-prompt">
+    <div class="connect-icon">💼</div>
+    <div class="connect-text">Connect your wallet to see your balances and send AEQ</div>
+    <button class="btn btn-purple" style="max-width:220px;margin:0 auto" onclick="connectWallet()">Connect MetaMask</button>
+  </div>
+
+  <div id="wallet-connected" style="display:none">
+
+    <div class="balance-card" style="margin-top:14px">
+      <div class="balance-label">AEQ Balance</div>
+      <div class="balance-big" id="w-aeq" style="color:var(--purple)">—</div>
+      <div class="balance-sub">Aequitas</div>
+    </div>
+
+    <div class="balance-card tusd">
+      <div class="balance-label">tUSD Balance</div>
+      <div class="balance-big" id="w-tusd" style="color:var(--teal)">—</div>
+      <div class="balance-sub">Test Dollar</div>
+    </div>
+
+    <div id="demurrage-warn" class="warn-box" style="display:none">
+      ⚠️ Demurrage active — an inactivity fee is being deducted from your balance
+    </div>
+
+    <div class="card">
+      <div class="card-header"><span class="card-title">Send AEQ</span></div>
+      <div class="input-group">
+        <label class="input-label">Recipient Address</label>
+        <input type="text" id="send-to" placeholder="0x...">
+      </div>
+      <div class="input-group">
+        <label class="input-label">Amount (AEQ)</label>
+        <input type="number" id="send-amount" placeholder="0.0000" min="0" step="any">
+      </div>
+      <button class="btn btn-neon" onclick="doSend()">Send AEQ</button>
+      <div id="send-status" class="status-line"></div>
+    </div>
+
+    <div class="card">
+      <div class="card-header"><span class="card-title">Tools</span></div>
+      <button class="btn btn-outline" onclick="addToMetaMask()" style="margin-bottom:8px">+ Add Aequitas Chain to MetaMask</button>
+      <button class="btn btn-outline" onclick="doFaucet()">💧 Request tUSD from Faucet</button>
+      <div id="faucet-status" class="status-line"></div>
+    </div>
+
+  </div>
+</div>
+
+<!-- IDENTITY TAB -->
+<div id="tab-identity" class="tab-content">
+
+  <div id="id-not-connected" class="connect-prompt">
+    <div class="connect-icon">🪪</div>
+    <div class="connect-text">Connect your wallet to check your humanity verification status</div>
+    <button class="btn btn-purple" style="max-width:220px;margin:0 auto" onclick="connectWallet()">Connect Wallet</button>
+  </div>
+
+  <div id="id-connected" style="display:none;padding-top:14px">
+
+    <div id="id-verified" class="id-badge verified" style="display:none">
+      <div class="id-badge-icon">✓</div>
+      <div>
+        <div class="id-badge-title">Verified Human</div>
+        <div class="id-badge-sub">UBI Active · You receive daily AEQ distributions</div>
+      </div>
+    </div>
+
+    <div id="id-unverified" class="id-badge unverified" style="display:none">
+      <div class="id-badge-icon">?</div>
+      <div>
+        <div class="id-badge-title">Not Yet Verified</div>
+        <div class="id-badge-sub">Complete the steps below to receive UBI</div>
+      </div>
+    </div>
+
+    <div class="card" id="id-register-card">
+      <div class="card-header"><span class="card-title">Humanity Verification</span></div>
+      <div class="privacy-note">🔒 Real Groth16 ZKP · Hardware Secure Element · Zero biometric data on-chain</div>
+
+      <div id="id-proof-pending">
+        <div class="steps-list">
+          <div class="step-item done">
+            <div class="step-num">✓</div>
+            <div>Wallet connected</div>
+          </div>
+          <div class="step-item">
+            <div class="step-num">2</div>
+            <div>Download the Aequitas Android App</div>
+          </div>
+          <div class="step-item">
+            <div class="step-num">3</div>
+            <div>Open app → Prove Humanity → scan your face to generate a ZKP</div>
+          </div>
+          <div class="step-item">
+            <div class="step-num">4</div>
+            <div>App redirects back here with proof → submit on-chain → receive 1,000 AEQ</div>
+          </div>
+        </div>
+        <a href="https://aequitas.digital/#download" target="_blank" class="btn btn-purple" style="text-decoration:none">📱 Get Aequitas App</a>
+      </div>
+
+      <div id="id-proof-ready" style="display:none">
+        <div class="proof-ready-banner">✓ Biometric proof received from app</div>
+        <div class="steps-list">
+          <div class="step-item done" id="id-step-hash">
+            <div class="step-num">✓</div>
+            <div>Biometric hash received</div>
+          </div>
+          <div class="step-item" id="id-step-zkp">
+            <div class="step-num">2</div>
+            <div>Generate Groth16 proof via proof server</div>
+          </div>
+          <div class="step-item" id="id-step-submit">
+            <div class="step-num">3</div>
+            <div>Submit proof on-chain → 1,000 AEQ</div>
+          </div>
+        </div>
+        <div id="id-progress-wrap" style="display:none">
+          <div class="progress-bar"><div class="progress-fill" id="id-progress-fill" style="width:0%"></div></div>
+          <div class="progress-text" id="id-progress-text">Initializing…</div>
+        </div>
+        <button class="btn btn-neon" id="id-submit-btn" onclick="doRegister()" style="margin-top:4px">🔐 Submit Proof &amp; Register</button>
+        <div id="id-status" class="status-line"></div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+</main>
+
+<!-- ── BOTTOM NAV ── -->
+<nav class="bottom-nav">
+  <button class="nav-btn active" data-tab="home" onclick="showTab('home')">
+    <div class="nav-icon">🏠</div>
+    <div class="nav-label">Home</div>
+  </button>
+  <button class="nav-btn" data-tab="trade" onclick="showTab('trade')">
+    <div class="nav-icon">📊</div>
+    <div class="nav-label">Trade</div>
+  </button>
+  <button class="nav-btn" data-tab="wallet" onclick="showTab('wallet')">
+    <div class="nav-icon">💼</div>
+    <div class="nav-label">Wallet</div>
+  </button>
+  <button class="nav-btn" data-tab="identity" onclick="showTab('identity')">
+    <div class="nav-icon">🪪</div>
+    <div class="nav-label">Identity</div>
+  </button>
+</nav>
+
+</div><!-- #app -->
+
+<script>
+// ── CONFIG ──────────────────────────────────────────────────────────────────
+const API          = 'https://aequitas.digital/api';
+const CHAIN_ID     = '0x786';  // 1926
+const V7           = '0x20D271028f32577FCd07b4583A8e0E4eBBdB4F78';
+const PROOF_SERVER = 'https://aequitas-proof-server-production.up.railway.app';
+
+const V7_ABI = [
+  'function registerHuman(uint[2] _pA, uint[2][2] _pB, uint[2] _pC, uint[2] _pubSignals) external',
 ];
 
-let provider, signer, contract, userAddress, proofData;
+// ── STATE ────────────────────────────────────────────────────────────────────
+let wallet     = null;
+let poolData   = null;
+let priceHist  = [];
+let chartMs    = 3600000;
+let swapDir    = 'AEQ_TO_TUSD';
+let proofData  = null;
+let ubiTimer   = null;
+let ubiLeft    = 0;
+let lwChart    = null, lwCandle = null, lwVol = null;
 
-function log(msg, type='info') {
-  const el = document.getElementById('log');
-  const time = new Date().toLocaleTimeString();
-  el.innerHTML += `<div class="log-entry log-${type}">[${time}] ${msg}</div>`;
-  el.scrollTop = el.scrollHeight;
+const BUCKET = {60000:10000,300000:30000,1800000:120000,3600000:300000,14400000:900000,0:300000};
+
+// ── TABS ─────────────────────────────────────────────────────────────────────
+function showTab(id) {
+  document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
+  document.querySelectorAll('.nav-btn').forEach(el => el.classList.remove('active'));
+  document.getElementById('tab-' + id).classList.add('active');
+  document.querySelector('.nav-btn[data-tab="' + id + '"]').classList.add('active');
+  if (id === 'trade') setTimeout(drawChart, 80);
 }
 
-function fmt(wei) {
-  if (!wei) return '0';
-  const n = Number(BigInt(wei.toString()) / BigInt(10**15)) / 1000;
-  if (n >= 1000000) return (n/1000000).toFixed(2) + 'M';
-  if (n >= 1000) return (n/1000).toFixed(2) + 'K';
-  return n.toFixed(2);
-}
-
-function setProgress(pct, text) {
-  document.getElementById('progressFill').style.width = pct + '%';
-  document.getElementById('progressText').textContent = text;
-}
-
+// ── WALLET ───────────────────────────────────────────────────────────────────
 async function connectWallet() {
+  if (!window.ethereum) { alert('MetaMask is required. Please install it first.'); return; }
   try {
-    if (!window.ethereum) { log('MetaMask not found', 'error'); return; }
-    log('Connecting wallet...', 'info');
-    provider = new ethers.BrowserProvider(window.ethereum);
-    await provider.send("eth_requestAccounts", []);
-    const network = await provider.getNetwork();
-    if (network.chainId !== 11155111n) {
-      try {
-        await window.ethereum.request({ method: 'wallet_switchEthereumChain', params: [{ chainId: '0xaa36a7' }] });
-        provider = new ethers.BrowserProvider(window.ethereum);
-      } catch(e) { log('Please switch to Sepolia', 'error'); return; }
-    }
-    signer = await provider.getSigner();
-    userAddress = await signer.getAddress();
-    contract = new ethers.Contract(CONTRACT, ABI, signer);
-    const short = userAddress.slice(0,6) + '...' + userAddress.slice(-4);
-    document.getElementById('walletStatus').innerHTML = `<span class="wallet-address">✓ ${short}</span>`;
-    document.getElementById('connectBtn').style.display = 'none';
-    document.getElementById('disconnectBtn').style.display = 'block';
-    document.getElementById('notConnectedMsg').style.display = 'none';
-    log('Connected: ' + short, 'success');
-    await loadStats();
-    await checkRegistration();
-    checkProofInURL();
-  } catch(e) { log('Error: ' + e.message, 'error'); }
+    const accounts = await window.ethereum.request({ method: 'eth_requestAccounts' });
+    wallet = accounts[0];
+    await ensureChain();
+    onWalletConnected();
+  } catch(e) { console.error(e); }
 }
 
-function disconnectWallet() {
-  provider = signer = contract = userAddress = null;
-  document.getElementById('walletStatus').textContent = 'Not connected';
-  document.getElementById('connectBtn').style.display = 'block';
-  document.getElementById('disconnectBtn').style.display = 'none';
-  document.getElementById('notConnectedMsg').style.display = 'block';
-  document.getElementById('alreadyRegistered').style.display = 'none';
-  document.getElementById('proofSection').style.display = 'none';
-  log('Disconnected', 'info');
+async function ensureChain() {
+  const chainHex = await window.ethereum.request({ method: 'eth_chainId' });
+  if (chainHex !== CHAIN_ID) await addToMetaMask();
 }
 
-async function loadStats() {
-  if (!contract) return;
+async function addToMetaMask() {
   try {
-    const status = await contract.getStatus();
-    const humans = status[0].toString();
-    const supply = status[1];
-    const gini = status[3].toString();
-    const index = status[4].toString();
-    const phase = await contract.getPhase();
-    document.getElementById('statHumans').textContent = humans;
-    document.getElementById('statSupply').textContent = fmt(supply);
-    document.getElementById('statGini').textContent = gini;
-    document.getElementById('statIndex').textContent = index;
-    document.getElementById('statPhase').textContent = 'Phase ' + phase.toString();
-    for(let i=0;i<=4;i++) {
-      const el = document.getElementById('p'+i);
-      if(el) el.className = 'phase-item' + (i <= Number(phase) ? ' active' : '');
-    }
-    if (userAddress) {
-      const bal = await contract.balanceOf(userAddress);
-      document.getElementById('statBalance').textContent = fmt(bal);
-    }
-    log('Stats loaded ✓', 'success');
-  } catch(e) { log('Stats error: ' + e.message, 'error'); }
+    await window.ethereum.request({ method: 'wallet_addEthereumChain', params: [{
+      chainId: CHAIN_ID,
+      chainName: 'Aequitas Chain',
+      nativeCurrency: { name: 'Aequitas', symbol: 'AEQ', decimals: 18 },
+      rpcUrls: ['https://aequitas.digital/rpc'],
+      blockExplorerUrls: ['https://aequitas.digital'],
+    }]});
+  } catch(e) { console.error(e); }
 }
 
-async function checkRegistration() {
-  if (!contract || !userAddress) return;
+function onWalletConnected() {
+  const short = wallet.slice(0,6) + '…' + wallet.slice(-4);
+  document.getElementById('wallet-addr-display').textContent = short;
+  const btn = document.getElementById('connect-btn');
+  btn.textContent = short;
+  btn.classList.add('connected');
+  document.getElementById('wallet-not-connected').style.display = 'none';
+  document.getElementById('wallet-connected').style.display = 'block';
+  document.getElementById('id-not-connected').style.display = 'none';
+  document.getElementById('id-connected').style.display = 'block';
+  loadBalance();
+  checkProofInURL();
+}
+
+function copyWalletAddr() {
+  if (!wallet) return;
+  navigator.clipboard.writeText(wallet).catch(()=>{});
+}
+
+window.ethereum && window.ethereum.on('accountsChanged', accs => {
+  if (accs.length) { wallet = accs[0]; onWalletConnected(); }
+  else { wallet = null; }
+});
+
+// ── API HELPERS ──────────────────────────────────────────────────────────────
+async function api(path) {
+  const r = await fetch(API + path);
+  if (!r.ok) throw new Error(r.statusText);
+  return r.json();
+}
+
+function fmtAEQ(v) {
+  if (v == null) return '—';
+  const n = parseFloat(v);
+  if (n >= 1e6) return (n/1e6).toFixed(2) + 'M';
+  if (n >= 1e3) return (n/1e3).toFixed(2) + 'K';
+  return n.toFixed(4);
+}
+
+// ── HOME: STATUS POLLING ──────────────────────────────────────────────────────
+async function loadStatus() {
   try {
-    const registered = await contract.isHuman(userAddress);
-    if (registered) {
-      document.getElementById('alreadyRegistered').style.display = 'block';
-      document.getElementById('proofSection').style.display = 'none';
-      log('Already registered ✓', 'success');
-    } else {
-      document.getElementById('proofSection').style.display = 'block';
+    const d = await api('/status');
+    document.getElementById('h-height').textContent  = d.height ? '#' + d.height.toLocaleString() : '—';
+    document.getElementById('h-humans').textContent  = fmtAEQ(d.total_humans);
+    document.getElementById('h-supply').textContent  = d.total_supply || '—';
+    document.getElementById('h-index').textContent   = typeof d.index === 'number' ? d.index.toFixed(1) : '—';
+    document.getElementById('h-gini').textContent    = typeof d.gini === 'number' ? d.gini.toFixed(4) : '—';
+    document.getElementById('h-pool-ubi').textContent        = (d.pool_ubi || '0') + ' AEQ';
+    document.getElementById('h-pool-treasury').textContent   = (d.pool_treasury || '0') + ' AEQ';
+    document.getElementById('h-pool-validators').textContent = (d.pool_validators || '0') + ' AEQ';
+    const phase = d.phase || 0;
+    for (let i = 0; i <= 3; i++) {
+      const el = document.getElementById('ph-' + i);
+      if (el) el.classList.toggle('active', i === phase);
     }
-  } catch(e) { log('Check error: ' + e.message, 'error'); }
+    const descs = ['Bootstrap — sliding wealth cap 5×→25×','Growth — expanding human registry','Stability — redistribution active','Maturity — full decentralization'];
+    document.getElementById('h-phase-desc').textContent = descs[phase] || '';
+    if (d.ubi_next_payout_secs > 0) startUBITimer(d.ubi_next_payout_secs);
+    const pct = Math.min(100, Math.max(0, (86400 - (d.ubi_next_payout_secs || 0)) / 86400 * 100));
+    document.getElementById('h-ubi-bar').style.width = pct.toFixed(1) + '%';
+  } catch(e) {}
 }
 
+function startUBITimer(secs) {
+  ubiLeft = secs;
+  if (ubiTimer) clearInterval(ubiTimer);
+  ubiTimer = setInterval(() => {
+    ubiLeft = Math.max(0, ubiLeft - 1);
+    const h = Math.floor(ubiLeft / 3600), m = Math.floor((ubiLeft % 3600) / 60), s = ubiLeft % 60;
+    document.getElementById('h-ubi-time').textContent =
+      String(h).padStart(2,'0') + ':' + String(m).padStart(2,'0') + ':' + String(s).padStart(2,'0');
+  }, 1000);
+}
+
+// ── BALANCE ──────────────────────────────────────────────────────────────────
+async function loadBalance() {
+  if (!wallet) return;
+  try {
+    const d = await api('/balance?wallet=' + wallet);
+    document.getElementById('w-aeq').textContent  = fmtAEQ(d.balance);
+    document.getElementById('w-tusd').textContent = fmtAEQ(d.tusd_balance);
+    document.getElementById('demurrage-warn').style.display = d.demurrage_active ? 'block' : 'none';
+    document.getElementById('id-verified').style.display   = d.is_human ? 'flex' : 'none';
+    document.getElementById('id-unverified').style.display = d.is_human ? 'none' : 'flex';
+    document.getElementById('id-register-card').style.display = d.is_human ? 'none' : 'block';
+  } catch(e) {}
+}
+
+// ── PRICE CHART ───────────────────────────────────────────────────────────────
+async function loadPriceHistory() {
+  try {
+    const d = await api('/price-history');
+    // Response: {count, history: [{t, p}] | null}
+    const raw = Array.isArray(d) ? d : (d && d.history ? d.history : null);
+    if (raw) priceHist = raw.map(p => ({t: p.t || p.timestamp || 0, p: p.p || p.price || 0}));
+    drawChart();
+  } catch(e) {}
+}
+
+function buildOHLC(pts, filterMs, bms) {
+  const now = Date.now();
+  const data = filterMs > 0 ? pts.filter(p => now - p.t <= filterMs && p.p > 0) : pts.filter(p => p.p > 0);
+  if (!data.length) return [];
+  const buckets = {};
+  data.forEach(pt => {
+    const b = Math.floor(pt.t / bms) * bms;
+    if (!buckets[b]) buckets[b] = { time: Math.floor(b / 1000), open: pt.p, high: pt.p, low: pt.p, close: pt.p, vol: 1 };
+    else { buckets[b].high = Math.max(buckets[b].high, pt.p); buckets[b].low = Math.min(buckets[b].low, pt.p); buckets[b].close = pt.p; buckets[b].vol++; }
+  });
+  return Object.values(buckets).sort((a, b) => a.time - b.time);
+}
+
+function initChart() {
+  const el = document.getElementById('price-chart');
+  if (!el || lwChart || !window.LightweightCharts) return;
+  lwChart = LightweightCharts.createChart(el, {
+    width: el.clientWidth, height: 240,
+    layout: { background: { color: '#0A0C16' }, textColor: '#8892A4', fontSize: 11, fontFamily: 'JetBrains Mono,monospace' },
+    grid: { vertLines: { color: 'rgba(255,255,255,0.03)' }, horzLines: { color: 'rgba(255,255,255,0.03)' } },
+    crosshair: {
+      mode: LightweightCharts.CrosshairMode.Normal,
+      vertLine: { color: 'rgba(155,114,246,.5)', labelBackgroundColor: '#9B72F6' },
+      horzLine: { color: 'rgba(155,114,246,.5)', labelBackgroundColor: '#9B72F6' },
+    },
+    rightPriceScale: { borderColor: 'rgba(255,255,255,0.06)' },
+    timeScale: { borderColor: 'rgba(255,255,255,0.06)', timeVisible: true, secondsVisible: false, rightOffset: 4 },
+  });
+  lwCandle = lwChart.addCandlestickSeries({
+    upColor: '#34D399', downColor: '#F87171',
+    borderUpColor: '#34D399', borderDownColor: '#F87171',
+    wickUpColor: '#34D399', wickDownColor: '#F87171',
+    priceFormat: { type: 'price', precision: 6, minMove: 0.000001 },
+  });
+  lwVol = lwChart.addHistogramSeries({ priceFormat: { type: 'volume' }, priceScaleId: 'vol', scaleMargins: { top: 0.8, bottom: 0 } });
+  try { lwChart.priceScale('vol').applyOptions({ scaleMargins: { top: 0.8, bottom: 0 } }); } catch(_) {}
+  new ResizeObserver(entries => {
+    if (lwChart && entries[0]) lwChart.applyOptions({ width: entries[0].contentRect.width });
+  }).observe(el);
+}
+
+function drawChart() {
+  const el = document.getElementById('price-chart');
+  if (!el || !el.offsetParent) return;
+  if (!lwChart) initChart();
+  if (!lwChart) return;
+  const bms = BUCKET[chartMs] || 300000;
+  const candles = buildOHLC(priceHist, chartMs, bms);
+  updatePriceDisplay(candles);
+  if (!candles.length) { lwCandle && lwCandle.setData([]); lwVol && lwVol.setData([]); return; }
+  lwCandle.setData(candles.map(c => ({ time: c.time, open: c.open, high: c.high, low: c.low, close: c.close })));
+  lwVol.setData(candles.map(c => ({ time: c.time, value: c.vol, color: c.close >= c.open ? 'rgba(52,211,153,0.22)' : 'rgba(248,113,113,0.22)' })));
+  lwChart.timeScale().fitContent();
+}
+
+function updatePriceDisplay(candles) {
+  const pEl = document.getElementById('t-price'), cEl = document.getElementById('t-change');
+  if (!pEl) return;
+  if (!candles.length) { pEl.textContent = '—'; return; }
+  const last = candles[candles.length - 1], first = candles[0];
+  const chg = first.open > 0 ? (last.close - first.open) / first.open * 100 : 0;
+  pEl.textContent = last.close.toFixed(6) + ' tUSD';
+  if (cEl) { cEl.textContent = (chg >= 0 ? '▲ +' : '▼ ') + Math.abs(chg).toFixed(2) + '%'; cEl.style.color = chg >= 0 ? '#34D399' : '#F87171'; }
+}
+
+function setChartInterval(ms) {
+  chartMs = ms;
+  document.querySelectorAll('.ci-btn').forEach(b => b.classList.remove('ci-active'));
+  const id = ms === 60000 ? 'ci-1m' : ms === 300000 ? 'ci-5m' : ms === 1800000 ? 'ci-30m' : ms === 3600000 ? 'ci-1h' : ms === 14400000 ? 'ci-4h' : 'ci-all';
+  const el = document.getElementById(id);
+  if (el) el.classList.add('ci-active');
+  drawChart();
+}
+
+// ── POOL STATUS ───────────────────────────────────────────────────────────────
+async function loadPool() {
+  try {
+    const d = await api('/pool');
+    // Response: {reserve_aeq, reserve_tusd, price_aeq_in_tusd}
+    poolData = { aeq_reserve: d.reserve_aeq, tusd_reserve: d.reserve_tusd, price_aeq_in_tusd: d.price_aeq_in_tusd };
+    const aeq = parseFloat(d.reserve_aeq || 0), tusd = parseFloat(d.reserve_tusd || 0);
+    document.getElementById('swap-pool').textContent = aeq > 0
+      ? fmtAEQ(aeq) + ' AEQ / ' + fmtAEQ(tusd) + ' tUSD'
+      : 'No liquidity yet';
+    document.getElementById('t-pool-info').textContent = aeq > 0 ? ('1 AEQ ≈ ' + d.price_aeq_in_tusd.toFixed(4) + ' tUSD') : '';
+    // Append latest price point
+    if (d.reserve_aeq > 0 && d.price_aeq_in_tusd > 0) {
+      priceHist.push({ t: Date.now(), p: d.price_aeq_in_tusd });
+      if (priceHist.length > 1000) priceHist.shift();
+    }
+    calcSwapPreview();
+    drawChart();
+  } catch(e) {}
+}
+
+// ── SWAP ──────────────────────────────────────────────────────────────────────
+function setSwapDir(dir) {
+  swapDir = dir;
+  document.getElementById('dir-aeq-to-tusd').classList.toggle('active', dir === 'AEQ_TO_TUSD');
+  document.getElementById('dir-tusd-to-aeq').classList.toggle('active', dir === 'TUSD_TO_AEQ');
+  document.getElementById('swap-from-label').textContent = 'Amount (' + (dir === 'AEQ_TO_TUSD' ? 'AEQ' : 'tUSD') + ')';
+  calcSwapPreview();
+}
+
+function calcSwapPreview() {
+  if (!poolData) return;
+  const amt = parseFloat(document.getElementById('swap-amount').value) || 0;
+  if (amt <= 0) { document.getElementById('swap-out').textContent = '—'; document.getElementById('swap-min').textContent = '—'; return; }
+  const aeqR = parseFloat(poolData.aeq_reserve || 0), tusdR = parseFloat(poolData.tusd_reserve || 0);
+  let out;
+  if (swapDir === 'AEQ_TO_TUSD') {
+    const inF = amt * 0.999;
+    out = (tusdR * inF) / (aeqR + inF);
+    document.getElementById('swap-out').textContent = out.toFixed(6) + ' tUSD';
+    document.getElementById('swap-min').textContent = (out * 0.99).toFixed(6) + ' tUSD';
+  } else {
+    const inF = amt * 0.999;
+    out = (aeqR * inF) / (tusdR + inF);
+    document.getElementById('swap-out').textContent = out.toFixed(6) + ' AEQ';
+    document.getElementById('swap-min').textContent = (out * 0.99).toFixed(6) + ' AEQ';
+  }
+}
+
+async function doSwap() {
+  if (!wallet) { connectWallet(); return; }
+  const amt = parseFloat(document.getElementById('swap-amount').value);
+  if (!amt || amt <= 0) { setStatus('swap-status', 'Enter an amount', 'err'); return; }
+  const btn = document.getElementById('swap-btn');
+  btn.disabled = true;
+  setStatus('swap-status', 'Getting nonce…', 'info');
+  try {
+    const nonce = (await api('/nonce?wallet=' + wallet)).nonce;
+    const ts = Date.now();
+    const msg = 'Aequitas Swap: ' + swapDir + ' ' + amt.toFixed(8) + ' nonce:' + nonce + ' ts:' + ts;
+    setStatus('swap-status', 'Sign in MetaMask…', 'info');
+    const sig = await window.ethereum.request({ method: 'personal_sign', params: [msg, wallet] });
+    setStatus('swap-status', 'Submitting swap…', 'info');
+    let minOut = 0;
+    if (poolData) {
+      const aeqR = parseFloat(poolData.aeq_reserve || 0), tusdR = parseFloat(poolData.tusd_reserve || 0);
+      const inF = amt * 0.999;
+      const out = swapDir === 'AEQ_TO_TUSD' ? (tusdR * inF) / (aeqR + inF) : (aeqR * inF) / (tusdR + inF);
+      minOut = out * 0.99;
+    }
+    const r = await fetch(API + '/swap', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ wallet, direction: swapDir, amount: amt.toFixed(8), nonce, timestamp: ts, signature: sig, min_amount_out: minOut }) });
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.error || r.statusText);
+    setStatus('swap-status', '✓ Swap complete!', 'ok');
+    document.getElementById('swap-amount').value = '';
+    calcSwapPreview();
+    setTimeout(loadBalance, 1500);
+  } catch(e) { setStatus('swap-status', '✗ ' + e.message, 'err'); }
+  btn.disabled = false;
+}
+
+// ── SEND AEQ ─────────────────────────────────────────────────────────────────
+async function doSend() {
+  if (!wallet) { connectWallet(); return; }
+  const to = document.getElementById('send-to').value.trim();
+  const amt = parseFloat(document.getElementById('send-amount').value);
+  if (!/^0x[0-9a-fA-F]{40}$/.test(to)) { setStatus('send-status', 'Invalid recipient address', 'err'); return; }
+  if (!amt || amt <= 0) { setStatus('send-status', 'Enter an amount', 'err'); return; }
+  setStatus('send-status', 'Confirm in MetaMask…', 'info');
+  try {
+    const value = '0x' + BigInt(Math.round(amt * 1e18)).toString(16);
+    const txHash = await window.ethereum.request({ method: 'eth_sendTransaction', params: [{ from: wallet, to, value }] });
+    setStatus('send-status', '✓ Sent! Tx: ' + txHash.slice(0, 12) + '…', 'ok');
+    document.getElementById('send-to').value = '';
+    document.getElementById('send-amount').value = '';
+    setTimeout(loadBalance, 3000);
+  } catch(e) { setStatus('send-status', '✗ ' + e.message, 'err'); }
+}
+
+// ── FAUCET ────────────────────────────────────────────────────────────────────
+async function doFaucet() {
+  if (!wallet) { connectWallet(); return; }
+  setStatus('faucet-status', 'Requesting…', 'info');
+  try {
+    const r = await fetch(API + '/faucet', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ wallet }) });
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.error || r.statusText);
+    setStatus('faucet-status', '✓ tUSD sent to your wallet', 'ok');
+    setTimeout(loadBalance, 2000);
+  } catch(e) { setStatus('faucet-status', '✗ ' + e.message, 'err'); }
+}
+
+// ── REGISTRATION ─────────────────────────────────────────────────────────────
 function checkProofInURL() {
   const params = new URLSearchParams(window.location.search);
   const proof = params.get('proof');
-  if (proof) {
-    try {
-      proofData = JSON.parse(decodeURIComponent(proof));
-      log('Biometric proof received from app ✓', 'success');
-      document.getElementById('mobileOnlyMsg').style.display = 'none';
-      document.getElementById('proofReady').style.display = 'block';
-    } catch(e) { log('Invalid proof data', 'error'); }
-  }
+  if (!proof) return;
+  try {
+    proofData = JSON.parse(decodeURIComponent(proof));
+    document.getElementById('id-proof-pending').style.display = 'none';
+    document.getElementById('id-proof-ready').style.display   = 'block';
+    showTab('identity');
+  } catch(e) { console.error('Invalid proof data', e); }
 }
 
-async function generateAndSubmit() {
-  if (!proofData || !userAddress) {
-    log('Missing proof data or wallet', 'error');
-    return;
-  }
+async function doRegister() {
+  if (!wallet || !proofData) { setStatus('id-status', 'Missing wallet or proof data', 'err'); return; }
+  const btn = document.getElementById('id-submit-btn');
+  btn.disabled = true;
+  document.getElementById('id-progress-wrap').style.display = 'block';
 
-  document.getElementById('submitBtn').disabled = true;
-  document.getElementById('progressContainer').style.display = 'block';
-  document.getElementById('zkpStep').textContent = '🔄';
+  const setStep = (stepId, state) => {
+    const el = document.getElementById(stepId);
+    if (!el) return;
+    el.className = 'step-item' + (state === 'done' ? ' done' : '');
+    el.querySelector('.step-num').textContent = state === 'done' ? '✓' : state === 'loading' ? '…' : el.getAttribute('data-num') || '?';
+  };
+
+  const setProgress = (pct, txt) => {
+    document.getElementById('id-progress-fill').style.width = pct + '%';
+    document.getElementById('id-progress-text').textContent = txt;
+  };
 
   try {
-    // Step 1 — Proof Server aufrufen
-    log('Requesting Groth16 proof from server...', 'info');
-    setProgress(20, 'Generating Groth16 proof...');
+    setProgress(15, 'Generating Groth16 proof…');
+    document.getElementById('id-step-zkp').querySelector('.step-num').textContent = '…';
+    setStatus('id-status', 'Contacting proof server…', 'info');
 
-    const response = await fetch(PROOF_SERVER + '/prove', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        bio: proofData.bio,
-        salt: proofData.salt,
-        wallet: userAddress
-      })
-    });
+    const r = await fetch(PROOF_SERVER + '/prove', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ bio: proofData.bio, salt: proofData.salt, wallet }) });
+    if (!r.ok) { const e = await r.json(); throw new Error(e.error || r.statusText); }
+    const { pA, pB, pC, pubSignals } = await r.json();
 
-    if (!response.ok) {
-      const err = await response.json();
-      throw new Error('Proof server error: ' + err.error);
-    }
+    document.getElementById('id-step-zkp').querySelector('.step-num').textContent = '✓';
+    document.getElementById('id-step-zkp').classList.add('done');
+    setProgress(55, 'Confirm transaction in MetaMask…');
+    setStatus('id-status', 'Submitting proof on-chain…', 'info');
 
-    const { pA, pB, pC, pubSignals } = await response.json();
-
-    log('Groth16 proof generated ✓', 'success');
-    setProgress(60, 'Submitting on-chain...');
-    document.getElementById('zkpStep').textContent = '✅';
-    document.getElementById('submitStep').textContent = '🔄';
-
-    // Step 2 — On-Chain submitten
-    log('Submitting proof on-chain...', 'info');
-    log('Please confirm in MetaMask', 'info');
-
+    const provider = new ethers.BrowserProvider(window.ethereum);
+    const signer   = await provider.getSigner();
+    const contract = new ethers.Contract(V7, V7_ABI, signer);
     const tx = await contract.registerHuman(
       pA.map(x => BigInt(x)),
       pB.map(row => row.map(x => BigInt(x))),
       pC.map(x => BigInt(x)),
       pubSignals.map(x => BigInt(x))
     );
+    setProgress(75, 'Waiting for confirmation…');
+    setStatus('id-status', 'Tx: ' + tx.hash.slice(0, 12) + '…', 'info');
 
-    log('TX: ' + tx.hash.slice(0,16) + '...', 'info');
-    setProgress(80, 'Waiting for confirmation...');
-
-    const receipt = await tx.wait();
-    log('✓ Confirmed! Block: ' + receipt.blockNumber, 'success');
-    log('✓ 1,000 AEQ allocated!', 'success');
+    await tx.wait();
     setProgress(100, '✓ Registration complete!');
-    document.getElementById('submitStep').textContent = '✅';
-
-    await loadStats();
-    await checkRegistration();
-
+    document.getElementById('id-step-submit').querySelector('.step-num').textContent = '✓';
+    document.getElementById('id-step-submit').classList.add('done');
+    setStatus('id-status', '✓ You are now a verified human! 1,000 AEQ allocated.', 'ok');
+    setTimeout(loadBalance, 2000);
   } catch(e) {
-    log('Error: ' + e.message, 'error');
-    document.getElementById('submitBtn').disabled = false;
-    document.getElementById('zkpStep').textContent = '⬜';
+    setStatus('id-status', '✗ ' + e.message, 'err');
+    btn.disabled = false;
   }
 }
 
-log('Aequitas V5 ready ✓', 'success');
+// ── UTILS ─────────────────────────────────────────────────────────────────────
+function setStatus(id, msg, cls) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  el.textContent = msg;
+  el.className = 'status-line' + (cls ? ' ' + cls : '');
+}
+
+// ── INIT ──────────────────────────────────────────────────────────────────────
+loadStatus();
+loadPriceHistory();
+loadPool();
+
+setInterval(loadStatus, 10000);
+setInterval(loadPool,   8000);
+setInterval(() => { if (wallet) loadBalance(); }, 15000);
+
+// Restore wallet connection if MetaMask already authorized
+(async () => {
+  if (!window.ethereum) return;
+  try {
+    const accounts = await window.ethereum.request({ method: 'eth_accounts' });
+    if (accounts.length) { wallet = accounts[0]; onWalletConnected(); }
+  } catch(_) {}
+})();
 </script>
 </body>
 </html>
