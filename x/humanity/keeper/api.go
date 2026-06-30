@@ -672,14 +672,18 @@ func (a *APIServer) handleBlockByHash(w http.ResponseWriter, r *http.Request) {
 }
 
 // maxBlocksByHashPerRequest caps how many hashes a single
-// handleBlocksByHash request can ask for.  50 is the sweet spot: large
-// enough for fast ancestor resolution in fetchMissingAncestors, small
-// enough that a worst-case response (blocks with full proof payloads ~2 KB
-// each) stays well under 200 KB — no risk of hitting the 20 MB client read
-// cap and producing a truncated JSON parse error that looks like the peer
-// "doesn't have" the block.  sync_blocks.go sets maxBatchSize = this
+// handleBlocksByHash request can ask for. A worst-case response (blocks
+// with full ZK proof payloads, ~2 KB each) at 500 hashes is ~1 MB — still
+// comfortably under both the 20 MB client read cap (fetchBlocksByHashes,
+// sync_blocks.go) and the 256 KB request-body cap on this handler covers
+// the REQUEST side fine even at 500 (500 hashes x ~70 bytes each = ~35 KB).
+// Raised from 50 (scale audit): at a 100-validator target, a burst after a
+// partition heals or a node catching up from far behind can queue orphan
+// backlogs in the thousands; resolving them 50-at-a-time means many more
+// round trips than necessary when the response-size headroom clearly
+// supports a much larger batch. sync_blocks.go sets maxBatchSize = this
 // constant, so client and server stay in sync automatically.
-const maxBlocksByHashPerRequest = 50
+const maxBlocksByHashPerRequest = 500
 
 // handleBlocksByHash serves POST /api/blocks/by-hash with body {"hashes":[...]}.
 //
