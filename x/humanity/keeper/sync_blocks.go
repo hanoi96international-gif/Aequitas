@@ -701,12 +701,31 @@ func (dag *BlockDAG) syncWithNode(nodeURL string) {
 //                        authority, which is exactly the duplicate-distribution
 //                        failure class this whole mechanism exists to prevent.
 //                        Set DISTRIBUTION_ENABLED=true on exactly one node.
+//   PRIMARY_NODE_URLS — OPTIONAL comma-separated list of ADDITIONAL seed nodes
+//                        to register/discover peers through, alongside
+//                        PRIMARY_NODE_URL. Purely a bootstrap-resilience
+//                        mechanism (scale audit): with only a single
+//                        PRIMARY_NODE_URL, that one node being temporarily
+//                        unreachable (deploy, restart, outage) stops a new
+//                        node from ever discovering the rest of the network
+//                        or registering as a validator, and stops every
+//                        already-connected node from learning about NEW
+//                        peers/validators until it comes back — a real
+//                        single point of failure at a 100-node target where
+//                        "exactly one fixed bootstrap node" doesn't hold up
+//                        the way it might at 2-3 nodes. Has NO effect on
+//                        DISTRIBUTION_ENABLED/distribution-authority
+//                        semantics, which remain governed solely by
+//                        PRIMARY_NODE_URL + DISTRIBUTION_ENABLED as before —
+//                        this only widens which nodes can be used to learn
+//                        the peer/validator list from.
 //   PEER_NODES        — comma-separated static peer list (optional fallback)
 //
 // Flow for secondary nodes (Railway/VPS/self-hosted):
-//   1. POST /api/peers/register to the primary with our own URL
+//   1. POST /api/peers/register to EVERY configured seed (PRIMARY_NODE_URL
+//      plus PRIMARY_NODE_URLS) with our own URL, merging whichever respond
 //   2. Receive current peer list, start syncing each peer
-//   3. Every 30s: repeat to heartbeat + discover new peers
+//   3. Every 30s: repeat against all configured seeds to heartbeat + discover new peers
 //
 // Flow for the primary node (IS_PRIMARY_NODE=true):
 //   - Accepts registrations, serves peer list — no outbound registration needed
@@ -726,9 +745,31 @@ func NormalizeNodeURL(rawURL string) string {
 	return "https://" + rawURL
 }
 
+// seedURLs returns the deduplicated, normalized list of nodes to register
+// and discover peers through: PRIMARY_NODE_URL plus any extra entries from
+// PRIMARY_NODE_URLS (see StartPeerDiscovery's comment for why having more
+// than one matters at scale). selfURL is excluded so a node never tries to
+// register with itself.
+func seedURLs(selfURL string) []string {
+	seen := map[string]bool{selfURL: true}
+	var out []string
+	add := func(raw string) {
+		u := strings.TrimRight(NormalizeNodeURL(raw), "/")
+		if u == "" || seen[u] {
+			return
+		}
+		seen[u] = true
+		out = append(out, u)
+	}
+	add(os.Getenv("PRIMARY_NODE_URL"))
+	for _, raw := range strings.Split(os.Getenv("PRIMARY_NODE_URLS"), ",") {
+		add(raw)
+	}
+	return out
+}
+
 func (dag *BlockDAG) StartPeerDiscovery(selfURL string) {
 	selfURL = strings.TrimRight(NormalizeNodeURL(selfURL), "/")
-	primaryURL := strings.TrimRight(NormalizeNodeURL(os.Getenv("PRIMARY_NODE_URL")), "/")
 
 	fmt.Println("── Starting Peer Discovery ──────────────")
 	if selfURL == "" {
@@ -744,22 +785,31 @@ func (dag *BlockDAG) StartPeerDiscovery(selfURL string) {
 		fmt.Printf("[PEERS] Static peer: %s\n", peer)
 	}
 
-	if primaryURL != "" && primaryURL != selfURL {
-		fmt.Printf("[PEERS] Primary: %s\n", primaryURL)
-		dag.registerAndDiscover(selfURL, primaryURL)
-		// The primary never includes itself in its own peer list (/api/peers
-		// only contains registered secondary nodes). Start syncing from it
-		// directly so secondary nodes always receive primary blocks.
-		dag.startSyncForPeer(primaryURL)
+	seeds := seedURLs(selfURL)
+	if len(seeds) > 0 {
+		for _, seed := range seeds {
+			fmt.Printf("[PEERS] Seed: %s\n", seed)
+			dag.registerAndDiscover(selfURL, seed)
+			// A seed never includes itself in its own peer list (/api/peers
+			// only contains registered secondary nodes). Start syncing from
+			// it directly so this node always receives that seed's blocks,
+			// even if every OTHER peer it discovers is unreachable.
+			dag.startSyncForPeer(seed)
+		}
 	} else {
-		fmt.Println("[PEERS] Primary node — accepting registrations from peers")
+		fmt.Println("[PEERS] No PRIMARY_NODE_URL/PRIMARY_NODE_URLS configured — accepting registrations from peers")
 	}
 
 	go func() {
 		ticker := time.NewTicker(30 * time.Second)
 		for range ticker.C {
-			if primaryURL != "" && primaryURL != selfURL {
-				dag.registerAndDiscover(selfURL, primaryURL)
+			// Re-resolve every tick, not just at startup: seedURLs only
+			// every depends on env vars (cheap), and re-reading means an
+			// operator can add PRIMARY_NODE_URLS to an already-running node
+			// (e.g. to recover from a single seed going down) without a
+			// restart.
+			for _, seed := range seedURLs(selfURL) {
+				dag.registerAndDiscover(selfURL, seed)
 			}
 		}
 	}()

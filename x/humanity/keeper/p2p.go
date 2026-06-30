@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strings"
 	"time"
 
 	libp2p "github.com/libp2p/go-libp2p"
@@ -44,13 +45,42 @@ const (
 	defaultBootstrapNode = "/dns4/reseau.proxy.rlwy.net/tcp/41277/p2p/12D3KooWFuP5HtD1Xy9bj3ZdWL7eisWTx72V26hpGieMmqsGLV5R"
 )
 
-// BootstrapNode returns the P2P bootstrap multiaddr to dial on startup —
-// BOOTSTRAP_P2P_ADDR if set, otherwise the built-in default above.
+// BootstrapNode returns the FIRST configured P2P bootstrap multiaddr — kept
+// for any external callers expecting a single address; prefer BootstrapNodes
+// for actually connecting (see its comment for why a single fixed address is
+// a scale/resilience problem at a 100-node target).
 func BootstrapNode() string {
-	if addr := os.Getenv("BOOTSTRAP_P2P_ADDR"); addr != "" {
-		return addr
+	nodes := BootstrapNodes()
+	if len(nodes) == 0 {
+		return ""
 	}
-	return defaultBootstrapNode
+	return nodes[0]
+}
+
+// BootstrapNodes returns every configured P2P bootstrap multiaddr to try on
+// startup: BOOTSTRAP_P2P_ADDR (comma-separated, if set) plus the built-in
+// default. A single hardcoded bootstrap address has already gone stale in
+// production once (see defaultBootstrapNode's comment) — at a 100-node
+// target a lone bootstrap address being down (redeploy, restart, outage)
+// would strand every node that hasn't already connected, since P2P
+// connectivity (unlike HTTP peer discovery, which already supports multiple
+// seeds via PRIMARY_NODE_URLS) had no fallback at all. Trying every
+// configured address is a cheap, safe widening: ConnectToPeer attempts are
+// independent and a failed dial to one address doesn't affect the others.
+func BootstrapNodes() []string {
+	var out []string
+	if raw := os.Getenv("BOOTSTRAP_P2P_ADDR"); raw != "" {
+		for _, addr := range strings.Split(raw, ",") {
+			addr = strings.TrimSpace(addr)
+			if addr != "" {
+				out = append(out, addr)
+			}
+		}
+	}
+	if len(out) == 0 {
+		out = append(out, defaultBootstrapNode)
+	}
+	return out
 }
 
 type P2PNode struct {
@@ -240,15 +270,28 @@ func (n *P2PNode) Start() {
 
 	selfID := n.host.ID().String()
 	if selfID != "12D3KooWFuP5HtD1Xy9bj3ZdWL7eisWTx72V26hpGieMmqsGLV5R" {
-		fmt.Println("── Connecting to Bootstrap Node ─────────")
-		if err := n.ConnectToPeer(BootstrapNode()); err != nil {
-			// P2P bootstrap is best-effort — HTTP block sync is the primary
-			// mechanism. Failure here is expected when port 4001 is firewalled
-			// (e.g. Railway, Docker without -p 4001:4001) and does not prevent
-			// the node from syncing blocks or producing correctly.
-			fmt.Printf("⚠ P2P bootstrap unreachable (HTTP sync still works): %v\n", err)
-		} else {
-			fmt.Println("✓ Connected to Aequitas Bootstrap Node")
+		fmt.Println("── Connecting to Bootstrap Node(s) ──────")
+		// Try every configured bootstrap address, not just one (scale
+		// audit): a single hardcoded/fixed bootstrap address has already
+		// gone stale in production before (see defaultBootstrapNode's
+		// comment) and stranded every node dialing it. Each dial is
+		// independent, so a failure on one address doesn't affect the rest.
+		connected := 0
+		for _, addr := range BootstrapNodes() {
+			if err := n.ConnectToPeer(addr); err != nil {
+				// P2P bootstrap is best-effort — HTTP block sync is the
+				// primary mechanism. Failure here is expected when port 4001
+				// is firewalled (e.g. Railway, Docker without -p 4001:4001)
+				// and does not prevent the node from syncing blocks or
+				// producing correctly.
+				fmt.Printf("⚠ P2P bootstrap %s unreachable: %v\n", addr, err)
+				continue
+			}
+			fmt.Printf("✓ Connected to bootstrap node: %s\n", addr)
+			connected++
+		}
+		if connected == 0 {
+			fmt.Println("⚠ No P2P bootstrap address reachable (HTTP sync still works)")
 		}
 		fmt.Println()
 	}
