@@ -361,6 +361,23 @@ if !isPrimaryForDistribution {
 	} else {
 		fmt.Println("[POOLS] Distribution disabled on this node (DISTRIBUTION_ENABLED not set) — set it on exactly one authorized node to run distribution")
 	}
+} else if syncIssue := distributionSyncHealthIssue(bc); syncIssue != "" {
+	// FIX (scale audit, SPOF): DistributeValidatorsPool weights every
+	// validator's reward by registered_nodes.blocks_produced read from
+	// THIS node's own local Postgres database (state.go) — there is no
+	// cross-node reconciliation. If this node's own view of the chain is
+	// known to be incomplete (active synthetic-checkpoint stubs means it
+	// is trusting a placeholder instead of real history for at least one
+	// span of blocks; degraded means a prior persistence failure left
+	// memory ahead of what's durably saved), distributing now would
+	// silently under-credit -- or in the synthetic-checkpoint case,
+	// possibly never even SEE -- whatever validator produced blocks in
+	// the gap this node doesn't actually have. Skip this round rather
+	// than confidently distribute wrong amounts; the next scheduled
+	// round re-checks. This does NOT consume TryLockDistribution's 24h
+	// window (the check runs before attempting the lock), so a node that
+	// heals mid-day is not stuck waiting for tomorrow.
+	fmt.Printf("[POOLS] ✗ Skipping distribution this round: %s — will re-check at the next scheduled time\n", syncIssue)
 } else if chainState.TryLockDistribution() {
 	// FIX (audit3, P0 #3): the entire distribution round — UBI, validator
 	// pool, LP pool, escrow move/release, AND every resulting outbox TX —
@@ -427,6 +444,37 @@ case <-time.After(10 * time.Second):
 	fmt.Println("[WARN] Distribution goroutine did not stop in 10 seconds — forcing exit")
 }
 fmt.Println("Node stopped.")
+}
+
+// distributionSyncHealthIssue returns a non-empty, human-readable reason if
+// this node's view of the chain is not trustworthy enough to run daily pool
+// distribution right now, or "" if it's safe to proceed. See its only call
+// site (the distribution goroutine above) for why this matters: distribution
+// weights validator rewards by THIS node's own locally-observed block
+// counts, with no cross-node reconciliation.
+func distributionSyncHealthIssue(bc *keeper.BlockDAG) string {
+	if bc.IsDegraded() {
+		return fmt.Sprintf("node is degraded (%s) — a prior persistence failure may have left this node's view of the chain incomplete", bc.DegradedReason())
+	}
+	if n := bc.SyntheticCheckpointCount(); n > 0 {
+		return fmt.Sprintf("%d synthetic-checkpoint stub(s) still active — this node is trusting a placeholder instead of real history for at least one span of blocks", n)
+	}
+	// A node with peers configured but no successful peer sync in the last
+	// hour is a red flag for isolation (e.g. every configured seed/peer
+	// unreachable) -- distribution runs once a day, so an hour is a tight
+	// bar relative to that cadence while still giving normal transient
+	// connectivity blips (a redeploy, a brief network hiccup) comfortable
+	// room to recover on their own well before the next scheduled round.
+	if os.Getenv("PRIMARY_NODE_URL") != "" || os.Getenv("PRIMARY_NODE_URLS") != "" || os.Getenv("PEER_NODES") != "" {
+		last := bc.LastSuccessfulPeerSyncAt()
+		if last == 0 {
+			return "peers are configured but this node has never successfully synced a block from any of them — its view of the chain cannot be trusted yet"
+		}
+		if age := time.Since(time.Unix(last, 0)); age > time.Hour {
+			return fmt.Sprintf("no successful peer sync in %s — this node may be isolated from the rest of the network", age.Round(time.Minute))
+		}
+	}
+	return ""
 }
 
 // isRFC1918OrLoopback returns true if host is a loopback address or an
