@@ -1478,10 +1478,27 @@ dag.mu.Lock()
 // NOTE: no defer — we manually unlock before the channel send below (Fix 2).
 // All early-return paths must call dag.mu.Unlock() explicitly.
 
-// Skip if already known
-if _, exists := dag.blocks[block.Hash]; exists {
+// Skip if already known — UNLESS the existing entry is a
+// synthetic-checkpoint stub (see BridgeHistoricalGap/queueOrphan's
+// runtime-bridge branch). A stub exists only to satisfy this same
+// parent-existence check for blocks built on top of it; it carries no
+// transactions and is never replayed, so trusting it is a permanent,
+// silent loss of whatever that block actually contained (a
+// registration, a transfer, anything) — UNLESS this node later
+// receives the real block with that exact hash, in which case it
+// should heal the gap with real, verified, replayed data instead of
+// staying stuck with the placeholder forever. A hash collision between
+// a stub and an unrelated real block is not a concern: calculateHash
+// covers the block's full content, so only the genuinely-corresponding
+// real block can ever match a given stub's hash. The rest of this
+// function (signature check, parent-existence, replay) still runs
+// normally for the incoming block — this only removes the short-circuit
+// that prevented it from ever being attempted.
+if existing, exists := dag.blocks[block.Hash]; exists && existing.Proposer != "synthetic-checkpoint" {
 dag.mu.Unlock()
 return false
+} else if exists {
+fmt.Printf("[BLOCK] ⚕ Healing synthetic-checkpoint stub at height %d (%s...) with real block from peer\n", existing.Height, block.Hash[:min(16, len(block.Hash))])
 }
 
 // FIX (audit 2026-06-30 monster audit, P1-04): degraded means a prior
@@ -1797,6 +1814,12 @@ if !replayOK {
 }
 
 dag.mu.Lock()
+if prev, hadStub := dag.blocks[block.Hash]; hadStub && prev.Proposer == "synthetic-checkpoint" {
+	// Healing a stub (see the "already known" check above): the gap this
+	// stub was bridging is now closed with real, replayed data.
+	dag.syntheticCheckpointCount.Add(-1)
+	fmt.Printf("[BLOCK] ✓ Synthetic checkpoint at height %d healed — %d still active\n", prev.Height, dag.syntheticCheckpointCount.Load())
+}
 dag.blocks[block.Hash] = block
 dag.computeGHOSTDAGState(block) // real GHOSTDAG: sets SelectedParent, Blues, BlueScore
 // P1-03 (audit): persist locally-computed GHOSTDAG fields immediately.
@@ -1903,6 +1926,26 @@ func (dag *BlockDAG) TipsCount() int {
 // instead.
 func (dag *BlockDAG) SyntheticCheckpointCount() int {
 	return int(dag.syntheticCheckpointCount.Load())
+}
+
+// SyntheticCheckpointHashes returns the hashes of every synthetic-checkpoint
+// stub currently trusted by this node — the set healSyntheticCheckpoints
+// (sync_blocks.go) tries to replace with real blocks from peers. Guarded by
+// the atomic counter so the (otherwise O(len(dag.blocks))) full scan only
+// runs when there's actually something to find.
+func (dag *BlockDAG) SyntheticCheckpointHashes() []string {
+	if dag.syntheticCheckpointCount.Load() == 0 {
+		return nil
+	}
+	dag.mu.RLock()
+	defer dag.mu.RUnlock()
+	var hashes []string
+	for hash, b := range dag.blocks {
+		if b.Proposer == "synthetic-checkpoint" {
+			hashes = append(hashes, hash)
+		}
+	}
+	return hashes
 }
 
 // stateRootMismatchActiveWindow (audit 2026-06-30 monster audit, P2-03): a

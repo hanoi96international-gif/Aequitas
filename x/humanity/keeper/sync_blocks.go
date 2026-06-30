@@ -811,8 +811,51 @@ func (dag *BlockDAG) StartPeerDiscovery(selfURL string) {
 			for _, seed := range seedURLs(selfURL) {
 				dag.registerAndDiscover(selfURL, seed)
 			}
+			dag.healSyntheticCheckpoints()
 		}
 	}()
+}
+
+// healSyntheticCheckpoints actively tries to replace every synthetic-
+// checkpoint stub this node currently trusts with the real block, by
+// batch-fetching their hashes from every active sync peer (scale audit /
+// "no fake blocks" fix). Without this, AddPeerBlock's new stub-healing
+// support (block.go) only fires passively — i.e. only if a real block
+// happens to arrive unprompted via gossip or a forward-sync page that
+// happens to cover it — which could mean a node stays stuck trusting a
+// placeholder indefinitely even once a peer with the real history is
+// available. Cheap to call every tick: SyntheticCheckpointHashes itself
+// short-circuits via the atomic counter when there's nothing to heal, which
+// is the overwhelmingly common case.
+func (dag *BlockDAG) healSyntheticCheckpoints() {
+	hashes := dag.SyntheticCheckpointHashes()
+	if len(hashes) == 0 {
+		return
+	}
+	dag.syncPeerMu.Lock()
+	peers := make([]string, 0, len(dag.activeSyncPeers))
+	for p := range dag.activeSyncPeers {
+		peers = append(peers, p)
+	}
+	dag.syncPeerMu.Unlock()
+	healed := 0
+	for _, peerURL := range peers {
+		for i := 0; i < len(hashes); i += maxBlocksByHashPerRequest {
+			chunk := hashes[i:min(i+maxBlocksByHashPerRequest, len(hashes))]
+			blocks, err := dag.fetchBlocksByHashes(peerURL, chunk)
+			if err != nil || len(blocks) == 0 {
+				continue
+			}
+			for _, b := range blocks {
+				if dag.AddPeerBlock(b) {
+					healed++
+				}
+			}
+		}
+	}
+	if healed > 0 {
+		fmt.Printf("[BLOCK] ✓ Healed %d synthetic-checkpoint stub(s) with real data from peers (%d still active)\n", healed, dag.SyntheticCheckpointCount())
+	}
 }
 
 // registerAndDiscover POSTs our URL and signing address to the primary's
