@@ -65,6 +65,12 @@ type Transaction struct {
 	ProofB     [][]string `json:"proof_b,omitempty"`   // [2][2]string big.Int decimal
 	ProofC     []string   `json:"proof_c,omitempty"`   // [2]string big.Int decimal
 	PubSignals []string   `json:"pub_signals,omitempty"` // public signals (decimal)
+	// BlockAHash/BlockBHash identify the equivocation evidence pair for
+	// "slash_equivocation" TXs so the replay can be idempotent (see the
+	// slash_equivocation case in replayTransactions and
+	// MaybeQueueSlashOutboxTx in slashing.go).
+	BlockAHash string `json:"block_a_hash,omitempty"`
+	BlockBHash string `json:"block_b_hash,omitempty"`
 }
 
 type Block struct {
@@ -245,6 +251,17 @@ replayedMu             sync.Mutex
 	degradedReason string
 	degradedMu     sync.Mutex
 
+	// equivocationIndex maps "proposer|sorted-parent-hashes" -> the hash of
+	// the first block seen from that proposer for that exact parent set.
+	// Used by detectEquivocation (slashing.go) to catch a validator signing
+	// two DIFFERENT blocks for what should have been one unique contribution
+	// — O(1) per check instead of scanning all of dag.blocks. Populated at
+	// every point a block is added to dag.blocks (ProduceBlock, AddPeerBlock,
+	// and historical restore in NewBlockchain) so equivocation detection
+	// works the same for freshly-synced history as for newly-arriving
+	// blocks. Protected by dag.mu, same as dag.blocks.
+	equivocationIndex map[string]string
+
 }
 
 
@@ -419,6 +436,7 @@ activeSyncPeers:        make(map[string]bool),
 warnedUnknownProposers: make(map[string]bool),
 peerChallenges:         make(map[string]peerChallenge),
 replayedBlocks:         make(map[string]bool),
+equivocationIndex:      make(map[string]string),
 	stateRootMismatches:    make(map[string]int),
 	stateRootMismatchLastAt: make(map[string]int64),
 	orphans:                make(map[string][]*Block),
@@ -477,6 +495,10 @@ if len(loaded) > 0 {
 	referenced := make(map[string]bool, len(loaded))
 	for _, b := range loaded {
 		dag.blocks[b.Hash] = b
+		// Build equivocation index from history so detection works on
+		// freshly-restarted nodes without needing to re-download everything.
+		// No lock needed: NewBlockchain is single-threaded at this point.
+		dag.checkAndIndexEquivocation(b)
 		// Already reflected in chain_accounts (committed when these TXs
 		// were first applied, before this block was even assembled) —
 		// must not be re-applied by replayTransactions.
@@ -1630,6 +1652,7 @@ if !block.IsGenesis && block.Signature == "" {
 	dag.mu.Unlock()
 	return false
 }
+proposer := strings.ToLower(block.Proposer)
 if block.Signature != "" && !block.IsGenesis {
 	sigBytes, sigErr := hex.DecodeString(block.Signature)
 	if sigErr != nil || len(sigBytes) != 65 {
@@ -1651,7 +1674,6 @@ if block.Signature != "" && !block.IsGenesis {
 		return false
 	}
 	recoveredAddr := strings.ToLower(crypto.PubkeyToAddress(*pubkey).Hex())
-	proposer := strings.ToLower(block.Proposer)
 	// Proposer must be the Ethereum address that produced the signature.
 	// Blocks where the proposer field does not match the recovered signing
 	// address are unconditionally rejected — no libp2p-nodeID exemption.
@@ -1691,6 +1713,30 @@ if block.Signature != "" && !block.IsGenesis {
 		}
 		return false
 	}
+}
+
+// Equivocation suspension gate: a validator suspended or permanently banned
+// for repeated equivocation may not produce further blocks until the penalty
+// expires. Checked after the signature + authorization gates above so that
+// the suspended proposer's identity is already confirmed cryptographically.
+if dag.state != nil {
+	if suspended, reason := dag.state.IsValidatorSuspended(proposer); suspended {
+		fmt.Printf("[SLASHING] ✗ Rejected block #%d from %s: %s\n", block.Height, proposer, reason)
+		dag.mu.Unlock()
+		return false
+	}
+}
+
+// Finality gate: reject blocks so far below the finalized checkpoint that
+// they could only matter for a deep reorg — which the hard finality
+// guarantee forbids. Legitimate gap-fills within finalityHeightSlack of
+// the checkpoint are still accepted.
+if dag.isFinalityViolation(block) {
+	fH, _ := dag.state.GetFinalizedCheckpoint()
+	fmt.Printf("[FINALITY] ✗ Rejected block #%d: below finalized checkpoint %d (slack %d)\n",
+		block.Height, fH, finalityHeightSlack)
+	dag.mu.Unlock()
+	return false
 }
 
 // Integrity check 3: parent-existence and height validation.
@@ -1752,7 +1798,8 @@ return false
 for _, tx := range block.Transactions {
 switch tx.Type {
 case "", "register_human", "transfer", "swap_aeq_tusd", "swap_tusd_aeq", "add_liquidity", "remove_liquidity", "faucet", "ubi_distribution", "ubi_distribution_finalize",
-	"validator_distribution", "validator_distribution_pool_zero", "lp_distribution", "lp_distribution_pool_zero", "escrow_move", "escrow_release", "escrow_recover":
+	"validator_distribution", "validator_distribution_pool_zero", "lp_distribution", "lp_distribution_pool_zero", "escrow_move", "escrow_release", "escrow_recover",
+	"slash_equivocation":
 // known / empty — OK
 default:
 fmt.Printf("[DAG] ✗ Rejected peer block #%d: unknown tx type %q\n", block.Height, tx.Type)
@@ -1924,6 +1971,37 @@ if block.Height > dag.height {
 	dag.height = block.Height
 	dag.state.setConfigValue("max_block_height", fmt.Sprintf("%d", dag.height))
 }
+
+// Equivocation detection: index this block and trigger slashing if a
+// second block from the same proposer for the same parent set is found.
+// Runs under dag.mu (checkAndIndexEquivocation requires it) and spawns a
+// goroutine for the DB work so it doesn't delay block acceptance.
+if conflict, isEquivocation := dag.checkAndIndexEquivocation(block); isEquivocation && dag.state != nil {
+	proposerAddr := block.Proposer
+	blockAHash := conflict.Hash
+	blockBHash := block.Hash
+	detectedAt := block.Timestamp
+	go func() {
+		count, slashWallet, rErr := dag.state.RecordEquivocationAndSuspend(proposerAddr, blockAHash, blockBHash, detectedAt)
+		if rErr != nil {
+			fmt.Printf("[SLASHING] ✗ Failed to record equivocation for %s: %v\n", proposerAddr, rErr)
+			return
+		}
+		fmt.Printf("[SLASHING] ✓ Equivocation recorded for %s (offense #%d)\n", proposerAddr, count)
+		if slashWallet != "" {
+			if qErr := dag.state.MaybeQueueSlashOutboxTx(proposerAddr, slashWallet, blockAHash, blockBHash, equivocationSecondOffensePenaltyAEQ); qErr != nil {
+				fmt.Printf("[SLASHING] ✗ Could not queue slash TX for %s: %v\n", proposerAddr, qErr)
+			} else {
+				fmt.Printf("[SLASHING] ✓ Slash TX queued: %.0f AEQ from %s (signer %s)\n",
+					equivocationSecondOffensePenaltyAEQ, slashWallet, proposerAddr)
+			}
+		}
+	}()
+}
+
+// Advance the hard finality checkpoint now that GHOSTDAG has been computed
+// for this block (SelectedParent and BlueScore are populated above).
+dag.maybeAdvanceFinalizedCheckpoint(block)
 
 tipCount := len(dag.tips)
 dag.mu.Unlock()
@@ -2282,6 +2360,24 @@ func (dag *BlockDAG) replayTransactions(block *Block) bool {
 		return true
 	}
 
+	// Distribution idempotency pre-pass: if this block contains a
+	// ubi_distribution_finalize TX for a round we have already applied
+	// (last_ubi_at ≥ DistributionAt), skip ALL distribution TXs in the
+	// block so a competing distribution from another node doesn't double-
+	// credit every human. Plain DB read before cs.mu — same pattern as the
+	// snapshot_import_height read above.
+	skipDistributionRound := int64(0)
+	for _, tx := range block.Transactions {
+		if tx.Type == "ubi_distribution_finalize" && tx.DistributionAt > 0 {
+			var lastUBIAt int64
+			fmt.Sscan(dag.state.getConfigValueDB("last_ubi_at"), &lastUBIAt)
+			if lastUBIAt >= tx.DistributionAt {
+				skipDistributionRound = tx.DistributionAt
+			}
+			break
+		}
+	}
+
 	touchedAddrs, needsFullSnapshot := blockTouchedAddresses(block)
 	// FIX (audit recheck3, P0/P1 — "Block-Replay-Rollback ist nicht gegen
 	// parallele lokale Mutationen isoliert"): this used to take rollbackSnap
@@ -2366,6 +2462,17 @@ func (dag *BlockDAG) replayTransactions(block *Block) bool {
 	for _, tx := range block.Transactions {
 		if hardFailure {
 			break // stop applying further TXs once we know this block is being rolled back
+		}
+		// Skip distribution TXs from a round this node has already applied.
+		if skipDistributionRound > 0 {
+			switch tx.Type {
+			case "ubi_distribution", "ubi_distribution_finalize",
+				"validator_distribution", "validator_distribution_pool_zero",
+				"lp_distribution", "lp_distribution_pool_zero":
+				fmt.Printf("[REPLAY] ℹ Skipping %s (distribution round %d already applied, block #%d)\n",
+					tx.Type, skipDistributionRound, block.Height)
+				continue
+			}
 		}
 		wallet := strings.ToLower(strings.TrimSpace(tx.Wallet))
 		switch tx.Type {
@@ -2634,6 +2741,63 @@ func (dag *BlockDAG) replayTransactions(block *Block) bool {
 				continue
 			}
 			fmt.Printf("[REPLAY] ✓ Applied escrow recovery %.6f AEQ → %s (block #%d)\n", tx.Amount, wallet, block.Height)
+
+		case "slash_equivocation":
+			// Idempotent balance deduction: only ONE slash_equivocation TX per
+			// evidence pair ever succeeds — the CAS on equivocation_evidence
+			// ensures all competing TXs (from multiple nodes that independently
+			// detected the same offense) produce exactly one deduction.
+			//
+			// tx.Wallet = signer (signing address of the banned validator)
+			// tx.To     = operator wallet address (receives the deduction)
+			// tx.Amount = penalty in AEQ (≤ 50, capped at balance on detection)
+			if tx.To == "" || tx.Amount <= 0 || tx.BlockAHash == "" || tx.BlockBHash == "" {
+				fmt.Printf("[REPLAY] ⚠ slash_equivocation in block #%d: missing required fields — skipping\n", block.Height)
+				continue
+			}
+			blockA, blockB := tx.BlockAHash, tx.BlockBHash
+			if blockA > blockB {
+				blockA, blockB = blockB, blockA
+			}
+			// Atomic CAS: insert or update the evidence row setting slash_applied=TRUE.
+			// Rows affected > 0 → we won the race, apply the balance deduction.
+			// Rows affected == 0 → already applied by a previous TX, skip.
+			res, claimErr := dag.state.dbExec().Exec(
+				`INSERT INTO equivocation_evidence
+				     (signing_address, block_a_hash, block_b_hash, detected_at, slash_applied)
+				 VALUES ($1, $2, $3, $4, TRUE)
+				 ON CONFLICT (block_a_hash, block_b_hash) DO UPDATE
+				     SET slash_applied = TRUE
+				     WHERE equivocation_evidence.slash_applied = FALSE`,
+				strings.ToLower(tx.Wallet), blockA, blockB, block.Timestamp,
+			)
+			if claimErr != nil {
+				fmt.Printf("[REPLAY] ✗ slash_equivocation CAS failed (block #%d): %v — rolling back whole block\n", block.Height, claimErr)
+				hardFailure = true
+				continue
+			}
+			rows, _ := res.RowsAffected()
+			if rows == 0 {
+				fmt.Printf("[REPLAY] ℹ slash_equivocation for %s already applied — skipping duplicate (block #%d)\n", tx.Wallet, block.Height)
+				continue
+			}
+			// Apply the balance deduction, capping at the wallet's current balance
+			// in case it has shrunk since the TX was queued.
+			opWallet := strings.ToLower(tx.To)
+			penaltyAmt := tx.Amount
+			if acc, ok := dag.state.accounts[opWallet]; ok && acc.Balance.Float() < penaltyAmt {
+				penaltyAmt = acc.Balance.Float()
+			}
+			if penaltyAmt > 0 {
+				if err := dag.state.applyTransferDeltaLocked(opWallet, ubiPoolAddr, penaltyAmt, 0, 0); err != nil {
+					fmt.Printf("[REPLAY] ✗ slash_equivocation transfer %s→UBI %.4f: %v (block #%d) — rolling back whole block\n",
+						tx.To, penaltyAmt, err, block.Height)
+					hardFailure = true
+					continue
+				}
+				fmt.Printf("[REPLAY] ✓ Applied slash_equivocation %.4f AEQ from %s → UBI pool (signer %s, block #%d)\n",
+					penaltyAmt, tx.To, tx.Wallet, block.Height)
+			}
 
 		default:
 			// FIX (audit 2026-06-28 recheck 4, P2-2): unknown TX types used to

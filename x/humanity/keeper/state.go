@@ -653,6 +653,9 @@ blocks_produced BIGINT NOT NULL DEFAULT 0
 )`)
 	dbExec(`ALTER TABLE registered_nodes ADD COLUMN IF NOT EXISTS blocks_produced BIGINT NOT NULL DEFAULT 0`)
 	dbExec(`ALTER TABLE registered_nodes ADD COLUMN IF NOT EXISTS signing_address TEXT DEFAULT ''`)
+
+	// Slashing tables — safe to call repeatedly (CREATE IF NOT EXISTS / ALTER IF NOT EXISTS).
+	cs.initSlashingTables()
 }
 
 // resetDBStateForBootstrap is an explicit operator escape hatch for secondary
@@ -1134,6 +1137,13 @@ func (cs *ChainState) GetWealthCapInfo() (capAEQ float64, mult float64, avg floa
 func (cs *ChainState) TryLockDistribution() bool {
 	if cs.db == nil {
 		return true // no DB → single-node mode, always proceed
+	}
+	// Cross-node guard: if another node already distributed this round and
+	// we've replayed that block (which sets last_ubi_at via
+	// applyUBIFinalizeDeltaLocked), there's nothing left to do.
+	if lastUBIAt := cs.GetLastUBIAt(); lastUBIAt > 0 &&
+		time.Since(time.Unix(lastUBIAt, 0)) < 23*time.Hour+55*time.Minute {
+		return false
 	}
 	threshold := fmt.Sprintf("%d", time.Now().Add(-23*time.Hour-55*time.Minute).Unix()) // F5-FIX: grace period, still < 24h
 	now := fmt.Sprintf("%d", time.Now().Unix())
