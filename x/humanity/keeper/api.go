@@ -385,6 +385,7 @@ func (a *APIServer) Start(port int) {
 	mux.HandleFunc("/api/block", a.handleBlockByHash)
 	mux.HandleFunc("/api/blocks/by-hash", a.handleBlocksByHash)
 	mux.HandleFunc("/api/blocks/push", a.handleBlockPush)
+	mux.HandleFunc("/api/humanity/credential", a.handleHumanityCredential)
 	mux.HandleFunc("/api/humans", a.handleHumans)
 	mux.HandleFunc("/api/sepolia/humans", a.handleSepoliaHumans)
 	mux.HandleFunc("/api/register", a.handleRegister)
