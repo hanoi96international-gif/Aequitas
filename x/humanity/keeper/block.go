@@ -1991,7 +1991,7 @@ if block.Height > dag.height {
 // second block from the same proposer for the same parent set is found.
 // Runs under dag.mu (checkAndIndexEquivocation requires it) and spawns a
 // goroutine for the DB work so it doesn't delay block acceptance.
-if conflict, isEquivocation := dag.checkAndIndexEquivocation(block); isEquivocation && dag.state != nil {
+if conflict, isEquivocation := dag.checkAndIndexEquivocation(block); isEquivocation && dag.state != nil && !block.FromSync {
 	proposerAddr := block.Proposer
 	blockAHash := conflict.Hash
 	blockBHash := block.Hash
