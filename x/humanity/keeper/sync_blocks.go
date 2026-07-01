@@ -652,7 +652,9 @@ func (dag *BlockDAG) doSyncOnce(nodeURL string) (ok bool) {
 // validatorSyncInterval: re-sync the validator list from each peer this often.
 // Ensures a validator that registered with any peer propagates to all nodes
 // within this window, with zero manual configuration.
-const validatorSyncInterval = 50 // ticks at the current 6s base backoff ≈ 5 min
+// validatorSyncInterval: how many HTTP-sync ticks between full validator-list
+// refreshes from each peer. Base tick is 1s → 50 ticks ≈ 50s.
+const validatorSyncInterval = 50
 
 func (dag *BlockDAG) syncWithNode(nodeURL string) {
 	// Fetch validator list immediately on first connect — this is the moment
@@ -663,7 +665,11 @@ func (dag *BlockDAG) syncWithNode(nodeURL string) {
 	// Try immediately on first call — no initial delay. doSyncOnce itself
 	// pages through full history starting from whatever we already have
 	// locally, so this one call already performs the initial catch-up.
-	backoff := 6 * time.Second
+	// 1s base: matches BLOCK_TIME so a peer's block arrives at our tips
+	// within one tick and can be included as a parent in the next
+	// ProduceBlock, enabling genuine multi-parent GHOSTDAG merges.
+	// (Old value was 6s — blocks arrived 6 ticks late, no merges.)
+	backoff := 1 * time.Second
 	ticks := 0
 	dag.doSyncOnce(nodeURL)
 	ticker := time.NewTicker(backoff)
@@ -677,13 +683,13 @@ func (dag *BlockDAG) syncWithNode(nodeURL string) {
 			backoff *= 2
 			if backoff > 30*time.Second {
 				backoff = 30 * time.Second
-			} // max 30s not 60s
+			}
 			ticker.Reset(backoff)
 			continue
 		}
 		// Reset backoff on success
-		if backoff > 6*time.Second {
-			backoff = 6 * time.Second
+		if backoff > 1*time.Second {
+			backoff = 1 * time.Second
 			ticker.Reset(backoff)
 		}
 	} // end for range ticker.C
@@ -1080,4 +1086,48 @@ func staticPeers(selfURL string) []string {
 // StartHTTPBlockSync is an alias kept for call-site compatibility.
 func (dag *BlockDAG) StartHTTPBlockSync(selfURL string) {
 	dag.StartPeerDiscovery(selfURL)
+}
+
+// HTTPBroadcastBlock pushes a freshly-produced block to every active HTTP
+// peer via POST /api/blocks/push. This is the HTTP-level complement to the
+// libp2p BroadcastBlock call — it works even when port 4001 is firewalled
+// (common on Railway). Each peer receives the block within one HTTP round
+// trip (~100ms) and inserts it into its dag.tips immediately, so the next
+// ProduceBlock tick at every peer includes this block as a parent, producing
+// a genuine multi-parent GHOSTDAG merge.
+func (dag *BlockDAG) HTTPBroadcastBlock(block *Block) {
+	dag.syncPeerMu.Lock()
+	peers := make([]string, 0, len(dag.activeSyncPeers))
+	for p := range dag.activeSyncPeers {
+		peers = append(peers, p)
+	}
+	dag.syncPeerMu.Unlock()
+
+	if len(peers) == 0 {
+		return
+	}
+
+	data, err := json.Marshal(block)
+	if err != nil {
+		return
+	}
+
+	for _, peerURL := range peers {
+		peerURL := peerURL
+		go func() {
+			ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+			defer cancel()
+			req, err := http.NewRequestWithContext(ctx, http.MethodPost, peerURL+"/api/blocks/push", bytes.NewReader(data))
+			if err != nil {
+				return
+			}
+			req.Header.Set("Content-Type", "application/json")
+			resp, err := httpSyncClient.Do(req)
+			if err != nil {
+				fmt.Printf("[BLOCK-PUSH] ✗ HTTP push block #%d to %s: %v\n", block.Height, peerURL, err)
+				return
+			}
+			resp.Body.Close()
+		}()
+	}
 }

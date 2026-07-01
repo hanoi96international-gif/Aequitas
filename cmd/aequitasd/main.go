@@ -343,6 +343,7 @@ block := bc.ProduceBlock()
 				continue // catch-up gate — skip this tick
 			}
 			p2pNode.BroadcastBlock(block)
+			bc.HTTPBroadcastBlock(block) // HTTP push for peers where port 4001 is firewalled
 fmt.Printf("[Block #%d] Hash: %s... | Humans: %d | Time: %s\n",
 block.Height,
 block.Hash[:16],

@@ -384,6 +384,7 @@ func (a *APIServer) Start(port int) {
 	mux.HandleFunc("/api/blocks", a.handleBlocks)
 	mux.HandleFunc("/api/block", a.handleBlockByHash)
 	mux.HandleFunc("/api/blocks/by-hash", a.handleBlocksByHash)
+	mux.HandleFunc("/api/blocks/push", a.handleBlockPush)
 	mux.HandleFunc("/api/humans", a.handleHumans)
 	mux.HandleFunc("/api/sepolia/humans", a.handleSepoliaHumans)
 	mux.HandleFunc("/api/register", a.handleRegister)
@@ -740,6 +741,42 @@ func (a *APIServer) handleBlocksByHash(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	json.NewEncoder(w).Encode(found)
+}
+
+// handleBlockPush accepts a freshly-produced block from a peer via HTTP POST
+// and feeds it directly into AddPeerBlock. This is the HTTP-level push path
+// that enables DAG merges even when libp2p (port 4001) is firewalled — e.g.
+// on Railway where only one TCP port per service is exposed. After each
+// ProduceBlock() call, the producing node POSTs its block to all known peers'
+// /api/blocks/push endpoints in parallel goroutines; the receiving node inserts
+// it into dag.tips immediately, so the next ProduceBlock() includes it as a
+// parent and creates a genuine multi-parent merge block.
+func (a *APIServer) handleBlockPush(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	if r.Method != http.MethodPost {
+		http.Error(w, `{"error":"POST required"}`, http.StatusMethodNotAllowed)
+		return
+	}
+	body, err := io.ReadAll(io.LimitReader(r.Body, 512<<10))
+	if err != nil {
+		http.Error(w, `{"error":"read error"}`, http.StatusBadRequest)
+		return
+	}
+	var block Block
+	if err := json.Unmarshal(body, &block); err != nil {
+		http.Error(w, `{"error":"invalid block JSON"}`, http.StatusBadRequest)
+		return
+	}
+	block.FromSync = true
+	accepted := a.blockchain.AddPeerBlock(&block)
+	if accepted {
+		fmt.Printf("[BLOCK-PUSH] ✓ Accepted block #%d via HTTP push\n", block.Height)
+		w.Write([]byte(`{"ok":true}`))
+	} else {
+		// Not an error — block may already be known (idempotent)
+		w.Write([]byte(`{"ok":false,"reason":"rejected or already known"}`))
+	}
 }
 
 func (a *APIServer) handleHumans(w http.ResponseWriter, r *http.Request) {
