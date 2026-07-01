@@ -1,6 +1,7 @@
 ﻿package keeper
 
 import (
+"bytes"
 "crypto/ecdsa"
 "crypto/rand"
 "crypto/sha256"
@@ -128,7 +129,10 @@ bootHeight             int64
 pendingTxs             []Transaction
 txMu                   sync.Mutex
 signingKey             *ecdsa.PrivateKey
+selfProposer           string           // lower-cased Ethereum address of this node's signing key
 authorizedValidators   map[string]bool  // Ethereum addresses allowed to propose blocks
+currentEpoch           *EpochCommittee  // active block-producer committee for the current epoch
+epochMu                sync.RWMutex    // guards currentEpoch
 activeSyncPeers        map[string]bool  // peers with a running syncWithNode goroutine
 syncPeerMu             sync.Mutex
 warnedUnknownProposers map[string]bool  // suppresses repeated "not authorized" log lines
@@ -458,6 +462,7 @@ if key, generated, err := loadOrCreateRelayerKey(); err != nil {
 	dag.signingKey = key
 	// Always authorize ourselves — derived from the signing key, not the nodeID.
 	selfAddr := strings.ToLower(crypto.PubkeyToAddress(key.PublicKey).Hex())
+	dag.selfProposer = selfAddr
 	dag.authorizedValidators[selfAddr] = true
 	if generated {
 		fmt.Printf("✓ Block signing enabled (auto-generated key — see SAVE THIS warning above), proposer addr: %s\n", selfAddr)
@@ -1112,6 +1117,21 @@ if dag.bootHeight > 0 && dag.height+10 < dag.bootHeight {
 	fmt.Printf("[BLOCK] ⏳ Catch-up in progress (dag.height=%d, bootHeight=%d) — skipping block production\n",
 		dag.height, dag.bootHeight)
 	return nil
+}
+
+// Epoch-committee gate: only the selected committee members produce blocks.
+// All registered node operators are ranked deterministically by
+// sha256(addr+epochNum) and the top targetCommitteeSize are chosen.
+// Non-committee nodes run in observer mode — syncing and verifying without
+// producing — which keeps simultaneous producers bounded regardless of how
+// many humans have registered. Returns nil (no block) when not selected;
+// committee is recomputed lazily when the epoch number changes.
+{
+	nextHeight := dag.height + 1
+	ec := dag.getEpochCommittee(nextHeight)
+	if ec != nil && !ec.Members[dag.selfProposer] {
+		return nil
+	}
 }
 
 // Collect tips as parents, capped at maxParentsPerBlock.
@@ -3095,6 +3115,107 @@ func (dag *BlockDAG) verifyZKProof(tx Transaction) bool {
 // being abandoned.  Five minutes comfortably exceeds any reasonable window
 // during which a sibling block could arrive and unblock the failed replay.
 const softRetryTTL = 5 * time.Minute
+
+// epochLength is how many blocks form one epoch. At 1 s/block this is 1 hour.
+// At every epoch boundary the active-producer committee is re-selected from
+// all registered node operators, keeping simultaneous block producers bounded
+// at targetCommitteeSize regardless of how many humans have registered.
+const epochLength = int64(3600)
+
+// targetCommitteeSize is the number of node operators selected per epoch when
+// enough are registered. 100 producers at K=18 still gives a healthy blue-set
+// ratio — K should grow with the committee in a later consensus upgrade.
+const targetCommitteeSize = 100
+
+// maxCommitteeSize hard-caps the epoch committee. Beyond this point the
+// dynamic-K upgrade is needed before growing the committee further.
+const maxCommitteeSize = 10_000
+
+// EpochCommittee holds the active block-producer set for one epoch.
+// Selected by ranking all registered node operators by
+// sha256(lower(addr)+":"+epochNum) and taking the top N — fully
+// deterministic, no external randomness or coordination needed.
+type EpochCommittee struct {
+	Number  int64
+	Members map[string]bool // lower-cased signing addresses of active producers
+	Size    int
+}
+
+// computeEpochCommittee builds the committee for epochNum from the full set of
+// registered node operators in the DB. Returns nil when no operators are
+// registered yet (bootstrap mode — all signing keys can produce).
+func (dag *BlockDAG) computeEpochCommittee(epochNum int64) *EpochCommittee {
+	if dag.state == nil {
+		return nil
+	}
+	allOps := dag.state.GetAllRegisteredValidatorAddresses()
+	if len(allOps) == 0 {
+		return nil // bootstrap: no registered operators → everyone can produce
+	}
+
+	size := targetCommitteeSize
+	if len(allOps) < size {
+		size = len(allOps) // fewer operators than target → all are in committee
+	}
+	if size > maxCommitteeSize {
+		size = maxCommitteeSize
+	}
+
+	type entry struct {
+		addr  string
+		score [32]byte
+	}
+	entries := make([]entry, len(allOps))
+	for i, addr := range allOps {
+		entries[i].addr = strings.ToLower(addr)
+		entries[i].score = sha256.Sum256([]byte(fmt.Sprintf("%s:%d", entries[i].addr, epochNum)))
+	}
+	sort.Slice(entries, func(i, j int) bool {
+		return bytes.Compare(entries[i].score[:], entries[j].score[:]) < 0
+	})
+	if len(entries) > size {
+		entries = entries[:size]
+	}
+	members := make(map[string]bool, len(entries))
+	for _, e := range entries {
+		members[e.addr] = true
+	}
+	return &EpochCommittee{Number: epochNum, Members: members, Size: len(members)}
+}
+
+// getEpochCommittee returns the cached committee for the epoch that contains
+// height, recomputing it (and logging the transition) only when the epoch
+// number changes. Safe to call without dag.mu held.
+func (dag *BlockDAG) getEpochCommittee(height int64) *EpochCommittee {
+	epochNum := height / epochLength
+
+	dag.epochMu.RLock()
+	if dag.currentEpoch != nil && dag.currentEpoch.Number == epochNum {
+		ec := dag.currentEpoch
+		dag.epochMu.RUnlock()
+		return ec
+	}
+	dag.epochMu.RUnlock()
+
+	ec := dag.computeEpochCommittee(epochNum)
+
+	dag.epochMu.Lock()
+	if dag.currentEpoch == nil || dag.currentEpoch.Number != epochNum {
+		dag.currentEpoch = ec
+		if ec != nil {
+			role := "observer"
+			if ec.Members[dag.selfProposer] {
+				role = "producer"
+			}
+			fmt.Printf("[EPOCH] Epoch %d (height %d): committee=%d validators, self=%s (%s)\n",
+				epochNum, height, ec.Size, dag.selfProposer, role)
+		}
+	} else {
+		ec = dag.currentEpoch
+	}
+	dag.epochMu.Unlock()
+	return ec
+}
 
 // ghostdagK is the GHOSTDAG k-parameter: the maximum number of blocks that
 // can be in each other's anticone while all remaining blue.  K=18 matches

@@ -431,6 +431,12 @@ WHERE commitment IN (
 )`)
 	dbExec(`DROP INDEX IF EXISTS uidx_bio_registrations_bio_hash`)
 	dbExec(`CREATE UNIQUE INDEX IF NOT EXISTS uidx_bio_registrations_bio_hash ON bio_registrations(bio_hash) WHERE bio_hash IS NOT NULL AND bio_hash != ''`)
+	// Scale indices for 8B registrations: fast lookup by wallet without full scans.
+	dbExec(`CREATE INDEX IF NOT EXISTS idx_bio_registrations_wallet ON bio_registrations(lower(wallet_address))`)
+	dbExec(`CREATE INDEX IF NOT EXISTS idx_nullifiers_wallet ON nullifiers(lower(wallet_address))`)
+	// Partial index on is_human lets distributeUBIPoolLocked enumerate all
+	// registered humans from the DB without a full chain_accounts table scan.
+	dbExec(`CREATE INDEX IF NOT EXISTS idx_chain_accounts_is_human ON chain_accounts(address) WHERE is_human = true`)
 	// Single-row table holding the AEQ<->tUSD pool reserves. A fixed id=1 row
 	// is used instead of a key-value table since there's only ever one pool
 	// right now — simpler queries, and trivial to extend to multiple pools
@@ -1205,6 +1211,43 @@ func (cs *ChainState) TimeUntilNextUBI() time.Duration {
 	return d
 }
 
+// maxInMemAccounts caps how many chain_accounts rows are preloaded into memory
+// at startup. Cold accounts above this threshold are fetched from the DB on
+// demand via ensureAccountLoaded. At ~200 bytes per AccountState, 5M accounts
+// ≈ 1 GB RAM — a safe default for a node with typical hardware.
+const maxInMemAccounts = 5_000_000
+
+// ensureAccountLoaded fetches addr from DB into cs.accounts if it isn't
+// already there. Must be called while cs.mu (write lock) is held.
+func (cs *ChainState) ensureAccountLoaded(addr string) {
+	if _, ok := cs.accounts[addr]; ok {
+		return
+	}
+	if cs.db == nil {
+		return
+	}
+	acc := &AccountState{Address: addr}
+	var bal, tusd, lp float64
+	var version int64
+	err := cs.db.QueryRow(
+		`SELECT balance, is_human, tusd_balance, lp_shares,
+		        COALESCE(last_activity_at, 0), COALESCE(version, 1)
+		 FROM chain_accounts WHERE lower(address) = $1`,
+		addr,
+	).Scan(&bal, &acc.IsHuman, &tusd, &lp, &acc.LastActivityAt, &version)
+	if err != nil {
+		return // not in DB — caller's !ok branch will create a fresh account
+	}
+	acc.Balance = NewDecimal(bal)
+	acc.TUsdBalance = NewDecimal(tusd)
+	acc.LPShares = NewDecimal(lp)
+	if version == 0 {
+		version = 1
+	}
+	acc.Version = version
+	cs.accounts[addr] = acc
+}
+
 func (cs *ChainState) loadFromDB() {
 	// FIX (2026-06-28, production incident): this used to give up silently
 	// on the first error, leaving cs.accounts empty exactly as if the DB
@@ -1221,7 +1264,15 @@ func (cs *ChainState) loadFromDB() {
 	// delay absorbs the transient case for free; if it still fails,
 	// accountsLoadFailed tells main.go this node's "fresh or not" status is
 	// UNKNOWN, not "fresh", so it can refuse to bootstrap rather than guess.
-	query := "SELECT address, balance, is_human, tusd_balance, lp_shares, last_activity_at, demurrage_14_day_warning_shown, faucet_claimed, COALESCE(version,0) FROM chain_accounts"
+	const baseQuery = "SELECT address, balance, is_human, tusd_balance, lp_shares, last_activity_at, demurrage_14_day_warning_shown, faucet_claimed, COALESCE(version,0) FROM chain_accounts"
+	var totalAccounts int64
+	cs.db.QueryRow(`SELECT COUNT(*) FROM chain_accounts`).Scan(&totalAccounts)
+	query := baseQuery
+	if totalAccounts > maxInMemAccounts {
+		fmt.Printf("[SCALE] %d accounts in DB — preloading %d most-recent (cold accounts loaded on demand)\n",
+			totalAccounts, maxInMemAccounts)
+		query = baseQuery + fmt.Sprintf(" ORDER BY last_activity_at DESC LIMIT %d", maxInMemAccounts)
+	}
 	rows, err := cs.db.Query(query)
 	if err != nil {
 		fmt.Printf("⚠ Could not load from DB (attempt 1): %v — retrying once\n", err)
@@ -1661,9 +1712,10 @@ func (cs *ChainState) applyDemurrageLossLocked(acc *AccountState, lost float64) 
 }
 
 func (cs *ChainState) GetBalance(address string) float64 {
-	cs.mu.RLock()
-	defer cs.mu.RUnlock()
+	cs.mu.Lock()
+	defer cs.mu.Unlock()
 	address = strings.ToLower(address)
+	cs.ensureAccountLoaded(address)
 	if acc, ok := cs.accounts[address]; ok {
 		return effectiveBalance(acc).Float()
 	}
@@ -2153,15 +2205,41 @@ func (cs *ChainState) distributeUBIPoolLocked() ([]DistributionShare, error) {
 		return nil, nil
 	}
 
+	// Query DB directly so UBI works correctly at 8B humans regardless of
+	// whether their accounts are currently in the in-memory cache.
+	// The partial index idx_chain_accounts_is_human makes this fast even at
+	// very large account counts. Batch into memory in chunks to avoid a
+	// single allocation of 8B addresses.
 	var humanAddrs []string
-	for addr, acc := range cs.accounts {
-		if acc.IsHuman {
-			humanAddrs = append(humanAddrs, addr)
+	if cs.db != nil {
+		rows, err := cs.db.Query(`SELECT lower(address) FROM chain_accounts WHERE is_human = true`)
+		if err != nil {
+			return nil, fmt.Errorf("could not enumerate human accounts: %w", err)
+		}
+		for rows.Next() {
+			var addr string
+			rows.Scan(&addr)
+			if addr != "" {
+				humanAddrs = append(humanAddrs, addr)
+			}
+		}
+		rows.Close()
+	} else {
+		// No DB (unit tests): fall back to in-memory iteration.
+		for addr, acc := range cs.accounts {
+			if acc.IsHuman {
+				humanAddrs = append(humanAddrs, addr)
+			}
 		}
 	}
 	if len(humanAddrs) == 0 {
 		fmt.Println("[UBI] No registered humans yet — pool left untouched")
 		return nil, nil
+	}
+	// Ensure all human accounts are in the cache so the distribution loop
+	// below can work on in-memory objects (reads + writes stay coherent).
+	for _, addr := range humanAddrs {
+		cs.ensureAccountLoaded(addr)
 	}
 
 	// E3-FIX for UBI: settle demurrage for ALL humans FIRST. settleDemurrageLocked
@@ -2436,9 +2514,10 @@ func (cs *ChainState) GetPoolReserves() (float64, float64) {
 }
 
 func (cs *ChainState) IsHuman(address string) bool {
-	cs.mu.RLock()
-	defer cs.mu.RUnlock()
+	cs.mu.Lock()
+	defer cs.mu.Unlock()
 	address = strings.ToLower(address)
+	cs.ensureAccountLoaded(address)
 	if acc, ok := cs.accounts[address]; ok {
 		return acc.IsHuman
 	}
@@ -2486,6 +2565,7 @@ func (cs *ChainState) RegisterHumanAtomic(address string, pendingTx Transaction)
 // exists.
 func (cs *ChainState) registerHumanLocked(address string) error {
 	address = strings.ToLower(address)
+	cs.ensureAccountLoaded(address)
 
 	if acc, ok := cs.accounts[address]; ok && acc.IsHuman {
 		return fmt.Errorf("already registered")
@@ -2859,6 +2939,8 @@ func (cs *ChainState) transferLocked(from, to string, amount float64) (float64, 
 		return 0, 0, fmt.Errorf("self-transfer not allowed")
 	}
 
+	cs.ensureAccountLoaded(from)
+	cs.ensureAccountLoaded(to)
 	fromAcc, ok := cs.accounts[from]
 	if !ok {
 		return 0, 0, fmt.Errorf("insufficient balance")

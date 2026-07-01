@@ -1604,6 +1604,38 @@ claimed_at TIMESTAMP DEFAULT NOW()
 	}
 }
 
+// GetAllRegisteredValidatorAddresses returns all distinct signing addresses
+// from both validator_keys and validator_slots, sorted deterministically.
+// Used by the epoch-committee selector in computeEpochCommittee.
+func (cs *ChainState) GetAllRegisteredValidatorAddresses() []string {
+	if cs.db == nil {
+		return nil
+	}
+	seen := make(map[string]bool)
+	var addrs []string
+	for _, q := range []string{
+		`SELECT lower(signing_address) FROM validator_keys`,
+		`SELECT lower(signing_address) FROM validator_slots`,
+	} {
+		rows, err := cs.db.Query(q)
+		if err != nil {
+			continue
+		}
+		for rows.Next() {
+			var addr string
+			rows.Scan(&addr)
+			addr = strings.TrimSpace(addr)
+			if addr != "" && !seen[addr] {
+				seen[addr] = true
+				addrs = append(addrs, addr)
+			}
+		}
+		rows.Close()
+	}
+	sort.Strings(addrs) // deterministic ordering for committee selection
+	return addrs
+}
+
 // GetValidatorKeyPairsForSync returns (signing_address, human_wallet) pairs
 // from both validator_keys and validator_slots, deduplicated by signing_address.
 // Used by /api/validators so receiving peers can verify the human_wallet is
