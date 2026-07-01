@@ -2438,6 +2438,37 @@ func (cs *ChainState) SaveGHOSTDAGState(block *Block) error {
 	return err
 }
 
+// SaveGHOSTDAGStateBatch persists GHOSTDAG columns for a slice of blocks in a
+// single DB transaction — used by the startup migration to collapse O(n)
+// round-trips into O(n/batchSize) commits (~100 UPDATEs each).
+func (cs *ChainState) SaveGHOSTDAGStateBatch(blocks []*Block) error {
+	if cs.db == nil || len(blocks) == 0 {
+		return nil
+	}
+	cs.ensureGHOSTDAGColumns()
+	tx, err := cs.db.Begin()
+	if err != nil {
+		return err
+	}
+	stmt, err := tx.Prepare(`UPDATE chain_blocks SET selected_parent=$1, blue_score=$2, blues=$3 WHERE hash=$4`)
+	if err != nil {
+		tx.Rollback()
+		return err
+	}
+	defer stmt.Close()
+	for _, block := range blocks {
+		bluesJSON, jerr := json.Marshal(block.Blues)
+		if jerr != nil {
+			bluesJSON = []byte("[]")
+		}
+		if _, err := stmt.Exec(block.SelectedParent, block.BlueScore, string(bluesJSON), block.Hash); err != nil {
+			tx.Rollback()
+			return fmt.Errorf("batch ghostdag save block #%d: %w", block.Height, err)
+		}
+	}
+	return tx.Commit()
+}
+
 // SaveBlockWithPendingTxsAtomic saves the block and clears the given pending-TX
 // rows in a single DB transaction so the two operations either both commit or
 // both roll back.  This closes the narrow window where SaveBlockToDB succeeds

@@ -563,48 +563,47 @@ if len(loaded) > 0 {
 		dag.ghostdagMigrationPending.Store(true)
 		go func(blocks []*Block, d *BlockDAG, s *ChainState) {
 			defer d.ghostdagMigrationPending.Store(false)
+			const batchSize = 100
+			batch := make([]*Block, 0, batchSize)
+
+			flushBatch := func() {
+				if s == nil || len(batch) == 0 {
+					batch = batch[:0]
+					return
+				}
+				if err := s.SaveGHOSTDAGStateBatch(batch); err != nil {
+					d.degradedMu.Lock()
+					if d.degradedReason == "" {
+						d.degradedReason = fmt.Sprintf("GHOSTDAG migration: batch persist failed (last block #%d): %v", batch[len(batch)-1].Height, err)
+					}
+					d.degradedMu.Unlock()
+					fmt.Printf("[BLOCK] ✗ GHOSTDAG migration: batch persist failed: %v — node marked degraded\n", err)
+				}
+				batch = batch[:0]
+			}
+
 			for i, b := range blocks {
 				d.mu.Lock()
 				d.computeGHOSTDAGState(b)
 				d.mu.Unlock()
-				// FIX (2026-06-30, confirmed live in production — second half of
-				// the same incident): per-block locking alone isn't enough. A
-				// goroutine that does lock→tiny-amount-of-work→unlock→immediately
-				// re-lock in a tight loop tends to win the re-acquisition race
-				// against other goroutines that only just started waiting,
-				// because Go's sync.Mutex has no FIFO fairness guarantee under
-				// fast contention — confirmed live: block production, peer sync,
-				// and even /api/status all starved for the migration's entire
-				// duration (no new blocks produced, no logged sync activity)
-				// despite the lock technically being released between every
-				// single iteration. A short sleep every so often forces a real
-				// scheduling gap so waiting goroutines actually get a turn.
+				// DB write happens outside the lock — SaveGHOSTDAGStateBatch
+				// only reads fields set above by computeGHOSTDAGState; the
+				// same fields AddPeerBlock would compute to identical values
+				// (deterministic), so no correctness hazard.
+				if s != nil {
+					batch = append(batch, b)
+					if len(batch) >= batchSize {
+						flushBatch()
+					}
+				}
+				// FIX (2026-06-30): force a scheduling gap every 20 blocks
+				// so ProduceBlock / AddPeerBlock goroutines get dag.mu turns
+				// instead of starving behind the migration loop.
 				if i%20 == 19 {
 					time.Sleep(5 * time.Millisecond)
 				}
-				if s != nil {
-					// FIX (audit 2026-06-30 monster audit, P1-03): used to
-					// discard SaveGHOSTDAGState's error — a failure here means
-					// this block's freshly-computed SelectedParent/BlueScore
-					// exist in memory (dag.blocks already has them, set by
-					// computeGHOSTDAGState above) but never made it to disk.
-					// A restart before this block's turn comes around again
-					// would silently fall back to its stale pre-migration
-					// values, the exact divergence-after-restart class
-					// degradedReason exists to surface (see ProduceBlock's
-					// degraded gate). Mark degraded instead of continuing
-					// silently — same treatment AddPeerBlock's own
-					// SaveGHOSTDAGState failure already gets.
-					if err := s.SaveGHOSTDAGState(b); err != nil {
-						d.degradedMu.Lock()
-						if d.degradedReason == "" {
-							d.degradedReason = fmt.Sprintf("GHOSTDAG migration: could not persist block #%d: %v", b.Height, err)
-						}
-						d.degradedMu.Unlock()
-						fmt.Printf("[BLOCK] ✗ GHOSTDAG migration: persist failed for block #%d: %v — node marked degraded\n", b.Height, err)
-					}
-				}
 			}
+			flushBatch() // persist remaining partial batch
 			fmt.Printf("[BLOCK] GHOSTDAG migration: computed and persisted %d blocks\n", len(blocks))
 		}(sortedForGHOSTDAG, dag, state)
 	}
