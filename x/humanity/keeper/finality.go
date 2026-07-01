@@ -58,8 +58,8 @@ func (cs *ChainState) SetFinalizedCheckpoint(hash string, height, blueScore int6
 // that legitimate gap-fills within the finality window are never blocked.
 // Must be called with dag.mu held (reads dag.state but not dag.blocks).
 func (dag *BlockDAG) isFinalityViolation(block *Block) bool {
-	if block.IsGenesis {
-		return false
+	if block.IsGenesis || block.FromSync {
+		return false // never a finality violation for genesis or HTTP-SYNC canonical replay
 	}
 	finalizedHeight, _ := dag.state.GetFinalizedCheckpoint()
 	if finalizedHeight == 0 {
