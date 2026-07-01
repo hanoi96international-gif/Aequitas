@@ -131,32 +131,24 @@ func (a *APIServer) handleSwap(w http.ResponseWriter, r *http.Request) {
 		json.NewEncoder(w).Encode(SwapResponse{Success: false, Message: "signature invalid: " + err.Error()})
 		return
 	}
-	// Consume nonce FIRST, atomically. This blocks parallel requests with the
-	// same signature — only one can win the atomic increment; the other gets
-	// "already used" before the swap even runs, preventing double-execution.
-	if err := a.state.ConsumeSwapNonce(wallet, req.Nonce); err != nil {
-		json.NewEncoder(w).Encode(SwapResponse{Success: false, Message: err.Error()})
-		return
-	}
-
 	txType := "swap_aeq_tusd"
 	aeqToTusd := req.Direction == "aeq_to_tusd"
 	if !aeqToTusd {
 		txType = "swap_tusd_aeq"
 	}
-	// FIX (atomic outbox): SwapAtomic commits the state mutation and the
-	// pending_tx outbox insert as a single DB transaction (see
-	// runAtomicWithOutbox / TransferAtomic's comment) — either both happen
-	// or neither does, instead of the old separate Swap-then-SavePendingTx
-	// sequence where the outbox write could fail independently after the
-	// swap had already committed (swaps are likely the most frequent
-	// state-changing operation in the system, so this was the most
-	// frequently-hit version of the durability gap).
+	// FIX (atomic outbox): SwapAtomic commits the nonce consumption, the
+	// state mutation and the pending_tx outbox insert as a single DB
+	// transaction (see runAtomicWithOutbox / TransferAtomic's comment) —
+	// either all three happen or none does. Nonce consumption used to be a
+	// separate, earlier-committing statement (see ConsumeSwapNonce's
+	// comment, audit 2026-07-01 P1-4): a crash between it and the swap
+	// burned the nonce with no swap ever happening, and RestoreSwapNonce
+	// only ever ran on an in-process error, never on a crash. Now a failed
+	// swap rolls the nonce increment back automatically — no restore call
+	// needed.
 	pendingTxTemplate := Transaction{Type: txType, Wallet: wallet, Amount: req.Amount}
-	amountOut, _, err := a.state.SwapAtomic(wallet, req.Amount, aeqToTusd, req.MinAmountOut, pendingTxTemplate)
+	amountOut, _, err := a.state.SwapAtomic(wallet, req.Amount, aeqToTusd, req.MinAmountOut, req.Nonce, pendingTxTemplate)
 	if err != nil {
-		// Swap failed — restore nonce so user can retry with the same nonce.
-		a.state.RestoreSwapNonce(wallet, req.Nonce)
 		json.NewEncoder(w).Encode(SwapResponse{Success: false, Message: err.Error()})
 		return
 	}
@@ -223,17 +215,15 @@ func (a *APIServer) handleAddLiquidity(w http.ResponseWriter, r *http.Request) {
 		json.NewEncoder(w).Encode(AddLiquidityResponse{Success: false, Message: "signature invalid: " + err.Error()})
 		return
 	}
-	if err := a.state.ConsumeSwapNonce(wallet, req.Nonce); err != nil {
-		json.NewEncoder(w).Encode(AddLiquidityResponse{Success: false, Message: err.Error()})
-		return
-	}
-	// FIX (atomic outbox): AddLiquidityAtomic commits the state mutation and
-	// the pending_tx outbox insert as a single DB transaction — see
-	// SwapAtomic's comment above / TransferAtomic's comment in state.go.
+	// FIX (atomic outbox): AddLiquidityAtomic commits the nonce consumption,
+	// the state mutation and the pending_tx outbox insert as a single DB
+	// transaction — see SwapAtomic's comment above / TransferAtomic's
+	// comment in state.go (audit 2026-07-01, P1-4: nonce consumption is no
+	// longer a separate, earlier-committing step, so no restore-on-failure
+	// call is needed).
 	pendingTxTemplate := Transaction{Type: "add_liquidity", Wallet: wallet, Amount: req.AmountAEQ, AmountOut: req.AmountTUSD}
-	_, err := a.state.AddLiquidityAtomic(wallet, req.AmountAEQ, req.AmountTUSD, pendingTxTemplate)
+	_, err := a.state.AddLiquidityAtomic(wallet, req.AmountAEQ, req.AmountTUSD, req.Nonce, pendingTxTemplate)
 	if err != nil {
-		a.state.RestoreSwapNonce(wallet, req.Nonce)
 		json.NewEncoder(w).Encode(AddLiquidityResponse{Success: false, Message: err.Error()})
 		return
 	}
@@ -295,17 +285,13 @@ func (a *APIServer) handleRemoveLiquidity(w http.ResponseWriter, r *http.Request
 		json.NewEncoder(w).Encode(RemoveLiquidityResponse{Success: false, Message: "signature invalid: " + err.Error()})
 		return
 	}
-	if err := a.state.ConsumeSwapNonce(wallet, req.Nonce); err != nil {
-		json.NewEncoder(w).Encode(RemoveLiquidityResponse{Success: false, Message: err.Error()})
-		return
-	}
-	// FIX (atomic outbox): RemoveLiquidityAtomic commits the state mutation
-	// and the pending_tx outbox insert as a single DB transaction — see
-	// SwapAtomic's comment above / TransferAtomic's comment in state.go.
+	// FIX (atomic outbox): RemoveLiquidityAtomic commits the nonce
+	// consumption, the state mutation and the pending_tx outbox insert as a
+	// single DB transaction — see SwapAtomic's comment above /
+	// TransferAtomic's comment in state.go (audit 2026-07-01, P1-4).
 	pendingTxTemplate := Transaction{Type: "remove_liquidity", Wallet: wallet, Amount: req.SharesToBurn}
-	outAEQ, outTUSD, _, err := a.state.RemoveLiquidityAtomic(wallet, req.SharesToBurn, pendingTxTemplate)
+	outAEQ, outTUSD, _, err := a.state.RemoveLiquidityAtomic(wallet, req.SharesToBurn, req.Nonce, pendingTxTemplate)
 	if err != nil {
-		a.state.RestoreSwapNonce(wallet, req.Nonce)
 		json.NewEncoder(w).Encode(RemoveLiquidityResponse{Success: false, Message: err.Error()})
 		return
 	}

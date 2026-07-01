@@ -220,6 +220,16 @@ func EnsureContractsDeployed(evm *EVMEngine, state *ChainState, deployerAddr str
 
 	deployedAddr := strings.ToLower(contractAddr.Hex())
 	if deployedAddr != v7Addr {
+		// Audit 2026-07-01, P2-7: this used to be a stdout-only warning with
+		// no operator-visible alert — under today's deterministic
+		// single-EVM-deployer design, a mismatch here almost always
+		// indicates a real bug (e.g. deployer nonce logic changed, or a
+		// stray prior deployment consumed a nonce). The self-heal below
+		// (copy runtime code to the expected address) keeps the node
+		// functional, so this is surfaced via SetBootstrapDegraded/
+		// /api/health instead of aborting the deploy outright — an operator
+		// needs to see this, not just have it scroll by in logs.
+		state.SetBootstrapDegraded(fmt.Sprintf("V7 deployed at unexpected address %s (expected %s) — investigate deployer nonce", deployedAddr, v7Addr))
 		fmt.Printf("[DEPLOY] WARNING: deployed at %s but expected %s\n", deployedAddr, v7Addr)
 		fmt.Printf("[DEPLOY] Saving runtime code under expected address %s\n", v7Addr)
 		// Save under the expected address so existing code references work.

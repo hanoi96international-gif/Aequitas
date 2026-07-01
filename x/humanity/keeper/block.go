@@ -130,6 +130,19 @@ txMu                   sync.Mutex
 signingKey             *ecdsa.PrivateKey
 authorizedValidators   map[string]bool  // Ethereum addresses allowed to propose blocks
 activeSyncPeers        map[string]bool  // peers with a running syncWithNode goroutine
+// trustedSyncPeers holds only the operator-configured bootstrap/seed URLs
+// (PRIMARY_NODE_URL/PRIMARY_NODE_URLS, or the default public seed) — see
+// setTrustedSyncPeers. This is a strict subset of activeSyncPeers and is
+// the ONLY set of peers whose blocks may be marked block.FromSync=true
+// (audit 2026-07-01, P0-1/P0-2: FromSync used to be granted to every
+// dynamically-discovered/registered sync peer, which let anyone who could
+// register as a peer skip the authorized-validator, equivocation-suspension
+// and hard-finality gates entirely — the same Sybil/ban-evasion attacks
+// those gates exist to stop. Restricting the bypass to explicitly
+// operator-trusted seeds keeps catch-up sync from deadlocking (the original
+// reason FromSync was introduced) without extending that trust to arbitrary
+// peers.
+trustedSyncPeers       map[string]bool
 syncPeerMu             sync.Mutex
 warnedUnknownProposers map[string]bool  // suppresses repeated "not authorized" log lines
 peerChallenges         map[string]peerChallenge // address → pending challenge (P1-3)
@@ -266,6 +279,9 @@ replayedMu             sync.Mutex
 	// works the same for freshly-synced history as for newly-arriving
 	// blocks. Protected by dag.mu, same as dag.blocks.
 	equivocationIndex map[string]string
+	// equivocationIndexNextPruneAt ratchets forward pruneEquivocationIndexIfNeeded's
+	// next scan point (slashing.go) — see that function's comment.
+	equivocationIndexNextPruneAt int
 
 }
 
@@ -438,6 +454,7 @@ state:                  state,
 nodeID:                 nodeID,
 authorizedValidators:   loadAuthorizedValidators(),
 activeSyncPeers:        make(map[string]bool),
+trustedSyncPeers:       make(map[string]bool),
 warnedUnknownProposers: make(map[string]bool),
 peerChallenges:         make(map[string]peerChallenge),
 replayedBlocks:         make(map[string]bool),
@@ -682,12 +699,30 @@ func loadOrCreateRelayerKey() (key *ecdsa.PrivateKey, wasGenerated bool, err err
 	}
 	encoded := hex.EncodeToString(crypto.FromECDSA(key))
 	addr := strings.ToLower(crypto.PubkeyToAddress(key.PublicKey).Hex())
+	// FIX (audit 2026-07-01, P0-4): the raw private key used to be printed
+	// directly to stderr. On hosted platforms (Railway et al.) stderr/stdout
+	// routinely gets shipped to aggregated log dashboards/third-party log
+	// storage — anyone with log access (a hosting-platform employee, a
+	// compromised log-aggregation integration, a leaked log export) could
+	// lift a real, fund-signing private key straight out of logs, worse
+	// still since operators are explicitly told they may reuse this same
+	// key as their human NODE_OPERATOR_WALLET (a single-key setup). Writing
+	// it to a local file with 0600 permissions and printing only the path
+	// keeps the key out of the log stream; the file still needs to be read
+	// and the env var set before the next restart, same urgency as before.
+	keyFilePath := "RELAYER_PRIVATE_KEY.generated"
+	fileErr := os.WriteFile(keyFilePath, []byte("0x"+encoded+"\n"), 0o600)
 	fmt.Fprintln(os.Stderr, "════════════════════════════════════════")
 	fmt.Fprintln(os.Stderr, "⚠ No RELAYER_PRIVATE_KEY found — generated a new one.")
-	fmt.Fprintln(os.Stderr, "⚠ This key is visible in hosted log dashboards. Treat it as a secret.")
 	fmt.Fprintln(os.Stderr, "⚠ SAVE IT NOW — if this process restarts before you do, your validator")
 	fmt.Fprintln(os.Stderr, "⚠ identity changes and any pending authorization/rewards binding is lost.")
-	fmt.Fprintf(os.Stderr, "SET THIS AS RELAYER_PRIVATE_KEY, then restart the service:\n0x%s\n", encoded)
+	if fileErr == nil {
+		fmt.Fprintf(os.Stderr, "Private key written to %q (0600 permissions) — read it from there, NOT from these logs, then set it as RELAYER_PRIVATE_KEY and restart.\n", keyFilePath)
+		fmt.Fprintln(os.Stderr, "⚠ Delete that file once you've copied the key into your env var/secrets store.")
+	} else {
+		fmt.Fprintf(os.Stderr, "⚠ Could not write key file (%v) — falling back to printing it here. This key IS visible in hosted log dashboards; treat it as compromised once saved and rotate it if this deployment uses shared/third-party log storage.\n", fileErr)
+		fmt.Fprintf(os.Stderr, "SET THIS AS RELAYER_PRIVATE_KEY, then restart the service:\n0x%s\n", encoded)
+	}
 	fmt.Fprintf(os.Stderr, "Its address (for RELAYER_ADDRESS / NODE_OPERATOR_WALLET, if this is also your verified-human wallet): %s\n", addr)
 	fmt.Fprintln(os.Stderr, "════════════════════════════════════════")
 	return key, true, nil
@@ -1277,6 +1312,15 @@ func (dag *BlockDAG) WithBlockProductionPaused(fn func()) {
 // so a catch-up node can hold ALL historical orphans in memory until the
 // sequential download cascade resolves them, without dropping blocks that would
 // break the resolution chain. At ~500 bytes/block average: ~100 MB peak usage.
+// maxLiveBlockClockSkew bounds how far block.Timestamp may deviate from this
+// node's wall clock for a block NOT fetched via trusted HTTP-SYNC (see
+// isTrustedSyncPeer / AddPeerBlock's timestamp plausibility gate, audit
+// 2026-07-01 P1-1). Generous relative to the ~6s block interval to tolerate
+// real NTP drift across globally distributed validators, while still making
+// it infeasible for a live proposer to claim an arbitrarily old timestamp to
+// evade IsValidatorSuspended's "predates the ban" exception.
+const maxLiveBlockClockSkew = 10 * time.Minute
+
 const maxOrphans = 200_000
 
 // orphanAbandonAfter bounds how long this node will keep trying to resolve a
@@ -1688,6 +1732,27 @@ if block.Signature != "" && !block.IsGenesis {
 		dag.mu.Unlock()
 		return false
 	}
+	// Timestamp plausibility gate (audit 2026-07-01, P1-1): block.Timestamp is
+	// chosen by the proposer and is only integrity-protected in the sense that
+	// it's covered by the signature — nothing previously stopped a suspended
+	// validator from signing a brand-new block with a backdated Timestamp to
+	// slip through IsValidatorSuspended's "historical block predates the ban"
+	// exception below. Live (non-FromSync) blocks must therefore be within a
+	// generous clock-skew window of wall-clock time; only FromSync blocks
+	// (operator-trusted historical replay, see isTrustedSyncPeer) are exempt,
+	// since those legitimately carry old timestamps.
+	if !block.FromSync {
+		skew := time.Now().Unix() - block.Timestamp
+		if skew < 0 {
+			skew = -skew
+		}
+		if skew > int64(maxLiveBlockClockSkew.Seconds()) {
+			fmt.Printf("[DAG] ✗ Rejected peer block #%d from %s: implausible timestamp (skew %ds)\n",
+				block.Height, proposer, skew)
+			dag.mu.Unlock()
+			return false
+		}
+	}
 	// Proposer must be in the authorized validator set. Without this check
 	// anyone can generate an Ethereum key, sign a block, and feed it in.
 	// Skipped for HTTP-SYNC blocks (block.FromSync): the primary already
@@ -1991,7 +2056,17 @@ if block.Height > dag.height {
 // second block from the same proposer for the same parent set is found.
 // Runs under dag.mu (checkAndIndexEquivocation requires it) and spawns a
 // goroutine for the DB work so it doesn't delay block acceptance.
-if conflict, isEquivocation := dag.checkAndIndexEquivocation(block); isEquivocation && dag.state != nil {
+// Skip triggering NEW slashing from FromSync blocks (audit 2026-07-01,
+// P1-2): those are historical replay from an operator-trusted seed (see
+// isTrustedSyncPeer), not live proposals. A validator's equivocation, if
+// real, would already have been recorded and suspended by the node(s) that
+// saw it happen live; re-deriving a fresh slash purely from two blocks
+// encountered together during catch-up sync has no live-timing guarantee
+// and would let a malicious or misconfigured seed manufacture false
+// equivocation evidence against a validator who never actually double-signed
+// in real time. Still index the block so a genuine future live conflict
+// is caught the normal way.
+if conflict, isEquivocation := dag.checkAndIndexEquivocation(block); isEquivocation && dag.state != nil && !block.FromSync {
 	proposerAddr := block.Proposer
 	blockAHash := conflict.Hash
 	blockBHash := block.Hash

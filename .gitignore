@@ -38,3 +38,10 @@
 *.apk
 downloads/*.apk
 build/msyh_extracted.ttf
+
+# Auto-generated node/validator private keys (audit 2026-07-01, P0-4/P1-6):
+# loadOrCreateRelayerKey/loadOrCreateKey write these with 0600 permissions
+# when RELAYER_PRIVATE_KEY/NODE_KEY aren't set (e.g. during local test runs)
+# — never commit real private key material.
+RELAYER_PRIVATE_KEY.generated
+NODE_KEY.generated

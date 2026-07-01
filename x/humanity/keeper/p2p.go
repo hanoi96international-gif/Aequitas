@@ -17,6 +17,7 @@ import (
 	"github.com/libp2p/go-libp2p/core/network"
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/libp2p/go-libp2p/core/protocol"
+	connmgr "github.com/libp2p/go-libp2p/p2p/net/connmgr"
 )
 
 const (
@@ -115,12 +116,23 @@ func loadOrCreateKey() (crypto.PrivKey, error) {
 		return nil, err
 	}
 	encoded := base64.StdEncoding.EncodeToString(keyBytes)
-	// Fix 9: NODE_KEY is visible in hosted log dashboards even on stderr.
-	// Operators must treat it as a secret and move it to a NODE_KEY env var.
+	// FIX (audit 2026-07-01, P1-6): "Fix 9" above only ever added a warning
+	// comment, not an actual fix — the key was still printed in full. Same
+	// treatment as loadOrCreateRelayerKey (block.go, P0-4): write it to a
+	// 0600 file and print only the path, so it doesn't end up in aggregated
+	// hosted-log-dashboard storage.
+	keyFilePath := "NODE_KEY.generated"
+	fileErr := os.WriteFile(keyFilePath, []byte(encoded+"\n"), 0o600)
 	fmt.Fprintln(os.Stderr, "════════════════════════════════════════")
-	fmt.Fprintln(os.Stderr, "⚠ WARNING: NODE_KEY is visible in hosted log dashboards. Treat this as a secret.")
-	fmt.Fprintln(os.Stderr, "SAVE THIS AS NODE_KEY ENVIRONMENT VAR, then restart the service:")
-	fmt.Fprintln(os.Stderr, encoded)
+	if fileErr == nil {
+		fmt.Fprintf(os.Stderr, "⚠ No NODE_KEY found — generated a new one, written to %q (0600 permissions).\n", keyFilePath)
+		fmt.Fprintln(os.Stderr, "Read it from there, NOT from these logs, set it as NODE_KEY, then restart.")
+		fmt.Fprintln(os.Stderr, "⚠ Delete that file once you've copied the key into your env var/secrets store.")
+	} else {
+		fmt.Fprintf(os.Stderr, "⚠ Could not write key file (%v) — falling back to printing it here. This key IS visible in hosted log dashboards; treat it as compromised once saved.\n", fileErr)
+		fmt.Fprintln(os.Stderr, "SAVE THIS AS NODE_KEY ENVIRONMENT VAR, then restart the service:")
+		fmt.Fprintln(os.Stderr, encoded)
+	}
 	fmt.Fprintln(os.Stderr, "════════════════════════════════════════")
 
 	return priv, nil
@@ -132,11 +144,27 @@ func NewP2PNode(keeper *Keeper) (*P2PNode, error) {
 		return nil, fmt.Errorf("failed to load key: %w", err)
 	}
 
+	// Audit 2026-07-01, P3-9: libp2p previously accepted an unbounded number
+	// of connections from any host on the internet — SetStreamHandler below
+	// has no peer-identity allowlist (a real one would need a NEW binding
+	// between libp2p's Ed25519 peer IDs and validators' secp256k1 Ethereum
+	// signing keys, a protocol addition out of scope here), and downstream
+	// block validation already rejects bad data regardless. The gap this
+	// closes is narrower but real: with no cap at all, simply opening many
+	// connections was free for any reachable attacker. A basic connection
+	// manager bounds total P2P connections and prunes down to a low
+	// watermark under pressure — a standard libp2p safeguard, not a custom
+	// protocol change, so it can't itself introduce new validation bugs.
+	cm, cmErr := connmgr.NewConnManager(64, 256, connmgr.WithGracePeriod(time.Minute))
+	if cmErr != nil {
+		return nil, fmt.Errorf("failed to create connection manager: %w", cmErr)
+	}
 	h, err := libp2p.New(
 		libp2p.Identity(priv),
 		libp2p.ListenAddrStrings(
 			fmt.Sprintf("/ip4/0.0.0.0/tcp/%d", ListenPort),
 		),
+		libp2p.ConnectionManager(cm),
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create host: %w", err)

@@ -21,14 +21,19 @@ const V7_CONTRACT_ADDR = "0x20D271028f32577FCd07b4583A8e0E4eBBdB4F78"
 const BIO_VERIFIER_ADDR = "0xc369D27b49DE017d113Bbcb9A1884a9e745B6BE2"
 const V5_SEPOLIA_LEGACY_ADDR = "0x4f147d5B3388AF07993CC4fC548502A78Af0B8b5" // Sepolia testnet — historical only, no longer in active use
 
-// MirrorV6Registration mirrors a V6 registration to PostgreSQL
+// MirrorV6Registration mirrors a V6 registration to PostgreSQL.
+//
+// FIX (audit 2026-07-01, P3-4): human/commitment/balance now write as one
+// DB transaction via MirrorV6RegistrationAtomic instead of three independent
+// statements — see that function's comment for the crash-window bug this
+// closes (a registered-but-balance-less V6 human silently restored as 0 AEQ).
 func (e *EVMEngine) MirrorV6Registration(wallet, commitment string) {
-	e.chainState.SaveV6Human(wallet, commitment)
-	e.chainState.SaveV6Commitment(commitment, wallet)
-
 	decimals := new(big.Int).Exp(big.NewInt(10), big.NewInt(18), nil)
 	grant := new(big.Int).Mul(big.NewInt(1000), decimals)
-	e.chainState.SaveV6Balance(wallet, hex.EncodeToString(grant.Bytes()))
+	if err := e.chainState.MirrorV6RegistrationAtomic(wallet, commitment, hex.EncodeToString(grant.Bytes())); err != nil {
+		fmt.Printf("[V6] ✗ Mirror registration failed for %s: %v\n", wallet, err)
+		return
+	}
 
 	humans := e.chainState.GetAllV6Humans()
 	e.chainState.SaveV6State("totalHumans", fmt.Sprintf("%x", len(humans)))
@@ -71,8 +76,17 @@ func (e *EVMEngine) RestoreV6FromMirror() {
 		}
 
 		// balanceOf[wallet] (slot 1)
-		balWeiHex := e.chainState.LoadV6Balance(human["address"])
-		if balWeiHex != "" {
+		// FIX (audit 2026-07-01, P3-4): LoadV6BalanceChecked distinguishes
+		// "no balance row" from "row present with value 0" — the old
+		// LoadV6Balance collapsed both to "0", so a human whose balance
+		// write never happened (crash between SaveV6Human and SaveV6Balance,
+		// now fixed at the source by MirrorV6RegistrationAtomic above, but
+		// still possible for rows written before this fix) silently got
+		// balanceOf=0 restored instead of being flagged.
+		balWeiHex, found := e.chainState.LoadV6BalanceChecked(human["address"])
+		if !found {
+			fmt.Printf("[V6] ⚠ %s is a registered V6 human with no balance row — skipping balanceOf restore (needs manual repair)\n", human["address"])
+		} else if balWeiHex != "" {
 			balBig := new(big.Int)
 			balBig.SetString(balWeiHex, 16)
 			balSlot := mappingSlot(walletAddr.Bytes(), 1)

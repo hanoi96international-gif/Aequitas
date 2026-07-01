@@ -1,6 +1,7 @@
 package keeper
 
 import (
+	"database/sql"
 	"fmt"
 	"sort"
 	"strings"
@@ -89,7 +90,60 @@ func (dag *BlockDAG) checkAndIndexEquivocation(block *Block) (conflict *Block, i
 		return nil, false
 	}
 	dag.equivocationIndex[key] = block.Hash
+	dag.pruneEquivocationIndexIfNeeded()
 	return nil, false
+}
+
+// equivocationIndexPruneThreshold caps how large dag.equivocationIndex is
+// allowed to grow before a prune pass runs (audit 2026-07-01, P3-1: the map
+// previously had no cleanup at all and grew by one entry per unique
+// (proposer, parent-set) pair for the lifetime of the chain).
+const equivocationIndexPruneThreshold = 100_000
+
+// equivocationIndexPruneBatch is how much dag.equivocationIndex must grow
+// past dag.equivocationIndexNextPruneAt before another prune pass is
+// attempted (see pruneEquivocationIndexIfNeeded's comment for why this
+// ratchet exists).
+const equivocationIndexPruneBatch = 10_000
+
+// pruneEquivocationIndexIfNeeded drops index entries whose indexed block is
+// at or below the hard-finalized checkpoint. Once a height is finalized it
+// can never be reorganized, so any equivocation there would already have
+// been caught (and slashed) by whichever node(s) saw both blocks live — an
+// entry that has survived un-conflicted past finality no longer needs
+// O(1)-lookup protection, and unlike a blind reset (the pattern used for
+// warnedUnknownProposers) this never discards a still-reorganizable, still
+// security-relevant entry. Must be called under dag.mu (same lock
+// checkAndIndexEquivocation requires).
+//
+// FIX (self-review after audit 2026-07-01, P3-1): the first version of this
+// function re-scanned the ENTIRE map on every single insert once past
+// equivocationIndexPruneThreshold, forever — if finality is lagging (so most
+// entries aren't prunable yet), every new block then paid a full O(n) scan
+// while holding dag.mu, for every subsequent block, not just the one that
+// crossed the threshold. dag.equivocationIndexNextPruneAt ratchets forward
+// after each attempt (whether or not it freed much) so a scan only runs
+// again once the map has grown by another full batch — bounding the
+// amortized cost regardless of how effective any single pass is.
+func (dag *BlockDAG) pruneEquivocationIndexIfNeeded() {
+	if dag.state == nil {
+		return
+	}
+	n := len(dag.equivocationIndex)
+	if n <= equivocationIndexPruneThreshold {
+		dag.equivocationIndexNextPruneAt = 0 // reset the ratchet once back under threshold
+		return
+	}
+	if dag.equivocationIndexNextPruneAt != 0 && n < dag.equivocationIndexNextPruneAt {
+		return
+	}
+	finalizedHeight, _ := dag.state.GetFinalizedCheckpoint()
+	for key, hash := range dag.equivocationIndex {
+		if b, found := dag.blocks[hash]; !found || b.Height <= finalizedHeight {
+			delete(dag.equivocationIndex, key)
+		}
+	}
+	dag.equivocationIndexNextPruneAt = len(dag.equivocationIndex) + equivocationIndexPruneBatch
 }
 
 // initSlashingTables creates the tables equivocation slashing persists to.
@@ -132,14 +186,42 @@ func (cs *ChainState) IsValidatorSuspended(addr string, blockTimestamp int64) (s
 	if cs.db == nil {
 		return false, ""
 	}
+	addrLower := strings.ToLower(addr)
 	var banned bool
 	var suspendedUntil, lastOffenseAt int64
 	err := cs.db.QueryRow(
 		`SELECT banned, suspended_until, last_offense_at FROM validator_penalties WHERE signing_address = $1`,
-		strings.ToLower(addr),
+		addrLower,
 	).Scan(&banned, &suspendedUntil, &lastOffenseAt)
 	if err != nil {
-		return false, "" // ErrNoRows or transient error: fail open
+		if err == sql.ErrNoRows {
+			// Genuine "no penalty record" — the common case, most
+			// validators were never slashed.
+			return false, ""
+		}
+		// Audit 2026-07-01, P2-1 (re-checked): a transient DB error must not
+		// silently fail open (that would let an actually-suspended/banned
+		// validator's blocks through). But this function is called for
+		// EVERY block's proposer, so failing closed unconditionally on the
+		// FIRST error turns a brief, isolated hiccup (e.g. lock contention
+		// on this one table from a concurrent RecordEquivocationAndSuspend
+		// write) into a full chain-wide liveness stall — every validator's
+		// blocks get rejected for as long as the blip lasts, a much larger
+		// blast radius than the original "fail open" bug. One immediate,
+		// no-sleep retry (this runs under dag.mu, so no sleep) absorbs a
+		// single transient blip; only a SECOND consecutive failure fails
+		// closed, which by then more confidently indicates a real, not
+		// fluky, problem.
+		err2 := cs.db.QueryRow(
+			`SELECT banned, suspended_until, last_offense_at FROM validator_penalties WHERE signing_address = $1`,
+			addrLower,
+		).Scan(&banned, &suspendedUntil, &lastOffenseAt)
+		if err2 != nil {
+			if err2 == sql.ErrNoRows {
+				return false, ""
+			}
+			return true, fmt.Sprintf("could not verify suspension status after retry: %v", err2)
+		}
 	}
 	// Historical block predates the ban — allow it during catch-up sync.
 	if blockTimestamp > 0 && lastOffenseAt > 0 && blockTimestamp < lastOffenseAt {

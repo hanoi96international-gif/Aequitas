@@ -234,6 +234,30 @@ func (dag *BlockDAG) syncValidatorsFromAllPeers() {
 	}
 }
 
+// setTrustedSyncPeers replaces the set of URLs allowed to have their blocks
+// marked block.FromSync=true. Called only with the operator-configured seed
+// list (seedURLs) — never with dynamically discovered/registered peers, so
+// registering as a peer alone can never grant the FromSync bypass (audit
+// 2026-07-01, P0-1/P0-2).
+func (dag *BlockDAG) setTrustedSyncPeers(urls []string) {
+	dag.syncPeerMu.Lock()
+	defer dag.syncPeerMu.Unlock()
+	next := make(map[string]bool, len(urls))
+	for _, u := range urls {
+		next[strings.TrimRight(u, "/")] = true
+	}
+	dag.trustedSyncPeers = next
+}
+
+// isTrustedSyncPeer reports whether peerURL is one of the operator-configured
+// seed URLs — the only sources allowed to bypass the authorization,
+// equivocation-suspension and hard-finality gates for historical replay.
+func (dag *BlockDAG) isTrustedSyncPeer(peerURL string) bool {
+	dag.syncPeerMu.Lock()
+	defer dag.syncPeerMu.Unlock()
+	return dag.trustedSyncPeers[strings.TrimRight(peerURL, "/")]
+}
+
 // startSyncForPeer starts a long-running syncWithNode goroutine for peerURL.
 // No-op if already syncing that URL or if the peer cap is reached.
 func (dag *BlockDAG) startSyncForPeer(peerURL string) {
@@ -462,7 +486,10 @@ func (dag *BlockDAG) fetchMissingAncestors(nodeURL string) {
 			}
 			for _, block := range blocks {
 				fetchedThisRound++
-				block.FromSync = true
+				// Only operator-configured seeds/static peers may trigger the
+				// FromSync gate bypass — see isTrustedSyncPeer (audit
+				// 2026-07-01, P0-1/P0-2).
+				block.FromSync = dag.isTrustedSyncPeer(nodeURL)
 				if !dag.AddPeerBlock(block) {
 					// Block was fetched from the peer but rejected locally
 					// (bad signature, unauthorized proposer, etc.).  Count it
@@ -588,7 +615,9 @@ func (dag *BlockDAG) doSyncOnce(nodeURL string) (ok bool) {
 			dag.mu.RLock()
 			_, exists := dag.blocks[block.Hash]
 			dag.mu.RUnlock()
-			block.FromSync = true
+			// See isTrustedSyncPeer (audit 2026-07-01, P0-1/P0-2): only
+			// operator-configured seeds/static peers grant the FromSync bypass.
+			block.FromSync = dag.isTrustedSyncPeer(nodeURL)
 			if !exists && dag.AddPeerBlock(block) {
 				addedThisPage++
 			}
@@ -796,14 +825,19 @@ func (dag *BlockDAG) StartPeerDiscovery(selfURL string) {
 	}
 	fmt.Printf("[PEERS] Self: %s\n", selfURL)
 
-	// Seed from explicit PEER_NODES (backwards compat + manual override)
-	for _, peer := range staticPeers(selfURL) {
+	// Seed from explicit PEER_NODES (backwards compat + manual override).
+	// Like PRIMARY_NODE_URL(S), this is operator-configured (never learned
+	// from an untrusted peer's response), so these URLs are trusted for
+	// FromSync the same way seeds are.
+	staticPeerURLs := staticPeers(selfURL)
+	for _, peer := range staticPeerURLs {
 		GlobalPeerRegistry.Register(peer)
 		dag.startSyncForPeer(peer)
 		fmt.Printf("[PEERS] Static peer: %s\n", peer)
 	}
 
 	seeds := seedURLs(selfURL)
+	dag.setTrustedSyncPeers(append(append([]string{}, seeds...), staticPeerURLs...))
 	if len(seeds) > 0 {
 		for _, seed := range seeds {
 			fmt.Printf("[PEERS] Seed: %s\n", seed)
@@ -826,7 +860,9 @@ func (dag *BlockDAG) StartPeerDiscovery(selfURL string) {
 			// operator can add PRIMARY_NODE_URLS to an already-running node
 			// (e.g. to recover from a single seed going down) without a
 			// restart.
-			for _, seed := range seedURLs(selfURL) {
+			refreshedSeeds := seedURLs(selfURL)
+			dag.setTrustedSyncPeers(append(append([]string{}, refreshedSeeds...), staticPeers(selfURL)...))
+			for _, seed := range refreshedSeeds {
 				dag.registerAndDiscover(selfURL, seed)
 			}
 			dag.healSyntheticCheckpoints()
@@ -865,7 +901,9 @@ func (dag *BlockDAG) healSyntheticCheckpoints() {
 				continue
 			}
 			for _, b := range blocks {
-				b.FromSync = true
+				// See isTrustedSyncPeer (audit 2026-07-01, P0-1/P0-2): only
+				// operator-configured seeds/static peers grant the FromSync bypass.
+				b.FromSync = dag.isTrustedSyncPeer(peerURL)
 				if dag.AddPeerBlock(b) {
 					healed++
 				}

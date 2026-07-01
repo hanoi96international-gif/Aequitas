@@ -63,6 +63,16 @@ ShanghaiTime:        &shanghai,
 // calls deterministically (e.g. from a block's own Timestamp field instead
 // of wall-clock), there's a single obvious parameter to redirect — not a
 // buried global clock read that would need to be hunted down.
+//
+// RE-VERIFIED (audit 2026-07-01, P3-3): the "exactly one persist=true
+// execution per logical action" guarantee this relies on is enforced by
+// nonce reservation in evm_rpc.go's eth_sendRawTransaction (a given signed
+// tx's nonce can only be reserved and executed once — see ReserveNonce) and
+// by RegisterHumanAtomic's nullifier claim for the registration path. No
+// additional guard was added here: the enforcement already lives at those
+// call sites, and duplicating a check here (with no access to the
+// per-call idempotency key that matters) would just be a second, harder-to-
+// keep-in-sync copy of the same invariant rather than a real safety net.
 func blockContext(ts uint64) vm.BlockContext {
 return vm.BlockContext{
 CanTransfer: func(_ vm.StateDB, _ common.Address, _ *big.Int) bool { return true },
@@ -237,6 +247,26 @@ e.chainState.SaveContract(addrStr, runtimeCode, fromStr)
 // Scanning 0–199 costs one GetState call per slot (cheap, in-memory
 // after Commit) and is deterministic regardless of which keys users
 // have registered.
+//
+// KNOWN LIMITATION (audit 2026-07-01, P2-9): SaveContract above and each
+// SaveStorageSlot call below are independent, separately-committing DB
+// statements, not one transaction — a crash partway through this loop
+// leaves a contract with bytecode but only partially-initialized
+// constructor storage. Left unwrapped deliberately: this is a rare,
+// relayer-only bootstrap operation (contract deploy happens once per node
+// lifetime, not a hot path), and giving it its own ad-hoc transaction
+// would mean manipulating cs.activeTx outside the established
+// runAtomicWithOutbox pattern that every other multi-statement write in
+// this codebase relies on — a meaningfully higher-risk change for this
+// path than the benefit justifies. MigrateEVMFromGoState (called by
+// EnsureContractsDeployed right after this returns) already re-derives the
+// balance/supply-critical slots (totalSupply, totalHumans, balanceOf,
+// isHuman, usedCommitments, usedNullifiers) from the authoritative
+// Go-state/DB, so a partial failure among those specific slots is
+// self-healing on the next successful migration pass; the remaining
+// constructor-only slots (CAPS/THRESHOLDS arrays) are static per-deploy
+// constants, not derived from mutable state, so re-running deployment is
+// the recovery path for those.
 savedCount := 0
 for i := int64(0); i < 200; i++ {
 slot := common.BigToHash(big.NewInt(i))
@@ -456,8 +486,17 @@ commitments = append(commitments, commitment)
 }
 return addrs, commitments
 default:
-// Unknown selector: at minimum, the caller's own address may have
-// been touched (e.g. a simple register() or transfer() from msg.sender).
+// Audit 2026-07-01, P2-8: today the ONLY selector that reaches this
+// function with persist=true is "13b81eb0" (registerWithSig) — every
+// other state-changing call is either intercepted before CallContract
+// (a9059cbb/transfer) or rejected outright by evm_rpc.go's
+// knownPublicSelectors allowlist (see its own comment). This default
+// case returning only `from` is therefore currently dead in practice,
+// but the two lists (this switch and knownPublicSelectors) are
+// maintained independently — a future selector added to the allowlist
+// without a matching case here would silently drop recipient storage
+// slots. Log loudly so that gap can't happen silently.
+fmt.Printf("[EVM] WARNING: extractTouchedEntities has no explicit case for selector %s — only persisting `from`'s slots; if this selector writes another address's storage, add a case here (see knownPublicSelectors in evm_rpc.go)\n", selector)
 return []common.Address{from}, nil
 }
 }
@@ -517,34 +556,20 @@ val := freshDB.GetState(addr, slot)
 e.chainState.SaveStorageSlot(addrStr, slot.Hex(), val.Hex())
 count++
 }
-// Persist usedNullifiers (slot 8): bytes32→address mapping. Previously only
-// usedCommitments was persisted; nullifiers were lost on StateDB reload,
-// allowing the same biometric to re-register after a node restart.
-// P2-FIX: dead code removed — nullifiers are synced via the DB scan below
-// Alternative: persist ALL non-zero bytes32-keyed entries from slot 8 by
-// scanning the nullifiers table and writing them all.
-if e.chainState.db != nil {
-rows, err := e.chainState.db.Query(`SELECT nullifier, wallet_address FROM nullifiers`)
-if err == nil {
-for rows.Next() {
-var nullHex, wallet string
-// P2-FIX: check scan error to avoid processing a partially-read row.
-if scanErr := rows.Scan(&nullHex, &wallet); scanErr != nil {
-fmt.Printf("[EVM] Warning: nullifier scan error: %v\n", scanErr)
-continue
-}
-nullKey := common.HexToHash(strings.TrimPrefix(nullHex, "0x"))
-nullSlot := mappingSlotBytes32(nullKey, 8)
-walletHash := common.BigToHash(common.HexToAddress(wallet).Big())
-e.chainState.SaveStorageSlot(addrStr, nullSlot.Hex(), walletHash.Hex())
-count++
-}
-if rowsErr := rows.Err(); rowsErr != nil {
-fmt.Printf("[EVM] Warning: nullifier rows iteration error: %v\n", rowsErr)
-}
-rows.Close()
-}
-}
+// Persisting usedNullifiers (slot 8, bytes32→address mapping) for the
+// current call is handled by the caller, dumpAndPersistStorageWithNullifier,
+// which persists exactly the one nullifier this call actually touched.
+//
+// FIX (audit 2026-07-01, P0-3): this function used to ALSO run
+// `SELECT nullifier, wallet_address FROM nullifiers` here and re-persist
+// every nullifier ever recorded, on every single persisted EVM call
+// (every registration, every V7 transfer) — an O(N) full-table scan plus N
+// SaveStorageSlot round-trips per call, where N is the total number of
+// humans ever registered. That made every registration/transfer get
+// linearly slower as the network grew and was a trivial DoS vector at
+// scale (tens of thousands of extra DB round-trips per action). The
+// targeted per-call nullifier write above already keeps slot 8 correct;
+// this redundant full scan added no correctness benefit.
 if count > 0 {
 fmt.Printf("[EVM] Persisted %d storage slots for %s\n", count, addrStr)
 }

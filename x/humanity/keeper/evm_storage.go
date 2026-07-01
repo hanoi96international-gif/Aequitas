@@ -222,6 +222,23 @@ func (cs *ChainState) LoadAllStorageSlots(address string) (map[string]string, er
 	return out, nil
 }
 
+// isHumanInEVMMirror reports whether the V7 contract's isHuman[wallet]
+// storage slot (slot 6, address-keyed mapping) is already set to a non-zero
+// (true) value in the EVM mirror. Used by RetryRegistrationRecoveries (audit
+// 2026-07-01, P1-3) to distinguish "EVM registration genuinely never
+// happened" from "EVM registration succeeded but Go-state sync failed" for a
+// pre-EVM recovery intent, since only the former is safe to tell the user
+// to retry.
+func (cs *ChainState) isHumanInEVMMirror(wallet string) bool {
+	addr := common.HexToAddress(wallet)
+	slot := mappingSlot(addr.Bytes(), 6)
+	val, err := cs.LoadStorageSlot(V7_CONTRACT_ADDR, slot.Hex())
+	if err != nil || val == "" {
+		return false
+	}
+	return common.HexToHash(val) != (common.Hash{})
+}
+
 func (cs *ChainState) LoadStorageSlot(address, slot string) (string, error) {
 	if cs.db == nil {
 		return "", nil
@@ -1276,17 +1293,56 @@ func (cs *ChainState) SaveNullifier(nullifier, walletAddress string) error {
 		return nil
 	}
 	walletAddress = strings.ToLower(walletAddress)
-	if len(cs.nullifiers) < maxInMemNullifiers {
-		cs.nullifiers[nullifier] = walletAddress
-	}
 	if cs.db == nil {
+		if existing, exists := cs.nullifiers[nullifier]; exists && existing != walletAddress {
+			return fmt.Errorf("nullifier %s already claimed by a different wallet", nullifier)
+		}
+		if len(cs.nullifiers) < maxInMemNullifiers {
+			cs.nullifiers[nullifier] = walletAddress
+		}
 		return nil
 	}
-	if _, err := cs.dbExec().Exec(
+	// Audit 2026-07-01, P0-6: this used to be a plain
+	// INSERT ... ON CONFLICT DO NOTHING with no check of whether the
+	// conflicting row belonged to walletAddress or to someone else — and
+	// unconditionally overwrote the in-memory cs.nullifiers cache with
+	// walletAddress regardless. RegisterHumanAtomic (this function's only
+	// caller) is invoked directly by RetryRegistrationRecoveries for
+	// pre-EVM-crash intents WITHOUT first going through register.go's
+	// TryClaimNullifier pre-check, so a second registration_recovery record
+	// carrying an already-used nullifier under a DIFFERENT wallet used to
+	// mint that wallet its own 1,000 AEQ grant silently — violating "one
+	// human, one registration" and the totalSupply=humans*1000 invariant.
+	// Now RowsAffected distinguishes "freshly claimed by this wallet" from
+	// "already exists" and, in the latter case, the actual owning wallet is
+	// looked up so a genuine cross-wallet conflict fails loudly instead of
+	// being swallowed by DO NOTHING.
+	res, err := cs.dbExec().Exec(
 		`INSERT INTO nullifiers (nullifier, wallet_address) VALUES ($1, $2) ON CONFLICT (nullifier) DO NOTHING`,
 		nullifier, walletAddress,
-	); err != nil {
+	)
+	if err != nil {
 		return fmt.Errorf("could not persist nullifier: %w", err)
+	}
+	if n, _ := res.RowsAffected(); n > 0 {
+		if len(cs.nullifiers) < maxInMemNullifiers {
+			cs.nullifiers[nullifier] = walletAddress
+		}
+		return nil
+	}
+	// Row already existed — find out who actually owns it before deciding
+	// whether this is a harmless retry (same wallet) or a real conflict.
+	var owner string
+	if scanErr := cs.dbExec().QueryRow(
+		`SELECT wallet_address FROM nullifiers WHERE nullifier = $1`, nullifier,
+	).Scan(&owner); scanErr != nil {
+		return fmt.Errorf("could not verify nullifier ownership: %w", scanErr)
+	}
+	if strings.ToLower(owner) != walletAddress {
+		return fmt.Errorf("nullifier %s already claimed by wallet %s, not %s", nullifier, owner, walletAddress)
+	}
+	if len(cs.nullifiers) < maxInMemNullifiers {
+		cs.nullifiers[nullifier] = walletAddress
 	}
 	return nil
 }
@@ -1706,22 +1762,23 @@ func (cs *ChainState) GetSwapNonce(wallet string) int64 {
 	return nonce
 }
 
-// RestoreSwapNonce decrements the nonce back to its pre-swap value when a
-// swap fails after the nonce was already consumed. Safe to call: if the nonce
-// has already advanced past nonce+1 (extremely unlikely concurrent case) the
-// UPDATE finds no rows and the decrement is skipped — user must re-sign.
-func (cs *ChainState) RestoreSwapNonce(wallet string, nonce int64) {
-	if cs.db == nil {
-		return
-	}
-	wallet = strings.ToLower(wallet)
-	cs.db.Exec(`UPDATE swap_nonces SET next_nonce = $2 WHERE wallet_address = $1 AND next_nonce = $2 + 1`,
-		wallet, nonce)
-}
-
 // ConsumeSwapNonce atomically verifies that nonce matches the expected value
 // and increments it. Returns an error if the nonce doesn't match (replay or
 // wrong value). Must be called only after the signature has been verified.
+//
+// FIX (audit 2026-07-01, P1-4): now uses cs.dbExec() instead of cs.db
+// directly. Callers used to invoke this as its own, separately-committing
+// statement BEFORE calling SwapAtomic/AddLiquidityAtomic/
+// RemoveLiquidityAtomic — a crash between the two left the nonce burned
+// forever with no corresponding swap/liquidity change (RestoreSwapNonce only
+// ever ran on an in-process error return, never on a crash). Using
+// cs.dbExec() means that when this is called from inside one of those
+// *Atomic closures (which already hold cs.mu and have cs.activeTx set via
+// runAtomicWithOutbox), the nonce increment joins the exact same DB
+// transaction as the state mutation and outbox insert — either all three
+// commit together or all three roll back together, closing the crash
+// window entirely. Called outside an active transaction (cs.activeTx==nil)
+// it behaves exactly as before, using cs.db directly.
 func (cs *ChainState) ConsumeSwapNonce(wallet string, nonce int64) error {
 	if cs.db == nil {
 		return nil // no DB — skip in development
@@ -1731,12 +1788,12 @@ func (cs *ChainState) ConsumeSwapNonce(wallet string, nonce int64) error {
 	var err error
 	if nonce == 0 {
 		// First ever swap for this wallet — insert with next_nonce=1.
-		result, err = cs.db.Exec(
+		result, err = cs.dbExec().Exec(
 			`INSERT INTO swap_nonces (wallet_address, next_nonce) VALUES ($1, 1)
 			 ON CONFLICT (wallet_address) DO NOTHING`, wallet)
 	} else {
 		// Subsequent swap — increment only if current value matches.
-		result, err = cs.db.Exec(
+		result, err = cs.dbExec().Exec(
 			`UPDATE swap_nonces SET next_nonce = next_nonce + 1
 			 WHERE wallet_address = $1 AND next_nonce = $2`, wallet, nonce)
 	}
@@ -2214,9 +2271,45 @@ func (cs *ChainState) RetryRegistrationRecoveries() int {
 				recovered++
 				fmt.Printf("[RECOVERY] ✓ Pre-EVM intent for %s resolved\n", r.wallet)
 			} else {
-				fmt.Printf("[RECOVERY] ℹ Pre-EVM intent id=%d (wallet %s) not yet recoverable: %v — user should re-submit registration\n", r.id, r.wallet, regErr)
-				if _, err := cs.db.Exec(`UPDATE registration_recovery SET last_error=$1 WHERE id=$2`, "pre-evm intent: "+regErr.Error(), r.id); err != nil {
-					fmt.Printf("[RECOVERY] ⚠ Could not update last_error for pre-EVM intent id=%d: %v\n", r.id, err)
+				// Audit 2026-07-01, P1-3: RegisterHumanAtomic failing here does
+				// NOT necessarily mean the EVM registration never happened — it
+				// only means Go-state registration didn't succeed just now. If
+				// the on-chain isHuman[wallet] slot is already set (e.g. the EVM
+				// tx actually landed but the intent row's evm_tx_hash was never
+				// updated before a crash), telling the user to "re-submit
+				// registration" is actively wrong: resubmitting reverts on-chain
+				// with "Already registered", permanently confusing the user
+				// with no path forward. Checking the mirror storage directly
+				// lets us surface the real situation instead.
+				evmAlreadyHuman := cs.isHumanInEVMMirror(r.wallet)
+				// Audit 2026-07-01, P0-6 follow-up: SaveNullifier can now
+				// return a distinct "already claimed by a different wallet"
+				// error (previously this conflict silently succeeded via
+				// ON CONFLICT DO NOTHING, so this branch never had to
+				// distinguish it). Surface it as its own diagnosis — it's
+				// neither "needs operator attention for a stuck EVM sync"
+				// nor a transient "not yet recoverable, try resubmitting"
+				// case, and telling the user to resubmit would be actively
+				// misleading (a different wallet already legitimately owns
+				// this nullifier; resubmitting can never succeed).
+				switch {
+				case strings.Contains(regErr.Error(), "already claimed by wallet"):
+					fmt.Printf("[RECOVERY] ✗ Pre-EVM intent id=%d (wallet %s): nullifier belongs to a different wallet (%v) — this intent cannot be recovered, likely a duplicate/stale registration_recovery row; leaving unrecovered for manual review, NOT prompting user to resubmit\n", r.id, r.wallet, regErr)
+					if _, err := cs.db.Exec(`UPDATE registration_recovery SET last_error=$1 WHERE id=$2`,
+						"pre-evm intent: nullifier claimed by a different wallet, cannot recover: "+regErr.Error(), r.id); err != nil {
+						fmt.Printf("[RECOVERY] ⚠ Could not update last_error for pre-EVM intent id=%d: %v\n", r.id, err)
+					}
+				case evmAlreadyHuman:
+					fmt.Printf("[RECOVERY] ⚠ Pre-EVM intent id=%d (wallet %s): EVM shows isHuman=true but Go-state registration still fails (%v) — needs operator attention, do NOT ask user to re-submit (it will revert on-chain)\n", r.id, r.wallet, regErr)
+					if _, err := cs.db.Exec(`UPDATE registration_recovery SET last_error=$1 WHERE id=$2`,
+						"pre-evm intent: EVM already registered but Go-state sync failed: "+regErr.Error(), r.id); err != nil {
+						fmt.Printf("[RECOVERY] ⚠ Could not update last_error for pre-EVM intent id=%d: %v\n", r.id, err)
+					}
+				default:
+					fmt.Printf("[RECOVERY] ℹ Pre-EVM intent id=%d (wallet %s) not yet recoverable: %v — user should re-submit registration\n", r.id, r.wallet, regErr)
+					if _, err := cs.db.Exec(`UPDATE registration_recovery SET last_error=$1 WHERE id=$2`, "pre-evm intent: "+regErr.Error(), r.id); err != nil {
+						fmt.Printf("[RECOVERY] ⚠ Could not update last_error for pre-EVM intent id=%d: %v\n", r.id, err)
+					}
 				}
 			}
 			continue

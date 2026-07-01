@@ -215,6 +215,42 @@ func fetchAndValidateSnapshot(peerURL, expectedSignerHex string) (*StateSnapshot
 		return nil, fmt.Errorf("parse failed: %w", err)
 	}
 
+	// Audit 2026-07-01, P2-6: SnapshotVersion existed but was never actually
+	// checked by any importer — a future schema change would be silently
+	// misinterpreted by an old importer instead of failing loudly. Version 0
+	// (the zero value) is treated as "predates the version field" and
+	// accepted for backward compatibility; anything above the version this
+	// binary understands is rejected rather than guessed at.
+	if snap.Version > SnapshotVersion {
+		return nil, fmt.Errorf("snapshot version %d is newer than this node understands (max %d) — upgrade before importing", snap.Version, SnapshotVersion)
+	}
+
+	// Audit 2026-07-01, P2-5: nullifiers were merged into local state with no
+	// format/plausibility check at all, even when the snapshot's outer
+	// signature was valid — a compromised signer key or a bug upstream of
+	// signing could still inject malformed nullifier entries that
+	// permanently block a real victim's future registration. Reject the
+	// whole snapshot if any nullifier key isn't a well-formed 32-byte hex
+	// value or any wallet value (when present) isn't a well-formed address.
+	for nullifier, wallet := range snap.Nullifiers {
+		hexPart := strings.TrimPrefix(nullifier, "0x")
+		if len(hexPart) != 64 {
+			return nil, fmt.Errorf("snapshot contains malformed nullifier %q (expected 32-byte hex)", nullifier)
+		}
+		if _, err := hex.DecodeString(hexPart); err != nil {
+			return nil, fmt.Errorf("snapshot contains malformed nullifier %q: %w", nullifier, err)
+		}
+		if wallet != "" && wallet != "0x01" && wallet != "0x0000000000000000000000000000000000000001" {
+			w := strings.TrimPrefix(wallet, "0x")
+			if len(w) != 40 {
+				return nil, fmt.Errorf("snapshot nullifier %q has malformed wallet_address %q", nullifier, wallet)
+			}
+			if _, err := hex.DecodeString(w); err != nil {
+				return nil, fmt.Errorf("snapshot nullifier %q has malformed wallet_address %q: %w", nullifier, wallet, err)
+			}
+		}
+	}
+
 	now := time.Now().Unix()
 	if snap.Timestamp > now+60 {
 		return nil, fmt.Errorf("snapshot timestamp is in the future (%d seconds ahead)", snap.Timestamp-now)

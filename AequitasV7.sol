@@ -92,47 +92,31 @@ contract AequitasV7 {
         bioVerifier = IBioVerifier(_bioVerifier);
     }
 
-    function register(uint[2] calldata pA, uint[2][2] calldata pB, uint[2] calldata pC, uint[2] calldata pubSignals, bytes32 nullifier) external {
-        require(!isHuman[msg.sender], "Already registered");
-        uint256 commitment = pubSignals[0];
-        require(!usedCommitments[commitment], "Commitment used");
-        // FIX (v2-only nullifier): pubSignals[1] MUST be the ZK-circuit-derived
-        // nullifier. Previously, when pubSignals[1] == 0 (a v1-circuit proof,
-        // which never outputs a nullifier as a public signal), this function
-        // fell back to trusting the caller-supplied `nullifier` parameter with
-        // ZERO cryptographic binding to the proof — anyone could submit an
-        // arbitrary nullifier value, defeating "one biometric = one
-        // registration" entirely for that path. Requiring pubSignals[1] != 0
-        // means the nullifier is always attested by the proof itself.
-        require(pubSignals[1] != 0, "v1 circuit not accepted: ZK-bound nullifier required");
-        bytes32 effectiveNullifier = bytes32(pubSignals[1]);
-        require(nullifier == bytes32(0) || nullifier == effectiveNullifier, "Nullifier/circuit mismatch");
-        require(usedNullifiers[effectiveNullifier] == address(0), "Nullifier used");
-
-        // CEI: write all state before the external call
-        usedCommitments[commitment] = true;
-        commitmentOf[msg.sender] = commitment;
-        usedNullifiers[effectiveNullifier] = msg.sender;
-        isHuman[msg.sender] = true;
-        totalHumans++;
-        balanceOf[msg.sender] += INITIAL_GRANT;
-        totalSupply += INITIAL_GRANT;
-        ubiClaimed[msg.sender] = ubiPerHumanAccumulated;
-        lastActivity[msg.sender] = block.timestamp;
-        lastDemurrage[msg.sender] = block.timestamp;
-
-        // FIX 4: _applyWealthCap is intentionally NOT called here.
-        // At registration, isHuman[msg.sender] is already set to true above, so the
-        // guard inside _applyWealthCap (if (!isHuman[human]) return) would NOT block it.
-        // At Phase 0 with N humans the cap = 50 × (totalSupply / totalHumans), which is
-        // far above INITIAL_GRANT, so the cap would never fire on a fresh registration.
-        // The omission is a deliberate gas optimisation — cap enforcement is left to
-        // subsequent transfer/claimUBI calls which already invoke _applyWealthCap.
-
-        // External call last
-        require(bioVerifier.verifyProof(pA, pB, pC, pubSignals), "Invalid proof");
-
-        emit Registered(msg.sender, commitment, INITIAL_GRANT);
+    // DISABLED (audit 2026-07-01, P0-5): this function's ZK proof carries no
+    // binding to any particular address — verifyProof only checks
+    // pubSignals[0] (commitment) and pubSignals[1] (nullifier), never
+    // msg.sender. Anyone who observes a pending register() transaction in
+    // the mempool (or otherwise obtains a valid (pA,pB,pC,pubSignals,
+    // nullifier) tuple) can resubmit the identical calldata from their OWN
+    // address with a higher gas price and front-run the legitimate caller:
+    // the attacker's transaction lands first, claims usedCommitments/
+    // usedNullifiers, mints INITIAL_GRANT to the attacker, and the real
+    // owner of the biometric is left with "Nullifier used" — permanently
+    // unable to register with their real proof (nullifiers are one-time by
+    // design) while the attacker keeps the stolen grant. registerWithSig
+    // (below) already closes exactly this gap via an ECDSA signature over
+    // (chainid, address(this), "register", commitment, effectiveNullifier)
+    // that must recover to claimedHuman — no ZK circuit change needed,
+    // since the binding is enforced by that signature rather than the
+    // proof itself. The reference Aequitas Go backend/DApp already only
+    // ever calls registerWithSig, never this function, so disabling it
+    // here has no impact on any legitimate integration and closes a real,
+    // directly fund-affecting vulnerability for any external caller who
+    // interacted with the contract directly. Kept as a function (rather
+    // than removed) so the ABI is unchanged and any existing integration
+    // gets a clear revert reason instead of a build-time break.
+    function register(uint[2] calldata, uint[2][2] calldata, uint[2] calldata, uint[2] calldata, bytes32) external pure {
+        revert("register() disabled: proof is not bound to an address and is front-runnable. Use registerWithSig instead.");
     }
 
     /**
@@ -243,6 +227,15 @@ contract AequitasV7 {
         _applyDemurrage(msg.sender);
         require(balanceOf[msg.sender] >= amount, "Insufficient after demurrage");
         uint256 fee = _calcFee(msg.sender, amount);
+        // Audit 2026-07-01, P3-10: with UBI_SHARE_BPS == 10_000 (100%, see
+        // its declaration above), `burned` below is always exactly 0 and
+        // `totalSupply -= burned` is a permanent no-op — the burn mechanism
+        // is deliberately fully disabled today (100% of every transfer fee
+        // goes to the UBI pool instead). Left in place, not removed: the
+        // constant is designed to be tunable for a future phase that
+        // reintroduces partial burning, and this code path already handles
+        // that correctly (burned would become nonzero automatically) without
+        // any other change needed.
         uint256 ubiContrib = (fee * UBI_SHARE_BPS) / 10_000;
         uint256 burned = fee - ubiContrib;
         balanceOf[msg.sender] -= amount;
@@ -390,6 +383,24 @@ contract AequitasV7 {
         escrowOf[human] = 0;
         ubiPool += amount;
         isHuman[human] = false;
+        // Audit 2026-07-01, P2-13 (re-checked): totalHumans-- here is
+        // economically correct in isolation (totalSupply is intentionally
+        // left unchanged — the funds move escrowOf -> ubiPool, both already
+        // part of supply), but a shrinking totalHumans denominator raises
+        // fairShare()/wealthCap() for every remaining human. Combined with a
+        // Sybil-registered set of never-active fake humans that eventually
+        // sweep through here, that's a slow, real distortion of those core
+        // parameters. This is NOT re-mitigated by this same file's own P0-5
+        // fix (disabling register()) alone: Sybil resistance depends on
+        // registerWithSig's proof-of-personhood pipeline actually rejecting
+        // duplicate humans off-chain (biometric matching upstream of this
+        // contract), which this contract cannot verify on its own — a
+        // determined Sybil attacker can still self-register many times if
+        // that off-chain layer is defeated. No on-chain fix applied here:
+        // excluding long-inactive accounts from totalHumans is a genuine
+        // economics/protocol redesign question (e.g. a rolling-activity
+        // count) that needs explicit product sign-off, not a unilateral
+        // change bundled into this audit pass.
         totalHumans--;
         // FIX (wardCount leak): revokeGuardian()'s comment claimed this cleanup
         // was "handled by triggerEscrowToUBI", but it never actually was — a
@@ -433,12 +444,55 @@ contract AequitasV7 {
             emit GuardianRevoked(msg.sender, oldGuardian);
         }
         address g = pendingGuardian[msg.sender];
+        // FIX (audit 2026-07-01, P1-7, corrected): proposeGuardian's cycle
+        // check (guardianOf[guardian] == address(0)) only holds at proposal
+        // time (T0), before any edge is actually written — the edge itself
+        // isn't written until here, GUARDIAN_TIMELOCK later. Without
+        // re-checking, three (or more) humans could each propose the next
+        // one in a ring at T0 — when every target is still guardian-less —
+        // then all confirm after the timelock, producing a fully-confirmed
+        // closed guardian cycle with no independent external guardian
+        // anywhere in it.
+        //
+        // An earlier version of this fix rejected confirmation whenever
+        // `guardianOf[g] != address(0)` at all — but that over-rejects: g
+        // may legitimately have acquired an unrelated guardian in the
+        // interim (e.g. a straight, non-cyclic chain A -> B -> C where B's
+        // own guardian assignment to C has nothing to do with A's proposal
+        // of B). That would have permanently blocked a valid confirmation
+        // with no real cycle. The actual invariant that matters is
+        // narrower: does following guardianOf pointers from g eventually
+        // lead back to msg.sender? Only that specific case is a cycle.
+        // _guardianChainLeadsBackTo walks the chain with a bounded depth
+        // (cheap: MAX_WARDS=3 keeps real chains short) so this can't be
+        // used for unbounded gas griefing even in a pathological future
+        // topology.
+        require(!_guardianChainLeadsBackTo(g, msg.sender), "Would create a guardian cycle");
         require(wardCount[g] < MAX_WARDS, "Guardian already has maximum wards");
         guardianOf[msg.sender] = g;
         wardCount[g]++;
         pendingGuardian[msg.sender] = address(0);
         guardianRequestedAt[msg.sender] = 0;
         emit GuardianConfirmed(msg.sender, g);
+    }
+
+    // _guardianChainLeadsBackTo reports whether following guardianOf
+    // pointers starting at `start` ever reaches `target`. Used by
+    // confirmGuardian (audit 2026-07-01, P1-7) to detect an actual cycle
+    // rather than rejecting every case where `start` merely has some
+    // guardian at all. Bounded to 16 hops: real chains are short (MAX_WARDS
+    // caps how many wards a single guardian can have, which in turn bounds
+    // how deep any acyclic chain can practically grow), and a bound means
+    // this can never be turned into an unbounded-gas loop even if guardianOf
+    // somehow already contained a cycle from before this check existed.
+    function _guardianChainLeadsBackTo(address start, address target) internal view returns (bool) {
+        address current = start;
+        for (uint256 i = 0; i < 16; i++) {
+            if (current == target) return true;
+            current = guardianOf[current];
+            if (current == address(0)) return false;
+        }
+        return false;
     }
 
     function revokeGuardian() external {

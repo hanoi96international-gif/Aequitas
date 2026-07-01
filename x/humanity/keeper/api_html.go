@@ -15,6 +15,11 @@ const explorerHTML = `<!DOCTYPE html>
 <meta name="apple-mobile-web-app-title" content="Aequitas">
 <link rel="preconnect" href="https://fonts.bunny.net">
 <link href="https://fonts.bunny.net/css?family=inter:400,500,600,700,900|dm-serif-display:400|jetbrains-mono:400,600&display=swap" rel="stylesheet">
+<!-- TODO (audit 2026-07-01, P3-6): add integrity="sha384-..." + crossorigin="anonymous"
+     once a real SRI hash can be computed against this exact pinned version — this dev
+     environment has no outbound network access to unpkg.com to fetch/verify one, and
+     shipping a guessed hash would hard-fail script loading for every user (worse than
+     no SRI at all). Compute with: curl -sL <url> | openssl dgst -sha384 -binary | openssl base64 -A -->
 <script src="https://unpkg.com/lightweight-charts@4.1.3/dist/lightweight-charts.standalone.production.js"></script>
 <style>
 :root{
@@ -329,6 +334,8 @@ input[type=number]::-webkit-inner-spin-button{opacity:0.5}
 .stab-panel{display:none}
 .stab-panel.active{display:block}
 </style>
+<!-- TODO (audit 2026-07-01, P3-6): SRI hash needed here too — see the same note
+     above the lightweight-charts <script> tag. -->
 <script src="https://cdnjs.cloudflare.com/ajax/libs/ethers/6.13.0/ethers.umd.min.js"></script>
 </head>
 <body>
@@ -4894,12 +4901,13 @@ async function doSetGuardian() {
   }
   try {
     guardianLog('Sign in MetaMask to set guardian...', 'info');
-    const msg = 'Aequitas: set guardian ' + guardian;
+    const ts = Math.floor(Date.now() / 1000);
+    const msg = 'Aequitas: set guardian ' + guardian + ' ts:' + ts;
     const sig = await window.ethereum.request({ method: 'personal_sign', params: [msg, waddr] });
     const resp = await fetch('/api/set-guardian', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ wallet: waddr, guardian, signature: sig })
+      body: JSON.stringify({ wallet: waddr, guardian, timestamp: ts, signature: sig })
     });
     const d = await resp.json();
     if (d.guardian) {
@@ -4928,12 +4936,13 @@ async function doGuardianConfirmAlive() {
   }
   try {
     guardianLog('Sign in MetaMask as guardian...', 'info');
-    const msg = 'Aequitas: confirm alive ' + ward;
+    const ts = Math.floor(Date.now() / 1000);
+    const msg = 'Aequitas: confirm alive ' + ward + ' ts:' + ts;
     const sig = await window.ethereum.request({ method: 'personal_sign', params: [msg, waddr] });
     const resp = await fetch('/api/confirm-alive', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ wallet: ward, guardian: waddr, signature: sig })
+      body: JSON.stringify({ wallet: ward, guardian: waddr, timestamp: ts, signature: sig })
     });
     const d = await resp.json();
     if (d.success) {
@@ -4948,12 +4957,13 @@ async function doRecoverEscrow() {
   if (!waddr || !window.ethereum) { guardianLog('Connect wallet first.', 'err'); return; }
   try {
     guardianLog('Sign in MetaMask to recover escrow...', 'info');
-    const msg = 'Aequitas: recover escrow ' + waddr;
+    const ts = Math.floor(Date.now() / 1000);
+    const msg = 'Aequitas: recover escrow ' + waddr + ' ts:' + ts;
     const sig = await window.ethereum.request({ method: 'personal_sign', params: [msg, waddr] });
     const resp = await fetch('/api/recover-escrow', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ wallet: waddr, signature: sig })
+      body: JSON.stringify({ wallet: waddr, timestamp: ts, signature: sig })
     });
     const d = await resp.json();
     if (d.success) {
@@ -5211,7 +5221,7 @@ function updateFeeEstimate() {
 async function connectSwapWallet() {
   if (!window.ethereum) {
     const _isMobS = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
-    if (_isMobS) { const _dl = 'https://metamask.app.link/dapp/' + window.location.host; swapLog('🦊 MetaMask nicht gefunden. Mobile: <a href="' + _dl + '" style="color:var(--gold)">In MetaMask App öffnen</a>', 'warn', true); } else { swapLog('🦊 MetaMask not found — <a href="https://metamask.io/download/" target="_blank" style="color:var(--gold)">install MetaMask</a>', 'warn', true); }
+    if (_isMobS) { const _dl = 'https://metamask.app.link/dapp/' + sanitize(window.location.host); swapLog('🦊 MetaMask nicht gefunden. Mobile: <a href="' + _dl + '" style="color:var(--gold)">In MetaMask App öffnen</a>', 'warn', true); } else { swapLog('🦊 MetaMask not found — <a href="https://metamask.io/download/" target="_blank" style="color:var(--gold)">install MetaMask</a>', 'warn', true); }
     return;
   }
   try {
@@ -5680,7 +5690,7 @@ let pendingBioHash = null;
 async function connectWalletAndProve() {
   if (!window.ethereum) {
     const _isMobC = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
-    if (_isMobC) { const _dl = 'https://metamask.app.link/dapp/' + window.location.host; addLog('🦊 Mobile: <a href="' + _dl + '" style="color:var(--gold)">In MetaMask App öffnen</a>', 'warn', true); } else { addLog('🦊 MetaMask not found — <a href="https://metamask.io/download/" target="_blank" style="color:var(--gold)">install MetaMask</a>', 'warn', true); }
+    if (_isMobC) { const _dl = 'https://metamask.app.link/dapp/' + sanitize(window.location.host); addLog('🦊 Mobile: <a href="' + _dl + '" style="color:var(--gold)">In MetaMask App öffnen</a>', 'warn', true); } else { addLog('🦊 MetaMask not found — <a href="https://metamask.io/download/" target="_blank" style="color:var(--gold)">install MetaMask</a>', 'warn', true); }
     return;
   }
   if (!pendingBioHash) {
@@ -5754,7 +5764,7 @@ async function connectWalletAndProve() {
 async function connectWallet() {
   if (!window.ethereum) {
     const _isMobW = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
-    if (_isMobW) { const _dl = 'https://metamask.app.link/dapp/' + window.location.host; addLog('🦊 Mobile: <a href="' + _dl + '" style="color:var(--gold)">In MetaMask App öffnen</a>', 'warn', true); } else { addLog('🦊 MetaMask not found — <a href="https://metamask.io/download/" target="_blank" style="color:var(--gold)">install MetaMask</a>', 'warn', true); }
+    if (_isMobW) { const _dl = 'https://metamask.app.link/dapp/' + sanitize(window.location.host); addLog('🦊 Mobile: <a href="' + _dl + '" style="color:var(--gold)">In MetaMask App öffnen</a>', 'warn', true); } else { addLog('🦊 MetaMask not found — <a href="https://metamask.io/download/" target="_blank" style="color:var(--gold)">install MetaMask</a>', 'warn', true); }
     return;
   }
   try {
@@ -6120,6 +6130,8 @@ function generateNodeGuidePDF() {
   var lang = curLang || 'en';
   if (window.jspdf) { try { _buildNodeGuidePDF(lang); } catch(e) { alert('PDF-Fehler: ' + e.message); } return; }
   var s = document.createElement('script');
+  // TODO (audit 2026-07-01, P3-6): SRI hash needed here too — see the note
+  // above the lightweight-charts <script> tag in the document head.
   s.src = 'https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js';
   s.onload = function() { try { _buildNodeGuidePDF(lang); } catch(e) { alert('PDF-Fehler: ' + e.message); } };
   s.onerror = function() { alert('PDF-Bibliothek konnte nicht geladen werden. Bitte Internetverbindung prüfen.'); };

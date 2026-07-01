@@ -57,6 +57,20 @@ func (cs *ChainState) SetFinalizedCheckpoint(hash string, height, blueScore int6
 // (known before GHOSTDAG computation) with a generous finalityHeightSlack so
 // that legitimate gap-fills within the finality window are never blocked.
 // Must be called with dag.mu held (reads dag.state but not dag.blocks).
+//
+// OPERATIONAL NOTE (audit 2026-07-01, re-checked after narrowing FromSync to
+// isTrustedSyncPeer — see sync_blocks.go): this exemption, and the matching
+// one in the equivocation-suspension gate (block.go), only fire for blocks
+// synced from an operator-configured seed/static peer now, not from every
+// dynamically-discovered peer as before P0-1/P0-2. That's the point of the
+// fix — but it does mean a node whose PRIMARY_NODE_URL(S)/PEER_NODES don't
+// include a source with FULL historical depth, and that ends up catching up
+// more than finalityHeightSlack blocks behind via a non-trusted peer only,
+// can still hit this gate during that catch-up. Operators should ensure at
+// least one configured seed can serve deep history (the default public seed,
+// https://aequitas.digital, is expected to); this is a deliberate trust
+// boundary, not an oversight — see the Sonderthema section of
+// AUDIT_2026-07-01.md for the full reasoning.
 func (dag *BlockDAG) isFinalityViolation(block *Block) bool {
 	if block.IsGenesis || block.FromSync {
 		return false // never a finality violation for genesis or HTTP-SYNC canonical replay

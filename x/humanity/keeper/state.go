@@ -1469,6 +1469,17 @@ func (cs *ChainState) saveAccountToDB(acc *AccountState) error {
 	return err
 }
 
+// KNOWN LIMITATION (audit 2026-07-01, P3-2, architectural — not fixed here):
+// acc.Balance/TUsdBalance/LPShares are exact int64 micro-units internally
+// (Decimal), but every write below goes through .Float() into a Postgres
+// NUMERIC(20,6) column — the float64 round-trip can lose precision at the
+// margins, and TotalSupply()'s own comment already documents that this lets
+// float drift from swap fees/demurrage accumulate slightly against the
+// humans*1000 invariant over a very long time. The full fix (persist
+// acc.Balance.Micro() directly into a BIGINT balance_micro column) is a
+// real schema migration touching every account read/write path — out of
+// scope for a bounded audit-fix pass; flagging here rather than attempting
+// a partial migration that could itself introduce a real balance bug.
 func (cs *ChainState) saveAccountToDBInner(acc *AccountState) error {
 	if !cs.useDB {
 		acc.Version++ // no-DB mode: mark as saved
@@ -2972,6 +2983,13 @@ func (cs *ChainState) transferWithV7FeeLocked(from, to string, amount float64) (
 		}
 	}
 	totalSupply := float64(humans) * 1000.0
+	// Audit 2026-07-01, P1-5 (re-checked): fromAcc.Balance here is
+	// deliberately the PRE-transfer balance, matching AequitasV7.sol's
+	// _calcFee(sender, amount), which reads balanceOf[sender] BEFORE
+	// `balanceOf[msg.sender] -= amount` runs (see transfer() in
+	// AequitasV7.sol). Using the post-transfer balance here would DIVERGE
+	// from the Solidity reference this function is documented to mirror,
+	// not fix a bug — this is intentional and correct as written.
 	fee := calcV7Fee(fromAcc.Balance.Float(), amount, totalSupply)
 	// E1-FIX: In the Go-state ledger, AEQ cannot be burned (supply is tied
 	// to humans * 1000). Redirect 100% of fee to UBI pool instead of the
@@ -3095,9 +3113,16 @@ func (cs *ChainState) SwapTUSDForAEQ(address string, amountIn, minAmountOut floa
 // one DB transaction — see TransferAtomic's comment. pendingTxTemplate
 // should have Type/Wallet/Amount set; AmountOut and FromDemurrageLost are
 // filled in here from the swap's actual result.
-func (cs *ChainState) SwapAtomic(address string, amountIn float64, aeqToTusd bool, minAmountOut float64, pendingTxTemplate Transaction) (amountOut, demurrageLost float64, err error) {
+// nonce is consumed inside the same DB transaction as the swap itself (audit
+// 2026-07-01, P1-4) — pass the caller-supplied SwapRequest.Nonce so a crash
+// between nonce-consumption and the swap can no longer burn a nonce without
+// the swap actually happening (both commit or both roll back together).
+func (cs *ChainState) SwapAtomic(address string, amountIn float64, aeqToTusd bool, minAmountOut float64, nonce int64, pendingTxTemplate Transaction) (amountOut, demurrageLost float64, err error) {
 	address = strings.ToLower(address)
 	err = cs.runAtomicWithOutbox([]string{address, validatorsPoolAddr, lpPoolAddr, ubiPoolAddr, treasuryPoolAddr}, false, func() (Transaction, error) {
+		if err := cs.ConsumeSwapNonce(address, nonce); err != nil {
+			return Transaction{}, err
+		}
 		amountOut, demurrageLost, err = cs.swapLocked(address, amountIn, aeqToTusd, minAmountOut)
 		if err != nil {
 			return Transaction{}, err
@@ -3261,9 +3286,20 @@ func (cs *ChainState) savePoolToDB() error {
 	return nil
 }
 
-// reloadPoolFromDB loads the current pool state from PostgreSQL with SELECT FOR UPDATE
-// so swap operations always start from the authoritative DB state, not stale memory.
+// reloadPoolFromDB loads the current pool state from PostgreSQL so swap
+// operations always start from the authoritative DB state, not stale memory.
 // P2-7: prevents AMM invariant violation when two nodes swap concurrently.
+//
+// INVARIANT (audit 2026-07-01, P2-3): this is a plain SELECT, not
+// SELECT ... FOR UPDATE — savePoolToDB (below) is the one that takes the
+// row lock, at write time. That combination is only race-free as long as
+// swapLocked/addLiquidityLocked/removeLiquidityLocked (the only callers of
+// this function) are themselves only ever invoked on the single node that
+// currently owns pool writes (today: the primary; secondaries only replay
+// pool deltas via ApplySwapDelta, never call swapLocked directly). If that
+// ever changes to genuine multi-writer swaps, this plain read becomes a
+// TOCTOU window against another writer's concurrent SELECT ... FOR UPDATE
+// and must be upgraded to take the same row lock.
 func (cs *ChainState) reloadPoolFromDB() {
 	if cs.db == nil || cs.pool == nil {
 		return
@@ -3347,9 +3383,14 @@ func (cs *ChainState) AddLiquidity(address string, amountAEQ, amountTUSD float64
 // transaction — see TransferAtomic's comment. pendingTxTemplate should
 // have Type/Wallet/Amount(AEQ)/AmountOut(tUSD) set; LPShares and
 // FromDemurrageLost are filled in here from the operation's actual result.
-func (cs *ChainState) AddLiquidityAtomic(address string, amountAEQ, amountTUSD float64, pendingTxTemplate Transaction) (demurrageLost float64, err error) {
+// nonce is consumed inside the same DB transaction as the deposit itself —
+// see SwapAtomic's comment (audit 2026-07-01, P1-4).
+func (cs *ChainState) AddLiquidityAtomic(address string, amountAEQ, amountTUSD float64, nonce int64, pendingTxTemplate Transaction) (demurrageLost float64, err error) {
 	address = strings.ToLower(address)
 	err = cs.runAtomicWithOutbox([]string{address, validatorsPoolAddr, lpPoolAddr, ubiPoolAddr, treasuryPoolAddr}, false, func() (Transaction, error) {
+		if err := cs.ConsumeSwapNonce(address, nonce); err != nil {
+			return Transaction{}, err
+		}
 		sharesBefore := 0.0
 		if acc, ok := cs.accounts[address]; ok {
 			sharesBefore = acc.LPShares.Float()
@@ -3401,6 +3442,14 @@ func (cs *ChainState) addLiquidityLocked(address string, amountAEQ, amountTUSD f
 	// instantly shift the price, which is the same rule real AMMs enforce.
 	var mintedShares float64
 	if cs.pool.ReserveAEQ > 0 && cs.pool.ReserveTUSD > 0 {
+		// Audit 2026-07-01, P2-4 (re-checked): 0.3% still permits a slow,
+		// many-deposit price nudge — each individual deposit is bounded, but
+		// nothing rate-limits how many a single wallet can make back-to-back.
+		// Accepted as a residual, graduated-only risk rather than tightened
+		// further or rate-limited here: a hard per-wallet cooldown is a
+		// product/economics decision (it would also throttle legitimate
+		// liquidity providers) that needs explicit sign-off, not a
+		// unilateral change bundled into this audit fix pass.
 		expectedTUSD := amountAEQ * (cs.pool.ReserveTUSD.Float() / cs.pool.ReserveAEQ.Float())
 		tolerance := expectedTUSD * 0.003 // 0.3% slack — tighter than 1% to prevent price manipulation
 		if amountTUSD < expectedTUSD-tolerance || amountTUSD > expectedTUSD+tolerance {
@@ -3474,9 +3523,14 @@ func (cs *ChainState) RemoveLiquidity(address string, sharesToBurn float64) (flo
 // the replay-side counterpart, re-derives outAEQ/outTUSD from the
 // secondary's own current pool state rather than replaying exact amounts,
 // so those aren't part of the queued Transaction either today).
-func (cs *ChainState) RemoveLiquidityAtomic(address string, sharesToBurn float64, pendingTxTemplate Transaction) (outAEQ, outTUSD, demurrageLost float64, err error) {
+// nonce is consumed inside the same DB transaction as the withdrawal itself
+// — see SwapAtomic's comment (audit 2026-07-01, P1-4).
+func (cs *ChainState) RemoveLiquidityAtomic(address string, sharesToBurn float64, nonce int64, pendingTxTemplate Transaction) (outAEQ, outTUSD, demurrageLost float64, err error) {
 	address = strings.ToLower(address)
 	err = cs.runAtomicWithOutbox([]string{address, validatorsPoolAddr, lpPoolAddr, ubiPoolAddr, treasuryPoolAddr}, false, func() (Transaction, error) {
+		if err := cs.ConsumeSwapNonce(address, nonce); err != nil {
+			return Transaction{}, err
+		}
 		outAEQ, outTUSD, demurrageLost, err = cs.removeLiquidityLocked(address, sharesToBurn)
 		if err != nil {
 			return Transaction{}, err
@@ -4954,49 +5008,72 @@ func (cs *ChainState) LoadV6State(key string) string {
 	return value
 }
 
-func (cs *ChainState) SaveV6Balance(address, balanceWei string) {
+// LoadV6BalanceChecked returns the stored balance_wei hex string and whether
+// a row actually exists for address. Audit 2026-07-01, P3-4: LoadV6Balance
+// alone collapsed "no row" and "row present with value 0" into the same "0"
+// result, so RestoreV6FromMirror's `if balWeiHex != ""` guard could never
+// actually distinguish a genuinely-missing balance row (e.g. from a crash
+// between SaveV6Human and SaveV6Balance in MirrorV6Registration) from a
+// wallet that legitimately has 0 — both silently restored balanceOf=0 to EVM
+// storage.
+func (cs *ChainState) LoadV6BalanceChecked(address string) (value string, found bool) {
 	if cs.db == nil {
-		return
+		return "", false
 	}
-	cs.db.Exec(
-		`INSERT INTO v6_balances (address, balance_wei) VALUES ($1, $2)
- ON CONFLICT (address) DO UPDATE SET balance_wei = $2, updated_at = NOW()`,
-		address, balanceWei,
-	)
+	err := cs.db.QueryRow(`SELECT balance_wei FROM v6_balances WHERE address = $1`, address).Scan(&value)
+	if err != nil {
+		return "", false
+	}
+	return value, true
 }
 
-func (cs *ChainState) LoadV6Balance(address string) string {
+// MirrorV6RegistrationAtomic writes the v6_humans, v6_commitments and
+// v6_balances rows for a single legacy-V6 registration as one DB
+// transaction (audit 2026-07-01, P3-4). MirrorV6Registration (evm_v6mirror.go)
+// used to call SaveV6Human/SaveV6Commitment/SaveV6Balance as three
+// independent, separately-committing statements — a crash between the first
+// and the balance write left a wallet marked as a registered V6 human with
+// no balance row at all, which LoadV6Balance's old "no row == 0" collapsing
+// made indistinguishable from a wallet that genuinely has 0 AEQ, silently
+// restoring balanceOf=0 to EVM storage for what should have been a 1,000 AEQ
+// grant. Callers should also check LoadV6BalanceChecked's `found` result
+// before trusting a 0 balance for a registered V6 human.
+func (cs *ChainState) MirrorV6RegistrationAtomic(address, commitment, balanceWeiHex string) error {
 	if cs.db == nil {
-		return "0"
+		return nil
 	}
-	var balanceWei string
-	cs.db.QueryRow(`SELECT balance_wei FROM v6_balances WHERE address = $1`, address).Scan(&balanceWei)
-	if balanceWei == "" {
-		return "0"
+	tx, err := cs.db.Begin()
+	if err != nil {
+		return fmt.Errorf("could not begin V6 mirror transaction: %w", err)
 	}
-	return balanceWei
-}
-
-func (cs *ChainState) SaveV6Human(address, commitment string) {
-	if cs.db == nil {
-		return
-	}
-	cs.db.Exec(
+	if _, err := tx.Exec(
 		`INSERT INTO v6_humans (address, commitment) VALUES ($1, $2)
  ON CONFLICT (address) DO UPDATE SET commitment = $2, last_activity = NOW()`,
 		address, commitment,
-	)
-}
-
-func (cs *ChainState) SaveV6Commitment(commitment, wallet string) {
-	if cs.db == nil {
-		return
+	); err != nil {
+		tx.Rollback()
+		return fmt.Errorf("could not save V6 human: %w", err)
 	}
-	cs.db.Exec(
+	if _, err := tx.Exec(
 		`INSERT INTO v6_commitments (commitment, wallet) VALUES ($1, $2)
  ON CONFLICT (commitment) DO NOTHING`,
-		commitment, wallet,
-	)
+		commitment, address,
+	); err != nil {
+		tx.Rollback()
+		return fmt.Errorf("could not save V6 commitment: %w", err)
+	}
+	if _, err := tx.Exec(
+		`INSERT INTO v6_balances (address, balance_wei) VALUES ($1, $2)
+ ON CONFLICT (address) DO UPDATE SET balance_wei = $2, updated_at = NOW()`,
+		address, balanceWeiHex,
+	); err != nil {
+		tx.Rollback()
+		return fmt.Errorf("could not save V6 balance: %w", err)
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("could not commit V6 mirror transaction: %w", err)
+	}
+	return nil
 }
 
 func (cs *ChainState) GetAllV6Humans() []map[string]string {

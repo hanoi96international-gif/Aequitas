@@ -422,6 +422,21 @@ func (s *EVMRPCServer) sendRawTransaction(params []json.RawMessage) (interface{}
 	// both load nonce=0 from DB (DB read outside lock), and then both pass the
 	// second lock's check — both reserving nonce 0 and executing the same tx.
 	// Fix: hold the mutex for the entire DB-load + check + reserve sequence.
+	//
+	// KNOWN LIMITATION (audit 2026-07-01, P3-5): this reservation still
+	// commits in its own statement, separate from whichever downstream
+	// Atomic transfer/call actually applies the tx below — the same class
+	// of crash-window gap fixed for swap/liquidity nonces in
+	// ConsumeSwapNonce's comment (P1-4). Unlike swap, this entry point
+	// branches into several structurally different downstream paths (plain
+	// transfer, ERC20-transfer interception, generic contract calls,
+	// registration submission) under a DIFFERENT lock (s.mu, not cs.mu), so
+	// folding the reservation into each one's DB transaction isn't a
+	// same-shape change and was deliberately deferred rather than risk a
+	// regression in this RPC entry point (used by every MetaMask-facing
+	// transaction). Impact if hit: a crash in this exact window burns a
+	// nonce without applying the tx — the user must sign a new transaction;
+	// no funds are lost.
 	s.mu.Lock()
 	// Populate from DB on first sight to recover correct nonce after restart.
 	if s.nonces[senderAddr] == 0 {

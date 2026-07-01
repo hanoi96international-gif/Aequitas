@@ -14,6 +14,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -742,14 +743,45 @@ func (a *APIServer) handleBlocksByHash(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(found)
 }
 
+// handleHumansDefaultLimit/handleHumansMaxLimit bound the page size for
+// /api/humans (audit 2026-07-01, P2-10: this endpoint is public and
+// unauthenticated, and previously always returned every registered human in
+// one response — with no limit, a growing network turns a normal request
+// into an ever-larger, unbounded JSON payload/serialization cost per call,
+// a cheap resource-amplification vector). GetAllAccounts itself still does
+// one O(n) copy under a brief RLock regardless of pagination (see its own
+// comment) — that part is unavoidable without a different storage model —
+// but bounding the response size caps the dominant per-request cost
+// (filtering + JSON-encoding every entry) instead of letting it grow
+// without limit as the network grows.
+const handleHumansDefaultLimit = 500
+const handleHumansMaxLimit = 5000
+
 func (a *APIServer) handleHumans(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Access-Control-Allow-Origin", "*")
+
+	limit := handleHumansDefaultLimit
+	if v := r.URL.Query().Get("limit"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n > 0 {
+			limit = n
+		}
+	}
+	if limit > handleHumansMaxLimit {
+		limit = handleHumansMaxLimit
+	}
+	offset := 0
+	if v := r.URL.Query().Get("offset"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n > 0 {
+			offset = n
+		}
+	}
+
 	accounts := a.state.GetAllAccounts()
-	humans := []map[string]interface{}{}
+	allHumans := make([]map[string]interface{}, 0, len(accounts))
 	for _, acc := range accounts {
 		if acc.IsHuman {
-			humans = append(humans, map[string]interface{}{
+			allHumans = append(allHumans, map[string]interface{}{
 				"address": acc.Address,
 				// Use effectiveBalance so the Lorenz curve and Score tab show the same Gini.
 				// Raw acc.Balance ignores demurrage decay → different Gini than CalcGini().
@@ -757,9 +789,19 @@ func (a *APIServer) handleHumans(w http.ResponseWriter, r *http.Request) {
 			})
 		}
 	}
+	page := []map[string]interface{}{}
+	if offset < len(allHumans) {
+		end := offset + limit
+		if end > len(allHumans) {
+			end = len(allHumans)
+		}
+		page = allHumans[offset:end]
+	}
 	json.NewEncoder(w).Encode(map[string]interface{}{
-		"total":  len(humans),
-		"humans": humans,
+		"total":  len(allHumans),
+		"limit":  limit,
+		"offset": offset,
+		"humans": page,
 	})
 }
 
@@ -1110,6 +1152,14 @@ This page proves your <span class="hl">NODE_OPERATOR_WALLET</span> owns the sign
 <div class="err" id="err"></div>
 </div>
 <script>
+// Audit 2026-07-01, P3-8: escapes via a throwaway element's textContent —
+// same pattern the main DApp page (api_html.go) uses as sanitize(), kept as
+// a local helper here since this is a separate, self-contained page.
+function esc(s) {
+  const d = document.createElement('div');
+  d.textContent = String(s);
+  return d.innerHTML;
+}
 async function signBinding() {
   const errEl = document.getElementById('err');
   const outEl = document.getElementById('out');
@@ -1134,10 +1184,15 @@ async function signBinding() {
       method: 'personal_sign',
       params: [message, wallet],
     });
-    outEl.innerHTML = 'Wallet: <span class="hl">' + wallet + '</span><br><br>' +
+    // Audit 2026-07-01, P3-8: wallet/signature come from window.ethereum
+    // (not attacker-controlled page content in the normal case), but
+    // building innerHTML by string concatenation is still a defense-in-depth
+    // gap — an already-compromised wallet extension is exactly the scenario
+    // where that gap would matter. esc() (above) escapes it.
+    outEl.innerHTML = 'Wallet: <span class="hl">' + esc(wallet) + '</span><br><br>' +
       'Set these on your node:<br><br>' +
-      'NODE_OPERATOR_WALLET=' + wallet + '<br>' +
-      'NODE_OPERATOR_BINDING_SIGNATURE=' + signature;
+      'NODE_OPERATOR_WALLET=' + esc(wallet) + '<br>' +
+      'NODE_OPERATOR_BINDING_SIGNATURE=' + esc(signature);
     outEl.style.display = 'block';
   } catch (e) {
     errEl.textContent = 'Signing failed or was rejected: ' + (e && e.message ? e.message : e);
@@ -2109,6 +2164,7 @@ func (a *APIServer) handleSetGuardian(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		Wallet    string `json:"wallet"`
 		Guardian  string `json:"guardian"`
+		Timestamp int64  `json:"timestamp"`
 		Signature string `json:"signature"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -2121,8 +2177,20 @@ func (a *APIServer) handleSetGuardian(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, `{"error":"invalid wallet or guardian address"}`, 400)
 		return
 	}
-	// Verify signature: wallet signs "Aequitas: set guardian {guardian_address}"
-	msg := "Aequitas: set guardian " + guardian
+	// Audit 2026-07-01, P2-12: the signed message previously carried no
+	// timestamp/nonce, so a captured signature stayed valid forever and
+	// could be replayed by anyone who intercepted it (e.g. from a log or a
+	// compromised relay) at any later point — including after the wallet
+	// owner intended to change guardians again. Bounding to a 60s window
+	// (same convention as swap.go's request signing) doesn't make this a
+	// single-use nonce, but it closes the "forever" replay window down to
+	// the same short-lived scope already used elsewhere in this API.
+	if diff := time.Now().Unix() - req.Timestamp; diff < -60 || diff > 60 {
+		jsonError(w, "request expired or timestamp out of range", 400)
+		return
+	}
+	// Verify signature: wallet signs "Aequitas: set guardian {guardian_address} ts:{timestamp}"
+	msg := fmt.Sprintf("Aequitas: set guardian %s ts:%d", guardian, req.Timestamp)
 	if err := verifyPersonalSign(msg, req.Signature, wallet); err != nil {
 		jsonError(w, "invalid signature: "+err.Error(), 400)
 		return
@@ -2174,6 +2242,7 @@ func (a *APIServer) handleConfirmAlive(w http.ResponseWriter, r *http.Request) {
 		Wallet    string `json:"wallet"`
 		Signature string `json:"signature"`
 		Guardian  string `json:"guardian"` // FIX 9: optional client-supplied guardian for early mismatch detection
+		Timestamp int64  `json:"timestamp"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, `{"error":"invalid request body"}`, 400)
@@ -2184,9 +2253,24 @@ func (a *APIServer) handleConfirmAlive(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, `{"error":"invalid wallet address"}`, 400)
 		return
 	}
+	// Audit 2026-07-01, P2-12: bound to a 60s window — see handleSetGuardian's
+	// matching comment for why (closes the "signature valid forever" replay
+	// window down to the same short-lived scope used elsewhere in this API).
+	if diff := time.Now().Unix() - req.Timestamp; diff < -60 || diff > 60 {
+		jsonError(w, "request expired or timestamp out of range", 400)
+		return
+	}
 	// FIX 3: Look up guardian from DB first, then immediately verify the
 	// signature using that address before passing it into ConfirmAlive.
-	// ConfirmAlive re-fetches under its own lock to close the TOCTOU window.
+	// Audit 2026-07-01, P2-11: corrected — ConfirmAlive re-fetches OUTSIDE
+	// cs.mu (deliberately, to avoid holding the write lock for a DB
+	// round-trip and stalling all other chain operations), NOT "under its
+	// own lock" as this comment previously claimed. See ConfirmAlive's own
+	// comment (guardian.go) for why that tiny remaining window — a
+	// concurrent SetGuardian landing between this check and the DB
+	// query inside ConfirmAlive — is an accepted, low-impact race (worst
+	// case: a spurious "mismatch" error the caller can retry), not a
+	// stronger guarantee than that.
 	guardianAddr, _, err := a.state.GetGuardian(wallet)
 	if err != nil || guardianAddr == "" {
 		http.Error(w, `{"error":"no guardian set for this wallet"}`, 404)
@@ -2200,7 +2284,7 @@ func (a *APIServer) handleConfirmAlive(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	// Signature is by the guardian.
-	msg := "Aequitas: confirm alive " + wallet
+	msg := fmt.Sprintf("Aequitas: confirm alive %s ts:%d", wallet, req.Timestamp)
 	if sigErr := verifyPersonalSign(msg, req.Signature, guardianAddr); sigErr != nil {
 		jsonError(w, "invalid guardian signature: "+sigErr.Error(), 400)
 		return
@@ -2295,6 +2379,7 @@ func (a *APIServer) handleRecoverEscrow(w http.ResponseWriter, r *http.Request) 
 	var req struct {
 		Wallet    string `json:"wallet"`
 		Signature string `json:"signature"`
+		Timestamp int64  `json:"timestamp"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, `{"error":"invalid request body"}`, 400)
@@ -2305,7 +2390,13 @@ func (a *APIServer) handleRecoverEscrow(w http.ResponseWriter, r *http.Request) 
 		http.Error(w, `{"error":"invalid wallet address"}`, 400)
 		return
 	}
-	msg := "Aequitas: recover escrow " + wallet
+	// Audit 2026-07-01, P2-12: bound to a 60s window — see handleSetGuardian's
+	// matching comment for why.
+	if diff := time.Now().Unix() - req.Timestamp; diff < -60 || diff > 60 {
+		jsonError(w, "request expired or timestamp out of range", 400)
+		return
+	}
+	msg := fmt.Sprintf("Aequitas: recover escrow %s ts:%d", wallet, req.Timestamp)
 	if err := verifyPersonalSign(msg, req.Signature, wallet); err != nil {
 		jsonError(w, "invalid signature: "+err.Error(), 400)
 		return
