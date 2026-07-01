@@ -96,7 +96,7 @@ VERSION       = "v0.3.0"
 // was never even referenced anywhere in this file.
 INITIAL_GRANT = 1000
 CHAIN_ID      = "aequitas-1"
-BLOCK_TIME    = 6 * time.Second
+BLOCK_TIME    = 2 * time.Second
 API_PORT      = 8080
 )
 

@@ -532,7 +532,7 @@ input[type=number]::-webkit-inner-spin-button{opacity:0.5}
   <div class="exp-stat">
     <div class="exp-stat-lbl" data-i18n="s-height">Latest Block</div>
     <div class="exp-stat-val" id="s-height">—</div>
-    <div class="exp-stat-sub">~6s · BlockDAG · Parallel production</div>
+    <div class="exp-stat-sub">~2s · BlockDAG · Parallel production</div>
   </div>
   <div class="exp-stat">
     <div class="exp-stat-lbl" data-i18n="s-humans">Verified Humans</div>
@@ -1921,7 +1921,7 @@ en:{
   'k-proof':'Proof System','k-conf':'Confirmation','k-conf-v':'Within 6 seconds (1 block)',
   'k-sybil':'Sybil Protection','k-sybil-v':'One identity per biometric · permanent lock',
   'live-stats':'Live Chain Statistics',
-  's-height':'Block Height','s-height-sub':'New block every ~6s · BlockDAG · Parallel production',
+  's-height':'Block Height','s-height-sub':'New block every ~2s · BlockDAG · Parallel production',
   's-humans':'Verified Humans','s-humans-sub':'Biometric ZKP · One person, one wallet, forever',
   's-supply':'Total Supply','s-supply-sub':'Always = Humans × 1,000 AEQ',
   's-index':'Aequitas Index','s-index-sub':'0 = perfect equality · 100 = max inequality',
@@ -2082,7 +2082,7 @@ de:{
   'k-proof':'Beweissystem','k-conf':'Bestätigung','k-conf-v':'Innerhalb von 6 Sekunden (1 Block)',
   'k-sybil':'Sybil-Schutz','k-sybil-v':'Eine Identität pro Biometrie · dauerhaft gesperrt',
   'live-stats':'Live-Chain-Statistiken',
-  's-height':'Blockhöhe','s-height-sub':'Neuer Block alle ~6s · BlockDAG · Parallele Produktion',
+  's-height':'Blockhöhe','s-height-sub':'Neuer Block alle ~2s · BlockDAG · Parallele Produktion',
   's-humans':'Verifizierte Menschen','s-humans-sub':'Biometrisches ZKP · Eine Person, eine Wallet, für immer',
   's-supply':'Gesamtmenge','s-supply-sub':'Immer = Menschen × 1.000 AEQ',
   's-index':'Aequitas-Index','s-index-sub':'0 = perfekte Gleichheit · 100 = maximale Ungleichheit',
@@ -2262,7 +2262,7 @@ es:{
   'k-proof':'Sistema de Prueba','k-conf':'Confirmación','k-conf-v':'En 6 segundos (1 bloque)',
   'k-sybil':'Protección Sybil','k-sybil-v':'Una identidad por biometría · bloqueo permanente',
   'live-stats':'Estadísticas de Cadena en Vivo',
-  's-height':'Altura de Bloque','s-height-sub':'Nuevo bloque cada ~6s · BlockDAG · Producción paralela',
+  's-height':'Altura de Bloque','s-height-sub':'Nuevo bloque cada ~2s · BlockDAG · Producción paralela',
   's-humans':'Humanos Verificados','s-humans-sub':'ZKP biométrico · Una persona, una wallet, siempre',
   's-supply':'Suministro Total','s-supply-sub':'Siempre = Humanos × 1,000 AEQ',
   's-index':'Índice Aequitas','s-index-sub':'0 = igualdad perfecta · 100 = desigualdad máxima',
@@ -2904,7 +2904,7 @@ it:{
   'k-proof':'Sistema di Prova','k-conf':'Conferma','k-conf-v':'Entro 6 secondi (1 blocco)',
   'k-sybil':'Protezione Sybil','k-sybil-v':'Una identità per biometrica · blocco permanente',
   'live-stats':'Statistiche Chain in Tempo Reale',
-  's-height':'Altezza Blocco','s-height-sub':'Nuovo blocco ogni ~6s · BlockDAG · Produzione parallela',
+  's-height':'Altezza Blocco','s-height-sub':'Nuovo blocco ogni ~2s · BlockDAG · Produzione parallela',
   's-humans':'Umani Verificati','s-humans-sub':'ZKP biometrico · Una persona, un wallet, per sempre',
   's-supply':'Offerta Totale','s-supply-sub':'Sempre = Umani × 1.000 AEQ',
   's-index':'Indice Aequitas','s-index-sub':'0 = perfetta uguaglianza · 100 = massima disuguaglianza',
@@ -3221,7 +3221,7 @@ fr:{
   'k-proof':'Système de preuve','k-conf':'Confirmation','k-conf-v':'En 6 secondes (1 bloc)',
   'k-sybil':'Protection Sybil','k-sybil-v':'Une identité par biométrie · verrouillage permanent',
   'live-stats':'Statistiques de la chaîne en direct',
-  's-height':'Hauteur de bloc','s-height-sub':'Nouveau bloc toutes les ~6s · BlockDAG · Production parallèle',
+  's-height':'Hauteur de bloc','s-height-sub':'Nouveau bloc toutes les ~2s · BlockDAG · Production parallèle',
   's-humans':'Humains vérifiés','s-humans-sub':'ZKP biométrique · Une personne, un portefeuille, pour toujours',
   's-supply':'Offre totale','s-supply-sub':'Toujours = Humains × 1 000 AEQ',
   's-index':'Index Aequitas','s-index-sub':'0 = égalité parfaite · 100 = inégalité maximale',
@@ -3382,7 +3382,7 @@ pt:{
   'k-proof':'Sistema de Prova','k-conf':'Confirmação','k-conf-v':'Em 6 segundos (1 bloco)',
   'k-sybil':'Proteção Sybil','k-sybil-v':'Uma identidade por biometria · bloqueio permanente',
   'live-stats':'Estatísticas ao Vivo da Cadeia',
-  's-height':'Altura do Bloco','s-height-sub':'Novo bloco a cada ~6s · BlockDAG · Produção paralela',
+  's-height':'Altura do Bloco','s-height-sub':'Novo bloco a cada ~2s · BlockDAG · Produção paralela',
   's-humans':'Humanos Verificados','s-humans-sub':'ZKP biométrico · Uma pessoa, uma carteira, para sempre',
   's-supply':'Oferta Total','s-supply-sub':'Sempre = Humanos × 1.000 AEQ',
   's-index':'Índice Aequitas','s-index-sub':'0 = igualdade perfeita · 100 = desigualdade máxima',
@@ -3702,7 +3702,7 @@ hi:{
   'k-proof':'प्रमाण प्रणाली','k-conf':'पुष्टि','k-conf-v':'6 सेकंड के भीतर (1 ब्लॉक)',
   'k-sybil':'Sybil सुरक्षा','k-sybil-v':'प्रति बायोमेट्रिक एक पहचान · स्थायी लॉक',
   'live-stats':'लाइव चेन सांख्यिकी',
-  's-height':'ब्लॉक हाइट','s-height-sub':'हर ~6s में नया ब्लॉक · BlockDAG · समानांतर उत्पादन',
+  's-height':'ब्लॉक हाइट','s-height-sub':'हर ~2s में नया ब्लॉक · BlockDAG · समानांतर उत्पादन',
   's-humans':'सत्यापित मनुष्य','s-humans-sub':'बायोमेट्रिक ZKP · एक व्यक्ति, एक वॉलेट, हमेशा के लिए',
   's-supply':'कुल आपूर्ति','s-supply-sub':'हमेशा = मनुष्य × 1,000 AEQ',
   's-index':'Aequitas इंडेक्स','s-index-sub':'0 = पूर्ण समानता · 100 = अधिकतम असमानता',
