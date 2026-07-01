@@ -4433,6 +4433,7 @@ func (cs *ChainState) ApplySwapDelta(wallet string, amountIn, amountOut float64,
 // applySwapDeltaLocked is ApplySwapDelta's body — see applyTransferDeltaLocked's comment.
 func (cs *ChainState) applySwapDeltaLocked(wallet string, amountIn, amountOut float64, aeqToTusd bool, demurrageLost float64) error {
 	wallet = strings.ToLower(wallet)
+	cs.ensureAccountLoaded(wallet)
 	acc, ok := cs.accounts[wallet]
 	if !ok {
 		return fmt.Errorf("account not found: %s", wallet)
@@ -4513,6 +4514,7 @@ func (cs *ChainState) AddLiquidityDelta(wallet string, aeqAmount, tusdAmount, lp
 // addLiquidityDeltaLocked is AddLiquidityDelta's body — see applyTransferDeltaLocked's comment.
 func (cs *ChainState) addLiquidityDeltaLocked(wallet string, aeqAmount, tusdAmount, lpShares, demurrageLost float64) error {
 	wallet = strings.ToLower(wallet)
+	cs.ensureAccountLoaded(wallet)
 	acc, ok := cs.accounts[wallet]
 	if !ok {
 		return fmt.Errorf("account not found: %s", wallet)
@@ -4577,6 +4579,7 @@ func (cs *ChainState) RemoveLiquidityDelta(wallet string, sharesToBurn, demurrag
 // removeLiquidityDeltaLocked is RemoveLiquidityDelta's body — see applyTransferDeltaLocked's comment.
 func (cs *ChainState) removeLiquidityDeltaLocked(wallet string, sharesToBurn, demurrageLost float64) error {
 	wallet = strings.ToLower(wallet)
+	cs.ensureAccountLoaded(wallet)
 	acc, ok := cs.accounts[wallet]
 	if !ok {
 		return fmt.Errorf("account not found: %s", wallet)
