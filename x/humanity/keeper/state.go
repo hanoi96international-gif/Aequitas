@@ -68,6 +68,15 @@ type AccountState struct {
 	// reset by spending tUSD, so a wallet cannot re-claim by draining its balance.
 	FaucetClaimed bool  `json:"faucet_claimed"`
 	Version       int64 `json:"-"` // optimistic lock version, not serialized
+	// leafHash caches this account's current contribution to the incremental
+	// state-root accumulator (see accountLeaf / ChainState.accountSetXOR). It
+	// is the leaf that was last XORed INTO the accumulator for this account,
+	// so a mutation can XOR the old leaf out before XORing the new one in
+	// without an O(N) rescan. Derived state: never serialized, recomputed on
+	// load. Zero value ([32]byte{}) means "no contribution counted yet"
+	// (brand-new account, or an account excluded from the root because it is
+	// non-human with all-zero balances).
+	leafHash [32]byte `json:"-"`
 }
 
 // PoolState holds the two reserves of the single AEQ<->tUSD liquidity pool.
@@ -98,6 +107,20 @@ type ChainState struct {
 	db         *sql.DB
 	useDB      bool
 	nullifiers map[string]string // nullifier hex → wallet address (in-memory cache)
+	// accountSetXOR / nullifierSetXOR are incremental commitments to the FULL
+	// account set and nullifier set, maintained by XORing each element's leaf
+	// hash in on add and out on remove. They make StateRoot O(1) instead of
+	// O(N): the old stateRootLocked iterated cs.accounts, which is capped at
+	// maxInMemAccounts (5M) — so beyond that cap different nodes loaded
+	// different subsets and computed DIFFERENT roots for the SAME chain,
+	// silently breaking consensus at scale. These accumulators cover every
+	// account/nullifier in the DB regardless of what is currently resident in
+	// memory (see rebuildStateAccumulators, which seeds them from a full DB
+	// scan at startup and after every bulk reset). Guarded by cs.mu like the
+	// maps they summarize; snapshotted/restored across block rollback via
+	// blockRollbackSnapshot.
+	accountSetXOR   [32]byte
+	nullifierSetXOR [32]byte
 	// activeTx, when non-nil, is the transaction every DB write inside the
 	// CURRENT cs.mu-locked operation must use instead of cs.db directly —
 	// see dbExec() and runAtomicWithOutbox. Only ever set/cleared while
@@ -1245,6 +1268,11 @@ func (cs *ChainState) ensureAccountLoaded(addr string) {
 		version = 1
 	}
 	acc.Version = version
+	// Cache this cold account's leaf so a later mutation can XOR its OLD
+	// contribution out of accountSetXOR correctly. The account is already
+	// folded into the accumulator (from the startup full scan), so we only set
+	// the cache here — we must NOT XOR it in again.
+	acc.leafHash = accountLeaf(acc)
 	cs.accounts[addr] = acc
 }
 
@@ -1377,6 +1405,16 @@ func (cs *ChainState) loadFromDB() {
 	}
 
 	cs.loadOrInitPool()
+
+	// Seed the incremental state-root accumulators from the full DB (see
+	// ChainState.accountSetXOR). Runs once at startup, after accounts,
+	// nullifiers and pool are loaded, so the very first StateRoot this node
+	// computes already commits to every account and nullifier — including the
+	// cold ones beyond maxInMemAccounts that will only ever be paged in on
+	// demand. Startup is single-threaded, so no lock is needed here.
+	cs.rebuildStateAccumulators()
+	fmt.Printf("✓ State-root accumulators seeded (accountSetXOR=%x…, nullifierSetXOR=%x…)\n",
+		cs.accountSetXOR[:4], cs.nullifierSetXOR[:4])
 }
 
 // loadOrInitPool reads the single liquidity_pool row, creating it (at
@@ -1512,6 +1550,19 @@ func (cs *ChainState) saveAccountToDB(acc *AccountState) error {
 	// deploy), not routine multi-node contention on a shared DB.
 	err := cs.saveAccountToDBInner(acc)
 	if err == nil {
+		// Incremental state-root maintenance (see ChainState.accountSetXOR):
+		// the row write succeeded, so replace this account's previously-counted
+		// leaf with its new one. acc.leafHash is whatever was last folded into
+		// the accumulator for this account (the zero hash for a brand-new one);
+		// XOR is self-inverse, so out-then-in keeps accountSetXOR equal to the
+		// XOR of every current account's leaf. Every caller holds cs.mu for the
+		// whole mutation (see this function's doc comment), so this shared-state
+		// update needs no extra synchronization, and it participates in block
+		// rollback via blockRollbackSnapshot.accountSetXOR.
+		newLeaf := accountLeaf(acc)
+		xorInto(&cs.accountSetXOR, acc.leafHash)
+		xorInto(&cs.accountSetXOR, newLeaf)
+		acc.leafHash = newLeaf
 		return nil
 	}
 	if errors.Is(err, errVersionConflict) {
@@ -3914,72 +3965,151 @@ func (cs *ChainState) StateRoot() string {
 // its critical section, matching the same tradeoff every atomic operation
 // in this file already makes (see runAtomicWithOutbox).
 func (cs *ChainState) stateRootLocked(lastUBIAt string) string {
-	addrs := make([]string, 0, len(cs.accounts))
-	for a := range cs.accounts {
-		addrs = append(addrs, a)
-	}
-	sort.Strings(addrs)
+	// O(1) in the account/nullifier count: both sets are summarized by their
+	// incremental XOR accumulators (see ChainState.accountSetXOR). The OLD
+	// implementation iterated cs.accounts and cs.nullifiers here — correct
+	// only while every account fits in memory, but cs.accounts is capped at
+	// maxInMemAccounts (5M). Past that cap two honest nodes loaded different
+	// subsets and hashed different roots for identical chain state, so the
+	// root silently stopped being a consensus invariant exactly when the
+	// network grew large enough to need one. accountSetXOR/nullifierSetXOR
+	// commit to the FULL sets regardless of residency, and cost nothing to
+	// read here.
+	//
+	// This is a DIFFERENT hash construction from the pre-accumulator nodes,
+	// so during a mixed-version rollout upgraded and non-upgraded nodes will
+	// log StateRoot mismatches against each other. That is safe: a mismatch
+	// is a warning, never a block rejection (see AddPeerBlock) — the chain
+	// keeps advancing on individually-verified TXs until every node runs this
+	// code, at which point they agree again.
 	var sb strings.Builder
-	for _, a := range addrs {
-		acc := cs.accounts[a]
-		// Include ALL accounts with non-zero AEQ or tUSD balances (not only humans).
-		// FIX (audit 2026-06-29): used ">0" — Decimal is a signed type
-		// (IsNegative/Neg exist and are used elsewhere in this file), so an
-		// account that somehow went negative (a bug in some other code path,
-		// not something this function should assume can never happen) would
-		// be silently excluded from the hash, indistinguishable from a
-		// genuinely-absent account. Two nodes that diverged only in HOW
-		// negative such a balance was would still compute the identical
-		// StateRoot — exactly the kind of "different economic states hash
-		// identically" gap this function's own doc comment says it exists to
-		// close. "!=0" is a strict superset of ">0" for every value seen in
-		// current production state (all balances are non-negative today), so
-		// this changes nothing about the StateRoot any existing node
-		// computes right now — it only closes the gap for a balance that
-		// should never go negative but, if it ever did due to some other
-		// bug, would otherwise make that bug invisible to consensus checks.
-		if acc.IsHuman || acc.Balance != 0 || acc.TUsdBalance != 0 || acc.LPShares != 0 {
-			// FaucetClaimed and LastActivityAt must be included: two nodes that
-			// processed different sets of faucet claims would produce the same
-			// balances but handle future UBI distribution differently.
-			// P1-9: LastActivityAt excluded — wall-clock differs between nodes
-			// for the same TX, causing StateRoot mismatch and peer block rejection.
-			// P2-10: use integer micro-units (Decimal is int64) instead of
-			// float — float64 loses sub-micro precision below 1e-6, so two nodes
-			// with identical account state (same int64 micro-value) could compute
-			// different StateRoot hashes after float conversion.
-			fmt.Fprintf(&sb, "%s:%d:%d:%d:h=%v:fc=%v:",
-				a,
-				acc.Balance.Micro(),
-				acc.TUsdBalance.Micro(),
-				acc.LPShares.Micro(),
-				acc.IsHuman,
-				acc.FaucetClaimed)
-		}
-	}
+	sb.WriteString("acctXOR:")
+	sb.WriteString(hex.EncodeToString(cs.accountSetXOR[:]))
 	// Include pool state: reserves and total LP shares (P2-10: integer atoms)
 	if cs.pool != nil {
-		fmt.Fprintf(&sb, "pool:%d:%d:%d",
+		fmt.Fprintf(&sb, "|pool:%d:%d:%d",
 			cs.pool.ReserveAEQ.Micro(),
 			cs.pool.ReserveTUSD.Micro(),
 			cs.pool.TotalLPShares.Micro())
 	}
-	// Include nullifier count (hash of keys, not values, for privacy)
-	nullKeys := make([]string, 0, len(cs.nullifiers))
-	for k := range cs.nullifiers {
-		nullKeys = append(nullKeys, k)
-	}
-	sort.Strings(nullKeys)
-	fmt.Fprintf(&sb, "|n=%d:", len(nullKeys))
-	// P2-5: include only nullifier keys, not wallet addresses (privacy)
-	for _, k := range nullKeys {
-		sb.WriteString(k)
-		sb.WriteString(":")
-	}
+	// Nullifier set commitment (keys only, never wallet addresses — privacy).
+	sb.WriteString("|nullXOR:")
+	sb.WriteString(hex.EncodeToString(cs.nullifierSetXOR[:]))
 	// Include last UBI distribution timestamp (pre-fetched before RLock — P1-1).
 	fmt.Fprintf(&sb, "|ubi:%s", lastUBIAt)
 	hash := sha256.Sum256([]byte(sb.String()))
 	return hex.EncodeToString(hash[:])
+}
+
+// xorInto XORs src into dst in place — the combine step of both set accumulators.
+func xorInto(dst *[32]byte, src [32]byte) {
+	for i := 0; i < 32; i++ {
+		dst[i] ^= src[i]
+	}
+}
+
+// accountLeaf returns this account's contribution to accountSetXOR: a SHA256
+// over exactly the fields the pre-accumulator StateRoot committed per account
+// (lowercased address, micro-unit balances, human/faucet flags), or the zero
+// hash when the account is excluded from the root (non-human with every
+// balance zero). Because XOR is its own inverse, XORing an account's leaf in
+// when it changes and its previous leaf out first keeps accountSetXOR equal to
+// the XOR of every current account's leaf — no rescan needed.
+//
+// The inclusion rule matches the old code's "!=0" superset-of-">0" choice: a
+// balance that should never go negative but somehow did is still committed,
+// so such a bug stays visible to consensus rather than hashing identically to
+// an absent account.
+func accountLeaf(acc *AccountState) [32]byte {
+	if !(acc.IsHuman || acc.Balance != 0 || acc.TUsdBalance != 0 || acc.LPShares != 0) {
+		return [32]byte{}
+	}
+	s := fmt.Sprintf("acct:%s:%d:%d:%d:h=%v:fc=%v",
+		strings.ToLower(acc.Address),
+		acc.Balance.Micro(),
+		acc.TUsdBalance.Micro(),
+		acc.LPShares.Micro(),
+		acc.IsHuman,
+		acc.FaucetClaimed)
+	return sha256.Sum256([]byte(s))
+}
+
+// nullifierLeaf returns a nullifier key's contribution to nullifierSetXOR.
+// Keys are unique (PRIMARY KEY), so no two distinct nullifiers can cancel.
+func nullifierLeaf(key string) [32]byte {
+	return sha256.Sum256([]byte("null:" + key))
+}
+
+// rebuildStateAccumulators recomputes accountSetXOR and nullifierSetXOR from
+// scratch and refreshes the cached leafHash on every resident account. Call it
+// after any BULK change that bypasses the incremental hooks in saveAccountToDB
+// and the nullifier helpers: initial DB load, snapshot import, resync, or a
+// full reset. Caller must hold cs.mu (write).
+//
+// Accounts are summed from a full chain_accounts scan (NOT just the in-memory
+// map) so the accumulator stays complete beyond maxInMemAccounts; leafHash is
+// cached only for rows that happen to be resident. With no DB (unit tests) it
+// falls back to the in-memory map, which is authoritative in that mode.
+func (cs *ChainState) rebuildStateAccumulators() {
+	var acc [32]byte
+	scanned := false
+	if cs.db != nil {
+		rows, err := cs.db.Query(`SELECT address, balance, is_human, tusd_balance, lp_shares, faucet_claimed FROM chain_accounts`)
+		if err == nil {
+			for rows.Next() {
+				var addr string
+				var bal, tusd, lp float64
+				var human, faucet bool
+				if scanErr := rows.Scan(&addr, &bal, &human, &tusd, &lp, &faucet); scanErr != nil {
+					continue
+				}
+				lower := strings.ToLower(addr)
+				tmp := &AccountState{Address: lower, Balance: NewDecimal(bal), IsHuman: human, TUsdBalance: NewDecimal(tusd), LPShares: NewDecimal(lp), FaucetClaimed: faucet}
+				leaf := accountLeaf(tmp)
+				xorInto(&acc, leaf)
+				if resident, ok := cs.accounts[lower]; ok {
+					resident.leafHash = leaf
+				}
+			}
+			rows.Close()
+			scanned = true
+		}
+	}
+	if !scanned {
+		for _, a := range cs.accounts {
+			leaf := accountLeaf(a)
+			a.leafHash = leaf
+			xorInto(&acc, leaf)
+		}
+	}
+	cs.accountSetXOR = acc
+
+	// Nullifiers: scan the whole table, not cs.nullifiers — that map is capped
+	// at maxInMemNullifiers, so iterating it would miss keys beyond the cap and
+	// leave the accumulator (hence the root) short exactly at scale. Fall back
+	// to the in-memory map only when there is no DB (unit tests).
+	var nul [32]byte
+	nscanned := false
+	if cs.db != nil {
+		nrows, nerr := cs.db.Query(`SELECT nullifier FROM nullifiers`)
+		if nerr == nil {
+			for nrows.Next() {
+				var k string
+				if err := nrows.Scan(&k); err != nil || k == "" {
+					continue
+				}
+				xorInto(&nul, nullifierLeaf(k))
+			}
+			nrows.Close()
+			nscanned = true
+		}
+	}
+	if !nscanned {
+		for k := range cs.nullifiers {
+			xorInto(&nul, nullifierLeaf(k))
+		}
+	}
+	cs.nullifierSetXOR = nul
 }
 
 // calcGiniLocked computes the Gini coefficient without acquiring cs.mu.
@@ -4126,6 +4256,15 @@ type blockRollbackSnapshot struct {
 	// was no way to tell restore "this key must be deleted, not skipped".
 	// configValueSnapshot's existed field makes that distinction explicit.
 	chainConfig map[string]configValueSnapshot
+	// accountSetXOR / nullifierSetXOR capture the two incremental state-root
+	// accumulators (see ChainState) at snapshot time. The per-account leafHash
+	// caches are already covered by the account-state copies above (leafHash is
+	// a field of AccountState, so *acc snapshots it), but the two GLOBAL
+	// accumulators live on ChainState, not on any account, so a rollback must
+	// restore them explicitly — otherwise a hard-failed block's XOR mutations
+	// would survive its own rejection and permanently skew every later root.
+	accountSetXOR   [32]byte
+	nullifierSetXOR [32]byte
 }
 
 type configValueSnapshot struct {
@@ -4248,6 +4387,8 @@ func (cs *ChainState) snapshotForRollbackLocked(addrs []string, full bool, chain
 		snap.pool = &poolCopy
 	}
 	snap.chainConfig = chainConfig
+	snap.accountSetXOR = cs.accountSetXOR
+	snap.nullifierSetXOR = cs.nullifierSetXOR
 	return snap
 }
 
@@ -4356,6 +4497,16 @@ func (cs *ChainState) restoreFromRollbackLocked(snap *blockRollbackSnapshot) err
 			firstErr = fmt.Errorf("rollback: could not restore config %q: %w", key, err)
 		}
 	}
+	// Restore the two global state-root accumulators to their pre-block values.
+	// The per-account saveAccountToDB calls above are net-zero for accountSetXOR
+	// (each restored account's leafHash already equals its recomputed leaf), and
+	// accounts deleted by this rollback had their leaf folded in during the
+	// failed block — so overwriting with the snapshot is the authoritative
+	// revert. Done LAST so it wins over any incremental XOR the restore path
+	// itself performed. nullifierSetXOR is reverted here too, since the nullifier
+	// map/DB rollback happens via the surrounding transaction, not this function.
+	cs.accountSetXOR = snap.accountSetXOR
+	cs.nullifierSetXOR = snap.nullifierSetXOR
 	return firstErr
 }
 

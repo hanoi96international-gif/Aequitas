@@ -1236,6 +1236,7 @@ func (cs *ChainState) tryClaimNullifierLocked(nullifier, walletAddress string) (
 			return false, nil
 		}
 		cs.nullifiers[nullifier] = walletAddress
+		xorInto(&cs.nullifierSetXOR, nullifierLeaf(nullifier)) // fold new key into state-root accumulator
 		return true, nil
 	}
 	res, err := cs.dbExec().Exec(
@@ -1248,6 +1249,11 @@ func (cs *ChainState) tryClaimNullifierLocked(nullifier, walletAddress string) (
 	if n, _ := res.RowsAffected(); n == 0 {
 		return false, nil // already existed
 	}
+	// Insert genuinely happened — fold the key into the nullifier accumulator
+	// (see ChainState.nullifierSetXOR). Done regardless of the in-memory cap
+	// below, because the accumulator commits to EVERY nullifier, not just the
+	// cached subset.
+	xorInto(&cs.nullifierSetXOR, nullifierLeaf(nullifier))
 	// Insert succeeded — update in-memory cache.
 	if len(cs.nullifiers) < maxInMemNullifiers {
 		cs.nullifiers[nullifier] = walletAddress
@@ -1276,17 +1282,30 @@ func (cs *ChainState) SaveNullifier(nullifier, walletAddress string) error {
 		return nil
 	}
 	walletAddress = strings.ToLower(walletAddress)
-	if len(cs.nullifiers) < maxInMemNullifiers {
-		cs.nullifiers[nullifier] = walletAddress
-	}
 	if cs.db == nil {
+		// No-DB mode: the map is authoritative. Fold into the accumulator only
+		// when the key is genuinely new so repeated saves can't double-count.
+		if _, exists := cs.nullifiers[nullifier]; !exists {
+			cs.nullifiers[nullifier] = walletAddress
+			xorInto(&cs.nullifierSetXOR, nullifierLeaf(nullifier))
+		}
 		return nil
 	}
-	if _, err := cs.dbExec().Exec(
+	res, err := cs.dbExec().Exec(
 		`INSERT INTO nullifiers (nullifier, wallet_address) VALUES ($1, $2) ON CONFLICT (nullifier) DO NOTHING`,
 		nullifier, walletAddress,
-	); err != nil {
+	)
+	if err != nil {
 		return fmt.Errorf("could not persist nullifier: %w", err)
+	}
+	// Fold into the nullifier accumulator only on a genuine insert (RowsAffected
+	// > 0), never on a conflict no-op — otherwise a nullifier already counted by
+	// tryClaimNullifierLocked would be XORed in a second time and cancel itself.
+	if n, _ := res.RowsAffected(); n > 0 {
+		xorInto(&cs.nullifierSetXOR, nullifierLeaf(nullifier))
+	}
+	if len(cs.nullifiers) < maxInMemNullifiers {
+		cs.nullifiers[nullifier] = walletAddress
 	}
 	return nil
 }
@@ -1308,8 +1327,15 @@ func (cs *ChainState) releaseNullifierLocked(nullifier string) {
 	if nullifier == "" {
 		return
 	}
+	_, wasCached := cs.nullifiers[nullifier]
 	delete(cs.nullifiers, nullifier)
 	if cs.db == nil {
+		// No-DB mode: the map was authoritative, so only reverse the accumulator
+		// if this key was actually present (XOR is self-inverse — XORing out a
+		// key that was never in would wrongly fold it IN).
+		if wasCached {
+			xorInto(&cs.nullifierSetXOR, nullifierLeaf(nullifier))
+		}
 		return
 	}
 	// FIX (audit 2026-06-28 recheck 5, P1-1): routes through cs.dbExec()
@@ -1319,8 +1345,15 @@ func (cs *ChainState) releaseNullifierLocked(nullifier string) {
 	// would discard the claim anyway), and stays the real, separate
 	// compensating action for callers outside any active transaction
 	// (e.g. the mirror-path fallback in register.go).
-	if _, err := cs.dbExec().Exec(`DELETE FROM nullifiers WHERE nullifier = $1`, nullifier); err != nil {
+	res, err := cs.dbExec().Exec(`DELETE FROM nullifiers WHERE nullifier = $1`, nullifier)
+	if err != nil {
 		fmt.Printf("[NULLIFIER] Warning: could not release nullifier %s: %v\n", nullifier, err)
+		return
+	}
+	// Reverse the accumulator only when a row was actually deleted, so a
+	// release of an already-absent nullifier can't fold a phantom key in.
+	if n, _ := res.RowsAffected(); n > 0 {
+		xorInto(&cs.nullifierSetXOR, nullifierLeaf(nullifier))
 	}
 }
 

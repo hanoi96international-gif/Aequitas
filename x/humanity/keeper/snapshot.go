@@ -467,6 +467,11 @@ func (cs *ChainState) ImportSnapshotFromURL(peerURL, expectedSignerHex string) e
 			return fmt.Errorf("snapshot import: merge-persist commit failed: %w", err)
 		}
 	}
+	// Rebuild the state-root accumulators from the freshly merged DB: the bulk
+	// snapshot INSERTs above bypass saveAccountToDB's incremental hook, so
+	// accountSetXOR/nullifierSetXOR must be reseeded from the full tables before
+	// the next StateRoot is computed. Still under cs.mu.
+	cs.rebuildStateAccumulators()
 	cs.mu.Unlock()
 
 	// FIX (audit 2026-06-28 recheck 5, P1-3): this used to only log the
@@ -705,6 +710,12 @@ func (cs *ChainState) ResyncFromSnapshotURL(peerURL, expectedSignerHex string) e
 		cs.mu.Unlock()
 		return fmt.Errorf("resync: commit failed, state fully reverted: %w", err)
 	}
+	// Reseed the state-root accumulators from the authoritative post-resync DB:
+	// the bulk replace above bypassed the incremental hooks, so accountSetXOR/
+	// nullifierSetXOR must be recomputed before the next StateRoot. This is what
+	// makes a resynced node's root match the healthy peer it copied — the whole
+	// point of the resync. Still under cs.mu.
+	cs.rebuildStateAccumulators()
 	cs.mu.Unlock()
 
 	// FIX (audit recheck3, P0 #1): used to only log this and return success

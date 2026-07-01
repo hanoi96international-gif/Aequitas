@@ -3289,14 +3289,24 @@ func (dag *BlockDAG) maxParents() int {
 	return v
 }
 
-// maxMergeVisits scales with mergeDepthLimit so BFS budgets stay proportional
-// to K. Floor of 50 preserves current behaviour on a small network.
+// maxMergeVisits bounds how many blocks the merge-set BFS visits and how many
+// get blue/red-classified. It must be at least the number of blocks that can
+// be produced CONCURRENTLY (all of them land in one block's merge set in the
+// worst case), which is the committee size ≈ 3*K (K is set to committeeSize/3
+// in getEpochCommittee). It must NOT grow faster than that: classification is
+// roughly O(visits^2), so an over-large cap turns a burst into a multi-second
+// stall (confirmed by block_ghostdag_scale_test at cap 185). 3*K tracks the
+// real concurrency; the floor of 50 preserves small-network behaviour, where
+// K stays at its base and merge sets are single digits anyway.
 func (dag *BlockDAG) maxMergeVisits() int {
-	v := 5 * dag.mergeDepthLimit()
-	if v < 50 {
+	// Exactly the historical constant (50) at base K, so small networks keep
+	// their proven timing; grow by ~3 per K above base to track committee-size
+	// concurrency without the O(visits^2) blowup a steeper curve caused.
+	extra := dag.k() - ghostdagKBase
+	if extra <= 0 {
 		return 50
 	}
-	return v
+	return 50 + 3*extra
 }
 
 // maxParentsPerBlock caps how many tips ProduceBlock includes as parents.
