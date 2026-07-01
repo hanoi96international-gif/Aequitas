@@ -1690,7 +1690,11 @@ if block.Signature != "" && !block.IsGenesis {
 	}
 	// Proposer must be in the authorized validator set. Without this check
 	// anyone can generate an Ethereum key, sign a block, and feed it in.
-	if !dag.authorizedValidators[proposer] {
+	// Skipped for HTTP-SYNC blocks (block.FromSync): the primary already
+	// validated them; abandoning orphans here would permanently deadlock
+	// any child block waiting on a historical block from an early validator
+	// whose registration was cleared from the local DB.
+	if !dag.authorizedValidators[proposer] && !block.FromSync {
 		// P3-2: cap to prevent unbounded memory growth from forged proposer addresses
 		if len(dag.warnedUnknownProposers) > 500 {
 			dag.warnedUnknownProposers = make(map[string]bool)
