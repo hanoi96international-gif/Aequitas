@@ -122,18 +122,28 @@ func (cs *ChainState) initSlashingTables() {
 // producing blocks (a time-bounded suspension or a permanent ban).
 // Checked by AddPeerBlock's proposer-authorization gate after confirming
 // the cryptographic signature.
-func (cs *ChainState) IsValidatorSuspended(addr string) (suspended bool, reason string) {
+//
+// blockTimestamp is the Unix timestamp of the block being validated. When
+// non-zero, blocks produced BEFORE the ban was applied (blockTimestamp <
+// last_offense_at) are allowed — this is the historical-sync case: a
+// validator that was later slashed still legitimately signed those earlier
+// blocks, and replaying them during catch-up must not be rejected.
+func (cs *ChainState) IsValidatorSuspended(addr string, blockTimestamp int64) (suspended bool, reason string) {
 	if cs.db == nil {
 		return false, ""
 	}
 	var banned bool
-	var suspendedUntil int64
+	var suspendedUntil, lastOffenseAt int64
 	err := cs.db.QueryRow(
-		`SELECT banned, suspended_until FROM validator_penalties WHERE signing_address = $1`,
+		`SELECT banned, suspended_until, last_offense_at FROM validator_penalties WHERE signing_address = $1`,
 		strings.ToLower(addr),
-	).Scan(&banned, &suspendedUntil)
+	).Scan(&banned, &suspendedUntil, &lastOffenseAt)
 	if err != nil {
 		return false, "" // ErrNoRows or transient error: fail open
+	}
+	// Historical block predates the ban — allow it during catch-up sync.
+	if blockTimestamp > 0 && lastOffenseAt > 0 && blockTimestamp < lastOffenseAt {
+		return false, ""
 	}
 	if banned {
 		return true, "permanently banned for repeated equivocation"

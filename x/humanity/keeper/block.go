@@ -1720,7 +1720,7 @@ if block.Signature != "" && !block.IsGenesis {
 // expires. Checked after the signature + authorization gates above so that
 // the suspended proposer's identity is already confirmed cryptographically.
 if dag.state != nil {
-	if suspended, reason := dag.state.IsValidatorSuspended(proposer); suspended {
+	if suspended, reason := dag.state.IsValidatorSuspended(proposer, block.Timestamp); suspended {
 		fmt.Printf("[SLASHING] ✗ Rejected block #%d from %s: %s\n", block.Height, proposer, reason)
 		dag.mu.Unlock()
 		return false
