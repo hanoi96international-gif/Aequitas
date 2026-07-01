@@ -193,8 +193,9 @@ replayedMu             sync.Mutex
 	// RESYNC_FROM_SNAPSHOT to fix. Cleared once caught up. If the seed is
 	// unreachable at startup or sync stalls for >60s, production proceeds
 	// independently so a downed seed never blocks all other nodes.
-	syncTargetHeight atomic.Int64
-	startupTime      int64 // Unix timestamp of NewBlockchain — used by the initial-sync gate
+	syncTargetHeight   atomic.Int64
+	activeGhostdagK    atomic.Int32 // live GHOSTDAG K for current epoch; 0 → use ghostdagKBase
+	startupTime        int64        // Unix timestamp of NewBlockchain — used by the initial-sync gate
 	// syntheticCheckpointCount (audit 2026-06-30 monster audit, P1-05) is a
 	// running counter of synthetic-checkpoint stubs currently trusted by
 	// this node, maintained incrementally at each insertion site
@@ -1185,8 +1186,8 @@ sort.Slice(allTips, func(i, j int) bool {
     }
     return allTips[i].hash < allTips[j].hash
 })
-if len(allTips) > maxParentsPerBlock {
-    allTips = allTips[:maxParentsPerBlock]
+if len(allTips) > dag.maxParents() {
+    allTips = allTips[:dag.maxParents()]
 }
 parentHashes := make([]string, len(allTips))
 for i, te := range allTips {
@@ -3239,12 +3240,17 @@ func (dag *BlockDAG) getEpochCommittee(height int64) *EpochCommittee {
 	if dag.currentEpoch == nil || dag.currentEpoch.Number != epochNum {
 		dag.currentEpoch = ec
 		if ec != nil {
+			newK := ghostdagKBase
+			if ec.Size/3 > newK {
+				newK = ec.Size / 3
+			}
+			dag.activeGhostdagK.Store(int32(newK))
 			role := "observer"
 			if ec.Members[dag.selfProposer] {
 				role = "producer"
 			}
-			fmt.Printf("[EPOCH] Epoch %d (height %d): committee=%d validators, self=%s (%s)\n",
-				epochNum, height, ec.Size, dag.selfProposer, role)
+			fmt.Printf("[EPOCH] Epoch %d (height %d): committee=%d validators, K=%d, self=%s (%s)\n",
+				epochNum, height, ec.Size, newK, dag.selfProposer, role)
 		}
 	} else {
 		ec = dag.currentEpoch
@@ -3253,11 +3259,45 @@ func (dag *BlockDAG) getEpochCommittee(height int64) *EpochCommittee {
 	return ec
 }
 
-// ghostdagK is the GHOSTDAG k-parameter: the maximum number of blocks that
-// can be in each other's anticone while all remaining blue.  K=18 matches
-// the reference Kaspa implementation; for our ≤3-validator network every
-// honest block is always blue in practice (merge sets are at most 2 blocks).
-const ghostdagK = 18
+// ghostdagKBase is the minimum K used on a near-empty network. Once the
+// active-producer committee exceeds 3*ghostdagKBase validators the epoch
+// boundary raises K to committeeSize/3 so the blue-set ratio stays healthy.
+// All nodes compute the same K from the same deterministic committee, so
+// this is a safe consensus-layer change with no manual coordination.
+const ghostdagKBase = 18
+
+// activeGhostdagK is the live K for the current epoch, stored as an atomic
+// so GHOSTDAG computations (called under dag.mu) can read it without a
+// separate lock. Updated by getEpochCommittee at every epoch transition.
+// Defaults to ghostdagKBase until the first committee is computed.
+// dag.k() is the accessor — use it everywhere instead of ghostdagKBase.
+func (dag *BlockDAG) k() int {
+	v := int(dag.activeGhostdagK.Load())
+	if v < ghostdagKBase {
+		return ghostdagKBase
+	}
+	return v
+}
+
+// maxParents scales with K so the merge-set stays tractable as the committee
+// grows: at K=18 the minimum is 64, for large committees it becomes 2*K.
+func (dag *BlockDAG) maxParents() int {
+	v := 2 * dag.k()
+	if v < maxParentsPerBlock {
+		return maxParentsPerBlock
+	}
+	return v
+}
+
+// maxMergeVisits scales with mergeDepthLimit so BFS budgets stay proportional
+// to K. Floor of 50 preserves current behaviour on a small network.
+func (dag *BlockDAG) maxMergeVisits() int {
+	v := 5 * dag.mergeDepthLimit()
+	if v < 50 {
+		return 50
+	}
+	return v
+}
 
 // maxParentsPerBlock caps how many tips ProduceBlock includes as parents.
 // Without a cap, 1000 simultaneous validators produce 1000 tips → a single
@@ -3268,10 +3308,23 @@ const ghostdagK = 18
 const maxParentsPerBlock = 64
 
 // dagPruneBuffer is how many block-heights above the finalized checkpoint
-// dag.blocks keeps in RAM. ghostdagIsAncestor / ghostdagMergeSet walk at
-// most ghostdagMergeDepthLimit = 2*K+1 = 37 hops back, so 200 is a 5× safety
-// margin.  Pruned blocks are never deleted from the DB (chain_blocks).
-const dagPruneBuffer = 200
+// dag.blocks keeps in RAM. ghostdagMergeDepth = 2*K+1 hops back; at K=333
+// (1000-validator committee) that is 667 hops, so we keep 5× = 3350. The
+// buffer scales with K at runtime via dag.pruneBuffer().
+// Pruned blocks are never deleted from the DB (chain_blocks).
+const dagPruneBufferBase = 200
+
+// pruneBuffer returns the DAG in-memory retention window scaled to current K:
+// max(dagPruneBufferBase, 5*(2*K+1)) so GHOSTDAG ancestor walks never reach
+// a pruned block.
+func (dag *BlockDAG) pruneBuffer() int64 {
+	k := dag.k()
+	need := int64(5 * (2*k + 1))
+	if need < dagPruneBufferBase {
+		return dagPruneBufferBase
+	}
+	return need
+}
 
 // startupLoadWindow: on startup, load only the most-recent N blocks from
 // chain_blocks into dag.blocks. bootHeight (derived from the DB's
@@ -3280,15 +3333,12 @@ const dagPruneBuffer = 200
 // pruning loop is the binding constraint, not the startup load.
 const startupLoadWindow = 2000
 
-// ghostdagMergeDepthLimit bounds how many parent-hops back ghostdagMergeSet
-// and ghostdagIsAncestor will walk. Anything further back than this is, by
-// construction, already outside any block's merge set (ghostdagMergeSet
-// itself never looks further than this), so an ancestor query between two
-// merge-set members — the ONLY thing ghostdagIsAncestor is ever used for —
-// never needs to look further than this either: if neither block reaches
-// the other within this many hops, they were never going to be ancestor/
-// descendant of each other within the region this algorithm reasons about.
-const ghostdagMergeDepthLimit = 2*ghostdagK + 1
+// mergeDepthLimit returns 2*K+1: the maximum parent-hops ghostdagMergeSet
+// and ghostdagIsAncestor will walk. Scales with the live K so large-committee
+// epochs never truncate valid merge sets. Must be called while dag.mu is held.
+func (dag *BlockDAG) mergeDepthLimit() int {
+	return 2*dag.k() + 1
+}
 
 // computeGHOSTDAGState computes true GHOSTDAG state for a block and stores
 // the result in block.SelectedParent, block.Blues, and block.BlueScore.
@@ -3350,7 +3400,7 @@ func (dag *BlockDAG) computeGHOSTDAGState(block *Block) {
 	// backstop, not expected to trigger under normal multi-validator
 	// operation — if it logs routinely in production, that means real
 	// gossip propagation latency needs investigating, not this cap.
-	const maxClassifiedMergeSetSize = maxMergeSetBFSVisits
+	maxClassifiedMergeSetSize := dag.maxMergeVisits()
 	if len(sorted) > maxClassifiedMergeSetSize {
 		fmt.Printf("[GHOSTDAG] ⚠ merge set size %d for block %s exceeds classification cap %d — classifying only the %d blocks closest to SelectedParent, remainder treated as red. This indicates an extreme concurrent-production burst; investigate gossip/sync latency if this recurs.\n",
 			len(sorted), block.Hash, maxClassifiedMergeSetSize, maxClassifiedMergeSetSize)
@@ -3391,7 +3441,7 @@ func (dag *BlockDAG) computeGHOSTDAGState(block *Block) {
 			// an ancestor of the other).
 			if !dag.ghostdagIsAncestor(bHash, mHash) && !dag.ghostdagIsAncestor(mHash, bHash) {
 				antiCnt++
-				if antiCnt > ghostdagK {
+				if antiCnt > dag.k() {
 					isBlue = false
 					break
 				}
@@ -3460,10 +3510,11 @@ func (dag *BlockDAG) computeGHOSTDAGState(block *Block) {
 // normal operation (validators converging within a few rounds, as real
 // gossip propagation within a ~6s block interval should achieve) actual
 // merge sets are tiny — typically single digits — and this never triggers.
-const maxMergeSetBFSVisits = 50
+// maxMergeSetBFSVisits floor (50) — actual limit computed by dag.maxMergeVisits() = max(50, 5*(2K+1))
 
 func (dag *BlockDAG) ghostdagMergeSet(block *Block, spHash string) map[string]bool {
-	const depthLimit = ghostdagMergeDepthLimit
+	depthLimit := dag.mergeDepthLimit()
+	visitCap := dag.maxMergeVisits()
 
 	// Build a shallow exclusion set: blocks definitely reachable from SP.
 	type entry struct {
@@ -3473,7 +3524,7 @@ func (dag *BlockDAG) ghostdagMergeSet(block *Block, spHash string) map[string]bo
 	excluded := map[string]bool{spHash: true}
 	queue := []entry{{spHash, 0}}
 	for len(queue) > 0 {
-		if len(excluded) >= maxMergeSetBFSVisits {
+		if len(excluded) >= visitCap {
 			break
 		}
 		cur := queue[0]
@@ -3486,7 +3537,7 @@ func (dag *BlockDAG) ghostdagMergeSet(block *Block, spHash string) map[string]bo
 				if !excluded[ph] {
 					excluded[ph] = true
 					queue = append(queue, entry{ph, cur.depth + 1})
-					if len(excluded) >= maxMergeSetBFSVisits {
+					if len(excluded) >= visitCap {
 						break
 					}
 				}
@@ -3504,8 +3555,8 @@ func (dag *BlockDAG) ghostdagMergeSet(block *Block, spHash string) map[string]bo
 		}
 	}
 	for len(queue) > 0 {
-		if len(mergeSet) >= maxMergeSetBFSVisits {
-			fmt.Printf("[GHOSTDAG] ⚠ merge-set BFS for block %s hit the %d-node visit cap — treating remaining reachable ancestors as outside the merge set. Extreme concurrent-production burst; investigate gossip/sync latency if this recurs.\n", block.Hash, maxMergeSetBFSVisits)
+		if len(mergeSet) >= visitCap {
+			fmt.Printf("[GHOSTDAG] ⚠ merge-set BFS for block %s hit the %d-node visit cap — treating remaining reachable ancestors as outside the merge set. Extreme concurrent-production burst; investigate gossip/sync latency if this recurs.\n", block.Hash, visitCap)
 			break
 		}
 		cur := queue[0]
@@ -3518,7 +3569,7 @@ func (dag *BlockDAG) ghostdagMergeSet(block *Block, spHash string) map[string]bo
 				if !excluded[ph] && !mergeSet[ph] {
 					mergeSet[ph] = true
 					queue = append(queue, entry{ph, cur.depth + 1})
-					if len(mergeSet) >= maxMergeSetBFSVisits {
+					if len(mergeSet) >= visitCap {
 						break
 					}
 				}
@@ -3576,15 +3627,16 @@ func (dag *BlockDAG) ghostdagIsAncestor(ancestorHash, descendantHash string) boo
 		hash  string
 		depth int
 	}
+	visitCap := dag.maxMergeVisits()
 	visited := map[string]bool{descendantHash: true}
 	queue := []entry{{descendantHash, 0}}
 	for len(queue) > 0 {
-		if len(visited) >= maxMergeSetBFSVisits {
+		if len(visited) >= visitCap {
 			return false
 		}
 		cur := queue[0]
 		queue = queue[1:]
-		if cur.depth >= ghostdagMergeDepthLimit {
+		if cur.depth >= dag.mergeDepthLimit() {
 			continue
 		}
 		if b, ok := dag.blocks[cur.hash]; ok {
@@ -3595,7 +3647,7 @@ func (dag *BlockDAG) ghostdagIsAncestor(ancestorHash, descendantHash string) boo
 				if !visited[ph] {
 					visited[ph] = true
 					queue = append(queue, entry{ph, cur.depth + 1})
-					if len(visited) >= maxMergeSetBFSVisits {
+					if len(visited) >= visitCap {
 						return false
 					}
 				}
@@ -3649,10 +3701,10 @@ func (dag *BlockDAG) pruneOldDAGBlocks() {
 		return
 	}
 	finalizedHeight, _ := dag.state.GetFinalizedCheckpoint()
-	if finalizedHeight <= int64(dagPruneBuffer)+10 {
+	if finalizedHeight <= dag.pruneBuffer()+10 {
 		return
 	}
-	cutoff := finalizedHeight - int64(dagPruneBuffer)
+	cutoff := finalizedHeight - dag.pruneBuffer()
 	dag.mu.Lock()
 	pruned := 0
 	for hash, b := range dag.blocks {
