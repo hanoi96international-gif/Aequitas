@@ -784,14 +784,31 @@ func (a *APIServer) handleHumans(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	accounts := a.state.GetAllAccounts()
+	// Read pool state once, not per-account, so this scales to millions of
+	// humans. Each human's LP value is their ownership fraction of the pool
+	// reserves — surfaced alongside the liquid balance so a human who added
+	// all their AEQ as liquidity doesn't appear to hold nothing.
+	reserveAEQ, reserveTUSD, totalLPShares := a.state.GetPoolSnapshot()
 	humans := []map[string]interface{}{}
 	for _, acc := range accounts {
 		if acc.IsHuman {
+			liquid := effectiveBalance(acc).Float()
+			lpShares := acc.LPShares.Float()
+			var lpValueAEQ, lpValueTUSD float64
+			if totalLPShares > 0 && lpShares > 0 {
+				ownership := lpShares / totalLPShares
+				lpValueAEQ = ownership * reserveAEQ
+				lpValueTUSD = ownership * reserveTUSD
+			}
 			humans = append(humans, map[string]interface{}{
 				"address": acc.Address,
 				// Use effectiveBalance so the Lorenz curve and Score tab show the same Gini.
 				// Raw acc.Balance ignores demurrage decay → different Gini than CalcGini().
-				"balance": effectiveBalance(acc).Float(),
+				"balance":         liquid,
+				"lp_shares":       lpShares,
+				"lp_value_aeq":    lpValueAEQ,
+				"lp_value_tusd":   lpValueTUSD,
+				"total_value_aeq": liquid + lpValueAEQ,
 			})
 		}
 	}
@@ -853,11 +870,31 @@ func (a *APIServer) handleBalance(w http.ResponseWriter, r *http.Request) {
 	isHuman := a.state.IsHuman(wallet)
 	demurrage := a.state.GetDemurrageStatus(wallet)
 
+	// LP position: AEQ deposited into the liquidity pool is no longer part of
+	// the wallet's spendable "balance" — it lives as LP shares. Without
+	// surfacing it here, a user who added all their AEQ as liquidity sees a
+	// bare "balance: 0" and reasonably concludes their funds vanished. Report
+	// the LP shares AND their current withdrawable AEQ/tUSD value (the pool's
+	// reserves times this wallet's ownership fraction) so the frontend can show
+	// "0 AEQ liquid + X AEQ worth of liquidity".
+	lpShares, totalLPShares := a.state.GetLPShares(wallet)
+	reserveAEQ, reserveTUSD := a.state.GetPoolReserves()
+	var lpValueAEQ, lpValueTUSD float64
+	if totalLPShares > 0 && lpShares > 0 {
+		ownership := lpShares / totalLPShares
+		lpValueAEQ = ownership * reserveAEQ
+		lpValueTUSD = ownership * reserveTUSD
+	}
+
 	json.NewEncoder(w).Encode(map[string]interface{}{
 		"wallet":                     wallet,
 		"balance":                    balance,
 		"tusd_balance":               tusdBalance,
 		"is_human":                   isHuman,
+		"lp_shares":                  lpShares,
+		"lp_value_aeq":               lpValueAEQ,
+		"lp_value_tusd":              lpValueTUSD,
+		"total_value_aeq":            balance + lpValueAEQ,
 		"demurrage_active":           demurrage.Active,
 		"demurrage_days_until_start": demurrage.DaysUntilStart,
 		"show_14_day_notice":         demurrage.ShowFourteenDayNotice,

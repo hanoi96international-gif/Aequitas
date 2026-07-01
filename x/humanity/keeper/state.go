@@ -2495,9 +2495,10 @@ func (cs *ChainState) GetDemurrageStatus(address string) DemurrageStatus {
 }
 
 func (cs *ChainState) GetTUsdBalance(address string) float64 {
-	cs.mu.RLock()
-	defer cs.mu.RUnlock()
+	cs.mu.Lock()
+	defer cs.mu.Unlock()
 	address = strings.ToLower(address)
+	cs.ensureAccountLoaded(address)
 	if acc, ok := cs.accounts[address]; ok {
 		return acc.TUsdBalance.Float()
 	}
@@ -2511,6 +2512,18 @@ func (cs *ChainState) GetPoolReserves() (float64, float64) {
 		return 0, 0
 	}
 	return cs.pool.ReserveAEQ.Float(), cs.pool.ReserveTUSD.Float()
+}
+
+// GetPoolSnapshot returns reserveAEQ, reserveTUSD, and totalLPShares in a
+// single lock acquisition — so a caller iterating many accounts can compute
+// each account's withdrawable LP value without taking the pool lock per row.
+func (cs *ChainState) GetPoolSnapshot() (reserveAEQ, reserveTUSD, totalLPShares float64) {
+	cs.mu.RLock()
+	defer cs.mu.RUnlock()
+	if cs.pool == nil {
+		return 0, 0, 0
+	}
+	return cs.pool.ReserveAEQ.Float(), cs.pool.ReserveTUSD.Float(), cs.pool.TotalLPShares.Float()
 }
 
 func (cs *ChainState) IsHuman(address string) bool {
@@ -3738,9 +3751,10 @@ func (cs *ChainState) removeLiquidityLocked(address string, sharesToBurn float64
 // total shares — callers can compute the account's ownership fraction
 // (and therefore its withdrawable amounts) from these two numbers.
 func (cs *ChainState) GetLPShares(address string) (float64, float64) {
-	cs.mu.RLock()
-	defer cs.mu.RUnlock()
+	cs.mu.Lock()
+	defer cs.mu.Unlock()
 	address = strings.ToLower(address)
+	cs.ensureAccountLoaded(address)
 	var mine float64
 	if acc, ok := cs.accounts[address]; ok {
 		mine = acc.LPShares.Float()
