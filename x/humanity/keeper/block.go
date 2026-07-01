@@ -91,6 +91,11 @@ type Block struct {
 	BlueScore      int64    `json:"blue_score,omitempty"`
 	SelectedParent string   `json:"selected_parent,omitempty"` // parent with highest blue score
 	Blues          []string `json:"blues,omitempty"`           // blue blocks in the merge set
+	// FromSync marks blocks fetched via HTTP-SYNC from the primary's
+	// canonical chain. Never serialized — defaults false for all P2P/gossip
+	// blocks. When true, the equivocation-suspension gate in AddPeerBlock is
+	// bypassed: canonical blocks have already been validated at source.
+	FromSync bool `json:"-"`
 }
 
 // peerChallenge holds a one-time challenge issued to a registering peer.
@@ -1719,7 +1724,13 @@ if block.Signature != "" && !block.IsGenesis {
 // for repeated equivocation may not produce further blocks until the penalty
 // expires. Checked after the signature + authorization gates above so that
 // the suspended proposer's identity is already confirmed cryptographically.
-if dag.state != nil {
+//
+// Skipped for blocks fetched via HTTP-SYNC (block.FromSync == true): those
+// blocks are part of the primary's canonical chain and were accepted before
+// the local suspension record existed. Rejecting them here deadlocks
+// catch-up sync whenever a historically-banned validator's blocks appear in
+// the canonical history.
+if dag.state != nil && !block.FromSync {
 	if suspended, reason := dag.state.IsValidatorSuspended(proposer, block.Timestamp); suspended {
 		fmt.Printf("[SLASHING] ✗ Rejected block #%d from %s: %s\n", block.Height, proposer, reason)
 		dag.mu.Unlock()

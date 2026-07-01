@@ -462,6 +462,7 @@ func (dag *BlockDAG) fetchMissingAncestors(nodeURL string) {
 			}
 			for _, block := range blocks {
 				fetchedThisRound++
+				block.FromSync = true
 				if !dag.AddPeerBlock(block) {
 					// Block was fetched from the peer but rejected locally
 					// (bad signature, unauthorized proposer, etc.).  Count it
@@ -587,6 +588,7 @@ func (dag *BlockDAG) doSyncOnce(nodeURL string) (ok bool) {
 			dag.mu.RLock()
 			_, exists := dag.blocks[block.Hash]
 			dag.mu.RUnlock()
+			block.FromSync = true
 			if !exists && dag.AddPeerBlock(block) {
 				addedThisPage++
 			}
@@ -863,6 +865,7 @@ func (dag *BlockDAG) healSyntheticCheckpoints() {
 				continue
 			}
 			for _, b := range blocks {
+				b.FromSync = true
 				if dag.AddPeerBlock(b) {
 					healed++
 				}
