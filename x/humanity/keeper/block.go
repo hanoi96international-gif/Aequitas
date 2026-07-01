@@ -3169,16 +3169,24 @@ type EpochCommittee struct {
 	Size    int
 }
 
-// computeEpochCommittee builds the committee for epochNum from the full set of
-// registered node operators in the DB. Returns nil when no operators are
-// registered yet (bootstrap mode — all signing keys can produce).
+// computeEpochCommittee builds the committee for epochNum from the live
+// authorizedValidators map (which always contains this node's own signing key
+// plus every peer validator discovered via registration). Must be called while
+// dag.mu is already held by the caller (ProduceBlock holds it; getEpochCommittee
+// is only invoked from there).
+//
+// Using authorizedValidators instead of validator_keys/validator_slots avoids
+// the critical bug where the primary never registers with itself: its own
+// signing address is absent from both DB tables, so a DB-based query would
+// exclude it from its own committee, halting all primary block production.
 func (dag *BlockDAG) computeEpochCommittee(epochNum int64) *EpochCommittee {
-	if dag.state == nil {
-		return nil
+	allOps := make([]string, 0, len(dag.authorizedValidators))
+	for addr := range dag.authorizedValidators {
+		allOps = append(allOps, addr)
 	}
-	allOps := dag.state.GetAllRegisteredValidatorAddresses()
+	sort.Strings(allOps) // deterministic ordering before scoring
 	if len(allOps) == 0 {
-		return nil // bootstrap: no registered operators → everyone can produce
+		return nil // no validators known yet → everyone can produce (bootstrap)
 	}
 
 	size := targetCommitteeSize
