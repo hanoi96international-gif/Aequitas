@@ -96,7 +96,7 @@ VERSION       = "v0.3.0"
 // was never even referenced anywhere in this file.
 INITIAL_GRANT = 1000
 CHAIN_ID      = "aequitas-1"
-BLOCK_TIME    = 2 * time.Second
+BLOCK_TIME    = 1 * time.Second
 API_PORT      = 8080
 )
 
@@ -321,7 +321,22 @@ fmt.Println()
 // outcome of concurrent production, not a bug to engineer away.
 fmt.Println("── Starting Block Production ────────────")
 go func() {
-ticker := time.NewTicker(BLOCK_TIME)
+	// Align to the nearest BLOCK_TIME boundary on the wall clock so that
+	// every validator node fires its ticker within NTP accuracy (~10–50ms)
+	// of all other nodes. Without alignment, two independent tickers started
+	// at random times are offset by up to BLOCK_TIME/2 on average and almost
+	// never fire simultaneously — blocks arrive sequentially and the DAG
+	// degenerates to a linear chain with 1-parent blocks only. With wall-clock
+	// alignment, both validators produce within <50ms of each other on every
+	// tick: the propagation delay (~100ms) means each node's block arrives at
+	// its peer just AFTER the peer already committed to producing its own block
+	// for that tick — creating two concurrent tips at the same height, which
+	// the next tick's ProduceBlock merges into a 2-parent block. This turns
+	// GHOSTDAG concurrent production from a probabilistic ~10% event into the
+	// default steady-state behavior.
+	alignDelay := time.Until(time.Now().Truncate(BLOCK_TIME).Add(BLOCK_TIME))
+	time.Sleep(alignDelay)
+	ticker := time.NewTicker(BLOCK_TIME)
 for range ticker.C {
 block := bc.ProduceBlock()
 			if block == nil {
