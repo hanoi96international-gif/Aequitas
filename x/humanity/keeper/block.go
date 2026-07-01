@@ -482,7 +482,15 @@ state.ResetStaleIncludedPendingTxs(10 * time.Minute)
 // full transaction lists — across a restart without needing any peer to
 // still have them; the counter-only fallback further down only recovers
 // the height NUMBER, not the actual block data.
-loaded, loadErr := state.LoadBlocksFromDB()
+// Load only the most-recent startupLoadWindow blocks into dag.blocks to
+// bound startup RAM. bootHeight (set below from the DB's max_block_height
+// entry) prevents re-replay of any block at or below the chain tip, so
+// the full history need not be in memory.
+startupMinH := int64(0)
+if tip := state.getMaxBlockHeightDB(); tip > startupLoadWindow {
+    startupMinH = tip - int64(startupLoadWindow)
+}
+loaded, loadErr := state.LoadBlocksFromDB(startupMinH)
 if loadErr != nil {
 	// FIX (2026-06-28, production incident): a transient DB error here
 	// used to be silently treated as "this node has zero durably-saved
@@ -636,6 +644,17 @@ if persisted := state.getConfigValueDB("max_block_height"); persisted != "" {
 // Captured ONCE, after the restoration above and before any block
 // processing begins — see bootHeight's field comment.
 dag.bootHeight = dag.height
+
+// Background pruner: evict finalized blocks from dag.blocks every 60s
+// to bound long-running RAM usage. DB retains the full history.
+go func() {
+    t := time.NewTicker(60 * time.Second)
+    defer t.Stop()
+    for range t.C {
+        dag.pruneOldDAGBlocks()
+    }
+}()
+
 return dag
 }
 
@@ -1095,14 +1114,37 @@ if dag.bootHeight > 0 && dag.height+10 < dag.bootHeight {
 	return nil
 }
 
-// Collect all current tips as parents.
-// Sort deterministically so the hash is identical regardless of map
-// iteration order — both nodes must agree on parent_hashes ordering.
-parentHashes := make([]string, 0, len(dag.tips))
-for hash := range dag.tips {
-parentHashes = append(parentHashes, hash)
+// Collect tips as parents, capped at maxParentsPerBlock.
+// With many validators, every tip would create giant blocks and blow up
+// GHOSTDAG merge-set computation. Select the highest-BlueScore tips
+// (most recent, most authoritative) up to the cap, then sort by hash for
+// deterministic block-hash computation across all nodes.
+type tipEntry struct {
+    hash      string
+    blueScore int64
 }
-sort.Strings(parentHashes)
+allTips := make([]tipEntry, 0, len(dag.tips))
+for hash := range dag.tips {
+    score := int64(0)
+    if b, ok := dag.blocks[hash]; ok {
+        score = b.BlueScore
+    }
+    allTips = append(allTips, tipEntry{hash, score})
+}
+sort.Slice(allTips, func(i, j int) bool {
+    if allTips[i].blueScore != allTips[j].blueScore {
+        return allTips[i].blueScore > allTips[j].blueScore
+    }
+    return allTips[i].hash < allTips[j].hash
+})
+if len(allTips) > maxParentsPerBlock {
+    allTips = allTips[:maxParentsPerBlock]
+}
+parentHashes := make([]string, len(allTips))
+for i, te := range allTips {
+    parentHashes[i] = te.hash
+}
+sort.Strings(parentHashes) // deterministic ordering for block hash
 
 // Height = max parent height + 1
 maxParentHeight := int64(0)
@@ -3060,6 +3102,27 @@ const softRetryTTL = 5 * time.Minute
 // honest block is always blue in practice (merge sets are at most 2 blocks).
 const ghostdagK = 18
 
+// maxParentsPerBlock caps how many tips ProduceBlock includes as parents.
+// Without a cap, 1000 simultaneous validators produce 1000 tips → a single
+// block carries 40 KB of parent hashes and GHOSTDAG merge-set computation
+// explodes.  64 parents cover all validators up to a few hundred; the best
+// (highest-BlueScore) tips are selected so no validator's work is unfairly
+// excluded when the cap bites.
+const maxParentsPerBlock = 64
+
+// dagPruneBuffer is how many block-heights above the finalized checkpoint
+// dag.blocks keeps in RAM. ghostdagIsAncestor / ghostdagMergeSet walk at
+// most ghostdagMergeDepthLimit = 2*K+1 = 37 hops back, so 200 is a 5× safety
+// margin.  Pruned blocks are never deleted from the DB (chain_blocks).
+const dagPruneBuffer = 200
+
+// startupLoadWindow: on startup, load only the most-recent N blocks from
+// chain_blocks into dag.blocks. bootHeight (derived from the DB's
+// max_block_height config entry) guards against re-replay of older blocks
+// even though they are not in memory.  2000 >> dagPruneBuffer so the live
+// pruning loop is the binding constraint, not the startup load.
+const startupLoadWindow = 2000
+
 // ghostdagMergeDepthLimit bounds how many parent-hops back ghostdagMergeSet
 // and ghostdagIsAncestor will walk. Anything further back than this is, by
 // construction, already outside any block's merge set (ghostdagMergeSet
@@ -3415,6 +3478,36 @@ func ghostdagTopoSort(subset map[string]bool, allBlocks map[string]*Block) []str
 		dfs(h)
 	}
 	return result
+}
+
+// pruneOldDAGBlocks evicts from dag.blocks all non-tip blocks below
+// (finalizedHeight - dagPruneBuffer). The DB (chain_blocks) retains the
+// full history. ghostdagIsAncestor / ghostdagMergeSet walk at most
+// ghostdagMergeDepthLimit = 2*K+1 hops back; dagPruneBuffer >> that
+// depth, so pruned blocks never appear in live GHOSTDAG queries.
+// collectUnreplayedAncestors is bounded by bootHeight (set at startup to
+// the chain tip), so it never needs blocks below the prune cutoff either.
+func (dag *BlockDAG) pruneOldDAGBlocks() {
+	if dag.state == nil {
+		return
+	}
+	finalizedHeight, _ := dag.state.GetFinalizedCheckpoint()
+	if finalizedHeight <= int64(dagPruneBuffer)+10 {
+		return
+	}
+	cutoff := finalizedHeight - int64(dagPruneBuffer)
+	dag.mu.Lock()
+	pruned := 0
+	for hash, b := range dag.blocks {
+		if !b.IsGenesis && b.Height < cutoff && !dag.tips[hash] {
+			delete(dag.blocks, hash)
+			pruned++
+		}
+	}
+	dag.mu.Unlock()
+	if pruned > 0 {
+		fmt.Printf("[DAG] 🧹 Pruned %d finalized blocks from in-memory DAG (below height %d); DB retains full history\n", pruned, cutoff)
+	}
 }
 
 // collectUnreplayedAncestors returns the subset of block's transitive

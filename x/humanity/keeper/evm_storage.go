@@ -2567,21 +2567,46 @@ func (cs *ChainState) SaveBlockWithPendingTxsAtomic(block *Block, ids []int64) e
 // error (instead of a nil map a real "zero rows" case can't be told apart
 // from) if it still fails, so the caller can refuse to start rather than
 // silently behave as if a node with real history had none.
-func (cs *ChainState) LoadBlocksFromDB() (map[string]*Block, error) {
+// getMaxBlockHeightDB returns the max_block_height stored in chain_config,
+// or 0 if not set. Used by NewBlockchain to determine the startup load window
+// before dag.height is established.
+func (cs *ChainState) getMaxBlockHeightDB() int64 {
+	v := cs.getConfigValueDB("max_block_height")
+	var h int64
+	fmt.Sscanf(v, "%d", &h)
+	return h
+}
+
+// LoadBlocksFromDB loads blocks from chain_blocks into a hash→Block map.
+// minHeight filters to height >= minHeight; pass 0 to load all blocks.
+// On large chains, callers should pass (tipHeight - startupLoadWindow) to
+// bound startup RAM — bootHeight guards against re-replay of older blocks
+// even when they are absent from dag.blocks.
+func (cs *ChainState) LoadBlocksFromDB(minHeight int64) (map[string]*Block, error) {
 	if cs.db == nil {
 		return nil, nil
 	}
 	// Ensure GHOSTDAG columns exist before reading them (idempotent migration).
 	cs.ensureGHOSTDAGColumns()
-	query := `SELECT hash, height, parent_hashes, proposer, timestamp, humans, state_root,
+	baseQuery := `SELECT hash, height, parent_hashes, proposer, timestamp, humans, state_root,
 	                 signature, transactions,
 	                 COALESCE(selected_parent,''), COALESCE(blue_score,0), COALESCE(blues,'[]')
 	          FROM chain_blocks`
-	rows, err := cs.db.Query(query)
+	var rows *sql.Rows
+	var err error
+	if minHeight > 0 {
+		rows, err = cs.db.Query(baseQuery+" WHERE height >= $1", minHeight)
+	} else {
+		rows, err = cs.db.Query(baseQuery)
+	}
 	if err != nil {
 		fmt.Printf("[BLOCK] LoadBlocksFromDB query error (attempt 1): %v — retrying once\n", err)
 		time.Sleep(2 * time.Second)
-		rows, err = cs.db.Query(query)
+		if minHeight > 0 {
+			rows, err = cs.db.Query(baseQuery+" WHERE height >= $1", minHeight)
+		} else {
+			rows, err = cs.db.Query(baseQuery)
+		}
 	}
 	if err != nil {
 		return nil, fmt.Errorf("LoadBlocksFromDB query failed after retry: %w", err)
