@@ -186,6 +186,15 @@ replayedMu             sync.Mutex
 	// CPU sustained for minutes with chain length ~50,000 and ~8,500 distinct
 	// missing parents pending abandonment.
 	lastDeepScanAt atomic.Int64
+	// syncTargetHeight is set at startup to the seed node's current block
+	// height. ProduceBlock defers production until this node has caught up
+	// to within 10 blocks of the target, preventing the "produce on a stale
+	// fork while sync is still running" divergence that requires manual
+	// RESYNC_FROM_SNAPSHOT to fix. Cleared once caught up. If the seed is
+	// unreachable at startup or sync stalls for >60s, production proceeds
+	// independently so a downed seed never blocks all other nodes.
+	syncTargetHeight atomic.Int64
+	startupTime      int64 // Unix timestamp of NewBlockchain — used by the initial-sync gate
 	// syntheticCheckpointCount (audit 2026-06-30 monster audit, P1-05) is a
 	// running counter of synthetic-checkpoint stubs currently trusted by
 	// this node, maintained incrementally at each insertion site
@@ -789,7 +798,8 @@ func (dag *BlockDAG) RefreshBootHeightAfterSnapshotImport(resyncHappened bool) {
 		dag.replayedBlocks = make(map[string]bool)
 		dag.replayedMu.Unlock()
 		dag.bootHeight = 0
-		dag.createGenesisBlock() // repopulates dag.blocks/dag.tips with genesis only, sets dag.height = 0
+		dag.startupTime = time.Now().Unix()
+	dag.createGenesisBlock() // repopulates dag.blocks/dag.tips with genesis only, sets dag.height = 0
 		fmt.Println("[RESYNC] ✓ Reset in-memory DAG to genesis-only — chain_blocks was just wiped, sequential resync from genesis starts now")
 	}
 
@@ -1117,6 +1127,24 @@ if dag.bootHeight > 0 && dag.height+10 < dag.bootHeight {
 	fmt.Printf("[BLOCK] ⏳ Catch-up in progress (dag.height=%d, bootHeight=%d) — skipping block production\n",
 		dag.height, dag.bootHeight)
 	return nil
+}
+
+// Initial-sync gate: after a restart, defer production until this node
+// has caught up to within 10 blocks of the height the seed reported at
+// startup. This prevents producing on a stale fork while the HTTP sync
+// loop is still pulling in the seed's newer blocks — the root cause of
+// "Contabo is ahead of Primary" divergence that required RESYNC_FROM_SNAPSHOT.
+//
+// Safety valve: if 90s have elapsed since the gate was set and we still
+// haven't reached the target, the seed is likely down — fall through and
+// produce independently so a downed primary never blocks all other nodes.
+if target := dag.syncTargetHeight.Load(); target > 0 {
+	if dag.height >= target-10 {
+		dag.syncTargetHeight.Store(0) // caught up — clear gate permanently
+	} else if time.Now().Unix()-dag.startupTime < 90 {
+		return nil // still within startup window — wait for sync
+	}
+	// else: 90s elapsed, primary may be down → produce independently
 }
 
 // Epoch-committee gate: only the selected committee members produce blocks.

@@ -821,6 +821,13 @@ func (dag *BlockDAG) StartPeerDiscovery(selfURL string) {
 			// even if every OTHER peer it discovers is unreachable.
 			dag.startSyncForPeer(seed)
 		}
+		// Initial-sync gate: fetch each seed's current height so ProduceBlock
+		// can defer production until we've caught up. This prevents the
+		// "diverged chain on restart" bug: without this gate, a restarting node
+		// produces on its own DB state before the sync loop has pulled in the
+		// seed's newer blocks, creating a fork that requires RESYNC to fix.
+		// Uses the highest reported height across all seeds as the target.
+		go dag.fetchAndSetSyncTarget(seeds)
 	} else {
 		fmt.Println("[PEERS] No PRIMARY_NODE_URL/PRIMARY_NODE_URLS configured — accepting registrations from peers")
 	}
@@ -1086,6 +1093,37 @@ func staticPeers(selfURL string) []string {
 // StartHTTPBlockSync is an alias kept for call-site compatibility.
 func (dag *BlockDAG) StartHTTPBlockSync(selfURL string) {
 	dag.StartPeerDiscovery(selfURL)
+}
+
+// fetchAndSetSyncTarget queries each seed's /api/health/combined for its
+// current block height and sets syncTargetHeight to the maximum found.
+// ProduceBlock defers production until dag.height is within 10 of this
+// target so a restarting node never produces on a stale fork while the
+// sync loop is still catching up. Called in a goroutine from StartPeerDiscovery.
+func (dag *BlockDAG) fetchAndSetSyncTarget(seeds []string) {
+	type healthResp struct {
+		Chain struct {
+			Height int64 `json:"height"`
+		} `json:"chain"`
+	}
+	var maxHeight int64
+	for _, seed := range seeds {
+		resp, err := httpSyncClient.Get(seed + "/api/health/combined")
+		if err != nil {
+			continue
+		}
+		var h healthResp
+		if err := json.NewDecoder(resp.Body).Decode(&h); err == nil && h.Chain.Height > maxHeight {
+			maxHeight = h.Chain.Height
+		}
+		resp.Body.Close()
+	}
+	if maxHeight <= dag.Height() {
+		return // already at or ahead of seed — no gate needed
+	}
+	dag.syncTargetHeight.Store(maxHeight)
+	fmt.Printf("[SYNC] Initial-sync gate active: deferring block production until height %d (currently %d)\n",
+		maxHeight, dag.Height())
 }
 
 // HTTPBroadcastBlock pushes a freshly-produced block to every active HTTP
