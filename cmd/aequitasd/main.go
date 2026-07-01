@@ -184,7 +184,11 @@ p2pNode.SetDAG(bc)
 	// verify the snapshot's ECDSA signature before importing — mandatory for
 	// resync mode regardless of this var's own emptiness check below.
 	// After startup, ongoing state sync happens via block TX replay in AddPeerBlock.
-	resyncMode := os.Getenv("RESYNC_FROM_SNAPSHOT") == "true"
+	// A prior run's divergence auto-heal monitor may have flagged this node for
+	// an authoritative resync (see StartDivergenceAutoHeal) — honour that flag
+	// exactly like an explicit RESYNC_FROM_SNAPSHOT=true, so the safe boot-time
+	// resync path runs and the node rejoins its peers on its own.
+	resyncMode := os.Getenv("RESYNC_FROM_SNAPSHOT") == "true" || chainState.AutoResyncRequested()
 	// FIX (2026-06-28, production incident): TotalHumans()==0 alone used to
 	// trigger the "fresh node" bootstrap import — indistinguishable from a
 	// node whose chain_accounts load failed at startup (see loadFromDB's
@@ -222,6 +226,10 @@ p2pNode.SetDAG(bc)
 					chainState.SetBootstrapDegraded("resync failed: " + err.Error())
 				} else {
 					resyncSucceeded = true
+					// Heal succeeded — clear any auto-heal flag so we don't resync
+					// again on the next restart (the cooldown stamp set when the
+					// flag was raised still guards against immediate re-triggering).
+					chainState.ClearAutoResyncRequest()
 				}
 			} else {
 				fmt.Printf("[BOOTSTRAP] Fresh node — importing state from %s\n", bootstrapURL)
@@ -291,6 +299,10 @@ p2pNode.SetDAG(bc)
 	// SELF_URL without an http(s) scheme gets "https://" prepended.
 	selfURL = keeper.NormalizeNodeURL(selfURL)
 	bc.StartHTTPBlockSync(selfURL)
+	// Recover automatically from sustained divergence (opt-in, secondary-only)
+	// — see StartDivergenceAutoHeal. Started after sync so a healthy node has a
+	// chance to converge first and never trips the monitor.
+	bc.StartDivergenceAutoHeal(os.Getenv("BOOTSTRAP_SNAPSHOT_URL"), os.Getenv("BOOTSTRAP_SIGNER"))
 	p2pNode.Start()
 	bc.ReconstructState(chainState)
 
