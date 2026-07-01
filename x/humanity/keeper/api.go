@@ -1229,7 +1229,11 @@ func (a *APIServer) handleUI(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "no-cache, no-store, must-revalidate")
 	w.Header().Set("Pragma", "no-cache")
 	w.Header().Set("Expires", "0")
-	w.Header().Set("Content-Security-Policy", "default-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com; style-src 'self' 'unsafe-inline' https://fonts.bunny.net; font-src https://fonts.bunny.net; connect-src 'self' https://aequitas.digital; img-src 'self' data:")
+	// script-src must include unpkg.com: the price chart loads TradingView's
+	// lightweight-charts library from there (api_html.go). Without it the CSP
+	// silently blocks the script, window.LightweightCharts stays undefined,
+	// initPriceChart() bails, and the price chart renders as an empty box.
+	w.Header().Set("Content-Security-Policy", "default-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com https://unpkg.com; style-src 'self' 'unsafe-inline' https://fonts.bunny.net; font-src https://fonts.bunny.net; connect-src 'self' https://aequitas.digital; img-src 'self' data:")
 	path := strings.Trim(r.URL.Path, "/")
 	if idx := strings.Index(path, "/"); idx >= 0 {
 		path = path[:idx]
