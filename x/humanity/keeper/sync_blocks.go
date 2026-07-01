@@ -702,7 +702,8 @@ func (dag *BlockDAG) syncWithNode(nodeURL string) {
 //                        used to silently self-identify as the distribution
 //                        authority, which is exactly the duplicate-distribution
 //                        failure class this whole mechanism exists to prevent.
-//                        Set DISTRIBUTION_ENABLED=true on exactly one node.
+//                        All nodes distribute by default; set DISTRIBUTION_ENABLED=false
+//                        to opt a specific node out (cross-node dedup prevents double-credit).
 //   PRIMARY_NODE_URLS — OPTIONAL comma-separated list of ADDITIONAL seed nodes
 //                        to register/discover peers through, alongside
 //                        PRIMARY_NODE_URL. Purely a bootstrap-resilience

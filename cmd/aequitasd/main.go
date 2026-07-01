@@ -491,7 +491,7 @@ fmt.Println("[NODE] NODE_OPERATOR_WALLET not set — this node won't receive val
 
 fmt.Println("╔════════════════════════════════════════╗")
 fmt.Println("║     Aequitas Node Running ✓            ║")
-fmt.Println("║     Producing blocks every 6 seconds   ║")
+fmt.Println("║     Producing blocks every 1 second    ║")
 fmt.Println("╚════════════════════════════════════════╝")
 
 quit := make(chan os.Signal, 1)

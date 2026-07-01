@@ -210,7 +210,7 @@ section{padding:60px 20px}
       <div class="step">
         <div class="step-num">3</div>
         <h3>1,000 AEQ Granted</h3>
-        <p>Your wallet is permanently registered on-chain within 6 seconds. You receive 1,000 AEQ instantly — completely free, forever immutable.</p>
+        <p>Your wallet is permanently registered on-chain within 1 second. You receive 1,000 AEQ instantly — completely free, forever immutable.</p>
       </div>
     </div>
   </div>
@@ -328,7 +328,7 @@ section{padding:60px 20px}
     <div class="cta-section">
       <div class="section-label" style="text-align:center">Get started</div>
       <h2>Join the fairest currency on Earth</h2>
-      <p>Download the AequitasBio app, scan your biometrics, and receive 1,000 AEQ within 6 seconds. No fees, no investment, no prerequisites.</p>
+      <p>Download the AequitasBio app, scan your biometrics, and receive 1,000 AEQ within 1 second. No fees, no investment, no prerequisites.</p>
       <div class="hero-btns">
         <a href="/download/app.apk" class="btn-primary">📱 Download AequitasBio (Android)</a>
         <a href="/register" class="btn-secondary">🌐 Register via Browser</a>
