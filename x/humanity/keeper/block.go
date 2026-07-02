@@ -200,6 +200,23 @@ replayedMu             sync.Mutex
 	// nanos, atomic) so a fork flood can't turn the log itself into the
 	// bottleneck — see AddPeerBlock's lock-free flood shield.
 	lastFarAheadLogAt atomic.Int64
+	// proposerBreaker* (P0, 2026-07-02 fork-flood, path-independent shield): the
+	// per-IP push shield (blockPushBreaker, api.go) only guards /api/blocks/push,
+	// but the third-party 178.105.186.119 node's flood reached AddPeerBlock by a
+	// different ingress and slipped straight past it (confirmed live: 56 far-ahead
+	// rejects + 52 orphan queues in one window with ZERO [BLOCK-PUSH] logs). This
+	// breaker keys on the block PROPOSER instead — stable and present on every
+	// block via every path (push, libp2p, pull) — and trips a proposer whose
+	// blocks repeatedly fail to attach (far-ahead of local height, or orphaned on
+	// a fork-parent this node will never hold), then drops its blocks at
+	// AddPeerBlock's lock-free top, before dag.mu / hash recompute / ECDSA. A
+	// proposer whose blocks attach normally resets its run every block and never
+	// trips. Guarded by proposerBreakerMu — a DEDICATED mutex, never dag.mu — so
+	// the hot reject path can never contend with block production.
+	proposerBreakerMu        sync.Mutex
+	proposerFailRun          map[string]int   // proposer -> consecutive non-attaching blocks
+	proposerBreakerUntil     map[string]int64 // proposer -> unix-nano its cooldown expires
+	lastProposerBreakerLogAt atomic.Int64     // rate-limits the breaker-drop log to once/sec
 	// syntheticCheckpointCount (audit 2026-06-30 monster audit, P1-05) is a
 	// running counter of synthetic-checkpoint stubs currently trusted by
 	// this node, maintained incrementally at each insertion site
@@ -1687,6 +1704,71 @@ func (dag *BlockDAG) shouldAttemptFetch(hash string) bool {
 	return true
 }
 
+// proposerBreakerFailThreshold is how many consecutive non-attaching blocks a
+// single proposer may deliver before its circuit breaker trips. Normal
+// operation orphans at most a block or two transiently (a gossip block that
+// briefly outran its parent), so a run this long unambiguously means the
+// proposer is on a diverged fork whose blocks this node can never place.
+const proposerBreakerFailThreshold = 40
+
+// proposerBreakerCooldown is how long a tripped proposer's blocks are dropped
+// at the lock-free top of AddPeerBlock before one probe block is let through to
+// re-test whether it has stopped diverging.
+const proposerBreakerCooldown = 30 * time.Second
+
+// proposerBlockBlocked reports whether a proposer's blocks should be dropped now
+// WITHOUT taking dag.mu, because its breaker is open (still inside the cooldown).
+// Called on AddPeerBlock's lock-free hot path; touches only proposerBreakerMu.
+func (dag *BlockDAG) proposerBlockBlocked(proposer string) bool {
+	if proposer == "" {
+		return false
+	}
+	proposer = strings.ToLower(proposer)
+	dag.proposerBreakerMu.Lock()
+	defer dag.proposerBreakerMu.Unlock()
+	until, ok := dag.proposerBreakerUntil[proposer]
+	if !ok {
+		return false
+	}
+	if time.Now().UnixNano() >= until {
+		delete(dag.proposerBreakerUntil, proposer) // cooldown elapsed — let one probe through
+		delete(dag.proposerFailRun, proposer)
+		return false
+	}
+	return true
+}
+
+// recordProposerOutcome feeds the per-proposer circuit breaker. attached=true
+// (the block joined the DAG) clears the proposer's failure run; attached=false
+// (it was rejected far-ahead or orphaned on a missing parent) advances the run
+// and trips the breaker once it crosses proposerBreakerFailThreshold. Uses
+// proposerBreakerMu only — never dag.mu — and is always called with dag.mu
+// released, so it can never invert the lock order against block production.
+func (dag *BlockDAG) recordProposerOutcome(proposer string, attached bool) {
+	if proposer == "" {
+		return
+	}
+	proposer = strings.ToLower(proposer)
+	dag.proposerBreakerMu.Lock()
+	defer dag.proposerBreakerMu.Unlock()
+	if attached {
+		delete(dag.proposerFailRun, proposer)
+		delete(dag.proposerBreakerUntil, proposer)
+		return
+	}
+	if dag.proposerFailRun == nil {
+		dag.proposerFailRun = make(map[string]int)
+	}
+	dag.proposerFailRun[proposer]++
+	if dag.proposerFailRun[proposer] >= proposerBreakerFailThreshold {
+		if dag.proposerBreakerUntil == nil {
+			dag.proposerBreakerUntil = make(map[string]int64)
+		}
+		dag.proposerBreakerUntil[proposer] = time.Now().Add(proposerBreakerCooldown).UnixNano()
+		delete(dag.proposerFailRun, proposer) // breaker gates now; rebuild the run after cooldown
+	}
+}
+
 func (dag *BlockDAG) AddPeerBlock(block *Block) bool {
 // Lock-free fork-flood shield (P0, 2026-07-02): reject a block whose height is
 // far above ours BEFORE taking the write lock, so a diverged/runaway fork
@@ -1698,10 +1780,29 @@ func (dag *BlockDAG) AddPeerBlock(block *Block) bool {
 // parents-first, so nothing real is lost. Logging is rate-limited to once per
 // second so the flood can't make the log the new bottleneck.
 if block != nil {
+	// Per-proposer circuit breaker (see recordProposerOutcome). A proposer whose
+	// recent blocks all failed to attach — a diverged fork spamming blocks this
+	// node can never place — is dropped here, before the RLock and all dag.mu /
+	// hash / ECDSA work, until its cooldown expires. This is the path-independent
+	// counterpart to the per-IP push shield: it catches the flood no matter which
+	// ingress delivered it. Log rate-limited to once/sec.
+	if dag.proposerBlockBlocked(block.Proposer) {
+		nowNano := time.Now().UnixNano()
+		last := dag.lastProposerBreakerLogAt.Load()
+		if nowNano-last > int64(time.Second) && dag.lastProposerBreakerLogAt.CompareAndSwap(last, nowNano) {
+			fmt.Printf("[DAG] ✗ Circuit breaker open for %s — dropping its blocks (e.g. #%d) lock-free after a sustained run of non-attaching blocks. (rate-limited)\n",
+				block.Proposer, block.Height)
+		}
+		return false
+	}
 	dag.mu.RLock()
 	localHeight := dag.height
 	dag.mu.RUnlock()
 	if block.Height > localHeight+maxOrphanHeightGap {
+		// A far-ahead block never attaches here — feed the breaker so a sustained
+		// runaway-fork flood trips it and is then dropped above without even this
+		// RLock.
+		dag.recordProposerOutcome(block.Proposer, false)
 		nowNano := time.Now().UnixNano()
 		last := dag.lastFarAheadLogAt.Load()
 		if nowNano-last > int64(time.Second) && dag.lastFarAheadLogAt.CompareAndSwap(last, nowNano) {
@@ -1939,6 +2040,11 @@ maxParentHeight = parent.Height
 if missingParent != "" {
 	dag.mu.Unlock()
 	dag.queueOrphan(missingParent, block)
+	// Feed the circuit breaker: a block that orphans on a missing parent did not
+	// attach. A proposer on a diverged fork does this every block (its fork-parents
+	// live only on its own chain), so proposerBreakerFailThreshold consecutive such
+	// blocks trip the lock-free drop at the top of AddPeerBlock.
+	dag.recordProposerOutcome(block.Proposer, false)
 	return false
 }
 if maxParentHeight >= 0 && block.Height != maxParentHeight+1 {
@@ -2200,6 +2306,7 @@ for _, waiting := range dag.popOrphans(block.Hash) {
 go dag.retryAndFlushSoftRetry()
 
 dag.lastSuccessfulPeerSyncAt.Store(time.Now().Unix())
+dag.recordProposerOutcome(block.Proposer, true) // block attached — clear this proposer's breaker run
 fmt.Printf("[DAG] ✓ Added peer block #%d | Tips: %d\n", block.Height, tipCount)
 return true
 }
