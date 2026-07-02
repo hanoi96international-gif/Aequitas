@@ -97,6 +97,36 @@ func TestCalcGini_NonHumanBalancesIgnored(t *testing.T) {
 	}
 }
 
+func TestCalcGini_CountsLPWealth(t *testing.T) {
+	// A human who parked all their AEQ as liquidity has liquid Balance 0 but is
+	// not broke — their wealth is their share of the pool's AEQ reserve. The Gini
+	// must count that; the old code filtered on Balance>0 and dropped them,
+	// which both understated inequality AND disagreed with the Lorenz curve.
+	cs := newTestState()
+	cs.pool = &PoolState{ReserveAEQ: NewDecimal(1000), TotalLPShares: NewDecimal(1000)}
+	addHuman(cs, "0x01", 100) // 100 AEQ liquid, no LP
+	// 0 liquid, owns 900 of 1000 LP shares → 900 AEQ of pool wealth.
+	cs.accounts["0x02"] = &AccountState{Address: "0x02", IsHuman: true, Balance: NewDecimal(0), LPShares: NewDecimal(900)}
+	g := cs.CalcGini()
+	// Wealth is [100, 900] → highly unequal. The old code returned ~0 here
+	// (0x02 dropped, lone human left), the exact "LP wallet shows 0" bug.
+	if g < 0.7 {
+		t.Errorf("LP wealth must count toward Gini: want >0.7 for wealth [100,900], got %v", g)
+	}
+}
+
+func TestCalcGini_LPAndLiquidEqual_IsZero(t *testing.T) {
+	// Two humans holding the same TOTAL wealth by different means (one liquid,
+	// one all-LP) are perfectly equal → Gini 0.
+	cs := newTestState()
+	cs.pool = &PoolState{ReserveAEQ: NewDecimal(500), TotalLPShares: NewDecimal(500)}
+	addHuman(cs, "0x01", 500) // 500 liquid
+	cs.accounts["0x02"] = &AccountState{Address: "0x02", IsHuman: true, Balance: NewDecimal(0), LPShares: NewDecimal(500)} // 500 via LP
+	if g := cs.CalcGini(); g != 0.0 {
+		t.Errorf("equal total wealth (liquid vs LP): want Gini=0, got %v", g)
+	}
+}
+
 // --- CalcAequitasIndex ---
 
 func TestCalcAequitasIndex_EqualHumans(t *testing.T) {

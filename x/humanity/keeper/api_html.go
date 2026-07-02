@@ -4272,7 +4272,11 @@ async function drawLorenzCurve() {
       ctx.fillText('Need 2+ registered humans', W/2, H/2); return;
     }
 
-    var bals = humans.map(function(h){ return parseFloat(h.balance)||0; }).sort(function(a,b){return a-b;});
+    // Use total AEQ wealth (liquid + LP value), the SAME number the server's
+    // Gini uses (humanAEQWealthLocked / total_value_aeq). Reading h.balance here
+    // counted LP providers as holding 0, making this curve disagree with the
+    // Score Gini (0.72 vs 0.15). Fall back to balance for older API responses.
+    var bals = humans.map(function(h){ return parseFloat(h.total_value_aeq != null ? h.total_value_aeq : h.balance)||0; }).sort(function(a,b){return a-b;});
     var n = bals.length, total = bals.reduce(function(s,b){return s+b;},0);
 
     var lorenz = [{x:0,y:0}]; var cum=0;
@@ -4975,7 +4979,15 @@ async function loadHumans() {
     list.innerHTML = d.humans.map(h => {
       const color = avatarColor(h.address || '0x00');
       const init = (h.address || '??').slice(2, 4).toUpperCase();
-      return '<div class="hi"><div class="hav" style="background:' + color + '20;color:' + color + ';border-color:' + color + '50">' + init + '</div><div style="flex:1;min-width:0"><div class="hbal">' + sanitize(fmt(h.balance)) + ' AEQ</div><div class="hadr">' + sanitize(h.address || '—') + '</div></div><div class="hbdg">HUMAN</div></div>';
+      // Show TOTAL AEQ wealth (liquid + LP), not just the liquid balance — a
+      // human who added all their AEQ as liquidity has balance 0 but is not
+      // broke. When part of it is in the pool, note it so the number is clear.
+      const total = (h.total_value_aeq != null) ? h.total_value_aeq : h.balance;
+      const lpVal = h.lp_value_aeq || 0;
+      const lpNote = lpVal > 0.000001
+        ? '<span style="font-size:0.7em;color:var(--muted);font-weight:500"> · incl. ' + sanitize(fmt(lpVal)) + ' in LP</span>'
+        : '';
+      return '<div class="hi"><div class="hav" style="background:' + color + '20;color:' + color + ';border-color:' + color + '50">' + init + '</div><div style="flex:1;min-width:0"><div class="hbal">' + sanitize(fmt(total)) + ' AEQ' + lpNote + '</div><div class="hadr">' + sanitize(h.address || '—') + '</div></div><div class="hbdg">HUMAN</div></div>';
     }).join('');
   } catch (e) {}
 }

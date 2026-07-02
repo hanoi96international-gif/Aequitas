@@ -4144,11 +4144,35 @@ func calcGiniFromBalances(balances []float64) float64 {
 	return gini
 }
 
+// humanAEQWealthLocked is a human's total AEQ-denominated wealth: their liquid
+// (demurrage-adjusted) balance PLUS the AEQ value of their liquidity-pool
+// position (their share of the pool's AEQ reserve). AEQ deposited as liquidity
+// still belongs to the human — they can withdraw it — so every wealth view must
+// count it. This single definition is the source of truth for the Gini, the
+// Aequitas Index, the Lorenz curve and the humans list; /api/humans exposes the
+// same number as total_value_aeq so the frontend Lorenz matches the server Gini
+// exactly (they used to disagree — 0.72 vs 0.15 — because the Gini silently
+// dropped the two LP wallets, whose liquid balance is 0). Caller holds cs.mu.
+func (cs *ChainState) humanAEQWealthLocked(acc *AccountState) float64 {
+	wealth := effectiveBalance(acc).Float()
+	if cs.pool != nil {
+		if total := cs.pool.TotalLPShares.Float(); total > 0 {
+			wealth += acc.LPShares.Float() / total * cs.pool.ReserveAEQ.Float()
+		}
+	}
+	return wealth
+}
+
 func (cs *ChainState) calcGiniLocked() float64 {
 	var balances []float64
 	for _, acc := range cs.accounts {
-		if acc.IsHuman && acc.Balance > 0 {
-			balances = append(balances, effectiveBalance(acc).Float())
+		// Every human counts, and each counts their FULL AEQ wealth (liquid +
+		// LP). Filtering on liquid Balance>0 used to exclude anyone who parked
+		// all their AEQ as liquidity, understating inequality and — worse —
+		// producing a Gini that disagreed with the Lorenz curve, which included
+		// them at 0.
+		if acc.IsHuman {
+			balances = append(balances, cs.humanAEQWealthLocked(acc))
 		}
 	}
 	return calcGiniFromBalances(balances)
