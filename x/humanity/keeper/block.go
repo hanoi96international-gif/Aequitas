@@ -1390,29 +1390,33 @@ dag.replayedMu.Lock()
 dag.replayedBlocks[block.Hash] = true
 dag.replayedMu.Unlock()
 
-// Record that this proposer produced a block — used for proportional
-// validator-reward distribution in DistributeValidatorsPool.
-//
-// FIX (audit recheck3, P2): used to fire via `go` — if this process died
-// right after producing the block (before the goroutine's single DB
-// UPDATE ran), that block silently never counted toward this validator's
-// own reward weight, with no error anywhere to reveal it. Synchronous now;
-// it's one UPDATE statement, the same cost ProduceBlock already pays for
-// setConfigValue("max_block_height", ...) a few lines below.
-dag.state.IncrementBlockCount(proposer)
-
 // Remove all parents from tips, add this block as new tip
 for _, ph := range parentHashes {
 delete(dag.tips, ph)
 }
 dag.tips[block.Hash] = true
 dag.height = block.Height
-// FIX (double-apply): persist so a restart can resume from the true
-// cumulative height instead of dag.height resetting to 0 — see
-// createGenesisBlock's restoration of this value and the comment on
-// StateSnapshot.Height for why an in-memory-only height broke snapshot
-// bootstrap.
-dag.state.setConfigValue("max_block_height", fmt.Sprintf("%d", dag.height))
+
+// Post-commit bookkeeping (block-count reward weighting + the max_block_height
+// restart hint) — moved off the hot, lock-held path in ONE background write.
+//
+// CADENCE FIX (2026-07-02): both are plain DB writes that do NOT touch dag.mu
+// state, yet they ran synchronously while dag.mu was write-locked. Over the
+// primary's remote DB proxy (~560ms/round-trip, confirmed live) that added two
+// extra round trips (~1.1s) to every block's lock-held critical section — on
+// top of the block save itself — directly inflating cadence and starving peer
+// sync/merge. The block itself is already durably persisted above
+// (SaveBlockWithPendingTxsAtomic) BEFORE this point, so neither of these is
+// consensus-critical: IncrementBlockCount is reward weighting (additive, and
+// re-derivable), and max_block_height only seeds dag.height on the next boot —
+// a value LoadBlocksFromDB already reconstructs from chain_blocks' own max, so
+// this config key is a fast-path hint, not the source of truth. Losing at most
+// the last block's write on an ill-timed crash is harmless and self-corrects.
+heightVal := dag.height
+go func() {
+	dag.state.IncrementBlockCount(proposer)
+	dag.state.setConfigValue("max_block_height", fmt.Sprintf("%d", heightVal))
+}()
 
 if len(parentHashes) > 1 {
 fmt.Printf("[DAG] 🔀 Merged %d tips into block #%d\n", len(parentHashes), block.Height)
