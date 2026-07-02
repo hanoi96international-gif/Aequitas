@@ -1757,6 +1757,40 @@ func (dag *BlockDAG) shouldAttemptFetch(hash string) bool {
 	return true
 }
 
+// isCatchingUpLocked reports whether this node is still performing an initial
+// catch-up sync and therefore must NOT feed the per-proposer circuit breaker
+// on far-ahead or orphaned peer blocks. During catch-up every honest
+// validator's live blocks legitimately look far-ahead or orphaned simply
+// because we haven't synced their ancestry yet — tripping the breaker then
+// blocks the very peer we need to sync from (confirmed live on Contabo).
+//
+// Two independent catch-up signals, either sufficient:
+//   - bootHeight: captured from the DB at startup (max_block_height /
+//     snapshot_import_height). Covers the post-RESYNC_FROM_SNAPSHOT case where
+//     local state already encodes a high height but dag.height starts low.
+//   - syncTargetHeight: captured live from a seed's reported height at startup
+//     (fetchAndSetSyncTarget). Covers the fresh-DB / genesis-start case where
+//     bootHeight is legitimately 0 yet the network is thousands of blocks
+//     ahead. Without this second signal, a brand-new node booting from genesis
+//     (height 0, bootHeight 0) trips its breaker against the primary on the
+//     primary's own far-ahead pushed blocks and can never sync past height 0 —
+//     the exact stall observed on Contabo (registered with the primary, genesis
+//     only, never advanced). Both signals self-clear once caught up
+//     (dag.height reaches within 10 of the target), restoring normal breaker
+//     behaviour.
+//
+// Caller must hold dag.mu (read or write). syncTargetHeight is atomic and
+// independent of dag.mu.
+func (dag *BlockDAG) isCatchingUpLocked() bool {
+	if dag.bootHeight > 0 && dag.height+10 < dag.bootHeight {
+		return true
+	}
+	if target := dag.syncTargetHeight.Load(); target > 0 && dag.height+10 < target {
+		return true
+	}
+	return false
+}
+
 // proposerBreakerFailThreshold is how many consecutive non-attaching blocks a
 // single proposer may deliver before its circuit breaker trips. Normal
 // operation orphans at most a block or two transiently (a gossip block that
@@ -1863,7 +1897,7 @@ if block != nil {
 	}
 	dag.mu.RLock()
 	localHeight := dag.height
-	catchingUp := dag.bootHeight > 0 && dag.height+10 < dag.bootHeight
+	catchingUp := dag.isCatchingUpLocked()
 	dag.mu.RUnlock()
 	if block.Height > localHeight+maxOrphanHeightGap {
 		// A far-ahead block never attaches here — feed the breaker so a sustained
@@ -2130,7 +2164,7 @@ if missingParent != "" {
 	// we need to sync from. Still queue the orphan for later resolution —
 	// only the breaker bookkeeping is skipped.
 	dag.mu.RLock()
-	catchingUp := dag.bootHeight > 0 && dag.height+10 < dag.bootHeight
+	catchingUp := dag.isCatchingUpLocked()
 	dag.mu.RUnlock()
 	if !catchingUp {
 		dag.recordProposerOutcome(block.Proposer, false)
