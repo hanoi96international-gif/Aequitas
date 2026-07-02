@@ -1828,12 +1828,22 @@ if block != nil {
 	}
 	dag.mu.RLock()
 	localHeight := dag.height
+	catchingUp := dag.bootHeight > 0 && dag.height+10 < dag.bootHeight
 	dag.mu.RUnlock()
 	if block.Height > localHeight+maxOrphanHeightGap {
 		// A far-ahead block never attaches here — feed the breaker so a sustained
 		// runaway-fork flood trips it and is then dropped above without even this
-		// RLock.
-		dag.recordProposerOutcome(block.Proposer, false)
+		// RLock. EXCEPT while WE are still in initial catch-up (bootHeight far
+		// above our height): every real validator's live blocks look "far-ahead"
+		// purely because we haven't synced yet — that's not evidence the proposer
+		// is bad. Feeding it to the breaker then would trip it against an honest
+		// proposer (confirmed live on Contabo: tripped against Primary itself
+		// during a fresh resync, permanently blocking the one peer it needed to
+		// sync from). Still reject the block either way — only the breaker
+		// bookkeeping is skipped.
+		if !catchingUp {
+			dag.recordProposerOutcome(block.Proposer, false)
+		}
 		nowNano := time.Now().UnixNano()
 		last := dag.lastFarAheadLogAt.Load()
 		if nowNano-last > int64(time.Second) && dag.lastFarAheadLogAt.CompareAndSwap(last, nowNano) {
@@ -2075,7 +2085,21 @@ if missingParent != "" {
 	// attach. A proposer on a diverged fork does this every block (its fork-parents
 	// live only on its own chain), so proposerBreakerFailThreshold consecutive such
 	// blocks trip the lock-free drop at the top of AddPeerBlock.
-	dag.recordProposerOutcome(block.Proposer, false)
+	//
+	// EXCEPT while WE are still in initial catch-up: a freshly-bootstrapping
+	// node's dag.blocks holds only genesis (plus any bridge stub), so EVERY
+	// honest validator's block orphans on a missing parent here — not because
+	// the proposer diverged, but because we haven't synced in its ancestry
+	// yet. Recording that as a failure would (and on Contabo, did) trip our
+	// breaker against the honest primary, permanently blocking the one peer
+	// we need to sync from. Still queue the orphan for later resolution —
+	// only the breaker bookkeeping is skipped.
+	dag.mu.RLock()
+	catchingUp := dag.bootHeight > 0 && dag.height+10 < dag.bootHeight
+	dag.mu.RUnlock()
+	if !catchingUp {
+		dag.recordProposerOutcome(block.Proposer, false)
+	}
 	return false
 }
 if maxParentHeight >= 0 && block.Height != maxParentHeight+1 {
