@@ -1562,6 +1562,11 @@ input[type=number]::-webkit-inner-spin-button{opacity:0.5}
           <td style="font-size:0.6rem;color:var(--muted);padding:8px">No</td>
           <td style="font-size:0.61rem;color:var(--muted);padding:8px">Recovery tool for a node KNOWN to have diverged — unlike BOOTSTRAP_SNAPSHOT_URL (which only merges into an empty DB), this REPLACES local accounts, pool, nullifiers, and chain_config with exactly what the snapshot contains, discarding anything local that doesn't match. Set to <code style="color:var(--gold)">true</code> together with BOOTSTRAP_SNAPSHOT_URL and BOOTSTRAP_SIGNER (mandatory here, no unsigned fallback), restart once, then remove it. Combine with RESET_DB_STATE=true for the cleanest result.</td>
         </tr>
+        <tr style="border-bottom:1px solid rgba(139,92,246,0.08);background:rgba(52,211,153,0.08)">
+          <td style="font-size:0.61rem;font-family:var(--font-mono);color:var(--green);padding:8px">AUTO_HEAL_ON_DIVERGENCE</td>
+          <td style="font-size:0.6rem;color:var(--green);padding:8px;font-weight:700">Strongly recommended</td>
+          <td style="font-size:0.61rem;color:var(--muted);padding:8px"><b>Important for network security and speed:</b> if your node's chain ever diverges from the network (e.g. after downtime or a bad restart), set this to <code style="color:var(--gold)">true</code> together with PRIMARY_NODE_URL, BOOTSTRAP_SNAPSHOT_URL, and BOOTSTRAP_SIGNER — your node then compares itself against PRIMARY_NODE_URL every few minutes and resyncs itself automatically, no manual RESYNC_FROM_SNAPSHOT needed. A node that stays diverged and keeps broadcasting its own blocks can slow down or destabilize the network for every other operator (confirmed live: this is what caused a network-wide slowdown on 2026-07-02).</td>
+        </tr>
         <tr style="border-bottom:1px solid rgba(139,92,246,0.08)">
           <td style="font-size:0.61rem;font-family:var(--font-mono);color:var(--neon);padding:8px">SNAPSHOT_RESTRICT_TO_PRIVATE_NETWORK</td>
           <td style="font-size:0.6rem;color:var(--muted);padding:8px">No</td>
