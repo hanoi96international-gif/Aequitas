@@ -2491,6 +2491,7 @@ func (cs *ChainState) GetDemurrageStatus(address string) DemurrageStatus {
 	cs.mu.Lock()
 	defer cs.mu.Unlock()
 	address = strings.ToLower(address)
+	cs.ensureAccountLoaded(address) // cold accounts must report their real demurrage status, not the grace-period default
 
 	acc, ok := cs.accounts[address]
 	if !ok || acc.LastActivityAt == 0 {
@@ -3098,6 +3099,12 @@ func (cs *ChainState) transferWithV7FeeLocked(from, to string, amount float64) (
 		return 0, 0, 0, fmt.Errorf("invalid transfer amount: %v", amount)
 	}
 
+	// Page both parties in from the DB if they're cold (beyond maxInMemAccounts):
+	// without this a returning sender hits "insufficient balance" despite a real
+	// DB balance, and a cold RECIPIENT would be recreated blank below and have
+	// its real balance overwritten on save. Matches transferLocked.
+	cs.ensureAccountLoaded(from)
+	cs.ensureAccountLoaded(to)
 	fromAcc, ok := cs.accounts[from]
 	if !ok {
 		return 0, 0, 0, fmt.Errorf("insufficient balance")
@@ -3274,6 +3281,7 @@ func (cs *ChainState) swapLocked(address string, amountIn float64, aeqToTusd boo
 		return 0, 0, fmt.Errorf("liquidity pool not initialized")
 	}
 
+	cs.ensureAccountLoaded(address) // page in cold accounts so swaps work beyond the in-memory cap
 	acc, ok := cs.accounts[address]
 	if !ok {
 		return 0, 0, fmt.Errorf("account not found")
@@ -3527,6 +3535,7 @@ func (cs *ChainState) addLiquidityLocked(address string, amountAEQ, amountTUSD f
 		return 0, fmt.Errorf("liquidity pool not initialized")
 	}
 
+	cs.ensureAccountLoaded(address) // page in cold accounts so add-liquidity works beyond the in-memory cap
 	acc, ok := cs.accounts[address]
 	if !ok {
 		return 0, fmt.Errorf("account not found")
@@ -3646,6 +3655,7 @@ func (cs *ChainState) removeLiquidityLocked(address string, sharesToBurn float64
 		return 0, 0, 0, fmt.Errorf("liquidity pool not initialized")
 	}
 
+	cs.ensureAccountLoaded(address) // page in cold accounts so remove-liquidity works beyond the in-memory cap
 	acc, ok := cs.accounts[address]
 	if !ok {
 		return 0, 0, 0, fmt.Errorf("account not found")
@@ -3903,6 +3913,7 @@ func (cs *ChainState) ClaimTUsdFaucetAtomic(address string, pendingTx Transactio
 // exists.
 func (cs *ChainState) claimTUsdFaucetLocked(address string) error {
 	address = strings.ToLower(address)
+	cs.ensureAccountLoaded(address) // a cold registered human must still be recognised as human here
 
 	acc, ok := cs.accounts[address]
 	if !ok || !acc.IsHuman {
