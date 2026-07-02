@@ -351,12 +351,16 @@ go func() {
 	time.Sleep(alignDelay)
 	ticker := time.NewTicker(BLOCK_TIME)
 for range ticker.C {
+tickStart := time.Now() // TEMP DIAGNOSTIC (2026-07-02 cadence investigation)
 block := bc.ProduceBlock()
 			if block == nil {
 				continue // catch-up gate — skip this tick
 			}
 			p2pNode.BroadcastBlock(block)
 			bc.HTTPBroadcastBlock(block) // HTTP push for peers where port 4001 is firewalled
+if tickDur := time.Since(tickStart); tickDur > 500*time.Millisecond {
+	fmt.Printf("[BLOCK] ⏱ Full tick (ProduceBlock+broadcast) took %s for block #%d\n", tickDur, block.Height)
+}
 fmt.Printf("[Block #%d] Hash: %s... | Humans: %d | Time: %s\n",
 block.Height,
 block.Hash[:16],
