@@ -106,6 +106,17 @@ type ChainState struct {
 	pool       *PoolState
 	db         *sql.DB
 	useDB      bool
+	// ghostdagColumnsOnce guards the one-time chain_blocks GHOSTDAG-column
+	// migration. It used to run on EVERY SaveBlockToDB / SaveGHOSTDAGState call —
+	// three `ALTER TABLE ... ADD COLUMN IF NOT EXISTS` statements each, i.e. six
+	// per accepted peer block. Even as no-ops those are six extra DB round trips
+	// AND six brief ACCESS EXCLUSIVE locks on chain_blocks, serialized against
+	// every INSERT/SELECT on that table. Over the primary's cross-project public
+	// DB proxy (~380ms/round-trip, confirmed live) that added ~2.3s of lock-held
+	// latency to every peer block — the dominant cause (on top of the block save
+	// itself) of the multi-second ProduceBlock cadence and the resulting failure
+	// to merge with peers. The columns only ever need creating once per process.
+	ghostdagColumnsOnce sync.Once
 	nullifiers map[string]string // nullifier hex → wallet address (in-memory cache)
 	// accountSetXOR / nullifierSetXOR are incremental commitments to the FULL
 	// account set and nullifier set, maintained by XORing each element's leaf

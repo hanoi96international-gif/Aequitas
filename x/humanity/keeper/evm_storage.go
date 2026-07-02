@@ -2439,9 +2439,15 @@ func (cs *ChainState) ensureGHOSTDAGColumns() {
 	if cs.db == nil {
 		return
 	}
-	cs.db.Exec(`ALTER TABLE chain_blocks ADD COLUMN IF NOT EXISTS selected_parent TEXT DEFAULT ''`)
-	cs.db.Exec(`ALTER TABLE chain_blocks ADD COLUMN IF NOT EXISTS blue_score BIGINT DEFAULT 0`)
-	cs.db.Exec(`ALTER TABLE chain_blocks ADD COLUMN IF NOT EXISTS blues TEXT DEFAULT '[]'`)
+	// Run the ALTER TABLEs at most once per process — see ghostdagColumnsOnce's
+	// comment for why calling them on every block save was a major latency and
+	// lock-contention source over a remote DB. The columns are immutable once
+	// added, so a single successful pass is sufficient for the process lifetime.
+	cs.ghostdagColumnsOnce.Do(func() {
+		cs.db.Exec(`ALTER TABLE chain_blocks ADD COLUMN IF NOT EXISTS selected_parent TEXT DEFAULT ''`)
+		cs.db.Exec(`ALTER TABLE chain_blocks ADD COLUMN IF NOT EXISTS blue_score BIGINT DEFAULT 0`)
+		cs.db.Exec(`ALTER TABLE chain_blocks ADD COLUMN IF NOT EXISTS blues TEXT DEFAULT '[]'`)
+	})
 }
 
 func (cs *ChainState) SaveBlockToDB(block *Block) error {
@@ -2556,6 +2562,40 @@ func (cs *ChainState) SaveBlockWithPendingTxsAtomic(block *Block, ids []int64) e
 	txsJSON, err := json.Marshal(block.Transactions)
 	if err != nil {
 		return fmt.Errorf("marshal transactions: %w", err)
+	}
+
+	bluesJSONFast, _ := json.Marshal(block.Blues)
+	if bluesJSONFast == nil {
+		bluesJSONFast = []byte("[]")
+	}
+
+	// FAST PATH (2026-07-02 cadence fix): the overwhelmingly common case is a
+	// block with no pending-TX rows to reconcile (0 tx/block in steady state).
+	// The atomic Begin/INSERT/Commit below exists ONLY to keep the block INSERT
+	// and the pending_txs UPDATE+DELETE in one transaction — with no ids there
+	// is nothing to make atomic, so the explicit transaction is pure overhead:
+	// 3 network round trips (BEGIN, INSERT, COMMIT) instead of 1. Over a remote
+	// DB reached via a cross-project public proxy (~380ms/round-trip, confirmed
+	// live on the primary) that turned every block save into ~1.14s held under
+	// dag.mu — the direct cause of the sustained multi-second cadence and the
+	// resulting failure to merge with peers. A single autocommit INSERT is one
+	// round trip (~380ms) and is exactly as durable here (a lone INSERT is its
+	// own implicit transaction). The transactional path is still used verbatim
+	// whenever there ARE pending-TX ids to reconcile atomically.
+	if len(ids) == 0 {
+		if _, err := cs.db.Exec(
+			`INSERT INTO chain_blocks
+			   (hash, height, parent_hashes, proposer, timestamp, humans, state_root,
+			    signature, transactions, selected_parent, blue_score, blues)
+			 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
+			 ON CONFLICT (hash) DO NOTHING`,
+			block.Hash, block.Height, string(parentHashesJSON), block.Proposer, block.Timestamp,
+			block.Humans, block.StateRoot, block.Signature, string(txsJSON),
+			block.SelectedParent, block.BlueScore, string(bluesJSONFast),
+		); err != nil {
+			return fmt.Errorf("save block (fast path): %w", err)
+		}
+		return nil
 	}
 
 	tx, err := cs.db.Begin()
