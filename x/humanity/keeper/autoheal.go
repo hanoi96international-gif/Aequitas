@@ -1,6 +1,7 @@
 package keeper
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"time"
@@ -11,6 +12,14 @@ import (
 // divergent until an operator manually sets RESYNC_FROM_SNAPSHOT=true and
 // restarts it (exactly the manual intervention this codebase needed when the
 // Contabo VPS diverged — 3000+ mismatches, 2 humans instead of 4).
+//
+// That mismatch-based detection only fires when this node RECEIVES a
+// conflicting block from a peer. A node that has drifted onto a fully
+// isolated fork (e.g. it thinks it's ahead of everyone, so it never pulls
+// from anyone) never receives anything conflicting, so mismatches never
+// accumulate and this path never fires. startChainDivergenceCheck below is
+// the second, independent detection path that covers exactly that case by
+// actively comparing this node's own chain against the primary's.
 const (
 	// autoResyncPendingKey is the chain_config flag a runtime-detected
 	// divergence sets so the NEXT boot performs an authoritative resync.
@@ -25,6 +34,14 @@ const (
 	autoHealMismatchThreshold = 50
 	autoHealCooldown          = 30 * time.Minute
 	autoHealCheckInterval     = 60 * time.Second
+
+	// chainDivergenceCheckInterval paces the active primary-comparison check.
+	// This is a network round trip against the primary, not a local counter,
+	// so it doesn't need the mismatch check's 60s granularity.
+	chainDivergenceCheckInterval = 5 * time.Minute
+	// chainDivergenceSafetyMargin keeps the compared height well clear of the
+	// live tip, where legitimate reorg/merge activity is still happening.
+	chainDivergenceSafetyMargin = 50
 )
 
 // AutoResyncRequested reports whether a previous run's auto-heal monitor
@@ -40,20 +57,39 @@ func (cs *ChainState) ClearAutoResyncRequest() {
 	_ = cs.setConfigValueDB(autoResyncPendingKey, "")
 }
 
-// StartDivergenceAutoHeal launches the background monitor described above.
-// No-op unless AUTO_HEAL_ON_DIVERGENCE=true AND a signed snapshot source is
-// configured (bootstrapURL+signer) — the primary has neither, so it can never
-// wipe itself, and a misconfigured node never self-wipes blind.
+// triggerAutoResync is the shared, cooldown-gated trigger both detection
+// paths below funnel through, so two divergence signals firing close
+// together can't turn into a restart loop. It does NOT resync live — see
+// StartDivergenceAutoHeal's doc comment for why: it flags chain_config and
+// exits, and the container restart policy brings the node back through the
+// safe boot-time resync path in main.go.
+func (dag *BlockDAG) triggerAutoResync(reason string) {
+	var lastAt int64
+	fmt.Sscan(dag.state.getConfigValueDB(autoResyncLastAtKey), &lastAt)
+	if lastAt > 0 && time.Now().Unix()-lastAt < int64(autoHealCooldown.Seconds()) {
+		return
+	}
+	fmt.Printf("[AUTO-HEAL] ⚠ %s — flagging an authoritative resync and restarting so the safe boot-time resync path can run.\n", reason)
+	if err := dag.state.setConfigValueDB(autoResyncPendingKey, "1"); err != nil {
+		fmt.Printf("[AUTO-HEAL] ✗ Could not persist the resync flag (%v) — staying up rather than restarting into an unflagged loop.\n", err)
+		return
+	}
+	_ = dag.state.setConfigValueDB(autoResyncLastAtKey, fmt.Sprintf("%d", time.Now().Unix()))
+	fmt.Println("[AUTO-HEAL] Restarting now.")
+	os.Exit(1)
+}
+
+// StartDivergenceAutoHeal launches both background divergence monitors
+// described above. No-op unless AUTO_HEAL_ON_DIVERGENCE=true AND a signed
+// snapshot source is configured (bootstrapURL+signer) — the primary has
+// neither, so it can never wipe itself, and a misconfigured node never
+// self-wipes blind.
 //
-// On sustained divergence it flags a resync and exits; it does NOT resync live,
-// because ResyncFromSnapshotURL assumes it runs before block production and
-// does not reset the in-memory DAG. The container restart policy brings the
-// node back, main.go sees the flag, and the safe boot-time resync path runs.
 // The resync is signature-verified against BOOTSTRAP_SIGNER, so even a false
 // trigger only re-mirrors the trusted primary — the state a secondary should
-// have anyway — never arbitrary data. The cooldown makes a resync that fails to
-// converge fall back to running divergent rather than a restart loop.
-func (dag *BlockDAG) StartDivergenceAutoHeal(bootstrapURL, signer string) {
+// have anyway — never arbitrary data. The cooldown makes a resync that fails
+// to converge fall back to running divergent rather than a restart loop.
+func (dag *BlockDAG) StartDivergenceAutoHeal(bootstrapURL, signer, primaryURL string) {
 	if os.Getenv("AUTO_HEAL_ON_DIVERGENCE") != "true" {
 		return
 	}
@@ -70,22 +106,95 @@ func (dag *BlockDAG) StartDivergenceAutoHeal(bootstrapURL, signer string) {
 			if dag.TotalStateRootMismatches() < autoHealMismatchThreshold {
 				continue
 			}
-			// Cooldown: never trigger twice within autoHealCooldown, so a resync
-			// that doesn't fix the divergence can't become a restart loop.
-			var lastAt int64
-			fmt.Sscan(dag.state.getConfigValueDB(autoResyncLastAtKey), &lastAt)
-			if lastAt > 0 && time.Now().Unix()-lastAt < int64(autoHealCooldown.Seconds()) {
-				continue
-			}
-			fmt.Printf("[AUTO-HEAL] ⚠ %d StateRoot mismatches in the last 10 minutes — this node has diverged from its peers. Flagging an authoritative resync from %s and restarting so the safe boot-time resync path can run.\n",
-				dag.TotalStateRootMismatches(), bootstrapURL)
-			if err := dag.state.setConfigValueDB(autoResyncPendingKey, "1"); err != nil {
-				fmt.Printf("[AUTO-HEAL] ✗ Could not persist the resync flag (%v) — staying up rather than restarting into an unflagged loop.\n", err)
-				continue
-			}
-			_ = dag.state.setConfigValueDB(autoResyncLastAtKey, fmt.Sprintf("%d", time.Now().Unix()))
-			fmt.Println("[AUTO-HEAL] Restarting now; the container restart policy will bring this node back to resync from the primary snapshot.")
-			os.Exit(1)
+			dag.triggerAutoResync(fmt.Sprintf("%d StateRoot mismatches in the last 10 minutes — this node has diverged from its peers", dag.TotalStateRootMismatches()))
 		}
 	}()
+	dag.startChainDivergenceCheck(primaryURL)
+}
+
+// primaryStatusResponse mirrors the subset of /api/status this check needs.
+type primaryStatusResponse struct {
+	Height int64 `json:"height"`
+}
+
+// startChainDivergenceCheck is the second detection path: instead of waiting
+// to receive a conflicting block (which never happens for a fully isolated
+// fork — see the package doc comment above), it actively asks the primary
+// "does your block at height N match mine?" at a height old enough on both
+// sides to be settled. A DAG's live tips can legitimately differ between
+// honest nodes (see LatestBlock's doc comment) — a finalized height cannot.
+// No-op if primaryURL is empty (PRIMARY_NODE_URL not configured).
+func (dag *BlockDAG) startChainDivergenceCheck(primaryURL string) {
+	if primaryURL == "" {
+		fmt.Println("[AUTO-HEAL] Chain-divergence self-check disabled: PRIMARY_NODE_URL not set.")
+		return
+	}
+	fmt.Printf("[AUTO-HEAL] Chain-divergence self-check enabled: comparing against %s every %s.\n", primaryURL, chainDivergenceCheckInterval)
+	go func() {
+		ticker := time.NewTicker(chainDivergenceCheckInterval)
+		defer ticker.Stop()
+		for range ticker.C {
+			remoteHeight, ok := fetchPrimaryHeight(primaryURL)
+			if !ok {
+				// Primary unreachable this cycle — not evidence of divergence.
+				continue
+			}
+			localFinalized, _ := dag.state.GetFinalizedCheckpoint()
+			compareHeight := localFinalized
+			if remoteHeight < compareHeight {
+				compareHeight = remoteHeight
+			}
+			compareHeight -= chainDivergenceSafetyMargin
+			if compareHeight <= 0 {
+				continue // chain too young to compare safely yet
+			}
+			localBlock := dag.GetBlockByHeight(compareHeight)
+			if localBlock == nil {
+				continue // not yet synced to this height locally — not evidence
+			}
+			remoteHash, ok := fetchPrimaryBlockHash(primaryURL, compareHeight)
+			if !ok {
+				continue
+			}
+			if remoteHash != localBlock.Hash {
+				dag.triggerAutoResync(fmt.Sprintf(
+					"chain hash mismatch at height %d against primary %s (ours=%s… theirs=%s…) — this node is on an isolated fork",
+					compareHeight, primaryURL, localBlock.Hash[:min(16, len(localBlock.Hash))], remoteHash[:min(16, len(remoteHash))]))
+			}
+		}
+	}()
+}
+
+// fetchPrimaryHeight returns primaryURL's current /api/status height.
+func fetchPrimaryHeight(primaryURL string) (int64, bool) {
+	resp, err := httpSyncClient.Get(primaryURL + "/api/status")
+	if err != nil {
+		return 0, false
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != 200 {
+		return 0, false
+	}
+	var status primaryStatusResponse
+	if err := json.NewDecoder(resp.Body).Decode(&status); err != nil {
+		return 0, false
+	}
+	return status.Height, true
+}
+
+// fetchPrimaryBlockHash returns the block hash primaryURL reports at height.
+func fetchPrimaryBlockHash(primaryURL string, height int64) (string, bool) {
+	resp, err := httpSyncClient.Get(fmt.Sprintf("%s/api/block?height=%d", primaryURL, height))
+	if err != nil {
+		return "", false
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != 200 {
+		return "", false
+	}
+	var block Block
+	if err := json.NewDecoder(resp.Body).Decode(&block); err != nil {
+		return "", false
+	}
+	return block.Hash, true
 }

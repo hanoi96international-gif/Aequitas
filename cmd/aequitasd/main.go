@@ -302,7 +302,8 @@ p2pNode.SetDAG(bc)
 	// Recover automatically from sustained divergence (opt-in, secondary-only)
 	// — see StartDivergenceAutoHeal. Started after sync so a healthy node has a
 	// chance to converge first and never trips the monitor.
-	bc.StartDivergenceAutoHeal(os.Getenv("BOOTSTRAP_SNAPSHOT_URL"), os.Getenv("BOOTSTRAP_SIGNER"))
+	bc.StartDivergenceAutoHeal(os.Getenv("BOOTSTRAP_SNAPSHOT_URL"), os.Getenv("BOOTSTRAP_SIGNER"),
+		strings.TrimRight(keeper.NormalizeNodeURL(os.Getenv("PRIMARY_NODE_URL")), "/"))
 	p2pNode.Start()
 	bc.ReconstructState(chainState)
 
