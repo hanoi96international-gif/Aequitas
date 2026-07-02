@@ -865,7 +865,12 @@ func (a *APIServer) handleBlockPush(w http.ResponseWriter, r *http.Request) {
 			fmt.Printf("[BLOCK-PUSH] ✗ Dropping pushes from %s — flood shield open (denylist or sustained non-attaching flood). (rate-limited)\n", ip)
 		}
 		w.WriteHeader(http.StatusTooManyRequests)
-		w.Write([]byte(`{"ok":false,"reason":"push flood shield open"}`))
+		// action:"resync_required" (P0 fix, 2026-07-02 liveness audit follow-up):
+		// an unambiguous signal — this IP has been sustainedly failing to attach —
+		// so the sender can learn about its own divergence instead of pushing
+		// into the void forever. See HTTPBroadcastBlock (sync_blocks.go) for the
+		// sender-side reaction, safety-gated behind AUTO_HEAL_ON_DIVERGENCE.
+		w.Write([]byte(`{"ok":false,"reason":"push flood shield open","action":"resync_required"}`))
 		return
 	}
 	body, err := io.ReadAll(io.LimitReader(r.Body, 512<<10))
@@ -885,8 +890,15 @@ func (a *APIServer) handleBlockPush(w http.ResponseWriter, r *http.Request) {
 		fmt.Printf("[BLOCK-PUSH] ✓ Accepted block #%d via HTTP push\n", block.Height)
 		w.Write([]byte(`{"ok":true}`))
 	} else {
-		// Not an error — block may already be known (idempotent)
-		w.Write([]byte(`{"ok":false,"reason":"rejected or already known"}`))
+		// Not an error — block may already be known (idempotent). Only signal
+		// resync_required when the rejection is unambiguous (this proposer's
+		// own breaker is open) — an ordinary duplicate (arrived via P2P first)
+		// must never trigger it.
+		if a.blockchain.proposerBlockBlocked(block.Proposer) {
+			w.Write([]byte(`{"ok":false,"reason":"proposer circuit breaker open","action":"resync_required"}`))
+		} else {
+			w.Write([]byte(`{"ok":false,"reason":"rejected or already known"}`))
+		}
 	}
 }
 

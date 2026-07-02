@@ -217,6 +217,13 @@ replayedMu             sync.Mutex
 	proposerFailRun          map[string]int   // proposer -> consecutive non-attaching blocks
 	proposerBreakerUntil     map[string]int64 // proposer -> unix-nano its cooldown expires
 	lastProposerBreakerLogAt atomic.Int64     // rate-limits the breaker-drop log to once/sec
+	// resyncSignalMu guards resyncSignalFrom, this node's own record of peers
+	// that responded action:"resync_required" to a block THIS node pushed —
+	// i.e. peers telling THIS node it may be the one that's diverged. See
+	// recordResyncSignal (sync_blocks.go) and HTTPBroadcastBlock's reaction.
+	// A dedicated mutex, never dag.mu, for the same reason proposerBreakerMu is.
+	resyncSignalMu   sync.Mutex
+	resyncSignalFrom map[string]int64 // peer URL -> unix time of its last resync_required signal
 	// syntheticCheckpointCount (audit 2026-06-30 monster audit, P1-05) is a
 	// running counter of synthetic-checkpoint stubs currently trusted by
 	// this node, maintained incrementally at each insertion site

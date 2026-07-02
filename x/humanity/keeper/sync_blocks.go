@@ -1165,7 +1165,68 @@ func (dag *BlockDAG) HTTPBroadcastBlock(block *Block) {
 				fmt.Printf("[BLOCK-PUSH] ✗ HTTP push block #%d to %s: %v\n", block.Height, peerURL, err)
 				return
 			}
-			resp.Body.Close()
+			defer resp.Body.Close()
+			// P0 fix (2026-07-02 liveness audit follow-up): read the response
+			// instead of discarding it. A peer that rejects our block because
+			// OUR proposer's breaker is open on ITS side is telling us WE may
+			// be the diverged one — see handleBlockPush (api.go) for where
+			// this signal originates. React through the same, already-gated
+			// auto-heal path StartDivergenceAutoHeal uses (autoheal.go),
+			// re-checking its exact safety gate here since triggerAutoResync
+			// itself has none: without it, a single malicious/misconfigured
+			// peer's response could force ANY node — including Primary,
+			// which must never self-wipe — through os.Exit(1).
+			var pushResp struct {
+				Action string `json:"action"`
+			}
+			body, err := io.ReadAll(io.LimitReader(resp.Body, 4<<10))
+			if err != nil || json.Unmarshal(body, &pushResp) != nil {
+				return
+			}
+			if pushResp.Action != "resync_required" {
+				return
+			}
+			if !dag.recordResyncSignal(peerURL) {
+				return // fewer than resyncSignalThreshold distinct peers so far
+			}
+			bootstrapURL := os.Getenv("BOOTSTRAP_SNAPSHOT_URL")
+			bootstrapSigner := os.Getenv("BOOTSTRAP_SIGNER")
+			if os.Getenv("AUTO_HEAL_ON_DIVERGENCE") != "true" || bootstrapURL == "" || bootstrapSigner == "" {
+				return // same gate StartDivergenceAutoHeal requires — Primary has neither, so this is always a no-op there
+			}
+			dag.triggerAutoResync(fmt.Sprintf(
+				"%d distinct peers signaled resync_required after rejecting our pushed blocks",
+				resyncSignalThreshold))
 		}()
 	}
+}
+
+// resyncSignalWindow/resyncSignalThreshold gate recordResyncSignal — see its
+// own comment and HTTPBroadcastBlock's reaction above.
+const (
+	resyncSignalWindow    = 60 * time.Second
+	resyncSignalThreshold = 2 // distinct peers within the window
+)
+
+// recordResyncSignal records that peerURL just told this node
+// action:"resync_required" in response to a block this node pushed, and
+// reports whether resyncSignalThreshold distinct peers have now signaled
+// within resyncSignalWindow. Re-signaling from the same peer only refreshes
+// its timestamp — it can never count twice toward the threshold, so a single
+// peer can never trigger this alone. Own mutex, never dag.mu.
+func (dag *BlockDAG) recordResyncSignal(peerURL string) bool {
+	dag.resyncSignalMu.Lock()
+	defer dag.resyncSignalMu.Unlock()
+	if dag.resyncSignalFrom == nil {
+		dag.resyncSignalFrom = make(map[string]int64)
+	}
+	now := time.Now().Unix()
+	dag.resyncSignalFrom[peerURL] = now
+	distinct := 0
+	for _, at := range dag.resyncSignalFrom {
+		if now-at <= int64(resyncSignalWindow.Seconds()) {
+			distinct++
+		}
+	}
+	return distinct >= resyncSignalThreshold
 }
