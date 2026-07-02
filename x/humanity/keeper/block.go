@@ -2694,6 +2694,31 @@ func (dag *BlockDAG) GetBlockByHash(hash string) *Block {
 	return dag.blocks[hash]
 }
 
+// GetBlocksByHashesForPeer resolves many hashes under a SINGLE RLock and omits
+// synthetic-checkpoint stubs (which must never be served to a peer — see
+// GetBlocks' comment). This backs POST /api/blocks/by-hash.
+//
+// CADENCE/SYNC FIX (2026-07-02): the handler used to call GetBlockByHash in a
+// loop — up to maxBlocksByHashPerRequest (500) separate RLock acquisitions per
+// request. On a node whose ProduceBlock holds dag.mu for a slow remote-DB save
+// (confirmed live on the primary), each of those 500 RLocks blocks behind the
+// writer, so a single by-hash request could exceed the caller's 30s timeout and
+// fail entirely — which is exactly what stranded a resyncing secondary
+// (Contabo) mid-catch-up: it could never resolve its missing ancestors because
+// every batch request timed out. One RLock for the whole batch is contended at
+// most once, not 500 times.
+func (dag *BlockDAG) GetBlocksByHashesForPeer(hashes []string) []*Block {
+	dag.mu.RLock()
+	defer dag.mu.RUnlock()
+	out := make([]*Block, 0, len(hashes))
+	for _, h := range hashes {
+		if b := dag.blocks[h]; b != nil && b.Proposer != "synthetic-checkpoint" {
+			out = append(out, b)
+		}
+	}
+	return out
+}
+
 // GetBlockByHeight returns a block at the given height, or nil if none
 // exists. Multiple validators can produce a sibling at the same height —
 // when that happens this prefers the one with the most parent hashes (the

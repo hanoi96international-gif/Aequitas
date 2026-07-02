@@ -732,26 +732,22 @@ func (a *APIServer) handleBlocksByHash(w http.ResponseWriter, r *http.Request) {
 	if len(req.Hashes) > maxBlocksByHashPerRequest {
 		req.Hashes = req.Hashes[:maxBlocksByHashPerRequest]
 	}
-	found := make([]*Block, 0, len(req.Hashes))
+	// Validate hashes first (reject non-hex / wrong-length before any lookup),
+	// then resolve the whole batch under a SINGLE RLock via
+	// GetBlocksByHashesForPeer — see its comment for why per-hash locking here
+	// timed out peers mid-catch-up. Synthetic-checkpoint stubs are omitted by
+	// that method (never served to a peer — see GetBlocks' fix/comment).
+	valid := make([]string, 0, len(req.Hashes))
 	for _, h := range req.Hashes {
-		// Reject non-hex or wrong-length strings before touching any index —
-		// prevents garbage strings from making it into GetBlockByHash lookups.
 		if len(h) != 64 {
 			continue
 		}
 		if _, hexErr := hex.DecodeString(h); hexErr != nil {
 			continue
 		}
-		// FIX (2026-06-30, confirmed live in production): never hand a
-		// synthetic-checkpoint stub to a peer — see GetBlocks' identical
-		// fix/comment. fetchMissingAncestors (this endpoint's caller) needs
-		// to know "no node has the real block" so its own abandonment/bridge
-		// logic can take over, not receive a placeholder that can never pass
-		// the requester's own hash-mismatch check.
-		if b := a.blockchain.GetBlockByHash(h); b != nil && b.Proposer != "synthetic-checkpoint" {
-			found = append(found, b)
-		}
+		valid = append(valid, h)
 	}
+	found := a.blockchain.GetBlocksByHashesForPeer(valid)
 	json.NewEncoder(w).Encode(found)
 }
 
