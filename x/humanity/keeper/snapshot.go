@@ -690,6 +690,23 @@ func (cs *ChainState) ResyncFromSnapshotURL(peerURL, expectedSignerHex string) e
 		if err := cs.setConfigValue("max_block_height", "0"); err != nil {
 			return fail(fmt.Errorf("resync: could not reset max_block_height: %w", err))
 		}
+		// Reset the finalized checkpoint too (P0, 2026-07-02 bootstrap-deadlock):
+		// chain_blocks was just wiped and max_block_height set to 0 for a clean
+		// genesis-up re-sync. A stale finalized_height left over from BEFORE the
+		// wipe (confirmed live on Contabo: finalized_height=67293 with ZERO rows
+		// in chain_blocks) is incoherent — the node believes it has finalized a
+		// height it can no longer produce a single block below, and the catch-up
+		// deadlocks: everything below the stale checkpoint is treated as
+		// already-final history that never re-arrives, so the DAG can never be
+		// rebuilt from genesis and every block above orphans forever. This is
+		// exactly why the FIRST resync of a node works but a SECOND one (after
+		// finalization has advanced) hangs. Re-finalization happens naturally via
+		// maybeAdvanceFinalizedCheckpoint as the node re-syncs the canonical chain.
+		for _, fk := range []string{"finalized_height", "finalized_blue_score", "finalized_hash"} {
+			if err := cs.setConfigValue(fk, "0"); err != nil {
+				return fail(fmt.Errorf("resync: could not reset %s: %w", fk, err))
+			}
+		}
 	}
 
 	// FIX (audit 2026-06-28 recheck 4, P0-2): cs.mu used to be released here,
