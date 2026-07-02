@@ -16,6 +16,7 @@ import (
 	"regexp"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/ethereum/go-ethereum/accounts"
@@ -744,6 +745,95 @@ func (a *APIServer) handleBlocksByHash(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(found)
 }
 
+// --- /api/blocks/push flood shield (P0, 2026-07-02 fork-flood recurrence) ---
+//
+// A peer diverged onto its own fork floods POST /api/blocks/push with blocks
+// that can never attach here: a far-ahead runaway tip (rejected by
+// AddPeerBlock's lock-free height shield) and near-tip fork blocks (orphaned on
+// a parent that lives only on the peer's own chain). Every such POST still costs
+// a body read, a JSON unmarshal, and — for near-tip blocks — AddPeerBlock's hash
+// recompute, ECDSA recovery and a dag.mu turn. The 2026-07-02 incident showed
+// ONE such peer (the third-party 178.105.186.119 node, which this operator does
+// not control and which auto-re-registers after every restart) is enough on its
+// own to drag block production from 1s to 4-6s and API reads to 5-27s even with
+// the height shield already in place.
+//
+// This trips a circuit breaker per SOURCE IP after a sustained run of pushes
+// that fail to attach, then drops that IP's POSTs BEFORE the body is read for a
+// cooldown — the earliest, cheapest possible rejection, so a sustained flood
+// costs almost nothing. A peer whose pushes attach normally resets its run on
+// every accepted block and never trips; legitimate validators (Contabo, cd20)
+// are therefore unaffected. A falsely-tripped peer still merges via the 6s
+// ordered-pull sync (doSyncOnce, which never goes through this path), so the
+// worst case is a short merge delay, never a stuck block.
+const (
+	blockPushBreakerThreshold = 50               // consecutive non-attaching pushes from one IP before it trips
+	blockPushBreakerCooldown  = 20 * time.Second // how long a tripped IP's POSTs are dropped pre-parse
+)
+
+var (
+	blockPushBreakerMu    sync.Mutex
+	blockPushFailRun      = map[string]int{}   // source IP -> consecutive non-attaching pushes
+	blockPushBreakerUntil = map[string]int64{} // source IP -> unix-nano its cooldown expires
+	lastBlockPushDropLog  atomic.Int64         // rate-limits the drop log to once/sec
+
+	// blockPushIPDenylist is an operator hard-block, parsed once from
+	// PEER_PUSH_DENYLIST (comma-separated IPs). Unlike the automatic breaker it
+	// never expires — set it to permanently refuse a peer that has repeatedly
+	// attacked (e.g. PEER_PUSH_DENYLIST=178.105.186.119). Checked before the body
+	// is read.
+	blockPushIPDenylist = func() map[string]bool {
+		m := map[string]bool{}
+		for _, ip := range strings.Split(os.Getenv("PEER_PUSH_DENYLIST"), ",") {
+			if ip = strings.TrimSpace(ip); ip != "" {
+				m[ip] = true
+			}
+		}
+		return m
+	}()
+)
+
+// blockPushShouldDrop reports whether an inbound push from ip must be dropped
+// now without reading its body — either a permanent denylist entry or an open
+// circuit breaker still inside its cooldown. Touches only blockPushBreakerMu,
+// never dag.mu.
+func blockPushShouldDrop(ip string) bool {
+	if blockPushIPDenylist[ip] {
+		return true
+	}
+	blockPushBreakerMu.Lock()
+	defer blockPushBreakerMu.Unlock()
+	until, ok := blockPushBreakerUntil[ip]
+	if !ok {
+		return false
+	}
+	if time.Now().UnixNano() >= until {
+		delete(blockPushBreakerUntil, ip) // cooldown elapsed — let one probe through
+		delete(blockPushFailRun, ip)
+		return false
+	}
+	return true
+}
+
+// blockPushRecordOutcome feeds the per-IP breaker after AddPeerBlock returns.
+// attached (the block joined the DAG) clears the IP's failure run; !attached
+// (orphaned, rejected, or a re-push of a known block) advances it and trips the
+// breaker once the run crosses blockPushBreakerThreshold.
+func blockPushRecordOutcome(ip string, attached bool) {
+	blockPushBreakerMu.Lock()
+	defer blockPushBreakerMu.Unlock()
+	if attached {
+		delete(blockPushFailRun, ip)
+		delete(blockPushBreakerUntil, ip)
+		return
+	}
+	blockPushFailRun[ip]++
+	if blockPushFailRun[ip] >= blockPushBreakerThreshold {
+		blockPushBreakerUntil[ip] = time.Now().Add(blockPushBreakerCooldown).UnixNano()
+		delete(blockPushFailRun, ip) // breaker gates now; rebuild the run after cooldown
+	}
+}
+
 // handleBlockPush accepts a freshly-produced block from a peer via HTTP POST
 // and feeds it directly into AddPeerBlock. This is the HTTP-level push path
 // that enables DAG merges even when libp2p (port 4001) is firewalled — e.g.
@@ -759,6 +849,20 @@ func (a *APIServer) handleBlockPush(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, `{"error":"POST required"}`, http.StatusMethodNotAllowed)
 		return
 	}
+	// Fork-flood shield: drop a flooding or denylisted peer's push BEFORE reading
+	// or parsing the body — the cheapest possible rejection. See the
+	// blockPushBreaker* block above for why one diverged peer needs this.
+	ip := clientIP(r)
+	if blockPushShouldDrop(ip) {
+		nowNano := time.Now().UnixNano()
+		last := lastBlockPushDropLog.Load()
+		if nowNano-last > int64(time.Second) && lastBlockPushDropLog.CompareAndSwap(last, nowNano) {
+			fmt.Printf("[BLOCK-PUSH] ✗ Dropping pushes from %s — flood shield open (denylist or sustained non-attaching flood). (rate-limited)\n", ip)
+		}
+		w.WriteHeader(http.StatusTooManyRequests)
+		w.Write([]byte(`{"ok":false,"reason":"push flood shield open"}`))
+		return
+	}
 	body, err := io.ReadAll(io.LimitReader(r.Body, 512<<10))
 	if err != nil {
 		http.Error(w, `{"error":"read error"}`, http.StatusBadRequest)
@@ -771,6 +875,7 @@ func (a *APIServer) handleBlockPush(w http.ResponseWriter, r *http.Request) {
 	}
 	block.FromSync = true
 	accepted := a.blockchain.AddPeerBlock(&block)
+	blockPushRecordOutcome(ip, accepted)
 	if accepted {
 		fmt.Printf("[BLOCK-PUSH] ✓ Accepted block #%d via HTTP push\n", block.Height)
 		w.Write([]byte(`{"ok":true}`))
