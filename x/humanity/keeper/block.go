@@ -196,6 +196,10 @@ replayedMu             sync.Mutex
 	syncTargetHeight   atomic.Int64
 	activeGhostdagK    atomic.Int32 // live GHOSTDAG K for current epoch; 0 → use ghostdagKBase
 	startupTime        int64        // Unix timestamp of NewBlockchain — used by the initial-sync gate
+	// lastFarAheadLogAt rate-limits the "dropped far-ahead orphan" log (unix
+	// nanos, atomic) so a fork flood can't turn the log itself into the
+	// bottleneck — see AddPeerBlock's lock-free flood shield.
+	lastFarAheadLogAt atomic.Int64
 	// syntheticCheckpointCount (audit 2026-06-30 monster audit, P1-05) is a
 	// running counter of synthetic-checkpoint stubs currently trusted by
 	// this node, maintained incrementally at each insertion site
@@ -1684,6 +1688,29 @@ func (dag *BlockDAG) shouldAttemptFetch(hash string) bool {
 }
 
 func (dag *BlockDAG) AddPeerBlock(block *Block) bool {
+// Lock-free fork-flood shield (P0, 2026-07-02): reject a block whose height is
+// far above ours BEFORE taking the write lock, so a diverged/runaway fork
+// pushing thousands of unresolvable blocks can NEVER contend for dag.mu with
+// block production — the difference between a responsive node and the hang this
+// whole incident was. A brief RLock reads the height (concurrent with other
+// readers, only momentarily blocks the writer); the queueOrphan check remains
+// as a second line of defence. Ordered sync still fills any legitimate gap
+// parents-first, so nothing real is lost. Logging is rate-limited to once per
+// second so the flood can't make the log the new bottleneck.
+if block != nil {
+	dag.mu.RLock()
+	localHeight := dag.height
+	dag.mu.RUnlock()
+	if block.Height > localHeight+maxOrphanHeightGap {
+		nowNano := time.Now().UnixNano()
+		last := dag.lastFarAheadLogAt.Load()
+		if nowNano-last > int64(time.Second) && dag.lastFarAheadLogAt.CompareAndSwap(last, nowNano) {
+			fmt.Printf("[DAG] ✗ Rejecting far-ahead blocks (e.g. #%d from %s, %d above local height %d, cap %d) — diverged fork; ordered sync pulls any real gap parents-first. (rate-limited)\n",
+				block.Height, block.Proposer, block.Height-localHeight, localHeight, maxOrphanHeightGap)
+		}
+		return false
+	}
+}
 dag.mu.Lock()
 // NOTE: no defer — we manually unlock before the channel send below (Fix 2).
 // All early-return paths must call dag.mu.Unlock() explicitly.
