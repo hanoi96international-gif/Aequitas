@@ -3432,16 +3432,61 @@ func (cs *ChainState) reloadPoolFromDB() {
 	}
 }
 
+// convertTUsdFeeToAEQLocked swaps a tUSD-denominated swap fee into AEQ through
+// the liquidity pool, so the four tokenomics pools only ever accumulate the AEQ
+// they actually pay out (see distributeSwapFee). It mirrors a tUSD->AEQ swap:
+// the fee's tUSD enters the pool's tUSD reserve and the corresponding AEQ leaves
+// its AEQ reserve. Fee-less — the user's swap already paid the 0.1%. Returns the
+// AEQ amount and true on success, or (0,false) if the pool can't price it (nil
+// or empty pool, or an output that would drain the AEQ reserve) so the caller
+// can fall back to crediting the raw tUSD. Deterministic given the reserves,
+// which are in the identical post-swap state on the primary (swapLocked) and on
+// secondaries (applySwapDeltaLocked) at the point this runs — so it needs no
+// separate replay transaction. Caller holds cs.mu and persists the pool after.
+func (cs *ChainState) convertTUsdFeeToAEQLocked(feeTUsd float64) (float64, bool) {
+	if cs.pool == nil || feeTUsd <= 0 {
+		return 0, false
+	}
+	rT := cs.pool.ReserveTUSD.Float()
+	rA := cs.pool.ReserveAEQ.Float()
+	if rT <= 0 || rA <= 0 {
+		return 0, false
+	}
+	aeqOut := AMMSwapOut(cs.pool.ReserveTUSD, cs.pool.ReserveAEQ, NewDecimal(feeTUsd)).Float()
+	if aeqOut <= 0 || aeqOut >= rA {
+		return 0, false // can't price it, or it would drain the pool — fall back to tUSD
+	}
+	cs.pool.ReserveTUSD = NewDecimal(round6(rT + feeTUsd))
+	cs.pool.ReserveAEQ = NewDecimal(max(0.0, round6(rA-aeqOut)))
+	return round6(aeqOut), true
+}
+
 // distributeSwapFee splits the fee collected from a swap across the four
-// tokenomics pools from the original design: 40% validators, 30%
-// liquidity providers, 20% UBI, 10% treasury — crediting each of the four
-// real addresses above. feeInAEQ is true when the fee was collected in
-// AEQ (an AEQ->tUSD swap); false means it was collected in tUSD (a
-// tUSD->AEQ swap) — the split percentages are the same either way, only
-// the currency the fee is credited in differs. Caller must hold cs.mu.
+// tokenomics pools from the original design: 40% validators, 30% liquidity
+// providers, 20% UBI, 10% treasury — crediting each of the four real addresses
+// above. feeInAEQ is true when the fee was collected in AEQ (an AEQ->tUSD swap).
+// A fee collected in tUSD (feeInAEQ=false, a tUSD->AEQ buy) is first converted
+// to AEQ via convertTUsdFeeToAEQLocked so the pools only ever hold the AEQ they
+// distribute — without this, tUSD fees pile up in pool addresses that
+// DistributeUBIPool/Validators/LP never read (they look only at the AEQ
+// balance), so the money is stranded and the pools look permanently empty
+// (2026-07-02: confirmed live, UBI pool held 0.2 tUSD / 0 AEQ). The conversion
+// runs identically on the primary and on replaying secondaries (identical
+// post-swap reserves), so it needs no separate transaction; if the pool can't
+// price the fee it falls back to crediting the raw tUSD, also deterministic.
+// Caller must hold cs.mu.
 func (cs *ChainState) distributeSwapFee(fee float64, feeInAEQ bool) error {
 	if fee <= 0 {
 		return nil
+	}
+	if !feeInAEQ {
+		if aeqFee, ok := cs.convertTUsdFeeToAEQLocked(fee); ok {
+			fee = aeqFee
+			feeInAEQ = true
+			if err := cs.savePoolToDB(); err != nil {
+				return fmt.Errorf("distributeSwapFee: could not persist fee conversion: %w", err)
+			}
+		}
 	}
 	shares := [4]struct {
 		addr   string
