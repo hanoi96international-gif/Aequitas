@@ -317,13 +317,23 @@ func (a *APIServer) handleCombinedHealth(w http.ResponseWriter, r *http.Request)
 		notes = append(notes, "DAG degraded: "+dagDegradedReason)
 	}
 	// Monster-Audit P1-04: surface synthetic-checkpoint trust-bootstrap mode
-	// instead of letting it run invisibly. Not an error by itself (it self-heals
-	// as real blocks sync in behind it) — informational unless it persists.
+	// instead of letting it run invisibly.
 	syntheticCheckpointCount := a.blockchain.SyntheticCheckpointCount()
+	unverifiedCheckpointCount := a.blockchain.UnverifiedSyntheticCheckpointCount()
 	checkpointTrustMode := syntheticCheckpointCount > 0
-	if checkpointTrustMode && status == "healthy" {
-		status = "warn"
-		notes = append(notes, fmt.Sprintf("%d synthetic-checkpoint stub(s) active — bridging a historical gap from peer snapshot trust, not full verification; normally self-heals as real blocks sync in behind them", syntheticCheckpointCount))
+	if unverifiedCheckpointCount > 0 {
+		// Genuine mid-chain gap above the snapshot boundary — should heal as real
+		// blocks sync in. Degrade to warn until it does.
+		if status == "healthy" {
+			status = "warn"
+		}
+		notes = append(notes, fmt.Sprintf("%d synthetic-checkpoint stub(s) active above the snapshot boundary — bridging a historical gap from peer snapshot trust, not full verification; normally self-heals as real blocks sync in behind them", unverifiedCheckpointCount))
+	} else if boundaryStubs := syntheticCheckpointCount - unverifiedCheckpointCount; boundaryStubs > 0 {
+		// Only the snapshot-boundary stub(s) remain: the signed-snapshot
+		// start-of-history that no node retains blocks below. This is the normal,
+		// permanent state of every snapshot-bootstrapped node — informational,
+		// not a health concern, and does NOT gate production.
+		notes = append(notes, fmt.Sprintf("%d synthetic-checkpoint stub(s) at the snapshot boundary — this node was bootstrapped from a signed snapshot; the boundary block predates all retained history and is trusted like genesis (expected, not an error)", boundaryStubs))
 	}
 
 	json.NewEncoder(w).Encode(map[string]interface{}{

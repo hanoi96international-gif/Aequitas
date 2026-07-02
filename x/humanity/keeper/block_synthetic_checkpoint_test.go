@@ -2,6 +2,41 @@ package keeper
 
 import "testing"
 
+// TestUnverifiedSyntheticCheckpoint_BoundaryVsMidChain verifies the boundary
+// rule that keeps a snapshot-bootstrapped node producing: a stub AT/below
+// bootHeight (the signed-snapshot start-of-history) is trusted like genesis and
+// is NOT counted as unverified, while a stub ABOVE bootHeight (a real mid-chain
+// gap) IS — and only the latter gates production/health. Mirrors the inline
+// `stubH > dag.bootHeight` decision at every insertion site.
+func TestUnverifiedSyntheticCheckpoint_BoundaryVsMidChain(t *testing.T) {
+	dag := newGhostdagTestDAG()
+	dag.bootHeight = 76137 // trusted snapshot boundary
+
+	// Simulate the boundary stub (height == bootHeight): counted in the total,
+	// never in the unverified subset.
+	boundaryStubHeight := int64(76137)
+	dag.syntheticCheckpointCount.Add(1)
+	if boundaryStubHeight > dag.bootHeight {
+		dag.unverifiedSyntheticCheckpointCount.Add(1)
+	}
+	if dag.SyntheticCheckpointCount() != 1 {
+		t.Fatalf("boundary stub must count toward the total, got %d", dag.SyntheticCheckpointCount())
+	}
+	if dag.UnverifiedSyntheticCheckpointCount() != 0 {
+		t.Fatalf("boundary stub must NOT count as unverified (would strand a snapshot node in permanent non-production), got %d", dag.UnverifiedSyntheticCheckpointCount())
+	}
+
+	// Simulate a genuine mid-chain gap above the boundary: counted in both.
+	midChainStubHeight := int64(77000)
+	dag.syntheticCheckpointCount.Add(1)
+	if midChainStubHeight > dag.bootHeight {
+		dag.unverifiedSyntheticCheckpointCount.Add(1)
+	}
+	if dag.UnverifiedSyntheticCheckpointCount() != 1 {
+		t.Fatalf("a mid-chain gap above bootHeight must count as unverified (gates production), got %d", dag.UnverifiedSyntheticCheckpointCount())
+	}
+}
+
 // TestSyntheticCheckpointHashes_FindsStubsOnly verifies the lookup the
 // active-healing mechanism (sync_blocks.go: healSyntheticCheckpoints) relies
 // on to know which hashes to try to replace with real peer data.

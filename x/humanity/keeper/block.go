@@ -236,6 +236,20 @@ replayedMu             sync.Mutex
 	// length) on every single block produced, the same class of cost that
 	// made the stub-tips bug pathological earlier this session).
 	syntheticCheckpointCount atomic.Int32
+	// unverifiedSyntheticCheckpointCount is the subset of the above that sit
+	// ABOVE the trusted snapshot boundary (bootHeight) — i.e. genuine mid-chain
+	// gaps in otherwise-verifiable history. A stub at or below bootHeight is the
+	// snapshot's own start-of-history point: the block the operator deliberately
+	// bootstrapped from via a signed snapshot, which no node retains (the whole
+	// network was snapshot-resynced there) and which therefore can never heal
+	// with a real block. Such a boundary stub is as trusted as genesis and must
+	// NOT halt block production or flag the node unhealthy — otherwise a
+	// snapshot-bootstrapped secondary (confirmed live on Contabo) can never
+	// produce again. Maintained incrementally at the same three sites as the
+	// total counter above, comparing each stub's height to bootHeight (stable
+	// after startup: BridgeHistoricalGap runs only after
+	// RefreshBootHeightAfterSnapshotImport has set it).
+	unverifiedSyntheticCheckpointCount atomic.Int32
 	// ghostdagMigrationPending (audit 2026-06-30 monster audit, P1-03) is
 	// true from the moment LoadBlocksFromDB finds blocks needing GHOSTDAG
 	// backfill until the background migration goroutine finishes. Backgrounding
@@ -1051,6 +1065,13 @@ func (dag *BlockDAG) BridgeHistoricalGap(peerURLs []string) {
 			}
 			fmt.Printf("[BRIDGE] ✓ Synthetic checkpoint at height %d (hash %s...) — bridging permanent gap in block history\n", stubH, displayHash)
 			dag.syntheticCheckpointCount.Add(1)
+			// Only a stub ABOVE the trusted snapshot boundary (bootHeight) gates
+			// production/health — see unverifiedSyntheticCheckpointCount's comment.
+			// The boundary stub itself (stubH <= bootHeight) is the snapshot's
+			// start-of-history and is trusted like genesis.
+			if stubH > dag.bootHeight {
+				dag.unverifiedSyntheticCheckpointCount.Add(1)
+			}
 			// FIX (audit 2026-06-30 monster audit, P1-05): durable audit trail
 			// for every stub this node has ever trusted instead of verified —
 			// see RecordSyntheticCheckpointEvent's own comment. Best-effort,
@@ -1177,8 +1198,13 @@ if dag.ghostdagMigrationPending.Load() {
 // silently propagate into newly-minted, otherwise-fully-verified blocks.
 // SyntheticCheckpointCount() now just reads an atomic counter (no lock),
 // safe to call here even though dag.mu is already held write-locked.
-if syntheticCount := dag.SyntheticCheckpointCount(); syntheticCount > 0 {
-	fmt.Printf("[BLOCK] ✗ Node is bridging %d synthetic checkpoint(s) — block production halted until real history syncs in behind them.\n", syntheticCount)
+// Only stubs ABOVE the trusted snapshot boundary halt production. A stub AT the
+// boundary (the signed-snapshot start-of-history) can never heal — no node
+// retains blocks below it — so gating on the total count would strand a
+// snapshot-bootstrapped node in permanent non-production (confirmed live on
+// Contabo). See UnverifiedSyntheticCheckpointCount.
+if syntheticCount := dag.UnverifiedSyntheticCheckpointCount(); syntheticCount > 0 {
+	fmt.Printf("[BLOCK] ✗ Node is bridging %d unverified synthetic checkpoint(s) above the snapshot boundary — block production halted until real history syncs in behind them.\n", syntheticCount)
 	return nil
 }
 
@@ -1642,6 +1668,14 @@ func (dag *BlockDAG) queueOrphan(missingParent string, block *Block) {
 				missingParent[:min(16, len(missingParent))], stubH, len(waiting))
 			if stubInserted {
 				dag.syntheticCheckpointCount.Add(1)
+				// A runtime-orphan-bridge stub is created during normal operation
+				// (past catch-up), so it sits above bootHeight and represents a
+				// genuine mid-chain gap that DOES gate production — see
+				// unverifiedSyntheticCheckpointCount's comment. Guard with the same
+				// bootHeight comparison for consistency with BridgeHistoricalGap.
+				if stubH > dag.BootHeight() {
+					dag.unverifiedSyntheticCheckpointCount.Add(1)
+				}
 				// FIX (audit 2026-06-30 monster audit, P1-05): see
 				// RecordSyntheticCheckpointEvent's comment — durable audit trail,
 				// tagged "runtime-orphan-bridge" so it's distinguishable from a
@@ -2360,6 +2394,11 @@ if prev, hadStub := dag.blocks[block.Hash]; hadStub && prev.Proposer == "synthet
 	// Healing a stub (see the "already known" check above): the gap this
 	// stub was bridging is now closed with real, replayed data.
 	dag.syntheticCheckpointCount.Add(-1)
+	// Mirror the boundary check used at insertion so the two counters stay in
+	// step — only an above-boundary stub was ever counted as unverified.
+	if prev.Height > dag.bootHeight {
+		dag.unverifiedSyntheticCheckpointCount.Add(-1)
+	}
 	fmt.Printf("[BLOCK] ✓ Synthetic checkpoint at height %d healed — %d still active\n", prev.Height, dag.syntheticCheckpointCount.Load())
 }
 dag.blocks[block.Hash] = block
@@ -2500,6 +2539,18 @@ func (dag *BlockDAG) TipsCount() int {
 // instead.
 func (dag *BlockDAG) SyntheticCheckpointCount() int {
 	return int(dag.syntheticCheckpointCount.Load())
+}
+
+// UnverifiedSyntheticCheckpointCount reports only the synthetic-checkpoint stubs
+// ABOVE the trusted snapshot boundary (bootHeight) — genuine mid-chain gaps in
+// otherwise-verifiable history. This, NOT the total, is what gates block
+// production and the node's healthy flag: a stub at/below bootHeight is the
+// snapshot's own start-of-history point (deliberately bootstrapped from a signed
+// snapshot, unhealable because no node retains blocks below it) and is trusted
+// like genesis. Same lock-free atomic-read pattern as SyntheticCheckpointCount,
+// safe to call under ProduceBlock's held write lock.
+func (dag *BlockDAG) UnverifiedSyntheticCheckpointCount() int {
+	return int(dag.unverifiedSyntheticCheckpointCount.Load())
 }
 
 // SyntheticCheckpointHashes returns the hashes of every synthetic-checkpoint

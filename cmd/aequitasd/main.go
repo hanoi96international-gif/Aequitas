@@ -537,8 +537,14 @@ func distributionSyncHealthIssue(bc *keeper.BlockDAG) string {
 	if bc.IsDegraded() {
 		return fmt.Sprintf("node is degraded (%s) — a prior persistence failure may have left this node's view of the chain incomplete", bc.DegradedReason())
 	}
-	if n := bc.SyntheticCheckpointCount(); n > 0 {
-		return fmt.Sprintf("%d synthetic-checkpoint stub(s) still active — this node is trusting a placeholder instead of real history for at least one span of blocks", n)
+	// Only stubs ABOVE the trusted snapshot boundary mean this node's view is
+	// genuinely incomplete relative to peers. A boundary stub (the signed-snapshot
+	// start-of-history) is shared by the whole network — no node retains blocks
+	// below it — so it does not make THIS node's block-count view uniquely
+	// incomplete and must not block distribution forever. See
+	// UnverifiedSyntheticCheckpointCount.
+	if n := bc.UnverifiedSyntheticCheckpointCount(); n > 0 {
+		return fmt.Sprintf("%d unverified synthetic-checkpoint stub(s) above the snapshot boundary still active — this node is trusting a placeholder instead of real history for at least one span of blocks", n)
 	}
 	// A node with peers configured but no successful peer sync in the last
 	// hour is a red flag for isolation (e.g. every configured seed/peer
