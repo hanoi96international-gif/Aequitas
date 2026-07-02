@@ -1552,13 +1552,16 @@ func (dag *BlockDAG) abandonOrphansWaitingFor(hash string) {
 // and logs the wait (the old code dropped this case with zero logging).
 func (dag *BlockDAG) queueOrphan(missingParent string, block *Block) {
 	// Fork-flood backpressure — see maxOrphanHeightGap. Reject blocks whose
-	// height is implausibly far above ours BEFORE they ever enter the orphan
-	// buffer or its resolution machinery, so a diverged/runaway fork can't hang
-	// this node. dag.mu is NOT held here (AddPeerBlock unlocked it before
-	// calling us), so Height() is safe to call.
-	if localHeight := dag.Height(); block.Height > localHeight+maxOrphanHeightGap {
-		fmt.Printf("[DAG] ✗ Dropped far-ahead orphan #%d from %s: %d blocks above local height %d (cap %d) — likely a diverged fork; ordered sync will pull any legitimate gap parents-first\n",
-			block.Height, block.Proposer, block.Height-localHeight, localHeight, maxOrphanHeightGap)
+	// height is implausibly far above our frontier BEFORE they ever enter the
+	// orphan buffer or its resolution machinery, so a diverged/runaway fork
+	// can't hang this node. The frontier is max(dag.height, bootHeight), not
+	// dag.height alone — see farAheadFrontierLocked for why a snapshot-
+	// bootstrapped node (dag.height 0, bootHeight at the snapshot boundary) must
+	// still accept the block that attaches to its checkpoint stub. dag.mu is NOT
+	// held here (AddPeerBlock unlocked it before calling us).
+	if frontier := dag.farAheadFrontier(); block.Height > frontier+maxOrphanHeightGap {
+		fmt.Printf("[DAG] ✗ Dropped far-ahead orphan #%d from %s: %d blocks above frontier %d (cap %d) — likely a diverged fork; ordered sync will pull any legitimate gap parents-first\n",
+			block.Height, block.Proposer, block.Height-frontier, frontier, maxOrphanHeightGap)
 		return
 	}
 	dag.orphansMu.Lock()
@@ -1791,6 +1794,42 @@ func (dag *BlockDAG) isCatchingUpLocked() bool {
 	return false
 }
 
+// farAheadFrontierLocked returns the height against which the far-ahead
+// fork-flood cap (maxOrphanHeightGap) is measured: the highest height this node
+// legitimately treats as its frontier. That is max(dag.height, bootHeight) —
+// NOT dag.height alone.
+//
+// After a snapshot bootstrap/resync the node trusts state up to bootHeight (the
+// snapshot boundary) and holds a synthetic-checkpoint stub at that height, but
+// dag.height stays 0 because the stub is deliberately never marked a tip (see
+// BridgeHistoricalGap). Measuring far-ahead against dag.height=0 then rejects
+// the peer's earliest real block — the one exactly above the snapshot boundary
+// whose parent IS that stub — as "far-ahead", so it can never attach and the
+// node is stranded at height 0 forever. Confirmed live on Contabo: the primary,
+// itself snapshot-resynced, serves nothing below block #76138 (parent = the
+// stub at 76137); against dag.height=0 that block is 76138 > 0+5000 and was
+// dropped before the parent-existence check that would have attached it.
+//
+// bootHeight is derived solely from the local DB (max_block_height /
+// snapshot_import_height, set only by real persisted blocks or a signed
+// snapshot resync) and never from a peer, so widening the window to bootHeight
+// cannot be abused by a malicious peer to sneak a runaway fork past the cap.
+// Caller must hold dag.mu (read or write).
+func (dag *BlockDAG) farAheadFrontierLocked() int64 {
+	if dag.bootHeight > dag.height {
+		return dag.bootHeight
+	}
+	return dag.height
+}
+
+// farAheadFrontier is the lock-taking wrapper for callers that do not already
+// hold dag.mu (e.g. queueOrphan, which AddPeerBlock calls after unlocking).
+func (dag *BlockDAG) farAheadFrontier() int64 {
+	dag.mu.RLock()
+	defer dag.mu.RUnlock()
+	return dag.farAheadFrontierLocked()
+}
+
 // proposerBreakerFailThreshold is how many consecutive non-attaching blocks a
 // single proposer may deliver before its circuit breaker trips. Normal
 // operation orphans at most a block or two transiently (a gossip block that
@@ -1897,9 +1936,10 @@ if block != nil {
 	}
 	dag.mu.RLock()
 	localHeight := dag.height
+	frontier := dag.farAheadFrontierLocked()
 	catchingUp := dag.isCatchingUpLocked()
 	dag.mu.RUnlock()
-	if block.Height > localHeight+maxOrphanHeightGap {
+	if block.Height > frontier+maxOrphanHeightGap {
 		// A far-ahead block never attaches here — feed the breaker so a sustained
 		// runaway-fork flood trips it and is then dropped above without even this
 		// RLock. EXCEPT while WE are still in initial catch-up (bootHeight far
@@ -1916,8 +1956,8 @@ if block != nil {
 		nowNano := time.Now().UnixNano()
 		last := dag.lastFarAheadLogAt.Load()
 		if nowNano-last > int64(time.Second) && dag.lastFarAheadLogAt.CompareAndSwap(last, nowNano) {
-			fmt.Printf("[DAG] ✗ Rejecting far-ahead blocks (e.g. #%d from %s, %d above local height %d, cap %d) — diverged fork; ordered sync pulls any real gap parents-first. (rate-limited)\n",
-				block.Height, block.Proposer, block.Height-localHeight, localHeight, maxOrphanHeightGap)
+			fmt.Printf("[DAG] ✗ Rejecting far-ahead blocks (e.g. #%d from %s, %d above frontier %d [local height %d], cap %d) — diverged fork; ordered sync pulls any real gap parents-first. (rate-limited)\n",
+				block.Height, block.Proposer, block.Height-frontier, frontier, localHeight, maxOrphanHeightGap)
 		}
 		return false
 	}

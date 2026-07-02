@@ -52,6 +52,44 @@ func TestIsCatchingUp_BootHeightStillWorks(t *testing.T) {
 	}
 }
 
+// TestFarAheadFrontier_SnapshotBootstrap is the regression guard for the
+// Contabo "stuck at height 0 behind a synthetic checkpoint" stall. After a
+// snapshot bootstrap the node holds a stub at bootHeight but dag.height stays 0
+// (the stub is never a tip), so the far-ahead cap must be measured against
+// bootHeight — otherwise the peer's earliest real block (one above the snapshot
+// boundary, whose parent IS the stub) is rejected as far-ahead and can never
+// attach.
+func TestFarAheadFrontier_SnapshotBootstrap(t *testing.T) {
+	dag := newGhostdagTestDAG()
+	dag.height = 0
+	dag.bootHeight = 76137 // snapshot boundary; stub lives here, dag.height stays 0
+
+	frontier := dag.farAheadFrontier()
+	if frontier != 76137 {
+		t.Fatalf("frontier must be max(height, bootHeight)=76137, got %d", frontier)
+	}
+	// The primary's earliest real block (#76138, parent = the stub) must NOT be
+	// far-ahead: 76138 <= 76137 + maxOrphanHeightGap.
+	if int64(76138) > frontier+maxOrphanHeightGap {
+		t.Fatalf("block #76138 (attaches to the snapshot stub) must not be far-ahead against frontier %d", frontier)
+	}
+	// A genuine runaway fork far above the snapshot boundary is still rejected.
+	if int64(76137+maxOrphanHeightGap+1) <= frontier+maxOrphanHeightGap {
+		t.Fatalf("a block beyond bootHeight+cap must still count as far-ahead")
+	}
+}
+
+// TestFarAheadFrontier_NoSnapshotUsesHeight confirms an ordinary synced node
+// (no snapshot gap) still measures far-ahead against its own height.
+func TestFarAheadFrontier_NoSnapshotUsesHeight(t *testing.T) {
+	dag := newGhostdagTestDAG()
+	dag.height = 5000
+	dag.bootHeight = 0
+	if got := dag.farAheadFrontier(); got != 5000 {
+		t.Fatalf("with bootHeight 0 the frontier is dag.height=5000, got %d", got)
+	}
+}
+
 // TestIsCatchingUp_SyncedNodeNotShielded guards against the inverse mistake:
 // a fully-synced node (no bootHeight gap, sync target cleared to 0) must report
 // "not catching up" so the breaker still trips on a genuine diverged-fork
