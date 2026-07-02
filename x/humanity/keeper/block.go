@@ -677,6 +677,29 @@ if persisted := state.getConfigValueDB("max_block_height"); persisted != "" {
 		dag.height = h
 	}
 }
+
+// FIX (P0, 2026-07-02 recurrence): a finalized checkpoint can never
+// legitimately sit above the height this node has actually synced —
+// GHOSTDAG finality is always behind-or-equal to the local tip, never
+// ahead of it. Confirmed live on Contabo: finalized_height=67293 while
+// chain_blocks held zero rows and max_block_height=0, because the wipe
+// that produced this ran under a binary predating a12009d's RESYNC-path
+// reset (stale cached Docker layer — see the fork-flood incident notes).
+// isFinalityViolation then rejects every block below the stale
+// checkpoint forever, hanging the node in a permanent "added 0 of 500"
+// loop that previously needed manual SQL surgery to clear. Checking the
+// invariant here — the one place every boot already reads both values —
+// makes the fix path-independent: it self-corrects no matter what caused
+// the incoherence (stale image, crash mid-wipe, manual tampering, or a
+// future bug), not just the one call site that caused it last time.
+if finalizedHeight, _ := state.GetFinalizedCheckpoint(); checkpointIsIncoherent(finalizedHeight, dag.height) {
+	fmt.Printf("[FINALITY] ⚠ Stale checkpoint detected: finalized_height=%d exceeds synced height=%d — this is impossible under honest operation, auto-correcting to 0 so re-finalization can advance naturally as the node syncs.\n",
+		finalizedHeight, dag.height)
+	state.setConfigValueDB("finalized_height", "0")
+	state.setConfigValueDB("finalized_blue_score", "0")
+	state.setConfigValueDB("finalized_hash", "0")
+}
+
 // Captured ONCE, after the restoration above and before any block
 // processing begins — see bootHeight's field comment.
 dag.bootHeight = dag.height
@@ -692,6 +715,14 @@ go func() {
 }()
 
 return dag
+}
+
+// checkpointIsIncoherent reports whether a persisted finality checkpoint is
+// provably stale: GHOSTDAG finality can only ever sit behind or equal to the
+// height this node has actually synced, never ahead of it. See NewBlockchain's
+// call site for the incident this guards against.
+func checkpointIsIncoherent(finalizedHeight, syncedHeight int64) bool {
+	return finalizedHeight > syncedHeight
 }
 
 // relayerAddressFromEnv returns RELAYER_ADDRESS if explicitly set (an
