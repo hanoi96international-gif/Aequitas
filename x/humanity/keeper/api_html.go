@@ -679,10 +679,10 @@ input[type=number]::-webkit-inner-spin-button{opacity:0.5}
     <div style="display:flex;gap:3px;margin-bottom:8px">
       <button onclick="setChartInterval(60000)" id="ci-1m" class="ci-btn">1m</button>
       <button onclick="setChartInterval(300000)" id="ci-5m" class="ci-btn">5m</button>
-      <button onclick="setChartInterval(1800000)" id="ci-30m" class="ci-btn">30m</button>
-      <button onclick="setChartInterval(3600000)" id="ci-1h" class="ci-btn ci-active">1h</button>
+      <button onclick="setChartInterval(900000)" id="ci-15m" class="ci-btn ci-active">15m</button>
+      <button onclick="setChartInterval(3600000)" id="ci-1h" class="ci-btn">1h</button>
       <button onclick="setChartInterval(14400000)" id="ci-4h" class="ci-btn">4h</button>
-      <button onclick="setChartInterval(0)" id="ci-all" class="ci-btn">All</button>
+      <button onclick="setChartInterval(86400000)" id="ci-1d" class="ci-btn">1D</button>
     </div>
     <div id="price-chart" style="width:100%;height:260px;border-radius:6px;overflow:hidden;background:#0A0C16"></div>
     <div id="price-chart-empty" style="display:none;text-align:center;padding:40px;color:var(--muted);font-size:0.63rem" data-i18n="swap-price-empty">No pool data yet — add liquidity to see the price chart.</div>
@@ -4582,18 +4582,20 @@ function drawWcapSlideChart() {
   ctx.fillText('WEALTH CAP  —  BOOTSTRAP MULTIPLIER  ·  max(5, min(N, 25))×', pad.l, 20);
 }
 
-// ── PRICE CHART (TradingView Lightweight Charts) ─────────────────────────
+// ── PRICE CHART (TradingView Lightweight Charts, DexScreener-style) ──────────
+// The interval buttons are the CANDLE TIMEFRAME (like DexScreener), not a
+// time-window filter. Each button = one candle's duration in ms; the chart
+// shows the FULL history at that resolution and is scrollable/zoomable.
 var lwChart = null, lwCandleSeries = null, lwVolSeries = null;
-// Candle bucket size (ms) for each interval filter
-var CANDLE_BUCKET = {60000:10000,300000:30000,1800000:120000,3600000:300000,14400000:900000,0:300000};
 
-function buildOHLC(pts, filterMs, bucketMs) {
-  var now = Date.now();
-  var data = filterMs > 0 ? pts.filter(function(p){return now-p.t<=filterMs&&p.p>0;}) : pts.filter(function(p){return p.p>0;});
+// buildOHLC aggregates every price point into candles of tfMs each — no window
+// filter, so all recorded history is shown at the selected resolution.
+function buildOHLC(pts, tfMs) {
+  var data = pts.filter(function(p){return p.p>0;});
   if (!data.length) return [];
   var buckets = {};
   data.forEach(function(pt) {
-    var b = Math.floor(pt.t/bucketMs)*bucketMs;
+    var b = Math.floor(pt.t/tfMs)*tfMs;
     if (!buckets[b]) { buckets[b]={time:Math.floor(b/1000),open:pt.p,high:pt.p,low:pt.p,close:pt.p,vol:1}; }
     else { buckets[b].high=Math.max(buckets[b].high,pt.p); buckets[b].low=Math.min(buckets[b].low,pt.p); buckets[b].close=pt.p; buckets[b].vol++; }
   });
@@ -4643,8 +4645,7 @@ function drawPriceChart() {
   if (!el||!el.offsetParent) return;
   if (!lwChart) initPriceChart();
   if (!lwChart) return;
-  var bms = CANDLE_BUCKET[chartIntervalMs] || 300000;
-  var candles = buildOHLC(priceHistory, chartIntervalMs, bms);
+  var candles = buildOHLC(priceHistory, chartIntervalMs);
   updatePriceDisplay(candles);
   if (!candles.length) {
     if (lwCandleSeries) lwCandleSeries.setData([]);
@@ -4653,7 +4654,19 @@ function drawPriceChart() {
   }
   lwCandleSeries.setData(candles.map(function(c){return {time:c.time,open:c.open,high:c.high,low:c.low,close:c.close};}));
   lwVolSeries.setData(candles.map(function(c){return {time:c.time,value:c.vol,color:c.close>=c.open?'rgba(52,211,153,0.22)':'rgba(248,113,113,0.22)'};}));
-  lwChart.timeScale().fitContent();
+  // DexScreener behaviour: on a timeframe switch (or first draw) snap to the
+  // most recent ~120 candles, scrollable back for older history. Live 8s
+  // updates leave the view alone so the user's scroll position is preserved
+  // (LightweightCharts auto-follows only when already at the right edge).
+  if (chartRefitPending) {
+    chartRefitPending = false;
+    var N = 120;
+    if (candles.length > N) {
+      lwChart.timeScale().setVisibleLogicalRange({from: candles.length - N, to: candles.length + 1});
+    } else {
+      lwChart.timeScale().fitContent();
+    }
+  }
 }
 
 let allBlocks = [];
@@ -5000,7 +5013,8 @@ let currentPoolTUSD = 0;
 let myAEQBalance = 0;
 let myTUSDBalance = 0;
 var priceHistory = [];
-var chartIntervalMs = 3600000;
+var chartIntervalMs = 900000; // default candle timeframe: 15m (DexScreener-style)
+var chartRefitPending = true;  // snap view to recent candles on next draw (tf change / first load)
 var priceHistoryLoaded = false;
 
 // Preload price history from DB so interval buttons show real historical data.
@@ -5025,8 +5039,9 @@ async function preloadPriceHistory() {
 
 function setChartInterval(ms) {
   chartIntervalMs = ms;
-  var btnIds = ['ci-1m','ci-5m','ci-30m','ci-1h','ci-4h','ci-all'];
-  var btnVals = [60000,300000,1800000,3600000,14400000,0];
+  chartRefitPending = true; // snap to recent candles for the newly-selected timeframe
+  var btnIds = ['ci-1m','ci-5m','ci-15m','ci-1h','ci-4h','ci-1d'];
+  var btnVals = [60000,300000,900000,3600000,14400000,86400000];
   for (var bi = 0; bi < btnIds.length; bi++) {
     var btnEl = document.getElementById(btnIds[bi]);
     if (btnEl) btnEl.className = 'ci-btn' + (btnVals[bi] === ms ? ' ci-active' : '');
