@@ -1135,6 +1135,12 @@ return hex.EncodeToString(hash[:])
 }
 
 func (dag *BlockDAG) ProduceBlock() *Block {
+produceStart := time.Now() // TEMP DIAGNOSTIC (2026-07-02 cadence investigation)
+defer func() {
+	if d := time.Since(produceStart); d > 500*time.Millisecond {
+		fmt.Printf("[BLOCK] ⏱ ProduceBlock itself took %s\n", d)
+	}
+}()
 // P0-01 (audit): acquire replayMu before dag.mu so ProduceBlock cannot
 // interleave with an in-progress AddPeerBlock replay. AddPeerBlock holds
 // replayMu from after its replay until after dag.mu.Unlock() on the success
