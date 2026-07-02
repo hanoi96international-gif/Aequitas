@@ -67,8 +67,62 @@ func TestProposerBreaker_CooldownExpiryAllowsProbe(t *testing.T) {
 	run := dag.proposerFailRun[p]
 	_, stillOpen := dag.proposerBreakerUntil[p]
 	dag.proposerBreakerMu.Unlock()
-	if run != 0 || stillOpen {
-		t.Fatalf("cooldown expiry must clear run and until (run=%d open=%v)", run, stillOpen)
+	// Single real probe (P0 fix, 2026-07-02 liveness audit): cooldown expiry
+	// clears the until-map but seeds the run one short of the threshold, not
+	// at 0 — the next single outcome decides, not another full run of fresh
+	// failures.
+	if run != proposerBreakerFailThreshold-1 || stillOpen {
+		t.Fatalf("cooldown expiry must clear until and seed run at threshold-1 (run=%d want=%d open=%v)",
+			run, proposerBreakerFailThreshold-1, stillOpen)
+	}
+}
+
+// TestProposerBreaker_ProbeFailureRetripsImmediately verifies the cooldown
+// reopen is a single real probe, not a full reopen: one failing block right
+// after cooldown expiry must re-trip the breaker immediately, not require
+// another full run of proposerBreakerFailThreshold fresh failures. Without
+// the P0 fix this test fails — the old code let up to threshold-1 more
+// full-cost blocks through every cooldown cycle before re-tripping.
+func TestProposerBreaker_ProbeFailureRetripsImmediately(t *testing.T) {
+	dag := newGhostdagTestDAG()
+	const p = "0xrelapsed"
+
+	for i := 0; i < proposerBreakerFailThreshold; i++ {
+		dag.recordProposerOutcome(p, false)
+	}
+	dag.proposerBreakerMu.Lock()
+	dag.proposerBreakerUntil[p] = time.Now().Add(-time.Second).UnixNano() // force cooldown expired
+	dag.proposerBreakerMu.Unlock()
+
+	if dag.proposerBlockBlocked(p) {
+		t.Fatalf("precondition: probe should be let through after cooldown expiry")
+	}
+	dag.recordProposerOutcome(p, false) // the single probe fails
+	if !dag.proposerBlockBlocked(p) {
+		t.Fatalf("a single failing probe must re-trip the breaker immediately, not require %d more failures", proposerBreakerFailThreshold-1)
+	}
+}
+
+// TestProposerBreaker_ProbeSuccessClearsRun verifies the cooldown reopen still
+// lets a genuinely-healed proposer back in on a single success, matching
+// recordProposerOutcome's existing success branch.
+func TestProposerBreaker_ProbeSuccessClearsRun(t *testing.T) {
+	dag := newGhostdagTestDAG()
+	const p = "0xhealed"
+
+	for i := 0; i < proposerBreakerFailThreshold; i++ {
+		dag.recordProposerOutcome(p, false)
+	}
+	dag.proposerBreakerMu.Lock()
+	dag.proposerBreakerUntil[p] = time.Now().Add(-time.Second).UnixNano() // force cooldown expired
+	dag.proposerBreakerMu.Unlock()
+
+	if dag.proposerBlockBlocked(p) {
+		t.Fatalf("precondition: probe should be let through after cooldown expiry")
+	}
+	dag.recordProposerOutcome(p, true) // the single probe attaches
+	if dag.proposerBlockBlocked(p) {
+		t.Fatalf("a single successful probe must clear the run, not leave the proposer blocked")
 	}
 }
 

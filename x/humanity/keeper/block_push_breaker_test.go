@@ -71,13 +71,65 @@ func TestBlockPushBreaker_CooldownExpiryAllowsProbe(t *testing.T) {
 	if blockPushShouldDrop(ip) {
 		t.Fatalf("breaker should let a probe through after the cooldown expires")
 	}
-	// The probe cleared both maps, so a fresh run must start from zero.
+	// Single real probe (P0 fix, 2026-07-02 liveness audit): cooldown expiry
+	// clears the until-map but seeds the run one short of the threshold, not
+	// at 0 — the next single outcome decides, not another full run of fresh
+	// failures.
 	blockPushBreakerMu.Lock()
 	run := blockPushFailRun[ip]
 	_, stillOpen := blockPushBreakerUntil[ip]
 	blockPushBreakerMu.Unlock()
-	if run != 0 || stillOpen {
-		t.Fatalf("cooldown expiry must clear run and until (run=%d open=%v)", run, stillOpen)
+	if run != blockPushBreakerThreshold-1 || stillOpen {
+		t.Fatalf("cooldown expiry must clear until and seed run at threshold-1 (run=%d want=%d open=%v)",
+			run, blockPushBreakerThreshold-1, stillOpen)
+	}
+}
+
+// TestBlockPushBreaker_ProbeFailureRetripsImmediately verifies the cooldown
+// reopen is a single real probe, not a full reopen: one failing push right
+// after cooldown expiry must re-trip the breaker immediately, not require
+// another full run of blockPushBreakerThreshold fresh failures. Without the
+// P0 fix this test fails — the old code let up to threshold-1 more full-cost
+// pushes through every cooldown cycle before re-tripping.
+func TestBlockPushBreaker_ProbeFailureRetripsImmediately(t *testing.T) {
+	resetBlockPushBreaker()
+	const ip = "203.0.113.10"
+
+	for i := 0; i < blockPushBreakerThreshold; i++ {
+		blockPushRecordOutcome(ip, false)
+	}
+	blockPushBreakerMu.Lock()
+	blockPushBreakerUntil[ip] = time.Now().Add(-time.Second).UnixNano()
+	blockPushBreakerMu.Unlock()
+
+	if blockPushShouldDrop(ip) {
+		t.Fatalf("precondition: probe should be let through after cooldown expiry")
+	}
+	blockPushRecordOutcome(ip, false) // the single probe fails
+	if !blockPushShouldDrop(ip) {
+		t.Fatalf("a single failing probe must re-trip the breaker immediately, not require %d more failures", blockPushBreakerThreshold-1)
+	}
+}
+
+// TestBlockPushBreaker_ProbeSuccessClearsRun verifies the cooldown reopen
+// still lets a genuinely-healed peer back in on a single success.
+func TestBlockPushBreaker_ProbeSuccessClearsRun(t *testing.T) {
+	resetBlockPushBreaker()
+	const ip = "203.0.113.11"
+
+	for i := 0; i < blockPushBreakerThreshold; i++ {
+		blockPushRecordOutcome(ip, false)
+	}
+	blockPushBreakerMu.Lock()
+	blockPushBreakerUntil[ip] = time.Now().Add(-time.Second).UnixNano()
+	blockPushBreakerMu.Unlock()
+
+	if blockPushShouldDrop(ip) {
+		t.Fatalf("precondition: probe should be let through after cooldown expiry")
+	}
+	blockPushRecordOutcome(ip, true) // the single probe attaches
+	if blockPushShouldDrop(ip) {
+		t.Fatalf("a single successful probe must clear the run, not leave the IP blocked")
 	}
 }
 

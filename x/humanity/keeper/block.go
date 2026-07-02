@@ -1762,8 +1762,21 @@ func (dag *BlockDAG) proposerBlockBlocked(proposer string) bool {
 		return false
 	}
 	if time.Now().UnixNano() >= until {
-		delete(dag.proposerBreakerUntil, proposer) // cooldown elapsed — let one probe through
-		delete(dag.proposerFailRun, proposer)
+		delete(dag.proposerBreakerUntil, proposer)
+		// Single real probe, not a full reopen (P0 fix, 2026-07-02 liveness
+		// audit): seed the run one short of the threshold so the very next
+		// outcome either fully clears it (recordProposerOutcome's success
+		// branch) or immediately re-trips (this one failure crosses the
+		// threshold) — not another full run of proposerBreakerFailThreshold
+		// fresh failures, each at full processing cost, before it closes
+		// again. Without this, the comment below was aspirational: deleting
+		// the run outright left the gate fully open for every call until 40
+		// fresh failures rebuilt from zero — against a peer that pushes at
+		// high volume, that reopening happened every single cooldown cycle.
+		if dag.proposerFailRun == nil {
+			dag.proposerFailRun = make(map[string]int)
+		}
+		dag.proposerFailRun[proposer] = proposerBreakerFailThreshold - 1
 		return false
 	}
 	return true

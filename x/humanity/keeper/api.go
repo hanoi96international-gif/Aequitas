@@ -808,8 +808,13 @@ func blockPushShouldDrop(ip string) bool {
 		return false
 	}
 	if time.Now().UnixNano() >= until {
-		delete(blockPushBreakerUntil, ip) // cooldown elapsed — let one probe through
-		delete(blockPushFailRun, ip)
+		delete(blockPushBreakerUntil, ip)
+		// Single real probe, not a full reopen — see proposerBlockBlocked's
+		// identical fix (block.go) for the full rationale. Seeding one short
+		// of the threshold means the next outcome either clears it (success)
+		// or immediately re-trips (failure), instead of reopening fully
+		// until blockPushBreakerThreshold fresh failures rebuild from zero.
+		blockPushFailRun[ip] = blockPushBreakerThreshold - 1
 		return false
 	}
 	return true
