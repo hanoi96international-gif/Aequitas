@@ -1369,6 +1369,20 @@ func (dag *BlockDAG) WithBlockProductionPaused(fn func()) {
 // break the resolution chain. At ~500 bytes/block average: ~100 MB peak usage.
 const maxOrphans = 200_000
 
+// maxOrphanHeightGap is the fork-flood backpressure (P0, 2026-07-02 incident):
+// a block whose height is more than this far ABOVE our own is never queued as
+// an orphan. Such a block is either the tip of a fork that diverged from ours
+// (its ancestors live only on that other fork and can never be fetched here —
+// so queuing it just burns CPU on unresolvable resolution) or a legitimately-
+// far-ahead peer we must catch up to via the ORDERED sync (doSyncOnce pages
+// parents-first from our height forward), NOT via out-of-order orphan gossip.
+// Either way, dropping it is correct: ordered sync fills any legitimate gap.
+// Without this, three nodes that diverged onto 67k/80k/94k forks each pushed
+// their whole fork at the primary, which queued tens of thousands of orphans it
+// could never resolve and hung at 100% CPU. 5000 is far above real gossip lag
+// (a handful of blocks) while decisively cutting off a runaway fork.
+const maxOrphanHeightGap = 5000
+
 // orphanAbandonAfter bounds how long this node will keep trying to resolve a
 // single missing-parent hash before giving up on it for good.
 //
@@ -1463,6 +1477,16 @@ func (dag *BlockDAG) abandonOrphansWaitingFor(hash string) {
 // queueOrphan stores block, which is waiting on missingParent to appear,
 // and logs the wait (the old code dropped this case with zero logging).
 func (dag *BlockDAG) queueOrphan(missingParent string, block *Block) {
+	// Fork-flood backpressure — see maxOrphanHeightGap. Reject blocks whose
+	// height is implausibly far above ours BEFORE they ever enter the orphan
+	// buffer or its resolution machinery, so a diverged/runaway fork can't hang
+	// this node. dag.mu is NOT held here (AddPeerBlock unlocked it before
+	// calling us), so Height() is safe to call.
+	if localHeight := dag.Height(); block.Height > localHeight+maxOrphanHeightGap {
+		fmt.Printf("[DAG] ✗ Dropped far-ahead orphan #%d from %s: %d blocks above local height %d (cap %d) — likely a diverged fork; ordered sync will pull any legitimate gap parents-first\n",
+			block.Height, block.Proposer, block.Height-localHeight, localHeight, maxOrphanHeightGap)
+		return
+	}
 	dag.orphansMu.Lock()
 	now := time.Now()
 	if first, ok := dag.orphanFirstSeen[missingParent]; ok {
