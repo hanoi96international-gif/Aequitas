@@ -1325,10 +1325,19 @@ dag.computeGHOSTDAGState(block)
 // lost on restart while peers may have accepted it — return nil to skip
 // broadcast entirely. TXs stay in pending_txs (atomic rollback) for the next
 // ProduceBlock tick to re-include.
+saveStart := time.Now()
 if err := dag.state.SaveBlockWithPendingTxsAtomic(block, pendingTxIDs); err != nil {
 	fmt.Printf("[BLOCK] ⚠ Could not persist block #%d (%s...): %v — skipping broadcast, TXs stay queued\n",
 		block.Height, block.Hash[:16], err)
 	return nil
+}
+// TEMP DIAGNOSTIC (2026-07-02, live cadence investigation): this call runs
+// synchronously while dag.mu is held write-locked, so if it's slow, EVERY
+// other dag.mu consumer (API reads, AddPeerBlock) stalls for the same
+// duration. Logging duration to confirm or rule out Postgres latency as the
+// cause of tonight's sustained ~4s cadence despite idle CPU.
+if saveDur := time.Since(saveStart); saveDur > 500*time.Millisecond {
+	fmt.Printf("[BLOCK] ⏱ SaveBlockWithPendingTxsAtomic took %s for block #%d (dag.mu held throughout)\n", saveDur, block.Height)
 }
 
 // P2-06: clear exactly the TXs we snapshotted — any TXs queued AFTER the
