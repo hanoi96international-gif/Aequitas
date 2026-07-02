@@ -211,6 +211,7 @@ railway_vars_code = (
     '# PEER_SECRET is no longer required — authentication is automatic\n'
     'SELF_URL               = https://YOUR-RAILWAY-DOMAIN.up.railway.app\n'
     'PRIMARY_NODE_URL       = https://aequitas.digital'
+    'AUTO_HEAL_ON_DIVERGENCE       = true'
 ),
 
 docker_title = 'Step 2b — Alternative: Deploy with Docker (Advanced)',
@@ -229,6 +230,7 @@ docker_code  = (
     '  # -e PEER_SECRET="..." (optional/legacy, not required) \\\n'
     '  -e SELF_URL="https://YOUR-PUBLIC-URL" \\\n'
     '  -e PRIMARY_NODE_URL="https://aequitas.digital" \\\n'
+    '  -e AUTO_HEAL_ON_DIVERGENCE="true" \\\n'
     '  -p 8080:8080 aequitas-node\n\n'
     '# 4. Watch the live logs\n'
     'docker logs -f aequitas-node'
@@ -343,6 +345,7 @@ railway_vars_code = (
     '# PEER_SECRET ist nicht mehr erforderlich — Authentifizierung ist automatisch\n'
     'SELF_URL               = https://DEIN-RAILWAY-DOMAIN.up.railway.app\n'
     'PRIMARY_NODE_URL       = https://aequitas.digital'
+    'AUTO_HEAL_ON_DIVERGENCE       = true'
 ),
 
 docker_title = 'Schritt 2b — Alternative: Docker-Deployment (Fortgeschritten)',
@@ -361,6 +364,7 @@ docker_code  = (
     '  # -e PEER_SECRET="..." (optional/legacy, nicht erforderlich) \\\n'
     '  -e SELF_URL="https://DEINE-OEFFENTLICHE-URL" \\\n'
     '  -e PRIMARY_NODE_URL="https://aequitas.digital" \\\n'
+    '  -e AUTO_HEAL_ON_DIVERGENCE="true" \\\n'
     '  -p 8080:8080 aequitas-node\n\n'
     '# 4. Live-Logs beobachten\n'
     'docker logs -f aequitas-node'
@@ -602,6 +606,7 @@ railway_vars_code = (
     '# PEER_SECRET ya no es obligatoria — la autenticación es automática\n'
     'SELF_URL               = https://TU-DOMINIO-RAILWAY.up.railway.app\n'
     'PRIMARY_NODE_URL       = https://aequitas.digital'
+    'AUTO_HEAL_ON_DIVERGENCE       = true'
 ),
 
 docker_title = 'Paso 2b — Alternativa: Desplegar con Docker (Avanzado)',
@@ -620,6 +625,7 @@ docker_code  = (
     '  # -e PEER_SECRET="..." (opcional/legado, no requerido) \\\n'
     '  -e SELF_URL="https://TU-URL-PUBLICA" \\\n'
     '  -e PRIMARY_NODE_URL="https://aequitas.digital" \\\n'
+    '  -e AUTO_HEAL_ON_DIVERGENCE="true" \\\n'
     '  -p 8080:8080 aequitas-node\n\n'
     '# 4. Observa los logs en vivo\n'
     'docker logs -f aequitas-node'
@@ -734,6 +740,7 @@ railway_vars_code = (
     '# PEER_SECRET n\'est plus obligatoire — l\'authentification est automatique\n'
     'SELF_URL               = https://VOTRE-DOMAINE-RAILWAY.up.railway.app\n'
     'PRIMARY_NODE_URL       = https://aequitas.digital'
+    'AUTO_HEAL_ON_DIVERGENCE       = true'
 ),
 
 docker_title = 'Étape 2b — Alternative : déploiement avec Docker (Avancé)',
@@ -752,6 +759,7 @@ docker_code  = (
     '  # -e PEER_SECRET="..." (optionnel/legacy, non requis) \\\n'
     '  -e SELF_URL="https://VOTRE-URL-PUBLIQUE" \\\n'
     '  -e PRIMARY_NODE_URL="https://aequitas.digital" \\\n'
+    '  -e AUTO_HEAL_ON_DIVERGENCE="true" \\\n'
     '  -p 8080:8080 aequitas-node\n\n'
     '# 4. Observez les logs en direct\n'
     'docker logs -f aequitas-node'
@@ -866,6 +874,7 @@ railway_vars_code = (
     '# PEER_SECRET non è più obbligatoria — l\'autenticazione è automatica\n'
     'SELF_URL               = https://TUO-DOMINIO-RAILWAY.up.railway.app\n'
     'PRIMARY_NODE_URL       = https://aequitas.digital'
+    'AUTO_HEAL_ON_DIVERGENCE       = true'
 ),
 
 docker_title = 'Passo 2b — Alternativa: distribuzione con Docker (Avanzato)',
@@ -884,6 +893,7 @@ docker_code  = (
     '  # -e PEER_SECRET="..." (opzionale/legacy, non richiesto) \\\n'
     '  -e SELF_URL="https://TUO-URL-PUBBLICO" \\\n'
     '  -e PRIMARY_NODE_URL="https://aequitas.digital" \\\n'
+    '  -e AUTO_HEAL_ON_DIVERGENCE="true" \\\n'
     '  -p 8080:8080 aequitas-node\n\n'
     '# 4. Osserva i log in diretta\n'
     'docker logs -f aequitas-node'
@@ -998,6 +1008,7 @@ railway_vars_code = (
     '# PEER_SECRET não é mais obrigatória — a autenticação é automática\n'
     'SELF_URL               = https://SEU-DOMINIO-RAILWAY.up.railway.app\n'
     'PRIMARY_NODE_URL       = https://aequitas.digital'
+    'AUTO_HEAL_ON_DIVERGENCE       = true'
 ),
 
 docker_title = 'Passo 2b — Alternativa: implantação com Docker (Avançado)',
@@ -1016,6 +1027,7 @@ docker_code  = (
     '  # -e PEER_SECRET="..." (opcional/legado, não necessário) \\\n'
     '  -e SELF_URL="https://SUA-URL-PUBLICA" \\\n'
     '  -e PRIMARY_NODE_URL="https://aequitas.digital" \\\n'
+    '  -e AUTO_HEAL_ON_DIVERGENCE="true" \\\n'
     '  -p 8080:8080 aequitas-node\n\n'
     '# 4. Observe os logs em tempo real\n'
     'docker logs -f aequitas-node'
@@ -1130,6 +1142,7 @@ railway_vars_code = (
     '# PEER_SECRET artık gerekli değil — kimlik doğrulama otomatik\n'
     'SELF_URL               = https://RAILWAY-ALAN-ADINIZ.up.railway.app\n'
     'PRIMARY_NODE_URL       = https://aequitas.digital'
+    'AUTO_HEAL_ON_DIVERGENCE       = true'
 ),
 
 docker_title = 'Adım 2b — Alternatif: Docker ile Dağıtım (Gelişmiş)',
@@ -1148,6 +1161,7 @@ docker_code  = (
     '  # -e PEER_SECRET="..." (opsiyonel/eski, gerekli değil) \\\n'
     '  -e SELF_URL="https://HERKESE-ACIK-URL-NIZ" \\\n'
     '  -e PRIMARY_NODE_URL="https://aequitas.digital" \\\n'
+    '  -e AUTO_HEAL_ON_DIVERGENCE="true" \\\n'
     '  -p 8080:8080 aequitas-node\n\n'
     '# 4. Canlı logları izleyin\n'
     'docker logs -f aequitas-node'
@@ -1262,6 +1276,7 @@ railway_vars_code = (
     '# PEER_SECRET tidak lagi diperlukan — autentikasi otomatis\n'
     'SELF_URL               = https://DOMAIN-RAILWAY-ANDA.up.railway.app\n'
     'PRIMARY_NODE_URL       = https://aequitas.digital'
+    'AUTO_HEAL_ON_DIVERGENCE       = true'
 ),
 
 docker_title = 'Langkah 2b — Alternatif: Deploy dengan Docker (Lanjutan)',
@@ -1280,6 +1295,7 @@ docker_code  = (
     '  # -e PEER_SECRET="..." (opsional/legacy, tidak diperlukan) \\\n'
     '  -e SELF_URL="https://URL-PUBLIK-ANDA" \\\n'
     '  -e PRIMARY_NODE_URL="https://aequitas.digital" \\\n'
+    '  -e AUTO_HEAL_ON_DIVERGENCE="true" \\\n'
     '  -p 8080:8080 aequitas-node\n\n'
     '# 4. Perhatikan log secara langsung\n'
     'docker logs -f aequitas-node'
@@ -1394,6 +1410,7 @@ railway_vars_code = (
     '# PEER_SECRET больше не требуется — аутентификация автоматическая\n'
     'SELF_URL               = https://ВАШ-ДОМЕН-RAILWAY.up.railway.app\n'
     'PRIMARY_NODE_URL       = https://aequitas.digital'
+    'AUTO_HEAL_ON_DIVERGENCE       = true'
 ),
 
 docker_title = 'Шаг 2b — Альтернатива: развёртывание с Docker (Расширенный)',
@@ -1412,6 +1429,7 @@ docker_code  = (
     '  # -e PEER_SECRET="..." (опционально/устарело, не требуется) \\\n'
     '  -e SELF_URL="https://ВАШ-ПУБЛИЧНЫЙ-URL" \\\n'
     '  -e PRIMARY_NODE_URL="https://aequitas.digital" \\\n'
+    '  -e AUTO_HEAL_ON_DIVERGENCE="true" \\\n'
     '  -p 8080:8080 aequitas-node\n\n'
     '# 4. Следите за логами в реальном времени\n'
     'docker logs -f aequitas-node'
@@ -1526,6 +1544,7 @@ railway_vars_code = (
     '# PEER_SECRET 不再需要——身份验证是自动的\n'
     'SELF_URL               = https://你的RAILWAY域名.up.railway.app\n'
     'PRIMARY_NODE_URL       = https://aequitas.digital'
+    'AUTO_HEAL_ON_DIVERGENCE       = true'
 ),
 
 docker_title = '第2b步——替代方案：使用 Docker 部署（高级）',
@@ -1544,6 +1563,7 @@ docker_code  = (
     '  # -e PEER_SECRET="..."（可选/旧版，不需要） \\\n'
     '  -e SELF_URL="https://你的公共URL" \\\n'
     '  -e PRIMARY_NODE_URL="https://aequitas.digital" \\\n'
+    '  -e AUTO_HEAL_ON_DIVERGENCE="true" \\\n'
     '  -p 8080:8080 aequitas-node\n\n'
     '# 4. 观察实时日志\n'
     'docker logs -f aequitas-node'
@@ -1658,6 +1678,7 @@ railway_vars_code = (
     '# PEER_SECRET غير مطلوب بعد الآن — المصادقة تلقائية\n'
     'SELF_URL               = https://YOUR-RAILWAY-DOMAIN.up.railway.app\n'
     'PRIMARY_NODE_URL       = https://aequitas.digital'
+    'AUTO_HEAL_ON_DIVERGENCE       = true'
 ),
 
 docker_title = 'الخطوة 2ب — بديل: النشر باستخدام Docker (متقدم)',
@@ -1676,6 +1697,7 @@ docker_code  = (
     '  # -e PEER_SECRET="..." (اختياري/قديم، غير مطلوب) \\\n'
     '  -e SELF_URL="https://عنوانك-العام" \\\n'
     '  -e PRIMARY_NODE_URL="https://aequitas.digital" \\\n'
+    '  -e AUTO_HEAL_ON_DIVERGENCE="true" \\\n'
     '  -p 8080:8080 aequitas-node\n\n'
     '# 4. راقب السجلات المباشرة\n'
     'docker logs -f aequitas-node'
@@ -1790,6 +1812,7 @@ railway_vars_code = (
     '# PEER_SECRET अब आवश्यक नहीं है — प्रमाणीकरण स्वचालित है\n'
     'SELF_URL               = https://YOUR-RAILWAY-DOMAIN.up.railway.app\n'
     'PRIMARY_NODE_URL       = https://aequitas.digital'
+    'AUTO_HEAL_ON_DIVERGENCE       = true'
 ),
 
 docker_title = 'चरण 2b — विकल्प: Docker के साथ डिप्लॉय करें (एडवांस्ड)',
@@ -1808,6 +1831,7 @@ docker_code  = (
     '  # -e PEER_SECRET="..." (वैकल्पिक/पुराना, आवश्यक नहीं) \\\n'
     '  -e SELF_URL="https://आपका-सार्वजनिक-URL" \\\n'
     '  -e PRIMARY_NODE_URL="https://aequitas.digital" \\\n'
+    '  -e AUTO_HEAL_ON_DIVERGENCE="true" \\\n'
     '  -p 8080:8080 aequitas-node\n\n'
     '# 4. लाइव लॉग देखें\n'
     'docker logs -f aequitas-node'

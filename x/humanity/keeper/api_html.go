@@ -1619,7 +1619,8 @@ input[type=number]::-webkit-inner-spin-button{opacity:0.5}
           <span style="color:var(--neon)">NODE_OPERATOR_WALLET</span> = <span style="color:var(--gold)">0xYOUR_HUMAN_WALLET</span><br>
           <span style="color:var(--neon)">NODE_OPERATOR_BINDING_SIGNATURE</span> = <span style="color:var(--gold)">generate-at-/node-binding</span><br>
           <span style="color:var(--neon)">SELF_URL</span> = <span style="color:var(--gold)">https://YOUR-RAILWAY-DOMAIN.up.railway.app</span><br>
-          <span style="color:var(--neon)">PRIMARY_NODE_URL</span> = <span style="color:var(--gold)">https://aequitas.digital</span>
+          <span style="color:var(--neon)">PRIMARY_NODE_URL</span> = <span style="color:var(--gold)">https://aequitas.digital</span><br>
+          <span style="color:var(--neon)">AUTO_HEAL_ON_DIVERGENCE</span> = <span style="color:var(--gold)">true</span> <span style="color:var(--muted)"># strongly recommended: auto-resyncs if your chain ever diverges</span>
         </div>
         <div style="display:flex;align-items:flex-start;gap:10px;margin-bottom:6px"><span style="display:inline-flex;align-items:center;justify-content:center;background:rgba(139,92,246,0.2);color:var(--purple);font-weight:700;font-size:0.58rem;min-width:22px;height:22px;border-radius:50%">5</span><span>Click <strong style="color:var(--text)">Deploy</strong> (or save variables to trigger auto-redeploy). Build takes ~3 minutes while Go compiles the node binary.</span></div>
         <div style="display:flex;align-items:flex-start;gap:10px;margin-bottom:6px"><span style="display:inline-flex;align-items:center;justify-content:center;background:rgba(139,92,246,0.2);color:var(--purple);font-weight:700;font-size:0.58rem;min-width:22px;height:22px;border-radius:50%">6</span><span>Watch <strong style="color:var(--text)">Deploy Logs</strong>. Success looks like: <span style="font-family:var(--font-mono);color:var(--teal)">Aequitas Node Running V</span> and <span style="font-family:var(--font-mono);color:var(--teal)">[NODE] Registered node operator wallet: 0x...</span></span></div>
@@ -1649,6 +1650,7 @@ input[type=number]::-webkit-inner-spin-button{opacity:0.5}
         &nbsp;&nbsp;-e <span style="color:var(--neon)">PRIMARY_NODE_URL</span>="https://aequitas.digital" \<br>
         &nbsp;&nbsp;-e <span style="color:var(--neon)">BOOTSTRAP_SNAPSHOT_URL</span>="https://aequitas.digital/api/snapshot" \<br>
         &nbsp;&nbsp;-e <span style="color:var(--neon)">BOOTSTRAP_SIGNER</span>="0x92cbedec9d348b4762cb9af99500ee6139c5b671" \<br>
+        &nbsp;&nbsp;-e <span style="color:var(--neon)">AUTO_HEAL_ON_DIVERGENCE</span>="true" <span style="color:var(--muted)"># strongly recommended</span> \<br>
         &nbsp;&nbsp;-p 8080:8080 -p 4001:4001 aequitas-node<br><br>
         <span style="color:var(--muted)"># 4. Copy NODE_KEY from logs (do this once — gives your node a stable P2P identity)</span><br>
         docker logs aequitas-node 2&gt;&amp;1 | grep "SAVE THIS AS NODE_KEY"<br><br>
@@ -1665,6 +1667,7 @@ input[type=number]::-webkit-inner-spin-button{opacity:0.5}
         &nbsp;&nbsp;-e <span style="color:var(--neon)">PRIMARY_NODE_URL</span>="https://aequitas.digital" \<br>
         &nbsp;&nbsp;-e <span style="color:var(--neon)">BOOTSTRAP_SNAPSHOT_URL</span>="https://aequitas.digital/api/snapshot" \<br>
         &nbsp;&nbsp;-e <span style="color:var(--neon)">BOOTSTRAP_SIGNER</span>="0x92cbedec9d348b4762cb9af99500ee6139c5b671" \<br>
+        &nbsp;&nbsp;-e <span style="color:var(--neon)">AUTO_HEAL_ON_DIVERGENCE</span>="true" <span style="color:var(--muted)"># strongly recommended</span> \<br>
         &nbsp;&nbsp;-p 8080:8080 -p 4001:4001 aequitas-node
       </div>
       <div style="background:rgba(245,166,35,0.06);border:1px solid rgba(245,166,35,0.2);border-radius:6px;padding:8px 12px;margin-bottom:18px;font-size:0.6rem;color:var(--muted)">
