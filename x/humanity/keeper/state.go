@@ -1813,16 +1813,16 @@ func (cs *ChainState) BindValidatorSlot(operatorWallet, signingAddress, bindingS
 	}
 	operatorWallet = strings.ToLower(operatorWallet)
 	signingAddress = strings.ToLower(signingAddress)
-	cs.db.Exec(`CREATE TABLE IF NOT EXISTS validator_slots (
-operator_wallet TEXT PRIMARY KEY,
-signing_address TEXT NOT NULL,
-claimed_at TIMESTAMP DEFAULT NOW()
-)`)
-	// P1-03: persist the binding signature so /api/validators can propagate
-	// it to peers; peers verify it in syncValidatorsFromPeer before trusting
-	// the signing address.  ADD COLUMN IF NOT EXISTS is idempotent on
-	// existing tables that predate this column.
-	cs.db.Exec(`ALTER TABLE validator_slots ADD COLUMN IF NOT EXISTS binding_signature TEXT DEFAULT ''`)
+	// FIX (P0, 2026-07-02): this used to re-run CREATE TABLE IF NOT EXISTS /
+	// ALTER TABLE ADD COLUMN IF NOT EXISTS on every single call — cs.initDB
+	// (state.go, called once at boot) already guarantees this exact table
+	// and column exist, so these were pure redundant DDL on a hot path.
+	// Confirmed live: a diverged peer re-authenticating via
+	// /api/peers/register every ~20s was issuing this DDL just as often,
+	// each one taking a Postgres table lock, correlating with Primary's
+	// block cadence degrading from ~1s to ~4s and API p95/p99 latency
+	// spiking to 12-25s while CPU stayed idle — the signature of contention
+	// on a slow synchronous call, not request volume.
 	_, err := cs.db.Exec(
 		`INSERT INTO validator_slots (operator_wallet, signing_address, binding_signature, claimed_at) VALUES ($1, $2, $3, NOW())
 ON CONFLICT (operator_wallet) DO UPDATE SET signing_address = EXCLUDED.signing_address, binding_signature = EXCLUDED.binding_signature, claimed_at = NOW()`,

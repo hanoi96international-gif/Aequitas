@@ -1657,6 +1657,25 @@ func (a *APIServer) handlePeerRegister(w http.ResponseWriter, r *http.Request) {
 	// here so a scheme-less but otherwise valid public hostname still works.
 	req.URL = NormalizeNodeURL(req.URL)
 
+	// FIX (P0, 2026-07-02): a proposer whose blocks are being cleanly
+	// rejected by the per-proposer circuit breaker (block.go, AddPeerBlock)
+	// was still free to hammer this endpoint at will — re-authenticating
+	// costs a full signature verification plus a BindValidatorSlot DB write
+	// regardless of whether its blocks ever attach. Reuse the SAME breaker
+	// state here: "authorized validator = yes, but only while it's actually
+	// syncing correctly" is exactly proposerBlockBlocked's model already —
+	// keyed on signing address (not IP, so it can't be sidestepped by
+	// redeploying from a new host, but also never a permanent ban), and it
+	// self-clears the moment the proposer produces an attaching block again
+	// (recordProposerOutcome), so a diverged operator who fixes their node
+	// and resyncs is let back in automatically, no manual action needed.
+	if addr := strings.ToLower(strings.TrimSpace(req.SigningAddress)); addr != "" && a.blockchain.proposerBlockBlocked(addr) {
+		fmt.Printf("[PEERS] ✗ Registration from %s skipped — its circuit breaker is open (producing non-attaching blocks); will accept again once it syncs correctly.\n", addr)
+		w.WriteHeader(http.StatusTooManyRequests)
+		w.Write([]byte(`{"ok":false,"reason":"proposer circuit breaker open — resync before re-registering"}`))
+		return
+	}
+
 	// Secret check comes FIRST. URL registration and sync goroutines are only
 	// started for authenticated peers — prevents goroutine exhaustion via
 	// unauthenticated registrations even when PEER_SECRET is not set.
