@@ -232,3 +232,68 @@ func TestSeedTrustedCheckpoint_NilSafety(t *testing.T) {
 		t.Fatal("SeedTrustedCheckpoint() = true, want false when dag.state is nil")
 	}
 }
+
+// TestCanonicalBlockAtHeight_PicksSelectedParentChainNotMostParents is the
+// regression guard for a real production bug (2026-07-04): three
+// simultaneously healthy nodes (0 StateRoot mismatches) returned three
+// DIFFERENT blocks with three different proposers for the identical height,
+// because the old tie-break ("whichever sibling has the most parent
+// hashes") has no relationship to GHOSTDAG's actual canonical chain. This
+// builds two siblings at the same height — one that's genuinely reachable
+// via the best tip's SelectedParent chain, and one with MORE parent hashes
+// that is NOT reachable — and verifies the fix picks the reachable one
+// regardless of parent count.
+func TestCanonicalBlockAtHeight_PicksSelectedParentChainNotMostParents(t *testing.T) {
+	dag := newGhostdagTestDAG()
+	dag.tips = make(map[string]bool)
+
+	genesis := &Block{Hash: "genesis", Height: 0, IsGenesis: true}
+	dag.blocks["genesis"] = genesis
+
+	// onChain: height 1, reachable from the eventual best tip via
+	// SelectedParent, but deliberately given only ONE parent hash.
+	onChain := &Block{
+		Hash: "on-chain", Height: 1, Proposer: "0xonchain",
+		ParentHashes: []string{"genesis"}, SelectedParent: "genesis", BlueScore: 1,
+	}
+	dag.blocks[onChain.Hash] = onChain
+
+	// sibling: also height 1, but NOT on the canonical chain — given THREE
+	// parent hashes so the old "most parents wins" heuristic would have
+	// picked this one instead.
+	sibling := &Block{
+		Hash: "sibling", Height: 1, Proposer: "0xsibling",
+		ParentHashes: []string{"genesis", "genesis", "genesis"}, SelectedParent: "genesis", BlueScore: 1,
+	}
+	dag.blocks[sibling.Hash] = sibling
+
+	// tip: height 2, its SelectedParent is onChain (not sibling) — this is
+	// what makes onChain canonical. Only the tip is in dag.tips.
+	tip := &Block{
+		Hash: "tip", Height: 2, Proposer: "0xtip",
+		ParentHashes: []string{"on-chain", "sibling"}, SelectedParent: "on-chain", BlueScore: 2,
+	}
+	dag.blocks[tip.Hash] = tip
+	dag.tips[tip.Hash] = true
+
+	got := dag.canonicalBlockAtHeightLocked(1)
+	if got == nil {
+		t.Fatal("canonicalBlockAtHeightLocked(1) = nil, want the on-chain block")
+	}
+	if got.Hash != "on-chain" {
+		t.Fatalf("canonicalBlockAtHeightLocked(1) = %s (proposer %s), want \"on-chain\" — picked the wrong sibling (likely fell back to a parent-count heuristic)",
+			got.Hash, got.Proposer)
+	}
+}
+
+// TestCanonicalBlockAtHeight_NoTips verifies the "no tip exists yet" edge
+// case (e.g. right after a restart before any tip is known) returns nil
+// rather than panicking, so GetBlockByHeight's DB fallback gets a clean
+// signal to take over.
+func TestCanonicalBlockAtHeight_NoTips(t *testing.T) {
+	dag := newGhostdagTestDAG()
+	dag.tips = make(map[string]bool)
+	if got := dag.canonicalBlockAtHeightLocked(5); got != nil {
+		t.Fatalf("canonicalBlockAtHeightLocked(5) = %v, want nil with no tips present", got)
+	}
+}

@@ -2839,11 +2839,20 @@ func (cs *ChainState) LoadBlocksFromDB(minHeight int64) (map[string]*Block, erro
 // LoadBlockFromDBByHeight loads a single block header at the given height
 // directly from chain_blocks, bypassing dag.blocks entirely — same fallback
 // role as LoadBlockFromDBByHash (see its comment), for callers keyed by
-// height instead of hash (GetBlockByHeight). Multiple validators can produce
-// a sibling at the same height; this prefers the one with the most parent
-// hashes, matching GetBlockByHeight's own in-memory tie-break, and excludes
-// synthetic-checkpoint stubs the same way GetBlockByHeight does. Returns nil
-// if no real (non-stub) block exists at this height.
+// height instead of hash (GetBlockByHeight, as its own last-resort fallback
+// when its primary path — canonicalBlockAtHeightLocked's SelectedParent
+// walk from the best in-memory tip — can't run at all, e.g. dag.tips is
+// empty right after a restart). Multiple validators can routinely produce a
+// sibling at the same height; this prefers the highest BlueScore (ties
+// broken by lowest hash), matching canonicalBlockAtHeightLocked's own
+// tie-break as closely as a single-row, no-graph-walk DB query can. This is
+// still only a heuristic, NOT the same guarantee as the real walk (it
+// can't know which sibling is actually reachable via SelectedParent links
+// from the network's true best tip without that tip as a starting point) —
+// acceptable here specifically because it is the last-resort path, not the
+// primary one. Excludes synthetic-checkpoint stubs the same way
+// GetBlockByHeight does. Returns nil if no real (non-stub) block exists at
+// this height.
 func (cs *ChainState) LoadBlockFromDBByHeight(height int64) *Block {
 	if cs.db == nil {
 		return nil
@@ -2876,7 +2885,7 @@ func (cs *ChainState) LoadBlockFromDBByHeight(height int64) *Block {
 		if bluesRaw != "" && bluesRaw != "[]" && bluesRaw != "null" {
 			_ = json.Unmarshal([]byte(bluesRaw), &b.Blues)
 		}
-		if best == nil || len(b.ParentHashes) > len(best.ParentHashes) {
+		if best == nil || b.BlueScore > best.BlueScore || (b.BlueScore == best.BlueScore && b.Hash < best.Hash) {
 			bCopy := b
 			best = &bCopy
 		}

@@ -3232,46 +3232,82 @@ func (dag *BlockDAG) GetBlocksByHashesForPeer(hashes []string) []*Block {
 	return out
 }
 
-// GetBlockByHeight returns a block at the given height, or nil if none
-// exists. Multiple validators can produce a sibling at the same height —
-// when that happens this prefers the one with the most parent hashes (the
-// merge block), matching the explorer UI's own dedup-by-height preference,
-// so a search for a specific height shows the same block the list view
-// would have shown for it.
+// GetBlockByHeight returns the CANONICAL block at the given height, or nil
+// if none exists.
+//
+// FIX (durable fix, 2026-07-04 — real fix for "the explorer shows a
+// different proposer at the same height on every node"): multiple
+// validators routinely produce siblings at the same height (normal,
+// expected GHOSTDAG behavior — see canonicalBlockAtHeightLocked's comment).
+// This used to pick "whichever sibling has the most parent hashes" — a
+// heuristic with no relationship to GHOSTDAG's actual canonical ordering.
+// Confirmed live: three simultaneously healthy nodes (0 StateRoot
+// mismatches, matching proposer-distribution stats) returned three
+// DIFFERENT blocks with three different proposers for the identical
+// height, purely because "most parents" isn't a deterministic,
+// cross-node-agreeing tie-break — a node with a slightly different
+// in-memory sibling set at query time picks a different "most parents"
+// winner. Every node computes the same SelectedParent chain from its own
+// best (highest-BlueScore) tip once views have converged (see this file's
+// own header comment: "every node that holds the same block graph computes
+// identical GHOSTDAG state") — walking that chain back to the target
+// height is the actual canonical answer, not a per-node coin flip.
 func (dag *BlockDAG) GetBlockByHeight(height int64) *Block {
-	dag.mu.RLock()
-	var best *Block
-	for _, b := range dag.blocks {
-		if b.Height != height {
-			continue
-		}
-		// FIX (2026-06-30, confirmed live in production): never return a
-		// synthetic-checkpoint stub here — see GetBlocks' identical
-		// fix/comment. Both callers of this function (api.go's /api/block
-		// and evm_rpc.go's eth_getBlockByNumber) are peer/RPC-facing, so
-		// unlike GetBlockByHash there's no internal-only caller to preserve.
-		if b.Proposer == "synthetic-checkpoint" {
-			continue
-		}
-		if best == nil || len(b.ParentHashes) > len(best.ParentHashes) {
-			best = b
-		}
-	}
-	dag.mu.RUnlock()
+	// canonicalBlockAtHeightLocked calls ghostdagBlockLookup, which can
+	// cache a DB-fetched block into dag.blocks — needs the write lock, not
+	// a read lock, for that mutation to be safe.
+	dag.mu.Lock()
+	best := dag.canonicalBlockAtHeightLocked(height)
+	dag.mu.Unlock()
 	if best != nil || dag.state == nil {
 		return best
 	}
 	// FIX (P0, merge-reliability audit 2026-07-03): pruneOldDAGBlocks evicts
 	// blocks below (finalizedHeight - pruneBuffer()) from dag.blocks, so a
-	// height below that cutoff always missed here — including the height
-	// autoheal.go's isolated-fork self-check (startChainDivergenceCheck)
-	// asks for, whenever the finalized checkpoint has advanced well past a
-	// peer's reported height (e.g. right after a long-isolated node's
-	// checkpoint starts advancing again — see the finality.go fix — while
-	// comparing against a peer that's further behind). Fall back to the DB
-	// (chain_blocks retains everything pruneOldDAGBlocks removes from
-	// memory), outside the lock since this is a query, not a mutation.
+	// height below that cutoff could still miss above if dag.tips itself has
+	// been pruned/reset (e.g. right after a restart before any tip exists
+	// yet). Fall back to the DB's own best-effort selection (chain_blocks
+	// retains everything pruneOldDAGBlocks removes from memory), outside the
+	// lock since this is a query, not a mutation.
 	return dag.state.LoadBlockFromDBByHeight(height)
+}
+
+// canonicalBlockAtHeightLocked returns the canonical block at height by
+// walking the SelectedParent chain backward from this node's own best tip
+// (highest BlueScore, ties broken by lowest hash — the same "canonical
+// ordering: height ASC, blueScore DESC, hash ASC" this file's other
+// comments already describe as the deterministic total order every node
+// converges to). Returns nil if no tip exists yet, or if the walk runs out
+// of SelectedParent links before reaching height (a genuinely unresolvable
+// gap — callers fall back to the DB's best-effort selection in that case).
+// Must be called under dag.mu (write lock — see ghostdagBlockLookup's own
+// locking contract, which this relies on for cache-filling DB fallback
+// during the walk).
+func (dag *BlockDAG) canonicalBlockAtHeightLocked(height int64) *Block {
+	var best *Block
+	for hash := range dag.tips {
+		b := dag.blocks[hash]
+		if b == nil || b.Proposer == "synthetic-checkpoint" {
+			continue
+		}
+		if best == nil || b.BlueScore > best.BlueScore || (b.BlueScore == best.BlueScore && b.Hash < best.Hash) {
+			best = b
+		}
+	}
+	if best == nil {
+		return nil
+	}
+	cur := best
+	for cur != nil && cur.Height > height {
+		if cur.SelectedParent == "" {
+			return nil
+		}
+		cur = dag.ghostdagBlockLookup(cur.SelectedParent)
+	}
+	if cur != nil && cur.Height == height && cur.Proposer != "synthetic-checkpoint" {
+		return cur
+	}
+	return nil
 }
 
 func (dag *BlockDAG) TotalBlocks() int {
