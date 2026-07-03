@@ -745,6 +745,15 @@ func (a *APIServer) handleBlocksByHash(w http.ResponseWriter, r *http.Request) {
 const (
 	blockPushBreakerThreshold = 50               // consecutive non-attaching pushes from one IP before it trips
 	blockPushBreakerCooldown  = 20 * time.Second // how long a tripped IP's POSTs are dropped pre-parse
+	// blockPushBreakerReopenProbes mirrors proposerBreakerReopenProbes'
+	// exact fix (block.go, 2026-07-04) for the identical single-probe
+	// fragility here: confirmed live the same night as that fix, a freshly
+	// restarted node's per-IP push breaker against a healthy peer failed to
+	// clear for several minutes because the single post-cooldown probe kept
+	// losing to ordinary transient noise. Widened to 5 for the same reason:
+	// a genuinely diverged/flooding IP still fails all 5 and re-trips
+	// within a handful of pushes, not a full fresh 50-push run.
+	blockPushBreakerReopenProbes = 5
 )
 
 var (
@@ -785,12 +794,12 @@ func blockPushShouldDrop(ip string) bool {
 	}
 	if time.Now().UnixNano() >= until {
 		delete(blockPushBreakerUntil, ip)
-		// Single real probe, not a full reopen — see proposerBlockBlocked's
-		// identical fix (block.go) for the full rationale. Seeding one short
-		// of the threshold means the next outcome either clears it (success)
-		// or immediately re-trips (failure), instead of reopening fully
-		// until blockPushBreakerThreshold fresh failures rebuild from zero.
-		blockPushFailRun[ip] = blockPushBreakerThreshold - 1
+		// Bounded reopen (blockPushBreakerReopenProbes probes), not a single
+		// one — see proposerBlockBlocked's identical fix (block.go) for the
+		// full rationale and this constant's own comment for the live
+		// outage that motivated widening it. The first success still fully
+		// clears the run (blockPushRecordOutcome's attached branch, below).
+		blockPushFailRun[ip] = blockPushBreakerThreshold - blockPushBreakerReopenProbes
 		return false
 	}
 	return true

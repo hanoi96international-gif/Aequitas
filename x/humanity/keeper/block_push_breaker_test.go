@@ -71,27 +71,30 @@ func TestBlockPushBreaker_CooldownExpiryAllowsProbe(t *testing.T) {
 	if blockPushShouldDrop(ip) {
 		t.Fatalf("breaker should let a probe through after the cooldown expires")
 	}
-	// Single real probe (P0 fix, 2026-07-02 liveness audit): cooldown expiry
-	// clears the until-map but seeds the run one short of the threshold, not
-	// at 0 — the next single outcome decides, not another full run of fresh
-	// failures.
+	// Bounded reopen (P0 fix, 2026-07-02 liveness audit; widened from a
+	// single probe to blockPushBreakerReopenProbes on 2026-07-04 — see that
+	// constant's comment for the live outage that motivated it): cooldown
+	// expiry clears the until-map and seeds the run blockPushBreakerReopenProbes
+	// short of the threshold, not at 0 — up to that many outcomes decide,
+	// not another full run of fresh failures.
 	blockPushBreakerMu.Lock()
 	run := blockPushFailRun[ip]
 	_, stillOpen := blockPushBreakerUntil[ip]
 	blockPushBreakerMu.Unlock()
-	if run != blockPushBreakerThreshold-1 || stillOpen {
-		t.Fatalf("cooldown expiry must clear until and seed run at threshold-1 (run=%d want=%d open=%v)",
-			run, blockPushBreakerThreshold-1, stillOpen)
+	want := blockPushBreakerThreshold - blockPushBreakerReopenProbes
+	if run != want || stillOpen {
+		t.Fatalf("cooldown expiry must clear until and seed run at threshold-reopenProbes (run=%d want=%d open=%v)",
+			run, want, stillOpen)
 	}
 }
 
-// TestBlockPushBreaker_ProbeFailureRetripsImmediately verifies the cooldown
-// reopen is a single real probe, not a full reopen: one failing push right
-// after cooldown expiry must re-trip the breaker immediately, not require
-// another full run of blockPushBreakerThreshold fresh failures. Without the
-// P0 fix this test fails — the old code let up to threshold-1 more full-cost
-// pushes through every cooldown cycle before re-tripping.
-func TestBlockPushBreaker_ProbeFailureRetripsImmediately(t *testing.T) {
+// TestBlockPushBreaker_ReopenRetripsAfterProbesExhausted verifies the
+// cooldown reopen is a BOUNDED reopen, not unlimited: fewer than
+// blockPushBreakerReopenProbes failing pushes right after cooldown expiry
+// must NOT re-trip the breaker, but exactly blockPushBreakerReopenProbes
+// must — mirroring TestProposerBreaker_ReopenRetripsAfterProbesExhausted's
+// rationale (block.go) for the identical fix here.
+func TestBlockPushBreaker_ReopenRetripsAfterProbesExhausted(t *testing.T) {
 	resetBlockPushBreaker()
 	const ip = "203.0.113.10"
 
@@ -103,11 +106,17 @@ func TestBlockPushBreaker_ProbeFailureRetripsImmediately(t *testing.T) {
 	blockPushBreakerMu.Unlock()
 
 	if blockPushShouldDrop(ip) {
-		t.Fatalf("precondition: probe should be let through after cooldown expiry")
+		t.Fatalf("precondition: a probe should be let through after cooldown expiry")
 	}
-	blockPushRecordOutcome(ip, false) // the single probe fails
+	for i := 0; i < blockPushBreakerReopenProbes-1; i++ {
+		blockPushRecordOutcome(ip, false)
+		if blockPushShouldDrop(ip) {
+			t.Fatalf("re-tripped after only %d of %d allotted reopen probes failed — reopen is too narrow again", i+1, blockPushBreakerReopenProbes)
+		}
+	}
+	blockPushRecordOutcome(ip, false) // the blockPushBreakerReopenProbes-th failure
 	if !blockPushShouldDrop(ip) {
-		t.Fatalf("a single failing probe must re-trip the breaker immediately, not require %d more failures", blockPushBreakerThreshold-1)
+		t.Fatalf("breaker did not re-trip after all %d reopen probes failed", blockPushBreakerReopenProbes)
 	}
 }
 
