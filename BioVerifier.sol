@@ -1,16 +1,21 @@
 // SPDX-License-Identifier: GPL-3.0
 /*
-    ⚠ AUDIT NOTE (launch audit 2026-07-03): this file does NOT match the
-    contract actually deployed at BIO_VERIFIER_ADDR in production.
+    ⚠ AUDIT NOTE (launch audit 2026-07-03, resolved): this file does NOT
+    match the contract actually deployed at BIO_VERIFIER_ADDR in production.
     x/humanity/keeper/contract_deploy.go hardcodes a DIFFERENT bytecode blob
-    (BioVerifierRuntimeBytecode) whose own comment identifies it as compiled
-    from "BioVerifierV3.sol (Poseidon-based nullifier circuit)" — a file that
-    does not exist anywhere in this repository. Verified independently: none
-    of this file's verifying-key constants (alphax/betax1/IC0x/IC1x/IC2x)
-    appear anywhere in BioVerifierRuntimeBytecode's hex, confirming these are
-    two cryptographically different verifiers, not just a formatting diff.
+    (BioVerifierRuntimeBytecode), identified by its own comment as compiled
+    from "BioVerifierV3.sol (Poseidon-based nullifier circuit)". That file
+    does not exist in THIS repo — it lives in the separate proof-server
+    project (github.com/hanoi96international-gif/aequitas-proof-server,
+    local checkout at C:\Users\aequitas-proof-server\BioVerifierV3.sol),
+    which owns the ZK circuit (biometric_v3.circom) this verifier matches.
+    Confirmed by exact bytecode comparison: that repo's
+    bioVerifierV3_bytecode.json, with the standard ~56-byte Solidity
+    constructor prefix stripped, is byte-for-byte identical to
+    BioVerifierRuntimeBytecode below — this is genuinely the deployed
+    verifier's source, just cross-repo, not a lost/missing file.
 
-    DO NOT "fix" this by recompiling this file and pasting its bytecode into
+    DO NOT "fix" this by recompiling THIS file and pasting its bytecode into
     BioVerifierRuntimeBytecode — EnsureContractsDeployed overwrites the live
     contract whenever that constant changes, and this file's 2-input Groth16
     verifier does not match the circuit the mobile app / proof-generation
@@ -18,9 +23,9 @@
     anything; it would make every future verifyProof() call check the wrong
     statement, silently breaking (or arbitrarily un-gating) every new human's
     registration. This file is kept only because it documents the *shape* of
-    a standard snarkjs Groth16 verifier; the real BioVerifierV3.sol source
-    needs to be located and checked into this repo before anyone can actually
-    audit what currently gates "one human = one registration" in production.
+    a standard snarkjs Groth16 verifier (same template, different
+    verification key) — for the real, currently-deployed source, see
+    aequitas-proof-server/BioVerifierV3.sol.
 
     Copyright 2021 0KIMS association.
 

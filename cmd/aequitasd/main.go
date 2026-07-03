@@ -263,6 +263,13 @@ p2pNode.SetDAG(bc)
 		bc.BridgeHistoricalGap([]string{pURL})
 	}
 
+	// One-time cleanup: convert any tUSD stranded in the fee-distribution
+	// pool addresses (from swaps predating distributeSwapFee's tUSD->AEQ
+	// conversion step) into AEQ. See MigrateStrandedPoolTUsdFeesV1's own
+	// comment. Self-gating (chain_config flag + per-pool balance check), so
+	// safe to call unconditionally on every startup.
+	chainState.MigrateStrandedPoolTUsdFeesV1()
+
 	// Save price snapshots every 30 seconds so the chart interval buttons
 	// (1m/5m/30m/1h/4h) show meaningful historical data even without swaps.
 	go func() {

@@ -3541,6 +3541,71 @@ func (cs *ChainState) distributeSwapFee(fee float64, feeInAEQ bool) error {
 	return nil
 }
 
+// MigrateStrandedPoolTUsdFeesV1 is a one-time cleanup for tUSD that piled up
+// in the four fee-distribution pool addresses from swaps that predate
+// distributeSwapFee's tUSD->AEQ conversion step (convertTUsdFeeToAEQLocked)
+// above: a tUSD->AEQ swap's fee used to credit the pool address directly in
+// tUSD, with no conversion, leaving balances that DistributeUBIPool/
+// Validators/LP never read (they only look at the AEQ balance) — see
+// distributeSwapFee's own comment. Confirmed live 2026-07-03: validators
+// 0.4, LP 0.3, UBI 0.2, treasury 0.1 tUSD, 0 AEQ each — the exact 40/30/20/10
+// split, confirming this is old stranded swap-fee residue, not user funds.
+//
+// Safe to call on every startup: each pool's CURRENT TUsdBalance is read
+// fresh and converted via the same AMM math distributeSwapFee already uses
+// for ongoing fees, then zeroed — so a pool with nothing stranded (already
+// converted, or never had any) is a no-op, and there is no way to
+// double-convert even if this runs more than once (e.g. the chain_config
+// flag write below fails after a real conversion already succeeded).
+// Produces identical AEQ amounts on every node with the same reserves at
+// call time (same reasoning as convertTUsdFeeToAEQLocked's own comment), so
+// it needs no separate replicated transaction — each node converges to the
+// same result independently.
+func (cs *ChainState) MigrateStrandedPoolTUsdFeesV1() {
+	const flagKey = "migrated_stranded_pool_tusd_fees_v1"
+	if cs.getConfigValueDB(flagKey) == "1" {
+		return
+	}
+	cs.mu.Lock()
+	defer cs.mu.Unlock()
+	cs.reloadPoolFromDB()
+	converted := 0
+	for _, addr := range []string{validatorsPoolAddr, lpPoolAddr, ubiPoolAddr, treasuryPoolAddr} {
+		cs.ensureAccountLoaded(addr)
+		acc, ok := cs.accounts[addr]
+		if !ok {
+			continue
+		}
+		stranded := acc.TUsdBalance.Float()
+		if stranded <= 0 {
+			continue
+		}
+		aeqOut, ok := cs.convertTUsdFeeToAEQLocked(stranded)
+		if !ok {
+			fmt.Printf("[MIGRATE] ✗ Could not convert %.6f stranded tUSD for %s (pool too shallow to price it) — left as-is, will retry next restart\n", stranded, addr)
+			continue
+		}
+		acc.TUsdBalance = NewDecimal(round6(acc.TUsdBalance.Float() - stranded))
+		acc.Balance = acc.Balance.Add(NewDecimal(aeqOut))
+		if err := cs.saveAccountToDB(acc); err != nil {
+			fmt.Printf("[MIGRATE] ✗ Could not persist converted balance for %s: %v\n", addr, err)
+			continue
+		}
+		converted++
+		fmt.Printf("[MIGRATE] ✓ Converted %.6f stranded tUSD -> %.6f AEQ for %s\n", stranded, aeqOut, addr)
+	}
+	if err := cs.savePoolToDB(); err != nil {
+		fmt.Printf("[MIGRATE] ✗ Could not persist pool after stranded-tUSD conversion: %v — will retry next restart\n", err)
+		return
+	}
+	if converted > 0 {
+		cs.save()
+	}
+	if err := cs.setConfigValueDB(flagKey, "1"); err != nil {
+		fmt.Printf("[MIGRATE] Could not set migration flag (converted %d/4 pools; harmless to retry, already-converted pools have TUsdBalance=0 so nothing double-converts): %v\n", converted, err)
+	}
+}
+
 // AddLiquidity lets a real account deposit AEQ and tUSD into the pool in
 // proportion to the pool's current ratio (or, if the pool is currently
 // empty, at whatever ratio the depositor chooses — that first deposit
