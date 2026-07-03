@@ -222,6 +222,14 @@ replayedMu             sync.Mutex
 	// nanos, atomic) so a fork flood can't turn the log itself into the
 	// bottleneck — see AddPeerBlock's lock-free flood shield.
 	lastFarAheadLogAt atomic.Int64
+	// lastFinalityRejectLogAt rate-limits the "[FINALITY] Rejected block"
+	// log the same way — see isFinalityViolation's call site. Confirmed
+	// live (2026-07-03): a diverged peer re-delivering whole pages of
+	// far-below-checkpoint blocks logged one unthrottled line PER block,
+	// hitting Railway's own platform-level deploy-log rate limit
+	// ("Messages dropped") on the primary, silently swallowing unrelated
+	// log output along with it.
+	lastFinalityRejectLogAt atomic.Int64
 	// proposerBreaker* (P0, 2026-07-02 fork-flood, path-independent shield): the
 	// per-IP push shield (blockPushBreaker, api.go) only guards /api/blocks/push,
 	// but the third-party 178.105.186.119 node's flood reached AddPeerBlock by a
@@ -2417,8 +2425,12 @@ if block.Signature != "" && !block.IsGenesis {
 // the checkpoint are still accepted.
 if dag.isFinalityViolation(block) {
 	fH, _ := dag.state.GetFinalizedCheckpoint()
-	fmt.Printf("[FINALITY] ✗ Rejected block #%d: below finalized checkpoint %d (slack %d)\n",
-		block.Height, fH, finalityHeightSlack)
+	nowNano := time.Now().UnixNano()
+	last := dag.lastFinalityRejectLogAt.Load()
+	if nowNano-last > int64(time.Second) && dag.lastFinalityRejectLogAt.CompareAndSwap(last, nowNano) {
+		fmt.Printf("[FINALITY] ✗ Rejected block #%d: below finalized checkpoint %d (slack %d) (rate-limited)\n",
+			block.Height, fH, finalityHeightSlack)
+	}
 	dag.mu.Unlock()
 	return false
 }
