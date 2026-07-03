@@ -1225,7 +1225,18 @@ return hex.EncodeToString(hash[:])
 
 func (dag *BlockDAG) ProduceBlock() *Block {
 produceStart := time.Now() // TEMP DIAGNOSTIC (2026-07-02 cadence investigation)
+// TEMP DIAGNOSTIC (2026-07-03 night, cadence still 3-5s): per-phase timers.
+// The two existing timers only cover the concurrent DB pair and the block
+// save (~1.2s combined) while the whole call measures 4-5s — the missing
+// ~3s must be lock wait or an unmeasured phase. One log line per slow block
+// names the phase so the fix targets the real cost, not a guess.
+var tLock, tGates, tTips, tPair, tGhostdag, tSave time.Time
 defer func() {
+	if d := time.Since(produceStart); d > 1500*time.Millisecond && !tSave.IsZero() {
+		fmt.Printf("[BLOCK] ⏱ breakdown: lockWait=%s gates=%s tips+txsnap=%s dbpair=%s ghostdag+hash=%s save=%s post=%s total=%s\n",
+			tLock.Sub(produceStart), tGates.Sub(tLock), tTips.Sub(tGates), tPair.Sub(tTips),
+			tGhostdag.Sub(tPair), tSave.Sub(tGhostdag), time.Since(tSave), d)
+	}
 	if d := time.Since(produceStart); d > 500*time.Millisecond {
 		fmt.Printf("[BLOCK] ⏱ ProduceBlock itself took %s\n", d)
 	}
@@ -1238,6 +1249,7 @@ dag.replayMu.Lock()
 defer dag.replayMu.Unlock()
 dag.mu.Lock()
 defer dag.mu.Unlock()
+tLock = time.Now() // TEMP DIAGNOSTIC: both locks acquired
 
 // P1-05 (audit): halt production when a prior peer-block persistence failure
 // left memory state ahead of durable DB state.
@@ -1352,6 +1364,7 @@ if target := dag.syncTargetHeight.Load(); target > 0 {
 		return nil
 	}
 }
+tGates = time.Now() // TEMP DIAGNOSTIC: all production gates passed
 
 // Collect tips as parents, capped at maxParentsPerBlock.
 // With many validators, every tip would create giant blocks and blow up
@@ -1432,22 +1445,32 @@ dag.txMu.Unlock()
 // technically merging each other's blocks correctly. Narrowing the
 // primary's own per-block DB cost is what keeps both sides' cadence close
 // enough for that wall-clock alignment to do its job.
+tTips = time.Now() // TEMP DIAGNOSTIC: tips selected + mem TXs snapshotted
 var dbTxs []Transaction
 var pendingTxIDs []int64
 var stateRoot string
+var pendingDur, rootDur time.Duration // TEMP DIAGNOSTIC: split the pair
 var cadenceWG sync.WaitGroup
 cadenceWG.Add(2)
 go func() {
 	defer cadenceWG.Done()
+	t0 := time.Now()
 	if dag.state != nil {
 		dbTxs, pendingTxIDs = dag.state.LoadPendingTxs()
 	}
+	pendingDur = time.Since(t0)
 }()
 go func() {
 	defer cadenceWG.Done()
+	t0 := time.Now()
 	stateRoot = dag.state.StateRoot()
+	rootDur = time.Since(t0)
 }()
 cadenceWG.Wait()
+tPair = time.Now() // TEMP DIAGNOSTIC: concurrent DB pair finished
+if d := tPair.Sub(tTips); d > 1200*time.Millisecond {
+	fmt.Printf("[BLOCK] ⏱ dbpair detail: LoadPendingTxs=%s StateRoot=%s\n", pendingDur, rootDur)
+}
 if len(dbTxs) > 0 {
 	fmt.Printf("[DAG] Including %d restart-surviving TX(s) from DB in block\n", len(dbTxs))
 	txs = append(txs, dbTxs...)
@@ -1485,6 +1508,7 @@ if dag.signingKey != nil {
 // with empty GHOSTDAG fields. dag.mu is already held here; parents are in
 // dag.blocks; the block is not yet in dag.blocks (not needed by compute).
 dag.computeGHOSTDAGState(block)
+tGhostdag = time.Now() // TEMP DIAGNOSTIC: hash+sign+GHOSTDAG done
 
 // P1-06 (audit): persist to DB BEFORE inserting into dag.blocks/dag.tips or
 // returning the block for broadcast. If the DB save fails this block will be
@@ -1505,6 +1529,7 @@ if err := dag.state.SaveBlockWithPendingTxsAtomic(block, pendingTxIDs); err != n
 if saveDur := time.Since(saveStart); saveDur > 500*time.Millisecond {
 	fmt.Printf("[BLOCK] ⏱ SaveBlockWithPendingTxsAtomic took %s for block #%d (dag.mu held throughout)\n", saveDur, block.Height)
 }
+tSave = time.Now() // TEMP DIAGNOSTIC: durable save finished
 
 // P2-06: clear exactly the TXs we snapshotted — any TXs queued AFTER the
 // snapshot (positions [nTxsSnapshotted:]) stay for the next block.
