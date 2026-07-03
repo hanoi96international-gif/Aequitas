@@ -2397,10 +2397,40 @@ if block.Signature != "" && !block.IsGenesis {
 	}
 }
 
+// GATE ORDER (P0, cadence 2026-07-03 night): the finality gate below runs
+// BEFORE the equivocation suspension gate. Both reject independently of
+// each other, so ordering cannot change WHICH blocks get through — but it
+// changes what a rejection COSTS. isFinalityViolation is pure in-memory
+// (cached checkpoint), while IsValidatorSuspended is a Postgres round trip
+// (~0.5s over the primary's remote DB proxy) executed while dag.mu is held
+// write-locked. Confirmed live: isolated/diverged peers re-deliver whole
+// pages of far-below-checkpoint blocks continuously (heights #80-129 vs a
+// ~140k checkpoint, dozens of [FINALITY] rejects/minute) — with the
+// suspension gate first, EVERY one of those doomed blocks held dag.mu
+// through a full DB round trip before the free check rejected it anyway,
+// starving ProduceBlock's lock acquisition and inflating cadence from the
+// 1s target to 3-5s (rising with flood volume).
+
+// Finality gate: reject blocks so far below the finalized checkpoint that
+// they could only matter for a deep reorg — which the hard finality
+// guarantee forbids. Legitimate gap-fills within finalityHeightSlack of
+// the checkpoint are still accepted.
+if dag.isFinalityViolation(block) {
+	fH, _ := dag.state.GetFinalizedCheckpoint()
+	fmt.Printf("[FINALITY] ✗ Rejected block #%d: below finalized checkpoint %d (slack %d)\n",
+		block.Height, fH, finalityHeightSlack)
+	dag.mu.Unlock()
+	return false
+}
+
 // Equivocation suspension gate: a validator suspended or permanently banned
 // for repeated equivocation may not produce further blocks until the penalty
 // expires. Checked after the signature + authorization gates above so that
-// the suspended proposer's identity is already confirmed cryptographically.
+// the suspended proposer's identity is already confirmed cryptographically,
+// and after the free finality gate so a flood of doomed below-checkpoint
+// blocks can't turn this check's cost into a dag.mu bottleneck (see the
+// GATE ORDER comment above — the check itself is now an in-memory cache
+// read, the ordering is defense in depth).
 //
 // Skipped for blocks fetched via HTTP-SYNC from a trusted seed
 // (block.FromSync == true — see its field doc): those blocks are part of a
@@ -2415,18 +2445,6 @@ if dag.state != nil && !block.FromSync {
 		dag.mu.Unlock()
 		return false
 	}
-}
-
-// Finality gate: reject blocks so far below the finalized checkpoint that
-// they could only matter for a deep reorg — which the hard finality
-// guarantee forbids. Legitimate gap-fills within finalityHeightSlack of
-// the checkpoint are still accepted.
-if dag.isFinalityViolation(block) {
-	fH, _ := dag.state.GetFinalizedCheckpoint()
-	fmt.Printf("[FINALITY] ✗ Rejected block #%d: below finalized checkpoint %d (slack %d)\n",
-		block.Height, fH, finalityHeightSlack)
-	dag.mu.Unlock()
-	return false
 }
 
 // Integrity check 3: parent-existence and height validation.

@@ -158,8 +158,45 @@ func (cs *ChainState) initSlashingTables() {
 	); err == nil {
 		if n, _ := res.RowsAffected(); n > 0 {
 			fmt.Printf("[SLASHING] ✓ Cleared %d pre-activation validator penalty record(s) (offenses before 2026-07-05 UTC are exempt — see equivocationSlashingActivationUnix)\n", n)
+			cs.invalidatePenaltyCache()
 		}
 	}
+}
+
+// loadPenaltyCacheLocked fills cs.penaltyCache from validator_penalties.
+// Caller must hold cs.penaltyMu (write). The table is tiny (one row per
+// ever-penalized validator — 0 rows in the healthy case), so a full load is
+// a single cheap round trip paid once per process.
+func (cs *ChainState) loadPenaltyCacheLocked() {
+	cs.penaltyCache = make(map[string]validatorPenalty)
+	cs.penaltyCacheLoaded = true // set even on query error: fail open, like the old per-call path did
+	if cs.db == nil {
+		return
+	}
+	rows, err := cs.db.Query(`SELECT signing_address, banned, suspended_until, last_offense_at FROM validator_penalties`)
+	if err != nil {
+		return
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var addr string
+		var p validatorPenalty
+		if rows.Scan(&addr, &p.banned, &p.suspendedUntil, &p.lastOffenseAt) == nil {
+			cs.penaltyCache[strings.ToLower(addr)] = p
+		}
+	}
+}
+
+// invalidatePenaltyCache forces the next IsValidatorSuspended call to reload
+// from the DB. Called by every validator_penalties writer after a successful
+// change (RecordEquivocationAndSuspend, initSlashingTables' activation
+// cleanup) — writes are rare, so a full reload beats write-through
+// bookkeeping for correctness-per-line.
+func (cs *ChainState) invalidatePenaltyCache() {
+	cs.penaltyMu.Lock()
+	cs.penaltyCacheLoaded = false
+	cs.penaltyCache = nil
+	cs.penaltyMu.Unlock()
 }
 
 // IsValidatorSuspended reports whether addr is currently barred from
@@ -172,29 +209,45 @@ func (cs *ChainState) initSlashingTables() {
 // last_offense_at) are allowed — this is the historical-sync case: a
 // validator that was later slashed still legitimately signed those earlier
 // blocks, and replaying them during catch-up must not be rejected.
+//
+// FIX (P0, cadence 2026-07-03 night): answered from the in-memory penalty
+// cache (see penaltyMu's struct comment). This used to be a synchronous
+// Postgres QueryRow — ~0.5s over the primary's remote DB proxy — executed
+// while AddPeerBlock held dag.mu write-locked, ONCE PER non-FromSync peer
+// block, including every block a later gate was about to reject anyway.
+// Under a re-delivery flood of below-checkpoint blocks from
+// isolated/diverged peers, those serialized round trips starved
+// ProduceBlock's lock acquisition and inflated block cadence to 3-5s
+// against the 1s target.
 func (cs *ChainState) IsValidatorSuspended(addr string, blockTimestamp int64) (suspended bool, reason string) {
 	if cs.db == nil {
 		return false, ""
 	}
-	var banned bool
-	var suspendedUntil, lastOffenseAt int64
-	err := cs.db.QueryRow(
-		`SELECT banned, suspended_until, last_offense_at FROM validator_penalties WHERE signing_address = $1`,
-		strings.ToLower(addr),
-	).Scan(&banned, &suspendedUntil, &lastOffenseAt)
-	if err != nil {
-		return false, "" // ErrNoRows or transient error: fail open
+	cs.penaltyMu.RLock()
+	loaded := cs.penaltyCacheLoaded
+	p, exists := cs.penaltyCache[strings.ToLower(addr)]
+	cs.penaltyMu.RUnlock()
+	if !loaded {
+		cs.penaltyMu.Lock()
+		if !cs.penaltyCacheLoaded { // another goroutine may have won the load race
+			cs.loadPenaltyCacheLocked()
+		}
+		p, exists = cs.penaltyCache[strings.ToLower(addr)]
+		cs.penaltyMu.Unlock()
+	}
+	if !exists {
+		return false, "" // no penalty record: fail open (same as ErrNoRows before)
 	}
 	// Historical block predates the ban — allow it during catch-up sync.
-	if blockTimestamp > 0 && lastOffenseAt > 0 && blockTimestamp < lastOffenseAt {
+	if blockTimestamp > 0 && p.lastOffenseAt > 0 && blockTimestamp < p.lastOffenseAt {
 		return false, ""
 	}
-	if banned {
+	if p.banned {
 		return true, "permanently banned for repeated equivocation"
 	}
-	if suspendedUntil > time.Now().Unix() {
+	if p.suspendedUntil > time.Now().Unix() {
 		return true, fmt.Sprintf("suspended for equivocation until %s",
-			time.Unix(suspendedUntil, 0).UTC().Format("2006-01-02 15:04 UTC"))
+			time.Unix(p.suspendedUntil, 0).UTC().Format("2006-01-02 15:04 UTC"))
 	}
 	return false, ""
 }
@@ -322,6 +375,7 @@ func (cs *ChainState) RecordEquivocationAndSuspend(signingAddress, blockAHash, b
 		return 0, "", err
 	}
 	committed = true
+	cs.invalidatePenaltyCache() // keep IsValidatorSuspended's cache current
 
 	// Log every offense clearly so operators can investigate.
 	var slashWallet string

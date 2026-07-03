@@ -175,6 +175,28 @@ type ChainState struct {
 	finalizedHeightCache    int64
 	finalizedBlueScoreCache int64
 	finalizedHashCache      string
+
+	// penaltyMu guards the in-memory validator_penalties cache (P0, cadence
+	// 2026-07-03 night) — see IsValidatorSuspended. Same design as the
+	// finalized-checkpoint cache above: the table is only ever written by
+	// THIS process (RecordEquivocationAndSuspend, initSlashingTables'
+	// activation cleanup), both writers keep the cache in sync, so a
+	// load-once cache is always current for the process lifetime. Before
+	// this cache, IsValidatorSuspended was a synchronous Postgres round trip
+	// executed under dag.mu for every non-FromSync peer block — the primary
+	// bottleneck behind the 3-5s cadence (see AddPeerBlock's GATE ORDER
+	// comment).
+	penaltyMu          sync.RWMutex
+	penaltyCacheLoaded bool
+	penaltyCache       map[string]validatorPenalty
+}
+
+// validatorPenalty is one cached validator_penalties row — everything
+// IsValidatorSuspended needs to answer without touching the DB.
+type validatorPenalty struct {
+	banned         bool
+	suspendedUntil int64
+	lastOffenseAt  int64
 }
 
 // AccountsLoadFailed reports whether loadFromDB's startup query against
@@ -332,9 +354,24 @@ func NewChainState(dataFile string) *ChainState {
 			// connections were never recycled (ConnMaxLifetime defaults to
 			// "forever"). These limits are generous, not tight — the goal is
 			// "bounded", not "minimal".
+			//
+			// FIX (P0, cadence 2026-07-03 night): MaxIdleConns must equal
+			// MaxOpenConns. At MaxIdle=5, any burst that used >5 connections
+			// (concurrent block save + LoadPendingTxs/StateRoot pair + API
+			// reads + sync loops) CLOSED the extras on release, and the next
+			// burst re-dialed them. Over the primary's remote DB proxy a
+			// fresh connection costs TCP+TLS+auth ≈ 5-6 round trips ≈ 1.5s —
+			// confirmed live by LoadPendingTxs stalls of 1.72-1.74s (setup +
+			// one 0.26s query) in ProduceBlock's phase breakdown, directly
+			// inflating block cadence. Idle connections to our own dedicated
+			// Postgres are effectively free (max_connections ~100); paying
+			// 1.5s handshakes on the block-production hot path is not.
+			// ConnMaxLifetime 5min→30min for the same reason: it force-closed
+			// every connection 12x/hour, re-paying the handshake each time —
+			// 30min still recycles through proxy restarts, 6x cheaper.
 			db.SetMaxOpenConns(20)
-			db.SetMaxIdleConns(5)
-			db.SetConnMaxLifetime(5 * time.Minute)
+			db.SetMaxIdleConns(20)
+			db.SetConnMaxLifetime(30 * time.Minute)
 			err = db.Ping()
 			if err == nil {
 				cs.db = db
