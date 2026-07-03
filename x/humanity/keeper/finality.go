@@ -156,6 +156,8 @@ func (dag *BlockDAG) maybeAdvanceFinalizedCheckpoint(newBlock *Block) {
 	target := newBlock.BlueScore - finalityBlueScoreDepth
 
 	// Walk selected-parent chain toward genesis until we drop to target depth.
+	// Fast path only: pure in-memory pointer-hops, no DB access — this runs
+	// while the caller holds dag.mu (see AddPeerBlock), so it must stay cheap.
 	b := newBlock
 	for b != nil && b.BlueScore > target {
 		if b.SelectedParent == "" {
@@ -163,7 +165,29 @@ func (dag *BlockDAG) maybeAdvanceFinalizedCheckpoint(newBlock *Block) {
 		}
 		parent, ok := dag.blocks[b.SelectedParent]
 		if !ok {
-			return // gap in DAG — can't walk further; try again on next block
+			// FIX (P0, merge-reliability audit 2026-07-03): pruneOldDAGBlocks
+			// evicts in-memory blocks below (finalizedHeight - pruneBuffer()), a
+			// HEIGHT-based cutoff — but this walk's target is BLUE-SCORE-based.
+			// On a heavily-forked DAG (many non-selected/"red" blocks per
+			// blue-score point — confirmed live: blue_score 1694 at height
+			// 80095, a ~47:1 ratio) a finalityBlueScoreDepth-deep walk can need
+			// to reach much further back in HEIGHT than the height-based buffer
+			// guarantees, hitting an evicted (but NOT deleted — chain_blocks
+			// retains it, see pruneOldDAGBlocks' own comment) parent. Silently
+			// giving up here used to freeze finalized_height forever: every
+			// later block hits the exact same gap on the exact same
+			// selected-parent chain, which ALSO freezes pruneOldDAGBlocks' own
+			// cutoff (it's finalizedHeight-relative) — a permanent,
+			// self-reinforcing deadlock confirmed live on Contabo
+			// (finalized_height stuck at 80095 while the tip passed 130,000,
+			// which in turn left the isolated-fork auto-heal check in
+			// autoheal.go permanently comparing the same stale, still-matching
+			// height instead of anything recent enough to catch the actual
+			// divergence). Finish the walk asynchronously against the DB
+			// (which always still has it) instead of leaving the checkpoint
+			// stuck — see finishCheckpointWalkFromDB.
+			dag.finishCheckpointWalkFromDB(b.SelectedParent, target)
+			return
 		}
 		b = parent
 	}
@@ -179,4 +203,45 @@ func (dag *BlockDAG) maybeAdvanceFinalizedCheckpoint(newBlock *Block) {
 	dag.state.SetFinalizedCheckpoint(b.Hash, b.Height, b.BlueScore)
 	fmt.Printf("[FINALITY] ✓ Checkpoint advanced → height %d blue_score %d (%s...)\n",
 		b.Height, b.BlueScore, b.Hash[:min(16, len(b.Hash))])
+}
+
+// finishCheckpointWalkFromDB continues the selected-parent walk started by
+// maybeAdvanceFinalizedCheckpoint once it hits a block evicted from the
+// in-memory DAG (dag.blocks), resuming from startHash and stopping once
+// blue_score drops to target or below (or a genesis/unresolved parent is
+// hit). Runs in its own goroutine, off dag.mu — safe because it only reads
+// already-committed, immutable block headers (chain_blocks rows are never
+// modified after insert by SaveBlockToDB's ON CONFLICT DO NOTHING) and its
+// result feeds SetFinalizedCheckpoint, which has its own independent lock
+// (finalizedMu — see GetFinalizedCheckpoint's comment) rather than dag.mu.
+func (dag *BlockDAG) finishCheckpointWalkFromDB(startHash string, target int64) {
+	go func() {
+		if dag.state == nil {
+			return
+		}
+		hash := startHash
+		var b *Block
+		for {
+			b = dag.state.LoadBlockFromDBByHash(hash)
+			if b == nil {
+				fmt.Printf("[FINALITY] ✗ Could not advance checkpoint: %s… is missing from both the in-memory DAG and the DB — a genuinely lost block, not just a pruned one\n",
+					hash[:min(16, len(hash))])
+				return
+			}
+			if b.BlueScore <= target || b.SelectedParent == "" {
+				break
+			}
+			hash = b.SelectedParent
+		}
+		if b == nil {
+			return
+		}
+		curHeight, _ := dag.state.GetFinalizedCheckpoint()
+		if b.Height <= curHeight {
+			return // another call already advanced past this point
+		}
+		dag.state.SetFinalizedCheckpoint(b.Hash, b.Height, b.BlueScore)
+		fmt.Printf("[FINALITY] ✓ Checkpoint advanced (via DB fallback, in-memory DAG had pruned the path) → height %d blue_score %d (%s...)\n",
+			b.Height, b.BlueScore, b.Hash[:min(16, len(b.Hash))])
+	}()
 }

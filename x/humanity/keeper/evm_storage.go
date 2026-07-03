@@ -2834,3 +2834,37 @@ func (cs *ChainState) LoadBlocksFromDB(minHeight int64) (map[string]*Block, erro
 	}
 	return blocks, nil
 }
+
+// LoadBlockFromDBByHash loads a single block header by hash directly from
+// chain_blocks, bypassing dag.blocks entirely. Used as a fallback when a
+// block needed for a computation (e.g. the finality checkpoint's
+// selected-parent walk, see maybeAdvanceFinalizedCheckpoint) has been
+// evicted from the in-memory DAG by pruneOldDAGBlocks but — per that
+// function's own guarantee — is still durably retained here. Returns nil
+// (not an error) if the hash genuinely doesn't exist, matching
+// GetBlockByHash's contract.
+func (cs *ChainState) LoadBlockFromDBByHash(hash string) *Block {
+	if cs.db == nil {
+		return nil
+	}
+	cs.ensureGHOSTDAGColumns()
+	row := cs.db.QueryRow(`SELECT hash, height, parent_hashes, proposer, timestamp, humans, state_root,
+	                 signature, transactions,
+	                 COALESCE(selected_parent,''), COALESCE(blue_score,0), COALESCE(blues,'[]')
+	          FROM chain_blocks WHERE hash = $1`, hash)
+	var b Block
+	var parentHashesRaw, txsRaw, bluesRaw string
+	if err := row.Scan(
+		&b.Hash, &b.Height, &parentHashesRaw, &b.Proposer, &b.Timestamp,
+		&b.Humans, &b.StateRoot, &b.Signature, &txsRaw,
+		&b.SelectedParent, &b.BlueScore, &bluesRaw,
+	); err != nil {
+		return nil
+	}
+	_ = json.Unmarshal([]byte(parentHashesRaw), &b.ParentHashes)
+	_ = json.Unmarshal([]byte(txsRaw), &b.Transactions)
+	if bluesRaw != "" && bluesRaw != "[]" && bluesRaw != "null" {
+		_ = json.Unmarshal([]byte(bluesRaw), &b.Blues)
+	}
+	return &b
+}
