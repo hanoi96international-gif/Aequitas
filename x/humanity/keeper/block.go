@@ -375,6 +375,12 @@ replayedMu             sync.Mutex
 	softRetryBlocks  map[string]*Block
 	softRetryFirstAt map[string]time.Time
 	softRetryMu      sync.Mutex
+	// softRetryFlushInFlight/softRetryFlushAgain coalesce concurrent flush
+	// triggers the same way orphanResolveInFlight/orphanResolveAgain do
+	// above (see triggerOrphanResolve) — see triggerSoftRetryFlush's
+	// comment for why this exists.
+	softRetryFlushInFlight bool
+	softRetryFlushAgain    bool
 
 	// degradedReason is set when a critical storage failure occurs after state
 	// has already been committed to memory (e.g. SaveBlockToDB fails for an
@@ -2813,7 +2819,7 @@ if waiting := dag.popOrphans(block.Hash); len(waiting) > 0 {
 // get another chance.  Runs in a goroutine so the current AddPeerBlock call
 // returns promptly — retries cascade through AddPeerBlock's own orphan
 // resolution if they succeed.
-go dag.retryAndFlushSoftRetry()
+dag.triggerSoftRetryFlush()
 
 dag.lastSuccessfulPeerSyncAt.Store(time.Now().Unix())
 // FIX (P0, 2026-07-03 night): don't blindly clear this proposer's breaker
@@ -4690,9 +4696,54 @@ func (dag *BlockDAG) replayInCanonicalOrder(block *Block) bool {
 	return dag.replayTransactions(block)
 }
 
+// triggerSoftRetryFlush starts a soft-retry flush pass if none is already
+// running, coalescing concurrent triggers the same way triggerOrphanResolve
+// does for orphan resolution (sync_blocks.go) — one more pass runs
+// immediately after the current one if a new trigger arrives while it's
+// still working, instead of being dropped.
+//
+// FIX (durable fix, 2026-07-03): the previous unconditional `go
+// dag.retryAndFlushSoftRetry()` on every single successful AddPeerBlock
+// spawned a brand-new goroutine that rescans the ENTIRE soft-retry queue,
+// every time. Under heavy concurrent traffic (confirmed live on a node with
+// dag_tips_count in the thousands during a mass-reconsolidation burst) that
+// is one full queue scan per accepted block, all running concurrently
+// against each other — the log showed the same block's "Soft-retry
+// succeeded" message printing over and over with the tip count never
+// moving, consistent with many overlapping scans repeatedly finding and
+// reprocessing entries that a sibling goroutine hadn't deleted yet. This
+// serializes flush passes to at most one in flight, which cannot lose any
+// retry: a trigger that arrives mid-pass just queues one more full pass
+// (softRetryFlushAgain) instead of spawning a redundant concurrent one, and
+// every pass re-reads the current queue contents from scratch regardless.
+func (dag *BlockDAG) triggerSoftRetryFlush() {
+	dag.softRetryMu.Lock()
+	if dag.softRetryFlushInFlight {
+		dag.softRetryFlushAgain = true
+		dag.softRetryMu.Unlock()
+		return
+	}
+	dag.softRetryFlushInFlight = true
+	dag.softRetryMu.Unlock()
+	go func() {
+		for {
+			dag.retryAndFlushSoftRetry()
+			dag.softRetryMu.Lock()
+			if !dag.softRetryFlushAgain {
+				dag.softRetryFlushInFlight = false
+				dag.softRetryMu.Unlock()
+				return
+			}
+			dag.softRetryFlushAgain = false
+			dag.softRetryMu.Unlock()
+			// loop again — another trigger arrived mid-pass
+		}
+	}()
+}
+
 // retryAndFlushSoftRetry re-attempts every block in the soft-retry queue.
-// Called as a goroutine after each successful AddPeerBlock: new state may
-// have been applied that unblocks previously failing transactions.
+// Called via triggerSoftRetryFlush after each successful AddPeerBlock: new
+// state may have been applied that unblocks previously failing transactions.
 // Entries older than softRetryTTL are silently abandoned.
 func (dag *BlockDAG) retryAndFlushSoftRetry() {
 	dag.softRetryMu.Lock()
