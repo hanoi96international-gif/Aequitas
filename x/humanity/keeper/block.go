@@ -2536,9 +2536,26 @@ return false
 if block.Height > 1 {
 maxParentHeight := int64(-1)
 missingParent := ""
+// FIX (durable fix, 2026-07-03 — the actual deepest root cause behind
+// tonight's whole "never merges" saga): this used to read dag.blocks[ph]
+// directly, the same in-memory-only pattern already fixed for GHOSTDAG
+// scoring (see ghostdagBlockLookup's comment) — but THIS is the gate
+// that decides whether an incoming block attaches AT ALL, so a miss here
+// is far more consequential than a miss in blue-score computation. Any
+// restart only loads the most recent startupLoadWindow (2000) blocks
+// into dag.blocks, regardless of how much further back a peer's parent
+// reference points (routine after any catch-up/merge). Confirmed live:
+// after a plain restart with NO resync, a node that had JUST reached
+// parity with its peer (matching hashes at recent heights) immediately
+// started orphaning peer blocks 60,000+ heights below its own tip —
+// blocks that were fully present and valid in its own local DB the
+// entire time, just outside the freshly-reloaded in-memory window.
+// ghostdagBlockLookup already implements exactly the DB-fallback (plus
+// re-caching into dag.blocks) this needs; reusing it here instead of a
+// second bespoke lookup.
 for _, ph := range block.ParentHashes {
-parent, parentExists := dag.blocks[ph]
-if !parentExists {
+parent := dag.ghostdagBlockLookup(ph)
+if parent == nil {
 	missingParent = ph
 	break
 }
