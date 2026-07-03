@@ -1418,6 +1418,18 @@ delete(dag.tips, ph)
 dag.tips[block.Hash] = true
 dag.height = block.Height
 
+// FIX (P0, merge-reliability audit 2026-07-03): AddPeerBlock advances the
+// hard finality checkpoint after accepting a block, but ProduceBlock never
+// did — this is the ONLY other place a block's GHOSTDAG state (BlueScore/
+// SelectedParent, computed above) becomes final, so a node that produces
+// its own blocks but never successfully accepts a peer block (e.g. fully
+// isolated by a circuit-breaker lockout, or simply the only validator
+// currently reachable) could NEVER advance its own checkpoint at all,
+// confirmed live on Contabo: finalized_height stuck at 80094 through
+// 50,000+ of its own self-produced blocks. dag.mu is already held here,
+// matching maybeAdvanceFinalizedCheckpoint's precondition.
+dag.maybeAdvanceFinalizedCheckpoint(block)
+
 // Post-commit bookkeeping (block-count reward weighting + the max_block_height
 // restart hint) — moved off the hot, lock-held path in ONE background write.
 //
