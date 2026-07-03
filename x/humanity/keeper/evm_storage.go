@@ -14,6 +14,7 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/rawdb"
 	"github.com/ethereum/go-ethereum/core/state"
+	"github.com/lib/pq"
 )
 
 // round6 rounds a float64 to 6 decimal places, eliminating floating-point
@@ -2915,4 +2916,101 @@ func (cs *ChainState) LoadBlockFromDBByHash(hash string) *Block {
 		_ = json.Unmarshal([]byte(bluesRaw), &b.Blues)
 	}
 	return &b
+}
+
+// dbSinceFetchWindow is how many extra rows LoadBlocksSinceFromDB fetches
+// beyond the caller's requested limit, to comfortably cover same-height
+// sibling blocks sitting after an after_hash cursor within the same page.
+const dbSinceFetchWindow = 512
+
+// LoadBlocksSinceFromDB loads a canonically-ordered (height ASC, blue_score
+// DESC, hash ASC) window of blocks directly from chain_blocks, starting at
+// height >= minHeight, bypassing dag.blocks entirely. Fetches a window wider
+// than `limit` (dbSinceFetchWindow) so selectBlocksSince has enough rows on
+// hand to apply the exact same min_height/after_hash cursor semantics the
+// in-memory path uses (including same-height siblings after a cursor — see
+// selectBlocksSince's comment) before trimming to `limit`.
+//
+// FIX (P0, merge-reliability audit 2026-07-03): see GetBlocksSince's own
+// comment for the incident this fixes — pruneOldDAGBlocks evicts old blocks
+// from dag.blocks, and until this function existed nothing backing
+// /api/blocks?min_height= could ever serve a range below that eviction
+// point, even though chain_blocks (here) has always retained it in full.
+func (cs *ChainState) LoadBlocksSinceFromDB(minHeight int64, afterHash string, limit int) ([]*Block, error) {
+	if cs.db == nil {
+		return nil, nil
+	}
+	cs.ensureGHOSTDAGColumns()
+	fetchLimit := limit + dbSinceFetchWindow
+	rows, err := cs.db.Query(`SELECT hash, height, parent_hashes, proposer, timestamp, humans, state_root,
+	                 signature, transactions,
+	                 COALESCE(selected_parent,''), COALESCE(blue_score,0), COALESCE(blues,'[]')
+	          FROM chain_blocks
+	          WHERE height >= $1 AND proposer != 'synthetic-checkpoint'
+	          ORDER BY height ASC, blue_score DESC, hash ASC
+	          LIMIT $2`, minHeight, fetchLimit)
+	if err != nil {
+		return nil, fmt.Errorf("LoadBlocksSinceFromDB query failed: %w", err)
+	}
+	defer rows.Close()
+	var blocks []*Block
+	for rows.Next() {
+		var b Block
+		var parentHashesRaw, txsRaw, bluesRaw string
+		if err := rows.Scan(
+			&b.Hash, &b.Height, &parentHashesRaw, &b.Proposer, &b.Timestamp,
+			&b.Humans, &b.StateRoot, &b.Signature, &txsRaw,
+			&b.SelectedParent, &b.BlueScore, &bluesRaw,
+		); err != nil {
+			continue
+		}
+		_ = json.Unmarshal([]byte(parentHashesRaw), &b.ParentHashes)
+		_ = json.Unmarshal([]byte(txsRaw), &b.Transactions)
+		if bluesRaw != "" && bluesRaw != "[]" && bluesRaw != "null" {
+			_ = json.Unmarshal([]byte(bluesRaw), &b.Blues)
+		}
+		blocks = append(blocks, &b)
+	}
+	return selectBlocksSince(blocks, minHeight, afterHash, limit), nil
+}
+
+// LoadBlocksByHashesFromDB loads blocks by exact hash directly from
+// chain_blocks, bypassing dag.blocks. Used as a DB fallback for
+// GetBlocksByHashesForPeer once pruneOldDAGBlocks has evicted the requested
+// hashes from memory — silently omits any hash not found, matching
+// GetBlocksByHashesForPeer's own contract (the caller checks which hashes
+// are still missing afterward).
+func (cs *ChainState) LoadBlocksByHashesFromDB(hashes []string) ([]*Block, error) {
+	if cs.db == nil || len(hashes) == 0 {
+		return nil, nil
+	}
+	cs.ensureGHOSTDAGColumns()
+	rows, err := cs.db.Query(`SELECT hash, height, parent_hashes, proposer, timestamp, humans, state_root,
+	                 signature, transactions,
+	                 COALESCE(selected_parent,''), COALESCE(blue_score,0), COALESCE(blues,'[]')
+	          FROM chain_blocks
+	          WHERE hash = ANY($1) AND proposer != 'synthetic-checkpoint'`, pq.Array(hashes))
+	if err != nil {
+		return nil, fmt.Errorf("LoadBlocksByHashesFromDB query failed: %w", err)
+	}
+	defer rows.Close()
+	var blocks []*Block
+	for rows.Next() {
+		var b Block
+		var parentHashesRaw, txsRaw, bluesRaw string
+		if err := rows.Scan(
+			&b.Hash, &b.Height, &parentHashesRaw, &b.Proposer, &b.Timestamp,
+			&b.Humans, &b.StateRoot, &b.Signature, &txsRaw,
+			&b.SelectedParent, &b.BlueScore, &bluesRaw,
+		); err != nil {
+			continue
+		}
+		_ = json.Unmarshal([]byte(parentHashesRaw), &b.ParentHashes)
+		_ = json.Unmarshal([]byte(txsRaw), &b.Transactions)
+		if bluesRaw != "" && bluesRaw != "[]" && bluesRaw != "null" {
+			_ = json.Unmarshal([]byte(bluesRaw), &b.Blues)
+		}
+		blocks = append(blocks, &b)
+	}
+	return blocks, nil
 }

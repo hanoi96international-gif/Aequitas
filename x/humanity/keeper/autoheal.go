@@ -32,15 +32,27 @@ const (
 	// live Railint→Contabo upgrade produced 5), so 50 is comfortably clear of
 	// false positives while any genuine fork blows past it in a few minutes.
 	autoHealMismatchThreshold = 50
-	// TEMPORARY (2026-07-03, user-requested): dropped from 30 * time.Minute
-	// to 5 * time.Minute to speed up verification of the same-evening
-	// circuit-breaker fixes (commits ca43e28/cea66b0) without waiting out a
-	// full 30-minute cooldown between test cycles. REVERT TO 30 MINUTES once
-	// those fixes are confirmed stable — 5 minutes is fine for an actively-
-	// monitored debugging session but is more restart-loop-prone than
-	// intended for unattended long-term production operation if a resync
-	// ever repeatedly fails to converge.
-	autoHealCooldown      = 5 * time.Minute
+	// autoHealCooldown gates how often triggerAutoResync can flag a fresh
+	// resync — the shared backstop against two divergence signals firing
+	// close together turning into a restart loop.
+	//
+	// REVERTED (2026-07-03, merge-reliability audit — see the temporary
+	// 5-minute value's own history in commit c653867): the 5-minute value
+	// was a deliberate, explicitly-temporary drop for one evening's
+	// same-session verification of the circuit-breaker fixes. It was never
+	// the fix for the actual "Contabo never merges" symptom — the real root
+	// cause turned out to be that /api/blocks (and the hash-lookup sync
+	// endpoints) only ever served dag.blocks' in-memory, pruned window, with
+	// no DB fallback (see GetBlocksSince/GetBlockByHash/
+	// GetBlocksByHashesForPeer's fix comments) — so a resyncing node could
+	// never actually close the gap no matter how long it waited, and kept
+	// looking like it needed ANOTHER resync every cooldown cycle. A short
+	// cooldown only made that failure mode worse: it let a node get yanked
+	// into a fresh resync before a legitimately-slow (but eventually
+	// successful) catch-up ever had a chance to finish, which is exactly
+	// the restart-loop risk this comment warned about at the time. Back to
+	// 30 minutes now that the actual gap in the sync path is fixed.
+	autoHealCooldown      = 30 * time.Minute
 	autoHealCheckInterval = 60 * time.Second
 
 	// chainDivergenceCheckInterval paces the active primary-comparison check.

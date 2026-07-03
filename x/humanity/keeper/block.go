@@ -2828,14 +2828,109 @@ sort.Slice(result, func(i, j int) bool {
 return result
 }
 
+// selectBlocksSince filters an already canonically-sorted (height ASC,
+// blueScore DESC, hash ASC) slice down to what a min_height/after_hash sync
+// request wants, capped at limit: either "Height > minHeight" (no cursor), or
+// strictly after the (minHeight, afterHash) cursor position — which also
+// includes same-height siblings that come after afterHash in canonical order
+// (P1-02: a full page of same-height blocks must not silently skip the rest).
+// Shared between the in-memory path (GetBlocksSince) and the DB fallback
+// path (LoadBlocksSinceFromDB) so the two can never drift apart on
+// pagination semantics.
+func selectBlocksSince(sorted []*Block, minHeight int64, afterHash string, limit int) []*Block {
+	result := make([]*Block, 0, limit)
+	if afterHash == "" {
+		for _, b := range sorted {
+			if b.Height > minHeight {
+				result = append(result, b)
+				if len(result) >= limit {
+					break
+				}
+			}
+		}
+		return result
+	}
+	pastCursor := false
+	for _, b := range sorted {
+		if !pastCursor {
+			if b.Height > minHeight {
+				pastCursor = true
+				result = append(result, b)
+			} else if b.Height == minHeight && b.Hash == afterHash {
+				pastCursor = true
+			}
+		} else {
+			result = append(result, b)
+		}
+		if len(result) >= limit {
+			break
+		}
+	}
+	return result
+}
+
+// GetBlocksSince backs GET /api/blocks?min_height=&after_hash= — the bulk
+// paginated endpoint doSyncOnce uses for ordinary forward sync. Falls back to
+// the DB when the requested range has been evicted from the in-memory
+// dag.blocks window.
+//
+// FIX (P0, merge-reliability audit 2026-07-03 — root cause of "Primary and
+// Contabo do not merge at all"): pruneOldDAGBlocks evicts everything below
+// (finalizedHeight - pruneBuffer()) from dag.blocks every 60s, but this
+// endpoint used to read ONLY that in-memory map (via GetBlocks()) regardless
+// of min_height. A peer whose min_height fell below the current prune window
+// (a fresh RESYNC_FROM_SNAPSHOT, a long outage, initial bootstrap — anything
+// more than pruneBuffer() blocks behind) did NOT get an empty/short response
+// signalling "nothing here" — every block currently resident in dag.blocks
+// legitimately has Height > any sufficiently-low minHeight, so the peer got
+// served a full page of blocks from THIS node's CURRENT tip window instead,
+// whose parent chain the requesting node has no way to attach (its own
+// history stops far below that window). Confirmed live: Primary at height
+// ~131400 answered min_height=0&limit=5 with blocks #131400-131403, not
+// anything reachable from height 0. A node in this state can never catch up
+// no matter how long it waits or retries — pruneOldDAGBlocks keeps deleting
+// the connecting blocks out of memory every single cycle, racing (and
+// always winning) against the node's own catch-up — while chain_blocks (the
+// DB) has always had the correct answer sitting right there, just never
+// consulted by this path. When minHeight falls below this node's own prune
+// cutoff, go straight to the DB instead of memory.
+func (dag *BlockDAG) GetBlocksSince(minHeight int64, afterHash string, limit int) []*Block {
+	if dag.state != nil {
+		finalizedHeight, _ := dag.state.GetFinalizedCheckpoint()
+		cutoff := finalizedHeight - dag.pruneBuffer()
+		if cutoff > 0 && minHeight < cutoff {
+			dbBlocks, err := dag.state.LoadBlocksSinceFromDB(minHeight, afterHash, limit)
+			if err == nil {
+				return dbBlocks
+			}
+			fmt.Printf("[BLOCK] GetBlocksSince: DB fallback failed for min_height=%d: %v — serving in-memory window instead (likely incomplete for this range)\n", minHeight, err)
+		}
+	}
+	return selectBlocksSince(dag.GetBlocks(), minHeight, afterHash, limit)
+}
+
 // GetBlockByHash returns the block with the given hash, or nil if unknown.
 // Used by /api/block/{hash} so a syncing peer can fetch one specific
 // missing-ancestor block directly instead of relying solely on the
 // height-windowed /api/blocks pagination (see fetchMissingAncestors).
+//
+// FIX (P0, merge-reliability audit 2026-07-03): pruneOldDAGBlocks evicts
+// blocks below (finalizedHeight - pruneBuffer()) from dag.blocks — this
+// used to return nil for any such hash even though chain_blocks (the DB)
+// still has it, matching the exact gap GetBlockByHeight was already fixed
+// for (416dfa7) but this sibling lookup was missed. That left
+// fetchMissingAncestors' orphan resolution and eth_getBlockByHash unable to
+// ever resolve a hash older than the in-memory window, no matter how long a
+// catching-up node waited. Falls back to the DB, outside the lock, exactly
+// like GetBlockByHeight already does.
 func (dag *BlockDAG) GetBlockByHash(hash string) *Block {
 	dag.mu.RLock()
-	defer dag.mu.RUnlock()
-	return dag.blocks[hash]
+	b := dag.blocks[hash]
+	dag.mu.RUnlock()
+	if b != nil || dag.state == nil {
+		return b
+	}
+	return dag.state.LoadBlockFromDBByHash(hash)
 }
 
 // GetBlocksByHashesForPeer resolves many hashes under a SINGLE RLock and omits
@@ -2853,11 +2948,25 @@ func (dag *BlockDAG) GetBlockByHash(hash string) *Block {
 // most once, not 500 times.
 func (dag *BlockDAG) GetBlocksByHashesForPeer(hashes []string) []*Block {
 	dag.mu.RLock()
-	defer dag.mu.RUnlock()
 	out := make([]*Block, 0, len(hashes))
+	var missing []string
 	for _, h := range hashes {
 		if b := dag.blocks[h]; b != nil && b.Proposer != "synthetic-checkpoint" {
 			out = append(out, b)
+		} else if b == nil {
+			missing = append(missing, h)
+		}
+	}
+	dag.mu.RUnlock()
+	// FIX (P0, merge-reliability audit 2026-07-03): see GetBlockByHash's
+	// matching fix — a hash pruneOldDAGBlocks already evicted from dag.blocks
+	// used to be silently omitted here (indistinguishable from "peer genuinely
+	// doesn't have it"), which is exactly the lookup fetchMissingAncestors
+	// relies on to resolve orphaned ancestors during catch-up. Fall back to
+	// the DB for whatever wasn't found in memory, outside the lock.
+	if len(missing) > 0 && dag.state != nil {
+		if dbBlocks, err := dag.state.LoadBlocksByHashesFromDB(missing); err == nil {
+			out = append(out, dbBlocks...)
 		}
 	}
 	return out

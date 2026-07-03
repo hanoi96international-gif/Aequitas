@@ -533,7 +533,6 @@ func (a *APIServer) handleStatus(w http.ResponseWriter, r *http.Request) {
 func (a *APIServer) handleBlocks(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Access-Control-Allow-Origin", "*")
-	blocks := a.blockchain.GetBlocks()
 	limit := 50
 	fmt.Sscanf(r.URL.Query().Get("limit"), "%d", &limit)
 	if limit < 1 || limit > 500 {
@@ -572,48 +571,19 @@ func (a *APIServer) handleBlocks(w http.ResponseWriter, r *http.Request) {
 		// at the same height advances minHeight to H and the next request
 		// (?min_height=H) uses Height > H — permanently skipping any remaining
 		// siblings at height H that didn't fit in the first page.
+		//
+		// GetBlocksSince (not a plain in-memory scan): see its own comment —
+		// dag.blocks is pruned to a rolling window, so this now falls back to
+		// the DB whenever minHeight is below this node's current prune
+		// cutoff, instead of silently serving the wrong (current-tip) window
+		// to a peer catching up from far behind.
 		afterHash := r.URL.Query().Get("after_hash")
-		result := make([]*Block, 0, limit)
-		if afterHash == "" {
-			// No cursor — original behavior: blocks with Height > minHeight.
-			for _, b := range blocks {
-				if b.Height > minHeight {
-					result = append(result, b)
-					if len(result) >= limit {
-						break
-					}
-				}
-			}
-		} else {
-			// Cursor mode: return all blocks that come AFTER the block
-			// identified by (minHeight, afterHash) in canonical order
-			// (height ASC, blueScore DESC, hash ASC).
-			// Scan through the sorted list; start collecting once we pass
-			// the cursor position (the cursor block itself is excluded).
-			pastCursor := false
-			for _, b := range blocks {
-				if !pastCursor {
-					if b.Height > minHeight {
-						// Past the cursor height — include from here.
-						pastCursor = true
-						result = append(result, b)
-					} else if b.Height == minHeight && b.Hash == afterHash {
-						// Found the cursor block — include everything after it.
-						pastCursor = true
-					}
-					// blocks with Height < minHeight or Height == minHeight
-					// but Hash != afterHash (and not yet past cursor) are skipped.
-				} else {
-					result = append(result, b)
-				}
-				if len(result) >= limit {
-					break
-				}
-			}
-		}
+		result := a.blockchain.GetBlocksSince(minHeight, afterHash, limit)
 		json.NewEncoder(w).Encode(result)
 		return
 	}
+
+	blocks := a.blockchain.GetBlocks()
 
 	// Legacy ?limit=N&offset=M array-position paging — kept for the
 	// explorer UI's "browse history" feature, which doesn't need sync
