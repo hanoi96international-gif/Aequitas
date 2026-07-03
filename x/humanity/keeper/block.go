@@ -2034,7 +2034,25 @@ if block != nil {
 	// hash / ECDSA work, until its cooldown expires. This is the path-independent
 	// counterpart to the per-IP push shield: it catches the flood no matter which
 	// ingress delivered it. Log rate-limited to once/sec.
-	if dag.proposerBlockBlocked(block.Proposer) {
+	// FIX (P0, merge-reliability audit 2026-07-03 — permanent fix for the
+	// recurring Contabo/Primary resync deadlock): skip this gate for FromSync
+	// blocks (fetched via HTTP-sync from an operator-configured trusted seed
+	// — see isTrustedSyncSource/trustedSeeds). This gate runs before
+	// FromSync's OTHER exemptions (the two "EXCEPT while WE are still in
+	// initial catch-up" cases further below, added for the exact same
+	// reason) ever get a chance to apply, so a trusted seed's catch-up
+	// blocks were still being dropped here even while this node was
+	// actively, legitimately resyncing from it. Confirmed live: after a
+	// fresh RESYNC_FROM_SNAPSHOT, Contabo's sync-derived blocks
+	// (FromSync=true, fetched straight from Primary) kept getting dropped by
+	// Primary's own breaker against Contabo's address (tripped during the
+	// PRE-resync divergence) — a permanent deadlock between "can't clear the
+	// breaker without an attaching block" and "can't attach a block while
+	// the breaker blocks even trusted-seed sync data". A block reaching
+	// this function with FromSync=true was fetched specifically because a
+	// configured seed vouches for it; the breaker's "untrusted, possibly
+	// malicious flood" heuristic does not apply to it.
+	if !block.FromSync && dag.proposerBlockBlocked(block.Proposer) {
 		nowNano := time.Now().UnixNano()
 		last := dag.lastProposerBreakerLogAt.Load()
 		if nowNano-last > int64(time.Second) && dag.lastProposerBreakerLogAt.CompareAndSwap(last, nowNano) {
