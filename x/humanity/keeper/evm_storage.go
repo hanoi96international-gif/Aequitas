@@ -2835,6 +2835,54 @@ func (cs *ChainState) LoadBlocksFromDB(minHeight int64) (map[string]*Block, erro
 	return blocks, nil
 }
 
+// LoadBlockFromDBByHeight loads a single block header at the given height
+// directly from chain_blocks, bypassing dag.blocks entirely — same fallback
+// role as LoadBlockFromDBByHash (see its comment), for callers keyed by
+// height instead of hash (GetBlockByHeight). Multiple validators can produce
+// a sibling at the same height; this prefers the one with the most parent
+// hashes, matching GetBlockByHeight's own in-memory tie-break, and excludes
+// synthetic-checkpoint stubs the same way GetBlockByHeight does. Returns nil
+// if no real (non-stub) block exists at this height.
+func (cs *ChainState) LoadBlockFromDBByHeight(height int64) *Block {
+	if cs.db == nil {
+		return nil
+	}
+	cs.ensureGHOSTDAGColumns()
+	rows, err := cs.db.Query(`SELECT hash, height, parent_hashes, proposer, timestamp, humans, state_root,
+	                 signature, transactions,
+	                 COALESCE(selected_parent,''), COALESCE(blue_score,0), COALESCE(blues,'[]')
+	          FROM chain_blocks WHERE height = $1`, height)
+	if err != nil {
+		return nil
+	}
+	defer rows.Close()
+	var best *Block
+	for rows.Next() {
+		var b Block
+		var parentHashesRaw, txsRaw, bluesRaw string
+		if err := rows.Scan(
+			&b.Hash, &b.Height, &parentHashesRaw, &b.Proposer, &b.Timestamp,
+			&b.Humans, &b.StateRoot, &b.Signature, &txsRaw,
+			&b.SelectedParent, &b.BlueScore, &bluesRaw,
+		); err != nil {
+			continue
+		}
+		if b.Proposer == "synthetic-checkpoint" {
+			continue
+		}
+		_ = json.Unmarshal([]byte(parentHashesRaw), &b.ParentHashes)
+		_ = json.Unmarshal([]byte(txsRaw), &b.Transactions)
+		if bluesRaw != "" && bluesRaw != "[]" && bluesRaw != "null" {
+			_ = json.Unmarshal([]byte(bluesRaw), &b.Blues)
+		}
+		if best == nil || len(b.ParentHashes) > len(best.ParentHashes) {
+			bCopy := b
+			best = &bCopy
+		}
+	}
+	return best
+}
+
 // LoadBlockFromDBByHash loads a single block header by hash directly from
 // chain_blocks, bypassing dag.blocks entirely. Used as a fallback when a
 // block needed for a computation (e.g. the finality checkpoint's

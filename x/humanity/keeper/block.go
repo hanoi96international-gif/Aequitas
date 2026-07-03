@@ -2786,7 +2786,6 @@ func (dag *BlockDAG) GetBlocksByHashesForPeer(hashes []string) []*Block {
 // would have shown for it.
 func (dag *BlockDAG) GetBlockByHeight(height int64) *Block {
 	dag.mu.RLock()
-	defer dag.mu.RUnlock()
 	var best *Block
 	for _, b := range dag.blocks {
 		if b.Height != height {
@@ -2804,7 +2803,21 @@ func (dag *BlockDAG) GetBlockByHeight(height int64) *Block {
 			best = b
 		}
 	}
-	return best
+	dag.mu.RUnlock()
+	if best != nil || dag.state == nil {
+		return best
+	}
+	// FIX (P0, merge-reliability audit 2026-07-03): pruneOldDAGBlocks evicts
+	// blocks below (finalizedHeight - pruneBuffer()) from dag.blocks, so a
+	// height below that cutoff always missed here — including the height
+	// autoheal.go's isolated-fork self-check (startChainDivergenceCheck)
+	// asks for, whenever the finalized checkpoint has advanced well past a
+	// peer's reported height (e.g. right after a long-isolated node's
+	// checkpoint starts advancing again — see the finality.go fix — while
+	// comparing against a peer that's further behind). Fall back to the DB
+	// (chain_blocks retains everything pruneOldDAGBlocks removes from
+	// memory), outside the lock since this is a query, not a mutation.
+	return dag.state.LoadBlockFromDBByHeight(height)
 }
 
 func (dag *BlockDAG) TotalBlocks() int {
