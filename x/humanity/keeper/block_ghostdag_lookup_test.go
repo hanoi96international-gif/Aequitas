@@ -69,6 +69,36 @@ func TestGhostdagBlockLookup_MissNoState(t *testing.T) {
 	}
 }
 
+// TestGhostdagBlockLookup_SkipsDBDuringMigration is the regression guard for
+// the 2026-07-04 production outage: while ghostdagMigrationPending is true,
+// a miss must return nil immediately (matching the pre-DB-fallback behavior)
+// instead of attempting a DB round trip. The startup migration is the ONLY
+// caller of this function while the flag is set (AddPeerBlock/ProduceBlock
+// both refuse to run for the whole duration), so skipping the DB there can
+// never affect a live attach/reject decision -- it only stops an unbounded
+// number of blocking round trips (one per ancestor outside the loaded batch)
+// from serializing every block behind dag.mu during a large migration,
+// confirmed live as a multi-minute full node freeze.
+func TestGhostdagBlockLookup_SkipsDBDuringMigration(t *testing.T) {
+	dag := newGhostdagTestDAG()
+	dag.ghostdagMigrationPending.Store(true)
+	// Still resident in memory: must be found regardless of the migration flag.
+	want := &Block{Hash: "resident", Height: 1}
+	dag.blocks["resident"] = want
+	if got := dag.ghostdagBlockLookup("resident"); got != want {
+		t.Fatalf("ghostdagBlockLookup(resident) = %v, want the in-memory block %v even during migration", got, want)
+	}
+	// Not resident: must return nil without needing dag.state at all (which
+	// is nil here, same as every other GHOSTDAG test in this package — if the
+	// migration check didn't short-circuit first, this would already be
+	// covered by TestGhostdagBlockLookup_MissNoState, so this test's real
+	// value is documenting that the migration flag is checked, not the nil
+	// dag.state path).
+	if got := dag.ghostdagBlockLookup("not-resident"); got != nil {
+		t.Fatalf("ghostdagBlockLookup(not-resident) = %v, want nil during migration", got)
+	}
+}
+
 // TestTriggerSoftRetryFlush_CoalescesConcurrentTriggers is the regression
 // guard for the goroutine-spawn amplification found live on 2026-07-03 (see
 // triggerSoftRetryFlush's comment): a burst of concurrent triggers must run

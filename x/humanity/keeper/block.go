@@ -4501,6 +4501,30 @@ func (dag *BlockDAG) ghostdagBlockLookup(hash string) *Block {
 	if b, ok := dag.blocks[hash]; ok {
 		return b
 	}
+	// FIX (P0, 2026-07-04 — real production outage): skip the DB round trip
+	// during the startup GHOSTDAG migration (ghostdagMigrationPending==true).
+	// That migration recomputes scores for a BOUNDED, already-loaded batch of
+	// blocks this node already holds canonically (headers hash/signature-
+	// verified when first accepted) -- it is a local backfill of a derived
+	// field, not a live attach/reject decision, so it does not need the same
+	// cross-node determinism guarantee this DB fallback exists for elsewhere.
+	// Confirmed live: with the fallback active here, a migration over ~5,000
+	// blocks made a synchronous DB call (holding dag.mu, serializing
+	// ProduceBlock/AddPeerBlock/every API read behind it) for every ancestor
+	// outside the loaded batch — hundreds of round trips over Railway's DB
+	// proxy, each tens to hundreds of ms, froze the node solid (ProduceBlock
+	// measured 10+ seconds, HTTP requests timed out entirely) for many
+	// minutes with the migration barely progressing. AddPeerBlock and
+	// ProduceBlock both already refuse to do anything for the whole duration
+	// of a migration (see their own ghostdagMigrationPending gates), so
+	// ghostdagBlockLookup's only caller while this flag is true is the
+	// migration loop itself -- falling back to the pre-DB-fallback behavior
+	// (treat a not-yet-loaded ancestor as absent) here is exactly as safe as
+	// it always was for that loop, and turns an unbounded number of blocking
+	// DB round trips into zero.
+	if dag.ghostdagMigrationPending.Load() {
+		return nil
+	}
 	if dag.state == nil {
 		return nil
 	}
