@@ -100,6 +100,13 @@ BLOCK_TIME    = 1 * time.Second
 API_PORT      = 8080
 )
 
+// distributionHealthRetryInterval is how soon the daily-distribution
+// goroutine re-checks after skipping a round for a local health reason
+// (distributionSyncHealthIssue) rather than waiting for tomorrow's scheduled
+// 20:00 slot. See its use in the distribution goroutine for why the previous
+// behavior silently turned a transient hiccup into a full missed day.
+const distributionHealthRetryInterval = 15 * time.Minute
+
 type Genesis struct {
 ChainID     string      `json:"chain_id"`
 GenesisTime string      `json:"genesis_time"`
@@ -431,9 +438,23 @@ lastAt := chainState.GetLastUBIAt()
 var firstTarget time.Time
 // FIX 10: Apply the same 1-hour guard for fresh DBs (lastAt == 0) to prevent
 // the distribution from firing immediately on a brand-new node startup.
-if lastAt == 0 || time.Since(time.Unix(lastAt, 0)) < time.Hour {
+switch {
+case lastAt == 0 || time.Since(time.Unix(lastAt, 0)) < time.Hour:
 firstTarget = nextDaily20(time.Now().Add(time.Hour))
-} else {
+case time.Since(time.Unix(lastAt, 0)) >= 24*time.Hour:
+// FIX (durable fix, 2026-07-03 -- real fix for the 2026-07-03 20:00
+// no-payout incident): nextDaily20(now) always picks the NEXT 20:00,
+// which is TOMORROW's if "now" is already past today's -- silently
+// skipping a whole day whenever the process wasn't alive at the exact
+// scheduled instant (e.g. mid-redeploy). Confirmed as plausible live:
+// Primary was mid-redeploy across the 20:00-21:00 Berlin window that
+// evening. A round is already overdue once a full day has passed since
+// the last success, so catch up almost immediately instead of waiting
+// for the next calendar slot -- TryLockDistribution's own ~24h CAS
+// still prevents a double-run if another node's replayed TX beat us to
+// it in the meantime.
+firstTarget = time.Now().Add(time.Minute)
+default:
 firstTarget = nextDaily20(time.Now())
 }
 
@@ -461,6 +482,7 @@ case <-time.After(time.Until(firstTarget)):
 //      competing node, skips all distribution TXs if last_ubi_at is
 //      within 24h of the block's DistributionAt (same-round window).
 // Set DISTRIBUTION_ENABLED=false to opt a specific node out.
+retrySoon := false
 if os.Getenv("DISTRIBUTION_ENABLED") == "false" {
 	fmt.Println("[POOLS] Distribution disabled on this node (DISTRIBUTION_ENABLED=false)")
 } else if syncIssue := distributionSyncHealthIssue(bc); syncIssue != "" {
@@ -476,10 +498,21 @@ if os.Getenv("DISTRIBUTION_ENABLED") == "false" {
 	// possibly never even SEE -- whatever validator produced blocks in
 	// the gap this node doesn't actually have. Skip this round rather
 	// than confidently distribute wrong amounts; the next scheduled
-	// round re-checks. This does NOT consume TryLockDistribution's 24h
-	// window (the check runs before attempting the lock), so a node that
-	// heals mid-day is not stuck waiting for tomorrow.
-	fmt.Printf("[POOLS] ✗ Skipping distribution this round: %s — will re-check at the next scheduled time\n", syncIssue)
+	// round re-checks.
+	//
+	// FIX (durable fix, 2026-07-03): "the next scheduled round re-checks"
+	// used to be a false promise -- the unconditional
+	// nextDaily20(time.Now()) below always resolves to TOMORROW at this
+	// point in the cycle (now is right at today's slot), so a single
+	// transient health hiccup exactly at 20:00 cost a full day's delay
+	// with no same-day retry, contradicting this comment's own claim.
+	// retrySoon makes the promise true: re-check in
+	// distributionHealthRetryInterval instead of waiting for tomorrow.
+	// Does NOT consume TryLockDistribution's 24h window (the check runs
+	// before attempting the lock either way), so a node that heals
+	// mid-day distributes that same day instead of missing it entirely.
+	fmt.Printf("[POOLS] ✗ Skipping distribution this round: %s — will re-check in %s\n", syncIssue, distributionHealthRetryInterval)
+	retrySoon = true
 } else if chainState.TryLockDistribution() {
 	// FIX (audit3, P0 #3): the entire distribution round — UBI, validator
 	// pool, LP pool, escrow move/release, AND every resulting outbox TX —
@@ -507,7 +540,11 @@ if os.Getenv("DISTRIBUTION_ENABLED") == "false" {
 } else {
 	fmt.Printf("[POOLS] Distribution already ran within the last 24h on this or another node — skipping\n")
 }
+if retrySoon {
+firstTarget = time.Now().Add(distributionHealthRetryInterval)
+} else {
 firstTarget = nextDaily20(time.Now())
+}
 chainState.SetNextUBIAt(firstTarget.Unix())
 fmt.Printf("[POOLS] Next distribution at %s Berlin time\n", firstTarget.In(berlin).Format("02.01. 15:04:05"))
 }
