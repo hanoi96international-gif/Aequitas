@@ -239,6 +239,33 @@ replayedMu             sync.Mutex
 	proposerFailRun          map[string]int   // proposer -> consecutive non-attaching blocks
 	proposerBreakerUntil     map[string]int64 // proposer -> unix-nano its cooldown expires
 	lastProposerBreakerLogAt atomic.Int64     // rate-limits the breaker-drop log to once/sec
+	// replayMismatchMu guards lastReplayMismatchHash — see AddPeerBlock's
+	// tail (the recordProposerOutcome call after a successful replay) for
+	// why this exists.
+	//
+	// FIX (P0, 2026-07-03 night, merge-reliability follow-up): AddPeerBlock's
+	// success tail used to call recordProposerOutcome(block.Proposer, true)
+	// unconditionally, clearing that proposer's breaker run on EVERY
+	// successfully-attached block — including one whose replayTransactions
+	// call just logged a StateRoot mismatch moments earlier (a WARNING, not
+	// a hard rejection — see replayTransactions' own comment on why that
+	// warning must not block attachment). Confirmed live: a validator on a
+	// permanently isolated/diverged fork (0xAA08fE2c..., see project memory
+	// "isolated fork human node") had literally every one of its blocks
+	// mismatch, yet the breaker could never trip against it — each mismatch
+	// recorded a strike, then the very same block's own successful
+	// attachment immediately erased it again before the next block ever
+	// arrived. lastReplayMismatchHash lets the tail tell "this exact block
+	// just mismatched" apart from "this block matched cleanly (or never had
+	// a StateRoot to check)" so it can call recordProposerOutcome with the
+	// correct outcome instead of always clearing. Safe without a dedicated
+	// per-call-site lock beyond this mutex: replayMu already serializes
+	// every AddPeerBlock replay end-to-end (see AddPeerBlock's own P0-01
+	// comment), so only one goroutine ever reads or writes this at a time —
+	// the mutex here is defensive documentation of that invariant, not
+	// load-bearing on its own.
+	replayMismatchMu       sync.Mutex
+	lastReplayMismatchHash string
 	// resyncSignalMu guards resyncSignalFrom, this node's own record of peers
 	// that responded action:"resync_required" to a block THIS node pushed —
 	// i.e. peers telling THIS node it may be the one that's diverged. See
@@ -2692,7 +2719,21 @@ if waiting := dag.popOrphans(block.Hash); len(waiting) > 0 {
 go dag.retryAndFlushSoftRetry()
 
 dag.lastSuccessfulPeerSyncAt.Store(time.Now().Unix())
-dag.recordProposerOutcome(block.Proposer, true) // block attached — clear this proposer's breaker run
+// FIX (P0, 2026-07-03 night): don't blindly clear this proposer's breaker
+// run — if replayTransactions just logged a StateRoot mismatch for THIS
+// exact block, that already recorded a strike (see lastReplayMismatchHash's
+// struct comment); clearing it right back to zero here would make the
+// breaker unable to ever trip against a validator whose blocks always
+// mismatch. Only report a clean "true" when this block did NOT just mismatch.
+dag.replayMismatchMu.Lock()
+mismatched := dag.lastReplayMismatchHash == block.Hash
+if mismatched {
+	dag.lastReplayMismatchHash = ""
+}
+dag.replayMismatchMu.Unlock()
+if !mismatched {
+	dag.recordProposerOutcome(block.Proposer, true) // block attached cleanly — clear this proposer's breaker run
+}
 fmt.Printf("[DAG] ✓ Added peer block #%d | Tips: %d\n", block.Height, tipCount)
 return true
 }
@@ -3702,6 +3743,26 @@ func (dag *BlockDAG) replayTransactions(block *Block) bool {
 			if alert {
 				fmt.Printf("[ALERT] 5+ StateRoot mismatches from %s — nodes may have diverged; investigate or resync from primary snapshot\n", block.Proposer)
 			}
+			// FIX (P0, 2026-07-03 night, merge-reliability follow-up): record
+			// this as a proposer-breaker STRIKE, not a clean success. See
+			// lastReplayMismatchHash's own struct comment for the incident
+			// this closes: without it, AddPeerBlock's tail unconditionally
+			// called recordProposerOutcome(proposer, true) for every
+			// successfully-attached block — including one that JUST got a
+			// StateRoot-mismatch warning right here — permanently clearing
+			// any strike this call recorded before the breaker could ever
+			// accumulate toward its trip threshold. A validator whose EVERY
+			// block mismatches (a genuinely diverged/isolated fork, not the
+			// normal occasional sibling-drift this warning is designed to
+			// tolerate) now actually accumulates toward the same temporary,
+			// self-clearing 30s-cooldown breaker every other failure mode
+			// already uses — no permanent denylist, no manual intervention:
+			// if that validator ever resyncs and starts matching cleanly
+			// again, the very next probe block clears it automatically.
+			dag.recordProposerOutcome(block.Proposer, false)
+			dag.replayMismatchMu.Lock()
+			dag.lastReplayMismatchHash = block.Hash
+			dag.replayMismatchMu.Unlock()
 			// Fall through: commit the individually-verified transactions.
 		} else {
 			dag.stateRootMismatchesMu.Lock()
