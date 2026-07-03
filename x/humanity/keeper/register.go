@@ -86,9 +86,27 @@ func init() {
 	}()
 }
 
-// isPrivateOrLoopback returns true for RFC-1918 private ranges and loopback
-// addresses — used to decide whether to trust X-Forwarded-For (only safe when
-// the direct connection comes from a known reverse-proxy, not the open internet).
+// isPrivateOrLoopback returns true for RFC-1918 private ranges, RFC-6598
+// carrier-grade-NAT space, and loopback addresses — used to decide whether
+// to trust X-Forwarded-For (only safe when the direct connection comes from
+// a known reverse-proxy, not the open internet).
+//
+// FIX (P0, merge-reliability audit 2026-07-03): 100.64.0.0/10 was missing.
+// Confirmed live: Railway's internal edge/load-balancer proxies this node's
+// inbound traffic through a rotating pool of addresses in exactly this
+// range (100.64.0.2, .3, .5, .7, .9, .10, .12, .13, .15, .16, ... observed
+// live). Without it here, clientIP() never trusted X-Forwarded-For for any
+// request that arrived through Railway's proxy — which is every external
+// request this node ever receives — so every peer's HTTP block push (see
+// blockPushRecordOutcome) was attributed to whichever rotating internal
+// Railway IP happened to proxy that particular connection instead of the
+// peer's real address. A legitimate peer's pushes, split across many
+// different apparent "source IPs" that each individually looked like a
+// new, low-volume sender, still occasionally tripped the flood shield on
+// whichever internal IP happened to accumulate enough of them — dropping
+// real, valid block pushes and starving Primary/Contabo's catch-up sync of
+// data it needed, worsening the exact orphan-flood/cadence symptoms this
+// audit pass was trying to fix elsewhere.
 func isPrivateOrLoopback(ipStr string) bool {
 	parsed := net.ParseIP(ipStr)
 	if parsed == nil {
@@ -96,7 +114,7 @@ func isPrivateOrLoopback(ipStr string) bool {
 	}
 	for _, cidr := range []string{
 		"127.0.0.0/8", "10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16",
-		"::1/128", "fc00::/7",
+		"100.64.0.0/10", "::1/128", "fc00::/7",
 	} {
 		_, ipnet, err := net.ParseCIDR(cidr)
 		if err == nil && ipnet.Contains(parsed) {
