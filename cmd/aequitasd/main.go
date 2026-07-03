@@ -244,6 +244,17 @@ p2pNode.SetDAG(bc)
 					// with, recreating the deadlock the resync was meant to
 					// resolve.
 					bc.ClearProposerCircuitBreakers()
+					// FIX (durable fix, 2026-07-03): fetch, verify, and persist
+					// the real block at the snapshot's own height from the
+					// primary as a trusted checkpoint (see SeedTrustedCheckpoint's
+					// own comment) so RefreshBootHeightAfterSnapshotImport below
+					// can resume from there instead of walking the entire chain
+					// from genesis. PRIMARY_NODE_URL, not bootstrapURL
+					// (BOOTSTRAP_SNAPSHOT_URL points at /api/snapshot, not a base
+					// URL /api/block can be appended to). Best-effort: on any
+					// failure this just falls back to the existing genesis walk,
+					// never blocks or fails the resync itself.
+					bc.SeedTrustedCheckpoint(os.Getenv("PRIMARY_NODE_URL"))
 				}
 			} else {
 				fmt.Printf("[BOOTSTRAP] Fresh node — importing state from %s\n", bootstrapURL)

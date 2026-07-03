@@ -954,8 +954,34 @@ func (dag *BlockDAG) RefreshBootHeightAfterSnapshotImport(resyncHappened bool) {
 		dag.replayedMu.Unlock()
 		dag.bootHeight = 0
 		dag.startupTime = time.Now().Unix()
-	dag.createGenesisBlock() // repopulates dag.blocks/dag.tips with genesis only, sets dag.height = 0
-		fmt.Println("[RESYNC] ✓ Reset in-memory DAG to genesis-only — chain_blocks was just wiped, sequential resync from genesis starts now")
+
+		// FIX (durable fix, 2026-07-03): if SeedTrustedCheckpoint (snapshot.go)
+		// already fetched, verified, and persisted a real checkpoint block at
+		// max_block_height, seed dag.blocks/dag.tips from THAT block instead of
+		// only genesis — the sequential resync then starts from the checkpoint,
+		// not height 0. Falls back to genesis-only exactly as before if no
+		// checkpoint was seeded (max_block_height still "0"/absent) or the DB
+		// load fails for any reason.
+		var seededFromCheckpoint bool
+		if persisted := dag.state.getConfigValueDB("max_block_height"); persisted != "" {
+			var checkpointHeight int64
+			fmt.Sscanf(persisted, "%d", &checkpointHeight)
+			if checkpointHeight > 0 {
+				if cp := dag.state.LoadBlockFromDBByHeight(checkpointHeight); cp != nil {
+					dag.blocks[cp.Hash] = cp
+					dag.tips = map[string]bool{cp.Hash: true}
+					dag.height = cp.Height
+					dag.bootHeight = cp.Height
+					seededFromCheckpoint = true
+					fmt.Printf("[RESYNC] ✓ Seeded in-memory DAG from trusted checkpoint at height %d (%s...) — sequential resync starts here, not genesis\n",
+						cp.Height, cp.Hash[:min(16, len(cp.Hash))])
+				}
+			}
+		}
+		if !seededFromCheckpoint {
+			dag.createGenesisBlock() // repopulates dag.blocks/dag.tips with genesis only, sets dag.height = 0
+			fmt.Println("[RESYNC] ✓ Reset in-memory DAG to genesis-only — chain_blocks was just wiped, sequential resync from genesis starts now")
+		}
 	}
 
 	// bootHeight = max(max_block_height, snapshot_import_height): controls
@@ -977,12 +1003,17 @@ func (dag *BlockDAG) RefreshBootHeightAfterSnapshotImport(resyncHappened bool) {
 	}
 
 	// dag.height = max_block_height ONLY — this is the sync frontier
-	// doSyncOnce pages forward from. After a snapshot resync, max_block_height
-	// is reset to 0 (see ResyncFromSnapshotURL) so the node re-downloads all
-	// block headers sequentially from genesis. Raising dag.height here from
-	// snapshot_import_height would cause doSyncOnce to start near the snapshot
-	// height, where dag.blocks is empty (chain_blocks was cleared), making
-	// every incoming block orphan on a missing parent permanently.
+	// doSyncOnce pages forward from. After a plain snapshot resync (no
+	// checkpoint seeded — see SeedTrustedCheckpoint), max_block_height stays
+	// "0" so the node re-downloads all block headers sequentially from
+	// genesis: raising dag.height from snapshot_import_height in that case
+	// would make doSyncOnce start near the snapshot height while dag.blocks
+	// is still empty there, orphaning every incoming block permanently. When
+	// SeedTrustedCheckpoint DID succeed, max_block_height was written as the
+	// checkpoint's own real height, and the block resync just seeded above
+	// (this function's earlier section) already populated dag.blocks with
+	// that exact block — so raising dag.height to match here is safe in that
+	// case, not just tolerated. Same read, correct in both outcomes.
 	var maxH int64
 	if persisted := dag.state.getConfigValueDB("max_block_height"); persisted != "" {
 		fmt.Sscanf(persisted, "%d", &maxH)
@@ -1208,6 +1239,15 @@ fmt.Printf("✓ Genesis Block (DAG): %s\n", genesis.Hash[:16]+"...")
 }
 
 func (dag *BlockDAG) calculateHash(b *Block) string {
+	return calculateBlockHash(b)
+}
+
+// calculateBlockHash is calculateHash's body, extracted as a free function so
+// it can be called from contexts with no BlockDAG in scope (e.g.
+// fetchAndVerifyBlockFromPeer in snapshot.go, verifying a fetched checkpoint
+// block during resync) without needing dag state — the computation never
+// touched dag in the first place.
+func calculateBlockHash(b *Block) string {
 // Normalize nil to empty slice so JSON always produces "[]" not "null".
 // omitempty on the Transactions field strips the key during HTTP transport,
 // and the receiver deserialises to nil — without this normalisation the

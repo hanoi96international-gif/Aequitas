@@ -675,13 +675,24 @@ func (cs *ChainState) ResyncFromSnapshotURL(peerURL, expectedSignerHex string) e
 		if err := cs.setConfigValue("snapshot_import_height", fmt.Sprintf("%d", snap.Height)); err != nil {
 			return fail(fmt.Errorf("resync: could not set snapshot_import_height: %w", err))
 		}
-		// Set max_block_height to 0, NOT snap.Height: dag.height is seeded
-		// from max_block_height at startup, and doSyncOnce pages forward from
-		// dag.height - syncOverlap. If we stored snap.Height here, the first
-		// sync cycle would request blocks near snap.Height — but dag.blocks
-		// only contains genesis (chain_blocks was just cleared above), so
+		// Set max_block_height to 0, NOT snap.Height, as the DEFAULT here:
+		// dag.height is seeded from max_block_height at startup, and
+		// doSyncOnce pages forward from dag.height - syncOverlap. If we
+		// stored snap.Height unconditionally, the first sync cycle would
+		// request blocks near snap.Height — but dag.blocks only contains
+		// genesis at this point (chain_blocks was just cleared above), so
 		// every arriving block's parent hash would be missing and the entire
-		// chain would orphan permanently. With max_block_height = 0, the node
+		// chain would orphan permanently -- UNLESS a verified real block gets
+		// seeded at that height first. See SeedTrustedCheckpoint (called by
+		// main.go right after this function returns, before
+		// RefreshBootHeightAfterSnapshotImport reads max_block_height back
+		// out): on success it overwrites max_block_height with the real,
+		// independently-verified checkpoint height and seeds dag.blocks with
+		// the actual block, making a 0-height genesis walk unnecessary. This
+		// function always writes "0" first as the safe default that a
+		// checkpoint-seed failure (peer unreachable, verification failed,
+		// etc.) can never leave the node worse off than today's baseline.
+		// With max_block_height = 0, the node
 		// restarts at dag.height = 0 and syncs ALL block headers sequentially
 		// from genesis; replay is skipped for heights ≤ snapshot_import_height
 		// (see replayTransactions' skipHeight check), so account state stays
@@ -767,6 +778,138 @@ func (cs *ChainState) ResyncFromSnapshotURL(peerURL, expectedSignerHex string) e
 	fmt.Printf("[RESYNC] ✓ Replaced local state with %d accounts, %d nullifiers, %d bio-registrations from snapshot\n",
 		len(snap.Accounts), len(snap.Nullifiers), len(snap.BioRegistrations))
 	return nil
+}
+
+// fetchAndVerifyBlockFromPeer fetches the single block at height from
+// baseURL's /api/block endpoint and cryptographically verifies it exactly
+// like AddPeerBlock does for any other incoming block: recomputed hash must
+// match the claimed hash, and the ECDSA signature must recover to the
+// claimed proposer. This gives the same trust guarantee as accepting the
+// block over normal peer gossip — no new "blind trust" is introduced by
+// fetching it out-of-band via a plain GET instead.
+func fetchAndVerifyBlockFromPeer(baseURL string, height int64) (*Block, error) {
+	client := &http.Client{
+		Timeout: 30 * time.Second,
+		CheckRedirect: func(req *http.Request, via []*http.Request) error {
+			return http.ErrUseLastResponse
+		},
+		Transport: &http.Transport{DialContext: pinningDialer},
+	}
+	resp, err := client.Get(fmt.Sprintf("%s/api/block?height=%d", strings.TrimRight(baseURL, "/"), height))
+	if err != nil {
+		return nil, fmt.Errorf("request failed: %w", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != 200 {
+		return nil, fmt.Errorf("peer returned HTTP %d", resp.StatusCode)
+	}
+	body, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+	if err != nil {
+		return nil, fmt.Errorf("read failed: %w", err)
+	}
+	var block Block
+	if err := json.Unmarshal(body, &block); err != nil {
+		return nil, fmt.Errorf("parse failed: %w", err)
+	}
+	if err := verifyFetchedBlock(&block, height); err != nil {
+		return nil, err
+	}
+	return &block, nil
+}
+
+// verifyFetchedBlock is fetchAndVerifyBlockFromPeer's cryptographic-checks
+// half, split out as a pure function (no network I/O) so it's directly unit
+// testable without needing pinningDialer to allow a loopback test server —
+// see block_ghostdag_lookup_test.go's TestVerifyFetchedBlock* cases.
+func verifyFetchedBlock(block *Block, height int64) error {
+	if block.Height != height {
+		return fmt.Errorf("peer returned block at height %d, expected %d", block.Height, height)
+	}
+	if expected := calculateBlockHash(block); expected != block.Hash {
+		return fmt.Errorf("hash mismatch: claimed %s, computed %s", block.Hash, expected)
+	}
+	if block.Signature == "" {
+		return fmt.Errorf("block has no signature")
+	}
+	sigBytes, err := hex.DecodeString(block.Signature)
+	if err != nil || len(sigBytes) != 65 {
+		return fmt.Errorf("malformed signature")
+	}
+	hashBytes, err := hex.DecodeString(block.Hash)
+	if err != nil {
+		return fmt.Errorf("malformed hash: %w", err)
+	}
+	pubkeyBytes, err := crypto.Ecrecover(hashBytes, sigBytes)
+	if err != nil {
+		return fmt.Errorf("signature recovery failed: %w", err)
+	}
+	pubkey, err := crypto.UnmarshalPubkey(pubkeyBytes)
+	if err != nil {
+		return fmt.Errorf("invalid public key: %w", err)
+	}
+	recoveredAddr := strings.ToLower(crypto.PubkeyToAddress(*pubkey).Hex())
+	if recoveredAddr != strings.ToLower(block.Proposer) {
+		return fmt.Errorf("signature mismatch: signer %s, proposer %s", recoveredAddr, block.Proposer)
+	}
+	return nil
+}
+
+// SeedTrustedCheckpoint is the durable-resync speedup: instead of the
+// genesis-only reset RefreshBootHeightAfterSnapshotImport otherwise performs
+// after a RESYNC_FROM_SNAPSHOT, this fetches and independently verifies the
+// REAL block at the just-imported snapshot's height from primaryURL, and if
+// it checks out, persists it as the new trusted root -- so the resync only
+// needs to replay the handful of blocks produced since, not the entire
+// chain since genesis.
+//
+// FIX (durable fix, 2026-07-03): before this, EVERY auto-heal/manual resync
+// re-walked the full historical block-header chain from height 0, no matter
+// how far the chain had actually progressed (140,000+ blocks tonight) --
+// slow, and prone to exactly the historical-orphan-wall problem this whole
+// session kept re-encountering (permanently-lost early blocks needing
+// ALLOW_RUNTIME_ORPHAN_BRIDGE + a 15-minute abandon timer per hash). The
+// chain already maintains a hard finality checkpoint that every honest node
+// treats as a trust boundary no reorg may cross -- RESYNC just never used
+// it, unconditionally rebuilding from genesis regardless. This seeds that
+// same trust boundary directly: unlike a synthetic-checkpoint stub (a
+// height/hash-only placeholder with BlueScore forced to 0, carrying no
+// verified content), the checkpoint block seeded here is the REAL,
+// signature-verified block -- there is nothing "unverified" about it, so it
+// never counts toward UnverifiedSyntheticCheckpointCount and never gates
+// production the way a stub above bootHeight would.
+//
+// Called after a successful ResyncFromSnapshotURL, before
+// RefreshBootHeightAfterSnapshotImport reads max_block_height back out.
+// Returns false (with no partial side effects beyond logging) on any
+// failure -- the caller falls back to the existing, slower-but-always-safe
+// genesis walk automatically, since max_block_height stays at the "0" value
+// ResyncFromSnapshotURL already wrote.
+func (dag *BlockDAG) SeedTrustedCheckpoint(primaryURL string) bool {
+	if primaryURL == "" || dag.state == nil || dag.state.db == nil {
+		return false
+	}
+	heightStr := dag.state.getConfigValueDB("snapshot_import_height")
+	var height int64
+	if _, err := fmt.Sscanf(heightStr, "%d", &height); err != nil || height <= 0 {
+		return false
+	}
+	block, err := fetchAndVerifyBlockFromPeer(primaryURL, height)
+	if err != nil {
+		fmt.Printf("[RESYNC] ⚠ Could not seed a trusted checkpoint at height %d (%v) — falling back to a full genesis resync\n", height, err)
+		return false
+	}
+	if err := dag.state.SaveBlockToDB(block); err != nil {
+		fmt.Printf("[RESYNC] ⚠ Verified checkpoint block at height %d but could not persist it (%v) — falling back to a full genesis resync\n", height, err)
+		return false
+	}
+	if err := dag.state.setConfigValueDB("max_block_height", fmt.Sprintf("%d", block.Height)); err != nil {
+		fmt.Printf("[RESYNC] ⚠ Verified and saved checkpoint block at height %d but could not update max_block_height (%v) — falling back to a full genesis resync\n", height, err)
+		return false
+	}
+	dag.state.SetFinalizedCheckpoint(block.Hash, block.Height, block.BlueScore)
+	fmt.Printf("[RESYNC] ✓ Seeded trusted checkpoint at height %d (%s..., blue_score %d) from %s — resync will replay forward from here instead of genesis\n",
+		block.Height, block.Hash[:min(16, len(block.Hash))], block.BlueScore, primaryURL)
+	return true
 }
 
 // replaceInMemoryFromSnapshotLocked overwrites cs.accounts/cs.pool/cs.nullifiers
