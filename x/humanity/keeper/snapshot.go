@@ -702,10 +702,26 @@ func (cs *ChainState) ResyncFromSnapshotURL(peerURL, expectedSignerHex string) e
 		// exactly why the FIRST resync of a node works but a SECOND one (after
 		// finalization has advanced) hangs. Re-finalization happens naturally via
 		// maybeAdvanceFinalizedCheckpoint as the node re-syncs the canonical chain.
-		for _, fk := range []string{"finalized_height", "finalized_blue_score", "finalized_hash"} {
-			if err := cs.setConfigValue(fk, "0"); err != nil {
-				return fail(fmt.Errorf("resync: could not reset %s: %w", fk, err))
-			}
+		//
+		// FIX (P0, 2026-07-03 night): this used to write "0" via the plain
+		// setConfigValue calls below directly — which only ever touch chain_config
+		// in the DB, never GetFinalizedCheckpoint's in-memory cache
+		// (finalizedHeightCache/finalizedCacheLoaded, added by the same night's
+		// earlier cadence fix). NewBlockchain's own startup incoherence check
+		// (see its call to GetFinalizedCheckpoint) populates that cache from
+		// whatever was in the DB BEFORE this resync ever runs — and once
+		// finalizedCacheLoaded is true, GetFinalizedCheckpoint NEVER reads the DB
+		// again for the rest of this process's life, regardless of what any other
+		// code path writes there. Confirmed live: a full resync correctly wiped
+		// chain_blocks and dag.height back to 0, but isFinalityViolation kept
+		// rejecting every incoming block as "below finalized checkpoint 172871" —
+		// the exact stale pre-resync value, permanently deadlocking catch-up
+		// again, the identical failure mode this whole reset exists to prevent,
+		// just relocated from the DB layer to the cache layer that didn't exist
+		// when this code was first written. ResetFinalizedCheckpoint resets both
+		// atomically; use it instead of reimplementing half of it here.
+		if err := cs.ResetFinalizedCheckpoint(); err != nil {
+			return fail(fmt.Errorf("resync: could not reset finalized checkpoint: %w", err))
 		}
 	}
 
