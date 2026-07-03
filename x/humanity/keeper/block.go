@@ -212,7 +212,8 @@ replayedMu             sync.Mutex
 	// to within 10 blocks of the target, preventing the "produce on a stale
 	// fork while sync is still running" divergence that requires manual
 	// RESYNC_FROM_SNAPSHOT to fix. Cleared once caught up. If the seed is
-	// unreachable at startup or sync stalls for >60s, production proceeds
+	// unreachable at startup, or sync makes no further progress for
+	// syncStallTimeout (see ProduceBlock's gate), production proceeds
 	// independently so a downed seed never blocks all other nodes.
 	syncTargetHeight   atomic.Int64
 	activeGhostdagK    atomic.Int32 // live GHOSTDAG K for current epoch; 0 → use ghostdagKBase
@@ -1248,16 +1249,40 @@ if dag.bootHeight > 0 && dag.height+10 < dag.bootHeight {
 // loop is still pulling in the seed's newer blocks — the root cause of
 // "Contabo is ahead of Primary" divergence that required RESYNC_FROM_SNAPSHOT.
 //
-// Safety valve: if 90s have elapsed since the gate was set and we still
-// haven't reached the target, the seed is likely down — fall through and
-// produce independently so a downed primary never blocks all other nodes.
+// Safety valve: if sync has made no progress for syncStallTimeout, the
+// seed is likely down — fall through and produce independently so a
+// downed primary never blocks all other nodes.
+//
+// FIX (P0, merge-reliability audit 2026-07-03): this used to measure the
+// 90s window from dag.startupTime — a FIXED deadline from process start,
+// regardless of whether sync was actively making progress. syncTargetHeight
+// is captured ONCE at startup from the seed's height at that instant; a
+// large historical gap (e.g. a fresh RESYNC_FROM_SNAPSHOT walking forward
+// from genesis) can easily take longer than 90s to close even while
+// succeeding continuously, since the seed keeps producing new blocks the
+// whole time too. Confirmed live on Contabo: a genesis resync made 400+
+// blocks of genuine progress (batches of successful "Added peer block"/
+// "Merged" log lines) but the 90s deadline expired before it reached the
+// target, so production resumed independently mid-catch-up — recreating
+// the exact divergence (and the mutual circuit-breaker lockout that
+// depends on it) the resync had just fixed. Now measured from the last
+// successful peer-block acceptance (dag.lastSuccessfulPeerSyncAt, already
+// tracked for /api/health/combined) instead: keeps waiting as long as sync
+// keeps making progress, however long that takes, and only concludes the
+// seed is down after syncStallTimeout of genuine silence.
 if target := dag.syncTargetHeight.Load(); target > 0 {
 	if dag.height >= target-10 {
 		dag.syncTargetHeight.Store(0) // caught up — clear gate permanently
-	} else if time.Now().Unix()-dag.startupTime < 90 {
-		return nil // still within startup window — wait for sync
+	} else {
+		referenceTime := dag.lastSuccessfulPeerSyncAt.Load()
+		if referenceTime == 0 {
+			referenceTime = dag.startupTime // no progress yet — measure from boot
+		}
+		if time.Now().Unix()-referenceTime < syncStallTimeout {
+			return nil // sync is actively progressing (or just started) — keep waiting
+		}
+		// else: no sync progress for syncStallTimeout — primary may be down → produce independently
 	}
-	// else: 90s elapsed, primary may be down → produce independently
 }
 
 // Epoch-committee gate: only the selected committee members produce blocks.
@@ -1917,6 +1942,14 @@ const proposerBreakerFailThreshold = 40
 // at the lock-free top of AddPeerBlock before one probe block is let through to
 // re-test whether it has stopped diverging.
 const proposerBreakerCooldown = 30 * time.Second
+
+// syncStallTimeout (seconds) is how long ProduceBlock's initial-sync gate
+// tolerates no further sync progress (see dag.lastSuccessfulPeerSyncAt)
+// before concluding the seed is unreachable and producing independently.
+// Measured from the last successful peer-block acceptance, not from
+// process startup — see the gate's own comment for why that distinction
+// matters for a large historical catch-up (e.g. after RESYNC_FROM_SNAPSHOT).
+const syncStallTimeout = 90
 
 // proposerBlockBlocked reports whether a proposer's blocks should be dropped now
 // WITHOUT taking dag.mu, because its breaker is open (still inside the cooldown).
