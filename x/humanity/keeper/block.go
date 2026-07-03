@@ -2111,9 +2111,30 @@ func (dag *BlockDAG) farAheadFrontier() int64 {
 const proposerBreakerFailThreshold = 40
 
 // proposerBreakerCooldown is how long a tripped proposer's blocks are dropped
-// at the lock-free top of AddPeerBlock before one probe block is let through to
+// at the lock-free top of AddPeerBlock before probe blocks are let through to
 // re-test whether it has stopped diverging.
 const proposerBreakerCooldown = 30 * time.Second
+
+// proposerBreakerReopenProbes is how many blocks get a chance to attach after
+// cooldown before the breaker re-trips, if none of them succeed.
+//
+// FIX (durable fix, 2026-07-04 — real fix for a repeated live outage): a
+// single probe (the previous value) means ANY one unlucky failure — a
+// transient gossip-ordering blip, a probe block that itself references a
+// still-orphaned recent parent, nothing to do with the proposer actually
+// being diverged — re-arms the FULL 30s cooldown before another attempt.
+// Confirmed live: two nodes each running their own per-proposer breaker
+// against each other (and a third) got stuck in this exact trap for
+// several consecutive minutes, well past any reasonable transient-glitch
+// window, each cooldown's single probe happening to fail before the next
+// could even be tried. recordProposerOutcome's success branch already
+// clears the ENTIRE run on the very first attach, so this doesn't weaken
+// protection against a genuinely diverged proposer — that case still fails
+// every one of these probes and re-trips within a handful of blocks
+// (worst case ~5s of extra exposure at this cadence), not the original
+// unbounded 40-strike run. It just stops one bad-luck probe from costing
+// another full 30s for an otherwise-honest, already-reconnected peer.
+const proposerBreakerReopenProbes = 5
 
 // syncStallTimeout (seconds) is how long ProduceBlock's initial-sync gate
 // tolerates no further sync progress (see dag.lastSuccessfulPeerSyncAt)
@@ -2139,20 +2160,23 @@ func (dag *BlockDAG) proposerBlockBlocked(proposer string) bool {
 	}
 	if time.Now().UnixNano() >= until {
 		delete(dag.proposerBreakerUntil, proposer)
-		// Single real probe, not a full reopen (P0 fix, 2026-07-02 liveness
-		// audit): seed the run one short of the threshold so the very next
-		// outcome either fully clears it (recordProposerOutcome's success
-		// branch) or immediately re-trips (this one failure crosses the
-		// threshold) — not another full run of proposerBreakerFailThreshold
-		// fresh failures, each at full processing cost, before it closes
-		// again. Without this, the comment below was aspirational: deleting
-		// the run outright left the gate fully open for every call until 40
-		// fresh failures rebuilt from zero — against a peer that pushes at
-		// high volume, that reopening happened every single cooldown cycle.
+		// Bounded reopen, not a full reopen (P0 fix, 2026-07-02 liveness
+		// audit; widened from a single probe to proposerBreakerReopenProbes
+		// on 2026-07-04, see that constant's comment): seed the run
+		// proposerBreakerReopenProbes short of the threshold so up to that
+		// many outcomes get a real chance — the first attach fully clears it
+		// (recordProposerOutcome's success branch), while proposerBreakerReopenProbes
+		// consecutive failures re-trips — not another full run of
+		// proposerBreakerFailThreshold fresh failures, each at full
+		// processing cost, before it closes again. Without this, the comment
+		// below was aspirational: deleting the run outright left the gate
+		// fully open for every call until 40 fresh failures rebuilt from
+		// zero — against a peer that pushes at high volume, that reopening
+		// happened every single cooldown cycle.
 		if dag.proposerFailRun == nil {
 			dag.proposerFailRun = make(map[string]int)
 		}
-		dag.proposerFailRun[proposer] = proposerBreakerFailThreshold - 1
+		dag.proposerFailRun[proposer] = proposerBreakerFailThreshold - proposerBreakerReopenProbes
 		return false
 	}
 	return true

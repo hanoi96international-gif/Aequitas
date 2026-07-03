@@ -67,23 +67,30 @@ func TestProposerBreaker_CooldownExpiryAllowsProbe(t *testing.T) {
 	run := dag.proposerFailRun[p]
 	_, stillOpen := dag.proposerBreakerUntil[p]
 	dag.proposerBreakerMu.Unlock()
-	// Single real probe (P0 fix, 2026-07-02 liveness audit): cooldown expiry
-	// clears the until-map but seeds the run one short of the threshold, not
-	// at 0 — the next single outcome decides, not another full run of fresh
-	// failures.
-	if run != proposerBreakerFailThreshold-1 || stillOpen {
-		t.Fatalf("cooldown expiry must clear until and seed run at threshold-1 (run=%d want=%d open=%v)",
-			run, proposerBreakerFailThreshold-1, stillOpen)
+	// Bounded reopen (P0 fix, 2026-07-02 liveness audit; widened from a single
+	// probe to proposerBreakerReopenProbes on 2026-07-04 — see that constant's
+	// comment for the live outage that motivated it): cooldown expiry clears
+	// the until-map and seeds the run proposerBreakerReopenProbes short of the
+	// threshold, not at 0 — up to that many outcomes decide, not another full
+	// run of fresh failures.
+	want := proposerBreakerFailThreshold - proposerBreakerReopenProbes
+	if run != want || stillOpen {
+		t.Fatalf("cooldown expiry must clear until and seed run at threshold-reopenProbes (run=%d want=%d open=%v)",
+			run, want, stillOpen)
 	}
 }
 
-// TestProposerBreaker_ProbeFailureRetripsImmediately verifies the cooldown
-// reopen is a single real probe, not a full reopen: one failing block right
-// after cooldown expiry must re-trip the breaker immediately, not require
-// another full run of proposerBreakerFailThreshold fresh failures. Without
-// the P0 fix this test fails — the old code let up to threshold-1 more
-// full-cost blocks through every cooldown cycle before re-tripping.
-func TestProposerBreaker_ProbeFailureRetripsImmediately(t *testing.T) {
+// TestProposerBreaker_ReopenRetripsAfterProbesExhausted verifies the cooldown
+// reopen is a BOUNDED reopen, not unlimited: fewer than proposerBreakerReopenProbes
+// failing blocks right after cooldown expiry must NOT re-trip the breaker, but
+// exactly proposerBreakerReopenProbes failures must. This is the balance this
+// constant strikes: forgiving enough that one unlucky probe (a transient
+// gossip-ordering blip, unrelated to the proposer actually being diverged —
+// confirmed live as a repeated real outage with the old single-probe
+// behavior) doesn't cost another full 30s cooldown, while still bounded
+// enough that a genuinely diverged proposer re-trips within a handful of
+// blocks, not a full fresh run of proposerBreakerFailThreshold.
+func TestProposerBreaker_ReopenRetripsAfterProbesExhausted(t *testing.T) {
 	dag := newGhostdagTestDAG()
 	const p = "0xrelapsed"
 
@@ -95,11 +102,17 @@ func TestProposerBreaker_ProbeFailureRetripsImmediately(t *testing.T) {
 	dag.proposerBreakerMu.Unlock()
 
 	if dag.proposerBlockBlocked(p) {
-		t.Fatalf("precondition: probe should be let through after cooldown expiry")
+		t.Fatalf("precondition: a probe should be let through after cooldown expiry")
 	}
-	dag.recordProposerOutcome(p, false) // the single probe fails
+	for i := 0; i < proposerBreakerReopenProbes-1; i++ {
+		dag.recordProposerOutcome(p, false)
+		if dag.proposerBlockBlocked(p) {
+			t.Fatalf("re-tripped after only %d of %d allotted reopen probes failed — reopen is too narrow again", i+1, proposerBreakerReopenProbes)
+		}
+	}
+	dag.recordProposerOutcome(p, false) // the proposerBreakerReopenProbes-th failure
 	if !dag.proposerBlockBlocked(p) {
-		t.Fatalf("a single failing probe must re-trip the breaker immediately, not require %d more failures", proposerBreakerFailThreshold-1)
+		t.Fatalf("breaker did not re-trip after all %d reopen probes failed", proposerBreakerReopenProbes)
 	}
 }
 
