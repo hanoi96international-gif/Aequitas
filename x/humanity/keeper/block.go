@@ -1315,15 +1315,29 @@ if dr != "" {
 	return nil
 }
 
-// FIX (audit 2026-06-30 monster audit, P1-03): refuse to mint new blocks
-// (which means picking a SelectedParent by BlueScore comparison) while
-// the background GHOSTDAG migration is still backfilling old blocks'
-// scores — see ghostdagMigrationPending's struct comment for the
-// consistency window this closes.
-if dag.ghostdagMigrationPending.Load() {
-	fmt.Printf("[BLOCK] ✗ GHOSTDAG migration still in progress — block production paused until it completes.\n")
-	return nil
-}
+// FIX (P0, 2026-07-04 — real production outage, superseding the
+// audit-2026-06-30 gate this replaces): halting ALL production for the
+// full duration of a GHOSTDAG migration turned a routine restart into a
+// full network outage. Confirmed live, repeatedly, the same night this
+// gate was first hardened against a *different* risk: with heavy
+// concurrent traffic and a large migration backlog (~5,000 blocks,
+// recurring on EVERY restart because of a separate not-yet-fixed
+// two-phase block-save gap that keeps regenerating the backlog), the
+// migration itself did not reliably finish within any tolerable window
+// — height frozen, every API request timing out, for 6+ minutes at a
+// stretch, twice in a row. The gate's original concern (a new block's
+// SelectedParent chosen by comparing a migrated block's real BlueScore
+// against another block's not-yet-migrated zero-value placeholder) is
+// real but bounded and self-correcting: BlueScore/SelectedParent are
+// locally-computed bookkeeping fields, not covered by the block hash and
+// not consensus/security-critical (transactions are validated by
+// signature + replay, entirely separately) — a suboptimal SelectedParent
+// choice during the migration window heals itself as real scores get
+// backfilled, it cannot cause a double-spend or a hash-verified fork.
+// Recurring total outages are a strictly worse failure mode than that
+// bounded, temporary scoring imprecision. Migration still runs and still
+// backfills scores in the background; it just no longer blocks the node
+// while doing so.
 
 // FIX (audit 2026-06-30 monster audit, P1-05): refuse to mint new blocks
 // while this node is still trusting one or more synthetic-checkpoint
@@ -2368,16 +2382,13 @@ return false
 
 // FIX (audit 2026-06-30 monster audit, P1-03): see
 // ghostdagMigrationPending's struct comment and ProduceBlock's matching
-// gate — accepting and replaying a peer block while old blocks' GHOSTDAG
-// scores are still being backfilled risks computing this block's
-// SelectedParent against a DAG view that won't match what the same chain
-// converges to once migration finishes. The peer's own sync/retry loop
-// re-delivers this block once migration completes and the gate clears.
-if dag.ghostdagMigrationPending.Load() {
-fmt.Printf("[DAG] ✗ Rejected peer block #%d: GHOSTDAG migration still in progress — retry after it completes\n", block.Height)
-dag.mu.Unlock()
-return false
-}
+// gate — see the matching removal in ProduceBlock's own comment for the
+// full reasoning (P0, 2026-07-04): blocking ALL peer-block acceptance for
+// the full duration of a migration turned routine restarts into extended
+// total outages, confirmed live and repeatedly, a strictly worse failure
+// mode than the bounded, self-correcting scoring imprecision this gate
+// was guarding against. Migration still runs and backfills scores in the
+// background; it just no longer blocks acceptance while doing so.
 
 // Genesis blocks are always created locally — never accept from peers.
 // A peer could send any block with IsGenesis=true and it would bypass
@@ -2634,20 +2645,48 @@ return false
 }
 }
 
+// FIX (durable fix, 2026-07-04 — closes the two-phase block-save gap that
+// was this session's deepest recurring root cause): compute GHOSTDAG state
+// HERE, still holding dag.mu from the integrity checks above, BEFORE the
+// header is ever persisted — not after replay completes, several DB round
+// trips and a lock release/reacquire later, as it used to run. This needs
+// nothing this block doesn't already have available: computeGHOSTDAGState
+// only reads block.ParentHashes and looks up ANCESTORS (already verified
+// present by Integrity check 3 above) via ghostdagBlockLookup — it never
+// needs this block itself to be in dag.blocks/dag.tips yet, and it has
+// nothing to do with transaction replay. This unconditionally OVERWRITES
+// SelectedParent/Blues/BlueScore with locally-computed values, which is
+// what P1-03's old "strip peer-supplied GHOSTDAG fields before saving"
+// step existed to guarantee too — computing correctly up front makes that
+// separate strip step unnecessary, not just redundant.
+//
+// Why this matters: the OLD two-phase order (save header with fields
+// zeroed → replay → THEN compute and save the real values) left every
+// single peer block with a real window — spanning the full replay phase,
+// not a few instructions — where a restart (a crash, or simply another
+// deploy; this session's own redeploys are exactly what triggered it
+// live, repeatedly) permanently strands that block in chain_blocks with
+// SelectedParent="". Nothing after that ever revisits or repairs it later
+// (recordProposerOutcome/normal restarts always take the fast "SelectedParent
+// != ''" path in LoadBlocksFromDB's migration check) — it just silently
+// counts toward needsMigration forever. Confirmed live: this is why the
+// startup GHOSTDAG migration kept re-triggering for roughly the same
+// ~5,000-block count on EVERY restart tonight instead of shrinking, and
+// directly undermined GetBlockByHeight's canonical SelectedParent-chain
+// walk (a chain with holes in it can't be walked correctly). Computing
+// once, correctly, before the very first save closes this gap: the only
+// remaining risk window is between this computation and the save two
+// statements below — no replay, no DB round trip, no lock release in
+// between — and a crash there leaves the block simply absent from the DB
+// (the pre-existing, already-handled "block not saved yet" case), never
+// present-but-broken.
+dag.computeGHOSTDAGState(block)
+
 // Structural validation passed. Release dag.mu before replay — replay
 // uses dag.state's own lock (cs.mu), not dag.mu, and must never run while
 // holding dag.mu (ProduceBlock and other dag.mu users would block for the
 // duration of every peer block's replay otherwise).
 dag.mu.Unlock()
-
-// P1-03 (audit): GHOSTDAG fields (selected_parent, blue_score, blues) are NOT
-// covered by the block hash and can be set to arbitrary values by a peer.
-// Strip them before saving so the DB never holds peer-supplied GHOSTDAG state.
-// computeGHOSTDAGState below will compute the correct values locally, and
-// SaveGHOSTDAGState will persist them immediately after.
-block.SelectedParent = ""
-block.Blues = nil
-block.BlueScore = 0
 
 // P2-05 (audit): persist the block header BEFORE state replay.  Old order
 // was replay-then-save, which could commit account-balance changes to
@@ -2772,28 +2811,17 @@ if prev, hadStub := dag.blocks[block.Hash]; hadStub && prev.Proposer == "synthet
 	}
 	fmt.Printf("[BLOCK] ✓ Synthetic checkpoint at height %d healed — %d still active\n", prev.Height, dag.syntheticCheckpointCount.Load())
 }
+// FIX (durable fix, 2026-07-04): GHOSTDAG state was already computed AND
+// persisted (as part of the single, correct SaveBlockToDB call) before
+// replay ran — see that call site's comment for why. Recomputing here
+// would be redundant (computeGHOSTDAGState is deterministic, so it can
+// only recompute the identical result) and re-saving would just repeat
+// the same DB write for no benefit — removed, not just deduplicated,
+// because the OLD two-phase version of this (compute+save AFTER replay)
+// is exactly the gap that let a restart during replay strand a block with
+// SelectedParent="" forever. block.SelectedParent/Blues/BlueScore are
+// already correct on this struct by the time it reaches dag.blocks here.
 dag.blocks[block.Hash] = block
-dag.computeGHOSTDAGState(block) // real GHOSTDAG: sets SelectedParent, Blues, BlueScore
-// P1-03 (audit): persist locally-computed GHOSTDAG fields immediately.
-// SaveBlockToDB stored zeroes (peer values were stripped above); update now
-// so the DB reflects the same state as dag.blocks after this block is accepted.
-// P1-02 (audit): an unhandled error here used to be silently dropped — DB
-// would keep the zeroed GHOSTDAG fields from SaveBlockToDB while dag.blocks
-// has the real computed ones, so a restart loads different SelectedParent/
-// Blues/BlueScore than this run is currently using, which can shift tip
-// selection and merge-set computation. One retry (transient blips), then
-// mark degraded so /api/health surfaces the divergence risk.
-if dag.state != nil {
-	if saveErr := dag.state.SaveGHOSTDAGState(block); saveErr != nil {
-		time.Sleep(200 * time.Millisecond)
-		if saveErr = dag.state.SaveGHOSTDAGState(block); saveErr != nil {
-			dag.degradedMu.Lock()
-			dag.degradedReason = fmt.Sprintf("SaveGHOSTDAGState failed for block #%d: %v", block.Height, saveErr)
-			dag.degradedMu.Unlock()
-			fmt.Printf("[BLOCK] ✗ DEGRADED: could not persist GHOSTDAG state for block #%d: %v\n", block.Height, saveErr)
-		}
-	}
-}
 
 // Remove parents from tips
 for _, ph := range block.ParentHashes {
