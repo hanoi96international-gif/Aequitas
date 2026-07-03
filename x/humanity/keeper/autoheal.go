@@ -62,6 +62,12 @@ const (
 	// chainDivergenceSafetyMargin keeps the compared height well clear of the
 	// live tip, where legitimate reorg/merge activity is still happening.
 	chainDivergenceSafetyMargin = 50
+
+	// chainDivergenceMaxTipsForCheck gates the check on tip-count fragmentation
+	// as a proxy for "not in a settled state right now" — see the
+	// isCatchingUpLocked-OR-high-fragmentation guard in
+	// startChainDivergenceCheck below for why this exists.
+	chainDivergenceMaxTipsForCheck = 200
 )
 
 // AutoResyncRequested reports whether a previous run's auto-heal monitor
@@ -154,6 +160,30 @@ func (dag *BlockDAG) startChainDivergenceCheck(primaryURL string) {
 		ticker := time.NewTicker(chainDivergenceCheckInterval)
 		defer ticker.Stop()
 		for range ticker.C {
+			// FIX (durable fix, 2026-07-03 — real fix for the false-positive
+			// resync loop documented in the catch-up saga): this check compares
+			// a "safely finalized" local height against the primary's, on the
+			// assumption both sides have settled. That assumption breaks down
+			// during a mass-reconsolidation event (heavy catch-up or a tip
+			// count blown up into the thousands from historically-resurrected
+			// orphans) — confirmed live: a node mid-catch-up with dag_tips_count
+			// in the 2000-4500 range had ProduceBlock taking 7+ seconds per
+			// block, and its own finalized-checkpoint walk transiently picked a
+			// different block than the primary's canonical one without a real
+			// fork existing, tripping this check and forcing a full resync —
+			// which promptly re-triggered the same fragmentation on the next
+			// catch-up, a genuine restart-loop risk. Skip the round entirely
+			// while either signal indicates "not settled right now"; the next
+			// tick re-checks, so a transient burst just delays detection by one
+			// interval rather than producing a false trigger.
+			dag.mu.RLock()
+			unsettled := dag.isCatchingUpLocked() || len(dag.tips) > chainDivergenceMaxTipsForCheck
+			tipsNow := len(dag.tips)
+			dag.mu.RUnlock()
+			if unsettled {
+				fmt.Printf("[AUTO-HEAL] Chain-divergence self-check skipped this round: node is still catching up or has %d tips (fragmentation) — not a settled state to compare against the primary.\n", tipsNow)
+				continue
+			}
 			remoteHeight, ok := fetchPrimaryHeight(primaryURL)
 			if !ok {
 				// Primary unreachable this cycle — not evidence of divergence.
