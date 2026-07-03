@@ -1355,14 +1355,49 @@ dag.txMu.Unlock()
 // must now be included in a block so secondary nodes receive them.
 // Without this, a transfer applied just before a restart would never
 // reach secondary nodes and balances would diverge permanently.
+//
+// CADENCE FIX (P0, follow-up to the merge-reliability audit 2026-07-03):
+// this and StateRoot() below are each their own synchronous Postgres round
+// trip (~400-590ms, confirmed live on the primary's remote DB proxy) and
+// neither depends on the other's result — StateRoot hashes cs.accounts'
+// CURRENT state, which already reflects every TX's effect regardless of
+// which block ends up bundling it (see AddPeerBlock's "post-state, not
+// pre-state" comment), while this call only affects which TXs land in
+// THIS block's Transactions list. Running them concurrently instead of
+// back-to-back turns 2 sequential round trips into the wall-clock cost of
+// one, directly shortening how long ProduceBlock holds dag.mu.
+//
+// This matters beyond raw speed: main.go's block-production ticker aligns
+// every node to the same wall-clock BLOCK_TIME boundary specifically so
+// concurrent production merges naturally (see its own comment — "both
+// validators produce within <50ms of each other on every tick"). A
+// secondary with a fast LOCAL Postgres (e.g. Contabo, same Docker network,
+// near-zero round-trip) sustains close to the true 1s cadence, while a
+// primary whose DB calls each cost hundreds of ms falls further and
+// further behind tick-for-tick — not a one-time "overtake" but a
+// permanently widening height gap between two nodes that are still
+// technically merging each other's blocks correctly. Narrowing the
+// primary's own per-block DB cost is what keeps both sides' cadence close
+// enough for that wall-clock alignment to do its job.
+var dbTxs []Transaction
 var pendingTxIDs []int64
-if dag.state != nil {
-	dbTxs, ids := dag.state.LoadPendingTxs()
-	if len(dbTxs) > 0 {
-		fmt.Printf("[DAG] Including %d restart-surviving TX(s) from DB in block\n", len(dbTxs))
-		txs = append(txs, dbTxs...)
-		pendingTxIDs = ids
+var stateRoot string
+var cadenceWG sync.WaitGroup
+cadenceWG.Add(2)
+go func() {
+	defer cadenceWG.Done()
+	if dag.state != nil {
+		dbTxs, pendingTxIDs = dag.state.LoadPendingTxs()
 	}
+}()
+go func() {
+	defer cadenceWG.Done()
+	stateRoot = dag.state.StateRoot()
+}()
+cadenceWG.Wait()
+if len(dbTxs) > 0 {
+	fmt.Printf("[DAG] Including %d restart-surviving TX(s) from DB in block\n", len(dbTxs))
+	txs = append(txs, dbTxs...)
 }
 
 proposer := dag.nodeID
@@ -1380,7 +1415,7 @@ ParentHashes: parentHashes,
 Proposer:     proposer,
 Humans:       dag.state.TotalHumans(),
 Transactions: txs,
-StateRoot:    dag.state.StateRoot(),
+StateRoot:    stateRoot,
 }
 block.Hash = dag.calculateHash(block)
 if dag.signingKey != nil {
