@@ -230,6 +230,13 @@ p2pNode.SetDAG(bc)
 					// again on the next restart (the cooldown stamp set when the
 					// flag was raised still guards against immediate re-triggering).
 					chainState.ClearAutoResyncRequest()
+					// FIX (P0, merge-reliability audit 2026-07-03): see
+					// ClearProposerCircuitBreakers' own comment — stale
+					// pre-resync breaker state otherwise keeps rejecting the
+					// exact peer(s) this resync just re-established trust
+					// with, recreating the deadlock the resync was meant to
+					// resolve.
+					bc.ClearProposerCircuitBreakers()
 				}
 			} else {
 				fmt.Printf("[BOOTSTRAP] Fresh node — importing state from %s\n", bootstrapURL)

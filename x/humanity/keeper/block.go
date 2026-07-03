@@ -2017,6 +2017,40 @@ func (dag *BlockDAG) recordProposerOutcome(proposer string, attached bool) {
 	}
 }
 
+// ClearProposerCircuitBreakers resets all per-proposer circuit-breaker state.
+// Called after a successful ResyncFromSnapshotURL (see main.go's bootstrap/
+// resync sequence).
+//
+// FIX (P0, merge-reliability audit 2026-07-03 — permanent fix, second half):
+// the FromSync exemption added to AddPeerBlock's breaker gate only covers
+// blocks this node actively pulls via its own catch-up sync — it does
+// nothing for blocks arriving via HTTP push or P2P gossip, which is how
+// most of a peer's LIVE (non-catch-up) blocks actually arrive. Confirmed
+// live: even after the FromSync fix, a resynced Contabo kept dropping
+// Primary's freshly-produced blocks ("Circuit breaker open for 0xAA08...")
+// because those arrive via push/gossip, not via Contabo's own sync pull —
+// the breaker state left over from BEFORE the resync (when the two chains
+// genuinely didn't share history) persisted after it, even though a
+// successful resync cryptographically re-establishes exactly the shared
+// trust the breaker's trip was originally warning about the lack of. Every
+// proposer's fail-run/cooldown is stale the moment local history has just
+// been authoritatively replaced wholesale; keeping it around only recreates
+// the same deadlock (breaker blocks attachment -> attachment never happens
+// -> breaker never clears) that made the resync necessary in the first
+// place. A resync is infrequent and already a heavyweight operation, so
+// resetting every proposer's state (not just the resync signer's) is cheap
+// and correct: none of the old counts mean anything against the new history.
+func (dag *BlockDAG) ClearProposerCircuitBreakers() {
+	dag.proposerBreakerMu.Lock()
+	defer dag.proposerBreakerMu.Unlock()
+	n := len(dag.proposerBreakerUntil)
+	dag.proposerFailRun = nil
+	dag.proposerBreakerUntil = nil
+	if n > 0 {
+		fmt.Printf("[AUTO-HEAL] Cleared circuit-breaker state for %d proposer(s) after resync — stale counts from before the resync no longer apply to the new history.\n", n)
+	}
+}
+
 func (dag *BlockDAG) AddPeerBlock(block *Block) bool {
 // Lock-free fork-flood shield (P0, 2026-07-02): reject a block whose height is
 // far above ours BEFORE taking the write lock, so a diverged/runaway fork
