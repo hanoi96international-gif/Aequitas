@@ -517,34 +517,20 @@ val := freshDB.GetState(addr, slot)
 e.chainState.SaveStorageSlot(addrStr, slot.Hex(), val.Hex())
 count++
 }
-// Persist usedNullifiers (slot 8): bytes32→address mapping. Previously only
-// usedCommitments was persisted; nullifiers were lost on StateDB reload,
-// allowing the same biometric to re-register after a node restart.
-// P2-FIX: dead code removed — nullifiers are synced via the DB scan below
-// Alternative: persist ALL non-zero bytes32-keyed entries from slot 8 by
-// scanning the nullifiers table and writing them all.
-if e.chainState.db != nil {
-rows, err := e.chainState.db.Query(`SELECT nullifier, wallet_address FROM nullifiers`)
-if err == nil {
-for rows.Next() {
-var nullHex, wallet string
-// P2-FIX: check scan error to avoid processing a partially-read row.
-if scanErr := rows.Scan(&nullHex, &wallet); scanErr != nil {
-fmt.Printf("[EVM] Warning: nullifier scan error: %v\n", scanErr)
-continue
-}
-nullKey := common.HexToHash(strings.TrimPrefix(nullHex, "0x"))
-nullSlot := mappingSlotBytes32(nullKey, 8)
-walletHash := common.BigToHash(common.HexToAddress(wallet).Big())
-e.chainState.SaveStorageSlot(addrStr, nullSlot.Hex(), walletHash.Hex())
-count++
-}
-if rowsErr := rows.Err(); rowsErr != nil {
-fmt.Printf("[EVM] Warning: nullifier rows iteration error: %v\n", rowsErr)
-}
-rows.Close()
-}
-}
+// SECURITY/PERF (P0, launch audit 2026-07-03): this used to also run a
+// `SELECT nullifier, wallet_address FROM nullifiers` scan here and
+// re-persist a storage slot for EVERY nullifier ever recorded, on every
+// single call to this function -- i.e. on every registration and every
+// intercepted V7 transfer, regardless of whether that call touched a
+// nullifier at all. dumpAndPersistStorage has exactly one caller,
+// dumpAndPersistStorageWithNullifier (above), which already persists the
+// ONE nullifier slot this specific call actually touched (via
+// calldataNullifier) right after calling this function -- so the
+// full-table scan was pure redundant O(N) DB load on every action, growing
+// linearly (and, past a few tens of thousands of registered humans,
+// connection-pool-exhausting) with the total registered population.
+// Removed; the wrapper's targeted persist already covers the only case
+// that matters.
 if count > 0 {
 fmt.Printf("[EVM] Persisted %d storage slots for %s\n", count, addrStr)
 }

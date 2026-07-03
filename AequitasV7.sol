@@ -92,48 +92,29 @@ contract AequitasV7 {
         bioVerifier = IBioVerifier(_bioVerifier);
     }
 
-    function register(uint[2] calldata pA, uint[2][2] calldata pB, uint[2] calldata pC, uint[2] calldata pubSignals, bytes32 nullifier) external {
-        require(!isHuman[msg.sender], "Already registered");
-        uint256 commitment = pubSignals[0];
-        require(!usedCommitments[commitment], "Commitment used");
-        // FIX (v2-only nullifier): pubSignals[1] MUST be the ZK-circuit-derived
-        // nullifier. Previously, when pubSignals[1] == 0 (a v1-circuit proof,
-        // which never outputs a nullifier as a public signal), this function
-        // fell back to trusting the caller-supplied `nullifier` parameter with
-        // ZERO cryptographic binding to the proof — anyone could submit an
-        // arbitrary nullifier value, defeating "one biometric = one
-        // registration" entirely for that path. Requiring pubSignals[1] != 0
-        // means the nullifier is always attested by the proof itself.
-        require(pubSignals[1] != 0, "v1 circuit not accepted: ZK-bound nullifier required");
-        bytes32 effectiveNullifier = bytes32(pubSignals[1]);
-        require(nullifier == bytes32(0) || nullifier == effectiveNullifier, "Nullifier/circuit mismatch");
-        require(usedNullifiers[effectiveNullifier] == address(0), "Nullifier used");
-
-        // CEI: write all state before the external call
-        usedCommitments[commitment] = true;
-        commitmentOf[msg.sender] = commitment;
-        usedNullifiers[effectiveNullifier] = msg.sender;
-        isHuman[msg.sender] = true;
-        totalHumans++;
-        balanceOf[msg.sender] += INITIAL_GRANT;
-        totalSupply += INITIAL_GRANT;
-        ubiClaimed[msg.sender] = ubiPerHumanAccumulated;
-        lastActivity[msg.sender] = block.timestamp;
-        lastDemurrage[msg.sender] = block.timestamp;
-
-        // FIX 4: _applyWealthCap is intentionally NOT called here.
-        // At registration, isHuman[msg.sender] is already set to true above, so the
-        // guard inside _applyWealthCap (if (!isHuman[human]) return) would NOT block it.
-        // At Phase 0 with N humans the cap = 50 × (totalSupply / totalHumans), which is
-        // far above INITIAL_GRANT, so the cap would never fire on a fresh registration.
-        // The omission is a deliberate gas optimisation — cap enforcement is left to
-        // subsequent transfer/claimUBI calls which already invoke _applyWealthCap.
-
-        // External call last
-        require(bioVerifier.verifyProof(pA, pB, pC, pubSignals), "Invalid proof");
-
-        emit Registered(msg.sender, commitment, INITIAL_GRANT);
-    }
+    // SECURITY (P0, launch audit 2026-07-03): a plain register(), keyed off
+    // msg.sender with no binding whatsoever to the proof's public signals
+    // (pubSignals = [commitment, nullifier] — no wallet-address slot exists
+    // in this circuit version, unlike V5/V6's [wallet, commitment] layout),
+    // used to live here. Anyone who observed a pending register() tx in the
+    // mempool could resubmit the identical calldata from their own address
+    // with higher gas: their tx mines first, THEY get INITIAL_GRANT, and
+    // usedNullifiers[effectiveNullifier] permanently records THEIR address —
+    // burning the real human's biometric nullifier forever, since nullifiers
+    // are deterministic per-biometric and can never be regenerated. This was
+    // a real, live, exploitable front-running theft-plus-permanent-DoS bug on
+    // a publicly callable function, independent of and bypassable around the
+    // Go relay layer's own protections.
+    //
+    // register() is removed rather than patched: this circuit's public
+    // signals have no wallet-binding data to check msg.sender against (that
+    // would require a circuit change, out of this contract's control), so
+    // there is no way to make an unsigned, sender-agnostic registration path
+    // safe here. registerWithSig() below is the only registration path —
+    // it is already what the entire production Go backend (register.go)
+    // exclusively uses — and is safe because the beneficiary (claimedHuman)
+    // is fixed by an independent ECDSA signature, not by whoever broadcasts
+    // the transaction.
 
     /**
      * @notice Register as a verified human via meta-transaction (gasless for the user)
@@ -367,6 +348,14 @@ contract AequitasV7 {
             ubiClaimed[human] = ubiPerHumanAccumulated;
             emit EscrowReleased(human, amount);
             if (fs > 0) emit Transfer(address(0), human, fs); // mint event for the wake-up bonus
+            // FIX (P2, launch audit 2026-07-03): a returning human's pre-escrow
+            // balance (which could already have been near the OLD cap) plus the
+            // fairShare() wake-up bonus above can exceed the CURRENT cap. Every
+            // other balance-crediting path (transfer's recipient side, claimUBI)
+            // already reapplies the cap after crediting; this one didn't, leaving
+            // a returning human over cap until someone happened to call the
+            // permissionless applyWealthCap() on their behalf.
+            _applyWealthCap(human);
         }
     }
 
@@ -412,6 +401,14 @@ contract AequitasV7 {
         require(guardianOf[guardian] == address(0), "Guardian has own guardian");
         require(wardCount[guardian] < MAX_WARDS, "Max wards reached");
         require(guardianOf[msg.sender] != guardian, "Circular dependency");
+        // FIX (P2, launch audit 2026-07-03): V6 blocked layered guardian chains
+        // both ways — a guardian couldn't have a guardian of their own, AND a
+        // ward couldn't already be acting as someone else's guardian. V7 kept
+        // only the first half (checked above via guardianOf[guardian]); nothing
+        // stopped msg.sender, while already guarding up to MAX_WARDS others,
+        // from also acquiring their own guardian, letting multi-hop chains
+        // (C guards A, A guards B) re-emerge. Restore the other half.
+        require(wardCount[msg.sender] == 0, "Cannot have a guardian while acting as one");
         pendingGuardian[msg.sender] = guardian;
         guardianRequestedAt[msg.sender] = block.timestamp;
         emit GuardianProposed(msg.sender, guardian);

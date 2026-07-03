@@ -462,7 +462,13 @@ func (dag *BlockDAG) fetchMissingAncestors(nodeURL string) {
 			}
 			for _, block := range blocks {
 				fetchedThisRound++
-				block.FromSync = true
+				// SECURITY (P0, launch audit 2026-07-03): only an operator-
+				// configured seed is a trust anchor for the FromSync gate
+				// bypass — see isTrustedSyncSource / trustedSeeds field doc.
+				// A block from any other (dynamically self-registered) sync
+				// peer still goes through AddPeerBlock's normal authorization/
+				// suspension/finality gates.
+				block.FromSync = dag.isTrustedSyncSource(nodeURL)
 				if !dag.AddPeerBlock(block) {
 					// Block was fetched from the peer but rejected locally
 					// (bad signature, unauthorized proposer, etc.).  Count it
@@ -588,7 +594,8 @@ func (dag *BlockDAG) doSyncOnce(nodeURL string) (ok bool) {
 			dag.mu.RLock()
 			_, exists := dag.blocks[block.Hash]
 			dag.mu.RUnlock()
-			block.FromSync = true
+			// SECURITY (P0, launch audit 2026-07-03): see isTrustedSyncSource.
+			block.FromSync = dag.isTrustedSyncSource(nodeURL)
 			if !exists && dag.AddPeerBlock(block) {
 				addedThisPage++
 			}
@@ -793,6 +800,30 @@ func seedURLs(selfURL string) []string {
 	return out
 }
 
+// PrimarySeedURL returns the single best URL to compare against for
+// divergence self-checks: the same PRIMARY_NODE_URL/PRIMARY_NODE_URLS/
+// defaultPublicSeed resolution order seedURLs uses for peer discovery, so a
+// zero-config node (no PRIMARY_NODE_URL set) still gets a real primary to
+// compare against instead of the empty string. Exported for main.go, which
+// hands this straight to StartDivergenceAutoHeal.
+func PrimarySeedURL(selfURL string) string {
+	urls := seedURLs(selfURL)
+	if len(urls) == 0 {
+		return ""
+	}
+	return urls[0]
+}
+
+// isTrustedSyncSource reports whether nodeURL is one of this node's
+// operator-configured seed/static-peer URLs (see the trustedSeeds field doc
+// on BlockDAG for why this, and not activeSyncPeers, is the right trust
+// anchor for block.FromSync).
+func (dag *BlockDAG) isTrustedSyncSource(nodeURL string) bool {
+	dag.syncPeerMu.Lock()
+	defer dag.syncPeerMu.Unlock()
+	return dag.trustedSeeds[nodeURL]
+}
+
 func (dag *BlockDAG) StartPeerDiscovery(selfURL string) {
 	selfURL = strings.TrimRight(NormalizeNodeURL(selfURL), "/")
 
@@ -804,13 +835,27 @@ func (dag *BlockDAG) StartPeerDiscovery(selfURL string) {
 	fmt.Printf("[PEERS] Self: %s\n", selfURL)
 
 	// Seed from explicit PEER_NODES (backwards compat + manual override)
-	for _, peer := range staticPeers(selfURL) {
+	staticP := staticPeers(selfURL)
+	seeds := seedURLs(selfURL)
+	// Populate the FromSync trust anchor before starting any sync goroutine
+	// below that could read it (dag.startSyncForPeer / registerAndDiscover
+	// spawn the goroutines that eventually call isTrustedSyncSource).
+	dag.syncPeerMu.Lock()
+	dag.trustedSeeds = make(map[string]bool, len(staticP)+len(seeds))
+	for _, p := range staticP {
+		dag.trustedSeeds[p] = true
+	}
+	for _, s := range seeds {
+		dag.trustedSeeds[s] = true
+	}
+	dag.syncPeerMu.Unlock()
+
+	for _, peer := range staticP {
 		GlobalPeerRegistry.Register(peer)
 		dag.startSyncForPeer(peer)
 		fmt.Printf("[PEERS] Static peer: %s\n", peer)
 	}
 
-	seeds := seedURLs(selfURL)
 	if len(seeds) > 0 {
 		for _, seed := range seeds {
 			fmt.Printf("[PEERS] Seed: %s\n", seed)
@@ -878,8 +923,10 @@ func (dag *BlockDAG) healSyntheticCheckpoints() {
 			if err != nil || len(blocks) == 0 {
 				continue
 			}
+			isTrusted := dag.isTrustedSyncSource(peerURL)
 			for _, b := range blocks {
-				b.FromSync = true
+				// SECURITY (P0, launch audit 2026-07-03): see isTrustedSyncSource.
+				b.FromSync = isTrusted
 				if dag.AddPeerBlock(b) {
 					healed++
 				}

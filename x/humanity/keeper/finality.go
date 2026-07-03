@@ -32,23 +32,98 @@ const (
 	finalityHeightSlack    = 50
 )
 
-// GetFinalizedCheckpoint returns the current finalized height and blue_score
-// from chain_config. Returns (0, 0) on a fresh node before any checkpoint
-// has been advanced. Safe to call without any lock (uses getConfigValueDB
-// which bypasses activeTx).
+// GetFinalizedCheckpoint returns the current finalized height and blue_score.
+// Returns (0, 0) on a fresh node before any checkpoint has been advanced.
+// Safe to call without dag.mu/cs.mu held.
+//
+// FIX (P0, cadence audit 2026-07-03): this used to hit chain_config via
+// getConfigValueDB on every call — two synchronous Postgres round trips —
+// and is called at least twice per accepted peer block (isFinalityViolation,
+// maybeAdvanceFinalizedCheckpoint), both while dag.mu is write-locked. Over
+// the primary's remote DB proxy that reintroduced exactly the class of
+// cadence bug the 2026-07-02 commits eliminated elsewhere (see ProduceBlock's
+// post-commit bookkeeping comment), just in a path those commits didn't
+// touch. The checkpoint is only ever written by this process — through
+// SetFinalizedCheckpoint/ResetFinalizedCheckpoint below, both of which keep
+// this cache in sync — so a cache populated once at first use is always
+// current for the rest of the process's lifetime; no separate invalidation
+// path is needed.
 func (cs *ChainState) GetFinalizedCheckpoint() (height int64, blueScore int64) {
+	cs.finalizedMu.RLock()
+	if cs.finalizedCacheLoaded {
+		h, s := cs.finalizedHeightCache, cs.finalizedBlueScoreCache
+		cs.finalizedMu.RUnlock()
+		return h, s
+	}
+	cs.finalizedMu.RUnlock()
+
+	// First call this process: load once from durable storage.
+	cs.finalizedMu.Lock()
+	defer cs.finalizedMu.Unlock()
+	if cs.finalizedCacheLoaded { // another goroutine won the race to load it
+		return cs.finalizedHeightCache, cs.finalizedBlueScoreCache
+	}
 	var h, s int64
 	fmt.Sscan(cs.getConfigValueDB("finalized_height"), &h)
 	fmt.Sscan(cs.getConfigValueDB("finalized_blue_score"), &s)
+	cs.finalizedHeightCache, cs.finalizedBlueScoreCache = h, s
+	cs.finalizedCacheLoaded = true
 	return h, s
 }
 
-// SetFinalizedCheckpoint persists the new finalized checkpoint. Caller must
-// ensure this only advances (never retreats) the checkpoint.
+// SetFinalizedCheckpoint advances the in-memory checkpoint immediately —
+// every caller in this process sees the new value right away, even before
+// the DB write below finishes — and persists it in the background. Caller
+// must ensure this only advances (never retreats) the checkpoint.
+//
+// FIX (P0, cadence audit 2026-07-03): the 3 chain_config writes here used to
+// run synchronously, 3 more round trips on top of GetFinalizedCheckpoint's,
+// on every block that advances the checkpoint — the common case once past
+// the initial finalityBlueScoreDepth blocks. Same reasoning as the
+// ProduceBlock post-commit fix: this value is monotonic and
+// self-re-advancing, so losing the very last write on an ill-timed crash
+// only leaves the hard-finality gate briefly less strict than it could be
+// after restart — never less safe than not having advanced yet at all —
+// while GHOSTDAG's own probabilistic finality is unaffected either way.
 func (cs *ChainState) SetFinalizedCheckpoint(hash string, height, blueScore int64) {
-	cs.setConfigValueDB("finalized_height", fmt.Sprintf("%d", height))
-	cs.setConfigValueDB("finalized_blue_score", fmt.Sprintf("%d", blueScore))
-	cs.setConfigValueDB("finalized_hash", hash)
+	cs.finalizedMu.Lock()
+	cs.finalizedHeightCache = height
+	cs.finalizedBlueScoreCache = blueScore
+	cs.finalizedHashCache = hash
+	cs.finalizedCacheLoaded = true
+	cs.finalizedMu.Unlock()
+
+	go func() {
+		cs.setConfigValueDB("finalized_height", fmt.Sprintf("%d", height))
+		cs.setConfigValueDB("finalized_blue_score", fmt.Sprintf("%d", blueScore))
+		cs.setConfigValueDB("finalized_hash", hash)
+	}()
+}
+
+// ResetFinalizedCheckpoint clears the finalized checkpoint back to its
+// zero state (chain_config value "0" for all three keys, matching how a
+// fresh node reads before any checkpoint has ever been set). Used only by
+// ResyncFromSnapshotURL when chain_blocks is wiped for a clean re-sync — a
+// stale finalized_height surviving the wipe deadlocks catch-up (see that
+// call site's comment). Unlike SetFinalizedCheckpoint, this persists
+// synchronously and returns any error: it runs during an already-slow,
+// rare bootstrap path where correctness and error visibility matter more
+// than shaving a few round trips. Caller must hold cs.mu (same precondition
+// as the setConfigValue calls inside).
+func (cs *ChainState) ResetFinalizedCheckpoint() error {
+	cs.finalizedMu.Lock()
+	cs.finalizedHeightCache = 0
+	cs.finalizedBlueScoreCache = 0
+	cs.finalizedHashCache = "0"
+	cs.finalizedCacheLoaded = true
+	cs.finalizedMu.Unlock()
+
+	for _, fk := range []string{"finalized_height", "finalized_blue_score", "finalized_hash"} {
+		if err := cs.setConfigValue(fk, "0"); err != nil {
+			return fmt.Errorf("could not reset %s: %w", fk, err)
+		}
+	}
+	return nil
 }
 
 // isFinalityViolation returns true when block is so far below the current

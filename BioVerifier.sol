@@ -1,5 +1,27 @@
 // SPDX-License-Identifier: GPL-3.0
 /*
+    ⚠ AUDIT NOTE (launch audit 2026-07-03): this file does NOT match the
+    contract actually deployed at BIO_VERIFIER_ADDR in production.
+    x/humanity/keeper/contract_deploy.go hardcodes a DIFFERENT bytecode blob
+    (BioVerifierRuntimeBytecode) whose own comment identifies it as compiled
+    from "BioVerifierV3.sol (Poseidon-based nullifier circuit)" — a file that
+    does not exist anywhere in this repository. Verified independently: none
+    of this file's verifying-key constants (alphax/betax1/IC0x/IC1x/IC2x)
+    appear anywhere in BioVerifierRuntimeBytecode's hex, confirming these are
+    two cryptographically different verifiers, not just a formatting diff.
+
+    DO NOT "fix" this by recompiling this file and pasting its bytecode into
+    BioVerifierRuntimeBytecode — EnsureContractsDeployed overwrites the live
+    contract whenever that constant changes, and this file's 2-input Groth16
+    verifier does not match the circuit the mobile app / proof-generation
+    pipeline actually produces proofs for. Swapping it in would not "correct"
+    anything; it would make every future verifyProof() call check the wrong
+    statement, silently breaking (or arbitrarily un-gating) every new human's
+    registration. This file is kept only because it documents the *shape* of
+    a standard snarkjs Groth16 verifier; the real BioVerifierV3.sol source
+    needs to be located and checked into this repo before anyone can actually
+    audit what currently gates "one human = one registration" in production.
+
     Copyright 2021 0KIMS association.
 
     This file is generated with [snarkJS](https://github.com/iden3/snarkjs).

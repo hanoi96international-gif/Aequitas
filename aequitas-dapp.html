@@ -272,8 +272,8 @@ input[type=number]::-webkit-inner-spin-button{-webkit-appearance:none}
       </div>
 
       <div class="swap-dir-row">
-        <button class="dir-btn active" id="dir-aeq-to-tusd" onclick="setSwapDir('AEQ_TO_TUSD')">AEQ → tUSD</button>
-        <button class="dir-btn" id="dir-tusd-to-aeq" onclick="setSwapDir('TUSD_TO_AEQ')">tUSD → AEQ</button>
+        <button class="dir-btn active" id="dir-aeq-to-tusd" onclick="setSwapDir('aeq_to_tusd')">AEQ → tUSD</button>
+        <button class="dir-btn" id="dir-tusd-to-aeq" onclick="setSwapDir('tusd_to_aeq')">tUSD → AEQ</button>
       </div>
 
       <div class="input-group">
@@ -457,16 +457,16 @@ const CHAIN_ID     = '0x786';  // 1926
 const V7           = '0x20D271028f32577FCd07b4583A8e0E4eBBdB4F78';
 const PROOF_SERVER = 'https://aequitas-proof-server-production.up.railway.app';
 
-const V7_ABI = [
-  'function registerHuman(uint[2] _pA, uint[2][2] _pB, uint[2] _pC, uint[2] _pubSignals) external',
-];
-
 // ── STATE ────────────────────────────────────────────────────────────────────
 let wallet     = null;
 let poolData   = null;
 let priceHist  = [];
 let chartMs    = 3600000;
-let swapDir    = 'AEQ_TO_TUSD';
+// SECURITY/FIX (launch audit 2026-07-03): must be lowercase — the backend
+// (handleSwap) does a case-sensitive check against exactly "aeq_to_tusd" /
+// "tusd_to_aeq" and rejects anything else, including this constant's old
+// uppercase value, before the swap logic ever runs.
+let swapDir    = 'aeq_to_tusd';
 let proofData  = null;
 let ubiTimer   = null;
 let ubiLeft    = 0;
@@ -709,9 +709,9 @@ async function loadPool() {
 // ── SWAP ──────────────────────────────────────────────────────────────────────
 function setSwapDir(dir) {
   swapDir = dir;
-  document.getElementById('dir-aeq-to-tusd').classList.toggle('active', dir === 'AEQ_TO_TUSD');
-  document.getElementById('dir-tusd-to-aeq').classList.toggle('active', dir === 'TUSD_TO_AEQ');
-  document.getElementById('swap-from-label').textContent = 'Amount (' + (dir === 'AEQ_TO_TUSD' ? 'AEQ' : 'tUSD') + ')';
+  document.getElementById('dir-aeq-to-tusd').classList.toggle('active', dir === 'aeq_to_tusd');
+  document.getElementById('dir-tusd-to-aeq').classList.toggle('active', dir === 'tusd_to_aeq');
+  document.getElementById('swap-from-label').textContent = 'Amount (' + (dir === 'aeq_to_tusd' ? 'AEQ' : 'tUSD') + ')';
   calcSwapPreview();
 }
 
@@ -721,7 +721,7 @@ function calcSwapPreview() {
   if (amt <= 0) { document.getElementById('swap-out').textContent = '—'; document.getElementById('swap-min').textContent = '—'; return; }
   const aeqR = parseFloat(poolData.aeq_reserve || 0), tusdR = parseFloat(poolData.tusd_reserve || 0);
   let out;
-  if (swapDir === 'AEQ_TO_TUSD') {
+  if (swapDir === 'aeq_to_tusd') {
     const inF = amt * 0.999;
     out = (tusdR * inF) / (aeqR + inF);
     document.getElementById('swap-out').textContent = out.toFixed(6) + ' tUSD';
@@ -743,7 +743,12 @@ async function doSwap() {
   setStatus('swap-status', 'Getting nonce…', 'info');
   try {
     const nonce = (await api('/nonce?wallet=' + wallet)).nonce;
-    const ts = Date.now();
+    // FIX (launch audit 2026-07-03): Date.now() is milliseconds; the server
+    // compares this timestamp against time.Now().Unix() (seconds) and
+    // rejects anything outside a 60s window — a millisecond value is off by
+    // ~1000x, so every swap failed the staleness check regardless of the
+    // signature. Must be seconds, matching the message the server signs.
+    const ts = Math.floor(Date.now() / 1000);
     const msg = 'Aequitas Swap: ' + swapDir + ' ' + amt.toFixed(8) + ' nonce:' + nonce + ' ts:' + ts;
     setStatus('swap-status', 'Sign in MetaMask…', 'info');
     const sig = await window.ethereum.request({ method: 'personal_sign', params: [msg, wallet] });
@@ -752,13 +757,18 @@ async function doSwap() {
     if (poolData) {
       const aeqR = parseFloat(poolData.aeq_reserve || 0), tusdR = parseFloat(poolData.tusd_reserve || 0);
       const inF = amt * 0.999;
-      const out = swapDir === 'AEQ_TO_TUSD' ? (tusdR * inF) / (aeqR + inF) : (aeqR * inF) / (tusdR + inF);
+      const out = swapDir === 'aeq_to_tusd' ? (tusdR * inF) / (aeqR + inF) : (aeqR * inF) / (tusdR + inF);
       minOut = out * 0.99;
     }
     const r = await fetch(API + '/swap', { method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ wallet, direction: swapDir, amount: amt.toFixed(8), nonce, timestamp: ts, signature: sig, min_amount_out: minOut }) });
     const d = await r.json();
-    if (!r.ok) throw new Error(d.error || r.statusText);
+    // FIX (launch audit 2026-07-03): handleSwap always responds HTTP 200,
+    // signaling failure only via {"success":false,"message":"..."} in the
+    // body (no field named "error" exists in that response either) — `r.ok`
+    // is always true here regardless of outcome, so this never actually
+    // caught a failed swap before. Must check the body's own success flag.
+    if (!d.success) throw new Error(d.message || 'swap failed');
     setStatus('swap-status', '✓ Swap complete!', 'ok');
     document.getElementById('swap-amount').value = '';
     calcSwapPreview();
@@ -790,9 +800,21 @@ async function doFaucet() {
   if (!wallet) { connectWallet(); return; }
   setStatus('faucet-status', 'Requesting…', 'info');
   try {
-    const r = await fetch(API + '/faucet', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ wallet }) });
+    // FIX (launch audit 2026-07-03): handleFaucet requires a signed,
+    // timestamped request (personal_sign, same pattern as doSwap) — this
+    // used to POST only {wallet}, which always failed server-side with
+    // "timestamp required" before ever reaching the actual faucet logic.
+    const ts = Math.floor(Date.now() / 1000);
+    const msg = 'Aequitas tUSD Faucet Claim: ' + wallet.toLowerCase() + ' ts:' + ts;
+    setStatus('faucet-status', 'Sign in MetaMask…', 'info');
+    const sig = await window.ethereum.request({ method: 'personal_sign', params: [msg, wallet] });
+    setStatus('faucet-status', 'Requesting…', 'info');
+    const r = await fetch(API + '/faucet', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ wallet, timestamp: ts, signature: sig }) });
     const d = await r.json();
-    if (!r.ok) throw new Error(d.error || r.statusText);
+    // FIX (launch audit 2026-07-03): same always-200 response pattern as
+    // /swap — must check the body's success flag, not r.ok/d.error.
+    if (!d.success) throw new Error(d.message || 'faucet claim failed');
     setStatus('faucet-status', '✓ tUSD sent to your wallet', 'ok');
     setTimeout(loadBalance, 2000);
   } catch(e) { setStatus('faucet-status', '✗ ' + e.message, 'err'); }
@@ -834,29 +856,50 @@ async function doRegister() {
     document.getElementById('id-step-zkp').querySelector('.step-num').textContent = '…';
     setStatus('id-status', 'Contacting proof server…', 'info');
 
+    const bioForProve = proofData.bio, saltForProve = proofData.salt;
     const r = await fetch(PROOF_SERVER + '/prove', { method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ bio: proofData.bio, salt: proofData.salt, wallet }) });
+      body: JSON.stringify({ bio: bioForProve, salt: saltForProve, wallet }) });
     if (!r.ok) { const e = await r.json(); throw new Error(e.error || r.statusText); }
-    const { pA, pB, pC, pubSignals } = await r.json();
+    proofData = await r.json();
+    const { pA, pB, pC, pubSignals, zkNullifier, circuitVersion, bioHashKey } = proofData;
 
     document.getElementById('id-step-zkp').querySelector('.step-num').textContent = '✓';
     document.getElementById('id-step-zkp').classList.add('done');
-    setProgress(55, 'Confirm transaction in MetaMask…');
-    setStatus('id-status', 'Submitting proof on-chain…', 'info');
+    setProgress(55, 'Sign in MetaMask (no gas, no cost)…');
+    setStatus('id-status', 'Preparing signature…', 'info');
 
-    const provider = new ethers.BrowserProvider(window.ethereum);
-    const signer   = await provider.getSigner();
-    const contract = new ethers.Contract(V7, V7_ABI, signer);
-    const tx = await contract.registerHuman(
-      pA.map(x => BigInt(x)),
-      pB.map(row => row.map(x => BigInt(x))),
-      pC.map(x => BigInt(x)),
-      pubSignals.map(x => BigInt(x))
+    // SECURITY (launch audit 2026-07-03): this used to call a contract
+    // function (registerHuman) that does not exist on the deployed V7
+    // contract at all — every registration through this page failed.
+    // registerWithSig is the only real registration path, and it's a
+    // gasless meta-transaction: the relayer (server-side) submits and pays
+    // for the transaction, the wallet only signs a message — mirroring
+    // exactly what the working dashboard's own registration flow does.
+    if (!zkNullifier) {
+      throw new Error('Proof server did not return a ZK-bound nullifier (circuit v2+ required) — try again');
+    }
+    const commitment = pubSignals[0];
+    const nullifier = BigInt(zkNullifier).toString(16).padStart(64, '0');
+    const messageHash = ethers.solidityPackedKeccak256(
+      ['uint256', 'address', 'string', 'uint256', 'bytes32'],
+      [parseInt(CHAIN_ID, 16), V7, 'register', commitment, '0x' + nullifier]
     );
-    setProgress(75, 'Waiting for confirmation…');
-    setStatus('id-status', 'Tx: ' + tx.hash.slice(0, 12) + '…', 'info');
+    // personal_sign adds the "\x19Ethereum Signed Message:\n32" prefix automatically.
+    const signature = await window.ethereum.request({ method: 'personal_sign', params: [messageHash, wallet] });
 
-    await tx.wait();
+    setProgress(75, 'Registering on Aequitas V7…');
+    setStatus('id-status', 'Submitting registration…', 'info');
+    const regResp = await fetch(API + '/register', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        wallet, pA, pB, pC, pubSignals, signature,
+        bioHash: bioForProve || '', bioHashKey: bioHashKey || '',
+        nullifier, circuitVersion: circuitVersion || 2, zkNullifier,
+      })
+    });
+    const regData = await regResp.json();
+    if (!regData.success) throw new Error(regData.message || 'registration failed');
+
     setProgress(100, '✓ Registration complete!');
     document.getElementById('id-step-submit').querySelector('.step-num').textContent = '✓';
     document.getElementById('id-step-submit').classList.add('done');

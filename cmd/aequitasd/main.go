@@ -302,8 +302,15 @@ p2pNode.SetDAG(bc)
 	// Recover automatically from sustained divergence (opt-in, secondary-only)
 	// — see StartDivergenceAutoHeal. Started after sync so a healthy node has a
 	// chance to converge first and never trips the monitor.
+	// PrimarySeedURL (not the raw PRIMARY_NODE_URL env var): a zero-config
+	// node has no PRIMARY_NODE_URL set by design (see seedURLs' comment), but
+	// still needs a real peer to compare against for the isolated-fork
+	// self-check below — this resolves the same PRIMARY_NODE_URL /
+	// PRIMARY_NODE_URLS / public-default fallback peer discovery uses,
+	// instead of silently disabling the check for exactly the newcomer setup
+	// the project is designed around.
 	bc.StartDivergenceAutoHeal(os.Getenv("BOOTSTRAP_SNAPSHOT_URL"), os.Getenv("BOOTSTRAP_SIGNER"),
-		strings.TrimRight(keeper.NormalizeNodeURL(os.Getenv("PRIMARY_NODE_URL")), "/"))
+		keeper.PrimarySeedURL(selfURL))
 	p2pNode.Start()
 	bc.ReconstructState(chainState)
 

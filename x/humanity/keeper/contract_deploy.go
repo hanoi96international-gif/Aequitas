@@ -11,6 +11,20 @@ import (
 
 // V7ContractVersion tags the deployed contract so EnsureContractsDeployed can
 // detect a bytecode upgrade and force-redeploy the new version automatically.
+//
+// ⚠ PENDING FIX, NOT YET ARMED (launch audit 2026-07-03): AequitasV7.sol's
+// source has been fixed (register() removed — P0 front-running/permanent-
+// nullifier-burn bug; _confirmAlive() now reapplies the wealth cap;
+// proposeGuardian() layering protection restored) and recompiled
+// (solc 0.8.35, optimizer 200 runs). The new bytecode is deliberately NOT
+// substituted below yet: doing so changes V7ContractVersion and arms
+// EnsureContractsDeployed's upgrade path, which wipes and redeploys the
+// live contract's on-chain state on the NEXT node startup — a production
+// action this audit pass intentionally left for an operator to trigger
+// explicitly, not something to flip silently. To ship this fix: recompile
+// AequitasV7.sol, paste the new creation bytecode into V7ContractBytecode
+// below, bump this constant (e.g. "v7.9-remove-unsafe-register"), and
+// restart the node in a controlled window.
 const V7ContractVersion = "v7.8-escrow-lastdemurrage-reset"
 
 // V7ContractBytecode is the compiled bytecode of AequitasV7.sol (solc 0.8.35, optimizer 200 runs).

@@ -676,13 +676,21 @@ input[type=number]::-webkit-inner-spin-button{opacity:0.5}
         <div id="price-change" style="font-size:0.65rem;font-weight:600;margin-top:2px;color:var(--muted)">— tUSD</div>
       </div>
     </div>
-    <div style="display:flex;gap:3px;margin-bottom:8px">
-      <button onclick="setChartInterval(60000)" id="ci-1m" class="ci-btn">1m</button>
-      <button onclick="setChartInterval(300000)" id="ci-5m" class="ci-btn">5m</button>
-      <button onclick="setChartInterval(900000)" id="ci-15m" class="ci-btn ci-active">15m</button>
-      <button onclick="setChartInterval(3600000)" id="ci-1h" class="ci-btn">1h</button>
-      <button onclick="setChartInterval(14400000)" id="ci-4h" class="ci-btn">4h</button>
-      <button onclick="setChartInterval(86400000)" id="ci-1d" class="ci-btn">1D</button>
+    <div style="display:flex;flex-wrap:wrap;gap:3px;margin-bottom:8px">
+      <button onclick="setChartInterval(60000)" id="ci-1m" class="ci-btn" title="1-minute candles">1m</button>
+      <button onclick="setChartInterval(300000)" id="ci-5m" class="ci-btn" title="5-minute candles">5m</button>
+      <button onclick="setChartInterval(900000)" id="ci-15m" class="ci-btn ci-active" title="15-minute candles">15m</button>
+      <button onclick="setChartInterval(3600000)" id="ci-1h" class="ci-btn" title="1-hour candles">1h</button>
+      <button onclick="setChartInterval(14400000)" id="ci-4h" class="ci-btn" title="4-hour candles">4h</button>
+      <button onclick="setChartInterval(86400000)" id="ci-1d" class="ci-btn" title="1-day candles">1D</button>
+      <span style="width:1px;background:rgba(255,255,255,0.1);margin:2px 2px"></span>
+      <button onclick="setChartRange('3d')" id="ci-3d" class="ci-btn" title="Last 3 days">3d</button>
+      <button onclick="setChartRange('1w')" id="ci-1w" class="ci-btn" title="Last 1 week">1w</button>
+      <button onclick="setChartRange('2w')" id="ci-2w" class="ci-btn" title="Last 2 weeks">2w</button>
+      <button onclick="setChartRange('1mo')" id="ci-1mo" class="ci-btn" title="Last 1 month">1M</button>
+      <button onclick="setChartRange('3mo')" id="ci-3mo" class="ci-btn" title="Last 3 months">3M</button>
+      <button onclick="setChartRange('1y')" id="ci-1y" class="ci-btn" title="Last 1 year">1Y</button>
+      <button onclick="setChartRange('all')" id="ci-all" class="ci-btn" title="All retained history">ALL</button>
     </div>
     <div id="price-chart" style="width:100%;height:260px;border-radius:6px;overflow:hidden;background:#0A0C16"></div>
     <div id="price-chart-empty" style="display:none;text-align:center;padding:40px;color:var(--muted);font-size:0.63rem" data-i18n="swap-price-empty">No pool data yet — add liquidity to see the price chart.</div>
@@ -5024,13 +5032,57 @@ var priceHistory = [];
 var chartIntervalMs = 900000; // default candle timeframe: 15m (DexScreener-style)
 var chartRefitPending = true;  // snap view to recent candles on next draw (tf change / first load)
 var priceHistoryLoaded = false;
+// Widest history window fetched so far (minutes), so switching to a range
+// button already covered by what's loaded doesn't refetch needlessly.
+// Matches preloadPriceHistory's own initial fetch window below.
+var chartRangeMinutesLoaded = 14400;
+// Max points kept client-side before the oldest are dropped. Long-range
+// buttons (1y/all) can legitimately pull thousands of real DB points across
+// priceHistoryRetentionDays (see evm_storage.go) — the old cap of 1000
+// eroded exactly that preloaded long history a few points at a time as live
+// 8s polling appended new ones during a long-open tab (launch audit
+// 2026-07-03). 20000 comfortably covers a year of snapshots even under
+// heavy swap activity while still bounding worst-case memory/redraw cost.
+var priceHistoryMaxPoints = 20000;
 
-// Preload price history from DB so interval buttons show real historical data.
-// Fetches the last 4 hours of price snapshots saved after each swap/liquidity.
+// CHART_RANGES backs the long-range buttons (3d/1w/2w/1M/3M/1Y/ALL): unlike
+// the short-timeframe buttons above (pure candle-size selectors over
+// whatever's already in priceHistory), each of these also widens the actual
+// fetched window via loadPriceRange, since the default preload only covers
+// 10 days — nowhere near enough for "1y" or "all" to show real data. candleMs
+// is chosen so the resulting candle COUNT stays chart-readable at that span
+// (e.g. ~365 daily candles for 1y, not 525,600 one-minute candles).
+var CHART_RANGES = {
+  '3d':  { candleMs: 14400000,        minutes: 3   * 1440 },
+  '1w':  { candleMs: 86400000,        minutes: 7   * 1440 },
+  '2w':  { candleMs: 86400000,        minutes: 14  * 1440 },
+  '1mo': { candleMs: 86400000,        minutes: 30  * 1440 },
+  '3mo': { candleMs: 4 * 86400000,    minutes: 90  * 1440 },
+  '1y':  { candleMs: 7 * 86400000,    minutes: 366 * 1440 },
+  // "all" = as much as the server retains (priceHistoryRetentionDays in
+  // evm_storage.go, 366 days) — there is no unbounded "since genesis" option
+  // once a retention policy exists, so this asks for exactly that ceiling
+  // rather than an arbitrarily large number that would just get clamped.
+  'all': { candleMs: 7 * 86400000,    minutes: 366 * 1440 },
+};
+var ALL_CHART_BTN_IDS = ['ci-1m','ci-5m','ci-15m','ci-1h','ci-4h','ci-1d',
+  'ci-3d','ci-1w','ci-2w','ci-1mo','ci-3mo','ci-1y','ci-all'];
+
+function highlightChartBtn(activeId) {
+  ALL_CHART_BTN_IDS.forEach(function(id) {
+    var el = document.getElementById(id);
+    if (el) el.className = 'ci-btn' + (id === activeId ? ' ci-active' : '');
+  });
+}
+
+// Preload price history from DB so interval buttons show real historical
+// data. Fetches the last 10 days of price snapshots saved after each
+// swap/liquidity (enough for every short-timeframe button; long-range
+// buttons widen this further on demand via loadPriceRange).
 async function preloadPriceHistory() {
   if (priceHistoryLoaded) return;
   try {
-    var d = await (await fetch('/api/price-history?minutes=14400&limit=5000')).json();
+    var d = await (await fetch('/api/price-history?minutes=' + chartRangeMinutesLoaded + '&limit=5000')).json();
     var hist = d.history || [];
     if (hist.length > 0) {
       // Merge DB history with any in-memory points, de-duplicate by timestamp
@@ -5045,15 +5097,46 @@ async function preloadPriceHistory() {
   } catch(_) {}
 }
 
+// loadPriceRange widens priceHistory to cover at least minutesBack, fetching
+// from the server only if not already covered by a previous load. Shared by
+// setChartRange (explicit long-range buttons) below.
+async function loadPriceRange(minutesBack) {
+  if (minutesBack <= chartRangeMinutesLoaded) return;
+  try {
+    var d = await (await fetch('/api/price-history?minutes=' + minutesBack + '&limit=5000')).json();
+    var hist = d.history || [];
+    var existing = new Set(priceHistory.map(function(p){ return p.t; }));
+    hist.forEach(function(pt) {
+      if (!existing.has(pt.t)) priceHistory.push({t: pt.t, p: pt.p});
+    });
+    priceHistory.sort(function(a,b){ return a.t - b.t; });
+    chartRangeMinutesLoaded = minutesBack;
+  } catch(_) {}
+}
+
 function setChartInterval(ms) {
   chartIntervalMs = ms;
   chartRefitPending = true; // snap to recent candles for the newly-selected timeframe
   var btnIds = ['ci-1m','ci-5m','ci-15m','ci-1h','ci-4h','ci-1d'];
   var btnVals = [60000,300000,900000,3600000,14400000,86400000];
+  var activeId = null;
   for (var bi = 0; bi < btnIds.length; bi++) {
-    var btnEl = document.getElementById(btnIds[bi]);
-    if (btnEl) btnEl.className = 'ci-btn' + (btnVals[bi] === ms ? ' ci-active' : '');
+    if (btnVals[bi] === ms) { activeId = btnIds[bi]; break; }
   }
+  highlightChartBtn(activeId);
+  drawPriceChart();
+}
+
+// setChartRange handles the long-range buttons (3d/1w/2w/1M/3M/1Y/ALL): sets
+// an appropriately coarser candle size for the span, widens priceHistory to
+// cover it (fetching more from the server if needed), then redraws.
+async function setChartRange(key) {
+  var r = CHART_RANGES[key];
+  if (!r) return;
+  chartIntervalMs = r.candleMs;
+  chartRefitPending = true;
+  highlightChartBtn('ci-' + key);
+  await loadPriceRange(r.minutes);
   drawPriceChart();
 }
 
@@ -5108,7 +5191,7 @@ async function loadPoolStatus() {
     }
     if (d.reserve_aeq > 0 && d.price_aeq_in_tusd > 0) {
       priceHistory.push({ t: Date.now(), p: d.price_aeq_in_tusd });
-      if (priceHistory.length > 1000) priceHistory.shift();
+      if (priceHistory.length > priceHistoryMaxPoints) priceHistory.shift();
       drawPriceChart();
     }
     updateFeeEstimate();

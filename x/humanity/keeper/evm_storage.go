@@ -1303,6 +1303,28 @@ func (cs *ChainState) SaveNullifier(nullifier, walletAddress string) error {
 	// tryClaimNullifierLocked would be XORed in a second time and cancel itself.
 	if n, _ := res.RowsAffected(); n > 0 {
 		xorInto(&cs.nullifierSetXOR, nullifierLeaf(nullifier))
+	} else {
+		// SECURITY (P0, launch audit 2026-07-03): RowsAffected==0 means a row
+		// for this nullifier already existed. SaveNullifier's only caller
+		// (RegisterHumanAtomic) reaches this line after registerHumanLocked
+		// has already confirmed walletAddress itself isn't registered yet —
+		// so an existing row here can only belong to a DIFFERENT wallet.
+		// Returning nil in that case used to let RegisterHumanAtomic's
+		// outbox transaction commit anyway: a second wallet walks away with
+		// a second 1,000 AEQ grant sharing the first wallet's nullifier,
+		// while the nullifiers table quietly keeps pointing at the first
+		// wallet only (double-mint of the same biometric). Fail closed so
+		// runAtomicWithOutbox rolls back the whole registration instead of
+		// silently dropping just the nullifier row.
+		var existingWallet string
+		if scanErr := cs.dbExec().QueryRow(
+			`SELECT wallet_address FROM nullifiers WHERE nullifier = $1`, nullifier,
+		).Scan(&existingWallet); scanErr != nil {
+			return fmt.Errorf("nullifier conflict but could not verify existing owner: %w", scanErr)
+		}
+		if existingWallet != walletAddress {
+			return fmt.Errorf("nullifier already used by a different wallet")
+		}
 	}
 	if len(cs.nullifiers) < maxInMemNullifiers {
 		cs.nullifiers[nullifier] = walletAddress
@@ -1374,6 +1396,17 @@ func (cs *ChainState) GetWalletByNullifier(nullifier string) string {
 
 // ─── PRICE HISTORY ───────────────────────────────────────────────────────────
 
+// priceHistoryRetentionDays bounds both how long price_snapshots rows are
+// kept and the maximum window GetPriceHistory will ever query (see its
+// minutesClamp below, derived from this same constant so the two can't
+// drift apart the way the chart's old 30-day retention vs. its frontend's
+// 10-day preload window had). 366 days comfortably covers a "1y" chart
+// interval with a day of slack, and gives "all" a real, non-trivial window
+// instead of silently capping at whatever the retention used to be (30 days
+// — launch audit 2026-07-03: too short for any of 1mo/3mo/1y/all to show
+// meaningful data at all, regardless of what the frontend requested).
+const priceHistoryRetentionDays = 366
+
 func (cs *ChainState) InitPriceSnapshotsTable() {
 	if cs.db == nil {
 		return
@@ -1385,8 +1418,43 @@ func (cs *ChainState) InitPriceSnapshotsTable() {
 		reserve_tusd DOUBLE PRECISION NOT NULL,
 		captured_at  TIMESTAMP DEFAULT NOW()
 	)`)
-	// Keep only last 30 days (~324000 rows at 8s intervals) — purge older rows
-	cs.db.Exec(`DELETE FROM price_snapshots WHERE captured_at < NOW() - INTERVAL '30 days'`)
+	// FIX (launch audit 2026-07-03): every query against this table filters
+	// and sorts on captured_at (see GetPriceHistory) with no index backing
+	// it — a full table scan + sort on every /api/price-history call, and
+	// this table has no per-row cap (SavePriceSnapshot runs on a fixed
+	// timer, not bounded by row count), so cost only grows with uptime.
+	cs.db.Exec(`CREATE INDEX IF NOT EXISTS idx_price_snapshots_captured_at ON price_snapshots (captured_at)`)
+	cs.purgeOldPriceSnapshots()
+
+	// FIX (P2, launch audit 2026-07-03): this purge used to run exactly
+	// once, at process startup — a node that stays up for a long time (the
+	// entire point of running a validator) accumulated snapshots forever
+	// past the retention window between restarts, with the query-side clamp
+	// providing no relief since it only bounds what's SERVED, not what's
+	// stored. Re-run it periodically for the lifetime of the process.
+	go func() {
+		t := time.NewTicker(24 * time.Hour)
+		defer t.Stop()
+		for range t.C {
+			cs.purgeOldPriceSnapshots()
+		}
+	}()
+}
+
+// purgeOldPriceSnapshots deletes price_snapshots rows older than the
+// retention window. Safe to call anytime (no lock needed — cs.db has its
+// own internal connection pooling/locking).
+//
+// Uses ($1 * INTERVAL '1 day') rather than string-formatting the day count
+// into the query, matching GetPriceHistory's own P1-11 pattern — even
+// though priceHistoryRetentionDays is a compile-time constant here, not
+// user input, staying consistent avoids ever normalizing string-built
+// interval clauses in this file.
+func (cs *ChainState) purgeOldPriceSnapshots() {
+	if cs.db == nil {
+		return
+	}
+	cs.db.Exec(`DELETE FROM price_snapshots WHERE captured_at < NOW() - ($1 * INTERVAL '1 day')`, priceHistoryRetentionDays)
 }
 
 // SavePriceSnapshot records the current AEQ/tUSD price. Must be safe to call
@@ -1410,8 +1478,9 @@ func (cs *ChainState) SavePriceSnapshot() {
 }
 
 // GetPriceHistory returns price snapshots from the last `minutes` minutes,
-// limited to `limit` points. Returns [{t, p, aeq, tusd}, ...].
-// minutes is clamped to 1-43200, limit to 1-5000.
+// limited to `limit` points, oldest first (ready for a chart to plot
+// directly). Returns [{t, p, aeq, tusd}, ...].
+// minutes is clamped to 1-(priceHistoryRetentionDays*1440), limit to 1-5000.
 func (cs *ChainState) GetPriceHistory(minutes, limit int) []map[string]interface{} {
 	if cs.db == nil {
 		return nil
@@ -1419,8 +1488,14 @@ func (cs *ChainState) GetPriceHistory(minutes, limit int) []map[string]interface
 	if minutes < 1 {
 		minutes = 1
 	}
-	if minutes > 43200 {
-		minutes = 43200
+	// FIX (launch audit 2026-07-03): was hard-capped at 43200 (30 days),
+	// making 1mo/3mo/1y/all chart intervals architecturally impossible no
+	// matter what the frontend asked for. Clamped to the same window the
+	// data is actually retained for (see priceHistoryRetentionDays) instead
+	// of an arbitrary shorter constant.
+	maxMinutes := priceHistoryRetentionDays * 24 * 60
+	if minutes > maxMinutes {
+		minutes = maxMinutes
 	}
 	if limit < 1 {
 		limit = 1
@@ -1430,12 +1505,24 @@ func (cs *ChainState) GetPriceHistory(minutes, limit int) []map[string]interface
 	}
 	// P1-11: use ($1 * INTERVAL '1 minute') instead of string concat to
 	// prevent any future SQL-injection if $1 type changes to string.
+	//
+	// FIX (launch audit 2026-07-03): the old query was
+	// "ORDER BY captured_at ASC LIMIT $2" directly — when a window contains
+	// more rows than the limit, ASC+LIMIT keeps the OLDEST rows in the
+	// window and silently drops everything more recent, which is exactly
+	// backwards for a live price chart (the whole point of "last N minutes"
+	// is to see up to now). Select the newest `limit` rows first (DESC),
+	// then re-sort ASC in the outer query so the result is still
+	// oldest-first for the chart, same as before this fix.
 	rows, err := cs.db.Query(`
-		SELECT EXTRACT(EPOCH FROM captured_at)::BIGINT, price, reserve_aeq, reserve_tusd
-		FROM price_snapshots
-		WHERE captured_at >= NOW() - ($1 * INTERVAL '1 minute')
-		ORDER BY captured_at ASC
-		LIMIT $2`, minutes, limit)
+		SELECT * FROM (
+			SELECT EXTRACT(EPOCH FROM captured_at)::BIGINT AS ts, price, reserve_aeq, reserve_tusd, captured_at
+			FROM price_snapshots
+			WHERE captured_at >= NOW() - ($1 * INTERVAL '1 minute')
+			ORDER BY captured_at DESC
+			LIMIT $2
+		) recent
+		ORDER BY captured_at ASC`, minutes, limit)
 	if err != nil {
 		return nil
 	}
@@ -1444,7 +1531,8 @@ func (cs *ChainState) GetPriceHistory(minutes, limit int) []map[string]interface
 	for rows.Next() {
 		var ts int64
 		var price, aeq, tusd float64
-		rows.Scan(&ts, &price, &aeq, &tusd)
+		var capturedAt time.Time // outer ORDER BY column only, unused otherwise
+		rows.Scan(&ts, &price, &aeq, &tusd, &capturedAt)
 		result = append(result, map[string]interface{}{
 			"t": ts * 1000, // milliseconds for JS Date
 			"p": price,

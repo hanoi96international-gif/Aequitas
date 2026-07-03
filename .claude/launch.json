@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "dapp-preview",
+      "runtimeExecutable": "python3",
+      "runtimeArgs": ["-m", "http.server", "7788"],
+      "port": 7788
+    }
+  ]
+}

@@ -92,10 +92,20 @@ type Block struct {
 	BlueScore      int64    `json:"blue_score,omitempty"`
 	SelectedParent string   `json:"selected_parent,omitempty"` // parent with highest blue score
 	Blues          []string `json:"blues,omitempty"`           // blue blocks in the merge set
-	// FromSync marks blocks fetched via HTTP-SYNC from the primary's
-	// canonical chain. Never serialized — defaults false for all P2P/gossip
-	// blocks. When true, the equivocation-suspension gate in AddPeerBlock is
-	// bypassed: canonical blocks have already been validated at source.
+	// FromSync marks blocks fetched via HTTP-SYNC from an operator-configured
+	// trusted seed (PRIMARY_NODE_URL/PRIMARY_NODE_URLS/PEER_NODES — see
+	// BlockDAG.trustedSeeds and isTrustedSyncSource in sync_blocks.go), NOT
+	// merely "fetched via sync from any peer". Never serialized — defaults
+	// false for all P2P/gossip blocks. When true, the authorization,
+	// equivocation-suspension, and finality gates in AddPeerBlock are
+	// bypassed: a configured seed's canonical history is trusted by
+	// construction. Blocks synced from a peer that is NOT a configured seed
+	// (e.g. one discovered dynamically via /api/peers/register, which only
+	// requires a human registration + challenge-signature) get FromSync=false
+	// and go through every gate normally — see the launch audit 2026-07-03
+	// P0 fix: this used to be set unconditionally for every active sync
+	// peer, letting anyone who self-registered as a peer feed in blocks that
+	// skipped authorization/suspension/finality entirely.
 	FromSync bool `json:"-"`
 }
 
@@ -134,6 +144,17 @@ authorizedValidators   map[string]bool  // Ethereum addresses allowed to propose
 currentEpoch           *EpochCommittee  // active block-producer committee for the current epoch
 epochMu                sync.RWMutex    // guards currentEpoch
 activeSyncPeers        map[string]bool  // peers with a running syncWithNode goroutine
+	// trustedSeeds holds the operator-configured seed/static-peer URLs
+	// (PRIMARY_NODE_URL, PRIMARY_NODE_URLS, PEER_NODES — see seedURLs/
+	// staticPeers in sync_blocks.go), populated once by StartPeerDiscovery.
+	// This is the trust anchor for block.FromSync (see isTrustedSyncSource):
+	// unlike activeSyncPeers, which grows to include ANY peer that
+	// successfully self-registers via /api/peers/register (just a human
+	// registration + challenge-signature, no validator privilege), these
+	// URLs are set by this node's own operator and are not attacker-
+	// reachable, so bypassing authorization/suspension/finality gates for
+	// blocks fetched from them doesn't hand that bypass to an arbitrary peer.
+	trustedSeeds           map[string]bool
 syncPeerMu             sync.Mutex
 warnedUnknownProposers map[string]bool  // suppresses repeated "not authorized" log lines
 peerChallenges         map[string]peerChallenge // address → pending challenge (P1-3)
@@ -1415,7 +1436,12 @@ dag.height = block.Height
 heightVal := dag.height
 go func() {
 	dag.state.IncrementBlockCount(proposer)
-	dag.state.setConfigValue("max_block_height", fmt.Sprintf("%d", heightVal))
+	// setConfigValueDB, not setConfigValue: this goroutine holds neither
+	// cs.mu nor dag.mu, and setConfigValue's precondition (cs.mu held, so
+	// cs.dbExec() safely reads cs.activeTx) does not hold here — see
+	// setConfigValue's own doc comment. Using it unlocked would race on
+	// cs.activeTx against any concurrently-running cs.mu-holding operation.
+	dag.state.setConfigValueDB("max_block_height", fmt.Sprintf("%d", heightVal))
 }()
 
 if len(parentHashes) > 1 {
@@ -2120,10 +2146,12 @@ if block.Signature != "" && !block.IsGenesis {
 	}
 	// Proposer must be in the authorized validator set. Without this check
 	// anyone can generate an Ethereum key, sign a block, and feed it in.
-	// Skipped for HTTP-SYNC blocks (block.FromSync): the primary already
-	// validated them; abandoning orphans here would permanently deadlock
+	// Skipped for HTTP-SYNC blocks from a trusted seed (block.FromSync —
+	// see its field doc): a configured seed's canonical history is trusted
+	// by construction; abandoning orphans here would permanently deadlock
 	// any child block waiting on a historical block from an early validator
-	// whose registration was cleared from the local DB.
+	// whose registration was cleared from the local DB. Blocks synced from
+	// a non-seed peer get FromSync=false and are still checked normally.
 	if !dag.authorizedValidators[proposer] && !block.FromSync {
 		// P3-2: cap to prevent unbounded memory growth from forged proposer addresses
 		if len(dag.warnedUnknownProposers) > 500 {
@@ -2159,11 +2187,13 @@ if block.Signature != "" && !block.IsGenesis {
 // expires. Checked after the signature + authorization gates above so that
 // the suspended proposer's identity is already confirmed cryptographically.
 //
-// Skipped for blocks fetched via HTTP-SYNC (block.FromSync == true): those
-// blocks are part of the primary's canonical chain and were accepted before
-// the local suspension record existed. Rejecting them here deadlocks
-// catch-up sync whenever a historically-banned validator's blocks appear in
-// the canonical history.
+// Skipped for blocks fetched via HTTP-SYNC from a trusted seed
+// (block.FromSync == true — see its field doc): those blocks are part of a
+// configured seed's canonical chain and were accepted before the local
+// suspension record existed. Rejecting them here deadlocks catch-up sync
+// whenever a historically-banned validator's blocks appear in the canonical
+// history. Blocks synced from a non-seed peer get FromSync=false and are
+// still checked against the current suspension record.
 if dag.state != nil && !block.FromSync {
 	if suspended, reason := dag.state.IsValidatorSuspended(proposer, block.Timestamp); suspended {
 		fmt.Printf("[SLASHING] ✗ Rejected block #%d from %s: %s\n", block.Height, proposer, reason)
@@ -2438,7 +2468,10 @@ dag.tips[block.Hash] = true
 
 if block.Height > dag.height {
 	dag.height = block.Height
-	dag.state.setConfigValue("max_block_height", fmt.Sprintf("%d", dag.height))
+	// setConfigValueDB: this runs under dag.mu only, not cs.mu, so
+	// setConfigValue's cs.dbExec()/cs.activeTx precondition isn't met here
+	// (same reasoning as the ProduceBlock post-commit goroutine above).
+	dag.state.setConfigValueDB("max_block_height", fmt.Sprintf("%d", dag.height))
 }
 
 // Equivocation detection: index this block and trigger slashing if a
@@ -2496,12 +2529,26 @@ dag.state.IncrementBlockCount(block.Proposer)
 
 // Now that this block exists (and has been replayed), any blocks that were
 // queued as orphans waiting specifically on this hash as their missing
-// parent can be retried. Done via a fresh top-level AddPeerBlock call
-// rather than recursing — this naturally cascades: if a retried orphan
+// parent can be retried — this naturally cascades: if a retried orphan
 // succeeds, its own dependents get resolved the same way when ITS
 // insertion reaches this point.
-for _, waiting := range dag.popOrphans(block.Hash) {
-	dag.AddPeerBlock(waiting)
+//
+// FIX (same class as the runtime-orphan-bridge cascade above, block.go
+// ~1712): calling dag.AddPeerBlock(waiting) directly in this call stack IS a
+// synchronous recursive call (Go has no TCO) despite the "fresh top-level
+// call, not recursing" comment this replaces — a long chain of resolved
+// orphans (plausible during any large catch-up burst) would block whichever
+// goroutine originally called AddPeerBlock (an HTTP push handler or P2P
+// stream handler) for the full cascade duration, the same stall the
+// runtime-orphan-bridge fix above was written to eliminate. Backgrounding it
+// lets this call return immediately; the retries still go through the
+// normal dag.mu-guarded AddPeerBlock path with no special priority.
+if waiting := dag.popOrphans(block.Hash); len(waiting) > 0 {
+	go func(toRetry []*Block) {
+		for _, b := range toRetry {
+			dag.AddPeerBlock(b)
+		}
+	}(waiting)
 }
 
 // GHOSTDAG soft-retry: now that a new block's state changes are committed,

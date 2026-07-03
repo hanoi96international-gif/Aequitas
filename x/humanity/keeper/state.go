@@ -163,6 +163,18 @@ type ChainState struct {
 	// (or worse, authoritatively resynced) from a peer snapshot as if it
 	// had no history at all.
 	accountsLoadFailed bool
+
+	// finalizedMu guards the in-memory finalized-checkpoint cache (P0,
+	// cadence audit 2026-07-03) — see GetFinalizedCheckpoint's comment.
+	// This is the only place finalized_height/finalized_blue_score/
+	// finalized_hash are read from or written to; every writer
+	// (SetFinalizedCheckpoint, ResetFinalizedCheckpoint) keeps it in sync,
+	// so it is always current for the lifetime of this process.
+	finalizedMu             sync.RWMutex
+	finalizedCacheLoaded    bool
+	finalizedHeightCache    int64
+	finalizedBlueScoreCache int64
+	finalizedHashCache      string
 }
 
 // AccountsLoadFailed reports whether loadFromDB's startup query against

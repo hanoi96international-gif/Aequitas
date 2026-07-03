@@ -1394,26 +1394,44 @@ func (a *APIServer) handleNonce(w http.ResponseWriter, r *http.Request) {
 
 // handlePriceHistory returns AEQ/tUSD price snapshots for the chart.
 // GET /api/price-history?minutes=240&limit=5000
+//
+// FIX (launch audit 2026-07-03): the 43200-minute (30-day) clamp that used
+// to live here duplicated (and was shorter than) GetPriceHistory's own
+// clamp — if only this one had been raised to support the 1mo/3mo/1y/all
+// chart intervals, GetPriceHistory would never have seen a value above 30
+// days anyway. Removed in favor of one clamp, in one place (GetPriceHistory,
+// derived from priceHistoryRetentionDays) — this handler just does basic
+// input sanitization (positive integers) and lets the state layer own the
+// actual bound so the two can't drift apart again.
 func (a *APIServer) handlePriceHistory(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	w.Header().Set("Cache-Control", "no-cache")
+	// FIX (P2, launch audit 2026-07-03): this was the one read-adjacent
+	// endpoint in this file with no rate limiting at all, unlike every
+	// comparable endpoint (see handleConfirmAlive, handleExportSnapshot).
+	// Now more expensive than before given the much larger retention
+	// window above, so an unauthenticated per-IP throttle matters more,
+	// not less. 2s is generous for real chart usage (fetched on load and
+	// on interval-button clicks, not on every poll) but meaningfully caps
+	// repeated-scan abuse.
+	ip := clientIP(r)
+	if ts, loaded := registerRateLimit.Load("price-history:" + ip); loaded {
+		if time.Since(ts.(time.Time)) < 2*time.Second {
+			jsonError(w, "rate limited, try again shortly", 429)
+			return
+		}
+	}
+	registerRateLimit.Store("price-history:"+ip, time.Now())
 	minutes := 240
 	limit := 1000
 	fmt.Sscanf(r.URL.Query().Get("minutes"), "%d", &minutes)
 	fmt.Sscanf(r.URL.Query().Get("limit"), "%d", &limit)
-	// Clamp to prevent memory exhaustion from large DB reads.
 	if minutes < 1 {
 		minutes = 1
 	}
-	if minutes > 43200 {
-		minutes = 43200
-	} // max 30 days
 	if limit < 1 {
 		limit = 1
-	}
-	if limit > 5000 {
-		limit = 5000
 	}
 	history := a.state.GetPriceHistory(minutes, limit)
 	json.NewEncoder(w).Encode(map[string]interface{}{"history": history, "count": len(history)})
