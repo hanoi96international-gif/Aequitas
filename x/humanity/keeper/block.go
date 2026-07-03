@@ -4224,7 +4224,7 @@ func (dag *BlockDAG) computeGHOSTDAGState(block *Block) {
 	var maxScore int64 = -1
 	spHash := block.ParentHashes[0]
 	for _, ph := range block.ParentHashes {
-		if p, ok := dag.blocks[ph]; ok && p.BlueScore > maxScore {
+		if p := dag.ghostdagBlockLookup(ph); p != nil && p.BlueScore > maxScore {
 			maxScore = p.BlueScore
 			spHash = ph
 		}
@@ -4371,6 +4371,47 @@ func (dag *BlockDAG) computeGHOSTDAGState(block *Block) {
 // merge sets are tiny — typically single digits — and this never triggers.
 // maxMergeSetBFSVisits floor (50) — actual limit computed by dag.maxMergeVisits() = max(50, 5*(2K+1))
 
+// ghostdagBlockLookup returns the block for hash, falling back to the DB when
+// it is not resident in dag.blocks. Without this, computeGHOSTDAGState and its
+// helpers (below) treat any ancestor that merely isn't in RAM right now as if
+// it had no further parents, silently truncating the BFS based on what
+// happens to be loaded on THIS node at THIS moment — not the true DAG
+// structure. That breaks the determinism this file's header comment promises
+// ("every node that holds the same block graph computes identical GHOSTDAG
+// state"): pruneOldDAGBlocks keeps dag.blocks within pruneBuffer() of the
+// finalized checkpoint during steady-state operation, but a restart's
+// startupLoadWindow only loads the most recent 2000 blocks regardless of how
+// far the checkpoint lags — and a GHOSTDAG merge set can reach a much older
+// ancestor in very few hops when a validator's tip carries a big single-hop
+// height jump (normal here: a validator merging back in after falling behind
+// routinely references a merge-parent 100+ heights back in one parent link).
+// Two nodes with different restart histories can then silently compute
+// different SelectedParent/BlueScore for the identical, hash-verified block —
+// confirmed as the mechanism behind a real production fork (2026-07-03,
+// Contabo 1 vs Primary diverging from height ~132664 while each side's own
+// history looked internally healthy). Same fallback pattern already used for
+// the finality checkpoint walk (see finishCheckpointWalkFromDB); mirrored
+// here because this path is even more consensus-critical — it runs on every
+// block's ingestion, not just periodically. Found blocks are cached back into
+// dag.blocks so every other raw dag.blocks[hash] read later in the same
+// computation (ghostdagTopoSort's allBlocks parameter, in particular) also
+// sees them; pruneOldDAGBlocks evicts them again in its next normal sweep
+// like any other block, so this cannot leak memory. Must be called under
+// dag.mu, same contract as its callers.
+func (dag *BlockDAG) ghostdagBlockLookup(hash string) *Block {
+	if b, ok := dag.blocks[hash]; ok {
+		return b
+	}
+	if dag.state == nil {
+		return nil
+	}
+	b := dag.state.LoadBlockFromDBByHash(hash)
+	if b != nil {
+		dag.blocks[hash] = b
+	}
+	return b
+}
+
 func (dag *BlockDAG) ghostdagMergeSet(block *Block, spHash string) map[string]bool {
 	depthLimit := dag.mergeDepthLimit()
 	visitCap := dag.maxMergeVisits()
@@ -4391,7 +4432,7 @@ func (dag *BlockDAG) ghostdagMergeSet(block *Block, spHash string) map[string]bo
 		if cur.depth > depthLimit {
 			continue
 		}
-		if b, ok := dag.blocks[cur.hash]; ok {
+		if b := dag.ghostdagBlockLookup(cur.hash); b != nil {
 			for _, ph := range b.ParentHashes {
 				if !excluded[ph] {
 					excluded[ph] = true
@@ -4423,7 +4464,7 @@ func (dag *BlockDAG) ghostdagMergeSet(block *Block, spHash string) map[string]bo
 		if cur.depth > depthLimit {
 			continue
 		}
-		if b, ok := dag.blocks[cur.hash]; ok {
+		if b := dag.ghostdagBlockLookup(cur.hash); b != nil {
 			for _, ph := range b.ParentHashes {
 				if !excluded[ph] && !mergeSet[ph] {
 					mergeSet[ph] = true
@@ -4498,7 +4539,7 @@ func (dag *BlockDAG) ghostdagIsAncestor(ancestorHash, descendantHash string) boo
 		if cur.depth >= dag.mergeDepthLimit() {
 			continue
 		}
-		if b, ok := dag.blocks[cur.hash]; ok {
+		if b := dag.ghostdagBlockLookup(cur.hash); b != nil {
 			for _, ph := range b.ParentHashes {
 				if ph == ancestorHash {
 					return true
