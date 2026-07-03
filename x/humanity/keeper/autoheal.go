@@ -32,8 +32,16 @@ const (
 	// live Railint→Contabo upgrade produced 5), so 50 is comfortably clear of
 	// false positives while any genuine fork blows past it in a few minutes.
 	autoHealMismatchThreshold = 50
-	autoHealCooldown          = 30 * time.Minute
-	autoHealCheckInterval     = 60 * time.Second
+	// TEMPORARY (2026-07-03, user-requested): dropped from 30 * time.Minute
+	// to 5 * time.Minute to speed up verification of the same-evening
+	// circuit-breaker fixes (commits ca43e28/cea66b0) without waiting out a
+	// full 30-minute cooldown between test cycles. REVERT TO 30 MINUTES once
+	// those fixes are confirmed stable — 5 minutes is fine for an actively-
+	// monitored debugging session but is more restart-loop-prone than
+	// intended for unattended long-term production operation if a resync
+	// ever repeatedly fails to converge.
+	autoHealCooldown      = 5 * time.Minute
+	autoHealCheckInterval = 60 * time.Second
 
 	// chainDivergenceCheckInterval paces the active primary-comparison check.
 	// This is a network round trip against the primary, not a local counter,
