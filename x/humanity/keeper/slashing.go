@@ -55,6 +55,34 @@ const (
 	// codebase already fixed). Every node independently computes 50 AEQ
 	// from the same policy constant — no replay coordination needed.
 	equivocationSecondOffensePenaltyAEQ = 50.0
+	// equivocationSlashingActivationUnix (2026-07-05 00:00:00 UTC): offenses
+	// evidenced by blocks whose timestamps predate this instant are indexed
+	// for detection but NEVER penalized.
+	//
+	// Why an activation cutoff exists (confirmed live 2026-07-03): the chain's
+	// history contains real same-parent-set duplicate blocks from BOTH honest
+	// validators, produced during the late-June/early-July restart-and-resync
+	// incident chaos — BEFORE this slashing feature was deployed (2026-06-30).
+	// The nodes that were running back then never punished those events (no
+	// detection code existed when the blocks arrived, and the startup index
+	// rebuild in NewBlockchain deliberately only indexes). But a FRESH node
+	// replaying the full history detects them on first contact and applies
+	// suspensions anchored at those blocks' timestamps — suspensions that were
+	// still active (until 2026-07-12 / 2026-09-25) when a new node synced on
+	// 2026-07-03. Net effect without this cutoff: every new node that ever
+	// joins the network ends up suspending ALL honest validators and can
+	// never accept their live blocks — while long-running nodes hold no such
+	// penalties. A slashing rule that only fresh nodes enforce is not a
+	// consensus rule; it's a network-partition generator.
+	//
+	// The cutoff makes replay deterministic in BOTH directions: every node —
+	// live back then, syncing today, or bootstrapping next year — computes
+	// "no penalty" for pre-activation evidence and the identical
+	// block-timestamp-anchored penalty for post-activation evidence.
+	// The date is deliberately a day or two AFTER the fix's deploy date so
+	// the tail of the same incident chaos (nodes still resyncing/catching up
+	// on 2026-07-03/04) can't mint fresh honest-mistake offenses either.
+	equivocationSlashingActivationUnix = 1783209600
 )
 
 // equivocationParentKey returns a deterministic, order-independent key for
@@ -116,6 +144,22 @@ func (cs *ChainState) initSlashingTables() {
 	)`)
 	// Migration for nodes that already have the table without slash_applied.
 	cs.db.Exec(`ALTER TABLE equivocation_evidence ADD COLUMN IF NOT EXISTS slash_applied BOOLEAN NOT NULL DEFAULT FALSE`)
+	// Self-heal for nodes poisoned by pre-activation offenses (see
+	// equivocationSlashingActivationUnix): any node that ran the pre-cutoff
+	// code while replaying history recorded suspensions/bans against the
+	// honest validators (confirmed live on the third node, 2026-07-03).
+	// Deleting the penalty rows on startup un-suspends them without manual
+	// SQL; the equivocation_evidence rows are deliberately KEPT as the
+	// audit trail (same policy as synthetic_checkpoint_events) — evidence
+	// alone never blocks anything, only validator_penalties rows do.
+	if res, err := cs.db.Exec(
+		`DELETE FROM validator_penalties WHERE last_offense_at < $1`,
+		int64(equivocationSlashingActivationUnix),
+	); err == nil {
+		if n, _ := res.RowsAffected(); n > 0 {
+			fmt.Printf("[SLASHING] ✓ Cleared %d pre-activation validator penalty record(s) (offenses before 2026-07-05 UTC are exempt — see equivocationSlashingActivationUnix)\n", n)
+		}
+	}
 }
 
 // IsValidatorSuspended reports whether addr is currently barred from
@@ -174,6 +218,13 @@ func (cs *ChainState) IsValidatorSuspended(addr string, blockTimestamp int64) (s
 func (cs *ChainState) RecordEquivocationAndSuspend(signingAddress, blockAHash, blockBHash string, now int64) (offenseCount int, pendingSlashWallet string, err error) {
 	if cs.db == nil {
 		return 0, "", fmt.Errorf("no database configured")
+	}
+	// Pre-activation evidence is exempt (see equivocationSlashingActivationUnix's
+	// comment for the full rationale). The primary gate is at the detection call
+	// site in AddPeerBlock (which skips the whole recording goroutine); this is
+	// the backstop so no future caller can reintroduce retroactive penalties.
+	if now < equivocationSlashingActivationUnix {
+		return 0, "", nil
 	}
 	addr := strings.ToLower(signingAddress)
 	// Canonical hash order so the same pair from two different nodes hits

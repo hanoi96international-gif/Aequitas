@@ -37,6 +37,84 @@ func TestUnverifiedSyntheticCheckpoint_BoundaryVsMidChain(t *testing.T) {
 	}
 }
 
+// TestReleaseFinalitySealedStubs verifies the finality-release rule that keeps
+// a node producing after bridging permanently-lost history: a stub more than
+// finalityHeightSlack BELOW the finalized checkpoint is released from the
+// production gate (its heal is unsatisfiable — isFinalityViolation would
+// reject the real block from any non-seed peer), while a stub still WITHIN
+// the finality window keeps gating production exactly as before. The total
+// stub count must be untouched either way: releasing is a gate decision, not
+// a heal — the stub itself stays in dag.blocks and stays visible in health.
+func TestReleaseFinalitySealedStubs(t *testing.T) {
+	dag := newGhostdagTestDAG()
+	dag.unverifiedStubHeights = make(map[string]int64)
+	cs := &ChainState{}
+	cs.finalizedHeightCache = 10000
+	cs.finalizedCacheLoaded = true
+	dag.state = cs
+
+	// Deep stub, far below checkpoint-slack: must be released.
+	dag.syntheticCheckpointCount.Add(1)
+	dag.unverifiedSyntheticCheckpointCount.Add(1)
+	dag.unverifiedStubHeights["stub-deep"] = 500
+
+	// Recent stub, inside the finality window (10000-50=9950 ≤ 9980): must keep gating.
+	dag.syntheticCheckpointCount.Add(1)
+	dag.unverifiedSyntheticCheckpointCount.Add(1)
+	dag.unverifiedStubHeights["stub-recent"] = 9980
+
+	dag.releaseFinalitySealedStubs()
+
+	if got := dag.UnverifiedSyntheticCheckpointCount(); got != 1 {
+		t.Fatalf("want exactly the recent stub still gating production, got %d unverified", got)
+	}
+	if _, still := dag.unverifiedStubHeights["stub-deep"]; still {
+		t.Error("finality-sealed stub must be removed from unverifiedStubHeights")
+	}
+	if _, kept := dag.unverifiedStubHeights["stub-recent"]; !kept {
+		t.Error("a stub within the finality window must NOT be released")
+	}
+	if got := dag.SyntheticCheckpointCount(); got != 2 {
+		t.Errorf("release must not touch the total stub count (health/trust-mode visibility), got %d", got)
+	}
+
+	// Heal arriving AFTER release must not double-decrement (the heal path
+	// decrements only for hashes still tracked in unverifiedStubHeights —
+	// simulate its membership rule for the already-released stub).
+	if _, tracked := dag.unverifiedStubHeights["stub-deep"]; tracked {
+		dag.unverifiedSyntheticCheckpointCount.Add(-1)
+	}
+	if got := dag.UnverifiedSyntheticCheckpointCount(); got != 1 {
+		t.Errorf("heal-after-release must be a no-op for the unverified counter, got %d", got)
+	}
+}
+
+// TestReleaseFinalitySealedStubs_NoCheckpointNoRelease documents the guards:
+// with no finalized checkpoint yet (fresh node) or no unverified stubs, the
+// sweep must be a no-op — in particular it must never release anything on a
+// node that hasn't established finality, where "sealed" is meaningless.
+func TestReleaseFinalitySealedStubs_NoCheckpointNoRelease(t *testing.T) {
+	dag := newGhostdagTestDAG()
+	dag.unverifiedStubHeights = map[string]int64{"stub-1": 500}
+	cs := &ChainState{}
+	cs.finalizedCacheLoaded = true // loaded, but height 0 = not established
+	dag.state = cs
+	dag.syntheticCheckpointCount.Add(1)
+	dag.unverifiedSyntheticCheckpointCount.Add(1)
+
+	dag.releaseFinalitySealedStubs()
+
+	if got := dag.UnverifiedSyntheticCheckpointCount(); got != 1 {
+		t.Fatalf("no checkpoint established → nothing may be released, got %d unverified", got)
+	}
+
+	// Counter at 0 short-circuits before touching state at all (state=nil
+	// would panic if it didn't).
+	dag2 := newGhostdagTestDAG()
+	dag2.unverifiedStubHeights = map[string]int64{}
+	dag2.releaseFinalitySealedStubs() // must not panic despite dag2.state == nil
+}
+
 // TestSyntheticCheckpointHashes_FindsStubsOnly verifies the lookup the
 // active-healing mechanism (sync_blocks.go: healSyntheticCheckpoints) relies
 // on to know which hashes to try to replace with real peer data.

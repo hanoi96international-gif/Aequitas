@@ -299,6 +299,23 @@ replayedMu             sync.Mutex
 	// after startup: BridgeHistoricalGap runs only after
 	// RefreshBootHeightAfterSnapshotImport has set it).
 	unverifiedSyntheticCheckpointCount atomic.Int32
+	// unverifiedStubHeights tracks hash → height for every stub currently
+	// counted in unverifiedSyntheticCheckpointCount. Guarded by dag.mu (all
+	// three counter-maintenance sites already hold it). Exists so finality can
+	// RELEASE a stub: once the finalized checkpoint has moved more than
+	// finalityHeightSlack past a stub's height, isFinalityViolation rejects
+	// the real block from every non-seed peer — the "wait for real history to
+	// sync in behind it" condition the production gate is written around
+	// becomes unsatisfiable by the node's own finality rule. Keeping the gate
+	// up past that point doesn't protect anything (the bridged history is
+	// already below the hard-finality line and already reflected in this
+	// node's state and StateRoot cross-checks); it just strands the node in
+	// permanent observer mode. Confirmed live on Contabo 2026-07-03: a
+	// runtime-orphan-bridge stub over a region of genuinely-lost blocks
+	// (missing from EVERY node's DB) halted its block production forever —
+	// with a 2-validator network, that silently halved the validator set.
+	// See releaseFinalitySealedStubs (finality.go).
+	unverifiedStubHeights map[string]int64
 	// ghostdagMigrationPending (audit 2026-06-30 monster audit, P1-03) is
 	// true from the moment LoadBlocksFromDB finds blocks needing GHOSTDAG
 	// backfill until the background migration goroutine finishes. Backgrounding
@@ -547,6 +564,7 @@ warnedUnknownProposers: make(map[string]bool),
 peerChallenges:         make(map[string]peerChallenge),
 replayedBlocks:         make(map[string]bool),
 equivocationIndex:      make(map[string]string),
+	unverifiedStubHeights:  make(map[string]int64),
 	stateRootMismatches:    make(map[string]int),
 	stateRootMismatchLastAt: make(map[string]int64),
 	orphans:                make(map[string][]*Block),
@@ -1120,6 +1138,7 @@ func (dag *BlockDAG) BridgeHistoricalGap(peerURLs []string) {
 			// start-of-history and is trusted like genesis.
 			if stubH > dag.bootHeight {
 				dag.unverifiedSyntheticCheckpointCount.Add(1)
+				dag.unverifiedStubHeights[ph] = stubH
 			}
 			// FIX (audit 2026-06-30 monster audit, P1-05): durable audit trail
 			// for every stub this node has ever trusted instead of verified —
@@ -1252,6 +1271,13 @@ if dag.ghostdagMigrationPending.Load() {
 // retains blocks below it — so gating on the total count would strand a
 // snapshot-bootstrapped node in permanent non-production (confirmed live on
 // Contabo). See UnverifiedSyntheticCheckpointCount.
+// Sweep finality-sealed stubs first (see releaseFinalitySealedStubs): the
+// sweep normally piggybacks on maybeAdvanceFinalizedCheckpoint, which only
+// runs on accepted peer blocks — a node whose peers are all down would
+// otherwise never release a sealed stub and never produce, exactly the
+// "downed primary must not halt everyone else" case the sync-stall valve
+// below exists for. dag.mu is held (write) here, as the sweep requires.
+dag.releaseFinalitySealedStubs()
 if syntheticCount := dag.UnverifiedSyntheticCheckpointCount(); syntheticCount > 0 {
 	fmt.Printf("[BLOCK] ✗ Node is bridging %d unverified synthetic checkpoint(s) above the snapshot boundary — block production halted until real history syncs in behind them.\n", syntheticCount)
 	return nil
@@ -1791,20 +1817,25 @@ func (dag *BlockDAG) queueOrphan(missingParent string, block *Block) {
 				// the whole node. The stub only needs to exist in dag.blocks to
 				// satisfy AddPeerBlock's parent-existence check.
 				stubInserted = true
+				dag.syntheticCheckpointCount.Add(1)
+				// A runtime-orphan-bridge stub is created during normal operation
+				// (past catch-up), so it sits above bootHeight and represents a
+				// genuine mid-chain gap that DOES gate production — see
+				// unverifiedSyntheticCheckpointCount's comment. Same bootHeight
+				// comparison as BridgeHistoricalGap; raw field (not BootHeight(),
+				// which takes RLock) because dag.mu is held here — which is also
+				// what makes the unverifiedStubHeights write race-free.
+				if stubH > dag.bootHeight {
+					dag.unverifiedSyntheticCheckpointCount.Add(1)
+					dag.unverifiedStubHeights[missingParent] = stubH
+				}
 			}
 			dag.mu.Unlock()
 			fmt.Printf("[DAG] (housekeeping) bridged permanently-unresolvable parent %s... (height ~%d) with a synthetic checkpoint — retrying %d block(s) that were waiting on it in the background, no effect on account balances\n",
 				missingParent[:min(16, len(missingParent))], stubH, len(waiting))
 			if stubInserted {
-				dag.syntheticCheckpointCount.Add(1)
-				// A runtime-orphan-bridge stub is created during normal operation
-				// (past catch-up), so it sits above bootHeight and represents a
-				// genuine mid-chain gap that DOES gate production — see
-				// unverifiedSyntheticCheckpointCount's comment. Guard with the same
-				// bootHeight comparison for consistency with BridgeHistoricalGap.
-				if stubH > dag.BootHeight() {
-					dag.unverifiedSyntheticCheckpointCount.Add(1)
-				}
+				// Counter/map maintenance moved INTO the dag.mu critical section
+				// above (2026-07-03): the unverifiedStubHeights map requires it.
 				// FIX (audit 2026-06-30 monster audit, P1-05): see
 				// RecordSyntheticCheckpointEvent's comment — durable audit trail,
 				// tagged "runtime-orphan-bridge" so it's distinguishable from a
@@ -2587,9 +2618,14 @@ if prev, hadStub := dag.blocks[block.Hash]; hadStub && prev.Proposer == "synthet
 	// Healing a stub (see the "already known" check above): the gap this
 	// stub was bridging is now closed with real, replayed data.
 	dag.syntheticCheckpointCount.Add(-1)
-	// Mirror the boundary check used at insertion so the two counters stay in
-	// step — only an above-boundary stub was ever counted as unverified.
-	if prev.Height > dag.bootHeight {
+	// Decrement the unverified counter only while this stub is still TRACKED
+	// as unverified. Map membership (not the `prev.Height > dag.bootHeight`
+	// comparison used at insertion) is the authoritative test now:
+	// releaseFinalitySealedStubs may have already released this stub, and
+	// decrementing a second time here would drive the counter negative and
+	// desynchronize it from unverifiedStubHeights.
+	if _, tracked := dag.unverifiedStubHeights[block.Hash]; tracked {
+		delete(dag.unverifiedStubHeights, block.Hash)
 		dag.unverifiedSyntheticCheckpointCount.Add(-1)
 	}
 	fmt.Printf("[BLOCK] ✓ Synthetic checkpoint at height %d healed — %d still active\n", prev.Height, dag.syntheticCheckpointCount.Load())
@@ -2637,7 +2673,13 @@ if block.Height > dag.height {
 // second block from the same proposer for the same parent set is found.
 // Runs under dag.mu (checkAndIndexEquivocation requires it) and spawns a
 // goroutine for the DB work so it doesn't delay block acceptance.
-if conflict, isEquivocation := dag.checkAndIndexEquivocation(block); isEquivocation && dag.state != nil && !block.FromSync {
+if conflict, isEquivocation := dag.checkAndIndexEquivocation(block); isEquivocation && dag.state != nil && !block.FromSync &&
+	// Activation cutoff: evidence anchored before equivocationSlashingActivationUnix
+	// is indexed (above) but never penalized — otherwise a fresh node replaying
+	// history re-punishes the pre-feature incident chaos that long-running nodes
+	// never did, and ends up suspending every honest validator (confirmed live
+	// 2026-07-03; full rationale at the constant's definition in slashing.go).
+	block.Timestamp >= equivocationSlashingActivationUnix {
 	proposerAddr := block.Proposer
 	blockAHash := conflict.Hash
 	blockBHash := block.Hash

@@ -143,6 +143,46 @@ func (dag *BlockDAG) isFinalityViolation(block *Block) bool {
 	return block.Height < finalizedHeight-finalityHeightSlack
 }
 
+// releaseFinalitySealedStubs stops synthetic-checkpoint stubs from gating
+// block production once the finalized checkpoint has moved more than
+// finalityHeightSlack past them. Must be called with dag.mu held (writes
+// dag.unverifiedStubHeights).
+//
+// Rationale: the production gate on UnverifiedSyntheticCheckpointCount
+// (ProduceBlock, audit P1-05) exists so a node doesn't mint new blocks on
+// top of bridged-but-unverified ancestry "until real history syncs in behind
+// it". But once the finalized checkpoint is finalityHeightSlack above a
+// stub's height, isFinalityViolation rejects the real block from every
+// non-seed peer — the node's own hard-finality rule makes the heal the gate
+// is waiting for impossible, so the gate degenerates from "wait until
+// verified" into "never produce again". At that point the bridged region is
+// below the hard-finality line (immutable by protocol), already reflected in
+// this node's account state, and continuously cross-checked against peers
+// via StateRoot comparison + divergence auto-heal — releasing the stub
+// trades no real verification away. Confirmed live on Contabo 2026-07-03: a
+// runtime-orphan-bridge stub over genuinely-lost blocks (gone from every
+// node's DB, unhealable forever) silently turned a 2-validator network into
+// a 1-validator network. A stub still WITHIN the finality window keeps
+// gating production exactly as before — a fresh gap is genuinely suspect
+// until the network finalizes past it.
+func (dag *BlockDAG) releaseFinalitySealedStubs() {
+	if dag.unverifiedSyntheticCheckpointCount.Load() == 0 || dag.state == nil {
+		return
+	}
+	finalizedHeight, _ := dag.state.GetFinalizedCheckpoint()
+	if finalizedHeight == 0 {
+		return
+	}
+	for hash, h := range dag.unverifiedStubHeights {
+		if h < finalizedHeight-finalityHeightSlack {
+			delete(dag.unverifiedStubHeights, hash)
+			dag.unverifiedSyntheticCheckpointCount.Add(-1)
+			fmt.Printf("[FINALITY] ✓ Synthetic checkpoint at height %d (%s...) sealed by finality (checkpoint %d) — released from the production gate, %d unverified stub(s) remain\n",
+				h, hash[:min(16, len(hash))], finalizedHeight, dag.unverifiedSyntheticCheckpointCount.Load())
+		}
+	}
+}
+
 // maybeAdvanceFinalizedCheckpoint walks back along the selected-parent chain
 // from newBlock to find the block finalityBlueScoreDepth blue-score units
 // below it, then advances the persisted checkpoint to that block if it is
@@ -150,6 +190,10 @@ func (dag *BlockDAG) isFinalityViolation(block *Block) bool {
 // held (reads dag.blocks). Designed to be fast (O(finalityBlueScoreDepth)
 // pointer-hops) since it is called on every accepted peer block.
 func (dag *BlockDAG) maybeAdvanceFinalizedCheckpoint(newBlock *Block) {
+	// Piggyback the stub-release sweep here: runs under dag.mu on every
+	// accepted peer block, and no-ops via one atomic read when there are no
+	// unverified stubs (the overwhelmingly common case).
+	dag.releaseFinalitySealedStubs()
 	if newBlock == nil || newBlock.IsGenesis || newBlock.BlueScore < finalityBlueScoreDepth {
 		return
 	}
