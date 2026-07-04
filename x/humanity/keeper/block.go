@@ -1186,6 +1186,35 @@ func (dag *BlockDAG) RefreshBootHeightAfterSnapshotImport(resyncHappened bool) {
 	}
 	dag.bootHeightCheckpointBacked = checkpointBacked
 
+	// FIX (P0, 2026-07-05 — real root cause of most of tonight's
+	// instability): on a PLAIN restart (resyncHappened=false, e.g. any
+	// routine no-resync-needed code deploy), checkpointBacked stayed
+	// unconditionally false above — overly pessimistic. NewBlockchain's own
+	// startup load (LoadBlocksFromDB, see its call site's comment) already
+	// restores the most recent startupLoadWindow (2000) blocks into
+	// dag.blocks, including a REAL block at exactly dag.bootHeight for any
+	// node that has ever produced or synced normally — the same invariant
+	// an explicit resync's checkpoint-seeding establishes, just reached via
+	// the ordinary startup path instead of this run's resync branch above.
+	// Without this, deepScanFloor() fell back to a full genesis walk
+	// (floor 0) on EVERY plain restart. Confirmed live: a node mid-genesis-
+	// walk was found adding real historical blocks in ascending order from
+	// height ~10900 while its actual tip was past 188000 — silently
+	// competing with real-time catch-up for bandwidth/attention on every
+	// single deploy that didn't happen to also set
+	// RESYNC_FROM_SNAPSHOT=true, which explains why the same real fixes
+	// kept needing a fresh resync to show clean convergence, only to
+	// degrade again after the NEXT ordinary restart.
+	if !dag.bootHeightCheckpointBacked {
+		for _, b := range dag.blocks {
+			if b.Height == dag.bootHeight && b.Proposer != "synthetic-checkpoint" {
+				dag.bootHeightCheckpointBacked = true
+				fmt.Printf("[BOOT] ✓ bootHeight %d is backed by a real block already in dag.blocks from the normal startup load — no resync needed for this guarantee.\n", dag.bootHeight)
+				break
+			}
+		}
+	}
+
 	// dag.height = max_block_height ONLY — this is the sync frontier
 	// doSyncOnce pages forward from. After a plain snapshot resync (no
 	// checkpoint seeded — see SeedTrustedCheckpoint), max_block_height stays
@@ -2614,16 +2643,6 @@ func (dag *BlockDAG) ClearProposerCircuitBreakers() {
 }
 
 func (dag *BlockDAG) AddPeerBlock(block *Block) bool {
-entryTime := time.Now() // TEMP DIAGNOSTIC (2026-07-05, 1s cadence investigation, will revert)
-defer func() {
-	if d := time.Since(entryTime); d > 50*time.Millisecond {
-		h := int64(-1)
-		if block != nil {
-			h = block.Height
-		}
-		fmt.Printf("[TIMING-TEMP] AddPeerBlock(#%d) took %s\n", h, d)
-	}
-}()
 if dag.resyncInProgress.Load() {
 	return false // an in-process self-heal resync is atomically swapping account/DAG state right now — see resyncInProgress's field comment; the sender will redeliver, ordered sync fills the gap once the resync completes
 }
