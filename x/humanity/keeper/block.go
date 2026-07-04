@@ -243,7 +243,23 @@ replayedMu             sync.Mutex
 	// O(chain length) re-scan for that entire window — confirmed live: 99%
 	// CPU sustained for minutes with chain length ~50,000 and ~8,500 distinct
 	// missing parents pending abandonment.
-	lastDeepScanAt atomic.Int64
+	//
+	// FIX (P0, 2026-07-04 — real root cause of tonight's persistent merge
+	// failures): this used to be a single atomic.Int64, shared across EVERY
+	// peer's syncWithNode goroutine. syncWithNode runs one goroutine PER
+	// peer, each ticking independently and each calling doSyncOnce, which
+	// reads/writes this SAME shared timestamp — whichever peer's goroutine
+	// happens to check first within a given 30s window claims the deepScan
+	// slot for ALL peers that window, permanently starving the others.
+	// Confirmed live: with Primary and a second (still-isolated) peer both
+	// configured, the second peer's goroutine consistently won the shared
+	// slot, so Primary — the one peer whose bulk catch-up actually mattered
+	// — never got its own deepScan turn at all, leaving it stuck on the
+	// slow, one-hash-at-a-time fetchMissingAncestors path indefinitely
+	// (too slow to keep pace with continuous multi-validator production).
+	// Now keyed per nodeURL so every peer gets its own independent cooldown.
+	lastDeepScanAtMu sync.Mutex
+	lastDeepScanAt   map[string]int64
 	// syncTargetHeight is set at startup to the seed node's current block
 	// height. ProduceBlock defers production until this node has caught up
 	// to within 10 blocks of the target, preventing the "produce on a stale
@@ -658,6 +674,7 @@ equivocationIndex:      make(map[string]string),
 
 	softRetryBlocks:        make(map[string]*Block),
 	softRetryFirstAt:       make(map[string]time.Time),
+	lastDeepScanAt:         make(map[string]int64),
 }
 if key, generated, err := loadOrCreateRelayerKey(); err != nil {
 	fmt.Printf("[BLOCK] Warning: RELAYER_PRIVATE_KEY invalid, blocks will be unsigned: %v\n", err)

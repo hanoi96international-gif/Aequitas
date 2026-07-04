@@ -514,6 +514,39 @@ func (dag *BlockDAG) fetchMissingAncestors(nodeURL string) {
 // the one frontier marker that stays meaningful regardless of how many
 // duplicate-height siblings either side has — paging by "give me everything
 // above the highest height I've already got" can't get stuck the same way.
+// deepScanMinInterval throttles how often ONE peer's doSyncOnce call may run
+// a full deepScan pass — see claimDeepScanSlot's own comment for why this is
+// keyed per nodeURL, not shared across peers.
+const deepScanMinInterval = 30 * time.Second
+
+// claimDeepScanSlot reports whether nodeURL may run a deepScan pass right
+// now, and if so, atomically claims the slot (starting this peer's own
+// cooldown) so a concurrent call for the SAME peer can't also claim it.
+//
+// FIX (P0, 2026-07-04 — real root cause of a night of persistent merge
+// failures): this cooldown used to be a single dag-wide timestamp shared by
+// EVERY peer's syncWithNode goroutine. Each peer ticks independently and
+// calls doSyncOnce, which checked/updated that one shared value — whichever
+// peer's goroutine happened to check first within a given window claimed
+// deepScan for ALL peers that window, permanently starving the others.
+// Confirmed live: with Primary and a second, still-isolated peer both
+// configured, the second peer's goroutine consistently won the shared slot,
+// so Primary — the one peer whose bulk catch-up actually mattered — never
+// got its own deepScan turn, leaving this node stuck on the slow,
+// one-hash-at-a-time fetchMissingAncestors path indefinitely (too slow to
+// keep pace with continuous multi-validator production). Keyed per nodeURL
+// now so every peer gets its own independent cooldown.
+func (dag *BlockDAG) claimDeepScanSlot(nodeURL string) bool {
+	now := time.Now().Unix()
+	dag.lastDeepScanAtMu.Lock()
+	defer dag.lastDeepScanAtMu.Unlock()
+	if now-dag.lastDeepScanAt[nodeURL] < int64(deepScanMinInterval.Seconds()) {
+		return false
+	}
+	dag.lastDeepScanAt[nodeURL] = now
+	return true
+}
+
 func (dag *BlockDAG) doSyncOnce(nodeURL string) (ok bool) {
 	const pageSize = 500
 	const maxPagesPerCall = 2000 // hard cap: 1,000,000 blocks per call — headroom, not unbounded
@@ -553,17 +586,8 @@ func (dag *BlockDAG) doSyncOnce(nodeURL string) (ok bool) {
 	// chance to run because deepScan always took over. At most one full
 	// height-0 walk per deepScanMinInterval; fetchMissingAncestors (the
 	// cheap, targeted hash lookup) still runs every single cycle regardless.
-	const deepScanMinInterval = 30 * time.Second
 	wantDeepScan := len(dag.MissingParentHashes()) > 0
-	deepScan := false
-	if wantDeepScan {
-		now := time.Now().Unix()
-		last := dag.lastDeepScanAt.Load()
-		if now-last >= int64(deepScanMinInterval.Seconds()) {
-			deepScan = true
-			dag.lastDeepScanAt.Store(now)
-		}
-	}
+	deepScan := wantDeepScan && dag.claimDeepScanSlot(nodeURL)
 	minHeight := dag.Height() - syncOverlap
 	if minHeight < 0 || deepScan {
 		// FIX (durable fix, 2026-07-04 — closes a checkpoint-seeded resync
@@ -588,9 +612,6 @@ func (dag *BlockDAG) doSyncOnce(nodeURL string) (ok bool) {
 		// references a RECENT ancestor, not a genesis-era one — so
 		// deepScan never needs to go below that floor.
 		minHeight = dag.BootHeight()
-	}
-	if deepScan {
-		fmt.Printf("[DEBUG-TEMP] doSyncOnce(%s) deepScan minHeight=%d bootHeight=%d bootHeightCheckpointBacked=%v myHeight=%d\n", nodeURL, minHeight, dag.BootHeight(), dag.BootHeightCheckpointBacked(), dag.Height())
 	}
 	totalAdded := 0
 	// P1-02: track (minHeight, afterHash) cursor so same-height siblings that
@@ -632,14 +653,8 @@ func (dag *BlockDAG) doSyncOnce(nodeURL string) (ok bool) {
 			// field's own comment (block.go). Authorization remains a wholly
 			// separate, still-fully-enforced gate below.
 			block.SelfFetched = true
-			if !exists {
-				accepted := dag.AddPeerBlock(block)
-				if deepScan || page > 0 {
-					fmt.Printf("[DEBUG-TEMP] doSyncOnce AddPeerBlock(%s, #%d, hash=%s) exists=%v -> %v\n", nodeURL, block.Height, block.Hash[:min(16, len(block.Hash))], exists, accepted)
-				}
-				if accepted {
-					addedThisPage++
-				}
+			if !exists && dag.AddPeerBlock(block) {
+				addedThisPage++
 			}
 		}
 		totalAdded += addedThisPage
