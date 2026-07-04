@@ -593,6 +593,7 @@ func (dag *BlockDAG) doSyncOnce(nodeURL string) (ok bool) {
 		// deepScan never needs to go below that floor.
 		minHeight = dag.BootHeight()
 	}
+	fmt.Printf("[DEBUG-TEMP] doSyncOnce(%s): deepScan=%v minHeight=%d myHeight=%d\n", nodeURL, deepScan, minHeight, dag.Height())
 	totalAdded := 0
 	// P1-02: track (minHeight, afterHash) cursor so same-height siblings that
 	// don't fit in one page are not skipped.  afterHash is empty for the first
@@ -608,6 +609,7 @@ func (dag *BlockDAG) doSyncOnce(nodeURL string) (ok bool) {
 			}
 			break // got at least one page this call; report what we added
 		}
+		fmt.Printf("[DEBUG-TEMP] fetchBlocksSince(%s, min_height=%d) page %d: got %d block(s)\n", nodeURL, minHeight, page, len(blocks))
 		if len(blocks) == 0 {
 			break // caught up — peer has nothing newer than our height
 		}
