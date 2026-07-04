@@ -4833,6 +4833,21 @@ func (cs *ChainState) applySwapDeltaLocked(wallet string, amountIn, amountOut fl
 		acc.TUsdBalance = NewDecimal(round6(acc.TUsdBalance.Float() - amountIn))
 		acc.Balance = NewDecimal(round6(acc.Balance.Float() + amountOut))
 	}
+	// FIX (P0, 2026-07-04 brutal audit): swapLocked (primary path) calls
+	// touchActivity unconditionally right here, then enforceWealthCapLocked
+	// when !aeqToTusd (AEQ just arrived via this swap direction) — this
+	// replay counterpart never mirrored either. A wallet near the cap
+	// swapping tUSD->AEQ would end up with a HIGHER, uncapped Balance on
+	// secondaries than the primary's capped, excess-redistributed value:
+	// AccountSetXOR and pool state diverge, surfacing as a StateRoot
+	// mismatch that looks unrelated to swaps at all. Mirroring exactly what
+	// the primary does, in the same order, before saving.
+	touchActivity(acc)
+	if !aeqToTusd {
+		if err := cs.enforceWealthCapLocked(acc); err != nil {
+			return fmt.Errorf("swap: could not enforce wealth cap for %s: %w", wallet, err)
+		}
+	}
 	// FIX (audit recheck2, P0 #3): see ApplyTransferDelta's comment — every
 	// saveAccountToDB/savePoolToDB call in this function used to discard its
 	// returned error.
@@ -4992,6 +5007,20 @@ func (cs *ChainState) removeLiquidityDeltaLocked(wallet string, sharesToBurn, de
 	acc.LPShares = NewDecimal(round6(acc.LPShares.Float() - sharesToBurn))
 	acc.Balance = NewDecimal(round6(acc.Balance.Float() + outAEQ))
 	acc.TUsdBalance = NewDecimal(round6(acc.TUsdBalance.Float() + outTUSD))
+	// FIX (P0, 2026-07-04 brutal audit): removeLiquidityLocked (primary path)
+	// calls touchActivity + enforceWealthCapLocked right here, in all three
+	// of its branches, immediately after crediting the AEQ received back
+	// from the pool — this replay counterpart never mirrored either. A
+	// wallet near the cap removing liquidity would end up with a HIGHER,
+	// uncapped Balance on secondaries than the primary's capped, excess-
+	// redistributed value: AccountSetXOR and pool state diverge, which
+	// surfaces as a StateRoot mismatch that looks unrelated to liquidity at
+	// all. Mirroring exactly what the primary does, in the same order,
+	// before saving.
+	touchActivity(acc)
+	if err := cs.enforceWealthCapLocked(acc); err != nil {
+		return fmt.Errorf("remove_liquidity: could not enforce wealth cap for %s: %w", wallet, err)
+	}
 	newReserveAEQ := round6(cs.pool.ReserveAEQ.Float() - outAEQ)
 	newReserveTUSD := round6(cs.pool.ReserveTUSD.Float() - outTUSD)
 	if newReserveAEQ < 0 {
