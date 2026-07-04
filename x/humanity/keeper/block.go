@@ -2449,6 +2449,7 @@ if dag.resyncInProgress.Load() {
 // to the sender, and it correctly clears any breaker/orphan bookkeeping for
 // that proposer instead of counting genuinely irrelevant old data against it.
 if block != nil && block.Height > 0 && block.Height <= dag.BootHeight() {
+	fmt.Printf("[DEBUG-TEMP] bootHeight-skip: block #%d <= BootHeight %d\n", block.Height, dag.BootHeight())
 	return true
 }
 // Lock-free fork-flood shield (P0, 2026-07-02): reject a block whose height is
