@@ -2046,7 +2046,15 @@ const minOrphanAttemptsBeforeAbandon = 3
 // to still protect against a real flood. A few multiples of BLOCK_TIME (2s)
 // comfortably covers ordinary propagation variance without meaningfully
 // slowing down real divergence detection.
-const proposerBreakerOrphanGrace = 8 * time.Second
+//
+// FIX (2026-07-05 — Contabo 2 still repeatedly tripping at BLOCK_TIME=1s
+// even after proposerBreakerFailThreshold's own scaling): real
+// cross-provider propagation+processing delay is a roughly FIXED
+// wall-clock quantity, independent of BLOCK_TIME — it does not shrink
+// just because blocks are produced faster. A var (not const) so
+// TuneProposerBreakerForBlockTime can widen it at a faster-than-baseline
+// cadence; never narrows it at a slower one.
+var proposerBreakerOrphanGrace = 8 * time.Second
 
 // orphanAge reports how long missingParent has been sitting in the orphan
 // queue (zero, false if it isn't currently tracked at all — e.g. this is
@@ -2486,12 +2494,33 @@ var proposerBreakerFailThreshold = 40
 // TuneProposerBreakerForBlockTime.
 const proposerBreakerTuningBaselineSeconds = 2.0
 
-// TuneProposerBreakerForBlockTime rescales proposerBreakerFailThreshold so
-// the wall-clock time to trip (roughly threshold * BLOCK_TIME) stays close
-// to what was proven stable at the original 2s-BLOCK_TIME tuning, instead
-// of silently shrinking as BLOCK_TIME drops. Never lowers the threshold
-// below its original 40 — a slower-than-baseline BLOCK_TIME keeps the
-// already-proven value rather than becoming MORE trigger-happy. Call once
+// proposerBreakerExtraSafetyFactor further widens both the fail threshold
+// and the orphan grace beyond the "keep the original 2s-baseline wall-clock
+// exposure window constant" calculation below.
+//
+// FIX (2026-07-05 — the first-pass scaling, matching the exact original 2s
+// trip time, still wasn't enough): confirmed live, Contabo 2 kept
+// repeatedly tripping its breaker against BOTH other validators at
+// BLOCK_TIME=1s even with proposerBreakerFailThreshold doubled to 80. The
+// original 2s-baseline tuning was itself just one operator's best guess,
+// not a hard physical limit — real cross-provider propagation+processing
+// delay has enough variance that matching the old exposure window exactly
+// isn't a comfortable margin, only a bare one. This extra factor buys
+// genuine headroom rather than re-deriving the same tight fit.
+const proposerBreakerExtraSafetyFactor = 3.0
+
+// TuneProposerBreakerForBlockTime rescales proposerBreakerFailThreshold and
+// proposerBreakerOrphanGrace for the actual configured BLOCK_TIME. The
+// threshold scales so the wall-clock time to trip stays close to (and then
+// safety-multiplied beyond) what was proven stable at the original
+// 2s-BLOCK_TIME tuning, instead of silently shrinking as BLOCK_TIME drops.
+// The grace period widens too: real cross-provider propagation+processing
+// delay is a roughly FIXED wall-clock quantity independent of BLOCK_TIME,
+// so it does not shrink just because blocks are produced faster — a faster
+// cadence needs MORE grace in block-count terms to cover the same fixed
+// real-world delay, not the same or less. Neither value is ever lowered
+// below its original tuning — a slower-than-baseline BLOCK_TIME keeps the
+// already-proven values rather than becoming MORE trigger-happy. Call once
 // at startup, before any sync/production goroutines start (main.go, right
 // after BLOCK_TIME is known).
 func TuneProposerBreakerForBlockTime(blockTime time.Duration) {
@@ -2499,9 +2528,22 @@ func TuneProposerBreakerForBlockTime(blockTime time.Duration) {
 	if secs <= 0 {
 		return
 	}
-	scaled := int(proposerBreakerTuningBaselineSeconds / secs * 40)
-	if scaled > proposerBreakerFailThreshold {
-		proposerBreakerFailThreshold = scaled
+	speedupFactor := proposerBreakerTuningBaselineSeconds / secs
+	// The extra safety margin only applies once we're actually running
+	// FASTER than the baseline this was tuned against — at or below the 2s
+	// baseline, this stays a no-op exactly like before, matching the
+	// already-proven behavior there.
+	extra := 1.0
+	if speedupFactor > 1 {
+		extra = proposerBreakerExtraSafetyFactor
+	}
+	scaledThreshold := int(speedupFactor * 40 * extra)
+	if scaledThreshold > proposerBreakerFailThreshold {
+		proposerBreakerFailThreshold = scaledThreshold
+	}
+	scaledGrace := time.Duration(float64(8*time.Second) * speedupFactor * extra)
+	if scaledGrace > proposerBreakerOrphanGrace {
+		proposerBreakerOrphanGrace = scaledGrace
 	}
 }
 
