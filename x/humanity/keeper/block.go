@@ -2409,6 +2409,23 @@ func (dag *BlockDAG) AddPeerBlock(block *Block) bool {
 if dag.resyncInProgress.Load() {
 	return false // an in-process self-heal resync is atomically swapping account/DAG state right now — see resyncInProgress's field comment; the sender will redeliver, ordered sync fills the gap once the resync completes
 }
+// FIX (durable fix, 2026-07-04 — closes wasted-effort noise found live after
+// a fresh checkpoint-seeded resync): a block at or below BootHeight is
+// already fully accounted for by the snapshot/checkpoint this node just
+// seeded from (see BootHeight's own comment) — accepting or even attempting
+// to resolve it is pure waste, and confirmed live to actively hurt: gossip/
+// relay of a proposer's own PRE-resync blocks (still circulating from
+// before this node's chain_blocks was wiped) kept arriving after a fresh
+// resync, each one genuinely missing its own equally-stale parent (also
+// wiped), competing for the exact same orphan-resolution machinery that
+// SHOULD be spending all its effort catching up to the CURRENT tip instead.
+// Reported as accepted (true): this data is already correctly reflected in
+// this node's state via the checkpoint, so there is nothing wrong to signal
+// to the sender, and it correctly clears any breaker/orphan bookkeeping for
+// that proposer instead of counting genuinely irrelevant old data against it.
+if block != nil && block.Height > 0 && block.Height <= dag.BootHeight() {
+	return true
+}
 // Lock-free fork-flood shield (P0, 2026-07-02): reject a block whose height is
 // far above ours BEFORE taking the write lock, so a diverged/runaway fork
 // pushing thousands of unresolvable blocks can NEVER contend for dag.mu with

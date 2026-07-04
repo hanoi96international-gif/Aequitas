@@ -139,3 +139,28 @@ func TestIsWithinOrphanGrace_NonOrphanRejectionNeverForgiven(t *testing.T) {
 		t.Fatal("a block whose parent is known must never be reported as within orphan grace")
 	}
 }
+
+// TestAddPeerBlock_BelowBootHeightAcceptedWithoutOrphanQueue is the
+// regression guard for the 2026-07-04 fix found live right after a fresh
+// checkpoint-seeded resync: stale gossip/relay of a proposer's own
+// PRE-resync blocks (height at or below the just-seeded checkpoint) kept
+// arriving and being queued as orphans, wasting the exact resolution
+// machinery that should focus entirely on catching up to the current tip.
+// A block at or below BootHeight is already fully accounted for by the
+// checkpoint and must be reported as accepted without ever reaching the
+// orphan queue.
+func TestAddPeerBlock_BelowBootHeightAcceptedWithoutOrphanQueue(t *testing.T) {
+	dag := newOrphanTestDAG()
+	dag.state = &ChainState{}
+	dag.bootHeight = 100
+	// Height 50 (below bootHeight) references a parent this node was never
+	// going to have (it was wiped by the resync) -- must still be accepted,
+	// not queued as an orphan.
+	stale := &Block{Hash: "stale-child", Height: 50, ParentHashes: []string{"long-gone-parent"}, Proposer: "0xhonest"}
+	if !dag.AddPeerBlock(stale) {
+		t.Fatal("a block at or below BootHeight must be reported as accepted")
+	}
+	if _, tracked := dag.orphanAge("long-gone-parent"); tracked {
+		t.Fatal("a block at or below BootHeight must never reach the orphan queue")
+	}
+}
