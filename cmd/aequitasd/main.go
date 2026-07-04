@@ -96,8 +96,15 @@ VERSION       = "v0.3.0"
 // was never even referenced anywhere in this file.
 INITIAL_GRANT = 1000
 CHAIN_ID      = "aequitas-1"
-BLOCK_TIME    = 1 * time.Second
-API_PORT      = 8080
+// BLOCK_TIME (durable fix, 2026-07-04): raised from 1s to 2s to give each
+// round more real-world headroom to propagate across every validator
+// before the next one starts — the "merge-set BFS hit the visit cap"
+// warnings seen all session are the direct symptom of too little slack at
+// 1s, and that slack only gets tighter as more validators join (network
+// diameter/propagation cost grows, the per-round budget didn't). Cheap to
+// try now while this is still a small test network.
+BLOCK_TIME = 2 * time.Second
+API_PORT   = 8080
 )
 
 // distributionHealthRetryInterval is how soon the daily-distribution

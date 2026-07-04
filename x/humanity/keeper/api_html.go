@@ -532,7 +532,7 @@ input[type=number]::-webkit-inner-spin-button{opacity:0.5}
   <div class="exp-stat">
     <div class="exp-stat-lbl" data-i18n="s-height">Latest Block</div>
     <div class="exp-stat-val" id="s-height">—</div>
-    <div class="exp-stat-sub">~1s · BlockDAG · Parallel production</div>
+    <div class="exp-stat-sub">~2s · BlockDAG · Parallel production</div>
   </div>
   <div class="exp-stat">
     <div class="exp-stat-lbl" data-i18n="s-humans">Verified Humans</div>
@@ -1263,7 +1263,7 @@ input[type=number]::-webkit-inner-spin-button{opacity:0.5}
       <tr><td data-i18n="k-chainid">Chain ID</td><td>1926 (0x786)</td></tr>
       <tr><td>Architecture</td><td style="color:var(--purple)">BlockDAG (Directed Acyclic Graph)</td></tr>
       <tr><td>EVM Compatible</td><td style="color:var(--green)" data-i18n="evm-yes">Yes — JSON-RPC /rpc · MetaMask</td></tr>
-      <tr><td data-i18n="k-btime">Block Time</td><td>~1 second average</td></tr>
+      <tr><td data-i18n="k-btime">Block Time</td><td>~2 seconds average</td></tr>
       <tr><td data-i18n="k-cons">Consensus</td><td style="color:var(--purple)">BlockDAG + Proof of Humanity</td></tr>
       <tr><td>P2P Protocol</td><td>libp2p (Go implementation)</td></tr>
       <tr><td>ZKP System</td><td>Groth16 / snarkjs / circom</td></tr>
@@ -1633,7 +1633,7 @@ input[type=number]::-webkit-inner-spin-button{opacity:0.5}
         <div style="display:flex;align-items:flex-start;gap:10px;margin-bottom:6px"><span style="display:inline-flex;align-items:center;justify-content:center;background:rgba(139,92,246,0.2);color:var(--purple);font-weight:700;font-size:0.58rem;min-width:22px;height:22px;border-radius:50%">5</span><span>Click <strong style="color:var(--text)">Deploy</strong> (or save variables to trigger auto-redeploy). Build takes ~3 minutes while Go compiles the node binary.</span></div>
         <div style="display:flex;align-items:flex-start;gap:10px;margin-bottom:6px"><span style="display:inline-flex;align-items:center;justify-content:center;background:rgba(139,92,246,0.2);color:var(--purple);font-weight:700;font-size:0.58rem;min-width:22px;height:22px;border-radius:50%">6</span><span>Watch <strong style="color:var(--text)">Deploy Logs</strong>. Success looks like: <span style="font-family:var(--font-mono);color:var(--teal)">Aequitas Node Running V</span> and <span style="font-family:var(--font-mono);color:var(--teal)">[NODE] Registered node operator wallet: 0x...</span></span></div>
         <div style="display:flex;align-items:flex-start;gap:10px;margin-bottom:6px"><span style="display:inline-flex;align-items:center;justify-content:center;background:rgba(139,92,246,0.2);color:var(--purple);font-weight:700;font-size:0.58rem;min-width:22px;height:22px;border-radius:50%">7</span><span>Go to <strong style="color:var(--text)">Settings</strong> &rarr; <strong style="color:var(--text)">Networking</strong> &rarr; <strong style="color:var(--text)">Generate Domain</strong> to get your public URL</span></div>
-        <div style="display:flex;align-items:flex-start;gap:10px"><span style="display:inline-flex;align-items:center;justify-content:center;background:rgba(139,92,246,0.2);color:var(--purple);font-weight:700;font-size:0.58rem;min-width:22px;height:22px;border-radius:50%">8</span><span>Open <span style="font-family:var(--font-mono);color:var(--neon)">https://YOUR-URL/api/status</span> in your browser &mdash; you should see JSON with <strong style="color:var(--text)">height</strong> climbing every ~1 second</span></div>
+        <div style="display:flex;align-items:flex-start;gap:10px"><span style="display:inline-flex;align-items:center;justify-content:center;background:rgba(139,92,246,0.2);color:var(--purple);font-weight:700;font-size:0.58rem;min-width:22px;height:22px;border-radius:50%">8</span><span>Open <span style="font-family:var(--font-mono);color:var(--neon)">https://YOUR-URL/api/status</span> in your browser &mdash; you should see JSON with <strong style="color:var(--text)">height</strong> climbing every ~2 seconds</span></div>
       </div>
 
       <!-- Step 4b Docker -->
@@ -1937,7 +1937,7 @@ en:{
   'k-proof':'Proof System','k-conf':'Confirmation','k-conf-v':'Within 1 second (1 block)',
   'k-sybil':'Sybil Protection','k-sybil-v':'One identity per biometric · permanent lock',
   'live-stats':'Live Chain Statistics',
-  's-height':'Block Height','s-height-sub':'New block every ~1s · BlockDAG · Parallel production',
+  's-height':'Block Height','s-height-sub':'New block every ~2s · BlockDAG · Parallel production',
   's-humans':'Verified Humans','s-humans-sub':'Biometric ZKP · One person, one wallet, forever',
   's-supply':'Total Supply','s-supply-sub':'Always = Humans × 1,000 AEQ',
   's-index':'Aequitas Index','s-index-sub':'0 = perfect equality · 100 = max inequality',
@@ -1946,7 +1946,7 @@ en:{
   'ib-fair':'Radically Fair Distribution','ib-fair-t':'Every verified human receives exactly 1,000 AEQ upon registration — no more, no less. No pre-mine, no founder allocation, no investor rounds. Total supply always equals verified humans × 1,000.',
   'ib-dag':'BlockDAG Architecture','ib-dag-t':'Multiple blocks can be produced simultaneously and merged into the DAG. Higher throughput, lower latency, better fault tolerance than traditional linear blockchains.',
   'ib-gas':'Truly Gasless','ib-gas-t':'Registration and AEQ transfers cost absolutely nothing. No ETH, BNB, or MATIC required. No credit card, no bank account, no prior cryptocurrency needed.',
-  'recent-blocks':'Recent Blocks','blocks-desc':'MERGE = multiple parents merged (BlockDAG). TX = registration transaction. Block time: ~1 second. Two nodes produce blocks in parallel.',
+  'recent-blocks':'Recent Blocks','blocks-desc':'MERGE = multiple parents merged (BlockDAG). TX = registration transaction. Block time: ~2 seconds. Two nodes produce blocks in parallel.',
   'loading':'Loading blocks...','net-info':'Network Info','k-chain':'Chain Name','k-symbol':'Symbol','k-btime':'Block Time',
   'k-cons':'Consensus','k-nodes':'Active Nodes','k-storage':'Storage','add-mm':'🦊 ADD TO METAMASK','k-dec':'Decimals',
   'btn-add-mm':'+ ADD AEQUITAS NETWORK',
@@ -2098,7 +2098,7 @@ de:{
   'k-proof':'Beweissystem','k-conf':'Bestätigung','k-conf-v':'Innerhalb von 1 Sekunde (1 Block)',
   'k-sybil':'Sybil-Schutz','k-sybil-v':'Eine Identität pro Biometrie · dauerhaft gesperrt',
   'live-stats':'Live-Chain-Statistiken',
-  's-height':'Blockhöhe','s-height-sub':'Neuer Block alle ~1s · BlockDAG · Parallele Produktion',
+  's-height':'Blockhöhe','s-height-sub':'Neuer Block alle ~2s · BlockDAG · Parallele Produktion',
   's-humans':'Verifizierte Menschen','s-humans-sub':'Biometrisches ZKP · Eine Person, eine Wallet, für immer',
   's-supply':'Gesamtmenge','s-supply-sub':'Immer = Menschen × 1.000 AEQ',
   's-index':'Aequitas-Index','s-index-sub':'0 = perfekte Gleichheit · 100 = maximale Ungleichheit',
@@ -2278,7 +2278,7 @@ es:{
   'k-proof':'Sistema de Prueba','k-conf':'Confirmación','k-conf-v':'En 1 segundo (1 bloque)',
   'k-sybil':'Protección Sybil','k-sybil-v':'Una identidad por biometría · bloqueo permanente',
   'live-stats':'Estadísticas de Cadena en Vivo',
-  's-height':'Altura de Bloque','s-height-sub':'Nuevo bloque cada ~1s · BlockDAG · Producción paralela',
+  's-height':'Altura de Bloque','s-height-sub':'Nuevo bloque cada ~2s · BlockDAG · Producción paralela',
   's-humans':'Humanos Verificados','s-humans-sub':'ZKP biométrico · Una persona, una wallet, siempre',
   's-supply':'Suministro Total','s-supply-sub':'Siempre = Humanos × 1,000 AEQ',
   's-index':'Índice Aequitas','s-index-sub':'0 = igualdad perfecta · 100 = desigualdad máxima',
@@ -2920,7 +2920,7 @@ it:{
   'k-proof':'Sistema di Prova','k-conf':'Conferma','k-conf-v':'Entro 1 secondo (1 blocco)',
   'k-sybil':'Protezione Sybil','k-sybil-v':'Una identità per biometrica · blocco permanente',
   'live-stats':'Statistiche Chain in Tempo Reale',
-  's-height':'Altezza Blocco','s-height-sub':'Nuovo blocco ogni ~1s · BlockDAG · Produzione parallela',
+  's-height':'Altezza Blocco','s-height-sub':'Nuovo blocco ogni ~2s · BlockDAG · Produzione parallela',
   's-humans':'Umani Verificati','s-humans-sub':'ZKP biometrico · Una persona, un wallet, per sempre',
   's-supply':'Offerta Totale','s-supply-sub':'Sempre = Umani × 1.000 AEQ',
   's-index':'Indice Aequitas','s-index-sub':'0 = perfetta uguaglianza · 100 = massima disuguaglianza',
@@ -2929,7 +2929,7 @@ it:{
   'ib-fair':'Distribuzione Radicalmente Equa','ib-fair-t':'Ogni umano verificato riceve esattamente 1.000 AEQ alla registrazione. Nessun pre-mining, nessuna allocazione ai fondatori. L\'offerta totale è sempre uguale a umani verificati × 1.000.',
   'ib-dag':'Architettura BlockDAG','ib-dag-t':'Più blocchi possono essere prodotti simultaneamente e uniti. Throughput più alto, latenza più bassa rispetto alle blockchain lineari tradizionali.',
   'ib-gas':'Veramente Senza Gas','ib-gas-t':'La registrazione e i trasferimenti AEQ non costano assolutamente nulla. Non servono ETH, BNB o MATIC. Nessun conto bancario, nessuna carta di credito.',
-  'recent-blocks':'Blocchi Recenti','blocks-desc':'MERGE = più genitori uniti (BlockDAG). TX = transazione di registrazione. Tempo blocco: ~1 secondo.',
+  'recent-blocks':'Blocchi Recenti','blocks-desc':'MERGE = più genitori uniti (BlockDAG). TX = transazione di registrazione. Tempo blocco: ~2 secondi.',
   'loading':'Caricamento blocchi...','net-info':'Info Rete','k-chain':'Nome Catena','k-symbol':'Simbolo','k-btime':'Tempo Blocco',
   'k-cons':'Consenso','k-nodes':'Node Attivi','k-storage':'Archiviazione','add-mm':'🦊 AGGIUNGI A METAMASK','k-dec':'Decimali',
   'btn-add-mm':'+ AGGIUNGI RETE AEQUITAS',
@@ -3237,7 +3237,7 @@ fr:{
   'k-proof':'Système de preuve','k-conf':'Confirmation','k-conf-v':'En 1 seconde (1 bloc)',
   'k-sybil':'Protection Sybil','k-sybil-v':'Une identité par biométrie · verrouillage permanent',
   'live-stats':'Statistiques de la chaîne en direct',
-  's-height':'Hauteur de bloc','s-height-sub':'Nouveau bloc toutes les ~1s · BlockDAG · Production parallèle',
+  's-height':'Hauteur de bloc','s-height-sub':'Nouveau bloc toutes les ~2s · BlockDAG · Production parallèle',
   's-humans':'Humains vérifiés','s-humans-sub':'ZKP biométrique · Une personne, un portefeuille, pour toujours',
   's-supply':'Offre totale','s-supply-sub':'Toujours = Humains × 1 000 AEQ',
   's-index':'Index Aequitas','s-index-sub':'0 = égalité parfaite · 100 = inégalité maximale',
@@ -3246,7 +3246,7 @@ fr:{
   'ib-fair':'Distribution radicalement équitable','ib-fair-t':'Chaque humain vérifié reçoit exactement 1 000 AEQ. Pas de pré-minage ni d\'allocation fondateurs. Offre = Humains × 1 000.',
   'ib-dag':'Architecture BlockDAG','ib-dag-t':'Plusieurs blocs produits simultanément et fusionnés. Débit plus élevé, latence plus faible.',
   'ib-gas':'Vraiment sans frais','ib-gas-t':'Inscription et transferts AEQ gratuits. Pas d\'ETH, BNB ou MATIC. Pas de carte bancaire nécessaire.',
-  'recent-blocks':'Blocs récents','blocks-desc':'MERGE = plusieurs parents fusionnés (BlockDAG). TX = transaction d\'inscription. Temps de bloc : ~1 seconde.',
+  'recent-blocks':'Blocs récents','blocks-desc':'MERGE = plusieurs parents fusionnés (BlockDAG). TX = transaction d\'inscription. Temps de bloc : ~2 secondes.',
   'loading':'Chargement des blocs...','net-info':'Informations réseau','k-chain':'Nom de chaîne','k-symbol':'Symbole','k-btime':'Temps de bloc',
   'k-cons':'Consensus','k-nodes':'Nœuds actifs','k-storage':'Stockage','add-mm':'🦊 AJOUTER À METAMASK','k-dec':'Décimales',
   'btn-add-mm':'+ AJOUTER LE RÉSEAU AEQUITAS',
@@ -3398,7 +3398,7 @@ pt:{
   'k-proof':'Sistema de Prova','k-conf':'Confirmação','k-conf-v':'Em 1 segundo (1 bloco)',
   'k-sybil':'Proteção Sybil','k-sybil-v':'Uma identidade por biometria · bloqueio permanente',
   'live-stats':'Estatísticas ao Vivo da Cadeia',
-  's-height':'Altura do Bloco','s-height-sub':'Novo bloco a cada ~1s · BlockDAG · Produção paralela',
+  's-height':'Altura do Bloco','s-height-sub':'Novo bloco a cada ~2s · BlockDAG · Produção paralela',
   's-humans':'Humanos Verificados','s-humans-sub':'ZKP biométrico · Uma pessoa, uma carteira, para sempre',
   's-supply':'Oferta Total','s-supply-sub':'Sempre = Humanos × 1.000 AEQ',
   's-index':'Índice Aequitas','s-index-sub':'0 = igualdade perfeita · 100 = desigualdade máxima',
@@ -3718,7 +3718,7 @@ hi:{
   'k-proof':'प्रमाण प्रणाली','k-conf':'पुष्टि','k-conf-v':'6 सेकंड के भीतर (1 ब्लॉक)',
   'k-sybil':'Sybil सुरक्षा','k-sybil-v':'प्रति बायोमेट्रिक एक पहचान · स्थायी लॉक',
   'live-stats':'लाइव चेन सांख्यिकी',
-  's-height':'ब्लॉक हाइट','s-height-sub':'हर ~1s में नया ब्लॉक · BlockDAG · समानांतर उत्पादन',
+  's-height':'ब्लॉक हाइट','s-height-sub':'हर ~2s में नया ब्लॉक · BlockDAG · समानांतर उत्पादन',
   's-humans':'सत्यापित मनुष्य','s-humans-sub':'बायोमेट्रिक ZKP · एक व्यक्ति, एक वॉलेट, हमेशा के लिए',
   's-supply':'कुल आपूर्ति','s-supply-sub':'हमेशा = मनुष्य × 1,000 AEQ',
   's-index':'Aequitas इंडेक्स','s-index-sub':'0 = पूर्ण समानता · 100 = अधिकतम असमानता',
@@ -6267,7 +6267,7 @@ function _buildNodeGuidePDF(lang) {
       sstep2:'Step 2 — Create a PostgreSQL Database',stxt2:'Your node needs a PostgreSQL database for permanent storage. Each node must have its own dedicated database — never share one database between two nodes.',sdb:['RAILWAY: On railway.app, create a new project → + New → Database → Add PostgreSQL. DATABASE_URL is injected automatically when you add the node service to the same project — no manual setup needed.','VPS: Install PostgreSQL directly on the VPS. Run: sudo apt install -y postgresql && sudo systemctl enable --now postgresql','VPS: Create database — sudo -u postgres psql -c "CREATE USER aequitas WITH PASSWORD \'STRONG_PASS\';" && sudo -u postgres psql -c "CREATE DATABASE aequitas OWNER aequitas;"','VPS: Allow Docker containers to connect — echo "host aequitas aequitas 172.17.0.0/16 md5" | sudo tee -a $(sudo -u postgres psql -t -c "SHOW hba_file;" | tr -d \' \') && sudo -u postgres psql -c "ALTER SYSTEM SET listen_addresses=\'*\';" && sudo systemctl restart postgresql','VPS DATABASE_URL format: postgres://aequitas:STRONG_PASS@172.17.0.1:5432/aequitas  (172.17.0.1 = Docker bridge gateway — how containers reach the host)'],
       s4:'Step 4 — Deploy on Railway (Recommended)',r4:'Railway is the fastest way to get running. The free tier meets all requirements. Estimated setup time: 10–15 minutes after completing Steps 1–3.',rs:['In your Railway project (from Step 2), click + New → GitHub Repo','Select your Aequitas fork (from Step 1) — Railway detects the Dockerfile automatically','Railway starts building — the Go compilation takes about 3 minutes','Go to your service → Settings → Variables and add the env vars from Step 3','Set PRIMARY_NODE_URL=https://aequitas.digital so your node syncs from the primary','Set NODE_OPERATOR_WALLET=<your registered AEQ human wallet> to receive daily validator rewards','Set RELAYER_PRIVATE_KEY=<your EOA private key> for signing on-chain registrations','Save variables — Railway redeploys automatically','Watch the deploy logs for: "Aequitas Node Running ✓" and "[NODE] Registered node operator wallet"','Open YOUR-RAILWAY-URL/api/status to confirm the node is live and block height is climbing','Add your node\'s RPC to MetaMask: Chain ID 1926, Symbol AEQ, URL https://YOUR-URL/rpc'],rn:'Railway assigns a random subdomain; custom domains can be set in project settings. Only port 8080 needs to be exposed — P2P is managed internally by the node.',
       s5:'5. Quick Start — Docker / VPS',d5:'For VPS (Contabo, Hetzner, DigitalOcean). Docker + PostgreSQL required. You can reuse Railway\'s PostgreSQL as external DB. NODE_OPERATOR_WALLET must be a registered Aequitas human.',dc:'git clone https://github.com/hanoi96international-gif/Aequitas\ncd Aequitas\ndocker build -t aequitas-node .\n\n# Step 1: First start (no NODE_KEY yet — it will be shown in logs)\ndocker run -d --name aequitas-node --restart unless-stopped \\\n  -e DATABASE_URL="postgresql://user:pass@host:5432/dbname" \\\n  -e RELAYER_PRIVATE_KEY="YOUR_HEX_PRIVATE_KEY" \\\n  -e RELAYER_ADDRESS="0xYOUR_NODE_SIGNING_ADDRESS" \\\n  -e NODE_OPERATOR_WALLET="0xYOUR_REGISTERED_HUMAN_WALLET" \\\n  -e NODE_OPERATOR_BINDING_SIGNATURE="generate-at-/node-binding" \\\n  -e SELF_URL="http://YOUR-SERVER-IP:8080" \\\n  -e PRIMARY_NODE_URL="https://aequitas.digital" \\\n  -e BOOTSTRAP_SNAPSHOT_URL="https://aequitas.digital/api/snapshot" \\\n  -e BOOTSTRAP_SIGNER="0x92cbedec9d348b4762cb9af99500ee6139c5b671" \\\n  -e AUTO_HEAL_ON_DIVERGENCE="true" \\\n  -e SNAPSHOT_TOKEN="optional" \\\n  -p 8080:8080 -p 4001:4001 aequitas-node\n\n# Step 2: Get NODE_KEY from logs (one-time setup):\ndocker logs aequitas-node 2>&1 | grep "SAVE THIS AS NODE_KEY"\n\n# Step 3: Final command with NODE_KEY (use this permanently):\ndocker stop aequitas-node && docker rm aequitas-node\ndocker run -d --name aequitas-node --restart unless-stopped \\\n  -e DATABASE_URL="postgresql://user:pass@host:5432/dbname" \\\n  -e RELAYER_PRIVATE_KEY="YOUR_HEX_PRIVATE_KEY" \\\n  -e RELAYER_ADDRESS="0xYOUR_NODE_SIGNING_ADDRESS" \\\n  -e NODE_OPERATOR_WALLET="0xYOUR_REGISTERED_HUMAN_WALLET" \\\n  -e NODE_OPERATOR_BINDING_SIGNATURE="generate-at-/node-binding" \\\n  -e NODE_KEY="base64-from-step-2" \\\n  -e SELF_URL="http://YOUR-SERVER-IP:8080" \\\n  -e PRIMARY_NODE_URL="https://aequitas.digital" \\\n  -e BOOTSTRAP_SNAPSHOT_URL="https://aequitas.digital/api/snapshot" \\\n  -e BOOTSTRAP_SIGNER="0x92cbedec9d348b4762cb9af99500ee6139c5b671" \\\n  -e AUTO_HEAL_ON_DIVERGENCE="true" \\\n  -e SNAPSHOT_TOKEN="optional" \\\n  -p 8080:8080 -p 4001:4001 aequitas-node\n\n# Open firewall:\nufw allow 8080/tcp && ufw allow 4001/tcp',dn:'Port 8080 required (open inbound). Port 4001 optional (P2P). Tip: use --env-file /root/.aequitas.env instead of inline -e flags to keep secrets out of shell history.',
-      s6:'6. Verify Your Node',v6:'Once running, check these endpoints to confirm the node is synced and healthy.',vc:'# 1. Node status (height should match the primary node within 1-2 blocks)\ncurl https://YOUR-NODE-URL/api/status\n# Expect: { "height": N, "total_humans": N, "index": N }\n\n# 2. EVM JSON-RPC (EVM compatibility check)\ncurl -X POST https://YOUR-NODE-URL/rpc \\\n  -H "Content-Type: application/json" \\\n  -d \'{"jsonrpc":"2.0","method":"eth_blockNumber","params":[],"id":1}\'\n\n# 3. In startup logs, confirm:\n#    [NODE] Registered node operator wallet: 0xYOUR_WALLET\n#    Aequitas Node Running V  (blocks every ~1 second)\n\n# MetaMask: RPC URL = https://YOUR-NODE-URL/rpc | Chain ID: 1926 | Symbol: AEQ',
+      s6:'6. Verify Your Node',v6:'Once running, check these endpoints to confirm the node is synced and healthy.',vc:'# 1. Node status (height should match the primary node within 1-2 blocks)\ncurl https://YOUR-NODE-URL/api/status\n# Expect: { "height": N, "total_humans": N, "index": N }\n\n# 2. EVM JSON-RPC (EVM compatibility check)\ncurl -X POST https://YOUR-NODE-URL/rpc \\\n  -H "Content-Type: application/json" \\\n  -d \'{"jsonrpc":"2.0","method":"eth_blockNumber","params":[],"id":1}\'\n\n# 3. In startup logs, confirm:\n#    [NODE] Registered node operator wallet: 0xYOUR_WALLET\n#    Aequitas Node Running V  (blocks every ~2 seconds)\n\n# MetaMask: RPC URL = https://YOUR-NODE-URL/rpc | Chain ID: 1926 | Symbol: AEQ',
       s7:'7. P2P Networking & Sync',p7:'Set PRIMARY_NODE_URL=https://aequitas.digital in your environment. The node auto-registers with the primary on startup, receives the full peer list, and begins syncing. The libp2p multiaddress below is for advanced/manual setups:',pa:'/dns4/reseau.proxy.rlwy.net/tcp/41277/p2p/12D3KooWFuP5HtD1Xy9bj3ZdWL7eisWTx72V26hpGieMmqsGLV5R',pn:'PRIMARY_NODE_URL (HTTPS) is the recommended method. The libp2p multiaddress may change if the primary node is redeployed.',
       s8:'8. Earning Validator Rewards',w8:'Validator rewards come from the Validators Pool (40% of all protocol fees: swap fees, demurrage, wealth cap overflow). Steps to receive rewards:',b8:['First register as a human on Aequitas: install the Android app and complete biometric registration to receive your wallet address and 1,000 AEQ','Set NODE_OPERATOR_WALLET to that registered wallet address in your node\'s environment variables','Start (or restart) your node — it calls RegisterNode() on startup. Confirm in logs: "[NODE] Registered node operator wallet: 0xYOUR_WALLET"','The primary node distributes rewards every 24 h to all registered node operator wallets proportional to blocks produced','Secondary nodes do NOT need to trigger distribution — just keep your node running and synced','No minimum uptime required, but consistently offline nodes contribute less to block production and proportionally less to the pool share'],
       s8b:'Step 5b — Link Wallet for Rewards (Usually Automatic)',w8b:'IMPORTANT: Most users skip this step. If NODE_OPERATOR_WALLET is set in your environment variables, your node auto-registers on startup and you receive rewards automatically. You only need this step if your node logs show "[NODE] validator key not authorized" or if auto-registration failed.',b8b:['CHECK FIRST: Look in your node startup logs for "[PEERS] Registered with primary node" — if you see it, you are done. No manual step needed.','Also check: "[NODE] Registered node operator wallet: 0xYOUR_WALLET" in logs — if present, rewards are set up.','IF MANUAL STEP NEEDED: Go to aequitas.digital → Network tab → scroll to Step 5b in the node guide','Enter your node RELAYER_ADDRESS (shown at startup as "Signing address: 0x...") in the form on the website','Click "Register Validator Key with MetaMask" — the website fetches the challenge automatically and you sign once with your human wallet','No curl command, no SNAPSHOT_TOKEN, no copy-paste required in the new simplified flow','Port 8080 must be open inbound on VPS nodes: ufw allow 8080/tcp'],
