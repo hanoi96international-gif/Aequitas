@@ -96,21 +96,17 @@ VERSION       = "v0.3.0"
 // was never even referenced anywhere in this file.
 INITIAL_GRANT = 1000
 CHAIN_ID      = "aequitas-1"
-// BLOCK_TIME (durable fix, 2026-07-04): raised 1s -> 2s -> 6s. The 2s value
-// still wasn't enough real-world headroom: confirmed live across three
-// independently-hosted validators (Railway US-West + two European VPS)
-// under continuous concurrent production, blocks kept perpetually chasing
-// each other's latest tip without fully catching up — every fetch of a
-// missing ancestor arrived just as an even newer tip had already superseded
-// it, an unresolvable moving target at this cadence over real
-// cross-provider network latency + GHOSTDAG compute time, not a bug in any
-// single mechanism. A block that "arrives" quickly but isn't reliably
-// agreed on by every node isn't actually fast, just fast-*looking* — GHOSTDAG
-// throughput scales with concurrent validator count, not directly with
-// BLOCK_TIME, so this trades raw block cadence for actually-reliable
-// convergence while the network is still small. Revisit downward once a
-// larger validator set has proven stable at this cadence.
-BLOCK_TIME = 6 * time.Second
+// BLOCK_TIME (2026-07-04): raised 1s -> 2s -> 6s earlier tonight while the
+// real convergence bugs were still unfixed (see git history on this
+// constant for that incident). Since then the actual root causes were
+// found and fixed: GHOSTDAG merge-set ancestor lookups now batch-fetch
+// instead of one DB round trip per hash (was the primary reason
+// ProduceBlock regularly exceeded BLOCK_TIME), and checkpoint resyncs now
+// seed GHOSTDAG sibling blocks, not just the canonical one, so peers no
+// longer permanently orphan on a missing merge parent. With the actual
+// bottlenecks gone, back to 1s per explicit operator decision — revisit
+// upward again only if live evidence (not precaution) shows it's needed.
+BLOCK_TIME = 1 * time.Second
 API_PORT   = 8080
 )
 
