@@ -2330,6 +2330,20 @@ func (dag *BlockDAG) MissingParentHashes() []string {
 	return hashes
 }
 
+// hasAwaitingOrphan reports whether hash is currently the missing-parent key
+// for at least one queued orphan — i.e. something is genuinely, actively
+// waiting on it right now, in the present tense. See AddPeerBlock's
+// bootHeight-skip call site for why this matters: a SelfFetched delivery
+// only proves a fetch was deliberately issued for a hash something needed
+// WHEN THE REQUEST WENT OUT, not that the need still exists when the
+// response arrives — a resync in between can clear the orphan queue entry
+// that originally justified the fetch.
+func (dag *BlockDAG) hasAwaitingOrphan(hash string) bool {
+	dag.orphansMu.Lock()
+	defer dag.orphansMu.Unlock()
+	return len(dag.orphans[hash]) > 0
+}
+
 // shouldAttemptFetch reports whether enough time has passed since the last
 // fetch attempt for hash to try again, and records this attempt if so. See
 // orphanFetchCooldown for why this exists — without it, every new orphan's
@@ -2647,7 +2661,25 @@ if dag.resyncInProgress.Load() {
 // parent — never a deliberate, targeted fetch for a hash something is
 // actively waiting on right now. Skipping storage for a SelfFetched block
 // defeats the entire point of targeted ancestor resolution.
-if block != nil && block.Height > 0 && block.Height <= dag.BootHeight() && dag.BootHeightCheckpointBacked() && !block.SelfFetched {
+//
+// FIX (2026-07-05 — fourth layer of the same incident, found live even
+// with the SelfFetched exemption correct): "SelfFetched" only proves the
+// fetch was deliberately, individually issued for a hash something needed
+// AT THE TIME the request went out — it says nothing about whether that
+// need still exists when the response finally arrives. Confirmed live,
+// repeating on every single resync: fetchMissingAncestors/doSyncOnce
+// requests already in flight when a resync clears dag.orphans land
+// moments later still marked SelfFetched, and this exemption force-fed
+// them through as if still needed — scattered ancient-height blocks (seen
+// live: heights tens of thousands below a freshly-seeded checkpoint)
+// re-entering AddPeerBlock, queueing as brand-new orphans nothing is
+// waiting on anymore, burning real-time catch-up attention and proposer-
+// breaker budget on work that became moot the instant the resync ran.
+// hasAwaitingOrphan re-derives whether this exact hash is STILL the
+// missing-parent key for at least one currently-queued orphan — the
+// live, present-tense version of the "something genuinely needs it" claim
+// SelfFetched alone can only make in the past tense.
+if block != nil && block.Height > 0 && block.Height <= dag.BootHeight() && dag.BootHeightCheckpointBacked() && (!block.SelfFetched || !dag.hasAwaitingOrphan(block.Hash)) {
 	return true
 }
 // Lock-free fork-flood shield (P0, 2026-07-02): reject a block whose height is

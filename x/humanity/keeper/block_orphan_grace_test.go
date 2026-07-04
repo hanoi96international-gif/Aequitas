@@ -199,7 +199,7 @@ func TestAddPeerBlock_BelowBootHeightNotCheckpointBackedFallsThrough(t *testing.
 	}
 }
 
-// TestAddPeerBlock_SelfFetchedBelowBootHeightFallsThrough is the regression
+// TestAddPeerBlock_SelfFetchedGenuinelyAwaitedFallsThrough is the regression
 // guard for the third layer of the 2026-07-04 incident, found live even
 // WITH checkpoint backing genuinely correct: fetchMissingAncestors
 // deliberately, individually fetches ONE specific missing-parent hash
@@ -209,22 +209,68 @@ func TestAddPeerBlock_BelowBootHeightNotCheckpointBackedFallsThrough(t *testing.
 // second isolated peer's own historical chain, walked backward one hash at
 // a time), got the free pass, and was reported "accepted" WITHOUT ever
 // being stored — so the orphaned child waiting on that exact hash could
-// never resolve no matter how many times the fetch "succeeded". A
-// SelfFetched block must always fall through to normal processing and be
-// genuinely stored, even when it also happens to be at or below a
-// checkpoint-backed BootHeight.
-func TestAddPeerBlock_SelfFetchedBelowBootHeightFallsThrough(t *testing.T) {
+// never resolve no matter how many times the fetch "succeeded".
+//
+// fetchMissingAncestors fetches BY HASH, so the delivered block's OWN hash
+// IS the previously-missing-parent hash something is waiting on — this
+// test's setup mirrors that shape (queues a child waiting on "ancestor-
+// hash", then delivers a SelfFetched block whose Hash IS "ancestor-hash"),
+// unlike the deepScan/paging shape covered by the stale-no-longer-awaited
+// test below. A SelfFetched block that's still genuinely awaited must fall
+// through to normal processing and be genuinely stored, even when it also
+// happens to be at or below a checkpoint-backed BootHeight.
+func TestAddPeerBlock_SelfFetchedGenuinelyAwaitedFallsThrough(t *testing.T) {
 	dag := newOrphanTestDAG()
 	dag.state = &ChainState{}
 	dag.bootHeight = 100
 	dag.bootHeightCheckpointBacked = true // genuinely checkpoint-backed this time
-	blk := signTestBlockWithParent(t, 50, "long-gone-parent")
-	blk.SelfFetched = true
-	dag.authorizedValidators = map[string]bool{blk.Proposer: true}
-	if dag.AddPeerBlock(blk) {
-		t.Fatal("a SelfFetched block below BootHeight must not be silently accepted without storage")
+	ancestor := signTestBlockWithParent(t, 50, "even-older-parent")
+	waitingChild := &Block{Hash: "waiting-child", Height: 51, ParentHashes: []string{ancestor.Hash}, Proposer: "0xhonest"}
+	dag.queueOrphan(ancestor.Hash, waitingChild) // something is genuinely, actively waiting on this exact hash
+
+	ancestor.SelfFetched = true
+	dag.authorizedValidators = map[string]bool{ancestor.Proposer: true}
+	if dag.AddPeerBlock(ancestor) {
+		t.Fatal("a SelfFetched, genuinely-awaited block whose own parent is also missing should queue as an orphan, not report accepted")
 	}
-	if _, tracked := dag.orphanAge("long-gone-parent"); !tracked {
-		t.Fatal("a SelfFetched block below BootHeight with a genuinely missing parent must reach the normal orphan queue, not be silently waved through")
+	if _, exists := dag.blocks[ancestor.Hash]; exists {
+		t.Fatal("a block whose own parent is missing must not be stored in dag.blocks")
+	}
+	if _, tracked := dag.orphanAge("even-older-parent"); !tracked {
+		t.Fatal("a SelfFetched block that is still genuinely awaited must fall through to normal processing (reaching the orphan queue for ITS OWN missing parent), not be silently skipped")
+	}
+}
+
+// TestAddPeerBlock_SelfFetchedStaleNoLongerAwaitedIsSkipped is the
+// regression guard for the 2026-07-05 fix (fourth layer of the same
+// incident): a SelfFetched delivery only proves a fetch was deliberately
+// issued for a hash something needed WHEN THE REQUEST WENT OUT, not that
+// the need still exists when the response arrives. Confirmed live,
+// repeating on every single resync: fetchMissingAncestors/doSyncOnce
+// requests already in flight when a resync clears dag.orphans land moments
+// later still marked SelfFetched, with nothing left waiting on them —
+// scattered ancient-height blocks re-entering AddPeerBlock and queueing as
+// brand-new orphans nothing needs, burning real-time catch-up attention.
+// A SelfFetched block below a checkpoint-backed BootHeight that NOTHING is
+// currently awaiting must be silently accepted without storage, exactly
+// like a non-SelfFetched one.
+func TestAddPeerBlock_SelfFetchedStaleNoLongerAwaitedIsSkipped(t *testing.T) {
+	dag := newOrphanTestDAG()
+	dag.state = &ChainState{}
+	dag.bootHeight = 100
+	dag.bootHeightCheckpointBacked = true
+	stale := &Block{Hash: "stale-ancestor-hash", Height: 50, ParentHashes: []string{"long-gone-parent"}, Proposer: "0xhonest"}
+	stale.SelfFetched = true
+	// Deliberately do NOT queue anything waiting on "stale-ancestor-hash" —
+	// simulates a resync clearing the orphan queue while this fetch was
+	// already in flight.
+	if !dag.AddPeerBlock(stale) {
+		t.Fatal("a SelfFetched block below a checkpoint-backed BootHeight that nothing is awaiting must be reported as accepted")
+	}
+	if _, exists := dag.blocks["stale-ancestor-hash"]; exists {
+		t.Fatal("a stale, no-longer-awaited SelfFetched block must never be stored")
+	}
+	if _, tracked := dag.orphanAge("long-gone-parent"); tracked {
+		t.Fatal("a stale, no-longer-awaited SelfFetched block must never reach the orphan queue either")
 	}
 }
