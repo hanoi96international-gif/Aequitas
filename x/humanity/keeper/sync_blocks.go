@@ -589,6 +589,9 @@ func (dag *BlockDAG) doSyncOnce(nodeURL string) (ok bool) {
 		// deepScan never needs to go below that floor.
 		minHeight = dag.BootHeight()
 	}
+	if deepScan {
+		fmt.Printf("[DEBUG-TEMP] doSyncOnce(%s) deepScan minHeight=%d bootHeight=%d bootHeightCheckpointBacked=%v myHeight=%d\n", nodeURL, minHeight, dag.BootHeight(), dag.BootHeightCheckpointBacked(), dag.Height())
+	}
 	totalAdded := 0
 	// P1-02: track (minHeight, afterHash) cursor so same-height siblings that
 	// don't fit in one page are not skipped.  afterHash is empty for the first
@@ -629,8 +632,14 @@ func (dag *BlockDAG) doSyncOnce(nodeURL string) (ok bool) {
 			// field's own comment (block.go). Authorization remains a wholly
 			// separate, still-fully-enforced gate below.
 			block.SelfFetched = true
-			if !exists && dag.AddPeerBlock(block) {
-				addedThisPage++
+			if !exists {
+				accepted := dag.AddPeerBlock(block)
+				if deepScan || page > 0 {
+					fmt.Printf("[DEBUG-TEMP] doSyncOnce AddPeerBlock(%s, #%d, hash=%s) exists=%v -> %v\n", nodeURL, block.Height, block.Hash[:min(16, len(block.Hash))], exists, accepted)
+				}
+				if accepted {
+					addedThisPage++
+				}
 			}
 		}
 		totalAdded += addedThisPage
