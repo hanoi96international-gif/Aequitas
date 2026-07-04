@@ -656,8 +656,15 @@ func (dag *BlockDAG) doSyncOnce(nodeURL string) (ok bool) {
 			// field's own comment (block.go). Authorization remains a wholly
 			// separate, still-fully-enforced gate below.
 			block.SelfFetched = true
-			if !exists && dag.AddPeerBlock(block) {
-				addedThisPage++
+			if !exists {
+				accepted := dag.AddPeerBlock(block)
+				if deepScan {
+					fmt.Printf("[DEBUG-TEMP4] deepScan(%s) minHeight=%d AddPeerBlock(#%d, hash=%s, FromSync=%v) -> %v\n",
+						nodeURL, minHeight, block.Height, block.Hash[:min(16, len(block.Hash))], block.FromSync, accepted)
+				}
+				if accepted {
+					addedThisPage++
+				}
 			}
 		}
 		totalAdded += addedThisPage
