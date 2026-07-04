@@ -85,6 +85,22 @@ type Block struct {
 	StateRoot    string        `json:"state_root,omitempty"`
 	Transactions []Transaction `json:"transactions,omitempty"`
 	Signature    string        `json:"signature,omitempty"`
+	// ProducedAtMs is a millisecond-precision production wall-clock
+	// timestamp, set once by ProduceBlock and transmitted to peers —
+	// deliberately NOT covered by calculateBlockHash (an explicit field list,
+	// not reflection, so adding this here can never change any existing
+	// hash/signature). Timestamp above is Unix-SECONDS and baked into the
+	// signed hash, too coarse to ever tell whether a block actually attached
+	// within a sub-second BLOCK_TIME window or not. Added 2026-07-05 as a
+	// permanent operational diagnostic (not a temp/will-revert one) after a
+	// long night of tuning circuit-breaker constants without ever directly
+	// measuring the one number that actually determines whether any of that
+	// tuning can work: real end-to-end propagation+processing latency
+	// between independently-hosted validators. See AddPeerBlock's own use of
+	// this field for the live [LATENCY] log line. Zero on a block from a
+	// peer running an older binary without this field — logging skips that
+	// case rather than reporting a nonsense latency.
+	ProducedAtMs int64 `json:"produced_at_ms,omitempty"`
 	// Real GHOSTDAG consensus fields (Sompolinsky-Zohar, 2018).
 	// BlueScore = number of blue blocks in the past of this block (including
 	// the selected-parent chain). Blocks with more blue-score ancestors are
@@ -290,6 +306,15 @@ replayedMu             sync.Mutex
 	// about" from "healthy — other validators exist and I'm merging with
 	// them" or "genuinely alone, no other validators configured yet".
 	lastForeignMergeAt atomic.Int64
+	// foreignLatency* accumulate real, measured end-to-end attach-latency
+	// samples (ProducedAtMs on the sender to time-of-attach here) — see
+	// recordForeignAttachLatency's own comment for why this exists as a
+	// permanent operational diagnostic, not a temp one.
+	foreignLatencyMu        sync.Mutex
+	foreignLatencyCount     int
+	foreignLatencySumMs     int64
+	foreignLatencyMaxMs     int64
+	lastForeignLatencyLogAt atomic.Int64
 	// lastIsolationPauseLogAt rate-limits the "finality advance paused"
 	// diagnostic the same way as the other log throttles above — this can
 	// otherwise fire once per self-produced block (every BLOCK_TIME) for as
@@ -1785,6 +1810,7 @@ Proposer:     proposer,
 Humans:       dag.state.TotalHumans(),
 Transactions: txs,
 StateRoot:    stateRoot,
+ProducedAtMs: time.Now().UnixMilli(),
 }
 block.Hash = dag.calculateHash(block)
 if dag.signingKey != nil {
@@ -3390,6 +3416,20 @@ dag.maybeAdvanceFinalizedCheckpoint(block)
 // stored lower-cased (see its own field comment).
 if !strings.EqualFold(block.Proposer, dag.selfProposer) {
 	dag.recordForeignMerge()
+	// FIX (2026-07-05 — permanent operational diagnostic, not a temp one):
+	// this is the actual number every circuit-breaker/BLOCK_TIME tuning
+	// decision tonight was ultimately guessing at without ever measuring
+	// directly — real end-to-end time from another validator producing a
+	// block to THIS node successfully attaching it. See ProducedAtMs's own
+	// field comment for why it's safe (not hash-covered) and why the
+	// second-resolution Timestamp field was too coarse for this. Skipped
+	// for a peer running an older binary without this field (ProducedAtMs
+	// still zero) rather than logging a nonsense multi-decade "latency".
+	if block.ProducedAtMs > 0 {
+		if latency := time.Now().UnixMilli() - block.ProducedAtMs; latency >= 0 {
+			dag.recordForeignAttachLatency(latency)
+		}
+	}
 }
 
 tipCount := len(dag.tips)

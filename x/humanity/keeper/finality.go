@@ -80,6 +80,53 @@ func (dag *BlockDAG) recordForeignMerge() {
 	dag.lastForeignMergeAt.Store(time.Now().Unix())
 }
 
+// foreignAttachLatencyLogInterval bounds how often the accumulated
+// real-world attach-latency summary is logged — see
+// recordForeignAttachLatency's own comment.
+const foreignAttachLatencyLogInterval = 30 * time.Second
+
+// recordForeignAttachLatency accumulates a real, measured end-to-end
+// latency sample (ProducedAtMs on the sender to time-of-attach here — see
+// that field's own comment in block.go) and periodically logs a summary
+// (count/avg/max over the interval) instead of one line per block, which at
+// a fast BLOCK_TIME with several peers would flood the log for no added
+// signal. This is the actual, directly-measured number every BLOCK_TIME and
+// circuit-breaker tuning decision needs to fit comfortably inside — added
+// 2026-07-05 as a permanent operational diagnostic after a long night of
+// tuning those constants without ever measuring this directly.
+func (dag *BlockDAG) recordForeignAttachLatency(ms int64) {
+	dag.foreignLatencyMu.Lock()
+	dag.foreignLatencyCount++
+	dag.foreignLatencySumMs += ms
+	if ms > dag.foreignLatencyMaxMs {
+		dag.foreignLatencyMaxMs = ms
+	}
+	count := dag.foreignLatencyCount
+	sum := dag.foreignLatencySumMs
+	maxMs := dag.foreignLatencyMaxMs
+	dag.foreignLatencyMu.Unlock()
+
+	last := dag.lastForeignLatencyLogAt.Load()
+	now := time.Now().Unix()
+	if now-last < int64(foreignAttachLatencyLogInterval.Seconds()) {
+		return
+	}
+	if !dag.lastForeignLatencyLogAt.CompareAndSwap(last, now) {
+		return // another goroutine's log just won the race
+	}
+	dag.foreignLatencyMu.Lock()
+	dag.foreignLatencyCount = 0
+	dag.foreignLatencySumMs = 0
+	dag.foreignLatencyMaxMs = 0
+	dag.foreignLatencyMu.Unlock()
+	avg := int64(0)
+	if count > 0 {
+		avg = sum / int64(count)
+	}
+	fmt.Printf("[LATENCY] Real end-to-end attach latency over the last %s: %d sample(s), avg %dms, max %dms — the actual real-world number every BLOCK_TIME/circuit-breaker decision needs to fit inside.\n",
+		foreignAttachLatencyLogInterval, count, avg, maxMs)
+}
+
 // selfProducedFinalityAllowed reports whether ProduceBlock's own
 // self-produced block may advance the hard finality checkpoint right now —
 // see isolatedFinalityPauseWindow's comment for the full rationale. Must be
