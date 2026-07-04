@@ -2420,7 +2420,47 @@ func (dag *BlockDAG) farAheadFrontier() int64 {
 // operation orphans at most a block or two transiently (a gossip block that
 // briefly outran its parent), so a run this long unambiguously means the
 // proposer is on a diverged fork whose blocks this node can never place.
-const proposerBreakerFailThreshold = 40
+//
+// FIX (2026-07-04 — real root cause of Contabo nodes re-diverging at a
+// faster BLOCK_TIME even after the DB-index and sibling-seeding fixes):
+// this was a bare 40, tuned when every comment in this file explicitly
+// assumed a 2s BLOCK_TIME (see proposerBreakerOrphanGrace's own comment).
+// A single proposer produces roughly one block per BLOCK_TIME, so the
+// WALL-CLOCK time to accumulate 40 failures shrinks in direct proportion
+// to BLOCK_TIME — confirmed live: at BLOCK_TIME=1.5s a proposer's breaker
+// tripped in well under a minute during perfectly ordinary propagation
+// jitter, then a fixed 30s cooldown let the gap grow even further before
+// the bounded reopen got a chance, and each subsequent trip compounded
+// the same way. TuneProposerBreakerForBlockTime rescales this at startup
+// so the wall-clock exposure window this constant was proven safe at
+// (2s * 40 ≈ 80s) stays roughly constant regardless of cadence — a var,
+// not a const, specifically so it can be tuned; defaults to the original
+// 40 for every test and any code path that never calls the tuner.
+var proposerBreakerFailThreshold = 40
+
+// proposerBreakerTuningBaselineSeconds is the BLOCK_TIME (in seconds) every
+// breaker constant in this file was originally tuned against — see
+// TuneProposerBreakerForBlockTime.
+const proposerBreakerTuningBaselineSeconds = 2.0
+
+// TuneProposerBreakerForBlockTime rescales proposerBreakerFailThreshold so
+// the wall-clock time to trip (roughly threshold * BLOCK_TIME) stays close
+// to what was proven stable at the original 2s-BLOCK_TIME tuning, instead
+// of silently shrinking as BLOCK_TIME drops. Never lowers the threshold
+// below its original 40 — a slower-than-baseline BLOCK_TIME keeps the
+// already-proven value rather than becoming MORE trigger-happy. Call once
+// at startup, before any sync/production goroutines start (main.go, right
+// after BLOCK_TIME is known).
+func TuneProposerBreakerForBlockTime(blockTime time.Duration) {
+	secs := blockTime.Seconds()
+	if secs <= 0 {
+		return
+	}
+	scaled := int(proposerBreakerTuningBaselineSeconds / secs * 40)
+	if scaled > proposerBreakerFailThreshold {
+		proposerBreakerFailThreshold = scaled
+	}
+}
 
 // proposerBreakerCooldown is how long a tripped proposer's blocks are dropped
 // at the lock-free top of AddPeerBlock before probe blocks are let through to

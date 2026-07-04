@@ -104,15 +104,17 @@ CHAIN_ID      = "aequitas-1"
 // ProduceBlock regularly exceeded BLOCK_TIME), and checkpoint resyncs now
 // seed GHOSTDAG sibling blocks, not just the canonical one, so peers no
 // longer permanently orphan on a missing merge parent. With the actual
-// bottlenecks gone, dropped to 1s, then tried 2s as a middle ground when
-// Contabo 2 fell behind. Added a DB index (chain_blocks composite index,
-// evm_storage.go ensureGHOSTDAGColumns) that measurably helped but did NOT
-// fully fix it: both Contabo nodes still independently fell back into
-// isolated single-parent production within minutes of a fresh resync, at
-// both 1s and 2s. 1.5s per explicit operator decision as a live data
-// point between the two — not yet proven stable, revisit based on actual
-// convergence evidence, not precaution.
-BLOCK_TIME = 1500 * time.Millisecond
+// bottlenecks gone, dropped to 1s, then tried 2s and 1.5s as middle
+// grounds when Contabo nodes kept falling behind. Two real fixes landed
+// along the way: a DB index (chain_blocks composite index,
+// evm_storage.go ensureGHOSTDAGColumns) for the serving-node query cost,
+// and TuneProposerBreakerForBlockTime (x/humanity/keeper/block.go) for
+// the circuit breaker's fixed 40-failure threshold silently tripping
+// much faster in wall-clock terms as BLOCK_TIME shrank — confirmed live
+// as the actual mechanism behind every one of tonight's re-divergences,
+// regardless of which other bug got fixed first. Back to 1s per explicit
+// operator decision with both fixes in place.
+BLOCK_TIME = 1 * time.Second
 API_PORT   = 8080
 )
 
@@ -149,6 +151,13 @@ fmt.Printf("Version:       %s\n", VERSION)
 fmt.Printf("Chain ID:      %s\n", CHAIN_ID)
 fmt.Printf("Block Time:    %s\n", BLOCK_TIME)
 fmt.Println()
+
+// FIX (2026-07-04): several circuit-breaker constants in the keeper
+// package (x/humanity/keeper/block.go) were tuned assuming a 2s
+// BLOCK_TIME baseline — see TuneProposerBreakerForBlockTime's own
+// comment. Must run before any sync/production goroutines start, so
+// right at the top of main(), before anything else touches the DAG.
+keeper.TuneProposerBreakerForBlockTime(BLOCK_TIME)
 
 fmt.Println("── Loading Genesis Block ────────────────")
 genesis, err := loadGenesis()
