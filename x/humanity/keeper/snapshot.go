@@ -854,6 +854,65 @@ func verifyFetchedBlock(block *Block, height int64) error {
 	return nil
 }
 
+// filterAndVerifySiblings is fetchAndVerifySiblingsAtHeight's pure
+// filtering+verification half, split out (mirroring verifyFetchedBlock's own
+// split from fetchAndVerifyBlockFromPeer) so it's directly unit testable
+// without needing pinningDialer to allow a loopback test server. Keeps only
+// candidates at exactly height, skips the genesis block, and drops any
+// candidate that fails cryptographic verification — a bad/malformed sibling
+// from a misbehaving peer is silently skipped, not fatal to the others.
+func filterAndVerifySiblings(candidates []*Block, height int64) []*Block {
+	var verified []*Block
+	for _, b := range candidates {
+		if b.Height != height || b.IsGenesis {
+			continue
+		}
+		if err := verifyFetchedBlock(b, height); err != nil {
+			continue // best-effort — see fetchAndVerifySiblingsAtHeight's own comment
+		}
+		verified = append(verified, b)
+	}
+	return verified
+}
+
+// fetchAndVerifySiblingsAtHeight fetches every block at exactly height
+// (not just the canonical one) from baseURL and independently verifies
+// each — see SeedTrustedCheckpoint's own FIX comment for why this exists.
+// Uses /api/blocks?min_height=height-1, which returns every DAG sibling in
+// range (unlike /api/block?height=, which resolves to a single canonical
+// choice via GetBlockByHeight), then filters to exactly this height. A
+// per-block verification failure is skipped, not fatal to the whole call —
+// the canonical block (verified separately by fetchAndVerifyBlockFromPeer)
+// is what actually matters for the checkpoint itself; siblings are a
+// best-effort completeness improvement.
+func fetchAndVerifySiblingsAtHeight(baseURL string, height int64) ([]*Block, error) {
+	client := &http.Client{
+		Timeout: 30 * time.Second,
+		CheckRedirect: func(req *http.Request, via []*http.Request) error {
+			return http.ErrUseLastResponse
+		},
+		Transport: &http.Transport{DialContext: pinningDialer},
+	}
+	resp, err := client.Get(fmt.Sprintf("%s/api/blocks?min_height=%d&limit=500", strings.TrimRight(baseURL, "/"), height-1))
+	if err != nil {
+		return nil, fmt.Errorf("request failed: %w", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != 200 {
+		return nil, fmt.Errorf("peer returned HTTP %d", resp.StatusCode)
+	}
+	body, err := io.ReadAll(io.LimitReader(resp.Body, 4<<20))
+	if err != nil {
+		return nil, fmt.Errorf("read failed: %w", err)
+	}
+	var candidates []*Block
+	if err := json.Unmarshal(body, &candidates); err != nil {
+		return nil, fmt.Errorf("parse failed: %w", err)
+	}
+	verified := filterAndVerifySiblings(candidates, height)
+	return verified, nil
+}
+
 // SeedTrustedCheckpoint is the durable-resync speedup: instead of the
 // genesis-only reset RefreshBootHeightAfterSnapshotImport otherwise performs
 // after a RESYNC_FROM_SNAPSHOT, this fetches and independently verifies the
@@ -909,6 +968,43 @@ func (dag *BlockDAG) SeedTrustedCheckpoint(primaryURL string) bool {
 	dag.state.SetFinalizedCheckpoint(block.Hash, block.Height, block.BlueScore)
 	fmt.Printf("[RESYNC] ✓ Seeded trusted checkpoint at height %d (%s..., blue_score %d) from %s — resync will replay forward from here instead of genesis\n",
 		block.Height, block.Hash[:min(16, len(block.Hash))], block.BlueScore, primaryURL)
+
+	// FIX (P0, 2026-07-04 — true root cause of a night of persistent
+	// non-convergence, found live via a byte-for-byte reproduction against
+	// the real primary): only the CANONICAL block at the checkpoint height
+	// was ever seeded. GHOSTDAG routinely has multiple concurrently-produced
+	// blocks (siblings) at the same height, and a later block's merge set
+	// can legitimately reference ANY of them as a parent — not just the one
+	// GetBlockByHeight picks as canonical. Confirmed live: the very first
+	// blocks fetched above a fresh checkpoint referenced a sibling at the
+	// checkpoint's OWN height that was never seeded, so ghostdagBlockLookup
+	// could never resolve it — permanently orphaning that block and
+	// everything built on top, no matter how many sync passes ran, because
+	// deepScan's floor deliberately never re-fetches anything at or below
+	// the checkpoint (see deepScanFloor's own comment for why that's
+	// otherwise correct and necessary). Best-effort: a failure here doesn't
+	// invalidate the checkpoint itself, just means fewer siblings are
+	// available to resolve against — strictly a completeness improvement
+	// over seeding only the canonical block.
+	siblings, sibErr := fetchAndVerifySiblingsAtHeight(primaryURL, height)
+	if sibErr != nil {
+		fmt.Printf("[RESYNC] ⚠ Could not fetch sibling blocks at checkpoint height %d (%v) — checkpoint still valid, but a later block referencing a non-canonical sibling here may orphan permanently\n", height, sibErr)
+		return true
+	}
+	saved := 0
+	for _, sib := range siblings {
+		if sib.Hash == block.Hash {
+			continue // the canonical block was already saved above
+		}
+		if err := dag.state.SaveBlockToDB(sib); err != nil {
+			fmt.Printf("[RESYNC] ⚠ Could not persist sibling block %s... at checkpoint height %d (%v)\n", sib.Hash[:min(16, len(sib.Hash))], height, err)
+			continue
+		}
+		saved++
+	}
+	if saved > 0 {
+		fmt.Printf("[RESYNC] ✓ Also seeded %d sibling block(s) at checkpoint height %d — later blocks referencing them as a merge parent can now resolve\n", saved, height)
+	}
 	return true
 }
 

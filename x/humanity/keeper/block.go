@@ -1038,6 +1038,28 @@ func relayerAddressFromEnv() string {
 // ever showed "queued as orphan", never a single "Added N new blocks"
 // bulk-sync line. resyncHappened being true means it's now safe — required,
 // even — to discard everything loaded before this call and start over.
+// mergeSiblingsIntoBlocks is RefreshBootHeightAfterSnapshotImport's
+// checkpoint-sibling-loading half, split out as a pure function (no DB I/O)
+// so it's directly unit testable — mirrors the verifyFetchedBlock/
+// filterAndVerifySiblings extraction pattern elsewhere in this codebase.
+// Only inserts a sibling that is genuinely AT checkpointHeight and not
+// already the canonical block just seeded into blocks; never overwrites an
+// existing entry (blocks[s.Hash] already present means it was already
+// loaded, by this call or an earlier one). Returns the count actually added.
+func mergeSiblingsIntoBlocks(blocks map[string]*Block, siblings []*Block, checkpointHeight int64, canonicalHash string) int {
+	added := 0
+	for _, s := range siblings {
+		if s.Height != checkpointHeight || s.Hash == canonicalHash {
+			continue
+		}
+		if _, exists := blocks[s.Hash]; !exists {
+			blocks[s.Hash] = s
+			added++
+		}
+	}
+	return added
+}
+
 func (dag *BlockDAG) RefreshBootHeightAfterSnapshotImport(resyncHappened bool) {
 	dag.mu.Lock()
 	defer dag.mu.Unlock()
@@ -1107,6 +1129,23 @@ func (dag *BlockDAG) RefreshBootHeightAfterSnapshotImport(resyncHappened bool) {
 					checkpointBacked = true
 					fmt.Printf("[RESYNC] ✓ Seeded in-memory DAG from trusted checkpoint at height %d (%s...) — sequential resync starts here, not genesis\n",
 						cp.Height, cp.Hash[:min(16, len(cp.Hash))])
+					// FIX (P0, 2026-07-04 — true root cause of a night of
+					// persistent non-convergence): dag.blocks only had the
+					// SINGLE canonical checkpoint block — see
+					// fetchAndVerifySiblingsAtHeight's comment (snapshot.go)
+					// for why a later block can legitimately reference a
+					// DIFFERENT sibling at this exact height as a merge
+					// parent, permanently orphaning if that sibling was
+					// never seeded. SeedTrustedCheckpoint best-effort
+					// persists those siblings to chain_blocks; load whatever
+					// made it there into dag.blocks too (NOT dag.tips — the
+					// canonical block above remains the sole starting tip).
+					if sibs, err := dag.state.LoadBlocksSinceFromDB(checkpointHeight-1, "", 50); err == nil {
+						added := mergeSiblingsIntoBlocks(dag.blocks, sibs, checkpointHeight, cp.Hash)
+						if added > 0 {
+							fmt.Printf("[RESYNC] ✓ Also loaded %d sibling block(s) at checkpoint height %d into the in-memory DAG\n", added, checkpointHeight)
+						}
+					}
 				}
 			}
 		}
