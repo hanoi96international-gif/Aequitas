@@ -2614,6 +2614,16 @@ func (dag *BlockDAG) ClearProposerCircuitBreakers() {
 }
 
 func (dag *BlockDAG) AddPeerBlock(block *Block) bool {
+entryTime := time.Now() // TEMP DIAGNOSTIC (2026-07-05, 1s cadence investigation, will revert)
+defer func() {
+	if d := time.Since(entryTime); d > 50*time.Millisecond {
+		h := int64(-1)
+		if block != nil {
+			h = block.Height
+		}
+		fmt.Printf("[TIMING-TEMP] AddPeerBlock(#%d) took %s\n", h, d)
+	}
+}()
 if dag.resyncInProgress.Load() {
 	return false // an in-process self-heal resync is atomically swapping account/DAG state right now — see resyncInProgress's field comment; the sender will redeliver, ordered sync fills the gap once the resync completes
 }
