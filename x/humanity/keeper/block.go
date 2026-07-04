@@ -167,6 +167,12 @@ height                 int64
 // for) or comparing their claimed StateRoot against cs.accounts' current,
 // much-later state (guaranteed to "mismatch" despite no real divergence).
 bootHeight             int64
+// bootHeightCheckpointBacked is true only when bootHeight was set by
+// actually seeding dag.blocks/dag.tips with a real, stored block at that
+// exact height (RefreshBootHeightAfterSnapshotImport's checkpoint branch,
+// seededFromCheckpoint) — see AddPeerBlock's bootHeight-skip call site for
+// why this distinction is safety-critical, not cosmetic.
+bootHeightCheckpointBacked bool
 pendingTxs             []Transaction
 txMu                   sync.Mutex
 signingKey             *ecdsa.PrivateKey
@@ -1010,6 +1016,18 @@ func (dag *BlockDAG) RefreshBootHeightAfterSnapshotImport(resyncHappened bool) {
 	dag.mu.Lock()
 	defer dag.mu.Unlock()
 
+	// FIX (P0, 2026-07-04 — permanent-isolation-after-plain-restart incident):
+	// defaults to false; only the checkpoint-seeding branch below (where
+	// dag.blocks/dag.tips is ACTUALLY populated with a real, stored block at
+	// exactly this height) sets it true. See bootHeightCheckpointBacked's own
+	// field comment and AddPeerBlock's bootHeight-skip call site for why this
+	// distinction is safety-critical: the skip is only sound when SOMETHING
+	// in dag.tips genuinely represents this height for later blocks to find
+	// as a parent — true right after a checkpoint-seeded resync, never true
+	// for a plain restart (bootHeight there is ratcheted from a persisted
+	// height NUMBER in chain_config, with no matching entry in dag.blocks/
+	// dag.tips to back it).
+	checkpointBacked := false
 	if resyncHappened {
 		dag.blocks = make(map[string]*Block)
 		dag.tips = make(map[string]bool)
@@ -1037,6 +1055,7 @@ func (dag *BlockDAG) RefreshBootHeightAfterSnapshotImport(resyncHappened bool) {
 					dag.height = cp.Height
 					dag.bootHeight = cp.Height
 					seededFromCheckpoint = true
+					checkpointBacked = true
 					fmt.Printf("[RESYNC] ✓ Seeded in-memory DAG from trusted checkpoint at height %d (%s...) — sequential resync starts here, not genesis\n",
 						cp.Height, cp.Hash[:min(16, len(cp.Hash))])
 				}
@@ -1063,8 +1082,21 @@ func (dag *BlockDAG) RefreshBootHeightAfterSnapshotImport(resyncHappened bool) {
 		}
 	}
 	if bootH > dag.bootHeight {
+		// FIX (P0, 2026-07-04): this ratchet pushes bootHeight to a bare
+		// persisted NUMBER, not a height any checkpoint-seeding actually
+		// stored a block for — whatever checkpoint-backed guarantee held a
+		// moment ago no longer applies to this higher value. Confirmed live:
+		// after a plain restart, this ratchet raised bootHeight to
+		// max_block_height (continuously bumped by this node's own ongoing
+		// production) while dag.blocks/dag.tips still only held the
+		// restored/pruned window — AddPeerBlock's bootHeight-skip then waved
+		// through every real historical block up to that height WITHOUT ever
+		// storing them, so anything built on top orphaned forever on a
+		// "known-covered" parent that was never actually in dag.blocks.
+		checkpointBacked = false
 		dag.bootHeight = bootH
 	}
+	dag.bootHeightCheckpointBacked = checkpointBacked
 
 	// dag.height = max_block_height ONLY — this is the sync frontier
 	// doSyncOnce pages forward from. After a plain snapshot resync (no
@@ -1094,6 +1126,15 @@ func (dag *BlockDAG) BootHeight() int64 {
 	dag.mu.RLock()
 	defer dag.mu.RUnlock()
 	return dag.bootHeight
+}
+
+// BootHeightCheckpointBacked reports whether BootHeight is backed by a real,
+// stored block in dag.blocks/dag.tips at that exact height — see the
+// bootHeightCheckpointBacked field's own comment.
+func (dag *BlockDAG) BootHeightCheckpointBacked() bool {
+	dag.mu.RLock()
+	defer dag.mu.RUnlock()
+	return dag.bootHeightCheckpointBacked
 }
 
 // IsDegraded and DegradedReason (audit P1-01/P1-02) report whether a DB
@@ -2448,7 +2489,21 @@ if dag.resyncInProgress.Load() {
 // this node's state via the checkpoint, so there is nothing wrong to signal
 // to the sender, and it correctly clears any breaker/orphan bookkeeping for
 // that proposer instead of counting genuinely irrelevant old data against it.
-if block != nil && block.Height > 0 && block.Height <= dag.BootHeight() {
+//
+// FIX (P0, 2026-07-04 — permanent-isolation-after-plain-restart incident):
+// gated by BootHeightCheckpointBacked(). This skip is only sound when a
+// checkpoint-seeded resync actually stored a real block at exactly
+// BootHeight — SOMETHING later blocks can find as a parent. Confirmed live:
+// after a PLAIN restart (no resync), bootHeight gets ratcheted up to a bare
+// persisted max_block_height NUMBER (continuously bumped by this node's own
+// ongoing production) with no matching entry in dag.blocks/dag.tips. Every
+// real historical block up to that height got waved through here without
+// ever being stored, so every later block referencing one of them as a
+// parent orphaned permanently — the exact isolation loop found live on both
+// Contabo nodes tonight. Without checkpoint backing, fall through to the
+// normal path below instead, which safely resolves a genuinely-old-but-
+// still-known parent via ghostdagBlockLookup's own DB fallback.
+if block != nil && block.Height > 0 && block.Height <= dag.BootHeight() && dag.BootHeightCheckpointBacked() {
 	return true
 }
 // Lock-free fork-flood shield (P0, 2026-07-02): reject a block whose height is

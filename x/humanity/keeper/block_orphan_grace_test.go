@@ -148,19 +148,53 @@ func TestIsWithinOrphanGrace_NonOrphanRejectionNeverForgiven(t *testing.T) {
 // machinery that should focus entirely on catching up to the current tip.
 // A block at or below BootHeight is already fully accounted for by the
 // checkpoint and must be reported as accepted without ever reaching the
-// orphan queue.
+// orphan queue — but ONLY when BootHeight is actually checkpoint-backed
+// (see bootHeightCheckpointBacked's own comment and the next test below for
+// the unsafe case this same skip must NOT apply to).
 func TestAddPeerBlock_BelowBootHeightAcceptedWithoutOrphanQueue(t *testing.T) {
 	dag := newOrphanTestDAG()
 	dag.state = &ChainState{}
 	dag.bootHeight = 100
+	dag.bootHeightCheckpointBacked = true
 	// Height 50 (below bootHeight) references a parent this node was never
 	// going to have (it was wiped by the resync) -- must still be accepted,
 	// not queued as an orphan.
 	stale := &Block{Hash: "stale-child", Height: 50, ParentHashes: []string{"long-gone-parent"}, Proposer: "0xhonest"}
 	if !dag.AddPeerBlock(stale) {
-		t.Fatal("a block at or below BootHeight must be reported as accepted")
+		t.Fatal("a block at or below a checkpoint-backed BootHeight must be reported as accepted")
 	}
 	if _, tracked := dag.orphanAge("long-gone-parent"); tracked {
-		t.Fatal("a block at or below BootHeight must never reach the orphan queue")
+		t.Fatal("a block at or below a checkpoint-backed BootHeight must never reach the orphan queue")
+	}
+}
+
+// TestAddPeerBlock_BelowBootHeightNotCheckpointBackedFallsThrough is the
+// regression guard for the 2026-07-04 permanent-isolation-after-plain-restart
+// incident: after a PLAIN restart (no resync), BootHeight gets ratcheted up
+// to a bare persisted max_block_height NUMBER with no matching block ever
+// stored in dag.blocks/dag.tips at that height. Confirmed live on both
+// Contabo nodes: the old unconditional skip waved through every real
+// historical block up to that height without ever storing them, so every
+// later block referencing one of them as a parent orphaned permanently —
+// the DAG never actually merged, just kept re-reporting the same "added"
+// blocks that never stuck. Without checkpoint backing, the skip must NOT
+// fire — a genuinely valid, properly signed and authorized block must fall
+// through to normal processing (which for a still-missing parent means the
+// ordinary orphan queue, not a silent, unstored "accepted").
+func TestAddPeerBlock_BelowBootHeightNotCheckpointBackedFallsThrough(t *testing.T) {
+	dag := newOrphanTestDAG()
+	dag.state = &ChainState{}
+	dag.bootHeight = 100
+	dag.bootHeightCheckpointBacked = false // plain-restart case, not a checkpoint-seeded resync
+	blk := signTestBlockWithParent(t, 50, "long-gone-parent")
+	dag.authorizedValidators = map[string]bool{blk.Proposer: true}
+	if dag.AddPeerBlock(blk) {
+		t.Fatal("without checkpoint backing, a block below BootHeight must not be silently accepted")
+	}
+	if _, tracked := dag.orphanAge("long-gone-parent"); !tracked {
+		t.Fatal("without checkpoint backing, a block with a genuinely missing parent must reach the normal orphan queue, not be silently waved through")
+	}
+	if _, exists := dag.blocks[blk.Hash]; exists {
+		t.Fatal("a block waved through without checkpoint backing must never be silently stored as if verified")
 	}
 }

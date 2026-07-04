@@ -43,6 +43,37 @@ func signTestBlock(t *testing.T, height int64) *Block {
 	return b
 }
 
+// signTestBlockWithParent is signTestBlock with a caller-chosen parent hash,
+// for tests that need to exercise a specific missing-parent scenario (e.g.
+// the orphan queue) with an otherwise fully valid, authorized block.
+func signTestBlockWithParent(t *testing.T, height int64, parentHash string) *Block {
+	t.Helper()
+	key, err := crypto.GenerateKey()
+	if err != nil {
+		t.Fatalf("GenerateKey: %v", err)
+	}
+	addr := strings.ToLower(crypto.PubkeyToAddress(key.PublicKey).Hex())
+	b := &Block{
+		Height:       height,
+		Timestamp:    time.Now().Unix(),
+		ParentHashes: []string{parentHash},
+		Proposer:     addr,
+		Humans:       4,
+		StateRoot:    "some-state-root",
+	}
+	b.Hash = calculateBlockHash(b)
+	hashBytes, err := hex.DecodeString(b.Hash)
+	if err != nil {
+		t.Fatalf("decode hash: %v", err)
+	}
+	sig, err := crypto.Sign(hashBytes, key)
+	if err != nil {
+		t.Fatalf("Sign: %v", err)
+	}
+	b.Signature = hex.EncodeToString(sig)
+	return b
+}
+
 // TestGhostdagBlockLookup_MemoryHit verifies the fast path (block resident in
 // dag.blocks) never touches dag.state, and still works when dag.state is nil
 // — the same contract the raw `dag.blocks[hash]` access had before
