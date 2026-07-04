@@ -198,3 +198,33 @@ func TestAddPeerBlock_BelowBootHeightNotCheckpointBackedFallsThrough(t *testing.
 		t.Fatal("a block waved through without checkpoint backing must never be silently stored as if verified")
 	}
 }
+
+// TestAddPeerBlock_SelfFetchedBelowBootHeightFallsThrough is the regression
+// guard for the third layer of the 2026-07-04 incident, found live even
+// WITH checkpoint backing genuinely correct: fetchMissingAncestors
+// deliberately, individually fetches ONE specific missing-parent hash
+// because some already-orphaned child genuinely needs it — that is exactly
+// why it's SelfFetched. Confirmed live: it kept resolving hashes that
+// happened to land at or below a correctly checkpoint-backed BootHeight (a
+// second isolated peer's own historical chain, walked backward one hash at
+// a time), got the free pass, and was reported "accepted" WITHOUT ever
+// being stored — so the orphaned child waiting on that exact hash could
+// never resolve no matter how many times the fetch "succeeded". A
+// SelfFetched block must always fall through to normal processing and be
+// genuinely stored, even when it also happens to be at or below a
+// checkpoint-backed BootHeight.
+func TestAddPeerBlock_SelfFetchedBelowBootHeightFallsThrough(t *testing.T) {
+	dag := newOrphanTestDAG()
+	dag.state = &ChainState{}
+	dag.bootHeight = 100
+	dag.bootHeightCheckpointBacked = true // genuinely checkpoint-backed this time
+	blk := signTestBlockWithParent(t, 50, "long-gone-parent")
+	blk.SelfFetched = true
+	dag.authorizedValidators = map[string]bool{blk.Proposer: true}
+	if dag.AddPeerBlock(blk) {
+		t.Fatal("a SelfFetched block below BootHeight must not be silently accepted without storage")
+	}
+	if _, tracked := dag.orphanAge("long-gone-parent"); !tracked {
+		t.Fatal("a SelfFetched block below BootHeight with a genuinely missing parent must reach the normal orphan queue, not be silently waved through")
+	}
+}

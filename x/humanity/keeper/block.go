@@ -2520,8 +2520,23 @@ if dag.resyncInProgress.Load() {
 // Contabo nodes tonight. Without checkpoint backing, fall through to the
 // normal path below instead, which safely resolves a genuinely-old-but-
 // still-known parent via ghostdagBlockLookup's own DB fallback.
-if block != nil && block.Height > 0 && block.Height <= dag.BootHeight() && dag.BootHeightCheckpointBacked() {
-	fmt.Printf("[DEBUG-TEMP2] checkpoint-skip fired: block #%d <= BootHeight %d (checkpointBacked=true)\n", block.Height, dag.BootHeight())
+//
+// FIX (P0, 2026-07-04 — third layer of the same incident, found live even
+// WITH checkpoint backing correct): also excludes SelfFetched blocks now.
+// fetchMissingAncestors deliberately, individually fetches ONE specific
+// missing-parent hash because some already-orphaned child genuinely needs
+// it — that is precisely why it's SelfFetched. Confirmed live: it kept
+// resolving hashes that happened to land at or below BootHeight (a second
+// isolated peer's own historical chain, walked backward one hash at a
+// time), got the free pass here, and was reported "accepted" WITHOUT ever
+// being stored — so the orphaned child waiting on that exact hash could
+// never actually resolve, no matter how many times the fetch "succeeded".
+// The original bug this whole skip exists for is passively-arriving STALE
+// GOSSIP of a proposer's pre-resync blocks that nothing will ever need as a
+// parent — never a deliberate, targeted fetch for a hash something is
+// actively waiting on right now. Skipping storage for a SelfFetched block
+// defeats the entire point of targeted ancestor resolution.
+if block != nil && block.Height > 0 && block.Height <= dag.BootHeight() && dag.BootHeightCheckpointBacked() && !block.SelfFetched {
 	return true
 }
 // Lock-free fork-flood shield (P0, 2026-07-02): reject a block whose height is
