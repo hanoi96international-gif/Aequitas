@@ -123,6 +123,18 @@ header::before{content:'';position:absolute;top:0;left:0;right:0;height:2px;back
 .exp-stat-lbl{font-size:0.55rem;color:var(--muted);text-transform:uppercase;letter-spacing:1.5px;margin-bottom:7px;font-weight:600}
 .exp-stat-val{font-size:1.4rem;font-weight:800;color:var(--text);font-family:var(--font-display);line-height:1;background:var(--grad);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}
 .exp-stat-sub{font-size:0.5rem;color:var(--muted);margin-top:5px;line-height:1.4}
+.dag-panel{margin:16px 20px 0;background:var(--card);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden}
+.dag-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch;padding:6px 0}
+.dag-svg{display:block}
+.dag-node{cursor:pointer}
+.dag-node circle{stroke:var(--bg);stroke-width:2px;transition:r 0.15s}
+.dag-node:hover circle{r:9}
+.dag-node.dag-sibling circle{opacity:0.45}
+.dag-edge{stroke:rgba(255,255,255,0.14);stroke-width:1.4px;fill:none}
+.dag-legend{display:flex;gap:16px;padding:8px 16px;font-size:0.55rem;color:var(--muted);border-top:1px solid var(--border);flex-wrap:wrap}
+.dag-legend span{display:inline-flex;align-items:center;gap:5px}
+.dag-legend i{width:8px;height:8px;border-radius:50%;display:inline-block}
+.dag-tip{position:fixed;pointer-events:none;background:var(--card2);border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:0.6rem;font-family:var(--font-mono);color:var(--text);box-shadow:0 4px 16px rgba(0,0,0,0.4);z-index:500;display:none;max-width:260px;word-break:break-all}
 .exp-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;padding:16px 20px 24px}
 @media(max-width:860px){.exp-grid{grid-template-columns:1fr}}
 .exp-panel{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden;display:flex;flex-direction:column}
@@ -550,6 +562,22 @@ input[type=number]::-webkit-inner-spin-button{opacity:0.5}
     <div class="exp-stat-sub">Multi-validator network</div>
   </div>
 </div>
+<!-- GHOSTDAG DAG view: actual parent/merge structure, not just a linear list -->
+<div class="dag-panel">
+  <div class="exp-panel-hdr">
+    <div class="exp-panel-title"><span class="sec-dot"></span>GHOSTDAG DAG View</div>
+    <div class="sec-count" id="dag-node-count">—</div>
+  </div>
+  <div class="dag-wrap" id="dag-wrap">
+    <svg id="dag-svg" class="dag-svg"></svg>
+  </div>
+  <div class="dag-legend">
+    <span><i style="background:var(--purple)"></i>selected parent chain</span>
+    <span><i style="background:var(--muted)"></i>merged sibling (still counted, not selected)</span>
+    <span>Each column = one block height. Lines = real parent references. Faded dots = concurrent blocks GHOSTDAG merged in, not orphans.</span>
+  </div>
+</div>
+<div class="dag-tip" id="dag-tip"></div>
 <!-- Two-panel explorer grid -->
 <div class="exp-grid">
   <!-- Latest Blocks -->
@@ -4693,6 +4721,135 @@ function drawPriceChart() {
 
 let allBlocks = [];
 let latestChainHeight = 0;
+let dagAutoScrolled = false;
+
+// DAG_MAX_HEIGHTS/DAG_MAX_ROWS bound the rendered window so a wild
+// concurrent-production burst (many siblings at one height) can't blow up
+// the SVG into something unreadable or slow to render — same reasoning as
+// maxParentsPerBlock/maxMergeVisits on the backend (block.go).
+const DAG_MAX_HEIGHTS = 24;
+const DAG_MAX_ROWS = 5;
+const DAG_COL_W = 56;
+const DAG_ROW_H = 34;
+const DAG_PAD = 26;
+
+// renderDagView draws the actual GHOSTDAG parent/merge structure: one
+// column per block height, one row per concurrent block at that height
+// (deduplicated across every sibling — not just the canonical winner), and
+// a curved edge for every real parent_hashes reference that lands on
+// another block still in the visible window. This is what makes the DAG
+// (not a linear chain) visible — a merge block literally has multiple
+// incoming edges converging on it.
+function renderDagView(rawBlocks, canonicalHashSet) {
+  const svg = document.getElementById('dag-svg');
+  const wrap = document.getElementById('dag-wrap');
+  const tip = document.getElementById('dag-tip');
+  if (!svg || !rawBlocks || !rawBlocks.length) return;
+  const svgNS = 'http://www.w3.org/2000/svg';
+
+  const byHash = {};
+  rawBlocks.forEach(function(b) { if (b && b.hash) byHash[b.hash] = b; });
+  let heights = Array.from(new Set(Object.keys(byHash).map(function(h) { return byHash[h].height; })));
+  heights.sort(function(a, b) { return a - b; });
+  if (heights.length > DAG_MAX_HEIGHTS) heights = heights.slice(heights.length - DAG_MAX_HEIGHTS);
+  const colOf = {};
+  heights.forEach(function(h, i) { colOf[h] = i; });
+
+  const byHeight = {};
+  Object.keys(byHash).forEach(function(hash) {
+    const b = byHash[hash];
+    if (!(b.height in colOf)) return;
+    (byHeight[b.height] = byHeight[b.height] || []).push(b);
+  });
+
+  const nodePos = {};
+  let maxRows = 1;
+  heights.forEach(function(h) {
+    let blocksAtH = (byHeight[h] || []).slice();
+    blocksAtH.sort(function(a, b) {
+      const aC = canonicalHashSet.has(a.hash) ? 0 : 1;
+      const bC = canonicalHashSet.has(b.hash) ? 0 : 1;
+      if (aC !== bC) return aC - bC;
+      return (b.blue_score || 0) - (a.blue_score || 0);
+    });
+    if (blocksAtH.length > DAG_MAX_ROWS) blocksAtH = blocksAtH.slice(0, DAG_MAX_ROWS);
+    maxRows = Math.max(maxRows, blocksAtH.length);
+    const col = colOf[h];
+    blocksAtH.forEach(function(b, row) {
+      nodePos[b.hash] = {
+        x: DAG_PAD + col * DAG_COL_W,
+        y: DAG_PAD + row * DAG_ROW_H,
+        block: b,
+        canonical: canonicalHashSet.has(b.hash)
+      };
+    });
+  });
+
+  const width = DAG_PAD * 2 + Math.max(0, heights.length - 1) * DAG_COL_W;
+  const height = DAG_PAD * 2 + Math.max(0, maxRows - 1) * DAG_ROW_H;
+  svg.setAttribute('viewBox', '0 0 ' + width + ' ' + height);
+  svg.setAttribute('width', width);
+  svg.setAttribute('height', height);
+  while (svg.firstChild) svg.removeChild(svg.firstChild);
+
+  const edgeGroup = document.createElementNS(svgNS, 'g');
+  Object.keys(nodePos).forEach(function(hash) {
+    const n = nodePos[hash];
+    (n.block.parent_hashes || []).forEach(function(ph) {
+      const p = nodePos[ph];
+      if (!p) return;
+      const midX = (n.x + p.x) / 2;
+      const path = document.createElementNS(svgNS, 'path');
+      path.setAttribute('d', 'M' + p.x + ',' + p.y + ' C ' + midX + ',' + p.y + ' ' + midX + ',' + n.y + ' ' + n.x + ',' + n.y);
+      path.setAttribute('class', 'dag-edge');
+      edgeGroup.appendChild(path);
+    });
+  });
+  svg.appendChild(edgeGroup);
+
+  const nodeGroup = document.createElementNS(svgNS, 'g');
+  Object.keys(nodePos).forEach(function(hash) {
+    const n = nodePos[hash];
+    const g = document.createElementNS(svgNS, 'g');
+    g.setAttribute('class', 'dag-node' + (n.canonical ? '' : ' dag-sibling'));
+    g.setAttribute('transform', 'translate(' + n.x + ',' + n.y + ')');
+    const circle = document.createElementNS(svgNS, 'circle');
+    circle.setAttribute('r', n.canonical ? 7 : 5.5);
+    circle.setAttribute('fill', avatarColor(n.block.proposer || '0x00'));
+    g.appendChild(circle);
+    g.addEventListener('click', function() { openBlock(hash); });
+    g.addEventListener('mousemove', function(ev) {
+      if (!tip) return;
+      tip.style.display = 'block';
+      tip.style.left = (ev.clientX + 14) + 'px';
+      tip.style.top = (ev.clientY + 14) + 'px';
+      while (tip.firstChild) tip.removeChild(tip.firstChild);
+      [
+        '#' + n.block.height + (n.canonical ? ' · canonical' : ' · merged sibling'),
+        'proposer: ' + short(n.block.proposer || '', 8, 4),
+        'blue_score: ' + (n.block.blue_score != null ? n.block.blue_score : '—'),
+        'parents: ' + ((n.block.parent_hashes || []).length)
+      ].forEach(function(line) {
+        const div = document.createElement('div');
+        div.textContent = line;
+        tip.appendChild(div);
+      });
+    });
+    g.addEventListener('mouseleave', function() { if (tip) tip.style.display = 'none'; });
+    nodeGroup.appendChild(g);
+  });
+  svg.appendChild(nodeGroup);
+
+  const countEl = document.getElementById('dag-node-count');
+  if (countEl) countEl.textContent = Object.keys(nodePos).length + ' blocks · ' + heights.length + ' heights';
+
+  // Snap to the newest column on first render only — later live refreshes
+  // must not fight a user who scrolled back to look at older history.
+  if (wrap && !dagAutoScrolled) {
+    dagAutoScrolled = true;
+    wrap.scrollLeft = wrap.scrollWidth;
+  }
+}
 
 async function loadBlocks() {
   try {
@@ -4726,6 +4883,16 @@ async function loadBlocks() {
     // purely cosmetic now, no longer used to pick which block represents the height.
     const siblingsAt = {};
     (rawBlocks || []).forEach(function(b) { siblingsAt[b.height] = (siblingsAt[b.height] || 0) + 1; });
+    // DAG view needs every sibling (rawBlocks) plus the authoritative
+    // canonical set (to mark which one is the real selected-parent chain) —
+    // merge canonical blocks into allBlocks too, since a canonical block can
+    // in principle fall just outside /api/blocks' last-50 raw window.
+    const canonicalHashSet = new Set();
+    (canonicalBlocks || []).forEach(function(b) {
+      canonicalHashSet.add(b.hash);
+      if (!allBlocks.some(function(x) { return x.hash === b.hash; })) allBlocks.push(b);
+    });
+    renderDagView(allBlocks, canonicalHashSet);
     const dedupedBlocks = canonicalBlocks.slice().sort(function(a, b) { return b.height - a.height; });
     // FIX: this used to show dedupedBlocks.length — the deduped count of
     // whatever page of blocks was just fetched (capped at 50), not the
