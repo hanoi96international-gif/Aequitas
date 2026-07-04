@@ -217,7 +217,7 @@ p2pNode.SetDAG(bc)
 	if chainState.AccountsLoadFailed() && !resyncMode {
 		fmt.Println("[BOOTSTRAP] ⚠ chain_accounts failed to load at startup — skipping fresh-node bootstrap check this run (this node's real history, if any, is presumed intact; a future successful restart will re-evaluate)")
 	}
-	resyncSucceeded := false
+	stateImportSucceeded := false
 	if bootstrapURL := os.Getenv("BOOTSTRAP_SNAPSHOT_URL"); bootstrapURL != "" && (freshNodeBootstrap || resyncMode) {
 		// FIX 15: Validate URL scheme and host before fetching to prevent SSRF.
 		parsedBootstrap, urlErr := url.Parse(bootstrapURL)
@@ -239,7 +239,7 @@ p2pNode.SetDAG(bc)
 					// have no way to know the EVM mirror might be stale.
 					chainState.SetBootstrapDegraded("resync failed: " + err.Error())
 				} else {
-					resyncSucceeded = true
+					stateImportSucceeded = true
 					// Heal succeeded — clear any auto-heal flag so we don't resync
 					// again on the next restart (the cooldown stamp set when the
 					// flag was raised still guards against immediate re-triggering).
@@ -268,6 +268,31 @@ p2pNode.SetDAG(bc)
 				if err := chainState.ImportSnapshotFromURL(bootstrapURL, expectedSigner); err != nil {
 					fmt.Printf("[BOOTSTRAP] ✗ Import failed: %v\n", err)
 					chainState.SetBootstrapDegraded("snapshot import failed: " + err.Error())
+				} else {
+					// FIX (durable fix, 2026-07-04 — permanent fix for new-node
+					// onboarding, explicit user requirement: this must work
+					// reliably for non-technical operators too): a brand-new
+					// node used to get ONLY the account-state benefit of this
+					// checkpoint mechanism (the resync branch above calls
+					// SeedTrustedCheckpoint; this one never did) — leaving it
+					// to either walk the ENTIRE chain history from genesis via
+					// doSyncOnce (potentially hundreds of thousands of blocks,
+					// one HTTP page at a time) or fall back to
+					// BridgeHistoricalGap's synthetic-checkpoint-stub trust
+					// mode below, neither of which is the fast, verified path
+					// a resyncing node already gets. There is no reason a
+					// FIRST-TIME join should be worse than a resync: both
+					// start from zero local block history and both have the
+					// exact same primary snapshot available to seed from.
+					// stateImportSucceeded=true below makes
+					// RefreshBootHeightAfterSnapshotImport treat this exactly
+					// like a successful resync (seed dag.blocks/tips from the
+					// checkpoint instead of genesis-only) — a fresh node's
+					// dag.blocks/tips are genesis-only anyway at this point,
+					// so this is strictly an upgrade, never a behavior change
+					// for anything already working.
+					stateImportSucceeded = true
+					bc.SeedTrustedCheckpoint(os.Getenv("PRIMARY_NODE_URL"))
 				}
 			}
 		}
@@ -282,7 +307,7 @@ p2pNode.SetDAG(bc)
 	// walks the ENTIRE historical block backlog one HTTP page at a time —
 	// see RefreshBootHeightAfterSnapshotImport's own comment for why that's
 	// what caused the orphan-buffer abandonment storm during a large catch-up.
-	bc.RefreshBootHeightAfterSnapshotImport(resyncSucceeded)
+	bc.RefreshBootHeightAfterSnapshotImport(stateImportSucceeded)
 
 	// Bridge permanent historical gaps unconditionally on every startup.
 	// A node may be stuck below bootHeight not only after a fresh RESYNC
