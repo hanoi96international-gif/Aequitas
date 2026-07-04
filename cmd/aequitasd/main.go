@@ -96,14 +96,21 @@ VERSION       = "v0.3.0"
 // was never even referenced anywhere in this file.
 INITIAL_GRANT = 1000
 CHAIN_ID      = "aequitas-1"
-// BLOCK_TIME (durable fix, 2026-07-04): raised from 1s to 2s to give each
-// round more real-world headroom to propagate across every validator
-// before the next one starts — the "merge-set BFS hit the visit cap"
-// warnings seen all session are the direct symptom of too little slack at
-// 1s, and that slack only gets tighter as more validators join (network
-// diameter/propagation cost grows, the per-round budget didn't). Cheap to
-// try now while this is still a small test network.
-BLOCK_TIME = 2 * time.Second
+// BLOCK_TIME (durable fix, 2026-07-04): raised 1s -> 2s -> 6s. The 2s value
+// still wasn't enough real-world headroom: confirmed live across three
+// independently-hosted validators (Railway US-West + two European VPS)
+// under continuous concurrent production, blocks kept perpetually chasing
+// each other's latest tip without fully catching up — every fetch of a
+// missing ancestor arrived just as an even newer tip had already superseded
+// it, an unresolvable moving target at this cadence over real
+// cross-provider network latency + GHOSTDAG compute time, not a bug in any
+// single mechanism. A block that "arrives" quickly but isn't reliably
+// agreed on by every node isn't actually fast, just fast-*looking* — GHOSTDAG
+// throughput scales with concurrent validator count, not directly with
+// BLOCK_TIME, so this trades raw block cadence for actually-reliable
+// convergence while the network is still small. Revisit downward once a
+// larger validator set has proven stable at this cadence.
+BLOCK_TIME = 6 * time.Second
 API_PORT   = 8080
 )
 
