@@ -1053,6 +1053,29 @@ func (dag *BlockDAG) RefreshBootHeightAfterSnapshotImport(resyncHappened bool) {
 		dag.replayedMu.Unlock()
 		dag.bootHeight = 0
 		dag.startupTime = time.Now().Unix()
+		// FIX (P0, 2026-07-04 — fourth layer of the same incident): a resync
+		// wipes dag.blocks/dag.tips but, until now, never touched
+		// dag.orphans/orphanFirstSeen/orphanAttempts. Every orphan queued
+		// before this resync referenced a missing-parent hash from this
+		// node's OWN pre-resync (possibly isolated, dead-end) history — none
+		// of it is reachable from the fresh checkpoint going forward. With
+		// the SelfFetched exemption above now correctly making
+		// fetchMissingAncestors' resolutions stick instead of silently
+		// discarding them, those stale entries stopped being harmless noise
+		// and started costing real resolution attempts and orphanAbandonAfter
+		// budget — confirmed live: a fresh-checkpoint node kept walking
+		// backward through a dozens-deep pre-resync orphan chain that could
+		// never connect to anything, crowding out attention that should have
+		// gone to the live tip. Clearing here means the exact same "gossip of
+		// stale pre-resync blocks" this whole mechanism was built to tolerate
+		// (see this function's own top-level comment) never even reaches the
+		// orphan queue post-resync — it's simply unknown, fresh territory.
+		dag.orphansMu.Lock()
+		dag.orphans = make(map[string][]*Block)
+		dag.orphanFirstSeen = make(map[string]time.Time)
+		dag.orphanLastAttempt = make(map[string]time.Time)
+		dag.orphanAttempts = make(map[string]int)
+		dag.orphansMu.Unlock()
 
 		// FIX (durable fix, 2026-07-03): if SeedTrustedCheckpoint (snapshot.go)
 		// already fetched, verified, and persisted a real checkpoint block at
