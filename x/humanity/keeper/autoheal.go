@@ -68,6 +68,27 @@ const (
 	// isCatchingUpLocked-OR-high-fragmentation guard in
 	// startChainDivergenceCheck below for why this exists.
 	chainDivergenceMaxTipsForCheck = 200
+
+	// chainDivergenceStallOverride bounds how long the unsettled-state skip
+	// above can suppress the check for the SAME node continuously. Found live
+	// 2026-07-04: a node that has drifted onto its own isolated, self-produced
+	// fork (signing under a key nobody else ever authorized — see
+	// authorizedValidators/AddAuthorizedValidator, block.go) racks up
+	// thousands of dangling tips and NEVER consolidates them, because
+	// consolidation depends on real peers merging its blocks back in and a
+	// truly isolated node has no real peers. That means len(dag.tips) >
+	// chainDivergenceMaxTipsForCheck stays permanently true for exactly the
+	// node this check exists to catch — the false-positive guard above
+	// silently disabled the real detection for its entire runtime (confirmed:
+	// 1000+ synthetic checkpoint stubs and 5000+ StateRoot mismatches
+	// accumulated over 20+ minutes, tips never dropping, check skipped every
+	// single round). Legitimate heavy catch-up (the scenario the guard above
+	// was written for) consolidates within ~20 minutes even through a
+	// historical orphan wall (see the 2026-07-03 catch-up saga) — so after
+	// staying continuously unsettled for well past that, treat it as a
+	// signal in its own right and run the comparison anyway rather than
+	// skipping forever.
+	chainDivergenceStallOverride = 45 * time.Minute
 )
 
 // AutoResyncRequested reports whether a previous run's auto-heal monitor
@@ -159,6 +180,7 @@ func (dag *BlockDAG) startChainDivergenceCheck(primaryURL string) {
 	go func() {
 		ticker := time.NewTicker(chainDivergenceCheckInterval)
 		defer ticker.Stop()
+		var unsettledSince time.Time
 		for range ticker.C {
 			// FIX (durable fix, 2026-07-03 — real fix for the false-positive
 			// resync loop documented in the catch-up saga): this check compares
@@ -176,13 +198,26 @@ func (dag *BlockDAG) startChainDivergenceCheck(primaryURL string) {
 			// while either signal indicates "not settled right now"; the next
 			// tick re-checks, so a transient burst just delays detection by one
 			// interval rather than producing a false trigger.
+			//
+			// FIX (2026-07-04): but only skip like that for so long — see
+			// chainDivergenceStallOverride's own comment. A node stuck
+			// unsettled continuously past that ceiling falls through to the
+			// real check below instead of `continue`ing forever.
 			dag.mu.RLock()
 			unsettled := dag.isCatchingUpLocked() || len(dag.tips) > chainDivergenceMaxTipsForCheck
 			tipsNow := len(dag.tips)
 			dag.mu.RUnlock()
-			if unsettled {
+			if !unsettled {
+				unsettledSince = time.Time{}
+			} else if unsettledSince.IsZero() {
+				unsettledSince = time.Now()
 				fmt.Printf("[AUTO-HEAL] Chain-divergence self-check skipped this round: node is still catching up or has %d tips (fragmentation) — not a settled state to compare against the primary.\n", tipsNow)
 				continue
+			} else if stalled := time.Since(unsettledSince); stalled < chainDivergenceStallOverride {
+				fmt.Printf("[AUTO-HEAL] Chain-divergence self-check skipped this round: node is still catching up or has %d tips (fragmentation) — not a settled state to compare against the primary (unsettled for %s so far).\n", tipsNow, stalled.Round(time.Second))
+				continue
+			} else {
+				fmt.Printf("[AUTO-HEAL] Chain-divergence self-check overriding the unsettled-state skip: %d tips and unsettled for over %s straight — legitimate catch-up should have consolidated well before now, this looks like a permanently isolated fork instead. Checking anyway.\n", tipsNow, chainDivergenceStallOverride)
 			}
 			remoteHeight, ok := fetchPrimaryHeight(primaryURL)
 			if !ok {

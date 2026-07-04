@@ -2,6 +2,7 @@ package keeper
 
 import (
 	"encoding/hex"
+	"fmt"
 	"strings"
 	"sync"
 	"testing"
@@ -52,7 +53,7 @@ func TestGhostdagBlockLookup_MemoryHit(t *testing.T) {
 	want := &Block{Hash: "h1", Height: 1}
 	dag.blocks["h1"] = want
 
-	got := dag.ghostdagBlockLookup("h1")
+	got := dag.ghostdagBlockLookup("h1", nil)
 	if got != want {
 		t.Fatalf("ghostdagBlockLookup returned %v, want the in-memory block %v", got, want)
 	}
@@ -64,7 +65,7 @@ func TestGhostdagBlockLookup_MemoryHit(t *testing.T) {
 // the prior raw map access's `ok == false` behavior exactly.
 func TestGhostdagBlockLookup_MissNoState(t *testing.T) {
 	dag := newGhostdagTestDAG()
-	if got := dag.ghostdagBlockLookup("does-not-exist"); got != nil {
+	if got := dag.ghostdagBlockLookup("does-not-exist", nil); got != nil {
 		t.Fatalf("ghostdagBlockLookup() = %v, want nil for a hash absent from both dag.blocks and dag.state", got)
 	}
 }
@@ -85,7 +86,7 @@ func TestGhostdagBlockLookup_SkipsDBDuringMigration(t *testing.T) {
 	// Still resident in memory: must be found regardless of the migration flag.
 	want := &Block{Hash: "resident", Height: 1}
 	dag.blocks["resident"] = want
-	if got := dag.ghostdagBlockLookup("resident"); got != want {
+	if got := dag.ghostdagBlockLookup("resident", nil); got != want {
 		t.Fatalf("ghostdagBlockLookup(resident) = %v, want the in-memory block %v even during migration", got, want)
 	}
 	// Not resident: must return nil without needing dag.state at all (which
@@ -94,8 +95,70 @@ func TestGhostdagBlockLookup_SkipsDBDuringMigration(t *testing.T) {
 	// covered by TestGhostdagBlockLookup_MissNoState, so this test's real
 	// value is documenting that the migration flag is checked, not the nil
 	// dag.state path).
-	if got := dag.ghostdagBlockLookup("not-resident"); got != nil {
+	if got := dag.ghostdagBlockLookup("not-resident", nil); got != nil {
 		t.Fatalf("ghostdagBlockLookup(not-resident) = %v, want nil during migration", got)
+	}
+}
+
+// TestGhostdagBlockLookup_BudgetExhaustion is the regression guard for the
+// 2026-07-04 second production outage: a single computeGHOSTDAGState call
+// measured 62s, almost entirely real DB round trips, because neither
+// ghostdagMergeSet's BFS nor the classification loop's many independent
+// ghostdagIsAncestor calls shared any limit on how many real DB lookups they
+// could rack up in total (see maxGhostdagDBLookupsPerBlock's own comment).
+// Once the shared budget hits zero, further misses must return nil
+// immediately (the same conservative fallback already used during
+// migration) instead of continuing to call into dag.state.
+func TestGhostdagBlockLookup_BudgetExhaustion(t *testing.T) {
+	dag := newGhostdagTestDAG()
+	dag.state = &ChainState{} // non-nil, db == nil: LoadBlockFromDBByHash returns nil safely, no real DB needed
+
+	budget := 2
+	if got := dag.ghostdagBlockLookup("miss-1", &budget); got != nil {
+		t.Fatalf("ghostdagBlockLookup(miss-1) = %v, want nil (nothing in state)", got)
+	}
+	if budget != 1 {
+		t.Fatalf("budget after first real miss = %d, want 1", budget)
+	}
+	if got := dag.ghostdagBlockLookup("miss-2", &budget); got != nil {
+		t.Fatalf("ghostdagBlockLookup(miss-2) = %v, want nil", got)
+	}
+	if budget != 0 {
+		t.Fatalf("budget after second real miss = %d, want 0", budget)
+	}
+	// Budget now exhausted: a third distinct miss must NOT decrement further
+	// (would go negative) and must still return nil without panicking.
+	if got := dag.ghostdagBlockLookup("miss-3", &budget); got != nil {
+		t.Fatalf("ghostdagBlockLookup(miss-3) = %v, want nil once budget is exhausted", got)
+	}
+	if budget != 0 {
+		t.Fatalf("budget after exhaustion = %d, want to stay at 0, not go negative", budget)
+	}
+
+	// A cache HIT must never touch the budget at all, even when it is
+	// already exhausted — the in-memory fast path is free.
+	want := &Block{Hash: "resident", Height: 1}
+	dag.blocks["resident"] = want
+	if got := dag.ghostdagBlockLookup("resident", &budget); got != want {
+		t.Fatalf("ghostdagBlockLookup(resident) = %v, want the in-memory block %v", got, want)
+	}
+	if budget != 0 {
+		t.Fatalf("budget changed after a cache hit = %d, want unchanged at 0", budget)
+	}
+}
+
+// TestGhostdagBlockLookup_NilBudgetUnbounded verifies a nil budget preserves
+// the pre-fix unbounded behavior exactly — used by the two callers outside
+// computeGHOSTDAGState's call graph (AddPeerBlock's parent-existence check
+// and GetBlockByHeight's SelectedParent-chain walk), which must not be
+// affected by the new per-computation budget at all.
+func TestGhostdagBlockLookup_NilBudgetUnbounded(t *testing.T) {
+	dag := newGhostdagTestDAG()
+	dag.state = &ChainState{}
+	for i := 0; i < 100; i++ {
+		if got := dag.ghostdagBlockLookup(fmt.Sprintf("miss-%d", i), nil); got != nil {
+			t.Fatalf("ghostdagBlockLookup with nil budget returned %v, want nil", got)
+		}
 	}
 }
 

@@ -2589,7 +2589,7 @@ missingParent := ""
 // re-caching into dag.blocks) this needs; reusing it here instead of a
 // second bespoke lookup.
 for _, ph := range block.ParentHashes {
-parent := dag.ghostdagBlockLookup(ph)
+parent := dag.ghostdagBlockLookup(ph, nil)
 if parent == nil {
 	missingParent = ph
 	break
@@ -3330,7 +3330,7 @@ func (dag *BlockDAG) canonicalBlockAtHeightLocked(height int64) *Block {
 		if cur.SelectedParent == "" {
 			return nil
 		}
-		cur = dag.ghostdagBlockLookup(cur.SelectedParent)
+		cur = dag.ghostdagBlockLookup(cur.SelectedParent, nil)
 	}
 	if cur != nil && cur.Height == height && cur.Proposer != "synthetic-checkpoint" {
 		return cur
@@ -4383,11 +4383,15 @@ func (dag *BlockDAG) computeGHOSTDAGState(block *Block) {
 		return
 	}
 
+	// FIX (P0, 2026-07-04): one DB-roundtrip budget shared for this entire
+	// computation — see maxGhostdagDBLookupsPerBlock's own comment.
+	dbBudget := maxGhostdagDBLookupsPerBlock
+
 	// Step 1: selected parent = highest-blue-score parent.
 	var maxScore int64 = -1
 	spHash := block.ParentHashes[0]
 	for _, ph := range block.ParentHashes {
-		if p := dag.ghostdagBlockLookup(ph); p != nil && p.BlueScore > maxScore {
+		if p := dag.ghostdagBlockLookup(ph, &dbBudget); p != nil && p.BlueScore > maxScore {
 			maxScore = p.BlueScore
 			spHash = ph
 		}
@@ -4398,7 +4402,7 @@ func (dag *BlockDAG) computeGHOSTDAGState(block *Block) {
 	// Bounded BFS: we walk back from non-SP parents, collecting blocks that
 	// are not reachable from SP.  The depth limit (2K+1) bounds the search;
 	// for an honest ≤3-validator network merge sets are always ≤2 blocks.
-	mergeSet := dag.ghostdagMergeSet(block, spHash)
+	mergeSet := dag.ghostdagMergeSet(block, spHash, &dbBudget)
 
 	// Step 3: topological sort of the merge set (parents before children).
 	sorted := ghostdagTopoSort(mergeSet, dag.blocks)
@@ -4461,7 +4465,7 @@ func (dag *BlockDAG) computeGHOSTDAGState(block *Block) {
 		for _, bHash := range blues {
 			// bHash is in M's anticone iff they are concurrent (neither is
 			// an ancestor of the other).
-			if !dag.ghostdagIsAncestor(bHash, mHash) && !dag.ghostdagIsAncestor(mHash, bHash) {
+			if !dag.ghostdagIsAncestor(bHash, mHash, &dbBudget) && !dag.ghostdagIsAncestor(mHash, bHash, &dbBudget) {
 				antiCnt++
 				if antiCnt > dag.k() {
 					isBlue = false
@@ -4534,6 +4538,40 @@ func (dag *BlockDAG) computeGHOSTDAGState(block *Block) {
 // merge sets are tiny — typically single digits — and this never triggers.
 // maxMergeSetBFSVisits floor (50) — actual limit computed by dag.maxMergeVisits() = max(50, 5*(2K+1))
 
+// maxGhostdagDBLookupsPerBlock bounds the number of REAL (cache-miss) database
+// round trips a SINGLE computeGHOSTDAGState call may make in total, shared
+// across its merge-set BFS (ghostdagMergeSet) AND every ghostdagIsAncestor
+// call the blue/red classification loop makes on top of it. Found live
+// 2026-07-04 (production outage): maxMergeVisits already bounds how many
+// DISTINCT BLOCKS each of those BFS-shaped functions visits, and each visit
+// that misses dag.blocks costs a synchronous Postgres round trip via
+// ghostdagBlockLookup — the exact mechanism already fixed for the startup
+// migration path (ghostdagMigrationPending, see ghostdagBlockLookup's own
+// comment) but never generalized to normal runtime operation. The classification
+// loop calls ghostdagIsAncestor up to ~2xK times per merge-set member, each
+// with its OWN independent maxMergeVisits budget — so the node-visit cap alone
+// does not bound the total number of round trips a single block's computation
+// can rack up. Confirmed live: right after heavy in-memory pruning (1337
+// blocks evicted) coincided with two secondaries producing merge-parents deep
+// in history following their own resyncs, a single computeGHOSTDAGState call
+// measured 62s, almost entirely DB round-trip latency over Railway's proxy
+// (measured elsewhere in this same incident at 200ms-1.2s per call) — long
+// enough to make ProduceBlock (which holds dag.mu for the whole call) starve
+// every other caller and, at the extreme, trip Railway's health check into
+// restarting the whole node. A shared budget across the whole computation
+// (not per-BFS-instance) bounds this to a small, predictable ceiling
+// regardless of merge-set size or classification fan-out; once exhausted,
+// ghostdagBlockLookup falls back to the same conservative "treat as absent"
+// behavior already used during migration — BlueScore/SelectedParent are
+// locally-computed bookkeeping, not hash-covered or consensus-critical (see
+// 87071d7's reasoning), so this can only make the computation cheaper and
+// occasionally less precise, never incorrect in a way that forks the chain.
+// nil budget (used by the two unrelated, already-bounded callers outside this
+// call graph — AddPeerBlock's own parent-existence check and GetBlockByHeight's
+// SelectedParent-chain walk) means "unbounded", preserving their prior behavior
+// exactly.
+const maxGhostdagDBLookupsPerBlock = 10
+
 // ghostdagBlockLookup returns the block for hash, falling back to the DB when
 // it is not resident in dag.blocks. Without this, computeGHOSTDAGState and its
 // helpers (below) treat any ancestor that merely isn't in RAM right now as if
@@ -4561,7 +4599,7 @@ func (dag *BlockDAG) computeGHOSTDAGState(block *Block) {
 // sees them; pruneOldDAGBlocks evicts them again in its next normal sweep
 // like any other block, so this cannot leak memory. Must be called under
 // dag.mu, same contract as its callers.
-func (dag *BlockDAG) ghostdagBlockLookup(hash string) *Block {
+func (dag *BlockDAG) ghostdagBlockLookup(hash string, budget *int) *Block {
 	if b, ok := dag.blocks[hash]; ok {
 		return b
 	}
@@ -4592,6 +4630,20 @@ func (dag *BlockDAG) ghostdagBlockLookup(hash string) *Block {
 	if dag.state == nil {
 		return nil
 	}
+	// FIX (P0, 2026-07-04 — second production outage, same class): budget
+	// shared across an entire computeGHOSTDAGState call bounds total real DB
+	// round trips regardless of merge-set size or classification fan-out —
+	// see maxGhostdagDBLookupsPerBlock's own comment. nil means unbounded,
+	// for callers outside that call graph. Checked here (after the free
+	// migration/nil-state short-circuits, right before the actual round
+	// trip) so it only ever counts real DB calls, never a check that would
+	// have returned nil anyway.
+	if budget != nil {
+		if *budget <= 0 {
+			return nil
+		}
+		*budget--
+	}
 	b := dag.state.LoadBlockFromDBByHash(hash)
 	if b != nil {
 		dag.blocks[hash] = b
@@ -4599,7 +4651,7 @@ func (dag *BlockDAG) ghostdagBlockLookup(hash string) *Block {
 	return b
 }
 
-func (dag *BlockDAG) ghostdagMergeSet(block *Block, spHash string) map[string]bool {
+func (dag *BlockDAG) ghostdagMergeSet(block *Block, spHash string, dbBudget *int) map[string]bool {
 	depthLimit := dag.mergeDepthLimit()
 	visitCap := dag.maxMergeVisits()
 
@@ -4619,7 +4671,7 @@ func (dag *BlockDAG) ghostdagMergeSet(block *Block, spHash string) map[string]bo
 		if cur.depth > depthLimit {
 			continue
 		}
-		if b := dag.ghostdagBlockLookup(cur.hash); b != nil {
+		if b := dag.ghostdagBlockLookup(cur.hash, dbBudget); b != nil {
 			for _, ph := range b.ParentHashes {
 				if !excluded[ph] {
 					excluded[ph] = true
@@ -4651,7 +4703,7 @@ func (dag *BlockDAG) ghostdagMergeSet(block *Block, spHash string) map[string]bo
 		if cur.depth > depthLimit {
 			continue
 		}
-		if b := dag.ghostdagBlockLookup(cur.hash); b != nil {
+		if b := dag.ghostdagBlockLookup(cur.hash, dbBudget); b != nil {
 			for _, ph := range b.ParentHashes {
 				if !excluded[ph] && !mergeSet[ph] {
 					mergeSet[ph] = true
@@ -4706,7 +4758,7 @@ func (dag *BlockDAG) ghostdagMergeSet(block *Block, spHash string) map[string]bo
 //     "not an ancestor" (the same conservative direction as every other cap
 //     here: under uncertainty, bias toward classifying more blocks red
 //     rather than risking an incorrect blue).
-func (dag *BlockDAG) ghostdagIsAncestor(ancestorHash, descendantHash string) bool {
+func (dag *BlockDAG) ghostdagIsAncestor(ancestorHash, descendantHash string, dbBudget *int) bool {
 	if ancestorHash == descendantHash {
 		return true
 	}
@@ -4726,7 +4778,7 @@ func (dag *BlockDAG) ghostdagIsAncestor(ancestorHash, descendantHash string) boo
 		if cur.depth >= dag.mergeDepthLimit() {
 			continue
 		}
-		if b := dag.ghostdagBlockLookup(cur.hash); b != nil {
+		if b := dag.ghostdagBlockLookup(cur.hash, dbBudget); b != nil {
 			for _, ph := range b.ParentHashes {
 				if ph == ancestorHash {
 					return true
