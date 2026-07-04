@@ -52,3 +52,46 @@ func TestRunChainDivergenceCheckOnce_UnsettledSkipsBeforeAnyNetworkCall(t *testi
 		t.Fatal("unsettledSince should reset to zero once the node is settled")
 	}
 }
+
+// TestProduceBlock_SkipsWhileResyncInProgress and
+// TestAddPeerBlock_SkipsWhileResyncInProgress are the regression guard for
+// the 2026-07-04 in-process-resync fix (PerformResync/triggerAutoResync):
+// both functions must bail out before touching any lock or dag.state field
+// while a resync is atomically swapping account/DAG state, so a minimal
+// test DAG (state == nil, no locks ever initialized beyond zero value) must
+// not panic just from the gate being checked first.
+func TestProduceBlock_SkipsWhileResyncInProgress(t *testing.T) {
+	dag := newGhostdagTestDAG()
+	dag.resyncInProgress.Store(true)
+	if b := dag.ProduceBlock(); b != nil {
+		t.Fatalf("expected nil block while resyncInProgress, got %+v", b)
+	}
+}
+
+func TestAddPeerBlock_SkipsWhileResyncInProgress(t *testing.T) {
+	dag := newGhostdagTestDAG()
+	dag.resyncInProgress.Store(true)
+	if ok := dag.AddPeerBlock(&Block{Hash: "0xdeadbeef", Height: 1}); ok {
+		t.Fatal("expected AddPeerBlock to reject while resyncInProgress")
+	}
+}
+
+// TestPerformResync_ClearsInProgressFlagOnFailure verifies the resyncInProgress
+// gate always gets cleared, even when the resync itself fails outright — a
+// stuck-true gate would permanently halt ProduceBlock/AddPeerBlock, a much
+// worse outcome than the divergence this was trying to fix. Uses an
+// unreachable bootstrapURL (127.0.0.1:1, rejected instantly by the pinning
+// dialer) so ResyncFromSnapshotURL fails fast, before ever touching
+// dag.state (nil in this minimal test DAG) — the failure path returns from
+// inside fetchAndValidateSnapshot, ahead of any cs.db/cs.mu access.
+func TestPerformResync_ClearsInProgressFlagOnFailure(t *testing.T) {
+	dag := newGhostdagTestDAG()
+	const unreachable = "http://127.0.0.1:1"
+	err := dag.PerformResync(unreachable, "0x0000000000000000000000000000000000000001", "")
+	if err == nil {
+		t.Fatal("expected an error from an unreachable bootstrap URL")
+	}
+	if dag.resyncInProgress.Load() {
+		t.Fatal("resyncInProgress must be cleared even after a failed resync")
+	}
+}

@@ -337,6 +337,26 @@ replayedMu             sync.Mutex
 	// the wrong moment could bake in permanently. Gates production and peer
 	// acceptance until migration completes (or there was nothing to migrate).
 	ghostdagMigrationPending atomic.Bool
+	// resyncInProgress gates ProduceBlock/AddPeerBlock during an in-process
+	// self-heal resync (triggerAutoResync's new in-process path, autoheal.go
+	// PerformResync) so a concurrent production/acceptance can't interleave
+	// with the atomic account/DAG-state swap. Unlike ghostdagMigrationPending
+	// (which can run for minutes under heavy backlog and was deliberately
+	// made non-blocking after a live outage), a resync completes in seconds
+	// thanks to checkpoint-seeding, so briefly blocking for its duration is
+	// the safe trade-off here, not a repeat of that mistake. Checked
+	// lock-free before either function takes dag.mu/replayMu, so a resync in
+	// progress never has to contend with them for those locks either.
+	resyncInProgress atomic.Bool
+	// resyncBootstrapURL/resyncSigner/resyncPrimaryURL cache the three values
+	// StartDivergenceAutoHeal was configured with, so triggerAutoResync
+	// (autoheal.go) can call PerformResync without needing its own signature
+	// changed at every one of its three call sites (the StateRoot-mismatch
+	// ticker, runChainDivergenceCheckOnce, startHeightStallCheck). Written
+	// once at startup before any auto-heal goroutine runs; read-only after.
+	resyncBootstrapURL string
+	resyncSigner       string
+	resyncPrimaryURL   string
 	// orphans holds blocks whose parent isn't known yet, keyed by the missing
 	// parent's hash. When that parent is later added, every block waiting on
 	// it is retried automatically. See AddPeerBlock for why this exists —
@@ -1278,6 +1298,9 @@ return hex.EncodeToString(hash[:])
 }
 
 func (dag *BlockDAG) ProduceBlock() *Block {
+if dag.resyncInProgress.Load() {
+	return nil // an in-process self-heal resync is atomically swapping account/DAG state right now — see resyncInProgress's field comment
+}
 produceStart := time.Now() // TEMP DIAGNOSTIC (2026-07-02 cadence investigation)
 // TEMP DIAGNOSTIC (2026-07-03 night, cadence still 3-5s): per-phase timers.
 // The two existing timers only cover the concurrent DB pair and the block
@@ -2262,6 +2285,9 @@ func (dag *BlockDAG) ClearProposerCircuitBreakers() {
 }
 
 func (dag *BlockDAG) AddPeerBlock(block *Block) bool {
+if dag.resyncInProgress.Load() {
+	return false // an in-process self-heal resync is atomically swapping account/DAG state right now — see resyncInProgress's field comment; the sender will redeliver, ordered sync fills the gap once the resync completes
+}
 // Lock-free fork-flood shield (P0, 2026-07-02): reject a block whose height is
 // far above ours BEFORE taking the write lock, so a diverged/runaway fork
 // pushing thousands of unresolvable blocks can NEVER contend for dag.mu with

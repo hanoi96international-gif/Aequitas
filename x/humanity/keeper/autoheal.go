@@ -56,9 +56,20 @@ const (
 	autoHealCheckInterval = 60 * time.Second
 
 	// chainDivergenceCheckInterval paces the active primary-comparison check.
-	// This is a network round trip against the primary, not a local counter,
-	// so it doesn't need the mismatch check's 60s granularity.
-	chainDivergenceCheckInterval = 5 * time.Minute
+	//
+	// TIGHTENED (durable fix, 2026-07-04 — "nodes must stay on the same
+	// block as the primary, permanently"): was 5 minutes, on the reasoning
+	// that this is a network round trip against the primary rather than a
+	// local counter. That reasoning undersold the actual cost: it's two
+	// cheap HTTP GETs (a status call + one block-by-height fetch), not a
+	// heavy operation, and correcting a real divergence now runs in-process
+	// (see PerformResync) instead of forcing a disruptive restart — so there
+	// is no longer a reason to let a real divergence sit for up to 5 minutes
+	// before it's even noticed. 60s matches heightStallCheckInterval's
+	// cadence; the unsettled-state skip and chainDivergenceStallOverride
+	// above already guard against false positives from a node mid-catch-up,
+	// so a tighter interval only means faster correction, not more noise.
+	chainDivergenceCheckInterval = 60 * time.Second
 	// chainDivergenceInitialDelay is how long startChainDivergenceCheck waits
 	// before its FIRST comparison, run once outside the normal ticker cadence
 	// — see that function's own comment for why: time.Ticker never fires on
@@ -135,24 +146,81 @@ func (cs *ChainState) ClearAutoResyncRequest() {
 
 // triggerAutoResync is the shared, cooldown-gated trigger both detection
 // paths below funnel through, so two divergence signals firing close
-// together can't turn into a restart loop. It does NOT resync live — see
-// StartDivergenceAutoHeal's doc comment for why: it flags chain_config and
-// exits, and the container restart policy brings the node back through the
-// safe boot-time resync path in main.go.
+// together can't turn into a restart loop.
+//
+// FIX (durable fix, 2026-07-04 — direct answer to "nodes must stay on the
+// same block as the primary, permanently"): this used to ONLY flag
+// chain_config and os.Exit(1), relying on the container restart policy to
+// bring the node back through the safe boot-time resync path in main.go.
+// That worked, but the restart itself was a recurring source of NEW
+// instability every single time it fired tonight — a fresh restart resets
+// every in-memory timer (the orphan-bridge's 15-minute-per-hash TTL, the
+// circuit breakers' failure-run counters, dag.tips/dag.blocks) and often
+// forced a node straight back into the slow historical-catch-up state the
+// resync was meant to fix in the first place, sometimes for 20+ minutes.
+// Now: attempt the exact same resync sequence PerformResync runs today at
+// startup, but in-process, live, without exiting — production/acceptance
+// are gated off for its few-second duration (resyncInProgress) instead of
+// the node going away entirely. Falls back to the old restart-based flag
+// path only if the in-process attempt can't even be attempted (config
+// missing) or itself fails, so a broken in-process path never leaves the
+// node stuck worse off than before this change.
 func (dag *BlockDAG) triggerAutoResync(reason string) {
 	var lastAt int64
 	fmt.Sscan(dag.state.getConfigValueDB(autoResyncLastAtKey), &lastAt)
 	if lastAt > 0 && time.Now().Unix()-lastAt < int64(autoHealCooldown.Seconds()) {
 		return
 	}
-	fmt.Printf("[AUTO-HEAL] ⚠ %s — flagging an authoritative resync and restarting so the safe boot-time resync path can run.\n", reason)
+	fmt.Printf("[AUTO-HEAL] ⚠ %s\n", reason)
+	_ = dag.state.setConfigValueDB(autoResyncLastAtKey, fmt.Sprintf("%d", time.Now().Unix()))
+
+	if dag.resyncBootstrapURL != "" && dag.resyncSigner != "" {
+		fmt.Println("[AUTO-HEAL] Attempting an in-process resync (no restart) first.")
+		if err := dag.PerformResync(dag.resyncBootstrapURL, dag.resyncSigner, dag.resyncPrimaryURL); err != nil {
+			fmt.Printf("[AUTO-HEAL] ✗ In-process resync failed (%v) — falling back to the restart-based resync path.\n", err)
+		} else {
+			fmt.Println("[AUTO-HEAL] ✓ In-process resync succeeded — no restart needed.")
+			return
+		}
+	}
+
+	fmt.Println("[AUTO-HEAL] Flagging an authoritative resync and restarting so the safe boot-time resync path can run.")
 	if err := dag.state.setConfigValueDB(autoResyncPendingKey, "1"); err != nil {
 		fmt.Printf("[AUTO-HEAL] ✗ Could not persist the resync flag (%v) — staying up rather than restarting into an unflagged loop.\n", err)
 		return
 	}
-	_ = dag.state.setConfigValueDB(autoResyncLastAtKey, fmt.Sprintf("%d", time.Now().Unix()))
 	fmt.Println("[AUTO-HEAL] Restarting now.")
 	os.Exit(1)
+}
+
+// PerformResync runs the exact same authoritative-resync sequence main.go
+// performs at boot under RESYNC_FROM_SNAPSHOT=true (replace account state
+// from a signed snapshot, seed a trusted checkpoint, refresh bootHeight,
+// bridge any historical gap, clear stale breaker state) but in-process,
+// live, without a container restart. Gated by resyncInProgress so
+// ProduceBlock/AddPeerBlock cannot interleave with the state swap (see that
+// field's own comment). Each step below manages its own, independent lock
+// (cs.mu, proposerBreakerMu, dag.mu) rather than one held across the whole
+// call, exactly like the boot-time sequence in main.go — safe to run
+// alongside concurrent API reads, which simply block briefly on whichever
+// lock they need.
+func (dag *BlockDAG) PerformResync(bootstrapURL, signer, primaryURL string) error {
+	dag.resyncInProgress.Store(true)
+	defer dag.resyncInProgress.Store(false)
+
+	if err := dag.state.ResyncFromSnapshotURL(bootstrapURL, signer); err != nil {
+		return fmt.Errorf("resync from snapshot: %w", err)
+	}
+	dag.state.ClearAutoResyncRequest()
+	dag.ClearProposerCircuitBreakers()
+	// Best-effort: falls back to a full genesis replay internally if this
+	// fails, never blocks or fails the resync itself (see its own comment).
+	dag.SeedTrustedCheckpoint(primaryURL)
+	dag.RefreshBootHeightAfterSnapshotImport(true)
+	if primaryURL != "" {
+		dag.BridgeHistoricalGap([]string{primaryURL})
+	}
+	return nil
 }
 
 // StartDivergenceAutoHeal launches both background divergence monitors
@@ -173,7 +241,13 @@ func (dag *BlockDAG) StartDivergenceAutoHeal(bootstrapURL, signer, primaryURL st
 		fmt.Println("[AUTO-HEAL] Disabled: AUTO_HEAL_ON_DIVERGENCE=true but BOOTSTRAP_SNAPSHOT_URL/BOOTSTRAP_SIGNER are not both set — refusing to self-wipe without a trusted, signed snapshot source.")
 		return
 	}
-	fmt.Printf("[AUTO-HEAL] Enabled: will resync from %s (signer %s) if >%d StateRoot mismatches accumulate within 10 min.\n",
+	// Cached so triggerAutoResync can call PerformResync directly — see
+	// these fields' own struct comment for why this avoids a signature
+	// change at every one of triggerAutoResync's three call sites.
+	dag.resyncBootstrapURL = bootstrapURL
+	dag.resyncSigner = signer
+	dag.resyncPrimaryURL = primaryURL
+	fmt.Printf("[AUTO-HEAL] Enabled: will resync in-process from %s (signer %s) if >%d StateRoot mismatches accumulate within 10 min.\n",
 		bootstrapURL, signer, autoHealMismatchThreshold)
 	go func() {
 		ticker := time.NewTicker(autoHealCheckInterval)
