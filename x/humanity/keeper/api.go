@@ -909,6 +909,16 @@ func (a *APIServer) handleBlockPush(w http.ResponseWriter, r *http.Request) {
 	}
 	block.FromSync = true
 	accepted := a.blockchain.AddPeerBlock(&block)
+	// FIX (durable fix, 2026-07-04 — closes the same mutual-lockout risk for
+	// this breaker too, see proposerBreakerOrphanGrace's own comment in
+	// block.go): a fresh, still-within-grace orphan must not count against
+	// this per-IP breaker either, or two fully healthy nodes can still trip
+	// this one against each other during ordinary propagation lag even after
+	// the per-proposer breaker was fixed to tolerate it.
+	if !accepted && a.blockchain.IsWithinOrphanGrace(&block) {
+		w.Write([]byte(`{"ok":false,"reason":"orphaned, within grace period"}`))
+		return
+	}
 	blockPushRecordOutcome(ip, accepted)
 	if accepted {
 		fmt.Printf("[BLOCK-PUSH] ✓ Accepted block #%d via HTTP push\n", block.Height)

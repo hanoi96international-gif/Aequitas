@@ -1849,6 +1849,45 @@ func (dag *BlockDAG) orphanAge(missingParent string) (time.Duration, bool) {
 	return time.Since(first), true
 }
 
+// IsWithinOrphanGrace reports whether block currently fails to attach ONLY
+// because of a missing-parent gap that is still within
+// proposerBreakerOrphanGrace — i.e. this looks like ordinary propagation
+// lag, not a genuine, sustained problem. Re-derives the same missing-parent
+// determination AddPeerBlock itself just made (via ghostdagBlockLookup, the
+// same unbounded lookup AddPeerBlock's own parent-existence check uses) so
+// it stays accurate even when the real rejection reason was something else
+// entirely (bad signature, unauthorized proposer, etc.) — in that case this
+// correctly returns false, so THAT failure still counts immediately.
+//
+// Used by the HTTP block-push handler (api.go) to apply the same
+// forgiveness to its own, independent per-IP circuit breaker that
+// AddPeerBlock already applies to the per-proposer one — see
+// proposerBreakerOrphanGrace's own comment for why: without this, the
+// per-IP breaker still tripped on ordinary propagation gaps even after that
+// fix, recreating the exact mutual-lockout risk between two healthy nodes
+// through this second, independent breaker (confirmed live: both
+// "[DAG] Circuit breaker open" AND "[BLOCK-PUSH] Dropping pushes" fired
+// together during the same incident).
+func (dag *BlockDAG) IsWithinOrphanGrace(block *Block) bool {
+	if block == nil {
+		return false
+	}
+	dag.mu.Lock() // ghostdagBlockLookup can cache-fill dag.blocks
+	var missingParent string
+	for _, ph := range block.ParentHashes {
+		if dag.ghostdagBlockLookup(ph, nil) == nil {
+			missingParent = ph
+			break
+		}
+	}
+	dag.mu.Unlock()
+	if missingParent == "" {
+		return false // not an orphan at all — rejected for some other reason
+	}
+	age, tracked := dag.orphanAge(missingParent)
+	return !tracked || age < proposerBreakerOrphanGrace
+}
+
 // orphanFetchCooldown is the minimum gap between fetch attempts for the same
 // missing-parent hash, checked by fetchMissingAncestors (sync_blocks.go).
 // Without it, every new orphan's triggerOrphanResolve pass re-attempts every

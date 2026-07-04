@@ -94,3 +94,48 @@ func TestOrphanAge_DuplicateBlockForSameGapDoesNotResetClock(t *testing.T) {
 		t.Fatalf("a second block on the same already-old gap reset the clock: age = %v, want >= %v", age, proposerBreakerOrphanGrace)
 	}
 }
+
+// TestIsWithinOrphanGrace_FreshOrphanIsForgiven is the regression guard for
+// the per-IP push-breaker half of the 2026-07-04 mutual-lockout fix: a block
+// whose parent is missing but was JUST first observed (age well under the
+// grace period) must be reported as within grace, so handleBlockPush
+// (api.go) doesn't feed it to the per-IP breaker either.
+func TestIsWithinOrphanGrace_FreshOrphanIsForgiven(t *testing.T) {
+	dag := newOrphanTestDAG()
+	blk := &Block{Hash: "child-1", Height: 2, ParentHashes: []string{"missing-parent"}, Proposer: "0xhonest"}
+	dag.queueOrphan("missing-parent", blk)
+
+	if !dag.IsWithinOrphanGrace(blk) {
+		t.Fatal("a freshly-queued orphan should be within grace")
+	}
+}
+
+// TestIsWithinOrphanGrace_OldOrphanIsNotForgiven verifies a gap that has
+// persisted past the grace period is no longer forgiven — a genuinely
+// diverged fork's blocks must still trip the breaker, just not instantly.
+func TestIsWithinOrphanGrace_OldOrphanIsNotForgiven(t *testing.T) {
+	dag := newOrphanTestDAG()
+	blk := &Block{Hash: "child-1", Height: 2, ParentHashes: []string{"missing-parent"}, Proposer: "0xhonest"}
+	dag.queueOrphan("missing-parent", blk)
+	dag.orphansMu.Lock()
+	dag.orphanFirstSeen["missing-parent"] = time.Now().Add(-2 * proposerBreakerOrphanGrace)
+	dag.orphansMu.Unlock()
+
+	if dag.IsWithinOrphanGrace(blk) {
+		t.Fatal("a gap past the grace period must no longer be forgiven")
+	}
+}
+
+// TestIsWithinOrphanGrace_NonOrphanRejectionNeverForgiven verifies a block
+// whose parent IS known (so any rejection is for some other reason, e.g. a
+// bad signature) is never reported as within grace — only a genuine missing-
+// parent gap gets the benefit of the doubt.
+func TestIsWithinOrphanGrace_NonOrphanRejectionNeverForgiven(t *testing.T) {
+	dag := newOrphanTestDAG()
+	dag.blocks["known-parent"] = &Block{Hash: "known-parent", Height: 1}
+	blk := &Block{Hash: "child-1", Height: 2, ParentHashes: []string{"known-parent"}, Proposer: "0xbadsig"}
+
+	if dag.IsWithinOrphanGrace(blk) {
+		t.Fatal("a block whose parent is known must never be reported as within orphan grace")
+	}
+}
