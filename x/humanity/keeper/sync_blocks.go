@@ -438,6 +438,7 @@ func (dag *BlockDAG) fetchMissingAncestors(nodeURL string) {
 		if len(pending) == 0 {
 			return // every pending hash is either known now or on cooldown
 		}
+		fmt.Printf("[DEBUG-TEMP] fetchMissingAncestors(%s): %d pending hash(es), first=%s\n", nodeURL, len(pending), pending[0][:min(16, len(pending[0]))])
 		fetchedThisRound := 0
 		for i := 0; i < len(pending); i += maxBatchSize {
 			chunk := pending[i:min(i+maxBatchSize, len(pending))]
@@ -455,6 +456,7 @@ func (dag *BlockDAG) fetchMissingAncestors(nodeURL string) {
 			for _, block := range blocks {
 				returned[block.Hash] = true
 			}
+			fmt.Printf("[DEBUG-TEMP] fetchBlocksByHashes(%s): requested %d, got %d back\n", nodeURL, len(chunk), len(blocks))
 			for _, h := range chunk {
 				if !returned[h] {
 					dag.RecordOrphanAttempt(h)
@@ -475,7 +477,9 @@ func (dag *BlockDAG) fetchMissingAncestors(nodeURL string) {
 				// Set regardless of trusted-seed status: authorization is a
 				// wholly separate, still-fully-enforced gate a few lines below.
 				block.SelfFetched = true
-				if !dag.AddPeerBlock(block) {
+				accepted := dag.AddPeerBlock(block)
+				fmt.Printf("[DEBUG-TEMP] AddPeerBlock(#%d, hash=%s, FromSync=%v) -> %v\n", block.Height, block.Hash[:min(16, len(block.Hash))], block.FromSync, accepted)
+				if !accepted {
 					// Block was fetched from the peer but rejected locally
 					// (bad signature, unauthorized proposer, etc.).  Count it
 					// as an attempt so that orphans waiting on this hash can
