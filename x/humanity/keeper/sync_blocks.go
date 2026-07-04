@@ -547,6 +547,27 @@ func (dag *BlockDAG) claimDeepScanSlot(nodeURL string) bool {
 	return true
 }
 
+// deepScanFloor is doSyncOnce's deepScan minHeight — see that call site's
+// own FIX comment for the full 2026-07-04 permanent-non-convergence
+// incident. BootHeight() is only a safe, inclusive-enough floor when
+// BootHeightCheckpointBacked() is true: /api/blocks?min_height=N is
+// EXCLUSIVE (Height > N), so using BootHeight() as the floor permanently
+// excludes that exact height from every fetch — correct when a checkpoint-
+// seeded resync already placed a real, verified block there (dag.blocks'
+// anchor for the first block above it), but for a plain restart BootHeight
+// is just a locally-computed number with no such guarantee. Confirmed live:
+// a peer's real common-ancestor block sat exactly at BootHeight, and no
+// number of deepScan passes could ever recover once it was permanently
+// excluded. Without checkpoint backing, fall back to 0 (deepScan's
+// original pre-checkpoint-seeding behavior) so a genuinely isolated node
+// can still find its real common ancestor, however deep.
+func (dag *BlockDAG) deepScanFloor() int64 {
+	if dag.BootHeightCheckpointBacked() {
+		return dag.BootHeight()
+	}
+	return 0
+}
+
 func (dag *BlockDAG) doSyncOnce(nodeURL string) (ok bool) {
 	const pageSize = 500
 	const maxPagesPerCall = 2000 // hard cap: 1,000,000 blocks per call — headroom, not unbounded
@@ -588,34 +609,12 @@ func (dag *BlockDAG) doSyncOnce(nodeURL string) (ok bool) {
 	// cheap, targeted hash lookup) still runs every single cycle regardless.
 	wantDeepScan := len(dag.MissingParentHashes()) > 0
 	deepScan := wantDeepScan && dag.claimDeepScanSlot(nodeURL)
-	if wantDeepScan {
-		fmt.Printf("[DEBUG-TEMP3] doSyncOnce(%s): wantDeepScan=true deepScan=%v missingCount=%d bootHeight=%d checkpointBacked=%v myHeight=%d\n",
-			nodeURL, deepScan, len(dag.MissingParentHashes()), dag.BootHeight(), dag.BootHeightCheckpointBacked(), dag.Height())
-	}
 	minHeight := dag.Height() - syncOverlap
 	if minHeight < 0 || deepScan {
-		// FIX (durable fix, 2026-07-04 — closes a checkpoint-seeded resync
-		// regression found live): deepScan predates SeedTrustedCheckpoint
-		// (df4d880) and always dropped to height 0 — correct for its
-		// original case (a node whose own validator chain started
-		// thousands of blocks ago, needing a deep but bounded orphan-gap
-		// walk), but never updated for a checkpoint-seeded node, where
-		// dag.blocks starts with ONLY the checkpoint block. Confirmed
-		// live: a single orphan arriving in the brief window right after
-		// a fresh resync (near-guaranteed, since the checkpoint-seeded
-		// node knows almost nothing yet) was enough to trigger deepScan,
-		// which then paged the ENTIRE historical chain from genesis
-		// forward at ~500 blocks/page — exactly the walk checkpoint-
-		// seeding exists to avoid, turning a resync that should resume
-		// near the live tip into a multi-hundred-thousand-block replay,
-		// during which this node's own canonical-height computations
-		// diverged from peers who already had the full picture. Blocks
-		// below BootHeight() are already accounted for by the snapshot/
-		// checkpoint (see BootHeight's own comment) and irrelevant to
-		// resolving an orphan's missing parent, which by construction
-		// references a RECENT ancestor, not a genesis-era one — so
-		// deepScan never needs to go below that floor.
-		minHeight = dag.BootHeight()
+		// See deepScanFloor's own comment for why this is NOT simply
+		// dag.BootHeight() — the 2026-07-04 permanent-non-convergence
+		// incident this fixes.
+		minHeight = dag.deepScanFloor()
 	}
 	totalAdded := 0
 	// P1-02: track (minHeight, afterHash) cursor so same-height siblings that
@@ -657,15 +656,8 @@ func (dag *BlockDAG) doSyncOnce(nodeURL string) (ok bool) {
 			// field's own comment (block.go). Authorization remains a wholly
 			// separate, still-fully-enforced gate below.
 			block.SelfFetched = true
-			if !exists {
-				accepted := dag.AddPeerBlock(block)
-				if deepScan {
-					fmt.Printf("[DEBUG-TEMP3] deepScan(%s) AddPeerBlock(#%d, hash=%s, FromSync=%v) -> %v\n",
-						nodeURL, block.Height, block.Hash[:min(16, len(block.Hash))], block.FromSync, accepted)
-				}
-				if accepted {
-					addedThisPage++
-				}
+			if !exists && dag.AddPeerBlock(block) {
+				addedThisPage++
 			}
 		}
 		totalAdded += addedThisPage
