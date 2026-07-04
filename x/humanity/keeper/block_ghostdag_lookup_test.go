@@ -70,6 +70,71 @@ func TestGhostdagBlockLookup_MissNoState(t *testing.T) {
 	}
 }
 
+// TestGhostdagBatchPrefetch_NoStateIsNoop is the regression guard for the
+// 2026-07-04 batching fix (see ghostdagBatchPrefetch's own comment): with
+// dag.state == nil (this minimal test DAG), the function must return
+// immediately without touching dbBudget or panicking, exactly like
+// ghostdagBlockLookup's own nil-state short-circuit above.
+func TestGhostdagBatchPrefetch_NoStateIsNoop(t *testing.T) {
+	dag := newGhostdagTestDAG()
+	budget := 5
+	dag.ghostdagBatchPrefetch([]string{"a", "b", "c"}, &budget)
+	if budget != 5 {
+		t.Fatalf("budget should be untouched when dag.state is nil, got %d", budget)
+	}
+}
+
+// TestGhostdagBatchPrefetch_AllHashesAlreadyCachedSkipsBudget verifies the
+// whole point of batching: if every requested hash is already resident in
+// dag.blocks, no round trip (and therefore no budget spend) happens at all
+// — this is the common case once a BFS frontier has been prefetched once.
+func TestGhostdagBatchPrefetch_AllHashesAlreadyCachedSkipsBudget(t *testing.T) {
+	dag := newGhostdagTestDAG()
+	dag.blocks["a"] = &Block{Hash: "a", Height: 1}
+	dag.blocks["b"] = &Block{Hash: "b", Height: 2}
+	budget := 3
+	dag.ghostdagBatchPrefetch([]string{"a", "b"}, &budget)
+	if budget != 3 {
+		t.Fatalf("budget should be untouched when every hash is already cached, got %d", budget)
+	}
+}
+
+// TestGhostdagBatchPrefetch_BudgetExhaustedSkips verifies the exhausted-budget
+// short-circuit matches ghostdagBlockLookup's own contract: once the shared
+// per-block DB round-trip budget hits zero, no further round trips happen,
+// even for hashes that would otherwise be missing. Uses a non-nil ChainState
+// with db == nil (same pattern as TestGhostdagBlockLookup_BudgetExhaustion)
+// so this exercises the real budget check, not just the earlier nil-state
+// short-circuit.
+func TestGhostdagBatchPrefetch_BudgetExhaustedSkips(t *testing.T) {
+	dag := newGhostdagTestDAG()
+	dag.state = &ChainState{}
+	budget := 0
+	dag.ghostdagBatchPrefetch([]string{"missing-hash"}, &budget)
+	if budget != 0 {
+		t.Fatalf("budget should stay at 0, got %d", budget)
+	}
+	if _, ok := dag.blocks["missing-hash"]; ok {
+		t.Fatal("missing-hash should not have been cached — budget was already exhausted")
+	}
+}
+
+// TestGhostdagBatchPrefetch_OneRoundTripRegardlessOfMissingCount is the core
+// regression guard for the 2026-07-04 batching fix: a batch of several
+// missing hashes must cost exactly ONE unit of dbBudget, not one per hash —
+// that collapsed N sequential DB round trips (each paying Railway's ~260ms
+// Postgres-proxy latency, confirmed live as the dominant cost behind
+// ProduceBlock regularly exceeding the 2s BLOCK_TIME target) into one.
+func TestGhostdagBatchPrefetch_OneRoundTripRegardlessOfMissingCount(t *testing.T) {
+	dag := newGhostdagTestDAG()
+	dag.state = &ChainState{} // db == nil: LoadBlocksByHashesFromDB returns (nil, nil) safely
+	budget := 5
+	dag.ghostdagBatchPrefetch([]string{"miss-1", "miss-2", "miss-3", "miss-4"}, &budget)
+	if budget != 4 {
+		t.Fatalf("budget after batch of 4 missing hashes = %d, want 4 (one round trip, not four)", budget)
+	}
+}
+
 // TestGhostdagBlockLookup_SkipsDBDuringMigration is the regression guard for
 // the 2026-07-04 production outage: while ghostdagMigrationPending is true,
 // a miss must return nil immediately (matching the pre-DB-fallback behavior)

@@ -4434,6 +4434,11 @@ func (dag *BlockDAG) computeGHOSTDAGState(block *Block) {
 	dbBudget := maxGhostdagDBLookupsPerBlock
 
 	// Step 1: selected parent = highest-blue-score parent.
+	// Batch-fetch any parents missing from dag.blocks in ONE round trip
+	// before the loop below, instead of one round trip per missing parent —
+	// see ghostdagBatchPrefetch's own comment for the live perf finding this
+	// closes.
+	dag.ghostdagBatchPrefetch(block.ParentHashes, &dbBudget)
 	var maxScore int64 = -1
 	spHash := block.ParentHashes[0]
 	for _, ph := range block.ParentHashes {
@@ -4702,28 +4707,42 @@ func (dag *BlockDAG) ghostdagMergeSet(block *Block, spHash string, dbBudget *int
 	visitCap := dag.maxMergeVisits()
 
 	// Build a shallow exclusion set: blocks definitely reachable from SP.
+	//
+	// FIX (2026-07-04, live perf finding): both BFS loops below now drain
+	// and process the queue in ROUNDS (one full frontier at a time) instead
+	// of popping and looking up one entry at a time, batch-prefetching each
+	// round's hashes in a single round trip first — see
+	// ghostdagBatchPrefetch's own comment for why. The traversal order and
+	// every cap/limit check is unchanged; only how the DB is hit differs.
 	type entry struct {
 		hash  string
 		depth int
 	}
 	excluded := map[string]bool{spHash: true}
 	queue := []entry{{spHash, 0}}
-	for len(queue) > 0 {
-		if len(excluded) >= visitCap {
-			break
+	for len(queue) > 0 && len(excluded) < visitCap {
+		round := queue
+		queue = nil
+		roundHashes := make([]string, len(round))
+		for i, e := range round {
+			roundHashes[i] = e.hash
 		}
-		cur := queue[0]
-		queue = queue[1:]
-		if cur.depth > depthLimit {
-			continue
-		}
-		if b := dag.ghostdagBlockLookup(cur.hash, dbBudget); b != nil {
-			for _, ph := range b.ParentHashes {
-				if !excluded[ph] {
-					excluded[ph] = true
-					queue = append(queue, entry{ph, cur.depth + 1})
-					if len(excluded) >= visitCap {
-						break
+		dag.ghostdagBatchPrefetch(roundHashes, dbBudget)
+		for _, cur := range round {
+			if len(excluded) >= visitCap {
+				break
+			}
+			if cur.depth > depthLimit {
+				continue
+			}
+			if b := dag.ghostdagBlockLookup(cur.hash, dbBudget); b != nil {
+				for _, ph := range b.ParentHashes {
+					if !excluded[ph] {
+						excluded[ph] = true
+						queue = append(queue, entry{ph, cur.depth + 1})
+						if len(excluded) >= visitCap {
+							break
+						}
 					}
 				}
 			}
@@ -4744,24 +4763,84 @@ func (dag *BlockDAG) ghostdagMergeSet(block *Block, spHash string, dbBudget *int
 			fmt.Printf("[GHOSTDAG] ⚠ merge-set BFS for block %s hit the %d-node visit cap — treating remaining reachable ancestors as outside the merge set. Extreme concurrent-production burst; investigate gossip/sync latency if this recurs.\n", block.Hash, visitCap)
 			break
 		}
-		cur := queue[0]
-		queue = queue[1:]
-		if cur.depth > depthLimit {
-			continue
+		round := queue
+		queue = nil
+		roundHashes := make([]string, len(round))
+		for i, e := range round {
+			roundHashes[i] = e.hash
 		}
-		if b := dag.ghostdagBlockLookup(cur.hash, dbBudget); b != nil {
-			for _, ph := range b.ParentHashes {
-				if !excluded[ph] && !mergeSet[ph] {
-					mergeSet[ph] = true
-					queue = append(queue, entry{ph, cur.depth + 1})
-					if len(mergeSet) >= visitCap {
-						break
+		dag.ghostdagBatchPrefetch(roundHashes, dbBudget)
+		for _, cur := range round {
+			if len(mergeSet) >= visitCap {
+				fmt.Printf("[GHOSTDAG] ⚠ merge-set BFS for block %s hit the %d-node visit cap — treating remaining reachable ancestors as outside the merge set. Extreme concurrent-production burst; investigate gossip/sync latency if this recurs.\n", block.Hash, visitCap)
+				break
+			}
+			if cur.depth > depthLimit {
+				continue
+			}
+			if b := dag.ghostdagBlockLookup(cur.hash, dbBudget); b != nil {
+				for _, ph := range b.ParentHashes {
+					if !excluded[ph] && !mergeSet[ph] {
+						mergeSet[ph] = true
+						queue = append(queue, entry{ph, cur.depth + 1})
+						if len(mergeSet) >= visitCap {
+							break
+						}
 					}
 				}
 			}
 		}
 	}
 	return mergeSet
+}
+
+// ghostdagBatchPrefetch loads every hash in `hashes` that is not already
+// resident in dag.blocks with a SINGLE database round trip
+// (LoadBlocksByHashesFromDB), instead of the one-round-trip-per-hash cost
+// that ghostdagBlockLookup pays when called individually. Counts as at most
+// one unit against dbBudget regardless of how many hashes it fetches —
+// dbBudget bounds ROUND TRIPS (wall-clock DB latency), not rows, see
+// maxGhostdagDBLookupsPerBlock's own comment, so batching is a strict
+// improvement: the same budget now covers more ground per round trip spent.
+//
+// FIX (P0, 2026-07-04 — live perf finding, root cause of primary block
+// production regularly exceeding the 2s BLOCK_TIME target): confirmed live
+// that computeGHOSTDAGState's "ghostdag+hash" phase cost a strikingly
+// consistent ~2.6s on nearly every block — almost exactly
+// maxGhostdagDBLookupsPerBlock(10) x the ~260ms per-query latency measured
+// elsewhere in the same incident over Railway's Postgres proxy. The
+// "[GHOSTDAG] merge-set BFS hit the visit cap" warning was firing routinely
+// under completely normal 3-validator production (not just extreme
+// bursts), meaning merge sets routinely reach 50+ distinct blocks — each
+// one, when missing from dag.blocks, paying its own sequential DB round
+// trip. Fetching a whole BFS frontier in one query collapses that to a
+// single round trip per level instead of one per missing block.
+func (dag *BlockDAG) ghostdagBatchPrefetch(hashes []string, dbBudget *int) {
+	if dag.state == nil || dag.ghostdagMigrationPending.Load() {
+		return
+	}
+	if dbBudget != nil && *dbBudget <= 0 {
+		return
+	}
+	var missing []string
+	for _, h := range hashes {
+		if _, ok := dag.blocks[h]; !ok {
+			missing = append(missing, h)
+		}
+	}
+	if len(missing) == 0 {
+		return
+	}
+	if dbBudget != nil {
+		*dbBudget--
+	}
+	found, err := dag.state.LoadBlocksByHashesFromDB(missing)
+	if err != nil {
+		return
+	}
+	for _, b := range found {
+		dag.blocks[b.Hash] = b
+	}
 }
 
 // ghostdagIsAncestor returns true if ancestorHash can reach descendantHash
