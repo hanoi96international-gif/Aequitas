@@ -2521,6 +2521,7 @@ if dag.resyncInProgress.Load() {
 // normal path below instead, which safely resolves a genuinely-old-but-
 // still-known parent via ghostdagBlockLookup's own DB fallback.
 if block != nil && block.Height > 0 && block.Height <= dag.BootHeight() && dag.BootHeightCheckpointBacked() {
+	fmt.Printf("[DEBUG-TEMP2] checkpoint-skip fired: block #%d <= BootHeight %d (checkpointBacked=true)\n", block.Height, dag.BootHeight())
 	return true
 }
 // Lock-free fork-flood shield (P0, 2026-07-02): reject a block whose height is
