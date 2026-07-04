@@ -106,15 +106,19 @@ CHAIN_ID      = "aequitas-1"
 // longer permanently orphan on a missing merge parent. With the actual
 // bottlenecks gone, dropped to 1s, then tried 2s and 1.5s as middle
 // grounds when Contabo nodes kept falling behind. Two real fixes landed
-// along the way: a DB index (chain_blocks composite index,
-// evm_storage.go ensureGHOSTDAGColumns) for the serving-node query cost,
-// and TuneProposerBreakerForBlockTime (x/humanity/keeper/block.go) for
-// the circuit breaker's fixed 40-failure threshold silently tripping
-// much faster in wall-clock terms as BLOCK_TIME shrank — confirmed live
-// as the actual mechanism behind every one of tonight's re-divergences,
-// regardless of which other bug got fixed first. Back to 1s per explicit
-// operator decision with both fixes in place.
-BLOCK_TIME = 1 * time.Second
+// along the way (a DB index for the serving-node query cost, and
+// TuneProposerBreakerForBlockTime scaling the circuit breaker's fail
+// threshold with BLOCK_TIME) — both genuine, permanent improvements, but
+// neither alone nor together got 1s (or 1.5s) to hold: both Contabo
+// nodes still fell back into isolated single-parent production within
+// minutes, every time. 2s is the fastest cadence that showed real,
+// sustained multi-parent convergence for an extended stretch tonight
+// before this round of experiments — settling here per explicit operator
+// decision rather than continuing to guess at 1s/1.5s live in production.
+// The remaining gap is most likely real cross-provider network latency,
+// not another software bug; revisit only with actual latency
+// measurements, not another live trial.
+BLOCK_TIME = 2 * time.Second
 API_PORT   = 8080
 )
 
