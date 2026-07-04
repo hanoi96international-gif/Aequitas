@@ -1798,6 +1798,57 @@ const orphanAbandonAfter = 15 * time.Minute
 // (not just "time has passed") before it can be abandoned.
 const minOrphanAttemptsBeforeAbandon = 3
 
+// proposerBreakerOrphanGrace bounds how long a missing-parent gap gets the
+// benefit of the doubt before AddPeerBlock starts counting it as a proposer
+// circuit-breaker failure.
+//
+// FIX (durable fix, 2026-07-04 — explicit user requirement: this must work
+// reliably for every new node, not just today's two): confirmed live, two
+// healthy, fully-synced Contabo nodes tripped their circuit breakers against
+// EACH OTHER during completely normal, steady-state operation (not a resync,
+// not a divergence — both already agreed with the primary at settled
+// heights) — an ordinary propagation gap between two independently-hosted
+// validators (a block from one arriving before its very-recent parent from
+// the other has finished propagating, entirely expected over a real
+// intercontinental/inter-provider network under a 2s BLOCK_TIME) orphaned a
+// SHORT run of blocks, and the breaker counted every single one as a
+// failure the instant it was queued — with no way to tell "will resolve in
+// the next second or two" apart from "this proposer is on a permanently
+// diverged fork" at the moment the orphan is first seen. Once BOTH sides'
+// breakers tripped against each other this way, each side's own pushed
+// blocks kept getting dropped by the other's lock-free shield before ever
+// reaching AddPeerBlock again — a self-sustaining mutual lockout neither
+// side's cooldown alone reliably escaped, since a re-tripped breaker resets
+// the wait. This is exactly the failure mode this project cannot afford as
+// more independently-run, often non-technical-operator nodes join: a
+// transient network hiccup between any two of them must never escalate
+// into a lasting mutual block.
+//
+// The fix: don't count a failure the instant a gap is first observed — only
+// once the SAME missing-parent hash has stayed unresolved for this long.
+// Genuine propagation lag resolves within a round or two and is never
+// penalized at all; a genuinely diverged fork's gap never resolves and
+// still trips the breaker in well under a minute, comfortably fast enough
+// to still protect against a real flood. A few multiples of BLOCK_TIME (2s)
+// comfortably covers ordinary propagation variance without meaningfully
+// slowing down real divergence detection.
+const proposerBreakerOrphanGrace = 8 * time.Second
+
+// orphanAge reports how long missingParent has been sitting in the orphan
+// queue (zero, false if it isn't currently tracked at all — e.g. this is
+// the very first block ever queued waiting on it). Used by AddPeerBlock to
+// decide whether an orphan is still within its circuit-breaker grace period
+// — see proposerBreakerOrphanGrace's own comment.
+func (dag *BlockDAG) orphanAge(missingParent string) (time.Duration, bool) {
+	dag.orphansMu.Lock()
+	defer dag.orphansMu.Unlock()
+	first, ok := dag.orphanFirstSeen[missingParent]
+	if !ok {
+		return 0, false
+	}
+	return time.Since(first), true
+}
+
 // orphanFetchCooldown is the minimum gap between fetch attempts for the same
 // missing-parent hash, checked by fetchMissingAncestors (sync_blocks.go).
 // Without it, every new orphan's triggerOrphanResolve pass re-attempts every
@@ -2640,10 +2691,18 @@ if missingParent != "" {
 	// breaker against the honest primary, permanently blocking the one peer
 	// we need to sync from. Still queue the orphan for later resolution —
 	// only the breaker bookkeeping is skipped.
+	//
+	// EXCEPT ALSO while this specific gap is still within its grace period —
+	// see proposerBreakerOrphanGrace's own comment: even a fully-synced,
+	// perfectly healthy node sees an occasional short-lived orphan from
+	// ordinary cross-network propagation timing, and counting that
+	// immediately (before giving it any chance to resolve on its own) is
+	// what let two healthy Contabo nodes trip their breakers against each
+	// other during completely normal operation.
 	dag.mu.RLock()
 	catchingUp := dag.isCatchingUpLocked()
 	dag.mu.RUnlock()
-	if !catchingUp {
+	if age, tracked := dag.orphanAge(missingParent); !catchingUp && (!tracked || age >= proposerBreakerOrphanGrace) {
 		dag.recordProposerOutcome(block.Proposer, false)
 	}
 	return false
