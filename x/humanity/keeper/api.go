@@ -907,7 +907,22 @@ func (a *APIServer) handleBlockPush(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, `{"error":"invalid block JSON"}`, http.StatusBadRequest)
 		return
 	}
-	block.FromSync = true
+	// FIX (P0, 2026-07-04 brutal audit): this endpoint is publicly reachable —
+	// unlike a trusted seed's URL, which an operator explicitly configures via
+	// PRIMARY_NODE_URL/PEER_NODES, ANY HTTP client can POST here. FromSync is
+	// not just a label: block.go's isFinalityViolation, the authorized-
+	// validator check, IsValidatorSuspended, and the lock-free proposer
+	// circuit breaker ALL skip their check entirely when it's true — see
+	// FromSync's own field comment. Setting it unconditionally on every
+	// push meant an unauthenticated sender could get an unregistered
+	// proposer's block accepted, a suspended validator's block un-suspended,
+	// or a genuinely diverged/flooding proposer exempted from the very
+	// breaker built to stop it. A legitimate peer's genuinely-authorized,
+	// correctly-signed block still passes every one of these gates normally
+	// (that's the whole point of them being real checks); removing this
+	// bypass does not weaken the real-time push-merge path this endpoint
+	// exists for, only the false trust extended to an unauthenticated one.
+	block.FromSync = false
 	accepted := a.blockchain.AddPeerBlock(&block)
 	// FIX (durable fix, 2026-07-04 — closes the same mutual-lockout risk for
 	// this breaker too, see proposerBreakerOrphanGrace's own comment in
