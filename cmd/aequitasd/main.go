@@ -129,6 +129,56 @@ API_PORT   = 8080
 // behavior silently turned a transient hiccup into a full missed day.
 const distributionHealthRetryInterval = 15 * time.Minute
 
+// nextDaily20 returns the next 20:00 in berlin at or after `after`. Uses
+// AddDate (not Add(24h)) to land on exactly 20:00 the next calendar day
+// regardless of DST transitions -- Add(24h) would be 1h off on the two
+// DST changeover nights per year.
+func nextDaily20(after time.Time, berlin *time.Location) time.Time {
+t := after.In(berlin)
+candidate := time.Date(t.Year(), t.Month(), t.Day(), 20, 0, 0, 0, berlin)
+if !after.Before(candidate) {
+candidate = time.Date(t.Year(), t.Month(), t.Day()+1, 20, 0, 0, 0, berlin)
+}
+return candidate
+}
+
+// computeFirstUBITarget picks when the distribution goroutine should first
+// fire on startup, given lastAt (chainState.GetLastUBIAt(), 0 if never run).
+// Extracted as a pure function (no goroutine, no chainState) specifically so
+// the startup-time-of-day edge cases are directly unit testable — see
+// main_ubi_schedule_test.go.
+//
+// FIX (2026-07-05 -- closes a gap in the 2026-07-03 "catch up after 24h"
+// fix): that fix only catches up once a FULL 24h has passed since the last
+// distribution. A restart landing just short of that (e.g. last
+// distribution was 23h50m ago) fell into the `default` branch below, which
+// always resolves to TOMORROW once `now` is already past today's 20:00 --
+// silently skipping today's round exactly the same way the 24h fix was
+// meant to prevent, just with a narrower trigger window. Concretely:
+// today's 20:00 slot was due, this process wasn't alive for it (e.g. a
+// redeploy), and the last real distribution predates that slot -- catch up
+// now instead of waiting another day. TryLockDistribution's cross-node CAS
+// still prevents a double-run if another node's replayed TX beat us to it.
+func computeFirstUBITarget(lastAt int64, now time.Time, berlin *time.Location) time.Time {
+switch {
+case lastAt == 0 || now.Sub(time.Unix(lastAt, 0)) < time.Hour:
+// FIX 10: 1-hour guard for fresh DBs so distribution doesn't fire
+// immediately on a brand-new node startup.
+return nextDaily20(now.Add(time.Hour), berlin)
+case now.Sub(time.Unix(lastAt, 0)) >= 24*time.Hour:
+// FIX (durable fix, 2026-07-03): a round is already overdue once a
+// full day has passed since the last success -- catch up almost
+// immediately instead of waiting for the next calendar slot.
+return now.Add(time.Minute)
+default:
+todayTarget := time.Date(now.In(berlin).Year(), now.In(berlin).Month(), now.In(berlin).Day(), 20, 0, 0, 0, berlin)
+if !now.Before(todayTarget) && time.Unix(lastAt, 0).Before(todayTarget) {
+return now.Add(time.Minute)
+}
+return nextDaily20(now, berlin)
+}
+}
+
 type Genesis struct {
 ChainID     string      `json:"chain_id"`
 GenesisTime string      `json:"genesis_time"`
@@ -488,40 +538,8 @@ if err != nil {
 berlin = time.FixedZone("CET", 2*60*60) // CEST fallback (summer, UTC+2)
 }
 
-nextDaily20 := func(after time.Time) time.Time {
-t := after.In(berlin)
-candidate := time.Date(t.Year(), t.Month(), t.Day(), 20, 0, 0, 0, berlin)
-if !after.Before(candidate) {
-// Use AddDate to get exactly 20:00 next day regardless of DST transitions.
-// Add(24h) would be 1h off on the two DST changeover nights per year.
-candidate = time.Date(t.Year(), t.Month(), t.Day()+1, 20, 0, 0, 0, berlin)
-}
-return candidate
-}
-
 lastAt := chainState.GetLastUBIAt()
-var firstTarget time.Time
-// FIX 10: Apply the same 1-hour guard for fresh DBs (lastAt == 0) to prevent
-// the distribution from firing immediately on a brand-new node startup.
-switch {
-case lastAt == 0 || time.Since(time.Unix(lastAt, 0)) < time.Hour:
-firstTarget = nextDaily20(time.Now().Add(time.Hour))
-case time.Since(time.Unix(lastAt, 0)) >= 24*time.Hour:
-// FIX (durable fix, 2026-07-03 -- real fix for the 2026-07-03 20:00
-// no-payout incident): nextDaily20(now) always picks the NEXT 20:00,
-// which is TOMORROW's if "now" is already past today's -- silently
-// skipping a whole day whenever the process wasn't alive at the exact
-// scheduled instant (e.g. mid-redeploy). Confirmed as plausible live:
-// Primary was mid-redeploy across the 20:00-21:00 Berlin window that
-// evening. A round is already overdue once a full day has passed since
-// the last success, so catch up almost immediately instead of waiting
-// for the next calendar slot -- TryLockDistribution's own ~24h CAS
-// still prevents a double-run if another node's replayed TX beat us to
-// it in the meantime.
-firstTarget = time.Now().Add(time.Minute)
-default:
-firstTarget = nextDaily20(time.Now())
-}
+firstTarget := computeFirstUBITarget(lastAt, time.Now(), berlin)
 
 firstDelay := time.Until(firstTarget)
 chainState.SetNextUBIAt(firstTarget.Unix())
@@ -608,7 +626,7 @@ if os.Getenv("DISTRIBUTION_ENABLED") == "false" {
 if retrySoon {
 firstTarget = time.Now().Add(distributionHealthRetryInterval)
 } else {
-firstTarget = nextDaily20(time.Now())
+firstTarget = nextDaily20(time.Now(), berlin)
 }
 chainState.SetNextUBIAt(firstTarget.Unix())
 fmt.Printf("[POOLS] Next distribution at %s Berlin time\n", firstTarget.In(berlin).Format("02.01. 15:04:05"))
