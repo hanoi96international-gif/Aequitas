@@ -1474,8 +1474,18 @@ func (cs *ChainState) SavePriceSnapshot() {
 	aeq := cs.pool.ReserveAEQ.Float()
 	tusd := cs.pool.ReserveTUSD.Float()
 	cs.mu.RUnlock()
-	cs.db.Exec(`INSERT INTO price_snapshots (price, reserve_aeq, reserve_tusd) VALUES ($1, $2, $3)`,
-		price, aeq, tusd)
+	// FIX (2026-07-05 — chart intervals silently going stale): this insert's
+	// error was previously discarded entirely. Confirmed live: Primary's
+	// price_snapshots simply stopped gaining new rows for 14+ hours (last
+	// row from 2026-07-04 11:25) while Contabo 1's own snapshots kept
+	// saving fine over the same window — the exact asymmetry a silently
+	// swallowed per-node DB error would produce, and one this codebase had
+	// no way to ever surface. Log so a recurrence is visible instead of
+	// only showing up as "the chart looks flat/stale" days later.
+	if _, err := cs.db.Exec(`INSERT INTO price_snapshots (price, reserve_aeq, reserve_tusd) VALUES ($1, $2, $3)`,
+		price, aeq, tusd); err != nil {
+		fmt.Printf("[PRICE] ✗ SavePriceSnapshot insert failed: %v\n", err)
+	}
 }
 
 // GetPriceHistory returns price snapshots from the last `minutes` minutes,
