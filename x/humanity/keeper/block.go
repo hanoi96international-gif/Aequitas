@@ -3338,7 +3338,7 @@ func (dag *BlockDAG) GetBlockByHeight(height int64) *Block {
 // locking contract, which this relies on for cache-filling DB fallback
 // during the walk).
 //
-// FIX (P0, 2026-07-04 — same class of outage as maxGhostdagDBLookupsPerBlock,
+// FIX (P0, 2026-07-04 — same class of outage as maxGhostdagDBLookups,
 // found on self-review the same night that one shipped): this walk used to
 // pass a nil budget to ghostdagBlockLookup — unbounded DB round trips,
 // exactly the hazard just fixed for computeGHOSTDAGState, on a path that's
@@ -3370,7 +3370,7 @@ func (dag *BlockDAG) canonicalBlockAtHeightLocked(height int64) *Block {
 	if best == nil {
 		return nil
 	}
-	dbBudget := maxGhostdagDBLookupsPerBlock
+	dbBudget := dag.maxGhostdagDBLookups()
 	cur := best
 	for cur != nil && cur.Height > height {
 		if cur.SelectedParent == "" {
@@ -4430,8 +4430,8 @@ func (dag *BlockDAG) computeGHOSTDAGState(block *Block) {
 	}
 
 	// FIX (P0, 2026-07-04): one DB-roundtrip budget shared for this entire
-	// computation — see maxGhostdagDBLookupsPerBlock's own comment.
-	dbBudget := maxGhostdagDBLookupsPerBlock
+	// computation — see maxGhostdagDBLookups' own comment.
+	dbBudget := dag.maxGhostdagDBLookups()
 
 	// Step 1: selected parent = highest-blue-score parent.
 	// Batch-fetch any parents missing from dag.blocks in ONE round trip
@@ -4589,39 +4589,48 @@ func (dag *BlockDAG) computeGHOSTDAGState(block *Block) {
 // merge sets are tiny — typically single digits — and this never triggers.
 // maxMergeSetBFSVisits floor (50) — actual limit computed by dag.maxMergeVisits() = max(50, 5*(2K+1))
 
-// maxGhostdagDBLookupsPerBlock bounds the number of REAL (cache-miss) database
-// round trips a SINGLE computeGHOSTDAGState call may make in total, shared
-// across its merge-set BFS (ghostdagMergeSet) AND every ghostdagIsAncestor
-// call the blue/red classification loop makes on top of it. Found live
-// 2026-07-04 (production outage): maxMergeVisits already bounds how many
-// DISTINCT BLOCKS each of those BFS-shaped functions visits, and each visit
-// that misses dag.blocks costs a synchronous Postgres round trip via
-// ghostdagBlockLookup — the exact mechanism already fixed for the startup
-// migration path (ghostdagMigrationPending, see ghostdagBlockLookup's own
-// comment) but never generalized to normal runtime operation. The classification
-// loop calls ghostdagIsAncestor up to ~2xK times per merge-set member, each
-// with its OWN independent maxMergeVisits budget — so the node-visit cap alone
-// does not bound the total number of round trips a single block's computation
-// can rack up. Confirmed live: right after heavy in-memory pruning (1337
-// blocks evicted) coincided with two secondaries producing merge-parents deep
-// in history following their own resyncs, a single computeGHOSTDAGState call
-// measured 62s, almost entirely DB round-trip latency over Railway's proxy
-// (measured elsewhere in this same incident at 200ms-1.2s per call) — long
-// enough to make ProduceBlock (which holds dag.mu for the whole call) starve
-// every other caller and, at the extreme, trip Railway's health check into
-// restarting the whole node. A shared budget across the whole computation
-// (not per-BFS-instance) bounds this to a small, predictable ceiling
-// regardless of merge-set size or classification fan-out; once exhausted,
-// ghostdagBlockLookup falls back to the same conservative "treat as absent"
-// behavior already used during migration — BlueScore/SelectedParent are
-// locally-computed bookkeeping, not hash-covered or consensus-critical (see
-// 87071d7's reasoning), so this can only make the computation cheaper and
-// occasionally less precise, never incorrect in a way that forks the chain.
-// nil budget (used by the two unrelated, already-bounded callers outside this
-// call graph — AddPeerBlock's own parent-existence check and GetBlockByHeight's
-// SelectedParent-chain walk) means "unbounded", preserving their prior behavior
-// exactly.
-const maxGhostdagDBLookupsPerBlock = 10
+// maxGhostdagDBLookups bounds the number of REAL (cache-miss) database round
+// trips a SINGLE computeGHOSTDAGState call may make in total, shared across
+// its merge-set BFS (ghostdagMergeSet) AND every ghostdagIsAncestor call the
+// blue/red classification loop makes on top of it.
+//
+// FIX (durable fix, 2026-07-04 — closes cross-node blue_score/canonical-
+// choice divergence found live): this used to be a fixed constant (10),
+// introduced the same night to stop a single computeGHOSTDAGState call from
+// making unbounded DB round trips over Railway's slow external proxy
+// (~200ms-1.2s/call there, confirmed live at 62s for one call). That fix
+// traded a real outage risk for a subtler one: whether a given ancestor
+// lookup succeeds (cache hit) or costs a real round trip (cache miss, spends
+// budget) depends on THIS node's own, incidental cache-warmth at THIS
+// moment — restart history, pruning timing, concurrent load all differ
+// node-to-node. Two honest nodes computing the identical block's GHOSTDAG
+// state could therefore each hit the SAME fixed budget at a DIFFERENT point
+// in their own BFS, silently truncating the merge set differently and
+// computing a different BlueScore/SelectedParent for the same block —
+// confirmed live: the primary and Contabo 1 disagreed on both hash and
+// proposer at a settled height (173000) despite the migration fix and a
+// clean resync, with no other explanation fitting. That is exactly the
+// determinism this file's header comment promises ("every node that holds
+// the same block graph computes identical GHOSTDAG state") silently broken.
+//
+// The DB latency problem that justified a tight budget is gone: every node
+// in this network now has fast DB access (the primary moved off Railway's
+// public proxy onto its private network, ~<5ms; both Contabo nodes were
+// always local-Postgres, ~sub-ms) — the 200ms-plus-per-call cost this budget
+// was bounding no longer exists anywhere in the fleet. Scaling the budget
+// with maxMergeVisits (the existing, already-deterministic, K-derived
+// structural cap) instead of a fixed number means the DB budget can only
+// ever be the limiting factor in a genuinely pathological burst far beyond
+// maxMergeVisits' own ceiling — in the normal case, the structural caps
+// (mergeDepthLimit, maxMergeVisits), which are identical on every node by
+// construction, are what actually bound the computation, not incidental
+// per-node cache state. At sub-5ms round trips, even this much larger
+// budget costs low hundreds of milliseconds in the worst case, comfortably
+// inside the 2s BLOCK_TIME window. No separate floor needed: maxMergeVisits
+// already has its own floor (50), so this is never below 500.
+func (dag *BlockDAG) maxGhostdagDBLookups() int {
+	return dag.maxMergeVisits() * 10
+}
 
 // ghostdagBlockLookup returns the block for hash, falling back to the DB when
 // it is not resident in dag.blocks. Without this, computeGHOSTDAGState and its
@@ -4684,7 +4693,7 @@ func (dag *BlockDAG) ghostdagBlockLookup(hash string, budget *int) *Block {
 	// FIX (P0, 2026-07-04 — second production outage, same class): budget
 	// shared across an entire computeGHOSTDAGState call bounds total real DB
 	// round trips regardless of merge-set size or classification fan-out —
-	// see maxGhostdagDBLookupsPerBlock's own comment. nil means unbounded,
+	// see maxGhostdagDBLookups's own comment. nil means unbounded,
 	// for callers outside that call graph. Checked here (after the free
 	// migration/nil-state short-circuits, right before the actual round
 	// trip) so it only ever counts real DB calls, never a check that would
@@ -4800,7 +4809,7 @@ func (dag *BlockDAG) ghostdagMergeSet(block *Block, spHash string, dbBudget *int
 // that ghostdagBlockLookup pays when called individually. Counts as at most
 // one unit against dbBudget regardless of how many hashes it fetches —
 // dbBudget bounds ROUND TRIPS (wall-clock DB latency), not rows, see
-// maxGhostdagDBLookupsPerBlock's own comment, so batching is a strict
+// maxGhostdagDBLookups's own comment, so batching is a strict
 // improvement: the same budget now covers more ground per round trip spent.
 //
 // FIX (P0, 2026-07-04 — live perf finding, root cause of primary block

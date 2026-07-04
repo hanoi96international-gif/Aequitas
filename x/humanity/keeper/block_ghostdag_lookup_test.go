@@ -59,6 +59,28 @@ func TestGhostdagBlockLookup_MemoryHit(t *testing.T) {
 	}
 }
 
+// TestMaxGhostdagDBLookups_ScalesWithMergeVisits is the regression guard for
+// the 2026-07-04 fix that replaced the fixed 10-round-trip budget with one
+// scaled off maxMergeVisits (which has its own floor of 50, so this is never
+// below 500): at base K it must equal maxMergeVisits()*10, and it must scale
+// up further for a large committee (high K), so the DB budget is never the
+// actual limiting factor before the K-derived structural caps are.
+func TestMaxGhostdagDBLookups_ScalesWithMergeVisits(t *testing.T) {
+	dag := newGhostdagTestDAG()
+	baseWant := dag.maxMergeVisits() * 10
+	if got := dag.maxGhostdagDBLookups(); got != baseWant {
+		t.Fatalf("at base K, maxGhostdagDBLookups() = %d, want %d (maxMergeVisits*10)", got, baseWant)
+	}
+	dag.activeGhostdagK.Store(1000) // large committee
+	bigWant := dag.maxMergeVisits() * 10
+	if got := dag.maxGhostdagDBLookups(); got != bigWant {
+		t.Fatalf("at K=1000, maxGhostdagDBLookups() = %d, want %d (maxMergeVisits*10)", got, bigWant)
+	}
+	if bigWant <= baseWant {
+		t.Fatal("test setup bug: K=1000 should produce a value above the base-K value")
+	}
+}
+
 // TestGhostdagBlockLookup_MissNoState verifies a genuinely-missing hash with
 // no DB backing (dag.state == nil, the same setup every other GHOSTDAG scale
 // test in this package uses) returns nil rather than panicking — matching
@@ -170,7 +192,7 @@ func TestGhostdagBlockLookup_SkipsDBDuringMigration(t *testing.T) {
 // measured 62s, almost entirely real DB round trips, because neither
 // ghostdagMergeSet's BFS nor the classification loop's many independent
 // ghostdagIsAncestor calls shared any limit on how many real DB lookups they
-// could rack up in total (see maxGhostdagDBLookupsPerBlock's own comment).
+// could rack up in total (see maxGhostdagDBLookups's own comment).
 // Once the shared budget hits zero, further misses must return nil
 // immediately (the same conservative fallback already used during
 // migration) instead of continuing to call into dag.state.
