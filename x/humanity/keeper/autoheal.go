@@ -59,6 +59,16 @@ const (
 	// This is a network round trip against the primary, not a local counter,
 	// so it doesn't need the mismatch check's 60s granularity.
 	chainDivergenceCheckInterval = 5 * time.Minute
+	// chainDivergenceInitialDelay is how long startChainDivergenceCheck waits
+	// before its FIRST comparison, run once outside the normal ticker cadence
+	// — see that function's own comment for why: time.Ticker never fires on
+	// its own start, only after a full interval, so without this a node that
+	// gets restarted more often than chainDivergenceCheckInterval (routine
+	// during active deploys, and only more likely as a fleet grows to many
+	// independently-restarting nodes) could complete zero divergence checks
+	// in its entire lifetime. Long enough for peer registration and initial
+	// sync to get underway, far short of the full 5-minute interval.
+	chainDivergenceInitialDelay = 45 * time.Second
 	// chainDivergenceSafetyMargin keeps the compared height well clear of the
 	// live tip, where legitimate reorg/merge activity is still happening.
 	chainDivergenceSafetyMargin = 50
@@ -178,76 +188,105 @@ func (dag *BlockDAG) startChainDivergenceCheck(primaryURL string) {
 	}
 	fmt.Printf("[AUTO-HEAL] Chain-divergence self-check enabled: comparing against %s every %s.\n", primaryURL, chainDivergenceCheckInterval)
 	go func() {
+		var unsettledSince time.Time
+		// FIX (P0, 2026-07-04 — closes the self-heal blind spot found live
+		// tonight): time.Ticker does NOT fire on start, only after the FIRST
+		// full interval elapses — with chainDivergenceCheckInterval at 5
+		// minutes, a node that gets restarted more often than that (routine
+		// during any active deploy/debug session, and increasingly likely
+		// as a fleet grows to many nodes each with their own independent
+		// restart schedule) could go its ENTIRE life without this safety net
+		// firing even once. Confirmed as the actual explanation for a real
+		// divergence (a fixed, incorrect blue_score baseline from a botched
+		// resync) surviving undetected for a long stretch of very frequent
+		// redeploys tonight — not a logic bug in the check itself, just zero
+		// completed cycles. chainDivergenceInitialDelay runs the same check
+		// once, soon after startup (long enough for peer registration and
+		// initial sync to get going, far short of a full interval), then the
+		// ticker takes over for the normal cadence — so even a node that
+		// only lives a few minutes gets at least one real chance to compare
+		// itself against the primary.
+		time.Sleep(chainDivergenceInitialDelay)
+		dag.runChainDivergenceCheckOnce(primaryURL, &unsettledSince)
 		ticker := time.NewTicker(chainDivergenceCheckInterval)
 		defer ticker.Stop()
-		var unsettledSince time.Time
 		for range ticker.C {
-			// FIX (durable fix, 2026-07-03 — real fix for the false-positive
-			// resync loop documented in the catch-up saga): this check compares
-			// a "safely finalized" local height against the primary's, on the
-			// assumption both sides have settled. That assumption breaks down
-			// during a mass-reconsolidation event (heavy catch-up or a tip
-			// count blown up into the thousands from historically-resurrected
-			// orphans) — confirmed live: a node mid-catch-up with dag_tips_count
-			// in the 2000-4500 range had ProduceBlock taking 7+ seconds per
-			// block, and its own finalized-checkpoint walk transiently picked a
-			// different block than the primary's canonical one without a real
-			// fork existing, tripping this check and forcing a full resync —
-			// which promptly re-triggered the same fragmentation on the next
-			// catch-up, a genuine restart-loop risk. Skip the round entirely
-			// while either signal indicates "not settled right now"; the next
-			// tick re-checks, so a transient burst just delays detection by one
-			// interval rather than producing a false trigger.
-			//
-			// FIX (2026-07-04): but only skip like that for so long — see
-			// chainDivergenceStallOverride's own comment. A node stuck
-			// unsettled continuously past that ceiling falls through to the
-			// real check below instead of `continue`ing forever.
-			dag.mu.RLock()
-			unsettled := dag.isCatchingUpLocked() || len(dag.tips) > chainDivergenceMaxTipsForCheck
-			tipsNow := len(dag.tips)
-			dag.mu.RUnlock()
-			if !unsettled {
-				unsettledSince = time.Time{}
-			} else if unsettledSince.IsZero() {
-				unsettledSince = time.Now()
-				fmt.Printf("[AUTO-HEAL] Chain-divergence self-check skipped this round: node is still catching up or has %d tips (fragmentation) — not a settled state to compare against the primary.\n", tipsNow)
-				continue
-			} else if stalled := time.Since(unsettledSince); stalled < chainDivergenceStallOverride {
-				fmt.Printf("[AUTO-HEAL] Chain-divergence self-check skipped this round: node is still catching up or has %d tips (fragmentation) — not a settled state to compare against the primary (unsettled for %s so far).\n", tipsNow, stalled.Round(time.Second))
-				continue
-			} else {
-				fmt.Printf("[AUTO-HEAL] Chain-divergence self-check overriding the unsettled-state skip: %d tips and unsettled for over %s straight — legitimate catch-up should have consolidated well before now, this looks like a permanently isolated fork instead. Checking anyway.\n", tipsNow, chainDivergenceStallOverride)
-			}
-			remoteHeight, ok := fetchPrimaryHeight(primaryURL)
-			if !ok {
-				// Primary unreachable this cycle — not evidence of divergence.
-				continue
-			}
-			localFinalized, _ := dag.state.GetFinalizedCheckpoint()
-			compareHeight := localFinalized
-			if remoteHeight < compareHeight {
-				compareHeight = remoteHeight
-			}
-			compareHeight -= chainDivergenceSafetyMargin
-			if compareHeight <= 0 {
-				continue // chain too young to compare safely yet
-			}
-			localBlock := dag.GetBlockByHeight(compareHeight)
-			if localBlock == nil {
-				continue // not yet synced to this height locally — not evidence
-			}
-			remoteHash, ok := fetchPrimaryBlockHash(primaryURL, compareHeight)
-			if !ok {
-				continue
-			}
-			if remoteHash != localBlock.Hash {
-				dag.triggerAutoResync(fmt.Sprintf(
-					"chain hash mismatch at height %d against primary %s (ours=%s… theirs=%s…) — this node is on an isolated fork",
-					compareHeight, primaryURL, localBlock.Hash[:min(16, len(localBlock.Hash))], remoteHash[:min(16, len(remoteHash))]))
-			}
+			dag.runChainDivergenceCheckOnce(primaryURL, &unsettledSince)
 		}
 	}()
+}
+
+// runChainDivergenceCheckOnce is startChainDivergenceCheck's single-round
+// body, extracted so it can run once shortly after startup AND on the
+// normal ticker cadence — see startChainDivergenceCheck's own comment for
+// why the immediate first run matters. unsettledSince is owned by the
+// caller's goroutine and threaded through by pointer so state carries
+// across calls exactly as it did as a loop-local variable before.
+func (dag *BlockDAG) runChainDivergenceCheckOnce(primaryURL string, unsettledSince *time.Time) {
+	// FIX (durable fix, 2026-07-03 — real fix for the false-positive
+	// resync loop documented in the catch-up saga): this check compares
+	// a "safely finalized" local height against the primary's, on the
+	// assumption both sides have settled. That assumption breaks down
+	// during a mass-reconsolidation event (heavy catch-up or a tip
+	// count blown up into the thousands from historically-resurrected
+	// orphans) — confirmed live: a node mid-catch-up with dag_tips_count
+	// in the 2000-4500 range had ProduceBlock taking 7+ seconds per
+	// block, and its own finalized-checkpoint walk transiently picked a
+	// different block than the primary's canonical one without a real
+	// fork existing, tripping this check and forcing a full resync —
+	// which promptly re-triggered the same fragmentation on the next
+	// catch-up, a genuine restart-loop risk. Skip the round entirely
+	// while either signal indicates "not settled right now"; the next
+	// tick re-checks, so a transient burst just delays detection by one
+	// interval rather than producing a false trigger.
+	//
+	// FIX (2026-07-04): but only skip like that for so long — see
+	// chainDivergenceStallOverride's own comment. A node stuck
+	// unsettled continuously past that ceiling falls through to the
+	// real check below instead of skipping forever.
+	dag.mu.RLock()
+	unsettled := dag.isCatchingUpLocked() || len(dag.tips) > chainDivergenceMaxTipsForCheck
+	tipsNow := len(dag.tips)
+	dag.mu.RUnlock()
+	if !unsettled {
+		*unsettledSince = time.Time{}
+	} else if unsettledSince.IsZero() {
+		*unsettledSince = time.Now()
+		fmt.Printf("[AUTO-HEAL] Chain-divergence self-check skipped this round: node is still catching up or has %d tips (fragmentation) — not a settled state to compare against the primary.\n", tipsNow)
+		return
+	} else if stalled := time.Since(*unsettledSince); stalled < chainDivergenceStallOverride {
+		fmt.Printf("[AUTO-HEAL] Chain-divergence self-check skipped this round: node is still catching up or has %d tips (fragmentation) — not a settled state to compare against the primary (unsettled for %s so far).\n", tipsNow, stalled.Round(time.Second))
+		return
+	} else {
+		fmt.Printf("[AUTO-HEAL] Chain-divergence self-check overriding the unsettled-state skip: %d tips and unsettled for over %s straight — legitimate catch-up should have consolidated well before now, this looks like a permanently isolated fork instead. Checking anyway.\n", tipsNow, chainDivergenceStallOverride)
+	}
+	remoteHeight, ok := fetchPrimaryHeight(primaryURL)
+	if !ok {
+		// Primary unreachable this cycle — not evidence of divergence.
+		return
+	}
+	localFinalized, _ := dag.state.GetFinalizedCheckpoint()
+	compareHeight := localFinalized
+	if remoteHeight < compareHeight {
+		compareHeight = remoteHeight
+	}
+	compareHeight -= chainDivergenceSafetyMargin
+	if compareHeight <= 0 {
+		return // chain too young to compare safely yet
+	}
+	localBlock := dag.GetBlockByHeight(compareHeight)
+	if localBlock == nil {
+		return // not yet synced to this height locally — not evidence
+	}
+	remoteHash, ok := fetchPrimaryBlockHash(primaryURL, compareHeight)
+	if !ok {
+		return
+	}
+	if remoteHash != localBlock.Hash {
+		dag.triggerAutoResync(fmt.Sprintf(
+			"chain hash mismatch at height %d against primary %s (ours=%s… theirs=%s…) — this node is on an isolated fork",
+			compareHeight, primaryURL, localBlock.Hash[:min(16, len(localBlock.Hash))], remoteHash[:min(16, len(remoteHash))]))
+	}
 }
 
 // fetchPrimaryHeight returns primaryURL's current /api/status height.
