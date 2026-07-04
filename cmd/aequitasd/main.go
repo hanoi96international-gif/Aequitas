@@ -105,20 +105,18 @@ CHAIN_ID      = "aequitas-1"
 // seed GHOSTDAG sibling blocks, not just the canonical one, so peers no
 // longer permanently orphan on a missing merge parent. With the actual
 // bottlenecks gone, dropped to 1s, then tried 2s and 1.5s as middle
-// grounds when Contabo nodes kept falling behind. Two real fixes landed
-// along the way (a DB index for the serving-node query cost, and
+// grounds when Contabo nodes kept falling behind. Several real fixes
+// landed along the way: a DB index for the serving-node query cost,
 // TuneProposerBreakerForBlockTime scaling the circuit breaker's fail
-// threshold with BLOCK_TIME) — both genuine, permanent improvements, but
-// neither alone nor together got 1s (or 1.5s) to hold: both Contabo
-// nodes still fell back into isolated single-parent production within
-// minutes, every time. 2s is the fastest cadence that showed real,
-// sustained multi-parent convergence for an extended stretch tonight
-// before this round of experiments — settling here per explicit operator
-// decision rather than continuing to guess at 1s/1.5s live in production.
-// The remaining gap is most likely real cross-provider network latency,
-// not another software bug; revisit only with actual latency
-// measurements, not another live trial.
-BLOCK_TIME = 2 * time.Second
+// threshold with BLOCK_TIME, and hasAwaitingOrphan closing the real
+// mechanism behind every prior re-divergence (a SelfFetched ancestor
+// fetch still in flight when a resync cleared the orphan queue got
+// force-processed anyway, flooding real-time catch-up with stale work).
+// That last fix extended time-to-divergence from single-digit blocks to
+// 250+ at 2s — the biggest improvement of the night. Back to 1s per
+// explicit operator decision to see how far these fixes actually carry
+// at the original target cadence.
+BLOCK_TIME = 1 * time.Second
 API_PORT   = 8080
 )
 
