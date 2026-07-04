@@ -588,6 +588,10 @@ func (dag *BlockDAG) doSyncOnce(nodeURL string) (ok bool) {
 	// cheap, targeted hash lookup) still runs every single cycle regardless.
 	wantDeepScan := len(dag.MissingParentHashes()) > 0
 	deepScan := wantDeepScan && dag.claimDeepScanSlot(nodeURL)
+	if wantDeepScan {
+		fmt.Printf("[DEBUG-TEMP3] doSyncOnce(%s): wantDeepScan=true deepScan=%v missingCount=%d bootHeight=%d checkpointBacked=%v myHeight=%d\n",
+			nodeURL, deepScan, len(dag.MissingParentHashes()), dag.BootHeight(), dag.BootHeightCheckpointBacked(), dag.Height())
+	}
 	minHeight := dag.Height() - syncOverlap
 	if minHeight < 0 || deepScan {
 		// FIX (durable fix, 2026-07-04 — closes a checkpoint-seeded resync
@@ -653,8 +657,15 @@ func (dag *BlockDAG) doSyncOnce(nodeURL string) (ok bool) {
 			// field's own comment (block.go). Authorization remains a wholly
 			// separate, still-fully-enforced gate below.
 			block.SelfFetched = true
-			if !exists && dag.AddPeerBlock(block) {
-				addedThisPage++
+			if !exists {
+				accepted := dag.AddPeerBlock(block)
+				if deepScan {
+					fmt.Printf("[DEBUG-TEMP3] deepScan(%s) AddPeerBlock(#%d, hash=%s, FromSync=%v) -> %v\n",
+						nodeURL, block.Height, block.Hash[:min(16, len(block.Hash))], block.FromSync, accepted)
+				}
+				if accepted {
+					addedThisPage++
+				}
 			}
 		}
 		totalAdded += addedThisPage
