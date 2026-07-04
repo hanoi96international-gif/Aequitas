@@ -2449,7 +2449,6 @@ if dag.resyncInProgress.Load() {
 // to the sender, and it correctly clears any breaker/orphan bookkeeping for
 // that proposer instead of counting genuinely irrelevant old data against it.
 if block != nil && block.Height > 0 && block.Height <= dag.BootHeight() {
-	fmt.Printf("[DEBUG-TEMP] bootHeight-skip: block #%d <= BootHeight %d\n", block.Height, dag.BootHeight())
 	return true
 }
 // Lock-free fork-flood shield (P0, 2026-07-02): reject a block whose height is
@@ -3272,16 +3271,34 @@ func (dag *BlockDAG) LastSuccessfulPeerSyncAt() int64 {
 // (StateRoot is computed from the full account/pool/nullifier state via
 // replay, independent of which tip this function reports) — but it made
 // "are these nodes in sync" impossible to answer just by comparing
-// /api/status output, confirmed in production. Tie-break deterministically
-// on hash so any two nodes holding the identical tip set always agree on
-// which one to report, regardless of map iteration order.
+// /api/status output, confirmed in production.
+//
+// FIX (P0, 2026-07-04 — root cause of the recurring "blue scores don't
+// match across nodes" complaints): the height+hash tie-break above was
+// itself inconsistent with the rest of the codebase's canonical-tip rule.
+// canonicalBlockAtHeightLocked (used by /api/blocks/canonical, the
+// authoritative endpoint) and ProduceBlock's own parent selection both pick
+// the best tip by highest BlueScore first, hash only as the tie-break —
+// GHOSTDAG's actual total order. Height alone is NOT a reliable proxy for
+// "more blue work": with concurrent validators, a tip's blue_score reflects
+// its full merge history, not just how many blocks deep it is, so two tips
+// at the identical height can have very different blue_scores. Confirmed
+// live: /api/status's latest_hash matched across all three validators while
+// /api/blocks/canonical simultaneously showed genuinely different blocks —
+// same node, same moment, two different answers to "what's canonical",
+// because the two endpoints used two different rules. Now uses the
+// identical BlueScore-DESC/Hash-ASC rule everywhere, so "do these nodes
+// agree" is answerable consistently no matter which endpoint is checked.
 func (dag *BlockDAG) LatestBlock() *Block {
 dag.mu.RLock()
 defer dag.mu.RUnlock()
 var latest *Block
 for hash := range dag.tips {
 b := dag.blocks[hash]
-if latest == nil || b.Height > latest.Height || (b.Height == latest.Height && b.Hash < latest.Hash) {
+if b == nil {
+continue
+}
+if latest == nil || b.BlueScore > latest.BlueScore || (b.BlueScore == latest.BlueScore && b.Hash < latest.Hash) {
 latest = b
 }
 }
