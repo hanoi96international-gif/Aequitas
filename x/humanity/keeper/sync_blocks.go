@@ -560,7 +560,28 @@ func (dag *BlockDAG) doSyncOnce(nodeURL string) (ok bool) {
 	}
 	minHeight := dag.Height() - syncOverlap
 	if minHeight < 0 || deepScan {
-		minHeight = 0
+		// FIX (durable fix, 2026-07-04 — closes a checkpoint-seeded resync
+		// regression found live): deepScan predates SeedTrustedCheckpoint
+		// (df4d880) and always dropped to height 0 — correct for its
+		// original case (a node whose own validator chain started
+		// thousands of blocks ago, needing a deep but bounded orphan-gap
+		// walk), but never updated for a checkpoint-seeded node, where
+		// dag.blocks starts with ONLY the checkpoint block. Confirmed
+		// live: a single orphan arriving in the brief window right after
+		// a fresh resync (near-guaranteed, since the checkpoint-seeded
+		// node knows almost nothing yet) was enough to trigger deepScan,
+		// which then paged the ENTIRE historical chain from genesis
+		// forward at ~500 blocks/page — exactly the walk checkpoint-
+		// seeding exists to avoid, turning a resync that should resume
+		// near the live tip into a multi-hundred-thousand-block replay,
+		// during which this node's own canonical-height computations
+		// diverged from peers who already had the full picture. Blocks
+		// below BootHeight() are already accounted for by the snapshot/
+		// checkpoint (see BootHeight's own comment) and irrelevant to
+		// resolving an orphan's missing parent, which by construction
+		// references a RECENT ancestor, not a genesis-era one — so
+		// deepScan never needs to go below that floor.
+		minHeight = dag.BootHeight()
 	}
 	totalAdded := 0
 	// P1-02: track (minHeight, afterHash) cursor so same-height siblings that
