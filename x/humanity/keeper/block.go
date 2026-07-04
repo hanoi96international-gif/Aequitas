@@ -107,6 +107,37 @@ type Block struct {
 	// peer, letting anyone who self-registered as a peer feed in blocks that
 	// skipped authorization/suspension/finality entirely.
 	FromSync bool `json:"-"`
+	// SelfFetched marks a block THIS node deliberately fetched via its own
+	// catch-up sync (fetchMissingAncestors' targeted ancestor resolution, or
+	// doSyncOnce's ordered paged sync) — never serialized, defaults false for
+	// every P2P/gossip/push-received block, set regardless of whether the
+	// peer it came from happens to be a statically-configured trusted seed.
+	//
+	// FIX (durable fix, 2026-07-04 — explicit user requirement: this must
+	// work automatically for every future validator, no manual per-node
+	// config): the proposer circuit breaker's only prior bypass (FromSync)
+	// required the source peer to be in the static trustedSeeds list
+	// (PRIMARY_NODE_URL/PEER_NODES) — fine for syncing from the primary, but
+	// confirmed live to permanently deadlock TWO SECONDARY validators
+	// against each other: neither treats the other as a trusted seed, so
+	// once either breaker tripped, it could never close again — closing it
+	// requires a block from that proposer to actually attach, but attaching
+	// requires fetching the exact ancestor the breaker is blocking. Adding
+	// the other's URL to PEER_NODES would work for exactly two nodes, but
+	// requires every existing node's config to be updated by hand every time
+	// a new validator joins — explicitly rejected as not scaling to a
+	// growing, non-technical-operator-friendly network.
+	//
+	// SelfFetched is orthogonal to FromSync's authorization/equivocation/
+	// finality bypasses (deliberately NOT touched here) -- a proposer must
+	// still be authorized via the exact same NODE_OPERATOR_BINDING_SIGNATURE-
+	// backed check as any other block; this only lets an ALREADY-authorized
+	// proposer's block, fetched by OUR OWN deliberate request (not
+	// unsolicited push/gossip), get past the circuit breaker's reputation
+	// gate long enough to actually close the gap that tripped it. Works
+	// automatically for any current or future validator, regardless of
+	// which peer URLs happen to be statically configured anywhere.
+	SelfFetched bool `json:"-"`
 }
 
 // peerChallenge holds a one-time challenge issued to a registering peer.
@@ -2412,7 +2443,15 @@ if block != nil {
 	// this function with FromSync=true was fetched specifically because a
 	// configured seed vouches for it; the breaker's "untrusted, possibly
 	// malicious flood" heuristic does not apply to it.
-	if !block.FromSync && dag.proposerBlockBlocked(block.Proposer) {
+	//
+	// SelfFetched (see its own field comment): the same exemption, but for a
+	// block THIS node deliberately fetched via its own catch-up sync from
+	// ANY already-authorized validator — not just a statically-configured
+	// trusted seed. Fixes the identical deadlock between two SECONDARY
+	// validators (neither is the other's trusted seed) without requiring
+	// every node's PEER_NODES to be hand-updated whenever a new validator
+	// joins.
+	if !block.FromSync && !block.SelfFetched && dag.proposerBlockBlocked(block.Proposer) {
 		nowNano := time.Now().UnixNano()
 		last := dag.lastProposerBreakerLogAt.Load()
 		if nowNano-last > int64(time.Second) && dag.lastProposerBreakerLogAt.CompareAndSwap(last, nowNano) {

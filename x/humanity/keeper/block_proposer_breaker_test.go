@@ -1,8 +1,12 @@
 package keeper
 
 import (
+	"encoding/hex"
+	"strings"
 	"testing"
 	"time"
+
+	"github.com/ethereum/go-ethereum/crypto"
 )
 
 // TestProposerBreaker_TripsAfterThreshold verifies a proposer whose blocks never
@@ -170,5 +174,67 @@ func TestProposerBreaker_AddPeerBlockDropsTrippedProposer(t *testing.T) {
 	blk := &Block{Hash: "x", Height: 2, ParentHashes: []string{"genesis"}, Proposer: p}
 	if dag.AddPeerBlock(blk) {
 		t.Fatalf("AddPeerBlock must drop a block from a tripped proposer")
+	}
+}
+
+// TestProposerBreaker_SelfFetchedBypassesLockFreeDrop is the regression
+// guard for the 2026-07-04 fix (SelfFetched, see its own field comment):
+// confirmed live, two fully-authorized secondary validators permanently
+// deadlocked each other's circuit breakers, because neither treats the
+// other as a statically-configured trusted seed (FromSync), so once
+// tripped, a breaker could never see an attaching block from that proposer
+// again to close it. SelfFetched exempts a block THIS node deliberately
+// fetched via its own catch-up sync from the SAME lock-free drop, letting
+// it reach the normal orphan/attach logic (proven here by checking it gets
+// as far as being queued as an orphan, which only happens AFTER the
+// lock-free breaker check) regardless of trusted-seed status.
+func TestProposerBreaker_SelfFetchedBypassesLockFreeDrop(t *testing.T) {
+	dag := newOrphanTestDAG()
+	dag.state = &ChainState{} // non-nil, db == nil: finality/GHOSTDAG DB fallbacks stay safe no-ops
+	key, err := crypto.GenerateKey()
+	if err != nil {
+		t.Fatalf("GenerateKey: %v", err)
+	}
+	p := strings.ToLower(crypto.PubkeyToAddress(key.PublicKey).Hex())
+	// Authorization is a wholly separate, still-fully-enforced gate SelfFetched
+	// deliberately does not touch -- set explicitly so this test exercises the
+	// circuit-breaker exemption specifically, not the authorization path.
+	dag.authorizedValidators = map[string]bool{p: true}
+	sign := func(height int64) *Block {
+		b := &Block{Height: height, Timestamp: time.Now().Unix(), ParentHashes: []string{"missing-parent"}, Proposer: p, Humans: 4, StateRoot: "some-state-root"}
+		b.Hash = calculateBlockHash(b)
+		hashBytes, err := hex.DecodeString(b.Hash)
+		if err != nil {
+			t.Fatalf("decode hash: %v", err)
+		}
+		sig, err := crypto.Sign(hashBytes, key)
+		if err != nil {
+			t.Fatalf("Sign: %v", err)
+		}
+		b.Signature = hex.EncodeToString(sig)
+		return b
+	}
+
+	for i := 0; i < proposerBreakerFailThreshold; i++ {
+		dag.recordProposerOutcome(p, false)
+	}
+	if !dag.proposerBlockBlocked(p) {
+		t.Fatalf("precondition: proposer should be tripped")
+	}
+
+	// Without SelfFetched, dropped before ever reaching the orphan queue.
+	dag.AddPeerBlock(sign(2))
+	if _, tracked := dag.orphanAge("missing-parent"); tracked {
+		t.Fatal("a block from a tripped proposer without SelfFetched must never reach the orphan queue")
+	}
+
+	// With SelfFetched, it passes the lock-free breaker gate and reaches the
+	// orphan queue (still correctly orphaned — parent genuinely missing —
+	// but that's a SEPARATE code path than the breaker's early drop).
+	selfFetched := sign(3)
+	selfFetched.SelfFetched = true
+	dag.AddPeerBlock(selfFetched)
+	if _, tracked := dag.orphanAge("missing-parent"); !tracked {
+		t.Fatal("a SelfFetched block from a tripped proposer must reach the orphan queue, not be dropped by the lock-free breaker check")
 	}
 }

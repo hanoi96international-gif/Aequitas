@@ -469,6 +469,12 @@ func (dag *BlockDAG) fetchMissingAncestors(nodeURL string) {
 				// peer still goes through AddPeerBlock's normal authorization/
 				// suspension/finality gates.
 				block.FromSync = dag.isTrustedSyncSource(nodeURL)
+				// FIX (durable fix, 2026-07-04): this IS the exact deliberate,
+				// targeted ancestor fetch the circuit breaker's SelfFetched
+				// exemption exists for — see that field's own comment (block.go).
+				// Set regardless of trusted-seed status: authorization is a
+				// wholly separate, still-fully-enforced gate a few lines below.
+				block.SelfFetched = true
 				if !dag.AddPeerBlock(block) {
 					// Block was fetched from the peer but rejected locally
 					// (bad signature, unauthorized proposer, etc.).  Count it
@@ -617,6 +623,12 @@ func (dag *BlockDAG) doSyncOnce(nodeURL string) (ok bool) {
 			dag.mu.RUnlock()
 			// SECURITY (P0, launch audit 2026-07-03): see isTrustedSyncSource.
 			block.FromSync = dag.isTrustedSyncSource(nodeURL)
+			// FIX (durable fix, 2026-07-04): doSyncOnce's own ordered paged
+			// catch-up is exactly the deliberate, self-initiated fetch the
+			// circuit breaker's SelfFetched exemption exists for — see that
+			// field's own comment (block.go). Authorization remains a wholly
+			// separate, still-fully-enforced gate below.
+			block.SelfFetched = true
 			if !exists && dag.AddPeerBlock(block) {
 				addedThisPage++
 			}
@@ -948,6 +960,10 @@ func (dag *BlockDAG) healSyntheticCheckpoints() {
 			for _, b := range blocks {
 				// SECURITY (P0, launch audit 2026-07-03): see isTrustedSyncSource.
 				b.FromSync = isTrusted
+				// FIX (durable fix, 2026-07-04): healing a synthetic checkpoint
+				// is also a deliberate, self-initiated fetch — see
+				// SelfFetched's own comment (block.go).
+				b.SelfFetched = true
 				if dag.AddPeerBlock(b) {
 					healed++
 				}
