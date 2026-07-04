@@ -105,12 +105,14 @@ CHAIN_ID      = "aequitas-1"
 // seed GHOSTDAG sibling blocks, not just the canonical one, so peers no
 // longer permanently orphan on a missing merge parent. With the actual
 // bottlenecks gone, dropped to 1s, then tried 2s as a middle ground when
-// Contabo 2 fell behind — but that fall-behind's real cause turned out to
-// be a slow, unindexed DB sort on the SERVING node answering catch-up
-// page requests (see chain_blocks' new composite index, evm_storage.go
-// ensureGHOSTDAGColumns), not BLOCK_TIME itself. With that fixed, back to
-// 1s per explicit operator decision.
-BLOCK_TIME = 1 * time.Second
+// Contabo 2 fell behind. Added a DB index (chain_blocks composite index,
+// evm_storage.go ensureGHOSTDAGColumns) that measurably helped but did NOT
+// fully fix it: both Contabo nodes still independently fell back into
+// isolated single-parent production within minutes of a fresh resync, at
+// both 1s and 2s. 1.5s per explicit operator decision as a live data
+// point between the two — not yet proven stable, revisit based on actual
+// convergence evidence, not precaution.
+BLOCK_TIME = 1500 * time.Millisecond
 API_PORT   = 8080
 )
 
