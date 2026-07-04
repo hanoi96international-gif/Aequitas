@@ -393,6 +393,7 @@ func (a *APIServer) Start(port int) {
 	mux.HandleFunc("/api/status", a.handleStatus)
 	mux.HandleFunc("/api/health/combined", a.handleCombinedHealth)
 	mux.HandleFunc("/api/blocks", a.handleBlocks)
+	mux.HandleFunc("/api/blocks/canonical", a.handleCanonicalBlocks)
 	mux.HandleFunc("/api/block", a.handleBlockByHash)
 	mux.HandleFunc("/api/blocks/by-hash", a.handleBlocksByHash)
 	mux.HandleFunc("/api/blocks/push", a.handleBlockPush)
@@ -608,6 +609,44 @@ func (a *APIServer) handleBlocks(w http.ResponseWriter, r *http.Request) {
 		offset = len(blocks)
 	}
 	json.NewEncoder(w).Encode(blocks[offset:end])
+}
+
+// handleCanonicalBlocks serves GET /api/blocks/canonical?limit=N — one block
+// per height, walking back from the current tip using the exact same
+// SelectedParent-chain logic (GetBlockByHeight/canonicalBlockAtHeightLocked)
+// the divergence self-check trusts for cross-node hash comparison.
+//
+// FIX (durable fix, 2026-07-04 — "the explorer must show the same thing on
+// every node"): /api/blocks (handleBlocks above) returns the raw in-memory
+// window, including every DAG sibling at a height, and left the explorer's
+// own JS to guess a "winner" per height by comparing blue_score client-side.
+// That guess could differ node-to-node for reasons that have nothing to do
+// with real chain divergence — e.g. two nodes simply holding a different
+// subset of siblings in their recent in-memory window at request time — so
+// the explorer could show a different proposer/score at the same height
+// even on two nodes whose actual canonical chain already agreed (confirmed
+// live: Contabo 1 and the primary showed different proposers and a
+// ~23,000-point blue_score gap at neighbouring heights on 2026-07-04).
+// Serving the authoritative, already-fixed backend computation directly
+// removes the guess entirely — the explorer now can only ever show exactly
+// what GetBlockByHeight (and therefore the autoheal divergence check) says
+// the canonical chain is.
+func (a *APIServer) handleCanonicalBlocks(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	limit := 30
+	fmt.Sscanf(r.URL.Query().Get("limit"), "%d", &limit)
+	if limit < 1 || limit > 200 {
+		limit = 30
+	}
+	top := a.blockchain.Height()
+	blocks := make([]*Block, 0, limit)
+	for h := top; h > top-int64(limit) && h >= 0; h-- {
+		if b := a.blockchain.GetBlockByHeight(h); b != nil {
+			blocks = append(blocks, b)
+		}
+	}
+	json.NewEncoder(w).Encode(blocks)
 }
 
 // handleBlockByHash serves GET /api/block?hash=0x... or /api/block?height=N

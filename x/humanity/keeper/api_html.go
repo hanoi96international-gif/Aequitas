@@ -4690,28 +4690,37 @@ let latestChainHeight = 0;
 
 async function loadBlocks() {
   try {
-    const blocks = await (await fetch('/api/blocks')).json();
+    // FIX (durable fix, 2026-07-04 — "the explorer must show the same thing
+    // on every node"): the table's rows now come from /api/blocks/canonical,
+    // which walks the authoritative SelectedParent chain server-side (the
+    // exact same logic GetBlockByHeight uses for cross-node divergence
+    // checks) instead of guessing a "winner" per height client-side from
+    // whatever raw siblings this node's own in-memory window happened to
+    // hold at request time. That guess was confirmed live to disagree
+    // node-to-node (different proposer, ~23,000-point blue_score gap at
+    // neighbouring heights between the primary and Contabo 1) even when the
+    // real canonical chain already agreed — see handleCanonicalBlocks'
+    // comment (api.go). /api/blocks is still fetched, but now only to count
+    // siblings-per-height for the "⟁N parallel blocks" badge and to back
+    // search/detail lookups in allBlocks, which intentionally need every
+    // sibling, not just the canonical one.
+    const [canonicalBlocks, rawBlocks] = await Promise.all([
+      fetch('/api/blocks/canonical?limit=30').then(function(r) { return r.json(); }),
+      fetch('/api/blocks').then(function(r) { return r.json(); })
+    ]);
     const list = document.getElementById('blocks-list');
     const txList = document.getElementById('txns-list');
-    if (!blocks || !blocks.length) {
+    if (!canonicalBlocks || !canonicalBlocks.length) {
       if (list) list.innerHTML = '<tr><td colspan="5" class="exp-empty">No blocks yet</td></tr>';
       if (txList) txList.innerHTML = '<tr><td colspan="4" class="exp-empty">No transactions yet</td></tr>';
       return;
     }
-    allBlocks = blocks;
-    // Group by height — pick representative block per height (highest blue_score, then hash ASC for ties).
-    // siblingsAt[h] = total count of blocks at that height (for DAG sibling display).
-    const byHeight = {};
+    allBlocks = rawBlocks || [];
+    // siblingsAt[h] = total count of blocks at that height (for DAG sibling display) —
+    // purely cosmetic now, no longer used to pick which block represents the height.
     const siblingsAt = {};
-    blocks.forEach(function(b) {
-      const h = b.height;
-      siblingsAt[h] = (siblingsAt[h] || 0) + 1;
-      const cur = byHeight[h];
-      if (!cur) { byHeight[h] = b; return; }
-      const bs = b.blue_score || 0, cs = cur.blue_score || 0;
-      if (bs > cs || (bs === cs && b.hash < cur.hash)) byHeight[h] = b;
-    });
-    const dedupedBlocks = Object.values(byHeight).sort(function(a, b) { return b.height - a.height; });
+    (rawBlocks || []).forEach(function(b) { siblingsAt[b.height] = (siblingsAt[b.height] || 0) + 1; });
+    const dedupedBlocks = canonicalBlocks.slice().sort(function(a, b) { return b.height - a.height; });
     // FIX: this used to show dedupedBlocks.length — the deduped count of
     // whatever page of blocks was just fetched (capped at 50), not the
     // true chain height. Once the chain passed 50 blocks that number
