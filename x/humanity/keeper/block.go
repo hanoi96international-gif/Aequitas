@@ -347,6 +347,15 @@ replayedMu             sync.Mutex
 	// A dedicated mutex, never dag.mu, for the same reason proposerBreakerMu is.
 	resyncSignalMu   sync.Mutex
 	resyncSignalFrom map[string]int64 // peer URL -> unix time of its last resync_required signal
+	// pushRejectStreakMu guards pushRejectStreak, a per-peer count of
+	// CONSECUTIVE non-benign push rejections — see recordPushRejection
+	// (sync_blocks.go) and pushRejectStreakThreshold's own comment for the
+	// 2026-07-04 brutal audit finding this closes ("sender ignores almost
+	// all push rejections"). A dedicated mutex, never dag.mu, for the same
+	// reason resyncSignalMu is.
+	pushRejectStreakMu  sync.Mutex
+	pushRejectStreak    map[string]int // peer URL -> consecutive non-benign rejection count
+	lastPushRejectLogAt atomic.Int64   // rate-limits the rejection warning log to once/sec
 	// syntheticCheckpointCount (audit 2026-06-30 monster audit, P1-05) is a
 	// running counter of synthetic-checkpoint stubs currently trusted by
 	// this node, maintained incrementally at each insertion site

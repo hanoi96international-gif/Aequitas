@@ -1284,29 +1284,104 @@ func (dag *BlockDAG) HTTPBroadcastBlock(block *Block) {
 			// itself has none: without it, a single malicious/misconfigured
 			// peer's response could force ANY node — including Primary,
 			// which must never self-wipe — through os.Exit(1).
+			//
+			// FIX (P0, 2026-07-04 brutal audit — "sender ignores almost all
+			// push rejections"): this used to look at Action alone, silently
+			// discarding OK and Reason. A peer whose pushes keep getting
+			// rejected for a real reason (not the benign, expected-to-
+			// self-resolve "orphaned, within grace period" case) never
+			// surfaced anywhere — a genuine, sustained divergence signal was
+			// invisible. See pushRejectStreak's own comment for the reaction.
 			var pushResp struct {
+				OK     bool   `json:"ok"`
+				Reason string `json:"reason"`
 				Action string `json:"action"`
 			}
 			body, err := io.ReadAll(io.LimitReader(resp.Body, 4<<10))
 			if err != nil || json.Unmarshal(body, &pushResp) != nil {
 				return
 			}
-			if pushResp.Action != "resync_required" {
+			if pushResp.Action == "resync_required" {
+				if !dag.recordResyncSignal(peerURL) {
+					return // fewer than resyncSignalThreshold distinct peers so far
+				}
+				bootstrapURL := os.Getenv("BOOTSTRAP_SNAPSHOT_URL")
+				bootstrapSigner := os.Getenv("BOOTSTRAP_SIGNER")
+				if os.Getenv("AUTO_HEAL_ON_DIVERGENCE") != "true" || bootstrapURL == "" || bootstrapSigner == "" {
+					return // same gate StartDivergenceAutoHeal requires — Primary has neither, so this is always a no-op there
+				}
+				dag.triggerAutoResync(fmt.Sprintf(
+					"%d distinct peers signaled resync_required after rejecting our pushed blocks",
+					resyncSignalThreshold))
 				return
 			}
-			if !dag.recordResyncSignal(peerURL) {
-				return // fewer than resyncSignalThreshold distinct peers so far
-			}
-			bootstrapURL := os.Getenv("BOOTSTRAP_SNAPSHOT_URL")
-			bootstrapSigner := os.Getenv("BOOTSTRAP_SIGNER")
-			if os.Getenv("AUTO_HEAL_ON_DIVERGENCE") != "true" || bootstrapURL == "" || bootstrapSigner == "" {
-				return // same gate StartDivergenceAutoHeal requires — Primary has neither, so this is always a no-op there
-			}
-			dag.triggerAutoResync(fmt.Sprintf(
-				"%d distinct peers signaled resync_required after rejecting our pushed blocks",
-				resyncSignalThreshold))
+			dag.recordPushRejection(peerURL, pushResp.OK, pushResp.Reason)
 		}()
 	}
+}
+
+// pushRejectStreakThreshold bounds how many CONSECUTIVE non-benign push
+// rejections from the SAME peer this node tolerates silently before
+// treating it as a genuine divergence signal — roughly 2 minutes of
+// sustained rejection at BLOCK_TIME=6s, well past ordinary propagation
+// jitter. "orphaned, within grace period" never counts (see
+// recordPushRejection): that case is expected to self-resolve via the
+// normal pull-sync cycle and isn't evidence of anything wrong.
+const pushRejectStreakThreshold = 20
+
+// recordPushRejection is HTTPBroadcastBlock's reaction to a push response
+// beyond the already-handled resync_required case — see that call site's
+// FIX comment for the incident this closes. accepted=true (ok:true) clears
+// the peer's streak. A benign "orphaned, within grace period" is ignored
+// entirely: it is the expected shape of ordinary cross-network propagation
+// lag, not evidence of divergence (see proposerBreakerOrphanGrace's
+// identical reasoning on the receiving side, block.go). Any OTHER rejection
+// reason (a genuine orphan past its grace period, or the ambiguous
+// "rejected or already known" catch-all) advances a per-peer streak; once
+// pushRejectStreakThreshold is crossed, this is exactly as strong a
+// divergence signal as an explicit resync_required, so it feeds the SAME
+// already-tested, already-safety-gated recordResyncSignal/triggerAutoResync
+// path rather than inventing a new, separately-risked reaction.
+func (dag *BlockDAG) recordPushRejection(peerURL string, accepted bool, reason string) {
+	dag.pushRejectStreakMu.Lock()
+	if accepted {
+		delete(dag.pushRejectStreak, peerURL)
+		dag.pushRejectStreakMu.Unlock()
+		return
+	}
+	if reason == "orphaned, within grace period" {
+		dag.pushRejectStreakMu.Unlock()
+		return
+	}
+	if dag.pushRejectStreak == nil {
+		dag.pushRejectStreak = make(map[string]int)
+	}
+	dag.pushRejectStreak[peerURL]++
+	streak := dag.pushRejectStreak[peerURL]
+	dag.pushRejectStreakMu.Unlock()
+
+	nowNano := time.Now().UnixNano()
+	if last := dag.lastPushRejectLogAt.Load(); nowNano-last > int64(time.Second) && dag.lastPushRejectLogAt.CompareAndSwap(last, nowNano) {
+		fmt.Printf("[BLOCK-PUSH] ⚠ %s rejected our pushed block (%q) — %d consecutive non-benign rejection(s) (rate-limited)\n", peerURL, reason, streak)
+	}
+	if streak < pushRejectStreakThreshold {
+		return
+	}
+	dag.pushRejectStreakMu.Lock()
+	delete(dag.pushRejectStreak, peerURL) // reset — about to act on it, don't re-fire every push until it re-accumulates
+	dag.pushRejectStreakMu.Unlock()
+
+	if !dag.recordResyncSignal(peerURL) {
+		return // fewer than resyncSignalThreshold distinct peers so far
+	}
+	bootstrapURL := os.Getenv("BOOTSTRAP_SNAPSHOT_URL")
+	bootstrapSigner := os.Getenv("BOOTSTRAP_SIGNER")
+	if os.Getenv("AUTO_HEAL_ON_DIVERGENCE") != "true" || bootstrapURL == "" || bootstrapSigner == "" {
+		return // same gate StartDivergenceAutoHeal requires — Primary has neither, so this is always a no-op there
+	}
+	dag.triggerAutoResync(fmt.Sprintf(
+		"%d distinct peers signaled resync_required after rejecting our pushed blocks",
+		resyncSignalThreshold))
 }
 
 // resyncSignalWindow/resyncSignalThreshold gate recordResyncSignal — see its
