@@ -104,12 +104,13 @@ CHAIN_ID      = "aequitas-1"
 // ProduceBlock regularly exceeded BLOCK_TIME), and checkpoint resyncs now
 // seed GHOSTDAG sibling blocks, not just the canonical one, so peers no
 // longer permanently orphan on a missing merge parent. With the actual
-// bottlenecks gone, dropped to 1s first — but live, not every node was
-// merging every block at that cadence, so operator decision to try 2s as
-// a middle ground: still far faster than the 6s workaround, with a bit
-// more real-world headroom than 1s across three independently-hosted,
-// cross-provider validators.
-BLOCK_TIME = 2 * time.Second
+// bottlenecks gone, dropped to 1s, then tried 2s as a middle ground when
+// Contabo 2 fell behind — but that fall-behind's real cause turned out to
+// be a slow, unindexed DB sort on the SERVING node answering catch-up
+// page requests (see chain_blocks' new composite index, evm_storage.go
+// ensureGHOSTDAGColumns), not BLOCK_TIME itself. With that fixed, back to
+// 1s per explicit operator decision.
+BLOCK_TIME = 1 * time.Second
 API_PORT   = 8080
 )
 

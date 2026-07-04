@@ -2536,6 +2536,24 @@ func (cs *ChainState) ensureGHOSTDAGColumns() {
 		cs.db.Exec(`ALTER TABLE chain_blocks ADD COLUMN IF NOT EXISTS selected_parent TEXT DEFAULT ''`)
 		cs.db.Exec(`ALTER TABLE chain_blocks ADD COLUMN IF NOT EXISTS blue_score BIGINT DEFAULT 0`)
 		cs.db.Exec(`ALTER TABLE chain_blocks ADD COLUMN IF NOT EXISTS blues TEXT DEFAULT '[]'`)
+		// FIX (2026-07-04 — Contabo 2 catch-up-vs-real-time-production
+		// starvation at faster BLOCK_TIME): LoadBlocksSinceFromDB (the query
+		// that answers every peer's /api/blocks?min_height= page request —
+		// i.e. every deepScan/BridgeHistoricalGap catch-up call a struggling
+		// node makes) filters WHERE height >= $1 and orders by height ASC,
+		// blue_score DESC, hash ASC. The plain height-only index
+		// (idx_chain_blocks_height) lets Postgres find the right rows but
+		// still forces an explicit sort over every matching row before LIMIT
+		// can apply, since blue_score/hash aren't part of that index — cheap
+		// at 6s BLOCK_TIME (few rows per height, calls infrequent), but each
+		// such call is now far more frequent (every ~1s poll) and the table
+		// has grown into the hundreds of thousands of rows. The SERVING
+		// node (Primary/Contabo 1) pays this sort cost synchronously inside
+		// the HTTP response the REQUESTING node (Contabo 2, mid catch-up) is
+		// blocked waiting on — slow responses here directly eat into the
+		// tighter real-time window a faster BLOCK_TIME leaves for catching
+		// up before the requester's own next production tick fires.
+		cs.db.Exec(`CREATE INDEX IF NOT EXISTS idx_chain_blocks_height_bluescore_hash ON chain_blocks (height, blue_score DESC, hash ASC)`)
 	})
 }
 

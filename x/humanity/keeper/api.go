@@ -510,7 +510,7 @@ func (a *APIServer) handleStatus(w http.ResponseWriter, r *http.Request) {
 		"node_id":      a.p2pNode.GetNodeID(),
 		"uptime":       uptime,
 		"is_primary":   os.Getenv("IS_PRIMARY_NODE") == "true",
-		"block_time":   2, // kept in sync with cmd/aequitasd's BLOCK_TIME constant
+		"block_time":   1, // kept in sync with cmd/aequitasd's BLOCK_TIME constant
 		"contract_v7":  V7_CONTRACT_ADDR,
 		// P3-8: V5/V6 legacy addresses removed from status — minimise attack surface.
 		"bio_verifier": BIO_VERIFIER_ADDR,
