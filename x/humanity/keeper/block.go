@@ -3311,6 +3311,25 @@ func (dag *BlockDAG) GetBlockByHeight(height int64) *Block {
 // Must be called under dag.mu (write lock — see ghostdagBlockLookup's own
 // locking contract, which this relies on for cache-filling DB fallback
 // during the walk).
+//
+// FIX (P0, 2026-07-04 — same class of outage as maxGhostdagDBLookupsPerBlock,
+// found on self-review the same night that one shipped): this walk used to
+// pass a nil budget to ghostdagBlockLookup — unbounded DB round trips,
+// exactly the hazard just fixed for computeGHOSTDAGState, on a path that's
+// arguably hit MORE often (every /api/block?height=X request, i.e. every
+// explorer page load and eth_getBlockByNumber call, not just block
+// ingestion) and holds the very same dag.mu WRITE lock for the duration.
+// A height whose SelectedParent chain has any gap in dag.blocks (routine
+// after a restart, or with the pre-two-phase-save-gap-fix history this
+// session already found riddled with them) could walk arbitrarily many
+// hops, each a potential synchronous Postgres round trip, all while
+// blocking every other dag.mu consumer — a single slow query, or an
+// ordinary burst of them from a page load fetching several blocks, could
+// reproduce the exact multi-second-to-minutes stall already fixed
+// elsewhere tonight, just via this call site instead. Same fix: a bounded
+// budget, falling back to the caller's existing DB-heuristic fallback
+// (GetBlockByHeight already calls LoadBlockFromDBByHeight when this
+// returns nil) instead of blocking indefinitely.
 func (dag *BlockDAG) canonicalBlockAtHeightLocked(height int64) *Block {
 	var best *Block
 	for hash := range dag.tips {
@@ -3325,12 +3344,13 @@ func (dag *BlockDAG) canonicalBlockAtHeightLocked(height int64) *Block {
 	if best == nil {
 		return nil
 	}
+	dbBudget := maxGhostdagDBLookupsPerBlock
 	cur := best
 	for cur != nil && cur.Height > height {
 		if cur.SelectedParent == "" {
 			return nil
 		}
-		cur = dag.ghostdagBlockLookup(cur.SelectedParent, nil)
+		cur = dag.ghostdagBlockLookup(cur.SelectedParent, &dbBudget)
 	}
 	if cur != nil && cur.Height == height && cur.Proposer != "synthetic-checkpoint" {
 		return cur
