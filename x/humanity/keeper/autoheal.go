@@ -99,6 +99,25 @@ const (
 	// signal in its own right and run the comparison anyway rather than
 	// skipping forever.
 	chainDivergenceStallOverride = 45 * time.Minute
+
+	// heightStallCheckInterval paces startHeightStallCheck's liveness poll.
+	// Cheap (dag.Height() is a single RLock + field read), so this can be
+	// much tighter than the divergence check's network round trip.
+	heightStallCheckInterval = 60 * time.Second
+	// heightStallThreshold is how long dag.height may sit completely
+	// unchanged before startHeightStallCheck treats it as a genuine,
+	// permanent liveness failure rather than a node still working through a
+	// legitimate historical catch-up snag — see that function's own comment
+	// for the exact live gap this closes (a mass-reconsolidation event pins
+	// dag_tips_count above chainDivergenceMaxTipsForCheck, which makes
+	// startChainDivergenceCheck correctly refuse to compare, but that also
+	// means it can never detect a node that's permanently stuck in that
+	// exact state rather than still progressing through it). Set comfortably
+	// longer than the ~20-minute worst case the 2026-07-03 catch-up saga
+	// measured for a real historical wall to fully clear on its own, so this
+	// never fights that mechanism's natural recovery — it only fires for a
+	// node that has demonstrably stopped moving, not one still working.
+	heightStallThreshold = 25 * time.Minute
 )
 
 // AutoResyncRequested reports whether a previous run's auto-heal monitor
@@ -167,11 +186,55 @@ func (dag *BlockDAG) StartDivergenceAutoHeal(bootstrapURL, signer, primaryURL st
 		}
 	}()
 	dag.startChainDivergenceCheck(primaryURL)
+	dag.startHeightStallCheck()
 }
 
 // primaryStatusResponse mirrors the subset of /api/status this check needs.
 type primaryStatusResponse struct {
 	Height int64 `json:"height"`
+}
+
+// startHeightStallCheck is a THIRD, independent detection path — a plain
+// liveness check, not a divergence comparison. Found live 2026-07-04: a
+// node hitting the historical-orphan-wall mass-reconsolidation (dag_tips_count
+// in the low hundreds while it re-derives its own already-persisted history
+// after a restart) is EXACTLY the state startChainDivergenceCheck's
+// unsettled-guard was designed to skip (chainDivergenceMaxTipsForCheck) —
+// correctly, since comparing against the primary mid-reconsolidation
+// produces false positives (see that guard's own comment). But that means
+// the divergence check can NEVER catch a node that's genuinely, permanently
+// stuck in this state (as opposed to one still working through it): 5+
+// minutes of dag.height not moving AT ALL, tips pinned above the unsettled
+// threshold, with no comparison ever running because the guard correctly
+// refuses to compare an unsettled node — a real liveness failure with zero
+// detection path. This check doesn't compare against anything; it only asks
+// "has dag.height changed at all recently" — if not, for long enough, that
+// alone is conclusive regardless of divergence status.
+func (dag *BlockDAG) startHeightStallCheck() {
+	fmt.Printf("[AUTO-HEAL] Height-stall self-check enabled: will resync if dag.height doesn't advance at all for %s straight.\n", heightStallThreshold)
+	go func() {
+		ticker := time.NewTicker(heightStallCheckInterval)
+		defer ticker.Stop()
+		lastHeight := int64(-1)
+		var lastChangedAt time.Time
+		for range ticker.C {
+			h := dag.Height()
+			if h != lastHeight {
+				lastHeight = h
+				lastChangedAt = time.Now()
+				continue
+			}
+			if lastChangedAt.IsZero() {
+				lastChangedAt = time.Now()
+				continue
+			}
+			if stalled := time.Since(lastChangedAt); stalled >= heightStallThreshold {
+				dag.triggerAutoResync(fmt.Sprintf(
+					"dag.height has not advanced at all in %s (stuck at %d) — a real historical catch-up snag resolves well within this window (the 2026-07-03 catch-up saga measured ~20 minutes worst case); this looks permanently stuck instead",
+					stalled.Round(time.Second), h))
+			}
+		}
+	}()
 }
 
 // startChainDivergenceCheck is the second detection path: instead of waiting
