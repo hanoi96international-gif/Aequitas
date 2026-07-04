@@ -260,6 +260,19 @@ replayedMu             sync.Mutex
 	// hitting Railway's own platform-level deploy-log rate limit
 	// ("Messages dropped") on the primary, silently swallowing unrelated
 	// log output along with it.
+	// lastForeignMergeAt (unix seconds) is the last time this node
+	// successfully attached a block proposed by some OTHER authorized
+	// validator (a genuine peer merge, via AddPeerBlock) — see
+	// selfProducedFinalityAllowed's comment for why this exists: it is the
+	// one local signal that distinguishes "isolated from peers I know
+	// about" from "healthy — other validators exist and I'm merging with
+	// them" or "genuinely alone, no other validators configured yet".
+	lastForeignMergeAt atomic.Int64
+	// lastIsolationPauseLogAt rate-limits the "finality advance paused"
+	// diagnostic the same way as the other log throttles above — this can
+	// otherwise fire once per self-produced block (every BLOCK_TIME) for as
+	// long as the isolation lasts.
+	lastIsolationPauseLogAt atomic.Int64
 	lastFinalityRejectLogAt atomic.Int64
 	// proposerBreaker* (P0, 2026-07-02 fork-flood, path-independent shield): the
 	// per-IP push shield (blockPushBreaker, api.go) only guards /api/blocks/push,
@@ -1688,7 +1701,19 @@ dag.height = block.Height
 // confirmed live on Contabo: finalized_height stuck at 80094 through
 // 50,000+ of its own self-produced blocks. dag.mu is already held here,
 // matching maybeAdvanceFinalizedCheckpoint's precondition.
-dag.maybeAdvanceFinalizedCheckpoint(block)
+//
+// FIX (P0, 2026-07-04 — Contabo 2 permanent-isolation incident): gated by
+// selfProducedFinalityAllowed so a node that's actually isolated from known
+// peers pauses its own hardening instead of permanently sealing off the
+// real chain at heights it never merged — see that function's own comment
+// and isolatedFinalityPauseWindow for the full incident and rationale.
+if dag.selfProducedFinalityAllowed() {
+	dag.maybeAdvanceFinalizedCheckpoint(block)
+} else if last := dag.lastIsolationPauseLogAt.Load(); time.Now().Unix()-last > 30 &&
+	dag.lastIsolationPauseLogAt.CompareAndSwap(last, time.Now().Unix()) {
+	fmt.Printf("[FINALITY] ⏸ Self-produced checkpoint advance paused at height %d — no other authorized validator's block merged in over %s despite %d known validator(s); this node may be isolated. Checkpoint will resume advancing the moment a peer block merges again.\n",
+		block.Height, isolatedFinalityPauseWindow, len(dag.authorizedValidators))
+}
 
 // Post-commit bookkeeping (block-count reward weighting + the max_block_height
 // restart hint) — moved off the hot, lock-held path in ONE background write.
@@ -3055,6 +3080,15 @@ if conflict, isEquivocation := dag.checkAndIndexEquivocation(block); isEquivocat
 // Advance the hard finality checkpoint now that GHOSTDAG has been computed
 // for this block (SelectedParent and BlueScore are populated above).
 dag.maybeAdvanceFinalizedCheckpoint(block)
+// FIX (P0, 2026-07-04 — Contabo 2 permanent-isolation incident): a real,
+// successfully-attached OTHER validator's block is exactly the evidence
+// selfProducedFinalityAllowed needs to keep trusting self-produced blocks'
+// own hardening — see that function's comment. Compared case-insensitively;
+// block.Proposer is the raw hex address as received, dag.selfProposer is
+// stored lower-cased (see its own field comment).
+if !strings.EqualFold(block.Proposer, dag.selfProposer) {
+	dag.recordForeignMerge()
+}
 
 tipCount := len(dag.tips)
 dag.mu.Unlock()

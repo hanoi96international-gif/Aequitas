@@ -1681,6 +1681,37 @@ func (a *APIServer) handlePeerChallenge(w http.ResponseWriter, r *http.Request) 
 	})
 }
 
+// registrationRateLimitWindow bounds how often ONE signing address's
+// registration attempts are processed — independent of, and much narrower
+// than, that address's per-proposer block-acceptance circuit breaker
+// (proposerBlockBlocked). Deliberately its OWN cooldown, not a reuse of the
+// breaker's: see handlePeerRegister's call site for the incident this fixes.
+const registrationRateLimitWindow = 20 * time.Second
+
+var (
+	registrationRateLimitMu  sync.Mutex
+	lastRegistrationAttempt  = map[string]int64{} // lower-cased signing address -> unix-nano of last processed attempt
+)
+
+// registrationRateLimited reports whether addr registered too recently to
+// process again right now, and if not, records this attempt as the new
+// "last processed" time. Deliberately decoupled from proposerBlockBlocked —
+// see handlePeerRegister's call site for why reusing that breaker here was
+// a bug, not a feature.
+func registrationRateLimited(addr string) bool {
+	if addr == "" {
+		return false
+	}
+	registrationRateLimitMu.Lock()
+	defer registrationRateLimitMu.Unlock()
+	now := time.Now().UnixNano()
+	if last, ok := lastRegistrationAttempt[addr]; ok && now-last < int64(registrationRateLimitWindow) {
+		return true
+	}
+	lastRegistrationAttempt[addr] = now
+	return false
+}
+
 // handlePeerRegister accepts a node registration and returns the current peer
 // list plus all authorized validator addresses. A node that sends its
 // signing_address is automatically added to the authorized validator set so
@@ -1730,18 +1761,35 @@ func (a *APIServer) handlePeerRegister(w http.ResponseWriter, r *http.Request) {
 	// rejected by the per-proposer circuit breaker (block.go, AddPeerBlock)
 	// was still free to hammer this endpoint at will — re-authenticating
 	// costs a full signature verification plus a BindValidatorSlot DB write
-	// regardless of whether its blocks ever attach. Reuse the SAME breaker
-	// state here: "authorized validator = yes, but only while it's actually
-	// syncing correctly" is exactly proposerBlockBlocked's model already —
-	// keyed on signing address (not IP, so it can't be sidestepped by
-	// redeploying from a new host, but also never a permanent ban), and it
-	// self-clears the moment the proposer produces an attaching block again
-	// (recordProposerOutcome), so a diverged operator who fixes their node
-	// and resyncs is let back in automatically, no manual action needed.
-	if addr := strings.ToLower(strings.TrimSpace(req.SigningAddress)); addr != "" && a.blockchain.proposerBlockBlocked(addr) {
-		fmt.Printf("[PEERS] ✗ Registration from %s skipped — its circuit breaker is open (producing non-attaching blocks); will accept again once it syncs correctly.\n", addr)
+	// regardless of whether its blocks ever attach.
+	//
+	// FIX (P0, 2026-07-04 — Contabo 2 permanent-isolation incident):
+	// the original fix here reused proposerBlockBlocked directly, on the
+	// theory that it "self-clears the moment the proposer produces an
+	// attaching block again, so a diverged operator who fixes their node and
+	// resyncs is let back in automatically, no manual action needed." That
+	// reasoning has a hole: registering is the SAME mechanism a diverged
+	// node uses to fetch a fresh peer/validator list and resume real
+	// catch-up — the SelfFetched-tagged sync fetches this endpoint's
+	// response enables are exactly how a resynced node's blocks start
+	// attaching again in the first place. Gating registration itself on the
+	// breaker being CLOSED created a deadlock: confirmed live, Contabo 2's
+	// registration was rejected (HTTP 429, this exact reason string) on
+	// every single attempt for 2+ continuous hours, because the primary's
+	// breaker against its address never got a successful attach to clear
+	// against — precisely because registration (which would have helped
+	// fix that) kept being refused. A resync on the Contabo 2 side alone
+	// could never break this: it doesn't touch the PRIMARY's in-memory
+	// breaker state. Now decoupled: registrationRateLimited uses its own
+	// short, independent cooldown (registrationRateLimitWindow) — still
+	// keyed on signing address, still cheap to enforce, but it always lets
+	// a genuinely-recovering node back in on a short, predictable cadence
+	// instead of only after its breaker happens to clear, which by
+	// definition it can't do without the very thing this gate was blocking.
+	if addr := strings.ToLower(strings.TrimSpace(req.SigningAddress)); addr != "" && registrationRateLimited(addr) {
+		fmt.Printf("[PEERS] ✗ Registration from %s rate-limited — retried within %s of its last attempt\n", addr, registrationRateLimitWindow)
 		w.WriteHeader(http.StatusTooManyRequests)
-		w.Write([]byte(`{"ok":false,"reason":"proposer circuit breaker open — resync before re-registering"}`))
+		w.Write([]byte(`{"ok":false,"reason":"registration rate-limited, retry shortly"}`))
 		return
 	}
 

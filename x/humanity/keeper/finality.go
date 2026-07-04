@@ -2,6 +2,7 @@ package keeper
 
 import (
 	"fmt"
+	"time"
 )
 
 // ── HARD FINALITY CHECKPOINTS ───────────────────────────────────────────────
@@ -31,6 +32,72 @@ const (
 	finalityBlueScoreDepth = 50
 	finalityHeightSlack    = 50
 )
+
+// isolatedFinalityPauseWindow bounds how long a node that KNOWS about other
+// authorized validators may keep hardening its own finality checkpoint from
+// self-produced blocks alone, without having successfully merged any of
+// those other validators' blocks in.
+//
+// ROOT CAUSE (2026-07-04, Contabo 2 permanent-isolation incident): a node
+// that falls out of real-time sync with its peers — for ANY reason: a
+// registration hiccup, a network blip, a slow restart — keeps producing and
+// self-finalizing its own one-parent chain the entire time it's isolated,
+// because maybeAdvanceFinalizedCheckpoint previously advanced unconditionally
+// on every self-produced block (see that ProduceBlock call site's own P0
+// 2026-07-03 fix — added for the opposite failure, a solo validator whose
+// checkpoint never advanced at all). Once the isolation gap exceeds
+// finalityBlueScoreDepth/finalityHeightSlack worth of blocks (~50, a few
+// minutes at BLOCK_TIME), isFinalityViolation permanently walls off the
+// real peer chain at those heights — SelfFetched's circuit-breaker bypass,
+// deepScan, fetchMissingAncestors, none of it can ever cross a HARD finality
+// gate by design. Confirmed live: Contabo 2 re-diverged and re-locked itself
+// within under an hour of a fresh checkpoint-seeded resync, because nothing
+// locally distinguished "healthy, merging fine" from "isolated, hardening a
+// dead-end fork" — both looked identical from inside ProduceBlock.
+//
+// The fix: only let self-produced blocks harden the checkpoint when either
+// (a) this node doesn't know of any OTHER authorized validator yet (a
+// genuinely solo network — the original 2026-07-03 fix's exact case, left
+// fully intact), or (b) a foreign block was merged within this window. A
+// node that's actually diverged just pauses its own hardening — its
+// checkpoint stops advancing (never retreats) until real merging resumes,
+// at which point the very next accepted peer block (AddPeerBlock's own
+// unconditional call site) unfreezes it immediately. This can never
+// reproduce the pre-2026-07-03 "frozen forever" bug: that only happened for
+// a node with NO peers at all, which case (a) above still exempts.
+//
+// Generous relative to finalityBlueScoreDepth's own ~5-minute real-time
+// equivalent (50 blocks * BLOCK_TIME) so ordinary propagation jitter across
+// independently-hosted, cross-provider validators never falsely pauses
+// hardening — only a gap already large enough to risk a real finality lock
+// trips this.
+const isolatedFinalityPauseWindow = 10 * time.Minute
+
+// recordForeignMerge marks now as the last time this node successfully
+// attached another authorized validator's block — called from AddPeerBlock's
+// commit path. Must be called without dag.mu held (atomic only).
+func (dag *BlockDAG) recordForeignMerge() {
+	dag.lastForeignMergeAt.Store(time.Now().Unix())
+}
+
+// selfProducedFinalityAllowed reports whether ProduceBlock's own
+// self-produced block may advance the hard finality checkpoint right now —
+// see isolatedFinalityPauseWindow's comment for the full rationale. Must be
+// called with dag.mu held (reads dag.authorizedValidators, dag.selfProposer).
+func (dag *BlockDAG) selfProducedFinalityAllowed() bool {
+	hasOtherValidator := false
+	for addr := range dag.authorizedValidators {
+		if addr != dag.selfProposer {
+			hasOtherValidator = true
+			break
+		}
+	}
+	if !hasOtherValidator {
+		return true // genuinely solo network — advance freely (2026-07-03 fix's exact case)
+	}
+	last := dag.lastForeignMergeAt.Load()
+	return last != 0 && time.Since(time.Unix(last, 0)) <= isolatedFinalityPauseWindow
+}
 
 // GetFinalizedCheckpoint returns the current finalized height and blue_score.
 // Returns (0, 0) on a fresh node before any checkpoint has been advanced.
