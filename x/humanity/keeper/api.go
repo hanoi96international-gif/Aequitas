@@ -29,7 +29,6 @@ import (
 type APIServer struct {
 	blockchain        *BlockDAG
 	p2pNode           *P2PNode
-	keeper            *Keeper
 	startTime         time.Time
 	proofServerStatus map[string]interface{}
 	proofStatusMu     sync.RWMutex
@@ -40,11 +39,17 @@ type APIServer struct {
 	evmRPC *EVMRPCServer
 }
 
-func NewAPIServer(bc *BlockDAG, p2p *P2PNode, k *Keeper, state *ChainState) *APIServer {
+// FIX (P2-7, beta-launch audit 2026-07-05): NewAPIServer used to also take a
+// *Keeper (the package's separate, legacy in-memory human registry,
+// keeper.go) purely to store it in a field nothing ever read — real
+// registration has always gone entirely through ChainState.RegisterHumanAtomic
+// (state.go). Removed the whole dead type rather than leave it sitting there
+// as a tempting, always-empty duplicate of real state (see the 2026-06-22
+// audit's divergence-bug class this exact pattern already caused once).
+func NewAPIServer(bc *BlockDAG, p2p *P2PNode, state *ChainState) *APIServer {
 	s := &APIServer{
 		blockchain:        bc,
 		p2pNode:           p2p,
-		keeper:            k,
 		startTime:         time.Now(),
 		proofServerStatus: map[string]interface{}{},
 		state:             state,
@@ -564,10 +569,8 @@ func (a *APIServer) handleStatus(w http.ResponseWriter, r *http.Request) {
 	latest := a.blockchain.LatestBlock()
 	uptime := int64(time.Since(a.startTime).Seconds())
 	// Use a.state (PostgreSQL-backed ChainState) as the single source of
-	// truth for human count, not a.keeper — the in-memory Keeper map is never
-	// persisted and resets to 0 on every restart, which previously made this
-	// "growth" figure silently diverge from total_humans below (which already
-	// correctly used a.state).
+	// truth for human count — see NewAPIServer's own comment for why there's
+	// no separate in-memory keeper field to accidentally diverge from it.
 	humans := a.state.TotalHumans()
 	growth := humans * 10
 	if growth > 100 {

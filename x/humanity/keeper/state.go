@@ -2503,7 +2503,7 @@ func (cs *ChainState) distributeUBIPoolLocked() ([]DistributionShare, error) {
 		total, len(humanAddrs), share)
 	capturedGini := cs.calcGiniLocked()
 	capturedHumans := len(humanAddrs)
-	go cs.SaveGiniSnapshotValues(capturedGini, capturedHumans)
+	SafeGoroutine("SaveGiniSnapshotValues", func() { cs.SaveGiniSnapshotValues(capturedGini, capturedHumans) })
 	return shares, nil
 }
 
@@ -3513,7 +3513,7 @@ func (cs *ChainState) swapLocked(address string, amountIn float64, aeqToTusd boo
 		address, amountIn, sideLabel(aeqToTusd, true), amountOut, sideLabel(aeqToTusd, false), fee)
 
 	cs.syncBalanceLocked(V7_CONTRACT_ADDR, address, validatorsPoolAddr, lpPoolAddr, ubiPoolAddr, treasuryPoolAddr)
-	go cs.SavePriceSnapshot()
+	SafeGoroutine("SavePriceSnapshot", cs.SavePriceSnapshot)
 	return amountOut, lost.Float(), nil
 }
 
@@ -3573,9 +3573,20 @@ func (cs *ChainState) savePoolToDB() error {
 	return nil
 }
 
-// reloadPoolFromDB loads the current pool state from PostgreSQL with SELECT FOR UPDATE
-// so swap operations always start from the authoritative DB state, not stale memory.
-// P2-7: prevents AMM invariant violation when two nodes swap concurrently.
+// reloadPoolFromDB loads the current pool state from PostgreSQL so swap
+// operations always start from the authoritative DB state, not stale memory.
+//
+// FIX (P2-3, beta-launch audit 2026-07-05): this comment used to claim a
+// "SELECT FOR UPDATE" row lock, but the query below has never had one — a
+// row lock only holds meaning inside a transaction anyway, and this call
+// goes through cs.db directly, never cs.dbExec()/an active transaction.
+// What actually prevents an AMM invariant violation is cs.mu: each node
+// runs its own separate PostgreSQL instance (no shared DB across nodes —
+// see this repo's architecture notes), so there is exactly one writer
+// process per database, serialized by the Go-level mutex, not a DB-level
+// lock. A future change that relaxed cs.mu around a swap without adding a
+// real transactional FOR UPDATE here would silently reopen the exact race
+// this comment used to claim was already closed.
 func (cs *ChainState) reloadPoolFromDB() {
 	if cs.db == nil || cs.pool == nil {
 		return
@@ -3955,7 +3966,7 @@ func (cs *ChainState) addLiquidityLocked(address string, amountAEQ, amountTUSD f
 	cs.save()
 
 	cs.syncBalanceLocked(V7_CONTRACT_ADDR, address)
-	go cs.SavePriceSnapshot()
+	SafeGoroutine("SavePriceSnapshot", cs.SavePriceSnapshot)
 
 	fmt.Printf("[POOL] ✓ %s added liquidity: %.4f AEQ + %.4f tUSD → %.6f LP shares\n", address, amountAEQ, amountTUSD, mintedShares)
 	return lost.Float(), nil
@@ -4048,7 +4059,7 @@ func (cs *ChainState) removeLiquidityLocked(address string, sharesToBurn float64
 			}
 			cs.save()
 			cs.syncBalanceLocked(V7_CONTRACT_ADDR, address)
-			go cs.SavePriceSnapshot()
+			SafeGoroutine("SavePriceSnapshot", cs.SavePriceSnapshot)
 			fmt.Printf("[POOL] ✓ %s drained final dust position → %.4f AEQ + %.4f tUSD\n", address, outAEQ, outTUSD)
 			return outAEQ, outTUSD, lost.Float(), nil
 		}
@@ -4109,7 +4120,7 @@ func (cs *ChainState) removeLiquidityLocked(address string, sharesToBurn float64
 		}
 		cs.save()
 		cs.syncBalanceLocked(V7_CONTRACT_ADDR, address)
-		go cs.SavePriceSnapshot()
+		SafeGoroutine("SavePriceSnapshot", cs.SavePriceSnapshot)
 		fmt.Printf("[POOL] ✓ %s removed liquidity (F17 clamp): %.6f shares → %.4f AEQ + %.4f tUSD\n", address, sharesToBurn, outAEQ17, outTUSD17)
 		return outAEQ17, outTUSD17, lost.Float(), nil
 	}
@@ -4155,7 +4166,7 @@ func (cs *ChainState) removeLiquidityLocked(address string, sharesToBurn float64
 	cs.save()
 
 	cs.syncBalanceLocked(V7_CONTRACT_ADDR, address)
-	go cs.SavePriceSnapshot()
+	SafeGoroutine("SavePriceSnapshot", cs.SavePriceSnapshot)
 
 	fmt.Printf("[POOL] ✓ %s removed liquidity: %.6f shares → %.4f AEQ + %.4f tUSD\n", address, sharesToBurn, outAEQ, outTUSD)
 	return outAEQ, outTUSD, lost.Float(), nil

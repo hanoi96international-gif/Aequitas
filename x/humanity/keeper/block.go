@@ -175,7 +175,6 @@ type BlockDAG struct {
 blocks                 map[string]*Block
 tips                   map[string]bool
 mu                     sync.RWMutex
-keeper                 *Keeper
 state                  *ChainState
 evm                    *EVMEngine       // set by EVMRPCServer after construction; used by replayTransactions for ZK proof verification
 nodeID                 string
@@ -706,11 +705,14 @@ defer dag.txMu.Unlock()
 dag.pendingTxs = append(dag.pendingTxs, tx)
 }
 
-func NewBlockchain(keeper *Keeper, nodeID string, state *ChainState) *BlockDAG {
+// FIX (P2-7, beta-launch audit 2026-07-05): NewBlockchain used to also take
+// a *Keeper (the package's separate, legacy in-memory human registry,
+// keeper.go) purely to store it in a field nothing ever read — removed the
+// whole dead type; see NewAPIServer's comment (api.go) for the full reasoning.
+func NewBlockchain(nodeID string, state *ChainState) *BlockDAG {
 dag := &BlockDAG{
 blocks:                 make(map[string]*Block),
 tips:                   make(map[string]bool),
-keeper:                 keeper,
 state:                  state,
 nodeID:                 nodeID,
 authorizedValidators:   loadAuthorizedValidators(),
@@ -1466,7 +1468,7 @@ func (dag *BlockDAG) BridgeHistoricalGap(peerURLs []string) {
 			// must not block the bridge on a DB hiccup, so this runs
 			// fire-and-forget rather than under dag.mu (already held here).
 			if dag.state != nil {
-				go dag.state.RecordSyntheticCheckpointEvent(ph, stubH, "startup-bridge")
+				SafeGoroutine("RecordSyntheticCheckpointEvent-startup", func() { dag.state.RecordSyntheticCheckpointEvent(ph, stubH, "startup-bridge") })
 			}
 		}
 	}
@@ -2331,7 +2333,7 @@ func (dag *BlockDAG) queueOrphan(missingParent string, block *Block) {
 				// tagged "runtime-orphan-bridge" so it's distinguishable from a
 				// startup-time BridgeHistoricalGap stub.
 				if dag.state != nil {
-					go dag.state.RecordSyntheticCheckpointEvent(missingParent, stubH, "runtime-orphan-bridge")
+					SafeGoroutine("RecordSyntheticCheckpointEvent-runtime", func() { dag.state.RecordSyntheticCheckpointEvent(missingParent, stubH, "runtime-orphan-bridge") })
 				}
 			}
 			// FIX (2026-06-30, confirmed live on Contabo): retrying `waiting`
@@ -2407,7 +2409,7 @@ func (dag *BlockDAG) queueOrphan(missingParent string, block *Block) {
 	// parallel, the instant a gap is detected — instead of waiting for the
 	// next tick — closes that race instead of just buying more headroom
 	// before it recurs.
-	go dag.triggerOrphanResolve()
+	SafeGoroutine("triggerOrphanResolve", dag.triggerOrphanResolve)
 }
 
 // popOrphans returns and removes every block that was waiting on parentHash.
@@ -3110,7 +3112,7 @@ if block.Signature != "" && !block.IsGenesis {
 			// If this proposer registered with any of them (but not with us),
 			// AddAuthorizedValidator will add them and the next sync cycle will
 			// accept their blocks — no manual AUTHORIZED_VALIDATORS config needed.
-			go dag.syncValidatorsFromAllPeers()
+			SafeGoroutine("syncValidatorsFromAllPeers", dag.syncValidatorsFromAllPeers)
 		}
 		return false
 	}
@@ -3162,7 +3164,19 @@ if dag.isFinalityViolation(block) {
 // whenever a historically-banned validator's blocks appear in the canonical
 // history. Blocks synced from a non-seed peer get FromSync=false and are
 // still checked against the current suspension record.
-if dag.state != nil && !block.FromSync {
+//
+// FIX (P2-2, beta-launch audit 2026-07-05): also skipped for
+// block.SelfFetched, mirroring the circuit-breaker gate above (see its own
+// !block.FromSync && !block.SelfFetched condition) — this suspension check
+// previously exempted FromSync only, leaving a gap: a SelfFetched block
+// from a validator suspended AFTER that block was originally produced
+// (suspension is keyed by the block's own timestamp, but the SUSPENSION
+// RECORD is whatever the node currently holds, which can postdate an old
+// block being re-fetched) could still be rejected here even though the
+// circuit-breaker already decided this exact ancestor should be trusted
+// enough to re-fetch — silently reintroducing the same class of merge-stall
+// SelfFetched was added to close, just one gate later.
+if dag.state != nil && !block.FromSync && !block.SelfFetched {
 	if suspended, reason := dag.state.IsValidatorSuspended(proposer, block.Timestamp); suspended {
 		fmt.Printf("[SLASHING] ✗ Rejected block #%d from %s: %s\n", block.Height, proposer, reason)
 		dag.mu.Unlock()

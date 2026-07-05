@@ -389,8 +389,17 @@ func (cs *ChainState) checkAndMoveToEscrowLocked() ([]DistributionShare, error) 
 	// silently never considered for escrow. Enumerate candidates from the DB
 	// instead, same fix already applied to distributeUBIPoolLocked/
 	// distributeLPPoolLocked — see idx_chain_accounts_is_human_activity.
+	// FIX (P2-1, beta-launch audit 2026-07-05): use cs.dbExec(), not cs.db
+	// directly — this function always runs inside RunDailyDistributionAtomic's
+	// active transaction (see this function's own top-of-file comment), and
+	// every other DB call in this function already goes through cs.dbExec()
+	// for exactly that reason. Reading via cs.db bypassed the active
+	// transaction's isolation for this one query — harmless today only
+	// because cs.mu is also held for the whole call, but a future lock
+	// refactor that relaxed cs.mu without noticing this one inconsistent
+	// call site would silently reintroduce a real isolation gap.
 	var candidateAddrs []string
-	rows, err := cs.db.Query(`SELECT lower(address) FROM chain_accounts WHERE is_human = true AND last_activity_at > 0`)
+	rows, err := cs.dbExec().Query(`SELECT lower(address) FROM chain_accounts WHERE is_human = true AND last_activity_at > 0`)
 	if err != nil {
 		return nil, fmt.Errorf("could not enumerate human accounts for escrow check: %w", err)
 	}

@@ -589,7 +589,7 @@ func (a *APIServer) registerOnV7(evmRPC *EVMRPCServer, wallet string, req Regist
 			if err := a.state.SaveBioHash(mirrorBioHashKey, wallet); err != nil {
 				fmt.Printf("[REGISTER] Warning: local bio_hashes sync failed for %s: %v\n", wallet, err)
 			}
-			go notifyProofServerWithRetryQueue(a.state, mirrorBioHashKey, wallet)
+			SafeGoroutine("notifyProofServerWithRetryQueue", func() { notifyProofServerWithRetryQueue(a.state, mirrorBioHashKey, wallet) })
 		}
 		return txHash, nil
 	}
@@ -758,7 +758,7 @@ func (a *APIServer) registerOnV7(evmRPC *EVMRPCServer, wallet string, req Regist
 		// registration response. No longer pure fire-and-forget: a
 		// failure is queued for retry instead of silently lost. See
 		// notifyProofServerWithRetryQueue's comment.
-		go notifyProofServerWithRetryQueue(a.state, bioHashKey, wallet)
+		SafeGoroutine("notifyProofServerWithRetryQueue", func() { notifyProofServerWithRetryQueue(a.state, bioHashKey, wallet) })
 	}
 	// FIX (audit recheck 2, P1 #7/#10): SaveNullifier used to be called
 	// here, as a separate, non-atomic step AFTER RegisterHumanAtomic's

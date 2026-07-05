@@ -85,10 +85,9 @@ func BootstrapNodes() []string {
 }
 
 type P2PNode struct {
-	host   host.Host
-	keeper *Keeper
-	dag    *BlockDAG
-	peers  []peer.AddrInfo
+	host  host.Host
+	dag   *BlockDAG
+	peers []peer.AddrInfo
 }
 
 func loadOrCreateKey() (crypto.PrivKey, error) {
@@ -127,7 +126,11 @@ func loadOrCreateKey() (crypto.PrivKey, error) {
 	return priv, nil
 }
 
-func NewP2PNode(keeper *Keeper) (*P2PNode, error) {
+// FIX (P2-7, beta-launch audit 2026-07-05): NewP2PNode used to also take a
+// *Keeper (the package's separate, legacy in-memory human registry,
+// keeper.go) purely to store it in a field nothing ever read — removed the
+// whole dead type; see NewAPIServer's comment (api.go) for the full reasoning.
+func NewP2PNode() (*P2PNode, error) {
 	priv, err := loadOrCreateKey()
 	if err != nil {
 		return nil, fmt.Errorf("failed to load key: %w", err)
@@ -144,8 +147,7 @@ func NewP2PNode(keeper *Keeper) (*P2PNode, error) {
 	}
 
 	node := &P2PNode{
-		host:   h,
-		keeper: keeper,
+		host: h,
 	}
 
 	h.SetStreamHandler(protocol.ID(ProtocolID), node.handleStream)
@@ -169,15 +171,10 @@ func (n *P2PNode) handleStream(s network.Stream) {
 	}
 	msg := string(data)
 	fmt.Printf("[P2P] Message from %s: %s\n", s.Conn().RemotePeer().String()[:12], msg)
-	// FIX (audit 2026-06-29): n.keeper is this package's separate, legacy
-	// in-memory Keeper (keeper.go) — its RegisterHuman has zero callers
-	// anywhere in the codebase, since real registration goes entirely
-	// through ChainState.RegisterHumanAtomic (state.go). n.keeper.humans is
-	// therefore always empty, so this reported "humans=0" regardless of the
-	// chain's actual state. dag.state is the real ChainState (same source
-	// ProduceBlock uses for the block.Humans field — see block.go), and is
-	// always non-nil once SetDAG has been called (which happens before this
-	// stream handler can ever receive a connection).
+	// dag.state is the real ChainState (same source ProduceBlock uses for the
+	// block.Humans field — see block.go), and is always non-nil once SetDAG
+	// has been called (which happens before this stream handler can ever
+	// receive a connection).
 	humans := 0
 	if n.dag != nil && n.dag.state != nil {
 		humans = n.dag.state.TotalHumans()
@@ -224,7 +221,7 @@ func (n *P2PNode) handleBlockStream(s network.Stream) {
 			block.Height, sender.String()[:12])
 		// Relay to all other peers (gossip) so every node sees every block
 		// even when not directly connected to the originator.
-		go n.broadcastExcept(&block, sender)
+		SafeGoroutine("broadcastExcept", func() { n.broadcastExcept(&block, sender) })
 	}
 }
 

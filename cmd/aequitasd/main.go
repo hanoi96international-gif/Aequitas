@@ -219,19 +219,17 @@ fmt.Printf("✓ Genesis Time: %s\n", genesis.GenesisTime)
 }
 fmt.Println()
 
-humanKeeper := keeper.NewKeeper()
-
 fmt.Println()
 
 fmt.Println("── Initializing Blockchain ──────────────")
-p2pNode, err := keeper.NewP2PNode(humanKeeper)
+p2pNode, err := keeper.NewP2PNode()
 if err != nil {
 fmt.Printf("✗ P2P Error: %v\n", err)
 return
 }
 
 chainState := keeper.NewChainState("/tmp/aequitas_state.json")
-bc := keeper.NewBlockchain(humanKeeper, p2pNode.GetNodeID(), chainState)
+bc := keeper.NewBlockchain(p2pNode.GetNodeID(), chainState)
 // Load individually-registered validator keys from DB into the DAG's
 // authorized set so they survive node restarts without re-registration.
 chainState.LoadValidatorKeysIntoDAG(bc)
@@ -252,8 +250,8 @@ p2pNode.SetDAG(bc)
 	// block was permanently skipped on a freshly-started secondary because the
 	// EVM engine hadn't been wired up yet when that block was replayed.
 	fmt.Println("── Starting API Server ──────────────────")
-	api := keeper.NewAPIServer(bc, p2pNode, humanKeeper, chainState)
-	go api.Start(API_PORT)
+	api := keeper.NewAPIServer(bc, p2pNode, chainState)
+	keeper.SafeGoroutine("api.Start", func() { api.Start(API_PORT) })
 	fmt.Println()
 
 	// Bootstrap from a peer snapshot if this is a fresh node (no humans in DB),
