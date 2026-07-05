@@ -3208,11 +3208,28 @@ func (cs *ChainState) transferLocked(from, to string, amount float64) (float64, 
 }
 
 // TransferWithV7Fee is used by the RPC layer when intercepting V7 ERC-20
-// transfer() calls (selector a9059cbb). It mirrors V7's _calcFee():
-//   TX_FEE_BPS = 10 (0.1% base fee)
+// transfer() calls (selector a9059cbb) — this IS the fee path a real user's
+// MetaMask "send AEQ" transaction actually goes through.
+//
+// FIX (P2-10, beta-launch audit 2026-07-05): this comment used to claim it
+// "mirrors V7's _calcFee(): TX_FEE_BPS = 10 (0.1% base fee)" — that's wrong
+// on both counts. AequitasV7.sol's own TX_FEE_BPS constant is 700 (7%), not
+// 10, and calcV7Fee below independently hardcodes its own 0.1% base +
+// tiered concentration surcharge (0/0.1%/0.5%/1%) rather than reading the
+// contract's constant at all. These are two genuinely different fee
+// schedules for the same nominal transfer() call — not a bug in the sense
+// of "should be kept identical and drifted," since the contract's own
+// transfer()/_calcFee() logic is never actually executed for a real user
+// transfer (the RPC layer intercepts the selector before the EVM call would
+// reach it — see evm_engine.go's checkPersistedCallAllowed). The Go-computed
+// fee below is the one that actually applies to real value movements; the
+// contract's 7% is inert, display-only bytecode a raw eth_call against the
+// deployed contract would report but that never fires for any live
+// transfer. Whatever documentation describes "the transfer fee" to users
+// should describe THIS fee, not the contract's.
+//   base = 0.1% of amount
 //   Concentration surcharge if sender holds ≥1/5/10% of total supply
 //   20% of fee → UBI pool, 80% burned (removed from supply)
-// Without this, Go-ledger and V7-contract diverge on every user transfer.
 // Returns (netAmountCredited, fromDemurrageLost, toDemurrageLost, err) — the
 // two demurrage figures must be attached to the queued Transaction so
 // secondary nodes replay the exact decay instead of recomputing it (see
@@ -3331,9 +3348,11 @@ func (cs *ChainState) transferWithV7FeeLocked(from, to string, amount float64) (
 	return netToRecipient, fromLost.Float(), toLost.Float(), nil
 }
 
-// calcV7Fee mirrors AequitasV7.sol's _calcFee():
-// base = TX_FEE_BPS (10) = 0.1% of amount
-// concentration surcharge based on sender's share of total supply.
+// calcV7Fee is the Go ledger's own fee schedule for a real user transfer —
+// see TransferWithV7Fee's comment for why this does NOT actually mirror
+// AequitasV7.sol's _calcFee()/TX_FEE_BPS despite this function's name.
+// base = 0.1% of amount, plus a concentration surcharge based on the
+// sender's share of total supply.
 func calcV7Fee(senderBalance, amount, totalSupply float64) float64 {
 	base := amount * 10.0 / 10_000.0
 	if totalSupply <= 0 {
@@ -3352,12 +3371,6 @@ func calcV7Fee(senderBalance, amount, totalSupply float64) float64 {
 	return round6(base + extra)
 }
 
-// swapFeeBps is the fee taken from every swap's input amount, in basis
-// points (10 = 0.1%). This ONLY applies to swaps through the AEQ<->tUSD
-// pool — ordinary AEQ-to-AEQ transfers via Transfer() above remain
-// completely free, per the project's design decision that moving AEQ
-// between people should never cost anything; only exchanging it for a
-// different currency does.
 // Fee recipient addresses for the four tokenomics pools, per the original
 // design (40% validators / 30% LPs / 20% UBI / 10% treasury). These are
 // real wallet addresses Daniel controls — provided explicitly so swap
@@ -3372,10 +3385,17 @@ const (
 
 // swapFeeBps is the fee taken from every swap's input amount, in basis
 // points (10 = 0.1%). This ONLY applies to swaps through the AEQ<->tUSD
-// pool — ordinary AEQ-to-AEQ transfers via Transfer() above remain
-// completely free, per the project's design decision that moving AEQ
-// between people should never cost anything; only exchanging it for a
-// different currency does.
+// pool.
+//
+// FIX (P2-10, beta-launch audit 2026-07-05): this comment used to also
+// claim "ordinary AEQ-to-AEQ transfers via Transfer() above remain
+// completely free" — true only for Transfer()/transferLocked, the
+// internal, system-only path used for crediting UBI/validator/LP
+// distributions. It does NOT describe what a real user's MetaMask "send
+// AEQ" actually costs: that goes through TransferWithV7Fee/calcV7Fee (see
+// their own comments), which charges the same 0.1% base plus a
+// concentration surcharge. There is no fee-less way for one human to send
+// AEQ to another through this chain's actual UI/RPC surface today.
 const swapFeeBps = 10
 
 // SwapAEQForTUSD swaps `amountIn` AEQ from `address` into tUSD, using the

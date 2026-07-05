@@ -675,6 +675,91 @@ func (cs *ChainState) syncBalanceLocked(contractAddr string, addrs ...string) {
 	}
 }
 
+// syncGuardianEscrowSlotsLocked keeps guardianOf (slot 13) and escrowOf
+// (slot 5) current for addr, reading their authoritative values from the
+// guardians/escrow_accounts tables (guardian.go) — the real Go-side source
+// of truth for both.
+//
+// FIX (P2-5, beta-launch audit 2026-07-05): guardian/escrow/UBI EVM storage
+// slots were only ever written once, at deploy/migration time, and never
+// touched again by the real (Go-native) guardian/escrow logic — an external
+// eth_call to V7.escrowOf(address)/V7.guardianOf(address) saw whatever was
+// true at the last migration forever, not the live value. Deliberately NOT
+// extending the much more frequently called syncBalanceLocked to also do
+// this: that function runs on every transfer/swap/register (an extra 2-table
+// DB read per call for fields those operations never touch would be a real,
+// avoidable cost on the hottest path in this codebase). This is a separate,
+// narrowly-scoped sync called only from the guardian/escrow mutation points
+// themselves (SetGuardian, RecoverFromEscrow, checkAndMoveToEscrowLocked,
+// releaseEscrowToUBILocked — see their call sites).
+//
+// Deliberately does NOT attempt pendingGuardian (slot 14), wardCount (slot
+// 16), ubiPool (slot 2), or ubiClaimed (slot 12): the Go-side guardian model
+// commits a guardian relationship directly (see the `guardians` table's own
+// schema — a single row, no separate "proposed but not yet confirmed" state
+// at all), and the Go-side UBI model distributes daily by crediting every
+// human's balance immediately (distributeUBIPoolLocked, state.go) rather
+// than accumulating a per-head entitlement humans separately pull later —
+// neither Solidity-side concept has a Go-side equivalent value to sync
+// FROM. This isn't unsynced data; it's two genuinely different accounting
+// models for the same real-world behavior, and only the Go side is ever
+// actually used to move real value. Integrators who need live figures for
+// any of these should read /api/escrow, /api/pool, or /api/guardian-style
+// endpoints (Go-state-backed), not raw eth_call on the V7 contract.
+func (cs *ChainState) syncGuardianEscrowSlotsLocked(contractAddr, addr string) {
+	if cs.db == nil {
+		return
+	}
+	contractAddr = strings.ToLower(contractAddr)
+	addr = strings.ToLower(addr)
+	addrBytes := common.HexToAddress(addr).Bytes()
+
+	// FIX: use cs.dbExec(), not cs.db directly — several callers (e.g.
+	// checkAndMoveToEscrowLocked) run this from inside an already-active,
+	// not-yet-committed transaction. A direct cs.db read only sees
+	// committed data (Postgres read-committed isolation), so it would miss
+	// the very escrow_accounts row this exact call is meant to reflect,
+	// syncing a stale (often zero) value instead.
+	var guardianAddr string
+	if err := cs.dbExec().QueryRow(`SELECT lower(guardian_address) FROM guardians WHERE lower(wallet_address) = $1`, addr).Scan(&guardianAddr); err != nil && err != sql.ErrNoRows {
+		fmt.Printf("[EVM] Warning: could not read guardian for %s: %v\n", addr, err)
+	}
+	guardianVal := common.Hash{}
+	if guardianAddr != "" {
+		guardianVal = common.BytesToHash(common.HexToAddress(guardianAddr).Bytes())
+	}
+	if err := cs.saveStorageSlotLocked(contractAddr, mappingSlot(addrBytes, 13).Hex(), guardianVal.Hex()); err != nil {
+		fmt.Printf("[EVM] Warning: could not sync guardianOf for %s: %v\n", addr, err)
+	}
+
+	var escrowAmount float64
+	if err := cs.dbExec().QueryRow(`SELECT amount FROM escrow_accounts WHERE wallet_address = $1`, addr).Scan(&escrowAmount); err != nil && err != sql.ErrNoRows {
+		fmt.Printf("[EVM] Warning: could not read escrow for %s: %v\n", addr, err)
+	}
+	weiPerAEQ := new(big.Int).Exp(big.NewInt(10), big.NewInt(18), nil)
+	escrowBig, _ := new(big.Float).SetPrec(256).Mul(
+		new(big.Float).SetFloat64(escrowAmount),
+		new(big.Float).SetInt(weiPerAEQ),
+	).Int(nil)
+	if escrowBig == nil {
+		escrowBig = new(big.Int)
+	}
+	if err := cs.saveStorageSlotLocked(contractAddr, mappingSlot(addrBytes, 5).Hex(), common.BigToHash(escrowBig).Hex()); err != nil {
+		fmt.Printf("[EVM] Warning: could not sync escrowOf for %s: %v\n", addr, err)
+	}
+}
+
+// SyncGuardianEscrowSlots is syncGuardianEscrowSlotsLocked's public wrapper
+// for callers that don't already hold cs.mu (SetGuardian, RecoverFromEscrow
+// — see guardian.go). Callers that already hold cs.mu (ConfirmAlive,
+// checkAndMoveToEscrowLocked, releaseEscrowToUBILocked) call the Locked
+// version directly instead.
+func (cs *ChainState) SyncGuardianEscrowSlots(contractAddr, addr string) {
+	cs.mu.Lock()
+	defer cs.mu.Unlock()
+	cs.syncGuardianEscrowSlotsLocked(contractAddr, addr)
+}
+
 // retryQueueMaxAttempts is the number of retry attempts after which a queue
 // entry is moved to dead-letter (dead=TRUE). Dead entries are no longer picked
 // up by Load* and require manual intervention (UPDATE ... SET dead=FALSE to

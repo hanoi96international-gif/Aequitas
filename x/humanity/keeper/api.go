@@ -1044,6 +1044,23 @@ func (a *APIServer) handleBlockPush(w http.ResponseWriter, r *http.Request) {
 func (a *APIServer) handleHumans(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Access-Control-Allow-Origin", "*")
+	// FIX (P2-8, beta-launch audit 2026-07-05): this was an O(N) full-account-
+	// scan endpoint with no rate limit at all, unlike comparably-expensive
+	// endpoints (handlePriceHistory, handleConfirmAlive). The explorer's own
+	// loadHumans() polls this every 10s, so 3s is generous enough not to
+	// interfere with normal multi-tab dashboard use while still capping
+	// repeated-scan abuse. Prefixed rate-limit key, same reasoning as every
+	// other endpoint sharing registerRateLimit — see /api/recover-escrow's
+	// own fix for why an unprefixed key would couple unrelated endpoints'
+	// cooldowns together.
+	ip := clientIP(r)
+	if ts, loaded := registerRateLimit.Load("humans:" + ip); loaded {
+		if time.Since(ts.(time.Time)) < 3*time.Second {
+			jsonError(w, "rate limited, try again shortly", 429)
+			return
+		}
+	}
+	registerRateLimit.Store("humans:"+ip, time.Now())
 	accounts := a.state.GetAllAccounts()
 	// Read pool state once, not per-account, so this scales to millions of
 	// humans. Each human's LP value is their ownership fraction of the pool

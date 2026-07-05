@@ -220,8 +220,8 @@ UBI is distributed daily from protocol revenue — no state, no tax, no vote req
 **UBI-Pool-Quellen / UBI Pool Sources:**
 - 20% aller Transaktionsgebühren (0,1% × 20% = 0,02% pro Transfer)
 - Wealth-Cap-Überläufe (sofortige Gleichverteilung)
-- Demurrage auf Überschussguthaben (1%/Jahr über fairShare)
-- Inaktive Wallets: nach 4 Jahren Inaktivität → Escrow → UBI Pool
+- 20% der Demurrage auf Überschussguthaben (0,5%/Monat nach 3 Monaten Inaktivität über fairShare — die übrigen 80% fließen an Validatoren/LP/Treasury, siehe unten)
+- Inaktive Wallets: nach 2,5 Jahren Inaktivität → Escrow, nach weiteren 1,5 Jahren → UBI Pool
 
 ### 4.3 Demurrage — Haltegebühr
 
@@ -230,12 +230,12 @@ UBI is distributed daily from protocol revenue — no state, no tax, no vote req
 **Philosophy:** Money is a tool, not an end in itself. Hoarding money above the fair share costs something — just like renting a parking space.
 
 ```
-Haltegebühr = (Guthaben − fairShare) × 1% × Haltezeit/Jahr
-Demurrage   = (Balance − fairShare) × 1% × HoldingTime/Year
+Haltegebühr = (Guthaben − fairShare) × 0,5%/Monat × Halte-Monate (erst nach 3 Monaten Inaktivität)
+Demurrage   = (Balance − fairShare) × 0.5%/month × HoldingMonths (only after a 3-month inactivity grace period)
 ```
 
-Die Gebühr fließt vollständig in den UBI-Pool. Kein AEQ wird vernichtet.
-The fee flows entirely into the UBI Pool. No AEQ is destroyed.
+Die Gebühr verteilt sich auf die vier Tokenomics-Pools (40% Validatoren / 30% LP / 20% UBI / 10% Treasury). Kein AEQ wird vernichtet.
+The fee is split across the four tokenomics pools (40% validators / 30% LPs / 20% UBI / 10% treasury). No AEQ is destroyed.
 
 ### 4.4 Wealth Cap — Vermögensobergrenze
 

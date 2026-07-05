@@ -114,8 +114,8 @@ Excess flows instantly into tokenomics pools — no AEQ is destroyed.
 
 ### 4. Demurrage — Haltegebühr
 
-1% jährliche Gebühr auf Guthaben **über** dem fairShare. Fließt in den UBI-Pool — wird nie vernichtet.
-1% annual fee on any balance **above** fairShare. Flows to UBI Pool — never destroyed.
+0,5% monatliche Gebühr (nach 3 Monaten Karenzzeit seit der letzten Aktivität) auf Guthaben **über** dem fairShare. Verteilt sich auf die vier Tokenomics-Pools (40% Validatoren / 30% LP / 20% UBI / 10% Treasury) — wird nie vernichtet.
+0.5% monthly fee (after a 3-month grace period since last activity) on any balance **above** fairShare. Split across the four tokenomics pools (40% validators / 30% LPs / 20% UBI / 10% treasury) — never destroyed.
 
 Historisches Vorbild: Wörgl, Österreich (1932) — Demurrage-Währung reduzierte die Arbeitslosigkeit um 25% in einem Jahr.
 Historical precedent: Wörgl, Austria (1932) — demurrage currency reduced unemployment by 25% in one year.

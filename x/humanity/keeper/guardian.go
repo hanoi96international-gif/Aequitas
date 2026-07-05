@@ -203,6 +203,11 @@ func (cs *ChainState) SetGuardian(wallet, guardian string) error {
 		return fmt.Errorf("guardian commit failed: %w", err)
 	}
 
+	// FIX (P2-5, beta-launch audit 2026-07-05): keep the EVM mirror's
+	// guardianOf slot current — see syncGuardianEscrowSlotsLocked's comment
+	// for why this was previously only ever written at deploy time.
+	cs.SyncGuardianEscrowSlots(V7_CONTRACT_ADDR, wallet)
+
 	fmt.Printf("[GUARDIAN] ✓ %s set guardian to %s\n", wallet, guardian)
 	return nil
 }
@@ -335,6 +340,10 @@ func (cs *ChainState) RecoverFromEscrow(wallet string) error {
 		if err := cs.saveAccountToDB(acc); err != nil {
 			return Transaction{}, fmt.Errorf("could not persist recovered balance for %s: %w", wallet, err)
 		}
+		// FIX (P2-5, beta-launch audit 2026-07-05): cs.mu is already held
+		// here (runAtomicWithOutbox's callback) — see syncGuardianEscrowSlotsLocked's
+		// comment for why this keeps the EVM mirror's escrowOf slot current.
+		cs.syncGuardianEscrowSlotsLocked(V7_CONTRACT_ADDR, wallet)
 		fmt.Printf("[ESCROW] ✓ %s recovered %.6f AEQ from escrow\n", wallet, amount)
 		return Transaction{
 			Type:   "escrow_recover",
@@ -532,6 +541,9 @@ func (cs *ChainState) checkAndMoveToEscrowLocked() ([]DistributionShare, error) 
 			return nil, fmt.Errorf("could not save escrowed account %s: %w", entry.acc.Address, err)
 		}
 		cs.accounts[entry.acc.Address] = &acc
+		// FIX (P2-5, beta-launch audit 2026-07-05): keep the EVM mirror's
+		// escrowOf slot current — see syncGuardianEscrowSlotsLocked's comment.
+		cs.syncGuardianEscrowSlotsLocked(V7_CONTRACT_ADDR, entry.acc.Address)
 		fmt.Printf("[ESCROW] ✓ Moved %.6f AEQ from %s to escrow (inactive since %s)\n",
 			entry.balance, entry.acc.Address, entry.inactiveSince)
 		moved = append(moved, DistributionShare{
@@ -602,6 +614,11 @@ func (cs *ChainState) releaseEscrowToUBILocked() ([]DistributionShare, error) {
 		if err := cs.saveAccountToDB(cs.accounts[ubiPoolAddr]); err != nil {
 			return nil, fmt.Errorf("could not save UBI pool: %w", err)
 		}
+		// FIX (P2-5, beta-launch audit 2026-07-05): the escrow_accounts row was
+		// just deleted above — sync escrowOf back to 0 so the EVM mirror
+		// doesn't keep showing the forfeited amount forever. See
+		// syncGuardianEscrowSlotsLocked's comment.
+		cs.syncGuardianEscrowSlotsLocked(V7_CONTRACT_ADDR, e.addr)
 		fmt.Printf("[ESCROW] ✓ Released %.6f AEQ from %s escrow → UBI pool\n", e.amount, e.addr)
 		released = append(released, DistributionShare{Wallet: e.addr, Amount: round6(e.amount)})
 	}

@@ -777,16 +777,35 @@ async function doSwap() {
   btn.disabled = false;
 }
 
+// parseAEQToWei converts a decimal AEQ amount STRING directly to a wei
+// BigInt, entirely in string/BigInt arithmetic — no floating-point step at
+// any point. FIX (P2-9, beta-launch audit 2026-07-05): the previous
+// `BigInt(Math.round(amt * 1e18))` ran the multiplication in JS `Number`
+// (53-bit mantissa) BEFORE the BigInt conversion — sub-wei precision was
+// already lost above roughly 0.009 AEQ, and even whole-AEQ integer
+// precision broke down past ~9,007,199 AEQ. The transaction still went
+// through, just for a silently rounded amount instead of the exact one the
+// user typed. Returns null for anything that isn't a plain, non-negative
+// decimal number string.
+function parseAEQToWei(str) {
+  str = String(str).trim();
+  if (!/^\d+(\.\d*)?$/.test(str)) return null; // accepts a trailing bare "." (e.g. "5.") same as parseFloat did
+  const parts = str.split('.');
+  const intPart = parts[0];
+  const fracPart = (parts[1] || '').padEnd(18, '0').slice(0, 18);
+  return BigInt(intPart) * (10n ** 18n) + BigInt(fracPart || '0');
+}
+
 // ── SEND AEQ ─────────────────────────────────────────────────────────────────
 async function doSend() {
   if (!wallet) { connectWallet(); return; }
   const to = document.getElementById('send-to').value.trim();
-  const amt = parseFloat(document.getElementById('send-amount').value);
+  const amtWei = parseAEQToWei(document.getElementById('send-amount').value);
   if (!/^0x[0-9a-fA-F]{40}$/.test(to)) { setStatus('send-status', 'Invalid recipient address', 'err'); return; }
-  if (!amt || amt <= 0) { setStatus('send-status', 'Enter an amount', 'err'); return; }
+  if (amtWei === null || amtWei <= 0n) { setStatus('send-status', 'Enter an amount', 'err'); return; }
   setStatus('send-status', 'Confirm in MetaMask…', 'info');
   try {
-    const value = '0x' + BigInt(Math.round(amt * 1e18)).toString(16);
+    const value = '0x' + amtWei.toString(16);
     const txHash = await window.ethereum.request({ method: 'eth_sendTransaction', params: [{ from: wallet, to, value }] });
     setStatus('send-status', '✓ Sent! Tx: ' + txHash.slice(0, 12) + '…', 'ok');
     document.getElementById('send-to').value = '';
