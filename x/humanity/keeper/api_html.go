@@ -1267,27 +1267,10 @@ input[type=number]::-webkit-inner-spin-button{opacity:0.5}
 <div id="net-overview" class="stab-panel active">
 <div class="ns">
 <div class="nc" style="grid-column:1/-1">
-    <div class="nc-title" data-i18n="nodes-title">Active Nodes — Current Network Topology</div>
-    <div style="font-size:0.65rem;color:var(--muted);line-height:1.8;margin-bottom:12px" data-i18n="nodes-desc">The Aequitas network currently operates on three geographically distributed nodes. Node 1 runs on Railway (primary, aequitas.digital); Node 2 and Node 3 run on separate Contabo VPS hosts. All three participate in block production, state synchronization, and API serving with active MERGE events. They communicate peer-to-peer via libp2p and synchronize block state via HTTP. The network is designed to support additional nodes — any registered human can run a validator node by setting the required environment variables. Authorization is identity-based: your NODE_OPERATOR_WALLET must be a verified registered human, and it is permanently bound to your node's signing key the first time you connect — one verified human runs exactly one validator. There is no shared secret to obtain from the operator for this.</div>
-    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px">
-      <div class="nbox">
-        <div class="nstat"><span class="ndot"></span><span data-i18n="node1">Node 1 — Railway (Primary)</span></div>
-        <div class="nurl">aequitas.digital</div>
-        <div class="ndesc" data-i18n="node1-desc">Primary API · Block producer · P2P bootstrap · PostgreSQL · RPC for MetaMask</div>
-        <div style="margin-top:6px;font-size:0.57rem;color:rgba(0,255,209,0.5)">Decentralized distribution · All nodes eligible · Daily pool distributions at 20:00 Berlin</div>
-      </div>
-      <div class="nbox">
-        <div class="nstat"><span class="ndot"></span><span data-i18n="node2">Node 2 — Contabo VPS (Secondary)</span></div>
-        <div class="nurl">173.249.37.118:8080</div>
-        <div class="ndesc" data-i18n="node2-desc">Secondary API · Block producer · P2P peer · HTTP sync · Own PostgreSQL state</div>
-        <div style="margin-top:6px;font-size:0.57rem;color:rgba(139,92,246,0.5)">Redundancy · Geographic distribution · Contabo VPS</div>
-      </div>
-      <div class="nbox">
-        <div class="nstat"><span class="ndot"></span><span data-i18n="node3">Node 3 — Contabo VPS (Secondary)</span></div>
-        <div class="nurl">194.163.188.71:8080</div>
-        <div class="ndesc" data-i18n="node3-desc">Secondary API · Block producer · P2P peer · HTTP sync · Own PostgreSQL state</div>
-        <div style="margin-top:6px;font-size:0.57rem;color:rgba(139,92,246,0.5)">Redundancy · Geographic distribution · Contabo VPS</div>
-      </div>
+    <div class="nc-title"><span data-i18n="nodes-title">Active Nodes — Current Network Topology</span> <span id="node-count-badge" style="color:var(--teal)"></span></div>
+    <div style="font-size:0.65rem;color:var(--muted);line-height:1.8;margin-bottom:12px" data-i18n="nodes-desc">The Aequitas network currently operates on multiple geographically distributed nodes (live count above) — one primary and any number of secondaries. All of them participate in block production, state synchronization, and API serving with active MERGE events. They communicate peer-to-peer via libp2p and synchronize block state via HTTP. The network is designed to support additional nodes — any registered human can run a validator node by setting the required environment variables. Authorization is identity-based: your NODE_OPERATOR_WALLET must be a verified registered human, and it is permanently bound to your node's signing key the first time you connect — one verified human runs exactly one validator. There is no shared secret to obtain from the operator for this.</div>
+    <div id="node-grid" style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px">
+      <div class="nbox"><div class="nstat">Loading…</div></div>
     </div>
   </div>
   <div class="nc">
@@ -1398,37 +1381,8 @@ input[type=number]::-webkit-inner-spin-button{opacity:0.5}
   <div class="idx">
     <div class="idx-title" data-i18n="story-topo-title">Network Topology &#8212; Current State</div>
     <div style="overflow-x:auto;padding:8px 0">
-    <svg viewBox="0 0 500 230" xmlns="http://www.w3.org/2000/svg" style="width:100%;max-width:500px;display:block;margin:0 auto;font-family:Inter,sans-serif">
-      <rect width="500" height="230" fill="rgba(255,255,255,0.03)" rx="10"/>
-      <rect x="175" y="10" width="150" height="38" rx="8" fill="rgba(146,64,14,0.06)" stroke="#92400E" stroke-width="1"/>
-      <text x="250" y="27" text-anchor="middle" font-size="9" font-weight="700" fill="rgba(240,180,41,0.9)">MetaMask / Users</text>
-      <text x="250" y="41" text-anchor="middle" font-size="7.5" fill="rgba(136,146,164,0.9)">JSON-RPC &#183; Chain ID 1926</text>
-      <ellipse cx="250" cy="97" rx="70" ry="28" fill="rgba(107,70,193,0.08)" stroke="rgba(107,70,193,0.3)" stroke-width="1" stroke-dasharray="4,3"/>
-      <text x="250" y="93" text-anchor="middle" font-size="9" fill="rgba(155,114,246,0.9)">P2P libp2p</text>
-      <text x="250" y="107" text-anchor="middle" font-size="8" fill="rgba(136,146,164,0.9)">BlockDAG sync &#183; GHOSTDAG merge</text>
-      <!-- Three live validator nodes, each independently running block
-           production + its own PostgreSQL — see node2-desc/node3-desc's own
-           2026-07-05 fix for why "own", not "shared" state. -->
-      <rect x="8" y="150" width="152" height="70" rx="8" fill="rgba(4,120,87,0.08)" stroke="#047857" stroke-width="1.5"/>
-      <text x="84" y="172" text-anchor="middle" font-size="10" font-weight="700" fill="rgba(52,211,153,0.9)">Node 1</text>
-      <text x="84" y="186" text-anchor="middle" font-size="8" fill="rgba(136,146,164,0.9)">Railway (Primary)</text>
-      <text x="84" y="201" text-anchor="middle" font-size="7.5" fill="rgba(52,211,153,0.9)">&#9679; Primary API &#183; own PostgreSQL</text>
-      <text x="84" y="211" text-anchor="middle" font-size="7.5" fill="rgba(52,211,153,0.9)">&#9679; UBI distribution</text>
-      <rect x="174" y="150" width="152" height="70" rx="8" fill="rgba(8,145,178,0.08)" stroke="#0891B2" stroke-width="1.5"/>
-      <text x="250" y="172" text-anchor="middle" font-size="10" font-weight="700" fill="rgba(34,211,238,0.9)">Node 2</text>
-      <text x="250" y="186" text-anchor="middle" font-size="8" fill="rgba(136,146,164,0.9)">Contabo VPS (Secondary)</text>
-      <text x="250" y="201" text-anchor="middle" font-size="7.5" fill="rgba(34,211,238,0.9)">&#9679; Secondary API &#183; own PostgreSQL</text>
-      <text x="250" y="211" text-anchor="middle" font-size="7.5" fill="rgba(34,211,238,0.9)">&#9679; HTTP sync</text>
-      <rect x="340" y="150" width="152" height="70" rx="8" fill="rgba(107,70,193,0.08)" stroke="#6B46C1" stroke-width="1.5"/>
-      <text x="416" y="172" text-anchor="middle" font-size="10" font-weight="700" fill="rgba(155,114,246,0.9)">Node 3</text>
-      <text x="416" y="186" text-anchor="middle" font-size="8" fill="rgba(136,146,164,0.9)">Contabo VPS (Secondary)</text>
-      <text x="416" y="201" text-anchor="middle" font-size="7.5" fill="rgba(155,114,246,0.9)">&#9679; Secondary API &#183; own PostgreSQL</text>
-      <text x="416" y="211" text-anchor="middle" font-size="7.5" fill="rgba(155,114,246,0.9)">&#9679; HTTP sync</text>
-      <text x="250" y="228" text-anchor="middle" font-size="7" fill="rgba(136,146,164,0.7)">any additional registered human can run a validator node — no application, no shared secret</text>
-      <line x1="250" y1="48" x2="250" y2="69" stroke="#6B46C1" stroke-width="1.5" stroke-dasharray="4,3"/>
-      <line x1="84" y1="150" x2="205" y2="118" stroke="#6B46C1" stroke-width="1.5" stroke-dasharray="4,3"/>
-      <line x1="250" y1="150" x2="250" y2="125" stroke="#6B46C1" stroke-width="1.5" stroke-dasharray="4,3"/>
-      <line x1="416" y1="150" x2="295" y2="118" stroke="#6B46C1" stroke-width="1.5" stroke-dasharray="4,3"/>
+    <svg id="topology-svg" viewBox="0 0 500 230" xmlns="http://www.w3.org/2000/svg" style="width:100%;max-width:500px;display:block;margin:0 auto;font-family:Inter,sans-serif">
+      <text x="250" y="115" text-anchor="middle" font-size="9" fill="rgba(136,146,164,0.6)">Loading topology…</text>
     </svg>
     </div>
   </div>
@@ -2043,10 +1997,7 @@ en:{
   'story-title':'The Story of Aequitas — Why This Exists',
   'story-text':'<p>The year is 2009. Satoshi Nakamoto releases Bitcoin. For the first time, value can transfer between any two people without a bank. A genuine revolution. But something goes wrong almost immediately.</p><p>Early miners accumulate millions of coins at almost zero cost. By 2021, the top 1% of Bitcoin addresses control over 90% of all Bitcoin. Bitcoin\'s estimated Gini coefficient exceeds 0.85 — higher than any country on Earth. The cryptocurrency that was supposed to democratize finance created the most extreme wealth concentration in human history.</p><p><span style="color:var(--gold)">Aequitas</span> — Latin for "fairness" and "equality" — was created to answer a single question: <em style="color:var(--gold)">"What would a cryptocurrency look like if designed from first principles to be fair to every human being?"</em></p><p>The answer is simple: <strong style="color:var(--text)">Money exists because people exist. Therefore, every person should have an equal share of money simply by virtue of being human.</strong></p><p>Aequitas implements this mathematically. Every verified human receives 1,000 AEQ. No mining, no staking, no early-adopter advantage. The wealth cap, demurrage, and redistribution pools ensure inequality cannot accumulate indefinitely. The protocol adjusts automatically as the network grows.</p><p>The Aequitas network launched in June 2026. Currently in Phase 0. The goal: demonstrate that money can be distributed fairly, Gini coefficient held below 0.30 (comparable to the most equal developed nations), and financial inclusion achieved at global scale — without any central authority.</p><p><em style="color:var(--gold)">"Money exists because people exist. Nothing more, nothing less."</em></p>',
   'nodes-title':'Active Nodes — Current Network Topology',
-  'nodes-desc':'The Aequitas network currently operates on three geographically distributed nodes. All three participate in block production, state synchronization, and API serving. They communicate peer-to-peer via libp2p and synchronize block state via HTTP. Each node runs its own PostgreSQL database for persistent state. The network is designed to support additional nodes — any operator can join.',
-  'node1':'Node 1 — Railway (Primary)','node1-desc':'Primary API · Block producer · UBI distribution · P2P bootstrap · PostgreSQL · RPC for MetaMask',
-  'node2':'Node 2 — Contabo VPS (Secondary)','node2-desc':'Secondary API · Block producer · P2P peer · HTTP sync · Own PostgreSQL state',
-  'node3':'Node 3 — Contabo VPS (Secondary)','node3-desc':'Secondary API · Block producer · P2P peer · HTTP sync · Own PostgreSQL state',
+  'nodes-desc':'The Aequitas network currently operates on multiple geographically distributed nodes (live count above). All of them participate in block production, state synchronization, and API serving. They communicate peer-to-peer via libp2p and synchronize block state via HTTP. Each node runs its own PostgreSQL database for persistent state. The network is designed to support additional nodes — any operator can join.',
   'run-node-title':'Run Your Own Node — Help Secure the Network',
   'run-node-desc':'Anyone can run an Aequitas node — no permission, no stake, no application required. Nodes participate in block production, validate the human registry, and synchronize the BlockDAG. Node operators earn a share of protocol fees via the Validators Pool (40% of all swap fees, distributed daily).',
   'bootstrap-title':'Connect a New Node','bootstrap-desc':'To run your own Aequitas node, set PRIMARY_NODE_URL=https://aequitas.digital in your environment. Your node registers automatically, syncs the full chain state, and begins participating in block production.',
@@ -2205,10 +2156,7 @@ de:{
   'story-title':'Die Geschichte von Aequitas — Warum es das gibt',
   'story-text':'<p>Das Jahr ist 2009. Satoshi Nakamoto veröffentlicht Bitcoin. Zum ersten Mal kann Wert zwischen zwei Menschen ohne eine Bank übertragen werden. Eine echte Revolution. Aber fast sofort läuft etwas schief.</p><p>Frühe Miner häufen Millionen von Coins zu fast null Kosten an. Bis 2021 kontrollieren die obersten 1% der Bitcoin-Adressen über 90% aller Bitcoin. Bitcoins geschätzter Gini-Koeffizient übersteigt 0,85 — höher als in jedem Land auf der Erde.</p><p><span style="color:var(--gold)">Aequitas</span> — Lateinisch für "Fairness" und "Gleichheit" — wurde geschaffen um eine einzige Frage zu beantworten: <em style="color:var(--gold)">"Wie würde eine Kryptowährung aussehen die von Grund auf fair für jeden Menschen konzipiert wurde?"</em></p><p>Die Antwort ist einfach: <strong style="color:var(--text)">Geld existiert weil Menschen existieren. Daher sollte jeder Mensch einfach durch seine Existenz einen gleichen Anteil am Geld haben.</strong></p><p>Aequitas setzt dies mathematisch um. Jeder verifizierte Mensch erhält 1.000 AEQ. Kein Mining, kein Staking, kein Frühanwender-Vorteil. Die Vermögensobergrenze, Demurrage und Umverteilungspools stellen sicher dass sich Ungleichheit nicht unbegrenzt anhäufen kann.</p><p><em style="color:var(--gold)">"Geld existiert weil Menschen existieren. Nichts mehr, nichts weniger."</em></p>',
   'nodes-title':'Aktive Nodes — Aktuelle Netzwerktopologie',
-  'nodes-desc':'Das Aequitas-Netzwerk betreibt derzeit drei geografisch verteilte Nodes. Alle drei nehmen an Blockproduktion, Statussynchronisation und API-Bereitstellung teil. Sie kommunizieren per libp2p und synchronisieren Blockzustände via HTTP. Das Netzwerk ist für zusätzliche Nodes ausgelegt — jeder Betreiber kann beitreten.',
-  'node1':'Node 1 — Railway (Primär)','node1-desc':'Primärer API-Server · Blockproduzent · UBI-Verteilung · P2P-Bootstrap · PostgreSQL · RPC für MetaMask',
-  'node2':'Node 2 — Contabo VPS (Sekundär)','node2-desc':'Sekundärer API-Server · Blockproduzent · P2P-Peer · HTTP-Sync · Eigener PostgreSQL-Status',
-  'node3':'Node 3 — Contabo VPS (Sekundär)','node3-desc':'Sekundärer API-Server · Blockproduzent · P2P-Peer · HTTP-Sync · Eigener PostgreSQL-Status',
+  'nodes-desc':'Das Aequitas-Netzwerk betreibt derzeit mehrere geografisch verteilte Nodes (aktuelle Anzahl oben). Alle nehmen an Blockproduktion, Statussynchronisation und API-Bereitstellung teil. Sie kommunizieren per libp2p und synchronisieren Blockzustände via HTTP. Das Netzwerk ist für zusätzliche Nodes ausgelegt — jeder Betreiber kann beitreten.',
   'run-node-title':'Eigenen Node betreiben — Das Netzwerk sichern',
   'run-node-desc':'Jeder kann einen Aequitas-Node betreiben — keine Genehmigung, kein Stake, keine Bewerbung erforderlich. Nodes nehmen an der Blockproduktion teil und validieren die Menschenregistrierung. Node-Betreiber erhalten täglich einen Anteil der Protokollgebühren über den Validators-Pool (40% aller Swap-Gebühren).',
   'bootstrap-title':'Neuen Node verbinden','bootstrap-desc':'Um einen eigenen Aequitas-Node zu betreiben, setze die PRIMARY_NODE_URL=https://aequitas.digital in deiner Umgebung. Dein Node synchronisiert automatisch den vollständigen Chain-Zustand und beginnt mit der Blockproduktion.',
@@ -2418,10 +2366,7 @@ es:{
   'dem-warn-k':'Sistema de Advertencia','dem-warn-v':'Aviso de 14 días (una vez) + recordatorio de 7 días repetido en cada inicio',
   'story-title':'La Historia de Aequitas','story-text':'<p>El año es 2009. Satoshi Nakamoto lanza Bitcoin. Por primera vez el valor puede transferirse sin bancos. Una revolución genuina. Pero casi de inmediato algo sale mal.</p><p>Los primeros mineros acumulan millones de monedas a costo casi cero. Para 2021, el 1% superior controla más del 90% de todo el Bitcoin. El coeficiente Gini estimado de Bitcoin supera 0.85 — más alto que cualquier país en la Tierra.</p><p><span style="color:var(--gold)">Aequitas</span> fue creado para responder: <em style="color:var(--gold)">"¿Cómo sería una criptomoneda diseñada para ser justa con todo ser humano?"</em></p><p>La respuesta: <strong style="color:var(--text)">El dinero existe porque las personas existen. Por lo tanto, cada persona debería tener una parte igual del dinero por el simple hecho de ser humana.</strong></p><p><em style="color:var(--gold)">"El dinero existe porque las personas existen. Nada más, nada menos."</em></p>',
   'nodes-title':'Nodos Activos — Topología Actual de la Red',
-  'nodes-desc':'La red Aequitas opera actualmente en tres nodos distribuidos geográficamente. Los tres participan en la producción de bloques, sincronización de estado y servicio de API. Se comunican peer-to-peer via libp2p y sincronizan el estado de bloques via HTTP. La red está diseñada para soportar nodos adicionales.',
-  'node1':'Nodo 1 — Railway (Primario)','node1-desc':'API primario · Productor de bloques · Distribución UBI · Bootstrap P2P · PostgreSQL · RPC para MetaMask',
-  'node2':'Nodo 2 — Contabo VPS (Secundario)','node2-desc':'API secundario · Productor de bloques · Par P2P · Sincronización HTTP · Estado PostgreSQL propio',
-  'node3':'Nodo 3 — Contabo VPS (Secundario)','node3-desc':'API secundario · Productor de bloques · Par P2P · Sincronización HTTP · Estado PostgreSQL propio',
+  'nodes-desc':'La red Aequitas opera actualmente en múltiples nodos distribuidos geográficamente (número actual arriba). Todos participan en la producción de bloques, sincronización de estado y servicio de API. Se comunican peer-to-peer via libp2p y sincronizan el estado de bloques via HTTP. La red está diseñada para soportar nodos adicionales.',
   'run-node-title':'Ejecuta Tu Propio Nodo — Ayuda a Asegurar la Red',
   'run-node-desc':'Cualquiera puede ejecutar un nodo de Aequitas — sin permiso, sin stake, sin solicitud requerida. Los nodos participan en la producción de bloques y validan el registro humano. Los operadores de nodos ganan una parte de las comisiones del protocolo via el Pool de Validadores (40% de todas las comisiones de swap, distribuidas diariamente).',
   'bootstrap-title':'Conectar un Nuevo Nodo','bootstrap-desc':'Para ejecutar tu propio nodo, establece PRIMARY_NODE_URL=https://aequitas.digital en tu entorno. Tu nodo sincronizará automáticamente el estado completo de la cadena.',
@@ -2546,10 +2491,7 @@ ru:{
   'dem-warn-k':'Система Предупреждений','dem-warn-v':'14-дневное уведомление (один раз) + 7-дневное повторение при каждом входе',
   'story-title':'История Aequitas — Почему это существует',
   'story-text':'<p>Год 2009. Сатоши Накамото выпускает Bitcoin. Впервые ценность может передаваться между людьми без банка. Настоящая революция. Но почти сразу что-то идёт не так.</p><p>Ранние майнеры накапливают миллионы монет почти бесплатно. К 2021 году топ 1% адресов Bitcoin контролирует более 90% всех Bitcoin. Коэффициент Джини Bitcoin превышает 0,85 — выше чем в любой стране мира.</p><p><span style="color:var(--gold)">Aequitas</span> был создан чтобы ответить на один вопрос: <em style="color:var(--gold)">"Как выглядела бы криптовалюта, спроектированная с нуля чтобы быть справедливой для каждого человека?"</em></p><p>Ответ прост: <strong style="color:var(--text)">Деньги существуют потому что существуют люди. Поэтому каждый человек должен иметь равную долю денег просто потому что он человек.</strong></p><p><em style="color:var(--gold)">"Деньги существуют потому что существуют люди. Ничего более, ничего менее."</em></p>',
-  'nodes-title':'Активные Ноды — Текущая Топология Сети','nodes-desc':'Сеть Aequitas работает на трёх географически распределённых нодах. Все три участвуют в производстве блоков и синхронизации. Сеть рассчитана на дополнительные ноды.',
-  'node1':'Нода 1 — Railway (Основная)','node1-desc':'Основной API · Производитель блоков · Распределение UBI · P2P Bootstrap · PostgreSQL · RPC для MetaMask',
-  'node2':'Нода 2 — Contabo VPS (Вторичная)','node2-desc':'Вторичный API · Производитель блоков · P2P-пир · HTTP-синхронизация · Собственное состояние PostgreSQL',
-  'node3':'Нода 3 — Contabo VPS (Вторичная)','node3-desc':'Вторичный API · Производитель блоков · P2P-пир · HTTP-синхронизация · Собственное состояние PostgreSQL',
+  'nodes-title':'Активные Ноды — Текущая Топология Сети','nodes-desc':'Сеть Aequitas работает на нескольких географически распределённых нодах (текущее число выше). Все они участвуют в производстве блоков и синхронизации. Сеть рассчитана на дополнительные ноды.',
   'run-node-title':'Запустите Свою Ноду — Помогите Защитить Сеть',
   'run-node-desc':'Любой может запустить ноду без разрешения. Операторы нод получают 40% всех комиссий свопа ежедневно через Пул Валидаторов.',
   'bootstrap-title':'Подключить Новую Ноду','bootstrap-desc':'Установите PRIMARY_NODE_URL=https://aequitas.digital в вашей среде. Нода автоматически синхронизируется и начнёт производство блоков.',
@@ -2707,14 +2649,11 @@ zh:{
   'dem-warn-k':'警告系统','dem-warn-v':'14天通知（一次）+ 每次登录7天重复提醒',
   'story-title':'Aequitas的故事——为何而生',
   'story-text':'<p>2009年。中本聪发布比特币。有史以来第一次，价值可以在不经过银行的情况下在两人之间转移。一场真正的革命。但几乎立刻出现了问题。</p><p>早期矿工以接近零的成本积累了数百万枚代币。到2021年，比特币地址中的前1%控制了90%以上的比特币。比特币的基尼系数超过0.85——高于地球上任何国家。</p><p><span style="color:var(--gold)">Aequitas</span>——拉丁语"公平"和"平等"——的创建是为了回答一个问题：<em style="color:var(--gold)">"如果从第一原则设计一种对每个人都公平的加密货币会是什么样？"</em></p><p>答案很简单：<strong style="color:var(--text)">货币存在是因为人类存在。因此，每个人仅凭成为人类就应该拥有等份的货币。</strong></p><p><em style="color:var(--gold)">"货币存在是因为人类存在。仅此而已，别无其他。"</em></p>',
-  'nodes-title':'活跃节点 — 当前网络拓扑','nodes-desc':'Aequitas网络目前在三个地理分布的节点上运行。三者均参与区块生产、状态同步和API服务。通过libp2p点对点通信，通过HTTP同步区块状态。网络设计支持更多节点——任何运营商均可加入。',
+  'nodes-title':'活跃节点 — 当前网络拓扑','nodes-desc':'Aequitas网络目前在多个地理分布的节点上运行（当前数量见上方）。所有节点均参与区块生产、状态同步和API服务。通过libp2p点对点通信，通过HTTP同步区块状态。网络设计支持更多节点——任何运营商均可加入。',
   'run-node-title':'运行您自己的节点 — 帮助保护网络',
   'run-node-desc':'任何人都可以运行Aequitas节点——无需许可、无需质押、无需申请。节点参与区块生产并验证人类注册表。节点运营商通过验证者池（每日分配的所有互换费用的40%）赚取协议费用份额。',
   'run-node-title':'运行您自己的节点 — 帮助保护网络',
   'run-node-desc':'任何人都可以运行Aequitas节点——无需许可、无需质押、无需申请。节点参与区块生产并验证人类注册表。节点运营商通过验证者池（每日分配的所有互换费用的40%）赚取协议费用份额。',
-  'node1':'节点1 — Railway（主要）','node1-desc':'主要API · 区块生产者 · UBI分配 · P2P引导 · PostgreSQL · MetaMask的RPC',
-  'node2':'节点2 — Contabo VPS（次要）','node2-desc':'次要API · 区块生产者 · P2P对等 · HTTP同步 · 独立PostgreSQL状态',
-  'node3':'节点3 — Contabo VPS（次要）','node3-desc':'次要API · 区块生产者 · P2P对等 · HTTP同步 · 独立PostgreSQL状态',
   'bootstrap-title':'运行自己的节点','bootstrap-desc':'任何人都可以通过运行节点加入Aequitas网络。下载节点指南获取分步说明。',
   'tech-title':'技术规格','mm-config':'MetaMask配置',
   'k-lang':'语言','k-src':'源代码','evm-yes':'是 — JSON-RPC /rpc · MetaMask兼容',
@@ -2864,12 +2803,9 @@ id:{
   'dem-warn-k':'Sistem Peringatan','dem-warn-v':'Pemberitahuan 14 hari (sekali) + pengingat 7 hari berulang setiap login',
   'story-title':'Kisah Aequitas — Mengapa Ini Ada',
   'story-text':'<p>Tahun 2009. Satoshi Nakamoto merilis Bitcoin. Untuk pertama kalinya, nilai dapat ditransfer antara dua orang tanpa bank. Sebuah revolusi sejati. Tetapi hampir segera sesuatu yang salah terjadi.</p><p>Para penambang awal mengumpulkan jutaan koin dengan biaya hampir nol. Pada 2021, 1% teratas alamat Bitcoin menguasai lebih dari 90% semua Bitcoin. Koefisien Gini Bitcoin melebihi 0,85 — lebih tinggi dari negara mana pun di Bumi.</p><p><span style="color:var(--gold)">Aequitas</span> — Latin untuk "keadilan" dan "kesetaraan" — diciptakan untuk menjawab: <em style="color:var(--gold)">"Seperti apa cryptocurrency yang dirancang dari prinsip pertama untuk adil bagi setiap manusia?"</em></p><p>Jawabannya sederhana: <strong style="color:var(--text)">Uang ada karena manusia ada. Oleh karena itu, setiap orang harus memiliki bagian yang sama dari uang hanya karena menjadi manusia.</strong></p><p><em style="color:var(--gold)">"Uang ada karena manusia ada. Tidak lebih, tidak kurang."</em></p>',
-  'nodes-title':'Node Aktif — Topologi Jaringan Saat Ini','nodes-desc':'Jaringan Aequitas saat ini beroperasi pada tiga node yang tersebar secara geografis. Ketiganya berpartisipasi dalam produksi blok, sinkronisasi status, dan layanan API. Jaringan dirancang untuk mendukung node tambahan — operator mana pun dapat bergabung.',
+  'nodes-title':'Node Aktif — Topologi Jaringan Saat Ini','nodes-desc':'Jaringan Aequitas saat ini beroperasi pada beberapa node yang tersebar secara geografis (jumlah saat ini di atas). Semuanya berpartisipasi dalam produksi blok, sinkronisasi status, dan layanan API. Jaringan dirancang untuk mendukung node tambahan — operator mana pun dapat bergabung.',
   'run-node-title':'Jalankan Node Anda Sendiri — Bantu Amankan Jaringan',
   'run-node-desc':'Siapa pun dapat menjalankan node Aequitas — tanpa izin, tanpa stake, tanpa pendaftaran. Node berpartisipasi dalam produksi blok dan memvalidasi registri manusia. Operator node mendapatkan bagian biaya protokol melalui Pool Validator (40% semua biaya swap, didistribusikan setiap hari).',
-  'node1':'Node 1 — Railway (Utama)','node1-desc':'API utama · Produsen blok · Distribusi UBI · Bootstrap P2P · PostgreSQL · RPC untuk MetaMask',
-  'node2':'Node 2 — Contabo VPS (Sekunder)','node2-desc':'API sekunder · Produsen blok · Peer P2P · Sinkronisasi HTTP · Status PostgreSQL sendiri',
-  'node3':'Node 3 — Contabo VPS (Sekunder)','node3-desc':'API sekunder · Produsen blok · Peer P2P · Sinkronisasi HTTP · Status PostgreSQL sendiri',
   'bootstrap-title':'Jalankan Node Anda Sendiri','bootstrap-desc':'Siapa pun dapat bergabung dengan jaringan Aequitas dengan menjalankan node. Unduh panduan node untuk instruksi langkah demi langkah.',
   'tech-title':'Spesifikasi Teknis','mm-config':'Konfigurasi MetaMask',
   'k-lang':'Bahasa','k-src':'Kode Sumber','evm-yes':'Ya — JSON-RPC /rpc · Kompatibel MetaMask',
@@ -3020,10 +2956,7 @@ it:{
   'story-title':'La Storia di Aequitas — Perché Esiste',
   'story-text':'<p>L\'anno è 2009. Satoshi Nakamoto rilascia Bitcoin. Per la prima volta, il valore può trasferirsi tra due persone senza una banca. Una vera rivoluzione. Ma quasi immediatamente qualcosa va storto.</p><p>I primi miner accumulano milioni di monete a costo quasi zero. Entro il 2021, l\'1% superiore degli indirizzi Bitcoin controlla oltre il 90% di tutti i Bitcoin. Il coefficiente Gini stimato di Bitcoin supera 0,85 — più alto di qualsiasi paese sulla Terra. La criptovaluta che avrebbe dovuto democratizzare la finanza ha creato la più estrema concentrazione di ricchezza nella storia umana.</p><p><span style="color:var(--gold)">Aequitas</span> — Latino per "equità" e "uguaglianza" — è stato creato per rispondere a una singola domanda: <em style="color:var(--gold)">"Come sarebbe una criptovaluta progettata dai principi fondamentali per essere equa per ogni essere umano?"</em></p><p>La risposta è semplice: <strong style="color:var(--text)">Il denaro esiste perché le persone esistono. Quindi ogni persona dovrebbe avere una quota uguale di denaro semplicemente in virtù di essere umana.</strong></p><p>Aequitas implementa questo matematicamente. Ogni umano verificato riceve 1.000 AEQ. Nessun mining, nessuno staking, nessun vantaggio per i primi adottanti. Il protocollo si adatta automaticamente man mano che la rete cresce.</p><p><em style="color:var(--gold)">"Il denaro esiste perché le persone esistono. Niente di più, niente di meno."</em></p>',
   'nodes-title':'Node Attivi — Topologia Attuale della Rete',
-  'nodes-desc':'La rete Aequitas opera attualmente su tre node distribuiti geograficamente. Tutti e tre partecipano alla produzione di blocchi, sincronizzazione dello stato e servizio API. Comunicano peer-to-peer via libp2p e sincronizzano lo stato dei blocchi via HTTP. La rete è progettata per supportare node aggiuntivi.',
-  'node1':'Node 1 — Railway (Primario)','node1-desc':'API primario · Produttore blocchi · Distribuzione UBI · P2P Bootstrap · PostgreSQL · RPC per MetaMask',
-  'node2':'Node 2 — Contabo VPS (Secondario)','node2-desc':'API secondario · Produttore blocchi · Peer P2P · Sincronizzazione HTTP · Stato PostgreSQL proprio',
-  'node3':'Node 3 — Contabo VPS (Secondario)','node3-desc':'API secondario · Produttore blocchi · Peer P2P · Sincronizzazione HTTP · Stato PostgreSQL proprio',
+  'nodes-desc':'La rete Aequitas opera attualmente su più node distribuiti geograficamente (numero attuale sopra). Tutti partecipano alla produzione di blocchi, sincronizzazione dello stato e servizio API. Comunicano peer-to-peer via libp2p e sincronizzano lo stato dei blocchi via HTTP. La rete è progettata per supportare node aggiuntivi.',
   'run-node-title':'Esegui il Tuo Node — Aiuta a Proteggere la Rete',
   'run-node-desc':'Chiunque può eseguire un node Aequitas — senza permesso, senza stake, senza candidatura richiesta. I node partecipano alla produzione di blocchi e validano il registro umano. Gli operatori di node guadagnano una quota delle commissioni del protocollo tramite il Pool Validatori (40% di tutte le commissioni di swap, distribuite quotidianamente).',
   'bootstrap-title':'Connettere un Nuovo Node','bootstrap-desc':'Per eseguire il tuo node, imposta PRIMARY_NODE_URL=https://aequitas.digital nel tuo ambiente. Il tuo node si sincronizzerà automaticamente con lo stato completo della chain.',
@@ -3189,10 +3122,7 @@ tr:{
   'story-title':'Aequitas\'ın Hikayesi — Neden Var Olduğu',
   'story-text':'<p>Yıl 2009. Satoshi Nakamoto Bitcoin\'i yayınlıyor. İlk kez, değer bir banka olmadan iki kişi arasında transfer edilebiliyor. Gerçek bir devrim. Ama neredeyse hemen bir şeyler ters gidiyor.</p><p>Erken madenciler neredeyse sıfır maliyetle milyonlarca coin biriktiriyor. 2021\'e kadar Bitcoin adreslerinin en üst %1\'i tüm Bitcoin\'in %90\'ından fazlasını kontrol ediyor. Bitcoin\'in tahmini Gini katsayısı 0,85\'i aşıyor — Dünya\'daki herhangi bir ülkeden daha yüksek.</p><p><span style="color:var(--gold)">Aequitas</span> — Latince "adalet" ve "eşitlik" anlamına gelir — tek bir soruyu yanıtlamak için yaratıldı: <em style="color:var(--gold)">"Her insana adil olacak şekilde ilk ilkelerden tasarlanmış bir kripto para nasıl görünürdü?"</em></p><p>Cevap basit: <strong style="color:var(--text)">Para insanlar var olduğu için var. Bu nedenle her insan, sadece insan olduğu için paradan eşit pay almalıdır.</strong></p><p><em style="color:var(--gold)">"Para insanlar var olduğu için var. Bundan fazlası değil, bundan azı değil."</em></p>',
   'nodes-title':'Aktif Node\'lar — Mevcut Ağ Topolojisi',
-  'nodes-desc':'Aequitas ağı şu anda üç coğrafi olarak dağıtılmış node üzerinde çalışıyor. Üçü de blok üretimine, durum senkronizasyonuna ve API hizmetine katılıyor. libp2p aracılığıyla eşler arası iletişim kuruyor ve HTTP aracılığıyla blok durumunu senkronize ediyorlar. Ağ ek node\'ları desteklemek üzere tasarlanmıştır.',
-  'node1':'Node 1 — Railway (Birincil)','node1-desc':'Birincil API · Blok üreticisi · UBI dağıtımı · P2P Bootstrap · PostgreSQL · MetaMask için RPC',
-  'node2':'Node 2 — Contabo VPS (İkincil)','node2-desc':'İkincil API · Blok üreticisi · P2P eşi · HTTP senkronizasyonu · Kendi PostgreSQL durumu',
-  'node3':'Node 3 — Contabo VPS (İkincil)','node3-desc':'İkincil API · Blok üreticisi · P2P eşi · HTTP senkronizasyonu · Kendi PostgreSQL durumu',
+  'nodes-desc':'Aequitas ağı şu anda birden fazla coğrafi olarak dağıtılmış node üzerinde çalışıyor (güncel sayı yukarıda). Hepsi blok üretimine, durum senkronizasyonuna ve API hizmetine katılıyor. libp2p aracılığıyla eşler arası iletişim kuruyor ve HTTP aracılığıyla blok durumunu senkronize ediyorlar. Ağ ek node\'ları desteklemek üzere tasarlanmıştır.',
   'run-node-title':'Kendi Node\'unu Çalıştır — Ağı Güvence Altına Almaya Yardım Et',
   'run-node-desc':'Herkes bir Aequitas node\'u çalıştırabilir — izin, stake veya başvuru gerekmez. Node\'lar blok üretimine katılır ve insan kaydını doğrular. Node operatörleri, Doğrulayıcı Havuzu aracılığıyla protokol ücretlerinden pay kazanır (tüm takas ücretlerinin %40\'ı, günlük dağıtılır).',
   'bootstrap-title':'Yeni Node Bağla','bootstrap-desc':'Kendi Aequitas node\'unu çalıştırmak için PRIMARY_NODE_URL=https://aequitas.digital ortam değişkenini ayarla. Node\'un tam zincir durumunu otomatik olarak senkronize edecek ve blok üretimine başlayacak.',
@@ -3351,10 +3281,7 @@ fr:{
   'story-title':'L\'histoire d\'Aequitas',
   'story-text':'<p>En 2009, Satoshi Nakamoto publie Bitcoin. Révolution genuïne — mais les premiers mineurs accumulent des millions à coût quasi nul. En 2021, le top 1% contrôle plus de 90% du Bitcoin. Gini Bitcoin &gt; 0,85.</p><p><span style="color:var(--gold)">Aequitas</span> — latin pour « équité » — répond : <em style="color:var(--gold)">« Quelle serait une cryptomonnaie conçue pour être juste envers chaque humain ? »</em></p><p><strong style="color:var(--text)">L\'argent existe parce que les gens existent. Donc chaque personne devrait avoir une part égale.</strong></p><p><em style="color:var(--gold)">« L\'argent existe parce que les gens existent. Rien de plus, rien de moins. »</em></p>',
   'nodes-title':'Nœuds actifs — Topologie réseau actuelle',
-  'nodes-desc':'Le réseau Aequitas fonctionne sur trois nœuds géographiquement distribués participant à la production de blocs, synchronisation d\'état et service API. Nœuds supplémentaires bienvenus.',
-  'node1':'Nœud 1 — Railway (Principal)','node1-desc':'API principal · Producteur de blocs · Distribution UBI · Bootstrap P2P · PostgreSQL · RPC MetaMask',
-  'node2':'Nœud 2 — Contabo VPS (Secondaire)','node2-desc':'API secondaire · Producteur de blocs · Pair P2P · Sync HTTP · État PostgreSQL propre',
-  'node3':'Nœud 3 — Contabo VPS (Secondaire)','node3-desc':'API secondaire · Producteur de blocs · Pair P2P · Sync HTTP · État PostgreSQL propre',
+  'nodes-desc':'Le réseau Aequitas fonctionne sur plusieurs nœuds géographiquement distribués (nombre actuel ci-dessus) participant à la production de blocs, synchronisation d\'état et service API. Nœuds supplémentaires bienvenus.',
   'run-node-title':'Exécuter votre propre nœud','run-node-desc':'N\'importe qui peut exécuter un nœud Aequitas — sans permission, sans stake. Opérateurs gagnent 40% des frais de swap distribués quotidiennement.',
   'bootstrap-title':'Connecter un nouveau nœud','bootstrap-desc':'Définissez PRIMARY_NODE_URL=https://aequitas.digital dans votre environnement. Votre nœud synchronise automatiquement l\'état complet.',
   'tech-title':'Spécifications techniques','mm-config':'Configuration MetaMask',
@@ -3513,10 +3440,7 @@ pt:{
   'story-title':'A História da Aequitas',
   'story-text':'<p>Em 2009, Satoshi Nakamoto lança o Bitcoin. Revolução genuína — mas os primeiros mineradores acumulam milhões a custo quase zero. Em 2021, top 1% controla mais de 90% do Bitcoin. Gini Bitcoin &gt; 0,85.</p><p><span style="color:var(--gold)">Aequitas</span> — latim para "equidade" — responde: <em style="color:var(--gold)">"Como seria uma criptomoeda projetada para ser justa com cada ser humano?"</em></p><p><strong style="color:var(--text)">O dinheiro existe porque as pessoas existem. Portanto, cada pessoa deveria ter uma parte igual.</strong></p><p><em style="color:var(--gold)">"O dinheiro existe porque as pessoas existem. Nada mais, nada menos."</em></p>',
   'nodes-title':'Nodes Ativos — Topologia de Rede Atual',
-  'nodes-desc':'A rede Aequitas opera em três nodes distribuídos geograficamente, participando da produção de blocos, sincronização e API. Nodes adicionais são bem-vindos.',
-  'node1':'Node 1 — Railway (Principal)','node1-desc':'API principal · Produtor de blocos · Distribuição UBI · P2P Bootstrap · PostgreSQL · RPC para MetaMask',
-  'node2':'Node 2 — Contabo VPS (Secundário)','node2-desc':'API secundário · Produtor de blocos · Par P2P · Sync HTTP · Estado PostgreSQL próprio',
-  'node3':'Node 3 — Contabo VPS (Secundário)','node3-desc':'API secundário · Produtor de blocos · Par P2P · Sync HTTP · Estado PostgreSQL próprio',
+  'nodes-desc':'A rede Aequitas opera atualmente em múltiplos nodes distribuídos geograficamente (número atual acima), participando da produção de blocos, sincronização e API. Nodes adicionais são bem-vindos.',
   'run-node-title':'Execute seu Próprio Node','run-node-desc':'Qualquer um pode executar um node Aequitas — sem permissão, sem stake. Operadores ganham 40% das taxas de swap distribuídas diariamente.',
   'bootstrap-title':'Conectar um Novo Node','bootstrap-desc':'Defina PRIMARY_NODE_URL=https://aequitas.digital no seu ambiente. Seu node sincroniza automaticamente o estado completo da cadeia.',
   'tech-title':'Especificações Técnicas','mm-config':'Configuração MetaMask',
@@ -3673,10 +3597,7 @@ ar:{
   'story-title':'قصة Aequitas',
   'story-text':'<p>عام 2009، أصدر ساتوشي ناكاموتو Bitcoin. ثورة حقيقية — لكن المنقبين الأوائل جمعوا الملايين بتكلفة شبه معدومة. في 2021، يتحكم أعلى 1% في أكثر من 90% من Bitcoin. جيني Bitcoin &gt; 0.85.</p><p><span style="color:var(--gold)">Aequitas</span> — لاتينية لـ "العدالة" — أُنشئ للإجابة على: <em style="color:var(--gold)">"كيف ستبدو عملة مشفرة صُمِّمت لتكون عادلة لكل إنسان؟"</em></p><p><strong style="color:var(--text)">المال موجود لأن البشر موجودون. لذا يجب أن يحصل كل شخص على حصة متساوية.</strong></p><p><em style="color:var(--gold)">"المال موجود لأن البشر موجودون. لا أكثر، ولا أقل."</em></p>',
   'nodes-title':'العقد النشطة — طوبولوجيا الشبكة الحالية',
-  'nodes-desc':'تعمل شبكة Aequitas على ثلاث عقد موزعة جغرافياً، تشارك في إنتاج الكتل والمزامنة وخدمة API.',
-  'node1':'العقدة 1 — Railway (الأساسية)','node1-desc':'API أساسي · منتج كتل · توزيع UBI · P2P Bootstrap · PostgreSQL · RPC لـ MetaMask',
-  'node2':'العقدة 2 — Contabo VPS (الثانوية)','node2-desc':'API ثانوي · منتج كتل · نظير P2P · مزامنة HTTP · حالة PostgreSQL خاصة',
-  'node3':'العقدة 3 — Contabo VPS (الثانوية)','node3-desc':'API ثانوي · منتج كتل · نظير P2P · مزامنة HTTP · حالة PostgreSQL خاصة',
+  'nodes-desc':'تعمل شبكة Aequitas على عدة عقد موزعة جغرافياً (العدد الحالي أعلاه)، تشارك في إنتاج الكتل والمزامنة وخدمة API.',
   'run-node-title':'قم بتشغيل عقدتك الخاصة','run-node-desc':'يمكن لأي شخص تشغيل عقدة Aequitas — بدون إذن أو حصة. المشغّلون يكسبون 40% من رسوم المبادلة يومياً.',
   'bootstrap-title':'ربط عقدة جديدة','bootstrap-desc':'اضبط PRIMARY_NODE_URL=https://aequitas.digital في بيئتك. عقدتك ستزامن حالة السلسلة الكاملة تلقائياً.',
   'tech-title':'المواصفات التقنية','mm-config':'إعداد MetaMask',
@@ -3833,10 +3754,7 @@ hi:{
   'story-title':'Aequitas की कहानी',
   'story-text':'<p>2009 में सातोशी नाकामोतो ने Bitcoin जारी किया। पहली बार बैंक के बिना मूल्य हस्तांतरण संभव हुआ। एक सच्ची क्रांति। लेकिन लगभग तुरंत कुछ गलत हो गया।</p><p>शुरुआती माइनर्स ने लाखों सिक्के लगभग शून्य लागत पर जमा किए। 2021 में, शीर्ष 1% Bitcoin पते 90% से अधिक Bitcoin नियंत्रित करते हैं। Bitcoin का जिनी गुणांक 0.85 से अधिक है।</p><p><span style="color:var(--gold)">Aequitas</span> — "न्याय" के लिए लैटिन — एक प्रश्न का उत्तर देने के लिए बनाया गया: <em style="color:var(--gold)">"एक क्रिप्टोकरेंसी कैसी दिखेगी जो हर मानव के लिए न्यायपूर्ण हो?"</em></p><p><strong style="color:var(--text)">पैसा इसलिए है क्योंकि लोग हैं। इसलिए हर व्यक्ति को केवल मानव होने के कारण धन का समान हिस्सा मिलना चाहिए।</strong></p>',
   'nodes-title':'सक्रिय नोड्स — वर्तमान नेटवर्क टोपोलॉजी',
-  'nodes-desc':'Aequitas नेटवर्क वर्तमान में तीन भौगोलिक रूप से वितरित नोड्स पर चलता है। तीनों ब्लॉक उत्पादन, स्टेट सिंक्रोनाइज़ेशन और API सेवा में भाग लेते हैं।',
-  'node1':'नोड 1 — Railway (प्राथमिक)','node1-desc':'प्राथमिक API · ब्लॉक उत्पादक · UBI वितरण · P2P Bootstrap · PostgreSQL · MetaMask के लिए RPC',
-  'node2':'नोड 2 — Contabo VPS (द्वितीयक)','node2-desc':'द्वितीयक API · ब्लॉक उत्पादक · P2P पीयर · HTTP सिंक · अपना PostgreSQL स्टेट',
-  'node3':'नोड 3 — Contabo VPS (द्वितीयक)','node3-desc':'द्वितीयक API · ब्लॉक उत्पादक · P2P पीयर · HTTP सिंक · अपना PostgreSQL स्टेट',
+  'nodes-desc':'Aequitas नेटवर्क वर्तमान में कई भौगोलिक रूप से वितरित नोड्स पर चलता है (वर्तमान संख्या ऊपर)। सभी ब्लॉक उत्पादन, स्टेट सिंक्रोनाइज़ेशन और API सेवा में भाग लेते हैं।',
   'run-node-title':'अपना नोड चलाएं','run-node-desc':'कोई भी Aequitas नोड चला सकता है — बिना अनुमति, बिना स्टेक। ऑपरेटर दैनिक वितरित स्वैप शुल्क का 40% कमाते हैं।',
   'bootstrap-title':'नया नोड कनेक्ट करें','bootstrap-desc':'PRIMARY_NODE_URL=https://aequitas.digital अपने environment में सेट करें। आपका नोड स्वचालित रूप से पूर्ण चेन स्टेट सिंक करेगा।',
   'tech-title':'तकनीकी विशिष्टताएं','mm-config':'MetaMask कॉन्फ़िगरेशन',
@@ -4138,6 +4056,107 @@ function startUBITimer(secsRemaining) {
     }
     els.forEach(el => el.textContent = fmt(secs));
   }, 1000);
+}
+
+// loadTopology renders the "Active Nodes" grid and the network topology
+// SVG from live data (/api/status + /api/peers) instead of the 3 hardcoded
+// node boxes/SVG rects this page used to ship with — beta-launch audit
+// 2026-07-05. The project's own design explicitly invites any registered
+// human to run an additional validator node (see nodes-desc), so hardcoding
+// exactly 3 specific node names/URLs meant every new node required another
+// manual edit here, and the page would keep claiming "three nodes" forever
+// even after a 4th joined. Peer roles beyond "is this node itself the
+// primary" aren't derivable from a single fetch (ActivePeers returns bare
+// URLs, not each peer's own is_primary flag), so non-self nodes are
+// labeled generically as "Node" rather than guessing a role we can't verify.
+let loadTopologySeq = 0;
+async function loadTopology() {
+  const grid = document.getElementById('node-grid');
+  const badge = document.getElementById('node-count-badge');
+  const svg = document.getElementById('topology-svg');
+  if (!grid && !badge && !svg) return;
+  const mySeq = ++loadTopologySeq;
+  try {
+    const [statusRes, peersRes] = await Promise.all([
+      fetch('/api/status').then(function(r) { return r.json(); }).catch(function() { return {}; }),
+      fetch('/api/peers').then(function(r) { return r.json(); }).catch(function() { return { peers: [] }; }),
+    ]);
+    if (mySeq !== loadTopologySeq) return;
+
+    const selfUrl = window.location.origin;
+    const norm = function(u) { return (u || '').replace(/\/+$/, ''); };
+    const peerUrls = Array.isArray(peersRes.peers) ? peersRes.peers : [];
+    const dedupedPeers = peerUrls.filter(function(u) { return u && norm(u) !== norm(selfUrl); });
+    const nodes = [{ url: selfUrl, isPrimary: !!statusRes.is_primary, self: true }]
+      .concat(dedupedPeers.map(function(u) { return { url: u, isPrimary: false, self: false }; }));
+
+    if (badge) badge.textContent = '(' + nodes.length + ')';
+
+    if (grid) {
+      const cols = Math.max(1, Math.min(nodes.length, 4));
+      grid.style.gridTemplateColumns = 'repeat(' + cols + ', 1fr)';
+      grid.innerHTML = nodes.map(function(n) {
+        let host;
+        try { host = new URL(n.url).host; } catch (e) { host = n.url; }
+        const role = n.isPrimary ? 'Primary' : 'Secondary';
+        const tag = n.self ? ' (this node)' : '';
+        return '<div class="nbox">' +
+          '<div class="nstat"><span class="ndot"></span>' + sanitize(role + tag) + '</div>' +
+          '<div class="nurl">' + sanitize(host) + '</div>' +
+          '<div class="ndesc">API &middot; Block producer &middot; P2P peer &middot; Own PostgreSQL state</div>' +
+          '</div>';
+      }).join('');
+    }
+
+    if (svg) renderTopologySVG(svg, nodes);
+  } catch (e) {
+    if (mySeq !== loadTopologySeq) return;
+    if (badge) badge.textContent = '';
+  }
+}
+
+// renderTopologySVG lays out nodes.length boxes in a single row (the
+// same visual style the old hardcoded 3-box version used), each connected
+// by a dashed line to the central P2P/libp2p hub, which in turn connects up
+// to a static MetaMask/Users box. Pure string-built SVG (no interactivity
+// needed here, unlike the DAG view's createElementNS-based approach).
+function renderTopologySVG(svg, nodes) {
+  const W = 500, H = 230;
+  const n = Math.max(nodes.length, 1);
+  const gap = 8;
+  const boxW = Math.max(70, (W - gap * (n + 1)) / n);
+  const boxH = 70;
+  const boxY = 150;
+  const hubX = W / 2, hubY = 97;
+  const colors = ['#047857', '#0891B2', '#6B46C1', '#B45309', '#BE185D', '#4338CA'];
+
+  let svgHtml = '<rect width="' + W + '" height="' + H + '" fill="rgba(255,255,255,0.03)" rx="10"/>' +
+    '<rect x="' + (W / 2 - 75) + '" y="10" width="150" height="38" rx="8" fill="rgba(146,64,14,0.06)" stroke="#92400E" stroke-width="1"/>' +
+    '<text x="' + hubX + '" y="27" text-anchor="middle" font-size="9" font-weight="700" fill="rgba(240,180,41,0.9)">MetaMask / Users</text>' +
+    '<text x="' + hubX + '" y="41" text-anchor="middle" font-size="7.5" fill="rgba(136,146,164,0.9)">JSON-RPC &#183; Chain ID 1926</text>' +
+    '<ellipse cx="' + hubX + '" cy="' + hubY + '" rx="70" ry="28" fill="rgba(107,70,193,0.08)" stroke="rgba(107,70,193,0.3)" stroke-width="1" stroke-dasharray="4,3"/>' +
+    '<text x="' + hubX + '" y="' + (hubY - 4) + '" text-anchor="middle" font-size="9" fill="rgba(155,114,246,0.9)">P2P libp2p</text>' +
+    '<text x="' + hubX + '" y="' + (hubY + 10) + '" text-anchor="middle" font-size="8" fill="rgba(136,146,164,0.9)">BlockDAG sync &#183; GHOSTDAG merge</text>' +
+    '<line x1="' + hubX + '" y1="48" x2="' + hubX + '" y2="69" stroke="#6B46C1" stroke-width="1.5" stroke-dasharray="4,3"/>';
+
+  nodes.forEach(function(node, i) {
+    const x = gap + i * (boxW + gap);
+    const cx = x + boxW / 2;
+    const color = colors[i % colors.length];
+    let host;
+    try { host = new URL(node.url).host; } catch (e) { host = node.url; }
+    const roleLine = (node.isPrimary ? 'Primary' : 'Secondary') + (node.self ? ' (this node)' : '');
+    svgHtml += '<rect x="' + x + '" y="' + boxY + '" width="' + boxW + '" height="' + boxH + '" rx="8" fill="' + color + '22" stroke="' + color + '" stroke-width="1.5"/>' +
+      '<text x="' + cx + '" y="' + (boxY + 22) + '" text-anchor="middle" font-size="9" font-weight="700" fill="' + color + '">' + sanitize(host.length > 22 ? host.slice(0, 20) + '…' : host) + '</text>' +
+      '<text x="' + cx + '" y="' + (boxY + 36) + '" text-anchor="middle" font-size="7.5" fill="rgba(136,146,164,0.9)">' + sanitize(roleLine) + '</text>' +
+      '<text x="' + cx + '" y="' + (boxY + 51) + '" text-anchor="middle" font-size="7" fill="' + color + '">&#9679; API &#183; own PostgreSQL</text>' +
+      '<text x="' + cx + '" y="' + (boxY + 61) + '" text-anchor="middle" font-size="7" fill="' + color + '">&#9679; Block producer</text>' +
+      '<line x1="' + cx + '" y1="' + boxY + '" x2="' + hubX + '" y2="' + (hubY + 28) + '" stroke="#6B46C1" stroke-width="1.5" stroke-dasharray="4,3"/>';
+  });
+
+  svgHtml += '<text x="' + hubX + '" y="228" text-anchor="middle" font-size="7" fill="rgba(136,146,164,0.7)">any additional registered human can run a validator node — no application, no shared secret</text>';
+
+  svg.innerHTML = svgHtml;
 }
 
 // loadHealth polls /api/health/combined and reflects the node's real
@@ -6529,12 +6548,14 @@ loadStatus();
 loadHealth();
 loadBlocks();
 loadHumans();
+loadTopology();
 setInterval(loadStatus, 6000);
 setInterval(loadHealth, 30000);
 setInterval(loadBlocks, 6000);
 setInterval(loadHumans, 10000);
 setInterval(loadValidatorLabels, 60000);
 setInterval(loadPoolStatus, 8000);
+setInterval(loadTopology, 60000);
 // Observe each canvas individually so charts redraw when they become visible.
 // We observe the canvas containers, not document.body (which fires on every
 // DOM change and would cause constant redraws killing performance).
