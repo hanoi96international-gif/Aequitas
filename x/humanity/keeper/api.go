@@ -15,6 +15,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"runtime/debug"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -49,41 +50,46 @@ func NewAPIServer(bc *BlockDAG, p2p *P2PNode, k *Keeper, state *ChainState) *API
 		state:             state,
 		evmRPC:            NewEVMRPCServer(bc, state),
 	}
-	go s.syncProofServerStatus()
+	SafeGoroutine("syncProofServerStatus", s.syncProofServerStatus)
 	// FIX (audit 2026-06-28 recheck 4, P1-5): periodically retry any queued
 	// proof-server bio_hash sync failures (see proof_server_sync_queue's
 	// table comment in state.go and notifyProofServerWithRetryQueue in
 	// register.go) — without this, a registration whose initial sync
 	// attempt failed would stay queued forever with nothing ever
 	// re-attempting it.
-	go func() {
+	SafeGoroutine("RetryProofServerSyncQueue-loop", func() {
 		for {
 			time.Sleep(5 * time.Minute)
-			RetryProofServerSyncQueue(state)
+			// FIX (P0-3, beta-launch audit 2026-07-05): recover per-iteration —
+			// see panic_recovery.go and registerAndDiscover-ticker's comment in
+			// sync_blocks.go for why per-iteration, not just once for the loop.
+			SafeCall("RetryProofServerSyncQueue", func() { RetryProofServerSyncQueue(state) })
 		}
-	}()
+	})
 	// FIX (audit 2026-06-28 recheck 4, P1-6): same retry pattern as the
 	// proof-server sync queue above, for EVM mirror slot-write failures —
 	// see syncBalanceLocked's comment in evm_storage.go.
-	go func() {
+	SafeGoroutine("RetryEVMMirrorSyncQueue-loop", func() {
 		for {
 			time.Sleep(5 * time.Minute)
-			RetryEVMMirrorSyncQueue(state)
+			SafeCall("RetryEVMMirrorSyncQueue", func() { RetryEVMMirrorSyncQueue(state) })
 		}
-	}()
+	})
 	// FIX (BRUTAL-P1-01): retry registration_recovery records — EVM-committed
 	// registrations whose Go-state sync failed. Runs every 5 minutes; on each
 	// pass it calls RegisterHumanAtomic for every unrecovered record and marks
 	// them recovered when they succeed or when Go-state already has the wallet
 	// (meaning a previous pass or a peer-sync block replay already fixed it).
-	go func() {
+	SafeGoroutine("RetryRegistrationRecoveries-loop", func() {
 		for {
 			time.Sleep(5 * time.Minute)
-			if n := state.RetryRegistrationRecoveries(); n > 0 {
-				fmt.Printf("[RECOVERY] Recovered %d registration(s) from registration_recovery table\n", n)
-			}
+			SafeCall("RetryRegistrationRecoveries", func() {
+				if n := state.RetryRegistrationRecoveries(); n > 0 {
+					fmt.Printf("[RECOVERY] Recovered %d registration(s) from registration_recovery table\n", n)
+				}
+			})
 		}
-	}()
+	})
 	return s
 }
 
@@ -411,6 +417,32 @@ func gzipMiddleware(next http.Handler) http.Handler {
 	})
 }
 
+// recoverMiddleware is explicit defense-in-depth panic recovery around the
+// whole mux. FIX (P1-2, beta-launch audit 2026-07-05): Go's own net/http
+// stdlib already recovers a panic in a request handler (only that one
+// connection dies), so this middleware is not closing an active hole today
+// — but that stdlib recovery only covers the ORIGINAL request-handling
+// goroutine. Any handler that spawns its OWN goroutine (a pattern already
+// used throughout this file) reproduces the exact P0-3 crash risk with no
+// explicit safety net at the mux level to catch it as a fallback, and nothing
+// here would signal that gap to a future handler author. An explicit
+// recover() here doesn't help with THAT case either (recover only catches a
+// panic in the SAME goroutine — see panic_recovery.go), but it does mean a
+// panic in the synchronous request path is handled uniformly and logged the
+// same way every other recovered panic in this codebase is, rather than
+// relying solely on the stdlib's silent default behavior.
+func recoverMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		defer func() {
+			if rec := recover(); rec != nil {
+				fmt.Printf("[PANIC RECOVERED] HTTP handler %s %s: %v\n%s\n", r.Method, r.URL.Path, rec, debug.Stack())
+				http.Error(w, "internal server error", http.StatusInternalServerError)
+			}
+		}()
+		next.ServeHTTP(w, r)
+	})
+}
+
 func (a *APIServer) Start(port int) {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/landing", a.handleLanding)
@@ -470,6 +502,7 @@ func (a *APIServer) Start(port int) {
 	mux.HandleFunc("/api/escrow", a.handleGetEscrow)
 	mux.HandleFunc("/api/recover-escrow", a.handleRecoverEscrow)
 	mux.HandleFunc("/registered", a.handleRegistered)
+	mux.HandleFunc("/dapp", a.handleDapp)
 	mux.HandleFunc("/download/app.apk", a.handleAppDownload)
 	for _, lg := range []string{"en", "de", "es", "fr", "id", "it", "pt", "tr"} {
 		lg := lg
@@ -513,16 +546,16 @@ func (a *APIServer) Start(port int) {
 	// re-validated, just transferred smaller.
 	srv := &http.Server{
 		Addr:         addr,
-		Handler:      gzipMiddleware(mux),
+		Handler:      recoverMiddleware(gzipMiddleware(mux)),
 		ReadTimeout:  30 * time.Second,
 		WriteTimeout: 60 * time.Second,
 		IdleTimeout:  120 * time.Second,
 	}
-	go func() {
+	SafeGoroutine("http.ListenAndServe", func() {
 		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			fmt.Printf("[API] Server error: %v\n", err)
 		}
-	}()
+	})
 }
 
 func (a *APIServer) handleStatus(w http.ResponseWriter, r *http.Request) {
@@ -2462,6 +2495,34 @@ func (a *APIServer) handleSnapshot(w http.ResponseWriter, r *http.Request) {
 	snap := a.state.ExportSnapshot(a.blockchain.GetSigningKey(), a.blockchain.Height(), includeSensitive)
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(snap)
+}
+
+// handleDapp serves the mobile wallet SPA (aequitas-dapp.html).
+// FIX (P0-1, beta-launch audit 2026-07-05): this file existed in the repo,
+// was actively maintained (last edited 2026-07-03 for launch fixes), and is
+// a complete, working mobile wallet UI — but no route anywhere served it and
+// the Dockerfile never copied it into the production image. Every path not
+// otherwise registered on this mux falls through to the "/" handler
+// (handleLanding/handleUI), so requests to any guessed URL for it were
+// silently served the Explorer instead, with no error to signal the file
+// was actually missing. Confirmed live: aequitas.digital/wallet returned
+// the Explorer's <title>, not this file's "Aequitas Beta" — this endpoint
+// simply didn't exist in production until this fix.
+func (a *APIServer) handleDapp(w http.ResponseWriter, r *http.Request) {
+	const path = "aequitas-dapp.html"
+	f, err := os.Open(path)
+	if err != nil {
+		http.Error(w, "dapp not found", http.StatusNotFound)
+		return
+	}
+	defer f.Close()
+	fi, err := f.Stat()
+	if err != nil {
+		http.Error(w, "dapp not found", http.StatusNotFound)
+		return
+	}
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	http.ServeContent(w, r, "aequitas-dapp.html", fi.ModTime(), f)
 }
 
 func (a *APIServer) handleAppDownload(w http.ResponseWriter, r *http.Request) {

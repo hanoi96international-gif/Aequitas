@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"runtime/debug"
 	"strings"
 	"sync"
 	"time"
@@ -257,6 +258,14 @@ func (dag *BlockDAG) startSyncForPeer(peerURL string) {
 			dag.syncPeerMu.Lock()
 			delete(dag.activeSyncPeers, peerURL)
 			dag.syncPeerMu.Unlock()
+			// FIX (P0-3, beta-launch audit 2026-07-05): see panic_recovery.go's
+			// comment — this is the exact call chain the audit flagged: a panic
+			// anywhere in syncWithNode/doSyncOnce/fetchBlocksSince/
+			// syncValidatorsFromPeer, reachable via the public
+			// /api/peers/register endpoint, used to crash the entire node.
+			if r := recover(); r != nil {
+				fmt.Printf("[PANIC RECOVERED] sync goroutine for peer %s: %v\n%s\n", peerURL, r, debug.Stack())
+			}
 		}()
 		dag.syncWithNode(peerURL)
 	}()
@@ -379,6 +388,12 @@ func (dag *BlockDAG) triggerOrphanResolve() {
 			wg.Add(1)
 			go func(p string) {
 				defer wg.Done()
+				// FIX (P0-3, beta-launch audit 2026-07-05): see panic_recovery.go.
+				defer func() {
+					if r := recover(); r != nil {
+						fmt.Printf("[PANIC RECOVERED] fetchMissingAncestors goroutine for peer %s: %v\n%s\n", p, r, debug.Stack())
+					}
+				}()
 				dag.fetchMissingAncestors(p)
 			}(peerURL)
 		}
@@ -932,25 +947,29 @@ func (dag *BlockDAG) StartPeerDiscovery(selfURL string) {
 		// produces on its own DB state before the sync loop has pulled in the
 		// seed's newer blocks, creating a fork that requires RESYNC to fix.
 		// Uses the highest reported height across all seeds as the target.
-		go dag.fetchAndSetSyncTarget(seeds)
+		SafeGoroutine("fetchAndSetSyncTarget", func() { dag.fetchAndSetSyncTarget(seeds) })
 	} else {
 		fmt.Println("[PEERS] No PRIMARY_NODE_URL/PRIMARY_NODE_URLS configured — accepting registrations from peers")
 	}
 
-	go func() {
+	SafeGoroutine("registerAndDiscover-ticker", func() {
 		ticker := time.NewTicker(30 * time.Second)
 		for range ticker.C {
-			// Re-resolve every tick, not just at startup: seedURLs only
-			// every depends on env vars (cheap), and re-reading means an
-			// operator can add PRIMARY_NODE_URLS to an already-running node
-			// (e.g. to recover from a single seed going down) without a
-			// restart.
-			for _, seed := range seedURLs(selfURL) {
-				dag.registerAndDiscover(selfURL, seed)
-			}
-			dag.healSyntheticCheckpoints()
+			// FIX (P0-3, beta-launch audit 2026-07-05): recover per-tick, not
+			// just once for the whole goroutine — see safeCall's comment.
+			SafeCall("registerAndDiscover-tick", func() {
+				// Re-resolve every tick, not just at startup: seedURLs only
+				// every depends on env vars (cheap), and re-reading means an
+				// operator can add PRIMARY_NODE_URLS to an already-running node
+				// (e.g. to recover from a single seed going down) without a
+				// restart.
+				for _, seed := range seedURLs(selfURL) {
+					dag.registerAndDiscover(selfURL, seed)
+				}
+				dag.healSyntheticCheckpoints()
+			})
 		}
-	}()
+	})
 }
 
 // healSyntheticCheckpoints actively tries to replace every synthetic-
@@ -1264,6 +1283,12 @@ func (dag *BlockDAG) HTTPBroadcastBlock(block *Block) {
 	for _, peerURL := range peers {
 		peerURL := peerURL
 		go func() {
+			// FIX (P0-3, beta-launch audit 2026-07-05): see panic_recovery.go.
+			defer func() {
+				if r := recover(); r != nil {
+					fmt.Printf("[PANIC RECOVERED] block-push goroutine to %s: %v\n%s\n", peerURL, r, debug.Stack())
+				}
+			}()
 			ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 			defer cancel()
 			req, err := http.NewRequestWithContext(ctx, http.MethodPost, peerURL+"/api/blocks/push", bytes.NewReader(data))

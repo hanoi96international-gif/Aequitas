@@ -397,12 +397,13 @@ p2pNode.SetDAG(bc)
 
 	// Save price snapshots every 30 seconds so the chart interval buttons
 	// (1m/5m/30m/1h/4h) show meaningful historical data even without swaps.
-	go func() {
+	keeper.SafeGoroutine("SavePriceSnapshot-ticker", func() {
 		ticker := time.NewTicker(30 * time.Second)
 		for range ticker.C {
-			chainState.SavePriceSnapshot()
+			// FIX (P0-3, beta-launch audit 2026-07-05): recover per-tick — see keeper.SafeCall's comment.
+			keeper.SafeCall("SavePriceSnapshot-tick", chainState.SavePriceSnapshot)
 		}
-	}()
+	})
 
 	// HTTP Block Sync between nodes.
 	// SELF_URL must be set to this node's own public URL so the sync loop
@@ -472,7 +473,7 @@ fmt.Println()
 // genuine multi-parent merges in the DAG are the expected, healthy
 // outcome of concurrent production, not a bug to engineer away.
 fmt.Println("── Starting Block Production ────────────")
-go func() {
+keeper.SafeGoroutine("block-production-ticker", func() {
 	// Align to the nearest BLOCK_TIME boundary on the wall clock so that
 	// every validator node fires its ticker within NTP accuracy (~10–50ms)
 	// of all other nodes. Without alignment, two independent tickers started
@@ -490,24 +491,31 @@ go func() {
 	time.Sleep(alignDelay)
 	ticker := time.NewTicker(BLOCK_TIME)
 for range ticker.C {
-tickStart := time.Now() // ongoing health check — feeds the slow-tick warning below
-block := bc.ProduceBlock()
-			if block == nil {
-				continue // catch-up gate — skip this tick
-			}
-			p2pNode.BroadcastBlock(block)
-			bc.HTTPBroadcastBlock(block) // HTTP push for peers where port 4001 is firewalled
-if tickDur := time.Since(tickStart); tickDur > 500*time.Millisecond {
-	fmt.Printf("[BLOCK] ⏱ Full tick (ProduceBlock+broadcast) took %s for block #%d\n", tickDur, block.Height)
-}
-fmt.Printf("[Block #%d] Hash: %s... | Humans: %d | Time: %s\n",
-block.Height,
-block.Hash[:16],
-block.Humans,
-time.Unix(block.Timestamp, 0).Format("15:04:05"),
-)
+	// FIX (P0-3, beta-launch audit 2026-07-05): recover per-tick — see
+	// keeper.SafeCall's comment. This is the block-production heartbeat: a
+	// panic here without per-tick recovery would crash the entire node
+	// (Go: any unrecovered panic in any goroutine kills the whole process),
+	// stopping ALL block production, not just degrading this one tick.
+	keeper.SafeCall("block-production-tick", func() {
+		tickStart := time.Now() // ongoing health check — feeds the slow-tick warning below
+		block := bc.ProduceBlock()
+		if block == nil {
+			return // catch-up gate — skip this tick
+		}
+		p2pNode.BroadcastBlock(block)
+		bc.HTTPBroadcastBlock(block) // HTTP push for peers where port 4001 is firewalled
+		if tickDur := time.Since(tickStart); tickDur > 500*time.Millisecond {
+			fmt.Printf("[BLOCK] ⏱ Full tick (ProduceBlock+broadcast) took %s for block #%d\n", tickDur, block.Height)
+		}
+		fmt.Printf("[Block #%d] Hash: %s... | Humans: %d | Time: %s\n",
+			block.Height,
+			block.Hash[:16],
+			block.Humans,
+			time.Unix(block.Timestamp, 0).Format("15:04:05"),
+		)
+	})
 	}
-	}()
+	})
 
 fmt.Println("── Starting Daily Pool Distributions ───")
 // FIX (P0, independent audit recheck 2026-06-27): the comment this replaced
@@ -527,7 +535,8 @@ _ = distCancel // called in shutdown handler below
 // FIX 6: distDone is closed when the goroutine exits so the shutdown handler
 // can wait for any in-progress distribution to finish before the process exits.
 distDone := make(chan struct{})
-go func(ctx context.Context) {
+keeper.SafeGoroutine("daily-distribution", func() {
+	ctx := distCtx
 	defer close(distDone)
 berlin, err := time.LoadLocation("Europe/Berlin")
 if err != nil {
@@ -561,6 +570,12 @@ case <-time.After(time.Until(firstTarget)):
 //      competing node, skips all distribution TXs if last_ubi_at is
 //      within 24h of the block's DistributionAt (same-round window).
 // Set DISTRIBUTION_ENABLED=false to opt a specific node out.
+//
+// FIX (P0-3, beta-launch audit 2026-07-05): wrapped in keeper.SafeCall — a
+// panic partway through a distribution round must not silently end every
+// future round of UBI/validator/LP distribution for the rest of this
+// node's uptime (worse than a crash: nothing else would notice).
+keeper.SafeCall("daily-distribution-round", func() {
 retrySoon := false
 if os.Getenv("DISTRIBUTION_ENABLED") == "false" {
 	fmt.Println("[POOLS] Distribution disabled on this node (DISTRIBUTION_ENABLED=false)")
@@ -626,8 +641,9 @@ firstTarget = nextDaily20(time.Now(), berlin)
 }
 chainState.SetNextUBIAt(firstTarget.Unix())
 fmt.Printf("[POOLS] Next distribution at %s Berlin time\n", firstTarget.In(berlin).Format("02.01. 15:04:05"))
+})
 }
-}(distCtx)
+})
 
 // Register this node's operator wallet so it participates in validator
 // pool distributions. Any node that sets NODE_OPERATOR_WALLET gets

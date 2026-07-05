@@ -249,16 +249,23 @@ func (dag *BlockDAG) StartDivergenceAutoHeal(bootstrapURL, signer, primaryURL st
 	dag.resyncPrimaryURL = primaryURL
 	fmt.Printf("[AUTO-HEAL] Enabled: will resync in-process from %s (signer %s) if >%d StateRoot mismatches accumulate within 10 min.\n",
 		bootstrapURL, signer, autoHealMismatchThreshold)
-	go func() {
+	SafeGoroutine("autoHeal-mismatch-ticker", func() {
 		ticker := time.NewTicker(autoHealCheckInterval)
 		defer ticker.Stop()
 		for range ticker.C {
-			if dag.TotalStateRootMismatches() < autoHealMismatchThreshold {
-				continue
-			}
-			dag.triggerAutoResync(fmt.Sprintf("%d StateRoot mismatches in the last 10 minutes — this node has diverged from its peers", dag.TotalStateRootMismatches()))
+			// FIX (P0-3, beta-launch audit 2026-07-05): recover per-tick — see
+			// safeCall's comment (panic_recovery.go). This is the node's own
+			// self-heal safety net; a panic silently ending it forever would be
+			// exactly the kind of "worked fine in testing, quietly stopped
+			// protecting production" failure this whole file exists to avoid.
+			SafeCall("autoHeal-mismatch-tick", func() {
+				if dag.TotalStateRootMismatches() < autoHealMismatchThreshold {
+					return
+				}
+				dag.triggerAutoResync(fmt.Sprintf("%d StateRoot mismatches in the last 10 minutes — this node has diverged from its peers", dag.TotalStateRootMismatches()))
+			})
 		}
-	}()
+	})
 	dag.startChainDivergenceCheck(primaryURL)
 	dag.startHeightStallCheck()
 }
@@ -286,29 +293,36 @@ type primaryStatusResponse struct {
 // alone is conclusive regardless of divergence status.
 func (dag *BlockDAG) startHeightStallCheck() {
 	fmt.Printf("[AUTO-HEAL] Height-stall self-check enabled: will resync if dag.height doesn't advance at all for %s straight.\n", heightStallThreshold)
-	go func() {
+	SafeGoroutine("heightStall-ticker", func() {
 		ticker := time.NewTicker(heightStallCheckInterval)
 		defer ticker.Stop()
 		lastHeight := int64(-1)
 		var lastChangedAt time.Time
 		for range ticker.C {
-			h := dag.Height()
-			if h != lastHeight {
-				lastHeight = h
-				lastChangedAt = time.Now()
-				continue
-			}
-			if lastChangedAt.IsZero() {
-				lastChangedAt = time.Now()
-				continue
-			}
-			if stalled := time.Since(lastChangedAt); stalled >= heightStallThreshold {
-				dag.triggerAutoResync(fmt.Sprintf(
-					"dag.height has not advanced at all in %s (stuck at %d) — a real historical catch-up snag resolves well within this window (the 2026-07-03 catch-up saga measured ~20 minutes worst case); this looks permanently stuck instead",
-					stalled.Round(time.Second), h))
-			}
+			// FIX (P0-3, beta-launch audit 2026-07-05): recover per-tick — see
+			// safeCall's comment. lastHeight/lastChangedAt are closed over by
+			// value across iterations (loop-scoped, not tick-scoped), so a
+			// recovered panic mid-tick just skips that tick's update/decision —
+			// the next tick re-reads dag.Height() fresh and continues correctly.
+			SafeCall("heightStall-tick", func() {
+				h := dag.Height()
+				if h != lastHeight {
+					lastHeight = h
+					lastChangedAt = time.Now()
+					return
+				}
+				if lastChangedAt.IsZero() {
+					lastChangedAt = time.Now()
+					return
+				}
+				if stalled := time.Since(lastChangedAt); stalled >= heightStallThreshold {
+					dag.triggerAutoResync(fmt.Sprintf(
+						"dag.height has not advanced at all in %s (stuck at %d) — a real historical catch-up snag resolves well within this window (the 2026-07-03 catch-up saga measured ~20 minutes worst case); this looks permanently stuck instead",
+						stalled.Round(time.Second), h))
+				}
+			})
 		}
-	}()
+	})
 }
 
 // startChainDivergenceCheck is the second detection path: instead of waiting
@@ -324,7 +338,7 @@ func (dag *BlockDAG) startChainDivergenceCheck(primaryURL string) {
 		return
 	}
 	fmt.Printf("[AUTO-HEAL] Chain-divergence self-check enabled: comparing against %s every %s.\n", primaryURL, chainDivergenceCheckInterval)
-	go func() {
+	SafeGoroutine("chainDivergenceCheck-ticker", func() {
 		var unsettledSince time.Time
 		// FIX (P0, 2026-07-04 — closes the self-heal blind spot found live
 		// tonight): time.Ticker does NOT fire on start, only after the FIRST
@@ -344,13 +358,17 @@ func (dag *BlockDAG) startChainDivergenceCheck(primaryURL string) {
 		// only lives a few minutes gets at least one real chance to compare
 		// itself against the primary.
 		time.Sleep(chainDivergenceInitialDelay)
-		dag.runChainDivergenceCheckOnce(primaryURL, &unsettledSince)
+		// FIX (P0-3, beta-launch audit 2026-07-05): recover per-call — see
+		// safeCall's comment. Same self-heal-safety-net reasoning as the two
+		// tickers above: one panicked round must not silently end every
+		// future round of this check for the rest of the node's uptime.
+		SafeCall("chainDivergenceCheck-initial", func() { dag.runChainDivergenceCheckOnce(primaryURL, &unsettledSince) })
 		ticker := time.NewTicker(chainDivergenceCheckInterval)
 		defer ticker.Stop()
 		for range ticker.C {
-			dag.runChainDivergenceCheckOnce(primaryURL, &unsettledSince)
+			SafeCall("chainDivergenceCheck-tick", func() { dag.runChainDivergenceCheckOnce(primaryURL, &unsettledSince) })
 		}
-	}()
+	})
 }
 
 // runChainDivergenceCheckOnce is startChainDivergenceCheck's single-round

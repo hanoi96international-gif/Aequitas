@@ -477,7 +477,7 @@ var v7ArrayBaseSlots = []int64{17, 18, 19, 20, 21, 22, 23, 24, 25, 26}
 // every write to it succeed in the live EVM call but never persist, with
 // nothing surfacing the mismatch until someone eventually notices a field
 // that "never saves" (beta-launch audit 2026-07-05).
-const v7SlotsVerifiedForVersion = "v7.9-register-removal-guardian-toctou-ubi-leak"
+const v7SlotsVerifiedForVersion = "v7.10-confirmalive-ubi-forfeiture"
 
 // checkV7SlotsMatchDeployedVersion prints a prominent warning if
 // V7ContractVersion has been bumped (contract_deploy.go) without a

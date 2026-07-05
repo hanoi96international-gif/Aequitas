@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"runtime/debug"
 	"strings"
 	"time"
 
@@ -249,6 +250,12 @@ func (n *P2PNode) broadcastExcept(block *Block, exclude peer.ID) {
 			continue
 		}
 		go func(pid peer.ID) {
+			// FIX (P0-3, beta-launch audit 2026-07-05): see panic_recovery.go.
+			defer func() {
+				if r := recover(); r != nil {
+					fmt.Printf("[PANIC RECOVERED] p2p block-broadcast goroutine to %s: %v\n%s\n", pid.String()[:12], r, debug.Stack())
+				}
+			}()
 			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 			defer cancel()
 

@@ -2683,14 +2683,14 @@ func (cs *ChainState) GetDemurrageStatus(address string) DemurrageStatus {
 			// show once more), so there's no need to participate in any
 			// transaction at all: write straight to cs.db, never cs.activeTx.
 			addr := acc.Address
-			go func() {
+			SafeGoroutine("persist-14day-demurrage-notice", func() {
 				if cs.db == nil {
 					return
 				}
 				if _, err := cs.db.Exec(`UPDATE chain_accounts SET demurrage_14_day_warning_shown = true WHERE address = $1`, addr); err != nil {
 					fmt.Printf("[DB] Warning: could not persist 14-day demurrage notice flag for %s: %v\n", addr, err)
 				}
-			}()
+			})
 		}
 	}
 
@@ -2808,7 +2808,7 @@ func (cs *ChainState) registerHumanLocked(address string) error {
 	// Prevents permanent Go/EVM divergence if the first sync fails.
 	cs.syncHumanRegistrationLocked(V7_CONTRACT_ADDR, address)
 	addr := address
-	go func() {
+	SafeGoroutine("syncHumanRegistration-retries", func() {
 		for attempt := 1; attempt <= 3; attempt++ {
 			time.Sleep(time.Duration(attempt) * 3 * time.Second)
 			cs.mu.RLock()
@@ -2816,7 +2816,7 @@ func (cs *ChainState) registerHumanLocked(address string) error {
 			cs.mu.RUnlock()
 			fmt.Printf("[STATE] EVM sync retry %d for %s\n", attempt, addr)
 		}
-	}()
+	})
 	return nil
 }
 

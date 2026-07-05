@@ -1433,13 +1433,14 @@ func (cs *ChainState) InitPriceSnapshotsTable() {
 	// past the retention window between restarts, with the query-side clamp
 	// providing no relief since it only bounds what's SERVED, not what's
 	// stored. Re-run it periodically for the lifetime of the process.
-	go func() {
+	SafeGoroutine("purgeOldPriceSnapshots-ticker", func() {
 		t := time.NewTicker(24 * time.Hour)
 		defer t.Stop()
 		for range t.C {
-			cs.purgeOldPriceSnapshots()
+			// FIX (P0-3, beta-launch audit 2026-07-05): recover per-tick — see safeCall's comment.
+			SafeCall("purgeOldPriceSnapshots-tick", cs.purgeOldPriceSnapshots)
 		}
-	}()
+	})
 }
 
 // purgeOldPriceSnapshots deletes price_snapshots rows older than the

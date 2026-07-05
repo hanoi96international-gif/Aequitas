@@ -9,6 +9,7 @@ FROM alpine:latest
 WORKDIR /app
 COPY --from=builder /app/aequitasd .
 COPY --from=builder /app/genesis.json .
+COPY --from=builder /app/aequitas-dapp.html .
 COPY --from=builder /app/downloads ./downloads
 EXPOSE 8080
 EXPOSE 4001

@@ -337,18 +337,40 @@ contract AequitasV7 {
             // entire point of the wake-up incentive below.
             lastDemurrage[human] = block.timestamp;
             uint256 fs = fairShare();
+            // FIX (P0-2, beta-launch audit 2026-07-05): a human sitting in
+            // escrow keeps counting in totalHumans and keeps accruing a
+            // per-head UBI entitlement via accumulateUBI() (already deducted
+            // from ubiPool on their behalf) the whole time — they just can't
+            // call claimUBI() themselves while escrowOf[human] > 0 (see that
+            // function's "In escrow" guard). This used to overwrite
+            // ubiClaimed[human] = ubiPerHumanAccumulated below without ever
+            // crediting the difference to balanceOf, unlike claimUBI()'s own
+            // correct owed calculation — silently discarding money already
+            // taken out of ubiPool on every ordinary escrow recovery with an
+            // outstanding entitlement (the expected common case, not an
+            // attack scenario), breaking
+            // SUM(balanceOf)+SUM(escrowOf)+ubiPool == totalSupply. Same bug
+            // class as the one already fixed for triggerEscrowToUBI (see
+            // ForfeitedUBIRecycled) — this parallel path was missed by that
+            // fix. Mirrors claimUBI()'s guard and calculation exactly.
+            require(ubiClaimed[human] <= ubiPerHumanAccumulated, "UBI accounting error");
+            uint256 owedUBI = ubiPerHumanAccumulated - ubiClaimed[human];
             // NOTE (FIX 5 / FIX 9): When recovering from escrow, the human receives their
             // escrowed amount PLUS one fairShare() of newly minted AEQ as an incentive to
-            // confirm aliveness. totalSupply increases by fairShare() to maintain the supply
-            // invariant. This is intentional economic policy — not a bug.
-            // Two events are emitted for auditability:
+            // confirm aliveness. totalSupply increases by fairShare() (not by owedUBI — that
+            // AEQ was already counted in totalSupply when accumulated into ubiPool, exactly
+            // as in claimUBI()) to maintain the supply invariant. This is intentional
+            // economic policy — not a bug.
+            // Three events are emitted for auditability:
             //   EscrowReleased — the return of the original escrowed balance
             //   Transfer(address(0), human, fs) — the mint of the wake-up bonus
-            balanceOf[human] += amount + fs;
+            //   UBIClaimed — the UBI entitlement accrued while in escrow, same event claimUBI() emits
+            balanceOf[human] += amount + fs + owedUBI;
             totalSupply += fs;
             ubiClaimed[human] = ubiPerHumanAccumulated;
             emit EscrowReleased(human, amount);
             if (fs > 0) emit Transfer(address(0), human, fs); // mint event for the wake-up bonus
+            if (owedUBI > 0) emit UBIClaimed(human, owedUBI);
             // FIX (P2, launch audit 2026-07-03): a returning human's pre-escrow
             // balance (which could already have been near the OLD cap) plus the
             // fairShare() wake-up bonus above can exceed the CURRENT cap. Every

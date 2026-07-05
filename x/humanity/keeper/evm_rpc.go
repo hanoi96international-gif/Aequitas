@@ -63,22 +63,28 @@ func init() {
 	// an orphaned entry simply gets garbage collected once released; unlike
 	// registerWalletLocks' mutex (see lockWallet's comment), there's no
 	// exclusion property that a stale reference could silently break.
-	go func() {
+	SafeGoroutine("rpcRateLimit-cleanup", func() {
 		for {
 			time.Sleep(60 * time.Second)
-			now := time.Now()
-			rpcRateLimit.Range(func(k, v interface{}) bool {
-				entry := v.(*rpcRateLimitEntry)
-				entry.mu.Lock()
-				stale := now.Sub(entry.windowStart) > 2*rpcRateLimitWindow
-				entry.mu.Unlock()
-				if stale {
-					rpcRateLimit.Delete(k)
-				}
-				return true
+			// FIX (P0-3, beta-launch audit 2026-07-05): recover per-iteration —
+			// see safeCall's comment. A panicked cleanup pass must not
+			// permanently end this loop; the map would just grow unbounded from
+			// that point on with nothing to notice.
+			SafeCall("rpcRateLimit-cleanup-tick", func() {
+				now := time.Now()
+				rpcRateLimit.Range(func(k, v interface{}) bool {
+					entry := v.(*rpcRateLimitEntry)
+					entry.mu.Lock()
+					stale := now.Sub(entry.windowStart) > 2*rpcRateLimitWindow
+					entry.mu.Unlock()
+					if stale {
+						rpcRateLimit.Delete(k)
+					}
+					return true
+				})
 			})
 		}
-	}()
+	})
 }
 
 // EVMRPCServer handles Ethereum JSON-RPC requests

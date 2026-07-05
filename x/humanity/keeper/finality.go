@@ -246,11 +246,11 @@ func (cs *ChainState) SetFinalizedCheckpoint(hash string, height, blueScore int6
 	cs.finalizedCacheLoaded = true
 	cs.finalizedMu.Unlock()
 
-	go func() {
+	SafeGoroutine("SetFinalizedCheckpoint-persist", func() {
 		cs.setConfigValueDB("finalized_height", fmt.Sprintf("%d", height))
 		cs.setConfigValueDB("finalized_blue_score", fmt.Sprintf("%d", blueScore))
 		cs.setConfigValueDB("finalized_hash", hash)
-	}()
+	})
 }
 
 // ResetFinalizedCheckpoint clears the finalized checkpoint back to its
@@ -412,7 +412,7 @@ func (dag *BlockDAG) maybeAdvanceFinalizedCheckpoint(newBlock *Block) {
 // result feeds SetFinalizedCheckpoint, which has its own independent lock
 // (finalizedMu — see GetFinalizedCheckpoint's comment) rather than dag.mu.
 func (dag *BlockDAG) finishCheckpointWalkFromDB(startHash string, target int64) {
-	go func() {
+	SafeGoroutine("finishCheckpointWalkFromDB", func() {
 		if dag.state == nil {
 			return
 		}
@@ -440,5 +440,5 @@ func (dag *BlockDAG) finishCheckpointWalkFromDB(startHash string, target int64) 
 		dag.state.SetFinalizedCheckpoint(b.Hash, b.Height, b.BlueScore)
 		fmt.Printf("[FINALITY] ✓ Checkpoint advanced (via DB fallback, in-memory DAG had pruned the path) → height %d blue_score %d (%s...)\n",
 			b.Height, b.BlueScore, b.Hash[:min(16, len(b.Hash))])
-	}()
+	})
 }

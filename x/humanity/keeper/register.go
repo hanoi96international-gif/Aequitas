@@ -72,18 +72,21 @@ func lockWallet(wallet string) *sync.Mutex {
 
 func init() {
 	// P3-4: periodically clean up expired rate-limit entries to prevent unbounded growth.
-	go func() {
+	SafeGoroutine("registerRateLimit-cleanup", func() {
 		for {
 			time.Sleep(60 * time.Second)
-			now := time.Now()
-			registerRateLimit.Range(func(k, v interface{}) bool {
-				if now.Sub(v.(time.Time)) > 35*time.Second { // must exceed maximum rate limit window (30s)
-					registerRateLimit.Delete(k)
-				}
-				return true
+			// FIX (P0-3, beta-launch audit 2026-07-05): recover per-iteration — see safeCall's comment.
+			SafeCall("registerRateLimit-cleanup-tick", func() {
+				now := time.Now()
+				registerRateLimit.Range(func(k, v interface{}) bool {
+					if now.Sub(v.(time.Time)) > 35*time.Second { // must exceed maximum rate limit window (30s)
+						registerRateLimit.Delete(k)
+					}
+					return true
+				})
 			})
 		}
-	}()
+	})
 }
 
 // isPrivateOrLoopback returns true for RFC-1918 private ranges, RFC-6598

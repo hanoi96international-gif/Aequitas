@@ -11,6 +11,7 @@ import (
 "fmt"
 "math/big"
 "os"
+"runtime/debug"
 "strings"
 "sort"
 "sync"
@@ -850,6 +851,12 @@ if len(loaded) > 0 {
 		dag.ghostdagMigrationPending.Store(true)
 		go func(blocks []*Block, d *BlockDAG, s *ChainState) {
 			defer d.ghostdagMigrationPending.Store(false)
+			// FIX (P0-3, beta-launch audit 2026-07-05): see panic_recovery.go.
+			defer func() {
+				if r := recover(); r != nil {
+					fmt.Printf("[PANIC RECOVERED] GHOSTDAG migration goroutine: %v\n%s\n", r, debug.Stack())
+				}
+			}()
 			const batchSize = 100
 			batch := make([]*Block, 0, batchSize)
 
@@ -949,13 +956,14 @@ dag.bootHeight = dag.height
 
 // Background pruner: evict finalized blocks from dag.blocks every 60s
 // to bound long-running RAM usage. DB retains the full history.
-go func() {
+SafeGoroutine("pruneOldDAGBlocks-ticker", func() {
     t := time.NewTicker(60 * time.Second)
     defer t.Stop()
     for range t.C {
-        dag.pruneOldDAGBlocks()
+        // FIX (P0-3, beta-launch audit 2026-07-05): recover per-tick — see safeCall's comment.
+        SafeCall("pruneOldDAGBlocks-tick", dag.pruneOldDAGBlocks)
     }
-}()
+})
 
 return dag
 }
@@ -1786,6 +1794,15 @@ var cadenceWG sync.WaitGroup
 cadenceWG.Add(2)
 go func() {
 	defer cadenceWG.Done()
+	// FIX (P0-3, beta-launch audit 2026-07-05): see panic_recovery.go. Also
+	// prevents cadenceWG.Wait() below from deadlocking forever on a panic —
+	// Done() (deferred above, so it still runs during this unwind) must fire
+	// either way.
+	defer func() {
+		if r := recover(); r != nil {
+			fmt.Printf("[PANIC RECOVERED] ProduceBlock LoadPendingTxs goroutine: %v\n%s\n", r, debug.Stack())
+		}
+	}()
 	t0 := time.Now()
 	if dag.state != nil {
 		dbTxs, pendingTxIDs = dag.state.LoadPendingTxs()
@@ -1794,6 +1811,11 @@ go func() {
 }()
 go func() {
 	defer cadenceWG.Done()
+	defer func() {
+		if r := recover(); r != nil {
+			fmt.Printf("[PANIC RECOVERED] ProduceBlock StateRoot goroutine: %v\n%s\n", r, debug.Stack())
+		}
+	}()
 	t0 := time.Now()
 	stateRoot = dag.state.StateRoot()
 	rootDur = time.Since(t0)
@@ -1929,7 +1951,7 @@ if dag.selfProducedFinalityAllowed() {
 // this config key is a fast-path hint, not the source of truth. Losing at most
 // the last block's write on an ill-timed crash is harmless and self-corrects.
 heightVal := dag.height
-go func() {
+SafeGoroutine("ProduceBlock-post-persist", func() {
 	dag.state.IncrementBlockCount(proposer)
 	// setConfigValueDB, not setConfigValue: this goroutine holds neither
 	// cs.mu nor dag.mu, and setConfigValue's precondition (cs.mu held, so
@@ -1937,7 +1959,7 @@ go func() {
 	// setConfigValue's own doc comment. Using it unlocked would race on
 	// cs.activeTx against any concurrently-running cs.mu-holding operation.
 	dag.state.setConfigValueDB("max_block_height", fmt.Sprintf("%d", heightVal))
-}()
+})
 
 if len(parentHashes) > 1 {
 fmt.Printf("[DAG] 🔀 Merged %d tips into block #%d\n", len(parentHashes), block.Height)
@@ -2329,6 +2351,12 @@ func (dag *BlockDAG) queueOrphan(missingParent string, block *Block) {
 			// AddPeerBlock caller (and everything waiting on dag.mu behind it)
 			// block for however long the whole retry chain takes.
 			go func(toRetry []*Block) {
+				// FIX (P0-3, beta-launch audit 2026-07-05): see panic_recovery.go.
+				defer func() {
+					if r := recover(); r != nil {
+						fmt.Printf("[PANIC RECOVERED] orphan-retry goroutine: %v\n%s\n", r, debug.Stack())
+					}
+				}()
 				for _, b := range toRetry {
 					dag.AddPeerBlock(b)
 				}
@@ -3464,7 +3492,7 @@ if conflict, isEquivocation := dag.checkAndIndexEquivocation(block); isEquivocat
 	blockAHash := conflict.Hash
 	blockBHash := block.Hash
 	detectedAt := block.Timestamp
-	go func() {
+	SafeGoroutine("equivocation-slashing", func() {
 		count, slashWallet, rErr := dag.state.RecordEquivocationAndSuspend(proposerAddr, blockAHash, blockBHash, detectedAt)
 		if rErr != nil {
 			fmt.Printf("[SLASHING] ✗ Failed to record equivocation for %s: %v\n", proposerAddr, rErr)
@@ -3479,7 +3507,7 @@ if conflict, isEquivocation := dag.checkAndIndexEquivocation(block); isEquivocat
 					equivocationSecondOffensePenaltyAEQ, slashWallet, proposerAddr)
 			}
 		}
-	}()
+	})
 }
 
 // Advance the hard finality checkpoint now that GHOSTDAG has been computed
@@ -3549,6 +3577,12 @@ dag.state.IncrementBlockCount(block.Proposer)
 // normal dag.mu-guarded AddPeerBlock path with no special priority.
 if waiting := dag.popOrphans(block.Hash); len(waiting) > 0 {
 	go func(toRetry []*Block) {
+		// FIX (P0-3, beta-launch audit 2026-07-05): see panic_recovery.go.
+		defer func() {
+			if r := recover(); r != nil {
+				fmt.Printf("[PANIC RECOVERED] orphan-retry goroutine: %v\n%s\n", r, debug.Stack())
+			}
+		}()
 		for _, b := range toRetry {
 			dag.AddPeerBlock(b)
 		}
@@ -5705,7 +5739,23 @@ func (dag *BlockDAG) triggerSoftRetryFlush() {
 	}
 	dag.softRetryFlushInFlight = true
 	dag.softRetryMu.Unlock()
-	go func() {
+	SafeGoroutine("softRetryFlush", func() {
+		// FIX (P0-3, beta-launch audit 2026-07-05): softRetryFlushInFlight
+		// must be reset even if a pass panics — safeGoroutine's own recover
+		// happens in ITS wrapper, outside this function entirely, by which
+		// point it's too late to clear the flag here. Without this, a panic
+		// mid-pass would leave softRetryFlushInFlight stuck true forever,
+		// silently disabling every future soft-retry flush for the rest of
+		// this node's uptime (see the early-return guard above this
+		// goroutine is launched from) — worse than just the crash itself.
+		defer func() {
+			if r := recover(); r != nil {
+				dag.softRetryMu.Lock()
+				dag.softRetryFlushInFlight = false
+				dag.softRetryMu.Unlock()
+				fmt.Printf("[PANIC RECOVERED] softRetryFlush goroutine: %v\n%s\n", r, debug.Stack())
+			}
+		}()
 		for {
 			dag.retryAndFlushSoftRetry()
 			dag.softRetryMu.Lock()
@@ -5718,7 +5768,7 @@ func (dag *BlockDAG) triggerSoftRetryFlush() {
 			dag.softRetryMu.Unlock()
 			// loop again — another trigger arrived mid-pass
 		}
-	}()
+	})
 }
 
 // retryAndFlushSoftRetry re-attempts every block in the soft-retry queue.
