@@ -646,7 +646,17 @@ fmt.Println("[NODE] NODE_OPERATOR_WALLET not set — this node won't receive val
 
 fmt.Println("╔════════════════════════════════════════╗")
 fmt.Println("║     Aequitas Node Running ✓            ║")
-fmt.Println("║     Producing blocks every 1 second    ║")
+// FIX (2026-07-05 audit finding): this was a hardcoded "every 1 second" —
+// the exact same staleness pattern found and fixed everywhere else
+// tonight (/api/status's block_time, the explorer's "~6s" label): correct
+// only by coincidence with whatever BLOCK_TIME happened to be. Build the
+// line from the real constant and pad to match the box width above.
+prodMsg := "     Producing blocks every " + BLOCK_TIME.String()
+trailing := 40 - len(prodMsg)
+if trailing < 1 {
+	trailing = 1
+}
+fmt.Printf("║%s%s║\n", prodMsg, strings.Repeat(" ", trailing))
 fmt.Println("╚════════════════════════════════════════╝")
 
 quit := make(chan os.Signal, 1)

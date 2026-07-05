@@ -1279,7 +1279,7 @@ input[type=number]::-webkit-inner-spin-button{opacity:0.5}
       <div class="nbox">
         <div class="nstat"><span class="ndot"></span><span data-i18n="node2">Node 2 — Contabo VPS (Secondary)</span></div>
         <div class="nurl">173.249.37.118:8080</div>
-        <div class="ndesc" data-i18n="node2-desc">Secondary API · Block producer · P2P peer · HTTP sync · Shared PostgreSQL state</div>
+        <div class="ndesc" data-i18n="node2-desc">Secondary API · Block producer · P2P peer · HTTP sync · Own PostgreSQL state</div>
         <div style="margin-top:6px;font-size:0.57rem;color:rgba(139,92,246,0.5)">Redundancy · Geographic distribution · Contabo VPS</div>
       </div>
       <div class="nbox">
@@ -1303,7 +1303,7 @@ input[type=number]::-webkit-inner-spin-button{opacity:0.5}
       <tr><td data-i18n="k-chainid">Chain ID</td><td>1926 (0x786)</td></tr>
       <tr><td>Architecture</td><td style="color:var(--purple)">BlockDAG (Directed Acyclic Graph)</td></tr>
       <tr><td>EVM Compatible</td><td style="color:var(--green)" data-i18n="evm-yes">Yes — JSON-RPC /rpc · MetaMask</td></tr>
-      <tr><td data-i18n="k-btime">Block Time</td><td>~6 seconds average</td></tr>
+      <tr><td data-i18n="k-btime">Block Time</td><td id="k-btime-val">—</td></tr>
       <tr><td data-i18n="k-cons">Consensus</td><td style="color:var(--purple)">BlockDAG + Proof of Humanity</td></tr>
       <tr><td>P2P Protocol</td><td>libp2p (Go implementation)</td></tr>
       <tr><td>ZKP System</td><td>Groth16 / snarkjs / circom</td></tr>
@@ -1398,30 +1398,37 @@ input[type=number]::-webkit-inner-spin-button{opacity:0.5}
   <div class="idx">
     <div class="idx-title" data-i18n="story-topo-title">Network Topology &#8212; Current State</div>
     <div style="overflow-x:auto;padding:8px 0">
-    <svg viewBox="0 0 500 185" xmlns="http://www.w3.org/2000/svg" style="width:100%;max-width:500px;display:block;margin:0 auto;font-family:Inter,sans-serif">
-      <rect width="500" height="185" fill="rgba(255,255,255,0.03)" rx="10"/>
-      <ellipse cx="250" cy="95" rx="60" ry="30" fill="rgba(107,70,193,0.08)" stroke="rgba(107,70,193,0.3)" stroke-width="1" stroke-dasharray="4,3"/>
-      <text x="250" y="91" text-anchor="middle" font-size="9" fill="rgba(155,114,246,0.9)">P2P libp2p</text>
-      <text x="250" y="105" text-anchor="middle" font-size="8" fill="rgba(136,146,164,0.9)">BlockDAG sync</text>
-      <rect x="30" y="60" width="120" height="70" rx="8" fill="rgba(4,120,87,0.08)" stroke="#047857" stroke-width="1.5"/>
-      <text x="90" y="85" text-anchor="middle" font-size="10" font-weight="700" fill="rgba(52,211,153,0.9)">Node 1</text>
-      <text x="90" y="100" text-anchor="middle" font-size="8" fill="rgba(136,146,164,0.9)">Railway (Primary)</text>
-      <text x="90" y="116" text-anchor="middle" font-size="7.5" fill="rgba(52,211,153,0.9)">&#9679; Primary API &#183; PostgreSQL</text>
-      <text x="90" y="126" text-anchor="middle" font-size="7.5" fill="rgba(52,211,153,0.9)">&#9679; UBI distribution</text>
-      <rect x="350" y="60" width="120" height="70" rx="8" fill="rgba(8,145,178,0.08)" stroke="#0891B2" stroke-width="1.5"/>
-      <text x="410" y="85" text-anchor="middle" font-size="10" font-weight="700" fill="rgba(34,211,238,0.9)">Node 2</text>
-      <text x="410" y="100" text-anchor="middle" font-size="8" fill="rgba(136,146,164,0.9)">Contabo VPS (Secondary)</text>
-      <text x="410" y="116" text-anchor="middle" font-size="7.5" fill="rgba(34,211,238,0.9)">&#9679; Secondary API</text>
-      <text x="410" y="126" text-anchor="middle" font-size="7.5" fill="rgba(34,211,238,0.9)">&#9679; HTTP sync</text>
+    <svg viewBox="0 0 500 230" xmlns="http://www.w3.org/2000/svg" style="width:100%;max-width:500px;display:block;margin:0 auto;font-family:Inter,sans-serif">
+      <rect width="500" height="230" fill="rgba(255,255,255,0.03)" rx="10"/>
       <rect x="175" y="10" width="150" height="38" rx="8" fill="rgba(146,64,14,0.06)" stroke="#92400E" stroke-width="1"/>
       <text x="250" y="27" text-anchor="middle" font-size="9" font-weight="700" fill="rgba(240,180,41,0.9)">MetaMask / Users</text>
       <text x="250" y="41" text-anchor="middle" font-size="7.5" fill="rgba(136,146,164,0.9)">JSON-RPC &#183; Chain ID 1926</text>
-      <rect x="165" y="143" width="170" height="34" rx="8" fill="rgba(107,70,193,0.04)" stroke="rgba(107,70,193,0.2)" stroke-width="1" stroke-dasharray="4,3"/>
-      <text x="250" y="158" text-anchor="middle" font-size="8" fill="rgba(136,146,164,0.9)">Future nodes (Phase 1+)</text>
-      <text x="250" y="170" text-anchor="middle" font-size="7.5" fill="rgba(107,70,193,0.6)">registered humans can run validator nodes</text>
-      <line x1="150" y1="95" x2="190" y2="95" stroke="#6B46C1" stroke-width="1.5" stroke-dasharray="4,3"/>
-      <line x1="310" y1="95" x2="350" y2="95" stroke="#6B46C1" stroke-width="1.5" stroke-dasharray="4,3"/>
-      <line x1="250" y1="48" x2="250" y2="65" stroke="#6B46C1" stroke-width="1.5" stroke-dasharray="4,3"/>
+      <ellipse cx="250" cy="97" rx="70" ry="28" fill="rgba(107,70,193,0.08)" stroke="rgba(107,70,193,0.3)" stroke-width="1" stroke-dasharray="4,3"/>
+      <text x="250" y="93" text-anchor="middle" font-size="9" fill="rgba(155,114,246,0.9)">P2P libp2p</text>
+      <text x="250" y="107" text-anchor="middle" font-size="8" fill="rgba(136,146,164,0.9)">BlockDAG sync &#183; GHOSTDAG merge</text>
+      <!-- Three live validator nodes, each independently running block
+           production + its own PostgreSQL — see node2-desc/node3-desc's own
+           2026-07-05 fix for why "own", not "shared" state. -->
+      <rect x="8" y="150" width="152" height="70" rx="8" fill="rgba(4,120,87,0.08)" stroke="#047857" stroke-width="1.5"/>
+      <text x="84" y="172" text-anchor="middle" font-size="10" font-weight="700" fill="rgba(52,211,153,0.9)">Node 1</text>
+      <text x="84" y="186" text-anchor="middle" font-size="8" fill="rgba(136,146,164,0.9)">Railway (Primary)</text>
+      <text x="84" y="201" text-anchor="middle" font-size="7.5" fill="rgba(52,211,153,0.9)">&#9679; Primary API &#183; own PostgreSQL</text>
+      <text x="84" y="211" text-anchor="middle" font-size="7.5" fill="rgba(52,211,153,0.9)">&#9679; UBI distribution</text>
+      <rect x="174" y="150" width="152" height="70" rx="8" fill="rgba(8,145,178,0.08)" stroke="#0891B2" stroke-width="1.5"/>
+      <text x="250" y="172" text-anchor="middle" font-size="10" font-weight="700" fill="rgba(34,211,238,0.9)">Node 2</text>
+      <text x="250" y="186" text-anchor="middle" font-size="8" fill="rgba(136,146,164,0.9)">Contabo VPS (Secondary)</text>
+      <text x="250" y="201" text-anchor="middle" font-size="7.5" fill="rgba(34,211,238,0.9)">&#9679; Secondary API &#183; own PostgreSQL</text>
+      <text x="250" y="211" text-anchor="middle" font-size="7.5" fill="rgba(34,211,238,0.9)">&#9679; HTTP sync</text>
+      <rect x="340" y="150" width="152" height="70" rx="8" fill="rgba(107,70,193,0.08)" stroke="#6B46C1" stroke-width="1.5"/>
+      <text x="416" y="172" text-anchor="middle" font-size="10" font-weight="700" fill="rgba(155,114,246,0.9)">Node 3</text>
+      <text x="416" y="186" text-anchor="middle" font-size="8" fill="rgba(136,146,164,0.9)">Contabo VPS (Secondary)</text>
+      <text x="416" y="201" text-anchor="middle" font-size="7.5" fill="rgba(155,114,246,0.9)">&#9679; Secondary API &#183; own PostgreSQL</text>
+      <text x="416" y="211" text-anchor="middle" font-size="7.5" fill="rgba(155,114,246,0.9)">&#9679; HTTP sync</text>
+      <text x="250" y="228" text-anchor="middle" font-size="7" fill="rgba(136,146,164,0.7)">any additional registered human can run a validator node — no application, no shared secret</text>
+      <line x1="250" y1="48" x2="250" y2="69" stroke="#6B46C1" stroke-width="1.5" stroke-dasharray="4,3"/>
+      <line x1="84" y1="150" x2="205" y2="118" stroke="#6B46C1" stroke-width="1.5" stroke-dasharray="4,3"/>
+      <line x1="250" y1="150" x2="250" y2="125" stroke="#6B46C1" stroke-width="1.5" stroke-dasharray="4,3"/>
+      <line x1="416" y1="150" x2="295" y2="118" stroke="#6B46C1" stroke-width="1.5" stroke-dasharray="4,3"/>
     </svg>
     </div>
   </div>
@@ -1673,7 +1680,7 @@ input[type=number]::-webkit-inner-spin-button{opacity:0.5}
         <div style="display:flex;align-items:flex-start;gap:10px;margin-bottom:6px"><span style="display:inline-flex;align-items:center;justify-content:center;background:rgba(139,92,246,0.2);color:var(--purple);font-weight:700;font-size:0.58rem;min-width:22px;height:22px;border-radius:50%">5</span><span>Click <strong style="color:var(--text)">Deploy</strong> (or save variables to trigger auto-redeploy). Build takes ~3 minutes while Go compiles the node binary.</span></div>
         <div style="display:flex;align-items:flex-start;gap:10px;margin-bottom:6px"><span style="display:inline-flex;align-items:center;justify-content:center;background:rgba(139,92,246,0.2);color:var(--purple);font-weight:700;font-size:0.58rem;min-width:22px;height:22px;border-radius:50%">6</span><span>Watch <strong style="color:var(--text)">Deploy Logs</strong>. Success looks like: <span style="font-family:var(--font-mono);color:var(--teal)">Aequitas Node Running V</span> and <span style="font-family:var(--font-mono);color:var(--teal)">[NODE] Registered node operator wallet: 0x...</span></span></div>
         <div style="display:flex;align-items:flex-start;gap:10px;margin-bottom:6px"><span style="display:inline-flex;align-items:center;justify-content:center;background:rgba(139,92,246,0.2);color:var(--purple);font-weight:700;font-size:0.58rem;min-width:22px;height:22px;border-radius:50%">7</span><span>Go to <strong style="color:var(--text)">Settings</strong> &rarr; <strong style="color:var(--text)">Networking</strong> &rarr; <strong style="color:var(--text)">Generate Domain</strong> to get your public URL</span></div>
-        <div style="display:flex;align-items:flex-start;gap:10px"><span style="display:inline-flex;align-items:center;justify-content:center;background:rgba(139,92,246,0.2);color:var(--purple);font-weight:700;font-size:0.58rem;min-width:22px;height:22px;border-radius:50%">8</span><span>Open <span style="font-family:var(--font-mono);color:var(--neon)">https://YOUR-URL/api/status</span> in your browser &mdash; you should see JSON with <strong style="color:var(--text)">height</strong> climbing every ~6 seconds</span></div>
+        <div style="display:flex;align-items:flex-start;gap:10px"><span style="display:inline-flex;align-items:center;justify-content:center;background:rgba(139,92,246,0.2);color:var(--purple);font-weight:700;font-size:0.58rem;min-width:22px;height:22px;border-radius:50%">8</span><span>Open <span style="font-family:var(--font-mono);color:var(--neon)">https://YOUR-URL/api/status</span> in your browser &mdash; you should see JSON with <strong style="color:var(--text)">height</strong> climbing steadily (check <span style="font-family:var(--font-mono);color:var(--teal)">block_time</span> in the same response for the current cadence)</span></div>
       </div>
 
       <!-- Step 4b Docker -->
@@ -1977,16 +1984,16 @@ en:{
   'k-proof':'Proof System','k-conf':'Confirmation','k-conf-v':'Within 1 second (1 block)',
   'k-sybil':'Sybil Protection','k-sybil-v':'One identity per biometric · permanent lock',
   'live-stats':'Live Chain Statistics',
-  's-height':'Block Height','s-height-sub':'New block every ~6s · BlockDAG · Parallel production',
+  's-height':'Block Height',
   's-humans':'Verified Humans','s-humans-sub':'Biometric ZKP · One person, one wallet, forever',
   's-supply':'Total Supply','s-supply-sub':'Always = Humans × 1,000 AEQ',
   's-index':'Aequitas Index','s-index-sub':'0 = perfect equality · 100 = max inequality',
-  's-uptime':'Uptime','s-uptime-sub':'Node v0.3.0 · Railway (Primary) + Contabo VPS (Secondary) · PostgreSQL',
+  's-uptime':'Uptime','s-uptime-sub':'Node v0.3.0 · Railway (Primary) + 2x Contabo VPS (Secondary) · own PostgreSQL each',
   'ib-poh':'Proof of Humanity','ib-poh-t':'Every AEQ holder must cryptographically prove they are a unique living human. No bots, no corporations, no AI, no duplicates. Biometric data never leaves your device — only a mathematical proof is transmitted.',
   'ib-fair':'Radically Fair Distribution','ib-fair-t':'Every verified human receives exactly 1,000 AEQ upon registration — no more, no less. No pre-mine, no founder allocation, no investor rounds. Total supply always equals verified humans × 1,000.',
   'ib-dag':'BlockDAG Architecture','ib-dag-t':'Multiple blocks can be produced simultaneously and merged into the DAG. Higher throughput, lower latency, better fault tolerance than traditional linear blockchains.',
   'ib-gas':'Truly Gasless','ib-gas-t':'Registration and AEQ transfers cost absolutely nothing. No ETH, BNB, or MATIC required. No credit card, no bank account, no prior cryptocurrency needed.',
-  'recent-blocks':'Recent Blocks','blocks-desc':'MERGE = multiple parents merged (BlockDAG). TX = registration transaction. Block time: ~6 seconds. Two nodes produce blocks in parallel.',
+  'recent-blocks':'Recent Blocks','blocks-desc':'MERGE = multiple parents merged (BlockDAG). TX = registration transaction. Block time: __BT__. Three nodes produce blocks in parallel.',
   'loading':'Loading blocks...','net-info':'Network Info','k-chain':'Chain Name','k-symbol':'Symbol','k-btime':'Block Time',
   'k-cons':'Consensus','k-nodes':'Active Nodes','k-storage':'Storage','add-mm':'🦊 ADD TO METAMASK','k-dec':'Decimals',
   'btn-add-mm':'+ ADD AEQUITAS NETWORK',
@@ -2038,7 +2045,8 @@ en:{
   'nodes-title':'Active Nodes — Current Network Topology',
   'nodes-desc':'The Aequitas network currently operates on three geographically distributed nodes. All three participate in block production, state synchronization, and API serving. They communicate peer-to-peer via libp2p and synchronize block state via HTTP. Each node runs its own PostgreSQL database for persistent state. The network is designed to support additional nodes — any operator can join.',
   'node1':'Node 1 — Railway (Primary)','node1-desc':'Primary API · Block producer · UBI distribution · P2P bootstrap · PostgreSQL · RPC for MetaMask',
-  'node2':'Node 2 — Contabo VPS (Secondary)','node2-desc':'Secondary API · Block producer · P2P peer · HTTP sync · Shared PostgreSQL state',
+  'node2':'Node 2 — Contabo VPS (Secondary)','node2-desc':'Secondary API · Block producer · P2P peer · HTTP sync · Own PostgreSQL state',
+  'node3':'Node 3 — Contabo VPS (Secondary)','node3-desc':'Secondary API · Block producer · P2P peer · HTTP sync · Own PostgreSQL state',
   'run-node-title':'Run Your Own Node — Help Secure the Network',
   'run-node-desc':'Anyone can run an Aequitas node — no permission, no stake, no application required. Nodes participate in block production, validate the human registry, and synchronize the BlockDAG. Node operators earn a share of protocol fees via the Validators Pool (40% of all swap fees, distributed daily).',
   'bootstrap-title':'Connect a New Node','bootstrap-desc':'To run your own Aequitas node, set PRIMARY_NODE_URL=https://aequitas.digital in your environment. Your node registers automatically, syncs the full chain state, and begins participating in block production.',
@@ -2138,16 +2146,16 @@ de:{
   'k-proof':'Beweissystem','k-conf':'Bestätigung','k-conf-v':'Innerhalb von 1 Sekunde (1 Block)',
   'k-sybil':'Sybil-Schutz','k-sybil-v':'Eine Identität pro Biometrie · dauerhaft gesperrt',
   'live-stats':'Live-Chain-Statistiken',
-  's-height':'Blockhöhe','s-height-sub':'Neuer Block alle ~6s · BlockDAG · Parallele Produktion',
+  's-height':'Blockhöhe',
   's-humans':'Verifizierte Menschen','s-humans-sub':'Biometrisches ZKP · Eine Person, eine Wallet, für immer',
   's-supply':'Gesamtmenge','s-supply-sub':'Immer = Menschen × 1.000 AEQ',
   's-index':'Aequitas-Index','s-index-sub':'0 = perfekte Gleichheit · 100 = maximale Ungleichheit',
-  's-uptime':'Laufzeit','s-uptime-sub':'Node v0.3.0 · Railway (Primär) + Contabo VPS (Sekundär) · PostgreSQL',
+  's-uptime':'Laufzeit','s-uptime-sub':'Node v0.3.0 · Railway (Primär) + 2x Contabo VPS (Sekundär) · je eigene PostgreSQL',
   'ib-poh':'Menschlichkeitsnachweis','ib-poh-t':'Jeder AEQ-Inhaber muss kryptografisch beweisen dass er ein einzigartiger lebender Mensch ist. Keine Bots, keine Unternehmen, keine KI. Biometrische Daten verlassen nie dein Gerät.',
   'ib-fair':'Radikal gerechte Verteilung','ib-fair-t':'Jeder verifizierte Mensch erhält genau 1.000 AEQ bei der Registrierung. Kein Pre-Mining, keine Gründerzuteilung. Gesamtmenge entspricht immer Verifizierte Menschen × 1.000.',
   'ib-dag':'BlockDAG-Architektur','ib-dag-t':'Mehrere Blöcke können gleichzeitig produziert und zusammengeführt werden. Höherer Durchsatz, geringere Latenz als lineare Blockchains.',
   'ib-gas':'Wirklich gebührenfrei','ib-gas-t':'Registrierung und AEQ-Transfers kosten absolut nichts. Kein ETH, BNB oder MATIC erforderlich. Kein Bankkonto, keine Kreditkarte nötig.',
-  'recent-blocks':'Aktuelle Blöcke','blocks-desc':'MERGE = mehrere Eltern zusammengeführt (BlockDAG). TX = Registrierungstransaktion. Blockzeit: ~1 Sekunde.',
+  'recent-blocks':'Aktuelle Blöcke','blocks-desc':'MERGE = mehrere Eltern zusammengeführt (BlockDAG). TX = Registrierungstransaktion. Blockzeit: __BT__.',
   'loading':'Blöcke werden geladen...','net-info':'Netzwerkinformationen','k-chain':'Chain-Name','k-symbol':'Symbol','k-btime':'Blockzeit',
   'k-cons':'Konsens','k-nodes':'Aktive Nodes','k-storage':'Speicher','add-mm':'🦊 ZU METAMASK HINZUFÜGEN','k-dec':'Dezimalstellen',
   'btn-add-mm':'+ AEQUITAS-NETZWERK HINZUFÜGEN',
@@ -2199,7 +2207,8 @@ de:{
   'nodes-title':'Aktive Nodes — Aktuelle Netzwerktopologie',
   'nodes-desc':'Das Aequitas-Netzwerk betreibt derzeit drei geografisch verteilte Nodes. Alle drei nehmen an Blockproduktion, Statussynchronisation und API-Bereitstellung teil. Sie kommunizieren per libp2p und synchronisieren Blockzustände via HTTP. Das Netzwerk ist für zusätzliche Nodes ausgelegt — jeder Betreiber kann beitreten.',
   'node1':'Node 1 — Railway (Primär)','node1-desc':'Primärer API-Server · Blockproduzent · UBI-Verteilung · P2P-Bootstrap · PostgreSQL · RPC für MetaMask',
-  'node2':'Node 2 — Contabo VPS (Sekundär)','node2-desc':'Sekundärer API-Server · Blockproduzent · P2P-Peer · HTTP-Sync · Geteilter PostgreSQL-Status',
+  'node2':'Node 2 — Contabo VPS (Sekundär)','node2-desc':'Sekundärer API-Server · Blockproduzent · P2P-Peer · HTTP-Sync · Eigener PostgreSQL-Status',
+  'node3':'Node 3 — Contabo VPS (Sekundär)','node3-desc':'Sekundärer API-Server · Blockproduzent · P2P-Peer · HTTP-Sync · Eigener PostgreSQL-Status',
   'run-node-title':'Eigenen Node betreiben — Das Netzwerk sichern',
   'run-node-desc':'Jeder kann einen Aequitas-Node betreiben — keine Genehmigung, kein Stake, keine Bewerbung erforderlich. Nodes nehmen an der Blockproduktion teil und validieren die Menschenregistrierung. Node-Betreiber erhalten täglich einen Anteil der Protokollgebühren über den Validators-Pool (40% aller Swap-Gebühren).',
   'bootstrap-title':'Neuen Node verbinden','bootstrap-desc':'Um einen eigenen Aequitas-Node zu betreiben, setze die PRIMARY_NODE_URL=https://aequitas.digital in deiner Umgebung. Dein Node synchronisiert automatisch den vollständigen Chain-Zustand und beginnt mit der Blockproduktion.',
@@ -2318,16 +2327,16 @@ es:{
   'k-proof':'Sistema de Prueba','k-conf':'Confirmación','k-conf-v':'En 1 segundo (1 bloque)',
   'k-sybil':'Protección Sybil','k-sybil-v':'Una identidad por biometría · bloqueo permanente',
   'live-stats':'Estadísticas de Cadena en Vivo',
-  's-height':'Altura de Bloque','s-height-sub':'Nuevo bloque cada ~6s · BlockDAG · Producción paralela',
+  's-height':'Altura de Bloque',
   's-humans':'Humanos Verificados','s-humans-sub':'ZKP biométrico · Una persona, una wallet, siempre',
   's-supply':'Suministro Total','s-supply-sub':'Siempre = Humanos × 1,000 AEQ',
   's-index':'Índice Aequitas','s-index-sub':'0 = igualdad perfecta · 100 = desigualdad máxima',
-  's-uptime':'Tiempo Activo','s-uptime-sub':'Node v0.3.0 · Railway (Primary) + Contabo VPS (Secondary) · PostgreSQL',
+  's-uptime':'Tiempo Activo','s-uptime-sub':'Node v0.3.0 · Railway (Primary) + 2x Contabo VPS (Secondary) · own PostgreSQL each',
   'ib-poh':'Prueba de Humanidad','ib-poh-t':'Cada titular de AEQ debe probar criptográficamente que es un humano único vivo. Sin bots, sin corporaciones, sin IA. Los datos biométricos nunca salen de tu dispositivo.',
   'ib-fair':'Distribución Radicalmente Justa','ib-fair-t':'Cada humano verificado recibe exactamente 1,000 AEQ al registrarse. Sin pre-minado, sin asignación a fundadores. El suministro total siempre equivale a humanos verificados × 1,000.',
   'ib-dag':'Arquitectura BlockDAG','ib-dag-t':'Múltiples bloques pueden producirse simultáneamente y fusionarse. Mayor rendimiento, menor latencia que las blockchains lineales.',
   'ib-gas':'Verdaderamente Sin Gas','ib-gas-t':'El registro y las transferencias no cuestan nada. No se necesita ETH, BNB ni MATIC. Sin cuenta bancaria ni tarjeta de crédito.',
-  'recent-blocks':'Bloques Recientes','blocks-desc':'MERGE = múltiples padres fusionados (BlockDAG). TX = transacción de registro. Tiempo de bloque: ~1 segundo.',
+  'recent-blocks':'Bloques Recientes','blocks-desc':'MERGE = múltiples padres fusionados (BlockDAG). TX = transacción de registro. Tiempo de bloque: __BT__.',
   'loading':'Cargando bloques...','net-info':'Información de Red','k-chain':'Nombre de Cadena','k-symbol':'Símbolo','k-btime':'Tiempo de Bloque',
   'k-cons':'Consenso','k-nodes':'Nodos Activos','k-storage':'Almacenamiento','add-mm':'🦊 AGREGAR A METAMASK','k-dec':'Decimales',
   'btn-add-mm':'+ AGREGAR RED AEQUITAS',
@@ -2411,7 +2420,8 @@ es:{
   'nodes-title':'Nodos Activos — Topología Actual de la Red',
   'nodes-desc':'La red Aequitas opera actualmente en tres nodos distribuidos geográficamente. Los tres participan en la producción de bloques, sincronización de estado y servicio de API. Se comunican peer-to-peer via libp2p y sincronizan el estado de bloques via HTTP. La red está diseñada para soportar nodos adicionales.',
   'node1':'Nodo 1 — Railway (Primario)','node1-desc':'API primario · Productor de bloques · Distribución UBI · Bootstrap P2P · PostgreSQL · RPC para MetaMask',
-  'node2':'Nodo 2 — Contabo VPS (Secundario)','node2-desc':'API secundario · Productor de bloques · Par P2P · Sincronización HTTP · Estado PostgreSQL compartido',
+  'node2':'Nodo 2 — Contabo VPS (Secundario)','node2-desc':'API secundario · Productor de bloques · Par P2P · Sincronización HTTP · Estado PostgreSQL propio',
+  'node3':'Nodo 3 — Contabo VPS (Secundario)','node3-desc':'API secundario · Productor de bloques · Par P2P · Sincronización HTTP · Estado PostgreSQL propio',
   'run-node-title':'Ejecuta Tu Propio Nodo — Ayuda a Asegurar la Red',
   'run-node-desc':'Cualquiera puede ejecutar un nodo de Aequitas — sin permiso, sin stake, sin solicitud requerida. Los nodos participan en la producción de bloques y validan el registro humano. Los operadores de nodos ganan una parte de las comisiones del protocolo via el Pool de Validadores (40% de todas las comisiones de swap, distribuidas diariamente).',
   'bootstrap-title':'Conectar un Nuevo Nodo','bootstrap-desc':'Para ejecutar tu propio nodo, establece PRIMARY_NODE_URL=https://aequitas.digital en tu entorno. Tu nodo sincronizará automáticamente el estado completo de la cadena.',
@@ -2484,16 +2494,16 @@ ru:{
   'k-proof':'Система Доказательств','k-conf':'Подтверждение','k-conf-v':'В течение 1 секунды (1 блок)',
   'k-sybil':'Защита от Сибилл','k-sybil-v':'Одна идентичность на биометрию · постоянная блокировка',
   'live-stats':'Статистика Цепи в Реальном Времени',
-  's-height':'Высота Блока','s-height-sub':'Новый блок каждую ~1с · BlockDAG · Параллельное производство',
+  's-height':'Высота Блока',
   's-humans':'Верифицированные Люди','s-humans-sub':'Биометрический ZKP · Один человек, один кошелёк, навсегда',
   's-supply':'Общий Объём','s-supply-sub':'Всегда = Люди × 1 000 AEQ',
   's-index':'Индекс Aequitas','s-index-sub':'0 = идеальное равенство · 100 = максимальное неравенство',
-  's-uptime':'Время Работы','s-uptime-sub':'Node v0.3.0 · Railway (Primary) + Contabo VPS (Secondary) · PostgreSQL',
+  's-uptime':'Время Работы','s-uptime-sub':'Node v0.3.0 · Railway (Primary) + 2x Contabo VPS (Secondary) · own PostgreSQL each',
   'ib-poh':'Доказательство Человечности','ib-poh-t':'Каждый владелец AEQ должен криптографически доказать что является уникальным живым человеком. Никаких ботов, корпораций, ИИ. Биометрические данные никогда не покидают устройство.',
   'ib-fair':'Радикально Справедливое Распределение','ib-fair-t':'Каждый верифицированный человек получает ровно 1 000 AEQ при регистрации. Никакого предварительного майнинга, никаких аллокаций основателям. Общий объём всегда равен верифицированные люди × 1 000.',
   'ib-dag':'Архитектура BlockDAG','ib-dag-t':'Несколько блоков могут производиться одновременно и объединяться. Более высокая пропускная способность, меньшая задержка.',
   'ib-gas':'Действительно Без Комиссий','ib-gas-t':'Регистрация и переводы AEQ не стоят ничего. ETH, BNB или MATIC не требуются. Банковский счёт и кредитная карта не нужны.',
-  'recent-blocks':'Последние Блоки','blocks-desc':'MERGE = объединение нескольких родителей (BlockDAG). TX = транзакция регистрации. Время блока: ~6 секунд.',
+  'recent-blocks':'Последние Блоки','blocks-desc':'MERGE = объединение нескольких родителей (BlockDAG). TX = транзакция регистрации. Время блока: __BT__.',
   'loading':'Загрузка блоков...','net-info':'Информация о Сети','k-chain':'Имя Цепи','k-symbol':'Символ','k-btime':'Время Блока',
   'k-cons':'Консенсус','k-nodes':'Активные Ноды','k-storage':'Хранилище','add-mm':'🦊 ДОБАВИТЬ В METAMASK','k-dec':'Десятичные',
   'btn-add-mm':'+ ДОБАВИТЬ СЕТЬ AEQUITAS',
@@ -2538,7 +2548,8 @@ ru:{
   'story-text':'<p>Год 2009. Сатоши Накамото выпускает Bitcoin. Впервые ценность может передаваться между людьми без банка. Настоящая революция. Но почти сразу что-то идёт не так.</p><p>Ранние майнеры накапливают миллионы монет почти бесплатно. К 2021 году топ 1% адресов Bitcoin контролирует более 90% всех Bitcoin. Коэффициент Джини Bitcoin превышает 0,85 — выше чем в любой стране мира.</p><p><span style="color:var(--gold)">Aequitas</span> был создан чтобы ответить на один вопрос: <em style="color:var(--gold)">"Как выглядела бы криптовалюта, спроектированная с нуля чтобы быть справедливой для каждого человека?"</em></p><p>Ответ прост: <strong style="color:var(--text)">Деньги существуют потому что существуют люди. Поэтому каждый человек должен иметь равную долю денег просто потому что он человек.</strong></p><p><em style="color:var(--gold)">"Деньги существуют потому что существуют люди. Ничего более, ничего менее."</em></p>',
   'nodes-title':'Активные Ноды — Текущая Топология Сети','nodes-desc':'Сеть Aequitas работает на трёх географически распределённых нодах. Все три участвуют в производстве блоков и синхронизации. Сеть рассчитана на дополнительные ноды.',
   'node1':'Нода 1 — Railway (Основная)','node1-desc':'Основной API · Производитель блоков · Распределение UBI · P2P Bootstrap · PostgreSQL · RPC для MetaMask',
-  'node2':'Нода 2 — Contabo VPS (Вторичная)','node2-desc':'Вторичный API · Производитель блоков · P2P-пир · HTTP-синхронизация · Общее состояние PostgreSQL',
+  'node2':'Нода 2 — Contabo VPS (Вторичная)','node2-desc':'Вторичный API · Производитель блоков · P2P-пир · HTTP-синхронизация · Собственное состояние PostgreSQL',
+  'node3':'Нода 3 — Contabo VPS (Вторичная)','node3-desc':'Вторичный API · Производитель блоков · P2P-пир · HTTP-синхронизация · Собственное состояние PostgreSQL',
   'run-node-title':'Запустите Свою Ноду — Помогите Защитить Сеть',
   'run-node-desc':'Любой может запустить ноду без разрешения. Операторы нод получают 40% всех комиссий свопа ежедневно через Пул Валидаторов.',
   'bootstrap-title':'Подключить Новую Ноду','bootstrap-desc':'Установите PRIMARY_NODE_URL=https://aequitas.digital в вашей среде. Нода автоматически синхронизируется и начнёт производство блоков.',
@@ -2644,16 +2655,16 @@ zh:{
   'k-proof':'证明系统','k-conf':'确认','k-conf-v':'6秒内（1个区块）',
   'k-sybil':'女巫攻击防护','k-sybil-v':'每个生物特征一个身份 · 永久锁定',
   'live-stats':'实时链统计',
-  's-height':'区块高度','s-height-sub':'每约6秒新区块 · BlockDAG · 并行生产',
+  's-height':'区块高度',
   's-humans':'已验证人类','s-humans-sub':'生物特征ZKP · 一人一钱包，永久',
   's-supply':'总供应量','s-supply-sub':'始终 = 人类 × 1,000 AEQ',
   's-index':'Aequitas指数','s-index-sub':'0 = 完全平等 · 100 = 最大不平等',
-  's-uptime':'运行时间','s-uptime-sub':'节点 v0.3.0 · Railway (Primary) + Contabo VPS (Secondary) · PostgreSQL',
+  's-uptime':'运行时间','s-uptime-sub':'节点 v0.3.0 · Railway (Primary) + 2x Contabo VPS (Secondary) · 各自独立PostgreSQL',
   'ib-poh':'人类证明','ib-poh-t':'每个AEQ持有者必须密码学证明其是独特的活人。没有机器人、公司、人工智能。生物特征数据永不离开设备。',
   'ib-fair':'彻底公平的分配','ib-fair-t':'每个经过验证的人类注册时恰好获得1,000 AEQ。没有预挖矿，没有创始人分配。总供应量始终等于已验证人类 × 1,000。',
   'ib-dag':'BlockDAG架构','ib-dag-t':'多个区块可以同时生产并合并。比线性区块链更高吞吐量、更低延迟。',
   'ib-gas':'真正无Gas','ib-gas-t':'注册和AEQ转账完全免费。不需要ETH、BNB或MATIC。无需银行账户或信用卡。',
-  'recent-blocks':'最近区块','blocks-desc':'MERGE = 多个父区块合并（BlockDAG）。TX = 注册交易。区块时间：约6秒。',
+  'recent-blocks':'最近区块','blocks-desc':'MERGE = 多个父区块合并（BlockDAG）。TX = 注册交易。区块时间：__BT__。',
   'loading':'加载区块中...','net-info':'网络信息','k-chain':'链名称','k-symbol':'符号','k-btime':'区块时间',
   'k-cons':'共识','k-nodes':'活跃节点','k-storage':'存储','add-mm':'🦊 添加到METAMASK','k-dec':'小数位',
   'btn-add-mm':'+ 添加AEQUITAS网络',
@@ -2702,7 +2713,8 @@ zh:{
   'run-node-title':'运行您自己的节点 — 帮助保护网络',
   'run-node-desc':'任何人都可以运行Aequitas节点——无需许可、无需质押、无需申请。节点参与区块生产并验证人类注册表。节点运营商通过验证者池（每日分配的所有互换费用的40%）赚取协议费用份额。',
   'node1':'节点1 — Railway（主要）','node1-desc':'主要API · 区块生产者 · UBI分配 · P2P引导 · PostgreSQL · MetaMask的RPC',
-  'node2':'节点2 — Contabo VPS（次要）','node2-desc':'次要API · 区块生产者 · P2P对等 · HTTP同步 · 共享PostgreSQL状态',
+  'node2':'节点2 — Contabo VPS（次要）','node2-desc':'次要API · 区块生产者 · P2P对等 · HTTP同步 · 独立PostgreSQL状态',
+  'node3':'节点3 — Contabo VPS（次要）','node3-desc':'次要API · 区块生产者 · P2P对等 · HTTP同步 · 独立PostgreSQL状态',
   'bootstrap-title':'运行自己的节点','bootstrap-desc':'任何人都可以通过运行节点加入Aequitas网络。下载节点指南获取分步说明。',
   'tech-title':'技术规格','mm-config':'MetaMask配置',
   'k-lang':'语言','k-src':'源代码','evm-yes':'是 — JSON-RPC /rpc · MetaMask兼容',
@@ -2806,16 +2818,16 @@ id:{
   'k-proof':'Sistem Bukti','k-conf':'Konfirmasi','k-conf-v':'Dalam 6 detik (1 blok)',
   'k-sybil':'Perlindungan Sybil','k-sybil-v':'Satu identitas per biometrik · kunci permanen',
   'live-stats':'Statistik Rantai Langsung',
-  's-height':'Tinggi Blok','s-height-sub':'Blok baru setiap ~6d · BlockDAG · Produksi paralel',
+  's-height':'Tinggi Blok',
   's-humans':'Manusia Terverifikasi','s-humans-sub':'ZKP biometrik · Satu orang, satu dompet, selamanya',
   's-supply':'Total Pasokan','s-supply-sub':'Selalu = Manusia × 1.000 AEQ',
   's-index':'Indeks Aequitas','s-index-sub':'0 = kesetaraan sempurna · 100 = ketidaksetaraan maksimum',
-  's-uptime':'Waktu Aktif','s-uptime-sub':'Node v0.3.0 · Railway (Primary) + Contabo VPS (Secondary) · PostgreSQL',
+  's-uptime':'Waktu Aktif','s-uptime-sub':'Node v0.3.0 · Railway (Primary) + 2x Contabo VPS (Secondary) · own PostgreSQL each',
   'ib-poh':'Bukti Kemanusiaan','ib-poh-t':'Setiap pemegang AEQ harus membuktikan secara kriptografis bahwa mereka adalah manusia hidup yang unik. Tidak ada bot, korporasi, AI. Data biometrik tidak pernah meninggalkan perangkat.',
   'ib-fair':'Distribusi yang Benar-benar Adil','ib-fair-t':'Setiap manusia terverifikasi menerima tepat 1.000 AEQ saat pendaftaran. Tanpa pre-mining, tanpa alokasi pendiri. Total pasokan selalu sama dengan manusia terverifikasi × 1.000.',
   'ib-dag':'Arsitektur BlockDAG','ib-dag-t':'Beberapa blok dapat diproduksi secara bersamaan dan digabungkan. Throughput lebih tinggi, latensi lebih rendah.',
   'ib-gas':'Benar-benar Tanpa Gas','ib-gas-t':'Pendaftaran dan transfer AEQ tidak memerlukan biaya. Tidak perlu ETH, BNB, atau MATIC. Tidak perlu rekening bank atau kartu kredit.',
-  'recent-blocks':'Blok Terbaru','blocks-desc':'MERGE = beberapa induk digabung (BlockDAG). TX = transaksi pendaftaran. Waktu blok: ~6 detik.',
+  'recent-blocks':'Blok Terbaru','blocks-desc':'MERGE = beberapa induk digabung (BlockDAG). TX = transaksi pendaftaran. Waktu blok: __BT__.',
   'loading':'Memuat blok...','net-info':'Informasi Jaringan','k-chain':'Nama Rantai','k-symbol':'Simbol','k-btime':'Waktu Blok',
   'k-cons':'Konsensus','k-nodes':'Node Aktif','k-storage':'Penyimpanan','add-mm':'🦊 TAMBAHKAN KE METAMASK','k-dec':'Desimal',
   'btn-add-mm':'+ TAMBAHKAN JARINGAN AEQUITAS',
@@ -2856,7 +2868,8 @@ id:{
   'run-node-title':'Jalankan Node Anda Sendiri — Bantu Amankan Jaringan',
   'run-node-desc':'Siapa pun dapat menjalankan node Aequitas — tanpa izin, tanpa stake, tanpa pendaftaran. Node berpartisipasi dalam produksi blok dan memvalidasi registri manusia. Operator node mendapatkan bagian biaya protokol melalui Pool Validator (40% semua biaya swap, didistribusikan setiap hari).',
   'node1':'Node 1 — Railway (Utama)','node1-desc':'API utama · Produsen blok · Distribusi UBI · Bootstrap P2P · PostgreSQL · RPC untuk MetaMask',
-  'node2':'Node 2 — Contabo VPS (Sekunder)','node2-desc':'API sekunder · Produsen blok · Peer P2P · Sinkronisasi HTTP · Status PostgreSQL bersama',
+  'node2':'Node 2 — Contabo VPS (Sekunder)','node2-desc':'API sekunder · Produsen blok · Peer P2P · Sinkronisasi HTTP · Status PostgreSQL sendiri',
+  'node3':'Node 3 — Contabo VPS (Sekunder)','node3-desc':'API sekunder · Produsen blok · Peer P2P · Sinkronisasi HTTP · Status PostgreSQL sendiri',
   'bootstrap-title':'Jalankan Node Anda Sendiri','bootstrap-desc':'Siapa pun dapat bergabung dengan jaringan Aequitas dengan menjalankan node. Unduh panduan node untuk instruksi langkah demi langkah.',
   'tech-title':'Spesifikasi Teknis','mm-config':'Konfigurasi MetaMask',
   'k-lang':'Bahasa','k-src':'Kode Sumber','evm-yes':'Ya — JSON-RPC /rpc · Kompatibel MetaMask',
@@ -2960,16 +2973,16 @@ it:{
   'k-proof':'Sistema di Prova','k-conf':'Conferma','k-conf-v':'Entro 1 secondo (1 blocco)',
   'k-sybil':'Protezione Sybil','k-sybil-v':'Una identità per biometrica · blocco permanente',
   'live-stats':'Statistiche Chain in Tempo Reale',
-  's-height':'Altezza Blocco','s-height-sub':'Nuovo blocco ogni ~6s · BlockDAG · Produzione parallela',
+  's-height':'Altezza Blocco',
   's-humans':'Umani Verificati','s-humans-sub':'ZKP biometrico · Una persona, un wallet, per sempre',
   's-supply':'Offerta Totale','s-supply-sub':'Sempre = Umani × 1.000 AEQ',
   's-index':'Indice Aequitas','s-index-sub':'0 = perfetta uguaglianza · 100 = massima disuguaglianza',
-  's-uptime':'Uptime','s-uptime-sub':'Node v0.3.0 · Railway (Primary) + Contabo VPS (Secondary) · PostgreSQL',
+  's-uptime':'Uptime','s-uptime-sub':'Node v0.3.0 · Railway (Primary) + 2x Contabo VPS (Secondary) · own PostgreSQL each',
   'ib-poh':'Prova di Umanità','ib-poh-t':'Ogni detentore di AEQ deve dimostrare crittograficamente di essere un essere umano unico e vivente. Nessun bot, nessuna azienda, nessuna IA. I dati biometrici non lasciano mai il tuo dispositivo.',
   'ib-fair':'Distribuzione Radicalmente Equa','ib-fair-t':'Ogni umano verificato riceve esattamente 1.000 AEQ alla registrazione. Nessun pre-mining, nessuna allocazione ai fondatori. L\'offerta totale è sempre uguale a umani verificati × 1.000.',
   'ib-dag':'Architettura BlockDAG','ib-dag-t':'Più blocchi possono essere prodotti simultaneamente e uniti. Throughput più alto, latenza più bassa rispetto alle blockchain lineari tradizionali.',
   'ib-gas':'Veramente Senza Gas','ib-gas-t':'La registrazione e i trasferimenti AEQ non costano assolutamente nulla. Non servono ETH, BNB o MATIC. Nessun conto bancario, nessuna carta di credito.',
-  'recent-blocks':'Blocchi Recenti','blocks-desc':'MERGE = più genitori uniti (BlockDAG). TX = transazione di registrazione. Tempo blocco: ~6 secondi.',
+  'recent-blocks':'Blocchi Recenti','blocks-desc':'MERGE = più genitori uniti (BlockDAG). TX = transazione di registrazione. Tempo blocco: __BT__.',
   'loading':'Caricamento blocchi...','net-info':'Info Rete','k-chain':'Nome Catena','k-symbol':'Simbolo','k-btime':'Tempo Blocco',
   'k-cons':'Consenso','k-nodes':'Node Attivi','k-storage':'Archiviazione','add-mm':'🦊 AGGIUNGI A METAMASK','k-dec':'Decimali',
   'btn-add-mm':'+ AGGIUNGI RETE AEQUITAS',
@@ -3009,7 +3022,8 @@ it:{
   'nodes-title':'Node Attivi — Topologia Attuale della Rete',
   'nodes-desc':'La rete Aequitas opera attualmente su tre node distribuiti geograficamente. Tutti e tre partecipano alla produzione di blocchi, sincronizzazione dello stato e servizio API. Comunicano peer-to-peer via libp2p e sincronizzano lo stato dei blocchi via HTTP. La rete è progettata per supportare node aggiuntivi.',
   'node1':'Node 1 — Railway (Primario)','node1-desc':'API primario · Produttore blocchi · Distribuzione UBI · P2P Bootstrap · PostgreSQL · RPC per MetaMask',
-  'node2':'Node 2 — Contabo VPS (Secondario)','node2-desc':'API secondario · Produttore blocchi · Peer P2P · Sincronizzazione HTTP · Stato PostgreSQL condiviso',
+  'node2':'Node 2 — Contabo VPS (Secondario)','node2-desc':'API secondario · Produttore blocchi · Peer P2P · Sincronizzazione HTTP · Stato PostgreSQL proprio',
+  'node3':'Node 3 — Contabo VPS (Secondario)','node3-desc':'API secondario · Produttore blocchi · Peer P2P · Sincronizzazione HTTP · Stato PostgreSQL proprio',
   'run-node-title':'Esegui il Tuo Node — Aiuta a Proteggere la Rete',
   'run-node-desc':'Chiunque può eseguire un node Aequitas — senza permesso, senza stake, senza candidatura richiesta. I node partecipano alla produzione di blocchi e validano il registro umano. Gli operatori di node guadagnano una quota delle commissioni del protocollo tramite il Pool Validatori (40% di tutte le commissioni di swap, distribuite quotidianamente).',
   'bootstrap-title':'Connettere un Nuovo Node','bootstrap-desc':'Per eseguire il tuo node, imposta PRIMARY_NODE_URL=https://aequitas.digital nel tuo ambiente. Il tuo node si sincronizzerà automaticamente con lo stato completo della chain.',
@@ -3115,16 +3129,16 @@ tr:{
   'k-proof':'Kanıt Sistemi','k-conf':'Onay','k-conf-v':'6 saniye içinde (1 blok)',
   'k-sybil':'Sybil Koruması','k-sybil-v':'Biyometri başına bir kimlik · kalıcı kilit',
   'live-stats':'Canlı Zincir İstatistikleri',
-  's-height':'Blok Yüksekliği','s-height-sub':'Her ~6 saniyede yeni blok · BlockDAG · Paralel üretim',
+  's-height':'Blok Yüksekliği',
   's-humans':'Doğrulanmış İnsanlar','s-humans-sub':'Biyometrik ZKP · Bir kişi, bir cüzdan, sonsuza dek',
   's-supply':'Toplam Arz','s-supply-sub':'Her zaman = İnsanlar × 1.000 AEQ',
   's-index':'Aequitas Endeksi','s-index-sub':'0 = mükemmel eşitlik · 100 = maksimum eşitsizlik',
-  's-uptime':'Çalışma Süresi','s-uptime-sub':'Node v0.3.0 · Railway (Primary) + Contabo VPS (Secondary) · PostgreSQL',
+  's-uptime':'Çalışma Süresi','s-uptime-sub':'Node v0.3.0 · Railway (Primary) + 2x Contabo VPS (Secondary) · own PostgreSQL each',
   'ib-poh':'İnsanlık Kanıtı','ib-poh-t':'Her AEQ sahibi, benzersiz bir yaşayan insan olduğunu kriptografik olarak kanıtlamak zorundadır. Robot yok, şirket yok, yapay zeka yok. Biyometrik veriler asla cihazı terk etmez.',
   'ib-fair':'Radikal Şekilde Adil Dağıtım','ib-fair-t':'Her doğrulanmış insan kayıt sırasında tam olarak 1.000 AEQ alır. Ön madencilik yok, kurucu tahsisi yok. Toplam arz her zaman doğrulanmış insanlar × 1.000 eşittir.',
   'ib-dag':'BlockDAG Mimarisi','ib-dag-t':'Birden fazla blok eş zamanlı olarak üretilebilir ve birleştirilebilir. Doğrusal blok zincirlerine kıyasla daha yüksek verim, daha düşük gecikme.',
   'ib-gas':'Gerçekten Gas\'sız','ib-gas-t':'Kayıt ve AEQ transferleri kesinlikle ücretsizdir. ETH, BNB veya MATIC gerekmez. Banka hesabı veya kredi kartı gerekmez.',
-  'recent-blocks':'Son Bloklar','blocks-desc':'MERGE = birden fazla ebeveyn birleştirildi (BlockDAG). TX = kayıt işlemi. Blok süresi: ~6 saniye. Bloka tıklayarak detayları, doğrulayıcıyı ve işlemleri görüntüle.',
+  'recent-blocks':'Son Bloklar','blocks-desc':'MERGE = birden fazla ebeveyn birleştirildi (BlockDAG). TX = kayıt işlemi. Blok süresi: __BT__. Bloka tıklayarak detayları, doğrulayıcıyı ve işlemleri görüntüle.',
   'loading':'Bloklar yükleniyor...','net-info':'Ağ Bilgisi','k-chain':'Zincir Adı','k-symbol':'Sembol','k-btime':'Blok Süresi',
   'k-cons':'Konsensüs','k-nodes':'Aktif Node\'lar','k-storage':'Depolama','add-mm':'🦊 METAMASK\'A EKLE','k-dec':'Ondalık',
   'btn-add-mm':'+ AEQUITAS AĞINI EKLE',
@@ -3177,7 +3191,8 @@ tr:{
   'nodes-title':'Aktif Node\'lar — Mevcut Ağ Topolojisi',
   'nodes-desc':'Aequitas ağı şu anda üç coğrafi olarak dağıtılmış node üzerinde çalışıyor. Üçü de blok üretimine, durum senkronizasyonuna ve API hizmetine katılıyor. libp2p aracılığıyla eşler arası iletişim kuruyor ve HTTP aracılığıyla blok durumunu senkronize ediyorlar. Ağ ek node\'ları desteklemek üzere tasarlanmıştır.',
   'node1':'Node 1 — Railway (Birincil)','node1-desc':'Birincil API · Blok üreticisi · UBI dağıtımı · P2P Bootstrap · PostgreSQL · MetaMask için RPC',
-  'node2':'Node 2 — Contabo VPS (İkincil)','node2-desc':'İkincil API · Blok üreticisi · P2P eşi · HTTP senkronizasyonu · Paylaşılan PostgreSQL durumu',
+  'node2':'Node 2 — Contabo VPS (İkincil)','node2-desc':'İkincil API · Blok üreticisi · P2P eşi · HTTP senkronizasyonu · Kendi PostgreSQL durumu',
+  'node3':'Node 3 — Contabo VPS (İkincil)','node3-desc':'İkincil API · Blok üreticisi · P2P eşi · HTTP senkronizasyonu · Kendi PostgreSQL durumu',
   'run-node-title':'Kendi Node\'unu Çalıştır — Ağı Güvence Altına Almaya Yardım Et',
   'run-node-desc':'Herkes bir Aequitas node\'u çalıştırabilir — izin, stake veya başvuru gerekmez. Node\'lar blok üretimine katılır ve insan kaydını doğrular. Node operatörleri, Doğrulayıcı Havuzu aracılığıyla protokol ücretlerinden pay kazanır (tüm takas ücretlerinin %40\'ı, günlük dağıtılır).',
   'bootstrap-title':'Yeni Node Bağla','bootstrap-desc':'Kendi Aequitas node\'unu çalıştırmak için PRIMARY_NODE_URL=https://aequitas.digital ortam değişkenini ayarla. Node\'un tam zincir durumunu otomatik olarak senkronize edecek ve blok üretimine başlayacak.',
@@ -3277,16 +3292,16 @@ fr:{
   'k-proof':'Système de preuve','k-conf':'Confirmation','k-conf-v':'En 1 seconde (1 bloc)',
   'k-sybil':'Protection Sybil','k-sybil-v':'Une identité par biométrie · verrouillage permanent',
   'live-stats':'Statistiques de la chaîne en direct',
-  's-height':'Hauteur de bloc','s-height-sub':'Nouveau bloc toutes les ~6s · BlockDAG · Production parallèle',
+  's-height':'Hauteur de bloc',
   's-humans':'Humains vérifiés','s-humans-sub':'ZKP biométrique · Une personne, un portefeuille, pour toujours',
   's-supply':'Offre totale','s-supply-sub':'Toujours = Humains × 1 000 AEQ',
   's-index':'Index Aequitas','s-index-sub':'0 = égalité parfaite · 100 = inégalité maximale',
-  's-uptime':'Disponibilité','s-uptime-sub':'Node v0.3.0 · Railway (Primary) + Contabo VPS (Secondary) · PostgreSQL',
+  's-uptime':'Disponibilité','s-uptime-sub':'Node v0.3.0 · Railway (Primary) + 2x Contabo VPS (Secondary) · own PostgreSQL each',
   'ib-poh':'Preuve d\'Humanité','ib-poh-t':'Chaque détenteur d\'AEQ doit prouver qu\'il est un humain vivant unique. Pas de robots, sociétés ni IA. Données biométriques jamais partagées.',
   'ib-fair':'Distribution radicalement équitable','ib-fair-t':'Chaque humain vérifié reçoit exactement 1 000 AEQ. Pas de pré-minage ni d\'allocation fondateurs. Offre = Humains × 1 000.',
   'ib-dag':'Architecture BlockDAG','ib-dag-t':'Plusieurs blocs produits simultanément et fusionnés. Débit plus élevé, latence plus faible.',
   'ib-gas':'Vraiment sans frais','ib-gas-t':'Inscription et transferts AEQ gratuits. Pas d\'ETH, BNB ou MATIC. Pas de carte bancaire nécessaire.',
-  'recent-blocks':'Blocs récents','blocks-desc':'MERGE = plusieurs parents fusionnés (BlockDAG). TX = transaction d\'inscription. Temps de bloc : ~6 secondes.',
+  'recent-blocks':'Blocs récents','blocks-desc':'MERGE = plusieurs parents fusionnés (BlockDAG). TX = transaction d\'inscription. Temps de bloc : __BT__.',
   'loading':'Chargement des blocs...','net-info':'Informations réseau','k-chain':'Nom de chaîne','k-symbol':'Symbole','k-btime':'Temps de bloc',
   'k-cons':'Consensus','k-nodes':'Nœuds actifs','k-storage':'Stockage','add-mm':'🦊 AJOUTER À METAMASK','k-dec':'Décimales',
   'btn-add-mm':'+ AJOUTER LE RÉSEAU AEQUITAS',
@@ -3338,7 +3353,8 @@ fr:{
   'nodes-title':'Nœuds actifs — Topologie réseau actuelle',
   'nodes-desc':'Le réseau Aequitas fonctionne sur trois nœuds géographiquement distribués participant à la production de blocs, synchronisation d\'état et service API. Nœuds supplémentaires bienvenus.',
   'node1':'Nœud 1 — Railway (Principal)','node1-desc':'API principal · Producteur de blocs · Distribution UBI · Bootstrap P2P · PostgreSQL · RPC MetaMask',
-  'node2':'Nœud 2 — Contabo VPS (Secondaire)','node2-desc':'API secondaire · Producteur de blocs · Pair P2P · Sync HTTP · État PostgreSQL partagé',
+  'node2':'Nœud 2 — Contabo VPS (Secondaire)','node2-desc':'API secondaire · Producteur de blocs · Pair P2P · Sync HTTP · État PostgreSQL propre',
+  'node3':'Nœud 3 — Contabo VPS (Secondaire)','node3-desc':'API secondaire · Producteur de blocs · Pair P2P · Sync HTTP · État PostgreSQL propre',
   'run-node-title':'Exécuter votre propre nœud','run-node-desc':'N\'importe qui peut exécuter un nœud Aequitas — sans permission, sans stake. Opérateurs gagnent 40% des frais de swap distribués quotidiennement.',
   'bootstrap-title':'Connecter un nouveau nœud','bootstrap-desc':'Définissez PRIMARY_NODE_URL=https://aequitas.digital dans votre environnement. Votre nœud synchronise automatiquement l\'état complet.',
   'tech-title':'Spécifications techniques','mm-config':'Configuration MetaMask',
@@ -3438,16 +3454,16 @@ pt:{
   'k-proof':'Sistema de Prova','k-conf':'Confirmação','k-conf-v':'Em 1 segundo (1 bloco)',
   'k-sybil':'Proteção Sybil','k-sybil-v':'Uma identidade por biometria · bloqueio permanente',
   'live-stats':'Estatísticas ao Vivo da Cadeia',
-  's-height':'Altura do Bloco','s-height-sub':'Novo bloco a cada ~6s · BlockDAG · Produção paralela',
+  's-height':'Altura do Bloco',
   's-humans':'Humanos Verificados','s-humans-sub':'ZKP biométrico · Uma pessoa, uma carteira, para sempre',
   's-supply':'Oferta Total','s-supply-sub':'Sempre = Humanos × 1.000 AEQ',
   's-index':'Índice Aequitas','s-index-sub':'0 = igualdade perfeita · 100 = desigualdade máxima',
-  's-uptime':'Disponibilidade','s-uptime-sub':'Node v0.3.0 · Railway (Primary) + Contabo VPS (Secondary) · PostgreSQL',
+  's-uptime':'Disponibilidade','s-uptime-sub':'Node v0.3.0 · Railway (Primary) + 2x Contabo VPS (Secondary) · own PostgreSQL each',
   'ib-poh':'Prova de Humanidade','ib-poh-t':'Cada detentor de AEQ deve provar criptograficamente que é um humano vivo único. Sem bots, corporações ou IA. Dados biométricos nunca saem do dispositivo.',
   'ib-fair':'Distribuição Radicalmente Justa','ib-fair-t':'Cada humano verificado recebe exatamente 1.000 AEQ no registro. Sem pré-mineração. Oferta = Humanos × 1.000.',
   'ib-dag':'Arquitetura BlockDAG','ib-dag-t':'Vários blocos produzidos simultaneamente e mesclados. Maior throughput, menor latência.',
   'ib-gas':'Verdadeiramente Sem Taxas','ib-gas-t':'Registro e transferências AEQ custam absolutamente nada. Sem ETH, BNB ou MATIC. Sem conta bancária.',
-  'recent-blocks':'Blocos Recentes','blocks-desc':'MERGE = vários pais mesclados (BlockDAG). TX = transação de registro. Tempo de bloco: ~1 segundo.',
+  'recent-blocks':'Blocos Recentes','blocks-desc':'MERGE = vários pais mesclados (BlockDAG). TX = transação de registro. Tempo de bloco: __BT__.',
   'loading':'Carregando blocos...','net-info':'Informações de Rede','k-chain':'Nome da Cadeia','k-symbol':'Símbolo','k-btime':'Tempo de Bloco',
   'k-cons':'Consenso','k-nodes':'Nodes Ativos','k-storage':'Armazenamento','add-mm':'🦊 ADICIONAR AO METAMASK','k-dec':'Decimais',
   'btn-add-mm':'+ ADICIONAR REDE AEQUITAS',
@@ -3499,7 +3515,8 @@ pt:{
   'nodes-title':'Nodes Ativos — Topologia de Rede Atual',
   'nodes-desc':'A rede Aequitas opera em três nodes distribuídos geograficamente, participando da produção de blocos, sincronização e API. Nodes adicionais são bem-vindos.',
   'node1':'Node 1 — Railway (Principal)','node1-desc':'API principal · Produtor de blocos · Distribuição UBI · P2P Bootstrap · PostgreSQL · RPC para MetaMask',
-  'node2':'Node 2 — Contabo VPS (Secundário)','node2-desc':'API secundário · Produtor de blocos · Par P2P · Sync HTTP · Estado PostgreSQL compartilhado',
+  'node2':'Node 2 — Contabo VPS (Secundário)','node2-desc':'API secundário · Produtor de blocos · Par P2P · Sync HTTP · Estado PostgreSQL próprio',
+  'node3':'Node 3 — Contabo VPS (Secundário)','node3-desc':'API secundário · Produtor de blocos · Par P2P · Sync HTTP · Estado PostgreSQL próprio',
   'run-node-title':'Execute seu Próprio Node','run-node-desc':'Qualquer um pode executar um node Aequitas — sem permissão, sem stake. Operadores ganham 40% das taxas de swap distribuídas diariamente.',
   'bootstrap-title':'Conectar um Novo Node','bootstrap-desc':'Defina PRIMARY_NODE_URL=https://aequitas.digital no seu ambiente. Seu node sincroniza automaticamente o estado completo da cadeia.',
   'tech-title':'Especificações Técnicas','mm-config':'Configuração MetaMask',
@@ -3599,16 +3616,16 @@ ar:{
   'k-proof':'نظام الأدلة','k-conf':'التأكيد','k-conf-v':'خلال 6 ثوانٍ (كتلة واحدة)',
   'k-sybil':'حماية Sybil','k-sybil-v':'هوية واحدة لكل بيومتري · قفل دائم',
   'live-stats':'إحصائيات السلسلة المباشرة',
-  's-height':'ارتفاع الكتلة','s-height-sub':'كتلة جديدة كل ~6 ث · BlockDAG · إنتاج متوازٍ',
+  's-height':'ارتفاع الكتلة',
   's-humans':'البشر الموثقون','s-humans-sub':'ZKP بيومتري · شخص واحد، محفظة واحدة، إلى الأبد',
   's-supply':'إجمالي العرض','s-supply-sub':'دائماً = البشر × 1,000 AEQ',
   's-index':'مؤشر Aequitas','s-index-sub':'0 = مساواة مثالية · 100 = أقصى عدم مساواة',
-  's-uptime':'وقت التشغيل','s-uptime-sub':'Node v0.3.0 · Railway (Primary) + Contabo VPS (Secondary) · PostgreSQL',
+  's-uptime':'وقت التشغيل','s-uptime-sub':'Node v0.3.0 · Railway (Primary) + 2x Contabo VPS (Secondary) · own PostgreSQL each',
   'ib-poh':'إثبات الإنسانية','ib-poh-t':'يجب على كل حامل AEQ إثبات أنه إنسان حي فريد. لا بوتات ولا شركات ولا ذكاء اصطناعي. البيانات البيومترية لا تغادر جهازك.',
   'ib-fair':'توزيع عادل جذرياً','ib-fair-t':'كل إنسان موثق يحصل على 1,000 AEQ بالضبط عند التسجيل. لا تعدين مسبق. الإجمالي = البشر × 1,000.',
   'ib-dag':'بنية BlockDAG','ib-dag-t':'يمكن إنتاج كتل متعددة في وقت واحد ودمجها. إنتاجية أعلى وزمن استجابة أقل.',
   'ib-gas':'مجاني حقاً','ib-gas-t':'التسجيل وتحويلات AEQ لا تكلف شيئاً. لا حاجة لـ ETH أو BNB أو MATIC أو حساب بنكي.',
-  'recent-blocks':'الكتل الأخيرة','blocks-desc':'MERGE = دمج عدة والدين (BlockDAG). TX = معاملة تسجيل. وقت الكتلة: ~6 ثوانٍ.',
+  'recent-blocks':'الكتل الأخيرة','blocks-desc':'MERGE = دمج عدة والدين (BlockDAG). TX = معاملة تسجيل. وقت الكتلة: __BT__.',
   'loading':'جارٍ تحميل الكتل...','net-info':'معلومات الشبكة','k-chain':'اسم السلسلة','k-symbol':'الرمز','k-btime':'وقت الكتلة',
   'k-cons':'التوافق','k-nodes':'العقد النشطة','k-storage':'التخزين','add-mm':'🦊 إضافة إلى METAMASK','k-dec':'الأرقام العشرية',
   'btn-add-mm':'+ إضافة شبكة AEQUITAS',
@@ -3658,7 +3675,8 @@ ar:{
   'nodes-title':'العقد النشطة — طوبولوجيا الشبكة الحالية',
   'nodes-desc':'تعمل شبكة Aequitas على ثلاث عقد موزعة جغرافياً، تشارك في إنتاج الكتل والمزامنة وخدمة API.',
   'node1':'العقدة 1 — Railway (الأساسية)','node1-desc':'API أساسي · منتج كتل · توزيع UBI · P2P Bootstrap · PostgreSQL · RPC لـ MetaMask',
-  'node2':'العقدة 2 — Contabo VPS (الثانوية)','node2-desc':'API ثانوي · منتج كتل · نظير P2P · مزامنة HTTP · حالة PostgreSQL مشتركة',
+  'node2':'العقدة 2 — Contabo VPS (الثانوية)','node2-desc':'API ثانوي · منتج كتل · نظير P2P · مزامنة HTTP · حالة PostgreSQL خاصة',
+  'node3':'العقدة 3 — Contabo VPS (الثانوية)','node3-desc':'API ثانوي · منتج كتل · نظير P2P · مزامنة HTTP · حالة PostgreSQL خاصة',
   'run-node-title':'قم بتشغيل عقدتك الخاصة','run-node-desc':'يمكن لأي شخص تشغيل عقدة Aequitas — بدون إذن أو حصة. المشغّلون يكسبون 40% من رسوم المبادلة يومياً.',
   'bootstrap-title':'ربط عقدة جديدة','bootstrap-desc':'اضبط PRIMARY_NODE_URL=https://aequitas.digital في بيئتك. عقدتك ستزامن حالة السلسلة الكاملة تلقائياً.',
   'tech-title':'المواصفات التقنية','mm-config':'إعداد MetaMask',
@@ -3758,16 +3776,16 @@ hi:{
   'k-proof':'प्रमाण प्रणाली','k-conf':'पुष्टि','k-conf-v':'6 सेकंड के भीतर (1 ब्लॉक)',
   'k-sybil':'Sybil सुरक्षा','k-sybil-v':'प्रति बायोमेट्रिक एक पहचान · स्थायी लॉक',
   'live-stats':'लाइव चेन सांख्यिकी',
-  's-height':'ब्लॉक हाइट','s-height-sub':'हर ~6s में नया ब्लॉक · BlockDAG · समानांतर उत्पादन',
+  's-height':'ब्लॉक हाइट',
   's-humans':'सत्यापित मनुष्य','s-humans-sub':'बायोमेट्रिक ZKP · एक व्यक्ति, एक वॉलेट, हमेशा के लिए',
   's-supply':'कुल आपूर्ति','s-supply-sub':'हमेशा = मनुष्य × 1,000 AEQ',
   's-index':'Aequitas इंडेक्स','s-index-sub':'0 = पूर्ण समानता · 100 = अधिकतम असमानता',
-  's-uptime':'अपटाइम','s-uptime-sub':'Node v0.3.0 · Railway (Primary) + Contabo VPS (Secondary) · PostgreSQL',
+  's-uptime':'अपटाइम','s-uptime-sub':'Node v0.3.0 · Railway (Primary) + 2x Contabo VPS (Secondary) · own PostgreSQL each',
   'ib-poh':'मानवता का प्रमाण','ib-poh-t':'प्रत्येक AEQ धारक को क्रिप्टोग्राफिक रूप से साबित करना होगा कि वे एक अद्वितीय जीवित मानव हैं। कोई बॉट, कंपनी या AI नहीं। बायोमेट्रिक डेटा कभी डिवाइस नहीं छोड़ता।',
   'ib-fair':'मौलिक रूप से उचित वितरण','ib-fair-t':'प्रत्येक सत्यापित मानव को रजिस्ट्रेशन पर बिल्कुल 1,000 AEQ मिलता है। कोई प्री-माइनिंग नहीं। कुल आपूर्ति = मनुष्य × 1,000।',
   'ib-dag':'BlockDAG आर्किटेक्चर','ib-dag-t':'कई ब्लॉक एक साथ उत्पन्न और मर्ज किए जा सकते हैं। उच्च थ्रूपुट, कम विलंबता।',
   'ib-gas':'सच में निःशुल्क','ib-gas-t':'रजिस्ट्रेशन और AEQ ट्रांसफर में कुछ भी खर्च नहीं होता। ETH, BNB या MATIC की जरूरत नहीं।',
-  'recent-blocks':'हालिया ब्लॉक','blocks-desc':'MERGE = कई पेरेंट मर्ज (BlockDAG)। TX = रजिस्ट्रेशन ट्रांजेक्शन। ब्लॉक समय: ~6 सेकंड।',
+  'recent-blocks':'हालिया ब्लॉक','blocks-desc':'MERGE = कई पेरेंट मर्ज (BlockDAG)। TX = रजिस्ट्रेशन ट्रांजेक्शन। ब्लॉक समय: __BT__।',
   'loading':'ब्लॉक लोड हो रहे हैं...','net-info':'नेटवर्क जानकारी','k-chain':'चेन नाम','k-symbol':'प्रतीक','k-btime':'ब्लॉक समय',
   'k-cons':'सहमति','k-nodes':'सक्रिय नोड्स','k-storage':'स्टोरेज','add-mm':'🦊 METAMASK में जोड़ें','k-dec':'दशमलव',
   'btn-add-mm':'+ AEQUITAS नेटवर्क जोड़ें',
@@ -3817,7 +3835,8 @@ hi:{
   'nodes-title':'सक्रिय नोड्स — वर्तमान नेटवर्क टोपोलॉजी',
   'nodes-desc':'Aequitas नेटवर्क वर्तमान में तीन भौगोलिक रूप से वितरित नोड्स पर चलता है। तीनों ब्लॉक उत्पादन, स्टेट सिंक्रोनाइज़ेशन और API सेवा में भाग लेते हैं।',
   'node1':'नोड 1 — Railway (प्राथमिक)','node1-desc':'प्राथमिक API · ब्लॉक उत्पादक · UBI वितरण · P2P Bootstrap · PostgreSQL · MetaMask के लिए RPC',
-  'node2':'नोड 2 — Contabo VPS (द्वितीयक)','node2-desc':'द्वितीयक API · ब्लॉक उत्पादक · P2P पीयर · HTTP सिंक · साझा PostgreSQL स्टेट',
+  'node2':'नोड 2 — Contabo VPS (द्वितीयक)','node2-desc':'द्वितीयक API · ब्लॉक उत्पादक · P2P पीयर · HTTP सिंक · अपना PostgreSQL स्टेट',
+  'node3':'नोड 3 — Contabo VPS (द्वितीयक)','node3-desc':'द्वितीयक API · ब्लॉक उत्पादक · P2P पीयर · HTTP सिंक · अपना PostgreSQL स्टेट',
   'run-node-title':'अपना नोड चलाएं','run-node-desc':'कोई भी Aequitas नोड चला सकता है — बिना अनुमति, बिना स्टेक। ऑपरेटर दैनिक वितरित स्वैप शुल्क का 40% कमाते हैं।',
   'bootstrap-title':'नया नोड कनेक्ट करें','bootstrap-desc':'PRIMARY_NODE_URL=https://aequitas.digital अपने environment में सेट करें। आपका नोड स्वचालित रूप से पूर्ण चेन स्टेट सिंक करेगा।',
   'tech-title':'तकनीकी विशिष्टताएं','mm-config':'MetaMask कॉन्फ़िगरेशन',
@@ -3971,6 +3990,49 @@ function setLang(lang) {
   }
   const langBanner = document.getElementById('node-guide-lang-banner');
   if (langBanner) langBanner.style.display = (pdfLangs[lang] && lang !== 'en') ? 'block' : 'none';
+  // Re-apply the live block-time value into any translated string that
+  // still has the __BT__ placeholder (see applyBlockTime's own comment) —
+  // setLang() just overwrote innerHTML from the raw T[lang] dictionary
+  // entry, which always contains the literal token, not a resolved value.
+  applyBlockTime(lastKnownBlockTime);
+}
+
+// lastKnownBlockTime + applyBlockTime: __BT__ is a placeholder embedded in
+// every locale's blocks-desc string (and k-btime-val's plain text) instead
+// of a hardcoded number — see this file's own 2026-07-05 audit fix history:
+// BLOCK_TIME changed 4 times in one night and a hardcoded "~6 seconds"
+// stayed wrong in 9 of 12 languages for hours because nothing ever
+// re-checked it. Always reflects /api/status's own block_time field
+// (loadStatus, called every 6s) instead of a number baked in at whatever
+// moment this page happened to be written — this can never go stale again
+// regardless of how many more times BLOCK_TIME changes.
+let lastKnownBlockTime = null;
+const BLOCKTIME_PHRASE = {
+  en: n => '~' + n + ' second' + (n === 1 ? '' : 's'),
+  de: n => '~' + n + ' Sekunde' + (n === 1 ? '' : 'n'),
+  es: n => '~' + n + ' segundo' + (n === 1 ? '' : 's'),
+  pt: n => '~' + n + ' segundo' + (n === 1 ? '' : 's'),
+  fr: n => '~' + n + ' seconde' + (n === 1 ? '' : 's'),
+  it: n => '~' + n + ' second' + (n === 1 ? 'o' : 'i'),
+  ru: n => '~' + n + ' секунд' + (n === 1 ? 'а' : (n >= 2 && n <= 4 ? 'ы' : '')),
+  tr: n => '~' + n + ' saniye',
+  id: n => '~' + n + ' detik',
+  zh: n => '约' + n + '秒',
+  ar: n => '~' + n + ' ثانية',
+  hi: n => '~' + n + ' सेकंड',
+};
+function applyBlockTime(blockTimeSeconds) {
+  if (blockTimeSeconds === undefined || blockTimeSeconds === null) return;
+  lastKnownBlockTime = blockTimeSeconds;
+  const f = BLOCKTIME_PHRASE[curLang] || BLOCKTIME_PHRASE.en;
+  const phrase = f(blockTimeSeconds);
+  document.querySelectorAll('[data-i18n]').forEach(function(el) {
+    if (el.innerHTML.indexOf('__BT__') !== -1) {
+      el.innerHTML = el.innerHTML.split('__BT__').join(phrase);
+    }
+  });
+  const specEl = document.getElementById('k-btime-val');
+  if (specEl) specEl.textContent = phrase + ' average';
 }
 
 function fmt(n) {
@@ -4109,6 +4171,10 @@ async function loadStatus() {
     if (heightSubEl && d.block_time !== undefined) {
       heightSubEl.textContent = '~' + d.block_time + 's · BlockDAG · Parallel production';
     }
+    // Also resolves every __BT__ placeholder (blocks-desc across all
+    // locales, k-btime-val in the Technical Specifications table) — see
+    // applyBlockTime's own comment.
+    applyBlockTime(d.block_time);
     document.getElementById('s-humans').textContent = fmt(d.total_humans);
     document.getElementById('s-supply').textContent = d.total_supply || '—';
     document.getElementById('s-index').textContent = fmt(d.index);
@@ -5540,7 +5606,7 @@ function updateFeeEstimate() {
 async function connectSwapWallet() {
   if (!window.ethereum) {
     const _isMobS = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
-    if (_isMobS) { const _dl = 'https://metamask.app.link/dapp/' + window.location.host; swapLog('🦊 MetaMask nicht gefunden. Mobile: <a href="' + _dl + '" style="color:var(--gold)">In MetaMask App öffnen</a>', 'warn', true); } else { swapLog('🦊 MetaMask not found — <a href="https://metamask.io/download/" target="_blank" style="color:var(--gold)">install MetaMask</a>', 'warn', true); }
+    if (_isMobS) { const _dl = 'https://metamask.app.link/dapp/' + window.location.host; swapLog('🦊 Mobile: <a href="' + _dl + '" style="color:var(--gold)">In MetaMask App öffnen</a>', 'warn', true); } else { swapLog('🦊 MetaMask not found — <a href="https://metamask.io/download/" target="_blank" style="color:var(--gold)">install MetaMask</a>', 'warn', true); }
     return;
   }
   try {
@@ -6478,7 +6544,7 @@ function _buildNodeGuidePDF(lang) {
       sstep2:'Step 2 — Create a PostgreSQL Database',stxt2:'Your node needs a PostgreSQL database for permanent storage. Each node must have its own dedicated database — never share one database between two nodes.',sdb:['RAILWAY: On railway.app, create a new project → + New → Database → Add PostgreSQL. DATABASE_URL is injected automatically when you add the node service to the same project — no manual setup needed.','VPS: Install PostgreSQL directly on the VPS. Run: sudo apt install -y postgresql && sudo systemctl enable --now postgresql','VPS: Create database — sudo -u postgres psql -c "CREATE USER aequitas WITH PASSWORD \'STRONG_PASS\';" && sudo -u postgres psql -c "CREATE DATABASE aequitas OWNER aequitas;"','VPS: Allow Docker containers to connect — echo "host aequitas aequitas 172.17.0.0/16 md5" | sudo tee -a $(sudo -u postgres psql -t -c "SHOW hba_file;" | tr -d \' \') && sudo -u postgres psql -c "ALTER SYSTEM SET listen_addresses=\'*\';" && sudo systemctl restart postgresql','VPS DATABASE_URL format: postgres://aequitas:STRONG_PASS@172.17.0.1:5432/aequitas  (172.17.0.1 = Docker bridge gateway — how containers reach the host)'],
       s4:'Step 4 — Deploy on Railway (Recommended)',r4:'Railway is the fastest way to get running. The free tier meets all requirements. Estimated setup time: 10–15 minutes after completing Steps 1–3.',rs:['In your Railway project (from Step 2), click + New → GitHub Repo','Select your Aequitas fork (from Step 1) — Railway detects the Dockerfile automatically','Railway starts building — the Go compilation takes about 3 minutes','Go to your service → Settings → Variables and add the env vars from Step 3','Set PRIMARY_NODE_URL=https://aequitas.digital so your node syncs from the primary','Set NODE_OPERATOR_WALLET=<your registered AEQ human wallet> to receive daily validator rewards','Set RELAYER_PRIVATE_KEY=<your EOA private key> for signing on-chain registrations','Save variables — Railway redeploys automatically','Watch the deploy logs for: "Aequitas Node Running ✓" and "[NODE] Registered node operator wallet"','Open YOUR-RAILWAY-URL/api/status to confirm the node is live and block height is climbing','Add your node\'s RPC to MetaMask: Chain ID 1926, Symbol AEQ, URL https://YOUR-URL/rpc'],rn:'Railway assigns a random subdomain; custom domains can be set in project settings. Only port 8080 needs to be exposed — P2P is managed internally by the node.',
       s5:'5. Quick Start — Docker / VPS',d5:'For VPS (Contabo, Hetzner, DigitalOcean). Docker + PostgreSQL required. You can reuse Railway\'s PostgreSQL as external DB. NODE_OPERATOR_WALLET must be a registered Aequitas human.',dc:'git clone https://github.com/hanoi96international-gif/Aequitas\ncd Aequitas\ndocker build -t aequitas-node .\n\n# Step 1: First start (no NODE_KEY yet — it will be shown in logs)\ndocker run -d --name aequitas-node --restart unless-stopped \\\n  -e DATABASE_URL="postgresql://user:pass@host:5432/dbname" \\\n  -e RELAYER_PRIVATE_KEY="YOUR_HEX_PRIVATE_KEY" \\\n  -e RELAYER_ADDRESS="0xYOUR_NODE_SIGNING_ADDRESS" \\\n  -e NODE_OPERATOR_WALLET="0xYOUR_REGISTERED_HUMAN_WALLET" \\\n  -e NODE_OPERATOR_BINDING_SIGNATURE="generate-at-/node-binding" \\\n  -e SELF_URL="http://YOUR-SERVER-IP:8080" \\\n  -e PRIMARY_NODE_URL="https://aequitas.digital" \\\n  -e BOOTSTRAP_SNAPSHOT_URL="https://aequitas.digital/api/snapshot" \\\n  -e BOOTSTRAP_SIGNER="0x92cbedec9d348b4762cb9af99500ee6139c5b671" \\\n  -e AUTO_HEAL_ON_DIVERGENCE="true" \\\n  -e SNAPSHOT_TOKEN="optional" \\\n  -p 8080:8080 -p 4001:4001 aequitas-node\n\n# Step 2: Get NODE_KEY from logs (one-time setup):\ndocker logs aequitas-node 2>&1 | grep "SAVE THIS AS NODE_KEY"\n\n# Step 3: Final command with NODE_KEY (use this permanently):\ndocker stop aequitas-node && docker rm aequitas-node\ndocker run -d --name aequitas-node --restart unless-stopped \\\n  -e DATABASE_URL="postgresql://user:pass@host:5432/dbname" \\\n  -e RELAYER_PRIVATE_KEY="YOUR_HEX_PRIVATE_KEY" \\\n  -e RELAYER_ADDRESS="0xYOUR_NODE_SIGNING_ADDRESS" \\\n  -e NODE_OPERATOR_WALLET="0xYOUR_REGISTERED_HUMAN_WALLET" \\\n  -e NODE_OPERATOR_BINDING_SIGNATURE="generate-at-/node-binding" \\\n  -e NODE_KEY="base64-from-step-2" \\\n  -e SELF_URL="http://YOUR-SERVER-IP:8080" \\\n  -e PRIMARY_NODE_URL="https://aequitas.digital" \\\n  -e BOOTSTRAP_SNAPSHOT_URL="https://aequitas.digital/api/snapshot" \\\n  -e BOOTSTRAP_SIGNER="0x92cbedec9d348b4762cb9af99500ee6139c5b671" \\\n  -e AUTO_HEAL_ON_DIVERGENCE="true" \\\n  -e SNAPSHOT_TOKEN="optional" \\\n  -p 8080:8080 -p 4001:4001 aequitas-node\n\n# Open firewall:\nufw allow 8080/tcp && ufw allow 4001/tcp',dn:'Port 8080 required (open inbound). Port 4001 optional (P2P). Tip: use --env-file /root/.aequitas.env instead of inline -e flags to keep secrets out of shell history.',
-      s6:'6. Verify Your Node',v6:'Once running, check these endpoints to confirm the node is synced and healthy.',vc:'# 1. Node status (height should match the primary node within 1-2 blocks)\ncurl https://YOUR-NODE-URL/api/status\n# Expect: { "height": N, "total_humans": N, "index": N }\n\n# 2. EVM JSON-RPC (EVM compatibility check)\ncurl -X POST https://YOUR-NODE-URL/rpc \\\n  -H "Content-Type: application/json" \\\n  -d \'{"jsonrpc":"2.0","method":"eth_blockNumber","params":[],"id":1}\'\n\n# 3. In startup logs, confirm:\n#    [NODE] Registered node operator wallet: 0xYOUR_WALLET\n#    Aequitas Node Running V  (blocks every ~6 seconds)\n\n# MetaMask: RPC URL = https://YOUR-NODE-URL/rpc | Chain ID: 1926 | Symbol: AEQ',
+      s6:'6. Verify Your Node',v6:'Once running, check these endpoints to confirm the node is synced and healthy.',vc:'# 1. Node status (height should match the primary node within 1-2 blocks)\ncurl https://YOUR-NODE-URL/api/status\n# Expect: { "height": N, "total_humans": N, "index": N }\n\n# 2. EVM JSON-RPC (EVM compatibility check)\ncurl -X POST https://YOUR-NODE-URL/rpc \\\n  -H "Content-Type: application/json" \\\n  -d \'{"jsonrpc":"2.0","method":"eth_blockNumber","params":[],"id":1}\'\n\n# 3. In startup logs, confirm:\n#    [NODE] Registered node operator wallet: 0xYOUR_WALLET\n#    Aequitas Node Running V  (Producing blocks every <the current cadence>)\n\n# MetaMask: RPC URL = https://YOUR-NODE-URL/rpc | Chain ID: 1926 | Symbol: AEQ',
       s7:'7. P2P Networking & Sync',p7:'Set PRIMARY_NODE_URL=https://aequitas.digital in your environment. The node auto-registers with the primary on startup, receives the full peer list, and begins syncing. The libp2p multiaddress below is for advanced/manual setups:',pa:'/dns4/reseau.proxy.rlwy.net/tcp/41277/p2p/12D3KooWFuP5HtD1Xy9bj3ZdWL7eisWTx72V26hpGieMmqsGLV5R',pn:'PRIMARY_NODE_URL (HTTPS) is the recommended method. The libp2p multiaddress may change if the primary node is redeployed.',
       s8:'8. Earning Validator Rewards',w8:'Validator rewards come from the Validators Pool (40% of all protocol fees: swap fees, demurrage, wealth cap overflow). Steps to receive rewards:',b8:['First register as a human on Aequitas: install the Android app and complete biometric registration to receive your wallet address and 1,000 AEQ','Set NODE_OPERATOR_WALLET to that registered wallet address in your node\'s environment variables','Start (or restart) your node — it calls RegisterNode() on startup. Confirm in logs: "[NODE] Registered node operator wallet: 0xYOUR_WALLET"','The primary node distributes rewards every 24 h to all registered node operator wallets proportional to blocks produced','Secondary nodes do NOT need to trigger distribution — just keep your node running and synced','No minimum uptime required, but consistently offline nodes contribute less to block production and proportionally less to the pool share'],
       s8b:'Step 5b — Link Wallet for Rewards (Usually Automatic)',w8b:'IMPORTANT: Most users skip this step. If NODE_OPERATOR_WALLET is set in your environment variables, your node auto-registers on startup and you receive rewards automatically. You only need this step if your node logs show "[NODE] validator key not authorized" or if auto-registration failed.',b8b:['CHECK FIRST: Look in your node startup logs for "[PEERS] Registered with primary node" — if you see it, you are done. No manual step needed.','Also check: "[NODE] Registered node operator wallet: 0xYOUR_WALLET" in logs — if present, rewards are set up.','IF MANUAL STEP NEEDED: Go to aequitas.digital → Network tab → scroll to Step 5b in the node guide','Enter your node RELAYER_ADDRESS (shown at startup as "Signing address: 0x...") in the form on the website','Click "Register Validator Key with MetaMask" — the website fetches the challenge automatically and you sign once with your human wallet','No curl command, no SNAPSHOT_TOKEN, no copy-paste required in the new simplified flow','Port 8080 must be open inbound on VPS nodes: ufw allow 8080/tcp'],
@@ -6492,7 +6558,7 @@ function _buildNodeGuidePDF(lang) {
       s3:'3. Umgebungsvariablen',e3:'Diese vor dem Start des Nodes setzen. Mit JA markierte Variablen sind Pflicht; "Für Bel." wird benötigt um Validator-Auszahlungen zu erhalten.',eh:['Variable','Zweck','Pflicht?'],er:[['DATABASE_URL','PostgreSQL-Verbindungsstring: postgres://user:pass@host:5432/aequitas','JA'],['RELAYER_PRIVATE_KEY','Privater Schlüssel (0x...) des EOA der On-Chain-Menschenregistrierungen signiert','JA'],['NODE_OPERATOR_WALLET','Registrierte Mensch-Wallet-Adresse die täglich Validator-Pool-Bel. erhält','Für Bel.'],['RELAYER_ADDRESS','EOA-Adresse passend zu RELAYER_PRIVATE_KEY. Hat Fallback, aber explizit setzen.','Empfohlen'],['PORT','HTTP-Port für API + JSON-RPC. Standard: 8080','NEIN'],['PEER_SECRET','Nicht mehr erforderlich. Validator-Autorisierung läuft jetzt über Identität (NODE_OPERATOR_WALLET + Bindungssignatur) — nichts mehr vom Netzwerkbetreiber nötig.','NEIN'],['NODE_OPERATOR_BINDING_SIGNATURE','Beweist, dass dir NODE_OPERATOR_WALLET gehört — ohne das könnte jemand anders deine Wallet als seinen Node-Betreiber eintragen und dich dauerhaft aussperren. Erzeugen unter /node-binding: dieselbe Wallet verbinden, mit der du registriert bist, signiert eine kurze Nachricht mit der Signing-Adresse deines Nodes. Bei Node-Umzug einfach neu erzeugen — kein Kontakt zum Betreiber nötig.','Für Multi-Node'],['SELF_URL','Eigene öffentliche URL dieses Nodes (z.B. https://mein-node.railway.app oder http://IP:8080). Pflicht — ohne sie startet der Node im Isoliermodus und kann keine Peers erreichen oder erreicht werden.','JA'],['PRIMARY_NODE_URL','Primär-Node für automatische Peer-Discovery. Auf https://aequitas.digital setzen.','Für Multi-Node'],['BOOTSTRAP_SNAPSHOT_URL','Auf https://aequitas.digital/api/snapshot setzen bei einem frischen Node. Lädt den vollständigen Netzwerk-State beim Start herunter (nur wenn DB leer, d.h. 0 Menschen). Behebt StateRoot-Mismatch sofort.','Multi-Node'],['BOOTSTRAP_SIGNER','Ethereum-Signing-Adresse des Primär-Nodes. Aus https://aequitas.digital/api/status → Feld signing_address. Pflicht wenn BOOTSTRAP_SNAPSHOT_URL gesetzt.','Multi-Node'],['SNAPSHOT_TOKEN','Optional. Für das Booten nicht nötig — BOOTSTRAP_SNAPSHOT_URL funktioniert ohne (öffentliche Stufe: alles für korrekten Betrieb Nötige). Nur für den vollständigen Export (Nullifier-Wallet-Verknüpfungen + bio_registrations) erforderlich, für autoritativen Resync eines bereits abgewichenen Nodes.','NEIN'],['PEER_NODES','Statische Peer-URLs (veraltet). PRIMARY_NODE_URL für Auto-Discovery verwenden.','Optional'],['NODE_KEY','Base64-kodierter libp2p-Private-Key. Wenn nicht gesetzt: wird generiert und in stderr ausgegeben als "SAVE THIS AS NODE_KEY: <base64>". Kopieren und setzen.','NEIN'],['IS_PRIMARY_NODE','Entfernt — bewirkt nichts. Nicht setzen.','NEIN'],['DISTRIBUTION_ENABLED','Für normalen Betrieb nicht setzen — alle Nodes sind standardmäßig berechtigt, die tägliche Pool-Verteilung auszulösen. Auf "false" setzen, um diesen Node explizit auszuschließen (z.B. ressourcenbeschränktes Replikat).','NEIN'],['RESET_STATE','"true" löscht die DB beim Start. DESTRUKTIV — niemals in Produktion.','NEIN']],
       s4:'4. Schnellstart — Railway (Empfohlen)',r4:'Railway ist der schnellste Einstieg. Der kostenlose Tarif erfüllt die Mindestanforderungen derzeit. Geschätzte Einrichtungszeit: 10–15 Minuten.',rs:['Repo forken: https://github.com/hanoi96international-gif/Aequitas','Railway-Konto auf railway.app erstellen und neues Projekt starten','"Deploy from GitHub Repo" anklicken und den Fork auswählen','Im Projekt: + New → Database → Add PostgreSQL — DATABASE_URL wird automatisch gesetzt','Service → Settings → Variables aufrufen und Umgebungsvariablen aus Abschnitt 3 hinzufügen','PRIMARY_NODE_URL=https://aequitas.digital setzen','NODE_OPERATOR_WALLET=<deine registrierte AEQ-Mensch-Wallet> für tägliche Validator-Bel. setzen','RELAYER_PRIVATE_KEY=<EOA-Privatschlüssel für On-Chain-Registrierungssignaturen> setzen','"Deploy" klicken — das Dockerfile im Root-Verzeichnis steuert den Build (~3 Min. für Go-Kompilierung)','Deploy-Logs auf "Aequitas Node Running ✓" und "[NODE] Registered node operator wallet" prüfen','DEINE-RAILWAY-URL/api/status aufrufen um Synchronisation des Nodes zu bestätigen','Node-RPC zu MetaMask hinzufügen: Chain-ID 1926, Symbol AEQ, URL https://DEINE-URL/rpc'],rn:'Railway vergibt eine zufällige Subdomain; benutzerdefinierte Domains in den Projekteinstellungen konfigurierbar. Nur Port 8080 muss exponiert werden — P2P wird intern verwaltet.',
       s5:'5. Schnellstart — Docker / VPS',d5:'Für VPS (Contabo, Hetzner, DigitalOcean). Docker + eigene lokale PostgreSQL-Instanz erforderlich (Schritt 2, Option B). NICHT Railway-PostgreSQL von einem anderen VPS aus verwenden — jeder Node braucht seine eigene separate Datenbank. NODE_OPERATOR_WALLET muss ein registrierter Aequitas-Human sein.',dc:'git clone https://github.com/hanoi96international-gif/Aequitas\ncd Aequitas\ndocker build -t aequitas-node .\n\n# Schritt 1: Erster Start (noch kein NODE_KEY — erscheint in den Logs)\ndocker run -d --name aequitas-node --restart unless-stopped \\\n  -e DATABASE_URL="postgresql://user:pass@host:5432/dbname" \\\n  -e RELAYER_PRIVATE_KEY="DEIN_HEX_PRIVATER_SCHLUESSEL" \\\n  -e RELAYER_ADDRESS="0xDEINE_NODE_SIGNING_ADRESSE" \\\n  -e NODE_OPERATOR_WALLET="0xDEINE_REGISTRIERTE_HUMAN_WALLET" \\\n  -e NODE_OPERATOR_BINDING_SIGNATURE="erzeugt-unter-/node-binding" \\\n  -e SELF_URL="http://DEINE-SERVER-IP:8080" \\\n  -e PRIMARY_NODE_URL="https://aequitas.digital" \\\n  -e BOOTSTRAP_SNAPSHOT_URL="https://aequitas.digital/api/snapshot" \\\n  -e BOOTSTRAP_SIGNER="0x92cbedec9d348b4762cb9af99500ee6139c5b671" \\\n  -e AUTO_HEAL_ON_DIVERGENCE="true" \\\n  -e SNAPSHOT_TOKEN="optional" \\\n  -p 8080:8080 -p 4001:4001 aequitas-node\n\n# Schritt 2: NODE_KEY aus Logs kopieren (einmalig):\ndocker logs aequitas-node 2>&1 | grep "SAVE THIS AS NODE_KEY"\n\n# Schritt 3: Endgültiger Befehl mit NODE_KEY (dauerhaft verwenden):\ndocker stop aequitas-node && docker rm aequitas-node\ndocker run -d --name aequitas-node --restart unless-stopped \\\n  -e DATABASE_URL="postgresql://user:pass@host:5432/dbname" \\\n  -e RELAYER_PRIVATE_KEY="DEIN_HEX_PRIVATER_SCHLUESSEL" \\\n  -e RELAYER_ADDRESS="0xDEINE_NODE_SIGNING_ADRESSE" \\\n  -e NODE_OPERATOR_WALLET="0xDEINE_REGISTRIERTE_HUMAN_WALLET" \\\n  -e NODE_OPERATOR_BINDING_SIGNATURE="erzeugt-unter-/node-binding" \\\n  -e NODE_KEY="base64-aus-schritt-2" \\\n  -e SELF_URL="http://DEINE-SERVER-IP:8080" \\\n  -e PRIMARY_NODE_URL="https://aequitas.digital" \\\n  -e BOOTSTRAP_SNAPSHOT_URL="https://aequitas.digital/api/snapshot" \\\n  -e BOOTSTRAP_SIGNER="0x92cbedec9d348b4762cb9af99500ee6139c5b671" \\\n  -e AUTO_HEAL_ON_DIVERGENCE="true" \\\n  -e SNAPSHOT_TOKEN="optional" \\\n  -p 8080:8080 -p 4001:4001 aequitas-node\n\n# Firewall:\nufw allow 8080/tcp && ufw allow 4001/tcp',dn:'Port 8080 muss von außen erreichbar sein (Pflicht). Port 4001 optional (P2P). Tipp: --env-file /root/.aequitas.env statt einzelner -e Flags verwenden — Secrets bleiben aus der Shell-History.',
-      s6:'6. Node verifizieren',v6:'Sobald der Node läuft, diese Endpunkte prüfen um Synchronisation und Gesundheit zu bestätigen.',vc:'# 1. Node-Status (Höhe sollte mit Primär-Node übereinstimmen)\ncurl https://DEINE-NODE-URL/api/status\n# Erwartet: { "height": N, "total_humans": N, "index": N }\n\n# 2. EVM JSON-RPC prüfen\ncurl -X POST https://DEINE-NODE-URL/rpc \\\n  -H "Content-Type: application/json" \\\n  -d \'{"jsonrpc":"2.0","method":"eth_blockNumber","params":[],"id":1}\'\n\n# 3. In Start-Logs bestätigen:\n#    [NODE] Registered node operator wallet: 0xDEINE_WALLET\n#    Aequitas Node Running V  (Blöcke alle ~6 Sekunden)\n\n# MetaMask: RPC-URL https://DEINE-NODE-URL/rpc | Chain-ID: 1926 | Symbol: AEQ',
+      s6:'6. Node verifizieren',v6:'Sobald der Node läuft, diese Endpunkte prüfen um Synchronisation und Gesundheit zu bestätigen.',vc:'# 1. Node-Status (Höhe sollte mit Primär-Node übereinstimmen)\ncurl https://DEINE-NODE-URL/api/status\n# Erwartet: { "height": N, "total_humans": N, "index": N }\n\n# 2. EVM JSON-RPC prüfen\ncurl -X POST https://DEINE-NODE-URL/rpc \\\n  -H "Content-Type: application/json" \\\n  -d \'{"jsonrpc":"2.0","method":"eth_blockNumber","params":[],"id":1}\'\n\n# 3. In Start-Logs bestätigen:\n#    [NODE] Registered node operator wallet: 0xDEINE_WALLET\n#    Aequitas Node Running V  (Producing blocks every <aktuelle Taktung>)\n\n# MetaMask: RPC-URL https://DEINE-NODE-URL/rpc | Chain-ID: 1926 | Symbol: AEQ',
       s7:'7. P2P-Netzwerk & Synchronisation',p7:'PRIMARY_NODE_URL=https://aequitas.digital setzen. Der Node verbindet sich automatisch und synchronisiert den vollständigen Chain-Zustand via libp2p-Gossip (Echtzeit) und HTTP-Pulls von Peers (Fallback). Libp2p-Multiaddresse des Primär-Nodes:',pa:'/dns4/reseau.proxy.rlwy.net/tcp/41277/p2p/12D3KooWFuP5HtD1Xy9bj3ZdWL7eisWTx72V26hpGieMmqsGLV5R',pn:'PRIMARY_NODE_URL (HTTPS) ist die empfohlene Methode. Die libp2p-Multiaddresse kann sich bei einem Neudeployment ändern.',
       s8:'8. Validator-Belöhnungen erhalten',w8:'Validator-Belöhnungen kommen aus dem Validators-Pool (40% aller Protokollgebühren). Schritte um Belöhnungen zu erhalten:',b8:['Zuerst als Mensch auf Aequitas registrieren: Android-App installieren und biometrische Registrierung abschließen um Wallet-Adresse und 1.000 AEQ zu erhalten','NODE_OPERATOR_WALLET auf diese registrierte Wallet-Adresse in den Umgebungsvariablen des Nodes setzen','Node starten (oder neu starten) — er ruft RegisterNode() beim Start auf. In Logs bestätigen: "[NODE] Registered node operator wallet: 0xDEINE_WALLET"','Die tägliche Verteilung wird vom ersten verfügbaren Node ausgelöst — alle registrierten Node-Betreiber-Wallets erhalten proportionale Auszahlungen (kein einzelner zentraler Node nötig)','Sekundäre Nodes müssen die Verteilung NICHT auslösen — einfach den Node laufen lassen und synchronisiert halten','Keine Mindest-Verfügbarkeit erforderlich, aber dauerhaft offline Nodes tragen weniger zur Blockproduktion und zum Pool-Anteil bei'],
       sstep1:'Schritt 1 — Repository auf GitHub forken',stxt1:'Gehe zu github.com/hanoi96international-gif/Aequitas und klicke auf Fork. Das erstellt deine eigene Kopie des Codes, die Railway deployen kann.',sfork:['Öffne: github.com/hanoi96international-gif/Aequitas','Klicke oben rechts auf Fork','Einstellungen unverändert lassen und auf "Create fork" klicken','GitHub erstellt eine Kopie unter deinem Account','Fertig — das nur einmal nötig.'],
