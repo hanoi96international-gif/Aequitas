@@ -104,18 +104,16 @@ CHAIN_ID      = "aequitas-1"
 // ProduceBlock regularly exceeded BLOCK_TIME), and checkpoint resyncs now
 // seed GHOSTDAG sibling blocks, not just the canonical one, so peers no
 // longer permanently orphan on a missing merge parent. With the actual
-// bottlenecks gone, dropped to 1s, then tried 2s and 1.5s as middle
-// grounds when Contabo nodes kept falling behind. Several real fixes
-// landed along the way: a DB index for the serving-node query cost,
-// TuneProposerBreakerForBlockTime scaling the circuit breaker's fail
-// threshold with BLOCK_TIME, and hasAwaitingOrphan closing the real
-// mechanism behind every prior re-divergence (a SelfFetched ancestor
-// fetch still in flight when a resync cleared the orphan queue got
-// force-processed anyway, flooding real-time catch-up with stale work).
-// That last fix extended time-to-divergence from single-digit blocks to
-// 250+ at 2s — the biggest improvement of the night. Back to 1s per
-// explicit operator decision to see how far these fixes actually carry
-// at the original target cadence.
+// bottlenecks gone, and several real fixes landed along the way: a DB
+// index for the serving-node query cost, TuneProposerBreakerForBlockTime
+// scaling the circuit breaker's fail threshold with BLOCK_TIME, and
+// hasAwaitingOrphan closing a real mechanism behind repeated
+// re-divergence (a SelfFetched ancestor fetch still in flight when a
+// resync cleared the orphan queue got force-processed anyway, flooding
+// real-time catch-up with stale work). 1s still fails immediately even
+// with all of that in place — investigating the remaining root cause
+// (see block.go/sync_blocks.go for the active investigation) rather than
+// settling for 2s. Explicit operator decision to keep pushing at 1s.
 BLOCK_TIME = 1 * time.Second
 API_PORT   = 8080
 )
@@ -492,7 +490,7 @@ go func() {
 	time.Sleep(alignDelay)
 	ticker := time.NewTicker(BLOCK_TIME)
 for range ticker.C {
-tickStart := time.Now() // TEMP DIAGNOSTIC (2026-07-02 cadence investigation)
+tickStart := time.Now() // ongoing health check — feeds the slow-tick warning below
 block := bc.ProduceBlock()
 			if block == nil {
 				continue // catch-up gate — skip this tick

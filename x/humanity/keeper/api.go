@@ -510,7 +510,7 @@ func (a *APIServer) handleStatus(w http.ResponseWriter, r *http.Request) {
 		"node_id":      a.p2pNode.GetNodeID(),
 		"uptime":       uptime,
 		"is_primary":   os.Getenv("IS_PRIMARY_NODE") == "true",
-		"block_time":   1, // kept in sync with cmd/aequitasd's BLOCK_TIME constant
+		"block_time":   ConfiguredBlockTimeSeconds(), // read from the real constant (see its own comment) — never hand-typed again
 		"contract_v7":  V7_CONTRACT_ADDR,
 		// P3-8: V5/V6 legacy addresses removed from status — minimise attack surface.
 		"bio_verifier": BIO_VERIFIER_ADDR,
@@ -1968,16 +1968,16 @@ func (a *APIServer) handlePeerRegister(w http.ResponseWriter, r *http.Request) {
 		// keyAuthorized alone (without sigOK or secretOK) must NOT reveal the validator list —
 		// anyone can enumerate validator addresses from /api/blocks.
 		if secretOK || sigOK {
-			json.NewEncoder(w).Encode(map[string]interface{}{"peers": GlobalPeerRegistry.AllPeers(), "validators": validators})
+			json.NewEncoder(w).Encode(map[string]interface{}{"peers": GlobalPeerRegistry.ActivePeers(os.Getenv("SELF_URL")), "validators": validators})
 		} else {
-			json.NewEncoder(w).Encode(map[string]interface{}{"peers": GlobalPeerRegistry.AllPeers()})
+			json.NewEncoder(w).Encode(map[string]interface{}{"peers": GlobalPeerRegistry.ActivePeers(os.Getenv("SELF_URL"))})
 		}
 		return
 	}
 	// No (valid-looking) signing address in this request — URL registration
 	// can only be authorized via the PEER_SECRET bypass here.
 	registerURLIfAuthorized()
-	json.NewEncoder(w).Encode(map[string]interface{}{"peers": GlobalPeerRegistry.AllPeers(), "validators": []string{}})
+	json.NewEncoder(w).Encode(map[string]interface{}{"peers": GlobalPeerRegistry.ActivePeers(os.Getenv("SELF_URL")), "validators": []string{}})
 }
 
 // handleProveProxy proxies POST /api/prove to the proof server backend-side,
@@ -2177,12 +2177,23 @@ func (a *APIServer) handleProofCheckProxy(w http.ResponseWriter, r *http.Request
 	w.Write(respBody)
 }
 
-// handlePeers returns the list of all known peer nodes.
+// handlePeers returns the list of currently-active peer nodes (heartbeat
+// within the last 5 minutes — see ActivePeers), excluding this node itself.
+//
+// FIX (2026-07-05 audit finding): this used to call AllPeers(), which
+// returns every URL EVER registered with zero staleness filter — a node
+// that registered once and then permanently disappeared (crashed,
+// decommissioned, reassigned IP) stayed in every future discovery response
+// forever, with no eviction path. New nodes bootstrapping via this
+// endpoint learned about dead peers indefinitely instead of just the ones
+// actually still running. ActivePeers already existed with the correct
+// 5-minute-heartbeat semantics but had zero callers anywhere in the
+// codebase until now.
 // GET /api/peers
 func (a *APIServer) handlePeers(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Access-Control-Allow-Origin", "*")
-	json.NewEncoder(w).Encode(map[string]interface{}{"peers": GlobalPeerRegistry.AllPeers()})
+	json.NewEncoder(w).Encode(map[string]interface{}{"peers": GlobalPeerRegistry.ActivePeers(os.Getenv("SELF_URL"))})
 }
 
 // handleSigningAddress returns this node's signing address, protected by

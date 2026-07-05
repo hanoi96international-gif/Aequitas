@@ -1540,19 +1540,16 @@ func (dag *BlockDAG) ProduceBlock() *Block {
 if dag.resyncInProgress.Load() {
 	return nil // an in-process self-heal resync is atomically swapping account/DAG state right now — see resyncInProgress's field comment
 }
-produceStart := time.Now() // TEMP DIAGNOSTIC (2026-07-02 cadence investigation)
-// TEMP DIAGNOSTIC (2026-07-03 night, cadence still 3-5s): per-phase timers.
-// The two existing timers only cover the concurrent DB pair and the block
-// save (~1.2s combined) while the whole call measures 4-5s — the missing
-// ~3s must be lock wait or an unmeasured phase. One log line per slow block
-// names the phase so the fix targets the real cost, not a guess.
-var tLock, tGates, tTips, tPair, tGhostdag, tSave time.Time
+// Ongoing health check, not tied to any specific past incident: warn if a
+// single ProduceBlock call takes unusually long, since it holds dag.mu for
+// its entire duration (every other dag.mu consumer — API reads,
+// AddPeerBlock — stalls for the same span). The 2026-07-02/03 cadence
+// investigation that originally added a detailed per-phase breakdown here
+// found and fixed its root cause (batch-fetched GHOSTDAG merge-set lookups,
+// commit 8c9321f); this simple total-time check is what's still worth
+// keeping permanently.
+produceStart := time.Now()
 defer func() {
-	if d := time.Since(produceStart); d > 1500*time.Millisecond && !tSave.IsZero() {
-		fmt.Printf("[BLOCK] ⏱ breakdown: lockWait=%s gates=%s tips+txsnap=%s dbpair=%s ghostdag+hash=%s save=%s post=%s total=%s\n",
-			tLock.Sub(produceStart), tGates.Sub(tLock), tTips.Sub(tGates), tPair.Sub(tTips),
-			tGhostdag.Sub(tPair), tSave.Sub(tGhostdag), time.Since(tSave), d)
-	}
 	if d := time.Since(produceStart); d > 500*time.Millisecond {
 		fmt.Printf("[BLOCK] ⏱ ProduceBlock itself took %s\n", d)
 	}
@@ -1565,7 +1562,6 @@ dag.replayMu.Lock()
 defer dag.replayMu.Unlock()
 dag.mu.Lock()
 defer dag.mu.Unlock()
-tLock = time.Now() // TEMP DIAGNOSTIC: both locks acquired
 
 // P1-05 (audit): halt production when a prior peer-block persistence failure
 // left memory state ahead of durable DB state.
@@ -1694,8 +1690,6 @@ if target := dag.syncTargetHeight.Load(); target > 0 {
 		return nil
 	}
 }
-tGates = time.Now() // TEMP DIAGNOSTIC: all production gates passed
-
 // Collect tips as parents, capped at maxParentsPerBlock.
 // With many validators, every tip would create giant blocks and blow up
 // GHOSTDAG merge-set computation. Select the highest-BlueScore tips
@@ -1775,11 +1769,11 @@ dag.txMu.Unlock()
 // technically merging each other's blocks correctly. Narrowing the
 // primary's own per-block DB cost is what keeps both sides' cadence close
 // enough for that wall-clock alignment to do its job.
-tTips = time.Now() // TEMP DIAGNOSTIC: tips selected + mem TXs snapshotted
 var dbTxs []Transaction
 var pendingTxIDs []int64
 var stateRoot string
-var pendingDur, rootDur time.Duration // TEMP DIAGNOSTIC: split the pair
+var pendingDur, rootDur time.Duration
+dbPairStart := time.Now()
 var cadenceWG sync.WaitGroup
 cadenceWG.Add(2)
 go func() {
@@ -1797,8 +1791,12 @@ go func() {
 	rootDur = time.Since(t0)
 }()
 cadenceWG.Wait()
-tPair = time.Now() // TEMP DIAGNOSTIC: concurrent DB pair finished
-if d := tPair.Sub(tTips); d > 1200*time.Millisecond {
+// Ongoing health check: these two DB round trips run concurrently
+// specifically to shorten how long ProduceBlock holds dag.mu (see the
+// comment above this block) — worth knowing which one is slow if the pair
+// itself is ever slow, permanently, not just for the resolved 2026-07-03
+// cadence incident this concurrency fix was originally built for.
+if d := time.Since(dbPairStart); d > 1200*time.Millisecond {
 	fmt.Printf("[BLOCK] ⏱ dbpair detail: LoadPendingTxs=%s StateRoot=%s\n", pendingDur, rootDur)
 }
 if len(dbTxs) > 0 {
@@ -1839,7 +1837,6 @@ if dag.signingKey != nil {
 // with empty GHOSTDAG fields. dag.mu is already held here; parents are in
 // dag.blocks; the block is not yet in dag.blocks (not needed by compute).
 dag.computeGHOSTDAGState(block)
-tGhostdag = time.Now() // TEMP DIAGNOSTIC: hash+sign+GHOSTDAG done
 
 // P1-06 (audit): persist to DB BEFORE inserting into dag.blocks/dag.tips or
 // returning the block for broadcast. If the DB save fails this block will be
@@ -1852,15 +1849,12 @@ if err := dag.state.SaveBlockWithPendingTxsAtomic(block, pendingTxIDs); err != n
 		block.Height, block.Hash[:16], err)
 	return nil
 }
-// TEMP DIAGNOSTIC (2026-07-02, live cadence investigation): this call runs
-// synchronously while dag.mu is held write-locked, so if it's slow, EVERY
-// other dag.mu consumer (API reads, AddPeerBlock) stalls for the same
-// duration. Logging duration to confirm or rule out Postgres latency as the
-// cause of tonight's sustained ~4s cadence despite idle CPU.
+// Ongoing health check: this call runs synchronously while dag.mu is held
+// write-locked, so if it's slow, EVERY other dag.mu consumer (API reads,
+// AddPeerBlock) stalls for the same duration.
 if saveDur := time.Since(saveStart); saveDur > 500*time.Millisecond {
 	fmt.Printf("[BLOCK] ⏱ SaveBlockWithPendingTxsAtomic took %s for block #%d (dag.mu held throughout)\n", saveDur, block.Height)
 }
-tSave = time.Now() // TEMP DIAGNOSTIC: durable save finished
 
 // P2-06: clear exactly the TXs we snapshotted — any TXs queued AFTER the
 // snapshot (positions [nTxsSnapshotted:]) stay for the next block.
@@ -2558,6 +2552,28 @@ var proposerBreakerFailThreshold = 40
 // TuneProposerBreakerForBlockTime.
 const proposerBreakerTuningBaselineSeconds = 2.0
 
+// configuredBlockTimeSeconds is the real, currently-configured BLOCK_TIME —
+// set once at startup by TuneProposerBreakerForBlockTime (piggybacked there
+// rather than a second main.go call site, since that function is already
+// "call once at startup with the real BLOCK_TIME"). Defaults to the
+// original 2s baseline for any test or code path that never calls it.
+//
+// FIX (2026-07-05 — website audit finding): api.go's /api/status used to
+// hardcode "block_time": 1 as a bare literal — correct only by coincidence,
+// because someone happened to manually update it to match BLOCK_TIME's
+// value at the time. BLOCK_TIME changed 4 separate times the same night;
+// every one of those changes needed this literal hand-edited too, and nothing
+// enforced that the two ever stayed in sync. ConfiguredBlockTimeSeconds()
+// is read directly by the status handler instead, so it can never drift
+// from the actual constant again.
+var configuredBlockTimeSeconds = proposerBreakerTuningBaselineSeconds
+
+// ConfiguredBlockTimeSeconds returns the real, currently-configured
+// BLOCK_TIME in seconds — see configuredBlockTimeSeconds' own comment.
+func ConfiguredBlockTimeSeconds() float64 {
+	return configuredBlockTimeSeconds
+}
+
 // proposerBreakerExtraSafetyFactor further widens both the fail threshold
 // and the orphan grace beyond the "keep the original 2s-baseline wall-clock
 // exposure window constant" calculation below.
@@ -2592,6 +2608,7 @@ func TuneProposerBreakerForBlockTime(blockTime time.Duration) {
 	if secs <= 0 {
 		return
 	}
+	configuredBlockTimeSeconds = secs
 	speedupFactor := proposerBreakerTuningBaselineSeconds / secs
 	// The extra safety margin only applies once we're actually running
 	// FASTER than the baseline this was tuned against — at or below the 2s
