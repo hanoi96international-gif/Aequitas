@@ -116,7 +116,8 @@ header::before{content:'';position:absolute;top:0;left:0;right:0;height:2px;back
 .exp-search input::placeholder{color:var(--muted)}
 .exp-search button{background:linear-gradient(135deg,var(--purple),var(--teal));color:#fff;border:none;border-radius:8px;padding:10px 20px;font-size:0.68rem;font-weight:700;cursor:pointer;letter-spacing:0.5px;white-space:nowrap;transition:opacity 0.2s}
 .exp-search button:hover{opacity:0.85}
-.exp-stats{display:grid;grid-template-columns:repeat(4,1fr);gap:1px;background:var(--border);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden;margin:16px 20px 0}
+.exp-stats{display:grid;grid-template-columns:repeat(5,1fr);gap:1px;background:var(--border);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden;margin:16px 20px 0}
+@media(max-width:860px){.exp-stats{grid-template-columns:repeat(3,1fr)}}
 @media(max-width:600px){.exp-stats{grid-template-columns:repeat(2,1fr)}}
 .exp-stat{background:var(--card2);padding:16px 18px;transition:background 0.2s}
 .exp-stat:hover{background:#202437}
@@ -544,7 +545,7 @@ input[type=number]::-webkit-inner-spin-button{opacity:0.5}
   <div class="exp-stat">
     <div class="exp-stat-lbl" data-i18n="s-height">Latest Block</div>
     <div class="exp-stat-val" id="s-height">—</div>
-    <div class="exp-stat-sub">~6s · BlockDAG · Parallel production</div>
+    <div class="exp-stat-sub" id="s-height-sub">BlockDAG · Parallel production</div>
   </div>
   <div class="exp-stat">
     <div class="exp-stat-lbl" data-i18n="s-humans">Verified Humans</div>
@@ -560,6 +561,11 @@ input[type=number]::-webkit-inner-spin-button{opacity:0.5}
     <div class="exp-stat-lbl" data-i18n="s-uptime">Uptime</div>
     <div class="exp-stat-val" id="s-uptime" style="font-size:0.75rem">—</div>
     <div class="exp-stat-sub">Multi-validator network</div>
+  </div>
+  <div class="exp-stat">
+    <div class="exp-stat-lbl" data-i18n="s-validators">Active Validators</div>
+    <div class="exp-stat-val" id="s-validators">—</div>
+    <div class="exp-stat-sub" id="s-validators-sub">Distinct proposers, recent blocks</div>
   </div>
 </div>
 <!-- GHOSTDAG DAG view: actual parent/merge structure, not just a linear list -->
@@ -4092,6 +4098,17 @@ async function loadStatus() {
     // blocks happens to be locally fetched (see loadBlocks).
     latestChainHeight = d.height;
     document.getElementById('s-height').textContent = fmt(d.height);
+    // FIX (2026-07-05): this used to be a hardcoded "~6s" in the HTML —
+    // BLOCK_TIME changed several times the same night without this text
+    // ever being updated to match, silently going stale on every future
+    // change too. Always reflect the server's own reported cadence
+    // (block_time, kept in sync with cmd/aequitasd's BLOCK_TIME constant —
+    // see api.go) instead of a number baked in at whatever moment this
+    // page happened to be written.
+    const heightSubEl = document.getElementById('s-height-sub');
+    if (heightSubEl && d.block_time !== undefined) {
+      heightSubEl.textContent = '~' + d.block_time + 's · BlockDAG · Parallel production';
+    }
     document.getElementById('s-humans').textContent = fmt(d.total_humans);
     document.getElementById('s-supply').textContent = d.total_supply || '—';
     document.getElementById('s-index').textContent = fmt(d.index);
@@ -4893,6 +4910,18 @@ async function loadBlocks() {
       if (!allBlocks.some(function(x) { return x.hash === b.hash; })) allBlocks.push(b);
     });
     renderDagView(allBlocks, canonicalHashSet);
+    // Active Validators: distinct proposers seen across the raw sibling
+    // window (not just the canonical chain, which only ever shows ONE
+    // winner per height) — this is the real, live GHOSTDAG parallelism
+    // number, computed from data already being fetched rather than a
+    // hardcoded network-size claim that goes stale the moment a validator
+    // joins or drops (see s-height-sub's own 2026-07-05 fix for the exact
+    // failure mode a static number here would repeat).
+    const validatorsEl = document.getElementById('s-validators');
+    if (validatorsEl && rawBlocks && rawBlocks.length) {
+      const distinctProposers = new Set(rawBlocks.map(function(b) { return (b.proposer || '').toLowerCase(); }));
+      validatorsEl.textContent = distinctProposers.size;
+    }
     const dedupedBlocks = canonicalBlocks.slice().sort(function(a, b) { return b.height - a.height; });
     // FIX: this used to show dedupedBlocks.length — the deduped count of
     // whatever page of blocks was just fetched (capped at 50), not the
