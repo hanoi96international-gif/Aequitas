@@ -29,7 +29,15 @@ type Transaction struct {
 	Amount          float64 `json:"amount,omitempty"`
 	AmountOut       float64 `json:"amount_out,omitempty"`       // swap output amount
 	AmountPerHuman  float64 `json:"amount_per_human,omitempty"` // for ubi_distribution
-	LPShares        float64 `json:"lp_shares,omitempty"`        // for add_liquidity
+	LPShares        float64 `json:"lp_shares,omitempty"`        // for add_liquidity; also reused on escrow_move for LP shares force-liquidated due to inactivity (see checkAndMoveToEscrowLocked)
+	// EscrowTUsdConverted carries the tUSD balance an escrow_move TX's wallet
+	// held and had converted to AEQ (via the pool) before the escrow capture
+	// below — see checkAndMoveToEscrowLocked's comment. Secondaries replay
+	// this exact input amount through the same AMM math against their own
+	// current pool state, mirroring how RemoveLiquidityDelta re-derives
+	// output from a primary-supplied input rather than a primary-supplied
+	// output (pool state can only be assumed identical for the INPUT side).
+	EscrowTUsdConverted float64 `json:"escrow_tusd_converted,omitempty"`
 	// FromDemurrageLost/ToDemurrageLost carry the exact AEQ amount the
 	// primary node decayed off Wallet/To via settleDemurrageLocked while
 	// processing this TX. Secondary nodes replay these exact numbers
@@ -4485,7 +4493,7 @@ func (dag *BlockDAG) replayTransactions(block *Block) bool {
 
 		case "escrow_move":
 			wallet := strings.ToLower(tx.Wallet)
-			if err := dag.state.applyEscrowMoveDeltaLocked(wallet, tx.FromDemurrageLost); err != nil {
+			if err := dag.state.applyEscrowMoveDeltaLocked(wallet, tx.FromDemurrageLost, tx.LPShares, tx.EscrowTUsdConverted); err != nil {
 				fmt.Printf("[REPLAY] ✗ escrow_move %s: %v (block #%d) — rolling back whole block\n", wallet, err, block.Height)
 				hardFailure = true
 				continue

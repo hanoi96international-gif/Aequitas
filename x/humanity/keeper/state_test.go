@@ -549,7 +549,7 @@ func TestApplyEscrowMoveDelta_SettlesDemurrageThenZeroesBalance(t *testing.T) {
 	cs := newTestState()
 	addHuman(cs, "0xinactive", 100)
 
-	if err := cs.ApplyEscrowMoveDelta("0xinactive", 30); err != nil {
+	if err := cs.ApplyEscrowMoveDelta("0xinactive", 30, 0, 0); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if cs.accounts["0xinactive"].Balance.Float() != 0 {
@@ -559,7 +559,7 @@ func TestApplyEscrowMoveDelta_SettlesDemurrageThenZeroesBalance(t *testing.T) {
 
 func TestApplyEscrowMoveDelta_UnknownWallet_Errors(t *testing.T) {
 	cs := newTestState()
-	if err := cs.ApplyEscrowMoveDelta("0xdoesnotexist", 0); err == nil {
+	if err := cs.ApplyEscrowMoveDelta("0xdoesnotexist", 0, 0, 0); err == nil {
 		t.Fatal("expected error for unknown wallet, got nil")
 	}
 }

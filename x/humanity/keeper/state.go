@@ -2063,6 +2063,13 @@ type DistributionShare struct {
 	Wallet        string
 	Amount        float64
 	DemurrageLost float64
+	// LPSharesBurned/TUsdConverted are set only by checkAndMoveToEscrowLocked
+	// when a wallet being swept into escrow held wealth as LP shares or tUSD
+	// rather than liquid AEQ — see that function's comment for why these must
+	// be liquidated into Amount before escrowing, and carried here so the
+	// caller can replay the identical liquidation on secondary nodes.
+	LPSharesBurned float64
+	TUsdConverted  float64
 }
 
 // DistributeValidatorsPool credits registered node operators proportional
@@ -3036,7 +3043,14 @@ func (cs *ChainState) RunDailyDistributionAtomic(ubiAt int64) error {
 			return nil, fmt.Errorf("escrow move failed: %w", err)
 		}
 		for _, s := range moved {
-			txs = append(txs, Transaction{Type: "escrow_move", Wallet: s.Wallet, Amount: s.Amount, FromDemurrageLost: s.DemurrageLost})
+			txs = append(txs, Transaction{
+				Type:                "escrow_move",
+				Wallet:              s.Wallet,
+				Amount:              s.Amount,
+				FromDemurrageLost:   s.DemurrageLost,
+				LPShares:            s.LPSharesBurned,
+				EscrowTUsdConverted: s.TUsdConverted,
+			})
 		}
 
 		released, err := cs.releaseEscrowToUBILocked()
@@ -3562,6 +3576,91 @@ func (cs *ChainState) convertTUsdFeeToAEQLocked(feeTUsd float64) (float64, bool)
 	cs.pool.ReserveTUSD = NewDecimal(round6(rT + feeTUsd))
 	cs.pool.ReserveAEQ = NewDecimal(max(0.0, round6(rA-aeqOut)))
 	return round6(aeqOut), true
+}
+
+// liquidateLPSharesForEscrowLocked burns up to sharesToBurn LP shares from
+// acc into Balance+TUsdBalance proportional to the pool's current reserves
+// — the same math as removeLiquidityLocked's normal-case branch, EXCEPT it
+// deliberately does not call touchActivity: that call exists in
+// removeLiquidityLocked because it's a voluntary user action, but this
+// helper exists specifically for checkAndMoveToEscrowLocked's involuntary,
+// inactivity-triggered sweep — resetting LastActivityAt there would erase
+// the very inactivity the sweep exists to act on.
+//
+// Shared by both checkAndMoveToEscrowLocked (primary, burning everything an
+// inactive human holds) and applyEscrowMoveDeltaLocked (secondary replay,
+// burning the exact amount — an input, like RemoveLiquidityDelta's
+// sharesToBurn — the primary already computed) specifically so the two can
+// never independently drift into computing a different result from what
+// should be the same starting pool state; a shared implementation makes
+// that structurally impossible instead of relying on two hand-written copies
+// staying in sync. Caller holds cs.mu and mustn't call this outside that.
+//
+// Returns the actual shares burned (clamped to TotalLPShares, 0 if the pool
+// has no shares or sharesToBurn<=0) and the AEQ/tUSD credited. Persists the
+// pool via savePoolToDB before returning.
+func (cs *ChainState) liquidateLPSharesForEscrowLocked(acc *AccountState, sharesToBurn float64) (burned, outAEQ, outTUSD float64, err error) {
+	if sharesToBurn <= 0 || cs.pool == nil || cs.pool.TotalLPShares.Float() <= 0 {
+		return 0, 0, 0, nil
+	}
+	burned = sharesToBurn
+	if burned > cs.pool.TotalLPShares.Float() {
+		burned = cs.pool.TotalLPShares.Float()
+	}
+	fraction := burned / cs.pool.TotalLPShares.Float()
+	outAEQ = cs.pool.ReserveAEQ.Float() * fraction
+	outTUSD = cs.pool.ReserveTUSD.Float() * fraction
+	if outAEQ > cs.pool.ReserveAEQ.Float() {
+		outAEQ = cs.pool.ReserveAEQ.Float()
+	}
+	if outTUSD > cs.pool.ReserveTUSD.Float() {
+		outTUSD = cs.pool.ReserveTUSD.Float()
+	}
+	acc.LPShares = NewDecimal(max(0.0, round6(acc.LPShares.Float()-burned)))
+	acc.Balance = NewDecimal(round6(acc.Balance.Float() + outAEQ))
+	acc.TUsdBalance = NewDecimal(round6(acc.TUsdBalance.Float() + outTUSD))
+	cs.pool.ReserveAEQ = NewDecimal(max(0.0, round6(cs.pool.ReserveAEQ.Float()-outAEQ)))
+	cs.pool.ReserveTUSD = NewDecimal(max(0.0, round6(cs.pool.ReserveTUSD.Float()-outTUSD)))
+	cs.pool.TotalLPShares = NewDecimal(max(0.0, round6(cs.pool.TotalLPShares.Float()-burned)))
+	if err := cs.savePoolToDB(); err != nil {
+		return burned, outAEQ, outTUSD, fmt.Errorf("could not save pool after LP liquidation: %w", err)
+	}
+	return burned, outAEQ, outTUSD, nil
+}
+
+// convertTUsdForEscrowLocked converts up to tusdAmount of acc's TUsdBalance
+// into AEQ via the pool's standard AMM swap math (paying the normal
+// swapFeeBps fee, distributed the normal way via distributeSwapFee) — shared
+// by checkAndMoveToEscrowLocked and applyEscrowMoveDeltaLocked for the same
+// determinism reason as liquidateLPSharesForEscrowLocked above.
+//
+// Returns (0, false, nil) without changing anything if tusdAmount<=0, the
+// pool lacks either reserve, or converting would drain the AEQ reserve —
+// callers decide what a false ok means for them: the primary simply doesn't
+// convert this cycle (retried on the next daily sweep), while a secondary
+// replaying a primary-reported nonzero conversion must treat false as a hard
+// pool-state-divergence error, not a silent skip. Caller holds cs.mu.
+func (cs *ChainState) convertTUsdForEscrowLocked(acc *AccountState, tusdAmount float64) (outAEQ float64, ok bool, err error) {
+	if tusdAmount <= 0 || cs.pool == nil || cs.pool.ReserveAEQ.Float() <= 0 || cs.pool.ReserveTUSD.Float() <= 0 {
+		return 0, false, nil
+	}
+	fee := tusdAmount * float64(swapFeeBps) / 10000.0
+	amountInAfterFee := tusdAmount - fee
+	outAEQ = AMMSwapOut(cs.pool.ReserveTUSD, cs.pool.ReserveAEQ, NewDecimal(amountInAfterFee)).Float()
+	if outAEQ >= cs.pool.ReserveAEQ.Float() {
+		return 0, false, nil
+	}
+	cs.pool.ReserveTUSD = NewDecimal(round6(cs.pool.ReserveTUSD.Float() + amountInAfterFee))
+	cs.pool.ReserveAEQ = NewDecimal(max(0.0, round6(cs.pool.ReserveAEQ.Float()-outAEQ)))
+	acc.TUsdBalance = NewDecimal(max(0.0, round6(acc.TUsdBalance.Float()-tusdAmount)))
+	acc.Balance = NewDecimal(round6(acc.Balance.Float() + outAEQ))
+	if err := cs.savePoolToDB(); err != nil {
+		return outAEQ, true, fmt.Errorf("could not save pool after tUSD conversion: %w", err)
+	}
+	if err := cs.distributeSwapFee(fee, false); err != nil {
+		return outAEQ, true, fmt.Errorf("could not distribute swap fee: %w", err)
+	}
+	return outAEQ, true, nil
 }
 
 // distributeSwapFee splits the fee collected from a swap across the four
@@ -5357,14 +5456,21 @@ func (cs *ChainState) applyLPPoolZeroDeltaLocked() error {
 // escrow_accounts row at all — only the balance zeroing affects StateRoot,
 // and secondaries never independently decide who to escrow (see
 // main.go's primary-only gate).
-func (cs *ChainState) ApplyEscrowMoveDelta(wallet string, demurrageLost float64) error {
+//
+// lpSharesBurned/tusdConverted (beta-launch audit 2026-07-05) carry the exact
+// LP-shares-burned input the primary computed in checkAndMoveToEscrowLocked
+// when a wallet's wealth wasn't (only) liquid AEQ — see that function's
+// comment. Re-derived here against THIS node's own pool state, the same way
+// removeLiquidityDeltaLocked re-derives output from a primary-supplied input
+// rather than trusting a primary-supplied output.
+func (cs *ChainState) ApplyEscrowMoveDelta(wallet string, demurrageLost, lpSharesBurned, tusdConverted float64) error {
 	cs.mu.Lock()
 	defer cs.mu.Unlock()
-	return cs.applyEscrowMoveDeltaLocked(wallet, demurrageLost)
+	return cs.applyEscrowMoveDeltaLocked(wallet, demurrageLost, lpSharesBurned, tusdConverted)
 }
 
 // applyEscrowMoveDeltaLocked is ApplyEscrowMoveDelta's body — see applyTransferDeltaLocked's comment.
-func (cs *ChainState) applyEscrowMoveDeltaLocked(wallet string, demurrageLost float64) error {
+func (cs *ChainState) applyEscrowMoveDeltaLocked(wallet string, demurrageLost, lpSharesBurned, tusdConverted float64) error {
 	wallet = strings.ToLower(wallet)
 	acc, ok := cs.accounts[wallet]
 	if !ok {
@@ -5373,7 +5479,35 @@ func (cs *ChainState) applyEscrowMoveDeltaLocked(wallet string, demurrageLost fl
 	if err := cs.applyDemurrageLossLocked(acc, demurrageLost); err != nil {
 		return fmt.Errorf("escrow move: could not settle %s demurrage: %w", wallet, err)
 	}
+
+	// Replay the primary's LP liquidation / tUSD conversion via the exact
+	// same shared math checkAndMoveToEscrowLocked used (guardian.go) — see
+	// liquidateLPSharesForEscrowLocked/convertTUsdForEscrowLocked's own
+	// comments for why a shared implementation, not a hand-written copy, is
+	// what makes this structurally guaranteed to match the primary.
+	if lpSharesBurned > 0 {
+		burned, _, _, err := cs.liquidateLPSharesForEscrowLocked(acc, lpSharesBurned)
+		if err != nil {
+			return fmt.Errorf("escrow move: could not replay LP liquidation for %s: %w", wallet, err)
+		}
+		if burned <= 0 {
+			return fmt.Errorf("escrow move: primary reported %.6f LP shares burned for %s but this node's pool has none — pool state has diverged", lpSharesBurned, wallet)
+		}
+	}
+
+	if tusdConverted > 0 {
+		_, ok, err := cs.convertTUsdForEscrowLocked(acc, tusdConverted)
+		if err != nil {
+			return fmt.Errorf("escrow move: could not replay tUSD conversion for %s: %w", wallet, err)
+		}
+		if !ok {
+			return fmt.Errorf("escrow move: primary reported a %.6f tUSD conversion for %s that this node's pool cannot replay — pool state has diverged", tusdConverted, wallet)
+		}
+	}
+
 	acc.Balance = NewDecimal(0)
+	acc.TUsdBalance = NewDecimal(0)
+	acc.LPShares = NewDecimal(0)
 	// FIX (audit recheck2, P0 #3): see ApplyTransferDelta's comment.
 	if err := cs.saveAccountToDB(acc); err != nil {
 		return fmt.Errorf("escrow move: could not save account %s: %w", wallet, err)

@@ -376,10 +376,12 @@ func (cs *ChainState) checkAndMoveToEscrowLocked() ([]DistributionShare, error) 
 	now := time.Now().Unix()
 
 	type escrowEntry struct {
-		acc           AccountState
-		balance       float64
-		demurrageLost float64
-		inactiveSince string
+		acc            AccountState
+		balance        float64
+		demurrageLost  float64
+		lpSharesBurned float64
+		tusdConverted  float64
+		inactiveSince  string
 	}
 	var toEscrow []escrowEntry
 	for addr, acc := range cs.accounts {
@@ -389,8 +391,15 @@ func (cs *ChainState) checkAndMoveToEscrowLocked() ([]DistributionShare, error) 
 		if acc.LastActivityAt == 0 || acc.LastActivityAt > threshold {
 			continue
 		}
-		bal := effectiveBalance(acc).Float()
-		if bal <= 0 {
+		// FIX (P2, beta-launch audit 2026-07-05): this used to gate purely on
+		// effectiveBalance() (liquid AEQ), so an inactive human who had moved
+		// their entire AEQ into LP shares or tUSD — balance 0, but real wealth
+		// nonzero — was silently skipped forever: never escrowed, never
+		// recycled to the UBI pool, permanently opting them out of the
+		// inactivity-recovery policy this whole mechanism exists to guarantee.
+		// Consider any form of wealth, not just liquid Balance.
+		hasWealth := effectiveBalance(acc).Float() > 0 || acc.LPShares.Float() > 0 || acc.TUsdBalance.Float() > 0
+		if !hasWealth {
 			continue
 		}
 		var existing float64
@@ -400,13 +409,59 @@ func (cs *ChainState) checkAndMoveToEscrowLocked() ([]DistributionShare, error) 
 			continue // already escrowed
 		}
 
-		// Settle demurrage first so Balance reflects reality.
+		// Settle demurrage on the pre-existing liquid Balance first, before
+		// any liquidation below adds newly-converted funds to it — otherwise
+		// funds that were never idle AEQ (they were LP shares/tUSD) would get
+		// retroactively decayed as if they had been.
 		lost, err := cs.settleDemurrageLocked(acc)
 		if err != nil {
 			return nil, fmt.Errorf("could not settle demurrage for %s: %w", addr, err)
 		}
-		bal = round6(acc.Balance.Float())
-		if bal <= 0 {
+
+		// Liquidate LP shares and tUSD into Balance first, via the same shared
+		// helpers applyEscrowMoveDeltaLocked uses to replay this exact result
+		// on secondary nodes — see those functions' comments for why this
+		// must be shared code, not two hand-written copies of the same math.
+		var lpSharesBurned, tusdConverted float64
+		if acc.LPShares.Float() > 0 {
+			burned, outAEQ, outTUSD, lerr := cs.liquidateLPSharesForEscrowLocked(acc, acc.LPShares.Float())
+			if lerr != nil {
+				return nil, fmt.Errorf("could not liquidate LP shares for %s: %w", addr, lerr)
+			}
+			lpSharesBurned = burned
+			if burned > 0 {
+				fmt.Printf("[ESCROW] Liquidated %.6f LP shares → %.6f AEQ + %.6f tUSD for inactive %s\n", burned, outAEQ, outTUSD, addr)
+			}
+		}
+		// Convert any tUSD holdings (pre-existing plus whatever the LP
+		// liquidation above just credited) to AEQ too, so the ENTIRE wealth —
+		// not just the liquid-AEQ portion — is captured by the escrow
+		// mechanism below, which only understands Balance.
+		if tusdBefore := acc.TUsdBalance.Float(); tusdBefore > 0 {
+			outAEQ, ok, cerr := cs.convertTUsdForEscrowLocked(acc, tusdBefore)
+			if cerr != nil {
+				return nil, fmt.Errorf("could not convert tUSD for %s: %w", addr, cerr)
+			}
+			if ok {
+				// convertTUsdForEscrowLocked fully consumes the requested
+				// amount on success, so the input we passed IS what converted.
+				tusdConverted = tusdBefore
+				fmt.Printf("[ESCROW] Converted %.6f tUSD → %.6f AEQ for inactive %s\n", tusdBefore, outAEQ, addr)
+			}
+			// !ok: pool too shallow to absorb this without breaching its own
+			// reserve — leave the tUSD as-is rather than corrupt the pool.
+			// Retried on the next daily sweep once liquidity allows.
+		}
+
+		bal := round6(acc.Balance.Float())
+		// FIX (P3): a liquidation above may have already mutated cs.pool (and
+		// persisted it to DB) even if the resulting balance rounds to 0 AEQ
+		// (a dust-sized LP/tUSD position) — in that case we must still record
+		// this wallet below so a Transaction carrying LPSharesBurned/
+		// TUsdConverted gets emitted for secondary nodes to replay the exact
+		// same pool mutation. Only truly skipping (no pool mutation at all,
+		// nothing to move) is safe to fall through here.
+		if bal <= 0 && lpSharesBurned <= 0 && tusdConverted <= 0 {
 			continue
 		}
 
@@ -414,10 +469,12 @@ func (cs *ChainState) checkAndMoveToEscrowLocked() ([]DistributionShare, error) 
 		acc.Balance = NewDecimal(0)
 
 		toEscrow = append(toEscrow, escrowEntry{
-			acc:           *acc,
-			balance:       bal,
-			demurrageLost: lost.Float(),
-			inactiveSince: inactiveSince,
+			acc:            *acc,
+			balance:        bal,
+			demurrageLost:  lost.Float(),
+			lpSharesBurned: lpSharesBurned,
+			tusdConverted:  tusdConverted,
+			inactiveSince:  inactiveSince,
 		})
 	}
 
@@ -444,7 +501,13 @@ func (cs *ChainState) checkAndMoveToEscrowLocked() ([]DistributionShare, error) 
 		cs.accounts[entry.acc.Address] = &acc
 		fmt.Printf("[ESCROW] ✓ Moved %.6f AEQ from %s to escrow (inactive since %s)\n",
 			entry.balance, entry.acc.Address, entry.inactiveSince)
-		moved = append(moved, DistributionShare{Wallet: entry.acc.Address, Amount: entry.balance, DemurrageLost: entry.demurrageLost})
+		moved = append(moved, DistributionShare{
+			Wallet:         entry.acc.Address,
+			Amount:         entry.balance,
+			DemurrageLost:  entry.demurrageLost,
+			LPSharesBurned: entry.lpSharesBurned,
+			TUsdConverted:  entry.tusdConverted,
+		})
 	}
 	return moved, nil
 }
