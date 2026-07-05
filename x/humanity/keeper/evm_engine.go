@@ -25,6 +25,7 @@ func NewEVMEngine(cs *ChainState) (*EVMEngine, error) {
 cs.InitV6StateTables()
 e := &EVMEngine{chainState: cs}
 e.RestoreV6FromMirror()
+checkV7SlotsMatchDeployedVersion()
 return e, nil
 }
 
@@ -407,6 +408,39 @@ var v7AddressMappingSlots = []int64{
 
 // v7ArrayBaseSlots: the 10 fixed-size-array slots (CAPS[5] + THRESHOLDS[5]).
 var v7ArrayBaseSlots = []int64{17, 18, 19, 20, 21, 22, 23, 24, 25, 26}
+
+// v7SlotsVerifiedForVersion must be bumped by hand alongside v7SimpleSlots/
+// v7AddressMappingSlots/v7ArrayBaseSlots whenever AequitasV7.sol's storage
+// layout changes (a new state variable added/removed/reordered) — see
+// checkV7SlotsMatchDeployedVersion, called at startup, which turns a
+// forgotten update here into a loud warning instead of the silent
+// data-loss failure mode described above these slot lists: a future
+// contract upgrade that adds a 14th address-mapping or 6th array would have
+// every write to it succeed in the live EVM call but never persist, with
+// nothing surfacing the mismatch until someone eventually notices a field
+// that "never saves" (beta-launch audit 2026-07-05).
+const v7SlotsVerifiedForVersion = "v7.9-register-removal-guardian-toctou-ubi-leak"
+
+// checkV7SlotsMatchDeployedVersion prints a prominent warning if
+// V7ContractVersion has been bumped (contract_deploy.go) without a
+// corresponding update to v7SlotsVerifiedForVersion above — see that
+// constant's comment. Deliberately does not panic/abort: a mismatch means
+// "verify the slot lists are still complete," not "the node cannot run" —
+// most version bumps only change function logic, not storage layout, so a
+// human still needs to judge whether THIS particular bump added new state.
+func checkV7SlotsMatchDeployedVersion() {
+	if !v7SlotsVerifiedFor(V7ContractVersion) {
+		fmt.Printf("[EVM] ⚠ WARNING: V7ContractVersion (%q) has changed since the storage-slot persistence lists in evm_engine.go were last verified (%q). If this version added, removed, or reordered any state variable in AequitasV7.sol, update v7SimpleSlots/v7AddressMappingSlots/v7ArrayBaseSlots (and v7SlotsVerifiedForVersion) accordingly — otherwise writes to any new slot will silently never persist.\n",
+			V7ContractVersion, v7SlotsVerifiedForVersion)
+	}
+}
+
+// v7SlotsVerifiedFor is checkV7SlotsMatchDeployedVersion's testable
+// comparison, split out so a unit test can verify the match/mismatch logic
+// itself without needing to capture stdout.
+func v7SlotsVerifiedFor(deployedVersion string) bool {
+	return deployedVersion == v7SlotsVerifiedForVersion
+}
 
 // extractTouchedEntities returns which addresses and commitments a given
 // call may have modified, based on an explicit, verified table of byte

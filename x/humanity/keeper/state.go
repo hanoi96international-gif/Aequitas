@@ -520,6 +520,16 @@ WHERE commitment IN (
 	// Partial index on is_human lets distributeUBIPoolLocked enumerate all
 	// registered humans from the DB without a full chain_accounts table scan.
 	dbExec(`CREATE INDEX IF NOT EXISTS idx_chain_accounts_is_human ON chain_accounts(address) WHERE is_human = true`)
+	// FIX (P3, beta-launch audit 2026-07-05): distributeLPPoolLocked and
+	// checkAndMoveToEscrowLocked used to only iterate cs.accounts (the
+	// in-memory cache), so a genuinely-inactive human or LP holder whose
+	// account had been evicted (or never loaded) beyond maxInMemAccounts was
+	// silently skipped — a scale-dependent correctness gap, same class as the
+	// one distributeUBIPoolLocked already closed above by querying the DB
+	// directly. These two indexes make the equivalent DB queries fast for
+	// those two functions too — see their own comments.
+	dbExec(`CREATE INDEX IF NOT EXISTS idx_chain_accounts_lp_shares ON chain_accounts(address) WHERE lp_shares > 0`)
+	dbExec(`CREATE INDEX IF NOT EXISTS idx_chain_accounts_is_human_activity ON chain_accounts(last_activity_at) WHERE is_human = true`)
 	// Single-row table holding the AEQ<->tUSD pool reserves. A fixed id=1 row
 	// is used instead of a key-value table since there's only ever one pool
 	// right now — simpler queries, and trivial to extend to multiple pools
@@ -2220,16 +2230,47 @@ func (cs *ChainState) DistributeLPPool() []DistributionShare {
 func (cs *ChainState) distributeLPPoolLocked() ([]DistributionShare, error) {
 	// Collect all LP holders and their share counts BEFORE settling demurrage,
 	// so we know who participates.
+	//
+	// FIX (P3, beta-launch audit 2026-07-05): this used to only iterate
+	// cs.accounts (the in-memory cache) — an LP holder whose account had
+	// been evicted (or never loaded) beyond maxInMemAccounts was silently
+	// skipped, never receiving their share and permanently understating
+	// totalShares. Query the DB directly instead, same fix already applied
+	// to distributeUBIPoolLocked — see idx_chain_accounts_lp_shares.
 	type lpHolder struct {
 		addr   string
 		shares float64
 	}
 	var holders []lpHolder
 	totalShares := 0.0
-	for addr, acc := range cs.accounts {
-		if acc.LPShares > 0 {
-			holders = append(holders, lpHolder{addr, acc.LPShares.Float()})
-			totalShares += acc.LPShares.Float()
+	if cs.db != nil {
+		rows, err := cs.db.Query(`SELECT lower(address) FROM chain_accounts WHERE lp_shares > 0`)
+		if err != nil {
+			return nil, fmt.Errorf("could not enumerate LP holders: %w", err)
+		}
+		var addrs []string
+		for rows.Next() {
+			var addr string
+			rows.Scan(&addr)
+			if addr != "" {
+				addrs = append(addrs, addr)
+			}
+		}
+		rows.Close()
+		for _, addr := range addrs {
+			cs.ensureAccountLoaded(addr) // page in cold accounts so LP distribution works beyond the in-memory cap
+			if acc, ok := cs.accounts[addr]; ok && acc.LPShares.Float() > 0 {
+				holders = append(holders, lpHolder{addr, acc.LPShares.Float()})
+				totalShares += acc.LPShares.Float()
+			}
+		}
+	} else {
+		// No DB (unit tests): fall back to in-memory iteration.
+		for addr, acc := range cs.accounts {
+			if acc.LPShares > 0 {
+				holders = append(holders, lpHolder{addr, acc.LPShares.Float()})
+				totalShares += acc.LPShares.Float()
+			}
 		}
 	}
 	if totalShares <= 0 || len(holders) == 0 {

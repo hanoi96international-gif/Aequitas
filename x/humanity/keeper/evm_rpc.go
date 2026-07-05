@@ -9,11 +9,77 @@ import (
 	"net/http"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/rlp"
 )
+
+// rpcRateLimit bounds /rpc requests per IP. FIX (P1, beta-launch audit
+// 2026-07-05): unlike every other mutating/expensive endpoint in this
+// codebase, /rpc had no rate limiting at all — only a per-batch size cap
+// (maxBatchSize) and a 1 MB body limit. Every single request, including a
+// read-only eth_call, triggers EVMEngine.newStateDB() to fully reload every
+// account balance and every contract's entire storage from Postgres (see
+// that function's own comment on the scaling cost this carries as the
+// registered-human count grows) — with no rate limit, an unauthenticated
+// caller could fire requests as fast as the network allows, each one
+// forcing that full reload. A sliding-window counter (not the single-
+// cooldown-timestamp pattern used elsewhere in this codebase) since a
+// legitimate wallet/dashboard needs to make several RPC calls per page
+// load, not just one every few seconds.
+var rpcRateLimit sync.Map // ip -> *rpcRateLimitEntry
+
+type rpcRateLimitEntry struct {
+	mu          sync.Mutex
+	windowStart time.Time
+	count       int
+}
+
+const rpcRateLimitWindow = 10 * time.Second
+const rpcRateLimitMax = 200 // generous headroom for a busy dashboard polling several endpoints; still bounds worst-case newStateDB() reload spam per IP
+
+// rpcRateLimited reports whether ip has exceeded rpcRateLimitMax requests
+// within the current rpcRateLimitWindow, incrementing its counter either way.
+func rpcRateLimited(ip string) bool {
+	v, _ := rpcRateLimit.LoadOrStore(ip, &rpcRateLimitEntry{windowStart: time.Now()})
+	entry := v.(*rpcRateLimitEntry)
+	entry.mu.Lock()
+	defer entry.mu.Unlock()
+	if time.Since(entry.windowStart) > rpcRateLimitWindow {
+		entry.windowStart = time.Now()
+		entry.count = 0
+	}
+	entry.count++
+	return entry.count > rpcRateLimitMax
+}
+
+func init() {
+	// Periodically clean up expired rate-limit entries to prevent unbounded
+	// growth — mirrors registerRateLimit's own cleanup goroutine
+	// (register.go). Safe to delete an entry a concurrent request is mid-way
+	// through reading: the counter's only job is "count within window", so
+	// an orphaned entry simply gets garbage collected once released; unlike
+	// registerWalletLocks' mutex (see lockWallet's comment), there's no
+	// exclusion property that a stale reference could silently break.
+	go func() {
+		for {
+			time.Sleep(60 * time.Second)
+			now := time.Now()
+			rpcRateLimit.Range(func(k, v interface{}) bool {
+				entry := v.(*rpcRateLimitEntry)
+				entry.mu.Lock()
+				stale := now.Sub(entry.windowStart) > 2*rpcRateLimitWindow
+				entry.mu.Unlock()
+				if stale {
+					rpcRateLimit.Delete(k)
+				}
+				return true
+			})
+		}
+	}()
+}
 
 // EVMRPCServer handles Ethereum JSON-RPC requests
 type EVMRPCServer struct {
@@ -62,6 +128,11 @@ func (s *EVMRPCServer) handleRPC(w http.ResponseWriter, r *http.Request) {
 
 	if r.Method == "OPTIONS" {
 		w.WriteHeader(200)
+		return
+	}
+
+	if rpcRateLimited(clientIP(r)) {
+		writeError(w, -32005, "rate limited: too many requests, try again shortly", nil)
 		return
 	}
 

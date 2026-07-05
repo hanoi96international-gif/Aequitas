@@ -383,9 +383,33 @@ func (cs *ChainState) checkAndMoveToEscrowLocked() ([]DistributionShare, error) 
 		tusdConverted  float64
 		inactiveSince  string
 	}
+	// FIX (P3, beta-launch audit 2026-07-05): this used to only iterate
+	// cs.accounts (the in-memory cache) — a genuinely-inactive human whose
+	// account had been evicted (or never loaded) beyond maxInMemAccounts was
+	// silently never considered for escrow. Enumerate candidates from the DB
+	// instead, same fix already applied to distributeUBIPoolLocked/
+	// distributeLPPoolLocked — see idx_chain_accounts_is_human_activity.
+	var candidateAddrs []string
+	rows, err := cs.db.Query(`SELECT lower(address) FROM chain_accounts WHERE is_human = true AND last_activity_at > 0`)
+	if err != nil {
+		return nil, fmt.Errorf("could not enumerate human accounts for escrow check: %w", err)
+	}
+	for rows.Next() {
+		var addr string
+		rows.Scan(&addr)
+		if addr != "" {
+			candidateAddrs = append(candidateAddrs, addr)
+		}
+	}
+	rows.Close()
+	for _, addr := range candidateAddrs {
+		cs.ensureAccountLoaded(addr) // page in cold accounts so escrow sweeps work beyond the in-memory cap
+	}
+
 	var toEscrow []escrowEntry
-	for addr, acc := range cs.accounts {
-		if !acc.IsHuman {
+	for _, addr := range candidateAddrs {
+		acc, ok := cs.accounts[addr]
+		if !ok || !acc.IsHuman {
 			continue
 		}
 		if acc.LastActivityAt == 0 || acc.LastActivityAt > threshold {
