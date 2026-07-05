@@ -660,71 +660,23 @@ func (s *EVMRPCServer) sendRawTransaction(params []json.RawMessage) (interface{}
 	// Only allow calls to known, Go-state-integrated selectors to prevent
 	// Go/EVM ledger divergence. Unknown selectors could change EVM state
 	// without updating Go-state (PostgreSQL), creating permanent inconsistency.
-	var knownPublicSelectors = map[string]bool{
-		// transfer(address,uint256) — intercepted above and routed through Go-state
-		"a9059cbb": true,
-		// Read-only ERC-20 calls: safe to forward to EVM
-		// NOTE: approve (095ea7b3) removed — it writes EVM state (allowance mapping)
-		// but the V7 contract has no transferFrom, making approve/allowance a dead
-		// flow. Keeping it in the allow-list is misleading.
-		"70a08231": true, // balanceOf
-		"dd62ed3e": true, // allowance (read-only view)
-		"18160ddd": true, // totalSupply
-		"06fdde03": true, // name
-		"95d89b41": true, // symbol
-		"313ce567": true, // decimals
-		// NOTE: registerWithSig (13b81eb0) is intentionally NOT listed here.
-		// Public callers must use /api/register which updates BOTH EVM and Go-state.
-		// A raw /rpc call to registerWithSig would update only the EVM contract,
-		// leaving RegisterHuman, bio_registrations, bio_hashes, and Go-balance unset.
-		// Selector: registerWithSig(uint256[2],uint256[2][2],uint256[2],uint256[2],address,bytes,bytes32)
-	}
+	// FIX (G9, beta-launch audit 2026-07-05): this check now lives in
+	// checkPersistedCallAllowed (evm_engine.go), shared with CallContract's
+	// own defense-in-depth copy of the same check — see that function's
+	// comment for why. Preserves this function's own receipt-writing
+	// behavior (SaveTxReceipt on every reject path) around the shared
+	// decision.
 	if tx.To() != nil && len(tx.Data()) >= 4 {
-		sel := hex.EncodeToString(tx.Data()[:4])
-		isV7 := strings.ToLower(tx.To().Hex()) == strings.ToLower(V7_CONTRACT_ADDR)
-		// FIX: previously this allowlist gate only fired `if isV7`, leaving any
-		// OTHER deployed contract (the relayer can deploy arbitrary bytecode,
-		// see the deployment branch above) wide open to arbitrary calldata via
-		// a signed raw tx with persist=true. The storage-persistence logic
-		// downstream (dumpAndPersistStorageWithNullifier and the v7*Slots
-		// tables in evm_engine.go) is hardcoded to V7's specific slot layout —
-		// calling and persisting state for any other contract through this
-		// path would silently write using the wrong slot semantics, corrupting
-		// that contract's actual storage. No legitimate flow needs a raw
-		// state-changing call to a non-V7 contract today (BioVerifier's
-		// verifyProof is always invoked read-only, persist=false, elsewhere),
-		// so reject it outright rather than letting it pass uninspected.
-		if !isV7 {
+		if err := checkPersistedCallAllowed(*tx.To(), tx.Data(), senderAddr); err != nil {
 			// FIX (audit 2026-06-29, Brutal-Audit P2-04): the nonce was already
 			// reserved above before this gate runs. Returning bare without ever
 			// calling SaveTxReceipt left txHash permanently receipt-less even
 			// though its nonce slot was consumed — getTransactionReceipt(txHash)
 			// returns null forever, which MetaMask renders as "still pending"
 			// rather than failed, instead of resolving one way or the other.
-			// Persist a failed (0x0) receipt, matching the pattern every other
-			// reject-after-reservation path in this function already uses
-			// (lines ~499, ~542, ~681), so the wallet gets a definitive answer.
+			// Persist a failed (0x0) receipt so the wallet gets a definitive answer.
 			s.state.SaveTxReceipt(txHash, senderAddr, toAddrForReceipt, "0x0", "")
-			return nil, &RPCError{Code: -32603, Message: "state-changing calls via /rpc are only supported for the V7 contract"}
-		}
-		if !knownPublicSelectors[sel] {
-			// Special case: registerWithSig is only allowed when the signer is the
-			// relayer itself (i.e. called internally by /api/register). External wallets
-			// must go through /api/register so Go-state is updated atomically.
-			if sel == "13b81eb0" {
-				relayerAddr := relayerAddressFromEnv()
-				if relayerAddr == "" || strings.ToLower(senderAddr) != relayerAddr {
-					// FIX (audit 2026-06-29, Brutal-Audit P2-04): same
-					// receipt-less-but-nonce-consumed gap as the !isV7 branch above.
-					s.state.SaveTxReceipt(txHash, senderAddr, toAddrForReceipt, "0x0", "")
-					return nil, &RPCError{Code: -32603, Message: "registerWithSig must be called via /api/register (direct RPC calls bypass Go-state updates)"}
-				}
-				// Allow: relayer is calling on behalf of /api/register
-			} else {
-				// FIX (audit 2026-06-29, Brutal-Audit P2-04): same gap as above.
-				s.state.SaveTxReceipt(txHash, senderAddr, toAddrForReceipt, "0x0", "")
-				return nil, &RPCError{Code: -32603, Message: "selector " + sel + " not supported directly via /rpc — use /api/* endpoints"}
-			}
+			return nil, &RPCError{Code: -32603, Message: err.Error()}
 		}
 	}
 	if tx.To() != nil && len(tx.Data()) > 0 && s.evm != nil {

@@ -276,6 +276,59 @@ return contractAddr, runtimeCode, nil
 // chain's own database tables, looked completely unregistered. Database
 // resets could never fix this because the very next read-only status
 // check would silently re-create the same state.
+// knownV7PublicPersistSelectors lists every V7 selector a persisting call
+// is allowed to reach — see checkPersistedCallAllowed's comment. Kept in
+// sync with sendRawTransaction's (evm_rpc.go) own copy of this list; both
+// call checkPersistedCallAllowed rather than checking independently.
+var knownV7PublicPersistSelectors = map[string]bool{
+	"a9059cbb": true, // transfer(address,uint256) — normally intercepted and routed through Go-state before reaching here; allowed defensively
+	"70a08231": true, // balanceOf
+	"dd62ed3e": true, // allowance (read-only view)
+	"18160ddd": true, // totalSupply
+	"06fdde03": true, // name
+	"95d89b41": true, // symbol
+	"313ce567": true, // decimals
+}
+
+// checkPersistedCallAllowed is the single source of truth for which
+// state-changing EVM calls may persist — called both by sendRawTransaction
+// (evm_rpc.go), the public entry point for external raw transactions, and
+// by CallContract itself right below.
+//
+// FIX (G9, beta-launch audit 2026-07-05): before this, the allowlist lived
+// ONLY inside sendRawTransaction's handler — CallContract trusted its
+// caller completely for the persist=true decision. That was never an
+// exploitable bug (the only persist=true call site in the whole codebase
+// IS sendRawTransaction, already gated by an identical check — verified by
+// grepping every .CallContract( call site), but it made the allowlist a
+// single point of enforcement: a future call site that added persist=true
+// without knowing to replicate this exact check would silently reopen the
+// Go/EVM ledger divergence this allowlist exists to prevent (see
+// dumpAndPersistStorageWithNullifier's hardcoded V7-slot-layout comment for
+// what "divergence" means concretely here). Enforcing it inside
+// CallContract too makes bypassing it structurally impossible, not just a
+// convention every future caller has to remember.
+func checkPersistedCallAllowed(to common.Address, data []byte, senderAddr string) error {
+	if len(data) < 4 {
+		return nil // no selector to check — mirrors the original gate's own `len(tx.Data()) >= 4` condition
+	}
+	if !strings.EqualFold(to.Hex(), V7_CONTRACT_ADDR) {
+		return fmt.Errorf("state-changing calls are only supported for the V7 contract")
+	}
+	sel := hex.EncodeToString(data[:4])
+	if knownV7PublicPersistSelectors[sel] {
+		return nil
+	}
+	if sel == "13b81eb0" { // registerWithSig — only the relayer may call it directly (on behalf of /api/register)
+		relayerAddr := relayerAddressFromEnv()
+		if relayerAddr != "" && strings.ToLower(senderAddr) == relayerAddr {
+			return nil
+		}
+		return fmt.Errorf("registerWithSig must be called via /api/register (direct calls bypass Go-state updates)")
+	}
+	return fmt.Errorf("selector %s not supported for persisting calls — use /api/* endpoints", sel)
+}
+
 func (e *EVMEngine) CallContract(from, to common.Address, data []byte, value *big.Int, persist bool) (ret []byte, err error) {
 // FIX: CanTransfer/Transfer in blockContext() are permanent no-op stubs —
 // there is no real wei ledger backing the EVM StateDB (Go-state/PostgreSQL
@@ -291,6 +344,11 @@ func (e *EVMEngine) CallContract(from, to common.Address, data []byte, value *bi
 // outright instead of pretending it succeeded.
 if value != nil && value.Sign() > 0 {
 return nil, fmt.Errorf("contract calls with msg.value > 0 are not supported on this chain (no native value-transfer mechanism in the EVM layer); use a plain transfer or the V7 transfer() selector instead")
+}
+if persist {
+if err := checkPersistedCallAllowed(to, data, strings.ToLower(from.Hex())); err != nil {
+return nil, err
+}
 }
 ts := uint64(time.Now().Unix())
 defer func() {
