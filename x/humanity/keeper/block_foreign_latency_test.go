@@ -56,3 +56,34 @@ func TestRecordForeignAttachLatency_LogFlushResetsAccumulator(t *testing.T) {
 		t.Fatalf("after a log flush the accumulator must reset to zero, got count=%d sum=%d max=%d", count, sum, maxMs)
 	}
 }
+
+// TestAddPeerBlock_MeasuresRawArrivalLatencyEvenWhenBreakerDropsBlock is the
+// regression guard for the 2026-07-05 finding: recordForeignAttachLatency
+// alone produced zero samples for exactly the direction that was failing
+// (a node whose circuit breaker is open drops every foreign block before
+// ever reaching that measurement point). The raw arrival measurement at
+// AddPeerBlock's entry must fire regardless of what happens afterward —
+// verified here against a block from a proposer whose breaker is already
+// tripped (guaranteed rejection).
+func TestAddPeerBlock_MeasuresRawArrivalLatencyEvenWhenBreakerDropsBlock(t *testing.T) {
+	dag := newOrphanTestDAG()
+	dag.state = &ChainState{}
+	dag.selfProposer = "0xself"
+	dag.proposerBreakerUntil = map[string]int64{"0xbadf00d": time.Now().Add(time.Hour).UnixNano()}
+	// Prevent the zero-value log timestamp from immediately flushing (and
+	// resetting) the accumulator this test is about to check — see the
+	// identical seeding in TestRecordForeignAttachLatency_AccumulatesAndTracksMax.
+	dag.lastRawArrivalLatencyLogAt.Store(time.Now().Unix())
+
+	blk := &Block{Hash: "h1", Height: 1, Proposer: "0xbadf00d", ProducedAtMs: time.Now().UnixMilli() - 250}
+	if dag.AddPeerBlock(blk) {
+		t.Fatal("a block from a proposer whose breaker is already tripped must be rejected")
+	}
+
+	dag.rawArrivalLatencyMu.Lock()
+	count := dag.rawArrivalLatencyCount
+	dag.rawArrivalLatencyMu.Unlock()
+	if count != 1 {
+		t.Fatalf("rawArrivalLatencyCount = %d, want 1 — raw arrival latency must be measured even for a block the circuit breaker goes on to drop", count)
+	}
+}

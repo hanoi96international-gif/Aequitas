@@ -315,6 +315,18 @@ replayedMu             sync.Mutex
 	foreignLatencySumMs     int64
 	foreignLatencyMaxMs     int64
 	lastForeignLatencyLogAt atomic.Int64
+	// rawArrivalLatency* mirrors foreignLatency* but measures BEFORE any
+	// gate (circuit breaker, far-ahead cap, etc.) — see
+	// recordRawArrivalLatency's own comment (AddPeerBlock's entry) for why
+	// this second measurement point exists: a node whose circuit breaker is
+	// currently open produces zero foreignLatency samples for exactly the
+	// direction that's failing, since those blocks never reach that later
+	// measurement point at all.
+	rawArrivalLatencyMu        sync.Mutex
+	rawArrivalLatencyCount     int
+	rawArrivalLatencySumMs     int64
+	rawArrivalLatencyMaxMs     int64
+	lastRawArrivalLatencyLogAt atomic.Int64
 	// lastIsolationPauseLogAt rate-limits the "finality advance paused"
 	// diagnostic the same way as the other log throttles above — this can
 	// otherwise fire once per self-produced block (every BLOCK_TIME) for as
@@ -2711,6 +2723,20 @@ func (dag *BlockDAG) ClearProposerCircuitBreakers() {
 }
 
 func (dag *BlockDAG) AddPeerBlock(block *Block) bool {
+// FIX (2026-07-05 — permanent operational diagnostic, not a temp one):
+// recordForeignAttachLatency further down only fires once a block clears
+// EVERY gate (circuit breaker, far-ahead cap, replay, etc.) — exactly the
+// blocks that are NOT the problem. A node whose circuit breaker is
+// currently open drops every foreign block right here, before that later
+// measurement point is ever reached, so it silently produces zero latency
+// samples for precisely the direction that's actually failing. Measure
+// the RAW arrival latency unconditionally, before any gate, so the real
+// network-transit number is visible even while a node is fully isolated.
+if block != nil && block.ProducedAtMs > 0 && !strings.EqualFold(block.Proposer, dag.selfProposer) {
+	if latency := time.Now().UnixMilli() - block.ProducedAtMs; latency >= 0 {
+		dag.recordRawArrivalLatency(latency)
+	}
+}
 if dag.resyncInProgress.Load() {
 	return false // an in-process self-heal resync is atomically swapping account/DAG state right now — see resyncInProgress's field comment; the sender will redeliver, ordered sync fills the gap once the resync completes
 }

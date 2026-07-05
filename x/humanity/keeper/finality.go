@@ -127,6 +127,45 @@ func (dag *BlockDAG) recordForeignAttachLatency(ms int64) {
 		foreignAttachLatencyLogInterval, count, avg, maxMs)
 }
 
+// recordRawArrivalLatency is recordForeignAttachLatency's counterpart,
+// measured unconditionally at AddPeerBlock's entry before any gate — see
+// that call site's own comment for why this second measurement point
+// exists (a node whose circuit breaker is open produces zero
+// recordForeignAttachLatency samples for exactly the direction that's
+// failing, since those blocks never reach that later point at all).
+func (dag *BlockDAG) recordRawArrivalLatency(ms int64) {
+	dag.rawArrivalLatencyMu.Lock()
+	dag.rawArrivalLatencyCount++
+	dag.rawArrivalLatencySumMs += ms
+	if ms > dag.rawArrivalLatencyMaxMs {
+		dag.rawArrivalLatencyMaxMs = ms
+	}
+	count := dag.rawArrivalLatencyCount
+	sum := dag.rawArrivalLatencySumMs
+	maxMs := dag.rawArrivalLatencyMaxMs
+	dag.rawArrivalLatencyMu.Unlock()
+
+	last := dag.lastRawArrivalLatencyLogAt.Load()
+	now := time.Now().Unix()
+	if now-last < int64(foreignAttachLatencyLogInterval.Seconds()) {
+		return
+	}
+	if !dag.lastRawArrivalLatencyLogAt.CompareAndSwap(last, now) {
+		return // another goroutine's log just won the race
+	}
+	dag.rawArrivalLatencyMu.Lock()
+	dag.rawArrivalLatencyCount = 0
+	dag.rawArrivalLatencySumMs = 0
+	dag.rawArrivalLatencyMaxMs = 0
+	dag.rawArrivalLatencyMu.Unlock()
+	avg := int64(0)
+	if count > 0 {
+		avg = sum / int64(count)
+	}
+	fmt.Printf("[LATENCY-RAW] Raw arrival latency (before any gate) over the last %s: %d sample(s), avg %dms, max %dms.\n",
+		foreignAttachLatencyLogInterval, count, avg, maxMs)
+}
+
 // selfProducedFinalityAllowed reports whether ProduceBlock's own
 // self-produced block may advance the hard finality checkpoint right now —
 // see isolatedFinalityPauseWindow's comment for the full rationale. Must be
