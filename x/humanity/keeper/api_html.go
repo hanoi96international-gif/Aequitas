@@ -62,7 +62,7 @@ header::before{content:'';position:absolute;top:0;left:0;right:0;height:2px;back
 .tab-content{display:none;position:relative;z-index:1}.tab-content.active{display:block}
 .hero{padding:20px 20px 0;position:relative;z-index:1}
 .section-label{font-size:0.6rem;color:var(--muted);letter-spacing:3px;text-transform:uppercase;margin-bottom:14px;font-weight:600}
-.stats-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:1px;background:#E0D9D0;border:1px solid var(--border);border-radius:var(--radius);overflow:hidden;margin-bottom:20px;box-shadow:0 2px 12px rgba(0,0,0,0.06)}
+.stats-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:1px;background:var(--border);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden;margin-bottom:20px;box-shadow:0 2px 12px rgba(0,0,0,0.06)}
 .stat{background:var(--card);padding:20px 16px;position:relative;transition:all 0.2s;cursor:default}
 .stat:hover{background:var(--card2);box-shadow:inset 0 0 20px rgba(107,70,193,0.04)}
 .stat-accent{position:absolute;top:0;left:0;right:0;height:2px}
@@ -1205,9 +1205,17 @@ input[type=number]::-webkit-inner-spin-button{opacity:0.5}
         <div style="font-size:0.62rem;color:var(--muted);line-height:2">
           <div style="display:flex;gap:8px;align-items:center;margin-bottom:4px"><span style="min-width:80px;color:var(--text);font-weight:600">0 &#8211; 2 years</span>Normal usage, no restrictions</div>
           <div style="display:flex;gap:8px;align-items:center;margin-bottom:4px"><span style="min-width:80px;color:var(--gold);font-weight:600">Year 2</span>Warning 1 &#8212; Guardian can respond</div>
-          <div style="display:flex;gap:8px;align-items:center;margin-bottom:4px"><span style="min-width:80px;color:var(--gold);font-weight:600">+60 days</span>Warning 2 &#8212; escalating urgency</div>
-          <div style="display:flex;gap:8px;align-items:center;margin-bottom:4px"><span style="min-width:80px;color:var(--red);font-weight:600">+180 days</span>AEQ moved to escrow (recoverable)</div>
-          <div style="display:flex;gap:8px;align-items:center"><span style="min-width:80px;color:var(--red);font-weight:600">Year 4</span>Escrow released to UBI Pool</div>
+          <div style="display:flex;gap:8px;align-items:center;margin-bottom:4px"><span style="min-width:80px;color:var(--gold);font-weight:600">Year 2 +60d</span>Warning 2 &#8212; escalating urgency</div>
+          <!-- FIX (P3-14, beta-launch audit 2026-07-05): "+60 days" then
+               "+180 days" on consecutive lines reads as if each offset were
+               cumulative on top of the last (60, then another 180 = day
+               240-ish past Year 2) — both are actually independently
+               measured from Year 2 (inactivityEscrowSeconds = 910 days =
+               2 years + 180 days total, guardian.go). Spelling out "Year 2
+               +180d" and the absolute day count removes the ambiguity
+               without depending on how the reader parsed the line above. -->
+          <div style="display:flex;gap:8px;align-items:center;margin-bottom:4px"><span style="min-width:80px;color:var(--red);font-weight:600">Year 2 +180d</span>AEQ moved to escrow (2.5 years total, day 910 — recoverable)</div>
+          <div style="display:flex;gap:8px;align-items:center"><span style="min-width:80px;color:var(--red);font-weight:600">Year 4</span>Escrow released to UBI Pool (day ~1460)</div>
         </div>
       </div>
     </div>
@@ -2008,7 +2016,7 @@ en:{
   'ca-text':'Chain: Aequitas Chain (Chain ID: 1926 · 0x786)<br>RPC: https://aequitas.digital/rpc<br><br>BioVerifier: 0xc369D27b49DE017d113Bbcb9A1884a9e745B6BE2<br>AequitasV7 (Main): 0x20D271028f32577FCd07b4583A8e0E4eBBdB4F78',
   'ca-desc':'AequitasV7 is the single source of truth for the entire Aequitas economy. Every AEQ balance, every human registration, every UBI payout, and every wealth cap enforcement is governed by this one immutable contract — deployed on Aequitas Chain, a custom EVM-compatible blockchain running a BlockDAG consensus engine. There is no admin key, no upgrade proxy, no governance vote that can change a single line of its logic. The code that runs today is the code that will run in ten years.<br><br>The BioVerifier contract receives Groth16 zero-knowledge proofs generated entirely on the user\'s Android device. It verifies mathematically on-chain in ~10 ms that a new registrant is a unique living human — without ever learning their name, identity, or biometric data. This is what makes gasless, investment-free registration possible: the proof is the only thing that ever leaves the device.<br><br>Together, these two contracts make possible something that has never existed in any currency system in history: a money supply whose rules — who gets it, how much exists, how it redistributes — cannot be altered by any person, company, or government. Ever.',
   'poa-title':'1. PROOF OF ALIVE','poa-text':'<p>What happens to AEQ when people die or disappear? In Bitcoin, millions of BTC are permanently lost. In Aequitas, if someone is inactive for an extended period, their AEQ eventually returns to the community through the UBI pool.</p>',
-  'poa-box':'Year 0-2: Normal usage<br>Year 2: Warning 1 — Guardian can respond<br>Year 2+60d: Warning 2<br>Year 2+120d: Warning 3<br>Year 2+180d: AEQ goes to PERSONAL ESCROW<br>Year 4: If still inactive — returns to UBI Pool',
+  'poa-box':'Year 0-2: Normal usage<br>Year 2: Warning 1 — Guardian can respond<br>Year 2 + 60 days: Warning 2<br>Year 2 + 120 days: Warning 3<br>Year 2 + 180 days (2.5 years total, day 910): AEQ goes to PERSONAL ESCROW<br>Year 4 (day ~1460): If still inactive — returns to UBI Pool',
   'guard-title':'2. GUARDIAN SYSTEM','guard-text':'<p>What if someone cannot access their device for months? A trusted Guardian — another verified human — can confirm they are still alive, without any transaction rights.</p>',
   'guard-box':'1 Guardian per human (must be another verified human)<br>Guardian can ONLY call confirmAlive() — zero transaction rights<br>Guardian CANNOT move funds or transfer AEQ<br>Max 3 wards · 7-day timelock · No circular relationships allowed',
   'dem-title':'3. DEMURRAGE — Anti-Hoarding Mechanism',
@@ -2175,7 +2183,7 @@ de:{
   'h-global':'Globale finanzielle Inklusion','h-global-t':'1,4 Milliarden Erwachsene weltweit haben kein Bankkonto. Aequitas benötigt nur ein Android-Smartphone mit einem Fingerabdruck- oder Gesichtssensor — ein Gerät das über 3 Milliarden Menschen bereits besitzen. Kein Bankkonto, keine Kreditkarte, keine vorherige Kryptowährung, kein Personalausweis. Einfach Mensch zu sein reicht aus.',
   'h-bio-hw':'Biometrische Hardware-Roadmap','h-bio-hw-t':'Phase 1 (aktiv): R503 optischer Fingerabdruckscanner — alle 10 Finger kombinierter Hash. MAX30102 PPG Lebenderkennung. Phase 2 (geplant): ESP32-CAM + 850 nm IR-LED — Handvenen-Bildgebung, 1 von 10⁷ Einzigartigkeit. Phase 3 (geplant): IR-Iris-Modul — 240+ Freiheitsgrade, 1 von 10⁷⁸, vollständig geräteunabhängig, eineiige Zwillinge unterschiedlich.',
   'poa-title':'1. LEBENSNACHWEIS — Inaktive Guthaben-Rückgewinnung','poa-text':'<p>Was passiert mit AEQ wenn Menschen sterben oder dauerhaft handlungsunfähig werden? Bei Bitcoin und den meisten Kryptowährungen bedeuten verlorene Wallets dauerhaft verlorene Menge. Aequitas löst dies durch ein mehrstufiges Inaktivitäts-Rückgewinnungssystem: Wenn eine Wallet über einen längeren Zeitraum keine Aktivität zeigt, wird ihr Guthaben schrittweise über den UBI-Pool zur Gemeinschaft zurückgeführt.</p>',
-  'poa-box':'Jahr 0–2: Normale Nutzung — keine Einschränkungen<br>Jahr 2: Warnung 1 — Guardian kann im Namen antworten<br>Jahr 2+60T: Warnung 2 — steigende Dringlichkeit<br>Jahr 2+120T: Warnung 3 — letzte Benachrichtigung<br>Jahr 2+180T: AEQ in persönliches TREUHANDKONTO verschoben (noch rückgewinnbar)<br>Jahr 4: Bei weiter Inaktivität — Treuhand an UBI-Pool freigegeben',
+  'poa-box':'Jahr 0–2: Normale Nutzung — keine Einschränkungen<br>Jahr 2: Warnung 1 — Guardian kann im Namen antworten<br>Jahr 2 + 60 Tage: Warnung 2 — steigende Dringlichkeit<br>Jahr 2 + 120 Tage: Warnung 3 — letzte Benachrichtigung<br>Jahr 2 + 180 Tage (insgesamt 2,5 Jahre, Tag 910): AEQ in persönliches TREUHANDKONTO verschoben (noch rückgewinnbar)<br>Jahr 4 (Tag ~1460): Bei weiter Inaktivität — Treuhand an UBI-Pool freigegeben',
   'guard-title':'2. GUARDIAN-SYSTEM — Menschliche Absicherung','guard-text':'<p>Was wenn jemand hospitalisiert, inhaftiert oder anderweitig monatelang nicht in der Lage ist auf sein Gerät zuzugreifen? Das Guardian-System erlaubt einer vertrauenswürdigen Person — einem anderen verifizierten Menschen — zu bestätigen dass der Wallet-Inhaber noch lebt, wodurch verhindert wird dass sein AEQ ins Treuhandkonto verschoben wird. Der Guardian hat strikt null finanziellen Zugang: Er kann nur eine einzige Funktion aufrufen die den Inaktivitätstimer zurücksetzt. Er kann unter keinen Umständen Gelder verschieben, ausgeben oder darauf zugreifen.</p>',
   'guard-box':'1 Guardian pro Mensch · muss ein verifizierter Mensch auf Aequitas sein<br>Guardian kann NUR confirmAlive() aufrufen — null Transaktionsrechte<br>Guardian KANN KEINE Gelder verschieben, AEQ übertragen oder auf die Wallet zugreifen<br>Maximal 3 Schutzbefohlene pro Guardian (verhindert Zentralisierung des Vertrauens)<br>7-Tage-Zeitsperre bei Guardian-Zuweisung (verhindert erzwungene Zuweisung)<br>Keine zirkulären Guardian-Beziehungen erlaubt',
   'dem-title':'3. DEMURRAGE — Anti-Hortungs-Mechanismus',
@@ -2189,7 +2197,7 @@ de:{
   'swap-sub':'Tausche AEQ gegen tUSD (ein simulierter Test-Dollar) über den nativen Liquiditäts-Pool. 0,1% Gebühr gilt nur für Swaps — gewöhnliche AEQ-Transfers zwischen Menschen bleiben vollständig kostenlos.',
   'swap-priv-bar':'🔒 Nur 0,1% Swap-Gebühr · AEQ-zu-AEQ-Transfers kostenlos · tUSD ist eine Testwährung ohne realen Wert',
   'swap-your-aeq':'Dein AEQ','swap-your-tusd':'Dein tUSD',
-  'swap-aeq-to-tusd':'AEQ → tUSD','swap-tusd-to-aeq':'tUSD → AEQ',
+  
   'swap-fee-est':'Protokollgebühr (0,1%)','swap-details-hdr':'Swap-Details',
   'swap-out-lbl':'Du erhältst (ca.)','swap-impact-lbl':'Preisauswirkung','swap-rate-lbl':'Wechselkurs',
   'swap-btn-conn':'🦊 METAMASK VERBINDEN','swap-btn-go':'🔄 TAUSCHEN',
@@ -2205,7 +2213,7 @@ de:{
   'swap-depth-lbl':'Pool-Zusammensetzung',
   'amm-title':'x × y = k — Konstantprodukt-AMM',
   'amm-text':'Wenn du AEQ gegen tUSD tauschst, wächst die AEQ-Reserve und die tUSD-Reserve schrumpft — ihr Produkt bleibt immer gleich k. Jeder Swap bewegt den Preis. Größere Swaps relativ zur Pool-Größe führen zu größerer Preisauswirkung. Die 0,1% Gebühr wird vor Anwendung der Formel abgezogen — so verdient der Pool an jedem Trade.',
-  'swap-fee-bps':'Swap-Gebühr','swap-fee-split':'Gebührenverteilung','swap-fee-split-v':'40% Validatoren / 30% LPs / 20% UBI / 10% Schatzkammer',
+  'swap-fee-bps':'Swap-Gebühr',
   'swap-pools-addr-title':'Tokenomics-Pool-Adressen','pools-addr-title':'Pool-Vertragsadressen',
   'swap-validators':'Validatoren (40%)','swap-lps':'Liquiditätsanbieter (30%)','swap-ubi':'UBI-Pool (20%)','swap-treasury':'Schatzkammer (10%)',
   'ubi-hero-title':'UNIVERSELLES GRUNDEINKOMMEN — UBI-POOL',
@@ -2324,7 +2332,7 @@ es:{
   'btn-download-app':'DESCARGAR APP AEQUITASBIO',
   'swap-title':'🔄 Intercambiar AEQ ↔ tUSD','swap-sub':'Intercambia AEQ por tUSD (un dólar de prueba simulado) a través del pool de liquidez nativo. Se aplica una comisión del 0,1% solo a los intercambios — las transferencias ordinarias de AEQ entre personas permanecen completamente gratuitas.',
   'swap-priv-bar':'🔒 Solo 0,1% de comisión de swap · Transferencias AEQ a AEQ gratuitas · tUSD es una moneda de prueba sin valor real',
-  'swap-your-aeq':'Tu AEQ','swap-your-tusd':'Tu tUSD','swap-aeq-to-tusd':'AEQ → tUSD','swap-tusd-to-aeq':'tUSD → AEQ',
+  'swap-your-aeq':'Tu AEQ','swap-your-tusd':'Tu tUSD',
   'swap-fee-est':'Comisión de protocolo (0,1%)','swap-details-hdr':'Detalles del Swap',
   'swap-out-lbl':'Recibes (est.)','swap-impact-lbl':'Impacto en precio','swap-rate-lbl':'Tipo de cambio',
   'swap-depth-lbl':'Composición del Pool','amm-title':'x × y = k — AMM de Producto Constante',
@@ -2337,7 +2345,7 @@ es:{
   'swap-lp-pct-label':'% de tu posición','swap-lp-youget':'Recibirás','swap-btn-removeliq':'🔥 RETIRAR LIQUIDEZ',
   'swap-pool-title':'AEQ / tUSD — Estado del Pool',
   'swap-pool-aeq':'Reserva AEQ','swap-pool-tusd':'Reserva tUSD','swap-pool-price':'Precio Spot',
-  'swap-fee-bps':'Comisión de Swap','swap-fee-split':'Distribución de comisiones','swap-fee-split-v':'40% Validadores / 30% LPs / 20% UBI / 10% Tesorería',
+  'swap-fee-bps':'Comisión de Swap',
   'swap-pools-addr-title':'Direcciones de Pools Tokenomics','pools-addr-title':'Direcciones de Contrato de Pools',
   'swap-validators':'Validadores (40%)','swap-lps':'Proveedores de Liquidez (30%)','swap-ubi':'Pool UBI (20%)','swap-treasury':'Tesorería (10%)',
   'ubi-hero-title':'RENTA BÁSICA UNIVERSAL — POOL UBI',
@@ -2519,7 +2527,7 @@ ru:{
   'btn-download-app':'СКАЧАТЬ ПРИЛОЖЕНИЕ AEQUITASBIO',
   'swap-title':'🔄 Обмен AEQ ↔ tUSD','swap-sub':'Обменивайте AEQ на tUSD (симулированный тестовый доллар) через нативный пул ликвидности. Комиссия 0,1% применяется только к свопам — обычные переводы AEQ между людьми остаются полностью бесплатными.',
   'swap-priv-bar':'🔒 Только 0,1% комиссия свопа · Переводы AEQ-AEQ бесплатны · tUSD — тестовая валюта без реальной стоимости',
-  'swap-your-aeq':'Ваш AEQ','swap-your-tusd':'Ваш tUSD','swap-aeq-to-tusd':'AEQ → tUSD','swap-tusd-to-aeq':'tUSD → AEQ',
+  'swap-your-aeq':'Ваш AEQ','swap-your-tusd':'Ваш tUSD',
   'swap-fee-est':'Комиссия протокола (0,1%)','swap-details-hdr':'Детали Свопа',
   'swap-out-lbl':'Вы получите (прим.)','swap-impact-lbl':'Влияние на цену','swap-rate-lbl':'Обменный курс',
   'swap-depth-lbl':'Состав Пула','amm-title':'x × y = k — AMM с Постоянным Произведением',
@@ -2532,7 +2540,7 @@ ru:{
   'swap-lp-pct-label':'% вашей позиции','swap-lp-youget':'Вы получите','swap-btn-removeliq':'🔥 ВЫВЕСТИ ЛИКВИДНОСТЬ',
   'swap-pool-title':'AEQ / tUSD — Статус Пула',
   'swap-pool-aeq':'Резерв AEQ','swap-pool-tusd':'Резерв tUSD','swap-pool-price':'Спотовая Цена',
-  'swap-fee-bps':'Комиссия Свопа','swap-fee-split':'Распределение комиссий','swap-fee-split-v':'40% Валидаторы / 30% LP / 20% UBI / 10% Казначейство',
+  'swap-fee-bps':'Комиссия Свопа',
   'swap-pools-addr-title':'Адреса Пулов Токеномики','pools-addr-title':'Адреса Контрактов Пулов',
   'swap-validators':'Валидаторы (40%)','swap-lps':'Провайдеры Ликвидности (30%)','swap-ubi':'Пул UBI (20%)','swap-treasury':'Казначейство (10%)',
   'ubi-hero-title':'УНИВЕРСАЛЬНЫЙ БАЗОВЫЙ ДОХОД — ПУЛ UBI',
@@ -2679,7 +2687,7 @@ zh:{
   'btn-download-app':'下载 AEQUITASBIO 应用',
   'swap-title':'🔄 兑换 AEQ ↔ tUSD','swap-sub':'通过原生流动性池将AEQ兑换为tUSD（模拟测试美元）。0.1%手续费仅适用于兑换 — 人与人之间的普通AEQ转账完全免费。',
   'swap-priv-bar':'🔒 仅0.1%兑换费 · AEQ到AEQ转账免费 · tUSD是无实际价值的测试货币',
-  'swap-your-aeq':'你的 AEQ','swap-your-tusd':'你的 tUSD','swap-aeq-to-tusd':'AEQ → tUSD','swap-tusd-to-aeq':'tUSD → AEQ',
+  'swap-your-aeq':'你的 AEQ','swap-your-tusd':'你的 tUSD',
   'swap-fee-est':'协议手续费 (0.1%)','swap-details-hdr':'兑换详情',
   'swap-out-lbl':'你获得（估算）','swap-impact-lbl':'价格影响','swap-rate-lbl':'汇率',
   'swap-depth-lbl':'池子构成','amm-title':'x × y = k — 恒定乘积 AMM',
@@ -2692,7 +2700,7 @@ zh:{
   'swap-lp-pct-label':'% 你的仓位','swap-lp-youget':'你将收到','swap-btn-removeliq':'🔥 移除流动性',
   'swap-pool-title':'AEQ / tUSD — 池子状态',
   'swap-pool-aeq':'AEQ 储备','swap-pool-tusd':'tUSD 储备','swap-pool-price':'现货价格',
-  'swap-fee-bps':'兑换手续费','swap-fee-split':'手续费分配','swap-fee-split-v':'40% 验证者 / 30% LP / 20% UBI / 10% 国库',
+  'swap-fee-bps':'兑换手续费',
   'swap-pools-addr-title':'代币经济池地址','pools-addr-title':'池合约地址',
   'swap-validators':'验证者 (40%)','swap-lps':'流动性提供者 (30%)','swap-ubi':'UBI 池 (20%)','swap-treasury':'国库 (10%)',
   'ubi-hero-title':'普遍基本收入 — UBI 池',
@@ -2831,7 +2839,7 @@ id:{
   'btn-download-app':'UNDUH APLIKASI AEQUITASBIO',
   'swap-title':'🔄 Tukar AEQ ↔ tUSD','swap-sub':'Tukarkan AEQ dengan tUSD (dolar uji simulasi) melalui pool likuiditas asli. Biaya 0,1% hanya berlaku untuk pertukaran — transfer AEQ biasa antar orang tetap sepenuhnya gratis.',
   'swap-priv-bar':'🔒 Hanya 0,1% biaya swap · Transfer AEQ-ke-AEQ gratis · tUSD adalah mata uang uji tanpa nilai nyata',
-  'swap-your-aeq':'AEQ Anda','swap-your-tusd':'tUSD Anda','swap-aeq-to-tusd':'AEQ → tUSD','swap-tusd-to-aeq':'tUSD → AEQ',
+  'swap-your-aeq':'AEQ Anda','swap-your-tusd':'tUSD Anda',
   'swap-fee-est':'Biaya protokol (0,1%)','swap-details-hdr':'Detail Pertukaran',
   'swap-out-lbl':'Anda terima (est.)','swap-impact-lbl':'Dampak harga','swap-rate-lbl':'Nilai tukar',
   'swap-depth-lbl':'Komposisi Pool','amm-title':'x × y = k — AMM Produk Konstan',
@@ -2844,7 +2852,7 @@ id:{
   'swap-lp-pct-label':'% posisi Anda','swap-lp-youget':'Anda akan terima','swap-btn-removeliq':'🔥 HAPUS LIKUIDITAS',
   'swap-pool-title':'AEQ / tUSD — Status Pool',
   'swap-pool-aeq':'Cadangan AEQ','swap-pool-tusd':'Cadangan tUSD','swap-pool-price':'Harga Spot',
-  'swap-fee-bps':'Biaya Swap','swap-fee-split':'Distribusi biaya','swap-fee-split-v':'40% Validator / 30% LP / 20% UBI / 10% Perbendaharaan',
+  'swap-fee-bps':'Biaya Swap',
   'swap-pools-addr-title':'Alamat Pool Tokenomik','pools-addr-title':'Alamat Kontrak Pool',
   'swap-validators':'Validator (40%)','swap-lps':'Penyedia Likuiditas (30%)','swap-ubi':'Pool UBI (20%)','swap-treasury':'Perbendaharaan (10%)',
   'ubi-hero-title':'PENDAPATAN DASAR UNIVERSAL — POOL UBI',
@@ -2984,7 +2992,7 @@ it:{
   'btn-download-app':'SCARICA L\'APP AEQUITASBIO',
   'swap-title':'🔄 Scambia AEQ ↔ tUSD','swap-sub':'Scambia AEQ con tUSD (un dollaro di test simulato) attraverso il pool di liquidità nativo. Una commissione dello 0,1% si applica solo agli scambi — i normali trasferimenti AEQ tra persone rimangono completamente gratuiti.',
   'swap-priv-bar':'🔒 Solo 0,1% commissione swap · Trasferimenti AEQ-AEQ gratuiti · tUSD è una valuta di test senza valore reale',
-  'swap-your-aeq':'Il tuo AEQ','swap-your-tusd':'Il tuo tUSD','swap-aeq-to-tusd':'AEQ → tUSD','swap-tusd-to-aeq':'tUSD → AEQ',
+  'swap-your-aeq':'Il tuo AEQ','swap-your-tusd':'Il tuo tUSD',
   'swap-fee-est':'Commissione protocollo (0,1%)','swap-details-hdr':'Dettagli Scambio',
   'swap-out-lbl':'Ricevi (est.)','swap-impact-lbl':'Impatto sul prezzo','swap-rate-lbl':'Tasso di cambio',
   'swap-depth-lbl':'Composizione del Pool','amm-title':'x × y = k — AMM a Prodotto Costante',
@@ -2997,7 +3005,7 @@ it:{
   'swap-lp-pct-label':'% della tua posizione','swap-lp-youget':'Riceverai','swap-btn-removeliq':'🔥 RIMUOVI LIQUIDITÀ',
   'swap-pool-title':'AEQ / tUSD — Stato del Pool',
   'swap-pool-aeq':'Riserva AEQ','swap-pool-tusd':'Riserva tUSD','swap-pool-price':'Prezzo Spot',
-  'swap-fee-bps':'Commissione Swap','swap-fee-split':'Distribuzione commissioni','swap-fee-split-v':'40% Validatori / 30% LP / 20% UBI / 10% Tesoreria',
+  'swap-fee-bps':'Commissione Swap',
   'swap-pools-addr-title':'Indirizzi Pool Tokenomics','pools-addr-title':'Indirizzi Contratto Pool',
   'swap-validators':'Validatori (40%)','swap-lps':'Fornitori di Liquidità (30%)','swap-ubi':'Pool UBI (20%)','swap-treasury':'Tesoreria (10%)',
   'ubi-hero-title':'REDDITO UNIVERSALE DI BASE — POOL UBI',
@@ -3144,7 +3152,7 @@ tr:{
   'btn-download-app':'AEQUİTASBİO UYGULAMASINI İNDİR',
   'swap-title':'🔄 AEQ ↔ tUSD Takas Et','swap-sub':'Yerel likidite havuzu üzerinden AEQ\'yu tUSD (simüle edilmiş test doları) ile takas et. %0,1 ücret yalnızca takaslar için geçerlidir — insanlar arasındaki normal AEQ transferleri tamamen ücretsiz kalır.',
   'swap-priv-bar':'🔒 Yalnızca %0,1 takas ücreti · AEQ\'dan AEQ\'ya transferler ücretsiz · tUSD gerçek değeri olmayan test para birimidir',
-  'swap-your-aeq':'Senin AEQ','swap-your-tusd':'Senin tUSD','swap-aeq-to-tusd':'AEQ → tUSD','swap-tusd-to-aeq':'tUSD → AEQ',
+  'swap-your-aeq':'Senin AEQ','swap-your-tusd':'Senin tUSD',
   'swap-fee-est':'Protokol ücreti (%0,1)','swap-details-hdr':'Takas Detayları',
   'swap-out-lbl':'Alacaksın (tahmini)','swap-impact-lbl':'Fiyat etkisi','swap-rate-lbl':'Döviz kuru',
   'swap-depth-lbl':'Havuz Bileşimi','amm-title':'x × y = k — Sabit Çarpım AMM',
@@ -3157,7 +3165,7 @@ tr:{
   'swap-lp-pct-label':'% pozisyonun','swap-lp-youget':'Alacaksın','swap-btn-removeliq':'🔥 LİKİDİTE KALDIR',
   'swap-pool-title':'AEQ / tUSD — Havuz Durumu',
   'swap-pool-aeq':'AEQ Rezervi','swap-pool-tusd':'tUSD Rezervi','swap-pool-price':'Spot Fiyat',
-  'swap-fee-bps':'Takas Ücreti','swap-fee-split':'Ücret Dağılımı','swap-fee-split-v':'%40 Doğrulayıcılar / %30 LP\'ler / %20 UBI / %10 Hazine',
+  'swap-fee-bps':'Takas Ücreti',
   'swap-pools-addr-title':'Tokenomik Havuz Adresleri','pools-addr-title':'Havuz Sözleşme Adresleri',
   'swap-validators':'Doğrulayıcılar (%40)','swap-lps':'Likidite Sağlayıcıları (%30)','swap-ubi':'UBI Havuzu (%20)','swap-treasury':'Hazine (%10)',
   'ubi-hero-title':'EVRENSEL TEMEL GELİR — UBI HAVUZU',
@@ -3303,7 +3311,7 @@ fr:{
   'btn-download-app':'TÉLÉCHARGER AEQUITASBIO',
   'swap-title':'🔄 Échanger AEQ ↔ tUSD','swap-sub':'Échangez AEQ contre tUSD (dollar test) via le pool de liquidité natif. Frais 0,1% uniquement pour les swaps — transferts AEQ ordinaires totalement gratuits.',
   'swap-priv-bar':'🔒 Seulement 0,1% de frais · Transferts AEQ→AEQ gratuits · tUSD est une monnaie test sans valeur réelle',
-  'swap-your-aeq':'Votre AEQ','swap-your-tusd':'Votre tUSD','swap-aeq-to-tusd':'AEQ → tUSD','swap-tusd-to-aeq':'tUSD → AEQ',
+  'swap-your-aeq':'Votre AEQ','swap-your-tusd':'Votre tUSD',
   'swap-fee-est':'Frais de protocole (0,1%)','swap-details-hdr':'Détails de l\'échange',
   'swap-out-lbl':'Vous recevez (est.)','swap-impact-lbl':'Impact sur le prix','swap-rate-lbl':'Taux de change',
   'swap-depth-lbl':'Composition du Pool','amm-title':'x × y = k — AMM à produit constant',
@@ -3316,7 +3324,7 @@ fr:{
   'swap-lp-pct-label':'% de votre position','swap-lp-youget':'Vous recevrez','swap-btn-removeliq':'🔥 RETIRER LIQUIDITÉ',
   'swap-pool-title':'AEQ / tUSD — Statut du Pool',
   'swap-pool-aeq':'Réserve AEQ','swap-pool-tusd':'Réserve tUSD','swap-pool-price':'Prix Spot',
-  'swap-fee-bps':'Frais de Swap','swap-fee-split':'Répartition des frais','swap-fee-split-v':'40% Validateurs / 30% LP / 20% UBI / 10% Trésorerie',
+  'swap-fee-bps':'Frais de Swap',
   'swap-pools-addr-title':'Adresses des Pools Tokenomiques','pools-addr-title':'Adresses des Contrats de Pools',
   'swap-validators':'Validateurs (40%)','swap-lps':'Fournisseurs de Liquidité (30%)','swap-ubi':'Pool UBI (20%)','swap-treasury':'Trésorerie (10%)',
   'ubi-hero-title':'REVENU DE BASE UNIVERSEL — POOL UBI',
@@ -3462,7 +3470,7 @@ pt:{
   'btn-download-app':'BAIXAR AEQUITASBIO',
   'swap-title':'🔄 Trocar AEQ ↔ tUSD','swap-sub':'Troque AEQ por tUSD (dólar de teste) via pool de liquidez nativo. Taxa 0,1% apenas para swaps — transferências AEQ comuns completamente gratuitas.',
   'swap-priv-bar':'🔒 Apenas 0,1% de taxa · Transferências AEQ→AEQ gratuitas · tUSD é moeda de teste sem valor real',
-  'swap-your-aeq':'Seu AEQ','swap-your-tusd':'Seu tUSD','swap-aeq-to-tusd':'AEQ → tUSD','swap-tusd-to-aeq':'tUSD → AEQ',
+  'swap-your-aeq':'Seu AEQ','swap-your-tusd':'Seu tUSD',
   'swap-fee-est':'Taxa de protocolo (0,1%)','swap-details-hdr':'Detalhes da Troca',
   'swap-out-lbl':'Você recebe (est.)','swap-impact-lbl':'Impacto no preço','swap-rate-lbl':'Taxa de câmbio',
   'swap-depth-lbl':'Composição do Pool','amm-title':'x × y = k — AMM de Produto Constante',
@@ -3475,7 +3483,7 @@ pt:{
   'swap-lp-pct-label':'% da sua posição','swap-lp-youget':'Você receberá','swap-btn-removeliq':'🔥 REMOVER LIQUIDEZ',
   'swap-pool-title':'AEQ / tUSD — Status do Pool',
   'swap-pool-aeq':'Reserva AEQ','swap-pool-tusd':'Reserva tUSD','swap-pool-price':'Preço Spot',
-  'swap-fee-bps':'Taxa de Swap','swap-fee-split':'Distribuição de taxas','swap-fee-split-v':'40% Validadores / 30% LP / 20% UBI / 10% Tesouro',
+  'swap-fee-bps':'Taxa de Swap',
   'swap-pools-addr-title':'Endereços dos Pools Tokenômicos','pools-addr-title':'Endereços dos Contratos de Pools',
   'swap-validators':'Validadores (40%)','swap-lps':'Provedores de Liquidez (30%)','swap-ubi':'Pool UBI (20%)','swap-treasury':'Tesouro (10%)',
   'ubi-hero-title':'RENDA BÁSICA UNIVERSAL — POOL UBI',
@@ -3619,7 +3627,7 @@ ar:{
   'btn-download-app':'تحميل تطبيق AEQUITASBIO',
   'swap-title':'🔄 تبادل AEQ ↔ tUSD','swap-sub':'تبادل AEQ مع tUSD (دولار اختبار محاكى) عبر مجمع السيولة الأصلي. رسوم 0.1% فقط للمبادلات — التحويلات العادية مجانية تماماً.',
   'swap-priv-bar':'🔒 رسوم 0.1% فقط · تحويلات AEQ→AEQ مجانية · tUSD عملة اختبار بدون قيمة حقيقية',
-  'swap-your-aeq':'AEQ لديك','swap-your-tusd':'tUSD لديك','swap-aeq-to-tusd':'AEQ → tUSD','swap-tusd-to-aeq':'tUSD → AEQ',
+  'swap-your-aeq':'AEQ لديك','swap-your-tusd':'tUSD لديك',
   'swap-fee-est':'رسوم البروتوكول (0.1%)','swap-details-hdr':'تفاصيل التبادل',
   'swap-out-lbl':'ستحصل على (تقريباً)','swap-impact-lbl':'تأثير السعر','swap-rate-lbl':'سعر الصرف',
   'swap-depth-lbl':'تكوين المجمع','amm-title':'x × y = k — AMM ذو الجداء الثابت',
@@ -3632,7 +3640,7 @@ ar:{
   'swap-lp-pct-label':'% من مركزك','swap-lp-youget':'ستحصل على','swap-btn-removeliq':'🔥 سحب السيولة',
   'swap-pool-title':'AEQ / tUSD — حالة المجمع',
   'swap-pool-aeq':'احتياطي AEQ','swap-pool-tusd':'احتياطي tUSD','swap-pool-price':'السعر الفوري',
-  'swap-fee-bps':'رسوم المبادلة','swap-fee-split':'توزيع الرسوم','swap-fee-split-v':'40% مدققون / 30% LP / 20% UBI / 10% خزينة',
+  'swap-fee-bps':'رسوم المبادلة',
   'swap-pools-addr-title':'عناوين مجمعات التوكينوميكس','pools-addr-title':'عناوين عقود المجمعات',
   'swap-validators':'المدققون (40%)','swap-lps':'مزودو السيولة (30%)','swap-ubi':'مجمع UBI (20%)','swap-treasury':'الخزينة (10%)',
   'ubi-hero-title':'الدخل الأساسي الشامل — مجمع UBI',
@@ -3776,7 +3784,7 @@ hi:{
   'btn-download-app':'AEQUITASBIO ऐप डाउनलोड करें',
   'swap-title':'🔄 AEQ ↔ tUSD स्वैप करें','swap-sub':'नेटिव लिक्विडिटी पूल के माध्यम से AEQ को tUSD (सिमुलेटेड टेस्ट डॉलर) से बदलें। स्वैप के लिए केवल 0.1% शुल्क — सामान्य AEQ ट्रांसफर पूरी तरह निःशुल्क।',
   'swap-priv-bar':'🔒 केवल 0.1% स्वैप शुल्क · AEQ→AEQ ट्रांसफर निःशुल्क · tUSD कोई वास्तविक मूल्य के बिना टेस्ट मुद्रा है',
-  'swap-your-aeq':'आपका AEQ','swap-your-tusd':'आपका tUSD','swap-aeq-to-tusd':'AEQ → tUSD','swap-tusd-to-aeq':'tUSD → AEQ',
+  'swap-your-aeq':'आपका AEQ','swap-your-tusd':'आपका tUSD',
   'swap-fee-est':'प्रोटोकॉल शुल्क (0.1%)','swap-details-hdr':'स्वैप विवरण',
   'swap-out-lbl':'आप प्राप्त करेंगे (अनुमानित)','swap-impact-lbl':'मूल्य प्रभाव','swap-rate-lbl':'विनिमय दर',
   'swap-depth-lbl':'पूल संरचना','amm-title':'x × y = k — कॉन्स्टेंट प्रोडक्ट AMM',
@@ -3789,7 +3797,7 @@ hi:{
   'swap-lp-pct-label':'आपकी स्थिति का %','swap-lp-youget':'आप प्राप्त करेंगे','swap-btn-removeliq':'🔥 लिक्विडिटी हटाएं',
   'swap-pool-title':'AEQ / tUSD — पूल स्थिति',
   'swap-pool-aeq':'AEQ रिजर्व','swap-pool-tusd':'tUSD रिजर्व','swap-pool-price':'स्पॉट मूल्य',
-  'swap-fee-bps':'स्वैप शुल्क','swap-fee-split':'शुल्क वितरण','swap-fee-split-v':'40% वैलिडेटर / 30% LP / 20% UBI / 10% ट्रेजरी',
+  'swap-fee-bps':'स्वैप शुल्क',
   'swap-pools-addr-title':'टोकनोमिक्स पूल पते','pools-addr-title':'पूल अनुबंध पते',
   'swap-validators':'वैलिडेटर (40%)','swap-lps':'लिक्विडिटी प्रदाता (30%)','swap-ubi':'UBI पूल (20%)','swap-treasury':'ट्रेजरी (10%)',
   'ubi-hero-title':'यूनिवर्सल बेसिक इनकम — UBI पूल',

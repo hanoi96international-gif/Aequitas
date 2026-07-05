@@ -68,6 +68,17 @@ contract AequitasV7 {
     // These two values are intentionally different: the Solidity cap is deliberately loose so it
     // only triggers if the Go-layer cap is bypassed by a direct contract call.
     uint256[5] public CAPS       = [50, 20, 10, 5, 3];
+    // FIX (P3-18, beta-launch audit 2026-07-05): THRESHOLDS didn't have its
+    // own version of CAPS' comment above explaining the same intentional
+    // Go/Solidity discrepancy. The Go chain's actual phase-in schedule
+    // (bootstrapMultiplierLocked, state.go) is a much simpler two-point
+    // ramp — the multiplier grows 1:1 with the registered-human count from
+    // 5x at ≤5 humans up to 25x once the count reaches 25, then stays flat
+    // at 25x forever after — not this array's 5-step, population-gated
+    // breakpoint schedule. Same reasoning as CAPS: this is a deliberately
+    // loose, rarely-relevant on-chain backstop for a direct contract call
+    // that bypasses the Go layer, not a value meant to track the Go
+    // schedule exactly.
     uint256[5] public THRESHOLDS = [0, 100, 1_000, 10_000, 100_000];
 
     event Registered(address indexed human, uint256 commitment, uint256 grant);

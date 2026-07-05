@@ -347,6 +347,19 @@ func (a *APIServer) handleCombinedHealth(w http.ResponseWriter, r *http.Request)
 		// not a health concern, and does NOT gate production.
 		notes = append(notes, fmt.Sprintf("%d synthetic-checkpoint stub(s) at the snapshot boundary — this node was bootstrapped from a signed snapshot; the boundary block predates all retained history and is trusted like genesis (expected, not an error)", boundaryStubs))
 	}
+	// FIX (P3-4, beta-launch audit 2026-06-27): checkV7SlotsMatchDeployedVersion
+	// used to only print a stdout warning, easy to miss if logs aren't actively
+	// monitored. Surfacing it here too means it shows up wherever this
+	// dashboard/health check is already watched, same as every other
+	// degraded-state note above.
+	if !v7SlotsVerifiedFor(V7ContractVersion) {
+		if status == "healthy" {
+			status = "warn"
+		}
+		notes = append(notes, fmt.Sprintf(
+			"V7ContractVersion (%q) has changed since evm_engine.go's hardcoded storage-slot persistence lists were last verified (%q) — if this version added/removed/reordered a state variable in AequitasV7.sol, writes to any untracked slot will silently never persist",
+			V7ContractVersion, v7SlotsVerifiedForVersion))
+	}
 
 	json.NewEncoder(w).Encode(map[string]interface{}{
 		"chain": map[string]interface{}{

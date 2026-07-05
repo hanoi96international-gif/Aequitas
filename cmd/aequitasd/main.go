@@ -84,7 +84,19 @@ _ "time/tzdata" // embed IANA timezone DB so Europe/Berlin works on Alpine witho
 //                          Destructive recovery operations. Each requires an
 //                          explicit, separate opt-in flag and is refused by
 //                          default -- never set these for routine operation.
-//   LOG_LEVEL              Optional log verbosity (debug/info/warn/error).
+//   LOG_LEVEL              FIX (P3-8, beta-launch audit 2026-07-05): this
+//                          used to read like a general verbosity control
+//                          for all node output. It only gates logger.go's
+//                          slog-based Log — most log lines in this codebase
+//                          are unconditional fmt.Printf, unaffected by this
+//                          var at all, and Log itself currently only has
+//                          Log.Error() call sites (no Debug/Warn/Info
+//                          calls exist yet), so debug/warn/error all
+//                          produce identical output to the default (info)
+//                          today. Setting this to anything currently has
+//                          no observable effect; left here as a hook for
+//                          when more Log.* call sites are added, not a
+//                          working verbosity switch yet.
 
 const (
 VERSION       = "v0.3.0"

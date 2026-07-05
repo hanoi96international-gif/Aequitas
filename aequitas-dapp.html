@@ -395,7 +395,12 @@ input[type=number]::-webkit-inner-spin-button{-webkit-appearance:none}
             <div>App redirects back here with proof → submit on-chain → receive 1,000 AEQ</div>
           </div>
         </div>
-        <a href="https://aequitas.digital/#download" target="_blank" class="btn btn-purple" style="text-decoration:none">📱 Get Aequitas App</a>
+        <!-- FIX (P3-16, beta-launch audit 2026-07-05): landing.go has no
+             id="download" anchor for this to scroll to (it never has —
+             clicking this just loaded the landing page from the top instead
+             of jumping anywhere). Linking straight to the actual download
+             route instead of a non-existent in-page anchor. -->
+        <a href="https://aequitas.digital/download/app.apk" target="_blank" class="btn btn-purple" style="text-decoration:none">📱 Get Aequitas App</a>
       </div>
 
       <div id="id-proof-ready" style="display:none">

@@ -80,41 +80,14 @@ func (d Decimal) MulFloat(f float64) Decimal {
 	return Decimal(result)
 }
 
-// DivDecimal divides two Decimals and returns a Decimal result (not a ratio).
-// Computes (d * precision) / other to maintain scale.
-func (d Decimal) DivDecimal(other Decimal) Decimal {
-	if other == 0 {
-		return 0
-	}
-	// FIX (audit 2026-06-29): two real bugs, both latent (no current
-	// caller, but this is exported and the next caller inherits them
-	// silently):
-	//  1. big.Int.Div implements Euclidean division (Knuth), not the
-	//     truncated-toward-zero division every other signed-arithmetic
-	//     path in this type uses (NewDecimal rounds half-away-from-zero;
-	//     native int64 "/" truncates toward zero). For a negative
-	//     numerator these disagree — e.g. Div(-7,2)=-4 vs the expected
-	//     Quo(-7,2)=-3 — silently giving a wrong result for any negative
-	//     Decimal (a debt/negative balance, which IsNegative()/Neg() show
-	//     this type is meant to support). Quo matches the rest of this
-	//     file's semantics.
-	//  2. The result was never bounds-checked before .Int64(): per
-	//     math/big's own docs, Int64() "is undefined" if the value doesn't
-	//     fit — unlike AMMSwapOut below, which guards exactly this with
-	//     BitLen(). A large d with a small other can overflow int64 here
-	//     just as easily as there.
-	result := new(big.Int).Quo(
-		new(big.Int).Mul(big.NewInt(int64(d)), big.NewInt(DecimalPrecision)),
-		big.NewInt(int64(other)),
-	)
-	if result.BitLen() > 63 {
-		if result.Sign() < 0 {
-			return Decimal(math.MinInt64)
-		}
-		return Decimal(math.MaxInt64)
-	}
-	return Decimal(result.Int64())
-}
+// FIX (P3-3, beta-launch audit 2026-06-27): DivDecimal used to live here —
+// removed rather than kept around fixed-but-unused. It had zero callers
+// anywhere in this codebase and zero test coverage; a correct-looking but
+// never-exercised method is exactly the kind of thing a future caller
+// reaches for without anyone having actually verified it against this
+// type's real usage patterns. If AEQ division is ever genuinely needed,
+// write it fresh against the actual call site's requirements (and add a
+// test) rather than resurrecting this.
 
 // IsZero returns true when d == 0.
 func (d Decimal) IsZero() bool { return d == 0 }

@@ -40,7 +40,7 @@ Aequitas has a Gini coefficient of ~0.08 — compared to ~0.85 for Bitcoin, the 
 | 🌐 Website & Explorer | https://aequitas.digital |
 | ⛓ RPC Endpoint | https://aequitas.digital/rpc |
 | 🔒 Proof Server | https://aequitas-proof-server-production.up.railway.app |
-| 📡 Bootstrap Node | `/dns4/thomas.proxy.rlwy.net/tcp/47298/p2p/12D3KooWFuP5HtD1Xy9bj3ZdWL7eisWTx72V26hpGieMmqsGLV5R` |
+| 📡 Bootstrap Node | `/dns4/reseau.proxy.rlwy.net/tcp/41277/p2p/12D3KooWFuP5HtD1Xy9bj3ZdWL7eisWTx72V26hpGieMmqsGLV5R` |
 
 ---
 
