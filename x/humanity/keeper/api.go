@@ -922,6 +922,16 @@ func (a *APIServer) handleBlockPush(w http.ResponseWriter, r *http.Request) {
 	// (that's the whole point of them being real checks); removing this
 	// bypass does not weaken the real-time push-merge path this endpoint
 	// exists for, only the false trust extended to an unauthenticated one.
+	// FIX (2026-07-05 — see hasBlockInMemory's own comment, block.go): a
+	// live block routinely arrives here more than once (this endpoint is
+	// pushed to independently by every producing peer, alongside P2P
+	// direct+relay) — report the idempotent success immediately for a
+	// block this node already has, instead of paying a full AddPeerBlock
+	// call just to re-discover "already known" every time.
+	if a.blockchain.hasBlockInMemory(block.Hash) {
+		w.Write([]byte(`{"ok":true}`))
+		return
+	}
 	block.FromSync = false
 	accepted := a.blockchain.AddPeerBlock(&block)
 	// FIX (durable fix, 2026-07-04 — closes the same mutual-lockout risk for

@@ -2419,6 +2419,32 @@ func (dag *BlockDAG) hasAwaitingOrphan(hash string) bool {
 	return len(dag.orphans[hash]) > 0
 }
 
+// hasBlockInMemory is a cheap, memory-only existence check (no DB fallback)
+// for entry points that can receive the SAME block through multiple
+// redundant channels — a live block routinely arrives via P2P direct, P2P
+// gossip relay (broadcastExcept re-broadcasts every received block to every
+// other connected peer), and HTTP push, all independently. Until 2026-07-05
+// these entry points (p2p.go's handleBlockStream, api.go's handleBlockPush)
+// called AddPeerBlock unconditionally for every one of those redundant
+// deliveries; doSyncOnce (sync_blocks.go) already had this exact check.
+// Confirmed live: raw arrival counts ran 2-4x the actual block-production
+// rate, with recordRawArrivalLatency (finality.go) — added the same
+// night specifically to see this — showing growing multi-second-to-minute
+// "ages" for what were really just late redundant copies of blocks handled
+// long before, wasting a full AddPeerBlock call (dag.mu, resyncInProgress,
+// every gate) purely to rediscover "already known" each time. Not
+// exhaustive — a block pruned from dag.blocks but still known via the DB
+// reports false here even though AddPeerBlock's own deeper check would
+// still recognize it; that's fine, this is an optimization for the common
+// case (a block from within the last few seconds), not a correctness
+// boundary — AddPeerBlock remains the real, authoritative check.
+func (dag *BlockDAG) hasBlockInMemory(hash string) bool {
+	dag.mu.RLock()
+	defer dag.mu.RUnlock()
+	_, ok := dag.blocks[hash]
+	return ok
+}
+
 // shouldAttemptFetch reports whether enough time has passed since the last
 // fetch attempt for hash to try again, and records this attempt if so. See
 // orphanFetchCooldown for why this exists — without it, every new orphan's

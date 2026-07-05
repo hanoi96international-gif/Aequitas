@@ -207,9 +207,17 @@ func (n *P2PNode) handleBlockStream(s network.Stream) {
 		return
 	}
 
+	sender := s.Conn().RemotePeer()
+	// FIX (2026-07-05 — see hasBlockInMemory's own comment): a live block
+	// routinely arrives here more than once (direct + gossip relay from
+	// another peer) — skip the full AddPeerBlock call (and any further
+	// relay) entirely for a block this node already has, instead of
+	// silently re-discovering "already known" deep inside it every time.
+	if n.dag.hasBlockInMemory(block.Hash) {
+		return
+	}
 	// Log only when the block is actually accepted — logging before
 	// AddPeerBlock caused "Received" messages for blocks that were rejected.
-	sender := s.Conn().RemotePeer()
 	if n.dag.AddPeerBlock(&block) {
 		fmt.Printf("[BLOCK-SYNC] ✓ Accepted block #%d from peer %s\n",
 			block.Height, sender.String()[:12])
