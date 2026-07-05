@@ -1988,6 +1988,49 @@ func (cs *ChainState) GetRegisteredNodes() []string {
 	return wallets
 }
 
+// GetValidatorOrdinals returns a stable "Validator #N" label for every
+// signing address that has ever registered, numbered by registration
+// order (registered_at ASC) — 1-indexed, keyed by lower-cased
+// signing_address (the same address that appears as a block's Proposer
+// field). Used by the explorer to show a friendly label alongside a raw
+// 0x address without hardcoding any specific node's identity — a
+// deliberate design choice: this project explicitly invites any
+// registered human to run a validator node, so baking in "Primary/
+// Contabo 1/Contabo 2"-style names would need updating by hand every time
+// a new node joins and would misrepresent the network as closed. The
+// ordinal is purely registration order, learned the same way for every
+// node without any operator ever hand-editing this list.
+//
+// FIX (2026-07-05 — website audit / UX finding): the block explorer only
+// ever showed raw hex addresses for the proposer column, which is exactly
+// correct but not very approachable for a non-technical visitor trying to
+// understand "who produced this block" at a glance.
+func (cs *ChainState) GetValidatorOrdinals() map[string]int {
+	if cs.db == nil {
+		return nil
+	}
+	rows, err := cs.db.Query(`SELECT lower(signing_address) FROM registered_nodes
+	          WHERE signing_address != '' ORDER BY registered_at ASC`)
+	if err != nil {
+		return nil
+	}
+	defer rows.Close()
+	ordinals := make(map[string]int)
+	n := 0
+	for rows.Next() {
+		var addr string
+		if err := rows.Scan(&addr); err != nil {
+			continue
+		}
+		if _, exists := ordinals[addr]; exists {
+			continue // a signing address can legitimately appear more than once (re-registration)
+		}
+		n++
+		ordinals[addr] = n
+	}
+	return ordinals
+}
+
 // IncrementBlockCount records that the given proposer wallet produced a
 // block. Used by distributeValidatorsPoolLocked to distribute rewards
 // proportionally. Called for EVERY accepted block (own AND peer-produced —

@@ -4805,6 +4805,29 @@ function drawPriceChart() {
 let allBlocks = [];
 let latestChainHeight = 0;
 let dagAutoScrolled = false;
+let validatorLabels = {};
+
+// loadValidatorLabels fetches the registration-order ordinal for every
+// known signing address (see GetValidatorOrdinals' own comment, state.go,
+// for why this is registration order, not a hardcoded per-node name).
+// Called once at page load and refreshed alongside loadBlocks — cheap,
+// and a newly-joined validator's first label should show up without a
+// page reload.
+async function loadValidatorLabels() {
+  try {
+    const d = await (await fetch('/api/validator-labels')).json();
+    validatorLabels = d.labels || {};
+  } catch (e) {}
+}
+
+// validatorLabel returns "Validator #N" for a known signing address, or
+// null if this address has never been through GetValidatorOrdinals (e.g.
+// labels haven't loaded yet, or a very-just-joined node this node's own
+// registered_nodes table hasn't recorded yet either).
+function validatorLabel(address) {
+  const ord = validatorLabels[(address || '').toLowerCase()];
+  return ord ? ('Validator #' + ord) : null;
+}
 
 // DAG_MAX_HEIGHTS/DAG_MAX_ROWS bound the rendered window so a wild
 // concurrent-production burst (many siblings at one height) can't blow up
@@ -4909,7 +4932,7 @@ function renderDagView(rawBlocks, canonicalHashSet) {
       while (tip.firstChild) tip.removeChild(tip.firstChild);
       [
         '#' + n.block.height + (n.canonical ? ' · canonical' : ' · merged sibling'),
-        'proposer: ' + short(n.block.proposer || '', 8, 4),
+        'proposer: ' + short(n.block.proposer || '', 8, 4) + (validatorLabel(n.block.proposer) ? ' (' + validatorLabel(n.block.proposer) + ')' : ''),
         'blue_score: ' + (n.block.blue_score != null ? n.block.blue_score : '—'),
         'parents: ' + ((n.block.parent_hashes || []).length)
       ].forEach(function(line) {
@@ -5001,6 +5024,7 @@ async function loadBlocks() {
       list.innerHTML = dedupedBlocks.slice(0, 30).map(function(b) {
         const merge = b.parent_hashes && b.parent_hashes.length > 1;
         const txCount = (b.transactions || []).length;
+        const vLabel = validatorLabel(b.proposer);
         const proposer = b.proposer ? short(b.proposer, 6, 4) : '—';
         const sibCount = siblingsAt[b.height] || 1;
         const sibBadge = sibCount > 1 ? ' <span style="font-size:0.48rem;color:var(--gold);vertical-align:middle" title="' + sibCount + ' parallel blocks at this height (GHOSTDAG DAG)">⟁' + sibCount + '</span>' : '';
@@ -5015,7 +5039,7 @@ async function loadBlocks() {
           '<td style="color:var(--purple);font-weight:700">#' + sanitize(String(b.height)) + sibBadge + '</td>' +
           '<td class="exp-muted" style="font-size:0.6rem">' + sanitize(timeAgo(b.timestamp)) + '</td>' +
           '<td>' + txBadge + '</td>' +
-          '<td class="exp-addr" style="font-size:0.6rem">' + sanitize(proposer) + '</td>' +
+          '<td class="exp-addr" style="font-size:0.6rem">' + (vLabel ? ('<strong>' + sanitize(vLabel) + '</strong> <span class="exp-muted">(' + sanitize(proposer) + ')</span>') : sanitize(proposer)) + '</td>' +
           '<td>' + typeBadge + '</td>' +
           '<td style="color:var(--teal);font-size:0.6rem">' + blueScore + '</td>' +
           '</tr>';
@@ -5120,8 +5144,9 @@ function openBlock(hash) {
     html += '<div class="bdc-row"><div class="bdc-k">GHOSTDAG Blue Score</div><div class="bdc-v" style="color:var(--teal);font-weight:700">'
       + sanitize(String(b.blue_score)) + ' <span style="color:var(--muted);font-weight:400;font-size:0.55rem">canonical ordering key</span></div></div>';
   }
+  const bLabel = validatorLabel(b.proposer);
   html += '<div class="bdc-row"><div class="bdc-k">Proposer</div><div class="bdc-v" style="color:var(--teal);word-break:break-all;font-size:0.54rem">'
-    + sanitize(b.proposer || '—') + '</div></div>';
+    + (bLabel ? ('<strong>' + sanitize(bLabel) + '</strong> &mdash; ') : '') + sanitize(b.proposer || '—') + '</div></div>';
   html += '<div class="bdc-row"><div class="bdc-k">Block Hash</div><div class="bdc-v" style="font-size:0.52rem;word-break:break-all">'
     + sanitize(b.hash || '') + '</div></div>';
   if (b.state_root) {
@@ -6423,6 +6448,7 @@ async function restoreWalletFromStorage() {
 
 checkProofParams();
 restoreWalletFromStorage();
+loadValidatorLabels();
 loadStatus();
 loadHealth();
 loadBlocks();
@@ -6431,6 +6457,7 @@ setInterval(loadStatus, 6000);
 setInterval(loadHealth, 30000);
 setInterval(loadBlocks, 6000);
 setInterval(loadHumans, 10000);
+setInterval(loadValidatorLabels, 60000);
 setInterval(loadPoolStatus, 8000);
 // Observe each canvas individually so charts redraw when they become visible.
 // We observe the canvas containers, not document.body (which fires on every

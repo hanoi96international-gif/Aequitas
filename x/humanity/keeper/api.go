@@ -2,6 +2,7 @@ package keeper
 
 import (
 	"bytes"
+	"compress/gzip"
 	"crypto/subtle"
 	"encoding/hex"
 	"encoding/json"
@@ -379,6 +380,37 @@ func (a *APIServer) handleCombinedHealth(w http.ResponseWriter, r *http.Request)
 	})
 }
 
+// gzipResponseWriter wraps http.ResponseWriter, redirecting Write() through
+// a gzip.Writer — see gzipMiddleware's own comment for why this exists.
+type gzipResponseWriter struct {
+	io.Writer
+	http.ResponseWriter
+}
+
+func (w gzipResponseWriter) Write(b []byte) (int, error) {
+	return w.Writer.Write(b)
+}
+
+// gzipMiddleware transparently compresses any response for a client that
+// advertises gzip support, EXCEPT /download/ paths (PDFs/APK are already
+// compressed formats — gzipping them again burns CPU for no size benefit,
+// and both file types risk subtly corrupting on some proxies if double-
+// encoded incorrectly). See Start's own call site comment for why this
+// exists and why it's a pure win, unlike caching.
+func gzipMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if !strings.Contains(r.Header.Get("Accept-Encoding"), "gzip") || strings.HasPrefix(r.URL.Path, "/download/") {
+			next.ServeHTTP(w, r)
+			return
+		}
+		w.Header().Set("Content-Encoding", "gzip")
+		w.Header().Add("Vary", "Accept-Encoding")
+		gz := gzip.NewWriter(w)
+		defer gz.Close()
+		next.ServeHTTP(gzipResponseWriter{Writer: gz, ResponseWriter: w}, r)
+	})
+}
+
 func (a *APIServer) Start(port int) {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/landing", a.handleLanding)
@@ -394,6 +426,7 @@ func (a *APIServer) Start(port int) {
 	mux.HandleFunc("/api/health/combined", a.handleCombinedHealth)
 	mux.HandleFunc("/api/blocks", a.handleBlocks)
 	mux.HandleFunc("/api/blocks/canonical", a.handleCanonicalBlocks)
+	mux.HandleFunc("/api/validator-labels", a.handleValidatorLabels)
 	mux.HandleFunc("/api/block", a.handleBlockByHash)
 	mux.HandleFunc("/api/blocks/by-hash", a.handleBlocksByHash)
 	mux.HandleFunc("/api/blocks/push", a.handleBlockPush)
@@ -467,9 +500,20 @@ func (a *APIServer) Start(port int) {
 	fmt.Printf("✓ API Server listening on port %d\n", port)
 	// Use http.Server with explicit timeouts to prevent slowloris attacks and
 	// goroutine leaks from clients that never send/read — the default mux has none.
+	//
+	// FIX (2026-07-05 — website audit finding): the explorer/landing HTML
+	// response is ~800KB, served uncompressed with no Content-Encoding —
+	// confirmed live, no gzip/br/deflate anywhere despite every browser
+	// requesting it. Text (HTML/JS/CSS) compresses extremely well (typically
+	// 70-80% smaller), so this is pure bandwidth/load-time savings with no
+	// freshness tradeoff — unlike caching, which this project deliberately
+	// keeps at "no-cache, no-store" (see that header's own site) precisely
+	// because stale cached content was a real, repeated problem tonight.
+	// Compression doesn't cache anything; every request still gets
+	// re-validated, just transferred smaller.
 	srv := &http.Server{
 		Addr:         addr,
-		Handler:      mux,
+		Handler:      gzipMiddleware(mux),
 		ReadTimeout:  30 * time.Second,
 		WriteTimeout: 60 * time.Second,
 		IdleTimeout:  120 * time.Second,
@@ -2194,6 +2238,30 @@ func (a *APIServer) handlePeers(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	json.NewEncoder(w).Encode(map[string]interface{}{"peers": GlobalPeerRegistry.ActivePeers(os.Getenv("SELF_URL"))})
+}
+
+// handleValidatorLabels returns a stable "Validator #N" ordinal for every
+// signing address that has ever registered (registration order — see
+// GetValidatorOrdinals' own comment for why this, not a hardcoded name per
+// node). Deliberately public/unauthenticated: this reveals nothing beyond
+// what /api/blocks already exposes to anyone — every block's Proposer field
+// IS a signing address, fully enumerable without auth today (see P2-9's
+// own comment on handlePeers' validator-list gating, which protects
+// against a DIFFERENT concern, discovery-URL enumeration, not address
+// secrecy). This endpoint only adds a friendlier, derived label for
+// addresses that are already public.
+// GET /api/validator-labels
+func (a *APIServer) handleValidatorLabels(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	var ordinals map[string]int
+	if a.blockchain != nil && a.blockchain.state != nil {
+		ordinals = a.blockchain.state.GetValidatorOrdinals()
+	}
+	if ordinals == nil {
+		ordinals = map[string]int{}
+	}
+	json.NewEncoder(w).Encode(map[string]interface{}{"labels": ordinals})
 }
 
 // handleSigningAddress returns this node's signing address, protected by
