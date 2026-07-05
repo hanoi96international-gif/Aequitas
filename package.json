@@ -1,4 +1,5 @@
 {
+  "type": "module",
   "dependencies": {
     "ethers": "^6.13.0",
     "solc": "^0.8.35"

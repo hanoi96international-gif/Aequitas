@@ -1046,6 +1046,20 @@ func (a *APIServer) handleHumans(w http.ResponseWriter, r *http.Request) {
 func (a *APIServer) handleSepoliaHumans(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Access-Control-Allow-Origin", "*")
+	// FIX (P3, beta-launch audit 2026-07-05): unlike its sibling proxies
+	// (handleProveProxy, handleProveStoreProxy, handleProofCheckProxy — all
+	// rate-limited per-IP), this endpoint had no rate limit at all. Every hit
+	// becomes an outbound HTTP GET to the operator's proof server, which may
+	// have a much scarcer request budget than this chain node — an
+	// unthrottled amplification vector against it.
+	ip := "sepolia-humans:" + clientIP(r)
+	if ts, loaded := registerRateLimit.Load(ip); loaded {
+		if time.Since(ts.(time.Time)) < 5*time.Second {
+			jsonError(w, "rate limited, try again shortly", 429)
+			return
+		}
+	}
+	registerRateLimit.Store(ip, time.Now())
 	base, ok := requireProofServerConfigured(w)
 	if !ok {
 		return
@@ -2707,7 +2721,14 @@ func (a *APIServer) handleRecoverEscrow(w http.ResponseWriter, r *http.Request) 
 	// FIX 5: IP-based rate limiting — reuse the package-level registerRateLimit
 	// sync.Map so escrow recovery cannot be hammered faster than once per 30s per IP.
 	// Use clientIP(r) helper to correctly handle X-Forwarded-For from Railway's proxy.
-	ip := clientIP(r)
+	// FIX (P3, beta-launch audit 2026-07-05): this used the bare IP as the map
+	// key, same as handleRegister's own rate limit (register.go) — the two
+	// endpoints shared one cooldown window instead of two independent ones
+	// (calling /api/register then immediately /api/recover-escrow from the
+	// same IP would hit this endpoint's limiter already "warmed up" by the
+	// other call). Prefixed, matching every other endpoint on this map
+	// (set-guardian:, confirm-alive:, etc).
+	ip := "recover-escrow:" + clientIP(r)
 	if ts, loaded := registerRateLimit.Load(ip); loaded {
 		if time.Since(ts.(time.Time)) < 30*time.Second {
 			jsonError(w, "rate limited, try again shortly", 429)

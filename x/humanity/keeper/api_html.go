@@ -555,7 +555,7 @@ input[type=number]::-webkit-inner-spin-button{opacity:0.5}
   <div class="exp-stat">
     <div class="exp-stat-lbl" data-i18n="s-supply">Total Supply</div>
     <div class="exp-stat-val" id="s-supply">—</div>
-    <div class="exp-stat-sub">Always = Humans × 1,000 AEQ</div>
+    <div class="exp-stat-sub" data-i18n="s-supply-sub">Always = Humans × 1,000 AEQ</div>
   </div>
   <div class="exp-stat">
     <div class="exp-stat-lbl" data-i18n="s-uptime">Uptime</div>
@@ -4086,6 +4086,20 @@ async function addToMetaMask() {
       }]
     });
   } catch (e) { console.error('MetaMask error:', e); }
+  // FIX (P2, beta-launch audit 2026-07-05): wallet_addEthereumChain only
+  // switches the active network when the chain is being added for the
+  // FIRST time — a returning user who already added Aequitas Chain in a
+  // previous session but is currently active on a different network (the
+  // common case: they used MetaMask for something else since) got no
+  // prompt at all, then hit confusing failures deep into registration/swap
+  // flows instead of a clear, immediate "switch network" prompt. Explicitly
+  // request the switch regardless of whether the add above was a no-op.
+  try {
+    await window.ethereum.request({
+      method: 'wallet_switchEthereumChain',
+      params: [{ chainId: CID }]
+    });
+  } catch (e) { console.error('MetaMask network switch error:', e); }
 }
 
 // UBI countdown timer — counts down to the next daily distribution.
@@ -4130,12 +4144,23 @@ function startUBITimer(secsRemaining) {
 // sync/consensus health on the header badge — surfacing the same signals
 // (degraded state, synthetic-checkpoint trust mode, StateRoot mismatches)
 // an operator would otherwise only see in server logs.
+// FIX (P2, beta-launch audit 2026-07-05): every setInterval-driven poller in
+// this file (loadStatus/loadBlocks/loadHumans/loadHealth/loadValidatorLabels/
+// loadPoolStatus) had no request-sequencing guard — if a slow response from
+// tick N resolved after tick N+1's already landed, tick N's .then() would
+// unconditionally overwrite the DOM with older data, visibly reverting
+// stats/blocks/health to a stale snapshot for one interval. Each poller now
+// grabs a sequence number before its fetch and bails before touching the DOM
+// if a newer call for the same poller has already started.
+let loadHealthSeq = 0;
 async function loadHealth() {
   const badge = document.getElementById('health-badge');
   if (!badge) return;
+  const mySeq = ++loadHealthSeq;
   try {
     const r = await fetch('/api/health/combined');
     const d = await r.json();
+    if (mySeq !== loadHealthSeq) return;
     const c = d.chain || {};
     const status = c.status || 'healthy';
     badge.classList.remove('badge-health-healthy', 'badge-health-warn', 'badge-health-unhealthy');
@@ -4145,6 +4170,7 @@ async function loadHealth() {
     const notes = Array.isArray(c.notes) && c.notes.length ? c.notes.join(' · ') : 'All systems nominal — height ' + fmt(c.height) + ', ' + fmt(c.dag_tips_count) + ' active tip(s)';
     badge.title = notes;
   } catch (e) {
+    if (mySeq !== loadHealthSeq) return;
     badge.classList.remove('badge-health-healthy', 'badge-health-warn');
     badge.classList.add('badge-health-unhealthy');
     badge.textContent = '● GHOSTDAG ✕';
@@ -4152,9 +4178,12 @@ async function loadHealth() {
   }
 }
 
+let loadStatusSeq = 0;
 async function loadStatus() {
+  const mySeq = ++loadStatusSeq;
   try {
     const d = await (await fetch('/api/status')).json();
+    if (mySeq !== loadStatusSeq) return;
     // Cache the true chain height so the block list's "N blocks" stat can
     // show it directly instead of a deduped count of whatever page of
     // blocks happens to be locally fetched (see loadBlocks).
@@ -4210,10 +4239,6 @@ async function loadStatus() {
     const fillBar = document.getElementById('ubi-fill-bar');
     if (fillBar) fillBar.style.width = fillPct.toFixed(1) + '%';
 
-    // Fix stale subtitle now that demurrage/wealth-cap mean supply can drift
-    const subEl = document.getElementById('s-supply-sub');
-    if (subEl) subEl.textContent = 'Always = Humans × 1,000 AEQ';
-
     if (d.index !== undefined) {
       document.getElementById('idx-bar').style.width = Math.min(d.index, 100) + '%';
       const phases = ['Phase 0: Bootstrap — sliding wealth cap 5×→25× (active)', 'Phase 1: Growth — expanding human registry (cap: 25×)', 'Phase 2: Stability — redistribution active (cap: 25×)', 'Phase 3: Maturity — full decentralization (cap: 25×)'];
@@ -4223,6 +4248,7 @@ async function loadStatus() {
   // Populate live wealth-cap widget (non-blocking)
   try {
     const wc = await (await fetch('/api/wealth-cap')).json();
+    if (mySeq !== loadStatusSeq) return;
     const capEl = document.getElementById('live-cap-aeq');
     const multEl = document.getElementById('live-cap-mult');
     const avgEl = document.getElementById('live-cap-avg');
@@ -4957,7 +4983,9 @@ function renderDagView(rawBlocks, canonicalHashSet) {
   }
 }
 
+let loadBlocksSeq = 0;
 async function loadBlocks() {
+  const mySeq = ++loadBlocksSeq;
   try {
     // FIX (durable fix, 2026-07-04 — "the explorer must show the same thing
     // on every node"): the table's rows now come from /api/blocks/canonical,
@@ -4977,6 +5005,7 @@ async function loadBlocks() {
       fetch('/api/blocks/canonical?limit=30').then(function(r) { return r.json(); }),
       fetch('/api/blocks').then(function(r) { return r.json(); })
     ]);
+    if (mySeq !== loadBlocksSeq) return;
     const list = document.getElementById('blocks-list');
     const txList = document.getElementById('txns-list');
     if (!canonicalBlocks || !canonicalBlocks.length) {
@@ -5301,9 +5330,12 @@ async function doRecoverEscrow() {
   } catch(e) { guardianLog('✗ ' + sanitize(e.message), 'err'); }
 }
 
+let loadHumansSeq = 0;
 async function loadHumans() {
+  const mySeq = ++loadHumansSeq;
   try {
     const d = await (await fetch('/api/humans')).json();
+    if (mySeq !== loadHumansSeq) return;
     document.getElementById('h-count').textContent = fmt(d.total);
     const list = document.getElementById('humans-list');
     if (!d.humans || !d.humans.length) { list.innerHTML = '<div class="empty">No humans registered yet.<br><br>Download the Aequitas Android App and be the first!</div>'; return; }
@@ -5465,9 +5497,12 @@ function sanitize(s) {
   return d.innerHTML;
 }
 
+let loadPoolStatusSeq = 0;
 async function loadPoolStatus() {
+  const mySeq = ++loadPoolStatusSeq;
   try {
     const d = await (await fetch('/api/pool')).json();
+    if (mySeq !== loadPoolStatusSeq) return;
     currentPoolAEQ = d.reserve_aeq;
     currentPoolTUSD = d.reserve_tusd;
     document.getElementById('pool-reserve-aeq').textContent = fmt(d.reserve_aeq) + ' AEQ';
@@ -6343,26 +6378,67 @@ async function doRegister() {
   } catch (e) { addLog('Error: ' + sanitize(e.message), 'err'); document.getElementById('btn-reg').disabled = false; }
 }
 
+// FIX (P2, beta-launch audit 2026-07-05): this handler used to update only
+// waddr and the Register tab. swapWaddr (the address every swap/
+// liquidity/faucet action in the Exchange tab actually signs and submits
+// with — see signMessage()) was never reassigned, so switching the active
+// account directly in MetaMask's own UI left the two tabs pointing at two
+// different wallets with no visible indication anything had changed. It
+// also silently did nothing when every account was disconnected (a === []),
+// leaving stale "connected" UI displayed indefinitely. Now mirrors the same
+// dual-tab sync connectWallet()/connectSwapWallet() already do, and fully
+// resets via disconnectWallet() when nothing is connected anymore.
 window.ethereum && window.ethereum.on('accountsChanged', function(a) {
-  waddr = a[0] || '';
-  if (waddr) {
-    document.getElementById('wbox').style.display = 'block';
-    document.getElementById('wadr').textContent = waddr;
-    const btn = document.getElementById('btn-conn');
-    btn.textContent = waddr.slice(0, 10) + '...' + waddr.slice(-4);
-    btn.style.background = 'var(--green)';
-    btn.style.color = '#050A14';
-    fetch('/api/balance?wallet=' + waddr).then(function(r) { return r.json(); }).then(function(bd) {
-      if (bd.is_human) {
-        document.getElementById('btn-reg').disabled = true;
-        document.getElementById('btn-reg').textContent = 'ALREADY REGISTERED';
-        addLog('Already registered! Balance: ' + sanitize(String(bd.balance || 0)) + ' AEQ', 'ok');
-      } else {
-        document.getElementById('btn-reg').disabled = !proofData;
-        if (proofData) document.getElementById('btn-reg').textContent = 'PROOF READY — CLICK TO REGISTER';
-      }
-    }).catch(function() { document.getElementById('btn-reg').disabled = !proofData; });
-  }
+  const newAddr = a[0] || '';
+  if (!newAddr) { disconnectWallet(); return; }
+  waddr = newAddr;
+  swapWaddr = newAddr;
+  localStorage.setItem('aeq_wallet', newAddr);
+
+  document.getElementById('wbox').style.display = 'block';
+  document.getElementById('wadr').textContent = waddr;
+  const btn = document.getElementById('btn-conn');
+  btn.textContent = waddr.slice(0, 10) + '...' + waddr.slice(-4);
+  btn.style.background = 'var(--green)';
+  btn.style.color = '#050A14';
+  const dBtn = document.getElementById('btn-disconnect');
+  if (dBtn) dBtn.style.display = 'block';
+
+  const swapBox = document.getElementById('swap-wbox');
+  const swapAdr = document.getElementById('swap-wadr');
+  const swapBtn = document.getElementById('swap-btn-conn');
+  const swapDBtn = document.getElementById('swap-btn-disconnect');
+  if (swapBox) swapBox.style.display = 'block';
+  if (swapAdr) swapAdr.textContent = swapWaddr;
+  if (swapBtn) { swapBtn.textContent = swapWaddr.slice(0, 10) + '...' + swapWaddr.slice(-4); swapBtn.style.background = 'var(--green)'; swapBtn.style.color = '#050A14'; }
+  if (swapDBtn) swapDBtn.style.display = 'block';
+  if (typeof refreshSwapBalances === 'function') refreshSwapBalances().catch(function() {});
+  if (typeof loadLPPosition === 'function') loadLPPosition().catch(function() {});
+
+  fetch('/api/balance?wallet=' + waddr).then(function(r) { return r.json(); }).then(function(bd) {
+    if (bd.is_human) {
+      document.getElementById('btn-reg').disabled = true;
+      document.getElementById('btn-reg').textContent = 'ALREADY REGISTERED';
+      addLog('Already registered! Balance: ' + sanitize(String(bd.balance || 0)) + ' AEQ', 'ok');
+      loadGuardianStatus();
+    } else {
+      document.getElementById('btn-reg').disabled = !proofData;
+      if (proofData) document.getElementById('btn-reg').textContent = 'PROOF READY — CLICK TO REGISTER';
+    }
+  }).catch(function() { document.getElementById('btn-reg').disabled = !proofData; });
+});
+
+// FIX (P2, beta-launch audit 2026-07-05): no chainChanged listener existed
+// at all — a user connected while MetaMask was on any other network saw
+// every part of the UI behave as if connected normally (no warning, no
+// forced switch), then hit confusing failures deep into a registration or
+// swap flow instead of a clear, immediate explanation. Reloading on
+// chainChanged is MetaMask's own documented recommendation: it guarantees
+// every piece of page state (wallet address, balances, chain-dependent
+// constants) is re-derived fresh against whatever network is now active,
+// rather than trying to patch each of them in place.
+window.ethereum && window.ethereum.on('chainChanged', function() {
+  window.location.reload();
 });
 
 function disconnectWallet() {

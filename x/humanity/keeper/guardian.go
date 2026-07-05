@@ -152,11 +152,20 @@ func (cs *ChainState) SetGuardian(wallet, guardian string) error {
 
 	// Re-check ward count now that we hold the advisory lock — serializes with
 	// any concurrent guardian change for the same guardian address.
+	// FIX (P2, beta-launch audit 2026-07-05): this Scan's error used to be
+	// discarded (//nolint:errcheck). A transient query failure (connection
+	// blip, statement timeout) inside this already-open, already-locked
+	// transaction left currentWards at Go's zero value, silently treating a
+	// guardian who may already be at the maxWardsPerGuardian cap as having
+	// zero wards — bypassing the exact re-check this code exists to enforce.
+	// Fail closed instead: a re-check that can't run is not a passed check.
 	var currentWards int
-	tx.QueryRow( //nolint:errcheck
+	if err := tx.QueryRow(
 		`SELECT COUNT(*) FROM guardians WHERE lower(guardian_address) = lower($1) AND lower(wallet_address) != lower($2)`,
 		guardian, wallet,
-	).Scan(&currentWards)
+	).Scan(&currentWards); err != nil {
+		return fmt.Errorf("ward-count re-check failed: %w", err)
+	}
 	if currentWards >= maxWardsPerGuardian {
 		return fmt.Errorf("guardian %s already has %d wards (maximum %d) — re-check under lock", guardian, currentWards, maxWardsPerGuardian)
 	}
