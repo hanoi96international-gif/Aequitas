@@ -205,6 +205,22 @@ authorizedValidators   map[string]bool  // Ethereum addresses allowed to propose
 currentEpoch           *EpochCommittee  // active block-producer committee for the current epoch
 epochMu                sync.RWMutex    // guards currentEpoch
 activeSyncPeers        map[string]bool  // peers with a running syncWithNode goroutine
+	// peerSyncHeight tracks, per peer URL, the highest block height this
+	// node has actually SUCCESSFULLY imported FROM that specific peer via
+	// doSyncOnce — see that function's own FIX comment (2026-07-06) for the
+	// incident this closes. dag.Height() is the wrong basis for the normal
+	// windowed sync's minHeight: it's the highest height from ANY source,
+	// including this node's own continuous self-production, which races
+	// ahead of real per-peer catch-up progress once a node produces blocks
+	// reliably every tick while a specific peer's blocks arrive with any
+	// latency at all. Once self-production has raced far enough ahead,
+	// dag.Height()-syncOverlap permanently requests a window past where
+	// that peer's actual next block is, and — since deepScan only
+	// activates once something has ALREADY failed to attach as an orphan —
+	// the gap can silently persist forever with no missing-parent entry
+	// ever created to trigger recovery. Guarded by syncPeerMu, same as
+	// activeSyncPeers.
+	peerSyncHeight         map[string]int64
 	// trustedSeeds holds the operator-configured seed/static-peer URLs
 	// (PRIMARY_NODE_URL, PRIMARY_NODE_URLS, PEER_NODES — see seedURLs/
 	// staticPeers in sync_blocks.go), populated once by StartPeerDiscovery.
@@ -717,6 +733,7 @@ state:                  state,
 nodeID:                 nodeID,
 authorizedValidators:   loadAuthorizedValidators(),
 activeSyncPeers:        make(map[string]bool),
+		peerSyncHeight:         make(map[string]int64),
 warnedUnknownProposers: make(map[string]bool),
 peerChallenges:         make(map[string]peerChallenge),
 replayedBlocks:         make(map[string]bool),

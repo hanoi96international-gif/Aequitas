@@ -562,6 +562,26 @@ func (dag *BlockDAG) claimDeepScanSlot(nodeURL string) bool {
 	return true
 }
 
+// getPeerSyncHeight/advancePeerSyncHeight track peerSyncHeight (see that
+// field's own struct comment for the incident this exists to fix) — the
+// highest height this node has actually imported FROM nodeURL specifically,
+// independent of dag.Height() (which also reflects this node's own
+// self-production and can race arbitrarily far ahead of real per-peer
+// catch-up progress).
+func (dag *BlockDAG) getPeerSyncHeight(nodeURL string) int64 {
+	dag.syncPeerMu.Lock()
+	defer dag.syncPeerMu.Unlock()
+	return dag.peerSyncHeight[nodeURL]
+}
+
+func (dag *BlockDAG) advancePeerSyncHeight(nodeURL string, height int64) {
+	dag.syncPeerMu.Lock()
+	defer dag.syncPeerMu.Unlock()
+	if height > dag.peerSyncHeight[nodeURL] {
+		dag.peerSyncHeight[nodeURL] = height
+	}
+}
+
 // deepScanFloor is doSyncOnce's deepScan minHeight — see that call site's
 // own FIX comment for the full 2026-07-04 permanent-non-convergence
 // incident. BootHeight() is only a safe, inclusive-enough floor when
@@ -624,7 +644,23 @@ func (dag *BlockDAG) doSyncOnce(nodeURL string) (ok bool) {
 	// cheap, targeted hash lookup) still runs every single cycle regardless.
 	wantDeepScan := len(dag.MissingParentHashes()) > 0
 	deepScan := wantDeepScan && dag.claimDeepScanSlot(nodeURL)
-	minHeight := dag.Height() - syncOverlap
+	// FIX (audit 2026-07-06, definitive root cause of a 3-node non-merging
+	// incident): this used to be dag.Height()-syncOverlap — dag.Height() is
+	// the highest height from ANY source, including this node's own
+	// continuous self-production, which races ahead of real per-peer catch-
+	// up once this node produces a block every tick while nodeURL's blocks
+	// arrive with any latency at all. Once self-production had raced far
+	// enough ahead, this window permanently requested a range past
+	// nodeURL's actual next block — and since deepScan only activates once
+	// something has ALREADY failed to attach as an orphan, no missing-
+	// parent entry was ever created to trigger recovery either: the gap
+	// silently persisted forever, visible live as one node successfully
+	// merging blocks from every peer while its peers' own canonical chains
+	// never advanced past their pre-existing self-produced history no
+	// matter how many times they were resynced. peerSyncHeight (see its own
+	// struct comment) tracks progress against THIS peer specifically,
+	// immune to this node's own production rate.
+	minHeight := dag.getPeerSyncHeight(nodeURL) - syncOverlap
 	if minHeight < 0 || deepScan {
 		// See deepScanFloor's own comment for why this is NOT simply
 		// dag.BootHeight() — the 2026-07-04 permanent-non-convergence
@@ -632,6 +668,7 @@ func (dag *BlockDAG) doSyncOnce(nodeURL string) (ok bool) {
 		minHeight = dag.deepScanFloor()
 	}
 	totalAdded := 0
+	highestSeen := int64(-1)
 	// P1-02: track (minHeight, afterHash) cursor so same-height siblings that
 	// don't fit in one page are not skipped.  afterHash is empty for the first
 	// page (ordinary Height > minHeight query) and set to the last block's hash
@@ -659,6 +696,9 @@ func (dag *BlockDAG) doSyncOnce(nodeURL string) (ok bool) {
 			// normal already-known block would.
 			if block.IsGenesis {
 				continue
+			}
+			if block.Height > highestSeen {
+				highestSeen = block.Height
 			}
 			// SECURITY (P0, launch audit 2026-07-03): see isTrustedSyncSource.
 			block.FromSync = dag.isTrustedSyncSource(nodeURL)
@@ -730,6 +770,14 @@ func (dag *BlockDAG) doSyncOnce(nodeURL string) (ok bool) {
 			// Keep going — the first block of the missing validator chain
 			// is somewhere ahead.
 		}
+	}
+	if highestSeen >= 0 {
+		// Advance regardless of totalAdded: a page can be entirely orphans
+		// (addedThisPage==0) yet still genuinely reflect nodeURL's real
+		// height — fetchMissingAncestors resolves those by hash separately,
+		// and re-requesting the same already-seen range forever would only
+		// reproduce the exact non-convergence this cursor exists to avoid.
+		dag.advancePeerSyncHeight(nodeURL, highestSeen)
 	}
 	if totalAdded > 0 {
 		dag.mu.RLock()
