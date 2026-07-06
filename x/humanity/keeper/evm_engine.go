@@ -474,7 +474,6 @@ data,
 value,
 )
 if execErr != nil {
-fmt.Printf("[EVM-DEBUG] execErr=%v (%T) ret=%x len(ret)=%d\n", execErr, execErr, ret, len(ret))
 reason := decodeRevertReason(ret)
 if reason != "" {
 return nil, fmt.Errorf("%s", reason)

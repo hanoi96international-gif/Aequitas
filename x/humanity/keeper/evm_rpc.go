@@ -20,12 +20,12 @@ import (
 // 2026-07-05): unlike every other mutating/expensive endpoint in this
 // codebase, /rpc had no rate limiting at all — only a per-batch size cap
 // (maxBatchSize) and a 1 MB body limit. Every single request, including a
-// read-only eth_call, triggers EVMEngine.newStateDB() to fully reload every
-// account balance and every contract's entire storage from Postgres (see
-// that function's own comment on the scaling cost this carries as the
-// registered-human count grows) — with no rate limit, an unauthenticated
-// caller could fire requests as fast as the network allows, each one
-// forcing that full reload. A sliding-window counter (not the single-
+// read-only eth_call, triggers EVMEngine.newStateDB() to reload account
+// balances (bounded to the handful a call actually touches since the G5 fix
+// — see that function's own comment) and every contract's entire storage
+// from Postgres — with no rate limit, an unauthenticated caller could fire
+// requests as fast as the network allows, each one forcing that reload. A
+// sliding-window counter (not the single-
 // cooldown-timestamp pattern used elsewhere in this codebase) since a
 // legitimate wallet/dashboard needs to make several RPC calls per page
 // load, not just one every few seconds.
@@ -388,11 +388,25 @@ func (s *EVMRPCServer) ethCall(params []json.RawMessage) (interface{}, *RPCError
 
 	fmt.Printf("[RPC] eth_call to=%s data=%x\n", toStr, data[:min4(len(data), 4)])
 
-	// Intercept isHuman(address) calls (selector 0x2f543389) to V7.
-	// The EVM engine sometimes returns an error for this simple storage read
-	// causing ethers.js to throw "could not decode result data" and the proof
-	// server to report "Chain unavailable". Read from Go state directly instead.
-	if len(data) >= 4 && hex.EncodeToString(data[:4]) == "2f543389" &&
+	// Intercept isHuman(address) calls (selector 0xf72c436f — keccak256(
+	// "isHuman(address)")[:4]) to V7. Read from Go state directly instead of
+	// going through the EVM, for the same reason as the balanceOf intercept
+	// below: it's the authoritative source and avoids a full EVM invocation
+	// for a simple lookup.
+	//
+	// FIX (2026-07-06): this used to check for 0x2f543389, which is not the
+	// selector for isHuman(address) at all (verified against keccak256) —
+	// that typo meant this intercept never actually matched a real
+	// isHuman(address) call, silently falling through to the EVM path below
+	// for every one of them. Investigated as part of the G5 lazy-loading
+	// verification after a live eth_call for isHuman appeared to revert;
+	// the EVM path itself turned out to be correct for well-formed calldata
+	// (verified directly and via TestReproMappingReadOnNeverCommittedTrie —
+	// reading a never-written mapping key does not revert), so this was
+	// dead defensive code, not the cause of that revert (a separate,
+	// malformed-calldata request) — but worth fixing since a correct
+	// intercept here is faster and one less path through the EVM per call.
+	if len(data) >= 4 && hex.EncodeToString(data[:4]) == "f72c436f" &&
 		toStr == strings.ToLower(V7_CONTRACT_ADDR) {
 		if len(data) >= 36 {
 			addrHex := "0x" + hex.EncodeToString(data[16:36])
