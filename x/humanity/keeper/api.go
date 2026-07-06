@@ -16,6 +16,8 @@ import (
 	"path/filepath"
 	"regexp"
 	"runtime/debug"
+	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -1076,15 +1078,52 @@ func (a *APIServer) handleHumans(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	registerRateLimit.Store("humans:"+ip, time.Now())
+	// FIX (P2-d, audit 2026-07-06): limit/offset pagination over the
+	// registered-human subset. Default limit (500) preserves today's exact
+	// response (well under that at current scale) for every existing caller
+	// that doesn't pass these params — this endpoint's cost that actually
+	// matters at scale is unbounded JSON response size/serialization, which
+	// this bounds; GetAllAccounts() itself still does one full in-memory map
+	// pass (ChainState.accounts has no secondary index to page through
+	// instead), same as before.
+	limit := 500
+	if v := r.URL.Query().Get("limit"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n > 0 && n <= 2000 {
+			limit = n
+		}
+	}
+	offset := 0
+	if v := r.URL.Query().Get("offset"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n >= 0 {
+			offset = n
+		}
+	}
 	accounts := a.state.GetAllAccounts()
+	// GetAllAccounts() iterates a Go map — unordered, and not even stable
+	// from one call to the next. offset/limit pagination over that directly
+	// would be unreliable (the same offset could return different accounts
+	// on different requests, or skip/duplicate entries across pages).
+	// Sorting by address first gives every page a fixed, reproducible
+	// position in the same total order.
+	sort.Slice(accounts, func(i, j int) bool { return accounts[i].Address < accounts[j].Address })
 	// Read pool state once, not per-account, so this scales to millions of
 	// humans. Each human's LP value is their ownership fraction of the pool
 	// reserves — surfaced alongside the liquid balance so a human who added
 	// all their AEQ as liquidity doesn't appear to hold nothing.
 	reserveAEQ, reserveTUSD, totalLPShares := a.state.GetPoolSnapshot()
+	totalHumans := 0
 	humans := []map[string]interface{}{}
+	skipped := 0
 	for _, acc := range accounts {
 		if acc.IsHuman {
+			totalHumans++
+			if skipped < offset {
+				skipped++
+				continue
+			}
+			if len(humans) >= limit {
+				continue
+			}
 			liquid := effectiveBalance(acc).Float()
 			lpShares := acc.LPShares.Float()
 			var lpValueAEQ, lpValueTUSD float64
@@ -1106,8 +1145,10 @@ func (a *APIServer) handleHumans(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	json.NewEncoder(w).Encode(map[string]interface{}{
-		"total":  len(humans),
+		"total":  totalHumans, // the real total, not just this page's size — the explorer's header count relies on this
 		"humans": humans,
+		"limit":  limit,
+		"offset": offset,
 	})
 }
 
