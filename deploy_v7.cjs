@@ -10,6 +10,13 @@ const VERIFIER = process.env.VERIFIER || '0xc369D27b49DE017d113Bbcb9A1884a9e745B
 
 if (!PK) { console.error('ERROR: PK not set'); process.exit(1); }
 
+// FIX (P3-j, audit 2026-07-06): log which source (env var vs hardcoded
+// default) actually supplied VERIFIER -- a launch-night operator setting
+// VERIFIER expecting it to take effect had no way to tell, from the
+// deploy's own output, whether their env var was read or silently ignored
+// in favor of the default.
+console.log(`VERIFIER = ${VERIFIER} (${process.env.VERIFIER ? 'from VERIFIER env var' : 'default — VERIFIER env var not set'})`);
+
 function rpcCall(method, params) {
   return new Promise((resolve, reject) => {
     const body = JSON.stringify({ jsonrpc:'2.0', id:1, method, params });

@@ -100,10 +100,28 @@ func NewAPIServer(bc *BlockDAG, p2p *P2PNode, state *ChainState) *APIServer {
 	return s
 }
 
+// writeJSON sets the standard JSON response Content-Type header. Centralizes
+// boilerplate that was previously duplicated across ~35 handlers individually
+// (P3-c, audit 2026-07-06).
+func writeJSON(w http.ResponseWriter) {
+	w.Header().Set("Content-Type", "application/json")
+}
+
+// writeJSONCORS is writeJSON plus an unauthenticated CORS allowance — only
+// for endpoints meant to be callable from any origin (the public /api/*
+// reads the dapp/explorer frontends call directly from the browser).
+// Endpoints gated by SNAPSHOT_TOKEN or otherwise restricted to operators
+// deliberately use writeJSON instead, to avoid making a browser-based
+// cross-origin read of restricted data easier (P3-c, audit 2026-07-06).
+func writeJSONCORS(w http.ResponseWriter) {
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+}
+
 // jsonError writes a properly JSON-marshaled error response, preventing JSON
 // injection via concatenated error strings that may contain quote characters.
 func jsonError(w http.ResponseWriter, msg string, code int) {
-	w.Header().Set("Content-Type", "application/json")
+	writeJSON(w)
 	w.WriteHeader(code)
 	enc, _ := json.Marshal(map[string]string{"error": msg})
 	w.Write(enc)
@@ -223,8 +241,7 @@ func (a *APIServer) syncProofServerStatus() {
 // of adding a second outbound HTTP call path; "proof_server_reachable"
 // reflects whether that cache currently holds anything.
 func (a *APIServer) handleCombinedHealth(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
-	w.Header().Set("Access-Control-Allow-Origin", "*")
+	writeJSONCORS(w)
 	latest := a.blockchain.LatestBlock()
 	a.proofStatusMu.RLock()
 	proofStatus := a.proofServerStatus
@@ -581,8 +598,7 @@ func (a *APIServer) Start(port int) {
 }
 
 func (a *APIServer) handleStatus(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
-	w.Header().Set("Access-Control-Allow-Origin", "*")
+	writeJSONCORS(w)
 	latest := a.blockchain.LatestBlock()
 	uptime := int64(time.Since(a.startTime).Seconds())
 	// Use a.state (PostgreSQL-backed ChainState) as the single source of
@@ -629,8 +645,7 @@ func (a *APIServer) handleStatus(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *APIServer) handleBlocks(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
-	w.Header().Set("Access-Control-Allow-Origin", "*")
+	writeJSONCORS(w)
 	limit := 50
 	fmt.Sscanf(r.URL.Query().Get("limit"), "%d", &limit)
 	if limit < 1 || limit > 500 {
@@ -729,8 +744,7 @@ func (a *APIServer) handleBlocks(w http.ResponseWriter, r *http.Request) {
 // what GetBlockByHeight (and therefore the autoheal divergence check) says
 // the canonical chain is.
 func (a *APIServer) handleCanonicalBlocks(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
-	w.Header().Set("Access-Control-Allow-Origin", "*")
+	writeJSONCORS(w)
 	limit := 30
 	fmt.Sscanf(r.URL.Query().Get("limit"), "%d", &limit)
 	if limit < 1 || limit > 200 {
@@ -758,8 +772,7 @@ func (a *APIServer) handleCanonicalBlocks(w http.ResponseWriter, r *http.Request
 // whatever ~50 most recent blocks happened to be cached client-side —
 // searching for any older block silently found nothing.
 func (a *APIServer) handleBlockByHash(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
-	w.Header().Set("Access-Control-Allow-Origin", "*")
+	writeJSONCORS(w)
 	hash := r.URL.Query().Get("hash")
 	var block *Block
 	if hash != "" {
@@ -821,8 +834,7 @@ const maxBlocksByHashPerRequest = 500
 // hundreds of sequential ones — the actual bottleneck, not the timeout
 // value, which is why raising the timeout alone would not have fixed this.
 func (a *APIServer) handleBlocksByHash(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
-	w.Header().Set("Access-Control-Allow-Origin", "*")
+	writeJSONCORS(w)
 	if r.Method != http.MethodPost {
 		http.Error(w, `{"error":"POST required"}`, http.StatusMethodNotAllowed)
 		return
@@ -969,8 +981,7 @@ func blockPushRecordOutcome(ip string, attached bool) {
 // it into dag.tips immediately, so the next ProduceBlock() includes it as a
 // parent and creates a genuine multi-parent merge block.
 func (a *APIServer) handleBlockPush(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
-	w.Header().Set("Access-Control-Allow-Origin", "*")
+	writeJSONCORS(w)
 	if r.Method != http.MethodPost {
 		http.Error(w, `{"error":"POST required"}`, http.StatusMethodNotAllowed)
 		return
@@ -1059,8 +1070,7 @@ func (a *APIServer) handleBlockPush(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *APIServer) handleHumans(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
-	w.Header().Set("Access-Control-Allow-Origin", "*")
+	writeJSONCORS(w)
 	// FIX (P2-8, beta-launch audit 2026-07-05): this was an O(N) full-account-
 	// scan endpoint with no rate limit at all, unlike comparably-expensive
 	// endpoints (handlePriceHistory, handleConfirmAlive). The explorer's own
@@ -1153,8 +1163,7 @@ func (a *APIServer) handleHumans(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *APIServer) handleSepoliaHumans(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
-	w.Header().Set("Access-Control-Allow-Origin", "*")
+	writeJSONCORS(w)
 	// FIX (P3, beta-launch audit 2026-07-05): unlike its sibling proxies
 	// (handleProveProxy, handleProveStoreProxy, handleProofCheckProxy — all
 	// rate-limited per-IP), this endpoint had no rate limit at all. Every hit
@@ -1193,8 +1202,7 @@ func (a *APIServer) handleSepoliaHumans(w http.ResponseWriter, r *http.Request) 
 }
 
 func (a *APIServer) handleBalance(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
-	w.Header().Set("Access-Control-Allow-Origin", "*")
+	writeJSONCORS(w)
 	wallet := strings.ToLower(r.URL.Query().Get("wallet"))
 	if wallet == "" {
 		json.NewEncoder(w).Encode(map[string]interface{}{"balance": 0, "tusd_balance": 0, "is_human": false})
@@ -1255,8 +1263,7 @@ func (a *APIServer) handleBalance(w http.ResponseWriter, r *http.Request) {
 // in a global, unfiltered /api/humans list (which showed every user the
 // most recently registered wallet, regardless of who they actually were).
 func (a *APIServer) handleCheckRegistration(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
-	w.Header().Set("Access-Control-Allow-Origin", "*")
+	writeJSONCORS(w)
 
 	commitment := r.URL.Query().Get("commitment")
 	if commitment == "" {
@@ -1288,8 +1295,7 @@ func (a *APIServer) handleCheckRegistration(w http.ResponseWriter, r *http.Reque
 // supplies the real wallet) — so it can't poll by commitment the way the
 // old flow did.
 func (a *APIServer) handleCheckRegistrationByBioHash(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
-	w.Header().Set("Access-Control-Allow-Origin", "*")
+	writeJSONCORS(w)
 	w.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
 	w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
 	if r.Method == "OPTIONS" {
@@ -1382,8 +1388,7 @@ func (a *APIServer) handleCheckRegistrationByBioHash(w http.ResponseWriter, r *h
 // handleCheckNullifier lets the client ask "has this nullifier been used?"
 // before submitting a registration. GET /api/check-nullifier?n=<hex>
 func (a *APIServer) handleCheckNullifier(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
-	w.Header().Set("Access-Control-Allow-Origin", "*")
+	writeJSONCORS(w)
 	nullifier := r.URL.Query().Get("n")
 	if nullifier == "" {
 		json.NewEncoder(w).Encode(map[string]interface{}{"used": false})
@@ -1618,8 +1623,7 @@ func (a *APIServer) handleExplorerJS(w http.ResponseWriter, r *http.Request) {
 // handleNonce returns the next swap nonce a wallet should sign with.
 // GET /api/nonce?wallet=0x...
 func (a *APIServer) handleNonce(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
-	w.Header().Set("Access-Control-Allow-Origin", "*")
+	writeJSONCORS(w)
 	wallet := strings.ToLower(r.URL.Query().Get("wallet"))
 	if wallet == "" {
 		http.Error(w, `{"error":"wallet required"}`, 400)
@@ -1641,8 +1645,7 @@ func (a *APIServer) handleNonce(w http.ResponseWriter, r *http.Request) {
 // input sanitization (positive integers) and lets the state layer own the
 // actual bound so the two can't drift apart again.
 func (a *APIServer) handlePriceHistory(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
-	w.Header().Set("Access-Control-Allow-Origin", "*")
+	writeJSONCORS(w)
 	w.Header().Set("Cache-Control", "no-cache")
 	// FIX (P2, launch audit 2026-07-03): this was the one read-adjacent
 	// endpoint in this file with no rate limiting at all, unlike every
@@ -1677,8 +1680,7 @@ func (a *APIServer) handlePriceHistory(w http.ResponseWriter, r *http.Request) {
 // handleGiniHistory returns Gini snapshots stored after each UBI distribution.
 // Falls back to the current Gini as a single point when no history exists yet.
 func (a *APIServer) handleGiniHistory(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
-	w.Header().Set("Access-Control-Allow-Origin", "*")
+	writeJSONCORS(w)
 	w.Header().Set("Cache-Control", "no-cache")
 	history := a.state.GetGiniHistory(60) // last 60 snapshots
 	if len(history) == 0 {
@@ -1695,8 +1697,7 @@ func (a *APIServer) handleGiniHistory(w http.ResponseWriter, r *http.Request) {
 // handleWealthCap returns the current wealth cap parameters.
 // Field names match the live wealth-cap widget in the Equality tab.
 func (a *APIServer) handleWealthCap(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
-	w.Header().Set("Access-Control-Allow-Origin", "*")
+	writeJSONCORS(w)
 	w.Header().Set("Cache-Control", "no-cache")
 	// P2-2: use GetWealthCapInfo which internally calls bootstrapMultiplierLocked()
 	// and getAverageBalanceLocked() — the SAME functions enforceWealthCapLocked uses.
@@ -1712,7 +1713,7 @@ func (a *APIServer) handleWealthCap(w http.ResponseWriter, r *http.Request) {
 // node operators with server access can use it — not an internet-accessible oracle.
 // GET /api/sign-validator-challenge?wallet=0x...
 func (a *APIServer) handleSignValidatorChallenge(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
+	writeJSON(w)
 	// FIX: the doc comment above has always claimed this is "restricted to
 	// loopback (127.0.0.1 / ::1)", but no such check actually existed — the
 	// only gate was SNAPSHOT_TOKEN. That meant anyone who obtained the token
@@ -1797,8 +1798,7 @@ func (a *APIServer) handleSignValidatorChallenge(w http.ResponseWriter, r *http.
 // (without "key") — same as peer-registration (sync_blocks.go) and auto-binding.
 // Old "authorize validator key" variant is accepted as fallback during migration.
 func (a *APIServer) handleRegisterValidatorKey(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
-	w.Header().Set("Access-Control-Allow-Origin", "*")
+	writeJSONCORS(w)
 	w.Header().Set("Access-Control-Allow-Methods", "POST, OPTIONS")
 	w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
 	if r.Method == "OPTIONS" {
@@ -1862,7 +1862,7 @@ func (a *APIServer) handleRegisterValidatorKey(w http.ResponseWriter, r *http.Re
 // Peers check IsHuman(human_wallet) locally before calling AddAuthorizedValidator.
 // See syncValidatorsFromPeer in sync_blocks.go for the receiver-side verification.
 func (a *APIServer) handleValidatorList(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
+	writeJSON(w)
 	json.NewEncoder(w).Encode(map[string]interface{}{
 		"validators": a.blockchain.ValidatorKeyPairs(),
 	})
@@ -1872,7 +1872,7 @@ func (a *APIServer) handleValidatorList(w http.ResponseWriter, r *http.Request) 
 // prove ownership of their signing key (P1-3 validator signature verification).
 // GET /api/peers/challenge?address=0x...
 func (a *APIServer) handlePeerChallenge(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
+	writeJSON(w)
 	addr := strings.ToLower(r.URL.Query().Get("address"))
 	if !isValidWalletAddr(addr) {
 		http.Error(w, `{"error":"invalid address"}`, 400)
@@ -1927,8 +1927,7 @@ func registrationRateLimited(addr string) bool {
 // its blocks are accepted without manual AUTHORIZED_VALIDATORS configuration.
 // POST /api/peers/register  body: {"url":"https://...","signing_address":"0x...","signature":"0x..."}
 func (a *APIServer) handlePeerRegister(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
-	w.Header().Set("Access-Control-Allow-Origin", "*")
+	writeJSONCORS(w)
 	w.Header().Set("Access-Control-Allow-Methods", "POST, OPTIONS")
 	w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
 	if r.Method == "OPTIONS" {
@@ -2169,8 +2168,7 @@ func (a *APIServer) handlePeerRegister(w http.ResponseWriter, r *http.Request) {
 // Access-Control-Allow-Origin, so browser fetches fail. By proxying through
 // the chain node (same origin as the website), CORS is not an issue.
 func (a *APIServer) handleProveProxy(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
-	w.Header().Set("Access-Control-Allow-Origin", "*")
+	writeJSONCORS(w)
 	w.Header().Set("Access-Control-Allow-Methods", "POST, OPTIONS")
 	w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
 	if r.Method == "OPTIONS" {
@@ -2247,8 +2245,7 @@ func (a *APIServer) handleProveProxy(w http.ResponseWriter, r *http.Request) {
 
 // handleProveGetProxy proxies GET /api/prove/get/{id} to the proof server.
 func (a *APIServer) handleProveGetProxy(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
-	w.Header().Set("Access-Control-Allow-Origin", "*")
+	writeJSONCORS(w)
 	id := strings.TrimPrefix(r.URL.Path, "/api/prove/get/")
 	// FIX 6: strict allowlist replaces denylist -- prevents path traversal.
 	matched, _ := regexp.MatchString(`^[a-zA-Z0-9_-]{1,64}$`, id)
@@ -2281,8 +2278,7 @@ func (a *APIServer) handleProveGetProxy(w http.ResponseWriter, r *http.Request) 
 // per-IP rate limiting, and forwards it to the proof server with the service token
 // added server-side. (FIX BRUTAL-P2-06)
 func (a *APIServer) handleProveStoreProxy(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
-	w.Header().Set("Access-Control-Allow-Origin", "*")
+	writeJSONCORS(w)
 	w.Header().Set("Access-Control-Allow-Methods", "POST, OPTIONS")
 	w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
 	if r.Method == "OPTIONS" {
@@ -2326,8 +2322,7 @@ func (a *APIServer) handleProveStoreProxy(w http.ResponseWriter, r *http.Request
 
 // handleProofCheckProxy proxies POST /api/proof/check to the proof server.
 func (a *APIServer) handleProofCheckProxy(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
-	w.Header().Set("Access-Control-Allow-Origin", "*")
+	writeJSONCORS(w)
 	w.Header().Set("Access-Control-Allow-Methods", "POST, OPTIONS")
 	w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
 	if r.Method == "OPTIONS" {
@@ -2375,8 +2370,7 @@ func (a *APIServer) handleProofCheckProxy(w http.ResponseWriter, r *http.Request
 // codebase until now.
 // GET /api/peers
 func (a *APIServer) handlePeers(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
-	w.Header().Set("Access-Control-Allow-Origin", "*")
+	writeJSONCORS(w)
 	json.NewEncoder(w).Encode(map[string]interface{}{"peers": GlobalPeerRegistry.ActivePeers(os.Getenv("SELF_URL"))})
 }
 
@@ -2392,8 +2386,7 @@ func (a *APIServer) handlePeers(w http.ResponseWriter, r *http.Request) {
 // addresses that are already public.
 // GET /api/validator-labels
 func (a *APIServer) handleValidatorLabels(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
-	w.Header().Set("Access-Control-Allow-Origin", "*")
+	writeJSONCORS(w)
 	var ordinals map[string]int
 	if a.blockchain != nil && a.blockchain.state != nil {
 		ordinals = a.blockchain.state.GetValidatorOrdinals()
@@ -2408,7 +2401,7 @@ func (a *APIServer) handleValidatorLabels(w http.ResponseWriter, r *http.Request
 // SNAPSHOT_TOKEN. Secondary node operators need this for BOOTSTRAP_SIGNER.
 // Not exposed in /api/status to avoid leaking validator addresses publicly.
 func (a *APIServer) handleSigningAddress(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
+	writeJSON(w)
 	token := os.Getenv("SNAPSHOT_TOKEN")
 	if token == "" {
 		http.Error(w, `{"error":"SNAPSHOT_TOKEN not configured"}`, http.StatusForbidden)
@@ -2435,7 +2428,7 @@ func (a *APIServer) handleSigningAddress(w http.ResponseWriter, r *http.Request)
 // Protected by SNAPSHOT_TOKEN, same as the other operator-only endpoints.
 // GET /api/admin/registration-debug?wallet=0x...
 func (a *APIServer) handleRegistrationDebug(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
+	writeJSON(w)
 	token := os.Getenv("SNAPSHOT_TOKEN")
 	if token == "" {
 		http.Error(w, `{"error":"SNAPSHOT_TOKEN not configured"}`, http.StatusForbidden)
@@ -2469,7 +2462,7 @@ func (a *APIServer) handleRegistrationDebug(w http.ResponseWriter, r *http.Reque
 // GET  /api/admin/registration-recovery          → list all unrecovered records
 // POST /api/admin/registration-recovery/retry    → trigger immediate retry pass
 func (a *APIServer) handleRegistrationRecovery(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
+	writeJSON(w)
 	token := os.Getenv("SNAPSHOT_TOKEN")
 	if token == "" {
 		http.Error(w, `{"error":"SNAPSHOT_TOKEN not configured"}`, http.StatusForbidden)
@@ -2586,7 +2579,7 @@ func (a *APIServer) handleSnapshot(w http.ResponseWriter, r *http.Request) {
 		registerRateLimit.Store("snapshot-public:"+ip, time.Now())
 	}
 	snap := a.state.ExportSnapshot(a.blockchain.GetSigningKey(), a.blockchain.Height(), includeSensitive)
-	w.Header().Set("Content-Type", "application/json")
+	writeJSON(w)
 	json.NewEncoder(w).Encode(snap)
 }
 
@@ -2670,8 +2663,7 @@ func (a *APIServer) handleLanding(w http.ResponseWriter, r *http.Request) {
 // Body: {"wallet":"0x...","guardian":"0x...","signature":"0x..."}
 // Signature must be personal_sign("Aequitas: set guardian {guardian_address}", wallet_key).
 func (a *APIServer) handleSetGuardian(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
-	w.Header().Set("Access-Control-Allow-Origin", "*")
+	writeJSONCORS(w)
 	w.Header().Set("Access-Control-Allow-Methods", "POST, OPTIONS")
 	w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
 	if r.Method == "OPTIONS" {
@@ -2737,8 +2729,7 @@ func (a *APIServer) handleSetGuardian(w http.ResponseWriter, r *http.Request) {
 // Caller must be the guardian of wallet.
 // Signature = personal_sign("Aequitas: confirm alive {wallet_address}", guardian_key).
 func (a *APIServer) handleConfirmAlive(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
-	w.Header().Set("Access-Control-Allow-Origin", "*")
+	writeJSONCORS(w)
 	w.Header().Set("Access-Control-Allow-Methods", "POST, OPTIONS")
 	w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
 	if r.Method == "OPTIONS" {
@@ -2813,8 +2804,7 @@ func (a *APIServer) handleConfirmAlive(w http.ResponseWriter, r *http.Request) {
 // handleGetGuardian GET /api/guardian?wallet=0x...
 // Returns {"wallet":"0x...","guardian":"0x...","set_at":timestamp} or 404.
 func (a *APIServer) handleGetGuardian(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
-	w.Header().Set("Access-Control-Allow-Origin", "*")
+	writeJSONCORS(w)
 	wallet := strings.ToLower(r.URL.Query().Get("wallet"))
 	if !isValidWalletAddr(wallet) {
 		http.Error(w, `{"error":"invalid wallet address"}`, 400)
@@ -2837,8 +2827,7 @@ func (a *APIServer) handleGetGuardian(w http.ResponseWriter, r *http.Request) {
 // handleGetEscrow GET /api/escrow?wallet=0x...
 // Returns escrow amount and moved_at timestamp, or 404 if no escrow.
 func (a *APIServer) handleGetEscrow(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
-	w.Header().Set("Access-Control-Allow-Origin", "*")
+	writeJSONCORS(w)
 	wallet := strings.ToLower(r.URL.Query().Get("wallet"))
 	if !isValidWalletAddr(wallet) {
 		http.Error(w, `{"error":"invalid wallet address"}`, 400)
@@ -2860,8 +2849,7 @@ func (a *APIServer) handleGetEscrow(w http.ResponseWriter, r *http.Request) {
 // Body: {"wallet":"0x...","signature":"0x..."}
 // Signature = personal_sign("Aequitas: recover escrow {wallet_address}", wallet_key).
 func (a *APIServer) handleRecoverEscrow(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
-	w.Header().Set("Access-Control-Allow-Origin", "*")
+	writeJSONCORS(w)
 	w.Header().Set("Access-Control-Allow-Methods", "POST, OPTIONS")
 	w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
 	if r.Method == "OPTIONS" {

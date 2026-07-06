@@ -170,6 +170,25 @@ No mining. No staking. No protocol emissions.
 └─────────────────────────────────────────────────────────┘
 ```
 
+**Hinweis für Integratoren / Note for integrators:** Der Go-Ledger ist die
+Quelle der Wahrheit für Guthaben, Registrierung, Demurrage und UBI — die
+EVM-Schicht spiegelt diese Werte für `balanceOf`/`isHuman` live. Vier
+Contract-Felder (`ubiPool`, `ubiClaimed`, `pendingGuardian`, `wardCount`)
+werden dagegen bewusst nur beim Deploy/Migration gesetzt, nicht live
+synchronisiert — das Go-Modell für UBI/Guardian hat kein 1:1-Äquivalent
+für diese Werte (siehe `evm_storage.go`'s `syncGuardianEscrowSlotsLocked`
+für die volle Begründung). Für aktuelle Werte `/api/escrow`, `/api/pool`
+bzw. die Guardian-Endpunkte verwenden, nicht einen rohen `eth_call` auf
+diese vier Felder. / The Go ledger is the source of truth for balances,
+registration, demurrage, and UBI — the EVM layer mirrors these live for
+`balanceOf`/`isHuman`. Four contract fields (`ubiPool`, `ubiClaimed`,
+`pendingGuardian`, `wardCount`) are deliberately only set at deploy/
+migration time, not kept live — the Go-side UBI/guardian model has no
+1:1 equivalent for these values (see `evm_storage.go`'s
+`syncGuardianEscrowSlotsLocked` for the full rationale). Use `/api/escrow`,
+`/api/pool`, or the guardian endpoints for current values, not a raw
+`eth_call` against these four fields.
+
 ---
 
 ## Technische Spezifikationen / Technical Specifications
@@ -199,7 +218,8 @@ aequitas-chain/
 ├── cmd/aequitasd/              — Node-Binary Einstiegspunkt / Node binary entry
 ├── x/humanity/keeper/
 │   ├── api.go                  — HTTP API Server
-│   ├── api_html.go             — Web-Explorer UI (mehrsprachig / multilingual)
+│   ├── api_html.go             — Web-Explorer Embed-Shim (Inhalt in assets/) / embed shim (content in assets/)
+│   ├── assets/                 — Web-Explorer UI: HTML/CSS/JS (mehrsprachig / multilingual)
 │   ├── block.go                — BlockDAG Konsens / Consensus
 │   ├── decimal.go              — Präzisions-Arithmetik / Precision arithmetic
 │   ├── evm_engine.go           — EVM-Ausführung (go-ethereum) / EVM execution

@@ -71,6 +71,17 @@ const (
 // independently-hosted, cross-provider validators never falsely pauses
 // hardening — only a gap already large enough to risk a real finality lock
 // trips this.
+//
+// FIX (P3-b, audit 2026-07-06): cross-reference for a future reader —
+// autoheal.go's chainDivergenceStallOverride (45 min) addresses the SAME
+// underlying phenomenon (this node may have drifted onto its own isolated
+// fork) but is a separate, heavier mechanism with a separate, longer
+// timeout: this constant just pauses checkpoint HARDENING (self-correcting,
+// no side effects, resumes the instant a real peer block merges), while
+// chainDivergenceStallOverride forces a full divergence comparison that can
+// trigger an actual corrective resync. The 10-vs-45-minute gap is
+// deliberate — it gives this lighter, self-healing pause a real chance to
+// resolve on its own before the heavier auto-heal mechanism escalates.
 const isolatedFinalityPauseWindow = 10 * time.Minute
 
 // recordForeignMerge marks now as the last time this node successfully

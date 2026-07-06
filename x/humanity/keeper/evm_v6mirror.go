@@ -21,7 +21,17 @@ const V7_CONTRACT_ADDR = "0x20D271028f32577FCd07b4583A8e0E4eBBdB4F78"
 const BIO_VERIFIER_ADDR = "0xc369D27b49DE017d113Bbcb9A1884a9e745B6BE2"
 const V5_SEPOLIA_LEGACY_ADDR = "0x4f147d5B3388AF07993CC4fC548502A78Af0B8b5" // Sepolia testnet — historical only, no longer in active use
 
-// MirrorV6Registration mirrors a V6 registration to PostgreSQL
+// MirrorV6Registration mirrors a V6 registration to PostgreSQL.
+//
+// FIX (P3-m, audit 2026-07-06): this has 0 call sites anywhere in the
+// codebase — new V6 registrations are fully disabled (V7 is the only live
+// registration path; see V7_CONTRACT_ADDR above and register.go). Kept,
+// not deleted, only because RestoreV6FromMirror below still legitimately
+// runs on every boot — but that function REPLAYS rows a past call to THIS
+// one already wrote to PostgreSQL back when V6 registration was still
+// live; it does not depend on this function ever running again. Don't
+// read RestoreV6FromMirror's continued activity as evidence this one is
+// too — it isn't.
 func (e *EVMEngine) MirrorV6Registration(wallet, commitment string) {
 	e.chainState.SaveV6Human(wallet, commitment)
 	e.chainState.SaveV6Commitment(commitment, wallet)

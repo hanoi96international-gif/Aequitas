@@ -109,6 +109,12 @@ const (
 	// staying continuously unsettled for well past that, treat it as a
 	// signal in its own right and run the comparison anyway rather than
 	// skipping forever.
+	//
+	// FIX (P3-b, audit 2026-07-06): cross-reference — finality.go's
+	// isolatedFinalityPauseWindow (10 min) addresses the same underlying
+	// phenomenon (possible isolation/drift) via a lighter, self-healing
+	// mechanism (pausing checkpoint hardening only, no resync). See that
+	// constant's own comment for why the two timeouts deliberately differ.
 	chainDivergenceStallOverride = 45 * time.Minute
 
 	// heightStallCheckInterval paces startHeightStallCheck's liveness poll.

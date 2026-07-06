@@ -9,8 +9,14 @@
 <title>Aequitas Beta</title>
 <link rel="preconnect" href="https://fonts.bunny.net">
 <link href="https://fonts.bunny.net/css?family=inter:400,500,600,700,900|jetbrains-mono:400,600&display=swap" rel="stylesheet">
-<script src="https://unpkg.com/lightweight-charts@4.1.3/dist/lightweight-charts.standalone.production.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/ethers/6.7.0/ethers.umd.min.js"></script>
+<!-- FIX (P3-i, audit 2026-07-06): defer -- neither library is used at the
+     main script's top level (LightweightCharts already null-checks itself
+     before use; ethers is only called inside the async registration
+     handler, well after user interaction) -- unblocks first paint on
+     mobile instead of the browser stalling on two CDN round trips before
+     rendering anything. -->
+<script defer src="https://unpkg.com/lightweight-charts@4.1.3/dist/lightweight-charts.standalone.production.js"></script>
+<script defer src="https://cdnjs.cloudflare.com/ajax/libs/ethers/6.7.0/ethers.umd.min.js"></script>
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
 :root{
@@ -38,6 +44,12 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--f
 .chain-banner{display:flex;align-items:center;gap:8px;padding:10px 16px;background:rgba(52,211,153,0.05);border-bottom:1px solid rgba(52,211,153,0.12);font-size:0.65rem;font-family:var(--mono);color:var(--sub)}
 .dot-green{width:7px;height:7px;border-radius:50%;background:var(--neon);flex-shrink:0;animation:pulse 2s infinite}
 @keyframes pulse{0%,100%{opacity:1;box-shadow:0 0 0 0 rgba(52,211,153,.5)}50%{opacity:.8;box-shadow:0 0 0 4px rgba(52,211,153,0)}}
+/* FIX (P3-h, audit 2026-07-06): stale-data indicator — swaps in for
+   .dot-green once several consecutive API calls have failed, so a user
+   sees SOMETHING instead of silently-aging numbers with no signal at all. */
+.dot-stale{width:7px;height:7px;border-radius:50%;background:var(--red);flex-shrink:0;animation:pulse-stale 1s infinite}
+@keyframes pulse-stale{0%,100%{opacity:1}50%{opacity:.35}}
+#chain-stale-note{display:none;font-size:0.62rem;color:var(--red);margin-left:8px}
 
 /* MAIN SCROLL */
 #main{flex:1;overflow-y:auto;overflow-x:hidden}
@@ -181,8 +193,9 @@ input[type=number]::-webkit-inner-spin-button{-webkit-appearance:none}
 <!-- HOME TAB -->
 <div id="tab-home" class="tab-content active">
   <div class="chain-banner">
-    <div class="dot-green"></div>
+    <div class="dot-green" id="chain-status-dot"></div>
     <span>Aequitas Mainnet · Block <span id="h-height" style="color:var(--text);font-weight:600">—</span></span>
+    <span id="chain-stale-note">connection lost — retrying…</span>
     <div style="margin-left:auto">Chain ID 1926</div>
   </div>
 
@@ -541,10 +554,36 @@ window.ethereum && window.ethereum.on('accountsChanged', accs => {
 });
 
 // ── API HELPERS ──────────────────────────────────────────────────────────────
+// FIX (P3-h, audit 2026-07-06): loadStatus/loadBalance/loadPriceHistory/loadPool
+// all swallow fetch failures via empty catch(e) {} with zero user-facing
+// signal. Tracking connectivity here, in the one shared function all of them
+// route through, surfaces it everywhere at once without touching those 4
+// call sites. A single failure isn't enough to flag (transient blips are
+// normal); require a couple of consecutive failures first.
+let apiFailStreak = 0;
+const API_STALE_THRESHOLD = 2;
+
+function setChainConnectionStatus(ok) {
+  const dot = document.getElementById('chain-status-dot');
+  const note = document.getElementById('chain-stale-note');
+  if (!dot || !note) return;
+  dot.className = ok ? 'dot-green' : 'dot-stale';
+  note.style.display = ok ? 'none' : 'inline';
+}
+
 async function api(path) {
-  const r = await fetch(API + path);
-  if (!r.ok) throw new Error(r.statusText);
-  return r.json();
+  try {
+    const r = await fetch(API + path);
+    if (!r.ok) throw new Error(r.statusText);
+    const data = await r.json();
+    apiFailStreak = 0;
+    setChainConnectionStatus(true);
+    return data;
+  } catch (e) {
+    apiFailStreak++;
+    if (apiFailStreak >= API_STALE_THRESHOLD) setChainConnectionStatus(false);
+    throw e;
+  }
 }
 
 function fmtAEQ(v) {
