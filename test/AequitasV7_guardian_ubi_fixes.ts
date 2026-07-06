@@ -189,4 +189,34 @@ describe("AequitasV7 beta-launch-audit fixes", async function () {
       "ubiClaimed should be settled to the full accumulated amount, closing the gap",
     );
   });
+
+  it("triggerEscrowToUBI rejects sweeping a human who is still acting as guardian for a ward (P2-a, audit 2026-07-06)", async function () {
+    const { v7 } = await deployV7();
+    const [relayer, guardian, ward] = await viem.getWalletClients();
+    await registerHuman(v7, relayer, guardian);
+    await registerHuman(v7, relayer, ward);
+
+    await v7.write.proposeGuardian([guardian.account.address], { account: ward.account });
+    await networkHelpers.time.increase(GUARDIAN_TIMELOCK + 1);
+    await v7.write.confirmGuardian({ account: ward.account });
+    assert.equal(await v7.read.wardCount([guardian.account.address]), 1n);
+
+    await networkHelpers.time.increase(INACTIVITY_UBI + 1);
+    await v7.write.triggerEscrow([guardian.account.address]);
+
+    // Blocked: guardian still has an active ward pointing guardianOf at them.
+    await viem.assertions.revertWith(
+      v7.write.triggerEscrowToUBI([guardian.account.address]),
+      "Still guarding wards - they must revoke first",
+    );
+
+    // The ward can unblock this at any time, self-service, without the
+    // guardian's cooperation.
+    await v7.write.revokeGuardian({ account: ward.account });
+    assert.equal(await v7.read.wardCount([guardian.account.address]), 0n);
+
+    // Now the sweep succeeds normally.
+    await v7.write.triggerEscrowToUBI([guardian.account.address]);
+    assert.equal(await v7.read.isHuman([guardian.account.address]), false);
+  });
 });

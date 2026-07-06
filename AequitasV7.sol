@@ -409,6 +409,18 @@ contract AequitasV7 {
         require(isHuman[human], "Not a registered human");
         require(escrowOf[human] > 0, "Not in escrow");
         require(block.timestamp >= lastActivity[human] + INACTIVITY_UBI, "Too soon");
+        // FIX (P2-a, audit 2026-07-06): a human who is themselves acting as
+        // guardian for others (wardCount[human] > 0) must not be swept away
+        // here — doing so would clear isHuman[human] while every ward's
+        // guardianOf[ward] still points at this now-deregistered address,
+        // permanently orphaning their guardian safety net (guardianOf can
+        // only be changed by the ward's own proposeGuardian/confirmGuardian,
+        // never by this function, since there's no reverse index from a
+        // guardian back to their wards to clean up here). Each affected ward
+        // can unblock this at any time via their own revokeGuardian() —
+        // self-service, doesn't require this human's cooperation — so this
+        // is a delay, not a deadlock.
+        require(wardCount[human] == 0, "Still guarding wards - they must revoke first");
         uint256 amount = escrowOf[human];
         escrowOf[human] = 0;
         ubiPool += amount;
