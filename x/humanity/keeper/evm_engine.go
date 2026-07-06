@@ -82,7 +82,22 @@ BaseFee:     big.NewInt(0),
 
 // newStateDB creates a fresh in-memory StateDB loaded from PostgreSQL.
 // Called before every Deploy or Call to ensure consistent state.
-func (e *EVMEngine) newStateDB() (*state.StateDB, state.Database, error) {
+//
+// FIX (G5, beta-launch audit 2026-07-05): this used to unconditionally load
+// EVERY registered account's balance via GetAllAccounts() on every single
+// call — including a read-only eth_call like balanceOf(address), which only
+// ever needs ONE account's balance. That's an O(N) cost (N = registered
+// humans) on the hottest path in this codebase, and the earlier /rpc rate
+// limit (evm_rpc.go) only bounds how OFTEN this runs, not the O(N) cost of
+// each run. onlyAddrs, when non-empty, restricts loading to exactly those
+// addresses (via ChainState.GetAccountsForAddresses, which also correctly
+// pages in a cold/evicted account — GetAllAccounts has no such fallback, so
+// this is strictly more correct for the addresses it's given, not just
+// faster). Passing no addresses preserves the original eager-load-
+// everything behavior — used by DeployContract, a rare, one-time,
+// already-completed-for-this-chain's-two-contracts operation where the
+// full-load cost has never mattered and isn't worth touching.
+func (e *EVMEngine) newStateDB(onlyAddrs ...common.Address) (*state.StateDB, state.Database, error) {
 memDB := rawdb.NewMemoryDatabase()
 db := state.NewDatabase(memDB)
 sdb, err := state.New(common.Hash{}, db, nil)
@@ -90,14 +105,25 @@ if err != nil {
 return nil, nil, err
 }
 
-// Load all account balances.
+// Load account balances — either everyone (onlyAddrs empty, e.g. DeployContract)
+// or just the requested addresses (a normal CallContract invocation).
 // P0-2: Do NOT call LoadNonce per account — that triggers N PostgreSQL queries
 // (one per account) and creates a DoS vector. EVM nonces for sends are managed
 // in the RPC layer separately; the EVM itself does not need per-account nonces
 // for call execution (only for CREATE). Removing SetNonce here has no effect
 // on the correctness of contract calls or view calls.
 weiPerAEQNew := new(big.Int).Exp(big.NewInt(10), big.NewInt(18), nil)
-for _, acc := range e.chainState.GetAllAccounts() {
+var accountsToLoad []*AccountState
+if len(onlyAddrs) == 0 {
+accountsToLoad = e.chainState.GetAllAccounts()
+} else {
+addrStrs := make([]string, len(onlyAddrs))
+for i, a := range onlyAddrs {
+addrStrs[i] = strings.ToLower(a.Hex())
+}
+accountsToLoad = e.chainState.GetAccountsForAddresses(addrStrs)
+}
+for _, acc := range accountsToLoad {
 addr := common.HexToAddress(acc.Address)
 // P1-FIX: acc.Balance is a Decimal (int64 micro-units, 1 AEQ = 1e6 micro).
 // Use .Float() to get the real AEQ value, then convert to wei (×1e18).
@@ -329,6 +355,49 @@ func checkPersistedCallAllowed(to common.Address, data []byte, senderAddr string
 	return fmt.Errorf("selector %s not supported for persisting calls — use /api/* endpoints", sel)
 }
 
+// addressLikeWordsInCalldata scans data (assumed ABI-encoded: a 4-byte
+// selector followed by 32-byte-aligned words) for words that are valid
+// ABI-encoded addresses — the top 12 bytes zero, matching how solidity/abi
+// packs an `address` parameter into a 32-byte slot. Used by CallContract to
+// figure out which accounts (beyond from/to) a call might need to read, so
+// newStateDB can load just those instead of every registered account — see
+// its own comment.
+//
+// Deliberately a byte-pattern heuristic instead of per-selector ABI
+// decoding (extractTouchedEntities, used elsewhere in this file for a
+// different purpose — persistence bookkeeping, not state loading, and only
+// handles the one selector that needs it there): every currently-reachable
+// selector here (balanceOf, allowance, registerWithSig) encodes its address
+// argument(s) exactly this way, and the false-positive case (a random
+// 256-bit value, e.g. inside registerWithSig's ZK proof arrays, that
+// happens to have 12 zero leading bytes) only costs one extra harmless
+// account load — a coincidence astronomically unlikely for a real
+// pseudorandom field element in the first place. There is no false-negative
+// case for any CURRENT selector: this only needs to be conservative
+// (never miss a real address), not exact.
+func addressLikeWordsInCalldata(data []byte) []common.Address {
+if len(data) <= 4 {
+return nil
+}
+body := data[4:]
+var out []common.Address
+for i := 0; i+32 <= len(body); i += 32 {
+word := body[i : i+32]
+isAddrShaped := true
+for _, b := range word[:12] {
+if b != 0 {
+isAddrShaped = false
+break
+}
+}
+if !isAddrShaped {
+continue
+}
+out = append(out, common.BytesToAddress(word[12:32]))
+}
+return out
+}
+
 func (e *EVMEngine) CallContract(from, to common.Address, data []byte, value *big.Int, persist bool) (ret []byte, err error) {
 // FIX: CanTransfer/Transfer in blockContext() are permanent no-op stubs —
 // there is no real wei ledger backing the EVM StateDB (Go-state/PostgreSQL
@@ -358,7 +427,12 @@ ret = nil
 }
 }()
 
-sdb, db, err := e.newStateDB()
+// FIX (G5, beta-launch audit 2026-07-05): load only the accounts this
+// specific call could plausibly need (sender, target contract, and any
+// address-shaped argument in the calldata) instead of every registered
+// human — see newStateDB's own comment.
+onlyAddrs := append([]common.Address{from, to}, addressLikeWordsInCalldata(data)...)
+sdb, db, err := e.newStateDB(onlyAddrs...)
 if err != nil {
 return nil, fmt.Errorf("stateDB: %w", err)
 }

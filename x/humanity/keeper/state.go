@@ -4261,6 +4261,46 @@ func (cs *ChainState) GetAllAccounts() []*AccountState {
 	return result
 }
 
+// GetAccountsForAddresses is GetAllAccounts' targeted counterpart: returns
+// the current (demurrage-adjusted) state for exactly the given addresses,
+// paging in any cold account via ensureAccountLoaded rather than silently
+// skipping it. Addresses not found anywhere (never registered, never
+// received anything) are simply omitted from the result — the caller
+// treats a missing entry as a zero balance, matching GetAllAccounts' own
+// implicit behavior for an address absent from cs.accounts.
+//
+// FIX (G5, beta-launch audit 2026-07-05): added specifically so
+// EVMEngine.newStateDB can load only the handful of accounts a given
+// eth_call/transaction actually touches instead of every registered human
+// via GetAllAccounts — see newStateDB's own comment for the full
+// reasoning. A useful side effect: unlike GetAllAccounts (which only ever
+// sees whatever happens to already be in the in-memory cache, with no DB
+// fallback for a cold/evicted account), this one explicitly pages in each
+// requested address, so it's strictly MORE correct for the specific
+// addresses it's asked about, not just faster.
+func (cs *ChainState) GetAccountsForAddresses(addrs []string) []*AccountState {
+	cs.mu.Lock()
+	defer cs.mu.Unlock()
+	result := make([]*AccountState, 0, len(addrs))
+	seen := make(map[string]bool, len(addrs))
+	for _, addr := range addrs {
+		addr = strings.ToLower(addr)
+		if seen[addr] {
+			continue
+		}
+		seen[addr] = true
+		cs.ensureAccountLoaded(addr)
+		acc, ok := cs.accounts[addr]
+		if !ok {
+			continue
+		}
+		displayCopy := *acc
+		displayCopy.Balance = effectiveBalance(acc)
+		result = append(result, &displayCopy)
+	}
+	return result
+}
+
 // tusdFaucetAmount is how much test-tUSD ClaimTUsdFaucet grants per
 // account, once. tUSD is a simulated currency with no real-world value —
 // unlike AEQ (which only ever exists because a real human registered for
