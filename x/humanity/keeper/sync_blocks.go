@@ -667,6 +667,8 @@ func (dag *BlockDAG) doSyncOnce(nodeURL string) (ok bool) {
 		// incident this fixes.
 		minHeight = dag.deepScanFloor()
 	}
+	fmt.Printf("[SYNC-DEBUG] peer=%s peerSyncHeight=%d ownHeight=%d bootHeight=%d wantDeepScan=%v claimedSlot=%v minHeight=%d\n",
+		nodeURL, dag.getPeerSyncHeight(nodeURL), dag.Height(), dag.BootHeight(), wantDeepScan, deepScan, minHeight)
 	totalAdded := 0
 	highestSeen := int64(-1)
 	// P1-02: track (minHeight, afterHash) cursor so same-height siblings that
@@ -684,8 +686,10 @@ func (dag *BlockDAG) doSyncOnce(nodeURL string) (ok bool) {
 			break // got at least one page this call; report what we added
 		}
 		if len(blocks) == 0 {
+			fmt.Printf("[SYNC-DEBUG] peer=%s page=%d got 0 blocks (min_height=%d) — treated as caught up\n", nodeURL, page, minHeight)
 			break // caught up — peer has nothing newer than our height
 		}
+		fmt.Printf("[SYNC-DEBUG] peer=%s page=%d got %d blocks, heights %d..%d\n", nodeURL, page, len(blocks), blocks[0].Height, blocks[len(blocks)-1].Height)
 		addedThisPage := 0
 		for _, block := range blocks {
 			// FIX: genesis is always created locally and AddPeerBlock always
