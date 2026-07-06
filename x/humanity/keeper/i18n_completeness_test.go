@@ -20,25 +20,25 @@ import (
 // locale in the T i18n dictionary (api_html.go) has the exact same key set
 // as English, the maintained source of truth.
 //
-// Parses api_html.go as text (not JS) — the dictionary is a plain object
-// literal (`const T = { en:{...}, de:{...}, ... }`), so locale boundaries
-// are found by searching for each known language code's opening marker
-// rather than hardcoding line numbers, which would break the moment
+// Parses assets/explorer.js as text (not JS) — the dictionary is a plain
+// object literal (`const T = { en:{...}, de:{...}, ... }`), so locale
+// boundaries are found by searching for each known language code's opening
+// marker rather than hardcoding line numbers, which would break the moment
 // anyone edits unrelated content above these blocks.
 var i18nLocales = []string{"en", "de", "es", "ru", "zh", "id", "it", "tr", "fr", "pt", "ar", "hi"}
 
 var i18nKeyRe = regexp.MustCompile(`'([a-zA-Z0-9_-]+)':`)
 
 func TestI18nLocaleKeysMatchEnglish(t *testing.T) {
-	src, err := os.ReadFile("api_html.go")
+	src, err := os.ReadFile("assets/explorer.js")
 	if err != nil {
-		t.Fatalf("could not read api_html.go: %v", err)
+		t.Fatalf("could not read assets/explorer.js: %v", err)
 	}
 	content := string(src)
 
 	tStart := strings.Index(content, "const T = {")
 	if tStart < 0 {
-		t.Fatal("could not find 'const T = {' in api_html.go — has the i18n dictionary been renamed/restructured?")
+		t.Fatal("could not find 'const T = {' in assets/explorer.js — has the i18n dictionary been renamed/restructured?")
 	}
 
 	type localeSpan struct {

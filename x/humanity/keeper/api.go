@@ -464,6 +464,8 @@ func recoverMiddleware(next http.Handler) http.Handler {
 func (a *APIServer) Start(port int) {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/landing", a.handleLanding)
+	mux.HandleFunc("/explorer.css", a.handleExplorerCSS)
+	mux.HandleFunc("/explorer.js", a.handleExplorerJS)
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		// Root path: serve landing page; anything else falls to handleUI
 		if r.URL.Path == "/" {
@@ -1553,6 +1555,23 @@ func (a *APIServer) handleUI(w http.ResponseWriter, r *http.Request) {
 	// This avoids all server-side HTML manipulation and the race conditions
 	// it creates between server-injected classes and JS-driven tab switching.
 	fmt.Fprint(w, explorerHTML)
+}
+
+// handleExplorerCSS/handleExplorerJS serve the Explorer UI's stylesheet and
+// script, split out of the HTML document (and out of api_html.go) — see
+// that file's own comment. Long cache lifetime is safe: both are embedded
+// into the binary at build time, so a new deploy always serves a new URL
+// generation's content, never a stale cached one mismatched to a newer HTML.
+func (a *APIServer) handleExplorerCSS(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "text/css; charset=utf-8")
+	w.Header().Set("Cache-Control", "public, max-age=3600")
+	fmt.Fprint(w, explorerCSS)
+}
+
+func (a *APIServer) handleExplorerJS(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/javascript; charset=utf-8")
+	w.Header().Set("Cache-Control", "public, max-age=3600")
+	fmt.Fprint(w, explorerJS)
 }
 
 // handleNonce returns the next swap nonce a wallet should sign with.
