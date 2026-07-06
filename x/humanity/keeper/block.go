@@ -3266,10 +3266,31 @@ if missingParent != "" {
 	// immediately (before giving it any chance to resolve on its own) is
 	// what let two healthy Contabo nodes trip their breakers against each
 	// other during completely normal operation.
+	//
+	// EXCEPT ALSO for SelfFetched/FromSync blocks (audit 2026-07-06): this
+	// used to be the one gap left in the SelfFetched exemption described
+	// above (2924-2930) and at line 2931's own gate — that gate only stops
+	// an ALREADY-tripped breaker from blocking a self-fetched delivery, it
+	// never stopped a self-fetched delivery from CONTRIBUTING to tripping
+	// the breaker in the first place. isCatchingUpLocked() only covers the
+	// gap between dag.height and bootHeight/syncTargetHeight, both of which
+	// a node reaches almost immediately after a snapshot resync (its own
+	// production catches up within a handful of blocks) — so a node can
+	// stop being "catching up" by this definition while it is still working
+	// through a large, late-arriving backlog of a PEER's pre-resync history
+	// via its own doSyncOnce (confirmed live 2026-07-06: two secondaries
+	// resynced ~60s apart each relayed the other's now-pruned ancestry,
+	// arriving 60-240s late — far past proposerBreakerOrphanGrace's 8s — and
+	// tripped each other's breakers even though every one of those blocks
+	// was fetched deliberately, not pushed by a misbehaving proposer). A
+	// block we asked for ourselves during our own catch-up can never be
+	// evidence the PROPOSER is misbehaving — any orphaning here is about our
+	// own missing ancestry, exactly the case SelfFetched/FromSync exist to
+	// name.
 	dag.mu.RLock()
 	catchingUp := dag.isCatchingUpLocked()
 	dag.mu.RUnlock()
-	if age, tracked := dag.orphanAge(missingParent); !catchingUp && (!tracked || age >= proposerBreakerOrphanGrace) {
+	if age, tracked := dag.orphanAge(missingParent); !block.SelfFetched && !block.FromSync && !catchingUp && (!tracked || age >= proposerBreakerOrphanGrace) {
 		dag.recordProposerOutcome(block.Proposer, false)
 	}
 	return false
@@ -5659,9 +5680,33 @@ func (dag *BlockDAG) pruneOldDAGBlocks() {
 			pruned++
 		}
 	}
+	// FIX (P2-b, audit 2026-07-06): equivocationIndex has no cap or eviction
+	// anywhere — unlike every other bookkeeping map in BlockDAG (replayedBlocks
+	// at 50,000, warnedUnknownProposers at 500, orphans at maxOrphans), it
+	// grows with the chain's entire lifetime, a slow but permanent memory leak
+	// under sustained production. A blind size-based wipe (the
+	// warnedUnknownProposers pattern) isn't safe here — it would forget a
+	// proposer's earlier block for a still-relevant parent set, weakening
+	// equivocation detection for history that hasn't been finalized yet.
+	// Instead, evict in lockstep with the prune above: an entry whose
+	// recorded hash no longer exists in dag.blocks refers to a block that's
+	// already finalized-and-pruned, so checkAndIndexEquivocation's own
+	// dag.blocks[existingHash] lookup already treats it as "no conflict"
+	// (slashing.go) — the entry is dead weight, not a detection gap, once
+	// evicted.
+	evicted := 0
+	for key, hash := range dag.equivocationIndex {
+		if _, stillPresent := dag.blocks[hash]; !stillPresent {
+			delete(dag.equivocationIndex, key)
+			evicted++
+		}
+	}
 	dag.mu.Unlock()
 	if pruned > 0 {
 		fmt.Printf("[DAG] 🧹 Pruned %d finalized blocks from in-memory DAG (below height %d); DB retains full history\n", pruned, cutoff)
+	}
+	if evicted > 0 {
+		fmt.Printf("[DAG] 🧹 Evicted %d stale equivocationIndex entries for pruned blocks\n", evicted)
 	}
 }
 

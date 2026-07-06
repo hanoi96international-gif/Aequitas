@@ -660,11 +660,26 @@ func (dag *BlockDAG) doSyncOnce(nodeURL string) (ok bool) {
 			if block.IsGenesis {
 				continue
 			}
-			dag.mu.RLock()
-			_, exists := dag.blocks[block.Hash]
-			dag.mu.RUnlock()
 			// SECURITY (P0, launch audit 2026-07-03): see isTrustedSyncSource.
 			block.FromSync = dag.isTrustedSyncSource(nodeURL)
+			dag.mu.RLock()
+			_, exists := dag.blocks[block.Hash]
+			// FIX (audit 2026-07-06): skip a block that's already below our
+			// own finalized checkpoint before ever queueing it as an orphan —
+			// isFinalityViolation would reject it later anyway (block.go's
+			// AddPeerBlock calls it), but only after paying for a full
+			// dag.mu write-lock, orphan-queue insert, and log line. Confirmed
+			// live: a large backlog page fetched right after a snapshot
+			// resync (this peer's history spans a window our own pruning
+			// window has already moved past) produced hundreds of these
+			// pointless orphan/reject cycles per page. Harmless to skip here
+			// — a genuinely useful gap-fill within finalityHeightSlack of the
+			// checkpoint still passes this check unchanged.
+			violatesFinality := !exists && dag.isFinalityViolation(block)
+			dag.mu.RUnlock()
+			if violatesFinality {
+				continue
+			}
 			// FIX (durable fix, 2026-07-04): doSyncOnce's own ordered paged
 			// catch-up is exactly the deliberate, self-initiated fetch the
 			// circuit breaker's SelfFetched exemption exists for — see that
