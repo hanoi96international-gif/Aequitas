@@ -2,6 +2,7 @@ package keeper
 
 import (
 	"encoding/hex"
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -236,5 +237,47 @@ func TestProposerBreaker_SelfFetchedBypassesLockFreeDrop(t *testing.T) {
 	dag.AddPeerBlock(selfFetched)
 	if _, tracked := dag.orphanAge("missing-parent"); !tracked {
 		t.Fatal("a SelfFetched block from a tripped proposer must reach the orphan queue, not be dropped by the lock-free breaker check")
+	}
+}
+
+// TestProposerBreaker_TrackedProposerCountIsCapped verifies P2-c (audit
+// 2026-07-06): proposerFailRun is keyed by an unauthenticated proposer
+// string reachable before signature verification, so an attacker generating
+// unlimited distinct proposer identities must not grow this map without
+// bound. Once at maxTrackedProposers, a brand-new proposer is not admitted,
+// while an ALREADY-tracked proposer keeps updating normally (the cap must
+// not hand an attacker a way to reset an existing entry by flooding new
+// ones — only wiping other maps like warnedUnknownProposers is safe for
+// that, this one holds live circuit-breaker state).
+func TestProposerBreaker_TrackedProposerCountIsCapped(t *testing.T) {
+	dag := newGhostdagTestDAG()
+
+	for i := 0; i < maxTrackedProposers; i++ {
+		dag.recordProposerOutcome(fmt.Sprintf("0xattacker%d", i), false)
+	}
+	dag.proposerBreakerMu.Lock()
+	trackedBefore := len(dag.proposerFailRun)
+	dag.proposerBreakerMu.Unlock()
+	if trackedBefore != maxTrackedProposers {
+		t.Fatalf("expected exactly %d tracked proposers, got %d", maxTrackedProposers, trackedBefore)
+	}
+
+	// One more, brand-new proposer must NOT be admitted once at the cap.
+	dag.recordProposerOutcome("0xoneTooMany", false)
+	dag.proposerBreakerMu.Lock()
+	_, admitted := dag.proposerFailRun["0xonetoomany"]
+	trackedAfter := len(dag.proposerFailRun)
+	dag.proposerBreakerMu.Unlock()
+	if admitted || trackedAfter != maxTrackedProposers {
+		t.Fatalf("a new proposer must not be admitted once at the cap (tracked=%d, admitted=%v)", trackedAfter, admitted)
+	}
+
+	// An ALREADY-tracked proposer must still update normally past the cap.
+	const existing = "0xattacker0"
+	for i := 0; i < proposerBreakerFailThreshold; i++ {
+		dag.recordProposerOutcome(existing, false)
+	}
+	if !dag.proposerBlockBlocked(existing) {
+		t.Fatal("an already-tracked proposer must still be able to trip the breaker even while the map is at its cap")
 	}
 }

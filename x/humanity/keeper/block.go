@@ -2709,6 +2709,11 @@ const proposerBreakerCooldown = 30 * time.Second
 // another full 30s for an otherwise-honest, already-reconnected peer.
 const proposerBreakerReopenProbes = 5
 
+// maxTrackedProposers caps proposerFailRun (see recordProposerOutcome's own
+// FIX comment) — matches warnedUnknownProposers' cap, the established
+// precedent for bounding a map keyed by an unauthenticated proposer string.
+const maxTrackedProposers = 500
+
 // syncStallTimeout (seconds) is how long ProduceBlock's initial-sync gate
 // tolerates no further sync progress (see dag.lastSuccessfulPeerSyncAt)
 // before concluding the seed is unreachable and producing independently.
@@ -2775,6 +2780,25 @@ func (dag *BlockDAG) recordProposerOutcome(proposer string, attached bool) {
 	}
 	if dag.proposerFailRun == nil {
 		dag.proposerFailRun = make(map[string]int)
+	}
+	// FIX (P2-c, audit 2026-07-06): this map has no cap, unlike every other
+	// per-key bookkeeping map in BlockDAG (replayedBlocks at 50,000,
+	// warnedUnknownProposers at 500, orphans at maxOrphans) — and unlike
+	// those, the key here (block.Proposer) is read from an unauthenticated
+	// block BEFORE signature verification (this call site is reached from
+	// the far-ahead gate and the missing-parent gate, both ahead of the
+	// ECDSA check later in AddPeerBlock — see this function's own callers).
+	// An attacker can trivially generate an unlimited number of distinct
+	// "proposer" strings, each a new map entry, for a real memory-
+	// exhaustion DoS. Unlike warnedUnknownProposers (a pure log-noise
+	// suppressor, safe to wipe wholesale), this map holds live circuit-
+	// breaker state — wiping it at cap would let an attacker who has
+	// already tripped their OWN entry clear it early just by flooding new
+	// proposer strings afterward. Instead, once at cap, stop admitting
+	// BRAND NEW proposer keys (existing ones still update/trip/cool down
+	// normally) — bounds memory without handing out a breaker-reset lever.
+	if _, tracked := dag.proposerFailRun[proposer]; !tracked && len(dag.proposerFailRun) >= maxTrackedProposers {
+		return
 	}
 	dag.proposerFailRun[proposer]++
 	if dag.proposerFailRun[proposer] >= proposerBreakerFailThreshold {
