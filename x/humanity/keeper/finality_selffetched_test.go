@@ -14,10 +14,18 @@ import "testing"
 // finalized checkpoint climbed past it — which happens quickly under
 // continuous self-production — permanently orphaning every descendant block
 // and preventing the whole network from merging.
+//
+// FIX (same day, second half of the same incident): SelfFetched alone turned
+// out to be too broad an exemption — see hasAwaitingOrphan's own comment for
+// why "a fetch was once issued for this hash" (past tense) isn't the same
+// claim as "something is still waiting on it now" (present tense). Without
+// requiring hasAwaitingOrphan too, a peer relaying a large backlog of its
+// own long-past self-produced blocks cascaded through as an ever-deepening,
+// thousands-deep orphan chain instead of being cleanly rejected as stale.
 func TestIsFinalityViolation_SelfFetchedAncestorExempt(t *testing.T) {
 	cs := newTestState()
 	cs.SetFinalizedCheckpoint("deadbeef", 1000, 5000)
-	dag := &BlockDAG{state: cs}
+	dag := &BlockDAG{state: cs, orphans: make(map[string][]*Block)}
 
 	oldBlock := &Block{Height: 500, Hash: "old-ancestor"} // far below 1000-50
 
@@ -26,14 +34,20 @@ func TestIsFinalityViolation_SelfFetchedAncestorExempt(t *testing.T) {
 	}
 
 	oldBlock.SelfFetched = true
+	if !dag.isFinalityViolation(oldBlock) {
+		t.Fatal("a SelfFetched block nothing is currently waiting on must NOT be exempt — it's stale history, not a genuinely-needed ancestor")
+	}
+
+	// Now something is genuinely, actively waiting on this exact hash.
+	dag.orphans[oldBlock.Hash] = []*Block{{Height: 501, Hash: "waiting-child"}}
 	if dag.isFinalityViolation(oldBlock) {
-		t.Fatal("a deliberately self-fetched ancestor must be exempt from the finality gate, regardless of how far below the checkpoint it is")
+		t.Fatal("a SelfFetched block with a genuinely-waiting child must be exempt from the finality gate, regardless of how far below the checkpoint it is")
 	}
 
 	oldBlock.SelfFetched = false
 	oldBlock.FromSync = true
 	if dag.isFinalityViolation(oldBlock) {
-		t.Fatal("a FromSync (trusted seed) block must remain exempt, as before")
+		t.Fatal("a FromSync (trusted seed) block must remain unconditionally exempt, as before")
 	}
 }
 

@@ -286,30 +286,36 @@ func (cs *ChainState) ResetFinalizedCheckpoint() error {
 // that legitimate gap-fills within the finality window are never blocked.
 // Must be called with dag.mu held (reads dag.state but not dag.blocks).
 func (dag *BlockDAG) isFinalityViolation(block *Block) bool {
-	if block.IsGenesis || block.FromSync || block.SelfFetched {
-		// FIX (audit 2026-07-06, definitive root cause of a 3-node
-		// non-merging incident): SelfFetched used to be missing here, even
-		// though it's already exempt from the circuit breaker (block.go
-		// ~3272) and the suspension gate (block.go ~3179) for the identical
-		// reason — a block THIS node deliberately fetched can never be
-		// "irrelevant old history", almost by definition: something else
-		// this node is actively trying to attach right now needs it as a
-		// direct ancestor. fetchMissingAncestors sets SelfFetched=true
-		// regardless of which peer answers (FromSync is seed-only — see its
-		// own gate), so a genuinely-needed ancestor fetched from a
-		// dynamically-discovered secondary validator (not a configured
-		// seed) used to sail past both of those exemptions only to be
-		// killed here — permanently, since the local finalized checkpoint
-		// keeps climbing with this node's own block production, so no
-		// amount of retrying could ever bring the ancestor back within
-		// finalityHeightSlack. Confirmed live: a merge-parent several
-		// heights before a fresh resync's checkpoint (a trailing,
-		// not-yet-finalized tip from before the checkpoint was seeded,
-		// referenced by a real block just above it) was fetchable by hash
-		// from every peer, yet every node whose own production had raced
-		// ahead rejected it here forever, leaving every descendant block
-		// permanently orphaned and the whole network unable to merge.
-		return false // never a finality violation for genesis, HTTP-SYNC canonical replay, or a deliberately self-fetched ancestor
+	if block.IsGenesis || block.FromSync {
+		return false // never a finality violation for genesis or HTTP-SYNC canonical replay
+	}
+	// FIX (audit 2026-07-06, definitive root cause of a 3-node non-merging
+	// incident): SelfFetched used to unconditionally exempt here, even
+	// though it's already exempt from the circuit breaker (block.go ~3272)
+	// and the suspension gate (block.go ~3179) for the identical reason — a
+	// block THIS node deliberately fetched because something else is
+	// actively waiting on it as a direct ancestor can never be "irrelevant
+	// old history". That reasoning holds only in the PRESENT tense, though
+	// (see hasAwaitingOrphan's own doc comment on exactly this past-tense-
+	// vs-present-tense distinction, already applied to the bootHeight-skip
+	// gate above in AddPeerBlock) — SelfFetched alone just proves a fetch
+	// was ONCE issued for this exact hash, not that anything is still
+	// waiting on it now. Unconditionally exempting every SelfFetched block
+	// here let a much bigger problem back in: fetchMissingAncestors
+	// recursively re-fetches a fetched block's OWN missing parent too, so
+	// once even one genuinely stale, no-longer-relevant historical chain
+	// (e.g. a peer relaying a large backlog of its own long-past
+	// self-produced blocks after this node's own history diverged from
+	// it) starts arriving, this exemption let the WHOLE thing cascade
+	// through as an ever-deepening orphan chain — thousands of blocks
+	// deep, confirmed live — instead of each one being cleanly rejected as
+	// simply too old to matter. Requiring hasAwaitingOrphan(block.Hash) too
+	// keeps the narrow, genuinely-needed case exempt (something real is
+	// waiting on this exact hash right now) while letting a stale,
+	// nothing-actually-needs-this-anymore chain hit the normal age check
+	// below and get rejected instead of endlessly re-orphaning.
+	if block.SelfFetched && dag.hasAwaitingOrphan(block.Hash) {
+		return false
 	}
 	finalizedHeight, _ := dag.state.GetFinalizedCheckpoint()
 	if finalizedHeight == 0 {
