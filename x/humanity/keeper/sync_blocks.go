@@ -1147,6 +1147,19 @@ func (dag *BlockDAG) registerAndDiscover(selfURL, primaryURL string) {
 	}
 	json.Unmarshal(bodyBytes, &result)
 
+	// FIX (audit 2026-07-06): a seed never lists itself in its own /api/peers
+	// response (see StartPeerDiscovery's comment — that response only
+	// contains OTHER registered secondary nodes, since a seed has no need to
+	// sync from itself). That meant this node's own GlobalPeerRegistry —
+	// and therefore its own /api/peers, used by e.g. the explorer's topology
+	// view — never included the seed itself, even though registration just
+	// succeeded and startSyncForPeer(primaryURL) below keeps it as an active
+	// block-sync source. Register it explicitly now that we know it's live.
+	primaryURLTrimmed := strings.TrimRight(primaryURL, "/")
+	if primaryURLTrimmed != selfURL {
+		GlobalPeerRegistry.Register(primaryURLTrimmed)
+	}
+
 	// Add newly discovered authorized validators to our local set so we
 	// accept blocks from them without requiring AUTHORIZED_VALIDATORS env var.
 	dag.mu.Lock()
