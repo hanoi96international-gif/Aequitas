@@ -554,7 +554,10 @@ var v7ArrayBaseSlots = []int64{17, 18, 19, 20, 21, 22, 23, 24, 25, 26}
 // v7.11-guardian-sweep-wardcount-guard (audit 2026-07-06, P2-a): verified —
 // adds a require() check reading the existing wardCount mapping, no new,
 // removed, or reordered state variable, so the slot lists above are unchanged.
-const v7SlotsVerifiedForVersion = "v7.11-guardian-sweep-wardcount-guard"
+// v7.12-tx-fee-bps-zero (audit 2026-07-06, P2-e): verified — TX_FEE_BPS is a
+// `constant`, which Solidity inlines at compile time and never gives a
+// storage slot at all; changing its value cannot affect the slot lists above.
+const v7SlotsVerifiedForVersion = "v7.12-tx-fee-bps-zero"
 
 // checkV7SlotsMatchDeployedVersion prints a prominent warning if
 // V7ContractVersion has been bumped (contract_deploy.go) without a

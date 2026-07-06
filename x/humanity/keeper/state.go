@@ -3213,19 +3213,21 @@ func (cs *ChainState) transferLocked(from, to string, amount float64) (float64, 
 //
 // FIX (P2-10, beta-launch audit 2026-07-05): this comment used to claim it
 // "mirrors V7's _calcFee(): TX_FEE_BPS = 10 (0.1% base fee)" — that's wrong
-// on both counts. AequitasV7.sol's own TX_FEE_BPS constant is 700 (7%), not
-// 10, and calcV7Fee below independently hardcodes its own 0.1% base +
-// tiered concentration surcharge (0/0.1%/0.5%/1%) rather than reading the
-// contract's constant at all. These are two genuinely different fee
-// schedules for the same nominal transfer() call — not a bug in the sense
-// of "should be kept identical and drifted," since the contract's own
-// transfer()/_calcFee() logic is never actually executed for a real user
-// transfer (the RPC layer intercepts the selector before the EVM call would
-// reach it — see evm_engine.go's checkPersistedCallAllowed). The Go-computed
-// fee below is the one that actually applies to real value movements; the
-// contract's 7% is inert, display-only bytecode a raw eth_call against the
-// deployed contract would report but that never fires for any live
-// transfer. Whatever documentation describes "the transfer fee" to users
+// on both counts. calcV7Fee below independently hardcodes its own 0.1% base
+// + tiered concentration surcharge (0/0.1%/0.5%/1%) rather than reading
+// AequitasV7.sol's TX_FEE_BPS constant at all. These are two genuinely
+// different fee schedules for the same nominal transfer() call — not a bug
+// in the sense of "should be kept identical and drifted," since the
+// contract's own transfer()/_calcFee() logic is never actually executed for
+// a real user transfer (the RPC layer intercepts the selector before the
+// EVM call would reach it — see evm_engine.go's checkPersistedCallAllowed).
+// The Go-computed fee below is the one that actually applies to real value
+// movements; the contract's TX_FEE_BPS is inert, display-only bytecode a
+// raw eth_call against the deployed contract would report but that never
+// fires for any live transfer — set to 0 (P2-e, audit 2026-07-06; was
+// previously 700/7%, which read as a real, active fee to anyone inspecting
+// the contract directly with no reason to know about this RPC-layer
+// intercept). Whatever documentation describes "the transfer fee" to users
 // should describe THIS fee, not the contract's.
 //   base = 0.1% of amount
 //   Concentration surcharge if sender holds ≥1/5/10% of total supply

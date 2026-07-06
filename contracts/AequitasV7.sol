@@ -27,7 +27,18 @@ contract AequitasV7 {
     uint8   public constant decimals = 18;
 
     uint256 public constant INITIAL_GRANT     = 1_000 * 1e18;
-    uint256 public constant TX_FEE_BPS        = 700;    // 7% fee on transfers
+    // FIX (P2-e, audit 2026-07-06): was 700 (7%) — but transfer()/_calcFee()
+    // below are never reached for a real transfer (the RPC layer's own
+    // transfer()-selector intercept routes it through the Go ledger's
+    // TransferWithV7Fee/calcV7Fee instead — the actual, active 0.1%+tiered
+    // schedule — before this contract's logic ever runs; see state.go's own
+    // comment on that split). Left at 700 this constant was correct-looking
+    // but misleading: anyone reading the contract directly (Etherscan-style
+    // tools, auditors) with no reason to know about the RPC-layer intercept
+    // would see a 7% fee that no real transfer on this chain ever pays. Set
+    // to 0 so the contract's own on-chain, human-readable source no longer
+    // implies a fee this chain doesn't actually charge.
+    uint256 public constant TX_FEE_BPS        = 0;
     uint256 public constant UBI_SHARE_BPS     = 10_000; // 100% of fee goes to UBI pool
     uint256 public constant DEMURRAGE_BPS     = 100;
     uint256 public constant SECONDS_PER_YEAR  = 365 days;

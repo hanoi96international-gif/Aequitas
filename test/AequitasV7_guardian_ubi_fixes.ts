@@ -219,4 +219,9 @@ describe("AequitasV7 beta-launch-audit fixes", async function () {
     await v7.write.triggerEscrowToUBI([guardian.account.address]);
     assert.equal(await v7.read.isHuman([guardian.account.address]), false);
   });
+
+  it("TX_FEE_BPS is 0 (P2-e, audit 2026-07-06) — was 700 (7%), dead code that misrepresented the real, active fee path", async function () {
+    const { v7 } = await deployV7();
+    assert.equal(await v7.read.TX_FEE_BPS(), 0n);
+  });
 });
