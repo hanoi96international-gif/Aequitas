@@ -286,8 +286,30 @@ func (cs *ChainState) ResetFinalizedCheckpoint() error {
 // that legitimate gap-fills within the finality window are never blocked.
 // Must be called with dag.mu held (reads dag.state but not dag.blocks).
 func (dag *BlockDAG) isFinalityViolation(block *Block) bool {
-	if block.IsGenesis || block.FromSync {
-		return false // never a finality violation for genesis or HTTP-SYNC canonical replay
+	if block.IsGenesis || block.FromSync || block.SelfFetched {
+		// FIX (audit 2026-07-06, definitive root cause of a 3-node
+		// non-merging incident): SelfFetched used to be missing here, even
+		// though it's already exempt from the circuit breaker (block.go
+		// ~3272) and the suspension gate (block.go ~3179) for the identical
+		// reason — a block THIS node deliberately fetched can never be
+		// "irrelevant old history", almost by definition: something else
+		// this node is actively trying to attach right now needs it as a
+		// direct ancestor. fetchMissingAncestors sets SelfFetched=true
+		// regardless of which peer answers (FromSync is seed-only — see its
+		// own gate), so a genuinely-needed ancestor fetched from a
+		// dynamically-discovered secondary validator (not a configured
+		// seed) used to sail past both of those exemptions only to be
+		// killed here — permanently, since the local finalized checkpoint
+		// keeps climbing with this node's own block production, so no
+		// amount of retrying could ever bring the ancestor back within
+		// finalityHeightSlack. Confirmed live: a merge-parent several
+		// heights before a fresh resync's checkpoint (a trailing,
+		// not-yet-finalized tip from before the checkpoint was seeded,
+		// referenced by a real block just above it) was fetchable by hash
+		// from every peer, yet every node whose own production had raced
+		// ahead rejected it here forever, leaving every descendant block
+		// permanently orphaned and the whole network unable to merge.
+		return false // never a finality violation for genesis, HTTP-SYNC canonical replay, or a deliberately self-fetched ancestor
 	}
 	finalizedHeight, _ := dag.state.GetFinalizedCheckpoint()
 	if finalizedHeight == 0 {
