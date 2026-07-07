@@ -5590,6 +5590,13 @@ func (cs *ChainState) applyEscrowMoveDeltaLocked(wallet string, demurrageLost, l
 	if !ok {
 		return fmt.Errorf("escrow move: account not found: %s", wallet)
 	}
+	// FIX (2026-07-07): mirror addLiquidityDeltaLocked/removeLiquidityDeltaLocked,
+	// which both reload cs.pool from the DB before using it for AMM math (see
+	// reloadPoolFromDB's own comment on the stale-in-memory-pool class of bug
+	// this guards against) — liquidateLPSharesForEscrowLocked/
+	// convertTUsdForEscrowLocked below touch cs.pool the same way those do,
+	// so this replay path should start from the same authoritative state.
+	cs.reloadPoolFromDB()
 	if err := cs.applyDemurrageLossLocked(acc, demurrageLost); err != nil {
 		return fmt.Errorf("escrow move: could not settle %s demurrage: %w", wallet, err)
 	}

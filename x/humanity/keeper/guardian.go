@@ -381,6 +381,16 @@ func (cs *ChainState) checkAndMoveToEscrowLocked() ([]DistributionShare, error) 
 	if cs.db == nil {
 		return nil, nil
 	}
+	// FIX (2026-07-07): every other pool-touching operation (swapLocked,
+	// addLiquidityDeltaLocked, removeLiquidityDeltaLocked) reloads cs.pool
+	// from the DB before computing AMM math, specifically to avoid the
+	// stale-in-memory-pool class of bug the P2-7 audit fixed for swaps (see
+	// reloadPoolFromDB's own comment). liquidateLPSharesForEscrowLocked/
+	// convertTUsdForEscrowLocked below use cs.pool directly the same way
+	// those do, but this loop never reloaded it first — the one pool-mutating
+	// path in the codebase that didn't. Harmless if cs.pool was already
+	// current, closes the gap if it wasn't.
+	cs.reloadPoolFromDB()
 	threshold := time.Now().Unix() - inactivityEscrowSeconds
 	now := time.Now().Unix()
 
