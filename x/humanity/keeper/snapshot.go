@@ -986,24 +986,67 @@ func (dag *BlockDAG) SeedTrustedCheckpoint(primaryURL string) bool {
 	// invalidate the checkpoint itself, just means fewer siblings are
 	// available to resolve against — strictly a completeness improvement
 	// over seeding only the canonical block.
-	siblings, sibErr := fetchAndVerifySiblingsAtHeight(primaryURL, height)
-	if sibErr != nil {
-		fmt.Printf("[RESYNC] ⚠ Could not fetch sibling blocks at checkpoint height %d (%v) — checkpoint still valid, but a later block referencing a non-canonical sibling here may orphan permanently\n", height, sibErr)
-		return true
-	}
-	saved := 0
-	for _, sib := range siblings {
-		if sib.Hash == block.Hash {
-			continue // the canonical block was already saved above
+	//
+	// FIX (2026-07-07 — closes the residual gap this comment already flagged
+	// above): querying only primaryURL misses a sibling that simply hadn't
+	// propagated to primaryURL YET at the exact moment of this resync — an
+	// ordinary cross-provider timing race, not a defect in primaryURL. Once
+	// isFinalityViolation's hard wall (finalityHeightSlack=50 blocks) moves
+	// past this height, a sibling missed here can never be recovered —
+	// maybeAdvanceFinalizedCheckpoint only ever advances forward, and
+	// AddPeerBlock hardens it on every accepted peer block with no equivalent
+	// "corroborated by more than one source" gate. Widening the sibling fetch
+	// to every OTHER already-configured/known seed — seedURLs() (
+	// PRIMARY_NODE_URL + PRIMARY_NODE_URLS, the existing dynamic
+	// bootstrap-resilience mechanism StartPeerDiscovery already relies on;
+	// deliberately NOT the legacy static PEER_NODES list) plus whatever
+	// GlobalPeerRegistry already knows about — costs nothing on the common
+	// single-seed deployment (both collapse back to just primaryURL) and
+	// closes the gap wherever more than one seed/peer is actually reachable.
+	sources := []string{primaryURL}
+	seenSource := map[string]bool{strings.TrimRight(primaryURL, "/"): true}
+	addSource := func(u string) {
+		u = strings.TrimRight(u, "/")
+		if u == "" || seenSource[u] {
+			return
 		}
-		if err := dag.state.SaveBlockToDB(sib); err != nil {
-			fmt.Printf("[RESYNC] ⚠ Could not persist sibling block %s... at checkpoint height %d (%v)\n", sib.Hash[:min(16, len(sib.Hash))], height, err)
+		seenSource[u] = true
+		sources = append(sources, u)
+	}
+	selfURL := strings.TrimRight(NormalizeNodeURL(os.Getenv("SELF_URL")), "/")
+	for _, u := range seedURLs(selfURL) {
+		addSource(u)
+	}
+	for _, u := range GlobalPeerRegistry.ActivePeers(selfURL) {
+		addSource(u)
+	}
+
+	seenSiblingHash := map[string]bool{block.Hash: true}
+	saved := 0
+	anyErr := false
+	for _, src := range sources {
+		siblings, sibErr := fetchAndVerifySiblingsAtHeight(src, height)
+		if sibErr != nil {
+			anyErr = true
+			fmt.Printf("[RESYNC] ⚠ Could not fetch sibling blocks at checkpoint height %d from %s (%v)\n", height, src, sibErr)
 			continue
 		}
-		saved++
+		for _, sib := range siblings {
+			if seenSiblingHash[sib.Hash] {
+				continue // already saved (the canonical block, or a sibling another source also returned)
+			}
+			seenSiblingHash[sib.Hash] = true
+			if err := dag.state.SaveBlockToDB(sib); err != nil {
+				fmt.Printf("[RESYNC] ⚠ Could not persist sibling block %s... at checkpoint height %d (%v)\n", sib.Hash[:min(16, len(sib.Hash))], height, err)
+				continue
+			}
+			saved++
+		}
 	}
 	if saved > 0 {
-		fmt.Printf("[RESYNC] ✓ Also seeded %d sibling block(s) at checkpoint height %d — later blocks referencing them as a merge parent can now resolve\n", saved, height)
+		fmt.Printf("[RESYNC] ✓ Also seeded %d sibling block(s) at checkpoint height %d (across %d source(s)) — later blocks referencing them as a merge parent can now resolve\n", saved, height, len(sources))
+	} else if anyErr {
+		fmt.Printf("[RESYNC] ⚠ No siblings recovered at checkpoint height %d from any of %d source(s) — checkpoint still valid, but a later block referencing a non-canonical sibling here may orphan permanently\n", height, len(sources))
 	}
 	return true
 }
