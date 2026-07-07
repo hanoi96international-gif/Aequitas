@@ -78,9 +78,23 @@ type Transaction struct {
 	// BlockAHash/BlockBHash identify the equivocation evidence pair for
 	// "slash_equivocation" TXs so the replay can be idempotent (see the
 	// slash_equivocation case in replayTransactions and
-	// MaybeQueueSlashOutboxTx in slashing.go).
+	// QueueEquivocationEvidenceTx in slashing.go).
 	BlockAHash string `json:"block_a_hash,omitempty"`
 	BlockBHash string `json:"block_b_hash,omitempty"`
+	// DetectedAt (2026-07-07) is the ORIGINAL conflicting block's own
+	// Timestamp — i.e. whatever value the node that first detected this
+	// equivocation passed to RecordEquivocationAndSuspend — carried in the
+	// TX so that EVERY node replaying it (not just the one that first
+	// detected the conflict) calls RecordEquivocationAndSuspend with the
+	// identical "now", producing the identical offense count/suspension
+	// decision. Without this, validator suspension was a node-local side
+	// effect of whichever node happened to have BOTH conflicting blocks in
+	// its own dag.blocks at the moment the second one arrived — a node that
+	// never independently saw both never suspended the validator at all,
+	// even though the balance-penalty TX (this same TX type) was already
+	// consensus-replicated. See the slash_equivocation case in
+	// replayTransactions.
+	DetectedAt int64 `json:"detected_at,omitempty"`
 }
 
 type Block struct {
@@ -3569,19 +3583,32 @@ if conflict, isEquivocation := dag.checkAndIndexEquivocation(block); isEquivocat
 	blockBHash := block.Hash
 	detectedAt := block.Timestamp
 	SafeGoroutine("equivocation-slashing", func() {
+		// FIX (2026-07-07 — closes a node-local/consensus asymmetry): apply
+		// the suspension locally right away, same as before, so THIS node
+		// protects itself without waiting on its own block production — but
+		// RecordEquivocationAndSuspend only ever ran on whichever node(s)
+		// independently detected the SAME conflict (both blocks present in
+		// its own dag.blocks/equivocationIndex at the right moment). A node
+		// that never independently saw both blocks never suspended the
+		// validator at all, even though the financial-penalty TX (below) was
+		// already consensus-replicated — see IsValidatorSuspended's callers
+		// in AddPeerBlock, gated purely on this node's OWN validator_penalties
+		// row. Queuing the evidence unconditionally (not just when a balance
+		// penalty applies) lets replayTransactions' "slash_equivocation" case
+		// call this same idempotent function on EVERY node that replays the
+		// TX, so validator_penalties converges everywhere regardless of who
+		// detected it first.
 		count, slashWallet, rErr := dag.state.RecordEquivocationAndSuspend(proposerAddr, blockAHash, blockBHash, detectedAt)
 		if rErr != nil {
 			fmt.Printf("[SLASHING] ✗ Failed to record equivocation for %s: %v\n", proposerAddr, rErr)
 			return
 		}
 		fmt.Printf("[SLASHING] ✓ Equivocation recorded for %s (offense #%d)\n", proposerAddr, count)
-		if slashWallet != "" {
-			if qErr := dag.state.MaybeQueueSlashOutboxTx(proposerAddr, slashWallet, blockAHash, blockBHash, equivocationSecondOffensePenaltyAEQ); qErr != nil {
-				fmt.Printf("[SLASHING] ✗ Could not queue slash TX for %s: %v\n", proposerAddr, qErr)
-			} else {
-				fmt.Printf("[SLASHING] ✓ Slash TX queued: %.0f AEQ from %s (signer %s)\n",
-					equivocationSecondOffensePenaltyAEQ, slashWallet, proposerAddr)
-			}
+		if qErr := dag.state.QueueEquivocationEvidenceTx(proposerAddr, blockAHash, blockBHash, detectedAt); qErr != nil {
+			fmt.Printf("[SLASHING] ✗ Could not queue equivocation evidence TX for %s: %v\n", proposerAddr, qErr)
+		} else if slashWallet != "" {
+			fmt.Printf("[SLASHING] ✓ Equivocation evidence TX queued for %s (offense #%d, %.0f AEQ penalty pending replay)\n",
+				proposerAddr, count, equivocationSecondOffensePenaltyAEQ)
 		}
 	})
 }
@@ -4628,25 +4655,45 @@ func (dag *BlockDAG) replayTransactions(block *Block) bool {
 			fmt.Printf("[REPLAY] ✓ Applied escrow recovery %.6f AEQ → %s (block #%d)\n", tx.Amount, wallet, block.Height)
 
 		case "slash_equivocation":
-			// Idempotent balance deduction: only ONE slash_equivocation TX per
-			// evidence pair ever succeeds — the CAS on equivocation_evidence
-			// ensures all competing TXs (from multiple nodes that independently
-			// detected the same offense) produce exactly one deduction.
-			//
-			// tx.Wallet = signer (signing address of the banned validator)
-			// tx.To     = operator wallet address (receives the deduction)
-			// tx.Amount = penalty in AEQ (≤ 50, capped at balance on detection)
-			if tx.To == "" || tx.Amount <= 0 || tx.BlockAHash == "" || tx.BlockBHash == "" {
+			// tx.Wallet = signer (signing address of the equivocating validator)
+			// tx.BlockAHash/BlockBHash = the conflicting evidence pair
+			// tx.DetectedAt = the ORIGINAL conflicting block's own Timestamp
+			if tx.Wallet == "" || tx.BlockAHash == "" || tx.BlockBHash == "" {
 				fmt.Printf("[REPLAY] ⚠ slash_equivocation in block #%d: missing required fields — skipping\n", block.Height)
+				continue
+			}
+			// FIX (2026-07-07 — closes the node-local suspension gap): every
+			// node that replays this TX calls the SAME idempotent function
+			// the detecting node already called locally (see AddPeerBlock's
+			// equivocation-slashing goroutine) — so validator_penalties
+			// (offense count / suspension / ban) converges identically on
+			// EVERY node, not just whichever one first observed both
+			// conflicting blocks. Idempotent via equivocation_evidence's
+			// (block_a_hash, block_b_hash) UNIQUE constraint: a node that
+			// already recorded this pair locally (or via an earlier
+			// duplicate TX) gets a no-op here, just reads back the current
+			// count.
+			count, slashWallet, rErr := dag.state.RecordEquivocationAndSuspend(tx.Wallet, tx.BlockAHash, tx.BlockBHash, tx.DetectedAt)
+			if rErr != nil {
+				fmt.Printf("[REPLAY] ✗ slash_equivocation: could not record evidence for %s (block #%d): %v — rolling back whole block\n", tx.Wallet, block.Height, rErr)
+				hardFailure = true
+				continue
+			}
+			if slashWallet == "" {
+				fmt.Printf("[REPLAY] ✓ slash_equivocation recorded for %s (offense #%d, no balance penalty, block #%d)\n", tx.Wallet, count, block.Height)
 				continue
 			}
 			blockA, blockB := tx.BlockAHash, tx.BlockBHash
 			if blockA > blockB {
 				blockA, blockB = blockB, blockA
 			}
-			// Atomic CAS: insert or update the evidence row setting slash_applied=TRUE.
-			// Rows affected > 0 → we won the race, apply the balance deduction.
-			// Rows affected == 0 → already applied by a previous TX, skip.
+			// Idempotent balance-deduction CAS: only ONE slash_equivocation TX per
+			// evidence pair ever succeeds — competing TXs (from multiple nodes that
+			// independently detected/queued the same offense) produce exactly one
+			// deduction. Separate from RecordEquivocationAndSuspend's own idempotency
+			// (that guards offense-count/suspension state; this guards the balance
+			// transfer specifically, since it must run exactly once regardless of how
+			// many nodes' TXs reference this same pair).
 			res, claimErr := dag.state.dbExec().Exec(
 				`INSERT INTO equivocation_evidence
 				     (signing_address, block_a_hash, block_b_hash, detected_at, slash_applied)
@@ -4654,7 +4701,7 @@ func (dag *BlockDAG) replayTransactions(block *Block) bool {
 				 ON CONFLICT (block_a_hash, block_b_hash) DO UPDATE
 				     SET slash_applied = TRUE
 				     WHERE equivocation_evidence.slash_applied = FALSE`,
-				strings.ToLower(tx.Wallet), blockA, blockB, block.Timestamp,
+				strings.ToLower(tx.Wallet), blockA, blockB, tx.DetectedAt,
 			)
 			if claimErr != nil {
 				fmt.Printf("[REPLAY] ✗ slash_equivocation CAS failed (block #%d): %v — rolling back whole block\n", block.Height, claimErr)
@@ -4667,21 +4714,21 @@ func (dag *BlockDAG) replayTransactions(block *Block) bool {
 				continue
 			}
 			// Apply the balance deduction, capping at the wallet's current balance
-			// in case it has shrunk since the TX was queued.
-			opWallet := strings.ToLower(tx.To)
-			penaltyAmt := tx.Amount
+			// in case it has shrunk since the offense was recorded.
+			opWallet := strings.ToLower(slashWallet)
+			penaltyAmt := equivocationSecondOffensePenaltyAEQ
 			if acc, ok := dag.state.accounts[opWallet]; ok && acc.Balance.Float() < penaltyAmt {
 				penaltyAmt = acc.Balance.Float()
 			}
 			if penaltyAmt > 0 {
 				if err := dag.state.applyTransferDeltaLocked(opWallet, ubiPoolAddr, penaltyAmt, 0, 0); err != nil {
 					fmt.Printf("[REPLAY] ✗ slash_equivocation transfer %s→UBI %.4f: %v (block #%d) — rolling back whole block\n",
-						tx.To, penaltyAmt, err, block.Height)
+						opWallet, penaltyAmt, err, block.Height)
 					hardFailure = true
 					continue
 				}
-				fmt.Printf("[REPLAY] ✓ Applied slash_equivocation %.4f AEQ from %s → UBI pool (signer %s, block #%d)\n",
-					penaltyAmt, tx.To, tx.Wallet, block.Height)
+				fmt.Printf("[REPLAY] ✓ Applied slash_equivocation %.4f AEQ from %s → UBI pool (signer %s, offense #%d, block #%d)\n",
+					penaltyAmt, opWallet, tx.Wallet, count, block.Height)
 			}
 
 		default:

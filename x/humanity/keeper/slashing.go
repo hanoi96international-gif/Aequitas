@@ -400,17 +400,27 @@ func (cs *ChainState) RecordEquivocationAndSuspend(signingAddress, blockAHash, b
 	return count, slashWallet, nil
 }
 
-// MaybeQueueSlashOutboxTx creates a "slash_equivocation" pending TX that will
-// deduct penaltyAEQ from walletAddr → UBI pool when replayed by all nodes.
-// The balance deduction itself does NOT happen here — it happens exclusively
-// in replayTransactions' "slash_equivocation" case, which is idempotent via
-// the equivocation_evidence.slash_applied flag. This ensures every node
-// applies the penalty exactly once, regardless of how many nodes independently
-// detect the same equivocation and queue competing slash TXs.
+// QueueEquivocationEvidenceTx creates a "slash_equivocation" pending TX that
+// carries ONLY the evidence (signer + conflicting block hashes + the
+// original detection timestamp) — no wallet/penalty. Queued for EVERY
+// offense (1st, 2nd, 3rd+), not just a 2nd-offense financial penalty.
 //
-// blockAHash and blockBHash identify the equivocation evidence pair; they are
-// stored in the TX so the replay can CAS-update equivocation_evidence.
-func (cs *ChainState) MaybeQueueSlashOutboxTx(signingAddr, walletAddr, blockAHash, blockBHash string, penaltyAEQ float64) error {
+// FIX (2026-07-07 — closes a node-local/consensus asymmetry): this used to
+// be MaybeQueueSlashOutboxTx, called only when the offense already warranted
+// a balance penalty, and only the balance deduction itself was replayed
+// consensus-wide (replayTransactions' "slash_equivocation" case, idempotent
+// via equivocation_evidence.slash_applied). The SUSPENSION decision
+// (validator_penalties.suspended_until/banned, offense_count) was applied
+// exclusively by whichever node's RecordEquivocationAndSuspend call detected
+// the conflict locally — a node that never independently saw both
+// conflicting blocks (e.g. one of them never reached it before the other was
+// superseded/orphaned) never suspended the validator at all, silently
+// diverging from a node that did. Now every offense is queued, and replay
+// calls RecordEquivocationAndSuspend itself (same idempotent function, keyed
+// on the same (block_a_hash, block_b_hash) UNIQUE constraint) so
+// validator_penalties converges identically on every node that replays the
+// TX, regardless of who detected it first.
+func (cs *ChainState) QueueEquivocationEvidenceTx(signingAddr, blockAHash, blockBHash string, detectedAt int64) error {
 	if cs.db == nil {
 		return nil
 	}
@@ -420,9 +430,8 @@ func (cs *ChainState) MaybeQueueSlashOutboxTx(signingAddr, walletAddr, blockAHas
 	return savePendingTxExec(cs.db, Transaction{
 		Type:       "slash_equivocation",
 		Wallet:     strings.ToLower(signingAddr),
-		To:         strings.ToLower(walletAddr),
-		Amount:     penaltyAEQ,
 		BlockAHash: blockAHash,
 		BlockBHash: blockBHash,
+		DetectedAt: detectedAt,
 	})
 }
