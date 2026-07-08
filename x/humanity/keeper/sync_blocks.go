@@ -1407,7 +1407,7 @@ func (dag *BlockDAG) HTTPBroadcastBlock(block *Block) {
 			}
 			if pushResp.Action == "resync_required" {
 				if !dag.recordResyncSignal(peerURL) {
-					return // fewer than resyncSignalThreshold distinct peers so far
+					return // fewer than the current (peer-count-scaled) threshold so far
 				}
 				bootstrapURL := os.Getenv("BOOTSTRAP_SNAPSHOT_URL")
 				bootstrapSigner := os.Getenv("BOOTSTRAP_SIGNER")
@@ -1416,7 +1416,7 @@ func (dag *BlockDAG) HTTPBroadcastBlock(block *Block) {
 				}
 				dag.triggerAutoResync(fmt.Sprintf(
 					"%d distinct peers signaled resync_required after rejecting our pushed blocks",
-					resyncSignalThreshold))
+					dag.resyncSignalThresholdFor(os.Getenv("SELF_URL"))))
 				return
 			}
 			dag.recordPushRejection(peerURL, pushResp.OK, pushResp.Reason)
@@ -1476,7 +1476,7 @@ func (dag *BlockDAG) recordPushRejection(peerURL string, accepted bool, reason s
 	dag.pushRejectStreakMu.Unlock()
 
 	if !dag.recordResyncSignal(peerURL) {
-		return // fewer than resyncSignalThreshold distinct peers so far
+		return // fewer than the current (peer-count-scaled) threshold so far
 	}
 	bootstrapURL := os.Getenv("BOOTSTRAP_SNAPSHOT_URL")
 	bootstrapSigner := os.Getenv("BOOTSTRAP_SIGNER")
@@ -1485,22 +1485,50 @@ func (dag *BlockDAG) recordPushRejection(peerURL string, accepted bool, reason s
 	}
 	dag.triggerAutoResync(fmt.Sprintf(
 		"%d distinct peers signaled resync_required after rejecting our pushed blocks",
-		resyncSignalThreshold))
+		dag.resyncSignalThresholdFor(os.Getenv("SELF_URL"))))
 }
 
-// resyncSignalWindow/resyncSignalThreshold gate recordResyncSignal — see its
-// own comment and HTTPBroadcastBlock's reaction above.
+// resyncSignalWindow gates recordResyncSignal's time window — see its own
+// comment and HTTPBroadcastBlock's reaction above. minResyncSignalThreshold
+// is resyncSignalThresholdFor's floor — see that function's own comment for
+// why the real threshold now scales with peer count instead of being fixed.
 const (
-	resyncSignalWindow    = 60 * time.Second
-	resyncSignalThreshold = 2 // distinct peers within the window
+	resyncSignalWindow       = 60 * time.Second
+	minResyncSignalThreshold = 2 // distinct peers within the window, at any peer count
 )
+
+// resyncSignalThresholdFor returns how many distinct peers must signal
+// resync_required within resyncSignalWindow before this node treats it as a
+// genuine divergence signal, scaled to a MAJORITY of currently-known active
+// peers rather than a fixed absolute count.
+//
+// FIX (performance audit 2026-07-06): a fixed threshold of 2 is a
+// reasonable, already-proven-safe bar at today's 3-node scale — with only
+// 2 other peers possible, it already requires effectively unanimous peer
+// agreement before triggering an authoritative, state-replacing resync.
+// But the SAME fixed 2 would become a dangerously WEAK bar at a much
+// larger peer target (2 out of 100+ known peers), letting a small minority
+// of confused or malicious peers force any node through a resync. Never
+// below minResyncSignalThreshold — this preserves today's exact behavior
+// when the peer count is small (2 known peers -> threshold 2, identical to
+// the constant it replaces) and never demands more peers than are known to
+// exist, so the signal can't become permanently unreachable.
+func (dag *BlockDAG) resyncSignalThresholdFor(selfURL string) int {
+	known := len(GlobalPeerRegistry.ActivePeers(selfURL))
+	majority := known/2 + 1
+	if majority < minResyncSignalThreshold {
+		return minResyncSignalThreshold
+	}
+	return majority
+}
 
 // recordResyncSignal records that peerURL just told this node
 // action:"resync_required" in response to a block this node pushed, and
-// reports whether resyncSignalThreshold distinct peers have now signaled
-// within resyncSignalWindow. Re-signaling from the same peer only refreshes
-// its timestamp — it can never count twice toward the threshold, so a single
-// peer can never trigger this alone. Own mutex, never dag.mu.
+// reports whether resyncSignalThresholdFor's current threshold of distinct
+// peers has now signaled within resyncSignalWindow. Re-signaling from the
+// same peer only refreshes its timestamp — it can never count twice toward
+// the threshold, so a single peer can never trigger this alone. Own mutex,
+// never dag.mu.
 func (dag *BlockDAG) recordResyncSignal(peerURL string) bool {
 	dag.resyncSignalMu.Lock()
 	defer dag.resyncSignalMu.Unlock()
@@ -1515,5 +1543,5 @@ func (dag *BlockDAG) recordResyncSignal(peerURL string) bool {
 			distinct++
 		}
 	}
-	return distinct >= resyncSignalThreshold
+	return distinct >= dag.resyncSignalThresholdFor(os.Getenv("SELF_URL"))
 }
