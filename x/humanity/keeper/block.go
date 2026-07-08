@@ -1834,7 +1834,17 @@ var pendingDur, rootDur time.Duration
 dbPairStart := time.Now()
 var cadenceWG sync.WaitGroup
 cadenceWG.Add(2)
-go func() {
+// FIX (performance audit 2026-07-06): dispatched through produceBlockPool
+// (workerpool.go) — 2 persistent workers reused every block (BLOCK_TIME
+// cadence, i.e. continuously for the node's whole lifetime) instead of
+// spawning 2 fresh goroutines per tick. Exactly 2 workers because exactly
+// 2 jobs are submitted per tick and both are always awaited before the
+// next tick's ProduceBlock call, so the pool is idle again before it's
+// needed next — same concurrency shape as before, just without the
+// per-tick goroutine spinup. Audit flagged this as low-effect (Go
+// goroutine creation is already cheap), kept for consistency with the
+// same class of fix applied elsewhere.
+produceBlockPool.submit(func() {
 	defer cadenceWG.Done()
 	// FIX (P0-3, beta-launch audit 2026-07-05): see panic_recovery.go. Also
 	// prevents cadenceWG.Wait() below from deadlocking forever on a panic —
@@ -1850,8 +1860,8 @@ go func() {
 		dbTxs, pendingTxIDs = dag.state.LoadPendingTxs()
 	}
 	pendingDur = time.Since(t0)
-}()
-go func() {
+})
+produceBlockPool.submit(func() {
 	defer cadenceWG.Done()
 	defer func() {
 		if r := recover(); r != nil {
@@ -1861,7 +1871,7 @@ go func() {
 	t0 := time.Now()
 	stateRoot = dag.state.StateRoot()
 	rootDur = time.Since(t0)
-}()
+})
 cadenceWG.Wait()
 // Ongoing health check: these two DB round trips run concurrently
 // specifically to shorten how long ProduceBlock holds dag.mu (see the
