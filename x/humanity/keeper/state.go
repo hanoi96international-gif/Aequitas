@@ -1750,6 +1750,121 @@ WHERE address = $1 AND version = $9`,
 	return nil
 }
 
+// saveAccountsToDBBatch is saveAccountToDB's small-N batch counterpart:
+// persists every account in accs via ONE round trip instead of one per
+// account, while preserving BOTH guarantees saveAccountToDB gives a single
+// account — per-row optimistic-version conflict detection (a stale
+// in-memory account is never blindly overwritten) and the same
+// accountSetXOR incremental state-root bookkeeping (see saveAccountToDB's
+// own comment for why that exists) — applied per account here via the same
+// accountLeaf/xorInto primitives, not reimplemented.
+//
+// Uses a writable-CTE upsert: an UPDATE matches every row whose current DB
+// version equals what this process expects (the normal case, via a
+// per-row WHERE ca.version = EXCLUDED-equivalent comparison against each
+// row's own expected_version column — Postgres evaluates this separately
+// per conflicting row in a multi-row VALUES set, so this is a genuine
+// per-row check, not one condition applied uniformly to the whole batch).
+// Any row NOT matched that way falls through to an INSERT ... ON CONFLICT
+// DO UPDATE — for a genuinely new account (expected_version 0, no existing
+// row) this is a clean insert; for a cold in-memory account whose real DB
+// version this process never read (expected_version 0 but a row already
+// exists) this blindly overwrites, exactly matching saveAccountToDBInner's
+// own Version==0 branch. A row with expected_version != 0 that the UPDATE
+// didn't match (a genuine conflict) is deliberately excluded from the
+// INSERT branch too, so it's neither updated nor inserted — the caller can
+// tell it apart from a successful save by address, same as
+// saveAccountToDBInner's RowsAffected==0 check does for a single account.
+//
+// Intended for small, fixed sets of accounts mutated together
+// (distributeSwapFee's 4 pool addresses) — the query text grows linearly
+// with len(accs), so this is not a substitute for saveAccountToDB at
+// arbitrary N.
+func (cs *ChainState) saveAccountsToDBBatch(accs []*AccountState) error {
+	if len(accs) == 0 {
+		return nil
+	}
+	if !cs.useDB {
+		// Matches saveAccountToDB's own no-DB behavior exactly: accountSetXOR
+		// bookkeeping still runs (it's driven by saveAccountToDBInner's success,
+		// not by cs.useDB specifically — see saveAccountToDB's own comment),
+		// only the SQL round trip is skipped.
+		for _, acc := range accs {
+			newLeaf := accountLeaf(acc)
+			xorInto(&cs.accountSetXOR, acc.leafHash)
+			xorInto(&cs.accountSetXOR, newLeaf)
+			acc.leafHash = newLeaf
+			acc.Version++
+		}
+		return nil
+	}
+	valuesSQL := make([]string, len(accs))
+	args := make([]interface{}, 0, len(accs)*9)
+	for i, acc := range accs {
+		n := i * 9
+		valuesSQL[i] = fmt.Sprintf("($%d,$%d,$%d,$%d,$%d,$%d,$%d,$%d,$%d)", n+1, n+2, n+3, n+4, n+5, n+6, n+7, n+8, n+9)
+		args = append(args, acc.Address, acc.Balance.Float(), acc.IsHuman, acc.TUsdBalance.Float(), acc.LPShares.Float(), acc.LastActivityAt, acc.Demurrage14DayWarningShown, acc.FaucetClaimed, acc.Version)
+	}
+	query := `WITH updates(address, balance, is_human, tusd_balance, lp_shares, last_activity_at, demurrage_14_day_warning_shown, faucet_claimed, expected_version) AS (
+	VALUES ` + strings.Join(valuesSQL, ",") + `
+),
+upd AS (
+	UPDATE chain_accounts ca
+	SET balance = u.balance, is_human = u.is_human, tusd_balance = u.tusd_balance,
+	    lp_shares = u.lp_shares, last_activity_at = u.last_activity_at,
+	    demurrage_14_day_warning_shown = u.demurrage_14_day_warning_shown,
+	    faucet_claimed = u.faucet_claimed, version = u.expected_version + 1
+	FROM updates u
+	WHERE lower(ca.address) = lower(u.address) AND ca.version = u.expected_version
+	RETURNING ca.address
+),
+ins AS (
+	INSERT INTO chain_accounts (address, balance, is_human, tusd_balance, lp_shares, last_activity_at, demurrage_14_day_warning_shown, faucet_claimed, version)
+	SELECT address, balance, is_human, tusd_balance, lp_shares, last_activity_at, demurrage_14_day_warning_shown, faucet_claimed, 1
+	FROM updates
+	WHERE lower(address) NOT IN (SELECT lower(address) FROM upd) AND expected_version = 0
+	ON CONFLICT (address) DO UPDATE SET
+		balance = EXCLUDED.balance, is_human = EXCLUDED.is_human, tusd_balance = EXCLUDED.tusd_balance,
+		lp_shares = EXCLUDED.lp_shares, last_activity_at = EXCLUDED.last_activity_at,
+		demurrage_14_day_warning_shown = EXCLUDED.demurrage_14_day_warning_shown,
+		faucet_claimed = EXCLUDED.faucet_claimed, version = COALESCE(chain_accounts.version, 0) + 1
+	RETURNING address
+)
+SELECT address FROM upd UNION ALL SELECT address FROM ins`
+
+	rows, err := cs.dbExec().Query(query, args...)
+	if err != nil {
+		return fmt.Errorf("batch save failed: %w", err)
+	}
+	succeeded := make(map[string]bool, len(accs))
+	for rows.Next() {
+		var addr string
+		if err := rows.Scan(&addr); err == nil {
+			succeeded[strings.ToLower(addr)] = true
+		}
+	}
+	rows.Close()
+
+	var conflicts []string
+	for _, acc := range accs {
+		if !succeeded[strings.ToLower(acc.Address)] {
+			conflicts = append(conflicts, acc.Address)
+			continue
+		}
+		// Same bookkeeping saveAccountToDB does on success (see its own
+		// comment), applied per account here.
+		newLeaf := accountLeaf(acc)
+		xorInto(&cs.accountSetXOR, acc.leafHash)
+		xorInto(&cs.accountSetXOR, newLeaf)
+		acc.leafHash = newLeaf
+		acc.Version++
+	}
+	if len(conflicts) > 0 {
+		return fmt.Errorf("version conflict for account(s) %v: %w", conflicts, errVersionConflict)
+	}
+	return nil
+}
+
 // Demurrage parameters. AEQ balances that haven't been touched (no
 // transfer, swap, or liquidity action) for demurrageGracePeriodSeconds
 // begin losing value continuously at demurrageMonthlyRate per month,
@@ -3827,7 +3942,8 @@ func (cs *ChainState) distributeSwapFee(fee float64, feeInAEQ bool) error {
 		{ubiPoolAddr, fee * 0.20},
 		{treasuryPoolAddr, fee * 0.10},
 	}
-	for _, s := range shares {
+	accs := make([]*AccountState, len(shares))
+	for i, s := range shares {
 		if _, ok := cs.accounts[s.addr]; !ok {
 			cs.accounts[s.addr] = &AccountState{Address: s.addr}
 		}
@@ -3836,9 +3952,10 @@ func (cs *ChainState) distributeSwapFee(fee float64, feeInAEQ bool) error {
 		} else {
 			cs.accounts[s.addr].TUsdBalance = cs.accounts[s.addr].TUsdBalance.Add(NewDecimal(s.amount))
 		}
-		if err := cs.saveAccountToDB(cs.accounts[s.addr]); err != nil {
-			return fmt.Errorf("distributeSwapFee: could not persist %s pool credit: %w", s.addr, err)
-		}
+		accs[i] = cs.accounts[s.addr]
+	}
+	if err := cs.saveAccountsToDBBatch(accs); err != nil {
+		return fmt.Errorf("distributeSwapFee: could not persist pool credits: %w", err)
 	}
 	currency := "tUSD"
 	if feeInAEQ {

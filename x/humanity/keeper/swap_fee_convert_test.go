@@ -131,3 +131,71 @@ func TestSwapFee_AEQFeeCreditedDirectly(t *testing.T) {
 		t.Errorf("ubi pool must hold no tUSD for an AEQ fee, got %v", got)
 	}
 }
+
+// TestSaveAccountsToDBBatch_MatchesSequentialSaveAccountToDB is the direct
+// regression guard for distributeSwapFee's batching (performance audit
+// 2026-07-06): saveAccountsToDBBatch must produce EXACTLY the same
+// accountSetXOR and per-account Version as calling saveAccountToDB once per
+// account sequentially — accountSetXOR feeds the state root, so any
+// divergence here would be the same class of bug behind both incidents
+// earlier today. Uses 4 pre-existing accounts (matching distributeSwapFee's
+// real usage) with distinct balances so the leaf-hash XOR-out/XOR-in step
+// actually has a real prior leaf to cancel, not just XOR-in against zero.
+func TestSaveAccountsToDBBatch_MatchesSequentialSaveAccountToDB(t *testing.T) {
+	mkAccounts := func(cs *ChainState) []*AccountState {
+		accs := make([]*AccountState, 4)
+		for i, addr := range feePoolAddrs {
+			acc := &AccountState{Address: addr, Balance: NewDecimal(float64(100 * (i + 1)))}
+			acc.leafHash = accountLeaf(acc)
+			xorInto(&cs.accountSetXOR, acc.leafHash) // seed the accumulator as if this account was already saved once
+			cs.accounts[addr] = acc
+			accs[i] = acc
+		}
+		return accs
+	}
+
+	sequential := newTestState()
+	seqAccs := mkAccounts(sequential)
+	for i, acc := range seqAccs {
+		acc.Balance = acc.Balance.Add(NewDecimal(float64(i + 1)))
+		if err := sequential.saveAccountToDB(acc); err != nil {
+			t.Fatalf("sequential save %s: %v", acc.Address, err)
+		}
+	}
+
+	batched := newTestState()
+	batchAccs := mkAccounts(batched)
+	for i, acc := range batchAccs {
+		acc.Balance = acc.Balance.Add(NewDecimal(float64(i + 1)))
+	}
+	if err := batched.saveAccountsToDBBatch(batchAccs); err != nil {
+		t.Fatalf("batch save: %v", err)
+	}
+
+	if sequential.accountSetXOR != batched.accountSetXOR {
+		t.Fatalf("accountSetXOR diverged: sequential=%x batched=%x", sequential.accountSetXOR, batched.accountSetXOR)
+	}
+	for i, addr := range feePoolAddrs {
+		if seqAccs[i].Version != batchAccs[i].Version {
+			t.Errorf("%s: Version diverged: sequential=%d batched=%d", addr, seqAccs[i].Version, batchAccs[i].Version)
+		}
+		if seqAccs[i].Balance != batchAccs[i].Balance {
+			t.Errorf("%s: Balance diverged: sequential=%v batched=%v", addr, seqAccs[i].Balance.Float(), batchAccs[i].Balance.Float())
+		}
+		if seqAccs[i].leafHash != batchAccs[i].leafHash {
+			t.Errorf("%s: leafHash diverged", addr)
+		}
+	}
+}
+
+// TestSaveAccountsToDBBatch_EmptyIsNoOp guards the len(accs)==0 fast path.
+func TestSaveAccountsToDBBatch_EmptyIsNoOp(t *testing.T) {
+	cs := newTestState()
+	before := cs.accountSetXOR
+	if err := cs.saveAccountsToDBBatch(nil); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if cs.accountSetXOR != before {
+		t.Fatal("an empty batch must not touch accountSetXOR")
+	}
+}
