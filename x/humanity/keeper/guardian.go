@@ -430,9 +430,7 @@ func (cs *ChainState) checkAndMoveToEscrowLocked() ([]DistributionShare, error) 
 		}
 	}
 	rows.Close()
-	for _, addr := range candidateAddrs {
-		cs.ensureAccountLoaded(addr) // page in cold accounts so escrow sweeps work beyond the in-memory cap
-	}
+	cs.ensureAccountsLoaded(candidateAddrs) // page in cold accounts so escrow sweeps work beyond the in-memory cap
 
 	var toEscrow []escrowEntry
 	for _, addr := range candidateAddrs {

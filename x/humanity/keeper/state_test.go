@@ -605,3 +605,39 @@ func TestRunDailyDistributionAtomic_NoOpWhenPoolsEmpty(t *testing.T) {
 		t.Errorf("want unchanged balance 1000, got %v", cs.accounts["0x01"].Balance.Float())
 	}
 }
+
+// --- ensureAccountsLoaded ---
+
+// TestEnsureAccountsLoaded_NoOpWithoutDB is the batch counterpart's guard for
+// ensureAccountLoaded's identical "cs.db == nil" early return — a no-DB
+// ChainState (unit tests, or a genuinely DB-free deployment) must not panic
+// or attempt a query.
+func TestEnsureAccountsLoaded_NoOpWithoutDB(t *testing.T) {
+	cs := newTestState()
+	cs.ensureAccountsLoaded([]string{"0x01", "0x02"}) // must not panic
+	if len(cs.accounts) != 0 {
+		t.Fatalf("expected no accounts created without a DB, got %d", len(cs.accounts))
+	}
+}
+
+// TestEnsureAccountsLoaded_SkipsAlreadyCachedAccounts verifies an account
+// already in cs.accounts is left untouched (performance audit 2026-07-06:
+// distributeUBIPoolLocked used to call ensureAccountLoaded once per human,
+// every daily round — this batch version must still skip already-loaded
+// accounts the same way the single-address version always did, not
+// re-fetch or clobber in-memory state that may already have pending
+// mutations this round).
+func TestEnsureAccountsLoaded_SkipsAlreadyCachedAccounts(t *testing.T) {
+	cs := newTestState()
+	addHuman(cs, "0x01", 42)
+	original := cs.accounts["0x01"]
+
+	cs.ensureAccountsLoaded([]string{"0x01"})
+
+	if cs.accounts["0x01"] != original {
+		t.Fatal("an already-cached account must not be replaced")
+	}
+	if cs.accounts["0x01"].Balance.Float() != 42 {
+		t.Fatalf("expected balance to stay 42, got %v", cs.accounts["0x01"].Balance.Float())
+	}
+}

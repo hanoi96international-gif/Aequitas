@@ -1346,6 +1346,62 @@ func (cs *ChainState) ensureAccountLoaded(addr string) {
 	cs.accounts[addr] = acc
 }
 
+// ensureAccountsLoaded is ensureAccountLoaded's batch counterpart: loads
+// every addr in addrs that isn't already in cs.accounts via ONE
+// WHERE address = ANY($1) query instead of one query per address (performance
+// audit 2026-07-06 — distributeUBIPoolLocked used to call ensureAccountLoaded
+// individually for every human, every daily distribution round). Caller must
+// hold cs.mu. Addresses already cached, or genuinely absent from the DB
+// (never registered), are silently skipped — the same contract
+// ensureAccountLoaded's single-address version already has.
+func (cs *ChainState) ensureAccountsLoaded(addrs []string) {
+	if cs.db == nil {
+		return
+	}
+	var missing []string
+	for _, addr := range addrs {
+		if _, ok := cs.accounts[addr]; !ok {
+			missing = append(missing, addr)
+		}
+	}
+	if len(missing) == 0 {
+		return
+	}
+	rows, err := cs.db.Query(
+		`SELECT address, balance, is_human, tusd_balance, lp_shares,
+		        COALESCE(last_activity_at, 0), COALESCE(version, 1)
+		 FROM chain_accounts WHERE lower(address) = ANY($1)`,
+		pq.Array(missing),
+	)
+	if err != nil {
+		return // same as ensureAccountLoaded's single-query error path — callers create a fresh account downstream if still absent
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var addr string
+		acc := &AccountState{}
+		var bal, tusd, lp float64
+		var version int64
+		if err := rows.Scan(&addr, &bal, &acc.IsHuman, &tusd, &lp, &acc.LastActivityAt, &version); err != nil {
+			continue
+		}
+		acc.Address = addr
+		acc.Balance = NewDecimal(bal)
+		acc.TUsdBalance = NewDecimal(tusd)
+		acc.LPShares = NewDecimal(lp)
+		if version == 0 {
+			version = 1
+		}
+		acc.Version = version
+		// See ensureAccountLoaded's identical comment: cache this cold
+		// account's leaf so a later mutation can XOR its OLD contribution out
+		// of accountSetXOR correctly — it's already folded into the
+		// accumulator from the startup full scan, so only the cache is set.
+		acc.leafHash = accountLeaf(acc)
+		cs.accounts[addr] = acc
+	}
+}
+
 func (cs *ChainState) loadFromDB() {
 	// FIX (2026-06-28, production incident): this used to give up silently
 	// on the first error, leaving cs.accounts empty exactly as if the DB
@@ -2257,8 +2313,8 @@ func (cs *ChainState) distributeLPPoolLocked() ([]DistributionShare, error) {
 			}
 		}
 		rows.Close()
+		cs.ensureAccountsLoaded(addrs) // page in cold accounts so LP distribution works beyond the in-memory cap
 		for _, addr := range addrs {
-			cs.ensureAccountLoaded(addr) // page in cold accounts so LP distribution works beyond the in-memory cap
 			if acc, ok := cs.accounts[addr]; ok && acc.LPShares.Float() > 0 {
 				holders = append(holders, lpHolder{addr, acc.LPShares.Float()})
 				totalShares += acc.LPShares.Float()
@@ -2440,9 +2496,7 @@ func (cs *ChainState) distributeUBIPoolLocked() ([]DistributionShare, error) {
 	}
 	// Ensure all human accounts are in the cache so the distribution loop
 	// below can work on in-memory objects (reads + writes stay coherent).
-	for _, addr := range humanAddrs {
-		cs.ensureAccountLoaded(addr)
-	}
+	cs.ensureAccountsLoaded(humanAddrs)
 
 	// E3-FIX for UBI: settle demurrage for ALL humans FIRST. settleDemurrageLocked
 	// credits 20% of each human's decay to ubiPoolAddr. Reading the pool balance
@@ -4285,13 +4339,17 @@ func (cs *ChainState) GetAccountsForAddresses(addrs []string) []*AccountState {
 	defer cs.mu.Unlock()
 	result := make([]*AccountState, 0, len(addrs))
 	seen := make(map[string]bool, len(addrs))
+	unique := make([]string, 0, len(addrs))
 	for _, addr := range addrs {
 		addr = strings.ToLower(addr)
 		if seen[addr] {
 			continue
 		}
 		seen[addr] = true
-		cs.ensureAccountLoaded(addr)
+		unique = append(unique, addr)
+	}
+	cs.ensureAccountsLoaded(unique)
+	for _, addr := range unique {
 		acc, ok := cs.accounts[addr]
 		if !ok {
 			continue
