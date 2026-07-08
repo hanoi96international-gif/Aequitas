@@ -170,6 +170,35 @@ func (cs *ChainState) SaveStorageSlot(address, slot, value string) error {
 	return err
 }
 
+// SaveStorageSlots is SaveStorageSlot's batch counterpart for many slots
+// under the SAME contract address: one multi-row INSERT ... ON CONFLICT
+// instead of one round trip per slot.
+//
+// FIX (performance audit 2026-07-06): dumpAndPersistStorage (evm_engine.go)
+// used to call SaveStorageSlot individually up to ~40 times per persisting
+// EVM call — every registration, every intercepted V7 transfer. Same
+// "writes via cs.db directly, safe to call without holding cs.mu" contract
+// as SaveStorageSlot itself (see its own comment) — EVMEngine's callers
+// here don't hold cs.mu, so this must never try to join cs.activeTx the way
+// saveStorageSlotLocked does.
+func (cs *ChainState) SaveStorageSlots(address string, slots map[string]string) error {
+	if cs.db == nil || len(slots) == 0 {
+		return nil
+	}
+	address = strings.ToLower(address)
+	valuesSQL := make([]string, 0, len(slots))
+	args := make([]interface{}, 0, len(slots)*3)
+	for slot, value := range slots {
+		n := len(args)
+		valuesSQL = append(valuesSQL, fmt.Sprintf("($%d,$%d,$%d)", n+1, n+2, n+3))
+		args = append(args, address, slot, value)
+	}
+	query := `INSERT INTO evm_storage (address, slot, value) VALUES ` + strings.Join(valuesSQL, ",") +
+		` ON CONFLICT (address, slot) DO UPDATE SET value = EXCLUDED.value`
+	_, err := cs.db.Exec(query, args...)
+	return err
+}
+
 // saveStorageSlotLocked is SaveStorageSlot's body for callers that already
 // hold cs.mu inside an atomic Go-state operation (e.g. syncBalanceLocked,
 // itself only ever called while cs.mu is held — see its own doc comment).

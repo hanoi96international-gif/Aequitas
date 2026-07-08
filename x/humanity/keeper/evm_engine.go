@@ -689,36 +689,33 @@ return
 }
 
 addrStr := strings.ToLower(addr.Hex())
-count := 0
+// FIX (performance audit 2026-07-06): this used to call SaveStorageSlot
+// individually for every slot below — up to ~40 round trips per call, on
+// every registration and every intercepted V7 transfer. Collect every
+// (slot, value) pair here and persist them all in ONE round trip via
+// SaveStorageSlots instead.
+slots := make(map[string]string, len(v7SimpleSlots)+len(v7ArrayBaseSlots)+len(touchedAddrs)*len(v7AddressMappingSlots)+len(touchedCommitments))
 
 for _, slotIdx := range v7SimpleSlots {
 slot := common.BigToHash(big.NewInt(slotIdx))
-val := freshDB.GetState(addr, slot)
-e.chainState.SaveStorageSlot(addrStr, slot.Hex(), val.Hex())
-count++
+slots[slot.Hex()] = freshDB.GetState(addr, slot).Hex()
 }
 // Persist all fixed-size array slots (CAPS[5] + THRESHOLDS[5]).
 for _, slotIdx := range v7ArrayBaseSlots {
 slot := common.BigToHash(big.NewInt(slotIdx))
-val := freshDB.GetState(addr, slot)
-e.chainState.SaveStorageSlot(addrStr, slot.Hex(), val.Hex())
-count++
+slots[slot.Hex()] = freshDB.GetState(addr, slot).Hex()
 }
 
 for _, touched := range touchedAddrs {
 for _, base := range v7AddressMappingSlots {
 slot := mappingSlot(touched.Bytes(), base)
-val := freshDB.GetState(addr, slot)
-e.chainState.SaveStorageSlot(addrStr, slot.Hex(), val.Hex())
-count++
+slots[slot.Hex()] = freshDB.GetState(addr, slot).Hex()
 }
 }
 
 for _, commitment := range touchedCommitments {
 slot := mappingSlotBytes32(common.BigToHash(commitment), 7) // usedCommitments (slot 7)
-val := freshDB.GetState(addr, slot)
-e.chainState.SaveStorageSlot(addrStr, slot.Hex(), val.Hex())
-count++
+slots[slot.Hex()] = freshDB.GetState(addr, slot).Hex()
 }
 // SECURITY/PERF (P0, launch audit 2026-07-03): this used to also run a
 // `SELECT nullifier, wallet_address FROM nullifiers` scan here and
@@ -734,8 +731,12 @@ count++
 // connection-pool-exhausting) with the total registered population.
 // Removed; the wrapper's targeted persist already covers the only case
 // that matters.
-if count > 0 {
-fmt.Printf("[EVM] Persisted %d storage slots for %s\n", count, addrStr)
+if len(slots) > 0 {
+if err := e.chainState.SaveStorageSlots(addrStr, slots); err != nil {
+fmt.Printf("[EVM] Warning: could not batch-persist %d storage slots for %s: %v\n", len(slots), addrStr, err)
+return
+}
+fmt.Printf("[EVM] Persisted %d storage slots for %s\n", len(slots), addrStr)
 }
 }
 
