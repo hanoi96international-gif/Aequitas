@@ -98,6 +98,18 @@ func (d Decimal) IsPositive() bool { return d > 0 }
 // IsNegative returns true when d < 0.
 func (d Decimal) IsNegative() bool { return d < 0 }
 
+// AtLeastZero floors d at 0 — the exact "max(0.0, ...)" clamp several
+// reserve/share-burning call sites need (performance audit 2026-07-06:
+// consolidates the repeated float64 max(0.0, round6(...)) pattern into one
+// exact int64 comparison, no rounding involved since Decimal is already
+// exact).
+func (d Decimal) AtLeastZero() Decimal {
+	if d < 0 {
+		return 0
+	}
+	return d
+}
+
 // Neg returns -d.
 func (d Decimal) Neg() Decimal { return -d }
 

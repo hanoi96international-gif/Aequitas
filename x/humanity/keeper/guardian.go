@@ -332,7 +332,7 @@ func (cs *ChainState) RecoverFromEscrow(wallet string) error {
 		if _, err := cs.settleDemurrageLocked(acc); err != nil {
 			return Transaction{}, fmt.Errorf("could not settle demurrage for %s: %w", wallet, err)
 		}
-		acc.Balance = NewDecimal(round6(acc.Balance.Float() + amount))
+		acc.Balance = acc.Balance.Add(NewDecimal(amount))
 		touchActivity(acc)
 		if err := cs.enforceWealthCapLocked(acc); err != nil {
 			return Transaction{}, fmt.Errorf("could not enforce wealth cap for %s: %w", wallet, err)
@@ -618,7 +618,7 @@ func (cs *ChainState) releaseEscrowToUBILocked() ([]DistributionShare, error) {
 		if _, ok := cs.accounts[ubiPoolAddr]; !ok {
 			cs.accounts[ubiPoolAddr] = &AccountState{Address: ubiPoolAddr}
 		}
-		cs.accounts[ubiPoolAddr].Balance = cs.accounts[ubiPoolAddr].Balance.Add(NewDecimal(round6(e.amount)))
+		cs.accounts[ubiPoolAddr].Balance = cs.accounts[ubiPoolAddr].Balance.Add(NewDecimal(e.amount))
 		if err := cs.saveAccountToDB(cs.accounts[ubiPoolAddr]); err != nil {
 			return nil, fmt.Errorf("could not save UBI pool: %w", err)
 		}
@@ -648,7 +648,7 @@ func (cs *ChainState) applyEscrowRecoverDeltaLocked(wallet string, amount float6
 		cs.accounts[wallet] = &AccountState{Address: wallet, IsHuman: true}
 	}
 	acc := cs.accounts[wallet]
-	acc.Balance = NewDecimal(round6(acc.Balance.Float() + amount))
+	acc.Balance = acc.Balance.Add(NewDecimal(amount))
 	touchActivity(acc)
 	if err := cs.enforceWealthCapLocked(acc); err != nil {
 		return fmt.Errorf("could not enforce wealth cap for %s: %w", wallet, err)

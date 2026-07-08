@@ -1996,7 +1996,7 @@ func (cs *ChainState) applyDemurrageLossLocked(acc *AccountState, lost float64) 
 	if lost <= 0 || isTokenomicsPoolAddress(acc.Address) {
 		return nil
 	}
-	acc.Balance = NewDecimal(round6(acc.Balance.Float() - lost))
+	acc.Balance = acc.Balance.Sub(NewDecimal(lost))
 	if err := cs.distributeSwapFee(lost, true); err != nil {
 		return fmt.Errorf("could not persist pool credits for %s demurrage delta: %w", acc.Address, err)
 	}
@@ -2349,7 +2349,7 @@ func (cs *ChainState) distributeValidatorsPoolLocked() ([]DistributionShare, err
 		if err != nil {
 			return nil, fmt.Errorf("could not settle demurrage for %s: %w", wallet, err)
 		}
-		acc.Balance = NewDecimal(round6(acc.Balance.Float() + share))
+		acc.Balance = acc.Balance.Add(NewDecimal(share))
 		touchActivity(acc)
 		if err := cs.enforceWealthCapLocked(acc); err != nil {
 			return nil, fmt.Errorf("could not enforce wealth cap for %s: %w", wallet, err)
@@ -2506,7 +2506,7 @@ func (cs *ChainState) distributeLPPoolLocked() ([]DistributionShare, error) {
 		share := round6((h.shares / totalShares) * total)
 		totalDistributed += share
 		acc := cs.accounts[h.addr]
-		acc.Balance = NewDecimal(round6(acc.Balance.Float() + share))
+		acc.Balance = acc.Balance.Add(NewDecimal(share))
 		touchActivity(acc)
 		if err := cs.enforceWealthCapLocked(acc); err != nil {
 			return nil, fmt.Errorf("could not enforce wealth cap for %s: %w", h.addr, err)
@@ -2645,7 +2645,7 @@ func (cs *ChainState) distributeUBIPoolLocked() ([]DistributionShare, error) {
 	shares := make([]DistributionShare, 0, len(humanAddrs))
 	for _, addr := range humanAddrs {
 		acc := cs.accounts[addr]
-		acc.Balance = NewDecimal(round6(acc.Balance.Float() + share))
+		acc.Balance = acc.Balance.Add(NewDecimal(share))
 		touchActivity(acc)
 		if err := cs.enforceWealthCapLocked(acc); err != nil {
 			return nil, fmt.Errorf("could not enforce wealth cap for %s: %w", addr, err)
@@ -3345,7 +3345,7 @@ func (cs *ChainState) transferLocked(from, to string, amount float64) (float64, 
 		return 0, 0, fmt.Errorf("insufficient balance")
 	}
 
-	fromAcc.Balance = NewDecimal(round6(fromAcc.Balance.Float() - amount))
+	fromAcc.Balance = fromAcc.Balance.Sub(NewDecimal(amount))
 	touchActivity(fromAcc) // sending counts as "using" the money — resets its decay clock
 	// FIX (audit3, P1 #4): saveAccountToDB now returns an error — checked here
 	// so a DB failure aborts the transfer (causing runAtomicWithOutbox to roll
@@ -3361,7 +3361,7 @@ func (cs *ChainState) transferLocked(from, to string, amount float64) (float64, 
 	if err != nil {
 		return 0, 0, fmt.Errorf("could not settle demurrage for recipient: %w", err)
 	}
-	cs.accounts[to].Balance = NewDecimal(round6(cs.accounts[to].Balance.Float() + amount))
+	cs.accounts[to].Balance = cs.accounts[to].Balance.Add(NewDecimal(amount))
 	touchActivity(cs.accounts[to]) // receiving also resets the clock on the recipient's whole balance
 	if err := cs.enforceWealthCapLocked(cs.accounts[to]); err != nil {
 		return 0, 0, fmt.Errorf("could not enforce wealth cap for recipient: %w", err)
@@ -3480,7 +3480,7 @@ func (cs *ChainState) transferWithV7FeeLocked(from, to string, amount float64) (
 	netToRecipient := round6(amount - fee)
 	ubiContrib := amount - netToRecipient
 
-	fromAcc.Balance = NewDecimal(round6(fromAcc.Balance.Float() - amount))
+	fromAcc.Balance = fromAcc.Balance.Sub(NewDecimal(amount))
 	touchActivity(fromAcc)
 	if err := cs.saveAccountToDB(fromAcc); err != nil {
 		return 0, 0, 0, fmt.Errorf("could not save sender account: %w", err)
@@ -3493,7 +3493,7 @@ func (cs *ChainState) transferWithV7FeeLocked(from, to string, amount float64) (
 	if err != nil {
 		return 0, 0, 0, fmt.Errorf("could not settle demurrage for recipient: %w", err)
 	}
-	cs.accounts[to].Balance = NewDecimal(round6(cs.accounts[to].Balance.Float() + netToRecipient))
+	cs.accounts[to].Balance = cs.accounts[to].Balance.Add(NewDecimal(netToRecipient))
 	touchActivity(cs.accounts[to])
 	if err := cs.enforceWealthCapLocked(cs.accounts[to]); err != nil {
 		return 0, 0, 0, fmt.Errorf("could not enforce wealth cap for recipient: %w", err)
@@ -3665,10 +3665,10 @@ func (cs *ChainState) swapLocked(address string, amountIn float64, aeqToTusd boo
 		if minAmountOut > 0 && amountOut < minAmountOut {
 			return 0, 0, fmt.Errorf("slippage: output %.6f tUSD below requested minimum %.6f", amountOut, minAmountOut)
 		}
-		cs.pool.ReserveAEQ = NewDecimal(round6(cs.pool.ReserveAEQ.Float() + amountInAfterFee))
-		cs.pool.ReserveTUSD = NewDecimal(max(0.0, round6(cs.pool.ReserveTUSD.Float()-amountOut)))
-		acc.Balance = NewDecimal(round6(acc.Balance.Float() - amountIn))
-		acc.TUsdBalance = NewDecimal(round6(acc.TUsdBalance.Float() + amountOut))
+		cs.pool.ReserveAEQ = cs.pool.ReserveAEQ.Add(NewDecimal(amountInAfterFee))
+		cs.pool.ReserveTUSD = cs.pool.ReserveTUSD.Sub(NewDecimal(amountOut)).AtLeastZero()
+		acc.Balance = acc.Balance.Sub(NewDecimal(amountIn))
+		acc.TUsdBalance = acc.TUsdBalance.Add(NewDecimal(amountOut))
 	} else {
 		amountOut = AMMSwapOut(cs.pool.ReserveTUSD, cs.pool.ReserveAEQ, NewDecimal(amountInAfterFee)).Float()
 		if amountOut >= cs.pool.ReserveAEQ.Float() {
@@ -3677,10 +3677,10 @@ func (cs *ChainState) swapLocked(address string, amountIn float64, aeqToTusd boo
 		if minAmountOut > 0 && amountOut < minAmountOut {
 			return 0, 0, fmt.Errorf("slippage: output %.6f AEQ below requested minimum %.6f", amountOut, minAmountOut)
 		}
-		cs.pool.ReserveTUSD = NewDecimal(round6(cs.pool.ReserveTUSD.Float() + amountInAfterFee))
-		cs.pool.ReserveAEQ = NewDecimal(max(0.0, round6(cs.pool.ReserveAEQ.Float()-amountOut)))
-		acc.TUsdBalance = NewDecimal(round6(acc.TUsdBalance.Float() - amountIn))
-		acc.Balance = NewDecimal(round6(acc.Balance.Float() + amountOut))
+		cs.pool.ReserveTUSD = cs.pool.ReserveTUSD.Add(NewDecimal(amountInAfterFee))
+		cs.pool.ReserveAEQ = cs.pool.ReserveAEQ.Sub(NewDecimal(amountOut)).AtLeastZero()
+		acc.TUsdBalance = acc.TUsdBalance.Sub(NewDecimal(amountIn))
+		acc.Balance = acc.Balance.Add(NewDecimal(amountOut))
 	}
 	touchActivity(acc) // swapping (either direction) counts as using the AEQ side
 	if !aeqToTusd {
@@ -3816,8 +3816,8 @@ func (cs *ChainState) convertTUsdFeeToAEQLocked(feeTUsd float64) (float64, bool)
 	if aeqOut <= 0 || aeqOut >= rA {
 		return 0, false // can't price it, or it would drain the pool — fall back to tUSD
 	}
-	cs.pool.ReserveTUSD = NewDecimal(round6(rT + feeTUsd))
-	cs.pool.ReserveAEQ = NewDecimal(max(0.0, round6(rA-aeqOut)))
+	cs.pool.ReserveTUSD = cs.pool.ReserveTUSD.Add(NewDecimal(feeTUsd))
+	cs.pool.ReserveAEQ = cs.pool.ReserveAEQ.Sub(NewDecimal(aeqOut)).AtLeastZero()
 	return round6(aeqOut), true
 }
 
@@ -3859,12 +3859,12 @@ func (cs *ChainState) liquidateLPSharesForEscrowLocked(acc *AccountState, shares
 	if outTUSD > cs.pool.ReserveTUSD.Float() {
 		outTUSD = cs.pool.ReserveTUSD.Float()
 	}
-	acc.LPShares = NewDecimal(max(0.0, round6(acc.LPShares.Float()-burned)))
-	acc.Balance = NewDecimal(round6(acc.Balance.Float() + outAEQ))
-	acc.TUsdBalance = NewDecimal(round6(acc.TUsdBalance.Float() + outTUSD))
-	cs.pool.ReserveAEQ = NewDecimal(max(0.0, round6(cs.pool.ReserveAEQ.Float()-outAEQ)))
-	cs.pool.ReserveTUSD = NewDecimal(max(0.0, round6(cs.pool.ReserveTUSD.Float()-outTUSD)))
-	cs.pool.TotalLPShares = NewDecimal(max(0.0, round6(cs.pool.TotalLPShares.Float()-burned)))
+	acc.LPShares = acc.LPShares.Sub(NewDecimal(burned)).AtLeastZero()
+	acc.Balance = acc.Balance.Add(NewDecimal(outAEQ))
+	acc.TUsdBalance = acc.TUsdBalance.Add(NewDecimal(outTUSD))
+	cs.pool.ReserveAEQ = cs.pool.ReserveAEQ.Sub(NewDecimal(outAEQ)).AtLeastZero()
+	cs.pool.ReserveTUSD = cs.pool.ReserveTUSD.Sub(NewDecimal(outTUSD)).AtLeastZero()
+	cs.pool.TotalLPShares = cs.pool.TotalLPShares.Sub(NewDecimal(burned)).AtLeastZero()
 	if err := cs.savePoolToDB(); err != nil {
 		return burned, outAEQ, outTUSD, fmt.Errorf("could not save pool after LP liquidation: %w", err)
 	}
@@ -3893,10 +3893,10 @@ func (cs *ChainState) convertTUsdForEscrowLocked(acc *AccountState, tusdAmount f
 	if outAEQ >= cs.pool.ReserveAEQ.Float() {
 		return 0, false, nil
 	}
-	cs.pool.ReserveTUSD = NewDecimal(round6(cs.pool.ReserveTUSD.Float() + amountInAfterFee))
-	cs.pool.ReserveAEQ = NewDecimal(max(0.0, round6(cs.pool.ReserveAEQ.Float()-outAEQ)))
-	acc.TUsdBalance = NewDecimal(max(0.0, round6(acc.TUsdBalance.Float()-tusdAmount)))
-	acc.Balance = NewDecimal(round6(acc.Balance.Float() + outAEQ))
+	cs.pool.ReserveTUSD = cs.pool.ReserveTUSD.Add(NewDecimal(amountInAfterFee))
+	cs.pool.ReserveAEQ = cs.pool.ReserveAEQ.Sub(NewDecimal(outAEQ)).AtLeastZero()
+	acc.TUsdBalance = acc.TUsdBalance.Sub(NewDecimal(tusdAmount)).AtLeastZero()
+	acc.Balance = acc.Balance.Add(NewDecimal(outAEQ))
 	if err := cs.savePoolToDB(); err != nil {
 		return outAEQ, true, fmt.Errorf("could not save pool after tUSD conversion: %w", err)
 	}
@@ -4009,7 +4009,7 @@ func (cs *ChainState) MigrateStrandedPoolTUsdFeesV1() {
 			fmt.Printf("[MIGRATE] ✗ Could not convert %.6f stranded tUSD for %s (pool too shallow to price it) — left as-is, will retry next restart\n", stranded, addr)
 			continue
 		}
-		acc.TUsdBalance = NewDecimal(round6(acc.TUsdBalance.Float() - stranded))
+		acc.TUsdBalance = acc.TUsdBalance.Sub(NewDecimal(stranded))
 		acc.Balance = acc.Balance.Add(NewDecimal(aeqOut))
 		if err := cs.saveAccountToDB(acc); err != nil {
 			fmt.Printf("[MIGRATE] ✗ Could not persist converted balance for %s: %v\n", addr, err)
@@ -4142,13 +4142,13 @@ func (cs *ChainState) addLiquidityLocked(address string, amountAEQ, amountTUSD f
 		mintedShares = math.Sqrt(amountAEQ * amountTUSD)
 	}
 
-	acc.Balance = NewDecimal(round6(acc.Balance.Float() - amountAEQ))
-	acc.TUsdBalance = NewDecimal(round6(acc.TUsdBalance.Float() - amountTUSD))
-	acc.LPShares = NewDecimal(round6(acc.LPShares.Float() + mintedShares))
+	acc.Balance = acc.Balance.Sub(NewDecimal(amountAEQ))
+	acc.TUsdBalance = acc.TUsdBalance.Sub(NewDecimal(amountTUSD))
+	acc.LPShares = acc.LPShares.Add(NewDecimal(mintedShares))
 	touchActivity(acc) // depositing into the pool counts as using the AEQ
-	cs.pool.ReserveAEQ = NewDecimal(round6(cs.pool.ReserveAEQ.Float() + amountAEQ))
-	cs.pool.ReserveTUSD = NewDecimal(round6(cs.pool.ReserveTUSD.Float() + amountTUSD))
-	cs.pool.TotalLPShares = NewDecimal(round6(cs.pool.TotalLPShares.Float() + mintedShares))
+	cs.pool.ReserveAEQ = cs.pool.ReserveAEQ.Add(NewDecimal(amountAEQ))
+	cs.pool.ReserveTUSD = cs.pool.ReserveTUSD.Add(NewDecimal(amountTUSD))
+	cs.pool.TotalLPShares = cs.pool.TotalLPShares.Add(NewDecimal(mintedShares))
 
 	if err := cs.saveAccountToDB(acc); err != nil {
 		return 0, fmt.Errorf("could not save account: %w", err)
@@ -4235,8 +4235,8 @@ func (cs *ChainState) removeLiquidityLocked(address string, sharesToBurn float64
 			outAEQ := cs.pool.ReserveAEQ.Float()
 			outTUSD := cs.pool.ReserveTUSD.Float()
 			acc.LPShares = NewDecimal(0)
-			acc.Balance = NewDecimal(round6(acc.Balance.Float() + outAEQ))
-			acc.TUsdBalance = NewDecimal(round6(acc.TUsdBalance.Float() + outTUSD))
+			acc.Balance = acc.Balance.Add(NewDecimal(outAEQ))
+			acc.TUsdBalance = acc.TUsdBalance.Add(NewDecimal(outTUSD))
 			touchActivity(acc)
 			if err := cs.enforceWealthCapLocked(acc); err != nil {
 				return 0, 0, 0, fmt.Errorf("could not enforce wealth cap: %w", err)
@@ -4288,8 +4288,8 @@ func (cs *ChainState) removeLiquidityLocked(address string, sharesToBurn float64
 		if outTUSD17 > cs.pool.ReserveTUSD.Float() {
 			outTUSD17 = cs.pool.ReserveTUSD.Float()
 		}
-		acc.Balance = NewDecimal(round6(acc.Balance.Float() + outAEQ17))
-		acc.TUsdBalance = NewDecimal(round6(acc.TUsdBalance.Float() + outTUSD17))
+		acc.Balance = acc.Balance.Add(NewDecimal(outAEQ17))
+		acc.TUsdBalance = acc.TUsdBalance.Add(NewDecimal(outTUSD17))
 		touchActivity(acc)
 		if err := cs.enforceWealthCapLocked(acc); err != nil {
 			return 0, 0, 0, fmt.Errorf("could not enforce wealth cap: %w", err)
@@ -4304,7 +4304,7 @@ func (cs *ChainState) removeLiquidityLocked(address string, sharesToBurn float64
 		}
 		cs.pool.ReserveAEQ = NewDecimal(newResAEQ17)
 		cs.pool.ReserveTUSD = NewDecimal(newResTUSD17)
-		cs.pool.TotalLPShares = NewDecimal(round6(cs.pool.TotalLPShares.Float() - sharesToBurn))
+		cs.pool.TotalLPShares = cs.pool.TotalLPShares.Sub(NewDecimal(sharesToBurn))
 		if err := cs.saveAccountToDB(acc); err != nil {
 			return 0, 0, 0, fmt.Errorf("could not save account: %w", err)
 		}
@@ -4331,9 +4331,9 @@ func (cs *ChainState) removeLiquidityLocked(address string, sharesToBurn float64
 		outTUSD = cs.pool.ReserveTUSD.Float()
 	}
 
-	acc.LPShares = NewDecimal(round6(acc.LPShares.Float() - sharesToBurn))
-	acc.Balance = NewDecimal(round6(acc.Balance.Float() + outAEQ))
-	acc.TUsdBalance = NewDecimal(round6(acc.TUsdBalance.Float() + outTUSD))
+	acc.LPShares = acc.LPShares.Sub(NewDecimal(sharesToBurn))
+	acc.Balance = acc.Balance.Add(NewDecimal(outAEQ))
+	acc.TUsdBalance = acc.TUsdBalance.Add(NewDecimal(outTUSD))
 	touchActivity(acc) // receiving AEQ back from the pool counts as using it
 	if err := cs.enforceWealthCapLocked(acc); err != nil {
 		return 0, 0, 0, fmt.Errorf("could not enforce wealth cap: %w", err)
@@ -4348,7 +4348,7 @@ func (cs *ChainState) removeLiquidityLocked(address string, sharesToBurn float64
 	}
 	cs.pool.ReserveAEQ = NewDecimal(newReserveAEQ)
 	cs.pool.ReserveTUSD = NewDecimal(newReserveTUSD)
-	cs.pool.TotalLPShares = NewDecimal(round6(cs.pool.TotalLPShares.Float() - sharesToBurn))
+	cs.pool.TotalLPShares = cs.pool.TotalLPShares.Sub(NewDecimal(sharesToBurn))
 
 	if err := cs.saveAccountToDB(acc); err != nil {
 		return 0, 0, 0, fmt.Errorf("could not save account: %w", err)
@@ -5187,7 +5187,7 @@ func (cs *ChainState) applyTransferDeltaLocked(from, to string, netAmount, fromL
 	if err := cs.applyDemurrageLossLocked(fromAcc, fromLost); err != nil {
 		return fmt.Errorf("transfer: could not settle sender %s demurrage: %w", from, err)
 	}
-	fromAcc.Balance = NewDecimal(round6(fromAcc.Balance.Float() - netAmount))
+	fromAcc.Balance = fromAcc.Balance.Sub(NewDecimal(netAmount))
 	// FIX (audit recheck2, P0 #3): this and every other saveAccountToDB/
 	// savePoolToDB call in this function used to discard the returned error
 	// — replayTransactions's caller checks THIS function's own return value
@@ -5208,7 +5208,7 @@ func (cs *ChainState) applyTransferDeltaLocked(from, to string, netAmount, fromL
 	if err := cs.applyDemurrageLossLocked(toAcc, toLost); err != nil {
 		return fmt.Errorf("transfer: could not settle recipient %s demurrage: %w", to, err)
 	}
-	toAcc.Balance = NewDecimal(round6(toAcc.Balance.Float() + netAmount))
+	toAcc.Balance = toAcc.Balance.Add(NewDecimal(netAmount))
 	if err := cs.enforceWealthCapLocked(toAcc); err != nil {
 		return fmt.Errorf("transfer: could not enforce wealth cap for recipient %s: %w", to, err)
 	}
@@ -5258,11 +5258,11 @@ func (cs *ChainState) applySwapDeltaLocked(wallet string, amountIn, amountOut fl
 		return fmt.Errorf("swap: could not settle %s demurrage: %w", wallet, err)
 	}
 	if aeqToTusd {
-		acc.Balance = NewDecimal(round6(acc.Balance.Float() - amountIn))
-		acc.TUsdBalance = NewDecimal(round6(acc.TUsdBalance.Float() + amountOut))
+		acc.Balance = acc.Balance.Sub(NewDecimal(amountIn))
+		acc.TUsdBalance = acc.TUsdBalance.Add(NewDecimal(amountOut))
 	} else {
-		acc.TUsdBalance = NewDecimal(round6(acc.TUsdBalance.Float() - amountIn))
-		acc.Balance = NewDecimal(round6(acc.Balance.Float() + amountOut))
+		acc.TUsdBalance = acc.TUsdBalance.Sub(NewDecimal(amountIn))
+		acc.Balance = acc.Balance.Add(NewDecimal(amountOut))
 	}
 	// FIX (P0, 2026-07-04 brutal audit): swapLocked (primary path) calls
 	// touchActivity unconditionally right here, then enforceWealthCapLocked
@@ -5293,12 +5293,12 @@ func (cs *ChainState) applySwapDeltaLocked(wallet string, amountIn, amountOut fl
 		amountInAfterFee := amountIn - fee
 		if aeqToTusd {
 			// Sender put in AEQ, got tUSD: reserveAEQ grows, reserveTUSD shrinks.
-			cs.pool.ReserveAEQ = NewDecimal(round6(cs.pool.ReserveAEQ.Float() + amountInAfterFee))
-			cs.pool.ReserveTUSD = NewDecimal(max(0.0, round6(cs.pool.ReserveTUSD.Float()-amountOut)))
+			cs.pool.ReserveAEQ = cs.pool.ReserveAEQ.Add(NewDecimal(amountInAfterFee))
+			cs.pool.ReserveTUSD = cs.pool.ReserveTUSD.Sub(NewDecimal(amountOut)).AtLeastZero()
 		} else {
 			// Sender put in tUSD, got AEQ: reserveTUSD grows, reserveAEQ shrinks.
-			cs.pool.ReserveTUSD = NewDecimal(round6(cs.pool.ReserveTUSD.Float() + amountInAfterFee))
-			cs.pool.ReserveAEQ = NewDecimal(max(0.0, round6(cs.pool.ReserveAEQ.Float()-amountOut)))
+			cs.pool.ReserveTUSD = cs.pool.ReserveTUSD.Add(NewDecimal(amountInAfterFee))
+			cs.pool.ReserveAEQ = cs.pool.ReserveAEQ.Sub(NewDecimal(amountOut)).AtLeastZero()
 		}
 		if err := cs.savePoolToDB(); err != nil {
 			return fmt.Errorf("swap: could not save pool: %w", err)
@@ -5363,14 +5363,14 @@ func (cs *ChainState) addLiquidityDeltaLocked(wallet string, aeqAmount, tusdAmou
 		mintedShares = math.Sqrt(aeqAmount * tusdAmount)
 	}
 
-	acc.Balance = NewDecimal(round6(acc.Balance.Float() - aeqAmount))
-	acc.TUsdBalance = NewDecimal(round6(acc.TUsdBalance.Float() - tusdAmount))
-	acc.LPShares = NewDecimal(round6(acc.LPShares.Float() + mintedShares))
+	acc.Balance = acc.Balance.Sub(NewDecimal(aeqAmount))
+	acc.TUsdBalance = acc.TUsdBalance.Sub(NewDecimal(tusdAmount))
+	acc.LPShares = acc.LPShares.Add(NewDecimal(mintedShares))
 	// FIX (audit recheck2, P0 #3): see ApplyTransferDelta's comment.
 	if cs.pool != nil {
-		cs.pool.ReserveAEQ = NewDecimal(round6(cs.pool.ReserveAEQ.Float() + aeqAmount))
-		cs.pool.ReserveTUSD = NewDecimal(round6(cs.pool.ReserveTUSD.Float() + tusdAmount))
-		cs.pool.TotalLPShares = NewDecimal(round6(cs.pool.TotalLPShares.Float() + mintedShares))
+		cs.pool.ReserveAEQ = cs.pool.ReserveAEQ.Add(NewDecimal(aeqAmount))
+		cs.pool.ReserveTUSD = cs.pool.ReserveTUSD.Add(NewDecimal(tusdAmount))
+		cs.pool.TotalLPShares = cs.pool.TotalLPShares.Add(NewDecimal(mintedShares))
 		if err := cs.savePoolToDB(); err != nil {
 			return fmt.Errorf("add_liquidity: could not save pool: %w", err)
 		}
@@ -5435,9 +5435,9 @@ func (cs *ChainState) removeLiquidityDeltaLocked(wallet string, sharesToBurn, de
 		outTUSD = cs.pool.ReserveTUSD.Float()
 	}
 
-	acc.LPShares = NewDecimal(round6(acc.LPShares.Float() - sharesToBurn))
-	acc.Balance = NewDecimal(round6(acc.Balance.Float() + outAEQ))
-	acc.TUsdBalance = NewDecimal(round6(acc.TUsdBalance.Float() + outTUSD))
+	acc.LPShares = acc.LPShares.Sub(NewDecimal(sharesToBurn))
+	acc.Balance = acc.Balance.Add(NewDecimal(outAEQ))
+	acc.TUsdBalance = acc.TUsdBalance.Add(NewDecimal(outTUSD))
 	// FIX (P0, 2026-07-04 brutal audit): removeLiquidityLocked (primary path)
 	// calls touchActivity + enforceWealthCapLocked right here, in all three
 	// of its branches, immediately after crediting the AEQ received back
@@ -5462,7 +5462,7 @@ func (cs *ChainState) removeLiquidityDeltaLocked(wallet string, sharesToBurn, de
 	}
 	cs.pool.ReserveAEQ = NewDecimal(newReserveAEQ)
 	cs.pool.ReserveTUSD = NewDecimal(newReserveTUSD)
-	cs.pool.TotalLPShares = NewDecimal(round6(cs.pool.TotalLPShares.Float() - sharesToBurn))
+	cs.pool.TotalLPShares = cs.pool.TotalLPShares.Sub(NewDecimal(sharesToBurn))
 	// FIX (audit recheck2, P0 #3): see ApplyTransferDelta's comment.
 	if err := cs.savePoolToDB(); err != nil {
 		return fmt.Errorf("remove_liquidity: could not save pool: %w", err)
@@ -5517,7 +5517,7 @@ func (cs *ChainState) applyUBIDeltaLocked(amountPerHuman float64, ubiAt int64) e
 		if !acc.IsHuman {
 			continue
 		}
-		acc.Balance = NewDecimal(round6(acc.Balance.Float() + amountPerHuman))
+		acc.Balance = acc.Balance.Add(NewDecimal(amountPerHuman))
 		touchActivity(acc)
 		if err := cs.enforceWealthCapLocked(acc); err != nil {
 			return fmt.Errorf("ubi (legacy flat): could not enforce wealth cap for %s: %w", addr, err)
@@ -5566,7 +5566,7 @@ func (cs *ChainState) applyUBIRewardDeltaLocked(wallet string, amount, demurrage
 	if err := cs.applyDemurrageLossLocked(acc, demurrageLost); err != nil {
 		return fmt.Errorf("ubi reward: could not settle %s demurrage: %w", wallet, err)
 	}
-	acc.Balance = NewDecimal(round6(acc.Balance.Float() + amount))
+	acc.Balance = acc.Balance.Add(NewDecimal(amount))
 	touchActivity(acc)
 	if err := cs.enforceWealthCapLocked(acc); err != nil {
 		return fmt.Errorf("ubi reward: could not enforce wealth cap for %s: %w", wallet, err)
@@ -5636,7 +5636,7 @@ func (cs *ChainState) applyValidatorRewardDeltaLocked(wallet string, amount, dem
 	if err := cs.applyDemurrageLossLocked(acc, demurrageLost); err != nil {
 		return fmt.Errorf("validator reward: could not settle %s demurrage: %w", wallet, err)
 	}
-	acc.Balance = NewDecimal(round6(acc.Balance.Float() + amount))
+	acc.Balance = acc.Balance.Add(NewDecimal(amount))
 	touchActivity(acc)
 	if err := cs.enforceWealthCapLocked(acc); err != nil {
 		return fmt.Errorf("validator reward: could not enforce wealth cap for %s: %w", wallet, err)
@@ -5703,7 +5703,7 @@ func (cs *ChainState) applyLPRewardDeltaLocked(wallet string, amount, demurrageL
 	if err := cs.applyDemurrageLossLocked(acc, demurrageLost); err != nil {
 		return fmt.Errorf("lp reward: could not settle %s demurrage: %w", wallet, err)
 	}
-	acc.Balance = NewDecimal(round6(acc.Balance.Float() + amount))
+	acc.Balance = acc.Balance.Add(NewDecimal(amount))
 	touchActivity(acc)
 	if err := cs.enforceWealthCapLocked(acc); err != nil {
 		return fmt.Errorf("lp reward: could not enforce wealth cap for %s: %w", wallet, err)
@@ -5825,7 +5825,7 @@ func (cs *ChainState) applyEscrowReleaseDeltaLocked(amount float64) error {
 	if _, ok := cs.accounts[ubiPoolAddr]; !ok {
 		cs.accounts[ubiPoolAddr] = &AccountState{Address: ubiPoolAddr}
 	}
-	cs.accounts[ubiPoolAddr].Balance = cs.accounts[ubiPoolAddr].Balance.Add(NewDecimal(round6(amount)))
+	cs.accounts[ubiPoolAddr].Balance = cs.accounts[ubiPoolAddr].Balance.Add(NewDecimal(amount))
 	// FIX (audit recheck2, P0 #3): see ApplyTransferDelta's comment.
 	if err := cs.saveAccountToDB(cs.accounts[ubiPoolAddr]); err != nil {
 		return fmt.Errorf("escrow release: could not save pool account: %w", err)
