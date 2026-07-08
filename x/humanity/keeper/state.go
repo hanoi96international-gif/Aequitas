@@ -132,6 +132,13 @@ type ChainState struct {
 	// blockRollbackSnapshot.
 	accountSetXOR   [32]byte
 	nullifierSetXOR [32]byte
+	// humanCount is TotalSupply's cheap source of truth (TotalSupply ==
+	// humanCount * 1000, an already-documented invariant) — see
+	// humanCountLocked's own comment for why it's maintained the exact same
+	// way accountSetXOR is (full-DB-scan reseed on bulk reset, targeted
+	// adjustment on the one live mutation path that can change it) rather
+	// than as an independent counter incremented wherever convenient.
+	humanCount int64
 	// activeTx, when non-nil, is the transaction every DB write inside the
 	// CURRENT cs.mu-locked operation must use instead of cs.db directly —
 	// see dbExec() and runAtomicWithOutbox. Only ever set/cleared while
@@ -2690,13 +2697,10 @@ func (cs *ChainState) getAverageBalanceLocked() float64 {
 	// misleadingly low number (e.g. 960 when 40 AEQ/human is in the pool).
 	// The protocol invariant TotalSupply = humans × 1000 makes the fair-share
 	// average exactly 1000 AEQ regardless of where those AEQ currently sit.
-	humans := 0
-	for _, acc := range cs.accounts {
-		if acc.IsHuman {
-			humans++
-		}
-	}
-	if humans == 0 {
+	// humanCountLocked (see its own comment) replaces the old cs.accounts
+	// scan here too — same undercounts-at-scale bug accountSetXOR already
+	// had fixed once.
+	if cs.humanCountLocked() == 0 {
 		return 0
 	}
 	return 1000.0 // TotalSupply / humans = humans×1000 / humans = 1000 AEQ
@@ -2969,6 +2973,15 @@ func (cs *ChainState) registerHumanLocked(address string) error {
 	if err := cs.saveAccountToDB(cs.accounts[address]); err != nil {
 		return fmt.Errorf("could not save account: %w", err)
 	}
+	// See humanCount's own field comment: this is the ONE live mutation
+	// path that can turn a non-human account human (confirmed — the only
+	// other cs.accounts[x].IsHuman assignment anywhere in this codebase is
+	// loadFromDB's duplicate-case merge, which runs entirely inside the
+	// startup scan rebuildStateAccumulators already reseeds from fresh
+	// afterward). Only counted after the durable write above succeeds,
+	// same ordering accountSetXOR's own update already uses inside
+	// saveAccountToDB — never count a registration that didn't persist.
+	cs.humanCount++
 	cs.save()
 
 	fmt.Printf("[STATE] ✓ Human registered: %s | Balance: %.2f AEQ\n",
@@ -3463,14 +3476,13 @@ func (cs *ChainState) transferWithV7FeeLocked(from, to string, amount float64) (
 		return 0, 0, 0, fmt.Errorf("insufficient balance")
 	}
 
-	// Compute total supply inline to avoid re-entering the mutex.
-	humans := 0
-	for _, acc := range cs.accounts {
-		if acc.IsHuman {
-			humans++
-		}
-	}
-	totalSupply := float64(humans) * 1000.0
+	// FIX (performance audit 2026-07-06): this used to scan the entire
+	// cs.accounts map on every fee-liable transfer just to rederive
+	// TotalSupply = humans*1000, an already-documented invariant — see
+	// humanCountLocked's own comment for why it's now O(1) here without
+	// reintroducing the in-memory-cache-undercounts-at-scale risk that was
+	// already found and fixed once for accountSetXOR.
+	totalSupply := float64(cs.humanCountLocked()) * 1000.0
 	fee := calcV7Fee(fromAcc.Balance.Float(), amount, totalSupply)
 	// E1-FIX: In the Go-state ledger, AEQ cannot be burned (supply is tied
 	// to humans * 1000). Redirect 100% of fee to UBI pool instead of the
@@ -4391,27 +4403,56 @@ func (cs *ChainState) TotalSupply() float64 {
 	// calculations means the sum of all account balances + pool reserves
 	// diverges slightly from this over time, so we compute it directly
 	// from the human count instead of summing balances.
+	//
+	// FIX (performance audit 2026-07-06): this used to scan cs.accounts —
+	// capped at maxInMemAccounts, so it would undercount at scale exactly
+	// like accountSetXOR did before it was fixed the same way.
+	// humanCountLocked (see its own comment) is seeded from a full DB scan
+	// and kept current incrementally, so it's correct regardless of cache
+	// size, with a live-scan fallback for DB-free deployments/tests.
 	cs.mu.RLock()
 	defer cs.mu.RUnlock()
-	humans := 0
-	for _, acc := range cs.accounts {
-		if acc.IsHuman {
-			humans++
-		}
-	}
-	return float64(humans) * 1000.0
+	return float64(cs.humanCountLocked()) * 1000.0
 }
 
-func (cs *ChainState) TotalHumans() int {
-	cs.mu.RLock()
-	defer cs.mu.RUnlock()
-	count := 0
+// humanCountLocked returns the current registered-human count. Caller must
+// hold cs.mu (read or write lock).
+//
+// With a real DB (cs.useDB), returns the maintained cs.humanCount field —
+// see its own comment for why it's kept current incrementally rather than
+// scanned on every call (the scan pattern was already found and fixed once
+// for accountSetXOR: cs.accounts is capped at maxInMemAccounts, so counting
+// only what's resident undercounts at scale).
+//
+// Without a DB (unit tests, or a genuinely DB-free deployment), falls back
+// to a live scan of cs.accounts instead of trusting cs.humanCount. This
+// isn't the scale workaround above — in DB-free mode nothing ever gets
+// evicted from cs.accounts, so a live scan is always both cheap and exactly
+// correct. It exists because cs.humanCount is only maintained through
+// registerHumanLocked and the startup/resync reseed paths — a test that
+// constructs an AccountState{IsHuman: true} directly (there are over a
+// dozen in this package) bypasses both, and cs.humanCount would silently
+// stay 0 with no error, exactly the class of drift bug this whole
+// consolidation is meant to avoid. The live-scan fallback makes that
+// bypass harmless instead of a trap for the next test author.
+func (cs *ChainState) humanCountLocked() int64 {
+	if cs.useDB {
+		return cs.humanCount
+	}
+	var count int64
 	for _, acc := range cs.accounts {
 		if acc.IsHuman {
 			count++
 		}
 	}
 	return count
+}
+
+// TotalHumans returns the current registered-human count.
+func (cs *ChainState) TotalHumans() int {
+	cs.mu.RLock()
+	defer cs.mu.RUnlock()
+	return int(cs.humanCountLocked())
 }
 
 // GetAllAccounts returns a COPY of each account, with Balance set to its
@@ -4664,6 +4705,7 @@ func nullifierLeaf(key string) [32]byte {
 // falls back to the in-memory map, which is authoritative in that mode.
 func (cs *ChainState) rebuildStateAccumulators() {
 	var acc [32]byte
+	var humans int64
 	scanned := false
 	if cs.db != nil {
 		rows, err := cs.db.Query(`SELECT address, balance, is_human, tusd_balance, lp_shares, faucet_claimed FROM chain_accounts`)
@@ -4679,6 +4721,9 @@ func (cs *ChainState) rebuildStateAccumulators() {
 				tmp := &AccountState{Address: lower, Balance: NewDecimal(bal), IsHuman: human, TUsdBalance: NewDecimal(tusd), LPShares: NewDecimal(lp), FaucetClaimed: faucet}
 				leaf := accountLeaf(tmp)
 				xorInto(&acc, leaf)
+				if human {
+					humans++
+				}
 				if resident, ok := cs.accounts[lower]; ok {
 					resident.leafHash = leaf
 				}
@@ -4688,13 +4733,23 @@ func (cs *ChainState) rebuildStateAccumulators() {
 		}
 	}
 	if !scanned {
+		humans = 0
 		for _, a := range cs.accounts {
 			leaf := accountLeaf(a)
 			a.leafHash = leaf
 			xorInto(&acc, leaf)
+			if a.IsHuman {
+				humans++
+			}
 		}
 	}
 	cs.accountSetXOR = acc
+	// See humanCount's own field comment (TotalSupply's cheap source of
+	// truth) — reseeded here in the exact same full-scan pass as
+	// accountSetXOR, for the exact same reason: cs.accounts alone is capped
+	// at maxInMemAccounts, so counting only what's resident would undercount
+	// at scale exactly like the pre-fix accountSetXOR did.
+	cs.humanCount = humans
 
 	// Nullifiers: scan the whole table, not cs.nullifiers — that map is capped
 	// at maxInMemNullifiers, so iterating it would miss keys beyond the cap and

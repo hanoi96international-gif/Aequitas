@@ -17,7 +17,19 @@ func newTestState() *ChainState {
 
 // addHuman inserts a registered human account directly into state for testing.
 // LastActivityAt=0 means effectiveBalance returns Balance with no demurrage.
+//
+// FIX (performance audit 2026-07-06): must keep cs.humanCount in sync the
+// same way the real registration path (registerHumanLocked) does — this
+// helper bypasses that path entirely, and every getAverageBalanceLocked/
+// TotalSupply/TotalHumans caller now reads humanCount instead of scanning
+// cs.accounts, so a test that doesn't increment it here silently gets a
+// wrong (zero) human count no matter how many accounts it adds. Guards
+// against double-counting if a test ever calls this twice for the same
+// address on the same ChainState.
 func addHuman(cs *ChainState, addr string, balance float64) {
+	if existing, ok := cs.accounts[addr]; !ok || !existing.IsHuman {
+		cs.humanCount++
+	}
 	cs.accounts[addr] = &AccountState{
 		Address: addr,
 		Balance: NewDecimal(balance),
@@ -603,6 +615,71 @@ func TestRunDailyDistributionAtomic_NoOpWhenPoolsEmpty(t *testing.T) {
 	}
 	if cs.accounts["0x01"].Balance.Float() != 1000 {
 		t.Errorf("want unchanged balance 1000, got %v", cs.accounts["0x01"].Balance.Float())
+	}
+}
+
+// --- humanCount / TotalSupply / TotalHumans ---
+
+// TestRegisterHuman_IncrementsHumanCount is the direct regression guard for
+// the ONE live mutation path humanCount depends on: a successful
+// registration must make TotalSupply/TotalHumans reflect it immediately,
+// with no scan involved on the read side.
+func TestRegisterHuman_IncrementsHumanCount(t *testing.T) {
+	cs := newTestState()
+	if got := cs.TotalHumans(); got != 0 {
+		t.Fatalf("fresh state: want 0 humans, got %d", got)
+	}
+	if err := cs.RegisterHuman("0x01"); err != nil {
+		t.Fatalf("RegisterHuman: %v", err)
+	}
+	if got := cs.TotalHumans(); got != 1 {
+		t.Fatalf("after 1 registration: want 1 human, got %d", got)
+	}
+	if got := cs.TotalSupply(); got != 1000 {
+		t.Fatalf("after 1 registration: want TotalSupply 1000, got %v", got)
+	}
+	if err := cs.RegisterHuman("0x02"); err != nil {
+		t.Fatalf("RegisterHuman: %v", err)
+	}
+	if got := cs.TotalHumans(); got != 2 {
+		t.Fatalf("after 2 registrations: want 2 humans, got %d", got)
+	}
+	if got := cs.TotalSupply(); got != 2000 {
+		t.Fatalf("after 2 registrations: want TotalSupply 2000, got %v", got)
+	}
+}
+
+// TestRegisterHuman_DoubleRegistrationDoesNotDoubleCount verifies the
+// existing "already registered" guard also protects humanCount — a second
+// RegisterHuman call for the same address must be rejected AND must not
+// touch the count.
+func TestRegisterHuman_DoubleRegistrationDoesNotDoubleCount(t *testing.T) {
+	cs := newTestState()
+	if err := cs.RegisterHuman("0x01"); err != nil {
+		t.Fatalf("first RegisterHuman: %v", err)
+	}
+	if err := cs.RegisterHuman("0x01"); err == nil {
+		t.Fatal("second RegisterHuman for the same address must return an error")
+	}
+	if got := cs.TotalHumans(); got != 1 {
+		t.Fatalf("want humanCount to stay at 1 after a rejected duplicate registration, got %d", got)
+	}
+}
+
+// TestHumanCountLocked_LiveScanFallbackWithoutDB verifies the DB-free
+// fallback: an AccountState{IsHuman: true} constructed directly (bypassing
+// registerHumanLocked entirely, as many tests in this package do) is still
+// counted correctly, because humanCountLocked falls back to a live scan
+// when cs.useDB is false rather than trusting a cs.humanCount that was
+// never incremented for it.
+func TestHumanCountLocked_LiveScanFallbackWithoutDB(t *testing.T) {
+	cs := newTestState()
+	cs.accounts["0xdirect"] = &AccountState{Address: "0xdirect", IsHuman: true}
+	if got := cs.TotalHumans(); got != 1 {
+		t.Fatalf("a directly-constructed human account must still be counted via the live-scan fallback, got %d", got)
+	}
+	if got := cs.TotalSupply(); got != 1000 {
+		t.Fatalf("TotalSupply must reflect the directly-constructed human too, got %v", got)
 	}
 }
 
