@@ -36,8 +36,7 @@ func (e *EVMEngine) MirrorV6Registration(wallet, commitment string) {
 	e.chainState.SaveV6Human(wallet, commitment)
 	e.chainState.SaveV6Commitment(commitment, wallet)
 
-	decimals := new(big.Int).Exp(big.NewInt(10), big.NewInt(18), nil)
-	grant := new(big.Int).Mul(big.NewInt(1000), decimals)
+	grant := new(big.Int).Mul(big.NewInt(1000), weiPerAEQ)
 	e.chainState.SaveV6Balance(wallet, hex.EncodeToString(grant.Bytes()))
 
 	humans := e.chainState.GetAllV6Humans()

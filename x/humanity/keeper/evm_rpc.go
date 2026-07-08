@@ -7,6 +7,7 @@ import (
 	"io"
 	"math/big"
 	"net/http"
+	"os"
 	"strings"
 	"sync"
 	"time"
@@ -15,6 +16,18 @@ import (
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/rlp"
 )
+
+// evmRPCVerboseLog gates the per-call [RPC] diagnostic lines below (eth_call
+// dispatch, balanceOf intercept result) that used to fire unconditionally
+// on EVERY call including read-only polls — with rpcRateLimit's own comment
+// already noting a legitimate dashboard/wallet fires several RPC calls per
+// page load, that drowned out genuinely important warnings (e.g. a slot
+// mismatch) in routine traffic (Performance audit 2026-07-06). Off by
+// default; set EVM_RPC_VERBOSE_LOG=true to restore the old per-call trace
+// for local debugging.
+func evmRPCVerboseLog() bool {
+	return os.Getenv("EVM_RPC_VERBOSE_LOG") == "true"
+}
 
 // rpcRateLimit bounds /rpc requests per IP. FIX (P1, beta-launch audit
 // 2026-07-05): unlike every other mutating/expensive endpoint in this
@@ -337,7 +350,7 @@ func (s *EVMRPCServer) getBalance(params []json.RawMessage) (interface{}, *RPCEr
 	// Convert AEQ float to wei (× 10^18)
 	wei := new(big.Float).Mul(
 		big.NewFloat(balance),
-		new(big.Float).SetInt(new(big.Int).Exp(big.NewInt(10), big.NewInt(18), nil)),
+		new(big.Float).SetInt(weiPerAEQ),
 	)
 	weiInt, _ := wei.Int(nil)
 	fmt.Printf("[RPC] eth_getBalance %s = %.2f\n", addr, balance)
@@ -386,7 +399,9 @@ func (s *EVMRPCServer) ethCall(params []json.RawMessage) (interface{}, *RPCError
 	toStr := strings.ToLower(to.Hex())
 	data, _ := hex.DecodeString(strings.TrimPrefix(callObj["data"], "0x"))
 
-	fmt.Printf("[RPC] eth_call to=%s data=%x\n", toStr, data[:min4(len(data), 4)])
+	if evmRPCVerboseLog() {
+		fmt.Printf("[RPC] eth_call to=%s data=%x\n", toStr, data[:min4(len(data), 4)])
+	}
 
 	// Intercept isHuman(address) calls (selector 0xf72c436f — keccak256(
 	// "isHuman(address)")[:4]) to V7. Read from Go state directly instead of
@@ -433,14 +448,16 @@ func (s *EVMRPCServer) ethCall(params []json.RawMessage) (interface{}, *RPCError
 			balance := s.state.GetBalance(addrHex)
 			wei := new(big.Float).Mul(
 				big.NewFloat(balance),
-				new(big.Float).SetInt(new(big.Int).Exp(big.NewInt(10), big.NewInt(18), nil)),
+				new(big.Float).SetInt(weiPerAEQ),
 			)
 			weiInt, _ := wei.Int(nil)
 			// ABI-encode as uint256 (32 bytes, big-endian)
 			result := make([]byte, 32)
 			weiBytes := weiInt.Bytes()
 			copy(result[32-len(weiBytes):], weiBytes)
-			fmt.Printf("[RPC] balanceOf(%s) → native balance %.4f AEQ\n", addrHex, balance)
+			if evmRPCVerboseLog() {
+				fmt.Printf("[RPC] balanceOf(%s) → native balance %.4f AEQ\n", addrHex, balance)
+			}
 			return "0x" + hex.EncodeToString(result), nil
 		}
 	}
@@ -558,7 +575,7 @@ func (s *EVMRPCServer) sendRawTransaction(params []json.RawMessage) (interface{}
 	// ── SIMPLE AEQ TRANSFER (native value transfer, no calldata) ─────────────
 	if tx.To() != nil && len(tx.Data()) == 0 && tx.Value().Sign() > 0 {
 		toAddr := strings.ToLower(tx.To().Hex())
-		decimals := new(big.Float).SetInt(new(big.Int).Exp(big.NewInt(10), big.NewInt(18), nil))
+		decimals := new(big.Float).SetInt(weiPerAEQ)
 		valueFloat, _ := new(big.Float).Quo(new(big.Float).SetInt(tx.Value()), decimals).Float64()
 
 		// FIX P0-RACE: Set txStatus=true and persist receipt BEFORE calling
@@ -601,7 +618,7 @@ func (s *EVMRPCServer) sendRawTransaction(params []json.RawMessage) (interface{}
 		toBytes := tx.Data()[16:36]
 		toAddr := strings.ToLower(common.BytesToAddress(toBytes).Hex())
 		amountBig := new(big.Int).SetBytes(tx.Data()[36:68])
-		decimals := new(big.Float).SetInt(new(big.Int).Exp(big.NewInt(10), big.NewInt(18), nil))
+		decimals := new(big.Float).SetInt(weiPerAEQ)
 		amountFloat, _ := new(big.Float).Quo(new(big.Float).SetInt(amountBig), decimals).Float64()
 
 		// FIX P0-RACE: Set txStatus=true and persist receipt BEFORE calling

@@ -14,6 +14,38 @@ import (
 "github.com/ethereum/go-ethereum/params"
 )
 
+// weiPerAEQ is 10^18, the fixed AEQ-to-wei scaling factor. Performance audit
+// 2026-07-06: this used to be recomputed via big.Int.Exp at 13 separate call
+// sites across evm_engine.go/evm_storage.go/evm_rpc.go/evm_v6mirror.go/
+// api.go/register.go, several in the hottest path (getBalance, the
+// balanceOf/eth_call intercepts, syncBalanceLocked). big.Int.Exp isn't free
+// (repeated-squaring over a 60-bit result), and 10^18 never changes — one
+// package-level value computed once. Callers must never mutate this shared
+// instance in place (e.g. weiPerAEQ.Mul(weiPerAEQ, x) would corrupt every
+// other reader) — always use it as a read-only input to new(big.Int)/
+// new(big.Float), the same way every existing call site already did.
+var weiPerAEQ = new(big.Int).Exp(big.NewInt(10), big.NewInt(18), nil)
+
+// aeqToWei converts a whole/fractional AEQ amount (a float64, as stored in
+// AccountState.Balance.Float()) to its wei representation, rounding toward
+// zero on any leftover fraction (matching (*big.Float).Int's documented
+// behavior). Performance audit 2026-07-06: this exact 256-bit-precision
+// big.Float multiply was hand-copied at 7 separate call sites across
+// evm_engine.go/evm_storage.go — precisely the duplication pattern that let
+// the historical P1 precision bug (raw micro-units treated as whole-AEQ,
+// overstating balances 1e6×) live on at some call sites after being fixed at
+// others. One helper now; a future precision fix only has one place to land.
+func aeqToWei(aeq float64) *big.Int {
+	wei, _ := new(big.Float).SetPrec(256).Mul(
+		new(big.Float).SetFloat64(aeq),
+		new(big.Float).SetInt(weiPerAEQ),
+	).Int(nil)
+	if wei == nil {
+		wei = new(big.Int)
+	}
+	return wei
+}
+
 // EVMEngine wraps go-ethereum EVM for contract deployment and calls.
 // Design principle: every operation gets a fresh StateDB loaded from PostgreSQL.
 // This avoids all stale-trie issues at the cost of slightly more DB reads.
@@ -112,7 +144,6 @@ return nil, nil, err
 // in the RPC layer separately; the EVM itself does not need per-account nonces
 // for call execution (only for CREATE). Removing SetNonce here has no effect
 // on the correctness of contract calls or view calls.
-weiPerAEQNew := new(big.Int).Exp(big.NewInt(10), big.NewInt(18), nil)
 var accountsToLoad []*AccountState
 if len(onlyAddrs) == 0 {
 accountsToLoad = e.chainState.GetAllAccounts()
@@ -129,17 +160,17 @@ addr := common.HexToAddress(acc.Address)
 // Use .Float() to get the real AEQ value, then convert to wei (×1e18).
 // The previous code used big.NewInt(int64(acc.Balance)) which treated the
 // raw micro-unit integer as whole-AEQ, producing balances 1e6× too high.
-balWeiNew, _ := new(big.Float).SetPrec(256).Mul(
-	new(big.Float).SetFloat64(acc.Balance.Float()),
-	new(big.Float).SetInt(weiPerAEQNew),
-).Int(nil)
-if balWeiNew == nil {
-	balWeiNew = new(big.Int)
-}
-sdb.SetBalance(addr, balWeiNew)
+sdb.SetBalance(addr, aeqToWei(acc.Balance.Float()))
 }
 
-// Load all contract bytecodes and storage
+// Load all contract bytecodes and storage. Performance audit 2026-07-06:
+// GetAllContracts() only ever returns 2 rows today (V7_CONTRACT_ADDR +
+// BIO_VERIFIER_ADDR — see evm_v6mirror.go), so the per-contract storage
+// query below is cheap in practice. But it IS an unconditional per-contract
+// DB round trip inside this loop, the same N-scaling shape the accounts
+// loop above used to have before G5 fixed it to load only the accounts a
+// call actually touches. If a 3rd contract is ever deployed, revisit
+// whether this still needs bounding the same way.
 for _, addrStr := range e.chainState.GetAllContracts() {
 addr := common.HexToAddress(addrStr)
 

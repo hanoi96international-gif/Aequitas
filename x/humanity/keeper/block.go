@@ -371,6 +371,15 @@ replayedMu             sync.Mutex
 	// long as the isolation lasts.
 	lastIsolationPauseLogAt atomic.Int64
 	lastFinalityRejectLogAt atomic.Int64
+	// lastMergeSetCapLogAt/lastMergeSetBFSCapLogAt rate-limit the GHOSTDAG
+	// merge-set cap warnings the same way as the other log throttles above
+	// (Performance audit 2026-07-06) — both are liveness backstops meant to
+	// log rarely under a genuine burst, but computeGHOSTDAGState runs under
+	// dag.mu on every block, so an unthrottled fmt.Printf here during a real
+	// sustained burst could flood the log the same way lastFarAheadLogAt's
+	// comment already documents for a diverged-fork flood.
+	lastMergeSetCapLogAt    atomic.Int64
+	lastMergeSetBFSCapLogAt atomic.Int64
 	// proposerBreaker* (P0, 2026-07-02 fork-flood, path-independent shield): the
 	// per-IP push shield (blockPushBreaker, api.go) only guards /api/blocks/push,
 	// but the third-party 178.105.186.119 node's flood reached AddPeerBlock by a
@@ -5149,6 +5158,17 @@ func (dag *BlockDAG) maxMergeVisits() int {
 	return 50 + 3*extra
 }
 
+// logMergeSetBFSCap rate-limits the merge-set BFS visit-cap warning (see
+// lastMergeSetBFSCapLogAt's comment) — shared by both call sites in the BFS
+// loop below so a single burst doesn't double the log rate for no reason.
+func (dag *BlockDAG) logMergeSetBFSCap(blockHash string, visitCap int) {
+	nowNano := time.Now().UnixNano()
+	last := dag.lastMergeSetBFSCapLogAt.Load()
+	if nowNano-last > int64(time.Second) && dag.lastMergeSetBFSCapLogAt.CompareAndSwap(last, nowNano) {
+		fmt.Printf("[GHOSTDAG] ⚠ merge-set BFS for block %s hit the %d-node visit cap — treating remaining reachable ancestors as outside the merge set. Extreme concurrent-production burst; investigate gossip/sync latency if this recurs. (rate-limited)\n", blockHash, visitCap)
+	}
+}
+
 // maxParentsPerBlock caps how many tips ProduceBlock includes as parents.
 // Without a cap, 1000 simultaneous validators produce 1000 tips → a single
 // block carries 40 KB of parent hashes and GHOSTDAG merge-set computation
@@ -5261,8 +5281,12 @@ func (dag *BlockDAG) computeGHOSTDAGState(block *Block) {
 	// gossip propagation latency needs investigating, not this cap.
 	maxClassifiedMergeSetSize := dag.maxMergeVisits()
 	if len(sorted) > maxClassifiedMergeSetSize {
-		fmt.Printf("[GHOSTDAG] ⚠ merge set size %d for block %s exceeds classification cap %d — classifying only the %d blocks closest to SelectedParent, remainder treated as red. This indicates an extreme concurrent-production burst; investigate gossip/sync latency if this recurs.\n",
-			len(sorted), block.Hash, maxClassifiedMergeSetSize, maxClassifiedMergeSetSize)
+		nowNano := time.Now().UnixNano()
+		last := dag.lastMergeSetCapLogAt.Load()
+		if nowNano-last > int64(time.Second) && dag.lastMergeSetCapLogAt.CompareAndSwap(last, nowNano) {
+			fmt.Printf("[GHOSTDAG] ⚠ merge set size %d for block %s exceeds classification cap %d — classifying only the %d blocks closest to SelectedParent, remainder treated as red. This indicates an extreme concurrent-production burst; investigate gossip/sync latency if this recurs. (rate-limited)\n",
+				len(sorted), block.Hash, maxClassifiedMergeSetSize, maxClassifiedMergeSetSize)
+		}
 		sorted = sorted[:maxClassifiedMergeSetSize]
 	}
 
@@ -5551,7 +5575,7 @@ func (dag *BlockDAG) ghostdagMergeSet(block *Block, spHash string, dbBudget *int
 	}
 	for len(queue) > 0 {
 		if len(mergeSet) >= visitCap {
-			fmt.Printf("[GHOSTDAG] ⚠ merge-set BFS for block %s hit the %d-node visit cap — treating remaining reachable ancestors as outside the merge set. Extreme concurrent-production burst; investigate gossip/sync latency if this recurs.\n", block.Hash, visitCap)
+			dag.logMergeSetBFSCap(block.Hash, visitCap)
 			break
 		}
 		round := queue
@@ -5563,7 +5587,7 @@ func (dag *BlockDAG) ghostdagMergeSet(block *Block, spHash string, dbBudget *int
 		dag.ghostdagBatchPrefetch(roundHashes, dbBudget)
 		for _, cur := range round {
 			if len(mergeSet) >= visitCap {
-				fmt.Printf("[GHOSTDAG] ⚠ merge-set BFS for block %s hit the %d-node visit cap — treating remaining reachable ancestors as outside the merge set. Extreme concurrent-production burst; investigate gossip/sync latency if this recurs.\n", block.Hash, visitCap)
+				dag.logMergeSetBFSCap(block.Hash, visitCap)
 				break
 			}
 			if cur.depth > depthLimit {

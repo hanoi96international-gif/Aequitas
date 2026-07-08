@@ -89,3 +89,44 @@ func TestSelfProducedFinalityAllowed_ResumesImmediatelyAfterMerge(t *testing.T) 
 		t.Fatal("a fresh foreign merge must immediately resume self-hardening, not stay paused")
 	}
 }
+
+// TestIsIsolatedFromPeers_NoRecentMergeWithKnownPeer is the regression guard
+// for the 2026-07-08 incident: distributionSyncHealthIssue must refuse to
+// run the daily distribution on a node that's isolated (self-only
+// producing), even though its own peer-sync polling can keep succeeding.
+// IsIsolatedFromPeers is main.go's entry point for that check — this proves
+// it correctly reports "isolated" for the exact state that caused two
+// nodes to independently win TryLockDistribution's race that day.
+func TestIsIsolatedFromPeers_NoRecentMergeWithKnownPeer(t *testing.T) {
+	dag := newIsolationTestDAG()
+	dag.authorizedValidators["0xself"] = true
+	dag.authorizedValidators["0xpeer"] = true
+	if !dag.IsIsolatedFromPeers() {
+		t.Fatal("a node with a known peer but zero recorded foreign merges must report isolated")
+	}
+}
+
+// TestIsIsolatedFromPeers_RecentMergeNotIsolated verifies the healthy case:
+// a node that just merged a real peer block must not be flagged isolated,
+// so distribution proceeds normally on any actively-merging node.
+func TestIsIsolatedFromPeers_RecentMergeNotIsolated(t *testing.T) {
+	dag := newIsolationTestDAG()
+	dag.authorizedValidators["0xself"] = true
+	dag.authorizedValidators["0xpeer"] = true
+	dag.recordForeignMerge()
+	if dag.IsIsolatedFromPeers() {
+		t.Fatal("a node that just merged a foreign validator's block must not report isolated")
+	}
+}
+
+// TestIsIsolatedFromPeers_SoloNetworkNeverIsolated verifies a genuinely solo
+// network (no other known validator) is never flagged isolated — matching
+// selfProducedFinalityAllowed's own solo-network exemption, so a single-node
+// deployment's distribution is never blocked by this check.
+func TestIsIsolatedFromPeers_SoloNetworkNeverIsolated(t *testing.T) {
+	dag := newIsolationTestDAG()
+	dag.authorizedValidators["0xself"] = true
+	if dag.IsIsolatedFromPeers() {
+		t.Fatal("a solo network (no other known validator) must never report isolated")
+	}
+}

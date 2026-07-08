@@ -761,7 +761,9 @@ function setSwapDir(dir) {
 
 function calcSwapPreview() {
   if (!poolData) return;
-  const amt = parseFloat(document.getElementById('swap-amount').value) || 0;
+  const amountEl = document.getElementById('swap-amount');
+  if (!amountEl || !amountEl.offsetParent) return; // trade tab not visible — same guard as drawChart()
+  const amt = parseFloat(amountEl.value) || 0;
   if (amt <= 0) { document.getElementById('swap-out').textContent = '—'; document.getElementById('swap-min').textContent = '—'; return; }
   const aeqR = parseFloat(poolData.aeq_reserve || 0), tusdR = parseFloat(poolData.tusd_reserve || 0);
   let out;

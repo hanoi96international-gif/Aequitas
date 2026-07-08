@@ -196,6 +196,42 @@ func (dag *BlockDAG) selfProducedFinalityAllowed() bool {
 	return last != 0 && time.Since(time.Unix(last, 0)) <= isolatedFinalityPauseWindow
 }
 
+// IsIsolatedFromPeers reports whether this node currently lacks a recent
+// GENUINE peer merge (a block from another authorized validator actually
+// accepted into the DAG) — the same signal selfProducedFinalityAllowed uses
+// to pause checkpoint hardening, exported here for a second, independent
+// consumer with the identical underlying risk: main.go's daily-distribution
+// goroutine (distributionSyncHealthIssue).
+//
+// FIX (2026-07-08 incident — "merging stopped" / two independent daily
+// distributions diverged the whole 3-node network): distributionSyncHealthIssue
+// already refused to distribute on a degraded node, one with unverified
+// synthetic-checkpoint stubs, or one with no successful PEER SYNC in the
+// last hour — but a "successful peer sync" only proves this node could talk
+// to a peer's HTTP API, not that it actually merged a block FROM one. A node
+// can be actively isolated (circuit-breaker lockout, a fork it can't
+// resolve, mid-recovery from a resync) while still passing all three of
+// those checks, because polling/fetching keeps succeeding even while every
+// fetched block gets orphaned. distributeValidatorsPoolLocked weights
+// rewards by THIS node's own registered_nodes.blocks_produced (see
+// IncrementBlockCount) — during any isolated stretch, blocks_produced for
+// every OTHER validator silently stops incrementing on this node while its
+// own keeps climbing, skewing the weights this node would compute if it won
+// TryLockDistribution's race. Worse: TryLockDistribution's cross-node dedup
+// itself depends on last_ubi_at propagating via ordinary block gossip — an
+// isolated node never SEES that propagation either, so it can independently
+// pass TryLockDistribution and run its OWN distribution at the same
+// wall-clock trigger a healthy peer already used, producing two genuinely
+// different, mutually-undetected canonical results. Confirmed as the root
+// cause of the 2026-07-08 incident: Contabo1's divergence began exactly at
+// the daily 20:00 distribution, immediately following a stretch where it
+// was self-only producing (not merging any peer block).
+func (dag *BlockDAG) IsIsolatedFromPeers() bool {
+	dag.mu.RLock()
+	defer dag.mu.RUnlock()
+	return !dag.selfProducedFinalityAllowed()
+}
+
 // GetFinalizedCheckpoint returns the current finalized height and blue_score.
 // Returns (0, 0) on a fresh node before any checkpoint has been advanced.
 // Safe to call without dag.mu/cs.mu held.

@@ -734,6 +734,21 @@ func distributionSyncHealthIssue(bc *keeper.BlockDAG) string {
 			return fmt.Sprintf("no successful peer sync in %s — this node may be isolated from the rest of the network", age.Round(time.Minute))
 		}
 	}
+	// FIX (2026-07-08 incident): a "successful peer sync" above only proves
+	// this node could reach a peer's HTTP API, not that it actually merged a
+	// block FROM one — a node stuck self-only producing (circuit-breaker
+	// lockout, an unresolved fork, mid-recovery from a resync) can keep
+	// polling successfully while every fetched block gets orphaned. That
+	// silently skews THIS node's registered_nodes.blocks_produced weights
+	// (see IncrementBlockCount) and, worse, means it never SEES a peer's
+	// last_ubi_at update either — so it can independently win
+	// TryLockDistribution's race at the same 20:00 trigger a healthy peer
+	// already used, producing two diverging canonical distributions neither
+	// side's dedup catches. See IsIsolatedFromPeers' own comment for the
+	// full incident this fixes.
+	if bc.IsIsolatedFromPeers() {
+		return "no genuine peer block merge recently — this node may be isolated even though peer connectivity otherwise looks fine"
+	}
 	return ""
 }
 

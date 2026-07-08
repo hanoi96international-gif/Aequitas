@@ -274,19 +274,12 @@ func (cs *ChainState) MigrateEVMFromGoState(contractAddr string) error {
 		}
 	}
 
-	weiPerAEQ := new(big.Int).Exp(big.NewInt(10), big.NewInt(18), nil)
 	var totalSupply float64
 	var totalHumans int64
 
 	cs.mu.RLock()
 	for addr, acc := range cs.accounts {
-		balBig, _ := new(big.Float).SetPrec(256).Mul(
-			new(big.Float).SetFloat64(acc.Balance.Float()),
-			new(big.Float).SetInt(weiPerAEQ),
-		).Int(nil)
-		if balBig == nil {
-			balBig = new(big.Int)
-		}
+		balBig := aeqToWei(acc.Balance.Float())
 		addrBytes := common.HexToAddress(addr).Bytes()
 		save(contractAddr, mappingSlot(addrBytes, 4).Hex(), common.BigToHash(balBig).Hex())
 		totalSupply += acc.Balance.Float()
@@ -310,13 +303,7 @@ func (cs *ChainState) MigrateEVMFromGoState(contractAddr string) error {
 	cs.mu.RUnlock()
 
 	// totalSupply (slot 0) and totalHumans (slot 1)
-	supplyWei, _ := new(big.Float).SetPrec(256).Mul(
-		new(big.Float).SetFloat64(totalSupply),
-		new(big.Float).SetInt(weiPerAEQ),
-	).Int(nil)
-	if supplyWei == nil {
-		supplyWei = new(big.Int)
-	}
+	supplyWei := aeqToWei(totalSupply)
 	save(contractAddr, common.BigToHash(big.NewInt(0)).Hex(), common.BigToHash(supplyWei).Hex())
 	save(contractAddr, common.BigToHash(big.NewInt(1)).Hex(), common.BigToHash(big.NewInt(totalHumans)).Hex())
 
@@ -547,7 +534,6 @@ func (cs *ChainState) SyncBalancesToEVM(contractAddr string, addrs ...string) {
 		return
 	}
 	contractAddr = strings.ToLower(contractAddr)
-	weiPerAEQ := new(big.Int).Exp(big.NewInt(10), big.NewInt(18), nil)
 	for _, addr := range addrs {
 		addr = strings.ToLower(addr)
 		cs.mu.RLock()
@@ -560,13 +546,7 @@ func (cs *ChainState) SyncBalancesToEVM(contractAddr string, addrs ...string) {
 			// not the raw stored value which may be higher than actual.
 			bal = effectiveBalance(acc).Float()
 		}
-		balBig, _ := new(big.Float).SetPrec(256).Mul(
-			new(big.Float).SetFloat64(bal),
-			new(big.Float).SetInt(weiPerAEQ),
-		).Int(nil)
-		if balBig == nil {
-			balBig = new(big.Int)
-		}
+		balBig := aeqToWei(bal)
 		slot := mappingSlot(common.HexToAddress(addr).Bytes(), 4).Hex()
 		val := common.BigToHash(balBig).Hex()
 		if err := cs.SaveStorageSlot(contractAddr, slot, val); err != nil {
@@ -610,7 +590,6 @@ func (cs *ChainState) syncBalanceLocked(contractAddr string, addrs ...string) {
 		return
 	}
 	contractAddr = strings.ToLower(contractAddr)
-	weiPerAEQ := new(big.Int).Exp(big.NewInt(10), big.NewInt(18), nil)
 	for _, addr := range addrs {
 		addr = strings.ToLower(addr)
 		acc, ok := cs.accounts[addr]
@@ -620,13 +599,7 @@ func (cs *ChainState) syncBalanceLocked(contractAddr string, addrs ...string) {
 			// matches the user's real spendable amount, not the stored pre-decay value.
 			bal = effectiveBalance(acc).Float()
 		}
-		balBig, _ := new(big.Float).SetPrec(256).Mul(
-			new(big.Float).SetFloat64(bal),
-			new(big.Float).SetInt(weiPerAEQ),
-		).Int(nil)
-		if balBig == nil {
-			balBig = new(big.Int)
-		}
+		balBig := aeqToWei(bal)
 		addrBytes := common.HexToAddress(addr).Bytes()
 		var firstErr error
 		// slot 4: balanceOf
@@ -736,14 +709,7 @@ func (cs *ChainState) syncGuardianEscrowSlotsLocked(contractAddr, addr string) {
 	if err := cs.dbExec().QueryRow(`SELECT amount FROM escrow_accounts WHERE wallet_address = $1`, addr).Scan(&escrowAmount); err != nil && err != sql.ErrNoRows {
 		fmt.Printf("[EVM] Warning: could not read escrow for %s: %v\n", addr, err)
 	}
-	weiPerAEQ := new(big.Int).Exp(big.NewInt(10), big.NewInt(18), nil)
-	escrowBig, _ := new(big.Float).SetPrec(256).Mul(
-		new(big.Float).SetFloat64(escrowAmount),
-		new(big.Float).SetInt(weiPerAEQ),
-	).Int(nil)
-	if escrowBig == nil {
-		escrowBig = new(big.Int)
-	}
+	escrowBig := aeqToWei(escrowAmount)
 	if err := cs.saveStorageSlotLocked(contractAddr, mappingSlot(addrBytes, 5).Hex(), common.BigToHash(escrowBig).Hex()); err != nil {
 		fmt.Printf("[EVM] Warning: could not sync escrowOf for %s: %v\n", addr, err)
 	}
@@ -912,15 +878,7 @@ func NewPersistentStateDB(cs *ChainState) (*state.StateDB, error) {
 		// to get the AEQ float value before converting to wei. Using
 		// int64(acc.Balance) directly would re-interpret micro-AEQ as whole-AEQ
 		// and multiply by 1e18 a second time, overstating balances by 1e6×.
-		decimals := new(big.Int).Exp(big.NewInt(10), big.NewInt(18), nil)
-		balWei, _ := new(big.Float).SetPrec(256).Mul(
-			new(big.Float).SetFloat64(acc.Balance.Float()),
-			new(big.Float).SetInt(decimals),
-		).Int(nil)
-		if balWei == nil {
-			balWei = new(big.Int)
-		}
-		sdb.SetBalance(addr, balWei)
+		sdb.SetBalance(addr, aeqToWei(acc.Balance.Float()))
 	}
 
 	for _, addrStr := range cs.GetAllContracts() {

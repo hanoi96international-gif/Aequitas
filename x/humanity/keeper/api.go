@@ -1441,8 +1441,7 @@ func (a *APIServer) queryV7Status(wallet string) (float64, bool) {
 	balance := 0.0
 	if err == nil && len(balanceRet) >= 32 {
 		weiInt := new(big.Int).SetBytes(balanceRet)
-		decimals := new(big.Float).SetInt(new(big.Int).Exp(big.NewInt(10), big.NewInt(18), nil))
-		balanceFloat, _ := new(big.Float).Quo(new(big.Float).SetInt(weiInt), decimals).Float64()
+		balanceFloat, _ := new(big.Float).Quo(new(big.Float).SetInt(weiInt), new(big.Float).SetInt(weiPerAEQ)).Float64()
 		balance = balanceFloat
 	}
 

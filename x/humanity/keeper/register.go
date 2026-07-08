@@ -949,7 +949,7 @@ func (a *APIServer) persistRegisterWithSigMirror(evmRPC *EVMRPCServer, contractA
 		return "", fmt.Errorf("invalid proof")
 	}
 
-	initialGrant := new(big.Int).Mul(big.NewInt(1000), new(big.Int).Exp(big.NewInt(10), big.NewInt(18), nil))
+	initialGrant := new(big.Int).Mul(big.NewInt(1000), weiPerAEQ)
 	totalSupply := loadSlotBig(a.state, addrStr, 0)
 	totalHumans := loadSlotBig(a.state, addrStr, 1)
 	ubiAccumulated := loadSlotBig(a.state, addrStr, 3)
