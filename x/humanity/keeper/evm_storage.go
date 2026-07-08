@@ -585,13 +585,34 @@ func (cs *ChainState) syncHumanRegistrationLocked(contractAddr string, addr stri
 // caller with cs.db set but no surrounding transaction) is queued the same
 // way notifyProofServerWithRetryQueue queues failures (register.go), and
 // RetryEVMMirrorSyncQueue (started from NewAPIServer) catches up later.
+//
+// FIX (performance audit 2026-07-06): this used to issue up to 4 separate
+// saveStorageSlotLocked round trips per address (balanceOf, isHuman,
+// lastActivity, lastDemurrage) — every daily distribution round calls this
+// with every human's address, so that was up to 4×N sequential DB writes
+// held under cs.mu, growing with the human count. Every slot write across
+// every address in this call is now built into ONE multi-row INSERT ...
+// ON CONFLICT instead. This does mean an address's slots now succeed or
+// fail together with the rest of the batch, not independently — but the
+// realistic failure mode here is a lost DB connection or an aborted
+// activeTx (both apply to every row in the batch identically; evm_storage
+// has no per-row business constraint beyond the (address,slot) upsert key
+// this batching still honors), so no real-world retry behavior changes,
+// only 4×N-1 unnecessary round trips are removed on the common path.
 func (cs *ChainState) syncBalanceLocked(contractAddr string, addrs ...string) {
 	if cs.db == nil {
 		return
 	}
 	contractAddr = strings.ToLower(contractAddr)
-	for _, addr := range addrs {
+
+	type slotValue struct {
+		slot, value string
+	}
+	var writes []slotValue
+	lowerAddrs := make([]string, len(addrs))
+	for i, addr := range addrs {
 		addr = strings.ToLower(addr)
+		lowerAddrs[i] = addr
 		acc, ok := cs.accounts[addr]
 		var bal float64
 		if ok {
@@ -601,16 +622,9 @@ func (cs *ChainState) syncBalanceLocked(contractAddr string, addrs ...string) {
 		}
 		balBig := aeqToWei(bal)
 		addrBytes := common.HexToAddress(addr).Bytes()
-		var firstErr error
 		// slot 4: balanceOf
-		if err := cs.saveStorageSlotLocked(contractAddr, mappingSlot(addrBytes, 4).Hex(), common.BigToHash(balBig).Hex()); err != nil {
-			fmt.Printf("[EVM] Warning: could not sync balance for %s: %v\n", addr, err)
-			firstErr = err
-		}
+		writes = append(writes, slotValue{mappingSlot(addrBytes, 4).Hex(), common.BigToHash(balBig).Hex()})
 		if !ok {
-			if firstErr != nil {
-				cs.QueueEVMMirrorSync(addr, contractAddr, firstErr.Error())
-			}
 			continue
 		}
 		// slot 6: isHuman
@@ -618,33 +632,37 @@ func (cs *ChainState) syncBalanceLocked(contractAddr string, addrs ...string) {
 		if acc.IsHuman {
 			isHumanVal = common.HexToHash("0x01")
 		}
-		if err := cs.saveStorageSlotLocked(contractAddr, mappingSlot(addrBytes, 6).Hex(), isHumanVal.Hex()); err != nil {
-			fmt.Printf("[EVM] Warning: could not sync isHuman for %s: %v\n", addr, err)
-			if firstErr == nil {
-				firstErr = err
-			}
-		}
+		writes = append(writes, slotValue{mappingSlot(addrBytes, 6).Hex(), isHumanVal.Hex()})
 		// slots 10 + 11: lastActivity / lastDemurrage
 		if acc.LastActivityAt > 0 {
-			ts := common.BigToHash(big.NewInt(acc.LastActivityAt))
-			if err := cs.saveStorageSlotLocked(contractAddr, mappingSlot(addrBytes, 10).Hex(), ts.Hex()); err != nil {
-				fmt.Printf("[EVM] Warning: could not sync lastActivity for %s: %v\n", addr, err)
-				if firstErr == nil {
-					firstErr = err
-				}
-			}
-			if err := cs.saveStorageSlotLocked(contractAddr, mappingSlot(addrBytes, 11).Hex(), ts.Hex()); err != nil {
-				fmt.Printf("[EVM] Warning: could not sync lastDemurrage for %s: %v\n", addr, err)
-				if firstErr == nil {
-					firstErr = err
-				}
-			}
+			ts := common.BigToHash(big.NewInt(acc.LastActivityAt)).Hex()
+			writes = append(writes, slotValue{mappingSlot(addrBytes, 10).Hex(), ts})
+			writes = append(writes, slotValue{mappingSlot(addrBytes, 11).Hex(), ts})
 		}
-		if firstErr != nil {
-			cs.QueueEVMMirrorSync(addr, contractAddr, firstErr.Error())
-		} else {
-			cs.RemoveFromEVMMirrorSyncQueue(addr, contractAddr)
+	}
+	if len(writes) == 0 {
+		return
+	}
+
+	valuesSQL := make([]string, len(writes))
+	args := make([]interface{}, 0, len(writes)*3)
+	for i, w := range writes {
+		n := i * 3
+		valuesSQL[i] = fmt.Sprintf("($%d, $%d, $%d)", n+1, n+2, n+3)
+		args = append(args, contractAddr, w.slot, w.value)
+	}
+	query := `INSERT INTO evm_storage (address, slot, value) VALUES ` + strings.Join(valuesSQL, ",") +
+		` ON CONFLICT (address, slot) DO UPDATE SET value = EXCLUDED.value`
+	_, err := cs.dbExec().Exec(query, args...)
+	if err != nil {
+		fmt.Printf("[EVM] Warning: could not batch-sync EVM mirror slots for %d address(es): %v\n", len(lowerAddrs), err)
+		for _, addr := range lowerAddrs {
+			cs.QueueEVMMirrorSync(addr, contractAddr, err.Error())
 		}
+		return
+	}
+	for _, addr := range lowerAddrs {
+		cs.RemoveFromEVMMirrorSyncQueue(addr, contractAddr)
 	}
 }
 
