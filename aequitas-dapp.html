@@ -989,9 +989,26 @@ loadStatus();
 loadPriceHistory();
 loadPool();
 
-setInterval(loadStatus, 10000);
-setInterval(loadPool,   8000);
-setInterval(() => { if (wallet) loadBalance(); }, 15000);
+// FIX (P3, performance audit 2026-07-06): these used to be 3 independent
+// setInterval timers, uncoordinated — no reason a page load couldn't
+// happen to line their firing up back-to-back, and each ran its own
+// separate implicit retry cascade on failure. One shared 1s scheduler
+// tick dispatches to each job at its own cadence instead, same effective
+// polling rate, one place to see/adjust it.
+const pollJobs = [
+  { fn: loadStatus, intervalMs: 10000, lastRun: 0 },
+  { fn: loadPool,   intervalMs: 8000,  lastRun: 0 },
+  { fn: () => { if (wallet) loadBalance(); }, intervalMs: 15000, lastRun: 0 },
+];
+setInterval(() => {
+  const now = Date.now();
+  for (const job of pollJobs) {
+    if (now - job.lastRun >= job.intervalMs) {
+      job.lastRun = now;
+      job.fn();
+    }
+  }
+}, 1000);
 
 // Restore wallet connection if MetaMask already authorized
 (async () => {
