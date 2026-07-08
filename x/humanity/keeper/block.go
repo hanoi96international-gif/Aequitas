@@ -391,12 +391,11 @@ replayedMu             sync.Mutex
 	// a fork-parent this node will never hold), then drops its blocks at
 	// AddPeerBlock's lock-free top, before dag.mu / hash recompute / ECDSA. A
 	// proposer whose blocks attach normally resets its run every block and never
-	// trips. Guarded by proposerBreakerMu — a DEDICATED mutex, never dag.mu — so
-	// the hot reject path can never contend with block production.
-	proposerBreakerMu        sync.Mutex
-	proposerFailRun          map[string]int   // proposer -> consecutive non-attaching blocks
-	proposerBreakerUntil     map[string]int64 // proposer -> unix-nano its cooldown expires
-	lastProposerBreakerLogAt atomic.Int64     // rate-limits the breaker-drop log to once/sec
+	// trips. proposerBreaker (boundedBreaker, breaker.go) has its own dedicated
+	// mutex, never dag.mu — so the hot reject path can never contend with block
+	// production.
+	proposerBreaker          *boundedBreaker
+	lastProposerBreakerLogAt atomic.Int64 // rate-limits the breaker-drop log to once/sec
 	// replayMismatchMu guards lastReplayMismatchHash — see AddPeerBlock's
 	// tail (the recordProposerOutcome call after a successful replay) for
 	// why this exists.
@@ -761,6 +760,7 @@ warnedUnknownProposers: make(map[string]bool),
 peerChallenges:         make(map[string]peerChallenge),
 replayedBlocks:         make(map[string]bool),
 equivocationIndex:      make(map[string]string),
+proposerBreaker:        newBoundedBreaker(proposerBreakerFailThreshold, proposerBreakerCooldown, proposerBreakerReopenProbes, maxTrackedProposers),
 	unverifiedStubHeights:  make(map[string]int64),
 	stateRootMismatches:    make(map[string]int),
 	stateRootMismatchLastAt: make(map[string]int64),
@@ -2747,90 +2747,31 @@ const syncStallTimeout = 90
 
 // proposerBlockBlocked reports whether a proposer's blocks should be dropped now
 // WITHOUT taking dag.mu, because its breaker is open (still inside the cooldown).
-// Called on AddPeerBlock's lock-free hot path; touches only proposerBreakerMu.
+// Called on AddPeerBlock's lock-free hot path; touches only proposerBreaker's
+// own dedicated mutex (see boundedBreaker, breaker.go).
 func (dag *BlockDAG) proposerBlockBlocked(proposer string) bool {
 	if proposer == "" {
 		return false
 	}
-	proposer = strings.ToLower(proposer)
-	dag.proposerBreakerMu.Lock()
-	defer dag.proposerBreakerMu.Unlock()
-	until, ok := dag.proposerBreakerUntil[proposer]
-	if !ok {
-		return false
-	}
-	if time.Now().UnixNano() >= until {
-		delete(dag.proposerBreakerUntil, proposer)
-		// Bounded reopen, not a full reopen (P0 fix, 2026-07-02 liveness
-		// audit; widened from a single probe to proposerBreakerReopenProbes
-		// on 2026-07-04, see that constant's comment): seed the run
-		// proposerBreakerReopenProbes short of the threshold so up to that
-		// many outcomes get a real chance — the first attach fully clears it
-		// (recordProposerOutcome's success branch), while proposerBreakerReopenProbes
-		// consecutive failures re-trips — not another full run of
-		// proposerBreakerFailThreshold fresh failures, each at full
-		// processing cost, before it closes again. Without this, the comment
-		// below was aspirational: deleting the run outright left the gate
-		// fully open for every call until 40 fresh failures rebuilt from
-		// zero — against a peer that pushes at high volume, that reopening
-		// happened every single cooldown cycle.
-		if dag.proposerFailRun == nil {
-			dag.proposerFailRun = make(map[string]int)
-		}
-		dag.proposerFailRun[proposer] = proposerBreakerFailThreshold - proposerBreakerReopenProbes
-		return false
-	}
-	return true
+	return dag.proposerBreaker.ShouldDrop(strings.ToLower(proposer))
 }
 
 // recordProposerOutcome feeds the per-proposer circuit breaker. attached=true
 // (the block joined the DAG) clears the proposer's failure run; attached=false
 // (it was rejected far-ahead or orphaned on a missing parent) advances the run
 // and trips the breaker once it crosses proposerBreakerFailThreshold. Uses
-// proposerBreakerMu only — never dag.mu — and is always called with dag.mu
-// released, so it can never invert the lock order against block production.
+// proposerBreaker's own dedicated mutex only — never dag.mu — and is always
+// called with dag.mu released, so it can never invert the lock order against
+// block production. The unbounded-map DoS protection this used to implement
+// inline (P2-c, audit 2026-07-06 — proposer is read from an unauthenticated
+// block BEFORE signature verification, so an attacker can trivially generate
+// unlimited distinct proposer strings) now lives in boundedBreaker itself
+// (breaker.go), via proposerBreaker.MaxTracked.
 func (dag *BlockDAG) recordProposerOutcome(proposer string, attached bool) {
 	if proposer == "" {
 		return
 	}
-	proposer = strings.ToLower(proposer)
-	dag.proposerBreakerMu.Lock()
-	defer dag.proposerBreakerMu.Unlock()
-	if attached {
-		delete(dag.proposerFailRun, proposer)
-		delete(dag.proposerBreakerUntil, proposer)
-		return
-	}
-	if dag.proposerFailRun == nil {
-		dag.proposerFailRun = make(map[string]int)
-	}
-	// FIX (P2-c, audit 2026-07-06): this map has no cap, unlike every other
-	// per-key bookkeeping map in BlockDAG (replayedBlocks at 50,000,
-	// warnedUnknownProposers at 500, orphans at maxOrphans) — and unlike
-	// those, the key here (block.Proposer) is read from an unauthenticated
-	// block BEFORE signature verification (this call site is reached from
-	// the far-ahead gate and the missing-parent gate, both ahead of the
-	// ECDSA check later in AddPeerBlock — see this function's own callers).
-	// An attacker can trivially generate an unlimited number of distinct
-	// "proposer" strings, each a new map entry, for a real memory-
-	// exhaustion DoS. Unlike warnedUnknownProposers (a pure log-noise
-	// suppressor, safe to wipe wholesale), this map holds live circuit-
-	// breaker state — wiping it at cap would let an attacker who has
-	// already tripped their OWN entry clear it early just by flooding new
-	// proposer strings afterward. Instead, once at cap, stop admitting
-	// BRAND NEW proposer keys (existing ones still update/trip/cool down
-	// normally) — bounds memory without handing out a breaker-reset lever.
-	if _, tracked := dag.proposerFailRun[proposer]; !tracked && len(dag.proposerFailRun) >= maxTrackedProposers {
-		return
-	}
-	dag.proposerFailRun[proposer]++
-	if dag.proposerFailRun[proposer] >= proposerBreakerFailThreshold {
-		if dag.proposerBreakerUntil == nil {
-			dag.proposerBreakerUntil = make(map[string]int64)
-		}
-		dag.proposerBreakerUntil[proposer] = time.Now().Add(proposerBreakerCooldown).UnixNano()
-		delete(dag.proposerFailRun, proposer) // breaker gates now; rebuild the run after cooldown
-	}
+	dag.proposerBreaker.RecordOutcome(strings.ToLower(proposer), attached)
 }
 
 // ClearProposerCircuitBreakers resets all per-proposer circuit-breaker state.
@@ -2857,11 +2798,7 @@ func (dag *BlockDAG) recordProposerOutcome(proposer string, attached bool) {
 // resetting every proposer's state (not just the resync signer's) is cheap
 // and correct: none of the old counts mean anything against the new history.
 func (dag *BlockDAG) ClearProposerCircuitBreakers() {
-	dag.proposerBreakerMu.Lock()
-	defer dag.proposerBreakerMu.Unlock()
-	n := len(dag.proposerBreakerUntil)
-	dag.proposerFailRun = nil
-	dag.proposerBreakerUntil = nil
+	n := dag.proposerBreaker.Clear()
 	if n > 0 {
 		fmt.Printf("[AUTO-HEAL] Cleared circuit-breaker state for %d proposer(s) after resync — stale counts from before the resync no longer apply to the new history.\n", n)
 	}

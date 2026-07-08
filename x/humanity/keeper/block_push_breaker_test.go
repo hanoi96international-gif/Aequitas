@@ -6,12 +6,9 @@ import (
 )
 
 // resetBlockPushBreaker clears the package-level breaker state so each test
-// starts clean (the maps are process-global).
+// starts clean (blockPushBreaker is process-global).
 func resetBlockPushBreaker() {
-	blockPushBreakerMu.Lock()
-	blockPushFailRun = map[string]int{}
-	blockPushBreakerUntil = map[string]int64{}
-	blockPushBreakerMu.Unlock()
+	blockPushBreaker.Clear()
 }
 
 // TestBlockPushBreaker_TripsAfterThreshold verifies a peer whose pushes never
@@ -64,9 +61,9 @@ func TestBlockPushBreaker_CooldownExpiryAllowsProbe(t *testing.T) {
 		t.Fatalf("breaker should be open immediately after tripping")
 	}
 	// Force the cooldown to have already expired.
-	blockPushBreakerMu.Lock()
-	blockPushBreakerUntil[ip] = time.Now().Add(-time.Second).UnixNano()
-	blockPushBreakerMu.Unlock()
+	blockPushBreaker.mu.Lock()
+	blockPushBreaker.breakerUntil[ip] = time.Now().Add(-time.Second).UnixNano()
+	blockPushBreaker.mu.Unlock()
 
 	if blockPushShouldDrop(ip) {
 		t.Fatalf("breaker should let a probe through after the cooldown expires")
@@ -77,10 +74,10 @@ func TestBlockPushBreaker_CooldownExpiryAllowsProbe(t *testing.T) {
 	// expiry clears the until-map and seeds the run blockPushBreakerReopenProbes
 	// short of the threshold, not at 0 — up to that many outcomes decide,
 	// not another full run of fresh failures.
-	blockPushBreakerMu.Lock()
-	run := blockPushFailRun[ip]
-	_, stillOpen := blockPushBreakerUntil[ip]
-	blockPushBreakerMu.Unlock()
+	blockPushBreaker.mu.Lock()
+	run := blockPushBreaker.failRun[ip]
+	_, stillOpen := blockPushBreaker.breakerUntil[ip]
+	blockPushBreaker.mu.Unlock()
 	want := blockPushBreakerThreshold - blockPushBreakerReopenProbes
 	if run != want || stillOpen {
 		t.Fatalf("cooldown expiry must clear until and seed run at threshold-reopenProbes (run=%d want=%d open=%v)",
@@ -101,9 +98,9 @@ func TestBlockPushBreaker_ReopenRetripsAfterProbesExhausted(t *testing.T) {
 	for i := 0; i < blockPushBreakerThreshold; i++ {
 		blockPushRecordOutcome(ip, false)
 	}
-	blockPushBreakerMu.Lock()
-	blockPushBreakerUntil[ip] = time.Now().Add(-time.Second).UnixNano()
-	blockPushBreakerMu.Unlock()
+	blockPushBreaker.mu.Lock()
+	blockPushBreaker.breakerUntil[ip] = time.Now().Add(-time.Second).UnixNano()
+	blockPushBreaker.mu.Unlock()
 
 	if blockPushShouldDrop(ip) {
 		t.Fatalf("precondition: a probe should be let through after cooldown expiry")
@@ -129,9 +126,9 @@ func TestBlockPushBreaker_ProbeSuccessClearsRun(t *testing.T) {
 	for i := 0; i < blockPushBreakerThreshold; i++ {
 		blockPushRecordOutcome(ip, false)
 	}
-	blockPushBreakerMu.Lock()
-	blockPushBreakerUntil[ip] = time.Now().Add(-time.Second).UnixNano()
-	blockPushBreakerMu.Unlock()
+	blockPushBreaker.mu.Lock()
+	blockPushBreaker.breakerUntil[ip] = time.Now().Add(-time.Second).UnixNano()
+	blockPushBreaker.mu.Unlock()
 
 	if blockPushShouldDrop(ip) {
 		t.Fatalf("precondition: probe should be let through after cooldown expiry")

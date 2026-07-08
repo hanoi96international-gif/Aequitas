@@ -8,7 +8,11 @@ import (
 // newOrphanTestDAG builds a minimal BlockDAG with every map queueOrphan
 // touches initialized (nil-map writes panic in Go), for exercising the
 // orphan-queue / circuit-breaker-grace mechanism directly without needing
-// to satisfy AddPeerBlock's full signature/authorization gauntlet.
+// to satisfy AddPeerBlock's full signature/authorization gauntlet. Real
+// proposerBreaker (same parameters NewBlockchain uses in production) so
+// breaker-related tests using this constructor actually trip — boundedBreaker
+// is nil-safe (see its own comment) but a nil breaker never trips, which
+// would make those tests vacuously pass.
 func newOrphanTestDAG() *BlockDAG {
 	return &BlockDAG{
 		blocks:          make(map[string]*Block),
@@ -16,6 +20,7 @@ func newOrphanTestDAG() *BlockDAG {
 		orphans:         make(map[string][]*Block),
 		orphanFirstSeen: make(map[string]time.Time),
 		orphanAttempts:  make(map[string]int),
+		proposerBreaker: newBoundedBreaker(proposerBreakerFailThreshold, proposerBreakerCooldown, proposerBreakerReopenProbes, maxTrackedProposers),
 	}
 }
 

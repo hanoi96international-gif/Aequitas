@@ -9,9 +9,16 @@ import (
 
 // newGhostdagTestDAG builds a minimal BlockDAG sufficient for exercising
 // computeGHOSTDAGState in isolation (no DB, no signing key, no ChainState —
-// computeGHOSTDAGState only ever reads dag.blocks).
+// computeGHOSTDAGState only ever reads dag.blocks). Also used by
+// block_proposer_breaker_test.go, hence the real proposerBreaker (same
+// parameters NewBlockchain uses in production) rather than a nil one —
+// boundedBreaker is nil-safe (see its own comment) but a nil breaker never
+// trips, which would make every one of those tests vacuously pass.
 func newGhostdagTestDAG() *BlockDAG {
-	return &BlockDAG{blocks: make(map[string]*Block)}
+	return &BlockDAG{
+		blocks:          make(map[string]*Block),
+		proposerBreaker: newBoundedBreaker(proposerBreakerFailThreshold, proposerBreakerCooldown, proposerBreakerReopenProbes, maxTrackedProposers),
+	}
 }
 
 // simulateConcurrentRound creates one block per validator, all sharing the

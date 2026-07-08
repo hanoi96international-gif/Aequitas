@@ -902,13 +902,22 @@ const (
 	// a genuinely diverged/flooding IP still fails all 5 and re-trips
 	// within a handful of pushes, not a full fresh 50-push run.
 	blockPushBreakerReopenProbes = 5
+	// maxTrackedPushIPs caps blockPushBreaker's tracked-key count (performance
+	// audit 2026-07-06): the key here is the caller's source IP, read before
+	// any authentication — an unauthenticated caller can trivially generate
+	// traffic from many source IPs (or spoof the header this reads it from,
+	// depending on deployment), so this map needs the exact same bound
+	// maxTrackedProposers already gives the proposer breaker (block.go),
+	// which this consolidation onto boundedBreaker (breaker.go) now provides
+	// automatically — previously this map had NO cap at all.
+	maxTrackedPushIPs = 500
 )
 
 var (
-	blockPushBreakerMu    sync.Mutex
-	blockPushFailRun      = map[string]int{}   // source IP -> consecutive non-attaching pushes
-	blockPushBreakerUntil = map[string]int64{} // source IP -> unix-nano its cooldown expires
-	lastBlockPushDropLog  atomic.Int64         // rate-limits the drop log to once/sec
+	// blockPushBreaker is a boundedBreaker (breaker.go) keyed by source IP —
+	// see the block comment above for the full rationale.
+	blockPushBreaker     = newBoundedBreaker(blockPushBreakerThreshold, blockPushBreakerCooldown, blockPushBreakerReopenProbes, maxTrackedPushIPs)
+	lastBlockPushDropLog atomic.Int64 // rate-limits the drop log to once/sec
 
 	// blockPushIPDenylist is an operator hard-block, parsed once from
 	// PEER_PUSH_DENYLIST (comma-separated IPs). Unlike the automatic breaker it
@@ -928,29 +937,13 @@ var (
 
 // blockPushShouldDrop reports whether an inbound push from ip must be dropped
 // now without reading its body — either a permanent denylist entry or an open
-// circuit breaker still inside its cooldown. Touches only blockPushBreakerMu,
-// never dag.mu.
+// circuit breaker still inside its cooldown. Touches only blockPushBreaker's
+// own dedicated mutex (boundedBreaker, breaker.go), never dag.mu.
 func blockPushShouldDrop(ip string) bool {
 	if blockPushIPDenylist[ip] {
 		return true
 	}
-	blockPushBreakerMu.Lock()
-	defer blockPushBreakerMu.Unlock()
-	until, ok := blockPushBreakerUntil[ip]
-	if !ok {
-		return false
-	}
-	if time.Now().UnixNano() >= until {
-		delete(blockPushBreakerUntil, ip)
-		// Bounded reopen (blockPushBreakerReopenProbes probes), not a single
-		// one — see proposerBlockBlocked's identical fix (block.go) for the
-		// full rationale and this constant's own comment for the live
-		// outage that motivated widening it. The first success still fully
-		// clears the run (blockPushRecordOutcome's attached branch, below).
-		blockPushFailRun[ip] = blockPushBreakerThreshold - blockPushBreakerReopenProbes
-		return false
-	}
-	return true
+	return blockPushBreaker.ShouldDrop(ip)
 }
 
 // blockPushRecordOutcome feeds the per-IP breaker after AddPeerBlock returns.
@@ -958,18 +951,7 @@ func blockPushShouldDrop(ip string) bool {
 // (orphaned, rejected, or a re-push of a known block) advances it and trips the
 // breaker once the run crosses blockPushBreakerThreshold.
 func blockPushRecordOutcome(ip string, attached bool) {
-	blockPushBreakerMu.Lock()
-	defer blockPushBreakerMu.Unlock()
-	if attached {
-		delete(blockPushFailRun, ip)
-		delete(blockPushBreakerUntil, ip)
-		return
-	}
-	blockPushFailRun[ip]++
-	if blockPushFailRun[ip] >= blockPushBreakerThreshold {
-		blockPushBreakerUntil[ip] = time.Now().Add(blockPushBreakerCooldown).UnixNano()
-		delete(blockPushFailRun, ip) // breaker gates now; rebuild the run after cooldown
-	}
+	blockPushBreaker.RecordOutcome(ip, attached)
 }
 
 // handleBlockPush accepts a freshly-produced block from a peer via HTTP POST

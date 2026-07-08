@@ -61,17 +61,17 @@ func TestProposerBreaker_CooldownExpiryAllowsProbe(t *testing.T) {
 	if !dag.proposerBlockBlocked(p) {
 		t.Fatalf("breaker should be open immediately after tripping")
 	}
-	dag.proposerBreakerMu.Lock()
-	dag.proposerBreakerUntil[p] = time.Now().Add(-time.Second).UnixNano() // force cooldown expired
-	dag.proposerBreakerMu.Unlock()
+	dag.proposerBreaker.mu.Lock()
+	dag.proposerBreaker.breakerUntil[p] = time.Now().Add(-time.Second).UnixNano() // force cooldown expired
+	dag.proposerBreaker.mu.Unlock()
 
 	if dag.proposerBlockBlocked(p) {
 		t.Fatalf("breaker should let a probe through after the cooldown expires")
 	}
-	dag.proposerBreakerMu.Lock()
-	run := dag.proposerFailRun[p]
-	_, stillOpen := dag.proposerBreakerUntil[p]
-	dag.proposerBreakerMu.Unlock()
+	dag.proposerBreaker.mu.Lock()
+	run := dag.proposerBreaker.failRun[p]
+	_, stillOpen := dag.proposerBreaker.breakerUntil[p]
+	dag.proposerBreaker.mu.Unlock()
 	// Bounded reopen (P0 fix, 2026-07-02 liveness audit; widened from a single
 	// probe to proposerBreakerReopenProbes on 2026-07-04 — see that constant's
 	// comment for the live outage that motivated it): cooldown expiry clears
@@ -102,9 +102,9 @@ func TestProposerBreaker_ReopenRetripsAfterProbesExhausted(t *testing.T) {
 	for i := 0; i < proposerBreakerFailThreshold; i++ {
 		dag.recordProposerOutcome(p, false)
 	}
-	dag.proposerBreakerMu.Lock()
-	dag.proposerBreakerUntil[p] = time.Now().Add(-time.Second).UnixNano() // force cooldown expired
-	dag.proposerBreakerMu.Unlock()
+	dag.proposerBreaker.mu.Lock()
+	dag.proposerBreaker.breakerUntil[p] = time.Now().Add(-time.Second).UnixNano() // force cooldown expired
+	dag.proposerBreaker.mu.Unlock()
 
 	if dag.proposerBlockBlocked(p) {
 		t.Fatalf("precondition: a probe should be let through after cooldown expiry")
@@ -131,9 +131,9 @@ func TestProposerBreaker_ProbeSuccessClearsRun(t *testing.T) {
 	for i := 0; i < proposerBreakerFailThreshold; i++ {
 		dag.recordProposerOutcome(p, false)
 	}
-	dag.proposerBreakerMu.Lock()
-	dag.proposerBreakerUntil[p] = time.Now().Add(-time.Second).UnixNano() // force cooldown expired
-	dag.proposerBreakerMu.Unlock()
+	dag.proposerBreaker.mu.Lock()
+	dag.proposerBreaker.breakerUntil[p] = time.Now().Add(-time.Second).UnixNano() // force cooldown expired
+	dag.proposerBreaker.mu.Unlock()
 
 	if dag.proposerBlockBlocked(p) {
 		t.Fatalf("precondition: probe should be let through after cooldown expiry")
@@ -255,19 +255,19 @@ func TestProposerBreaker_TrackedProposerCountIsCapped(t *testing.T) {
 	for i := 0; i < maxTrackedProposers; i++ {
 		dag.recordProposerOutcome(fmt.Sprintf("0xattacker%d", i), false)
 	}
-	dag.proposerBreakerMu.Lock()
-	trackedBefore := len(dag.proposerFailRun)
-	dag.proposerBreakerMu.Unlock()
+	dag.proposerBreaker.mu.Lock()
+	trackedBefore := len(dag.proposerBreaker.failRun)
+	dag.proposerBreaker.mu.Unlock()
 	if trackedBefore != maxTrackedProposers {
 		t.Fatalf("expected exactly %d tracked proposers, got %d", maxTrackedProposers, trackedBefore)
 	}
 
 	// One more, brand-new proposer must NOT be admitted once at the cap.
 	dag.recordProposerOutcome("0xoneTooMany", false)
-	dag.proposerBreakerMu.Lock()
-	_, admitted := dag.proposerFailRun["0xonetoomany"]
-	trackedAfter := len(dag.proposerFailRun)
-	dag.proposerBreakerMu.Unlock()
+	dag.proposerBreaker.mu.Lock()
+	_, admitted := dag.proposerBreaker.failRun["0xonetoomany"]
+	trackedAfter := len(dag.proposerBreaker.failRun)
+	dag.proposerBreaker.mu.Unlock()
 	if admitted || trackedAfter != maxTrackedProposers {
 		t.Fatalf("a new proposer must not be admitted once at the cap (tracked=%d, admitted=%v)", trackedAfter, admitted)
 	}

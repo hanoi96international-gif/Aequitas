@@ -69,7 +69,7 @@ func TestAddPeerBlock_MeasuresRawArrivalLatencyEvenWhenBreakerDropsBlock(t *test
 	dag := newOrphanTestDAG()
 	dag.state = &ChainState{}
 	dag.selfProposer = "0xself"
-	dag.proposerBreakerUntil = map[string]int64{"0xbadf00d": time.Now().Add(time.Hour).UnixNano()}
+	dag.proposerBreaker.breakerUntil["0xbadf00d"] = time.Now().Add(time.Hour).UnixNano()
 	// Prevent the zero-value log timestamp from immediately flushing (and
 	// resetting) the accumulator this test is about to check — see the
 	// identical seeding in TestRecordForeignAttachLatency_AccumulatesAndTracksMax.
