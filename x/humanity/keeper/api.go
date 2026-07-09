@@ -1946,42 +1946,6 @@ func (a *APIServer) handlePeerRegister(w http.ResponseWriter, r *http.Request) {
 	// here so a scheme-less but otherwise valid public hostname still works.
 	req.URL = NormalizeNodeURL(req.URL)
 
-	// FIX (P0, 2026-07-02): a proposer whose blocks are being cleanly
-	// rejected by the per-proposer circuit breaker (block.go, AddPeerBlock)
-	// was still free to hammer this endpoint at will — re-authenticating
-	// costs a full signature verification plus a BindValidatorSlot DB write
-	// regardless of whether its blocks ever attach.
-	//
-	// FIX (P0, 2026-07-04 — Contabo 2 permanent-isolation incident):
-	// the original fix here reused proposerBlockBlocked directly, on the
-	// theory that it "self-clears the moment the proposer produces an
-	// attaching block again, so a diverged operator who fixes their node and
-	// resyncs is let back in automatically, no manual action needed." That
-	// reasoning has a hole: registering is the SAME mechanism a diverged
-	// node uses to fetch a fresh peer/validator list and resume real
-	// catch-up — the SelfFetched-tagged sync fetches this endpoint's
-	// response enables are exactly how a resynced node's blocks start
-	// attaching again in the first place. Gating registration itself on the
-	// breaker being CLOSED created a deadlock: confirmed live, Contabo 2's
-	// registration was rejected (HTTP 429, this exact reason string) on
-	// every single attempt for 2+ continuous hours, because the primary's
-	// breaker against its address never got a successful attach to clear
-	// against — precisely because registration (which would have helped
-	// fix that) kept being refused. A resync on the Contabo 2 side alone
-	// could never break this: it doesn't touch the PRIMARY's in-memory
-	// breaker state. Now decoupled: registrationRateLimited uses its own
-	// short, independent cooldown (registrationRateLimitWindow) — still
-	// keyed on signing address, still cheap to enforce, but it always lets
-	// a genuinely-recovering node back in on a short, predictable cadence
-	// instead of only after its breaker happens to clear, which by
-	// definition it can't do without the very thing this gate was blocking.
-	if addr := strings.ToLower(strings.TrimSpace(req.SigningAddress)); addr != "" && registrationRateLimited(addr) {
-		fmt.Printf("[PEERS] ✗ Registration from %s rate-limited — retried within %s of its last attempt\n", addr, registrationRateLimitWindow)
-		w.WriteHeader(http.StatusTooManyRequests)
-		w.Write([]byte(`{"ok":false,"reason":"registration rate-limited, retry shortly"}`))
-		return
-	}
-
 	// Secret check comes FIRST. URL registration and sync goroutines are only
 	// started for authenticated peers — prevents goroutine exhaustion via
 	// unauthenticated registrations even when PEER_SECRET is not set.
@@ -2012,6 +1976,63 @@ func (a *APIServer) handlePeerRegister(w http.ResponseWriter, r *http.Request) {
 	// match OR a valid challenge-response signature to prove private-key ownership.
 	sigOKEarly := req.Signature != "" && req.SigningAddress != "" &&
 		a.blockchain.VerifyPeerChallenge(strings.ToLower(req.SigningAddress), req.Signature)
+
+	// FIX (P0, 2026-07-02): a proposer whose blocks are being cleanly
+	// rejected by the per-proposer circuit breaker (block.go, AddPeerBlock)
+	// was still free to hammer this endpoint at will — re-authenticating
+	// costs a full signature verification plus a BindValidatorSlot DB write
+	// regardless of whether its blocks ever attach.
+	//
+	// FIX (P0, 2026-07-04 — Contabo 2 permanent-isolation incident):
+	// the original fix here reused proposerBlockBlocked directly, on the
+	// theory that it "self-clears the moment the proposer produces an
+	// attaching block again, so a diverged operator who fixes their node and
+	// resyncs is let back in automatically, no manual action needed." That
+	// reasoning has a hole: registering is the SAME mechanism a diverged
+	// node uses to fetch a fresh peer/validator list and resume real
+	// catch-up — the SelfFetched-tagged sync fetches this endpoint's
+	// response enables are exactly how a resynced node's blocks start
+	// attaching again in the first place. Gating registration itself on the
+	// breaker being CLOSED created a deadlock: confirmed live, Contabo 2's
+	// registration was rejected (HTTP 429, this exact reason string) on
+	// every single attempt for 2+ continuous hours, because the primary's
+	// breaker against its address never got a successful attach to clear
+	// against — precisely because registration (which would have helped
+	// fix that) kept being refused. A resync on the Contabo 2 side alone
+	// could never break this: it doesn't touch the PRIMARY's in-memory
+	// breaker state. Now decoupled: registrationRateLimited uses its own
+	// short, independent cooldown (registrationRateLimitWindow) — still
+	// keyed on signing address, still cheap to enforce, but it always lets
+	// a genuinely-recovering node back in on a short, predictable cadence
+	// instead of only after its breaker happens to clear, which by
+	// definition it can't do without the very thing this gate was blocking.
+	//
+	// FIX (P0, 2026-07-09 — unauthenticated registration-griefing DoS found
+	// live): this check used to run BEFORE any authentication at all (right
+	// after JSON decode), keyed purely on the caller-supplied
+	// signing_address with no proof of ownership required. Validator
+	// signing addresses are PUBLIC — visible in every block's proposer
+	// field — so anyone on the open internet could send an unsigned POST
+	// naming a real validator's address and consume/refresh that address's
+	// rate-limit slot, with no signature and no PEER_SECRET at all.
+	// Confirmed live: two legitimate secondaries' own signed re-registration
+	// attempts were rejected 429 continuously for 10+ minutes even with a
+	// fresh retry loop, while an unauthenticated curl request bearing one of
+	// their addresses and an empty signature got exactly the same "rate
+	// limited" response — proving the slot was being consumed by requests
+	// that never proved key ownership at all (a scanner, or simply this
+	// same 429 response itself being indistinguishable from a genuine hit,
+	// masking who actually claimed the slot each time). Gating consumption
+	// on secretOK||sigOKEarly closes this: only a request that has already
+	// proven it holds the signing key (or the explicit PEER_SECRET bypass)
+	// can claim or be blocked by this address's slot — an unauthenticated
+	// caller naming someone else's address can no longer grief it.
+	if addr := strings.ToLower(strings.TrimSpace(req.SigningAddress)); addr != "" && (secretOK || sigOKEarly) && registrationRateLimited(addr) {
+		fmt.Printf("[PEERS] ✗ Registration from %s rate-limited — retried within %s of its last attempt\n", addr, registrationRateLimitWindow)
+		w.WriteHeader(http.StatusTooManyRequests)
+		w.Write([]byte(`{"ok":false,"reason":"registration rate-limited, retry shortly"}`))
+		return
+	}
 
 	// FIX (audit 2026-06-28 full recheck, P1-6): URL registration (and the
 	// sync goroutine it starts via startSyncForPeer) used to run immediately
