@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"strconv"
 	"time"
 )
 
@@ -26,6 +27,11 @@ const (
 	autoResyncPendingKey = "pending_auto_resync"
 	// autoResyncLastAtKey stamps the last auto-heal trigger for the cooldown.
 	autoResyncLastAtKey = "auto_resync_last_at"
+	// chainDivergenceUnsettledSinceKey persists runChainDivergenceCheckOnce's
+	// "unsettled since" clock to chain_config — see that function's own
+	// comment (2026-07-09 fix) for why an in-memory-only clock let a node
+	// that keeps restarting dodge chainDivergenceStallOverride forever.
+	chainDivergenceUnsettledSinceKey = "chain_divergence_unsettled_since"
 	// autoHealMismatchThreshold is how many StateRoot mismatches within the
 	// 10-minute active window (see TotalStateRootMismatches) count as a real,
 	// sustained divergence. A version rollout produces only a handful (the
@@ -337,6 +343,43 @@ func (dag *BlockDAG) startHeightStallCheck() {
 // "does your block at height N match mine?" at a height old enough on both
 // sides to be settled. A DAG's live tips can legitimately differ between
 // honest nodes (see LatestBlock's doc comment) — a finalized height cannot.
+// loadUnsettledSinceFromDB reads the persisted "unsettled since" timestamp
+// (see chainDivergenceUnsettledSinceKey) so startChainDivergenceCheck's
+// stall clock survives a process restart instead of resetting to zero.
+// Returns the zero Time (== "currently settled, or never been unsettled")
+// if the key is absent, empty, or unparseable.
+func (dag *BlockDAG) loadUnsettledSinceFromDB() time.Time {
+	v := dag.persistedUnsettledSince()
+	if v == "" {
+		return time.Time{}
+	}
+	unix, err := strconv.ParseInt(v, 10, 64)
+	if err != nil {
+		return time.Time{}
+	}
+	return time.Unix(unix, 0)
+}
+
+// persistedUnsettledSince and setPersistedUnsettledSince wrap
+// chainDivergenceUnsettledSinceKey's chain_config read/write, nil-safe for
+// dag.state — some lightweight BlockDAG test fixtures construct a DAG with
+// no ChainState attached at all (only ever exercising the in-memory
+// unsettledSince pointer, never real persistence), so this must degrade to
+// a no-op/empty-read rather than panic when dag.state is nil.
+func (dag *BlockDAG) persistedUnsettledSince() string {
+	if dag.state == nil {
+		return ""
+	}
+	return dag.state.getConfigValueDB(chainDivergenceUnsettledSinceKey)
+}
+
+func (dag *BlockDAG) setPersistedUnsettledSince(value string) {
+	if dag.state == nil {
+		return
+	}
+	dag.state.setConfigValueDB(chainDivergenceUnsettledSinceKey, value)
+}
+
 // No-op if primaryURL is empty (PRIMARY_NODE_URL not configured).
 func (dag *BlockDAG) startChainDivergenceCheck(primaryURL string) {
 	if primaryURL == "" {
@@ -345,7 +388,23 @@ func (dag *BlockDAG) startChainDivergenceCheck(primaryURL string) {
 	}
 	fmt.Printf("[AUTO-HEAL] Chain-divergence self-check enabled: comparing against %s every %s.\n", primaryURL, chainDivergenceCheckInterval)
 	SafeGoroutine("chainDivergenceCheck-ticker", func() {
-		var unsettledSince time.Time
+		// FIX (durable fix, 2026-07-09 — closes a second self-heal blind
+		// spot found live tonight, distinct from the one below): this used
+		// to start from the zero value unconditionally, so a node that gets
+		// restarted more often than chainDivergenceStallOverride (45min) —
+		// exactly what happens during a live incident where an operator is
+		// repeatedly redeploying/resyncing it — could NEVER accumulate
+		// enough continuous unsettled time to trigger the override, no
+		// matter how long it had actually been isolated for in wall-clock
+		// terms. Confirmed live: a node stuck on an isolated fork for
+		// well over an hour, but restarted every few minutes throughout,
+		// never once reached the 45-minute override because each restart
+		// reset this clock back to zero. Seeding from the DB-persisted
+		// value (written by runChainDivergenceCheckOnce below every time
+		// this transitions) instead of the zero value means the clock
+		// survives restarts — only a genuine return to a settled state
+		// resets it now, not a process restart.
+		unsettledSince := dag.loadUnsettledSinceFromDB()
 		// FIX (P0, 2026-07-04 — closes the self-heal blind spot found live
 		// tonight): time.Ticker does NOT fire on start, only after the FIRST
 		// full interval elapses — with chainDivergenceCheckInterval at 5
@@ -410,9 +469,19 @@ func (dag *BlockDAG) runChainDivergenceCheckOnce(primaryURL string, unsettledSin
 	tipsNow := len(dag.tips)
 	dag.mu.RUnlock()
 	if !unsettled {
+		// FIX (durable fix, 2026-07-09): clear the persisted clock too, not
+		// just the in-memory one — otherwise a node that settles cleanly,
+		// then restarts, would resume from the stale pre-settlement
+		// timestamp instead of correctly starting fresh. See
+		// startChainDivergenceCheck's own comment for the restart-survival
+		// half of this fix.
+		if !unsettledSince.IsZero() {
+			dag.setPersistedUnsettledSince("")
+		}
 		*unsettledSince = time.Time{}
 	} else if unsettledSince.IsZero() {
 		*unsettledSince = time.Now()
+		dag.setPersistedUnsettledSince(strconv.FormatInt(unsettledSince.Unix(), 10))
 		fmt.Printf("[AUTO-HEAL] Chain-divergence self-check skipped this round: node is still catching up or has %d tips (fragmentation) — not a settled state to compare against the primary.\n", tipsNow)
 		return
 	} else if stalled := time.Since(*unsettledSince); stalled < chainDivergenceStallOverride {
