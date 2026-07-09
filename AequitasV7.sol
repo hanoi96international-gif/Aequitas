@@ -78,6 +78,20 @@ contract AequitasV7 {
     // The Solidity cap is a last-resort on-chain backstop; routine enforcement is by the Go layer.
     // These two values are intentionally different: the Solidity cap is deliberately loose so it
     // only triggers if the Go-layer cap is bypassed by a direct contract call.
+    // CONSIDERED (P3-a, performance audit 2026-07-06): making CAPS/THRESHOLDS
+    // `constant`/`immutable` to remove their per-read SLOAD. Neither
+    // compiles under solc 0.8.28: "Only constants of value type and byte
+    // array type are implemented" for constant, "Immutable variables
+    // cannot have a non-value type" for immutable — fixed-size arrays are
+    // simply not supported by either mechanism in this compiler version.
+    // The remaining alternative (duplicate the values into a pure
+    // internal lookup helper used by the hot path, leaving these arrays
+    // write-once for ABI compatibility only) trades a real correctness
+    // risk (two sources of truth that could silently diverge on a future
+    // edit) for a gas saving on a path (_applyWealthCap, reached via
+    // transfer/UBI-claim/escrow recovery) this audit itself already
+    // flagged as "gas-relevant, no correctness issues" — not worth it.
+    // Left as plain storage arrays.
     uint256[5] public CAPS       = [50, 20, 10, 5, 3];
     // FIX (P3-18, beta-launch audit 2026-07-05): THRESHOLDS didn't have its
     // own version of CAPS' comment above explaining the same intentional
@@ -90,6 +104,8 @@ contract AequitasV7 {
     // loose, rarely-relevant on-chain backstop for a direct contract call
     // that bypasses the Go layer, not a value meant to track the Go
     // schedule exactly.
+    // CONSIDERED (P3-a, performance audit 2026-07-06): same finding as
+    // CAPS above — see that comment. Left as a plain storage array.
     uint256[5] public THRESHOLDS = [0, 100, 1_000, 10_000, 100_000];
 
     event Registered(address indexed human, uint256 commitment, uint256 grant);
@@ -240,16 +256,25 @@ contract AequitasV7 {
         return ecrecover(ethSignedHash, v, r, s);
     }
 
+    // FIX (P3-a, performance audit 2026-07-06): balanceOf[msg.sender] used
+    // to be read from storage three times (the initial balance check, the
+    // post-demurrage re-check, and again inside the `-= amount`
+    // compound-assignment) — the middle re-read is unavoidable (demurrage
+    // may have just changed it) but the third was pure waste, since the
+    // post-demurrage value read two lines above was still current. Caching
+    // it into `senderBalance` removes that one redundant SLOAD; behavior
+    // is identical.
     function transfer(address to, uint256 amount) external returns (bool) {
         require(isHuman[msg.sender], "Not human");
         require(balanceOf[msg.sender] >= amount, "Insufficient balance");
         require(to != address(0) && to != msg.sender, "Invalid recipient");
         _applyDemurrage(msg.sender);
-        require(balanceOf[msg.sender] >= amount, "Insufficient after demurrage");
-        uint256 fee = _calcFee(msg.sender, amount);
+        uint256 senderBalance = balanceOf[msg.sender];
+        require(senderBalance >= amount, "Insufficient after demurrage");
+        uint256 fee = _calcFeeWithBalance(amount, senderBalance);
         uint256 ubiContrib = (fee * UBI_SHARE_BPS) / 10_000;
         uint256 burned = fee - ubiContrib;
-        balanceOf[msg.sender] -= amount;
+        balanceOf[msg.sender] = senderBalance - amount;
         balanceOf[to] += amount - fee;
         ubiPool += ubiContrib;
         totalSupply -= burned;
@@ -261,25 +286,41 @@ contract AequitasV7 {
     }
 
     function _calcFee(address sender, uint256 amount) internal view returns (uint256) {
+        return _calcFeeWithBalance(amount, balanceOf[sender]);
+    }
+
+    // FIX (P3-a, performance audit 2026-07-06): split out of _calcFee so
+    // transfer() can pass its already-in-memory senderBalance instead of
+    // making this function re-read balanceOf[sender] from storage a
+    // second time in the same call. calcFee()/_calcFee(sender, amount)
+    // (below and the external view wrapper) are unaffected — they still
+    // do the single necessary read themselves when the caller doesn't
+    // already have the balance on hand.
+    function _calcFeeWithBalance(uint256 amount, uint256 senderBalance) internal view returns (uint256) {
         uint256 base = (amount * TX_FEE_BPS) / 10_000;
         if (totalSupply == 0) return base;
-        uint256 shareBPS = (balanceOf[sender] * 10_000) / totalSupply;
+        uint256 shareBPS = (senderBalance * 10_000) / totalSupply;
         uint256 extra = shareBPS >= 1000 ? 100 : shareBPS >= 500 ? 50 : shareBPS >= 100 ? 10 : 0;
         return base + (amount * extra) / 10_000;
     }
 
     function applyDemurrage(address human) external { require(isHuman[human],"Not human"); _applyDemurrage(human); }
 
+    // FIX (P3-a, performance audit 2026-07-06): balanceOf[human] used to be
+    // read three times (the fairShare comparison, the excess calculation,
+    // and the final `-= fee`); caching it into `bal` once removes the two
+    // redundant SLOADs. Behavior unchanged.
     function _applyDemurrage(address human) internal {
         uint256 fs = fairShare();
-        if (balanceOf[human] <= fs) { lastDemurrage[human] = block.timestamp; return; }
+        uint256 bal = balanceOf[human];
+        if (bal <= fs) { lastDemurrage[human] = block.timestamp; return; }
         uint256 elapsed = block.timestamp - lastDemurrage[human];
         if (elapsed == 0) return;
-        uint256 excess = balanceOf[human] - fs;
+        uint256 excess = bal - fs;
         uint256 fee = (excess * DEMURRAGE_BPS * elapsed) / (10_000 * SECONDS_PER_YEAR);
         if (fee == 0) return;
         if (fee > excess) fee = excess;
-        balanceOf[human] -= fee;
+        balanceOf[human] = bal - fee;
         ubiPool += fee;
         lastDemurrage[human] = block.timestamp;
         emit DemurrageApplied(human, fee);
@@ -287,11 +328,15 @@ contract AequitasV7 {
 
     function applyWealthCap(address human) external { require(isHuman[human],"Not human"); _applyWealthCap(human); }
 
+    // FIX (P3-a, performance audit 2026-07-06): balanceOf[human] used to be
+    // read twice (the cap comparison and the excess calculation); caching
+    // it into `bal` once removes the redundant SLOAD. Behavior unchanged.
     function _applyWealthCap(address human) internal {
         if (!isHuman[human]) return; // Only apply wealth cap to registered humans
         uint256 cap = wealthCap();
-        if (balanceOf[human] <= cap) return;
-        uint256 excess = balanceOf[human] - cap;
+        uint256 bal = balanceOf[human];
+        if (bal <= cap) return;
+        uint256 excess = bal - cap;
         balanceOf[human] = cap;
         ubiPool += excess;
         emit WealthCapApplied(human, excess);

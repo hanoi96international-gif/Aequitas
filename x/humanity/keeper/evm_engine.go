@@ -588,7 +588,16 @@ var v7ArrayBaseSlots = []int64{17, 18, 19, 20, 21, 22, 23, 24, 25, 26}
 // v7.12-tx-fee-bps-zero (audit 2026-07-06, P2-e): verified — TX_FEE_BPS is a
 // `constant`, which Solidity inlines at compile time and never gives a
 // storage slot at all; changing its value cannot affect the slot lists above.
-const v7SlotsVerifiedForVersion = "v7.12-tx-fee-bps-zero"
+// v7.13-redundant-sload-cleanup (performance audit 2026-07-06, P3-a):
+// verified — transfer()/_applyDemurrage()/_applyWealthCap() now cache
+// balanceOf reads into locals instead of re-reading storage, and _calcFee
+// was split into _calcFee(sender,amount) + a new internal
+// _calcFeeWithBalance(amount,balance) helper; none of that adds, removes,
+// or reorders a state variable (CAPS/THRESHOLDS stayed storage arrays —
+// solc 0.8.28 doesn't support constant/immutable arrays, see the
+// contract's own comment on those two lines), so the slot lists above are
+// unchanged.
+const v7SlotsVerifiedForVersion = "v7.13-redundant-sload-cleanup"
 
 // checkV7SlotsMatchDeployedVersion prints a prominent warning if
 // V7ContractVersion has been bumped (contract_deploy.go) without a
