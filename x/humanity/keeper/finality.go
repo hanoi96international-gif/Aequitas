@@ -538,6 +538,27 @@ func (dag *BlockDAG) maybeAdvanceFinalizedCheckpoint(newBlock *Block) {
 // modified after insert by SaveBlockToDB's ON CONFLICT DO NOTHING) and its
 // result feeds SetFinalizedCheckpoint, which has its own independent lock
 // (finalizedMu — see GetFinalizedCheckpoint's comment) rather than dag.mu.
+// registerFinalityWalkGap ensures fetchMissingAncestors (sync_blocks.go,
+// already running on a ~1s ticker per active sync peer) will attempt to
+// fetch hash from a peer. dag.orphans is keyed only by hash —
+// MissingParentHashes()/fetchMissingAncestors never look at the value, only
+// the key's presence — so registering with a nil waiter list is enough to
+// get a real fetch attempt without pretending some actual *Block is waiting
+// on it. Deliberately bypasses queueOrphan: that function's far-ahead-
+// frontier rejection and abandon bookkeeping are built around "a live block
+// just arrived and its parent is missing" — a hard-finality checkpoint gap
+// is the opposite shape (always far BEHIND the frontier, discovered by a
+// background walk, not a fresh delivery) and would be wrongly dropped by
+// the frontier check queueOrphan runs first.
+func (dag *BlockDAG) registerFinalityWalkGap(hash string) {
+	dag.orphansMu.Lock()
+	if _, exists := dag.orphans[hash]; !exists {
+		dag.orphans[hash] = nil
+		dag.orphanFirstSeen[hash] = time.Now()
+	}
+	dag.orphansMu.Unlock()
+}
+
 func (dag *BlockDAG) finishCheckpointWalkFromDB(startHash string, target int64) {
 	SafeGoroutine("finishCheckpointWalkFromDB", func() {
 		if dag.state == nil {
@@ -550,6 +571,17 @@ func (dag *BlockDAG) finishCheckpointWalkFromDB(startHash string, target int64) 
 			if b == nil {
 				fmt.Printf("[FINALITY] ✗ Could not advance checkpoint: %s… is missing from both the in-memory DAG and the DB — a genuinely lost block, not just a pruned one\n",
 					hash[:min(16, len(hash))])
+				// FIX (2026-07-10 — closes the loop this message's own name
+				// admits was never closed): this used to just log and give
+				// up forever — the exact same DB lookup fails identically on
+				// every subsequent call, since nothing here ever asked a
+				// peer for the hash. See registerFinalityWalkGap's own
+				// comment for why: a hard-finality checkpoint gap left by a
+				// fresh RESYNC_FROM_SNAPSHOT whose checkpoint+sibling
+				// seeding never brought this specific ancestor in is not
+				// "pruned" (chain_blocks would still have it) — it is
+				// genuinely absent locally and only fetchable from a peer.
+				dag.registerFinalityWalkGap(hash)
 				return
 			}
 			if b.BlueScore <= target || b.SelectedParent == "" {
