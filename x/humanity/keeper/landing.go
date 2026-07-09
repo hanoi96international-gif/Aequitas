@@ -160,7 +160,7 @@ section{padding:60px 20px}
   <h1>Money that belongs<br>to <span>every human</span> equally</h1>
   <p class="hero-sub">Aequitas is the first blockchain where the money supply is mathematically tied to verified human existence. Every person receives 1,000 AEQ — no mining, no investment, no early advantage.</p>
   <div class="hero-btns">
-    <a href="/download/app.apk" class="btn-primary">📱 Download AequitasBio App</a>
+    <a href="/download/app.apk" class="btn-primary">📱 Download Aequitas App</a>
     <a href="/register" class="btn-secondary">🌐 Open Explorer</a>
   </div>
   <div class="hero-proof">
@@ -328,9 +328,9 @@ section{padding:60px 20px}
     <div class="cta-section">
       <div class="section-label" style="text-align:center">Get started</div>
       <h2>Join the fairest currency on Earth</h2>
-      <p>Download the AequitasBio app, scan your biometrics, and receive 1,000 AEQ within 1 second. No fees, no investment, no prerequisites.</p>
+      <p>Download the Aequitas app, scan your biometrics, and receive 1,000 AEQ within 1 second. No fees, no investment, no prerequisites.</p>
       <div class="hero-btns">
-        <a href="/download/app.apk" class="btn-primary">📱 Download AequitasBio (Android)</a>
+        <a href="/download/app.apk" class="btn-primary">📱 Download Aequitas App (Android)</a>
         <a href="/register" class="btn-secondary">🌐 Register via Browser</a>
       </div>
       <p style="font-size:0.75rem;color:var(--muted);margin-top:20px">Chain ID 1926 · EVM Compatible · Open Source · <a href="https://github.com/hanoi96international-gif/Aequitas" style="color:var(--purple)">View on GitHub</a></p>
