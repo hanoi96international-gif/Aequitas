@@ -28,10 +28,62 @@ import (
 // unseen blocks the node will accept — already-known blocks in dag.blocks are
 // never evicted, and gap-fill blocks for spans WITHIN the finality window are
 // still accepted normally.
-const (
-	finalityBlueScoreDepth = 50
-	finalityHeightSlack    = 50
+var (
+	finalityBlueScoreDepth int64 = 50
+	finalityHeightSlack    int64 = 50
 )
+
+// TuneFinalitySlackForBlockTime rescales finalityBlueScoreDepth and
+// finalityHeightSlack for the actual configured BLOCK_TIME, mirroring
+// TuneProposerBreakerForBlockTime's scaling exactly (same baseline, same
+// extra-safety factor) — see that function's own comment for the general
+// rationale. This constant pair was the one gap left when that scaling was
+// added: everything else in the proposer-breaker/orphan-grace path got
+// widened for a faster cadence, but finalityHeightSlack (originally tuned
+// for "~50 blocks, a few minutes at BLOCK_TIME" — see this file's header
+// comment, written when BLOCK_TIME was 6s, i.e. ~5 real minutes of
+// coverage) stayed a bare 50, unscaled.
+//
+// ROOT CAUSE (2026-07-09/10, live 3-node non-convergence incident): at
+// BLOCK_TIME=1s that bare 50 is only 50 SECONDS of real-world tolerance —
+// far below the measured real cross-provider attach latency (100+ seconds,
+// confirmed live via recordForeignAttachLatency/recordRawArrivalLatency).
+// Unlike the proposer breaker's circuit (which has a cooldown and reopen
+// probes — a trip is recoverable), isFinalityViolation's rejection is a
+// HARD, PERMANENT wall with no retry path: once a legitimate peer block
+// arrives even one tick after the local finalized checkpoint has advanced
+// finalityHeightSlack past it, it is rejected forever. At 1s cadence with
+// real propagation taking longer than the 50s window, EVERY foreign
+// validator's block started missing this window, so each node's canonical
+// chain became almost entirely self-produced — explaining both the
+// permanent divergence (different nodes agree on almost nothing at a
+// shared height) and the runaway orphan/retry flood (children of a
+// permanently-rejected block re-orphan every time they're rediscovered,
+// since the rejection is silent to the retry/deepScan machinery, which
+// keeps finding the same "genuinely lost" gap over and over).
+//
+// Same "never lowers below the original tuning" guarantee as the proposer
+// breaker: a slower-than-baseline BLOCK_TIME keeps the proven values.
+// Call once at startup, right alongside TuneProposerBreakerForBlockTime,
+// before any sync/production goroutines start.
+func TuneFinalitySlackForBlockTime(blockTime time.Duration) {
+	secs := blockTime.Seconds()
+	if secs <= 0 {
+		return
+	}
+	speedupFactor := proposerBreakerTuningBaselineSeconds / secs
+	extra := 1.0
+	if speedupFactor > 1 {
+		extra = proposerBreakerExtraSafetyFactor
+	}
+	scaled := int64(speedupFactor * 50 * extra)
+	if scaled > finalityBlueScoreDepth {
+		finalityBlueScoreDepth = scaled
+	}
+	if scaled > finalityHeightSlack {
+		finalityHeightSlack = scaled
+	}
+}
 
 // isolatedFinalityPauseWindow bounds how long a node that KNOWS about other
 // authorized validators may keep hardening its own finality checkpoint from

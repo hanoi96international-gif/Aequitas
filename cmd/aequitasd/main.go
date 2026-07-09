@@ -220,6 +220,12 @@ fmt.Println()
 // comment. Must run before any sync/production goroutines start, so
 // right at the top of main(), before anything else touches the DAG.
 keeper.TuneProposerBreakerForBlockTime(BLOCK_TIME)
+// FIX (2026-07-09/10): finalityHeightSlack/finalityBlueScoreDepth were the
+// one constant pair the 2026-07-04 scaling pass missed — see
+// TuneFinalitySlackForBlockTime's own comment for the live incident this
+// closes (permanent, unrecoverable rejection of every foreign validator's
+// block once real propagation exceeded the unscaled 50s window).
+keeper.TuneFinalitySlackForBlockTime(BLOCK_TIME)
 
 fmt.Println("── Loading Genesis Block ────────────────")
 genesis, err := loadGenesis()
