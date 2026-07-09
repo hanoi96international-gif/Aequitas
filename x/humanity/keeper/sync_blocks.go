@@ -997,12 +997,44 @@ func (dag *BlockDAG) StartPeerDiscovery(selfURL string) {
 	if len(seeds) > 0 {
 		for _, seed := range seeds {
 			fmt.Printf("[PEERS] Seed: %s\n", seed)
-			dag.registerAndDiscover(selfURL, seed)
+			ok := dag.registerAndDiscover(selfURL, seed)
 			// A seed never includes itself in its own peer list (/api/peers
 			// only contains registered secondary nodes). Start syncing from
 			// it directly so this node always receives that seed's blocks,
 			// even if every OTHER peer it discovers is unreachable.
 			dag.startSyncForPeer(seed)
+			// FIX (durable fix, 2026-07-09): a failed registration (rate
+			// limit, transient network error) used to be a one-shot,
+			// permanent failure for this node's whole uptime — this node's
+			// OWN block-fetching from the seed still worked via
+			// startSyncForPeer above, but the seed never learned THIS
+			// node's URL (so it couldn't push blocks back), and any OTHER
+			// peer only the seed knew about was never discovered either.
+			// Confirmed live: a registration that hit the seed's per-IP
+			// rate limit during a burst of restarts left the node in
+			// exactly that state for its entire remaining uptime, with no
+			// automatic recovery short of a manual restart. Retry in the
+			// background with backoff instead of accepting the first
+			// failure as final.
+			if !ok {
+				seedCopy := seed
+				SafeGoroutine("registerAndDiscover-retry-"+seedCopy, func() {
+					backoff := 10 * time.Second
+					for attempt := 1; attempt <= 8; attempt++ {
+						time.Sleep(backoff)
+						fmt.Printf("[PEERS] Retrying registration with %s (attempt %d)...\n", seedCopy, attempt+1)
+						if dag.registerAndDiscover(selfURL, seedCopy) {
+							fmt.Printf("[PEERS] ✓ Registration with %s succeeded on retry attempt %d.\n", seedCopy, attempt)
+							return
+						}
+						backoff *= 2
+						if backoff > 5*time.Minute {
+							backoff = 5 * time.Minute
+						}
+					}
+					fmt.Printf("[PEERS] ✗ Giving up retrying registration with %s after repeated failures — this node's own block-fetching from it still works, but it won't learn peers only %s knows about until the next restart.\n", seedCopy, seedCopy)
+				})
+			}
 		}
 		// Initial-sync gate: fetch each seed's current height so ProduceBlock
 		// can defer production until we've caught up. This prevents the
@@ -1143,7 +1175,10 @@ func fetchAndSignPeerChallenge(primaryURL, signerAddr string, signingKey *ecdsa.
 // production anyway) can now prove ownership of its signing address the
 // same way the manual flow always could, making PEER_SECRET an optional
 // bootstrap fallback instead of the only practical path.
-func (dag *BlockDAG) registerAndDiscover(selfURL, primaryURL string) {
+// registerAndDiscover returns whether registration succeeded, so callers can
+// retry a transient failure (rate limit, network blip) instead of leaving
+// this node permanently stuck — see the retry loop in StartPeerDiscovery.
+func (dag *BlockDAG) registerAndDiscover(selfURL, primaryURL string) bool {
 	signerAddr := ""
 	if dag.signingKey != nil {
 		signerAddr = strings.ToLower(crypto.PubkeyToAddress(dag.signingKey.PublicKey).Hex())
@@ -1185,7 +1220,7 @@ func (dag *BlockDAG) registerAndDiscover(selfURL, primaryURL string) {
 		primaryURL+"/api/peers/register", "application/json", bytes.NewReader(body))
 	if err != nil {
 		fmt.Printf("[PEERS] Could not reach primary %s: %v\n", primaryURL, err)
-		return
+		return false
 	}
 	defer resp.Body.Close()
 	// FIX: this used to decode the response body unconditionally, regardless
@@ -1200,9 +1235,22 @@ func (dag *BlockDAG) registerAndDiscover(selfURL, primaryURL string) {
 	// logged on the secondary's side at all.
 	bodyBytes, _ := io.ReadAll(resp.Body)
 	if resp.StatusCode != http.StatusOK {
-		fmt.Printf("[PEERS] ✗ Registration with primary %s rejected (HTTP %d): %s — this node will NOT sync any blocks until registration succeeds (check NODE_OPERATOR_WALLET is a registered human, and PEER_SECRET/signature)\n",
+		// FIX (durable fix, 2026-07-09): this used to be a one-shot attempt
+		// with no retry anywhere — a transient failure (rate limit, brief
+		// network blip) left the node permanently stuck with no peer/
+		// validator discovery from this seed until an operator manually
+		// restarted it. Confirmed live: a registration request that hit
+		// this primary's own 30s-per-IP rate limit (itself triggered by
+		// a burst of restarts in a short window) meant this node never
+		// learned the OTHER secondary's peer URL via this seed's response
+		// for the rest of its uptime — startSyncForPeer(primaryURL) below
+		// still runs regardless and keeps pulling this seed's own blocks,
+		// but peer discovery of anyone ELSE only this seed knows about
+		// stayed stuck. Now returns false so StartPeerDiscovery's retry
+		// loop tries again with backoff instead of accepting this as final.
+		fmt.Printf("[PEERS] ✗ Registration with primary %s rejected (HTTP %d): %s — will retry with backoff (check NODE_OPERATOR_WALLET is a registered human, and PEER_SECRET/signature, if this keeps failing)\n",
 			primaryURL, resp.StatusCode, strings.TrimSpace(string(bodyBytes)))
-		return
+		return false
 	}
 	var result struct {
 		Peers      []string `json:"peers"`
@@ -1243,6 +1291,7 @@ func (dag *BlockDAG) registerAndDiscover(selfURL, primaryURL string) {
 		GlobalPeerRegistry.Register(peer)
 		dag.startSyncForPeer(peer)
 	}
+	return true
 }
 
 // isAllowedPeerURL returns true for URLs pointing to public IP addresses.
