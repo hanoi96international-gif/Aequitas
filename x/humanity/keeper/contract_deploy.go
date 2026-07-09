@@ -293,20 +293,41 @@ func EnsureContractsDeployed(evm *EVMEngine, state *ChainState, deployerAddr str
 		if len(runtimeCode) > 0 {
 			state.SaveContract(v7Addr, runtimeCode, deployerAddr)
 		}
-		// FIX 7: Remove the stale DB entries at the EVM-assigned address so the
-		// database doesn't hold orphaned rows that waste space and could confuse
-		// future contract lookups. The canonical copy is now at v7Addr above.
+		// FIX (P3-a follow-up, 2026-07-09): this used to DELETE the storage
+		// rows at deployedAddr outright instead of migrating them, silently
+		// discarding every value the constructor itself just SSTORE'd there
+		// (CAPS[5]/THRESHOLDS[5] — the only state with inline array
+		// initializers; every other declared variable defaults to the EVM's
+		// implicit zero and gets no row at all until Go-state migration
+		// below). Unlike balances/isHuman/etc, CAPS/THRESHOLDS have no
+		// Go-state equivalent for MigrateEVMFromGoState to reconstruct them
+		// from — losing these rows here means they're gone for good, only
+		// discovered later as currentPhase()/wealthCap() silently returning
+		// wrong values (found live on Contabo2 during the v7.13 upgrade:
+		// CAPS/THRESHOLDS both read back as all-zero, making currentPhase()
+		// return 4 instead of 0 and wealthCap() return 0). Migrate first,
+		// THEN delete the now-empty source rows.
 		if state.db != nil {
-			// FIX: was deleting from non-existent column "contract_address"
-			// (evm_storage's actual column is "address") — silently failed,
-			// leaving orphaned rows at deployedAddr forever. Now checks errors
-			// and reports actual outcome instead of an unconditional success print.
-			_, cErr := state.db.Exec(`DELETE FROM evm_contracts WHERE lower(address) = $1`, deployedAddr)
-			_, sErr := state.db.Exec(`DELETE FROM evm_storage WHERE lower(address) = $1`, deployedAddr)
-			if cErr != nil || sErr != nil {
-				fmt.Printf("[DEPLOY] WARNING: failed to remove stale entries at %s (contracts: %v, storage: %v)\n", deployedAddr, cErr, sErr)
+			if _, mErr := state.db.Exec(
+				`INSERT INTO evm_storage (address, slot, value)
+				 SELECT $1, slot, value FROM evm_storage WHERE lower(address) = $2
+				 ON CONFLICT (address, slot) DO UPDATE SET value = EXCLUDED.value`,
+				v7Addr, deployedAddr,
+			); mErr != nil {
+				fmt.Printf("[DEPLOY] ERROR: failed to migrate storage rows from %s to %s: %v — leaving source rows in place\n", deployedAddr, v7Addr, mErr)
 			} else {
-				fmt.Printf("[DEPLOY] Removed stale evm_contracts/evm_storage entries at %s\n", deployedAddr)
+				fmt.Printf("[DEPLOY] Migrated constructor-initialized storage rows from %s to %s\n", deployedAddr, v7Addr)
+				// FIX 7: Remove the now-migrated DB entries at the
+				// EVM-assigned address so the database doesn't hold
+				// orphaned rows that waste space and could confuse future
+				// contract lookups. The canonical copy is now at v7Addr.
+				_, cErr := state.db.Exec(`DELETE FROM evm_contracts WHERE lower(address) = $1`, deployedAddr)
+				_, sErr := state.db.Exec(`DELETE FROM evm_storage WHERE lower(address) = $1`, deployedAddr)
+				if cErr != nil || sErr != nil {
+					fmt.Printf("[DEPLOY] WARNING: failed to remove stale entries at %s (contracts: %v, storage: %v)\n", deployedAddr, cErr, sErr)
+				} else {
+					fmt.Printf("[DEPLOY] Removed stale evm_contracts/evm_storage entries at %s\n", deployedAddr)
+				}
 			}
 		}
 	} else {
