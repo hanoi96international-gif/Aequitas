@@ -590,6 +590,50 @@ func (dag *BlockDAG) advancePeerSyncHeight(nodeURL string, height int64) {
 	}
 }
 
+// cleanSyncStreakThreshold is how many CONSECUTIVE doSyncOnce cycles in a
+// row must find nothing unmerged from a peer before hasCaughtUpWithAllPeers
+// trusts it — one clean cycle could just be luck (e.g. a page landing
+// between two concurrent bursts); several in a row is a genuine signal.
+const cleanSyncStreakThreshold = 3
+
+// recordCleanSyncCycle and resetCleanSyncStreak maintain cleanSyncStreak
+// (see that field's own struct comment for the full incident this closes).
+// doSyncOnce calls exactly one of these at the end of every cycle: clean if
+// every page it fetched from nodeURL either had nothing new, or attached
+// everything it did have; reset the instant a page returns blocks this
+// node could NOT merge — the live signature of an active fork, not
+// evidence of being caught up no matter how the raw height numbers read.
+func (dag *BlockDAG) recordCleanSyncCycle(nodeURL string) {
+	dag.syncPeerMu.Lock()
+	defer dag.syncPeerMu.Unlock()
+	dag.cleanSyncStreak[nodeURL]++
+}
+
+func (dag *BlockDAG) resetCleanSyncStreak(nodeURL string) {
+	dag.syncPeerMu.Lock()
+	defer dag.syncPeerMu.Unlock()
+	dag.cleanSyncStreak[nodeURL] = 0
+}
+
+// hasCaughtUpWithAllPeers reports whether EVERY seed in seeds has reached
+// cleanSyncStreakThreshold consecutive clean sync cycles — see
+// cleanSyncStreak's own struct comment. Requires at least one seed to have
+// been observed at all (an empty/all-unknown seed list is not "caught up",
+// it's "hasn't started trying yet").
+func (dag *BlockDAG) hasCaughtUpWithAllPeers(seeds []string) bool {
+	if len(seeds) == 0 {
+		return false
+	}
+	dag.syncPeerMu.Lock()
+	defer dag.syncPeerMu.Unlock()
+	for _, seed := range seeds {
+		if dag.cleanSyncStreak[seed] < cleanSyncStreakThreshold {
+			return false
+		}
+	}
+	return true
+}
+
 // deepScanFloor is doSyncOnce's deepScan minHeight — see that call site's
 // own FIX comment for the full 2026-07-04 permanent-non-convergence
 // incident. BootHeight() is only a safe, inclusive-enough floor when
@@ -677,6 +721,15 @@ func (dag *BlockDAG) doSyncOnce(nodeURL string) (ok bool) {
 	}
 	totalAdded := 0
 	highestSeen := int64(-1)
+	// sawUnmergedBlocks feeds cleanSyncStreak (see that field's own struct
+	// comment) — set true the instant a page contains a genuinely new block
+	// (not genesis, not already known, not a finality-violation skip — see
+	// the per-block loop below) that AddPeerBlock still could not attach.
+	// That is the live signature of an active fork: real data exists on
+	// nodeURL that this node cannot currently place, which no amount of
+	// waiting on a height number alone can distinguish from "genuinely
+	// nothing new".
+	sawUnmergedBlocks := false
 	// P1-02: track (minHeight, afterHash) cursor so same-height siblings that
 	// don't fit in one page are not skipped.  afterHash is empty for the first
 	// page (ordinary Height > minHeight query) and set to the last block's hash
@@ -734,8 +787,12 @@ func (dag *BlockDAG) doSyncOnce(nodeURL string) (ok bool) {
 			// field's own comment (block.go). Authorization remains a wholly
 			// separate, still-fully-enforced gate below.
 			block.SelfFetched = true
-			if !exists && dag.AddPeerBlock(block) {
-				addedThisPage++
+			if !exists {
+				if dag.AddPeerBlock(block) {
+					addedThisPage++
+				} else {
+					sawUnmergedBlocks = true
+				}
 			}
 		}
 		totalAdded += addedThisPage
@@ -792,6 +849,11 @@ func (dag *BlockDAG) doSyncOnce(nodeURL string) (ok bool) {
 		tipCount := len(dag.tips)
 		dag.mu.RUnlock()
 		fmt.Printf("[HTTP-SYNC] ✓ Added %d new blocks from %s | DAG tips: %d | height %d\n", totalAdded, nodeURL, tipCount, dag.Height())
+	}
+	if sawUnmergedBlocks {
+		dag.resetCleanSyncStreak(nodeURL)
+	} else {
+		dag.recordCleanSyncCycle(nodeURL)
 	}
 
 	// Resolve any orphans (this cycle's or earlier ones) by fetching their
