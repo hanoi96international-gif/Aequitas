@@ -1746,7 +1746,22 @@ if dag.bootHeight > 0 && dag.height+10 < dag.bootHeight {
 // (see cleanSyncStreak's own struct comment) — the actual condition this
 // gate needs, self-paced to however long real catch-up genuinely takes
 // rather than a guessed number.
-if dag.bootHeight > 0 {
+// FIX (P0, found live minutes after this shipped): bootHeight is set from
+// the DB's own persisted max_block_height on EVERY restart, not only a
+// RESYNC_FROM_SNAPSHOT boot (see bootHeight's own field comment) — so this
+// gate was firing for the PRIMARY node too after an ordinary redeploy.
+// Primary has no PRIMARY_NODE_URL/PRIMARY_NODE_URLS configured (it's the
+// seed, not a syncer — see StartPeerDiscovery's own "no PRIMARY_NODE_URL
+// configured" branch), so dag.trustedSeeds is permanently empty for it, and
+// hasCaughtUpWithAllPeers correctly refuses to call an empty seed list
+// "caught up" (that's the vacuous-truth trap it exists to avoid for a
+// secondary node whose discovery just hasn't run yet). Combined, the two
+// correct behaviors silenced Primary as a producer indefinitely: it kept
+// successfully receiving peer blocks (so the syncStallTimeout escape below
+// never triggered — that only fires on NO progress) while permanently
+// unable to produce (nothing it could ever be "caught up with"). Only
+// require this gate when there is genuinely something to catch up with.
+if dag.bootHeight > 0 && len(dag.trustedSeeds) > 0 {
 	seeds := make([]string, 0, len(dag.trustedSeeds))
 	for s := range dag.trustedSeeds {
 		seeds = append(seeds, s)
