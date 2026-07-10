@@ -13,6 +13,7 @@ import (
 	"net/url"
 	"os"
 	"runtime/debug"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -681,6 +682,94 @@ func (dag *BlockDAG) deepScanFloor() int64 {
 	return 0
 }
 
+// finalityFloorLimit is the lowest height lowerDeepScanFloor will ever narrow
+// a peer's floor down to. isFinalityViolation (finality.go) unconditionally
+// rejects any block below finalizedHeight-finalityHeightSlack regardless of
+// how far back deepScan searches — so searching past that point can never
+// recover anything, it would only waste a full sweep re-scanning a range
+// doSyncOnce's own isFinalityViolation pre-check already silently skips
+// every block in. Returns 0 (no limit beyond deepScan's own genesis floor)
+// before any checkpoint has been finalized yet.
+func (dag *BlockDAG) finalityFloorLimit() int64 {
+	if dag.state == nil {
+		return 0
+	}
+	finalizedHeight, _ := dag.state.GetFinalizedCheckpoint()
+	if finalizedHeight == 0 {
+		return 0
+	}
+	limit := finalizedHeight - finalityHeightSlack
+	if limit < 0 {
+		return 0
+	}
+	return limit
+}
+
+// effectiveDeepScanFloor is deepScanFloor(), further narrowed to nodeURL's
+// own deepScanFloorOverride if lowerDeepScanFloor has already lowered it for
+// this specific peer (see that function's own comment for when/why). Reads
+// the override under lastDeepScanAtMu — the same per-peer bookkeeping lock
+// deepScanFloorOverride's own struct comment documents (block.go).
+func (dag *BlockDAG) effectiveDeepScanFloor(nodeURL string) int64 {
+	floor := dag.deepScanFloor()
+	dag.lastDeepScanAtMu.Lock()
+	override, ok := dag.deepScanFloorOverride[nodeURL]
+	dag.lastDeepScanAtMu.Unlock()
+	if ok && override < floor {
+		return override
+	}
+	return floor
+}
+
+// clearDeepScanFloorOverride resets nodeURL back to trusting deepScanFloor()
+// as-is — called once a deepScan sweep against this peer actually resolves
+// cleanly, so a LATER, unrelated gap doesn't inherit a floor lowered to chase
+// a completely different incident.
+func (dag *BlockDAG) clearDeepScanFloorOverride(nodeURL string) {
+	dag.lastDeepScanAtMu.Lock()
+	delete(dag.deepScanFloorOverride, nodeURL)
+	dag.lastDeepScanAtMu.Unlock()
+}
+
+// lowerDeepScanFloor narrows nodeURL's deepScan floor after a FULL sweep
+// starting at sweptFrom (deepScanFloor()/the previous override, whichever
+// doSyncOnce actually started this sweep from) reached the peer's tip
+// (reachedPeerTip) yet still could not merge everything (sawUnmergedBlocks).
+//
+// FIX (P0, 2026-07-10 — Primary/Contabo1 permanent-partial-merge incident):
+// deepScanFloor()'s checkpoint-backed branch only guarantees THIS node's own
+// history is anchored by a real block at BootHeight — it says nothing about
+// whether a SPECIFIC peer's fork was ever fully merged before BootHeight
+// advanced past it. Confirmed live: after a sustained sync-starvation
+// incident (see the deepScan-page-budget fix this session, 7a9dc58), Primary
+// kept missing a contiguous run of Contabo1's own chain sitting BELOW its own
+// (checkpoint-backed, correctly-anchored-for-ITS-OWN-history) BootHeight — a
+// full deepScan sweep from that floor to Contabo1's tip reached the tip
+// cleanly but never touched the gap, because the gap was never IN [floor,
+// tip] to begin with. Halving the distance toward finalityFloorLimit() each
+// time this happens (rather than jumping straight to 0/the finality limit)
+// keeps the common case — a gap just below the floor, e.g. from a bounded
+// starvation incident — cheap to find in one or two sweeps, while still
+// guaranteeing convergence for a pathologically deep gap within
+// O(log(floor)) sweeps. Never lowers at or below finalityFloorLimit(): past
+// that point isFinalityViolation would reject the recovered block anyway
+// (see that function's own comment), so there is nothing further to gain by
+// searching there — see abandonOrphansWaitingFor's new call site
+// (AddPeerBlock's finality gate) for what actually happens to orphans stuck
+// at that boundary.
+func (dag *BlockDAG) lowerDeepScanFloor(nodeURL string, sweptFrom int64) {
+	limit := dag.finalityFloorLimit()
+	if sweptFrom <= limit {
+		return // already at (or below) the lowest floor worth trying
+	}
+	newFloor := limit + (sweptFrom-limit)/2
+	dag.lastDeepScanAtMu.Lock()
+	dag.deepScanFloorOverride[nodeURL] = newFloor
+	dag.lastDeepScanAtMu.Unlock()
+	fmt.Printf("[HTTP-SYNC] ⚠ Full deepScan sweep from height %d to %s's tip still left blocks unmerged — lowering this peer's deepScan floor to %d to search further back for a common ancestor\n",
+		sweptFrom, nodeURL, newFloor)
+}
+
 func (dag *BlockDAG) doSyncOnce(nodeURL string) (ok bool) {
 	const pageSize = 500
 	const maxPagesPerCall = 2000 // hard cap: 1,000,000 blocks per call — headroom, not unbounded
@@ -753,8 +842,12 @@ func (dag *BlockDAG) doSyncOnce(nodeURL string) (ok bool) {
 	if minHeight < 0 || deepScan {
 		// See deepScanFloor's own comment for why this is NOT simply
 		// dag.BootHeight() — the 2026-07-04 permanent-non-convergence
-		// incident this fixes.
-		minHeight = dag.deepScanFloor()
+		// incident this fixes. effectiveDeepScanFloor further narrows this
+		// to nodeURL's own deepScanFloorOverride if an earlier full sweep
+		// against this specific peer already proved deepScanFloor() itself
+		// sits above the real common ancestor — see lowerDeepScanFloor's
+		// own comment.
+		minHeight = dag.effectiveDeepScanFloor(nodeURL)
 		if deepScan {
 			// Resume a previously-bounded pass instead of restarting the
 			// full historical walk from the floor every call — see
@@ -764,6 +857,11 @@ func (dag *BlockDAG) doSyncOnce(nodeURL string) (ok bool) {
 			}
 		}
 	}
+	// sweepFloor records where THIS deepScan sweep actually started (before
+	// the per-page loop below advances minHeight forward as its own cursor)
+	// — lowerDeepScanFloor needs the sweep's starting point, not wherever it
+	// ended up, to know how far below it to search next.
+	sweepFloor := minHeight
 	totalAdded := 0
 	highestSeen := int64(-1)
 	// sawUnmergedBlocks feeds cleanSyncStreak (see that field's own struct
@@ -905,6 +1003,18 @@ func (dag *BlockDAG) doSyncOnce(nodeURL string) (ok bool) {
 			// again, not silently resume from "already at the tip" and skip
 			// over whatever new gap it was actually triggered to find.
 			dag.setDeepScanResumeHeight(nodeURL, 0)
+			if sawUnmergedBlocks {
+				// The sweep walked all the way from sweepFloor to nodeURL's
+				// own tip and STILL couldn't merge everything — the real
+				// common ancestor isn't in [sweepFloor, tip] at all, it must
+				// be below sweepFloor. See lowerDeepScanFloor's own comment.
+				dag.lowerDeepScanFloor(nodeURL, sweepFloor)
+			} else {
+				// Fully resolved — stop overriding so a later, unrelated gap
+				// against this same peer starts from the normal floor again
+				// instead of inheriting a floor lowered to chase this one.
+				dag.clearDeepScanFloorOverride(nodeURL)
+			}
 		} else {
 			// Budget exhausted mid-walk — continue from here next call
 			// instead of restarting from the floor.
@@ -1105,6 +1215,64 @@ func (dag *BlockDAG) isTrustedSyncSource(nodeURL string) bool {
 	dag.syncPeerMu.Lock()
 	defer dag.syncPeerMu.Unlock()
 	return dag.trustedSeeds[nodeURL]
+}
+
+// PeerSyncDiagnostics is a read-only snapshot of one currently-registered
+// peer's sync state, for operator visibility (/api/health/combined) into
+// internals that were previously only ever visible as scattered log lines —
+// see SyncDiagnostics' own comment for why this exists.
+type PeerSyncDiagnostics struct {
+	PeerURL               string `json:"peer_url"`
+	PeerSyncHeight        int64  `json:"peer_sync_height"`
+	CleanSyncStreak       int    `json:"clean_sync_streak"`
+	DeepScanResumeHeight  int64  `json:"deep_scan_resume_height"`
+	DeepScanFloorOverride int64  `json:"deep_scan_floor_override"`
+}
+
+// SyncDiagnostics returns a snapshot of every currently-registered peer's
+// sync state.
+//
+// FIX (P0, 2026-07-10): while investigating the Primary/Contabo1
+// permanent-partial-merge incident, bootHeight/BootHeightCheckpointBacked/
+// finalized_height/deepScanFloorOverride/deepScanResumeHeight — the exact
+// values needed to tell "haven't searched far back enough yet" apart from
+// "permanently walled off by hard finality" apart from "already fully
+// converged" — turned out to be visible NOWHERE except grep-ing raw process
+// logs (no API endpoint exposed any of them). That forced every diagnosis to
+// go through a slow log-paste-and-guess cycle instead of one API call.
+// Exposed via /api/health/combined's new sync_diagnostics field alongside
+// this method's sibling values (BootHeight/BootHeightCheckpointBacked,
+// dag.state.GetFinalizedCheckpoint(), finalityHeightSlack).
+func (dag *BlockDAG) SyncDiagnostics() []PeerSyncDiagnostics {
+	dag.syncPeerMu.Lock()
+	peers := make([]string, 0, len(dag.activeSyncPeers))
+	for p := range dag.activeSyncPeers {
+		peers = append(peers, p)
+	}
+	dag.syncPeerMu.Unlock()
+	sort.Strings(peers) // deterministic order for a human reading the JSON
+
+	result := make([]PeerSyncDiagnostics, 0, len(peers))
+	for _, p := range peers {
+		dag.syncPeerMu.Lock()
+		syncHeight := dag.peerSyncHeight[p]
+		streak := dag.cleanSyncStreak[p]
+		dag.syncPeerMu.Unlock()
+
+		dag.lastDeepScanAtMu.Lock()
+		resumeHeight := dag.deepScanResumeHeight[p]
+		floorOverride := dag.deepScanFloorOverride[p]
+		dag.lastDeepScanAtMu.Unlock()
+
+		result = append(result, PeerSyncDiagnostics{
+			PeerURL:               p,
+			PeerSyncHeight:        syncHeight,
+			CleanSyncStreak:       streak,
+			DeepScanResumeHeight:  resumeHeight,
+			DeepScanFloorOverride: floorOverride,
+		})
+	}
+	return result
 }
 
 func (dag *BlockDAG) StartPeerDiscovery(selfURL string) {

@@ -351,6 +351,23 @@ replayedMu             sync.Mutex
 	// sweep instead of silently skipping straight back to "already at the
 	// tip". Guarded by lastDeepScanAtMu (same per-peer bookkeeping lock).
 	deepScanResumeHeight map[string]int64
+	// deepScanFloorOverride (P0, 2026-07-10 — see lowerDeepScanFloor's own
+	// comment, sync_blocks.go) narrows one specific peer's deepScan floor
+	// below deepScanFloor()'s own value once a FULL sweep from that floor to
+	// the peer's tip still left blocks unmerged — evidence the real common
+	// ancestor lies below the floor deepScanFloor() computed (which only
+	// guarantees THIS node's own history is anchored there, not that a
+	// SPECIFIC peer's fork was ever fully merged before bootHeight advanced
+	// past it — e.g. after a sustained sync-starvation incident). 0 (a map's
+	// zero value) means "no override, trust deepScanFloor() as-is" — the
+	// default, pre-2026-07-10 behavior for every peer that hasn't needed
+	// this yet. Never lowered below finalityFloorLimit(): isFinalityViolation
+	// unconditionally rejects anything past that point regardless of how far
+	// deepScan searches (see that function's own comment), so searching
+	// further would only burn a full sweep re-scanning a range every block
+	// in it is silently skipped from anyway. Guarded by lastDeepScanAtMu
+	// (same per-peer bookkeeping lock as the two maps above).
+	deepScanFloorOverride map[string]int64
 	// syncTargetHeight is set at startup to the seed node's current block
 	// height. ProduceBlock defers production until this node has caught up
 	// to within 10 blocks of the target, preventing the "produce on a stale
@@ -385,6 +402,40 @@ replayedMu             sync.Mutex
 	// about" from "healthy — other validators exist and I'm merging with
 	// them" or "genuinely alone, no other validators configured yet".
 	lastForeignMergeAt atomic.Int64
+	// foreignValidatorActivityMu guards lastSeenFromValidator and
+	// lastMergedFromValidator immediately below. Separate from dag.mu to
+	// keep this bookkeeping's own critical section tiny, even though every
+	// current call site happens to already hold dag.mu when touching it.
+	foreignValidatorActivityMu sync.Mutex
+	// lastSeenFromValidator (P0, 2026-07-10 — Primary/Contabo1 permanent-
+	// partial-merge incident) tracks, per lower-cased authorized-validator
+	// address, the last time a genuinely signature-verified, authorized
+	// block claiming to be theirs reached AddPeerBlock — regardless of
+	// whether it was then successfully merged. Paired with
+	// lastMergedFromValidator below, this is what lets
+	// selfProducedFinalityAllowed distinguish "isolated from a validator
+	// that is still actively trying to reach us" (must pause hardening)
+	// from "this validator has simply gone quiet/retired" (must NOT pause
+	// forever): validator addresses are never de-registered (see
+	// AuthorizedValidatorList's own comment) — requiring a recent MERGE
+	// from every entry in dag.authorizedValidators, with no "are they even
+	// still around" escape hatch, would let a single permanently-offline
+	// validator freeze checkpoint hardening for the whole network forever.
+	// Confirmed live: lastForeignMergeAt alone (a single DAG-WIDE
+	// timestamp) stayed fresh — and hardening never paused — the entire
+	// time Primary was completely walled off from Contabo1, simply because
+	// it kept merging a DIFFERENT validator (cd20) fine. Set by
+	// recordForeignSeen, right after AddPeerBlock's signature+authorization
+	// gate passes, before any later gate (finality, suspension, missing-
+	// parent, GHOSTDAG) can reject the block — so a validator that's
+	// chronically rejected downstream still counts as "seen".
+	lastSeenFromValidator map[string]int64
+	// lastMergedFromValidator is lastForeignMergeAt's per-validator
+	// equivalent — see that field's own comment for the single-timestamp
+	// version this extends, and lastSeenFromValidator's comment above for
+	// why both are needed together. Set by recordForeignMergeForProposer,
+	// the same call site as recordForeignMerge.
+	lastMergedFromValidator map[string]int64
 	// foreignLatency* accumulate real, measured end-to-end attach-latency
 	// samples (ProducedAtMs on the sender to time-of-attach here) — see
 	// recordForeignAttachLatency's own comment for why this exists as a
@@ -834,6 +885,8 @@ peerChallenges:         make(map[string]peerChallenge),
 replayedBlocks:         make(map[string]bool),
 equivocationIndex:      make(map[string]string),
 proposerBreaker:        newBoundedBreaker(proposerBreakerFailThreshold, proposerBreakerCooldown, proposerBreakerReopenProbes, maxTrackedProposers),
+	lastSeenFromValidator:  make(map[string]int64),
+	lastMergedFromValidator: make(map[string]int64),
 	unverifiedStubHeights:  make(map[string]int64),
 	stateRootMismatches:    make(map[string]int),
 	stateRootMismatchLastAt: make(map[string]int64),
@@ -848,6 +901,7 @@ proposerBreaker:        newBoundedBreaker(proposerBreakerFailThreshold, proposer
 	softRetryFirstAt:       make(map[string]time.Time),
 	lastDeepScanAt:         make(map[string]int64),
 	deepScanResumeHeight:   make(map[string]int64),
+	deepScanFloorOverride:  make(map[string]int64),
 }
 if key, generated, err := loadOrCreateRelayerKey(); err != nil {
 	fmt.Printf("[BLOCK] Warning: RELAYER_PRIVATE_KEY invalid, blocks will be unsigned: %v\n", err)
@@ -3560,6 +3614,18 @@ if block.Signature != "" && !block.IsGenesis {
 	}
 }
 
+// FIX (P0, 2026-07-10): record that we genuinely heard from this authorized
+// validator right now — BEFORE any of the gates below (finality, suspension,
+// missing-parent, GHOSTDAG) get a chance to reject the block for an entirely
+// separate reason. See lastSeenFromValidator's own struct comment (block.go)
+// for why this must be unconditional here rather than skipped whenever a
+// later gate happens to reject it: a validator whose blocks are chronically
+// rejected downstream is exactly the case selfProducedFinalityAllowed needs
+// to be able to tell apart from "this validator has gone quiet".
+if dag.authorizedValidators[proposer] {
+	dag.recordForeignSeen(proposer)
+}
+
 // GATE ORDER (P0, cadence 2026-07-03 night): the finality gate below runs
 // BEFORE the equivocation suspension gate. Both reject independently of
 // each other, so ordering cannot change WHICH blocks get through — but it
@@ -3586,7 +3652,24 @@ if dag.isFinalityViolation(block) {
 		fmt.Printf("[FINALITY] ✗ Rejected block #%d: below finalized checkpoint %d (slack %d) (rate-limited)\n",
 			block.Height, fH, finalityHeightSlack)
 	}
+	hash := block.Hash
 	dag.mu.Unlock()
+	// FIX (P0, 2026-07-10): finalizedHeight only ever advances (never
+	// retreats — see the "HARD FINALITY CHECKPOINTS" header comment,
+	// finality.go), so a block rejected here can never stop being a
+	// violation later; exactly the "permanently rejected" precondition
+	// abandonOrphansWaitingFor requires (mirrors the unauthorized-proposer
+	// gate above). Without this, any orphan waiting on this exact hash as
+	// its missing parent stayed queued forever: fetchMissingAncestors
+	// re-fetches it from a peer that genuinely has it every cycle,
+	// AddPeerBlock rejects it here every time for the same reason,
+	// RecordOrphanAttempt never fires for it (only recorded when a peer
+	// does NOT have the hash — sync_blocks.go), so queueOrphan's own
+	// TTL-based abandon check never re-triggers either. Net effect:
+	// MissingParentHashes() (and therefore wantDeepScan) stayed permanently
+	// non-empty for a gap that can never close, keeping deepScan spinning
+	// against this peer forever with nothing it can ever find.
+	dag.abandonOrphansWaitingFor(hash)
 	return false
 }
 
@@ -4023,6 +4106,7 @@ dag.maybeAdvanceFinalizedCheckpoint(block)
 // stored lower-cased (see its own field comment).
 if !strings.EqualFold(block.Proposer, dag.selfProposer) {
 	dag.recordForeignMerge()
+	dag.recordForeignMergeForProposer(block.Proposer)
 	// FIX (2026-07-05 — permanent operational diagnostic, not a temp one):
 	// this is the actual number every circuit-breaker/BLOCK_TIME tuning
 	// decision tonight was ultimately guessing at without ever measuring

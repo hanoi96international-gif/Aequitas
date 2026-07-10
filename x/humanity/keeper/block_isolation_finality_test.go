@@ -9,8 +9,10 @@ import (
 // selfProducedFinalityAllowed/recordForeignMerge in isolation.
 func newIsolationTestDAG() *BlockDAG {
 	return &BlockDAG{
-		authorizedValidators: make(map[string]bool),
-		selfProposer:         "0xself",
+		authorizedValidators:    make(map[string]bool),
+		selfProposer:            "0xself",
+		lastSeenFromValidator:   make(map[string]int64),
+		lastMergedFromValidator: make(map[string]int64),
 	}
 }
 
@@ -128,5 +130,102 @@ func TestIsIsolatedFromPeers_SoloNetworkNeverIsolated(t *testing.T) {
 	dag.authorizedValidators["0xself"] = true
 	if dag.IsIsolatedFromPeers() {
 		t.Fatal("a solo network (no other known validator) must never report isolated")
+	}
+}
+
+// TestRecordForeignSeenAndMerge_RoundTrip is the baseline sanity check for
+// the two new per-validator recorders: each must independently update the
+// timestamp for exactly the address it was called with.
+func TestRecordForeignSeenAndMerge_RoundTrip(t *testing.T) {
+	dag := newIsolationTestDAG()
+	dag.recordForeignSeen("0xPeer")
+	dag.recordForeignMergeForProposer("0xPeer")
+	dag.foreignValidatorActivityMu.Lock()
+	seenAt, seen := dag.lastSeenFromValidator["0xpeer"]
+	mergedAt, merged := dag.lastMergedFromValidator["0xpeer"]
+	dag.foreignValidatorActivityMu.Unlock()
+	if !seen || seenAt == 0 {
+		t.Fatal("recordForeignSeen must record a non-zero timestamp under the lower-cased address")
+	}
+	if !merged || mergedAt == 0 {
+		t.Fatal("recordForeignMergeForProposer must record a non-zero timestamp under the lower-cased address")
+	}
+}
+
+// TestSelfProducedFinalityAllowed_SeenButNotMergedValidatorBlocksHardening is
+// the core regression guard for the 2026-07-10 Primary/Contabo1 permanent-
+// partial-merge incident: lastForeignMergeAt alone (dag-wide) stayed fresh —
+// and hardening never paused — the entire time Primary was completely walled
+// off from Contabo1, simply because it kept merging a DIFFERENT validator
+// (cd20) fine. A validator we're still actively hearing FROM but can't merge
+// must pause hardening even while some OTHER validator is merging cleanly.
+func TestSelfProducedFinalityAllowed_SeenButNotMergedValidatorBlocksHardening(t *testing.T) {
+	dag := newIsolationTestDAG()
+	dag.authorizedValidators["0xself"] = true
+	dag.authorizedValidators["0xhealthy"] = true
+	dag.authorizedValidators["0xisolated"] = true
+	dag.recordForeignMerge()                    // dag-wide: satisfied (matches cd20 merging fine)
+	dag.recordForeignMergeForProposer("0xhealthy") // 0xhealthy is genuinely merging
+	dag.recordForeignSeen("0xisolated")            // 0xisolated's blocks keep arriving...
+	// ...but recordForeignMergeForProposer("0xisolated") is deliberately never called —
+	// exactly the Contabo1 case: seen constantly, never successfully merged.
+	if dag.selfProducedFinalityAllowed() {
+		t.Fatal("a validator we're still hearing from but can't merge must pause hardening, even while a different validator merges cleanly")
+	}
+}
+
+// TestSelfProducedFinalityAllowed_UnseenValidatorNeverBlocksHardening
+// verifies the safety property that makes this fix sound: validator
+// addresses are never de-registered (see AuthorizedValidatorList's own
+// comment), so a validator that has simply gone quiet/retired (no recent
+// lastSeenFromValidator entry at all) must NOT freeze checkpoint hardening
+// for the whole network forever — only a validator we're demonstrably still
+// hearing from counts.
+func TestSelfProducedFinalityAllowed_UnseenValidatorNeverBlocksHardening(t *testing.T) {
+	dag := newIsolationTestDAG()
+	dag.authorizedValidators["0xself"] = true
+	dag.authorizedValidators["0xhealthy"] = true
+	dag.authorizedValidators["0xretired"] = true // known, but nothing has been seen or merged from it, ever
+	dag.recordForeignMerge()
+	dag.recordForeignMergeForProposer("0xhealthy")
+	if !dag.selfProducedFinalityAllowed() {
+		t.Fatal("a validator with no recent activity at all (never seen, never merged) must not block hardening — it's presumed gone quiet, not actively isolated")
+	}
+}
+
+// TestSelfProducedFinalityAllowed_StaleSeenValidatorDoesNotBlock verifies a
+// "seen" entry older than isolatedFinalityPauseWindow ages out the same way
+// lastForeignMergeAt itself does — a validator we heard from once, long ago,
+// must not permanently block hardening just because it was never re-seen.
+func TestSelfProducedFinalityAllowed_StaleSeenValidatorDoesNotBlock(t *testing.T) {
+	dag := newIsolationTestDAG()
+	dag.authorizedValidators["0xself"] = true
+	dag.authorizedValidators["0xhealthy"] = true
+	dag.authorizedValidators["0xoncepeer"] = true
+	dag.recordForeignMerge()
+	dag.recordForeignMergeForProposer("0xhealthy")
+	dag.foreignValidatorActivityMu.Lock()
+	dag.lastSeenFromValidator["0xoncepeer"] = time.Now().Add(-2 * isolatedFinalityPauseWindow).Unix()
+	dag.foreignValidatorActivityMu.Unlock()
+	if !dag.selfProducedFinalityAllowed() {
+		t.Fatal("a stale (out-of-window) seen entry with no merge must not block hardening — it must age out like lastForeignMergeAt does")
+	}
+}
+
+// TestSelfProducedFinalityAllowed_SeenAndMergedValidatorAllowsHardening is
+// the healthy multi-validator case: every known validator that's actively
+// seen is also actively merged — hardening must proceed normally.
+func TestSelfProducedFinalityAllowed_SeenAndMergedValidatorAllowsHardening(t *testing.T) {
+	dag := newIsolationTestDAG()
+	dag.authorizedValidators["0xself"] = true
+	dag.authorizedValidators["0xpeerA"] = true
+	dag.authorizedValidators["0xpeerB"] = true
+	dag.recordForeignMerge()
+	dag.recordForeignSeen("0xpeerA")
+	dag.recordForeignMergeForProposer("0xpeerA")
+	dag.recordForeignSeen("0xpeerB")
+	dag.recordForeignMergeForProposer("0xpeerB")
+	if !dag.selfProducedFinalityAllowed() {
+		t.Fatal("every known validator being both seen and merged recently must allow hardening to proceed")
 	}
 }

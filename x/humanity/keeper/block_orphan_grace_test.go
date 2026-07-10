@@ -15,12 +15,14 @@ import (
 // would make those tests vacuously pass.
 func newOrphanTestDAG() *BlockDAG {
 	return &BlockDAG{
-		blocks:          make(map[string]*Block),
-		tips:            make(map[string]bool),
-		orphans:         make(map[string][]*Block),
-		orphanFirstSeen: make(map[string]time.Time),
-		orphanAttempts:  make(map[string]int),
-		proposerBreaker: newBoundedBreaker(proposerBreakerFailThreshold, proposerBreakerCooldown, proposerBreakerReopenProbes, maxTrackedProposers),
+		blocks:                  make(map[string]*Block),
+		tips:                    make(map[string]bool),
+		orphans:                 make(map[string][]*Block),
+		orphanFirstSeen:         make(map[string]time.Time),
+		orphanAttempts:          make(map[string]int),
+		proposerBreaker:         newBoundedBreaker(proposerBreakerFailThreshold, proposerBreakerCooldown, proposerBreakerReopenProbes, maxTrackedProposers),
+		lastSeenFromValidator:   make(map[string]int64),
+		lastMergedFromValidator: make(map[string]int64),
 	}
 }
 

@@ -2,6 +2,7 @@ package keeper
 
 import (
 	"fmt"
+	"strings"
 	"time"
 )
 
@@ -143,6 +144,31 @@ func (dag *BlockDAG) recordForeignMerge() {
 	dag.lastForeignMergeAt.Store(time.Now().Unix())
 }
 
+// recordForeignSeen marks now as the last time a genuinely signature-
+// verified, authorized block claiming to be from proposer reached
+// AddPeerBlock — regardless of what happens to it afterward. Called right
+// after AddPeerBlock's signature+authorization gate passes, before any later
+// gate (finality, suspension, missing-parent, GHOSTDAG) can reject the
+// block. See lastSeenFromValidator's own struct comment (block.go) for why
+// this exists separately from recordForeignMerge/recordForeignMergeForProposer.
+func (dag *BlockDAG) recordForeignSeen(proposer string) {
+	addr := strings.ToLower(proposer)
+	dag.foreignValidatorActivityMu.Lock()
+	dag.lastSeenFromValidator[addr] = time.Now().Unix()
+	dag.foreignValidatorActivityMu.Unlock()
+}
+
+// recordForeignMergeForProposer is recordForeignMerge's per-validator
+// equivalent — same call site (AddPeerBlock's commit path), additionally
+// keyed by proposer. See lastMergedFromValidator's own struct comment
+// (block.go).
+func (dag *BlockDAG) recordForeignMergeForProposer(proposer string) {
+	addr := strings.ToLower(proposer)
+	dag.foreignValidatorActivityMu.Lock()
+	dag.lastMergedFromValidator[addr] = time.Now().Unix()
+	dag.foreignValidatorActivityMu.Unlock()
+}
+
 // foreignAttachLatencyLogInterval bounds how often the accumulated
 // real-world attach-latency summary is logged — see
 // recordForeignAttachLatency's own comment.
@@ -245,7 +271,53 @@ func (dag *BlockDAG) selfProducedFinalityAllowed() bool {
 		return true // genuinely solo network — advance freely (2026-07-03 fix's exact case)
 	}
 	last := dag.lastForeignMergeAt.Load()
-	return last != 0 && time.Since(time.Unix(last, 0)) <= isolatedFinalityPauseWindow
+	if last == 0 || time.Since(time.Unix(last, 0)) > isolatedFinalityPauseWindow {
+		return false // hasn't merged ANY foreign block recently — the original 2026-07-04 case
+	}
+	// FIX (P0, 2026-07-10 — Primary/Contabo1 permanent-partial-merge
+	// incident): the dag-wide check above only proves SOME foreign
+	// validator merged recently, which stayed satisfied — and hardening
+	// never paused — the entire time Primary was completely walled off
+	// from Contabo1 specifically, simply because it kept merging a
+	// DIFFERENT validator (cd20) fine. Pause additionally if there's a
+	// validator we're still actively hearing FROM (a recent
+	// lastSeenFromValidator entry — proves they're not just offline/
+	// retired; see that field's own comment for why this distinction
+	// matters) without a correspondingly recent successful merge.
+	return !dag.isolatedFromASeenValidator()
+}
+
+// isolatedFromASeenValidator reports whether any authorized validator other
+// than self has a recent lastSeenFromValidator entry (proving they're
+// actively trying to reach us) without a correspondingly recent
+// lastMergedFromValidator entry — see selfProducedFinalityAllowed's own
+// comment for the incident this closes. A validator with NO recent "seen"
+// entry is skipped entirely, not counted as isolation: validator addresses
+// are never de-registered (see AuthorizedValidatorList's own comment), so a
+// validator we simply haven't heard from in a long time (gone quiet,
+// retired, decommissioned) must not freeze checkpoint hardening for the
+// whole network forever — only a validator we're demonstrably still
+// hearing from counts. Must be called with dag.mu held (reads
+// dag.authorizedValidators, dag.selfProposer) — matching
+// selfProducedFinalityAllowed's own precondition.
+func (dag *BlockDAG) isolatedFromASeenValidator() bool {
+	now := time.Now()
+	dag.foreignValidatorActivityMu.Lock()
+	defer dag.foreignValidatorActivityMu.Unlock()
+	for addr := range dag.authorizedValidators {
+		if addr == dag.selfProposer {
+			continue
+		}
+		seenAt, seen := dag.lastSeenFromValidator[addr]
+		if !seen || now.Sub(time.Unix(seenAt, 0)) > isolatedFinalityPauseWindow {
+			continue // haven't heard from them recently — likely offline/retired, not our problem
+		}
+		mergedAt, merged := dag.lastMergedFromValidator[addr]
+		if !merged || now.Sub(time.Unix(mergedAt, 0)) > isolatedFinalityPauseWindow {
+			return true // hearing from them, but can't merge them — genuine isolation
+		}
+	}
+	return false
 }
 
 // IsIsolatedFromPeers reports whether this node currently lacks a recent

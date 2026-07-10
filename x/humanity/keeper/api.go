@@ -288,6 +288,7 @@ func (a *APIServer) handleCombinedHealth(w http.ResponseWriter, r *http.Request)
 	// successful peer sync, with concrete recovery guidance attached
 	// instead of just "Consider resync" in a log line.
 	mismatchCount := a.blockchain.TotalStateRootMismatches()
+	finalizedHeight, _ := a.state.GetFinalizedCheckpoint()
 	lastSyncAt := a.blockchain.LastSuccessfulPeerSyncAt()
 	var lastSyncAgeSecs int64 = -1
 	if lastSyncAt > 0 {
@@ -419,6 +420,17 @@ func (a *APIServer) handleCombinedHealth(w http.ResponseWriter, r *http.Request)
 		"proof_server": map[string]interface{}{
 			"reachable": len(proofStatus) > 0,
 			"last_status": proofStatus,
+		},
+		// FIX (P0, 2026-07-10): see SyncDiagnostics' own comment
+		// (sync_blocks.go) — these values previously existed nowhere except
+		// scattered log lines, forcing every "why won't peer X merge"
+		// diagnosis through a slow log-paste-and-guess cycle.
+		"sync_diagnostics": map[string]interface{}{
+			"boot_height":                   a.blockchain.BootHeight(),
+			"boot_height_checkpoint_backed": a.blockchain.BootHeightCheckpointBacked(),
+			"finalized_height":              finalizedHeight,
+			"finality_height_slack":         finalityHeightSlack,
+			"peers":                         a.blockchain.SyncDiagnostics(),
 		},
 	})
 }
@@ -2615,7 +2627,7 @@ func (a *APIServer) handleDapp(w http.ResponseWriter, r *http.Request) {
 
 func (a *APIServer) handleAppDownload(w http.ResponseWriter, r *http.Request) {
 	const apkPath = "downloads/aequitas-app.apk"
-	const fallbackURL = "https://github.com/hanoi96international-gif/Aequitas/releases/download/app-v1.2.0/app-release.apk"
+	const fallbackURL = "https://github.com/hanoi96international-gif/Aequitas/releases/download/app-v1.3.0/app-release.apk"
 	f, err := os.Open(apkPath)
 	if err != nil {
 		// File not found in container — redirect to GitHub raw URL.
