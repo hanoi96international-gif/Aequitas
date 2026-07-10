@@ -336,13 +336,10 @@ replayedMu             sync.Mutex
 	syncTargetHeight   atomic.Int64
 	activeGhostdagK    atomic.Int32 // live GHOSTDAG K for current epoch; 0 → use ghostdagKBase
 	startupTime        int64        // Unix timestamp of NewBlockchain — used by the initial-sync gate
-	// ghostdagStuckHash/ghostdagStuckCount track ProduceBlock's own
-	// consecutive-tick stuck-on-the-same-ancestor escape hatch — see that
-	// call site's own FIX comment. Plain fields, not atomics: only ever
-	// read/written from within ProduceBlock, which holds dag.mu for its
-	// entire call.
-	ghostdagStuckHash  string
-	ghostdagStuckCount int
+	// (ghostdagStuckHash/ghostdagStuckCount removed 2026-07-10 — ProduceBlock's
+	// stuck-ancestor escape hatch now shares the orphan-tracking machinery
+	// via produceStuckGaps instead of its own raw tick counter; see that
+	// field's comment and ProduceBlock's call site for why.)
 	// lastFarAheadLogAt rate-limits the "dropped far-ahead orphan" log (unix
 	// nanos, atomic) so a fork flood can't turn the log itself into the
 	// bottleneck — see AddPeerBlock's lock-free flood shield.
@@ -574,6 +571,21 @@ replayedMu             sync.Mutex
 	// its own updated comment), just without deepScan ever caring about it.
 	finalityWalkGaps map[string]bool
 
+	// produceStuckGaps holds hashes ProduceBlock's own stuck-ancestor escape
+	// hatch (see that call site's 2026-07-10 FIX comment) wants actively
+	// fetched. Same rationale as finalityWalkGaps just above: deliberately
+	// separate from orphans so it never feeds MissingParentHashes/
+	// wantDeepScan. Age/attempt bookkeeping reuses the shared
+	// orphanFirstSeen/orphanAttempts maps (already source-agnostic — both
+	// queueOrphan and registerFinalityWalkGap write into them the same way),
+	// so ProduceBlock's bridge decision uses the exact same patient,
+	// battle-tested orphanAbandonAfter/minOrphanAttemptsBeforeAbandon gate as
+	// every other synthetic-checkpoint stub site instead of a separate, much
+	// hastier raw tick counter — see ProduceBlock's call site for the
+	// incident (620-783 stubs accumulated on two production nodes) that
+	// motivated this.
+	produceStuckGaps map[string]bool
+
 	// (blueScore map removed — BlueScore is now stored directly in Block.BlueScore
 	// and persisted to chain_blocks; no separate in-memory map needed)
 
@@ -804,6 +816,7 @@ proposerBreaker:        newBoundedBreaker(proposerBreakerFailThreshold, proposer
 	orphanLastAttempt:      make(map[string]time.Time),
 	orphanAttempts:         make(map[string]int),
 	finalityWalkGaps:       make(map[string]bool),
+	produceStuckGaps:       make(map[string]bool),
 
 	softRetryBlocks:        make(map[string]*Block),
 	softRetryFirstAt:       make(map[string]time.Time),
@@ -1236,6 +1249,7 @@ func (dag *BlockDAG) RefreshBootHeightAfterSnapshotImport(resyncHappened bool) {
 		dag.orphans = make(map[string][]*Block)
 		dag.orphanFirstSeen = make(map[string]time.Time)
 		dag.finalityWalkGaps = make(map[string]bool)
+		dag.produceStuckGaps = make(map[string]bool)
 		dag.orphanLastAttempt = make(map[string]time.Time)
 		dag.orphanAttempts = make(map[string]int)
 		dag.orphansMu.Unlock()
@@ -2040,27 +2054,32 @@ if dag.signingKey != nil {
 // has no escape from that case: the same unresolvable hash reappears every
 // single tick forever, halting this node's own production indefinitely —
 // confirmed live, 1000+ consecutive ticks stuck on the identical hash.
-// dag.mu is held for the whole ProduceBlock call (single-threaded from
-// this field's perspective), so a plain pair of fields is sufficient to
-// track "am I stuck on the same hash as last tick" without new locking.
-// After ghostdagStuckThreshold consecutive ticks blocked on the identical
-// hash, bridge it exactly like BridgeHistoricalGap/queueOrphan's own
-// synthetic-checkpoint stub does for the identical "genuinely gone"
-// scenario elsewhere in this file — a zero-parent placeholder that lets
-// ghostdagBlockLookup find SOMETHING (ending that branch's walk there,
-// same as any legitimate depth-limit/root-of-history case) instead of
-// looping on an unresolvable lookup forever.
+//
+// FIX (P0, 2026-07-10 — third revision, found live via 620-783 accumulated
+// stubs on the two secondary production nodes): the first revision here
+// bridged after a raw 5-consecutive-tick counter (~5s at BLOCK_TIME=1s) with
+// NO active fetch ever registered for the missing hash — it just passively
+// hoped ordinary gossip would deliver it in time. queueOrphan's own
+// identical-purpose runtime bridge, by contrast, only bridges after
+// orphanAbandonAfter (15 minutes) AND minOrphanAttemptsBeforeAbandon (3)
+// genuine peer-fetch attempts AND !isCatchingUp AND an explicit
+// ALLOW_RUNTIME_ORPHAN_BRIDGE opt-in — see that function's "abandon"
+// comment. The 5-second version had none of that: it fired constantly for
+// perfectly ordinary cross-validator propagation lag (ancestors that would
+// have resolved fine within a few more seconds if only something had asked
+// a peer for them), fabricating hundreds of permanent stub entries whose
+// BlueScore offset (even with safeStubBlueScoreLocked) can never self-heal
+// once committed. Now: register the hash via registerProduceStuckGap so
+// fetchMissingAncestors (already polling every ~1s per active sync peer)
+// actively tries it, and only bridge once produceStuckGapReady says this
+// hash has genuinely exhausted the SAME patient standard every other
+// synthetic-checkpoint stub site already holds itself to.
 missing, ok := dag.computeGHOSTDAGState(block)
 if !ok {
-	if missing == dag.ghostdagStuckHash {
-		dag.ghostdagStuckCount++
-	} else {
-		dag.ghostdagStuckHash = missing
-		dag.ghostdagStuckCount = 1
-	}
-	if dag.ghostdagStuckCount < ghostdagStuckThreshold {
-		fmt.Printf("[BLOCK] ⏳ Skipping production this tick — merge-set ancestor %s... not yet resolvable (%d/%d)\n",
-			missing[:min(16, len(missing))], dag.ghostdagStuckCount, ghostdagStuckThreshold)
+	dag.registerProduceStuckGap(missing)
+	if !dag.produceStuckGapReady(missing) {
+		fmt.Printf("[BLOCK] ⏳ Skipping production this tick — merge-set ancestor %s... not yet resolvable, actively fetching from peers\n",
+			missing[:min(16, len(missing))])
 		return nil
 	}
 	// FIX (P0, 2026-07-10 — found live via the explorer UI within minutes of
@@ -2070,13 +2089,13 @@ if !ok {
 	// below the chain's real accumulated score — silently replacing this
 	// node's canonical chain with a permanently wrong-scored fork built on
 	// fabricated history (confirmed live: dropped from ~3.58M to ~1300).
-	// highestKnownBlueScoreLocked anchors the stub to the current known
+	// safeStubBlueScoreLocked anchors the stub to the current known
 	// frontier instead, so this block's own score stays roughly where the
 	// real chain already is. Height mirrors queueOrphan's own stub
 	// convention (minWaitingHeight-1, i.e. "immediately before whatever
 	// needed it") rather than a hardcoded 0 for the same reason.
-	fmt.Printf("[BLOCK] ⚠ Merge-set ancestor %s... still unresolvable after %d consecutive ticks — bridging with a synthetic checkpoint stub so production can continue (same class of genuinely-lost-block gap already handled elsewhere; no effect on account balances)\n",
-		missing[:min(16, len(missing))], dag.ghostdagStuckCount)
+	fmt.Printf("[BLOCK] ⚠ Merge-set ancestor %s... still unresolvable after %s and %d peer-fetch attempt(s) — bridging with a synthetic checkpoint stub so production can continue (same class of genuinely-lost-block gap already handled elsewhere; no effect on account balances)\n",
+		missing[:min(16, len(missing))], orphanAbandonAfter, minOrphanAttemptsBeforeAbandon)
 	stubHeight := block.Height - 1
 	if stubHeight < 0 {
 		stubHeight = 0
@@ -2090,15 +2109,15 @@ if !ok {
 	if dag.state != nil {
 		SafeGoroutine("RecordSyntheticCheckpointEvent-producestuck", func() { dag.state.RecordSyntheticCheckpointEvent(missing, stubHeight, "produce-block-stuck") })
 	}
-	dag.ghostdagStuckHash = ""
-	dag.ghostdagStuckCount = 0
+	dag.clearProduceStuckGap(missing)
 	missing, ok = dag.computeGHOSTDAGState(block)
 	if !ok {
 		// The bridge resolved one hash but the walk hit a second, different
 		// one — extremely unlikely (would need multiple independent gaps in
 		// the same merge-set walk) but stay safe: skip this tick rather than
-		// loop, the stuck-hash counter above will bridge the new one too on
-		// its own schedule.
+		// loop, the registration above will let that new hash reach the
+		// same patient bridge on its own schedule.
+		dag.registerProduceStuckGap(missing)
 		fmt.Printf("[BLOCK] ⏳ Skipping production this tick — merge-set ancestor %s... not yet resolvable\n", missing[:min(16, len(missing))])
 		return nil
 	}
@@ -2717,16 +2736,70 @@ func (dag *BlockDAG) clearFinalityWalkGap(hash string) {
 	dag.orphansMu.Unlock()
 }
 
+// registerProduceStuckGap marks hash as something ProduceBlock's own
+// stuck-ancestor escape hatch is waiting on, so fetchMissingAncestors
+// (already running on a ~1s ticker per active sync peer) actively tries to
+// fetch it from a peer instead of ProduceBlock passively hoping ordinary
+// gossip delivers it in time. Reuses orphanFirstSeen (shared, source-
+// agnostic — queueOrphan and registerFinalityWalkGap already write into it
+// the same way) so age tracking is consistent across all three gap sources.
+// See produceStuckGaps' own field comment for why this is a separate map
+// from dag.orphans.
+func (dag *BlockDAG) registerProduceStuckGap(hash string) {
+	dag.orphansMu.Lock()
+	if !dag.produceStuckGaps[hash] {
+		dag.produceStuckGaps[hash] = true
+		if _, seen := dag.orphanFirstSeen[hash]; !seen {
+			dag.orphanFirstSeen[hash] = time.Now()
+		}
+	}
+	dag.orphansMu.Unlock()
+}
+
+// clearProduceStuckGap removes hash from produceStuckGaps once it's resolved
+// or bridged — mirrors clearFinalityWalkGap.
+func (dag *BlockDAG) clearProduceStuckGap(hash string) {
+	dag.orphansMu.Lock()
+	delete(dag.produceStuckGaps, hash)
+	dag.orphansMu.Unlock()
+}
+
+// produceStuckGapReady reports whether hash has waited long enough, with
+// enough genuine fetch attempts, for ProduceBlock to give up on ordinary
+// resolution and bridge it with a synthetic-checkpoint stub — the exact same
+// orphanAbandonAfter/minOrphanAttemptsBeforeAbandon standard queueOrphan's
+// own runtime bridge already holds itself to (see that function's "abandon"
+// comment), plus the same isCatchingUp carve-out (a loaded catch-up node
+// reaching a peer slowly is not evidence the ancestor is gone — see
+// queueOrphan's 2026-07-10 FIX comment for the 469,599-stub incident that
+// taught us this) and the same ALLOW_RUNTIME_ORPHAN_BRIDGE opt-in (bridging
+// is a deliberate trust-bypass operators must enable, not a default).
+func (dag *BlockDAG) produceStuckGapReady(hash string) bool {
+	if dag.isCatchingUp() {
+		return false
+	}
+	if os.Getenv("ALLOW_RUNTIME_ORPHAN_BRIDGE") != "true" {
+		return false
+	}
+	dag.orphansMu.Lock()
+	first, seen := dag.orphanFirstSeen[hash]
+	attempts := dag.orphanAttempts[hash]
+	dag.orphansMu.Unlock()
+	return seen && time.Since(first) > orphanAbandonAfter && attempts >= minOrphanAttemptsBeforeAbandon
+}
+
 // PendingFetchHashes returns every hash fetchMissingAncestors should attempt
 // this round: real orphans (dag.orphans) PLUS finality-checkpoint-walk gaps
-// (dag.finalityWalkGaps). Unlike MissingParentHashes, this is NOT used for
+// (dag.finalityWalkGaps) PLUS ProduceBlock's own stuck-ancestor gaps
+// (dag.produceStuckGaps). Unlike MissingParentHashes, this is NOT used for
 // wantDeepScan — see registerFinalityWalkGap's own comment for the live
 // incident (permanent deepScan, 5000+ fragmented dag.tips) that resulted
-// from finality gaps feeding into that trigger.
+// from finality gaps feeding into that trigger; produceStuckGaps is excluded
+// from MissingParentHashes for the identical reason.
 func (dag *BlockDAG) PendingFetchHashes() []string {
 	dag.orphansMu.Lock()
 	defer dag.orphansMu.Unlock()
-	hashes := make([]string, 0, len(dag.orphans)+len(dag.finalityWalkGaps))
+	hashes := make([]string, 0, len(dag.orphans)+len(dag.finalityWalkGaps)+len(dag.produceStuckGaps))
 	for h := range dag.orphans {
 		hashes = append(hashes, h)
 	}
@@ -2734,6 +2807,15 @@ func (dag *BlockDAG) PendingFetchHashes() []string {
 		if _, alreadyIncluded := dag.orphans[h]; !alreadyIncluded {
 			hashes = append(hashes, h)
 		}
+	}
+	for h := range dag.produceStuckGaps {
+		if _, alreadyIncluded := dag.orphans[h]; alreadyIncluded {
+			continue
+		}
+		if dag.finalityWalkGaps[h] {
+			continue
+		}
+		hashes = append(hashes, h)
 	}
 	return hashes
 }
@@ -3016,16 +3098,9 @@ const maxTrackedProposers = 500
 // matters for a large historical catch-up (e.g. after RESYNC_FROM_SNAPSHOT).
 const syncStallTimeout = 90
 
-// ghostdagStuckThreshold is how many CONSECUTIVE ProduceBlock ticks in a row
-// may be blocked on the identical unresolvable merge-set ancestor before it
-// gets bridged with a synthetic-checkpoint stub — see that call site's own
-// FIX comment for the live incident (1000+ consecutive stuck ticks, total
-// production halt) this bounds. At BLOCK_TIME=1s this is a few real
-// seconds — generous enough that a genuinely-transient in-flight ancestor
-// still resolves normally well before this fires, tight enough that a
-// genuinely-lost one can't halt this node's own production for more than a
-// handful of ticks.
-const ghostdagStuckThreshold = 5
+// (ghostdagStuckThreshold removed 2026-07-10 — ProduceBlock's stuck-ancestor
+// bridge now reuses orphanAbandonAfter/minOrphanAttemptsBeforeAbandon via
+// produceStuckGapReady instead of its own much hastier raw tick counter.)
 
 // proposerBlockBlocked reports whether a proposer's blocks should be dropped now
 // WITHOUT taking dag.mu, because its breaker is open (still inside the cooldown).

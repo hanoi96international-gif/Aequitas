@@ -9,6 +9,8 @@ func initOrphanTracking(dag *BlockDAG) {
 	dag.orphans = make(map[string][]*Block)
 	dag.orphanFirstSeen = make(map[string]time.Time)
 	dag.finalityWalkGaps = make(map[string]bool)
+	dag.produceStuckGaps = make(map[string]bool)
+	dag.orphanAttempts = make(map[string]int)
 }
 
 // TestRegisterFinalityWalkGap_AddsHashToPendingFetch is the regression guard

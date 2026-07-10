@@ -444,10 +444,13 @@ func (dag *BlockDAG) fetchMissingAncestors(nodeURL string) {
 		for _, hash := range hashes {
 			if dag.GetBlockByHash(hash) != nil {
 				// Resolved (possibly via a path other than this loop, e.g. a
-				// concurrent orphan resolution). finalityWalkGaps has no other
-				// cleanup path — clear it here so a long-lived node doesn't
-				// accumulate one entry per gap ever seen.
+				// concurrent orphan resolution). finalityWalkGaps/
+				// produceStuckGaps have no other cleanup path — clear both
+				// here so a long-lived node doesn't accumulate one entry per
+				// gap ever seen (clearProduceStuckGap is a harmless no-op if
+				// hash was never a ProduceBlock stuck-gap).
 				dag.clearFinalityWalkGap(hash)
+				dag.clearProduceStuckGap(hash)
 				continue
 			}
 			if !dag.shouldAttemptFetch(hash) {
