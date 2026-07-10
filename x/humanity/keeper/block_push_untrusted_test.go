@@ -45,6 +45,15 @@ func TestAddPeerBlock_FromSyncTrueWouldHaveBypassedAuthorization(t *testing.T) {
 	dag.stateRootMismatchLastAt = map[string]int64{}
 	dag.replayedBlocks = map[string]bool{}
 	dag.equivocationIndex = map[string]string{}
+	// FIX (2026-07-10): "deadbeef" must actually exist in dag.blocks now.
+	// It previously worked unresolved purely because Integrity check 3 skips
+	// parent-existence verification for height==1, and computeGHOSTDAGState
+	// used to silently tolerate an unresolvable SelectedParent candidate
+	// instead of deferring — a real production block always builds on a
+	// real, already-known ancestor (genesis or a checkpoint stub), so a
+	// genuinely-dangling parent hash was never a case this test needed to
+	// exercise; it only ever cared about the authorization gate below.
+	dag.blocks["deadbeef"] = &Block{Hash: "deadbeef", Height: 0, IsGenesis: true}
 	blk := signTestBlockWithParent(t, 1, "deadbeef")
 	blk.FromSync = true // the OLD, vulnerable handleBlockPush behavior
 

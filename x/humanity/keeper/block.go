@@ -2016,7 +2016,20 @@ if dag.signingKey != nil {
 // correct selected_parent/blue_score/blues from the start — no crash window
 // with empty GHOSTDAG fields. dag.mu is already held here; parents are in
 // dag.blocks; the block is not yet in dag.blocks (not needed by compute).
-dag.computeGHOSTDAGState(block)
+//
+// FIX (P0, 2026-07-10): parentHashes were chosen from dag.tips moments ago
+// (already locally present), so a genuinely-unresolvable DEEPER ancestor is
+// rare here — but not impossible (e.g. one of our own tips itself inherited
+// an unresolved-at-the-time reference). Unlike a peer block, there is
+// nothing to "queue as an orphan": this block doesn't exist yet. Simply
+// skip producing this tick rather than persisting a BlueScore computed from
+// an incomplete merge set — the next ProduceBlock tick re-selects tips and
+// retries from scratch, by which point the transiently-missing ancestor has
+// very likely arrived.
+if missing, ok := dag.computeGHOSTDAGState(block); !ok {
+	fmt.Printf("[BLOCK] ⏳ Skipping production this tick — merge-set ancestor %s... not yet resolvable\n", missing[:min(16, len(missing))])
+	return nil
+}
 
 // P1-06 (audit): persist to DB BEFORE inserting into dag.blocks/dag.tips or
 // returning the block for broadcast. If the DB save fails this block will be
@@ -3526,7 +3539,19 @@ return false
 // between — and a crash there leaves the block simply absent from the DB
 // (the pre-existing, already-handled "block not saved yet" case), never
 // present-but-broken.
-dag.computeGHOSTDAGState(block)
+// FIX (P0, 2026-07-10 — closes the remaining BlueScore-drift class:
+// computeGHOSTDAGState/ghostdagMergeSet now report when a DEEPER ancestor
+// (beyond the direct parents Integrity check 3 already verified) can't be
+// resolved yet, instead of silently computing from a truncated set — see
+// those functions' own FIX comments. Treat that exactly like Integrity
+// check 3's own missing-DIRECT-parent case: queue this block as an orphan
+// on the specific missing hash and retry once it arrives, rather than
+// attaching now with a BlueScore this node cannot yet compute correctly.
+if missing, ok := dag.computeGHOSTDAGState(block); !ok {
+	dag.mu.Unlock()
+	dag.queueOrphan(missing, block)
+	return false
+}
 
 // Structural validation passed. Release dag.mu before replay — replay
 // uses dag.state's own lock (cs.mu), not dag.mu, and must never run while
@@ -5332,12 +5357,19 @@ func (dag *BlockDAG) mergeDepthLimit() int {
 // Every node that holds the same block graph computes identical GHOSTDAG state,
 // so the canonical ordering (height ASC, blueScore DESC, hash ASC) is
 // deterministic across the network and StateRoots are reproducible.
-func (dag *BlockDAG) computeGHOSTDAGState(block *Block) {
+// computeGHOSTDAGState's return reports whether the computation was based
+// on the block's COMPLETE required ancestor closure (missingAncestor=="",
+// ok==true) or had to give up on a genuinely-unresolvable hash within
+// bounds (missingAncestor==that hash, ok==false) — see ghostdagMergeSet's
+// own FIX comment. On ok==false, block.SelectedParent/Blues/BlueScore are
+// left UNTOUCHED (not partially computed) — callers must not treat this
+// block as attached/scored yet.
+func (dag *BlockDAG) computeGHOSTDAGState(block *Block) (missingAncestor string, ok bool) {
 	if block.IsGenesis || len(block.ParentHashes) == 0 {
 		block.SelectedParent = ""
 		block.Blues = nil
 		block.BlueScore = 0
-		return
+		return "", true
 	}
 
 	// FIX (P0, 2026-07-04): one DB-roundtrip budget shared for this entire
@@ -5353,18 +5385,36 @@ func (dag *BlockDAG) computeGHOSTDAGState(block *Block) {
 	var maxScore int64 = -1
 	spHash := block.ParentHashes[0]
 	for _, ph := range block.ParentHashes {
-		if p := dag.ghostdagBlockLookup(ph, &dbBudget); p != nil && p.BlueScore > maxScore {
+		p := dag.ghostdagBlockLookup(ph, &dbBudget)
+		// FIX (P0, 2026-07-10): a DIRECT parent should already be guaranteed
+		// present by AddPeerBlock's Integrity check 3 (queues an orphan and
+		// never reaches here otherwise) or ProduceBlock's own tip selection
+		// — but defensively treat a miss here the same as a merge-set miss
+		// below rather than silently excluding this parent from the
+		// SelectedParent comparison, which would have been the exact same
+		// class of silent-wrong-computation this whole fix closes.
+		if p == nil {
+			return ph, false
+		}
+		if p.BlueScore > maxScore {
 			maxScore = p.BlueScore
 			spHash = ph
 		}
 	}
-	block.SelectedParent = spHash
 
 	// Step 2: compute merge set — blocks in past(B) that are NOT in past(SP).
 	// Bounded BFS: we walk back from non-SP parents, collecting blocks that
 	// are not reachable from SP.  The depth limit (2K+1) bounds the search;
 	// for an honest ≤3-validator network merge sets are always ≤2 blocks.
-	mergeSet := dag.ghostdagMergeSet(block, spHash, &dbBudget)
+	//
+	// block.SelectedParent is deliberately not assigned until AFTER this
+	// succeeds — see this function's own return-contract comment: on
+	// failure, every field must stay untouched, not partially computed.
+	mergeSet, missing := dag.ghostdagMergeSet(block, spHash, &dbBudget)
+	if missing != "" {
+		return missing, false
+	}
+	block.SelectedParent = spHash
 
 	// Step 3: topological sort of the merge set (parents before children).
 	sorted := ghostdagTopoSort(mergeSet, dag.blocks)
@@ -5447,6 +5497,7 @@ func (dag *BlockDAG) computeGHOSTDAGState(block *Block) {
 
 	block.Blues = blues
 	block.BlueScore = blueScore
+	return "", true
 }
 
 // ghostdagMergeSet returns the set of blocks in past(block) that are NOT in
@@ -5643,7 +5694,12 @@ func (dag *BlockDAG) ghostdagBlockLookup(hash string, budget *int) *Block {
 	return b
 }
 
-func (dag *BlockDAG) ghostdagMergeSet(block *Block, spHash string, dbBudget *int) map[string]bool {
+// missingAncestor, if non-empty, means the BFS below hit a hash it needed
+// (within depthLimit, before visitCap) that ghostdagBlockLookup could not
+// resolve from EITHER dag.blocks or the DB — see this function's own FIX
+// comment (2026-07-10) for why the caller must treat this as "not yet
+// computable" rather than silently continuing with a truncated set.
+func (dag *BlockDAG) ghostdagMergeSet(block *Block, spHash string, dbBudget *int) (mergeSet map[string]bool, missingAncestor string) {
 	depthLimit := dag.mergeDepthLimit()
 	visitCap := dag.maxMergeVisits()
 
@@ -5655,6 +5711,29 @@ func (dag *BlockDAG) ghostdagMergeSet(block *Block, spHash string, dbBudget *int
 	// round's hashes in a single round trip first — see
 	// ghostdagBatchPrefetch's own comment for why. The traversal order and
 	// every cap/limit check is unchanged; only how the DB is hit differs.
+	//
+	// FIX (P0, 2026-07-10 — the actual remaining root cause of a live
+	// BlueScore drift between Primary and a freshly-caught-up secondary,
+	// confirmed by TestGHOSTDAG_Determinism_OrderIndependent only ever
+	// proving determinism for a COMPLETE, fully in-memory block set): a
+	// hash within bounds that ghostdagBlockLookup genuinely cannot resolve
+	// (not budget-limited — that hazard was already closed — but truly
+	// absent from both dag.blocks and the DB at this exact instant, e.g. a
+	// concurrent sibling still in flight over the network) used to be
+	// silently treated as "this branch has no further ancestors", exactly
+	// like legitimately hitting depthLimit or visitCap. Once
+	// computeGHOSTDAGState commits a BlueScore computed from that
+	// artificially-truncated set, nothing ever revisits or corrects it —
+	// unlike a missing DIRECT parent (Integrity check 3 in AddPeerBlock),
+	// which already queues the block as an orphan and retries once the
+	// parent arrives, a missing DEEPER ancestor here had no equivalent
+	// safety net. Now: report it to the caller instead of guessing:
+	// AddPeerBlock queues the block as an orphan on this exact hash (the
+	// same, already-proven mechanism), so the block is only ever attached
+	// — and its BlueScore only ever committed — once its full merge-set
+	// window is genuinely complete. This is what actually makes the
+	// "identical block graph → identical GHOSTDAG state" guarantee hold in
+	// production, not just in the all-data-already-local test above.
 	type entry struct {
 		hash  string
 		depth int
@@ -5676,14 +5755,16 @@ func (dag *BlockDAG) ghostdagMergeSet(block *Block, spHash string, dbBudget *int
 			if cur.depth > depthLimit {
 				continue
 			}
-			if b := dag.ghostdagBlockLookup(cur.hash, dbBudget); b != nil {
-				for _, ph := range b.ParentHashes {
-					if !excluded[ph] {
-						excluded[ph] = true
-						queue = append(queue, entry{ph, cur.depth + 1})
-						if len(excluded) >= visitCap {
-							break
-						}
+			b := dag.ghostdagBlockLookup(cur.hash, dbBudget)
+			if b == nil {
+				return nil, cur.hash
+			}
+			for _, ph := range b.ParentHashes {
+				if !excluded[ph] {
+					excluded[ph] = true
+					queue = append(queue, entry{ph, cur.depth + 1})
+					if len(excluded) >= visitCap {
+						break
 					}
 				}
 			}
@@ -5691,7 +5772,7 @@ func (dag *BlockDAG) ghostdagMergeSet(block *Block, spHash string, dbBudget *int
 	}
 
 	// BFS backward from non-SP parents, stopping at excluded blocks.
-	mergeSet := make(map[string]bool, len(block.ParentHashes))
+	mergeSet = make(map[string]bool, len(block.ParentHashes))
 	queue = queue[:0]
 	for _, ph := range block.ParentHashes {
 		if ph != spHash && !excluded[ph] && !mergeSet[ph] {
@@ -5719,20 +5800,22 @@ func (dag *BlockDAG) ghostdagMergeSet(block *Block, spHash string, dbBudget *int
 			if cur.depth > depthLimit {
 				continue
 			}
-			if b := dag.ghostdagBlockLookup(cur.hash, dbBudget); b != nil {
-				for _, ph := range b.ParentHashes {
-					if !excluded[ph] && !mergeSet[ph] {
-						mergeSet[ph] = true
-						queue = append(queue, entry{ph, cur.depth + 1})
-						if len(mergeSet) >= visitCap {
-							break
-						}
+			b := dag.ghostdagBlockLookup(cur.hash, dbBudget)
+			if b == nil {
+				return nil, cur.hash
+			}
+			for _, ph := range b.ParentHashes {
+				if !excluded[ph] && !mergeSet[ph] {
+					mergeSet[ph] = true
+					queue = append(queue, entry{ph, cur.depth + 1})
+					if len(mergeSet) >= visitCap {
+						break
 					}
 				}
 			}
 		}
 	}
-	return mergeSet
+	return mergeSet, ""
 }
 
 // ghostdagBatchPrefetch loads every hash in `hashes` that is not already
