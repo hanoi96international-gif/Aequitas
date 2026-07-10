@@ -1050,7 +1050,47 @@ func (dag *BlockDAG) StartPeerDiscovery(selfURL string) {
 		// produces on its own DB state before the sync loop has pulled in the
 		// seed's newer blocks, creating a fork that requires RESYNC to fix.
 		// Uses the highest reported height across all seeds as the target.
-		SafeGoroutine("fetchAndSetSyncTarget", func() { dag.fetchAndSetSyncTarget(seeds) })
+		//
+		// FIX (P0, 2026-07-10 — root cause of Contabo1 forking almost
+		// immediately after every RESYNC_FROM_SNAPSHOT boot, twice in a row):
+		// this call used to fire exactly ONCE, in the same instant as peer
+		// discovery starts — which is also essentially the same instant
+		// RESYNC_FROM_SNAPSHOT just seeded dag.height near bootHeight from the
+		// snapshot. Confirmed live: the one-shot query caught the seed barely
+		// one block past the checkpoint it had JUST supplied, so target ended
+		// up only marginally ahead of this node's own already-near-bootHeight
+		// dag.height — satisfying dag.height >= target-10 (block.go's
+		// ProduceBlock gate) and clearing the gate within seconds, while the
+		// REST of boot (P2P setup, primary registration hitting a 429 rate
+		// limit and retrying with backoff — all real wall-clock time the real
+		// network keeps producing through) was still ahead. Production then
+		// resumed on a node that was, in reality, dozens of blocks behind the
+		// live tip, exactly reproducing the fork this gate exists to prevent.
+		// Re-querying on a short ticker instead of once keeps target tracking
+		// the seed's ACTUAL current height throughout the whole boot sequence,
+		// not just the instant peer discovery began; fetchAndSetSyncTarget's
+		// own "maxHeight <= dag.Height()" check already makes each call a
+		// cheap no-op once genuinely caught up, and the loop exits for good
+		// once ProduceBlock's gate clears syncTargetHeight to 0.
+		SafeGoroutine("fetchAndSetSyncTarget", func() {
+			dag.fetchAndSetSyncTarget(seeds)
+			ticker := time.NewTicker(syncTargetRefreshInterval)
+			defer ticker.Stop()
+			deadline := time.Now().Add(syncTargetRefreshMaxDuration)
+			for range ticker.C {
+				if dag.syncTargetHeight.Load() == 0 {
+					return // ProduceBlock's gate already cleared it — caught up for good
+				}
+				if time.Now().After(deadline) {
+					// ProduceBlock's own syncStallTimeout (90s of no progress)
+					// already lets production resume independently long before
+					// this — this bound only exists so the goroutine itself
+					// can't poll a genuinely-unreachable seed forever.
+					return
+				}
+				dag.fetchAndSetSyncTarget(seeds)
+			}
+		})
 	} else {
 		fmt.Println("[PEERS] No PRIMARY_NODE_URL/PRIMARY_NODE_URLS configured — accepting registrations from peers")
 	}
@@ -1357,6 +1397,21 @@ func staticPeers(selfURL string) []string {
 func (dag *BlockDAG) StartHTTPBlockSync(selfURL string) {
 	dag.StartPeerDiscovery(selfURL)
 }
+
+// syncTargetRefreshInterval is how often StartPeerDiscovery's goroutine
+// re-queries the seeds' current height while this node hasn't caught up yet
+// (see that call site's own FIX comment) — frequent enough that the target
+// stays close to the seed's real live tip throughout a slow boot sequence
+// (P2P setup, rate-limited registration retries), not just the single
+// instant peer discovery began.
+const syncTargetRefreshInterval = 3 * time.Second
+
+// syncTargetRefreshMaxDuration bounds the refresh goroutine's own lifetime —
+// see its call site's own comment. Generous margin above syncStallTimeout
+// (90s): that gate already lets ProduceBlock resume independently long
+// before this fires; this only guarantees the goroutine itself eventually
+// stops polling a seed that never becomes reachable.
+const syncTargetRefreshMaxDuration = 10 * time.Minute
 
 // fetchAndSetSyncTarget queries each seed's /api/health/combined for its
 // current block height and sets syncTargetHeight to the maximum found.
