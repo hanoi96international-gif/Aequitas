@@ -2774,8 +2774,16 @@ func (dag *BlockDAG) clearProduceStuckGap(hash string) {
 // queueOrphan's 2026-07-10 FIX comment for the 469,599-stub incident that
 // taught us this) and the same ALLOW_RUNTIME_ORPHAN_BRIDGE opt-in (bridging
 // is a deliberate trust-bypass operators must enable, not a default).
+//
+// Caller must already hold dag.mu (its only caller, ProduceBlock, holds it
+// write-locked for its entire call — see that function's top-of-body
+// comment). Uses isCatchingUpLocked, NOT the isCatchingUp RLock wrapper:
+// calling the wrapper here self-deadlocks, since sync.RWMutex is not
+// reentrant — confirmed live within minutes of first deploying this (both
+// redeployed nodes' /api/status hung completely, including from inside the
+// container itself via wget, immediately after this code path first ran).
 func (dag *BlockDAG) produceStuckGapReady(hash string) bool {
-	if dag.isCatchingUp() {
+	if dag.isCatchingUpLocked() {
 		return false
 	}
 	if os.Getenv("ALLOW_RUNTIME_ORPHAN_BRIDGE") != "true" {
