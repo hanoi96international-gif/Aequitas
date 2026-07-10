@@ -1070,22 +1070,30 @@ func (dag *BlockDAG) StartPeerDiscovery(selfURL string) {
 		// the seed's ACTUAL current height throughout the whole boot sequence,
 		// not just the instant peer discovery began; fetchAndSetSyncTarget's
 		// own "maxHeight <= dag.Height()" check already makes each call a
-		// cheap no-op once genuinely caught up, and the loop exits for good
-		// once ProduceBlock's gate clears syncTargetHeight to 0.
+		// cheap no-op once genuinely caught up.
+		//
+		// FIX (found on self-review before this ever shipped): the first
+		// version of this loop stopped as soon as syncTargetHeight read 0 —
+		// but 0 is ALSO the value it starts at before the very first call
+		// ever runs, and is exactly what the first call sets it to when the
+		// gate fails to engage at all (maxHeight <= dag.Height(), the precise
+		// failure mode this fix exists to close: the seed's height, queried
+		// in the same instant as the snapshot, isn't meaningfully ahead of
+		// this node's already-near-bootHeight dag.Height() yet). That reading
+		// would have made the loop exit after its very first tick without
+		// ever re-querying — silently reproducing the exact bug this commit
+		// fixes. There is no cheap way to distinguish "genuinely caught up"
+		// from "gate never engaged" from syncTargetHeight alone, so just keep
+		// polling unconditionally for the whole bounded window instead —
+		// each call is a couple of small HTTP GETs, negligible cost for the
+		// duration below.
 		SafeGoroutine("fetchAndSetSyncTarget", func() {
 			dag.fetchAndSetSyncTarget(seeds)
 			ticker := time.NewTicker(syncTargetRefreshInterval)
 			defer ticker.Stop()
 			deadline := time.Now().Add(syncTargetRefreshMaxDuration)
 			for range ticker.C {
-				if dag.syncTargetHeight.Load() == 0 {
-					return // ProduceBlock's gate already cleared it — caught up for good
-				}
 				if time.Now().After(deadline) {
-					// ProduceBlock's own syncStallTimeout (90s of no progress)
-					// already lets production resume independently long before
-					// this — this bound only exists so the goroutine itself
-					// can't poll a genuinely-unreachable seed forever.
 					return
 				}
 				dag.fetchAndSetSyncTarget(seeds)
@@ -1403,8 +1411,16 @@ func (dag *BlockDAG) StartHTTPBlockSync(selfURL string) {
 // (see that call site's own FIX comment) — frequent enough that the target
 // stays close to the seed's real live tip throughout a slow boot sequence
 // (P2P setup, rate-limited registration retries), not just the single
-// instant peer discovery began.
-const syncTargetRefreshInterval = 3 * time.Second
+// instant peer discovery began. Matched to BLOCK_TIME's 1s floor, not a
+// slower round number: ProduceBlock's gate (block.go, "dag.height >=
+// target-10") checks the CURRENT value of a target that is only ever as
+// fresh as the last refresh — any interval slower than production's own
+// cadence reopens a window where a stale target lets a premature block
+// through before the next refresh corrects it, which is exactly how the
+// live fork this fix closes was produced (within the first 1-3 blocks of
+// boot). The gate's own 10-block buffer already covers the residual one-tick
+// lag this cadence still allows.
+const syncTargetRefreshInterval = 1 * time.Second
 
 // syncTargetRefreshMaxDuration bounds the refresh goroutine's own lifetime —
 // see its call site's own comment. Generous margin above syncStallTimeout
