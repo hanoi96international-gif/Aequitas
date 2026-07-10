@@ -1872,6 +1872,26 @@ if target := dag.syncTargetHeight.Load(); target > 0 {
 // GHOSTDAG merge-set computation. Select the highest-BlueScore tips
 // (most recent, most authoritative) up to the cap, then sort by hash for
 // deterministic block-hash computation across all nodes.
+//
+// FIX (P0, 2026-07-10 — the actual root cause behind the produceStuckGaps
+// fix still not restoring production on Contabo1): a tip whose height has
+// fallen behind the finalized checkpoint can never become canonical again
+// — finality means the selected-parent chain already irreversibly grew
+// past that height via a different path, so a competing tip stuck below
+// it is provably a dead branch. Previously EVERY entry in dag.tips was a
+// merge-parent candidate forever, sorted only by BlueScore — so once one
+// of this node's own tips lost a race and stalled (nothing will ever
+// build on a doomed branch again, so it can never regain BlueScore),
+// every subsequent ProduceBlock tick still tried to merge it in. Confirmed
+// live: a Contabo1 tip stuck at height 675762, 9631 blocks behind the
+// finalized checkpoint at 685393, whose own parent is genuinely gone from
+// every peer's memory (correctly so — it predates their own finality
+// pruning). produceStuckGaps' active fetching could never resolve that:
+// the ancestor really is gone. Excluding sub-finality tips here stops
+// ProduceBlock from ever walking into that dead branch again; the tip
+// itself is left in dag.tips untouched (only this call's parent
+// candidates are filtered) since nothing here owns broader tip pruning.
+finalizedHeight, _ := dag.state.GetFinalizedCheckpoint()
 type tipEntry struct {
     hash      string
     blueScore int64
@@ -1880,6 +1900,9 @@ allTips := make([]tipEntry, 0, len(dag.tips))
 for hash := range dag.tips {
     score := int64(0)
     if b, ok := dag.blocks[hash]; ok {
+        if finalizedHeight > 0 && b.Height < finalizedHeight {
+            continue
+        }
         score = b.BlueScore
     }
     allTips = append(allTips, tipEntry{hash, score})
