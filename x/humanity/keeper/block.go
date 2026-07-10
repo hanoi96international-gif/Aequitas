@@ -540,6 +540,22 @@ replayedMu             sync.Mutex
 	orphanResolveAgain    bool
 	orphanResolveMu       sync.Mutex
 
+	// finalityWalkGaps holds hashes registerFinalityWalkGap (finality.go)
+	// wants fetched — deliberately SEPARATE from orphans/orphanFirstSeen.
+	// See registerFinalityWalkGap's own comment for why: orphans (via
+	// MissingParentHashes) also drives doSyncOnce's wantDeepScan trigger
+	// (sync_blocks.go), which is meant to fire only for a genuine "no
+	// normal-window sync progress is possible" situation. A finality
+	// checkpoint walk finds a NEW gap on essentially every call as the
+	// checkpoint target keeps sliding forward with the tip — reusing
+	// orphans kept wantDeepScan permanently true, confirmed live: a node
+	// stuck re-scanning its entire history from height 0 in a loop,
+	// re-importing thousands of ancient disconnected block fragments as
+	// new dag.tips entries every pass instead of ever reaching steady-state
+	// real-time sync. fetchMissingAncestors still services this set (see
+	// its own updated comment), just without deepScan ever caring about it.
+	finalityWalkGaps map[string]bool
+
 	// (blueScore map removed — BlueScore is now stored directly in Block.BlueScore
 	// and persisted to chain_blocks; no separate in-memory map needed)
 
@@ -768,6 +784,7 @@ proposerBreaker:        newBoundedBreaker(proposerBreakerFailThreshold, proposer
 	orphanFirstSeen:        make(map[string]time.Time),
 	orphanLastAttempt:      make(map[string]time.Time),
 	orphanAttempts:         make(map[string]int),
+	finalityWalkGaps:       make(map[string]bool),
 
 	softRetryBlocks:        make(map[string]*Block),
 	softRetryFirstAt:       make(map[string]time.Time),
@@ -1199,6 +1216,7 @@ func (dag *BlockDAG) RefreshBootHeightAfterSnapshotImport(resyncHappened bool) {
 		dag.orphansMu.Lock()
 		dag.orphans = make(map[string][]*Block)
 		dag.orphanFirstSeen = make(map[string]time.Time)
+		dag.finalityWalkGaps = make(map[string]bool)
 		dag.orphanLastAttempt = make(map[string]time.Time)
 		dag.orphanAttempts = make(map[string]int)
 		dag.orphansMu.Unlock()
@@ -2476,13 +2494,47 @@ func (dag *BlockDAG) popOrphans(parentHash string) []*Block {
 
 // MissingParentHashes returns a snapshot of every hash currently blocking at
 // least one queued orphan. Used by fetchMissingAncestors (sync_blocks.go) to
-// know exactly which specific ancestor blocks to fetch by hash.
+// know exactly which specific ancestor blocks to fetch by hash, AND by
+// doSyncOnce's wantDeepScan trigger — deliberately does NOT include
+// finalityWalkGaps, see PendingFetchHashes' own comment for why that
+// distinction matters.
 func (dag *BlockDAG) MissingParentHashes() []string {
 	dag.orphansMu.Lock()
 	defer dag.orphansMu.Unlock()
 	hashes := make([]string, 0, len(dag.orphans))
 	for h := range dag.orphans {
 		hashes = append(hashes, h)
+	}
+	return hashes
+}
+
+// clearFinalityWalkGap removes hash from finalityWalkGaps once it's resolved
+// (found locally) — see PendingFetchHashes' call site (sync_blocks.go) for
+// why this cleanup lives here rather than piggybacking on the orphan
+// resolution path: finalityWalkGaps entries were never real orphans.
+func (dag *BlockDAG) clearFinalityWalkGap(hash string) {
+	dag.orphansMu.Lock()
+	delete(dag.finalityWalkGaps, hash)
+	dag.orphansMu.Unlock()
+}
+
+// PendingFetchHashes returns every hash fetchMissingAncestors should attempt
+// this round: real orphans (dag.orphans) PLUS finality-checkpoint-walk gaps
+// (dag.finalityWalkGaps). Unlike MissingParentHashes, this is NOT used for
+// wantDeepScan — see registerFinalityWalkGap's own comment for the live
+// incident (permanent deepScan, 5000+ fragmented dag.tips) that resulted
+// from finality gaps feeding into that trigger.
+func (dag *BlockDAG) PendingFetchHashes() []string {
+	dag.orphansMu.Lock()
+	defer dag.orphansMu.Unlock()
+	hashes := make([]string, 0, len(dag.orphans)+len(dag.finalityWalkGaps))
+	for h := range dag.orphans {
+		hashes = append(hashes, h)
+	}
+	for h := range dag.finalityWalkGaps {
+		if _, alreadyIncluded := dag.orphans[h]; !alreadyIncluded {
+			hashes = append(hashes, h)
+		}
 	}
 	return hashes
 }

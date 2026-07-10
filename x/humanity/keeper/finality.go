@@ -540,11 +540,24 @@ func (dag *BlockDAG) maybeAdvanceFinalizedCheckpoint(newBlock *Block) {
 // (finalizedMu — see GetFinalizedCheckpoint's comment) rather than dag.mu.
 // registerFinalityWalkGap ensures fetchMissingAncestors (sync_blocks.go,
 // already running on a ~1s ticker per active sync peer) will attempt to
-// fetch hash from a peer. dag.orphans is keyed only by hash —
-// MissingParentHashes()/fetchMissingAncestors never look at the value, only
-// the key's presence — so registering with a nil waiter list is enough to
-// get a real fetch attempt without pretending some actual *Block is waiting
-// on it. Deliberately bypasses queueOrphan: that function's far-ahead-
+// fetch hash from a peer.
+//
+// FIX (2026-07-10, closes a bug this fix's OWN first version introduced
+// hours earlier): originally wrote into dag.orphans, the same map
+// MissingParentHashes() exposes to doSyncOnce's wantDeepScan trigger
+// (sync_blocks.go) — deepScan means "drop to height 0 and rescan the
+// entire chain forward". A checkpoint walk finds a fresh gap on
+// essentially every call as the target keeps sliding forward with the
+// tip, so wantDeepScan stayed permanently true — confirmed live: a node
+// stuck re-scanning its full history in a loop, re-importing thousands of
+// ancient, disconnected block fragments as new dag.tips on every pass
+// (5000+ tips, block production halted) instead of ever settling into
+// steady-state real-time sync. finalityWalkGaps is a SEPARATE set
+// (own field, block.go) that fetchMissingAncestors still services — see
+// its own updated comment — but that wantDeepScan never looks at, so a
+// checkpoint gap gets fetched without ever forcing a full rescan.
+//
+// Deliberately still bypasses queueOrphan: that function's far-ahead-
 // frontier rejection and abandon bookkeeping are built around "a live block
 // just arrived and its parent is missing" — a hard-finality checkpoint gap
 // is the opposite shape (always far BEHIND the frontier, discovered by a
@@ -552,8 +565,8 @@ func (dag *BlockDAG) maybeAdvanceFinalizedCheckpoint(newBlock *Block) {
 // the frontier check queueOrphan runs first.
 func (dag *BlockDAG) registerFinalityWalkGap(hash string) {
 	dag.orphansMu.Lock()
-	if _, exists := dag.orphans[hash]; !exists {
-		dag.orphans[hash] = nil
+	if !dag.finalityWalkGaps[hash] {
+		dag.finalityWalkGaps[hash] = true
 		dag.orphanFirstSeen[hash] = time.Now()
 	}
 	dag.orphansMu.Unlock()

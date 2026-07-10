@@ -433,13 +433,21 @@ func (dag *BlockDAG) fetchMissingAncestors(nodeURL string) {
 	const totalFetchedCap = 50000
 	totalFetched := 0
 	for totalFetched < totalFetchedCap {
-		hashes := dag.MissingParentHashes()
+		// PendingFetchHashes (not MissingParentHashes): also services
+		// finality-checkpoint-walk gaps, which deliberately do NOT feed
+		// wantDeepScan below — see registerFinalityWalkGap's own comment.
+		hashes := dag.PendingFetchHashes()
 		if len(hashes) == 0 {
 			return
 		}
 		pending := make([]string, 0, len(hashes))
 		for _, hash := range hashes {
 			if dag.GetBlockByHash(hash) != nil {
+				// Resolved (possibly via a path other than this loop, e.g. a
+				// concurrent orphan resolution). finalityWalkGaps has no other
+				// cleanup path — clear it here so a long-lived node doesn't
+				// accumulate one entry per gap ever seen.
+				dag.clearFinalityWalkGap(hash)
 				continue
 			}
 			if !dag.shouldAttemptFetch(hash) {
