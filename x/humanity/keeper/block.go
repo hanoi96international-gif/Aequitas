@@ -5525,18 +5525,35 @@ func (dag *BlockDAG) ghostdagBlockLookup(hash string, budget *int) *Block {
 	if dag.state == nil {
 		return nil
 	}
-	// FIX (P0, 2026-07-04 — second production outage, same class): budget
-	// shared across an entire computeGHOSTDAGState call bounds total real DB
-	// round trips regardless of merge-set size or classification fan-out —
-	// see maxGhostdagDBLookups's own comment. nil means unbounded,
-	// for callers outside that call graph. Checked here (after the free
-	// migration/nil-state short-circuits, right before the actual round
-	// trip) so it only ever counts real DB calls, never a check that would
-	// have returned nil anyway.
-	if budget != nil {
-		if *budget <= 0 {
-			return nil
-		}
+	// FIX (P0, 2026-07-10 — third occurrence of this exact fork class, same
+	// root cause the 2026-07-04 fix above only made rarer, not impossible):
+	// that fix scaled the budget up from a fixed 10 to maxMergeVisits()*10 to
+	// stop it from being "the limiting factor" outside "a genuinely
+	// pathological burst far beyond maxMergeVisits' own ceiling" — but a
+	// genuinely pathological burst is exactly what real operation produces
+	// periodically (e.g. a node's own RESYNC_FROM_SNAPSHOT catch-up pushing a
+	// flood of concurrent blocks network-wide). Confirmed live: Primary and
+	// Contabo 2 computed different SelectedParent/hash from height 650000
+	// onward, each side internally "healthy" the whole time — the identical
+	// symptom, and root cause, as the 2026-07-04 incident this budget was
+	// raised to fix, just requiring a bigger burst to reach the now-larger
+	// ceiling. Any FINITE, node-local, timing-derived budget has this same
+	// hazard at some burst size; only a bound that is structurally identical
+	// on every node closes it for good. ghostdagMergeSet's own visitCap
+	// (maxMergeVisits) and mergeDepthLimit already ARE that bound — every
+	// caller's BFS loop stops visiting NEW hashes once len(excluded)/
+	// len(mergeSet) reaches visitCap regardless of this budget, so the total
+	// number of real lookups this function can ever be asked to perform in
+	// one computeGHOSTDAGState call is already capped at roughly visitCap by
+	// construction. Letting a live consensus computation's lookup silently
+	// return nil (== "treat as absent", i.e. wrong) once an ADDITIONAL,
+	// purely-incidental round-trip counter runs out adds a hazard without
+	// adding real protection. budget is now advisory only: still decremented
+	// (kept for telemetry / the migration-loop caller, which never passes
+	// live consensus state), never gates the lookup itself — a rare,
+	// self-limiting-by-visitCap slowdown is the correct tradeoff against a
+	// silent, permanent fork.
+	if budget != nil && *budget > 0 {
 		*budget--
 	}
 	b := dag.state.LoadBlockFromDBByHash(hash)

@@ -218,15 +218,26 @@ func TestGhostdagBlockLookup_SkipsDBDuringMigration(t *testing.T) {
 	}
 }
 
-// TestGhostdagBlockLookup_BudgetExhaustion is the regression guard for the
-// 2026-07-04 second production outage: a single computeGHOSTDAGState call
-// measured 62s, almost entirely real DB round trips, because neither
-// ghostdagMergeSet's BFS nor the classification loop's many independent
-// ghostdagIsAncestor calls shared any limit on how many real DB lookups they
-// could rack up in total (see maxGhostdagDBLookups's own comment).
-// Once the shared budget hits zero, further misses must return nil
-// immediately (the same conservative fallback already used during
-// migration) instead of continuing to call into dag.state.
+// TestGhostdagBlockLookup_BudgetExhaustion is the regression guard for two
+// incidents in sequence, both the same underlying hazard: a per-call DB
+// round-trip budget silently gating a live consensus lookup. The 2026-07-04
+// version of this test asserted that once the budget hit zero, a lookup
+// short-circuited to nil WITHOUT calling into dag.state — a real fix for
+// unbounded round trips (a single computeGHOSTDAGState call had measured 62s)
+// but one that reintroduced the exact non-determinism it replaced: two honest
+// nodes under different load could exhaust budget at different points in the
+// identical BFS and silently compute different SelectedParent/BlueScore for
+// the same block. Confirmed live a second time on 2026-07-10 (Contabo 2 vs
+// Primary diverging from height 650000, each side internally "healthy") after
+// the first fix only made the failure rarer by raising the budget, not
+// impossible. budget is now advisory-only: still decremented for telemetry,
+// but it no longer prevents the real dag.state lookup from being attempted
+// (ghostdagMergeSet's own visitCap/mergeDepthLimit — identical on every node
+// by construction — are what actually bound total lookups per call, not this
+// counter). With dag.state's db left nil, LoadBlockFromDBByHash itself
+// returns nil regardless of whether budget gated it, so this test cannot
+// observe the call boundary directly; it verifies the piece that IS
+// observable — the budget counter's own bookkeeping never overruns.
 func TestGhostdagBlockLookup_BudgetExhaustion(t *testing.T) {
 	dag := newGhostdagTestDAG()
 	dag.state = &ChainState{} // non-nil, db == nil: LoadBlockFromDBByHash returns nil safely, no real DB needed
@@ -245,9 +256,12 @@ func TestGhostdagBlockLookup_BudgetExhaustion(t *testing.T) {
 		t.Fatalf("budget after second real miss = %d, want 0", budget)
 	}
 	// Budget now exhausted: a third distinct miss must NOT decrement further
-	// (would go negative) and must still return nil without panicking.
+	// (would go negative) and — unlike the pre-2026-07-10 contract — must
+	// still genuinely attempt the lookup rather than short-circuiting; with
+	// db == nil the observable result is nil either way, so this only pins
+	// down the non-negative counter invariant, not the call itself.
 	if got := dag.ghostdagBlockLookup("miss-3", &budget); got != nil {
-		t.Fatalf("ghostdagBlockLookup(miss-3) = %v, want nil once budget is exhausted", got)
+		t.Fatalf("ghostdagBlockLookup(miss-3) = %v, want nil (still nothing in state)", got)
 	}
 	if budget != 0 {
 		t.Fatalf("budget after exhaustion = %d, want to stay at 0, not go negative", budget)
