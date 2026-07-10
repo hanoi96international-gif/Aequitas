@@ -2063,9 +2063,33 @@ if !ok {
 			missing[:min(16, len(missing))], dag.ghostdagStuckCount, ghostdagStuckThreshold)
 		return nil
 	}
+	// FIX (P0, 2026-07-10 — found live via the explorer UI within minutes of
+	// this bridge shipping): BlueScore=0 made the stub look like it belonged
+	// at the very start of the chain's history. block itself then computed
+	// its own BlueScore as roughly stub.BlueScore+1 — near zero, light-years
+	// below the chain's real accumulated score — silently replacing this
+	// node's canonical chain with a permanently wrong-scored fork built on
+	// fabricated history (confirmed live: dropped from ~3.58M to ~1300).
+	// highestKnownBlueScoreLocked anchors the stub to the current known
+	// frontier instead, so this block's own score stays roughly where the
+	// real chain already is. Height mirrors queueOrphan's own stub
+	// convention (minWaitingHeight-1, i.e. "immediately before whatever
+	// needed it") rather than a hardcoded 0 for the same reason.
 	fmt.Printf("[BLOCK] ⚠ Merge-set ancestor %s... still unresolvable after %d consecutive ticks — bridging with a synthetic checkpoint stub so production can continue (same class of genuinely-lost-block gap already handled elsewhere; no effect on account balances)\n",
 		missing[:min(16, len(missing))], dag.ghostdagStuckCount)
-	dag.blocks[missing] = &Block{Hash: missing, Height: 0, BlueScore: 0, Proposer: "synthetic-checkpoint", ParentHashes: []string{}}
+	stubHeight := block.Height - 1
+	if stubHeight < 0 {
+		stubHeight = 0
+	}
+	dag.blocks[missing] = &Block{Hash: missing, Height: stubHeight, BlueScore: dag.safeStubBlueScoreLocked(), Proposer: "synthetic-checkpoint", ParentHashes: []string{}}
+	dag.syntheticCheckpointCount.Add(1)
+	if stubHeight > dag.bootHeight {
+		dag.unverifiedSyntheticCheckpointCount.Add(1)
+		dag.unverifiedStubHeights[missing] = stubHeight
+	}
+	if dag.state != nil {
+		SafeGoroutine("RecordSyntheticCheckpointEvent-producestuck", func() { dag.state.RecordSyntheticCheckpointEvent(missing, stubHeight, "produce-block-stuck") })
+	}
 	dag.ghostdagStuckHash = ""
 	dag.ghostdagStuckCount = 0
 	missing, ok = dag.computeGHOSTDAGState(block)
@@ -2525,10 +2549,23 @@ func (dag *BlockDAG) queueOrphan(missingParent string, block *Block) {
 			dag.mu.Lock()
 			stubInserted := false
 			if _, exists := dag.blocks[missingParent]; !exists {
+				// FIX (P0, 2026-07-10 — found live via the explorer UI
+				// within minutes of an equivalent hardcoded-0 bridge
+				// shipping in ProduceBlock, same underlying hazard here):
+				// BlueScore=0 made this stub look like it belonged at the
+				// very start of the chain's history. Any real block built
+				// with it as an ancestor computed its own BlueScore as
+				// roughly stub.BlueScore+1 -- silently replacing this
+				// node's canonical chain with a permanently wrong-scored
+				// fork built on fabricated history. See
+				// safeStubBlueScoreLocked's own comment for why frontier-1,
+				// not 0 and not a height-derived estimate (that direction
+				// was already tried and reverted for BridgeHistoricalGap,
+				// see its own comment) is the fix for this MID-CHAIN case.
 				dag.blocks[missingParent] = &Block{
 					Hash:         missingParent,
 					Height:       stubH,
-					BlueScore:    0,
+					BlueScore:    dag.safeStubBlueScoreLocked(),
 					Proposer:     "synthetic-checkpoint",
 					ParentHashes: []string{},
 				}
@@ -4321,6 +4358,57 @@ func (dag *BlockDAG) GetBlockByHeight(height int64) *Block {
 // budget, falling back to the caller's existing DB-heuristic fallback
 // (GetBlockByHeight already calls LoadBlockFromDBByHeight when this
 // returns nil) instead of blocking indefinitely.
+// safeStubBlueScoreLocked returns the BlueScore to give a NEWLY bridged
+// synthetic-checkpoint stub for a genuinely-lost MID-CHAIN ancestor — see
+// queueOrphan's and ProduceBlock's own FIX comments for the incident this
+// closes. Must be called under dag.mu.
+//
+// Two failure modes sit on either side of this, both confirmed live at
+// different points this same session:
+//   - BlueScore=0 (the original value, still correct for the UNRELATED
+//     startup-only BridgeHistoricalGap boundary stub — see that function's
+//     own comment for why 0 is deliberate there) made a mid-chain stub look
+//     like it belonged at the very start of the chain's history. Any real
+//     block built with it as an ancestor computed its own BlueScore as
+//     roughly stub.BlueScore+1 -- near zero, light-years below the chain's
+//     real accumulated score -- silently replacing this node's canonical
+//     chain with a permanently wrong-scored fork built on fabricated
+//     history (confirmed live: dropped from ~3.58M to ~1300).
+//   - A height-derived HIGH estimate was tried for BridgeHistoricalGap
+//     before landing on 0 (see that function's own comment) for the
+//     opposite reason: an inflated score can make the stub unfairly WIN the
+//     "highest BlueScore" SelectedParent comparison against a genuinely
+//     resolvable, honestly-scored real parent, the moment they compete
+//     side by side.
+//
+// One less than the current known frontier (canonicalBlockAtHeightLocked's
+// own tips scan, same exclusion for stubs) threads both: a real parent at
+// or near the live frontier -- the common case, since anything competing
+// for SelectedParent on a live block is itself recent -- still wins on
+// score, so the stub can never unfairly hijack SelectedParent away from a
+// genuinely resolvable option; but when the stub IS the only viable parent,
+// its descendant starts from roughly where the real chain already is
+// instead of resetting to scratch. Not a perfectly reconstructed historical
+// value (that data is genuinely gone, by definition of needing to bridge at
+// all) -- just close enough to never be mistaken for, or construct, a
+// competing low-score fork.
+func (dag *BlockDAG) safeStubBlueScoreLocked() int64 {
+	var frontier int64
+	for hash := range dag.tips {
+		b := dag.blocks[hash]
+		if b == nil || b.Proposer == "synthetic-checkpoint" {
+			continue
+		}
+		if b.BlueScore > frontier {
+			frontier = b.BlueScore
+		}
+	}
+	if frontier <= 0 {
+		return 0
+	}
+	return frontier - 1
+}
+
 func (dag *BlockDAG) canonicalBlockAtHeightLocked(height int64) *Block {
 	var best *Block
 	for hash := range dag.tips {
