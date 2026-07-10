@@ -1710,6 +1710,35 @@ if dag.bootHeight > 0 && dag.height+10 < dag.bootHeight {
 	return nil
 }
 
+// FIX (P0, 2026-07-10 — root cause of Contabo1 forking within its first
+// 30-45 blocks after every RESYNC_FROM_SNAPSHOT boot, THREE attempts in a
+// row to fix via the height-based gate below before finding this): every
+// version of that gate compares dag.height against some target — but
+// dag.height is exactly the field THIS node's own self-production also
+// advances. The instant that gate first opens even briefly, self-
+// production and the (correctly, continuously refreshed) target both then
+// climb at the same ~1-block/BLOCK_TIME pace, so "dag.height >= target-10"
+// stays satisfied forever after — a self-sustaining equilibrium with no
+// relation to whether genuine peer catch-up ever finished. Confirmed live:
+// even peerSyncHeight (immune to self-production, unlike raw dag.height)
+// didn't close this, because doSyncOnce deliberately advances it for every
+// block it SEES in a fetched page regardless of whether AddPeerBlock could
+// actually merge it (see that field's own struct comment) — once a fork
+// exists, every subsequent peer page still "counts" as seen even though
+// none of it merges. No height-derived counter is safe to gate on here.
+// A hard wall-clock minimum sidesteps the whole class of problem: doSyncOnce
+// bulk catch-up is separately proven to close a multi-hundred-block gap in
+// single-digit seconds once genuinely running (confirmed live: batches of
+// 30-50 blocks per second) — dag.startupTime is stamped once, at process
+// start, immune to everything above.
+if dag.bootHeight > 0 {
+	if elapsed := dag.secondsSinceStartup(); elapsed < minProductionDelayAfterSnapshotBoot {
+		fmt.Printf("[BLOCK] ⏳ Minimum post-resync settle window active (%ds/%ds elapsed) — skipping block production regardless of height-based gates\n",
+			elapsed, minProductionDelayAfterSnapshotBoot)
+		return nil
+	}
+}
+
 // Initial-sync gate: after a restart, defer production until this node
 // has caught up to within 10 blocks of the height the seed reported at
 // startup. This prevents producing on a stale fork while the HTTP sync
@@ -2836,6 +2865,22 @@ const maxTrackedProposers = 500
 // process startup — see the gate's own comment for why that distinction
 // matters for a large historical catch-up (e.g. after RESYNC_FROM_SNAPSHOT).
 const syncStallTimeout = 90
+
+// minProductionDelayAfterSnapshotBoot (seconds) is a hard wall-clock floor
+// on top of the height-based initial-sync gate for a snapshot-seeded boot —
+// see that gate's own FIX comment for why a height-derived signal alone
+// isn't safe here. Comfortably above the ~30-45s window forks were
+// confirmed live to form in without this, comfortably below syncStallTimeout
+// so a genuinely-down seed still doesn't block production indefinitely.
+const minProductionDelayAfterSnapshotBoot = 60
+
+// secondsSinceStartup returns elapsed wall-clock time since dag.startupTime
+// was stamped (NewBlockchain) — extracted from the minProductionDelayAfterSnapshotBoot
+// gate purely so its arithmetic is unit-testable without ProduceBlock's full
+// setup (DB, signing keys, etc.).
+func (dag *BlockDAG) secondsSinceStartup() int64 {
+	return time.Now().Unix() - dag.startupTime
+}
 
 // proposerBlockBlocked reports whether a proposer's blocks should be dropped now
 // WITHOUT taking dag.mu, because its breaker is open (still inside the cooldown).
