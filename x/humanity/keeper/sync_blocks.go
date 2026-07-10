@@ -1441,19 +1441,41 @@ func (dag *BlockDAG) fetchAndSetSyncTarget(seeds []string) {
 		} `json:"chain"`
 	}
 	var maxHeight int64
+	caughtUpWithEverySeed := true
 	for _, seed := range seeds {
 		resp, err := httpSyncClient.Get(seed + "/api/health/combined")
 		if err != nil {
 			continue
 		}
 		var h healthResp
-		if err := json.NewDecoder(resp.Body).Decode(&h); err == nil && h.Chain.Height > maxHeight {
-			maxHeight = h.Chain.Height
+		if err := json.NewDecoder(resp.Body).Decode(&h); err == nil {
+			if h.Chain.Height > maxHeight {
+				maxHeight = h.Chain.Height
+			}
+			// FIX (P0, 2026-07-10 — remaining gap after the refresh-cadence
+			// fix above): comparing against dag.Height() (raw dag.height,
+			// which THIS node's own self-production also advances) let a
+			// node that had started producing on still-incomplete data
+			// silently look "caught up" the moment its own block count
+			// happened to reach the seed's last-observed height — exactly
+			// the same self-production-races-ahead hazard doSyncOnce's own
+			// peerSyncHeight already exists to avoid (see that field's
+			// struct comment). getPeerSyncHeight tracks blocks genuinely
+			// PULLED from this specific seed, immune to this node's own
+			// production rate, so it stays a faithful signal of real
+			// historical absorption through the exact window this gate
+			// protects. Confirmed live: even with the 1s refresh cadence,
+			// Contabo1 still forked ~30 blocks after every fresh checkpoint
+			// once self-production started outracing the dag.Height()
+			// comparison.
+			if h.Chain.Height > dag.getPeerSyncHeight(seed) {
+				caughtUpWithEverySeed = false
+			}
 		}
 		resp.Body.Close()
 	}
-	if maxHeight <= dag.Height() {
-		return // already at or ahead of seed — no gate needed
+	if caughtUpWithEverySeed {
+		return // genuinely absorbed every seed's chain — no gate needed
 	}
 	dag.syncTargetHeight.Store(maxHeight)
 	fmt.Printf("[SYNC] Initial-sync gate active: deferring block production until height %d (currently %d)\n",
