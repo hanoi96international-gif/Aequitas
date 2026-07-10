@@ -2305,10 +2305,30 @@ func (dag *BlockDAG) queueOrphan(missingParent string, block *Block) {
 			block.Height, block.Proposer, block.Height-frontier, frontier, maxOrphanHeightGap)
 		return
 	}
+	// FIX (P0, 2026-07-10 — root cause of Contabo1's permanent non-convergence
+	// incident): while THIS node is still in its own initial catch-up
+	// (isCatchingUpLocked — same signal AddPeerBlock's far-ahead breaker
+	// already trusts for an identical judgment call), a 15-minute orphan
+	// silence is not evidence the parent is unresolvable — it's evidence this
+	// node is currently too loaded to reach it in time. Confirmed live: with
+	// dag.mu serializing catch-up's own AddPeerBlock calls against concurrent
+	// ProduceBlock/push/deepScan work, curl-ing the "missing" parent directly
+	// from the peer returned it instantly and correctly the whole time — nothing
+	// was actually gone. Bridging it into a synthetic-checkpoint stub anyway
+	// added one more permanently-fake block AND one more dag.tips entry, making
+	// every subsequent GHOSTDAG merge-set computation heavier and catch-up
+	// slower still — a self-reinforcing spiral that fabricated 469,599 stubs
+	// (chain_blocks held only 57,884 real rows) while a healthy sibling node
+	// bootstrapped from the identical snapshot at the identical time finished
+	// clean. Skipping the bridge here does not lose the block: it stays queued
+	// and fetchMissingAncestors keeps retrying it every cycle regardless: the
+	// deferred abandon-to-stub check below still applies in full once this node
+	// is no longer the bottleneck.
+	catchingUp := dag.isCatchingUp()
 	dag.orphansMu.Lock()
 	now := time.Now()
 	if first, ok := dag.orphanFirstSeen[missingParent]; ok {
-		if now.Sub(first) > orphanAbandonAfter && dag.orphanAttempts[missingParent] >= minOrphanAttemptsBeforeAbandon {
+		if !catchingUp && now.Sub(first) > orphanAbandonAfter && dag.orphanAttempts[missingParent] >= minOrphanAttemptsBeforeAbandon {
 			waiting := append([]*Block{}, dag.orphans[missingParent]...)
 			waiting = append(waiting, block) // this delivery too — it's the one that triggered this check
 			delete(dag.orphans, missingParent)
@@ -2626,6 +2646,16 @@ func (dag *BlockDAG) isCatchingUpLocked() bool {
 		return true
 	}
 	return false
+}
+
+// isCatchingUp is isCatchingUpLocked's unlocked wrapper (see
+// farAheadFrontier/farAheadFrontierLocked for the identical pattern), for
+// callers like queueOrphan that reach this check without already holding
+// dag.mu.
+func (dag *BlockDAG) isCatchingUp() bool {
+	dag.mu.RLock()
+	defer dag.mu.RUnlock()
+	return dag.isCatchingUpLocked()
 }
 
 // farAheadFrontierLocked returns the height against which the far-ahead
