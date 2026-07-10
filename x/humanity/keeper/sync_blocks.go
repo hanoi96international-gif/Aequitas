@@ -573,6 +573,29 @@ func (dag *BlockDAG) claimDeepScanSlot(nodeURL string) bool {
 	return true
 }
 
+// deepScanPageBudgetPerCall bounds how many pages ONE doSyncOnce call walks
+// while in deepScan mode — see deepScanResumeHeight's own struct comment
+// (block.go) for the incident this closes. 20 pages (10,000 blocks at
+// pageSize=500) keeps a single call's worst-case duration to roughly a
+// second or two of real work instead of up to maxPagesPerCall (2000 pages,
+// 1,000,000 blocks), which measured live took minutes and blocked this
+// peer's entire sync loop for that whole span.
+const deepScanPageBudgetPerCall = 20
+
+// getDeepScanResumeHeight/setDeepScanResumeHeight read and update
+// deepScanResumeHeight (see that field's own struct comment, block.go).
+func (dag *BlockDAG) getDeepScanResumeHeight(nodeURL string) int64 {
+	dag.lastDeepScanAtMu.Lock()
+	defer dag.lastDeepScanAtMu.Unlock()
+	return dag.deepScanResumeHeight[nodeURL]
+}
+
+func (dag *BlockDAG) setDeepScanResumeHeight(nodeURL string, height int64) {
+	dag.lastDeepScanAtMu.Lock()
+	defer dag.lastDeepScanAtMu.Unlock()
+	dag.deepScanResumeHeight[nodeURL] = height
+}
+
 // getPeerSyncHeight/advancePeerSyncHeight track peerSyncHeight (see that
 // field's own struct comment for the incident this exists to fix) — the
 // highest height this node has actually imported FROM nodeURL specifically,
@@ -698,7 +721,18 @@ func (dag *BlockDAG) doSyncOnce(nodeURL string) (ok bool) {
 	// height-0 walk per deepScanMinInterval; fetchMissingAncestors (the
 	// cheap, targeted hash lookup) still runs every single cycle regardless.
 	wantDeepScan := len(dag.MissingParentHashes()) > 0
-	deepScan := wantDeepScan && dag.claimDeepScanSlot(nodeURL)
+	// FIX (P0, 2026-07-10): a deepScan pass already IN PROGRESS (resume
+	// height beyond the floor — see deepScanResumeHeight's struct comment)
+	// must not wait out claimDeepScanSlot's 30s-per-peer cooldown between
+	// each bounded continuation — that cooldown exists to throttle how
+	// often an expensive full walk gets STARTED, not to throttle an
+	// already-bounded, already-cheap continuation of one already running.
+	// Gating continuations on it too would make walking past a large
+	// already-known historical region (e.g. ~680,000 blocks, confirmed
+	// live) take tens of minutes in 30s-spaced 10,000-block increments
+	// instead of well under a minute back-to-back.
+	resumingDeepScan := dag.getDeepScanResumeHeight(nodeURL) > 0
+	deepScan := wantDeepScan && (resumingDeepScan || dag.claimDeepScanSlot(nodeURL))
 	// FIX (audit 2026-07-06, definitive root cause of a 3-node non-merging
 	// incident): this used to be dag.Height()-syncOverlap — dag.Height() is
 	// the highest height from ANY source, including this node's own
@@ -721,6 +755,14 @@ func (dag *BlockDAG) doSyncOnce(nodeURL string) (ok bool) {
 		// dag.BootHeight() — the 2026-07-04 permanent-non-convergence
 		// incident this fixes.
 		minHeight = dag.deepScanFloor()
+		if deepScan {
+			// Resume a previously-bounded pass instead of restarting the
+			// full historical walk from the floor every call — see
+			// deepScanResumeHeight's own struct comment (block.go).
+			if resume := dag.getDeepScanResumeHeight(nodeURL); resume > minHeight {
+				minHeight = resume
+			}
+		}
 	}
 	totalAdded := 0
 	highestSeen := int64(-1)
@@ -738,7 +780,21 @@ func (dag *BlockDAG) doSyncOnce(nodeURL string) (ok bool) {
 	// page (ordinary Height > minHeight query) and set to the last block's hash
 	// whenever a full page is returned, advancing the cursor into the next page.
 	var afterHash string
-	for page := 0; page < maxPagesPerCall; page++ {
+	// FIX (P0, 2026-07-10): deepScan uses a much smaller page budget than an
+	// ordinary catch-up call — see deepScanPageBudgetPerCall's own comment
+	// for the incident this closes (an unbounded deepScan pass blocking
+	// this peer's entire sync loop for minutes). reachedPeerTip records
+	// whether this call ended because the peer genuinely had nothing more
+	// (a true empty page), vs. merely running out of this call's budget —
+	// only the former means a deepScan pass has actually finished a
+	// complete sweep (see the len(blocks)==0 branch below and this
+	// function's post-loop bookkeeping).
+	pagesBudget := maxPagesPerCall
+	if deepScan {
+		pagesBudget = deepScanPageBudgetPerCall
+	}
+	reachedPeerTip := false
+	for page := 0; page < pagesBudget; page++ {
 		blocks, err := dag.fetchBlocksSince(nodeURL, minHeight, afterHash, pageSize)
 		if err != nil {
 			fmt.Printf("[HTTP-SYNC] ✗ Could not fetch page (min_height=%d) from %s: %v\n", minHeight, nodeURL, err)
@@ -748,6 +804,7 @@ func (dag *BlockDAG) doSyncOnce(nodeURL string) (ok bool) {
 			break // got at least one page this call; report what we added
 		}
 		if len(blocks) == 0 {
+			reachedPeerTip = true
 			break // caught up — peer has nothing newer than our height
 		}
 		addedThisPage := 0
@@ -837,6 +894,21 @@ func (dag *BlockDAG) doSyncOnce(nodeURL string) (ok bool) {
 			// through the historical region before the missing chain starts.
 			// Keep going — the first block of the missing validator chain
 			// is somewhere ahead.
+		}
+	}
+	if deepScan {
+		if reachedPeerTip {
+			// A full sweep actually completed — see deepScanResumeHeight's
+			// struct comment for why this resets to 0 (not just stops
+			// advancing): a LATER deepScan triggered by a fresh, unrelated
+			// orphan must start a genuine full sweep from the true floor
+			// again, not silently resume from "already at the tip" and skip
+			// over whatever new gap it was actually triggered to find.
+			dag.setDeepScanResumeHeight(nodeURL, 0)
+		} else {
+			// Budget exhausted mid-walk — continue from here next call
+			// instead of restarting from the floor.
+			dag.setDeepScanResumeHeight(nodeURL, minHeight)
 		}
 	}
 	if highestSeen >= 0 {

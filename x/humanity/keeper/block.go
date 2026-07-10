@@ -325,6 +325,32 @@ replayedMu             sync.Mutex
 	// Now keyed per nodeURL so every peer gets its own independent cooldown.
 	lastDeepScanAtMu sync.Mutex
 	lastDeepScanAt   map[string]int64
+	// deepScanResumeHeight (P0, 2026-07-10 — real root cause of Primary never
+	// merging a single live block from a peer with a large historical gap):
+	// a deepScan pass used to walk the ENTIRE range from deepScanFloor() to
+	// the peer's current tip in one synchronous doSyncOnce call — up to
+	// maxPagesPerCall (2000 pages, 1,000,000 blocks). For a peer whose chain
+	// is hundreds of thousands of blocks tall, that single call can take
+	// minutes, during which THIS peer's entire 1s-ticker sync loop is
+	// blocked inside it — confirmed live via recordRawArrivalLatency: avg
+	// 174-176s (max 407s) latency for blocks that should attach in well
+	// under a second, with dag_tips_count stuck at 1 and zero successful
+	// peer merges for a node's entire uptime, even though the peer was
+	// fully healthy, registered, and authorized the whole time. Every fresh
+	// block orphaned on its own immediate predecessor, which was itself
+	// stuck behind the same monopolized call. This map remembers, per peer,
+	// how far a BOUNDED deepScan pass (see deepScanPageBudgetPerCall) has
+	// progressed, so the next call resumes forward instead of restarting
+	// the full historical walk from the floor every time — preserving
+	// deepScan's complete-history guarantee while keeping the sync loop
+	// responsive to live blocks throughout. Reset to 0 once a pass actually
+	// reaches the peer's current tip (a real empty page, not just a short
+	// one — see doSyncOnce's own comment on why a short page alone isn't a
+	// reliable "done" signal in deepScan mode), so a later deepScan
+	// triggered by a fresh, unrelated orphan still starts a genuine full
+	// sweep instead of silently skipping straight back to "already at the
+	// tip". Guarded by lastDeepScanAtMu (same per-peer bookkeeping lock).
+	deepScanResumeHeight map[string]int64
 	// syncTargetHeight is set at startup to the seed node's current block
 	// height. ProduceBlock defers production until this node has caught up
 	// to within 10 blocks of the target, preventing the "produce on a stale
@@ -821,6 +847,7 @@ proposerBreaker:        newBoundedBreaker(proposerBreakerFailThreshold, proposer
 	softRetryBlocks:        make(map[string]*Block),
 	softRetryFirstAt:       make(map[string]time.Time),
 	lastDeepScanAt:         make(map[string]int64),
+	deepScanResumeHeight:   make(map[string]int64),
 }
 if key, generated, err := loadOrCreateRelayerKey(); err != nil {
 	fmt.Printf("[BLOCK] Warning: RELAYER_PRIVATE_KEY invalid, blocks will be unsigned: %v\n", err)
@@ -1737,10 +1764,36 @@ if syntheticCount := dag.UnverifiedSyntheticCheckpointCount(); syntheticCount > 
 // as orphans.  Gate until the sequential catch-up sync has delivered enough
 // headers that our state is consistent with the blocks we're building on.
 // A 10-block buffer avoids false negatives from in-flight sync races.
+//
+// FIX (P0, 2026-07-10 — closes the one gate in this function that had no
+// escape valve): every gate below this one that can block production
+// indefinitely (the trusted-seed catch-up gate and the syncTargetHeight
+// gate, both further down) explicitly falls through once
+// dag.lastSuccessfulPeerSyncAt has been silent for syncStallTimeout — "a
+// downed/unreachable primary must not halt this node forever" is the
+// documented rationale for both. This gate predates that pattern and never
+// got it: if dag.height ever stops climbing while bootHeight stays fixed
+// above it — the exact shape a stuck sync loop (of any cause, not only the
+// deepScan-monopolization incident this same session also fixed in
+// sync_blocks.go) produces — this unconditional check blocked production
+// forever, with no recovery short of an operator restart, unlike its two
+// siblings immediately below. Same reference time and same threshold as
+// those two gates, for the identical reason: only trip once there has been
+// genuinely NO sync progress at all for a long stretch, never merely
+// because catch-up is still in progress and actively succeeding.
 if dag.bootHeight > 0 && dag.height+10 < dag.bootHeight {
-	fmt.Printf("[BLOCK] ⏳ Catch-up in progress (dag.height=%d, bootHeight=%d) — skipping block production\n",
-		dag.height, dag.bootHeight)
-	return nil
+	referenceTime := dag.lastSuccessfulPeerSyncAt.Load()
+	if referenceTime == 0 {
+		referenceTime = dag.startupTime
+	}
+	if time.Now().Unix()-referenceTime < syncStallTimeout {
+		fmt.Printf("[BLOCK] ⏳ Catch-up in progress (dag.height=%d, bootHeight=%d) — skipping block production\n",
+			dag.height, dag.bootHeight)
+		return nil
+	}
+	// else: no sync progress at all for syncStallTimeout — peers may be
+	// unreachable → produce independently rather than halt forever, same
+	// escape hatch as the two gates below.
 }
 
 // FIX (P0, 2026-07-10 — root cause of Contabo1 forking within its first
