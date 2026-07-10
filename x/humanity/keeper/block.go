@@ -2143,6 +2143,35 @@ if dag.signingKey != nil {
 	// is what peers need for consensus verification.
 	proposer = crypto.PubkeyToAddress(dag.signingKey.PublicKey).Hex()
 }
+
+// FIX (P0, 2026-07-10 — Primary false-positive-equivocation-ban incident):
+// a brief window where an OLD and NEW instance of this exact validator run
+// simultaneously (e.g. a rolling redeploy that briefly overlaps the
+// outgoing and incoming container) can otherwise have BOTH instances
+// independently produce the "first" block from the identical pre-restart
+// tip, seconds apart — same height, same parents, same BlueScore, only the
+// timestamp (and therefore hash) differing. Every OTHER node's
+// checkAndIndexEquivocation (slashing.go) correctly flags that as this
+// validator signing two different blocks for the same parent set — because
+// from the network's perspective, that's exactly what happened. Confirmed
+// live: this exact pattern (height == bootHeight+1, ~1s apart, identical
+// otherwise) hit Primary three times (2026-07-05, 07-08, 07-10, evidence in
+// equivocation_evidence on Contabo1), accumulating to a permanent ban.
+// Only checked for the very first height this process will ever produce
+// (maxParentHeight+1 == bootHeight+1) — a one-time, boot-only check with
+// zero effect on steady-state production. dag.state.HasBlockFromProposerAtHeight
+// hits the DURABLE store (chain_blocks), not this fresh process's own
+// (necessarily empty-for-this-height) in-memory dag.blocks, so it can see
+// what an outgoing sibling instance already committed moments ago even
+// though this instance never received it directly. Skip this tick rather
+// than mint a competing duplicate; ordinary peer sync pulls the other
+// instance's already-broadcast block in within the next tick or two,
+// advancing dag.tips so this guard naturally stops matching.
+if maxParentHeight+1 == dag.bootHeight+1 && dag.state != nil && dag.state.HasBlockFromProposerAtHeight(proposer, maxParentHeight+1) {
+	fmt.Printf("[BLOCK] ⏸ Skipping production at height %d — this validator already has a block there in the durable store (likely a concurrent instance from a redeploy overlap); waiting for ordinary peer sync to pull it in instead of minting a conflicting duplicate\n", maxParentHeight+1)
+	return nil
+}
+
 block := &Block{
 Height:       maxParentHeight + 1,
 Timestamp:    time.Now().Unix(),

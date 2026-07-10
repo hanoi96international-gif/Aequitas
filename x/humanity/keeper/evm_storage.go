@@ -3012,6 +3012,26 @@ func (cs *ChainState) LoadBlockFromDBByHeight(height int64) *Block {
 	return best
 }
 
+// HasBlockFromProposerAtHeight reports whether chain_blocks already has a
+// row for the given (proposer, height) pair. Used by ProduceBlock's
+// post-boot double-production guard (see that call site's own comment) —
+// unlike LoadBlockFromDBByHeight, which picks the single highest-BlueScore
+// block at a height regardless of proposer (the right tool for canonical
+// lookups, the wrong one here), this checks specifically for THIS
+// validator's own row, since two different validators legitimately sharing
+// a height is normal GHOSTDAG operation, not the case this guards against.
+func (cs *ChainState) HasBlockFromProposerAtHeight(proposer string, height int64) bool {
+	if cs.db == nil {
+		return false
+	}
+	var exists bool
+	cs.db.QueryRow(
+		`SELECT EXISTS(SELECT 1 FROM chain_blocks WHERE height = $1 AND lower(proposer) = lower($2))`,
+		height, proposer,
+	).Scan(&exists)
+	return exists
+}
+
 // LoadBlockFromDBByHash loads a single block header by hash directly from
 // chain_blocks, bypassing dag.blocks entirely. Used as a fallback when a
 // block needed for a computation (e.g. the finality checkpoint's

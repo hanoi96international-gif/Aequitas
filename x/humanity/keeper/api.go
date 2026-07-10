@@ -2627,7 +2627,7 @@ func (a *APIServer) handleDapp(w http.ResponseWriter, r *http.Request) {
 
 func (a *APIServer) handleAppDownload(w http.ResponseWriter, r *http.Request) {
 	const apkPath = "downloads/aequitas-app.apk"
-	const fallbackURL = "https://github.com/hanoi96international-gif/Aequitas/releases/download/app-v1.3.0/app-release.apk"
+	const fallbackURL = "https://github.com/hanoi96international-gif/Aequitas/releases/download/app-v1.3.1/app-release.apk"
 	f, err := os.Open(apkPath)
 	if err != nil {
 		// File not found in container — redirect to GitHub raw URL.
