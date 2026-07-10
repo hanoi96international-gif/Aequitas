@@ -336,6 +336,13 @@ replayedMu             sync.Mutex
 	syncTargetHeight   atomic.Int64
 	activeGhostdagK    atomic.Int32 // live GHOSTDAG K for current epoch; 0 → use ghostdagKBase
 	startupTime        int64        // Unix timestamp of NewBlockchain — used by the initial-sync gate
+	// ghostdagStuckHash/ghostdagStuckCount track ProduceBlock's own
+	// consecutive-tick stuck-on-the-same-ancestor escape hatch — see that
+	// call site's own FIX comment. Plain fields, not atomics: only ever
+	// read/written from within ProduceBlock, which holds dag.mu for its
+	// entire call.
+	ghostdagStuckHash  string
+	ghostdagStuckCount int
 	// lastFarAheadLogAt rate-limits the "dropped far-ahead orphan" log (unix
 	// nanos, atomic) so a fork flood can't turn the log itself into the
 	// bottleneck — see AddPeerBlock's lock-free flood shield.
@@ -2018,17 +2025,59 @@ if dag.signingKey != nil {
 // dag.blocks; the block is not yet in dag.blocks (not needed by compute).
 //
 // FIX (P0, 2026-07-10): parentHashes were chosen from dag.tips moments ago
-// (already locally present), so a genuinely-unresolvable DEEPER ancestor is
-// rare here — but not impossible (e.g. one of our own tips itself inherited
-// an unresolved-at-the-time reference). Unlike a peer block, there is
-// nothing to "queue as an orphan": this block doesn't exist yet. Simply
-// skip producing this tick rather than persisting a BlueScore computed from
-// an incomplete merge set — the next ProduceBlock tick re-selects tips and
-// retries from scratch, by which point the transiently-missing ancestor has
-// very likely arrived.
-if missing, ok := dag.computeGHOSTDAGState(block); !ok {
-	fmt.Printf("[BLOCK] ⏳ Skipping production this tick — merge-set ancestor %s... not yet resolvable\n", missing[:min(16, len(missing))])
-	return nil
+// (already locally present), so a genuinely-unresolvable DEEPER ancestor was
+// assumed rare here — but not impossible (e.g. one of our own tips itself
+// inherited an unresolved-at-the-time reference). Unlike a peer block,
+// there is nothing to "queue as an orphan": this block doesn't exist yet.
+// Skip producing this tick and let the next tick retry.
+//
+// FIX (P0, 2026-07-10 — found live within minutes of the above shipping):
+// that assumption was wrong in one specific way that turns "rare" into
+// "permanent": a hash can be genuinely, PERMANENTLY lost from the entire
+// network's memory (confirmed earlier this session for the finality-
+// checkpoint walk — see registerFinalityWalkGap's own comment for that
+// class of incident), not just transiently in flight. Skip-and-retry alone
+// has no escape from that case: the same unresolvable hash reappears every
+// single tick forever, halting this node's own production indefinitely —
+// confirmed live, 1000+ consecutive ticks stuck on the identical hash.
+// dag.mu is held for the whole ProduceBlock call (single-threaded from
+// this field's perspective), so a plain pair of fields is sufficient to
+// track "am I stuck on the same hash as last tick" without new locking.
+// After ghostdagStuckThreshold consecutive ticks blocked on the identical
+// hash, bridge it exactly like BridgeHistoricalGap/queueOrphan's own
+// synthetic-checkpoint stub does for the identical "genuinely gone"
+// scenario elsewhere in this file — a zero-parent placeholder that lets
+// ghostdagBlockLookup find SOMETHING (ending that branch's walk there,
+// same as any legitimate depth-limit/root-of-history case) instead of
+// looping on an unresolvable lookup forever.
+missing, ok := dag.computeGHOSTDAGState(block)
+if !ok {
+	if missing == dag.ghostdagStuckHash {
+		dag.ghostdagStuckCount++
+	} else {
+		dag.ghostdagStuckHash = missing
+		dag.ghostdagStuckCount = 1
+	}
+	if dag.ghostdagStuckCount < ghostdagStuckThreshold {
+		fmt.Printf("[BLOCK] ⏳ Skipping production this tick — merge-set ancestor %s... not yet resolvable (%d/%d)\n",
+			missing[:min(16, len(missing))], dag.ghostdagStuckCount, ghostdagStuckThreshold)
+		return nil
+	}
+	fmt.Printf("[BLOCK] ⚠ Merge-set ancestor %s... still unresolvable after %d consecutive ticks — bridging with a synthetic checkpoint stub so production can continue (same class of genuinely-lost-block gap already handled elsewhere; no effect on account balances)\n",
+		missing[:min(16, len(missing))], dag.ghostdagStuckCount)
+	dag.blocks[missing] = &Block{Hash: missing, Height: 0, BlueScore: 0, Proposer: "synthetic-checkpoint", ParentHashes: []string{}}
+	dag.ghostdagStuckHash = ""
+	dag.ghostdagStuckCount = 0
+	missing, ok = dag.computeGHOSTDAGState(block)
+	if !ok {
+		// The bridge resolved one hash but the walk hit a second, different
+		// one — extremely unlikely (would need multiple independent gaps in
+		// the same merge-set walk) but stay safe: skip this tick rather than
+		// loop, the stuck-hash counter above will bridge the new one too on
+		// its own schedule.
+		fmt.Printf("[BLOCK] ⏳ Skipping production this tick — merge-set ancestor %s... not yet resolvable\n", missing[:min(16, len(missing))])
+		return nil
+	}
 }
 
 // P1-06 (audit): persist to DB BEFORE inserting into dag.blocks/dag.tips or
@@ -2929,6 +2978,17 @@ const maxTrackedProposers = 500
 // process startup — see the gate's own comment for why that distinction
 // matters for a large historical catch-up (e.g. after RESYNC_FROM_SNAPSHOT).
 const syncStallTimeout = 90
+
+// ghostdagStuckThreshold is how many CONSECUTIVE ProduceBlock ticks in a row
+// may be blocked on the identical unresolvable merge-set ancestor before it
+// gets bridged with a synthetic-checkpoint stub — see that call site's own
+// FIX comment for the live incident (1000+ consecutive stuck ticks, total
+// production halt) this bounds. At BLOCK_TIME=1s this is a few real
+// seconds — generous enough that a genuinely-transient in-flight ancestor
+// still resolves normally well before this fires, tight enough that a
+// genuinely-lost one can't halt this node's own production for more than a
+// handful of ticks.
+const ghostdagStuckThreshold = 5
 
 // proposerBlockBlocked reports whether a proposer's blocks should be dropped now
 // WITHOUT taking dag.mu, because its breaker is open (still inside the cooldown).
