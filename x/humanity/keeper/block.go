@@ -992,9 +992,11 @@ if len(loaded) > 0 {
 			// repairUnreplayedBlocks() instead of trusting it.
 			if b.Replayed {
 				dag.replayedBlocks[b.Hash] = true
-			} else {
-				dag.unreplayedAtBoot = append(dag.unreplayedAtBoot, b)
 			}
+			// else: leave it out of replayedBlocks. Not appended to
+			// unreplayedAtBoot here — LoadUnreplayedBlocksFromDB below finds
+			// every such row directly, unbounded by this loop's startupLoadWindow
+			// (a repair candidate can be arbitrarily far behind the current tip).
 		for _, ph := range b.ParentHashes {
 			referenced[ph] = true
 		}
@@ -1102,6 +1104,19 @@ if len(loaded) > 0 {
 	}
 	fmt.Printf("[BLOCK] Restored %d durable block(s) from chain_blocks — height=%d, tips=%d\n", len(loaded), dag.height, len(dag.tips))
 }
+
+	// LoadUnreplayedBlocksFromDB is a SEPARATE, unbounded query (not
+	// limited by startupLoadWindow above) — a block needing repair can be
+	// arbitrarily far behind the current tip (confirmed live: Contabo1's
+	// one broken block was thousands of blocks behind by the time this was
+	// diagnosed, well outside the RAM-bounded recent-blocks load). See
+	// repairUnreplayedBlocks' own comment for why this can't run yet
+	// (dag.evm isn't set until after NewBlockchain returns).
+	if unrep, err := state.LoadUnreplayedBlocksFromDB(); err != nil {
+		fmt.Printf("[BLOCK] Warning: could not check for unreplayed blocks: %v\n", err)
+	} else if len(unrep) > 0 {
+		dag.unreplayedAtBoot = unrep
+	}
 
 // FIX (double-apply): dag.height/dag.blocks/dag.tips used to be purely
 // in-memory — ReconstructState is a no-op when using Postgres, so they

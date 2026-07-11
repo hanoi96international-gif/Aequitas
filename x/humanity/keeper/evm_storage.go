@@ -3019,6 +3019,60 @@ func (cs *ChainState) LoadBlocksFromDB(minHeight int64) (map[string]*Block, erro
 	return blocks, nil
 }
 
+// LoadUnreplayedBlocksFromDB returns every chain_blocks row with
+// replayed = false, with NO height bound — unlike LoadBlocksFromDB's
+// startupLoadWindow-bounded load (which exists purely to cap startup RAM on
+// a large chain), a block needing repair can be arbitrarily far behind the
+// current tip (confirmed live: Contabo1's one broken block was ~8,500
+// blocks behind by the time this was diagnosed) and would otherwise never
+// even be fetched, let alone repaired. This should only ever return a
+// handful of rows in practice — replayed only stays false when a process is
+// killed mid-replay (see ensureReplayedColumn's comment) — so an unbounded
+// scan is fine; the startup loader's RAM concern doesn't apply to a query
+// that's normally empty.
+func (cs *ChainState) LoadUnreplayedBlocksFromDB() ([]*Block, error) {
+	if cs.db == nil {
+		return nil, nil
+	}
+	cs.ensureGHOSTDAGColumns()
+	cs.ensureReplayedColumn()
+	rows, err := cs.db.Query(`SELECT hash, height, parent_hashes, proposer, timestamp, humans, state_root,
+	                 signature, transactions,
+	                 COALESCE(selected_parent,''), COALESCE(blue_score,0), COALESCE(blues,'[]')
+	          FROM chain_blocks WHERE replayed = false`)
+	if err != nil {
+		return nil, fmt.Errorf("LoadUnreplayedBlocksFromDB query failed: %w", err)
+	}
+	defer rows.Close()
+	var blocks []*Block
+	for rows.Next() {
+		var b Block
+		var parentHashesRaw, txsRaw, bluesRaw string
+		if err := rows.Scan(
+			&b.Hash, &b.Height, &parentHashesRaw, &b.Proposer, &b.Timestamp,
+			&b.Humans, &b.StateRoot, &b.Signature, &txsRaw,
+			&b.SelectedParent, &b.BlueScore, &bluesRaw,
+		); err != nil {
+			fmt.Printf("[BLOCK] LoadUnreplayedBlocksFromDB scan error: %v\n", err)
+			continue
+		}
+		if err := json.Unmarshal([]byte(parentHashesRaw), &b.ParentHashes); err != nil {
+			fmt.Printf("[BLOCK] LoadUnreplayedBlocksFromDB parent_hashes unmarshal error for %s: %v\n", b.Hash, err)
+			continue
+		}
+		if err := json.Unmarshal([]byte(txsRaw), &b.Transactions); err != nil {
+			fmt.Printf("[BLOCK] LoadUnreplayedBlocksFromDB transactions unmarshal error for %s: %v\n", b.Hash, err)
+			continue
+		}
+		if bluesRaw != "" && bluesRaw != "[]" && bluesRaw != "null" {
+			json.Unmarshal([]byte(bluesRaw), &b.Blues)
+		}
+		b.Replayed = false
+		blocks = append(blocks, &b)
+	}
+	return blocks, nil
+}
+
 // LoadBlockFromDBByHeight loads a single block header at the given height
 // directly from chain_blocks, bypassing dag.blocks entirely — same fallback
 // role as LoadBlockFromDBByHash (see its comment), for callers keyed by
