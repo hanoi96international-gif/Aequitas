@@ -1985,10 +1985,21 @@ func (cs *ChainState) ConsumeSwapNonce(wallet string, nonce int64) error {
 	var result interface{ RowsAffected() (int64, error) }
 	var err error
 	if nonce == 0 {
-		// First ever swap for this wallet — insert with next_nonce=1.
+		// First-ever swap for this wallet, OR a retry after RestoreSwapNonce
+		// put next_nonce back to 0 (the first attempt consumed the nonce but
+		// failed afterward, e.g. insufficient balance in SwapAtomic). Plain
+		// "ON CONFLICT DO NOTHING" only covers the true-first-ever case — if
+		// the row already exists, the INSERT is always a no-op regardless of
+		// the row's actual value, which permanently locked out any wallet
+		// whose first swap ever failed after the nonce was consumed (every
+		// later nonce:0 retry hit "already used" forever, even though the
+		// row's next_nonce had correctly been restored to 0). The WHERE
+		// clause makes this behave like the nonce!=0 branch below: it only
+		// succeeds if the row is actually sitting at 0 right now.
 		result, err = cs.db.Exec(
 			`INSERT INTO swap_nonces (wallet_address, next_nonce) VALUES ($1, 1)
-			 ON CONFLICT (wallet_address) DO NOTHING`, wallet)
+			 ON CONFLICT (wallet_address) DO UPDATE SET next_nonce = 1
+			 WHERE swap_nonces.next_nonce = 0`, wallet)
 	} else {
 		// Subsequent swap — increment only if current value matches.
 		result, err = cs.db.Exec(
