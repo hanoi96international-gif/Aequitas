@@ -5593,8 +5593,14 @@ func (dag *BlockDAG) verifyZKProof(tx Transaction) bool {
 		return false
 	}
 
+	// FIX (self-deadlock, live on Contabo1/Contabo2 2026-07-11): this is
+	// called from inside replayTransactions while it already holds
+	// cs.mu.Lock() — the plain CallContract() used to call newStateDB(),
+	// which locks cs.mu itself, deadlocking this goroutine against its own
+	// lock. See ChainState.getAccountsForAddressesLocked's comment for the
+	// full incident.
 	caller := common.HexToAddress(tx.Wallet)
-	ret, err := dag.evm.CallContract(caller, common.HexToAddress(BIO_VERIFIER_ADDR), verifyData, big.NewInt(0), false)
+	ret, err := dag.evm.CallContractLocked(caller, common.HexToAddress(BIO_VERIFIER_ADDR), verifyData, big.NewInt(0))
 	if err != nil {
 		fmt.Printf("[REPLAY] ✗ verifyZKProof: BioVerifier call failed: %v\n", err)
 		return false

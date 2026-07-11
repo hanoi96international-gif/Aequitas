@@ -4495,6 +4495,28 @@ func (cs *ChainState) GetAllAccounts() []*AccountState {
 func (cs *ChainState) GetAccountsForAddresses(addrs []string) []*AccountState {
 	cs.mu.Lock()
 	defer cs.mu.Unlock()
+	return cs.getAccountsForAddressesLocked(addrs)
+}
+
+// GetAccountsForAddressesLocked is GetAccountsForAddresses' lock-free
+// sibling — same "...Locked assumes cs.mu already held" convention used
+// elsewhere in this file (see snapshotForRollbackLocked et al.).
+//
+// FIX (self-deadlock, found live on Contabo1/Contabo2 2026-07-11):
+// replayTransactions holds cs.mu.Lock() for the ENTIRE replay (see that
+// function's own comment on why), including its call to verifyZKProof for
+// register_human transactions. verifyZKProof calls EVMEngine.CallContract
+// to invoke the on-chain BioVerifier, which calls newStateDB, which used to
+// call the public, self-locking GetAccountsForAddresses — the SAME
+// goroutine trying to Lock() a mutex it already holds, deadlocking against
+// itself forever. Every subsequent peer block merge, orphan resolution, and
+// even /api/health request (anything needing cs.mu) then piles up behind
+// it, since Go's sync.RWMutex blocks new readers once a writer is
+// waiting/held. CallContractLocked/newStateDBLocked route through this
+// method instead, closing the gap without touching any of the other
+// (correctly unlocked) CallContract call sites in api.go/evm_rpc.go/
+// register.go.
+func (cs *ChainState) getAccountsForAddressesLocked(addrs []string) []*AccountState {
 	result := make([]*AccountState, 0, len(addrs))
 	seen := make(map[string]bool, len(addrs))
 	unique := make([]string, 0, len(addrs))

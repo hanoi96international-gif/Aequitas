@@ -202,6 +202,61 @@ rows.Close()
 return sdb, db, nil
 }
 
+// newStateDBLocked is newStateDB's lock-free sibling for callers that
+// already hold cs.mu (see ChainState.getAccountsForAddressesLocked's own
+// comment for the live deadlock this closes). Unlike newStateDB, it
+// requires at least one address — the empty/"load everyone" path goes
+// through GetAllAccounts, which has no lock-free sibling today because
+// nothing needs one; adding it just for symmetry here would be unused,
+// untested surface.
+func (e *EVMEngine) newStateDBLocked(onlyAddrs ...common.Address) (*state.StateDB, state.Database, error) {
+if len(onlyAddrs) == 0 {
+return nil, nil, fmt.Errorf("newStateDBLocked: at least one address required")
+}
+memDB := rawdb.NewMemoryDatabase()
+db := state.NewDatabase(memDB)
+sdb, err := state.New(common.Hash{}, db, nil)
+if err != nil {
+return nil, nil, err
+}
+
+addrStrs := make([]string, len(onlyAddrs))
+for i, a := range onlyAddrs {
+addrStrs[i] = strings.ToLower(a.Hex())
+}
+for _, acc := range e.chainState.getAccountsForAddressesLocked(addrStrs) {
+addr := common.HexToAddress(acc.Address)
+sdb.SetBalance(addr, aeqToWei(acc.Balance.Float()))
+}
+
+// Contract code/storage loading is plain DB I/O — GetAllContracts/
+// LoadContract never touch cs.mu, so no locked sibling is needed here.
+for _, addrStr := range e.chainState.GetAllContracts() {
+addr := common.HexToAddress(addrStr)
+code, err := e.chainState.LoadContract(addrStr)
+if err != nil || len(code) == 0 {
+continue
+}
+sdb.SetCode(addr, code)
+if e.chainState.db != nil {
+rows, err := e.chainState.db.Query(
+`SELECT slot, value FROM evm_storage WHERE address = $1`, addrStr)
+if err == nil {
+for rows.Next() {
+var slot, val string
+if err := rows.Scan(&slot, &val); err != nil {
+fmt.Printf("[WARN] EVM storage scan error for %s: %v\n", addr.Hex(), err)
+continue
+}
+sdb.SetState(addr, common.HexToHash(slot), common.HexToHash(val))
+}
+rows.Close()
+}
+}
+}
+return sdb, db, nil
+}
+
 // ─── DEPLOY ───────────────────────────────────────────────────────────────────
 
 func (e *EVMEngine) DeployContract(from common.Address, bytecode []byte, value *big.Int) (contractAddr common.Address, ret []byte, err error) {
@@ -427,6 +482,65 @@ continue
 out = append(out, common.BytesToAddress(word[12:32]))
 }
 return out
+}
+
+// CallContractLocked is CallContract's lock-free, read-only sibling for
+// callers that already hold cs.mu — currently only verifyZKProof, called
+// from inside replayTransactions' cs.mu-locked section (see
+// ChainState.getAccountsForAddressesLocked's comment for the deadlock this
+// closes). Persisted calls need dumpAndPersistStorageWithNullifier, which
+// itself touches ChainState via SaveContractStorage-style writes that
+// aren't safe to reason about re-entrantly here, so this only supports the
+// read-only (persist=false) path CallContract's own callers already use for
+// every already-locked case — a persist=true request is rejected outright
+// rather than silently skipping persistence.
+func (e *EVMEngine) CallContractLocked(from, to common.Address, data []byte, value *big.Int) (ret []byte, err error) {
+if value != nil && value.Sign() > 0 {
+return nil, fmt.Errorf("contract calls with msg.value > 0 are not supported on this chain (no native value-transfer mechanism in the EVM layer); use a plain transfer or the V7 transfer() selector instead")
+}
+ts := uint64(time.Now().Unix())
+defer func() {
+if r := recover(); r != nil {
+err = fmt.Errorf("EVM panic: %v", r)
+ret = nil
+}
+}()
+
+onlyAddrs := append([]common.Address{from, to}, addressLikeWordsInCalldata(data)...)
+sdb, _, err := e.newStateDBLocked(onlyAddrs...)
+if err != nil {
+return nil, fmt.Errorf("stateDB: %w", err)
+}
+
+code := sdb.GetCode(to)
+if len(code) == 0 {
+toHex := strings.ToLower(to.Hex())
+if toHex == "0xca11bde05977b3631167028862be2a173976ca11" ||
+toHex == "0x0000000000000000000000000000000000000000" {
+return make([]byte, 32), nil
+}
+return nil, fmt.Errorf("no code at %s", to.Hex())
+}
+
+txCtx := vm.TxContext{Origin: from, GasPrice: big.NewInt(0)}
+evm := vm.NewEVM(blockContext(ts), txCtx, sdb, chainConfig(), vm.Config{})
+
+var execErr error
+ret, _, execErr = evm.Call(
+vm.AccountRef(from),
+to,
+data,
+30_000_000,
+value,
+)
+if execErr != nil {
+reason := decodeRevertReason(ret)
+if reason != "" {
+return nil, fmt.Errorf("%s", reason)
+}
+return nil, fmt.Errorf("call failed: %w", execErr)
+}
+return ret, nil
 }
 
 func (e *EVMEngine) CallContract(from, to common.Address, data []byte, value *big.Int, persist bool) (ret []byte, err error) {
