@@ -2658,11 +2658,73 @@ func (cs *ChainState) ensureGHOSTDAGColumns() {
 	})
 }
 
-func (cs *ChainState) SaveBlockToDB(block *Block) error {
+// ensureReplayedColumn adds chain_blocks.replayed if it doesn't exist yet.
+//
+// FIX (self-deadlock incident, 2026-07-11 — see verifyZKProof's own comment
+// in block.go for the deadlock itself): SaveBlockToDB persists a block's
+// header BEFORE replayTransactions actually applies its transactions to
+// chain_accounts (P2-05's deliberate save-before-replay ordering — see that
+// comment). The startup loader used to mark EVERY block found in
+// chain_blocks as already-replayed unconditionally, on the assumption that
+// "header saved" implies "effects committed" — true for a clean
+// success-or-rollback replay, but NOT true if the process is killed
+// mid-replay (as SIGQUIT does: no deferred cleanup runs). Confirmed live:
+// a register_human block's header made it into chain_blocks on Contabo1
+// while the goroutine replaying it was deadlocked inside verifyZKProof;
+// after restart, the block was silently treated as fully applied and that
+// human was permanently missing from chain_accounts, with total_humans
+// stuck one below Primary's and no error anywhere.
+//
+// DEFAULT TRUE on the ALTER TABLE (existing rows are presumed already
+// correctly applied — true for the overwhelming majority of chain
+// history); SaveBlockToDB explicitly inserts NEW rows as false, only
+// flipped to true by MarkBlockReplayed once a replay actually commits. The
+// startup loader (NewBlockchain) now checks this per-block instead of
+// blindly trusting chain_blocks membership, and re-drives replay for any
+// block still marked false — see its own comment.
+func (cs *ChainState) ensureReplayedColumn() {
+	if cs.db == nil {
+		return
+	}
+	cs.replayedColumnOnce.Do(func() {
+		cs.db.Exec(`ALTER TABLE chain_blocks ADD COLUMN IF NOT EXISTS replayed BOOLEAN NOT NULL DEFAULT true`)
+	})
+}
+
+// MarkBlockReplayed flips chain_blocks.replayed to true for hash. Called via
+// cs.dbExec() so it joins the SAME dbTx as the account mutations replay just
+// made (replayTransactions calls this right before commitOrRollback(true)) —
+// atomic with the actual state effects, so a crash before commit leaves
+// BOTH the account changes and this flag rolled back together, and a crash
+// after commit leaves BOTH durable together. Never true without the
+// corresponding account effects also being true.
+func (cs *ChainState) MarkBlockReplayed(hash string) error {
+	if cs.db == nil {
+		return nil
+	}
+	cs.ensureReplayedColumn()
+	_, err := cs.dbExec().Exec(`UPDATE chain_blocks SET replayed = true WHERE hash = $1`, hash)
+	return err
+}
+
+// SaveBlockToDB persists a block header, with replayed marking whether its
+// transactions' effects are already known-durable in chain_accounts:
+//   - AddPeerBlock (block.go) passes false — the header is saved BEFORE
+//     replayTransactions runs (P2-05's deliberate ordering), so it isn't
+//     true yet; MarkBlockReplayed flips it once replay actually commits.
+//   - The checkpoint/resync seeding call sites (snapshot.go) pass true —
+//     a checkpoint's account state is imported wholesale as a trusted
+//     snapshot, never individually replayed transaction-by-transaction, so
+//     there is nothing for a later repair pass to redo.
+//
+// See ensureReplayedColumn's comment for the live incident this distinction
+// closes.
+func (cs *ChainState) SaveBlockToDB(block *Block, replayed bool) error {
 	if cs.db == nil {
 		return nil
 	}
 	cs.ensureGHOSTDAGColumns()
+	cs.ensureReplayedColumn()
 	parentHashesJSON, err := json.Marshal(block.ParentHashes)
 	if err != nil {
 		return fmt.Errorf("marshal parent_hashes: %w", err)
@@ -2678,12 +2740,12 @@ func (cs *ChainState) SaveBlockToDB(block *Block) error {
 	_, err = cs.dbExec().Exec(
 		`INSERT INTO chain_blocks
 		   (hash, height, parent_hashes, proposer, timestamp, humans, state_root,
-		    signature, transactions, selected_parent, blue_score, blues)
-		 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
+		    signature, transactions, selected_parent, blue_score, blues, replayed)
+		 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
 		 ON CONFLICT (hash) DO NOTHING`,
 		block.Hash, block.Height, string(parentHashesJSON), block.Proposer, block.Timestamp,
 		block.Humans, block.StateRoot, block.Signature, string(txsJSON),
-		block.SelectedParent, block.BlueScore, string(bluesJSON),
+		block.SelectedParent, block.BlueScore, string(bluesJSON), replayed,
 	)
 	return err
 }
@@ -2899,11 +2961,13 @@ func (cs *ChainState) LoadBlocksFromDB(minHeight int64) (map[string]*Block, erro
 	if cs.db == nil {
 		return nil, nil
 	}
-	// Ensure GHOSTDAG columns exist before reading them (idempotent migration).
+	// Ensure GHOSTDAG/replayed columns exist before reading them (idempotent migration).
 	cs.ensureGHOSTDAGColumns()
+	cs.ensureReplayedColumn()
 	baseQuery := `SELECT hash, height, parent_hashes, proposer, timestamp, humans, state_root,
 	                 signature, transactions,
-	                 COALESCE(selected_parent,''), COALESCE(blue_score,0), COALESCE(blues,'[]')
+	                 COALESCE(selected_parent,''), COALESCE(blue_score,0), COALESCE(blues,'[]'),
+	                 COALESCE(replayed,true)
 	          FROM chain_blocks`
 	var rows *sql.Rows
 	var err error
@@ -2932,7 +2996,7 @@ func (cs *ChainState) LoadBlocksFromDB(minHeight int64) (map[string]*Block, erro
 		if err := rows.Scan(
 			&b.Hash, &b.Height, &parentHashesRaw, &b.Proposer, &b.Timestamp,
 			&b.Humans, &b.StateRoot, &b.Signature, &txsRaw,
-			&b.SelectedParent, &b.BlueScore, &bluesRaw,
+			&b.SelectedParent, &b.BlueScore, &bluesRaw, &b.Replayed,
 		); err != nil {
 			fmt.Printf("[BLOCK] LoadBlocksFromDB scan error: %v\n", err)
 			continue

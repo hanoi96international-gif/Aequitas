@@ -177,6 +177,16 @@ type Block struct {
 	// automatically for any current or future validator, regardless of
 	// which peer URLs happen to be statically configured anywhere.
 	SelfFetched bool `json:"-"`
+	// Replayed mirrors chain_blocks.replayed — true once this block's
+	// transactions have actually been committed to chain_accounts (not just
+	// its header saved). See ChainState.MarkBlockReplayed's comment for the
+	// live incident (self-deadlock killed mid-replay via SIGQUIT) this
+	// closes: a block whose header made it to chain_blocks but whose replay
+	// never completed used to be silently treated as "already applied" on
+	// the next boot (see the startup loader's own old comment), permanently
+	// losing that block's state effects with no error anywhere. Never
+	// serialized; only meaningful as loaded from the DB at startup.
+	Replayed bool `json:"-"`
 }
 
 // peerChallenge holds a one-time challenge issued to a registering peer.
@@ -211,6 +221,15 @@ bootHeight             int64
 // seededFromCheckpoint) — see AddPeerBlock's bootHeight-skip call site for
 // why this distinction is safety-critical, not cosmetic.
 bootHeightCheckpointBacked bool
+// unreplayedAtBoot holds blocks loaded from chain_blocks at startup whose
+// replayed column was false — i.e. a header was durably saved but the
+// process was killed before its transactions' effects were confirmed
+// committed to chain_accounts (see ensureReplayedColumn's comment for the
+// live incident). Populated once during the load loop in NewBlockchain,
+// consumed and cleared by repairUnreplayedBlocks() once dag.evm is
+// available (verifyZKProof needs it, and EVM isn't wired up until after
+// NewBlockchain returns — see NewEVMRPCServer's call site).
+unreplayedAtBoot       []*Block
 pendingTxs             []Transaction
 txMu                   sync.Mutex
 signingKey             *ecdsa.PrivateKey
@@ -964,10 +983,18 @@ if len(loaded) > 0 {
 		// freshly-restarted nodes without needing to re-download everything.
 		// No lock needed: NewBlockchain is single-threaded at this point.
 		dag.checkAndIndexEquivocation(b)
-		// Already reflected in chain_accounts (committed when these TXs
-		// were first applied, before this block was even assembled) —
-		// must not be re-applied by replayTransactions.
-		dag.replayedBlocks[b.Hash] = true
+			// Normally already reflected in chain_accounts (committed when
+			// these TXs were first applied, before this block was even
+			// assembled) — must not be re-applied by replayTransactions. But
+			// if replayed is false, this header was saved before its replay
+			// completed and the process died mid-replay (see
+			// ensureReplayedColumn's comment) — queue it for
+			// repairUnreplayedBlocks() instead of trusting it.
+			if b.Replayed {
+				dag.replayedBlocks[b.Hash] = true
+			} else {
+				dag.unreplayedAtBoot = append(dag.unreplayedAtBoot, b)
+			}
 		for _, ph := range b.ParentHashes {
 			referenced[ph] = true
 		}
@@ -3938,7 +3965,7 @@ dag.mu.Unlock()
 // Failure mode of the new order (save OK, replay fails): P0-02 fix above
 // deletes the pre-saved header when replay fails, so state is always consistent.
 if dag.state != nil {
-	if err := dag.state.SaveBlockToDB(block); err != nil {
+	if err := dag.state.SaveBlockToDB(block, false); err != nil {
 		fmt.Printf("[BLOCK] ✗ Could not save peer block #%d header before replay: %v — skipping\n", block.Height, err)
 		return false
 	}
@@ -4816,7 +4843,17 @@ return tips
 // rejections, not signs of state divergence, and were already
 // self-consistent (TryClaimNullifier/ReleaseNullifier are already a
 // correctly paired claim/release).
-func (dag *BlockDAG) replayTransactions(block *Block) bool {
+// replayTransactions applies block's transactions to chain_accounts. force
+// must be true ONLY from repairUnreplayedBlocks: it bypasses the
+// skipHeight/bootHeight "already covered by the loaded snapshot" guard
+// below, which would otherwise silently no-op the very repair this exists
+// for — a block being repaired is, by construction, always at or below the
+// CURRENT bootHeight (it's history from before this restart), so without
+// force it would always hit that guard and never actually re-derive the
+// missing effects. Every other caller (the live AddPeerBlock/
+// replayInCanonicalOrder path) must keep passing false — see
+// ensureReplayedColumn's comment for the incident this parameter closes.
+func (dag *BlockDAG) replayTransactions(block *Block, force bool) bool {
 	// Fix 4: Deduplication guard — if this block has already been replayed,
 	// skip it. Prevents double-credits when a block is delivered more than once.
 	dag.replayedMu.Lock()
@@ -4883,7 +4920,7 @@ func (dag *BlockDAG) replayTransactions(block *Block) bool {
 	// mandatory ECDSA signature check against BOOTSTRAP_SIGNER — this skip
 	// doesn't grant any trust itself, it just avoids re-deriving what that
 	// signature check already vouched for.
-	if skipHeight > 0 && block.Height <= skipHeight {
+	if !force && skipHeight > 0 && block.Height <= skipHeight {
 		dag.replayedMu.Lock()
 		dag.replayedBlocks[block.Hash] = true
 		dag.replayedMu.Unlock()
@@ -5470,6 +5507,17 @@ func (dag *BlockDAG) replayTransactions(block *Block) bool {
 			dag.stateRootMismatches[block.Proposer] = 0 // reset on match
 			dag.stateRootMismatchesMu.Unlock()
 		}
+	}
+
+	// FIX (self-deadlock incident, 2026-07-11): flip chain_blocks.replayed to
+	// true for THIS block, joining the same dbTx as every account mutation
+	// above (dag.state.activeTx is still set to dbTx here — dbExec() routes
+	// through it). Must happen before commitOrRollback so a failed/rolled-
+	// back commit also rolls this flag back — see ensureReplayedColumn's
+	// comment for why "header saved" must never silently imply "effects
+	// applied" on a later restart.
+	if err := dag.state.MarkBlockReplayed(block.Hash); err != nil {
+		fmt.Printf("[REPLAY] Warning: could not mark block #%d replayed: %v\n", block.Height, err)
 	}
 
 	// FIX (audit 2026-06-28 full recheck, P0-4): commit dbTx now that every
@@ -6571,11 +6619,50 @@ func (dag *BlockDAG) replayInCanonicalOrder(block *Block) bool {
 	ancestors := dag.collectUnreplayedAncestors(block)
 	dag.mu.RUnlock()
 	for _, anc := range ancestors {
-		if !dag.replayTransactions(anc) {
+		if !dag.replayTransactions(anc, false) {
 			return false
 		}
 	}
-	return dag.replayTransactions(block)
+	return dag.replayTransactions(block, false)
+}
+
+// repairUnreplayedBlocks re-drives replayTransactions for every block the
+// startup loader found with chain_blocks.replayed = false — headers that
+// were durably saved before their transactions' effects were confirmed
+// committed (see ensureReplayedColumn's comment for the live incident: a
+// self-deadlock killed by SIGQUIT mid-replay left exactly one such block on
+// Contabo1, permanently missing a register_human registration from
+// chain_accounts with no error anywhere).
+//
+// Must be called after dag.evm is set (verifyZKProof needs it for
+// register_human TXs) — NewEVMRPCServer calls this right after wiring up
+// the EVM engine, since dag.evm is nil for the whole of NewBlockchain.
+// Safe to call with an empty list (the overwhelmingly common case): this is
+// a no-op then. Processes in ascending height order so any genuine
+// dependency between them (e.g. a balance a later TX in the gap spends)
+// resolves the same way replayInCanonicalOrder already guarantees for live
+// blocks. A block that still fails to replay here stays false in
+// chain_blocks and is retried again on the next restart — never silently
+// dropped.
+func (dag *BlockDAG) repairUnreplayedBlocks() {
+	dag.mu.Lock()
+	gap := dag.unreplayedAtBoot
+	dag.unreplayedAtBoot = nil
+	dag.mu.Unlock()
+	if len(gap) == 0 {
+		return
+	}
+	sort.Slice(gap, func(i, j int) bool { return gap[i].Height < gap[j].Height })
+	fmt.Printf("[REPAIR] Found %d block(s) saved but never confirmed replayed (likely a past crash mid-replay) — repairing now\n", len(gap))
+	dag.replayMu.Lock()
+	defer dag.replayMu.Unlock()
+	for _, b := range gap {
+		if dag.replayTransactions(b, true) {
+			fmt.Printf("[REPAIR] ✓ Block #%d (%s...) replayed successfully — chain_accounts now current\n", b.Height, b.Hash[:min(16, len(b.Hash))])
+		} else {
+			fmt.Printf("[REPAIR] ✗ Block #%d (%s...) still failed to replay — will retry again on next restart\n", b.Height, b.Hash[:min(16, len(b.Hash))])
+		}
+	}
 }
 
 // triggerSoftRetryFlush starts a soft-retry flush pass if none is already

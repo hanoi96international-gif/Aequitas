@@ -117,6 +117,11 @@ type ChainState struct {
 	// itself) of the multi-second ProduceBlock cadence and the resulting failure
 	// to merge with peers. The columns only ever need creating once per process.
 	ghostdagColumnsOnce sync.Once
+	// replayedColumnOnce guards the one-time chain_blocks.replayed migration
+	// — same rationale as ghostdagColumnsOnce (avoid an ALTER TABLE on every
+	// block save). See ensureReplayedColumn's own comment for what this
+	// column is for.
+	replayedColumnOnce sync.Once
 	nullifiers map[string]string // nullifier hex → wallet address (in-memory cache)
 	// accountSetXOR / nullifierSetXOR are incremental commitments to the FULL
 	// account set and nullifier set, maintained by XORing each element's leaf

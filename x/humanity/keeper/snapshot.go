@@ -957,7 +957,7 @@ func (dag *BlockDAG) SeedTrustedCheckpoint(primaryURL string) bool {
 		fmt.Printf("[RESYNC] ⚠ Could not seed a trusted checkpoint at height %d (%v) — falling back to a full genesis resync\n", height, err)
 		return false
 	}
-	if err := dag.state.SaveBlockToDB(block); err != nil {
+	if err := dag.state.SaveBlockToDB(block, true); err != nil {
 		fmt.Printf("[RESYNC] ⚠ Verified checkpoint block at height %d but could not persist it (%v) — falling back to a full genesis resync\n", height, err)
 		return false
 	}
@@ -1036,7 +1036,7 @@ func (dag *BlockDAG) SeedTrustedCheckpoint(primaryURL string) bool {
 				continue // already saved (the canonical block, or a sibling another source also returned)
 			}
 			seenSiblingHash[sib.Hash] = true
-			if err := dag.state.SaveBlockToDB(sib); err != nil {
+			if err := dag.state.SaveBlockToDB(sib, true); err != nil {
 				fmt.Printf("[RESYNC] ⚠ Could not persist sibling block %s... at checkpoint height %d (%v)\n", sib.Hash[:min(16, len(sib.Hash))], height, err)
 				continue
 			}

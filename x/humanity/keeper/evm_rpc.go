@@ -123,6 +123,10 @@ func NewEVMRPCServer(dag *BlockDAG, state *ChainState) *EVMRPCServer {
 	// BioVerifier directly when verifying ZK proofs in register_human TXs.
 	if engine != nil {
 		dag.evm = engine
+		// Must run AFTER dag.evm is set (verifyZKProof needs it) and can only
+		// run here — dag.evm is nil for the whole of NewBlockchain. See
+		// repairUnreplayedBlocks' own comment.
+		dag.repairUnreplayedBlocks()
 	}
 	return &EVMRPCServer{
 		dag:               dag,
