@@ -1814,7 +1814,13 @@ func (cs *ChainState) saveAccountsToDBBatch(accs []*AccountState) error {
 	args := make([]interface{}, 0, len(accs)*9)
 	for i, acc := range accs {
 		n := i * 9
-		valuesSQL[i] = fmt.Sprintf("($%d,$%d,$%d,$%d,$%d,$%d,$%d,$%d,$%d)", n+1, n+2, n+3, n+4, n+5, n+6, n+7, n+8, n+9)
+		// Explicit casts: a bare multi-row VALUES(...) list with nothing but
+		// parameter placeholders gives Postgres no literal to anchor each
+		// column's type on, so it defaults every placeholder to `text` —
+		// confirmed live: "operator does not exist: bigint = text" once this
+		// CTE's last_activity_at/expected_version columns hit the UPDATE's
+		// comparison against chain_accounts' actual bigint columns below.
+		valuesSQL[i] = fmt.Sprintf("($%d::text,$%d::double precision,$%d::boolean,$%d::double precision,$%d::double precision,$%d::bigint,$%d::boolean,$%d::boolean,$%d::bigint)", n+1, n+2, n+3, n+4, n+5, n+6, n+7, n+8, n+9)
 		args = append(args, acc.Address, acc.Balance.Float(), acc.IsHuman, acc.TUsdBalance.Float(), acc.LPShares.Float(), acc.LastActivityAt, acc.Demurrage14DayWarningShown, acc.FaucetClaimed, acc.Version)
 	}
 	query := `WITH updates(address, balance, is_human, tusd_balance, lp_shares, last_activity_at, demurrage_14_day_warning_shown, faucet_claimed, expected_version) AS (
