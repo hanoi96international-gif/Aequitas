@@ -1373,6 +1373,7 @@ func (dag *BlockDAG) RefreshBootHeightAfterSnapshotImport(resyncHappened bool) {
 							fmt.Printf("[RESYNC] ✓ Also loaded %d sibling block(s) at checkpoint height %d into the in-memory DAG\n", added, checkpointHeight)
 						}
 					}
+					dag.seedCheckpointParentStubsLocked(cp)
 				}
 			}
 		}
@@ -4679,6 +4680,67 @@ func (dag *BlockDAG) safeStubBlueScoreLocked() int64 {
 		return 0
 	}
 	return frontier - 1
+}
+
+// seedCheckpointParentStubsLocked is RefreshBootHeightAfterSnapshotImport's
+// own fix for a permanent post-resync production deadlock (P0, 2026-07-11,
+// confirmed live on Contabo1 and Contabo2). cp — the freshly-seeded trusted
+// checkpoint block — is trusted "like genesis" (verified via the signed
+// snapshot's BOOTSTRAP_SIGNER), but it still carries its own real
+// ParentHashes from before this resync wiped chain_blocks. Without this,
+// computeGHOSTDAGState (the merge-set walk both ProduceBlock and
+// AddPeerBlock rely on) still tries to resolve that recorded parent like
+// any other ancestor — and never can: nothing below cp exists locally, and
+// deepScanFloor/isFinalityViolation correctly refuse to search past
+// finalityHeightSlack below the fresh checkpoint (see lowerDeepScanFloor's
+// own comment), so cp's parent — sitting just above that floor — is
+// permanently unreachable via ordinary sync with nothing below cp to chain
+// back through to it.
+//
+// The runtime self-heal that exists for exactly this shape of gap
+// (queueOrphan's and ProduceBlock's synthetic-checkpoint-stub bridge) can
+// never fire either: both gate on !isCatchingUpLocked(), which stays true
+// forever here because dag.height can only ever advance past that gate BY
+// the same bridge firing — confirmed live, stuck 15+ minutes past the
+// bridge's own patience window on both nodes, a genuine deadlock rather
+// than mere slowness. Seed the stub proactively at checkpoint-seed time
+// instead: cp's own unresolvable parent is exactly as inherently trusted
+// (or not) as cp itself — both predate everything this resync could
+// verify — so there is nothing to gain by making production wait on an
+// isCatchingUp escape that can never come.
+//
+// Must be called under dag.mu (write lock) with cp already installed in
+// dag.blocks/dag.tips — safeStubBlueScoreLocked reads both to compute the
+// stub's BlueScore relative to cp's own.
+func (dag *BlockDAG) seedCheckpointParentStubsLocked(cp *Block) {
+	for _, parentHash := range cp.ParentHashes {
+		if parentHash == "" {
+			continue
+		}
+		if _, exists := dag.blocks[parentHash]; exists {
+			continue
+		}
+		stubHeight := cp.Height - 1
+		if stubHeight < 0 {
+			stubHeight = 0
+		}
+		dag.blocks[parentHash] = &Block{
+			Hash:         parentHash,
+			Height:       stubHeight,
+			BlueScore:    dag.safeStubBlueScoreLocked(),
+			Proposer:     "synthetic-checkpoint",
+			ParentHashes: []string{},
+		}
+		dag.syntheticCheckpointCount.Add(1)
+		fmt.Printf("[RESYNC] ✓ Seeded synthetic-checkpoint stub for checkpoint's own parent %s... at height %d — its history predates this resync's trust boundary exactly like the checkpoint itself, so it needs no further resolution\n",
+			parentHash[:min(16, len(parentHash))], stubHeight)
+		if dag.state != nil {
+			capturedHash, capturedHeight := parentHash, stubHeight
+			SafeGoroutine("RecordSyntheticCheckpointEvent-checkpointparent", func() {
+				dag.state.RecordSyntheticCheckpointEvent(capturedHash, capturedHeight, "checkpoint-own-parent")
+			})
+		}
+	}
 }
 
 func (dag *BlockDAG) canonicalBlockAtHeightLocked(height int64) *Block {
