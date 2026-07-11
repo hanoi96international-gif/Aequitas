@@ -473,7 +473,6 @@ input[type=number]::-webkit-inner-spin-button{-webkit-appearance:none}
 const API          = 'https://aequitas.digital/api';
 const CHAIN_ID     = '0x786';  // 1926
 const V7           = '0x20D271028f32577FCd07b4583A8e0E4eBBdB4F78';
-const PROOF_SERVER = 'https://aequitas-proof-server-production.up.railway.app';
 
 // ── STATE ────────────────────────────────────────────────────────────────────
 let wallet     = null;
@@ -922,7 +921,10 @@ async function doRegister() {
     setStatus('id-status', 'Contacting proof server…', 'info');
 
     const bioForProve = proofData.bio, saltForProve = proofData.salt;
-    const r = await fetch(PROOF_SERVER + '/prove', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+    // Goes through the chain server's authenticated proxy (/api/prove), never
+    // directly to the proof server — the proof server's own /prove requires a
+    // CHAIN_SERVICE_TOKEN this page must not hold (see api.go's handleProveProxy).
+    const r = await fetch(API + '/prove', { method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ bio: bioForProve, salt: saltForProve, wallet }) });
     if (!r.ok) { const e = await r.json(); throw new Error(e.error || r.statusText); }
     proofData = await r.json();
