@@ -13,9 +13,9 @@
 <meta name="apple-mobile-web-app-title" content="Aequitas">
 <link rel="preconnect" href="https://fonts.bunny.net">
 <link href="https://fonts.bunny.net/css?family=inter:400,500,600,700,900|dm-serif-display:400|jetbrains-mono:400,600&display=swap" rel="stylesheet">
-<script src="https://unpkg.com/lightweight-charts@4.1.3/dist/lightweight-charts.standalone.production.js"></script>
+<script src="/vendor/lightweight-charts.min.js"></script>
 <link rel="stylesheet" href="/explorer.css">
-<script src="https://cdnjs.cloudflare.com/ajax/libs/ethers/6.13.0/ethers.umd.min.js"></script>
+<script src="/vendor/ethers.min.js"></script>
 </head>
 <body>
 <header>
@@ -23,7 +23,7 @@
     <div class="logo-icon">⚖</div>
     <div><div class="logo-text">AEQUITAS</div><div class="logo-sub" data-i18n="logo-sub">PROOF OF HUMANITY</div></div>
   </div>
-  <select class="lang-sel" id="lang-sel" onchange="setLang(this.value)">
+  <select class="lang-sel" id="lang-sel">
     <option value="en">🌐 EN</option>
     <option value="de">🌐 DE</option>
     <option value="es">🌐 ES</option>
@@ -43,11 +43,11 @@
   </div>
 </header>
 <div class="tabs">
-  <div class="tab active" onclick="showTab('register',this)">🔐 Register</div>
-  <div class="tab" onclick="showTab('explorer',this)">🔍 Explorer</div>
-  <div class="tab" onclick="showTab('index',this)">⚖️ Equality</div>
-  <div class="tab" onclick="showTab('network',this)">🌐 Network</div>
-  <div class="tab" onclick="showTab('exchange',this);setTimeout(drawPriceChart,50)">🔄 Exchange</div>
+  <div class="tab active" data-act="showTab" data-args='["register"]'>🔐 Register</div>
+  <div class="tab" data-act="showTab" data-args='["explorer"]'>🔍 Explorer</div>
+  <div class="tab" data-act="showTab" data-args='["index"]'>⚖️ Equality</div>
+  <div class="tab" data-act="showTab" data-args='["network"]'>🌐 Network</div>
+  <div class="tab" data-act="showTabAndPriceChart" data-args='["exchange"]'>🔄 Exchange</div>
 </div>
 
 <!-- REGISTER -->
@@ -55,7 +55,7 @@
 <div class="rs">
   <div class="rhero">
     <div class="rhero-title" data-i18n="reg-title">🔐 Register as a Verified Human</div>
-    <div class="rhero-sub" data-i18n="reg-sub">Join the Aequitas network and receive your 1,000 AEQ Universal Basic Income grant. Registration is one-time, permanent, and completely gasless. No personal data is ever stored — only a cryptographic proof that you are a unique human being.</div>
+    <div class="rhero-sub" data-i18n="reg-sub">Join the Aequitas network and receive your 1,000 AEQ Universal Basic Income grant. Registration is one-time, permanent, and completely gasless. No personal data is ever stored — only a cryptographic proof that you control a device key.</div>
     <a href="/download/app.apk" style="display:inline-flex;align-items:center;gap:10px;margin-top:18px;background:var(--grad);color:#fff;padding:13px 28px;border-radius:10px;font-size:0.75rem;font-weight:700;text-decoration:none;letter-spacing:0.5px;box-shadow:var(--glow-purple);transition:all 0.2s" onmouseover="this.style.opacity='0.87';this.style.transform='translateY(-2px)'" onmouseout="this.style.opacity='1';this.style.transform='translateY(0)'">
       <span style="width:22px;height:22px;border-radius:6px;background:var(--grad);display:inline-flex;align-items:center;justify-content:center;font-size:13px;flex-shrink:0">⚖</span>
       <span data-i18n="btn-download-app">DOWNLOAD AEQUITAS APP</span>
@@ -78,7 +78,7 @@
       </div>
       <div style="background:var(--card);border:1px solid rgba(139,92,246,0.15);border-radius:var(--radius-sm);padding:12px">
         <div style="font-size:0.67rem;font-weight:700;color:var(--purple);margin-bottom:4px" data-i18n="usp-c3-title">Accessible to all</div>
-        <div style="font-size:0.59rem;color:var(--muted);line-height:1.75" data-i18n="usp-c3-desc">No bank account, no credit card, no government ID. Registration uses an affordable biometric hardware kit (fingerprint scanner + pulse sensor, ~$15) — designed for global access.</div>
+        <div style="font-size:0.59rem;color:var(--muted);line-height:1.75" data-i18n="usp-c3-desc">No bank account, no credit card, no government ID, no extra hardware to buy — just the screen-unlock already built into your Android phone.</div>
       </div>
       <div style="background:var(--card);border:1px solid rgba(6,182,212,0.15);border-radius:var(--radius-sm);padding:12px">
         <div style="font-size:0.67rem;font-weight:700;color:var(--teal);margin-bottom:4px" data-i18n="usp-c4-title">Daily UBI forever</div>
@@ -90,25 +90,25 @@
   <div class="aonly">
     <div class="aonly-icon">📱</div>
     <div class="aonly-title" data-i18n="app-title">REGISTRATION VIA ANDROID APP</div>
-    <div class="aonly-text" data-i18n="app-text">Proof of Humanity requires physical biometric verification via a dedicated hardware kit. <strong>Phase 1:</strong> The R503 optical sensor scans <strong>all 10 fingerprints</strong> — combined into a single biometric hash. A MAX30102 PPG sensor confirms liveness (pulse detection) to prevent replay attacks. <strong>Phase 2</strong> adds hand vein pattern via IR camera (1 in 10⁷ uniqueness). <strong>Phase 3</strong> adds iris scan — the gold standard with 1 in 10⁷⁸ uniqueness, fully device-independent. Raw biometric data never leaves the device. The AequitasBio app generates a Groth16 Zero-Knowledge Proof that mathematically proves you are a unique living human — without revealing any personal information. Your <strong style="color:var(--gold)">1,000 AEQ will be credited automatically</strong> upon successful verification.</div>
+    <div class="aonly-text" data-i18n="app-text">Registration generates a cryptographic key inside your phone's secure hardware (Secure Enclave / StrongBox), gated behind your device's own screen-unlock — no separate sensor, no raw biometric data is ever produced, processed, or transmitted. A Groth16 Zero-Knowledge Proof proves you hold that device key without revealing it. Your <strong style="color:var(--gold)">1,000 AEQ will be credited automatically</strong> upon successful verification. <strong style="color:var(--gold)">Note:</strong> this currently proves control of one device, not biological uniqueness across devices — see the FAQ below.</div>
   </div>
   <div class="rsteps">
-    <div class="rstep"><div class="snum">1</div><div class="stitle" data-i18n="s1t">Biometric Scan</div><div class="sdesc" data-i18n="s1d">The AequitasBio app scans all 10 fingerprints via the R503 optical sensor and confirms liveness via MAX30102 PPG (pulse detection). Phase 2 adds hand vein IR scan. Phase 3 adds iris. Raw data never leaves the device.</div></div>
-    <div class="rstep"><div class="snum">2</div><div class="stitle" data-i18n="s2t">ZK Proof Generation</div><div class="sdesc" data-i18n="s2d">A Groth16 Zero-Knowledge Proof is generated binding all biometric factors into a single commitment and nullifier. This cryptographically proves you are a unique living human — without revealing any biometric data.</div></div>
+    <div class="rstep"><div class="snum">1</div><div class="stitle" data-i18n="s1t">Device Key</div><div class="sdesc" data-i18n="s1d">Your phone's secure hardware generates a private key behind your existing screen-unlock (fingerprint/face/PIN, whichever you already use). No separate sensor kit, no raw biometric data ever leaves the device.</div></div>
+    <div class="rstep"><div class="snum">2</div><div class="stitle" data-i18n="s2t">ZK Proof Generation</div><div class="sdesc" data-i18n="s2d">A Groth16 Zero-Knowledge Proof commits your device key into a single commitment and nullifier without revealing the key itself. This cryptographically proves you hold this device's key — see the FAQ for what that does and doesn't guarantee.</div></div>
     <div class="rstep"><div class="snum">3</div><div class="stitle" data-i18n="s3t">Connect Wallet</div><div class="sdesc" data-i18n="s3d">The app opens MetaMask on this page. Connect your Ethereum wallet — this is the address that will receive your 1,000 AEQ grant. The proof is cryptographically bound to your wallet.</div></div>
     <div class="rstep"><div class="snum">4</div><div class="stitle" data-i18n="s4t">1,000 AEQ Granted</div><div class="sdesc" data-i18n="s4d">Your registration is confirmed on the Aequitas BlockDAG within 1 second. 1,000 AEQ is credited to your wallet instantly, gasless. Your identity is permanently recorded as verified human.</div></div>
   </div>
-  <div class="pbar" data-i18n="priv-bar">🔒 R503 All-10-Fingerprint · MAX30102 Liveness · Phase 2: Hand Vein IR · Phase 3: Iris (10⁷⁸) · Groth16 ZKP · Data never leaves device · One human · Forever</div>
+  <div class="pbar" data-i18n="priv-bar">🔒 Device-bound cryptographic key · Groth16 ZKP · Data never leaves device · One registration per device</div>
   <div class="pbar" style="background:rgba(245,166,35,0.06);border:1px solid rgba(245,166,35,0.2);color:var(--gold)">📱 MetaMask Mobile: if AEQ balance shows 0 after registration, go to Settings → Networks → delete Aequitas Chain → re-add via this website</div>
   <div class="rcard">
-    <div class="wbox" id="wbox"><div class="wlbl" data-i18n="conn-wallet">CONNECTED WALLET</div><div class="wadr" id="wadr" title="">—</div><button onclick="copyAddr('wadr',this)" style="margin-top:4px;padding:3px 10px;font-size:0.56rem;background:rgba(0,255,209,0.08);border:1px solid rgba(0,255,209,0.2);color:var(--neon);border-radius:4px;cursor:pointer">📋 Copy</button></div>
+    <div class="wbox" id="wbox"><div class="wlbl" data-i18n="conn-wallet">CONNECTED WALLET</div><div class="wadr" id="wadr" title="">—</div><button data-act="copyAddr" data-args='["wadr"]' style="margin-top:4px;padding:3px 10px;font-size:0.56rem;background:rgba(0,255,209,0.08);border:1px solid rgba(0,255,209,0.2);color:var(--neon);border-radius:4px;cursor:pointer">📋 Copy</button></div>
     <div id="demurrage-notice" style="display:none"></div>
     <div class="pbox" id="pbox"><div class="plbl" data-i18n="proof-recv">⚡ ZK PROOF RECEIVED</div><div class="pval" id="pval" data-i18n="proof-hint">Connect wallet to register</div></div>
-    <button class="rbtn bc" id="btn-conn" onclick="connectWallet()" data-i18n="btn-conn">🦊 CONNECT METAMASK</button>
-    <button id="btn-disconnect" onclick="disconnectWallet()" style="display:none;margin-top:6px;padding:8px 16px;font-size:0.6rem;letter-spacing:1px;border:1px solid rgba(248,113,113,0.4);background:rgba(248,113,113,0.08);color:var(--red);border-radius:6px;cursor:pointer;width:100%">⊘ DISCONNECT WALLET</button>
-    <button class="rbtn br" id="btn-reg" onclick="doRegister()" disabled data-i18n="btn-reg">🔐 REGISTER ON-CHAIN</button>
-    <button class="rbtn" id="btn-web-reg" onclick="registerViaBrowser()" style="background:linear-gradient(135deg,#0ea5e9,#6366f1);color:#fff;margin-top:8px" data-i18n="btn-web-reg">🌐 REGISTER VIA BROWSER (WebAuthn)</button>
-    <div id="web-reg-warn" style="display:none;font-size:0.62rem;color:#f59e0b;background:rgba(245,158,11,0.08);border:1px solid rgba(245,158,11,0.3);border-radius:6px;padding:8px 10px;margin-top:6px" data-i18n="web-reg-warn">⚠ Device-bound: This identity is tied to this device and browser. You cannot transfer it to another device. For permanent multi-device identity, use the Aequitas Android App instead.<br><br>⚠ <strong>Important:</strong> WebAuthn proves device possession — NOT biological uniqueness. A person with two devices could theoretically register twice. If uniqueness is critical to you, use the Android App with biometric verification instead.</div>
+    <button class="rbtn bc" id="btn-conn" data-act="connectWallet" data-i18n="btn-conn">🦊 CONNECT METAMASK</button>
+    <button id="btn-disconnect" data-act="disconnectWallet" style="display:none;margin-top:6px;padding:8px 16px;font-size:0.6rem;letter-spacing:1px;border:1px solid rgba(248,113,113,0.4);background:rgba(248,113,113,0.08);color:var(--red);border-radius:6px;cursor:pointer;width:100%">⊘ DISCONNECT WALLET</button>
+    <button class="rbtn br" id="btn-reg" data-act="doRegister" disabled data-i18n="btn-reg">🔐 REGISTER ON-CHAIN</button>
+    <button class="rbtn" id="btn-web-reg" data-act="registerViaBrowser" style="background:linear-gradient(135deg,#0ea5e9,#6366f1);color:#fff;margin-top:8px" data-i18n="btn-web-reg">🌐 REGISTER VIA BROWSER (WebAuthn)</button>
+    <div id="web-reg-warn" style="display:none;font-size:0.62rem;color:#f59e0b;background:rgba(245,158,11,0.08);border:1px solid rgba(245,158,11,0.3);border-radius:6px;padding:8px 10px;margin-top:6px" data-i18n="web-reg-warn">⚠ Device-bound: This identity is tied to this device and browser. You cannot transfer it to another device.<br><br>⚠ <strong>Important:</strong> WebAuthn proves device possession — NOT biological uniqueness. A person with two devices could theoretically register twice. If uniqueness is critical to you, use the Android App instead — it still shares the same current device-bound limitation, but at least ties the key to hardware you control.</div>
     <div class="rlog" id="rlog"><span class="info" data-i18n="reg-log-hint">// Open Aequitas Android App to generate your proof, then return here...</span></div>
 
     <!-- Guardian Panel — shown only when user is a registered human -->
@@ -122,7 +122,7 @@
         <div id="escrow-warning" class="escrow-warn" style="display:none">
           ⚠ Your funds are in ESCROW — <strong id="escrow-amount-display"></strong>
           <br>Your wallet was inactive for 910+ days. Sign to recover your balance.
-          <button class="guardian-btn guardian-btn-recover" style="margin-top:8px" onclick="doRecoverEscrow()" data-i18n="guard-recover-btn">🔓 RECOVER FROM ESCROW</button>
+          <button class="guardian-btn guardian-btn-recover" style="margin-top:8px" data-act="doRecoverEscrow" data-i18n="guard-recover-btn">🔓 RECOVER FROM ESCROW</button>
         </div>
       </div>
 
@@ -130,7 +130,7 @@
       <div class="guardian-input-row">
         <div class="guardian-lbl" data-i18n="guard-set-lbl">Set / Change Guardian</div>
         <input type="text" id="guardian-input" placeholder="Guardian wallet address (0x...)">
-        <button class="guardian-btn guardian-btn-set" onclick="doSetGuardian()">🛡 SET GUARDIAN</button>
+        <button class="guardian-btn guardian-btn-set" data-act="doSetGuardian">🛡 SET GUARDIAN</button>
         <div class="guardian-hint" data-i18n="guard-set-hint">Must be a registered Aequitas human · 7-day timelock · Guardian can only confirm your liveness, not access funds · Max 3 wards per guardian</div>
       </div>
 
@@ -139,7 +139,7 @@
         <div class="guardian-lbl" data-i18n="guard-confirm-lbl">Confirm Alive (As Guardian)</div>
         <div class="guardian-input-row">
           <input type="text" id="ward-input" placeholder="Ward wallet address (0x...)">
-          <button class="guardian-btn guardian-btn-confirm" onclick="doGuardianConfirmAlive()">✓ CONFIRM WARD IS ALIVE</button>
+          <button class="guardian-btn guardian-btn-confirm" data-act="doGuardianConfirmAlive">✓ CONFIRM WARD IS ALIVE</button>
           <div class="guardian-hint" data-i18n="guard-confirm-hint">If your ward cannot access their wallet, confirm their liveness to prevent their funds moving to escrow after 910 days of inactivity.</div>
         </div>
       </div>
@@ -153,43 +153,43 @@
     <div class="ic-row"><span class="ic-key" data-i18n="k-chainid">Chain ID</span><span class="ic-val b">1926 (0x786)</span></div>
     <div class="ic-row"><span class="ic-key" data-i18n="k-grant">UBI Grant</span><span class="ic-val go">1,000 AEQ per human</span></div>
     <div class="ic-row"><span class="ic-key" data-i18n="k-fee">Gas Fee</span><span class="ic-val g" data-i18n="free">FREE — completely gasless</span></div>
-    <div class="ic-row"><span class="ic-key" data-i18n="k-limit">Registrations</span><span class="ic-val" data-i18n="k-limit-v">Once per human · permanent · immutable</span></div>
-    <div class="ic-row"><span class="ic-key" data-i18n="k-bio">Biometric Data</span><span class="ic-val g" data-i18n="never-stored">Never stored — stays on your device</span></div>
+    <div class="ic-row"><span class="ic-key" data-i18n="k-limit">Registrations</span><span class="ic-val" data-i18n="k-limit-v">Once per device · permanent · immutable</span></div>
+    <div class="ic-row"><span class="ic-key" data-i18n="k-bio">Device Key</span><span class="ic-val g" data-i18n="never-stored">Never leaves your device — no biometric data is produced or stored</span></div>
     <div class="ic-row"><span class="ic-key" data-i18n="k-proof">Proof System</span><span class="ic-val p">Groth16 ZKP (Zero-Knowledge)</span></div>
     <div class="ic-row"><span class="ic-key" data-i18n="k-conf">Confirmation</span><span class="ic-val" data-i18n="k-conf-v">Within 1 second (1 block)</span></div>
-    <div class="ic-row"><span class="ic-key" data-i18n="k-sybil">Sybil Protection</span><span class="ic-val g" data-i18n="k-sybil-v">One identity per biometric · permanent lock</span></div>
+    <div class="ic-row"><span class="ic-key" data-i18n="k-sybil">Sybil Protection</span><span class="ic-val g" data-i18n="k-sybil-v">One identity per device · permanent lock (device-bound, not yet body-bound)</span></div>
   </div>
 
   <!-- EXPLORE SECTION -->
   <div style="margin-top:20px;background:linear-gradient(135deg,rgba(139,92,246,0.07),rgba(6,182,212,0.03));border:1px solid rgba(139,92,246,0.2);border-radius:var(--radius);padding:20px">
     <div style="font-size:0.57rem;color:var(--purple);letter-spacing:2.5px;text-transform:uppercase;font-weight:700;margin-bottom:14px" data-i18n="explore-title">Explore Aequitas</div>
     <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:8px">
-      <div class="expl-card" onclick="goTab('index','eqi-score')">
+      <div class="expl-card" data-act="goTab" data-args='["index","eqi-score"]'>
         <div class="expl-icon">⚖️</div>
         <div class="expl-name" data-i18n="expl-score">Equality Score</div>
         <div class="expl-desc" data-i18n="expl-score-d">Live Gini coefficient · Aequitas Index · wealth distribution in real time</div>
       </div>
-      <div class="expl-card" onclick="goTab('index','eqi-economy')">
+      <div class="expl-card" data-act="goTab" data-args='["index","eqi-economy"]'>
         <div class="expl-icon">💸</div>
         <div class="expl-name" data-i18n="expl-economy">UBI &amp; Redistribution Pools</div>
         <div class="expl-desc" data-i18n="expl-economy-d">Daily UBI countdown · 4 on-chain pools · demurrage · Protocol Phases</div>
       </div>
-      <div class="expl-card" onclick="goTab('index','eqi-lorenz')">
+      <div class="expl-card" data-act="goTab" data-args='["index","eqi-lorenz"]'>
         <div class="expl-icon">📈</div>
         <div class="expl-name" data-i18n="expl-charts">Charts &amp; History</div>
         <div class="expl-desc" data-i18n="expl-charts-d">Gini history · Lorenz curve · Wealth Cap bootstrap slider · The story of Aequitas</div>
       </div>
-      <div class="expl-card" onclick="goTab('network','net-protocol')">
+      <div class="expl-card" data-act="goTab" data-args='["network","net-protocol"]'>
         <div class="expl-icon">📜</div>
         <div class="expl-name" data-i18n="expl-v7">Protocol V7 Docs</div>
         <div class="expl-desc" data-i18n="expl-v7-d">AequitasV7 contract · 6 mechanisms · ZK proof · wealth cap · demurrage · immutable code</div>
       </div>
-      <div class="expl-card" onclick="goTab('explorer','sep-blocks')">
+      <div class="expl-card" data-act="goTab" data-args='["explorer","sep-blocks"]'>
         <div class="expl-icon">🔍</div>
         <div class="expl-name" data-i18n="expl-explorer">Block Explorer</div>
         <div class="expl-desc" data-i18n="expl-explorer-d">Live BlockDAG · click any block to see validator, hash, transactions, parent hashes</div>
       </div>
-      <div class="expl-card" onclick="goTab('network','net-overview')">
+      <div class="expl-card" data-act="goTab" data-args='["network","net-overview"]'>
         <div class="expl-icon">🌐</div>
         <div class="expl-name" data-i18n="expl-network">Network &amp; Nodes</div>
         <div class="expl-desc" data-i18n="expl-network-d">Node topology · run your own node · technical specs · Chain ID 1926</div>
@@ -202,16 +202,16 @@
 <!-- EXPLORER + HUMANS -->
 <div id="tab-explorer" class="tab-content">
 <nav class="stabs">
-  <div class="stab active" onclick="showStab('tab-explorer','sep-blocks',this)">📦 Blocks</div>
-  <div class="stab" onclick="showStab('tab-explorer','sep-humans',this)">👥 Humans</div>
+  <div class="stab active" data-act="showStab" data-args='["tab-explorer","sep-blocks"]'>📦 Blocks</div>
+  <div class="stab" data-act="showStab" data-args='["tab-explorer","sep-humans"]'>👥 Humans</div>
 </nav>
 <div id="sep-blocks" class="stab-panel active">
 <!-- hidden elements needed by loadStatus() -->
 <span id="s-index" style="display:none"></span>
 <!-- Search bar -->
 <div class="exp-search">
-  <input type="text" id="exp-search-input" placeholder="Search by Block # or Hash..." onkeydown="if(event.key==='Enter')expSearch()">
-  <button onclick="expSearch()">Search</button>
+  <input type="text" id="exp-search-input" placeholder="Search by Block # or Hash...">
+  <button data-act="expSearch">Search</button>
 </div>
 <!-- Compact stats row -->
 <div class="exp-stats">
@@ -223,7 +223,7 @@
   <div class="exp-stat">
     <div class="exp-stat-lbl" data-i18n="s-humans">Verified Humans</div>
     <div class="exp-stat-val" id="s-humans">—</div>
-    <div class="exp-stat-sub">Biometric ZKP · one per person</div>
+    <div class="exp-stat-sub">Device-bound ZK proof · one registration per device</div>
   </div>
   <div class="exp-stat">
     <div class="exp-stat-lbl" data-i18n="s-supply">Total Supply</div>
@@ -287,11 +287,11 @@
   </div>
 </div>
 <!-- Block detail overlay -->
-<div class="block-detail-overlay" id="block-detail-overlay" onclick="if(event.target===this)closeBlock()">
+<div class="block-detail-overlay" id="block-detail-overlay" data-act="closeBlockOnBackdropClick">
   <div class="bdc">
     <div class="bdc-hdr">
       <div style="font-size:0.75rem;font-weight:700;color:var(--purple);font-family:var(--font-mono)" id="bdc-title">Block #—</div>
-      <div class="bdc-close" onclick="closeBlock()">✕ Close</div>
+      <div class="bdc-close" data-act="closeBlock">✕ Close</div>
     </div>
     <div id="bdc-content"></div>
   </div>
@@ -304,30 +304,29 @@
     <div>
       <div class="ib-icon">🔒</div>
       <div class="ib-title" data-i18n="h-what">What is a Verified Human?</div>
-      <div class="ib-text" data-i18n="h-what-t">A Verified Human is a wallet address cryptographically proven to belong to a unique living human being. Verification uses a physical hardware kit: the R503 optical sensor scans all 10 fingerprints; the MAX30102 PPG sensor detects a live pulse. Phase 2 adds hand vein IR imaging; Phase 3 adds an iris scan — the gold standard with 1-in-10⁷⁸ uniqueness. Only a Groth16 Zero-Knowledge Proof is ever transmitted. Raw biometric data never leaves the device, never touches a server, and is never stored anywhere.</div>
+      <div class="ib-text" data-i18n="h-what-t">A Verified Human is currently a wallet address cryptographically proven to control one specific device's secure hardware key. Verification generates that key inside the phone's Secure Enclave/StrongBox, gated behind the device's own screen-unlock — no separate sensor kit. Only a Groth16 Zero-Knowledge Proof is transmitted; no biometric data ever leaves the device. <strong style="color:var(--gold)">Today this verifies one device, not yet one unique person</strong> — see the FAQ for what that means in practice.</div>
     </div>
     <div>
       <div class="ib-icon">🧮</div>
       <div class="ib-title" data-i18n="h-zkp">Zero-Knowledge Proof System</div>
-      <div class="ib-text" data-i18n="h-zkp-t">Aequitas uses Groth16 proofs on the BN128 elliptic curve — the same curve used by Ethereum and Zcash. Proof size: ~200 bytes. Verification: ~10ms. The multi-factor commitment binds all biometric inputs into a single proof: <code>commitment = keccak256(iris_hash ‖ vein_hash ‖ fingers_hash ‖ wallet)</code>. The nullifier is bound exclusively to physical body features — not the device — so a person who loses their phone can re-verify with the same iris and hand veins without creating a duplicate identity. No biometric data is ever revealed or stored.</div>
+      <div class="ib-text" data-i18n="h-zkp-t">Aequitas uses Groth16 proofs on the BN128 elliptic curve — the same curve used by Ethereum and Zcash. Proof size: ~200 bytes. Verification: ~10ms. <code>commitment = keccak256(deviceKey ‖ wallet)</code>. The nullifier is bound to this device: losing your phone does not let you create a second identity on it, but a different device can still register separately. No key material is ever revealed or stored server-side.</div>
     </div>
     <div>
       <div class="ib-icon">🛡</div>
-      <div class="ib-title" data-i18n="h-sybil">Sybil Attack Prevention</div>
-      <div class="ib-text" data-i18n="h-sybil-t">A Sybil attack is when one person creates multiple identities to gain an unfair advantage. Aequitas prevents this with a permanent nullifier stored on-chain — derived from physical biometrics, not from a device. <strong>Phase 1</strong> uses all 10 fingerprints + MAX30102 liveness (PPG pulse). <strong>Phase 2</strong> adds hand vein IR pattern (1 in 10⁷, uncopyable — an internal body feature). <strong>Phase 3</strong> adds iris scan (1 in 10⁷⁸ — the global gold standard). From Phase 3, the nullifier is <code>keccak256(iris_hash ‖ vein_hash ‖ domain)</code> — bound to the body, not the phone. Losing a device does not create a second identity. One human, one wallet, forever.</div>
+      <div class="ib-title" data-i18n="h-sybil">Sybil Resistance — Current State</div>
+      <div class="ib-text" data-i18n="h-sybil-t">A Sybil attack is when one person creates multiple identities to gain an unfair advantage. Today's nullifier is derived from a per-device hardware key, so it reliably blocks re-registering the SAME device, and blocks reusing the same identity across wallets. It does not yet detect the same person registering from a second physical device — closing that gap requires a real cross-device biological uniqueness check, which is planned as post-beta work rather than shipped today.</div>
     </div>
     <div>
       <div class="ib-icon">🌍</div>
       <div class="ib-title" data-i18n="h-global">Global Financial Inclusion</div>
-      <div class="ib-text" data-i18n="h-global-t">1.4 billion adults worldwide have no bank account. Aequitas requires nothing more than an Android smartphone with a fingerprint or face sensor — a device over 3 billion people already own. No bank account, no credit card, no prior cryptocurrency, no government ID. Just being human is enough to participate in the Aequitas economy.</div>
+      <div class="ib-text" data-i18n="h-global-t">1.4 billion adults worldwide have no bank account. Aequitas requires nothing more than an Android smartphone with the screen-unlock (fingerprint/face/PIN) you already use — a device over 3 billion people already own. No bank account, no credit card, no prior cryptocurrency, no government ID. Just being human is enough to participate in the Aequitas economy.</div>
     </div>
     <div>
       <div class="ib-icon">🫁</div>
-      <div class="ib-title" data-i18n="h-bio-hw">Biometric Hardware Roadmap</div>
+      <div class="ib-title" data-i18n="h-bio-hw">Identity Verification Roadmap</div>
       <div class="ib-text" data-i18n="h-bio-hw-t">
-        <strong style="color:var(--neon)">Phase 1 (active)</strong> — <strong>R503</strong> optical fingerprint scanner (GROW, UART): all 10 fingers, combined hash. <strong>MAX30102</strong> PPG sensor: confirms live pulse, rejects replays and casts.<br><br>
-        <strong style="color:var(--blue)">Phase 2 (planned)</strong> — <strong>ESP32-CAM + 850 nm IR LED</strong>: infrared hand vein imaging. Veins are an internal body feature — impossible to copy, immutable over a lifetime, unique 1 in 10⁷. Different even in identical twins.<br><br>
-        <strong style="color:var(--gold)">Phase 3 (planned)</strong> — <strong>IR Iris module</strong>: 240+ degrees of freedom, uniqueness 1 in 10⁷⁸. The global gold standard. Different in identical twins. Immutable from birth. From Phase 3, the Sybil nullifier is bound exclusively to iris + vein — phone loss cannot create a duplicate identity.
+        <strong style="color:var(--neon)">Today (beta)</strong> — a per-device hardware-backed cryptographic key, honestly labeled as device-bound rather than body-bound.<br><br>
+        <strong style="color:var(--gold)">Planned (post-beta)</strong> — a real cross-device biological uniqueness check, to be specified, built, and independently audited before any stronger Sybil-resistance claim is made.
       </div>
     </div>
   </div>
@@ -335,7 +334,7 @@
 <div class="hs">
   <div class="section">
     <div class="sec-head"><div class="sec-title"><span class="sec-dot"></span><span data-i18n="reg-humans">Registered Humans</span></div><div class="sec-count" id="h-count">0</div></div>
-    <div class="sec-desc" data-i18n="h-desc">Every address below has been verified as a unique human through biometric Zero-Knowledge Proof. Each received exactly 1,000 AEQ upon registration. The registry is permanent, immutable, and on-chain — no entry can ever be deleted or modified.</div>
+    <div class="sec-desc" data-i18n="h-desc">Every address below has proven control of a device-bound cryptographic key via Zero-Knowledge Proof and received exactly 1,000 AEQ upon registration. The registry is permanent, immutable, and on-chain — no entry can ever be deleted or modified. See the FAQ for what "device-bound" means for Sybil resistance today.</div>
     <div id="humans-list"><div class="empty" data-i18n="no-humans">No humans registered yet. Download the Aequitas Android App and be the first!</div></div>
   </div>
   <div class="right-col">
@@ -347,17 +346,19 @@
       <div class="ic-row"><span class="ic-key" data-i18n="k-fee">Registration Fee</span><span class="ic-val g" data-i18n="free">FREE — gasless</span></div>
       <div class="ic-row"><span class="ic-key" data-i18n="k-zkp">ZKP System</span><span class="ic-val p">Groth16 / BN128</span></div>
       <div class="ic-row"><span class="ic-key" data-i18n="k-hash">Hash System</span><span class="ic-val p">keccak256</span></div>
-      <div class="ic-row"><span class="ic-key" data-i18n="k-bio">Biometric Storage</span><span class="ic-val g" data-i18n="never-stored">Never stored</span></div>
+      <div class="ic-row"><span class="ic-key" data-i18n="k-bio">Device Key Storage</span><span class="ic-val g" data-i18n="never-stored">Never leaves your device</span></div>
       <div class="ic-row"><span class="ic-key" data-i18n="k-sybil-prot">Sybil Protection</span><span class="ic-val g">Permanent · On-chain</span></div>
     </div>
     <div class="ic" style="margin-top:12px">
       <div class="ic-title" data-i18n="faq-title">❓ FAQ</div>
       <div style="font-size:0.63rem;color:var(--text);padding:8px 0;border-bottom:1px solid var(--border);font-weight:600" data-i18n="faq-q1">Is my biometric data safe?</div>
-      <div style="font-size:0.62rem;color:var(--muted);padding:6px 0 10px;border-bottom:1px solid var(--border);line-height:1.7" data-i18n="faq-a1">Yes. Your fingerprint or face scan never leaves your device. The Hardware Secure Element processes the biometric and produces a cryptographic key. Only a mathematical proof derived from that key is ever transmitted.</div>
+      <div style="font-size:0.62rem;color:var(--muted);padding:6px 0 10px;border-bottom:1px solid var(--border);line-height:1.7" data-i18n="faq-a1">Yes. No fingerprint, face, or other biometric image is ever captured, processed, or transmitted by Aequitas. Your phone's own screen-unlock simply gates access to a random key generated and stored in its secure hardware. Only a mathematical proof derived from that key is ever sent to Aequitas — never the key itself, never any biometric data.</div>
+      <div style="font-size:0.63rem;color:var(--text);padding:8px 0;border-bottom:1px solid var(--border);font-weight:600" data-i18n="faq-q1b">Does registration prove I am a unique real person?</div>
+      <div style="font-size:0.62rem;color:var(--muted);padding:6px 0 10px;border-bottom:1px solid var(--border);line-height:1.7" data-i18n="faq-a1b">Not yet, fully. Today's proof cryptographically proves you control one specific device's secure hardware key — it reliably stops that same device (or wallet) from registering twice, but it cannot currently tell two different physical devices apart if the same person owns both. A genuine cross-device biological uniqueness check is planned work, not something already shipped — we'd rather say that plainly than overstate what today's device-bound proof guarantees.</div>
       <div style="font-size:0.63rem;color:var(--text);padding:8px 0;border-bottom:1px solid var(--border);font-weight:600" data-i18n="faq-q2">Can I register with a different wallet later?</div>
-      <div style="font-size:0.62rem;color:var(--muted);padding:6px 0 10px;border-bottom:1px solid var(--border);line-height:1.7" data-i18n="faq-a2">No. Registration is permanently bound to one wallet address per biometric identity. This is by design — it prevents Sybil attacks and ensures the one-person-one-wallet guarantee.</div>
+      <div style="font-size:0.62rem;color:var(--muted);padding:6px 0 10px;border-bottom:1px solid var(--border);line-height:1.7" data-i18n="faq-a2">No. Registration is permanently bound to one wallet address per device key. This is by design — it prevents re-registering the same device and enforces one-wallet-per-device-identity.</div>
       <div style="font-size:0.63rem;color:var(--text);padding:8px 0;border-bottom:1px solid var(--border);font-weight:600" data-i18n="faq-q3">What happens if I lose my phone?</div>
-      <div style="font-size:0.62rem;color:var(--muted);padding:6px 0 10px;line-height:1.7" data-i18n="faq-a3">Your AEQ remains in your wallet — it is tied to your private key, not your phone. You can still access your wallet via MetaMask with your seed phrase. Wallet recovery is independent of the biometric registration.</div>
+      <div style="font-size:0.62rem;color:var(--muted);padding:6px 0 10px;line-height:1.7" data-i18n="faq-a3">Your AEQ remains in your wallet — it is tied to your private key, not your phone. You can still access your wallet via MetaMask with your seed phrase. Wallet recovery is independent of the device-key registration.</div>
     </div>
   </div>
 </div>
@@ -367,8 +368,8 @@
 <!-- EXCHANGE -->
 <div id="tab-exchange" class="tab-content">
 <nav class="stabs">
-  <div class="stab active" onclick="showStab('tab-exchange','exch-swap',this);setTimeout(drawPriceChart,50)">🔄 Swap</div>
-  <div class="stab" onclick="showStab('tab-exchange','exch-liquidity',this)">💧 Liquidity</div>
+  <div class="stab active" data-act="showStabAndPriceChart" data-args='["tab-exchange","exch-swap"]'>🔄 Swap</div>
+  <div class="stab" data-act="showStab" data-args='["tab-exchange","exch-liquidity"]'>💧 Liquidity</div>
 </nav>
 <div id="exch-swap" class="stab-panel active">
 <div style="padding:16px 20px 0">
@@ -384,20 +385,20 @@
       </div>
     </div>
     <div style="display:flex;flex-wrap:wrap;gap:3px;margin-bottom:8px">
-      <button onclick="setChartInterval(60000)" id="ci-1m" class="ci-btn" title="1-minute candles">1m</button>
-      <button onclick="setChartInterval(300000)" id="ci-5m" class="ci-btn" title="5-minute candles">5m</button>
-      <button onclick="setChartInterval(900000)" id="ci-15m" class="ci-btn ci-active" title="15-minute candles">15m</button>
-      <button onclick="setChartInterval(3600000)" id="ci-1h" class="ci-btn" title="1-hour candles">1h</button>
-      <button onclick="setChartInterval(14400000)" id="ci-4h" class="ci-btn" title="4-hour candles">4h</button>
-      <button onclick="setChartInterval(86400000)" id="ci-1d" class="ci-btn" title="1-day candles">1D</button>
+      <button data-act="setChartInterval" data-args='[60000]' id="ci-1m" class="ci-btn" title="1-minute candles">1m</button>
+      <button data-act="setChartInterval" data-args='[300000]' id="ci-5m" class="ci-btn" title="5-minute candles">5m</button>
+      <button data-act="setChartInterval" data-args='[900000]' id="ci-15m" class="ci-btn ci-active" title="15-minute candles">15m</button>
+      <button data-act="setChartInterval" data-args='[3600000]' id="ci-1h" class="ci-btn" title="1-hour candles">1h</button>
+      <button data-act="setChartInterval" data-args='[14400000]' id="ci-4h" class="ci-btn" title="4-hour candles">4h</button>
+      <button data-act="setChartInterval" data-args='[86400000]' id="ci-1d" class="ci-btn" title="1-day candles">1D</button>
       <span style="width:1px;background:rgba(255,255,255,0.1);margin:2px 2px"></span>
-      <button onclick="setChartRange('3d')" id="ci-3d" class="ci-btn" title="Last 3 days">3d</button>
-      <button onclick="setChartRange('1w')" id="ci-1w" class="ci-btn" title="Last 1 week">1w</button>
-      <button onclick="setChartRange('2w')" id="ci-2w" class="ci-btn" title="Last 2 weeks">2w</button>
-      <button onclick="setChartRange('1mo')" id="ci-1mo" class="ci-btn" title="Last 1 month">1M</button>
-      <button onclick="setChartRange('3mo')" id="ci-3mo" class="ci-btn" title="Last 3 months">3M</button>
-      <button onclick="setChartRange('1y')" id="ci-1y" class="ci-btn" title="Last 1 year">1Y</button>
-      <button onclick="setChartRange('all')" id="ci-all" class="ci-btn" title="All retained history">ALL</button>
+      <button data-act="setChartRange" data-args='["3d"]' id="ci-3d" class="ci-btn" title="Last 3 days">3d</button>
+      <button data-act="setChartRange" data-args='["1w"]' id="ci-1w" class="ci-btn" title="Last 1 week">1w</button>
+      <button data-act="setChartRange" data-args='["2w"]' id="ci-2w" class="ci-btn" title="Last 2 weeks">2w</button>
+      <button data-act="setChartRange" data-args='["1mo"]' id="ci-1mo" class="ci-btn" title="Last 1 month">1M</button>
+      <button data-act="setChartRange" data-args='["3mo"]' id="ci-3mo" class="ci-btn" title="Last 3 months">3M</button>
+      <button data-act="setChartRange" data-args='["1y"]' id="ci-1y" class="ci-btn" title="Last 1 year">1Y</button>
+      <button data-act="setChartRange" data-args='["all"]' id="ci-all" class="ci-btn" title="All retained history">ALL</button>
     </div>
     <div id="price-chart" style="width:100%;height:260px;border-radius:6px;overflow:hidden;background:#0A0C16"></div>
     <div id="price-chart-empty" style="display:none;text-align:center;padding:40px;color:var(--muted);font-size:0.63rem" data-i18n="swap-price-empty">No pool data yet — add liquidity to see the price chart.</div>
@@ -410,7 +411,7 @@
   </div>
   <div class="pbar" data-i18n="swap-priv-bar">🔒 0.1% swap fee only · AEQ-to-AEQ transfers stay free · tUSD is a test currency with no real-world value</div>
   <div class="rcard">
-    <div class="wbox" id="swap-wbox"><div class="wlbl" data-i18n="conn-wallet">CONNECTED WALLET</div><div class="wadr" id="swap-wadr" title="">—</div><button onclick="copyAddr('swap-wadr',this)" style="margin-top:4px;padding:3px 10px;font-size:0.56rem;background:rgba(0,255,209,0.08);border:1px solid rgba(0,255,209,0.2);color:var(--neon);border-radius:4px;cursor:pointer">📋 Copy</button></div>
+    <div class="wbox" id="swap-wbox"><div class="wlbl" data-i18n="conn-wallet">CONNECTED WALLET</div><div class="wadr" id="swap-wadr" title="">—</div><button data-act="copyAddr" data-args='["swap-wadr"]' style="margin-top:4px;padding:3px 10px;font-size:0.56rem;background:rgba(0,255,209,0.08);border:1px solid rgba(0,255,209,0.2);color:var(--neon);border-radius:4px;cursor:pointer">📋 Copy</button></div>
     <div id="demurrage-notice" style="display:none;font-size:13px;padding:10px 12px;border-radius:8px;background:rgba(255,179,0,0.1);border:1px solid rgba(255,179,0,0.3);color:var(--gold);margin:10px 0"></div>
     <div class="ic-row" style="margin:8px 0"><span class="ic-key" data-i18n="swap-your-aeq">Your AEQ</span><span class="ic-val go" id="swap-bal-aeq">—</span></div>
     <div class="ic-row" style="margin-bottom:16px"><span class="ic-key" data-i18n="swap-your-tusd">Your tUSD</span><span class="ic-val go" id="swap-bal-tusd">—</span></div>
@@ -422,21 +423,21 @@
         <div style="font-size:0.58rem;color:var(--muted)">Bal: <span id="swap-from-bal" style="color:var(--neon)">—</span></div>
       </div>
       <div style="display:flex;gap:8px;align-items:center">
-        <button id="swap-from-btn" onclick="reverseSwapDir()" style="display:flex;align-items:center;gap:5px;background:rgba(139,92,246,0.12);border:1px solid rgba(139,92,246,0.3);border-radius:8px;padding:8px 12px;cursor:pointer;min-width:86px;font-size:0.68rem;font-weight:700;color:var(--text);white-space:nowrap">
+        <button id="swap-from-btn" data-act="reverseSwapDir" style="display:flex;align-items:center;gap:5px;background:rgba(139,92,246,0.12);border:1px solid rgba(139,92,246,0.3);border-radius:8px;padding:8px 12px;cursor:pointer;min-width:86px;font-size:0.68rem;font-weight:700;color:var(--text);white-space:nowrap">
           <span id="swap-from-icon">🔶</span><span id="swap-from-sym">AEQ</span><span style="color:var(--muted);font-size:0.55rem;margin-left:auto">⇄</span>
         </button>
-        <input type="number" id="swap-amount" placeholder="0.00" oninput="updateFeeEstimate()" style="flex:1;padding:12px;border-radius:8px;border:1px solid var(--border);background:#0A1220;color:#E8EDF5;font-size:16px;min-width:0;box-sizing:border-box">
+        <input type="number" id="swap-amount" placeholder="0.00" style="flex:1;padding:12px;border-radius:8px;border:1px solid var(--border);background:#0A1220;color:#E8EDF5;font-size:16px;min-width:0;box-sizing:border-box">
       </div>
       <div style="display:flex;gap:5px;margin-top:8px">
-        <button class="rbtn pctbtn" onclick="setSwapPct(0.25)" style="flex:1;padding:6px;font-size:11px">25%</button>
-        <button class="rbtn pctbtn" onclick="setSwapPct(0.5)" style="flex:1;padding:6px;font-size:11px">50%</button>
-        <button class="rbtn pctbtn" onclick="setSwapPct(0.75)" style="flex:1;padding:6px;font-size:11px">75%</button>
-        <button class="rbtn pctbtn" onclick="setSwapPct(1)" style="flex:1;padding:6px;font-size:11px">MAX</button>
+        <button class="rbtn pctbtn" data-act="setSwapPct" data-args='[0.25]' style="flex:1;padding:6px;font-size:11px">25%</button>
+        <button class="rbtn pctbtn" data-act="setSwapPct" data-args='[0.5]' style="flex:1;padding:6px;font-size:11px">50%</button>
+        <button class="rbtn pctbtn" data-act="setSwapPct" data-args='[0.75]' style="flex:1;padding:6px;font-size:11px">75%</button>
+        <button class="rbtn pctbtn" data-act="setSwapPct" data-args='[1]' style="flex:1;padding:6px;font-size:11px">MAX</button>
       </div>
     </div>
     <!-- Reverse direction arrow -->
     <div style="display:flex;justify-content:center;margin:4px 0">
-      <button onclick="reverseSwapDir()" style="background:var(--card2);border:1px solid var(--border);border-radius:50%;width:32px;height:32px;display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:1rem;color:var(--muted)" title="Reverse direction">⇅</button>
+      <button data-act="reverseSwapDir" style="background:var(--card2);border:1px solid var(--border);border-radius:50%;width:32px;height:32px;display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:1rem;color:var(--muted)" title="Reverse direction">⇅</button>
     </div>
     <!-- DEX-style Receive panel -->
     <div style="background:var(--card2);border:1px solid var(--border);border-radius:10px;padding:14px;margin-bottom:8px">
@@ -460,15 +461,15 @@
     </div>
     <div id="swap-warn" style="display:none;font-size:13px;padding:10px 12px;border-radius:8px;background:rgba(255,179,0,0.1);border:1px solid rgba(255,179,0,0.3);color:var(--gold);margin-bottom:10px"></div>
 
-    <button class="rbtn bc" id="swap-btn-conn" onclick="connectSwapWallet()" data-i18n="btn-conn">🦊 CONNECT METAMASK</button>
-    <button id="swap-btn-disconnect" onclick="disconnectWallet()" style="display:none;margin-top:6px;padding:8px 16px;font-size:0.6rem;letter-spacing:1px;border:1px solid rgba(248,113,113,0.4);background:rgba(248,113,113,0.08);color:var(--red);border-radius:6px;cursor:pointer;width:100%">⊘ DISCONNECT WALLET</button>
-    <button class="rbtn br" id="swap-btn-go" onclick="doSwap()" disabled data-i18n="swap-btn-go">🔄 SWAP</button>
+    <button class="rbtn bc" id="swap-btn-conn" data-act="connectSwapWallet" data-i18n="btn-conn">🦊 CONNECT METAMASK</button>
+    <button id="swap-btn-disconnect" data-act="disconnectWallet" style="display:none;margin-top:6px;padding:8px 16px;font-size:0.6rem;letter-spacing:1px;border:1px solid rgba(248,113,113,0.4);background:rgba(248,113,113,0.08);color:var(--red);border-radius:6px;cursor:pointer;width:100%">⊘ DISCONNECT WALLET</button>
+    <button class="rbtn br" id="swap-btn-go" data-act="doSwap" disabled data-i18n="swap-btn-go">🔄 SWAP</button>
     <div class="rlog" id="swap-log"><span class="info" data-i18n="swap-log-hint">// Connect your wallet to swap...</span></div>
 
     <div class="ic" style="margin-top:20px">
       <div class="ic-title" data-i18n="swap-no-liquidity">No tUSD yet?</div>
       <div class="ic-row"><span class="ic-key" data-i18n="swap-faucet-desc">Registered humans can claim test-tUSD once</span></div>
-      <button class="rbtn" id="swap-btn-faucet" onclick="claimFaucet()" disabled data-i18n="swap-btn-faucet" style="margin-top:8px">💧 CLAIM TEST-tUSD</button>
+      <button class="rbtn" id="swap-btn-faucet" data-act="claimFaucet" disabled data-i18n="swap-btn-faucet" style="margin-top:8px">💧 CLAIM TEST-tUSD</button>
     </div>
 </div>
 </div>
@@ -514,21 +515,21 @@
 <div class="ic" style="margin-top:20px">
       <div class="ic-title" data-i18n="swap-addliq-title">Provide Liquidity</div>
       <div class="ic-row"><span class="ic-key" id="swap-addliq-desc" data-i18n="swap-addliq-desc">Be the first to deposit — your ratio sets the starting price.</span></div>
-      <input type="number" id="addliq-aeq" placeholder="AEQ amount" oninput="updateLiquidityRatio('aeq')" style="width:100%;padding:12px;border-radius:8px;border:1px solid var(--border);background:#0A1220;color:#E8EDF5;font-size:15px;margin:8px 0 4px;box-sizing:border-box">
+      <input type="number" id="addliq-aeq" placeholder="AEQ amount" style="width:100%;padding:12px;border-radius:8px;border:1px solid var(--border);background:#0A1220;color:#E8EDF5;font-size:15px;margin:8px 0 4px;box-sizing:border-box">
       <div class="pct-row" style="display:flex;gap:6px;margin-bottom:8px">
-        <button class="rbtn pctbtn" onclick="setPctAmount('aeq',0.25)" style="flex:1;padding:8px;font-size:12px">25%</button>
-        <button class="rbtn pctbtn" onclick="setPctAmount('aeq',0.5)" style="flex:1;padding:8px;font-size:12px">50%</button>
-        <button class="rbtn pctbtn" onclick="setPctAmount('aeq',0.75)" style="flex:1;padding:8px;font-size:12px">75%</button>
-        <button class="rbtn pctbtn" onclick="setPctAmount('aeq',1)" style="flex:1;padding:8px;font-size:12px">MAX</button>
+        <button class="rbtn pctbtn" data-act="setPctAmount" data-args='["aeq",0.25]' style="flex:1;padding:8px;font-size:12px">25%</button>
+        <button class="rbtn pctbtn" data-act="setPctAmount" data-args='["aeq",0.5]' style="flex:1;padding:8px;font-size:12px">50%</button>
+        <button class="rbtn pctbtn" data-act="setPctAmount" data-args='["aeq",0.75]' style="flex:1;padding:8px;font-size:12px">75%</button>
+        <button class="rbtn pctbtn" data-act="setPctAmount" data-args='["aeq",1]' style="flex:1;padding:8px;font-size:12px">MAX</button>
       </div>
-      <input type="number" id="addliq-tusd" placeholder="tUSD amount" oninput="updateLiquidityRatio('tusd')" style="width:100%;padding:12px;border-radius:8px;border:1px solid var(--border);background:#0A1220;color:#E8EDF5;font-size:15px;margin-bottom:4px;box-sizing:border-box">
+      <input type="number" id="addliq-tusd" placeholder="tUSD amount" style="width:100%;padding:12px;border-radius:8px;border:1px solid var(--border);background:#0A1220;color:#E8EDF5;font-size:15px;margin-bottom:4px;box-sizing:border-box">
       <div class="pct-row" style="display:flex;gap:6px;margin-bottom:8px">
-        <button class="rbtn pctbtn" onclick="setPctAmount('tusd',0.25)" style="flex:1;padding:8px;font-size:12px">25%</button>
-        <button class="rbtn pctbtn" onclick="setPctAmount('tusd',0.5)" style="flex:1;padding:8px;font-size:12px">50%</button>
-        <button class="rbtn pctbtn" onclick="setPctAmount('tusd',0.75)" style="flex:1;padding:8px;font-size:12px">75%</button>
-        <button class="rbtn pctbtn" onclick="setPctAmount('tusd',1)" style="flex:1;padding:8px;font-size:12px">MAX</button>
+        <button class="rbtn pctbtn" data-act="setPctAmount" data-args='["tusd",0.25]' style="flex:1;padding:8px;font-size:12px">25%</button>
+        <button class="rbtn pctbtn" data-act="setPctAmount" data-args='["tusd",0.5]' style="flex:1;padding:8px;font-size:12px">50%</button>
+        <button class="rbtn pctbtn" data-act="setPctAmount" data-args='["tusd",0.75]' style="flex:1;padding:8px;font-size:12px">75%</button>
+        <button class="rbtn pctbtn" data-act="setPctAmount" data-args='["tusd",1]' style="flex:1;padding:8px;font-size:12px">MAX</button>
       </div>
-      <button class="rbtn" id="swap-btn-addliq" onclick="doAddLiquidity()" disabled data-i18n="swap-btn-addliq" style="margin-top:4px">💧 ADD LIQUIDITY</button>
+      <button class="rbtn" id="swap-btn-addliq" data-act="doAddLiquidity" disabled data-i18n="swap-btn-addliq" style="margin-top:4px">💧 ADD LIQUIDITY</button>
     </div>
 
     <div class="ic" id="lp-position-box" style="margin-top:20px;display:none">
@@ -536,18 +537,18 @@
       <div class="ic-row"><span class="ic-key" data-i18n="swap-lp-share">Pool Share</span><span class="ic-val go" id="lp-share-pct">—</span></div>
       <div class="ic-row"><span class="ic-key" data-i18n="swap-lp-withdrawable">Withdrawable</span><span class="ic-val" id="lp-withdrawable">—</span></div>
       <div style="display:flex;align-items:center;gap:8px;margin:10px 0 6px">
-        <input type="number" id="remove-pct-input" min="0" max="100" step="0.1" placeholder="%" oninput="setRemovePctManual(this.value)" style="width:80px;padding:10px;border-radius:8px;border:1px solid var(--border);background:#0A1220;color:#E8EDF5;font-size:14px;box-sizing:border-box">
+        <input type="number" id="remove-pct-input" min="0" max="100" step="0.1" placeholder="%" style="width:80px;padding:10px;border-radius:8px;border:1px solid var(--border);background:#0A1220;color:#E8EDF5;font-size:14px;box-sizing:border-box">
         <span style="color:var(--muted);font-size:13px" data-i18n="swap-lp-pct-label">% of your position</span>
       </div>
       <div class="pct-row" style="display:flex;gap:6px;margin-bottom:8px">
-        <button class="rbtn pctbtn" onclick="setRemovePct(0.25,this)" style="flex:1;padding:8px;font-size:12px">25%</button>
-        <button class="rbtn pctbtn" onclick="setRemovePct(0.5,this)" style="flex:1;padding:8px;font-size:12px">50%</button>
-        <button class="rbtn pctbtn" onclick="setRemovePct(0.75,this)" style="flex:1;padding:8px;font-size:12px">75%</button>
-        <button class="rbtn pctbtn" onclick="setRemovePct(1,this)" style="flex:1;padding:8px;font-size:12px">MAX</button>
+        <button class="rbtn pctbtn" data-act="setRemovePct" data-args='[0.25]' style="flex:1;padding:8px;font-size:12px">25%</button>
+        <button class="rbtn pctbtn" data-act="setRemovePct" data-args='[0.5]' style="flex:1;padding:8px;font-size:12px">50%</button>
+        <button class="rbtn pctbtn" data-act="setRemovePct" data-args='[0.75]' style="flex:1;padding:8px;font-size:12px">75%</button>
+        <button class="rbtn pctbtn" data-act="setRemovePct" data-args='[1]' style="flex:1;padding:8px;font-size:12px">MAX</button>
       </div>
       <div id="lp-remove-inline" style="background:rgba(0,255,209,0.07);border:1px solid rgba(0,255,209,0.2);border-radius:6px;padding:8px 12px;margin-bottom:8px;font-size:0.66rem;color:var(--teal);text-align:center;display:none">≈ <span id="lp-inline-aeq">—</span> AEQ + <span id="lp-inline-tusd">—</span> tUSD</div>
       <div class="ic-row" style="margin-bottom:8px"><span class="ic-key" data-i18n="swap-lp-youget">You will receive</span><span class="ic-val go" id="lp-remove-preview">—</span></div>
-      <button class="rbtn br" id="swap-btn-removeliq" onclick="doRemoveLiquidity()" data-i18n="swap-btn-removeliq">🔥 REMOVE LIQUIDITY</button>
+      <button class="rbtn br" id="swap-btn-removeliq" data-act="doRemoveLiquidity" data-i18n="swap-btn-removeliq">🔥 REMOVE LIQUIDITY</button>
     </div>
   </div>
 </div>
@@ -556,10 +557,10 @@
 <!-- INDEX (Equality) -->
 <div id="tab-index" class="tab-content">
 <nav class="stabs">
-  <div class="stab active" onclick="showStab('tab-index','eqi-score',this)">📊 Score</div>
-  <div class="stab" onclick="showStab('tab-index','eqi-lorenz',this);setTimeout(drawLorenzCurve,60)">📈 Distribution</div>
-  <div class="stab" onclick="showStab('tab-index','eqi-economy',this)">💸 Economy</div>
-  <div class="stab" onclick="showStab('tab-index','eqi-story',this)">📖 Story</div>
+  <div class="stab active" data-act="showStab" data-args='["tab-index","eqi-score"]'>📊 Score</div>
+  <div class="stab" data-act="showStabAndLorenzChart" data-args='["tab-index","eqi-lorenz"]'>📈 Distribution</div>
+  <div class="stab" data-act="showStab" data-args='["tab-index","eqi-economy"]'>💸 Economy</div>
+  <div class="stab" data-act="showStab" data-args='["tab-index","eqi-story"]'>📖 Story</div>
 </nav>
 <div id="eqi-score" class="stab-panel active">
 <div class="is">
@@ -819,7 +820,7 @@
     <div class="idx">
       <div class="idx-title">The Core Innovation</div>
       <div style="font-size:0.65rem;color:var(--muted);line-height:1.9">
-        <div style="margin-bottom:10px"><span style="color:var(--purple);font-weight:700">ZK Biometric Proof</span><br>Your fingerprint is processed on your phone&#8217;s Hardware Secure Element. A Groth16 Zero-Knowledge Proof proves you are a unique human being &#8212; without any biometric data ever leaving your device or touching any server.</div>
+        <div style="margin-bottom:10px"><span style="color:var(--purple);font-weight:700">ZK Device-Key Proof</span><br>A cryptographic key is generated in your phone&#8217;s Hardware Secure Element, gated behind your existing screen-unlock. A Groth16 Zero-Knowledge Proof proves you hold that key &#8212; without it ever leaving your device or touching any server. This proves control of one device today, not yet biological uniqueness across devices.</div>
         <div style="margin-bottom:10px"><span style="color:var(--teal);font-weight:700">No-Stake Blockchain</span><br>No mining. No staking. No proof-of-work. Block production is open to any node operator. Validators earn from the 40% fee pool &#8212; incentivized by fairness, not capital.</div>
         <div><span style="color:var(--neon);font-weight:700">One Human = One Wallet = 1,000 AEQ</span><br>Supply formula: Total AEQ = Verified Humans x 1,000. No pre-mine. No admin keys. No governance vote can change this.</div>
       </div>
@@ -897,18 +898,18 @@
 
   <!-- PROOF OF ALIVE -->
   <div class="idx" style="margin-bottom:16px">
-    <div class="idx-title">Proof of Alive &#8212; Biometric Without Surveillance</div>
+    <div class="idx-title">Sybil Resistance &#8212; Current State, Honestly</div>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:12px">
       <div>
-        <div style="font-size:0.6rem;color:var(--purple);font-weight:700;letter-spacing:1px;text-transform:uppercase;margin-bottom:8px">Why Biometrics?</div>
-        <div style="font-size:0.63rem;color:var(--muted);line-height:1.85">Sybil resistance &#8212; preventing one person from registering multiple wallets &#8212; is the core unsolved problem of fair money distribution. Aequitas uses biometric Zero-Knowledge Proofs: mathematically proven uniqueness with <strong style="color:var(--text)">zero personal data exposed</strong>.</div>
+        <div style="font-size:0.6rem;color:var(--purple);font-weight:700;letter-spacing:1px;text-transform:uppercase;margin-bottom:8px">Why Device Keys?</div>
+        <div style="font-size:0.63rem;color:var(--muted);line-height:1.85">Sybil resistance &#8212; preventing one person from registering multiple wallets &#8212; is the core unsolved problem of fair money distribution. Aequitas today uses device-bound Zero-Knowledge Proofs: mathematically proven control of a device key with <strong style="color:var(--text)">zero personal data exposed</strong>. This is a step toward Sybil resistance, not yet a complete solution &#8212; see below.</div>
       </div>
       <div>
         <div style="font-size:0.6rem;color:var(--teal);font-weight:700;letter-spacing:1px;text-transform:uppercase;margin-bottom:8px">How It Works</div>
-        <div style="font-size:0.63rem;color:var(--muted);line-height:1.85">1. Fingerprint scanned by Hardware Secure Element (HSE)<br>2. HSE derives a device-bound cryptographic key<br>3. keccak256(bioKey) = bioHash (stored on-chain)<br>4. Groth16 ZK proof: proves uniqueness without revealing bioHash<br>5. Nullifier system: attempting to register twice is mathematically impossible</div>
+        <div style="font-size:0.63rem;color:var(--muted);line-height:1.85">1. Device's secure hardware (Secure Enclave/StrongBox) generates a key, gated behind the screen-unlock you already use<br>2. keccak256(deviceKey) = deviceHash (never leaves the device)<br>3. Groth16 ZK proof: proves key possession without revealing the key<br>4. Nullifier system: registering the same device twice is mathematically impossible</div>
       </div>
     </div>
-    <div style="margin-top:12px;padding:12px 16px;background:rgba(4,120,87,0.06);border-radius:8px;border:1px solid rgba(4,120,87,0.15);font-size:0.63rem;color:var(--muted);line-height:1.8"><strong style="color:var(--neon)">Privacy guarantee:</strong> Your raw biometric data never leaves your device. The proof server receives only the ZK proof (200 bytes). The chain stores only a nullifier hash. No government, company, or attacker can reverse-engineer your identity. <em>Future: PPG sensor (MAX30102) for device-independent biometric verification.</em></div>
+    <div style="margin-top:12px;padding:12px 16px;background:rgba(4,120,87,0.06);border-radius:8px;border:1px solid rgba(4,120,87,0.15);font-size:0.63rem;color:var(--muted);line-height:1.8"><strong style="color:var(--neon)">Privacy guarantee:</strong> No biometric data is ever captured, processed, or leaves your device. The proof server receives only the ZK proof (200 bytes). The chain stores only a nullifier hash. <strong style="color:var(--gold)">Honest limitation:</strong> this proves device possession, not yet cross-device biological uniqueness — the same person with two devices could register twice today. A real biological uniqueness check is planned post-beta work, not shipped yet.</div>
   </div>
 
   <!-- THE VISION -->
@@ -940,10 +941,10 @@
 <!-- NETWORK (merged) -->
 <div id="tab-network" class="tab-content">
 <nav class="stabs">
-  <div class="stab active" onclick="showStab('tab-network','net-overview',this)">🌐 Overview</div>
-  <div class="stab" onclick="showStab('tab-network','net-story',this)">📖 Story</div>
-  <div class="stab" onclick="showStab('tab-network','net-runnode',this)">⚙️ Run a Node</div>
-  <div class="stab" onclick="showStab('tab-network','net-protocol',this)">📜 Protocol V7</div>
+  <div class="stab active" data-act="showStab" data-args='["tab-network","net-overview"]'>🌐 Overview</div>
+  <div class="stab" data-act="showStab" data-args='["tab-network","net-story"]'>📖 Story</div>
+  <div class="stab" data-act="showStab" data-args='["tab-network","net-runnode"]'>⚙️ Run a Node</div>
+  <div class="stab" data-act="showStab" data-args='["tab-network","net-protocol"]'>📜 Protocol V7</div>
 </nav>
 <div id="net-overview" class="stab-panel active">
 <div class="ns">
@@ -988,7 +989,7 @@
       <tr><td data-i18n="k-symbol">Currency Symbol</td><td style="color:var(--gold)">AEQ</td></tr>
       <tr><td data-i18n="k-dec">Decimals</td><td>18</td></tr>
     </table>
-    <button class="mm-btn" onclick="addToMetaMask()" style="margin-top:12px" data-i18n="btn-add-mm">+ ADD TO METAMASK</button>
+    <button class="mm-btn" data-act="addToMetaMask" style="margin-top:12px" data-i18n="btn-add-mm">+ ADD TO METAMASK</button>
     <div style="font-size:0.58rem;color:var(--muted);margin-top:8px;line-height:1.6">📱 MetaMask Mobile: if AEQ shows 0 after adding, delete the network and re-add it using the button above.</div>
 </div>
 </div>
@@ -1004,7 +1005,7 @@
         <div style="font-size:1.5rem;margin-bottom:10px">&#128100;</div>
         <div style="font-size:0.72rem;font-weight:700;color:var(--text);margin-bottom:8px" data-i18n="path-human-title">I am a Human</div>
         <div style="font-size:0.62rem;color:var(--muted);line-height:1.75;margin-bottom:14px" data-i18n="path-human-desc">I want to register, receive 1,000 AEQ, and join the basic income network.</div>
-        <div style="font-size:0.6rem;color:var(--purple);font-weight:600;line-height:1.9" data-i18n="path-human-steps">1. Download AequitasBio app<br>2. Scan your biometric<br>3. Connect MetaMask<br>4. Receive 1,000 AEQ instantly</div>
+        <div style="font-size:0.6rem;color:var(--purple);font-weight:600;line-height:1.9" data-i18n="path-human-steps">1. Download the Aequitas Android App<br>2. Unlock with your device's screen-lock (fingerprint/face/PIN)<br>3. Connect MetaMask<br>4. Receive 1,000 AEQ instantly</div>
       </div>
       <div style="background:var(--card2);border:1px solid var(--border);border-radius:var(--radius);padding:20px;box-shadow:var(--shadow)">
         <div style="font-size:1.5rem;margin-bottom:10px">&#128421;&#65039;</div>
@@ -1114,7 +1115,7 @@
         <div style="display:flex;align-items:flex-start;gap:10px;margin-bottom:6px"><span style="color:var(--gold);font-weight:700;min-width:16px">1.</span><span><strong style="color:var(--text)">An Aequitas account:</strong> You must first be registered as a human on Aequitas. Install the Android app, complete biometric registration, and note your wallet address. Without this, you cannot receive validator rewards.</span></div>
         <div style="display:flex;align-items:flex-start;gap:10px;margin-bottom:6px"><span style="color:var(--gold);font-weight:700;min-width:16px">2.</span><span><strong style="color:var(--text)">A GitHub account (free):</strong> Go to github.com and create a free account. You need this to copy (fork) the Aequitas code so Railway can deploy it.</span></div>
         <div style="display:flex;align-items:flex-start;gap:10px;margin-bottom:6px"><span style="color:var(--gold);font-weight:700;min-width:16px">3.</span><span><strong style="color:var(--text)">A Railway account (free):</strong> Go to railway.app and sign in with GitHub. Railway is a hosting platform that runs your node in the cloud &mdash; no server or command line required.</span></div>
-        <div style="display:flex;align-items:flex-start;gap:10px;margin-bottom:6px"><span style="color:var(--gold);font-weight:700;min-width:16px">4.</span><span><strong style="color:var(--text)">Node signing key (RELAYER_PRIVATE_KEY):</strong> Your node needs a dedicated Ethereum wallet to sign on-chain registrations. This can be any MetaMask wallet. Export its private key: MetaMask &rarr; Account Details &rarr; Show Private Key &rarr; enter password &rarr; copy. Keep strictly private. <strong style="color:var(--gold)">IMPORTANT:</strong> To receive validator rewards you also need NODE_OPERATOR_WALLET set to your <strong style="color:var(--neon)">registered Aequitas human wallet</strong> (the one verified with AequitasBio). Only verified humans can earn validator rewards.</span></div>
+        <div style="display:flex;align-items:flex-start;gap:10px;margin-bottom:6px"><span style="color:var(--gold);font-weight:700;min-width:16px">4.</span><span><strong style="color:var(--text)">Node signing key (RELAYER_PRIVATE_KEY):</strong> Your node needs a dedicated Ethereum wallet to sign on-chain registrations. This can be any MetaMask wallet. Export its private key: MetaMask &rarr; Account Details &rarr; Show Private Key &rarr; enter password &rarr; copy. Keep strictly private. <strong style="color:var(--gold)">IMPORTANT:</strong> To receive validator rewards you also need NODE_OPERATOR_WALLET set to your <strong style="color:var(--neon)">registered Aequitas human wallet</strong> (the one verified with the Aequitas app). Only verified humans can earn validator rewards.</span></div>
         <div style="display:flex;align-items:flex-start;gap:10px"><span style="color:var(--gold);font-weight:700;min-width:16px">5.</span><span><strong style="color:var(--text)">10&ndash;30 minutes of your time.</strong> Railway does most of the work automatically.</span></div>
       </div>
 
@@ -1407,7 +1408,7 @@
         <input id="vk-signing-addr" placeholder="0x... (your node's RELAYER_ADDRESS / signing address)" style="width:100%;box-sizing:border-box;background:rgba(0,0,0,0.3);border:1px solid rgba(139,92,246,0.3);color:var(--text);border-radius:6px;padding:9px 12px;font-family:var(--font-mono);font-size:0.62rem;margin-bottom:6px;outline:none">
         <input id="vk-signing-sig" placeholder='Signature (leave empty — will be generated automatically)' style="width:100%;box-sizing:border-box;background:rgba(0,0,0,0.2);border:1px solid rgba(139,92,246,0.15);color:var(--muted);border-radius:6px;padding:9px 12px;font-family:var(--font-mono);font-size:0.62rem;margin-bottom:8px;outline:none" disabled>
         <div style="font-size:0.55rem;color:var(--muted);margin-bottom:8px">ℹ The signature is fetched automatically from your node — you only need to provide your RELAYER_ADDRESS above and sign with MetaMask below.</div>
-        <button onclick="registerValidatorKey()" style="background:rgba(139,92,246,0.8);color:#fff;border:none;border-radius:6px;padding:10px 20px;font-size:0.65rem;cursor:pointer;font-weight:700;width:100%">🔑 Register Validator Key with MetaMask</button>
+        <button data-act="registerValidatorKey" style="background:rgba(139,92,246,0.8);color:#fff;border:none;border-radius:6px;padding:10px 20px;font-size:0.65rem;cursor:pointer;font-weight:700;width:100%">🔑 Register Validator Key with MetaMask</button>
         <div id="vk-status" style="margin-top:8px;font-size:0.6rem;color:var(--muted)"></div>
       </div>
 
