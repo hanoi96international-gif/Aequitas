@@ -36,15 +36,15 @@ jobs:
           username: root
           key: ${{ secrets.CONTABO_SSH_KEY }}
           port: 22
-          # FIX (fresh Monster Audit 2026-07-12): this fingerprint didn't
-          # match Contabo1's actual SSH host key at all (confirmed via a
-          # live ssh-keyscan -t rsa 173.249.37.118 — different from the
-          # first byte after the ssh-rsa prefix onward). Every single
-          # "Deploy to Contabo VPS" run in this repo's history had failed
-          # before reaching this check, on a missing CONTABO_SSH_KEY secret
-          # (fixed alongside this), so this second, independent break was
-          # never actually exercised/caught until now.
-          fingerprint: "AAAAB3NzaC1yc2EAAAADAQABAAABgQC7+jNx482R+xcq6XaNslbLR2pEFBgnrHfdDQHTVFO/QafnvsdSeh23WZzN5ybtzjJV3KDkqzIpJLKssZxlGok1SD0bMshxD1h5WDJHJsa3pwBqeQWrcZBFf0S/bO4nHkbCf9+mgCcHb4OwAkkjGmX8bKYeoSB3B4jNrW2dNK98fEhxVPk/PosX6l70xS0BsZkG5wmMVdWed4/QT1bQnGGf7RIKHD7CJ6SxGohbR6lv57BpSYHNj2uK3dEEm/4pmA20zl7OSsf+NVWazm/XCf63UTOuov9Nqraf17uvXgy3pQYCerGLu0yhk5O6hwe0OSRAxqAt1xlv1mWDryfugzD7+yt3p14IFCrWjQrg/aiN/haqE4b+FLOezR1Q4XLlDxtqhmV+xk4Sj/1tKW7WaEBk4immCSzYnbh1AiAkP6u6VP4dTdumtgE/lFzJ39g9pekDtYChbVgtgHmSoocRWnZ6n5XHB/Ci/2+NtpWTyFbBFWXuj0KKbNcwH6ejSnureb0="
+          # FIX (fresh Monster Audit 2026-07-12): appleboy/ssh-action's
+          # `fingerprint` input expects the SSH SHA256 fingerprint string
+          # (ssh-keygen -lf output, "SHA256:...") to check the presented
+          # host key against — NOT the raw base64 public-key blob. The
+          # previous value here was a raw key blob (and didn't even match
+          # Contabo1's actual current host key on top of that), so this
+          # field was apparently never correctly configured. Verified live:
+          # `ssh-keyscan -t rsa 173.249.37.118 | ssh-keygen -lf -`.
+          fingerprint: "SHA256:E10yHMjBj6zJOO9TmYMsrFmA07RfgaMtVvofuppcJV4"
           script: /root/deploy.sh
           script_stop: true
           timeout: 600s
