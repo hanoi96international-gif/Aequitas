@@ -1,0 +1,9 @@
+# Solidity source is fed straight into solc for compilation, and solc embeds a
+# metadata hash of the exact source bytes into the compiled bytecode. Without
+# this, a Windows checkout (CRLF, via core.autocrlf) and a Linux CI/container
+# checkout (LF) of the identical commit compile to genuinely different
+# bytecode, which breaks any byte-for-byte comparison against a hardcoded
+# reference (see x/humanity/keeper/contract_deploy.go's V7ContractBytecode
+# and its sync test). Force LF on disk everywhere so solc always sees the
+# same bytes regardless of the checkout platform.
+*.sol text eol=lf
