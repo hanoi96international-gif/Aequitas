@@ -40,13 +40,12 @@ jobs:
           # `fingerprint` input expects the SSH SHA256 fingerprint string
           # (ssh-keygen -lf output, "SHA256:...") of whichever host key type
           # the SSH client actually negotiates — not the raw base64
-          # public-key blob (what this used to hold) and not just any of
-          # the server's several offered key types. Contabo1 offers ecdsa,
-          # rsa, AND ed25519; the Go ssh client here negotiates ed25519 by
-          # default, so pinning the RSA key's fingerprint (tried first,
-          # also failed) checked the wrong key entirely. Verified live:
-          # `ssh-keyscan -t ed25519 173.249.37.118 | ssh-keygen -lf -`.
-          fingerprint: "SHA256:C1hIz3BeIK8zpUw88XC1ZGje+1wLP8tHuXmryWNbczA"
+          # public-key blob (what this used to hold). Contabo1 offers
+          # ecdsa/rsa/ed25519; RSA and ed25519 were each tried and failed
+          # handshake ("fingerprint mismatch"), so this is the remaining
+          # ECDSA host key. Verified live:
+          # `ssh-keyscan -t ecdsa 173.249.37.118 | ssh-keygen -lf -`.
+          fingerprint: "SHA256:noMtjHV8c+2iEFZu3TRUP6WRwGjkrvFke71KgU6Eyt4"
           script: /root/deploy.sh
           script_stop: true
           timeout: 600s
