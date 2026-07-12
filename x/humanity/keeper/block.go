@@ -215,6 +215,12 @@ height                 int64
 // for) or comparing their claimed StateRoot against cs.accounts' current,
 // much-later state (guaranteed to "mismatch" despite no real divergence).
 bootHeight             int64
+// bootTime is this process's own wall-clock start time, captured once at
+// construction and never updated — distinct from bootHeight (a block-height
+// concept). Used by ProduceBlock's post-boot double-production guard to
+// widen its check from a single tick to a short grace window (see that call
+// site's own comment for why one tick wasn't enough).
+bootTime               time.Time
 // bootHeightCheckpointBacked is true only when bootHeight was set by
 // actually seeding dag.blocks/dag.tips with a real, stored block at that
 // exact height (RefreshBootHeightAfterSnapshotImport's checkpoint branch,
@@ -895,6 +901,7 @@ blocks:                 make(map[string]*Block),
 tips:                   make(map[string]bool),
 state:                  state,
 nodeID:                 nodeID,
+bootTime:               time.Now(),
 authorizedValidators:   loadAuthorizedValidators(),
 activeSyncPeers:        make(map[string]bool),
 		peerSyncHeight:         make(map[string]int64),
@@ -2197,21 +2204,38 @@ if dag.signingKey != nil {
 // checkAndIndexEquivocation (slashing.go) correctly flags that as this
 // validator signing two different blocks for the same parent set — because
 // from the network's perspective, that's exactly what happened. Confirmed
-// live: this exact pattern (height == bootHeight+1, ~1s apart, identical
-// otherwise) hit Primary three times (2026-07-05, 07-08, 07-10, evidence in
-// equivocation_evidence on Contabo1), accumulating to a permanent ban.
-// Only checked for the very first height this process will ever produce
-// (maxParentHeight+1 == bootHeight+1) — a one-time, boot-only check with
-// zero effect on steady-state production. dag.state.HasBlockFromProposerAtHeight
+// live: this exact pattern (identical height/parents/BlueScore/state_root,
+// only signature+timestamp differing) hit Primary at least four times
+// (2026-07-05, 07-08, 07-10, and again 07-12 — evidence in
+// equivocation_evidence on Contabo1/Contabo2); the 07-12 recurrence actually
+// triggered a real 14-day suspension on BOTH secondaries simultaneously
+// (cleared manually after confirming via evidence-pair comparison it was
+// this exact benign pattern, not real malicious equivocation).
+//
+// FIX (P0, 2026-07-12 — widened after the 07-12 recurrence): the original
+// version of this guard only checked the SINGLE literal first tick
+// (maxParentHeight+1 == bootHeight+1). The 07-12 incident's two colliding
+// blocks were produced 21 SECONDS apart — the outgoing instance was still
+// alive and still producing well past this process's first tick, so a
+// one-shot check missed it (by the time this process's first tick ran, the
+// outgoing instance's competing row for that exact height may not even
+// have been durably committed yet either — a narrow race the one-shot
+// version didn't close on top of the sustained-overlap gap). Widened from
+// "check once, at one height" to "check on every tick, for whatever height
+// is about to be produced, during a grace window after boot" — covers a
+// sustained overlap, not just an instant one. dag.state.HasBlockFromProposerAtHeight
 // hits the DURABLE store (chain_blocks), not this fresh process's own
 // (necessarily empty-for-this-height) in-memory dag.blocks, so it can see
 // what an outgoing sibling instance already committed moments ago even
 // though this instance never received it directly. Skip this tick rather
 // than mint a competing duplicate; ordinary peer sync pulls the other
-// instance's already-broadcast block in within the next tick or two,
-// advancing dag.tips so this guard naturally stops matching.
-if maxParentHeight+1 == dag.bootHeight+1 && dag.state != nil && dag.state.HasBlockFromProposerAtHeight(proposer, maxParentHeight+1) {
-	fmt.Printf("[BLOCK] ⏸ Skipping production at height %d — this validator already has a block there in the durable store (likely a concurrent instance from a redeploy overlap); waiting for ordinary peer sync to pull it in instead of minting a conflicting duplicate\n", maxParentHeight+1)
+// instance's already-broadcast block in within the next tick or two. Grace
+// window is wall-clock (dag.bootTime), not height-based, so it naturally
+// covers however many heights the network advances through during a slow
+// deploy, and has zero effect on steady-state production once it elapses.
+const postBootDuplicateGuardWindow = 45 * time.Second
+if time.Since(dag.bootTime) < postBootDuplicateGuardWindow && dag.state != nil && dag.state.HasBlockFromProposerAtHeight(proposer, maxParentHeight+1) {
+	fmt.Printf("[BLOCK] ⏸ Skipping production at height %d — this validator already has a block there in the durable store (likely a concurrent instance from a redeploy overlap, %s into this process's life); waiting for ordinary peer sync to pull it in instead of minting a conflicting duplicate\n", maxParentHeight+1, time.Since(dag.bootTime).Round(time.Second))
 	return nil
 }
 

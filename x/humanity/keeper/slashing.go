@@ -167,6 +167,21 @@ func (cs *ChainState) initSlashingTables() {
 // Caller must hold cs.penaltyMu (write). The table is tiny (one row per
 // ever-penalized validator — 0 rows in the healthy case), so a full load is
 // a single cheap round trip paid once per process.
+//
+// OPERATIONAL NOTE (2026-07-12 incident): this cache is loaded once and only
+// invalidated by this process's OWN code paths (invalidatePenaltyCache,
+// called from e.g. the pre-activation-penalty cleanup above). A manual
+// out-of-band correction to validator_penalties — e.g. `DELETE FROM
+// validator_penalties WHERE ...` run directly via psql to clear a
+// confirmed false-positive equivocation suspension (see block.go's
+// postBootDuplicateGuardWindow comment for the incident this refers to) —
+// does NOT reach this process at all, so IsValidatorSuspended keeps
+// rejecting blocks against the stale cached row until the process is
+// restarted. Confirmed live: a direct DB DELETE alone did nothing; only a
+// subsequent `docker restart` (which reloads this cache fresh from the
+// now-empty table) actually restored merging. If clearing a penalty
+// manually again, a restart is not optional — it's the only way the change
+// takes effect.
 func (cs *ChainState) loadPenaltyCacheLocked() {
 	cs.penaltyCache = make(map[string]validatorPenalty)
 	cs.penaltyCacheLoaded = true // set even on query error: fail open, like the old per-call path did
