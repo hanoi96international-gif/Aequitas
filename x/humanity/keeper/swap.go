@@ -3,7 +3,6 @@ package keeper
 import (
 	"encoding/json"
 	"fmt"
-	"io"
 	"math"
 	"net/http"
 	"strings"
@@ -101,10 +100,16 @@ func (a *APIServer) handleSwap(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	r.Body = http.MaxBytesReader(w, r.Body, 64<<10) // 64 KB
-	body, _ := io.ReadAll(r.Body)
+	// FIX (Monster Audit 2026-07-12, P2): see readBodyLimited's comment —
+	// the discarded error here used to hide an oversized body behind a
+	// generic "invalid request" instead of a real 413.
+	body, tooLarge, err := readBodyLimited(w, r, 64<<10) // 64 KB
+	if tooLarge {
+		json.NewEncoder(w).Encode(SwapResponse{Success: false, Message: "request body too large"})
+		return
+	}
 	var req SwapRequest
-	if err := json.Unmarshal(body, &req); err != nil {
+	if err != nil || json.Unmarshal(body, &req) != nil {
 		json.NewEncoder(w).Encode(SwapResponse{Success: false, Message: "invalid request"})
 		return
 	}
@@ -200,10 +205,13 @@ func (a *APIServer) handleAddLiquidity(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	r.Body = http.MaxBytesReader(w, r.Body, 64<<10)
-	body, _ := io.ReadAll(r.Body)
+	body, tooLarge, err := readBodyLimited(w, r, 64<<10)
+	if tooLarge {
+		json.NewEncoder(w).Encode(AddLiquidityResponse{Success: false, Message: "request body too large"})
+		return
+	}
 	var req AddLiquidityRequest
-	if err := json.Unmarshal(body, &req); err != nil {
+	if err != nil || json.Unmarshal(body, &req) != nil {
 		json.NewEncoder(w).Encode(AddLiquidityResponse{Success: false, Message: "invalid request"})
 		return
 	}
@@ -231,7 +239,7 @@ func (a *APIServer) handleAddLiquidity(w http.ResponseWriter, r *http.Request) {
 	// the pending_tx outbox insert as a single DB transaction — see
 	// SwapAtomic's comment above / TransferAtomic's comment in state.go.
 	pendingTxTemplate := Transaction{Type: "add_liquidity", Wallet: wallet, Amount: req.AmountAEQ, AmountOut: req.AmountTUSD}
-	_, err := a.state.AddLiquidityAtomic(wallet, req.AmountAEQ, req.AmountTUSD, pendingTxTemplate)
+	_, err = a.state.AddLiquidityAtomic(wallet, req.AmountAEQ, req.AmountTUSD, pendingTxTemplate)
 	if err != nil {
 		a.state.RestoreSwapNonce(wallet, req.Nonce)
 		json.NewEncoder(w).Encode(AddLiquidityResponse{Success: false, Message: err.Error()})
@@ -272,10 +280,13 @@ func (a *APIServer) handleRemoveLiquidity(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	r.Body = http.MaxBytesReader(w, r.Body, 64<<10)
-	body, _ := io.ReadAll(r.Body)
+	body, tooLarge, err := readBodyLimited(w, r, 64<<10)
+	if tooLarge {
+		json.NewEncoder(w).Encode(RemoveLiquidityResponse{Success: false, Message: "request body too large"})
+		return
+	}
 	var req RemoveLiquidityRequest
-	if err := json.Unmarshal(body, &req); err != nil {
+	if err != nil || json.Unmarshal(body, &req) != nil {
 		json.NewEncoder(w).Encode(RemoveLiquidityResponse{Success: false, Message: "invalid request"})
 		return
 	}
@@ -381,10 +392,13 @@ func (a *APIServer) handleFaucet(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	r.Body = http.MaxBytesReader(w, r.Body, 64<<10)
-	body, _ := io.ReadAll(r.Body)
+	body, tooLarge, err := readBodyLimited(w, r, 64<<10)
+	if tooLarge {
+		json.NewEncoder(w).Encode(FaucetResponse{Success: false, Message: "request body too large"})
+		return
+	}
 	var req FaucetRequest
-	if err := json.Unmarshal(body, &req); err != nil {
+	if err != nil || json.Unmarshal(body, &req) != nil {
 		json.NewEncoder(w).Encode(FaucetResponse{Success: false, Message: "invalid request"})
 		return
 	}

@@ -612,6 +612,12 @@ func (cs *ChainState) releaseEscrowToUBILocked() ([]DistributionShare, error) {
 		return nil, nil
 	}
 
+	// FIX (Monster Audit 2026-07-12, P1): a cold ubiPoolAddr used to get
+	// recreated as a blank Version==0 AccountState the first time this loop
+	// touched it, silently overwriting the pool's real accumulated DB balance
+	// — see state.go's distributeSwapFee for the same pattern. Loaded once
+	// here since it's the same map entry on every iteration below.
+	cs.ensureAccountLoaded(ubiPoolAddr)
 	var released []DistributionShare
 	for _, e := range entries {
 		// Credit UBI pool.

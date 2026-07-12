@@ -2336,6 +2336,12 @@ func (cs *ChainState) distributeValidatorsPoolLocked() ([]DistributionShare, err
 		}
 	}
 
+	// FIX (Monster Audit 2026-07-12, P1): a pool address that fell out of (or
+	// never entered) the in-memory cache used to read as "not present" here,
+	// which this function treated identically to "genuinely empty" — silently
+	// skipping the ENTIRE day's distribution of a real, non-zero DB balance.
+	// ensureAccountLoaded is a no-op once the address is already cached.
+	cs.ensureAccountLoaded(validatorsPoolAddr)
 	poolAcc, ok := cs.accounts[validatorsPoolAddr]
 	if !ok || poolAcc.Balance <= 0 {
 		fmt.Println("[VALIDATORS] Pool is empty — nothing to distribute today")
@@ -2508,6 +2514,9 @@ func (cs *ChainState) distributeLPPoolLocked() ([]DistributionShare, error) {
 	}
 
 	// NOW read the pool balance — it includes any demurrage credits just added.
+	// FIX (Monster Audit 2026-07-12, P1): see DistributeValidatorsPool's
+	// comment — a cold pool address must not read as "empty".
+	cs.ensureAccountLoaded(lpPoolAddr)
 	poolAcc, ok := cs.accounts[lpPoolAddr]
 	if !ok || poolAcc.Balance <= 0 {
 		fmt.Println("[LP] Pool is empty — nothing to distribute today")
@@ -2590,6 +2599,11 @@ func (cs *ChainState) DistributeUBIPool() []DistributionShare {
 }
 
 func (cs *ChainState) distributeUBIPoolLocked() ([]DistributionShare, error) {
+	// FIX (Monster Audit 2026-07-12, P1): see DistributeValidatorsPool's
+	// comment — a cold pool address must not read as "empty". Loaded once
+	// here; the second read below (after the demurrage loop) reuses the same
+	// now-cached map entry, so it needs no separate call.
+	cs.ensureAccountLoaded(ubiPoolAddr)
 	poolAcc, ok := cs.accounts[ubiPoolAddr]
 	if !ok || poolAcc.Balance <= 0 {
 		fmt.Println("[UBI] Pool is empty — nothing to distribute today")
@@ -3526,6 +3540,12 @@ func (cs *ChainState) transferWithV7FeeLocked(from, to string, amount float64) (
 	}
 
 	if ubiContrib > 0 {
+		// FIX (Monster Audit 2026-07-12, P1): without this, a cold ubiPoolAddr
+		// got recreated as a blank AccountState{} here and saved with
+		// Version==0, which saveAccountToDB's Version==0 branch treats as
+		// "brand new row" and blindly overwrites any existing DB balance —
+		// silently erasing real, previously-accumulated pool funds.
+		cs.ensureAccountLoaded(ubiPoolAddr)
 		if _, ok := cs.accounts[ubiPoolAddr]; !ok {
 			cs.accounts[ubiPoolAddr] = &AccountState{Address: ubiPoolAddr}
 		}
@@ -3967,6 +3987,11 @@ func (cs *ChainState) distributeSwapFee(fee float64, feeInAEQ bool) error {
 	}
 	accs := make([]*AccountState, len(shares))
 	for i, s := range shares {
+		// FIX (Monster Audit 2026-07-12, P1): see applyTransferDeltaLocked's
+		// ubiContrib comment above — a cold pool address must be loaded from
+		// the DB before it's touched, or a fresh Version==0 AccountState here
+		// blindly overwrites its real, previously-accumulated DB balance.
+		cs.ensureAccountLoaded(s.addr)
 		if _, ok := cs.accounts[s.addr]; !ok {
 			cs.accounts[s.addr] = &AccountState{Address: s.addr}
 		}
@@ -4061,11 +4086,12 @@ func (cs *ChainState) MigrateStrandedPoolTUsdFeesV1() {
 // to a real human's registration grant, consistent with "money exists
 // because people exist."
 //
-// NOTE: this does not yet mint or track LP shares/tokens — it only moves
-// balances into the pool. A depositor currently has no on-chain claim to
-// withdraw their share back out. Tracking proportional LP ownership (so
-// deposits are genuinely reversible) is a deliberate follow-up, not
-// included in this first pass.
+// FIX (Monster Audit 2026-07-12, P3): this comment used to say LP shares
+// weren't minted/tracked and a depositor had no on-chain claim to withdraw
+// their share — stale; that gap was closed since. Deposits mint LP shares
+// (proportional to the pool's current ratio, or math.Sqrt(amountAEQ*amountTUSD)
+// for the first deposit into an empty pool — see addLiquidityLocked below),
+// and RemoveLiquidityAtomic burns them back out proportionally.
 // Returns the AEQ amount demurrage-decayed off address before the deposit
 // (0 if none) — callers must attach this to the queued Transaction so
 // secondary nodes replay the exact decay via AddLiquidityDelta instead of
@@ -5615,6 +5641,11 @@ func (cs *ChainState) applyUBIDeltaLocked(amountPerHuman float64, ubiAt int64) e
 		}
 	}
 	// Zero the UBI pool on secondary (it was zeroed on primary after distribution)
+	// FIX (Monster Audit 2026-07-12, P1): a cold pool address used to read as
+	// "not present" and this silently skipped zeroing it — leaving this
+	// secondary's pool balance (and therefore its StateRoot) diverged from
+	// every node that DID have it cached at the time.
+	cs.ensureAccountLoaded(ubiPoolAddr)
 	if ubiAcc, ok := cs.accounts[ubiPoolAddr]; ok {
 		ubiAcc.Balance = NewDecimal(0)
 		if err := cs.saveAccountToDB(ubiAcc); err != nil {
@@ -5687,6 +5718,9 @@ func (cs *ChainState) ApplyUBIFinalizeDelta(ubiAt int64) error {
 // FIX (audit recheck2, P0 #3): used to return nothing, discarding
 // saveAccountToDB's error — see ApplyTransferDelta's comment.
 func (cs *ChainState) applyUBIFinalizeDeltaLocked(ubiAt int64) error {
+	// FIX (Monster Audit 2026-07-12, P1): see applyUBIDeltaLocked's comment on
+	// the same pattern — a cold pool address must not silently skip zeroing.
+	cs.ensureAccountLoaded(ubiPoolAddr)
 	if ubiAcc, ok := cs.accounts[ubiPoolAddr]; ok {
 		ubiAcc.Balance = NewDecimal(0)
 		if err := cs.saveAccountToDB(ubiAcc); err != nil {
@@ -5750,6 +5784,9 @@ func (cs *ChainState) ApplyValidatorPoolZeroDelta() error {
 
 // applyValidatorPoolZeroDeltaLocked is ApplyValidatorPoolZeroDelta's body — see applyTransferDeltaLocked's comment.
 func (cs *ChainState) applyValidatorPoolZeroDeltaLocked() error {
+	// FIX (Monster Audit 2026-07-12, P1): see applyUBIDeltaLocked's comment on
+	// the same pattern — a cold pool address must not silently skip zeroing.
+	cs.ensureAccountLoaded(validatorsPoolAddr)
 	if acc, ok := cs.accounts[validatorsPoolAddr]; ok {
 		acc.Balance = NewDecimal(0)
 		if err := cs.saveAccountToDB(acc); err != nil {
@@ -5817,6 +5854,9 @@ func (cs *ChainState) ApplyLPPoolZeroDelta() error {
 
 // applyLPPoolZeroDeltaLocked is ApplyLPPoolZeroDelta's body — see applyTransferDeltaLocked's comment.
 func (cs *ChainState) applyLPPoolZeroDeltaLocked() error {
+	// FIX (Monster Audit 2026-07-12, P1): see applyUBIDeltaLocked's comment on
+	// the same pattern — a cold pool address must not silently skip zeroing.
+	cs.ensureAccountLoaded(lpPoolAddr)
 	if acc, ok := cs.accounts[lpPoolAddr]; ok {
 		acc.Balance = NewDecimal(0)
 		if err := cs.saveAccountToDB(acc); err != nil {
@@ -5910,6 +5950,11 @@ func (cs *ChainState) ApplyEscrowReleaseDelta(amount float64) error {
 
 // applyEscrowReleaseDeltaLocked is ApplyEscrowReleaseDelta's body — see applyTransferDeltaLocked's comment.
 func (cs *ChainState) applyEscrowReleaseDeltaLocked(amount float64) error {
+	// FIX (Monster Audit 2026-07-12, P1): see distributeSwapFee's comment on
+	// the same pattern — a cold pool address must be loaded before a blank
+	// Version==0 AccountState is created for it, or the real DB balance gets
+	// silently overwritten.
+	cs.ensureAccountLoaded(ubiPoolAddr)
 	if _, ok := cs.accounts[ubiPoolAddr]; !ok {
 		cs.accounts[ubiPoolAddr] = &AccountState{Address: ubiPoolAddr}
 	}

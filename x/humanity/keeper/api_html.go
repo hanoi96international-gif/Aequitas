@@ -23,3 +23,18 @@ var explorerCSS string
 
 //go:embed assets/explorer.js
 var explorerJS string
+
+// FIX (Monster Audit 2026-07-12, P1): the register/wallet page used to load
+// ethers and the price-chart library straight from cdnjs.cloudflare.com /
+// unpkg.com — a compromised CDN build of either would run with full access
+// to this page's wallet-connect and signing flow. Self-hosting exact,
+// version-pinned copies (same versions the CDN tags named: ethers 6.13.0,
+// lightweight-charts 4.1.3) removes that third-party supply-chain risk
+// entirely; the files themselves come from this repo's own npm
+// dependencies (package.json), not hand-downloaded.
+//
+//go:embed assets/vendor/ethers.min.js
+var vendorEthersJS string
+
+//go:embed assets/vendor/lightweight-charts.min.js
+var vendorLightweightChartsJS string

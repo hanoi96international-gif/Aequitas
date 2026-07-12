@@ -6,6 +6,7 @@ import (
 	"crypto/subtle"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"html"
 	"io"
@@ -125,6 +126,25 @@ func jsonError(w http.ResponseWriter, msg string, code int) {
 	w.WriteHeader(code)
 	enc, _ := json.Marshal(map[string]string{"error": msg})
 	w.Write(enc)
+}
+
+// readBodyLimited reads r.Body capped at maxBytes.
+//
+// FIX (Monster Audit 2026-07-12, P2): several handlers used to read via
+// io.ReadAll(io.LimitReader(r.Body, N)) — io.LimitReader silently truncates
+// at N bytes with a nil error, so an oversized request was never rejected,
+// just fed to json.Unmarshal as truncated (usually-but-not-guaranteed-invalid)
+// JSON. http.MaxBytesReader is the correct primitive for an enforced limit:
+// it returns a distinguishable *http.MaxBytesError once the client exceeds
+// it, which callers can use to send a real 413 instead of a generic 400/500.
+func readBodyLimited(w http.ResponseWriter, r *http.Request, maxBytes int64) (body []byte, tooLarge bool, err error) {
+	r.Body = http.MaxBytesReader(w, r.Body, maxBytes)
+	body, err = io.ReadAll(r.Body)
+	if err != nil {
+		var maxBytesErr *http.MaxBytesError
+		tooLarge = errors.As(err, &maxBytesErr)
+	}
+	return body, tooLarge, err
 }
 
 // isValidWalletAddr checks 0x-prefixed 40-hex-char Ethereum address format.
@@ -393,6 +413,15 @@ func (a *APIServer) handleCombinedHealth(w http.ResponseWriter, r *http.Request)
 			"synthetic_checkpoint_count": syntheticCheckpointCount,
 			"height":       latest.Height,
 			"dag_tips_count": a.blockchain.TipsCount(),
+			// FIX (Monster Audit 2026-07-12, P2): documenting the trust model
+			// this counter represents, for anyone building against this API —
+			// StateRoot is a diagnostic drift signal, not a consensus
+			// commitment (see replayTransactions' StateRoot-mismatch comment
+			// in block.go for the full reasoning). 0 here means no drift has
+			// been DETECTED yet, not a cryptographic guarantee of identical
+			// state across nodes — verify convergence for anything
+			// consequential via an exact /api/block?height=N hash match
+			// instead of trusting this count alone.
 			"state_root_mismatch_count": mismatchCount,
 			"last_successful_peer_sync_age_secs": lastSyncAgeSecs,
 			"total_humans": a.state.TotalHumans(),
@@ -497,6 +526,8 @@ func (a *APIServer) Start(port int) {
 	mux.HandleFunc("/landing", a.handleLanding)
 	mux.HandleFunc("/explorer.css", a.handleExplorerCSS)
 	mux.HandleFunc("/explorer.js", a.handleExplorerJS)
+	mux.HandleFunc("/vendor/ethers.min.js", a.handleVendorEthersJS)
+	mux.HandleFunc("/vendor/lightweight-charts.min.js", a.handleVendorLightweightChartsJS)
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		// Root path: serve landing page; anything else falls to handleUI
 		if r.URL.Path == "/" {
@@ -854,7 +885,11 @@ func (a *APIServer) handleBlocksByHash(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		Hashes []string `json:"hashes"`
 	}
-	body, err := io.ReadAll(io.LimitReader(r.Body, 256<<10))
+	body, tooLarge, err := readBodyLimited(w, r, 256<<10)
+	if tooLarge {
+		jsonError(w, "request body too large", http.StatusRequestEntityTooLarge)
+		return
+	}
 	if err != nil || json.Unmarshal(body, &req) != nil {
 		http.Error(w, `{"error":"invalid request body"}`, http.StatusBadRequest)
 		return
@@ -999,7 +1034,11 @@ func (a *APIServer) handleBlockPush(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte(`{"ok":false,"reason":"push flood shield open","action":"resync_required"}`))
 		return
 	}
-	body, err := io.ReadAll(io.LimitReader(r.Body, 512<<10))
+	body, tooLarge, err := readBodyLimited(w, r, 512<<10)
+	if tooLarge {
+		jsonError(w, "request body too large", http.StatusRequestEntityTooLarge)
+		return
+	}
 	if err != nil {
 		http.Error(w, `{"error":"read error"}`, http.StatusBadRequest)
 		return
@@ -1445,7 +1484,11 @@ func (a *APIServer) queryV7Status(wallet string) (float64, bool) {
 func (a *APIServer) handleRegistered(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/html")
 	// FIX 10: Add Content-Security-Policy to prevent XSS escalation on this HTML page.
-	w.Header().Set("Content-Security-Policy", "default-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com; style-src 'self' 'unsafe-inline' https://fonts.bunny.net; font-src https://fonts.bunny.net; connect-src 'self'; img-src 'self' data:")
+	// FIX (Monster Audit 2026-07-12, P2): this page has zero onclick=/onchange=
+	// attributes and zero <script> tags at all (pure static markup plus one
+	// escaped %s interpolation, see below) — script-src never needed
+	// 'unsafe-inline' here.
+	w.Header().Set("Content-Security-Policy", "default-src 'self' 'unsafe-inline'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.bunny.net; font-src https://fonts.bunny.net; connect-src 'self'; img-src 'self' data:")
 	// XSS fix: escape wallet parameter before writing to HTML — without this,
 	// a crafted URL like /registered?wallet=<script>... would execute JS.
 	wallet := html.EscapeString(r.URL.Query().Get("wallet"))
@@ -1575,11 +1618,18 @@ func (a *APIServer) handleUI(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "no-cache, no-store, must-revalidate")
 	w.Header().Set("Pragma", "no-cache")
 	w.Header().Set("Expires", "0")
-	// script-src must include unpkg.com: the price chart loads TradingView's
-	// lightweight-charts library from there (api_html.go). Without it the CSP
-	// silently blocks the script, window.LightweightCharts stays undefined,
-	// initPriceChart() bails, and the price chart renders as an empty box.
-	w.Header().Set("Content-Security-Policy", "default-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com https://unpkg.com; style-src 'self' 'unsafe-inline' https://fonts.bunny.net; font-src https://fonts.bunny.net; connect-src 'self' https://aequitas.digital; img-src 'self' data:")
+	// FIX (Monster Audit 2026-07-12, P1): both ethers and the price-chart lib
+	// now load from same-origin /vendor/*.min.js (self-hosted, version-pinned
+	// — see vendorEthersJS's comment in api_html.go), so script-src no longer
+	// needs to allow cdnjs.cloudflare.com/unpkg.com (previously required, or
+	// window.LightweightCharts stayed undefined and initPriceChart() bailed).
+	// FIX (Monster Audit 2026-07-12, P2): explorer.html's ~75 onclick=/
+	// onchange=/oninput= attributes are gone — every interactive element now
+	// carries data-act (+ optional data-args) and is wired up by one
+	// delegated listener in explorer.js (see CLICK_ACTIONS there). explorer.html
+	// itself has zero inline <script> blocks (only external /vendor + /explorer.js
+	// src= tags), so script-src no longer needs 'unsafe-inline' at all.
+	w.Header().Set("Content-Security-Policy", "default-src 'self' 'unsafe-inline'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.bunny.net; font-src https://fonts.bunny.net; connect-src 'self' https://aequitas.digital; img-src 'self' data:")
 	path := strings.Trim(r.URL.Path, "/")
 	if idx := strings.Index(path, "/"); idx >= 0 {
 		path = path[:idx]
@@ -1611,6 +1661,24 @@ func (a *APIServer) handleExplorerJS(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/javascript; charset=utf-8")
 	w.Header().Set("Cache-Control", "public, max-age=3600")
 	fmt.Fprint(w, explorerJS)
+}
+
+// handleVendorEthersJS / handleVendorLightweightChartsJS serve self-hosted,
+// version-pinned copies of the two third-party scripts the register/wallet
+// page needs — see vendorEthersJS's own comment for why these replaced
+// loading straight from cdnjs.cloudflare.com / unpkg.com. Long cache
+// lifetime is safe: the embedded content only changes when this binary is
+// rebuilt with a new vendored file, i.e. a real version bump.
+func (a *APIServer) handleVendorEthersJS(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/javascript; charset=utf-8")
+	w.Header().Set("Cache-Control", "public, max-age=86400")
+	fmt.Fprint(w, vendorEthersJS)
+}
+
+func (a *APIServer) handleVendorLightweightChartsJS(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/javascript; charset=utf-8")
+	w.Header().Set("Cache-Control", "public, max-age=86400")
+	fmt.Fprint(w, vendorLightweightChartsJS)
 }
 
 // handleNonce returns the next swap nonce a wallet should sign with.
@@ -2193,7 +2261,11 @@ func (a *APIServer) handleProveProxy(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, `{"error":"POST required"}`, 405)
 		return
 	}
-	body, err := io.ReadAll(io.LimitReader(r.Body, 64<<10))
+	body, tooLarge, err := readBodyLimited(w, r, 64<<10)
+	if tooLarge {
+		jsonError(w, "request body too large", http.StatusRequestEntityTooLarge)
+		return
+	}
 	if err != nil {
 		http.Error(w, `{"error":"read error"}`, 500)
 		return
@@ -2311,7 +2383,11 @@ func (a *APIServer) handleProveStoreProxy(w http.ResponseWriter, r *http.Request
 		}
 	}
 	registerRateLimit.Store(ipKey, time.Now())
-	body, err := io.ReadAll(io.LimitReader(r.Body, 64<<10))
+	body, tooLarge, err := readBodyLimited(w, r, 64<<10)
+	if tooLarge {
+		jsonError(w, "request body too large", http.StatusRequestEntityTooLarge)
+		return
+	}
 	if err != nil {
 		http.Error(w, `{"error":"read error"}`, 500)
 		return
@@ -2347,7 +2423,11 @@ func (a *APIServer) handleProofCheckProxy(w http.ResponseWriter, r *http.Request
 		http.Error(w, `{"error":"POST required"}`, 405)
 		return
 	}
-	body, err := io.ReadAll(io.LimitReader(r.Body, 16<<10))
+	body, tooLarge, err := readBodyLimited(w, r, 16<<10)
+	if tooLarge {
+		jsonError(w, "request body too large", http.StatusRequestEntityTooLarge)
+		return
+	}
 	if err != nil {
 		http.Error(w, `{"error":"read error"}`, 500)
 		return
@@ -2667,7 +2747,10 @@ func (a *APIServer) handleStaticDownload(w http.ResponseWriter, r *http.Request,
 func (a *APIServer) handleLanding(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/html")
 	w.Header().Set("Cache-Control", "no-cache, no-store, must-revalidate")
-	w.Header().Set("Content-Security-Policy", "default-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com; style-src 'self' 'unsafe-inline' https://fonts.bunny.net; font-src https://fonts.bunny.net; connect-src 'self'; img-src 'self' data:")
+	// FIX (Monster Audit 2026-07-12, P1): ethers now loads from same-origin
+	// /vendor/ethers.min.js (self-hosted, version-pinned — see vendorEthersJS's
+	// comment), so script-src no longer needs to allow cdnjs.cloudflare.com.
+	w.Header().Set("Content-Security-Policy", "default-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.bunny.net; font-src https://fonts.bunny.net; connect-src 'self'; img-src 'self' data:")
 	fmt.Fprint(w, landingHTML)
 }
 

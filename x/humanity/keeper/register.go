@@ -234,8 +234,16 @@ func (a *APIServer) handleRegister(w http.ResponseWriter, r *http.Request) {
 	}
 	registerRateLimit.Store(ip, now)
 
-	r.Body = http.MaxBytesReader(w, r.Body, 256<<10) // 256 KB — ZK proofs are large
-	body, _ := io.ReadAll(r.Body)
+	// 256 KB — ZK proofs are large.
+	body, tooLarge, err := readBodyLimited(w, r, 256<<10)
+	if tooLarge {
+		json.NewEncoder(w).Encode(RegisterResponse{Success: false, Message: "request body too large"})
+		return
+	}
+	if err != nil {
+		json.NewEncoder(w).Encode(RegisterResponse{Success: false, Message: "could not read request body"})
+		return
+	}
 	var req RegisterRequest
 	if err := json.Unmarshal(body, &req); err != nil {
 		json.NewEncoder(w).Encode(RegisterResponse{Success: false, Message: "invalid request"})

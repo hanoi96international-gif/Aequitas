@@ -891,6 +891,17 @@ func (s *EVMRPCServer) getTransactionByHash(params []json.RawMessage) (interface
 		toField = toAddr
 	}
 
+	// FIX (Monster Audit 2026-07-12, P3): nonce/value/input below are
+	// hardcoded placeholders, not "the real value happens to be zero" —
+	// flagging honestly rather than leaving it unexplained. This chain has no
+	// single per-account EVM-style nonce counter spanning every tx type
+	// (transfers, registrations, swaps, liquidity ops each have their own
+	// replay-protection scheme, e.g. ConsumeSwapNonce for swaps only); txSenders/
+	// txTos/GetTxReceipt (this function's only data sources) don't track a
+	// per-tx amount either. Populating these correctly needs a real
+	// per-account nonce counter and persisted tx value, threaded through
+	// every transaction-recording path — a genuine feature, not a one-line
+	// fix, so left as an honest placeholder rather than a fabricated number.
 	return map[string]interface{}{
 		"hash":             txHash,
 		"nonce":            "0x0",
