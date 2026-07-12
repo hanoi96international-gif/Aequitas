@@ -6,6 +6,18 @@
       "runtimeExecutable": "python3",
       "runtimeArgs": ["-m", "http.server", "7788"],
       "port": 7788
+    },
+    {
+      "name": "explorer-assets-preview",
+      "runtimeExecutable": "python3",
+      "runtimeArgs": ["-m", "http.server", "7790", "--directory", "x/humanity/keeper/assets"],
+      "port": 7790
+    },
+    {
+      "name": "aequitas-app-web",
+      "runtimeExecutable": "cmd.exe",
+      "runtimeArgs": ["/c", "cd /d C:\\Users\\aequitas-app && npx expo start --web --port 8082"],
+      "port": 8082
     }
   ]
 }
