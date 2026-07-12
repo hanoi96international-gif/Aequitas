@@ -4,8 +4,7 @@
     "test": "hardhat test"
   },
   "dependencies": {
-    "ethers": "^6.13.0",
-    "solc": "^0.8.35"
+    "ethers": "^6.13.0"
   },
   "devDependencies": {
     "@nomicfoundation/hardhat-toolbox-viem": "^5.0.7",

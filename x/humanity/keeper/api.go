@@ -1346,28 +1346,23 @@ func (a *APIServer) handleCheckRegistrationByBioHash(w http.ResponseWriter, r *h
 		return
 	}
 	// FIX: this endpoint is unauthenticated by design (anyone checking their
-	// own registration status), but it returns a wallet address linked to a
-	// supplied bioHash with no throttle at all — unlike every other
-	// bioHash/escrow-adjacent endpoint in this file. Reuse the same
-	// package-level rate limiter as handleRecoverEscrow so it can't be used
-	// to mass-probe bioHash values for wallet-address leakage.
+	// own registration status), but it accepts a caller-supplied bioHash
+	// with no throttle at all — unlike every other bioHash/escrow-adjacent
+	// endpoint in this file. Reuse the same package-level rate limiter as
+	// handleRecoverEscrow so it can't be used to mass-probe bioHash values.
 	//
-	// CONSIDERED (Gesamtaudit 2026-06-28, P2-5) and deliberately NOT changed
-	// further: the audit's suggested mitigations (strip wallet/balance from
-	// the response; require a signature proving wallet ownership) both
-	// conflict with how the shipped AequitasBio app actually uses this
-	// endpoint (App.tsx) — it's called specifically to RECOVER "which wallet
-	// is this biometric registered to" before any wallet is connected (no
-	// signature is available to require at that point), including by
-	// polling it every 3 seconds while waiting for registration to confirm.
-	// Stripping the wallet would break that recovery flow entirely;
-	// tightening the rate limit below 3s would make the existing polling
-	// noticeably less responsive (it already loses every other poll to this
-	// 5s window). bioHash is therefore the deliberate credential this
-	// endpoint trusts, same as the rest of this architecture's proof/dedupe
-	// design — the real mitigation already in place is POST-only (so
-	// bioHash never lands in a URL, and therefore never in server/proxy
-	// logs) plus this rate limit, not response minimization.
+	// UPDATE (fresh Monster Audit 2026-07-12, cleanup): a 2026-06-28 version
+	// of this comment argued for keeping `wallet` in the response, because
+	// the then-shipped AequitasBio app (App.tsx) polled this endpoint by
+	// bioHash to recover its own wallet address before any wallet was
+	// connected. That app is retired; the current aequitas-app has its own
+	// SecureStore-backed wallet from the moment it exists and never asks
+	// this endpoint (or any endpoint) what its wallet address is — see
+	// BRUTAL-P3-13 below, which did go ahead and strip `wallet` from both
+	// response branches. bioHash remains the credential this endpoint
+	// trusts (POST-only so it never lands in a URL/logs, plus the rate
+	// limit below), but response minimization is no longer in tension with
+	// any real client — the two no longer need to be traded off.
 	ip := clientIP(r)
 	if ts, loaded := registerRateLimit.Load("biohash-check:" + ip); loaded {
 		if time.Since(ts.(time.Time)) < 5*time.Second {
@@ -1380,7 +1375,17 @@ func (a *APIServer) handleCheckRegistrationByBioHash(w http.ResponseWriter, r *h
 	var bioHashBody struct {
 		BioHash string `json:"bioHash"`
 	}
-	json.NewDecoder(r.Body).Decode(&bioHashBody)
+	// FIX (fresh Monster Audit 2026-07-12, P2): a decode error here (malformed
+	// JSON, wrong field type) used to be silently discarded, leaving bioHash
+	// at its zero value and falling straight into the same "registered:
+	// false" response as a genuinely empty bioHash — indistinguishable to
+	// the client from "you're not registered yet." Return 400 instead so a
+	// broken request body doesn't look like a real registration-status
+	// answer.
+	if err := json.NewDecoder(r.Body).Decode(&bioHashBody); err != nil {
+		jsonError(w, "invalid request body", 400)
+		return
+	}
 	var bioHash = bioHashBody.BioHash
 	if bioHash == "" {
 		json.NewEncoder(w).Encode(map[string]interface{}{"registered": false})

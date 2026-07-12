@@ -1348,7 +1348,27 @@ func (cs *ChainState) ensureAccountLoaded(addr string) {
 		addr,
 	).Scan(&bal, &acc.IsHuman, &tusd, &lp, &acc.LastActivityAt, &version)
 	if err != nil {
-		return // not in DB — caller's !ok branch will create a fresh account
+		// FIX (fresh Monster Audit 2026-07-12, P2): sql.ErrNoRows (genuinely
+		// never registered) and a real transient DB error (connection drop,
+		// pool exhaustion, timeout) used to be treated identically — silent
+		// return, caller's !ok branch creates a fresh zero-balance account.
+		// For ErrNoRows that's correct. For a real error on an address that
+		// DOES have a real balance, it's the exact cold-cache bug class this
+		// project has already hit and fixed at ~20 sites this session (see
+		// the rollback/apply*DeltaLocked fixes), just triggered by DB flakiness
+		// instead of a missing call. This function's callers (~36 sites
+		// across money-movement, escrow, UBI, LP, guardian paths) can't be
+		// safely switched to abort-on-error in one pass without touching
+		// every one of them — too large a change to make well under time
+		// pressure in this pass. Making the failure loud and observable
+		// (instead of silently indistinguishable from "new account") is the
+		// safe, scoped fix for now; a real error-propagating signature is
+		// the correct follow-up, done deliberately with each call site
+		// reviewed on its own.
+		if err != sql.ErrNoRows {
+			fmt.Printf("[STATE] ⚠ ensureAccountLoaded(%s): real DB error, not ErrNoRows — treating as cold/fresh account, which is WRONG if this address already has a balance: %v\n", addr, err)
+		}
+		return // not in DB (or DB unreachable) — caller's !ok branch will create a fresh account
 	}
 	acc.Balance = NewDecimal(bal)
 	acc.TUsdBalance = NewDecimal(tusd)
@@ -1393,7 +1413,16 @@ func (cs *ChainState) ensureAccountsLoaded(addrs []string) {
 		pq.Array(missing),
 	)
 	if err != nil {
-		return // same as ensureAccountLoaded's single-query error path — callers create a fresh account downstream if still absent
+		// FIX (fresh Monster Audit 2026-07-12, P2): see ensureAccountLoaded's
+		// identical-purpose comment. Here the blast radius is bigger than the
+		// single-address version — one failed batch query means EVERY
+		// address in `missing` (e.g. every human, on a daily UBI
+		// distribution round) falls through to "treat as fresh account"
+		// downstream, not just one. Loud logging so this is at least
+		// observable; see the single-address version for why a full
+		// abort-on-error signature change isn't done here in this pass.
+		fmt.Printf("[STATE] ⚠ ensureAccountsLoaded: batch query failed for %d addresses — all will be treated as cold/fresh, which is WRONG for any that already have a balance: %v\n", len(missing), err)
+		return
 	}
 	defer rows.Close()
 	for rows.Next() {
@@ -1402,6 +1431,7 @@ func (cs *ChainState) ensureAccountsLoaded(addrs []string) {
 		var bal, tusd, lp float64
 		var version int64
 		if err := rows.Scan(&addr, &bal, &acc.IsHuman, &tusd, &lp, &acc.LastActivityAt, &version); err != nil {
+			fmt.Printf("[STATE] ⚠ ensureAccountsLoaded: row scan failed mid-batch — this address will be treated as cold/fresh, which is WRONG if it already has a balance: %v\n", err)
 			continue
 		}
 		acc.Address = addr

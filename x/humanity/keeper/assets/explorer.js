@@ -2544,6 +2544,17 @@ async function drawLorenzCurve() {
   function rr(x,y,w,h,r) { if(ctx.roundRect)ctx.roundRect(x,y,w,h,r); else ctx.rect(x,y,w,h); }
 
   try {
+    // NOTE (fresh Monster Audit 2026-07-12, P2): no limit param here means
+    // the server's default cap applies (500, address-sorted — see
+    // handleHumans in api.go). Below that population this curve is exact;
+    // beyond it, it's drawn from a fixed subset (the first 500 addresses
+    // alphabetically) rather than the true population, which is not a
+    // representative sample. Not worth a client-side pagination loop for a
+    // decorative curve — the authoritative Score-tab Gini is computed
+    // server-side over every account, not from this fetch, so the number
+    // that actually matters stays correct regardless; only this
+    // supplementary visual would start drawing an approximation once
+    // registrations pass 500.
     var d = await (await fetch('/api/humans')).json();
     var humans = d.humans || [];
     if (humans.length < 2) {
@@ -4545,13 +4556,25 @@ async function doRegister() {
     // "v1" fallback would always fail server-side anyway; it used to exist
     // here and silently waste a MetaMask signature round-trip before failing.
     if (!proofData.zkNullifier) {
-      addLog('Error: proof server did not return a ZK-bound nullifier (circuit v2+ is required) — try generating the proof again', 'err');
+      addLog('Error: proof server did not return a ZK-bound nullifier (circuit v3 is required) — try generating the proof again', 'err');
+      document.getElementById('btn-reg').disabled = false;
+      return;
+    }
+    // FIX (fresh Monster Audit 2026-07-12, P1-5): register.go hard-requires
+    // circuitVersion === 3 (v7.6+, ZK-bound nullifier only). This used to
+    // fall back to `proofData.circuitVersion || 2` when the field was
+    // missing/falsy and send that — 2 is not 3, so the backend would always
+    // reject it anyway, just later and less clearly (after the MetaMask
+    // signature round-trip below) than catching it here alongside the
+    // zkNullifier check above.
+    if (proofData.circuitVersion !== 3) {
+      addLog('Error: proof server returned circuit v' + (proofData.circuitVersion ?? 'unknown') + ', but v3 is required — try generating the proof again', 'err');
       document.getElementById('btn-reg').disabled = false;
       return;
     }
     const zkN = BigInt(proofData.zkNullifier);
     const nullifier = zkN.toString(16).padStart(64, '0');
-    addLog('Using ZK-bound nullifier (circuit v2)', 'info');
+    addLog('Using ZK-bound nullifier (circuit v3)', 'info');
 
     // Build the EXACT same hash the contract computes:
     // keccak256(abi.encodePacked(block.chainid, address(this), "register", commitment, nullifier))
@@ -4578,7 +4601,7 @@ async function doRegister() {
         bioHash: pendingBioHash || '',
         bioHashKey: proofData.bioHashKey || '',
         nullifier: nullifier,
-        circuitVersion: proofData.circuitVersion || 2,
+        circuitVersion: proofData.circuitVersion,
         zkNullifier: proofData.zkNullifier || null
       })
     });
@@ -4753,13 +4776,28 @@ loadTopology();
 function pollWhenVisible(fn) {
   return function() { if (!document.hidden) fn(); };
 }
+// FIX (fresh Monster Audit 2026-07-12, P2): loadHumans (tab-explorer's
+// h-count/humans-list) and loadTopology (tab-network) were polling every
+// 10s/60s even while some OTHER tab was active — pollWhenVisible only
+// covers the whole-browser-tab-hidden case, not "this in-page tab isn't
+// the one showing this data." The default landing tab is tab-register,
+// which shows neither, so a visitor who never clicks Explorer/Network
+// still generated the full steady-state polling load for both. Only
+// gating the RECURRING poll here, not the one-shot calls a few lines up —
+// those still fire unconditionally on page load so every tab's data is
+// already populated (not blank) the moment someone switches to it.
+function pollWhenTabActive(tabContentId, fn) {
+  return function() {
+    if (!document.hidden && document.getElementById(tabContentId).classList.contains('active')) fn();
+  };
+}
 setInterval(pollWhenVisible(loadStatus), 6000);
 setInterval(pollWhenVisible(loadHealth), 30000);
 setInterval(pollWhenVisible(loadBlocks), 6000);
-setInterval(pollWhenVisible(loadHumans), 10000);
+setInterval(pollWhenTabActive('tab-explorer', loadHumans), 10000);
 setInterval(pollWhenVisible(loadValidatorLabels), 60000);
 setInterval(pollWhenVisible(loadPoolStatus), 8000);
-setInterval(pollWhenVisible(loadTopology), 60000);
+setInterval(pollWhenTabActive('tab-network', loadTopology), 60000);
 document.addEventListener('visibilitychange', function() {
   if (!document.hidden) {
     loadStatus(); loadHealth(); loadBlocks(); loadHumans();
