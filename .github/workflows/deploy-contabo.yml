@@ -36,7 +36,15 @@ jobs:
           username: root
           key: ${{ secrets.CONTABO_SSH_KEY }}
           port: 22
-          fingerprint: "AAAAB3NzaC1yc2EAAAADAQABAAABgQDMqOKYOGoIgOgs1Q+E1X2CLRuaBNl/cv3RrLDkiSlJGuLxMTgSjhODIu15BJieKDYsB4Nt7hsFNwQSyrht9SLCoDoF+riZozG7gEroH5EDrnuV5fhzGJnh0tLytMHfZMQCSQv/inqI3p0BuXrZ1TuBJaR9kacuJsKWqRLk0EakfSPIi7JliTHKu8PbxewmhgUoFKy6usfZ8vuowmhL6/awletBMjXqXnzKZGLlR78KVV/GTUGsgSjVS/TDZF4f74i0Zsht9WlD0mdF+DWc6GWYUwTmdMQGD7s2qGaTATBC+/u/CW+Ti0kqd+xbYPzObAVHm7q4HjuIBdGhYkOyDXN5NjgMIcGlVbWnslIK47r1r50scuFlwIu7qrjMFI2aESEa6GhVtieB7btMx3R/jN2SR8lqhPgaiYekYdkCXNjouMrFNt6HADCUgJlGpXVsbDQ5KJBd4vBpGxA4O7HV/4bXY4GKaEO2atxD0+TytbD9IQG/smFSi1Wf/uFG3IsBkxc="
+          # FIX (fresh Monster Audit 2026-07-12): this fingerprint didn't
+          # match Contabo1's actual SSH host key at all (confirmed via a
+          # live ssh-keyscan -t rsa 173.249.37.118 — different from the
+          # first byte after the ssh-rsa prefix onward). Every single
+          # "Deploy to Contabo VPS" run in this repo's history had failed
+          # before reaching this check, on a missing CONTABO_SSH_KEY secret
+          # (fixed alongside this), so this second, independent break was
+          # never actually exercised/caught until now.
+          fingerprint: "AAAAB3NzaC1yc2EAAAADAQABAAABgQC7+jNx482R+xcq6XaNslbLR2pEFBgnrHfdDQHTVFO/QafnvsdSeh23WZzN5ybtzjJV3KDkqzIpJLKssZxlGok1SD0bMshxD1h5WDJHJsa3pwBqeQWrcZBFf0S/bO4nHkbCf9+mgCcHb4OwAkkjGmX8bKYeoSB3B4jNrW2dNK98fEhxVPk/PosX6l70xS0BsZkG5wmMVdWed4/QT1bQnGGf7RIKHD7CJ6SxGohbR6lv57BpSYHNj2uK3dEEm/4pmA20zl7OSsf+NVWazm/XCf63UTOuov9Nqraf17uvXgy3pQYCerGLu0yhk5O6hwe0OSRAxqAt1xlv1mWDryfugzD7+yt3p14IFCrWjQrg/aiN/haqE4b+FLOezR1Q4XLlDxtqhmV+xk4Sj/1tKW7WaEBk4immCSzYnbh1AiAkP6u6VP4dTdumtgE/lFzJ39g9pekDtYChbVgtgHmSoocRWnZ6n5XHB/Ci/2+NtpWTyFbBFWXuj0KKbNcwH6ejSnureb0="
           script: /root/deploy.sh
           script_stop: true
           timeout: 600s
