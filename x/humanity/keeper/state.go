@@ -951,14 +951,21 @@ func (cs *ChainState) clearRegistrationsFromDB() {
 	stmts := []string{
 		`DELETE FROM nullifiers`,
 		`DELETE FROM bio_registrations`,
-		// FIX: bio_hashes was never cleared here. Nothing on the chain side
-		// reads this table for registration blocking today (it's write-only,
-		// populated by SaveBioHash/snapshot import), but leaving stale rows
-		// behind after every other registration table is wiped is an
-		// inconsistent half-reset, and it's the SAME table name as the one
-		// the separate proof-server service uses for its own (much more
-		// consequential) duplicate-biometric check — clearing it here keeps
-		// the chain's own copy honest regardless of what reads it later.
+		// FIX: bio_hashes was never cleared here. CORRECTION (Monster Audit
+		// follow-up, 2026-07-12): the comment used to claim "nothing on the
+		// chain side reads this table for registration blocking" — false as
+		// of register.go's GetWalletByStoredBioHash check (added after this
+		// comment was written), which DOES reject a registration whose
+		// bioHashKey/bioHash already has a row here — a real, active
+		// secondary defense-in-depth dedup layer alongside the nullifier
+		// check, not just write-only bookkeeping. Clearing it here is still
+		// correct (a CLEAR_REGISTRATIONS wipe should reset every dedup layer
+		// consistently, this one included), but for the actual reason —
+		// leaving stale rows behind would keep blocking re-registration of a
+		// biometric this same wipe just un-blocked everywhere else — not the
+		// "nothing reads it" one. See register.go's own comment for the
+		// current, accurate picture of what's write-only vs. actively
+		// enforced.
 		`DELETE FROM bio_hashes`,
 		`UPDATE chain_accounts SET is_human = false, balance = 0, tusd_balance = 0, lp_shares = 0, last_activity_at = 0, faucet_claimed = false`,
 		`DELETE FROM evm_storage WHERE lower(address) = '` + v7Addr + `'`,
@@ -2349,6 +2356,22 @@ func (cs *ChainState) distributeValidatorsPoolLocked() ([]DistributionShare, err
 	}
 
 	total := poolAcc.Balance.Float()
+	// FIX (Monster Audit follow-up, 2026-07-12, P0): distributeLPPoolLocked/
+	// distributeUBIPoolLocked (both fixed in an earlier 2026-07-05/06 audit
+	// pass) warm every recipient via ensureAccountsLoaded before crediting —
+	// this function warmed only the pool address itself (see the FIX comment
+	// above) and never got the equivalent call for individual validator/
+	// node-operator wallets, which can genuinely lack a chain_accounts row
+	// touch independent of registration (RegisterNode/BindValidatorSlot write
+	// straight into registered_nodes). A cold recipient wallet below used to
+	// be blind-created as a fresh zero-balance AccountState, silently wiping
+	// any real balance/tusd/lp/is_human it already had via saveAccountToDB's
+	// Version==0 upsert.
+	walletAddrs := make([]string, 0, len(nodeShares))
+	for _, ns := range nodeShares {
+		walletAddrs = append(walletAddrs, ns.wallet)
+	}
+	cs.ensureAccountsLoaded(walletAddrs)
 	// P0-2: credit recipients BEFORE zeroing the pool so a crash mid-loop
 	// leaves money in the pool (re-distributable) rather than losing it.
 	var totalDistributed float64
@@ -5098,6 +5121,23 @@ func (cs *ChainState) snapshotForRollback(addrs []string, full bool) *blockRollb
 // (snapshot and mutation under one unbroken cs.mu.Lock()) closes that gap —
 // nothing else can touch cs.accounts/cs.pool between the two.
 func (cs *ChainState) snapshotForRollbackLocked(addrs []string, full bool, chainConfig map[string]configValueSnapshot) *blockRollbackSnapshot {
+	// FIX (Monster Audit follow-up, 2026-07-12, P0): both branches below used
+	// to read cs.accounts[a] directly with no DB warm-up first. addrs always
+	// includes all 4 pool addresses (see blockTouchedAddresses) — exactly the
+	// addresses already known (from this same day's earlier fix) to go cold
+	// after a cache eviction or restart. A cold-but-real address was recorded
+	// as existed:false; if the block then hard-failed for ANY reason (or even
+	// just a DB commit error at the end of a successful replay), the
+	// restoreFromRollbackLocked call below would DELETE FROM chain_accounts
+	// that address's real row — permanently destroying its balance,
+	// tusd_balance, lp_shares, and is_human, as collateral damage from a
+	// failure that had nothing to do with it. Warming here, before either
+	// branch reads cs.accounts, closes the gap for both: the non-full branch
+	// directly, and the full branch too (its own first loop iterates
+	// cs.accounts, so anything warmed here is captured as existed:true with
+	// real state instead of falling into the addrs-only "doesn't exist yet"
+	// fallback).
+	cs.ensureAccountsLoaded(addrs)
 	snap := &blockRollbackSnapshot{}
 	if full {
 		// ubi_distribution touches every human's account (see ApplyUBIDelta) —
@@ -5282,6 +5322,20 @@ func (cs *ChainState) ApplyTransferDelta(from, to string, netAmount, fromLost, t
 func (cs *ChainState) applyTransferDeltaLocked(from, to string, netAmount, fromLost, toLost float64) error {
 	from = strings.ToLower(from)
 	to = strings.ToLower(to)
+	// FIX (Monster Audit follow-up, 2026-07-12, P0): same cold-cache pattern
+	// already fixed today at the 11 pool-address sites, unaddressed here for
+	// ordinary wallet addresses. A cold `from` used to fail with "account not
+	// found" even though it has a real DB balance — on a secondary replaying
+	// a block the primary already accepted, that's a hard-fail this function
+	// returns, which the caller (replayTransactions) treats as block-invalid
+	// and rejects, diverging this node from consensus. A cold `to` was worse:
+	// blind-created as a fresh zero-balance AccountState below, which
+	// silently overwrites (via saveAccountToDB's Version==0 upsert) any real
+	// balance `to` already had in the DB — including if `to` happens to be a
+	// pool address reached via an ordinary transfer rather than the
+	// distribution paths already fixed today.
+	cs.ensureAccountLoaded(from)
+	cs.ensureAccountLoaded(to)
 	fromAcc, ok := cs.accounts[from]
 	if !ok {
 		return fmt.Errorf("from account not found: %s", from)
@@ -5678,6 +5732,11 @@ func (cs *ChainState) ApplyUBIRewardDelta(wallet string, amount, demurrageLost f
 // applyUBIRewardDeltaLocked is ApplyUBIRewardDelta's body — see applyTransferDeltaLocked's comment.
 func (cs *ChainState) applyUBIRewardDeltaLocked(wallet string, amount, demurrageLost float64) error {
 	wallet = strings.ToLower(wallet)
+	// FIX (Monster Audit follow-up, 2026-07-12, P0): see applyTransferDeltaLocked's
+	// comment — same cold-cache pattern. Here a cold wallet fails as
+	// "not found" and this secondary rejects a block its primary already
+	// accepted, diverging from consensus.
+	cs.ensureAccountLoaded(wallet)
 	acc, ok := cs.accounts[wallet]
 	if !ok {
 		return fmt.Errorf("ubi reward: account not found: %s", wallet)
@@ -5751,6 +5810,12 @@ func (cs *ChainState) ApplyValidatorRewardDelta(wallet string, amount, demurrage
 // applyValidatorRewardDeltaLocked is ApplyValidatorRewardDelta's body — see applyTransferDeltaLocked's comment.
 func (cs *ChainState) applyValidatorRewardDeltaLocked(wallet string, amount, demurrageLost float64) error {
 	wallet = strings.ToLower(wallet)
+	// FIX (Monster Audit follow-up, 2026-07-12, P0): see applyTransferDeltaLocked's
+	// comment — same cold-cache pattern. Here a cold wallet was blind-created
+	// as a fresh zero-balance AccountState below, silently wiping any real
+	// balance/tusd/lp/is_human it already had via saveAccountToDB's
+	// Version==0 upsert.
+	cs.ensureAccountLoaded(wallet)
 	if _, ok := cs.accounts[wallet]; !ok {
 		cs.accounts[wallet] = &AccountState{Address: wallet}
 	}
@@ -5821,6 +5886,9 @@ func (cs *ChainState) ApplyLPRewardDelta(wallet string, amount, demurrageLost fl
 // applyLPRewardDeltaLocked is ApplyLPRewardDelta's body — see applyTransferDeltaLocked's comment.
 func (cs *ChainState) applyLPRewardDeltaLocked(wallet string, amount, demurrageLost float64) error {
 	wallet = strings.ToLower(wallet)
+	// FIX (Monster Audit follow-up, 2026-07-12, P0): see applyValidatorRewardDeltaLocked's
+	// comment — same cold-cache blind-create/silent-wipe pattern.
+	cs.ensureAccountLoaded(wallet)
 	if _, ok := cs.accounts[wallet]; !ok {
 		cs.accounts[wallet] = &AccountState{Address: wallet}
 	}
@@ -5889,6 +5957,11 @@ func (cs *ChainState) ApplyEscrowMoveDelta(wallet string, demurrageLost, lpShare
 // applyEscrowMoveDeltaLocked is ApplyEscrowMoveDelta's body — see applyTransferDeltaLocked's comment.
 func (cs *ChainState) applyEscrowMoveDeltaLocked(wallet string, demurrageLost, lpSharesBurned, tusdConverted float64) error {
 	wallet = strings.ToLower(wallet)
+	// FIX (Monster Audit follow-up, 2026-07-12, P0): see applyTransferDeltaLocked's
+	// comment — same cold-cache pattern. Here a cold wallet fails as
+	// "not found" and this secondary rejects a block its primary already
+	// accepted, diverging from consensus.
+	cs.ensureAccountLoaded(wallet)
 	acc, ok := cs.accounts[wallet]
 	if !ok {
 		return fmt.Errorf("escrow move: account not found: %s", wallet)
@@ -5977,6 +6050,12 @@ func (cs *ChainState) ApplyFaucetDelta(wallet string, faucetAmount float64) erro
 // applyFaucetDeltaLocked is ApplyFaucetDelta's body — see applyTransferDeltaLocked's comment.
 func (cs *ChainState) applyFaucetDeltaLocked(wallet string, faucetAmount float64) error {
 	wallet = strings.ToLower(wallet)
+	// FIX (Monster Audit follow-up, 2026-07-12, P0): see applyValidatorRewardDeltaLocked's
+	// comment — same cold-cache blind-create/silent-wipe pattern. Also matters
+	// for FaucetClaimed specifically: a blind-created account always starts
+	// with FaucetClaimed=false, which would have silently let a cold wallet
+	// that already claimed the faucet claim it again on replay.
+	cs.ensureAccountLoaded(wallet)
 	if _, ok := cs.accounts[wallet]; !ok {
 		cs.accounts[wallet] = &AccountState{Address: wallet}
 	}

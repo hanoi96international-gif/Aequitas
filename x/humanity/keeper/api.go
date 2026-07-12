@@ -524,8 +524,10 @@ func recoverMiddleware(next http.Handler) http.Handler {
 func (a *APIServer) Start(port int) {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/landing", a.handleLanding)
+	mux.HandleFunc("/landing.js", a.handleLandingJS)
 	mux.HandleFunc("/explorer.css", a.handleExplorerCSS)
 	mux.HandleFunc("/explorer.js", a.handleExplorerJS)
+	mux.HandleFunc("/node-binding.js", a.handleNodeBindingJS)
 	mux.HandleFunc("/vendor/ethers.min.js", a.handleVendorEthersJS)
 	mux.HandleFunc("/vendor/lightweight-charts.min.js", a.handleVendorLightweightChartsJS)
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
@@ -585,6 +587,7 @@ func (a *APIServer) Start(port int) {
 	mux.HandleFunc("/api/recover-escrow", a.handleRecoverEscrow)
 	mux.HandleFunc("/registered", a.handleRegistered)
 	mux.HandleFunc("/dapp", a.handleDapp)
+	mux.HandleFunc("/dapp.js", a.handleDappJS)
 	mux.HandleFunc("/download/app.apk", a.handleAppDownload)
 	for _, lg := range []string{"en", "de", "es", "fr", "id", "it", "pt", "tr"} {
 		lg := lg
@@ -1539,7 +1542,10 @@ Return to the <span class="hl">Aequitas App</span> — it will confirm your regi
 // node's environment variables.
 func (a *APIServer) handleNodeBinding(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/html")
-	w.Header().Set("Content-Security-Policy", "default-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; connect-src 'self'")
+	// FIX (Monster Audit 2026-07-12 follow-up, P1): script-src no longer needs
+	// 'unsafe-inline' now that signBinding() lives in the same-origin
+	// /node-binding.js file (see nodeBindingJS's comment in api_html.go).
+	w.Header().Set("Content-Security-Policy", "default-src 'self' 'unsafe-inline'; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self'")
 	fmt.Fprint(w, `<!DOCTYPE html>
 <html>
 <head>
@@ -1569,46 +1575,11 @@ This page proves your <span class="hl">NODE_OPERATOR_WALLET</span> owns the sign
 </div>
 <label>Your node's signing address (find it via <code>/api/signing-address</code> on your own node, or in its startup logs)</label>
 <input id="signingAddr" placeholder="0x...">
-<button class="btn" id="connectBtn" onclick="signBinding()">Connect Wallet &amp; Sign</button>
+<button class="btn" id="connectBtn">Connect Wallet &amp; Sign</button>
 <div class="out" id="out"></div>
 <div class="err" id="err"></div>
 </div>
-<script>
-async function signBinding() {
-  const errEl = document.getElementById('err');
-  const outEl = document.getElementById('out');
-  errEl.style.display = 'none';
-  outEl.style.display = 'none';
-  const signingAddr = document.getElementById('signingAddr').value.trim().toLowerCase();
-  if (!/^0x[0-9a-f]{40}$/.test(signingAddr)) {
-    errEl.textContent = 'Enter a valid signing address (0x followed by 40 hex characters).';
-    errEl.style.display = 'block';
-    return;
-  }
-  if (!window.ethereum) {
-    errEl.textContent = 'No wallet found. Install MetaMask or another browser wallet extension.';
-    errEl.style.display = 'block';
-    return;
-  }
-  try {
-    const accounts = await window.ethereum.request({ method: 'eth_requestAccounts' });
-    const wallet = accounts[0];
-    const message = 'Aequitas: authorize validator ' + signingAddr;
-    const signature = await window.ethereum.request({
-      method: 'personal_sign',
-      params: [message, wallet],
-    });
-    outEl.innerHTML = 'Wallet: <span class="hl">' + wallet + '</span><br><br>' +
-      'Set these on your node:<br><br>' +
-      'NODE_OPERATOR_WALLET=' + wallet + '<br>' +
-      'NODE_OPERATOR_BINDING_SIGNATURE=' + signature;
-    outEl.style.display = 'block';
-  } catch (e) {
-    errEl.textContent = 'Signing failed or was rejected: ' + (e && e.message ? e.message : e);
-    errEl.style.display = 'block';
-  }
-}
-</script>
+<script src="/node-binding.js"></script>
 </body>
 </html>`)
 }
@@ -2702,7 +2673,20 @@ func (a *APIServer) handleDapp(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	// FIX (Monster Audit follow-up, 2026-07-12, P0/P1): this page used to set
+	// NO Content-Security-Policy header at all — worse than the permissive
+	// 'unsafe-inline' one every other HTML handler in this file carried. Its
+	// script is now external+self-hosted (see dappJS's comment in
+	// api_html.go) and its 21 onclick=/oninput= attributes are gone, so this
+	// can go straight to a strict script-src with zero exceptions.
+	w.Header().Set("Content-Security-Policy", "default-src 'self' 'unsafe-inline'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.bunny.net; font-src https://fonts.bunny.net; connect-src 'self' https://aequitas.digital; img-src 'self' data:")
 	http.ServeContent(w, r, "aequitas-dapp.html", fi.ModTime(), f)
+}
+
+func (a *APIServer) handleDappJS(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/javascript; charset=utf-8")
+	w.Header().Set("Cache-Control", "public, max-age=3600")
+	fmt.Fprint(w, dappJS)
 }
 
 func (a *APIServer) handleAppDownload(w http.ResponseWriter, r *http.Request) {
@@ -2750,8 +2734,23 @@ func (a *APIServer) handleLanding(w http.ResponseWriter, r *http.Request) {
 	// FIX (Monster Audit 2026-07-12, P1): ethers now loads from same-origin
 	// /vendor/ethers.min.js (self-hosted, version-pinned — see vendorEthersJS's
 	// comment), so script-src no longer needs to allow cdnjs.cloudflare.com.
-	w.Header().Set("Content-Security-Policy", "default-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.bunny.net; font-src https://fonts.bunny.net; connect-src 'self'; img-src 'self' data:")
+	// FIX (Monster Audit 2026-07-12 follow-up, P1): loadStats()/the smooth-scroll
+	// handler now live in the same-origin /landing.js file (see landingJS's
+	// comment in api_html.go), so script-src no longer needs 'unsafe-inline'.
+	w.Header().Set("Content-Security-Policy", "default-src 'self' 'unsafe-inline'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.bunny.net; font-src https://fonts.bunny.net; connect-src 'self'; img-src 'self' data:")
 	fmt.Fprint(w, landingHTML)
+}
+
+func (a *APIServer) handleLandingJS(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/javascript; charset=utf-8")
+	w.Header().Set("Cache-Control", "public, max-age=3600")
+	fmt.Fprint(w, landingJS)
+}
+
+func (a *APIServer) handleNodeBindingJS(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/javascript; charset=utf-8")
+	w.Header().Set("Cache-Control", "public, max-age=3600")
+	fmt.Fprint(w, nodeBindingJS)
 }
 
 // ─── GUARDIAN ENDPOINTS ────────────────────────────────────────────────────────

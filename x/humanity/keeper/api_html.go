@@ -38,3 +38,29 @@ var vendorEthersJS string
 
 //go:embed assets/vendor/lightweight-charts.min.js
 var vendorLightweightChartsJS string
+
+// FIX (Monster Audit 2026-07-12 follow-up, P1): handleNodeBinding and
+// handleLanding used to inline their <script> blocks directly into the HTML,
+// which forced 'unsafe-inline' into script-src on both pages' CSP — a page
+// that runs a compromised/injected script has full access to window.ethereum
+// (handleNodeBinding signs a validator-binding message; handleLanding is the
+// public landing page). Externalizing to same-origin files, same pattern as
+// explorerJS above, lets both drop 'unsafe-inline' from script-src entirely.
+//
+//go:embed assets/node-binding.js
+var nodeBindingJS string
+
+//go:embed assets/landing.js
+var landingJS string
+
+// FIX (Monster Audit follow-up, 2026-07-12, P0/P1): aequitas-dapp.html (the
+// mobile wallet SPA served by handleDapp) had NO CSP header at all — not
+// even the permissive 'unsafe-inline' one the other HTML handlers used to
+// carry — plus 21 onclick=/oninput= attributes, an inline <script> block,
+// and CDN-loaded ethers/lightweight-charts (same supply-chain risk already
+// fixed on the Explorer's register page). Externalized for the same reason
+// nodeBindingJS/landingJS were: lets handleDapp set a real script-src 'self'
+// CSP with zero exceptions.
+//
+//go:embed assets/dapp.js
+var dappJS string

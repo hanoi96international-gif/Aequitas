@@ -15,8 +15,12 @@
      handler, well after user interaction) -- unblocks first paint on
      mobile instead of the browser stalling on two CDN round trips before
      rendering anything. -->
-<script defer src="https://unpkg.com/lightweight-charts@4.1.3/dist/lightweight-charts.standalone.production.js"></script>
-<script defer src="https://cdnjs.cloudflare.com/ajax/libs/ethers/6.7.0/ethers.umd.min.js"></script>
+<!-- FIX (Monster Audit follow-up, 2026-07-12, P1): was loading from
+     unpkg.com/cdnjs.cloudflare.com — same self-hosted, version-pinned
+     supply-chain fix already applied to the Explorer's register page (see
+     vendorEthersJS's comment in api_html.go), extended to this file. -->
+<script defer src="/vendor/lightweight-charts.min.js"></script>
+<script defer src="/vendor/ethers.min.js"></script>
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
 :root{
@@ -182,9 +186,9 @@ input[type=number]::-webkit-inner-spin-button{-webkit-appearance:none}
     </div>
   </div>
   <div class="header-mid">
-    <div class="wallet-addr" id="wallet-addr-display" onclick="copyWalletAddr()"></div>
+    <div class="wallet-addr" id="wallet-addr-display"></div>
   </div>
-  <button id="connect-btn" onclick="connectWallet()">Connect</button>
+  <button id="connect-btn">Connect</button>
 </header>
 
 <!-- ── MAIN ── -->
@@ -265,12 +269,12 @@ input[type=number]::-webkit-inner-spin-button{-webkit-appearance:none}
   </div>
 
   <div class="interval-bar">
-    <button onclick="setChartInterval(60000)" id="ci-1m" class="ci-btn">1m</button>
-    <button onclick="setChartInterval(300000)" id="ci-5m" class="ci-btn">5m</button>
-    <button onclick="setChartInterval(1800000)" id="ci-30m" class="ci-btn">30m</button>
-    <button onclick="setChartInterval(3600000)" id="ci-1h" class="ci-btn ci-active">1h</button>
-    <button onclick="setChartInterval(14400000)" id="ci-4h" class="ci-btn">4h</button>
-    <button onclick="setChartInterval(0)" id="ci-all" class="ci-btn">All</button>
+    <button data-interval-ms="60000" id="ci-1m" class="ci-btn">1m</button>
+    <button data-interval-ms="300000" id="ci-5m" class="ci-btn">5m</button>
+    <button data-interval-ms="1800000" id="ci-30m" class="ci-btn">30m</button>
+    <button data-interval-ms="3600000" id="ci-1h" class="ci-btn ci-active">1h</button>
+    <button data-interval-ms="14400000" id="ci-4h" class="ci-btn">4h</button>
+    <button data-interval-ms="0" id="ci-all" class="ci-btn">All</button>
   </div>
 
   <div id="price-chart" style="width:100%;height:240px;background:#0A0C16"></div>
@@ -285,13 +289,13 @@ input[type=number]::-webkit-inner-spin-button{-webkit-appearance:none}
       </div>
 
       <div class="swap-dir-row">
-        <button class="dir-btn active" id="dir-aeq-to-tusd" onclick="setSwapDir('aeq_to_tusd')">AEQ → tUSD</button>
-        <button class="dir-btn" id="dir-tusd-to-aeq" onclick="setSwapDir('tusd_to_aeq')">tUSD → AEQ</button>
+        <button class="dir-btn active" id="dir-aeq-to-tusd" data-swap-dir="aeq_to_tusd">AEQ → tUSD</button>
+        <button class="dir-btn" id="dir-tusd-to-aeq" data-swap-dir="tusd_to_aeq">tUSD → AEQ</button>
       </div>
 
       <div class="input-group">
         <label class="input-label" id="swap-from-label">Amount (AEQ)</label>
-        <input type="number" id="swap-amount" placeholder="0.000000" min="0" step="any" oninput="calcSwapPreview()">
+        <input type="number" id="swap-amount" placeholder="0.000000" min="0" step="any">
       </div>
 
       <div class="preview-box">
@@ -300,7 +304,7 @@ input[type=number]::-webkit-inner-spin-button{-webkit-appearance:none}
         <div class="preview-row"><span>Pool reserves</span><span id="swap-pool" style="font-family:var(--mono)">—</span></div>
       </div>
 
-      <button class="btn btn-purple" id="swap-btn" onclick="doSwap()">Swap</button>
+      <button class="btn btn-purple" id="swap-btn">Swap</button>
       <div id="swap-status" class="status-line"></div>
     </div>
 
@@ -313,7 +317,7 @@ input[type=number]::-webkit-inner-spin-button{-webkit-appearance:none}
   <div id="wallet-not-connected" class="connect-prompt">
     <div class="connect-icon">💼</div>
     <div class="connect-text">Connect your wallet to see your balances and send AEQ</div>
-    <button class="btn btn-purple" style="max-width:220px;margin:0 auto" onclick="connectWallet()">Connect MetaMask</button>
+    <button class="btn btn-purple" style="max-width:220px;margin:0 auto" id="wallet-connect-btn">Connect MetaMask</button>
   </div>
 
   <div id="wallet-connected" style="display:none">
@@ -344,14 +348,14 @@ input[type=number]::-webkit-inner-spin-button{-webkit-appearance:none}
         <label class="input-label">Amount (AEQ)</label>
         <input type="number" id="send-amount" placeholder="0.0000" min="0" step="any">
       </div>
-      <button class="btn btn-neon" onclick="doSend()">Send AEQ</button>
+      <button class="btn btn-neon" id="send-btn">Send AEQ</button>
       <div id="send-status" class="status-line"></div>
     </div>
 
     <div class="card">
       <div class="card-header"><span class="card-title">Tools</span></div>
-      <button class="btn btn-outline" onclick="addToMetaMask()" style="margin-bottom:8px">+ Add Aequitas Chain to MetaMask</button>
-      <button class="btn btn-outline" onclick="doFaucet()">💧 Request tUSD from Faucet</button>
+      <button class="btn btn-outline" id="add-network-btn" style="margin-bottom:8px">+ Add Aequitas Chain to MetaMask</button>
+      <button class="btn btn-outline" id="faucet-btn">💧 Request tUSD from Faucet</button>
       <div id="faucet-status" class="status-line"></div>
     </div>
 
@@ -364,7 +368,7 @@ input[type=number]::-webkit-inner-spin-button{-webkit-appearance:none}
   <div id="id-not-connected" class="connect-prompt">
     <div class="connect-icon">🪪</div>
     <div class="connect-text">Connect your wallet to check your humanity verification status</div>
-    <button class="btn btn-purple" style="max-width:220px;margin:0 auto" onclick="connectWallet()">Connect Wallet</button>
+    <button class="btn btn-purple" style="max-width:220px;margin:0 auto" id="id-connect-btn">Connect Wallet</button>
   </div>
 
   <div id="id-connected" style="display:none;padding-top:14px">
@@ -381,64 +385,40 @@ input[type=number]::-webkit-inner-spin-button{-webkit-appearance:none}
       <div class="id-badge-icon">?</div>
       <div>
         <div class="id-badge-title">Not Yet Verified</div>
-        <div class="id-badge-sub">Complete the steps below to receive UBI</div>
+        <div class="id-badge-sub">Complete verification in the Aequitas App to receive UBI</div>
       </div>
     </div>
 
+    <!-- FIX (Monster Audit follow-up, 2026-07-12, P0): this card used to
+         describe a "scan your face to generate a ZKP" step and a
+         "?proof=" URL handoff back to this page — neither is accurate.
+         No client (the Aequitas Android app included, see lib/identity.ts)
+         has ever scanned a face; verification unlocks a device-bound key
+         behind the phone's own screen lock (Secure Enclave/StrongBox), and
+         the app now completes proof generation + on-chain registration
+         entirely in-app — it never redirects back here. The old ?proof=
+         handoff (raw bio+salt in a URL query string) is dead code no
+         current client sends; removed rather than left as unused attack
+         surface, matching the same fix already applied to the old
+         AequitasBio bioHash URL bridge. -->
     <div class="card" id="id-register-card">
       <div class="card-header"><span class="card-title">Humanity Verification</span></div>
       <div class="privacy-note">🔒 Real Groth16 ZKP · Hardware Secure Element · Zero biometric data on-chain</div>
-
-      <div id="id-proof-pending">
-        <div class="steps-list">
-          <div class="step-item done">
-            <div class="step-num">✓</div>
-            <div>Wallet connected</div>
-          </div>
-          <div class="step-item">
-            <div class="step-num">2</div>
-            <div>Download the Aequitas Android App</div>
-          </div>
-          <div class="step-item">
-            <div class="step-num">3</div>
-            <div>Open app → Prove Humanity → scan your face to generate a ZKP</div>
-          </div>
-          <div class="step-item">
-            <div class="step-num">4</div>
-            <div>App redirects back here with proof → submit on-chain → receive 1,000 AEQ</div>
-          </div>
+      <div class="steps-list">
+        <div class="step-item done">
+          <div class="step-num">✓</div>
+          <div>Wallet connected</div>
         </div>
-        <!-- FIX (P3-16, beta-launch audit 2026-07-05): landing.go has no
-             id="download" anchor for this to scroll to (it never has —
-             clicking this just loaded the landing page from the top instead
-             of jumping anywhere). Linking straight to the actual download
-             route instead of a non-existent in-page anchor. -->
-        <a href="https://aequitas.digital/download/app.apk" target="_blank" class="btn btn-purple" style="text-decoration:none">📱 Get Aequitas App</a>
+        <div class="step-item">
+          <div class="step-num">2</div>
+          <div>Download the Aequitas Android App</div>
+        </div>
+        <div class="step-item">
+          <div class="step-num">3</div>
+          <div>Open the app and complete verification there — it unlocks a device-bound key behind your screen lock, generates the proof, and registers your wallet in one flow</div>
+        </div>
       </div>
-
-      <div id="id-proof-ready" style="display:none">
-        <div class="proof-ready-banner">✓ Biometric proof received from app</div>
-        <div class="steps-list">
-          <div class="step-item done" id="id-step-hash">
-            <div class="step-num">✓</div>
-            <div>Biometric hash received</div>
-          </div>
-          <div class="step-item" id="id-step-zkp">
-            <div class="step-num">2</div>
-            <div>Generate Groth16 proof via proof server</div>
-          </div>
-          <div class="step-item" id="id-step-submit">
-            <div class="step-num">3</div>
-            <div>Submit proof on-chain → 1,000 AEQ</div>
-          </div>
-        </div>
-        <div id="id-progress-wrap" style="display:none">
-          <div class="progress-bar"><div class="progress-fill" id="id-progress-fill" style="width:0%"></div></div>
-          <div class="progress-text" id="id-progress-text">Initializing…</div>
-        </div>
-        <button class="btn btn-neon" id="id-submit-btn" onclick="doRegister()" style="margin-top:4px">🔐 Submit Proof &amp; Register</button>
-        <div id="id-status" class="status-line"></div>
-      </div>
+      <a href="https://aequitas.digital/download/app.apk" target="_blank" class="btn btn-purple" style="text-decoration:none">📱 Get Aequitas App</a>
     </div>
 
   </div>
@@ -448,19 +428,19 @@ input[type=number]::-webkit-inner-spin-button{-webkit-appearance:none}
 
 <!-- ── BOTTOM NAV ── -->
 <nav class="bottom-nav">
-  <button class="nav-btn active" data-tab="home" onclick="showTab('home')">
+  <button class="nav-btn active" data-tab="home">
     <div class="nav-icon">🏠</div>
     <div class="nav-label">Home</div>
   </button>
-  <button class="nav-btn" data-tab="trade" onclick="showTab('trade')">
+  <button class="nav-btn" data-tab="trade">
     <div class="nav-icon">📊</div>
     <div class="nav-label">Trade</div>
   </button>
-  <button class="nav-btn" data-tab="wallet" onclick="showTab('wallet')">
+  <button class="nav-btn" data-tab="wallet">
     <div class="nav-icon">💼</div>
     <div class="nav-label">Wallet</div>
   </button>
-  <button class="nav-btn" data-tab="identity" onclick="showTab('identity')">
+  <button class="nav-btn" data-tab="identity">
     <div class="nav-icon">🪪</div>
     <div class="nav-label">Identity</div>
   </button>
@@ -468,558 +448,6 @@ input[type=number]::-webkit-inner-spin-button{-webkit-appearance:none}
 
 </div><!-- #app -->
 
-<script>
-// ── CONFIG ──────────────────────────────────────────────────────────────────
-const API          = 'https://aequitas.digital/api';
-const CHAIN_ID     = '0x786';  // 1926
-const V7           = '0x20D271028f32577FCd07b4583A8e0E4eBBdB4F78';
-
-// ── STATE ────────────────────────────────────────────────────────────────────
-let wallet     = null;
-let poolData   = null;
-let priceHist  = [];
-let chartMs    = 3600000;
-// SECURITY/FIX (launch audit 2026-07-03): must be lowercase — the backend
-// (handleSwap) does a case-sensitive check against exactly "aeq_to_tusd" /
-// "tusd_to_aeq" and rejects anything else, including this constant's old
-// uppercase value, before the swap logic ever runs.
-let swapDir    = 'aeq_to_tusd';
-let proofData  = null;
-let ubiTimer   = null;
-let ubiLeft    = 0;
-let lwChart    = null, lwCandle = null, lwVol = null;
-
-const BUCKET = {60000:10000,300000:30000,1800000:120000,3600000:300000,14400000:900000,0:300000};
-
-// ── TABS ─────────────────────────────────────────────────────────────────────
-function showTab(id) {
-  document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
-  document.querySelectorAll('.nav-btn').forEach(el => el.classList.remove('active'));
-  document.getElementById('tab-' + id).classList.add('active');
-  document.querySelector('.nav-btn[data-tab="' + id + '"]').classList.add('active');
-  if (id === 'trade') setTimeout(drawChart, 80);
-}
-
-// ── WALLET ───────────────────────────────────────────────────────────────────
-async function connectWallet() {
-  if (!window.ethereum) { alert('MetaMask is required. Please install it first.'); return; }
-  try {
-    const accounts = await window.ethereum.request({ method: 'eth_requestAccounts' });
-    wallet = accounts[0];
-    await ensureChain();
-    onWalletConnected();
-  } catch(e) { console.error(e); }
-}
-
-async function ensureChain() {
-  const chainHex = await window.ethereum.request({ method: 'eth_chainId' });
-  if (chainHex !== CHAIN_ID) await addToMetaMask();
-}
-
-async function addToMetaMask() {
-  try {
-    await window.ethereum.request({ method: 'wallet_addEthereumChain', params: [{
-      chainId: CHAIN_ID,
-      chainName: 'Aequitas Chain',
-      nativeCurrency: { name: 'Aequitas', symbol: 'AEQ', decimals: 18 },
-      rpcUrls: ['https://aequitas.digital/rpc'],
-      blockExplorerUrls: ['https://aequitas.digital'],
-    }]});
-  } catch(e) { console.error(e); }
-}
-
-function onWalletConnected() {
-  const short = wallet.slice(0,6) + '…' + wallet.slice(-4);
-  document.getElementById('wallet-addr-display').textContent = short;
-  const btn = document.getElementById('connect-btn');
-  btn.textContent = short;
-  btn.classList.add('connected');
-  document.getElementById('wallet-not-connected').style.display = 'none';
-  document.getElementById('wallet-connected').style.display = 'block';
-  document.getElementById('id-not-connected').style.display = 'none';
-  document.getElementById('id-connected').style.display = 'block';
-  loadBalance();
-  checkProofInURL();
-}
-
-function copyWalletAddr() {
-  if (!wallet) return;
-  navigator.clipboard.writeText(wallet).catch(()=>{});
-}
-
-window.ethereum && window.ethereum.on('accountsChanged', accs => {
-  if (accs.length) { wallet = accs[0]; onWalletConnected(); }
-  else { wallet = null; }
-});
-
-// ── API HELPERS ──────────────────────────────────────────────────────────────
-// FIX (P3-h, audit 2026-07-06): loadStatus/loadBalance/loadPriceHistory/loadPool
-// all swallow fetch failures via empty catch(e) {} with zero user-facing
-// signal. Tracking connectivity here, in the one shared function all of them
-// route through, surfaces it everywhere at once without touching those 4
-// call sites. A single failure isn't enough to flag (transient blips are
-// normal); require a couple of consecutive failures first.
-let apiFailStreak = 0;
-const API_STALE_THRESHOLD = 2;
-
-function setChainConnectionStatus(ok) {
-  const dot = document.getElementById('chain-status-dot');
-  const note = document.getElementById('chain-stale-note');
-  if (!dot || !note) return;
-  dot.className = ok ? 'dot-green' : 'dot-stale';
-  note.style.display = ok ? 'none' : 'inline';
-}
-
-async function api(path) {
-  try {
-    const r = await fetch(API + path);
-    if (!r.ok) throw new Error(r.statusText);
-    const data = await r.json();
-    apiFailStreak = 0;
-    setChainConnectionStatus(true);
-    return data;
-  } catch (e) {
-    apiFailStreak++;
-    if (apiFailStreak >= API_STALE_THRESHOLD) setChainConnectionStatus(false);
-    throw e;
-  }
-}
-
-function fmtAEQ(v) {
-  if (v == null) return '—';
-  const n = parseFloat(v);
-  if (n >= 1e6) return (n/1e6).toFixed(2) + 'M';
-  if (n >= 1e3) return (n/1e3).toFixed(2) + 'K';
-  return n.toFixed(4);
-}
-
-// ── HOME: STATUS POLLING ──────────────────────────────────────────────────────
-async function loadStatus() {
-  try {
-    const d = await api('/status');
-    document.getElementById('h-height').textContent  = d.height ? '#' + d.height.toLocaleString() : '—';
-    document.getElementById('h-humans').textContent  = fmtAEQ(d.total_humans);
-    document.getElementById('h-supply').textContent  = d.total_supply || '—';
-    document.getElementById('h-index').textContent   = typeof d.index === 'number' ? d.index.toFixed(1) : '—';
-    document.getElementById('h-gini').textContent    = typeof d.gini === 'number' ? d.gini.toFixed(4) : '—';
-    document.getElementById('h-pool-ubi').textContent        = (d.pool_ubi || '0') + ' AEQ';
-    document.getElementById('h-pool-treasury').textContent   = (d.pool_treasury || '0') + ' AEQ';
-    document.getElementById('h-pool-validators').textContent = (d.pool_validators || '0') + ' AEQ';
-    const phase = d.phase || 0;
-    for (let i = 0; i <= 3; i++) {
-      const el = document.getElementById('ph-' + i);
-      if (el) el.classList.toggle('active', i === phase);
-    }
-    const descs = ['Bootstrap — sliding wealth cap 5×→25×','Growth — expanding human registry','Stability — redistribution active','Maturity — full decentralization'];
-    document.getElementById('h-phase-desc').textContent = descs[phase] || '';
-    if (d.ubi_next_payout_secs > 0) startUBITimer(d.ubi_next_payout_secs);
-    const pct = Math.min(100, Math.max(0, (86400 - (d.ubi_next_payout_secs || 0)) / 86400 * 100));
-    document.getElementById('h-ubi-bar').style.width = pct.toFixed(1) + '%';
-  } catch(e) {}
-}
-
-function startUBITimer(secs) {
-  ubiLeft = secs;
-  if (ubiTimer) clearInterval(ubiTimer);
-  ubiTimer = setInterval(() => {
-    ubiLeft = Math.max(0, ubiLeft - 1);
-    const h = Math.floor(ubiLeft / 3600), m = Math.floor((ubiLeft % 3600) / 60), s = ubiLeft % 60;
-    document.getElementById('h-ubi-time').textContent =
-      String(h).padStart(2,'0') + ':' + String(m).padStart(2,'0') + ':' + String(s).padStart(2,'0');
-  }, 1000);
-}
-
-// ── BALANCE ──────────────────────────────────────────────────────────────────
-async function loadBalance() {
-  if (!wallet) return;
-  try {
-    const d = await api('/balance?wallet=' + wallet);
-    document.getElementById('w-aeq').textContent  = fmtAEQ(d.balance);
-    document.getElementById('w-tusd').textContent = fmtAEQ(d.tusd_balance);
-    document.getElementById('demurrage-warn').style.display = d.demurrage_active ? 'block' : 'none';
-    document.getElementById('id-verified').style.display   = d.is_human ? 'flex' : 'none';
-    document.getElementById('id-unverified').style.display = d.is_human ? 'none' : 'flex';
-    document.getElementById('id-register-card').style.display = d.is_human ? 'none' : 'block';
-  } catch(e) {}
-}
-
-// ── PRICE CHART ───────────────────────────────────────────────────────────────
-async function loadPriceHistory() {
-  try {
-    const d = await api('/price-history');
-    // Response: {count, history: [{t, p}] | null}
-    const raw = Array.isArray(d) ? d : (d && d.history ? d.history : null);
-    if (raw) priceHist = raw.map(p => ({t: p.t || p.timestamp || 0, p: p.p || p.price || 0}));
-    drawChart();
-  } catch(e) {}
-}
-
-function buildOHLC(pts, filterMs, bms) {
-  const now = Date.now();
-  const data = filterMs > 0 ? pts.filter(p => now - p.t <= filterMs && p.p > 0) : pts.filter(p => p.p > 0);
-  if (!data.length) return [];
-  const buckets = {};
-  data.forEach(pt => {
-    const b = Math.floor(pt.t / bms) * bms;
-    if (!buckets[b]) buckets[b] = { time: Math.floor(b / 1000), open: pt.p, high: pt.p, low: pt.p, close: pt.p, vol: 1 };
-    else { buckets[b].high = Math.max(buckets[b].high, pt.p); buckets[b].low = Math.min(buckets[b].low, pt.p); buckets[b].close = pt.p; buckets[b].vol++; }
-  });
-  return Object.values(buckets).sort((a, b) => a.time - b.time);
-}
-
-function initChart() {
-  const el = document.getElementById('price-chart');
-  if (!el || lwChart || !window.LightweightCharts) return;
-  lwChart = LightweightCharts.createChart(el, {
-    width: el.clientWidth, height: 240,
-    layout: { background: { color: '#0A0C16' }, textColor: '#8892A4', fontSize: 11, fontFamily: 'JetBrains Mono,monospace' },
-    grid: { vertLines: { color: 'rgba(255,255,255,0.03)' }, horzLines: { color: 'rgba(255,255,255,0.03)' } },
-    crosshair: {
-      mode: LightweightCharts.CrosshairMode.Normal,
-      vertLine: { color: 'rgba(155,114,246,.5)', labelBackgroundColor: '#9B72F6' },
-      horzLine: { color: 'rgba(155,114,246,.5)', labelBackgroundColor: '#9B72F6' },
-    },
-    rightPriceScale: { borderColor: 'rgba(255,255,255,0.06)' },
-    timeScale: { borderColor: 'rgba(255,255,255,0.06)', timeVisible: true, secondsVisible: false, rightOffset: 4 },
-  });
-  lwCandle = lwChart.addCandlestickSeries({
-    upColor: '#34D399', downColor: '#F87171',
-    borderUpColor: '#34D399', borderDownColor: '#F87171',
-    wickUpColor: '#34D399', wickDownColor: '#F87171',
-    priceFormat: { type: 'price', precision: 6, minMove: 0.000001 },
-  });
-  lwVol = lwChart.addHistogramSeries({ priceFormat: { type: 'volume' }, priceScaleId: 'vol', scaleMargins: { top: 0.8, bottom: 0 } });
-  try { lwChart.priceScale('vol').applyOptions({ scaleMargins: { top: 0.8, bottom: 0 } }); } catch(_) {}
-  new ResizeObserver(entries => {
-    if (lwChart && entries[0]) lwChart.applyOptions({ width: entries[0].contentRect.width });
-  }).observe(el);
-}
-
-function drawChart() {
-  const el = document.getElementById('price-chart');
-  if (!el || !el.offsetParent) return;
-  if (!lwChart) initChart();
-  if (!lwChart) return;
-  const bms = BUCKET[chartMs] || 300000;
-  const candles = buildOHLC(priceHist, chartMs, bms);
-  updatePriceDisplay(candles);
-  if (!candles.length) { lwCandle && lwCandle.setData([]); lwVol && lwVol.setData([]); return; }
-  lwCandle.setData(candles.map(c => ({ time: c.time, open: c.open, high: c.high, low: c.low, close: c.close })));
-  lwVol.setData(candles.map(c => ({ time: c.time, value: c.vol, color: c.close >= c.open ? 'rgba(52,211,153,0.22)' : 'rgba(248,113,113,0.22)' })));
-  lwChart.timeScale().fitContent();
-}
-
-function updatePriceDisplay(candles) {
-  const pEl = document.getElementById('t-price'), cEl = document.getElementById('t-change');
-  if (!pEl) return;
-  if (!candles.length) { pEl.textContent = '—'; return; }
-  const last = candles[candles.length - 1], first = candles[0];
-  const chg = first.open > 0 ? (last.close - first.open) / first.open * 100 : 0;
-  pEl.textContent = last.close.toFixed(6) + ' tUSD';
-  if (cEl) { cEl.textContent = (chg >= 0 ? '▲ +' : '▼ ') + Math.abs(chg).toFixed(2) + '%'; cEl.style.color = chg >= 0 ? '#34D399' : '#F87171'; }
-}
-
-function setChartInterval(ms) {
-  chartMs = ms;
-  document.querySelectorAll('.ci-btn').forEach(b => b.classList.remove('ci-active'));
-  const id = ms === 60000 ? 'ci-1m' : ms === 300000 ? 'ci-5m' : ms === 1800000 ? 'ci-30m' : ms === 3600000 ? 'ci-1h' : ms === 14400000 ? 'ci-4h' : 'ci-all';
-  const el = document.getElementById(id);
-  if (el) el.classList.add('ci-active');
-  drawChart();
-}
-
-// ── POOL STATUS ───────────────────────────────────────────────────────────────
-async function loadPool() {
-  try {
-    const d = await api('/pool');
-    // Response: {reserve_aeq, reserve_tusd, price_aeq_in_tusd}
-    poolData = { aeq_reserve: d.reserve_aeq, tusd_reserve: d.reserve_tusd, price_aeq_in_tusd: d.price_aeq_in_tusd };
-    const aeq = parseFloat(d.reserve_aeq || 0), tusd = parseFloat(d.reserve_tusd || 0);
-    document.getElementById('swap-pool').textContent = aeq > 0
-      ? fmtAEQ(aeq) + ' AEQ / ' + fmtAEQ(tusd) + ' tUSD'
-      : 'No liquidity yet';
-    document.getElementById('t-pool-info').textContent = aeq > 0 ? ('1 AEQ ≈ ' + d.price_aeq_in_tusd.toFixed(4) + ' tUSD') : '';
-    // Append latest price point
-    if (d.reserve_aeq > 0 && d.price_aeq_in_tusd > 0) {
-      priceHist.push({ t: Date.now(), p: d.price_aeq_in_tusd });
-      if (priceHist.length > 1000) priceHist.shift();
-    }
-    calcSwapPreview();
-    drawChart();
-  } catch(e) {}
-}
-
-// ── SWAP ──────────────────────────────────────────────────────────────────────
-function setSwapDir(dir) {
-  swapDir = dir;
-  document.getElementById('dir-aeq-to-tusd').classList.toggle('active', dir === 'aeq_to_tusd');
-  document.getElementById('dir-tusd-to-aeq').classList.toggle('active', dir === 'tusd_to_aeq');
-  document.getElementById('swap-from-label').textContent = 'Amount (' + (dir === 'aeq_to_tusd' ? 'AEQ' : 'tUSD') + ')';
-  calcSwapPreview();
-}
-
-function calcSwapPreview() {
-  if (!poolData) return;
-  const amountEl = document.getElementById('swap-amount');
-  if (!amountEl || !amountEl.offsetParent) return; // trade tab not visible — same guard as drawChart()
-  const amt = parseFloat(amountEl.value) || 0;
-  if (amt <= 0) { document.getElementById('swap-out').textContent = '—'; document.getElementById('swap-min').textContent = '—'; return; }
-  const aeqR = parseFloat(poolData.aeq_reserve || 0), tusdR = parseFloat(poolData.tusd_reserve || 0);
-  let out;
-  if (swapDir === 'aeq_to_tusd') {
-    const inF = amt * 0.999;
-    out = (tusdR * inF) / (aeqR + inF);
-    document.getElementById('swap-out').textContent = out.toFixed(6) + ' tUSD';
-    document.getElementById('swap-min').textContent = (out * 0.99).toFixed(6) + ' tUSD';
-  } else {
-    const inF = amt * 0.999;
-    out = (aeqR * inF) / (tusdR + inF);
-    document.getElementById('swap-out').textContent = out.toFixed(6) + ' AEQ';
-    document.getElementById('swap-min').textContent = (out * 0.99).toFixed(6) + ' AEQ';
-  }
-}
-
-async function doSwap() {
-  if (!wallet) { connectWallet(); return; }
-  const amt = parseFloat(document.getElementById('swap-amount').value);
-  if (!amt || amt <= 0) { setStatus('swap-status', 'Enter an amount', 'err'); return; }
-  const btn = document.getElementById('swap-btn');
-  btn.disabled = true;
-  setStatus('swap-status', 'Getting nonce…', 'info');
-  try {
-    const nonce = (await api('/nonce?wallet=' + wallet)).nonce;
-    // FIX (launch audit 2026-07-03): Date.now() is milliseconds; the server
-    // compares this timestamp against time.Now().Unix() (seconds) and
-    // rejects anything outside a 60s window — a millisecond value is off by
-    // ~1000x, so every swap failed the staleness check regardless of the
-    // signature. Must be seconds, matching the message the server signs.
-    const ts = Math.floor(Date.now() / 1000);
-    const msg = 'Aequitas Swap: ' + swapDir + ' ' + amt.toFixed(8) + ' nonce:' + nonce + ' ts:' + ts;
-    setStatus('swap-status', 'Sign in MetaMask…', 'info');
-    const sig = await window.ethereum.request({ method: 'personal_sign', params: [msg, wallet] });
-    setStatus('swap-status', 'Submitting swap…', 'info');
-    let minOut = 0;
-    if (poolData) {
-      const aeqR = parseFloat(poolData.aeq_reserve || 0), tusdR = parseFloat(poolData.tusd_reserve || 0);
-      const inF = amt * 0.999;
-      const out = swapDir === 'aeq_to_tusd' ? (tusdR * inF) / (aeqR + inF) : (aeqR * inF) / (tusdR + inF);
-      minOut = out * 0.99;
-    }
-    const r = await fetch(API + '/swap', { method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ wallet, direction: swapDir, amount: amt.toFixed(8), nonce, timestamp: ts, signature: sig, min_amount_out: minOut }) });
-    const d = await r.json();
-    // FIX (launch audit 2026-07-03): handleSwap always responds HTTP 200,
-    // signaling failure only via {"success":false,"message":"..."} in the
-    // body (no field named "error" exists in that response either) — `r.ok`
-    // is always true here regardless of outcome, so this never actually
-    // caught a failed swap before. Must check the body's own success flag.
-    if (!d.success) throw new Error(d.message || 'swap failed');
-    setStatus('swap-status', '✓ Swap complete!', 'ok');
-    document.getElementById('swap-amount').value = '';
-    calcSwapPreview();
-    setTimeout(loadBalance, 1500);
-  } catch(e) { setStatus('swap-status', '✗ ' + e.message, 'err'); }
-  btn.disabled = false;
-}
-
-// parseAEQToWei converts a decimal AEQ amount STRING directly to a wei
-// BigInt, entirely in string/BigInt arithmetic — no floating-point step at
-// any point. FIX (P2-9, beta-launch audit 2026-07-05): the previous
-// `BigInt(Math.round(amt * 1e18))` ran the multiplication in JS `Number`
-// (53-bit mantissa) BEFORE the BigInt conversion — sub-wei precision was
-// already lost above roughly 0.009 AEQ, and even whole-AEQ integer
-// precision broke down past ~9,007,199 AEQ. The transaction still went
-// through, just for a silently rounded amount instead of the exact one the
-// user typed. Returns null for anything that isn't a plain, non-negative
-// decimal number string.
-function parseAEQToWei(str) {
-  str = String(str).trim();
-  if (!/^\d+(\.\d*)?$/.test(str)) return null; // accepts a trailing bare "." (e.g. "5.") same as parseFloat did
-  const parts = str.split('.');
-  const intPart = parts[0];
-  const fracPart = (parts[1] || '').padEnd(18, '0').slice(0, 18);
-  return BigInt(intPart) * (10n ** 18n) + BigInt(fracPart || '0');
-}
-
-// ── SEND AEQ ─────────────────────────────────────────────────────────────────
-async function doSend() {
-  if (!wallet) { connectWallet(); return; }
-  const to = document.getElementById('send-to').value.trim();
-  const amtWei = parseAEQToWei(document.getElementById('send-amount').value);
-  if (!/^0x[0-9a-fA-F]{40}$/.test(to)) { setStatus('send-status', 'Invalid recipient address', 'err'); return; }
-  if (amtWei === null || amtWei <= 0n) { setStatus('send-status', 'Enter an amount', 'err'); return; }
-  setStatus('send-status', 'Confirm in MetaMask…', 'info');
-  try {
-    const value = '0x' + amtWei.toString(16);
-    const txHash = await window.ethereum.request({ method: 'eth_sendTransaction', params: [{ from: wallet, to, value }] });
-    setStatus('send-status', '✓ Sent! Tx: ' + txHash.slice(0, 12) + '…', 'ok');
-    document.getElementById('send-to').value = '';
-    document.getElementById('send-amount').value = '';
-    setTimeout(loadBalance, 3000);
-  } catch(e) { setStatus('send-status', '✗ ' + e.message, 'err'); }
-}
-
-// ── FAUCET ────────────────────────────────────────────────────────────────────
-async function doFaucet() {
-  if (!wallet) { connectWallet(); return; }
-  setStatus('faucet-status', 'Requesting…', 'info');
-  try {
-    // FIX (launch audit 2026-07-03): handleFaucet requires a signed,
-    // timestamped request (personal_sign, same pattern as doSwap) — this
-    // used to POST only {wallet}, which always failed server-side with
-    // "timestamp required" before ever reaching the actual faucet logic.
-    const ts = Math.floor(Date.now() / 1000);
-    const msg = 'Aequitas tUSD Faucet Claim: ' + wallet.toLowerCase() + ' ts:' + ts;
-    setStatus('faucet-status', 'Sign in MetaMask…', 'info');
-    const sig = await window.ethereum.request({ method: 'personal_sign', params: [msg, wallet] });
-    setStatus('faucet-status', 'Requesting…', 'info');
-    const r = await fetch(API + '/faucet', { method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ wallet, timestamp: ts, signature: sig }) });
-    const d = await r.json();
-    // FIX (launch audit 2026-07-03): same always-200 response pattern as
-    // /swap — must check the body's success flag, not r.ok/d.error.
-    if (!d.success) throw new Error(d.message || 'faucet claim failed');
-    setStatus('faucet-status', '✓ tUSD sent to your wallet', 'ok');
-    setTimeout(loadBalance, 2000);
-  } catch(e) { setStatus('faucet-status', '✗ ' + e.message, 'err'); }
-}
-
-// ── REGISTRATION ─────────────────────────────────────────────────────────────
-function checkProofInURL() {
-  const params = new URLSearchParams(window.location.search);
-  const proof = params.get('proof');
-  if (!proof) return;
-  try {
-    proofData = JSON.parse(decodeURIComponent(proof));
-    document.getElementById('id-proof-pending').style.display = 'none';
-    document.getElementById('id-proof-ready').style.display   = 'block';
-    showTab('identity');
-  } catch(e) { console.error('Invalid proof data', e); }
-}
-
-async function doRegister() {
-  if (!wallet || !proofData) { setStatus('id-status', 'Missing wallet or proof data', 'err'); return; }
-  const btn = document.getElementById('id-submit-btn');
-  btn.disabled = true;
-  document.getElementById('id-progress-wrap').style.display = 'block';
-
-  const setStep = (stepId, state) => {
-    const el = document.getElementById(stepId);
-    if (!el) return;
-    el.className = 'step-item' + (state === 'done' ? ' done' : '');
-    el.querySelector('.step-num').textContent = state === 'done' ? '✓' : state === 'loading' ? '…' : el.getAttribute('data-num') || '?';
-  };
-
-  const setProgress = (pct, txt) => {
-    document.getElementById('id-progress-fill').style.width = pct + '%';
-    document.getElementById('id-progress-text').textContent = txt;
-  };
-
-  try {
-    setProgress(15, 'Generating Groth16 proof…');
-    document.getElementById('id-step-zkp').querySelector('.step-num').textContent = '…';
-    setStatus('id-status', 'Contacting proof server…', 'info');
-
-    const bioForProve = proofData.bio, saltForProve = proofData.salt;
-    // Goes through the chain server's authenticated proxy (/api/prove), never
-    // directly to the proof server — the proof server's own /prove requires a
-    // CHAIN_SERVICE_TOKEN this page must not hold (see api.go's handleProveProxy).
-    const r = await fetch(API + '/prove', { method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ bio: bioForProve, salt: saltForProve, wallet }) });
-    if (!r.ok) { const e = await r.json(); throw new Error(e.error || r.statusText); }
-    proofData = await r.json();
-    const { pA, pB, pC, pubSignals, zkNullifier, circuitVersion, bioHashKey } = proofData;
-
-    document.getElementById('id-step-zkp').querySelector('.step-num').textContent = '✓';
-    document.getElementById('id-step-zkp').classList.add('done');
-    setProgress(55, 'Sign in MetaMask (no gas, no cost)…');
-    setStatus('id-status', 'Preparing signature…', 'info');
-
-    // SECURITY (launch audit 2026-07-03): this used to call a contract
-    // function (registerHuman) that does not exist on the deployed V7
-    // contract at all — every registration through this page failed.
-    // registerWithSig is the only real registration path, and it's a
-    // gasless meta-transaction: the relayer (server-side) submits and pays
-    // for the transaction, the wallet only signs a message — mirroring
-    // exactly what the working dashboard's own registration flow does.
-    if (!zkNullifier) {
-      throw new Error('Proof server did not return a ZK-bound nullifier (circuit v2+ required) — try again');
-    }
-    const commitment = pubSignals[0];
-    const nullifier = BigInt(zkNullifier).toString(16).padStart(64, '0');
-    const messageHash = ethers.solidityPackedKeccak256(
-      ['uint256', 'address', 'string', 'uint256', 'bytes32'],
-      [parseInt(CHAIN_ID, 16), V7, 'register', commitment, '0x' + nullifier]
-    );
-    // personal_sign adds the "\x19Ethereum Signed Message:\n32" prefix automatically.
-    const signature = await window.ethereum.request({ method: 'personal_sign', params: [messageHash, wallet] });
-
-    setProgress(75, 'Registering on Aequitas V7…');
-    setStatus('id-status', 'Submitting registration…', 'info');
-    const regResp = await fetch(API + '/register', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        wallet, pA, pB, pC, pubSignals, signature,
-        bioHash: bioForProve || '', bioHashKey: bioHashKey || '',
-        nullifier, circuitVersion: circuitVersion || 2, zkNullifier,
-      })
-    });
-    const regData = await regResp.json();
-    if (!regData.success) throw new Error(regData.message || 'registration failed');
-
-    setProgress(100, '✓ Registration complete!');
-    document.getElementById('id-step-submit').querySelector('.step-num').textContent = '✓';
-    document.getElementById('id-step-submit').classList.add('done');
-    setStatus('id-status', '✓ You are now a verified human! 1,000 AEQ allocated.', 'ok');
-    setTimeout(loadBalance, 2000);
-  } catch(e) {
-    setStatus('id-status', '✗ ' + e.message, 'err');
-    btn.disabled = false;
-  }
-}
-
-// ── UTILS ─────────────────────────────────────────────────────────────────────
-function setStatus(id, msg, cls) {
-  const el = document.getElementById(id);
-  if (!el) return;
-  el.textContent = msg;
-  el.className = 'status-line' + (cls ? ' ' + cls : '');
-}
-
-// ── INIT ──────────────────────────────────────────────────────────────────────
-loadStatus();
-loadPriceHistory();
-loadPool();
-
-// FIX (P3, performance audit 2026-07-06): these used to be 3 independent
-// setInterval timers, uncoordinated — no reason a page load couldn't
-// happen to line their firing up back-to-back, and each ran its own
-// separate implicit retry cascade on failure. One shared 1s scheduler
-// tick dispatches to each job at its own cadence instead, same effective
-// polling rate, one place to see/adjust it.
-const pollJobs = [
-  { fn: loadStatus, intervalMs: 10000, lastRun: 0 },
-  { fn: loadPool,   intervalMs: 8000,  lastRun: 0 },
-  { fn: () => { if (wallet) loadBalance(); }, intervalMs: 15000, lastRun: 0 },
-];
-setInterval(() => {
-  const now = Date.now();
-  for (const job of pollJobs) {
-    if (now - job.lastRun >= job.intervalMs) {
-      job.lastRun = now;
-      job.fn();
-    }
-  }
-}, 1000);
-
-// Restore wallet connection if MetaMask already authorized
-(async () => {
-  if (!window.ethereum) return;
-  try {
-    const accounts = await window.ethereum.request({ method: 'eth_accounts' });
-    if (accounts.length) { wallet = accounts[0]; onWalletConnected(); }
-  } catch(_) {}
-})();
-</script>
+<script src="/dapp.js"></script>
 </body>
 </html>

@@ -650,6 +650,12 @@ func (cs *ChainState) applyEscrowRecoverDeltaLocked(wallet string, amount float6
 	if amount <= 0 {
 		return fmt.Errorf("escrow_recover amount must be positive, got %.6f", amount)
 	}
+	// FIX (Monster Audit follow-up, 2026-07-12, P0): same cold-cache
+	// blind-create pattern as applyValidatorRewardDeltaLocked et al. — a cold
+	// wallet here used to be blind-created (IsHuman:true, everything else
+	// zero), silently wiping any real balance/tusd/lp/last-activity it
+	// already had. wallet is already lowercased by block.go's caller.
+	cs.ensureAccountLoaded(wallet)
 	if _, ok := cs.accounts[wallet]; !ok {
 		cs.accounts[wallet] = &AccountState{Address: wallet, IsHuman: true}
 	}

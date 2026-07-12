@@ -642,6 +642,17 @@ func (cs *ChainState) syncBalanceLocked(contractAddr string, addrs ...string) {
 	for i, addr := range addrs {
 		addr = strings.ToLower(addr)
 		lowerAddrs[i] = addr
+		// FIX (Monster Audit follow-up, 2026-07-12, P2): a cold addr here used
+		// to read as !ok, which unconditionally wrote the EVM-mirror
+		// balanceOf slot (below) as 0 regardless of the address's real Go-state
+		// balance — every plain transfer passes the 4 pool addresses into this
+		// function (see transferLocked/transferWithV7FeeLocked/registerHumanLocked),
+		// exactly the addresses already known to go cold. Display-only (the
+		// ledger of record in cs.accounts/chain_accounts is untouched, and the
+		// next warm call self-corrects the slot), but wrong regardless for
+		// anything reading balanceOf via eth_call/MetaMask/a dApp in the
+		// meantime.
+		cs.ensureAccountLoaded(addr)
 		acc, ok := cs.accounts[addr]
 		var bal float64
 		if ok {
