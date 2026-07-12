@@ -38,13 +38,15 @@ jobs:
           port: 22
           # FIX (fresh Monster Audit 2026-07-12): appleboy/ssh-action's
           # `fingerprint` input expects the SSH SHA256 fingerprint string
-          # (ssh-keygen -lf output, "SHA256:...") to check the presented
-          # host key against — NOT the raw base64 public-key blob. The
-          # previous value here was a raw key blob (and didn't even match
-          # Contabo1's actual current host key on top of that), so this
-          # field was apparently never correctly configured. Verified live:
-          # `ssh-keyscan -t rsa 173.249.37.118 | ssh-keygen -lf -`.
-          fingerprint: "SHA256:E10yHMjBj6zJOO9TmYMsrFmA07RfgaMtVvofuppcJV4"
+          # (ssh-keygen -lf output, "SHA256:...") of whichever host key type
+          # the SSH client actually negotiates — not the raw base64
+          # public-key blob (what this used to hold) and not just any of
+          # the server's several offered key types. Contabo1 offers ecdsa,
+          # rsa, AND ed25519; the Go ssh client here negotiates ed25519 by
+          # default, so pinning the RSA key's fingerprint (tried first,
+          # also failed) checked the wrong key entirely. Verified live:
+          # `ssh-keyscan -t ed25519 173.249.37.118 | ssh-keygen -lf -`.
+          fingerprint: "SHA256:C1hIz3BeIK8zpUw88XC1ZGje+1wLP8tHuXmryWNbczA"
           script: /root/deploy.sh
           script_stop: true
           timeout: 600s
