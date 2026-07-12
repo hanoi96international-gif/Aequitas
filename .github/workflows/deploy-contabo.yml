@@ -5,7 +5,28 @@ on:
     branches: [master, main]
 
 jobs:
+  # FIX (Monster Audit 2026-07-12, P1): deploy used to run straight off a
+  # push with zero test/build gate — a red `go test`/`go vet` or a broken
+  # Solidity/Hardhat build could still reach production. `deploy` now
+  # `needs: test`, so a failing build blocks the SSH deploy step entirely.
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - run: go build ./cmd/aequitasd
+      - run: go vet ./...
+      - run: go test ./...
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - run: npm ci
+      - run: npx hardhat test
+
   deploy:
+    needs: test
     runs-on: ubuntu-latest
     steps:
       - name: Deploy to Contabo

@@ -1,0 +1,27 @@
+name: CI
+
+# FIX (Monster Audit 2026-07-12, P1): no CI ran at all before this — a red
+# build could sit unnoticed on any branch until (or unless) it happened to
+# also be the commit pushed to main/master. This runs the same checks on
+# every push and PR, independent of deploy-contabo.yml's own gating job.
+on:
+  push:
+    branches-ignore: [master, main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - run: go build ./cmd/aequitasd
+      - run: go vet ./...
+      - run: go test ./...
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - run: npm ci
+      - run: npx hardhat test

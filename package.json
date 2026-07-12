@@ -1,7 +1,18 @@
 {
   "type": "module",
+  "scripts": {
+    "test": "hardhat test"
+  },
   "dependencies": {
     "ethers": "^6.13.0",
     "solc": "^0.8.35"
+  },
+  "devDependencies": {
+    "@nomicfoundation/hardhat-toolbox-viem": "^5.0.7",
+    "@types/node": "^22.10.0",
+    "hardhat": "^3.9.1",
+    "lightweight-charts": "^4.1.3",
+    "typescript": "^5.7.0",
+    "viem": "^2.55.0"
   }
 }
