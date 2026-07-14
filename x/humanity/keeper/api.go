@@ -179,19 +179,107 @@ func proofServerBaseURL() string {
 	return strings.TrimRight(os.Getenv("PROOF_SERVER_URL"), "/")
 }
 
-// requireProofServerConfigured writes a clear 503 and returns ok=false if
-// PROOF_SERVER_URL isn't set, so callers can bail out before constructing a
-// request against an empty base URL (http.NewRequest with a schemeless,
-// hostless URL like "/prove" fails, and the discarded error from that would
-// otherwise nil-panic on the very next line that sets a header on the
-// request).
+// proofServerURLs returns every configured proof-server instance, for
+// fairness/decentralization: PROOF_SERVER_URLS (comma-separated, new) lets
+// an operator run one independent proof-server per validator box instead of
+// funneling every node through a single instance. Falls back to the
+// single PROOF_SERVER_URL for backward compatibility with existing
+// single-instance deployments. Mirrors the PRIMARY_NODE_URLS pattern
+// (sync_blocks.go) already used for multi-seed peer discovery.
+//
+// Correctness of running multiple UN-synchronized proof-server instances
+// (each with its own local Postgres bio_hashes cache) rests on that cache
+// being a pre-filter/rate-limit optimization only, never the authoritative
+// uniqueness check: /prove and /store-bio both verify the wallet's is_human
+// status against THIS chain's own (already consensus-replicated) state
+// before trusting anything, so two instances disagreeing about their local
+// cache can't actually let a duplicate registration through on-chain.
+func proofServerURLs() []string {
+	var out []string
+	if raw := os.Getenv("PROOF_SERVER_URLS"); raw != "" {
+		for _, u := range strings.Split(raw, ",") {
+			u = strings.TrimRight(strings.TrimSpace(u), "/")
+			if u != "" {
+				out = append(out, u)
+			}
+		}
+	}
+	if len(out) == 0 {
+		if base := proofServerBaseURL(); base != "" {
+			out = append(out, base)
+		}
+	}
+	return out
+}
+
+// requireProofServerConfigured writes a clear 503 and returns ok=false if no
+// proof-server URL is configured at all, so callers can bail out before
+// constructing a request against an empty base URL (http.NewRequest with a
+// schemeless, hostless URL like "/prove" fails, and the discarded error from
+// that would otherwise nil-panic on the very next line that sets a header on
+// the request). Returns the first configured URL for callers that don't need
+// failover (kept for compatibility with call sites not yet migrated to
+// doProofServerRequestFailover).
 func requireProofServerConfigured(w http.ResponseWriter) (string, bool) {
-	base := proofServerBaseURL()
-	if base == "" {
-		http.Error(w, `{"error":"PROOF_SERVER_URL not configured on this node"}`, 503)
+	urls := proofServerURLs()
+	if len(urls) == 0 {
+		http.Error(w, `{"error":"no PROOF_SERVER_URL/PROOF_SERVER_URLS configured on this node"}`, 503)
 		return "", false
 	}
-	return base, true
+	return urls[0], true
+}
+
+// doProofServerRequestFailover tries every configured proof-server URL in
+// order, moving to the next only on a genuine request failure (network
+// error, connection refused, timeout) -- NOT on a non-2xx HTTP status, since
+// e.g. a 409 "already registered" from the first instance that answered is a
+// meaningful response to forward, not a reason to ask a second instance
+// (which would just waste a round-trip repeating the same authoritative
+// on-chain check). Returns the first response that was actually received,
+// or the last transport error if every URL failed.
+func doProofServerRequestFailover(method, path string, body []byte, timeout time.Duration, extraHeaders map[string]string) (*http.Response, error) {
+	urls := proofServerURLs()
+	if len(urls) == 0 {
+		return nil, fmt.Errorf("no proof-server URL configured")
+	}
+	client := proofProxyClient(timeout)
+	return attemptURLsInOrder(urls, func(base string) (*http.Response, error) {
+		var bodyReader io.Reader
+		if body != nil {
+			bodyReader = bytes.NewReader(body)
+		}
+		req, err := http.NewRequest(method, base+path, bodyReader)
+		if err != nil {
+			return nil, err
+		}
+		if body != nil {
+			req.Header.Set("Content-Type", "application/json")
+		}
+		addProofServerAuth(req)
+		for k, v := range extraHeaders {
+			req.Header.Set(k, v)
+		}
+		return client.Do(req)
+	})
+}
+
+// attemptURLsInOrder tries fn against each url in order, returning the
+// first successful response (fn returning a nil error) or the last error
+// if every url failed. Split out from doProofServerRequestFailover's
+// request-building so this ordering/failover decision -- not the network
+// I/O itself, which goes through pinningDialer's SSRF protections either
+// way -- can be unit-tested without real network targets.
+func attemptURLsInOrder(urls []string, fn func(url string) (*http.Response, error)) (*http.Response, error) {
+	var lastErr error
+	for _, url := range urls {
+		resp, err := fn(url)
+		if err != nil {
+			lastErr = err
+			continue
+		}
+		return resp, nil
+	}
+	return nil, lastErr
 }
 
 func addProofServerAuth(req *http.Request) {
@@ -230,13 +318,11 @@ func proofProxyClient(timeout time.Duration) *http.Client {
 
 func (a *APIServer) syncProofServerStatus() {
 	for {
-		base := proofServerBaseURL()
-		if base == "" {
+		if len(proofServerURLs()) == 0 {
 			time.Sleep(30 * time.Second)
 			continue
 		}
-		proofHTTP := proofProxyClient(8 * time.Second)
-		resp, err := proofHTTP.Get(base + "/health")
+		resp, err := doProofServerRequestFailover("GET", "/health", nil, 8*time.Second, nil)
 		if err == nil {
 			body, _ := io.ReadAll(resp.Body)
 			resp.Body.Close()
@@ -1214,14 +1300,11 @@ func (a *APIServer) handleSepoliaHumans(w http.ResponseWriter, r *http.Request) 
 		}
 	}
 	registerRateLimit.Store(ip, time.Now())
-	base, ok := requireProofServerConfigured(w)
-	if !ok {
+	if len(proofServerURLs()) == 0 {
+		jsonError(w, "no PROOF_SERVER_URL/PROOF_SERVER_URLS configured on this node", 503)
 		return
 	}
-	proofHTTP2 := proofProxyClient(8 * time.Second)
-	proofReq, _ := http.NewRequest("GET", base+"/humans", nil)
-	addProofServerAuth(proofReq)
-	resp, err := proofHTTP2.Do(proofReq)
+	resp, err := doProofServerRequestFailover("GET", "/humans", nil, 8*time.Second, nil)
 	if err != nil {
 		// FIX 11: Don't leak the internal URL or low-level network error to clients.
 		jsonError(w, "proof server unavailable", 503)
@@ -2284,17 +2367,15 @@ func (a *APIServer) handleProveProxy(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	registerRateLimit.Store(ipKey, time.Now())
-	base, ok := requireProofServerConfigured(w)
-	if !ok {
+	if len(proofServerURLs()) == 0 {
+		http.Error(w, `{"error":"no PROOF_SERVER_URL/PROOF_SERVER_URLS configured on this node"}`, 503)
 		return
 	}
-	// Add CHAIN_SERVICE_TOKEN so the proof server's auth check passes.
-	// The token lives only in the chain node's env var and is never exposed to
+	// CHAIN_SERVICE_TOKEN is added inside doProofServerRequestFailover
+	// (addProofServerAuth) so the proof server's auth check passes. The
+	// token lives only in the chain node's env var and is never exposed to
 	// browser clients — the proxy is the sole caller of the proof server.
-	proofReq, _ := http.NewRequest("POST", base+"/prove", bytes.NewReader(body))
-	proofReq.Header.Set("Content-Type", "application/json")
-	addProofServerAuth(proofReq)
-	resp, err := proofProxyClient(120 * time.Second).Do(proofReq)
+	resp, err := doProofServerRequestFailover("POST", "/prove", body, 120*time.Second, nil)
 	if err != nil {
 		http.Error(w, `{"error":"proof server unreachable"}`, 502)
 		return
@@ -2315,13 +2396,11 @@ func (a *APIServer) handleProveGetProxy(w http.ResponseWriter, r *http.Request) 
 		http.Error(w, `{"error":"invalid proof id"}`, 400)
 		return
 	}
-	base, ok := requireProofServerConfigured(w)
-	if !ok {
+	if len(proofServerURLs()) == 0 {
+		http.Error(w, `{"error":"no PROOF_SERVER_URL/PROOF_SERVER_URLS configured on this node"}`, 503)
 		return
 	}
-	getReq, _ := http.NewRequest("GET", base+"/get/"+id, nil)
-	addProofServerAuth(getReq)
-	resp, err := proofProxyClient(30 * time.Second).Do(getReq)
+	resp, err := doProofServerRequestFailover("GET", "/get/"+id, nil, 30*time.Second, nil)
 	if err != nil {
 		http.Error(w, `{"error":"proof server unreachable"}`, 502)
 		return
@@ -2368,14 +2447,11 @@ func (a *APIServer) handleProveStoreProxy(w http.ResponseWriter, r *http.Request
 		http.Error(w, `{"error":"read error"}`, 500)
 		return
 	}
-	base, ok := requireProofServerConfigured(w)
-	if !ok {
+	if len(proofServerURLs()) == 0 {
+		http.Error(w, `{"error":"no PROOF_SERVER_URL/PROOF_SERVER_URLS configured on this node"}`, 503)
 		return
 	}
-	proofReq, _ := http.NewRequest("POST", base+"/store", bytes.NewReader(body))
-	proofReq.Header.Set("Content-Type", "application/json")
-	addProofServerAuth(proofReq)
-	resp, err := proofProxyClient(30 * time.Second).Do(proofReq)
+	resp, err := doProofServerRequestFailover("POST", "/store", body, 30*time.Second, nil)
 	if err != nil {
 		http.Error(w, `{"error":"proof server unreachable"}`, 502)
 		return
@@ -2408,14 +2484,11 @@ func (a *APIServer) handleProofCheckProxy(w http.ResponseWriter, r *http.Request
 		http.Error(w, `{"error":"read error"}`, 500)
 		return
 	}
-	base, ok := requireProofServerConfigured(w)
-	if !ok {
+	if len(proofServerURLs()) == 0 {
+		http.Error(w, `{"error":"no PROOF_SERVER_URL/PROOF_SERVER_URLS configured on this node"}`, 503)
 		return
 	}
-	proofReq, _ := http.NewRequest("POST", base+"/check", bytes.NewReader(body))
-	proofReq.Header.Set("Content-Type", "application/json")
-	addProofServerAuth(proofReq)
-	resp, err := proofProxyClient(30 * time.Second).Do(proofReq)
+	resp, err := doProofServerRequestFailover("POST", "/check", body, 30*time.Second, nil)
 	if err != nil {
 		http.Error(w, `{"error":"proof server unreachable"}`, 502)
 		return

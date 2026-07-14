@@ -795,13 +795,25 @@ func computeBioHashKeyFromBioHash(bioHash string) (string, error) {
 	return crypto.Keccak256Hash(common.LeftPadBytes(bioNum.Bytes(), 32)).Hex(), nil
 }
 
-// notifyProofServer POSTs the registered bioHashKey to the proof server's
-// /store-bio endpoint so its duplicate check stays in sync with the chain.
-// Requires PROOF_SERVER_URL and CHAIN_SERVICE_TOKEN env vars on the chain node;
-// if either is missing the call is skipped (registration already succeeded;
-// attempted=false tells the caller this wasn't a failure worth retrying —
-// a node with no proof server configured at all would otherwise queue
-// retries that can never succeed).
+// notifyProofServer POSTs the registered bioHashKey to EVERY configured
+// proof-server instance's /store-bio endpoint (PROOF_SERVER_URLS, plural —
+// see api.go's proofServerURLs), so each instance's own duplicate-check
+// cache stays in sync with the chain. Deliberately a broadcast, not a
+// failover-to-first-success like the read-path proxies in api.go: an
+// un-notified instance would keep believing this biometric is still free,
+// which can't actually let a duplicate registration through on-chain
+// (every /prove and /store-bio call independently re-checks this chain's
+// own is_human status first) but would waste that instance's proof-
+// generation compute and defeat the point of running its cache at all.
+// /store-bio's ON CONFLICT DO NOTHING makes re-notifying an already-synced
+// instance a safe no-op, so a retry-queue re-broadcast to every URL (not
+// just the ones that failed last time) is fine.
+//
+// Requires at least one proof-server URL and CHAIN_SERVICE_TOKEN configured
+// on the chain node; if either is missing the call is skipped
+// (registration already succeeded; attempted=false tells the caller this
+// wasn't a failure worth retrying — a node with no proof server configured
+// at all would otherwise queue retries that can never succeed).
 func notifyProofServer(bioHashKey, wallet string) (attempted bool, err error) {
 	// FIX (audit recheck2, P2 #1): used to fall back to this project's own
 	// original Railway URL when PROOF_SERVER_URL was unset — see api.go's
@@ -809,8 +821,8 @@ func notifyProofServer(bioHashKey, wallet string) (attempted bool, err error) {
 	// decentralized-operator project. If unset, skip exactly like the
 	// existing "missing CHAIN_SERVICE_TOKEN" skip below already does
 	// (registration already succeeded; this notify is best-effort sync).
-	proofServerURL := os.Getenv("PROOF_SERVER_URL")
-	if proofServerURL == "" {
+	urls := proofServerURLs()
+	if len(urls) == 0 {
 		return false, nil
 	}
 	token := os.Getenv("CHAIN_SERVICE_TOKEN")
@@ -818,25 +830,65 @@ func notifyProofServer(bioHashKey, wallet string) (attempted bool, err error) {
 		return false, nil
 	}
 	body, _ := json.Marshal(map[string]string{"bioHashKey": bioHashKey, "wallet": wallet})
-	req, reqErr := http.NewRequest("POST", proofServerURL+"/store-bio", bytes.NewReader(body))
-	if reqErr != nil {
-		return true, fmt.Errorf("could not build proof-server notify request: %w", reqErr)
+
+	results := make(map[string]error, len(urls))
+	for _, url := range urls {
+		results[url] = attemptStoreBio(url, body, token)
+	}
+	return true, aggregateBroadcastResults(results)
+}
+
+// attemptStoreBio does the actual /store-bio network call for one instance.
+// Split out from notifyProofServer so the broadcast/aggregation decision
+// (aggregateBroadcastResults) can be unit-tested without any real network
+// I/O -- this function itself still goes through httpSyncClient's full
+// pinningDialer SSRF protections unchanged.
+func attemptStoreBio(url string, body []byte, token string) error {
+	req, err := http.NewRequest("POST", url+"/store-bio", bytes.NewReader(body))
+	if err != nil {
+		return fmt.Errorf("could not build request: %w", err)
 	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("x-chain-token", token)
 	// FIX 2: use httpSyncClient (pinningDialer + redirect blocking) instead of
 	// a bare http.Client, preventing SSRF via PROOF_SERVER_URL redirect chains
 	// or DNS-rebinding to internal/cloud-metadata addresses.
-	resp, reqErr := httpSyncClient.Do(req)
-	if reqErr != nil {
-		return true, fmt.Errorf("proof-server /store-bio call failed: %w", reqErr)
+	resp, err := httpSyncClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("/store-bio call failed: %w", err)
 	}
 	io.Copy(io.Discard, resp.Body)
 	resp.Body.Close()
 	if resp.StatusCode != 200 {
-		return true, fmt.Errorf("proof-server /store-bio returned %d", resp.StatusCode)
+		return fmt.Errorf("/store-bio returned %d", resp.StatusCode)
 	}
-	return true, nil
+	return nil
+}
+
+// aggregateBroadcastResults decides the overall outcome of broadcasting to
+// every configured proof-server instance: nil if at least one succeeded
+// (correctness doesn't require every instance's cache to be in sync -- the
+// chain's own is_human check is authoritative regardless of what any single
+// proof-server instance's local cache believes), logging any partial
+// failures so an operator notices a stale instance; an aggregate error only
+// if every instance failed.
+func aggregateBroadcastResults(results map[string]error) error {
+	var errs []string
+	successCount := 0
+	for url, err := range results {
+		if err == nil {
+			successCount++
+		} else {
+			errs = append(errs, fmt.Sprintf("%s: %v", url, err))
+		}
+	}
+	if successCount == 0 {
+		return fmt.Errorf("proof-server /store-bio failed on all %d configured instance(s): %s", len(results), strings.Join(errs, "; "))
+	}
+	if len(errs) > 0 {
+		fmt.Printf("[STORE-BIO] Partial sync: %d/%d instances succeeded, failures: %s\n", successCount, len(results), strings.Join(errs, "; "))
+	}
+	return nil
 }
 
 // notifyProofServerWithRetryQueue calls notifyProofServer and, on a genuine
