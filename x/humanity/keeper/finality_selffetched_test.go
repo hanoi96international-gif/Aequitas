@@ -51,6 +51,49 @@ func TestIsFinalityViolation_SelfFetchedAncestorExempt(t *testing.T) {
 	}
 }
 
+// Regression test for the 2026-07-19 fix: both Contabo1 and Contabo2 stuck
+// permanently unable to advance their finality checkpoint (and, downstream,
+// permanently unable to resume block production) on a distinct missing
+// self-produced block each — present and fetchable from Primary the whole
+// time, rejected by isFinalityViolation on every single retry.
+// registerFinalityWalkGap/registerProduceStuckGap deliberately write into
+// their own maps instead of dag.orphans (see each one's own comment — the
+// wantDeepScan-avoidance fix this preserves), but hasAwaitingOrphan used to
+// check ONLY dag.orphans, so a SelfFetched block genuinely needed to close
+// one of those two gap types was never recognized as "awaited" and never
+// passed the finality-violation exemption.
+func TestIsFinalityViolation_FinalityWalkGapAncestorExempt(t *testing.T) {
+	cs := newTestState()
+	cs.SetFinalizedCheckpoint("deadbeef", 1000, 5000)
+	dag := &BlockDAG{state: cs, orphans: make(map[string][]*Block), finalityWalkGaps: make(map[string]bool)}
+
+	oldBlock := &Block{Height: 500, Hash: "old-ancestor", SelfFetched: true}
+	if !dag.isFinalityViolation(oldBlock) {
+		t.Fatal("a SelfFetched block nothing has registered a gap for must still be a finality violation")
+	}
+
+	dag.finalityWalkGaps[oldBlock.Hash] = true
+	if dag.isFinalityViolation(oldBlock) {
+		t.Fatal("a SelfFetched block genuinely needed to close a registered finality-checkpoint-walk gap must be exempt, regardless of how far below the checkpoint it is")
+	}
+}
+
+func TestIsFinalityViolation_ProduceStuckGapAncestorExempt(t *testing.T) {
+	cs := newTestState()
+	cs.SetFinalizedCheckpoint("deadbeef", 1000, 5000)
+	dag := &BlockDAG{state: cs, orphans: make(map[string][]*Block), produceStuckGaps: make(map[string]bool)}
+
+	oldBlock := &Block{Height: 500, Hash: "old-ancestor", SelfFetched: true}
+	if !dag.isFinalityViolation(oldBlock) {
+		t.Fatal("a SelfFetched block nothing has registered a produce-stuck gap for must still be a finality violation")
+	}
+
+	dag.produceStuckGaps[oldBlock.Hash] = true
+	if dag.isFinalityViolation(oldBlock) {
+		t.Fatal("a SelfFetched block genuinely needed to close a registered produce-stuck gap must be exempt, regardless of how far below the checkpoint it is")
+	}
+}
+
 func TestIsFinalityViolation_RecentBlockNeverAViolation(t *testing.T) {
 	cs := newTestState()
 	cs.SetFinalizedCheckpoint("deadbeef", 1000, 5000)

@@ -3054,18 +3054,42 @@ func (dag *BlockDAG) PendingFetchHashes() []string {
 	return hashes
 }
 
-// hasAwaitingOrphan reports whether hash is currently the missing-parent key
-// for at least one queued orphan — i.e. something is genuinely, actively
-// waiting on it right now, in the present tense. See AddPeerBlock's
-// bootHeight-skip call site for why this matters: a SelfFetched delivery
-// only proves a fetch was deliberately issued for a hash something needed
-// WHEN THE REQUEST WENT OUT, not that the need still exists when the
-// response arrives — a resync in between can clear the orphan queue entry
-// that originally justified the fetch.
+// hasAwaitingOrphan reports whether hash is currently, genuinely needed by
+// something waiting on it right now, in the present tense — a queued
+// orphan's missing-parent key, a finality-checkpoint-walk gap, or a
+// ProduceBlock stuck-ancestor gap. See AddPeerBlock's bootHeight-skip call
+// site for why the present-tense distinction matters: a SelfFetched
+// delivery only proves a fetch was deliberately issued for a hash something
+// needed WHEN THE REQUEST WENT OUT, not that the need still exists when the
+// response arrives — a resync in between can clear the queue entry that
+// originally justified the fetch.
+//
+// FIX (P0, 2026-07-19 — root cause of both secondaries permanently unable
+// to advance their finality checkpoint or resume block production):
+// registerFinalityWalkGap/registerProduceStuckGap deliberately write into
+// their OWN separate maps instead of dag.orphans (see each one's own
+// comment — folding them into dag.orphans would wrongly re-trigger
+// wantDeepScan's fresh-orphan detection, the exact 2026-07-10 incident
+// finalityWalkGaps was split out to fix). But this function used to check
+// ONLY dag.orphans, so isFinalityViolation's SelfFetched exemption (and the
+// identical bootHeight-skip gate) never recognized a checkpoint-walk-gap or
+// produce-stuck-gap fetch as "genuinely awaited" — the fetch would succeed
+// (confirmed live: the peer had the block), but AddPeerBlock rejected it
+// anyway as too far below the finalized height to matter, permanently. That
+// made any historical gap discovered by either mechanism unrecoverable by
+// construction: the checkpoint could never walk past it, and — since an
+// unresolved checkpoint keeps the finality floor from advancing, which
+// keeps doSyncOnce from ever cheaply skipping that same old region as
+// already-settled — every ordinary sync cycle kept re-attempting to merge
+// deep into it instead, so cleanSyncStreak (hasCaughtUpWithAllPeers) never
+// reached a clean pass either, silently halting new block production too.
+// Confirmed live on both Contabo1 and Contabo2: each stuck on a distinct
+// missing self-produced block from ~15,000 blocks back, present and
+// fetchable from Primary the whole time, rejected on every single retry.
 func (dag *BlockDAG) hasAwaitingOrphan(hash string) bool {
 	dag.orphansMu.Lock()
 	defer dag.orphansMu.Unlock()
-	return len(dag.orphans[hash]) > 0
+	return len(dag.orphans[hash]) > 0 || dag.finalityWalkGaps[hash] || dag.produceStuckGaps[hash]
 }
 
 // hasBlockInMemory is a cheap, memory-only existence check (no DB fallback)
