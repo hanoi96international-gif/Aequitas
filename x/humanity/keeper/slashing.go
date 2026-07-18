@@ -2,6 +2,7 @@ package keeper
 
 import (
 	"fmt"
+	"os"
 	"sort"
 	"strings"
 	"time"
@@ -158,6 +159,66 @@ func (cs *ChainState) initSlashingTables() {
 	); err == nil {
 		if n, _ := res.RowsAffected(); n > 0 {
 			fmt.Printf("[SLASHING] ✓ Cleared %d pre-activation validator penalty record(s) (offenses before 2026-07-05 UTC are exempt — see equivocationSlashingActivationUnix)\n", n)
+			cs.invalidatePenaltyCache()
+		}
+	}
+	cs.selfHealUncorroboratedSeedSuspension()
+}
+
+// selfHealUncorroboratedSeedSuspension clears a validator_penalties
+// suspension against this node's own configured trusted bootstrap signer
+// (BOOTSTRAP_SIGNER) when that suspension was never corroborated by the
+// rest of the network. Confirmed-recurring false-positive pattern (Contabo1,
+// 2026-07-10, 07-12, 07-17): RecordEquivocationAndSuspend applies a
+// suspension on THIS node immediately, without waiting for network
+// corroboration, on purpose (see its own comment — a node needs to protect
+// itself right away, not wait on its own slow block production). That's
+// correct for real attacks, but it means a conflict this node alone ever
+// observed — e.g. two representations of what the rest of the network
+// agrees was a single event, encountered while this node was deep in
+// orphan/checkpoint-bridging catch-up (see the "[DAG] queued as orphan" /
+// "bridged ... with a synthetic checkpoint" logging) — can suspend an
+// honest, actively-producing validator with nothing else to correct it.
+//
+// The telltale sign every one of these incidents shared: offense_count
+// reached 2 (the 90-day-suspension threshold) yet slash_applied never
+// became true on ANY of that address's equivocation_evidence rows. A REAL,
+// consensus-replicated 2nd offense always ends with slash_applied=true once
+// this node's own queued slash_equivocation TX replays through its own
+// chain (see the switch/case in RecordEquivocationAndSuspend and the
+// slash_equivocation case in replayTransactions) — so "escalated to 2nd
+// offense, zero applied penalties" is only possible when the underlying
+// evidence never actually made it into this node's real canonical history.
+//
+// Scoped ONLY to BOOTSTRAP_SIGNER — the address this node's own operator
+// already configured as its trusted bootstrap/snapshot source — so this
+// cannot be used by an actually malicious THIRD validator to launder a real
+// offense; it only ever un-suspends the one validator this node already
+// implicitly trusts. Runs on every startup, same as the pre-activation
+// self-heal above, so this specific pattern no longer needs a manual SSH +
+// DB DELETE + container restart every time it recurs.
+func (cs *ChainState) selfHealUncorroboratedSeedSuspension() {
+	trustedSigner := strings.ToLower(strings.TrimSpace(os.Getenv("BOOTSTRAP_SIGNER")))
+	if trustedSigner == "" {
+		return
+	}
+	var offenseCount int
+	if err := cs.db.QueryRow(
+		`SELECT offense_count FROM validator_penalties WHERE signing_address = $1`,
+		trustedSigner,
+	).Scan(&offenseCount); err != nil || offenseCount < 2 {
+		return // no row, or not yet escalated — nothing to self-heal
+	}
+	var hasApplied bool
+	if err := cs.db.QueryRow(
+		`SELECT EXISTS(SELECT 1 FROM equivocation_evidence WHERE signing_address = $1 AND slash_applied = TRUE)`,
+		trustedSigner,
+	).Scan(&hasApplied); err != nil || hasApplied {
+		return // a real applied penalty exists (or the check failed) — leave the suspension in place
+	}
+	if res, err := cs.db.Exec(`DELETE FROM validator_penalties WHERE signing_address = $1`, trustedSigner); err == nil {
+		if n, _ := res.RowsAffected(); n > 0 {
+			fmt.Printf("[SLASHING] ✓ Self-healed an uncorroborated equivocation suspension against the trusted bootstrap signer %s (offense_count=%d reached but zero applied penalties ever corroborated it — see selfHealUncorroboratedSeedSuspension's own comment)\n", trustedSigner, offenseCount)
 			cs.invalidatePenaltyCache()
 		}
 	}
