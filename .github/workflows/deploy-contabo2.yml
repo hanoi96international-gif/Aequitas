@@ -1,0 +1,53 @@
+name: Deploy to Contabo2 VPS
+
+on:
+  push:
+    branches: [master, main]
+
+jobs:
+  # Mirrors deploy-contabo.yml's test gate (Monster Audit 2026-07-12, P1) —
+  # a failing build/test blocks the SSH deploy step entirely.
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - run: go build ./cmd/aequitasd
+      - run: go vet ./...
+      - run: go test ./...
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm ci
+      - run: npx hardhat test
+
+  deploy:
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deploy to Contabo2
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: 194.163.188.71
+          username: root
+          key: ${{ secrets.CONTABO2_SSH_KEY }}
+          port: 22
+          # SHA256 fingerprint of Contabo2's negotiated host key (ECDSA —
+          # same type Contabo1 ended up negotiating, see deploy-contabo.yml's
+          # own comment on how that was determined). Verified live:
+          # `ssh-keyscan -t ecdsa 194.163.188.71 | ssh-keygen -lf -`.
+          fingerprint: "SHA256:VIwj7Faxiga2n45HVHZEQFPxcbRKHgSgHoxAFsf2wto"
+          # IMPORTANT: intentionally NOT /root/deploy.sh (Contabo1's script)
+          # — that recreates the container with --env-file /root/.aequitas.env
+          # directly, and this box's .aequitas.env permanently contains
+          # RESYNC_FROM_SNAPSHOT=true, which would wipe the DB on every
+          # single deploy. deploy_safe_c2.sh rebuilds the image, then
+          # preserves the currently-running container's own env (stripping
+          # PATH/HOSTNAME/HOME/RESYNC_FROM_SNAPSHOT) — same pattern as the
+          # existing redeploy_normal_c2.sh, plus an actual image rebuild.
+          script: /root/deploy_safe_c2.sh
+          script_stop: true
+          timeout: 600s
+          command_timeout: 600s
