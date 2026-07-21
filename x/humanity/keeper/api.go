@@ -569,7 +569,19 @@ func (w gzipResponseWriter) Write(b []byte) (int, error) {
 // exists and why it's a pure win, unlike caching.
 func gzipMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if !strings.Contains(r.Header.Get("Accept-Encoding"), "gzip") || strings.HasPrefix(r.URL.Path, "/download/") {
+		// /api/events (SSE) is excluded for two independent reasons, either
+		// one sufficient on its own: gzip.Writer buffers internally and is
+		// only flushed on Close/explicit Flush (gzipResponseWriter.Write
+		// never calls either), so a push would sit buffered indefinitely
+		// instead of reaching the client promptly — and gzipResponseWriter
+		// doesn't implement http.Flusher at all (embedding the
+		// http.ResponseWriter INTERFACE only promotes the methods THAT
+		// interface declares, which doesn't include Flush), so
+		// handleBlockEvents' own Flusher type-assertion would fail for
+		// every gzip-capable client — nearly all of them — turning the
+		// whole endpoint into an immediate 500 rather than merely
+		// unbuffered.
+		if !strings.Contains(r.Header.Get("Accept-Encoding"), "gzip") || strings.HasPrefix(r.URL.Path, "/download/") || r.URL.Path == "/api/events" {
 			next.ServeHTTP(w, r)
 			return
 		}
@@ -626,6 +638,7 @@ func (a *APIServer) Start(port int) {
 		a.handleUI(w, r)
 	})
 	mux.HandleFunc("/api/status", a.handleStatus)
+	mux.HandleFunc("/api/events", a.handleBlockEvents)
 	mux.HandleFunc("/api/health/combined", a.handleCombinedHealth)
 	mux.HandleFunc("/api/blocks", a.handleBlocks)
 	mux.HandleFunc("/api/blocks/canonical", a.handleCanonicalBlocks)
@@ -783,6 +796,81 @@ func (a *APIServer) handleStatus(w http.ResponseWriter, r *http.Request) {
 		// window closes after startup.
 		"latency": a.blockchain.GetLatencyTelemetry(),
 	})
+}
+
+// sseConnections bounds concurrent /api/events streams — a long-lived
+// connection is a different resource-exhaustion shape than a normal
+// request-response endpoint (each one holds a goroutine + a subscriber
+// channel for its whole lifetime), so it gets its own cap alongside the
+// project's other DoS shields rather than relying on the general request
+// rate limiters, which are sized for short-lived calls.
+var sseConnections atomic.Int64
+
+const maxSSEConnections = 500
+
+// handleBlockEvents is a Server-Sent Events stream that pushes one "block"
+// event whenever a new block becomes visible on this node (self-produced or
+// peer-accepted — see notifyNewBlock's two call sites in block.go). Purely a
+// wake-up signal: the event payload is empty, clients react by re-fetching
+// through the existing REST endpoints (loadStatus/loadBlocks in explorer.js)
+// they already poll on a timer as a fallback. No auth, no per-connection
+// state beyond the subscriber channel — same trust level as /api/status
+// (public, read-only, carries nothing sensitive).
+func (a *APIServer) handleBlockEvents(w http.ResponseWriter, r *http.Request) {
+	if sseConnections.Load() >= maxSSEConnections {
+		http.Error(w, "too many concurrent event streams", http.StatusServiceUnavailable)
+		return
+	}
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		http.Error(w, "streaming unsupported", http.StatusInternalServerError)
+		return
+	}
+	// The server-wide WriteTimeout (60s — see Start()) exists to bound an
+	// ordinary request-response handler against a slow-loris client; applied
+	// to a connection meant to stay open for as long as the browser tab is,
+	// it would forcibly kill every SSE stream a minute after it opens,
+	// regardless of how often this handler actually writes to it (Go sets
+	// the deadline once, absolute, not a sliding per-write window). Clear it
+	// for this response only — http.ResponseController is the documented
+	// mechanism for exactly this "one long-lived handler on an otherwise
+	// short-request server" case (Go 1.20+).
+	if err := http.NewResponseController(w).SetWriteDeadline(time.Time{}); err != nil {
+		http.Error(w, "streaming unsupported", http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Connection", "keep-alive")
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	w.WriteHeader(http.StatusOK)
+	flusher.Flush()
+
+	ch, unsubscribe := a.blockchain.SubscribeNewBlocks()
+	defer unsubscribe()
+	sseConnections.Add(1)
+	defer sseConnections.Add(-1)
+
+	// Periodic keepalive comment (SSE-legal: a line starting with ':' is a
+	// no-op the client's EventSource silently ignores) — without traffic on
+	// an otherwise-idle connection, most reverse proxies/load balancers
+	// close it after 30-60s of true silence, which a quiet chain (no new
+	// blocks) would hit constantly.
+	keepalive := time.NewTicker(20 * time.Second)
+	defer keepalive.Stop()
+
+	for {
+		select {
+		case <-r.Context().Done():
+			return
+		case <-ch:
+			fmt.Fprint(w, "event: block\ndata: {}\n\n")
+			flusher.Flush()
+		case <-keepalive.C:
+			fmt.Fprint(w, ": keepalive\n\n")
+			flusher.Flush()
+		}
+	}
 }
 
 func (a *APIServer) handleBlocks(w http.ResponseWriter, r *http.Request) {

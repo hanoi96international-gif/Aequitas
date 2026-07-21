@@ -5139,6 +5139,44 @@ document.addEventListener('visibilitychange', function() {
     loadValidatorLabels(); loadPoolStatus(); loadTopology();
   }
 });
+
+// Live push (scaling roadmap 2026-07-21): /api/events (SSE) wakes these same
+// refreshers the instant a new block lands, instead of waiting for the next
+// setInterval tick above — real block-to-screen latency drops from "up to
+// 6s" to "as fast as the network round trip". Deliberately NOT a replacement
+// for the polling above, which stays exactly as-is: EventSource reconnects
+// on its own after a drop, but if it's ever unavailable (proxy strips SSE,
+// older browser, transient failure) the existing interval polling still
+// covers everything on its own, unaffected — this is a latency improvement
+// layered on top of an already-correct fallback, not a new single point of
+// failure.
+(function() {
+  if (typeof EventSource === 'undefined') return;
+  let es = null;
+  let reconnectDelay = 2000;
+  function connect() {
+    try { es = new EventSource('/api/events'); } catch (e) { return; }
+    es.addEventListener('block', function() {
+      if (document.hidden) return; // hidden-tab refreshers already skip via pollWhenVisible; skip the SSE-triggered call too
+      reconnectDelay = 2000; // a working message resets backoff
+      loadStatus(); loadBlocks();
+      if (document.getElementById('tab-explorer').classList.contains('active')) loadHumans();
+      loadPoolStatus();
+    });
+    es.onerror = function() {
+      // EventSource retries on its own for ordinary drops; only tear down
+      // and back off manually if the browser gave up (readyState CLOSED),
+      // e.g. after repeated failures or a server that doesn't support SSE.
+      if (es.readyState === EventSource.CLOSED) {
+        es.close();
+        setTimeout(connect, reconnectDelay);
+        reconnectDelay = Math.min(reconnectDelay * 2, 30000);
+      }
+    };
+  }
+  connect();
+})();
+
 // Observe each canvas individually so charts redraw when they become visible.
 // We observe the canvas containers, not document.body (which fires on every
 // DOM change and would cause constant redraws killing performance).

@@ -503,6 +503,13 @@ replayedMu             sync.Mutex
 	rawArrivalLatencySumMs     int64
 	rawArrivalLatencyMaxMs     int64
 	lastRawArrivalLatencyLogAt atomic.Int64
+	// newBlockSubs backs the /api/events SSE stream (scaling roadmap
+	// 2026-07-21): each subscriber gets its own buffered channel; notified
+	// non-blockingly (a full/slow reader is dropped from the broadcast, never
+	// allowed to stall block production) whenever a block becomes visible in
+	// dag.blocks — see notifyNewBlock's own comment for the two call sites.
+	newBlockSubsMu sync.Mutex
+	newBlockSubs   map[chan struct{}]struct{}
 	// lastIsolationPauseLogAt rate-limits the "finality advance paused"
 	// diagnostic the same way as the other log throttles above — this can
 	// otherwise fire once per self-produced block (every BLOCK_TIME) for as
@@ -931,6 +938,7 @@ warnedUnknownProposers: make(map[string]bool),
 peerChallenges:         make(map[string]peerChallenge),
 replayedBlocks:         make(map[string]bool),
 equivocationIndex:      make(map[string]string),
+newBlockSubs:           make(map[chan struct{}]struct{}),
 proposerBreaker:        newBoundedBreaker(proposerBreakerFailThreshold, proposerBreakerCooldown, proposerBreakerReopenProbes, maxTrackedProposers),
 	lastSeenFromValidator:  make(map[string]int64),
 	lastMergedFromValidator: make(map[string]int64),
@@ -2467,6 +2475,7 @@ if len(parentHashes) > 1 {
 fmt.Printf("[DAG] 🔀 Merged %d tips into block #%d\n", len(parentHashes), block.Height)
 }
 
+dag.notifyNewBlock(block)
 return block
 }
 
@@ -3440,6 +3449,45 @@ func (dag *BlockDAG) ClearProposerCircuitBreakers() {
 	}
 }
 
+// SubscribeNewBlocks registers a fresh subscriber for the /api/events SSE
+// stream and returns its notification channel plus an unsubscribe func the
+// caller MUST call (deferred) when the HTTP connection ends, or the channel
+// leaks forever in newBlockSubs. Buffered (size 1): a subscriber who hasn't
+// drained the previous notification yet doesn't need a second one queued —
+// the client's reaction to "a new block exists" is to re-fetch the full
+// current state, not to process one event per block.
+func (dag *BlockDAG) SubscribeNewBlocks() (ch chan struct{}, unsubscribe func()) {
+	ch = make(chan struct{}, 1)
+	dag.newBlockSubsMu.Lock()
+	dag.newBlockSubs[ch] = struct{}{}
+	dag.newBlockSubsMu.Unlock()
+	return ch, func() {
+		dag.newBlockSubsMu.Lock()
+		delete(dag.newBlockSubs, ch)
+		dag.newBlockSubsMu.Unlock()
+	}
+}
+
+// notifyNewBlock wakes every /api/events subscriber. Deliberately
+// non-blocking (select+default): a subscriber whose channel is already full
+// (hasn't been read since the last notification) is simply skipped this
+// round rather than allowed to stall the caller — both call sites
+// (ProduceBlock, AddPeerBlock) hold dag.mu and must never block on a slow
+// HTTP client. This is a pure UX signal (subscribers still re-fetch via the
+// existing REST endpoints), so a dropped notification costs nothing beyond
+// that one client's SSE push waiting for the next block or its own polling
+// fallback — never a correctness issue.
+func (dag *BlockDAG) notifyNewBlock(block *Block) {
+	dag.newBlockSubsMu.Lock()
+	defer dag.newBlockSubsMu.Unlock()
+	for ch := range dag.newBlockSubs {
+		select {
+		case ch <- struct{}{}:
+		default:
+		}
+	}
+}
+
 func (dag *BlockDAG) AddPeerBlock(block *Block) bool {
 // FIX (2026-07-05 — permanent operational diagnostic, not a temp one):
 // recordForeignAttachLatency further down only fires once a block clears
@@ -4173,6 +4221,7 @@ if prev, hadStub := dag.blocks[block.Hash]; hadStub && prev.Proposer == "synthet
 // SelectedParent="" forever. block.SelectedParent/Blues/BlueScore are
 // already correct on this struct by the time it reaches dag.blocks here.
 dag.blocks[block.Hash] = block
+dag.notifyNewBlock(block) // wake /api/events subscribers — see notifyNewBlock's own comment
 
 // Remove parents from tips
 for _, ph := range block.ParentHashes {
