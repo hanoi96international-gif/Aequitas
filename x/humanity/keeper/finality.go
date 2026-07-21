@@ -17,8 +17,11 @@ import (
 // a "finalized checkpoint" and AddPeerBlock refuses any block that would only
 // be relevant for a reorg below that depth.
 //
-// finalityBlueScoreDepth = 50 ≫ 2*K=36: well inside the probabilistic window,
-// giving extra safety margin against network jitter.
+// finalityBlueScoreDepth = 50 ≫ 2*K=36 (K here is the epoch CEILING dag.k();
+// KnightDAG's per-block K_eff is bounded above by it, and a smaller K_eff
+// only slows blue-score accrual, so 50 blue-score units always span at least
+// as many real blocks as under fixed-K GHOSTDAG): well inside the
+// probabilistic window, giving extra safety margin against network jitter.
 // finalityHeightSlack     = 50: the height-space equivalent used for the fast
 // gate in AddPeerBlock (height and blue_score track each other closely in
 // practice; using height avoids the need to compute GHOSTDAG for new blocks

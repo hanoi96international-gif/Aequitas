@@ -304,6 +304,12 @@ Damit alle Nodes trotz gleichzeitiger Blockproduktion zur selben Reihenfolge und
 
 To ensure every node converges on the same order and state despite concurrent block production, each node computes a deterministic "blue score" for every block (via selected-parent selection and blue/red classification within the merge set). This yields a canonical total order (height, then blue score, then hash) that is identical on every node, regardless of the order blocks arrive via P2P/HTTP.
 
+**KNIGHTDAG (adaptives K, inspiriert von DAGKNIGHT, Sompolinsky-Sutton 2022):**
+Die Blue/Red-Klassifizierung verwendet kein starres K mehr: Für jeden Block wird deterministisch das kleinste K_eff ≤ K ermittelt, dessen Blue-Menge eine strikte Mehrheit des Merge-Sets abdeckt. Bei guter Netzwerkkonvergenz sinkt K_eff automatisch (engere, schnellere Bestätigung); bei Bursts fällt die Klassifizierung exakt auf das bisherige GHOSTDAG-Verhalten mit dem Epochen-K zurück. Da jeder Node dieselbe Inferenz über denselben Blockgraphen ausführt, bleibt die kanonische Ordnung netzweit identisch.
+
+**KNIGHTDAG (adaptive K, inspired by DAGKNIGHT, Sompolinsky-Sutton 2022):**
+Blue/red classification no longer uses a rigid K: for every block, each node deterministically infers the smallest K_eff ≤ K whose blue set covers a strict majority of the merge set. Under good network convergence K_eff drops automatically (tighter, faster confirmation); under bursts, classification falls back to exactly the previous GHOSTDAG behavior with the epoch K. Since every node runs the same inference over the same block graph, the canonical order remains identical network-wide.
+
 **Dual-Ledger:**
 Aequitas führt zwei synchronisierte Ledger parallel:
 - **Go-Ledger**: PostgreSQL-gesichert, primäre Wahrheit für Salden und Menschen
