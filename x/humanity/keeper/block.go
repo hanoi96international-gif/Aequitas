@@ -6079,10 +6079,12 @@ func (dag *BlockDAG) mergeDepthLimit() int {
 // computeGHOSTDAGState's return reports whether the computation was based
 // on the block's COMPLETE required ancestor closure (missingAncestor=="",
 // ok==true) or had to give up on a genuinely-unresolvable hash within
-// bounds (missingAncestor==that hash, ok==false) — see ghostdagMergeSet's
-// own FIX comment. On ok==false, block.SelectedParent/Blues/BlueScore are
-// left UNTOUCHED (not partially computed) — callers must not treat this
-// block as attached/scored yet.
+// bounds (missingAncestor==that hash, ok==false) — either from Step 2's
+// merge-set BFS (see ghostdagMergeSet's own FIX comment) or Step 4's
+// pairwise ancestor checks during blue/red classification (see
+// ghostdagIsAncestor's own FIX comment). On ok==false,
+// block.SelectedParent/Blues/BlueScore are left UNTOUCHED (not partially
+// computed) — callers must not treat this block as attached/scored yet.
 func (dag *BlockDAG) computeGHOSTDAGState(block *Block) (missingAncestor string, ok bool) {
 	if block.IsGenesis || len(block.ParentHashes) == 0 {
 		block.SelectedParent = ""
@@ -6133,7 +6135,6 @@ func (dag *BlockDAG) computeGHOSTDAGState(block *Block) (missingAncestor string,
 	if missing != "" {
 		return missing, false
 	}
-	block.SelectedParent = spHash
 
 	// Step 3: topological sort of the merge set (parents before children).
 	sorted := ghostdagTopoSort(mergeSet, dag.blocks)
@@ -6190,7 +6191,11 @@ func (dag *BlockDAG) computeGHOSTDAGState(block *Block) (missingAncestor string,
 	var blues []string
 	if block.Height >= knightdagActivationHeight {
 		var kEff int
-		kEff, blues = dag.knightdagInferK(sorted, cc)
+		var missingK string
+		kEff, blues, missingK = dag.knightdagInferK(sorted, cc)
+		if missingK != "" {
+			return missingK, false
+		}
 		// KEff is a locally-derived annotation exactly like Blues/BlueScore:
 		// recomputed by every node for every block (never trusted from the
 		// wire — this function overwrites whatever a peer sent), excluded
@@ -6206,10 +6211,21 @@ func (dag *BlockDAG) computeGHOSTDAGState(block *Block) (missingAncestor string,
 		// own comment for why this matters (a node re-deriving OLD state must
 		// reproduce exactly what every other node already committed for it,
 		// independent of which code version originally computed it).
-		blues = knightdagClassify(sorted, dag.k(), cc)
+		var missingK string
+		blues, missingK = knightdagClassify(sorted, dag.k(), cc)
+		if missingK != "" {
+			return missingK, false
+		}
 		block.KEff = nil
 	}
 
+	// block.SelectedParent is only assigned once classification has fully
+	// succeeded, same as Blues/BlueScore below — see this function's own
+	// return-contract comment. Step 4 (knightdagInferK/knightdagClassify)
+	// can now also report a genuinely-unresolvable ancestor via
+	// ghostdagIsAncestor, not just Step 2's merge-set BFS, so this can no
+	// longer be set right after Step 2 succeeds.
+	block.SelectedParent = spHash
 	block.Blues = blues
 	block.BlueScore = maxScore + 1 + int64(len(blues)) // SP always contributes +1
 	return "", true
@@ -6274,20 +6290,34 @@ func (dag *BlockDAG) newKnightdagConcCache(dbBudget *int) *knightdagConcCache {
 
 // concurrent reports whether x and y are in each other's anticone (neither
 // is an ancestor of the other). Symmetric, memoized under an ordered key.
-func (cc *knightdagConcCache) concurrent(x, y string) bool {
+//
+// A non-empty missing return means ghostdagIsAncestor hit a genuinely
+// unresolvable hash (see its own FIX comment) — the answer is NOT cached in
+// that case, since it isn't one: a stale "not concurrent" or "concurrent"
+// verdict computed while a sibling was still in flight must never be reused
+// once that sibling actually arrives.
+func (cc *knightdagConcCache) concurrent(x, y string) (concurrent bool, missing string) {
 	if x == y {
-		return false
+		return false, ""
 	}
 	key := [2]string{x, y}
 	if y < x {
 		key = [2]string{y, x}
 	}
 	if v, ok := cc.res[key]; ok {
-		return v
+		return v, ""
 	}
-	v := !cc.dag.ghostdagIsAncestor(key[0], key[1], cc.dbBudget) && !cc.dag.ghostdagIsAncestor(key[1], key[0], cc.dbBudget)
+	xAncY, missing := cc.dag.ghostdagIsAncestor(key[0], key[1], cc.dbBudget)
+	if missing != "" {
+		return false, missing
+	}
+	yAncX, missing := cc.dag.ghostdagIsAncestor(key[1], key[0], cc.dbBudget)
+	if missing != "" {
+		return false, missing
+	}
+	v := !xAncY && !yAncX
 	cc.res[key] = v
-	return v
+	return v, ""
 }
 
 // knightdagClassify runs the greedy GHOSTDAG blue/red pass over an already
@@ -6299,13 +6329,22 @@ func (cc *knightdagConcCache) concurrent(x, y string) bool {
 // loop is O(|sorted|·|blues|) unconditionally, which at 100-validator
 // concurrent production did not finish within 120s in
 // block_ghostdag_scale_test.go before the break existed.
-func knightdagClassify(sorted []string, k int, cc *knightdagConcCache) []string {
-	blues := make([]string, 0, len(sorted))
+// knightdagClassify's third return, missing, is non-empty only when a
+// concurrent() check inside the loop hit a genuinely unresolvable ancestor
+// hash (see ghostdagIsAncestor's FIX comment) — blues is nil in that case;
+// the caller must treat this exactly like ghostdagMergeSet's own
+// missingAncestor (retry once the hash resolves), not as "no blues".
+func knightdagClassify(sorted []string, k int, cc *knightdagConcCache) (blues []string, missing string) {
+	blues = make([]string, 0, len(sorted))
 	for _, mHash := range sorted {
 		antiCnt := 0
 		isBlue := true
 		for _, bHash := range blues {
-			if cc.concurrent(bHash, mHash) {
+			conc, miss := cc.concurrent(bHash, mHash)
+			if miss != "" {
+				return nil, miss
+			}
+			if conc {
 				antiCnt++
 				if antiCnt > k {
 					isBlue = false
@@ -6317,7 +6356,7 @@ func knightdagClassify(sorted []string, k int, cc *knightdagConcCache) []string 
 			blues = append(blues, mHash)
 		}
 	}
-	return blues
+	return blues, ""
 }
 
 // knightdagInferK is the KNIGHTDAG core: find the SMALLEST k ∈ [0, dag.k()]
@@ -6350,18 +6389,27 @@ func knightdagClassify(sorted []string, k int, cc *knightdagConcCache) []string 
 // deterministic and provably minimal; its bookkeeping cost is bounded by
 // Σ_{k<K} O(|sorted|·k) cache hits (the BFS walks behind them are memoized
 // in cc), which block_ghostdag_scale_test.go bounds end-to-end.
-func (dag *BlockDAG) knightdagInferK(sorted []string, cc *knightdagConcCache) (kEff int, blues []string) {
+// missing (third return) is non-empty only when a classification trial hit
+// a genuinely unresolvable ancestor hash — see knightdagClassify's own
+// comment. kEff/blues are meaningless in that case; the caller must treat
+// it exactly like ghostdagMergeSet's missingAncestor.
+func (dag *BlockDAG) knightdagInferK(sorted []string, cc *knightdagConcCache) (kEff int, blues []string, missing string) {
 	if len(sorted) == 0 {
-		return 0, nil
+		return 0, nil, ""
 	}
 	ceiling := dag.k()
 	for k := 0; k < ceiling; k++ {
-		blues = knightdagClassify(sorted, k, cc)
+		var miss string
+		blues, miss = knightdagClassify(sorted, k, cc)
+		if miss != "" {
+			return 0, nil, miss
+		}
 		if 2*len(blues) > len(sorted) {
-			return k, blues
+			return k, blues, ""
 		}
 	}
-	return ceiling, knightdagClassify(sorted, ceiling, cc)
+	blues, missing = knightdagClassify(sorted, ceiling, cc)
+	return ceiling, blues, missing
 }
 
 // ghostdagMergeSet returns the set of blocks in past(block) that are NOT in
@@ -6731,12 +6779,32 @@ func (dag *BlockDAG) ghostdagBatchPrefetch(hashes []string, dbBudget *int) {
 	}
 }
 
-// ghostdagIsAncestor returns true if ancestorHash can reach descendantHash
+// ghostdagIsAncestor returns whether ancestorHash can reach descendantHash
 // by following parent links, searching no more than ghostdagMergeDepthLimit
 // hops back. Used ONLY for anticone detection between two members of a
 // bounded merge set (computeGHOSTDAGState) — see ghostdagMergeDepthLimit's
 // comment for why a query between two such blocks never needs to look
 // further than that bound. Must be called under dag.mu.
+//
+// FIX (audit 2026-07-21 — same missing-ancestor hazard ghostdagMergeSet was
+// hardened against on 2026-07-10, found here by inspection while evaluating
+// a persistent cross-call ancestor cache): unlike ghostdagMergeSet, this
+// function used to treat ghostdagBlockLookup returning nil (a hash truly
+// absent from both dag.blocks and the DB at this exact instant — e.g. a
+// concurrent sibling still in flight over the network, NOT a definitive
+// "this block doesn't exist") as a silent dead end, exactly the bug class
+// that caused Primary/Contabo1 (2026-07-04) and Primary/Contabo2
+// (2026-07-10) to independently compute different SelectedParent/BlueScore
+// from the same height onward. Called via knightdagConcCache.concurrent()
+// from inside the KNIGHTDAG blue/red classification loop, so an
+// arrival-timing-dependent false here could flip a block's Blues/BlueScore
+// differently on different nodes. Now returns the unresolved hash instead
+// of guessing; the caller chain (concurrent → knightdagClassify →
+// knightdagInferK → computeGHOSTDAGState) propagates it up to
+// computeGHOSTDAGState's existing missingAncestor return, which
+// AddPeerBlock/ProduceBlock already know how to handle (queue as orphan /
+// retry, same as a missing merge-set ancestor) — no new retry mechanism
+// needed, just reusing the one ghostdagMergeSet already proved out.
 //
 // FIX (scale audit, same class as ghostdagMergeSet above): two changes vs.
 // the original:
@@ -6771,9 +6839,9 @@ func (dag *BlockDAG) ghostdagBatchPrefetch(hashes []string, dbBudget *int) {
 //     "not an ancestor" (the same conservative direction as every other cap
 //     here: under uncertainty, bias toward classifying more blocks red
 //     rather than risking an incorrect blue).
-func (dag *BlockDAG) ghostdagIsAncestor(ancestorHash, descendantHash string, dbBudget *int) bool {
+func (dag *BlockDAG) ghostdagIsAncestor(ancestorHash, descendantHash string, dbBudget *int) (isAncestor bool, missing string) {
 	if ancestorHash == descendantHash {
-		return true
+		return true, ""
 	}
 	type entry struct {
 		hash  string
@@ -6784,29 +6852,35 @@ func (dag *BlockDAG) ghostdagIsAncestor(ancestorHash, descendantHash string, dbB
 	queue := []entry{{descendantHash, 0}}
 	for len(queue) > 0 {
 		if len(visited) >= visitCap {
-			return false
+			return false, ""
 		}
 		cur := queue[0]
 		queue = queue[1:]
 		if cur.depth >= dag.mergeDepthLimit() {
 			continue
 		}
-		if b := dag.ghostdagBlockLookup(cur.hash, dbBudget); b != nil {
-			for _, ph := range b.ParentHashes {
-				if ph == ancestorHash {
-					return true
-				}
-				if !visited[ph] {
-					visited[ph] = true
-					queue = append(queue, entry{ph, cur.depth + 1})
-					if len(visited) >= visitCap {
-						return false
-					}
+		b := dag.ghostdagBlockLookup(cur.hash, dbBudget)
+		if b == nil {
+			// Genuinely unresolvable within bounds (not a depth/visitCap
+			// truncation, both of which are deterministic protocol bounds
+			// identical on every node) — report it instead of treating this
+			// branch as a dead end. See this function's FIX comment.
+			return false, cur.hash
+		}
+		for _, ph := range b.ParentHashes {
+			if ph == ancestorHash {
+				return true, ""
+			}
+			if !visited[ph] {
+				visited[ph] = true
+				queue = append(queue, entry{ph, cur.depth + 1})
+				if len(visited) >= visitCap {
+					return false, ""
 				}
 			}
 		}
 	}
-	return false
+	return false, ""
 }
 
 // ghostdagTopoSort returns merge-set blocks in topological order (parents

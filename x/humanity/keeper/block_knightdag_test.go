@@ -30,17 +30,24 @@ func TestKnightdagConcCache_SymmetricAndConsistent(t *testing.T) {
 	dag.blocks["c"] = &Block{Hash: "c", Height: 1, ParentHashes: []string{"genesis"}}
 
 	cc := dag.newKnightdagConcCache(nil)
-	if !cc.concurrent("a", "c") || !cc.concurrent("c", "a") {
+	acAC, missAC := cc.concurrent("a", "c")
+	caAC, missCA := cc.concurrent("c", "a")
+	if missAC != "" || missCA != "" {
+		t.Fatalf("unexpected missing ancestor: %q / %q", missAC, missCA)
+	}
+	if !acAC || !caAC {
 		t.Fatal("true siblings a/c must be concurrent in both argument orders")
 	}
-	if cc.concurrent("a", "b") || cc.concurrent("b", "a") {
+	ab, _ := cc.concurrent("a", "b")
+	ba, _ := cc.concurrent("b", "a")
+	if ab || ba {
 		t.Fatal("ancestor/descendant a/b must not be concurrent")
 	}
-	if cc.concurrent("a", "a") {
+	if aa, _ := cc.concurrent("a", "a"); aa {
 		t.Fatal("a block is never concurrent with itself")
 	}
 	// Cached answer must be stable across repeated queries.
-	if !cc.concurrent("a", "c") {
+	if again, _ := cc.concurrent("a", "c"); !again {
 		t.Fatal("cached concurrent(a,c) flipped on repeat query")
 	}
 }
@@ -51,7 +58,10 @@ func TestKnightdagConcCache_SymmetricAndConsistent(t *testing.T) {
 func TestKnightDAG_EmptyMergeSet(t *testing.T) {
 	dag := newGhostdagTestDAG()
 	cc := dag.newKnightdagConcCache(nil)
-	kEff, blues := dag.knightdagInferK(nil, cc)
+	kEff, blues, missing := dag.knightdagInferK(nil, cc)
+	if missing != "" {
+		t.Fatalf("unexpected missing ancestor %q", missing)
+	}
 	if kEff != 0 || blues != nil {
 		t.Fatalf("knightdagInferK(empty) = (%d, %v), want (0, nil)", kEff, blues)
 	}
@@ -126,7 +136,10 @@ func TestKnightDAG_SmallMergeSetEquivalentToClassic(t *testing.T) {
 		t.Fatalf("unexpected missing ancestor %q", missing)
 	}
 	sorted := ghostdagTopoSort(mergeSet, dag.blocks)
-	kEff, _ := dag.knightdagInferK(sorted, dag.newKnightdagConcCache(nil))
+	kEff, _, missingK := dag.knightdagInferK(sorted, dag.newKnightdagConcCache(nil))
+	if missingK != "" {
+		t.Fatalf("unexpected missing ancestor %q", missingK)
+	}
 	if kEff != 0 {
 		t.Fatalf("kEff = %d, want 0 for a concurrency-free merge set", kEff)
 	}
@@ -157,7 +170,10 @@ func TestKnightDAG_FallbackCeilingMatchesClassic(t *testing.T) {
 		t.Fatalf("unexpected missing ancestor %q", missing)
 	}
 	sorted := ghostdagTopoSort(mergeSet, dag.blocks)
-	kEff, _ := dag.knightdagInferK(sorted, dag.newKnightdagConcCache(nil))
+	kEff, _, missingK := dag.knightdagInferK(sorted, dag.newKnightdagConcCache(nil))
+	if missingK != "" {
+		t.Fatalf("unexpected missing ancestor %q", missingK)
+	}
 	if kEff != dag.k() {
 		t.Fatalf("kEff = %d, want the ceiling %d when no smaller k reaches a majority", kEff, dag.k())
 	}
@@ -182,15 +198,26 @@ func TestKnightDAG_MinimalityInvariant(t *testing.T) {
 		}
 		sorted := ghostdagTopoSort(mergeSet, dag.blocks)
 		cc := dag.newKnightdagConcCache(nil)
-		kEff, blues := dag.knightdagInferK(sorted, cc)
+		kEff, blues, missingK := dag.knightdagInferK(sorted, cc)
+		if missingK != "" {
+			t.Fatalf("siblings=%d: unexpected missing ancestor %q", siblings, missingK)
+		}
 		if kEff > dag.k() {
 			t.Fatalf("siblings=%d: kEff %d exceeds ceiling %d", siblings, kEff, dag.k())
 		}
-		if got := knightdagClassify(sorted, kEff, cc); len(got) != len(blues) {
+		got, missingC := knightdagClassify(sorted, kEff, cc)
+		if missingC != "" {
+			t.Fatalf("siblings=%d: unexpected missing ancestor %q", siblings, missingC)
+		}
+		if len(got) != len(blues) {
 			t.Fatalf("siblings=%d: returned blues (%d) diverge from classify at kEff (%d)", siblings, len(blues), len(got))
 		}
 		for k := 0; k < kEff; k++ {
-			if b := knightdagClassify(sorted, k, cc); 2*len(b) > len(sorted) {
+			b, missingB := knightdagClassify(sorted, k, cc)
+			if missingB != "" {
+				t.Fatalf("siblings=%d: unexpected missing ancestor %q", siblings, missingB)
+			}
+			if 2*len(b) > len(sorted) {
 				t.Fatalf("siblings=%d: k=%d already reaches majority — kEff=%d is not minimal", siblings, k, kEff)
 			}
 		}
