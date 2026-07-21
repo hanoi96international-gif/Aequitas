@@ -3205,19 +3205,31 @@ function renderDagView(rawBlocks, canonicalHashSet) {
     const g = document.createElementNS(svgNS, 'g');
     g.setAttribute('class', 'dag-node dag-node-' + status + (n.canonical ? '' : ' dag-sibling') + (isNew ? ' dag-node-new' : ''));
     g.setAttribute('transform', 'translate(' + n.x + ',' + n.y + ')');
+    // KnightDAG frame goes in FIRST so the verdict-colored circle sits on
+    // top of it — a gold diamond outline around the whole node, not a tiny
+    // satellite glyph nobody could see at this scale.
+    if (isKnight) {
+      const half = n.canonical ? 7.4 : 6;
+      const frame = document.createElementNS(svgNS, 'rect');
+      frame.setAttribute('x', -half);
+      frame.setAttribute('y', -half);
+      frame.setAttribute('width', half * 2);
+      frame.setAttribute('height', half * 2);
+      frame.setAttribute('transform', 'rotate(45)');
+      frame.setAttribute('class', 'dag-knight-frame');
+      g.appendChild(frame);
+    }
     const circle = document.createElementNS(svgNS, 'circle');
     circle.setAttribute('r', n.canonical ? 7 : 5.5);
-    circle.setAttribute('fill', avatarColor(n.block.proposer || '0x00'));
+    // Encoding swap (launch feedback): the FILL now carries GHOSTDAG's own
+    // verdict (via the dag-node-<status> CSS class — purple chain, blue
+    // counted, red excluded, dark pending), because the verdict is the whole
+    // point of this view. Proposer identity moves to the thin ring, where it
+    // stays readable without drowning out the consensus story the way the
+    // old bright per-proposer fills did.
+    circle.style.stroke = avatarColor(n.block.proposer || '0x00');
     if (n.canonical) circle.setAttribute('filter', 'url(#dagGlow)');
     g.appendChild(circle);
-    if (isKnight) {
-      const mark = document.createElementNS(svgNS, 'text');
-      mark.setAttribute('x', '0');
-      mark.setAttribute('y', n.canonical ? '-12' : '-10');
-      mark.setAttribute('class', 'dag-knight-mark');
-      mark.textContent = '◆';
-      g.appendChild(mark);
-    }
     g.addEventListener('click', function() { openBlock(hash); });
     g.addEventListener('mousemove', function(ev) {
       if (!tip) return;
@@ -3248,6 +3260,38 @@ function renderDagView(rawBlocks, canonicalHashSet) {
   });
   svg.appendChild(nodeGroup);
   previousDagHashes = new Set(Object.keys(nodePos));
+
+  // KnightDAG activation boundary: when the handover height falls INSIDE the
+  // visible window, draw a dashed gold line between the last pure-GHOSTDAG
+  // column and the first adaptive-K column — the exact place the consensus
+  // rule changes. A window entirely on one side draws nothing (a permanent
+  // line would be noise, and the header status below already says which
+  // regime the chain is in).
+  let firstKnightCol = -1;
+  for (let ci = 0; ci < heights.length; ci++) {
+    if (heights[ci] >= KNIGHTDAG_ACTIVATION_HEIGHT) { firstKnightCol = ci; break; }
+  }
+  if (firstKnightCol > 0) {
+    const bx = DAG_PAD + firstKnightCol * DAG_COL_W - DAG_COL_W / 2;
+    const line = document.createElementNS(svgNS, 'line');
+    line.setAttribute('x1', bx); line.setAttribute('x2', bx);
+    line.setAttribute('y1', 4); line.setAttribute('y2', height - 4);
+    line.setAttribute('class', 'dag-knight-boundary');
+    svg.appendChild(line);
+    const lbl = document.createElementNS(svgNS, 'text');
+    lbl.setAttribute('x', bx + 5);
+    lbl.setAttribute('y', 11);
+    lbl.setAttribute('class', 'dag-knight-boundary-label');
+    lbl.textContent = '◆ KNIGHTDAG →';
+    svg.appendChild(lbl);
+  }
+  const knightStatusEl = document.getElementById('dag-knight-status');
+  if (knightStatusEl && heights.length) {
+    const newestHeight = heights[heights.length - 1];
+    knightStatusEl.textContent = newestHeight >= KNIGHTDAG_ACTIVATION_HEIGHT
+      ? '· ◆ KnightDAG active — adaptive K'
+      : '· KnightDAG activates at #' + KNIGHTDAG_ACTIVATION_HEIGHT.toLocaleString();
+  }
 
   const countEl = document.getElementById('dag-node-count');
   if (countEl) countEl.textContent = Object.keys(nodePos).length + ' blocks · ' + heights.length + ' heights';

@@ -250,7 +250,7 @@
 <!-- GHOSTDAG DAG view: actual parent/merge structure, not just a linear list -->
 <div class="dag-panel">
   <div class="exp-panel-hdr">
-    <div class="exp-panel-title"><span class="sec-dot"></span>GHOSTDAG DAG View <span style="color:var(--purple);font-weight:600">· KnightDAG-secured</span></div>
+    <div class="exp-panel-title"><span class="sec-dot"></span>GHOSTDAG DAG View <span id="dag-knight-status" style="color:var(--gold);font-weight:600">· KnightDAG-secured</span></div>
     <div style="display:flex;align-items:center;gap:12px">
       <div class="sec-count" id="dag-verdict-stat" title="Share of visible merged blocks GHOSTDAG classified blue (counted toward blue_score) vs red (excluded)"></div>
       <div class="sec-count" id="dag-node-count">—</div>
@@ -260,12 +260,12 @@
     <svg id="dag-svg" class="dag-svg"></svg>
   </div>
   <div class="dag-legend">
-    <span><i class="ring" style="border-color:var(--purple)"></i>selected parent chain</span>
-    <span><i class="ring" style="border-color:var(--dag-blue)"></i>GHOSTDAG blue — counted</span>
-    <span><i class="ring" style="border-color:var(--dag-red)"></i>GHOSTDAG red — excluded, still merged</span>
-    <span><i class="ring" style="border-color:var(--border)"></i>not yet classified</span>
-    <span style="color:var(--gold)">◆ KnightDAG-secured block</span>
-    <span>Fill color = proposer identity. Each column = one height. Hover any block for its live GHOSTDAG verdict.</span>
+    <span><i style="background:var(--purple)"></i>selected parent chain</span>
+    <span><i style="background:var(--dag-blue)"></i>GHOSTDAG blue — counted</span>
+    <span><i style="background:var(--dag-red)"></i>GHOSTDAG red — excluded, still merged</span>
+    <span><i class="ring"></i>not yet classified</span>
+    <span><i class="knight"></i>KnightDAG-secured — block infers its own K</span>
+    <span>Fill = GHOSTDAG verdict · thin ring = proposer · one column per height. Hover any block for details.</span>
   </div>
 </div>
 <div class="dag-tip" id="dag-tip"></div>

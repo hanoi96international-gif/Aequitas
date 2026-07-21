@@ -134,18 +134,25 @@ header::before{content:'';position:absolute;top:0;left:0;right:0;height:2px;back
 .dag-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch;padding:10px 0;background:radial-gradient(ellipse at 50% 0%,rgba(155,114,246,0.05),transparent 70%)}
 .dag-svg{display:block}
 .dag-node{cursor:pointer}
-.dag-node circle{stroke:var(--bg);stroke-width:2.5px;transition:r 0.15s,stroke-width 0.15s}
-.dag-node:hover circle{r:9;stroke-width:3px}
-.dag-node.dag-sibling circle{opacity:0.72}
-/* Ring color follows GHOSTDAG's own verdict — the SAME vocabulary the
-   protocol uses (blue = counted, red = excluded) — fill stays the
-   proposer's identity color, so who-produced-it and what-GHOSTDAG-decided
-   are both visible on one mark at once. */
-.dag-node-selected circle{stroke:var(--purple)}
-.dag-node-blue circle{stroke:var(--dag-blue)}
-.dag-node-red circle{stroke:var(--dag-red)}
-.dag-node-pending circle{stroke:var(--border)}
-.dag-knight-mark{fill:var(--gold);font-size:8px;text-anchor:middle;pointer-events:none;paint-order:stroke;stroke:var(--bg);stroke-width:2px}
+.dag-node circle{stroke:var(--bg);stroke-width:2px;transition:r 0.15s,stroke-width 0.15s}
+.dag-node:hover circle{r:9;stroke-width:2.5px}
+.dag-node.dag-sibling circle{opacity:0.8}
+/* FILL color follows GHOSTDAG's own verdict — the SAME vocabulary the
+   protocol uses (purple = selected parent chain, blue = counted, red =
+   excluded, dark = not yet classified). The verdict is the entire point of
+   this view, so it gets the dominant channel; proposer identity lives on
+   the thin ring (inline stroke, set per-node in explorer.js). */
+.dag-node-selected circle{fill:var(--purple)}
+.dag-node-blue circle{fill:var(--dag-blue)}
+.dag-node-red circle{fill:var(--dag-red)}
+.dag-node-pending circle{fill:#232C40}
+/* KnightDAG-secured block: gold diamond frame around the whole node — the
+   visual claim "this block inferred its own K" should be visible from
+   across the room, not an 8px satellite glyph. */
+.dag-knight-frame{fill:none;stroke:var(--gold);stroke-width:1.2px;opacity:0.85;pointer-events:none}
+.dag-node:hover .dag-knight-frame{opacity:1;stroke-width:1.6px}
+.dag-knight-boundary{stroke:var(--gold);stroke-width:1px;stroke-dasharray:4,4;opacity:0.55}
+.dag-knight-boundary-label{fill:var(--gold);font-size:7px;letter-spacing:1.2px;font-weight:700}
 .dag-edge{stroke:rgba(255,255,255,0.14);stroke-width:1.4px;fill:none}
 .dag-edge-selected{stroke:var(--purple);stroke-width:2.6px;opacity:0.85}
 /* New-block entrance: only applied to nodes not present in the previous
@@ -156,7 +163,8 @@ header::before{content:'';position:absolute;top:0;left:0;right:0;height:2px;back
 .dag-legend{display:flex;gap:16px;padding:10px 16px;font-size:0.55rem;color:var(--muted);border-top:1px solid var(--border);flex-wrap:wrap;align-items:center}
 .dag-legend span{display:inline-flex;align-items:center;gap:5px}
 .dag-legend i{width:8px;height:8px;border-radius:50%;display:inline-block}
-.dag-legend i.ring{background:transparent;border:2.5px solid var(--muted)}
+.dag-legend i.ring{background:#232C40;border:2px solid var(--border)}
+.dag-legend i.knight{background:transparent;border:1.5px solid var(--gold);border-radius:2px;transform:rotate(45deg);width:7px;height:7px}
 .dag-spark{vertical-align:middle;margin-left:6px}
 .dag-spark path{fill:none;stroke-width:1.5px}
 .chain-diagram{margin-top:14px;padding:12px 14px;border-radius:8px;border:1px solid var(--border);background:rgba(0,0,0,0.15)}
