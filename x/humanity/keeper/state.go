@@ -2727,7 +2727,16 @@ func (cs *ChainState) distributeUBIPoolLocked() ([]DistributionShare, error) {
 		return nil, nil
 	}
 	// P0-2 + P1-6: credit humans BEFORE zeroing pool AND before last_ubi_at.
+	// Perf (scale roadmap 2026-07-21): mutate every account in memory first,
+	// then persist the whole set via ONE saveAccountsToDBBatch call instead
+	// of a per-account round trip — at 10k+ humans the per-row version held
+	// cs.mu for minutes once a day. enforceWealthCapLocked only mutates the
+	// account in memory and persists pool credits (never the account row
+	// itself), so deferring the row writes to the batch changes nothing
+	// semantically; the wrapping RunDailyDistributionAtomic transaction
+	// commits or rolls back the batch and the outbox TXs together either way.
 	shares := make([]DistributionShare, 0, len(humanAddrs))
+	batch := make([]*AccountState, 0, len(humanAddrs))
 	for _, addr := range humanAddrs {
 		acc := cs.accounts[addr]
 		acc.Balance = acc.Balance.Add(NewDecimal(share))
@@ -2735,10 +2744,11 @@ func (cs *ChainState) distributeUBIPoolLocked() ([]DistributionShare, error) {
 		if err := cs.enforceWealthCapLocked(acc); err != nil {
 			return nil, fmt.Errorf("could not enforce wealth cap for %s: %w", addr, err)
 		}
-		if err := cs.saveAccountToDB(acc); err != nil {
-			return nil, fmt.Errorf("could not save UBI reward for %s: %w", addr, err)
-		}
+		batch = append(batch, acc)
 		shares = append(shares, DistributionShare{Wallet: addr, Amount: round6(share), DemurrageLost: demurrageLost[addr]})
+	}
+	if err := cs.saveAccountsToDBBatch(batch); err != nil {
+		return nil, fmt.Errorf("could not save UBI rewards batch: %w", err)
 	}
 	poolAcc.Balance = NewDecimal(0)
 	if err := cs.saveAccountToDB(poolAcc); err != nil {
