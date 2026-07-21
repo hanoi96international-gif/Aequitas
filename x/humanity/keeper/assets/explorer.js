@@ -2338,6 +2338,9 @@ async function loadStatus() {
     // show it directly instead of a deduped count of whatever page of
     // blocks happens to be locally fetched (see loadBlocks).
     latestChainHeight = d.height;
+    if (typeof d.knightdag_activation_height === 'number') {
+      knightdagActivationHeight = d.knightdag_activation_height;
+    }
     document.getElementById('s-height').textContent = fmt(d.height);
     // FIX (2026-07-05): this used to be a hardcoded "~6s" in the HTML —
     // BLOCK_TIME changed several times the same night without this text
@@ -3060,13 +3063,14 @@ async function loadValidatorLabels() {
   } catch (e) {}
 }
 
-// validatorLabel returns "Validator #N" for a known signing address, or
-// null if this address has never been through GetValidatorOrdinals (e.g.
-// labels haven't loaded yet, or a very-just-joined node this node's own
-// registered_nodes table hasn't recorded yet either).
+// validatorLabel returns the ready-to-display label for a known signing
+// address (e.g. "Primary", "Validator #2" — computed server-side by
+// handleValidatorLabels, see its own comment for why: VALIDATOR_LABELS
+// overrides take precedence over the per-node GetValidatorOrdinals fallback
+// there), or null if this address has no label yet (labels haven't loaded,
+// or a very-just-joined validator nothing here knows about yet).
 function validatorLabel(address) {
-  const ord = validatorLabels[(address || '').toLowerCase()];
-  return ord ? ('Validator #' + ord) : null;
+  return validatorLabels[(address || '').toLowerCase()] || null;
 }
 
 // DAG_MAX_HEIGHTS/DAG_MAX_ROWS bound the rendered window so a wild
@@ -3079,10 +3083,19 @@ const DAG_COL_W = 56;
 const DAG_ROW_H = 34;
 const DAG_PAD = 26;
 
-// KNIGHTDAG_ACTIVATION_HEIGHT mirrors block.go's knightdagDefaultActivationHeight
-// — purely cosmetic here (a small marker on nodes at/above it), never used
-// for any consensus decision client-side.
-const KNIGHTDAG_ACTIVATION_HEIGHT = 1520000;
+// knightdagActivationHeight is read from /api/status ("knightdag_activation_height",
+// the backend's own authoritative KNIGHTDAG_ACTIVATION_HEIGHT — see that
+// field's own comment in api.go). ONLY used for the informational "activates
+// at #X" header text below; it is never guessed or hardcoded here, and it is
+// NEVER used to decide whether an individual block gets the KnightDAG
+// diamond — that decision always reads block.k_eff directly (set by the
+// backend's own computeGHOSTDAGState for that exact block), so a block's
+// marker can never disagree with what the chain that produced it actually
+// did, regardless of what this node's local copy of the activation height
+// says. Starts at Infinity (nothing "activates" until the real value loads)
+// so a page freshly opened before the first /api/status response can't
+// flash an incorrect "already active" or "activates at 0" message.
+let knightdagActivationHeight = Infinity;
 
 // renderDagView draws the actual GHOSTDAG parent/merge structure: one
 // column per block height, one row per concurrent block at that height
@@ -3101,10 +3114,10 @@ const KNIGHTDAG_ACTIVATION_HEIGHT = 1520000;
 // derived by unioning every visible block's own `blues` list against every
 // hash any visible block references as a parent. A block whose classifying
 // child hasn't arrived in the visible window yet (normally just the newest
-// column) is left "pending" rather than guessed. Blocks at or above
-// KNIGHTDAG_ACTIVATION_HEIGHT get a small ◆ marker: GHOSTDAG's fixed
-// per-epoch K no longer applies to them — each infers its own from the DAG
-// around it (see the Network → Consensus tab).
+// column) is left "pending" rather than guessed. Every block carrying
+// k_eff (backend-computed — see Block.KEff) gets a gold diamond frame:
+// GHOSTDAG's fixed per-epoch K didn't apply to it — it inferred its own
+// from the DAG around it (see the Network → Consensus tab).
 function renderDagView(rawBlocks, canonicalHashSet) {
   const svg = document.getElementById('dag-svg');
   const wrap = document.getElementById('dag-wrap');
@@ -3204,7 +3217,11 @@ function renderDagView(rawBlocks, canonicalHashSet) {
     // classified by anything in the window (pending — normally just the
     // newest column).
     const status = n.canonical ? 'selected' : (blueSet.has(hash) ? 'blue' : (referencedSet.has(hash) ? 'red' : 'pending'));
-    const isKnight = n.block.height >= KNIGHTDAG_ACTIVATION_HEIGHT;
+    // Authoritative: k_eff is only ever set by the backend for a block whose
+    // OWN computeGHOSTDAGState actually ran the adaptive-K path — see
+    // knightdagActivationHeight's own comment above for why this must never
+    // be re-derived from a height comparison client-side.
+    const isKnight = n.block.k_eff != null;
     const isNew = !previousDagHashes.has(hash);
     const g = document.createElementNS(svgNS, 'g');
     g.setAttribute('class', 'dag-node dag-node-' + status + (n.canonical ? '' : ' dag-sibling') + (isNew ? ' dag-node-new' : ''));
@@ -3277,7 +3294,10 @@ function renderDagView(rawBlocks, canonicalHashSet) {
   // regime the chain is in).
   let firstKnightCol = -1;
   for (let ci = 0; ci < heights.length; ci++) {
-    if (heights[ci] >= KNIGHTDAG_ACTIVATION_HEIGHT) { firstKnightCol = ci; break; }
+    // Authoritative per-column check: does ANY block at this height carry
+    // k_eff? (Same reasoning as isKnight above — never a height guess.)
+    const blocksHere = byHeight[heights[ci]] || [];
+    if (blocksHere.some(function(b) { return b.k_eff != null; })) { firstKnightCol = ci; break; }
   }
   if (firstKnightCol > 0) {
     const bx = DAG_PAD + firstKnightCol * DAG_COL_W - DAG_COL_W / 2;
@@ -3295,24 +3315,24 @@ function renderDagView(rawBlocks, canonicalHashSet) {
   }
   const knightStatusEl = document.getElementById('dag-knight-status');
   if (knightStatusEl && heights.length) {
-    const newestHeight = heights[heights.length - 1];
-    if (newestHeight >= KNIGHTDAG_ACTIVATION_HEIGHT) {
+    // Authoritative: "active" means at least one VISIBLE block actually
+    // carries k_eff, not a height guess — see isKnight's own comment above.
+    const ks = [];
+    Object.keys(nodePos).forEach(function(h2) {
+      const ke = nodePos[h2].block.k_eff;
+      if (ke != null) ks.push(ke);
+    });
+    if (ks.length) {
       // Median inferred k across the visible window — the one number that
-      // shows the adaptive layer actually working (k_eff comes from the
-      // node's own computeGHOSTDAGState, see Block.KEff).
-      const ks = [];
-      Object.keys(nodePos).forEach(function(h2) {
-        const ke = nodePos[h2].block.k_eff;
-        if (ke != null) ks.push(ke);
-      });
-      let kNote = '';
-      if (ks.length) {
-        ks.sort(function(a, b) { return a - b; });
-        kNote = ' · median k=' + ks[Math.floor(ks.length / 2)];
-      }
-      knightStatusEl.textContent = '· ◆ KnightDAG active' + kNote;
+      // shows the adaptive layer actually working.
+      ks.sort(function(a, b) { return a - b; });
+      knightStatusEl.textContent = '· ◆ KnightDAG active · median k=' + ks[Math.floor(ks.length / 2)];
+    } else if (isFinite(knightdagActivationHeight)) {
+      // knightdagActivationHeight (from /api/status) is only used for this
+      // informational text — never to decide a per-block marker.
+      knightStatusEl.textContent = '· KnightDAG activates at #' + knightdagActivationHeight.toLocaleString();
     } else {
-      knightStatusEl.textContent = '· KnightDAG activates at #' + KNIGHTDAG_ACTIVATION_HEIGHT.toLocaleString();
+      knightStatusEl.textContent = '';
     }
   }
 
@@ -3562,9 +3582,9 @@ function openBlock(hash) {
     pending: '○ not yet classified (its classifying block hasn\'t arrived)'
   }[verdict];
   html += '<div class="bdc-row"><div class="bdc-k">GHOSTDAG Verdict</div><div class="bdc-v" style="color:' + verdictColor + ';font-weight:700">' + verdictText + '</div></div>';
-  if (b.height >= KNIGHTDAG_ACTIVATION_HEIGHT) {
-    const kEffText = (b.k_eff != null) ? ('◆ inferred k=' + b.k_eff + ' (adaptive)') : '◆ adaptive K active for this block';
-    html += '<div class="bdc-row"><div class="bdc-k">KnightDAG</div><div class="bdc-v" style="color:var(--gold);font-weight:700">' + sanitize(kEffText) + '</div></div>';
+  if (b.k_eff != null) {
+    html += '<div class="bdc-row"><div class="bdc-k">KnightDAG</div><div class="bdc-v" style="color:var(--gold);font-weight:700">'
+      + sanitize('◆ inferred k=' + b.k_eff + ' (adaptive)') + '</div></div>';
   }
   // Confirmation confidence: a real number derived from GHOSTDAG's own
   // blue-weight accumulation (DAGKNIGHT's actual contribution — confidence

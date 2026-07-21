@@ -788,6 +788,17 @@ func (a *APIServer) handleStatus(w http.ResponseWriter, r *http.Request) {
 		"pool_ubi":             fmt.Sprintf("%.4f", a.state.GetBalance(ubiPoolAddr)),
 		"pool_treasury":        fmt.Sprintf("%.4f", a.state.GetBalance(treasuryPoolAddr)),
 		"ubi_next_payout_secs": nextUBISecs,
+		// knightdag_activation_height: the AUTHORITATIVE, backend-configured
+		// height (KNIGHTDAG_ACTIVATION_HEIGHT env var, or the default — see
+		// knightdagActivationHeight's own comment in block.go). The explorer
+		// used to hardcode its own copy of this number; if an operator ever
+		// set the env var to something else, the two silently disagreed —
+		// diamonds could appear on blocks the header text still called
+		// "not yet active". The frontend now only uses this value for the
+		// "activates at #X" status text; every per-block decision (which
+		// blocks get the KnightDAG diamond) reads block.k_eff directly,
+		// which is never guessed.
+		"knightdag_activation_height": knightdagActivationHeight,
 		// latency: the real, measured end-to-end block-propagation numbers
 		// this node has observed (see LatencyTelemetry's own comment) — the
 		// actual figures BLOCK_TIME/circuit-breaker/finality-slack tuning
@@ -2654,10 +2665,18 @@ func (a *APIServer) handleValidatorLabels(w http.ResponseWriter, r *http.Request
 	if a.blockchain != nil && a.blockchain.state != nil {
 		ordinals = a.blockchain.state.GetValidatorOrdinals()
 	}
-	if ordinals == nil {
-		ordinals = map[string]int{}
+	labels := make(map[string]string, len(ordinals)+len(validatorLabelOverrides))
+	for addr, ord := range ordinals {
+		labels[addr] = fmt.Sprintf("Validator #%d", ord)
 	}
-	json.NewEncoder(w).Encode(map[string]interface{}{"labels": ordinals})
+	// VALIDATOR_LABELS overrides take precedence — see its own comment
+	// (block.go) for why this, not the per-node ordinal above, is the only
+	// way "Primary" gets labeled at all and the only way numbering is
+	// guaranteed identical across every node's explorer.
+	for addr, label := range validatorLabelOverrides {
+		labels[addr] = label
+	}
+	json.NewEncoder(w).Encode(map[string]interface{}{"labels": labels})
 }
 
 // handleSigningAddress returns this node's signing address, protected by

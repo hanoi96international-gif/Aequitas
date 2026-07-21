@@ -788,6 +788,54 @@ func loadAuthorizedValidators() map[string]bool {
 	return m
 }
 
+// validatorLabelOverrides parses VALIDATOR_LABELS, an operator-configured
+// list of explicit display labels — format "Label:0xAddress,Label:0xAddress,..."
+// e.g. "Primary:0xB6...,Validator 1:0xD0...,Validator 2:0xa4...". Must be
+// set IDENTICALLY on every node, the same trust model this codebase already
+// uses for KNIGHTDAG_ACTIVATION_HEIGHT (see its own comment) and
+// AUTHORIZED_VALIDATORS above — loaded once at startup into a package var.
+//
+// Two problems neither of this file's existing validator bookkeeping tables
+// can solve made this necessary rather than deriving it automatically:
+//  1. "Primary" is a deployment role (IS_PRIMARY_NODE, set per-process),
+//     not anything recorded on-chain or in any table a node can look up
+//     for a PEER's address — there is no existing signal any node can use
+//     to learn "this OTHER validator is the primary" at all.
+//  2. registered_nodes (GetValidatorOrdinals' source) is populated only by
+//     each node's own RegisterNode(NODE_OPERATOR_WALLET) call for ITSELF
+//     at startup — never for peers — so its contents, and therefore any
+//     ordinal derived from it, can genuinely differ from one node's local
+//     database to another's. This explicit, shared config is what actually
+//     guarantees every node's explorer shows the identical label for the
+//     identical address, which per-node-derived ordinals cannot.
+// Any address not covered by this override falls back to the existing
+// GetValidatorOrdinals()-derived "Validator #N" numbering — unchanged
+// default behavior for any deployment that doesn't set this var, and a
+// working (if not launch-fleet-curated) label for a newly-joined validator
+// before an operator adds it here.
+func loadValidatorLabelOverrides() map[string]string {
+	out := map[string]string{}
+	raw := os.Getenv("VALIDATOR_LABELS")
+	if raw == "" {
+		return out
+	}
+	for _, pair := range strings.Split(raw, ",") {
+		parts := strings.SplitN(pair, ":", 2)
+		if len(parts) != 2 {
+			continue
+		}
+		label := strings.TrimSpace(parts[0])
+		addr := strings.ToLower(strings.TrimSpace(parts[1]))
+		if label == "" || !strings.HasPrefix(addr, "0x") || len(addr) != 42 {
+			continue
+		}
+		out[addr] = label
+	}
+	return out
+}
+
+var validatorLabelOverrides = loadValidatorLabelOverrides()
+
 // GetSigningKey returns the ECDSA private key used to sign blocks, or nil
 // if no signing key is configured. Used by the snapshot handler to sign
 // exported snapshots so peer nodes can verify their authenticity.

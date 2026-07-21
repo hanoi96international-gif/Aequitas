@@ -2225,17 +2225,30 @@ func (cs *ChainState) GetRegisteredNodes() []string {
 }
 
 // GetValidatorOrdinals returns a stable "Validator #N" label for every
-// signing address that has ever registered, numbered by registration
-// order (registered_at ASC) — 1-indexed, keyed by lower-cased
-// signing_address (the same address that appears as a block's Proposer
-// field). Used by the explorer to show a friendly label alongside a raw
-// 0x address without hardcoding any specific node's identity — a
-// deliberate design choice: this project explicitly invites any
-// registered human to run a validator node, so baking in "Primary/
-// Contabo 1/Contabo 2"-style names would need updating by hand every time
-// a new node joins and would misrepresent the network as closed. The
-// ordinal is purely registration order, learned the same way for every
-// node without any operator ever hand-editing this list.
+// signing address THIS NODE'S OWN registered_nodes table knows about,
+// numbered by THIS NODE'S local registration order (registered_at ASC) —
+// 1-indexed, keyed by lower-cased signing_address (the same address that
+// appears as a block's Proposer field). Used by the explorer to show a
+// friendly label alongside a raw 0x address without hardcoding any
+// specific node's identity — a deliberate design choice: this project
+// explicitly invites any registered human to run a validator node, so
+// baking in "Primary/Contabo 1/Contabo 2"-style names would need updating
+// by hand every time a new node joins and would misrepresent the network
+// as closed.
+//
+// Known limitation (launch-night finding, 2026-07-21): registered_nodes is
+// populated ONLY by each node's own RegisterNode(NODE_OPERATOR_WALLET) call
+// for ITSELF at startup — there is no cross-node sync for this table, unlike
+// validator_keys/validator_slots. Two different nodes can therefore compute
+// two different ordinals for the same address, purely from each one's own
+// local registration history. handleValidatorLabels (api.go) layers the
+// operator-configured VALIDATOR_LABELS override on top of this function's
+// result specifically to fix that: setting the SAME override string
+// identically on every node (the same trust model as
+// KNIGHTDAG_ACTIVATION_HEIGHT) is what actually guarantees identical labels
+// fleet-wide, including "Primary" for the deployment's trusted-seed node —
+// this function alone cannot express that role at all, since IS_PRIMARY_NODE
+// is per-process knowledge with no existing cross-node signal.
 //
 // FIX (2026-07-05 — website audit / UX finding): the block explorer only
 // ever showed raw hex addresses for the proposer column, which is exactly
