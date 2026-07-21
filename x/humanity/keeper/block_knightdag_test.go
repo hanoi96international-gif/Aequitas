@@ -5,6 +5,18 @@ import (
 	"testing"
 )
 
+// withKnightdagActive forces the adaptive-K path on regardless of block
+// height, restoring the previous knightdagActivationHeight on test cleanup.
+// These tests exercise the classification ALGORITHM itself (a concern
+// separate from the network's actual rollout height) with small synthetic
+// heights (0-2), which sit well below any real activation height.
+func withKnightdagActive(t *testing.T) {
+	t.Helper()
+	prev := knightdagActivationHeight
+	knightdagActivationHeight = 0
+	t.Cleanup(func() { knightdagActivationHeight = prev })
+}
+
 // TestKnightdagConcCache_SymmetricAndConsistent pins the cache's contract:
 // concurrent(x,y) must equal concurrent(y,x), a block is never concurrent
 // with itself, ancestor/descendant pairs are not concurrent, and true
@@ -75,6 +87,7 @@ func buildSiblingBurstDAG(t *testing.T, dag *BlockDAG, n int) *Block {
 // holds) → K_eff=2, three blue / one red, BlueScore = 1+1+3 = 5 instead of
 // the fixed-K value 6.
 func TestKnightDAG_AdaptiveKReducesBlues(t *testing.T) {
+	withKnightdagActive(t)
 	dag := newGhostdagTestDAG()
 	child := buildSiblingBurstDAG(t, dag, 5)
 	dag.blocks[child.Hash] = child

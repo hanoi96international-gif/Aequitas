@@ -12,6 +12,7 @@ import (
 "math/big"
 "os"
 "runtime/debug"
+"strconv"
 "strings"
 "sort"
 "sync"
@@ -6069,11 +6070,61 @@ func (dag *BlockDAG) computeGHOSTDAGState(block *Block) (missingAncestor string,
 	// every node by construction, so every node infers the identical K_eff
 	// for the identical block.
 	cc := dag.newKnightdagConcCache(&dbBudget)
-	_, blues := dag.knightdagInferK(sorted, cc)
+	var blues []string
+	if block.Height >= knightdagActivationHeight {
+		_, blues = dag.knightdagInferK(sorted, cc)
+	} else {
+		// Below the activation height: classify with the ceiling directly,
+		// bit-for-bit the pre-KnightDAG rule — see knightdagActivationHeight's
+		// own comment for why this matters (a node re-deriving OLD state must
+		// reproduce exactly what every other node already committed for it,
+		// independent of which code version originally computed it).
+		blues = knightdagClassify(sorted, dag.k(), cc)
+	}
 
 	block.Blues = blues
 	block.BlueScore = maxScore + 1 + int64(len(blues)) // SP always contributes +1
 	return "", true
+}
+
+// knightdagDefaultActivationHeight is the fallback used when
+// KNIGHTDAG_ACTIVATION_HEIGHT is unset: the live chain height (~1,503,522)
+// observed when KnightDAG shipped (2026-07-21, ~19:57 UTC, fleet: Contabo 1,
+// Contabo 2, and the Railway-hosted Primary), plus a buffer sized to give
+// every validator in the fleet time to redeploy before the chain reaches
+// it, even at an aggressive ~1 block/s production rate. If the fleet's
+// actual redeploy timing differs, set KNIGHTDAG_ACTIVATION_HEIGHT explicitly
+// — to the SAME value on every node, since an inconsistent height across
+// the fleet reproduces exactly the cross-node BlueScore divergence this
+// gate exists to prevent.
+const knightdagDefaultActivationHeight int64 = 1520000
+
+// knightdagActivationHeight is the first block height at which adaptive K
+// classification (knightdagInferK) applies. Below it, classification always
+// uses the epoch ceiling directly (knightdagClassify at dag.k()) — bit-for-
+// bit the classic pre-KnightDAG rule. This is what makes a node re-deriving
+// historical GHOSTDAG state (resync-from-snapshot, deepscan, orphan
+// catch-up) reproduce exactly what every other node already committed for
+// an old block, regardless of which code version originally computed it —
+// the alternative (adaptive from height 0) would let a resyncing node
+// compute a DIFFERENT BlueScore than what the network already agreed on.
+// A package var (not a const) so tests can override it; production nodes
+// only ever set it via KNIGHTDAG_ACTIVATION_HEIGHT (loaded once at
+// startup — this is a network-wide protocol parameter, not something that
+// should change while a node is running).
+var knightdagActivationHeight int64 = loadKnightdagActivationHeight()
+
+func loadKnightdagActivationHeight() int64 {
+	raw := strings.TrimSpace(os.Getenv("KNIGHTDAG_ACTIVATION_HEIGHT"))
+	if raw == "" {
+		return knightdagDefaultActivationHeight
+	}
+	v, err := strconv.ParseInt(raw, 10, 64)
+	if err != nil {
+		fmt.Printf("[KNIGHTDAG] ⚠ invalid KNIGHTDAG_ACTIVATION_HEIGHT=%q (%v) — using default %d\n", raw, err, knightdagDefaultActivationHeight)
+		return knightdagDefaultActivationHeight
+	}
+	return v
 }
 
 // knightdagConcCache memoizes the symmetric "concurrent" (mutual-anticone)
