@@ -1,6 +1,11 @@
 package keeper
 
-import _ "embed"
+import (
+	_ "embed"
+	"fmt"
+	"hash/crc32"
+	"strings"
+)
 
 // The Explorer UI used to live entirely inside this file as one ~6800-line
 // Go raw string literal (explorerHTML). That made the file unwieldy to
@@ -23,6 +28,36 @@ var explorerCSS string
 
 //go:embed assets/explorer.js
 var explorerJS string
+
+// explorerCSSVersion/explorerJSVersion fingerprint the embedded content so
+// browsers never serve a stale cached copy after a deploy.
+//
+// FIX (2026-07-21): handleExplorerCSS/handleExplorerJS set a 1-hour browser
+// cache on plain, unversioned "/explorer.css"/"/explorer.js" URLs. A visitor
+// whose browser had already cached either file within the last hour kept
+// serving that stale copy for the rest of the hour — completely independent
+// of how many times the server redeployed in between — while handleUI's
+// always-fresh, no-cache HTML rendered immediately. Confirmed live: DAG-view
+// and Consensus-tab changes landed in explorerHTML but stayed invisible to
+// an already-open browser tab because the JS/CSS it had cached was still the
+// pre-deploy version. explorerHTML now links to "/explorer.css?v=<hash>" and
+// "/explorer.js?v=<hash>" (see explorerHTMLVersioned below) instead of the
+// bare paths — a content change produces a different hash and therefore a
+// different URL, which a browser has never cached, so the cache no longer
+// needs to be short-lived to stay correct (see handleExplorerCSS/JS's own
+// comment for the resulting long, safe cache lifetime).
+var explorerCSSVersion = fmt.Sprintf("%08x", crc32.ChecksumIEEE([]byte(explorerCSS)))
+var explorerJSVersion = fmt.Sprintf("%08x", crc32.ChecksumIEEE([]byte(explorerJS)))
+
+// explorerHTMLVersioned is explorerHTML with its stylesheet/script tags
+// pointed at content-hashed URLs — computed once at startup (not per
+// request; the embedded content, and therefore the hashes, never change for
+// the lifetime of a running binary). handleUI serves this instead of the
+// raw explorerHTML.
+var explorerHTMLVersioned = strings.NewReplacer(
+	`href="/explorer.css"`, `href="/explorer.css?v=`+explorerCSSVersion+`"`,
+	`src="/explorer.js"`, `src="/explorer.js?v=`+explorerJSVersion+`"`,
+).Replace(explorerHTML)
 
 // FIX (Monster Audit 2026-07-12, P1): the register/wallet page used to load
 // ethers and the price-chart library straight from cdnjs.cloudflare.com /

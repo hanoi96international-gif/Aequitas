@@ -1702,23 +1702,30 @@ func (a *APIServer) handleUI(w http.ResponseWriter, r *http.Request) {
 	// from window.location.pathname immediately on DOMContentLoaded.
 	// This avoids all server-side HTML manipulation and the race conditions
 	// it creates between server-injected classes and JS-driven tab switching.
-	fmt.Fprint(w, explorerHTML)
+	// explorerHTMLVersioned (not the raw explorerHTML) — see its own comment
+	// in api_html.go for why: it points at content-hashed CSS/JS URLs so a
+	// browser that cached last deploy's assets fetches this deploy's instead.
+	fmt.Fprint(w, explorerHTMLVersioned)
 }
 
 // handleExplorerCSS/handleExplorerJS serve the Explorer UI's stylesheet and
 // script, split out of the HTML document (and out of api_html.go) — see
-// that file's own comment. Long cache lifetime is safe: both are embedded
-// into the binary at build time, so a new deploy always serves a new URL
-// generation's content, never a stale cached one mismatched to a newer HTML.
+// that file's own comment. explorerHTMLVersioned requests these by a
+// content-hashed "?v=" query string (api_html.go), so a genuinely long,
+// "immutable" cache lifetime is now actually safe — unlike the previous
+// max-age=3600 on the bare unversioned path, a content change here changes
+// the hash and therefore the URL a browser fetches, rather than relying on
+// every browser's cache happening to have expired by the time of the next
+// deploy (see explorerCSSVersion's own comment for the incident this fixes).
 func (a *APIServer) handleExplorerCSS(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/css; charset=utf-8")
-	w.Header().Set("Cache-Control", "public, max-age=3600")
+	w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
 	fmt.Fprint(w, explorerCSS)
 }
 
 func (a *APIServer) handleExplorerJS(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/javascript; charset=utf-8")
-	w.Header().Set("Cache-Control", "public, max-age=3600")
+	w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
 	fmt.Fprint(w, explorerJS)
 }
 
