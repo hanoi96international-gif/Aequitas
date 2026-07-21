@@ -4727,7 +4727,21 @@ async function connectWalletConnect() {
     document.getElementById('swap-btn-addliq').disabled = false;
     setSwapDirection('aeq_to_tusd');
   } catch (e) {
-    walletLog('WalletConnect connection failed: ' + sanitize(e.message || String(e)), 'err');
+    // Closing the QR modal, or clicking Connect a second time while a pairing
+    // is still pending, makes the library reject the FIRST (now-aborted)
+    // promise with "Connection request reset"/"Proposal expired"/a user-
+    // rejection — none of these are real failures the user needs a red error
+    // for; they just cancelled or restarted. Show those as a neutral hint and
+    // drop the stale provider so the next click starts a clean pairing,
+    // instead of the alarming "connection failed" the raw message produced.
+    const msg = (e && e.message ? e.message : String(e)) || '';
+    const benign = /reset|expired|rejected|closed|cancell?ed|user (?:denied|declined)|modal/i.test(msg);
+    if (benign) {
+      wcProvider = null; // force a fresh EthereumProvider.init() on retry
+      walletLog('WalletConnect cancelled — tap CONNECT WALLETCONNECT again to retry.', 'info');
+    } else {
+      walletLog('WalletConnect connection failed: ' + sanitize(msg || 'unknown error'), 'err');
+    }
   }
 }
 
