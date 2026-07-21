@@ -2991,6 +2991,10 @@ function drawPriceChart() {
 
 let allBlocks = [];
 let latestChainHeight = 0;
+// latestTipBlueScore backs openBlock()'s confirmation-confidence estimate —
+// see its own comment. Updated on every loadBlocks() poll from the newest
+// canonical block, exactly like latestChainHeight above.
+let latestTipBlueScore = 0;
 let dagAutoScrolled = false;
 let validatorLabels = {};
 
@@ -3406,6 +3410,9 @@ async function loadBlocks() {
       validatorsEl.textContent = distinctProposers.size;
     }
     const dedupedBlocks = canonicalBlocks.slice().sort(function(a, b) { return b.height - a.height; });
+    if (dedupedBlocks.length && dedupedBlocks[0].blue_score != null) {
+      latestTipBlueScore = dedupedBlocks[0].blue_score;
+    }
     // FIX: this used to show dedupedBlocks.length — the deduped count of
     // whatever page of blocks was just fetched (capped at 50), not the
     // true chain height. Once the chain passed 50 blocks that number
@@ -3556,7 +3563,25 @@ function openBlock(hash) {
   }[verdict];
   html += '<div class="bdc-row"><div class="bdc-k">GHOSTDAG Verdict</div><div class="bdc-v" style="color:' + verdictColor + ';font-weight:700">' + verdictText + '</div></div>';
   if (b.height >= KNIGHTDAG_ACTIVATION_HEIGHT) {
-    html += '<div class="bdc-row"><div class="bdc-k">KnightDAG</div><div class="bdc-v" style="color:var(--gold);font-weight:700">◆ adaptive K active for this block</div></div>';
+    const kEffText = (b.k_eff != null) ? ('◆ inferred k=' + b.k_eff + ' (adaptive)') : '◆ adaptive K active for this block';
+    html += '<div class="bdc-row"><div class="bdc-k">KnightDAG</div><div class="bdc-v" style="color:var(--gold);font-weight:700">' + sanitize(kEffText) + '</div></div>';
+  }
+  // Confirmation confidence: a real number derived from GHOSTDAG's own
+  // blue-weight accumulation (DAGKNIGHT's actual contribution — confidence
+  // grows with confirmed weight, not with a fixed block-count heuristic),
+  // computed entirely client-side from data already on screen. Depth =
+  // how much blue_score has piled up on the canonical chain since this
+  // block. Only meaningful for a block GHOSTDAG has actually accepted
+  // (selected or blue); a pending/red block never gains confidence this way.
+  if (b.blue_score != null && latestTipBlueScore > 0 && (verdict === 'selected' || verdict === 'blue')) {
+    const depth = Math.max(0, latestTipBlueScore - b.blue_score);
+    let confLabel, confColor;
+    if (depth < 1) { confLabel = 'just landed'; confColor = 'var(--muted)'; }
+    else if (depth < 3) { confLabel = 'low — still settling'; confColor = 'var(--gold)'; }
+    else if (depth < 10) { confLabel = 'medium'; confColor = 'var(--teal)'; }
+    else { confLabel = 'high — deeply buried under blue weight'; confColor = 'var(--dag-blue)'; }
+    html += '<div class="bdc-row"><div class="bdc-k">Confirmation Confidence</div><div class="bdc-v" style="color:' + confColor + ';font-weight:700">'
+      + sanitize(confLabel) + ' <span style="color:var(--muted);font-weight:400;font-size:0.55rem">(' + depth + ' blue_score behind tip)</span></div></div>';
   }
   const bLabel = validatorLabel(b.proposer);
   html += '<div class="bdc-row"><div class="bdc-k">Proposer</div><div class="bdc-v" style="color:var(--teal);word-break:break-all;font-size:0.54rem">'
