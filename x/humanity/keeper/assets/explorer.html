@@ -106,8 +106,8 @@
     <div class="wbox" id="wbox"><div class="wlbl" data-i18n="conn-wallet">CONNECTED WALLET</div><div class="wadr" id="wadr" title="">—</div><button data-act="copyAddr" data-args='["wadr"]' style="margin-top:4px;padding:3px 10px;font-size:0.56rem;background:rgba(0,255,209,0.08);border:1px solid rgba(0,255,209,0.2);color:var(--neon);border-radius:4px;cursor:pointer">📋 Copy</button></div>
     <div id="demurrage-notice" style="display:none"></div>
     <div class="pbox" id="pbox"><div class="plbl" data-i18n="proof-recv">⚡ ZK PROOF RECEIVED</div><div class="pval" id="pval" data-i18n="proof-hint">Connect wallet to register</div></div>
-    <button class="rbtn bc" id="btn-conn" data-act="connectWallet" data-i18n="btn-conn">🦊 CONNECT METAMASK</button>
-    <button class="rbtn" id="btn-wc" data-act="connectWalletConnect" style="background:linear-gradient(135deg,#3b99fc,#1e5fd6);color:#fff;margin-top:8px" data-i18n="btn-wc">🔗 CONNECT WALLETCONNECT</button>
+    <button class="rbtn bc" id="btn-conn" data-act="connectWallet" data-i18n="btn-conn" style="display:none">🦊 CONNECT METAMASK</button>
+    <button class="rbtn bc" id="btn-wc" data-act="connectWalletConnect" style="background:linear-gradient(135deg,#3b99fc,#1e5fd6);color:#fff" data-i18n="btn-wc">🔗 CONNECT WALLETCONNECT</button>
     <button id="btn-disconnect" data-act="disconnectWallet" style="display:none;margin-top:6px;padding:8px 16px;font-size:0.6rem;letter-spacing:1px;border:1px solid rgba(248,113,113,0.4);background:rgba(248,113,113,0.08);color:var(--red);border-radius:6px;cursor:pointer;width:100%">⊘ DISCONNECT WALLET</button>
     <button class="rbtn br" id="btn-reg" data-act="doRegister" disabled data-i18n="btn-reg">🔐 REGISTER ON-CHAIN</button>
     <div class="rlog" id="rlog"><span class="info" data-i18n="reg-log-hint">// Open Aequitas Android App to generate your proof, then return here...</span></div>
@@ -474,8 +474,8 @@
     </div>
     <div id="swap-warn" style="display:none;font-size:13px;padding:10px 12px;border-radius:8px;background:rgba(255,179,0,0.1);border:1px solid rgba(255,179,0,0.3);color:var(--gold);margin-bottom:10px"></div>
 
-    <button class="rbtn bc" id="swap-btn-conn" data-act="connectSwapWallet" data-i18n="btn-conn">🦊 CONNECT METAMASK</button>
-    <button class="rbtn" id="swap-btn-wc" data-act="connectWalletConnect" style="background:linear-gradient(135deg,#3b99fc,#1e5fd6);color:#fff;margin-top:8px" data-i18n="btn-wc">🔗 CONNECT WALLETCONNECT</button>
+    <button class="rbtn bc" id="swap-btn-conn" data-act="connectSwapWallet" data-i18n="btn-conn" style="display:none">🦊 CONNECT METAMASK</button>
+    <button class="rbtn bc" id="swap-btn-wc" data-act="connectWalletConnect" style="background:linear-gradient(135deg,#3b99fc,#1e5fd6);color:#fff" data-i18n="btn-wc">🔗 CONNECT WALLETCONNECT</button>
     <button id="swap-btn-disconnect" data-act="disconnectWallet" style="display:none;margin-top:6px;padding:8px 16px;font-size:0.6rem;letter-spacing:1px;border:1px solid rgba(248,113,113,0.4);background:rgba(248,113,113,0.08);color:var(--red);border-radius:6px;cursor:pointer;width:100%">⊘ DISCONNECT WALLET</button>
     <button class="rbtn br" id="swap-btn-go" data-act="doSwap" disabled data-i18n="swap-btn-go">🔄 SWAP</button>
     <div class="rlog" id="swap-log"><span class="info" data-i18n="swap-log-hint">// Connect your wallet to swap...</span></div>

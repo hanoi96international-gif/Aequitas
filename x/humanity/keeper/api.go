@@ -1695,7 +1695,12 @@ func (a *APIServer) handleUI(w http.ResponseWriter, r *http.Request) {
 	// the wallet list + a domain-verification check from two more of its own
 	// hosts — replaced the WebAuthn "register via browser" flow, whose
 	// device-bound credential never left this origin and needed no CSP change.
-	w.Header().Set("Content-Security-Policy", "default-src 'self' 'unsafe-inline'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.bunny.net; font-src https://fonts.bunny.net; connect-src 'self' https://aequitas.digital wss://relay.walletconnect.org https://relay.walletconnect.org https://api.web3modal.org https://verify.walletconnect.org https://verify.walletconnect.com; img-src 'self' data: https://api.web3modal.org")
+	// img-src needs blob:, not just the api.web3modal.org host: the wallet
+	// icons in the "All Wallets" picker are fetched as a blob over connect-src
+	// (already allowed above) and then rendered via URL.createObjectURL(),
+	// i.e. an <img src="blob:..."> — the https://api.web3modal.org origin
+	// itself is never used directly as an <img> src, only blob: is.
+	w.Header().Set("Content-Security-Policy", "default-src 'self' 'unsafe-inline'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.bunny.net; font-src https://fonts.bunny.net; connect-src 'self' https://aequitas.digital wss://relay.walletconnect.org https://relay.walletconnect.org https://api.web3modal.org https://verify.walletconnect.org https://verify.walletconnect.com; img-src 'self' data: blob: https://api.web3modal.org")
 	path := strings.Trim(r.URL.Path, "/")
 	if idx := strings.Index(path, "/"); idx >= 0 {
 		path = path[:idx]
