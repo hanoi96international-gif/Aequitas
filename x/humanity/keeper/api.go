@@ -748,6 +748,7 @@ func (a *APIServer) handleStatus(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(map[string]interface{}{
 		"chain_id":     "aequitas-1",
 		"version":      "v0.3.0",
+		"git_commit":   buildGitCommit,
 		"height":       latest.Height,
 		"latest_hash":  latest.Hash,
 		"total_humans": a.state.TotalHumans(),

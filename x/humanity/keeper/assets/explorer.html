@@ -277,9 +277,10 @@
       <div class="exp-panel-title"><span class="sec-dot"></span>Latest Blocks</div>
       <div class="sec-count" id="block-count">—</div>
     </div>
+    <div style="padding:8px 16px;font-size:0.55rem;color:var(--muted);border-bottom:1px solid var(--border)">One row per height — the <b>canonical winner</b> GHOSTDAG selected, not every validator that produced at that height. A run of the same proposer here doesn't mean the others are idle: check <b>⟁N</b> next to a block # (parallel blocks merged at that height) or <b>Active Validators</b> above for the real count.</div>
     <div class="exp-table-wrap">
       <table class="exp-table">
-        <thead><tr><th>Block #</th><th>Age</th><th>Txns</th><th>Proposer</th><th>Type</th><th title="GHOSTDAG blue score — canonical ordering key">★ Score</th></tr></thead>
+        <thead><tr><th>Block #</th><th>Age</th><th>Txns</th><th title="The canonical (highest blue_score) proposer at this height — see the note above for why other validators may not appear here">Proposer</th><th>Type</th><th title="GHOSTDAG blue score — canonical ordering key">★ Score</th></tr></thead>
         <tbody id="blocks-list"><tr><td colspan="6" class="exp-empty">Loading blocks...</td></tr></tbody>
       </table>
     </div>

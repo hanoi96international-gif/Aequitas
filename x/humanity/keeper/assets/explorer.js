@@ -2198,23 +2198,47 @@ async function loadTopology() {
     const norm = function(u) { return (u || '').replace(/\/+$/, ''); };
     const peerUrls = Array.isArray(peersRes.peers) ? peersRes.peers : [];
     const dedupedPeers = peerUrls.filter(function(u) { return u && norm(u) !== norm(selfUrl); });
-    const nodes = [{ url: selfUrl, isPrimary: !!statusRes.is_primary, self: true }]
-      .concat(dedupedPeers.map(function(u) { return { url: u, isPrimary: false, self: false }; }));
+    const nodes = [{ url: selfUrl, isPrimary: !!statusRes.is_primary, self: true, gitCommit: statusRes.git_commit }]
+      .concat(dedupedPeers.map(function(u) { return { url: u, isPrimary: false, self: false, gitCommit: null }; }));
 
     if (badge) badge.textContent = '(' + nodes.length + ')';
+
+    // FIX (2026-07-21): fetch each PEER's own /api/status too, not just this
+    // node's — /api/status sets Access-Control-Allow-Origin: * specifically
+    // so this cross-origin read works. The one real question this whole
+    // session kept running into ("is every node actually on the same
+    // commit?") used to require checking each node's CI/deploy history by
+    // hand; now it's answerable at a glance right here. Best-effort: an
+    // HTTPS page fetching a peer that's only reachable over plain HTTP (a
+    // bare-IP node with no TLS cert) gets blocked by the browser as mixed
+    // content — gitCommit just stays null for that peer, rendered as "—"
+    // rather than breaking the rest of the grid.
+    await Promise.all(nodes.filter(function(n) { return !n.self; }).map(function(n) {
+      return fetch(n.url + '/api/status').then(function(r) { return r.json(); }).then(function(s) {
+        n.gitCommit = s.git_commit || null;
+      }).catch(function() { n.gitCommit = null; });
+    }));
+    if (mySeq !== loadTopologySeq) return;
 
     if (grid) {
       const cols = Math.max(1, Math.min(nodes.length, 4));
       grid.style.gridTemplateColumns = 'repeat(' + cols + ', 1fr)';
+      const commits = nodes.map(function(n) { return n.gitCommit; }).filter(Boolean);
+      const allSame = commits.length > 1 && commits.every(function(c) { return c === commits[0]; });
       grid.innerHTML = nodes.map(function(n) {
         let host;
         try { host = new URL(n.url).host; } catch (e) { host = n.url; }
         const role = n.isPrimary ? 'Primary' : 'Secondary';
         const tag = n.self ? ' (this node)' : '';
+        const mismatch = n.gitCommit && commits.length > 1 && !allSame;
+        const commitLine = '<div class="ndesc" style="' + (mismatch ? 'color:var(--dag-red);font-weight:700' : 'color:var(--muted)') + '" title="Build commit this node is running — compare across nodes to confirm the fleet is in sync">'
+          + (n.gitCommit ? ('commit ' + sanitize(n.gitCommit) + (mismatch ? ' ⚠ differs from other nodes' : '')) : 'commit — (peer unreachable from this page, e.g. plain-HTTP node on an HTTPS page)')
+          + '</div>';
         return '<div class="nbox">' +
           '<div class="nstat"><span class="ndot"></span>' + sanitize(role + tag) + '</div>' +
           '<div class="nurl">' + sanitize(host) + '</div>' +
           '<div class="ndesc">API &middot; Block producer &middot; P2P peer &middot; Own PostgreSQL state</div>' +
+          commitLine +
           '</div>';
       }).join('');
     }
