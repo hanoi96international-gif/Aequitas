@@ -177,6 +177,39 @@ func (dag *BlockDAG) recordForeignMergeForProposer(proposer string) {
 // recordForeignAttachLatency's own comment.
 const foreignAttachLatencyLogInterval = 30 * time.Second
 
+// latencyWindow is a closed accumulation window's summary — see
+// lastForeignLatencyWindow's own comment (block.go) for why this is kept
+// separately from the live, currently-accumulating counters.
+type latencyWindow struct {
+	Count int   `json:"count"`
+	AvgMs int64 `json:"avg_ms"`
+	MaxMs int64 `json:"max_ms"`
+}
+
+// LatencyTelemetry is the scaling-relevant subset of real, measured
+// end-to-end block-propagation latency this node has observed — the actual
+// numbers every BLOCK_TIME/circuit-breaker/finality-slack tuning decision
+// should fit comfortably inside, surfaced for operators and any future
+// adaptive-tuning logic instead of living only in log lines.
+type LatencyTelemetry struct {
+	ForeignAttach latencyWindow `json:"foreign_attach"` // sender ProducedAtMs → this node's AddPeerBlock commit (post-gates)
+	RawArrival    latencyWindow `json:"raw_arrival"`    // sender ProducedAtMs → AddPeerBlock entry (pre-gates)
+}
+
+// GetLatencyTelemetry returns the most recently closed latency window for
+// both measurement points. Read-only, safe for concurrent use with the
+// recorder goroutines (separate mutexes per window, matching how they're
+// written).
+func (dag *BlockDAG) GetLatencyTelemetry() LatencyTelemetry {
+	dag.foreignLatencyMu.Lock()
+	fw := dag.lastForeignLatencyWindow
+	dag.foreignLatencyMu.Unlock()
+	dag.rawArrivalLatencyMu.Lock()
+	rw := dag.lastRawArrivalLatencyWindow
+	dag.rawArrivalLatencyMu.Unlock()
+	return LatencyTelemetry{ForeignAttach: fw, RawArrival: rw}
+}
+
 // recordForeignAttachLatency accumulates a real, measured end-to-end
 // latency sample (ProducedAtMs on the sender to time-of-attach here — see
 // that field's own comment in block.go) and periodically logs a summary
@@ -206,15 +239,16 @@ func (dag *BlockDAG) recordForeignAttachLatency(ms int64) {
 	if !dag.lastForeignLatencyLogAt.CompareAndSwap(last, now) {
 		return // another goroutine's log just won the race
 	}
-	dag.foreignLatencyMu.Lock()
-	dag.foreignLatencyCount = 0
-	dag.foreignLatencySumMs = 0
-	dag.foreignLatencyMaxMs = 0
-	dag.foreignLatencyMu.Unlock()
 	avg := int64(0)
 	if count > 0 {
 		avg = sum / int64(count)
 	}
+	dag.foreignLatencyMu.Lock()
+	dag.foreignLatencyCount = 0
+	dag.foreignLatencySumMs = 0
+	dag.foreignLatencyMaxMs = 0
+	dag.lastForeignLatencyWindow = latencyWindow{Count: count, AvgMs: avg, MaxMs: maxMs}
+	dag.foreignLatencyMu.Unlock()
 	fmt.Printf("[LATENCY] Real end-to-end attach latency over the last %s: %d sample(s), avg %dms, max %dms — the actual real-world number every BLOCK_TIME/circuit-breaker decision needs to fit inside.\n",
 		foreignAttachLatencyLogInterval, count, avg, maxMs)
 }
@@ -245,15 +279,16 @@ func (dag *BlockDAG) recordRawArrivalLatency(ms int64) {
 	if !dag.lastRawArrivalLatencyLogAt.CompareAndSwap(last, now) {
 		return // another goroutine's log just won the race
 	}
-	dag.rawArrivalLatencyMu.Lock()
-	dag.rawArrivalLatencyCount = 0
-	dag.rawArrivalLatencySumMs = 0
-	dag.rawArrivalLatencyMaxMs = 0
-	dag.rawArrivalLatencyMu.Unlock()
 	avg := int64(0)
 	if count > 0 {
 		avg = sum / int64(count)
 	}
+	dag.rawArrivalLatencyMu.Lock()
+	dag.rawArrivalLatencyCount = 0
+	dag.rawArrivalLatencySumMs = 0
+	dag.rawArrivalLatencyMaxMs = 0
+	dag.lastRawArrivalLatencyWindow = latencyWindow{Count: count, AvgMs: avg, MaxMs: maxMs}
+	dag.rawArrivalLatencyMu.Unlock()
 	fmt.Printf("[LATENCY-RAW] Raw arrival latency (before any gate) over the last %s: %d sample(s), avg %dms, max %dms.\n",
 		foreignAttachLatencyLogInterval, count, avg, maxMs)
 }

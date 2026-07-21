@@ -775,6 +775,13 @@ func (a *APIServer) handleStatus(w http.ResponseWriter, r *http.Request) {
 		"pool_ubi":             fmt.Sprintf("%.4f", a.state.GetBalance(ubiPoolAddr)),
 		"pool_treasury":        fmt.Sprintf("%.4f", a.state.GetBalance(treasuryPoolAddr)),
 		"ubi_next_payout_secs": nextUBISecs,
+		// latency: the real, measured end-to-end block-propagation numbers
+		// this node has observed (see LatencyTelemetry's own comment) — the
+		// actual figures BLOCK_TIME/circuit-breaker/finality-slack tuning
+		// should fit inside, surfaced for operators instead of living only
+		// in log lines. Empty/zero until the first foreignAttachLatencyLogInterval
+		// window closes after startup.
+		"latency": a.blockchain.GetLatencyTelemetry(),
 	})
 }
 

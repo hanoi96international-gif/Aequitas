@@ -481,6 +481,16 @@ replayedMu             sync.Mutex
 	foreignLatencySumMs     int64
 	foreignLatencyMaxMs     int64
 	lastForeignLatencyLogAt atomic.Int64
+	// lastForeignLatencyWindow holds the avg/max/count from the most
+	// recently CLOSED accumulation window — foreignLatencyCount/SumMs/MaxMs
+	// above reset to zero every foreignAttachLatencyLogInterval (see
+	// recordForeignAttachLatency), so without this, anything reading the
+	// live counters between resets would see a value that's climbing from
+	// zero rather than the actual last-known measurement. Exposed via
+	// GetLatencyTelemetry for /api/status — a permanent operational signal,
+	// not just a log line, per the launch-night scaling roadmap.
+	lastForeignLatencyWindow    latencyWindow
+	lastRawArrivalLatencyWindow latencyWindow
 	// rawArrivalLatency* mirrors foreignLatency* but measures BEFORE any
 	// gate (circuit breaker, far-ahead cap, etc.) — see
 	// recordRawArrivalLatency's own comment (AddPeerBlock's entry) for why
