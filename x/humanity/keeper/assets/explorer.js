@@ -1944,8 +1944,18 @@ function showStab(parentId, stabId, el) {
   if (stabId === 'eqi-lorenz') { setTimeout(drawLorenzCurve, 30); }
   if (stabId === 'eqi-economy') { setTimeout(drawWcapSlideChart, 30); }
   // Push sub-route URL
+  // FIX (2026-07-21): this map must have one entry per real stab-panel id
+  // (see the <div id="..." class="stab-panel"> list in explorer.html) or a
+  // reload silently loses the sub-tab — a panel missing here isn't visibly
+  // broken while clicking around (showStab above already switched the
+  // visible panel), it only surfaces on refresh, when activateTabFromPath
+  // has no URL slug to restore and falls back to the tab's first panel.
+  // 'eqi-charts' never matched any real id (the panel is 'eqi-story');
+  // 'net-consensus'/'net-story' were missing outright — both silently
+  // broken sub-tabs, reported live as "refresh jumps back to Overview or
+  // Run a Node" for the Network tab specifically.
   const tabSlugMap = {'tab-register':'register','tab-explorer':'explorer','tab-index':'index','tab-network':'network','tab-exchange':'exchange'};
-  const stabSlugMap = {'sep-blocks':'blocks','sep-humans':'humans','eqi-score':'score','eqi-lorenz':'distribution','eqi-economy':'economy','eqi-charts':'charts','net-overview':'overview','net-runnode':'node','net-protocol':'protocol','exch-swap':'swap','exch-liquidity':'liquidity'};
+  const stabSlugMap = {'sep-blocks':'blocks','sep-humans':'humans','eqi-score':'score','eqi-lorenz':'distribution','eqi-economy':'economy','eqi-story':'story','net-overview':'overview','net-consensus':'consensus','net-story':'story','net-runnode':'node','net-protocol':'protocol','exch-swap':'swap','exch-liquidity':'liquidity'};
   const tabSlug = tabSlugMap[parentId];
   const stabSlug = stabSlugMap[stabId];
   if (tabSlug && stabSlug) history.pushState(null, '', '/' + tabSlug + '/' + stabSlug);
@@ -4328,11 +4338,14 @@ function activateTabFromPath(path) {
   if (!tabContent) return;
   tabContent.classList.add('active');
   tabEl.classList.add('active');
-  // Activate stab-panel: use URL slug if present, otherwise first panel
+  // Activate stab-panel: use URL slug if present, otherwise first panel.
+  // Must mirror showStab's stabSlugMap above (own FIX comment there) —
+  // 'consensus'/'story' were missing for network, which is what made a
+  // reload on those two sub-tabs fall through to the first panel instead.
   const stabMap = {
     explorer:  {blocks:'sep-blocks', humans:'sep-humans'},
     index:     {score:'eqi-score', distribution:'eqi-lorenz', economy:'eqi-economy', story:'eqi-story'},
-    network:   {overview:'net-overview', node:'net-runnode', protocol:'net-protocol'},
+    network:   {overview:'net-overview', consensus:'net-consensus', story:'net-story', node:'net-runnode', protocol:'net-protocol'},
     exchange:  {swap:'exch-swap', liquidity:'exch-liquidity'}
   };
   const panels = tabContent.querySelectorAll('.stab-panel');
