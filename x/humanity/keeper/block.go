@@ -5947,10 +5947,12 @@ func (dag *BlockDAG) mergeDepthLimit() int {
 // the result in block.SelectedParent, block.Blues, and block.BlueScore.
 // Must be called under dag.mu.
 //
-// Real GHOSTDAG (Sompolinsky-Zohar 2018):
+// GHOSTDAG (Sompolinsky-Zohar 2018) with KNIGHTDAG adaptive classification:
 //   - SelectedParent = parent with highest blue score
 //   - MergeSet       = past(B) ∩ anticone(SelectedParent)  — the "merged" branches
-//   - Blues          = merge-set blocks whose anticone contains ≤K blue blocks
+//   - Blues          = merge-set blocks whose anticone contains ≤K_eff blue
+//     blocks, where K_eff ≤ dag.k() is inferred per block from the merge
+//     set's own concurrency structure (see knightdagInferK)
 //   - BlueScore      = blueScore(SP) + 1 + |Blues|
 //
 // Every node that holds the same block graph computes identical GHOSTDAG state,
@@ -6048,41 +6050,85 @@ func (dag *BlockDAG) computeGHOSTDAGState(block *Block) (missingAncestor string,
 		sorted = sorted[:maxClassifiedMergeSetSize]
 	}
 
-	// Step 4: blue / red classification.
-	// A merge-set block M is blue if the number of already-blue merge-set
-	// blocks in M's anticone is ≤ K.
+	// Step 4: blue / red classification — KNIGHTDAG (adaptive K).
 	//
-	// FIX (scale audit): break out of the inner loop as soon as antiCnt
-	// exceeds K — M is definitely red at that point per the K-cluster rule
-	// itself (anything with more than K blue blocks in its anticone is red,
-	// full stop), so counting the rest of `blues` cannot change the outcome.
-	// The original always scanned the entire `blues` slice for every M,
-	// making this loop O(|mergeSet| x |blues|) unconditionally. Under
-	// honest <=3-validator concurrency (the only scale this was exercised
-	// at — see ghostdagK's comment) `blues` never grows past a couple of
-	// entries so the difference is invisible; under realistic 100-validator
-	// concurrent production almost every M in a large merge set has dozens
-	// of true-anticone siblings, so this turns most classifications into an
-	// O(K) early-exit instead of an O(|blues|) full scan. One of several
-	// fixes needed together (see ghostdagMergeSet, ghostdagIsAncestor, and
-	// the merge-set-size safety valve below) to bring 100 validators x 30
-	// rounds of full concurrent merges from "does not finish in 120s" down
-	// to ~41s in block_ghostdag_scale_test.go's deliberately worst-case
-	// (zero convergence for 30 straight rounds) scenario — comfortably
-	// inside a 6s-per-block production cadence in practice, since real
-	// merge sets stay small once validators see each other's blocks.
-	blues := make([]string, 0, len(sorted))
-	blueScore := maxScore + 1 // SP always contributes +1
+	// Instead of classifying with the epoch ceiling dag.k() directly
+	// (classic GHOSTDAG), infer the smallest K_eff ∈ [0, dag.k()] whose
+	// blue set covers a strict majority of the merge set, and classify
+	// with that (see knightdagInferK). If no K_eff below the ceiling
+	// reaches a majority, classification falls back to the ceiling —
+	// bit-for-bit the pre-KnightDAG behavior — so this is a strict
+	// generalization: a well-connected DAG confirms with a tighter K than
+	// the epoch worst case, a burst degrades to exactly what shipped
+	// before.
+	//
+	// Determinism (the property TestGHOSTDAG_Determinism_OrderIndependent
+	// pins): K_eff is a pure function of the topo-sorted merge set and the
+	// pairwise ancestor relation — both derived from block content only,
+	// never from arrival order — and the ceiling dag.k() is identical on
+	// every node by construction, so every node infers the identical K_eff
+	// for the identical block.
+	cc := dag.newKnightdagConcCache(&dbBudget)
+	_, blues := dag.knightdagInferK(sorted, cc)
 
+	block.Blues = blues
+	block.BlueScore = maxScore + 1 + int64(len(blues)) // SP always contributes +1
+	return "", true
+}
+
+// knightdagConcCache memoizes the symmetric "concurrent" (mutual-anticone)
+// relation between merge-set members for ONE computeGHOSTDAGState call.
+// concurrent(x,y) is a pure function of DAG structure — it does not depend
+// on the k being trialled — so knightdagInferK's multiple classification
+// passes share one cache and the expensive bounded-BFS ancestor walks
+// (ghostdagIsAncestor) are paid at most once per distinct pair, keeping
+// total BFS cost at the same order as a single classic-GHOSTDAG pass.
+type knightdagConcCache struct {
+	dag      *BlockDAG
+	dbBudget *int
+	res      map[[2]string]bool
+}
+
+func (dag *BlockDAG) newKnightdagConcCache(dbBudget *int) *knightdagConcCache {
+	return &knightdagConcCache{dag: dag, dbBudget: dbBudget, res: make(map[[2]string]bool)}
+}
+
+// concurrent reports whether x and y are in each other's anticone (neither
+// is an ancestor of the other). Symmetric, memoized under an ordered key.
+func (cc *knightdagConcCache) concurrent(x, y string) bool {
+	if x == y {
+		return false
+	}
+	key := [2]string{x, y}
+	if y < x {
+		key = [2]string{y, x}
+	}
+	if v, ok := cc.res[key]; ok {
+		return v
+	}
+	v := !cc.dag.ghostdagIsAncestor(key[0], key[1], cc.dbBudget) && !cc.dag.ghostdagIsAncestor(key[1], key[0], cc.dbBudget)
+	cc.res[key] = v
+	return v
+}
+
+// knightdagClassify runs the greedy GHOSTDAG blue/red pass over an already
+// topo-sorted merge set with a GIVEN k: a member is blue iff at most k
+// already-blue members are concurrent with it. The antiCnt>k early break
+// (scale audit, 2026-07) is what keeps a trial at small k cheap — once more
+// than k blues sit in M's anticone it is red per the k-cluster rule itself,
+// so the rest of `blues` cannot change the outcome; without the break this
+// loop is O(|sorted|·|blues|) unconditionally, which at 100-validator
+// concurrent production did not finish within 120s in
+// block_ghostdag_scale_test.go before the break existed.
+func knightdagClassify(sorted []string, k int, cc *knightdagConcCache) []string {
+	blues := make([]string, 0, len(sorted))
 	for _, mHash := range sorted {
 		antiCnt := 0
 		isBlue := true
 		for _, bHash := range blues {
-			// bHash is in M's anticone iff they are concurrent (neither is
-			// an ancestor of the other).
-			if !dag.ghostdagIsAncestor(bHash, mHash, &dbBudget) && !dag.ghostdagIsAncestor(mHash, bHash, &dbBudget) {
+			if cc.concurrent(bHash, mHash) {
 				antiCnt++
-				if antiCnt > dag.k() {
+				if antiCnt > k {
 					isBlue = false
 					break
 				}
@@ -6090,13 +6136,53 @@ func (dag *BlockDAG) computeGHOSTDAGState(block *Block) (missingAncestor string,
 		}
 		if isBlue {
 			blues = append(blues, mHash)
-			blueScore++
 		}
 	}
+	return blues
+}
 
-	block.Blues = blues
-	block.BlueScore = blueScore
-	return "", true
+// knightdagInferK is the KNIGHTDAG core: find the SMALLEST k ∈ [0, dag.k()]
+// whose greedy blue set covers a strict majority (>50%) of the merge set,
+// returning that k and its blue set. Inspired by DAGKNIGHT (Sompolinsky-
+// Sutton 2022): rather than trusting a pre-agreed worst-case K, each
+// block's k is inferred from the concurrency the DAG actually exhibits
+// around it — a well-connected region confirms with a tight k, a bursty
+// region needs a larger one. Two deliberate deviations from the paper,
+// both because Aequitas is a small authorized-validator network, not open
+// PoW:
+//
+//  1. The search is bounded above by the epoch ceiling dag.k() and falls
+//     back to it when no smaller k reaches a majority — the ceiling pass
+//     is bit-for-bit classic GHOSTDAG as shipped before KnightDAG, so the
+//     adaptive layer can only tighten, never loosen, the previous
+//     behavior. Every K-derived traversal/sizing bound (mergeDepthLimit,
+//     maxMergeVisits, maxParents, pruneBuffer, maxGhostdagDBLookups)
+//     deliberately stays on the ceiling: the merge set must be DISCOVERED
+//     before a per-block k can be inferred from it, so bounding discovery
+//     by the per-block value would be circular.
+//  2. The majority is over the block's own (bounded) merge set rather
+//     than a global past-cone weight — the merge set is exactly the
+//     concurrency window this block is merging, and it is already capped
+//     and deterministic on every node.
+//
+// A LINEAR scan (not binary search) is used on purpose: the greedy variant
+// of the k-cluster rule is not formally monotone in k, and a binary search
+// that assumed monotonicity could return a non-minimal k. The scan is
+// deterministic and provably minimal; its bookkeeping cost is bounded by
+// Σ_{k<K} O(|sorted|·k) cache hits (the BFS walks behind them are memoized
+// in cc), which block_ghostdag_scale_test.go bounds end-to-end.
+func (dag *BlockDAG) knightdagInferK(sorted []string, cc *knightdagConcCache) (kEff int, blues []string) {
+	if len(sorted) == 0 {
+		return 0, nil
+	}
+	ceiling := dag.k()
+	for k := 0; k < ceiling; k++ {
+		blues = knightdagClassify(sorted, k, cc)
+		if 2*len(blues) > len(sorted) {
+			return k, blues
+		}
+	}
+	return ceiling, knightdagClassify(sorted, ceiling, cc)
 }
 
 // ghostdagMergeSet returns the set of blocks in past(block) that are NOT in
