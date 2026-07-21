@@ -616,6 +616,7 @@ func (a *APIServer) Start(port int) {
 	mux.HandleFunc("/node-binding.js", a.handleNodeBindingJS)
 	mux.HandleFunc("/vendor/ethers.min.js", a.handleVendorEthersJS)
 	mux.HandleFunc("/vendor/lightweight-charts.min.js", a.handleVendorLightweightChartsJS)
+	mux.HandleFunc("/vendor/walletconnect-ethereum-provider.min.js", a.handleVendorWalletConnectJS)
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		// Root path: serve landing page; anything else falls to handleUI
 		if r.URL.Path == "/" {
@@ -1689,7 +1690,12 @@ func (a *APIServer) handleUI(w http.ResponseWriter, r *http.Request) {
 	// delegated listener in explorer.js (see CLICK_ACTIONS there). explorer.html
 	// itself has zero inline <script> blocks (only external /vendor + /explorer.js
 	// src= tags), so script-src no longer needs 'unsafe-inline' at all.
-	w.Header().Set("Content-Security-Policy", "default-src 'self' 'unsafe-inline'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.bunny.net; font-src https://fonts.bunny.net; connect-src 'self' https://aequitas.digital; img-src 'self' data:")
+	// connect-src additions: WalletConnect (see vendorWalletConnectJS) opens a
+	// WebSocket to its relay to actually carry the wallet session, and fetches
+	// the wallet list + a domain-verification check from two more of its own
+	// hosts — replaced the WebAuthn "register via browser" flow, whose
+	// device-bound credential never left this origin and needed no CSP change.
+	w.Header().Set("Content-Security-Policy", "default-src 'self' 'unsafe-inline'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.bunny.net; font-src https://fonts.bunny.net; connect-src 'self' https://aequitas.digital wss://relay.walletconnect.org https://relay.walletconnect.org https://api.web3modal.org https://verify.walletconnect.org https://verify.walletconnect.com; img-src 'self' data: https://api.web3modal.org")
 	path := strings.Trim(r.URL.Path, "/")
 	if idx := strings.Index(path, "/"); idx >= 0 {
 		path = path[:idx]
@@ -1746,6 +1752,12 @@ func (a *APIServer) handleVendorLightweightChartsJS(w http.ResponseWriter, r *ht
 	w.Header().Set("Content-Type", "application/javascript; charset=utf-8")
 	w.Header().Set("Cache-Control", "public, max-age=86400")
 	fmt.Fprint(w, vendorLightweightChartsJS)
+}
+
+func (a *APIServer) handleVendorWalletConnectJS(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/javascript; charset=utf-8")
+	w.Header().Set("Cache-Control", "public, max-age=86400")
+	fmt.Fprint(w, vendorWalletConnectJS)
 }
 
 // handleNonce returns the next swap nonce a wallet should sign with.

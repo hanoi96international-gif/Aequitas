@@ -1,7 +1,15 @@
 const PS = '/api'; // proof calls proxied via /api/prove on this node (avoids browser CORS)
 const CID = '0x786';
 const V7_CONTRACT = '0x20D271028f32577FCd07b4583A8e0E4eBBdB4F78';
+const WC_PROJECT_ID = '32365adb6cf733a385948841ad399cf9';
 let waddr = '', proofData = null, curLang = 'en';
+let wcProvider = null; // WalletConnect EthereumProvider instance, once connected via connectWalletConnect()
+
+// The EIP-1193 provider actually in use for signing — WalletConnect if that's
+// how the user connected, otherwise the injected MetaMask provider. Both
+// expose the same request()/on() surface, so call sites don't need to care
+// which one they're talking to.
+function activeProvider() { return wcProvider || window.ethereum; }
 
 const T = {
 en:{
@@ -18,8 +26,7 @@ en:{
   'priv-bar':'🔒 Device-bound cryptographic key · Groth16 ZKP · Data never leaves device · One registration per device',
   'conn-wallet':'CONNECTED WALLET','proof-recv':'⚡ ZK PROOF RECEIVED','proof-hint':'Connect wallet to register',
   'btn-conn':'🦊 CONNECT METAMASK','btn-reg':'🔐 REGISTER ON-CHAIN',
-  'btn-web-reg':'🌐 REGISTER VIA BROWSER (WebAuthn)',
-  'web-reg-warn':'⚠ Device-bound: This identity is tied to this device and browser. You cannot transfer it to another device.<br><br>⚠ <strong>Important:</strong> WebAuthn proves device possession — NOT biological uniqueness. A person with two devices could theoretically register twice.',
+  'btn-wc':'🔗 CONNECT WALLETCONNECT',
   'reg-log-hint':'// Open Aequitas Android App to generate your proof, then return here...',
   'reg-details':'Registration Details','k-network':'Network','k-chainid':'Chain ID','k-grant':'UBI Grant',
   'k-fee':'Gas Fee','free':'FREE — completely gasless','k-limit':'Registrations','k-limit-v':'Once per device · permanent · immutable',
@@ -178,8 +185,7 @@ de:{
   'priv-bar':'🔒 Gerätegebundener kryptografischer Schlüssel · Groth16 ZKP · Daten verlassen nie das Gerät · Eine Registrierung pro Gerät',
   'conn-wallet':'VERBUNDENE WALLET','proof-recv':'⚡ ZK-BEWEIS EMPFANGEN','proof-hint':'Wallet verbinden um zu registrieren',
   'btn-conn':'🦊 METAMASK VERBINDEN','btn-reg':'🔐 ON-CHAIN REGISTRIEREN',
-  'btn-web-reg':'🌐 IM BROWSER REGISTRIEREN (WebAuthn)',
-  'web-reg-warn':'⚠ Gerätegebunden: Diese Identität ist an dieses Gerät und diesen Browser gebunden. Sie kann nicht auf ein anderes Gerät übertragen werden.<br><br>⚠ <strong>Wichtig:</strong> WebAuthn beweist den Besitz eines Geräts — NICHT biologische Einzigartigkeit. Eine Person mit zwei Geräten könnte sich theoretisch zweimal registrieren.',
+  'btn-wc':'🔗 WALLETCONNECT VERBINDEN',
   'reg-log-hint':'// Öffne die Aequitas Android App um deinen Beweis zu erstellen, dann kehre hierher zurück...',
   'reg-details':'Registrierungsdetails','k-network':'Netzwerk','k-chainid':'Chain-ID','k-grant':'UBI-Zuteilung',
   'k-fee':'Gasgebühr','free':'KOSTENLOS — vollständig gebührenfrei','k-limit':'Registrierungen','k-limit-v':'Einmal pro Gerät · permanent · unveränderlich',
@@ -357,8 +363,7 @@ es:{
   'priv-bar':'🔒 Clave criptográfica vinculada al dispositivo · Groth16 ZKP · Los datos nunca salen del dispositivo · Un registro por dispositivo',
   'conn-wallet':'WALLET CONECTADA','proof-recv':'⚡ PRUEBA ZK RECIBIDA','proof-hint':'Conecta wallet para registrar',
   'btn-conn':'🦊 CONECTAR METAMASK','btn-reg':'🔐 REGISTRAR ON-CHAIN',
-  'btn-web-reg':'🌐 REGISTRAR VIA NAVEGADOR (WebAuthn)',
-  'web-reg-warn':'⚠ Vinculado al dispositivo: Esta identidad está vinculada a este dispositivo y navegador. No puedes transferirla a otro dispositivo. Para identidad permanente multidispositivo, usa la App Android de Aequitas.',
+  'btn-wc':'🔗 CONECTAR WALLETCONNECT',
   'reg-log-hint':'// Abre la App Android Aequitas para generar tu prueba, luego regresa aquí...',
   'reg-details':'Detalles del Registro','k-network':'Red','k-chainid':'ID de Cadena','k-grant':'Subsidio UBI',
   'k-fee':'Tarifa de Gas','free':'GRATIS — completamente sin gas','k-limit':'Registros','k-limit-v':'Una vez por dispositivo · permanente · inmutable',
@@ -522,8 +527,7 @@ ru:{
   'priv-bar':'🔒 Криптографический ключ, привязанный к устройству · Groth16 ZKP · Данные никогда не покидают устройство · Одна регистрация на устройство',
   'conn-wallet':'ПОДКЛЮЧЁННЫЙ КОШЕЛЁК','proof-recv':'⚡ ZK-ДОКАЗАТЕЛЬСТВО ПОЛУЧЕНО','proof-hint':'Подключите кошелёк для регистрации',
   'btn-conn':'🦊 ПОДКЛЮЧИТЬ METAMASK','btn-reg':'🔐 ЗАРЕГИСТРИРОВАТЬ ОН-ЧЕЙН',
-  'btn-web-reg':'🌐 РЕГИСТРАЦИЯ ЧЕРЕЗ БРАУЗЕР (WebAuthn)',
-  'web-reg-warn':'⚠ Привязано к устройству: Эта личность привязана к данному устройству и браузеру. Перенести её на другое устройство невозможно. Для постоянной кроссплатформенной личности используйте Android-приложение Aequitas.',
+  'btn-wc':'🔗 ПОДКЛЮЧИТЬ WALLETCONNECT',
   'reg-log-hint':'// Откройте Android-приложение Aequitas для создания доказательства, затем вернитесь сюда...',
   'reg-details':'Детали Регистрации','k-network':'Сеть','k-chainid':'ID Цепи','k-grant':'Субсидия UBI',
   'k-fee':'Комиссия Gas','free':'БЕСПЛАТНО — полностью без комиссий','k-limit':'Регистрации','k-limit-v':'Один раз на устройство · постоянно · неизменно',
@@ -681,8 +685,7 @@ zh:{
   'priv-bar':'🔒 设备绑定的加密密钥 · Groth16 ZKP · 数据永不离开设备 · 每台设备一次注册',
   'conn-wallet':'已连接钱包','proof-recv':'⚡ 已收到ZK证明','proof-hint':'连接钱包以注册',
   'btn-conn':'🦊 连接 METAMASK','btn-reg':'🔐 链上注册',
-  'btn-web-reg':'🌐 通过浏览器注册 (WebAuthn)',
-  'web-reg-warn':'⚠ 设备绑定：此身份绑定到当前设备和浏览器，无法转移到其他设备。如需永久性多设备身份，请使用Aequitas安卓应用。',
+  'btn-wc':'🔗 连接 WALLETCONNECT',
   'reg-log-hint':'// 打开Aequitas安卓应用生成您的证明，然后返回此处...',
   'reg-details':'注册详情','k-network':'网络','k-chainid':'链ID','k-grant':'UBI补贴',
   'k-fee':'Gas费','free':'免费——完全无Gas','k-limit':'注册','k-limit-v':'每台设备一次 · 永久 · 不可更改',
@@ -842,8 +845,7 @@ id:{
   'priv-bar':'🔒 Kunci kriptografi terikat perangkat · Groth16 ZKP · Data tidak pernah meninggalkan perangkat · Satu pendaftaran per perangkat',
   'conn-wallet':'DOMPET TERHUBUNG','proof-recv':'⚡ BUKTI ZK DITERIMA','proof-hint':'Hubungkan dompet untuk mendaftar',
   'btn-conn':'🦊 HUBUNGKAN METAMASK','btn-reg':'🔐 DAFTAR ON-CHAIN',
-  'btn-web-reg':'🌐 DAFTAR VIA BROWSER (WebAuthn)',
-  'web-reg-warn':'⚠ Terikat perangkat: Identitas ini terikat pada perangkat dan browser ini. Tidak dapat dipindahkan ke perangkat lain. Untuk identitas permanen multi-perangkat, gunakan Aplikasi Android Aequitas.',
+  'btn-wc':'🔗 HUBUNGKAN WALLETCONNECT',
   'reg-log-hint':'// Buka Aplikasi Android Aequitas untuk membuat bukti Anda, lalu kembali ke sini...',
   'reg-details':'Detail Pendaftaran','k-network':'Jaringan','k-chainid':'ID Rantai','k-grant':'Hibah UBI',
   'k-fee':'Biaya Gas','free':'GRATIS — sepenuhnya tanpa gas','k-limit':'Pendaftaran','k-limit-v':'Satu kali per perangkat · permanen · tidak dapat diubah',
@@ -995,8 +997,7 @@ it:{
   'priv-bar':'🔒 Chiave crittografica legata al dispositivo · Groth16 ZKP · I dati non lasciano mai il dispositivo · Una registrazione per dispositivo',
   'conn-wallet':'WALLET CONNESSO','proof-recv':'⚡ PROVA ZK RICEVUTA','proof-hint':'Connetti wallet per registrarti',
   'btn-conn':'🦊 CONNETTI METAMASK','btn-reg':'🔐 REGISTRA ON-CHAIN',
-  'btn-web-reg':'🌐 REGISTRA VIA BROWSER (WebAuthn)',
-  'web-reg-warn':'⚠ Legato al dispositivo: Questa identità è legata a questo dispositivo e browser. Non è trasferibile su un altro dispositivo. Per un\'identità permanente multi-dispositivo, usa l\'App Android Aequitas.',
+  'btn-wc':'🔗 CONNETTI WALLETCONNECT',
   'reg-log-hint':'// Apri l\'App Android Aequitas per generare la tua prova, poi torna qui...',
   'reg-details':'Dettagli Registrazione','k-network':'Rete','k-chainid':'ID Catena','k-grant':'Sussidio UBI',
   'k-fee':'Commissione Gas','free':'GRATUITO — completamente senza gas','k-limit':'Registrazioni','k-limit-v':'Una volta per dispositivo · permanente · immutabile',
@@ -1149,8 +1150,7 @@ tr:{
   'priv-bar':'🔒 Cihaza bağlı kriptografik anahtar · Groth16 ZKP · Veriler asla cihazı terk etmez · Cihaz başına bir kayıt',
   'conn-wallet':'BAĞLI CÜZDAN','proof-recv':'⚡ ZK KANITI ALINDI','proof-hint':'Kayıt için cüzdan bağla',
   'btn-conn':'🦊 METAMASK BAĞLA','btn-reg':'🔐 ZİNCİRE KAYIT OL',
-  'btn-web-reg':'🌐 TARAYICI ÜZERİNDEN KAYIT (WebAuthn)',
-  'web-reg-warn':'⚠ Cihaza bağlı: Bu kimlik bu cihaza ve tarayıcıya bağlıdır. Başka bir cihaza aktarılamaz. Kalıcı çok cihazlı kimlik için Aequitas Android Uygulamasını kullan.',
+  'btn-wc':'🔗 WALLETCONNECT BAĞLA',
   'reg-log-hint':'// Kanıtını oluşturmak için Aequitas Android Uygulamasını aç, ardından buraya dön...',
   'reg-details':'Kayıt Detayları','k-network':'Ağ','k-chainid':'Zincir ID','k-grant':'UBI Hibesi',
   'k-fee':'Gas Ücreti','free':'ÜCRETSİZ — tamamen gas\'sız','k-limit':'Kayıtlar','k-limit-v':'Cihaz başına bir kez · kalıcı · değiştirilemez',
@@ -1310,8 +1310,7 @@ fr:{
   'priv-bar':'🔒 Clé cryptographique liée à l\'appareil · Groth16 ZKP · Les données ne quittent jamais l\'appareil · Une inscription par appareil',
   'conn-wallet':'PORTEFEUILLE CONNECTÉ','proof-recv':'⚡ PREUVE ZK REÇUE','proof-hint':'Connecter un portefeuille pour s\'inscrire',
   'btn-conn':'🦊 CONNECTER METAMASK','btn-reg':'🔐 INSCRIPTION ON-CHAIN',
-  'btn-web-reg':'🌐 INSCRIPTION VIA NAVIGATEUR (WebAuthn)',
-  'web-reg-warn':'⚠ Lié à l\'appareil : Cette identité est liée à cet appareil et navigateur. Non transférable. Pour identité multi-appareils, utilisez l\'app Android Aequitas.',
+  'btn-wc':'🔗 CONNECTER WALLETCONNECT',
   'reg-log-hint':'// Ouvrir l\'app Android Aequitas pour générer votre preuve, puis revenir ici...',
   'reg-details':'Détails d\'inscription','k-network':'Réseau','k-chainid':'ID de chaîne','k-grant':'Allocation UBI',
   'k-fee':'Frais de gaz','free':'GRATUIT — totalement sans frais','k-limit':'Inscriptions','k-limit-v':'Une fois par appareil · permanent · immuable',
@@ -1470,8 +1469,7 @@ pt:{
   'priv-bar':'🔒 Chave criptográfica vinculada ao dispositivo · Groth16 ZKP · Os dados nunca saem do dispositivo · Um registo por dispositivo',
   'conn-wallet':'CARTEIRA CONECTADA','proof-recv':'⚡ PROVA ZK RECEBIDA','proof-hint':'Conectar carteira para registrar',
   'btn-conn':'🦊 CONECTAR METAMASK','btn-reg':'🔐 REGISTRAR ON-CHAIN',
-  'btn-web-reg':'🌐 REGISTRAR VIA NAVEGADOR (WebAuthn)',
-  'web-reg-warn':'⚠ Vinculado ao dispositivo: Esta identidade está vinculada a este dispositivo e navegador. Não transferível. Para identidade multi-dispositivo, use o App Android Aequitas.',
+  'btn-wc':'🔗 CONECTAR WALLETCONNECT',
   'reg-log-hint':'// Abra o App Android Aequitas para gerar sua prova, depois retorne aqui...',
   'reg-details':'Detalhes do Registro','k-network':'Rede','k-chainid':'ID da Cadeia','k-grant':'Concessão UBI',
   'k-fee':'Taxa de Gás','free':'GRATUITO — completamente sem taxas','k-limit':'Registros','k-limit-v':'Uma vez por dispositivo · permanente · imutável',
@@ -1630,8 +1628,7 @@ ar:{
   'priv-bar':'🔒 مفتاح تشفيري مرتبط بالجهاز · Groth16 ZKP · البيانات لا تغادر الجهاز أبداً · تسجيل واحد لكل جهاز',
   'conn-wallet':'المحفظة المتصلة','proof-recv':'⚡ تم استلام دليل ZK','proof-hint':'ربط محفظة للتسجيل',
   'btn-conn':'🦊 ربط METAMASK','btn-reg':'🔐 التسجيل ON-CHAIN',
-  'btn-web-reg':'🌐 التسجيل عبر المتصفح (WebAuthn)',
-  'web-reg-warn':'⚠ مرتبط بالجهاز: هذه الهوية مرتبطة بهذا الجهاز والمتصفح. لا يمكن نقلها. للهوية متعددة الأجهزة، استخدم تطبيق Aequitas Android.',
+  'btn-wc':'🔗 ربط WALLETCONNECT',
   'reg-log-hint':'// افتح تطبيق Aequitas Android لتوليد دليلك، ثم عد هنا...',
   'reg-details':'تفاصيل التسجيل','k-network':'الشبكة','k-chainid':'معرّف السلسلة','k-grant':'منحة UBI',
   'k-fee':'رسوم الغاز','free':'مجاني — بدون رسوم تماماً','k-limit':'التسجيلات','k-limit-v':'مرة واحدة لكل جهاز · دائم · غير قابل للتغيير',
@@ -1788,8 +1785,7 @@ hi:{
   'priv-bar':'🔒 डिवाइस से बंधी क्रिप्टोग्राफिक कुंजी · Groth16 ZKP · डेटा कभी डिवाइस नहीं छोड़ता · प्रति डिवाइस एक पंजीकरण',
   'conn-wallet':'कनेक्टेड वॉलेट','proof-recv':'⚡ ZK प्रमाण प्राप्त','proof-hint':'रजिस्टर करने के लिए वॉलेट कनेक्ट करें',
   'btn-conn':'🦊 METAMASK कनेक्ट करें','btn-reg':'🔐 ON-CHAIN रजिस्टर करें',
-  'btn-web-reg':'🌐 ब्राउज़र के माध्यम से रजिस्टर करें (WebAuthn)',
-  'web-reg-warn':'⚠ डिवाइस-बाउंड: यह पहचान इस डिवाइस और ब्राउज़र से जुड़ी है। इसे किसी अन्य डिवाइस पर स्थानांतरित नहीं किया जा सकता। स्थायी मल्टी-डिवाइस पहचान के लिए Aequitas Android App उपयोग करें।',
+  'btn-wc':'🔗 WALLETCONNECT कनेक्ट करें',
   'reg-log-hint':'// अपना प्रमाण उत्पन्न करने के लिए Aequitas Android App खोलें, फिर यहाँ वापस आएं...',
   'reg-details':'रजिस्ट्रेशन विवरण','k-network':'नेटवर्क','k-chainid':'चेन ID','k-grant':'UBI अनुदान',
   'k-fee':'गैस शुल्क','free':'निःशुल्क — पूरी तरह गैसलेस','k-limit':'रजिस्ट्रेशन','k-limit-v':'प्रति डिवाइस एक बार · स्थायी · अपरिवर्तनीय',
@@ -3577,15 +3573,15 @@ async function loadGuardianStatus() {
 }
 
 async function doSetGuardian() {
-  if (!waddr || !window.ethereum) { guardianLog('Connect wallet first.', 'err'); return; }
+  if (!waddr || !activeProvider()) { guardianLog('Connect wallet first.', 'err'); return; }
   const guardian = (document.getElementById('guardian-input').value || '').trim().toLowerCase();
   if (!guardian.startsWith('0x') || guardian.length !== 42) {
     guardianLog('Enter a valid guardian address (0x... 42 chars).', 'err'); return;
   }
   try {
-    guardianLog('Sign in MetaMask to set guardian...', 'info');
+    guardianLog('Sign in your wallet to set guardian...', 'info');
     const msg = 'Aequitas: set guardian ' + guardian;
-    const sig = await window.ethereum.request({ method: 'personal_sign', params: [msg, waddr] });
+    const sig = await activeProvider().request({ method: 'personal_sign', params: [msg, waddr] });
     const resp = await fetch('/api/set-guardian', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -3606,7 +3602,7 @@ async function doSetGuardian() {
 }
 
 async function doGuardianConfirmAlive() {
-  if (!waddr || !window.ethereum) { guardianLog('Connect wallet first.', 'err'); return; }
+  if (!waddr || !activeProvider()) { guardianLog('Connect wallet first.', 'err'); return; }
   const ward = (document.getElementById('ward-input').value || '').trim().toLowerCase();
   if (!ward.startsWith('0x') || ward.length !== 42) {
     guardianLog('Enter a valid ward address (0x... 42 chars).', 'err'); return;
@@ -3617,9 +3613,9 @@ async function doGuardianConfirmAlive() {
     return;
   }
   try {
-    guardianLog('Sign in MetaMask as guardian...', 'info');
+    guardianLog('Sign in your wallet as guardian...', 'info');
     const msg = 'Aequitas: confirm alive ' + ward;
-    const sig = await window.ethereum.request({ method: 'personal_sign', params: [msg, waddr] });
+    const sig = await activeProvider().request({ method: 'personal_sign', params: [msg, waddr] });
     const resp = await fetch('/api/confirm-alive', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -3635,11 +3631,11 @@ async function doGuardianConfirmAlive() {
 }
 
 async function doRecoverEscrow() {
-  if (!waddr || !window.ethereum) { guardianLog('Connect wallet first.', 'err'); return; }
+  if (!waddr || !activeProvider()) { guardianLog('Connect wallet first.', 'err'); return; }
   try {
-    guardianLog('Sign in MetaMask to recover escrow...', 'info');
+    guardianLog('Sign in your wallet to recover escrow...', 'info');
     const msg = 'Aequitas: recover escrow ' + waddr;
-    const sig = await window.ethereum.request({ method: 'personal_sign', params: [msg, waddr] });
+    const sig = await activeProvider().request({ method: 'personal_sign', params: [msg, waddr] });
     const resp = await fetch('/api/recover-escrow', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -4009,15 +4005,19 @@ async function connectSwapWallet() {
     btn.style.color = '#050A14';
     const swapDBtn = document.getElementById('swap-btn-disconnect');
     if (swapDBtn) swapDBtn.style.display = 'block';
+    const swapWcBtn = document.getElementById('swap-btn-wc');
+    if (swapWcBtn) swapWcBtn.style.display = 'none';
     // Sync register tab wallet display
     const regBox = document.getElementById('wbox');
     const regAdr = document.getElementById('wadr');
     const regBtn = document.getElementById('btn-conn');
     const regDBtn = document.getElementById('btn-disconnect');
+    const regWcBtn = document.getElementById('btn-wc');
     if (regBox) regBox.style.display = 'block';
     if (regAdr) regAdr.textContent = swapWaddr;
     if (regBtn) { regBtn.textContent = swapWaddr.slice(0, 10) + '...' + swapWaddr.slice(-4); regBtn.style.background = 'var(--green)'; regBtn.style.color = '#050A14'; }
     if (regDBtn) regDBtn.style.display = 'block';
+    if (regWcBtn) regWcBtn.style.display = 'none';
     await refreshSwapBalances();
     await loadLPPosition();
     document.getElementById('swap-btn-go').disabled = false;
@@ -4106,7 +4106,7 @@ function setSwapPct(pct) {
 // before approving, and the server checks the signature matches both the
 // claimed wallet AND this exact message (see verifyPersonalSign in swap.go).
 async function signMessage(message) {
-  return await window.ethereum.request({
+  return await activeProvider().request({
     method: 'personal_sign',
     params: [message, swapWaddr]
   });
@@ -4458,9 +4458,9 @@ const CLICK_ACTIONS = {
   goTab: goTab,
   copyAddr: copyAddr,
   connectWallet: connectWallet,
+  connectWalletConnect: connectWalletConnect,
   disconnectWallet: disconnectWallet,
   doRegister: doRegister,
-  registerViaBrowser: registerViaBrowser,
   doRecoverEscrow: doRecoverEscrow,
   doSetGuardian: doSetGuardian,
   doGuardianConfirmAlive: doGuardianConfirmAlive,
@@ -4510,8 +4510,8 @@ function checkProofParams() {
   const proof = p.get('proof');
   // FIX (Monster Audit 2026-07-12, P1): this function used to also accept a
   // raw ?bioHash=<value> query param (a hand-off from the now-retired
-  // AequitasBio app's MetaMask deep link) and feed it straight into
-  // connectWalletAndProve(). A raw bioHash in a URL lands in browser
+  // AequitasBio app's MetaMask deep link) and feed it straight into the
+  // wallet-connect-then-prove flow. A raw bioHash in a URL lands in browser
   // history, the MetaMask dapp-link, reverse-proxy logs, and referrers —
   // exactly the kind of durable identity-linkable leak this endpoint's own
   // POST-only /api/check-registration-by-biohash handler was already hardened
@@ -4519,8 +4519,6 @@ function checkProofParams() {
   // link (AequitasBio is retired; aequitas-app registers fully in-app via
   // /api/prove, no browser hop at all; aequitas-dapp.html never built this
   // link either) — removed rather than kept as unused attack surface.
-  // registerViaBrowser()'s WebAuthn flow below sets pendingBioHash directly
-  // from a freshly-created in-page credential and is unaffected by this.
   if (proofId) {
     if (!/^[a-zA-Z0-9_-]{1,64}$/.test(proofId)) {
       console.warn('Invalid proof ID format');
@@ -4548,89 +4546,6 @@ function checkProofParams() {
   }
 }
 
-// Holds the biometric identity hash from the app while we wait for the
-// wallet to connect — only used by the new bioHash flow above.
-let pendingBioHash = null;
-
-// New-flow counterpart to connectWallet(): connects MetaMask, and THEN
-// calls /prove with the real wallet address now that we have one,
-// instead of expecting an already-made proof to exist. This is the
-// piece that actually closes the wallet-binding gap, since the proof's
-// commitment now genuinely depends on which wallet asked for it.
-async function connectWalletAndProve() {
-  if (!window.ethereum) {
-    const _isMobC = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
-    if (_isMobC) { const _dl = 'https://metamask.app.link/dapp/' + window.location.host; addLog('🦊 Mobile: <a href="' + _dl + '" style="color:var(--gold)">In MetaMask App öffnen</a>', 'warn', true); } else { addLog('🦊 MetaMask not found — <a href="https://metamask.io/download/" target="_blank" style="color:var(--gold)">install MetaMask</a>', 'warn', true); }
-    return;
-  }
-  if (!pendingBioHash) {
-    addLog('No biometric identity hash to prove — please retry from the app.', 'err');
-    return;
-  }
-  try {
-    await addToMetaMask();
-    const accounts = await window.ethereum.request({ method: 'eth_requestAccounts' });
-    waddr = accounts[0];
-    swapWaddr = waddr;
-    localStorage.setItem('aeq_wallet', waddr);
-    document.getElementById('wbox').style.display = 'block';
-    document.getElementById('wadr').textContent = waddr;
-    const btn = document.getElementById('btn-conn');
-    btn.textContent = waddr.slice(0, 10) + '...' + waddr.slice(-4);
-    btn.style.background = 'var(--green)';
-    btn.style.color = '#050A14';
-    const dBtn = document.getElementById('btn-disconnect');
-    if (dBtn) dBtn.style.display = 'block';
-
-    const br = await fetch('/api/balance?wallet=' + waddr);
-    const bd = await br.json();
-    if (bd.is_human) {
-      addLog('Already registered! Balance: ' + sanitize(String(bd.balance || 0)) + ' AEQ', 'ok');
-      document.getElementById('btn-reg').disabled = true;
-      document.getElementById('btn-reg').textContent = 'ALREADY REGISTERED';
-      loadGuardianStatus();
-      return;
-    }
-
-    addLog('Wallet connected. Generating ZK proof for this wallet...', 'info');
-    // salt generated here (browser, with crypto.getRandomValues — far
-    // stronger than the app's old Math.random()-based salt) since this
-    // is where the proof is now actually made.
-    const saltBytes = new Uint8Array(32);
-    crypto.getRandomValues(saltBytes);
-    let saltBig = BigInt(0);
-    for (let i = 0; i < saltBytes.length; i++) saltBig = (saltBig << BigInt(8)) | BigInt(saltBytes[i]);
-    const FIELD_SIZE = BigInt("21888242871839275222246405745257275088548364400416034343698204186575808495617");
-    const salt = (saltBig % FIELD_SIZE).toString();
-
-    const proveResp = await fetch('/api/prove', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ bio: pendingBioHash, salt: salt, wallet: waddr })
-    });
-    if (!proveResp.ok) {
-      let err = {};
-      try { err = await proveResp.json(); } catch(e) { err = { error: 'HTTP ' + proveResp.status }; }
-      if (err.registered) {
-        addLog('This identity is already registered.', 'ok');
-        document.getElementById('btn-reg').disabled = true;
-        document.getElementById('btn-reg').textContent = 'ALREADY REGISTERED';
-        return;
-      }
-      addLog('Proof generation failed: ' + sanitize(err.error || 'unknown error'), 'err');
-      return;
-    }
-    proofData = await proveResp.json();
-    document.getElementById('pbox').style.display = 'block';
-    document.getElementById('pval').textContent = 'Proof ready for ' + waddr.slice(0, 10) + '...';
-    document.getElementById('btn-reg').disabled = false;
-    document.getElementById('btn-reg').textContent = 'PROOF READY — CLICK TO REGISTER';
-    addLog('Proof generated for your wallet. Click REGISTER to continue.', 'ok');
-  } catch (e) {
-    addLog('Connection failed: ' + sanitize(e.message), 'err');
-  }
-}
-
 async function connectWallet() {
   if (!window.ethereum) {
     const _isMobW = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
@@ -4651,15 +4566,19 @@ async function connectWallet() {
     btn.style.color = '#050A14';
     const dBtn = document.getElementById('btn-disconnect');
     if (dBtn) dBtn.style.display = 'block';
+    const wcBtn = document.getElementById('btn-wc');
+    if (wcBtn) wcBtn.style.display = 'none';
     // Sync swap tab wallet display
     const swapBox = document.getElementById('swap-wbox');
     const swapAdr = document.getElementById('swap-wadr');
     const swapBtn = document.getElementById('swap-btn-conn');
     const swapDBtn = document.getElementById('swap-btn-disconnect');
+    const swapWcBtn = document.getElementById('swap-btn-wc');
     if (swapBox) swapBox.style.display = 'block';
     if (swapAdr) swapAdr.textContent = waddr;
     if (swapBtn) { swapBtn.textContent = waddr.slice(0, 10) + '...' + waddr.slice(-4); swapBtn.style.background = 'var(--green)'; swapBtn.style.color = '#050A14'; }
     if (swapDBtn) swapDBtn.style.display = 'block';
+    if (swapWcBtn) swapWcBtn.style.display = 'none';
     try {
       const br = await fetch('/api/balance?wallet=' + waddr);
       const bd = await br.json();
@@ -4708,37 +4627,107 @@ function addLog(msg, type, allowHTML) {
   el.scrollTop = el.scrollHeight;
 }
 
-async function registerViaBrowser() {
-  if (!navigator.credentials || !window.PublicKeyCredential) {
-    addLog('WebAuthn not supported in this browser.', 'err');
-    return;
+// Logs to both tabs' log boxes — connectWalletConnect() below can be
+// triggered from either the Register or the Swap page, and whichever one
+// isn't currently active still has its log box in the DOM (SPA tabs are
+// hidden, not removed), just not visible to the user right now.
+function walletLog(msg, type, allowHTML) {
+  addLog(msg, type, allowHTML);
+  swapLog(msg, type, allowHTML);
+}
+
+// Lazily creates (once) and returns the WalletConnect EthereumProvider —
+// same EIP-1193 request()/on() surface as window.ethereum, so the existing
+// personal_sign call sites just need a provider reference, not a rewrite.
+// optionalChains (not chains) is used for the Aequitas chain id: making it
+// a hard-required namespace would make many general-purpose mobile wallets
+// reject the pairing outright since they don't pre-recognize chain 1926.
+async function getWalletConnectProvider() {
+  if (wcProvider) return wcProvider;
+  if (!window.WalletConnectEthereumProvider) {
+    throw new Error('WalletConnect script failed to load — check your connection and reload the page.');
   }
-  document.getElementById('web-reg-warn').style.display = 'block';
-  addLog('Creating device credential (biometric or PIN prompt)...', 'info');
+  wcProvider = await window.WalletConnectEthereumProvider.init({
+    projectId: WC_PROJECT_ID,
+    optionalChains: [1926],
+    rpcMap: { 1926: 'https://aequitas.digital/rpc' },
+    showQrModal: true,
+    metadata: {
+      name: 'Aequitas',
+      description: 'Proof of Humanity Chain',
+      url: window.location.origin,
+      icons: []
+    }
+  });
+  wcProvider.on('accountsChanged', handleAccountsChanged);
+  wcProvider.on('chainChanged', function() { window.location.reload(); });
+  wcProvider.on('disconnect', function() { disconnectWallet(); });
+  return wcProvider;
+}
+
+// WalletConnect counterpart to connectWallet()/connectSwapWallet(): shown on
+// both the Register and Swap pages as an alternative to the MetaMask
+// extension (mobile wallets, hardware wallets via a companion app, etc).
+// Unlike those two, this single handler always syncs both tabs' UI and swap
+// state, since either button can be the very first thing the user clicks.
+async function connectWalletConnect() {
   try {
-    const challenge = crypto.getRandomValues(new Uint8Array(32));
-    const userId = crypto.getRandomValues(new Uint8Array(16));
-    const credential = await navigator.credentials.create({
-      publicKey: {
-        challenge,
-        rp: { name: 'Aequitas', id: window.location.hostname },
-        user: { id: userId, name: 'aequitas-user', displayName: 'Aequitas User' },
-        pubKeyCredParams: [{ alg: -7, type: 'public-key' }, { alg: -257, type: 'public-key' }],
-        timeout: 60000,
-        attestation: 'none',
-        authenticatorSelection: { userVerification: 'preferred' }
+    const provider = await getWalletConnectProvider();
+    const accounts = await provider.enable();
+    if (!accounts || !accounts[0]) throw new Error('No account returned by wallet');
+    waddr = accounts[0];
+    swapWaddr = waddr;
+    localStorage.setItem('aeq_wallet', waddr);
+    localStorage.setItem('aeq_wallet_provider', 'walletconnect');
+
+    document.getElementById('wbox').style.display = 'block';
+    document.getElementById('wadr').textContent = waddr;
+    const btn = document.getElementById('btn-conn');
+    btn.textContent = waddr.slice(0, 10) + '...' + waddr.slice(-4);
+    btn.style.background = 'var(--green)';
+    btn.style.color = '#050A14';
+    const dBtn = document.getElementById('btn-disconnect');
+    if (dBtn) dBtn.style.display = 'block';
+    const wcBtn = document.getElementById('btn-wc');
+    if (wcBtn) wcBtn.style.display = 'none';
+
+    const swapBox = document.getElementById('swap-wbox');
+    const swapAdr = document.getElementById('swap-wadr');
+    const swapBtn = document.getElementById('swap-btn-conn');
+    const swapDBtn = document.getElementById('swap-btn-disconnect');
+    const swapWcBtn = document.getElementById('swap-btn-wc');
+    if (swapBox) swapBox.style.display = 'block';
+    if (swapAdr) swapAdr.textContent = waddr;
+    if (swapBtn) { swapBtn.textContent = waddr.slice(0, 10) + '...' + waddr.slice(-4); swapBtn.style.background = 'var(--green)'; swapBtn.style.color = '#050A14'; }
+    if (swapDBtn) swapDBtn.style.display = 'block';
+    if (swapWcBtn) swapWcBtn.style.display = 'none';
+
+    try {
+      const br = await fetch('/api/balance?wallet=' + waddr);
+      const bd = await br.json();
+      if (bd.is_human) {
+        walletLog('Already registered! Balance: ' + sanitize(String(bd.balance || 0)) + ' AEQ', 'ok');
+        document.getElementById('btn-reg').disabled = true;
+        document.getElementById('btn-reg').textContent = 'ALREADY REGISTERED';
+        loadGuardianStatus();
+      } else if (proofData) {
+        document.getElementById('btn-reg').disabled = false;
+        document.getElementById('btn-reg').textContent = 'PROOF READY — CLICK TO REGISTER';
+      } else {
+        document.getElementById('btn-reg').disabled = true;
       }
-    });
-    // Hash credential.rawId bytes into a BigInt, then reduce mod BN254 field size
-    const credBytes = new Uint8Array(credential.rawId);
-    let bioNum = BigInt(0);
-    for (const b of credBytes) bioNum = (bioNum << 8n) | BigInt(b);
-    const FIELD_SIZE = BigInt('21888242871839275222246405745257275088548364400416034343698204186575808495617');
-    pendingBioHash = (bioNum % FIELD_SIZE).toString();
-    addLog('Device identity hashed. Connecting wallet...', 'ok');
-    await connectWalletAndProve();
+    } catch (e) {
+      document.getElementById('btn-reg').disabled = !proofData;
+    }
+
+    await refreshSwapBalances();
+    await loadLPPosition();
+    document.getElementById('swap-btn-go').disabled = false;
+    document.getElementById('swap-btn-faucet').disabled = false;
+    document.getElementById('swap-btn-addliq').disabled = false;
+    setSwapDirection('aeq_to_tusd');
   } catch (e) {
-    addLog('WebAuthn error: ' + sanitize(e.message), 'err');
+    walletLog('WalletConnect connection failed: ' + sanitize(e.message || String(e)), 'err');
   }
 }
 
@@ -4785,9 +4774,9 @@ async function doRegister() {
       [1926, V7_CONTRACT, 'register', commitment, '0x' + nullifier]
     );
 
-    addLog('Please sign the message in MetaMask to prove this wallet is yours (no gas, no cost)...', 'info');
+    addLog('Please sign the message in your wallet to prove this wallet is yours (no gas, no cost)...', 'info');
     // personal_sign automatically adds the "\x19Ethereum Signed Message:\n32" prefix
-    const signature = await window.ethereum.request({
+    const signature = await activeProvider().request({
       method: 'personal_sign',
       params: [messageHash, waddr]
     });
@@ -4800,7 +4789,7 @@ async function doRegister() {
         wallet: waddr,
         pA: proofData.pA, pB: proofData.pB, pC: proofData.pC, pubSignals: proofData.pubSignals,
         signature: signature,
-        bioHash: pendingBioHash || '',
+        bioHash: '',
         bioHashKey: proofData.bioHashKey || '',
         nullifier: nullifier,
         circuitVersion: proofData.circuitVersion,
@@ -4825,7 +4814,9 @@ async function doRegister() {
 // leaving stale "connected" UI displayed indefinitely. Now mirrors the same
 // dual-tab sync connectWallet()/connectSwapWallet() already do, and fully
 // resets via disconnectWallet() when nothing is connected anymore.
-window.ethereum && window.ethereum.on('accountsChanged', function(a) {
+// Named (not inline) so both window.ethereum and the WalletConnect provider
+// (see getWalletConnectProvider()) can register the same handler.
+function handleAccountsChanged(a) {
   const newAddr = a[0] || '';
   if (!newAddr) { disconnectWallet(); return; }
   waddr = newAddr;
@@ -4840,15 +4831,19 @@ window.ethereum && window.ethereum.on('accountsChanged', function(a) {
   btn.style.color = '#050A14';
   const dBtn = document.getElementById('btn-disconnect');
   if (dBtn) dBtn.style.display = 'block';
+  const wcBtn = document.getElementById('btn-wc');
+  if (wcBtn) wcBtn.style.display = 'none';
 
   const swapBox = document.getElementById('swap-wbox');
   const swapAdr = document.getElementById('swap-wadr');
   const swapBtn = document.getElementById('swap-btn-conn');
   const swapDBtn = document.getElementById('swap-btn-disconnect');
+  const swapWcBtn = document.getElementById('swap-btn-wc');
   if (swapBox) swapBox.style.display = 'block';
   if (swapAdr) swapAdr.textContent = swapWaddr;
   if (swapBtn) { swapBtn.textContent = swapWaddr.slice(0, 10) + '...' + swapWaddr.slice(-4); swapBtn.style.background = 'var(--green)'; swapBtn.style.color = '#050A14'; }
   if (swapDBtn) swapDBtn.style.display = 'block';
+  if (swapWcBtn) swapWcBtn.style.display = 'none';
   if (typeof refreshSwapBalances === 'function') refreshSwapBalances().catch(function() {});
   if (typeof loadLPPosition === 'function') loadLPPosition().catch(function() {});
 
@@ -4863,7 +4858,8 @@ window.ethereum && window.ethereum.on('accountsChanged', function(a) {
       if (proofData) document.getElementById('btn-reg').textContent = 'PROOF READY — CLICK TO REGISTER';
     }
   }).catch(function() { document.getElementById('btn-reg').disabled = !proofData; });
-});
+}
+window.ethereum && window.ethereum.on('accountsChanged', handleAccountsChanged);
 
 // FIX (P2, beta-launch audit 2026-07-05): no chainChanged listener existed
 // at all — a user connected while MetaMask was on any other network saw
@@ -4879,80 +4875,115 @@ window.ethereum && window.ethereum.on('chainChanged', function() {
 });
 
 function disconnectWallet() {
+  const wasWalletConnect = localStorage.getItem('aeq_wallet_provider') === 'walletconnect';
   waddr = '';
   swapWaddr = '';
   localStorage.removeItem('aeq_wallet');
+  localStorage.removeItem('aeq_wallet_provider');
   // Reset register tab
   const wbox = document.getElementById('wbox');
   const wadr = document.getElementById('wadr');
   const bConn = document.getElementById('btn-conn');
   const bDisc = document.getElementById('btn-disconnect');
   const bReg = document.getElementById('btn-reg');
+  const bWc = document.getElementById('btn-wc');
   if (wbox) wbox.style.display = 'none';
   if (wadr) wadr.textContent = '—';
   if (bConn) { bConn.textContent = '🦊 CONNECT METAMASK'; bConn.style.background = ''; bConn.style.color = ''; }
   if (bDisc) bDisc.style.display = 'none';
   if (bReg) { bReg.disabled = true; bReg.textContent = 'REGISTER ON-CHAIN'; }
+  if (bWc) bWc.style.display = '';
   // Reset swap tab
   const swapBox = document.getElementById('swap-wbox');
   const swapAdr = document.getElementById('swap-wadr');
   const swapConn = document.getElementById('swap-btn-conn');
   const swapDisc = document.getElementById('swap-btn-disconnect');
   const swapGo = document.getElementById('swap-btn-go');
+  const swapWc = document.getElementById('swap-btn-wc');
   if (swapBox) swapBox.style.display = 'none';
   if (swapAdr) swapAdr.textContent = '—';
   if (swapConn) { swapConn.textContent = '🦊 CONNECT METAMASK'; swapConn.style.background = ''; swapConn.style.color = ''; }
   if (swapDisc) swapDisc.style.display = 'none';
   if (swapGo) swapGo.disabled = true;
-  addLog('✓ Wallet disconnected locally. To fully revoke, open MetaMask → Connected Sites.', 'info');
+  if (swapWc) swapWc.style.display = '';
+  if (wasWalletConnect && wcProvider) {
+    wcProvider.disconnect().catch(function() {});
+    wcProvider = null;
+  }
+  addLog(wasWalletConnect ? '✓ Wallet disconnected.' : '✓ Wallet disconnected locally. To fully revoke, open MetaMask → Connected Sites.', 'info');
+}
+
+// Shared by both restore paths below (MetaMask's silent eth_accounts check
+// and WalletConnect's persisted-session check) — applies an already-known,
+// already-authorized address to both tabs' UI without prompting the user.
+async function applyRestoredWallet(addr) {
+  waddr = addr;
+  swapWaddr = addr;
+  // Restore register tab UI
+  const wbox = document.getElementById('wbox');
+  const wadr = document.getElementById('wadr');
+  const bConn = document.getElementById('btn-conn');
+  const bDisc = document.getElementById('btn-disconnect');
+  if (wbox) wbox.style.display = 'block';
+  if (wadr) { wadr.textContent = addr; wadr.title = addr; }
+  if (bConn) { bConn.textContent = addr.slice(0,10)+'...'+addr.slice(-4); bConn.style.background='var(--green)'; bConn.style.color='#050A14'; }
+  if (bDisc) bDisc.style.display = 'block';
+  // Restore swap tab UI
+  const swapBox = document.getElementById('swap-wbox');
+  const swapAdr = document.getElementById('swap-wadr');
+  const swapConn = document.getElementById('swap-btn-conn');
+  const swapDBtn = document.getElementById('swap-btn-disconnect');
+  if (swapBox) swapBox.style.display = 'block';
+  if (swapAdr) { swapAdr.textContent = addr; swapAdr.title = addr; }
+  if (swapConn) { swapConn.textContent = addr.slice(0,10)+'...'+addr.slice(-4); swapConn.style.background='var(--green)'; swapConn.style.color='#050A14'; }
+  if (swapDBtn) swapDBtn.style.display = 'block';
+  const goBtn = document.getElementById('swap-btn-go');
+  const faucetBtn = document.getElementById('swap-btn-faucet');
+  const addliqBtn = document.getElementById('swap-btn-addliq');
+  if (goBtn) goBtn.disabled = false;
+  if (faucetBtn) faucetBtn.disabled = false;
+  if (addliqBtn) addliqBtn.disabled = false;
+  setSwapDirection('aeq_to_tusd');
+  refreshSwapBalances();
+  loadLPPosition();
+  // Check registration status silently — no popup
+  try {
+    const br = await fetch('/api/balance?wallet=' + addr);
+    const bd = await br.json();
+    if (bd.is_human) {
+      const bReg = document.getElementById('btn-reg');
+      if (bReg) { bReg.disabled = true; bReg.textContent = 'ALREADY REGISTERED ✓'; }
+      addLog('✓ Wallet restored. Balance: ' + (bd.balance || 0).toFixed(4) + ' AEQ · Already registered.', 'ok');
+      loadGuardianStatus();
+    }
+  } catch(_) {}
 }
 
 async function restoreWalletFromStorage() {
   const saved = localStorage.getItem('aeq_wallet');
-  if (!saved || !window.ethereum) return;
+  if (!saved) return;
+  if (localStorage.getItem('aeq_wallet_provider') === 'walletconnect') {
+    try {
+      const provider = await getWalletConnectProvider();
+      const restored = provider.session && provider.accounts && provider.accounts[0];
+      if (restored && provider.accounts[0].toLowerCase() === saved.toLowerCase()) {
+        await applyRestoredWallet(provider.accounts[0]);
+        const wcBtn = document.getElementById('btn-wc');
+        if (wcBtn) wcBtn.style.display = 'none';
+        const swapWcBtn = document.getElementById('swap-btn-wc');
+        if (swapWcBtn) swapWcBtn.style.display = 'none';
+      } else {
+        localStorage.removeItem('aeq_wallet');
+        localStorage.removeItem('aeq_wallet_provider');
+      }
+    } catch (e) {}
+    return;
+  }
+  if (!window.ethereum) return;
   try {
     const accounts = await window.ethereum.request({ method: 'eth_accounts' });
     if (accounts && accounts[0] && accounts[0].toLowerCase() === saved.toLowerCase()) {
-      waddr = accounts[0];
-      swapWaddr = accounts[0];
-      // Restore register tab UI
-      const wbox = document.getElementById('wbox');
-      const wadr = document.getElementById('wadr');
-      const bConn = document.getElementById('btn-conn');
-      const bDisc = document.getElementById('btn-disconnect');
-      if (wbox) wbox.style.display = 'block';
-      if (wadr) { wadr.textContent = accounts[0]; wadr.title = accounts[0]; }
-      if (bConn) { bConn.textContent = accounts[0].slice(0,10)+'...'+accounts[0].slice(-4); bConn.style.background='var(--green)'; bConn.style.color='#050A14'; }
-      if (bDisc) bDisc.style.display = 'block';
-      // Restore swap tab UI
-      const swapBox = document.getElementById('swap-wbox');
-      const swapAdr = document.getElementById('swap-wadr');
-      const swapConn = document.getElementById('swap-btn-conn');
-      const swapDBtn = document.getElementById('swap-btn-disconnect');
-      if (swapBox) swapBox.style.display = 'block';
-      if (swapAdr) { swapAdr.textContent = accounts[0]; swapAdr.title = accounts[0]; }
-      if (swapConn) { swapConn.textContent = accounts[0].slice(0,10)+'...'+accounts[0].slice(-4); swapConn.style.background='var(--green)'; swapConn.style.color='#050A14'; }
-      if (swapDBtn) swapDBtn.style.display = 'block';
-      const goBtn = document.getElementById('swap-btn-go');
-      const faucetBtn = document.getElementById('swap-btn-faucet');
-      const addliqBtn = document.getElementById('swap-btn-addliq');
-      if (goBtn) goBtn.disabled = false;
-      if (faucetBtn) faucetBtn.disabled = false;
-      if (addliqBtn) addliqBtn.disabled = false;
-      setSwapDirection('aeq_to_tusd');
-      refreshSwapBalances();
-      loadLPPosition();
-      // Check registration status silently — no popup
-      try {
-        const br = await fetch('/api/balance?wallet=' + accounts[0]);
-        const bd = await br.json();
-        if (bd.is_human) {
-          const bReg = document.getElementById('btn-reg');
-          if (bReg) { bReg.disabled = true; bReg.textContent = 'ALREADY REGISTERED ✓'; }
-          addLog('✓ Wallet restored. Balance: ' + (bd.balance || 0).toFixed(4) + ' AEQ · Already registered.', 'ok');
-          loadGuardianStatus();
-        }
-      } catch(_) {}
+      await applyRestoredWallet(accounts[0]);
     } else {
       localStorage.removeItem('aeq_wallet');
     }

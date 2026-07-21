@@ -74,6 +74,19 @@ var vendorEthersJS string
 //go:embed assets/vendor/lightweight-charts.min.js
 var vendorLightweightChartsJS string
 
+// vendorWalletConnectJS replaces the WebAuthn "register via browser" flow
+// (device-bound, so a person with two devices could register twice — see
+// the AUDIT_2026-07-12 write-up) with WalletConnect on the Register and Swap
+// pages: a proper wallet-signature connection instead of a browser
+// credential standing in for one. Same self-hosting rationale as
+// vendorEthersJS above — this is @walletconnect/ethereum-provider (see
+// package.json), bundled to a single self-contained browser script with
+// esbuild since the package only ships bundler-oriented builds, not a
+// dependency-free vendor bundle.
+//
+//go:embed assets/vendor/walletconnect-ethereum-provider.min.js
+var vendorWalletConnectJS string
+
 // FIX (Monster Audit 2026-07-12 follow-up, P1): handleNodeBinding and
 // handleLanding used to inline their <script> blocks directly into the HTML,
 // which forced 'unsafe-inline' into script-src on both pages' CSP — a page

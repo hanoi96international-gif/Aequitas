@@ -16,6 +16,7 @@
 <script src="/vendor/lightweight-charts.min.js"></script>
 <link rel="stylesheet" href="/explorer.css">
 <script src="/vendor/ethers.min.js"></script>
+<script src="/vendor/walletconnect-ethereum-provider.min.js"></script>
 </head>
 <body>
 <header>
@@ -106,10 +107,9 @@
     <div id="demurrage-notice" style="display:none"></div>
     <div class="pbox" id="pbox"><div class="plbl" data-i18n="proof-recv">⚡ ZK PROOF RECEIVED</div><div class="pval" id="pval" data-i18n="proof-hint">Connect wallet to register</div></div>
     <button class="rbtn bc" id="btn-conn" data-act="connectWallet" data-i18n="btn-conn">🦊 CONNECT METAMASK</button>
+    <button class="rbtn" id="btn-wc" data-act="connectWalletConnect" style="background:linear-gradient(135deg,#3b99fc,#1e5fd6);color:#fff;margin-top:8px" data-i18n="btn-wc">🔗 CONNECT WALLETCONNECT</button>
     <button id="btn-disconnect" data-act="disconnectWallet" style="display:none;margin-top:6px;padding:8px 16px;font-size:0.6rem;letter-spacing:1px;border:1px solid rgba(248,113,113,0.4);background:rgba(248,113,113,0.08);color:var(--red);border-radius:6px;cursor:pointer;width:100%">⊘ DISCONNECT WALLET</button>
     <button class="rbtn br" id="btn-reg" data-act="doRegister" disabled data-i18n="btn-reg">🔐 REGISTER ON-CHAIN</button>
-    <button class="rbtn" id="btn-web-reg" data-act="registerViaBrowser" style="background:linear-gradient(135deg,#0ea5e9,#6366f1);color:#fff;margin-top:8px" data-i18n="btn-web-reg">🌐 REGISTER VIA BROWSER (WebAuthn)</button>
-    <div id="web-reg-warn" style="display:none;font-size:0.62rem;color:#f59e0b;background:rgba(245,158,11,0.08);border:1px solid rgba(245,158,11,0.3);border-radius:6px;padding:8px 10px;margin-top:6px" data-i18n="web-reg-warn">⚠ Device-bound: This identity is tied to this device and browser. You cannot transfer it to another device.<br><br>⚠ <strong>Important:</strong> WebAuthn proves device possession — NOT biological uniqueness. A person with two devices could theoretically register twice. If uniqueness is critical to you, use the Android App instead — it still shares the same current device-bound limitation, but at least ties the key to hardware you control.</div>
     <div class="rlog" id="rlog"><span class="info" data-i18n="reg-log-hint">// Open Aequitas Android App to generate your proof, then return here...</span></div>
 
     <!-- Guardian Panel — shown only when user is a registered human -->
@@ -475,6 +475,7 @@
     <div id="swap-warn" style="display:none;font-size:13px;padding:10px 12px;border-radius:8px;background:rgba(255,179,0,0.1);border:1px solid rgba(255,179,0,0.3);color:var(--gold);margin-bottom:10px"></div>
 
     <button class="rbtn bc" id="swap-btn-conn" data-act="connectSwapWallet" data-i18n="btn-conn">🦊 CONNECT METAMASK</button>
+    <button class="rbtn" id="swap-btn-wc" data-act="connectWalletConnect" style="background:linear-gradient(135deg,#3b99fc,#1e5fd6);color:#fff;margin-top:8px" data-i18n="btn-wc">🔗 CONNECT WALLETCONNECT</button>
     <button id="swap-btn-disconnect" data-act="disconnectWallet" style="display:none;margin-top:6px;padding:8px 16px;font-size:0.6rem;letter-spacing:1px;border:1px solid rgba(248,113,113,0.4);background:rgba(248,113,113,0.08);color:var(--red);border-radius:6px;cursor:pointer;width:100%">⊘ DISCONNECT WALLET</button>
     <button class="rbtn br" id="swap-btn-go" data-act="doSwap" disabled data-i18n="swap-btn-go">🔄 SWAP</button>
     <div class="rlog" id="swap-log"><span class="info" data-i18n="swap-log-hint">// Connect your wallet to swap...</span></div>
