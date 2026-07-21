@@ -195,6 +195,11 @@
         <div class="expl-name" data-i18n="expl-network">Network &amp; Nodes</div>
         <div class="expl-desc" data-i18n="expl-network-d">Node topology · run your own node · technical specs · Chain ID 1926</div>
       </div>
+      <div class="expl-card" data-act="goTab" data-args='["network","net-consensus"]'>
+        <div class="expl-icon">🔗</div>
+        <div class="expl-name" data-i18n="expl-consensus">Consensus: GHOSTDAG + KnightDAG</div>
+        <div class="expl-desc" data-i18n="expl-consensus-d">How every node agrees on one order · the 2026 KnightDAG upgrade explained</div>
+      </div>
     </div>
   </div>
 </div>
@@ -944,6 +949,7 @@
 <div id="tab-network" class="tab-content">
 <nav class="stabs">
   <div class="stab active" data-act="showStab" data-args='["tab-network","net-overview"]'>🌐 Overview</div>
+  <div class="stab" data-act="showStab" data-args='["tab-network","net-consensus"]'>🔗 Consensus</div>
   <div class="stab" data-act="showStab" data-args='["tab-network","net-story"]'>📖 Story</div>
   <div class="stab" data-act="showStab" data-args='["tab-network","net-runnode"]'>⚙️ Run a Node</div>
   <div class="stab" data-act="showStab" data-args='["tab-network","net-protocol"]'>📜 Protocol V7</div>
@@ -996,6 +1002,30 @@
 </div>
 </div>
 </div>
+
+<!-- CONSENSUS: how Aequitas nodes agree on one shared history, and how that agreement evolved -->
+<div id="net-consensus" class="stab-panel">
+<div style="padding:24px;max-width:900px;margin:0 auto">
+  <div class="section-label">How Aequitas Nodes Agree — Consensus Explained</div>
+
+  <div class="idx" style="margin-bottom:12px">
+    <div class="idx-title">Why a normal blockchain isn't enough</div>
+    <div style="font-size:0.65rem;color:var(--muted);line-height:1.9">A classic blockchain is a single chain: one block at a time, one winner per round, everyone else's work thrown away as an "orphan." That caps how fast a network can safely produce blocks — go too fast and honest validators keep accidentally competing with each other, wasting most of their work.<br><br>Aequitas runs on a <b>BlockDAG</b> instead of a single chain: validators can produce blocks concurrently, and instead of discarding the "losing" ones, the protocol <b>merges</b> them into a shared structure — every honest block counts toward the network's history. The hard problem this creates: if blocks can arrive in a different order at every node, how does everyone end up agreeing on the exact same final history and account balances? That's what the algorithms below solve.</div>
+  </div>
+
+  <div class="idx" style="margin-bottom:12px">
+    <div class="idx-title">GHOSTDAG (2018) — one true order out of a tangled graph</div>
+    <div style="font-size:0.65rem;color:var(--muted);line-height:1.9">GHOSTDAG (Sompolinsky &amp; Zohar) is the algorithm that turns Aequitas's BlockDAG into one canonical, agreed-upon order. Every node walks the same graph and computes, for every block, a deterministic <b>"blue score"</b>: it picks the strongest parent chain (the "selected parent"), then classifies every other concurrently-produced block it merges as "blue" (counted, honest) or "red" (excluded — too many other concurrent blocks around it to trust), bounded by a parameter K, the maximum concurrency the network tolerates as honest.<br><br>Because every node runs the exact same deterministic rule over the exact same block graph, they all arrive at the identical final order — height, then blue score, then hash — no matter which order blocks actually arrived over the network. You can see this live in the DAG View in the Explorer tab above: the purple line is the selected-parent chain, the fainter dots are merged (not discarded) concurrent blocks.</div>
+  </div>
+
+  <div class="idx" style="margin-bottom:12px;background:linear-gradient(135deg,rgba(139,92,246,0.08),rgba(6,182,212,0.04));border-color:rgba(139,92,246,0.25)">
+    <div class="idx-title" style="color:var(--purple)">◆ KNIGHTDAG (2026) — Aequitas's own upgrade beyond fixed-K GHOSTDAG</div>
+    <div style="font-size:0.65rem;color:var(--muted);line-height:1.9;margin-bottom:14px">Classic GHOSTDAG fixes K to a single worst-case value for an entire validator epoch — big enough to stay safe even during the busiest conceivable burst of concurrent block production, whether the network actually needs that much slack most of the time or not. That's the one piece of the algorithm that was still a fixed, hand-picked assumption rather than something the network figures out for itself.<br><br><b>KnightDAG</b> closes that gap, inspired by <b>DAGKNIGHT</b> (Sompolinsky &amp; Sutton, 2022) — Kaspa's own parameterless successor to GHOSTDAG. Instead of trusting one fixed epoch-wide K, every node deterministically searches, for every single new block, for the <i>smallest</i> K whose blue set still covers a strict majority of that block's own merge set — the actual concurrency happening right around it, not a hypothetical worst case. When the network is converging cleanly, K drops automatically and confirmation gets tighter and faster; under a genuine burst, classification gracefully falls back to exactly the classic fixed-K result — never less safe than before, only ever more precise. Every honest node runs the identical inference over the identical graph, so the network-wide agreement GHOSTDAG guarantees is fully preserved — KnightDAG is a strict upgrade, not a different set of rules.</div>
+    <div class="hlbox">GHOSTDAG (2018): one fixed K per validator epoch — a single worst-case value for the whole network<br>KnightDAG (2026): K inferred fresh for every block, from the DAG structure actually around it<br>Active from block 1,520,000 onward · falls back to classic GHOSTDAG whenever no smaller K reaches a majority<br>Fully backward-compatible: blocks below the activation height replay exactly as every node already agreed — nothing about the settled past changes</div>
+  </div>
+</div>
+</div>
+
 <div id="net-story" class="stab-panel">
 <div style="padding:24px;max-width:900px;margin:0 auto">
 
@@ -1581,9 +1611,8 @@
     </div>
   </div>
   <div class="idx" style="margin-bottom:12px;background:linear-gradient(135deg,rgba(139,92,246,0.08),rgba(6,182,212,0.04));border-color:rgba(139,92,246,0.25)">
-    <div class="idx-title" style="color:var(--purple)">◆ KNIGHTDAG — Adaptive Consensus Security</div>
-    <div style="font-size:0.65rem;color:var(--muted);line-height:1.9;margin-bottom:14px">Aequitas Chain orders concurrently-produced blocks with <b>GHOSTDAG</b> (Sompolinsky &amp; Zohar, 2018): every node computes a deterministic "blue score" for each block via selected-parent chains and blue/red classification, bounded by K — the maximum number of concurrent blocks the network tolerates as honest. Classic GHOSTDAG fixes K to one worst-case value for an entire validator epoch, whether the network actually needs that much slack or not.<br><br><b>KnightDAG</b> replaces that fixed epoch-wide K with a per-block inference, inspired by <b>DAGKNIGHT</b> (Sompolinsky &amp; Sutton, 2022): for every new block, each node deterministically searches for the smallest K whose blue set still covers a strict majority of that block's own merge set — the actual concurrency happening right around it. When the network converges cleanly, K drops automatically for tighter, faster confirmation; under a burst of concurrent production, classification gracefully falls back to exactly the classic fixed-K result. Every honest node runs the identical inference over the identical block graph, so the canonical order stays deterministic network-wide — KnightDAG only ever tightens GHOSTDAG's guarantee, never weakens it.</div>
-    <div class="hlbox">GHOSTDAG (2018): one fixed K per validator epoch — a single worst-case value for the whole network<br>KnightDAG (2026): K inferred per block from the DAG structure actually around it — adapts automatically to real conditions<br>Active from block 1,520,000 onward · falls back to classic GHOSTDAG when no smaller K reaches a majority<br>Fully backward-compatible: blocks below the activation height are unaffected, reproducing exactly what every node already agreed on</div>
+    <div class="idx-title" style="color:var(--purple)">◆ Consensus: GHOSTDAG + KNIGHTDAG</div>
+    <div style="font-size:0.65rem;color:var(--muted);line-height:1.9">How every node agrees on one shared order for concurrently-produced blocks — including the 2026 KnightDAG upgrade that lets each block infer its own optimal security margin instead of trusting one fixed network-wide worst case — now has its own dedicated tab: <b data-act="goTab" data-args='["network","net-consensus"]' style="color:var(--teal);cursor:pointer;text-decoration:underline">→ Network / Consensus</b>.</div>
   </div>
   <div class="idx" style="margin-bottom:12px;background:linear-gradient(135deg,rgba(139,92,246,0.06),rgba(13,8,32,0.9));border-color:rgba(139,92,246,0.2)">
     <div class="idx-title" style="color:var(--purple)">Node Decentralization Roadmap</div>
