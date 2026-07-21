@@ -3248,7 +3248,11 @@ function renderDagView(rawBlocks, canonicalHashSet) {
         'proposer: ' + short(n.block.proposer || '', 8, 4) + (validatorLabel(n.block.proposer) ? ' (' + validatorLabel(n.block.proposer) + ')' : ''),
         'blue_score: ' + (n.block.blue_score != null ? n.block.blue_score : '—'),
         'parents: ' + ((n.block.parent_hashes || []).length)
-      ].concat(isKnight ? ['◆ KnightDAG: adaptive K active for this block'] : [])
+      ].concat(isKnight ? [
+        (n.block.k_eff != null)
+          ? '◆ KnightDAG: inferred k=' + n.block.k_eff + ' (adaptive — smallest k covering a merge-set majority)'
+          : '◆ KnightDAG: adaptive K active for this block'
+      ] : [])
       .forEach(function(line) {
         const div = document.createElement('div');
         div.textContent = line;
@@ -3288,9 +3292,24 @@ function renderDagView(rawBlocks, canonicalHashSet) {
   const knightStatusEl = document.getElementById('dag-knight-status');
   if (knightStatusEl && heights.length) {
     const newestHeight = heights[heights.length - 1];
-    knightStatusEl.textContent = newestHeight >= KNIGHTDAG_ACTIVATION_HEIGHT
-      ? '· ◆ KnightDAG active — adaptive K'
-      : '· KnightDAG activates at #' + KNIGHTDAG_ACTIVATION_HEIGHT.toLocaleString();
+    if (newestHeight >= KNIGHTDAG_ACTIVATION_HEIGHT) {
+      // Median inferred k across the visible window — the one number that
+      // shows the adaptive layer actually working (k_eff comes from the
+      // node's own computeGHOSTDAGState, see Block.KEff).
+      const ks = [];
+      Object.keys(nodePos).forEach(function(h2) {
+        const ke = nodePos[h2].block.k_eff;
+        if (ke != null) ks.push(ke);
+      });
+      let kNote = '';
+      if (ks.length) {
+        ks.sort(function(a, b) { return a - b; });
+        kNote = ' · median k=' + ks[Math.floor(ks.length / 2)];
+      }
+      knightStatusEl.textContent = '· ◆ KnightDAG active' + kNote;
+    } else {
+      knightStatusEl.textContent = '· KnightDAG activates at #' + KNIGHTDAG_ACTIVATION_HEIGHT.toLocaleString();
+    }
   }
 
   const countEl = document.getElementById('dag-node-count');

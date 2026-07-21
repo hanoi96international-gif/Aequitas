@@ -132,6 +132,16 @@ type Block struct {
 	BlueScore      int64    `json:"blue_score,omitempty"`
 	SelectedParent string   `json:"selected_parent,omitempty"` // parent with highest blue score
 	Blues          []string `json:"blues,omitempty"`           // blue blocks in the merge set
+	// KEff is the per-block K that KnightDAG's adaptive layer actually
+	// inferred (the smallest k whose greedy blue set covers a majority of
+	// the merge set — see knightdagInferK). Same trust model as BlueScore/
+	// Blues: a locally-derived annotation recomputed by every node in
+	// computeGHOSTDAGState, never trusted from the wire, excluded from the
+	// block hash. nil below the KnightDAG activation height (pointer so
+	// "not applicable" is distinguishable from a genuine k=0, which is the
+	// common no-concurrency case). Serialized so the explorer/API can show
+	// the inferred K next to the epoch ceiling.
+	KEff *int `json:"k_eff,omitempty"`
 	// FromSync marks blocks fetched via HTTP-SYNC from an operator-configured
 	// trusted seed (PRIMARY_NODE_URL/PRIMARY_NODE_URLS/PEER_NODES — see
 	// BlockDAG.trustedSeeds and isTrustedSyncSource in sync_blocks.go), NOT
@@ -6072,7 +6082,17 @@ func (dag *BlockDAG) computeGHOSTDAGState(block *Block) (missingAncestor string,
 	cc := dag.newKnightdagConcCache(&dbBudget)
 	var blues []string
 	if block.Height >= knightdagActivationHeight {
-		_, blues = dag.knightdagInferK(sorted, cc)
+		var kEff int
+		kEff, blues = dag.knightdagInferK(sorted, cc)
+		// KEff is a locally-derived annotation exactly like Blues/BlueScore:
+		// recomputed by every node for every block (never trusted from the
+		// wire — this function overwrites whatever a peer sent), excluded
+		// from calculateBlockHash, and deterministic across nodes because
+		// knightdagInferK is a pure function of block content (see the
+		// determinism note above). Stored so the API/explorer can show the
+		// inferred K instead of discarding the single number that proves
+		// the adaptive layer is doing something.
+		block.KEff = &kEff
 	} else {
 		// Below the activation height: classify with the ceiling directly,
 		// bit-for-bit the pre-KnightDAG rule — see knightdagActivationHeight's
@@ -6080,6 +6100,7 @@ func (dag *BlockDAG) computeGHOSTDAGState(block *Block) (missingAncestor string,
 		// reproduce exactly what every other node already committed for it,
 		// independent of which code version originally computed it).
 		blues = knightdagClassify(sorted, dag.k(), cc)
+		block.KEff = nil
 	}
 
 	block.Blues = blues
