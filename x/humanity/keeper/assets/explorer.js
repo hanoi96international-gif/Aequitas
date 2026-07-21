@@ -4368,7 +4368,18 @@ function activateTabFromPath(path) {
     setTimeout(function() {
       const active = tabContent.querySelector('.stab-panel.active');
       if (!active) return;
+      // FIX (2026-07-21): this only ever special-cased eqi-score and
+      // eqi-economy — a direct load/reload landing on eqi-lorenz
+      // (Distribution) via activateTabFromPath (as opposed to a click,
+      // which goes through showStab and already handles it, line ~1961)
+      // never called drawLorenzCurve, so the chart stayed on its "Need 2+
+      // registered humans" placeholder forever regardless of actual human
+      // count. Exactly the class of bug the Consensus/Story sub-tab
+      // routing fix above this function was written to close — reload
+      // landing directly on a sub-tab is the one path click-driven
+      // handlers don't cover.
       if (active.id === 'eqi-score') { drawGiniHistoryChart(); drawLorenzCurve(); }
+      else if (active.id === 'eqi-lorenz') drawLorenzCurve();
       else if (active.id === 'eqi-economy') drawWcapSlideChart();
     }, 50);
   }
