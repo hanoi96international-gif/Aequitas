@@ -6,6 +6,14 @@
   --purple:#9B72F6;--teal:#22D3EE;--neon:#34D399;--gold:#F0B429;
   --green:#34D399;--red:#F87171;--blue:#60A5FA;
   --text:#E8EDF5;--muted:#8892A4;
+  /* DAG-status ring colors — deliberately NOT --blue/--red above (those read
+     too close to --purple: OKLab normal-vision ΔE 13.7, under the 15 floor
+     a full-color viewer needs to tell selected-parent purple and GHOSTDAG-
+     blue rings apart at a glance). Re-validated as a set:
+     node scripts/validate_palette.js "#9B72F6,#0EA5B7,#DC2626" --mode dark
+     — passes lightness band, chroma floor, CVD separation (deutan ΔE 11.5,
+     tritan 12.0) and the normal-vision floor (ΔE 21.4) against --purple. */
+  --dag-blue:#0EA5B7;--dag-red:#DC2626;
   --glow-purple:0 0 24px rgba(155,114,246,0.18);
   --glow-teal:0 0 20px rgba(34,211,238,0.14);
   --glow-strong:0 4px 32px rgba(155,114,246,0.28);
@@ -118,16 +126,35 @@ header::before{content:'';position:absolute;top:0;left:0;right:0;height:2px;back
    proposer's identity color, so who-produced-it and what-GHOSTDAG-decided
    are both visible on one mark at once. */
 .dag-node-selected circle{stroke:var(--purple)}
-.dag-node-blue circle{stroke:var(--blue)}
-.dag-node-red circle{stroke:var(--red)}
+.dag-node-blue circle{stroke:var(--dag-blue)}
+.dag-node-red circle{stroke:var(--dag-red)}
 .dag-node-pending circle{stroke:var(--border)}
 .dag-knight-mark{fill:var(--gold);font-size:8px;text-anchor:middle;pointer-events:none;paint-order:stroke;stroke:var(--bg);stroke-width:2px}
 .dag-edge{stroke:rgba(255,255,255,0.14);stroke-width:1.4px;fill:none}
 .dag-edge-selected{stroke:var(--purple);stroke-width:2.6px;opacity:0.85}
+/* New-block entrance: only applied to nodes not present in the previous
+   render (see explorer.js's previousDagHashes) so a routine live poll
+   doesn't replay this on every block, only genuinely new ones. */
+@keyframes dagNodeIn{0%{opacity:0;transform:scale(0.3)}70%{opacity:1;transform:scale(1.25)}100%{opacity:1;transform:scale(1)}}
+.dag-node-new{animation:dagNodeIn 0.5s cubic-bezier(0.34,1.56,0.64,1)}
 .dag-legend{display:flex;gap:16px;padding:10px 16px;font-size:0.55rem;color:var(--muted);border-top:1px solid var(--border);flex-wrap:wrap;align-items:center}
 .dag-legend span{display:inline-flex;align-items:center;gap:5px}
 .dag-legend i{width:8px;height:8px;border-radius:50%;display:inline-block}
 .dag-legend i.ring{background:transparent;border:2.5px solid var(--muted)}
+.dag-spark{vertical-align:middle;margin-left:6px}
+.dag-spark path{fill:none;stroke-width:1.5px}
+.chain-diagram{margin-top:14px;padding:12px 14px;border-radius:8px;border:1px solid var(--border);background:rgba(0,0,0,0.15)}
+.chain-diagram+.chain-diagram{margin-top:10px}
+.chain-diagram-bad{border-color:rgba(220,38,38,0.22)}
+.chain-diagram-good{border-color:rgba(14,165,183,0.25);background:rgba(14,165,183,0.05)}
+.chain-diagram-lbl{font-size:0.56rem;font-weight:700;letter-spacing:1px;text-transform:uppercase;margin-bottom:6px}
+.chain-diagram svg{width:100%;height:auto;display:block}
+.chain-diagram-note{font-size:0.55rem;color:var(--muted);margin-top:4px;line-height:1.6}
+/* One pulse traveling the main chain per diagram — a lightweight cue that
+   this is a live-producing network, not a static illustration. Additive
+   transform, so it starts at each circle's own cx/cy. */
+@keyframes chainPulseMove{0%{transform:translateX(0);opacity:0}8%{opacity:1}88%{opacity:1}100%{transform:translateX(260px);opacity:0}}
+.chain-pulse{animation:chainPulseMove 3.2s linear infinite}
 .dag-tip{position:fixed;pointer-events:none;background:var(--card2);border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:0.6rem;font-family:var(--font-mono);color:var(--text);box-shadow:0 4px 16px rgba(0,0,0,0.4);z-index:500;display:none;max-width:260px;word-break:break-all}
 .exp-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;padding:16px 20px 24px}
 @media(max-width:860px){.exp-grid{grid-template-columns:1fr}}

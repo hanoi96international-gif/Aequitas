@@ -261,8 +261,8 @@
   </div>
   <div class="dag-legend">
     <span><i class="ring" style="border-color:var(--purple)"></i>selected parent chain</span>
-    <span><i class="ring" style="border-color:var(--blue)"></i>GHOSTDAG blue — counted</span>
-    <span><i class="ring" style="border-color:var(--red)"></i>GHOSTDAG red — excluded, still merged</span>
+    <span><i class="ring" style="border-color:var(--dag-blue)"></i>GHOSTDAG blue — counted</span>
+    <span><i class="ring" style="border-color:var(--dag-red)"></i>GHOSTDAG red — excluded, still merged</span>
     <span><i class="ring" style="border-color:var(--border)"></i>not yet classified</span>
     <span style="color:var(--gold)">◆ KnightDAG-secured block</span>
     <span>Fill color = proposer identity. Each column = one height. Hover any block for its live GHOSTDAG verdict.</span>
@@ -1023,6 +1023,39 @@
   <div class="idx" style="margin-bottom:12px">
     <div class="idx-title">Why a normal blockchain isn't enough</div>
     <div style="font-size:0.65rem;color:var(--muted);line-height:1.9">A classic blockchain is a single chain: one block at a time, one winner per round, everyone else's work thrown away as an "orphan." That caps how fast a network can safely produce blocks — go too fast and honest validators keep accidentally competing with each other, wasting most of their work.<br><br>Aequitas runs on a <b>BlockDAG</b> instead of a single chain: validators can produce blocks concurrently, and instead of discarding the "losing" ones, the protocol <b>merges</b> them into a shared structure — every honest block counts toward the network's history. The hard problem this creates: if blocks can arrive in a different order at every node, how does everyone end up agreeing on the exact same final history and account balances? That's what the algorithms below solve.</div>
+
+    <div class="chain-diagram chain-diagram-bad">
+      <div class="chain-diagram-lbl" style="color:var(--dag-red)">Traditional blockchain — wasted work</div>
+      <svg viewBox="0 0 300 60" role="img" aria-label="Traditional blockchain: a competing block is discarded as an orphan">
+        <line x1="20" y1="30" x2="280" y2="30" stroke="var(--border)" stroke-width="2"/>
+        <circle class="chain-pulse" cx="20" cy="30" r="4" fill="var(--gold)"/>
+        <circle cx="20" cy="30" r="9" fill="var(--purple)"/>
+        <circle cx="90" cy="30" r="9" fill="var(--purple)"/>
+        <circle cx="160" cy="30" r="9" fill="var(--purple)"/>
+        <circle cx="230" cy="30" r="9" fill="var(--purple)"/>
+        <circle cx="280" cy="30" r="9" fill="var(--purple)"/>
+        <line x1="160" y1="30" x2="197" y2="53" stroke="var(--dag-red)" stroke-width="1.5" stroke-dasharray="3,3"/>
+        <circle cx="197" cy="53" r="7" fill="var(--dag-red)" opacity="0.55"/>
+        <text x="197" y="53" text-anchor="middle" dy="2.8" font-size="8" fill="#fff">✕</text>
+      </svg>
+      <div class="chain-diagram-note">Two validators produce at once → one wins, one is discarded — wasted work, and it caps how fast the network can safely go.</div>
+    </div>
+    <div class="chain-diagram chain-diagram-good">
+      <div class="chain-diagram-lbl" style="color:var(--dag-blue)">Aequitas BlockDAG — nothing wasted</div>
+      <svg viewBox="0 0 300 60" role="img" aria-label="Aequitas BlockDAG: a concurrent block is merged in, not discarded">
+        <line x1="20" y1="30" x2="280" y2="30" stroke="var(--border)" stroke-width="2"/>
+        <circle class="chain-pulse" cx="20" cy="30" r="4" fill="var(--gold)"/>
+        <circle cx="20" cy="30" r="9" fill="var(--purple)"/>
+        <circle cx="90" cy="30" r="9" fill="var(--purple)"/>
+        <path d="M90,30 C125,30 125,10 160,10" fill="none" stroke="var(--dag-blue)" stroke-width="2"/>
+        <path d="M160,10 C195,10 195,30 230,30" fill="none" stroke="var(--dag-blue)" stroke-width="2"/>
+        <circle cx="160" cy="10" r="7" fill="var(--dag-blue)"/>
+        <circle cx="160" cy="30" r="9" fill="var(--purple)"/>
+        <circle cx="230" cy="30" r="9" fill="var(--purple)"/>
+        <circle cx="280" cy="30" r="9" fill="var(--purple)"/>
+      </svg>
+      <div class="chain-diagram-note">Both blocks are kept — GHOSTDAG merges the concurrent one in and still counts it toward the canonical order.</div>
+    </div>
   </div>
 
   <div class="idx" style="margin-bottom:12px">

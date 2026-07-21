@@ -2964,6 +2964,48 @@ let latestChainHeight = 0;
 let dagAutoScrolled = false;
 let validatorLabels = {};
 
+// GHOSTDAG-verdict state shared between renderDagView (which computes it
+// fresh every poll) and openBlock's detail modal (which has no reason to
+// recompute the same sets just to answer "was this block blue or red?" for
+// whichever block a mobile user — no hover, so no DAG-view tooltip — just
+// tapped open). Always reflects the most recent render.
+let lastBlueSet = new Set();
+let lastReferencedSet = new Set();
+let lastCanonicalHashSet = new Set();
+
+// previousDagHashes tracks which block hashes were already on screen at the
+// last renderDagView call, so a live poll can tell "genuinely new since a
+// moment ago" apart from "already here" — only the former gets the
+// dag-node-new entrance animation; re-rendering everything on every poll
+// (the previous behavior) would otherwise replay it for the whole DAG each
+// time.
+let previousDagHashes = new Set();
+
+// blueRatioHistory is a short rolling window of "% of the visible merge
+// window GHOSTDAG counted as blue" samples, one per renderDagView call —
+// real data already being computed for dag-verdict-stat, just kept around
+// long enough to draw a trend instead of a single snapshot number.
+const BLUE_RATIO_HISTORY_MAX = 40;
+let blueRatioHistory = [];
+
+// sparklineSVG builds a minimal inline SVG sparkline (no axes, no libs) —
+// values in [0,1], most-recent last. Stroke color comes from the
+// .dag-spark path CSS rule (explorer.css), not an inline attribute — SVG
+// presentation attributes don't reliably resolve CSS custom properties
+// across every browser the way an actual stylesheet rule does.
+function sparklineSVG(values, width, height) {
+  if (!values.length) return '';
+  if (values.length === 1) values = [values[0], values[0]];
+  const stepX = width / (values.length - 1);
+  const pts = values.map(function(v, i) {
+    const x = i * stepX;
+    const y = height - v * height;
+    return x.toFixed(1) + ',' + y.toFixed(1);
+  });
+  return '<svg class="dag-spark" width="' + width + '" height="' + height + '" viewBox="0 0 ' + width + ' ' + height + '">' +
+    '<path d="M' + pts.join(' L') + '"/></svg>';
+}
+
 // loadValidatorLabels fetches the registration-order ordinal for every
 // known signing address (see GetValidatorOrdinals' own comment, state.go,
 // for why this is registration order, not a hardcoded per-node name).
@@ -3045,6 +3087,9 @@ function renderDagView(rawBlocks, canonicalHashSet) {
     (b.blues || []).forEach(function(h) { blueSet.add(h); });
     (b.parent_hashes || []).forEach(function(h) { referencedSet.add(h); });
   });
+  lastBlueSet = blueSet;
+  lastReferencedSet = referencedSet;
+  lastCanonicalHashSet = canonicalHashSet;
 
   let heights = Array.from(new Set(Object.keys(byHash).map(function(h) { return byHash[h].height; })));
   heights.sort(function(a, b) { return a - b; });
@@ -3126,8 +3171,9 @@ function renderDagView(rawBlocks, canonicalHashSet) {
     // newest column).
     const status = n.canonical ? 'selected' : (blueSet.has(hash) ? 'blue' : (referencedSet.has(hash) ? 'red' : 'pending'));
     const isKnight = n.block.height >= KNIGHTDAG_ACTIVATION_HEIGHT;
+    const isNew = !previousDagHashes.has(hash);
     const g = document.createElementNS(svgNS, 'g');
-    g.setAttribute('class', 'dag-node dag-node-' + status + (n.canonical ? '' : ' dag-sibling'));
+    g.setAttribute('class', 'dag-node dag-node-' + status + (n.canonical ? '' : ' dag-sibling') + (isNew ? ' dag-node-new' : ''));
     g.setAttribute('transform', 'translate(' + n.x + ',' + n.y + ')');
     const circle = document.createElementNS(svgNS, 'circle');
     circle.setAttribute('r', n.canonical ? 7 : 5.5);
@@ -3171,13 +3217,16 @@ function renderDagView(rawBlocks, canonicalHashSet) {
     nodeGroup.appendChild(g);
   });
   svg.appendChild(nodeGroup);
+  previousDagHashes = new Set(Object.keys(nodePos));
 
   const countEl = document.getElementById('dag-node-count');
   if (countEl) countEl.textContent = Object.keys(nodePos).length + ' blocks · ' + heights.length + ' heights';
 
   // Live blue/red split, computed the same way the node rings are colored —
   // a real, honest number (not a fabricated K_eff) that shows GHOSTDAG's
-  // classification actually happening across the visible window.
+  // classification actually happening across the visible window. The
+  // sparkline plots blueRatioHistory — the same ratio sampled on every
+  // poll — so the panel shows a trend, not just a snapshot.
   const verdictEl = document.getElementById('dag-verdict-stat');
   if (verdictEl) {
     let blues = 0, reds = 0;
@@ -3187,9 +3236,15 @@ function renderDagView(rawBlocks, canonicalHashSet) {
       else if (referencedSet.has(hash)) reds++;
     });
     const total = blues + reds;
-    verdictEl.innerHTML = total > 0
-      ? '<span style="color:var(--blue)">' + blues + ' blue</span> / <span style="color:var(--red)">' + reds + ' red</span> (' + Math.round(100 * blues / total) + '% counted)'
-      : '';
+    if (total > 0) {
+      const ratio = blues / total;
+      blueRatioHistory.push(ratio);
+      if (blueRatioHistory.length > BLUE_RATIO_HISTORY_MAX) blueRatioHistory.shift();
+      verdictEl.innerHTML = '<span style="color:var(--dag-blue)">' + blues + ' blue</span> / <span style="color:var(--dag-red)">' + reds + ' red</span> (' + Math.round(100 * ratio) + '% counted)'
+        + sparklineSVG(blueRatioHistory, 56, 16);
+    } else {
+      verdictEl.innerHTML = '';
+    }
   }
 
   // Snap to the newest column on first render only — later live refreshes
@@ -3389,6 +3444,26 @@ function openBlock(hash) {
   if (b.blue_score != null) {
     html += '<div class="bdc-row"><div class="bdc-k">GHOSTDAG Blue Score</div><div class="bdc-v" style="color:var(--teal);font-weight:700">'
       + sanitize(String(b.blue_score)) + ' <span style="color:var(--muted);font-weight:400;font-size:0.55rem">canonical ordering key</span></div></div>';
+  }
+  // GHOSTDAG verdict + KnightDAG flag — the DAG view's hover tooltip shows
+  // this too, but hover doesn't exist on touch devices; this block detail
+  // modal (reachable by tap, same as desktop click) is the one place every
+  // device can see it. Reuses the exact same classification the DAG view
+  // just rendered (lastBlueSet/lastReferencedSet/lastCanonicalHashSet),
+  // not a re-derivation that could disagree with what's on screen.
+  const verdict = lastCanonicalHashSet.has(b.hash) ? 'selected'
+    : lastBlueSet.has(b.hash) ? 'blue'
+    : lastReferencedSet.has(b.hash) ? 'red' : 'pending';
+  const verdictColor = { selected: 'var(--purple)', blue: 'var(--dag-blue)', red: 'var(--dag-red)', pending: 'var(--muted)' }[verdict];
+  const verdictText = {
+    selected: '★ selected parent chain',
+    blue: '● GHOSTDAG blue — counted toward blue_score',
+    red: '● GHOSTDAG red — excluded, still merged into the DAG',
+    pending: '○ not yet classified (its classifying block hasn\'t arrived)'
+  }[verdict];
+  html += '<div class="bdc-row"><div class="bdc-k">GHOSTDAG Verdict</div><div class="bdc-v" style="color:' + verdictColor + ';font-weight:700">' + verdictText + '</div></div>';
+  if (b.height >= KNIGHTDAG_ACTIVATION_HEIGHT) {
+    html += '<div class="bdc-row"><div class="bdc-k">KnightDAG</div><div class="bdc-v" style="color:var(--gold);font-weight:700">◆ adaptive K active for this block</div></div>';
   }
   const bLabel = validatorLabel(b.proposer);
   html += '<div class="bdc-row"><div class="bdc-k">Proposer</div><div class="bdc-v" style="color:var(--teal);word-break:break-all;font-size:0.54rem">'
