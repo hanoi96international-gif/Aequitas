@@ -3003,6 +3003,11 @@ const DAG_COL_W = 56;
 const DAG_ROW_H = 34;
 const DAG_PAD = 26;
 
+// KNIGHTDAG_ACTIVATION_HEIGHT mirrors block.go's knightdagDefaultActivationHeight
+// — purely cosmetic here (a small marker on nodes at/above it), never used
+// for any consensus decision client-side.
+const KNIGHTDAG_ACTIVATION_HEIGHT = 1520000;
+
 // renderDagView draws the actual GHOSTDAG parent/merge structure: one
 // column per block height, one row per concurrent block at that height
 // (deduplicated across every sibling — not just the canonical winner), and
@@ -3010,6 +3015,20 @@ const DAG_PAD = 26;
 // another block still in the visible window. This is what makes the DAG
 // (not a linear chain) visible — a merge block literally has multiple
 // incoming edges converging on it.
+//
+// Beyond structure, this renders GHOSTDAG's actual verdict wherever it can
+// be determined from data already fetched: the selected-parent edge (the
+// real chain link a block's blue_score is built on) is drawn thick and
+// glowing purple, distinct from ordinary merge edges. Every node gets a
+// colored ring in GHOSTDAG's own vocabulary — blue (counted toward
+// blue_score) or red (excluded — too much concurrency in its anticone) —
+// derived by unioning every visible block's own `blues` list against every
+// hash any visible block references as a parent. A block whose classifying
+// child hasn't arrived in the visible window yet (normally just the newest
+// column) is left "pending" rather than guessed. Blocks at or above
+// KNIGHTDAG_ACTIVATION_HEIGHT get a small ◆ marker: GHOSTDAG's fixed
+// per-epoch K no longer applies to them — each infers its own from the DAG
+// around it (see the Network → Consensus tab).
 function renderDagView(rawBlocks, canonicalHashSet) {
   const svg = document.getElementById('dag-svg');
   const wrap = document.getElementById('dag-wrap');
@@ -3019,6 +3038,14 @@ function renderDagView(rawBlocks, canonicalHashSet) {
 
   const byHash = {};
   rawBlocks.forEach(function(b) { if (b && b.hash) byHash[b.hash] = b; });
+
+  const blueSet = new Set();
+  const referencedSet = new Set();
+  rawBlocks.forEach(function(b) {
+    (b.blues || []).forEach(function(h) { blueSet.add(h); });
+    (b.parent_hashes || []).forEach(function(h) { referencedSet.add(h); });
+  });
+
   let heights = Array.from(new Set(Object.keys(byHash).map(function(h) { return byHash[h].height; })));
   heights.sort(function(a, b) { return a - b; });
   if (heights.length > DAG_MAX_HEIGHTS) heights = heights.slice(heights.length - DAG_MAX_HEIGHTS);
@@ -3062,16 +3089,28 @@ function renderDagView(rawBlocks, canonicalHashSet) {
   svg.setAttribute('height', height);
   while (svg.firstChild) svg.removeChild(svg.firstChild);
 
+  // Glow filter for the selected-parent path and the canonical chain's own
+  // nodes — this is the chain the whole network actually agreed on, so it
+  // should read as the one thread everything else is measured against.
+  const defs = document.createElementNS(svgNS, 'defs');
+  defs.innerHTML = '<filter id="dagGlow" x="-80%" y="-80%" width="260%" height="260%">' +
+    '<feGaussianBlur stdDeviation="2" result="blur"/>' +
+    '<feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>' +
+    '</filter>';
+  svg.appendChild(defs);
+
   const edgeGroup = document.createElementNS(svgNS, 'g');
   Object.keys(nodePos).forEach(function(hash) {
     const n = nodePos[hash];
     (n.block.parent_hashes || []).forEach(function(ph) {
       const p = nodePos[ph];
       if (!p) return;
+      const isSelected = !!n.block.selected_parent && ph === n.block.selected_parent;
       const midX = (n.x + p.x) / 2;
       const path = document.createElementNS(svgNS, 'path');
       path.setAttribute('d', 'M' + p.x + ',' + p.y + ' C ' + midX + ',' + p.y + ' ' + midX + ',' + n.y + ' ' + n.x + ',' + n.y);
-      path.setAttribute('class', 'dag-edge');
+      path.setAttribute('class', isSelected ? 'dag-edge dag-edge-selected' : 'dag-edge');
+      if (isSelected) path.setAttribute('filter', 'url(#dagGlow)');
       edgeGroup.appendChild(path);
     });
   });
@@ -3080,13 +3119,29 @@ function renderDagView(rawBlocks, canonicalHashSet) {
   const nodeGroup = document.createElementNS(svgNS, 'g');
   Object.keys(nodePos).forEach(function(hash) {
     const n = nodePos[hash];
+    // GHOSTDAG's own vocabulary drives the ring color: on the accepted
+    // selected-parent chain, explicitly blue-classified by some visible
+    // block, explicitly excluded (red) by some visible block, or not yet
+    // classified by anything in the window (pending — normally just the
+    // newest column).
+    const status = n.canonical ? 'selected' : (blueSet.has(hash) ? 'blue' : (referencedSet.has(hash) ? 'red' : 'pending'));
+    const isKnight = n.block.height >= KNIGHTDAG_ACTIVATION_HEIGHT;
     const g = document.createElementNS(svgNS, 'g');
-    g.setAttribute('class', 'dag-node' + (n.canonical ? '' : ' dag-sibling'));
+    g.setAttribute('class', 'dag-node dag-node-' + status + (n.canonical ? '' : ' dag-sibling'));
     g.setAttribute('transform', 'translate(' + n.x + ',' + n.y + ')');
     const circle = document.createElementNS(svgNS, 'circle');
     circle.setAttribute('r', n.canonical ? 7 : 5.5);
     circle.setAttribute('fill', avatarColor(n.block.proposer || '0x00'));
+    if (n.canonical) circle.setAttribute('filter', 'url(#dagGlow)');
     g.appendChild(circle);
+    if (isKnight) {
+      const mark = document.createElementNS(svgNS, 'text');
+      mark.setAttribute('x', '0');
+      mark.setAttribute('y', n.canonical ? '-12' : '-10');
+      mark.setAttribute('class', 'dag-knight-mark');
+      mark.textContent = '◆';
+      g.appendChild(mark);
+    }
     g.addEventListener('click', function() { openBlock(hash); });
     g.addEventListener('mousemove', function(ev) {
       if (!tip) return;
@@ -3094,12 +3149,19 @@ function renderDagView(rawBlocks, canonicalHashSet) {
       tip.style.left = (ev.clientX + 14) + 'px';
       tip.style.top = (ev.clientY + 14) + 'px';
       while (tip.firstChild) tip.removeChild(tip.firstChild);
+      const statusLabel = {
+        selected: '★ selected parent chain',
+        blue: '● GHOSTDAG blue (counted)',
+        red: '● GHOSTDAG red (excluded, still merged)',
+        pending: '○ not yet classified'
+      }[status];
       [
-        '#' + n.block.height + (n.canonical ? ' · canonical' : ' · merged sibling'),
+        '#' + n.block.height + ' · ' + statusLabel,
         'proposer: ' + short(n.block.proposer || '', 8, 4) + (validatorLabel(n.block.proposer) ? ' (' + validatorLabel(n.block.proposer) + ')' : ''),
         'blue_score: ' + (n.block.blue_score != null ? n.block.blue_score : '—'),
         'parents: ' + ((n.block.parent_hashes || []).length)
-      ].forEach(function(line) {
+      ].concat(isKnight ? ['◆ KnightDAG: adaptive K active for this block'] : [])
+      .forEach(function(line) {
         const div = document.createElement('div');
         div.textContent = line;
         tip.appendChild(div);
@@ -3112,6 +3174,23 @@ function renderDagView(rawBlocks, canonicalHashSet) {
 
   const countEl = document.getElementById('dag-node-count');
   if (countEl) countEl.textContent = Object.keys(nodePos).length + ' blocks · ' + heights.length + ' heights';
+
+  // Live blue/red split, computed the same way the node rings are colored —
+  // a real, honest number (not a fabricated K_eff) that shows GHOSTDAG's
+  // classification actually happening across the visible window.
+  const verdictEl = document.getElementById('dag-verdict-stat');
+  if (verdictEl) {
+    let blues = 0, reds = 0;
+    Object.keys(nodePos).forEach(function(hash) {
+      if (nodePos[hash].canonical) return;
+      if (blueSet.has(hash)) blues++;
+      else if (referencedSet.has(hash)) reds++;
+    });
+    const total = blues + reds;
+    verdictEl.innerHTML = total > 0
+      ? '<span style="color:var(--blue)">' + blues + ' blue</span> / <span style="color:var(--red)">' + reds + ' red</span> (' + Math.round(100 * blues / total) + '% counted)'
+      : '';
+  }
 
   // Snap to the newest column on first render only — later live refreshes
   // must not fight a user who scrolled back to look at older history.

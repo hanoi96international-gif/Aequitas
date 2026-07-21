@@ -26,7 +26,8 @@ header::before{content:'';position:absolute;top:0;left:0;right:0;height:2px;back
 .header-right{display:flex;gap:8px;align-items:center;position:relative;z-index:1}
 .badge{display:flex;align-items:center;gap:5px;padding:5px 11px;border-radius:20px;font-size:0.58rem;letter-spacing:0.5px;font-weight:600}
 .badge-live{background:rgba(4,120,87,0.08);border:1px solid rgba(4,120,87,0.25);color:var(--neon)}
-.badge-dag{background:rgba(107,70,193,0.08);border:1px solid rgba(107,70,193,0.2);color:var(--purple)}
+.badge-dag{background:linear-gradient(135deg,rgba(155,114,246,0.14),rgba(34,211,238,0.08));border:1px solid rgba(155,114,246,0.4);color:var(--purple);font-weight:700;text-shadow:0 0 12px rgba(155,114,246,0.5);animation:knightGlow 3s ease-in-out infinite}
+@keyframes knightGlow{0%,100%{box-shadow:0 0 0 rgba(155,114,246,0)}50%{box-shadow:0 0 10px rgba(155,114,246,0.35)}}
 .badge-health{cursor:help;transition:background 0.3s,border-color 0.3s,color 0.3s}
 .badge-health-healthy{background:rgba(4,120,87,0.08);border:1px solid rgba(4,120,87,0.25);color:var(--neon)}
 .badge-health-warn{background:rgba(240,180,41,0.1);border:1px solid rgba(240,180,41,0.3);color:var(--gold)}
@@ -105,17 +106,28 @@ header::before{content:'';position:absolute;top:0;left:0;right:0;height:2px;back
 .exp-stat-lbl{font-size:0.55rem;color:var(--muted);text-transform:uppercase;letter-spacing:1.5px;margin-bottom:7px;font-weight:600}
 .exp-stat-val{font-size:1.4rem;font-weight:800;color:var(--text);font-family:var(--font-display);line-height:1;background:var(--grad);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}
 .exp-stat-sub{font-size:0.5rem;color:var(--muted);margin-top:5px;line-height:1.4}
-.dag-panel{margin:16px 20px 0;background:var(--card);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden}
-.dag-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch;padding:6px 0}
+.dag-panel{margin:16px 20px 0;background:var(--card);border:1px solid rgba(155,114,246,0.18);border-radius:var(--radius);overflow:hidden;box-shadow:0 0 0 1px rgba(155,114,246,0.04),0 8px 28px rgba(0,0,0,0.25)}
+.dag-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch;padding:10px 0;background:radial-gradient(ellipse at 50% 0%,rgba(155,114,246,0.05),transparent 70%)}
 .dag-svg{display:block}
 .dag-node{cursor:pointer}
-.dag-node circle{stroke:var(--bg);stroke-width:2px;transition:r 0.15s}
-.dag-node:hover circle{r:9}
-.dag-node.dag-sibling circle{opacity:0.45}
+.dag-node circle{stroke:var(--bg);stroke-width:2.5px;transition:r 0.15s,stroke-width 0.15s}
+.dag-node:hover circle{r:9;stroke-width:3px}
+.dag-node.dag-sibling circle{opacity:0.72}
+/* Ring color follows GHOSTDAG's own verdict — the SAME vocabulary the
+   protocol uses (blue = counted, red = excluded) — fill stays the
+   proposer's identity color, so who-produced-it and what-GHOSTDAG-decided
+   are both visible on one mark at once. */
+.dag-node-selected circle{stroke:var(--purple)}
+.dag-node-blue circle{stroke:var(--blue)}
+.dag-node-red circle{stroke:var(--red)}
+.dag-node-pending circle{stroke:var(--border)}
+.dag-knight-mark{fill:var(--gold);font-size:8px;text-anchor:middle;pointer-events:none;paint-order:stroke;stroke:var(--bg);stroke-width:2px}
 .dag-edge{stroke:rgba(255,255,255,0.14);stroke-width:1.4px;fill:none}
-.dag-legend{display:flex;gap:16px;padding:8px 16px;font-size:0.55rem;color:var(--muted);border-top:1px solid var(--border);flex-wrap:wrap}
+.dag-edge-selected{stroke:var(--purple);stroke-width:2.6px;opacity:0.85}
+.dag-legend{display:flex;gap:16px;padding:10px 16px;font-size:0.55rem;color:var(--muted);border-top:1px solid var(--border);flex-wrap:wrap;align-items:center}
 .dag-legend span{display:inline-flex;align-items:center;gap:5px}
 .dag-legend i{width:8px;height:8px;border-radius:50%;display:inline-block}
+.dag-legend i.ring{background:transparent;border:2.5px solid var(--muted)}
 .dag-tip{position:fixed;pointer-events:none;background:var(--card2);border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:0.6rem;font-family:var(--font-mono);color:var(--text);box-shadow:0 4px 16px rgba(0,0,0,0.4);z-index:500;display:none;max-width:260px;word-break:break-all}
 .exp-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;padding:16px 20px 24px}
 @media(max-width:860px){.exp-grid{grid-template-columns:1fr}}

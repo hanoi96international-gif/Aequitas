@@ -251,16 +251,21 @@
 <div class="dag-panel">
   <div class="exp-panel-hdr">
     <div class="exp-panel-title"><span class="sec-dot"></span>GHOSTDAG DAG View <span style="color:var(--purple);font-weight:600">· KnightDAG-secured</span></div>
-    <div class="sec-count" id="dag-node-count">—</div>
+    <div style="display:flex;align-items:center;gap:12px">
+      <div class="sec-count" id="dag-verdict-stat" title="Share of visible merged blocks GHOSTDAG classified blue (counted toward blue_score) vs red (excluded)"></div>
+      <div class="sec-count" id="dag-node-count">—</div>
+    </div>
   </div>
   <div class="dag-wrap" id="dag-wrap">
     <svg id="dag-svg" class="dag-svg"></svg>
   </div>
   <div class="dag-legend">
-    <span><i style="background:var(--purple)"></i>selected parent chain</span>
-    <span><i style="background:var(--muted)"></i>merged sibling (still counted, not selected)</span>
-    <span>Each column = one block height. Lines = real parent references. Faded dots = concurrent blocks GHOSTDAG merged in, not orphans.</span>
-    <span>◆ KnightDAG: each block infers its own smallest secure K from the DAG around it, instead of trusting one fixed worst-case value for the whole epoch.</span>
+    <span><i class="ring" style="border-color:var(--purple)"></i>selected parent chain</span>
+    <span><i class="ring" style="border-color:var(--blue)"></i>GHOSTDAG blue — counted</span>
+    <span><i class="ring" style="border-color:var(--red)"></i>GHOSTDAG red — excluded, still merged</span>
+    <span><i class="ring" style="border-color:var(--border)"></i>not yet classified</span>
+    <span style="color:var(--gold)">◆ KnightDAG-secured block</span>
+    <span>Fill color = proposer identity. Each column = one height. Hover any block for its live GHOSTDAG verdict.</span>
   </div>
 </div>
 <div class="dag-tip" id="dag-tip"></div>
@@ -1006,7 +1011,14 @@
 <!-- CONSENSUS: how Aequitas nodes agree on one shared history, and how that agreement evolved -->
 <div id="net-consensus" class="stab-panel">
 <div style="padding:24px;max-width:900px;margin:0 auto">
-  <div class="section-label">How Aequitas Nodes Agree — Consensus Explained</div>
+  <div class="rhero" style="text-align:left;background:linear-gradient(135deg,rgba(155,114,246,0.14),rgba(34,211,238,0.06));border-color:rgba(155,114,246,0.35)">
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;flex-wrap:wrap">
+      <span style="font-size:0.56rem;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:var(--purple);background:rgba(155,114,246,0.12);border:1px solid rgba(155,114,246,0.3);border-radius:20px;padding:4px 10px">Core Technology</span>
+      <span style="font-size:0.56rem;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:var(--gold);background:rgba(240,180,41,0.1);border:1px solid rgba(240,180,41,0.3);border-radius:20px;padding:4px 10px">◆ New in 2026</span>
+    </div>
+    <div class="rhero-title" style="font-size:1.3rem;text-align:left;background:var(--grad);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text">GHOSTDAG + KnightDAG</div>
+    <div class="rhero-sub" style="text-align:left">This is not a 0815 blockchain with one block at a time. Aequitas runs a real BlockDAG, ordered by GHOSTDAG — and since 2026, secured by KnightDAG, Aequitas's own adaptive evolution of it. This is the mechanism every balance, every UBI payout, and every wealth-cap enforcement ultimately depends on for a single, agreed-upon history.</div>
+  </div>
 
   <div class="idx" style="margin-bottom:12px">
     <div class="idx-title">Why a normal blockchain isn't enough</div>
