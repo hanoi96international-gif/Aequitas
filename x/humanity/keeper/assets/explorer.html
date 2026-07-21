@@ -40,6 +40,7 @@
   <div class="header-right">
     <div class="badge badge-live"><span class="pulse"></span><span data-i18n="live">LIVE</span></div>
     <div class="badge badge-health badge-health-healthy" id="health-badge" title="Checking network health…">● GHOSTDAG</div>
+    <div class="badge badge-dag" title="KnightDAG: each block infers its own smallest secure K instead of a fixed epoch-wide worst case — inspired by DAGKNIGHT (Sompolinsky &amp; Sutton, 2022), evolving GHOSTDAG beyond a rigid parameter.">◆ KNIGHTDAG</div>
   </div>
 </header>
 <div class="tabs">
@@ -244,7 +245,7 @@
 <!-- GHOSTDAG DAG view: actual parent/merge structure, not just a linear list -->
 <div class="dag-panel">
   <div class="exp-panel-hdr">
-    <div class="exp-panel-title"><span class="sec-dot"></span>GHOSTDAG DAG View</div>
+    <div class="exp-panel-title"><span class="sec-dot"></span>GHOSTDAG DAG View <span style="color:var(--purple);font-weight:600">· KnightDAG-secured</span></div>
     <div class="sec-count" id="dag-node-count">—</div>
   </div>
   <div class="dag-wrap" id="dag-wrap">
@@ -254,6 +255,7 @@
     <span><i style="background:var(--purple)"></i>selected parent chain</span>
     <span><i style="background:var(--muted)"></i>merged sibling (still counted, not selected)</span>
     <span>Each column = one block height. Lines = real parent references. Faded dots = concurrent blocks GHOSTDAG merged in, not orphans.</span>
+    <span>◆ KnightDAG: each block infers its own smallest secure K from the DAG around it, instead of trusting one fixed worst-case value for the whole epoch.</span>
   </div>
 </div>
 <div class="dag-tip" id="dag-tip"></div>
