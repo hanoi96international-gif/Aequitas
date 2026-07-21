@@ -330,7 +330,7 @@ section{padding:60px 20px}
       <p>Download the Aequitas app, scan your biometrics, and receive 1,000 AEQ within 1 second. No fees, no investment, no prerequisites.</p>
       <div class="hero-btns">
         <a href="/download/app.apk" class="btn-primary">📱 Download Aequitas App (Android)</a>
-        <a href="/register" class="btn-secondary">🌐 Register via Browser</a>
+        <a href="/register" class="btn-secondary">🌐 Open Explorer</a>
       </div>
       <p style="font-size:0.75rem;color:var(--muted);margin-top:20px">Chain ID 1926 · EVM Compatible · Open Source · <a href="https://github.com/hanoi96international-gif/Aequitas" style="color:var(--purple)">View on GitHub</a></p>
     </div>
