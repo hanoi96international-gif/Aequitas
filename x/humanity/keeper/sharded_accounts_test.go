@@ -211,3 +211,171 @@ func TestShardedAccounts_ConcurrentSameAddress(t *testing.T) {
 		t.Fatalf("balance after %d concurrent +1 increments = %v, want %v (lost update if lower)", n, acc.Balance.Float(), n)
 	}
 }
+
+// The tests below exercise XorLeaf/CombinedXOR -- the Phase 4 per-shard
+// state-root accumulator primitive. Like every other method here, entirely
+// isolated: no ChainState, no cs.accountSetXOR, nothing wired into any
+// production code path yet (see XorLeaf's own comment for why that wiring
+// is deliberately deferred to a later phase).
+
+// TestShardedAccounts_CombinedXOR_MatchesFullRecompute is CombinedXOR's
+// core correctness proof, mirroring state_accumulator_test.go's
+// referenceAccountXOR pattern for cs.accountSetXOR: after a sequence of
+// XorLeaf calls (add, mutate, remove-by-zeroing), CombinedXOR() must always
+// equal a full recompute (XOR of accountLeaf(acc) over every stored
+// account), never just "probably close."
+func TestShardedAccounts_CombinedXOR_MatchesFullRecompute(t *testing.T) {
+	sa := newShardedAccounts()
+	assertMatch := func(label string) {
+		t.Helper()
+		var full [32]byte
+		sa.Range(func(_ string, acc *AccountState) bool {
+			xorInto(&full, accountLeaf(acc))
+			return true
+		})
+		if sa.CombinedXOR() != full {
+			t.Fatalf("%s: CombinedXOR() diverged from a full recompute", label)
+		}
+	}
+	assertMatch("empty")
+
+	// Add an account: its leaf swaps in from the zero hash.
+	a := &AccountState{Address: "0xaaa", Balance: NewDecimal(1000), IsHuman: true}
+	sa.Set("0xaaa", a)
+	leaf := accountLeaf(a)
+	sa.XorLeaf("0xaaa", [32]byte{}, leaf)
+	a.leafHash = leaf
+	assertMatch("add 0xaaa")
+
+	// Mutate its balance repeatedly -- each XorLeaf call must swap the OLD
+	// leaf out and the NEW leaf in, exactly like updateAccountLeafLocked
+	// does for the single global accumulator.
+	for _, bal := range []float64{500, 750, 12.345678, 1000} {
+		oldLeaf := a.leafHash
+		a.Balance = NewDecimal(bal)
+		newLeaf := accountLeaf(a)
+		sa.XorLeaf("0xaaa", oldLeaf, newLeaf)
+		a.leafHash = newLeaf
+		assertMatch("mutate 0xaaa balance")
+	}
+
+	// A second account, landing in a different shard virtually always (64
+	// shards) -- proves cross-shard combination, not just one shard's math.
+	b := &AccountState{Address: "0xbbb", TUsdBalance: NewDecimal(10), LPShares: NewDecimal(5)}
+	sa.Set("0xbbb", b)
+	bLeaf := accountLeaf(b)
+	sa.XorLeaf("0xbbb", [32]byte{}, bLeaf)
+	b.leafHash = bLeaf
+	assertMatch("add 0xbbb (likely different shard)")
+
+	// Toggle 0xaaa OUT of the accumulator the same way the real system does
+	// (see accountLeaf's own zero-leaf condition): zero every field that
+	// keeps it "included", so accountLeaf(a) itself now naturally returns
+	// the zero hash -- not just an out-of-band claim that it should.
+	oldLeaf := a.leafHash
+	a.IsHuman = false
+	a.Balance = NewDecimal(0)
+	newLeaf := accountLeaf(a)
+	if newLeaf != ([32]byte{}) {
+		t.Fatalf("test setup error: accountLeaf(a) should be the zero hash once every included field is zeroed, got %x", newLeaf)
+	}
+	sa.XorLeaf("0xaaa", oldLeaf, newLeaf)
+	a.leafHash = newLeaf
+	assertMatch("zero out 0xaaa's leaf")
+}
+
+// TestShardedAccounts_CombinedXOR_OrderIndependence proves two stores that
+// reach the same account set by different insertion orders (and therefore
+// different XorLeaf call orders, since shard assignment doesn't change but
+// timing does) produce the same CombinedXOR -- the property real concurrent
+// use depends on, since concurrent goroutines touching different shards can
+// finish in any order.
+func TestShardedAccounts_CombinedXOR_OrderIndependence(t *testing.T) {
+	build := func(order []string) *shardedAccounts {
+		sa := newShardedAccounts()
+		for _, addr := range order {
+			acc := &AccountState{Address: addr, Balance: NewDecimal(100), IsHuman: true}
+			sa.Set(addr, acc)
+			leaf := accountLeaf(acc)
+			sa.XorLeaf(addr, [32]byte{}, leaf)
+			acc.leafHash = leaf
+		}
+		return sa
+	}
+	a := build([]string{"0x01", "0x02", "0x03"})
+	b := build([]string{"0x03", "0x01", "0x02"})
+	if a.CombinedXOR() != b.CombinedXOR() {
+		t.Fatal("CombinedXOR depends on insertion order")
+	}
+}
+
+// TestShardedAccounts_XorLeaf_ConcurrentDifferentShards is the actual point
+// of Phase 4: many goroutines XOR-updating accounts in DIFFERENT shards
+// concurrently must never race (run with -race) or lose an update -- the
+// per-shard partialXOR must end up bit-identical to a sequential
+// application of the exact same operations in any fixed order (XOR being
+// commutative/associative, the final combined value doesn't depend on
+// which goroutine's update landed in its shard first).
+func TestShardedAccounts_XorLeaf_ConcurrentDifferentShards(t *testing.T) {
+	sa := newShardedAccounts()
+	const n = 2000
+	accs := make([]*AccountState, n)
+	for i := 0; i < n; i++ {
+		addr := fmt.Sprintf("0xxor%05d", i)
+		accs[i] = &AccountState{Address: addr, Balance: NewDecimal(float64(i))}
+		sa.Set(addr, accs[i])
+	}
+
+	var wg sync.WaitGroup
+	for i := 0; i < n; i++ {
+		wg.Add(1)
+		go func(idx int) {
+			defer wg.Done()
+			acc := accs[idx]
+			leaf := accountLeaf(acc)
+			sa.XorLeaf(acc.Address, [32]byte{}, leaf)
+		}(i)
+	}
+	wg.Wait()
+	for _, acc := range accs {
+		acc.leafHash = accountLeaf(acc)
+	}
+
+	var full [32]byte
+	for _, acc := range accs {
+		xorInto(&full, accountLeaf(acc))
+	}
+	if sa.CombinedXOR() != full {
+		t.Fatal("CombinedXOR() diverged from a full recompute after concurrent XorLeaf calls across many shards -- lost or corrupted update")
+	}
+}
+
+// TestShardedAccounts_Clone_DoesNotCarryOverPartialXOR pins Clone's
+// documented contract: it copies accounts via Set only, never XorLeaf, so a
+// fresh clone's CombinedXOR() starts at zero regardless of the source's
+// accumulator state -- a caller that needs the clone's own accumulator to
+// be meaningful must rebuild it explicitly. This is a deliberate design
+// choice (see Clone's own comment), not an oversight -- this test exists so
+// a future change can't silently flip that behavior unnoticed.
+func TestShardedAccounts_Clone_DoesNotCarryOverPartialXOR(t *testing.T) {
+	sa := newShardedAccounts()
+	acc := &AccountState{Address: "0xaaa", Balance: NewDecimal(1000), IsHuman: true}
+	sa.Set("0xaaa", acc)
+	leaf := accountLeaf(acc)
+	sa.XorLeaf("0xaaa", [32]byte{}, leaf)
+
+	if sa.CombinedXOR() == ([32]byte{}) {
+		t.Fatal("test setup error: source CombinedXOR() should be non-zero before cloning")
+	}
+
+	clone := sa.Clone()
+	if clone.CombinedXOR() != ([32]byte{}) {
+		t.Fatal("Clone() unexpectedly carried over partialXOR state -- either fix this test to match a deliberate behavior change, or fix Clone()")
+	}
+	// The clone's accounts themselves ARE correctly copied -- only the
+	// accumulator is independent of Set.
+	got, ok := clone.Get("0xaaa")
+	if !ok || got.Balance.Float() != 1000 {
+		t.Fatal("Clone() did not correctly copy the account itself")
+	}
+}

@@ -33,6 +33,13 @@ const numAccountShards = 64
 type accountShard struct {
 	mu   sync.Mutex
 	data map[string]*AccountState
+	// partialXOR is this shard's own contribution to the state-root
+	// account accumulator (see SCALING_ARCHITECTURE.md Phase 4 / the
+	// XorLeaf/CombinedXOR methods below) -- guarded by this shard's own mu,
+	// not cs.mu, by design: the whole point is that two goroutines updating
+	// accounts in DIFFERENT shards can update their respective partialXOR
+	// without contending on any shared lock.
+	partialXOR [32]byte
 }
 
 // shardedAccounts is a map[string]*AccountState replacement, safe for
@@ -115,6 +122,57 @@ func (sa *shardedAccounts) Delete(addr string) {
 	delete(s.data, addr)
 }
 
+// XorLeaf folds addr's leaf change into its shard's own partialXOR,
+// swapping oldLeaf out and newLeaf in -- the same self-inverse XOR-out/
+// XOR-in technique ChainState.updateAccountLeafLocked uses for the single
+// global cs.accountSetXOR (state.go), just scoped to one shard's own lock
+// instead of cs.mu.
+//
+// SCALING_ARCHITECTURE.md Phase 4: this and CombinedXOR below are a
+// complete, independently-tested primitive for a per-shard state-root
+// accumulator, built the same way shardedAccounts itself was in Phase 1 --
+// NOT YET wired into cs.accountSetXOR/StateRoot(), which remain the single
+// global accumulator described in state.go and stay the actual source of
+// truth for now. The real benefit of routing leaf updates through here
+// instead of cs.accountSetXOR only materializes once a LATER phase (5)
+// moves account mutation off cs.mu onto these same per-shard locks --
+// before that, cs.mu already serializes every leaf update anyway, so
+// switching StateRoot's source of truth over would add a second lock
+// acquisition for zero present benefit. Kept here, tested, and ready for
+// that wiring rather than built later under time pressure.
+//
+// Nil-safe no-op, consistent with every other method here.
+func (sa *shardedAccounts) XorLeaf(addr string, oldLeaf, newLeaf [32]byte) {
+	if sa == nil {
+		return
+	}
+	s := sa.shardFor(addr)
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	xorInto(&s.partialXOR, oldLeaf)
+	xorInto(&s.partialXOR, newLeaf)
+}
+
+// CombinedXOR returns the XOR of every shard's partialXOR -- equal to the
+// XOR of every stored account's current leaf, by the same associative/
+// commutative XOR-accumulator reasoning cs.accountSetXOR already relies on
+// (see state.go), just computed as a combination of N independent partial
+// sums instead of one running total. O(numAccountShards): acceptable for
+// the same reason Len() is -- this is a read-time combination step, not a
+// per-mutation cost.
+func (sa *shardedAccounts) CombinedXOR() [32]byte {
+	if sa == nil {
+		return [32]byte{}
+	}
+	var total [32]byte
+	for _, s := range sa.shards {
+		s.mu.Lock()
+		xorInto(&total, s.partialXOR)
+		s.mu.Unlock()
+	}
+	return total
+}
+
 // Len mirrors `len(m)`, including on a nil receiver (len(nilMap) == 0 in
 // Go, never a panic -- see Get's comment). O(numAccountShards), not O(1) --
 // acceptable here since every existing len(cs.accounts) call site is
@@ -173,6 +231,14 @@ func (sa *shardedAccounts) Range(fn func(addr string, acc *AccountState) bool) {
 // something fails" (see ResyncFromSnapshotURL) -- restoring is then just
 // reassigning cs.accounts to the clone, since cs.accounts is a pointer
 // field.
+//
+// Does NOT carry over the source's per-shard partialXOR state (see
+// XorLeaf/CombinedXOR): Clone only ever calls Set, and Set/XorLeaf are
+// deliberately independent operations here, the same way mutating an
+// AccountState's fields and calling updateAccountLeafLocked are two
+// separate steps in state.go today -- nothing silently keeps them in sync.
+// A caller that needs the clone's own CombinedXOR() to be meaningful must
+// rebuild it explicitly (Range + XorLeaf per account) after cloning.
 func (sa *shardedAccounts) Clone() *shardedAccounts {
 	clone := newShardedAccounts()
 	sa.Range(func(addr string, acc *AccountState) bool {
