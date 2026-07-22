@@ -1,6 +1,9 @@
 package keeper
 
-import "testing"
+import (
+	"context"
+	"testing"
+)
 
 // newAccumTestState builds a no-DB ChainState with the nullifier map
 // initialized (newTestState omits it). In no-DB mode the maps are the
@@ -105,7 +108,7 @@ func TestStateRootAccumulator_MatchesFullRecompute(t *testing.T) {
 		t.Fatal(err)
 	}
 	assertMatch("claim null-1")
-	if err := cs.SaveNullifier("null-2", "0xbbb"); err != nil {
+	if err := cs.SaveNullifier(context.Background(), "null-2", "0xbbb"); err != nil {
 		t.Fatal(err)
 	}
 	assertMatch("save null-2")

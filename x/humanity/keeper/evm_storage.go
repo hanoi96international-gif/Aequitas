@@ -1,6 +1,7 @@
 package keeper
 
 import (
+	"context"
 	"database/sql"
 	"encoding/hex"
 	"encoding/json"
@@ -1449,11 +1450,13 @@ func (cs *ChainState) tryClaimNullifierLocked(nullifier, walletAddress string) (
 // the outbox correct while StateRoot (which hashes the sorted set of
 // nullifier keys) had no record of this nullifier, a permanent
 // inconsistency no later retry could fix (the registration itself had
-// already succeeded). Now returns an error and uses cs.dbExec(), so when
-// called from inside RegisterHumanAtomic's fn() closure (which holds
-// cs.activeTx for that call), this write commits or rolls back together
-// with the account mutation and the outbox insert as one DB transaction.
-func (cs *ChainState) SaveNullifier(nullifier, walletAddress string) error {
+// already succeeded). Now returns an error and uses cs.dbExecCtx(ctx), so
+// when called from inside RegisterHumanAtomic's fn() closure (which builds
+// ctx from cs.activeTx for that call), this write commits or rolls back
+// together with the account mutation and the outbox insert as one DB
+// transaction. See dbExecCtx's own comment for the migration this is part
+// of.
+func (cs *ChainState) SaveNullifier(ctx context.Context, nullifier, walletAddress string) error {
 	if nullifier == "" {
 		return nil
 	}
@@ -1467,7 +1470,7 @@ func (cs *ChainState) SaveNullifier(nullifier, walletAddress string) error {
 		}
 		return nil
 	}
-	res, err := cs.dbExec().Exec(
+	res, err := cs.dbExecCtx(ctx).Exec(
 		`INSERT INTO nullifiers (nullifier, wallet_address) VALUES ($1, $2) ON CONFLICT (nullifier) DO NOTHING`,
 		nullifier, walletAddress,
 	)

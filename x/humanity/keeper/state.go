@@ -3251,7 +3251,10 @@ func (cs *ChainState) IsHuman(address string) bool {
 func (cs *ChainState) RegisterHuman(address string) error {
 	cs.mu.Lock()
 	defer cs.mu.Unlock()
-	return cs.registerHumanLocked(address)
+	// cs.mu-only path, never runs inside runAtomicWithOutbox, so there is no
+	// active transaction to join — context.Background() is correct, not a
+	// placeholder. See dbExecCtx's comment for the migration this is part of.
+	return cs.registerHumanLocked(context.Background(), address)
 }
 
 // RegisterHumanAtomic behaves like RegisterHuman, except the state
@@ -3272,11 +3275,14 @@ func (cs *ChainState) RegisterHuman(address string) error {
 func (cs *ChainState) RegisterHumanAtomic(address string, pendingTx Transaction) error {
 	address = strings.ToLower(address)
 	return cs.runAtomicWithOutbox([]string{address}, false, func() (Transaction, error) {
-		if err := cs.registerHumanLocked(address); err != nil {
+		// See processTransferBatch's own comment for why capturing
+		// cs.activeTx into ctx here (cs.mu held throughout) is safe.
+		ctx := withTx(context.Background(), cs.activeTx)
+		if err := cs.registerHumanLocked(ctx, address); err != nil {
 			return Transaction{}, err
 		}
 		if pendingTx.Nullifier != "" {
-			if err := cs.SaveNullifier(pendingTx.Nullifier, address); err != nil {
+			if err := cs.SaveNullifier(ctx, pendingTx.Nullifier, address); err != nil {
 				return Transaction{}, err
 			}
 		}
@@ -3286,10 +3292,15 @@ func (cs *ChainState) RegisterHumanAtomic(address string, pendingTx Transaction)
 
 // registerHumanLocked is RegisterHuman's implementation; caller must
 // already hold cs.mu — see transferLocked's comment for why this split
-// exists.
-func (cs *ChainState) registerHumanLocked(address string) error {
+// exists. ctx carries the caller's active transaction (if any) — see
+// dbExecCtx's comment for the migration this is part of. Block replay
+// (block.go) also calls this directly with context.Background(): it sets
+// dag.state.activeTx itself before this runs, and dbExecCtx falls back to
+// that field when ctx carries no transaction, so behavior there is
+// unchanged.
+func (cs *ChainState) registerHumanLocked(ctx context.Context, address string) error {
 	address = strings.ToLower(address)
-	cs.ensureAccountLoaded(address)
+	cs.ensureAccountLoadedCtx(ctx, address)
 
 	acc, ok := cs.accounts.Get(address)
 	if ok && acc.IsHuman {
@@ -3303,10 +3314,10 @@ func (cs *ChainState) registerHumanLocked(address string) error {
 	acc.IsHuman = true
 	acc.Balance = acc.Balance.Add(NewDecimal(1000))
 	touchActivity(acc) // starts this 1,000 AEQ's own grace period fresh
-	if err := cs.enforceWealthCapLocked(acc); err != nil {
+	if err := cs.enforceWealthCapLockedCtx(ctx, acc); err != nil {
 		return fmt.Errorf("could not enforce wealth cap: %w", err)
 	}
-	if err := cs.saveAccountToDB(acc); err != nil {
+	if err := cs.saveAccountToDBCtx(ctx, acc); err != nil {
 		return fmt.Errorf("could not save account: %w", err)
 	}
 	// See humanCount's own field comment: this is the ONE live mutation
@@ -5218,7 +5229,9 @@ const tusdFaucetAmount = 1000.0
 func (cs *ChainState) ClaimTUsdFaucet(address string) error {
 	cs.mu.Lock()
 	defer cs.mu.Unlock()
-	return cs.claimTUsdFaucetLocked(address)
+	// cs.mu-only path, never runs inside runAtomicWithOutbox — see
+	// RegisterHuman's comment.
+	return cs.claimTUsdFaucetLocked(context.Background(), address)
 }
 
 // ClaimTUsdFaucetAtomic behaves like ClaimTUsdFaucet, except the state
@@ -5227,7 +5240,10 @@ func (cs *ChainState) ClaimTUsdFaucet(address string) error {
 func (cs *ChainState) ClaimTUsdFaucetAtomic(address string, pendingTx Transaction) error {
 	address = strings.ToLower(address)
 	return cs.runAtomicWithOutbox([]string{address}, false, func() (Transaction, error) {
-		if err := cs.claimTUsdFaucetLocked(address); err != nil {
+		// See processTransferBatch's own comment for why capturing
+		// cs.activeTx into ctx here (cs.mu held throughout) is safe.
+		ctx := withTx(context.Background(), cs.activeTx)
+		if err := cs.claimTUsdFaucetLocked(ctx, address); err != nil {
 			return Transaction{}, err
 		}
 		return pendingTx, nil
@@ -5237,9 +5253,9 @@ func (cs *ChainState) ClaimTUsdFaucetAtomic(address string, pendingTx Transactio
 // claimTUsdFaucetLocked is ClaimTUsdFaucet's implementation; caller must
 // already hold cs.mu — see transferLocked's comment for why this split
 // exists.
-func (cs *ChainState) claimTUsdFaucetLocked(address string) error {
+func (cs *ChainState) claimTUsdFaucetLocked(ctx context.Context, address string) error {
 	address = strings.ToLower(address)
-	cs.ensureAccountLoaded(address) // a cold registered human must still be recognised as human here
+	cs.ensureAccountLoadedCtx(ctx, address) // a cold registered human must still be recognised as human here
 
 	acc, ok := cs.accounts.Get(address)
 	if !ok || !acc.IsHuman {
@@ -5254,7 +5270,7 @@ func (cs *ChainState) claimTUsdFaucetLocked(address string) error {
 	// received tUSD via another path (pool payout, migration) before claiming the
 	// faucet would have had their entire tUSD balance zeroed by the old Set.
 	acc.TUsdBalance = acc.TUsdBalance.Add(NewDecimal(tusdFaucetAmount))
-	if err := cs.saveAccountToDB(acc); err != nil {
+	if err := cs.saveAccountToDBCtx(ctx, acc); err != nil {
 		return fmt.Errorf("could not save account: %w", err)
 	}
 	cs.save()

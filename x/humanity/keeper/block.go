@@ -2,6 +2,7 @@
 
 import (
 "bytes"
+"context"
 "crypto/ecdsa"
 "crypto/rand"
 "crypto/sha256"
@@ -5301,7 +5302,11 @@ func (dag *BlockDAG) replayTransactions(block *Block, force bool) bool {
 			if !claimed {
 				continue // already registered
 			}
-			if err := dag.state.registerHumanLocked(wallet); err != nil {
+			// dag.state.activeTx was set directly above (line ~5193), before
+			// this loop runs — context.Background() carries no transaction of
+			// its own, so dbExecCtx falls back to that field, exactly
+			// matching pre-migration behavior. See dbExecCtx's comment.
+			if err := dag.state.registerHumanLocked(context.Background(), wallet); err != nil {
 				// FIX: release the nullifier claimed two lines above on failure —
 				// it used to stay claimed forever ("nullifier recorded, balance
 				// NOT credited"), permanently burning that biometric for
