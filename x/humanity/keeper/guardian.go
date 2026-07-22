@@ -652,7 +652,11 @@ func (cs *ChainState) releaseEscrowToUBILocked(ctx context.Context) ([]Distribut
 // secondary never had an escrow_accounts row (it only zeroed the balance via
 // applyEscrowMoveDeltaLocked), so this just credits the amount back and
 // resets the activity timer — no DELETE needed.  Caller must hold cs.mu.
-func (cs *ChainState) applyEscrowRecoverDeltaLocked(wallet string, amount float64) error {
+// Block replay (block.go) calls this with context.Background(): it sets
+// dag.state.activeTx itself before this runs, and dbExecCtx falls back to
+// that field when ctx carries no transaction, so behavior there is
+// unchanged — see registerHumanLocked's comment for the same reasoning.
+func (cs *ChainState) applyEscrowRecoverDeltaLocked(ctx context.Context, wallet string, amount float64) error {
 	if amount <= 0 {
 		return fmt.Errorf("escrow_recover amount must be positive, got %.6f", amount)
 	}
@@ -661,7 +665,7 @@ func (cs *ChainState) applyEscrowRecoverDeltaLocked(wallet string, amount float6
 	// wallet here used to be blind-created (IsHuman:true, everything else
 	// zero), silently wiping any real balance/tusd/lp/last-activity it
 	// already had. wallet is already lowercased by block.go's caller.
-	cs.ensureAccountLoaded(wallet)
+	cs.ensureAccountLoadedCtx(ctx, wallet)
 	acc, ok := cs.accounts.Get(wallet)
 	if !ok {
 		acc = &AccountState{Address: wallet, IsHuman: true}
@@ -669,10 +673,10 @@ func (cs *ChainState) applyEscrowRecoverDeltaLocked(wallet string, amount float6
 	}
 	acc.Balance = acc.Balance.Add(NewDecimal(amount))
 	touchActivity(acc)
-	if err := cs.enforceWealthCapLocked(acc); err != nil {
+	if err := cs.enforceWealthCapLockedCtx(ctx, acc); err != nil {
 		return fmt.Errorf("could not enforce wealth cap for %s: %w", wallet, err)
 	}
-	if err := cs.saveAccountToDB(acc); err != nil {
+	if err := cs.saveAccountToDBCtx(ctx, acc); err != nil {
 		return fmt.Errorf("could not persist escrow recovery for %s: %w", wallet, err)
 	}
 	return nil

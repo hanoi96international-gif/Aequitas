@@ -5502,7 +5502,10 @@ func (dag *BlockDAG) replayTransactions(block *Block, force bool) bool {
 
 		case "escrow_recover":
 			wallet := strings.ToLower(tx.Wallet)
-			if err := dag.state.applyEscrowRecoverDeltaLocked(wallet, tx.Amount); err != nil {
+			// context.Background() is correct — see registerHumanLocked's
+			// comment: dag.state.activeTx was already set directly above
+			// this loop, and dbExecCtx falls back to it.
+			if err := dag.state.applyEscrowRecoverDeltaLocked(context.Background(), wallet, tx.Amount); err != nil {
 				fmt.Printf("[REPLAY] ✗ escrow_recover %s: %v (block #%d) — rolling back whole block\n", wallet, err, block.Height)
 				hardFailure = true
 				continue
