@@ -87,6 +87,12 @@ Das ist der Baustein, der tatsächlich nötig ist, um von "niedriger vierstellig
 - Der Explorer/`/api/status` und alle SQL-basierten Reports lesen dann einen **leicht verzögerten** Stand (Sekundenbruchteile bis wenige Sekunden Lag zu Postgres) — muss dokumentiert und für Endnutzer sichtbar sein, wo es relevant ist (z. B. Balance-Anzeige direkt nach einer Transaktion).
 - Dieser Baustein ist der mit Abstand größte Vertrauensvorschuss in diesem ganzen Dokument — er ändert die Durability-Garantie des gesamten Systems, nicht nur seine Geschwindigkeit. Braucht die längste, härteste Test-Kampagne von allen hier beschriebenen Schritten (siehe Teststrategie unten, explizit inklusive Crash-Simulation).
 
+### 7. Blockproduktion/-relay: bisher unbetrachtete Engpassstelle OBERHALB der Storage-Schicht
+
+Alle bisherigen Abschnitte optimieren, wie schnell `ChainState` einzelne Transaktionen annehmen und persistieren kann. Sie sagen nichts darüber aus, wie schnell die fertigen Blöcke, in denen diese Transaktionen an andere Nodes weitergereicht werden, selbst verarbeitet werden können — und das ist eine eigene, bisher nicht untersuchte Engpassstelle:
+
+`ProduceBlock` hat aktuell **keine Obergrenze** für Transaktionen pro Block — jeder Tick (`BLOCK_TIME`, ~1–2 s) drainiert den kompletten wartenden Mempool in EINEN Block. Bei 50.000 TPS wären das 50.000–100.000 Transaktionen in einem einzigen Block: JSON-Serialisierung dieser Blockgröße, Hash-Berechnung, P2P-/HTTP-Verteilung an andere Nodes, GHOSTDAG-Verarbeitung der Merge-Sets — alles Kostenfaktoren, die heute nur für kleine, realistische Blockgrößen (wenige bis niedrige Zehntausend Blocks insgesamt, nicht Zehntausende Transaktionen PRO Block) geprüft sind. Muss als eigener Punkt im Projekt untersucht werden — vermutlich mit einer Obergrenze pro Block plus mehreren Blöcken/Tick oder kürzerer `BLOCK_TIME`, statt eines einzigen unbegrenzt wachsenden Blocks. Nicht im Umfang von Abschnitten 1–6 enthalten.
+
 ## Konkret ermittelter Umfang (Stand dieser Session)
 
 - **190 Stellen** in 6 Dateien greifen direkt auf `cs.accounts` zu (state.go: 142, snapshot.go: 15, guardian.go: 14, block.go: 10, evm_storage.go: 8, api.go: 1) — inklusive Mustern wie `for addr, acc := range cs.accounts` (volle Iteration), `json.Marshal(cs.accounts)` (Serialisierung der ganzen Map im No-DB-Fallback-Modus), verketteten Zugriffen wie `cs.accounts[to].Balance = cs.accounts[to].Balance.Add(...)`.
@@ -116,6 +122,7 @@ Jede dieser Klassen von Bug wäre in einem 280-Stellen-Umbau des Kern-Storage-La
 6. **EVM-Mirror-Sync asynchron** (Abschnitt 5 der Zielarchitektur).
 7. **WAL + In-Memory-primär** (Abschnitt 6 der Zielarchitektur) — DER Schritt, der auf dem Weg zu 50.000 TPS liegt. Eigenständiges Teilprojekt: WAL-Format, Gruppen-Commit, Crash-Recovery, asynchrone Postgres-Nachführung, jeweils isoliert gebaut und getestet, bevor es an den restlichen Stack angeschlossen wird.
 8. Erst danach, operation-by-operation, weitere Subsysteme (Swap, Distribution, Guardian, Slashing) auf dieselbe WAL+Shard-Architektur umstellen — jedes einzeln, mit eigener Test-Kampagne. Bis dahin profitieren nur Transfers vom vollen Durchsatzgewinn; das ist ein bewusster Zwischenzustand, kein Fehler im Plan.
+9. **Blockproduktion/-relay bei großen Transaktionsmengen pro Block untersuchen und ggf. redesignen** (Abschnitt 7 der Zielarchitektur) — unabhängig von 1–8 messbar (Blockgröße/-serialisierung/-verteilung lässt sich isoliert benchmarken, ohne dass die Storage-Schicht bereits umgebaut sein muss), aber ohne diesen Schritt bleibt unklar, ob die Storage-Schicht ihren Durchsatz überhaupt bis zum Konsens durchreichen kann.
 
 ## Teststrategie (nicht verhandelbar für Phase 5+)
 
