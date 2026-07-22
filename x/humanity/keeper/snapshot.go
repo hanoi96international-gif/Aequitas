@@ -1,6 +1,7 @@
 package keeper
 
 import (
+	"context"
 	"crypto/ecdsa"
 	"crypto/sha256"
 	"database/sql"
@@ -337,6 +338,9 @@ func (cs *ChainState) ImportSnapshotFromURL(peerURL, expectedSignerHex string) e
 
 	cs.mu.Lock()
 	cs.activeTx = tx
+	// See processTransferBatch's own comment for why capturing cs.activeTx
+	// into ctx here (cs.mu held throughout) is safe.
+	ctx := withTx(context.Background(), tx)
 	prevPool := cs.pool
 	poolChanged := false
 	for _, acc := range snap.Accounts {
@@ -391,11 +395,11 @@ func (cs *ChainState) ImportSnapshotFromURL(peerURL, expectedSignerHex string) e
 		// didn't apply at all and ImportSnapshotFromURL returns an error.
 		persistErr := func() error {
 			for _, acc := range accountsToPersist {
-				if err := cs.saveAccountToDB(acc); err != nil {
+				if err := cs.saveAccountToDBCtx(ctx, acc); err != nil {
 					return fmt.Errorf("saving account %s: %w", acc.Address, err)
 				}
 			}
-			if err := cs.savePoolToDB(); err != nil {
+			if err := cs.savePoolToDBCtx(ctx); err != nil {
 				return fmt.Errorf("saving pool: %w", err)
 			}
 			for nullifier, wallet := range snap.Nullifiers {
@@ -428,7 +432,7 @@ func (cs *ChainState) ImportSnapshotFromURL(peerURL, expectedSignerHex string) e
 			// the primary's live value takes precedence over the snapshot's snapshot-time value.
 			for key, val := range snap.ChainConfig {
 				if existing := cs.getConfigValue(key); existing == "" {
-					if err := cs.setConfigValue(key, val); err != nil {
+					if err := cs.setConfigValueCtx(ctx, key, val); err != nil {
 						return fmt.Errorf("setting config %s: %w", key, err)
 					}
 				}
@@ -443,7 +447,7 @@ func (cs *ChainState) ImportSnapshotFromURL(peerURL, expectedSignerHex string) e
 			// replayTransactions checks this value and skips applying deltas for
 			// any block at or below it. See StateSnapshot.Height's comment.
 			if existingHumans == 0 && snap.Height > 0 {
-				if err := cs.setConfigValue("snapshot_import_height", fmt.Sprintf("%d", snap.Height)); err != nil {
+				if err := cs.setConfigValueCtx(ctx, "snapshot_import_height", fmt.Sprintf("%d", snap.Height)); err != nil {
 					return fmt.Errorf("setting snapshot_import_height: %w", err)
 				}
 			}
@@ -584,6 +588,9 @@ func (cs *ChainState) ResyncFromSnapshotURL(peerURL, expectedSignerHex string) e
 	}
 
 	cs.activeTx = tx
+	// See processTransferBatch's own comment for why capturing cs.activeTx
+	// into ctx here (cs.mu held throughout) is safe.
+	ctx := withTx(context.Background(), tx)
 	cs.replaceInMemoryFromSnapshotLocked(&snap)
 
 	fail := func(stepErr error) error {
@@ -632,9 +639,9 @@ func (cs *ChainState) ResyncFromSnapshotURL(peerURL, expectedSignerHex string) e
 	// consistent with it never being part of what this snapshot exports.
 	var saveErr error
 	cs.accounts.Range(func(_ string, acc *AccountState) bool {
-		// saveAccountToDB routes through cs.dbExec(), which returns
-		// cs.activeTx (set above) instead of cs.db — joins this transaction.
-		if err := cs.saveAccountToDB(acc); err != nil {
+		// saveAccountToDBCtx routes through cs.dbExecCtx(ctx), which returns
+		// tx (captured above) — joins this transaction.
+		if err := cs.saveAccountToDBCtx(ctx, acc); err != nil {
 			saveErr = fmt.Errorf("resync: could not save account %s: %w", acc.Address, err)
 			return false
 		}
@@ -644,7 +651,7 @@ func (cs *ChainState) ResyncFromSnapshotURL(peerURL, expectedSignerHex string) e
 		return fail(saveErr)
 	}
 	if snap.Pool != nil {
-		if err := cs.savePoolToDB(); err != nil {
+		if err := cs.savePoolToDBCtx(ctx); err != nil {
 			return fail(fmt.Errorf("resync: could not save pool: %w", err))
 		}
 	}
@@ -670,12 +677,12 @@ func (cs *ChainState) ResyncFromSnapshotURL(peerURL, expectedSignerHex string) e
 	// routes through cs.dbExec() too (audit recheck3, P0 #2), so this joins
 	// the same transaction instead of auto-committing separately.
 	for key, val := range snap.ChainConfig {
-		if err := cs.setConfigValue(key, val); err != nil {
+		if err := cs.setConfigValueCtx(ctx, key, val); err != nil {
 			return fail(fmt.Errorf("resync: could not set config %q: %w", key, err))
 		}
 	}
 	if snap.Height > 0 {
-		if err := cs.setConfigValue("snapshot_import_height", fmt.Sprintf("%d", snap.Height)); err != nil {
+		if err := cs.setConfigValueCtx(ctx, "snapshot_import_height", fmt.Sprintf("%d", snap.Height)); err != nil {
 			return fail(fmt.Errorf("resync: could not set snapshot_import_height: %w", err))
 		}
 		// Set max_block_height to 0, NOT snap.Height, as the DEFAULT here:
@@ -701,7 +708,7 @@ func (cs *ChainState) ResyncFromSnapshotURL(peerURL, expectedSignerHex string) e
 		// (see replayTransactions' skipHeight check), so account state stays
 		// correct. bootHeight is still set correctly via snapshot_import_height
 		// in RefreshBootHeightAfterSnapshotImport.
-		if err := cs.setConfigValue("max_block_height", "0"); err != nil {
+		if err := cs.setConfigValueCtx(ctx, "max_block_height", "0"); err != nil {
 			return fail(fmt.Errorf("resync: could not reset max_block_height: %w", err))
 		}
 		// Reset the finalized checkpoint too (P0, 2026-07-02 bootstrap-deadlock):
