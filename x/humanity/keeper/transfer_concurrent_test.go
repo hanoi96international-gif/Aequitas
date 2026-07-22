@@ -28,6 +28,15 @@ func newConcurrentTransferTestState(t *testing.T) *ChainState {
 	if !cs.useDB {
 		t.Fatal("expected a live PostgreSQL connection (cs.useDB == false) — check DATABASE_URL")
 	}
+	// Close the connection pool at test end -- this helper is used by every
+	// concurrency test in this package (transfer, WAL, registration), many
+	// of which open real connections under load (up to MaxOpenConns=20
+	// each); left open (Go's *sql.DB has no automatic idle GC on its own
+	// timeline short of ConnMaxLifetime=30min), the cumulative total across
+	// a full `go test` run exhausts Postgres's max_connections (confirmed
+	// live: "too many clients already" mid-suite once enough concurrency
+	// tests accumulated open pools in the same process).
+	t.Cleanup(func() { cs.db.Close() })
 	return cs
 }
 

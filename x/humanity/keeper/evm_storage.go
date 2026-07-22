@@ -1358,9 +1358,14 @@ func (cs *ChainState) RemoveFromProofServerSyncQueue(bioHashKey string) {
 // style), removing even the SHA256 link.
 
 func (cs *ChainState) IsNullifierUsed(nullifier string) bool {
-	cs.mu.RLock()
+	// nullifiersMu, not cs.mu: see that field's own comment -- cs.nullifiers
+	// is a plain Go map, unsafe for concurrent access from multiple
+	// RLock-holding goroutines (the concurrent-registration fast path,
+	// register_concurrent.go) even to different keys, and this is the only
+	// field this specific read touches.
+	cs.nullifiersMu.Lock()
 	_, inMem := cs.nullifiers[nullifier]
-	cs.mu.RUnlock()
+	cs.nullifiersMu.Unlock()
 	if inMem {
 		return true
 	}
@@ -1480,10 +1485,13 @@ func (cs *ChainState) SaveNullifier(ctx context.Context, nullifier, walletAddres
 	if cs.db == nil {
 		// No-DB mode: the map is authoritative. Fold into the accumulator only
 		// when the key is genuinely new so repeated saves can't double-count.
+		// nullifiersMu: see that field's own comment.
+		cs.nullifiersMu.Lock()
 		if _, exists := cs.nullifiers[nullifier]; !exists {
 			cs.nullifiers[nullifier] = walletAddress
 			xorInto(&cs.nullifierSetXOR, nullifierLeaf(nullifier))
 		}
+		cs.nullifiersMu.Unlock()
 		return nil
 	}
 	res, err := cs.dbExecCtx(ctx).Exec(
@@ -1496,21 +1504,28 @@ func (cs *ChainState) SaveNullifier(ctx context.Context, nullifier, walletAddres
 	// Fold into the nullifier accumulator only on a genuine insert (RowsAffected
 	// > 0), never on a conflict no-op — otherwise a nullifier already counted by
 	// tryClaimNullifierLocked would be XORed in a second time and cancel itself.
+	// nullifiersMu guards this mutation (see that field's own comment) --
+	// uncontended/free for every existing cs.mu.Lock()-based caller
+	// (RegisterHumanAtomic), the actual synchronization for
+	// registerHumanConcurrent (register_concurrent.go), which only holds
+	// cs.mu.RLock().
 	if n, _ := res.RowsAffected(); n > 0 {
+		cs.nullifiersMu.Lock()
 		xorInto(&cs.nullifierSetXOR, nullifierLeaf(nullifier))
+		cs.nullifiersMu.Unlock()
 	} else {
 		// SECURITY (P0, launch audit 2026-07-03): RowsAffected==0 means a row
-		// for this nullifier already existed. SaveNullifier's only caller
-		// (RegisterHumanAtomic) reaches this line after registerHumanLocked
-		// has already confirmed walletAddress itself isn't registered yet —
-		// so an existing row here can only belong to a DIFFERENT wallet.
-		// Returning nil in that case used to let RegisterHumanAtomic's
+		// for this nullifier already existed. SaveNullifier's callers
+		// (RegisterHumanAtomic, registerHumanConcurrent) reach this line
+		// after already confirming walletAddress itself isn't registered
+		// yet — so an existing row here can only belong to a DIFFERENT
+		// wallet. Returning nil in that case used to let the caller's
 		// outbox transaction commit anyway: a second wallet walks away with
 		// a second 1,000 AEQ grant sharing the first wallet's nullifier,
 		// while the nullifiers table quietly keeps pointing at the first
 		// wallet only (double-mint of the same biometric). Fail closed so
-		// runAtomicWithOutbox rolls back the whole registration instead of
-		// silently dropping just the nullifier row.
+		// the caller rolls back the whole registration instead of silently
+		// dropping just the nullifier row.
 		var existingWallet string
 		if scanErr := cs.dbExecCtx(ctx).QueryRow(
 			`SELECT wallet_address FROM nullifiers WHERE nullifier = $1`, nullifier,
@@ -1521,9 +1536,11 @@ func (cs *ChainState) SaveNullifier(ctx context.Context, nullifier, walletAddres
 			return fmt.Errorf("nullifier already used by a different wallet")
 		}
 	}
+	cs.nullifiersMu.Lock()
 	if len(cs.nullifiers) < maxInMemNullifiers {
 		cs.nullifiers[nullifier] = walletAddress
 	}
+	cs.nullifiersMu.Unlock()
 	return nil
 }
 

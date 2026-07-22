@@ -144,6 +144,20 @@ type ChainState struct {
 	// column is for.
 	replayedColumnOnce sync.Once
 	nullifiers map[string]string // nullifier hex → wallet address (in-memory cache)
+	// nullifiersMu guards cs.nullifiers (a plain, non-sharded Go map — unlike
+	// cs.accounts, nullifiers were never migrated to a per-key-lockable
+	// structure) and cs.nullifierSetXOR's mutation together, specifically for
+	// SCALING_ARCHITECTURE.md Phase 8's concurrent-registration path
+	// (register_concurrent.go): that path holds cs.mu.RLock(), not Lock(), so
+	// multiple registrations can run genuinely in parallel — and Go's native
+	// maps are not safe for concurrent access even to different keys, let
+	// alone the same one. Every EXISTING cs.mu.Lock()-based caller
+	// (tryClaimNullifierLocked, releaseNullifierLocked, snapshot import,
+	// startup load) already has full exclusivity from cs.mu itself, so
+	// acquiring this extra mutex is uncontended and free for them — it's the
+	// ACTUAL synchronization only for IsNullifierUsed (already RLock-based
+	// before this field existed) and SaveNullifier's callers under RLock.
+	nullifiersMu sync.Mutex
 	// accountSetXOR / nullifierSetXOR are incremental commitments to the FULL
 	// account set and nullifier set, maintained by XORing each element's leaf
 	// hash in on add and out on remove. They make StateRoot O(1) instead of
@@ -179,7 +193,19 @@ type ChainState struct {
 	// way accountSetXOR is (full-DB-scan reseed on bulk reset, targeted
 	// adjustment on the one live mutation path that can change it) rather
 	// than as an independent counter incremented wherever convenient.
-	humanCount int64
+	//
+	// humanCountMu guards humanCount's own mutation/read, for the identical
+	// reason accountSetXORMu exists (see its own comment): SCALING_ARCHITECTURE.md
+	// Phase 8's concurrent-registration path (registerHumanConcurrent, see
+	// register_concurrent.go) increments this field under cs.mu.RLock(), not
+	// Lock() -- and the EXISTING transferConcurrent/transferConcurrentWAL
+	// fast paths already READ it (via wealthCapAmountLocked ->
+	// getAverageBalanceLocked -> humanCountLocked) under their own
+	// cs.mu.RLock() too. Every cs.mu.Lock()-based caller (the non-concurrent
+	// registration path, rebuildStateAccumulators) already has full
+	// exclusivity, so this extra mutex is uncontended and free for them.
+	humanCountMu sync.Mutex
+	humanCount   int64
 	// activeTx, when non-nil, is the transaction every DB write inside the
 	// CURRENT cs.mu-locked operation must use instead of cs.db directly —
 	// see dbExec() and runAtomicWithOutbox. Only ever set/cleared while
@@ -3363,8 +3389,21 @@ func (cs *ChainState) RegisterHuman(address string) error {
 // inside fn(), while cs.activeTx is set, so it participates in the exact
 // same commit-or-rollback unit as the account mutation and the outbox
 // insert.
+//
+// SHARD-LOCKED FAST PATH (SCALING_ARCHITECTURE.md Phase 8, register_concurrent.go
+// — NOT staging-validated, see registerHumanConcurrent's own doc comment):
+// tried first, ahead of the cs.mu.Lock()-based path below. When applied is
+// true the fast path genuinely ran — its result (success or a real error,
+// e.g. already registered) is final and returned as-is. Only when applied
+// is false (would touch a pool address via the wealth cap, or a real DB
+// error while checking cold-address state) does this fall through to the
+// slow path, unchanged from before this fast path existed. registerHumanConcurrent
+// self-gates on cs.db == nil, so this is a no-op for no-DB nodes.
 func (cs *ChainState) RegisterHumanAtomic(address string, pendingTx Transaction) error {
 	address = strings.ToLower(address)
+	if applied, err := cs.registerHumanConcurrent(address, pendingTx); applied {
+		return err
+	}
 	return cs.runAtomicWithOutbox([]string{address}, false, func(ctx context.Context) (Transaction, error) {
 		if err := cs.registerHumanLocked(ctx, address); err != nil {
 			return Transaction{}, err
@@ -3408,15 +3447,19 @@ func (cs *ChainState) registerHumanLocked(ctx context.Context, address string) e
 	if err := cs.saveAccountToDBCtx(ctx, acc); err != nil {
 		return fmt.Errorf("could not save account: %w", err)
 	}
-	// See humanCount's own field comment: this is the ONE live mutation
-	// path that can turn a non-human account human (confirmed — the only
-	// other cs.accounts[x].IsHuman assignment anywhere in this codebase is
+	// See humanCount's own field comment: this and registerHumanConcurrent
+	// (register_concurrent.go) are the only live mutation paths that can
+	// turn a non-human account human (confirmed — the only other
+	// cs.accounts[x].IsHuman assignment anywhere in this codebase is
 	// loadFromDB's duplicate-case merge, which runs entirely inside the
 	// startup scan rebuildStateAccumulators already reseeds from fresh
 	// afterward). Only counted after the durable write above succeeds,
 	// same ordering accountSetXOR's own update already uses inside
 	// saveAccountToDB — never count a registration that didn't persist.
+	// humanCountMu: see that field's own comment.
+	cs.humanCountMu.Lock()
 	cs.humanCount++
+	cs.humanCountMu.Unlock()
 	cs.save()
 
 	fmt.Printf("[STATE] ✓ Human registered: %s | Balance: %.2f AEQ\n",
@@ -5221,6 +5264,9 @@ func (cs *ChainState) TotalSupply() float64 {
 // bypass harmless instead of a trap for the next test author.
 func (cs *ChainState) humanCountLocked() int64 {
 	if cs.useDB {
+		// humanCountMu: see that field's own comment.
+		cs.humanCountMu.Lock()
+		defer cs.humanCountMu.Unlock()
 		return cs.humanCount
 	}
 	var count int64
