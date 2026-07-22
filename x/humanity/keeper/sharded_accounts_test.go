@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"sync"
 	"testing"
+	"time"
 )
 
 // These tests exercise shardedAccounts entirely in isolation -- no
@@ -377,5 +378,367 @@ func TestShardedAccounts_Clone_DoesNotCarryOverPartialXOR(t *testing.T) {
 	got, ok := clone.Get("0xaaa")
 	if !ok || got.Balance.Float() != 1000 {
 		t.Fatal("Clone() did not correctly copy the account itself")
+	}
+}
+
+// The tests below exercise LockAddrs/GetLocked/SetLocked -- the Phase 5
+// multi-shard locking primitive. Entirely isolated: no ChainState, no
+// cs.mu, no cs.accountSetXOR, nothing wired into any production code path
+// yet (see LockAddrs's own comment for the concurrent-transfer path this
+// is built for, added separately).
+
+// TestShardedAccounts_LockAddrs_BasicReadModifyWrite proves the intended
+// usage pattern works: lock two addresses, read+mutate+write both while
+// held, unlock -- the exact sequence a caller needs for a safe
+// cross-account transfer.
+func TestShardedAccounts_LockAddrs_BasicReadModifyWrite(t *testing.T) {
+	sa := newShardedAccounts()
+	sa.Set("0xfrom", &AccountState{Address: "0xfrom", Balance: NewDecimal(100)})
+	sa.Set("0xto", &AccountState{Address: "0xto", Balance: NewDecimal(0)})
+
+	unlock := sa.LockAddrs("0xfrom", "0xto")
+	from, ok := sa.GetLocked("0xfrom")
+	if !ok {
+		t.Fatal("GetLocked(0xfrom) miss")
+	}
+	to, ok := sa.GetLocked("0xto")
+	if !ok {
+		t.Fatal("GetLocked(0xto) miss")
+	}
+	from.Balance = from.Balance.Sub(NewDecimal(30))
+	to.Balance = to.Balance.Add(NewDecimal(30))
+	unlock()
+
+	gotFrom, _ := sa.Get("0xfrom")
+	gotTo, _ := sa.Get("0xto")
+	if gotFrom.Balance.Float() != 70 {
+		t.Errorf("from balance = %v, want 70", gotFrom.Balance.Float())
+	}
+	if gotTo.Balance.Float() != 30 {
+		t.Errorf("to balance = %v, want 30", gotTo.Balance.Float())
+	}
+}
+
+// TestShardedAccounts_LockAddrs_SetLockedInsertsNewAccount proves
+// SetLocked can insert a brand-new address while the lock is held (the
+// "recipient didn't exist yet" case), visible via a plain Get after
+// unlock.
+func TestShardedAccounts_LockAddrs_SetLockedInsertsNewAccount(t *testing.T) {
+	sa := newShardedAccounts()
+	unlock := sa.LockAddrs("0xnew")
+	sa.SetLocked("0xnew", &AccountState{Address: "0xnew", Balance: NewDecimal(42)})
+	unlock()
+
+	got, ok := sa.Get("0xnew")
+	if !ok || got.Balance.Float() != 42 {
+		t.Fatal("SetLocked did not durably insert the new account")
+	}
+}
+
+// TestShardedAccounts_LockAddrs_DedupesSameShard proves LockAddrs does not
+// deadlock or double-lock when multiple addresses land in the same shard
+// (guaranteed to happen at least once among enough addresses with only 64
+// shards) -- and when the exact same address is passed twice.
+func TestShardedAccounts_LockAddrs_DedupesSameShard(t *testing.T) {
+	sa := newShardedAccounts()
+	// Find two distinct addresses that hash to the same shard.
+	var a, b string
+	seen := map[int]string{}
+	for i := 0; i < 100000; i++ {
+		addr := fmt.Sprintf("0xdup%06d", i)
+		idx := shardIndexFor(addr)
+		if prior, ok := seen[idx]; ok {
+			a, b = prior, addr
+			break
+		}
+		seen[idx] = addr
+	}
+	if a == "" {
+		t.Fatal("test setup: could not find two addresses sharing a shard within 100000 tries")
+	}
+	sa.Set(a, &AccountState{Address: a, Balance: NewDecimal(1)})
+	sa.Set(b, &AccountState{Address: b, Balance: NewDecimal(2)})
+
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		unlock := sa.LockAddrs(a, b, a, b) // same shard, and each address repeated
+		unlock()
+	}()
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("LockAddrs deadlocked on same-shard/duplicate addresses")
+	}
+}
+
+// TestShardedAccounts_LockAddrs_ConcurrentTransfersDifferentShards is
+// LockAddrs's actual point: many goroutines each locking their OWN
+// disjoint {from,to} pair concurrently must genuinely run in parallel
+// (never corrupt state, -race clean) and conserve the total balance
+// exactly -- no lost updates, no double-spends.
+func TestShardedAccounts_LockAddrs_ConcurrentTransfersDifferentShards(t *testing.T) {
+	sa := newShardedAccounts()
+	const n = 500
+	for i := 0; i < n; i++ {
+		addr := fmt.Sprintf("0xpar%05d", i)
+		sa.Set(addr, &AccountState{Address: addr, Balance: NewDecimal(1000)})
+	}
+
+	var wg sync.WaitGroup
+	for i := 0; i < n; i++ {
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			from := fmt.Sprintf("0xpar%05d", i)
+			to := fmt.Sprintf("0xpar%05d", (i+1)%n)
+			unlock := sa.LockAddrs(from, to)
+			defer unlock()
+			f, _ := sa.GetLocked(from)
+			t, _ := sa.GetLocked(to)
+			f.Balance = f.Balance.Sub(NewDecimal(10))
+			t.Balance = t.Balance.Add(NewDecimal(10))
+		}(i)
+	}
+	wg.Wait()
+
+	var total float64
+	sa.Range(func(_ string, acc *AccountState) bool {
+		total += acc.Balance.Float()
+		return true
+	})
+	if total != float64(n)*1000 {
+		t.Fatalf("total balance after %d concurrent ring transfers = %v, want %v (lost update or corruption if different)", n, total, float64(n)*1000)
+	}
+}
+
+// TestShardedAccounts_LockAddrs_ConcurrentOverlappingAddressSets is the
+// deadlock-freedom proof: many goroutines locking OVERLAPPING,
+// differently-ordered address pairs from a small shared pool concurrently
+// must never deadlock (proves the sorted-shard-index lock ordering
+// actually works, not just the disjoint-sets happy path above) and must
+// still conserve the total balance exactly.
+func TestShardedAccounts_LockAddrs_ConcurrentOverlappingAddressSets(t *testing.T) {
+	sa := newShardedAccounts()
+	const numAddrs = 20 // small pool -> heavy overlap, heavy contention
+	addrs := make([]string, numAddrs)
+	for i := range addrs {
+		addrs[i] = fmt.Sprintf("0xhot%03d", i)
+		sa.Set(addrs[i], &AccountState{Address: addrs[i], Balance: NewDecimal(10000)})
+	}
+
+	const rounds = 3000
+	var wg sync.WaitGroup
+	done := make(chan struct{})
+	go func() {
+		for r := 0; r < rounds; r++ {
+			wg.Add(1)
+			go func(r int) {
+				defer wg.Done()
+				from := addrs[r%numAddrs]
+				to := addrs[(r*7+3)%numAddrs] // different, deliberately non-monotonic pairing
+				if from == to {
+					to = addrs[(r*7+5)%numAddrs]
+				}
+				unlock := sa.LockAddrs(from, to)
+				defer unlock()
+				f, _ := sa.GetLocked(from)
+				t, _ := sa.GetLocked(to)
+				if f.Balance.Float() >= 1 {
+					f.Balance = f.Balance.Sub(NewDecimal(1))
+					t.Balance = t.Balance.Add(NewDecimal(1))
+				}
+			}(r)
+		}
+		wg.Wait()
+		close(done)
+	}()
+	select {
+	case <-done:
+	case <-time.After(30 * time.Second):
+		t.Fatal("LockAddrs deadlocked under heavy overlapping-address-set contention")
+	}
+
+	var total float64
+	sa.Range(func(_ string, acc *AccountState) bool {
+		total += acc.Balance.Float()
+		return true
+	})
+	if total != float64(numAddrs)*10000 {
+		t.Fatalf("total balance after %d concurrent overlapping transfers = %v, want %v", rounds, total, float64(numAddrs)*10000)
+	}
+}
+
+// TestShardedAccounts_TryLockAddrs_SucceedsWhenUncontended proves the
+// trivial case: nothing else holds either shard, so TryLockAddrs must
+// succeed exactly like LockAddrs would, and GetLocked/SetLocked must work
+// normally while held.
+func TestShardedAccounts_TryLockAddrs_SucceedsWhenUncontended(t *testing.T) {
+	sa := newShardedAccounts()
+	a, b := "0xtla01", "0xtla02"
+	sa.Set(a, &AccountState{Address: a, Balance: NewDecimal(100)})
+	sa.Set(b, &AccountState{Address: b, Balance: NewDecimal(0)})
+
+	unlock, ok := sa.TryLockAddrs(a, b)
+	if !ok {
+		t.Fatal("want ok=true when neither shard is contended")
+	}
+	defer unlock()
+
+	accA, _ := sa.GetLocked(a)
+	accB, _ := sa.GetLocked(b)
+	accA.Balance = accA.Balance.Sub(NewDecimal(40))
+	accB.Balance = accB.Balance.Add(NewDecimal(40))
+	if accA.Balance.Float() != 60 || accB.Balance.Float() != 40 {
+		t.Fatalf("got balances (%v, %v), want (60, 40)", accA.Balance.Float(), accB.Balance.Float())
+	}
+}
+
+// TestShardedAccounts_TryLockAddrs_FailsWithoutBlockingWhenContended is the
+// core property this primitive exists for: if another goroutine already
+// holds one of the needed shards, TryLockAddrs must return ok=false
+// IMMEDIATELY (not after waiting for the holder to release) — the whole
+// point is a caller that can't get the lock right now falls back to a
+// different code path instead of queuing.
+func TestShardedAccounts_TryLockAddrs_FailsWithoutBlockingWhenContended(t *testing.T) {
+	sa := newShardedAccounts()
+	a, b := "0xtlb01", "0xtlb02"
+	sa.Set(a, &AccountState{Address: a})
+	sa.Set(b, &AccountState{Address: b})
+
+	holderUnlock := sa.LockAddrs(a) // hold a's shard indefinitely
+	defer holderUnlock()
+
+	done := make(chan struct{})
+	var unlock func()
+	var ok bool
+	go func() {
+		unlock, ok = sa.TryLockAddrs(a, b)
+		close(done)
+	}()
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("TryLockAddrs blocked instead of returning immediately")
+	}
+	if ok {
+		unlock()
+		t.Fatal("want ok=false while a's shard is held by another goroutine")
+	}
+}
+
+// TestShardedAccounts_TryLockAddrs_ReleasesPartialAcquisitionOnFailure
+// proves the rollback path: when the FIRST shard (in ascending index
+// order) is free but a LATER one is contended, TryLockAddrs must not leak
+// the first shard's lock — a bug here would deadlock every future caller
+// of that shard, including the contending holder's own eventual retry.
+func TestShardedAccounts_TryLockAddrs_ReleasesPartialAcquisitionOnFailure(t *testing.T) {
+	sa := newShardedAccounts()
+	// Find two addresses whose shard indices land in a known order, and a
+	// third that collides with the second — shardIndexFor is deterministic,
+	// so scanning a small range of synthetic addresses reliably finds this
+	// shape without hardcoding hash values.
+	var lowAddr, highAddr, collideAddr string
+	seen := map[int]string{}
+	for i := 0; i < 10000 && (lowAddr == "" || collideAddr == ""); i++ {
+		addr := fmt.Sprintf("0xseek%05d", i)
+		idx := shardIndexFor(addr)
+		if lowAddr == "" {
+			lowAddr, highAddr = addr, addr
+			seen[idx] = addr
+			continue
+		}
+		lowIdx := shardIndexFor(lowAddr)
+		if idx < lowIdx {
+			lowAddr = addr
+		}
+		if existing, ok := seen[idx]; ok && existing != addr && highAddr != "" && idx != shardIndexFor(lowAddr) {
+			collideAddr = existing
+			highAddr = addr
+		}
+		seen[idx] = addr
+	}
+	if lowAddr == "" || highAddr == "" || collideAddr == "" {
+		t.Skip("could not synthesize a shard collision in the scan budget")
+	}
+
+	sa.Set(lowAddr, &AccountState{Address: lowAddr})
+	sa.Set(highAddr, &AccountState{Address: highAddr})
+
+	holderUnlock := sa.LockAddrs(highAddr) // holds the shard `collideAddr` also maps to
+	defer holderUnlock()
+
+	_, ok := sa.TryLockAddrs(lowAddr, highAddr)
+	if ok {
+		t.Fatal("want ok=false: highAddr's shard is already held")
+	}
+
+	// lowAddr's shard must have been released, not leaked -- prove it by
+	// successfully locking it fresh right now.
+	unlockLow, okLow := sa.TryLockAddrs(lowAddr)
+	if !okLow {
+		t.Fatal("lowAddr's shard was not released after the failed TryLockAddrs -- partial acquisition leaked")
+	}
+	unlockLow()
+}
+
+// TestShardedAccounts_TryLockAddrs_ConcurrentContentionNeverDeadlocks
+// stress-tests TryLockAddrs the same way
+// TestShardedAccounts_LockAddrs_ConcurrentOverlappingAddressSets stresses
+// the blocking primitive: heavy overlap, many goroutines, non-monotonic
+// pairing. Every attempt either fully succeeds or fully fails (ok=false,
+// nothing held) -- balance conservation only needs to hold across the
+// successful attempts, since a failed one is defined to be a no-op.
+func TestShardedAccounts_TryLockAddrs_ConcurrentContentionNeverDeadlocks(t *testing.T) {
+	sa := newShardedAccounts()
+	const numAddrs = 20
+	addrs := make([]string, numAddrs)
+	for i := range addrs {
+		addrs[i] = fmt.Sprintf("0xtry%03d", i)
+		sa.Set(addrs[i], &AccountState{Address: addrs[i], Balance: NewDecimal(10000)})
+	}
+
+	const rounds = 3000
+	var wg sync.WaitGroup
+	done := make(chan struct{})
+	go func() {
+		for r := 0; r < rounds; r++ {
+			wg.Add(1)
+			go func(r int) {
+				defer wg.Done()
+				from := addrs[r%numAddrs]
+				to := addrs[(r*7+3)%numAddrs]
+				if from == to {
+					to = addrs[(r*7+5)%numAddrs]
+				}
+				unlock, ok := sa.TryLockAddrs(from, to)
+				if !ok {
+					return // contended -- defined as a no-op, same as a caller falling back
+				}
+				defer unlock()
+				f, _ := sa.GetLocked(from)
+				t, _ := sa.GetLocked(to)
+				if f.Balance.Float() >= 1 {
+					f.Balance = f.Balance.Sub(NewDecimal(1))
+					t.Balance = t.Balance.Add(NewDecimal(1))
+				}
+			}(r)
+		}
+		wg.Wait()
+		close(done)
+	}()
+	select {
+	case <-done:
+	case <-time.After(30 * time.Second):
+		t.Fatal("TryLockAddrs deadlocked (or hung) under heavy overlapping-address-set contention")
+	}
+
+	var total float64
+	sa.Range(func(_ string, acc *AccountState) bool {
+		total += acc.Balance.Float()
+		return true
+	})
+	if total != float64(numAddrs)*10000 {
+		t.Fatalf("total balance after %d concurrent TryLockAddrs attempts = %v, want %v (a successful attempt must still move exactly 1 unit)", rounds, total, float64(numAddrs)*10000)
 	}
 }

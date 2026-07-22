@@ -145,6 +145,21 @@ type ChainState struct {
 	// blockRollbackSnapshot.
 	accountSetXOR   [32]byte
 	nullifierSetXOR [32]byte
+	// accountSetXORMu additionally guards accountSetXOR's own mutation
+	// (updateAccountLeafLocked) specifically for SCALING_ARCHITECTURE.md
+	// Phase 5's concurrent-transfer path (transferConcurrent, see
+	// transfer_concurrent.go): that path holds cs.mu.RLock() plus a small
+	// set of per-shard account locks, NOT cs.mu.Lock(), so multiple
+	// transfers can run genuinely in parallel -- but accountSetXOR is one
+	// single global field every one of them still mutates. Every existing
+	// cs.mu.Lock()-based caller (replay, swap, distribution, snapshot,
+	// the non-concurrent transfer path) already has full exclusivity from
+	// cs.mu itself, so acquiring this extra mutex inside
+	// updateAccountLeafLocked is uncontended and free for them -- it's
+	// the ACTUAL synchronization only for the concurrent-transfer case,
+	// where multiple RLock()-holding goroutines can otherwise race on
+	// this field at the same instant.
+	accountSetXORMu sync.Mutex
 	// humanCount is TotalSupply's cheap source of truth (TotalSupply ==
 	// humanCount * 1000, an already-documented invariant) — see
 	// humanCountLocked's own comment for why it's maintained the exact same
@@ -1900,8 +1915,14 @@ var errVersionConflict = errors.New("optimistic lock version conflict")
 // durability concern, not a consensus one.
 func (cs *ChainState) updateAccountLeafLocked(acc *AccountState) {
 	newLeaf := accountLeaf(acc)
+	// See accountSetXORMu's own field comment: uncontended (and therefore
+	// free) for every cs.mu.Lock()-based caller, the actual synchronization
+	// for the concurrent-transfer path (transfer_concurrent.go), which
+	// only holds cs.mu.RLock().
+	cs.accountSetXORMu.Lock()
 	xorInto(&cs.accountSetXOR, acc.leafHash)
 	xorInto(&cs.accountSetXOR, newLeaf)
+	cs.accountSetXORMu.Unlock()
 	acc.leafHash = newLeaf
 }
 
@@ -3735,11 +3756,23 @@ func (cs *ChainState) Transfer(from, to string, amount float64) (float64, float6
 // mate (not this call) is what failed. Falls back to the direct,
 // unbatched path when cs.db is nil (no-DB / test mode) — batching only
 // helps when there's a real fsync to amortize.
+//
+// SHARD-LOCKED FAST PATH (SCALING_ARCHITECTURE.md Phase 5, not
+// staging-validated — see transferConcurrent's own doc comment): tried
+// first, ahead of the batcher. When applied is true the fast path genuinely
+// ran — its result (success or a real error, e.g. insufficient balance) is
+// final and returned as-is, never retried through the batcher. Only when
+// applied is false (cold account, would settle demurrage, would overflow
+// the wealth cap, or no DB) does this fall through to the batched path
+// below, unchanged from before this fast path existed.
 func (cs *ChainState) TransferAtomic(from, to string, amount float64, pendingTxTemplate Transaction) (fromLost, toLost float64, err error) {
 	from = strings.ToLower(from)
 	to = strings.ToLower(to)
 	if cs.db == nil {
 		return cs.transferAtomicDirect(from, to, amount, pendingTxTemplate)
+	}
+	if fLost, tLost, applied, cerr := cs.transferConcurrent(from, to, amount, pendingTxTemplate); applied {
+		return fLost, tLost, cerr
 	}
 	cs.ensureTransferBatcherStarted()
 	req := &transferBatchRequest{

@@ -3,6 +3,7 @@ package keeper
 import (
 	"encoding/json"
 	"hash/fnv"
+	"sort"
 	"sync"
 )
 
@@ -247,6 +248,114 @@ func (sa *shardedAccounts) Clone() *shardedAccounts {
 		return true
 	})
 	return clone
+}
+
+// LockAddrs acquires every distinct shard touched by addrs, in a fixed
+// deterministic order (ascending shard index), and returns an unlock
+// function that releases them all -- callers MUST call it exactly once
+// (typically via defer) when done. SCALING_ARCHITECTURE.md Phase 5: this
+// is the primitive that lets an operation touching a KNOWN, SMALL set of
+// addresses (e.g. a transfer's sender+recipient) hold just those shards'
+// locks for a whole multi-step read-modify-write, instead of relying on
+// cs.mu's full exclusivity -- concurrent callers whose address sets don't
+// overlap never contend with each other at all.
+//
+// Deterministic ordering is what makes this deadlock-free: two concurrent
+// callers whose touched addresses land in shards {3, 7} and {7, 3}
+// respectively both lock in the order [3, 7] (never [7, 3]), so neither
+// can ever hold shard 7 while waiting for shard 3 that the other already
+// holds. This is the standard "lock in a global total order" deadlock
+// prevention technique, applied to shard indices specifically.
+//
+// While held, GetLocked/SetLocked (not Get/Set) must be used for any
+// address whose shard is among those locked here -- Get/Set acquire the
+// shard's lock internally, and Go's sync.Mutex is not reentrant, so
+// calling them for an already-locked shard would deadlock the calling
+// goroutine against itself.
+func (sa *shardedAccounts) LockAddrs(addrs ...string) (unlock func()) {
+	seen := make(map[int]bool, len(addrs))
+	indices := make([]int, 0, len(addrs))
+	for _, a := range addrs {
+		idx := shardIndexFor(a)
+		if !seen[idx] {
+			seen[idx] = true
+			indices = append(indices, idx)
+		}
+	}
+	sort.Ints(indices)
+	for _, idx := range indices {
+		sa.shards[idx].mu.Lock()
+	}
+	return func() {
+		for i := len(indices) - 1; i >= 0; i-- {
+			sa.shards[indices[i]].mu.Unlock()
+		}
+	}
+}
+
+// TryLockAddrs is LockAddrs's non-blocking counterpart: it attempts to
+// acquire every distinct shard touched by addrs, in the same deterministic
+// ascending order, but NEVER WAITS for a contended shard -- if any shard
+// is already locked by another goroutine, it immediately releases whatever
+// it already acquired (in reverse order, same as unlock() would) and
+// returns ok=false with a nil unlock func. On success (ok=true), behaves
+// exactly like LockAddrs -- same deadlock-freedom argument applies since
+// the acquire order is identical, just each individual acquisition uses
+// sync.Mutex.TryLock instead of Lock.
+//
+// This exists for exactly one caller (transferConcurrent): a fast path
+// that holds these locks across a real DB round trip (Begin/save/Commit)
+// must not turn into serializing every contending transfer behind that
+// round trip on a hot shard -- measured directly, doing so made a
+// concentrated-recipient workload (many senders paying one address, e.g. a
+// pool/exchange/merchant) roughly 2x SLOWER than the plain batched path,
+// because every contender queued behind one shard's lock for a whole solo
+// commit instead of getting folded into the batcher's shared commit. Bailing
+// instantly instead lets a hot shard's traffic fall straight through to the
+// batcher (which amortizes commits across many transfers) rather than
+// queuing on a lock that only benefits genuinely disjoint traffic.
+func (sa *shardedAccounts) TryLockAddrs(addrs ...string) (unlock func(), ok bool) {
+	seen := make(map[int]bool, len(addrs))
+	indices := make([]int, 0, len(addrs))
+	for _, a := range addrs {
+		idx := shardIndexFor(a)
+		if !seen[idx] {
+			seen[idx] = true
+			indices = append(indices, idx)
+		}
+	}
+	sort.Ints(indices)
+	acquired := 0
+	for _, idx := range indices {
+		if !sa.shards[idx].mu.TryLock() {
+			for i := acquired - 1; i >= 0; i-- {
+				sa.shards[indices[i]].mu.Unlock()
+			}
+			return nil, false
+		}
+		acquired++
+	}
+	return func() {
+		for i := len(indices) - 1; i >= 0; i-- {
+			sa.shards[indices[i]].mu.Unlock()
+		}
+	}, true
+}
+
+// GetLocked is Get's counterpart for a caller already holding addr's
+// shard lock via LockAddrs -- see LockAddrs's own comment for why Get
+// itself must not be used instead (double-lock deadlock).
+func (sa *shardedAccounts) GetLocked(addr string) (*AccountState, bool) {
+	s := sa.shardFor(addr)
+	acc, ok := s.data[addr]
+	return acc, ok
+}
+
+// SetLocked is Set's counterpart for a caller already holding addr's
+// shard lock via LockAddrs -- see LockAddrs's own comment.
+func (sa *shardedAccounts) SetLocked(addr string, acc *AccountState) {
+	s := sa.shardFor(addr)
+	s.data[addr] = acc
 }
 
 // MarshalJSON lets `json.Marshal(sa)` behave like `json.Marshal(m)` did

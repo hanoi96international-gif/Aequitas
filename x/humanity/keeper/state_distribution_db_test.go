@@ -39,6 +39,18 @@ func distTestAddr(n int) string {
 // concurrent writers. Confirmed: this exact failure mode reproduced when
 // the truncate briefly lived after NewChainState during this test's own
 // development.
+//
+// pending_txs is included for the same class of reason as the rest of this
+// list: it's the outbox table, shared by every caller of SavePendingTx
+// against this same persistent bench DB, so a fixed/literal TxHash used by
+// more than one test run (e.g. transfer_concurrent_test.go's
+// TestTransferConcurrent_EligibleTransferSucceeds, which checks for
+// "exactly 1" outbox row by that hash) accumulates duplicate rows across
+// separate `go test` invocations without this. pending_txs_cap_test.go
+// handles the same leak a different way (drainAllPendingTxs, an explicit
+// per-test LoadPendingTxs drain) because its own tests care about the
+// backlog's exact size/ordering, not just "starts empty" — both are valid
+// fixes for the same underlying shared-DB leftover-state hazard.
 func truncateDistTestTables(t *testing.T) {
 	t.Helper()
 	db, err := sql.Open("postgres", os.Getenv("DATABASE_URL"))
@@ -46,7 +58,7 @@ func truncateDistTestTables(t *testing.T) {
 		t.Fatalf("truncateDistTestTables: open: %v", err)
 	}
 	defer db.Close()
-	if _, err := db.Exec(`TRUNCATE chain_accounts, chain_config, nullifiers, liquidity_pool, escrow_accounts, registered_nodes CASCADE`); err != nil {
+	if _, err := db.Exec(`TRUNCATE chain_accounts, chain_config, nullifiers, liquidity_pool, escrow_accounts, registered_nodes, pending_txs CASCADE`); err != nil {
 		t.Fatalf("truncateDistTestTables: %v", err)
 	}
 }
