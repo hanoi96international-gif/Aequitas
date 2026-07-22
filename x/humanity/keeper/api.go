@@ -1231,7 +1231,17 @@ func (a *APIServer) handleBlockPush(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte(`{"ok":false,"reason":"push flood shield open","action":"resync_required"}`))
 		return
 	}
-	body, tooLarge, err := readBodyLimited(w, r, 512<<10)
+	// maxBlockStreamBytes (p2p.go), not a separate literal: this is the same
+	// class of payload as the libp2p block-gossip path (one full block's
+	// JSON), just over HTTP instead of a libp2p stream — this endpoint's own
+	// doc comment above says it's the primary relay mechanism whenever port
+	// 4001 is firewalled, so it needs the same headroom for maxTxsPerBlock
+	// (evm_storage.go) or it silently caps effective block-relay throughput
+	// right back down to ~2,200 transactions regardless of that constant.
+	// Unlike the libp2p path's old bug, this one fails LOUDLY (413, via
+	// tooLarge below) rather than silently truncating — still a real
+	// functional ceiling, just a visible one instead of a silent one.
+	body, tooLarge, err := readBodyLimited(w, r, maxBlockStreamBytes)
 	if tooLarge {
 		jsonError(w, "request body too large", http.StatusRequestEntityTooLarge)
 		return

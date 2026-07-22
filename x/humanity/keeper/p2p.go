@@ -183,6 +183,53 @@ func (n *P2PNode) handleStream(s network.Stream) {
 	s.Write([]byte(response))
 }
 
+// maxBlockStreamBytes bounds handleBlockStream's read of a single incoming
+// block. Previously a flat 512 KB — silently WRONG once maxTxsPerBlock (see
+// evm_storage.go) allowed blocks anywhere near that size: io.ReadAll over an
+// io.LimitReader does not error when the source has more data than the
+// limit, it just stops reading at the limit and returns what it has, so a
+// too-small cap here means json.Unmarshal gets truncated JSON and this
+// function silently drops an entirely valid, oversized block — the
+// receiving peer just never accepts it (see the parse-error log branch
+// below), no error surfaced to the sender, no retry from this path.
+//
+// Measured directly (TestBlockCostAtScale, SCALING_ARCHITECTURE.md): a
+// block's JSON payload is roughly 0.23 MB per 1,000 transactions, so the
+// old 512 KB cap already silently truncated ANY block over roughly ~2,200
+// transactions — well within what maxTxsPerBlock (20,000, now higher) alone
+// already permitted; this was a live, already-reachable bug, not merely a
+// future scaling concern. 100,000 transactions measured at ~23.17 MB;
+// this constant leaves headroom above that for a transient backlog spike,
+// while still bounding memory usage the way the original 512 KB cap
+// intended to (unbounded io.ReadAll on a live network stream would be its
+// own resource-exhaustion risk).
+const maxBlockStreamBytes = 32 << 20 // 32 MB
+
+// parseIncomingBlock reads and decodes one block message from r, bounded by
+// maxBlockStreamBytes. Split out of handleBlockStream so the size-limit
+// behavior is testable directly against a plain io.Reader (e.g.
+// strings.Reader/bytes.Reader) without needing a real libp2p network.Stream
+// (which itself needs two connected hosts to construct) — network.Stream
+// satisfies io.Reader, so handleBlockStream below passes it straight
+// through unchanged.
+func parseIncomingBlock(r io.Reader) (*Block, error) {
+	// io.ReadAll with a cap prevents TCP fragmentation issues — a single
+	// Read() call may return only a partial message if the TCP segment is
+	// fragmented; ReadAll accumulates all bytes until EOF/close.
+	body, err := io.ReadAll(io.LimitReader(r, maxBlockStreamBytes))
+	if err != nil {
+		return nil, err
+	}
+	if len(body) == 0 {
+		return nil, fmt.Errorf("empty block message")
+	}
+	var block Block
+	if err := json.Unmarshal(body, &block); err != nil {
+		return nil, err
+	}
+	return &block, nil
+}
+
 // handleBlockStream — receive blocks from peers
 func (n *P2PNode) handleBlockStream(s network.Stream) {
 	defer s.Close()
@@ -190,16 +237,8 @@ func (n *P2PNode) handleBlockStream(s network.Stream) {
 		return
 	}
 
-	// io.ReadAll with a cap prevents TCP fragmentation issues — a single
-	// s.Read() call may return only a partial message if the TCP segment
-	// is fragmented; ReadAll accumulates all bytes until EOF/close.
-	body, err := io.ReadAll(io.LimitReader(s, 512<<10)) // 512 KB cap
-	if err != nil || len(body) == 0 {
-		return
-	}
-
-	var block Block
-	if err := json.Unmarshal(body, &block); err != nil {
+	block, err := parseIncomingBlock(s)
+	if err != nil {
 		fmt.Printf("[BLOCK-SYNC] ✗ Parse error from peer %s: %v\n",
 			s.Conn().RemotePeer().String()[:12], err)
 		return
@@ -216,12 +255,12 @@ func (n *P2PNode) handleBlockStream(s network.Stream) {
 	}
 	// Log only when the block is actually accepted — logging before
 	// AddPeerBlock caused "Received" messages for blocks that were rejected.
-	if n.dag.AddPeerBlock(&block) {
+	if n.dag.AddPeerBlock(block) {
 		fmt.Printf("[BLOCK-SYNC] ✓ Accepted block #%d from peer %s\n",
 			block.Height, sender.String()[:12])
 		// Relay to all other peers (gossip) so every node sees every block
 		// even when not directly connected to the originator.
-		SafeGoroutine("broadcastExcept", func() { n.broadcastExcept(&block, sender) })
+		SafeGoroutine("broadcastExcept", func() { n.broadcastExcept(block, sender) })
 	}
 }
 

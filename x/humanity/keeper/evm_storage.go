@@ -2271,26 +2271,37 @@ func savePendingTxExec(ex sqlExecutor, tx Transaction) error {
 // serialization overhead compete with the actual transaction throughput
 // this whole scaling project exists to increase.
 //
-// 20,000 is a deliberately conservative starting point (comfortably inside
-// the measured-safe range, roughly 2x the 10,000-TX measurement's ~85ms
-// combined cost) — NOT a claim that this by itself delivers 50,000 TPS
-// sustained: at BLOCK_TIME's current ~1-2s cadence, 20,000 TXs/block caps
-// throughput at roughly 10,000-20,000 TPS through block relay specifically,
-// regardless of how fast the storage layer (phases 1-6) can ingest them.
-// Reaching sustained 50k TPS through block relay itself needs a genuinely
-// separate follow-up (multiple blocks per tick, and/or a shorter
-// BLOCK_TIME) — explicitly out of scope here, see
-// SCALING_ARCHITECTURE.md's own Phase 9 framing ("untersuchen und ggf.
-// redesignen", investigate and possibly redesign, not "solve outright").
-// This constant exists to close the concrete, measured worst-case risk
-// (one pathologically large block) first, cheaply and safely, without
-// committing to that larger cadence redesign in the same change.
+// Raised from 20,000 to 50,000 (matching the stated TPS target directly)
+// once two things were confirmed: (1) TestBlockCostAtScale already measured
+// 50,000 TXs/block at ~275ms combined hash+unmarshal cost — comfortably
+// inside a 1-2s BLOCK_TIME window, the same safety margin the original
+// 20,000 figure was picked for; (2) the P2P block-receive path
+// (handleBlockStream, see p2p.go's maxBlockStreamBytes) had a stale 512 KB
+// read cap that silently truncated (and therefore silently DROPPED) any
+// block over roughly ~2,200 transactions — already reachable at the OLD
+// 20,000 cap, not merely a future risk. Raising this constant without that
+// fix would have made an already-live bug's blast radius worse for no
+// benefit; fixed first, in the same change.
+//
+// This still does NOT by itself deliver 50,000 TPS sustained: at
+// BLOCK_TIME's current ~1-2s cadence, one block still caps throughput at
+// roughly 25,000-50,000 TPS through block relay specifically — an upper
+// bound this constant now matches, not a guarantee the storage layer
+// (phases 1-6, i.e. everything up to and including the shard-locked
+// transfer path) can actually fill a block that large every tick. See
+// SCALING_ARCHITECTURE.md's Phase 9 framing: multiple blocks per tick
+// and/or a shorter BLOCK_TIME remain a separate, larger cadence decision,
+// deliberately not part of this change (that's a multi-node consensus-
+// timing question, not a transport/storage-layer one — see this repo's
+// documented history of real GHOSTDAG forks from exactly that class of
+// change, and needs real multi-node staging validation this constant
+// bump does not).
 //
 // Any pending TX beyond this cap simply stays included_at=0 (this query's
 // WHERE clause) and is picked up by the NEXT LoadPendingTxs call — no TX is
 // ever dropped, only deferred, exactly the same FIFO backlog-draining
 // property a real bounded queue needs.
-const maxTxsPerBlock = 20000
+const maxTxsPerBlock = 50000
 
 func (cs *ChainState) LoadPendingTxs() ([]Transaction, []int64) {
 	if cs.db == nil {
