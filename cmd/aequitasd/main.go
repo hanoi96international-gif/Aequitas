@@ -703,6 +703,14 @@ case <-distDone:
 case <-time.After(10 * time.Second):
 	fmt.Println("[WARN] Distribution goroutine did not stop in 10 seconds — forcing exit")
 }
+// SCALING_ARCHITECTURE.md Phase 3: pool-address credits are flushed to
+// Postgres on a periodic background timer rather than synchronously per
+// transfer (see pool_flush.go) — a clean shutdown (SIGINT/SIGTERM, e.g.
+// every auto-deploy) is exactly the moment to flush any still-pending
+// credits one last time, so a routine restart never has to rely on the
+// bounded "eventually consistent" window that trade-off accepts for a
+// genuine crash.
+chainState.FlushPoolAccountsNow()
 fmt.Println("Node stopped.")
 }
 

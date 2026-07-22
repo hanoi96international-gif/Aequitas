@@ -192,6 +192,19 @@ type ChainState struct {
 	// best-effort cleanup DELETE, never the actual balance ledger.
 	evmMirrorQueueMaybeNonEmpty atomic.Bool
 
+	// poolFlushDirty/poolFlushOnce back distributeSwapFee's deferred pool
+	// persistence (see pool_flush.go / SCALING_ARCHITECTURE.md Phase 3):
+	// with a real DB, a pool-address credit updates cs.accounts and
+	// cs.accountSetXOR immediately (in-memory only, cheap) but skips the
+	// synchronous Postgres round trip that used to happen on every single
+	// transfer's demurrage settlement — poolFlushDirty just marks "the 4
+	// pool rows are stale in the DB", and a periodic background worker
+	// (started lazily, like transferBatchOnce) batches however many
+	// credits accumulated into ONE write per flush interval instead of
+	// one per transfer.
+	poolFlushDirty atomic.Bool
+	poolFlushOnce  sync.Once
+
 	// degradedMu guards bootstrapDegradedReason. Set by main.go when
 	// snapshot bootstrap/resync's EVM mirror migration step fails (see
 	// ImportSnapshotFromURL/ResyncFromSnapshotURL) — Go-state itself is
@@ -1760,6 +1773,28 @@ var errVersionConflict = errors.New("optimistic lock version conflict")
 // identically would mean changing many call sites that were never
 // claiming atomicity in the first place, for no behavioral change (they
 // already only logged on failure).
+// updateAccountLeafLocked folds acc's current leaf into cs.accountSetXOR,
+// replacing whatever leaf was last counted for it (acc.leafHash — the zero
+// hash for a brand-new account). XOR is self-inverse, so out-then-in keeps
+// accountSetXOR equal to the XOR of every current account's leaf regardless
+// of how many times this runs for the same account. Caller must hold cs.mu.
+//
+// Split out of saveAccountToDB/saveAccountsToDBBatch (see SCALING_
+// ARCHITECTURE.md Phase 3) so the tokenomics-pool fast path can update the
+// state-root accumulator eagerly, in-memory, at the moment a pool balance
+// actually changes — independent of when (or whether yet) that balance has
+// been durably flushed to Postgres. This keeps StateRoot correct and
+// immediately deterministic across nodes (every node applies the same
+// mutation at the same logical point, in the same order-independent XOR)
+// even though each node's own Postgres flush timing is now purely a local
+// durability concern, not a consensus one.
+func (cs *ChainState) updateAccountLeafLocked(acc *AccountState) {
+	newLeaf := accountLeaf(acc)
+	xorInto(&cs.accountSetXOR, acc.leafHash)
+	xorInto(&cs.accountSetXOR, newLeaf)
+	acc.leafHash = newLeaf
+}
+
 func (cs *ChainState) saveAccountToDB(acc *AccountState) error {
 	// FIX (audit 2026-06-28 full recheck, P0-3 — "saveAccountToDB
 	// Konflikt-Retry kann die beabsichtigte Mutation verlieren"): this used
@@ -1795,17 +1830,11 @@ func (cs *ChainState) saveAccountToDB(acc *AccountState) error {
 	if err == nil {
 		// Incremental state-root maintenance (see ChainState.accountSetXOR):
 		// the row write succeeded, so replace this account's previously-counted
-		// leaf with its new one. acc.leafHash is whatever was last folded into
-		// the accumulator for this account (the zero hash for a brand-new one);
-		// XOR is self-inverse, so out-then-in keeps accountSetXOR equal to the
-		// XOR of every current account's leaf. Every caller holds cs.mu for the
-		// whole mutation (see this function's doc comment), so this shared-state
+		// leaf with its new one. Every caller holds cs.mu for the whole
+		// mutation (see this function's doc comment), so this shared-state
 		// update needs no extra synchronization, and it participates in block
 		// rollback via blockRollbackSnapshot.accountSetXOR.
-		newLeaf := accountLeaf(acc)
-		xorInto(&cs.accountSetXOR, acc.leafHash)
-		xorInto(&cs.accountSetXOR, newLeaf)
-		acc.leafHash = newLeaf
+		cs.updateAccountLeafLocked(acc)
 		return nil
 	}
 	if errors.Is(err, errVersionConflict) {
@@ -1910,10 +1939,7 @@ func (cs *ChainState) saveAccountsToDBBatch(accs []*AccountState) error {
 		// not by cs.useDB specifically — see saveAccountToDB's own comment),
 		// only the SQL round trip is skipped.
 		for _, acc := range accs {
-			newLeaf := accountLeaf(acc)
-			xorInto(&cs.accountSetXOR, acc.leafHash)
-			xorInto(&cs.accountSetXOR, newLeaf)
-			acc.leafHash = newLeaf
+			cs.updateAccountLeafLocked(acc)
 			acc.Version++
 		}
 		return nil
@@ -1979,10 +2005,7 @@ SELECT address FROM upd UNION ALL SELECT address FROM ins`
 		}
 		// Same bookkeeping saveAccountToDB does on success (see its own
 		// comment), applied per account here.
-		newLeaf := accountLeaf(acc)
-		xorInto(&cs.accountSetXOR, acc.leafHash)
-		xorInto(&cs.accountSetXOR, newLeaf)
-		acc.leafHash = newLeaf
+		cs.updateAccountLeafLocked(acc)
 		acc.Version++
 	}
 	if len(conflicts) > 0 {
@@ -4392,9 +4415,33 @@ func (cs *ChainState) distributeSwapFee(fee float64, feeInAEQ bool) error {
 		} else {
 			sAcc.TUsdBalance = sAcc.TUsdBalance.Add(NewDecimal(s.amount))
 		}
+		// Eager, in-memory-only state-root update — see the Phase 3 comment
+		// below for why this must happen here regardless of whether the DB
+		// write itself is synchronous (below) or deferred. Redundant-but-
+		// harmless (a self-canceling no-op) on the no-DB path, where
+		// saveAccountsToDBBatch's own !cs.useDB branch also calls this.
+		cs.updateAccountLeafLocked(sAcc)
 		accs[i] = sAcc
 	}
-	if err := cs.saveAccountsToDBBatch(accs); err != nil {
+	// SCALING_ARCHITECTURE.md Phase 3: with a real DB, defer the actual
+	// Postgres write for these 4 pool rows to a periodic background flush
+	// instead of paying a synchronous round trip on every single fee event
+	// (this used to be the second DB write of nearly every transfer that
+	// had any demurrage to settle). StateRoot correctness does NOT depend
+	// on this write happening synchronously — updateAccountLeafLocked just
+	// above already folded each pool's new balance into cs.accountSetXOR
+	// eagerly, in-memory, at the exact same logical point every node
+	// applies this same mutation, so every node's StateRoot stays
+	// consistent regardless of each node's own local flush timing. Only
+	// the DURABILITY of the pool balance to Postgres is now "eventually
+	// consistent" (bounded by poolFlushInterval) -- see pool_flush.go.
+	// Skipped in no-DB mode: saveAccountsToDBBatch's own !cs.useDB branch
+	// is already a cheap in-memory-only no-op there, so deferring it would
+	// add complexity for zero benefit and would change no-DB unit tests'
+	// long-established "pool balance visible immediately" assertions.
+	if cs.useDB {
+		cs.markPoolAccountsDirtyLocked()
+	} else if err := cs.saveAccountsToDBBatch(accs); err != nil {
 		return fmt.Errorf("distributeSwapFee: could not persist pool credits: %w", err)
 	}
 	currency := "tUSD"
