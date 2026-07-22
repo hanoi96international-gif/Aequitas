@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"math"
 	"os"
+	"runtime/debug"
 	"sort"
 	"strings"
 	"sync"
@@ -152,6 +153,16 @@ type ChainState struct {
 	// cs.mu-locked region at a time, and that goroutine is the only one
 	// that could have set it.
 	activeTx *sql.Tx
+
+	// transferBatchCh/transferBatchOnce back TransferAtomic's group-commit
+	// path (see runTransferBatcher's own comment) — coalesces concurrent
+	// TransferAtomic callers into shared DB transactions so N transfers pay
+	// roughly one fsync-commit instead of N, without changing cs.mu's
+	// single-writer serialization model or touching any other atomic
+	// operation (swap/liquidity/registration/distribution keep using
+	// runAtomicWithOutbox exactly as before, one call at a time).
+	transferBatchCh   chan *transferBatchRequest
+	transferBatchOnce sync.Once
 
 	// degradedMu guards bootstrapDegradedReason. Set by main.go when
 	// snapshot bootstrap/resync's EVM mirror migration step fails (see
@@ -3472,9 +3483,45 @@ func (cs *ChainState) Transfer(from, to string, amount float64) (float64, float6
 // transferLocked runs, so the caller can't supply them upfront. Use this
 // instead of calling Transfer + SavePendingTx separately whenever the
 // caller will queue a pendingTx describing this transfer right afterward.
+//
+// THROUGHPUT (group commit, 2026-07-22): with cs.db set, this no longer
+// opens its own transaction — it hands the request to runTransferBatcher,
+// which coalesces concurrently-arriving TransferAtomic calls into shared DB
+// transactions (see that function's own comment for why: the prior design,
+// one Begin()/Commit() pair per transfer, meant every transfer paid its own
+// fsync and serialized fully behind cs.mu regardless — a real deadlock was
+// found and fixed in that design under concurrent load, see this file's git
+// history; the throughput ceiling after that fix was ~186 TPS single-node,
+// dominated by per-commit fsync cost). Behavior for a single isolated
+// caller is unchanged; the one observable difference under concurrency is
+// that a batch is all-or-nothing — see runTransferBatcher's own comment for
+// why, and processTransferBatch's for what a caller gets back when a batch
+// mate (not this call) is what failed. Falls back to the direct,
+// unbatched path when cs.db is nil (no-DB / test mode) — batching only
+// helps when there's a real fsync to amortize.
 func (cs *ChainState) TransferAtomic(from, to string, amount float64, pendingTxTemplate Transaction) (fromLost, toLost float64, err error) {
 	from = strings.ToLower(from)
 	to = strings.ToLower(to)
+	if cs.db == nil {
+		return cs.transferAtomicDirect(from, to, amount, pendingTxTemplate)
+	}
+	cs.ensureTransferBatcherStarted()
+	req := &transferBatchRequest{
+		from: from, to: to, amount: amount,
+		pendingTxTemplate: pendingTxTemplate,
+		result:            make(chan transferBatchResult, 1),
+	}
+	cs.transferBatchCh <- req
+	res := <-req.result
+	return res.fromLost, res.toLost, res.err
+}
+
+// transferAtomicDirect is TransferAtomic's original, unbatched
+// implementation — one Begin()/Commit() per call via runAtomicWithOutbox.
+// Used directly when there's no real DB (batching has nothing to amortize),
+// and by the batcher's own no-DB code path is unreachable there since
+// TransferAtomic already short-circuits before ever enqueuing.
+func (cs *ChainState) transferAtomicDirect(from, to string, amount float64, pendingTxTemplate Transaction) (fromLost, toLost float64, err error) {
 	err = cs.runAtomicWithOutbox([]string{from, to, validatorsPoolAddr, lpPoolAddr, ubiPoolAddr, treasuryPoolAddr}, false, func() (Transaction, error) {
 		fromLost, toLost, err = cs.transferLocked(from, to, amount)
 		if err != nil {
@@ -3485,6 +3532,167 @@ func (cs *ChainState) TransferAtomic(from, to string, amount float64, pendingTxT
 		return pendingTxTemplate, nil
 	})
 	return fromLost, toLost, err
+}
+
+// transferBatchRequest is one caller's pending TransferAtomic call, queued
+// for runTransferBatcher to fold into a shared DB transaction.
+type transferBatchRequest struct {
+	from, to          string
+	amount            float64
+	pendingTxTemplate Transaction
+	result            chan transferBatchResult
+}
+
+type transferBatchResult struct {
+	fromLost, toLost float64
+	err              error
+}
+
+// transferBatchChSize bounds how many pending batch requests can queue
+// before TransferAtomic callers block feeding the channel — generous
+// enough that a real burst doesn't stall producers, bounded so a stuck
+// batcher (should never happen — see its own panic-recovery) can't grow
+// this without limit.
+const transferBatchChSize = 4096
+
+// transferBatchMaxSize caps how many transfers one physical DB transaction
+// bundles: bounds how long cs.mu is held for a single batch (every member
+// still does real work — demurrage settlement, wealth-cap enforcement, EVM
+// mirror sync) and keeps a single COMMIT's WAL record a bounded size.
+const transferBatchMaxSize = 200
+
+// transferBatchMaxWait is the group-commit window: how long the batcher
+// waits for more requests before committing whatever it already has. Short
+// enough that one isolated request still gets a fast response (worst case:
+// this plus one commit); long enough that a real concurrent burst
+// coalesces into one commit instead of each paying its own fsync.
+const transferBatchMaxWait = 3 * time.Millisecond
+
+// ensureTransferBatcherStarted lazily starts the one background goroutine
+// that drains transferBatchCh — lazy (not started in NewChainState) so a
+// node that never processes a single transfer never pays for an idle
+// goroutine, and so this works uniformly whether TransferAtomic's first
+// call happens to be during tests or during normal operation.
+func (cs *ChainState) ensureTransferBatcherStarted() {
+	cs.transferBatchOnce.Do(func() {
+		cs.transferBatchCh = make(chan *transferBatchRequest, transferBatchChSize)
+		SafeGoroutine("transferBatcher", cs.runTransferBatcher)
+	})
+}
+
+// runTransferBatcher is the group-commit loop: block for the first request,
+// then greedily collect more (up to transferBatchMaxSize) for up to
+// transferBatchMaxWait before handing the whole batch to
+// processTransferBatch as one DB transaction. This is the same tradeoff
+// every group-commit design makes (batching latency for throughput) — the
+// window is short specifically so a lone request's added latency stays
+// small relative to a round trip that would have happened anyway.
+func (cs *ChainState) runTransferBatcher() {
+	for first := range cs.transferBatchCh {
+		batch := []*transferBatchRequest{first}
+		timer := time.NewTimer(transferBatchMaxWait)
+	collect:
+		for len(batch) < transferBatchMaxSize {
+			select {
+			case req := <-cs.transferBatchCh:
+				batch = append(batch, req)
+			case <-timer.C:
+				break collect
+			}
+		}
+		if !timer.Stop() {
+			select {
+			case <-timer.C:
+			default:
+			}
+		}
+		cs.processTransferBatch(batch)
+	}
+}
+
+// processTransferBatch commits an entire batch as ONE runAtomicWithOutbox
+// call — reusing that function's existing, already-proven snapshot/
+// rollback/commit machinery completely unchanged (see its own comment) —
+// rather than inventing new per-request SAVEPOINT-based partial-rollback
+// logic. The tradeoff this makes deliberately: the batch is all-or-nothing.
+// If ANY member's transferLocked call fails (insufficient balance, self-
+// transfer, etc.), the WHOLE batch rolls back and every member in it —
+// including ones whose own transfer would have succeeded alone — gets an
+// error naming which member actually failed, safe to retry individually.
+// This is a real cost under concurrent load with a high per-request
+// failure rate, but SAVEPOINT-based per-request isolation would need its
+// own new snapshot/restore reasoning for the in-memory side (this
+// codebase's rollback snapshots restore to "state right before this
+// specific attempt", which composes correctly only when restores also
+// unwind in reverse chronological order for addresses — like the 4
+// tokenomics pools — every request in a batch shares) — exactly the class
+// of subtlety that has caused real production incidents in this file
+// before (see runAtomicWithOutbox's and ghostdagIsAncestor's own FIX
+// comments). All-or-nothing reuses machinery already proven correct;
+// per-request isolation is a valid future step once real telemetry shows
+// batch-abort rate actually matters, not before.
+func (cs *ChainState) processTransferBatch(batch []*transferBatchRequest) {
+	defer func() {
+		if r := recover(); r != nil {
+			fmt.Printf("[PANIC RECOVERED] processTransferBatch: %v\n%s\n", r, debug.Stack())
+			for _, req := range batch {
+				select {
+				case req.result <- transferBatchResult{err: fmt.Errorf("internal error processing transfer batch: %v", r)}:
+				default:
+				}
+			}
+		}
+	}()
+
+	touchedSet := map[string]bool{
+		validatorsPoolAddr: true, lpPoolAddr: true, ubiPoolAddr: true, treasuryPoolAddr: true,
+	}
+	for _, req := range batch {
+		touchedSet[req.from] = true
+		touchedSet[req.to] = true
+	}
+	touched := make([]string, 0, len(touchedSet))
+	for addr := range touchedSet {
+		touched = append(touched, addr)
+	}
+
+	results := make([]transferBatchResult, len(batch))
+	err := cs.runAtomicWithOutbox(touched, false, func() (Transaction, error) {
+		var last Transaction
+		for i, req := range batch {
+			fromLost, toLost, tErr := cs.transferLocked(req.from, req.to, req.amount)
+			if tErr != nil {
+				return Transaction{}, fmt.Errorf("batch member %d/%d (%s -> %s) failed: %w", i+1, len(batch), req.from, req.to, tErr)
+			}
+			pendingTx := req.pendingTxTemplate
+			pendingTx.FromDemurrageLost = fromLost
+			pendingTx.ToDemurrageLost = toLost
+			results[i] = transferBatchResult{fromLost: fromLost, toLost: toLost}
+			if i == len(batch)-1 {
+				// Last member's outbox row is inserted by runAtomicWithOutbox
+				// itself (its normal single-Transaction contract) — every
+				// earlier member's own row is inserted explicitly right here,
+				// via cs.dbExec() so it joins the SAME transaction.
+				last = pendingTx
+				continue
+			}
+			if outboxErr := savePendingTxExec(cs.dbExec(), pendingTx); outboxErr != nil {
+				return Transaction{}, fmt.Errorf("batch member %d/%d (%s -> %s) outbox insert failed: %w", i+1, len(batch), req.from, req.to, outboxErr)
+			}
+		}
+		return last, nil
+	})
+	if err != nil {
+		// All-or-nothing: runAtomicWithOutbox already rolled back every
+		// mutation (DB and in-memory) this batch made, regardless of which
+		// member actually failed — every result computed above is stale.
+		for i := range results {
+			results[i] = transferBatchResult{err: err}
+		}
+	}
+	for i, req := range batch {
+		req.result <- results[i]
+	}
 }
 
 // transferLocked is Transfer's actual implementation; caller must already
