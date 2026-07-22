@@ -599,6 +599,36 @@ func (cs *ChainState) syncHumanRegistrationLocked(contractAddr string, addr stri
 // without acquiring cs.mu. Must be called only while the caller already holds
 // cs.mu (read or write lock) — calling SyncBalancesToEVM from inside a locked
 // function would deadlock on the inner RLock().
+//
+// SCALING_ARCHITECTURE.md Phase 6: with a real DB, this no longer writes
+// synchronously at all — it just records addrs as needing a refresh (cheap,
+// in-memory, own small mutex, not cs.mu) and returns; a background worker
+// (evm_mirror_flush.go) drains that set periodically and performs the exact
+// batched write doSyncBalanceLocked below used to do inline. This is safe
+// specifically BECAUSE evm_storage is already documented as a display-only
+// mirror for eth_call/MetaMask, never the authoritative ledger (that's
+// cs.accounts/chain_accounts) — unlike accountSetXOR (Phase 3), nothing here
+// feeds StateRoot or cross-node consensus, so a short display lag has no
+// correctness implications. It's also safe with respect to the OLD
+// same-transaction coupling this comment used to describe (joining
+// cs.activeTx so a later rollback would undo the mirror write too): the
+// flush now always reads cs.accounts fresh, AFTER whatever operation marked
+// it dirty has already fully committed or rolled back in memory, so it
+// converges on the correct final balance regardless of that outcome.
+//
+// doSyncBalanceLocked (below) is the extracted synchronous implementation,
+// still used directly by the flush worker itself (which acquires cs.mu on
+// its own timeline, not the original caller's).
+func (cs *ChainState) syncBalanceLocked(contractAddr string, addrs ...string) {
+	if cs.db == nil {
+		return
+	}
+	cs.markEVMMirrorDirtyLocked(contractAddr, addrs...)
+}
+
+// doSyncBalanceLocked is syncBalanceLocked's original body: caller must
+// already hold cs.mu (write lock — ensureAccountLoaded below can mutate
+// cs.accounts for a cold address) and cs.db must be non-nil.
 // Syncs slots: 4 (balanceOf), 6 (isHuman), 10 (lastActivity), 11 (lastDemurrage).
 //
 // FIX (audit 2026-06-28 recheck 4, P1-6): every SaveStorageSlot call here
@@ -606,16 +636,14 @@ func (cs *ChainState) syncHumanRegistrationLocked(contractAddr string, addr stri
 // (slot 4), with nothing durable recording a failure.
 //
 // FIX (audit 2026-06-28 Gesamtaudit, P0-1): these calls now use
-// saveStorageSlotLocked, not SaveStorageSlot — syncBalanceLocked's own
+// saveStorageSlotLocked, not SaveStorageSlot — this function's own
 // precondition (caller already holds cs.mu) is exactly what makes that
-// safe, and it's what lets the EVM mirror slot writes actually join the
-// SAME SQL transaction (cs.activeTx) as whatever atomic Go-state mutation
-// is calling this function (e.g. registerHumanLocked inside
-// RegisterHumanAtomic), instead of auto-committing independently a moment
-// before a later step in that same operation could fail and roll back.
-// Any address whose slot write STILL fails (activeTx itself aborted, or a
-// caller with cs.db set but no surrounding transaction) is queued the same
-// way notifyProofServerWithRetryQueue queues failures (register.go), and
+// safe, and (when called synchronously, pre-Phase-6) is what let the EVM
+// mirror slot writes join the SAME SQL transaction (cs.activeTx) as
+// whatever atomic Go-state mutation was calling it. Any address whose slot
+// write STILL fails (activeTx itself aborted, or a caller with cs.db set
+// but no surrounding transaction) is queued the same way
+// notifyProofServerWithRetryQueue queues failures (register.go), and
 // RetryEVMMirrorSyncQueue (started from NewAPIServer) catches up later.
 //
 // FIX (performance audit 2026-07-06): this used to issue up to 4 separate
@@ -631,10 +659,7 @@ func (cs *ChainState) syncHumanRegistrationLocked(contractAddr string, addr stri
 // has no per-row business constraint beyond the (address,slot) upsert key
 // this batching still honors), so no real-world retry behavior changes,
 // only 4×N-1 unnecessary round trips are removed on the common path.
-func (cs *ChainState) syncBalanceLocked(contractAddr string, addrs ...string) {
-	if cs.db == nil {
-		return
-	}
+func (cs *ChainState) doSyncBalanceLocked(contractAddr string, addrs ...string) {
 	contractAddr = strings.ToLower(contractAddr)
 
 	type slotValue struct {

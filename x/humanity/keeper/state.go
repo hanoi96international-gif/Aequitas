@@ -192,6 +192,16 @@ type ChainState struct {
 	// best-effort cleanup DELETE, never the actual balance ledger.
 	evmMirrorQueueMaybeNonEmpty atomic.Bool
 
+	// evmMirrorDirty/evmMirrorDirtyMu/evmMirrorFlushOnce back syncBalanceLocked's
+	// deferred write (see evm_mirror_flush.go / SCALING_ARCHITECTURE.md
+	// Phase 6) -- guarded by their OWN small mutex, not cs.mu, since marking
+	// an address dirty must be cheap enough to do inline on every transfer
+	// without adding any new contention on the lock every other operation
+	// already needs.
+	evmMirrorDirtyMu   sync.Mutex
+	evmMirrorDirty     map[evmMirrorDirtyKey]struct{}
+	evmMirrorFlushOnce sync.Once
+
 	// poolFlushDirty/poolFlushOnce back distributeSwapFee's deferred pool
 	// persistence (see pool_flush.go / SCALING_ARCHITECTURE.md Phase 3):
 	// with a real DB, a pool-address credit updates cs.accounts and

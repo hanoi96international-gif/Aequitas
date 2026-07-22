@@ -711,6 +711,11 @@ case <-time.After(10 * time.Second):
 // bounded "eventually consistent" window that trade-off accepts for a
 // genuine crash.
 chainState.FlushPoolAccountsNow()
+// SCALING_ARCHITECTURE.md Phase 6: same reasoning as the pool-account
+// flush just above, for the deferred EVM-mirror sync (evm_mirror_flush.go)
+// — a clean shutdown flushes any pending balanceOf/isHuman/activity slot
+// writes rather than leaving them to the display-lag window.
+chainState.FlushEVMMirrorNow()
 fmt.Println("Node stopped.")
 }
 
