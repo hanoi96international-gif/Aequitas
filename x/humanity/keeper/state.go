@@ -4183,7 +4183,10 @@ const swapFeeBps = 10
 func (cs *ChainState) SwapAEQForTUSD(address string, amountIn, minAmountOut float64) (float64, float64, error) {
 	cs.mu.Lock()
 	defer cs.mu.Unlock()
-	return cs.swapLocked(address, amountIn, true, minAmountOut)
+	// context.Background() is correct here, not a placeholder: this path
+	// does not go through runAtomicWithOutbox, so there is no active
+	// transaction to join, same reasoning as Transfer's own comment.
+	return cs.swapLocked(context.Background(), address, amountIn, true, minAmountOut)
 }
 
 // SwapTUSDForAEQ swaps `amountIn` tUSD from `address` into AEQ. Same
@@ -4192,7 +4195,9 @@ func (cs *ChainState) SwapAEQForTUSD(address string, amountIn, minAmountOut floa
 func (cs *ChainState) SwapTUSDForAEQ(address string, amountIn, minAmountOut float64) (float64, float64, error) {
 	cs.mu.Lock()
 	defer cs.mu.Unlock()
-	return cs.swapLocked(address, amountIn, false, minAmountOut)
+	// context.Background() is correct here, not a placeholder — see
+	// SwapAEQForTUSD's own comment.
+	return cs.swapLocked(context.Background(), address, amountIn, false, minAmountOut)
 }
 
 // SwapAtomic behaves like SwapAEQForTUSD/SwapTUSDForAEQ, except the state
@@ -4203,7 +4208,10 @@ func (cs *ChainState) SwapTUSDForAEQ(address string, amountIn, minAmountOut floa
 func (cs *ChainState) SwapAtomic(address string, amountIn float64, aeqToTusd bool, minAmountOut float64, pendingTxTemplate Transaction) (amountOut, demurrageLost float64, err error) {
 	address = strings.ToLower(address)
 	err = cs.runAtomicWithOutbox([]string{address, validatorsPoolAddr, lpPoolAddr, ubiPoolAddr, treasuryPoolAddr}, false, func() (Transaction, error) {
-		amountOut, demurrageLost, err = cs.swapLocked(address, amountIn, aeqToTusd, minAmountOut)
+		// See processTransferBatch's own comment for why capturing
+		// cs.activeTx into ctx here (cs.mu held throughout) is safe.
+		ctx := withTx(context.Background(), cs.activeTx)
+		amountOut, demurrageLost, err = cs.swapLocked(ctx, address, amountIn, aeqToTusd, minAmountOut)
 		if err != nil {
 			return Transaction{}, err
 		}
@@ -4222,7 +4230,11 @@ func (cs *ChainState) SwapAtomic(address string, amountIn float64, aeqToTusd boo
 // Caller must hold cs.mu. Returns (amountOut, demurrageLost, err) — lost
 // must be attached to the queued Transaction so secondary nodes replay the
 // exact decay via ApplySwapDelta instead of recomputing it themselves.
-func (cs *ChainState) swapLocked(address string, amountIn float64, aeqToTusd bool, minAmountOut float64) (float64, float64, error) {
+// swapLocked takes ctx explicitly rather than through the old/new wrapper
+// split (see dbExecCtx's own comment) — like transferLocked, it has few
+// enough callers (SwapAEQForTUSD, SwapTUSDForAEQ, SwapAtomic) to migrate
+// together in this same change.
+func (cs *ChainState) swapLocked(ctx context.Context, address string, amountIn float64, aeqToTusd bool, minAmountOut float64) (float64, float64, error) {
 	// P2-7: reload pool from DB before swap to avoid stale-memory AMM invariant violation
 	cs.reloadPoolFromDB()
 	address = strings.ToLower(address)
@@ -4233,12 +4245,12 @@ func (cs *ChainState) swapLocked(address string, amountIn float64, aeqToTusd boo
 		return 0, 0, fmt.Errorf("liquidity pool not initialized")
 	}
 
-	cs.ensureAccountLoaded(address) // page in cold accounts so swaps work beyond the in-memory cap
+	cs.ensureAccountLoadedCtx(ctx, address) // page in cold accounts so swaps work beyond the in-memory cap
 	acc, ok := cs.accounts.Get(address)
 	if !ok {
 		return 0, 0, fmt.Errorf("account not found")
 	}
-	lost, err := cs.settleDemurrageLocked(acc) // settle decay before checking/using the AEQ balance below
+	lost, err := cs.settleDemurrageLockedCtx(ctx, acc) // settle decay before checking/using the AEQ balance below
 	if err != nil {
 		return 0, 0, fmt.Errorf("could not settle demurrage: %w", err)
 	}
@@ -4287,18 +4299,18 @@ func (cs *ChainState) swapLocked(address string, amountIn float64, aeqToTusd boo
 	}
 	touchActivity(acc) // swapping (either direction) counts as using the AEQ side
 	if !aeqToTusd {
-		if err := cs.enforceWealthCapLocked(acc); err != nil { // AEQ just arrived via this swap direction — check the cap
+		if err := cs.enforceWealthCapLockedCtx(ctx, acc); err != nil { // AEQ just arrived via this swap direction — check the cap
 			return 0, 0, fmt.Errorf("could not enforce wealth cap: %w", err)
 		}
 	}
 
-	if err := cs.saveAccountToDB(acc); err != nil {
+	if err := cs.saveAccountToDBCtx(ctx, acc); err != nil {
 		return 0, 0, fmt.Errorf("could not save account: %w", err)
 	}
-	if err := cs.savePoolToDB(); err != nil {
+	if err := cs.savePoolToDBCtx(ctx); err != nil {
 		return 0, 0, fmt.Errorf("could not save pool: %w", err)
 	}
-	if err := cs.distributeSwapFee(fee, aeqToTusd); err != nil {
+	if err := cs.distributeSwapFeeCtx(ctx, fee, aeqToTusd); err != nil {
 		return 0, 0, fmt.Errorf("could not persist swap fee distribution: %w", err)
 	}
 	cs.save()

@@ -1,6 +1,9 @@
 package keeper
 
-import "testing"
+import (
+	"context"
+	"testing"
+)
 
 // newWealthCapTestPool seeds n poor humans plus one "target" account,
 // mirroring TestEnforceWealthCap_AboveCap_ExcessRedistributed's setup, so a
@@ -41,7 +44,7 @@ func TestApplySwapDeltaLocked_MirrorsPrimaryWealthCap(t *testing.T) {
 	secondary.pool = &PoolState{ReserveAEQ: NewDecimal(1_000_000), ReserveTUSD: NewDecimal(1_000_000), TotalLPShares: NewDecimal(1)}
 
 	const amountIn = 15_000.0 // tUSD in
-	amountOut, _, err := primary.swapLocked("0xtarget", amountIn, false, 0)
+	amountOut, _, err := primary.swapLocked(context.Background(), "0xtarget", amountIn, false, 0)
 	if err != nil {
 		t.Fatalf("primary swapLocked: %v", err)
 	}
