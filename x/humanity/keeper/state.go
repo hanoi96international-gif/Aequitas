@@ -1215,11 +1215,18 @@ func (cs *ChainState) clearRegistrationsFromDB() {
 //
 // PRECONDITION (audit 2026-06-28 recheck 4, P0-1): same as getConfigValue —
 // caller must already hold cs.mu. Use setConfigValueDB outside any lock.
+// setConfigValue is the context.Background()-calling wrapper kept for
+// callers not yet migrated to thread ctx explicitly — see dbExecCtx's
+// comment for the migration this is part of.
 func (cs *ChainState) setConfigValue(key, value string) error {
+	return cs.setConfigValueCtx(context.Background(), key, value)
+}
+
+func (cs *ChainState) setConfigValueCtx(ctx context.Context, key, value string) error {
 	if cs.db == nil {
 		return nil
 	}
-	if _, err := cs.dbExec().Exec(`INSERT INTO chain_config (key, value) VALUES ($1, $2)
+	if _, err := cs.dbExecCtx(ctx).Exec(`INSERT INTO chain_config (key, value) VALUES ($1, $2)
 ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value`, key, value); err != nil {
 		fmt.Printf("[DB] Warning: setConfigValue(%q) failed: %v\n", key, err)
 		return fmt.Errorf("could not set config %q: %w", key, err)
@@ -1560,7 +1567,14 @@ func (cs *ChainState) ensureAccountLoadedCtx(ctx context.Context, addr string) {
 // hold cs.mu. Addresses already cached, or genuinely absent from the DB
 // (never registered), are silently skipped — the same contract
 // ensureAccountLoaded's single-address version already has.
+// ensureAccountsLoaded is the context.Background()-calling wrapper kept for
+// callers not yet migrated to thread ctx explicitly — see dbExecCtx's
+// comment for the migration this is part of.
 func (cs *ChainState) ensureAccountsLoaded(addrs []string) {
+	cs.ensureAccountsLoadedCtx(context.Background(), addrs)
+}
+
+func (cs *ChainState) ensureAccountsLoadedCtx(ctx context.Context, addrs []string) {
 	if cs.db == nil {
 		return
 	}
@@ -1574,12 +1588,12 @@ func (cs *ChainState) ensureAccountsLoaded(addrs []string) {
 		return
 	}
 	// FIX (deadlock, same as ensureAccountLoaded's FIX comment): route
-	// through cs.dbExec() so this reuses an already-active transaction's
-	// own connection instead of requesting a fresh one from the shared
-	// pool — this is snapshotForRollbackLocked's own cold-load call,
-	// reached from inside every runAtomicWithOutbox/
+	// through cs.dbExecCtx(ctx) so this reuses an already-active
+	// transaction's own connection instead of requesting a fresh one from
+	// the shared pool — this is snapshotForRollbackLocked's own cold-load
+	// call, reached from inside every runAtomicWithOutbox/
 	// runAtomicDistributionWithOutbox critical section.
-	rows, err := cs.dbExec().Query(
+	rows, err := cs.dbExecCtx(ctx).Query(
 		`SELECT address, balance, is_human, tusd_balance, lp_shares,
 		        COALESCE(last_activity_at, 0), COALESCE(version, 1)
 		 FROM chain_accounts WHERE lower(address) = ANY($1)`,
@@ -2260,12 +2274,19 @@ func (cs *ChainState) settleDemurrageLockedCtx(ctx context.Context, acc *Account
 // persisted: exactly the silent value-loss / StateRoot-divergence risk the
 // audit flagged. Now returns the error so every Delta-replay call site can
 // reject the block instead of continuing on divergent state.
+// applyDemurrageLossLocked is the context.Background()-calling wrapper kept
+// for callers not yet migrated to thread ctx explicitly — see dbExecCtx's
+// comment for the migration this is part of.
 func (cs *ChainState) applyDemurrageLossLocked(acc *AccountState, lost float64) error {
+	return cs.applyDemurrageLossLockedCtx(context.Background(), acc, lost)
+}
+
+func (cs *ChainState) applyDemurrageLossLockedCtx(ctx context.Context, acc *AccountState, lost float64) error {
 	if lost <= 0 || isTokenomicsPoolAddress(acc.Address) {
 		return nil
 	}
 	acc.Balance = acc.Balance.Sub(NewDecimal(lost))
-	if err := cs.distributeSwapFee(lost, true); err != nil {
+	if err := cs.distributeSwapFeeCtx(ctx, lost, true); err != nil {
 		return fmt.Errorf("could not persist pool credits for %s demurrage delta: %w", acc.Address, err)
 	}
 	return nil
@@ -2548,7 +2569,9 @@ type DistributionShare struct {
 func (cs *ChainState) DistributeValidatorsPool() []DistributionShare {
 	cs.mu.Lock()
 	defer cs.mu.Unlock()
-	shares, err := cs.distributeValidatorsPoolLocked()
+	// cs.mu-only path, never runs inside runAtomicWithOutbox/
+	// runAtomicDistributionWithOutbox — see RegisterHuman's comment.
+	shares, err := cs.distributeValidatorsPoolLocked(context.Background())
 	if err != nil {
 		fmt.Printf("[VALIDATORS] Error: %v\n", err)
 		return nil
@@ -2556,7 +2579,7 @@ func (cs *ChainState) DistributeValidatorsPool() []DistributionShare {
 	return shares
 }
 
-func (cs *ChainState) distributeValidatorsPoolLocked() ([]DistributionShare, error) {
+func (cs *ChainState) distributeValidatorsPoolLocked(ctx context.Context) ([]DistributionShare, error) {
 	// GetRegisteredNodes/the blocks_produced query only read PostgreSQL, not
 	// cs.accounts — safe to run while cs.mu is held (no deadlock risk; the
 	// original "before acquiring cs.mu" ordering predates this function being
@@ -2577,7 +2600,7 @@ func (cs *ChainState) distributeValidatorsPoolLocked() ([]DistributionShare, err
 	var nodeShares []nodeShare
 	var totalBlocks int64
 	if cs.db != nil {
-		rows, _ := cs.dbExec().Query(`SELECT wallet_address, blocks_produced FROM registered_nodes WHERE wallet_address = ANY($1)`, pq.Array(nodes))
+		rows, _ := cs.dbExecCtx(ctx).Query(`SELECT wallet_address, blocks_produced FROM registered_nodes WHERE wallet_address = ANY($1)`, pq.Array(nodes))
 		if rows != nil {
 			for rows.Next() {
 				var w string
@@ -2604,7 +2627,7 @@ func (cs *ChainState) distributeValidatorsPoolLocked() ([]DistributionShare, err
 	// which this function treated identically to "genuinely empty" — silently
 	// skipping the ENTIRE day's distribution of a real, non-zero DB balance.
 	// ensureAccountLoaded is a no-op once the address is already cached.
-	cs.ensureAccountLoaded(validatorsPoolAddr)
+	cs.ensureAccountLoadedCtx(ctx, validatorsPoolAddr)
 	poolAcc, ok := cs.accounts.Get(validatorsPoolAddr)
 	if !ok || poolAcc.Balance <= 0 {
 		fmt.Println("[VALIDATORS] Pool is empty — nothing to distribute today")
@@ -2627,7 +2650,7 @@ func (cs *ChainState) distributeValidatorsPoolLocked() ([]DistributionShare, err
 	for _, ns := range nodeShares {
 		walletAddrs = append(walletAddrs, ns.wallet)
 	}
-	cs.ensureAccountsLoaded(walletAddrs)
+	cs.ensureAccountsLoadedCtx(ctx, walletAddrs)
 	// P0-2: credit recipients BEFORE zeroing the pool so a crash mid-loop
 	// leaves money in the pool (re-distributable) rather than losing it.
 	var totalDistributed float64
@@ -2649,16 +2672,16 @@ func (cs *ChainState) distributeValidatorsPoolLocked() ([]DistributionShare, err
 			acc = &AccountState{Address: wallet}
 			cs.accounts.Set(wallet, acc)
 		}
-		lost, err := cs.settleDemurrageLocked(acc)
+		lost, err := cs.settleDemurrageLockedCtx(ctx, acc)
 		if err != nil {
 			return nil, fmt.Errorf("could not settle demurrage for %s: %w", wallet, err)
 		}
 		acc.Balance = acc.Balance.Add(NewDecimal(share))
 		touchActivity(acc)
-		if err := cs.enforceWealthCapLocked(acc); err != nil {
+		if err := cs.enforceWealthCapLockedCtx(ctx, acc); err != nil {
 			return nil, fmt.Errorf("could not enforce wealth cap for %s: %w", wallet, err)
 		}
-		if err := cs.saveAccountToDB(acc); err != nil {
+		if err := cs.saveAccountToDBCtx(ctx, acc); err != nil {
 			return nil, fmt.Errorf("could not save validator reward for %s: %w", wallet, err)
 		}
 		totalDistributed += share
@@ -2669,7 +2692,7 @@ func (cs *ChainState) distributeValidatorsPoolLocked() ([]DistributionShare, err
 	// pool balance when all shares rounded to zero).
 	if totalDistributed > 0 {
 		poolAcc.Balance = NewDecimal(0)
-		if err := cs.saveAccountToDB(poolAcc); err != nil {
+		if err := cs.saveAccountToDBCtx(ctx, poolAcc); err != nil {
 			return nil, fmt.Errorf("could not zero validators pool: %w", err)
 		}
 	}
@@ -2694,7 +2717,9 @@ func (cs *ChainState) distributeValidatorsPoolLocked() ([]DistributionShare, err
 func (cs *ChainState) DistributeLPPool() []DistributionShare {
 	cs.mu.Lock()
 	defer cs.mu.Unlock()
-	shares, err := cs.distributeLPPoolLocked()
+	// cs.mu-only path, never runs inside runAtomicWithOutbox/
+	// runAtomicDistributionWithOutbox — see RegisterHuman's comment.
+	shares, err := cs.distributeLPPoolLocked(context.Background())
 	if err != nil {
 		fmt.Printf("[LP] Error: %v\n", err)
 		return nil
@@ -2702,7 +2727,7 @@ func (cs *ChainState) DistributeLPPool() []DistributionShare {
 	return shares
 }
 
-func (cs *ChainState) distributeLPPoolLocked() ([]DistributionShare, error) {
+func (cs *ChainState) distributeLPPoolLocked(ctx context.Context) ([]DistributionShare, error) {
 	// Collect all LP holders and their share counts BEFORE settling demurrage,
 	// so we know who participates.
 	//
@@ -2724,7 +2749,7 @@ func (cs *ChainState) distributeLPPoolLocked() ([]DistributionShare, error) {
 		// runAtomicDistributionWithOutbox critical section (cs.mu held,
 		// cs.activeTx set) — route through cs.dbExec() so this enumeration
 		// reuses that transaction's own connection.
-		rows, err := cs.dbExec().Query(`SELECT lower(address) FROM chain_accounts WHERE lp_shares > 0`)
+		rows, err := cs.dbExecCtx(ctx).Query(`SELECT lower(address) FROM chain_accounts WHERE lp_shares > 0`)
 		if err != nil {
 			return nil, fmt.Errorf("could not enumerate LP holders: %w", err)
 		}
@@ -2737,7 +2762,7 @@ func (cs *ChainState) distributeLPPoolLocked() ([]DistributionShare, error) {
 			}
 		}
 		rows.Close()
-		cs.ensureAccountsLoaded(addrs) // page in cold accounts so LP distribution works beyond the in-memory cap
+		cs.ensureAccountsLoadedCtx(ctx, addrs) // page in cold accounts so LP distribution works beyond the in-memory cap
 		for _, addr := range addrs {
 			if acc, ok := cs.accounts.Get(addr); ok && acc.LPShares.Float() > 0 {
 				holders = append(holders, lpHolder{addr, acc.LPShares.Float()})
@@ -2774,7 +2799,7 @@ func (cs *ChainState) distributeLPPoolLocked() ([]DistributionShare, error) {
 	demurrageLost := make(map[string]float64, len(holders))
 	for _, h := range holders {
 		acc, _ := cs.accounts.Get(h.addr)
-		lost, err := cs.settleDemurrageLocked(acc)
+		lost, err := cs.settleDemurrageLockedCtx(ctx, acc)
 		if err != nil {
 			return nil, fmt.Errorf("could not settle demurrage for %s: %w", h.addr, err)
 		}
@@ -2802,7 +2827,7 @@ func (cs *ChainState) distributeLPPoolLocked() ([]DistributionShare, error) {
 	// NOW read the pool balance — it includes any demurrage credits just added.
 	// FIX (Monster Audit 2026-07-12, P1): see DistributeValidatorsPool's
 	// comment — a cold pool address must not read as "empty".
-	cs.ensureAccountLoaded(lpPoolAddr)
+	cs.ensureAccountLoadedCtx(ctx, lpPoolAddr)
 	poolAcc, ok := cs.accounts.Get(lpPoolAddr)
 	if !ok || poolAcc.Balance <= 0 {
 		fmt.Println("[LP] Pool is empty — nothing to distribute today")
@@ -2821,17 +2846,17 @@ func (cs *ChainState) distributeLPPoolLocked() ([]DistributionShare, error) {
 		acc, _ := cs.accounts.Get(h.addr)
 		acc.Balance = acc.Balance.Add(NewDecimal(share))
 		touchActivity(acc)
-		if err := cs.enforceWealthCapLocked(acc); err != nil {
+		if err := cs.enforceWealthCapLockedCtx(ctx, acc); err != nil {
 			return nil, fmt.Errorf("could not enforce wealth cap for %s: %w", h.addr, err)
 		}
-		if err := cs.saveAccountToDB(acc); err != nil {
+		if err := cs.saveAccountToDBCtx(ctx, acc); err != nil {
 			return nil, fmt.Errorf("could not save LP reward for %s: %w", h.addr, err)
 		}
 		shares = append(shares, DistributionShare{Wallet: h.addr, Amount: share, DemurrageLost: demurrageLost[h.addr]})
 	}
 	if totalDistributed > 0 {
 		poolAcc.Balance = NewDecimal(0)
-		if err := cs.saveAccountToDB(poolAcc); err != nil {
+		if err := cs.saveAccountToDBCtx(ctx, poolAcc); err != nil {
 			return nil, fmt.Errorf("could not zero LP pool: %w", err)
 		}
 	} else {
@@ -2876,7 +2901,9 @@ func (cs *ChainState) distributeLPPoolLocked() ([]DistributionShare, error) {
 func (cs *ChainState) DistributeUBIPool() []DistributionShare {
 	cs.mu.Lock()
 	defer cs.mu.Unlock()
-	shares, err := cs.distributeUBIPoolLocked()
+	// cs.mu-only path, never runs inside runAtomicWithOutbox/
+	// runAtomicDistributionWithOutbox — see RegisterHuman's comment.
+	shares, err := cs.distributeUBIPoolLocked(context.Background())
 	if err != nil {
 		fmt.Printf("[UBI] Error: %v\n", err)
 		return nil
@@ -2884,12 +2911,12 @@ func (cs *ChainState) DistributeUBIPool() []DistributionShare {
 	return shares
 }
 
-func (cs *ChainState) distributeUBIPoolLocked() ([]DistributionShare, error) {
+func (cs *ChainState) distributeUBIPoolLocked(ctx context.Context) ([]DistributionShare, error) {
 	// FIX (Monster Audit 2026-07-12, P1): see DistributeValidatorsPool's
 	// comment — a cold pool address must not read as "empty". Loaded once
 	// here; the second read below (after the demurrage loop) reuses the same
 	// now-cached map entry, so it needs no separate call.
-	cs.ensureAccountLoaded(ubiPoolAddr)
+	cs.ensureAccountLoadedCtx(ctx, ubiPoolAddr)
 	poolAcc, ok := cs.accounts.Get(ubiPoolAddr)
 	if !ok || poolAcc.Balance <= 0 {
 		fmt.Println("[UBI] Pool is empty — nothing to distribute today")
@@ -2908,7 +2935,7 @@ func (cs *ChainState) distributeUBIPoolLocked() ([]DistributionShare, error) {
 		// runAtomicDistributionWithOutbox critical section — route through
 		// cs.dbExec() so this enumeration reuses that transaction's own
 		// connection instead of requesting a fresh one from the pool.
-		rows, err := cs.dbExec().Query(`SELECT lower(address) FROM chain_accounts WHERE is_human = true`)
+		rows, err := cs.dbExecCtx(ctx).Query(`SELECT lower(address) FROM chain_accounts WHERE is_human = true`)
 		if err != nil {
 			return nil, fmt.Errorf("could not enumerate human accounts: %w", err)
 		}
@@ -2935,7 +2962,7 @@ func (cs *ChainState) distributeUBIPoolLocked() ([]DistributionShare, error) {
 	}
 	// Ensure all human accounts are in the cache so the distribution loop
 	// below can work on in-memory objects (reads + writes stay coherent).
-	cs.ensureAccountsLoaded(humanAddrs)
+	cs.ensureAccountsLoadedCtx(ctx, humanAddrs)
 
 	// E3-FIX for UBI: settle demurrage for ALL humans FIRST. settleDemurrageLocked
 	// credits 20% of each human's decay to ubiPoolAddr. Reading the pool balance
@@ -2945,7 +2972,7 @@ func (cs *ChainState) distributeUBIPoolLocked() ([]DistributionShare, error) {
 	demurrageLost := make(map[string]float64, len(humanAddrs))
 	for _, addr := range humanAddrs {
 		addrAcc, _ := cs.accounts.Get(addr)
-		lost, err := cs.settleDemurrageLocked(addrAcc)
+		lost, err := cs.settleDemurrageLockedCtx(ctx, addrAcc)
 		if err != nil {
 			return nil, fmt.Errorf("could not settle demurrage for %s: %w", addr, err)
 		}
@@ -2981,17 +3008,17 @@ func (cs *ChainState) distributeUBIPoolLocked() ([]DistributionShare, error) {
 		acc, _ := cs.accounts.Get(addr)
 		acc.Balance = acc.Balance.Add(NewDecimal(share))
 		touchActivity(acc)
-		if err := cs.enforceWealthCapLocked(acc); err != nil {
+		if err := cs.enforceWealthCapLockedCtx(ctx, acc); err != nil {
 			return nil, fmt.Errorf("could not enforce wealth cap for %s: %w", addr, err)
 		}
 		batch = append(batch, acc)
 		shares = append(shares, DistributionShare{Wallet: addr, Amount: round6(share), DemurrageLost: demurrageLost[addr]})
 	}
-	if err := cs.saveAccountsToDBBatch(batch); err != nil {
+	if err := cs.saveAccountsToDBBatchCtx(ctx, batch); err != nil {
 		return nil, fmt.Errorf("could not save UBI rewards batch: %w", err)
 	}
 	poolAcc.Balance = NewDecimal(0)
-	if err := cs.saveAccountToDB(poolAcc); err != nil {
+	if err := cs.saveAccountToDBCtx(ctx, poolAcc); err != nil {
 		return nil, fmt.Errorf("could not zero UBI pool: %w", err)
 	}
 	cs.save()
@@ -3588,9 +3615,12 @@ func (cs *ChainState) runAtomicDistributionWithOutbox(fn func() ([]Transaction, 
 // not each side's own time.Now()/block.Timestamp.
 func (cs *ChainState) RunDailyDistributionAtomic(ubiAt int64) error {
 	return cs.runAtomicDistributionWithOutbox(func() ([]Transaction, error) {
+		// See processTransferBatch's own comment for why capturing
+		// cs.activeTx into ctx here (cs.mu held throughout) is safe.
+		ctx := withTx(context.Background(), cs.activeTx)
 		var txs []Transaction
 
-		ubiShares, err := cs.distributeUBIPoolLocked()
+		ubiShares, err := cs.distributeUBIPoolLocked(ctx)
 		if err != nil {
 			return nil, fmt.Errorf("UBI distribution failed: %w", err)
 		}
@@ -3600,13 +3630,13 @@ func (cs *ChainState) RunDailyDistributionAtomic(ubiAt int64) error {
 			ubiTotal += s.Amount
 		}
 		if ubiTotal > 0 {
-			if err := cs.applyUBIFinalizeDeltaLocked(ubiAt); err != nil {
+			if err := cs.applyUBIFinalizeDeltaLocked(ctx, ubiAt); err != nil {
 				return nil, fmt.Errorf("UBI finalize failed: %w", err)
 			}
 			txs = append(txs, Transaction{Type: "ubi_distribution_finalize", DistributionAt: ubiAt})
 		}
 
-		validatorShares, err := cs.distributeValidatorsPoolLocked()
+		validatorShares, err := cs.distributeValidatorsPoolLocked(ctx)
 		if err != nil {
 			return nil, fmt.Errorf("validator distribution failed: %w", err)
 		}
@@ -3619,7 +3649,7 @@ func (cs *ChainState) RunDailyDistributionAtomic(ubiAt int64) error {
 			txs = append(txs, Transaction{Type: "validator_distribution_pool_zero"})
 		}
 
-		lpShares, err := cs.distributeLPPoolLocked()
+		lpShares, err := cs.distributeLPPoolLocked(ctx)
 		if err != nil {
 			return nil, fmt.Errorf("LP distribution failed: %w", err)
 		}
@@ -3632,7 +3662,7 @@ func (cs *ChainState) RunDailyDistributionAtomic(ubiAt int64) error {
 			txs = append(txs, Transaction{Type: "lp_distribution_pool_zero"})
 		}
 
-		moved, err := cs.checkAndMoveToEscrowLocked()
+		moved, err := cs.checkAndMoveToEscrowLocked(ctx)
 		if err != nil {
 			return nil, fmt.Errorf("escrow move failed: %w", err)
 		}
@@ -3647,7 +3677,7 @@ func (cs *ChainState) RunDailyDistributionAtomic(ubiAt int64) error {
 			})
 		}
 
-		released, err := cs.releaseEscrowToUBILocked()
+		released, err := cs.releaseEscrowToUBILocked(ctx)
 		if err != nil {
 			return nil, fmt.Errorf("escrow release failed: %w", err)
 		}
@@ -4474,7 +4504,7 @@ func (cs *ChainState) convertTUsdFeeToAEQLocked(feeTUsd float64) (float64, bool)
 // Returns the actual shares burned (clamped to TotalLPShares, 0 if the pool
 // has no shares or sharesToBurn<=0) and the AEQ/tUSD credited. Persists the
 // pool via savePoolToDB before returning.
-func (cs *ChainState) liquidateLPSharesForEscrowLocked(acc *AccountState, sharesToBurn float64) (burned, outAEQ, outTUSD float64, err error) {
+func (cs *ChainState) liquidateLPSharesForEscrowLocked(ctx context.Context, acc *AccountState, sharesToBurn float64) (burned, outAEQ, outTUSD float64, err error) {
 	if sharesToBurn <= 0 || cs.pool == nil || cs.pool.TotalLPShares.Float() <= 0 {
 		return 0, 0, 0, nil
 	}
@@ -4497,7 +4527,7 @@ func (cs *ChainState) liquidateLPSharesForEscrowLocked(acc *AccountState, shares
 	cs.pool.ReserveAEQ = cs.pool.ReserveAEQ.Sub(NewDecimal(outAEQ)).AtLeastZero()
 	cs.pool.ReserveTUSD = cs.pool.ReserveTUSD.Sub(NewDecimal(outTUSD)).AtLeastZero()
 	cs.pool.TotalLPShares = cs.pool.TotalLPShares.Sub(NewDecimal(burned)).AtLeastZero()
-	if err := cs.savePoolToDB(); err != nil {
+	if err := cs.savePoolToDBCtx(ctx); err != nil {
 		return burned, outAEQ, outTUSD, fmt.Errorf("could not save pool after LP liquidation: %w", err)
 	}
 	return burned, outAEQ, outTUSD, nil
@@ -4515,7 +4545,7 @@ func (cs *ChainState) liquidateLPSharesForEscrowLocked(acc *AccountState, shares
 // convert this cycle (retried on the next daily sweep), while a secondary
 // replaying a primary-reported nonzero conversion must treat false as a hard
 // pool-state-divergence error, not a silent skip. Caller holds cs.mu.
-func (cs *ChainState) convertTUsdForEscrowLocked(acc *AccountState, tusdAmount float64) (outAEQ float64, ok bool, err error) {
+func (cs *ChainState) convertTUsdForEscrowLocked(ctx context.Context, acc *AccountState, tusdAmount float64) (outAEQ float64, ok bool, err error) {
 	if tusdAmount <= 0 || cs.pool == nil || cs.pool.ReserveAEQ.Float() <= 0 || cs.pool.ReserveTUSD.Float() <= 0 {
 		return 0, false, nil
 	}
@@ -4529,10 +4559,10 @@ func (cs *ChainState) convertTUsdForEscrowLocked(acc *AccountState, tusdAmount f
 	cs.pool.ReserveAEQ = cs.pool.ReserveAEQ.Sub(NewDecimal(outAEQ)).AtLeastZero()
 	acc.TUsdBalance = acc.TUsdBalance.Sub(NewDecimal(tusdAmount)).AtLeastZero()
 	acc.Balance = acc.Balance.Add(NewDecimal(outAEQ))
-	if err := cs.savePoolToDB(); err != nil {
+	if err := cs.savePoolToDBCtx(ctx); err != nil {
 		return outAEQ, true, fmt.Errorf("could not save pool after tUSD conversion: %w", err)
 	}
-	if err := cs.distributeSwapFee(fee, false); err != nil {
+	if err := cs.distributeSwapFeeCtx(ctx, fee, false); err != nil {
 		return outAEQ, true, fmt.Errorf("could not distribute swap fee: %w", err)
 	}
 	return outAEQ, true, nil
@@ -6401,26 +6431,32 @@ func (cs *ChainState) applyUBIRewardDeltaLocked(wallet string, amount, demurrage
 func (cs *ChainState) ApplyUBIFinalizeDelta(ubiAt int64) error {
 	cs.mu.Lock()
 	defer cs.mu.Unlock()
-	return cs.applyUBIFinalizeDeltaLocked(ubiAt)
+	// cs.mu-only path, never runs inside runAtomicWithOutbox/
+	// runAtomicDistributionWithOutbox — see RegisterHuman's comment.
+	return cs.applyUBIFinalizeDeltaLocked(context.Background(), ubiAt)
 }
 
 // applyUBIFinalizeDeltaLocked is ApplyUBIFinalizeDelta's body, callable from
 // inside RunDailyDistributionAtomic where cs.mu is already held — see
-// DistributeValidatorsPool's comment for the same pattern.
+// DistributeValidatorsPool's comment for the same pattern. Block replay
+// (block.go) also calls this directly with context.Background(): it sets
+// dag.state.activeTx itself before this runs, and dbExecCtx falls back to
+// that field when ctx carries no transaction, so behavior there is
+// unchanged — see registerHumanLocked's comment for the same reasoning.
 //
 // FIX (audit recheck2, P0 #3): used to return nothing, discarding
 // saveAccountToDB's error — see ApplyTransferDelta's comment.
-func (cs *ChainState) applyUBIFinalizeDeltaLocked(ubiAt int64) error {
+func (cs *ChainState) applyUBIFinalizeDeltaLocked(ctx context.Context, ubiAt int64) error {
 	// FIX (Monster Audit 2026-07-12, P1): see applyUBIDeltaLocked's comment on
 	// the same pattern — a cold pool address must not silently skip zeroing.
-	cs.ensureAccountLoaded(ubiPoolAddr)
+	cs.ensureAccountLoadedCtx(ctx, ubiPoolAddr)
 	if ubiAcc, ok := cs.accounts.Get(ubiPoolAddr); ok {
 		ubiAcc.Balance = NewDecimal(0)
-		if err := cs.saveAccountToDB(ubiAcc); err != nil {
+		if err := cs.saveAccountToDBCtx(ctx, ubiAcc); err != nil {
 			return fmt.Errorf("ubi finalize: could not save pool account: %w", err)
 		}
 	}
-	if err := cs.setConfigValue("last_ubi_at", fmt.Sprintf("%d", ubiAt)); err != nil {
+	if err := cs.setConfigValueCtx(ctx, "last_ubi_at", fmt.Sprintf("%d", ubiAt)); err != nil {
 		return fmt.Errorf("ubi finalize: could not save last_ubi_at: %w", err)
 	}
 	return nil
@@ -6585,17 +6621,24 @@ func (cs *ChainState) applyLPPoolZeroDeltaLocked() error {
 func (cs *ChainState) ApplyEscrowMoveDelta(wallet string, demurrageLost, lpSharesBurned, tusdConverted float64) error {
 	cs.mu.Lock()
 	defer cs.mu.Unlock()
-	return cs.applyEscrowMoveDeltaLocked(wallet, demurrageLost, lpSharesBurned, tusdConverted)
+	// cs.mu-only path, never runs inside runAtomicWithOutbox/
+	// runAtomicDistributionWithOutbox — see RegisterHuman's comment.
+	return cs.applyEscrowMoveDeltaLocked(context.Background(), wallet, demurrageLost, lpSharesBurned, tusdConverted)
 }
 
-// applyEscrowMoveDeltaLocked is ApplyEscrowMoveDelta's body — see applyTransferDeltaLocked's comment.
-func (cs *ChainState) applyEscrowMoveDeltaLocked(wallet string, demurrageLost, lpSharesBurned, tusdConverted float64) error {
+// applyEscrowMoveDeltaLocked is ApplyEscrowMoveDelta's body — see
+// applyTransferDeltaLocked's comment. Block replay (block.go) also calls
+// this directly with context.Background(): it sets dag.state.activeTx
+// itself before this runs, and dbExecCtx falls back to that field when ctx
+// carries no transaction, so behavior there is unchanged — see
+// registerHumanLocked's comment for the same reasoning.
+func (cs *ChainState) applyEscrowMoveDeltaLocked(ctx context.Context, wallet string, demurrageLost, lpSharesBurned, tusdConverted float64) error {
 	wallet = strings.ToLower(wallet)
 	// FIX (Monster Audit follow-up, 2026-07-12, P0): see applyTransferDeltaLocked's
 	// comment — same cold-cache pattern. Here a cold wallet fails as
 	// "not found" and this secondary rejects a block its primary already
 	// accepted, diverging from consensus.
-	cs.ensureAccountLoaded(wallet)
+	cs.ensureAccountLoadedCtx(ctx, wallet)
 	acc, ok := cs.accounts.Get(wallet)
 	if !ok {
 		return fmt.Errorf("escrow move: account not found: %s", wallet)
@@ -6607,7 +6650,7 @@ func (cs *ChainState) applyEscrowMoveDeltaLocked(wallet string, demurrageLost, l
 	// convertTUsdForEscrowLocked below touch cs.pool the same way those do,
 	// so this replay path should start from the same authoritative state.
 	cs.reloadPoolFromDB()
-	if err := cs.applyDemurrageLossLocked(acc, demurrageLost); err != nil {
+	if err := cs.applyDemurrageLossLockedCtx(ctx, acc, demurrageLost); err != nil {
 		return fmt.Errorf("escrow move: could not settle %s demurrage: %w", wallet, err)
 	}
 
@@ -6617,7 +6660,7 @@ func (cs *ChainState) applyEscrowMoveDeltaLocked(wallet string, demurrageLost, l
 	// comments for why a shared implementation, not a hand-written copy, is
 	// what makes this structurally guaranteed to match the primary.
 	if lpSharesBurned > 0 {
-		burned, _, _, err := cs.liquidateLPSharesForEscrowLocked(acc, lpSharesBurned)
+		burned, _, _, err := cs.liquidateLPSharesForEscrowLocked(ctx, acc, lpSharesBurned)
 		if err != nil {
 			return fmt.Errorf("escrow move: could not replay LP liquidation for %s: %w", wallet, err)
 		}
@@ -6627,7 +6670,7 @@ func (cs *ChainState) applyEscrowMoveDeltaLocked(wallet string, demurrageLost, l
 	}
 
 	if tusdConverted > 0 {
-		_, ok, err := cs.convertTUsdForEscrowLocked(acc, tusdConverted)
+		_, ok, err := cs.convertTUsdForEscrowLocked(ctx, acc, tusdConverted)
 		if err != nil {
 			return fmt.Errorf("escrow move: could not replay tUSD conversion for %s: %w", wallet, err)
 		}
@@ -6640,7 +6683,7 @@ func (cs *ChainState) applyEscrowMoveDeltaLocked(wallet string, demurrageLost, l
 	acc.TUsdBalance = NewDecimal(0)
 	acc.LPShares = NewDecimal(0)
 	// FIX (audit recheck2, P0 #3): see ApplyTransferDelta's comment.
-	if err := cs.saveAccountToDB(acc); err != nil {
+	if err := cs.saveAccountToDBCtx(ctx, acc); err != nil {
 		return fmt.Errorf("escrow move: could not save account %s: %w", wallet, err)
 	}
 	return nil

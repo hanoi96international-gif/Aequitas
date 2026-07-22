@@ -1,6 +1,9 @@
 package keeper
 
-import "testing"
+import (
+	"context"
+	"testing"
+)
 
 // Regression tests for the beta-launch audit (2026-07-05) fix: an inactive
 // human whose wealth lived in LP shares or tUSD (liquid AEQ Balance == 0)
@@ -22,7 +25,7 @@ func TestLiquidateLPSharesForEscrowLocked_BurnsProportionalShare(t *testing.T) {
 		TotalLPShares: NewDecimal(100),
 	}
 
-	burned, outAEQ, outTUSD, err := cs.liquidateLPSharesForEscrowLocked(acc, acc.LPShares.Float())
+	burned, outAEQ, outTUSD, err := cs.liquidateLPSharesForEscrowLocked(context.Background(), acc, acc.LPShares.Float())
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -51,7 +54,7 @@ func TestLiquidateLPSharesForEscrowLocked_NoOpWhenPoolEmpty(t *testing.T) {
 	cs.accounts.Set(acc.Address, acc)
 	cs.pool = &PoolState{}
 
-	burned, outAEQ, outTUSD, err := cs.liquidateLPSharesForEscrowLocked(acc, 10)
+	burned, outAEQ, outTUSD, err := cs.liquidateLPSharesForEscrowLocked(context.Background(), acc, 10)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -72,7 +75,7 @@ func TestConvertTUsdForEscrowLocked_ConvertsAtAMMRate(t *testing.T) {
 		ReserveTUSD: NewDecimal(10000),
 	}
 
-	outAEQ, ok, err := cs.convertTUsdForEscrowLocked(acc, 100)
+	outAEQ, ok, err := cs.convertTUsdForEscrowLocked(context.Background(), acc, 100)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -110,7 +113,7 @@ func TestConvertTUsdForEscrowLocked_RefusesWhenAEQReserveIsEmpty(t *testing.T) {
 	// An AEQ reserve of exactly 0 can't back ANY conversion, however small.
 	cs.pool = &PoolState{ReserveAEQ: NewDecimal(0), ReserveTUSD: NewDecimal(100)}
 
-	outAEQ, ok, err := cs.convertTUsdForEscrowLocked(acc, 50)
+	outAEQ, ok, err := cs.convertTUsdForEscrowLocked(context.Background(), acc, 50)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -188,23 +191,23 @@ func TestLiquidateAndConvertForEscrow_Deterministic(t *testing.T) {
 	}
 
 	csA, accA := newScenario()
-	burnedA, outAEQ_A, outTUSD_A, err := csA.liquidateLPSharesForEscrowLocked(accA, accA.LPShares.Float())
+	burnedA, outAEQ_A, outTUSD_A, err := csA.liquidateLPSharesForEscrowLocked(context.Background(), accA, accA.LPShares.Float())
 	if err != nil {
 		t.Fatalf("scenario A LP liquidation error: %v", err)
 	}
 	tusdInA := accA.TUsdBalance.Float()
-	convAEQ_A, okA, err := csA.convertTUsdForEscrowLocked(accA, tusdInA)
+	convAEQ_A, okA, err := csA.convertTUsdForEscrowLocked(context.Background(), accA, tusdInA)
 	if err != nil || !okA {
 		t.Fatalf("scenario A tUSD conversion error: %v ok=%v", err, okA)
 	}
 
 	csB, accB := newScenario()
-	burnedB, outAEQ_B, outTUSD_B, err := csB.liquidateLPSharesForEscrowLocked(accB, accB.LPShares.Float())
+	burnedB, outAEQ_B, outTUSD_B, err := csB.liquidateLPSharesForEscrowLocked(context.Background(), accB, accB.LPShares.Float())
 	if err != nil {
 		t.Fatalf("scenario B LP liquidation error: %v", err)
 	}
 	tusdInB := accB.TUsdBalance.Float()
-	convAEQ_B, okB, err := csB.convertTUsdForEscrowLocked(accB, tusdInB)
+	convAEQ_B, okB, err := csB.convertTUsdForEscrowLocked(context.Background(), accB, tusdInB)
 	if err != nil || !okB {
 		t.Fatalf("scenario B tUSD conversion error: %v ok=%v", err, okB)
 	}

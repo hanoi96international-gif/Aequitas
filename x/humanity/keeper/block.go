@@ -5435,7 +5435,11 @@ func (dag *BlockDAG) replayTransactions(block *Block, force bool) bool {
 			}
 
 		case "ubi_distribution_finalize":
-			if err := dag.state.applyUBIFinalizeDeltaLocked(tx.DistributionAt); err != nil {
+			// dag.state.activeTx was already set directly above (before this
+			// loop runs) — context.Background() carries no transaction of its
+			// own, so dbExecCtx falls back to that field, exactly matching
+			// pre-migration behavior. See registerHumanLocked's comment.
+			if err := dag.state.applyUBIFinalizeDeltaLocked(context.Background(), tx.DistributionAt); err != nil {
 				fmt.Printf("[REPLAY] ✗ ubi_distribution_finalize: %v (block #%d) — rolling back whole block\n", err, block.Height)
 				hardFailure = true
 				continue
@@ -5478,7 +5482,10 @@ func (dag *BlockDAG) replayTransactions(block *Block, force bool) bool {
 
 		case "escrow_move":
 			wallet := strings.ToLower(tx.Wallet)
-			if err := dag.state.applyEscrowMoveDeltaLocked(wallet, tx.FromDemurrageLost, tx.LPShares, tx.EscrowTUsdConverted); err != nil {
+			// context.Background() is correct — see registerHumanLocked's
+			// comment: dag.state.activeTx was already set directly above
+			// this loop, and dbExecCtx falls back to it.
+			if err := dag.state.applyEscrowMoveDeltaLocked(context.Background(), wallet, tx.FromDemurrageLost, tx.LPShares, tx.EscrowTUsdConverted); err != nil {
 				fmt.Printf("[REPLAY] ✗ escrow_move %s: %v (block #%d) — rolling back whole block\n", wallet, err, block.Height)
 				hardFailure = true
 				continue

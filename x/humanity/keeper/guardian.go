@@ -19,6 +19,7 @@ package keeper
 // the UBI release. We track moved_at in escrow_accounts for this.
 
 import (
+	"context"
 	"database/sql"
 	"fmt"
 	"strings"
@@ -377,7 +378,7 @@ func (cs *ChainState) RecoverFromEscrow(wallet string) error {
 // distribution sub-step — replacing the old ad-hoc manual revert-on-failure
 // (which could only restore the in-memory balance, never undo an escrow
 // half-write) with a real, whole-round rollback via the caller.
-func (cs *ChainState) checkAndMoveToEscrowLocked() ([]DistributionShare, error) {
+func (cs *ChainState) checkAndMoveToEscrowLocked(ctx context.Context) ([]DistributionShare, error) {
 	if cs.db == nil {
 		return nil, nil
 	}
@@ -418,7 +419,7 @@ func (cs *ChainState) checkAndMoveToEscrowLocked() ([]DistributionShare, error) 
 	// refactor that relaxed cs.mu without noticing this one inconsistent
 	// call site would silently reintroduce a real isolation gap.
 	var candidateAddrs []string
-	rows, err := cs.dbExec().Query(`SELECT lower(address) FROM chain_accounts WHERE is_human = true AND last_activity_at > 0`)
+	rows, err := cs.dbExecCtx(ctx).Query(`SELECT lower(address) FROM chain_accounts WHERE is_human = true AND last_activity_at > 0`)
 	if err != nil {
 		return nil, fmt.Errorf("could not enumerate human accounts for escrow check: %w", err)
 	}
@@ -430,7 +431,7 @@ func (cs *ChainState) checkAndMoveToEscrowLocked() ([]DistributionShare, error) 
 		}
 	}
 	rows.Close()
-	cs.ensureAccountsLoaded(candidateAddrs) // page in cold accounts so escrow sweeps work beyond the in-memory cap
+	cs.ensureAccountsLoadedCtx(ctx, candidateAddrs) // page in cold accounts so escrow sweeps work beyond the in-memory cap
 
 	var toEscrow []escrowEntry
 	for _, addr := range candidateAddrs {
@@ -453,7 +454,7 @@ func (cs *ChainState) checkAndMoveToEscrowLocked() ([]DistributionShare, error) 
 			continue
 		}
 		var existing float64
-		if scanErr := cs.dbExec().QueryRow(
+		if scanErr := cs.dbExecCtx(ctx).QueryRow(
 			`SELECT amount FROM escrow_accounts WHERE wallet_address = $1`, addr,
 		).Scan(&existing); scanErr == nil && existing > 0 {
 			continue // already escrowed
@@ -463,7 +464,7 @@ func (cs *ChainState) checkAndMoveToEscrowLocked() ([]DistributionShare, error) 
 		// any liquidation below adds newly-converted funds to it — otherwise
 		// funds that were never idle AEQ (they were LP shares/tUSD) would get
 		// retroactively decayed as if they had been.
-		lost, err := cs.settleDemurrageLocked(acc)
+		lost, err := cs.settleDemurrageLockedCtx(ctx, acc)
 		if err != nil {
 			return nil, fmt.Errorf("could not settle demurrage for %s: %w", addr, err)
 		}
@@ -474,7 +475,7 @@ func (cs *ChainState) checkAndMoveToEscrowLocked() ([]DistributionShare, error) 
 		// must be shared code, not two hand-written copies of the same math.
 		var lpSharesBurned, tusdConverted float64
 		if acc.LPShares.Float() > 0 {
-			burned, outAEQ, outTUSD, lerr := cs.liquidateLPSharesForEscrowLocked(acc, acc.LPShares.Float())
+			burned, outAEQ, outTUSD, lerr := cs.liquidateLPSharesForEscrowLocked(ctx, acc, acc.LPShares.Float())
 			if lerr != nil {
 				return nil, fmt.Errorf("could not liquidate LP shares for %s: %w", addr, lerr)
 			}
@@ -488,7 +489,7 @@ func (cs *ChainState) checkAndMoveToEscrowLocked() ([]DistributionShare, error) 
 		// not just the liquid-AEQ portion — is captured by the escrow
 		// mechanism below, which only understands Balance.
 		if tusdBefore := acc.TUsdBalance.Float(); tusdBefore > 0 {
-			outAEQ, ok, cerr := cs.convertTUsdForEscrowLocked(acc, tusdBefore)
+			outAEQ, ok, cerr := cs.convertTUsdForEscrowLocked(ctx, acc, tusdBefore)
 			if cerr != nil {
 				return nil, fmt.Errorf("could not convert tUSD for %s: %w", addr, cerr)
 			}
@@ -536,7 +537,7 @@ func (cs *ChainState) checkAndMoveToEscrowLocked() ([]DistributionShare, error) 
 	// clock is never reset — resetting it would restart the 1.5-year countdown.
 	var moved []DistributionShare
 	for _, entry := range toEscrow {
-		if _, err := cs.dbExec().Exec(
+		if _, err := cs.dbExecCtx(ctx).Exec(
 			`INSERT INTO escrow_accounts (wallet_address, amount, moved_at)
 			 VALUES ($1, $2, $3)
 			 ON CONFLICT (wallet_address) DO NOTHING`,
@@ -545,13 +546,13 @@ func (cs *ChainState) checkAndMoveToEscrowLocked() ([]DistributionShare, error) 
 			return nil, fmt.Errorf("could not write escrow for %s: %w", entry.acc.Address, err)
 		}
 		acc := entry.acc
-		if err := cs.saveAccountToDB(&acc); err != nil {
+		if err := cs.saveAccountToDBCtx(ctx, &acc); err != nil {
 			return nil, fmt.Errorf("could not save escrowed account %s: %w", entry.acc.Address, err)
 		}
 		cs.accounts.Set(entry.acc.Address, &acc)
 		// FIX (P2-5, beta-launch audit 2026-07-05): keep the EVM mirror's
 		// escrowOf slot current — see syncGuardianEscrowSlotsLocked's comment.
-		cs.syncGuardianEscrowSlotsLocked(V7_CONTRACT_ADDR, entry.acc.Address)
+		cs.syncGuardianEscrowSlotsLockedCtx(ctx, V7_CONTRACT_ADDR, entry.acc.Address)
 		fmt.Printf("[ESCROW] ✓ Moved %.6f AEQ from %s to escrow (inactive since %s)\n",
 			entry.balance, entry.acc.Address, entry.inactiveSince)
 		moved = append(moved, DistributionShare{
@@ -578,7 +579,7 @@ func (cs *ChainState) checkAndMoveToEscrowLocked() ([]DistributionShare, error) 
 // the UBI-pool credit commit or roll back as part of the same DB transaction
 // as the rest of the distribution round — see checkAndMoveToEscrowLocked's
 // comment for the equivalent reasoning.
-func (cs *ChainState) releaseEscrowToUBILocked() ([]DistributionShare, error) {
+func (cs *ChainState) releaseEscrowToUBILocked(ctx context.Context) ([]DistributionShare, error) {
 	if cs.db == nil {
 		return nil, nil
 	}
@@ -586,7 +587,7 @@ func (cs *ChainState) releaseEscrowToUBILocked() ([]DistributionShare, error) {
 
 	// FIX 3: Use DELETE...RETURNING for an atomic claim — no other goroutine
 	// can claim the same row between a SELECT and a subsequent DELETE.
-	rows, err := cs.dbExec().Query(
+	rows, err := cs.dbExecCtx(ctx).Query(
 		`DELETE FROM escrow_accounts
 		 WHERE moved_at < $1
 		 RETURNING wallet_address, amount`,
@@ -617,7 +618,7 @@ func (cs *ChainState) releaseEscrowToUBILocked() ([]DistributionShare, error) {
 	// touched it, silently overwriting the pool's real accumulated DB balance
 	// — see state.go's distributeSwapFee for the same pattern. Loaded once
 	// here since it's the same map entry on every iteration below.
-	cs.ensureAccountLoaded(ubiPoolAddr)
+	cs.ensureAccountLoadedCtx(ctx, ubiPoolAddr)
 	var released []DistributionShare
 	for _, e := range entries {
 		// Credit UBI pool.
@@ -627,14 +628,14 @@ func (cs *ChainState) releaseEscrowToUBILocked() ([]DistributionShare, error) {
 			cs.accounts.Set(ubiPoolAddr, ubiAcc)
 		}
 		ubiAcc.Balance = ubiAcc.Balance.Add(NewDecimal(e.amount))
-		if err := cs.saveAccountToDB(ubiAcc); err != nil {
+		if err := cs.saveAccountToDBCtx(ctx, ubiAcc); err != nil {
 			return nil, fmt.Errorf("could not save UBI pool: %w", err)
 		}
 		// FIX (P2-5, beta-launch audit 2026-07-05): the escrow_accounts row was
 		// just deleted above — sync escrowOf back to 0 so the EVM mirror
 		// doesn't keep showing the forfeited amount forever. See
 		// syncGuardianEscrowSlotsLocked's comment.
-		cs.syncGuardianEscrowSlotsLocked(V7_CONTRACT_ADDR, e.addr)
+		cs.syncGuardianEscrowSlotsLockedCtx(ctx, V7_CONTRACT_ADDR, e.addr)
 		fmt.Printf("[ESCROW] ✓ Released %.6f AEQ from %s escrow → UBI pool\n", e.amount, e.addr)
 		released = append(released, DistributionShare{Wallet: e.addr, Amount: round6(e.amount)})
 	}

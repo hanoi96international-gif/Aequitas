@@ -218,12 +218,19 @@ func (cs *ChainState) SaveStorageSlots(address string, slots map[string]string) 
 // already committed it on a separate connection. eth_call/V7 dry-runs/
 // wallet RPC reads from evm_storage, so this could surface as "already
 // registered" against a wallet whose actual registration never completed.
+// saveStorageSlotLocked is the context.Background()-calling wrapper kept for
+// callers not yet migrated to thread ctx explicitly — see dbExecCtx's
+// comment for the migration this is part of.
 func (cs *ChainState) saveStorageSlotLocked(address, slot, value string) error {
+	return cs.saveStorageSlotLockedCtx(context.Background(), address, slot, value)
+}
+
+func (cs *ChainState) saveStorageSlotLockedCtx(ctx context.Context, address, slot, value string) error {
 	if cs.db == nil {
 		return nil
 	}
 	address = strings.ToLower(address)
-	_, err := cs.dbExec().Exec(
+	_, err := cs.dbExecCtx(ctx).Exec(
 		`INSERT INTO evm_storage (address, slot, value) VALUES ($1, $2, $3)
  ON CONFLICT (address, slot) DO UPDATE SET value = $3`,
 		address, slot, value,
@@ -771,7 +778,14 @@ func (cs *ChainState) doSyncBalanceLocked(contractAddr string, addrs ...string) 
 // actually used to move real value. Integrators who need live figures for
 // any of these should read /api/escrow, /api/pool, or /api/guardian-style
 // endpoints (Go-state-backed), not raw eth_call on the V7 contract.
+// syncGuardianEscrowSlotsLocked is the context.Background()-calling wrapper
+// kept for callers not yet migrated to thread ctx explicitly — see
+// dbExecCtx's comment for the migration this is part of.
 func (cs *ChainState) syncGuardianEscrowSlotsLocked(contractAddr, addr string) {
+	cs.syncGuardianEscrowSlotsLockedCtx(context.Background(), contractAddr, addr)
+}
+
+func (cs *ChainState) syncGuardianEscrowSlotsLockedCtx(ctx context.Context, contractAddr, addr string) {
 	if cs.db == nil {
 		return
 	}
@@ -779,30 +793,30 @@ func (cs *ChainState) syncGuardianEscrowSlotsLocked(contractAddr, addr string) {
 	addr = strings.ToLower(addr)
 	addrBytes := common.HexToAddress(addr).Bytes()
 
-	// FIX: use cs.dbExec(), not cs.db directly — several callers (e.g.
+	// FIX: use cs.dbExecCtx(ctx), not cs.db directly — several callers (e.g.
 	// checkAndMoveToEscrowLocked) run this from inside an already-active,
 	// not-yet-committed transaction. A direct cs.db read only sees
 	// committed data (Postgres read-committed isolation), so it would miss
 	// the very escrow_accounts row this exact call is meant to reflect,
 	// syncing a stale (often zero) value instead.
 	var guardianAddr string
-	if err := cs.dbExec().QueryRow(`SELECT lower(guardian_address) FROM guardians WHERE lower(wallet_address) = $1`, addr).Scan(&guardianAddr); err != nil && err != sql.ErrNoRows {
+	if err := cs.dbExecCtx(ctx).QueryRow(`SELECT lower(guardian_address) FROM guardians WHERE lower(wallet_address) = $1`, addr).Scan(&guardianAddr); err != nil && err != sql.ErrNoRows {
 		fmt.Printf("[EVM] Warning: could not read guardian for %s: %v\n", addr, err)
 	}
 	guardianVal := common.Hash{}
 	if guardianAddr != "" {
 		guardianVal = common.BytesToHash(common.HexToAddress(guardianAddr).Bytes())
 	}
-	if err := cs.saveStorageSlotLocked(contractAddr, mappingSlot(addrBytes, 13).Hex(), guardianVal.Hex()); err != nil {
+	if err := cs.saveStorageSlotLockedCtx(ctx, contractAddr, mappingSlot(addrBytes, 13).Hex(), guardianVal.Hex()); err != nil {
 		fmt.Printf("[EVM] Warning: could not sync guardianOf for %s: %v\n", addr, err)
 	}
 
 	var escrowAmount float64
-	if err := cs.dbExec().QueryRow(`SELECT amount FROM escrow_accounts WHERE wallet_address = $1`, addr).Scan(&escrowAmount); err != nil && err != sql.ErrNoRows {
+	if err := cs.dbExecCtx(ctx).QueryRow(`SELECT amount FROM escrow_accounts WHERE wallet_address = $1`, addr).Scan(&escrowAmount); err != nil && err != sql.ErrNoRows {
 		fmt.Printf("[EVM] Warning: could not read escrow for %s: %v\n", addr, err)
 	}
 	escrowBig := aeqToWei(escrowAmount)
-	if err := cs.saveStorageSlotLocked(contractAddr, mappingSlot(addrBytes, 5).Hex(), common.BigToHash(escrowBig).Hex()); err != nil {
+	if err := cs.saveStorageSlotLockedCtx(ctx, contractAddr, mappingSlot(addrBytes, 5).Hex(), common.BigToHash(escrowBig).Hex()); err != nil {
 		fmt.Printf("[EVM] Warning: could not sync escrowOf for %s: %v\n", addr, err)
 	}
 }
