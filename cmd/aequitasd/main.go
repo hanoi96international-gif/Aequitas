@@ -505,6 +505,21 @@ keeper.SafeGoroutine("block-production-ticker", func() {
 	// default steady-state behavior.
 	alignDelay := time.Until(time.Now().Truncate(BLOCK_TIME).Add(BLOCK_TIME))
 	time.Sleep(alignDelay)
+	// FIX (SCALING_ARCHITECTURE.md Phase 9 cadence follow-up, NOT
+	// staging-validated — see keeper.ProduceBlocksForTick's own doc
+	// comment): default OFF, same explicit-operator-decision class as
+	// BLOCK_TIME itself. When enabled, a validator whose mempool is
+	// genuinely backlogged (its block came back completely full) produces
+	// a few MORE blocks immediately within the same tick instead of
+	// waiting for the next one — a per-validator decision, not a
+	// network-wide coordinated change the way shortening BLOCK_TIME would
+	// be (every other node, including ones that never set this, just
+	// receives and merges however many blocks arrive, exactly as GHOSTDAG
+	// already does today).
+	multiBlockTick := os.Getenv("ENABLE_MULTI_BLOCK_TICK") == "1"
+	if multiBlockTick {
+		fmt.Println("⚠ ENABLE_MULTI_BLOCK_TICK=1 — up to", keeper.MaxExtraBlocksPerTick(), "extra block(s)/tick when backlogged. NOT staging-validated (multi-node consensus-timing change).")
+	}
 	ticker := time.NewTicker(BLOCK_TIME)
 for range ticker.C {
 	// FIX (P0-3, beta-launch audit 2026-07-05): recover per-tick — see
@@ -514,21 +529,31 @@ for range ticker.C {
 	// stopping ALL block production, not just degrading this one tick.
 	keeper.SafeCall("block-production-tick", func() {
 		tickStart := time.Now() // ongoing health check — feeds the slow-tick warning below
-		block := bc.ProduceBlock()
-		if block == nil {
+		var blocks []*keeper.Block
+		if multiBlockTick {
+			blocks = bc.ProduceBlocksForTick()
+		} else if block := bc.ProduceBlock(); block != nil {
+			blocks = []*keeper.Block{block}
+		}
+		if len(blocks) == 0 {
 			return // catch-up gate — skip this tick
 		}
-		p2pNode.BroadcastBlock(block)
-		bc.HTTPBroadcastBlock(block) // HTTP push for peers where port 4001 is firewalled
-		if tickDur := time.Since(tickStart); tickDur > 500*time.Millisecond {
-			fmt.Printf("[BLOCK] ⏱ Full tick (ProduceBlock+broadcast) took %s for block #%d\n", tickDur, block.Height)
+		for _, block := range blocks {
+			p2pNode.BroadcastBlock(block)
+			bc.HTTPBroadcastBlock(block) // HTTP push for peers where port 4001 is firewalled
+			fmt.Printf("[Block #%d] Hash: %s... | Humans: %d | Time: %s\n",
+				block.Height,
+				block.Hash[:16],
+				block.Humans,
+				time.Unix(block.Timestamp, 0).Format("15:04:05"),
+			)
 		}
-		fmt.Printf("[Block #%d] Hash: %s... | Humans: %d | Time: %s\n",
-			block.Height,
-			block.Hash[:16],
-			block.Humans,
-			time.Unix(block.Timestamp, 0).Format("15:04:05"),
-		)
+		if len(blocks) > 1 {
+			fmt.Printf("[BLOCK] produced %d blocks this tick (backlog-driven, ENABLE_MULTI_BLOCK_TICK)\n", len(blocks))
+		}
+		if tickDur := time.Since(tickStart); tickDur > 500*time.Millisecond {
+			fmt.Printf("[BLOCK] ⏱ Full tick (ProduceBlock+broadcast) took %s for %d block(s), last #%d\n", tickDur, len(blocks), blocks[len(blocks)-1].Height)
+		}
 	})
 	}
 	})
