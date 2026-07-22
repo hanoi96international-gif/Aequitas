@@ -9,6 +9,7 @@ import (
 	"io"
 	"os"
 	"runtime/debug"
+	"strconv"
 	"strings"
 	"time"
 
@@ -23,7 +24,12 @@ import (
 const (
 	ProtocolID      = "/aequitas/1.0.0"
 	BlockProtocolID = "/aequitas/blocks/1.0.0"
-	ListenPort      = 4001
+	// ListenPort is the default P2P TCP port. Almost every real deployment
+	// wants this fixed value; P2P_LISTEN_PORT (see p2pListenPort below)
+	// exists specifically for running more than one node on the SAME host
+	// (e.g. a local multi-node simulation), where a hardcoded port would
+	// make a second instance fail to bind entirely.
+	ListenPort = 4001
 	// FIX: this was hardcoded to "thomas.proxy.rlwy.net:47298" — a Railway
 	// TCP-proxy domain:port pair tied to a specific service instance. Railway
 	// regenerates this domain whenever the service is recreated (e.g. renamed,
@@ -45,6 +51,19 @@ const (
 	// Railway domain regeneration is an env var change, not a code deploy.
 	defaultBootstrapNode = "/dns4/reseau.proxy.rlwy.net/tcp/41277/p2p/12D3KooWFuP5HtD1Xy9bj3ZdWL7eisWTx72V26hpGieMmqsGLV5R"
 )
+
+// p2pListenPort returns P2P_LISTEN_PORT if set to a valid port number,
+// otherwise ListenPort. See ListenPort's own comment for why this exists —
+// almost every real deployment should leave P2P_LISTEN_PORT unset.
+func p2pListenPort() int {
+	if v := os.Getenv("P2P_LISTEN_PORT"); v != "" {
+		if port, err := strconv.Atoi(v); err == nil && port > 0 && port < 65536 {
+			return port
+		}
+		fmt.Printf("⚠ P2P_LISTEN_PORT=%q is not a valid port — using default %d\n", v, ListenPort)
+	}
+	return ListenPort
+}
 
 // BootstrapNode returns the FIRST configured P2P bootstrap multiaddr — kept
 // for any external callers expecting a single address; prefer BootstrapNodes
@@ -139,7 +158,7 @@ func NewP2PNode() (*P2PNode, error) {
 	h, err := libp2p.New(
 		libp2p.Identity(priv),
 		libp2p.ListenAddrStrings(
-			fmt.Sprintf("/ip4/0.0.0.0/tcp/%d", ListenPort),
+			fmt.Sprintf("/ip4/0.0.0.0/tcp/%d", p2pListenPort()),
 		),
 	)
 	if err != nil {
@@ -313,7 +332,7 @@ func (n *P2PNode) broadcastExcept(block *Block, exclude peer.ID) {
 func (n *P2PNode) Start() {
 	fmt.Println("── P2P Network ──────────────────────────")
 	fmt.Printf("✓ Node ID: %s\n", n.host.ID().String()[:20]+"...")
-	fmt.Printf("✓ Listening on port %d\n", ListenPort)
+	fmt.Printf("✓ Listening on port %d\n", p2pListenPort())
 	for _, addr := range n.host.Addrs() {
 		fmt.Printf("✓ Address: %s/p2p/%s\n", addr, n.host.ID())
 	}

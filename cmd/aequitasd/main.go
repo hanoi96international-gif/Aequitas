@@ -8,6 +8,7 @@ import (
 "net/url"
 "os"
 "os/signal"
+"strconv"
 "strings"
 "syscall"
 "time"
@@ -127,8 +128,26 @@ CHAIN_ID      = "aequitas-1"
 // (see block.go/sync_blocks.go for the active investigation) rather than
 // settling for 2s. Explicit operator decision to keep pushing at 1s.
 BLOCK_TIME = 1 * time.Second
-API_PORT   = 8080
+// API_PORT is the default HTTP API port. apiPort() below reads an
+// optional API_PORT env var override — exists for the same reason
+// keeper's P2P_LISTEN_PORT does (see that constant's own comment): running
+// more than one node on the SAME host (a local multi-node simulation)
+// needs each instance on its own port. Almost every real deployment
+// should leave the env var unset and get this default.
+API_PORT = 8080
 )
+
+// apiPort returns the API_PORT env var if set to a valid port number,
+// otherwise the API_PORT constant above.
+func apiPort() int {
+	if v := os.Getenv("API_PORT"); v != "" {
+		if port, err := strconv.Atoi(v); err == nil && port > 0 && port < 65536 {
+			return port
+		}
+		fmt.Printf("⚠ API_PORT=%q is not a valid port — using default %d\n", v, API_PORT)
+	}
+	return API_PORT
+}
 
 // distributionHealthRetryInterval is how soon the daily-distribution
 // goroutine re-checks after skipping a round for a local health reason
@@ -269,7 +288,7 @@ p2pNode.SetDAG(bc)
 	// EVM engine hadn't been wired up yet when that block was replayed.
 	fmt.Println("── Starting API Server ──────────────────")
 	api := keeper.NewAPIServer(bc, p2pNode, chainState)
-	keeper.SafeGoroutine("api.Start", func() { api.Start(API_PORT) })
+	keeper.SafeGoroutine("api.Start", func() { api.Start(apiPort()) })
 	fmt.Println()
 
 	// Bootstrap from a peer snapshot if this is a fresh node (no humans in DB),
