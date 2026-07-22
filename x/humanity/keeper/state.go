@@ -14,6 +14,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/lib/pq"
@@ -163,6 +164,27 @@ type ChainState struct {
 	// runAtomicWithOutbox exactly as before, one call at a time).
 	transferBatchCh   chan *transferBatchRequest
 	transferBatchOnce sync.Once
+
+	// evmMirrorQueueMaybeNonEmpty is a cheap, deliberately-imprecise (never
+	// falsely "empty", may lag "non-empty" true a little) signal for
+	// syncBalanceLocked: skip the per-transfer evm_mirror_sync_queue DELETE
+	// round trip entirely when nothing is queued for retry (the
+	// overwhelming common case — that table only ever gets a row when an
+	// EVM mirror write actually FAILED). QueueEVMMirrorSync sets this true;
+	// RetryEVMMirrorSyncQueue's own periodic pass sets it false once it
+	// observes the table is empty. THROUGHPUT (2026-07-22): profiling
+	// TestSimulateMaxTPS_Ingestion showed syncBalanceLocked as >50% of
+	// per-transfer time even after batching its writes — this was the
+	// single largest remaining lever found. Zero value (false) is safe on
+	// a fresh node (queue genuinely empty); on restart with pre-existing
+	// queued entries from before the crash, those are still found and
+	// cleared by RetryEVMMirrorSyncQueue's own unconditional table query
+	// regardless of this flag — it just means syncBalanceLocked's
+	// per-transfer skip doesn't kick in for those specific leftover
+	// addresses until the first periodic pass or a fresh failure sets this
+	// true. No correctness impact either way: this flag only gates a
+	// best-effort cleanup DELETE, never the actual balance ledger.
+	evmMirrorQueueMaybeNonEmpty atomic.Bool
 
 	// degradedMu guards bootstrapDegradedReason. Set by main.go when
 	// snapshot bootstrap/resync's EVM mirror migration step fails (see

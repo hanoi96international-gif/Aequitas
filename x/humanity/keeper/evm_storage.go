@@ -701,8 +701,13 @@ func (cs *ChainState) syncBalanceLocked(contractAddr string, addrs ...string) {
 		}
 		return
 	}
-	for _, addr := range lowerAddrs {
-		cs.RemoveFromEVMMirrorSyncQueue(addr, contractAddr)
+	// THROUGHPUT (2026-07-22): skip this round trip entirely when nothing
+	// is believed queued for retry — see evmMirrorQueueMaybeNonEmpty's own
+	// field comment. The overwhelmingly common case (this write, just
+	// above, succeeded and nothing has ever failed before) has nothing to
+	// clean up here.
+	if cs.evmMirrorQueueMaybeNonEmpty.Load() {
+		cs.RemoveBatchFromEVMMirrorSyncQueue(lowerAddrs, contractAddr)
 	}
 }
 
@@ -816,7 +821,10 @@ func (cs *ChainState) QueueEVMMirrorSync(addr, contractAddr, lastErr string) {
 		addr, contractAddr, lastErr, initialNextRetry, retryQueueMaxAttempts,
 	); err != nil {
 		fmt.Printf("[EVM] Warning: could not queue mirror sync retry for %s: %v\n", addr, err)
+		return
 	}
+	// See evmMirrorQueueMaybeNonEmpty's own field comment.
+	cs.evmMirrorQueueMaybeNonEmpty.Store(true)
 }
 
 // evmMirrorSyncQueueEntry is one row from evm_mirror_sync_queue.
@@ -898,6 +906,28 @@ func (cs *ChainState) RemoveFromEVMMirrorSyncQueue(addr, contractAddr string) {
 	}
 }
 
+// RemoveBatchFromEVMMirrorSyncQueue is RemoveFromEVMMirrorSyncQueue for
+// every address in addrs (same contractAddr) in ONE round trip instead of
+// one per address.
+//
+// THROUGHPUT (2026-07-22): syncBalanceLocked calls this once per transfer
+// with up to 6 addresses (sender, recipient, 4 tokenomics pools) — the
+// prior one-DELETE-per-address loop meant every successful transfer paid
+// up to 6 extra sequential round trips for what is, in the overwhelmingly
+// common case, deleting zero rows (evm_mirror_sync_queue only ever has an
+// entry for an address whose PREVIOUS mirror sync attempt failed).
+// Measured as the single largest remaining per-transfer round-trip cost
+// after group-commit batching (see TransferAtomic's own comment) reduced
+// commit/fsync count but left this loop untouched.
+func (cs *ChainState) RemoveBatchFromEVMMirrorSyncQueue(addrs []string, contractAddr string) {
+	if cs.db == nil || len(addrs) == 0 {
+		return
+	}
+	if _, err := cs.dbExec().Exec(`DELETE FROM evm_mirror_sync_queue WHERE contract_addr = $1 AND address = ANY($2)`, contractAddr, pq.Array(addrs)); err != nil {
+		fmt.Printf("[EVM] Warning: could not batch-remove mirror sync queue entries: %v\n", err)
+	}
+}
+
 // RetryEVMMirrorSyncQueue attempts every pending evm_mirror_sync_queue entry
 // once. Intended to be called periodically (see NewAPIServer's startup
 // goroutine). syncBalanceLocked itself re-queues (or clears) each entry, so
@@ -908,6 +938,11 @@ func RetryEVMMirrorSyncQueue(cs *ChainState) {
 		byContract[entry.ContractAddr] = append(byContract[entry.ContractAddr], entry.Address)
 	}
 	if len(byContract) == 0 {
+		// See evmMirrorQueueMaybeNonEmpty's own field comment: this
+		// unconditional table query is the periodic reconciliation that
+		// lets syncBalanceLocked's per-transfer skip resume after a
+		// failure episode clears.
+		cs.evmMirrorQueueMaybeNonEmpty.Store(false)
 		return
 	}
 	// syncBalanceLocked only reads cs.accounts and writes to the DB (not to
