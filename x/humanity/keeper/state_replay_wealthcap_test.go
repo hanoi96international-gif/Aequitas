@@ -81,7 +81,7 @@ func TestRemoveLiquidityDeltaLocked_MirrorsPrimaryWealthCap(t *testing.T) {
 	secondary.pool = &PoolState{ReserveAEQ: NewDecimal(1_000_000), ReserveTUSD: NewDecimal(1_000_000), TotalLPShares: NewDecimal(lpShares)}
 
 	const sharesToBurn = 50.0
-	_, _, _, err := primary.removeLiquidityLocked("0xtarget", sharesToBurn)
+	_, _, _, err := primary.removeLiquidityLocked(context.Background(), "0xtarget", sharesToBurn)
 	if err != nil {
 		t.Fatalf("primary removeLiquidityLocked: %v", err)
 	}

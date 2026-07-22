@@ -4709,7 +4709,10 @@ func (cs *ChainState) MigrateStrandedPoolTUsdFeesV1() {
 func (cs *ChainState) AddLiquidity(address string, amountAEQ, amountTUSD float64) (float64, error) {
 	cs.mu.Lock()
 	defer cs.mu.Unlock()
-	return cs.addLiquidityLocked(address, amountAEQ, amountTUSD)
+	// context.Background() is correct here, not a placeholder — this path
+	// does not go through runAtomicWithOutbox, same reasoning as Transfer's
+	// own comment.
+	return cs.addLiquidityLocked(context.Background(), address, amountAEQ, amountTUSD)
 }
 
 // AddLiquidityAtomic behaves like AddLiquidity, except the state mutation
@@ -4720,11 +4723,12 @@ func (cs *ChainState) AddLiquidity(address string, amountAEQ, amountTUSD float64
 func (cs *ChainState) AddLiquidityAtomic(address string, amountAEQ, amountTUSD float64, pendingTxTemplate Transaction) (demurrageLost float64, err error) {
 	address = strings.ToLower(address)
 	err = cs.runAtomicWithOutbox([]string{address, validatorsPoolAddr, lpPoolAddr, ubiPoolAddr, treasuryPoolAddr}, false, func() (Transaction, error) {
+		ctx := withTx(context.Background(), cs.activeTx)
 		sharesBefore := 0.0
 		if acc, ok := cs.accounts.Get(address); ok {
 			sharesBefore = acc.LPShares.Float()
 		}
-		demurrageLost, err = cs.addLiquidityLocked(address, amountAEQ, amountTUSD)
+		demurrageLost, err = cs.addLiquidityLocked(ctx, address, amountAEQ, amountTUSD)
 		if err != nil {
 			return Transaction{}, err
 		}
@@ -4739,7 +4743,9 @@ func (cs *ChainState) AddLiquidityAtomic(address string, amountAEQ, amountTUSD f
 
 // addLiquidityLocked is AddLiquidity's implementation; caller must already
 // hold cs.mu — see transferLocked's comment for why this split exists.
-func (cs *ChainState) addLiquidityLocked(address string, amountAEQ, amountTUSD float64) (float64, error) {
+// Takes ctx explicitly (see dbExecCtx's own comment) rather than through
+// the old/new wrapper split — few enough callers to migrate together.
+func (cs *ChainState) addLiquidityLocked(ctx context.Context, address string, amountAEQ, amountTUSD float64) (float64, error) {
 	address = strings.ToLower(address)
 
 	if amountAEQ <= 0 || amountTUSD <= 0 {
@@ -4752,12 +4758,12 @@ func (cs *ChainState) addLiquidityLocked(address string, amountAEQ, amountTUSD f
 		return 0, fmt.Errorf("liquidity pool not initialized")
 	}
 
-	cs.ensureAccountLoaded(address) // page in cold accounts so add-liquidity works beyond the in-memory cap
+	cs.ensureAccountLoadedCtx(ctx, address) // page in cold accounts so add-liquidity works beyond the in-memory cap
 	acc, ok := cs.accounts.Get(address)
 	if !ok {
 		return 0, fmt.Errorf("account not found")
 	}
-	lost, err := cs.settleDemurrageLocked(acc) // settle decay before checking/using the AEQ balance below
+	lost, err := cs.settleDemurrageLockedCtx(ctx, acc) // settle decay before checking/using the AEQ balance below
 	if err != nil {
 		return 0, fmt.Errorf("could not settle demurrage: %w", err)
 	}
@@ -4810,10 +4816,10 @@ func (cs *ChainState) addLiquidityLocked(address string, amountAEQ, amountTUSD f
 	cs.pool.ReserveTUSD = cs.pool.ReserveTUSD.Add(NewDecimal(amountTUSD))
 	cs.pool.TotalLPShares = cs.pool.TotalLPShares.Add(NewDecimal(mintedShares))
 
-	if err := cs.saveAccountToDB(acc); err != nil {
+	if err := cs.saveAccountToDBCtx(ctx, acc); err != nil {
 		return 0, fmt.Errorf("could not save account: %w", err)
 	}
-	if err := cs.savePoolToDB(); err != nil {
+	if err := cs.savePoolToDBCtx(ctx); err != nil {
 		return 0, fmt.Errorf("could not save pool: %w", err)
 	}
 	cs.save()
@@ -4835,7 +4841,10 @@ func (cs *ChainState) addLiquidityLocked(address string, amountAEQ, amountTUSD f
 func (cs *ChainState) RemoveLiquidity(address string, sharesToBurn float64) (float64, float64, float64, error) {
 	cs.mu.Lock()
 	defer cs.mu.Unlock()
-	return cs.removeLiquidityLocked(address, sharesToBurn)
+	// context.Background() is correct here, not a placeholder — this path
+	// does not go through runAtomicWithOutbox, same reasoning as Transfer's
+	// own comment.
+	return cs.removeLiquidityLocked(context.Background(), address, sharesToBurn)
 }
 
 // RemoveLiquidityAtomic behaves like RemoveLiquidity, except the state
@@ -4849,7 +4858,8 @@ func (cs *ChainState) RemoveLiquidity(address string, sharesToBurn float64) (flo
 func (cs *ChainState) RemoveLiquidityAtomic(address string, sharesToBurn float64, pendingTxTemplate Transaction) (outAEQ, outTUSD, demurrageLost float64, err error) {
 	address = strings.ToLower(address)
 	err = cs.runAtomicWithOutbox([]string{address, validatorsPoolAddr, lpPoolAddr, ubiPoolAddr, treasuryPoolAddr}, false, func() (Transaction, error) {
-		outAEQ, outTUSD, demurrageLost, err = cs.removeLiquidityLocked(address, sharesToBurn)
+		ctx := withTx(context.Background(), cs.activeTx)
+		outAEQ, outTUSD, demurrageLost, err = cs.removeLiquidityLocked(ctx, address, sharesToBurn)
 		if err != nil {
 			return Transaction{}, err
 		}
@@ -4861,8 +4871,10 @@ func (cs *ChainState) RemoveLiquidityAtomic(address string, sharesToBurn float64
 
 // removeLiquidityLocked is RemoveLiquidity's implementation; caller must
 // already hold cs.mu — see transferLocked's comment for why this split
-// exists.
-func (cs *ChainState) removeLiquidityLocked(address string, sharesToBurn float64) (float64, float64, float64, error) {
+// exists. Takes ctx explicitly (see dbExecCtx's own comment) rather than
+// through the old/new wrapper split — few enough callers to migrate
+// together.
+func (cs *ChainState) removeLiquidityLocked(ctx context.Context, address string, sharesToBurn float64) (float64, float64, float64, error) {
 	address = strings.ToLower(address)
 
 	if sharesToBurn <= 0 {
@@ -4872,7 +4884,7 @@ func (cs *ChainState) removeLiquidityLocked(address string, sharesToBurn float64
 		return 0, 0, 0, fmt.Errorf("liquidity pool not initialized")
 	}
 
-	cs.ensureAccountLoaded(address) // page in cold accounts so remove-liquidity works beyond the in-memory cap
+	cs.ensureAccountLoadedCtx(ctx, address) // page in cold accounts so remove-liquidity works beyond the in-memory cap
 	acc, ok := cs.accounts.Get(address)
 	if !ok {
 		return 0, 0, 0, fmt.Errorf("account not found")
@@ -4882,7 +4894,7 @@ func (cs *ChainState) removeLiquidityLocked(address string, sharesToBurn float64
 	// wealthy account could dodge decay indefinitely by periodically
 	// removing/re-adding trivial liquidity amounts (touchActivity() below
 	// resets the decay clock without the decay ever having been applied).
-	lost, err := cs.settleDemurrageLocked(acc)
+	lost, err := cs.settleDemurrageLockedCtx(ctx, acc)
 	if err != nil {
 		return 0, 0, 0, fmt.Errorf("could not settle demurrage: %w", err)
 	}
@@ -4898,16 +4910,16 @@ func (cs *ChainState) removeLiquidityLocked(address string, sharesToBurn float64
 			acc.Balance = acc.Balance.Add(NewDecimal(outAEQ))
 			acc.TUsdBalance = acc.TUsdBalance.Add(NewDecimal(outTUSD))
 			touchActivity(acc)
-			if err := cs.enforceWealthCapLocked(acc); err != nil {
+			if err := cs.enforceWealthCapLockedCtx(ctx, acc); err != nil {
 				return 0, 0, 0, fmt.Errorf("could not enforce wealth cap: %w", err)
 			}
 			cs.pool.ReserveAEQ = NewDecimal(0)
 			cs.pool.ReserveTUSD = NewDecimal(0)
 			cs.pool.TotalLPShares = NewDecimal(0)
-			if err := cs.saveAccountToDB(acc); err != nil {
+			if err := cs.saveAccountToDBCtx(ctx, acc); err != nil {
 				return 0, 0, 0, fmt.Errorf("could not save account: %w", err)
 			}
-			if err := cs.savePoolToDB(); err != nil {
+			if err := cs.savePoolToDBCtx(ctx); err != nil {
 				return 0, 0, 0, fmt.Errorf("could not save pool: %w", err)
 			}
 			cs.save()
@@ -4951,7 +4963,7 @@ func (cs *ChainState) removeLiquidityLocked(address string, sharesToBurn float64
 		acc.Balance = acc.Balance.Add(NewDecimal(outAEQ17))
 		acc.TUsdBalance = acc.TUsdBalance.Add(NewDecimal(outTUSD17))
 		touchActivity(acc)
-		if err := cs.enforceWealthCapLocked(acc); err != nil {
+		if err := cs.enforceWealthCapLockedCtx(ctx, acc); err != nil {
 			return 0, 0, 0, fmt.Errorf("could not enforce wealth cap: %w", err)
 		}
 		newResAEQ17 := round6(cs.pool.ReserveAEQ.Float() - outAEQ17)
@@ -4965,10 +4977,10 @@ func (cs *ChainState) removeLiquidityLocked(address string, sharesToBurn float64
 		cs.pool.ReserveAEQ = NewDecimal(newResAEQ17)
 		cs.pool.ReserveTUSD = NewDecimal(newResTUSD17)
 		cs.pool.TotalLPShares = cs.pool.TotalLPShares.Sub(NewDecimal(sharesToBurn))
-		if err := cs.saveAccountToDB(acc); err != nil {
+		if err := cs.saveAccountToDBCtx(ctx, acc); err != nil {
 			return 0, 0, 0, fmt.Errorf("could not save account: %w", err)
 		}
-		if err := cs.savePoolToDB(); err != nil {
+		if err := cs.savePoolToDBCtx(ctx); err != nil {
 			return 0, 0, 0, fmt.Errorf("could not save pool: %w", err)
 		}
 		cs.save()
@@ -4995,7 +5007,7 @@ func (cs *ChainState) removeLiquidityLocked(address string, sharesToBurn float64
 	acc.Balance = acc.Balance.Add(NewDecimal(outAEQ))
 	acc.TUsdBalance = acc.TUsdBalance.Add(NewDecimal(outTUSD))
 	touchActivity(acc) // receiving AEQ back from the pool counts as using it
-	if err := cs.enforceWealthCapLocked(acc); err != nil {
+	if err := cs.enforceWealthCapLockedCtx(ctx, acc); err != nil {
 		return 0, 0, 0, fmt.Errorf("could not enforce wealth cap: %w", err)
 	}
 	newReserveAEQ := round6(cs.pool.ReserveAEQ.Float() - outAEQ)
@@ -5010,10 +5022,10 @@ func (cs *ChainState) removeLiquidityLocked(address string, sharesToBurn float64
 	cs.pool.ReserveTUSD = NewDecimal(newReserveTUSD)
 	cs.pool.TotalLPShares = cs.pool.TotalLPShares.Sub(NewDecimal(sharesToBurn))
 
-	if err := cs.saveAccountToDB(acc); err != nil {
+	if err := cs.saveAccountToDBCtx(ctx, acc); err != nil {
 		return 0, 0, 0, fmt.Errorf("could not save account: %w", err)
 	}
-	if err := cs.savePoolToDB(); err != nil {
+	if err := cs.savePoolToDBCtx(ctx); err != nil {
 		return 0, 0, 0, fmt.Errorf("could not save pool: %w", err)
 	}
 	cs.save()
