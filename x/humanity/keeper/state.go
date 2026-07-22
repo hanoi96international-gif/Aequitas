@@ -17,6 +17,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/hanoi96international-gif/aequitas-chain/x/humanity/wal"
 	"github.com/lib/pq"
 )
 
@@ -70,6 +71,18 @@ type AccountState struct {
 	// reset by spending tUSD, so a wallet cannot re-claim by draining its balance.
 	FaucetClaimed bool  `json:"faucet_claimed"`
 	Version       int64 `json:"-"` // optimistic lock version, not serialized
+	// WALSeq is the highest WAL sequence number (see transfer_wal.go /
+	// SCALING_ARCHITECTURE.md Phase 7) whose effect this account's Balance
+	// currently reflects. Zero for every account unless AEQUITAS_WAL_ENABLED
+	// is set — populated from chain_accounts.wal_seq only when an account is
+	// touched by WAL replay/recovery, and advanced in-memory by
+	// transferConcurrentWAL on every WAL-durable mutation. Its sole purpose
+	// is making crash recovery idempotent: replaying a WAL record whose
+	// effect is already reflected (WALSeq >= the record's Seq) must be a
+	// no-op, not a double-application — see recoverFromWAL's own comment.
+	// Never serialized to the JSON snapshot path (WAL/Postgres reconciliation
+	// is DB-only, see initWALIfEnabled), so json:"-" here matches Version.
+	WALSeq uint64 `json:"-"`
 	// leafHash caches this account's current contribution to the incremental
 	// state-root accumulator (see accountLeaf / ChainState.accountSetXOR). It
 	// is the leaf that was last XORed INTO the accumulator for this account,
@@ -278,6 +291,28 @@ type ChainState struct {
 	penaltyMu          sync.RWMutex
 	penaltyCacheLoaded bool
 	penaltyCache       map[string]validatorPenalty
+
+	// wal is the optional local write-ahead log backing transferConcurrentWAL
+	// (see transfer_wal.go / SCALING_ARCHITECTURE.md Phase 7) — nil unless
+	// AEQUITAS_WAL_ENABLED=1 was set at startup. When nil, TransferAtomic
+	// behaves exactly as it did before this field existed (transferConcurrent,
+	// the Postgres-durable fast path, or the batcher). When set, a WAL append
+	// — not a synchronous Postgres commit — becomes the durability point for
+	// eligible transfers. See transferConcurrentWAL's own doc comment for the
+	// full design and its explicit NOT-staging-validated status: this changes
+	// real durability semantics, unlike every other change in this session.
+	wal *wal.WAL
+
+	// walFlushMu/walFlushQueue/walFlushOnce back the async Postgres
+	// reconciliation for WAL-durable transfers (transfer_wal.go) — same
+	// dirty-queue-plus-periodic-worker shape as evmMirrorDirty/poolFlushDirty
+	// above, guarded by their own mutex for the same reason (cheap enough to
+	// touch inline on every WAL-durable transfer without contending cs.mu).
+	walFlushMu       sync.Mutex
+	walFlushQueue    []walFlushItem
+	walFlushOnce     sync.Once
+	walFlushStopCh   chan struct{} // see stopWALFlushWorkerForTest's own comment
+	walFlushStopOnce sync.Once     // makes stopWALFlushWorkerForTest safe to call more than once
 }
 
 // validatorPenalty is one cached validator_penalties row — everything
@@ -548,6 +583,7 @@ func NewChainState(dataFile string) *ChainState {
 				}
 				cs.loadFromDB()
 				fmt.Println("✓ ChainState using PostgreSQL")
+				cs.initWALIfEnabled()
 				return cs
 			}
 		}
@@ -605,6 +641,13 @@ is_human BOOLEAN NOT NULL DEFAULT false
 	dbExec(`ALTER TABLE chain_accounts ADD COLUMN IF NOT EXISTS demurrage_14_day_warning_shown BOOLEAN NOT NULL DEFAULT false`)
 	dbExec(`ALTER TABLE chain_accounts ADD COLUMN IF NOT EXISTS faucet_claimed BOOLEAN NOT NULL DEFAULT false`)
 	dbExec(`ALTER TABLE chain_accounts ADD COLUMN IF NOT EXISTS version BIGINT NOT NULL DEFAULT 0`)
+	// wal_seq (SCALING_ARCHITECTURE.md Phase 7, transfer_wal.go): the highest
+	// WAL sequence number this row's balance reflects. Only ever written by
+	// the WAL flush worker and only ever read during WAL crash recovery —
+	// every other existing read/write path in this file ignores it
+	// entirely, so this column is additive and cannot change behavior when
+	// AEQUITAS_WAL_ENABLED is unset (the default).
+	dbExec(`ALTER TABLE chain_accounts ADD COLUMN IF NOT EXISTS wal_seq BIGINT NOT NULL DEFAULT 0`)
 	// Upgrade balance columns to NUMERIC(20,6) for exact decimal storage.
 	dbExec(`ALTER TABLE chain_accounts ALTER COLUMN balance TYPE NUMERIC(20,6) USING balance::NUMERIC(20,6)`)
 	dbExec(`ALTER TABLE chain_accounts ALTER COLUMN tusd_balance TYPE NUMERIC(20,6) USING tusd_balance::NUMERIC(20,6)`)
@@ -3765,13 +3808,26 @@ func (cs *ChainState) Transfer(from, to string, amount float64) (float64, float6
 // applied is false (cold account, would settle demurrage, would overflow
 // the wealth cap, or no DB) does this fall through to the batched path
 // below, unchanged from before this fast path existed.
+//
+// WAL-DURABLE FAST PATH (SCALING_ARCHITECTURE.md Phase 7, transfer_wal.go —
+// NOT staging-validated, changes real durability semantics when enabled,
+// see that file's own warning): when cs.wal is set (AEQUITAS_WAL_ENABLED=1),
+// transferConcurrentWAL is tried INSTEAD of transferConcurrent, not in
+// addition to it — both share the exact same eligibility scope, so trying
+// both would just repeat the same checks twice for nothing. cs.wal is nil
+// by default, so this branch does not change behavior for any node that
+// hasn't explicitly opted in.
 func (cs *ChainState) TransferAtomic(from, to string, amount float64, pendingTxTemplate Transaction) (fromLost, toLost float64, err error) {
 	from = strings.ToLower(from)
 	to = strings.ToLower(to)
 	if cs.db == nil {
 		return cs.transferAtomicDirect(from, to, amount, pendingTxTemplate)
 	}
-	if fLost, tLost, applied, cerr := cs.transferConcurrent(from, to, amount, pendingTxTemplate); applied {
+	if cs.wal != nil {
+		if fLost, tLost, applied, werr := cs.transferConcurrentWAL(from, to, amount, pendingTxTemplate); applied {
+			return fLost, tLost, werr
+		}
+	} else if fLost, tLost, applied, cerr := cs.transferConcurrent(from, to, amount, pendingTxTemplate); applied {
 		return fLost, tLost, cerr
 	}
 	cs.ensureTransferBatcherStarted()
