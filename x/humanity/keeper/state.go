@@ -314,11 +314,85 @@ type sqlExecutor interface {
 // unchanged for every caller that isn't part of an atomic operation).
 // Callers must still guard on cs.useDB/cs.db==nil exactly as before this
 // existed — this does not change the no-DB-mode contract at all.
+//
+// Thin wrapper around dbExecCtx with an empty context — see that function's
+// comment for why this exists and what it's the first step of. Every
+// existing call site keeps compiling and behaving identically; nothing
+// about this signature changes what dbExec() already did.
 func (cs *ChainState) dbExec() sqlExecutor {
+	return cs.dbExecCtx(context.Background())
+}
+
+// txKey is the context.Context key for the active *sql.Tx of the current
+// atomic operation. Unexported, zero-size, unique struct type (not a plain
+// string) so it can never collide with a key some other package might
+// store in the same context — the standard Go idiom for context keys.
+type txKey struct{}
+
+// withTx returns a context carrying tx as the active transaction dbExecCtx
+// should use — see dbExecCtx's own comment for the migration this is part
+// of.
+func withTx(ctx context.Context, tx *sql.Tx) context.Context {
+	return context.WithValue(ctx, txKey{}, tx)
+}
+
+// txFromContext returns ctx's active transaction, or nil if none was set
+// (context.Background(), or any context nothing ever called withTx on).
+func txFromContext(ctx context.Context) *sql.Tx {
+	tx, _ := ctx.Value(txKey{}).(*sql.Tx)
+	return tx
+}
+
+// dbExecCtx is dbExec's context-aware replacement — see
+// SCALING_ARCHITECTURE.md's Phase 5/7 "Update" section for the problem
+// this exists to eventually solve: cs.activeTx is a single, ChainState-wide
+// field every atomic operation currently shares, which makes genuine
+// concurrent execution of multiple such operations impossible (a second
+// operation's Begin() would silently overwrite the field a first,
+// still-in-flight operation is relying on). Replacing every implicit
+// cs.activeTx read with an explicit, per-operation ctx value is the
+// prerequisite for that — but doing so all at once, across every atomic
+// subsystem (transfer, swap, liquidity, registration, distribution,
+// guardian, slashing, snapshot import/resync, AND block replay — the single
+// most consensus-critical, historically bug-prone code in this repo) in one
+// pass would be exactly the kind of sweeping, hard-to-review rewrite this
+// project's own "Anti-Pattern" and "Historischer Kontext" sections warn
+// against.
+//
+// So this migrates gradually, one call chain at a time, EACH one verified
+// by the full test suite before moving to the next: a shared low-level
+// function (ensureAccountLoaded, saveAccountToDB, etc.) gets a new
+// `*Ctx`-suffixed sibling that takes ctx explicitly and is the real
+// implementation; the original name becomes a thin `context.Background()`
+// wrapper around it, so every NOT-yet-migrated caller anywhere in the
+// codebase keeps compiling and behaving identically, untouched. Until
+// runAtomicWithOutbox itself is migrated to stop setting cs.activeTx and
+// instead pass a real per-operation ctx through fn(), dbExecCtx falls back
+// to cs.activeTx exactly like dbExec always did — so at every intermediate
+// point in this migration, behavior is provably unchanged; only once EVERY
+// call site is migrated (a separate, much larger future step, tracked as
+// its own task) does removing cs.activeTx and enabling real concurrent
+// execution become possible.
+func (cs *ChainState) dbExecCtx(ctx context.Context) sqlExecutor {
+	if tx := txFromContext(ctx); tx != nil {
+		return tx
+	}
 	if cs.activeTx != nil {
 		return cs.activeTx
 	}
 	return cs.db
+}
+
+// activeTxCtx is dbExecCtx's counterpart for the handful of callers (e.g.
+// savePoolToDB) that need the raw *sql.Tx itself, not just something
+// satisfying sqlExecutor — e.g. to call Commit/Rollback, or to decide
+// whether to start a fresh transaction at all. Same ctx-then-cs.activeTx
+// fallback order as dbExecCtx, for the same reason.
+func (cs *ChainState) activeTxCtx(ctx context.Context) *sql.Tx {
+	if tx := txFromContext(ctx); tx != nil {
+		return tx
+	}
+	return cs.activeTx
 }
 
 // DB returns the underlying *sql.DB for admin operations that need raw queries.
@@ -1394,7 +1468,19 @@ const maxInMemAccounts = 5_000_000
 
 // ensureAccountLoaded fetches addr from DB into cs.accounts if it isn't
 // already there. Must be called while cs.mu (write lock) is held.
+//
+// Thin context.Background() wrapper around ensureAccountLoadedCtx — see
+// dbExecCtx's own comment for what migration this is the first step of and
+// why the wrapper exists (every one of this function's ~36 existing callers
+// keeps compiling and behaving identically, untouched, until each is
+// migrated to call the Ctx version directly).
 func (cs *ChainState) ensureAccountLoaded(addr string) {
+	cs.ensureAccountLoadedCtx(context.Background(), addr)
+}
+
+// ensureAccountLoadedCtx is ensureAccountLoaded's real implementation —
+// see that function's comment.
+func (cs *ChainState) ensureAccountLoadedCtx(ctx context.Context, addr string) {
 	if _, ok := cs.accounts.Get(addr); ok {
 		return
 	}
@@ -1422,7 +1508,7 @@ func (cs *ChainState) ensureAccountLoaded(addr string) {
 	// already-held transaction's own connection when one is active (same
 	// existing pattern every write in this file already uses), so this
 	// query needs zero extra pool capacity instead of one more.
-	err := cs.dbExec().QueryRow(
+	err := cs.dbExecCtx(ctx).QueryRow(
 		`SELECT balance, is_human, tusd_balance, lp_shares,
 		        COALESCE(last_activity_at, 0), COALESCE(version, 1)
 		 FROM chain_accounts WHERE lower(address) = $1`,
@@ -1836,7 +1922,13 @@ func (cs *ChainState) saveAccountToDB(acc *AccountState) error {
 	// normal control flow wrote to the same row (a stray unguarded
 	// goroutine, manual SQL, or two instances briefly overlapping during a
 	// deploy), not routine multi-node contention on a shared DB.
-	err := cs.saveAccountToDBInner(acc)
+	return cs.saveAccountToDBCtx(context.Background(), acc)
+}
+
+// saveAccountToDBCtx is saveAccountToDB's real implementation — see
+// dbExecCtx's comment for the migration this is part of.
+func (cs *ChainState) saveAccountToDBCtx(ctx context.Context, acc *AccountState) error {
+	err := cs.saveAccountToDBInnerCtx(ctx, acc)
 	if err == nil {
 		// Incremental state-root maintenance (see ChainState.accountSetXOR):
 		// the row write succeeded, so replace this account's previously-counted
@@ -1853,27 +1945,32 @@ func (cs *ChainState) saveAccountToDB(acc *AccountState) error {
 	return err
 }
 
-func (cs *ChainState) saveAccountToDBInner(acc *AccountState) error {
+// saveAccountToDBInnerCtx is saveAccountToDBInner's real implementation —
+// see dbExecCtx's comment for the migration this is part of. Its only
+// caller is saveAccountToDBCtx, so unlike the other shared low-level
+// functions here, the original saveAccountToDBInner name is simply removed
+// rather than kept as a wrapper -- nothing else in this codebase calls it.
+func (cs *ChainState) saveAccountToDBInnerCtx(ctx context.Context, acc *AccountState) error {
 	if !cs.useDB {
 		acc.Version++ // no-DB mode: mark as saved
 		return nil
 	}
 	var result sql.Result
 	var err error
-	// FIX (atomic outbox): use cs.dbExec() instead of cs.db directly — when
-	// runAtomicWithOutbox has an active transaction open for the current
-	// operation, this write becomes part of it (committed or rolled back
-	// together with the pending_tx outbox insert) instead of always
-	// auto-committing on its own connection.
+	// FIX (atomic outbox): use cs.dbExecCtx(ctx) instead of cs.db directly —
+	// when the caller's operation has an active transaction, this write
+	// becomes part of it (committed or rolled back together with the
+	// pending_tx outbox insert) instead of always auto-committing on its
+	// own connection.
 	if acc.Version == 0 {
 		// First write: INSERT with version=1, or update if exists without version conflict check
-		result, err = cs.dbExec().Exec(`INSERT INTO chain_accounts (address, balance, is_human, tusd_balance, lp_shares, last_activity_at, demurrage_14_day_warning_shown, faucet_claimed, version) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 1)
+		result, err = cs.dbExecCtx(ctx).Exec(`INSERT INTO chain_accounts (address, balance, is_human, tusd_balance, lp_shares, last_activity_at, demurrage_14_day_warning_shown, faucet_claimed, version) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 1)
 ON CONFLICT (address) DO UPDATE SET balance = $2, is_human = $3, tusd_balance = $4, lp_shares = $5, last_activity_at = $6, demurrage_14_day_warning_shown = $7, faucet_claimed = $8, version = COALESCE(chain_accounts.version,0) + 1`,
 			acc.Address, acc.Balance.Float(), acc.IsHuman, acc.TUsdBalance.Float(), acc.LPShares.Float(), acc.LastActivityAt, acc.Demurrage14DayWarningShown, acc.FaucetClaimed)
 	} else {
 		// Optimistic locking: only update if version matches what we read.
 		// If another node updated in parallel, rows affected = 0 → conflict detected.
-		result, err = cs.dbExec().Exec(`UPDATE chain_accounts SET balance = $2, is_human = $3, tusd_balance = $4, lp_shares = $5, last_activity_at = $6, demurrage_14_day_warning_shown = $7, faucet_claimed = $8, version = $9 + 1
+		result, err = cs.dbExecCtx(ctx).Exec(`UPDATE chain_accounts SET balance = $2, is_human = $3, tusd_balance = $4, lp_shares = $5, last_activity_at = $6, demurrage_14_day_warning_shown = $7, faucet_claimed = $8, version = $9 + 1
 WHERE address = $1 AND version = $9`,
 			acc.Address, acc.Balance.Float(), acc.IsHuman, acc.TUsdBalance.Float(), acc.LPShares.Float(), acc.LastActivityAt, acc.Demurrage14DayWarningShown, acc.FaucetClaimed, acc.Version)
 		if err == nil {
@@ -1881,10 +1978,10 @@ WHERE address = $1 AND version = $9`,
 				// Conflict: another node wrote a newer version. Reload DB version
 				// into memory so the next caller can retry with the correct base.
 				// FIX (deadlock, same as ensureAccountLoaded's FIX comment):
-				// cs.dbExec() instead of cs.db — this runs inside the same
-				// active transaction as the UPDATE just above.
+				// cs.dbExecCtx(ctx) instead of cs.db — this runs inside the
+				// same active transaction as the UPDATE just above.
 				var dbVer int64
-				cs.dbExec().QueryRow(`SELECT version FROM chain_accounts WHERE lower(address) = $1`, acc.Address).Scan(&dbVer)
+				cs.dbExecCtx(ctx).QueryRow(`SELECT version FROM chain_accounts WHERE lower(address) = $1`, acc.Address).Scan(&dbVer)
 				acc.Version = dbVer // resync in-memory; do NOT increment
 				fmt.Printf("[DB] Conflict: account %s modified by another node — local version reset to DB version %d\n", acc.Address, dbVer)
 				// FIX (audit recheck2, P0 #2): used to return nil here. The
@@ -1940,6 +2037,12 @@ WHERE address = $1 AND version = $9`,
 // with len(accs), so this is not a substitute for saveAccountToDB at
 // arbitrary N.
 func (cs *ChainState) saveAccountsToDBBatch(accs []*AccountState) error {
+	return cs.saveAccountsToDBBatchCtx(context.Background(), accs)
+}
+
+// saveAccountsToDBBatchCtx is saveAccountsToDBBatch's real implementation —
+// see dbExecCtx's comment for the migration this is part of.
+func (cs *ChainState) saveAccountsToDBBatchCtx(ctx context.Context, accs []*AccountState) error {
 	if len(accs) == 0 {
 		return nil
 	}
@@ -1994,7 +2097,7 @@ ins AS (
 )
 SELECT address FROM upd UNION ALL SELECT address FROM ins`
 
-	rows, err := cs.dbExec().Query(query, args...)
+	rows, err := cs.dbExecCtx(ctx).Query(query, args...)
 	if err != nil {
 		return fmt.Errorf("batch save failed: %w", err)
 	}
@@ -2115,6 +2218,12 @@ func effectiveBalance(acc *AccountState) Decimal {
 // runAtomicWithOutbox (directly or via its caller), so returning the error
 // here lets it reach that transaction's fn() and trigger a real rollback.
 func (cs *ChainState) settleDemurrageLocked(acc *AccountState) (Decimal, error) {
+	return cs.settleDemurrageLockedCtx(context.Background(), acc)
+}
+
+// settleDemurrageLockedCtx is settleDemurrageLocked's real implementation —
+// see dbExecCtx's comment for the migration this is part of.
+func (cs *ChainState) settleDemurrageLockedCtx(ctx context.Context, acc *AccountState) (Decimal, error) {
 	// P0-FIX: pool addresses are tokenomics infrastructure — never apply
 	// demurrage to them. Doing so would drain pool balances incorrectly.
 	if isTokenomicsPoolAddress(acc.Address) {
@@ -2126,7 +2235,7 @@ func (cs *ChainState) settleDemurrageLocked(acc *AccountState) (Decimal, error) 
 		return 0, nil
 	}
 	acc.Balance = current
-	if err := cs.distributeSwapFee(lost.Float(), true); err != nil {
+	if err := cs.distributeSwapFeeCtx(ctx, lost.Float(), true); err != nil {
 		return 0, fmt.Errorf("demurrage: could not persist pool credits for %s: %w", acc.Address, err)
 	}
 	fmt.Printf("[DEMURRAGE] %s: idle balance decayed by %.6f AEQ, redistributed to pools\n", acc.Address, lost.Float())
@@ -2986,6 +3095,12 @@ func (cs *ChainState) bootstrapMultiplierLocked() float64 {
 // rollback — the same fix class already applied to ApplyUBIDelta,
 // transferLocked, etc. (see their "audit recheck2, P0 #3" comments).
 func (cs *ChainState) enforceWealthCapLocked(acc *AccountState) error {
+	return cs.enforceWealthCapLockedCtx(context.Background(), acc)
+}
+
+// enforceWealthCapLockedCtx is enforceWealthCapLocked's real implementation
+// — see dbExecCtx's comment for the migration this is part of.
+func (cs *ChainState) enforceWealthCapLockedCtx(ctx context.Context, acc *AccountState) error {
 	if isTokenomicsPoolAddress(acc.Address) {
 		return nil
 	}
@@ -3007,7 +3122,7 @@ func (cs *ChainState) enforceWealthCapLocked(acc *AccountState) error {
 	}
 	excess := acc.Balance.Float() - wealthCapAmt
 	acc.Balance = NewDecimal(wealthCapAmt)
-	if err := cs.distributeSwapFee(excess, true); err != nil {
+	if err := cs.distributeSwapFeeCtx(ctx, excess, true); err != nil {
 		return fmt.Errorf("wealth cap: could not persist pool credits for %s excess: %w", acc.Address, err)
 	}
 	fmt.Printf("[WEALTH CAP] %s exceeded %.2fx average (%.2f AEQ) — %.4f AEQ excess redistributed to pools\n",
@@ -3542,7 +3657,11 @@ func (cs *ChainState) RunDailyDistributionAtomic(ubiAt int64) error {
 func (cs *ChainState) Transfer(from, to string, amount float64) (float64, float64, error) {
 	cs.mu.Lock()
 	defer cs.mu.Unlock()
-	return cs.transferLocked(from, to, amount)
+	// context.Background() is correct here, not a placeholder: this path
+	// does not go through runAtomicWithOutbox, so there has never been an
+	// active transaction for it to join — every DB write below already fell
+	// back to cs.db directly, exactly as dbExecCtx's own fallback preserves.
+	return cs.transferLocked(context.Background(), from, to, amount)
 }
 
 // TransferAtomic behaves exactly like Transfer, except the state mutation
@@ -3595,7 +3714,12 @@ func (cs *ChainState) TransferAtomic(from, to string, amount float64, pendingTxT
 // TransferAtomic already short-circuits before ever enqueuing.
 func (cs *ChainState) transferAtomicDirect(from, to string, amount float64, pendingTxTemplate Transaction) (fromLost, toLost float64, err error) {
 	err = cs.runAtomicWithOutbox([]string{from, to, validatorsPoolAddr, lpPoolAddr, ubiPoolAddr, treasuryPoolAddr}, false, func() (Transaction, error) {
-		fromLost, toLost, err = cs.transferLocked(from, to, amount)
+		// context.Background() is correct here, not a placeholder: this
+		// function only ever runs via runAtomicWithOutbox's no-DB branch
+		// (see this function's own doc comment — "Used directly when there
+		// is no real DB"), which never sets cs.activeTx, so there is no
+		// transaction to carry regardless.
+		fromLost, toLost, err = cs.transferLocked(context.Background(), from, to, amount)
 		if err != nil {
 			return Transaction{}, err
 		}
@@ -3730,9 +3854,16 @@ func (cs *ChainState) processTransferBatch(batch []*transferBatchRequest) {
 
 	results := make([]transferBatchResult, len(batch))
 	err := cs.runAtomicWithOutbox(touched, false, func() (Transaction, error) {
+		// runAtomicWithOutbox just set cs.activeTx for this operation (cs.mu
+		// is held throughout, so reading it here is safe, same as every
+		// other in-critical-section read already does) — capture it into a
+		// ctx so transferLocked and everything it calls can be threaded
+		// explicitly instead of relying on the implicit field. See
+		// dbExecCtx's own comment for the migration this is part of.
+		ctx := withTx(context.Background(), cs.activeTx)
 		var last Transaction
 		for i, req := range batch {
-			fromLost, toLost, tErr := cs.transferLocked(req.from, req.to, req.amount)
+			fromLost, toLost, tErr := cs.transferLocked(ctx, req.from, req.to, req.amount)
 			if tErr != nil {
 				return Transaction{}, fmt.Errorf("batch member %d/%d (%s -> %s) failed: %w", i+1, len(batch), req.from, req.to, tErr)
 			}
@@ -3744,11 +3875,11 @@ func (cs *ChainState) processTransferBatch(batch []*transferBatchRequest) {
 				// Last member's outbox row is inserted by runAtomicWithOutbox
 				// itself (its normal single-Transaction contract) — every
 				// earlier member's own row is inserted explicitly right here,
-				// via cs.dbExec() so it joins the SAME transaction.
+				// via cs.dbExecCtx(ctx) so it joins the SAME transaction.
 				last = pendingTx
 				continue
 			}
-			if outboxErr := savePendingTxExec(cs.dbExec(), pendingTx); outboxErr != nil {
+			if outboxErr := savePendingTxExec(cs.dbExecCtx(ctx), pendingTx); outboxErr != nil {
 				return Transaction{}, fmt.Errorf("batch member %d/%d (%s -> %s) outbox insert failed: %w", i+1, len(batch), req.from, req.to, outboxErr)
 			}
 		}
@@ -3772,7 +3903,13 @@ func (cs *ChainState) processTransferBatch(batch []*transferBatchRequest) {
 // acquisition it uses to set/clear cs.activeTx (see runAtomicWithOutbox) —
 // Transfer() itself locks cs.mu, so calling it from inside an already-locked
 // context would deadlock on Go's non-reentrant sync.Mutex.
-func (cs *ChainState) transferLocked(from, to string, amount float64) (float64, float64, error) {
+// transferLocked takes ctx explicitly (see dbExecCtx's own comment) rather
+// than through the old/new wrapper split most other shared functions here
+// use: unlike those, it has exactly three callers (TransferAtomic's no-DB
+// fallback, transferAtomicDirect, processTransferBatch), all migrated to
+// pass ctx explicitly in this same change, so no compatibility wrapper is
+// needed.
+func (cs *ChainState) transferLocked(ctx context.Context, from, to string, amount float64) (float64, float64, error) {
 	from = strings.ToLower(from)
 	to = strings.ToLower(to)
 	// P1-FIX: reject NaN/Inf amounts — these would corrupt balances via
@@ -3786,13 +3923,13 @@ func (cs *ChainState) transferLocked(from, to string, amount float64) (float64, 
 		return 0, 0, fmt.Errorf("self-transfer not allowed")
 	}
 
-	cs.ensureAccountLoaded(from)
-	cs.ensureAccountLoaded(to)
+	cs.ensureAccountLoadedCtx(ctx, from)
+	cs.ensureAccountLoadedCtx(ctx, to)
 	fromAcc, ok := cs.accounts.Get(from)
 	if !ok {
 		return 0, 0, fmt.Errorf("insufficient balance")
 	}
-	fromLost, err := cs.settleDemurrageLocked(fromAcc) // make sure we're checking against the real, decayed balance
+	fromLost, err := cs.settleDemurrageLockedCtx(ctx, fromAcc) // make sure we're checking against the real, decayed balance
 	if err != nil {
 		return 0, 0, fmt.Errorf("could not settle demurrage for sender: %w", err)
 	}
@@ -3805,7 +3942,7 @@ func (cs *ChainState) transferLocked(from, to string, amount float64) (float64, 
 	// FIX (audit3, P1 #4): saveAccountToDB now returns an error — checked here
 	// so a DB failure aborts the transfer (causing runAtomicWithOutbox to roll
 	// back) instead of returning success while the debit was never persisted.
-	if err := cs.saveAccountToDB(fromAcc); err != nil {
+	if err := cs.saveAccountToDBCtx(ctx, fromAcc); err != nil {
 		return 0, 0, fmt.Errorf("could not save sender account: %w", err)
 	}
 
@@ -3814,16 +3951,16 @@ func (cs *ChainState) transferLocked(from, to string, amount float64) (float64, 
 		toAcc = &AccountState{Address: to}
 		cs.accounts.Set(to, toAcc)
 	}
-	toLost, err := cs.settleDemurrageLocked(toAcc)
+	toLost, err := cs.settleDemurrageLockedCtx(ctx, toAcc)
 	if err != nil {
 		return 0, 0, fmt.Errorf("could not settle demurrage for recipient: %w", err)
 	}
 	toAcc.Balance = toAcc.Balance.Add(NewDecimal(amount))
 	touchActivity(toAcc) // receiving also resets the clock on the recipient's whole balance
-	if err := cs.enforceWealthCapLocked(toAcc); err != nil {
+	if err := cs.enforceWealthCapLockedCtx(ctx, toAcc); err != nil {
 		return 0, 0, fmt.Errorf("could not enforce wealth cap for recipient: %w", err)
 	}
-	if err := cs.saveAccountToDB(toAcc); err != nil {
+	if err := cs.saveAccountToDBCtx(ctx, toAcc); err != nil {
 		return 0, 0, fmt.Errorf("could not save recipient account: %w", err)
 	}
 	cs.save()
@@ -4185,20 +4322,26 @@ func sideLabel(aeqToTusd, isInput bool) string {
 // saveAccountToDB's comment (audit3, P1 #4) for why this now returns
 // error and which callers are expected to actually check it.
 func (cs *ChainState) savePoolToDB() error {
+	return cs.savePoolToDBCtx(context.Background())
+}
+
+// savePoolToDBCtx is savePoolToDB's real implementation — see dbExecCtx's
+// comment for the migration this is part of.
+func (cs *ChainState) savePoolToDBCtx(ctx context.Context) error {
 	if !cs.useDB || cs.pool == nil {
 		return nil
 	}
-	// FIX (atomic outbox): if runAtomicWithOutbox has an active transaction
-	// open for the current operation, use it directly instead of starting a
-	// SEPARATE one via cs.db.Begin() — that would open an independent
-	// connection-level transaction with no relationship to cs.activeTx,
-	// defeating the point (this write needs to commit/rollback together
-	// with the rest of the operation, not on its own), and risking a
-	// self-deadlock if both ever needed the same row lock concurrently.
-	// The outer transaction already provides the serialization the
-	// SELECT FOR UPDATE below exists for, so skip that dance entirely here.
-	if cs.activeTx != nil {
-		if _, err := cs.activeTx.Exec(`UPDATE liquidity_pool SET reserve_aeq = $1, reserve_tusd = $2, total_lp_shares = $3 WHERE id = 1`,
+	// FIX (atomic outbox): if the current operation has an active
+	// transaction open, use it directly instead of starting a SEPARATE one
+	// via cs.db.Begin() — that would open an independent connection-level
+	// transaction with no relationship to it, defeating the point (this
+	// write needs to commit/rollback together with the rest of the
+	// operation, not on its own), and risking a self-deadlock if both ever
+	// needed the same row lock concurrently. The outer transaction already
+	// provides the serialization the SELECT FOR UPDATE below exists for, so
+	// skip that dance entirely here.
+	if tx := cs.activeTxCtx(ctx); tx != nil {
+		if _, err := tx.Exec(`UPDATE liquidity_pool SET reserve_aeq = $1, reserve_tusd = $2, total_lp_shares = $3 WHERE id = 1`,
 			cs.pool.ReserveAEQ.Float(), cs.pool.ReserveTUSD.Float(), cs.pool.TotalLPShares.Float()); err != nil {
 			fmt.Printf("[DB] Error saving pool inside active transaction: %v\n", err)
 			return fmt.Errorf("could not save pool inside active transaction: %w", err)
@@ -4387,6 +4530,12 @@ func (cs *ChainState) convertTUsdForEscrowLocked(acc *AccountState, tusdAmount f
 // price the fee it falls back to crediting the raw tUSD, also deterministic.
 // Caller must hold cs.mu.
 func (cs *ChainState) distributeSwapFee(fee float64, feeInAEQ bool) error {
+	return cs.distributeSwapFeeCtx(context.Background(), fee, feeInAEQ)
+}
+
+// distributeSwapFeeCtx is distributeSwapFee's real implementation — see
+// dbExecCtx's comment for the migration this is part of.
+func (cs *ChainState) distributeSwapFeeCtx(ctx context.Context, fee float64, feeInAEQ bool) error {
 	if fee <= 0 {
 		return nil
 	}
@@ -4394,7 +4543,7 @@ func (cs *ChainState) distributeSwapFee(fee float64, feeInAEQ bool) error {
 		if aeqFee, ok := cs.convertTUsdFeeToAEQLocked(fee); ok {
 			fee = aeqFee
 			feeInAEQ = true
-			if err := cs.savePoolToDB(); err != nil {
+			if err := cs.savePoolToDBCtx(ctx); err != nil {
 				return fmt.Errorf("distributeSwapFee: could not persist fee conversion: %w", err)
 			}
 		}
@@ -4451,7 +4600,7 @@ func (cs *ChainState) distributeSwapFee(fee float64, feeInAEQ bool) error {
 	// long-established "pool balance visible immediately" assertions.
 	if cs.useDB {
 		cs.markPoolAccountsDirtyLocked()
-	} else if err := cs.saveAccountsToDBBatch(accs); err != nil {
+	} else if err := cs.saveAccountsToDBBatchCtx(ctx, accs); err != nil {
 		return fmt.Errorf("distributeSwapFee: could not persist pool credits: %w", err)
 	}
 	currency := "tUSD"
