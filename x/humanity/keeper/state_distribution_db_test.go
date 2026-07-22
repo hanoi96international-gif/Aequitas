@@ -1,10 +1,13 @@
 package keeper
 
 import (
+	"database/sql"
 	"fmt"
 	"os"
 	"testing"
 	"time"
+
+	_ "github.com/lib/pq"
 )
 
 // distTestAddr builds a well-formed 42-char (0x + 40 hex digits) test
@@ -12,6 +15,40 @@ import (
 // malformed, which a hand-written "0xdist...N" string can silently violate.
 func distTestAddr(n int) string {
 	return fmt.Sprintf("0x%040x", n)
+}
+
+// truncateDistTestTables clears every table these real-DB distribution/
+// escrow/recovery tests read or write a global (not test-address-scoped)
+// view of — chain_accounts.is_human and chain_accounts.lp_shares in
+// particular are read as "every human"/"every LP holder" by
+// distributeUBIPoolLocked/distributeLPPoolLocked, so a human or LP-share
+// account left behind by an unrelated test running earlier in the same
+// `go test` invocation silently skews their math (confirmed: running these
+// tests together without a truncate at all produced a real 3-way split
+// where 2 was expected, from a single leftover human seeded by
+// TestRecoverFromEscrow_RealDB).
+//
+// MUST run BEFORE NewChainState, not after: NewChainState's constructor
+// calls loadFromDB and caches every existing row into cs.accounts
+// in-memory, versions included. Truncating only the DB afterward leaves
+// those stale, non-zero Version values cached in memory while the actual
+// rows are gone — the next saveAccountToDB[Ctx] call for one of those
+// addresses (e.g. a pool address touched by fee distribution) then loses
+// the optimistic-lock race against a row that no longer exists, surfacing
+// as a spurious "version conflict" error that has nothing to do with real
+// concurrent writers. Confirmed: this exact failure mode reproduced when
+// the truncate briefly lived after NewChainState during this test's own
+// development.
+func truncateDistTestTables(t *testing.T) {
+	t.Helper()
+	db, err := sql.Open("postgres", os.Getenv("DATABASE_URL"))
+	if err != nil {
+		t.Fatalf("truncateDistTestTables: open: %v", err)
+	}
+	defer db.Close()
+	if _, err := db.Exec(`TRUNCATE chain_accounts, chain_config, nullifiers, liquidity_pool, escrow_accounts, registered_nodes CASCADE`); err != nil {
+		t.Fatalf("truncateDistTestTables: %v", err)
+	}
 }
 
 // TestRunDailyDistributionAtomic_RealDB is the DB-backed counterpart to
@@ -37,6 +74,7 @@ func TestRunDailyDistributionAtomic_RealDB(t *testing.T) {
 		t.Fatal("DATABASE_URL must point at a disposable local Postgres database")
 	}
 
+	truncateDistTestTables(t)
 	cs := NewChainState("unused-distribution-db-test.json")
 	if !cs.useDB {
 		t.Fatal("expected a live PostgreSQL connection (cs.useDB == false) — check DATABASE_URL")
@@ -141,6 +179,7 @@ func TestRunDailyDistributionAtomic_EscrowRealDB(t *testing.T) {
 		t.Fatal("DATABASE_URL must point at a disposable local Postgres database")
 	}
 
+	truncateDistTestTables(t)
 	cs := NewChainState("unused-distribution-escrow-db-test.json")
 	if !cs.useDB {
 		t.Fatal("expected a live PostgreSQL connection (cs.useDB == false) — check DATABASE_URL")

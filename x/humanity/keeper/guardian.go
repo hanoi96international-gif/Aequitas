@@ -306,11 +306,14 @@ func (cs *ChainState) RecoverFromEscrow(wallet string) error {
 		return fmt.Errorf("no database")
 	}
 	return cs.runAtomicWithOutbox([]string{wallet}, false, func() (Transaction, error) {
+		// See processTransferBatch's own comment for why capturing
+		// cs.activeTx into ctx here (cs.mu held throughout) is safe.
+		ctx := withTx(context.Background(), cs.activeTx)
 		// DELETE...RETURNING inside the active DB transaction — atomically
 		// claims the escrow row while joining the same commit/rollback unit
 		// as the subsequent balance credit and outbox insert.
 		var amount float64
-		err := cs.dbExec().QueryRow(
+		err := cs.dbExecCtx(ctx).QueryRow(
 			`DELETE FROM escrow_accounts WHERE wallet_address = $1 RETURNING amount`,
 			wallet,
 		).Scan(&amount)
@@ -330,21 +333,21 @@ func (cs *ChainState) RecoverFromEscrow(wallet string) error {
 			cs.accounts.Set(wallet, &AccountState{Address: wallet, IsHuman: true})
 		}
 		acc, _ := cs.accounts.Get(wallet)
-		if _, err := cs.settleDemurrageLocked(acc); err != nil {
+		if _, err := cs.settleDemurrageLockedCtx(ctx, acc); err != nil {
 			return Transaction{}, fmt.Errorf("could not settle demurrage for %s: %w", wallet, err)
 		}
 		acc.Balance = acc.Balance.Add(NewDecimal(amount))
 		touchActivity(acc)
-		if err := cs.enforceWealthCapLocked(acc); err != nil {
+		if err := cs.enforceWealthCapLockedCtx(ctx, acc); err != nil {
 			return Transaction{}, fmt.Errorf("could not enforce wealth cap for %s: %w", wallet, err)
 		}
-		if err := cs.saveAccountToDB(acc); err != nil {
+		if err := cs.saveAccountToDBCtx(ctx, acc); err != nil {
 			return Transaction{}, fmt.Errorf("could not persist recovered balance for %s: %w", wallet, err)
 		}
 		// FIX (P2-5, beta-launch audit 2026-07-05): cs.mu is already held
 		// here (runAtomicWithOutbox's callback) — see syncGuardianEscrowSlotsLocked's
 		// comment for why this keeps the EVM mirror's escrowOf slot current.
-		cs.syncGuardianEscrowSlotsLocked(V7_CONTRACT_ADDR, wallet)
+		cs.syncGuardianEscrowSlotsLockedCtx(ctx, V7_CONTRACT_ADDR, wallet)
 		fmt.Printf("[ESCROW] ✓ %s recovered %.6f AEQ from escrow\n", wallet, amount)
 		return Transaction{
 			Type:   "escrow_recover",
