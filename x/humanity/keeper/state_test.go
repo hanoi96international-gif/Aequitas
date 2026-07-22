@@ -9,10 +9,18 @@ import (
 // newTestState creates an in-memory ChainState with no file/DB backend.
 func newTestState() *ChainState {
 	return &ChainState{
-		accounts: make(map[string]*AccountState),
+		accounts: newShardedAccounts(),
 		pool:     &PoolState{},
 		useDB:    false,
 	}
+}
+
+// acct returns the account at addr, or nil if absent — test-only convenience
+// wrapper around shardedAccounts.Get for assertions that used to index
+// cs.accounts directly like a plain map.
+func acct(cs *ChainState, addr string) *AccountState {
+	a, _ := cs.accounts.Get(addr)
+	return a
 }
 
 // addHuman inserts a registered human account directly into state for testing.
@@ -27,14 +35,14 @@ func newTestState() *ChainState {
 // against double-counting if a test ever calls this twice for the same
 // address on the same ChainState.
 func addHuman(cs *ChainState, addr string, balance float64) {
-	if existing, ok := cs.accounts[addr]; !ok || !existing.IsHuman {
+	if existing, ok := cs.accounts.Get(addr); !ok || !existing.IsHuman {
 		cs.humanCount++
 	}
-	cs.accounts[addr] = &AccountState{
+	cs.accounts.Set(addr, &AccountState{
 		Address: addr,
 		Balance: NewDecimal(balance),
 		IsHuman: true,
-	}
+	})
 }
 
 // --- CalcGini ---
@@ -102,7 +110,7 @@ func TestCalcGini_NonHumanBalancesIgnored(t *testing.T) {
 	addHuman(cs, "0x01", 100)
 	addHuman(cs, "0x02", 100)
 	// Non-human with huge balance — must not skew Gini
-	cs.accounts["0x99"] = &AccountState{Address: "0x99", Balance: NewDecimal(1_000_000), IsHuman: false}
+	cs.accounts.Set("0x99", &AccountState{Address: "0x99", Balance: NewDecimal(1_000_000), IsHuman: false})
 	g := cs.CalcGini()
 	if g != 0.0 {
 		t.Errorf("non-human balance must be ignored: want Gini=0, got %v", g)
@@ -118,7 +126,7 @@ func TestCalcGini_CountsLPWealth(t *testing.T) {
 	cs.pool = &PoolState{ReserveAEQ: NewDecimal(1000), TotalLPShares: NewDecimal(1000)}
 	addHuman(cs, "0x01", 100) // 100 AEQ liquid, no LP
 	// 0 liquid, owns 900 of 1000 LP shares → 900 AEQ of pool wealth.
-	cs.accounts["0x02"] = &AccountState{Address: "0x02", IsHuman: true, Balance: NewDecimal(0), LPShares: NewDecimal(900)}
+	cs.accounts.Set("0x02", &AccountState{Address: "0x02", IsHuman: true, Balance: NewDecimal(0), LPShares: NewDecimal(900)})
 	g := cs.CalcGini()
 	// Wealth is [100, 900] → highly unequal. The old code returned ~0 here
 	// (0x02 dropped, lone human left), the exact "LP wallet shows 0" bug.
@@ -133,7 +141,7 @@ func TestCalcGini_LPAndLiquidEqual_IsZero(t *testing.T) {
 	cs := newTestState()
 	cs.pool = &PoolState{ReserveAEQ: NewDecimal(500), TotalLPShares: NewDecimal(500)}
 	addHuman(cs, "0x01", 500) // 500 liquid
-	cs.accounts["0x02"] = &AccountState{Address: "0x02", IsHuman: true, Balance: NewDecimal(0), LPShares: NewDecimal(500)} // 500 via LP
+	cs.accounts.Set("0x02", &AccountState{Address: "0x02", IsHuman: true, Balance: NewDecimal(0), LPShares: NewDecimal(500)}) // 500 via LP
 	if g := cs.CalcGini(); g != 0.0 {
 		t.Errorf("equal total wealth (liquid vs LP): want Gini=0, got %v", g)
 	}
@@ -260,7 +268,7 @@ func TestEnforceWealthCap_BelowCap_NoChange(t *testing.T) {
 	// 2 humans at 500 each: avg=500, multiplier=5 (floor), cap=2500 > 500 → no cap
 	addHuman(cs, "0x01", 500)
 	addHuman(cs, "0x02", 500)
-	acc := cs.accounts["0x01"]
+	acc := acct(cs, "0x01")
 	cs.mu.Lock()
 	cs.enforceWealthCapLocked(acc)
 	cs.mu.Unlock()
@@ -281,7 +289,7 @@ func TestEnforceWealthCap_AboveCap_ExcessRedistributed(t *testing.T) {
 		addHuman(cs, fmt.Sprintf("0xpoor%02d", i), 10)
 	}
 	addHuman(cs, "0xrich", 100_000)
-	acc := cs.accounts["0xrich"]
+	acc := acct(cs, "0xrich")
 	// Current production logic intentionally uses the fixed fair-share
 	// invariant of 1000 AEQ per human.
 	expectedCap := 25_000.0
@@ -291,10 +299,10 @@ func TestEnforceWealthCap_AboveCap_ExcessRedistributed(t *testing.T) {
 	if math.Abs(acc.Balance.Float()-expectedCap) > 1e-6 {
 		t.Errorf("after cap: want balance=%.6f, got %.6f", expectedCap, acc.Balance.Float())
 	}
-	poolTotal := cs.accounts[validatorsPoolAddr].Balance.Float() +
-		cs.accounts[lpPoolAddr].Balance.Float() +
-		cs.accounts[ubiPoolAddr].Balance.Float() +
-		cs.accounts[treasuryPoolAddr].Balance.Float()
+	poolTotal := acct(cs, validatorsPoolAddr).Balance.Float() +
+		acct(cs, lpPoolAddr).Balance.Float() +
+		acct(cs, ubiPoolAddr).Balance.Float() +
+		acct(cs, treasuryPoolAddr).Balance.Float()
 	expectedExcess := 75_000.0
 	if math.Abs(poolTotal-expectedExcess) > 1e-6 {
 		t.Errorf("pool total: want %.6f excess redistributed, got %.6f", expectedExcess, poolTotal)
@@ -305,8 +313,8 @@ func TestEnforceWealthCap_PoolAddresses_Exempt(t *testing.T) {
 	cs := newTestState()
 	addHuman(cs, "0x01", 100)
 	// Pool address with huge balance — must be exempt from cap
-	cs.accounts[validatorsPoolAddr] = &AccountState{Address: validatorsPoolAddr, Balance: NewDecimal(1_000_000)}
-	acc := cs.accounts[validatorsPoolAddr]
+	cs.accounts.Set(validatorsPoolAddr, &AccountState{Address: validatorsPoolAddr, Balance: NewDecimal(1_000_000)})
+	acc := acct(cs, validatorsPoolAddr)
 	cs.mu.Lock()
 	cs.enforceWealthCapLocked(acc)
 	cs.mu.Unlock()
@@ -326,14 +334,14 @@ func TestApplyTransferDelta_InsufficientAfterDemurrage_NoMutation(t *testing.T) 
 	if err == nil {
 		t.Fatal("expected insufficient-balance error, got nil")
 	}
-	if cs.accounts["0xfrom"].Balance.Float() != 100 {
-		t.Errorf("sender balance must be unchanged on failure, got %v", cs.accounts["0xfrom"].Balance.Float())
+	if acct(cs, "0xfrom").Balance.Float() != 100 {
+		t.Errorf("sender balance must be unchanged on failure, got %v", acct(cs, "0xfrom").Balance.Float())
 	}
-	if cs.accounts["0xto"].Balance.Float() != 0 {
-		t.Errorf("recipient balance must be unchanged on failure, got %v", cs.accounts["0xto"].Balance.Float())
+	if acct(cs, "0xto").Balance.Float() != 0 {
+		t.Errorf("recipient balance must be unchanged on failure, got %v", acct(cs, "0xto").Balance.Float())
 	}
 	for _, addr := range []string{validatorsPoolAddr, lpPoolAddr, ubiPoolAddr, treasuryPoolAddr} {
-		if acc, ok := cs.accounts[addr]; ok && acc.Balance.Float() != 0 {
+		if acc, ok := cs.accounts.Get(addr); ok && acc.Balance.Float() != 0 {
 			t.Errorf("pool %s must not be credited when the transfer fails, got %v", addr, acc.Balance.Float())
 		}
 	}
@@ -346,11 +354,11 @@ func TestApplySwapDelta_InsufficientAfterDemurrage_NoMutation(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected insufficient-balance error, got nil")
 	}
-	if cs.accounts["0xswapper"].Balance.Float() != 100 {
-		t.Errorf("balance must be unchanged on failure, got %v", cs.accounts["0xswapper"].Balance.Float())
+	if acct(cs, "0xswapper").Balance.Float() != 100 {
+		t.Errorf("balance must be unchanged on failure, got %v", acct(cs, "0xswapper").Balance.Float())
 	}
-	if cs.accounts["0xswapper"].TUsdBalance.Float() != 0 {
-		t.Errorf("tUSD balance must be unchanged on failure, got %v", cs.accounts["0xswapper"].TUsdBalance.Float())
+	if acct(cs, "0xswapper").TUsdBalance.Float() != 0 {
+		t.Errorf("tUSD balance must be unchanged on failure, got %v", acct(cs, "0xswapper").TUsdBalance.Float())
 	}
 }
 
@@ -361,8 +369,8 @@ func TestAddLiquidityDelta_InsufficientAfterDemurrage_NoMutation(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected insufficient-balance error, got nil")
 	}
-	if cs.accounts["0xlp"].Balance.Float() != 100 {
-		t.Errorf("balance must be unchanged on failure, got %v", cs.accounts["0xlp"].Balance.Float())
+	if acct(cs, "0xlp").Balance.Float() != 100 {
+		t.Errorf("balance must be unchanged on failure, got %v", acct(cs, "0xlp").Balance.Float())
 	}
 	if cs.pool.ReserveAEQ.Float() != 0 {
 		t.Errorf("pool reserves must be unchanged on failure, got %v", cs.pool.ReserveAEQ.Float())
@@ -380,13 +388,13 @@ func TestSnapshotRestoreRollback_RevertsExistingAccountAndPool(t *testing.T) {
 	snap := cs.snapshotForRollback([]string{"0xa"}, false)
 
 	// Mutate as if a TX had partially applied.
-	cs.accounts["0xa"].Balance = NewDecimal(1)
+	acct(cs, "0xa").Balance = NewDecimal(1)
 	cs.pool.ReserveAEQ = NewDecimal(999999)
 
 	cs.restoreFromRollback(snap)
 
-	if cs.accounts["0xa"].Balance.Float() != 1000 {
-		t.Errorf("account balance not restored: got %v, want 1000", cs.accounts["0xa"].Balance.Float())
+	if acct(cs, "0xa").Balance.Float() != 1000 {
+		t.Errorf("account balance not restored: got %v, want 1000", acct(cs, "0xa").Balance.Float())
 	}
 	if cs.pool.ReserveAEQ.Float() != 500 {
 		t.Errorf("pool reserve not restored: got %v, want 500", cs.pool.ReserveAEQ.Float())
@@ -399,11 +407,11 @@ func TestSnapshotRestoreRollback_RemovesAccountCreatedDuringBlock(t *testing.T) 
 	snap := cs.snapshotForRollback([]string{"0xnew"}, false)
 
 	// Simulate a transfer creating the recipient mid-block.
-	cs.accounts["0xnew"] = &AccountState{Address: "0xnew", Balance: NewDecimal(50)}
+	cs.accounts.Set("0xnew", &AccountState{Address: "0xnew", Balance: NewDecimal(50)})
 
 	cs.restoreFromRollback(snap)
 
-	if _, exists := cs.accounts["0xnew"]; exists {
+	if _, exists := cs.accounts.Get("0xnew"); exists {
 		t.Error("account created during a rolled-back block must be removed, but still exists")
 	}
 }
@@ -417,16 +425,16 @@ func TestSnapshotRestoreRollback_FullSnapshotCoversAllAccounts(t *testing.T) {
 	// not just ones explicitly named.
 	snap := cs.snapshotForRollback(nil, true)
 
-	cs.accounts["0x01"].Balance = NewDecimal(5000)
-	cs.accounts["0x02"].Balance = NewDecimal(5000)
+	acct(cs, "0x01").Balance = NewDecimal(5000)
+	acct(cs, "0x02").Balance = NewDecimal(5000)
 
 	cs.restoreFromRollback(snap)
 
-	if cs.accounts["0x01"].Balance.Float() != 1000 {
-		t.Errorf("0x01 not restored under full snapshot: got %v", cs.accounts["0x01"].Balance.Float())
+	if acct(cs, "0x01").Balance.Float() != 1000 {
+		t.Errorf("0x01 not restored under full snapshot: got %v", acct(cs, "0x01").Balance.Float())
 	}
-	if cs.accounts["0x02"].Balance.Float() != 1000 {
-		t.Errorf("0x02 not restored under full snapshot: got %v", cs.accounts["0x02"].Balance.Float())
+	if acct(cs, "0x02").Balance.Float() != 1000 {
+		t.Errorf("0x02 not restored under full snapshot: got %v", acct(cs, "0x02").Balance.Float())
 	}
 }
 
@@ -436,7 +444,7 @@ func TestDistributeUBIPool_ReturnsAmountActuallyCredited(t *testing.T) {
 	cs := newTestState()
 	addHuman(cs, "0x01", 0)
 	addHuman(cs, "0x02", 0)
-	cs.accounts[ubiPoolAddr] = &AccountState{Address: ubiPoolAddr, Balance: NewDecimal(100)}
+	cs.accounts.Set(ubiPoolAddr, &AccountState{Address: ubiPoolAddr, Balance: NewDecimal(100)})
 
 	shares := cs.DistributeUBIPool()
 
@@ -454,11 +462,11 @@ func TestDistributeUBIPool_ReturnsAmountActuallyCredited(t *testing.T) {
 	// the exact bug the audit flagged: main.go used to compute this number
 	// independently (reading the pool balance before calling this
 	// function), which could differ from what got applied here.
-	if cs.accounts["0x01"].Balance.Float() != got["0x01"] {
-		t.Errorf("returned amount (%v) doesn't match actual credit (%v)", got["0x01"], cs.accounts["0x01"].Balance.Float())
+	if acct(cs, "0x01").Balance.Float() != got["0x01"] {
+		t.Errorf("returned amount (%v) doesn't match actual credit (%v)", got["0x01"], acct(cs, "0x01").Balance.Float())
 	}
-	if cs.accounts[ubiPoolAddr].Balance.Float() != 0 {
-		t.Errorf("pool must be zeroed after distribution, got %v", cs.accounts[ubiPoolAddr].Balance.Float())
+	if acct(cs, ubiPoolAddr).Balance.Float() != 0 {
+		t.Errorf("pool must be zeroed after distribution, got %v", acct(cs, ubiPoolAddr).Balance.Float())
 	}
 }
 
@@ -469,8 +477,8 @@ func TestApplyUBIRewardDelta_SettlesDemurrageThenCredits(t *testing.T) {
 	if err := cs.ApplyUBIRewardDelta("0xhuman", 50, 8); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if cs.accounts["0xhuman"].Balance.Float() != 142 {
-		t.Errorf("want balance=142 (100-8+50), got %v", cs.accounts["0xhuman"].Balance.Float())
+	if acct(cs, "0xhuman").Balance.Float() != 142 {
+		t.Errorf("want balance=142 (100-8+50), got %v", acct(cs, "0xhuman").Balance.Float())
 	}
 }
 
@@ -483,23 +491,23 @@ func TestApplyUBIRewardDelta_UnknownWallet_Errors(t *testing.T) {
 
 func TestApplyUBIFinalizeDelta_ZeroesPool(t *testing.T) {
 	cs := newTestState()
-	cs.accounts[ubiPoolAddr] = &AccountState{Address: ubiPoolAddr, Balance: NewDecimal(33)}
+	cs.accounts.Set(ubiPoolAddr, &AccountState{Address: ubiPoolAddr, Balance: NewDecimal(33)})
 
 	// setConfigValue/getConfigValue are no-ops without cs.db (newTestState
 	// has none) — this test only verifies the pool-zeroing half; last_ubi_at
 	// persistence is exercised against a real DB in production.
 	cs.ApplyUBIFinalizeDelta(123456789)
 
-	if cs.accounts[ubiPoolAddr].Balance.Float() != 0 {
-		t.Errorf("want pool zeroed, got %v", cs.accounts[ubiPoolAddr].Balance.Float())
+	if acct(cs, ubiPoolAddr).Balance.Float() != 0 {
+		t.Errorf("want pool zeroed, got %v", acct(cs, ubiPoolAddr).Balance.Float())
 	}
 }
 
 func TestDistributeLPPool_ReturnsSharesMatchingActualCredits(t *testing.T) {
 	cs := newTestState()
-	cs.accounts["0x01"] = &AccountState{Address: "0x01", LPShares: NewDecimal(3)}
-	cs.accounts["0x02"] = &AccountState{Address: "0x02", LPShares: NewDecimal(1)}
-	cs.accounts[lpPoolAddr] = &AccountState{Address: lpPoolAddr, Balance: NewDecimal(40)}
+	cs.accounts.Set("0x01", &AccountState{Address: "0x01", LPShares: NewDecimal(3)})
+	cs.accounts.Set("0x02", &AccountState{Address: "0x02", LPShares: NewDecimal(1)})
+	cs.accounts.Set(lpPoolAddr, &AccountState{Address: lpPoolAddr, Balance: NewDecimal(40)})
 
 	shares := cs.DistributeLPPool()
 
@@ -514,11 +522,11 @@ func TestDistributeLPPool_ReturnsSharesMatchingActualCredits(t *testing.T) {
 		t.Errorf("want 0x01=30 0x02=10 (3:1 split of 40), got %v", got)
 	}
 	// Returned shares must equal the wallet's actual post-distribution balance.
-	if cs.accounts["0x01"].Balance.Float() != got["0x01"] {
-		t.Errorf("returned share for 0x01 (%v) doesn't match actual balance (%v)", got["0x01"], cs.accounts["0x01"].Balance.Float())
+	if acct(cs, "0x01").Balance.Float() != got["0x01"] {
+		t.Errorf("returned share for 0x01 (%v) doesn't match actual balance (%v)", got["0x01"], acct(cs, "0x01").Balance.Float())
 	}
-	if cs.accounts[lpPoolAddr].Balance.Float() != 0 {
-		t.Errorf("pool must be zeroed after distribution, got %v", cs.accounts[lpPoolAddr].Balance.Float())
+	if acct(cs, lpPoolAddr).Balance.Float() != 0 {
+		t.Errorf("pool must be zeroed after distribution, got %v", acct(cs, lpPoolAddr).Balance.Float())
 	}
 }
 
@@ -530,8 +538,8 @@ func TestApplyLPRewardDelta_SettlesDemurrageThenCredits(t *testing.T) {
 	if err := cs.ApplyLPRewardDelta("0xholder", 10, 12); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if cs.accounts["0xholder"].Balance.Float() != 98 {
-		t.Errorf("want balance=98 (100-12+10), got %v", cs.accounts["0xholder"].Balance.Float())
+	if acct(cs, "0xholder").Balance.Float() != 98 {
+		t.Errorf("want balance=98 (100-12+10), got %v", acct(cs, "0xholder").Balance.Float())
 	}
 }
 
@@ -543,17 +551,17 @@ func TestApplyValidatorRewardDelta_SettlesDemurrageThenCredits(t *testing.T) {
 	if err := cs.ApplyValidatorRewardDelta("0xvalidator", 5, 20); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if cs.accounts["0xvalidator"].Balance.Float() != 85 {
-		t.Errorf("want balance=85 (100-20+5), got %v", cs.accounts["0xvalidator"].Balance.Float())
+	if acct(cs, "0xvalidator").Balance.Float() != 85 {
+		t.Errorf("want balance=85 (100-20+5), got %v", acct(cs, "0xvalidator").Balance.Float())
 	}
 }
 
 func TestApplyValidatorPoolZeroDelta_ZeroesPool(t *testing.T) {
 	cs := newTestState()
-	cs.accounts[validatorsPoolAddr] = &AccountState{Address: validatorsPoolAddr, Balance: NewDecimal(50)}
+	cs.accounts.Set(validatorsPoolAddr, &AccountState{Address: validatorsPoolAddr, Balance: NewDecimal(50)})
 	cs.ApplyValidatorPoolZeroDelta()
-	if cs.accounts[validatorsPoolAddr].Balance.Float() != 0 {
-		t.Errorf("want pool zeroed, got %v", cs.accounts[validatorsPoolAddr].Balance.Float())
+	if acct(cs, validatorsPoolAddr).Balance.Float() != 0 {
+		t.Errorf("want pool zeroed, got %v", acct(cs, validatorsPoolAddr).Balance.Float())
 	}
 }
 
@@ -564,8 +572,8 @@ func TestApplyEscrowMoveDelta_SettlesDemurrageThenZeroesBalance(t *testing.T) {
 	if err := cs.ApplyEscrowMoveDelta("0xinactive", 30, 0, 0); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if cs.accounts["0xinactive"].Balance.Float() != 0 {
-		t.Errorf("want balance=0 after escrow move, got %v", cs.accounts["0xinactive"].Balance.Float())
+	if acct(cs, "0xinactive").Balance.Float() != 0 {
+		t.Errorf("want balance=0 after escrow move, got %v", acct(cs, "0xinactive").Balance.Float())
 	}
 }
 
@@ -578,13 +586,13 @@ func TestApplyEscrowMoveDelta_UnknownWallet_Errors(t *testing.T) {
 
 func TestApplyEscrowReleaseDelta_CreditsUBIPool(t *testing.T) {
 	cs := newTestState()
-	cs.accounts[ubiPoolAddr] = &AccountState{Address: ubiPoolAddr, Balance: NewDecimal(10)}
+	cs.accounts.Set(ubiPoolAddr, &AccountState{Address: ubiPoolAddr, Balance: NewDecimal(10)})
 
 	if err := cs.ApplyEscrowReleaseDelta(25); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if cs.accounts[ubiPoolAddr].Balance.Float() != 35 {
-		t.Errorf("want UBI pool balance=35 (10+25), got %v", cs.accounts[ubiPoolAddr].Balance.Float())
+	if acct(cs, ubiPoolAddr).Balance.Float() != 35 {
+		t.Errorf("want UBI pool balance=35 (10+25), got %v", acct(cs, ubiPoolAddr).Balance.Float())
 	}
 }
 
@@ -592,17 +600,17 @@ func TestRunDailyDistributionAtomic_CreditsUBIAndValidators(t *testing.T) {
 	cs := newTestState()
 	addHuman(cs, "0x01", 0)
 	addHuman(cs, "0x02", 0)
-	cs.accounts[ubiPoolAddr] = &AccountState{Address: ubiPoolAddr, Balance: NewDecimal(100)}
+	cs.accounts.Set(ubiPoolAddr, &AccountState{Address: ubiPoolAddr, Balance: NewDecimal(100)})
 
 	if err := cs.RunDailyDistributionAtomic(123456789); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if cs.accounts["0x01"].Balance.Float() != 50 || cs.accounts["0x02"].Balance.Float() != 50 {
+	if acct(cs, "0x01").Balance.Float() != 50 || acct(cs, "0x02").Balance.Float() != 50 {
 		t.Errorf("want both humans credited 50, got 0x01=%v 0x02=%v",
-			cs.accounts["0x01"].Balance.Float(), cs.accounts["0x02"].Balance.Float())
+			acct(cs, "0x01").Balance.Float(), acct(cs, "0x02").Balance.Float())
 	}
-	if cs.accounts[ubiPoolAddr].Balance.Float() != 0 {
-		t.Errorf("want UBI pool zeroed, got %v", cs.accounts[ubiPoolAddr].Balance.Float())
+	if acct(cs, ubiPoolAddr).Balance.Float() != 0 {
+		t.Errorf("want UBI pool zeroed, got %v", acct(cs, ubiPoolAddr).Balance.Float())
 	}
 }
 
@@ -613,8 +621,8 @@ func TestRunDailyDistributionAtomic_NoOpWhenPoolsEmpty(t *testing.T) {
 	if err := cs.RunDailyDistributionAtomic(123456789); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if cs.accounts["0x01"].Balance.Float() != 1000 {
-		t.Errorf("want unchanged balance 1000, got %v", cs.accounts["0x01"].Balance.Float())
+	if acct(cs, "0x01").Balance.Float() != 1000 {
+		t.Errorf("want unchanged balance 1000, got %v", acct(cs, "0x01").Balance.Float())
 	}
 }
 
@@ -674,7 +682,7 @@ func TestRegisterHuman_DoubleRegistrationDoesNotDoubleCount(t *testing.T) {
 // never incremented for it.
 func TestHumanCountLocked_LiveScanFallbackWithoutDB(t *testing.T) {
 	cs := newTestState()
-	cs.accounts["0xdirect"] = &AccountState{Address: "0xdirect", IsHuman: true}
+	cs.accounts.Set("0xdirect", &AccountState{Address: "0xdirect", IsHuman: true})
 	if got := cs.TotalHumans(); got != 1 {
 		t.Fatalf("a directly-constructed human account must still be counted via the live-scan fallback, got %d", got)
 	}
@@ -692,8 +700,8 @@ func TestHumanCountLocked_LiveScanFallbackWithoutDB(t *testing.T) {
 func TestEnsureAccountsLoaded_NoOpWithoutDB(t *testing.T) {
 	cs := newTestState()
 	cs.ensureAccountsLoaded([]string{"0x01", "0x02"}) // must not panic
-	if len(cs.accounts) != 0 {
-		t.Fatalf("expected no accounts created without a DB, got %d", len(cs.accounts))
+	if cs.accounts.Len() != 0 {
+		t.Fatalf("expected no accounts created without a DB, got %d", cs.accounts.Len())
 	}
 }
 
@@ -707,14 +715,14 @@ func TestEnsureAccountsLoaded_NoOpWithoutDB(t *testing.T) {
 func TestEnsureAccountsLoaded_SkipsAlreadyCachedAccounts(t *testing.T) {
 	cs := newTestState()
 	addHuman(cs, "0x01", 42)
-	original := cs.accounts["0x01"]
+	original := acct(cs, "0x01")
 
 	cs.ensureAccountsLoaded([]string{"0x01"})
 
-	if cs.accounts["0x01"] != original {
+	if acct(cs, "0x01") != original {
 		t.Fatal("an already-cached account must not be replaced")
 	}
-	if cs.accounts["0x01"].Balance.Float() != 42 {
-		t.Fatalf("expected balance to stay 42, got %v", cs.accounts["0x01"].Balance.Float())
+	if acct(cs, "0x01").Balance.Float() != 42 {
+		t.Fatalf("expected balance to stay 42, got %v", acct(cs, "0x01").Balance.Float())
 	}
 }

@@ -79,7 +79,7 @@ func TestTransferBatch_ConcurrentSuccessAllCommit(t *testing.T) {
 	defer state.mu.Unlock()
 	for i, addr := range senderAddrs {
 		state.ensureAccountLoaded(addr)
-		acc, ok := state.accounts[addr]
+		acc, ok := state.accounts.Get(addr)
 		if !ok {
 			t.Fatalf("sender %d (%s): account missing after transfers", i, addr)
 		}
@@ -90,7 +90,7 @@ func TestTransferBatch_ConcurrentSuccessAllCommit(t *testing.T) {
 		}
 	}
 	state.ensureAccountLoaded(recipient)
-	recvAcc, ok := state.accounts[recipient]
+	recvAcc, ok := state.accounts.Get(recipient)
 	if !ok {
 		t.Fatal("recipient account missing")
 	}
@@ -158,7 +158,8 @@ func TestTransferBatch_OneBadMemberFailsWholeBatchCleanly(t *testing.T) {
 
 	state.mu.Lock()
 	state.ensureAccountLoaded(goodAddr)
-	balanceAfterFirstRound := state.accounts[goodAddr].Balance.Float()
+	goodAcc, _ := state.accounts.Get(goodAddr)
+	balanceAfterFirstRound := goodAcc.Balance.Float()
 	state.mu.Unlock()
 
 	if goodErr != nil {
@@ -180,7 +181,8 @@ func TestTransferBatch_OneBadMemberFailsWholeBatchCleanly(t *testing.T) {
 	state.mu.Lock()
 	defer state.mu.Unlock()
 	state.ensureAccountLoaded(goodAddr)
-	got := state.accounts[goodAddr].Balance.Float()
+	goodAccRetry, _ := state.accounts.Get(goodAddr)
+	got := goodAccRetry.Balance.Float()
 	want := balanceAfterFirstRound - 10
 	if got != want {
 		t.Errorf("good sender's balance after retry = %.6f, want %.6f", got, want)

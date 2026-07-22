@@ -307,7 +307,7 @@ func (cs *ChainState) MigrateEVMFromGoState(contractAddr string) error {
 	var totalHumans int64
 
 	cs.mu.RLock()
-	for addr, acc := range cs.accounts {
+	cs.accounts.Range(func(addr string, acc *AccountState) bool {
 		balBig := aeqToWei(acc.Balance.Float())
 		addrBytes := common.HexToAddress(addr).Bytes()
 		save(contractAddr, mappingSlot(addrBytes, 4).Hex(), common.BigToHash(balBig).Hex())
@@ -328,7 +328,8 @@ func (cs *ChainState) MigrateEVMFromGoState(contractAddr string) error {
 			// ubiPerHumanAccumulated (slot 3) will be read from EVM storage below.
 			// We store a marker here; the actual slot-3 value is written after the loop.
 		}
-	}
+		return true
+	})
 	cs.mu.RUnlock()
 
 	// totalSupply (slot 0) and totalHumans (slot 1)
@@ -348,12 +349,13 @@ func (cs *ChainState) MigrateEVMFromGoState(contractAddr string) error {
 
 	// Set ubiClaimed (slot 12) = ubiPerHumanAccumulated for every human to prevent double-claiming.
 	cs.mu.RLock()
-	for addr, acc := range cs.accounts {
+	cs.accounts.Range(func(addr string, acc *AccountState) bool {
 		if acc.IsHuman {
 			addrB := common.HexToAddress(addr).Bytes()
 			save(contractAddr, mappingSlot(addrB, 12).Hex(), ubiAccumVal)
 		}
-	}
+		return true
+	})
 	cs.mu.RUnlock()
 
 	// usedNullifiers (slot 8): nullifier → wallet
@@ -424,15 +426,16 @@ func (cs *ChainState) MigrateEVMFromGoState(contractAddr string) error {
 
 	// lastActivity (slot 10) + lastDemurrage (slot 11): from chain_accounts
 	cs.mu.RLock()
-	for addr, acc := range cs.accounts {
+	cs.accounts.Range(func(addr string, acc *AccountState) bool {
 		if acc.LastActivityAt == 0 {
-			continue
+			return true
 		}
 		ts := big.NewInt(acc.LastActivityAt)
 		addrBytes := common.HexToAddress(addr).Bytes()
 		save(contractAddr, mappingSlot(addrBytes, 10).Hex(), common.BigToHash(ts).Hex())
 		save(contractAddr, mappingSlot(addrBytes, 11).Hex(), common.BigToHash(ts).Hex())
-	}
+		return true
+	})
 	cs.mu.RUnlock()
 
 	// Restore guardian/escrow relationship slots (5, 13-16) that were saved
@@ -566,7 +569,7 @@ func (cs *ChainState) SyncBalancesToEVM(contractAddr string, addrs ...string) {
 	for _, addr := range addrs {
 		addr = strings.ToLower(addr)
 		cs.mu.RLock()
-		acc, ok := cs.accounts[addr]
+		acc, ok := cs.accounts.Get(addr)
 		cs.mu.RUnlock()
 		var bal float64
 		if ok {
@@ -653,7 +656,7 @@ func (cs *ChainState) syncBalanceLocked(contractAddr string, addrs ...string) {
 		// anything reading balanceOf via eth_call/MetaMask/a dApp in the
 		// meantime.
 		cs.ensureAccountLoaded(addr)
-		acc, ok := cs.accounts[addr]
+		acc, ok := cs.accounts.Get(addr)
 		var bal float64
 		if ok {
 			// P1-4: use effectiveBalance (demurrage-adjusted) so the EVM slot

@@ -85,11 +85,12 @@ type SnapshotBioRegistration struct {
 // keeps the original full export for authoritative resync/recovery.
 func (cs *ChainState) ExportSnapshot(signingKey *ecdsa.PrivateKey, height int64, includeSensitive bool) *StateSnapshot {
 	cs.mu.RLock()
-	accounts := make([]*AccountState, 0, len(cs.accounts))
-	for _, acc := range cs.accounts {
+	accounts := make([]*AccountState, 0, cs.accounts.Len())
+	cs.accounts.Range(func(_ string, acc *AccountState) bool {
 		cp := *acc
 		accounts = append(accounts, &cp)
-	}
+		return true
+	})
 	var pool PoolState
 	if cs.pool != nil {
 		pool = *cs.pool
@@ -343,8 +344,8 @@ func (cs *ChainState) ImportSnapshotFromURL(peerURL, expectedSignerHex string) e
 		if existingHumans > 0 && systemAddresses[acc.Address] {
 			continue
 		}
-		if _, exists := cs.accounts[acc.Address]; !exists {
-			cs.accounts[acc.Address] = acc
+		if _, exists := cs.accounts.Get(acc.Address); !exists {
+			cs.accounts.Set(acc.Address, acc)
 			accountsToPersist = append(accountsToPersist, acc)
 		}
 	}
@@ -363,7 +364,7 @@ func (cs *ChainState) ImportSnapshotFromURL(peerURL, expectedSignerHex string) e
 
 	revertInMemory := func() {
 		for _, acc := range accountsToPersist {
-			delete(cs.accounts, acc.Address)
+			cs.accounts.Delete(acc.Address)
 		}
 		for nullifier := range snap.Nullifiers {
 			if wallet, exists := cs.nullifiers[nullifier]; exists && strings.EqualFold(wallet, snap.Nullifiers[nullifier]) {
@@ -566,11 +567,7 @@ func (cs *ChainState) ResyncFromSnapshotURL(peerURL, expectedSignerHex string) e
 	}
 
 	cs.mu.Lock()
-	backupAccounts := make(map[string]*AccountState, len(cs.accounts))
-	for addr, acc := range cs.accounts {
-		accCopy := *acc
-		backupAccounts[addr] = &accCopy
-	}
+	backupAccounts := cs.accounts.Clone()
 	var backupPool *PoolState
 	if cs.pool != nil {
 		poolCopy := *cs.pool
@@ -633,12 +630,18 @@ func (cs *ChainState) ResyncFromSnapshotURL(peerURL, expectedSignerHex string) e
 	// SaveBioHash's comment: a secondary, best-effort lookup index, not a
 	// security boundary, not consensus state) — left untouched here,
 	// consistent with it never being part of what this snapshot exports.
-	for _, acc := range cs.accounts {
+	var saveErr error
+	cs.accounts.Range(func(_ string, acc *AccountState) bool {
 		// saveAccountToDB routes through cs.dbExec(), which returns
 		// cs.activeTx (set above) instead of cs.db — joins this transaction.
 		if err := cs.saveAccountToDB(acc); err != nil {
-			return fail(fmt.Errorf("resync: could not save account %s: %w", acc.Address, err))
+			saveErr = fmt.Errorf("resync: could not save account %s: %w", acc.Address, err)
+			return false
 		}
+		return true
+	})
+	if saveErr != nil {
+		return fail(saveErr)
 	}
 	if snap.Pool != nil {
 		if err := cs.savePoolToDB(); err != nil {
@@ -1054,11 +1057,12 @@ func (dag *BlockDAG) SeedTrustedCheckpoint(primaryURL string) bool {
 // replaceInMemoryFromSnapshotLocked overwrites cs.accounts/cs.pool/cs.nullifiers
 // with snap's contents. Caller must hold cs.mu.
 func (cs *ChainState) replaceInMemoryFromSnapshotLocked(snap *StateSnapshot) {
-	cs.accounts = make(map[string]*AccountState, len(snap.Accounts))
+	fresh := newShardedAccounts()
 	for _, acc := range snap.Accounts {
 		acc.Address = strings.ToLower(acc.Address)
-		cs.accounts[acc.Address] = acc
+		fresh.Set(acc.Address, acc)
 	}
+	cs.accounts = fresh
 	if snap.Pool != nil {
 		cs.pool = snap.Pool
 	}

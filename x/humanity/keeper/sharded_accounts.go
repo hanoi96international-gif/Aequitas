@@ -71,8 +71,17 @@ func (sa *shardedAccounts) shardFor(addr string) *accountShard {
 	return sa.shards[shardIndexFor(addr)]
 }
 
-// Get mirrors `acc, ok := m[addr]`.
+// Get mirrors `acc, ok := m[addr]`, including on a nil receiver: reading a
+// nil native map never panics (returns the zero value, ok=false), and
+// several existing tests construct a bare &ChainState{} whose accounts
+// field is left as a nil *shardedAccounts -- those tests only ever read
+// (e.g. via snapshotForRollbackLocked), so this nil check preserves their
+// pre-migration behavior exactly instead of turning a safe no-op into a
+// nil-pointer panic.
 func (sa *shardedAccounts) Get(addr string) (*AccountState, bool) {
+	if sa == nil {
+		return nil, false
+	}
 	s := sa.shardFor(addr)
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -80,7 +89,12 @@ func (sa *shardedAccounts) Get(addr string) (*AccountState, bool) {
 	return acc, ok
 }
 
-// Set mirrors `m[addr] = acc`.
+// Set mirrors `m[addr] = acc` -- including panicking on a nil receiver, the
+// same as assigning into a nil native map. Every real construction path
+// (NewChainState, newTestState, etc.) always calls newShardedAccounts(), so
+// this can only fire for a test that both zero-value-constructs ChainState
+// AND then tries to mutate cs.accounts, which would have been an equally
+// invalid nil-map write before this migration.
 func (sa *shardedAccounts) Set(addr string, acc *AccountState) {
 	s := sa.shardFor(addr)
 	s.mu.Lock()
@@ -88,18 +102,28 @@ func (sa *shardedAccounts) Set(addr string, acc *AccountState) {
 	s.data[addr] = acc
 }
 
-// Delete mirrors `delete(m, addr)`.
+// Delete mirrors `delete(m, addr)`, including on a nil receiver: deleting
+// from a nil native map is always a safe no-op in Go, never a panic -- see
+// Get's comment for why that nil-safety matters here too.
 func (sa *shardedAccounts) Delete(addr string) {
+	if sa == nil {
+		return
+	}
 	s := sa.shardFor(addr)
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	delete(s.data, addr)
 }
 
-// Len mirrors `len(m)`. O(numAccountShards), not O(1) -- acceptable here
-// since every existing len(cs.accounts) call site is cold-path bookkeeping
-// (snapshot sizing, stats), never a per-transfer hot path.
+// Len mirrors `len(m)`, including on a nil receiver (len(nilMap) == 0 in
+// Go, never a panic -- see Get's comment). O(numAccountShards), not O(1) --
+// acceptable here since every existing len(cs.accounts) call site is
+// cold-path bookkeeping (snapshot sizing, stats), never a per-transfer hot
+// path.
 func (sa *shardedAccounts) Len() int {
+	if sa == nil {
+		return 0
+	}
 	total := 0
 	for _, s := range sa.shards {
 		s.mu.Lock()
@@ -121,7 +145,13 @@ func (sa *shardedAccounts) Len() int {
 // Existing cs.accounts range-loop bodies in this codebase call other
 // ChainState methods, not cs.accounts itself, from inside the loop, so
 // this restriction matches how the map is actually used today.
+//
+// Nil-safe (zero iterations), mirroring `range` over a nil native map --
+// see Get's comment.
 func (sa *shardedAccounts) Range(fn func(addr string, acc *AccountState) bool) {
+	if sa == nil {
+		return
+	}
 	for _, s := range sa.shards {
 		s.mu.Lock()
 		for addr, acc := range s.data {
@@ -132,6 +162,25 @@ func (sa *shardedAccounts) Range(fn func(addr string, acc *AccountState) bool) {
 		}
 		s.mu.Unlock()
 	}
+}
+
+// Clone returns a new, independent shardedAccounts holding a deep copy of
+// every account currently stored (each *AccountState copied by value, not
+// shared by pointer -- mutating the original after Clone() never affects
+// the clone, mirroring the `accCopy := *acc` pattern every existing
+// backup-before-mutating call site already used against the plain map).
+// Used by callers that need "snapshot now, restore verbatim later if
+// something fails" (see ResyncFromSnapshotURL) -- restoring is then just
+// reassigning cs.accounts to the clone, since cs.accounts is a pointer
+// field.
+func (sa *shardedAccounts) Clone() *shardedAccounts {
+	clone := newShardedAccounts()
+	sa.Range(func(addr string, acc *AccountState) bool {
+		cp := *acc
+		clone.Set(addr, &cp)
+		return true
+	})
+	return clone
 }
 
 // MarshalJSON lets `json.Marshal(sa)` behave like `json.Marshal(m)` did

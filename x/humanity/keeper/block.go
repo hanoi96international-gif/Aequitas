@@ -5560,7 +5560,7 @@ func (dag *BlockDAG) replayTransactions(block *Block, force bool) bool {
 			// in case it has shrunk since the offense was recorded.
 			opWallet := strings.ToLower(slashWallet)
 			penaltyAmt := equivocationSecondOffensePenaltyAEQ
-			if acc, ok := dag.state.accounts[opWallet]; ok && acc.Balance.Float() < penaltyAmt {
+			if acc, ok := dag.state.accounts.Get(opWallet); ok && acc.Balance.Float() < penaltyAmt {
 				penaltyAmt = acc.Balance.Float()
 			}
 			if penaltyAmt > 0 {

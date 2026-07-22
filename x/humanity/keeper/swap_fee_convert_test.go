@@ -17,8 +17,8 @@ func TestSwapFee_TUsdConvertedToAEQ(t *testing.T) {
 
 	var totalAEQ float64
 	for _, addr := range feePoolAddrs {
-		acc := cs.accounts[addr]
-		if acc == nil {
+		acc, ok := cs.accounts.Get(addr)
+		if !ok {
 			t.Fatalf("pool %s was not credited at all", addr)
 		}
 		if acc.TUsdBalance.Float() != 0 {
@@ -45,7 +45,7 @@ func TestSwapFee_TUsdConvertedToAEQ(t *testing.T) {
 	}
 	// 40/30/20/10 split (approximate — each share is rounded to 6 decimals).
 	checkShare := func(addr string, frac float64) {
-		got := cs.accounts[addr].Balance.Float()
+		got := acct(cs, addr).Balance.Float()
 		want := totalAEQ * frac
 		if diff := got - want; diff < -0.001 || diff > 0.001 {
 			t.Errorf("pool %s: want ~%v (%.0f%%), got %v", addr, want, frac*100, got)
@@ -79,8 +79,8 @@ func TestSwapFee_ConversionDeterministic(t *testing.T) {
 			a.pool.ReserveAEQ.Float(), a.pool.ReserveTUSD.Float(), b.pool.ReserveAEQ.Float(), b.pool.ReserveTUSD.Float())
 	}
 	for _, addr := range feePoolAddrs {
-		if a.accounts[addr].Balance != b.accounts[addr].Balance {
-			t.Errorf("pool %s balance diverged: a=%v b=%v", addr, a.accounts[addr].Balance.Float(), b.accounts[addr].Balance.Float())
+		if acct(a, addr).Balance != acct(b, addr).Balance {
+			t.Errorf("pool %s balance diverged: a=%v b=%v", addr, acct(a, addr).Balance.Float(), acct(b, addr).Balance.Float())
 		}
 	}
 }
@@ -97,8 +97,8 @@ func TestSwapFee_EmptyPoolFallsBackToTUsd(t *testing.T) {
 	}
 	var totalTUsd, totalAEQ float64
 	for _, addr := range feePoolAddrs {
-		totalTUsd += cs.accounts[addr].TUsdBalance.Float()
-		totalAEQ += cs.accounts[addr].Balance.Float()
+		totalTUsd += acct(cs, addr).TUsdBalance.Float()
+		totalAEQ += acct(cs, addr).Balance.Float()
 	}
 	if totalTUsd <= 0 {
 		t.Fatalf("fee was lost when the pool is empty; it must fall back to a tUSD credit")
@@ -124,10 +124,10 @@ func TestSwapFee_AEQFeeCreditedDirectly(t *testing.T) {
 	if cs.pool.ReserveAEQ.Float() != 1000 || cs.pool.ReserveTUSD.Float() != 1000 {
 		t.Errorf("an AEQ fee must not touch reserves, got AEQ=%v tUSD=%v", cs.pool.ReserveAEQ.Float(), cs.pool.ReserveTUSD.Float())
 	}
-	if got := cs.accounts[ubiPoolAddr].Balance.Float(); got != 2 { // 20% of 10
+	if got := acct(cs, ubiPoolAddr).Balance.Float(); got != 2 { // 20% of 10
 		t.Errorf("ubi pool: want 2 AEQ (20%% of 10), got %v", got)
 	}
-	if got := cs.accounts[ubiPoolAddr].TUsdBalance.Float(); got != 0 {
+	if got := acct(cs, ubiPoolAddr).TUsdBalance.Float(); got != 0 {
 		t.Errorf("ubi pool must hold no tUSD for an AEQ fee, got %v", got)
 	}
 }
@@ -148,7 +148,7 @@ func TestSaveAccountsToDBBatch_MatchesSequentialSaveAccountToDB(t *testing.T) {
 			acc := &AccountState{Address: addr, Balance: NewDecimal(float64(100 * (i + 1)))}
 			acc.leafHash = accountLeaf(acc)
 			xorInto(&cs.accountSetXOR, acc.leafHash) // seed the accumulator as if this account was already saved once
-			cs.accounts[addr] = acc
+			cs.accounts.Set(addr, acc)
 			accs[i] = acc
 		}
 		return accs

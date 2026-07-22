@@ -103,11 +103,17 @@ type PoolState struct {
 }
 
 type ChainState struct {
-	mu         sync.RWMutex
-	accounts   map[string]*AccountState
-	pool       *PoolState
-	db         *sql.DB
-	useDB      bool
+	mu sync.RWMutex
+	// accounts is a *shardedAccounts (see sharded_accounts.go /
+	// SCALING_ARCHITECTURE.md Phase 2) rather than a plain map. Every
+	// access still happens under cs.mu, exactly like the map it replaced
+	// -- this migration is behavior-preserving on its own; it only lays
+	// the groundwork for a LATER phase where specific operations can use
+	// shardedAccounts' own per-shard locks instead of cs.mu.
+	accounts *shardedAccounts
+	pool     *PoolState
+	db       *sql.DB
+	useDB    bool
 	// ghostdagColumnsOnce guards the one-time chain_blocks GHOSTDAG-column
 	// migration. It used to run on EVERY SaveBlockToDB / SaveGHOSTDAGState call —
 	// three `ALTER TABLE ... ADD COLUMN IF NOT EXISTS` statements each, i.e. six
@@ -329,7 +335,7 @@ func validatePoolAddresses() {
 func NewChainState(dataFile string) *ChainState {
 	validatePoolAddresses()
 	cs := &ChainState{
-		accounts:   make(map[string]*AccountState),
+		accounts:   newShardedAccounts(),
 		nullifiers: make(map[string]string),
 	}
 
@@ -1254,11 +1260,12 @@ func (cs *ChainState) GetLastUBIAt() int64 {
 func (cs *ChainState) GetWealthCapInfo() (capAEQ float64, mult float64, avg float64, humans int) {
 	cs.mu.RLock()
 	defer cs.mu.RUnlock()
-	for _, acc := range cs.accounts {
+	cs.accounts.Range(func(_ string, acc *AccountState) bool {
 		if acc.IsHuman {
 			humans++
 		}
-	}
+		return true
+	})
 	mult = cs.bootstrapMultiplierLocked()
 	avg = cs.getAverageBalanceLocked()
 	capAEQ = mult * avg
@@ -1365,7 +1372,7 @@ const maxInMemAccounts = 5_000_000
 // ensureAccountLoaded fetches addr from DB into cs.accounts if it isn't
 // already there. Must be called while cs.mu (write lock) is held.
 func (cs *ChainState) ensureAccountLoaded(addr string) {
-	if _, ok := cs.accounts[addr]; ok {
+	if _, ok := cs.accounts.Get(addr); ok {
 		return
 	}
 	if cs.db == nil {
@@ -1433,7 +1440,7 @@ func (cs *ChainState) ensureAccountLoaded(addr string) {
 	// folded into the accumulator (from the startup full scan), so we only set
 	// the cache here — we must NOT XOR it in again.
 	acc.leafHash = accountLeaf(acc)
-	cs.accounts[addr] = acc
+	cs.accounts.Set(addr, acc)
 }
 
 // ensureAccountsLoaded is ensureAccountLoaded's batch counterpart: loads
@@ -1450,7 +1457,7 @@ func (cs *ChainState) ensureAccountsLoaded(addrs []string) {
 	}
 	var missing []string
 	for _, addr := range addrs {
-		if _, ok := cs.accounts[addr]; !ok {
+		if _, ok := cs.accounts.Get(addr); !ok {
 			missing = append(missing, addr)
 		}
 	}
@@ -1504,7 +1511,7 @@ func (cs *ChainState) ensureAccountsLoaded(addrs []string) {
 		// of accountSetXOR correctly — it's already folded into the
 		// accumulator from the startup full scan, so only the cache is set.
 		acc.leafHash = accountLeaf(acc)
-		cs.accounts[addr] = acc
+		cs.accounts.Set(addr, acc)
 	}
 }
 
@@ -1588,7 +1595,7 @@ func (cs *ChainState) loadFromDB() {
 		// happened to already be lowercase — and merge into it rather than
 		// assuming the first-seen row is "the real one".
 		normalized := strings.ToLower(acc.Address)
-		if existing, ok := cs.accounts[normalized]; ok {
+		if existing, ok := cs.accounts.Get(normalized); ok {
 			mergedCount++
 			fmt.Printf("[MIGRATION] Merging duplicate-case account %s into %s (balance %.6f + %.6f, tusd %.6f + %.6f, lp %.6f + %.6f)\n",
 				acc.Address, normalized, existing.Balance.Float(), acc.Balance.Float(), existing.TUsdBalance.Float(), acc.TUsdBalance.Float(), existing.LPShares.Float(), acc.LPShares.Float())
@@ -1609,7 +1616,7 @@ func (cs *ChainState) loadFromDB() {
 			continue
 		}
 		acc.Address = normalized
-		cs.accounts[normalized] = acc
+		cs.accounts.Set(normalized, acc)
 	}
 	fmt.Printf("✓ Loaded %d accounts from PostgreSQL", count)
 	if mergedCount > 0 {
@@ -1684,7 +1691,11 @@ func (cs *ChainState) loadFromFile(dataFile string) {
 		fmt.Println("⚠ Could not load state, starting fresh")
 		return
 	}
-	cs.accounts = accounts
+	fresh := newShardedAccounts()
+	for addr, acc := range accounts {
+		fresh.Set(addr, acc)
+	}
+	cs.accounts = fresh
 	fmt.Printf("✓ Loaded chain state: %d accounts\n", len(accounts))
 }
 
@@ -2123,7 +2134,7 @@ func (cs *ChainState) GetBalance(address string) float64 {
 	defer cs.mu.Unlock()
 	address = strings.ToLower(address)
 	cs.ensureAccountLoaded(address)
-	if acc, ok := cs.accounts[address]; ok {
+	if acc, ok := cs.accounts.Get(address); ok {
 		return effectiveBalance(acc).Float()
 	}
 	return 0
@@ -2452,7 +2463,7 @@ func (cs *ChainState) distributeValidatorsPoolLocked() ([]DistributionShare, err
 	// skipping the ENTIRE day's distribution of a real, non-zero DB balance.
 	// ensureAccountLoaded is a no-op once the address is already cached.
 	cs.ensureAccountLoaded(validatorsPoolAddr)
-	poolAcc, ok := cs.accounts[validatorsPoolAddr]
+	poolAcc, ok := cs.accounts.Get(validatorsPoolAddr)
 	if !ok || poolAcc.Balance <= 0 {
 		fmt.Println("[VALIDATORS] Pool is empty — nothing to distribute today")
 		return nil, nil
@@ -2491,10 +2502,11 @@ func (cs *ChainState) distributeValidatorsPoolLocked() ([]DistributionShare, err
 		if share <= 0 {
 			continue
 		} // E4-FIX: skip rounding-to-zero to preserve pool
-		if _, ok := cs.accounts[wallet]; !ok {
-			cs.accounts[wallet] = &AccountState{Address: wallet}
+		acc, ok := cs.accounts.Get(wallet)
+		if !ok {
+			acc = &AccountState{Address: wallet}
+			cs.accounts.Set(wallet, acc)
 		}
-		acc := cs.accounts[wallet]
 		lost, err := cs.settleDemurrageLocked(acc)
 		if err != nil {
 			return nil, fmt.Errorf("could not settle demurrage for %s: %w", wallet, err)
@@ -2585,19 +2597,20 @@ func (cs *ChainState) distributeLPPoolLocked() ([]DistributionShare, error) {
 		rows.Close()
 		cs.ensureAccountsLoaded(addrs) // page in cold accounts so LP distribution works beyond the in-memory cap
 		for _, addr := range addrs {
-			if acc, ok := cs.accounts[addr]; ok && acc.LPShares.Float() > 0 {
+			if acc, ok := cs.accounts.Get(addr); ok && acc.LPShares.Float() > 0 {
 				holders = append(holders, lpHolder{addr, acc.LPShares.Float()})
 				totalShares += acc.LPShares.Float()
 			}
 		}
 	} else {
 		// No DB (unit tests): fall back to in-memory iteration.
-		for addr, acc := range cs.accounts {
+		cs.accounts.Range(func(addr string, acc *AccountState) bool {
 			if acc.LPShares > 0 {
 				holders = append(holders, lpHolder{addr, acc.LPShares.Float()})
 				totalShares += acc.LPShares.Float()
 			}
-		}
+			return true
+		})
 	}
 	if totalShares <= 0 || len(holders) == 0 {
 		fmt.Println("[LP] No LP holders — pool left untouched")
@@ -2618,7 +2631,7 @@ func (cs *ChainState) distributeLPPoolLocked() ([]DistributionShare, error) {
 	// from the primary's by however much demurrage each holder had accrued.
 	demurrageLost := make(map[string]float64, len(holders))
 	for _, h := range holders {
-		acc := cs.accounts[h.addr]
+		acc, _ := cs.accounts.Get(h.addr)
 		lost, err := cs.settleDemurrageLocked(acc)
 		if err != nil {
 			return nil, fmt.Errorf("could not settle demurrage for %s: %w", h.addr, err)
@@ -2635,7 +2648,7 @@ func (cs *ChainState) distributeLPPoolLocked() ([]DistributionShare, error) {
 	// preventing division by zero in the distribution loop below.
 	totalShares = 0
 	for _, h := range holders {
-		if acc, ok := cs.accounts[h.addr]; ok {
+		if acc, ok := cs.accounts.Get(h.addr); ok {
 			totalShares += acc.LPShares.Float()
 		}
 	}
@@ -2648,7 +2661,7 @@ func (cs *ChainState) distributeLPPoolLocked() ([]DistributionShare, error) {
 	// FIX (Monster Audit 2026-07-12, P1): see DistributeValidatorsPool's
 	// comment — a cold pool address must not read as "empty".
 	cs.ensureAccountLoaded(lpPoolAddr)
-	poolAcc, ok := cs.accounts[lpPoolAddr]
+	poolAcc, ok := cs.accounts.Get(lpPoolAddr)
 	if !ok || poolAcc.Balance <= 0 {
 		fmt.Println("[LP] Pool is empty — nothing to distribute today")
 		return nil, nil
@@ -2663,7 +2676,7 @@ func (cs *ChainState) distributeLPPoolLocked() ([]DistributionShare, error) {
 	for _, h := range holders {
 		share := round6((h.shares / totalShares) * total)
 		totalDistributed += share
-		acc := cs.accounts[h.addr]
+		acc, _ := cs.accounts.Get(h.addr)
 		acc.Balance = acc.Balance.Add(NewDecimal(share))
 		touchActivity(acc)
 		if err := cs.enforceWealthCapLocked(acc); err != nil {
@@ -2735,7 +2748,7 @@ func (cs *ChainState) distributeUBIPoolLocked() ([]DistributionShare, error) {
 	// here; the second read below (after the demurrage loop) reuses the same
 	// now-cached map entry, so it needs no separate call.
 	cs.ensureAccountLoaded(ubiPoolAddr)
-	poolAcc, ok := cs.accounts[ubiPoolAddr]
+	poolAcc, ok := cs.accounts.Get(ubiPoolAddr)
 	if !ok || poolAcc.Balance <= 0 {
 		fmt.Println("[UBI] Pool is empty — nothing to distribute today")
 		return nil, nil
@@ -2767,11 +2780,12 @@ func (cs *ChainState) distributeUBIPoolLocked() ([]DistributionShare, error) {
 		rows.Close()
 	} else {
 		// No DB (unit tests): fall back to in-memory iteration.
-		for addr, acc := range cs.accounts {
+		cs.accounts.Range(func(addr string, acc *AccountState) bool {
 			if acc.IsHuman {
 				humanAddrs = append(humanAddrs, addr)
 			}
-		}
+			return true
+		})
 	}
 	if len(humanAddrs) == 0 {
 		fmt.Println("[UBI] No registered humans yet — pool left untouched")
@@ -2788,14 +2802,15 @@ func (cs *ChainState) distributeUBIPoolLocked() ([]DistributionShare, error) {
 	// the returned DistributionShare — see the function comment above.
 	demurrageLost := make(map[string]float64, len(humanAddrs))
 	for _, addr := range humanAddrs {
-		lost, err := cs.settleDemurrageLocked(cs.accounts[addr])
+		addrAcc, _ := cs.accounts.Get(addr)
+		lost, err := cs.settleDemurrageLocked(addrAcc)
 		if err != nil {
 			return nil, fmt.Errorf("could not settle demurrage for %s: %w", addr, err)
 		}
 		demurrageLost[addr] = lost.Float()
 	}
 	// NOW read pool balance — includes any demurrage credits just added.
-	poolAcc, ok = cs.accounts[ubiPoolAddr]
+	poolAcc, ok = cs.accounts.Get(ubiPoolAddr)
 	if !ok || poolAcc.Balance <= 0 {
 		fmt.Println("[UBI] Pool empty after demurrage settlement — nothing to distribute")
 		return nil, nil
@@ -2821,7 +2836,7 @@ func (cs *ChainState) distributeUBIPoolLocked() ([]DistributionShare, error) {
 	shares := make([]DistributionShare, 0, len(humanAddrs))
 	batch := make([]*AccountState, 0, len(humanAddrs))
 	for _, addr := range humanAddrs {
-		acc := cs.accounts[addr]
+		acc, _ := cs.accounts.Get(addr)
 		acc.Balance = acc.Balance.Add(NewDecimal(share))
 		touchActivity(acc)
 		if err := cs.enforceWealthCapLocked(acc); err != nil {
@@ -2908,11 +2923,12 @@ func isTokenomicsPoolAddress(addr string) bool {
 // full wealthCapMultiplier (25×) applies permanently. Caller must hold cs.mu.
 func (cs *ChainState) bootstrapMultiplierLocked() float64 {
 	count := 0
-	for _, acc := range cs.accounts {
+	cs.accounts.Range(func(_ string, acc *AccountState) bool {
 		if acc.IsHuman {
 			count++
 		}
-	}
+		return true
+	})
 	if count >= 25 {
 		return wealthCapMultiplier
 	}
@@ -2988,7 +3004,7 @@ func (cs *ChainState) GetDemurrageStatus(address string) DemurrageStatus {
 	address = strings.ToLower(address)
 	cs.ensureAccountLoaded(address) // cold accounts must report their real demurrage status, not the grace-period default
 
-	acc, ok := cs.accounts[address]
+	acc, ok := cs.accounts.Get(address)
 	if !ok || acc.LastActivityAt == 0 {
 		return DemurrageStatus{Active: false, DaysUntilStart: float64(demurrageGracePeriodSeconds) / 86400}
 	}
@@ -3046,7 +3062,7 @@ func (cs *ChainState) GetTUsdBalance(address string) float64 {
 	defer cs.mu.Unlock()
 	address = strings.ToLower(address)
 	cs.ensureAccountLoaded(address)
-	if acc, ok := cs.accounts[address]; ok {
+	if acc, ok := cs.accounts.Get(address); ok {
 		return acc.TUsdBalance.Float()
 	}
 	return 0
@@ -3078,7 +3094,7 @@ func (cs *ChainState) IsHuman(address string) bool {
 	defer cs.mu.Unlock()
 	address = strings.ToLower(address)
 	cs.ensureAccountLoaded(address)
-	if acc, ok := cs.accounts[address]; ok {
+	if acc, ok := cs.accounts.Get(address); ok {
 		return acc.IsHuman
 	}
 	return false
@@ -3127,21 +3143,22 @@ func (cs *ChainState) registerHumanLocked(address string) error {
 	address = strings.ToLower(address)
 	cs.ensureAccountLoaded(address)
 
-	if acc, ok := cs.accounts[address]; ok && acc.IsHuman {
+	acc, ok := cs.accounts.Get(address)
+	if ok && acc.IsHuman {
 		return fmt.Errorf("already registered")
 	}
-
-	if _, ok := cs.accounts[address]; !ok {
-		cs.accounts[address] = &AccountState{Address: address}
+	if !ok {
+		acc = &AccountState{Address: address}
+		cs.accounts.Set(address, acc)
 	}
 
-	cs.accounts[address].IsHuman = true
-	cs.accounts[address].Balance = cs.accounts[address].Balance.Add(NewDecimal(1000))
-	touchActivity(cs.accounts[address]) // starts this 1,000 AEQ's own grace period fresh
-	if err := cs.enforceWealthCapLocked(cs.accounts[address]); err != nil {
+	acc.IsHuman = true
+	acc.Balance = acc.Balance.Add(NewDecimal(1000))
+	touchActivity(acc) // starts this 1,000 AEQ's own grace period fresh
+	if err := cs.enforceWealthCapLocked(acc); err != nil {
 		return fmt.Errorf("could not enforce wealth cap: %w", err)
 	}
-	if err := cs.saveAccountToDB(cs.accounts[address]); err != nil {
+	if err := cs.saveAccountToDB(acc); err != nil {
 		return fmt.Errorf("could not save account: %w", err)
 	}
 	// See humanCount's own field comment: this is the ONE live mutation
@@ -3156,7 +3173,7 @@ func (cs *ChainState) registerHumanLocked(address string) error {
 	cs.save()
 
 	fmt.Printf("[STATE] ✓ Human registered: %s | Balance: %.2f AEQ\n",
-		address, cs.accounts[address].Balance.Float())
+		address, acc.Balance.Float())
 	// P1-10: run EVM sync synchronously first, then retry in background.
 	// Prevents permanent Go/EVM divergence if the first sync fails.
 	cs.syncHumanRegistrationLocked(V7_CONTRACT_ADDR, address)
@@ -3738,7 +3755,7 @@ func (cs *ChainState) transferLocked(from, to string, amount float64) (float64, 
 
 	cs.ensureAccountLoaded(from)
 	cs.ensureAccountLoaded(to)
-	fromAcc, ok := cs.accounts[from]
+	fromAcc, ok := cs.accounts.Get(from)
 	if !ok {
 		return 0, 0, fmt.Errorf("insufficient balance")
 	}
@@ -3759,19 +3776,21 @@ func (cs *ChainState) transferLocked(from, to string, amount float64) (float64, 
 		return 0, 0, fmt.Errorf("could not save sender account: %w", err)
 	}
 
-	if _, ok := cs.accounts[to]; !ok {
-		cs.accounts[to] = &AccountState{Address: to}
+	toAcc, ok := cs.accounts.Get(to)
+	if !ok {
+		toAcc = &AccountState{Address: to}
+		cs.accounts.Set(to, toAcc)
 	}
-	toLost, err := cs.settleDemurrageLocked(cs.accounts[to])
+	toLost, err := cs.settleDemurrageLocked(toAcc)
 	if err != nil {
 		return 0, 0, fmt.Errorf("could not settle demurrage for recipient: %w", err)
 	}
-	cs.accounts[to].Balance = cs.accounts[to].Balance.Add(NewDecimal(amount))
-	touchActivity(cs.accounts[to]) // receiving also resets the clock on the recipient's whole balance
-	if err := cs.enforceWealthCapLocked(cs.accounts[to]); err != nil {
+	toAcc.Balance = toAcc.Balance.Add(NewDecimal(amount))
+	touchActivity(toAcc) // receiving also resets the clock on the recipient's whole balance
+	if err := cs.enforceWealthCapLocked(toAcc); err != nil {
 		return 0, 0, fmt.Errorf("could not enforce wealth cap for recipient: %w", err)
 	}
-	if err := cs.saveAccountToDB(cs.accounts[to]); err != nil {
+	if err := cs.saveAccountToDB(toAcc); err != nil {
 		return 0, 0, fmt.Errorf("could not save recipient account: %w", err)
 	}
 	cs.save()
@@ -3856,7 +3875,7 @@ func (cs *ChainState) transferWithV7FeeLocked(from, to string, amount float64) (
 	// its real balance overwritten on save. Matches transferLocked.
 	cs.ensureAccountLoaded(from)
 	cs.ensureAccountLoaded(to)
-	fromAcc, ok := cs.accounts[from]
+	fromAcc, ok := cs.accounts.Get(from)
 	if !ok {
 		return 0, 0, 0, fmt.Errorf("insufficient balance")
 	}
@@ -3890,19 +3909,21 @@ func (cs *ChainState) transferWithV7FeeLocked(from, to string, amount float64) (
 		return 0, 0, 0, fmt.Errorf("could not save sender account: %w", err)
 	}
 
-	if _, ok := cs.accounts[to]; !ok {
-		cs.accounts[to] = &AccountState{Address: to}
+	toAcc, ok := cs.accounts.Get(to)
+	if !ok {
+		toAcc = &AccountState{Address: to}
+		cs.accounts.Set(to, toAcc)
 	}
-	toLost, err := cs.settleDemurrageLocked(cs.accounts[to])
+	toLost, err := cs.settleDemurrageLocked(toAcc)
 	if err != nil {
 		return 0, 0, 0, fmt.Errorf("could not settle demurrage for recipient: %w", err)
 	}
-	cs.accounts[to].Balance = cs.accounts[to].Balance.Add(NewDecimal(netToRecipient))
-	touchActivity(cs.accounts[to])
-	if err := cs.enforceWealthCapLocked(cs.accounts[to]); err != nil {
+	toAcc.Balance = toAcc.Balance.Add(NewDecimal(netToRecipient))
+	touchActivity(toAcc)
+	if err := cs.enforceWealthCapLocked(toAcc); err != nil {
 		return 0, 0, 0, fmt.Errorf("could not enforce wealth cap for recipient: %w", err)
 	}
-	if err := cs.saveAccountToDB(cs.accounts[to]); err != nil {
+	if err := cs.saveAccountToDB(toAcc); err != nil {
 		return 0, 0, 0, fmt.Errorf("could not save recipient account: %w", err)
 	}
 
@@ -3913,11 +3934,13 @@ func (cs *ChainState) transferWithV7FeeLocked(from, to string, amount float64) (
 		// "brand new row" and blindly overwrites any existing DB balance —
 		// silently erasing real, previously-accumulated pool funds.
 		cs.ensureAccountLoaded(ubiPoolAddr)
-		if _, ok := cs.accounts[ubiPoolAddr]; !ok {
-			cs.accounts[ubiPoolAddr] = &AccountState{Address: ubiPoolAddr}
+		ubiAcc, ok := cs.accounts.Get(ubiPoolAddr)
+		if !ok {
+			ubiAcc = &AccountState{Address: ubiPoolAddr}
+			cs.accounts.Set(ubiPoolAddr, ubiAcc)
 		}
-		cs.accounts[ubiPoolAddr].Balance = cs.accounts[ubiPoolAddr].Balance.Add(NewDecimal(ubiContrib))
-		if err := cs.saveAccountToDB(cs.accounts[ubiPoolAddr]); err != nil {
+		ubiAcc.Balance = ubiAcc.Balance.Add(NewDecimal(ubiContrib))
+		if err := cs.saveAccountToDB(ubiAcc); err != nil {
 			return 0, 0, 0, fmt.Errorf("could not save UBI pool: %w", err)
 		}
 	}
@@ -4041,7 +4064,7 @@ func (cs *ChainState) swapLocked(address string, amountIn float64, aeqToTusd boo
 	}
 
 	cs.ensureAccountLoaded(address) // page in cold accounts so swaps work beyond the in-memory cap
-	acc, ok := cs.accounts[address]
+	acc, ok := cs.accounts.Get(address)
 	if !ok {
 		return 0, 0, fmt.Errorf("account not found")
 	}
@@ -4359,15 +4382,17 @@ func (cs *ChainState) distributeSwapFee(fee float64, feeInAEQ bool) error {
 		// the DB before it's touched, or a fresh Version==0 AccountState here
 		// blindly overwrites its real, previously-accumulated DB balance.
 		cs.ensureAccountLoaded(s.addr)
-		if _, ok := cs.accounts[s.addr]; !ok {
-			cs.accounts[s.addr] = &AccountState{Address: s.addr}
+		sAcc, ok := cs.accounts.Get(s.addr)
+		if !ok {
+			sAcc = &AccountState{Address: s.addr}
+			cs.accounts.Set(s.addr, sAcc)
 		}
 		if feeInAEQ {
-			cs.accounts[s.addr].Balance = cs.accounts[s.addr].Balance.Add(NewDecimal(s.amount))
+			sAcc.Balance = sAcc.Balance.Add(NewDecimal(s.amount))
 		} else {
-			cs.accounts[s.addr].TUsdBalance = cs.accounts[s.addr].TUsdBalance.Add(NewDecimal(s.amount))
+			sAcc.TUsdBalance = sAcc.TUsdBalance.Add(NewDecimal(s.amount))
 		}
-		accs[i] = cs.accounts[s.addr]
+		accs[i] = sAcc
 	}
 	if err := cs.saveAccountsToDBBatch(accs); err != nil {
 		return fmt.Errorf("distributeSwapFee: could not persist pool credits: %w", err)
@@ -4411,7 +4436,7 @@ func (cs *ChainState) MigrateStrandedPoolTUsdFeesV1() {
 	converted := 0
 	for _, addr := range []string{validatorsPoolAddr, lpPoolAddr, ubiPoolAddr, treasuryPoolAddr} {
 		cs.ensureAccountLoaded(addr)
-		acc, ok := cs.accounts[addr]
+		acc, ok := cs.accounts.Get(addr)
 		if !ok {
 			continue
 		}
@@ -4478,14 +4503,15 @@ func (cs *ChainState) AddLiquidityAtomic(address string, amountAEQ, amountTUSD f
 	address = strings.ToLower(address)
 	err = cs.runAtomicWithOutbox([]string{address, validatorsPoolAddr, lpPoolAddr, ubiPoolAddr, treasuryPoolAddr}, false, func() (Transaction, error) {
 		sharesBefore := 0.0
-		if acc, ok := cs.accounts[address]; ok {
+		if acc, ok := cs.accounts.Get(address); ok {
 			sharesBefore = acc.LPShares.Float()
 		}
 		demurrageLost, err = cs.addLiquidityLocked(address, amountAEQ, amountTUSD)
 		if err != nil {
 			return Transaction{}, err
 		}
-		sharesAfter := cs.accounts[address].LPShares.Float()
+		sharesAfterAcc, _ := cs.accounts.Get(address)
+		sharesAfter := sharesAfterAcc.LPShares.Float()
 		pendingTxTemplate.LPShares = sharesAfter - sharesBefore
 		pendingTxTemplate.FromDemurrageLost = demurrageLost
 		return pendingTxTemplate, nil
@@ -4509,7 +4535,7 @@ func (cs *ChainState) addLiquidityLocked(address string, amountAEQ, amountTUSD f
 	}
 
 	cs.ensureAccountLoaded(address) // page in cold accounts so add-liquidity works beyond the in-memory cap
-	acc, ok := cs.accounts[address]
+	acc, ok := cs.accounts.Get(address)
 	if !ok {
 		return 0, fmt.Errorf("account not found")
 	}
@@ -4629,7 +4655,7 @@ func (cs *ChainState) removeLiquidityLocked(address string, sharesToBurn float64
 	}
 
 	cs.ensureAccountLoaded(address) // page in cold accounts so remove-liquidity works beyond the in-memory cap
-	acc, ok := cs.accounts[address]
+	acc, ok := cs.accounts.Get(address)
 	if !ok {
 		return 0, 0, 0, fmt.Errorf("account not found")
 	}
@@ -4790,7 +4816,7 @@ func (cs *ChainState) GetLPShares(address string) (float64, float64) {
 	address = strings.ToLower(address)
 	cs.ensureAccountLoaded(address)
 	var mine float64
-	if acc, ok := cs.accounts[address]; ok {
+	if acc, ok := cs.accounts.Get(address); ok {
 		mine = acc.LPShares.Float()
 	}
 	total := 0.0
@@ -4844,11 +4870,12 @@ func (cs *ChainState) humanCountLocked() int64 {
 		return cs.humanCount
 	}
 	var count int64
-	for _, acc := range cs.accounts {
+	cs.accounts.Range(func(_ string, acc *AccountState) bool {
 		if acc.IsHuman {
 			count++
 		}
-	}
+		return true
+	})
 	return count
 }
 
@@ -4870,12 +4897,13 @@ func (cs *ChainState) TotalHumans() int {
 func (cs *ChainState) GetAllAccounts() []*AccountState {
 	cs.mu.RLock()
 	defer cs.mu.RUnlock()
-	result := make([]*AccountState, 0, len(cs.accounts))
-	for _, acc := range cs.accounts {
+	result := make([]*AccountState, 0, cs.accounts.Len())
+	cs.accounts.Range(func(_ string, acc *AccountState) bool {
 		displayCopy := *acc
 		displayCopy.Balance = effectiveBalance(acc)
 		result = append(result, &displayCopy)
-	}
+		return true
+	})
 	return result
 }
 
@@ -4934,7 +4962,7 @@ func (cs *ChainState) getAccountsForAddressesLocked(addrs []string) []*AccountSt
 	}
 	cs.ensureAccountsLoaded(unique)
 	for _, addr := range unique {
-		acc, ok := cs.accounts[addr]
+		acc, ok := cs.accounts.Get(addr)
 		if !ok {
 			continue
 		}
@@ -4983,7 +5011,7 @@ func (cs *ChainState) claimTUsdFaucetLocked(address string) error {
 	address = strings.ToLower(address)
 	cs.ensureAccountLoaded(address) // a cold registered human must still be recognised as human here
 
-	acc, ok := cs.accounts[address]
+	acc, ok := cs.accounts.Get(address)
 	if !ok || !acc.IsHuman {
 		return fmt.Errorf("only registered humans can claim the test-tUSD faucet")
 	}
@@ -5150,7 +5178,7 @@ func (cs *ChainState) rebuildStateAccumulators() {
 				if human {
 					humans++
 				}
-				if resident, ok := cs.accounts[lower]; ok {
+				if resident, ok := cs.accounts.Get(lower); ok {
 					resident.leafHash = leaf
 				}
 			}
@@ -5160,14 +5188,15 @@ func (cs *ChainState) rebuildStateAccumulators() {
 	}
 	if !scanned {
 		humans = 0
-		for _, a := range cs.accounts {
+		cs.accounts.Range(func(_ string, a *AccountState) bool {
 			leaf := accountLeaf(a)
 			a.leafHash = leaf
 			xorInto(&acc, leaf)
 			if a.IsHuman {
 				humans++
 			}
-		}
+			return true
+		})
 	}
 	cs.accountSetXOR = acc
 	// See humanCount's own field comment (TotalSupply's cheap source of
@@ -5258,7 +5287,7 @@ func (cs *ChainState) humanAEQWealthLocked(acc *AccountState) float64 {
 
 func (cs *ChainState) calcGiniLocked() float64 {
 	var balances []float64
-	for _, acc := range cs.accounts {
+	cs.accounts.Range(func(_ string, acc *AccountState) bool {
 		// Every human counts, and each counts their FULL AEQ wealth (liquid +
 		// LP). Filtering on liquid Balance>0 used to exclude anyone who parked
 		// all their AEQ as liquidity, understating inequality and — worse —
@@ -5267,7 +5296,8 @@ func (cs *ChainState) calcGiniLocked() float64 {
 		if acc.IsHuman {
 			balances = append(balances, cs.humanAEQWealthLocked(acc))
 		}
-	}
+		return true
+	})
 	return calcGiniFromBalances(balances)
 }
 
@@ -5488,12 +5518,13 @@ func (cs *ChainState) snapshotForRollbackLocked(addrs []string, full bool, chain
 		// snapshot all of them rather than trying to enumerate which wallets
 		// are currently human (that set is itself part of what we're
 		// snapshotting, and could race against ApplyUBIDelta's own enumeration).
-		existing := make(map[string]bool, len(cs.accounts))
-		snap.accounts = make([]accountSnapshot, 0, len(cs.accounts)+len(addrs))
-		for a, acc := range cs.accounts {
+		existing := make(map[string]bool, cs.accounts.Len())
+		snap.accounts = make([]accountSnapshot, 0, cs.accounts.Len()+len(addrs))
+		cs.accounts.Range(func(a string, acc *AccountState) bool {
 			existing[a] = true
 			snap.accounts = append(snap.accounts, accountSnapshot{address: a, existed: true, state: *acc})
-		}
+			return true
+		})
 		// addrs (the block's OTHER, non-ubi TXs' wallets) may name an
 		// account that doesn't exist yet but could be CREATED during this
 		// block's replay (e.g. a transfer to a brand-new wallet). Without
@@ -5509,7 +5540,7 @@ func (cs *ChainState) snapshotForRollbackLocked(addrs []string, full bool, chain
 	} else {
 		snap.accounts = make([]accountSnapshot, 0, len(addrs))
 		for _, a := range addrs {
-			if acc, ok := cs.accounts[a]; ok {
+			if acc, ok := cs.accounts.Get(a); ok {
 				snap.accounts = append(snap.accounts, accountSnapshot{address: a, existed: true, state: *acc})
 			} else {
 				snap.accounts = append(snap.accounts, accountSnapshot{address: a, existed: false})
@@ -5569,9 +5600,9 @@ func (cs *ChainState) restoreFromRollbackLocked(snap *blockRollbackSnapshot) err
 	for _, s := range snap.accounts {
 		if s.existed {
 			restored := s.state
-			cs.accounts[s.address] = &restored
+			cs.accounts.Set(s.address, &restored)
 		} else {
-			delete(cs.accounts, s.address)
+			cs.accounts.Delete(s.address)
 			toDelete = append(toDelete, s.address)
 		}
 	}
@@ -5584,7 +5615,8 @@ func (cs *ChainState) restoreFromRollbackLocked(snap *blockRollbackSnapshot) err
 	var toSave []*AccountState
 	for _, s := range snap.accounts {
 		if s.existed {
-			toSave = append(toSave, cs.accounts[s.address])
+			acc, _ := cs.accounts.Get(s.address)
+			toSave = append(toSave, acc)
 		}
 	}
 	poolToSave := cs.pool
@@ -5685,7 +5717,7 @@ func (cs *ChainState) applyTransferDeltaLocked(from, to string, netAmount, fromL
 	// distribution paths already fixed today.
 	cs.ensureAccountLoaded(from)
 	cs.ensureAccountLoaded(to)
-	fromAcc, ok := cs.accounts[from]
+	fromAcc, ok := cs.accounts.Get(from)
 	if !ok {
 		return fmt.Errorf("from account not found: %s", from)
 	}
@@ -5718,10 +5750,10 @@ func (cs *ChainState) applyTransferDeltaLocked(from, to string, netAmount, fromL
 		return fmt.Errorf("transfer: could not save sender %s: %w", from, err)
 	}
 
-	if _, ok := cs.accounts[to]; !ok {
-		cs.accounts[to] = &AccountState{Address: to}
+	if _, ok := cs.accounts.Get(to); !ok {
+		cs.accounts.Set(to, &AccountState{Address: to})
 	}
-	toAcc := cs.accounts[to]
+	toAcc, _ := cs.accounts.Get(to)
 	if err := cs.applyDemurrageLossLocked(toAcc, toLost); err != nil {
 		return fmt.Errorf("transfer: could not settle recipient %s demurrage: %w", to, err)
 	}
@@ -5752,7 +5784,7 @@ func (cs *ChainState) ApplySwapDelta(wallet string, amountIn, amountOut float64,
 func (cs *ChainState) applySwapDeltaLocked(wallet string, amountIn, amountOut float64, aeqToTusd bool, demurrageLost float64) error {
 	wallet = strings.ToLower(wallet)
 	cs.ensureAccountLoaded(wallet)
-	acc, ok := cs.accounts[wallet]
+	acc, ok := cs.accounts.Get(wallet)
 	if !ok {
 		return fmt.Errorf("account not found: %s", wallet)
 	}
@@ -5848,7 +5880,7 @@ func (cs *ChainState) AddLiquidityDelta(wallet string, aeqAmount, tusdAmount, lp
 func (cs *ChainState) addLiquidityDeltaLocked(wallet string, aeqAmount, tusdAmount, lpShares, demurrageLost float64) error {
 	wallet = strings.ToLower(wallet)
 	cs.ensureAccountLoaded(wallet)
-	acc, ok := cs.accounts[wallet]
+	acc, ok := cs.accounts.Get(wallet)
 	if !ok {
 		return fmt.Errorf("account not found: %s", wallet)
 	}
@@ -5913,7 +5945,7 @@ func (cs *ChainState) RemoveLiquidityDelta(wallet string, sharesToBurn, demurrag
 func (cs *ChainState) removeLiquidityDeltaLocked(wallet string, sharesToBurn, demurrageLost float64) error {
 	wallet = strings.ToLower(wallet)
 	cs.ensureAccountLoaded(wallet)
-	acc, ok := cs.accounts[wallet]
+	acc, ok := cs.accounts.Get(wallet)
 	if !ok {
 		return fmt.Errorf("account not found: %s", wallet)
 	}
@@ -6030,18 +6062,25 @@ func (cs *ChainState) ApplyUBIDelta(amountPerHuman float64, ubiAt int64) error {
 
 // applyUBIDeltaLocked is ApplyUBIDelta's body — see applyTransferDeltaLocked's comment.
 func (cs *ChainState) applyUBIDeltaLocked(amountPerHuman float64, ubiAt int64) error {
-	for addr, acc := range cs.accounts {
+	var rangeErr error
+	cs.accounts.Range(func(addr string, acc *AccountState) bool {
 		if !acc.IsHuman {
-			continue
+			return true
 		}
 		acc.Balance = acc.Balance.Add(NewDecimal(amountPerHuman))
 		touchActivity(acc)
 		if err := cs.enforceWealthCapLocked(acc); err != nil {
-			return fmt.Errorf("ubi (legacy flat): could not enforce wealth cap for %s: %w", addr, err)
+			rangeErr = fmt.Errorf("ubi (legacy flat): could not enforce wealth cap for %s: %w", addr, err)
+			return false
 		}
 		if err := cs.saveAccountToDB(acc); err != nil {
-			return fmt.Errorf("ubi (legacy flat): could not save account %s: %w", addr, err)
+			rangeErr = fmt.Errorf("ubi (legacy flat): could not save account %s: %w", addr, err)
+			return false
 		}
+		return true
+	})
+	if rangeErr != nil {
+		return rangeErr
 	}
 	// Zero the UBI pool on secondary (it was zeroed on primary after distribution)
 	// FIX (Monster Audit 2026-07-12, P1): a cold pool address used to read as
@@ -6049,7 +6088,7 @@ func (cs *ChainState) applyUBIDeltaLocked(amountPerHuman float64, ubiAt int64) e
 	// secondary's pool balance (and therefore its StateRoot) diverged from
 	// every node that DID have it cached at the time.
 	cs.ensureAccountLoaded(ubiPoolAddr)
-	if ubiAcc, ok := cs.accounts[ubiPoolAddr]; ok {
+	if ubiAcc, ok := cs.accounts.Get(ubiPoolAddr); ok {
 		ubiAcc.Balance = NewDecimal(0)
 		if err := cs.saveAccountToDB(ubiAcc); err != nil {
 			return fmt.Errorf("ubi (legacy flat): could not save pool account: %w", err)
@@ -6086,7 +6125,7 @@ func (cs *ChainState) applyUBIRewardDeltaLocked(wallet string, amount, demurrage
 	// "not found" and this secondary rejects a block its primary already
 	// accepted, diverging from consensus.
 	cs.ensureAccountLoaded(wallet)
-	acc, ok := cs.accounts[wallet]
+	acc, ok := cs.accounts.Get(wallet)
 	if !ok {
 		return fmt.Errorf("ubi reward: account not found: %s", wallet)
 	}
@@ -6129,7 +6168,7 @@ func (cs *ChainState) applyUBIFinalizeDeltaLocked(ubiAt int64) error {
 	// FIX (Monster Audit 2026-07-12, P1): see applyUBIDeltaLocked's comment on
 	// the same pattern — a cold pool address must not silently skip zeroing.
 	cs.ensureAccountLoaded(ubiPoolAddr)
-	if ubiAcc, ok := cs.accounts[ubiPoolAddr]; ok {
+	if ubiAcc, ok := cs.accounts.Get(ubiPoolAddr); ok {
 		ubiAcc.Balance = NewDecimal(0)
 		if err := cs.saveAccountToDB(ubiAcc); err != nil {
 			return fmt.Errorf("ubi finalize: could not save pool account: %w", err)
@@ -6165,10 +6204,10 @@ func (cs *ChainState) applyValidatorRewardDeltaLocked(wallet string, amount, dem
 	// balance/tusd/lp/is_human it already had via saveAccountToDB's
 	// Version==0 upsert.
 	cs.ensureAccountLoaded(wallet)
-	if _, ok := cs.accounts[wallet]; !ok {
-		cs.accounts[wallet] = &AccountState{Address: wallet}
+	if _, ok := cs.accounts.Get(wallet); !ok {
+		cs.accounts.Set(wallet, &AccountState{Address: wallet})
 	}
-	acc := cs.accounts[wallet]
+	acc, _ := cs.accounts.Get(wallet)
 	if err := cs.applyDemurrageLossLocked(acc, demurrageLost); err != nil {
 		return fmt.Errorf("validator reward: could not settle %s demurrage: %w", wallet, err)
 	}
@@ -6201,7 +6240,7 @@ func (cs *ChainState) applyValidatorPoolZeroDeltaLocked() error {
 	// FIX (Monster Audit 2026-07-12, P1): see applyUBIDeltaLocked's comment on
 	// the same pattern — a cold pool address must not silently skip zeroing.
 	cs.ensureAccountLoaded(validatorsPoolAddr)
-	if acc, ok := cs.accounts[validatorsPoolAddr]; ok {
+	if acc, ok := cs.accounts.Get(validatorsPoolAddr); ok {
 		acc.Balance = NewDecimal(0)
 		if err := cs.saveAccountToDB(acc); err != nil {
 			return fmt.Errorf("validator pool zero: could not save pool account: %w", err)
@@ -6238,10 +6277,10 @@ func (cs *ChainState) applyLPRewardDeltaLocked(wallet string, amount, demurrageL
 	// FIX (Monster Audit follow-up, 2026-07-12, P0): see applyValidatorRewardDeltaLocked's
 	// comment — same cold-cache blind-create/silent-wipe pattern.
 	cs.ensureAccountLoaded(wallet)
-	if _, ok := cs.accounts[wallet]; !ok {
-		cs.accounts[wallet] = &AccountState{Address: wallet}
+	if _, ok := cs.accounts.Get(wallet); !ok {
+		cs.accounts.Set(wallet, &AccountState{Address: wallet})
 	}
-	acc := cs.accounts[wallet]
+	acc, _ := cs.accounts.Get(wallet)
 	if err := cs.applyDemurrageLossLocked(acc, demurrageLost); err != nil {
 		return fmt.Errorf("lp reward: could not settle %s demurrage: %w", wallet, err)
 	}
@@ -6274,7 +6313,7 @@ func (cs *ChainState) applyLPPoolZeroDeltaLocked() error {
 	// FIX (Monster Audit 2026-07-12, P1): see applyUBIDeltaLocked's comment on
 	// the same pattern — a cold pool address must not silently skip zeroing.
 	cs.ensureAccountLoaded(lpPoolAddr)
-	if acc, ok := cs.accounts[lpPoolAddr]; ok {
+	if acc, ok := cs.accounts.Get(lpPoolAddr); ok {
 		acc.Balance = NewDecimal(0)
 		if err := cs.saveAccountToDB(acc); err != nil {
 			return fmt.Errorf("lp pool zero: could not save pool account: %w", err)
@@ -6311,7 +6350,7 @@ func (cs *ChainState) applyEscrowMoveDeltaLocked(wallet string, demurrageLost, l
 	// "not found" and this secondary rejects a block its primary already
 	// accepted, diverging from consensus.
 	cs.ensureAccountLoaded(wallet)
-	acc, ok := cs.accounts[wallet]
+	acc, ok := cs.accounts.Get(wallet)
 	if !ok {
 		return fmt.Errorf("escrow move: account not found: %s", wallet)
 	}
@@ -6377,12 +6416,13 @@ func (cs *ChainState) applyEscrowReleaseDeltaLocked(amount float64) error {
 	// Version==0 AccountState is created for it, or the real DB balance gets
 	// silently overwritten.
 	cs.ensureAccountLoaded(ubiPoolAddr)
-	if _, ok := cs.accounts[ubiPoolAddr]; !ok {
-		cs.accounts[ubiPoolAddr] = &AccountState{Address: ubiPoolAddr}
+	if _, ok := cs.accounts.Get(ubiPoolAddr); !ok {
+		cs.accounts.Set(ubiPoolAddr, &AccountState{Address: ubiPoolAddr})
 	}
-	cs.accounts[ubiPoolAddr].Balance = cs.accounts[ubiPoolAddr].Balance.Add(NewDecimal(amount))
+	ubiPoolAcc, _ := cs.accounts.Get(ubiPoolAddr)
+	ubiPoolAcc.Balance = ubiPoolAcc.Balance.Add(NewDecimal(amount))
 	// FIX (audit recheck2, P0 #3): see ApplyTransferDelta's comment.
-	if err := cs.saveAccountToDB(cs.accounts[ubiPoolAddr]); err != nil {
+	if err := cs.saveAccountToDB(ubiPoolAcc); err != nil {
 		return fmt.Errorf("escrow release: could not save pool account: %w", err)
 	}
 	return nil
@@ -6405,10 +6445,10 @@ func (cs *ChainState) applyFaucetDeltaLocked(wallet string, faucetAmount float64
 	// with FaucetClaimed=false, which would have silently let a cold wallet
 	// that already claimed the faucet claim it again on replay.
 	cs.ensureAccountLoaded(wallet)
-	if _, ok := cs.accounts[wallet]; !ok {
-		cs.accounts[wallet] = &AccountState{Address: wallet}
+	if _, ok := cs.accounts.Get(wallet); !ok {
+		cs.accounts.Set(wallet, &AccountState{Address: wallet})
 	}
-	acc := cs.accounts[wallet]
+	acc, _ := cs.accounts.Get(wallet)
 	if acc.FaucetClaimed {
 		return nil // idempotent: already applied
 	}

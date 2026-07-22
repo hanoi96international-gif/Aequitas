@@ -15,7 +15,7 @@ import "testing"
 func TestLiquidateLPSharesForEscrowLocked_BurnsProportionalShare(t *testing.T) {
 	cs := newTestState()
 	acc := &AccountState{Address: "0xlp", IsHuman: true, LPShares: NewDecimal(50)}
-	cs.accounts[acc.Address] = acc
+	cs.accounts.Set(acc.Address, acc)
 	cs.pool = &PoolState{
 		ReserveAEQ:    NewDecimal(1000),
 		ReserveTUSD:   NewDecimal(2000),
@@ -48,7 +48,7 @@ func TestLiquidateLPSharesForEscrowLocked_BurnsProportionalShare(t *testing.T) {
 func TestLiquidateLPSharesForEscrowLocked_NoOpWhenPoolEmpty(t *testing.T) {
 	cs := newTestState()
 	acc := &AccountState{Address: "0xlp", IsHuman: true, LPShares: NewDecimal(10)}
-	cs.accounts[acc.Address] = acc
+	cs.accounts.Set(acc.Address, acc)
 	cs.pool = &PoolState{}
 
 	burned, outAEQ, outTUSD, err := cs.liquidateLPSharesForEscrowLocked(acc, 10)
@@ -66,7 +66,7 @@ func TestLiquidateLPSharesForEscrowLocked_NoOpWhenPoolEmpty(t *testing.T) {
 func TestConvertTUsdForEscrowLocked_ConvertsAtAMMRate(t *testing.T) {
 	cs := newTestState()
 	acc := &AccountState{Address: "0xtusd", IsHuman: true, TUsdBalance: NewDecimal(100)}
-	cs.accounts[acc.Address] = acc
+	cs.accounts.Set(acc.Address, acc)
 	cs.pool = &PoolState{
 		ReserveAEQ:  NewDecimal(10000),
 		ReserveTUSD: NewDecimal(10000),
@@ -98,7 +98,7 @@ func TestConvertTUsdForEscrowLocked_ConvertsAtAMMRate(t *testing.T) {
 	// Swap fee (40/30/20/10 split) lands in AEQ here: distributeSwapFee
 	// converts a tUSD-denominated fee to AEQ via convertTUsdFeeToAEQLocked
 	// whenever the pool can price it, which this well-liquidified pool can.
-	if cs.accounts[validatorsPoolAddr] == nil || cs.accounts[validatorsPoolAddr].Balance.Float() <= 0 {
+	if vAcc, ok := cs.accounts.Get(validatorsPoolAddr); !ok || vAcc.Balance.Float() <= 0 {
 		t.Error("want a nonzero AEQ fee share credited to validatorsPoolAddr")
 	}
 }
@@ -106,7 +106,7 @@ func TestConvertTUsdForEscrowLocked_ConvertsAtAMMRate(t *testing.T) {
 func TestConvertTUsdForEscrowLocked_RefusesWhenAEQReserveIsEmpty(t *testing.T) {
 	cs := newTestState()
 	acc := &AccountState{Address: "0xtusd", IsHuman: true, TUsdBalance: NewDecimal(50)}
-	cs.accounts[acc.Address] = acc
+	cs.accounts.Set(acc.Address, acc)
 	// An AEQ reserve of exactly 0 can't back ANY conversion, however small.
 	cs.pool = &PoolState{ReserveAEQ: NewDecimal(0), ReserveTUSD: NewDecimal(100)}
 
@@ -131,7 +131,7 @@ func TestConvertTUsdForEscrowLocked_RefusesWhenAEQReserveIsEmpty(t *testing.T) {
 func TestApplyEscrowMoveDelta_LiquidatesLPSharesThenZeroes(t *testing.T) {
 	cs := newTestState()
 	acc := &AccountState{Address: "0xward", IsHuman: true, LPShares: NewDecimal(20)}
-	cs.accounts[acc.Address] = acc
+	cs.accounts.Set(acc.Address, acc)
 	cs.pool = &PoolState{ReserveAEQ: NewDecimal(1000), ReserveTUSD: NewDecimal(1000), TotalLPShares: NewDecimal(200)}
 
 	if err := cs.ApplyEscrowMoveDelta("0xward", 0, 20, 0); err != nil {
@@ -150,7 +150,7 @@ func TestApplyEscrowMoveDelta_LiquidatesLPSharesThenZeroes(t *testing.T) {
 func TestApplyEscrowMoveDelta_ConvertsTUsdThenZeroes(t *testing.T) {
 	cs := newTestState()
 	acc := &AccountState{Address: "0xward", IsHuman: true, TUsdBalance: NewDecimal(50)}
-	cs.accounts[acc.Address] = acc
+	cs.accounts.Set(acc.Address, acc)
 	cs.pool = &PoolState{ReserveAEQ: NewDecimal(1000), ReserveTUSD: NewDecimal(1000)}
 
 	if err := cs.ApplyEscrowMoveDelta("0xward", 0, 0, 50); err != nil {
@@ -164,7 +164,7 @@ func TestApplyEscrowMoveDelta_ConvertsTUsdThenZeroes(t *testing.T) {
 func TestApplyEscrowMoveDelta_PoolStateDivergence_ErrorsInsteadOfSilentlySkipping(t *testing.T) {
 	cs := newTestState()
 	acc := &AccountState{Address: "0xward", IsHuman: true}
-	cs.accounts[acc.Address] = acc
+	cs.accounts.Set(acc.Address, acc)
 	// This node's pool has NO LP shares at all, unlike the primary that
 	// reported burning 20 — simulates a diverged/inconsistent pool state.
 	cs.pool = &PoolState{}
@@ -182,7 +182,7 @@ func TestLiquidateAndConvertForEscrow_Deterministic(t *testing.T) {
 	newScenario := func() (*ChainState, *AccountState) {
 		cs := newTestState()
 		acc := &AccountState{Address: "0xward", IsHuman: true, LPShares: NewDecimal(30), TUsdBalance: NewDecimal(10)}
-		cs.accounts[acc.Address] = acc
+		cs.accounts.Set(acc.Address, acc)
 		cs.pool = &PoolState{ReserveAEQ: NewDecimal(500), ReserveTUSD: NewDecimal(700), TotalLPShares: NewDecimal(150)}
 		return cs, acc
 	}

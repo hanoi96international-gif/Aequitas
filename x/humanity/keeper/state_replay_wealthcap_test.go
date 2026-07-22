@@ -34,10 +34,10 @@ func TestApplySwapDeltaLocked_MirrorsPrimaryWealthCap(t *testing.T) {
 	const startBalance = 20_000.0 // comfortably above the 25x-average cap once AEQ arrives
 	const startTUsd = 20_000.0    // funds the tUSD->AEQ swap below
 	primary := newWealthCapTestState(startBalance)
-	primary.accounts["0xtarget"].TUsdBalance = NewDecimal(startTUsd)
+	acct(primary, "0xtarget").TUsdBalance = NewDecimal(startTUsd)
 	primary.pool = &PoolState{ReserveAEQ: NewDecimal(1_000_000), ReserveTUSD: NewDecimal(1_000_000), TotalLPShares: NewDecimal(1)}
 	secondary := newWealthCapTestState(startBalance)
-	secondary.accounts["0xtarget"].TUsdBalance = NewDecimal(startTUsd)
+	acct(secondary, "0xtarget").TUsdBalance = NewDecimal(startTUsd)
 	secondary.pool = &PoolState{ReserveAEQ: NewDecimal(1_000_000), ReserveTUSD: NewDecimal(1_000_000), TotalLPShares: NewDecimal(1)}
 
 	const amountIn = 15_000.0 // tUSD in
@@ -50,8 +50,8 @@ func TestApplySwapDeltaLocked_MirrorsPrimaryWealthCap(t *testing.T) {
 		t.Fatalf("secondary applySwapDeltaLocked: %v", err)
 	}
 
-	primaryBal := primary.accounts["0xtarget"].Balance.Float()
-	secondaryBal := secondary.accounts["0xtarget"].Balance.Float()
+	primaryBal := acct(primary, "0xtarget").Balance.Float()
+	secondaryBal := acct(secondary, "0xtarget").Balance.Float()
 	if primaryBal != secondaryBal {
 		t.Fatalf("primary and replay diverged: primary=%.6f secondary=%.6f (replay must mirror the primary's wealth-cap enforcement)", primaryBal, secondaryBal)
 	}
@@ -71,10 +71,10 @@ func TestRemoveLiquidityDeltaLocked_MirrorsPrimaryWealthCap(t *testing.T) {
 	const startBalance = 20_000.0
 	const lpShares = 100.0
 	primary := newWealthCapTestState(startBalance)
-	primary.accounts["0xtarget"].LPShares = NewDecimal(lpShares)
+	acct(primary, "0xtarget").LPShares = NewDecimal(lpShares)
 	primary.pool = &PoolState{ReserveAEQ: NewDecimal(1_000_000), ReserveTUSD: NewDecimal(1_000_000), TotalLPShares: NewDecimal(lpShares)}
 	secondary := newWealthCapTestState(startBalance)
-	secondary.accounts["0xtarget"].LPShares = NewDecimal(lpShares)
+	acct(secondary, "0xtarget").LPShares = NewDecimal(lpShares)
 	secondary.pool = &PoolState{ReserveAEQ: NewDecimal(1_000_000), ReserveTUSD: NewDecimal(1_000_000), TotalLPShares: NewDecimal(lpShares)}
 
 	const sharesToBurn = 50.0
@@ -87,8 +87,8 @@ func TestRemoveLiquidityDeltaLocked_MirrorsPrimaryWealthCap(t *testing.T) {
 		t.Fatalf("secondary removeLiquidityDeltaLocked: %v", err)
 	}
 
-	primaryBal := primary.accounts["0xtarget"].Balance.Float()
-	secondaryBal := secondary.accounts["0xtarget"].Balance.Float()
+	primaryBal := acct(primary, "0xtarget").Balance.Float()
+	secondaryBal := acct(secondary, "0xtarget").Balance.Float()
 	if primaryBal != secondaryBal {
 		t.Fatalf("primary and replay diverged: primary=%.6f secondary=%.6f (replay must mirror the primary's wealth-cap enforcement)", primaryBal, secondaryBal)
 	}

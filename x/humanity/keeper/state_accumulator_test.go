@@ -8,7 +8,7 @@ import "testing"
 // recompute over those maps at every step.
 func newAccumTestState() *ChainState {
 	return &ChainState{
-		accounts:   make(map[string]*AccountState),
+		accounts:   newShardedAccounts(),
 		pool:       &PoolState{},
 		nullifiers: make(map[string]string),
 		useDB:      false,
@@ -20,9 +20,10 @@ func newAccumTestState() *ChainState {
 // accountSetXOR must always equal.
 func referenceAccountXOR(cs *ChainState) [32]byte {
 	var x [32]byte
-	for _, a := range cs.accounts {
+	cs.accounts.Range(func(_ string, a *AccountState) bool {
 		xorInto(&x, accountLeaf(a))
-	}
+		return true
+	})
 	return x
 }
 
@@ -57,7 +58,7 @@ func TestStateRootAccumulator_MatchesFullRecompute(t *testing.T) {
 
 	// Add a human.
 	a := &AccountState{Address: "0xaaa", Balance: NewDecimal(1000), IsHuman: true}
-	cs.accounts["0xaaa"] = a
+	cs.accounts.Set("0xaaa", a)
 	if err := cs.saveAccountToDB(a); err != nil {
 		t.Fatal(err)
 	}
@@ -74,7 +75,7 @@ func TestStateRootAccumulator_MatchesFullRecompute(t *testing.T) {
 
 	// Add a non-human with only tUSD + LP (still included via the !=0 rule).
 	b := &AccountState{Address: "0xbbb", TUsdBalance: NewDecimal(10), LPShares: NewDecimal(5)}
-	cs.accounts["0xbbb"] = b
+	cs.accounts.Set("0xbbb", b)
 	if err := cs.saveAccountToDB(b); err != nil {
 		t.Fatal(err)
 	}
@@ -139,7 +140,7 @@ func TestStateRootAccumulator_OrderIndependence(t *testing.T) {
 		cs := newAccumTestState()
 		for _, addr := range order {
 			acc := &AccountState{Address: addr, Balance: NewDecimal(100), IsHuman: true}
-			cs.accounts[addr] = acc
+			cs.accounts.Set(addr, acc)
 			_ = cs.saveAccountToDB(acc)
 			_, _ = cs.tryClaimNullifierLocked("n-"+addr, addr)
 		}
@@ -164,7 +165,7 @@ func TestStateRootAccumulator_OrderIndependence(t *testing.T) {
 func TestStateRootAccumulator_Rollback(t *testing.T) {
 	cs := newAccumTestState()
 	a := &AccountState{Address: "0xaaa", Balance: NewDecimal(1000), IsHuman: true}
-	cs.accounts["0xaaa"] = a
+	cs.accounts.Set("0xaaa", a)
 	_ = cs.saveAccountToDB(a)
 	_, _ = cs.tryClaimNullifierLocked("n1", "0xaaa")
 
@@ -180,7 +181,7 @@ func TestStateRootAccumulator_Rollback(t *testing.T) {
 	a.Balance = NewDecimal(1)
 	_ = cs.saveAccountToDB(a)
 	b := &AccountState{Address: "0xbbb", Balance: NewDecimal(777), IsHuman: true}
-	cs.accounts["0xbbb"] = b
+	cs.accounts.Set("0xbbb", b)
 	_ = cs.saveAccountToDB(b)
 	_, _ = cs.tryClaimNullifierLocked("n2", "0xbbb")
 

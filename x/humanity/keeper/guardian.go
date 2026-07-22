@@ -257,7 +257,7 @@ func (cs *ChainState) ConfirmAlive(wallet, expectedGuardian string) error {
 	cs.mu.Lock()
 	defer cs.mu.Unlock()
 
-	acc, ok := cs.accounts[wallet]
+	acc, ok := cs.accounts.Get(wallet)
 	if !ok {
 		return fmt.Errorf("account %s not found", wallet)
 	}
@@ -325,10 +325,10 @@ func (cs *ChainState) RecoverFromEscrow(wallet string) error {
 
 		// Credit balance back. If the account was lost from memory recreate
 		// it as a human — escrow only exists for registered humans.
-		if _, ok := cs.accounts[wallet]; !ok {
-			cs.accounts[wallet] = &AccountState{Address: wallet, IsHuman: true}
+		if _, ok := cs.accounts.Get(wallet); !ok {
+			cs.accounts.Set(wallet, &AccountState{Address: wallet, IsHuman: true})
 		}
-		acc := cs.accounts[wallet]
+		acc, _ := cs.accounts.Get(wallet)
 		if _, err := cs.settleDemurrageLocked(acc); err != nil {
 			return Transaction{}, fmt.Errorf("could not settle demurrage for %s: %w", wallet, err)
 		}
@@ -434,7 +434,7 @@ func (cs *ChainState) checkAndMoveToEscrowLocked() ([]DistributionShare, error) 
 
 	var toEscrow []escrowEntry
 	for _, addr := range candidateAddrs {
-		acc, ok := cs.accounts[addr]
+		acc, ok := cs.accounts.Get(addr)
 		if !ok || !acc.IsHuman {
 			continue
 		}
@@ -548,7 +548,7 @@ func (cs *ChainState) checkAndMoveToEscrowLocked() ([]DistributionShare, error) 
 		if err := cs.saveAccountToDB(&acc); err != nil {
 			return nil, fmt.Errorf("could not save escrowed account %s: %w", entry.acc.Address, err)
 		}
-		cs.accounts[entry.acc.Address] = &acc
+		cs.accounts.Set(entry.acc.Address, &acc)
 		// FIX (P2-5, beta-launch audit 2026-07-05): keep the EVM mirror's
 		// escrowOf slot current — see syncGuardianEscrowSlotsLocked's comment.
 		cs.syncGuardianEscrowSlotsLocked(V7_CONTRACT_ADDR, entry.acc.Address)
@@ -621,11 +621,13 @@ func (cs *ChainState) releaseEscrowToUBILocked() ([]DistributionShare, error) {
 	var released []DistributionShare
 	for _, e := range entries {
 		// Credit UBI pool.
-		if _, ok := cs.accounts[ubiPoolAddr]; !ok {
-			cs.accounts[ubiPoolAddr] = &AccountState{Address: ubiPoolAddr}
+		ubiAcc, ok := cs.accounts.Get(ubiPoolAddr)
+		if !ok {
+			ubiAcc = &AccountState{Address: ubiPoolAddr}
+			cs.accounts.Set(ubiPoolAddr, ubiAcc)
 		}
-		cs.accounts[ubiPoolAddr].Balance = cs.accounts[ubiPoolAddr].Balance.Add(NewDecimal(e.amount))
-		if err := cs.saveAccountToDB(cs.accounts[ubiPoolAddr]); err != nil {
+		ubiAcc.Balance = ubiAcc.Balance.Add(NewDecimal(e.amount))
+		if err := cs.saveAccountToDB(ubiAcc); err != nil {
 			return nil, fmt.Errorf("could not save UBI pool: %w", err)
 		}
 		// FIX (P2-5, beta-launch audit 2026-07-05): the escrow_accounts row was
@@ -656,10 +658,11 @@ func (cs *ChainState) applyEscrowRecoverDeltaLocked(wallet string, amount float6
 	// zero), silently wiping any real balance/tusd/lp/last-activity it
 	// already had. wallet is already lowercased by block.go's caller.
 	cs.ensureAccountLoaded(wallet)
-	if _, ok := cs.accounts[wallet]; !ok {
-		cs.accounts[wallet] = &AccountState{Address: wallet, IsHuman: true}
+	acc, ok := cs.accounts.Get(wallet)
+	if !ok {
+		acc = &AccountState{Address: wallet, IsHuman: true}
+		cs.accounts.Set(wallet, acc)
 	}
-	acc := cs.accounts[wallet]
 	acc.Balance = acc.Balance.Add(NewDecimal(amount))
 	touchActivity(acc)
 	if err := cs.enforceWealthCapLocked(acc); err != nil {
