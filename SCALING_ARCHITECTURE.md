@@ -4,12 +4,14 @@
 
 ## Ziel
 
-Aequitas soll deutlich mehr TPS verarbeiten können, ohne die beiden nicht verhandelbaren Eigenschaften des Projekts zu verletzen:
+**Explizites Zahlenziel: mindestens 50.000 TPS sustained, pro Node.** Nicht "so schnell wie machbar" — 50.000 ist der Maßstab, an dem sich dieses Design messen lassen muss.
+
+Dabei gelten zwei nicht verhandelbare Nebenbedingungen:
 
 1. **Dezentralität** — kein Design, das teure/spezialisierte Validator-Hardware voraussetzt.
 2. **1 Mensch = 1 Validator-Slot** — die PoH-Gate bleibt die alleinige Zugangskontrolle für Validatoren, unabhängig von Rechenleistung.
 
-Das schließt einen Teil der Techniken aus, mit denen andere Hochdurchsatz-Ketten (Solana, Keeta, etc.) ihre Zahlen erreichen — die setzen teils bewusst auf leistungsstarke, spezialisierte Validator-Nodes. Für Aequitas ist "schnell, aber nur mit High-End-Server betreibbar" kein akzeptabler Trade-off.
+Das schließt einen Teil der Techniken aus, mit denen andere Hochdurchsatz-Ketten (Solana, Keeta, etc.) ihre Zahlen erreichen — die setzen teils bewusst auf leistungsstarke, spezialisierte Validator-Nodes. Für Aequitas ist "schnell, aber nur mit High-End-Server betreibbar" kein akzeptabler Trade-off. Die Konsequenz daraus ist weiter unten (Abschnitt "Realistisches Zielbild") technisch eingeordnet: 50.000 TPS auf bescheidener, für Einzelpersonen erschwinglicher Hardware ist ambitioniert, aber mit dem richtigen Architekturwechsel (Zielarchitektur Punkt 6, "State primär im RAM") kein Fantasiewert — vergleichbare Größenordnungen erreichen In-Memory-Systeme wie Redis auf einem einzelnen Kern schon heute für einfache Operationen. Der Unterschied zu "einfach mehr Server" ist unten konkret ausgearbeitet, nicht nur behauptet.
 
 ## Ausgangslage (Stand dieser Session, real gemessen und live deployed)
 
@@ -65,6 +67,26 @@ Aktuell werden diese globalen XOR-Akkumulatoren bei **jedem** Kontospeichern unt
 
 `syncBalanceLocked` ist bereits als "Anzeige-Cache für `eth_call`/MetaMask" dokumentiert, nicht als Teil des autoritativen Ledgers (`chain_accounts`/`cs.accounts` bleibt Wahrheitsquelle). Die vorhandene `QueueEVMMirrorSync`/`RetryEVMMirrorSyncQueue`-Infrastruktur (heute nur ein Fallback bei Fehlern) sollte der **primäre** Pfad werden: Transfer committet, EVM-Mirror-Update wird danach asynchron nachgezogen. Halbiert den Round-Trip-Bedarf im kritischen Pfad nochmal.
 
+### 6. State primär im RAM — Postgres wird vom synchronen Schreibpfad zum asynchronen Durability-Log
+
+Das ist der Baustein, der tatsächlich nötig ist, um von "niedriger vierstelliger Bereich" (Sharding allein, Abschnitte 1–5) auf **50.000 TPS** zu kommen — und der größte Architektur-Einschnitt in diesem Dokument. Ohne ihn bleibt Postgres-Netzwerklatenz pro Kontomutation der Deckel, unabhängig davon, wie fein geshardet wird (siehe Profiling-Befund oben: 58 % der CPU-Zeit unter `database/sql.withLock`, nicht unter eigener Rechenarbeit).
+
+**Grundprinzip** (Standardmuster für Hochdurchsatz-Systeme, z. B. wie Redis/Kafka/klassische RDBMS-Commit-Logs intern arbeiten): die In-Memory-Kopie eines Kontos (bereits heute vorhanden: `cs.accounts`/geshardeter Store) wird zur **primären** Wahrheitsquelle für Lese-/Schreiblogik. Postgres wird vom "muss vor jeder Bestätigung synchron beschrieben werden" zu "wird asynchron, gebündelt nachgeführt, für Durability und für alles, was SQL-Abfragen braucht (Explorer, Reporting)".
+
+**Konkreter Mechanismus:**
+1. **Lokales, sequentielles Write-Ahead-Log (WAL)**: jede eingehende, business-logisch bereits validierte Transaktion (Guthaben geprüft etc.) wird zuerst als kompakter Eintrag an eine lokale, ausschließlich anhängende Log-Datei angehängt (append-only, sequentielles Schreiben ist um Größenordnungen billiger als zufällige Schreibzugriffe — das ist exakt, warum Datenbank-Commit-Logs so funktionieren). Erst NACH einem erfolgreichen WAL-append gilt die Transaktion als "angenommen".
+2. **Gruppen-Commit auf dem WAL selbst**: mehrere gleichzeitig eintreffende Transaktionen werden zu einem einzigen `fsync` auf das WAL gebündelt (dasselbe Prinzip wie das bereits gebaute Postgres-Group-Commit, nur eine Ebene tiefer und auf einem viel billigeren Medium — ein lokales sequentielles Log statt einer vollen relationalen Transaktion).
+3. **Sofortige In-Memory-Anwendung**: nach dem WAL-append wird die Mutation sofort auf den geshardeten In-Memory-Store angewendet (Abschnitte 1–2) — keine Netzwerklatenz, reine Speicheroperation, im Mikrosekundenbereich.
+4. **Asynchrone Nachführung nach Postgres**: ein Hintergrundprozess liest das WAL (oder einen In-Memory-Puffer bereits angewendeter Änderungen) und schreibt in gebündelten Batches nach `chain_accounts`/`pending_txs` — für Explorer-Abfragen, Cross-Node-Sync (Block-Relay/Replay bleibt wie heute über `pending_txs` laufen) und als zweite, langsamere Durability-Schicht.
+5. **Crash-Recovery**: beim Neustart wird der letzte durch Postgres bestätigte Stand geladen, dann das WAL ab diesem Punkt erneut angewendet (klassisches WAL-Replay, exakt das Muster, das `chain_blocks.replayed`/`LoadUnreplayedBlocksFromDB` in diesem Repo für Blöcke schon heute kennt — hier auf der Konto-Ebene, nicht der Block-Ebene).
+
+**Was das NICHT ändert:** Die Konsens-Semantik bleibt identisch — andere Nodes erfahren von einer Transaktion weiterhin über `pending_txs`/Blockrelay, nicht über das lokale WAL (das ist rein prozessintern für Durability, kein Netzwerkprotokoll). Der StateRoot-Vertrag (`accountSetXOR` etc.) bleibt unverändert, nur die Reihenfolge, WANN etwas in Postgres landet, ändert sich.
+
+**Was das NEU einführt, sorgfältig bedacht werden muss:**
+- Ein WAL-Format, Rotation/Kompaktierung (das Log darf nicht unbegrenzt wachsen), und ein sauberer Kontrakt für "ab welchem Punkt gilt eine Transaktion als durable" (heute: Postgres-Commit; neu: WAL-append — API-Antwortverhalten an Aufrufer wie `evm_rpc.go` muss entsprechend angepasst werden).
+- Der Explorer/`/api/status` und alle SQL-basierten Reports lesen dann einen **leicht verzögerten** Stand (Sekundenbruchteile bis wenige Sekunden Lag zu Postgres) — muss dokumentiert und für Endnutzer sichtbar sein, wo es relevant ist (z. B. Balance-Anzeige direkt nach einer Transaktion).
+- Dieser Baustein ist der mit Abstand größte Vertrauensvorschuss in diesem ganzen Dokument — er ändert die Durability-Garantie des gesamten Systems, nicht nur seine Geschwindigkeit. Braucht die längste, härteste Test-Kampagne von allen hier beschriebenen Schritten (siehe Teststrategie unten, explizit inklusive Crash-Simulation).
+
 ## Konkret ermittelter Umfang (Stand dieser Session)
 
 - **190 Stellen** in 6 Dateien greifen direkt auf `cs.accounts` zu (state.go: 142, snapshot.go: 15, guardian.go: 14, block.go: 10, evm_storage.go: 8, api.go: 1) — inklusive Mustern wie `for addr, acc := range cs.accounts` (volle Iteration), `json.Marshal(cs.accounts)` (Serialisierung der ganzen Map im No-DB-Fallback-Modus), verketteten Zugriffen wie `cs.accounts[to].Balance = cs.accounts[to].Balance.Add(...)`.
@@ -90,9 +112,10 @@ Jede dieser Klassen von Bug wäre in einem 280-Stellen-Umbau des Kern-Storage-La
 2. **Mechanische Migration, verhaltensidentisch**: `cs.accounts` auf den neuen Typ umstellen, aber weiterhin komplett unter `cs.mu` verwenden (keine neue Nebenläufigkeit) — Datei für Datei, nach jeder Datei volle Testsuite + `-race`. Ziel dieser Phase: beweisen, dass der Storage-Layer korrekt ist, ohne gleichzeitig neues Nebenläufigkeitsverhalten einzuführen.
 3. **Pool-Fee-Entkopplung** (Punkt 3 oben) — eigenständig testbar, unabhängig von Sharding.
 4. **State-Root-Akkumulatoren entkoppeln** (Punkt 4 oben).
-5. **Transfer-Pfad auf Shard-Locks statt `cs.mu` umstellen** — der eigentliche Parallelitätsgewinn. Andere Operationen (Swap, Distribution, etc.) bleiben vorerst auf grobem Locking, sind aber durch Schritt 2 bereits kompatibel mit dem neuen Store.
-6. **EVM-Mirror-Sync asynchron** (Punkt 5 oben).
-7. Erst danach, operation-by-operation, weitere Subsysteme auf feingranulares Locking umstellen — jedes einzeln, mit eigener Test-Kampagne.
+5. **Transfer-Pfad auf Shard-Locks statt `cs.mu` umstellen** — der erste echte Parallelitätsgewinn (erwartet: niedriger bis mittlerer vierstelliger TPS-Bereich, siehe Zielbild unten). Andere Operationen (Swap, Distribution, etc.) bleiben vorerst auf grobem Locking, sind aber durch Schritt 2 bereits kompatibel mit dem neuen Store.
+6. **EVM-Mirror-Sync asynchron** (Abschnitt 5 der Zielarchitektur).
+7. **WAL + In-Memory-primär** (Abschnitt 6 der Zielarchitektur) — DER Schritt, der auf dem Weg zu 50.000 TPS liegt. Eigenständiges Teilprojekt: WAL-Format, Gruppen-Commit, Crash-Recovery, asynchrone Postgres-Nachführung, jeweils isoliert gebaut und getestet, bevor es an den restlichen Stack angeschlossen wird.
+8. Erst danach, operation-by-operation, weitere Subsysteme (Swap, Distribution, Guardian, Slashing) auf dieselbe WAL+Shard-Architektur umstellen — jedes einzeln, mit eigener Test-Kampagne. Bis dahin profitieren nur Transfers vom vollen Durchsatzgewinn; das ist ein bewusster Zwischenzustand, kein Fehler im Plan.
 
 ## Teststrategie (nicht verhandelbar für Phase 5+)
 
@@ -103,8 +126,13 @@ Jede dieser Klassen von Bug wäre in einem 280-Stellen-Umbau des Kern-Storage-La
 
 ## Realistisches Zielbild
 
-Ehrlich, nicht optimistisch gerundet: Mit vollständiger Umsetzung der obigen Architektur (Sharding + Pool-Entkopplung + async EVM-Mirror) ist ein Sprung in den **niedrigen bis mittleren Tausender-Bereich pro Node** plausibel — begrenzt durch echte Postgres-Round-Trip-Latenz pro Konto-Mutation und die Anzahl gleichzeitig nutzbarer DB-Connections (`max_connections`). Für 50.000+ TPS **sustained** wäre zusätzlich ein fundamentalerer Wechsel nötig (State primär im RAM, Postgres nur noch als asynchrones Durability-Log statt synchroner Wahrheitsquelle) — das ist ein eigener, noch größerer Entwurfsschritt, hier bewusst nur benannt, nicht weiter ausgeplant.
+Zwei Zwischenstände, ehrlich eingeordnet, keiner davon optimistisch gerundet:
+
+- **Nach Phasen 1–6 (Sharding + Pool-Entkopplung + State-Root-Entkopplung + async EVM-Mirror), Postgres bleibt synchrone Wahrheitsquelle**: niedriger bis mittlerer vierstelliger TPS-Bereich pro Node plausibel — weiterhin begrenzt durch echte Postgres-Round-Trip-Latenz pro Konto-Mutation und die Anzahl gleichzeitig nutzbarer DB-Connections (`max_connections`). **Reicht nicht für das 50.000er-Ziel.**
+- **Nach zusätzlich Phase 7 (WAL + In-Memory-primär, Abschnitt 6)**: 50.000 TPS wird ein reales, erreichbares Ziel — die dominante Kostenquelle (Postgres-Netzwerklatenz im synchronen Pfad) ist dann komplett aus dem kritischen Pfad heraus, ersetzt durch sequentielles, lokales WAL-Schreiben (Größenordnung günstiger) plus reine In-Memory-Mutation. Die verbleibenden Begrenzer sind dann: WAL-Fsync-Durchsatz der tatsächlich genutzten Platte, Go-GC-Pausen unter sehr hoher Allokationsrate (muss bei diesem Durchsatz explizit gemessen und ggf. durch Objekt-Pooling entschärft werden), und wie viele Shards die konkrete Hardware (CPU-Kerne) sinnvoll parallel bedienen kann. Keine dieser drei Grenzen ist prinzipiell — alle sind mit sorgfältigem Engineering und Messung adressierbar, aber alle drei müssen im Projekt tatsächlich gemessen werden, nicht nur angenommen.
+
+Kurz: **50.000 TPS ist mit diesem vollständigen Plan (inkl. Phase 7) ein begründetes, kein beliebiges Ziel** — aber nur mit Phase 7, nicht mit Sharding allein.
 
 ## Aufwandsschätzung
 
-Kein Wochenend-Projekt. Realistisch: mehrere Wochen fokussierter Arbeit für Phasen 1–6, plus die Zeit für den Aufbau einer Staging-Umgebung, plus Zeit für die Test-Kampagne selbst — nicht etwas, das in einer fortlaufenden Chat-Session sicher zu Ende gebracht werden sollte.
+Kein Wochenend-Projekt. Realistisch: mehrere Wochen fokussierter Arbeit für Phasen 1–6, danach ein eigenes, mindestens ebenso großes Teilprojekt für Phase 7 (WAL/In-Memory-primär) — inklusive der Zeit für den Aufbau einer Staging-Umgebung und die Test-Kampagne (insbesondere Crash-Recovery-Tests für Phase 7, die härtesten in diesem gesamten Plan). Nicht etwas, das in einer fortlaufenden Chat-Session sicher zu Ende gebracht werden sollte — das gilt für Phase 7 noch einmal deutlich stärker als für Phasen 1–6.
