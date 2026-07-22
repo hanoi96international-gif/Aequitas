@@ -104,7 +104,7 @@ func TestStateRootAccumulator_MatchesFullRecompute(t *testing.T) {
 	assertMatch("0xbbb re-included")
 
 	// Nullifiers: claim, save (distinct key), release.
-	if _, err := cs.tryClaimNullifierLocked("null-1", "0xaaa"); err != nil {
+	if _, err := cs.tryClaimNullifierLocked(context.Background(), "null-1", "0xaaa"); err != nil {
 		t.Fatal(err)
 	}
 	assertMatch("claim null-1")
@@ -113,11 +113,11 @@ func TestStateRootAccumulator_MatchesFullRecompute(t *testing.T) {
 	}
 	assertMatch("save null-2")
 	// Claiming an already-present key must be a no-op for the accumulator.
-	if _, err := cs.tryClaimNullifierLocked("null-1", "0xaaa"); err != nil {
+	if _, err := cs.tryClaimNullifierLocked(context.Background(), "null-1", "0xaaa"); err != nil {
 		t.Fatal(err)
 	}
 	assertMatch("re-claim null-1 (no-op)")
-	cs.releaseNullifierLocked("null-1")
+	cs.releaseNullifierLocked(context.Background(), "null-1")
 	assertMatch("release null-1")
 
 	// StateRoot must be deterministic and non-empty.
@@ -145,7 +145,7 @@ func TestStateRootAccumulator_OrderIndependence(t *testing.T) {
 			acc := &AccountState{Address: addr, Balance: NewDecimal(100), IsHuman: true}
 			cs.accounts.Set(addr, acc)
 			_ = cs.saveAccountToDB(acc)
-			_, _ = cs.tryClaimNullifierLocked("n-"+addr, addr)
+			_, _ = cs.tryClaimNullifierLocked(context.Background(), "n-"+addr, addr)
 		}
 		return cs
 	}
@@ -170,7 +170,7 @@ func TestStateRootAccumulator_Rollback(t *testing.T) {
 	a := &AccountState{Address: "0xaaa", Balance: NewDecimal(1000), IsHuman: true}
 	cs.accounts.Set("0xaaa", a)
 	_ = cs.saveAccountToDB(a)
-	_, _ = cs.tryClaimNullifierLocked("n1", "0xaaa")
+	_, _ = cs.tryClaimNullifierLocked(context.Background(), "n1", "0xaaa")
 
 	preAcc := cs.accountSetXOR
 	preNull := cs.nullifierSetXOR
@@ -186,7 +186,7 @@ func TestStateRootAccumulator_Rollback(t *testing.T) {
 	b := &AccountState{Address: "0xbbb", Balance: NewDecimal(777), IsHuman: true}
 	cs.accounts.Set("0xbbb", b)
 	_ = cs.saveAccountToDB(b)
-	_, _ = cs.tryClaimNullifierLocked("n2", "0xbbb")
+	_, _ = cs.tryClaimNullifierLocked(context.Background(), "n2", "0xbbb")
 
 	if cs.accountSetXOR == preAcc {
 		t.Fatal("mutations did not change accountSetXOR (test is not exercising anything)")

@@ -5959,7 +5959,9 @@ func (cs *ChainState) restoreFromRollbackLocked(snap *blockRollbackSnapshot) err
 func (cs *ChainState) ApplyTransferDelta(from, to string, netAmount, fromLost, toLost float64) error {
 	cs.mu.Lock()
 	defer cs.mu.Unlock()
-	return cs.applyTransferDeltaLocked(from, to, netAmount, fromLost, toLost)
+	// cs.mu-only path, never runs inside runAtomicWithOutbox — see
+	// RegisterHuman's comment.
+	return cs.applyTransferDeltaLocked(context.Background(), from, to, netAmount, fromLost, toLost)
 }
 
 // applyTransferDeltaLocked is ApplyTransferDelta's body, for callers that
@@ -5967,7 +5969,12 @@ func (cs *ChainState) ApplyTransferDelta(from, to string, netAmount, fromLost, t
 // cs.mu continuously across an entire block's snapshot/deltas/StateRoot
 // check instead of releasing and reacquiring it once per TX; see
 // replayTransactions' own comment for the isolation race this closes).
-func (cs *ChainState) applyTransferDeltaLocked(from, to string, netAmount, fromLost, toLost float64) error {
+// Block replay (block.go) also calls this directly with
+// context.Background(): it sets dag.state.activeTx itself before this
+// runs, and dbExecCtx falls back to that field when ctx carries no
+// transaction, so behavior there is unchanged — see registerHumanLocked's
+// comment for the same reasoning.
+func (cs *ChainState) applyTransferDeltaLocked(ctx context.Context, from, to string, netAmount, fromLost, toLost float64) error {
 	from = strings.ToLower(from)
 	to = strings.ToLower(to)
 	// FIX (Monster Audit follow-up, 2026-07-12, P0): same cold-cache pattern
@@ -5982,8 +5989,8 @@ func (cs *ChainState) applyTransferDeltaLocked(from, to string, netAmount, fromL
 	// balance `to` already had in the DB — including if `to` happens to be a
 	// pool address reached via an ordinary transfer rather than the
 	// distribution paths already fixed today.
-	cs.ensureAccountLoaded(from)
-	cs.ensureAccountLoaded(to)
+	cs.ensureAccountLoadedCtx(ctx, from)
+	cs.ensureAccountLoadedCtx(ctx, to)
 	fromAcc, ok := cs.accounts.Get(from)
 	if !ok {
 		return fmt.Errorf("from account not found: %s", from)
@@ -6000,7 +6007,7 @@ func (cs *ChainState) applyTransferDeltaLocked(from, to string, netAmount, fromL
 	if fromAcc.Balance.Float()-fromLost < netAmount {
 		return fmt.Errorf("insufficient balance (have %.6f after demurrage, need %.6f)", fromAcc.Balance.Float()-fromLost, netAmount)
 	}
-	if err := cs.applyDemurrageLossLocked(fromAcc, fromLost); err != nil {
+	if err := cs.applyDemurrageLossLockedCtx(ctx, fromAcc, fromLost); err != nil {
 		return fmt.Errorf("transfer: could not settle sender %s demurrage: %w", from, err)
 	}
 	fromAcc.Balance = fromAcc.Balance.Sub(NewDecimal(netAmount))
@@ -6013,7 +6020,7 @@ func (cs *ChainState) applyTransferDeltaLocked(from, to string, netAmount, fromL
 	// inserted into the DAG) while the underlying account row never made it
 	// to disk — exactly the kind of divergence that only surfaces after a
 	// restart or bootstrap, when DB wins over memory.
-	if err := cs.saveAccountToDB(fromAcc); err != nil {
+	if err := cs.saveAccountToDBCtx(ctx, fromAcc); err != nil {
 		return fmt.Errorf("transfer: could not save sender %s: %w", from, err)
 	}
 
@@ -6021,14 +6028,14 @@ func (cs *ChainState) applyTransferDeltaLocked(from, to string, netAmount, fromL
 		cs.accounts.Set(to, &AccountState{Address: to})
 	}
 	toAcc, _ := cs.accounts.Get(to)
-	if err := cs.applyDemurrageLossLocked(toAcc, toLost); err != nil {
+	if err := cs.applyDemurrageLossLockedCtx(ctx, toAcc, toLost); err != nil {
 		return fmt.Errorf("transfer: could not settle recipient %s demurrage: %w", to, err)
 	}
 	toAcc.Balance = toAcc.Balance.Add(NewDecimal(netAmount))
-	if err := cs.enforceWealthCapLocked(toAcc); err != nil {
+	if err := cs.enforceWealthCapLockedCtx(ctx, toAcc); err != nil {
 		return fmt.Errorf("transfer: could not enforce wealth cap for recipient %s: %w", to, err)
 	}
-	if err := cs.saveAccountToDB(toAcc); err != nil {
+	if err := cs.saveAccountToDBCtx(ctx, toAcc); err != nil {
 		return fmt.Errorf("transfer: could not save recipient %s: %w", to, err)
 	}
 	return nil
@@ -6044,13 +6051,17 @@ func (cs *ChainState) applyTransferDeltaLocked(from, to string, netAmount, fromL
 func (cs *ChainState) ApplySwapDelta(wallet string, amountIn, amountOut float64, aeqToTusd bool, demurrageLost float64) error {
 	cs.mu.Lock()
 	defer cs.mu.Unlock()
-	return cs.applySwapDeltaLocked(wallet, amountIn, amountOut, aeqToTusd, demurrageLost)
+	// cs.mu-only path, never runs inside runAtomicWithOutbox — see
+	// RegisterHuman's comment.
+	return cs.applySwapDeltaLocked(context.Background(), wallet, amountIn, amountOut, aeqToTusd, demurrageLost)
 }
 
-// applySwapDeltaLocked is ApplySwapDelta's body — see applyTransferDeltaLocked's comment.
-func (cs *ChainState) applySwapDeltaLocked(wallet string, amountIn, amountOut float64, aeqToTusd bool, demurrageLost float64) error {
+// applySwapDeltaLocked is ApplySwapDelta's body — see
+// applyTransferDeltaLocked's comment (both for the cs.mu contract and for
+// why block replay's own context.Background() call sites are correct).
+func (cs *ChainState) applySwapDeltaLocked(ctx context.Context, wallet string, amountIn, amountOut float64, aeqToTusd bool, demurrageLost float64) error {
 	wallet = strings.ToLower(wallet)
-	cs.ensureAccountLoaded(wallet)
+	cs.ensureAccountLoadedCtx(ctx, wallet)
 	acc, ok := cs.accounts.Get(wallet)
 	if !ok {
 		return fmt.Errorf("account not found: %s", wallet)
@@ -6070,7 +6081,7 @@ func (cs *ChainState) applySwapDeltaLocked(wallet string, amountIn, amountOut fl
 			return fmt.Errorf("insufficient tUSD balance")
 		}
 	}
-	if err := cs.applyDemurrageLossLocked(acc, demurrageLost); err != nil {
+	if err := cs.applyDemurrageLossLockedCtx(ctx, acc, demurrageLost); err != nil {
 		return fmt.Errorf("swap: could not settle %s demurrage: %w", wallet, err)
 	}
 	if aeqToTusd {
@@ -6091,14 +6102,14 @@ func (cs *ChainState) applySwapDeltaLocked(wallet string, amountIn, amountOut fl
 	// the primary does, in the same order, before saving.
 	touchActivity(acc)
 	if !aeqToTusd {
-		if err := cs.enforceWealthCapLocked(acc); err != nil {
+		if err := cs.enforceWealthCapLockedCtx(ctx, acc); err != nil {
 			return fmt.Errorf("swap: could not enforce wealth cap for %s: %w", wallet, err)
 		}
 	}
 	// FIX (audit recheck2, P0 #3): see ApplyTransferDelta's comment — every
 	// saveAccountToDB/savePoolToDB call in this function used to discard its
 	// returned error.
-	if err := cs.saveAccountToDB(acc); err != nil {
+	if err := cs.saveAccountToDBCtx(ctx, acc); err != nil {
 		return fmt.Errorf("swap: could not save account %s: %w", wallet, err)
 	}
 
@@ -6116,14 +6127,14 @@ func (cs *ChainState) applySwapDeltaLocked(wallet string, amountIn, amountOut fl
 			cs.pool.ReserveTUSD = cs.pool.ReserveTUSD.Add(NewDecimal(amountInAfterFee))
 			cs.pool.ReserveAEQ = cs.pool.ReserveAEQ.Sub(NewDecimal(amountOut)).AtLeastZero()
 		}
-		if err := cs.savePoolToDB(); err != nil {
+		if err := cs.savePoolToDBCtx(ctx); err != nil {
 			return fmt.Errorf("swap: could not save pool: %w", err)
 		}
 		// Distribute swap fee to the 4 tokenomics pools (40% validators /
 		// 30% LP / 20% UBI / 10% treasury) — mirrors swapLocked() on primary.
 		// Without this the fee-pool addresses stay at 0 on secondaries,
 		// causing StateRoot divergence (pool addresses are included in the hash).
-		if err := cs.distributeSwapFee(fee, aeqToTusd); err != nil {
+		if err := cs.distributeSwapFeeCtx(ctx, fee, aeqToTusd); err != nil {
 			return fmt.Errorf("could not persist swap fee distribution: %w", err)
 		}
 	}
@@ -6140,13 +6151,16 @@ func (cs *ChainState) applySwapDeltaLocked(wallet string, amountIn, amountOut fl
 func (cs *ChainState) AddLiquidityDelta(wallet string, aeqAmount, tusdAmount, lpShares, demurrageLost float64) error {
 	cs.mu.Lock()
 	defer cs.mu.Unlock()
-	return cs.addLiquidityDeltaLocked(wallet, aeqAmount, tusdAmount, lpShares, demurrageLost)
+	// cs.mu-only path, never runs inside runAtomicWithOutbox — see
+	// RegisterHuman's comment.
+	return cs.addLiquidityDeltaLocked(context.Background(), wallet, aeqAmount, tusdAmount, lpShares, demurrageLost)
 }
 
-// addLiquidityDeltaLocked is AddLiquidityDelta's body — see applyTransferDeltaLocked's comment.
-func (cs *ChainState) addLiquidityDeltaLocked(wallet string, aeqAmount, tusdAmount, lpShares, demurrageLost float64) error {
+// addLiquidityDeltaLocked is AddLiquidityDelta's body — see
+// applyTransferDeltaLocked's comment.
+func (cs *ChainState) addLiquidityDeltaLocked(ctx context.Context, wallet string, aeqAmount, tusdAmount, lpShares, demurrageLost float64) error {
 	wallet = strings.ToLower(wallet)
-	cs.ensureAccountLoaded(wallet)
+	cs.ensureAccountLoadedCtx(ctx, wallet)
 	acc, ok := cs.accounts.Get(wallet)
 	if !ok {
 		return fmt.Errorf("account not found: %s", wallet)
@@ -6163,7 +6177,7 @@ func (cs *ChainState) addLiquidityDeltaLocked(wallet string, aeqAmount, tusdAmou
 	if acc.TUsdBalance.Float() < tusdAmount {
 		return fmt.Errorf("insufficient tUSD balance")
 	}
-	if err := cs.applyDemurrageLossLocked(acc, demurrageLost); err != nil {
+	if err := cs.applyDemurrageLossLockedCtx(ctx, acc, demurrageLost); err != nil {
 		return fmt.Errorf("add_liquidity: could not settle %s demurrage: %w", wallet, err)
 	}
 
@@ -6187,11 +6201,11 @@ func (cs *ChainState) addLiquidityDeltaLocked(wallet string, aeqAmount, tusdAmou
 		cs.pool.ReserveAEQ = cs.pool.ReserveAEQ.Add(NewDecimal(aeqAmount))
 		cs.pool.ReserveTUSD = cs.pool.ReserveTUSD.Add(NewDecimal(tusdAmount))
 		cs.pool.TotalLPShares = cs.pool.TotalLPShares.Add(NewDecimal(mintedShares))
-		if err := cs.savePoolToDB(); err != nil {
+		if err := cs.savePoolToDBCtx(ctx); err != nil {
 			return fmt.Errorf("add_liquidity: could not save pool: %w", err)
 		}
 	}
-	if err := cs.saveAccountToDB(acc); err != nil {
+	if err := cs.saveAccountToDBCtx(ctx, acc); err != nil {
 		return fmt.Errorf("add_liquidity: could not save account %s: %w", wallet, err)
 	}
 	return nil
@@ -6205,13 +6219,16 @@ func (cs *ChainState) addLiquidityDeltaLocked(wallet string, aeqAmount, tusdAmou
 func (cs *ChainState) RemoveLiquidityDelta(wallet string, sharesToBurn, demurrageLost float64) error {
 	cs.mu.Lock()
 	defer cs.mu.Unlock()
-	return cs.removeLiquidityDeltaLocked(wallet, sharesToBurn, demurrageLost)
+	// cs.mu-only path, never runs inside runAtomicWithOutbox — see
+	// RegisterHuman's comment.
+	return cs.removeLiquidityDeltaLocked(context.Background(), wallet, sharesToBurn, demurrageLost)
 }
 
-// removeLiquidityDeltaLocked is RemoveLiquidityDelta's body — see applyTransferDeltaLocked's comment.
-func (cs *ChainState) removeLiquidityDeltaLocked(wallet string, sharesToBurn, demurrageLost float64) error {
+// removeLiquidityDeltaLocked is RemoveLiquidityDelta's body — see
+// applyTransferDeltaLocked's comment.
+func (cs *ChainState) removeLiquidityDeltaLocked(ctx context.Context, wallet string, sharesToBurn, demurrageLost float64) error {
 	wallet = strings.ToLower(wallet)
-	cs.ensureAccountLoaded(wallet)
+	cs.ensureAccountLoadedCtx(ctx, wallet)
 	acc, ok := cs.accounts.Get(wallet)
 	if !ok {
 		return fmt.Errorf("account not found: %s", wallet)
@@ -6228,7 +6245,7 @@ func (cs *ChainState) removeLiquidityDeltaLocked(wallet string, sharesToBurn, de
 	if acc.LPShares.Float() < sharesToBurn {
 		return fmt.Errorf("insufficient LP shares")
 	}
-	if err := cs.applyDemurrageLossLocked(acc, demurrageLost); err != nil {
+	if err := cs.applyDemurrageLossLockedCtx(ctx, acc, demurrageLost); err != nil {
 		return fmt.Errorf("remove_liquidity: could not settle %s demurrage: %w", wallet, err)
 	}
 	// Mirror F17 + F18 caps from primary RemoveLiquidity
@@ -6265,7 +6282,7 @@ func (cs *ChainState) removeLiquidityDeltaLocked(wallet string, sharesToBurn, de
 	// all. Mirroring exactly what the primary does, in the same order,
 	// before saving.
 	touchActivity(acc)
-	if err := cs.enforceWealthCapLocked(acc); err != nil {
+	if err := cs.enforceWealthCapLockedCtx(ctx, acc); err != nil {
 		return fmt.Errorf("remove_liquidity: could not enforce wealth cap for %s: %w", wallet, err)
 	}
 	newReserveAEQ := round6(cs.pool.ReserveAEQ.Float() - outAEQ)
@@ -6280,10 +6297,10 @@ func (cs *ChainState) removeLiquidityDeltaLocked(wallet string, sharesToBurn, de
 	cs.pool.ReserveTUSD = NewDecimal(newReserveTUSD)
 	cs.pool.TotalLPShares = cs.pool.TotalLPShares.Sub(NewDecimal(sharesToBurn))
 	// FIX (audit recheck2, P0 #3): see ApplyTransferDelta's comment.
-	if err := cs.savePoolToDB(); err != nil {
+	if err := cs.savePoolToDBCtx(ctx); err != nil {
 		return fmt.Errorf("remove_liquidity: could not save pool: %w", err)
 	}
-	if err := cs.saveAccountToDB(acc); err != nil {
+	if err := cs.saveAccountToDBCtx(ctx, acc); err != nil {
 		return fmt.Errorf("remove_liquidity: could not save account %s: %w", wallet, err)
 	}
 	return nil
@@ -6324,11 +6341,14 @@ func (cs *ChainState) ApplyUBIDelta(amountPerHuman float64, ubiAt int64) error {
 	}
 	cs.mu.Lock()
 	defer cs.mu.Unlock()
-	return cs.applyUBIDeltaLocked(amountPerHuman, ubiAt)
+	// cs.mu-only path, never runs inside runAtomicWithOutbox — see
+	// RegisterHuman's comment.
+	return cs.applyUBIDeltaLocked(context.Background(), amountPerHuman, ubiAt)
 }
 
-// applyUBIDeltaLocked is ApplyUBIDelta's body — see applyTransferDeltaLocked's comment.
-func (cs *ChainState) applyUBIDeltaLocked(amountPerHuman float64, ubiAt int64) error {
+// applyUBIDeltaLocked is ApplyUBIDelta's body — see applyTransferDeltaLocked's
+// comment.
+func (cs *ChainState) applyUBIDeltaLocked(ctx context.Context, amountPerHuman float64, ubiAt int64) error {
 	var rangeErr error
 	cs.accounts.Range(func(addr string, acc *AccountState) bool {
 		if !acc.IsHuman {
@@ -6336,11 +6356,11 @@ func (cs *ChainState) applyUBIDeltaLocked(amountPerHuman float64, ubiAt int64) e
 		}
 		acc.Balance = acc.Balance.Add(NewDecimal(amountPerHuman))
 		touchActivity(acc)
-		if err := cs.enforceWealthCapLocked(acc); err != nil {
+		if err := cs.enforceWealthCapLockedCtx(ctx, acc); err != nil {
 			rangeErr = fmt.Errorf("ubi (legacy flat): could not enforce wealth cap for %s: %w", addr, err)
 			return false
 		}
-		if err := cs.saveAccountToDB(acc); err != nil {
+		if err := cs.saveAccountToDBCtx(ctx, acc); err != nil {
 			rangeErr = fmt.Errorf("ubi (legacy flat): could not save account %s: %w", addr, err)
 			return false
 		}
@@ -6354,15 +6374,15 @@ func (cs *ChainState) applyUBIDeltaLocked(amountPerHuman float64, ubiAt int64) e
 	// "not present" and this silently skipped zeroing it — leaving this
 	// secondary's pool balance (and therefore its StateRoot) diverged from
 	// every node that DID have it cached at the time.
-	cs.ensureAccountLoaded(ubiPoolAddr)
+	cs.ensureAccountLoadedCtx(ctx, ubiPoolAddr)
 	if ubiAcc, ok := cs.accounts.Get(ubiPoolAddr); ok {
 		ubiAcc.Balance = NewDecimal(0)
-		if err := cs.saveAccountToDB(ubiAcc); err != nil {
+		if err := cs.saveAccountToDBCtx(ctx, ubiAcc); err != nil {
 			return fmt.Errorf("ubi (legacy flat): could not save pool account: %w", err)
 		}
 	}
 	// Write last_ubi_at to secondary's chain_config so StateRoot matches primary.
-	if err := cs.setConfigValue("last_ubi_at", fmt.Sprintf("%d", ubiAt)); err != nil {
+	if err := cs.setConfigValueCtx(ctx, "last_ubi_at", fmt.Sprintf("%d", ubiAt)); err != nil {
 		return fmt.Errorf("ubi (legacy flat): could not save last_ubi_at: %w", err)
 	}
 	return nil
@@ -6381,31 +6401,34 @@ func (cs *ChainState) applyUBIDeltaLocked(amountPerHuman float64, ubiAt int64) e
 func (cs *ChainState) ApplyUBIRewardDelta(wallet string, amount, demurrageLost float64) error {
 	cs.mu.Lock()
 	defer cs.mu.Unlock()
-	return cs.applyUBIRewardDeltaLocked(wallet, amount, demurrageLost)
+	// cs.mu-only path, never runs inside runAtomicWithOutbox — see
+	// RegisterHuman's comment.
+	return cs.applyUBIRewardDeltaLocked(context.Background(), wallet, amount, demurrageLost)
 }
 
-// applyUBIRewardDeltaLocked is ApplyUBIRewardDelta's body — see applyTransferDeltaLocked's comment.
-func (cs *ChainState) applyUBIRewardDeltaLocked(wallet string, amount, demurrageLost float64) error {
+// applyUBIRewardDeltaLocked is ApplyUBIRewardDelta's body — see
+// applyTransferDeltaLocked's comment.
+func (cs *ChainState) applyUBIRewardDeltaLocked(ctx context.Context, wallet string, amount, demurrageLost float64) error {
 	wallet = strings.ToLower(wallet)
 	// FIX (Monster Audit follow-up, 2026-07-12, P0): see applyTransferDeltaLocked's
 	// comment — same cold-cache pattern. Here a cold wallet fails as
 	// "not found" and this secondary rejects a block its primary already
 	// accepted, diverging from consensus.
-	cs.ensureAccountLoaded(wallet)
+	cs.ensureAccountLoadedCtx(ctx, wallet)
 	acc, ok := cs.accounts.Get(wallet)
 	if !ok {
 		return fmt.Errorf("ubi reward: account not found: %s", wallet)
 	}
-	if err := cs.applyDemurrageLossLocked(acc, demurrageLost); err != nil {
+	if err := cs.applyDemurrageLossLockedCtx(ctx, acc, demurrageLost); err != nil {
 		return fmt.Errorf("ubi reward: could not settle %s demurrage: %w", wallet, err)
 	}
 	acc.Balance = acc.Balance.Add(NewDecimal(amount))
 	touchActivity(acc)
-	if err := cs.enforceWealthCapLocked(acc); err != nil {
+	if err := cs.enforceWealthCapLockedCtx(ctx, acc); err != nil {
 		return fmt.Errorf("ubi reward: could not enforce wealth cap for %s: %w", wallet, err)
 	}
 	// FIX (audit recheck2, P0 #3): see ApplyTransferDelta's comment.
-	if err := cs.saveAccountToDB(acc); err != nil {
+	if err := cs.saveAccountToDBCtx(ctx, acc); err != nil {
 		return fmt.Errorf("ubi reward: could not save account %s: %w", wallet, err)
 	}
 	return nil
@@ -6465,32 +6488,35 @@ func (cs *ChainState) applyUBIFinalizeDeltaLocked(ctx context.Context, ubiAt int
 func (cs *ChainState) ApplyValidatorRewardDelta(wallet string, amount, demurrageLost float64) error {
 	cs.mu.Lock()
 	defer cs.mu.Unlock()
-	return cs.applyValidatorRewardDeltaLocked(wallet, amount, demurrageLost)
+	// cs.mu-only path, never runs inside runAtomicWithOutbox — see
+	// RegisterHuman's comment.
+	return cs.applyValidatorRewardDeltaLocked(context.Background(), wallet, amount, demurrageLost)
 }
 
-// applyValidatorRewardDeltaLocked is ApplyValidatorRewardDelta's body — see applyTransferDeltaLocked's comment.
-func (cs *ChainState) applyValidatorRewardDeltaLocked(wallet string, amount, demurrageLost float64) error {
+// applyValidatorRewardDeltaLocked is ApplyValidatorRewardDelta's body — see
+// applyTransferDeltaLocked's comment.
+func (cs *ChainState) applyValidatorRewardDeltaLocked(ctx context.Context, wallet string, amount, demurrageLost float64) error {
 	wallet = strings.ToLower(wallet)
 	// FIX (Monster Audit follow-up, 2026-07-12, P0): see applyTransferDeltaLocked's
 	// comment — same cold-cache pattern. Here a cold wallet was blind-created
 	// as a fresh zero-balance AccountState below, silently wiping any real
 	// balance/tusd/lp/is_human it already had via saveAccountToDB's
 	// Version==0 upsert.
-	cs.ensureAccountLoaded(wallet)
+	cs.ensureAccountLoadedCtx(ctx, wallet)
 	if _, ok := cs.accounts.Get(wallet); !ok {
 		cs.accounts.Set(wallet, &AccountState{Address: wallet})
 	}
 	acc, _ := cs.accounts.Get(wallet)
-	if err := cs.applyDemurrageLossLocked(acc, demurrageLost); err != nil {
+	if err := cs.applyDemurrageLossLockedCtx(ctx, acc, demurrageLost); err != nil {
 		return fmt.Errorf("validator reward: could not settle %s demurrage: %w", wallet, err)
 	}
 	acc.Balance = acc.Balance.Add(NewDecimal(amount))
 	touchActivity(acc)
-	if err := cs.enforceWealthCapLocked(acc); err != nil {
+	if err := cs.enforceWealthCapLockedCtx(ctx, acc); err != nil {
 		return fmt.Errorf("validator reward: could not enforce wealth cap for %s: %w", wallet, err)
 	}
 	// FIX (audit recheck2, P0 #3): see ApplyTransferDelta's comment.
-	if err := cs.saveAccountToDB(acc); err != nil {
+	if err := cs.saveAccountToDBCtx(ctx, acc); err != nil {
 		return fmt.Errorf("validator reward: could not save account %s: %w", wallet, err)
 	}
 	return nil
@@ -6505,17 +6531,20 @@ func (cs *ChainState) applyValidatorRewardDeltaLocked(wallet string, amount, dem
 func (cs *ChainState) ApplyValidatorPoolZeroDelta() error {
 	cs.mu.Lock()
 	defer cs.mu.Unlock()
-	return cs.applyValidatorPoolZeroDeltaLocked()
+	// cs.mu-only path, never runs inside runAtomicWithOutbox — see
+	// RegisterHuman's comment.
+	return cs.applyValidatorPoolZeroDeltaLocked(context.Background())
 }
 
-// applyValidatorPoolZeroDeltaLocked is ApplyValidatorPoolZeroDelta's body — see applyTransferDeltaLocked's comment.
-func (cs *ChainState) applyValidatorPoolZeroDeltaLocked() error {
+// applyValidatorPoolZeroDeltaLocked is ApplyValidatorPoolZeroDelta's body —
+// see applyTransferDeltaLocked's comment.
+func (cs *ChainState) applyValidatorPoolZeroDeltaLocked(ctx context.Context) error {
 	// FIX (Monster Audit 2026-07-12, P1): see applyUBIDeltaLocked's comment on
 	// the same pattern — a cold pool address must not silently skip zeroing.
-	cs.ensureAccountLoaded(validatorsPoolAddr)
+	cs.ensureAccountLoadedCtx(ctx, validatorsPoolAddr)
 	if acc, ok := cs.accounts.Get(validatorsPoolAddr); ok {
 		acc.Balance = NewDecimal(0)
-		if err := cs.saveAccountToDB(acc); err != nil {
+		if err := cs.saveAccountToDBCtx(ctx, acc); err != nil {
 			return fmt.Errorf("validator pool zero: could not save pool account: %w", err)
 		}
 	}
@@ -6541,29 +6570,32 @@ func (cs *ChainState) applyValidatorPoolZeroDeltaLocked() error {
 func (cs *ChainState) ApplyLPRewardDelta(wallet string, amount, demurrageLost float64) error {
 	cs.mu.Lock()
 	defer cs.mu.Unlock()
-	return cs.applyLPRewardDeltaLocked(wallet, amount, demurrageLost)
+	// cs.mu-only path, never runs inside runAtomicWithOutbox — see
+	// RegisterHuman's comment.
+	return cs.applyLPRewardDeltaLocked(context.Background(), wallet, amount, demurrageLost)
 }
 
-// applyLPRewardDeltaLocked is ApplyLPRewardDelta's body — see applyTransferDeltaLocked's comment.
-func (cs *ChainState) applyLPRewardDeltaLocked(wallet string, amount, demurrageLost float64) error {
+// applyLPRewardDeltaLocked is ApplyLPRewardDelta's body — see
+// applyTransferDeltaLocked's comment.
+func (cs *ChainState) applyLPRewardDeltaLocked(ctx context.Context, wallet string, amount, demurrageLost float64) error {
 	wallet = strings.ToLower(wallet)
 	// FIX (Monster Audit follow-up, 2026-07-12, P0): see applyValidatorRewardDeltaLocked's
 	// comment — same cold-cache blind-create/silent-wipe pattern.
-	cs.ensureAccountLoaded(wallet)
+	cs.ensureAccountLoadedCtx(ctx, wallet)
 	if _, ok := cs.accounts.Get(wallet); !ok {
 		cs.accounts.Set(wallet, &AccountState{Address: wallet})
 	}
 	acc, _ := cs.accounts.Get(wallet)
-	if err := cs.applyDemurrageLossLocked(acc, demurrageLost); err != nil {
+	if err := cs.applyDemurrageLossLockedCtx(ctx, acc, demurrageLost); err != nil {
 		return fmt.Errorf("lp reward: could not settle %s demurrage: %w", wallet, err)
 	}
 	acc.Balance = acc.Balance.Add(NewDecimal(amount))
 	touchActivity(acc)
-	if err := cs.enforceWealthCapLocked(acc); err != nil {
+	if err := cs.enforceWealthCapLockedCtx(ctx, acc); err != nil {
 		return fmt.Errorf("lp reward: could not enforce wealth cap for %s: %w", wallet, err)
 	}
 	// FIX (audit recheck2, P0 #3): see ApplyTransferDelta's comment.
-	if err := cs.saveAccountToDB(acc); err != nil {
+	if err := cs.saveAccountToDBCtx(ctx, acc); err != nil {
 		return fmt.Errorf("lp reward: could not save account %s: %w", wallet, err)
 	}
 	return nil
@@ -6578,17 +6610,20 @@ func (cs *ChainState) applyLPRewardDeltaLocked(wallet string, amount, demurrageL
 func (cs *ChainState) ApplyLPPoolZeroDelta() error {
 	cs.mu.Lock()
 	defer cs.mu.Unlock()
-	return cs.applyLPPoolZeroDeltaLocked()
+	// cs.mu-only path, never runs inside runAtomicWithOutbox — see
+	// RegisterHuman's comment.
+	return cs.applyLPPoolZeroDeltaLocked(context.Background())
 }
 
-// applyLPPoolZeroDeltaLocked is ApplyLPPoolZeroDelta's body — see applyTransferDeltaLocked's comment.
-func (cs *ChainState) applyLPPoolZeroDeltaLocked() error {
+// applyLPPoolZeroDeltaLocked is ApplyLPPoolZeroDelta's body — see
+// applyTransferDeltaLocked's comment.
+func (cs *ChainState) applyLPPoolZeroDeltaLocked(ctx context.Context) error {
 	// FIX (Monster Audit 2026-07-12, P1): see applyUBIDeltaLocked's comment on
 	// the same pattern — a cold pool address must not silently skip zeroing.
-	cs.ensureAccountLoaded(lpPoolAddr)
+	cs.ensureAccountLoadedCtx(ctx, lpPoolAddr)
 	if acc, ok := cs.accounts.Get(lpPoolAddr); ok {
 		acc.Balance = NewDecimal(0)
-		if err := cs.saveAccountToDB(acc); err != nil {
+		if err := cs.saveAccountToDBCtx(ctx, acc); err != nil {
 			return fmt.Errorf("lp pool zero: could not save pool account: %w", err)
 		}
 	}
@@ -6686,23 +6721,26 @@ func (cs *ChainState) applyEscrowMoveDeltaLocked(ctx context.Context, wallet str
 func (cs *ChainState) ApplyEscrowReleaseDelta(amount float64) error {
 	cs.mu.Lock()
 	defer cs.mu.Unlock()
-	return cs.applyEscrowReleaseDeltaLocked(amount)
+	// cs.mu-only path, never runs inside runAtomicWithOutbox — see
+	// RegisterHuman's comment.
+	return cs.applyEscrowReleaseDeltaLocked(context.Background(), amount)
 }
 
-// applyEscrowReleaseDeltaLocked is ApplyEscrowReleaseDelta's body — see applyTransferDeltaLocked's comment.
-func (cs *ChainState) applyEscrowReleaseDeltaLocked(amount float64) error {
+// applyEscrowReleaseDeltaLocked is ApplyEscrowReleaseDelta's body — see
+// applyTransferDeltaLocked's comment.
+func (cs *ChainState) applyEscrowReleaseDeltaLocked(ctx context.Context, amount float64) error {
 	// FIX (Monster Audit 2026-07-12, P1): see distributeSwapFee's comment on
 	// the same pattern — a cold pool address must be loaded before a blank
 	// Version==0 AccountState is created for it, or the real DB balance gets
 	// silently overwritten.
-	cs.ensureAccountLoaded(ubiPoolAddr)
+	cs.ensureAccountLoadedCtx(ctx, ubiPoolAddr)
 	if _, ok := cs.accounts.Get(ubiPoolAddr); !ok {
 		cs.accounts.Set(ubiPoolAddr, &AccountState{Address: ubiPoolAddr})
 	}
 	ubiPoolAcc, _ := cs.accounts.Get(ubiPoolAddr)
 	ubiPoolAcc.Balance = ubiPoolAcc.Balance.Add(NewDecimal(amount))
 	// FIX (audit recheck2, P0 #3): see ApplyTransferDelta's comment.
-	if err := cs.saveAccountToDB(ubiPoolAcc); err != nil {
+	if err := cs.saveAccountToDBCtx(ctx, ubiPoolAcc); err != nil {
 		return fmt.Errorf("escrow release: could not save pool account: %w", err)
 	}
 	return nil
@@ -6713,18 +6751,21 @@ func (cs *ChainState) applyEscrowReleaseDeltaLocked(amount float64) error {
 func (cs *ChainState) ApplyFaucetDelta(wallet string, faucetAmount float64) error {
 	cs.mu.Lock()
 	defer cs.mu.Unlock()
-	return cs.applyFaucetDeltaLocked(wallet, faucetAmount)
+	// cs.mu-only path, never runs inside runAtomicWithOutbox — see
+	// RegisterHuman's comment.
+	return cs.applyFaucetDeltaLocked(context.Background(), wallet, faucetAmount)
 }
 
-// applyFaucetDeltaLocked is ApplyFaucetDelta's body — see applyTransferDeltaLocked's comment.
-func (cs *ChainState) applyFaucetDeltaLocked(wallet string, faucetAmount float64) error {
+// applyFaucetDeltaLocked is ApplyFaucetDelta's body — see
+// applyTransferDeltaLocked's comment.
+func (cs *ChainState) applyFaucetDeltaLocked(ctx context.Context, wallet string, faucetAmount float64) error {
 	wallet = strings.ToLower(wallet)
 	// FIX (Monster Audit follow-up, 2026-07-12, P0): see applyValidatorRewardDeltaLocked's
 	// comment — same cold-cache blind-create/silent-wipe pattern. Also matters
 	// for FaucetClaimed specifically: a blind-created account always starts
 	// with FaucetClaimed=false, which would have silently let a cold wallet
 	// that already claimed the faucet claim it again on replay.
-	cs.ensureAccountLoaded(wallet)
+	cs.ensureAccountLoadedCtx(ctx, wallet)
 	if _, ok := cs.accounts.Get(wallet); !ok {
 		cs.accounts.Set(wallet, &AccountState{Address: wallet})
 	}
@@ -6735,7 +6776,7 @@ func (cs *ChainState) applyFaucetDeltaLocked(wallet string, faucetAmount float64
 	acc.FaucetClaimed = true
 	acc.TUsdBalance = acc.TUsdBalance.Add(NewDecimal(faucetAmount))
 	// FIX (audit recheck2, P0 #3): see ApplyTransferDelta's comment.
-	if err := cs.saveAccountToDB(acc); err != nil {
+	if err := cs.saveAccountToDBCtx(ctx, acc); err != nil {
 		return fmt.Errorf("faucet: could not save account %s: %w", wallet, err)
 	}
 	return nil

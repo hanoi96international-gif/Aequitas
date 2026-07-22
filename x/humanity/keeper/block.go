@@ -5293,7 +5293,10 @@ func (dag *BlockDAG) replayTransactions(block *Block, force bool) bool {
 			// now returns an error distinctly from "already used" — a genuine
 			// DB failure during the claim must roll back the block, not be
 			// silently treated as a normal duplicate-registration skip.
-			claimed, claimErr := dag.state.tryClaimNullifierLocked(nullifier, wallet)
+			// context.Background() is correct — see registerHumanLocked's
+			// comment: dag.state.activeTx was already set directly above
+			// this loop, and dbExecCtx falls back to it.
+			claimed, claimErr := dag.state.tryClaimNullifierLocked(context.Background(), nullifier, wallet)
 			if claimErr != nil {
 				fmt.Printf("[REPLAY] ✗ register_human for %s (block #%d): nullifier claim DB error: %v — rolling back whole block\n", wallet, block.Height, claimErr)
 				hardFailure = true
@@ -5312,7 +5315,7 @@ func (dag *BlockDAG) replayTransactions(block *Block, force bool) bool {
 				// NOT credited"), permanently burning that biometric for
 				// everyone even though no registration ever actually completed
 				// with it (e.g. wallet already human via a different nullifier).
-				dag.state.releaseNullifierLocked(nullifier)
+				dag.state.releaseNullifierLocked(context.Background(), nullifier)
 				fmt.Printf("[REPLAY] ✗ RegisterHuman %s: %v (nullifier released, balance NOT credited)\n", wallet, err)
 				continue
 			}
@@ -5334,7 +5337,10 @@ func (dag *BlockDAG) replayTransactions(block *Block, force bool) bool {
 				fmt.Printf("[REPLAY] ⚠ Skipping transfer in block #%d: missing fields\n", block.Height)
 				continue
 			}
-			if err := dag.state.applyTransferDeltaLocked(wallet, to, tx.Amount, tx.FromDemurrageLost, tx.ToDemurrageLost); err != nil {
+			// context.Background() is correct — see registerHumanLocked's
+			// comment: dag.state.activeTx was already set directly above
+			// this loop, and dbExecCtx falls back to it.
+			if err := dag.state.applyTransferDeltaLocked(context.Background(), wallet, to, tx.Amount, tx.FromDemurrageLost, tx.ToDemurrageLost); err != nil {
 				fmt.Printf("[REPLAY] ✗ Transfer %s->%s %.6f: %v (block #%d) — rolling back whole block\n", wallet, to, tx.Amount, err, block.Height)
 				hardFailure = true
 				continue
@@ -5346,7 +5352,10 @@ func (dag *BlockDAG) replayTransactions(block *Block, force bool) bool {
 				fmt.Printf("[REPLAY] ⚠ Skipping swap_aeq_tusd in block #%d: missing fields\n", block.Height)
 				continue
 			}
-			if err := dag.state.applySwapDeltaLocked(wallet, tx.Amount, tx.AmountOut, true, tx.FromDemurrageLost); err != nil {
+			// context.Background() is correct — see registerHumanLocked's
+			// comment: dag.state.activeTx was already set directly above
+			// this loop, and dbExecCtx falls back to it.
+			if err := dag.state.applySwapDeltaLocked(context.Background(), wallet, tx.Amount, tx.AmountOut, true, tx.FromDemurrageLost); err != nil {
 				fmt.Printf("[REPLAY] ✗ swap_aeq_tusd %s: %v (block #%d) — rolling back whole block\n", wallet, err, block.Height)
 				hardFailure = true
 				continue
@@ -5358,7 +5367,10 @@ func (dag *BlockDAG) replayTransactions(block *Block, force bool) bool {
 				fmt.Printf("[REPLAY] ⚠ Skipping swap_tusd_aeq in block #%d: missing fields\n", block.Height)
 				continue
 			}
-			if err := dag.state.applySwapDeltaLocked(wallet, tx.Amount, tx.AmountOut, false, tx.FromDemurrageLost); err != nil {
+			// context.Background() is correct — see registerHumanLocked's
+			// comment: dag.state.activeTx was already set directly above
+			// this loop, and dbExecCtx falls back to it.
+			if err := dag.state.applySwapDeltaLocked(context.Background(), wallet, tx.Amount, tx.AmountOut, false, tx.FromDemurrageLost); err != nil {
 				fmt.Printf("[REPLAY] ✗ swap_tusd_aeq %s: %v (block #%d) — rolling back whole block\n", wallet, err, block.Height)
 				hardFailure = true
 				continue
@@ -5370,7 +5382,10 @@ func (dag *BlockDAG) replayTransactions(block *Block, force bool) bool {
 				fmt.Printf("[REPLAY] ⚠ Skipping add_liquidity in block #%d: missing fields\n", block.Height)
 				continue
 			}
-			if err := dag.state.addLiquidityDeltaLocked(wallet, tx.Amount, tx.AmountOut, tx.LPShares, tx.FromDemurrageLost); err != nil {
+			// context.Background() is correct — see registerHumanLocked's
+			// comment: dag.state.activeTx was already set directly above
+			// this loop, and dbExecCtx falls back to it.
+			if err := dag.state.addLiquidityDeltaLocked(context.Background(), wallet, tx.Amount, tx.AmountOut, tx.LPShares, tx.FromDemurrageLost); err != nil {
 				fmt.Printf("[REPLAY] ✗ add_liquidity %s: %v (block #%d) — rolling back whole block\n", wallet, err, block.Height)
 				hardFailure = true
 				continue
@@ -5382,7 +5397,10 @@ func (dag *BlockDAG) replayTransactions(block *Block, force bool) bool {
 				fmt.Printf("[REPLAY] ⚠ Skipping remove_liquidity in block #%d: missing fields\n", block.Height)
 				continue
 			}
-			if err := dag.state.removeLiquidityDeltaLocked(wallet, tx.Amount, tx.FromDemurrageLost); err != nil {
+			// context.Background() is correct — see registerHumanLocked's
+			// comment: dag.state.activeTx was already set directly above
+			// this loop, and dbExecCtx falls back to it.
+			if err := dag.state.removeLiquidityDeltaLocked(context.Background(), wallet, tx.Amount, tx.FromDemurrageLost); err != nil {
 				fmt.Printf("[REPLAY] ✗ remove_liquidity %s: %v (block #%d) — rolling back whole block\n", wallet, err, block.Height)
 				hardFailure = true
 				continue
@@ -5394,7 +5412,10 @@ func (dag *BlockDAG) replayTransactions(block *Block, force bool) bool {
 				fmt.Printf("[REPLAY] ⚠ Skipping faucet in block #%d: missing fields\n", block.Height)
 				continue
 			}
-			if err := dag.state.applyFaucetDeltaLocked(wallet, tx.Amount); err != nil {
+			// context.Background() is correct — see registerHumanLocked's
+			// comment: dag.state.activeTx was already set directly above
+			// this loop, and dbExecCtx falls back to it.
+			if err := dag.state.applyFaucetDeltaLocked(context.Background(), wallet, tx.Amount); err != nil {
 				fmt.Printf("[REPLAY] ✗ faucet %s: %v (block #%d) — rolling back whole block\n", wallet, err, block.Height)
 				hardFailure = true
 				continue
@@ -5409,14 +5430,20 @@ func (dag *BlockDAG) replayTransactions(block *Block, force bool) bool {
 			// produced by older node versions before this change; new blocks
 			// never set that field.
 			if tx.AmountPerHuman > 0 {
-				if err := dag.state.applyUBIDeltaLocked(tx.AmountPerHuman, block.Timestamp); err != nil {
+				// context.Background() is correct — see registerHumanLocked's
+			// comment: dag.state.activeTx was already set directly above
+			// this loop, and dbExecCtx falls back to it.
+			if err := dag.state.applyUBIDeltaLocked(context.Background(), tx.AmountPerHuman, block.Timestamp); err != nil {
 					fmt.Printf("[REPLAY] ✗ legacy flat ubi_distribution: %v (block #%d) — rolling back whole block\n", err, block.Height)
 					hardFailure = true
 					continue
 				}
 				fmt.Printf("[REPLAY] ✓ Applied legacy flat UBI distribution %.6f AEQ/human (block #%d)\n", tx.AmountPerHuman, block.Height)
 			} else if wallet != "" && wallet != "0x0000000000000000000000000000000000000000" {
-				if err := dag.state.applyUBIRewardDeltaLocked(wallet, tx.Amount, tx.FromDemurrageLost); err != nil {
+				// context.Background() is correct — see registerHumanLocked's
+			// comment: dag.state.activeTx was already set directly above
+			// this loop, and dbExecCtx falls back to it.
+			if err := dag.state.applyUBIRewardDeltaLocked(context.Background(), wallet, tx.Amount, tx.FromDemurrageLost); err != nil {
 					fmt.Printf("[REPLAY] ✗ ubi_distribution %s: %v (block #%d) — rolling back whole block\n", wallet, err, block.Height)
 					hardFailure = true
 					continue
@@ -5448,7 +5475,10 @@ func (dag *BlockDAG) replayTransactions(block *Block, force bool) bool {
 
 		case "validator_distribution":
 			wallet := strings.ToLower(tx.Wallet)
-			if err := dag.state.applyValidatorRewardDeltaLocked(wallet, tx.Amount, tx.FromDemurrageLost); err != nil {
+			// context.Background() is correct — see registerHumanLocked's
+			// comment: dag.state.activeTx was already set directly above
+			// this loop, and dbExecCtx falls back to it.
+			if err := dag.state.applyValidatorRewardDeltaLocked(context.Background(), wallet, tx.Amount, tx.FromDemurrageLost); err != nil {
 				fmt.Printf("[REPLAY] ✗ validator_distribution %s: %v (block #%d) — rolling back whole block\n", wallet, err, block.Height)
 				hardFailure = true
 				continue
@@ -5456,7 +5486,10 @@ func (dag *BlockDAG) replayTransactions(block *Block, force bool) bool {
 			fmt.Printf("[REPLAY] ✓ Applied validator reward %.6f AEQ for %s (block #%d)\n", tx.Amount, wallet, block.Height)
 
 		case "validator_distribution_pool_zero":
-			if err := dag.state.applyValidatorPoolZeroDeltaLocked(); err != nil {
+			// context.Background() is correct — see registerHumanLocked's
+			// comment: dag.state.activeTx was already set directly above
+			// this loop, and dbExecCtx falls back to it.
+			if err := dag.state.applyValidatorPoolZeroDeltaLocked(context.Background()); err != nil {
 				fmt.Printf("[REPLAY] ✗ validator_distribution_pool_zero: %v (block #%d) — rolling back whole block\n", err, block.Height)
 				hardFailure = true
 				continue
@@ -5465,7 +5498,10 @@ func (dag *BlockDAG) replayTransactions(block *Block, force bool) bool {
 
 		case "lp_distribution":
 			wallet := strings.ToLower(tx.Wallet)
-			if err := dag.state.applyLPRewardDeltaLocked(wallet, tx.Amount, tx.FromDemurrageLost); err != nil {
+			// context.Background() is correct — see registerHumanLocked's
+			// comment: dag.state.activeTx was already set directly above
+			// this loop, and dbExecCtx falls back to it.
+			if err := dag.state.applyLPRewardDeltaLocked(context.Background(), wallet, tx.Amount, tx.FromDemurrageLost); err != nil {
 				fmt.Printf("[REPLAY] ✗ lp_distribution %s: %v (block #%d) — rolling back whole block\n", wallet, err, block.Height)
 				hardFailure = true
 				continue
@@ -5473,7 +5509,10 @@ func (dag *BlockDAG) replayTransactions(block *Block, force bool) bool {
 			fmt.Printf("[REPLAY] ✓ Applied LP reward %.6f AEQ for %s (block #%d)\n", tx.Amount, wallet, block.Height)
 
 		case "lp_distribution_pool_zero":
-			if err := dag.state.applyLPPoolZeroDeltaLocked(); err != nil {
+			// context.Background() is correct — see registerHumanLocked's
+			// comment: dag.state.activeTx was already set directly above
+			// this loop, and dbExecCtx falls back to it.
+			if err := dag.state.applyLPPoolZeroDeltaLocked(context.Background()); err != nil {
 				fmt.Printf("[REPLAY] ✗ lp_distribution_pool_zero: %v (block #%d) — rolling back whole block\n", err, block.Height)
 				hardFailure = true
 				continue
@@ -5493,7 +5532,10 @@ func (dag *BlockDAG) replayTransactions(block *Block, force bool) bool {
 			fmt.Printf("[REPLAY] ✓ Applied escrow move for %s (block #%d)\n", wallet, block.Height)
 
 		case "escrow_release":
-			if err := dag.state.applyEscrowReleaseDeltaLocked(tx.Amount); err != nil {
+			// context.Background() is correct — see registerHumanLocked's
+			// comment: dag.state.activeTx was already set directly above
+			// this loop, and dbExecCtx falls back to it.
+			if err := dag.state.applyEscrowReleaseDeltaLocked(context.Background(), tx.Amount); err != nil {
 				fmt.Printf("[REPLAY] ✗ escrow_release: %v (block #%d) — rolling back whole block\n", err, block.Height)
 				hardFailure = true
 				continue
@@ -5579,7 +5621,10 @@ func (dag *BlockDAG) replayTransactions(block *Block, force bool) bool {
 				penaltyAmt = acc.Balance.Float()
 			}
 			if penaltyAmt > 0 {
-				if err := dag.state.applyTransferDeltaLocked(opWallet, ubiPoolAddr, penaltyAmt, 0, 0); err != nil {
+				// context.Background() is correct — see registerHumanLocked's
+				// comment: dag.state.activeTx was already set directly above
+				// this loop, and dbExecCtx falls back to it.
+				if err := dag.state.applyTransferDeltaLocked(context.Background(), opWallet, ubiPoolAddr, penaltyAmt, 0, 0); err != nil {
 					fmt.Printf("[REPLAY] ✗ slash_equivocation transfer %s→UBI %.4f: %v (block #%d) — rolling back whole block\n",
 						opWallet, penaltyAmt, err, block.Height)
 					hardFailure = true
@@ -5614,8 +5659,12 @@ func (dag *BlockDAG) replayTransactions(block *Block, force bool) bool {
 		if rbErr := dag.state.restoreFromRollbackLocked(rollbackSnap); rbErr != nil {
 			fmt.Printf("[REPLAY] CRITICAL: rollback persistence failed for block #%d — memory/DB may now disagree: %v\n", block.Height, rbErr)
 		}
+		// context.Background() is correct: commitOrRollback already cleared
+		// dag.state.activeTx above, so there is no transaction left to join
+		// regardless (same as before this migration — cs.dbExec() already
+		// fell back to cs.db once activeTx was nil).
 		for _, n := range claimedNullifiers {
-			dag.state.releaseNullifierLocked(n)
+			dag.state.releaseNullifierLocked(context.Background(), n)
 		}
 		fmt.Printf("[REPLAY] ✗ Block #%d rolled back due to a genuine state-inconsistency failure — block rejected\n", block.Height)
 		return false
@@ -5712,7 +5761,7 @@ func (dag *BlockDAG) replayTransactions(block *Block, force bool) bool {
 	// back commit also rolls this flag back — see ensureReplayedColumn's
 	// comment for why "header saved" must never silently imply "effects
 	// applied" on a later restart.
-	if err := dag.state.MarkBlockReplayed(block.Hash); err != nil {
+	if err := dag.state.MarkBlockReplayed(context.Background(), block.Hash); err != nil {
 		fmt.Printf("[REPLAY] Warning: could not mark block #%d replayed: %v\n", block.Height, err)
 	}
 
@@ -5729,8 +5778,11 @@ func (dag *BlockDAG) replayTransactions(block *Block, force bool) bool {
 		if rbErr := dag.state.restoreFromRollbackLocked(rollbackSnap); rbErr != nil {
 			fmt.Printf("[REPLAY] CRITICAL: rollback persistence failed for block #%d — memory/DB may now disagree: %v\n", block.Height, rbErr)
 		}
+		// context.Background() is correct — see the hardFailure branch's
+		// matching comment above: commitOrRollback already cleared
+		// dag.state.activeTx.
 		for _, n := range claimedNullifiers {
-			dag.state.releaseNullifierLocked(n)
+			dag.state.releaseNullifierLocked(context.Background(), n)
 		}
 		fmt.Printf("[REPLAY] ✗ Block #%d: replay transaction commit failed (rolled back, block rejected): %v\n", block.Height, commitErr)
 		return false

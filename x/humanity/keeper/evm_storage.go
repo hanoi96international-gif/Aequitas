@@ -1388,7 +1388,9 @@ const maxInMemNullifiers = 500_000
 func (cs *ChainState) TryClaimNullifier(nullifier, walletAddress string) (bool, error) {
 	cs.mu.Lock()
 	defer cs.mu.Unlock()
-	return cs.tryClaimNullifierLocked(nullifier, walletAddress)
+	// cs.mu-only path, never runs inside runAtomicWithOutbox — see
+	// RegisterHuman's comment.
+	return cs.tryClaimNullifierLocked(context.Background(), nullifier, walletAddress)
 }
 
 // tryClaimNullifierLocked is TryClaimNullifier's body, for callers that
@@ -1417,7 +1419,7 @@ func (cs *ChainState) TryClaimNullifier(nullifier, walletAddress string) (bool, 
 // Also now returns an error so a genuine DB failure during the claim is
 // never silently treated as "already used" by a caller checking just
 // the bool — see replayTransactions' own fix at its call site.
-func (cs *ChainState) tryClaimNullifierLocked(nullifier, walletAddress string) (bool, error) {
+func (cs *ChainState) tryClaimNullifierLocked(ctx context.Context, nullifier, walletAddress string) (bool, error) {
 	if nullifier == "" {
 		return false, nil
 	}
@@ -1430,7 +1432,7 @@ func (cs *ChainState) tryClaimNullifierLocked(nullifier, walletAddress string) (
 		xorInto(&cs.nullifierSetXOR, nullifierLeaf(nullifier)) // fold new key into state-root accumulator
 		return true, nil
 	}
-	res, err := cs.dbExec().Exec(
+	res, err := cs.dbExecCtx(ctx).Exec(
 		`INSERT INTO nullifiers (nullifier, wallet_address) VALUES ($1, $2) ON CONFLICT (nullifier) DO NOTHING`,
 		nullifier, walletAddress,
 	)
@@ -1510,7 +1512,7 @@ func (cs *ChainState) SaveNullifier(ctx context.Context, nullifier, walletAddres
 		// runAtomicWithOutbox rolls back the whole registration instead of
 		// silently dropping just the nullifier row.
 		var existingWallet string
-		if scanErr := cs.dbExec().QueryRow(
+		if scanErr := cs.dbExecCtx(ctx).QueryRow(
 			`SELECT wallet_address FROM nullifiers WHERE nullifier = $1`, nullifier,
 		).Scan(&existingWallet); scanErr != nil {
 			return fmt.Errorf("nullifier conflict but could not verify existing owner: %w", scanErr)
@@ -1533,12 +1535,18 @@ func (cs *ChainState) SaveNullifier(ctx context.Context, nullifier, walletAddres
 func (cs *ChainState) ReleaseNullifier(nullifier string) {
 	cs.mu.Lock()
 	defer cs.mu.Unlock()
-	cs.releaseNullifierLocked(nullifier)
+	// cs.mu-only path, never runs inside runAtomicWithOutbox — see
+	// RegisterHuman's comment.
+	cs.releaseNullifierLocked(context.Background(), nullifier)
 }
 
 // releaseNullifierLocked is ReleaseNullifier's body, for callers that
-// already hold cs.mu — see tryClaimNullifierLocked's comment.
-func (cs *ChainState) releaseNullifierLocked(nullifier string) {
+// already hold cs.mu — see tryClaimNullifierLocked's comment. Block replay
+// (block.go) also calls this directly with context.Background(): it sets
+// dag.state.activeTx itself before this runs, and dbExecCtx falls back to
+// that field when ctx carries no transaction, so behavior there is
+// unchanged — see registerHumanLocked's comment for the same reasoning.
+func (cs *ChainState) releaseNullifierLocked(ctx context.Context, nullifier string) {
 	if nullifier == "" {
 		return
 	}
@@ -1553,14 +1561,14 @@ func (cs *ChainState) releaseNullifierLocked(nullifier string) {
 		}
 		return
 	}
-	// FIX (audit 2026-06-28 recheck 5, P1-1): routes through cs.dbExec()
+	// FIX (audit 2026-06-28 recheck 5, P1-1): routes through cs.dbExecCtx(ctx)
 	// like tryClaimNullifierLocked now does — when called from inside
 	// replayTransactions this DELETE joins the same dbTx as the claim it's
 	// undoing (so it's redundant-but-harmless there, since a ROLLBACK
 	// would discard the claim anyway), and stays the real, separate
 	// compensating action for callers outside any active transaction
 	// (e.g. the mirror-path fallback in register.go).
-	res, err := cs.dbExec().Exec(`DELETE FROM nullifiers WHERE nullifier = $1`, nullifier)
+	res, err := cs.dbExecCtx(ctx).Exec(`DELETE FROM nullifiers WHERE nullifier = $1`, nullifier)
 	if err != nil {
 		fmt.Printf("[NULLIFIER] Warning: could not release nullifier %s: %v\n", nullifier, err)
 		return
@@ -2840,18 +2848,21 @@ func (cs *ChainState) ensureReplayedColumn() {
 }
 
 // MarkBlockReplayed flips chain_blocks.replayed to true for hash. Called via
-// cs.dbExec() so it joins the SAME dbTx as the account mutations replay just
-// made (replayTransactions calls this right before commitOrRollback(true)) —
-// atomic with the actual state effects, so a crash before commit leaves
-// BOTH the account changes and this flag rolled back together, and a crash
-// after commit leaves BOTH durable together. Never true without the
-// corresponding account effects also being true.
-func (cs *ChainState) MarkBlockReplayed(hash string) error {
+// cs.dbExecCtx(ctx) so it joins the SAME dbTx as the account mutations replay
+// just made (replayTransactions calls this right before
+// commitOrRollback(true), passing context.Background() — dag.state.activeTx
+// is still set to dbTx at that point, and dbExecCtx falls back to it, see
+// registerHumanLocked's comment) — atomic with the actual state effects, so
+// a crash before commit leaves BOTH the account changes and this flag
+// rolled back together, and a crash after commit leaves BOTH durable
+// together. Never true without the corresponding account effects also
+// being true.
+func (cs *ChainState) MarkBlockReplayed(ctx context.Context, hash string) error {
 	if cs.db == nil {
 		return nil
 	}
 	cs.ensureReplayedColumn()
-	_, err := cs.dbExec().Exec(`UPDATE chain_blocks SET replayed = true WHERE hash = $1`, hash)
+	_, err := cs.dbExecCtx(ctx).Exec(`UPDATE chain_blocks SET replayed = true WHERE hash = $1`, hash)
 	return err
 }
 

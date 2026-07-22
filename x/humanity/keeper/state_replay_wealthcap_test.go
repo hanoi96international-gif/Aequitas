@@ -49,7 +49,7 @@ func TestApplySwapDeltaLocked_MirrorsPrimaryWealthCap(t *testing.T) {
 		t.Fatalf("primary swapLocked: %v", err)
 	}
 
-	if err := secondary.applySwapDeltaLocked("0xtarget", amountIn, amountOut, false, 0); err != nil {
+	if err := secondary.applySwapDeltaLocked(context.Background(), "0xtarget", amountIn, amountOut, false, 0); err != nil {
 		t.Fatalf("secondary applySwapDeltaLocked: %v", err)
 	}
 
@@ -86,7 +86,7 @@ func TestRemoveLiquidityDeltaLocked_MirrorsPrimaryWealthCap(t *testing.T) {
 		t.Fatalf("primary removeLiquidityLocked: %v", err)
 	}
 
-	if err := secondary.removeLiquidityDeltaLocked("0xtarget", sharesToBurn, 0); err != nil {
+	if err := secondary.removeLiquidityDeltaLocked(context.Background(), "0xtarget", sharesToBurn, 0); err != nil {
 		t.Fatalf("secondary removeLiquidityDeltaLocked: %v", err)
 	}
 
