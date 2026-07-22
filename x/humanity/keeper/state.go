@@ -1341,7 +1341,25 @@ func (cs *ChainState) ensureAccountLoaded(addr string) {
 	acc := &AccountState{Address: addr}
 	var bal, tusd, lp float64
 	var version int64
-	err := cs.db.QueryRow(
+	// FIX (deadlock, concurrency audit 2026-07-21): this used to always
+	// query via cs.db (the shared connection pool) even when called from
+	// inside an active runAtomicWithOutbox/runAtomicDistributionWithOutbox
+	// transaction (cs.mu held, cs.activeTx set, one pool connection already
+	// checked out for it). Under enough concurrent atomic operations to
+	// saturate MaxOpenConns, every one of those already-open transactions
+	// blocks waiting for cs.mu — held by whichever one is currently running
+	// fn() — while THAT one's own cold-account load here waits for a 21st
+	// pool connection that can only ever become free once one of the
+	// cs.mu-blocked transactions completes, which can't happen until this
+	// one releases cs.mu: a genuine self-deadlock, confirmed live via a
+	// local concurrent-transfer benchmark (100 goroutines, MaxOpenConns=20,
+	// zero transfers completed after 4+ minutes — full goroutine dump
+	// showed every one of the 20 open *sql.Tx stuck in Tx.awaitDone with no
+	// goroutine anywhere past cs.mu.Lock()). cs.dbExec() reuses the
+	// already-held transaction's own connection when one is active (same
+	// existing pattern every write in this file already uses), so this
+	// query needs zero extra pool capacity instead of one more.
+	err := cs.dbExec().QueryRow(
 		`SELECT balance, is_human, tusd_balance, lp_shares,
 		        COALESCE(last_activity_at, 0), COALESCE(version, 1)
 		 FROM chain_accounts WHERE lower(address) = $1`,
@@ -1406,7 +1424,13 @@ func (cs *ChainState) ensureAccountsLoaded(addrs []string) {
 	if len(missing) == 0 {
 		return
 	}
-	rows, err := cs.db.Query(
+	// FIX (deadlock, same as ensureAccountLoaded's FIX comment): route
+	// through cs.dbExec() so this reuses an already-active transaction's
+	// own connection instead of requesting a fresh one from the shared
+	// pool — this is snapshotForRollbackLocked's own cold-load call,
+	// reached from inside every runAtomicWithOutbox/
+	// runAtomicDistributionWithOutbox critical section.
+	rows, err := cs.dbExec().Query(
 		`SELECT address, balance, is_human, tusd_balance, lp_shares,
 		        COALESCE(last_activity_at, 0), COALESCE(version, 1)
 		 FROM chain_accounts WHERE lower(address) = ANY($1)`,
@@ -1773,8 +1797,11 @@ WHERE address = $1 AND version = $9`,
 			if rows, _ := result.RowsAffected(); rows == 0 {
 				// Conflict: another node wrote a newer version. Reload DB version
 				// into memory so the next caller can retry with the correct base.
+				// FIX (deadlock, same as ensureAccountLoaded's FIX comment):
+				// cs.dbExec() instead of cs.db — this runs inside the same
+				// active transaction as the UPDATE just above.
 				var dbVer int64
-				cs.db.QueryRow(`SELECT version FROM chain_accounts WHERE lower(address) = $1`, acc.Address).Scan(&dbVer)
+				cs.dbExec().QueryRow(`SELECT version FROM chain_accounts WHERE lower(address) = $1`, acc.Address).Scan(&dbVer)
 				acc.Version = dbVer // resync in-memory; do NOT increment
 				fmt.Printf("[DB] Conflict: account %s modified by another node — local version reset to DB version %d\n", acc.Address, dbVer)
 				// FIX (audit recheck2, P0 #2): used to return nil here. The
@@ -2505,7 +2532,12 @@ func (cs *ChainState) distributeLPPoolLocked() ([]DistributionShare, error) {
 	var holders []lpHolder
 	totalShares := 0.0
 	if cs.db != nil {
-		rows, err := cs.db.Query(`SELECT lower(address) FROM chain_accounts WHERE lp_shares > 0`)
+		// FIX (deadlock, same as ensureAccountLoaded's FIX comment):
+		// distributeLPPoolLocked runs inside RunDailyDistributionAtomic's
+		// runAtomicDistributionWithOutbox critical section (cs.mu held,
+		// cs.activeTx set) — route through cs.dbExec() so this enumeration
+		// reuses that transaction's own connection.
+		rows, err := cs.dbExec().Query(`SELECT lower(address) FROM chain_accounts WHERE lp_shares > 0`)
 		if err != nil {
 			return nil, fmt.Errorf("could not enumerate LP holders: %w", err)
 		}
@@ -2683,7 +2715,12 @@ func (cs *ChainState) distributeUBIPoolLocked() ([]DistributionShare, error) {
 	// single allocation of 8B addresses.
 	var humanAddrs []string
 	if cs.db != nil {
-		rows, err := cs.db.Query(`SELECT lower(address) FROM chain_accounts WHERE is_human = true`)
+		// FIX (deadlock, same as ensureAccountLoaded's FIX comment):
+		// distributeUBIPoolLocked runs inside RunDailyDistributionAtomic's
+		// runAtomicDistributionWithOutbox critical section — route through
+		// cs.dbExec() so this enumeration reuses that transaction's own
+		// connection instead of requesting a fresh one from the pool.
+		rows, err := cs.dbExec().Query(`SELECT lower(address) FROM chain_accounts WHERE is_human = true`)
 		if err != nil {
 			return nil, fmt.Errorf("could not enumerate human accounts: %w", err)
 		}
@@ -3141,11 +3178,6 @@ func (cs *ChainState) runAtomicWithOutbox(touchedAddrs []string, fullSnapshot bo
 		return err
 	}
 
-	tx, err := cs.db.Begin()
-	if err != nil {
-		return fmt.Errorf("could not begin atomic transaction: %w", err)
-	}
-
 	// FIX (audit recheck2, P0 #1): chainConfig must still be read before the
 	// lock (blocking DB call — see snapshotForRollback's own comment), but
 	// the accounts/pool snapshot itself now happens via the Locked variant
@@ -3159,10 +3191,33 @@ func (cs *ChainState) runAtomicWithOutbox(touchedAddrs []string, fullSnapshot bo
 	// concurrently-running atomic operation's in-flight transaction (a real
 	// data race on cs.activeTx itself, since that operation's cs.mu hold
 	// doesn't protect a read that never acquires cs.mu in the first place).
+	//
+	// FIX (deadlock, concurrency audit 2026-07-21): this read used to run
+	// AFTER cs.db.Begin() had already checked out and was holding a pool
+	// connection for `tx` — meaning every concurrent caller of this
+	// function held ONE pool connection (its own idle, not-yet-used tx)
+	// while ALSO needing a SECOND one for this loop's own
+	// getConfigValueExistsDB call. Once MaxOpenConns concurrent callers all
+	// reached that point (each having already grabbed a connection via
+	// Begin()), every single one of them needed a 21st connection that
+	// could never become free — none of them can finish (and release
+	// theirs) until this very read succeeds. Confirmed live: 100 concurrent
+	// TransferAtomic callers, MaxOpenConns=20, zero transfers completed
+	// after minutes — full goroutine dump showed exactly 20 stuck holding
+	// an open *sql.Tx from Begin() and the rest queued behind them, no
+	// goroutine ever reaching cs.mu.Lock(). Moving Begin() to below this
+	// loop (nothing between the old Begin() and cs.mu.Lock() ever used tx)
+	// means a caller only ever holds one pool connection at a time, for the
+	// shortest window that actually needs it.
 	chainConfig := make(map[string]configValueSnapshot, len(stateRootRelevantConfigKeys))
 	for _, key := range stateRootRelevantConfigKeys {
 		value, existed := cs.getConfigValueExistsDB(key)
 		chainConfig[key] = configValueSnapshot{value: value, existed: existed}
+	}
+
+	tx, err := cs.db.Begin()
+	if err != nil {
+		return fmt.Errorf("could not begin atomic transaction: %w", err)
 	}
 
 	// FIX (audit 2026-06-28 recheck 4, P0-2): cs.mu used to be released (and
@@ -3240,11 +3295,6 @@ func (cs *ChainState) runAtomicDistributionWithOutbox(fn func() ([]Transaction, 
 		return err
 	}
 
-	tx, err := cs.db.Begin()
-	if err != nil {
-		return fmt.Errorf("could not begin atomic distribution transaction: %w", err)
-	}
-
 	// Full snapshot: distribution can touch any number of humans/validators/
 	// LP holders/escrow wallets, none of which are known in advance — same
 	// reasoning blockTouchedAddresses already uses for ubi_distribution.
@@ -3257,10 +3307,21 @@ func (cs *ChainState) runAtomicDistributionWithOutbox(fn func() ([]Transaction, 
 	// FIX (audit 2026-06-28 recheck 4, P0-1): plain DB-only read — see the
 	// matching comment in runAtomicWithOutbox for why this must never go
 	// through cs.dbExec()/cs.activeTx before cs.mu.Lock() is held.
+	//
+	// FIX (deadlock, concurrency audit 2026-07-21): moved below the old
+	// cs.db.Begin() call — see runAtomicWithOutbox's matching FIX comment
+	// for the full connection-pool self-deadlock this closes (identical
+	// pattern, same fix: don't hold a pool connection via an idle tx while
+	// this loop needs a second one of its own).
 	chainConfig := make(map[string]configValueSnapshot, len(stateRootRelevantConfigKeys))
 	for _, key := range stateRootRelevantConfigKeys {
 		value, existed := cs.getConfigValueExistsDB(key)
 		chainConfig[key] = configValueSnapshot{value: value, existed: existed}
+	}
+
+	tx, err := cs.db.Begin()
+	if err != nil {
+		return fmt.Errorf("could not begin atomic distribution transaction: %w", err)
 	}
 
 	// FIX (audit 2026-06-28 recheck 4, P0-2): same fix as runAtomicWithOutbox
@@ -5310,8 +5371,13 @@ func (cs *ChainState) restoreFromRollbackLocked(snap *blockRollbackSnapshot) err
 		}
 	}
 	if cs.db != nil {
+		// FIX (deadlock, concurrency audit 2026-07-21): cs.dbExec() instead
+		// of cs.db — see ensureAccountLoaded's FIX comment. Reached on the
+		// rollback path with cs.mu+cs.activeTx already held (see this
+		// function's own doc comment on why the lock stays held through
+		// these DB writes).
 		for _, addr := range toDelete {
-			if _, err := cs.db.Exec(`DELETE FROM chain_accounts WHERE lower(address) = $1`, addr); err != nil {
+			if _, err := cs.dbExec().Exec(`DELETE FROM chain_accounts WHERE lower(address) = $1`, addr); err != nil {
 				fmt.Printf("[ROLLBACK] Warning: could not delete rolled-back account %s: %v\n", addr, err)
 				if firstErr == nil {
 					firstErr = fmt.Errorf("rollback: could not delete rolled-back account %s: %w", addr, err)

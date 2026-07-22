@@ -249,7 +249,12 @@ func (cs *ChainState) loadPenaltyCacheLocked() {
 	if cs.db == nil {
 		return
 	}
-	rows, err := cs.db.Query(`SELECT signing_address, banned, suspended_until, last_offense_at FROM validator_penalties`)
+	// FIX (deadlock, concurrency audit 2026-07-21): cs.dbExec() instead of
+	// cs.db — see state.go's ensureAccountLoaded FIX comment. Safe
+	// unconditionally (falls back to cs.db when no transaction is active);
+	// this closes the same hazard class for any call path that reaches
+	// this cache load while cs.mu+cs.activeTx are already held.
+	rows, err := cs.dbExec().Query(`SELECT signing_address, banned, suspended_until, last_offense_at FROM validator_penalties`)
 	if err != nil {
 		return
 	}

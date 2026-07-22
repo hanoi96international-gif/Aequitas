@@ -882,7 +882,18 @@ func (cs *ChainState) RemoveFromEVMMirrorSyncQueue(addr, contractAddr string) {
 	if cs.db == nil {
 		return
 	}
-	if _, err := cs.db.Exec(`DELETE FROM evm_mirror_sync_queue WHERE address = $1 AND contract_addr = $2`, addr, contractAddr); err != nil {
+	// FIX (deadlock, concurrency audit 2026-07-21): cs.dbExec() instead of
+	// cs.db — see ensureAccountLoaded's FIX comment for the full
+	// connection-pool self-deadlock this closes. Called from
+	// syncBalanceLocked (transferLocked's own call chain) up to 6 times per
+	// transfer (once per touched address), each needing its own pool
+	// connection under the old cs.db.Exec while cs.mu+cs.activeTx were
+	// already held — the single biggest contributor to the deadlock
+	// reproduced live via the local TPS benchmark. Safe unconditionally:
+	// cs.dbExec() falls back to cs.db when called standalone (e.g. from
+	// RetryEVMMirrorSyncQueue's periodic background pass, outside any
+	// active transaction).
+	if _, err := cs.dbExec().Exec(`DELETE FROM evm_mirror_sync_queue WHERE address = $1 AND contract_addr = $2`, addr, contractAddr); err != nil {
 		fmt.Printf("[EVM] Warning: could not remove mirror sync queue entry: %v\n", err)
 	}
 }
