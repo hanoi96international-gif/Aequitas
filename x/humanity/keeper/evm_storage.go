@@ -2232,15 +2232,50 @@ func savePendingTxExec(ex sqlExecutor, tx Transaction) error {
 // can never be selected by this query again regardless of whether the
 // later DELETE ever succeeds — a failed delete now only leaves a harmless,
 // already-included row behind, not a duplicate-processing risk.
+// maxTxsPerBlock bounds how many pending transactions a single ProduceBlock
+// call can bundle into one block — see SCALING_ARCHITECTURE.md Phase 9.
+// LoadPendingTxs used to have no LIMIT at all: every currently-pending TX,
+// however many, went into ONE block every BLOCK_TIME tick. Measured directly
+// (TestBlockCostAtScale, AEQUITAS_BLOCK_SIZE_BENCH=1): at 50,000 TXs in one
+// block, calculateBlockHash (producer AND every verifying peer) + the full
+// block's json.Unmarshal (every receiving peer) alone already cost ~275ms
+// combined — a meaningful fraction of a 1-2s BLOCK_TIME before any P2P
+// transfer time or transaction-replay cost is even counted; at 100,000 it
+// was ~530ms. Left unbounded, sustained high-TPS load would eventually
+// produce single blocks large enough to make ProduceBlock/AddPeerBlock's own
+// serialization overhead compete with the actual transaction throughput
+// this whole scaling project exists to increase.
+//
+// 20,000 is a deliberately conservative starting point (comfortably inside
+// the measured-safe range, roughly 2x the 10,000-TX measurement's ~85ms
+// combined cost) — NOT a claim that this by itself delivers 50,000 TPS
+// sustained: at BLOCK_TIME's current ~1-2s cadence, 20,000 TXs/block caps
+// throughput at roughly 10,000-20,000 TPS through block relay specifically,
+// regardless of how fast the storage layer (phases 1-6) can ingest them.
+// Reaching sustained 50k TPS through block relay itself needs a genuinely
+// separate follow-up (multiple blocks per tick, and/or a shorter
+// BLOCK_TIME) — explicitly out of scope here, see
+// SCALING_ARCHITECTURE.md's own Phase 9 framing ("untersuchen und ggf.
+// redesignen", investigate and possibly redesign, not "solve outright").
+// This constant exists to close the concrete, measured worst-case risk
+// (one pathologically large block) first, cheaply and safely, without
+// committing to that larger cadence redesign in the same change.
+//
+// Any pending TX beyond this cap simply stays included_at=0 (this query's
+// WHERE clause) and is picked up by the NEXT LoadPendingTxs call — no TX is
+// ever dropped, only deferred, exactly the same FIFO backlog-draining
+// property a real bounded queue needs.
+const maxTxsPerBlock = 20000
+
 func (cs *ChainState) LoadPendingTxs() ([]Transaction, []int64) {
 	if cs.db == nil {
 		return nil, nil
 	}
 	rows, err := cs.db.Query(
 		`UPDATE pending_txs SET included_at = $1
-		 WHERE id IN (SELECT id FROM pending_txs WHERE included_at = 0 ORDER BY id)
+		 WHERE id IN (SELECT id FROM pending_txs WHERE included_at = 0 ORDER BY id LIMIT $2)
 		 RETURNING id, tx_json`,
-		time.Now().Unix(),
+		time.Now().Unix(), maxTxsPerBlock,
 	)
 	if err != nil {
 		fmt.Printf("[TX] LoadPendingTxs error: %v\n", err)

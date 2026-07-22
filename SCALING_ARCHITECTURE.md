@@ -91,7 +91,23 @@ Das ist der Baustein, der tatsächlich nötig ist, um von "niedriger vierstellig
 
 Alle bisherigen Abschnitte optimieren, wie schnell `ChainState` einzelne Transaktionen annehmen und persistieren kann. Sie sagen nichts darüber aus, wie schnell die fertigen Blöcke, in denen diese Transaktionen an andere Nodes weitergereicht werden, selbst verarbeitet werden können — und das ist eine eigene, bisher nicht untersuchte Engpassstelle:
 
-`ProduceBlock` hat aktuell **keine Obergrenze** für Transaktionen pro Block — jeder Tick (`BLOCK_TIME`, ~1–2 s) drainiert den kompletten wartenden Mempool in EINEN Block. Bei 50.000 TPS wären das 50.000–100.000 Transaktionen in einem einzigen Block: JSON-Serialisierung dieser Blockgröße, Hash-Berechnung, P2P-/HTTP-Verteilung an andere Nodes, GHOSTDAG-Verarbeitung der Merge-Sets — alles Kostenfaktoren, die heute nur für kleine, realistische Blockgrößen (wenige bis niedrige Zehntausend Blocks insgesamt, nicht Zehntausende Transaktionen PRO Block) geprüft sind. Muss als eigener Punkt im Projekt untersucht werden — vermutlich mit einer Obergrenze pro Block plus mehreren Blöcken/Tick oder kürzerer `BLOCK_TIME`, statt eines einzigen unbegrenzt wachsenden Blocks. Nicht im Umfang von Abschnitten 1–6 enthalten.
+`ProduceBlock` hatte bis zu diesem Fix **keine Obergrenze** für Transaktionen pro Block — jeder Tick (`BLOCK_TIME`, ~1–2 s) drainierte den kompletten wartenden Mempool in EINEN Block. Bei 50.000 TPS wären das 50.000–100.000 Transaktionen in einem einzigen Block.
+
+**Update (Phase 9, real gemessen statt nur angenommen):** `TestBlockCostAtScale` (`AEQUITAS_BLOCK_SIZE_BENCH=1`) misst `calculateBlockHash` (JSON-Marshal der TX-Liste + SHA256 — läuft beim Produzenten UND bei jedem verifizierenden Peer) sowie den vollen Block-Payload (`json.Marshal`/`json.Unmarshal`, wie `p2p.go`s `broadcastExcept` ihn tatsächlich verschickt) bei steigender TX-Zahl:
+
+| TXs/Block | calculateBlockHash | json.Marshal(Block) | json.Unmarshal | Payload |
+|---|---|---|---|---|
+| 100 | 0,7 ms | 0,4 ms | 0,7 ms | 0,02 MB |
+| 1.000 | 1,2 ms | 0,8 ms | 3,6 ms | 0,23 MB |
+| 10.000 | 37,6 ms | 8,5 ms | 37,9 ms | 2,32 MB |
+| 50.000 | 83,1 ms | 41,0 ms | 191,7 ms | 11,59 MB |
+| 100.000 | 148,3 ms | 89,7 ms | 379,1 ms | 23,17 MB |
+
+Bei 50.000 TXs/Block kostet allein Hash-Verifikation + Unmarshal auf der Empfängerseite ~275 ms — ein spürbarer Anteil eines 1–2s-`BLOCK_TIME`-Fensters, VOR jeglicher P2P-Übertragungszeit (11,6 MB Payload) oder der eigentlichen TX-Replay-Kosten. GHOSTDAG selbst ist von dieser Zahl nicht betroffen (operiert auf DAG-/Parent-Struktur, nicht auf TX-Zahl pro Block).
+
+**Umgesetzt:** `maxTxsPerBlock = 20.000` (`evm_storage.go`, `LoadPendingTxs`' SQL bekam ein `LIMIT`) — deckt das konkret gemessene Worst-Case-Risiko (ein pathologisch großer Block) ab, ohne die größere Kadenz-Frage anzufassen. Jede TX über der Grenze bleibt einfach `included_at = 0` und wird beim nächsten Tick abgeholt — nichts geht verloren, nur verzögert (bewiesen durch `TestLoadPendingTxs_CapsAtMaxTxsPerBlock`).
+
+**Ausdrücklich NICHT gelöst:** 20.000 TXs/Block bei ~1–2s `BLOCK_TIME` deckelt den Durchsatz durch Block-Relay selbst auf realistisch 10.000–20.000 TPS — unabhängig davon, wie schnell die Storage-Schicht (Phasen 1–6) TXs aufnehmen kann. Um 50.000 TPS auch durch Block-Relay tatsächlich durchzureichen, braucht es zusätzlich entweder mehrere Blöcke pro Tick oder ein kürzeres `BLOCK_TIME` — eine eigene, größere Kadenz-Entscheidung, bewusst nicht Teil dieses Fixes (siehe Anti-Pattern-Prinzip oben: den konkret gemessenen Risikopunkt zuerst schließen, nicht mit einer größeren Umstellung vermischen).
 
 ## Konkret ermittelter Umfang (Stand dieser Session)
 
@@ -122,7 +138,7 @@ Jede dieser Klassen von Bug wäre in einem 280-Stellen-Umbau des Kern-Storage-La
 6. **EVM-Mirror-Sync asynchron** (Abschnitt 5 der Zielarchitektur).
 7. **WAL + In-Memory-primär** (Abschnitt 6 der Zielarchitektur) — DER Schritt, der auf dem Weg zu 50.000 TPS liegt. Eigenständiges Teilprojekt: WAL-Format, Gruppen-Commit, Crash-Recovery, asynchrone Postgres-Nachführung, jeweils isoliert gebaut und getestet, bevor es an den restlichen Stack angeschlossen wird.
 8. Erst danach, operation-by-operation, weitere Subsysteme (Swap, Distribution, Guardian, Slashing) auf dieselbe WAL+Shard-Architektur umstellen — jedes einzeln, mit eigener Test-Kampagne. Bis dahin profitieren nur Transfers vom vollen Durchsatzgewinn; das ist ein bewusster Zwischenzustand, kein Fehler im Plan.
-9. **Blockproduktion/-relay bei großen Transaktionsmengen pro Block untersuchen und ggf. redesignen** (Abschnitt 7 der Zielarchitektur) — unabhängig von 1–8 messbar (Blockgröße/-serialisierung/-verteilung lässt sich isoliert benchmarken, ohne dass die Storage-Schicht bereits umgebaut sein muss), aber ohne diesen Schritt bleibt unklar, ob die Storage-Schicht ihren Durchsatz überhaupt bis zum Konsens durchreichen kann.
+9. **Blockproduktion/-relay bei großen Transaktionsmengen pro Block untersuchen und ggf. redesignen** (Abschnitt 7 der Zielarchitektur) — unabhängig von 1–8 messbar (Blockgröße/-serialisierung/-verteilung lässt sich isoliert benchmarken, ohne dass die Storage-Schicht bereits umgebaut sein muss), aber ohne diesen Schritt bleibt unklar, ob die Storage-Schicht ihren Durchsatz überhaupt bis zum Konsens durchreichen kann. **Teilweise erledigt**: Kosten real gemessen (`TestBlockCostAtScale`), Worst-Case-Risiko (unbegrenzte Blockgröße) durch `maxTxsPerBlock` geschlossen — die größere Kadenz-Frage (mehrere Blöcke/Tick oder kürzeres `BLOCK_TIME`, nötig um 50k TPS auch durch Block-Relay durchzureichen) bleibt offen.
 
 ## Teststrategie (nicht verhandelbar für Phase 5+)
 
