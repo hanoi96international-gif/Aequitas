@@ -305,10 +305,7 @@ func (cs *ChainState) RecoverFromEscrow(wallet string) error {
 	if cs.db == nil {
 		return fmt.Errorf("no database")
 	}
-	return cs.runAtomicWithOutbox([]string{wallet}, false, func() (Transaction, error) {
-		// See processTransferBatch's own comment for why capturing
-		// cs.activeTx into ctx here (cs.mu held throughout) is safe.
-		ctx := withTx(context.Background(), cs.activeTx)
+	return cs.runAtomicWithOutbox([]string{wallet}, false, func(ctx context.Context) (Transaction, error) {
 		// DELETE...RETURNING inside the active DB transaction — atomically
 		// claims the escrow row while joining the same commit/rollback unit
 		// as the subsequent balance credit and outbox insert.

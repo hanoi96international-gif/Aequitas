@@ -3301,10 +3301,7 @@ func (cs *ChainState) RegisterHuman(address string) error {
 // insert.
 func (cs *ChainState) RegisterHumanAtomic(address string, pendingTx Transaction) error {
 	address = strings.ToLower(address)
-	return cs.runAtomicWithOutbox([]string{address}, false, func() (Transaction, error) {
-		// See processTransferBatch's own comment for why capturing
-		// cs.activeTx into ctx here (cs.mu held throughout) is safe.
-		ctx := withTx(context.Background(), cs.activeTx)
+	return cs.runAtomicWithOutbox([]string{address}, false, func(ctx context.Context) (Transaction, error) {
 		if err := cs.registerHumanLocked(ctx, address); err != nil {
 			return Transaction{}, err
 		}
@@ -3398,7 +3395,7 @@ func (cs *ChainState) registerHumanLocked(ctx context.Context, address string) e
 // already reflected the change, but no other node would ever learn about
 // it. Wrapping both in one transaction means a failure at either step undoes
 // both.
-func (cs *ChainState) runAtomicWithOutbox(touchedAddrs []string, fullSnapshot bool, fn func() (Transaction, error)) error {
+func (cs *ChainState) runAtomicWithOutbox(touchedAddrs []string, fullSnapshot bool, fn func(ctx context.Context) (Transaction, error)) error {
 	if cs.db == nil {
 		// No DB configured — nothing to make atomic with. Every call site
 		// of TransferAtomic/SwapAtomic/etc. treats a non-nil error here as
@@ -3408,8 +3405,12 @@ func (cs *ChainState) runAtomicWithOutbox(touchedAddrs []string, fullSnapshot bo
 		// already genuinely succeeded. This matches the pre-existing
 		// no-DB-mode contract elsewhere in this file (e.g. saveAccountToDB
 		// treats !cs.useDB as "mark as saved", not a failure).
+		//
+		// context.Background() is correct here, not a placeholder: this
+		// branch never sets cs.activeTx, so there is no transaction for fn
+		// to join regardless of what ctx carries.
 		cs.mu.Lock()
-		_, err := fn()
+		_, err := fn(context.Background())
 		cs.mu.Unlock()
 		return err
 	}
@@ -3472,7 +3473,11 @@ func (cs *ChainState) runAtomicWithOutbox(touchedAddrs []string, fullSnapshot bo
 	cs.mu.Lock()
 	cs.activeTx = tx
 	snap := cs.snapshotForRollbackLocked(touchedAddrs, fullSnapshot, chainConfig)
-	pendingTx, fnErr := fn()
+	// See processTransferBatch's own (now-historical) comment for why
+	// building ctx from cs.activeTx here, with cs.mu held throughout, is
+	// safe — fn now receives it directly instead of every caller
+	// reconstructing the same value from cs.activeTx itself.
+	pendingTx, fnErr := fn(withTx(context.Background(), tx))
 	var outboxErr error
 	if fnErr == nil {
 		outboxErr = savePendingTxExec(tx, pendingTx)
@@ -3523,10 +3528,12 @@ func (cs *ChainState) runAtomicWithOutbox(touchedAddrs []string, fullSnapshot bo
 // fallback contract used elsewhere) — for a consensus event the size of a
 // full daily distribution, an outbox failure must roll back the whole
 // round, not be "rescued" by a queue that doesn't survive a restart.
-func (cs *ChainState) runAtomicDistributionWithOutbox(fn func() ([]Transaction, error)) error {
+func (cs *ChainState) runAtomicDistributionWithOutbox(fn func(ctx context.Context) ([]Transaction, error)) error {
 	if cs.db == nil {
+		// context.Background() is correct — see runAtomicWithOutbox's
+		// matching no-DB branch comment.
 		cs.mu.Lock()
-		_, err := fn()
+		_, err := fn(context.Background())
 		cs.mu.Unlock()
 		return err
 	}
@@ -3568,7 +3575,7 @@ func (cs *ChainState) runAtomicDistributionWithOutbox(fn func() ([]Transaction, 
 	cs.mu.Lock()
 	cs.activeTx = tx
 	snap := cs.snapshotForRollbackLocked(nil, true, chainConfig)
-	txs, fnErr := fn()
+	txs, fnErr := fn(withTx(context.Background(), tx))
 	var outboxErr error
 	if fnErr == nil {
 		for _, t := range txs {
@@ -3614,10 +3621,7 @@ func (cs *ChainState) runAtomicDistributionWithOutbox(fn func() ([]Transaction, 
 // ApplyUBIFinalizeDelta's comment for why that must be one shared value,
 // not each side's own time.Now()/block.Timestamp.
 func (cs *ChainState) RunDailyDistributionAtomic(ubiAt int64) error {
-	return cs.runAtomicDistributionWithOutbox(func() ([]Transaction, error) {
-		// See processTransferBatch's own comment for why capturing
-		// cs.activeTx into ctx here (cs.mu held throughout) is safe.
-		ctx := withTx(context.Background(), cs.activeTx)
+	return cs.runAtomicDistributionWithOutbox(func(ctx context.Context) ([]Transaction, error) {
 		var txs []Transaction
 
 		ubiShares, err := cs.distributeUBIPoolLocked(ctx)
@@ -3754,13 +3758,13 @@ func (cs *ChainState) TransferAtomic(from, to string, amount float64, pendingTxT
 // and by the batcher's own no-DB code path is unreachable there since
 // TransferAtomic already short-circuits before ever enqueuing.
 func (cs *ChainState) transferAtomicDirect(from, to string, amount float64, pendingTxTemplate Transaction) (fromLost, toLost float64, err error) {
-	err = cs.runAtomicWithOutbox([]string{from, to, validatorsPoolAddr, lpPoolAddr, ubiPoolAddr, treasuryPoolAddr}, false, func() (Transaction, error) {
-		// context.Background() is correct here, not a placeholder: this
-		// function only ever runs via runAtomicWithOutbox's no-DB branch
-		// (see this function's own doc comment — "Used directly when there
-		// is no real DB"), which never sets cs.activeTx, so there is no
-		// transaction to carry regardless.
-		fromLost, toLost, err = cs.transferLocked(context.Background(), from, to, amount)
+	err = cs.runAtomicWithOutbox([]string{from, to, validatorsPoolAddr, lpPoolAddr, ubiPoolAddr, treasuryPoolAddr}, false, func(ctx context.Context) (Transaction, error) {
+		// ctx is correct to pass straight through here, not a placeholder:
+		// this function only ever runs via runAtomicWithOutbox's no-DB
+		// branch (see this function's own doc comment — "Used directly when
+		// there is no real DB"), which always calls fn(context.Background()),
+		// so ctx carries no transaction to lose regardless.
+		fromLost, toLost, err = cs.transferLocked(ctx, from, to, amount)
 		if err != nil {
 			return Transaction{}, err
 		}
@@ -3894,14 +3898,7 @@ func (cs *ChainState) processTransferBatch(batch []*transferBatchRequest) {
 	}
 
 	results := make([]transferBatchResult, len(batch))
-	err := cs.runAtomicWithOutbox(touched, false, func() (Transaction, error) {
-		// runAtomicWithOutbox just set cs.activeTx for this operation (cs.mu
-		// is held throughout, so reading it here is safe, same as every
-		// other in-critical-section read already does) — capture it into a
-		// ctx so transferLocked and everything it calls can be threaded
-		// explicitly instead of relying on the implicit field. See
-		// dbExecCtx's own comment for the migration this is part of.
-		ctx := withTx(context.Background(), cs.activeTx)
+	err := cs.runAtomicWithOutbox(touched, false, func(ctx context.Context) (Transaction, error) {
 		var last Transaction
 		for i, req := range batch {
 			fromLost, toLost, tErr := cs.transferLocked(ctx, req.from, req.to, req.amount)
@@ -4043,7 +4040,9 @@ func (cs *ChainState) transferLocked(ctx context.Context, from, to string, amoun
 func (cs *ChainState) TransferWithV7Fee(from, to string, amount float64) (float64, float64, float64, error) {
 	cs.mu.Lock()
 	defer cs.mu.Unlock()
-	return cs.transferWithV7FeeLocked(from, to, amount)
+	// cs.mu-only path, never runs inside runAtomicWithOutbox — see
+	// RegisterHuman's comment.
+	return cs.transferWithV7FeeLocked(context.Background(), from, to, amount)
 }
 
 // TransferWithV7FeeAtomic behaves like TransferWithV7Fee but commits or
@@ -4056,8 +4055,8 @@ func (cs *ChainState) TransferWithV7Fee(from, to string, amount float64) (float6
 func (cs *ChainState) TransferWithV7FeeAtomic(from, to string, amount float64, pendingTxTemplate Transaction) (netAmount, fromLost, toLost float64, err error) {
 	from = strings.ToLower(from)
 	to = strings.ToLower(to)
-	err = cs.runAtomicWithOutbox([]string{from, to, validatorsPoolAddr, lpPoolAddr, ubiPoolAddr, treasuryPoolAddr}, false, func() (Transaction, error) {
-		netAmount, fromLost, toLost, err = cs.transferWithV7FeeLocked(from, to, amount)
+	err = cs.runAtomicWithOutbox([]string{from, to, validatorsPoolAddr, lpPoolAddr, ubiPoolAddr, treasuryPoolAddr}, false, func(ctx context.Context) (Transaction, error) {
+		netAmount, fromLost, toLost, err = cs.transferWithV7FeeLocked(ctx, from, to, amount)
 		if err != nil {
 			return Transaction{}, err
 		}
@@ -4072,7 +4071,7 @@ func (cs *ChainState) TransferWithV7FeeAtomic(from, to string, amount float64, p
 // transferWithV7FeeLocked is TransferWithV7Fee's implementation; caller
 // must already hold cs.mu — see transferLocked's comment for why this split
 // exists.
-func (cs *ChainState) transferWithV7FeeLocked(from, to string, amount float64) (float64, float64, float64, error) {
+func (cs *ChainState) transferWithV7FeeLocked(ctx context.Context, from, to string, amount float64) (float64, float64, float64, error) {
 	from = strings.ToLower(from)
 	to = strings.ToLower(to)
 
@@ -4084,13 +4083,13 @@ func (cs *ChainState) transferWithV7FeeLocked(from, to string, amount float64) (
 	// without this a returning sender hits "insufficient balance" despite a real
 	// DB balance, and a cold RECIPIENT would be recreated blank below and have
 	// its real balance overwritten on save. Matches transferLocked.
-	cs.ensureAccountLoaded(from)
-	cs.ensureAccountLoaded(to)
+	cs.ensureAccountLoadedCtx(ctx, from)
+	cs.ensureAccountLoadedCtx(ctx, to)
 	fromAcc, ok := cs.accounts.Get(from)
 	if !ok {
 		return 0, 0, 0, fmt.Errorf("insufficient balance")
 	}
-	fromLost, err := cs.settleDemurrageLocked(fromAcc)
+	fromLost, err := cs.settleDemurrageLockedCtx(ctx, fromAcc)
 	if err != nil {
 		return 0, 0, 0, fmt.Errorf("could not settle demurrage for sender: %w", err)
 	}
@@ -4116,7 +4115,7 @@ func (cs *ChainState) transferWithV7FeeLocked(from, to string, amount float64) (
 
 	fromAcc.Balance = fromAcc.Balance.Sub(NewDecimal(amount))
 	touchActivity(fromAcc)
-	if err := cs.saveAccountToDB(fromAcc); err != nil {
+	if err := cs.saveAccountToDBCtx(ctx, fromAcc); err != nil {
 		return 0, 0, 0, fmt.Errorf("could not save sender account: %w", err)
 	}
 
@@ -4125,16 +4124,16 @@ func (cs *ChainState) transferWithV7FeeLocked(from, to string, amount float64) (
 		toAcc = &AccountState{Address: to}
 		cs.accounts.Set(to, toAcc)
 	}
-	toLost, err := cs.settleDemurrageLocked(toAcc)
+	toLost, err := cs.settleDemurrageLockedCtx(ctx, toAcc)
 	if err != nil {
 		return 0, 0, 0, fmt.Errorf("could not settle demurrage for recipient: %w", err)
 	}
 	toAcc.Balance = toAcc.Balance.Add(NewDecimal(netToRecipient))
 	touchActivity(toAcc)
-	if err := cs.enforceWealthCapLocked(toAcc); err != nil {
+	if err := cs.enforceWealthCapLockedCtx(ctx, toAcc); err != nil {
 		return 0, 0, 0, fmt.Errorf("could not enforce wealth cap for recipient: %w", err)
 	}
-	if err := cs.saveAccountToDB(toAcc); err != nil {
+	if err := cs.saveAccountToDBCtx(ctx, toAcc); err != nil {
 		return 0, 0, 0, fmt.Errorf("could not save recipient account: %w", err)
 	}
 
@@ -4144,14 +4143,14 @@ func (cs *ChainState) transferWithV7FeeLocked(from, to string, amount float64) (
 		// Version==0, which saveAccountToDB's Version==0 branch treats as
 		// "brand new row" and blindly overwrites any existing DB balance —
 		// silently erasing real, previously-accumulated pool funds.
-		cs.ensureAccountLoaded(ubiPoolAddr)
+		cs.ensureAccountLoadedCtx(ctx, ubiPoolAddr)
 		ubiAcc, ok := cs.accounts.Get(ubiPoolAddr)
 		if !ok {
 			ubiAcc = &AccountState{Address: ubiPoolAddr}
 			cs.accounts.Set(ubiPoolAddr, ubiAcc)
 		}
 		ubiAcc.Balance = ubiAcc.Balance.Add(NewDecimal(ubiContrib))
-		if err := cs.saveAccountToDB(ubiAcc); err != nil {
+		if err := cs.saveAccountToDBCtx(ctx, ubiAcc); err != nil {
 			return 0, 0, 0, fmt.Errorf("could not save UBI pool: %w", err)
 		}
 	}
@@ -4248,10 +4247,7 @@ func (cs *ChainState) SwapTUSDForAEQ(address string, amountIn, minAmountOut floa
 // filled in here from the swap's actual result.
 func (cs *ChainState) SwapAtomic(address string, amountIn float64, aeqToTusd bool, minAmountOut float64, pendingTxTemplate Transaction) (amountOut, demurrageLost float64, err error) {
 	address = strings.ToLower(address)
-	err = cs.runAtomicWithOutbox([]string{address, validatorsPoolAddr, lpPoolAddr, ubiPoolAddr, treasuryPoolAddr}, false, func() (Transaction, error) {
-		// See processTransferBatch's own comment for why capturing
-		// cs.activeTx into ctx here (cs.mu held throughout) is safe.
-		ctx := withTx(context.Background(), cs.activeTx)
+	err = cs.runAtomicWithOutbox([]string{address, validatorsPoolAddr, lpPoolAddr, ubiPoolAddr, treasuryPoolAddr}, false, func(ctx context.Context) (Transaction, error) {
 		amountOut, demurrageLost, err = cs.swapLocked(ctx, address, amountIn, aeqToTusd, minAmountOut)
 		if err != nil {
 			return Transaction{}, err
@@ -4763,8 +4759,7 @@ func (cs *ChainState) AddLiquidity(address string, amountAEQ, amountTUSD float64
 // FromDemurrageLost are filled in here from the operation's actual result.
 func (cs *ChainState) AddLiquidityAtomic(address string, amountAEQ, amountTUSD float64, pendingTxTemplate Transaction) (demurrageLost float64, err error) {
 	address = strings.ToLower(address)
-	err = cs.runAtomicWithOutbox([]string{address, validatorsPoolAddr, lpPoolAddr, ubiPoolAddr, treasuryPoolAddr}, false, func() (Transaction, error) {
-		ctx := withTx(context.Background(), cs.activeTx)
+	err = cs.runAtomicWithOutbox([]string{address, validatorsPoolAddr, lpPoolAddr, ubiPoolAddr, treasuryPoolAddr}, false, func(ctx context.Context) (Transaction, error) {
 		sharesBefore := 0.0
 		if acc, ok := cs.accounts.Get(address); ok {
 			sharesBefore = acc.LPShares.Float()
@@ -4898,8 +4893,7 @@ func (cs *ChainState) RemoveLiquidity(address string, sharesToBurn float64) (flo
 // so those aren't part of the queued Transaction either today).
 func (cs *ChainState) RemoveLiquidityAtomic(address string, sharesToBurn float64, pendingTxTemplate Transaction) (outAEQ, outTUSD, demurrageLost float64, err error) {
 	address = strings.ToLower(address)
-	err = cs.runAtomicWithOutbox([]string{address, validatorsPoolAddr, lpPoolAddr, ubiPoolAddr, treasuryPoolAddr}, false, func() (Transaction, error) {
-		ctx := withTx(context.Background(), cs.activeTx)
+	err = cs.runAtomicWithOutbox([]string{address, validatorsPoolAddr, lpPoolAddr, ubiPoolAddr, treasuryPoolAddr}, false, func(ctx context.Context) (Transaction, error) {
 		outAEQ, outTUSD, demurrageLost, err = cs.removeLiquidityLocked(ctx, address, sharesToBurn)
 		if err != nil {
 			return Transaction{}, err
@@ -5269,10 +5263,7 @@ func (cs *ChainState) ClaimTUsdFaucet(address string) error {
 // one DB transaction — see TransferAtomic's comment.
 func (cs *ChainState) ClaimTUsdFaucetAtomic(address string, pendingTx Transaction) error {
 	address = strings.ToLower(address)
-	return cs.runAtomicWithOutbox([]string{address}, false, func() (Transaction, error) {
-		// See processTransferBatch's own comment for why capturing
-		// cs.activeTx into ctx here (cs.mu held throughout) is safe.
-		ctx := withTx(context.Background(), cs.activeTx)
+	return cs.runAtomicWithOutbox([]string{address}, false, func(ctx context.Context) (Transaction, error) {
 		if err := cs.claimTUsdFaucetLocked(ctx, address); err != nil {
 			return Transaction{}, err
 		}
