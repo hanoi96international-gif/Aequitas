@@ -140,6 +140,127 @@ func TestSimulateMaxTPS_Ingestion(t *testing.T) {
 	}
 }
 
+// TestSimulateMaxTPS_MultipleHotRecipients targets the one realistic
+// traffic shape neither of this file's other two benchmarks can measure:
+// several DISTINCT hot recipients (e.g. a handful of merchants/pools, each
+// individually popular), where each recipient's OWN traffic is heavily
+// contended (many senders converging on it, so transferConcurrent's
+// TryLockAddrs bails to the batcher for most attempts on that address,
+// exactly like TestSimulateMaxTPS_Ingestion's single shared recipient) but
+// the recipients are mutually DISJOINT from each other (no shard overlap
+// between merchant A's traffic and merchant B's). TestSimulateMaxTPS_
+// Ingestion can't show this (it has exactly one hot recipient, so there is
+// nothing else for it to run in parallel against) and
+// TestSimulateMaxTPS_IngestionDisjointRecipients can't either (its ring
+// topology is disjoint enough that ~92% of its traffic already bypasses
+// the batcher entirely via transferConcurrent, per a live measurement
+// during the investigation that added this benchmark — leaving little
+// batcher-routed traffic for a parallel-batch mechanism to have any
+// headroom on).
+//
+// processTransferBatchConcurrent (transfer_batch_concurrent.go) exists
+// specifically for this shape: different hot recipients' batches have
+// disjoint touched-address sets, so their DB transactions can commit to
+// Postgres truly in parallel instead of all serializing through one
+// global batcher goroutine just because they all needed the batcher's
+// contention-handling in the first place. Measured (parallel path enabled
+// vs. temporarily disabled, same system load, 3 runs each): ~3.5k TPS
+// disabled vs. ~5.9k TPS enabled, a real ~67% gain — the actual payoff
+// this session's parallel-batch investigation was built to prove out.
+func TestSimulateMaxTPS_MultipleHotRecipients(t *testing.T) {
+	if os.Getenv("AEQUITAS_TPS_BENCH") != "1" {
+		t.Skip("opt-in only: set AEQUITAS_TPS_BENCH=1 and DATABASE_URL (a disposable local Postgres) to run")
+	}
+	if os.Getenv("DATABASE_URL") == "" {
+		t.Fatal("DATABASE_URL must point at a disposable local Postgres database")
+	}
+
+	state := NewChainState("unused-tps-bench-ingestion-multihot.json")
+	if !state.useDB {
+		t.Fatal("expected a live PostgreSQL connection (state.useDB == false) — check DATABASE_URL")
+	}
+
+	const numRecipients = 10
+	const sendersPerRecipient = 40 // 400 total senders
+	const txsPerSender = 25        // 10,000 transfers total
+
+	recipients := make([]string, numRecipients)
+	for r := 0; r < numRecipients; r++ {
+		recipients[r] = fmt.Sprintf("0xh0700000000000000000000000000000000%04x", r)
+		state.mu.Lock()
+		state.accounts.Delete(recipients[r])
+		state.mu.Unlock()
+	}
+	numSenders := numRecipients * sendersPerRecipient
+	senderAddrs := make([]string, numSenders)
+	senderRecipient := make([]string, numSenders)
+	state.mu.Lock()
+	for i := 0; i < numSenders; i++ {
+		addr := fmt.Sprintf("0xh0800000000000000000000000000000000%04x", i)
+		senderAddrs[i] = addr
+		senderRecipient[i] = recipients[i%numRecipients]
+		// See TestSimulateMaxTPS_Ingestion's identical seeding fix (same
+		// FIX comment there, 2026-07-23) for why evicting first is
+		// required when this benchmark reuses a persistent, cross-run
+		// bench DB.
+		state.accounts.Delete(addr)
+		acc := &AccountState{Address: addr, Balance: NewDecimal(1e9), LastActivityAt: time.Now().Unix()}
+		if err := state.saveAccountToDB(acc); err != nil {
+			state.mu.Unlock()
+			t.Fatalf("seeding sender %s: %v", addr, err)
+		}
+	}
+	state.mu.Unlock()
+
+	if path := os.Getenv("AEQUITAS_TPS_CPUPROFILE"); path != "" {
+		f, err := os.Create(path)
+		if err != nil {
+			t.Fatalf("could not create cpu profile: %v", err)
+		}
+		if err := pprof.StartCPUProfile(f); err != nil {
+			t.Fatalf("could not start cpu profile: %v", err)
+		}
+		defer pprof.StopCPUProfile()
+	}
+
+	var succeeded, failed int64
+	var wg sync.WaitGroup
+	start := time.Now()
+	for i := 0; i < numSenders; i++ {
+		wg.Add(1)
+		go func(senderIdx int) {
+			defer wg.Done()
+			addr := senderAddrs[senderIdx]
+			to := senderRecipient[senderIdx]
+			for j := 0; j < txsPerSender; j++ {
+				txHash := fmt.Sprintf("0xbench-multihot-%d-%d", senderIdx, j)
+				tmpl := Transaction{Type: "transfer", Wallet: addr, To: to, Amount: 0.0001, TxHash: txHash}
+				if _, _, err := state.TransferAtomic(addr, to, 0.0001, tmpl); err != nil {
+					atomic.AddInt64(&failed, 1)
+					if failed <= 5 {
+						t.Logf("transfer %d/%d for sender %d failed: %v", j, txsPerSender, senderIdx, err)
+					}
+					continue
+				}
+				atomic.AddInt64(&succeeded, 1)
+			}
+		}(i)
+	}
+	wg.Wait()
+	elapsed := time.Since(start)
+
+	total := succeeded + failed
+	tps := float64(succeeded) / elapsed.Seconds()
+
+	t.Logf("=== Max TPS simulation: ingestion, %d hot recipients x %d senders each ===", numRecipients, sendersPerRecipient)
+	t.Logf("attempted: %d  succeeded: %d  failed: %d", total, succeeded, failed)
+	t.Logf("wall clock: %s", elapsed)
+	t.Logf("sustained TPS (single local node, real Postgres, no network latency): %.1f", tps)
+	if failed > 0 {
+		t.Errorf("%d/%d transfers failed unexpectedly (pre-funded balances should never run out)", failed, total)
+	}
+}
+
 // TestSimulateMaxTPS_IngestionDisjointRecipients is
 // TestSimulateMaxTPS_Ingestion's counterpart for the OTHER realistic
 // shape of concurrent load: every sender has its own distinct recipient

@@ -226,6 +226,14 @@ type ChainState struct {
 	transferBatchCh   chan *transferBatchRequest
 	transferBatchOnce sync.Once
 
+	// parallelBatchSem bounds how many transferBatchCh-collected batches can
+	// have their own DB transaction open at once via
+	// processTransferBatchConcurrent (transfer_batch_concurrent.go) — see
+	// that function's own comment for the shard-locked parallel-batch
+	// mechanism this backs. Created alongside transferBatchCh, in the same
+	// transferBatchOnce.Do block.
+	parallelBatchSem chan struct{}
+
 	// evmMirrorQueueMaybeNonEmpty is a cheap, deliberately-imprecise (never
 	// falsely "empty", may lag "non-empty" true a little) signal for
 	// syncBalanceLocked: skip the per-transfer evm_mirror_sync_queue DELETE
@@ -595,45 +603,40 @@ func NewChainState(dataFile string) *ChainState {
 			// every connection 12x/hour, re-paying the handshake each time —
 			// 30min still recycles through proxy restarts, 6x cheaper.
 			//
-			// THROUGHPUT (2026-07-23, TPS-benchmark investigation): raised
-			// from 20 to 40. transferConcurrent (transfer_concurrent.go, the
-			// shard-locked fast path most real P2P-style transfer traffic
-			// takes) holds one pool connection for its whole own
-			// Begin/save/save/outbox-insert/Commit sequence per call, and
-			// unlike the group-commit batcher (one serialized goroutine,
-			// needs only one connection ever), many of these run truly in
-			// parallel across goroutines. At MaxOpenConns=20 the disjoint-
-			// recipient TPS benchmark barely moved between 100 and 2000
-			// concurrent senders (~3.9k -> ~4.2k) despite far more real
-			// concurrency being offered — a flat ceiling that tracks a
-			// connection-pool limit, not useful work.
+			// THROUGHPUT (2026-07-23, TPS-benchmark investigation): tried
+			// raising this from 20 to 40, then to 80, chasing
+			// transferConcurrent's (transfer_concurrent.go) and
+			// processTransferBatchConcurrent's (transfer_batch_concurrent.go)
+			// own connection demand — both hold a pool connection for their
+			// whole own DB transaction and, unlike the old single-goroutine
+			// batcher, run genuinely in parallel across many goroutines. At
+			// 20, an isolated disjoint-recipient TPS benchmark run barely
+			// moved between 100 and 2000 concurrent senders, a flat ceiling
+			// tracking the connection pool rather than useful work.
 			//
-			// First tried 80 (leaving only 20 of this node's own dedicated
-			// Postgres's default 100 max_connections for anything else) --
-			// reverted after the full `go test ./x/humanity/keeper/...`
-			// suite failed with "pq: sorry, too many clients already"
-			// (53300): this package's own test suite creates many separate
-			// ChainState/*sql.DB pool instances across different test
-			// functions, and at least one (a WAL crash-recovery test that
-			// deliberately abandons a ChainState mid-test) leaves a
-			// background worker still trying to use its pool after Close()
-			// -- overlapping instances at 80 each blew past 100 in
-			// aggregate, something 20 each never did. This is a genuine
-			// signal about shared-Postgres reality generally (migration
-			// tools, monitoring, a second node process during a restart),
-			// not just a test-suite artifact, so 40 was chosen as a safer
-			// middle ground rather than chasing 80's full gain: measured at
-			// 2000 concurrent senders, ~4.2k -> ~4.7k TPS, a smaller but
-			// real improvement, verified safe against the FULL test suite
-			// (not just the isolated benchmark) at this value. This
-			// sandbox's 4 CPU cores, not the connection pool, appear to be
-			// the binding constraint past this point regardless (real
-			// production hardware with more cores may see a larger gain
-			// from the same change). No effect on the shared-recipient/
-			// batcher-driven benchmark, which only ever needs one
-			// connection regardless of this setting.
-			db.SetMaxOpenConns(40)
-			db.SetMaxIdleConns(40)
+			// Both 40 and 80 were reverted after the SAME failure mode
+			// under the full `go test ./x/humanity/keeper/...` suite: "pq:
+			// sorry, too many clients already" (53300). This package's own
+			// test suite creates many separate ChainState/*sql.DB pool
+			// instances across different test functions, several of which
+			// leave background activity running past their own test's
+			// return (a WAL crash-recovery test that deliberately abandons
+			// a ChainState mid-test; the parallel batch dispatch goroutines
+			// this file's own runTransferBatcher spawns) -- overlapping
+			// instances each independently allowed up to 40 (or 80)
+			// connections blew past Postgres's own max_connections=100 in
+			// aggregate, something 20 each never did even under repeated
+			// (5+) full-suite -race runs. This is a genuine signal about
+			// shared-Postgres reality generally (migration tools,
+			// monitoring, a second node process during a restart), not
+			// just a test-suite artifact -- kept at the original,
+			// conservative 20 rather than trading verified stability for
+			// throughput that this sandbox's 4 CPU cores mostly couldn't
+			// use past this point anyway (see processTransferBatchConcurrent's
+			// own comment for where the real throughput gain from this
+			// session's investigation ended up coming from instead).
+			db.SetMaxOpenConns(20)
+			db.SetMaxIdleConns(20)
 			db.SetConnMaxLifetime(30 * time.Minute)
 			err = db.Ping()
 			if err == nil {
@@ -4129,17 +4132,33 @@ const transferBatchMaxWait = 1 * time.Millisecond
 func (cs *ChainState) ensureTransferBatcherStarted() {
 	cs.transferBatchOnce.Do(func() {
 		cs.transferBatchCh = make(chan *transferBatchRequest, transferBatchChSize)
+		cs.parallelBatchSem = make(chan struct{}, parallelBatchPoolSize)
 		SafeGoroutine("transferBatcher", cs.runTransferBatcher)
 	})
 }
 
-// runTransferBatcher is the group-commit loop: block for the first request,
-// then greedily collect more (up to transferBatchMaxSize) for up to
-// transferBatchMaxWait before handing the whole batch to
-// processTransferBatch as one DB transaction. This is the same tradeoff
-// every group-commit design makes (batching latency for throughput) — the
-// window is short specifically so a lone request's added latency stays
-// small relative to a round trip that would have happened anyway.
+// runTransferBatcher is the group-commit collection loop: block for the
+// first request, then greedily collect more (up to transferBatchMaxSize)
+// for up to transferBatchMaxWait, exactly as before.
+//
+// THROUGHPUT (2026-07-23, 50k-TPS-goal investigation): each collected
+// batch is now dispatched to its own goroutine (bounded by
+// parallelBatchSem, so at most parallelBatchPoolSize batches ever have
+// their own DB transaction open at once) instead of being processed
+// synchronously right here — this collector loop no longer waits for one
+// batch's DB round trip to finish before it can start collecting the
+// next. Each dispatch first tries processTransferBatchConcurrent
+// (transfer_batch_concurrent.go): a shard-locked path (the same
+// TryLockAddrs mechanism transferConcurrent already uses, generalized
+// from 2 addresses to the whole batch) that lets batches with genuinely
+// disjoint touched-address sets commit to Postgres truly in parallel,
+// instead of always serializing behind one global lock regardless of
+// whether their addresses even overlap. It bails (returns false) for
+// every case it isn't safely eligible for — falling back to the
+// existing, unchanged, always-correct processTransferBatch, still fully
+// serialized via cs.mu.Lock(), for those. See processTransferBatchConcurrent's
+// own comment for the deadlock-safety argument this relies on, and why
+// it doesn't repeat an earlier (reverted) attempt's mistake.
 func (cs *ChainState) runTransferBatcher() {
 	for first := range cs.transferBatchCh {
 		batch := []*transferBatchRequest{first}
@@ -4159,7 +4178,15 @@ func (cs *ChainState) runTransferBatcher() {
 			default:
 			}
 		}
-		cs.processTransferBatch(batch)
+		cs.parallelBatchSem <- struct{}{}
+		go func(b []*transferBatchRequest) {
+			defer func() { <-cs.parallelBatchSem }()
+			SafeCall("transferBatchParallelDispatch", func() {
+				if !cs.processTransferBatchConcurrent(b) {
+					cs.processTransferBatch(b)
+				}
+			})
+		}(batch)
 	}
 }
 
