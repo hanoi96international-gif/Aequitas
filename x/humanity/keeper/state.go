@@ -4202,9 +4202,18 @@ func (cs *ChainState) processTransferBatch(batch []*transferBatchRequest) {
 		touchedAddrs = append(touchedAddrs, validatorsPoolAddr, lpPoolAddr, ubiPoolAddr, treasuryPoolAddr)
 		cs.syncBalanceLocked(V7_CONTRACT_ADDR, touchedAddrs...)
 		cs.save()
-		for _, req := range batch {
-			fmt.Printf("[STATE] ✓ Transfer %.2f AEQ: %s → %s\n", req.amount, req.from, req.to)
-		}
+		// FIX (2026-07-23, TPS-benchmark investigation): this used to print
+		// one "[STATE] ✓ Transfer" line per member (transferLocked's own
+		// line, moved here when its persistence was batched — previous
+		// commit). Profiled at 2000 concurrent senders: fmt.(*pp).doPrintf
+		// alone was ~10% of total CPU time -- at real 50k TPS, 50,000
+		// individual stdout writes/sec would be its own operational
+		// problem regardless of anything else in this file. Every other
+		// batched background writer in this codebase (flushWALBatch,
+		// flushPoolAccountsIfDirty) already logs once per flush, not once
+		// per item it flushed -- this now matches that convention instead
+		// of being the one exception.
+		fmt.Printf("[STATE] ✓ Batch committed: %d transfer(s), %d account(s) updated\n", len(batch), len(accsToSave))
 		return last, nil
 	})
 	if err != nil {
