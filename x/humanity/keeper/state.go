@@ -594,8 +594,46 @@ func NewChainState(dataFile string) *ChainState {
 			// ConnMaxLifetime 5min→30min for the same reason: it force-closed
 			// every connection 12x/hour, re-paying the handshake each time —
 			// 30min still recycles through proxy restarts, 6x cheaper.
-			db.SetMaxOpenConns(20)
-			db.SetMaxIdleConns(20)
+			//
+			// THROUGHPUT (2026-07-23, TPS-benchmark investigation): raised
+			// from 20 to 40. transferConcurrent (transfer_concurrent.go, the
+			// shard-locked fast path most real P2P-style transfer traffic
+			// takes) holds one pool connection for its whole own
+			// Begin/save/save/outbox-insert/Commit sequence per call, and
+			// unlike the group-commit batcher (one serialized goroutine,
+			// needs only one connection ever), many of these run truly in
+			// parallel across goroutines. At MaxOpenConns=20 the disjoint-
+			// recipient TPS benchmark barely moved between 100 and 2000
+			// concurrent senders (~3.9k -> ~4.2k) despite far more real
+			// concurrency being offered — a flat ceiling that tracks a
+			// connection-pool limit, not useful work.
+			//
+			// First tried 80 (leaving only 20 of this node's own dedicated
+			// Postgres's default 100 max_connections for anything else) --
+			// reverted after the full `go test ./x/humanity/keeper/...`
+			// suite failed with "pq: sorry, too many clients already"
+			// (53300): this package's own test suite creates many separate
+			// ChainState/*sql.DB pool instances across different test
+			// functions, and at least one (a WAL crash-recovery test that
+			// deliberately abandons a ChainState mid-test) leaves a
+			// background worker still trying to use its pool after Close()
+			// -- overlapping instances at 80 each blew past 100 in
+			// aggregate, something 20 each never did. This is a genuine
+			// signal about shared-Postgres reality generally (migration
+			// tools, monitoring, a second node process during a restart),
+			// not just a test-suite artifact, so 40 was chosen as a safer
+			// middle ground rather than chasing 80's full gain: measured at
+			// 2000 concurrent senders, ~4.2k -> ~4.7k TPS, a smaller but
+			// real improvement, verified safe against the FULL test suite
+			// (not just the isolated benchmark) at this value. This
+			// sandbox's 4 CPU cores, not the connection pool, appear to be
+			// the binding constraint past this point regardless (real
+			// production hardware with more cores may see a larger gain
+			// from the same change). No effect on the shared-recipient/
+			// batcher-driven benchmark, which only ever needs one
+			// connection regardless of this setting.
+			db.SetMaxOpenConns(40)
+			db.SetMaxIdleConns(40)
 			db.SetConnMaxLifetime(30 * time.Minute)
 			err = db.Ping()
 			if err == nil {
