@@ -1,0 +1,61 @@
+name: Verify WAL + Multi-Block-Tick status on Contabo2 (manual, read-only)
+
+# Read-only companion to enable-wal-contabo2.yml. Does NOT restart anything
+# -- just inspects current state so a status check never itself risks a
+# second unnecessary restart. Checks:
+#   1. Which flags are actually in .aequitas.env right now.
+#   2. A much larger log tail (2000 lines, not 200) for the [WAL]/
+#      MULTI_BLOCK_TICK startup lines -- the enable run's 200-line/10s-wait
+#      check may simply have run before a real, populous production DB
+#      finished its slower boot sequence.
+#   3. Two /api/status samples 5s apart, to confirm height is actually
+#      advancing (not stalled) and to compare latest_hash-at-height against
+#      what Contabo1 would report for the same height, if reachable.
+#   4. A scan for the exact failure signatures found during this session's
+#      local 2-node drill: state-inconsistency, block rejected, repeated
+#      "queued as orphan" -- see STAGING_RUNBOOK.md's 2-node section for
+#      why these specifically matter here.
+on:
+  workflow_dispatch: {}
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check Contabo2 WAL/multi-block-tick status
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: 194.163.188.71
+          username: root
+          key: ${{ secrets.CONTABO2_SSH_KEY }}
+          port: 22
+          fingerprint: "SHA256:VIwj7Faxiga2n45HVHZEQFPxcbRKHgSgHoxAFsf2wto"
+          script_stop: true
+          timeout: 120s
+          command_timeout: 120s
+          script: |
+            set -uo pipefail
+            CONTAINER="$(docker ps --format '{{.Names}}' | grep -i aequitas | head -1)"
+
+            echo "=== .aequitas.env flags ==="
+            grep -E '^(AEQUITAS_WAL_ENABLED|AEQUITAS_WAL_PATH|ENABLE_MULTI_BLOCK_TICK)=' /root/.aequitas.env || echo "(keine der drei Flags gesetzt)"
+
+            echo "=== Container uptime ==="
+            docker inspect -f '{{.State.StartedAt}}' "$CONTAINER"
+
+            echo "=== [WAL]/MULTI_BLOCK_TICK Zeilen (2000-Zeilen-Fenster) ==="
+            docker logs --tail 2000 "$CONTAINER" 2>&1 | grep -iE '\[WAL\]|MULTI_BLOCK_TICK' || echo "(immer noch keine gefunden -- siehe volles Log unten)"
+
+            echo "=== Warnsignale aus dem lokalen 2-Node-Drill dieser Session ==="
+            docker logs --tail 2000 "$CONTAINER" 2>&1 | grep -iE 'state-inconsistency|block rejected|queued as orphan|panic|fatal' | tail -30 || echo "(keine gefunden -- gut)"
+
+            echo "=== /api/status, Sample 1 ==="
+            curl -s http://localhost:8080/api/status
+            echo ""
+            sleep 5
+            echo "=== /api/status, Sample 2 (5s spaeter -- height sollte um ~5 gestiegen sein) ==="
+            curl -s http://localhost:8080/api/status
+            echo ""
+
+            echo "=== Letzte 40 Log-Zeilen roh, zur Einordnung ==="
+            docker logs --tail 40 "$CONTAINER" 2>&1
