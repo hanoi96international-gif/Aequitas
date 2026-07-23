@@ -238,3 +238,78 @@ Zeigt genau, warum `AEQUITAS_WAL_ENABLED` weiterhin `NOT staging-validated`
 bleibt, bis die echte mehrtägige Kampagne oben gelaufen ist — dieser eine
 Bug wäre in keinem der bisherigen automatisierten Tests aufgefallen, nur
 weil ein echter Prozess unter einer echten `kill -9` beobachtet wurde.
+
+## Update — lokaler 2-Knoten-Konsenstest mit WAL + Multi-Block-Tick gleichzeitig (2026-07-23)
+
+Direkter Folgeversuch zum Solo-Node-Test oben: zwei echte, per libp2p
+direkt verbundene `aequitasd`-Prozesse (`BOOTSTRAP_P2P_ADDR`, feste
+`NODE_KEY` für Knoten A, damit seine Adresse vorab bekannt ist; beide
+lokal gestartet, um die Lücke zwischen Boot A und Boot B auf
+Millisekunden zu drücken), eigene Postgres-DB pro Knoten, beide
+Signing-Adressen vorab direkt in `validator_keys` beider DBs eingetragen
+(derselbe, in diesem Dokument bereits als "kein Ersatz für den echten
+Autorisierungspfad" markierte Shortcut). Beide mit
+`AEQUITAS_WAL_ENABLED=1` + `ENABLE_MULTI_BLOCK_TICK=1` — diese Kombination
+wurde vorher nie zusammen über zwei Knoten getestet.
+
+**Wichtige Grenze, hart bestätigt statt nur vermutet:** `isAllowedPeerURL`
+(`sync_blocks.go`) verweigert jede Loopback-/private Peer-URL für den
+HTTP-Sync-/Catch-up-Pfad — zu Recht, das ist die SSRF-/DNS-Rebinding-Härtung,
+die Produktion erst sicher macht. Konsequenz für diesen Sandbox-Test: die
+libp2p-Gossip-Verbindung selbst funktioniert über `BOOTSTRAP_P2P_ADDR`
+einwandfrei (neue, fortlaufend produzierte Blöcke kommen an), aber
+JEDE Catch-up-Notwendigkeit — ein fehlender Ancestor-Block, egal aus
+welchem Grund — kann von diesem lokalen Setup NIE aufgeholt werden, weil
+der einzige konfigurierbare HTTP-Sync-Peer für einen Knoten mit
+`localhost`-Adresse kategorisch abgelehnt wird. Ein einziger abgelehnter
+Block reicht: jeder DARAUF aufbauende Folgeblock des Verursachers wird als
+Orphan geparkt ("missing parent"), und ohne erreichbaren HTTP-Sync-Peer
+bleibt er das für immer — ein permanenter Fork, den echte Produktions-Knoten
+(mit echten öffentlichen HTTPS-Peers) so nicht hätten, weil deren
+Catch-up-Pfad tatsächlich etwas zum Fragen hat. Bestätigt damit konkret,
+warum STAGING_RUNBOOK.md von Anfang an eigene, öffentlich erreichbare
+Infrastruktur verlangt statt Loopback-Tests — das ist kein Vorsichtsprinzip
+mehr, sondern hier direkt reproduziert.
+
+**Zwei Fehlversuche, beide auf eigene Testmethodik zurückgeführt, nicht auf
+Produktionscode** (der Reihe nach durchleuchtet, damit klar ist, was
+NICHT der Bug war):
+1. Synthetischer 60k-Zeilen-Backlog direkt in `pending_txs` eingefügt
+   (wie im Solo-Test) — auf EINEM Knoten produzierte das einen Block mit
+   50.000 "Transfer"-Einträgen, die nie über echte Transferlogik gelaufen
+   waren (nur die Tabelle direkt beschrieben, kein `cs.accounts` je
+   berührt). Der Peer replayte den Block ehrlich, fand die Absenderadresse
+   nirgends und lehnte korrekt mit "genuine state-inconsistency failure"
+   ab — durch die oben beschriebene Catch-up-Grenze dann permanent
+   verzweigt. Richtiges, sicheres Verhalten des Codes; falsche Testdaten
+   meinerseits (echte Transfers erzeugen ihren `pending_txs`-Eintrag immer
+   NACH einer bereits angewendeten Mutation, nie davor/unabhängig davon).
+2. Echte, signierte Transfers, aber Startguthaben nur in Knoten A's DB
+   direkt eingefügt, nicht in Knoten B's. Gleicher Effekt: Knoten B replayte
+   ehrlich, kannte die Absenderadresse nicht (dort nie gesehenes Konto) und
+   lehnte korrekt ab. Wieder kein Bug — ein Konto, dessen Guthaben nur auf
+   EINEM Knoten per Rohzugriff "aus dem Nichts" entsteht, ist für keinen
+   ehrlich replayenden Peer verifizierbar, genau wie es sein soll.
+
+**Sauberer, korrekt aufgesetzter Durchlauf (identisches Startguthaben auf
+BEIDEN DBs eingefügt, damit beide Knoten dieselbe Ausgangslage unabhängig
+verifizieren können):** zwei echte `eth_sendRawTransaction`-Transfers
+(zweiter davon über den WAL-Fastpath), Knoten B replizierte Saldo UND
+StateRoot exakt identisch zu Knoten A (`balance:15` auf beiden, gleicher
+`latest_hash` bei gleicher Höhe), null Reject-/Orphan-Zeilen im Log. Das
+ist die eigentlich gesuchte Bestätigung: ein echter, WAL-fastpath-basierter
+Transfer repliziert korrekt über zwei per libp2p verbundene, unabhängige
+Knoten — die im Solo-Test gefixte Recovery-Lücke hat hier keine neue
+Zwillingslücke im Cross-Node-Pfad aufgezeigt.
+
+**Nicht mehr versucht:** ein echter Multi-Block-Tick-Backlog-Burst
+(>50.000 TXs) mit AUSSCHLIESSLICH validen, echt signierten Transaktionen
+über zwei Knoten — dafür bräuchte es tausende einzelne RPC-Calls (zu
+langsam für diese Sandbox) oder eine zweite, gegen dieselbe DB schreibende
+Go-Instanz (verboten, siehe "Test-Setup-Grenzen" — echte Produktion hat
+immer nur einen Schreiber pro DB). Die Backlog-Drain-MECHANIK selbst ist
+bereits im Solo-Test oben unter echter Last bewiesen; was hier fehlt, ist
+nur die zusätzliche Bestätigung, dass ein *Burst* mehrerer echter Blöcke
+sich nicht anders verhält als einzelne — strukturell kein Grund, das zu
+erwarten (jeder Block wird beim Gossip/Replay einzeln behandelt), aber
+ungemessen.
