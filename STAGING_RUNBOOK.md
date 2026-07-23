@@ -313,3 +313,82 @@ nur die zusätzliche Bestätigung, dass ein *Burst* mehrerer echter Blöcke
 sich nicht anders verhält als einzelne — strukturell kein Grund, das zu
 erwarten (jeder Block wird beim Gossip/Replay einzeln behandelt), aber
 ungemessen.
+
+## Update — Contabo2-Live-Versuch: WAL/Multi-Block-Tick kam NIE tatsächlich an (2026-07-23)
+
+Eine vorherige Session dieser Session-Kette hat `enable-wal-contabo2.yml`
+tatsächlich gegen den echten Contabo2-Produktionsknoten ausgeführt — vor
+der eigentlich vorgeschriebenen, mehrtägigen Staging-Kampagne oben (das
+war so nicht geplant und wird hier explizit als Abweichung festgehalten,
+nicht als akzeptierter Pfad). Zwei Verify-Läufe direkt danach fanden
+durchgehend **keine einzige** `[WAL]`/`MULTI_BLOCK_TICK`-Log-Zeile und
+keine WAL-Datei auf der Platte — trotz korrekt gesetzter Flags in
+`/root/.aequitas.env`. Root Cause jetzt zweifelsfrei bestätigt (nicht nur
+vermutet), durch direktes, read-only `cat` von `/root/deploy_safe_c2.sh`
+über einen dritten, gezielt dafür erweiterten Verify-Lauf:
+
+```bash
+docker inspect aequitas-node --format '{{range .Config.Env}}{{println .}}{{end}}' > /root/.aequitas_env_backup
+# ... docker stop/rm ...
+while IFS= read -r line; do
+  [ -z "$line" ] && continue
+  case "$line" in
+    PATH=*|HOSTNAME=*|HOME=*|RESYNC_FROM_SNAPSHOT=*) continue ;;
+  esac
+  ENV_ARGS+=(-e "$line")
+done < /root/.aequitas_env_backup
+docker run -d --name aequitas-node ... "${ENV_ARGS[@]}" ... aequitas-node:new
+```
+
+`deploy_safe_c2.sh` übernimmt die Env-Variablen für den NEUEN Container
+ausschließlich aus `docker inspect` des ALTEN, gerade laufenden
+Containers — **niemals** aus `/root/.aequitas.env`. Das ist bewusst so
+gebaut (der Datei-Pfad würde das dauerhaft gesetzte
+`RESYNC_FROM_SNAPSHOT=true` mitziehen und bei jedem Deploy die DB
+resetten), hat aber als Nebenwirkung: **jede Änderung an `.aequitas.env`
+ist für Contabo2 wirkungslos, unabhängig vom Timing.** `enable-wal-` und
+`rollback-wal-contabo2.yml` editieren exakt diese Datei und erwarten,
+dass `deploy_safe_c2.sh` sie einliest — das war nie der Fall. Verifiziert
+direkt: `docker inspect aequitas-node` zeigt, dass keine der drei Flags im
+tatsächlich laufenden Container-Prozess-Env ankommt, obwohl die Datei sie
+enthält.
+
+Zusätzlicher Beitrag zum ursprünglichen Rätsel "Container-Neustart
+zwischen den Verify-Läufen, obwohl niemand `enable`/`rollback` erneut
+ausgelöst hat": `deploy-contabo2.yml` deployt automatisch bei JEDEM Push
+auf `main` (Test-Gate + `deploy_safe_c2.sh`), und diese Session hat
+während der laufenden Diagnose mehrfach nach `main` gepusht — jeder dieser
+Auto-Deploys erzeugt über `docker rm`+`docker run` einen fabrikneuen
+Container (`RestartCount` bleibt deshalb immer 0, auch bei tatsächlichem
+Neustart) und rennt dabei mit dem manuellen Enable-Versuch um die Wette.
+Kein Crash-Loop, kein OOM, keine fremde Cron/Systemd-Quelle — direkt
+ausgeschlossen (leere `crontab -l`, keine passenden `systemctl
+list-timers`, `RestartPolicy=unless-stopped MaxRetries=0`). Die
+Deploy-Run-Historie (`deploy-contabo2.yml`) bestätigt die beobachteten
+`StartedAt`-Zeitstempel auf die Sekunde genau als reguläre, push-getriggerte
+Deploys, nicht als unerklärten Absturz.
+
+**Fazit:** WAL/Multi-Block-Tick war auf Contabo2 zu keinem Zeitpunkt
+tatsächlich aktiv, trotz des Live-Versuchs — die Ledger-Durability-Semantik
+wurde nicht verändert, kein zusätzliches Produktionsrisiko eingegangen.
+Das eigentliche Problem ist ein reiner Deploy-Tooling-Bug (Env-Herkunft),
+keine Aussage über die WAL-Implementierung selbst.
+
+**Separater, neuer Befund aus demselben Log (nicht WAL-bezogen, aber
+Postgres-Verbindungsstabilität betreffend, sollte vor jedem echten
+Staging-Versuch mit-untersucht werden):** drei `[REPLAY] ✗ Block #...:
+replay transaction commit failed (rolled back, block rejected): driver:
+bad connection`-Zeilen im selben Log-Fenster. Das ist der bestehende,
+synchrone Postgres-Pfad (nicht WAL), der Blöcke bei einem verlorenen
+DB-Connection sauber zurückweist statt inkonsistenten Zustand zu
+committen (korrektes Verhalten) — aber die Häufigkeit auf einem
+Produktionsknoten ist ein eigenes offenes Follow-up, nicht Teil dieser
+Diagnose.
+
+**NICHT behoben:** `deploy_safe_c2.sh` selbst liegt nur auf dem Server,
+nicht in diesem Repo — ein Fix (z. B. `/root/.aequitas.env` zusätzlich
+einlesen und nur fehlende/neue Keys über den geerbten Container-Env legen,
+mit derselben `RESYNC_FROM_SNAPSHOT`-Ausnahme) ändert den Deploy-Mechanismus
+eines laufenden Produktionsknotens und wurde bewusst NICHT ungefragt per
+SSH auf den Server geschrieben — das ist eine Entscheidung, die
+explizit bestätigt werden sollte, bevor sie live angewendet wird.
