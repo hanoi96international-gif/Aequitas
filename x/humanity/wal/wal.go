@@ -91,7 +91,23 @@ const MaxBatchSize = 500
 // has. Same tradeoff as transferBatchMaxWait (state.go): short enough that
 // one isolated Append still returns fast, long enough that a real
 // concurrent burst shares one fsync instead of paying for one each.
-const MaxBatchWait = 3 * time.Millisecond
+//
+// FIX (2026-07-23, 50k-TPS-goal investigation): lowered from 3ms after
+// measuring the actual effect on a 100-concurrent-caller benchmark. Every
+// Append call blocks its caller until its batch's fsync returns -- callers
+// here are themselves sequential per-goroutine loops (each one issues its
+// next Append only after the previous one returns), so a LONGER wait
+// doesn't just risk bigger batches, it directly adds to every caller's
+// per-call latency, which throttles how fast NEW calls can even arrive to
+// join a batch in the first place. Measured live: 3ms -> ~3100-3700 TPS,
+// 8ms -> ~2000-2200 TPS (worse -- confirms the added-latency cost
+// dominates for this workload), 1ms -> ~5500-5900 TPS. 300-500us measured
+// similarly to 1ms (within run-to-run noise in this sandbox); 1ms kept as
+// a less aggressive, still-real improvement rather than chasing sandbox-
+// specific noise down to the microsecond. Re-measure if real staging
+// hardware's fsync latency turns out meaningfully different from this
+// sandbox's.
+const MaxBatchWait = 1 * time.Millisecond
 
 // Open opens path for appending, creating it if it does not exist, and
 // scans any existing content to determine the next sequence number —
