@@ -15,6 +15,23 @@ name: Verify WAL + Multi-Block-Tick status on Contabo2 (manual, read-only)
 #      local 2-node drill: state-inconsistency, block rejected, repeated
 #      "queued as orphan" -- see STAGING_RUNBOOK.md's 2-node section for
 #      why these specifically matter here.
+#
+# Finding from the previous two runs (2026-07-23, both zero [WAL] lines):
+# deploy-contabo2.yml auto-redeploys on EVERY push to main (test gate, then
+# the same deploy_safe_c2.sh this workflow's sibling calls), and the
+# observed container StartedAt timestamps line up almost to the second with
+# unrelated deploy-contabo2.yml runs completing -- NOT with anything this
+# workflow or enable-wal-contabo2.yml did. deploy_safe_c2.sh's own
+# documented behaviour (see deploy-contabo2.yml's comment) is to "preserve
+# the currently-running container's own env" -- if that means copying env
+# from the OLD container's `docker inspect` output rather than re-reading
+# /root/.aequitas.env from disk, then editing the env file (what
+# enable-wal-contabo2.yml does) would be silently ineffective on Contabo2
+# regardless of timing, AND every unrelated push during active development
+# would keep recreating the container from whatever env it last happened to
+# carry. This run reads deploy_safe_c2.sh itself (read-only, no execution)
+# plus restart-policy/scheduler state to confirm or rule this out with the
+# actual script content instead of inference from timing alone.
 on:
   workflow_dispatch: {}
 
@@ -43,7 +60,23 @@ jobs:
             echo "=== Container Start/Restart-Diagnose ==="
             docker inspect -f 'StartedAt={{.State.StartedAt}} RestartCount={{.RestartCount}} ExitCode={{.State.ExitCode}} OOMKilled={{.State.OOMKilled}} Status={{.State.Status}} Error={{.State.Error}}' "$CONTAINER"
             echo "--- Docker-Events der letzten 10 Minuten fuer diesen Container (Crash/Restart-Ursache) ---"
-            docker events --since 10m --until now --filter "container=$CONTAINER" 2>&1 | tail -30 || echo "(keine Events oder docker events nicht verfuegbar)"
+            # --until must be a concrete timestamp, not the literal "now" (that's what broke
+            # this check last run) -- and it must be set at all, otherwise `docker events`
+            # streams live forever and blocks this script until command_timeout kills it.
+            docker events --since 10m --until "$(date -u +%s)" --filter "container=$CONTAINER" 2>&1 | tail -30 || echo "(keine Events oder docker events nicht verfuegbar)"
+
+            echo "=== Tatsaechliche laufende Env-Variablen des Containers (WAL/TICK-relevant) ==="
+            docker inspect -f '{{range .Config.Env}}{{println .}}{{end}}' "$CONTAINER" 2>&1 | grep -iE '^(AEQUITAS_WAL|ENABLE_MULTI_BLOCK_TICK)=' || echo "(keine der drei Flags im laufenden Container-Prozess-Env -- selbst wenn .aequitas.env sie enthaelt)"
+
+            echo "=== deploy_safe_c2.sh selbst -- liest es .aequitas.env neu ein oder kopiert es nur den alten Container-Env? (read-only, keine Ausfuehrung) ==="
+            cat /root/deploy_safe_c2.sh 2>&1 || echo "(Datei nicht lesbar oder nicht vorhanden)"
+
+            echo "=== Restart-Policy des Containers (koennte Docker selbst zu Neustarts veranlassen) ==="
+            docker inspect -f 'RestartPolicy={{.HostConfig.RestartPolicy.Name}} MaxRetries={{.HostConfig.RestartPolicy.MaximumRetryCount}}' "$CONTAINER" 2>&1
+
+            echo "=== Cron/Systemd-Timer, die deploy_safe_c2.sh oder einen Container-Restart ausloesen koennten ==="
+            crontab -l 2>&1 || echo "(keine crontab fuer root)"
+            systemctl list-timers --all 2>&1 | grep -iE 'aequitas|deploy' || echo "(keine passenden systemd-Timer)"
 
             echo "=== WAL-Verzeichnis + Datei ==="
             ls -la /root/aequitas_transfers.wal 2>&1 || echo "(WAL-Datei existiert nicht -- falls WAL wirklich aktiv waere, muesste sie existieren)"
@@ -51,14 +84,16 @@ jobs:
             echo "=== Gesamtzahl Log-Zeilen seit Container-Start ==="
             docker logs "$CONTAINER" 2>&1 | wc -l
 
+            FULL_LOG="$(docker logs "$CONTAINER" 2>&1)"
+
             echo "=== ERSTE 100 Log-Zeilen seit Start (Boot-Sequenz, wo [WAL] eigentlich stehen sollte) ==="
-            docker logs "$CONTAINER" 2>&1 | head -100
+            echo "$FULL_LOG" | head -100 || true
 
             echo "=== [WAL]/MULTI_BLOCK_TICK Zeilen -- KOMPLETTES Log, nicht nur tail ==="
-            docker logs "$CONTAINER" 2>&1 | grep -iE '\[WAL\]|MULTI_BLOCK_TICK' || echo "(im GESAMTEN Log seit Start keine gefunden)"
+            echo "$FULL_LOG" | grep -iE '\[WAL\]|MULTI_BLOCK_TICK' || echo "(im GESAMTEN Log seit Start keine gefunden)"
 
             echo "=== Warnsignale aus dem lokalen 2-Node-Drill dieser Session ==="
-            docker logs --tail 2000 "$CONTAINER" 2>&1 | grep -iE 'state-inconsistency|block rejected|queued as orphan|panic|fatal' | tail -30 || echo "(keine gefunden -- gut)"
+            echo "$FULL_LOG" | tail -2000 | grep -iE 'state-inconsistency|block rejected|queued as orphan|panic|fatal' | tail -30 || echo "(keine gefunden -- gut)"
 
             echo "=== /api/status, Sample 1 ==="
             curl -s http://localhost:8080/api/status
@@ -69,4 +104,4 @@ jobs:
             echo ""
 
             echo "=== Letzte 40 Log-Zeilen roh, zur Einordnung ==="
-            docker logs --tail 40 "$CONTAINER" 2>&1
+            echo "$FULL_LOG" | tail -40
