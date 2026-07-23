@@ -12,6 +12,7 @@ import (
 	"os"
 	"runtime/debug"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -2178,6 +2179,25 @@ func (cs *ChainState) saveAccountsToDBBatch(accs []*AccountState) error {
 	return cs.saveAccountsToDBBatchCtx(context.Background(), accs)
 }
 
+// writeDollarParam writes "$<n><suffix>" (e.g. "$7::boolean,") to sb —
+// shared by saveAccountsToDBBatchCtx and savePendingTxsBatchExec's
+// multi-row VALUES-list construction, in place of a per-placeholder
+// fmt.Sprintf call (see saveAccountsToDBBatchCtx's own FIX comment for the
+// measured allocation cost that replaced). Uses strconv.AppendInt into a
+// stack-local scratch array rather than strconv.Itoa: Itoa still allocates
+// one string per call (confirmed via a follow-up memory profile — it
+// showed up as strconv.formatBits, 11% of this benchmark's total
+// allocations, after the first pass replaced Sprintf+Join but kept Itoa),
+// while AppendInt writes digits directly into a slice the caller already
+// owns, with no allocation for n's range here (a handful of digits at
+// most — batch sizes are bounded by transferBatchMaxSize).
+func writeDollarParam(sb *strings.Builder, n int, suffix string) {
+	var buf [20]byte
+	sb.WriteByte('$')
+	sb.Write(strconv.AppendInt(buf[:0], int64(n), 10))
+	sb.WriteString(suffix)
+}
+
 // saveAccountsToDBBatchCtx is saveAccountsToDBBatch's real implementation —
 // see dbExecCtx's comment for the migration this is part of.
 func (cs *ChainState) saveAccountsToDBBatchCtx(ctx context.Context, accs []*AccountState) error {
@@ -2195,9 +2215,22 @@ func (cs *ChainState) saveAccountsToDBBatchCtx(ctx context.Context, accs []*Acco
 		}
 		return nil
 	}
-	valuesSQL := make([]string, len(accs))
+	// FIX (2026-07-23, TPS-benchmark investigation): building valuesSQL via
+	// one fmt.Sprintf call per row, then strings.Join-ing the result, was
+	// ~36% of this whole benchmark's total allocations once processTransferBatch
+	// started calling this with batches up to transferBatchMaxSize (1000) —
+	// confirmed via a memory profile (-memprofilerate=1) at 2000 concurrent
+	// senders. A single pre-sized strings.Builder, written to directly with
+	// strconv.Itoa instead of Sprintf's format-string parsing and interface{}
+	// boxing of 9 args per row, avoids both the N per-row string allocations
+	// and the final Join's own copy.
+	var valuesSQL strings.Builder
+	valuesSQL.Grow(len(accs) * 96) // ~90 bytes/row of literal placeholder text, rounded up
 	args := make([]interface{}, 0, len(accs)*9)
 	for i, acc := range accs {
+		if i > 0 {
+			valuesSQL.WriteByte(',')
+		}
 		n := i * 9
 		// Explicit casts: a bare multi-row VALUES(...) list with nothing but
 		// parameter placeholders gives Postgres no literal to anchor each
@@ -2205,11 +2238,21 @@ func (cs *ChainState) saveAccountsToDBBatchCtx(ctx context.Context, accs []*Acco
 		// confirmed live: "operator does not exist: bigint = text" once this
 		// CTE's last_activity_at/expected_version columns hit the UPDATE's
 		// comparison against chain_accounts' actual bigint columns below.
-		valuesSQL[i] = fmt.Sprintf("($%d::text,$%d::double precision,$%d::boolean,$%d::double precision,$%d::double precision,$%d::bigint,$%d::boolean,$%d::boolean,$%d::bigint)", n+1, n+2, n+3, n+4, n+5, n+6, n+7, n+8, n+9)
+		valuesSQL.WriteByte('(')
+		writeDollarParam(&valuesSQL, n+1, "::text,")
+		writeDollarParam(&valuesSQL, n+2, "::double precision,")
+		writeDollarParam(&valuesSQL, n+3, "::boolean,")
+		writeDollarParam(&valuesSQL, n+4, "::double precision,")
+		writeDollarParam(&valuesSQL, n+5, "::double precision,")
+		writeDollarParam(&valuesSQL, n+6, "::bigint,")
+		writeDollarParam(&valuesSQL, n+7, "::boolean,")
+		writeDollarParam(&valuesSQL, n+8, "::boolean,")
+		writeDollarParam(&valuesSQL, n+9, "::bigint")
+		valuesSQL.WriteByte(')')
 		args = append(args, acc.Address, acc.Balance.Float(), acc.IsHuman, acc.TUsdBalance.Float(), acc.LPShares.Float(), acc.LastActivityAt, acc.Demurrage14DayWarningShown, acc.FaucetClaimed, acc.Version)
 	}
 	query := `WITH updates(address, balance, is_human, tusd_balance, lp_shares, last_activity_at, demurrage_14_day_warning_shown, faucet_claimed, expected_version) AS (
-	VALUES ` + strings.Join(valuesSQL, ",") + `
+	VALUES ` + valuesSQL.String() + `
 ),
 upd AS (
 	UPDATE chain_accounts ca

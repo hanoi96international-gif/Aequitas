@@ -2262,7 +2262,11 @@ func savePendingTxsBatchExec(ex sqlExecutor, txs []Transaction) error {
 	if len(txs) == 0 {
 		return nil
 	}
-	valuesSQL := make([]string, len(txs))
+	// See saveAccountsToDBBatchCtx's FIX comment (state.go) for why this
+	// builds directly into a pre-sized strings.Builder via writeDollarParam
+	// instead of one fmt.Sprintf call per row plus a final strings.Join.
+	var valuesSQL strings.Builder
+	valuesSQL.Grow(len(txs) * 12) // "($NNNN,$NNNN)," rounded up
 	args := make([]interface{}, 0, len(txs)*2)
 	now := time.Now().Unix()
 	for i, tx := range txs {
@@ -2271,11 +2275,17 @@ func savePendingTxsBatchExec(ex sqlExecutor, txs []Transaction) error {
 			fmt.Printf("[TX] SavePendingTx marshal error: %v\n", err)
 			return err
 		}
+		if i > 0 {
+			valuesSQL.WriteByte(',')
+		}
 		n := i * 2
-		valuesSQL[i] = fmt.Sprintf("($%d,$%d)", n+1, n+2)
+		valuesSQL.WriteByte('(')
+		writeDollarParam(&valuesSQL, n+1, ",")
+		writeDollarParam(&valuesSQL, n+2, "")
+		valuesSQL.WriteByte(')')
 		args = append(args, string(data), now)
 	}
-	_, err := ex.Exec(`INSERT INTO pending_txs (tx_json, created_at) VALUES `+strings.Join(valuesSQL, ","), args...)
+	_, err := ex.Exec(`INSERT INTO pending_txs (tx_json, created_at) VALUES `+valuesSQL.String(), args...)
 	return err
 }
 
