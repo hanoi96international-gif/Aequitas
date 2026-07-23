@@ -363,3 +363,134 @@ func TestSimulateMaxTPS_IngestionDisjointRecipients(t *testing.T) {
 		t.Errorf("%d/%d transfers failed unexpectedly (pre-funded balances should never run out)", failed, total)
 	}
 }
+
+// TestSimulateMaxTPS_WarmSteadyState isolates the shard-locked/WAL fast
+// path's own ceiling from two costs the other benchmarks above don't
+// separate out:
+//
+//  1. Cold-account warm-up: transferConcurrent/transferConcurrentWAL both
+//     require BOTH from and to already warm in cs.accounts (see their own
+//     eligibility checks), so a benchmark that seeds accounts straight to
+//     Postgres, bypassing cs.accounts, necessarily routes each account's
+//     first transfer through the batcher regardless of how fast the true
+//     fast path is. Real production traffic looks like the warm case far
+//     more often than the cold case -- an active wallet is warm from its
+//     own recent activity, cold-start is a one-time-per-account event, not
+//     a per-transaction one. Closed here with an untimed warm-up pass
+//     (one real TransferAtomic per account, through the same code path,
+//     not a shortcut) before the clock starts.
+//  2. Self-inflicted shard-lock contention from a RING topology: the other
+//     benchmarks' sender i sends to sender (i+1)%N -- meaning account i+1
+//     is touched by TWO different concurrent goroutines (its own, as
+//     sender, and i's, as recipient). transferConcurrent/WAL's
+//     TryLockAddrs is a non-blocking try-lock (see its own comment: a
+//     contended address falls straight to the batcher rather than
+//     queuing) -- a ring where every account has two concurrent writers
+//     manufactures contention that a real network's actual address
+//     distribution mostly wouldn't have, and measurably pushed MORE
+//     transfers to the batcher than the cold-start benchmark above despite
+//     every account being warm (confirmed: this ring version initially
+//     measured 7523.7 TPS, LOWER than the cold-start run's 8596.1 --
+//     the ring's own contention, not warmth, was the binding constraint).
+//     Fixed here with genuinely disjoint pairs: 2N accounts, sender i's
+//     only ever counterpart is a dedicated recipient i+N that no other
+//     goroutine ever touches -- zero manufactured contention, so this
+//     isolates the fast path's actual per-shard-pair ceiling.
+func TestSimulateMaxTPS_WarmSteadyState(t *testing.T) {
+	if os.Getenv("AEQUITAS_TPS_BENCH") != "1" {
+		t.Skip("opt-in only: set AEQUITAS_TPS_BENCH=1 and DATABASE_URL (a disposable local Postgres) to run")
+	}
+	if os.Getenv("DATABASE_URL") == "" {
+		t.Fatal("DATABASE_URL must point at a disposable local Postgres database")
+	}
+
+	state := NewChainState("unused-tps-bench-warm-steady-state.json")
+	if !state.useDB {
+		t.Fatal("expected a live PostgreSQL connection (state.useDB == false) — check DATABASE_URL")
+	}
+
+	const numPairs = 100
+	const txsPerPair = 200 // 20,000 timed transfers total, after warm-up
+
+	senderAddrs := make([]string, numPairs)
+	recipientAddrs := make([]string, numPairs)
+	state.mu.Lock()
+	for i := 0; i < numPairs; i++ {
+		sAddr := fmt.Sprintf("0xf000000000000000000000000000000000%04x", i)
+		rAddr := fmt.Sprintf("0xba50000000000000000000000000000000%04x", i)
+		senderAddrs[i] = sAddr
+		recipientAddrs[i] = rAddr
+		state.accounts.Delete(sAddr)
+		state.accounts.Delete(rAddr)
+		sAcc := &AccountState{Address: sAddr, Balance: NewDecimal(1e9), LastActivityAt: time.Now().Unix()}
+		rAcc := &AccountState{Address: rAddr, Balance: NewDecimal(1e9), LastActivityAt: time.Now().Unix()}
+		if err := state.saveAccountToDB(sAcc); err != nil {
+			state.mu.Unlock()
+			t.Fatalf("seeding sender account %s: %v", sAddr, err)
+		}
+		if err := state.saveAccountToDB(rAcc); err != nil {
+			state.mu.Unlock()
+			t.Fatalf("seeding recipient account %s: %v", rAddr, err)
+		}
+	}
+	state.mu.Unlock()
+
+	// Untimed warm-up: one real transfer per disjoint pair, sequentially
+	// (not the concurrency this benchmark is trying to measure) -- just
+	// needs every account to have been touched once via the real
+	// TransferAtomic path before the clock starts.
+	for i := 0; i < numPairs; i++ {
+		from, to := senderAddrs[i], recipientAddrs[i]
+		tmpl := Transaction{Type: "transfer", Wallet: from, To: to, Amount: 0.0001, TxHash: fmt.Sprintf("0xbench-warmup-%d", i)}
+		if _, _, err := state.TransferAtomic(from, to, 0.0001, tmpl); err != nil {
+			t.Fatalf("warm-up transfer %d failed: %v", i, err)
+		}
+	}
+
+	if path := os.Getenv("AEQUITAS_TPS_CPUPROFILE"); path != "" {
+		f, err := os.Create(path)
+		if err != nil {
+			t.Fatalf("could not create cpu profile: %v", err)
+		}
+		if err := pprof.StartCPUProfile(f); err != nil {
+			t.Fatalf("could not start cpu profile: %v", err)
+		}
+		defer pprof.StopCPUProfile()
+	}
+
+	var succeeded, failed int64
+	var wg sync.WaitGroup
+	start := time.Now()
+	for i := 0; i < numPairs; i++ {
+		wg.Add(1)
+		go func(pairIdx int) {
+			defer wg.Done()
+			from, to := senderAddrs[pairIdx], recipientAddrs[pairIdx]
+			for j := 0; j < txsPerPair; j++ {
+				txHash := fmt.Sprintf("0xbench-warm-%d-%d", pairIdx, j)
+				tmpl := Transaction{Type: "transfer", Wallet: from, To: to, Amount: 0.0001, TxHash: txHash}
+				if _, _, err := state.TransferAtomic(from, to, 0.0001, tmpl); err != nil {
+					atomic.AddInt64(&failed, 1)
+					if failed <= 5 {
+						t.Logf("transfer %d/%d for pair %d failed: %v", j, txsPerPair, pairIdx, err)
+					}
+					continue
+				}
+				atomic.AddInt64(&succeeded, 1)
+			}
+		}(i)
+	}
+	wg.Wait()
+	elapsed := time.Since(start)
+
+	total := succeeded + failed
+	tps := float64(succeeded) / elapsed.Seconds()
+
+	t.Logf("=== Max TPS simulation: WARM steady state (TransferAtomic, %d concurrent disjoint pairs, accounts pre-warmed, zero manufactured contention) ===", numPairs)
+	t.Logf("attempted: %d  succeeded: %d  failed: %d", total, succeeded, failed)
+	t.Logf("wall clock: %s", elapsed)
+	t.Logf("sustained TPS (single local node, real Postgres, no network latency, steady state): %.1f", tps)
+	if failed > 0 {
+		t.Errorf("%d/%d transfers failed unexpectedly (pre-funded balances should never run out)", failed, total)
+	}
+}
