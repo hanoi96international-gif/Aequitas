@@ -17,13 +17,27 @@ name: Patch deploy_safe_c2.sh on Contabo2 (manual, script-only, no redeploy)
 # enable-wal-contabo2.yml (or the regular deploy-contabo2.yml push-trigger)
 # invokes the patched script.
 #
+# The new script content is delivered as a single base64 line
+# (`echo '<b64>' | base64 -d > ...`), NOT a heredoc. A first attempt used a
+# heredoc and failed: appleboy/ssh-action (drone-ssh under the hood)
+# appends its own `DRONE_SSH_PREV_COMMAND_EXIT_CODE=$? ; if [ ... ]; then
+# exit ...; fi;` exit-status check after each line it sends over SSH, with
+# no awareness that a heredoc body is one continuous quoted block -- it
+# spliced that check text INSIDE the heredoc, corrupting the staged file.
+# Caught harmlessly by this workflow's own bash -n gate before anything
+# was installed (see run 30043789998), but heredocs are not safe to use in
+# this action's `script:` field for that reason. A single base64 line has
+# no embedded newlines for the injection to land in.
+#
 # Safety, in order:
 #   1. Back up the current script with a timestamp suffix first.
-#   2. Write the patched version to a *.new staging file, not directly
-#      over the live script.
+#   2. Decode the new version into a *.new staging file, not directly over
+#      the live script.
 #   3. `bash -n` syntax-check the staging file. `set -euo pipefail` means
 #      any failure here aborts before the next step -- the original,
-#      untouched script stays in place.
+#      untouched script stays in place (this is exactly what caught the
+#      heredoc-corruption problem above without ever touching the live
+#      script).
 #   4. Only after that check passes: chmod +x and mv the staging file over
 #      the original (atomic rename, no half-written script ever visible).
 #   5. Print a diff and the final installed file so the change is visible
@@ -61,82 +75,15 @@ jobs:
             echo "=== Backing up current deploy_safe_c2.sh ==="
             cp /root/deploy_safe_c2.sh "/root/deploy_safe_c2.sh.bak.$TS"
             echo "Backup: /root/deploy_safe_c2.sh.bak.$TS"
-
-            echo "=== Writing patched deploy_safe_c2.sh to a staging file (not installed yet) ==="
-            cat <<'DEPLOY_SCRIPT_EOF' | sed 's/^            //' > /root/deploy_safe_c2.sh.new
-                        #!/bin/bash
-                        set -e
-                        cd /root/Aequitas
-                        git fetch origin
-                        git reset --hard origin/main
-                        docker build -t aequitas-node:new .
-                        # Preserve the currently-running container's own env (minus host/process-
-                        # specific keys and RESYNC_FROM_SNAPSHOT), instead of deploy.sh's
-                        # --env-file /root/.aequitas.env -- that file permanently contains
-                        # RESYNC_FROM_SNAPSHOT=true on this box, so using it directly would wipe
-                        # the DB on every single deploy. Same pattern as redeploy_normal_c2.sh,
-                        # combined here with an actual image rebuild so this script both updates
-                        # the code AND survives a plain restart without re-triggering resync.
-                        #
-                        # PATCH (2026-07-23): also merge /root/.aequitas.env on top of the
-                        # inherited env, so an operator-intended flag change (e.g. via
-                        # enable-wal-contabo2.yml appending AEQUITAS_WAL_ENABLED=1) actually takes
-                        # effect instead of being silently dropped -- previously this script only
-                        # ever carried forward whatever the OLD container's env already was and
-                        # never looked at the file at all. Explicit file values win over whatever
-                        # the old container happened to carry. Same
-                        # RESYNC_FROM_SNAPSHOT/PATH/HOSTNAME/HOME exclusions apply to both sources.
-                        docker inspect aequitas-node --format '{{range .Config.Env}}{{println .}}{{end}}' > /root/.aequitas_env_backup
-                        chmod 600 /root/.aequitas_env_backup
-                        docker stop aequitas-node
-                        docker rm aequitas-node
-
-                        declare -A ENV_MAP
-                        while IFS= read -r line; do
-                          [ -z "$line" ] && continue
-                          case "$line" in
-                            PATH=*|HOSTNAME=*|HOME=*|RESYNC_FROM_SNAPSHOT=*) continue ;;
-                          esac
-                          ENV_MAP["${line%%=*}"]="$line"
-                        done < /root/.aequitas_env_backup
-
-                        if [ -f /root/.aequitas.env ]; then
-                          while IFS= read -r line; do
-                            [ -z "$line" ] && continue
-                            case "$line" in
-                              \#*) continue ;;
-                              PATH=*|HOSTNAME=*|HOME=*|RESYNC_FROM_SNAPSHOT=*) continue ;;
-                            esac
-                            ENV_MAP["${line%%=*}"]="$line"
-                          done < /root/.aequitas.env
-                        fi
-
-                        ENV_ARGS=()
-                        for key in "${!ENV_MAP[@]}"; do
-                          ENV_ARGS+=(-e "${ENV_MAP[$key]}")
-                        done
-
-                        docker run -d --name aequitas-node \
-                          --network aequitas-net \
-                          --restart unless-stopped \
-                          "${ENV_ARGS[@]}" \
-                          -p 8080:8080 -p 4001:4001 \
-                          aequitas-node:new
-                        docker image prune -f
-                        echo 'Deploy complete (env-preserving, safe for Contabo2).'
-            DEPLOY_SCRIPT_EOF
-
+            echo "=== Decoding patched deploy_safe_c2.sh to a staging file (not installed yet) ==="
+            echo 'IyEvYmluL2Jhc2gKc2V0IC1lCmNkIC9yb290L0FlcXVpdGFzCmdpdCBmZXRjaCBvcmlnaW4KZ2l0IHJlc2V0IC0taGFyZCBvcmlnaW4vbWFpbgpkb2NrZXIgYnVpbGQgLXQgYWVxdWl0YXMtbm9kZTpuZXcgLgojIFByZXNlcnZlIHRoZSBjdXJyZW50bHktcnVubmluZyBjb250YWluZXIncyBvd24gZW52IChtaW51cyBob3N0L3Byb2Nlc3MtCiMgc3BlY2lmaWMga2V5cyBhbmQgUkVTWU5DX0ZST01fU05BUFNIT1QpLCBpbnN0ZWFkIG9mIGRlcGxveS5zaCdzCiMgLS1lbnYtZmlsZSAvcm9vdC8uYWVxdWl0YXMuZW52IC0tIHRoYXQgZmlsZSBwZXJtYW5lbnRseSBjb250YWlucwojIFJFU1lOQ19GUk9NX1NOQVBTSE9UPXRydWUgb24gdGhpcyBib3gsIHNvIHVzaW5nIGl0IGRpcmVjdGx5IHdvdWxkIHdpcGUKIyB0aGUgREIgb24gZXZlcnkgc2luZ2xlIGRlcGxveS4gU2FtZSBwYXR0ZXJuIGFzIHJlZGVwbG95X25vcm1hbF9jMi5zaCwKIyBjb21iaW5lZCBoZXJlIHdpdGggYW4gYWN0dWFsIGltYWdlIHJlYnVpbGQgc28gdGhpcyBzY3JpcHQgYm90aCB1cGRhdGVzCiMgdGhlIGNvZGUgQU5EIHN1cnZpdmVzIGEgcGxhaW4gcmVzdGFydCB3aXRob3V0IHJlLXRyaWdnZXJpbmcgcmVzeW5jLgojCiMgUEFUQ0ggKDIwMjYtMDctMjMpOiBhbHNvIG1lcmdlIC9yb290Ly5hZXF1aXRhcy5lbnYgb24gdG9wIG9mIHRoZQojIGluaGVyaXRlZCBlbnYsIHNvIGFuIG9wZXJhdG9yLWludGVuZGVkIGZsYWcgY2hhbmdlIChlLmcuIHZpYQojIGVuYWJsZS13YWwtY29udGFibzIueW1sIGFwcGVuZGluZyBBRVFVSVRBU19XQUxfRU5BQkxFRD0xKSBhY3R1YWxseSB0YWtlcwojIGVmZmVjdCBpbnN0ZWFkIG9mIGJlaW5nIHNpbGVudGx5IGRyb3BwZWQgLS0gcHJldmlvdXNseSB0aGlzIHNjcmlwdCBvbmx5CiMgZXZlciBjYXJyaWVkIGZvcndhcmQgd2hhdGV2ZXIgdGhlIE9MRCBjb250YWluZXIncyBlbnYgYWxyZWFkeSB3YXMgYW5kCiMgbmV2ZXIgbG9va2VkIGF0IHRoZSBmaWxlIGF0IGFsbC4gRXhwbGljaXQgZmlsZSB2YWx1ZXMgd2luIG92ZXIgd2hhdGV2ZXIKIyB0aGUgb2xkIGNvbnRhaW5lciBoYXBwZW5lZCB0byBjYXJyeS4gU2FtZQojIFJFU1lOQ19GUk9NX1NOQVBTSE9UL1BBVEgvSE9TVE5BTUUvSE9NRSBleGNsdXNpb25zIGFwcGx5IHRvIGJvdGggc291cmNlcy4KZG9ja2VyIGluc3BlY3QgYWVxdWl0YXMtbm9kZSAtLWZvcm1hdCAne3tyYW5nZSAuQ29uZmlnLkVudn19e3twcmludGxuIC59fXt7ZW5kfX0nID4gL3Jvb3QvLmFlcXVpdGFzX2Vudl9iYWNrdXAKY2htb2QgNjAwIC9yb290Ly5hZXF1aXRhc19lbnZfYmFja3VwCmRvY2tlciBzdG9wIGFlcXVpdGFzLW5vZGUKZG9ja2VyIHJtIGFlcXVpdGFzLW5vZGUKCmRlY2xhcmUgLUEgRU5WX01BUAp3aGlsZSBJRlM9IHJlYWQgLXIgbGluZTsgZG8KICBbIC16ICIkbGluZSIgXSAmJiBjb250aW51ZQogIGNhc2UgIiRsaW5lIiBpbgogICAgUEFUSD0qfEhPU1ROQU1FPSp8SE9NRT0qfFJFU1lOQ19GUk9NX1NOQVBTSE9UPSopIGNvbnRpbnVlIDs7CiAgZXNhYwogIEVOVl9NQVBbIiR7bGluZSUlPSp9Il09IiRsaW5lIgpkb25lIDwgL3Jvb3QvLmFlcXVpdGFzX2Vudl9iYWNrdXAKCmlmIFsgLWYgL3Jvb3QvLmFlcXVpdGFzLmVudiBdOyB0aGVuCiAgd2hpbGUgSUZTPSByZWFkIC1yIGxpbmU7IGRvCiAgICBbIC16ICIkbGluZSIgXSAmJiBjb250aW51ZQogICAgY2FzZSAiJGxpbmUiIGluCiAgICAgIFwjKikgY29udGludWUgOzsKICAgICAgUEFUSD0qfEhPU1ROQU1FPSp8SE9NRT0qfFJFU1lOQ19GUk9NX1NOQVBTSE9UPSopIGNvbnRpbnVlIDs7CiAgICBlc2FjCiAgICBFTlZfTUFQWyIke2xpbmUlJT0qfSJdPSIkbGluZSIKICBkb25lIDwgL3Jvb3QvLmFlcXVpdGFzLmVudgpmaQoKRU5WX0FSR1M9KCkKZm9yIGtleSBpbiAiJHshRU5WX01BUFtAXX0iOyBkbwogIEVOVl9BUkdTKz0oLWUgIiR7RU5WX01BUFska2V5XX0iKQpkb25lCgpkb2NrZXIgcnVuIC1kIC0tbmFtZSBhZXF1aXRhcy1ub2RlIFwKICAtLW5ldHdvcmsgYWVxdWl0YXMtbmV0IFwKICAtLXJlc3RhcnQgdW5sZXNzLXN0b3BwZWQgXAogICIke0VOVl9BUkdTW0BdfSIgXAogIC1wIDgwODA6ODA4MCAtcCA0MDAxOjQwMDEgXAogIGFlcXVpdGFzLW5vZGU6bmV3CmRvY2tlciBpbWFnZSBwcnVuZSAtZgplY2hvICdEZXBsb3kgY29tcGxldGUgKGVudi1wcmVzZXJ2aW5nLCBzYWZlIGZvciBDb250YWJvMikuJwo=' | base64 -d > /root/deploy_safe_c2.sh.new
             echo "=== Syntax-checking the new script BEFORE installing it ==="
             bash -n /root/deploy_safe_c2.sh.new
-
             echo "=== Diff vs the previous version (context only, this is expected to differ) ==="
             diff -u "/root/deploy_safe_c2.sh.bak.$TS" /root/deploy_safe_c2.sh.new || true
-
             echo "=== Syntax check passed -- installing ==="
             chmod +x /root/deploy_safe_c2.sh.new
             mv /root/deploy_safe_c2.sh.new /root/deploy_safe_c2.sh
-
             echo "=== Final installed file ==="
             cat /root/deploy_safe_c2.sh
-
             echo "=== Done. This step ONLY patched the script -- it did NOT call it. No redeploy or restart happened here. ==="
