@@ -8,21 +8,32 @@ import (
 )
 
 // numAccountShards partitions account storage into this many independent
-// locks/maps. See SCALING_ARCHITECTURE.md for the full design this is
-// Phase 1 of: today (Phase 1), shardedAccounts is used exactly like the
-// map it replaces, always under cs.mu -- no new concurrency behavior yet.
-// Its own per-shard mutexes exist for forward-compatibility with later
-// phases (letting operations that only need specific shards eventually
-// skip cs.mu entirely) and make the type safe to use completely on its
-// own, which is what lets it be tested here in isolation, unconnected to
-// any production code path.
+// locks/maps. Its own per-shard mutexes are what let transfer_concurrent.go
+// and transfer_wal.go's TryLockAddrs take a non-blocking, address-specific
+// lock instead of the full cs.mu -- concurrent access to DIFFERENT shards
+// never contends on the same lock, the entire point of sharding.
 //
-// Picked as a power of two for a cheap, well-distributed modulo via
-// bitmask; 64 is a starting point (more than typical core counts, so
-// contention from two unrelated hot addresses colliding in the same
-// shard stays rare) -- not tuned against real workload data yet, that's
-// a later-phase question once this is actually wired into ChainState.
-const numAccountShards = 64
+// FIX (2026-07-23, 50k-TPS-goal TPS-benchmark investigation): raised from
+// the original 64 to 16384 after measuring real shard-collision cost. 64
+// was picked as "more than typical core counts" but never tuned against an
+// actual concurrent-address workload -- with 100 concurrently active
+// addresses (a real benchmark, not a hypothetical), the birthday paradox
+// against only 64 shards means roughly half of them collide with some
+// other address on the same shard, forcing TryLockAddrs to bail to the
+// slow batcher path far more often than the addresses' own (disjoint,
+// mutually unrelated) access pattern would suggest -- confirmed live via
+// CPU profiling: processTransferBatch accounted for half of cumulative CPU
+// time in a benchmark scenario specifically designed to avoid the slow
+// path. Disjoint-recipient WAL-path throughput roughly doubled (measured
+// ~1400-2100 TPS -> ~3100-3750 TPS across repeated runs) after raising the
+// shard count; 4096 already captured most of that gain, 16384 a further
+// small increment, per-shard cost (one sync.Mutex + one lazily-allocated
+// map) being cheap enough that erring toward more headroom for a larger
+// real-world concurrent-account count costs essentially nothing. A
+// contended single hot address (e.g. the same recipient) is unaffected by
+// this at any shard count, by construction -- more shards only helps
+// address sets that are ACTUALLY unrelated stop colliding by accident.
+const numAccountShards = 16384
 
 // accountShard is one partition: its own map, its own mutex. Concurrent
 // access to DIFFERENT shards never contends on the same lock -- the

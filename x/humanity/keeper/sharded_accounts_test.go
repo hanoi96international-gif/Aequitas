@@ -260,8 +260,9 @@ func TestShardedAccounts_CombinedXOR_MatchesFullRecompute(t *testing.T) {
 		assertMatch("mutate 0xaaa balance")
 	}
 
-	// A second account, landing in a different shard virtually always (64
-	// shards) -- proves cross-shard combination, not just one shard's math.
+	// A second account, landing in a different shard virtually always
+	// (numAccountShards shards) -- proves cross-shard combination, not just
+	// one shard's math.
 	b := &AccountState{Address: "0xbbb", TUsdBalance: NewDecimal(10), LPShares: NewDecimal(5)}
 	sa.Set("0xbbb", b)
 	bLeaf := accountLeaf(b)
@@ -437,8 +438,9 @@ func TestShardedAccounts_LockAddrs_SetLockedInsertsNewAccount(t *testing.T) {
 
 // TestShardedAccounts_LockAddrs_DedupesSameShard proves LockAddrs does not
 // deadlock or double-lock when multiple addresses land in the same shard
-// (guaranteed to happen at least once among enough addresses with only 64
-// shards) -- and when the exact same address is passed twice.
+// (guaranteed to happen at least once among numAccountShards*3 addresses,
+// by the pigeonhole principle, regardless of numAccountShards's value) --
+// and when the exact same address is passed twice.
 func TestShardedAccounts_LockAddrs_DedupesSameShard(t *testing.T) {
 	sa := newShardedAccounts()
 	// Find two distinct addresses that hash to the same shard.

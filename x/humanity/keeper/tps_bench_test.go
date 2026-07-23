@@ -194,6 +194,17 @@ func TestSimulateMaxTPS_IngestionDisjointRecipients(t *testing.T) {
 	}
 	state.mu.Unlock()
 
+	if path := os.Getenv("AEQUITAS_TPS_CPUPROFILE"); path != "" {
+		f, err := os.Create(path)
+		if err != nil {
+			t.Fatalf("could not create cpu profile: %v", err)
+		}
+		if err := pprof.StartCPUProfile(f); err != nil {
+			t.Fatalf("could not start cpu profile: %v", err)
+		}
+		defer pprof.StopCPUProfile()
+	}
+
 	var succeeded, failed int64
 	var wg sync.WaitGroup
 	start := time.Now()
