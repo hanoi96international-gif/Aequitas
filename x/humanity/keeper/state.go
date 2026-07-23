@@ -4106,27 +4106,80 @@ func (cs *ChainState) processTransferBatch(batch []*transferBatchRequest) {
 
 	results := make([]transferBatchResult, len(batch))
 	err := cs.runAtomicWithOutbox(touched, false, func(ctx context.Context) (Transaction, error) {
+		// FIX (2026-07-23, TPS-benchmark investigation): this used to call
+		// transferLocked per member, which does its OWN saveAccountToDBCtx
+		// round trip for both the sender and recipient — up to 2 individual
+		// Exec calls per member, plus one savePendingTxExec, all sequential
+		// round trips inside this one already-open transaction. Profiled on
+		// the shared-recipient TPS benchmark: internal/poll.(*FD).Write and
+		// friends (real network round trips to Postgres) accounted for
+		// ~85%+ of CPU time even after transferBatchMaxWait's own fix, with
+		// measured batch sizes averaging ~48 members — i.e. up to ~144
+		// individual statements per commit. transferMutateLocked applies
+		// every member's mutation in memory ONLY (no DB call), and every
+		// touched account is then persisted ONCE, after the whole batch's
+		// mutations are done, via ONE multi-row saveAccountsToDBBatchCtx
+		// call (same technique already proven for the WAL flush path —
+		// see flushWALBatch's own FIX comment — and already used elsewhere
+		// in this file for distributeSwapFee's 4 pool addresses). Every
+		// member's outbox row is similarly collected into ONE multi-row
+		// INSERT instead of one savePendingTxExec call each. This does not
+		// change the all-or-nothing contract described above: the first
+		// member whose mutation fails aborts the whole closure exactly as
+		// before, and every account/outbox write still lives inside this
+		// same runAtomicWithOutbox transaction, still rolled back as one
+		// unit on any later failure.
+		touchedAccs := make(map[string]*AccountState, len(batch)*2)
+		pendingTxs := make([]Transaction, 0, len(batch))
 		var last Transaction
 		for i, req := range batch {
-			fromLost, toLost, tErr := cs.transferLocked(ctx, req.from, req.to, req.amount)
-			if tErr != nil {
-				return Transaction{}, fmt.Errorf("batch member %d/%d (%s -> %s) failed: %w", i+1, len(batch), req.from, req.to, tErr)
+			fromLost, toLost, fromAcc, toAcc, mErr := cs.transferMutateLocked(ctx, req.from, req.to, req.amount)
+			if mErr != nil {
+				return Transaction{}, fmt.Errorf("batch member %d/%d (%s -> %s) failed: %w", i+1, len(batch), req.from, req.to, mErr)
 			}
+			touchedAccs[fromAcc.Address] = fromAcc
+			touchedAccs[toAcc.Address] = toAcc
+
 			pendingTx := req.pendingTxTemplate
-			pendingTx.FromDemurrageLost = fromLost
-			pendingTx.ToDemurrageLost = toLost
-			results[i] = transferBatchResult{fromLost: fromLost, toLost: toLost}
+			pendingTx.FromDemurrageLost = fromLost.Float()
+			pendingTx.ToDemurrageLost = toLost.Float()
+			results[i] = transferBatchResult{fromLost: fromLost.Float(), toLost: toLost.Float()}
 			if i == len(batch)-1 {
-				// Last member's outbox row is inserted by runAtomicWithOutbox
-				// itself (its normal single-Transaction contract) — every
-				// earlier member's own row is inserted explicitly right here,
-				// via cs.dbExecCtx(ctx) so it joins the SAME transaction.
+				// Last member's outbox row is still inserted by
+				// runAtomicWithOutbox itself (its normal single-Transaction
+				// contract, unchanged) — every earlier member's row is
+				// inserted explicitly below, as one multi-row statement.
 				last = pendingTx
 				continue
 			}
-			if outboxErr := savePendingTxExec(cs.dbExecCtx(ctx), pendingTx); outboxErr != nil {
-				return Transaction{}, fmt.Errorf("batch member %d/%d (%s -> %s) outbox insert failed: %w", i+1, len(batch), req.from, req.to, outboxErr)
-			}
+			pendingTxs = append(pendingTxs, pendingTx)
+		}
+
+		accsToSave := make([]*AccountState, 0, len(touchedAccs))
+		for _, acc := range touchedAccs {
+			accsToSave = append(accsToSave, acc)
+		}
+		if err := cs.saveAccountsToDBBatchCtx(ctx, accsToSave); err != nil {
+			return Transaction{}, fmt.Errorf("could not batch-save %d account(s): %w", len(accsToSave), err)
+		}
+		if err := savePendingTxsBatchExec(cs.dbExecCtx(ctx), pendingTxs); err != nil {
+			return Transaction{}, fmt.Errorf("could not batch-insert %d outbox row(s): %w", len(pendingTxs), err)
+		}
+
+		touchedAddrs := make([]string, 0, len(touchedAccs)+4)
+		for addr := range touchedAccs {
+			touchedAddrs = append(touchedAddrs, addr)
+		}
+		// Every transferLocked call unconditionally refreshed all 4 pool
+		// addresses' EVM mirrors too (cheap — see syncBalanceLocked's own
+		// comment, this only marks them dirty for the async flush worker) —
+		// preserved here so consolidating to one call per batch doesn't
+		// change how often the pools' own mirror gets refreshed.
+		touchedAddrs = append(touchedAddrs, validatorsPoolAddr, lpPoolAddr, ubiPoolAddr, treasuryPoolAddr)
+		cs.syncBalanceLocked(V7_CONTRACT_ADDR, touchedAddrs...)
+		cs.save()
+		for _, req := range batch {
+			fmt.Printf("[STATE] ✓ Transfer %.2f AEQ: %s → %s\n", req.amount, req.from, req.to)
 		}
 		return last, nil
 	})
@@ -4155,64 +4208,82 @@ func (cs *ChainState) processTransferBatch(batch []*transferBatchRequest) {
 // pass ctx explicitly in this same change, so no compatibility wrapper is
 // needed.
 func (cs *ChainState) transferLocked(ctx context.Context, from, to string, amount float64) (float64, float64, error) {
-	from = strings.ToLower(from)
-	to = strings.ToLower(to)
-	// P1-FIX: reject NaN/Inf amounts — these would corrupt balances via
-	// NewDecimal which uses math.Round (NaN/Inf propagate silently).
-	if amount <= 0 || math.IsNaN(amount) || math.IsInf(amount, 0) {
-		return 0, 0, fmt.Errorf("invalid transfer amount: %v", amount)
-	}
-	// P2-5: reject self-transfers; mirrors AequitasV7.sol behaviour and
-	// prevents double-demurrage settlement on the same account object.
-	if from == to {
-		return 0, 0, fmt.Errorf("self-transfer not allowed")
-	}
-
-	cs.ensureAccountLoadedCtx(ctx, from)
-	cs.ensureAccountLoadedCtx(ctx, to)
-	fromAcc, ok := cs.accounts.Get(from)
-	if !ok {
-		return 0, 0, fmt.Errorf("insufficient balance")
-	}
-	fromLost, err := cs.settleDemurrageLockedCtx(ctx, fromAcc) // make sure we're checking against the real, decayed balance
+	fromLost, toLost, fromAcc, toAcc, err := cs.transferMutateLocked(ctx, from, to, amount)
 	if err != nil {
-		return 0, 0, fmt.Errorf("could not settle demurrage for sender: %w", err)
+		return 0, 0, err
 	}
-	if fromAcc.Balance.Float() < amount {
-		return 0, 0, fmt.Errorf("insufficient balance")
-	}
-
-	fromAcc.Balance = fromAcc.Balance.Sub(NewDecimal(amount))
-	touchActivity(fromAcc) // sending counts as "using" the money — resets its decay clock
 	// FIX (audit3, P1 #4): saveAccountToDB now returns an error — checked here
 	// so a DB failure aborts the transfer (causing runAtomicWithOutbox to roll
 	// back) instead of returning success while the debit was never persisted.
 	if err := cs.saveAccountToDBCtx(ctx, fromAcc); err != nil {
 		return 0, 0, fmt.Errorf("could not save sender account: %w", err)
 	}
-
-	toAcc, ok := cs.accounts.Get(to)
-	if !ok {
-		toAcc = &AccountState{Address: to}
-		cs.accounts.Set(to, toAcc)
-	}
-	toLost, err := cs.settleDemurrageLockedCtx(ctx, toAcc)
-	if err != nil {
-		return 0, 0, fmt.Errorf("could not settle demurrage for recipient: %w", err)
-	}
-	toAcc.Balance = toAcc.Balance.Add(NewDecimal(amount))
-	touchActivity(toAcc) // receiving also resets the clock on the recipient's whole balance
-	if err := cs.enforceWealthCapLockedCtx(ctx, toAcc); err != nil {
-		return 0, 0, fmt.Errorf("could not enforce wealth cap for recipient: %w", err)
-	}
 	if err := cs.saveAccountToDBCtx(ctx, toAcc); err != nil {
 		return 0, 0, fmt.Errorf("could not save recipient account: %w", err)
 	}
 	cs.save()
 
-	fmt.Printf("[STATE] ✓ Transfer %.2f AEQ: %s → %s\n", amount, from, to)
-	cs.syncBalanceLocked(V7_CONTRACT_ADDR, from, to, validatorsPoolAddr, lpPoolAddr, ubiPoolAddr, treasuryPoolAddr)
+	fmt.Printf("[STATE] ✓ Transfer %.2f AEQ: %s → %s\n", amount, fromAcc.Address, toAcc.Address)
+	cs.syncBalanceLocked(V7_CONTRACT_ADDR, fromAcc.Address, toAcc.Address, validatorsPoolAddr, lpPoolAddr, ubiPoolAddr, treasuryPoolAddr)
 	return fromLost.Float(), toLost.Float(), nil
+}
+
+// transferMutateLocked is transferLocked's actual balance-mutation logic,
+// split out so processTransferBatch can apply every batch member's mutation
+// in memory without ALSO paying transferLocked's own two saveAccountToDBCtx
+// round trips per member — see processTransferBatch's own comment for why
+// that matters (up to 2N individual Exec calls per batch, one N-times-
+// smaller multi-row UPSERT instead). Does not persist either account, call
+// cs.save(), print the "[STATE] ✓ Transfer" line, or mark the EVM mirror
+// dirty — every one of those is still transferLocked's job for its own
+// (single-transfer) callers, and processTransferBatch's job (once per whole
+// batch, not once per member) for the batched path.
+func (cs *ChainState) transferMutateLocked(ctx context.Context, from, to string, amount float64) (fromLost, toLost Decimal, fromAcc, toAcc *AccountState, err error) {
+	from = strings.ToLower(from)
+	to = strings.ToLower(to)
+	// P1-FIX: reject NaN/Inf amounts — these would corrupt balances via
+	// NewDecimal which uses math.Round (NaN/Inf propagate silently).
+	if amount <= 0 || math.IsNaN(amount) || math.IsInf(amount, 0) {
+		return 0, 0, nil, nil, fmt.Errorf("invalid transfer amount: %v", amount)
+	}
+	// P2-5: reject self-transfers; mirrors AequitasV7.sol behaviour and
+	// prevents double-demurrage settlement on the same account object.
+	if from == to {
+		return 0, 0, nil, nil, fmt.Errorf("self-transfer not allowed")
+	}
+
+	cs.ensureAccountLoadedCtx(ctx, from)
+	cs.ensureAccountLoadedCtx(ctx, to)
+	fromAcc, ok := cs.accounts.Get(from)
+	if !ok {
+		return 0, 0, nil, nil, fmt.Errorf("insufficient balance")
+	}
+	fromLost, err = cs.settleDemurrageLockedCtx(ctx, fromAcc) // make sure we're checking against the real, decayed balance
+	if err != nil {
+		return 0, 0, nil, nil, fmt.Errorf("could not settle demurrage for sender: %w", err)
+	}
+	if fromAcc.Balance.Float() < amount {
+		return 0, 0, nil, nil, fmt.Errorf("insufficient balance")
+	}
+
+	fromAcc.Balance = fromAcc.Balance.Sub(NewDecimal(amount))
+	touchActivity(fromAcc) // sending counts as "using" the money — resets its decay clock
+
+	toAcc, ok = cs.accounts.Get(to)
+	if !ok {
+		toAcc = &AccountState{Address: to}
+		cs.accounts.Set(to, toAcc)
+	}
+	toLost, err = cs.settleDemurrageLockedCtx(ctx, toAcc)
+	if err != nil {
+		return 0, 0, nil, nil, fmt.Errorf("could not settle demurrage for recipient: %w", err)
+	}
+	toAcc.Balance = toAcc.Balance.Add(NewDecimal(amount))
+	touchActivity(toAcc) // receiving also resets the clock on the recipient's whole balance
+	if err := cs.enforceWealthCapLockedCtx(ctx, toAcc); err != nil {
+		return 0, 0, nil, nil, fmt.Errorf("could not enforce wealth cap for recipient: %w", err)
+	}
+	return fromLost, toLost, fromAcc, toAcc, nil
 }
 
 // TransferWithV7Fee is used by the RPC layer when intercepting V7 ERC-20

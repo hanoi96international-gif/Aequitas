@@ -2249,6 +2249,36 @@ func savePendingTxExec(ex sqlExecutor, tx Transaction) error {
 	return err
 }
 
+// savePendingTxsBatchExec is savePendingTxExec's multi-row counterpart —
+// inserts every tx in txs via ONE round trip instead of one per tx, same
+// motivation and technique as flushWALBatch's own outbox INSERT
+// (transfer_wal.go) and saveAccountsToDBBatchCtx's multi-row VALUES list
+// above. Used by processTransferBatch so a batch of N group-committed
+// transfers pays for one outbox round trip instead of N. A no-op for an
+// empty slice (a batch of exactly 1 member has nothing left for this to
+// insert — its sole outbox row is runAtomicWithOutbox's own single-
+// Transaction insert, unchanged).
+func savePendingTxsBatchExec(ex sqlExecutor, txs []Transaction) error {
+	if len(txs) == 0 {
+		return nil
+	}
+	valuesSQL := make([]string, len(txs))
+	args := make([]interface{}, 0, len(txs)*2)
+	now := time.Now().Unix()
+	for i, tx := range txs {
+		data, err := json.Marshal(tx)
+		if err != nil {
+			fmt.Printf("[TX] SavePendingTx marshal error: %v\n", err)
+			return err
+		}
+		n := i * 2
+		valuesSQL[i] = fmt.Sprintf("($%d,$%d)", n+1, n+2)
+		args = append(args, string(data), now)
+	}
+	_, err := ex.Exec(`INSERT INTO pending_txs (tx_json, created_at) VALUES `+strings.Join(valuesSQL, ","), args...)
+	return err
+}
+
 // LoadPendingTxs reads all not-yet-included DB-pending TXs and atomically
 // marks them included, in the SAME query (UPDATE ... RETURNING) — not a
 // separate SELECT now and a DELETE later via ClearPendingTxs. Call
