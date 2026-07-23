@@ -1,0 +1,142 @@
+name: Patch deploy_safe_c2.sh on Contabo2 (manual, script-only, no redeploy)
+
+# One-off fix for the root cause documented in STAGING_RUNBOOK.md's
+# "Update -- Contabo2-Live-Versuch" section and SCALING_ARCHITECTURE.md's
+# matching Phase-7 update: /root/deploy_safe_c2.sh (lives only on the
+# server, outside this repo's version control) sources the new container's
+# env exclusively from `docker inspect` of the OLD container, never from
+# /root/.aequitas.env -- so enable-wal-contabo2.yml's env-file edit (and
+# rollback-wal-contabo2.yml's removal of the same lines) has never had any
+# effect on Contabo2, confirmed by reading the script's actual content via
+# verify-wal-contabo2.yml and cross-checking against the live container's
+# real process env.
+#
+# This workflow ONLY patches the script on disk. It does NOT call it, does
+# NOT restart the container, and does NOT itself change what env the
+# running node has. That happens separately, the next time
+# enable-wal-contabo2.yml (or the regular deploy-contabo2.yml push-trigger)
+# invokes the patched script.
+#
+# Safety, in order:
+#   1. Back up the current script with a timestamp suffix first.
+#   2. Write the patched version to a *.new staging file, not directly
+#      over the live script.
+#   3. `bash -n` syntax-check the staging file. `set -euo pipefail` means
+#      any failure here aborts before the next step -- the original,
+#      untouched script stays in place.
+#   4. Only after that check passes: chmod +x and mv the staging file over
+#      the original (atomic rename, no half-written script ever visible).
+#   5. Print a diff and the final installed file so the change is visible
+#      directly in this workflow's own log, no separate SSH session needed
+#      to review it.
+#
+# The patch itself: merge /root/.aequitas.env on top of the env inherited
+# from the previous container (explicit file values win on key collision),
+# instead of ignoring the file entirely. Same PATH/HOSTNAME/HOME/
+# RESYNC_FROM_SNAPSHOT exclusions the original script already applied to
+# the inherited env now apply to the file too, for the same reason
+# (RESYNC_FROM_SNAPSHOT=true is permanently present in that file on this
+# box and must never reach a `docker run`, regardless of source).
+on:
+  workflow_dispatch: {}
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Patch deploy_safe_c2.sh (write + syntax-check only, no execution)
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: 194.163.188.71
+          username: root
+          key: ${{ secrets.CONTABO2_SSH_KEY }}
+          port: 22
+          fingerprint: "SHA256:VIwj7Faxiga2n45HVHZEQFPxcbRKHgSgHoxAFsf2wto"
+          script_stop: true
+          timeout: 120s
+          command_timeout: 120s
+          script: |
+            set -euo pipefail
+            TS="$(date +%s)"
+            echo "=== Backing up current deploy_safe_c2.sh ==="
+            cp /root/deploy_safe_c2.sh "/root/deploy_safe_c2.sh.bak.$TS"
+            echo "Backup: /root/deploy_safe_c2.sh.bak.$TS"
+
+            echo "=== Writing patched deploy_safe_c2.sh to a staging file (not installed yet) ==="
+            cat <<'DEPLOY_SCRIPT_EOF' | sed 's/^            //' > /root/deploy_safe_c2.sh.new
+                        #!/bin/bash
+                        set -e
+                        cd /root/Aequitas
+                        git fetch origin
+                        git reset --hard origin/main
+                        docker build -t aequitas-node:new .
+                        # Preserve the currently-running container's own env (minus host/process-
+                        # specific keys and RESYNC_FROM_SNAPSHOT), instead of deploy.sh's
+                        # --env-file /root/.aequitas.env -- that file permanently contains
+                        # RESYNC_FROM_SNAPSHOT=true on this box, so using it directly would wipe
+                        # the DB on every single deploy. Same pattern as redeploy_normal_c2.sh,
+                        # combined here with an actual image rebuild so this script both updates
+                        # the code AND survives a plain restart without re-triggering resync.
+                        #
+                        # PATCH (2026-07-23): also merge /root/.aequitas.env on top of the
+                        # inherited env, so an operator-intended flag change (e.g. via
+                        # enable-wal-contabo2.yml appending AEQUITAS_WAL_ENABLED=1) actually takes
+                        # effect instead of being silently dropped -- previously this script only
+                        # ever carried forward whatever the OLD container's env already was and
+                        # never looked at the file at all. Explicit file values win over whatever
+                        # the old container happened to carry. Same
+                        # RESYNC_FROM_SNAPSHOT/PATH/HOSTNAME/HOME exclusions apply to both sources.
+                        docker inspect aequitas-node --format '{{range .Config.Env}}{{println .}}{{end}}' > /root/.aequitas_env_backup
+                        chmod 600 /root/.aequitas_env_backup
+                        docker stop aequitas-node
+                        docker rm aequitas-node
+
+                        declare -A ENV_MAP
+                        while IFS= read -r line; do
+                          [ -z "$line" ] && continue
+                          case "$line" in
+                            PATH=*|HOSTNAME=*|HOME=*|RESYNC_FROM_SNAPSHOT=*) continue ;;
+                          esac
+                          ENV_MAP["${line%%=*}"]="$line"
+                        done < /root/.aequitas_env_backup
+
+                        if [ -f /root/.aequitas.env ]; then
+                          while IFS= read -r line; do
+                            [ -z "$line" ] && continue
+                            case "$line" in
+                              \#*) continue ;;
+                              PATH=*|HOSTNAME=*|HOME=*|RESYNC_FROM_SNAPSHOT=*) continue ;;
+                            esac
+                            ENV_MAP["${line%%=*}"]="$line"
+                          done < /root/.aequitas.env
+                        fi
+
+                        ENV_ARGS=()
+                        for key in "${!ENV_MAP[@]}"; do
+                          ENV_ARGS+=(-e "${ENV_MAP[$key]}")
+                        done
+
+                        docker run -d --name aequitas-node \
+                          --network aequitas-net \
+                          --restart unless-stopped \
+                          "${ENV_ARGS[@]}" \
+                          -p 8080:8080 -p 4001:4001 \
+                          aequitas-node:new
+                        docker image prune -f
+                        echo 'Deploy complete (env-preserving, safe for Contabo2).'
+            DEPLOY_SCRIPT_EOF
+
+            echo "=== Syntax-checking the new script BEFORE installing it ==="
+            bash -n /root/deploy_safe_c2.sh.new
+
+            echo "=== Diff vs the previous version (context only, this is expected to differ) ==="
+            diff -u "/root/deploy_safe_c2.sh.bak.$TS" /root/deploy_safe_c2.sh.new || true
+
+            echo "=== Syntax check passed -- installing ==="
+            chmod +x /root/deploy_safe_c2.sh.new
+            mv /root/deploy_safe_c2.sh.new /root/deploy_safe_c2.sh
+
+            echo "=== Final installed file ==="
+            cat /root/deploy_safe_c2.sh
+
+            echo "=== Done. This step ONLY patched the script -- it did NOT call it. No redeploy or restart happened here. ==="
