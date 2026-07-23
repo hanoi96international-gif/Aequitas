@@ -187,31 +187,23 @@ func (cs *ChainState) SaveStorageSlots(address string, slots map[string]string) 
 		return nil
 	}
 	address = strings.ToLower(address)
-	// See saveAccountsToDBBatchCtx's FIX comment (state.go) for the
-	// Sprintf+Join -> strings.Builder+writeDollarParam technique applied
-	// here — this runs on every registration and every intercepted V7
-	// transfer (see this function's own doc comment), not just a
-	// background flush.
-	var valuesSQL strings.Builder
-	valuesSQL.Grow(len(slots) * 16) // "($NNN,$NNN,$NNN)," rounded up
-	args := make([]interface{}, 0, len(slots)*3)
-	first := true
+	// See saveAccountsToDBBatchCtx's FIX comment (state.go) for why this
+	// builds a fixed-size unnest() query over 2 array parameters instead
+	// of a VALUES(...) list whose text size grows with len(slots) — this
+	// runs on every registration and every intercepted V7 transfer (see
+	// this function's own doc comment), not just a background flush.
+	// address is a single scalar $1, not a third array, since every row
+	// this call writes shares the same address by construction.
+	slotNames := make([]string, 0, len(slots))
+	slotValues := make([]string, 0, len(slots))
 	for slot, value := range slots {
-		if !first {
-			valuesSQL.WriteByte(',')
-		}
-		first = false
-		n := len(args)
-		valuesSQL.WriteByte('(')
-		writeDollarParam(&valuesSQL, n+1, ",")
-		writeDollarParam(&valuesSQL, n+2, ",")
-		writeDollarParam(&valuesSQL, n+3, "")
-		valuesSQL.WriteByte(')')
-		args = append(args, address, slot, value)
+		slotNames = append(slotNames, slot)
+		slotValues = append(slotValues, value)
 	}
-	query := `INSERT INTO evm_storage (address, slot, value) VALUES ` + valuesSQL.String() +
-		` ON CONFLICT (address, slot) DO UPDATE SET value = EXCLUDED.value`
-	_, err := cs.db.Exec(query, args...)
+	query := `INSERT INTO evm_storage (address, slot, value)
+SELECT $1, s, v FROM unnest($2::text[], $3::text[]) AS t(s, v)
+ON CONFLICT (address, slot) DO UPDATE SET value = EXCLUDED.value`
+	_, err := cs.db.Exec(query, address, pq.Array(slotNames), pq.Array(slotValues))
 	return err
 }
 
@@ -736,29 +728,23 @@ func (cs *ChainState) doSyncBalanceLocked(contractAddr string, addrs ...string) 
 	}
 
 	// See saveAccountsToDBBatchCtx's FIX comment (state.go) for why this
-	// builds directly into a pre-sized strings.Builder via writeDollarParam
-	// instead of one fmt.Sprintf call per row plus a final strings.Join —
-	// same technique, same measured payoff, applied here since this
-	// function's own batch size scales with how many addresses the EVM
-	// mirror flush worker has accumulated since its last tick.
-	var valuesSQL strings.Builder
-	valuesSQL.Grow(len(writes) * 18) // "($NNN, $NNN, $NNN)," rounded up
-	args := make([]interface{}, 0, len(writes)*3)
+	// builds a fixed-size unnest() query over 2 array parameters instead
+	// of a VALUES(...) list whose text size grows with how many addresses
+	// the EVM mirror flush worker has accumulated since its last tick.
+	// address (contractAddr) is a single scalar $1, not a third array,
+	// since every row this call writes shares the same contract address
+	// by construction (the mapping key that varies per user is encoded
+	// inside each slot hash, not this column).
+	slots := make([]string, len(writes))
+	values := make([]string, len(writes))
 	for i, w := range writes {
-		if i > 0 {
-			valuesSQL.WriteByte(',')
-		}
-		n := i * 3
-		valuesSQL.WriteByte('(')
-		writeDollarParam(&valuesSQL, n+1, ", ")
-		writeDollarParam(&valuesSQL, n+2, ", ")
-		writeDollarParam(&valuesSQL, n+3, "")
-		valuesSQL.WriteByte(')')
-		args = append(args, contractAddr, w.slot, w.value)
+		slots[i] = w.slot
+		values[i] = w.value
 	}
-	query := `INSERT INTO evm_storage (address, slot, value) VALUES ` + valuesSQL.String() +
-		` ON CONFLICT (address, slot) DO UPDATE SET value = EXCLUDED.value`
-	_, err := cs.dbExec().Exec(query, args...)
+	query := `INSERT INTO evm_storage (address, slot, value)
+SELECT $1, s, v FROM unnest($2::text[], $3::text[]) AS t(s, v)
+ON CONFLICT (address, slot) DO UPDATE SET value = EXCLUDED.value`
+	_, err := cs.dbExec().Exec(query, contractAddr, pq.Array(slots), pq.Array(values))
 	if err != nil {
 		fmt.Printf("[EVM] Warning: could not batch-sync EVM mirror slots for %d address(es): %v\n", len(lowerAddrs), err)
 		for _, addr := range lowerAddrs {
