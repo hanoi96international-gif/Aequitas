@@ -168,3 +168,73 @@ entworfen, sobald ein Validator überhaupt autorisiert war. Die zuvor
 beobachtete stille Ablehnung unbekannter Proposer war kein Bug, sondern
 die korrekt funktionierende Sicherheitsgrenze, die genau das verhindert,
 was das Projektziel "nur echte Menschen 1x als Validatoren" verlangt.
+
+## Update — lokaler Solo-Node-Crashtest (2026-07-23, Ersatz für den geplanten Contabo-Staging-Lauf)
+
+Die Sandbox konnte die echten Contabo-Boxen nicht erreichen (kein `ssh`
+ausgehend erlaubt — Netzwerk-Policy der Umgebung, bestätigt über
+`__agentproxy/status`, nicht durch fehlendes Tooling). Ersatzweise ein
+echter, isolierter `aequitasd`-Prozess lokal: eigene Postgres-DB
+(`aequitas_staging_local`), eigene `chain_id` in der Genesis, eigene Ports,
+`AEQUITAS_WAL_ENABLED=1` + `ENABLE_MULTI_BLOCK_TICK=1`, echte signierte
+`eth_sendRawTransaction`-Transfers über die eigene JSON-RPC-Schnittstelle
+(nicht nur interne Go-Funktionsaufrufe wie in den Unit-Tests). Deckt nur
+Tag 1-2 (Solo-WAL-Durability) ab, nicht Tag 3-4 (Mehrknoten-Konsens, bräuchte
+einen zweiten Staging-Node).
+
+**1) `ENABLE_MULTI_BLOCK_TICK`-Backlog-Pfad zum ersten Mal unter echtem
+Rückstau ausgelöst** (vorher nur die reine Schleifenlogik mit einem
+Fake-Producer unit-getestet, siehe `block_cadence_test.go`, und in der
+2-Knoten-Simulation oben nie wirklich getriggert): 60.000 synthetische
+`pending_txs` direkt eingefügt (deutlich über `maxTxsPerBlock`=50.000).
+Ergebnis: exakt 2 Blöcke in einem Tick (50.000 + 10.000 TXs), danach
+`still_pending=0` — kein TX verloren, keins doppelt eingeschlossen, die
+Schleife stoppte korrekt nach dem ersten nicht-vollen Block statt bis
+`maxExtraBlocksPerTick`=4 weiterzumachen.
+
+**Neuer, ungünstiger Befund dabei:** der volle 50.000-TX-Block brauchte
+in dieser (Cores mit Postgres geteilten) Sandbox **~1,8s** allein für
+`ProduceBlock` (`SaveBlockWithPendingTxsAtomic` davon 822ms), der ganze
+Tick (2 Blöcke) **~2,17s** — länger als `BLOCK_TIME`=1s selbst. Go's
+`time.Ticker` verwirft verpasste Ticks statt sie aufzustauen, es gibt also
+kein unbegrenztes Aufstauen — aber unter SUSTAINED (nicht nur kurzzeitigem)
+schwerem Rückstau ist der real erreichbare Durchsatz eher "ein voller Block
+alle ~2s" als die naive Grenze "bis zu 5 volle Blöcke pro `BLOCK_TIME`".
+Auf dedizierter Produktions-Hardware (eigener DB-Host, kein Core-Sharing
+mit Postgres) vermutlich besser, aber die grundsätzliche Erkenntnis — ein
+maximal voller Block kann `BLOCK_TIME` selbst überschreiten — ist
+architektonisch real und gehört in die Tag-5-Bewertung der echten
+Staging-Kampagne.
+
+**2) Echter Bug gefunden und gefixt beim WAL-Crash-Test:** zwei echte,
+signierte Transfers über die WAL-Fastpath (`transferConcurrentWAL`), zweiter
+davon per `kill -9` unmittelbar nach dem WAL-Append (vor dem nächsten
+500ms-Flush-Tick) abgebrochen. Neustart: In-Memory-Saldo korrekt
+wiederhergestellt (`recoverFromWAL` funktionierte wie erwartet) — aber
+Postgres blieb dauerhaft veraltet (>15s beobachtet, kein Auto-Flush), weil
+`recoverFromWAL` das wiederhergestellte Item zwar in die Flush-Queue legte,
+aber nie `ensureWALFlushWorkerStarted()` aufrief. Ein frisch neugestarteter,
+ansonsten idler Node hätte den Hintergrund-Flush-Worker also NIE gestartet
+— das wiederhergestellte Transfer wäre auf Dauer im eigenen In-Memory-State
+korrekt, aber niemals über `pending_txs` an andere Validatoren weitergereicht
+worden: real ein stiller Konsens-Fork-Risiko-Fall (dieser Node's StateRoot
+hätte die Mutation, jeder andere Node, der nur die tatsächlich empfangenen
+TXs replayed, käme nie auf denselben Wert), nicht nur die im Code bereits
+dokumentierte, harmlosere "Explorer-Sicht ist ein paar Sekunden alt"-Lag.
+
+**Fix** (`transfer_wal.go`, `recoverFromWAL`): ruft jetzt `enqueueWALFlushLocked`
+statt eines direkten `cs.walFlushQueue`-Appends auf — dieselbe Funktion,
+die der normale WAL-Transferpfad benutzt, startet als Seiteneffekt auch den
+Worker. Verifiziert: derselbe Crashtest lief danach sauber durch, Postgres
+holte den korrekten Saldo innerhalb weniger Sekunden nach — ganz ohne eine
+weitere, zufällig auslösende Transaktion. Neuer Regressionstest
+`TestTransferConcurrentWAL_CrashRecovery_AutoFlushesWithoutManualTrigger`
+(`transfer_wal_test.go`) — bewusst OHNE manuellen `FlushWALNow()`-Aufruf,
+anders als der bestehende `..._UnflushedTransfersReconstructed`-Test, dessen
+manueller Flush genau diese Lücke seit Einführung des WAL-Pfads verdeckt
+hatte. Volle Testsuite (`go test ./... -race`) danach grün.
+
+Zeigt genau, warum `AEQUITAS_WAL_ENABLED` weiterhin `NOT staging-validated`
+bleibt, bis die echte mehrtägige Kampagne oben gelaufen ist — dieser eine
+Bug wäre in keinem der bisherigen automatisierten Tests aufgefallen, nur
+weil ein echter Prozess unter einer echten `kill -9` beobachtet wurde.

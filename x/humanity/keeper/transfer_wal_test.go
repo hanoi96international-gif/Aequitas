@@ -279,6 +279,67 @@ func TestTransferConcurrentWAL_CrashRecovery_UnflushedTransfersReconstructed(t *
 	}
 }
 
+// TestTransferConcurrentWAL_CrashRecovery_AutoFlushesWithoutManualTrigger is
+// the regression test for a real bug found via a local end-to-end crash
+// drill (real aequitasd process, real Postgres, kill -9, restart — not just
+// this package's own unit tests): recoverFromWAL used to append reapplied,
+// still-unflushed items straight to cs.walFlushQueue instead of going
+// through enqueueWALFlushLocked, which ALSO calls
+// ensureWALFlushWorkerStarted(). The sibling test above
+// (UnflushedTransfersReconstructed) calls csB.FlushWALNow() manually right
+// after recovery — which masked this exact gap, since a manual flush works
+// regardless of whether the periodic background worker ever started. A real
+// restarted node never calls FlushWALNow() itself; it relies entirely on
+// that background ticker. Confirmed live in the local drill: Postgres
+// stayed stale indefinitely (checked repeatedly over 15+ seconds, no other
+// transfer touching either address) until the fix (recoverFromWAL now calls
+// enqueueWALFlushLocked, same as the live transfer path) made the worker
+// start automatically. This test therefore deliberately does NOT call
+// FlushWALNow() — it only waits (polling, well beyond walFlushInterval) to
+// prove the worker resumes on its own after a recovery with nothing else
+// triggering it.
+func TestTransferConcurrentWAL_CrashRecovery_AutoFlushesWithoutManualTrigger(t *testing.T) {
+	dir := t.TempDir()
+	walPath := filepath.Join(dir, "test.wal")
+	truncateDistTestTables(t)
+
+	csA := newWALTestState(t, walPath)
+	from := distTestAddr(820)
+	to := distTestAddr(821)
+	seedConcurrentTestAccount(t, csA, from, 1000, time.Now().Unix())
+	seedConcurrentTestAccount(t, csA, to, 0, time.Now().Unix())
+
+	if _, _, applied, err := csA.transferConcurrentWAL(from, to, 42, Transaction{Type: "transfer", Wallet: from, To: to, Amount: 42, TxHash: "0xautoflush1"}); !applied || err != nil {
+		t.Fatalf("transfer: applied=%v err=%v", applied, err)
+	}
+
+	// "Crash": abandon csA without ever flushing, exactly like the sibling
+	// test above.
+	csA.stopWALFlushWorkerForTest()
+	if err := csA.wal.Close(); err != nil {
+		t.Fatalf("closing WAL: %v", err)
+	}
+
+	csB := newWALTestState(t, walPath)
+	// Deliberately NO csB.FlushWALNow() call here -- that is the entire
+	// point of this test. Only the background worker (started as a side
+	// effect of recovery, if the fix is in place) should make this happen.
+	deadline := time.Now().Add(3 * time.Second)
+	var dbFrom float64
+	for {
+		if err := csB.db.QueryRow(`SELECT balance FROM chain_accounts WHERE lower(address) = $1`, from).Scan(&dbFrom); err != nil {
+			t.Fatalf("sender row not found: %v", err)
+		}
+		if dbFrom == 958 { // 1000 - 42
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("Postgres balance = %v after %s of waiting with no manual flush trigger — recovery did not restart the background flush worker (want 958)", dbFrom, 3*time.Second)
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+}
+
 // TestTransferConcurrentWAL_CrashRecovery_IdempotentOnRepeatedReplay proves
 // the actual safety property this whole design hinges on: replaying WAL
 // records that are ALREADY reflected in Postgres (via WALSeq) must never

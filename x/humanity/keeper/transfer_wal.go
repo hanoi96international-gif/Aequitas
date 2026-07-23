@@ -558,10 +558,24 @@ func (cs *ChainState) recoverFromWAL(path string) error {
 		if fromApplied || toApplied {
 			reappliedCount++
 			if cs.db != nil {
-				cs.walFlushQueue = append(cs.walFlushQueue, walFlushItem{
-					from: rec.From, to: rec.To,
-					tx: Transaction{Type: "transfer", Wallet: rec.From, To: rec.To, Amount: rec.Amount, TxHash: rec.TxHash},
-				})
+				// FIX (found via local crash-recovery drill, 2026-07-23): this used
+				// to append directly to cs.walFlushQueue instead of going through
+				// enqueueWALFlushLocked -- which also calls
+				// ensureWALFlushWorkerStarted(). Confirmed live in a local kill-9
+				// test: a record reapplied here (crash landed after a WAL append
+				// but before that item's periodic flush) stayed in-memory-correct
+				// forever but NEVER reached Postgres, because nothing else in a
+				// freshly-restarted, otherwise-idle process ever starts the flush
+				// worker on its own. Beyond the visible "Explorer/other-validator
+				// view never catches up" lag this file's top comment already
+				// documents, this is worse than that documented lag: a node whose
+				// OWN next block includes this transaction's outbox row would
+				// never mint it (row never reached pending_txs), while its
+				// StateRoot already reflects the recovered balance change -- a
+				// mismatch other nodes replaying only the transactions they
+				// actually received could not reproduce, i.e. a real, permanent
+				// fork risk for this validator, not just eventual-consistency lag.
+				cs.enqueueWALFlushLocked(rec.From, rec.To, Transaction{Type: "transfer", Wallet: rec.From, To: rec.To, Amount: rec.Amount, TxHash: rec.TxHash})
 			}
 		}
 		return nil
