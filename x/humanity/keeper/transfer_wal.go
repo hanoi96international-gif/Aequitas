@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"math"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/hanoi96international-gif/aequitas-chain/x/humanity/wal"
@@ -353,7 +354,28 @@ func (cs *ChainState) flushWALQueue() {
 // excluding other transfers -- the same tradeoff the ORIGINAL
 // runTransferBatcher design already accepts for its own DB round trip, just
 // applied here to the WAL reconciliation path instead.
+//
+// FIX (2026-07-23, TPS-benchmark investigation): this used to write one
+// account UPSERT and one outbox INSERT per item via N separate round-trip
+// Exec calls inside the single open tx -- for a full walFlushMaxBatch (500)
+// batch, measured at 150-230ms wall-clock per flush (confirmed via timing
+// instrumentation during this investigation), ALL of it spent holding the
+// cs.mu.Lock() described above. At walFlushInterval (500ms), that is 30-45%
+// of total wall-clock time spent fully stopping every other transfer in the
+// system -- directly cancelling out much of the throughput benefit WAL was
+// built for (removing Postgres round-trip latency from the critical path),
+// confirmed live: the WAL path benchmarked AT OR BELOW the non-WAL shard-
+// lock baseline before this fix. Now issues exactly ONE multi-row UPSERT
+// (via VALUES(...),(...),... + EXCLUDED, same technique
+// saveAccountsToDBBatchCtx already uses) and ONE multi-row outbox INSERT
+// per flush instead of up to 1000 individual statements -- same guarantees
+// (the wal_seq < EXCLUDED.wal_seq guard is evaluated per row, identically
+// to the old per-statement WHERE clause), same cs.mu.Lock() scope, just far
+// less time spent holding it.
 func (cs *ChainState) flushWALBatch(batch []walFlushItem) error {
+	if len(batch) == 0 {
+		return nil
+	}
 	addrs := make(map[string]struct{}, len(batch)*2)
 	for _, item := range batch {
 		addrs[item.from] = struct{}{}
@@ -383,36 +405,51 @@ func (cs *ChainState) flushWALBatch(batch []walFlushItem) error {
 	}
 	ctx := withTx(context.Background(), tx)
 
+	// Single multi-row UPSERT for every touched account. is_human/
+	// tusd_balance/lp_shares are intentionally not in the VALUES list, same
+	// as the old per-row statement -- they default to the schema's own
+	// defaults for a brand-new row, correct here because
+	// transferConcurrentWAL's own eligibility check already guarantees this
+	// address is warm with no demurrage/pool interaction pending.
+	acctValuesSQL := make([]string, 0, len(snapshots))
+	acctArgs := make([]interface{}, 0, len(snapshots)*3)
+	i := 0
 	for addr, snap := range snapshots {
-		// Monotonic guard (WHERE wal_seq < $3): belt-and-suspenders on top
-		// of the cs.mu.Lock() exclusivity above -- an out-of-order RETRY of
-		// a failed batch (flushWALQueue requeues on failure) can still
-		// never regress a row's balance/wal_seq backward to a stale value,
-		// even though cs.mu.Lock() already prevents the slow-path race this
-		// function's own doc comment describes. INSERT branch handles a
-		// genuinely new row (never yet written by anything); is_human/
-		// tusd_balance/lp_shares default to the schema's own defaults for a
-		// brand-new row -- correct here because transferConcurrentWAL's own
-		// eligibility check already guarantees this address is warm with no
-		// demurrage/pool interaction pending, so those fields are not this
-		// write's concern.
-		if _, err := cs.dbExecCtx(ctx).Exec(`
-			INSERT INTO chain_accounts (address, balance, wal_seq, version)
-			VALUES ($1, $2, $3, 1)
-			ON CONFLICT (address) DO UPDATE
-			SET balance = $2, wal_seq = $3
-			WHERE chain_accounts.wal_seq < $3`,
-			addr, snap.balance, snap.walSeq); err != nil {
-			tx.Rollback()
-			return fmt.Errorf("could not upsert account %s during WAL flush: %w", addr, err)
-		}
+		n := i * 3
+		acctValuesSQL = append(acctValuesSQL, fmt.Sprintf("($%d::text,$%d::double precision,$%d::bigint)", n+1, n+2, n+3))
+		acctArgs = append(acctArgs, addr, snap.balance, snap.walSeq)
+		i++
 	}
-	for _, item := range batch {
-		if err := savePendingTxExec(cs.dbExecCtx(ctx), item.tx); err != nil {
-			tx.Rollback()
-			return fmt.Errorf("could not queue outbox tx for %s->%s during WAL flush: %w", item.from, item.to, err)
-		}
+	acctQuery := `INSERT INTO chain_accounts (address, balance, wal_seq, version)
+SELECT address, balance, wal_seq, 1 FROM (VALUES ` + strings.Join(acctValuesSQL, ",") + `) AS v(address, balance, wal_seq)
+ON CONFLICT (address) DO UPDATE
+SET balance = EXCLUDED.balance, wal_seq = EXCLUDED.wal_seq
+WHERE chain_accounts.wal_seq < EXCLUDED.wal_seq`
+	if _, err := cs.dbExecCtx(ctx).Exec(acctQuery, acctArgs...); err != nil {
+		tx.Rollback()
+		return fmt.Errorf("could not upsert %d account(s) during WAL flush: %w", len(snapshots), err)
 	}
+
+	// Single multi-row outbox INSERT for every item in the batch.
+	txValuesSQL := make([]string, 0, len(batch))
+	txArgs := make([]interface{}, 0, len(batch)*2)
+	now := time.Now().Unix()
+	for j, item := range batch {
+		data, err := json.Marshal(item.tx)
+		if err != nil {
+			tx.Rollback()
+			return fmt.Errorf("could not marshal outbox tx for %s->%s during WAL flush: %w", item.from, item.to, err)
+		}
+		n := j * 2
+		txValuesSQL = append(txValuesSQL, fmt.Sprintf("($%d,$%d)", n+1, n+2))
+		txArgs = append(txArgs, string(data), now)
+	}
+	txQuery := `INSERT INTO pending_txs (tx_json, created_at) VALUES ` + strings.Join(txValuesSQL, ",")
+	if _, err := cs.dbExecCtx(ctx).Exec(txQuery, txArgs...); err != nil {
+		tx.Rollback()
+		return fmt.Errorf("could not queue %d outbox tx(s) during WAL flush: %w", len(batch), err)
+	}
+
 	if err := tx.Commit(); err != nil {
 		return fmt.Errorf("WAL flush commit failed: %w", err)
 	}
