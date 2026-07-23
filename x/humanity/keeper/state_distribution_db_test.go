@@ -53,6 +53,19 @@ func distTestAddr(n int) string {
 // fixes for the same underlying shared-DB leftover-state hazard.
 func truncateDistTestTables(t *testing.T) {
 	t.Helper()
+	// FIX (2026-07-23, CI failure investigation): this used to dial Postgres
+	// unconditionally, unlike every other DB-opt-in helper in this project
+	// (skipUnlessRealDBBenchEnv, newWALTestState, etc.) -- harmless whenever
+	// a real DATABASE_URL happened to be set (every local run this session),
+	// but in GitHub Actions CI (no DATABASE_URL, no Postgres service
+	// container) every caller failed immediately here instead of skipping,
+	// which blocked deploy's own "needs: test" gate on both Contabo
+	// workflows. Same skip condition as the rest of this file's own
+	// opt-in tests, just centralized here since callers run this before
+	// their own individual checks (see e.g. transfer_wal_test.go).
+	if os.Getenv("AEQUITAS_TPS_BENCH") != "1" || os.Getenv("DATABASE_URL") == "" {
+		t.Skip("opt-in only: set AEQUITAS_TPS_BENCH=1 and DATABASE_URL (a disposable local Postgres) to run")
+	}
 	db, err := sql.Open("postgres", os.Getenv("DATABASE_URL"))
 	if err != nil {
 		t.Fatalf("truncateDistTestTables: open: %v", err)
