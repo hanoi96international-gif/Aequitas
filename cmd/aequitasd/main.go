@@ -8,6 +8,7 @@ import (
 "net/url"
 "os"
 "os/signal"
+"runtime/debug"
 "strconv"
 "strings"
 "syscall"
@@ -232,6 +233,30 @@ fmt.Printf("Version:       %s\n", VERSION)
 fmt.Printf("Chain ID:      %s\n", CHAIN_ID)
 fmt.Printf("Block Time:    %s\n", BLOCK_TIME)
 fmt.Println()
+
+// THROUGHPUT (2026-07-23, TPS-benchmark investigation): the group-commit
+// transfer batcher (x/humanity/keeper/state.go, processTransferBatch)
+// allocates heavily under sustained load -- building per-transfer request
+// structs, batched SQL args, JSON-marshaled outbox rows, etc. -- and Go's
+// default GOGC=100 (a new GC cycle once live heap doubles) means the
+// garbage collector competes directly with that same batcher for CPU on
+// every cycle. Measured on the shared-recipient TPS benchmark at 2000
+// concurrent senders (3 runs each, same system load): GOGC=100 (default)
+// averaged ~15.0k TPS, GOGC=200 ~17.1k (+14%), GOGC=400 ~19.1k (+27%).
+// Chose 200 over chasing the full 400 gain: it's a real memory-for-CPU
+// trade (the heap is allowed to grow to ~3x live size instead of ~2x
+// before a collection triggers), and this process's live heap grows with
+// registered-human/account count over the node's real operational
+// lifetime in a way this benchmark's small, synthetic account set can't
+// characterize -- 200 captures most of the throughput gain with a less
+// aggressive memory ceiling than 400. Skipped entirely if the operator
+// has already set GOGC themselves (standard Go env var, not
+// Aequitas-specific -- see this file's own "ENVIRONMENT VARIABLES"
+// section for why new operator-facing knobs are added sparingly here):
+// their explicit choice wins over this default in every case.
+if os.Getenv("GOGC") == "" {
+debug.SetGCPercent(200)
+}
 
 // FIX (2026-07-04): several circuit-breaker constants in the keeper
 // package (x/humanity/keeper/block.go) were tuned assuming a 2s
