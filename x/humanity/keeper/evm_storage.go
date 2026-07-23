@@ -187,14 +187,29 @@ func (cs *ChainState) SaveStorageSlots(address string, slots map[string]string) 
 		return nil
 	}
 	address = strings.ToLower(address)
-	valuesSQL := make([]string, 0, len(slots))
+	// See saveAccountsToDBBatchCtx's FIX comment (state.go) for the
+	// Sprintf+Join -> strings.Builder+writeDollarParam technique applied
+	// here — this runs on every registration and every intercepted V7
+	// transfer (see this function's own doc comment), not just a
+	// background flush.
+	var valuesSQL strings.Builder
+	valuesSQL.Grow(len(slots) * 16) // "($NNN,$NNN,$NNN)," rounded up
 	args := make([]interface{}, 0, len(slots)*3)
+	first := true
 	for slot, value := range slots {
+		if !first {
+			valuesSQL.WriteByte(',')
+		}
+		first = false
 		n := len(args)
-		valuesSQL = append(valuesSQL, fmt.Sprintf("($%d,$%d,$%d)", n+1, n+2, n+3))
+		valuesSQL.WriteByte('(')
+		writeDollarParam(&valuesSQL, n+1, ",")
+		writeDollarParam(&valuesSQL, n+2, ",")
+		writeDollarParam(&valuesSQL, n+3, "")
+		valuesSQL.WriteByte(')')
 		args = append(args, address, slot, value)
 	}
-	query := `INSERT INTO evm_storage (address, slot, value) VALUES ` + strings.Join(valuesSQL, ",") +
+	query := `INSERT INTO evm_storage (address, slot, value) VALUES ` + valuesSQL.String() +
 		` ON CONFLICT (address, slot) DO UPDATE SET value = EXCLUDED.value`
 	_, err := cs.db.Exec(query, args...)
 	return err
@@ -720,14 +735,28 @@ func (cs *ChainState) doSyncBalanceLocked(contractAddr string, addrs ...string) 
 		return
 	}
 
-	valuesSQL := make([]string, len(writes))
+	// See saveAccountsToDBBatchCtx's FIX comment (state.go) for why this
+	// builds directly into a pre-sized strings.Builder via writeDollarParam
+	// instead of one fmt.Sprintf call per row plus a final strings.Join —
+	// same technique, same measured payoff, applied here since this
+	// function's own batch size scales with how many addresses the EVM
+	// mirror flush worker has accumulated since its last tick.
+	var valuesSQL strings.Builder
+	valuesSQL.Grow(len(writes) * 18) // "($NNN, $NNN, $NNN)," rounded up
 	args := make([]interface{}, 0, len(writes)*3)
 	for i, w := range writes {
+		if i > 0 {
+			valuesSQL.WriteByte(',')
+		}
 		n := i * 3
-		valuesSQL[i] = fmt.Sprintf("($%d, $%d, $%d)", n+1, n+2, n+3)
+		valuesSQL.WriteByte('(')
+		writeDollarParam(&valuesSQL, n+1, ", ")
+		writeDollarParam(&valuesSQL, n+2, ", ")
+		writeDollarParam(&valuesSQL, n+3, "")
+		valuesSQL.WriteByte(')')
 		args = append(args, contractAddr, w.slot, w.value)
 	}
-	query := `INSERT INTO evm_storage (address, slot, value) VALUES ` + strings.Join(valuesSQL, ",") +
+	query := `INSERT INTO evm_storage (address, slot, value) VALUES ` + valuesSQL.String() +
 		` ON CONFLICT (address, slot) DO UPDATE SET value = EXCLUDED.value`
 	_, err := cs.dbExec().Exec(query, args...)
 	if err != nil {

@@ -411,17 +411,28 @@ func (cs *ChainState) flushWALBatch(batch []walFlushItem) error {
 	// defaults for a brand-new row, correct here because
 	// transferConcurrentWAL's own eligibility check already guarantees this
 	// address is warm with no demurrage/pool interaction pending.
-	acctValuesSQL := make([]string, 0, len(snapshots))
+	// See saveAccountsToDBBatchCtx's FIX comment (state.go) for the
+	// Sprintf+Join -> strings.Builder+writeDollarParam technique applied
+	// here and to the outbox INSERT below.
+	var acctValuesSQL strings.Builder
+	acctValuesSQL.Grow(len(snapshots) * 40) // "($NNN::text,$NNN::double precision,$NNN::bigint)," rounded up
 	acctArgs := make([]interface{}, 0, len(snapshots)*3)
 	i := 0
 	for addr, snap := range snapshots {
+		if i > 0 {
+			acctValuesSQL.WriteByte(',')
+		}
 		n := i * 3
-		acctValuesSQL = append(acctValuesSQL, fmt.Sprintf("($%d::text,$%d::double precision,$%d::bigint)", n+1, n+2, n+3))
+		acctValuesSQL.WriteByte('(')
+		writeDollarParam(&acctValuesSQL, n+1, "::text,")
+		writeDollarParam(&acctValuesSQL, n+2, "::double precision,")
+		writeDollarParam(&acctValuesSQL, n+3, "::bigint")
+		acctValuesSQL.WriteByte(')')
 		acctArgs = append(acctArgs, addr, snap.balance, snap.walSeq)
 		i++
 	}
 	acctQuery := `INSERT INTO chain_accounts (address, balance, wal_seq, version)
-SELECT address, balance, wal_seq, 1 FROM (VALUES ` + strings.Join(acctValuesSQL, ",") + `) AS v(address, balance, wal_seq)
+SELECT address, balance, wal_seq, 1 FROM (VALUES ` + acctValuesSQL.String() + `) AS v(address, balance, wal_seq)
 ON CONFLICT (address) DO UPDATE
 SET balance = EXCLUDED.balance, wal_seq = EXCLUDED.wal_seq
 WHERE chain_accounts.wal_seq < EXCLUDED.wal_seq`
@@ -431,7 +442,8 @@ WHERE chain_accounts.wal_seq < EXCLUDED.wal_seq`
 	}
 
 	// Single multi-row outbox INSERT for every item in the batch.
-	txValuesSQL := make([]string, 0, len(batch))
+	var txValuesSQL strings.Builder
+	txValuesSQL.Grow(len(batch) * 12) // "($NNNN,$NNNN)," rounded up
 	txArgs := make([]interface{}, 0, len(batch)*2)
 	now := time.Now().Unix()
 	for j, item := range batch {
@@ -440,11 +452,17 @@ WHERE chain_accounts.wal_seq < EXCLUDED.wal_seq`
 			tx.Rollback()
 			return fmt.Errorf("could not marshal outbox tx for %s->%s during WAL flush: %w", item.from, item.to, err)
 		}
+		if j > 0 {
+			txValuesSQL.WriteByte(',')
+		}
 		n := j * 2
-		txValuesSQL = append(txValuesSQL, fmt.Sprintf("($%d,$%d)", n+1, n+2))
+		txValuesSQL.WriteByte('(')
+		writeDollarParam(&txValuesSQL, n+1, ",")
+		writeDollarParam(&txValuesSQL, n+2, "")
+		txValuesSQL.WriteByte(')')
 		txArgs = append(txArgs, string(data), now)
 	}
-	txQuery := `INSERT INTO pending_txs (tx_json, created_at) VALUES ` + strings.Join(txValuesSQL, ",")
+	txQuery := `INSERT INTO pending_txs (tx_json, created_at) VALUES ` + txValuesSQL.String()
 	if _, err := cs.dbExecCtx(ctx).Exec(txQuery, txArgs...); err != nil {
 		tx.Rollback()
 		return fmt.Errorf("could not queue %d outbox tx(s) during WAL flush: %w", len(batch), err)
