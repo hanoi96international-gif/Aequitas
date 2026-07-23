@@ -78,8 +78,9 @@ jobs:
             crontab -l 2>&1 || echo "(keine crontab fuer root)"
             systemctl list-timers --all 2>&1 | grep -iE 'aequitas|deploy' || echo "(keine passenden systemd-Timer)"
 
-            echo "=== WAL-Verzeichnis + Datei ==="
-            ls -la /root/aequitas_transfers.wal 2>&1 || echo "(WAL-Datei existiert nicht -- falls WAL wirklich aktiv waere, muesste sie existieren)"
+            echo "=== WAL-Verzeichnis + Datei (host-seitiger Mount, deploy_safe_c2.sh v3) ==="
+            ls -la /root/aequitas-wal-data/ 2>&1 || echo "(Mount-Verzeichnis existiert nicht)"
+            ls -la /root/aequitas-wal-data/aequitas_transfers.wal 2>&1 || echo "(WAL-Datei existiert nicht -- falls WAL wirklich aktiv waere, muesste sie existieren)"
 
             echo "=== Gesamtzahl Log-Zeilen seit Container-Start ==="
             docker logs "$CONTAINER" 2>&1 | wc -l

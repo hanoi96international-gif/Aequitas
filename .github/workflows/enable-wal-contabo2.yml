@@ -23,6 +23,13 @@ name: Enable WAL + Multi-Block-Tick on Contabo2 (manual, one node only)
 #
 # Rollback: run enable-wal-contabo2.yml's sibling, rollback-wal-contabo2.yml
 # (also workflow_dispatch-only).
+#
+# Requires deploy_safe_c2.sh v3 (patch-deploy-safe-c2.yml) to actually be
+# safe: v1/v2 fixed the flags not reaching the container at all, but the
+# WAL file itself lived inside the container's writable layer, destroyed
+# by every deploy_safe_c2.sh run -- v3 added a host-backed volume mount at
+# /data/wal so it survives. AEQUITAS_WAL_PATH below points inside that
+# mount for exactly that reason; do not change it to a bare /root/... path.
 on:
   workflow_dispatch: {}
 
@@ -49,7 +56,12 @@ jobs:
             echo "Backup: $BACKUP"
 
             grep -q '^AEQUITAS_WAL_ENABLED=' "$ENV_FILE" || echo "AEQUITAS_WAL_ENABLED=1" >> "$ENV_FILE"
-            grep -q '^AEQUITAS_WAL_PATH=' "$ENV_FILE" || echo "AEQUITAS_WAL_PATH=/root/aequitas_transfers.wal" >> "$ENV_FILE"
+            # /data/wal is a dedicated host-backed volume mount (deploy_safe_c2.sh
+            # v3) -- the container's own writable layer does NOT survive
+            # docker rm, which happens on every deploy including automatic
+            # ones. A path outside /data/wal here would silently reintroduce
+            # the data-loss risk documented in STAGING_RUNBOOK.md.
+            grep -q '^AEQUITAS_WAL_PATH=' "$ENV_FILE" || echo "AEQUITAS_WAL_PATH=/data/wal/aequitas_transfers.wal" >> "$ENV_FILE"
             grep -q '^ENABLE_MULTI_BLOCK_TICK=' "$ENV_FILE" || echo "ENABLE_MULTI_BLOCK_TICK=1" >> "$ENV_FILE"
 
             echo "=== .aequitas.env now (values redacted for secrets, flags shown) ==="
