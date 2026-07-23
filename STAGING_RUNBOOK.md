@@ -385,10 +385,74 @@ committen (korrektes Verhalten) — aber die Häufigkeit auf einem
 Produktionsknoten ist ein eigenes offenes Follow-up, nicht Teil dieser
 Diagnose.
 
-**NICHT behoben:** `deploy_safe_c2.sh` selbst liegt nur auf dem Server,
-nicht in diesem Repo — ein Fix (z. B. `/root/.aequitas.env` zusätzlich
-einlesen und nur fehlende/neue Keys über den geerbten Container-Env legen,
-mit derselben `RESYNC_FROM_SNAPSHOT`-Ausnahme) ändert den Deploy-Mechanismus
-eines laufenden Produktionsknotens und wurde bewusst NICHT ungefragt per
-SSH auf den Server geschrieben — das ist eine Entscheidung, die
-explizit bestätigt werden sollte, bevor sie live angewendet wird.
+## Update — Fix angewendet, live WAL-Aktivierung versucht, dann bewusst zurückgerollt (2026-07-23, Fortsetzung)
+
+Auf explizite Nutzerfreigabe hin wurde `deploy_safe_c2.sh` tatsächlich per
+SSH gepatcht (`patch-deploy-safe-c2.yml`, neu: Backup mit Zeitstempel,
+Schreiben in eine `.new`-Staging-Datei, `bash -n`-Syntaxcheck VOR jeder
+Installation, erst danach atomarer `mv`). Patch v1: `.aequitas.env` wird
+jetzt zusätzlich zum geerbten Container-Env eingelesen, Datei-Werte
+gewinnen bei Kollision. `enable-wal-contabo2.yml` danach ausgeführt —
+**zum ersten Mal überhaupt** zeigte der Boot-Log echte `[WAL]`-Zeilen
+(`[WAL] ✓ WAL fast path active for eligible transfers`) und die
+`ENABLE_MULTI_BLOCK_TICK=1`-Warnung.
+
+**Zwei neue Befunde direkt danach, beide ernst:**
+
+1. **WAL-Datei ist nicht persistent — `docker run` in `deploy_safe_c2.sh`
+   hat keinerlei `-v`-Volume-Mount.** Der WAL-Prozess läuft vollständig im
+   Container (`os.OpenFile` mit `O_CREATE` legt die Datei im
+   Container-eigenen, schreibbaren Layer an, nicht auf dem Host). Da
+   `deploy-contabo2.yml` bei JEDEM Push auf `main` automatisch
+   `docker stop && docker rm && docker run` ausführt (frischer Container,
+   nichts vom alten überlebt), würde jede WAL-durable, aber noch nicht
+   nach Postgres geflushte Transaktion beim nächsten Redeploy
+   ersatzlos verloren gehen — ohne Fehler, ohne Möglichkeit für
+   `recoverFromWAL`, das Replay durchzuführen (die Datei existiert nach
+   `docker rm` schlicht nicht mehr). Das ist ein Risiko, das dieses
+   Dokument und SCALING_ARCHITECTURE.md vorher nicht kannten (bisherige
+   Sorgen: Fsync-Durchsatz, GC-Pausen — nicht "die WAL-Datei überlebt die
+   eigene routinemäßige Redeploy-Pipeline nicht").
+2. **Rollback v1 hat nicht wirklich abgeschaltet.** Patch v1 hat
+   `.aequitas.env` nur ÜBER den geerbten Container-Env gelegt, nie das
+   Entfernen einer Zeile aus der Datei als "diesen Key jetzt entfernen"
+   interpretiert. `rollback-wal-contabo2.yml` entfernt die drei Zeilen aus
+   der Datei — aber der ALTE Container (der gerade ersetzt wird) hatte sie
+   noch gesetzt, also wurden sie unverändert weitervererbt. Live bestätigt:
+   nach einem vollständigen Rollback-Lauf zeigte der nächste Boot-Log immer
+   noch `[WAL] ✓ WAL fast path active`. **Fix (v2):** die drei Flags
+   (`AEQUITAS_WAL_ENABLED`, `AEQUITAS_WAL_PATH`, `ENABLE_MULTI_BLOCK_TICK`)
+   sind jetzt zusätzlich vom geerbten-Env-Durchlauf ausgeschlossen (gleiche
+   Behandlung wie `PATH`/`HOSTNAME`/`HOME`/`RESYNC_FROM_SNAPSHOT`) — sie
+   kommen ab sofort ausschließlich aus `.aequitas.env`, jeder Deploy neu,
+   kein Vererben vom Vorgänger-Container. Vor dem Ausrollen lokal mit zwei
+   Szenarien (Datei enthält die Flags / Datei enthält sie nicht) verifiziert.
+
+**Reaktion:** Wegen Punkt 1 (echtes Datenverlustrisiko auf einem
+produktiven, geldbewegenden Ledger) wurde WAL sofort wieder deaktiviert —
+`rollback-wal-contabo2.yml` erneut ausgeführt, diesmal mit dem v2-Patch,
+und über einen weiteren Verify-Lauf bestätigt: **null** `[WAL]`-Zeilen im
+gesamten Boot-Log, keine `ENABLE_MULTI_BLOCK_TICK`-Warnung, Höhe steigt
+normal (+10 in 5s), `[DAG] 🔀 Merged N tips`-Zeilen laufen wieder
+regelmäßig. Contabo2 läuft wieder komplett auf dem alten, monatelang
+stabilen synchronen Pfad — WAL/Multi-Block-Tick sind aus, bestätigt, nicht
+nur angenommen.
+
+**Nebenbefund, der zwischenzeitlich als "Nodes mergen nicht mehr richtig"
+gemeldet wurde:** deckt sich mit `ENABLE_MULTI_BLOCK_TICK=1` (Code-Kommentar
+des Feature-Flags selbst: "NOT staging-validated, multi-node
+consensus-timing change") — vermehrte `queued as orphan`/Reject-Zeilen im
+Log-Fenster, während das Flag aktiv war. Mit dem bestätigten Rollback ist
+das mit-behoben; eine tiefere Ursachenanalyse (ob multi-block-tick allein
+oder das Zusammenspiel mit dem WAL-Fastpath der Auslöser war) steht noch
+aus, ist aber jetzt kein akutes Problem mehr, da beide Flags aus sind.
+
+**Aktueller Stand:** `deploy_safe_c2.sh` liest `.aequitas.env` jetzt
+korrekt (v2, verifiziert). Der Datei-Mechanismus für enable/rollback
+funktioniert damit endlich wie ursprünglich gedacht. **Trotzdem NICHT
+erneut aktivieren, ohne vorher Punkt 1 zu lösen** (Volume-Mount für die
+WAL-Datei einrichten, oder einen anderen Persistenz-Mechanismus, der einen
+`docker rm` übersteht) — sonst bleibt das Datenverlustrisiko bei jedem
+künftigen Redeploy bestehen, Tooling-Fix hin oder her. Die ursprünglich
+vorgeschriebene, mehrtägige Staging-Kampagne dieses Dokuments bleibt davon
+unabhängig weiterhin ausstehend.
