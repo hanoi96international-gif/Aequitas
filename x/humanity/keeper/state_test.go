@@ -726,3 +726,32 @@ func TestEnsureAccountsLoaded_SkipsAlreadyCachedAccounts(t *testing.T) {
 		t.Fatalf("expected balance to stay 42, got %v", acct(cs, "0x01").Balance.Float())
 	}
 }
+
+// TestAccountLeaf_GoldenValues pins accountLeaf's exact byte output for a
+// handful of representative accounts. accountLeaf feeds directly into
+// accountSetXOR, which is part of the consensus-critical StateRoot -- ANY
+// change to its output (a different hash algorithm, a different serialized
+// string, even just field order) would make every node compute a different
+// StateRoot for identical state, a hard fork by accident. These values were
+// captured from accountLeaf's behavior before a pure performance rewrite
+// (fmt.Sprintf -> strings.Builder, no field/format change) -- this test is
+// what proves that rewrite is byte-identical, not just "looks equivalent".
+func TestAccountLeaf_GoldenValues(t *testing.T) {
+	cases := []struct {
+		acc  *AccountState
+		want string
+	}{
+		{&AccountState{Address: "0xAAAA000000000000000000000000000000AAAA", Balance: NewDecimal(1000), TUsdBalance: NewDecimal(0), LPShares: NewDecimal(0), IsHuman: false, FaucetClaimed: false},
+			"4bce5d80811a6afb3d3db5c54851fe6d83d8fb84357b147b9611da99670a2967"},
+		{&AccountState{Address: "0xbbbb000000000000000000000000000000bbbb", Balance: NewDecimal(0.0001), TUsdBalance: NewDecimal(250.5), LPShares: NewDecimal(12.75), IsHuman: true, FaucetClaimed: true},
+			"93b0b0f3353ab0f26d576d8902c851df6e9855aa051c542006c118ea0a3d67c1"},
+		{&AccountState{Address: "0xcccc000000000000000000000000000000cccc", Balance: NewDecimal(0), TUsdBalance: NewDecimal(0), LPShares: NewDecimal(0), IsHuman: true, FaucetClaimed: false},
+			"20d2baf6e2994f91ce6d6f9038934b556ffd3b070b28356216525bb9b811529b"},
+	}
+	for i, c := range cases {
+		got := fmt.Sprintf("%x", accountLeaf(c.acc))
+		if got != c.want {
+			t.Errorf("case %d: accountLeaf changed its output — got %s, want %s (this must NEVER change without a coordinated, versioned StateRoot migration)", i, got, c.want)
+		}
+	}
+}

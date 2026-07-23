@@ -5823,18 +5823,52 @@ func xorInto(dst *[32]byte, src [32]byte) {
 // balance that should never go negative but somehow did is still committed,
 // so such a bug stays visible to consensus rather than hashing identically to
 // an absent account.
+// FIX (2026-07-23, TPS-benchmark investigation): CPU profiling of the
+// WAL-enabled ingestion path (see transfer_wal.go) found accountLeaf as one
+// of the single hottest functions -- it runs twice per transfer (once per
+// side) on every account mutation. The cost was almost entirely
+// fmt.Sprintf's own overhead (reflection-based formatting, an intermediate
+// string allocation before the final []byte(s) conversion for hashing), not
+// the sha256 computation itself. Rewritten to build the identical byte
+// sequence directly via strconv.AppendInt into a stack-local scratch array
+// (same technique as writeDollarParam elsewhere in this file), skipping the
+// intermediate string entirely.
+//
+// CONSENSUS-CRITICAL: the exact byte sequence fed to sha256.Sum256 below
+// MUST remain byte-for-byte identical to the old Sprintf-built string, or
+// every node computes a different accountLeaf for the same account state --
+// a silent StateRoot fork, not just a local bug. TestAccountLeaf_GoldenValues
+// (state_test.go) pins accountLeaf's output for representative inputs,
+// captured from the old Sprintf implementation before this rewrite, and
+// must keep passing unchanged.
 func accountLeaf(acc *AccountState) [32]byte {
 	if !(acc.IsHuman || acc.Balance != 0 || acc.TUsdBalance != 0 || acc.LPShares != 0) {
 		return [32]byte{}
 	}
-	s := fmt.Sprintf("acct:%s:%d:%d:%d:h=%v:fc=%v",
-		strings.ToLower(acc.Address),
-		acc.Balance.Micro(),
-		acc.TUsdBalance.Micro(),
-		acc.LPShares.Micro(),
-		acc.IsHuman,
-		acc.FaucetClaimed)
-	return sha256.Sum256([]byte(s))
+	addr := strings.ToLower(acc.Address)
+	var scratch [160]byte // generous for "acct:" + address + 3 int64s + ":h=false:fc=false"; append grows to heap if ever exceeded, still correct
+	b := scratch[:0]
+	b = append(b, "acct:"...)
+	b = append(b, addr...)
+	b = append(b, ':')
+	b = strconv.AppendInt(b, acc.Balance.Micro(), 10)
+	b = append(b, ':')
+	b = strconv.AppendInt(b, acc.TUsdBalance.Micro(), 10)
+	b = append(b, ':')
+	b = strconv.AppendInt(b, acc.LPShares.Micro(), 10)
+	b = append(b, ":h="...)
+	if acc.IsHuman {
+		b = append(b, "true"...)
+	} else {
+		b = append(b, "false"...)
+	}
+	b = append(b, ":fc="...)
+	if acc.FaucetClaimed {
+		b = append(b, "true"...)
+	} else {
+		b = append(b, "false"...)
+	}
+	return sha256.Sum256(b)
 }
 
 // nullifierLeaf returns a nullifier key's contribution to nullifierSetXOR.
