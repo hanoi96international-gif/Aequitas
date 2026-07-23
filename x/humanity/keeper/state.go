@@ -4011,11 +4011,14 @@ func (cs *ChainState) TransferAtomic(from, to string, amount float64, pendingTxT
 	}
 	if cs.wal != nil {
 		if fLost, tLost, applied, werr := cs.transferConcurrentWAL(from, to, amount, pendingTxTemplate); applied {
+			transferFastPathApplied.Add(1)
 			return fLost, tLost, werr
 		}
 	} else if fLost, tLost, applied, cerr := cs.transferConcurrent(from, to, amount, pendingTxTemplate); applied {
+		transferFastPathApplied.Add(1)
 		return fLost, tLost, cerr
 	}
+	transferFastPathFallback.Add(1)
 	cs.ensureTransferBatcherStarted()
 	req := &transferBatchRequest{
 		from: from, to: to, amount: amount,
@@ -4025,6 +4028,34 @@ func (cs *ChainState) TransferAtomic(from, to string, amount float64, pendingTxT
 	cs.transferBatchCh <- req
 	res := <-req.result
 	return res.fromLost, res.toLost, res.err
+}
+
+// transferFastPathApplied/transferFastPathFallback count, process-wide, how
+// often TransferAtomic's shard-locked/WAL fast path actually ran versus
+// fell through to the batcher (cold account, contended shard, wealth-cap/
+// demurrage edge case, or WAL/DB unavailable -- see transferConcurrent/
+// transferConcurrentWAL's own eligibility checks for the exact conditions).
+// Cheap (single atomic add on the already-hot transfer path) and exists so
+// this ratio can be measured directly instead of inferred from throughput
+// alone -- see TestSimulateMaxTPS_WarmSteadyState, which reports it.
+var (
+	transferFastPathApplied  atomic.Int64
+	transferFastPathFallback atomic.Int64
+)
+
+// TransferFastPathStats returns the process-wide applied/fallback counts
+// since the last ResetTransferFastPathStats call (or process start).
+// Exported for benchmarks/diagnostics only -- not read anywhere in the
+// normal transfer path itself.
+func TransferFastPathStats() (applied, fallback int64) {
+	return transferFastPathApplied.Load(), transferFastPathFallback.Load()
+}
+
+// ResetTransferFastPathStats zeroes both counters, e.g. so a benchmark can
+// exclude an untimed warm-up pass from the ratio it reports.
+func ResetTransferFastPathStats() {
+	transferFastPathApplied.Store(0)
+	transferFastPathFallback.Store(0)
 }
 
 // transferAtomicDirect is TransferAtomic's original, unbatched

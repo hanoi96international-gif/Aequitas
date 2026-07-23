@@ -446,6 +446,10 @@ func TestSimulateMaxTPS_WarmSteadyState(t *testing.T) {
 			t.Fatalf("warm-up transfer %d failed: %v", i, err)
 		}
 	}
+	// Reset so the applied/fallback split below reflects only the timed
+	// loop, not the warm-up pass above (which is expected to fall back —
+	// every account is cold on its very first touch, by construction).
+	ResetTransferFastPathStats()
 
 	if path := os.Getenv("AEQUITAS_TPS_CPUPROFILE"); path != "" {
 		f, err := os.Create(path)
@@ -485,11 +489,18 @@ func TestSimulateMaxTPS_WarmSteadyState(t *testing.T) {
 
 	total := succeeded + failed
 	tps := float64(succeeded) / elapsed.Seconds()
+	fastApplied, fastFallback := TransferFastPathStats()
+	fastTotal := fastApplied + fastFallback
+	var fastPathPct float64
+	if fastTotal > 0 {
+		fastPathPct = 100 * float64(fastApplied) / float64(fastTotal)
+	}
 
 	t.Logf("=== Max TPS simulation: WARM steady state (TransferAtomic, %d concurrent disjoint pairs, accounts pre-warmed, zero manufactured contention) ===", numPairs)
 	t.Logf("attempted: %d  succeeded: %d  failed: %d", total, succeeded, failed)
 	t.Logf("wall clock: %s", elapsed)
 	t.Logf("sustained TPS (single local node, real Postgres, no network latency, steady state): %.1f", tps)
+	t.Logf("fast path applied: %d  batcher fallback: %d  (%.1f%% took the fast path)", fastApplied, fastFallback, fastPathPct)
 	if failed > 0 {
 		t.Errorf("%d/%d transfers failed unexpectedly (pre-funded balances should never run out)", failed, total)
 	}
