@@ -2,7 +2,6 @@ package keeper
 
 import (
 	"encoding/json"
-	"hash/fnv"
 	"sort"
 	"sync"
 )
@@ -79,11 +78,30 @@ func newShardedAccounts() *shardedAccounts {
 // Delete) and, in a later phase, to decide cross-shard lock ordering for
 // operations touching two addresses. FNV-1a: fast, well-distributed for
 // short string keys, no cryptographic properties needed here (this is
-// purely a load-balancing hash, not security-relevant).
+// purely a load-balancing hash, not security-relevant, and this sharding
+// is a pure in-memory runtime detail never persisted or compared across
+// processes -- nothing depends on matching hash/fnv's own numeric output,
+// only on being deterministic and well-distributed within one process).
+//
+// FIX (2026-07-23, 50k-TPS-goal TPS-benchmark investigation): this used to
+// call hash/fnv's New32a() + Write([]byte(addr)) + Sum32() -- on every
+// single call, since this runs on EVERY account touch (Get/Set/Delete/
+// LockAddrs/TryLockAddrs/GetLocked, i.e. the single hottest function in
+// this whole package), that's a hash.Hash32 interface allocation plus a
+// string-to-[]byte conversion (a real copy -- Go strings are immutable,
+// []byte is not) on every call. Inlined here as a manual FNV-1a loop
+// directly over the string's bytes (Go allows indexing a string by byte
+// without converting it), producing the identical algorithm with zero
+// allocations per call.
 func shardIndexFor(addr string) int {
-	h := fnv.New32a()
-	h.Write([]byte(addr))
-	return int(h.Sum32() % uint32(numAccountShards))
+	const offset32 = 2166136261
+	const prime32 = 16777619
+	h := uint32(offset32)
+	for i := 0; i < len(addr); i++ {
+		h ^= uint32(addr[i])
+		h *= prime32
+	}
+	return int(h % uint32(numAccountShards))
 }
 
 func (sa *shardedAccounts) shardFor(addr string) *accountShard {
