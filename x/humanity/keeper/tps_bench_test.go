@@ -54,12 +54,42 @@ func TestSimulateMaxTPS_Ingestion(t *testing.T) {
 	for i := 0; i < numSenders; i++ {
 		addr := fmt.Sprintf("0xbe0000000000000000000000000000000%05x", i)
 		senderAddrs[i] = addr
+		// FIX (2026-07-23, TPS-benchmark investigation): this benchmark
+		// reuses the same persistent bench DB across repeated manual runs
+		// (deterministic addresses, never truncated in between), so a
+		// SENDER address may already be warm in state.accounts (loaded by
+		// NewChainState's own startup loadFromDB scan, correctly, from an
+		// EARLIER run's final version) when this seed write runs. Evicting
+		// first forces the account to start genuinely cold for THIS run, so
+		// its first TransferAtomic call warms it via ensureAccountLoadedCtx
+		// against the value THIS seed write just committed — otherwise the
+		// stale warm entry's cached Version permanently disagrees with what
+		// this seed write just bumped the DB to (this write's own version
+		// increment never reaches an already-warm cs.accounts entry, since
+		// saveAccountToDB here writes straight to Postgres, deliberately
+		// bypassing cs.accounts — see saveAccountToDBInnerCtx's own doc
+		// comment), so every later optimistic-locked write for that address
+		// spuriously conflicts even though nothing else ever touched it
+		// concurrently. Confirmed as the actual root cause via repeated
+		// same-address benchmark runs; state.go's Version==0 handling itself
+		// was ALSO found and fixed in the same investigation (a real,
+		// separate defect — see saveAccountToDBInnerCtx's own FIX comment —
+		// but insufficient alone to fix this benchmark's own stale-warm-
+		// cache-entry issue).
+		state.accounts.Delete(addr)
 		acc := &AccountState{Address: addr, Balance: NewDecimal(1e9), LastActivityAt: time.Now().Unix()}
 		if err := state.saveAccountToDB(acc); err != nil {
 			state.mu.Unlock()
 			t.Fatalf("seeding sender %s: %v", addr, err)
 		}
 	}
+	// The shared recipient is never explicitly seeded (see below — it's
+	// created on demand by the first transfer that touches it), but a prior
+	// run against this same persistent DB may have already warmed it with a
+	// real balance/version — evict for the same reason as the senders above,
+	// so this run starts from a clean, consistent baseline regardless of
+	// what earlier runs left behind.
+	state.accounts.Delete(recipient)
 	state.mu.Unlock()
 
 	if path := os.Getenv("AEQUITAS_TPS_CPUPROFILE"); path != "" {
@@ -152,6 +182,10 @@ func TestSimulateMaxTPS_IngestionDisjointRecipients(t *testing.T) {
 	for i := 0; i < numSenders; i++ {
 		addr := fmt.Sprintf("0xdee0000000000000000000000000000000%04x", i)
 		addrs[i] = addr
+		// See TestSimulateMaxTPS_Ingestion's identical seeding fix (same
+		// FIX comment there, 2026-07-23) for why evicting first is required
+		// when this benchmark reuses a persistent, cross-run bench DB.
+		state.accounts.Delete(addr)
 		acc := &AccountState{Address: addr, Balance: NewDecimal(1e9), LastActivityAt: time.Now().Unix()}
 		if err := state.saveAccountToDB(acc); err != nil {
 			state.mu.Unlock()

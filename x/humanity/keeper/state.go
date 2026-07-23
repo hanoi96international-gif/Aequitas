@@ -2067,10 +2067,39 @@ func (cs *ChainState) saveAccountToDBInnerCtx(ctx context.Context, acc *AccountS
 	// pending_tx outbox insert) instead of always auto-committing on its
 	// own connection.
 	if acc.Version == 0 {
-		// First write: INSERT with version=1, or update if exists without version conflict check
-		result, err = cs.dbExecCtx(ctx).Exec(`INSERT INTO chain_accounts (address, balance, is_human, tusd_balance, lp_shares, last_activity_at, demurrage_14_day_warning_shown, faucet_claimed, version) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 1)
-ON CONFLICT (address) DO UPDATE SET balance = $2, is_human = $3, tusd_balance = $4, lp_shares = $5, last_activity_at = $6, demurrage_14_day_warning_shown = $7, faucet_claimed = $8, version = COALESCE(chain_accounts.version,0) + 1`,
-			acc.Address, acc.Balance.Float(), acc.IsHuman, acc.TUsdBalance.Float(), acc.LPShares.Float(), acc.LastActivityAt, acc.Demurrage14DayWarningShown, acc.FaucetClaimed)
+		// First write: caller has no cached baseline version, so there is
+		// nothing to optimistically check against — INSERT for a genuinely
+		// new address, or UPSERT-bump for one that (unexpectedly) already
+		// has a row.
+		//
+		// FIX (found via TPS-benchmark investigation, 2026-07-23): this used
+		// to blindly set acc.Version = 1 afterward (via the unconditional
+		// acc.Version++ below, starting from the zero value) regardless of
+		// what version the row ACTUALLY ended up at. That's only correct
+		// when the row was genuinely absent before this call. Any caller
+		// that constructs a fresh &AccountState{} (Version left at its Go
+		// zero value) for an address that already has an existing row —
+		// confirmed via a repeated-seed reproduction (TestDebugStaleVersionOverwrite)
+		// mirroring exactly what re-running tps_bench_test.go's seed loop
+		// against the same persistent bench DB does — silently desyncs
+		// acc.Version from the DB's real version forever after, so the very
+		// next optimistic-locked write for that address spuriously conflicts
+		// (rows affected = 0, even though nothing else ever touched the
+		// row). RETURNING version makes acc.Version reflect the row's ACTUAL
+		// resulting version unconditionally, so this self-corrects
+		// regardless of whether the row was new or already existed.
+		if err = cs.dbExecCtx(ctx).QueryRow(`INSERT INTO chain_accounts (address, balance, is_human, tusd_balance, lp_shares, last_activity_at, demurrage_14_day_warning_shown, faucet_claimed, version) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 1)
+ON CONFLICT (address) DO UPDATE SET balance = $2, is_human = $3, tusd_balance = $4, lp_shares = $5, last_activity_at = $6, demurrage_14_day_warning_shown = $7, faucet_claimed = $8, version = COALESCE(chain_accounts.version,0) + 1
+RETURNING version`,
+			acc.Address, acc.Balance.Float(), acc.IsHuman, acc.TUsdBalance.Float(), acc.LPShares.Float(), acc.LastActivityAt, acc.Demurrage14DayWarningShown, acc.FaucetClaimed).Scan(&acc.Version); err != nil {
+			fmt.Printf("[DB] Error saving account %s: %v\n", acc.Address, err)
+			return fmt.Errorf("could not save account %s: %w", acc.Address, err)
+		}
+		// acc.Version was just set directly from the row's real, returned
+		// value above — skip the shared acc.Version++ below (that's only
+		// correct for the optimistic-lock branch, which increments from a
+		// known-correct baseline it just confirmed still matched).
+		return nil
 	} else {
 		// Optimistic locking: only update if version matches what we read.
 		// If another node updated in parallel, rows affected = 0 → conflict detected.
@@ -2129,12 +2158,17 @@ WHERE address = $1 AND version = $9`,
 // DO UPDATE — for a genuinely new account (expected_version 0, no existing
 // row) this is a clean insert; for a cold in-memory account whose real DB
 // version this process never read (expected_version 0 but a row already
-// exists) this blindly overwrites, exactly matching saveAccountToDBInner's
-// own Version==0 branch. A row with expected_version != 0 that the UPDATE
-// didn't match (a genuine conflict) is deliberately excluded from the
-// INSERT branch too, so it's neither updated nor inserted — the caller can
-// tell it apart from a successful save by address, same as
-// saveAccountToDBInner's RowsAffected==0 check does for a single account.
+// exists) this still overwrites (same as saveAccountToDBInner's own
+// Version==0 branch), but both CTEs RETURN the row's actual resulting
+// version so the caller's acc.Version is set from that, not blindly
+// incremented — see saveAccountToDBInnerCtx's matching fix (2026-07-23,
+// same TPS-benchmark investigation) for why a blind increment silently
+// desyncs acc.Version from the DB whenever the row already existed. A row
+// with expected_version != 0 that the UPDATE didn't match (a genuine
+// conflict) is deliberately excluded from the INSERT branch too, so it's
+// neither updated nor inserted — the caller can tell it apart from a
+// successful save by address, same as saveAccountToDBInner's
+// RowsAffected==0 check does for a single account.
 //
 // Intended for small, fixed sets of accounts mutated together
 // (distributeSwapFee's 4 pool addresses) — the query text grows linearly
@@ -2185,7 +2219,7 @@ upd AS (
 	    faucet_claimed = u.faucet_claimed, version = u.expected_version + 1
 	FROM updates u
 	WHERE lower(ca.address) = lower(u.address) AND ca.version = u.expected_version
-	RETURNING ca.address
+	RETURNING ca.address, ca.version
 ),
 ins AS (
 	INSERT INTO chain_accounts (address, balance, is_human, tusd_balance, lp_shares, last_activity_at, demurrage_14_day_warning_shown, faucet_claimed, version)
@@ -2197,33 +2231,38 @@ ins AS (
 		lp_shares = EXCLUDED.lp_shares, last_activity_at = EXCLUDED.last_activity_at,
 		demurrage_14_day_warning_shown = EXCLUDED.demurrage_14_day_warning_shown,
 		faucet_claimed = EXCLUDED.faucet_claimed, version = COALESCE(chain_accounts.version, 0) + 1
-	RETURNING address
+	RETURNING address, version
 )
-SELECT address FROM upd UNION ALL SELECT address FROM ins`
+SELECT address, version FROM upd UNION ALL SELECT address, version FROM ins`
 
 	rows, err := cs.dbExecCtx(ctx).Query(query, args...)
 	if err != nil {
 		return fmt.Errorf("batch save failed: %w", err)
 	}
-	succeeded := make(map[string]bool, len(accs))
+	succeeded := make(map[string]int64, len(accs))
 	for rows.Next() {
 		var addr string
-		if err := rows.Scan(&addr); err == nil {
-			succeeded[strings.ToLower(addr)] = true
+		var version int64
+		if err := rows.Scan(&addr, &version); err == nil {
+			succeeded[strings.ToLower(addr)] = version
 		}
 	}
 	rows.Close()
 
 	var conflicts []string
 	for _, acc := range accs {
-		if !succeeded[strings.ToLower(acc.Address)] {
+		newVersion, ok := succeeded[strings.ToLower(acc.Address)]
+		if !ok {
 			conflicts = append(conflicts, acc.Address)
 			continue
 		}
 		// Same bookkeeping saveAccountToDB does on success (see its own
-		// comment), applied per account here.
+		// comment), applied per account here. acc.Version is set from the
+		// row's actual RETURNING value, not blindly incremented — see this
+		// function's own doc comment for why a blind increment is wrong
+		// whenever expected_version was 0 but a row already existed.
 		cs.updateAccountLeafLocked(acc)
-		acc.Version++
+		acc.Version = newVersion
 	}
 	if len(conflicts) > 0 {
 		return fmt.Errorf("version conflict for account(s) %v: %w", conflicts, errVersionConflict)
