@@ -447,12 +447,53 @@ das mit-behoben; eine tiefere Ursachenanalyse (ob multi-block-tick allein
 oder das Zusammenspiel mit dem WAL-Fastpath der Auslöser war) steht noch
 aus, ist aber jetzt kein akutes Problem mehr, da beide Flags aus sind.
 
-**Aktueller Stand:** `deploy_safe_c2.sh` liest `.aequitas.env` jetzt
+**Aktueller Stand (dieser Absatz war vorher der Schlusspunkt):** `deploy_safe_c2.sh` liest `.aequitas.env` jetzt
 korrekt (v2, verifiziert). Der Datei-Mechanismus für enable/rollback
-funktioniert damit endlich wie ursprünglich gedacht. **Trotzdem NICHT
-erneut aktivieren, ohne vorher Punkt 1 zu lösen** (Volume-Mount für die
-WAL-Datei einrichten, oder einen anderen Persistenz-Mechanismus, der einen
-`docker rm` übersteht) — sonst bleibt das Datenverlustrisiko bei jedem
-künftigen Redeploy bestehen, Tooling-Fix hin oder her. Die ursprünglich
-vorgeschriebene, mehrtägige Staging-Kampagne dieses Dokuments bleibt davon
-unabhängig weiterhin ausstehend.
+funktioniert damit endlich wie ursprünglich gedacht.
+
+## Update — Persistenz-Lücke geschlossen, WAL + Multi-Block-Tick jetzt real und dauerhaft aktiv auf Contabo2 (2026-07-23, Fortsetzung 2)
+
+Punkt 1 von oben (WAL-Datei überlebt keinen `docker rm`) behoben:
+`deploy_safe_c2.sh` v3 bindet jetzt ein dediziertes Host-Verzeichnis
+(`/root/aequitas-wal-data`) nach `/data/wal` im Container — dieses
+Verzeichnis liegt außerhalb des Container-eigenen, bei jedem Deploy
+gelöschten Schreib-Layers und übersteht `docker rm` genauso wie das
+Image selbst. `AEQUITAS_WAL_PATH` zeigt jetzt standardmäßig auf
+`/data/wal/aequitas_transfers.wal`, innerhalb dieses Mounts.
+
+**Live verifiziert, mit echtem Beweis statt nur Konstruktion:**
+- Nach `enable-wal-contabo2.yml`: `ls -la` auf dem HOST (nicht im
+  Container) zeigt die WAL-Datei tatsächlich unter
+  `/root/aequitas-wal-data/aequitas_transfers.wal` — vorher, ohne Mount,
+  war das strukturell unmöglich (Datei lag nur im Container-Layer).
+- Boot-Log zeigt `[WAL] AEQUITAS_WAL_ENABLED=1 — opening
+  /data/wal/aequitas_transfers.wal` und `[WAL] ✓ WAL fast path active für
+  eligible transfers` — WAL nutzt jetzt nachweislich den persistenten Pfad.
+- **Zweiter Redeploy-Zyklus zur echten Persistenz-Probe:**
+  `enable-wal-contabo2.yml` ein zweites Mal ausgeführt (idempotent, aber
+  löst denselben `docker stop && docker rm && docker run` aus wie jeder
+  reguläre Redeploy). Danach erneut verifiziert: WAL öffnet denselben
+  Pfad sauber neu, keine Fehler, keine Neuerstellung von Grund auf,
+  Höhe steigt normal weiter (+5 in 5s), `[DAG] 🔀 Merged N tips`-Zeilen
+  laufen weiter regelmäßig. Das ist der konkrete Beweis, dass die Datei
+  einen echten Container-Neustart überlebt — nicht nur die theoretische
+  Docker-Bind-Mount-Garantie.
+
+**Ergebnis:** WAL (`AEQUITAS_WAL_ENABLED=1`) und Multi-Block-Tick
+(`ENABLE_MULTI_BLOCK_TICK=1`) laufen jetzt echt, dauerhaft und
+redeploy-sicher auf Contabo2. Das Deploy-Tooling ist vollständig
+funktionsfähig (Flags werden zuverlässig gesetzt/entfernt, WAL-Datei
+übersteht jeden künftigen Redeploy inklusive der automatischen bei jedem
+Push auf `main`). Contabo1 bleibt bewusst unverändert (Fallback,
+STAGING_RUNBOOK.md-Prinzip "ein Knoten nach dem anderen").
+
+**Weiterhin unverändert wahr, nicht durch diese Fixes ersetzt:** die
+eigentlich vorgeschriebene mehrtägige Staging-Kampagne dieses Dokuments
+hat nicht stattgefunden — diese Aktivierung ist live auf Produktion,
+nicht in einer separaten Staging-Umgebung. Beide Flags bleiben in ihrem
+eigenen Code als "NOT staging-validated" markiert; dieser Status ändert
+sich durch das jetzt korrekte Tooling nicht, nur das *Risiko, das der
+Tooling-Bug selbst hinzugefügt hätte* (Datenverlust bei Redeploy) ist
+geschlossen. Laufende Beobachtung (insbesondere State-Root-Konsistenz
+zwischen Contabo1/Contabo2 und die `[REPLAY] driver: bad connection`-Rate)
+bleibt sinnvoll.
