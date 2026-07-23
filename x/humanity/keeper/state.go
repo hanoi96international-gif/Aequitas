@@ -3219,14 +3219,27 @@ func isTokenomicsPoolAddress(addr string) bool {
 // human count — max(5, min(N, 25)) — so early joiners cannot accumulate
 // 25,000 AEQ before meaningful participation exists. At 25+ humans the
 // full wealthCapMultiplier (25×) applies permanently. Caller must hold cs.mu.
+//
+// FIX (2026-07-23, 50k-TPS-goal investigation): used to count IsHuman
+// accounts via its own cs.accounts.Range() scan instead of reusing
+// humanCountLocked() -- the EXACT "undercounts at scale" bug class
+// getAverageBalanceLocked's own comment (right above this function)
+// already describes fixing for itself: a Range() scan only sees accounts
+// currently WARM in memory, silently undercounting once the account set
+// exceeds maxInMemAccounts and cold accounts stop being preloaded, while
+// humanCountLocked (in cs.useDB mode) is the real, incrementally-maintained
+// global count. This was also a real, measured hot-path cost: this
+// function is called on the WAL fast path's every single transfer via
+// wealthCapAmountLocked, and shardedAccounts.Range() unconditionally
+// iterates every one of numAccountShards shards (locking and unlocking
+// each), regardless of how many are actually populated -- confirmed live
+// via CPU profiling to be 57% of total CPU time once numAccountShards was
+// raised to 16384 for an unrelated fix (accumulated benchmark account
+// count made the effect large enough to dominate). humanCountLocked is
+// O(1) in cs.useDB mode (a cached counter), matching this function's
+// sibling getAverageBalanceLocked exactly.
 func (cs *ChainState) bootstrapMultiplierLocked() float64 {
-	count := 0
-	cs.accounts.Range(func(_ string, acc *AccountState) bool {
-		if acc.IsHuman {
-			count++
-		}
-		return true
-	})
+	count := cs.humanCountLocked()
 	if count >= 25 {
 		return wealthCapMultiplier
 	}
