@@ -3984,7 +3984,31 @@ const transferBatchChSize = 4096
 // bundles: bounds how long cs.mu is held for a single batch (every member
 // still does real work — demurrage settlement, wealth-cap enforcement, EVM
 // mirror sync) and keeps a single COMMIT's WAL record a bounded size.
-const transferBatchMaxSize = 200
+//
+// FIX (2026-07-23, TPS-benchmark investigation): raised from 200 to 1000
+// after processTransferBatch stopped paying one DB round trip per member
+// (previous commit) — with that fixed, a LOW cap became the new binding
+// constraint at high concurrency: 200 in-flight requests is a small slice
+// of what a real burst can look like, so hitting the cap mid-burst forces
+// several sequential batches (each still paying its own fixed group-commit
+// overhead: the wait window plus one fsync-backed commit) to drain what a
+// single bigger batch could have absorbed in one round trip. Measured on
+// the shared-recipient benchmark at 2000-5000 concurrent senders (well
+// beyond this test suite's normal 100, run manually to find where this cap
+// started to matter): raising it 200->1000 roughly doubled sustained TPS
+// (7.6k->13.3k at 5000 senders); 1000->2500+ kept climbing but with
+// shrinking returns (~15k, essentially the concurrency ceiling of the
+// probe itself, not of the constant). Chose 1000 over chasing that last
+// ~15%: it keeps a single batch's worst-case cs.mu hold time in the same
+// low-hundreds-of-ms range this codebase already accepts elsewhere
+// (walFlushInterval=500ms, poolFlushInterval=2s) rather than the
+// multi-hundred-ms-to-low-second hold a 2500-6000 cap could produce under
+// a genuinely large burst, trading a small amount of peak throughput for
+// bounded latency on any isolated request unlucky enough to arrive while a
+// giant batch is mid-commit. At normal (non-bursty) concurrency this has
+// no effect at all — actual batch size is bounded by how many requests are
+// really in flight, not by this cap, exactly as before.
+const transferBatchMaxSize = 1000
 
 // transferBatchMaxWait is the group-commit window: how long the batcher
 // waits for more requests before committing whatever it already has. Short
