@@ -40,11 +40,22 @@ jobs:
             echo "=== .aequitas.env flags ==="
             grep -E '^(AEQUITAS_WAL_ENABLED|AEQUITAS_WAL_PATH|ENABLE_MULTI_BLOCK_TICK)=' /root/.aequitas.env || echo "(keine der drei Flags gesetzt)"
 
-            echo "=== Container uptime ==="
-            docker inspect -f '{{.State.StartedAt}}' "$CONTAINER"
+            echo "=== Container Start/Restart-Diagnose ==="
+            docker inspect -f 'StartedAt={{.State.StartedAt}} RestartCount={{.RestartCount}} ExitCode={{.State.ExitCode}} OOMKilled={{.State.OOMKilled}} Status={{.State.Status}} Error={{.State.Error}}' "$CONTAINER"
+            echo "--- Docker-Events der letzten 10 Minuten fuer diesen Container (Crash/Restart-Ursache) ---"
+            docker events --since 10m --until now --filter "container=$CONTAINER" 2>&1 | tail -30 || echo "(keine Events oder docker events nicht verfuegbar)"
 
-            echo "=== [WAL]/MULTI_BLOCK_TICK Zeilen (2000-Zeilen-Fenster) ==="
-            docker logs --tail 2000 "$CONTAINER" 2>&1 | grep -iE '\[WAL\]|MULTI_BLOCK_TICK' || echo "(immer noch keine gefunden -- siehe volles Log unten)"
+            echo "=== WAL-Verzeichnis + Datei ==="
+            ls -la /root/aequitas_transfers.wal 2>&1 || echo "(WAL-Datei existiert nicht -- falls WAL wirklich aktiv waere, muesste sie existieren)"
+
+            echo "=== Gesamtzahl Log-Zeilen seit Container-Start ==="
+            docker logs "$CONTAINER" 2>&1 | wc -l
+
+            echo "=== ERSTE 100 Log-Zeilen seit Start (Boot-Sequenz, wo [WAL] eigentlich stehen sollte) ==="
+            docker logs "$CONTAINER" 2>&1 | head -100
+
+            echo "=== [WAL]/MULTI_BLOCK_TICK Zeilen -- KOMPLETTES Log, nicht nur tail ==="
+            docker logs "$CONTAINER" 2>&1 | grep -iE '\[WAL\]|MULTI_BLOCK_TICK' || echo "(im GESAMTEN Log seit Start keine gefunden)"
 
             echo "=== Warnsignale aus dem lokalen 2-Node-Drill dieser Session ==="
             docker logs --tail 2000 "$CONTAINER" 2>&1 | grep -iE 'state-inconsistency|block rejected|queued as orphan|panic|fatal' | tail -30 || echo "(keine gefunden -- gut)"
