@@ -2256,44 +2256,51 @@ func (cs *ChainState) saveAccountsToDBBatchCtx(ctx context.Context, accs []*Acco
 		}
 		return nil
 	}
-	// FIX (2026-07-23, TPS-benchmark investigation): building valuesSQL via
-	// one fmt.Sprintf call per row, then strings.Join-ing the result, was
-	// ~36% of this whole benchmark's total allocations once processTransferBatch
-	// started calling this with batches up to transferBatchMaxSize (1000) —
-	// confirmed via a memory profile (-memprofilerate=1) at 2000 concurrent
-	// senders. A single pre-sized strings.Builder, written to directly with
-	// strconv.Itoa instead of Sprintf's format-string parsing and interface{}
-	// boxing of 9 args per row, avoids both the N per-row string allocations
-	// and the final Join's own copy.
-	var valuesSQL strings.Builder
-	valuesSQL.Grow(len(accs) * 96) // ~90 bytes/row of literal placeholder text, rounded up
-	args := make([]interface{}, 0, len(accs)*9)
+	// FIX (2026-07-23, 50k-TPS-goal investigation): this used to build a
+	// VALUES(...) list whose TEXT SIZE grows linearly with len(accs) — up
+	// to 1000 rows x 9 placeholders = 9000 individual $N parameters for a
+	// full transferBatchMaxSize batch. Every call is a genuinely different
+	// query string (batch size varies call to call), so Postgres/lib/pq
+	// can never reuse a cached plan regardless — but the PARSE step itself
+	// is also real work that scales with how much SQL text there is to
+	// parse, independent of caching. A CPU profile of the parallel batch
+	// path (processTransferBatchConcurrent) showed lib/pq's own
+	// conn.prepareTo at ~18% of cumulative time. unnest() over 9 array
+	// parameters makes the query TEXT constant regardless of batch size —
+	// always exactly 9 placeholders — turning that parse cost from O(N)
+	// into O(1). (A prior version of this comment's own FIX, before this
+	// one, replaced fmt.Sprintf+strings.Join with a manual
+	// strings.Builder-based VALUES-list construction for the SAME O(N)
+	// growth — this supersedes that approach rather than layering on top
+	// of it, since building 9 slices is simpler and the actual O(N) driver
+	// remains one query with the same shape.)
+	addresses := make([]string, len(accs))
+	balances := make([]float64, len(accs))
+	isHumans := make([]bool, len(accs))
+	tusdBalances := make([]float64, len(accs))
+	lpShares := make([]float64, len(accs))
+	lastActivityAts := make([]int64, len(accs))
+	demurrageWarnings := make([]bool, len(accs))
+	faucetClaimeds := make([]bool, len(accs))
+	expectedVersions := make([]int64, len(accs))
 	for i, acc := range accs {
-		if i > 0 {
-			valuesSQL.WriteByte(',')
-		}
-		n := i * 9
-		// Explicit casts: a bare multi-row VALUES(...) list with nothing but
-		// parameter placeholders gives Postgres no literal to anchor each
-		// column's type on, so it defaults every placeholder to `text` —
-		// confirmed live: "operator does not exist: bigint = text" once this
-		// CTE's last_activity_at/expected_version columns hit the UPDATE's
-		// comparison against chain_accounts' actual bigint columns below.
-		valuesSQL.WriteByte('(')
-		writeDollarParam(&valuesSQL, n+1, "::text,")
-		writeDollarParam(&valuesSQL, n+2, "::double precision,")
-		writeDollarParam(&valuesSQL, n+3, "::boolean,")
-		writeDollarParam(&valuesSQL, n+4, "::double precision,")
-		writeDollarParam(&valuesSQL, n+5, "::double precision,")
-		writeDollarParam(&valuesSQL, n+6, "::bigint,")
-		writeDollarParam(&valuesSQL, n+7, "::boolean,")
-		writeDollarParam(&valuesSQL, n+8, "::boolean,")
-		writeDollarParam(&valuesSQL, n+9, "::bigint")
-		valuesSQL.WriteByte(')')
-		args = append(args, acc.Address, acc.Balance.Float(), acc.IsHuman, acc.TUsdBalance.Float(), acc.LPShares.Float(), acc.LastActivityAt, acc.Demurrage14DayWarningShown, acc.FaucetClaimed, acc.Version)
+		addresses[i] = acc.Address
+		balances[i] = acc.Balance.Float()
+		isHumans[i] = acc.IsHuman
+		tusdBalances[i] = acc.TUsdBalance.Float()
+		lpShares[i] = acc.LPShares.Float()
+		lastActivityAts[i] = acc.LastActivityAt
+		demurrageWarnings[i] = acc.Demurrage14DayWarningShown
+		faucetClaimeds[i] = acc.FaucetClaimed
+		expectedVersions[i] = acc.Version
+	}
+	args := []interface{}{
+		pq.Array(addresses), pq.Array(balances), pq.Array(isHumans),
+		pq.Array(tusdBalances), pq.Array(lpShares), pq.Array(lastActivityAts),
+		pq.Array(demurrageWarnings), pq.Array(faucetClaimeds), pq.Array(expectedVersions),
 	}
 	query := `WITH updates(address, balance, is_human, tusd_balance, lp_shares, last_activity_at, demurrage_14_day_warning_shown, faucet_claimed, expected_version) AS (
-	VALUES ` + valuesSQL.String() + `
+	SELECT * FROM unnest($1::text[], $2::double precision[], $3::boolean[], $4::double precision[], $5::double precision[], $6::bigint[], $7::boolean[], $8::boolean[], $9::bigint[])
 ),
 upd AS (
 	UPDATE chain_accounts ca

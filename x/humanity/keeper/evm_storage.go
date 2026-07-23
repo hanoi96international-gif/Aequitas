@@ -2292,11 +2292,11 @@ func savePendingTxsBatchExec(ex sqlExecutor, txs []Transaction) error {
 		return nil
 	}
 	// See saveAccountsToDBBatchCtx's FIX comment (state.go) for why this
-	// builds directly into a pre-sized strings.Builder via writeDollarParam
-	// instead of one fmt.Sprintf call per row plus a final strings.Join.
-	var valuesSQL strings.Builder
-	valuesSQL.Grow(len(txs) * 12) // "($NNNN,$NNNN)," rounded up
-	args := make([]interface{}, 0, len(txs)*2)
+	// builds a fixed-size unnest() query over 2 array parameters instead
+	// of a VALUES(...) list whose text size (and lib/pq's own parse cost)
+	// grows linearly with len(txs).
+	txJSON := make([]string, len(txs))
+	createdAts := make([]int64, len(txs))
 	now := time.Now().Unix()
 	for i, tx := range txs {
 		data, err := json.Marshal(tx)
@@ -2304,17 +2304,10 @@ func savePendingTxsBatchExec(ex sqlExecutor, txs []Transaction) error {
 			fmt.Printf("[TX] SavePendingTx marshal error: %v\n", err)
 			return err
 		}
-		if i > 0 {
-			valuesSQL.WriteByte(',')
-		}
-		n := i * 2
-		valuesSQL.WriteByte('(')
-		writeDollarParam(&valuesSQL, n+1, ",")
-		writeDollarParam(&valuesSQL, n+2, "")
-		valuesSQL.WriteByte(')')
-		args = append(args, string(data), now)
+		txJSON[i] = string(data)
+		createdAts[i] = now
 	}
-	_, err := ex.Exec(`INSERT INTO pending_txs (tx_json, created_at) VALUES `+valuesSQL.String(), args...)
+	_, err := ex.Exec(`INSERT INTO pending_txs (tx_json, created_at) SELECT * FROM unnest($1::text[], $2::bigint[])`, pq.Array(txJSON), pq.Array(createdAts))
 	return err
 }
 
