@@ -188,6 +188,24 @@ Zwei Zwischenstände, ehrlich eingeordnet, keiner davon optimistisch gerundet:
 
 Kurz: **50.000 TPS ist mit diesem vollständigen Plan (inkl. Phase 7) ein begründetes, kein beliebiges Ziel** — aber nur mit Phase 7, nicht mit Sharding allein.
 
+**Update (2026-07-23) — erstmals real gemessen, nicht mehr nur Zielbild.** `TestSimulateMaxTPS_WarmSteadyState` (neu, `tps_bench_test.go`) misst den WAL-Fastpath isoliert von zwei Kosten, die die älteren Cold-Start-Benchmarks (Tabelle oben, 400 TPS) mit hineinmischen: kaltes Konto-Warmup (Fastpath braucht beide Konten bereits warm in `cs.accounts`) und selbstgemachte Shard-Lock-Kontention durch die Ring-Topologie der älteren Benchmarks (Nachbar-Konten teilten sich einen Schreiber, `TryLockAddrs`s Non-Blocking-Charakter wich dann sofort auf den Batcher aus). Mit beidem behoben (Warmup-Pass vor dem Timer, echte disjunkte Sender/Empfänger-Paare):
+
+| Lauf | TXs | TPS |
+|---|---|---|
+| Cold-Start (Ring, `TestSimulateMaxTPS_IngestionDisjointRecipients`) | 10.000 | 8.596 |
+| Warm, Ring-Kontention (1. Fassung von `WarmSteadyState`) | 20.000 | 7.524 (niedriger als Cold-Start — die Ring-Kontention war der bindende Engpass, nicht die Wärme) |
+| **Warm, echte disjunkte Paare** | 20.000 | **44.925 / 47.056** (zwei Läufe) |
+| **Warm, echte disjunkte Paare, größeres Volumen** | 100.000 | **40.682**, über 2,46s sustained — kein kurzer Burst |
+
+Alle Zahlen: diese Sandbox (Cloud-Container, lokales Postgres, `GOGC=200`), Einzel-Node, kein Netzwerk zu anderen Nodes — dieselben Vorbehalte wie bei jeder Zahl in diesem Dokument (echte Contabo-Hardware nachmessen, siehe unten). Aber zum ersten Mal in diesem Projekt: **eine einzelne, gemessene Zahl in derselben Größenordnung wie das 50.000er-Ziel selbst**, nicht nur eine Projektion aus Fsync-Benchmarks (`TestWALThroughput`, 112.700 appends/sec) und Architektur-Überlegungen. 40.000–47.000 TPS bei disjunkten, warmen Adressen ist nicht 50.000, aber nah genug, dass die verbleibende Lücke eher Feinabstimmung als ein weiterer Architektur-Umbau sein könnte — bei genug unabhängigen Adresspaaren (real: Millionen Nutzer, nicht 100 Test-Paare) sollte die Kollisionsrate über 16.384 Shards ohnehin verschwindend gering bleiben.
+
+**Wichtig, nicht überinterpretieren:**
+- **Warm-Voraussetzung ist real, nicht kostenlos.** Ein Konto ist erst nach seinem ersten Touch warm; in Produktion bedeutet das, dass gerade neu aktive/lang inaktive Wallets weiterhin den langsameren Batcher-Pfad durchlaufen. Bei stetigem Verkehr (die meisten aktiven Wallets sind kürzlich warm geworden) ist das die Regel, nicht die Ausnahme — aber ein initialer Traffic-Burst nach einem Neustart (kompletter Kaltstart, `cs.accounts` leer) sähe die niedrigeren Zahlen der älteren Benchmarks, nicht diese.
+- **`[STATE] Batch committed: 1 transfer(s)`-Zeilen tauchten weiterhin auf**, auch im disjunkten Warm-Lauf — ein Teil der Transfers fällt also weiterhin auf den Batcher zurück (z. B. `effectiveBalance != Balance`-Demurrage-Gate in `transferConcurrentWAL`, siehe dessen eigene Eligibility-Prüfung). Der Fastpath ist also nicht 100 % der 40k+ TPS allein — trotzdem reicht die Kombination aus beidem für diese Zahl.
+- **Nach wie vor nicht auf echter Contabo-Hardware gemessen** (siehe Vorbehalt bei den 112.700 appends/sec weiter oben — gilt hier identisch).
+- **Blockproduktion/-relay (Abschnitt 7) ist in dieser Zahl nicht enthalten** — das misst nur, wie schnell `ChainState` einzelne eingehende Transfers annehmen kann, nicht wie schnell fertige Blöcke an andere Validatoren durchgereicht werden (dafür siehe `TestBlockCostAtScale`, `maxTxsPerBlock`, `ENABLE_MULTI_BLOCK_TICK` — inzwischen selbst live auf Contabo2, siehe STAGING_RUNBOOK.md, aber bei aktuell winzigem realem Verkehr dort noch nicht unter echter Last erprobt).
+- **Go-GC unter sehr hoher Allokationsrate über viele Minuten/Stunden** bleibt ungemessen — dieser Lauf dauert Sekunden, nicht die Dauer, über die GC-Pausen sich typischerweise bemerkbar machen.
+
 ## Aufwandsschätzung
 
 Kein Wochenend-Projekt. Realistisch: mehrere Wochen fokussierter Arbeit für Phasen 1–6, danach ein eigenes, mindestens ebenso großes Teilprojekt für Phase 7 (WAL/In-Memory-primär) — inklusive der Zeit für den Aufbau einer Staging-Umgebung und die Test-Kampagne (insbesondere Crash-Recovery-Tests für Phase 7, die härtesten in diesem gesamten Plan). Nicht etwas, das in einer fortlaufenden Chat-Session sicher zu Ende gebracht werden sollte — das gilt für Phase 7 noch einmal deutlich stärker als für Phasen 1–6.
