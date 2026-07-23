@@ -3991,7 +3991,30 @@ const transferBatchMaxSize = 200
 // enough that one isolated request still gets a fast response (worst case:
 // this plus one commit); long enough that a real concurrent burst
 // coalesces into one commit instead of each paying its own fsync.
-const transferBatchMaxWait = 3 * time.Millisecond
+//
+// FIX (2026-07-23, TPS-benchmark investigation): lowered from 3ms to 1ms —
+// same root cause and same fix as wal.MaxBatchWait (x/humanity/wal/wal.go,
+// see its own FIX comment): every caller of TransferAtomic blocks on
+// req.result until its batch's commit returns, so this constant isn't just
+// "how long a batch waits to grow" — under closed-loop load (every real
+// client also waits for its previous transfer's result before sending the
+// next one, exactly like this file's own TestSimulateMaxTPS_Ingestion
+// benchmark) it directly throttles how fast new requests can arrive to
+// join a batch at all. A longer wait doesn't reliably produce a bigger,
+// more-amortized batch under that load shape — it mostly just adds latency
+// every cycle pays before the pipe can refill. Measured on the
+// shared-recipient benchmark (single hot recipient, so this constant is
+// the only lever — see that test's own comment on why it never takes the
+// shard-locked fast path): 3 runs each at 3ms/1ms/500us/200us/100us gave
+// averages of 858.6/889.6/858.4/838.6/815.2 TPS respectively. 1ms was both
+// the highest average AND by far the lowest-variance (871-899 across all 3
+// runs, vs. e.g. 100us's 699.7-914.3 -- sub-millisecond windows start
+// producing batches too small to amortize the fsync reliably, the same
+// tradeoff wal.MaxBatchWait's own comment describes). Chose 1ms over
+// wal.go's exact reasoning rather than chasing the single best individual
+// run, for the same reason: a config whose worst case is competitive
+// matters more here than a config whose best case is highest.
+const transferBatchMaxWait = 1 * time.Millisecond
 
 // ensureTransferBatcherStarted lazily starts the one background goroutine
 // that drains transferBatchCh — lazy (not started in NewChainState) so a
