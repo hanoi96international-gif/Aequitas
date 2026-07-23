@@ -1,0 +1,47 @@
+name: Rollback WAL + Multi-Block-Tick on Contabo2 (manual)
+
+# Sibling to enable-wal-contabo2.yml. Also workflow_dispatch-only.
+#
+# IMPORTANT: stops the container gracefully (SIGTERM via `docker stop`, not
+# -9) BEFORE touching the env file. A graceful stop lets any WAL-durable-
+# but-not-yet-flushed transfer finish reconciling to Postgres first (see
+# transfer_wal.go's own FlushWALNow()/graceful-shutdown handling) -- killing
+# it first would risk losing exactly the transfers this flag was there to
+# make durable. See STAGING_RUNBOOK.md's "Rollback" section for the same
+# reasoning applied to the staging plan this mirrors.
+on:
+  workflow_dispatch: {}
+
+jobs:
+  rollback:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Disable WAL + multi-block-tick on Contabo2
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: 194.163.188.71
+          username: root
+          key: ${{ secrets.CONTABO2_SSH_KEY }}
+          port: 22
+          fingerprint: "SHA256:VIwj7Faxiga2n45HVHZEQFPxcbRKHgSgHoxAFsf2wto"
+          script_stop: true
+          timeout: 300s
+          command_timeout: 300s
+          script: |
+            set -euo pipefail
+            ENV_FILE=/root/.aequitas.env
+            CONTAINER="$(docker ps --format '{{.Names}}' | grep -i aequitas | head -1)"
+
+            echo "=== Graceful stop (SIGTERM, lets pending WAL flush finish) ==="
+            docker stop -t 30 "$CONTAINER"
+
+            echo "=== Removing the three flags from .aequitas.env ==="
+            sed -i '/^AEQUITAS_WAL_ENABLED=/d;/^AEQUITAS_WAL_PATH=/d;/^ENABLE_MULTI_BLOCK_TICK=/d' "$ENV_FILE"
+
+            echo "=== Restarting via the box's own existing deploy script ==="
+            /root/deploy_safe_c2.sh
+
+            sleep 10
+            echo "=== /api/status after rollback ==="
+            curl -s http://localhost:8080/api/status || echo "(status endpoint noch nicht bereit, kurz erneut versuchen)"
+            echo "Contabo2 laeuft wieder auf dem alten, seit Monaten stabilen Pfad."

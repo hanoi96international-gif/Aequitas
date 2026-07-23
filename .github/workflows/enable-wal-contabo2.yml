@@ -1,0 +1,69 @@
+name: Enable WAL + Multi-Block-Tick on Contabo2 (manual, one node only)
+
+# Manual-only (workflow_dispatch) on purpose: this flips AEQUITAS_WAL_ENABLED
+# and ENABLE_MULTI_BLOCK_TICK on the live Contabo2 secondary -- both marked
+# "NOT staging-validated" in their own code comments (durability-semantics
+# and consensus-timing changes respectively; see transfer_wal.go and
+# block_cadence.go). Never auto-triggered by a push. Deliberately scoped to
+# Contabo2 ONLY -- Contabo1 stays untouched as a fallback, matching
+# STAGING_RUNBOOK.md's "activate one node at a time" principle, now applied
+# live instead of in a staging environment that doesn't exist yet.
+#
+# What this does, step by step, all over the SAME SSH connection so a
+# mid-way failure leaves .aequitas.env.bak.<timestamp> as a clean undo path:
+#   1. Back up /root/.aequitas.env with a timestamp suffix.
+#   2. Append AEQUITAS_WAL_ENABLED=1 / AEQUITAS_WAL_PATH / ENABLE_MULTI_BLOCK_TICK=1
+#      only if not already present (idempotent -- safe to re-run).
+#   3. Re-run /root/deploy_safe_c2.sh, the box's own existing, already-proven
+#      restart mechanism (this workflow does NOT reimplement or guess the
+#      docker run invocation -- deploy_safe_c2.sh already knows it).
+#   4. Print the container's own [WAL]/ENABLE_MULTI_BLOCK_TICK startup log
+#      lines and a fresh /api/status so the confirmation is visible right in
+#      this workflow's own log, no separate SSH session needed to verify.
+#
+# Rollback: run enable-wal-contabo2.yml's sibling, rollback-wal-contabo2.yml
+# (also workflow_dispatch-only).
+on:
+  workflow_dispatch: {}
+
+jobs:
+  enable:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Enable WAL + multi-block-tick on Contabo2
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: 194.163.188.71
+          username: root
+          key: ${{ secrets.CONTABO2_SSH_KEY }}
+          port: 22
+          fingerprint: "SHA256:VIwj7Faxiga2n45HVHZEQFPxcbRKHgSgHoxAFsf2wto"
+          script_stop: true
+          timeout: 300s
+          command_timeout: 300s
+          script: |
+            set -euo pipefail
+            ENV_FILE=/root/.aequitas.env
+            BACKUP="${ENV_FILE}.bak.$(date +%s)"
+            cp "$ENV_FILE" "$BACKUP"
+            echo "Backup: $BACKUP"
+
+            grep -q '^AEQUITAS_WAL_ENABLED=' "$ENV_FILE" || echo "AEQUITAS_WAL_ENABLED=1" >> "$ENV_FILE"
+            grep -q '^AEQUITAS_WAL_PATH=' "$ENV_FILE" || echo "AEQUITAS_WAL_PATH=/root/aequitas_transfers.wal" >> "$ENV_FILE"
+            grep -q '^ENABLE_MULTI_BLOCK_TICK=' "$ENV_FILE" || echo "ENABLE_MULTI_BLOCK_TICK=1" >> "$ENV_FILE"
+
+            echo "=== .aequitas.env now (values redacted for secrets, flags shown) ==="
+            grep -E '^(AEQUITAS_WAL_ENABLED|AEQUITAS_WAL_PATH|ENABLE_MULTI_BLOCK_TICK)=' "$ENV_FILE"
+
+            echo "=== Restarting via the box's own existing deploy script ==="
+            /root/deploy_safe_c2.sh
+
+            echo "=== Waiting for the container to come back up ==="
+            sleep 10
+
+            echo "=== Startup log lines confirming the flags actually took effect ==="
+            CONTAINER="$(docker ps --format '{{.Names}}' | grep -i aequitas | head -1)"
+            docker logs --tail 200 "$CONTAINER" | grep -iE '\[WAL\]|MULTI_BLOCK_TICK' || echo "(keine WAL/MultiBlockTick-Zeilen gefunden -- Container-Log oben pruefen)"
+
+            echo "=== /api/status ==="
+            curl -s http://localhost:8080/api/status || echo "(status endpoint noch nicht bereit, kurz erneut versuchen)"
