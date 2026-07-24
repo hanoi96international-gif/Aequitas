@@ -3624,6 +3624,123 @@ func (dag *BlockDAG) prefetchParentsFromDB(block *Block) {
 	dag.mu.Unlock()
 }
 
+// prefetchMergeSetFromDB extends prefetchParentsFromDB (which only warms
+// dag.blocks for block's DIRECT parents) to the full, possibly-multi-hop
+// ancestor set computeGHOSTDAGState's merge-set BFS (ghostdagMergeSet) is
+// about to walk — called BEFORE dag.mu.Lock() so the DB round trips this
+// warms away happen concurrently with the rest of the node's work instead
+// of one-by-one while dag.mu is held.
+//
+// Confirmed live twice as the dominant per-block DB cost of that in-lock
+// walk: ghostdagBatchPrefetch's own 2026-07-04 FIX comment measured ~2.6s/
+// block from this exact traversal in production, and a goroutine dump taken
+// 2026-07-24 during a real Contabo2 stall caught a sync goroutine mid-flight
+// in AddPeerBlock → ghostdagBlockLookup → a single-hash Postgres query —
+// this exact call chain, still running synchronously inside dag.mu despite
+// prefetchParentsFromDB already covering direct parents, because that
+// function's own comment already flagged the gap it deliberately left open:
+// "computeGHOSTDAGState can still need DEEPER ancestors beyond direct
+// parents, which this cannot predict without running the BFS itself." This
+// runs that BFS — read-only, before the lock — to close exactly that gap.
+//
+// Deliberately does NOT replicate ghostdagMergeSet's spHash/exclusion-set
+// split: it walks backward from ALL of block's direct parents together,
+// which is a strict superset of what the real two-phase BFS needs (that BFS
+// only walks non-SP parents past the SP-exclusion frontier), so a single
+// unified walk necessarily fetches everything the real computation could
+// touch. Bounded by the same structural caps (mergeDepthLimit,
+// maxMergeVisits, maxGhostdagDBLookups) so it can never do unbounded work.
+//
+// This is a warm-up, never a correctness dependency: if a hash is still
+// missing by the time computeGHOSTDAGState runs (DB error, exhausted
+// budget, or a genuine race with a concurrent sibling still in flight),
+// that function's own in-lock DB fallback resolves it exactly as if this
+// function did not exist.
+//
+// Locking: dag.mu.RLock() for every dag.blocks membership check (concurrent-
+// safe with readers and with this same function running for another peer's
+// block), and a brief dag.mu.Lock() only to insert freshly fetched blocks —
+// the same pattern ghostdagBatchPrefetch itself uses, just invoked before
+// AddPeerBlock's own dag.mu.Lock() instead of during it.
+func (dag *BlockDAG) prefetchMergeSetFromDB(block *Block) {
+	if block == nil || dag.state == nil || len(block.ParentHashes) == 0 || dag.ghostdagMigrationPending.Load() {
+		return
+	}
+	depthLimit := dag.mergeDepthLimit()
+	visitCap := dag.maxMergeVisits()
+	dbBudget := dag.maxGhostdagDBLookups()
+
+	type entry struct {
+		hash  string
+		depth int
+	}
+	visited := make(map[string]bool, len(block.ParentHashes))
+	frontier := make([]entry, 0, len(block.ParentHashes))
+	for _, ph := range block.ParentHashes {
+		if !visited[ph] {
+			visited[ph] = true
+			frontier = append(frontier, entry{ph, 0})
+		}
+	}
+
+	for len(frontier) > 0 && len(visited) < visitCap && dbBudget > 0 {
+		hashes := make([]string, len(frontier))
+		for i, e := range frontier {
+			hashes[i] = e.hash
+		}
+
+		dag.mu.RLock()
+		var missing []string
+		resolved := make(map[string]*Block, len(frontier))
+		for _, h := range hashes {
+			if b, ok := dag.blocks[h]; ok {
+				resolved[h] = b
+			} else {
+				missing = append(missing, h)
+			}
+		}
+		dag.mu.RUnlock()
+
+		if len(missing) > 0 {
+			dbBudget--
+			found, err := dag.state.LoadBlocksByHashesFromDB(missing)
+			if err == nil && len(found) > 0 {
+				dag.mu.Lock()
+				for _, b := range found {
+					if _, ok := dag.blocks[b.Hash]; !ok {
+						dag.blocks[b.Hash] = b
+					}
+				}
+				dag.mu.Unlock()
+				for _, b := range found {
+					resolved[b.Hash] = b
+				}
+			}
+		}
+
+		var next []entry
+		for _, e := range frontier {
+			if e.depth >= depthLimit || len(visited) >= visitCap {
+				continue
+			}
+			b := resolved[e.hash]
+			if b == nil {
+				continue // unresolved — computeGHOSTDAGState's own in-lock fallback handles it
+			}
+			for _, ph := range b.ParentHashes {
+				if !visited[ph] {
+					visited[ph] = true
+					next = append(next, entry{ph, e.depth + 1})
+					if len(visited) >= visitCap {
+						break
+					}
+				}
+			}
+		}
+		frontier = next
+	}
+}
+
 func (dag *BlockDAG) AddPeerBlock(block *Block) bool {
 // FIX (2026-07-05 — permanent operational diagnostic, not a temp one):
 // recordForeignAttachLatency further down only fires once a block clears
@@ -3792,6 +3909,7 @@ if block != nil {
 	}
 }
 dag.prefetchParentsFromDB(block)
+dag.prefetchMergeSetFromDB(block)
 dag.mu.Lock()
 // NOTE: no defer — we manually unlock before the channel send below (Fix 2).
 // All early-return paths must call dag.mu.Unlock() explicitly.
