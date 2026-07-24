@@ -1,0 +1,144 @@
+name: Set RESYNC_FROM_SNAPSHOT=false on both Contabos (manual)
+
+# RESYNC_FROM_SNAPSHOT is a ONE-SHOT recovery switch, not a steady-state
+# setting. main.go acts on it at every boot: when true, the node discards its
+# local chain state and re-seeds from the primary's signed snapshot.
+#
+# Found live 2026-07-24: Contabo2 has RESYNC_FROM_SNAPSHOT=true left
+# permanently in /root/.aequitas.env. Every restart therefore wipes its DB and
+# re-seeds it at the primary's trusted CHECKPOINT -- which necessarily trails
+# the primary's live tip, because a finality checkpoint always does. The node
+# then has to catch up those hundreds of blocks, and in the window before the
+# production gates engage it mints a handful of its own blocks on top of the
+# checkpoint. That is a fresh fork, re-created from scratch on every single
+# restart. Confirmed from its own chain_config after the 21:15 restart:
+#
+#   snapshot_import_height | 1780411   <- re-seeded here
+#   max_block_height       | 1780415   <- four self-produced blocks on top
+#   finalized_height       | 1780411
+#
+# ...while the primary was already past 1780975. Contabo1, which has
+# RESYNC_FROM_SNAPSHOT=false, kept its DB across the same restart, got the
+# in-process auto-heal resync instead, and recovered to a fully merging state.
+# The difference between the two boxes is this one variable.
+#
+# Setting it false does NOT leave a diverged node stranded: that is exactly
+# what StartDivergenceAutoHeal's four detection paths plus PerformResync are
+# for, and they operate in-process without discarding the DB.
+#
+# Idempotent and safe on a box that already reads false -- it reports and
+# leaves the file untouched. Backs the file up before any edit. Restarts at
+# the end BECAUSE the env is baked into the container at `docker run
+# --env-file`: without a restart the change never reaches the process.
+#
+# Defaults to dry_run=true.
+on:
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "true = only report the current value, change nothing"
+        required: false
+        default: "true"
+      restart:
+        description: "true = restart after the change so the new env takes effect"
+        required: false
+        default: "true"
+
+jobs:
+  contabo1:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Fix RESYNC_FROM_SNAPSHOT on Contabo1
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: 173.249.37.118
+          username: root
+          key: ${{ secrets.CONTABO_SSH_KEY }}
+          port: 22
+          fingerprint: "SHA256:noMtjHV8c+2iEFZu3TRUP6WRwGjkrvFke71KgU6Eyt4"
+          script_stop: false
+          timeout: 600s
+          command_timeout: 600s
+          envs: DRY,DO_RESTART
+          script: |
+            set -uo pipefail
+            ENVFILE=/root/.aequitas.env
+            echo "=== Contabo1: current RESYNC_FROM_SNAPSHOT ==="
+            grep -E '^RESYNC_FROM_SNAPSHOT=' "$ENVFILE" || echo "(not present -- boot treats that as false already)"
+
+            CUR="$(grep -E '^RESYNC_FROM_SNAPSHOT=' "$ENVFILE" 2>/dev/null | head -1 | cut -d= -f2- || true)"
+            if [ "$CUR" != "true" ]; then
+              echo "=== Contabo1: already not 'true' -- nothing to change, leaving the file untouched ==="
+              exit 0
+            fi
+
+            if [ "${DRY:-true}" = "true" ]; then
+              echo "=== DRY RUN: would set RESYNC_FROM_SNAPSHOT=false on Contabo1 ==="
+              exit 0
+            fi
+
+            cp -a "$ENVFILE" "${ENVFILE}.bak.$(date +%s)" && echo "(backup written)"
+            sed -i 's/^RESYNC_FROM_SNAPSHOT=.*/RESYNC_FROM_SNAPSHOT=false/' "$ENVFILE"
+            echo "=== Contabo1: value after the edit ==="
+            grep -E '^RESYNC_FROM_SNAPSHOT=' "$ENVFILE" || echo "(missing after edit -- investigate)"
+            echo "--- sanity: total lines before/after should match ---"
+            wc -l "$ENVFILE" "${ENVFILE}".bak.* 2>/dev/null | head -5
+
+            if [ "${DO_RESTART:-true}" = "true" ]; then
+              echo "=== Contabo1: restarting so the container picks up the new env ==="
+              /root/deploy.sh
+            else
+              echo "=== Contabo1: restart skipped by request -- the running process still has the OLD env ==="
+            fi
+        env:
+          DRY: ${{ inputs.dry_run }}
+          DO_RESTART: ${{ inputs.restart }}
+
+  contabo2:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Fix RESYNC_FROM_SNAPSHOT on Contabo2
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: 194.163.188.71
+          username: root
+          key: ${{ secrets.CONTABO2_SSH_KEY }}
+          port: 22
+          fingerprint: "SHA256:VIwj7Faxiga2n45HVHZEQFPxcbRKHgSgHoxAFsf2wto"
+          script_stop: false
+          timeout: 600s
+          command_timeout: 600s
+          envs: DRY,DO_RESTART
+          script: |
+            set -uo pipefail
+            ENVFILE=/root/.aequitas.env
+            echo "=== Contabo2: current RESYNC_FROM_SNAPSHOT ==="
+            grep -E '^RESYNC_FROM_SNAPSHOT=' "$ENVFILE" || echo "(not present -- boot treats that as false already)"
+
+            CUR="$(grep -E '^RESYNC_FROM_SNAPSHOT=' "$ENVFILE" 2>/dev/null | head -1 | cut -d= -f2- || true)"
+            if [ "$CUR" != "true" ]; then
+              echo "=== Contabo2: already not 'true' -- nothing to change, leaving the file untouched ==="
+              exit 0
+            fi
+
+            if [ "${DRY:-true}" = "true" ]; then
+              echo "=== DRY RUN: would set RESYNC_FROM_SNAPSHOT=false on Contabo2 ==="
+              exit 0
+            fi
+
+            cp -a "$ENVFILE" "${ENVFILE}.bak.$(date +%s)" && echo "(backup written)"
+            sed -i 's/^RESYNC_FROM_SNAPSHOT=.*/RESYNC_FROM_SNAPSHOT=false/' "$ENVFILE"
+            echo "=== Contabo2: value after the edit ==="
+            grep -E '^RESYNC_FROM_SNAPSHOT=' "$ENVFILE" || echo "(missing after edit -- investigate)"
+            echo "--- sanity: total lines before/after should match ---"
+            wc -l "$ENVFILE" "${ENVFILE}".bak.* 2>/dev/null | head -5
+
+            if [ "${DO_RESTART:-true}" = "true" ]; then
+              echo "=== Contabo2: restarting so the container picks up the new env ==="
+              /root/deploy_safe_c2.sh
+            else
+              echo "=== Contabo2: restart skipped by request -- the running process still has the OLD env ==="
+            fi
+        env:
+          DRY: ${{ inputs.dry_run }}
+          DO_RESTART: ${{ inputs.restart }}
