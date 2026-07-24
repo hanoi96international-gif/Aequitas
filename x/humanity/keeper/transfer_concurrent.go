@@ -264,5 +264,5 @@ func (cs *ChainState) markEVMMirrorDirtyForAddrsLocked(from, to string) {
 	if cs.db == nil {
 		return
 	}
-	cs.markEVMMirrorDirtyLocked(V7_CONTRACT_ADDR, from, to)
+	cs.markEVMMirrorDirtyLocked(v7ContractAddrLower, from, to)
 }

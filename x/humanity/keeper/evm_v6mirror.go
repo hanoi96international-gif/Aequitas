@@ -21,6 +21,26 @@ const V7_CONTRACT_ADDR = "0x20D271028f32577FCd07b4583A8e0E4eBBdB4F78"
 const BIO_VERIFIER_ADDR = "0xc369D27b49DE017d113Bbcb9A1884a9e745B6BE2"
 const V5_SEPOLIA_LEGACY_ADDR = "0x4f147d5B3388AF07993CC4fC548502A78Af0B8b5" // Sepolia testnet — historical only, no longer in active use
 
+// v7ContractAddrLower is V7_CONTRACT_ADDR pre-lowercased once at package
+// init, not per-call.
+//
+// FIX (2026-07-24, CPU-profile investigation, continued): markEVMMirrorDirtyLocked
+// (evm_mirror_flush.go) calls strings.ToLower(contractAddr) on every single
+// invocation, and every fast-path transfer (transferConcurrent,
+// transferConcurrentWAL, via markEVMMirrorDirtyForAddrsLocked) calls it with
+// this SAME constant -- re-lowercasing an unchanging, mixed-case 42-
+// character string on every transfer measured at ~60ms cumulative in a CPU
+// profile of TestSustainedWAL_QueueConvergence, pure waste since the result
+// is always identical. Passing this pre-computed value instead lets
+// strings.ToLower's own fast path (no allocation, short scan confirming
+// nothing needs folding) handle the call almost for free instead of
+// allocating and writing a new lowered string every time. register_concurrent.go
+// and transfer_concurrent.go's markEVMMirrorDirtyForAddrsLocked both use
+// this now instead of the raw constant; markEVMMirrorDirtyLocked itself is
+// unchanged (evm_storage.go's own call site passes a genuinely dynamic,
+// non-constant contractAddr that still needs the real lowering).
+var v7ContractAddrLower = strings.ToLower(V7_CONTRACT_ADDR)
+
 // MirrorV6Registration mirrors a V6 registration to PostgreSQL.
 //
 // FIX (P3-m, audit 2026-07-06): this has 0 call sites anywhere in the

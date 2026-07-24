@@ -190,7 +190,7 @@ func (cs *ChainState) registerHumanConcurrent(address string, pendingTx Transact
 	cs.humanCount++
 	cs.humanCountMu.Unlock()
 
-	cs.markEVMMirrorDirtyLocked(V7_CONTRACT_ADDR, address)
+	cs.markEVMMirrorDirtyLocked(v7ContractAddrLower, address)
 
 	fmt.Printf("[STATE] ✓ Human registered (concurrent path): %s | Balance: %.2f AEQ\n", address, acc.Balance.Float())
 	return true, nil
