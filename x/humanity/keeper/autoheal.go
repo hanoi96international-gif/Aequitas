@@ -220,6 +220,28 @@ func (dag *BlockDAG) triggerAutoResync(reason string) {
 	var lastAt int64
 	fmt.Sscan(dag.state.getConfigValueDB(autoResyncLastAtKey), &lastAt)
 	if lastAt > 0 && time.Now().Unix()-lastAt < int64(autoHealCooldown.Seconds()) {
+		// FIX (observability, 2026-07-24 — cost a full diagnosis round on
+		// Contabo1 tonight): this used to be a bare `return`. A node in a
+		// CONFIRMED, actionable divergence state that is merely being held
+		// back by the cooldown then logged absolutely nothing — indis-
+		// tinguishable, from outside, from a node whose detection never
+		// fired at all. Confirmed live: Contabo1 sat at height 1778536 with
+		// foreign_attach count 0 against 2855 raw arrivals, having printed
+		// "[AUTO-HEAL] Sync-starvation watch: received 6204 block(s) this
+		// interval but attached 0 ... watching (threshold 5m0s)" and then
+		// nothing whatsoever, for minutes past that threshold. The
+		// suppression is legitimate; its invisibility is not — the whole
+		// incident was being diagnosed through exactly these log lines.
+		//
+		// Rate-limited because four independent detection paths can each
+		// reach this once a minute and one entry per window says all of it.
+		nowNano := time.Now().UnixNano()
+		last := dag.lastAutoResyncSuppressedLogAt.Load()
+		if nowNano-last > int64(time.Minute) && dag.lastAutoResyncSuppressedLogAt.CompareAndSwap(last, nowNano) {
+			remaining := time.Duration(int64(autoHealCooldown.Seconds())-(time.Now().Unix()-lastAt)) * time.Second
+			fmt.Printf("[AUTO-HEAL] ⏸ Divergence detected and actionable, but SUPPRESSED by the %s cooldown for another %s (last auto-resync at unix %d): %s\n",
+				autoHealCooldown, remaining.Round(time.Second), lastAt, reason)
+		}
 		return
 	}
 	fmt.Printf("[AUTO-HEAL] ⚠ %s\n", reason)

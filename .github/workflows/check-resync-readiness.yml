@@ -27,16 +27,16 @@ jobs:
           key: ${{ secrets.CONTABO_SSH_KEY }}
           port: 22
           fingerprint: "SHA256:noMtjHV8c+2iEFZu3TRUP6WRwGjkrvFke71KgU6Eyt4"
-          script_stop: true
+          script_stop: false
           timeout: 120s
           command_timeout: 120s
           script: |
             set -uo pipefail
             CONTAINER="$(docker ps --format '{{.Names}}' | grep -i aequitas | head -1)"
             echo "=== Contabo1: relevant keys in /root/.aequitas.env ==="
-            grep -E '^(BOOTSTRAP_SNAPSHOT_URL|BOOTSTRAP_SIGNER|PRIMARY_NODE_URL|PRIMARY_NODE_URLS|RESYNC_FROM_SNAPSHOT|SNAPSHOT_TOKEN)=' /root/.aequitas.env 2>&1 || echo "(none of these keys present in the file)"
+            grep -E '^(AUTO_HEAL_ON_DIVERGENCE|BOOTSTRAP_SNAPSHOT_URL|BOOTSTRAP_SIGNER|PRIMARY_NODE_URL|PRIMARY_NODE_URLS|PEER_NODES|RESYNC_FROM_SNAPSHOT|SNAPSHOT_TOKEN)=' /root/.aequitas.env 2>&1 || echo "(none of these keys present in the file)"
             echo "=== Contabo1: same keys in the RUNNING container's actual env ==="
-            docker inspect -f '{{range .Config.Env}}{{println .}}{{end}}' "$CONTAINER" 2>&1 | grep -E '^(BOOTSTRAP_SNAPSHOT_URL|BOOTSTRAP_SIGNER|PRIMARY_NODE_URL|PRIMARY_NODE_URLS|RESYNC_FROM_SNAPSHOT|SNAPSHOT_TOKEN)=' || echo "(none of these keys present in the running container's env)"
+            docker inspect -f '{{range .Config.Env}}{{println .}}{{end}}' "$CONTAINER" 2>&1 | grep -E '^(AUTO_HEAL_ON_DIVERGENCE|BOOTSTRAP_SNAPSHOT_URL|BOOTSTRAP_SIGNER|PRIMARY_NODE_URL|PRIMARY_NODE_URLS|PEER_NODES|RESYNC_FROM_SNAPSHOT|SNAPSHOT_TOKEN)=' || echo "(none of these keys present in the running container's env)"
             echo "=== Contabo1: /root/deploy.sh verbatim (read-only, not executed) ==="
             cat /root/deploy.sh 2>&1 || echo "(not found / not readable)"
             echo "=== Contabo1: /api/status ==="
@@ -44,6 +44,28 @@ jobs:
             echo ""
             echo "=== Contabo1: container Start/Restart diagnosis ==="
             docker inspect -f 'StartedAt={{.State.StartedAt}} RestartCount={{.RestartCount}} Status={{.State.Status}}' "$CONTAINER" 2>&1
+            echo "=== Contabo1: what the node ITSELF said about auto-heal at boot ==="
+            # Definitive: StartDivergenceAutoHeal is a silent no-op unless
+            # AUTO_HEAL_ON_DIVERGENCE=true, and each of the four detection
+            # paths prints its own enabled/disabled line. Grepping the boot log
+            # answers "does this node have ANY recovery path" without inferring
+            # it from env parsing.
+            docker logs "$CONTAINER" 2>&1 | grep -E '\[AUTO-HEAL\]|\[RESYNC\]' | tail -25 || echo "(no AUTO-HEAL/RESYNC lines in the log at all — auto-heal never armed)"
+            echo "=== Contabo1: auto-heal cooldown + finality state in chain_config (read-only) ==="
+            # triggerAutoResync refuses to fire while auto_resync_last_at is
+            # within autoHealCooldown (30 min), and that value is PERSISTED, so
+            # it survives restarts. This is the one thing that can silently
+            # suppress an otherwise-correct starvation trigger.
+            DATABASE_URL="$(grep -E '^DATABASE_URL=' /root/.aequitas.env 2>/dev/null | head -1 | cut -d= -f2- || true)"
+            [ -n "$DATABASE_URL" ] || DATABASE_URL="$(docker inspect "$CONTAINER" --format '{{range .Config.Env}}{{println .}}{{end}}' 2>/dev/null | grep -E '^DATABASE_URL=' | head -1 | cut -d= -f2- || true)"
+            if [ -z "$DATABASE_URL" ]; then
+              echo "(no DATABASE_URL found — skipping chain_config read)"
+            else
+              NET="$(docker inspect "$CONTAINER" --format '{{range $n,$v := .NetworkSettings.Networks}}{{$n}}{{end}}' 2>/dev/null || true)"
+              docker run --rm --network "$NET" postgres:16-alpine psql "$DATABASE_URL" -t -A -F'|' -c \
+                "SELECT key, value FROM chain_config WHERE key IN ('auto_resync_last_at','pending_auto_resync','chain_divergence_unsettled_since','finalized_height','finalized_blue_score','max_block_height','snapshot_import_height') ORDER BY key" 2>&1 || echo "(query failed)"
+              echo "--- now (unix) for comparison against auto_resync_last_at: $(date +%s) ---"
+            fi
 
   contabo2:
     runs-on: ubuntu-latest
@@ -56,18 +78,35 @@ jobs:
           key: ${{ secrets.CONTABO2_SSH_KEY }}
           port: 22
           fingerprint: "SHA256:VIwj7Faxiga2n45HVHZEQFPxcbRKHgSgHoxAFsf2wto"
-          script_stop: true
+          script_stop: false
           timeout: 120s
           command_timeout: 120s
           script: |
             set -uo pipefail
             CONTAINER="$(docker ps --format '{{.Names}}' | grep -i aequitas | head -1)"
             echo "=== Contabo2: relevant keys in /root/.aequitas.env ==="
-            grep -E '^(BOOTSTRAP_SNAPSHOT_URL|BOOTSTRAP_SIGNER|PRIMARY_NODE_URL|PRIMARY_NODE_URLS|RESYNC_FROM_SNAPSHOT|SNAPSHOT_TOKEN)=' /root/.aequitas.env 2>&1 || echo "(none of these keys present in the file)"
+            grep -E '^(AUTO_HEAL_ON_DIVERGENCE|BOOTSTRAP_SNAPSHOT_URL|BOOTSTRAP_SIGNER|PRIMARY_NODE_URL|PRIMARY_NODE_URLS|PEER_NODES|RESYNC_FROM_SNAPSHOT|SNAPSHOT_TOKEN)=' /root/.aequitas.env 2>&1 || echo "(none of these keys present in the file)"
             echo "=== Contabo2: same keys in the RUNNING container's actual env ==="
-            docker inspect -f '{{range .Config.Env}}{{println .}}{{end}}' "$CONTAINER" 2>&1 | grep -E '^(BOOTSTRAP_SNAPSHOT_URL|BOOTSTRAP_SIGNER|PRIMARY_NODE_URL|PRIMARY_NODE_URLS|RESYNC_FROM_SNAPSHOT|SNAPSHOT_TOKEN)=' || echo "(none of these keys present in the running container's env)"
+            docker inspect -f '{{range .Config.Env}}{{println .}}{{end}}' "$CONTAINER" 2>&1 | grep -E '^(AUTO_HEAL_ON_DIVERGENCE|BOOTSTRAP_SNAPSHOT_URL|BOOTSTRAP_SIGNER|PRIMARY_NODE_URL|PRIMARY_NODE_URLS|PEER_NODES|RESYNC_FROM_SNAPSHOT|SNAPSHOT_TOKEN)=' || echo "(none of these keys present in the running container's env)"
             echo "=== Contabo2: /api/status ==="
             curl -s http://localhost:8080/api/status
             echo ""
             echo "=== Contabo2: container Start/Restart diagnosis ==="
             docker inspect -f 'StartedAt={{.State.StartedAt}} RestartCount={{.RestartCount}} Status={{.State.Status}}' "$CONTAINER" 2>&1
+            echo "=== Contabo2: what the node ITSELF said about auto-heal at boot ==="
+            # Same read as Contabo1 — kept here specifically so the two boxes'
+            # auto-heal configuration can be diffed directly. Contabo2 is
+            # currently the healthy one, so its lines are the reference for
+            # what a correctly-armed node looks like.
+            docker logs "$CONTAINER" 2>&1 | grep -E '\[AUTO-HEAL\]|\[RESYNC\]' | tail -25 || echo "(no AUTO-HEAL/RESYNC lines in the log at all — auto-heal never armed)"
+            echo "=== Contabo2: auto-heal cooldown + finality state in chain_config (read-only) ==="
+            DATABASE_URL="$(grep -E '^DATABASE_URL=' /root/.aequitas.env 2>/dev/null | head -1 | cut -d= -f2- || true)"
+            [ -n "$DATABASE_URL" ] || DATABASE_URL="$(docker inspect "$CONTAINER" --format '{{range .Config.Env}}{{println .}}{{end}}' 2>/dev/null | grep -E '^DATABASE_URL=' | head -1 | cut -d= -f2- || true)"
+            if [ -z "$DATABASE_URL" ]; then
+              echo "(no DATABASE_URL found — skipping chain_config read)"
+            else
+              NET="$(docker inspect "$CONTAINER" --format '{{range $n,$v := .NetworkSettings.Networks}}{{$n}}{{end}}' 2>/dev/null || true)"
+              docker run --rm --network "$NET" postgres:16-alpine psql "$DATABASE_URL" -t -A -F'|' -c \
+                "SELECT key, value FROM chain_config WHERE key IN ('auto_resync_last_at','pending_auto_resync','chain_divergence_unsettled_since','finalized_height','finalized_blue_score','max_block_height','snapshot_import_height') ORDER BY key" 2>&1 || echo "(query failed)"
+              echo "--- now (unix) for comparison against auto_resync_last_at: $(date +%s) ---"
+            fi
