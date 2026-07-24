@@ -708,15 +708,67 @@ func (dag *BlockDAG) hasCaughtUpWithAllPeers(seeds []string) bool {
 // is just a locally-computed number with no such guarantee. Confirmed live:
 // a peer's real common-ancestor block sat exactly at BootHeight, and no
 // number of deepScan passes could ever recover once it was permanently
-// excluded. Without checkpoint backing, fall back to 0 (deepScan's
-// original pre-checkpoint-seeding behavior) so a genuinely isolated node
-// can still find its real common ancestor, however deep.
+// excluded.
+//
+// FIX (P0, 2026-07-24 — "this can't be happening on every redeploy", and it
+// was): the non-checkpoint-backed branch used to return 0 outright, on the
+// reasoning that a genuinely isolated node must be able to find its real
+// common ancestor however deep. That reasoning is sound about CORRECTNESS
+// and wrong about COST, because it made the deepest possible search the
+// DEFAULT for the most ordinary event there is — a plain restart.
+//
+// BootHeightCheckpointBacked() is true only in the resync branch of
+// RefreshBootHeightAfterSnapshotImport; an ordinary redeploy therefore
+// always landed on `return 0`. doSyncOnce starts every restart with an empty
+// peerSyncHeight, falls into its `minHeight < 0` branch, and adopts this
+// floor — so every redeploy without a resync sent the node re-walking from
+// genesis, ~1.78M blocks in deepScanPageBudgetPerCall-sized strides, while
+// foreign_attach sat at 0 and its height stayed frozen for many minutes.
+// Confirmed live on Contabo1: healthy and merging for 27 minutes
+// (foreign_attach 102, merging 3 tips, +1111 blocks), restarted by a
+// deploy, and immediately back to 0 attaches at a frozen height — while an
+// EARLIER restart the same evening recovered inside 161 seconds purely
+// because an in-process resync had just set checkpointBacked and this
+// function returned BootHeight instead of 0.
+//
+// The floor does not have to be right, only cheap and recoverable: a full
+// sweep that reaches the peer's tip while still leaving blocks unmerged
+// calls lowerDeepScanFloor, which halves the distance toward
+// finalityFloorLimit() on each such sweep and so converges on a genuinely
+// deep common ancestor in O(log(floor)) passes (see its own comment — that
+// mechanism exists precisely for "the floor was too high"). So this is a
+// STARTING GUESS with an adaptive escape hatch, not a guarantee that has to
+// hold on the first try. Starting just below bootHeight makes the ordinary
+// case — a node whose own chain is intact and merely needs the last few
+// hundred blocks — resolve in one short sweep, and costs a genuinely deep
+// divergence only a handful of extra halvings.
+//
+// The margin below bootHeight is what keeps the original 2026-07-04
+// incident closed: min_height is EXCLUSIVE, so a floor AT bootHeight would
+// again permanently exclude a common ancestor sitting exactly there.
 func (dag *BlockDAG) deepScanFloor() int64 {
 	if dag.BootHeightCheckpointBacked() {
 		return dag.BootHeight()
 	}
-	return 0
+	boot := dag.BootHeight()
+	if boot <= plainRestartDeepScanMargin {
+		return 0 // young chain — the whole history is within one sweep anyway
+	}
+	return boot - plainRestartDeepScanMargin
 }
+
+// plainRestartDeepScanMargin is how far BELOW bootHeight deepScanFloor starts
+// on a plain, non-checkpoint-backed restart — see that function's own comment.
+//
+// Sized for the real question after an ordinary restart: how far can this
+// node's chain have diverged from its peers' while it was down? A deploy is
+// a couple of minutes, i.e. low hundreds of blocks at BLOCK_TIME=1s, so 5000
+// covers that case many times over while still being one cheap sweep
+// (deepScanPageBudgetPerCall alone covers 10,000 blocks per call). Anything
+// deeper is handled by lowerDeepScanFloor's halving rather than by guessing
+// a bigger number here — which is exactly why this constant only has to be
+// generous, not correct.
+const plainRestartDeepScanMargin = 5000
 
 // finalityFloorLimit is the lowest height lowerDeepScanFloor will ever narrow
 // a peer's floor down to. isFinalityViolation (finality.go) unconditionally
