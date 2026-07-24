@@ -136,3 +136,63 @@ func TestClearFinalityWalkGap_RemovesEntry(t *testing.T) {
 		}
 	}
 }
+
+// TestFetchMissingAncestors_ResolvesFromDagBlocksWithoutDBOrNetwork is the
+// regression guard for the 2026-07-24 live-freeze fix (see
+// fetchMissingAncestors' own FIX comment, sync_blocks.go): a pending hash
+// already resident in dag.blocks must be recognized and cleared via the
+// batch in-memory check, never needing dag.state or a peer fetch at all —
+// proving the fix replaced the old per-hash dag.GetBlockByHash loop (one
+// Postgres round trip per pending hash, confirmed live via a goroutine dump
+// as the cause of a multi-minute full-node freeze once the backlog grew
+// into the thousands) with a single batch pass over dag.blocks first.
+func TestFetchMissingAncestors_ResolvesFromDagBlocksWithoutDBOrNetwork(t *testing.T) {
+	dag := newGhostdagTestDAG()
+	initOrphanTracking(dag)
+	dag.orphanLastAttempt = make(map[string]time.Time)
+	const hash = "f00dfeed00000000000000000000000000000000000000000000000000000"
+
+	dag.registerFinalityWalkGap(hash)
+	dag.blocks[hash] = &Block{Hash: hash, Height: 1} // already resident in memory
+
+	// dag.state is nil (no DB) and nodeURL is a guaranteed-unreachable
+	// address — if resolving this hash required the DB or a peer fetch, the
+	// test would hang or the hash would stay pending. It must resolve purely
+	// from the dag.blocks membership check.
+	dag.fetchMissingAncestors("http://127.0.0.1:1")
+
+	for _, h := range dag.PendingFetchHashes() {
+		if h == hash {
+			t.Fatalf("hash %q still pending after fetchMissingAncestors — the in-memory dag.blocks batch check did not resolve it", hash)
+		}
+	}
+}
+
+// TestFetchMissingAncestors_UnresolvedHashFallsThroughToFetchAttempt is the
+// counterpart to the test above: a hash NOT resident in dag.blocks (and with
+// dag.state == nil, so the DB batch step resolves nothing) must still fall
+// through to a real fetch attempt against the peer rather than being
+// silently dropped — with an unreachable nodeURL that attempt fails, so the
+// hash must remain pending afterward (never wrongly cleared).
+func TestFetchMissingAncestors_UnresolvedHashFallsThroughToFetchAttempt(t *testing.T) {
+	dag := newGhostdagTestDAG()
+	initOrphanTracking(dag)
+	dag.orphanLastAttempt = make(map[string]time.Time)
+	const hash = "0ff1c1a100000000000000000000000000000000000000000000000000000"
+
+	dag.registerFinalityWalkGap(hash)
+	// Deliberately NOT added to dag.blocks, and dag.state is nil.
+
+	dag.fetchMissingAncestors("http://127.0.0.1:1")
+
+	found := false
+	for _, h := range dag.PendingFetchHashes() {
+		if h == hash {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatalf("hash %q was cleared even though it never resolved (no DB, unreachable peer) — a genuinely unresolved hash must stay pending", hash)
+	}
+}
