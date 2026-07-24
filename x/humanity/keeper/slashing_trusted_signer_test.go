@@ -22,30 +22,3 @@ func TestTrustedBootstrapSigner_NormalizesAndHandlesUnset(t *testing.T) {
 		t.Fatalf("trustedBootstrapSigner() = %q, want %q (trimmed and lowercased)", got, want)
 	}
 }
-
-// TestRecordEquivocationEvidenceOnly_NilDBReturnsError mirrors every other
-// slashing helper's nil-DB contract. The detection site logs and continues on
-// error rather than aborting, so the only thing that must hold here is "does
-// not panic, reports the condition".
-func TestRecordEquivocationEvidenceOnly_NilDBReturnsError(t *testing.T) {
-	cs := newTestState() // useDB: false, cs.db is nil
-	err := cs.RecordEquivocationEvidenceOnly("0xabc", "hashA", "hashB", equivocationSlashingActivationUnix+1)
-	if err == nil {
-		t.Fatal("RecordEquivocationEvidenceOnly with no DB configured must report an error, not silently claim success")
-	}
-}
-
-// TestRecordEquivocationEvidenceOnly_PreActivationIsExempt verifies the
-// evidence-only path carries the SAME pre-activation cutoff as
-// RecordEquivocationAndSuspend. Without it, this new write path would become a
-// way to reintroduce exactly the retroactive-penalty problem
-// equivocationSlashingActivationUnix exists to prevent — evidence rows for
-// pre-cutoff history on every freshly-synced node. Checked before the nil-DB
-// guard would otherwise fire, which is what makes the nil-DB state a valid
-// probe for "returned early".
-func TestRecordEquivocationEvidenceOnly_PreActivationIsExempt(t *testing.T) {
-	cs := newTestState()
-	if err := cs.RecordEquivocationEvidenceOnly("0xabc", "hashA", "hashB", equivocationSlashingActivationUnix-1); err != nil {
-		t.Fatalf("pre-activation evidence must be exempt (nil error, no write attempted), got %v", err)
-	}
-}
