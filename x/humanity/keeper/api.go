@@ -13,6 +13,7 @@ import (
 	"math/big"
 	"net"
 	"net/http"
+	"net/http/pprof"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -739,6 +740,41 @@ func (a *APIServer) Start(port int) {
 	SafeGoroutine("http.ListenAndServe", func() {
 		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			fmt.Printf("[API] Server error: %v\n", err)
+		}
+	})
+	startPprofServer()
+}
+
+// startPprofServer (2026-07-24, 50k-TPS merge-latency investigation) exposes
+// Go's standard net/http/pprof handlers so a real CPU/goroutine profile can
+// be captured from a live, struggling node instead of continuing to guess
+// at the dag.mu/GHOSTDAG merge bottleneck from log timestamps alone.
+// Deliberately bound to 127.0.0.1 only, on its own mux — NOT the public API
+// server's mux, and NOT published via the deploy scripts' `docker run -p`
+// flags — so it is reachable only from inside the container (e.g. `docker
+// exec ... curl localhost:6061/debug/pprof/...`), never from the public
+// internet. pprof's own handlers can trigger genuinely expensive work (a
+// 30s CPU profile, a full heap dump) and reveal internal call-stack detail;
+// neither belongs on an internet-facing port on a production consensus
+// node. A failure to bind (port already in use, sandboxed environment
+// without loopback) is logged and otherwise harmless — nothing else in the
+// node depends on this listener.
+func startPprofServer() {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/debug/pprof/", pprof.Index)
+	mux.HandleFunc("/debug/pprof/cmdline", pprof.Cmdline)
+	mux.HandleFunc("/debug/pprof/profile", pprof.Profile)
+	mux.HandleFunc("/debug/pprof/symbol", pprof.Symbol)
+	mux.HandleFunc("/debug/pprof/trace", pprof.Trace)
+	srv := &http.Server{
+		Addr:         "127.0.0.1:6061",
+		Handler:      mux,
+		ReadTimeout:  30 * time.Second,
+		WriteTimeout: 120 * time.Second, // a requested CPU/trace profile can legitimately run up to 60s+
+	}
+	SafeGoroutine("pprof.ListenAndServe", func() {
+		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			fmt.Printf("[PPROF] localhost-only debug server error (non-fatal, node continues normally): %v\n", err)
 		}
 	})
 }
