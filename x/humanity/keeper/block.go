@@ -713,6 +713,12 @@ replayedMu             sync.Mutex
 	resyncBootstrapURL string
 	resyncSigner       string
 	resyncPrimaryURL   string
+	// lastAutoResyncSuppressedLogAt rate-limits triggerAutoResync's
+	// cooldown-suppression log line (UnixNano), same pattern as
+	// lastFarAheadLogAt/lastFinalityRejectLogAt. Four independent detection
+	// paths can each hit the suppression once a minute, and the line is only
+	// worth one entry per window however many of them fired.
+	lastAutoResyncSuppressedLogAt atomic.Int64
 	// orphans holds blocks whose parent isn't known yet, keyed by the missing
 	// parent's hash. When that parent is later added, every block waiting on
 	// it is retried automatically. See AddPeerBlock for why this exists —

@@ -50,18 +50,18 @@ jobs:
             # paths prints its own enabled/disabled line. Grepping the boot log
             # answers "does this node have ANY recovery path" without inferring
             # it from env parsing.
-            docker logs "$CONTAINER" 2>&1 | grep -E '\[AUTO-HEAL\]|\[RESYNC\]' | head -20 || echo "(no AUTO-HEAL/RESYNC lines in the log at all — auto-heal never armed)"
+            docker logs "$CONTAINER" 2>&1 | grep -E '\[AUTO-HEAL\]|\[RESYNC\]' | tail -25 || echo "(no AUTO-HEAL/RESYNC lines in the log at all — auto-heal never armed)"
             echo "=== Contabo1: auto-heal cooldown + finality state in chain_config (read-only) ==="
             # triggerAutoResync refuses to fire while auto_resync_last_at is
             # within autoHealCooldown (30 min), and that value is PERSISTED, so
             # it survives restarts. This is the one thing that can silently
             # suppress an otherwise-correct starvation trigger.
-            DATABASE_URL="$(grep -E '^DATABASE_URL=' /root/.aequitas.env 2>/dev/null | head -1 | cut -d= -f2-)"
-            [ -n "$DATABASE_URL" ] || DATABASE_URL="$(docker inspect "$CONTAINER" --format '{{range .Config.Env}}{{println .}}{{end}}' 2>/dev/null | grep -E '^DATABASE_URL=' | head -1 | cut -d= -f2-)"
+            DATABASE_URL="$(grep -E '^DATABASE_URL=' /root/.aequitas.env 2>/dev/null | head -1 | cut -d= -f2- || true)"
+            [ -n "$DATABASE_URL" ] || DATABASE_URL="$(docker inspect "$CONTAINER" --format '{{range .Config.Env}}{{println .}}{{end}}' 2>/dev/null | grep -E '^DATABASE_URL=' | head -1 | cut -d= -f2- || true)"
             if [ -z "$DATABASE_URL" ]; then
               echo "(no DATABASE_URL found — skipping chain_config read)"
             else
-              NET="$(docker inspect "$CONTAINER" --format '{{range $n,$v := .NetworkSettings.Networks}}{{$n}}{{end}}' 2>/dev/null)"
+              NET="$(docker inspect "$CONTAINER" --format '{{range $n,$v := .NetworkSettings.Networks}}{{$n}}{{end}}' 2>/dev/null || true)"
               docker run --rm --network "$NET" postgres:16-alpine psql "$DATABASE_URL" -t -A -F'|' -c \
                 "SELECT key, value FROM chain_config WHERE key IN ('auto_resync_last_at','pending_auto_resync','chain_divergence_unsettled_since','finalized_height','finalized_blue_score','max_block_height','snapshot_import_height') ORDER BY key" 2>&1 || echo "(query failed)"
               echo "--- now (unix) for comparison against auto_resync_last_at: $(date +%s) ---"
@@ -98,14 +98,14 @@ jobs:
             # auto-heal configuration can be diffed directly. Contabo2 is
             # currently the healthy one, so its lines are the reference for
             # what a correctly-armed node looks like.
-            docker logs "$CONTAINER" 2>&1 | grep -E '\[AUTO-HEAL\]|\[RESYNC\]' | head -20 || echo "(no AUTO-HEAL/RESYNC lines in the log at all — auto-heal never armed)"
+            docker logs "$CONTAINER" 2>&1 | grep -E '\[AUTO-HEAL\]|\[RESYNC\]' | tail -25 || echo "(no AUTO-HEAL/RESYNC lines in the log at all — auto-heal never armed)"
             echo "=== Contabo2: auto-heal cooldown + finality state in chain_config (read-only) ==="
-            DATABASE_URL="$(grep -E '^DATABASE_URL=' /root/.aequitas.env 2>/dev/null | head -1 | cut -d= -f2-)"
-            [ -n "$DATABASE_URL" ] || DATABASE_URL="$(docker inspect "$CONTAINER" --format '{{range .Config.Env}}{{println .}}{{end}}' 2>/dev/null | grep -E '^DATABASE_URL=' | head -1 | cut -d= -f2-)"
+            DATABASE_URL="$(grep -E '^DATABASE_URL=' /root/.aequitas.env 2>/dev/null | head -1 | cut -d= -f2- || true)"
+            [ -n "$DATABASE_URL" ] || DATABASE_URL="$(docker inspect "$CONTAINER" --format '{{range .Config.Env}}{{println .}}{{end}}' 2>/dev/null | grep -E '^DATABASE_URL=' | head -1 | cut -d= -f2- || true)"
             if [ -z "$DATABASE_URL" ]; then
               echo "(no DATABASE_URL found — skipping chain_config read)"
             else
-              NET="$(docker inspect "$CONTAINER" --format '{{range $n,$v := .NetworkSettings.Networks}}{{$n}}{{end}}' 2>/dev/null)"
+              NET="$(docker inspect "$CONTAINER" --format '{{range $n,$v := .NetworkSettings.Networks}}{{$n}}{{end}}' 2>/dev/null || true)"
               docker run --rm --network "$NET" postgres:16-alpine psql "$DATABASE_URL" -t -A -F'|' -c \
                 "SELECT key, value FROM chain_config WHERE key IN ('auto_resync_last_at','pending_auto_resync','chain_divergence_unsettled_since','finalized_height','finalized_blue_score','max_block_height','snapshot_import_height') ORDER BY key" 2>&1 || echo "(query failed)"
               echo "--- now (unix) for comparison against auto_resync_last_at: $(date +%s) ---"
