@@ -1,0 +1,146 @@
+name: Purge queued slash_equivocation TXs + clear the penalty (manual, one-off)
+
+# Closes the last open thread from the 2026-07-24 incident.
+#
+# Block #1775462 carried a wave of slash_equivocation transactions against
+# the primary (0x92cbedec...). Those were queued into pending_txs by the
+# OLD detection path, BEFORE the fix that stopped a node from propagating
+# its own uncorroborated observation about its own BOOTSTRAP_SIGNER. That
+# fix prevents new ones from being created; it cannot un-queue the ones
+# already sitting in pending_txs.
+#
+# Why they must go: replayTransactions' slash_equivocation case calls
+# RecordEquivocationAndSuspend on EVERY node that replays the block. So each
+# queued TX re-applies the false-positive suspension network-wide, through
+# consensus, undoing any manual clear. Worse, each DISTINCT evidence pair
+# increments offense_count -- 2 means a 90-day suspension plus a 50 AEQ
+# penalty, 3 or more is a PERMANENT ban of the primary. Left alone, this
+# escalates on its own with every block that drains more of the queue.
+#
+# Order matters and is deliberate:
+#   1. Report what is queued (read-only) before touching anything.
+#   2. Delete only slash_equivocation rows for the named address. Every
+#      other pending TX -- real transfers included -- is left untouched.
+#   3. Re-read validator_penalties, since the already-replayed wave may
+#      have re-applied the suspension after the earlier manual clear.
+#   4. Clear that row and restart, because the in-memory penalty cache is
+#      loaded once at startup: a bare DB DELETE does not reach a running
+#      process (slashing.go's own OPERATIONAL NOTE documents this being
+#      confirmed live).
+#
+# This cannot undo TXs already embedded in produced blocks -- those stay in
+# history as evidence rows, which by this codebase's own design never block
+# anything on their own. It stops the NEXT wave and repairs the current
+# penalty state.
+on:
+  workflow_dispatch:
+    inputs:
+      validator_address:
+        description: "Address whose queued slash TXs to purge (lowercase, 0x-prefixed)"
+        required: false
+        default: "0x92cbedec9d348b4762cb9af99500ee6139c5b671"
+      dry_run:
+        description: "true = only report what WOULD be deleted, change nothing"
+        required: false
+        default: "true"
+
+jobs:
+  contabo1:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Purge on Contabo1
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: 173.249.37.118
+          username: root
+          key: ${{ secrets.CONTABO_SSH_KEY }}
+          port: 22
+          fingerprint: "SHA256:noMtjHV8c+2iEFZu3TRUP6WRwGjkrvFke71KgU6Eyt4"
+          script_stop: false
+          timeout: 600s
+          command_timeout: 600s
+          envs: ADDR,DRY
+          script: |
+            set -uo pipefail
+            ADDR_LC="$(echo "$ADDR" | tr 'A-Z' 'a-z')"
+            DATABASE_URL="$(grep -E '^DATABASE_URL=' /root/.aequitas.env 2>/dev/null | head -1 | cut -d= -f2-)"
+            [ -n "$DATABASE_URL" ] || DATABASE_URL="$(docker inspect aequitas-node --format '{{range .Config.Env}}{{println .}}{{end}}' 2>/dev/null | grep -E '^DATABASE_URL=' | head -1 | cut -d= -f2-)"
+            if [ -z "$DATABASE_URL" ]; then echo "No DATABASE_URL on Contabo1"; exit 0; fi
+            NET="$(docker inspect aequitas-node --format '{{range $n,$v := .NetworkSettings.Networks}}{{$n}}{{end}}' 2>/dev/null)"
+            psql() { docker run --rm --network "$NET" postgres:16-alpine psql "$DATABASE_URL" "$@"; }
+
+            echo "=== Contabo1: queued slash_equivocation TXs for $ADDR_LC ==="
+            psql -t -A -c "SELECT count(*) FROM pending_txs WHERE tx_json LIKE '%slash_equivocation%' AND lower(tx_json) LIKE '%${ADDR_LC}%'" || echo "(query failed)"
+            echo "--- total pending_txs (for context: everything else must survive) ---"
+            psql -t -A -c "SELECT count(*) FROM pending_txs" || echo "(query failed)"
+
+            if [ "${DRY:-true}" = "true" ]; then
+              echo "=== DRY RUN: nothing deleted on Contabo1 ==="
+              exit 0
+            fi
+
+            echo "=== Contabo1: deleting those rows ==="
+            psql -c "DELETE FROM pending_txs WHERE tx_json LIKE '%slash_equivocation%' AND lower(tx_json) LIKE '%${ADDR_LC}%'" || echo "(delete failed)"
+            echo "--- remaining pending_txs ---"
+            psql -t -A -c "SELECT count(*) FROM pending_txs" || echo "(query failed)"
+
+            echo "=== Contabo1: validator_penalties for $ADDR_LC (may have been re-applied by the replayed wave) ==="
+            psql -t -A -F'|' -c "SELECT offense_count, suspended_until, banned FROM validator_penalties WHERE signing_address = '$ADDR_LC'" || echo "(query failed)"
+            echo "=== Contabo1: clearing it ==="
+            psql -c "DELETE FROM validator_penalties WHERE signing_address = '$ADDR_LC'" || echo "(delete failed)"
+
+            echo "=== Contabo1: restarting so the in-memory penalty cache reloads ==="
+            /root/deploy.sh
+        env:
+          ADDR: ${{ inputs.validator_address }}
+          DRY: ${{ inputs.dry_run }}
+
+  contabo2:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Purge on Contabo2
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: 194.163.188.71
+          username: root
+          key: ${{ secrets.CONTABO2_SSH_KEY }}
+          port: 22
+          fingerprint: "SHA256:VIwj7Faxiga2n45HVHZEQFPxcbRKHgSgHoxAFsf2wto"
+          script_stop: false
+          timeout: 600s
+          command_timeout: 600s
+          envs: ADDR,DRY
+          script: |
+            set -uo pipefail
+            ADDR_LC="$(echo "$ADDR" | tr 'A-Z' 'a-z')"
+            DATABASE_URL="$(grep -E '^DATABASE_URL=' /root/.aequitas.env 2>/dev/null | head -1 | cut -d= -f2-)"
+            [ -n "$DATABASE_URL" ] || DATABASE_URL="$(docker inspect aequitas-node --format '{{range .Config.Env}}{{println .}}{{end}}' 2>/dev/null | grep -E '^DATABASE_URL=' | head -1 | cut -d= -f2-)"
+            if [ -z "$DATABASE_URL" ]; then echo "No DATABASE_URL on Contabo2"; exit 0; fi
+            NET="$(docker inspect aequitas-node --format '{{range $n,$v := .NetworkSettings.Networks}}{{$n}}{{end}}' 2>/dev/null)"
+            psql() { docker run --rm --network "$NET" postgres:16-alpine psql "$DATABASE_URL" "$@"; }
+
+            echo "=== Contabo2: queued slash_equivocation TXs for $ADDR_LC ==="
+            psql -t -A -c "SELECT count(*) FROM pending_txs WHERE tx_json LIKE '%slash_equivocation%' AND lower(tx_json) LIKE '%${ADDR_LC}%'" || echo "(query failed)"
+            echo "--- total pending_txs ---"
+            psql -t -A -c "SELECT count(*) FROM pending_txs" || echo "(query failed)"
+
+            if [ "${DRY:-true}" = "true" ]; then
+              echo "=== DRY RUN: nothing deleted on Contabo2 ==="
+              exit 0
+            fi
+
+            echo "=== Contabo2: deleting those rows ==="
+            psql -c "DELETE FROM pending_txs WHERE tx_json LIKE '%slash_equivocation%' AND lower(tx_json) LIKE '%${ADDR_LC}%'" || echo "(delete failed)"
+            echo "--- remaining pending_txs ---"
+            psql -t -A -c "SELECT count(*) FROM pending_txs" || echo "(query failed)"
+
+            echo "=== Contabo2: validator_penalties for $ADDR_LC ==="
+            psql -t -A -F'|' -c "SELECT offense_count, suspended_until, banned FROM validator_penalties WHERE signing_address = '$ADDR_LC'" || echo "(query failed)"
+            echo "=== Contabo2: clearing it ==="
+            psql -c "DELETE FROM validator_penalties WHERE signing_address = '$ADDR_LC'" || echo "(delete failed)"
+
+            echo "=== Contabo2: restarting so the in-memory penalty cache reloads ==="
+            /root/deploy_safe_c2.sh
+        env:
+          ADDR: ${{ inputs.validator_address }}
+          DRY: ${{ inputs.dry_run }}
