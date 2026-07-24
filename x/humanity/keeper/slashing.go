@@ -198,7 +198,7 @@ func (cs *ChainState) initSlashingTables() {
 // self-heal above, so this specific pattern no longer needs a manual SSH +
 // DB DELETE + container restart every time it recurs.
 func (cs *ChainState) selfHealUncorroboratedSeedSuspension() {
-	trustedSigner := strings.ToLower(strings.TrimSpace(os.Getenv("BOOTSTRAP_SIGNER")))
+	trustedSigner := trustedBootstrapSigner()
 	if trustedSigner == "" {
 		return
 	}
@@ -222,6 +222,69 @@ func (cs *ChainState) selfHealUncorroboratedSeedSuspension() {
 			cs.invalidatePenaltyCache()
 		}
 	}
+}
+
+// trustedBootstrapSigner returns this node's configured BOOTSTRAP_SIGNER,
+// lowercased and trimmed, or "" if none is set. This is the one validator
+// address the operator has explicitly declared as this node's trust anchor:
+// the signer whose signed snapshot this node is willing to replace its
+// ENTIRE account state from (see ResyncFromSnapshotURL / StartDivergenceAutoHeal).
+func trustedBootstrapSigner() string {
+	return strings.ToLower(strings.TrimSpace(os.Getenv("BOOTSTRAP_SIGNER")))
+}
+
+// RecordEquivocationEvidenceOnly persists the evidence pair WITHOUT touching
+// validator_penalties — no offense counter, no suspension, no ban.
+//
+// FIX (P0, 2026-07-24 — the recurring false-positive suspension against the
+// trusted primary, now understood one level deeper than
+// selfHealUncorroboratedSeedSuspension addressed it): that self-heal only
+// fires at offense_count >= 2, because its "uncorroborated" signal is
+// "escalated to 2nd offense yet slash_applied never became true on any
+// evidence row". A FIRST offense carries no balance penalty at all (see the
+// graduated policy at the top of this file), so it never produces a
+// slash_equivocation TX and slash_applied is ALWAYS false for it — the
+// signal simply does not exist below offense_count 2. Yet a first offense
+// still applies a full 14-day suspension, and a secondary that suspends its
+// own primary rejects every block that primary produces: a total, self-
+// inflicted merge stop. Confirmed live 2026-07-24 17:50 UTC, minutes after
+// a previous false positive had been cleared manually, on nodes that were
+// mid-catch-up right after a restart — exactly the conditions
+// selfHealUncorroboratedSeedSuspension's own comment describes.
+//
+// Recording evidence without a penalty is explicitly safe by this file's own
+// design: initSlashingTables deliberately KEEPS equivocation_evidence rows
+// while deleting validator_penalties rows, on the stated grounds that
+// "evidence alone never blocks anything, only validator_penalties rows do".
+// This function is that same principle applied at write time instead of
+// cleanup time.
+func (cs *ChainState) RecordEquivocationEvidenceOnly(signingAddress, blockAHash, blockBHash string, now int64) error {
+	// Pre-activation exemption first, deliberately BEFORE the nil-DB check
+	// (RecordEquivocationAndSuspend checks these in the opposite order): this
+	// is a pure predicate on `now`, and an exempt event has nothing to write
+	// whether or not a DB exists, so "exempt" is the more truthful answer than
+	// "no database configured". Same cutoff, same rationale — see
+	// equivocationSlashingActivationUnix.
+	if now < equivocationSlashingActivationUnix {
+		return nil
+	}
+	if cs.db == nil {
+		return fmt.Errorf("no database configured")
+	}
+	// Canonical hash order, identical to RecordEquivocationAndSuspend's, so
+	// the same pair recorded by either path collides on the same UNIQUE row
+	// rather than producing two rows for one event.
+	if blockAHash > blockBHash {
+		blockAHash, blockBHash = blockBHash, blockAHash
+	}
+	_, err := cs.db.Exec(
+		`INSERT INTO equivocation_evidence
+		    (signing_address, block_a_hash, block_b_hash, detected_at)
+		 VALUES ($1,$2,$3,$4)
+		 ON CONFLICT (block_a_hash, block_b_hash) DO NOTHING`,
+		strings.ToLower(signingAddress), blockAHash, blockBHash, now,
+	)
+	return err
 }
 
 // loadPenaltyCacheLocked fills cs.penaltyCache from validator_penalties.
