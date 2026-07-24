@@ -1786,10 +1786,39 @@ func (dag *BlockDAG) fetchAndSetSyncTarget(seeds []string) {
 	for _, seed := range seeds {
 		resp, err := httpSyncClient.Get(seed + "/api/health/combined")
 		if err != nil {
+			// FIX (P0, 2026-07-24 — the live fork this gate exists to prevent,
+			// produced BY this gate's own fail-open): an unreachable seed used
+			// to `continue` silently, contributing nothing to maxHeight AND
+			// leaving caughtUpWithEverySeed true. A node whose only
+			// still-answering seed happened to sit at its own height therefore
+			// concluded "caught up with everyone", opened the gate, and started
+			// producing on a chain hundreds of blocks behind the seed it could
+			// not reach — which is exactly what happened on both Contabos: the
+			// gate logged "deferring until height 1770421 (currently 1770421)",
+			// its own height, while the primary was at 1771238 and absent from
+			// the calculation entirely. Every resync re-forked within seconds
+			// for this reason.
+			//
+			// "I could not ask this seed where it is" is not evidence of being
+			// caught up with it — it is the absence of evidence, and this gate
+			// must fail CLOSED on it. A genuinely down seed is already handled,
+			// deliberately and separately, by ProduceBlock's syncStallTimeout
+			// escape valve (see its own comment: "a downed/unreachable primary
+			// must not halt this node forever"), so failing closed here cannot
+			// strand a node — it only stops it from forking during the window
+			// where the seed is merely unreachable *right now*.
+			fmt.Printf("[SYNC] ⚠ Seed %s did not answer /api/health/combined (%v) — treating as NOT caught up rather than assuming this node is current with it (see fetchAndSetSyncTarget's own comment)\n", seed, err)
+			caughtUpWithEverySeed = false
 			continue
 		}
 		var h healthResp
-		if err := json.NewDecoder(resp.Body).Decode(&h); err == nil {
+		if err := json.NewDecoder(resp.Body).Decode(&h); err != nil {
+			// Same reasoning as the unreachable case above: a seed that
+			// answered with something this node cannot parse has told it
+			// nothing about its height, so it cannot count as "caught up".
+			fmt.Printf("[SYNC] ⚠ Seed %s returned an unparseable /api/health/combined response (%v) — treating as NOT caught up\n", seed, err)
+			caughtUpWithEverySeed = false
+		} else {
 			if h.Chain.Height > maxHeight {
 				maxHeight = h.Chain.Height
 			}
@@ -1818,9 +1847,35 @@ func (dag *BlockDAG) fetchAndSetSyncTarget(seeds []string) {
 	if caughtUpWithEverySeed {
 		return // genuinely absorbed every seed's chain — no gate needed
 	}
-	dag.syncTargetHeight.Store(maxHeight)
+	// FIX (P0, 2026-07-24 — the other half of the fail-open above, and the
+	// part that made it permanent): ProduceBlock's gate reads
+	//
+	//	if target := dag.syncTargetHeight.Load(); target > 0 {
+	//	    if dag.height >= target-10 { dag.syncTargetHeight.Store(0) ... }
+	//
+	// — i.e. a target this node ALREADY meets doesn't just fail to gate, it
+	// clears the gate to 0 permanently, for the rest of the process's life.
+	// So whenever the seed that actually matters is missing from maxHeight
+	// (unreachable/unparseable — see above), storing the raw maxHeight is
+	// worse than storing nothing: it hands ProduceBlock a target it satisfies
+	// on the spot and disables the only thing standing between a
+	// freshly-checkpointed node and forking off its own chain.
+	//
+	// We reach this line only when at least one seed is known NOT to be
+	// absorbed yet, so "keep the gate shut" is the correct answer even when
+	// the real target height is unknown. Floor it just above this node's own
+	// height so the gate holds until a later refresh supplies a genuine
+	// number; syncStallTimeout remains the escape valve for a seed that stays
+	// down (see ProduceBlock's own comment), so this cannot strand the node.
+	target := maxHeight
+	if floor := dag.Height() + 11; target < floor {
+		fmt.Printf("[SYNC] Initial-sync gate: seed-reported max height %d is not above this node's own %d, but at least one seed is not absorbed yet — holding the gate at %d instead of handing ProduceBlock a target it would clear immediately\n",
+			maxHeight, dag.Height(), floor)
+		target = floor
+	}
+	dag.syncTargetHeight.Store(target)
 	fmt.Printf("[SYNC] Initial-sync gate active: deferring block production until height %d (currently %d)\n",
-		maxHeight, dag.Height())
+		target, dag.Height())
 }
 
 // HTTPBroadcastBlock pushes a freshly-produced block to every active HTTP
