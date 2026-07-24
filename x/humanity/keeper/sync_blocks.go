@@ -973,6 +973,25 @@ func (dag *BlockDAG) doSyncOnce(nodeURL string) (ok bool) {
 			violatesFinality := !exists && dag.isFinalityViolation(block)
 			dag.mu.RUnlock()
 			if violatesFinality {
+				// FIX (2026-07-24): skipping the block stays exactly as
+				// above — but it must not also be REPORTED as a clean sync
+				// cycle. This branch means real data exists on nodeURL that
+				// this node is structurally unable to take (its own hard
+				// finality checkpoint has sealed those heights off), which
+				// is the signature of a fork, not of being caught up. Left
+				// counting as clean, cleanSyncStreak climbed to its
+				// threshold on exactly the peer this node could merge
+				// nothing from, and hasCaughtUpWithAllPeers (block.go)
+				// reported "caught up with every trusted seed" for it.
+				//
+				// Cannot pin a trusted seed's streak at 0 and stall
+				// production: isFinalityViolation returns false outright for
+				// block.FromSync, which doSyncOnce sets from
+				// isTrustedSyncSource on the line above — so for a seed this
+				// branch is unreachable by construction. It only ever
+				// corrects the streak of a non-seed peer, whose value feeds
+				// SyncDiagnostics rather than any gate.
+				sawUnmergedBlocks = true
 				continue
 			}
 			// FIX (durable fix, 2026-07-04): doSyncOnce's own ordered paged
@@ -1428,18 +1447,10 @@ func (dag *BlockDAG) StartPeerDiscovery(selfURL string) {
 		// polling unconditionally for the whole bounded window instead —
 		// each call is a couple of small HTTP GETs, negligible cost for the
 		// duration below.
-		SafeGoroutine("fetchAndSetSyncTarget", func() {
-			dag.fetchAndSetSyncTarget(seeds)
-			ticker := time.NewTicker(syncTargetRefreshInterval)
-			defer ticker.Stop()
-			deadline := time.Now().Add(syncTargetRefreshMaxDuration)
-			for range ticker.C {
-				if time.Now().After(deadline) {
-					return
-				}
-				dag.fetchAndSetSyncTarget(seeds)
-			}
-		})
+		dag.syncPeerMu.Lock()
+		dag.syncGateSeeds = append([]string(nil), seeds...)
+		dag.syncPeerMu.Unlock()
+		dag.armInitialSyncGate(false)
 	} else {
 		fmt.Println("[PEERS] No PRIMARY_NODE_URL/PRIMARY_NODE_URLS configured — accepting registrations from peers")
 	}
@@ -1770,6 +1781,24 @@ const syncTargetRefreshInterval = 1 * time.Second
 // stops polling a seed that never becomes reachable.
 const syncTargetRefreshMaxDuration = 10 * time.Minute
 
+// seedIsAbsorbed reports whether a seed reporting seedHeight has genuinely
+// been absorbed by this node, given pulledFromSeed — how far this node has
+// actually PULLED from that specific seed (peerSyncHeight, immune to this
+// node's own production rate; see that field's own struct comment).
+//
+// Extracted as a pure function so the exact comparison is unit-testable
+// without a network round trip, matching syncStarvationTickConfirms'
+// precedent in autoheal.go. It is the single point where
+// fetchAndSetSyncTarget decides whether the initial-sync gate engages, and
+// it is only ever as truthful as pulledFromSeed is CURRENT: an in-process
+// resync rolls this node's chain back but leaves peerSyncHeight at its
+// pre-rollback high-water mark unless resetPeerSyncProgress clears it, in
+// which case this reads "absorbed" for a seed hundreds of blocks ahead and
+// the gate never engages at all.
+func seedIsAbsorbed(seedHeight, pulledFromSeed int64) bool {
+	return seedHeight <= pulledFromSeed
+}
+
 // fetchAndSetSyncTarget queries each seed's /api/health/combined for its
 // current block height and sets syncTargetHeight to the maximum found.
 // ProduceBlock defers production until dag.height is within 10 of this
@@ -1838,7 +1867,7 @@ func (dag *BlockDAG) fetchAndSetSyncTarget(seeds []string) {
 			// Contabo1 still forked ~30 blocks after every fresh checkpoint
 			// once self-production started outracing the dag.Height()
 			// comparison.
-			if h.Chain.Height > dag.getPeerSyncHeight(seed) {
+			if !seedIsAbsorbed(h.Chain.Height, dag.getPeerSyncHeight(seed)) {
 				caughtUpWithEverySeed = false
 			}
 		}
@@ -1896,6 +1925,113 @@ func (dag *BlockDAG) fetchAndSetSyncTarget(seeds []string) {
 	dag.syncTargetHeight.Store(maxHeight)
 	fmt.Printf("[SYNC] Initial-sync gate active: deferring block production until height %d (currently %d)\n",
 		maxHeight, dag.Height())
+}
+
+// armInitialSyncGate starts (or restarts) the initial-sync gate's refresh
+// loop against syncGateSeeds — see fetchAndSetSyncTarget and ProduceBlock's
+// syncTargetHeight gate for what the gate itself does.
+//
+// Extracted from StartPeerDiscovery so it can run a SECOND time, mid-life,
+// after an in-process resync.
+//
+// FIX (P0, 2026-07-24 — why every one of today's gate fixes still let both
+// Contabos re-fork within seconds of an auto-heal resync): this loop was
+// started exactly once, from StartPeerDiscovery, and stops for good after
+// syncTargetRefreshMaxDuration (10 minutes). PerformResync (autoheal.go) is
+// the DEFAULT divergence remedy since 2026-07-04 — triggerAutoResync attempts
+// it before any restart-based path — and it rolls dag.height back to a
+// trusted checkpoint that necessarily TRAILS the primary's tip (a finality
+// checkpoint always does). That re-creates precisely the "seeded behind the
+// seed, must not produce until caught up" state the gate exists for, on a
+// process that has by then been alive far longer than 10 minutes and so has
+// no gate left at all. The node resumed producing at checkpoint+1 immediately
+// — re-forking at exactly the checkpoint-lag offset, which is why both
+// Contabos sat a FROZEN, identical number of blocks behind the primary after
+// every single resync.
+//
+// syncFirst runs one query synchronously before returning. PerformResync
+// needs that: it holds resyncInProgress (which gates ProduceBlock) for its
+// whole duration, so arming the gate before that flag clears is what
+// guarantees production cannot slip through the window between the state
+// swap and the first async refresh tick. This can never deadlock the way the
+// 2026-07-24 floor did: fetchAndSetSyncTarget only ever stores a target a
+// SEED actually reported above this node's own height, so the target is
+// always reachable by syncing rather than only by producing — and an
+// unreachable seed simply arms nothing, exactly as at boot.
+func (dag *BlockDAG) armInitialSyncGate(syncFirst bool) {
+	dag.syncPeerMu.Lock()
+	seeds := append([]string(nil), dag.syncGateSeeds...)
+	dag.syncPeerMu.Unlock()
+	if len(seeds) == 0 {
+		return
+	}
+	if syncFirst {
+		dag.fetchAndSetSyncTarget(seeds)
+	}
+	SafeGoroutine("fetchAndSetSyncTarget", func() {
+		if !syncFirst {
+			dag.fetchAndSetSyncTarget(seeds)
+		}
+		ticker := time.NewTicker(syncTargetRefreshInterval)
+		defer ticker.Stop()
+		deadline := time.Now().Add(syncTargetRefreshMaxDuration)
+		for range ticker.C {
+			if time.Now().After(deadline) {
+				return
+			}
+			dag.fetchAndSetSyncTarget(seeds)
+		}
+	})
+}
+
+// resetPeerSyncProgress clears every per-peer "how far have I already got
+// with this peer" marker this node holds. Called by PerformResync
+// (autoheal.go) as part of an in-process resync.
+//
+// FIX (P0, 2026-07-24 — the root cause behind the frozen, exactly-constant
+// gap both Contabos held against the primary after every resync): a resync
+// rolls dag.blocks/dag.tips/dag.height/dag.orphans back to a trusted
+// checkpoint (RefreshBootHeightAfterSnapshotImport, block.go) but used to
+// leave ALL of the following untouched, still holding their pre-resync,
+// post-fork high-water marks:
+//
+//   - peerSyncHeight is doSyncOnce's per-peer cursor: minHeight is derived
+//     from it as `getPeerSyncHeight(peer) - syncOverlap`. Left stale, the
+//     ordered catch-up asks the primary for blocks ABOVE where this node had
+//     got to BEFORE the rollback — i.e. it starts above the very gap the
+//     resync just created and never requests that range at all.
+//   - It is also what fetchAndSetSyncTarget compares each seed's reported
+//     height against ("have I absorbed this seed's chain"). Stale, that
+//     comparison reads `seedHeight > staleHighWaterMark` == false, so
+//     caughtUpWithEverySeed stays true and the initial-sync gate never
+//     engages — the same fail-open the 2026-07-24 fix closed for an
+//     unreachable seed, reached here through stale data instead.
+//   - cleanSyncStreak is the OTHER production gate (hasCaughtUpWithAllPeers,
+//     block.go). A streak of 3+ earned before the rollback keeps reading
+//     "fully caught up with every trusted seed" immediately after it.
+//   - the deepScan cursors describe a historical sweep against a chain this
+//     node no longer has; resuming one mid-walk skips the fresh gap.
+//
+// Net effect: a resync that itself worked perfectly handed a node that was
+// genuinely ~800 blocks behind three independent, unanimous "you are fully
+// caught up" signals, and it started producing on its own fork seconds
+// later. Zeroing these is what makes the gates read the post-rollback truth
+// — and it also puts doSyncOnce's own minHeight back below zero, which sends
+// it through effectiveDeepScanFloor (the checkpoint) so the catch-up
+// re-walks the gap from the checkpoint forward instead of stepping over it.
+func (dag *BlockDAG) resetPeerSyncProgress() {
+	dag.syncPeerMu.Lock()
+	dag.peerSyncHeight = make(map[string]int64)
+	dag.cleanSyncStreak = make(map[string]int)
+	dag.syncPeerMu.Unlock()
+
+	dag.lastDeepScanAtMu.Lock()
+	dag.deepScanResumeHeight = make(map[string]int64)
+	dag.deepScanFloorOverride = make(map[string]int64)
+	dag.lastDeepScanAt = make(map[string]int64)
+	dag.lastDeepScanAtMu.Unlock()
+
+	fmt.Println("[RESYNC] ✓ Cleared per-peer sync progress (peerSyncHeight, cleanSyncStreak, deepScan cursors) — the catch-up gates now measure against the post-resync chain, not the pre-resync one")
 }
 
 // HTTPBroadcastBlock pushes a freshly-produced block to every active HTTP

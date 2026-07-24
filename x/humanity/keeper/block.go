@@ -295,6 +295,17 @@ activeSyncPeers        map[string]bool  // peers with a running syncWithNode gor
 	// reachable, so bypassing authorization/suspension/finality gates for
 	// blocks fetched from them doesn't hand that bypass to an arbitrary peer.
 	trustedSeeds           map[string]bool
+	// syncGateSeeds is the exact seed list StartPeerDiscovery armed the
+	// initial-sync gate with (seedURLs(selfURL) — NOT trustedSeeds, which
+	// additionally contains PEER_NODES static peers whose height was never
+	// meant to gate this node's production). Kept so armInitialSyncGate can
+	// re-arm the gate later, from a caller that has no selfURL of its own:
+	// PerformResync (autoheal.go) rolls dag.height back to a trusted
+	// checkpoint mid-life, which re-creates exactly the "behind the seed,
+	// must not produce yet" situation the gate exists for — see
+	// armInitialSyncGate's own comment for the incident. Guarded by
+	// syncPeerMu, same as trustedSeeds.
+	syncGateSeeds          []string
 syncPeerMu             sync.Mutex
 warnedUnknownProposers map[string]bool  // suppresses repeated "not authorized" log lines
 peerChallenges         map[string]peerChallenge // address → pending challenge (P1-3)
