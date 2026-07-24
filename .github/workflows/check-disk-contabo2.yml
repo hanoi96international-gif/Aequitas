@@ -1,0 +1,68 @@
+name: Check + free disk space on Contabo2 (manual)
+
+# loadtest-prepare-contabo2.yml failed 2026-07-24 with "no space left on
+# device" (go build cache write failure), right after this session's many
+# repeated docker builds (deploy_safe_c2.sh rebuilds aequitas-node:new from
+# scratch on every dispatch, plus /root/go-mod-cache and /root/contabo-
+# loadtest/accounts.csv.bak.* backups accumulating). Read-only diagnosis
+# first (df, docker system df, biggest directories under /root and
+# /var/lib/docker), then only clears space via operations that are safe to
+# redo (docker build cache / dangling images / go module cache -- never
+# touches the running aequitas-node container, its image, or any
+# accounts.csv that isn't already a .bak).
+on:
+  workflow_dispatch:
+    inputs:
+      clean:
+        description: "Type \"true\" to actually free space (docker builder prune, docker image prune, clear /root/go-mod-cache, remove accounts.csv.bak.* backups)"
+        required: false
+        default: "false"
+
+jobs:
+  contabo2:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check + optionally free disk space on Contabo2
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: 194.163.188.71
+          username: root
+          key: ${{ secrets.CONTABO2_SSH_KEY }}
+          port: 22
+          fingerprint: "SHA256:VIwj7Faxiga2n45HVHZEQFPxcbRKHgSgHoxAFsf2wto"
+          script_stop: true
+          timeout: 300s
+          command_timeout: 300s
+          envs: CLEAN
+          script: |
+            set -uo pipefail
+            echo "=== df -h ==="
+            df -h /
+            echo "=== docker system df ==="
+            docker system df
+            echo "=== Biggest top-level dirs under / (excluding proc/sys) ==="
+            du -x -d 2 / 2>/dev/null | sort -rn | head -30
+            echo "=== /root/go-mod-cache size ==="
+            du -sh /root/go-mod-cache 2>&1 || echo "(not present)"
+            echo "=== /root/contabo-loadtest backups ==="
+            ls -lah /root/contabo-loadtest/*.bak.* 2>&1 || echo "(none)"
+            echo "=== docker images (all, with size) ==="
+            docker images
+            if [ "${CLEAN:-false}" != "true" ]; then
+              echo "clean != true -- diagnosis only, nothing removed."
+              exit 0
+            fi
+            echo "=== Freeing space: docker builder prune -f (build cache) ==="
+            docker builder prune -f
+            echo "=== Freeing space: docker image prune -af (all dangling/unused images NOT used by a running container) ==="
+            docker image prune -af
+            echo "=== Freeing space: removing accounts.csv.bak.* backups (already-superseded loadtest test accounts, never had real funds beyond small test amounts) ==="
+            rm -fv /root/contabo-loadtest/accounts.csv.bak.* 2>&1 || true
+            echo "=== Freeing space: clearing /root/go-mod-cache (safe -- just re-downloads on next build) ==="
+            rm -rf /root/go-mod-cache
+            echo "=== df -h after cleanup ==="
+            df -h /
+            echo "=== docker system df after cleanup ==="
+            docker system df
+        env:
+          CLEAN: ${{ inputs.clean }}
