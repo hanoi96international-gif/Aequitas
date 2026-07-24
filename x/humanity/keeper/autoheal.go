@@ -271,6 +271,18 @@ func (dag *BlockDAG) PerformResync(bootstrapURL, signer, primaryURL string) erro
 	if primaryURL != "" {
 		dag.BridgeHistoricalGap([]string{primaryURL})
 	}
+	// FIX (P0, 2026-07-24 — why every resync re-forked within seconds at a
+	// frozen, exactly-constant offset): the two steps above roll this node's
+	// DAG back to a trusted checkpoint that necessarily trails the primary's
+	// tip, but every "how far am I with this peer" marker outside dag.* still
+	// held its pre-rollback value — so all three catch-up gates read "fully
+	// caught up" on a node that was genuinely hundreds of blocks behind, and
+	// production resumed immediately on a fresh fork. Both calls belong here,
+	// while resyncInProgress (deferred above) still gates ProduceBlock: the
+	// markers must be cleared and the gate re-armed BEFORE production can
+	// resume, not a tick afterwards. See each function's own comment.
+	dag.resetPeerSyncProgress()
+	dag.armInitialSyncGate(true)
 	return nil
 }
 
