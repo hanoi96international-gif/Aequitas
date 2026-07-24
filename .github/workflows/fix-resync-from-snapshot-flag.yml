@@ -4,6 +4,30 @@ name: Set RESYNC_FROM_SNAPSHOT=false on both Contabos (manual)
 # setting. main.go acts on it at every boot: when true, the node discards its
 # local chain state and re-seeds from the primary's signed snapshot.
 #
+# CORRECTION (2026-07-24, same evening, after this workflow had already been
+# run once): the premise below was WRONG for Contabo2, and running it there
+# did real harm by disarming a mechanism that exists on purpose.
+#
+# Contabo2's RESYNC_FROM_SNAPSHOT=true is DELIBERATE and permanent, and it is
+# not a footgun: deploy_safe_c2.sh strips that key from what actually reaches
+# the container on every ordinary deploy, precisely so it can never fire by
+# accident. The `true` in the file is the ARMING switch that
+# resync-both-contabos.yml relies on -- that workflow passes --env-file
+# straight through for one restart to bypass the strip, and it ABORTS outright
+# unless the file reads exactly `true`. Setting it false therefore does not
+# prevent a fork; it prevents the manual repair.
+#
+# Confirmed by the running container's own env on both boxes: neither ever had
+# RESYNC_FROM_SNAPSHOT set, so the value in the FILE was never what caused
+# Contabo2 to re-seed. The real cause of the every-restart genesis re-walk was
+# deepScanFloor returning 0 for a plain restart, fixed separately.
+#
+# The `value` input exists so this workflow can put the flag back to `true`
+# for Contabo2 (its correct steady state) as well as clear it where it truly
+# is stale. Default stays "false" only because that is the safer no-op for
+# Contabo1, whose resync path flips the flag itself.
+#
+# Original (incorrect) reasoning kept below for the record:
 # Found live 2026-07-24: Contabo2 has RESYNC_FROM_SNAPSHOT=true left
 # permanently in /root/.aequitas.env. Every restart therefore wipes its DB and
 # re-seeds it at the primary's trusted CHECKPOINT -- which necessarily trails
@@ -39,6 +63,10 @@ on:
         description: "true = only report the current value, change nothing"
         required: false
         default: "true"
+      value:
+        description: "Value to write: false (steady state) or true (ARMS resync-both-contabos on Contabo2 -- see that workflow's header)"
+        required: false
+        default: "false"
       restart:
         description: "true = restart after the change so the new env takes effect"
         required: false
@@ -59,26 +87,27 @@ jobs:
           script_stop: false
           timeout: 600s
           command_timeout: 600s
-          envs: DRY,DO_RESTART
+          envs: DRY,DO_RESTART,WANT
           script: |
             set -uo pipefail
             ENVFILE=/root/.aequitas.env
             echo "=== Contabo1: current RESYNC_FROM_SNAPSHOT ==="
             grep -E '^RESYNC_FROM_SNAPSHOT=' "$ENVFILE" || echo "(not present -- boot treats that as false already)"
 
+            TARGET="${WANT:-false}"
             CUR="$(grep -E '^RESYNC_FROM_SNAPSHOT=' "$ENVFILE" 2>/dev/null | head -1 | cut -d= -f2- || true)"
-            if [ "$CUR" != "true" ]; then
-              echo "=== Contabo1: already not 'true' -- nothing to change, leaving the file untouched ==="
+            if [ "$CUR" = "$TARGET" ]; then
+              echo "=== Contabo1: already reads '$TARGET' -- nothing to change, leaving the file untouched ==="
               exit 0
             fi
 
             if [ "${DRY:-true}" = "true" ]; then
-              echo "=== DRY RUN: would set RESYNC_FROM_SNAPSHOT=false on Contabo1 ==="
+              echo "=== DRY RUN: would set RESYNC_FROM_SNAPSHOT=$TARGET on Contabo1 (currently '$CUR') ==="
               exit 0
             fi
 
             cp -a "$ENVFILE" "${ENVFILE}.bak.$(date +%s)" && echo "(backup written)"
-            sed -i 's/^RESYNC_FROM_SNAPSHOT=.*/RESYNC_FROM_SNAPSHOT=false/' "$ENVFILE"
+            sed -i "s/^RESYNC_FROM_SNAPSHOT=.*/RESYNC_FROM_SNAPSHOT=${TARGET}/" "$ENVFILE"
             echo "=== Contabo1: value after the edit ==="
             grep -E '^RESYNC_FROM_SNAPSHOT=' "$ENVFILE" || echo "(missing after edit -- investigate)"
             echo "--- sanity: total lines before/after should match ---"
@@ -93,6 +122,7 @@ jobs:
         env:
           DRY: ${{ inputs.dry_run }}
           DO_RESTART: ${{ inputs.restart }}
+          WANT: ${{ inputs.value }}
 
   contabo2:
     runs-on: ubuntu-latest
@@ -108,26 +138,27 @@ jobs:
           script_stop: false
           timeout: 600s
           command_timeout: 600s
-          envs: DRY,DO_RESTART
+          envs: DRY,DO_RESTART,WANT
           script: |
             set -uo pipefail
             ENVFILE=/root/.aequitas.env
             echo "=== Contabo2: current RESYNC_FROM_SNAPSHOT ==="
             grep -E '^RESYNC_FROM_SNAPSHOT=' "$ENVFILE" || echo "(not present -- boot treats that as false already)"
 
+            TARGET="${WANT:-false}"
             CUR="$(grep -E '^RESYNC_FROM_SNAPSHOT=' "$ENVFILE" 2>/dev/null | head -1 | cut -d= -f2- || true)"
-            if [ "$CUR" != "true" ]; then
-              echo "=== Contabo2: already not 'true' -- nothing to change, leaving the file untouched ==="
+            if [ "$CUR" = "$TARGET" ]; then
+              echo "=== Contabo2: already reads '$TARGET' -- nothing to change, leaving the file untouched ==="
               exit 0
             fi
 
             if [ "${DRY:-true}" = "true" ]; then
-              echo "=== DRY RUN: would set RESYNC_FROM_SNAPSHOT=false on Contabo2 ==="
+              echo "=== DRY RUN: would set RESYNC_FROM_SNAPSHOT=$TARGET on Contabo2 (currently '$CUR') ==="
               exit 0
             fi
 
             cp -a "$ENVFILE" "${ENVFILE}.bak.$(date +%s)" && echo "(backup written)"
-            sed -i 's/^RESYNC_FROM_SNAPSHOT=.*/RESYNC_FROM_SNAPSHOT=false/' "$ENVFILE"
+            sed -i "s/^RESYNC_FROM_SNAPSHOT=.*/RESYNC_FROM_SNAPSHOT=${TARGET}/" "$ENVFILE"
             echo "=== Contabo2: value after the edit ==="
             grep -E '^RESYNC_FROM_SNAPSHOT=' "$ENVFILE" || echo "(missing after edit -- investigate)"
             echo "--- sanity: total lines before/after should match ---"
@@ -142,3 +173,4 @@ jobs:
         env:
           DRY: ${{ inputs.dry_run }}
           DO_RESTART: ${{ inputs.restart }}
+          WANT: ${{ inputs.value }}
