@@ -526,3 +526,34 @@ Verkehr (14 Menschen) macht sich der behobene Bug dort noch nicht bemerkbar
 — die Änderung ist rein vorausschauend für den 50k-TPS-Zielzustand, aber
 sustained-load-gemessen statt spekulativ, im Unterschied zu den drei
 verworfenen Runde-1-Versuchen (siehe SCALING_ARCHITECTURE.md).
+
+## Update — `flushWALBatch`-Lock verfeinert, Postgres-Deadlock-Klasse geschlossen (2026-07-24, Fortsetzung)
+
+Auf den obigen Default aufbauend wurde `flushWALBatch`'s Sperrverhalten
+weiter verfeinert: statt des vollen `cs.mu.Lock()` (blockiert bei jedem
+Flush den kompletten Fastpath) hält die Funktion jetzt `cs.mu.RLock()` +
+`cs.accounts.LockAddrs(...)` für die betroffenen Adressen über die gesamte
+Transaktion — dieselbe, bereits im Code als sicher bewiesene Disziplin, die
+`processTransferBatchConcurrent` schon vorher befolgte. Zusätzlich:
+`walFlushMaxQueueDepth=20.000` als expliziter Rückstau-Deckel (oberhalb
+dessen neue Transfers auf den Batcher ausweichen statt die Queue
+unbegrenzt wachsen zu lassen), und eine deterministische Zeilensortierung
+in `saveAccountsToDBBatchCtx` als zusätzliche Verteidigungsebene gegen
+Postgres-Deadlocks zwischen gleichzeitigen Batch-Schreibern.
+
+Zwei Zwischenversuche (Lock-Verfeinerung allein; Lock-Verfeinerung +
+Deckel ohne die korrekte Shard-Lock-Dauer) wurden jeweils an echten,
+gemessenen Problemen gescheitert und vollständig verworfen, bevor diese
+Version stand — siehe SCALING_ARCHITECTURE.md ("Runde 3"/"Runde 4") für
+die volle Historie inklusive Messwerten. Diese finale Version: null
+fehlgeschlagene Transfers, stabile Queue-Tiefe, kein Postgres-Deadlock
+mehr, über zwei unabhängige Testläufe reproduziert, volle `-race`-Suite
+sauber.
+
+**Status gegenüber Contabo2:** wie beim Flush-Tuning selbst eine reine
+Code-Änderung, kein Env-Flag — greift automatisch beim nächsten Redeploy.
+Bei aktuell winzigem realem Verkehr (14 Menschen) noch nicht unter echter
+Last erprobt; die synthetische Testtopologie (100 konzentriert hämmernde
+Adresspaare) ist eine härtere Adress-Kollisionslast als eine echte, breit
+gestreute Nutzerbasis hätte — der reale Effekt in Produktion dürfte daher
+eher besser ausfallen als in diesem Test, nicht schlechter.

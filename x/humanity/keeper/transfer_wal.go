@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"math"
 	"os"
+	"sort"
 	"strings"
 	"time"
 
@@ -151,6 +152,52 @@ var walFlushInterval = 100 * time.Millisecond
 // for the measurements behind this specific value.
 var walFlushMaxBatch = 2000
 
+// walFlushMaxQueueDepth bounds cs.walFlushQueue's own size: once this many
+// WAL-durable transfers are waiting for Postgres reconciliation, NEW
+// transfers stop taking the WAL fast path (see transferConcurrentWAL's own
+// eligibility check, right after the cs.wal nil-check) and fall through to
+// the existing, fully synchronous batcher path instead -- slower per
+// transfer, but with no unbounded-queue risk, exactly the same kind of
+// fallback transferConcurrentWAL already takes for any other ineligibility
+// reason (cold account, contended shard, pending demurrage, ...).
+//
+// FIX (2026-07-24, 50k-TPS sustained-load investigation, continued): once
+// flushWALBatch itself stopped fully blocking the fast path during its own
+// Postgres round trip (see that function's own 2026-07-24 FIX comment),
+// measured fast-path input throughput rose substantially -- but the flush
+// worker's OWN drain capacity (bound by how fast a single sequential
+// Begin/Upsert/Insert/Commit round trip against Postgres can actually run)
+// did not rise to match. Re-running TestSustainedWAL_QueueConvergence with
+// the lock fix alone, no cap, showed EVERY tested config -- including
+// 100ms/2,000, previously confirmed stable -- growing unbounded again,
+// because blocking the whole fast path during every flush had
+// (accidentally) been the ONLY thing throttling input to roughly drain
+// capacity. Removing that block without replacing its backpressure effect
+// reopens the exact unbounded-growth risk 100ms/2,000 was tuned to close.
+// This cap replaces the lost backpressure with an explicit, principled
+// one: bounded queue depth BY DESIGN regardless of how input/drain rates
+// shift with load, hardware, or future changes near this code, instead of
+// relying on an interval/batch-size tuning that Round 1 already showed is
+// workload-sensitive and easy to get backwards (see walFlushInterval's own
+// comment). 20,000 = 10x walFlushMaxBatch: generous enough to absorb a
+// real burst without spilling to the batcher on ordinary jitter, small
+// enough to bound worst-case Explorer/other-validator staleness to a few
+// seconds at any measured drain rate in this investigation.
+//
+// A first attempt combining this cap with the lock fix, WITHOUT the
+// deterministic row-lock order fix (see saveAccountsToDBBatchCtx's own FIX
+// comment, state.go), surfaced a real Postgres deadlock between this
+// flush's UPSERT and the batcher's own UPDATE under the resulting spike in
+// batcher-fallback traffic -- throughput collapsed to 2,500-3,800 TPS with
+// real transfer failures, worse than not having this cap at all. That is
+// now fixed at the row-order level (both this file's flushWALBatch and
+// state.go's saveAccountsToDBBatchCtx sort their touched addresses before
+// writing), which is a precondition for this cap being safe to combine
+// with the lock fix. Re-run TestSustainedWAL_QueueConvergence
+// (AEQUITAS_WAL_SUSTAINED_BENCH=1) after any future change to flush
+// timing, batch size, this cap, or the row-sort fix.
+var walFlushMaxQueueDepth = 20000
+
 // initWALIfEnabled opens (or creates) the local WAL file when
 // AEQUITAS_WAL_ENABLED=1 is set, replays any records not yet reflected in
 // Postgres (crash recovery), and leaves cs.wal set so transferConcurrentWAL
@@ -207,6 +254,12 @@ func (cs *ChainState) initWALIfEnabled() {
 // transferConcurrent — see that function's doc comment.
 func (cs *ChainState) transferConcurrentWAL(from, to string, amount float64, pendingTxTemplate Transaction) (fromLost, toLost float64, applied bool, err error) {
 	if cs.wal == nil {
+		return 0, 0, false, nil
+	}
+	// Backpressure: see walFlushMaxQueueDepth's own comment. A clean bail to
+	// the batcher, same shape as any other ineligibility below -- nothing
+	// has been mutated or appended to the WAL yet at this point.
+	if cs.WALFlushQueueDepth() >= walFlushMaxQueueDepth {
 		return 0, 0, false, nil
 	}
 	if from == to {
@@ -404,65 +457,129 @@ func (cs *ChainState) flushWALQueue() {
 // without waiting on the ticker (same reasoning as flushEVMMirrorDirty's
 // own split from runEVMMirrorFlushWorker).
 //
-// Holds cs.mu.Lock() — full exclusivity, not RLock — for the ENTIRE
-// snapshot-then-write sequence, not just the snapshot read. This is
-// deliberate and NOT optional: an earlier version of this function only
-// held RLock() to snapshot balances, then released it before the DB write.
-// That left a real race window against the cs.mu.Lock()-based slow path
-// (transferLocked/batcher, e.g. a demurrage-settling transfer touching the
-// same account): the slow path's own saveAccountToDBCtx write is guarded
-// by the OPTIMISTIC-LOCK `version` column, completely independent of this
-// flush's `wal_seq` guard — neither guard knows about the other's
-// dimension, so if the slow path's DB write landed BETWEEN this flush's
-// snapshot read and its own DB write, this flush's `wal_seq < $3` check
-// would still pass (wal_seq never changes on a slow-path write) and
-// silently clobber the slow path's newer balance with this flush's stale
-// snapshot -- a genuine lost update. Holding cs.mu.Lock() for the whole
-// operation makes the flush atomic relative to every cs.mu-based writer in
-// the system, eliminating that window by construction, at the cost of
-// this batched, periodic (every walFlushInterval) operation briefly
-// excluding other transfers -- the same tradeoff the ORIGINAL
-// runTransferBatcher design already accepts for its own DB round trip, just
-// applied here to the WAL reconciliation path instead.
+// Locking, two layers, each protecting against a DIFFERENT concurrent
+// writer, BOTH held for the function's entire duration (snapshot AND DB
+// write, released only via defer at the very end):
 //
-// FIX (2026-07-23, TPS-benchmark investigation): this used to write one
-// account UPSERT and one outbox INSERT per item via N separate round-trip
-// Exec calls inside the single open tx -- for a full walFlushMaxBatch (500)
-// batch, measured at 150-230ms wall-clock per flush (confirmed via timing
-// instrumentation during this investigation), ALL of it spent holding the
-// cs.mu.Lock() described above. At walFlushInterval (500ms), that is 30-45%
-// of total wall-clock time spent fully stopping every other transfer in the
-// system -- directly cancelling out much of the throughput benefit WAL was
-// built for (removing Postgres round-trip latency from the critical path),
-// confirmed live: the WAL path benchmarked AT OR BELOW the non-WAL shard-
-// lock baseline before this fix. Now issues exactly ONE multi-row UPSERT
-// (via VALUES(...),(...),... + EXCLUDED, same technique
-// saveAccountsToDBBatchCtx already uses) and ONE multi-row outbox INSERT
-// per flush instead of up to 1000 individual statements -- same guarantees
-// (the wal_seq < EXCLUDED.wal_seq guard is evaluated per row, identically
-// to the old per-statement WHERE clause), same cs.mu.Lock() scope, just far
-// less time spent holding it.
+//  1. cs.mu.RLock(). This is what protects against the cs.mu.Lock()-based
+//     SLOW path (transferLocked/batcher, e.g. a demurrage-settling
+//     transfer touching the same account): the slow path's own
+//     saveAccountToDBCtx write is guarded by the OPTIMISTIC-LOCK `version`
+//     column, completely independent of this flush's `wal_seq` guard --
+//     neither guard knows about the other's dimension, so if the slow
+//     path's DB write landed BETWEEN this flush's snapshot read and its
+//     own DB write, this flush's `wal_seq < $3` check would still pass
+//     (wal_seq never changes on a slow-path write) and silently clobber
+//     the slow path's newer balance with this flush's stale snapshot -- a
+//     genuine lost update. RLock() is sufficient here (not just Lock())
+//     because sync.RWMutex already blocks any Lock() acquisition for as
+//     long as an RLock() is outstanding, regardless of which goroutine
+//     holds it or how many others hold it concurrently -- the slow path
+//     cannot proceed past its own cs.mu.Lock() call until this flush's
+//     RLock() is released, identical protection to full Lock() for THIS
+//     specific race.
+//  2. cs.accounts.LockAddrs(...) (the same shard-lock primitive
+//     transfer_concurrent.go/this file's own TryLockAddrs use) for every
+//     address this batch touches, held for the WHOLE function, matching
+//     processTransferBatchConcurrent's own documented discipline
+//     (transfer_batch_concurrent.go, its "SAFETY ARGUMENT" comment) EXACTLY
+//     -- this is not a stylistic choice, it's the one invariant every
+//     Postgres-writing path in this codebase upholds so that any two
+//     concurrent cs.mu.RLock()-based writers (this flush,
+//     processTransferBatchConcurrent, transferConcurrent) are GUARANTEED
+//     to have disjoint touched-row sets for their entire time in Postgres:
+//     holding a row means holding its shard lock, shard locks are
+//     mutually exclusive per shard, so two such writers can never both be
+//     mid-transaction against the same row at once, which makes a
+//     Postgres-level deadlock between them structurally impossible --
+//     regardless of what row order Postgres's own query planner happens to
+//     choose internally, which is NOT something application code can
+//     reliably predict or control (see FIX below for what learning that
+//     the hard way looked like).
+//
+// FIX (2026-07-24, 50k-TPS-goal sustained-load investigation): an earlier
+// version of this function held cs.mu.Lock() (full exclusivity, blocking
+// EVERY concurrent transfer, fast path included) for the whole operation.
+// Replacing it with cs.mu.RLock() alone (still correct per layer 1 above)
+// measured real throughput gains (TestSustainedWAL_QueueConvergence,
+// 100ms/2,000: 16,633 -> 19,300 TPS) but reopened unbounded queue growth --
+// the full Lock() had been an ACCIDENTAL backpressure mechanism (blocking
+// the whole fast path during every flush implicitly throttled input to
+// roughly drain capacity). walFlushMaxQueueDepth (this file) replaces that
+// with an explicit cap instead.
+//
+// A second attempt released cs.accounts.LockAddrs right after the snapshot
+// read, before the DB write -- reasoning (wrongly) that the DB write only
+// touches a local, already-copied `snapshots` map, so nothing further
+// needed protecting. This missed layer 2's REAL purpose entirely: it
+// isn't about protecting the read, it's about making this function's own
+// PostgreSQL transaction provably non-overlapping with every other
+// concurrent writer's rows for as long as it's open. Releasing early
+// reopened precisely the deadlock class transfer_batch_concurrent.go's own
+// comment already documents from an EARLIER, separate attempt at this same
+// idea (measured then at up to 23.6% failure at 500 concurrent senders,
+// reverted) -- confirmed again here live: "pq: deadlock detected (40P01)"
+// between this function's UPSERT and saveAccountsToDBBatchCtx's UPDATE
+// under sustained load, hundreds of failed transfers per run. A
+// deterministic SQL-level row sort (saveAccountsToDBBatchCtx's own FIX
+// comment, state.go) measurably reduced but did NOT eliminate it --
+// confirming the fix belongs at the Go lock-ordering level (provable,
+// plan-independent), not by hoping a particular query shape happens to
+// preserve input order through Postgres's optimizer. Holding LockAddrs for
+// the WHOLE transaction, as implemented now, is what actually closes it:
+// this function now upholds the exact same invariant
+// processTransferBatchConcurrent already established as mandatory for any
+// cs.mu.RLock()-based Postgres writer in this codebase. See
+// SCALING_ARCHITECTURE.md's Runde-3/4 updates for the full measured
+// history of both attempts.
+//
+// Separately, FIX (2026-07-23, TPS-benchmark investigation): this used to
+// write one account UPSERT and one outbox INSERT per item via N separate
+// round-trip Exec calls inside the single open tx -- for a full
+// walFlushMaxBatch batch, measured at 150-230ms wall-clock per flush at
+// the OLD 500-item batch size, ALL of it spent holding the lock(s)
+// described above. Now issues exactly ONE multi-row UPSERT (via
+// VALUES(...),(...),... + EXCLUDED, same technique saveAccountsToDBBatchCtx
+// already uses) and ONE multi-row outbox INSERT per flush instead of one
+// statement per item -- same guarantees (the wal_seq < EXCLUDED.wal_seq
+// guard is evaluated per row, identically to the old per-statement WHERE
+// clause), just far less time spent per flush regardless of lock scope.
 func (cs *ChainState) flushWALBatch(batch []walFlushItem) error {
 	if len(batch) == 0 {
 		return nil
 	}
-	addrs := make(map[string]struct{}, len(batch)*2)
+	addrSet := make(map[string]struct{}, len(batch)*2)
 	for _, item := range batch {
-		addrs[item.from] = struct{}{}
-		addrs[item.to] = struct{}{}
+		addrSet[item.from] = struct{}{}
+		addrSet[item.to] = struct{}{}
 	}
+	// Sorted, not just deduplicated: see saveAccountsToDBBatchCtx's own FIX
+	// comment (state.go) -- this function's UPSERT and that function's
+	// UPDATE both need a shared, deterministic row-touch order to avoid a
+	// Postgres-level deadlock when they (or two of this file's own flushes,
+	// were that ever possible) touch overlapping addresses concurrently.
+	addrList := make([]string, 0, len(addrSet))
+	for addr := range addrSet {
+		addrList = append(addrList, addr)
+	}
+	sort.Strings(addrList)
 
 	type walSnapshot struct {
 		balance float64
 		walSeq  uint64
 	}
 
-	cs.mu.Lock()
-	defer cs.mu.Unlock()
+	cs.mu.RLock()
+	defer cs.mu.RUnlock()
 
-	snapshots := make(map[string]walSnapshot, len(addrs))
-	for addr := range addrs {
-		acc, ok := cs.accounts.Get(addr)
+	snapshots := make(map[string]walSnapshot, len(addrList))
+	// Held for this whole function via defer, NOT released after the
+	// snapshot loop -- see this function's own doc comment (layer 2) for
+	// why that's the actual fix, not an optional hardening.
+	unlockAddrs := cs.accounts.LockAddrs(addrList...)
+	defer unlockAddrs()
+	for _, addr := range addrList {
+		acc, ok := cs.accounts.GetLocked(addr)
 		if !ok {
 			return fmt.Errorf("flushWALBatch: address %s vanished from cs.accounts between apply and flush -- this should never happen", addr)
 		}
@@ -488,7 +605,8 @@ func (cs *ChainState) flushWALBatch(batch []walFlushItem) error {
 	acctValuesSQL.Grow(len(snapshots) * 40) // "($NNN::text,$NNN::double precision,$NNN::bigint)," rounded up
 	acctArgs := make([]interface{}, 0, len(snapshots)*3)
 	i := 0
-	for addr, snap := range snapshots {
+	for _, addr := range addrList {
+		snap := snapshots[addr]
 		if i > 0 {
 			acctValuesSQL.WriteByte(',')
 		}

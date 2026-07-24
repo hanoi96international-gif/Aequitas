@@ -2274,16 +2274,44 @@ func (cs *ChainState) saveAccountsToDBBatchCtx(ctx context.Context, accs []*Acco
 	// growth — this supersedes that approach rather than layering on top
 	// of it, since building 9 slices is simpler and the actual O(N) driver
 	// remains one query with the same shape.)
-	addresses := make([]string, len(accs))
-	balances := make([]float64, len(accs))
-	isHumans := make([]bool, len(accs))
-	tusdBalances := make([]float64, len(accs))
-	lpShares := make([]float64, len(accs))
-	lastActivityAts := make([]int64, len(accs))
-	demurrageWarnings := make([]bool, len(accs))
-	faucetClaimeds := make([]bool, len(accs))
-	expectedVersions := make([]int64, len(accs))
-	for i, acc := range accs {
+	// FIX (2026-07-24, 50k-TPS-goal investigation): sort a LOCAL COPY of accs
+	// by address before building the parallel arrays below -- unrelated to
+	// correctness of what gets written (order-independent either way, the
+	// UPDATE/INSERT below matches rows by address, not position), but
+	// directly relevant to LOCK ORDER. Up to parallelBatchPoolSize (4)
+	// batches from this same function, and separately the WAL flush
+	// worker's own multi-row UPSERT (flushWALBatch, transfer_wal.go), can
+	// all be touching overlapping chain_accounts rows concurrently --
+	// without a shared, deterministic row-touch order, two such writers can
+	// acquire the SAME two rows' locks in opposite order and deadlock
+	// (confirmed live: "pq: deadlock detected (40P01)" under sustained load
+	// in TestSustainedWAL_QueueConvergence once the flush worker stopped
+	// blocking the whole fast path during its own writes -- see
+	// SCALING_ARCHITECTURE.md's Runde-3 update). Sorting here (and
+	// flushWALBatch sorting its own address list the same way, by the same
+	// string ordering) makes every writer touching a given pair of rows
+	// attempt them in the same relative order -- the standard fix for this
+	// deadlock class. Not a 100% mathematically airtight guarantee against
+	// every possible query plan Postgres might choose for the UPDATE...FROM
+	// below (a sufficiently large batch could in principle still pick a
+	// hash join that visits rows out of input order), but Postgres's own
+	// deadlock detector remains as a last-resort safety net either way
+	// (aborts one side cleanly, no corruption -- both this function's
+	// caller and flushWALBatch already treat a failed write as a safe,
+	// retryable no-op, never a partial/lost update).
+	sorted := append([]*AccountState(nil), accs...)
+	sort.Slice(sorted, func(i, j int) bool { return sorted[i].Address < sorted[j].Address })
+
+	addresses := make([]string, len(sorted))
+	balances := make([]float64, len(sorted))
+	isHumans := make([]bool, len(sorted))
+	tusdBalances := make([]float64, len(sorted))
+	lpShares := make([]float64, len(sorted))
+	lastActivityAts := make([]int64, len(sorted))
+	demurrageWarnings := make([]bool, len(sorted))
+	faucetClaimeds := make([]bool, len(sorted))
+	expectedVersions := make([]int64, len(sorted))
+	for i, acc := range sorted {
 		addresses[i] = acc.Address
 		balances[i] = acc.Balance.Float()
 		isHumans[i] = acc.IsHuman
