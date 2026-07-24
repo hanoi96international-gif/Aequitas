@@ -220,6 +220,7 @@ func (dag *BlockDAG) GetLatencyTelemetry() LatencyTelemetry {
 // 2026-07-05 as a permanent operational diagnostic after a long night of
 // tuning those constants without ever measuring this directly.
 func (dag *BlockDAG) recordForeignAttachLatency(ms int64) {
+	dag.totalForeignAttachCount.Add(1) // monotonic — see the field's comment (sync-starvation check)
 	dag.foreignLatencyMu.Lock()
 	dag.foreignLatencyCount++
 	dag.foreignLatencySumMs += ms
@@ -260,6 +261,7 @@ func (dag *BlockDAG) recordForeignAttachLatency(ms int64) {
 // recordForeignAttachLatency samples for exactly the direction that's
 // failing, since those blocks never reach that later point at all).
 func (dag *BlockDAG) recordRawArrivalLatency(ms int64) {
+	dag.totalRawArrivalCount.Add(1) // monotonic — see the field's comment (sync-starvation check)
 	dag.rawArrivalLatencyMu.Lock()
 	dag.rawArrivalLatencyCount++
 	dag.rawArrivalLatencySumMs += ms

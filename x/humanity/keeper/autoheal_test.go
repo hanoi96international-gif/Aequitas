@@ -220,3 +220,65 @@ func TestPerformResync_ClearsInProgressFlagOnFailure(t *testing.T) {
 		t.Fatal("resyncInProgress must be cleared even after a failed resync")
 	}
 }
+
+// TestSyncStarvationTickConfirms pins the exact trigger condition of the
+// fourth detection path (startSyncStarvationCheck) as a table over its pure
+// decision function — see the syncStarvation* constants' comment for the
+// live 2026-07-24 fork incident each "confirmed" row reproduces: receiving
+// plenty, attaching nothing, measurably behind the primary, all at once.
+func TestSyncStarvationTickConfirms(t *testing.T) {
+	const local = int64(1763592) // the actual frozen height from the incident
+	cases := []struct {
+		name             string
+		rawDelta         int64
+		attachDelta      int64
+		primaryHeight    int64
+		primaryReachable bool
+		want             bool
+	}{
+		{"incident state: flood arriving, zero attach, 400+ behind", 1600, 0, local + 415, true, true},
+		{"exactly at the minimum arrivals and gap", syncStarvationMinArrivals, 0, local + syncStarvationMinGap, true, true},
+		{"primary unreachable is never evidence", 1600, 0, 0, false, false},
+		{"one single attach clears the state", 1600, 1, local + 415, true, false},
+		{"too few arrivals is isolation, not starvation", syncStarvationMinArrivals - 1, 0, local + 415, true, false},
+		{"gap below the minimum is just a quiet tip", 1600, 0, local + syncStarvationMinGap - 1, true, false},
+		{"healthy catch-up: arrivals AND attaches flowing", 1600, 900, local + 415, true, false},
+		{"nothing arriving at all (fully isolated)", 0, 0, local + 415, true, false},
+	}
+	for _, tc := range cases {
+		if got := syncStarvationTickConfirms(tc.rawDelta, tc.attachDelta, local, tc.primaryHeight, tc.primaryReachable); got != tc.want {
+			t.Errorf("%s: syncStarvationTickConfirms(raw=%d, attach=%d, local=%d, primary=%d, reachable=%v) = %v, want %v",
+				tc.name, tc.rawDelta, tc.attachDelta, local, tc.primaryHeight, tc.primaryReachable, got, tc.want)
+		}
+	}
+}
+
+// TestMonotonicArrivalAttachCounters verifies the two lifetime counters the
+// starvation check samples actually increment on every recorded event and
+// never reset when the windowed latency counters do (the windowed ones zero
+// themselves every log interval — the whole reason the monotonic pair
+// exists, see their field comment in block.go).
+func TestMonotonicArrivalAttachCounters(t *testing.T) {
+	dag := newGhostdagTestDAG()
+	for i := 0; i < 7; i++ {
+		dag.recordRawArrivalLatency(int64(i))
+	}
+	for i := 0; i < 3; i++ {
+		dag.recordForeignAttachLatency(int64(i))
+	}
+	if got := dag.totalRawArrivalCount.Load(); got != 7 {
+		t.Errorf("totalRawArrivalCount = %d after 7 recorded arrivals, want 7", got)
+	}
+	if got := dag.totalForeignAttachCount.Load(); got != 3 {
+		t.Errorf("totalForeignAttachCount = %d after 3 recorded attaches, want 3", got)
+	}
+}
+
+// TestStartSyncStarvationCheck_NoopWithoutPrimaryURL mirrors
+// TestStartChainDivergenceCheck_NoopWithoutPrimaryURL for the fourth path:
+// without a primary to compare against there is no gap signal, so the check
+// must not start at all (and must not touch the nil dag.state).
+func TestStartSyncStarvationCheck_NoopWithoutPrimaryURL(t *testing.T) {
+	dag := newGhostdagTestDAG()
+	dag.startSyncStarvationCheck("")
+}
