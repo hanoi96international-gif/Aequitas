@@ -3113,16 +3113,40 @@ func (cs *ChainState) SaveBlockWithPendingTxsAtomic(block *Block, ids []int64) e
 		}
 	}
 
-	if len(ids) > 0 {
-		if _, err := tx.Exec(
-			`UPDATE pending_txs SET included_block_hash = $1 WHERE id = ANY($2)`,
-			block.Hash, ids,
-		); err != nil {
-			rollback()
-			return fmt.Errorf("mark pending txs: %w", err)
-		}
-	}
-
+	// FIX (P0 performance, 2026-07-24 — measured, not assumed): this used to
+	// run `UPDATE pending_txs SET included_block_hash = $1 WHERE id = ANY($2)`
+	// here, on the same ids the DELETE below removes inside this same
+	// transaction. That stamp was never observable by anything: on COMMIT the
+	// rows are gone, and on ROLLBACK the UPDATE is undone with them. Both
+	// statements sit under the identical len(ids) > 0 guard, so there is no
+	// path where the UPDATE lands without the DELETE following it.
+	//
+	// It was not free, though. In Postgres an UPDATE writes an entirely new
+	// row version (MVCC) and touches every index on the table, so this
+	// rewrote all 50,000 rows microseconds before deleting them.
+	// TestSaveBlockCostAtScale (block_save_cost_bench_test.go) measured its
+	// share of a full-block save directly, and it dominated everything else:
+	//
+	//   txs      UPDATE   INSERT   DELETE   COMMIT   save-total
+	//   1,000      6ms      3ms      2ms      4ms       14ms   (UPDATE 42%)
+	//   10,000    48ms     27ms     17ms     15ms      108ms   (UPDATE 45%)
+	//   50,000   753ms    103ms     43ms     13ms      912ms   (UPDATE 83%)
+	//
+	// — superlinear in row count, and 912ms lines up with the ~822ms
+	// STAGING_RUNBOOK.md measured for this function on a full block, which is
+	// the bulk of the ~1.8s ProduceBlock that currently caps block relay at
+	// roughly one full block per 2s (~25,000 TPS, not the 50,000 target).
+	// Dropping it takes this function from ~912ms to ~159ms on that block.
+	//
+	// Consequence for crash recovery: none. ResetStaleIncludedPendingTxs only
+	// ever sees rows that still EXIST with included_at > 0 — i.e. exactly the
+	// crash-before-save case, where LoadPendingTxs' own committed UPDATE set
+	// included_at but this transaction never ran. Those rows have
+	// included_block_hash NULL both before and after this change, so its
+	// "IS NULL → requeue" branch behaves identically. included_block_hash is
+	// now vestigial (nothing writes it; MarkPendingTxsIncluded, its only other
+	// writer, has no callers left), deliberately left in place rather than
+	// dropped in the same change as a performance fix.
 	bluesJSON, _ := json.Marshal(block.Blues)
 	if bluesJSON == nil {
 		bluesJSON = []byte("[]")

@@ -47,6 +47,12 @@ func TestSaveBlockCostAtScale(t *testing.T) {
 	if !cs.useDB {
 		t.Fatal("expected a live PostgreSQL connection (cs.useDB == false) — check DATABASE_URL")
 	}
+	// The three GHOSTDAG columns live behind their own one-time migration
+	// (ensureGHOSTDAGColumns), not NewChainState's base table creation, and the
+	// INSERT below writes all three — so on a fresh database the migration has
+	// to run first, exactly as it does in production before the first block
+	// save. Idempotent (ALTER ... IF NOT EXISTS + a sync.Once).
+	cs.ensureGHOSTDAGColumns()
 
 	for _, n := range []int{1000, 10000, maxTxsPerBlock} {
 		t.Run(fmt.Sprintf("txs=%d", n), func(t *testing.T) {
@@ -100,14 +106,24 @@ func TestSaveBlockCostAtScale(t *testing.T) {
 			if err != nil {
 				t.Fatalf("begin: %v", err)
 			}
-			updStart := time.Now()
-			if _, err := dbtx.Exec(
-				`UPDATE pending_txs SET included_block_hash = $1 WHERE id = ANY($2)`, block.Hash, ids,
-			); err != nil {
-				dbtx.Rollback()
-				t.Fatalf("update: %v", err)
+			// The included_block_hash UPDATE is measured under an opt-in flag of
+			// its own so this benchmark can show BOTH the pre-fix cost (set
+			// AEQUITAS_BLOCK_SAVE_BENCH_LEGACY_UPDATE=1) and the shipped path
+			// (default) from the same code, instead of the "after" number
+			// relying on a since-deleted statement nobody can re-run. See
+			// SaveBlockWithPendingTxsAtomic's own comment for why the statement
+			// was removable at all.
+			var updDur time.Duration
+			if os.Getenv("AEQUITAS_BLOCK_SAVE_BENCH_LEGACY_UPDATE") == "1" {
+				updStart := time.Now()
+				if _, err := dbtx.Exec(
+					`UPDATE pending_txs SET included_block_hash = $1 WHERE id = ANY($2)`, block.Hash, ids,
+				); err != nil {
+					dbtx.Rollback()
+					t.Fatalf("update: %v", err)
+				}
+				updDur = time.Since(updStart)
 			}
-			updDur := time.Since(updStart)
 
 			insStart := time.Now()
 			if _, err := dbtx.Exec(
@@ -138,12 +154,15 @@ func TestSaveBlockCostAtScale(t *testing.T) {
 			commitDur := time.Since(commitStart)
 
 			total := updDur + insDur + delDur + commitDur
-			t.Logf("txs=%-6d payload=%.2fMB | seed=%s load=%s || UPDATE=%s INSERT=%s DELETE=%s COMMIT=%s | save-total=%s (UPDATE is %.1f%% of it)",
+			mode := "shipped (no included_block_hash UPDATE)"
+			if updDur > 0 {
+				mode = fmt.Sprintf("legacy (UPDATE %.1f%% of save)", 100*float64(updDur)/float64(total))
+			}
+			t.Logf("txs=%-6d payload=%.2fMB | seed=%s load=%s || UPDATE=%s INSERT=%s DELETE=%s COMMIT=%s | save-total=%s | %s",
 				n, float64(len(txsJSON))/(1024*1024), seedDur.Round(time.Millisecond), loadDur.Round(time.Millisecond),
 				updDur.Round(time.Millisecond), insDur.Round(time.Millisecond),
 				delDur.Round(time.Millisecond), commitDur.Round(time.Millisecond),
-				total.Round(time.Millisecond),
-				100*float64(updDur)/float64(total))
+				total.Round(time.Millisecond), mode)
 		})
 	}
 }
