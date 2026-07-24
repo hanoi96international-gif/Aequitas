@@ -123,6 +123,45 @@ const (
 	// constant's own comment for why the two timeouts deliberately differ.
 	chainDivergenceStallOverride = 45 * time.Minute
 
+	// syncStarvation* tune the FOURTH detection path (startSyncStarvationCheck
+	// below), added 2026-07-24 after a live fork none of the other three paths
+	// caught in time: both secondaries sat at an identical frozen tip while
+	// the primary raced 400+ blocks ahead, receiving 1600+ raw block arrivals
+	// per 30s window and attaching exactly ZERO of them (every peer block
+	// orphaned against diverged ancestry, so the orphan backward-walk chased a
+	// fork point it could not outpace). In that state:
+	//   - the mismatch path is structurally blind: StateRoot mismatches only
+	//     accrue on blocks that ATTACH, and nothing attaches;
+	//   - the chain-divergence check compares a "settled" finalized height,
+	//     which the initial-sync gate's un-settled state can defer;
+	//   - the height-stall check does fire eventually — but only after 25
+	//     minutes of total standstill, and every restart-based remediation
+	//     attempt during the incident reset in-memory progress.
+	// "Receiving plenty, attaching nothing, measurably behind the primary"
+	// needs all three parts to hold SIMULTANEOUSLY for the full threshold
+	// window, which no healthy state produces: normal catch-up attaches
+	// constantly (sync-pulled blocks count — recordForeignAttachLatency fires
+	// for every non-self block that clears the gates), a truly isolated node
+	// receives nothing (no raw arrivals → heightStall's case, not this one),
+	// and a node at the tip has no primary gap.
+	syncStarvationCheckInterval = 60 * time.Second
+	// syncStarvationThreshold: how long the starvation state must hold
+	// CONTINUOUSLY before triggering. 5 minutes = 5 consecutive confirming
+	// ticks — far past any transient orphan spike (those attach their backlog
+	// within seconds once the parent arrives), far under the 25-minute
+	// height-stall backstop this exists to beat.
+	syncStarvationThreshold = 5 * time.Minute
+	// syncStarvationMinArrivals: minimum raw arrivals per check interval for
+	// the state to count as "receiving plenty" — well under a real flood
+	// (1600+/30s live) but enough that a barely-connected node (a few stray
+	// gossip blocks) doesn't qualify; that node's problem is isolation, which
+	// the height-stall path already covers.
+	syncStarvationMinArrivals = 30
+	// syncStarvationMinGap: how far behind the primary's reported height the
+	// local height must be for starvation to count — a node at/near the tip
+	// that attaches nothing for a stretch is just quiet, not starving.
+	syncStarvationMinGap = 120
+
 	// heightStallCheckInterval paces startHeightStallCheck's liveness poll.
 	// Cheap (dag.Height() is a single RLock + field read), so this can be
 	// much tighter than the divergence check's network round trip.
@@ -280,6 +319,73 @@ func (dag *BlockDAG) StartDivergenceAutoHeal(bootstrapURL, signer, primaryURL st
 	})
 	dag.startChainDivergenceCheck(primaryURL)
 	dag.startHeightStallCheck()
+	dag.startSyncStarvationCheck(primaryURL)
+}
+
+// syncStarvationTickResult is startSyncStarvationCheck's per-tick decision,
+// extracted as a pure function so the exact trigger condition is unit-testable
+// without tickers, network calls, or a live DAG. Inputs are the deltas since
+// the previous tick plus the height comparison; returns whether this tick
+// CONFIRMS the starvation state (all three conditions hold simultaneously).
+func syncStarvationTickConfirms(rawDelta, attachDelta, localHeight, primaryHeight int64, primaryReachable bool) bool {
+	if !primaryReachable {
+		return false // no height comparison possible — not evidence either way
+	}
+	if rawDelta < syncStarvationMinArrivals {
+		return false // not actually receiving — isolation, heightStall's case
+	}
+	if attachDelta > 0 {
+		return false // something attached — normal (possibly slow) operation
+	}
+	return primaryHeight >= localHeight+syncStarvationMinGap
+}
+
+// startSyncStarvationCheck is the fourth, independent detection path — see
+// the syncStarvation* constants' comment for the live 2026-07-24 fork it
+// exists to catch quickly. Reads only monotonic counters and dag.Height()
+// locally plus the primary's /api/status height (the same cheap probe
+// runChainDivergenceCheckOnce already uses); no state mutated except via
+// the shared, cooldown-gated triggerAutoResync.
+func (dag *BlockDAG) startSyncStarvationCheck(primaryURL string) {
+	if primaryURL == "" {
+		fmt.Println("[AUTO-HEAL] Sync-starvation self-check disabled: PRIMARY_NODE_URL not set.")
+		return
+	}
+	fmt.Printf("[AUTO-HEAL] Sync-starvation self-check enabled: will resync if this node receives blocks but attaches none for %s straight while %d+ behind %s.\n",
+		syncStarvationThreshold, syncStarvationMinGap, primaryURL)
+	SafeGoroutine("syncStarvation-ticker", func() {
+		ticker := time.NewTicker(syncStarvationCheckInterval)
+		defer ticker.Stop()
+		prevRaw := dag.totalRawArrivalCount.Load()
+		prevAttach := dag.totalForeignAttachCount.Load()
+		var starvingSince time.Time
+		for range ticker.C {
+			SafeCall("syncStarvation-tick", func() {
+				curRaw := dag.totalRawArrivalCount.Load()
+				curAttach := dag.totalForeignAttachCount.Load()
+				rawDelta := curRaw - prevRaw
+				attachDelta := curAttach - prevAttach
+				prevRaw, prevAttach = curRaw, curAttach
+
+				primaryHeight, ok := fetchPrimaryHeight(primaryURL)
+				if !syncStarvationTickConfirms(rawDelta, attachDelta, dag.Height(), primaryHeight, ok) {
+					starvingSince = time.Time{}
+					return
+				}
+				if starvingSince.IsZero() {
+					starvingSince = time.Now()
+					fmt.Printf("[AUTO-HEAL] Sync-starvation watch: received %d block(s) this interval but attached 0 while %d+ behind the primary — watching (threshold %s).\n",
+						rawDelta, syncStarvationMinGap, syncStarvationThreshold)
+					return
+				}
+				if starving := time.Since(starvingSince); starving >= syncStarvationThreshold {
+					dag.triggerAutoResync(fmt.Sprintf(
+						"receiving peer blocks continuously but attaching none for %s straight while %d+ blocks behind the primary — every arrival is orphaning against diverged ancestry; this node is structurally cut off from the canonical chain",
+						starving.Round(time.Second), syncStarvationMinGap))
+				}
+			})
+		}
+	})
 }
 
 // primaryStatusResponse mirrors the subset of /api/status this check needs.

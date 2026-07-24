@@ -532,6 +532,18 @@ replayedMu             sync.Mutex
 	rawArrivalLatencySumMs     int64
 	rawArrivalLatencyMaxMs     int64
 	lastRawArrivalLatencyLogAt atomic.Int64
+	// totalRawArrivalCount / totalForeignAttachCount are MONOTONIC lifetime
+	// counters incremented alongside the windowed latency counters above
+	// (which reset every log interval, so they can't answer "did ANYTHING
+	// attach since the last check?"). Added 2026-07-24 for the sync-starvation
+	// auto-heal check (autoheal.go): the fork incident that day showed a node
+	// can sit receiving 1600+ raw arrivals per 30s while attaching exactly
+	// ZERO of them (every peer block orphaning against a diverged ancestry) —
+	// a state none of the existing detection paths sees quickly, because
+	// StateRoot mismatches only accrue on blocks that DO attach, and the
+	// height-stall check needs 25 minutes of zero height movement.
+	totalRawArrivalCount    atomic.Int64
+	totalForeignAttachCount atomic.Int64
 	// newBlockSubs backs the /api/events SSE stream (scaling roadmap
 	// 2026-07-21): each subscriber gets its own buffered channel; notified
 	// non-blockingly (a full/slow reader is dropped from the broadcast, never
