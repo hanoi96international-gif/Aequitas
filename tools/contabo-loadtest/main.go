@@ -154,7 +154,6 @@ func (c *rpcClient) sendValue(from *account, toAddr string, amountWei *big.Int) 
 	if err != nil {
 		return "", err
 	}
-	from.nonce++
 	raw, err := signedTx.MarshalBinary()
 	if err != nil {
 		return "", err
@@ -164,6 +163,11 @@ func (c *rpcClient) sendValue(from *account, toAddr string, amountWei *big.Int) 
 	if err != nil {
 		return "", err
 	}
+	// Only advance past this nonce once the node has actually accepted it --
+	// incrementing unconditionally (even on rejection) would permanently
+	// desync this account's local nonce from the chain for the rest of the
+	// run, since nothing re-syncs it mid-run.
+	from.nonce++
 	var txHash string
 	json.Unmarshal(res, &txHash)
 	return txHash, nil
