@@ -6,13 +6,21 @@ name: Diagnose the Railway-hosted primary (manual, read-only)
 # Railway restarted it, crash-looped it, or is holding a failed deployment.
 # This one asks Railway directly.
 #
-# Needs a Railway API token in the repository secret named below. The token
-# is only ever passed to the official `railway` CLI as an environment
-# variable, never echoed, and every command here is a read (status/logs).
-# No deploys, no restarts, no variable changes, no redeploys.
+# TOKEN TYPES (why both env vars are set below): Railway distinguishes two
+# kinds of token BY ENVIRONMENT VARIABLE NAME, and picking the wrong one
+# fails with a bare "Unauthorized" that looks identical to an invalid token:
+#   RAILWAY_TOKEN     -- a PROJECT token, scoped to a single environment.
+#                        `railway whoami` is not valid for this type.
+#   RAILWAY_API_TOKEN -- an ACCOUNT or TEAM token; this is what whoami/list
+#                        require.
+# The first run of this workflow set only RAILWAY_TOKEN and every subcommand
+# came back Unauthorized. Setting both from the same secret makes the probe
+# work whichever type was created; the CLI ignores the name that does not
+# apply.
 #
-# If the secret is missing the job says so and exits 0 rather than failing
-# the run -- this is a diagnostic tool, not a gate.
+# Every command is a read (whoami/list/status/logs). No deploys, no
+# restarts, no variable changes, no redeploys. A missing secret exits 0 with
+# an explanation -- this is a diagnostic tool, not a gate.
 on:
   workflow_dispatch:
     inputs:
@@ -28,6 +36,7 @@ jobs:
       - name: Query Railway for the primary's service + deployment state
         env:
           RAILWAY_TOKEN: ${{ secrets.Railway }}
+          RAILWAY_API_TOKEN: ${{ secrets.Railway }}
           LOG_LINES: ${{ inputs.log_lines }}
         run: |
           set -uo pipefail
@@ -43,19 +52,30 @@ jobs:
             echo "(railway CLI install failed)"; exit 0; }
           railway --version || true
 
+          ok=0
+
           echo ""
-          echo "=== whoami (confirms the token authenticates at all) ==="
-          railway whoami 2>&1 | head -5 || echo "(whoami failed -- token may be invalid or expired)"
+          echo "=== whoami (valid for ACCOUNT/TEAM tokens; expected to fail for a PROJECT token) ==="
+          if railway whoami 2>&1 | head -5; then ok=$((ok+1)); fi
 
           echo ""
           echo "=== projects visible to this token ==="
-          railway list 2>&1 | head -40 || echo "(list failed)"
+          if railway list 2>&1 | head -40; then ok=$((ok+1)); fi
 
           echo ""
           echo "=== service status ==="
-          railway status 2>&1 | head -40 || echo "(status failed -- may need a linked project; see 'railway list' above)"
+          if railway status 2>&1 | head -40; then ok=$((ok+1)); fi
 
           echo ""
           echo "=== recent deployment logs (last $LOG_LINES lines) ==="
           timeout 60 railway logs --deployment 2>&1 | tail -n "$LOG_LINES" \
-            || echo "(logs unavailable -- if the CLI needs an explicit service, 'railway status' above names it)"
+            || echo "(logs unavailable)"
+
+          echo ""
+          if [ "$ok" -eq 0 ]; then
+            echo "RESULT: every subcommand failed. The secret is set but Railway rejects it."
+            echo "  -> Create a token at railway.app -> Account Settings -> Tokens,"
+            echo "     then update the repository secret 'Railway' with that value."
+          else
+            echo "RESULT: $ok subcommand(s) authenticated successfully."
+          fi
