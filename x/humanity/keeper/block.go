@@ -335,6 +335,34 @@ replayedMu             sync.Mutex
 	// /api/health/combined (Gesamtaudit 2026-06-28, P2-4/P3-7: "Health/API
 	// zeigt nicht ... seit wann [ein StateRoot-Mismatch existiert]").
 	lastSuccessfulPeerSyncAt atomic.Int64
+	// lastPeerContactAt is the Unix timestamp of the last time this node
+	// received ANY block from a foreign peer, whether or not AddPeerBlock
+	// went on to merge it — set unconditionally at AddPeerBlock's entry,
+	// the same point recordRawArrivalLatency measures from (see that call
+	// site's own comment for why "before any gate" matters here too).
+	//
+	// FIX (P0, 2026-07-24 — root cause of Contabo1 forking within minutes of
+	// a resync, confirmed live during the diagnostic session that also added
+	// prefetchParentsFromDB): every one of ProduceBlock's stall-timeout
+	// escape valves (see syncStallTimeout's own comment) used
+	// lastSuccessfulPeerSyncAt alone as "evidence the peer connection is
+	// alive" — but that field only advances on a successful MERGE, never on
+	// merely receiving data. Under a severe merge backlog (confirmed live:
+	// 100-150s+ average AddPeerBlock latency, worse than syncStallTimeout's
+	// 90s), a node can go the full timeout window without a single
+	// successful merge while the primary is fully reachable and actively
+	// sending a continuous stream of blocks — every one of them queueing as
+	// an orphan instead of merging. The gate then concluded "primary must be
+	// down" and let this node start producing independently, forking off its
+	// own chain from a stale height while the real primary kept racing
+	// ahead — which then added the fork's own blocks to every OTHER node's
+	// orphan backlog too, a self-reinforcing spiral. lastPeerActivityAt()
+	// (below) takes the more recent of this field and lastSuccessfulPeerSyncAt,
+	// so the stall gates now correctly distinguish "genuinely hearing
+	// nothing from any peer" (the actual "primary may be down" case they
+	// exist for) from "hearing plenty, just can't merge it fast enough yet"
+	// (which must keep waiting, not fork).
+	lastPeerContactAt atomic.Int64
 	// lastDeepScanAt (P2-01 audit, confirmed live on Contabo 2026-06-30):
 	// throttles how often doSyncOnce's deepScan mode is allowed to do a full
 	// height-0 re-walk of the entire known chain. See doSyncOnce's own
@@ -1964,7 +1992,7 @@ if syntheticCount := dag.UnverifiedSyntheticCheckpointCount(); syntheticCount > 
 // genuinely NO sync progress at all for a long stretch, never merely
 // because catch-up is still in progress and actively succeeding.
 if dag.bootHeight > 0 && dag.height+10 < dag.bootHeight {
-	referenceTime := dag.lastSuccessfulPeerSyncAt.Load()
+	referenceTime := dag.lastPeerActivityAt()
 	if referenceTime == 0 {
 		referenceTime = dag.startupTime
 	}
@@ -2032,7 +2060,7 @@ if dag.bootHeight > 0 && len(dag.trustedSeeds) > 0 {
 		// against ANY peer, so this only fires when NOTHING is getting
 		// through, not merely because one of several configured seeds is
 		// down while another still feeds real progress.
-		referenceTime := dag.lastSuccessfulPeerSyncAt.Load()
+		referenceTime := dag.lastPeerActivityAt()
 		if referenceTime == 0 {
 			referenceTime = dag.startupTime
 		}
@@ -2077,7 +2105,7 @@ if target := dag.syncTargetHeight.Load(); target > 0 {
 	if dag.height >= target-10 {
 		dag.syncTargetHeight.Store(0) // caught up — clear gate permanently
 	} else {
-		referenceTime := dag.lastSuccessfulPeerSyncAt.Load()
+		referenceTime := dag.lastPeerActivityAt()
 		if referenceTime == 0 {
 			referenceTime = dag.startupTime // no progress yet — measure from boot
 		}
@@ -3610,6 +3638,11 @@ if block != nil && block.ProducedAtMs > 0 && !strings.EqualFold(block.Proposer, 
 	if latency := time.Now().UnixMilli() - block.ProducedAtMs; latency >= 0 {
 		dag.recordRawArrivalLatency(latency)
 	}
+	// See lastPeerContactAt's own struct comment: this must be set
+	// unconditionally here, before any gate, so a severely backlogged (but
+	// genuinely reachable) peer is never mistaken for a downed one by the
+	// stall-timeout escape valves below.
+	dag.lastPeerContactAt.Store(time.Now().Unix())
 }
 if dag.resyncInProgress.Load() {
 	return false // an in-process self-heal resync is atomically swapping account/DAG state right now — see resyncInProgress's field comment; the sender will redeliver, ordered sync fills the gap once the resync completes
@@ -4587,6 +4620,22 @@ func (dag *BlockDAG) TotalStateRootMismatches() int {
 
 func (dag *BlockDAG) LastSuccessfulPeerSyncAt() int64 {
 	return dag.lastSuccessfulPeerSyncAt.Load()
+}
+
+// lastPeerActivityAt returns the more recent of lastSuccessfulPeerSyncAt
+// (last successful merge) and lastPeerContactAt (last time ANY foreign
+// block was received, merged or not) — see lastPeerContactAt's own struct
+// comment for the incident this exists to fix. This is the correct
+// reference point for every "has the peer connection gone silent" stall
+// check: a peer that's flooding this node with blocks it can't merge fast
+// enough is still a LIVE peer, not a downed one.
+func (dag *BlockDAG) lastPeerActivityAt() int64 {
+	success := dag.lastSuccessfulPeerSyncAt.Load()
+	contact := dag.lastPeerContactAt.Load()
+	if contact > success {
+		return contact
+	}
+	return success
 }
 
 // Note: uses Go's built-in min() (available since Go 1.21; this module
