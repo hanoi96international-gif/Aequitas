@@ -33,6 +33,18 @@ name: Check + clear equivocation slashing on a validator (manual, one-off)
 #
 # Deliberately does NOT touch validator_penalties for any address where
 # the corroboration check fails -- that would launder a real offense.
+#
+# force_clear: live-verified 2026-07-24 that 0x92cbedec9d348b4762cb9af-
+# 99500ee6139c5b671's suspension (offense_count=1, identical
+# suspended_until/last_offense_at on both Contabo1 and Contabo2 -- a
+# real, chain-replicated first offense, not an uncorroborated local
+# artifact) does NOT meet the automatic criteria above. Operator
+# reviewed that finding and explicitly asked to clear it anyway despite
+# it being a real offense, accepting that this re-admits a validator
+# that did genuinely equivocate once. force_clear bypasses the
+# offense_count/applied_count gate for exactly that explicit, reviewed
+# case -- it does not change what counts as "confirmed uncorroborated"
+# for any future, unreviewed run.
 on:
   workflow_dispatch:
     inputs:
@@ -40,6 +52,10 @@ on:
         description: "Signing address to check (lowercase, 0x-prefixed)"
         required: false
         default: "0x92cbedec9d348b4762cb9af99500ee6139c5b671"
+      force_clear:
+        description: "Clear the suspension even if it does not meet the automatic uncorroborated-offense criteria (operator has reviewed and accepts this)"
+        required: false
+        default: "false"
 
 jobs:
   contabo1:
@@ -56,7 +72,7 @@ jobs:
           script_stop: true
           timeout: 120s
           command_timeout: 120s
-          envs: ADDR
+          envs: ADDR,FORCE
           script: |
             set -uo pipefail
             ADDR_LC="$(echo "$ADDR" | tr 'A-Z' 'a-z')"
@@ -82,10 +98,11 @@ jobs:
               "SELECT offense_count FROM validator_penalties WHERE signing_address = '$ADDR_LC'")"
             APPLIED_COUNT="$(docker run --rm --network "$NET" postgres:16-alpine psql "$DATABASE_URL" -t -A -c \
               "SELECT count(*) FROM equivocation_evidence WHERE signing_address = '$ADDR_LC' AND slash_applied = TRUE")"
-            echo "offense_count=${OFFENSE_COUNT:-0} applied_evidence_count=${APPLIED_COUNT:-0}"
-            [ "${OFFENSE_COUNT:-0}" -ge 2 ] && [ "${APPLIED_COUNT:-0}" -eq 0 ] && { echo "=== Confirmed uncorroborated (offense_count>=2, zero applied evidence) -- clearing on Contabo1 ==="; docker run --rm --network "$NET" postgres:16-alpine psql "$DATABASE_URL" -c "DELETE FROM validator_penalties WHERE signing_address = '$ADDR_LC'"; echo "=== Restarting aequitas-node on Contabo1 so the penalty cache reloads ==="; /root/deploy.sh; } || echo "=== NOT clearing on Contabo1 -- criteria not met (either no penalty row, offense_count<2, or a real applied penalty exists) ==="
+            echo "offense_count=${OFFENSE_COUNT:-0} applied_evidence_count=${APPLIED_COUNT:-0} force=${FORCE:-false}"
+            { [ "${FORCE:-false}" = "true" ] || { [ "${OFFENSE_COUNT:-0}" -ge 2 ] && [ "${APPLIED_COUNT:-0}" -eq 0 ]; }; } && { echo "=== Clearing on Contabo1 (force=${FORCE:-false}) ==="; docker run --rm --network "$NET" postgres:16-alpine psql "$DATABASE_URL" -c "DELETE FROM validator_penalties WHERE signing_address = '$ADDR_LC'"; echo "=== Restarting aequitas-node on Contabo1 so the penalty cache reloads ==="; /root/deploy.sh; } || echo "=== NOT clearing on Contabo1 -- criteria not met and force_clear not set ==="
         env:
           ADDR: ${{ inputs.validator_address }}
+          FORCE: ${{ inputs.force_clear }}
 
   contabo2:
     runs-on: ubuntu-latest
@@ -101,7 +118,7 @@ jobs:
           script_stop: true
           timeout: 120s
           command_timeout: 120s
-          envs: ADDR
+          envs: ADDR,FORCE
           script: |
             set -uo pipefail
             ADDR_LC="$(echo "$ADDR" | tr 'A-Z' 'a-z')"
@@ -127,7 +144,8 @@ jobs:
               "SELECT offense_count FROM validator_penalties WHERE signing_address = '$ADDR_LC'")"
             APPLIED_COUNT="$(docker run --rm --network "$NET" postgres:16-alpine psql "$DATABASE_URL" -t -A -c \
               "SELECT count(*) FROM equivocation_evidence WHERE signing_address = '$ADDR_LC' AND slash_applied = TRUE")"
-            echo "offense_count=${OFFENSE_COUNT:-0} applied_evidence_count=${APPLIED_COUNT:-0}"
-            [ "${OFFENSE_COUNT:-0}" -ge 2 ] && [ "${APPLIED_COUNT:-0}" -eq 0 ] && { echo "=== Confirmed uncorroborated (offense_count>=2, zero applied evidence) -- clearing on Contabo2 ==="; docker run --rm --network "$NET" postgres:16-alpine psql "$DATABASE_URL" -c "DELETE FROM validator_penalties WHERE signing_address = '$ADDR_LC'"; echo "=== Restarting aequitas-node on Contabo2 so the penalty cache reloads ==="; /root/deploy_safe_c2.sh; } || echo "=== NOT clearing on Contabo2 -- criteria not met (either no penalty row, offense_count<2, or a real applied penalty exists) ==="
+            echo "offense_count=${OFFENSE_COUNT:-0} applied_evidence_count=${APPLIED_COUNT:-0} force=${FORCE:-false}"
+            { [ "${FORCE:-false}" = "true" ] || { [ "${OFFENSE_COUNT:-0}" -ge 2 ] && [ "${APPLIED_COUNT:-0}" -eq 0 ]; }; } && { echo "=== Clearing on Contabo2 (force=${FORCE:-false}) ==="; docker run --rm --network "$NET" postgres:16-alpine psql "$DATABASE_URL" -c "DELETE FROM validator_penalties WHERE signing_address = '$ADDR_LC'"; echo "=== Restarting aequitas-node on Contabo2 so the penalty cache reloads ==="; /root/deploy_safe_c2.sh; } || echo "=== NOT clearing on Contabo2 -- criteria not met and force_clear not set ==="
         env:
           ADDR: ${{ inputs.validator_address }}
+          FORCE: ${{ inputs.force_clear }}
