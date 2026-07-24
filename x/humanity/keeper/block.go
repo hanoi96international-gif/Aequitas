@@ -4583,10 +4583,46 @@ if conflict, isEquivocation := dag.checkAndIndexEquivocation(block); isEquivocat
 	// 2026-07-03; full rationale at the constant's definition in slashing.go).
 	block.Timestamp >= equivocationSlashingActivationUnix {
 	proposerAddr := block.Proposer
+	// Captured here, under dag.mu (this whole branch runs with it held —
+	// see checkAndIndexEquivocation's precondition), so the goroutine below
+	// never reads dag.selfProposer unsynchronised.
+	selfAddr := dag.selfProposer
 	blockAHash := conflict.Hash
 	blockBHash := block.Hash
 	detectedAt := block.Timestamp
 	SafeGoroutine("equivocation-slashing", func() {
+		// FIX (P0, 2026-07-24 — source of the slash_equivocation TXs that
+		// were STILL being minted against the primary hours after the
+		// BOOTSTRAP_SIGNER guard below shipped): nothing stopped a node from
+		// slashing ITSELF. A node receives copies of its own blocks back from
+		// peers (gossip echo, HTTP push, ordered sync), so if it ever
+		// produced two blocks for the same parent set — a redeploy overlap, a
+		// duplicate-guard window miss, a re-fork — it observes that conflict
+		// itself, records the evidence, and queues a slash TX against its own
+		// signing address, which consensus then replicates to everyone.
+		//
+		// The BOOTSTRAP_SIGNER guard below cannot cover this: it keys off
+		// THIS node's own BOOTSTRAP_SIGNER, and the primary is the seed —
+		// it has none configured (StartDivergenceAutoHeal's own comment
+		// records that: "the primary has neither"), so trustedBootstrapSigner()
+		// returns "" and the guard is skipped entirely on exactly the node
+		// whose address is being slashed. Confirmed live: block #1781171 on
+		// aequitas.digital itself carried a fresh wave of slash_equivocation
+		// TXs against 0x92cbedec…, long after both secondaries had been
+		// correctly guarded and their queues drained to zero.
+		//
+		// A node is never a neutral judge of its own equivocation, and
+		// propagating the verdict is a self-inflicted, network-wide ban. It
+		// also gains nothing: the node already knows what it produced. Drop
+		// the observation entirely — logged loudly, neither persisted nor
+		// propagated, exactly like the BOOTSTRAP_SIGNER case below and for
+		// the same reason. Any OTHER node that genuinely observes the same
+		// conflict is unaffected and can still slash through consensus.
+		if selfAddr != "" && strings.EqualFold(proposerAddr, selfAddr) {
+			fmt.Printf("[SLASHING] ⚠ Observed an equivocation by %s (%s vs %s) but applied NO suspension and propagated nothing — that is THIS NODE'S OWN signing address. A node cannot judge its own equivocation, and broadcasting the verdict is a self-inflicted network-wide ban. See this call site's own comment.\n",
+				proposerAddr, blockAHash, blockBHash)
+			return
+		}
 		// FIX (P0, 2026-07-24 — sixth recurrence of the same false-positive
 		// class, and the one that finally identified the structural cause):
 		// a node must NEVER unilaterally suspend its own configured
