@@ -173,6 +173,79 @@ func (c *rpcClient) sendValue(from *account, toAddr string, amountWei *big.Int) 
 	return txHash, nil
 }
 
+// sendValueBatch signs batchSize sequential-nonce transfers from `from` to
+// toAddr and submits them as ONE JSON-RPC batch request. This exists because
+// the node's /rpc rate limiter (evm_rpc.go: rpcRateLimitMax=200 per 10s per
+// IP) charges a whole batch as a single request — measured live 2026-07-24:
+// single-TX submission from localhost capped the run phase at exactly the
+// limiter's drain rate (128 successes, 37k+ rate-limit rejections, 5.1
+// "TPS") while the chain itself stayed healthy the entire window. Batching
+// raises the per-IP ceiling to rpcRateLimitMax × maxBatchSize (the server's
+// own documented batch cap is 100) without touching the node's DoS shield.
+//
+// The server processes batch entries strictly sequentially (evm_rpc.go's
+// batch loop), so sequential nonces in submission order are exactly right.
+// A failed TRANSFER still consumes its nonce server-side (the nonce is
+// reserved before the transfer executes), so entries after a mid-batch
+// transfer failure remain valid; only nonce-level rejections (too low/high)
+// leave the server nonce untouched. Rather than modeling that split, any
+// batch containing at least one failure resyncs from.nonce from the chain
+// afterward — one cheap extra call on an already-failing path.
+func (c *rpcClient) sendValueBatch(from *account, toAddr string, amountWei *big.Int, batchSize int) (succeeded, failed int, err error) {
+	signer := types.NewEIP155Signer(big.NewInt(chainID))
+	reqs := make([]rpcReq, 0, batchSize)
+	for i := 0; i < batchSize; i++ {
+		tx := types.NewTransaction(from.nonce+uint64(i), addrFromHex(toAddr), amountWei, 21000, big.NewInt(0), nil)
+		signedTx, serr := types.SignTx(tx, signer, from.priv)
+		if serr != nil {
+			return 0, batchSize, serr
+		}
+		raw, serr := signedTx.MarshalBinary()
+		if serr != nil {
+			return 0, batchSize, serr
+		}
+		reqs = append(reqs, rpcReq{Jsonrpc: "2.0", Method: "eth_sendRawTransaction", Params: []string{"0x" + hex.EncodeToString(raw)}, ID: i + 1})
+	}
+	body, _ := json.Marshal(reqs)
+	httpReq, _ := http.NewRequest("POST", c.url, bytes.NewReader(body))
+	httpReq.Header.Set("Content-Type", "application/json")
+	resp, err := c.hc.Do(httpReq)
+	if err != nil {
+		return 0, batchSize, err
+	}
+	defer resp.Body.Close()
+	b, _ := io.ReadAll(resp.Body)
+
+	// A whole-batch rejection (rate limiter, parse error) comes back as a
+	// single object, not an array — treat it as every entry failing.
+	trimmed := bytes.TrimSpace(b)
+	if len(trimmed) == 0 || trimmed[0] != '[' {
+		var rr rpcResp
+		if json.Unmarshal(trimmed, &rr) == nil && rr.Error != nil {
+			return 0, batchSize, fmt.Errorf("batch rejected: rpc error %d: %s", rr.Error.Code, rr.Error.Message)
+		}
+		return 0, batchSize, fmt.Errorf("batch rejected: unexpected response %q", string(trimmed))
+	}
+	var items []rpcResp
+	if err := json.Unmarshal(trimmed, &items); err != nil {
+		return 0, batchSize, fmt.Errorf("bad batch response: %w", err)
+	}
+	for _, it := range items {
+		if it.Error == nil {
+			succeeded++
+		} else {
+			failed++
+		}
+	}
+	failed += batchSize - len(items) // entries the server never answered count as failed
+	if failed > 0 {
+		from.nonce = c.nonce(from.address) // resync after any partial failure
+	} else {
+		from.nonce += uint64(succeeded)
+	}
+	return succeeded, failed, nil
+}
+
 // addrFromHex returns a plain [20]byte, assignable to go-ethereum's
 // common.Address (defined as exactly that underlying type) without an
 // explicit conversion, per Go's assignability rules for unnamed types.
@@ -244,7 +317,14 @@ func main() {
 	transferAmount := flag.String("transfer-amount-wei", "10000000000000", "wei per load-test transfer (default 0.00001 AEQ)")
 	runDuration := flag.Duration("duration", 20*time.Second, "timed load phase duration")
 	rampSeconds := flag.Int("ramp", 5, "seconds to ramp concurrency up over")
+	batchSize := flag.Int("batch", 50, "transfers per JSON-RPC batch request during the run phase (1 = one request per transfer; server caps batches at 100)")
 	flag.Parse()
+	if *batchSize < 1 {
+		*batchSize = 1
+	}
+	if *batchSize > 100 {
+		*batchSize = 100 // evm_rpc.go's maxBatchSize — larger batches are rejected whole
+	}
 
 	accs := loadAccounts(*csvPath)
 	if len(accs) <= *numSeeds {
@@ -329,7 +409,7 @@ func main() {
 	}
 
 	if runPhase("run") {
-		fmt.Printf("=== PHASE run: %d pairs, ramping over %ds, then %s timed ===\n", numPairs, *rampSeconds, *runDuration)
+		fmt.Printf("=== PHASE run: %d pairs, batch=%d, ramping over %ds, then %s timed ===\n", numPairs, *batchSize, *rampSeconds, *runDuration)
 		for _, s := range senders {
 			s.nonce = client.nonce(s.address)
 		}
@@ -363,11 +443,26 @@ func main() {
 						return
 					default:
 					}
-					if _, err := client.sendValue(from, to.address, transferWei); err != nil {
-						atomic.AddInt64(&failed, 1)
+					if *batchSize == 1 {
+						if _, err := client.sendValue(from, to.address, transferWei); err != nil {
+							atomic.AddInt64(&failed, 1)
+							// Back off briefly instead of hammering a rejecting
+							// node in a tight loop — measured live: the old
+							// unthrottled retry burned 1500 req/s of pure
+							// rate-limit rejections, keeping the limiter window
+							// permanently exhausted for every other sender too.
+							time.Sleep(100 * time.Millisecond)
+							continue
+						}
+						atomic.AddInt64(&succeeded, 1)
 						continue
 					}
-					atomic.AddInt64(&succeeded, 1)
+					ok, bad, err := client.sendValueBatch(from, to.address, transferWei, *batchSize)
+					atomic.AddInt64(&succeeded, int64(ok))
+					atomic.AddInt64(&failed, int64(bad))
+					if err != nil || bad > 0 {
+						time.Sleep(100 * time.Millisecond) // same backoff rationale as above
+					}
 				}
 			}(i)
 		}

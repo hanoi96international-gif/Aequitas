@@ -51,6 +51,10 @@ on:
         description: "Wei per load-test transfer during warmup/run"
         required: false
         default: "10000000000000"
+      batch:
+        description: "Transfers per JSON-RPC batch request in the run phase (1-100; the node's rate limiter charges a whole batch as ONE request)"
+        required: false
+        default: "50"
 
 jobs:
   run:
@@ -81,7 +85,7 @@ jobs:
           script_stop: true
           timeout: 900s
           command_timeout: 900s
-          envs: PHASE,NUM_SEEDS,DURATION,RAMP,FUND_WEI,TRANSFER_WEI
+          envs: PHASE,NUM_SEEDS,DURATION,RAMP,FUND_WEI,TRANSFER_WEI,BATCH
           script: |
             set -euo pipefail
             cd /root/contabo-loadtest
@@ -123,7 +127,8 @@ jobs:
                 -duration "$DURATION" \
                 -ramp "$RAMP" \
                 -fund-amount-wei "$FUND_WEI" \
-                -transfer-amount-wei "$TRANSFER_WEI"
+                -transfer-amount-wei "$TRANSFER_WEI" \
+                -batch "$BATCH"
 
             echo ""
             echo "=== /api/status after the run ==="
@@ -135,3 +140,4 @@ jobs:
           RAMP: ${{ inputs.ramp }}
           FUND_WEI: ${{ inputs.fund_amount_wei }}
           TRANSFER_WEI: ${{ inputs.transfer_amount_wei }}
+          BATCH: ${{ inputs.batch }}
