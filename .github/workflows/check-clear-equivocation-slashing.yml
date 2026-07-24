@@ -1,0 +1,141 @@
+name: Check + clear equivocation slashing on a validator (manual, one-off)
+
+# One-off diagnostic/remediation tool, same shape as patch-deploy-safe-c2.yml:
+# checks read-only first, only mutates once the false-positive criteria are
+# actually confirmed, on BOTH Contabo1 and Contabo2.
+#
+# Context: validator 0x92cbedec9d348b4762cb9af99500ee6139c5b671 has been
+# seen "suspended for equivocation until 2026-08-06 20:51 UTC" in every
+# Contabo2 log during today's 50k-TPS session, and every one of its blocks
+# is being rejected -- plausibly contributing to why Contabo2 stopped
+# merging with the rest of the network (see slashing.go's own documented,
+# CONFIRMED-RECURRING false-positive pattern: a node alone observing what
+# the rest of the network agrees was a single event during
+# orphan/checkpoint-bridging catch-up, especially after the frequent
+# redeploys this session did today).
+#
+# slashing.go's own selfHealUncorroboratedSeedSuspension already automates
+# this exact fix, but ONLY for BOOTSTRAP_SIGNER (an env var), so it never
+# touches a third-party validator address like this one. The safe manual
+# equivalent, per slashing.go's own "OPERATIONAL NOTE (2026-07-12
+# incident)" comment:
+#   1. Read-only: confirm this is genuinely uncorroborated -- offense_count
+#      reached 2 (the escalation threshold) but slash_applied is FALSE on
+#      every equivocation_evidence row for this address. That combination
+#      is only possible when the underlying evidence never actually
+#      replayed through this node's own canonical history -- i.e. a false
+#      positive, not a real network-corroborated offense.
+#   2. Only if that condition holds: DELETE the validator_penalties row
+#      (equivocation_evidence stays -- audit trail, never blocks anything
+#      by itself) and restart the container, since the in-memory
+#      penaltyCache is loaded once at startup and a bare DB DELETE alone
+#      does not reach a running process (confirmed in the same comment).
+#
+# Deliberately does NOT touch validator_penalties for any address where
+# the corroboration check fails -- that would launder a real offense.
+on:
+  workflow_dispatch:
+    inputs:
+      validator_address:
+        description: "Signing address to check (lowercase, 0x-prefixed)"
+        required: false
+        default: "0x92cbedec9d348b4762cb9af99500ee6139c5b671"
+
+jobs:
+  contabo1:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check + conditionally clear on Contabo1
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: 173.249.37.118
+          username: root
+          key: ${{ secrets.CONTABO_SSH_KEY }}
+          port: 22
+          fingerprint: "SHA256:noMtjHV8c+2iEFZu3TRUP6WRwGjkrvFke71KgU6Eyt4"
+          script_stop: true
+          timeout: 120s
+          command_timeout: 120s
+          envs: ADDR
+          script: |
+            set -uo pipefail
+            ADDR_LC="$(echo "$ADDR" | tr 'A-Z' 'a-z')"
+            DATABASE_URL="$(grep -E '^DATABASE_URL=' /root/.aequitas.env 2>/dev/null | head -1 | cut -d= -f2-)"
+            if [ -z "$DATABASE_URL" ]; then
+              DATABASE_URL="$(docker inspect aequitas-node --format '{{range .Config.Env}}{{println .}}{{end}}' 2>/dev/null | grep -E '^DATABASE_URL=' | head -1 | cut -d= -f2-)"
+            fi
+            if [ -z "$DATABASE_URL" ]; then
+              echo "No DATABASE_URL found on Contabo1 -- cannot check."
+              exit 0
+            fi
+            echo "=== Contabo1: validator_penalties row for $ADDR_LC ==="
+            docker run --rm postgres:16-alpine psql "$DATABASE_URL" -t -A -F'|' -c \
+              "SELECT offense_count, suspended_until, banned, last_offense_at FROM validator_penalties WHERE signing_address = '$ADDR_LC'"
+            echo "=== Contabo1: equivocation_evidence rows for $ADDR_LC (slash_applied column is what matters) ==="
+            docker run --rm postgres:16-alpine psql "$DATABASE_URL" -t -A -F'|' -c \
+              "SELECT block_a_hash, block_b_hash, detected_at, slash_applied FROM equivocation_evidence WHERE signing_address = '$ADDR_LC' ORDER BY detected_at"
+            OFFENSE_COUNT="$(docker run --rm postgres:16-alpine psql "$DATABASE_URL" -t -A -c \
+              "SELECT offense_count FROM validator_penalties WHERE signing_address = '$ADDR_LC'")"
+            APPLIED_COUNT="$(docker run --rm postgres:16-alpine psql "$DATABASE_URL" -t -A -c \
+              "SELECT count(*) FROM equivocation_evidence WHERE signing_address = '$ADDR_LC' AND slash_applied = TRUE")"
+            echo "offense_count=${OFFENSE_COUNT:-0} applied_evidence_count=${APPLIED_COUNT:-0}"
+            if [ "${OFFENSE_COUNT:-0}" -ge 2 ] && [ "${APPLIED_COUNT:-0}" -eq 0 ]; then
+              echo "=== Confirmed uncorroborated (offense_count>=2, zero applied evidence) -- clearing on Contabo1 ==="
+              docker run --rm postgres:16-alpine psql "$DATABASE_URL" -c \
+                "DELETE FROM validator_penalties WHERE signing_address = '$ADDR_LC'"
+              echo "=== Restarting aequitas-node on Contabo1 so the penalty cache reloads ==="
+              /root/deploy.sh
+            else
+              echo "=== NOT clearing on Contabo1 -- criteria not met (either no penalty row, offense_count<2, or a real applied penalty exists) ==="
+            fi
+        env:
+          ADDR: ${{ inputs.validator_address }}
+
+  contabo2:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check + conditionally clear on Contabo2
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: 194.163.188.71
+          username: root
+          key: ${{ secrets.CONTABO2_SSH_KEY }}
+          port: 22
+          fingerprint: "SHA256:VIwj7Faxiga2n45HVHZEQFPxcbRKHgSgHoxAFsf2wto"
+          script_stop: true
+          timeout: 120s
+          command_timeout: 120s
+          envs: ADDR
+          script: |
+            set -uo pipefail
+            ADDR_LC="$(echo "$ADDR" | tr 'A-Z' 'a-z')"
+            DATABASE_URL="$(grep -E '^DATABASE_URL=' /root/.aequitas.env 2>/dev/null | head -1 | cut -d= -f2-)"
+            if [ -z "$DATABASE_URL" ]; then
+              DATABASE_URL="$(docker inspect aequitas-node --format '{{range .Config.Env}}{{println .}}{{end}}' 2>/dev/null | grep -E '^DATABASE_URL=' | head -1 | cut -d= -f2-)"
+            fi
+            if [ -z "$DATABASE_URL" ]; then
+              echo "No DATABASE_URL found on Contabo2 -- cannot check."
+              exit 0
+            fi
+            echo "=== Contabo2: validator_penalties row for $ADDR_LC ==="
+            docker run --rm postgres:16-alpine psql "$DATABASE_URL" -t -A -F'|' -c \
+              "SELECT offense_count, suspended_until, banned, last_offense_at FROM validator_penalties WHERE signing_address = '$ADDR_LC'"
+            echo "=== Contabo2: equivocation_evidence rows for $ADDR_LC (slash_applied column is what matters) ==="
+            docker run --rm postgres:16-alpine psql "$DATABASE_URL" -t -A -F'|' -c \
+              "SELECT block_a_hash, block_b_hash, detected_at, slash_applied FROM equivocation_evidence WHERE signing_address = '$ADDR_LC' ORDER BY detected_at"
+            OFFENSE_COUNT="$(docker run --rm postgres:16-alpine psql "$DATABASE_URL" -t -A -c \
+              "SELECT offense_count FROM validator_penalties WHERE signing_address = '$ADDR_LC'")"
+            APPLIED_COUNT="$(docker run --rm postgres:16-alpine psql "$DATABASE_URL" -t -A -c \
+              "SELECT count(*) FROM equivocation_evidence WHERE signing_address = '$ADDR_LC' AND slash_applied = TRUE")"
+            echo "offense_count=${OFFENSE_COUNT:-0} applied_evidence_count=${APPLIED_COUNT:-0}"
+            if [ "${OFFENSE_COUNT:-0}" -ge 2 ] && [ "${APPLIED_COUNT:-0}" -eq 0 ]; then
+              echo "=== Confirmed uncorroborated (offense_count>=2, zero applied evidence) -- clearing on Contabo2 ==="
+              docker run --rm postgres:16-alpine psql "$DATABASE_URL" -c \
+                "DELETE FROM validator_penalties WHERE signing_address = '$ADDR_LC'"
+              echo "=== Restarting aequitas-node on Contabo2 so the penalty cache reloads ==="
+              /root/deploy_safe_c2.sh
+            else
+              echo "=== NOT clearing on Contabo2 -- criteria not met (either no penalty row, offense_count<2, or a real applied penalty exists) ==="
+            fi
+        env:
+          ADDR: ${{ inputs.validator_address }}
