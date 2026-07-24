@@ -51,6 +51,7 @@ jobs:
           script_stop: true
           timeout: 60s
           command_timeout: 60s
+          debug: true
           script: |
             set -euo pipefail
             mkdir -p /root/contabo-loadtest
