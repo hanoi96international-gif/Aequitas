@@ -1,0 +1,131 @@
+name: Clear ALL validator penalties on both Contabos (manual)
+
+# Operator request, 2026-07-24 incident: wipe validator_penalties entirely on
+# both secondaries, not just the primary's row (purge-queued-slash-txs.yml is
+# scoped to one address and its pending_txs half is now a no-op -- both boxes
+# reported 0 queued slash_equivocation TXs and 0 pending_txs total, the wave
+# having already drained into blocks).
+#
+# WHAT THIS DELETES: every row of validator_penalties, on both Contabos. That
+# is the table IsValidatorSuspended reads, so clearing it lifts every active
+# suspension and ban this node currently applies to anyone.
+#
+# WHAT THIS DELIBERATELY DOES **NOT** DELETE: equivocation_evidence.
+# RecordEquivocationAndSuspend (slashing.go:390-406) inserts into that table
+# with ON CONFLICT (block_a_hash, block_b_hash) DO NOTHING and, when the row
+# already exists, RETURNS EARLY WITH NO PENALTY APPLIED. Those rows therefore
+# act as a SUPPRESSOR: they are what stops a replay of the same blocks from
+# re-applying the very penalties this workflow is clearing. Deleting them
+# would re-arm the escalation on the next replay -- offense_count 2 is a
+# 90-day suspension plus a 50 AEQ penalty, 3+ is a permanent ban. They stay.
+#
+# The restart at the end is required, not cosmetic: the in-memory penalty
+# cache is loaded once at startup, so a bare DB DELETE never reaches a running
+# process (slashing.go's own OPERATIONAL NOTE records that being confirmed
+# live). Each box uses its own deploy script, matching the pattern
+# purge-queued-slash-txs.yml already established.
+#
+# Defaults to dry_run=true: a bare dispatch REPORTS every row it would delete
+# and changes nothing.
+on:
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "true = only report what WOULD be deleted, change nothing"
+        required: false
+        default: "true"
+
+jobs:
+  contabo1:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Clear all validator penalties on Contabo1
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: 173.249.37.118
+          username: root
+          key: ${{ secrets.CONTABO_SSH_KEY }}
+          port: 22
+          fingerprint: "SHA256:noMtjHV8c+2iEFZu3TRUP6WRwGjkrvFke71KgU6Eyt4"
+          script_stop: false
+          timeout: 600s
+          command_timeout: 600s
+          envs: DRY
+          script: |
+            set -uo pipefail
+            DATABASE_URL="$(grep -E '^DATABASE_URL=' /root/.aequitas.env 2>/dev/null | head -1 | cut -d= -f2- || true)"
+            [ -n "$DATABASE_URL" ] || DATABASE_URL="$(docker inspect aequitas-node --format '{{range .Config.Env}}{{println .}}{{end}}' 2>/dev/null | grep -E '^DATABASE_URL=' | head -1 | cut -d= -f2- || true)"
+            if [ -z "$DATABASE_URL" ]; then echo "No DATABASE_URL on Contabo1"; exit 0; fi
+            NET="$(docker inspect aequitas-node --format '{{range $n,$v := .NetworkSettings.Networks}}{{$n}}{{end}}' 2>/dev/null || true)"
+            psql() { docker run --rm --network "$NET" postgres:16-alpine psql "$DATABASE_URL" "$@"; }
+
+            echo "=== Contabo1: EVERY validator_penalties row (before) ==="
+            psql -t -A -F'|' -c "SELECT signing_address, offense_count, suspended_until, banned, last_offense_at FROM validator_penalties ORDER BY signing_address" || echo "(query failed)"
+            echo "--- row count ---"
+            psql -t -A -c "SELECT count(*) FROM validator_penalties" || echo "(query failed)"
+            echo "--- equivocation_evidence count (NOT deleted -- it suppresses re-penalisation on replay) ---"
+            psql -t -A -c "SELECT count(*) FROM equivocation_evidence" || echo "(query failed)"
+
+            if [ "${DRY:-true}" = "true" ]; then
+              echo "=== DRY RUN: nothing deleted on Contabo1 ==="
+              exit 0
+            fi
+
+            echo "=== Contabo1: deleting ALL validator_penalties rows ==="
+            psql -c "DELETE FROM validator_penalties" || echo "(delete failed)"
+            echo "--- row count after (expect 0) ---"
+            psql -t -A -c "SELECT count(*) FROM validator_penalties" || echo "(query failed)"
+            echo "--- equivocation_evidence count after (expect UNCHANGED) ---"
+            psql -t -A -c "SELECT count(*) FROM equivocation_evidence" || echo "(query failed)"
+
+            echo "=== Contabo1: restarting so the in-memory penalty cache reloads ==="
+            /root/deploy.sh
+        env:
+          DRY: ${{ inputs.dry_run }}
+
+  contabo2:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Clear all validator penalties on Contabo2
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: 194.163.188.71
+          username: root
+          key: ${{ secrets.CONTABO2_SSH_KEY }}
+          port: 22
+          fingerprint: "SHA256:VIwj7Faxiga2n45HVHZEQFPxcbRKHgSgHoxAFsf2wto"
+          script_stop: false
+          timeout: 600s
+          command_timeout: 600s
+          envs: DRY
+          script: |
+            set -uo pipefail
+            DATABASE_URL="$(grep -E '^DATABASE_URL=' /root/.aequitas.env 2>/dev/null | head -1 | cut -d= -f2- || true)"
+            [ -n "$DATABASE_URL" ] || DATABASE_URL="$(docker inspect aequitas-node --format '{{range .Config.Env}}{{println .}}{{end}}' 2>/dev/null | grep -E '^DATABASE_URL=' | head -1 | cut -d= -f2- || true)"
+            if [ -z "$DATABASE_URL" ]; then echo "No DATABASE_URL on Contabo2"; exit 0; fi
+            NET="$(docker inspect aequitas-node --format '{{range $n,$v := .NetworkSettings.Networks}}{{$n}}{{end}}' 2>/dev/null || true)"
+            psql() { docker run --rm --network "$NET" postgres:16-alpine psql "$DATABASE_URL" "$@"; }
+
+            echo "=== Contabo2: EVERY validator_penalties row (before) ==="
+            psql -t -A -F'|' -c "SELECT signing_address, offense_count, suspended_until, banned, last_offense_at FROM validator_penalties ORDER BY signing_address" || echo "(query failed)"
+            echo "--- row count ---"
+            psql -t -A -c "SELECT count(*) FROM validator_penalties" || echo "(query failed)"
+            echo "--- equivocation_evidence count (NOT deleted -- it suppresses re-penalisation on replay) ---"
+            psql -t -A -c "SELECT count(*) FROM equivocation_evidence" || echo "(query failed)"
+
+            if [ "${DRY:-true}" = "true" ]; then
+              echo "=== DRY RUN: nothing deleted on Contabo2 ==="
+              exit 0
+            fi
+
+            echo "=== Contabo2: deleting ALL validator_penalties rows ==="
+            psql -c "DELETE FROM validator_penalties" || echo "(delete failed)"
+            echo "--- row count after (expect 0) ---"
+            psql -t -A -c "SELECT count(*) FROM validator_penalties" || echo "(query failed)"
+            echo "--- equivocation_evidence count after (expect UNCHANGED) ---"
+            psql -t -A -c "SELECT count(*) FROM equivocation_evidence" || echo "(query failed)"
+
+            echo "=== Contabo2: restarting so the in-memory penalty cache reloads ==="
+            /root/deploy_safe_c2.sh
+        env:
+          DRY: ${{ inputs.dry_run }}
