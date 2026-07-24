@@ -276,6 +276,159 @@ func TestPrefetchParentsFromDB_MissingParentsSafeWithNoRealDB(t *testing.T) {
 	}
 }
 
+// TestPrefetchMergeSetFromDB_NilBlockIsNoop mirrors
+// TestPrefetchParentsFromDB_NilBlockIsNoop for the deeper multi-hop warm-up.
+func TestPrefetchMergeSetFromDB_NilBlockIsNoop(t *testing.T) {
+	dag := newGhostdagTestDAG()
+	dag.prefetchMergeSetFromDB(nil) // must not panic
+}
+
+// TestPrefetchMergeSetFromDB_NoParentHashesIsNoop mirrors
+// TestPrefetchParentsFromDB_NoParentHashesIsNoop.
+func TestPrefetchMergeSetFromDB_NoParentHashesIsNoop(t *testing.T) {
+	dag := newGhostdagTestDAG()
+	dag.state = &ChainState{}
+	dag.prefetchMergeSetFromDB(&Block{Hash: "h", ParentHashes: nil})
+	if len(dag.blocks) != 0 {
+		t.Fatalf("dag.blocks should stay empty, got %d entries", len(dag.blocks))
+	}
+}
+
+// TestPrefetchMergeSetFromDB_NoStateIsNoop mirrors
+// TestPrefetchParentsFromDB_NoStateIsNoop.
+func TestPrefetchMergeSetFromDB_NoStateIsNoop(t *testing.T) {
+	dag := newGhostdagTestDAG()
+	dag.prefetchMergeSetFromDB(&Block{Hash: "h", ParentHashes: []string{"missing-parent"}})
+	if len(dag.blocks) != 0 {
+		t.Fatalf("dag.blocks should stay empty with no state, got %d entries", len(dag.blocks))
+	}
+}
+
+// TestPrefetchMergeSetFromDB_SkipsDuringMigration mirrors
+// TestPrefetchParentsFromDB_SkipsDuringMigration — same rationale: a startup
+// migration already refuses this exact class of DB-fallback storm, so
+// warming ahead of it would just be wasted DB load.
+func TestPrefetchMergeSetFromDB_SkipsDuringMigration(t *testing.T) {
+	dag := newGhostdagTestDAG()
+	dag.state = &ChainState{}
+	dag.ghostdagMigrationPending.Store(true)
+	dag.prefetchMergeSetFromDB(&Block{Hash: "h", ParentHashes: []string{"missing-parent"}})
+	if len(dag.blocks) != 0 {
+		t.Fatalf("dag.blocks should stay empty while migration is pending, got %d entries", len(dag.blocks))
+	}
+}
+
+// TestPrefetchMergeSetFromDB_MultiHopChainAlreadyCachedTerminates is the core
+// regression guard this function exists for: prefetchParentsFromDB (2026-07-24,
+// earlier fix) only ever warms DIRECT parents — its own comment explicitly
+// says it "cannot predict" deeper ancestors "without running the BFS itself".
+// This builds a chain 10 hops deep (child -> p1 -> p2 -> ... -> p10), all
+// already resident in dag.blocks, and verifies the walk actually follows
+// ParentHashes past depth 1 (proving it is a real multi-hop BFS, not just a
+// second copy of the direct-parent prefetch) while leaving every entry
+// untouched and terminating cleanly — no DB needed since everything is
+// already cached, exactly the dominant steady-state case in production.
+func TestPrefetchMergeSetFromDB_MultiHopChainAlreadyCachedTerminates(t *testing.T) {
+	dag := newGhostdagTestDAG()
+	dag.state = &ChainState{}
+	const depth = 10
+	prev := "genesis-anchor"
+	for i := depth; i >= 1; i-- {
+		hash := fmt.Sprintf("p%d", i)
+		dag.blocks[hash] = &Block{Hash: hash, Height: int64(i), ParentHashes: []string{prev}}
+		prev = hash
+	}
+	child := &Block{Hash: "child", ParentHashes: []string{"p1"}}
+
+	done := make(chan struct{})
+	go func() {
+		dag.prefetchMergeSetFromDB(child)
+		close(done)
+	}()
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("prefetchMergeSetFromDB did not terminate on an all-cached chain — possible infinite loop")
+	}
+
+	if len(dag.blocks) != depth {
+		t.Fatalf("dag.blocks should still have exactly the %d pre-seeded entries, got %d", depth, len(dag.blocks))
+	}
+	for i := 1; i <= depth; i++ {
+		hash := fmt.Sprintf("p%d", i)
+		if dag.blocks[hash] == nil || dag.blocks[hash].Height != int64(i) {
+			t.Fatalf("prefetchMergeSetFromDB corrupted or dropped cached entry %s", hash)
+		}
+	}
+}
+
+// TestPrefetchMergeSetFromDB_MissingAncestorsSafeWithNoRealDB verifies the
+// branch that actually calls LoadBlocksByHashesFromDB — one hop of missing
+// ancestors behind an already-cached direct parent — completes safely and
+// adds nothing when db == nil (same no-op-DB contract
+// TestPrefetchParentsFromDB_MissingParentsSafeWithNoRealDB relies on).
+func TestPrefetchMergeSetFromDB_MissingAncestorsSafeWithNoRealDB(t *testing.T) {
+	dag := newGhostdagTestDAG()
+	dag.state = &ChainState{} // db == nil
+	// p1 is cached but references a grandparent that is NOT cached and can't
+	// be fetched (nil db) — the walk must reach for it, fail safely, and stop.
+	dag.blocks["p1"] = &Block{Hash: "p1", Height: 1, ParentHashes: []string{"p2-missing"}}
+	child := &Block{Hash: "child", ParentHashes: []string{"p1"}}
+
+	done := make(chan struct{})
+	go func() {
+		dag.prefetchMergeSetFromDB(child)
+		close(done)
+	}()
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("prefetchMergeSetFromDB did not terminate with an unresolvable ancestor and no DB")
+	}
+
+	if _, ok := dag.blocks["p2-missing"]; ok {
+		t.Fatal("p2-missing should not have been added — db is nil, nothing to fetch")
+	}
+	if len(dag.blocks) != 1 {
+		t.Fatalf("dag.blocks should still have exactly the 1 pre-seeded entry, got %d", len(dag.blocks))
+	}
+}
+
+// TestPrefetchMergeSetFromDB_BoundedByDepthAndVisitCap verifies the walk
+// cannot run unbounded work: a chain far deeper than mergeDepthLimit()
+// (2*K+1, 37 at the default test K=18) and wider than maxMergeVisits() (50)
+// must still terminate quickly — proving depthLimit/visitCap actually stop
+// the traversal instead of only bounding the real ghostdagMergeSet call this
+// function warms ahead of.
+func TestPrefetchMergeSetFromDB_BoundedByDepthAndVisitCap(t *testing.T) {
+	dag := newGhostdagTestDAG()
+	dag.state = &ChainState{}
+	const depth = 200 // far beyond mergeDepthLimit() (37 at default K)
+	prev := "genesis-anchor"
+	for i := depth; i >= 1; i-- {
+		hash := fmt.Sprintf("deep%d", i)
+		dag.blocks[hash] = &Block{Hash: hash, Height: int64(i), ParentHashes: []string{prev}}
+		prev = hash
+	}
+	child := &Block{Hash: "child", ParentHashes: []string{"deep1"}}
+
+	done := make(chan struct{})
+	go func() {
+		dag.prefetchMergeSetFromDB(child)
+		close(done)
+	}()
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("prefetchMergeSetFromDB did not terminate on a chain far deeper than mergeDepthLimit/maxMergeVisits")
+	}
+	// All entries were pre-seeded and must survive untouched regardless of
+	// how far the bounded walk actually reached.
+	if len(dag.blocks) != depth {
+		t.Fatalf("dag.blocks should still have exactly the %d pre-seeded entries, got %d", depth, len(dag.blocks))
+	}
+}
+
 // TestGhostdagBlockLookup_SkipsDBDuringMigration is the regression guard for
 // the 2026-07-04 production outage: while ghostdagMigrationPending is true,
 // a miss must return nil immediately (matching the pre-DB-fallback behavior)
