@@ -145,6 +145,62 @@ func TestAddPeerBlock_SkipsWhileResyncInProgress(t *testing.T) {
 	}
 }
 
+// TestAddPeerBlock_RecordsPeerContactEvenWhenRejected is the regression
+// guard for the 2026-07-24 stall-timeout fix (see lastPeerContactAt's own
+// struct comment for the fork incident this closes): a foreign block must
+// update lastPeerContactAt at AddPeerBlock's unconditional entry point,
+// BEFORE any gate — including gates, like resyncInProgress here, that go on
+// to reject the block outright. This is what lets ProduceBlock's
+// stall-timeout escape valves tell "peer has gone silent" apart from "peer
+// is sending plenty, this node just can't merge it fast enough yet".
+func TestAddPeerBlock_RecordsPeerContactEvenWhenRejected(t *testing.T) {
+	dag := newGhostdagTestDAG()
+	dag.resyncInProgress.Store(true) // forces an early, safe reject
+	before := time.Now().Unix()
+	block := &Block{
+		Hash:         "0xdeadbeef",
+		Height:       1,
+		Proposer:     "0xsomepeer",
+		ProducedAtMs: time.Now().UnixMilli(),
+	}
+	if ok := dag.AddPeerBlock(block); ok {
+		t.Fatal("expected AddPeerBlock to reject while resyncInProgress")
+	}
+	if got := dag.lastPeerContactAt.Load(); got < before {
+		t.Fatalf("lastPeerContactAt = %d, want it set to roughly now (>= %d) even though the block was rejected", got, before)
+	}
+}
+
+// TestLastPeerActivityAt_ReturnsMoreRecentOfTheTwoSignals verifies the core
+// logic the 2026-07-24 fork-prevention fix relies on: whichever of
+// lastSuccessfulPeerSyncAt (a successful merge) and lastPeerContactAt (any
+// received block, merged or not) is more recent wins — a node that's
+// receiving plenty of peer traffic but merging none of it must still read
+// as "recently active", not stale, or the stall-timeout gates would
+// wrongly conclude the peer is unreachable and let this node fork off its
+// own chain.
+func TestLastPeerActivityAt_ReturnsMoreRecentOfTheTwoSignals(t *testing.T) {
+	dag := newGhostdagTestDAG()
+
+	dag.lastSuccessfulPeerSyncAt.Store(100)
+	dag.lastPeerContactAt.Store(50)
+	if got := dag.lastPeerActivityAt(); got != 100 {
+		t.Fatalf("lastPeerActivityAt() = %d, want 100 (successful-merge signal is more recent)", got)
+	}
+
+	dag.lastSuccessfulPeerSyncAt.Store(50)
+	dag.lastPeerContactAt.Store(200)
+	if got := dag.lastPeerActivityAt(); got != 200 {
+		t.Fatalf("lastPeerActivityAt() = %d, want 200 (contact-only signal is more recent — the exact case a backlogged-but-reachable peer produces)", got)
+	}
+
+	dag.lastSuccessfulPeerSyncAt.Store(0)
+	dag.lastPeerContactAt.Store(0)
+	if got := dag.lastPeerActivityAt(); got != 0 {
+		t.Fatalf("lastPeerActivityAt() = %d, want 0 when neither signal has ever fired", got)
+	}
+}
+
 // TestPerformResync_ClearsInProgressFlagOnFailure verifies the resyncInProgress
 // gate always gets cleared, even when the resync itself fails outright — a
 // stuck-true gate would permanently halt ProduceBlock/AddPeerBlock, a much
