@@ -126,14 +126,21 @@ type walFlushItem struct {
 // not a fix to land from a single chat session against a live financial
 // ledger. The unbounded-growth risk at real sustained high throughput is
 // real and documented here; the fix is not, on purpose.
-const walFlushInterval = 500 * time.Millisecond
+//
+// var, not const (2026-07-23): purely for testability -- a longer-duration
+// sustained-load test (TestSustainedWAL_QueueConvergence) needs to compare
+// several interval/batch combinations without hand-editing this file and
+// rebuilding for each one. Default value and all production behavior are
+// unchanged; nothing outside a _test.go file in this package ever assigns
+// to these.
+var walFlushInterval = 500 * time.Millisecond
 
 // walFlushMaxBatch bounds how many queued items one flush transaction
 // writes — same rationale as transferBatchMaxSize/wal.MaxBatchSize: bounds
 // how long a single flush's DB transaction runs. See walFlushInterval's
 // own comment (2026-07-23 investigation) for why this number was tried at
-// much higher values and reverted, not changed.
-const walFlushMaxBatch = 500
+// much higher values and reverted, not changed, and for why this is a var.
+var walFlushMaxBatch = 500
 
 // initWALIfEnabled opens (or creates) the local WAL file when
 // AEQUITAS_WAL_ENABLED=1 is set, replays any records not yet reflected in
@@ -281,6 +288,19 @@ func (cs *ChainState) enqueueWALFlushLocked(from, to string, tx Transaction) {
 	cs.walFlushQueue = append(cs.walFlushQueue, walFlushItem{from: from, to: to, tx: tx})
 	cs.walFlushMu.Unlock()
 	cs.ensureWALFlushWorkerStarted()
+}
+
+// WALFlushQueueDepth returns how many WAL-durable transfers are currently
+// waiting for async Postgres reconciliation. Diagnostic-only (a sustained-
+// load test samples this over time to see whether it converges to a
+// steady depth or grows without bound — see walFlushInterval's own
+// 2026-07-23 investigation comment for why that distinction matters and
+// why it isn't resolved yet); nothing in the normal transfer path reads
+// this.
+func (cs *ChainState) WALFlushQueueDepth() int {
+	cs.walFlushMu.Lock()
+	defer cs.walFlushMu.Unlock()
+	return len(cs.walFlushQueue)
 }
 
 func (cs *ChainState) ensureWALFlushWorkerStarted() {
