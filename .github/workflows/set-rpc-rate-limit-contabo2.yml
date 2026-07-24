@@ -1,0 +1,103 @@
+name: Set AEQUITAS_RPC_RATE_LIMIT_MAX on Contabo2 (manual, load-test only)
+
+# Raises (or clears) the per-IP RPC rate limit on Contabo2 ONLY.
+#
+# Why this exists: rpcRateLimitMax defaults to 200 requests per 10s window per
+# IP, i.e. 20 requests/s. evm_rpc.go checks that limiter once per HTTP request,
+# BEFORE parsing the body, so a JSON-RPC batch of maxBatchSize=100 transfers
+# costs exactly one tick. That puts a single load source at 20 x 100 = 2,000
+# transfers/s -- 25x short of the 50,000 the chain is tuned for
+# (maxTxsPerBlock=50000 at BLOCK_TIME=1s). No amount of load-generator work
+# gets past it, because the rejection happens before the request is read.
+#
+# For a 50,000/s run you need 500 requests/s, i.e. >= 5000 per 10s window.
+# The default of 10000 here gives 2x headroom over that.
+#
+# WHAT THIS WEAKENS, stated plainly: /rpc is publicly reachable on port 8080.
+# The limiter bounds worst-case per-IP request spam (including newStateDB()
+# reload cost). Raising it raises that ceiling for every source, not just the
+# load generator. This is why it is scoped to Contabo2 -- the box already
+# designated as the one-at-a-time canary (STAGING_RUNBOOK.md) -- and why
+# `value: 200` restores the shipped default in one dispatch when the run is
+# over. Contabo1 and the primary are never touched by this workflow.
+#
+# The node itself logs the change at startup, naming what it weakens, so the
+# state is visible in the container log and not only in an env file.
+#
+# Uses deploy_safe_c2.sh, which merges /root/.aequitas.env over the inherited
+# container env, so an appended/edited key here actually reaches the process.
+# Backs the env file up with a timestamp first. Idempotent: a box already
+# reading the requested value is reported and left untouched.
+on:
+  workflow_dispatch:
+    inputs:
+      value:
+        description: "Requests per 10s window per IP. 200 = shipped default (restore). 10000 = load-test setting."
+        required: false
+        default: "10000"
+      dry_run:
+        description: "true = only report the current value, change nothing"
+        required: false
+        default: "true"
+
+jobs:
+  set:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Set the RPC rate limit on Contabo2
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: 194.163.188.71
+          username: root
+          key: ${{ secrets.CONTABO2_SSH_KEY }}
+          port: 22
+          fingerprint: "SHA256:VIwj7Faxiga2n45HVHZEQFPxcbRKHgSgHoxAFsf2wto"
+          script_stop: false
+          timeout: 600s
+          command_timeout: 600s
+          envs: VALUE,DRY
+          script: |
+            set -uo pipefail
+            ENVFILE=/root/.aequitas.env
+            KEY=AEQUITAS_RPC_RATE_LIMIT_MAX
+
+            case "${VALUE:-}" in
+              ''|*[!0-9]*) echo "✗ value must be a positive integer, got '${VALUE:-}' — aborting"; exit 1 ;;
+            esac
+            if [ "$VALUE" -le 0 ]; then echo "✗ value must be > 0 — aborting"; exit 1; fi
+
+            echo "=== Contabo2: current $KEY ==="
+            grep -E "^${KEY}=" "$ENVFILE" || echo "(not set — node uses its shipped default of 200)"
+
+            CUR="$(grep -E "^${KEY}=" "$ENVFILE" 2>/dev/null | head -1 | cut -d= -f2- || true)"
+            if [ "$CUR" = "$VALUE" ]; then
+              echo "=== Contabo2: already reads '$VALUE' — nothing to change ==="
+              exit 0
+            fi
+
+            if [ "${DRY:-true}" = "true" ]; then
+              echo "=== DRY RUN: would set $KEY=$VALUE on Contabo2 (currently '${CUR:-unset}') ==="
+              exit 0
+            fi
+
+            cp -a "$ENVFILE" "${ENVFILE}.bak.$(date +%s)" && echo "(backup written)"
+            if grep -qE "^${KEY}=" "$ENVFILE"; then
+              sed -i "s/^${KEY}=.*/${KEY}=${VALUE}/" "$ENVFILE"
+            else
+              printf '%s=%s\n' "$KEY" "$VALUE" >> "$ENVFILE"
+            fi
+            echo "=== Contabo2: value after the edit ==="
+            grep -E "^${KEY}=" "$ENVFILE" || echo "(missing after edit — investigate)"
+
+            echo "=== Contabo2: restarting so the new env reaches the process ==="
+            /root/deploy_safe_c2.sh
+
+            echo "=== Contabo2: waiting for the node to come back ==="
+            sleep 20
+            echo "=== The node's own startup line about the limit (empty means it kept the default) ==="
+            docker logs aequitas-node 2>&1 | grep -iE '\[RPC\].*rate limit' | tail -5 || echo "(no [RPC] rate-limit line — running the shipped default of 200)"
+            echo "=== Contabo2: /api/status ==="
+            curl -s --max-time 5 http://localhost:8080/api/status || echo "(unreachable)"
+        env:
+          VALUE: ${{ inputs.value }}
+          DRY: ${{ inputs.dry_run }}
