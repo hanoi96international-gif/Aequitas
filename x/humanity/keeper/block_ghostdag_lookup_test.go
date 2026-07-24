@@ -188,6 +188,94 @@ func TestGhostdagBatchPrefetch_OneRoundTripRegardlessOfMissingCount(t *testing.T
 	}
 }
 
+// TestPrefetchParentsFromDB_NilBlockIsNoop verifies a nil block (AddPeerBlock
+// is called with one in practice only defensively — see that function's own
+// early nil-checks) does not panic when passed straight through to the new
+// pre-lock prefetch call added ahead of dag.mu.Lock().
+func TestPrefetchParentsFromDB_NilBlockIsNoop(t *testing.T) {
+	dag := newGhostdagTestDAG()
+	dag.prefetchParentsFromDB(nil) // must not panic
+}
+
+// TestPrefetchParentsFromDB_NoParentHashesIsNoop verifies a block with no
+// parents (e.g. rejected moments later by AddPeerBlock's own "no parent
+// hashes" integrity check) is a clean no-op here too — nothing to prefetch.
+func TestPrefetchParentsFromDB_NoParentHashesIsNoop(t *testing.T) {
+	dag := newGhostdagTestDAG()
+	dag.state = &ChainState{}
+	dag.prefetchParentsFromDB(&Block{Hash: "h", ParentHashes: nil})
+	if len(dag.blocks) != 0 {
+		t.Fatalf("dag.blocks should stay empty, got %d entries", len(dag.blocks))
+	}
+}
+
+// TestPrefetchParentsFromDB_NoStateIsNoop mirrors ghostdagBlockLookup's own
+// nil-state short-circuit: with dag.state == nil there is nothing to fetch
+// from, so this must return immediately without panicking.
+func TestPrefetchParentsFromDB_NoStateIsNoop(t *testing.T) {
+	dag := newGhostdagTestDAG()
+	dag.prefetchParentsFromDB(&Block{Hash: "h", ParentHashes: []string{"missing-parent"}})
+	if len(dag.blocks) != 0 {
+		t.Fatalf("dag.blocks should stay empty with no state, got %d entries", len(dag.blocks))
+	}
+}
+
+// TestPrefetchParentsFromDB_SkipsDuringMigration mirrors
+// ghostdagBlockLookup's own migration-pending skip (see that function's
+// 2026-07-04 FIX comment) — prefetching during a bounded startup migration
+// would just be extra unwanted DB load, not a correctness issue, so it must
+// be skipped the same way.
+func TestPrefetchParentsFromDB_SkipsDuringMigration(t *testing.T) {
+	dag := newGhostdagTestDAG()
+	dag.state = &ChainState{}
+	dag.ghostdagMigrationPending.Store(true)
+	dag.prefetchParentsFromDB(&Block{Hash: "h", ParentHashes: []string{"missing-parent"}})
+	if len(dag.blocks) != 0 {
+		t.Fatalf("dag.blocks should stay empty while migration is pending, got %d entries", len(dag.blocks))
+	}
+}
+
+// TestPrefetchParentsFromDB_AllParentsAlreadyCachedIsHarmless verifies the
+// dominant warm-node case (every parent already resident in dag.blocks, the
+// state this function exists to detect and skip a DB round trip for) leaves
+// dag.blocks completely untouched — no clobbering of existing entries, no
+// panic, even with a non-nil ChainState present.
+func TestPrefetchParentsFromDB_AllParentsAlreadyCachedIsHarmless(t *testing.T) {
+	dag := newGhostdagTestDAG()
+	dag.state = &ChainState{}
+	p1 := &Block{Hash: "p1", Height: 1}
+	p2 := &Block{Hash: "p2", Height: 2}
+	dag.blocks["p1"] = p1
+	dag.blocks["p2"] = p2
+	dag.prefetchParentsFromDB(&Block{Hash: "child", ParentHashes: []string{"p1", "p2"}})
+	if dag.blocks["p1"] != p1 || dag.blocks["p2"] != p2 {
+		t.Fatal("prefetchParentsFromDB must not touch already-cached parent entries")
+	}
+	if len(dag.blocks) != 2 {
+		t.Fatalf("dag.blocks should still have exactly the 2 pre-seeded entries, got %d", len(dag.blocks))
+	}
+}
+
+// TestPrefetchParentsFromDB_MissingParentsSafeWithNoRealDB verifies the
+// "some/all parents missing from dag.blocks" branch — the one that actually
+// calls LoadBlocksByHashesFromDB — completes safely and leaves dag.blocks
+// alone when db == nil (LoadBlocksByHashesFromDB's own contract: returns
+// (nil, nil) rather than dialing anything, same pattern
+// TestGhostdagBatchPrefetch_OneRoundTripRegardlessOfMissingCount relies on
+// for testing this code path without a real Postgres instance).
+func TestPrefetchParentsFromDB_MissingParentsSafeWithNoRealDB(t *testing.T) {
+	dag := newGhostdagTestDAG()
+	dag.state = &ChainState{} // db == nil
+	dag.blocks["p1"] = &Block{Hash: "p1", Height: 1} // one present, one missing
+	dag.prefetchParentsFromDB(&Block{Hash: "child", ParentHashes: []string{"p1", "p2-missing"}})
+	if _, ok := dag.blocks["p2-missing"]; ok {
+		t.Fatal("p2-missing should not have been added — db is nil, nothing to fetch")
+	}
+	if len(dag.blocks) != 1 {
+		t.Fatalf("dag.blocks should still have exactly the 1 pre-seeded entry, got %d", len(dag.blocks))
+	}
+}
+
 // TestGhostdagBlockLookup_SkipsDBDuringMigration is the regression guard for
 // the 2026-07-04 production outage: while ghostdagMigrationPending is true,
 // a miss must return nil immediately (matching the pre-DB-fallback behavior)
