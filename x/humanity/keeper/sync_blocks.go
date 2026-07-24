@@ -1844,6 +1844,29 @@ func (dag *BlockDAG) fetchAndSetSyncTarget(seeds []string) {
 		}
 		resp.Body.Close()
 	}
+	// FIX (P0, 2026-07-24, SAME DAY as the fix below — that one deadlocked the
+	// entire network and this is the correction): the floor added below could
+	// only ever be cleared by dag.height RISING, and the only thing that
+	// raises it on a node already level with its peers is producing a block —
+	// which the gate itself blocks. Every node (primary included, once Railway
+	// redeployed it) sat at height 1772331 logging "deferring block production
+	// until 1772342 (currently 1772331)" once per second, forever. A gate whose
+	// exit condition can only be met by the action it gates is a deadlock, and
+	// it stopped the chain.
+	//
+	// The real signal for "this node is behind" is positive evidence that some
+	// seed is AHEAD of it — not the caughtUpWithEverySeed bookkeeping, which
+	// compares against getPeerSyncHeight (blocks genuinely PULLED from that
+	// seed) and is therefore legitimately zero right after a resync even when
+	// this node is exactly level with everyone. Being level is not being
+	// behind; there is nothing to catch up to, and holding here helps nobody.
+	//
+	// So: no seed above us -> no gate, whatever the bookkeeping says. This is
+	// checked BEFORE caughtUpWithEverySeed precisely because that flag alone
+	// was what let a level node gate itself.
+	if maxHeight <= dag.Height() {
+		return
+	}
 	if caughtUpWithEverySeed {
 		return // genuinely absorbed every seed's chain — no gate needed
 	}
@@ -1867,15 +1890,12 @@ func (dag *BlockDAG) fetchAndSetSyncTarget(seeds []string) {
 	// height so the gate holds until a later refresh supplies a genuine
 	// number; syncStallTimeout remains the escape valve for a seed that stays
 	// down (see ProduceBlock's own comment), so this cannot strand the node.
-	target := maxHeight
-	if floor := dag.Height() + 11; target < floor {
-		fmt.Printf("[SYNC] Initial-sync gate: seed-reported max height %d is not above this node's own %d, but at least one seed is not absorbed yet — holding the gate at %d instead of handing ProduceBlock a target it would clear immediately\n",
-			maxHeight, dag.Height(), floor)
-		target = floor
-	}
-	dag.syncTargetHeight.Store(target)
+	// maxHeight is guaranteed > dag.Height() here (checked above), so this
+	// target is always genuinely reachable by SYNCING rather than only by
+	// producing — which is what makes it a gate and not a deadlock.
+	dag.syncTargetHeight.Store(maxHeight)
 	fmt.Printf("[SYNC] Initial-sync gate active: deferring block production until height %d (currently %d)\n",
-		target, dag.Height())
+		maxHeight, dag.Height())
 }
 
 // HTTPBroadcastBlock pushes a freshly-produced block to every active HTTP
