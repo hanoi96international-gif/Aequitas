@@ -1,0 +1,59 @@
+name: Recover Contabo1 -- finish disk cleanup + restart node (manual)
+
+# check-disk-contabo2.yml's contabo1 job hit its 300s command_timeout while
+# still inside `docker builder prune -af` (build cache there turned out to
+# be far larger than Contabo2's -- many 1+GB entries, likely tens of GB
+# total) -- image prune, network prune, and the restart never ran.
+# aequitas-node on Contabo1 was ALREADY dead/being removed by that point
+# (most likely a pre-existing full-disk crash, same root cause as
+# loadtest-prepare-contabo2.yml's failure, not something this cleanup
+# itself caused -- see this workflow's own commit message for the
+# reasoning). This finishes the job with a much longer timeout, then
+# brings the node back up via the normal deploy.sh path.
+on:
+  workflow_dispatch: {}
+
+jobs:
+  recover:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Finish cleanup and restart aequitas-node on Contabo1
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: 173.249.37.118
+          username: root
+          key: ${{ secrets.CONTABO_SSH_KEY }}
+          port: 22
+          fingerprint: "SHA256:noMtjHV8c+2iEFZu3TRUP6WRwGjkrvFke71KgU6Eyt4"
+          script_stop: true
+          timeout: 900s
+          command_timeout: 900s
+          script: |
+            set -uo pipefail
+            echo "=== df -h before ==="
+            df -h /
+            echo "=== docker ps -a ==="
+            docker ps -a
+            echo "=== Finishing docker builder prune -af (this is what timed out last run) ==="
+            docker builder prune -af
+            echo "=== docker image prune -af ==="
+            docker image prune -af
+            echo "=== docker network prune -f ==="
+            docker network prune -f
+            echo "=== apt-get clean ==="
+            apt-get clean 2>&1 || true
+            echo "=== journalctl vacuum ==="
+            journalctl --vacuum-size=200M 2>&1 || true
+            echo "=== df -h after cleanup ==="
+            df -h /
+            echo "=== Restarting aequitas-node via deploy.sh ==="
+            /root/deploy.sh
+            echo "=== Waiting 15s for boot ==="
+            sleep 15
+            echo "=== docker ps -a after restart ==="
+            docker ps -a
+            echo "=== aequitas-node last 40 log lines ==="
+            docker logs --tail 40 aequitas-node 2>&1 || echo "(no logs)"
+            echo "=== /api/status ==="
+            curl -s --max-time 5 http://localhost:8080/api/status || echo "(unreachable)"
+            echo ""
