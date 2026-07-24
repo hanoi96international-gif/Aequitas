@@ -48,6 +48,7 @@ func TestSustainedWAL_QueueConvergence(t *testing.T) {
 	configs := []config{
 		{"original-500ms-500", 500 * time.Millisecond, 500},
 		{"100ms-2000", 100 * time.Millisecond, 2000},
+		{"100ms-4000", 100 * time.Millisecond, 4000},
 		{"20ms-1000", 20 * time.Millisecond, 1000},
 	}
 

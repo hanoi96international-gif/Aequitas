@@ -150,7 +150,38 @@ var walFlushInterval = 100 * time.Millisecond
 // caps how bad a Postgres-outage catch-up flush can get. See
 // walFlushInterval's own comment (2026-07-23 investigation, both rounds)
 // for the measurements behind this specific value.
-var walFlushMaxBatch = 2000
+//
+// MEASURED (2026-07-24, Runde 6/7): raised 2,000 -> 4,000 after A/B testing
+// against TestSustainedWAL_QueueConvergence at TWO address-space sizes,
+// since this parameter's effect turned out to depend heavily on how much
+// the queue's own addresses overlap:
+//   - 1,000 pairs (2,000 addresses, closer to a real, spread-out user
+//     base): 23,340 -> 30,868 TPS at walFlushConcurrency=4 -- a real,
+//     substantial gain (+32%), fewer, larger flushes amortize the
+//     Postgres round trip better without needing more concurrency.
+//   - 100 pairs (200 addresses, this package's own default topology,
+//     deliberately adversarial -- concentrated, continuous load on very
+//     few accounts): 11,999 -> 10,321 TPS -- a real but modest cost
+//     (-14%), because a 4,000-item batch drawn from only 200 addresses
+//     dedupes to nearly the WHOLE address space, so this flush's
+//     LockAddrs (transfer_wal.go's own flushWALBatch) ends up holding
+//     nearly every shard the fast path could want, for longer, more
+//     often. 3,000 measured statistically identical to 4,000 at this
+//     small topology (10,301 vs 10,321) -- the cost is a step function
+//     once a batch can cover most of a small address space, not a smooth
+//     continuum, so there was no better compromise value to find between
+//     2,000 and 4,000.
+//
+// Kept at 4,000, not reverted: real Contabo2 traffic today is far below
+// EITHER synthetic topology (14 humans, sporadic -- not 100+ accounts
+// continuously hammering each other), so the -14% cost has zero current
+// real-world effect, while the +32% gain matters increasingly as usage
+// grows toward the 50k-TPS target this whole investigation exists for.
+// walFlushConcurrency (below) was NOT raised alongside this -- see its
+// own comment for why higher concurrency specifically (not batch size)
+// was the parameter that caused a much larger regression at the small
+// topology (11,999 -> 8,558 at concurrency=16), and was reverted.
+var walFlushMaxBatch = 4000
 
 // walFlushMaxQueueDepth bounds cs.walFlushQueue's own size: once this many
 // WAL-durable transfers are waiting for Postgres reconciliation, NEW
@@ -420,6 +451,29 @@ func (cs *ChainState) ensureWALFlushWorkerStarted() {
 // onto the slower batcher. Zero failed transfers in every configuration
 // tested either way. Re-run TestSustainedWAL_QueueConvergence
 // (AEQUITAS_WAL_SUSTAINED_BENCH=1) after changing this value.
+//
+// NOT raised further (2026-07-24, Runde 7): after walFlushMaxBatch was
+// separately raised to 4,000 (see that var's own comment), tried pushing
+// this alongside it -- 8/12/16/20, each combined with walFlushMaxBatch=
+// 4,000, measured at the SAME 1,000-pair topology: 8 -> 27,880 TPS,
+// 12 -> 31,555 TPS, 16 -> 34,560 TPS, 20 -> 33,983 TPS (flat/regressing
+// past 16 -- MaxOpenConns=20 shared with the batcher's own up to 4
+// concurrent transactions becomes the binding limit right around there).
+// Genuinely more throughput at large scale. BUT re-tested at this
+// package's own default 100-pair/200-address topology, EVERY one of
+// those raised values measured WORSE than concurrency=4, not just
+// unchanged: 8 -> 8,817 TPS, 16 -> 8,558 TPS, both clearly below
+// concurrency=4's 11,999 TPS at the same 200 addresses -- unlike
+// walFlushMaxBatch's -14% cost at small scale, raising concurrency alone
+// cost -25% to -29% there, a materially worse trade for a real Contabo2
+// deployment whose CURRENT traffic (14 humans) is closer to that small,
+// concentrated topology than to a spread-out 2,000+-address one. Kept at
+// 4 for exactly the reason walFlushMaxBatch's own comment gives for going
+// the other way on that parameter: don't trade a real, present-day cost
+// for a future gain when the real deployment hasn't grown into needing it
+// yet. Revisit both together, re-measured, once Contabo2's actual active-
+// address count has grown enough to make the large-topology numbers more
+// representative than the small one.
 var walFlushConcurrency = 4
 
 func (cs *ChainState) runWALFlushWorker() {
