@@ -1,0 +1,71 @@
+name: Authoritative resync of Contabo2 only from the trusted primary (manual)
+
+# Same mechanism as resync-both-contabos.yml's contabo2 job (see that
+# workflow's own header comment for the full rationale), split out standalone
+# so it can be dispatched without touching Contabo1, which may be mid
+# recovery/rebuild at the same time -- avoids two workflows racing docker
+# operations on the same host.
+#
+# Contabo2's /root/.aequitas.env already permanently has
+# RESYNC_FROM_SNAPSHOT=true (by design -- deploy_safe_c2.sh normally strips
+# it from the running container). This bypasses that strip for one restart
+# only by passing --env-file straight through, reusing the current image
+# (no rebuild).
+on:
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: "Type \"true\" to actually resync Contabo2"
+        required: false
+        default: "false"
+
+jobs:
+  contabo2:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Resync Contabo2 from the trusted primary
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: 194.163.188.71
+          username: root
+          key: ${{ secrets.CONTABO2_SSH_KEY }}
+          port: 22
+          fingerprint: "SHA256:VIwj7Faxiga2n45HVHZEQFPxcbRKHgSgHoxAFsf2wto"
+          script_stop: true
+          timeout: 300s
+          command_timeout: 300s
+          envs: CONFIRM
+          script: |
+            set -uo pipefail
+            if [ "${CONFIRM:-false}" != "true" ]; then
+              echo "confirm != true -- doing nothing. Re-run with confirm=true to actually resync Contabo2."
+              exit 0
+            fi
+            echo "=== Contabo2: .aequitas.env RESYNC_FROM_SNAPSHOT (expected true, permanently, by design) ==="
+            grep -E '^RESYNC_FROM_SNAPSHOT=' /root/.aequitas.env || echo "(not present -- aborting)"
+            if ! grep -qE '^RESYNC_FROM_SNAPSHOT=true$' /root/.aequitas.env; then
+              echo "✗ Expected RESYNC_FROM_SNAPSHOT=true already in the file -- aborting rather than guessing."
+              exit 1
+            fi
+            IMG="$(docker inspect aequitas-node --format '{{.Config.Image}}')"
+            echo "=== Contabo2: current image (reused, no rebuild): $IMG ==="
+            echo "=== Contabo2: one-off restart with --env-file passed straight through ==="
+            docker stop aequitas-node 2>&1 || true
+            docker rm aequitas-node 2>&1 || true
+            mkdir -p /root/aequitas-wal-data
+            docker run -d --name aequitas-node \
+              --network aequitas-net \
+              --restart unless-stopped \
+              -v /root/aequitas-wal-data:/data/wal \
+              --env-file /root/.aequitas.env \
+              -p 8080:8080 -p 4001:4001 \
+              "$IMG"
+            echo "=== Contabo2: waiting 15s for the node to finish booting ==="
+            sleep 15
+            echo "=== Contabo2: boot log lines mentioning RESYNC/BOOTSTRAP/AUTO-HEAL/DAG merge ==="
+            docker logs aequitas-node 2>&1 | grep -iE '\[RESYNC\]|\[BOOTSTRAP\]|\[AUTO-HEAL\]|Merged.*tips|orphan' | tail -60
+            echo "=== Contabo2: /api/status after resync ==="
+            curl -s http://localhost:8080/api/status
+            echo ""
+        env:
+          CONFIRM: ${{ inputs.confirm }}
