@@ -441,9 +441,45 @@ func (dag *BlockDAG) fetchMissingAncestors(nodeURL string) {
 		if len(hashes) == 0 {
 			return
 		}
+		// FIX (P0, 2026-07-24 — root cause of a full-node freeze, confirmed
+		// live via a goroutine dump): this used to call dag.GetBlockByHash(hash)
+		// — a single-hash lookup that falls back to its own individual
+		// Postgres round trip (database/sql -> lib/pq -> net.(*conn).Read) for
+		// any hash not already resident in dag.blocks — ONCE PER HASH in this
+		// loop. PendingFetchHashes() is exactly the field whose own comment
+		// above (2026-06-28 FIX) documents growing into the TENS OF THOUSANDS
+		// under a severe backlog — confirmed live again here: with the backlog
+		// this large, this loop alone made tens of thousands of sequential,
+		// unbatched DB round trips per call, on a node whose Postgres is
+		// already CPU-starved sharing the box with aequitas-node — a goroutine
+		// dump caught doSyncOnce parked in [IO wait] inside exactly this call,
+		// for the entire duration dag.height sat completely frozen while the
+		// primary raced thousands of blocks ahead. Replaced with the same
+		// pattern already used elsewhere in this file (ghostdagBatchPrefetch,
+		// prefetchParentsFromDB): check dag.blocks for every hash under ONE
+		// RLock, then resolve whatever's still missing with AT MOST ONE
+		// LoadBlocksByHashesFromDB round trip, instead of up to len(hashes).
+		resolved := make(map[string]bool, len(hashes))
+		dbCandidates := make([]string, 0, len(hashes))
+		dag.mu.RLock()
+		for _, hash := range hashes {
+			if _, ok := dag.blocks[hash]; ok {
+				resolved[hash] = true
+			} else {
+				dbCandidates = append(dbCandidates, hash)
+			}
+		}
+		dag.mu.RUnlock()
+		if dag.state != nil && len(dbCandidates) > 0 {
+			if found, err := dag.state.LoadBlocksByHashesFromDB(dbCandidates); err == nil {
+				for _, b := range found {
+					resolved[b.Hash] = true
+				}
+			}
+		}
 		pending := make([]string, 0, len(hashes))
 		for _, hash := range hashes {
-			if dag.GetBlockByHash(hash) != nil {
+			if resolved[hash] {
 				// Resolved (possibly via a path other than this loop, e.g. a
 				// concurrent orphan resolution). finalityWalkGaps/
 				// produceStuckGaps have no other cleanup path — clear both
