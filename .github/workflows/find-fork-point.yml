@@ -1,0 +1,74 @@
+name: Find fork point between Contabos and primary (manual, read-only)
+
+# Both Contabos are stuck at the identical tip (height 1763592, hash
+# 95d8eeb6...) while every block from the primary queues as an orphan with
+# a missing parent -- a structural fork, not a hang (goroutine dump
+# 2026-07-24 16:44 showed all loops idle-ticking, nothing blocked). This
+# workflow needs NO SSH and mutates nothing: both /api/blocks endpoints
+# are public, so the runner itself fetches height->hash maps from one
+# Contabo and from the primary over a configurable window and prints the
+# first height where the two chains disagree, plus context around it.
+on:
+  workflow_dispatch:
+    inputs:
+      start_height:
+        description: "First height to compare"
+        required: false
+        default: "1762400"
+      end_height:
+        description: "Last height to compare"
+        required: false
+        default: "1763900"
+
+jobs:
+  compare:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Fetch height->hash maps from Contabo2 and primary, diff them
+        env:
+          START: ${{ inputs.start_height }}
+          END: ${{ inputs.end_height }}
+        run: |
+          set -uo pipefail
+          fetch_side () { # $1=base-url $2=outfile
+            : > "$2"
+            h=$START
+            while [ "$h" -le "$END" ]; do
+              resp="$(curl -s --max-time 30 "$1/api/blocks?min_height=${h}&limit=500")" || true
+              count="$(echo "$resp" | jq 'length' 2>/dev/null || echo 0)"
+              if [ -z "$count" ] || [ "$count" = "0" ] || [ "$count" = "null" ]; then
+                echo "(no blocks returned from $1 at min_height=$h)"
+                break
+              fi
+              echo "$resp" | jq -r --argjson end "$END" \
+                '.[] | select(.height <= $end) | "\(.height) \(.hash)"' >> "$2"
+              maxh="$(echo "$resp" | jq '[.[].height] | max')"
+              [ "$maxh" -le "$h" ] && break
+              h=$((maxh + 1))
+            done
+            sort -n -u -o "$2" "$2"
+            echo "fetched $(wc -l < "$2") height/hash rows from $1"
+          }
+          fetch_side "http://194.163.188.71:8080" contabo2.txt
+          fetch_side "https://aequitas.digital"   primary.txt
+
+          echo ""
+          echo "=== First disagreement (fork point) ==="
+          # A height can legitimately appear on only one side (one chain is
+          # ahead), so compare only heights present on BOTH sides; report
+          # separately where one side simply ends.
+          join contabo2.txt primary.txt -o 1.1,1.2,2.2 2>/dev/null | awk '
+            $2 != $3 && !found { print "FORK at height " $1; print "  contabo2: " $2; print "  primary:  " $3; found=1; forkh=$1 }
+            $2 == $3 { lastagree=$1 }
+            END {
+              if (!found) print "No disagreement on any shared height in the window."
+              print "Last height both sides agree on (within window): " (lastagree ? lastagree : "none")
+            }'
+          echo ""
+          echo "=== Contabo2 rows around its own tail ==="
+          tail -5 contabo2.txt
+          echo "=== Primary rows around the same heights ==="
+          tail -5 primary.txt
+          echo ""
+          echo "=== Canonical-hash sample every 100 heights (c2 vs primary) ==="
+          join contabo2.txt primary.txt -o 1.1,1.2,2.2 2>/dev/null | awk '$1 % 100 == 0 { m = ($2==$3) ? "SAME" : "DIFF"; print $1 " " m " c2=" substr($2,1,16) " prim=" substr($3,1,16) }'
