@@ -38,3 +38,7 @@
 *.apk
 downloads/*.apk
 build/msyh_extracted.ttf
+
+# tools/contabo-loadtest generates disposable test-account private keys
+# into this file — NEVER commit it, see gen_accounts.go's own comment.
+/tools/contabo-loadtest/accounts.csv
