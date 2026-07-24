@@ -1,0 +1,58 @@
+name: Dump goroutine stacks from both Contabos (manual, read-only)
+
+# Both Contabo1 and Contabo2 froze at an identical height (1756069) shortly
+# after boot, with the primary racing thousands of blocks ahead and zero
+# successful merges logged since -- a genuine hang, not just slow
+# processing. A goroutine dump (unlike a CPU profile) shows exactly what a
+# STUCK goroutine is blocked on (a DB query, a mutex, a channel) even when
+# it's using near-zero CPU, which a CPU profile would miss entirely.
+# Pure read: hits the localhost-only pprof server added in PR #4
+# (127.0.0.1:6061, never published/exposed) via `docker exec`, prints the
+# full stack dump straight to the log (plain text, no encoding needed).
+on:
+  workflow_dispatch: {}
+
+jobs:
+  contabo1:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Goroutine dump on Contabo1
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: 173.249.37.118
+          username: root
+          key: ${{ secrets.CONTABO_SSH_KEY }}
+          port: 22
+          fingerprint: "SHA256:noMtjHV8c+2iEFZu3TRUP6WRwGjkrvFke71KgU6Eyt4"
+          script_stop: true
+          timeout: 60s
+          command_timeout: 60s
+          script: |
+            set -uo pipefail
+            echo "=== Contabo1: /api/status right before the dump ==="
+            curl -s --max-time 5 http://localhost:8080/api/status
+            echo ""
+            echo "=== Contabo1: full goroutine stack dump ==="
+            docker exec aequitas-node wget -qO- 'http://127.0.0.1:6061/debug/pprof/goroutine?debug=2' || echo "(wget not available or pprof unreachable inside container)"
+
+  contabo2:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Goroutine dump on Contabo2
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: 194.163.188.71
+          username: root
+          key: ${{ secrets.CONTABO2_SSH_KEY }}
+          port: 22
+          fingerprint: "SHA256:VIwj7Faxiga2n45HVHZEQFPxcbRKHgSgHoxAFsf2wto"
+          script_stop: true
+          timeout: 60s
+          command_timeout: 60s
+          script: |
+            set -uo pipefail
+            echo "=== Contabo2: /api/status right before the dump ==="
+            curl -s --max-time 5 http://localhost:8080/api/status
+            echo ""
+            echo "=== Contabo2: full goroutine stack dump ==="
+            docker exec aequitas-node wget -qO- 'http://127.0.0.1:6061/debug/pprof/goroutine?debug=2' || echo "(wget not available or pprof unreachable inside container)"
