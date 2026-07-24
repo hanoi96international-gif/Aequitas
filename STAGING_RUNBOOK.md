@@ -497,3 +497,32 @@ Tooling-Bug selbst hinzugefügt hätte* (Datenverlust bei Redeploy) ist
 geschlossen. Laufende Beobachtung (insbesondere State-Root-Konsistenz
 zwischen Contabo1/Contabo2 und die `[REPLAY] driver: bad connection`-Rate)
 bleibt sinnvoll.
+
+## Update — WAL-Flush-Tuning (`walFlushInterval`/`walFlushMaxBatch`) auf sustained-load-validierten Default umgestellt (2026-07-24)
+
+Unabhängig vom Deploy-Tooling wurde ein zweites, echtes Problem im
+WAL-Reconciliation-Pfad selbst gefunden und behoben — siehe
+SCALING_ARCHITECTURE.md, Abschnitt zur CPU-Profiling-Untersuchung, für die
+vollständige Herleitung. Kurzfassung: der ursprüngliche Default
+(`walFlushInterval=500ms`, `walFlushMaxBatch=500`) drainiert `cs.walFlushQueue`
+mit höchstens 1.000 Einträgen/Sekunde — bei echtem Sustained-Verkehr im
+Bereich von 15.000+ TPS wächst diese Queue unbegrenzt weiter (in einem
+20-Sekunden-Testlauf von 66.433 auf 273.751 Einträge, weiter steigend, kein
+Plateau). Ein neuer, permanenter Test
+(`x/humanity/keeper/wal_sustained_test.go`,
+`TestSustainedWAL_QueueConvergence`, opt-in via
+`AEQUITAS_WAL_SUSTAINED_BENCH=1`) hat einen Wert gefunden, der denselben
+Durchsatz bei stabiler Queue-Tiefe erreicht: `walFlushInterval=100ms`,
+`walFlushMaxBatch=2000`. Als neuer Default in `transfer_wal.go` übernommen,
+volle `-race`-Suite läuft sauber dagegen.
+
+**Wichtig — Status dieser Änderung gegenüber Contabo2:** dies ist eine
+Code-Änderung (Standardwert im Go-Programm), kein Env-Flag wie
+`AEQUITAS_WAL_ENABLED`/`ENABLE_MULTI_BLOCK_TICK` — sie greift automatisch
+beim nächsten Redeploy (inklusive des automatischen Deploys bei jedem Push
+auf `main`, `deploy-contabo2.yml`), ohne dass eine der `*-wal-contabo2.yml`
+Workflows manuell ausgeführt werden muss. Bei aktuell winzigem realem
+Verkehr (14 Menschen) macht sich der behobene Bug dort noch nicht bemerkbar
+— die Änderung ist rein vorausschauend für den 50k-TPS-Zielzustand, aber
+sustained-load-gemessen statt spekulativ, im Unterschied zu den drei
+verworfenen Runde-1-Versuchen (siehe SCALING_ARCHITECTURE.md).

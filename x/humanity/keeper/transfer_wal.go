@@ -83,64 +83,73 @@ type walFlushItem struct {
 	tx       Transaction
 }
 
-// walFlushInterval mirrors evmMirrorFlushInterval/poolFlushInterval's own
-// reasoning: short enough that Postgres/Explorer/other-validator lag stays
-// close to unnoticeable, long enough that a burst of WAL-durable transfers
-// collapses into one round trip instead of one per transfer.
+// walFlushInterval originally mirrored evmMirrorFlushInterval/
+// poolFlushInterval's own reasoning (short enough that Explorer/other-
+// validator lag stays close to unnoticeable, long enough that a burst
+// collapses into one round trip) at 500ms. That reasoning fit those two
+// paths -- EVM-mirror sync is documented as just a display cache, pool
+// distribution is periodic, not per-transfer -- but not this one: WAL
+// reconciliation is now the highest-volume path in the system.
 //
-// INVESTIGATED, NOT CHANGED (2026-07-23, 50k-TPS-target profiling): a CPU
-// profile of TestSimulateMaxTPS_WarmSteadyState at sustained ~40,000 TPS
-// showed enqueueWALFlushLocked (transfer_wal.go) at 27.8% of total CPU
-// time, dominated by runtime.growslice/memmove -- cs.walFlushQueue enqueues
-// far faster than the original 500-items/500ms drain rate (1,000/sec) can
-// keep up with, so the queue grows without bound for as long as load like
-// this continues, which is a real concern for a genuinely sustained
-// high-throughput deployment (unbounded memory growth, ever-increasing
-// Explorer/other-validator staleness), not just a benchmark artifact.
+// INVESTIGATION (2026-07-23, 50k-TPS-target profiling), two rounds:
 //
-// Three different fixes were tried and each measured WORSE than this
-// original config on the same 300k-transfer benchmark (37,550 TPS
-// baseline): raising walFlushMaxBatch alone to 25,000 (32,483 TPS -- a
-// much bigger batch means flushWALBatch's cs.mu.Lock(), held for the
-// ENTIRE snapshot-plus-DB-write duration by necessity, not an oversight,
-// see that function's own comment -- blocks every fast-path sender for
-// proportionally longer each flush); shortening the interval alone to 5ms
-// (14,468 TPS -- per-flush round-trip overhead now dominates, thousands of
-// mostly-tiny flushes instead of few larger ones); and a 50ms/5,000
-// middle ground (30,004 TPS -- still worse). All three make the flush
-// worker actually keep pace with real throughput (correct, bounded queue
-// growth) at the cost of more total time spent holding cs.mu.Lock() across
-// the run than the original barely-flushing-at-all baseline spends -- the
-// short (8-20s) benchmark rewards NOT reconciling to Postgres promptly
-// (near-zero lock contention) over the WAL design's own actual goal
-// (bounded, timely reconciliation), so "higher benchmark TPS" and "the
-// right production value" are not the same thing here, and this benchmark
-// alone can't distinguish them.
+// Round 1 (short benchmark, misleading): a CPU profile of
+// TestSimulateMaxTPS_WarmSteadyState (8-20s, ~40,000 TPS) showed
+// enqueueWALFlushLocked at 27.8% of CPU time, dominated by
+// runtime.growslice/memmove -- the original 500-items/500ms drain rate
+// (1,000/sec) is far below real fast-path throughput, so the queue grows
+// during any sustained load. Three fixes tried against that SAME short
+// benchmark (25,000/500ms, 500/5ms, 5,000/50ms) each measured WORSE than
+// the 500/500ms original -- traced to flushWALBatch's cs.mu.Lock()
+// (full exclusivity, required for correctness, see that function's own
+// comment) meaning a flush worker that actually keeps pace spends more
+// aggregate time blocking the fast path within a short window than one
+// that barely flushes at all in that same short window. Reverted at the
+// time rather than ship a change chosen by a benchmark that rewards NOT
+// reconciling promptly.
 //
-// Reverted to the original, already load-tested value rather than ship a
-// change picked from a benchmark that measures the wrong thing for this
-// specific trade-off. Properly tuning this needs a much-longer-duration
-// (minutes, not seconds) sustained-load measurement that lets the flush
-// queue reach its own true steady state, ideally as part of this project's
-// own already-planned multi-day staging campaign (STAGING_RUNBOOK.md) --
-// not a fix to land from a single chat session against a live financial
-// ledger. The unbounded-growth risk at real sustained high throughput is
-// real and documented here; the fix is not, on purpose.
+// Round 2 (TestSustainedWAL_QueueConvergence, actually decisive): the
+// real problem with round 1 wasn't the fixes, it was the benchmark --
+// 8-20s is too short for cs.walFlushQueue's own growth to show up as
+// anything but "more lock contention." A genuinely sustained run (100
+// disjoint warm pairs, 20 REAL seconds, queue depth sampled every 500ms)
+// settles the question directly instead of inferring it from CPU time:
+//   - original 500ms/500:  16,780 TPS, queue depth 66,433 -> 273,751
+//     across the run (first third vs. last third average) -- CONFIRMED
+//     unbounded growth under real sustained load, not just a theoretical
+//     risk. Over a real deployment's uptime (hours/days, not 20s) this
+//     is unrecoverable memory growth and ever-increasing Explorer/other-
+//     validator staleness.
+//   - 100ms/2,000:         16,633 TPS (statistically the same as
+//     original -- no measurable throughput cost), queue depth 1,329 ->
+//     1,740 -- STABLE, two orders of magnitude smaller than original's
+//     final depth and not still climbing.
+//   - 20ms/1,000:          10,583 TPS (real cost this time), queue depth
+//     109 -> 116 -- also stable, tighter still, but not worth the
+//     throughput loss given 100ms/2,000 already achieves stability at
+//     zero measured cost.
 //
-// var, not const (2026-07-23): purely for testability -- a longer-duration
-// sustained-load test (TestSustainedWAL_QueueConvergence) needs to compare
-// several interval/batch combinations without hand-editing this file and
-// rebuilding for each one. Default value and all production behavior are
-// unchanged; nothing outside a _test.go file in this package ever assigns
-// to these.
-var walFlushInterval = 500 * time.Millisecond
+// Applied: 100ms/2,000 gets the actual goal (bounded, keeping pace with
+// real throughput) at no measured cost versus the original, unlike
+// round 1's attempts which all traded real throughput for boundedness.
+// This is why TestSustainedWAL_QueueConvergence exists as a permanent,
+// re-runnable check in this repo -- rerun it (AEQUITAS_WAL_SUSTAINED_BENCH=1)
+// after any future change near this code, since round 1 shows short
+// benchmarks alone actively mislead for this specific trade-off.
+//
+// var, not const: lets TestSustainedWAL_QueueConvergence compare several
+// interval/batch combinations without hand-editing this file and
+// rebuilding for each one. Nothing outside a _test.go file in this
+// package ever assigns to these.
+var walFlushInterval = 100 * time.Millisecond
 
 // walFlushMaxBatch bounds how many queued items one flush transaction
 // writes — same rationale as transferBatchMaxSize/wal.MaxBatchSize: bounds
-// how long a single flush's DB transaction runs. See walFlushInterval's
-// own comment (2026-07-23 investigation) for why this number was tried at
-// much higher values and reverted, not changed, and for why this is a var.
-var walFlushMaxBatch = 500
+// how long a single flush's DB transaction runs, and now additionally
+// caps how bad a Postgres-outage catch-up flush can get. See
+// walFlushInterval's own comment (2026-07-23 investigation, both rounds)
+// for the measurements behind this specific value.
+var walFlushMaxBatch = 2000
 
 // initWALIfEnabled opens (or creates) the local WAL file when
 // AEQUITAS_WAL_ENABLED=1 is set, replays any records not yet reflected in
