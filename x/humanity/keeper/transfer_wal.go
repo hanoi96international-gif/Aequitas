@@ -556,6 +556,40 @@ func (cs *ChainState) stopWALFlushWorkerForTest() {
 // consumer of it: Explorer, other validators via pending_txs/block relay)
 // learns about it. See this file's top-level comment for why that lag is
 // an explicit, documented consequence of this design, not a bug.
+//
+// FIX (2026-07-24, CPU-profile investigation, continued): draining used to
+// always just re-slice from n (`cs.walFlushQueue = cs.walFlushQueue[n:]`),
+// which is O(1) but silently DISCARDS the first n slots of capacity every
+// single time -- Go slice capacity after `s[n:]` is `cap(s) - n`, not
+// `cap(s)`, so the array's own front portion becomes permanently
+// unreachable through cs.walFlushQueue even though its memory is still
+// held alive by whatever's left. Repeated over many drain cycles, this
+// erodes the queue's real headroom faster and faster, forcing
+// enqueueWALFlushLocked's own append to hit runtime.growslice (a full
+// copy of the current live queue into a freshly, larger-allocated array)
+// far more often than the queue's actual (now-bounded, thanks to
+// walFlushMaxQueueDepth) logical size would require -- confirmed via CPU
+// profile: enqueueWALFlushLocked accounted for over half of all
+// runtime.growslice time under TestSustainedWAL_QueueConvergence's 100ms/
+// 4,000 config, ~4% of total CPU in that run, essentially unchanged in
+// kind from Round 1's original finding even though the queue itself no
+// longer grows unbounded. Now compacts (copies the remaining tail into a
+// FRESH array with real headroom) whenever the remaining capacity is
+// getting tight, instead of unconditionally re-slicing every time --
+// keeps the common case (plenty of headroom left) exactly as cheap as
+// before, and replaces the eventual, ever-more-frequent growslice
+// reallocation with a bounded, predictable compaction instead.
+//
+// Correctness note for the failure-retry path below (`append(batch,
+// cs.walFlushQueue...)`): this remains safe regardless of whether the
+// queue was compacted or not by the time a flush attempt fails. batch is
+// a fixed view taken before this function returns and is never mutated
+// by anything else; cs.walFlushQueue may or may not still alias batch's
+// own backing array depending on what happened while flushWALBatch ran
+// (concurrent enqueues, a previous compaction) -- Go's append semantics
+// reconstruct the correct combined result either way (a harmless in-
+// place self-copy if still aliased, an ordinary cross-array copy if not),
+// so this fix changes capacity/efficiency, never the retry's correctness.
 func (cs *ChainState) flushWALQueue() {
 	if cs.db == nil {
 		return
@@ -570,7 +604,22 @@ func (cs *ChainState) flushWALQueue() {
 		n = walFlushMaxBatch
 	}
 	batch := cs.walFlushQueue[:n]
-	cs.walFlushQueue = cs.walFlushQueue[n:]
+	rest := cs.walFlushQueue[n:]
+	if cap(rest) < walFlushMaxBatch {
+		// Less than one full batch's worth of headroom left -- the next
+		// enqueue cycle would very likely force runtime.growslice anyway,
+		// so compact now while this mutex is already held. New capacity
+		// sized for a couple more enqueue bursts before this triggers
+		// again, not the full walFlushMaxQueueDepth -- most deployments
+		// never need the queue anywhere near that deep, so always
+		// reserving for the worst case here would waste memory in the
+		// common case for no benefit.
+		compacted := make([]walFlushItem, len(rest), len(rest)+2*walFlushMaxBatch)
+		copy(compacted, rest)
+		cs.walFlushQueue = compacted
+	} else {
+		cs.walFlushQueue = rest
+	}
 	cs.walFlushMu.Unlock()
 
 	if err := cs.flushWALBatch(batch); err != nil {
