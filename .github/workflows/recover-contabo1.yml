@@ -2,14 +2,27 @@ name: Recover Contabo1 -- finish disk cleanup + restart node (manual)
 
 # check-disk-contabo2.yml's contabo1 job hit its 300s command_timeout while
 # still inside `docker builder prune -af` (build cache there turned out to
-# be far larger than Contabo2's -- many 1+GB entries, likely tens of GB
-# total) -- image prune, network prune, and the restart never ran.
+# be far larger than Contabo2's -- many 1+GB entries, tens of GB total).
 # aequitas-node on Contabo1 was ALREADY dead/being removed by that point
 # (most likely a pre-existing full-disk crash, same root cause as
 # loadtest-prepare-contabo2.yml's failure, not something this cleanup
-# itself caused -- see this workflow's own commit message for the
-# reasoning). This finishes the job with a much longer timeout, then
-# brings the node back up via the normal deploy.sh path.
+# itself caused).
+#
+# v1 of this recovery workflow called /root/deploy.sh directly, which
+# rebuilt the image successfully (confirmed: "naming to
+# docker.io/library/aequitas-node:new done") but then failed at `docker
+# stop aequitas-node` -- deploy.sh has `set -e` and no container named
+# aequitas-node existed anymore (already removed), so that single failing
+# command aborted the whole script before it ever reached `docker run`,
+# leaving the freshly-built image sitting there unused and the node still
+# down.
+#
+# v2: skip deploy.sh's fragile stop/rm chain entirely. Rebuilds the image
+# (idempotent, and the disk now has 176GB free after cleanup so this is
+# cheap) then starts the container directly with stop/rm tolerant of a
+# missing container (|| true), matching deploy.sh's own docker run
+# arguments (network aequitas-net, ports 4001/8080, --env-file
+# /root/.aequitas.env, --restart unless-stopped).
 on:
   workflow_dispatch: {}
 
@@ -17,7 +30,7 @@ jobs:
   recover:
     runs-on: ubuntu-latest
     steps:
-      - name: Finish cleanup and restart aequitas-node on Contabo1
+      - name: Rebuild and start aequitas-node on Contabo1
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: 173.249.37.118
@@ -26,31 +39,27 @@ jobs:
           port: 22
           fingerprint: "SHA256:noMtjHV8c+2iEFZu3TRUP6WRwGjkrvFke71KgU6Eyt4"
           script_stop: true
-          timeout: 900s
-          command_timeout: 900s
+          timeout: 600s
+          command_timeout: 600s
           script: |
             set -uo pipefail
-            echo "=== df -h before ==="
+            echo "=== df -h ==="
             df -h /
-            echo "=== docker ps -a ==="
-            docker ps -a
-            echo "=== Finishing docker builder prune -af (this is what timed out last run) ==="
-            docker builder prune -af
-            echo "=== docker image prune -af ==="
-            docker image prune -af
-            echo "=== docker network prune -f ==="
-            docker network prune -f
-            echo "=== apt-get clean ==="
-            apt-get clean 2>&1 || true
-            echo "=== journalctl vacuum ==="
-            journalctl --vacuum-size=200M 2>&1 || true
-            echo "=== df -h after cleanup ==="
-            df -h /
-            echo "=== Restarting aequitas-node via deploy.sh ==="
-            /root/deploy.sh
+            echo "=== git fetch + reset ==="
+            cd /root/Aequitas
+            git fetch origin
+            git reset --hard origin/main
+            echo "=== docker build ==="
+            docker build -t aequitas-node:new .
+            echo "=== Stopping/removing any existing aequitas-node (tolerant of it not existing) ==="
+            docker stop aequitas-node 2>&1 || true
+            docker rm aequitas-node 2>&1 || true
+            echo "=== Starting fresh aequitas-node ==="
+            docker run -d --name aequitas-node --network aequitas-net -p 4001:4001 -p 8080:8080 --env-file /root/.aequitas.env --restart unless-stopped aequitas-node:new
+            docker image prune -f
             echo "=== Waiting 15s for boot ==="
             sleep 15
-            echo "=== docker ps -a after restart ==="
+            echo "=== docker ps -a ==="
             docker ps -a
             echo "=== aequitas-node last 40 log lines ==="
             docker logs --tail 40 aequitas-node 2>&1 || echo "(no logs)"
