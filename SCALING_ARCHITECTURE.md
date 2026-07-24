@@ -301,6 +301,19 @@ Verifiziert: volle `-race`-Suite (`keeper`+`wal`) sauber; WAL-/Batch-Concurrent-
 
 **Gemessen:** frisches CPU-Profil nach dem Fix zeigt `markEVMMirrorDirtyLocked` von 280ms/5,00 % auf 140ms/2,31 % gesunken — die `strings.ToLower(contractAddr)`-Zeile allein von 60ms auf 10ms. Verifiziert: volle `-race`-Suite sauber; EVM-Mirror-Flush-Tests (`TestSyncBalanceLocked_DefersEVMMirrorWrite`, `TestEVMMirrorFlush_*`) 3× unter `-race` sauber; Registrierungs-Tests (`TestRegisterHumanConcurrent_*`) 2× unter `-race` sauber.
 
+**Update — Runde 10: `MaxOpenConns` probeweise erhöht (20→40) — klarer negativer Befund, nicht ausgeliefert.** Runde 7 hatte den Postgres-Connection-Pool (`MaxOpenConns=20`, geteilt zwischen WAL-Flush-Worker und Batcher) als plausible Erklärung dafür identifiziert, warum `walFlushConcurrency` über 16 hinaus keinen weiteren Gewinn mehr brachte (34.560 TPS bei 16, 33.983 bei 20 — flach). Naheliegender nächster Test: den Pool selbst vergrößern.
+
+Direkter A/B-Vergleich in DERSELBEN Sandbox-Session, gleiche Konfiguration (`walFlushConcurrency=16`, `walFlushMaxBatch=4.000`, 1.000-Paar-Topologie), nur `MaxOpenConns`/`MaxIdleConns` verändert:
+
+| `MaxOpenConns` | TPS |
+|---|---|
+| 20 (aktueller Wert) | **35.340** |
+| 40 | 29.926 |
+
+Die Erhöhung brachte **keinen** Gewinn — im direkten Vergleich sogar einen scheinbaren Rückgang (im Rahmen der für diese Sandbox bereits mehrfach dokumentierten Lauf-zu-Lauf-Varianz, aber jedenfalls klar KEIN Beweis für einen Nutzen). Das bestätigt die ursprüngliche, bereits in `state.go`s eigenem Kommentar festgehaltene Vermutung: die Grenze bei ~16-20 ist in dieser Sandbox (4 CPU-Kerne) eher CPU-/Scheduling-gebunden als Connection-Pool-gebunden — mehr Verbindungen helfen nicht, wenn schlicht nicht genug Kerne da sind, um die zusätzliche Nebenläufigkeit tatsächlich zu nutzen.
+
+**Entscheidung: nicht ausgeliefert, vollständig zurückgesetzt.** Zusätzlich unabhängig vom Messergebnis gültig: der bereits ausgelieferte `walFlushConcurrency=4` (Runde 7, wegen der Kleinraum-Regression bewusst nicht erhöht) hätte von einem größeren Pool ohnehin nicht profitiert — die Änderung hätte also so oder so keinen Effekt auf den tatsächlich produktiven Code gehabt. `MaxOpenConns=20` bleibt zusätzlich aus einem von der reinen Performance unabhängigen Grund richtig: mehr Verbindungen für einen einzelnen Node bedeuten weniger Spielraum für andere legitime Postgres-Nutzer (Migrations-Tools, Monitoring, ein zweiter Node während eines Rolling-Restarts) — ein Punkt, den `state.go`s eigener historischer Kommentar bereits vor dieser Session festhielt.
+
 ## Aufwandsschätzung
 
 Kein Wochenend-Projekt. Realistisch: mehrere Wochen fokussierter Arbeit für Phasen 1–6, danach ein eigenes, mindestens ebenso großes Teilprojekt für Phase 7 (WAL/In-Memory-primär) — inklusive der Zeit für den Aufbau einer Staging-Umgebung und die Test-Kampagne (insbesondere Crash-Recovery-Tests für Phase 7, die härtesten in diesem gesamten Plan). Nicht etwas, das in einer fortlaufenden Chat-Session sicher zu Ende gebracht werden sollte — das gilt für Phase 7 noch einmal deutlich stärker als für Phasen 1–6.
