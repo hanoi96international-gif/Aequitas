@@ -231,7 +231,7 @@ func pollStatus(c *rpcClient, statusURL string, stopCh <-chan struct{}, abort ch
 // ---- main ---------------------------------------------------------------
 
 func main() {
-	rpcURL := flag.String("rpc", "http://localhost:8080/", "EVM RPC endpoint")
+	rpcURL := flag.String("rpc", "http://localhost:8080/rpc", "EVM RPC endpoint")
 	statusURL := flag.String("status", "http://localhost:8080/api/status", "status endpoint")
 	csvPath := flag.String("accounts", "accounts.csv", "account CSV path")
 	phase := flag.String("phase", "fund,warmup,run", "comma-separated phases to run")

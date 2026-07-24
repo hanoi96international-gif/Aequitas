@@ -116,7 +116,7 @@ jobs:
               golang:1.24-alpine \
               ./loadtest \
                 -accounts accounts.csv \
-                -rpc http://localhost:8080/ \
+                -rpc http://localhost:8080/rpc \
                 -status http://localhost:8080/api/status \
                 -phase "$PHASE" \
                 -seeds "$NUM_SEEDS" \
