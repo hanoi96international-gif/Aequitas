@@ -4543,6 +4543,53 @@ if conflict, isEquivocation := dag.checkAndIndexEquivocation(block); isEquivocat
 	blockBHash := block.Hash
 	detectedAt := block.Timestamp
 	SafeGoroutine("equivocation-slashing", func() {
+		// FIX (P0, 2026-07-24 — sixth recurrence of the same false-positive
+		// class, and the one that finally identified the structural cause):
+		// a node must NEVER unilaterally suspend its own configured
+		// BOOTSTRAP_SIGNER on evidence it alone observed. That address is,
+		// by the operator's own explicit configuration, the validator this
+		// node is willing to replace its ENTIRE account state from via a
+		// signed snapshot (StartDivergenceAutoHeal refuses to run at all
+		// without it). "I trust this signer enough to overwrite all my state
+		// from it, but I will also reject every block it produces for 14
+		// days based on something only I saw" is incoherent — and in
+		// practice it is a self-inflicted network partition, which is
+		// strictly worse than the misbehavior it purports to punish.
+		//
+		// Confirmed live repeatedly, most recently 2026-07-24 17:50 UTC:
+		// both secondaries suspended the primary minutes after a restart,
+		// while mid-catch-up, over what the rest of the network agreed was a
+		// single event — see selfHealUncorroboratedSeedSuspension's own
+		// comment for the same pattern on 07-10, 07-12 and 07-17. That
+		// self-heal cannot catch this case: its "uncorroborated" signal only
+		// exists at offense_count >= 2 (a 1st offense has no balance penalty,
+		// so slash_applied is always false for it), yet a 1st offense already
+		// applies the full 14-day suspension that stops merging dead.
+		//
+		// So: for THIS ONE address, record the evidence (audit trail, never
+		// blocks anything on its own — initSlashingTables' own comment) and
+		// still queue the evidence TX, so the conflict is propagated and
+		// judged by CONSENSUS. If it is real, that TX replays through
+		// replayTransactions' slash_equivocation case on every node
+		// INCLUDING this one, which calls RecordEquivocationAndSuspend
+		// normally and applies the suspension — corroborated, seconds later,
+		// instead of unilaterally and instantly. Nothing is swept under the
+		// rug; only the "judge, jury and executioner on my own trust anchor"
+		// shortcut is removed. Deliberately scoped to BOOTSTRAP_SIGNER alone
+		// (same scoping as selfHealUncorroboratedSeedSuspension, same
+		// reasoning): a genuinely malicious THIRD validator is still
+		// suspended locally and immediately, exactly as before.
+		if trusted := trustedBootstrapSigner(); trusted != "" && strings.EqualFold(proposerAddr, trusted) {
+			if rErr := dag.state.RecordEquivocationEvidenceOnly(proposerAddr, blockAHash, blockBHash, detectedAt); rErr != nil {
+				fmt.Printf("[SLASHING] ✗ Failed to record equivocation evidence for trusted bootstrap signer %s: %v\n", proposerAddr, rErr)
+			} else {
+				fmt.Printf("[SLASHING] ⚠ Equivocation evidence recorded for %s, but NO local suspension applied — this is this node's configured BOOTSTRAP_SIGNER, so the conflict is left to consensus (the evidence TX below) rather than a unilateral self-partition. See this call site's own comment.\n", proposerAddr)
+			}
+			if qErr := dag.state.QueueEquivocationEvidenceTx(proposerAddr, blockAHash, blockBHash, detectedAt); qErr != nil {
+				fmt.Printf("[SLASHING] ✗ Could not queue equivocation evidence TX for %s: %v\n", proposerAddr, qErr)
+			}
+			return
+		}
 		// FIX (2026-07-07 — closes a node-local/consensus asymmetry): apply
 		// the suspension locally right away, same as before, so THIS node
 		// protects itself without waiting on its own block production — but

@@ -173,6 +173,77 @@ func (c *rpcClient) sendValue(from *account, toAddr string, amountWei *big.Int) 
 	return txHash, nil
 }
 
+// sendRetryBackoff is how long a run-phase pair waits after a failed send
+// before retrying. See the run loop's own comment for why this exists and
+// why it is deliberately flat rather than exponential.
+const sendRetryBackoff = 50 * time.Millisecond
+
+// normalizeErrForTally collapses the variable parts of an error string
+// (hashes, addresses, nonces, hex blobs) so that N occurrences of the same
+// underlying cause tally as one entry instead of N distinct ones. Without
+// this, an error like "nonce too low: address 0xabc... want 42" would
+// produce a unique key per account per nonce, which is exactly as useless
+// as the bare count it replaces.
+func normalizeErrForTally(s string) string {
+	var b strings.Builder
+	for _, f := range strings.Fields(s) {
+		switch {
+		case strings.HasPrefix(f, "0x") && len(f) > 6:
+			f = "0x<hex>"
+		case isAllDigits(strings.Trim(f, ".,;:()")):
+			f = "<n>"
+		}
+		if b.Len() > 0 {
+			b.WriteByte(' ')
+		}
+		b.WriteString(f)
+	}
+	out := b.String()
+	if len(out) > 200 {
+		out = out[:200] + "..."
+	}
+	return out
+}
+
+func isAllDigits(s string) bool {
+	if s == "" {
+		return false
+	}
+	for _, r := range s {
+		if r < '0' || r > '9' {
+			return false
+		}
+	}
+	return true
+}
+
+// printErrTally prints the distinct failure causes seen during the run
+// phase, most frequent first. This is the difference between "37,327
+// failures" (unactionable) and "37,327 failures, all of them <one specific
+// node-side rejection>" (immediately actionable).
+func printErrTally(tally map[string]int64) {
+	if len(tally) == 0 {
+		return
+	}
+	type row struct {
+		msg string
+		n   int64
+	}
+	rows := make([]row, 0, len(tally))
+	for m, n := range tally {
+		rows = append(rows, row{m, n})
+	}
+	sort.Slice(rows, func(i, j int) bool { return rows[i].n > rows[j].n })
+	fmt.Printf("=== run-phase failure causes (%d distinct) ===\n", len(rows))
+	for i, r := range rows {
+		if i >= 10 {
+			fmt.Printf("  ... and %d more distinct cause(s)\n", len(rows)-i)
+			break
+		}
+		fmt.Printf("  %8d  %s\n", r.n, r.msg)
+	}
+}
+
 // addrFromHex returns a plain [20]byte, assignable to go-ethereum's
 // common.Address (defined as exactly that underlying type) without an
 // explicit conversion, per Go's assignability rules for unnamed types.
@@ -335,6 +406,22 @@ func main() {
 		}
 
 		var succeeded, failed int64
+		// errTally records WHY sends failed, not just how many. The 2026-07-24
+		// Contabo2 run reported "succeeded: 128 failed: 37327" with no way at
+		// all to tell whether that was nonce desync, a node-side rejection, an
+		// RPC transport error, or the node simply not producing blocks -- an
+		// unusable measurement for the one question this tool exists to answer
+		// (SCALING_ARCHITECTURE.md's real-hardware validation gap). Keyed by a
+		// normalized error string so a handful of distinct causes don't turn
+		// into tens of thousands of unique map entries.
+		var errMu sync.Mutex
+		errTally := map[string]int64{}
+		recordErr := func(err error) {
+			key := normalizeErrForTally(err.Error())
+			errMu.Lock()
+			errTally[key]++
+			errMu.Unlock()
+		}
 		stopCh := make(chan struct{})
 		abortCh := make(chan string, 1)
 		go pollStatus(client, *statusURL, stopCh, abortCh)
@@ -365,6 +452,24 @@ func main() {
 					}
 					if _, err := client.sendValue(from, to.address, transferWei); err != nil {
 						atomic.AddInt64(&failed, 1)
+						recordErr(err)
+						// Back off before retrying. Without this, a persistently
+						// failing pair spins this loop as fast as the RPC can
+						// reject, which (a) inflates the failure count into a
+						// meaningless number that says more about retry speed
+						// than about the node, and (b) burns CPU on the very box
+						// whose throughput is being measured -- both seen in the
+						// 2026-07-24 run (37,327 "failures" in 25s from 72 pairs).
+						// Deliberately a flat, short sleep rather than exponential
+						// backoff: the run phase is a fixed-duration throughput
+						// measurement, not a client that needs to survive an
+						// outage, and a growing delay would silently stop
+						// generating load partway through the timed window.
+						select {
+						case <-time.After(sendRetryBackoff):
+						case <-stopCh:
+							return
+						}
 						continue
 					}
 					atomic.AddInt64(&succeeded, 1)
@@ -384,5 +489,6 @@ func main() {
 		fmt.Printf("=== run phase done ===\n")
 		fmt.Printf("elapsed: %s  succeeded: %d  failed: %d\n", elapsed, succeeded, failed)
 		fmt.Printf("TPS (succeeded/elapsed): %.1f\n", float64(succeeded)/elapsed.Seconds())
+		printErrTally(errTally)
 	}
 }
