@@ -1,0 +1,49 @@
+name: Loadtest Contabo2 -- cleanup (manual)
+
+# Third of the prepare -> run -> cleanup trio. Shreds accounts.csv (and any
+# timestamped backups left by loadtest-prepare-contabo2.yml) and removes
+# the whole /root/contabo-loadtest directory, per
+# tools/contabo-loadtest/main.go's own docstring: "delete it from any
+# server it's copied to once a test run is done." Run this once a load
+# test's results have been recorded and no further runs against the same
+# funded accounts are planned -- re-running loadtest-run-contabo2.yml
+# after this will fail cleanly (loadtest-prepare-contabo2.yml must be
+# dispatched again first).
+on:
+  workflow_dispatch: {}
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Shred accounts.csv and remove the loadtest directory
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: 194.163.188.71
+          username: root
+          key: ${{ secrets.CONTABO2_SSH_KEY }}
+          port: 22
+          fingerprint: "SHA256:VIwj7Faxiga2n45HVHZEQFPxcbRKHgSgHoxAFsf2wto"
+          script_stop: true
+          timeout: 60s
+          command_timeout: 60s
+          script: |
+            set -uo pipefail
+            if [ ! -d /root/contabo-loadtest ]; then
+              echo "/root/contabo-loadtest does not exist -- nothing to clean up."
+              exit 0
+            fi
+            cd /root/contabo-loadtest
+            shopt -s nullglob
+            CSVS=(accounts.csv accounts.csv.bak.*)
+            if [ "${#CSVS[@]}" -eq 0 ]; then
+              echo "No accounts.csv or backups found."
+            else
+              for f in "${CSVS[@]}"; do
+                echo "Shredding $f"
+                shred -u "$f" 2>/dev/null || rm -f "$f"
+              done
+            fi
+            cd /root
+            rm -rf /root/contabo-loadtest
+            echo "Removed /root/contabo-loadtest. Run loadtest-prepare-contabo2.yml again before the next load test."

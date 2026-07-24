@@ -1,0 +1,122 @@
+name: Loadtest Contabo2 -- prepare accounts (manual, no chain load yet)
+
+# First of a three-workflow trio (prepare -> run -> cleanup) that drives
+# tools/contabo-loadtest (see that tool's own package comment) against the
+# live Contabo2 node -- closing SCALING_ARCHITECTURE.md's single biggest
+# remaining gap: every TPS number so far is from an isolated, ephemeral
+# sandbox, never real hardware.
+#
+# Deliberately isolated from /root/Aequitas (the production deploy
+# checkout used by deploy-contabo2.yml / deploy_safe_c2.sh): this trio
+# copies just the tool's own source files into a dedicated
+# /root/contabo-loadtest directory instead, so a load-test run can never
+# race with or disturb a concurrent production deploy. This workflow does
+# NOT generate any chain traffic -- it only creates fresh disposable
+# accounts and reports the ones that need funding. Actually sending the
+# load lives in loadtest-run-contabo2.yml, dispatched separately, only
+# after the printed seed addresses below have been funded by a human.
+#
+# Account CSV handling, per tools/contabo-loadtest/main.go's own docstring:
+# the CSV (index,address,privkey_hex) is generated ON THE SERVER by this
+# workflow's own ssh step and never leaves it -- it is NOT scp'd back to
+# the runner, NOT uploaded as a workflow artifact, and NOT printed here.
+# Only addresses are ever printed, never private keys. Run
+# loadtest-cleanup-contabo2.yml when testing is done to shred it.
+on:
+  workflow_dispatch:
+    inputs:
+      num_accounts:
+        description: "Total disposable test accounts to generate"
+        required: false
+        default: "150"
+      num_seeds:
+        description: "How many of them are seed accounts a human must fund with real AEQ (must match the value passed to loadtest-run-contabo2.yml later)"
+        required: false
+        default: "5"
+
+jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Back up any existing accounts.csv before touching anything
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: 194.163.188.71
+          username: root
+          key: ${{ secrets.CONTABO2_SSH_KEY }}
+          port: 22
+          fingerprint: "SHA256:VIwj7Faxiga2n45HVHZEQFPxcbRKHgSgHoxAFsf2wto"
+          script_stop: true
+          timeout: 60s
+          command_timeout: 60s
+          script: |
+            set -euo pipefail
+            mkdir -p /root/contabo-loadtest
+            cd /root/contabo-loadtest
+            if [ -f accounts.csv ]; then
+              BACKUP="accounts.csv.bak.$(date +%s)"
+              mv accounts.csv "$BACKUP"
+              chmod 600 "$BACKUP"
+              echo "Existing accounts.csv backed up to $BACKUP -- if those accounts still hold funded balances, sweep them before discarding the backup."
+            else
+              echo "No existing accounts.csv, starting clean."
+            fi
+
+      - name: Copy loadtest tool source to Contabo2
+        uses: appleboy/scp-action@v1.0.0
+        with:
+          host: 194.163.188.71
+          username: root
+          key: ${{ secrets.CONTABO2_SSH_KEY }}
+          port: 22
+          fingerprint: "SHA256:VIwj7Faxiga2n45HVHZEQFPxcbRKHgSgHoxAFsf2wto"
+          source: "tools/contabo-loadtest/main.go,tools/contabo-loadtest/gen_accounts.go,go.mod,go.sum"
+          target: "/root/contabo-loadtest"
+          overwrite: true
+
+      - name: Generate disposable test accounts, print seed addresses only
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: 194.163.188.71
+          username: root
+          key: ${{ secrets.CONTABO2_SSH_KEY }}
+          port: 22
+          fingerprint: "SHA256:VIwj7Faxiga2n45HVHZEQFPxcbRKHgSgHoxAFsf2wto"
+          script_stop: true
+          timeout: 300s
+          command_timeout: 300s
+          script: |
+            set -euo pipefail
+            cd /root/contabo-loadtest
+            # scp-action's tar-based transfer may or may not preserve the
+            # source paths' tools/contabo-loadtest/ subdirectory -- find
+            # each file wherever it landed and move it next to go.mod
+            # rather than assuming either layout.
+            MAIN="$(find . -name main.go | head -1)"
+            GEN="$(find . -name gen_accounts.go | head -1)"
+            [ "$MAIN" = "./main.go" ] || mv -f "$MAIN" ./main.go
+            [ "$GEN" = "./gen_accounts.go" ] || mv -f "$GEN" ./gen_accounts.go
+            find . -mindepth 1 -type d -empty -delete 2>/dev/null || true
+
+            echo "=== Generating $NUM_ACCOUNTS disposable accounts (this pulls go-ethereum's deps on first run, can take a few minutes) ==="
+            mkdir -p /root/go-mod-cache
+            docker run --rm \
+              -v "$(pwd)":/w -w /w \
+              -v /root/go-mod-cache:/go/pkg/mod \
+              golang:1.24-alpine \
+              go run gen_accounts.go "$NUM_ACCOUNTS" > accounts.csv
+            chmod 600 accounts.csv
+            echo "accounts.csv written ($(($(wc -l < accounts.csv) - 1)) accounts, private keys never printed)."
+
+            echo ""
+            echo "=== Fund these $NUM_SEEDS seed addresses with a small amount of REAL AEQ (index,address) ==="
+            echo "=== Everything after this point is derived from the SAME accounts.csv -- do not regenerate it before funding these ==="
+            head -n "$((NUM_SEEDS + 1))" accounts.csv | cut -d, -f1,2
+            echo ""
+            echo "Once funded, dispatch loadtest-run-contabo2.yml with num_seeds=$NUM_SEEDS to match."
+          envs: NUM_ACCOUNTS,NUM_SEEDS
+        env:
+          NUM_ACCOUNTS: ${{ inputs.num_accounts }}
+          NUM_SEEDS: ${{ inputs.num_seeds }}

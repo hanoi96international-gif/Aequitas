@@ -1,0 +1,137 @@
+name: Loadtest Contabo2 -- run timed load (manual, moves real AEQ)
+
+# Second of the prepare -> run -> cleanup trio, see
+# loadtest-prepare-contabo2.yml's header for the full rationale. Requires
+# that workflow to have already been run AND its printed seed addresses
+# to have already been funded with real AEQ by a human -- this workflow
+# does not fund anything itself beyond what tools/contabo-loadtest/main.go's
+# own "fund" phase does (seed accounts -> disposable test accounts, small
+# amounts only).
+#
+# Re-copies the tool's source on every run (in case it changed since
+# prepare) but never touches accounts.csv already on the server -- the
+# scp step only overwrites the four named files, nothing else in
+# /root/contabo-loadtest.
+#
+# Runs the built binary with --network host so its default
+# http://localhost:8080/ reaches the real aequitas-node container's
+# published port directly, exactly as tools/contabo-loadtest/main.go's own
+# comment intends ("meant to run directly on a node"). Aborts automatically
+# if block height stalls for 15s (main.go's own safety net) -- this
+# workflow adds no extra guard on top of that, the tool's own is the guard.
+#
+# num_seeds MUST match whatever was passed to loadtest-prepare-contabo2.yml
+# -- a mismatch means "fund" tries to spend from accounts that were never
+# funded (fails loudly, aborts) or leaves funded seeds unused, neither of
+# which corrupts anything but both waste a run.
+on:
+  workflow_dispatch:
+    inputs:
+      phase:
+        description: "Comma-separated phases to run (fund,warmup,run)"
+        required: false
+        default: "fund,warmup,run"
+      num_seeds:
+        description: "Must match the num_seeds used in loadtest-prepare-contabo2.yml"
+        required: false
+        default: "5"
+      duration:
+        description: "Timed run-phase duration (Go duration syntax, e.g. 20s, 1m)"
+        required: false
+        default: "20s"
+      ramp:
+        description: "Seconds to ramp concurrency up over before the timed window starts"
+        required: false
+        default: "5"
+      fund_amount_wei:
+        description: "Wei sent from each seed to each test account during the fund phase"
+        required: false
+        default: "1000000000000000"
+      transfer_amount_wei:
+        description: "Wei per load-test transfer during warmup/run"
+        required: false
+        default: "10000000000000"
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Copy current loadtest tool source to Contabo2
+        uses: appleboy/scp-action@v1.0.0
+        with:
+          host: 194.163.188.71
+          username: root
+          key: ${{ secrets.CONTABO2_SSH_KEY }}
+          port: 22
+          fingerprint: "SHA256:VIwj7Faxiga2n45HVHZEQFPxcbRKHgSgHoxAFsf2wto"
+          source: "tools/contabo-loadtest/main.go,tools/contabo-loadtest/gen_accounts.go,go.mod,go.sum"
+          target: "/root/contabo-loadtest"
+          overwrite: true
+
+      - name: Build and run the phased load test against the live node
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: 194.163.188.71
+          username: root
+          key: ${{ secrets.CONTABO2_SSH_KEY }}
+          port: 22
+          fingerprint: "SHA256:VIwj7Faxiga2n45HVHZEQFPxcbRKHgSgHoxAFsf2wto"
+          script_stop: true
+          timeout: 900s
+          command_timeout: 900s
+          envs: PHASE,NUM_SEEDS,DURATION,RAMP,FUND_WEI,TRANSFER_WEI
+          script: |
+            set -euo pipefail
+            cd /root/contabo-loadtest
+
+            MAIN="$(find . -name main.go | head -1)"
+            GEN="$(find . -name gen_accounts.go | head -1)"
+            [ "$MAIN" = "./main.go" ] || mv -f "$MAIN" ./main.go
+            [ "$GEN" = "./gen_accounts.go" ] || mv -f "$GEN" ./gen_accounts.go
+            find . -mindepth 1 -type d -empty -delete 2>/dev/null || true
+
+            if [ ! -f accounts.csv ]; then
+              echo "No accounts.csv found in /root/contabo-loadtest -- run loadtest-prepare-contabo2.yml first, fund its printed seed addresses, then retry."
+              exit 1
+            fi
+
+            echo "=== /api/status before the run ==="
+            curl -s http://localhost:8080/api/status || echo "(status endpoint unreachable)"
+            echo ""
+
+            echo "=== Building loadtest binary (dockerized go, module cache reused across runs) ==="
+            mkdir -p /root/go-mod-cache
+            docker run --rm \
+              -v "$(pwd)":/w -w /w \
+              -v /root/go-mod-cache:/go/pkg/mod \
+              golang:1.24-alpine \
+              go build -o loadtest main.go
+
+            echo "=== Running phase(s) [$PHASE], seeds=$NUM_SEEDS, duration=$DURATION, ramp=${RAMP}s ==="
+            docker run --rm --network host \
+              -v "$(pwd)":/w -w /w \
+              -v /root/go-mod-cache:/go/pkg/mod \
+              golang:1.24-alpine \
+              ./loadtest \
+                -accounts accounts.csv \
+                -rpc http://localhost:8080/ \
+                -status http://localhost:8080/api/status \
+                -phase "$PHASE" \
+                -seeds "$NUM_SEEDS" \
+                -duration "$DURATION" \
+                -ramp "$RAMP" \
+                -fund-amount-wei "$FUND_WEI" \
+                -transfer-amount-wei "$TRANSFER_WEI"
+
+            echo ""
+            echo "=== /api/status after the run ==="
+            curl -s http://localhost:8080/api/status || echo "(status endpoint unreachable)"
+        env:
+          PHASE: ${{ inputs.phase }}
+          NUM_SEEDS: ${{ inputs.num_seeds }}
+          DURATION: ${{ inputs.duration }}
+          RAMP: ${{ inputs.ramp }}
+          FUND_WEI: ${{ inputs.fund_amount_wei }}
+          TRANSFER_WEI: ${{ inputs.transfer_amount_wei }}
