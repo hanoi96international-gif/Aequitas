@@ -83,15 +83,7 @@ jobs:
             APPLIED_COUNT="$(docker run --rm --network "$NET" postgres:16-alpine psql "$DATABASE_URL" -t -A -c \
               "SELECT count(*) FROM equivocation_evidence WHERE signing_address = '$ADDR_LC' AND slash_applied = TRUE")"
             echo "offense_count=${OFFENSE_COUNT:-0} applied_evidence_count=${APPLIED_COUNT:-0}"
-            if [ "${OFFENSE_COUNT:-0}" -ge 2 ] && [ "${APPLIED_COUNT:-0}" -eq 0 ]; then
-              echo "=== Confirmed uncorroborated (offense_count>=2, zero applied evidence) -- clearing on Contabo1 ==="
-              docker run --rm --network "$NET" postgres:16-alpine psql "$DATABASE_URL" -c \
-                "DELETE FROM validator_penalties WHERE signing_address = '$ADDR_LC'"
-              echo "=== Restarting aequitas-node on Contabo1 so the penalty cache reloads ==="
-              /root/deploy.sh
-            else
-              echo "=== NOT clearing on Contabo1 -- criteria not met (either no penalty row, offense_count<2, or a real applied penalty exists) ==="
-            fi
+            [ "${OFFENSE_COUNT:-0}" -ge 2 ] && [ "${APPLIED_COUNT:-0}" -eq 0 ] && { echo "=== Confirmed uncorroborated (offense_count>=2, zero applied evidence) -- clearing on Contabo1 ==="; docker run --rm --network "$NET" postgres:16-alpine psql "$DATABASE_URL" -c "DELETE FROM validator_penalties WHERE signing_address = '$ADDR_LC'"; echo "=== Restarting aequitas-node on Contabo1 so the penalty cache reloads ==="; /root/deploy.sh; } || echo "=== NOT clearing on Contabo1 -- criteria not met (either no penalty row, offense_count<2, or a real applied penalty exists) ==="
         env:
           ADDR: ${{ inputs.validator_address }}
 
@@ -136,14 +128,6 @@ jobs:
             APPLIED_COUNT="$(docker run --rm --network "$NET" postgres:16-alpine psql "$DATABASE_URL" -t -A -c \
               "SELECT count(*) FROM equivocation_evidence WHERE signing_address = '$ADDR_LC' AND slash_applied = TRUE")"
             echo "offense_count=${OFFENSE_COUNT:-0} applied_evidence_count=${APPLIED_COUNT:-0}"
-            if [ "${OFFENSE_COUNT:-0}" -ge 2 ] && [ "${APPLIED_COUNT:-0}" -eq 0 ]; then
-              echo "=== Confirmed uncorroborated (offense_count>=2, zero applied evidence) -- clearing on Contabo2 ==="
-              docker run --rm --network "$NET" postgres:16-alpine psql "$DATABASE_URL" -c \
-                "DELETE FROM validator_penalties WHERE signing_address = '$ADDR_LC'"
-              echo "=== Restarting aequitas-node on Contabo2 so the penalty cache reloads ==="
-              /root/deploy_safe_c2.sh
-            else
-              echo "=== NOT clearing on Contabo2 -- criteria not met (either no penalty row, offense_count<2, or a real applied penalty exists) ==="
-            fi
+            [ "${OFFENSE_COUNT:-0}" -ge 2 ] && [ "${APPLIED_COUNT:-0}" -eq 0 ] && { echo "=== Confirmed uncorroborated (offense_count>=2, zero applied evidence) -- clearing on Contabo2 ==="; docker run --rm --network "$NET" postgres:16-alpine psql "$DATABASE_URL" -c "DELETE FROM validator_penalties WHERE signing_address = '$ADDR_LC'"; echo "=== Restarting aequitas-node on Contabo2 so the penalty cache reloads ==="; /root/deploy_safe_c2.sh; } || echo "=== NOT clearing on Contabo2 -- criteria not met (either no penalty row, offense_count<2, or a real applied penalty exists) ==="
         env:
           ADDR: ${{ inputs.validator_address }}
