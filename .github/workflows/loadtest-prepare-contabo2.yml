@@ -22,6 +22,15 @@ name: Loadtest Contabo2 -- prepare accounts (manual, no chain load yet)
 # the runner, NOT uploaded as a workflow artifact, and NOT printed here.
 # Only addresses are ever printed, never private keys. Run
 # loadtest-cleanup-contabo2.yml when testing is done to shred it.
+#
+# The backup-then-generate logic below lives in ONE ssh step rather than
+# two: an earlier version split "back up any existing accounts.csv" into
+# its own preceding step, and that specific step reproducibly failed
+# (~2s, zero remote output, even with debug:true) across three live
+# attempts on 2026-07-24 -- while a bare `echo` in that same step slot,
+# and this step's own more complex script, both succeeded immediately
+# after. Root cause unconfirmed (never reproduced once folded into a
+# single step), so this avoids the two-step shape rather than trust it.
 on:
   workflow_dispatch:
     inputs:
@@ -40,21 +49,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Back up any existing accounts.csv before touching anything
-        uses: appleboy/ssh-action@v1.0.3
-        with:
-          host: 194.163.188.71
-          username: root
-          key: ${{ secrets.CONTABO2_SSH_KEY }}
-          port: 22
-          fingerprint: "SHA256:VIwj7Faxiga2n45HVHZEQFPxcbRKHgSgHoxAFsf2wto"
-          script_stop: true
-          timeout: 60s
-          command_timeout: 60s
-          debug: true
-          script: |
-            echo hello-diagnostic
-
       - name: Copy loadtest tool source to Contabo2
         uses: appleboy/scp-action@v1.0.0
         with:
@@ -67,7 +61,7 @@ jobs:
           target: "/root/contabo-loadtest"
           overwrite: true
 
-      - name: Generate disposable test accounts, print seed addresses only
+      - name: Back up any existing accounts.csv, then generate fresh ones and print seed addresses
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: 194.163.188.71
@@ -90,6 +84,15 @@ jobs:
             [ "$MAIN" = "./main.go" ] || mv -f "$MAIN" ./main.go
             [ "$GEN" = "./gen_accounts.go" ] || mv -f "$GEN" ./gen_accounts.go
             find . -mindepth 1 -type d -empty -delete 2>/dev/null || true
+
+            if [ -f accounts.csv ]; then
+              BACKUP="accounts.csv.bak.$(date +%s)"
+              mv accounts.csv "$BACKUP"
+              chmod 600 "$BACKUP"
+              echo "Existing accounts.csv backed up to $BACKUP -- if those accounts still hold funded balances, sweep them before discarding the backup."
+            else
+              echo "No existing accounts.csv, starting clean."
+            fi
 
             echo "=== Generating $NUM_ACCOUNTS disposable accounts (this pulls go-ethereum's deps on first run, can take a few minutes) ==="
             mkdir -p /root/go-mod-cache
