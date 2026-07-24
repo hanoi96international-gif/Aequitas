@@ -229,9 +229,10 @@ height                 int64
 bootHeight             int64
 // bootTime is this process's own wall-clock start time, captured once at
 // construction and never updated — distinct from bootHeight (a block-height
-// concept). Used by ProduceBlock's post-boot double-production guard to
-// widen its check from a single tick to a short grace window (see that call
-// site's own comment for why one tick wasn't enough).
+// concept). ProduceBlock's double-production guard (see that call site's own
+// comment) now runs unconditionally rather than only within a post-boot
+// window; bootTime is kept for that guard's log line ("how long has this
+// process been alive when it caught a conflicting durable row") only.
 bootTime               time.Time
 // bootHeightCheckpointBacked is true only when bootHeight was set by
 // actually seeding dag.blocks/dag.tips with a real, stored block at that
@@ -2347,12 +2348,27 @@ if dag.signingKey != nil {
 // what an outgoing sibling instance already committed moments ago even
 // though this instance never received it directly. Skip this tick rather
 // than mint a competing duplicate; ordinary peer sync pulls the other
-// instance's already-broadcast block in within the next tick or two. Grace
-// window is wall-clock (dag.bootTime), not height-based, so it naturally
-// covers however many heights the network advances through during a slow
-// deploy, and has zero effect on steady-state production once it elapses.
-const postBootDuplicateGuardWindow = 45 * time.Second
-if time.Since(dag.bootTime) < postBootDuplicateGuardWindow && dag.state != nil && dag.state.HasBlockFromProposerAtHeight(proposer, maxParentHeight+1) {
+// instance's already-broadcast block in within the next tick or two.
+//
+// FIX (P0, 2026-07-24 — fifth recurrence, this time escalating the primary
+// to a real 2nd offense: 90-day suspension PLUS the 50 AEQ penalty, not
+// just the no-balance-loss 1st-offense grace): the 07-12 fix's 45-second
+// grace window was still too short — confirmed live again the same day
+// this comment was written, on the very redeploy triggered by pushing that
+// day's other merge-reliability fixes. Guessing a bigger constant would
+// just repeat the same mistake, because the real answer (how long the
+// hosting platform's rolling-deploy overlap can last) depends on Railway's
+// own health-check/traffic-drain timing, which this process has no way to
+// observe or bound. The check itself is a single cheap indexed EXISTS
+// lookup that costs nothing once this validator's own tips are current —
+// the overwhelmingly common case, and the only one steady-state production
+// ever hits — so there was never a real correctness or performance reason
+// to time-box it at all. Window removed entirely: this now runs on every
+// tick, for the process's whole life, closing the incident class instead
+// of re-guessing a magic number the next slow deploy will exceed again.
+// bootTime is kept only for the log line below (useful context, no longer
+// a gate).
+if dag.state != nil && dag.state.HasBlockFromProposerAtHeight(proposer, maxParentHeight+1) {
 	fmt.Printf("[BLOCK] ⏸ Skipping production at height %d — this validator already has a block there in the durable store (likely a concurrent instance from a redeploy overlap, %s into this process's life); waiting for ordinary peer sync to pull it in instead of minting a conflicting duplicate\n", maxParentHeight+1, time.Since(dag.bootTime).Round(time.Second))
 	return nil
 }
