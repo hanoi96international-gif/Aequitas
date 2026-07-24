@@ -2366,9 +2366,36 @@ if dag.signingKey != nil {
 // to time-box it at all. Window removed entirely: this now runs on every
 // tick, for the process's whole life, closing the incident class instead
 // of re-guessing a magic number the next slow deploy will exceed again.
-// bootTime is kept only for the log line below (useful context, no longer
-// a gate).
-if dag.state != nil && dag.state.HasBlockFromProposerAtHeight(proposer, maxParentHeight+1) {
+//
+// REVERTED (P0, 2026-07-24, hours later — that reasoning was wrong and it
+// halted the primary): removing the window did not make the check
+// "harmless but always on", it made it PERMANENT, and the condition it
+// tests is routinely true in ordinary steady-state operation. Once this
+// node's own tip selection lags even one height behind what it has already
+// durably stored — which happens constantly under normal merging —
+// maxParentHeight+1 names a height where this validator's own block from a
+// moment ago is already in chain_blocks. The guard then fires on EVERY
+// tick and the node never produces again. Confirmed live from the
+// primary's own Railway log, once per second, indefinitely:
+//
+//   [BLOCK] ⏸ Skipping production at height 1774182 — this validator
+//   already has a block there in the durable store (likely a concurrent
+//   instance from a redeploy overlap, 1m34s into this process's life)
+//
+// "1m34s into this process's life" is the tell: well past any redeploy
+// overlap, in normal operation, blocking production for good.
+//
+// The window was never a magic number to be guessed away — it is what
+// makes "I have a block here that I did not produce this run" evidence of
+// an overlapping instance rather than a description of normal operation.
+// Restored. The recurrence risk that motivated removing it is separately
+// and much better handled now: a secondary no longer suspends its own
+// BOOTSTRAP_SIGNER over a self-collision at all (see AddPeerBlock's
+// equivocation goroutine, same date), so a missed overlap costs a
+// duplicate block the DAG merges anyway, not a 14-day network partition.
+const postBootDuplicateGuardWindow = 45 * time.Second
+if time.Since(dag.bootTime) < postBootDuplicateGuardWindow &&
+	dag.state != nil && dag.state.HasBlockFromProposerAtHeight(proposer, maxParentHeight+1) {
 	fmt.Printf("[BLOCK] ⏸ Skipping production at height %d — this validator already has a block there in the durable store (likely a concurrent instance from a redeploy overlap, %s into this process's life); waiting for ordinary peer sync to pull it in instead of minting a conflicting duplicate\n", maxParentHeight+1, time.Since(dag.bootTime).Round(time.Second))
 	return nil
 }
