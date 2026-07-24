@@ -1,24 +1,80 @@
-name: Check + free disk space on Contabo2 (manual)
+name: Check + free disk space on both Contabos (manual)
 
 # loadtest-prepare-contabo2.yml failed 2026-07-24 with "no space left on
 # device" (go build cache write failure), right after this session's many
-# repeated docker builds (deploy_safe_c2.sh rebuilds aequitas-node:new from
-# scratch on every dispatch, plus /root/go-mod-cache and /root/contabo-
+# repeated docker builds (deploy_safe_c2.sh / deploy.sh rebuild their image
+# from scratch on every dispatch, plus /root/go-mod-cache and /root/contabo-
 # loadtest/accounts.csv.bak.* backups accumulating). Read-only diagnosis
-# first (df, docker system df, biggest directories under /root and
-# /var/lib/docker), then only clears space via operations that are safe to
-# redo (docker build cache / dangling images / go module cache -- never
-# touches the running aequitas-node container, its image, or any
-# accounts.csv that isn't already a .bak).
+# first (df, docker system df, biggest directories), then only clears space
+# via operations that are safe to redo -- never touches the running
+# aequitas-node/aequitas-postgres containers, their images, or any
+# accounts.csv that isn't already a .bak.
+#
+# v2 (2026-07-24, same day): first cut used `docker builder prune -f`
+# (no -a), which only removes cache Docker considers already-dangling --
+# live-verified on Contabo2 it left 87.46GB of "reclaimable" build cache
+# untouched (only freed 4.3GB of a 96GB disk that was 100% full). `-a`
+# removes ALL build cache regardless of whether it's still referenced by
+# a tagged image -- safe since docker keeps every image's already-built
+# layers in the image store itself (docker images), the build CACHE is
+# purely an accelerator for the next `docker build`, never a dependency of
+# a running container. Also extended to Contabo1 per explicit operator
+# request ("alles loeschen bis auf das notwendige auf contabo 1 und 2").
 on:
   workflow_dispatch:
     inputs:
       clean:
-        description: "Type \"true\" to actually free space (docker builder prune, docker image prune, clear /root/go-mod-cache, remove accounts.csv.bak.* backups)"
+        description: "Type \"true\" to actually free space (docker builder prune -a, docker image prune -a, docker container prune, clear /root/go-mod-cache, remove accounts.csv.bak.* backups, apt/journal cleanup)"
         required: false
         default: "false"
 
 jobs:
+  contabo1:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check + optionally free disk space on Contabo1
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: 173.249.37.118
+          username: root
+          key: ${{ secrets.CONTABO_SSH_KEY }}
+          port: 22
+          fingerprint: "SHA256:noMtjHV8c+2iEFZu3TRUP6WRwGjkrvFke71KgU6Eyt4"
+          script_stop: true
+          timeout: 300s
+          command_timeout: 300s
+          envs: CLEAN
+          script: |
+            set -uo pipefail
+            echo "=== df -h ==="
+            df -h /
+            echo "=== docker system df ==="
+            docker system df
+            echo "=== docker images (all, with size) ==="
+            docker images
+            if [ "${CLEAN:-false}" != "true" ]; then
+              echo "clean != true -- diagnosis only, nothing removed."
+              exit 0
+            fi
+            echo "=== Freeing space: docker container prune -f (stopped containers) ==="
+            docker container prune -f
+            echo "=== Freeing space: docker builder prune -af (ALL build cache, not just dangling) ==="
+            docker builder prune -af
+            echo "=== Freeing space: docker image prune -af (all images not used by an existing container) ==="
+            docker image prune -af
+            echo "=== Freeing space: docker network prune -f ==="
+            docker network prune -f
+            echo "=== Freeing space: apt-get clean ==="
+            apt-get clean 2>&1 || true
+            echo "=== Freeing space: journalctl vacuum to 200M ==="
+            journalctl --vacuum-size=200M 2>&1 || true
+            echo "=== df -h after cleanup ==="
+            df -h /
+            echo "=== docker system df after cleanup ==="
+            docker system df
+        env:
+          CLEAN: ${{ inputs.clean }}
+
   contabo2:
     runs-on: ubuntu-latest
     steps:
@@ -40,8 +96,6 @@ jobs:
             df -h /
             echo "=== docker system df ==="
             docker system df
-            echo "=== Biggest top-level dirs under / (excluding proc/sys) ==="
-            du -x -d 2 / 2>/dev/null | sort -rn | head -30
             echo "=== /root/go-mod-cache size ==="
             du -sh /root/go-mod-cache 2>&1 || echo "(not present)"
             echo "=== /root/contabo-loadtest backups ==="
@@ -52,14 +106,22 @@ jobs:
               echo "clean != true -- diagnosis only, nothing removed."
               exit 0
             fi
-            echo "=== Freeing space: docker builder prune -f (build cache) ==="
-            docker builder prune -f
-            echo "=== Freeing space: docker image prune -af (all dangling/unused images NOT used by a running container) ==="
+            echo "=== Freeing space: docker container prune -f (stopped containers) ==="
+            docker container prune -f
+            echo "=== Freeing space: docker builder prune -af (ALL build cache, not just dangling) ==="
+            docker builder prune -af
+            echo "=== Freeing space: docker image prune -af (all images not used by an existing container) ==="
             docker image prune -af
+            echo "=== Freeing space: docker network prune -f ==="
+            docker network prune -f
             echo "=== Freeing space: removing accounts.csv.bak.* backups (already-superseded loadtest test accounts, never had real funds beyond small test amounts) ==="
             rm -fv /root/contabo-loadtest/accounts.csv.bak.* 2>&1 || true
             echo "=== Freeing space: clearing /root/go-mod-cache (safe -- just re-downloads on next build) ==="
             rm -rf /root/go-mod-cache
+            echo "=== Freeing space: apt-get clean ==="
+            apt-get clean 2>&1 || true
+            echo "=== Freeing space: journalctl vacuum to 200M ==="
+            journalctl --vacuum-size=200M 2>&1 || true
             echo "=== df -h after cleanup ==="
             df -h /
             echo "=== docker system df after cleanup ==="
