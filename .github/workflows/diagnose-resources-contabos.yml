@@ -1,0 +1,130 @@
+name: Diagnose CPU/RAM/disk-I-O/Postgres resource usage on both Contabos (manual, read-only)
+
+# Incident: Contabo1 (173.249.37.118) and Contabo2 (194.163.188.71) keep
+# relapsing every few minutes -- DAG tips climbing into the dozens/hundreds,
+# block-attach latency ballooning to minutes, both stuck behind the
+# "[BLOCK] Not yet 3 consecutive clean sync cycles with every trusted seed"
+# gate (see cleanSyncStreakThreshold, sync_blocks.go). The existing
+# signature-verified resync (resync-both-contabos.yml /
+# resync-contabo2-only.yml) has been run three times; each freshly-resynced
+# node looks healthy for ~5 minutes then relapses again, on BOTH boxes,
+# independently of which one was just resynced -- pointing at a shared
+# resource bottleneck (CPU / Postgres / disk I/O) or a systemic DAG-merge
+# capacity ceiling rather than a per-node state problem, but nobody has
+# pulled actual CPU/RAM/disk-I/O/Postgres-connection numbers yet.
+#
+# Pure read-only diagnosis: no restarts, no resync, no docker command beyond
+# `docker stats --no-stream` (a snapshot read, does not touch container
+# state). Meant to be cross-referenced against emergency-status-check.yml's
+# tips/latency/height output from around the same time.
+on:
+  workflow_dispatch: {}
+
+jobs:
+  contabo1:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Resource snapshot on Contabo1
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: 173.249.37.118
+          username: root
+          key: ${{ secrets.CONTABO_SSH_KEY }}
+          port: 22
+          fingerprint: "SHA256:noMtjHV8c+2iEFZu3TRUP6WRwGjkrvFke71KgU6Eyt4"
+          script_stop: true
+          timeout: 120s
+          command_timeout: 120s
+          script: |
+            set -uo pipefail
+            echo "=== Contabo1: date ==="
+            date -u
+            echo "=== Contabo1: top -bn1 | head -20 ==="
+            top -bn1 | head -20
+            echo "=== Contabo1: free -m ==="
+            free -m
+            echo "=== Contabo1: vmstat 1 3 ==="
+            vmstat 1 3
+            echo "=== Contabo1: iostat -x 1 3 (falls back to /proc/loadavg if not installed) ==="
+            if command -v iostat >/dev/null 2>&1; then
+              iostat -x 1 3
+            else
+              echo "(iostat not installed)"
+              cat /proc/loadavg
+            fi
+            echo "=== Contabo1: docker stats --no-stream ==="
+            docker stats --no-stream
+            echo "=== Contabo1: Postgres connection count ==="
+            DATABASE_URL="$(grep -E '^DATABASE_URL=' /root/.aequitas.env 2>/dev/null | head -1 | cut -d= -f2- || true)"
+            if [ -z "$DATABASE_URL" ]; then
+              DATABASE_URL="$(docker inspect aequitas-node --format '{{range .Config.Env}}{{println .}}{{end}}' 2>/dev/null | grep -E '^DATABASE_URL=' | head -1 | cut -d= -f2- || true)"
+            fi
+            if [ -z "$DATABASE_URL" ]; then
+              echo "No DATABASE_URL found on Contabo1 -- cannot check Postgres connections."
+            else
+              NET="$(docker inspect aequitas-node --format '{{range $n,$v := .NetworkSettings.Networks}}{{$n}}{{end}}' 2>/dev/null || true)"
+              echo "--- total connections ---"
+              docker run --rm --network "$NET" postgres:16-alpine psql "$DATABASE_URL" -t -A -c \
+                "SELECT count(*) FROM pg_stat_activity;" || echo "(query failed)"
+              echo "--- connections by state ---"
+              docker run --rm --network "$NET" postgres:16-alpine psql "$DATABASE_URL" -t -A -F'|' -c \
+                "SELECT state, count(*) FROM pg_stat_activity GROUP BY state ORDER BY count(*) DESC;" || echo "(query failed)"
+              echo "--- server max_connections ---"
+              docker run --rm --network "$NET" postgres:16-alpine psql "$DATABASE_URL" -t -A -c \
+                "SHOW max_connections;" || echo "(query failed)"
+            fi
+            echo ""
+
+  contabo2:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Resource snapshot on Contabo2
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: 194.163.188.71
+          username: root
+          key: ${{ secrets.CONTABO2_SSH_KEY }}
+          port: 22
+          fingerprint: "SHA256:VIwj7Faxiga2n45HVHZEQFPxcbRKHgSgHoxAFsf2wto"
+          script_stop: true
+          timeout: 120s
+          command_timeout: 120s
+          script: |
+            set -uo pipefail
+            echo "=== Contabo2: date ==="
+            date -u
+            echo "=== Contabo2: top -bn1 | head -20 ==="
+            top -bn1 | head -20
+            echo "=== Contabo2: free -m ==="
+            free -m
+            echo "=== Contabo2: vmstat 1 3 ==="
+            vmstat 1 3
+            echo "=== Contabo2: iostat -x 1 3 (falls back to /proc/loadavg if not installed) ==="
+            if command -v iostat >/dev/null 2>&1; then
+              iostat -x 1 3
+            else
+              echo "(iostat not installed)"
+              cat /proc/loadavg
+            fi
+            echo "=== Contabo2: docker stats --no-stream ==="
+            docker stats --no-stream
+            echo "=== Contabo2: Postgres connection count ==="
+            DATABASE_URL="$(grep -E '^DATABASE_URL=' /root/.aequitas.env 2>/dev/null | head -1 | cut -d= -f2- || true)"
+            if [ -z "$DATABASE_URL" ]; then
+              DATABASE_URL="$(docker inspect aequitas-node --format '{{range .Config.Env}}{{println .}}{{end}}' 2>/dev/null | grep -E '^DATABASE_URL=' | head -1 | cut -d= -f2- || true)"
+            fi
+            if [ -z "$DATABASE_URL" ]; then
+              echo "No DATABASE_URL found on Contabo2 -- cannot check Postgres connections."
+            else
+              NET="$(docker inspect aequitas-node --format '{{range $n,$v := .NetworkSettings.Networks}}{{$n}}{{end}}' 2>/dev/null || true)"
+              echo "--- total connections ---"
+              docker run --rm --network "$NET" postgres:16-alpine psql "$DATABASE_URL" -t -A -c \
+                "SELECT count(*) FROM pg_stat_activity;" || echo "(query failed)"
+              echo "--- connections by state ---"
+              docker run --rm --network "$NET" postgres:16-alpine psql "$DATABASE_URL" -t -A -F'|' -c \
+                "SELECT state, count(*) FROM pg_stat_activity GROUP BY state ORDER BY count(*) DESC;" || echo "(query failed)"
+              echo "--- server max_connections ---"
+              docker run --rm --network "$NET" postgres:16-alpine psql "$DATABASE_URL" -t -A -c \
+                "SHOW max_connections;" || echo "(query failed)"
+            fi
+            echo ""
