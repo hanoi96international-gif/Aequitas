@@ -1,0 +1,36 @@
+name: Quick slashing status check on Contabo2 (manual, read-only)
+
+# Operator asked whether the equivocation suspension is back after today's
+# resync/cleanup/restart cycle. StateSnapshot (snapshot.go) does not
+# include validator_penalties/equivocation_evidence, so the resyncs
+# shouldn't have reintroduced it -- this confirms live rather than assumes.
+on:
+  workflow_dispatch: {}
+
+jobs:
+  contabo2:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check validator_penalties + recent suspend-related logs on Contabo2
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: 194.163.188.71
+          username: root
+          key: ${{ secrets.CONTABO2_SSH_KEY }}
+          port: 22
+          fingerprint: "SHA256:VIwj7Faxiga2n45HVHZEQFPxcbRKHgSgHoxAFsf2wto"
+          script_stop: true
+          timeout: 60s
+          command_timeout: 60s
+          script: |
+            set -uo pipefail
+            ADDR_LC="0x92cbedec9d348b4762cb9af99500ee6139c5b671"
+            DATABASE_URL="$(grep -E '^DATABASE_URL=' /root/.aequitas.env 2>/dev/null | head -1 | cut -d= -f2-)"
+            NET="$(docker inspect aequitas-node --format '{{range $n,$v := .NetworkSettings.Networks}}{{$n}}{{end}}' 2>/dev/null)"
+            echo "=== Contabo2: validator_penalties row for $ADDR_LC ==="
+            docker run --rm --network "$NET" postgres:16-alpine psql "$DATABASE_URL" -t -A -F'|' -c \
+              "SELECT offense_count, suspended_until, banned, last_offense_at FROM validator_penalties WHERE signing_address = '$ADDR_LC'" || echo "(query failed)"
+            echo "=== Contabo2: recent log lines mentioning suspend/slash ==="
+            docker logs aequitas-node 2>&1 | tail -3000 | grep -iE 'suspend|slash' | tail -30 || echo "(none found in recent logs)"
+            echo "=== Contabo2: container start time (to know how much log history 'recent' covers) ==="
+            docker inspect -f 'StartedAt={{.State.StartedAt}}' aequitas-node 2>&1
