@@ -1,0 +1,87 @@
+name: Diagnose the primary from Contabo1 (manual, read-only)
+
+# The primary (https://aequitas.digital) stopped producing blocks on
+# 2026-07-24 at ~19:01 UTC, stalled at height 1772331 -- confirmed from its
+# own explorer ("latest block #1772331, 4m ago") while both Contabos sat at
+# that same height waiting for it. Everything below the primary is healthy
+# and in sync at that point; the open question is purely why the primary
+# itself stopped.
+#
+# Deliberately does NOT require any new credential. The primary is not
+# SSH-reachable from CI, but it IS HTTP-reachable from Contabo1 (which syncs
+# from it), so this asks Contabo1 to query the primary's own public,
+# read-only endpoints and print what they say. Strictly read-only on both
+# boxes: only curl + docker logs, no restarts, no writes, no state changes.
+#
+# Why each probe is here:
+#   /api/status           -- height, uptime, is_primary, latency counters.
+#                            A rising uptime with a frozen height is the
+#                            signature of a live process that has stopped
+#                            producing (as opposed to a crash-loop, which
+#                            resets uptime).
+#   /api/health/combined  -- the exact endpoint fetchAndSetSyncTarget polls
+#                            to decide whether this node may produce. If it
+#                            is unreachable or unparseable, that is itself a
+#                            finding (see that function's own 2026-07-24 FIX
+#                            comment about failing open on exactly this).
+#   /api/blocks?min_height -- proves whether the primary will still SERVE
+#                            history even while not producing, which is what
+#                            the secondaries need to close their gap.
+on:
+  workflow_dispatch:
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ask Contabo1 what the primary reports about itself
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: 173.249.37.118
+          username: root
+          key: ${{ secrets.CONTABO_SSH_KEY }}
+          port: 22
+          fingerprint: "SHA256:noMtjHV8c+2iEFZu3TRUP6WRwGjkrvFke71KgU6Eyt4"
+          script_stop: false
+          timeout: 120s
+          command_timeout: 120s
+          script: |
+            set -uo pipefail
+            P="https://aequitas.digital"
+
+            echo "=== date on Contabo1 ==="
+            date -u
+
+            echo ""
+            echo "=== primary $P/api/status ==="
+            curl -sS --max-time 15 "$P/api/status" || echo "(unreachable)"
+            echo ""
+
+            echo ""
+            echo "=== primary $P/api/health/combined (the endpoint the sync gate polls) ==="
+            curl -sS --max-time 15 "$P/api/health/combined" || echo "(unreachable)"
+            echo ""
+
+            echo ""
+            echo "=== primary: does it still SERVE history? (2 blocks from 1772331) ==="
+            curl -sS --max-time 20 "$P/api/blocks?min_height=1772331" \
+              | head -c 600 || echo "(unreachable)"
+            echo ""
+
+            echo ""
+            echo "=== HTTP status codes only (distinguishes 5xx / 502 / timeout) ==="
+            for path in /api/status /api/health/combined /api/snapshot; do
+              code="$(curl -sS -o /dev/null -w '%{http_code} in %{time_total}s' --max-time 20 "$P$path" 2>&1 || echo "curl-failed")"
+              echo "  $path -> $code"
+            done
+
+            echo ""
+            echo "=== Contabo1's own view: last 15 lines mentioning the primary or sync ==="
+            docker logs --tail 400 aequitas-node 2>&1 \
+              | grep -Ei "aequitas\.digital|initial-sync gate|did not answer|starvation|AUTO-HEAL" \
+              | tail -15 || echo "(no matching lines)"
+
+            echo ""
+            echo "=== Contabo1 /api/status (for height comparison) ==="
+            curl -sS --max-time 10 http://localhost:8080/api/status || echo "(unreachable)"
+            echo ""
