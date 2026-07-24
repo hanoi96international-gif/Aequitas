@@ -4566,28 +4566,31 @@ if conflict, isEquivocation := dag.checkAndIndexEquivocation(block); isEquivocat
 		// so slash_applied is always false for it), yet a 1st offense already
 		// applies the full 14-day suspension that stops merging dead.
 		//
-		// So: for THIS ONE address, record the evidence (audit trail, never
-		// blocks anything on its own — initSlashingTables' own comment) and
-		// still queue the evidence TX, so the conflict is propagated and
-		// judged by CONSENSUS. If it is real, that TX replays through
-		// replayTransactions' slash_equivocation case on every node
-		// INCLUDING this one, which calls RecordEquivocationAndSuspend
-		// normally and applies the suspension — corroborated, seconds later,
-		// instead of unilaterally and instantly. Nothing is swept under the
-		// rug; only the "judge, jury and executioner on my own trust anchor"
-		// shortcut is removed. Deliberately scoped to BOOTSTRAP_SIGNER alone
-		// (same scoping as selfHealUncorroboratedSeedSuspension, same
-		// reasoning): a genuinely malicious THIRD validator is still
-		// suspended locally and immediately, exactly as before.
+		// So: for THIS ONE address, this node's own unilateral observation is
+		// DROPPED entirely — logged loudly, but neither persisted nor
+		// propagated. It is deliberately not written to equivocation_evidence
+		// either: RecordEquivocationAndSuspend returns EARLY (no penalty at
+		// all) whenever the pair's evidence row already exists, so writing the
+		// row here from a purely local observation would permanently suppress
+		// the very consensus path this fix wants to preserve — the node would
+		// become immune to a corroborated suspension of that address forever,
+		// which is a much bigger silent policy change than the one intended.
+		// The log line below is the audit trail; equivocation_evidence stays
+		// reserved for pairs that actually went through consensus.
+		//
+		// Consensus is therefore still fully able to suspend this address on
+		// this node: if any OTHER node observes the conflict and queues the
+		// evidence TX, replayTransactions' slash_equivocation case calls
+		// RecordEquivocationAndSuspend here with no pre-existing row, and the
+		// suspension applies normally. What is removed is only the
+		// "judge, jury and executioner on my own trust anchor" shortcut.
+		// Deliberately scoped to BOOTSTRAP_SIGNER alone (same scoping as
+		// selfHealUncorroboratedSeedSuspension, same reasoning): a genuinely
+		// malicious THIRD validator is still suspended locally and
+		// immediately, exactly as before.
 		if trusted := trustedBootstrapSigner(); trusted != "" && strings.EqualFold(proposerAddr, trusted) {
-			if rErr := dag.state.RecordEquivocationEvidenceOnly(proposerAddr, blockAHash, blockBHash, detectedAt); rErr != nil {
-				fmt.Printf("[SLASHING] ✗ Failed to record equivocation evidence for trusted bootstrap signer %s: %v\n", proposerAddr, rErr)
-			} else {
-				fmt.Printf("[SLASHING] ⚠ Equivocation evidence recorded for %s, but NO local suspension applied — this is this node's configured BOOTSTRAP_SIGNER, so the conflict is left to consensus (the evidence TX below) rather than a unilateral self-partition. See this call site's own comment.\n", proposerAddr)
-			}
-			if qErr := dag.state.QueueEquivocationEvidenceTx(proposerAddr, blockAHash, blockBHash, detectedAt); qErr != nil {
-				fmt.Printf("[SLASHING] ✗ Could not queue equivocation evidence TX for %s: %v\n", proposerAddr, qErr)
-			}
+			fmt.Printf("[SLASHING] ⚠ Observed an equivocation by %s (%s vs %s) but applied NO suspension and propagated nothing — that address is this node's configured BOOTSTRAP_SIGNER, and a unilateral suspension of it is a self-inflicted partition. If this conflict is real, another node's evidence TX will still suspend it here via consensus replay. See this call site's own comment.\n",
+				proposerAddr, blockAHash, blockBHash)
 			return
 		}
 		// FIX (2026-07-07 — closes a node-local/consensus asymmetry): apply
