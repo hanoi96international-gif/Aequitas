@@ -55,23 +55,23 @@ jobs:
             echo "=== Contabo1: docker stats --no-stream ==="
             docker stats --no-stream
             echo "=== Contabo1: Postgres connection count ==="
-            DATABASE_URL="$(grep -E '^DATABASE_URL=' /root/.aequitas.env 2>/dev/null | head -1 | cut -d= -f2-)"
+            DATABASE_URL="$(grep -E '^DATABASE_URL=' /root/.aequitas.env 2>/dev/null | head -1 | cut -d= -f2- || true)"
             if [ -z "$DATABASE_URL" ]; then
-              DATABASE_URL="$(docker inspect aequitas-node --format '{{range .Config.Env}}{{println .}}{{end}}' 2>/dev/null | grep -E '^DATABASE_URL=' | head -1 | cut -d= -f2-)"
+              DATABASE_URL="$(docker inspect aequitas-node --format '{{range .Config.Env}}{{println .}}{{end}}' 2>/dev/null | grep -E '^DATABASE_URL=' | head -1 | cut -d= -f2- || true)"
             fi
             if [ -z "$DATABASE_URL" ]; then
               echo "No DATABASE_URL found on Contabo1 -- cannot check Postgres connections."
             else
-              NET="$(docker inspect aequitas-node --format '{{range $n,$v := .NetworkSettings.Networks}}{{$n}}{{end}}' 2>/dev/null)"
+              NET="$(docker inspect aequitas-node --format '{{range $n,$v := .NetworkSettings.Networks}}{{$n}}{{end}}' 2>/dev/null || true)"
               echo "--- total connections ---"
               docker run --rm --network "$NET" postgres:16-alpine psql "$DATABASE_URL" -t -A -c \
-                "SELECT count(*) FROM pg_stat_activity;"
+                "SELECT count(*) FROM pg_stat_activity;" || echo "(query failed)"
               echo "--- connections by state ---"
               docker run --rm --network "$NET" postgres:16-alpine psql "$DATABASE_URL" -t -A -F'|' -c \
-                "SELECT state, count(*) FROM pg_stat_activity GROUP BY state ORDER BY count(*) DESC;"
+                "SELECT state, count(*) FROM pg_stat_activity GROUP BY state ORDER BY count(*) DESC;" || echo "(query failed)"
               echo "--- server max_connections ---"
               docker run --rm --network "$NET" postgres:16-alpine psql "$DATABASE_URL" -t -A -c \
-                "SHOW max_connections;"
+                "SHOW max_connections;" || echo "(query failed)"
             fi
             echo ""
 
@@ -109,22 +109,22 @@ jobs:
             echo "=== Contabo2: docker stats --no-stream ==="
             docker stats --no-stream
             echo "=== Contabo2: Postgres connection count ==="
-            DATABASE_URL="$(grep -E '^DATABASE_URL=' /root/.aequitas.env 2>/dev/null | head -1 | cut -d= -f2-)"
+            DATABASE_URL="$(grep -E '^DATABASE_URL=' /root/.aequitas.env 2>/dev/null | head -1 | cut -d= -f2- || true)"
             if [ -z "$DATABASE_URL" ]; then
-              DATABASE_URL="$(docker inspect aequitas-node --format '{{range .Config.Env}}{{println .}}{{end}}' 2>/dev/null | grep -E '^DATABASE_URL=' | head -1 | cut -d= -f2-)"
+              DATABASE_URL="$(docker inspect aequitas-node --format '{{range .Config.Env}}{{println .}}{{end}}' 2>/dev/null | grep -E '^DATABASE_URL=' | head -1 | cut -d= -f2- || true)"
             fi
             if [ -z "$DATABASE_URL" ]; then
               echo "No DATABASE_URL found on Contabo2 -- cannot check Postgres connections."
             else
-              NET="$(docker inspect aequitas-node --format '{{range $n,$v := .NetworkSettings.Networks}}{{$n}}{{end}}' 2>/dev/null)"
+              NET="$(docker inspect aequitas-node --format '{{range $n,$v := .NetworkSettings.Networks}}{{$n}}{{end}}' 2>/dev/null || true)"
               echo "--- total connections ---"
               docker run --rm --network "$NET" postgres:16-alpine psql "$DATABASE_URL" -t -A -c \
-                "SELECT count(*) FROM pg_stat_activity;"
+                "SELECT count(*) FROM pg_stat_activity;" || echo "(query failed)"
               echo "--- connections by state ---"
               docker run --rm --network "$NET" postgres:16-alpine psql "$DATABASE_URL" -t -A -F'|' -c \
-                "SELECT state, count(*) FROM pg_stat_activity GROUP BY state ORDER BY count(*) DESC;"
+                "SELECT state, count(*) FROM pg_stat_activity GROUP BY state ORDER BY count(*) DESC;" || echo "(query failed)"
               echo "--- server max_connections ---"
               docker run --rm --network "$NET" postgres:16-alpine psql "$DATABASE_URL" -t -A -c \
-                "SHOW max_connections;"
+                "SHOW max_connections;" || echo "(query failed)"
             fi
             echo ""
