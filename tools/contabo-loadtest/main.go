@@ -217,6 +217,114 @@ func (c *rpcClient) sendValue(from *account, toAddr string, amountWei *big.Int) 
 	return txHash, nil
 }
 
+// batchSize is how many signed transfers one pair packs into a single
+// JSON-RPC batch request during the run phase.
+//
+// FIX (2026-07-24 — the run phase could not physically approach the 50k
+// target, regardless of how well the chain performed): sendValue does ONE
+// HTTP round trip per transfer and waits for the reply. That caps a pair at
+// 1/latency transfers per second — at the ~40ms observed against Contabo2
+// that is ~25/s, so even 72 pairs top out around 1,800/s. Filling a
+// maxTxsPerBlock=50000 block in one BLOCK_TIME needs 50,000/s arriving. The
+// generator, not the node, was the binding constraint, and no chain-side fix
+// could ever have shown up in the number.
+//
+// Two independent limits collapse at once by batching, because the node
+// supports JSON-RPC batches (evm_rpc.go's handleRPC: `body[0] == '['`, up to
+// maxBatchSize=100 per request) AND checks its per-IP rate limiter exactly
+// ONCE per HTTP request, before parsing the body:
+//
+//	if rpcRateLimited(clientIP(r)) { ... }   // one tick, whatever the batch holds
+//
+// So 100 transfers per request means 100x fewer round trips AND 100x less
+// rate-limit consumption. rpcRateLimitMax=200 per rpcRateLimitWindow=10s is
+// 20 requests/s per IP; at 100 transfers each that is a 2,000/s ceiling from
+// a single source instead of ~20/s worth of accepted singles.
+//
+// Deliberately exactly maxBatchSize: the node rejects a larger batch outright
+// ("batch too large"), and a smaller one would leave measured throughput on
+// the table for no benefit.
+const batchSize = 100
+
+// sendValueBatch signs batchSize sequential transfers from `from` and submits
+// them as ONE JSON-RPC batch. Returns how many the node accepted.
+//
+// Nonces are assigned locally and sequentially (from.nonce, +1, +2, ...)
+// rather than re-fetched per transfer: the node processes a batch's entries
+// in order (handleSingle in a loop), so a contiguous run from one sender is
+// exactly what it expects. from.nonce advances only by the number actually
+// accepted, preserving sendValue's own invariant — never advance past a
+// nonce the node did not take, or this account desyncs for the rest of the
+// run with nothing to re-sync it.
+func (c *rpcClient) sendValueBatch(from *account, toAddr string, amountWei *big.Int, n int) (int, error) {
+	signer := types.NewEIP155Signer(big.NewInt(chainID))
+	reqs := make([]rpcReq, 0, n)
+	for i := 0; i < n; i++ {
+		tx := types.NewTransaction(from.nonce+uint64(i), addrFromHex(toAddr), amountWei, 21000, big.NewInt(0), nil)
+		signedTx, err := types.SignTx(tx, signer, from.priv)
+		if err != nil {
+			return 0, err
+		}
+		raw, err := signedTx.MarshalBinary()
+		if err != nil {
+			return 0, err
+		}
+		reqs = append(reqs, rpcReq{
+			Jsonrpc: "2.0",
+			Method:  "eth_sendRawTransaction",
+			Params:  []string{"0x" + hex.EncodeToString(raw)},
+			ID:      i + 1,
+		})
+	}
+	body, err := json.Marshal(reqs)
+	if err != nil {
+		return 0, err
+	}
+	req, err := http.NewRequest("POST", c.url, bytes.NewReader(body))
+	if err != nil {
+		return 0, err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := c.hc.Do(req)
+	if err != nil {
+		return 0, err
+	}
+	defer resp.Body.Close()
+	b, _ := io.ReadAll(resp.Body)
+	// A rate-limited or malformed batch comes back as a single error object,
+	// not an array — surface it verbatim so the run summary can tally it the
+	// same way it tallies single-send failures.
+	var single rpcResp
+	if json.Unmarshal(b, &single) == nil && single.Error != nil {
+		return 0, fmt.Errorf("rpc error %d: %s", single.Error.Code, single.Error.Message)
+	}
+	var results []rpcResp
+	if err := json.Unmarshal(b, &results); err != nil {
+		return 0, fmt.Errorf("bad batch response %q: %w", string(b), err)
+	}
+	accepted := 0
+	var firstErr error
+	for _, r := range results {
+		if r.Error != nil {
+			if firstErr == nil {
+				firstErr = fmt.Errorf("rpc error %d: %s", r.Error.Code, r.Error.Message)
+			}
+			continue
+		}
+		accepted++
+	}
+	// Only advance by what was actually taken. A partially-accepted batch is
+	// reported as an error too, so the caller re-syncs rather than assuming.
+	from.nonce += uint64(accepted)
+	if accepted < len(results) || len(results) < n {
+		if firstErr == nil {
+			firstErr = fmt.Errorf("batch partially accepted: %d of %d", accepted, n)
+		}
+		return accepted, firstErr
+	}
+	return accepted, nil
+}
+
 // sendRetryBackoff is how long a run-phase pair waits after a failed send
 // before retrying. See the run loop's own comment for why this exists and
 // why it is deliberately flat rather than exponential.
@@ -494,8 +602,17 @@ func main() {
 						return
 					default:
 					}
-					if _, err := client.sendValue(from, to.address, transferWei); err != nil {
-						atomic.AddInt64(&failed, 1)
+					// Batched: ONE HTTP round trip carries batchSize transfers.
+					// See batchSize's own comment for why single sends made
+					// the generator — not the node — the binding constraint,
+					// and why this also collapses the per-IP rate limit by the
+					// same factor. succeeded/failed still count TRANSFERS, not
+					// requests, so the reported throughput stays comparable
+					// with every earlier run.
+					accepted, err := client.sendValueBatch(from, to.address, transferWei, batchSize)
+					atomic.AddInt64(&succeeded, int64(accepted))
+					if err != nil {
+						atomic.AddInt64(&failed, int64(batchSize-accepted))
 						recordErr(err)
 						// Back off before retrying. Without this, a persistently
 						// failing pair spins this loop as fast as the RPC can
@@ -516,7 +633,6 @@ func main() {
 						}
 						continue
 					}
-					atomic.AddInt64(&succeeded, 1)
 				}
 			}(i)
 		}
