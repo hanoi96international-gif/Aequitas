@@ -68,20 +68,24 @@ jobs:
               echo "No DATABASE_URL found on Contabo1 -- cannot check."
               exit 0
             fi
+            # DATABASE_URL's host (e.g. "aequitas-postgres") is a Docker DNS
+            # name that only resolves inside aequitas-node's own network --
+            # the query container below must join that same network.
+            NET="$(docker inspect aequitas-node --format '{{range $n,$v := .NetworkSettings.Networks}}{{$n}}{{end}}' 2>/dev/null)"
             echo "=== Contabo1: validator_penalties row for $ADDR_LC ==="
-            docker run --rm postgres:16-alpine psql "$DATABASE_URL" -t -A -F'|' -c \
+            docker run --rm --network "$NET" postgres:16-alpine psql "$DATABASE_URL" -t -A -F'|' -c \
               "SELECT offense_count, suspended_until, banned, last_offense_at FROM validator_penalties WHERE signing_address = '$ADDR_LC'"
             echo "=== Contabo1: equivocation_evidence rows for $ADDR_LC (slash_applied column is what matters) ==="
-            docker run --rm postgres:16-alpine psql "$DATABASE_URL" -t -A -F'|' -c \
+            docker run --rm --network "$NET" postgres:16-alpine psql "$DATABASE_URL" -t -A -F'|' -c \
               "SELECT block_a_hash, block_b_hash, detected_at, slash_applied FROM equivocation_evidence WHERE signing_address = '$ADDR_LC' ORDER BY detected_at"
-            OFFENSE_COUNT="$(docker run --rm postgres:16-alpine psql "$DATABASE_URL" -t -A -c \
+            OFFENSE_COUNT="$(docker run --rm --network "$NET" postgres:16-alpine psql "$DATABASE_URL" -t -A -c \
               "SELECT offense_count FROM validator_penalties WHERE signing_address = '$ADDR_LC'")"
-            APPLIED_COUNT="$(docker run --rm postgres:16-alpine psql "$DATABASE_URL" -t -A -c \
+            APPLIED_COUNT="$(docker run --rm --network "$NET" postgres:16-alpine psql "$DATABASE_URL" -t -A -c \
               "SELECT count(*) FROM equivocation_evidence WHERE signing_address = '$ADDR_LC' AND slash_applied = TRUE")"
             echo "offense_count=${OFFENSE_COUNT:-0} applied_evidence_count=${APPLIED_COUNT:-0}"
             if [ "${OFFENSE_COUNT:-0}" -ge 2 ] && [ "${APPLIED_COUNT:-0}" -eq 0 ]; then
               echo "=== Confirmed uncorroborated (offense_count>=2, zero applied evidence) -- clearing on Contabo1 ==="
-              docker run --rm postgres:16-alpine psql "$DATABASE_URL" -c \
+              docker run --rm --network "$NET" postgres:16-alpine psql "$DATABASE_URL" -c \
                 "DELETE FROM validator_penalties WHERE signing_address = '$ADDR_LC'"
               echo "=== Restarting aequitas-node on Contabo1 so the penalty cache reloads ==="
               /root/deploy.sh
@@ -117,20 +121,24 @@ jobs:
               echo "No DATABASE_URL found on Contabo2 -- cannot check."
               exit 0
             fi
+            # DATABASE_URL's host (e.g. "aequitas-postgres") is a Docker DNS
+            # name that only resolves inside aequitas-node's own network --
+            # the query container below must join that same network.
+            NET="$(docker inspect aequitas-node --format '{{range $n,$v := .NetworkSettings.Networks}}{{$n}}{{end}}' 2>/dev/null)"
             echo "=== Contabo2: validator_penalties row for $ADDR_LC ==="
-            docker run --rm postgres:16-alpine psql "$DATABASE_URL" -t -A -F'|' -c \
+            docker run --rm --network "$NET" postgres:16-alpine psql "$DATABASE_URL" -t -A -F'|' -c \
               "SELECT offense_count, suspended_until, banned, last_offense_at FROM validator_penalties WHERE signing_address = '$ADDR_LC'"
             echo "=== Contabo2: equivocation_evidence rows for $ADDR_LC (slash_applied column is what matters) ==="
-            docker run --rm postgres:16-alpine psql "$DATABASE_URL" -t -A -F'|' -c \
+            docker run --rm --network "$NET" postgres:16-alpine psql "$DATABASE_URL" -t -A -F'|' -c \
               "SELECT block_a_hash, block_b_hash, detected_at, slash_applied FROM equivocation_evidence WHERE signing_address = '$ADDR_LC' ORDER BY detected_at"
-            OFFENSE_COUNT="$(docker run --rm postgres:16-alpine psql "$DATABASE_URL" -t -A -c \
+            OFFENSE_COUNT="$(docker run --rm --network "$NET" postgres:16-alpine psql "$DATABASE_URL" -t -A -c \
               "SELECT offense_count FROM validator_penalties WHERE signing_address = '$ADDR_LC'")"
-            APPLIED_COUNT="$(docker run --rm postgres:16-alpine psql "$DATABASE_URL" -t -A -c \
+            APPLIED_COUNT="$(docker run --rm --network "$NET" postgres:16-alpine psql "$DATABASE_URL" -t -A -c \
               "SELECT count(*) FROM equivocation_evidence WHERE signing_address = '$ADDR_LC' AND slash_applied = TRUE")"
             echo "offense_count=${OFFENSE_COUNT:-0} applied_evidence_count=${APPLIED_COUNT:-0}"
             if [ "${OFFENSE_COUNT:-0}" -ge 2 ] && [ "${APPLIED_COUNT:-0}" -eq 0 ]; then
               echo "=== Confirmed uncorroborated (offense_count>=2, zero applied evidence) -- clearing on Contabo2 ==="
-              docker run --rm postgres:16-alpine psql "$DATABASE_URL" -c \
+              docker run --rm --network "$NET" postgres:16-alpine psql "$DATABASE_URL" -c \
                 "DELETE FROM validator_penalties WHERE signing_address = '$ADDR_LC'"
               echo "=== Restarting aequitas-node on Contabo2 so the penalty cache reloads ==="
               /root/deploy_safe_c2.sh
