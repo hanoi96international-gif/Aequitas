@@ -1,0 +1,61 @@
+name: Emergency live status check on both Contabos (manual, read-only)
+
+# Operator reported both nodes appear to have crashed right after
+# check-disk-contabo2.yml's cleanup dispatch. Pure read-only: docker ps,
+# container health/restart state, and /api/status on both hosts, to
+# determine actual live state before deciding on any remediation.
+on:
+  workflow_dispatch: {}
+
+jobs:
+  contabo1:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Live status on Contabo1
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: 173.249.37.118
+          username: root
+          key: ${{ secrets.CONTABO_SSH_KEY }}
+          port: 22
+          fingerprint: "SHA256:noMtjHV8c+2iEFZu3TRUP6WRwGjkrvFke71KgU6Eyt4"
+          script_stop: true
+          timeout: 60s
+          command_timeout: 60s
+          script: |
+            set -uo pipefail
+            echo "=== Contabo1: docker ps -a ==="
+            docker ps -a
+            echo "=== Contabo1: aequitas-node inspect ==="
+            docker inspect -f 'Status={{.State.Status}} ExitCode={{.State.ExitCode}} OOMKilled={{.State.OOMKilled}} Error={{.State.Error}} RestartCount={{.RestartCount}} StartedAt={{.State.StartedAt}}' aequitas-node 2>&1 || echo "(container not found)"
+            echo "=== Contabo1: last 30 log lines ==="
+            docker logs --tail 30 aequitas-node 2>&1 || echo "(no logs)"
+            echo "=== Contabo1: /api/status ==="
+            curl -s --max-time 5 http://localhost:8080/api/status || echo "(unreachable)"
+            echo ""
+
+  contabo2:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Live status on Contabo2
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: 194.163.188.71
+          username: root
+          key: ${{ secrets.CONTABO2_SSH_KEY }}
+          port: 22
+          fingerprint: "SHA256:VIwj7Faxiga2n45HVHZEQFPxcbRKHgSgHoxAFsf2wto"
+          script_stop: true
+          timeout: 60s
+          command_timeout: 60s
+          script: |
+            set -uo pipefail
+            echo "=== Contabo2: docker ps -a ==="
+            docker ps -a
+            echo "=== Contabo2: aequitas-node inspect ==="
+            docker inspect -f 'Status={{.State.Status}} ExitCode={{.State.ExitCode}} OOMKilled={{.State.OOMKilled}} Error={{.State.Error}} RestartCount={{.RestartCount}} StartedAt={{.State.StartedAt}}' aequitas-node 2>&1 || echo "(container not found)"
+            echo "=== Contabo2: last 30 log lines ==="
+            docker logs --tail 30 aequitas-node 2>&1 || echo "(no logs)"
+            echo "=== Contabo2: /api/status ==="
+            curl -s --max-time 5 http://localhost:8080/api/status || echo "(unreachable)"
+            echo ""
