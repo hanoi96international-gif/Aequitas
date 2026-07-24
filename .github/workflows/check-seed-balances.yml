@@ -1,0 +1,50 @@
+name: Check loadtest seed account balances on Contabo2 (manual, read-only)
+
+# Verifies the 5 seed addresses loadtest-prepare-contabo2.yml printed
+# actually received AEQ before dispatching loadtest-run-contabo2.yml --
+# a wallet app's own "failed" transaction label doesn't necessarily mean
+# the funds never arrived (e.g. a stale-nonce resubmission), so this
+# checks the chain's own eth_getBalance directly instead of guessing.
+# Pure read: no funds move, nothing is mutated.
+on:
+  workflow_dispatch:
+    inputs:
+      addresses:
+        description: "Comma-separated addresses to check"
+        required: true
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Query eth_getBalance for each address on Contabo2
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: 194.163.188.71
+          username: root
+          key: ${{ secrets.CONTABO2_SSH_KEY }}
+          port: 22
+          fingerprint: "SHA256:VIwj7Faxiga2n45HVHZEQFPxcbRKHgSgHoxAFsf2wto"
+          script_stop: true
+          timeout: 60s
+          command_timeout: 60s
+          envs: ADDRS
+          script: |
+            set -uo pipefail
+            IFS=',' read -ra ADDR_ARR <<< "$ADDRS"
+            for addr in "${ADDR_ARR[@]}"; do
+              addr="$(echo "$addr" | xargs)"
+              resp="$(curl -s -X POST http://localhost:8080/rpc \
+                -H 'Content-Type: application/json' \
+                -d "{\"jsonrpc\":\"2.0\",\"method\":\"eth_getBalance\",\"params\":[\"$addr\",\"latest\"],\"id\":1}")"
+              hexwei="$(echo "$resp" | grep -oP '"result":"\K0x[0-9a-fA-F]*')"
+              if [ -z "$hexwei" ]; then
+                echo "$addr -> could not parse balance, raw response: $resp"
+                continue
+              fi
+              wei=$((hexwei))
+              aeq=$(awk "BEGIN { printf \"%.6f\", $wei / 1000000000000000000 }")
+              echo "$addr -> ${aeq} AEQ (${wei} wei)"
+            done
+        env:
+          ADDRS: ${{ inputs.addresses }}
