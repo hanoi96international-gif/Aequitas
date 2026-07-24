@@ -16,11 +16,13 @@ func TestHasBlockFromProposerAtHeight_NilDBFailsOpen(t *testing.T) {
 	}
 }
 
-// NOTE: ProduceBlock's guard itself (the maxParentHeight+1 == bootHeight+1
-// condition combined with a real HasBlockFromProposerAtHeight lookup) is not
-// exercised end-to-end here — reaching it requires satisfying every earlier
-// ProduceBlock gate (genesis, tips, signing key, a live Postgres for the
-// query to mean anything), well beyond this suite's existing
-// early-exit-focused ProduceBlock tests (e.g.
-// TestProduceBlock_SkipsWhileResyncInProgress). Verified live instead: see
-// this fix's own memory entry for the reproduction that motivated it.
+// NOTE: ProduceBlock's guard itself (a real HasBlockFromProposerAtHeight
+// lookup against maxParentHeight+1, run on every tick — no post-boot time
+// window since the 2026-07-24 fix, see that call site's own comment for why
+// the earlier 45s window kept being too short) is not exercised end-to-end
+// here — reaching it requires satisfying every earlier ProduceBlock gate
+// (genesis, tips, signing key, a live Postgres for the query to mean
+// anything), well beyond this suite's existing early-exit-focused
+// ProduceBlock tests (e.g. TestProduceBlock_SkipsWhileResyncInProgress).
+// Verified live instead: see this fix's own memory entry for the
+// reproduction that motivated it.
