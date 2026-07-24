@@ -1,0 +1,155 @@
+name: Authoritative resync of both Contabos from the trusted primary (manual)
+
+# One-off remediation for "Es merged nix" / persistent DAG orphan backlog on
+# the secondaries. check-resync-readiness.yml confirmed live (run
+# 30091229086, 2026-07-24) that BOTH boxes already have everything main.go's
+# resyncMode path needs, all pointing at the SAME external primary:
+#   PRIMARY_NODE_URL      = https://aequitas.digital
+#   BOOTSTRAP_SNAPSHOT_URL = https://aequitas.digital/api/snapshot
+#   BOOTSTRAP_SIGNER      = 0x92cbedec9d348b4762cb9af99500ee6139c5b671
+#
+# This uses the codebase's own existing, signature-verified resync path
+# (snapshot.go's ResyncFromSnapshotURL, wired in main.go's resyncMode
+# block) rather than any ad-hoc DB surgery: the importing node validates
+# the snapshot's ECDSA signature against BOOTSTRAP_SIGNER before accepting
+# it, so this can only ever replace local state with the trusted primary's
+# own canonical state, never arbitrary data (same guarantee
+# StartDivergenceAutoHeal's own doc comment describes for the automatic
+# path). StateSnapshot (snapshot.go) covers accounts/pool/nullifiers/
+# bio_registrations/chain_config only — NOT validator_penalties or
+# equivocation_evidence (those are per-node-detected tables, not part of
+# the portable snapshot), so this resync does not interact with or undo
+# check-clear-equivocation-slashing.yml's force_clear in either direction.
+#
+# The two boxes need different handling to fire the SAME resyncMode=true
+# path, because their deploy scripts differ (both read verbatim in the
+# readiness check):
+#   - Contabo1's deploy.sh runs the container with `--env-file
+#     /root/.aequitas.env` DIRECTLY, and the file's RESYNC_FROM_SNAPSHOT
+#     currently reads "false" (confirmed live) -- so this flips it to
+#     "true", runs deploy.sh (full rebuild + restart, picks up the flag),
+#     then flips it back to "false" immediately after, so every future
+#     ordinary push-triggered deploy on Contabo1 does NOT resync/wipe
+#     state on every single deploy (the exact footgun deploy_safe_c2.sh
+#     exists to avoid on Contabo2 -- see that script's own header comment
+#     in patch-deploy-safe-c2.yml).
+#   - Contabo2's .aequitas.env already permanently has
+#     RESYNC_FROM_SNAPSHOT=true (confirmed live, by design -- see
+#     deploy-contabo2.yml's comment), but deploy_safe_c2.sh deliberately
+#     STRIPS that key from what actually reaches the running container on
+#     every normal deploy, specifically so it never fires by accident. To
+#     get the resync to actually happen here, this bypasses that strip for
+#     ONE restart only: stop/rm the current container and re-run the SAME
+#     image (captured via `docker inspect`, no rebuild) with `--env-file
+#     /root/.aequitas.env` passed straight through. No revert needed
+#     afterward -- deploy_safe_c2.sh remains untouched and keeps stripping
+#     the flag on every subsequent normal/automatic deploy exactly as
+#     before.
+#
+# Gated behind `confirm: "true"` so a bare workflow_dispatch with defaults
+# does nothing destructive by accident.
+on:
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: "Type \"true\" to actually perform the resync on both boxes"
+        required: false
+        default: "false"
+
+jobs:
+  contabo1:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Resync Contabo1 from the trusted primary
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: 173.249.37.118
+          username: root
+          key: ${{ secrets.CONTABO_SSH_KEY }}
+          port: 22
+          fingerprint: "SHA256:noMtjHV8c+2iEFZu3TRUP6WRwGjkrvFke71KgU6Eyt4"
+          script_stop: true
+          timeout: 900s
+          command_timeout: 900s
+          envs: CONFIRM
+          script: |
+            set -uo pipefail
+            if [ "${CONFIRM:-false}" != "true" ]; then
+              echo "confirm != true -- doing nothing. Re-run with confirm=true to actually resync Contabo1."
+              exit 0
+            fi
+            echo "=== Contabo1: RESYNC_FROM_SNAPSHOT before ==="
+            grep -E '^RESYNC_FROM_SNAPSHOT=' /root/.aequitas.env || echo "(not present)"
+            sed -i 's/^RESYNC_FROM_SNAPSHOT=.*/RESYNC_FROM_SNAPSHOT=true/' /root/.aequitas.env
+            echo "=== Contabo1: RESYNC_FROM_SNAPSHOT after flip (must read true) ==="
+            grep -E '^RESYNC_FROM_SNAPSHOT=' /root/.aequitas.env
+            if ! grep -qE '^RESYNC_FROM_SNAPSHOT=true$' /root/.aequitas.env; then
+              echo "✗ Flip did not take effect as expected -- aborting before calling deploy.sh."
+              exit 1
+            fi
+            echo "=== Contabo1: running deploy.sh (rebuild + restart; boot will run the authoritative resync) ==="
+            /root/deploy.sh
+            echo "=== Contabo1: reverting RESYNC_FROM_SNAPSHOT back to false so future ordinary deploys don't resync every time ==="
+            sed -i 's/^RESYNC_FROM_SNAPSHOT=.*/RESYNC_FROM_SNAPSHOT=false/' /root/.aequitas.env
+            grep -E '^RESYNC_FROM_SNAPSHOT=' /root/.aequitas.env
+            echo "=== Contabo1: waiting 15s for the node to finish booting ==="
+            sleep 15
+            echo "=== Contabo1: boot log lines mentioning RESYNC/BOOTSTRAP/AUTO-HEAL/DAG merge ==="
+            docker logs aequitas-node 2>&1 | grep -iE '\[RESYNC\]|\[BOOTSTRAP\]|\[AUTO-HEAL\]|Merged.*tips|orphan' | tail -60
+            echo "=== Contabo1: /api/status after resync ==="
+            curl -s http://localhost:8080/api/status
+            echo ""
+        env:
+          CONFIRM: ${{ inputs.confirm }}
+
+  contabo2:
+    needs: contabo1
+    runs-on: ubuntu-latest
+    steps:
+      - name: Resync Contabo2 from the trusted primary
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: 194.163.188.71
+          username: root
+          key: ${{ secrets.CONTABO2_SSH_KEY }}
+          port: 22
+          fingerprint: "SHA256:VIwj7Faxiga2n45HVHZEQFPxcbRKHgSgHoxAFsf2wto"
+          script_stop: true
+          timeout: 300s
+          command_timeout: 300s
+          envs: CONFIRM
+          script: |
+            set -uo pipefail
+            if [ "${CONFIRM:-false}" != "true" ]; then
+              echo "confirm != true -- doing nothing. Re-run with confirm=true to actually resync Contabo2."
+              exit 0
+            fi
+            echo "=== Contabo2: .aequitas.env RESYNC_FROM_SNAPSHOT (expected true, permanently, by design) ==="
+            grep -E '^RESYNC_FROM_SNAPSHOT=' /root/.aequitas.env || echo "(not present -- aborting)"
+            if ! grep -qE '^RESYNC_FROM_SNAPSHOT=true$' /root/.aequitas.env; then
+              echo "✗ Expected RESYNC_FROM_SNAPSHOT=true already in the file -- state differs from the readiness check, aborting rather than guessing."
+              exit 1
+            fi
+            IMG="$(docker inspect aequitas-node --format '{{.Config.Image}}')"
+            echo "=== Contabo2: current image (reused, no rebuild): $IMG ==="
+            echo "=== Contabo2: one-off restart with --env-file passed straight through (bypasses deploy_safe_c2.sh's normal strip, for this one restart only) ==="
+            docker stop aequitas-node
+            docker rm aequitas-node
+            mkdir -p /root/aequitas-wal-data
+            docker run -d --name aequitas-node \
+              --network aequitas-net \
+              --restart unless-stopped \
+              -v /root/aequitas-wal-data:/data/wal \
+              --env-file /root/.aequitas.env \
+              -p 8080:8080 -p 4001:4001 \
+              "$IMG"
+            echo "=== Contabo2: waiting 15s for the node to finish booting ==="
+            sleep 15
+            echo "=== Contabo2: boot log lines mentioning RESYNC/BOOTSTRAP/AUTO-HEAL/DAG merge ==="
+            docker logs aequitas-node 2>&1 | grep -iE '\[RESYNC\]|\[BOOTSTRAP\]|\[AUTO-HEAL\]|Merged.*tips|orphan' | tail -60
+            echo "=== Contabo2: /api/status after resync ==="
+            curl -s http://localhost:8080/api/status
+            echo ""
+            echo "=== Contabo2: normal/automatic deploys keep using deploy_safe_c2.sh, which strips RESYNC_FROM_SNAPSHOT from the running container -- no revert needed on this box. ==="
+        env:
+          CONFIRM: ${{ inputs.confirm }}
