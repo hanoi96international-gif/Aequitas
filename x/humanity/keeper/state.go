@@ -348,6 +348,12 @@ type ChainState struct {
 	walFlushOnce     sync.Once
 	walFlushStopCh   chan struct{} // see stopWALFlushWorkerForTest's own comment
 	walFlushStopOnce sync.Once     // makes stopWALFlushWorkerForTest safe to call more than once
+	// walFlushSem/walFlushWG back concurrent flush dispatch — see
+	// runWALFlushWorker's own FIX comment (transfer_wal.go, 2026-07-24) for
+	// why a single sequential flush-per-tick became the binding throughput
+	// ceiling once flushWALBatch stopped needing cs.mu's full exclusivity.
+	walFlushSem chan struct{}
+	walFlushWG  sync.WaitGroup
 }
 
 // validatorPenalty is one cached validator_penalties row — everything
