@@ -70,8 +70,8 @@ jobs:
           port: 22
           fingerprint: "SHA256:noMtjHV8c+2iEFZu3TRUP6WRwGjkrvFke71KgU6Eyt4"
           script_stop: true
-          timeout: 120s
-          command_timeout: 120s
+          timeout: 600s
+          command_timeout: 600s
           envs: ADDR,FORCE
           script: |
             set -uo pipefail
@@ -116,8 +116,8 @@ jobs:
           port: 22
           fingerprint: "SHA256:VIwj7Faxiga2n45HVHZEQFPxcbRKHgSgHoxAFsf2wto"
           script_stop: true
-          timeout: 120s
-          command_timeout: 120s
+          timeout: 600s
+          command_timeout: 600s
           envs: ADDR,FORCE
           script: |
             set -uo pipefail

@@ -1,0 +1,73 @@
+name: Check resync readiness on both Contabos (manual, read-only)
+
+# Read-only recon before attempting an authoritative RESYNC_FROM_SNAPSHOT on
+# either box (see autoheal.go's PerformResync / main.go's resyncMode block).
+# That path only fires if BOOTSTRAP_SNAPSHOT_URL + BOOTSTRAP_SIGNER are both
+# set — this workflow confirms whether they actually are, on which host,
+# pointing at what, before anything gets mutated. Also prints each box's own
+# deploy script verbatim (deploy.sh on Contabo1, deploy_safe_c2.sh on
+# Contabo2) so the follow-up mutate step can match its exact docker run
+# pattern (network name, volume mounts, ports, image tag) instead of
+# guessing, and each box's current /api/status (height, is_primary) as a
+# live baseline to compare against after any resync.
+#
+# Does NOT stop, restart, or modify anything. Pure read.
+on:
+  workflow_dispatch: {}
+
+jobs:
+  contabo1:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Read-only resync-readiness check on Contabo1
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: 173.249.37.118
+          username: root
+          key: ${{ secrets.CONTABO_SSH_KEY }}
+          port: 22
+          fingerprint: "SHA256:noMtjHV8c+2iEFZu3TRUP6WRwGjkrvFke71KgU6Eyt4"
+          script_stop: true
+          timeout: 120s
+          command_timeout: 120s
+          script: |
+            set -uo pipefail
+            CONTAINER="$(docker ps --format '{{.Names}}' | grep -i aequitas | head -1)"
+            echo "=== Contabo1: relevant keys in /root/.aequitas.env ==="
+            grep -E '^(BOOTSTRAP_SNAPSHOT_URL|BOOTSTRAP_SIGNER|PRIMARY_NODE_URL|PRIMARY_NODE_URLS|RESYNC_FROM_SNAPSHOT|SNAPSHOT_TOKEN)=' /root/.aequitas.env 2>&1 || echo "(none of these keys present in the file)"
+            echo "=== Contabo1: same keys in the RUNNING container's actual env ==="
+            docker inspect -f '{{range .Config.Env}}{{println .}}{{end}}' "$CONTAINER" 2>&1 | grep -E '^(BOOTSTRAP_SNAPSHOT_URL|BOOTSTRAP_SIGNER|PRIMARY_NODE_URL|PRIMARY_NODE_URLS|RESYNC_FROM_SNAPSHOT|SNAPSHOT_TOKEN)=' || echo "(none of these keys present in the running container's env)"
+            echo "=== Contabo1: /root/deploy.sh verbatim (read-only, not executed) ==="
+            cat /root/deploy.sh 2>&1 || echo "(not found / not readable)"
+            echo "=== Contabo1: /api/status ==="
+            curl -s http://localhost:8080/api/status
+            echo ""
+            echo "=== Contabo1: container Start/Restart diagnosis ==="
+            docker inspect -f 'StartedAt={{.State.StartedAt}} RestartCount={{.RestartCount}} Status={{.State.Status}}' "$CONTAINER" 2>&1
+
+  contabo2:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Read-only resync-readiness check on Contabo2
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: 194.163.188.71
+          username: root
+          key: ${{ secrets.CONTABO2_SSH_KEY }}
+          port: 22
+          fingerprint: "SHA256:VIwj7Faxiga2n45HVHZEQFPxcbRKHgSgHoxAFsf2wto"
+          script_stop: true
+          timeout: 120s
+          command_timeout: 120s
+          script: |
+            set -uo pipefail
+            CONTAINER="$(docker ps --format '{{.Names}}' | grep -i aequitas | head -1)"
+            echo "=== Contabo2: relevant keys in /root/.aequitas.env ==="
+            grep -E '^(BOOTSTRAP_SNAPSHOT_URL|BOOTSTRAP_SIGNER|PRIMARY_NODE_URL|PRIMARY_NODE_URLS|RESYNC_FROM_SNAPSHOT|SNAPSHOT_TOKEN)=' /root/.aequitas.env 2>&1 || echo "(none of these keys present in the file)"
+            echo "=== Contabo2: same keys in the RUNNING container's actual env ==="
+            docker inspect -f '{{range .Config.Env}}{{println .}}{{end}}' "$CONTAINER" 2>&1 | grep -E '^(BOOTSTRAP_SNAPSHOT_URL|BOOTSTRAP_SIGNER|PRIMARY_NODE_URL|PRIMARY_NODE_URLS|RESYNC_FROM_SNAPSHOT|SNAPSHOT_TOKEN)=' || echo "(none of these keys present in the running container's env)"
+            echo "=== Contabo2: /api/status ==="
+            curl -s http://localhost:8080/api/status
+            echo ""
+            echo "=== Contabo2: container Start/Restart diagnosis ==="
+            docker inspect -f 'StartedAt={{.State.StartedAt}} RestartCount={{.RestartCount}} Status={{.State.Status}}' "$CONTAINER" 2>&1
