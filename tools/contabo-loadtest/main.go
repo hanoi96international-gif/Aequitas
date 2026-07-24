@@ -137,9 +137,53 @@ func (c *rpcClient) call(method string, params interface{}) (json.RawMessage, er
 	return rr.Result, nil
 }
 
+// nonceMaxAttempts / nonceRetryBackoff bound the retry loop in nonce below.
+//
+// FIX (2026-07-24 — this killed a whole run in its first second): nonce used
+// to call must(err) on the RPC result, i.e. panic on ANY error. The run phase
+// ramps every pair up at once and each one fetches its nonce first, so that
+// burst reliably trips the node's own per-IP RPC rate limiter
+// (rpcRateLimited/evm_rpc.go, "-32005: rate limited: too many requests, try
+// again shortly"). A single such response — a deliberately TRANSIENT,
+// retry-after-a-moment signal — took down the entire process:
+//
+//	=== fund phase done:   0 failed of 145 ===
+//	=== warmup phase done: 0 failed of 72 pairs ===
+//	=== PHASE run: 72 pairs, ramping over 5s, then 20s timed ===
+//	panic: rpc error -32005: rate limited: too many requests, try again shortly
+//	  main.(*rpcClient).nonce(...) main.go:142
+//
+// Funding and warmup had just proven the chain accepts transfers fine; the
+// measurement never started. The run-phase SENDS already got exactly this
+// treatment (see sendRetryBackoff and the run loop's own comment); the nonce
+// fetch that precedes them was simply missed.
+//
+// Retries are bounded rather than infinite so a genuinely down node still
+// fails fast and loudly instead of hanging the workflow until its timeout,
+// and the backoff grows so a rate limiter gets a real chance to drain rather
+// than being hammered at a fixed interval. A non-transient error (bad
+// address, malformed response) is not worth retrying, but distinguishing it
+// costs more than it saves here: the attempt cap already bounds the damage,
+// and the final error is reported verbatim.
+const (
+	nonceMaxAttempts  = 8
+	nonceRetryBackoff = 100 * time.Millisecond
+)
+
 func (c *rpcClient) nonce(addr string) uint64 {
-	res, err := c.call("eth_getTransactionCount", []string{addr, "latest"})
-	must(err)
+	var res json.RawMessage
+	var err error
+	for attempt := 1; attempt <= nonceMaxAttempts; attempt++ {
+		res, err = c.call("eth_getTransactionCount", []string{addr, "latest"})
+		if err == nil {
+			break
+		}
+		if attempt == nonceMaxAttempts {
+			fmt.Printf("nonce(%s): giving up after %d attempts, last error: %v\n", addr, nonceMaxAttempts, err)
+			must(err)
+		}
+		time.Sleep(time.Duration(attempt) * nonceRetryBackoff)
+	}
 	var hexStr string
 	must(json.Unmarshal(res, &hexStr))
 	var n uint64
