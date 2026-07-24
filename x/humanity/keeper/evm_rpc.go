@@ -8,6 +8,7 @@ import (
 	"math/big"
 	"net/http"
 	"os"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -51,7 +52,52 @@ type rpcRateLimitEntry struct {
 }
 
 const rpcRateLimitWindow = 10 * time.Second
-const rpcRateLimitMax = 200 // generous headroom for a busy dashboard polling several endpoints; still bounds worst-case newStateDB() reload spam per IP
+
+// rpcRateLimitMax is the per-IP request ceiling within rpcRateLimitWindow.
+// 200 (i.e. 20 requests/s) is generous headroom for a busy dashboard polling
+// several endpoints, while still bounding worst-case newStateDB() reload spam
+// per IP. That default is UNCHANGED and applies to every node that does not
+// explicitly opt out.
+//
+// Made overridable via AEQUITAS_RPC_RATE_LIMIT_MAX (2026-07-24) because it —
+// not the chain — became the binding constraint on throughput measurement.
+// The limiter is checked once per HTTP request, before the body is parsed, so
+// a JSON-RPC batch of maxBatchSize=100 transfers costs exactly one tick. That
+// puts a single source at 20 × 100 = 2,000 transfers/s, which is 25× short of
+// the 50,000 the chain is being tuned for (maxTxsPerBlock=50000 at
+// BLOCK_TIME=1s). No amount of load-generator work can get past it, since the
+// rejection happens before the request is even read.
+//
+// This is deliberately an ENV OVERRIDE rather than a raised default: the
+// limiter is real protection for a publicly-reachable /rpc endpoint, and
+// every operator who has not set the variable keeps exactly the behaviour
+// they have today. Raising it is the same class of explicit, per-box operator
+// decision as BLOCK_TIME or AEQUITAS_WAL_ENABLED — appropriate on a
+// load-test box, not something to inherit silently.
+//
+// Invalid or non-positive values fall back to the default rather than
+// disabling the limiter: a typo in an env var must never turn protection off.
+var rpcRateLimitMax = rpcRateLimitMaxFromEnv()
+
+const rpcRateLimitMaxDefault = 200
+
+func rpcRateLimitMaxFromEnv() int {
+	raw := strings.TrimSpace(os.Getenv("AEQUITAS_RPC_RATE_LIMIT_MAX"))
+	if raw == "" {
+		return rpcRateLimitMaxDefault
+	}
+	n, err := strconv.Atoi(raw)
+	if err != nil || n <= 0 {
+		fmt.Printf("[RPC] ⚠ AEQUITAS_RPC_RATE_LIMIT_MAX=%q is not a positive integer — keeping the default of %d requests per %s per IP\n",
+			raw, rpcRateLimitMaxDefault, rpcRateLimitWindow)
+		return rpcRateLimitMaxDefault
+	}
+	if n != rpcRateLimitMaxDefault {
+		fmt.Printf("[RPC] ⚠ Per-IP RPC rate limit raised to %d requests per %s (default %d) via AEQUITAS_RPC_RATE_LIMIT_MAX — this weakens a protection on a publicly reachable endpoint and is intended for a load-test box only\n",
+			n, rpcRateLimitWindow, rpcRateLimitMaxDefault)
+	}
+	return n
+}
 
 // rpcRateLimited reports whether ip has exceeded rpcRateLimitMax requests
 // within the current rpcRateLimitWindow, incrementing its counter either way.
