@@ -53,17 +53,7 @@ jobs:
           command_timeout: 60s
           debug: true
           script: |
-            set -euo pipefail
-            mkdir -p /root/contabo-loadtest
-            cd /root/contabo-loadtest
-            if [ -f accounts.csv ]; then
-              BACKUP="accounts.csv.bak.$(date +%s)"
-              mv accounts.csv "$BACKUP"
-              chmod 600 "$BACKUP"
-              echo "Existing accounts.csv backed up to $BACKUP -- if those accounts still hold funded balances, sweep them before discarding the backup."
-            else
-              echo "No existing accounts.csv, starting clean."
-            fi
+            echo hello-diagnostic
 
       - name: Copy loadtest tool source to Contabo2
         uses: appleboy/scp-action@v1.0.0
