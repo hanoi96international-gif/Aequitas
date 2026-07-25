@@ -7,6 +7,7 @@ import (
 	"math"
 	"os"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -865,9 +866,103 @@ func (cs *ChainState) FlushWALNow() {
 // before the node serves any traffic, so there is no concurrent caller to
 // coordinate with -- matches every other startup-time recovery path in
 // this codebase (e.g. RecoverFromEscrow's own callers).
+// walRecoveryFloorKey is the chain_config key holding the highest WAL
+// sequence number that must NEVER be replayed again, because the account
+// state it would apply to was replaced wholesale after that record was
+// written — see markWALSupersededByStateReplacement.
+const walRecoveryFloorKey = "wal_recovery_floor_seq"
+
+// markWALSupersededByStateReplacement records the WAL's current head sequence
+// as a permanent recovery floor. Call it from EVERY path that replaces
+// chain_accounts wholesale (snapshot import, authoritative resync).
+//
+// FIX (P0, 2026-07-25 night — live state corruption on Contabo2, the one node
+// running the WAL fast path): recoverFromWAL's idempotency test is per
+// account, `acc.WALSeq >= record.Seq`, seeded from chain_accounts.wal_seq. A
+// snapshot resync REPLACES chain_accounts — and AccountState.WALSeq is
+// `json:"-"`, so the snapshot cannot carry it. Every account therefore came
+// back with wal_seq = 0 while the WAL file (on a host volume, deliberately
+// surviving container recreation) still held the full history. The next boot
+// found nothing "already reflected" and re-applied ALL of it on top of the
+// fresh, correct snapshot state. Confirmed live, verbatim from the boot log:
+//
+//	[WAL] Read 153429 record(s): 0 already reflected in Postgres (skipped,
+//	      idempotent), 153429 reapplied to in-memory state
+//
+// Measured damage on that node: 294 of 315 accounts diverged from the other
+// two validators, 74 of them driven NEGATIVE, while the total supply stayed
+// exactly conserved (13408.384238 on every node) — the signature of transfers
+// applied twice rather than of lost or invented funds. That divergence showed
+// up as a permanent StateRoot mismatch (account_set_xor was the ONLY differing
+// component) and kept the node from producing blocks at all.
+//
+// A per-account marker cannot survive the table being replaced, so the floor
+// lives in chain_config, which the snapshot import does not clear. Records at
+// or below it are superseded by definition: the snapshot is the newer, signed,
+// authoritative truth for every account they touch.
+//
+// Deliberately runs even when the WAL is DISABLED on this node: the file
+// outlives the flag, so a resync performed with the flag off must still fence
+// off the history a later re-enable would otherwise replay.
+func (cs *ChainState) markWALSupersededByStateReplacement() {
+	if cs.db == nil {
+		return
+	}
+	head := uint64(0)
+	if cs.wal != nil {
+		head = cs.wal.HeadSeq()
+	} else {
+		// WAL not open in this process (disabled, or a boot-time resync that
+		// runs before initWALIfEnabled): read the head straight off the file,
+		// so the floor still covers everything already written to it.
+		path := os.Getenv("AEQUITAS_WAL_PATH")
+		if path == "" {
+			path = "aequitas_transfers.wal"
+		}
+		if _, err := os.Stat(path); err != nil {
+			return // no WAL file at all — nothing to fence off
+		}
+		if _, _, err := wal.ReplayFile(path, func(entry wal.Entry) error {
+			if entry.Seq > head {
+				head = entry.Seq
+			}
+			return nil
+		}); err != nil {
+			fmt.Printf("[WAL] ⚠ could not read %s to record a recovery floor after state replacement: %v — a later WAL recovery may re-apply superseded records\n", path, err)
+			return
+		}
+	}
+	if head == 0 {
+		return
+	}
+	if err := cs.setConfigValueDB(walRecoveryFloorKey, strconv.FormatUint(head, 10)); err != nil {
+		fmt.Printf("[WAL] ⚠ could not persist recovery floor %d: %v\n", head, err)
+		return
+	}
+	fmt.Printf("[WAL] ✓ Recovery floor set to seq %d — account state was just replaced wholesale, so every WAL record up to that point is superseded and will never be replayed again\n", head)
+}
+
+// walRecoveryFloor reads the floor recorded by
+// markWALSupersededByStateReplacement (0 if never set).
+func (cs *ChainState) walRecoveryFloor() uint64 {
+	v := cs.getConfigValueDB(walRecoveryFloorKey)
+	if v == "" {
+		return 0
+	}
+	n, err := strconv.ParseUint(strings.TrimSpace(v), 10, 64)
+	if err != nil {
+		return 0
+	}
+	return n
+}
+
 func (cs *ChainState) recoverFromWAL(path string) error {
 	cs.mu.Lock()
 	defer cs.mu.Unlock()
+
+	// Records at or below the floor were superseded by a wholesale state
+	// replacement — see markWALSupersededByStateReplacement for the incident.
+	floor := cs.walRecoveryFloor()
 
 	seeded := make(map[string]bool)
 	seedWALSeq := func(acc *AccountState) {
@@ -904,7 +999,15 @@ func (cs *ChainState) recoverFromWAL(path string) error {
 	}
 
 	reappliedCount := 0
+	supersededCount := 0
 	readCount, truncated, err := wal.ReplayFile(path, func(entry wal.Entry) error {
+		if entry.Seq <= floor {
+			// Superseded by a wholesale state replacement — the per-account
+			// WALSeq test below cannot recognize this, because the resync
+			// replaced the very table it reads that marker from.
+			supersededCount++
+			return nil
+		}
 		var rec walTransferRecord
 		if jsonErr := json.Unmarshal(entry.Payload, &rec); jsonErr != nil {
 			return fmt.Errorf("decode WAL record seq %d: %w", entry.Seq, jsonErr)
@@ -950,8 +1053,8 @@ func (cs *ChainState) recoverFromWAL(path string) error {
 		return fmt.Errorf("WAL replay failed: %w", err)
 	}
 	if readCount > 0 {
-		fmt.Printf("[WAL] Read %d record(s) from %s: %d already reflected in Postgres (skipped, idempotent), %d reapplied to in-memory state and queued for reconciliation (tail-truncated=%v means the process crashed mid-append on the last record, which is expected and already handled)\n",
-			readCount, path, readCount-reappliedCount, reappliedCount, truncated)
+		fmt.Printf("[WAL] Read %d record(s) from %s: %d superseded by a state replacement (below recovery floor %d), %d already reflected in Postgres (skipped, idempotent), %d reapplied to in-memory state and queued for reconciliation (tail-truncated=%v means the process crashed mid-append on the last record, which is expected and already handled)\n",
+			readCount, path, supersededCount, floor, readCount-supersededCount-reappliedCount, reappliedCount, truncated)
 	}
 	return nil
 }

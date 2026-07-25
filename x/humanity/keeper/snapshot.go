@@ -477,6 +477,12 @@ func (cs *ChainState) ImportSnapshotFromURL(peerURL, expectedSignerHex string) e
 	// accountSetXOR/nullifierSetXOR must be reseeded from the full tables before
 	// the next StateRoot is computed. Still under cs.mu.
 	cs.rebuildStateAccumulators()
+	// Every WAL record written before this import is now superseded: the
+	// snapshot just replaced the account state those records would apply to,
+	// and chain_accounts.wal_seq (recoverFromWAL's idempotency marker) was
+	// replaced along with it. See markWALSupersededByStateReplacement for the
+	// live corruption this prevents.
+	cs.markWALSupersededByStateReplacement()
 	cs.mu.Unlock()
 
 	// FIX (audit 2026-06-28 recheck 5, P1-3): this used to only log the
@@ -770,6 +776,12 @@ func (cs *ChainState) ResyncFromSnapshotURL(peerURL, expectedSignerHex string) e
 	// makes a resynced node's root match the healthy peer it copied — the whole
 	// point of the resync. Still under cs.mu.
 	cs.rebuildStateAccumulators()
+	// THE resync path this fix exists for — see
+	// markWALSupersededByStateReplacement: without this, the next boot
+	// re-applied the entire WAL history on top of the freshly resynced state
+	// (confirmed live on Contabo2: 153,429 records, 74 accounts driven
+	// negative, permanent StateRoot divergence).
+	cs.markWALSupersededByStateReplacement()
 	cs.mu.Unlock()
 
 	// FIX (audit recheck3, P0 #1): used to only log this and return success

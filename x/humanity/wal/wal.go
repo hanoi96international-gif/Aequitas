@@ -247,6 +247,20 @@ func (w *WAL) writeBatch(batch []*appendRequest) {
 	}
 }
 
+// HeadSeq returns the highest sequence number this WAL has assigned so far
+// (0 on a brand-new, empty log). Used by the keeper to record a recovery
+// FLOOR when the account state this WAL reconciles into is replaced wholesale
+// from a trusted snapshot — see ChainState.markWALSupersededByStateReplacement
+// for the live corruption incident that made this necessary.
+func (w *WAL) HeadSeq() uint64 {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	if w.nextSeq == 0 {
+		return 0
+	}
+	return w.nextSeq - 1
+}
+
 // Close stops accepting new Append calls, waits for any in-flight batch to
 // finish, and closes the underlying file. Safe to call once; a second call
 // returns an error rather than panicking on a double-close.
