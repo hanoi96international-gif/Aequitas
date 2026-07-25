@@ -51,6 +51,14 @@ on:
         description: "Wei per load-test transfer during warmup/run"
         required: false
         default: "10000000000000"
+      batch_size:
+        description: "Transfers per JSON-RPC batch (1..100). Lower it if the node cannot answer a full batch inside http_timeout."
+        required: false
+        default: "100"
+      http_timeout:
+        description: "Per-request HTTP timeout. Must exceed how long the node needs for one batch, but stay well under duration."
+        required: false
+        default: "30s"
 
 jobs:
   run:
@@ -81,7 +89,7 @@ jobs:
           script_stop: true
           timeout: 900s
           command_timeout: 900s
-          envs: PHASE,NUM_SEEDS,DURATION,RAMP,FUND_WEI,TRANSFER_WEI
+          envs: PHASE,NUM_SEEDS,DURATION,RAMP,FUND_WEI,TRANSFER_WEI,BATCH_SIZE,HTTP_TIMEOUT
           script: |
             set -euo pipefail
             cd /root/contabo-loadtest
@@ -163,7 +171,9 @@ jobs:
                 -duration "$DURATION" \
                 -ramp "$RAMP" \
                 -fund-amount-wei "$FUND_WEI" \
-                -transfer-amount-wei "$TRANSFER_WEI"
+                -transfer-amount-wei "$TRANSFER_WEI" \
+                -batch-size "$BATCH_SIZE" \
+                -http-timeout "$HTTP_TIMEOUT"
 
             echo ""
             echo "=== /api/status after the run ==="
@@ -200,3 +210,5 @@ jobs:
           RAMP: ${{ inputs.ramp }}
           FUND_WEI: ${{ inputs.fund_amount_wei }}
           TRANSFER_WEI: ${{ inputs.transfer_amount_wei }}
+          BATCH_SIZE: ${{ inputs.batch_size }}
+          HTTP_TIMEOUT: ${{ inputs.http_timeout }}
