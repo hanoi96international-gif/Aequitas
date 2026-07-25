@@ -170,24 +170,46 @@ const (
 	nonceRetryBackoff = 100 * time.Millisecond
 )
 
+// tryNonce reads addr's next expected nonce without ever aborting the process.
+//
+// This is what the RUN phase needs. nonce() below calls must() when it finally
+// gives up, which is right for setup (a node that cannot answer at all should
+// fail the workflow loudly) and catastrophic inside the timed loop, where 72
+// goroutines are mid-measurement and a panic takes the whole run with it.
+//
+// eth_getTransactionCount returns s.nonces[addr] — the very same in-memory
+// counter sendRawTransaction compares against (evm_rpc.go: storedNonce). So
+// this reads exactly what the node will expect next, with no pending-vs-latest
+// discrepancy to reason about, which is what makes a mid-run resync sound.
+func (c *rpcClient) tryNonce(addr string) (uint64, bool) {
+	res, err := c.call("eth_getTransactionCount", []string{addr, "latest"})
+	if err != nil {
+		return 0, false
+	}
+	var hexStr string
+	if err := json.Unmarshal(res, &hexStr); err != nil {
+		return 0, false
+	}
+	var n uint64
+	if _, err := fmt.Sscanf(strings.TrimPrefix(hexStr, "0x"), "%x", &n); err != nil {
+		return 0, false
+	}
+	return n, true
+}
+
 func (c *rpcClient) nonce(addr string) uint64 {
-	var res json.RawMessage
-	var err error
+	var n uint64
+	var ok bool
 	for attempt := 1; attempt <= nonceMaxAttempts; attempt++ {
-		res, err = c.call("eth_getTransactionCount", []string{addr, "latest"})
-		if err == nil {
-			break
+		if n, ok = c.tryNonce(addr); ok {
+			return n
 		}
 		if attempt == nonceMaxAttempts {
-			fmt.Printf("nonce(%s): giving up after %d attempts, last error: %v\n", addr, nonceMaxAttempts, err)
-			must(err)
+			fmt.Printf("nonce(%s): giving up after %d attempts\n", addr, nonceMaxAttempts)
+			must(fmt.Errorf("could not read nonce for %s after %d attempts", addr, nonceMaxAttempts))
 		}
 		time.Sleep(time.Duration(attempt) * nonceRetryBackoff)
 	}
-	var hexStr string
-	must(json.Unmarshal(res, &hexStr))
-	var n uint64
-	fmt.Sscanf(strings.TrimPrefix(hexStr, "0x"), "%x", &n)
 	return n
 }
 
@@ -477,7 +499,30 @@ func main() {
 	transferAmount := flag.String("transfer-amount-wei", "10000000000000", "wei per load-test transfer (default 0.00001 AEQ)")
 	runDuration := flag.Duration("duration", 20*time.Second, "timed load phase duration")
 	rampSeconds := flag.Int("ramp", 5, "seconds to ramp concurrency up over")
+	// Both of these were fixed constants until the 2026-07-25 run showed the
+	// working point has to be FOUND, not assumed: 288 requests exceeded the
+	// 10s client timeout, meaning the node needed longer than that to answer a
+	// 100-transfer batch. Whether the fix is more patience or smaller batches
+	// is an empirical question, and it cannot be asked without turning both
+	// into inputs. Defaults keep the batch size exactly as before.
+	httpTimeout := flag.Duration("http-timeout", 30*time.Second, "per-request HTTP timeout; must exceed how long the node takes to answer one batch, but stay well under -duration so a stuck sender still recovers within the run")
+	batchSizeFlag := flag.Int("batch-size", batchSize, "transfers per JSON-RPC batch (clamped to 1..100; the node rejects anything above its own maxBatchSize=100)")
 	flag.Parse()
+
+	// Clamp rather than reject: the node refuses a batch above maxBatchSize=100
+	// outright, and a run that dies on argument validation after the operator
+	// waited for a deploy window is a worse outcome than one that quietly uses
+	// the largest legal value and says so.
+	effBatchSize := *batchSizeFlag
+	if effBatchSize < 1 {
+		effBatchSize = 1
+	}
+	if effBatchSize > batchSize {
+		effBatchSize = batchSize
+	}
+	if effBatchSize != *batchSizeFlag {
+		fmt.Printf("batch-size %d out of range — using %d\n", *batchSizeFlag, effBatchSize)
+	}
 
 	accs := loadAccounts(*csvPath)
 	if len(accs) <= *numSeeds {
@@ -489,7 +534,7 @@ func main() {
 	senders := testAccs[:numPairs]
 	recipients := testAccs[numPairs : 2*numPairs]
 
-	client := &rpcClient{url: *rpcURL, hc: &http.Client{Timeout: 10 * time.Second}}
+	client := &rpcClient{url: *rpcURL, hc: &http.Client{Timeout: *httpTimeout}}
 	fundWei, ok := new(big.Int).SetString(*fundAmount, 10)
 	if !ok {
 		panic("bad fund-amount-wei")
@@ -537,8 +582,8 @@ func main() {
 		funded := 0
 		for si, targets := range perSeed {
 			seed := seeds[si]
-			for off := 0; off < len(targets); off += batchSize {
-				end := off + batchSize
+			for off := 0; off < len(targets); off += effBatchSize {
+				end := off + effBatchSize
 				if end > len(targets) {
 					end = len(targets)
 				}
@@ -636,7 +681,7 @@ func main() {
 				// pair's batches goes to the same recipient, and reallocating
 				// a batchSize slice inside the hot loop would add allocation
 				// pressure to the very process whose throughput is measured.
-				batchTargets := make([]string, batchSize)
+				batchTargets := make([]string, effBatchSize)
 				for i := range batchTargets {
 					batchTargets[i] = to.address
 				}
@@ -656,8 +701,50 @@ func main() {
 					accepted, err := client.sendValueBatch(from, batchTargets, transferWei)
 					atomic.AddInt64(&succeeded, int64(accepted))
 					if err != nil {
-						atomic.AddInt64(&failed, int64(batchSize-accepted))
+						atomic.AddInt64(&failed, int64(effBatchSize-accepted))
 						recordErr(err)
+						// FIX (2026-07-25): re-read this sender's nonce from
+						// the node before retrying. sendValueBatch's own
+						// comment already named this failure mode -- "never
+						// advance past a nonce the node did not take, or this
+						// account desyncs for the rest of the run with nothing
+						// to re-sync it" -- but the guard is one-directional:
+						// it prevents advancing too FAR and has no answer for
+						// advancing too LITTLE. This is that answer.
+						//
+						// Measured, run of 2026-07-25 06:30 (valid: the node
+						// did not restart): succeeded 0, failed 122900, and in
+						// every one of the 63 distinct causes `expected` was
+						// exactly tx+100 -- one batchSize:
+						//
+						//     288  context deadline exceeded (10s client timeout)
+						//     264  nonce too low: tx=11 expected=111
+						//     139  nonce too low: tx=12 expected=112
+						//     101  nonce too low: tx=14 expected=114
+						//
+						// The batch reached the node and was applied in full;
+						// the RESPONSE missed the client's 10s timeout, so
+						// hc.Do returned an error and sendValueBatch returned
+						// (0, err) before `from.nonce += accepted` could run.
+						// From then on that sender was permanently 100 behind,
+						// and since the node requires exact equality (too high
+						// is refused as well as too low) nothing could ever
+						// bring it back. 288 timeouts each killed a sender for
+						// good; by the end all 72 were dead, which is why the
+						// run scored exactly zero.
+						//
+						// A timeout leaves the outcome genuinely unknown to
+						// the client, so guessing either way is wrong -- ask
+						// the node instead. tryNonce reads the same counter
+						// sendRawTransaction checks, so the answer is
+						// authoritative. If the node is still mid-apply the
+						// read may briefly return the pre-batch value; the
+						// next failure simply re-syncs again, so it converges
+						// instead of latching. Failure to read is left alone
+						// rather than guessed at.
+						if n, ok := client.tryNonce(from.address); ok {
+							from.nonce = n
+						}
 						// Back off before retrying. Without this, a persistently
 						// failing pair spins this loop as fast as the RPC can
 						// reject, which (a) inflates the failure count into a
