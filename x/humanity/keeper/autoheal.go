@@ -58,8 +58,35 @@ const (
 	// successful) catch-up ever had a chance to finish, which is exactly
 	// the restart-loop risk this comment warned about at the time. Back to
 	// 30 minutes now that the actual gap in the sync path is fixed.
-	autoHealCooldown      = 30 * time.Minute
-	autoHealCheckInterval = 60 * time.Second
+	autoHealCooldown = 30 * time.Minute
+	// autoHealFailedResyncRetry is the cooldown that applies instead when the
+	// PREVIOUS resync provably did not reattach this node — see
+	// triggerAutoResync for the test (not one peer block merged since it ran).
+	//
+	// FIX (P0, 2026-07-25 — "es merged gar nix, wir drehen uns im Kreis"):
+	// autoHealCooldown's rationale is protecting a legitimately slow but
+	// EVENTUALLY SUCCESSFUL catch-up from being yanked into a fresh resync. A
+	// node that has merged nothing at all since its last resync is the exact
+	// opposite of that case, and the 30 minutes then buy nothing but 30 minutes
+	// of guaranteed downtime. Both secondaries spent the day in this loop, and
+	// the logs show it verbatim — Contabo2 printed
+	//
+	//   [AUTO-HEAL] ⏸ Divergence detected and actionable, but SUPPRESSED by the
+	//   30m0s cooldown for another 22m15s ... this node is on an isolated fork
+	//
+	// once a minute at ascending heights from 1852371 to 1853751, roughly 26
+	// minutes of confirmed, actionable, settled fork with healing switched off,
+	// before finally resyncing at 17:54. Contabo1 was 11 minutes into its own
+	// suppression window at the same moment, having attached 0 of 5092 received
+	// blocks. That is the whole "nothing merges" symptom.
+	//
+	// Three minutes, not zero: a resync takes seconds and reattachment follows
+	// within a block time or two, so this is still far longer than a successful
+	// heal needs, and the resync path itself remains serialised by
+	// resyncInProgress. It cannot become a storm — it can only stop the node
+	// sitting broken for half an hour at a time.
+	autoHealFailedResyncRetry = 3 * time.Minute
+	autoHealCheckInterval     = 60 * time.Second
 
 	// chainDivergenceCheckInterval paces the active primary-comparison check.
 	//
@@ -216,10 +243,38 @@ func (cs *ChainState) ClearAutoResyncRequest() {
 // path only if the in-process attempt can't even be attempted (config
 // missing) or itself fails, so a broken in-process path never leaves the
 // node stuck worse off than before this change.
+// effectiveAutoHealCooldown picks which cooldown applies to this trigger, and
+// reports whether the shortened one was chosen.
+//
+// The test is deliberately a fact about this node rather than a judgement about
+// the reason string: lastSuccessfulPeerSyncAt is the timestamp of the last
+// block genuinely MERGED from any peer (distinct from lastPeerContactAt, which
+// mere arrival updates). If it has not moved since the last resync ran, then
+// that resync did not reattach this node to the chain — nothing has come in
+// since, however many blocks arrived and orphaned. Repeating it is the only
+// remaining move, and the full 30 minutes is pure downtime.
+//
+// If it HAS moved, the node is merging peer blocks and this really might be the
+// slow-but-successful catch-up autoHealCooldown exists to protect. Full
+// cooldown, unchanged.
+//
+// lastAt == 0 (never resynced) needs neither: the caller's own guard skips the
+// cooldown entirely.
+func (dag *BlockDAG) effectiveAutoHealCooldown(lastAt int64) (time.Duration, bool) {
+	if lastAt <= 0 {
+		return autoHealCooldown, false
+	}
+	if dag.lastSuccessfulPeerSyncAt.Load() > lastAt {
+		return autoHealCooldown, false
+	}
+	return autoHealFailedResyncRetry, true
+}
+
 func (dag *BlockDAG) triggerAutoResync(reason string) {
 	var lastAt int64
 	fmt.Sscan(dag.state.getConfigValueDB(autoResyncLastAtKey), &lastAt)
-	if lastAt > 0 && time.Now().Unix()-lastAt < int64(autoHealCooldown.Seconds()) {
+	cooldown, lastResyncFailed := dag.effectiveAutoHealCooldown(lastAt)
+	if lastAt > 0 && time.Now().Unix()-lastAt < int64(cooldown.Seconds()) {
 		// FIX (observability, 2026-07-24 — cost a full diagnosis round on
 		// Contabo1 tonight): this used to be a bare `return`. A node in a
 		// CONFIRMED, actionable divergence state that is merely being held
@@ -238,11 +293,18 @@ func (dag *BlockDAG) triggerAutoResync(reason string) {
 		nowNano := time.Now().UnixNano()
 		last := dag.lastAutoResyncSuppressedLogAt.Load()
 		if nowNano-last > int64(time.Minute) && dag.lastAutoResyncSuppressedLogAt.CompareAndSwap(last, nowNano) {
-			remaining := time.Duration(int64(autoHealCooldown.Seconds())-(time.Now().Unix()-lastAt)) * time.Second
-			fmt.Printf("[AUTO-HEAL] ⏸ Divergence detected and actionable, but SUPPRESSED by the %s cooldown for another %s (last auto-resync at unix %d): %s\n",
-				autoHealCooldown, remaining.Round(time.Second), lastAt, reason)
+			remaining := time.Duration(int64(cooldown.Seconds())-(time.Now().Unix()-lastAt)) * time.Second
+			note := ""
+			if lastResyncFailed {
+				note = " [shortened: the last resync merged nothing]"
+			}
+			fmt.Printf("[AUTO-HEAL] ⏸ Divergence detected and actionable, but SUPPRESSED by the %s cooldown for another %s%s (last auto-resync at unix %d): %s\n",
+				cooldown, remaining.Round(time.Second), note, lastAt, reason)
 		}
 		return
+	}
+	if lastResyncFailed {
+		fmt.Printf("[AUTO-HEAL] The resync at unix %d merged no peer block at all — not waiting out the full %s cooldown.\n", lastAt, autoHealCooldown)
 	}
 	fmt.Printf("[AUTO-HEAL] ⚠ %s\n", reason)
 	_ = dag.state.setConfigValueDB(autoResyncLastAtKey, fmt.Sprintf("%d", time.Now().Unix()))

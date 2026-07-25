@@ -3,6 +3,13 @@ name: Deploy to Contabo VPS
 on:
   push:
     branches: [master, main]
+    # A deploy rebuilds the image and restarts the node. Nothing under
+    # .github/ or in a Markdown file can change the binary, so a push that
+    # touches only those must not take the chain down for a rebuild — which
+    # it did, every time a diagnostic workflow was added during an incident.
+    paths-ignore:
+      - '.github/**'
+      - '**.md'
 
 jobs:
   # FIX (Monster Audit 2026-07-12, P1): deploy used to run straight off a

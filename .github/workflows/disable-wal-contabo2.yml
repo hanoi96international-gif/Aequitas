@@ -49,6 +49,13 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Remove WAL / multi-block-tick vars and restart Contabo2
+        # `envs:` only forwards names that this step's own `env:` block
+        # defines. Without it CONFIRM arrived unset, the guard below took the
+        # "confirm != true" branch and the step exited 0 — a green run that
+        # changed nothing, which is exactly what happened on 2026-07-25 and
+        # is why the node was still running with WAL enabled afterwards.
+        env:
+          CONFIRM: ${{ inputs.confirm }}
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: 194.163.188.71
