@@ -120,6 +120,38 @@ hatte die Divergenz bereits nicht dauerhaft beseitigt.
 
 ## E. Hauptverdacht: `last_ubi_at` — begründet, aber noch nicht bewiesen
 
+> **KORREKTUR (nachträglich, am Code verifiziert): der Schluss in diesem
+> Abschnitt trägt nicht.** Die übereinstimmenden Aggregate schließen
+> `accountSetXOR` *nicht* aus, weil keines der beiden Aggregate eine
+> Balance-Divergenz überhaupt sehen kann:
+>
+> | Aggregat | Berechnung | erkennt Balance-Divergenz? |
+> |---|---|---|
+> | `total_supply` | `humanCountLocked() * 1000.0` (state.go, `TotalSupply`) | **nein** — fasst Balances nie an |
+> | `gini` | über `humanAEQWealthLocked` → `effectiveBalance(acc)` | **nein** — rechnet Demurrage beim Lesen drauf |
+> | `accountLeaf` → StateRoot | `acc.Balance.Micro()` **roh** | — |
+>
+> `total_supply` ist per Protokolldesign `Menschen × 1000` und wird bewusst
+> *nicht* aus Kontoständen summiert (der Kommentar dort sagt das explizit:
+> Float-Drift aus Demurrage würde die Summe abweichen lassen). Die Übereinstimmung
+> beweist also nur, dass alle drei Nodes 14 Menschen zählen.
+>
+> Gini vergleicht *effektive* Kontostände, der StateRoot hasht den
+> *gespeicherten*. Zwei Konten mit identischem Effektivwert, aber unterschiedlich
+> weit abgerechneter Demurrage, liefern damit gleiches Gini und verschiedene
+> Leaves — exakt das beobachtete Bild.
+>
+> Folge: **die Messung aus Abschnitt G darf nicht übersprungen werden**, und
+> `accountSetXOR` bleibt gleichrangiger Verdächtiger neben `last_ubi_at`.
+> Der `chain_accounts`-Vergleich ist die einzige Abfrage in G, die diese
+> Komponente überhaupt prüft.
+>
+> Eine naheliegende Anschlussvermutung — der WAL-Fastpath lasse rohe Balances
+> unbereinigt stehen — ist geprüft und **falsch**: `transferConcurrentWAL`
+> steigt aus (`return 0, 0, false, nil`) sobald
+> `effectiveBalance(acc) != acc.Balance`, fällt also auf den langsamen Pfad
+> zurück, statt auf unbeglichenen Konten zu arbeiten.
+
 Entscheidendes Indiz: **alle wirtschaftlichen Aggregate stimmen exakt überein**,
 auf allen drei Nodes:
 
