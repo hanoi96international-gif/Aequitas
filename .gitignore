@@ -48,3 +48,10 @@ build/msyh_extracted.ttf
 /trading-agents/**/__pycache__
 /trading-agents/reports/*.md
 /trading-agents/reports/*.json
+
+# content-agency: Python cache, generated drafts/outreach, and the local order tracker
+/content-agency/__pycache__
+/content-agency/**/__pycache__
+/content-agency/outbox/*.md
+/content-agency/outbox/*.json
+/content-agency/orders.json
