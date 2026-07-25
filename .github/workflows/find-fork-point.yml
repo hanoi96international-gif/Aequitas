@@ -1,79 +1,234 @@
-name: Find fork point between Contabos and primary (manual, read-only)
+name: Find fork point + blue score across all three nodes (manual, read-only)
 
-# Both Contabos are stuck at the identical tip (height 1763592, hash
-# 95d8eeb6...) while every block from the primary queues as an orphan with
-# a missing parent -- a structural fork, not a hang (goroutine dump
-# 2026-07-24 16:44 showed all loops idle-ticking, nothing blocked). This
-# workflow needs NO SSH and mutates nothing: both /api/blocks endpoints
-# are public, so the runner itself fetches height->hash maps from one
-# Contabo and from the primary over a configurable window and prints the
-# first height where the two chains disagree, plus context around it.
+# Rewritten 2026-07-25 for the "es merged gar nix, der Blue Score passt nicht"
+# incident. The previous version compared /api/blocks (the raw in-memory DAG
+# window, every sibling at a height) between exactly two nodes over a
+# hardcoded window. That cannot answer the current question:
+#
+#   - /api/blocks returns siblings, so two nodes can show different hashes at
+#     the same height while their canonical chains already agree. The explorer
+#     had exactly this bug (see handleCanonicalBlocks' comment in api.go, and
+#     the ~23,000-point blue_score gap it produced on 2026-07-04).
+#   - Comparing StateRoots at each node's OWN tip is equally useless: the tips
+#     sit at different heights by construction, so neither a match nor a
+#     mismatch there means anything.
+#
+# The only comparison that settles it is the SAME height on all three nodes,
+# read through /api/block?height=N -> GetBlockByHeight ->
+# canonicalBlockAtHeightLocked: the selected-parent walk the autoheal
+# divergence check itself trusts. That is what this workflow does, and it
+# samples blue_score alongside the hash at several depths, because "blue score
+# passt nicht" has two very different causes:
+#
+#   differs at the TIP only        -> normal DAG spread, each node holds a
+#                                     different subset of the newest siblings
+#   differs at tip-500 / tip-5000  -> a real fork of the selected-parent chain
+#
+# It also measures liveness directly (two height samples 25s apart — "Contabo 1
+# hängt" is a testable claim) and checks whether each node's tip hash is known
+# to the other two at all, which is the direct test of "nothing merges".
+#
+# Runs on the GitHub runner over the public HTTP endpoints — no SSH for the
+# comparison itself, so it works against all three nodes including the primary
+# on Railway. A second job pulls Contabo2's log evidence over SSH.
+#
+# Strictly read-only: GETs and docker logs. No writes, no restarts.
 on:
   workflow_dispatch:
     inputs:
-      secondary_url:
-        description: "Base URL of the secondary to compare against the primary (2026-07-25: parametrized -- was hardcoded to Contabo2)"
+      binary_search_from:
+        description: "Optional: if the depth sweep shows a fork, bisect between this height and the lowest tip to find the exact first divergent height (0 = skip)"
         required: false
-        default: "http://194.163.188.71:8080"
-      start_height:
-        description: "First height to compare"
-        required: false
-        default: "1762400"
-      end_height:
-        description: "Last height to compare"
-        required: false
-        default: "1763900"
+        default: "0"
 
 jobs:
   compare:
     runs-on: ubuntu-latest
     steps:
-      - name: Fetch height->hash maps from the secondary and primary, diff them
+      - name: Compare canonical chain, blue score and liveness across all three nodes
         env:
-          SECONDARY: ${{ inputs.secondary_url }}
-          START: ${{ inputs.start_height }}
-          END: ${{ inputs.end_height }}
+          BISECT_FROM: ${{ inputs.binary_search_from }}
         run: |
           set -uo pipefail
-          fetch_side () { # $1=base-url $2=outfile
-            : > "$2"
-            h=$START
-            while [ "$h" -le "$END" ]; do
-              resp="$(curl -s --max-time 30 "$1/api/blocks?min_height=${h}&limit=500")" || true
-              count="$(echo "$resp" | jq 'length' 2>/dev/null || echo 0)"
-              if [ -z "$count" ] || [ "$count" = "0" ] || [ "$count" = "null" ]; then
-                echo "(no blocks returned from $1 at min_height=$h)"
-                break
-              fi
-              echo "$resp" | jq -r --argjson end "$END" \
-                '.[] | select(.height <= $end) | "\(.height) \(.hash)"' >> "$2"
-              maxh="$(echo "$resp" | jq '[.[].height] | max')"
-              [ "$maxh" -le "$h" ] && break
-              h=$((maxh + 1))
-            done
-            sort -n -u -o "$2" "$2"
-            echo "fetched $(wc -l < "$2") height/hash rows from $1"
-          }
-          fetch_side "$SECONDARY"            secondary.txt
-          fetch_side "https://aequitas.digital" primary.txt
 
+          PRIMARY="https://aequitas.digital"
+          C1="http://173.249.37.118:8080"
+          C2="http://194.163.188.71:8080"
+          url_of () { case "$1" in primary) echo "$PRIMARY";; c1) echo "$C1";; c2) echo "$C2";; esac; }
+
+          echo "=== UTC ==="; date -u; echo ""
+
+          # ---------- 1. liveness ----------
+          echo "=== 1. LIVENESS — does each node's height actually advance? ==="
+          for n in primary c1 c2; do
+            s="$(curl -sS --max-time 20 "$(url_of $n)/api/status" 2>/dev/null)"
+            echo "$s" > "status_$n.json"
+            echo "$s" | jq -r '.height' 2>/dev/null > "h1_$n" || echo "" > "h1_$n"
+          done
+          sleep 25
+          for n in primary c1 c2; do
+            curl -sS --max-time 20 "$(url_of $n)/api/status" 2>/dev/null \
+              | jq -r '.height' 2>/dev/null > "h2_$n" || echo "" > "h2_$n"
+          done
+          printf "%-9s %-12s %-12s %-9s %-9s %s\n" node h_t0 h_t25 delta uptime commit
+          for n in primary c1 c2; do
+            a="$(cat h1_$n)"; b="$(cat h2_$n)"
+            up="$(jq -r '.uptime // "?"' "status_$n.json" 2>/dev/null)"
+            gc="$(jq -r '.git_commit // "?"' "status_$n.json" 2>/dev/null)"
+            d="?"
+            case "$a$b" in *[!0-9]*|"") ;; *) d=$((b - a));; esac
+            printf "%-9s %-12s %-12s %-9s %-9s %s\n" "$n" "${a:-DOWN}" "${b:-DOWN}" "$d" "$up" "$gc"
+          done
           echo ""
-          echo "=== First disagreement (fork point) ==="
-          # A height can legitimately appear on only one side (one chain is
-          # ahead), so compare only heights present on BOTH sides; report
-          # separately where one side simply ends.
-          join secondary.txt primary.txt -o 1.1,1.2,2.2 2>/dev/null | awk '
-            $2 != $3 && !found { print "FORK at height " $1; print "  secondary: " $2; print "  primary:   " $3; found=1; forkh=$1 }
-            $2 == $3 { lastagree=$1 }
-            END {
-              if (!found) print "No disagreement on any shared height in the window."
-              print "Last height both sides agree on (within window): " (lastagree ? lastagree : "none")
-            }'
+          echo "  At BLOCK_TIME=1s a healthy node moves ~25 in 25s. delta 0 = hung."
           echo ""
-          echo "=== Secondary ($SECONDARY) rows around its own tail ==="
-          tail -5 secondary.txt
-          echo "=== Primary rows around the same heights ==="
-          tail -5 primary.txt
+
+          # ---------- 2. same-height canonical comparison ----------
+          MIN=""
+          for n in primary c1 c2; do
+            a="$(cat h1_$n)"
+            case "$a" in ''|*[!0-9]*) continue;; esac
+            if [ -z "$MIN" ] || [ "$a" -lt "$MIN" ]; then MIN="$a"; fi
+          done
+          [ -n "$MIN" ] || { echo "no node reachable — aborting"; exit 1; }
+
+          # canon <node> <height> -> "hash proposer blue_score state_root" or "-"
+          canon () {
+            curl -sS --max-time 25 "$(url_of $1)/api/block?height=$2" 2>/dev/null \
+              | jq -r '"\(.hash) \(.proposer) \(.blue_score // 0) \(.state_root // "-")"' 2>/dev/null \
+              || echo "- - - -"
+          }
+
+          echo "=== 2. CANONICAL BLOCK AT COMMON HEIGHTS (lowest tip = $MIN) ==="
+          echo "    Same height, all three nodes. These must be identical."
           echo ""
-          echo "=== Canonical-hash sample every 100 heights (secondary vs primary) ==="
-          join secondary.txt primary.txt -o 1.1,1.2,2.2 2>/dev/null | awk '$1 % 100 == 0 { m = ($2==$3) ? "SAME" : "DIFF"; print $1 " " m " sec=" substr($2,1,16) " prim=" substr($3,1,16) }'
+          FORK_DEPTH=""
+          for off in 10 100 500 5000 50000; do
+            H=$((MIN - off))
+            [ "$H" -gt 0 ] || continue
+            echo "--- height $H  (tip-$off) ---"
+            printf "  %-9s %-20s %-26s %-12s %s\n" node hash proposer blue_score state_root
+            : > "row_$off"
+            for n in primary c1 c2; do
+              r="$(canon $n $H)"
+              set -- $r
+              printf "  %-9s %-20s %-26s %-12s %s\n" "$n" \
+                "$(echo "${1:--}" | cut -c1-18)" "$(echo "${2:--}" | cut -c1-24)" \
+                "${3:--}" "$(echo "${4:--}" | cut -c1-18)"
+              echo "${1:--}" >> "row_$off"
+            done
+            if [ "$(sort -u "row_$off" | wc -l)" -gt 1 ]; then
+              echo "  >>> DIVERGENT at height $H"
+              FORK_DEPTH="$off"
+            else
+              echo "  all three agree"
+            fi
+            echo ""
+          done
+          if [ -n "$FORK_DEPTH" ]; then
+            echo ">>> VERDICT: real fork — the canonical chains differ at depth tip-$FORK_DEPTH."
+          else
+            echo ">>> VERDICT: the canonical chains are identical at every sampled depth."
+            echo "    Any blue-score difference visible in the explorer is confined to the"
+            echo "    unfinalised tip and is normal DAG spread, not a fork."
+          fi
+          echo ""
+
+          # ---------- 3. each node's own tip ----------
+          echo "=== 3. OWN TIP per node (this is what the explorer shows) ==="
+          printf "  %-9s %-12s %-12s %-26s %s\n" node height blue_score proposer hash
+          for n in primary c1 c2; do
+            curl -sS --max-time 25 "$(url_of $n)/api/blocks/canonical?limit=1" 2>/dev/null \
+              | jq -r --arg n "$n" '.[0] | "  \($n)\t\(.height)\t\(.blue_score // 0)\t\(.proposer)\t\(.hash[0:18])"' 2>/dev/null \
+              | expand -t 12 || echo "  $n (unreachable)"
+          done
+          echo ""
+          echo "  A blue-score gap here WITH agreement in section 2 = normal."
+          echo "  A blue-score gap here that does NOT close over time = the nodes are"
+          echo "  building separate tips, i.e. peer blocks are not being merged."
+          echo ""
+
+          # ---------- 4. cross-visibility: the direct test of "nothing merges" ----------
+          echo "=== 4. CROSS-VISIBILITY — is each node's tip known to the other two? ==="
+          for src in primary c1 c2; do
+            th="$(jq -r '.latest_hash // empty' "status_$src.json" 2>/dev/null)"
+            [ -n "$th" ] || { echo "  $src: (unreachable)"; continue; }
+            echo "  $src tip $(echo "$th" | cut -c1-18):"
+            for dst in primary c1 c2; do
+              [ "$dst" = "$src" ] && continue
+              r="$(curl -sS --max-time 25 "$(url_of $dst)/api/block?hash=$th" 2>/dev/null)"
+              if echo "$r" | jq -e '.height' >/dev/null 2>&1; then
+                echo "    known to $dst  (height $(echo "$r" | jq -r '.height'), blue_score $(echo "$r" | jq -r '.blue_score // 0'))"
+              else
+                echo "    NOT known to $dst   <- $dst has never merged this block"
+              fi
+            done
+          done
+          echo ""
+
+          # ---------- 5. optional bisect for the exact fork height ----------
+          if [ "${BISECT_FROM:-0}" != "0" ] && [ -n "$FORK_DEPTH" ]; then
+            LO="$BISECT_FROM"; HI="$MIN"
+            echo "=== 5. BISECT for the first divergent height in [$LO, $HI] ==="
+            while [ $((HI - LO)) -gt 1 ]; do
+              MID=$(((LO + HI) / 2))
+              a="$(canon primary $MID | cut -d' ' -f1)"
+              b="$(canon c1 $MID | cut -d' ' -f1)"
+              c="$(canon c2 $MID | cut -d' ' -f1)"
+              if [ "$a" = "$b" ] && [ "$b" = "$c" ]; then
+                echo "  $MID agree"; LO=$MID
+              else
+                echo "  $MID DIFFER  (primary=$(echo "$a" | cut -c1-14) c1=$(echo "$b" | cut -c1-14) c2=$(echo "$c" | cut -c1-14))"
+                HI=$MID
+              fi
+            done
+            echo "  >>> last agreeing height $LO, first divergent height $HI"
+          fi
+
+  contabo1_logs:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Contabo1 merge evidence
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: 173.249.37.118
+          username: root
+          key: ${{ secrets.CONTABO_SSH_KEY }}
+          port: 22
+          fingerprint: "SHA256:noMtjHV8c+2iEFZu3TRUP6WRwGjkrvFke71KgU6Eyt4"
+          script_stop: false
+          timeout: 120s
+          command_timeout: 120s
+          script: |
+            set -uo pipefail
+            echo "=== Contabo1 container ==="
+            docker inspect -f 'Status={{.State.Status}} Restarts={{.RestartCount}} StartedAt={{.State.StartedAt}}' aequitas-node 2>&1 || true
+            echo ""
+            echo "=== Contabo1: merge/fork evidence (last 600 lines, filtered) ==="
+            docker logs --tail 600 aequitas-node 2>&1 | grep -Ei \
+              'foreign_attach|merged|orphan|StateRoot|mismatch|fork|resync|caught up|deferr|not resolving|breaker|blue' \
+              | tail -70 || echo "(no matching lines)"
+
+  contabo2_logs:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Contabo2 merge evidence
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: 194.163.188.71
+          username: root
+          key: ${{ secrets.CONTABO2_SSH_KEY }}
+          port: 22
+          fingerprint: "SHA256:VIwj7Faxiga2n45HVHZEQFPxcbRKHgSgHoxAFsf2wto"
+          script_stop: false
+          timeout: 120s
+          command_timeout: 120s
+          script: |
+            set -uo pipefail
+            echo "=== Contabo2 container ==="
+            docker inspect -f 'Status={{.State.Status}} Restarts={{.RestartCount}} StartedAt={{.State.StartedAt}}' aequitas-node 2>&1 || true
+            echo ""
+            echo "=== Contabo2: merge/fork evidence (last 600 lines, filtered) ==="
+            docker logs --tail 600 aequitas-node 2>&1 | grep -Ei \
+              'foreign_attach|merged|orphan|StateRoot|mismatch|fork|resync|caught up|deferr|not resolving|breaker|blue' \
+              | tail -70 || echo "(no matching lines)"

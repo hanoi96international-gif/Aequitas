@@ -947,20 +947,46 @@ func (dag *BlockDAG) lowerDeepScanFloor(nodeURL string, sweptFrom int64) {
 		sweptFrom, nodeURL, newFloor)
 }
 
-// deferralsAreNotResolving reports whether this sync cycle's deferred blocks
-// are evidence of a FORK rather than of ordinary catch-up — see the call site
-// in doSyncOnce for the full 2026-07-25 incident this closes.
+// deferralsAreNotResolving was the time-based attempt at the check doSyncOnce
+// now performs directly, and is kept only so its failure mode stays on record:
+// the `totalAdded > 0` early-out below scored a cycle as clean whenever the
+// node merged ANY block, including a single unrelated gap-fill from
+// fetchMissingAncestors, while orphaning the peer's entire live chain. A forked
+// node reached the clean-streak threshold through that hole and resumed
+// producing on its own branch.
 //
-// True only when all of the following hold, which is deliberately narrow so a
-// healthy restart backlog is completely unaffected:
-//   - this cycle deferred at least one block behind an in-flight parent, and
-//   - it merged nothing at all itself (totalAdded == 0), and
-//   - no block has successfully merged from ANY peer for longer than the very
-//     grace window those deferrals are being forgiven under.
+// doSyncOnce instead re-checks each deferred hash against the DAG after
+// fetching, which requires no timer, no grace window and no "did we merge
+// anything" proxy: either the block is there or it is not.
 //
-// lastSuccessfulPeerSyncAt == 0 means "nothing has merged YET" (fresh process),
-// not "the last merge was in 1970" — a booting node must not be misread as
-// forked, so that case returns false.
+// Deliberately unreferenced. Do not reintroduce it as a gate.
+//
+// countUnresolvedDeferrals reports how many of this cycle's deferred blocks are
+// STILL absent from the DAG. It is the whole fork test, and it is deliberately
+// a fact rather than a heuristic: a block deferred behind a parent that was
+// merely one page further on is present by the time this runs (doSyncOnce calls
+// fetchMissingAncestors first); a block deferred behind a parent that lives on a
+// branch this node will never receive is not, and never will be.
+//
+// Takes the read lock once for the whole slice rather than per hash: a large
+// restart backlog can defer thousands of blocks in one cycle, and doSyncOnce
+// runs on the sync loop where dag.mu is heavily contended.
+func (dag *BlockDAG) countUnresolvedDeferrals(hashes []string) int {
+	if len(hashes) == 0 {
+		return 0
+	}
+	unresolved := 0
+	dag.mu.RLock()
+	for _, h := range hashes {
+		if _, ok := dag.blocks[h]; !ok {
+			unresolved++
+		}
+	}
+	dag.mu.RUnlock()
+	return unresolved
+}
+
+//nolint:unused // retained as documentation of a fixed defect
 func deferralsAreNotResolving(dag *BlockDAG, totalDeferred, totalAdded int) bool {
 	if totalDeferred == 0 || totalAdded > 0 {
 		return false
@@ -1077,10 +1103,10 @@ func (dag *BlockDAG) doSyncOnce(nodeURL string) (ok bool) {
 	// A block merely DEFERRED behind a still-in-flight parent is explicitly
 	// not that — see the IsWithinOrphanGrace branch in the per-block loop for
 	// why counting those here made a restart take minutes to resume
-	// producing. Those are counted separately, as totalDeferred, purely so
-	// the distinction is visible in the log.
+	// producing. Those are collected in deferredHashes instead and CHECKED at
+	// the end of the cycle: a deferral is benign only if it actually resolved.
 	sawUnmergedBlocks := false
-	totalDeferred := 0
+	deferredHashes := make([]string, 0, 64)
 	// P1-02: track (minHeight, afterHash) cursor so same-height siblings that
 	// don't fit in one page are not skipped.  afterHash is empty for the first
 	// page (ordinary Height > minHeight query) and set to the last block's hash
@@ -1114,7 +1140,6 @@ func (dag *BlockDAG) doSyncOnce(nodeURL string) (ok bool) {
 			break // caught up — peer has nothing newer than our height
 		}
 		addedThisPage := 0
-		deferredThisPage := 0
 		for _, block := range blocks {
 			// FIX: genesis is always created locally and AddPeerBlock always
 			// rejects a peer-supplied genesis (by design — see its own
@@ -1214,21 +1239,24 @@ func (dag *BlockDAG) doSyncOnce(nodeURL string) (ok bool) {
 					// proposer, finality violation, far-ahead fork — returns
 					// false and still resets the streak immediately.
 					//
-					// This deliberately does NOT weaken the fork protection the
-					// gate exists for. A genuinely diverged peer serves blocks
-					// whose parents this node will never receive; those parents
-					// age past the grace within one window and every subsequent
-					// cycle resets the streak again, holding production exactly
-					// as before. Only gaps that actually close in time are
-					// forgiven — a self-limiting exception, not a timeout.
-					deferredThisPage++
+					// The deferral is NOT forgiven here. It is recorded and
+					// re-checked once this cycle has finished fetching, below —
+					// see the unresolvedDeferrals block after
+					// fetchMissingAncestors. The original version of this branch
+					// forgave it outright, on the argument that a diverged peer's
+					// unreachable parents "age past the grace within one window".
+					// That argument was wrong and cost a full day of downtime:
+					// the peer keeps producing, so every cycle brings brand-new
+					// blocks whose parents are by construction always younger
+					// than the grace. See the post-loop comment for the whole
+					// failure chain.
+					deferredHashes = append(deferredHashes, block.Hash)
 				} else {
 					sawUnmergedBlocks = true
 				}
 			}
 		}
 		totalAdded += addedThisPage
-		totalDeferred += deferredThisPage
 		// FIX (P2-01 audit, confirmed live on Contabo 2026-06-30): a
 		// short page (< pageSize) does NOT reliably mean "peer's tip is
 		// within this page" once a deep scan is re-walking ALREADY-KNOWN
@@ -1309,14 +1337,26 @@ func (dag *BlockDAG) doSyncOnce(nodeURL string) (ok bool) {
 		tipCount := len(dag.tips)
 		dag.mu.RUnlock()
 		deferredNote := ""
-		if totalDeferred > 0 {
-			// Deliberately distinct wording from "unmerged": these did not
-			// reset the clean-sync streak, and an operator watching a slow
-			// restart needs to be able to tell the two apart at a glance.
-			deferredNote = fmt.Sprintf(" | %d deferred behind in-flight parents", totalDeferred)
+		if len(deferredHashes) > 0 {
+			// Deliberately distinct wording from "unmerged": these have not yet
+			// reset the clean-sync streak — whether they do is decided below,
+			// once they have had their chance to resolve.
+			deferredNote = fmt.Sprintf(" | %d deferred behind in-flight parents", len(deferredHashes))
 		}
 		fmt.Printf("[HTTP-SYNC] ✓ Added %d new blocks from %s | DAG tips: %d | height %d%s\n", totalAdded, nodeURL, tipCount, dag.Height(), deferredNote)
 	}
+
+	// Resolve any orphans (this cycle's or earlier ones) by fetching their
+	// specific missing-parent hash directly — see fetchMissingAncestors for
+	// why the height-windowed pagination above can't reach them once the
+	// gap exceeds syncOverlap.
+	//
+	// Deliberately BEFORE the clean-streak decision below: this call is what
+	// actually closes a page-boundary gap, so a deferral must be given its
+	// chance to resolve before it is judged. Running it afterwards, as this
+	// function used to, would count every page-boundary orphan as unresolved
+	// on the very cycle that was about to fix it.
+	dag.fetchMissingAncestors(nodeURL)
 	// FIX (P0, 2026-07-25 — root cause of "nothing merges", found after the
 	// secondaries forked below their own finality floor and could not be
 	// healed by anything short of a full snapshot resync):
@@ -1345,36 +1385,34 @@ func (dag *BlockDAG) doSyncOnce(nodeURL string) (ok bool) {
 	// its whole state from a snapshot, which is exactly the resync loop that
 	// ran all day.
 	//
-	// A deferral is only benign evidence of catch-up if deferrals are actually
-	// RESOLVING. lastSuccessfulPeerSyncAt is the timestamp of the last block
-	// genuinely merged from any peer (deliberately distinct from
-	// lastPeerContactAt, which mere arrival updates — see lastPeerActivityAt's
-	// own comment). If this cycle deferred blocks, merged none itself, and
-	// nothing has successfully merged for longer than the grace window those
-	// deferrals are being forgiven under, then the gap is not closing and
-	// treating the cycle as clean is precisely the mistake above. Reset
-	// instead, which holds production shut and lets the divergence auto-heal
-	// run — the outcome this gate exists to produce.
+	// 9d1fe80 tried to close this with a TIME-based heuristic
+	// (deferralsAreNotResolving: "deferred something, merged nothing, and
+	// nothing has merged anywhere for longer than the grace"). That still had
+	// the hole that matters: its `totalAdded > 0` early-out meant a node which
+	// merged a single old gap-fill block while orphaning the peer's entire
+	// current chain was still scored as a clean cycle. On a live chain that is
+	// not a corner case — fetchMissingAncestors succeeds at *something* most
+	// cycles — so a forked node kept climbing to the threshold anyway.
 	//
-	// Deliberately narrow: a cycle that merged anything (totalAdded > 0), or
-	// deferred nothing, is completely unaffected, so a healthy restart backlog
-	// still reaches the threshold exactly as fast as before.
-	deferralsNotResolving := deferralsAreNotResolving(dag, totalDeferred, totalAdded)
-	if deferralsNotResolving {
-		fmt.Printf("[HTTP-SYNC] ⚠ %s: %d block(s) deferred, none merged, and nothing has merged from any peer for %ds — treating as NOT caught up (a fork looks exactly like this; see doSyncOnce's own comment)\n",
-			nodeURL, totalDeferred, time.Now().Unix()-dag.lastSuccessfulPeerSyncAt.Load())
+	// The check below is the direct one, and needs no timer and no heuristic:
+	// a deferral is benign if and only if the block IS IN THE DAG by the end of
+	// the cycle. fetchMissingAncestors has already run, so a page-boundary
+	// orphan — the case the exemption exists for, where the parent was simply
+	// one page further on — is merged by now and counts as clean, leaving a
+	// restart backlog exactly as fast as before. A block deferred because its
+	// parent lives on a branch this node will never receive is still missing,
+	// counts as unmerged, and holds the streak at 0 on the very first cycle
+	// rather than after a grace window that never expires.
+	unresolvedDeferrals := dag.countUnresolvedDeferrals(deferredHashes)
+	if unresolvedDeferrals > 0 {
+		fmt.Printf("[HTTP-SYNC] ⚠ %s: %d of %d deferred block(s) still not in the DAG after fetching their parents — treating as NOT caught up (a fork looks exactly like this; see doSyncOnce's own comment)\n",
+			nodeURL, unresolvedDeferrals, len(deferredHashes))
 	}
-	if sawUnmergedBlocks || deferralsNotResolving {
+	if sawUnmergedBlocks || unresolvedDeferrals > 0 {
 		dag.resetCleanSyncStreak(nodeURL)
 	} else {
 		dag.recordCleanSyncCycle(nodeURL)
 	}
-
-	// Resolve any orphans (this cycle's or earlier ones) by fetching their
-	// specific missing-parent hash directly — see fetchMissingAncestors for
-	// why the height-windowed pagination above can't reach them once the
-	// gap exceeds syncOverlap.
-	dag.fetchMissingAncestors(nodeURL)
 	return true
 }
 
