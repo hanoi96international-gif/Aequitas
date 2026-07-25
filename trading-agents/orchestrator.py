@@ -1,13 +1,16 @@
 """Runs the full daily pipeline for a watchlist: data -> 3 independent expert
-signals -> peer review (each expert checked by a different expert) ->
-synthesis into one final call per ticker."""
+signals -> peer review (each expert checked by a different expert, with an
+unsupported-claims fact-check) -> synthesis into one final call per ticker ->
+deterministic risk-managed position sizing."""
 
 import concurrent.futures as cf
 import logging
+from dataclasses import asdict
 
 from agents import fundamental, review, sentiment, synthesis, technical
 from agents.base import AgentError
 from data.market_data import MarketDataError, fetch_price_snapshot
+from risk_management import size_position
 
 log = logging.getLogger(__name__)
 
@@ -66,6 +69,16 @@ def run_ticker(ticker: str) -> dict:
 
     reviews = _run_peer_reviews(signals)
     final = synthesis.synthesize(ticker, signals, reviews)
+
+    # Deterministic, non-LLM step: turn the direction/confidence call into
+    # concrete stop-loss/take-profit/position-size numbers from ATR.
+    position = size_position(
+        direction=final["final_direction"],
+        entry_price=snapshot.last_close,
+        atr=snapshot.atr14,
+        confidence=final["final_confidence"],
+    )
+    final["risk_management"] = asdict(position)
 
     return {
         "ticker": ticker,
