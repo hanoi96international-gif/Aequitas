@@ -1,0 +1,175 @@
+name: Diagnose post-redeploy recovery time on both Contabos (manual, read-only)
+
+# Answers ONE question with data instead of theory: after a redeploy, how long
+# does each box actually take before it produces its first block again, and
+# WHICH gate held it during that window?
+#
+# 75fc466 ("Don't re-walk from genesis on every plain restart") fixed exactly
+# one of the costs of a restart — deepScanFloor returning 0, which made every
+# plain redeploy sweep from genesis. It did NOT touch the two gates in
+# ProduceBlock that deliberately suppress production after a restart:
+#
+#   [BLOCK] ⏳ Catch-up in progress (dag.height=%d, bootHeight=%d)
+#       the initial-sync gate — production deferred until within 10 of the
+#       height a seed reported at startup (block.go, syncTargetHeight gate)
+#
+#   [BLOCK] ⏳ Not yet 3 consecutive clean sync cycles with every trusted seed
+#       hasCaughtUpWithAllPeers — needs cleanSyncStreakThreshold CONSECUTIVE
+#       doSyncOnce cycles against EVERY seed in which nothing failed to merge.
+#       A single unmergeable block on a single page resets the streak to 0
+#       (sync_blocks.go, sawUnmergedBlocks → resetCleanSyncStreak), so during
+#       a backlog drain this can stay at 0 for as long as the drain takes.
+#       Nothing bounds it except syncStallTimeout=90s, and that valve only
+#       opens on NO peer activity at all — a node that is syncing happily but
+#       never gets a clean streak is held indefinitely by design.
+#
+# Both are correct (they are what stops a restarted node from producing on a
+# stale fork — the original "Contabo is ahead of Primary" divergence), and
+# both are invisible from the explorer: the node is up, syncing, answering
+# /api/status, and simply not producing. That is what "es dauert ewig bis die
+# Contabos nach dem Redeploy wieder laufen" looks like from outside.
+#
+# This workflow reads the container's own timestamped log and reports:
+#   - container StartedAt and uptime
+#   - the FIRST "[DAG] 🔀 Merged ... into block #N" after that start
+#     => the real recovery time, in seconds, measured not estimated
+#   - how many times each gate fired, and which one fired LAST
+#   - whether a deep scan ran, and from which floor
+#   - the [RPC] rate-limit line, to confirm what limit the process is running
+#
+# Read-only: docker inspect, docker logs, curl localhost. Changes nothing.
+on:
+  workflow_dispatch: {}
+
+jobs:
+  contabo1:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Recovery timeline on Contabo1
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: 173.249.37.118
+          username: root
+          key: ${{ secrets.CONTABO_SSH_KEY }}
+          port: 22
+          fingerprint: "SHA256:noMtjHV8c+2iEFZu3TRUP6WRwGjkrvFke71KgU6Eyt4"
+          script_stop: false
+          timeout: 180s
+          command_timeout: 180s
+          script: |
+            set -uo pipefail
+            BOX=Contabo1
+            echo "=== $BOX: container ==="
+            docker inspect -f 'Status={{.State.Status}} RestartCount={{.RestartCount}} StartedAt={{.State.StartedAt}}' aequitas-node 2>&1 || echo "(container not found)"
+            STARTED="$(docker inspect -f '{{.State.StartedAt}}' aequitas-node 2>/dev/null || true)"
+            if [ -n "$STARTED" ]; then
+              S=$(date -u -d "$STARTED" +%s 2>/dev/null || echo 0)
+              N=$(date -u +%s)
+              [ "$S" -gt 0 ] && echo "uptime: $((N-S))s"
+            fi
+
+            echo "=== $BOX: FIRST self-produced block after this start ==="
+            FIRST="$(docker logs -t aequitas-node 2>&1 | grep -F '[DAG] 🔀 Merged' | head -1 || true)"
+            if [ -z "$FIRST" ]; then
+              echo "(NO self-produced block in this container's whole log — still gated)"
+            else
+              echo "$FIRST"
+              FT="$(echo "$FIRST" | awk '{print $1}')"
+              F=$(date -u -d "$FT" +%s 2>/dev/null || echo 0)
+              if [ "$F" -gt 0 ] && [ "${S:-0}" -gt 0 ]; then
+                echo ">>> RECOVERY TIME: $((F-S))s from container start to first produced block"
+              fi
+            fi
+            echo "--- most recent self-produced block ---"
+            docker logs -t aequitas-node 2>&1 | grep -F '[DAG] 🔀 Merged' | tail -1 || echo "(none)"
+
+            echo "=== $BOX: which gate suppressed production, and how often ==="
+            echo -n "  'Catch-up in progress' (initial-sync gate):   "
+            docker logs aequitas-node 2>&1 | grep -cF 'Catch-up in progress' || true
+            echo -n "  'Not yet 3 consecutive clean sync cycles':    "
+            docker logs aequitas-node 2>&1 | grep -cF 'consecutive clean sync cycles' || true
+            echo -n "  'redeploy overlap' duplicate-height skip:     "
+            docker logs aequitas-node 2>&1 | grep -cF 'redeploy overlap' || true
+            echo -n "  'synthetic checkpoint(s) above the snapshot':  "
+            docker logs aequitas-node 2>&1 | grep -cF 'unverified synthetic checkpoint' || true
+            echo "--- LAST gate line seen (this is what is holding it now, if anything) ---"
+            docker logs -t aequitas-node 2>&1 | grep -E 'Catch-up in progress|consecutive clean sync cycles|redeploy overlap|unverified synthetic checkpoint' | tail -3 || echo "(no gate line — production is not being suppressed)"
+
+            echo "=== $BOX: initial-sync gate target set at boot ==="
+            docker logs -t aequitas-node 2>&1 | grep -F 'Initial-sync gate active' | tail -3 || echo "(gate never armed — no seed reachable, or already caught up)"
+
+            echo "=== $BOX: deep scan floor (75fc466 — must NOT be near 0) ==="
+            docker logs -t aequitas-node 2>&1 | grep -iE 'deep.?scan' | tail -8 || echo "(no deep-scan lines)"
+
+            echo "=== $BOX: RPC rate limit the process is actually running ==="
+            docker logs aequitas-node 2>&1 | grep -iE '\[RPC\].*rate limit' | tail -3 || echo "(no line — shipped default of 200)"
+
+            echo "=== $BOX: /api/status ==="
+            curl -s --max-time 5 http://localhost:8080/api/status || echo "(unreachable)"
+            echo ""
+
+  contabo2:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Recovery timeline on Contabo2
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: 194.163.188.71
+          username: root
+          key: ${{ secrets.CONTABO2_SSH_KEY }}
+          port: 22
+          fingerprint: "SHA256:VIwj7Faxiga2n45HVHZEQFPxcbRKHgSgHoxAFsf2wto"
+          script_stop: false
+          timeout: 180s
+          command_timeout: 180s
+          script: |
+            set -uo pipefail
+            BOX=Contabo2
+            echo "=== $BOX: container ==="
+            docker inspect -f 'Status={{.State.Status}} RestartCount={{.RestartCount}} StartedAt={{.State.StartedAt}}' aequitas-node 2>&1 || echo "(container not found)"
+            STARTED="$(docker inspect -f '{{.State.StartedAt}}' aequitas-node 2>/dev/null || true)"
+            if [ -n "$STARTED" ]; then
+              S=$(date -u -d "$STARTED" +%s 2>/dev/null || echo 0)
+              N=$(date -u +%s)
+              [ "$S" -gt 0 ] && echo "uptime: $((N-S))s"
+            fi
+
+            echo "=== $BOX: FIRST self-produced block after this start ==="
+            FIRST="$(docker logs -t aequitas-node 2>&1 | grep -F '[DAG] 🔀 Merged' | head -1 || true)"
+            if [ -z "$FIRST" ]; then
+              echo "(NO self-produced block in this container's whole log — still gated)"
+            else
+              echo "$FIRST"
+              FT="$(echo "$FIRST" | awk '{print $1}')"
+              F=$(date -u -d "$FT" +%s 2>/dev/null || echo 0)
+              if [ "$F" -gt 0 ] && [ "${S:-0}" -gt 0 ]; then
+                echo ">>> RECOVERY TIME: $((F-S))s from container start to first produced block"
+              fi
+            fi
+            echo "--- most recent self-produced block ---"
+            docker logs -t aequitas-node 2>&1 | grep -F '[DAG] 🔀 Merged' | tail -1 || echo "(none)"
+
+            echo "=== $BOX: which gate suppressed production, and how often ==="
+            echo -n "  'Catch-up in progress' (initial-sync gate):   "
+            docker logs aequitas-node 2>&1 | grep -cF 'Catch-up in progress' || true
+            echo -n "  'Not yet 3 consecutive clean sync cycles':    "
+            docker logs aequitas-node 2>&1 | grep -cF 'consecutive clean sync cycles' || true
+            echo -n "  'redeploy overlap' duplicate-height skip:     "
+            docker logs aequitas-node 2>&1 | grep -cF 'redeploy overlap' || true
+            echo -n "  'synthetic checkpoint(s) above the snapshot':  "
+            docker logs aequitas-node 2>&1 | grep -cF 'unverified synthetic checkpoint' || true
+            echo "--- LAST gate line seen (this is what is holding it now, if anything) ---"
+            docker logs -t aequitas-node 2>&1 | grep -E 'Catch-up in progress|consecutive clean sync cycles|redeploy overlap|unverified synthetic checkpoint' | tail -3 || echo "(no gate line — production is not being suppressed)"
+
+            echo "=== $BOX: initial-sync gate target set at boot ==="
+            docker logs -t aequitas-node 2>&1 | grep -F 'Initial-sync gate active' | tail -3 || echo "(gate never armed — no seed reachable, or already caught up)"
+
+            echo "=== $BOX: deep scan floor (75fc466 — must NOT be near 0) ==="
+            docker logs -t aequitas-node 2>&1 | grep -iE 'deep.?scan' | tail -8 || echo "(no deep-scan lines)"
+
+            echo "=== $BOX: RPC rate limit the process is actually running ==="
+            docker logs aequitas-node 2>&1 | grep -iE '\[RPC\].*rate limit' | tail -3 || echo "(no line — shipped default of 200)"
+
+            echo "=== $BOX: /api/status ==="
+            curl -s --max-time 5 http://localhost:8080/api/status || echo "(unreachable)"
+            echo ""
