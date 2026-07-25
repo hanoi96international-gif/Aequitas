@@ -3,6 +3,11 @@ name: Deploy to Contabo2 VPS
 on:
   push:
     branches: [master, main]
+    # See deploy-contabo.yml: a workflow- or docs-only push must not restart
+    # the node.
+    paths-ignore:
+      - '.github/**'
+      - '**.md'
 
 jobs:
   # Mirrors deploy-contabo.yml's test gate (Monster Audit 2026-07-12, P1) —
