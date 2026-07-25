@@ -567,8 +567,14 @@ func (s *EVMRPCServer) sendRawTransaction(params []json.RawMessage) (interface{}
 	senderAddr := strings.ToLower(sender.Hex())
 	txHash := tx.Hash().Hex() // already has 0x prefix
 
-	fmt.Printf("[RPC] eth_sendRawTransaction hash=%s from=%s to=%v data=%d bytes\n",
-		txHash, senderAddr, tx.To(), len(tx.Data()))
+	// Gated: two unbuffered Printf per transaction is 100,000 log lines/s at
+	// the 50,000 TPS target. See rpcQuietTx (evm_rpc_throughput.go) — default
+	// is unchanged, and applied throughput is reported once per second either
+	// way.
+	if !rpcQuietTx {
+		fmt.Printf("[RPC] eth_sendRawTransaction hash=%s from=%s to=%v data=%d bytes\n",
+			txHash, senderAddr, tx.To(), len(tx.Data()))
+	}
 
 	// ── NONCE CHECK + RESERVATION ─────────────────────────────────────────────
 	// Check tx.Nonce() against the stored per-account nonce and atomically
@@ -655,7 +661,13 @@ func (s *EVMRPCServer) sendRawTransaction(params []json.RawMessage) (interface{}
 			return nil, &RPCError{Code: -32603, Message: "Transfer failed: " + err.Error()}
 		}
 		s.state.SyncBalancesToEVM(V7_CONTRACT_ADDR, senderAddr, toAddr)
-		fmt.Printf("[RPC] ✓ Transfer %.4f AEQ: %s → %s\n", valueFloat, senderAddr, toAddr)
+		// Counted before it is (optionally) printed: the count is what the
+		// throughput report is built from, and it must stay accurate whether
+		// or not the per-transaction line is suppressed.
+		recordAppliedTransfer()
+		if !rpcQuietTx {
+			fmt.Printf("[RPC] ✓ Transfer %.4f AEQ: %s → %s\n", valueFloat, senderAddr, toAddr)
+		}
 		return txHash, nil
 	}
 
