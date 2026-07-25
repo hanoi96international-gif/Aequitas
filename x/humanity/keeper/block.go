@@ -12,7 +12,6 @@ import (
 "fmt"
 "math/big"
 "os"
-"runtime"
 "runtime/debug"
 "strconv"
 "strings"
@@ -5694,157 +5693,36 @@ func (dag *BlockDAG) replayTransactions(block *Block, force bool) (ok bool) {
 	hardFailure := false
 	var claimedNullifiers []string
 
-	// FIX (2026-07-25, 50k-TPS deep-dive, roadmap item 1 — "replay is
-	// provably single-threaded despite already-built shard-lock infra"):
-	// before the sequential loop below, identify and apply CONCURRENTLY the
-	// subset of this block's TXs that are provably safe to run in any
-	// order: "transfer" TXs with zero recorded demurrage-loss (so
-	// applyDemurrageLossLockedCtx below is a guaranteed no-op — see its own
-	// `lost <= 0` early return — meaning distributeSwapFeeCtx and the four
-	// shared tokenomics pool addresses are NEVER touched by any of these),
-	// whose own wallet/to addresses are neither a pool address nor touched
-	// by any OTHER candidate in this same set. TestReplayTransactions_
-	// DisjointTransfers_OrderIndependent(_Fuzz) (replay_determinism_fuzz_test.go)
-	// is the safety net proving this reordering can never change the
-	// result — see its own doc comment before ever touching this logic.
+	// NOTE (2026-07-25): a parallel pre-pass applying "provably disjoint"
+	// transfers concurrently used to sit here (50k-TPS roadmap item 1). It
+	// was REVERTED the same day after its exact failure signature appeared
+	// live on Contabo2 minutes after deploy:
 	//
-	// Deliberately does NOT try to run concurrently WITH the sequential
-	// loop below (which still handles every other TX type, and any
-	// "transfer" not provably safe, completely unchanged): the two phases
-	// run strictly one after the other, both still under dag.state.mu
-	// (held by this function's single caller for the whole replay), so
-	// these workers never acquire any ChainState-level lock themselves —
-	// doing so would deadlock (Go's sync.RWMutex is not reentrant; a
-	// worker RLock()-ing the same mutex this goroutine already holds
-	// Lock()'d blocks forever, since the holder can never reach its own
-	// Unlock() while waiting on its own child goroutines). Each worker's
-	// only synchronization is therefore against its SIBLING workers in
-	// this same phase, via primitives already proven for exactly this
-	// (shardedAccounts' own per-shard locking in Get/Set, and
-	// accountSetXORMu around the one genuinely global field,
-	// cs.accountSetXOR — both already relied on by transferConcurrent,
-	// transfer_concurrent.go). database/sql.Tx.Exec is safe for
-	// concurrent use by multiple goroutines (verified against the Go
-	// stdlib source: driverConn's own sync.Mutex serializes the actual
-	// driver call inside execDC's withLock) — the parallelism this phase
-	// wins comes from doing the CPU-bound balance/demurrage checks
-	// concurrently, not from the DB round trip itself.
+	//   [BLOCK] ✗ Could not save peer block #1849827 header before replay:
+	//           pq: unexpected Parse response "(D) DataRow" — skipping
+	//   [REPLAY] ✗ Block #1849827: replay transaction commit failed
+	//           (rolled back, block rejected): driver: bad connection
 	//
-	// This is deliberately narrower than transferConcurrent's own
-	// eligibility rules: that path can safely bail to a slower fallback
-	// on any doubt (applied=false); this one has no fallback once a
-	// worker has actually run, so every condition here must be provably
-	// sufficient on its own, not just "probably fine." See
-	// SCALING_ARCHITECTURE.md's 2026-07-25 updates for the full
-	// reasoning, including the RWMutex-reentrancy deadlock this
-	// specifically avoids.
-	parallelSafe := make(map[int]bool)
-	{
-		type parallelCandidate struct {
-			idx    int
-			wallet string
-			to     string
-		}
-		var candidates []parallelCandidate
-		touchCount := make(map[string]int)
-		for i, tx := range block.Transactions {
-			if tx.Type != "transfer" {
-				continue
-			}
-			w := strings.ToLower(strings.TrimSpace(tx.Wallet))
-			t := strings.ToLower(strings.TrimSpace(tx.To))
-			if w == "" || t == "" || tx.Amount <= 0 {
-				continue // same guard the sequential "transfer" case applies below -- let it handle the skip/log
-			}
-			if tx.FromDemurrageLost != 0 || tx.ToDemurrageLost != 0 {
-				continue // would touch a pool address via applyDemurrageLossLockedCtx -- not safe to run concurrently with anything else that might too
-			}
-			if isTokenomicsPoolAddress(w) || isTokenomicsPoolAddress(t) {
-				continue // direct pool-address transfer -- could collide with another candidate touching the same pool address
-			}
-			candidates = append(candidates, parallelCandidate{idx: i, wallet: w, to: t})
-			touchCount[w]++
-			touchCount[t]++
-		}
-		for _, c := range candidates {
-			if touchCount[c.wallet] == 1 && touchCount[c.to] == 1 {
-				parallelSafe[c.idx] = true
-			}
-		}
+	// That is a Postgres wire-protocol desync: two goroutines used the same
+	// connection concurrently. The reverted code guarded its workers with a
+	// LOCAL sync.Mutex, which serializes those workers against each other but
+	// not against any other goroutine touching the same dag.state.activeTx —
+	// so it never actually established the invariant it claimed. The same
+	// signature had already been caught pre-deploy by
+	// TestReplayTransactions_ParallelTransfers_RealDB and was wrongly assumed
+	// fixed by that local mutex.
+	//
+	// Cost of the revert is small and was documented at the time: because
+	// every worker had to serialize on the DB round trip anyway, only the
+	// CPU-bound balance/demurrage arithmetic ever overlapped. Correctness of
+	// consensus-critical replay is not worth that trade. Any future attempt
+	// must first give each worker its OWN database connection (or move the DB
+	// write out of the parallel phase entirely) — a local mutex around a
+	// shared *sql.Tx is provably not sufficient.
 
-		if len(parallelSafe) > 0 {
-			jobs := make(chan int, len(parallelSafe))
-			for idx := range parallelSafe {
-				jobs <- idx
-			}
-			close(jobs)
-
-			workers := runtime.NumCPU()
-			if workers > len(parallelSafe) {
-				workers = len(parallelSafe)
-			}
-			var wg sync.WaitGroup
-			var parallelFailure atomic.Bool
-			// FIX (2026-07-25, found via TestReplayTransactions_ParallelTransfers_RealDB):
-			// concurrent applyTransferDeltaLocked calls sharing
-			// dag.state.activeTx (one *sql.Tx) produced real "driver: bad
-			// connection" / "unexpected Parse response" errors against a
-			// real Postgres connection under this test — despite
-			// database/sql's own per-driverConn locking (verified directly
-			// against the Go stdlib source: execDC's withLock(dc, ...)
-			// wraps the driver call), the actual lib/pq driver this project
-			// depends on is NOT safe against genuinely concurrent Exec/Query
-			// calls sharing one *sql.Tx in practice — confirmed empirically,
-			// not merely suspected. dbMu serializes the DB-touching portion
-			// of each worker's call so this phase is CORRECT against a real
-			// database. The remaining parallelism win is real but smaller
-			// than a naive reading of "N goroutines" suggests for a
-			// DB-backed node: only the CPU-bound work a worker does before
-			// reaching the lock (shardedAccounts reads, balance/demurrage
-			// arithmetic) can genuinely overlap with another worker's own
-			// DB round trip. See SCALING_ARCHITECTURE.md's 2026-07-25
-			// update for the full, honest accounting of this — it is still
-			// strictly better than today's fully-sequential baseline
-			// (every worker's non-DB work now overlaps instead of also
-			// serializing), just not the "6x on 6 cores" a first read of
-			// this code might imply.
-			var dbMu sync.Mutex
-			for w := 0; w < workers; w++ {
-				wg.Add(1)
-				go func() {
-					defer wg.Done()
-					for i := range jobs {
-						tx := block.Transactions[i]
-						wallet := strings.ToLower(strings.TrimSpace(tx.Wallet))
-						to := strings.ToLower(strings.TrimSpace(tx.To))
-						// context.Background() is correct -- see registerHumanLocked's
-						// comment: dag.state.activeTx was already set directly above
-						// this block, and dbExecCtx falls back to it.
-						dbMu.Lock()
-						err := dag.state.applyTransferDeltaLocked(context.Background(), wallet, to, tx.Amount, 0, 0)
-						dbMu.Unlock()
-						if err != nil {
-							fmt.Printf("[REPLAY] ✗ (parallel) Transfer %s->%s %.6f: %v (block #%d) — rolling back whole block\n", wallet, to, tx.Amount, err, block.Height)
-							parallelFailure.Store(true)
-							continue
-						}
-						fmt.Printf("[REPLAY] ✓ Applied transfer %.6f AEQ: %s->%s (block #%d) [parallel]\n", tx.Amount, wallet, to, block.Height)
-					}
-				}()
-			}
-			wg.Wait()
-			if parallelFailure.Load() {
-				hardFailure = true
-			}
-		}
-	}
-
-	for i, tx := range block.Transactions {
+	for _, tx := range block.Transactions {
 		if hardFailure {
 			break // stop applying further TXs once we know this block is being rolled back
-		}
-		if parallelSafe[i] {
-			continue // already applied above, concurrently
 		}
 		// Skip distribution TXs from a round this node has already applied.
 		if skipDistributionRound > 0 {
