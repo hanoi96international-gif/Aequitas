@@ -118,3 +118,11 @@ jobs:
             docker logs aequitas-node 2>&1 | grep -F 'ENABLE_MULTI_BLOCK_TICK' | tail -3 || echo "(no line — running the shipped default: one block per tick)"
             echo "=== Contabo2: /api/status ==="
             curl -s --max-time 5 http://localhost:8080/api/status || echo "(unreachable)"
+        # `envs:` above names which variables ssh-action forwards to the remote
+        # shell; this block is what puts them in the step's own environment in
+        # the first place. Omitting it (the first dispatch of this workflow)
+        # sends VALUE through empty -- caught by the 0-or-1 guard, which
+        # aborted before touching the env file, which is exactly its job.
+        env:
+          VALUE: ${{ inputs.value }}
+          DRY: ${{ inputs.dry_run }}
