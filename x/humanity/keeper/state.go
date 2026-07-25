@@ -2546,6 +2546,32 @@ func (cs *ChainState) saveAccountsToDBBatchCtx(ctx context.Context, accs []*Acco
 	sorted := append([]*AccountState(nil), accs...)
 	sort.Slice(sorted, func(i, j int) bool { return sorted[i].Address < sorted[j].Address })
 
+	// NOT CHUNKED, and that is a measured decision rather than an omission.
+	// Block replay's deferred write buffer (account_write_buffer.go) hands
+	// this 100,000 rows for a 50,000-transfer block, and at that size
+	// EXPLAIN (ANALYZE, BUFFERS) shows the join's hash spilling to disk
+	// ("Batches: 2", ~32MB of temp file I/O) — which looks exactly like a
+	// case for splitting the batch into work_mem-sized chunks.
+	//
+	// It is not. Both theories were tested and both were wrong:
+	//
+	//   chunk size   500    1000   2000   5000   10000  none(100k)
+	//   replay tx/s  7203   7807   10006  15920  19213  22547
+	//
+	// Chunking is monotonically WORSE — the per-statement parse and the
+	// re-evaluated NOT IN subplan cost more than the spill does. And raising
+	// work_mem to 256MB, which removes the spill entirely, moved the same
+	// statement only from 1373ms to 1325ms (3.5%).
+	//
+	// What is left is Postgres's genuine floor for this table shape: ~13µs
+	// per upserted row, dominated by heap and index maintenance, not by
+	// anything this function chooses. Going below it means not writing every
+	// account synchronously per block at all — which is precisely what
+	// SCALING_ARCHITECTURE.md's Phase 7 (WAL as the durability boundary,
+	// Postgres asynchronous behind it) exists to do. Do not re-litigate this
+	// with another chunk size; the numbers above are reproducible via
+	// AEQUITAS_ACCOUNT_BATCH_CHUNK in replay_throughput_bench_test.go.
+
 	addresses := make([]string, len(sorted))
 	balances := make([]float64, len(sorted))
 	isHumans := make([]bool, len(sorted))
