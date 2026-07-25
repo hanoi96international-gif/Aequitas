@@ -10,6 +10,7 @@ import (
 	"math/big"
 	"sort"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/ethereum/go-ethereum/common"
@@ -2184,10 +2185,90 @@ func (cs *ChainState) SaveTxReceipt(txHash, fromAddr, toAddr, status, contractAd
 		fmt.Printf("[EVM] SaveTxReceipt error for %s: %v\n", txHash, err)
 		return
 	}
-	// Prune old receipts — keep only the latest 10,000 to prevent unbounded growth.
-	cs.db.Exec(`DELETE FROM evm_tx_receipts WHERE tx_hash NOT IN (
-		SELECT tx_hash FROM evm_tx_receipts ORDER BY created_at DESC LIMIT 10000
-	)`)
+	cs.maybePruneTxReceipts()
+}
+
+// receiptPruneInterval is the minimum gap between receipt-table prunes.
+//
+// FIX (P0 for throughput, 2026-07-25 — found by profiling Contabo2 while it
+// was under load, not by reading the code): the prune below used to run
+// INLINE, on the request path, for EVERY transaction:
+//
+//	DELETE FROM evm_tx_receipts WHERE tx_hash NOT IN (
+//	    SELECT tx_hash FROM evm_tx_receipts ORDER BY created_at DESC LIMIT 10000)
+//
+// That is a full-table anti-join with a sort. Running it per transaction means
+// Postgres re-sorted the entire receipts table on every single transfer, to
+// delete rows that were already deleted the previous time — 150 times a second
+// at the throughput actually observed.
+//
+// The 30s CPU profile taken during a live load run, cumulative:
+//
+//	sendRawTransaction        10.18s  55.63%
+//	  database/sql.(*DB).Exec  5.02s  27.43%   <- two Execs per transfer
+//	    lib/pq.(*conn).Exec    4.72s  25.79%
+//	  types.Sender/Ecrecover   3.21s  17.54%
+//	database/sql.withLock      5.25s  28.69%   <- pooled-connection serialisation
+//
+// and total samples were 18.30s over 30.10s wall, i.e. ~0.61 cores. The node
+// was not computing, it was waiting: two synchronous Postgres round trips per
+// transfer, one of them expensive, with every request queueing for a pooled
+// connection behind them.
+//
+// Correctness is unchanged — the cap is still 10,000 rows. Only the CADENCE
+// changes: the table is allowed to drift a little above the cap between
+// prunes, which costs a bounded amount of disk and nothing else, instead of
+// paying a sort-the-world query per transaction to hold it exactly. Nothing
+// reads evm_tx_receipts expecting a precise row count; GetTxReceipt looks up
+// one tx_hash.
+const receiptPruneInterval = 60 * time.Second
+
+// receiptPruneKeep is how many receipts to retain — unchanged from the inline
+// version this replaced.
+const receiptPruneKeep = 10000
+
+var (
+	receiptPruneLastAt  atomic.Int64 // unix seconds
+	receiptPruneRunning atomic.Bool
+)
+
+// maybePruneTxReceipts runs the receipt prune at most once per
+// receiptPruneInterval, in the background, and never more than one at a time.
+//
+// Background rather than inline because the caller is an RPC request handler:
+// making a transfer's latency depend on how long a housekeeping DELETE takes
+// is what the profile above caught. Single-flight because a slow prune must
+// not have a second one queued behind it — that would reproduce the pile-up
+// this fix exists to remove, just at a coarser interval.
+func (cs *ChainState) maybePruneTxReceipts() {
+	// Guarded here as well as in SaveTxReceipt: relying on SafeGoroutine to
+	// recover a nil-db panic works, but it writes a full stack trace into the
+	// log for a condition that is entirely ordinary in tests and in a node
+	// started without a database.
+	if cs.db == nil {
+		return
+	}
+	now := time.Now().Unix()
+	last := receiptPruneLastAt.Load()
+	if now-last < int64(receiptPruneInterval.Seconds()) {
+		return
+	}
+	// CompareAndSwap, not a plain Store: several concurrent transfers reach
+	// this line in the same second, and exactly one of them should win.
+	if !receiptPruneLastAt.CompareAndSwap(last, now) {
+		return
+	}
+	if !receiptPruneRunning.CompareAndSwap(false, true) {
+		return
+	}
+	SafeGoroutine("pruneTxReceipts", func() {
+		defer receiptPruneRunning.Store(false)
+		if _, err := cs.db.Exec(`DELETE FROM evm_tx_receipts WHERE tx_hash NOT IN (
+			SELECT tx_hash FROM evm_tx_receipts ORDER BY created_at DESC LIMIT $1
+		)`, receiptPruneKeep); err != nil {
+			fmt.Printf("[EVM] receipt prune failed: %v — retrying at the next interval\n", err)
+		}
+	})
 }
 
 // GetTxReceipt looks up a persisted receipt. Returns (fromAddr, toAddr, status, contractAddr, found).
