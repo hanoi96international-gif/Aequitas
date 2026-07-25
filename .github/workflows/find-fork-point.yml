@@ -100,8 +100,18 @@ jobs:
           }
 
           echo "=== 2. CANONICAL BLOCK AT COMMON HEIGHTS (lowest tip = $MIN) ==="
-          echo "    Same height, all three nodes. These must be identical."
+          echo "    Same height, all three nodes. Nodes that HAVE the block must agree."
           echo ""
+          # A node that answers null/404 does NOT have the block — which after a
+          # snapshot resync is the normal, expected answer for every height below
+          # the trusted checkpoint it restarted from, since it deliberately holds
+          # no history there. Counting that as a differing hash reports a fork
+          # from an absence, which is exactly the false claim this workflow
+          # exists to prevent (observed live: run 30169384297 printed
+          # "VERDICT: real fork ... at tip-50000" for two nodes resynced minutes
+          # earlier, whose chains were in fact identical wherever both had data).
+          # Only heights where at least TWO nodes return a real block can decide
+          # anything; everything else is reported as coverage, not as evidence.
           FORK_DEPTH=""
           for off in 10 100 500 5000 50000; do
             H=$((MIN - off))
@@ -112,23 +122,32 @@ jobs:
             for n in primary c1 c2; do
               r="$(canon $n $H)"
               set -- $r
+              h="${1:-null}"
+              if [ "$h" = "null" ] || [ "$h" = "-" ] || [ -z "$h" ]; then
+                printf "  %-9s %s\n" "$n" "(not in this node's window — no history below its resync checkpoint)"
+                continue
+              fi
               printf "  %-9s %-20s %-26s %-12s %s\n" "$n" \
-                "$(echo "${1:--}" | cut -c1-18)" "$(echo "${2:--}" | cut -c1-24)" \
+                "$(echo "$h" | cut -c1-18)" "$(echo "${2:--}" | cut -c1-24)" \
                 "${3:--}" "$(echo "${4:--}" | cut -c1-18)"
-              echo "${1:--}" >> "row_$off"
+              echo "$h" >> "row_$off"
             done
-            if [ "$(sort -u "row_$off" | wc -l)" -gt 1 ]; then
-              echo "  >>> DIVERGENT at height $H"
+            have="$(wc -l < "row_$off")"
+            distinct="$(sort -u "row_$off" | wc -l)"
+            if [ "$have" -lt 2 ]; then
+              echo "  inconclusive — only $have node(s) hold this height"
+            elif [ "$distinct" -gt 1 ]; then
+              echo "  >>> DIVERGENT at height $H ($have nodes hold it, $distinct different hashes)"
               FORK_DEPTH="$off"
             else
-              echo "  all three agree"
+              echo "  the $have node(s) that hold this height agree"
             fi
             echo ""
           done
           if [ -n "$FORK_DEPTH" ]; then
-            echo ">>> VERDICT: real fork — the canonical chains differ at depth tip-$FORK_DEPTH."
+            echo ">>> VERDICT: real fork — nodes that both hold tip-$FORK_DEPTH disagree on it."
           else
-            echo ">>> VERDICT: the canonical chains are identical at every sampled depth."
+            echo ">>> VERDICT: no disagreement at any height where two or more nodes hold data."
             echo "    Any blue-score difference visible in the explorer is confined to the"
             echo "    unfinalised tip and is normal DAG spread, not a fork."
           fi
@@ -150,17 +169,29 @@ jobs:
 
           # ---------- 4. cross-visibility: the direct test of "nothing merges" ----------
           echo "=== 4. CROSS-VISIBILITY — is each node's tip known to the other two? ==="
+          # The tip is re-read HERE, not taken from the status sample at the top
+          # of this run: at BLOCK_TIME=1s the chain has moved ~40 blocks by now,
+          # so an old tip hash is simply history and "not known" would say
+          # nothing. Each miss is also retried once after a few seconds, because
+          # a block produced this instant legitimately has not propagated yet —
+          # measured attach latency is ~1.3s avg, 6.4s max. Only a tip that is
+          # still unknown after that window is evidence of anything.
           for src in primary c1 c2; do
-            th="$(jq -r '.latest_hash // empty' "status_$src.json" 2>/dev/null)"
+            th="$(curl -sS --max-time 20 "$(url_of $src)/api/status" 2>/dev/null | jq -r '.latest_hash // empty')"
             [ -n "$th" ] || { echo "  $src: (unreachable)"; continue; }
             echo "  $src tip $(echo "$th" | cut -c1-18):"
             for dst in primary c1 c2; do
               [ "$dst" = "$src" ] && continue
-              r="$(curl -sS --max-time 25 "$(url_of $dst)/api/block?hash=$th" 2>/dev/null)"
-              if echo "$r" | jq -e '.height' >/dev/null 2>&1; then
-                echo "    known to $dst  (height $(echo "$r" | jq -r '.height'), blue_score $(echo "$r" | jq -r '.blue_score // 0'))"
+              seen=""
+              for attempt in 1 2; do
+                r="$(curl -sS --max-time 25 "$(url_of $dst)/api/block?hash=$th" 2>/dev/null)"
+                if echo "$r" | jq -e '.height' >/dev/null 2>&1; then seen="$r"; break; fi
+                [ "$attempt" = 1 ] && sleep 8
+              done
+              if [ -n "$seen" ]; then
+                echo "    known to $dst  (height $(echo "$seen" | jq -r '.height'), blue_score $(echo "$seen" | jq -r '.blue_score // 0'))"
               else
-                echo "    NOT known to $dst   <- $dst has never merged this block"
+                echo "    NOT known to $dst even after 8s   <- $dst has not merged this block"
               fi
             done
           done
