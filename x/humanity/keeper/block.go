@@ -5729,6 +5729,14 @@ func (dag *BlockDAG) replayTransactions(block *Block, force bool) (ok bool) {
 	}
 	hardFailure := false
 	var claimedNullifiers []string
+	// transfersApplied aggregates the per-transfer success logging into ONE
+	// line per block (printed after the loop). FIX (2026-07-25 night): a
+	// 50k-transfer loadtest block used to emit 50k individual "[REPLAY] ✓
+	// Applied transfer" lines — under Railway's log-ingestion backpressure
+	// that stdout write itself became the dominant cost of replaying such a
+	// block (minutes per block, both live and in the boot repair pass).
+	// Failures and every other TX type keep their individual lines.
+	transfersApplied := 0
 
 	// NOTE (2026-07-25): a parallel pre-pass applying "provably disjoint"
 	// transfers concurrently used to sit here (50k-TPS roadmap item 1). It
@@ -5887,7 +5895,9 @@ func (dag *BlockDAG) replayTransactions(block *Block, force bool) (ok bool) {
 				hardFailure = true
 				continue
 			}
-			fmt.Printf("[REPLAY] ✓ Applied transfer %.6f AEQ: %s->%s (block #%d)\n", tx.Amount, wallet, to, block.Height)
+			// Aggregated into one line per block after the loop — see
+			// transfersApplied's declaration for the incident this closes.
+			transfersApplied++
 
 		case "swap_aeq_tusd":
 			if wallet == "" || tx.Amount <= 0 || tx.AmountOut <= 0 {
@@ -6328,6 +6338,14 @@ func (dag *BlockDAG) replayTransactions(block *Block, force bool) (ok bool) {
 		}
 		fmt.Printf("[REPLAY] ✗ Block #%d: replay transaction commit failed (rolled back, block rejected): %v\n", block.Height, commitErr)
 		return false
+	}
+
+	// One aggregate line per block instead of one per transfer — see
+	// transfersApplied's declaration for the 50k-lines-per-block incident.
+	// Printed only after the commit actually succeeded, so the log never
+	// claims transfers were applied on a path that then rolled back.
+	if transfersApplied > 0 {
+		fmt.Printf("[REPLAY] ✓ Applied %d transfer(s) in block #%d\n", transfersApplied, block.Height)
 	}
 
 	dag.replayedMu.Lock()
@@ -7664,16 +7682,31 @@ func (dag *BlockDAG) repairUnreplayedBlocks() {
 		return
 	}
 	sort.Slice(gap, func(i, j int) bool { return gap[i].Height < gap[j].Height })
-	fmt.Printf("[REPAIR] Found %d block(s) saved but never confirmed replayed (likely a past crash mid-replay) — repairing now\n", len(gap))
-	dag.replayMu.Lock()
-	defer dag.replayMu.Unlock()
+	fmt.Printf("[REPAIR] Found %d block(s) saved but never confirmed replayed (likely a past crash mid-replay) — repairing in the background\n", len(gap))
+	started := time.Now()
+	repaired, failed := 0, 0
+	// FIX (2026-07-25 night, same incident as the SafeGoroutine call site in
+	// evm_rpc.go): replayMu used to be held for the ENTIRE pass. Fine when the
+	// backlog was a handful of blocks; with a multi-thousand-block backlog it
+	// would starve every live AddPeerBlock replay for the whole duration now
+	// that this runs concurrently with normal operation. Acquire per block
+	// instead: each individual replay keeps the exact same mutual exclusion it
+	// always had, and live blocks interleave between repair blocks. MarkBlock-
+	// Replayed commits atomically with each block's own replay transaction, so
+	// progress is durable per block — a restart mid-pass resumes where it left
+	// off instead of starting over.
 	for _, b := range gap {
-		if dag.replayTransactions(b, true) {
-			fmt.Printf("[REPAIR] ✓ Block #%d (%s...) replayed successfully — chain_accounts now current\n", b.Height, b.Hash[:min(16, len(b.Hash))])
+		dag.replayMu.Lock()
+		ok := dag.replayTransactions(b, true)
+		dag.replayMu.Unlock()
+		if ok {
+			repaired++
 		} else {
+			failed++
 			fmt.Printf("[REPAIR] ✗ Block #%d (%s...) still failed to replay — will retry again on next restart\n", b.Height, b.Hash[:min(16, len(b.Hash))])
 		}
 	}
+	fmt.Printf("[REPAIR] Done: %d block(s) repaired, %d failed, in %s\n", repaired, failed, time.Since(started).Round(time.Second))
 }
 
 // triggerSoftRetryFlush starts a soft-retry flush pass if none is already
