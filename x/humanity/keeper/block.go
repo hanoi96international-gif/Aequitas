@@ -6840,6 +6840,11 @@ func (dag *BlockDAG) computeGHOSTDAGState(block *Block) (missingAncestor string,
 	// every node by construction, so every node infers the identical K_eff
 	// for the identical block.
 	cc := dag.newKnightdagConcCache(&dbBudget)
+	// Index this merge set once so every classification pass below addresses
+	// pairs by position instead of by hash string — see prepare's comment for
+	// the O(K·n²) string-map cost this removes. `sorted` is final here (the
+	// maxClassifiedMergeSetSize truncation above already applied).
+	cc.prepare(sorted)
 	var blues []string
 	if block.Height >= knightdagActivationHeight {
 		var kEff int
@@ -6934,10 +6939,108 @@ type knightdagConcCache struct {
 	dag      *BlockDAG
 	dbBudget *int
 	res      map[[2]string]bool
+
+	// Index-based fast path (see prepare/concurrentAt). Populated only when
+	// prepare() has run for the merge set being classified; every other
+	// caller (tests, any future direct concurrent() user) keeps using the
+	// map above unchanged.
+	hashes   []string
+	idx      map[string]int
+	n        int
+	resolved []uint64 // bit b set => pair b has been decided
+	conc     []uint64 // bit b set => pair b is concurrent (valid iff resolved)
+
+	// scratch is THE hot-path optimization (see ancestorScratch): one BFS
+	// working set reused across every ancestor query this cache serves,
+	// instead of a fresh map+queue per query. Used sequentially within a
+	// single computeGHOSTDAGState call, so it needs no synchronization.
+	scratch ancestorScratch
 }
 
 func (dag *BlockDAG) newKnightdagConcCache(dbBudget *int) *knightdagConcCache {
 	return &knightdagConcCache{dag: dag, dbBudget: dbBudget, res: make(map[[2]string]bool)}
+}
+
+// prepare indexes one merge set so classification can address pairs by
+// position instead of by hash string.
+//
+// PERFORMANCE (2026-07-25): knightdagInferK runs up to K+1 full
+// classification passes (K = dag.k(), 18 at base), and each pass asks
+// concurrent() about O(|sorted|·|blues|) pairs. Every one of those was a
+// map[[2]string]bool lookup — two string hashes plus a comparison, on the
+// order of 100ns — so the pure BOOKKEEPING cost around the (correctly
+// memoized, paid-once) BFS walks grew as O(K·n²) string-map operations. At
+// the 100-validator committee this design targets, n reaches maxMergeVisits
+// (~95) and that is roughly 190,000 string-map lookups per block, which is
+// the bulk of what block_ghostdag_scale_test.go measures as 30 validators ×
+// 20 rounds ≈ 99s.
+//
+// With a dense index the same question becomes one bit test. The matrix is
+// n² bits twice over — ~2.3 KB at n=95, and maxMergeVisits caps n by
+// construction — so this trades a negligible allocation for the entire
+// string-hashing cost.
+//
+// Deliberately NOT changed: which pairs get asked, in which order, and the
+// early break in knightdagClassify. Precomputing the full matrix would be
+// faster still, but it would resolve pairs the early-breaking loop never
+// asks about — and a pair that resolves to "missing ancestor" would then
+// defer a block that classifies fine today. After a night of orphan walls,
+// introducing NEW deferrals to save microseconds is the wrong trade.
+func (cc *knightdagConcCache) prepare(sorted []string) {
+	n := len(sorted)
+	if n == 0 {
+		return
+	}
+	cc.hashes = sorted
+	cc.idx = make(map[string]int, n)
+	for i, h := range sorted {
+		if _, dup := cc.idx[h]; !dup {
+			cc.idx[h] = i
+		}
+	}
+	cc.n = n
+	words := (n*n + 63) / 64
+	cc.resolved = make([]uint64, words)
+	cc.conc = make([]uint64, words)
+}
+
+// concurrentAt is concurrent() addressed by merge-set position. Identical
+// semantics and identical underlying ghostdagIsAncestor call order (the two
+// hashes are still ordered lexicographically before the walks, so a pair
+// that reports a missing ancestor reports the SAME one it always did) —
+// only the memo lookup differs.
+func (cc *knightdagConcCache) concurrentAt(i, j int) (bool, string) {
+	if i == j {
+		return false, ""
+	}
+	a, b := i, j
+	if b < a {
+		a, b = b, a
+	}
+	bit := a*cc.n + b
+	word := bit >> 6
+	mask := uint64(1) << uint(bit&63)
+	if cc.resolved[word]&mask != 0 {
+		return cc.conc[word]&mask != 0, ""
+	}
+	x, y := cc.hashes[a], cc.hashes[b]
+	if y < x {
+		x, y = y, x
+	}
+	xAncY, missing := cc.dag.ghostdagIsAncestorScratch(x, y, cc.dbBudget, &cc.scratch)
+	if missing != "" {
+		return false, missing
+	}
+	yAncX, missing := cc.dag.ghostdagIsAncestorScratch(y, x, cc.dbBudget, &cc.scratch)
+	if missing != "" {
+		return false, missing
+	}
+	v := !xAncY && !yAncX
+	cc.resolved[word] |= mask
+	if v {
+		cc.conc[word] |= mask
+	}
+	return v, ""
 }
 
 // concurrent reports whether x and y are in each other's anticone (neither
@@ -6959,11 +7062,11 @@ func (cc *knightdagConcCache) concurrent(x, y string) (concurrent bool, missing 
 	if v, ok := cc.res[key]; ok {
 		return v, ""
 	}
-	xAncY, missing := cc.dag.ghostdagIsAncestor(key[0], key[1], cc.dbBudget)
+	xAncY, missing := cc.dag.ghostdagIsAncestorScratch(key[0], key[1], cc.dbBudget, &cc.scratch)
 	if missing != "" {
 		return false, missing
 	}
-	yAncX, missing := cc.dag.ghostdagIsAncestor(key[1], key[0], cc.dbBudget)
+	yAncX, missing := cc.dag.ghostdagIsAncestorScratch(key[1], key[0], cc.dbBudget, &cc.scratch)
 	if missing != "" {
 		return false, missing
 	}
@@ -6987,6 +7090,38 @@ func (cc *knightdagConcCache) concurrent(x, y string) (concurrent bool, missing 
 // the caller must treat this exactly like ghostdagMergeSet's own
 // missingAncestor (retry once the hash resolves), not as "no blues".
 func knightdagClassify(sorted []string, k int, cc *knightdagConcCache) (blues []string, missing string) {
+	// Indexed fast path when prepare() has indexed exactly this merge set —
+	// same loop, same order, same early break, only the memo lookup is a bit
+	// test instead of a string-map hit (see prepare's comment).
+	if cc != nil && cc.n > 0 && cc.n == len(sorted) {
+		blueIdx := make([]int, 0, len(sorted))
+		for i := range sorted {
+			antiCnt := 0
+			isBlue := true
+			for _, bIdx := range blueIdx {
+				conc, miss := cc.concurrentAt(bIdx, i)
+				if miss != "" {
+					return nil, miss
+				}
+				if conc {
+					antiCnt++
+					if antiCnt > k {
+						isBlue = false
+						break
+					}
+				}
+			}
+			if isBlue {
+				blueIdx = append(blueIdx, i)
+			}
+		}
+		blues = make([]string, len(blueIdx))
+		for i, bIdx := range blueIdx {
+			blues[i] = sorted[bIdx]
+		}
+		return blues, ""
+	}
+
 	blues = make([]string, 0, len(sorted))
 	for _, mHash := range sorted {
 		antiCnt := 0
@@ -7491,23 +7626,82 @@ func (dag *BlockDAG) ghostdagBatchPrefetch(hashes []string, dbBudget *int) {
 //     "not an ancestor" (the same conservative direction as every other cap
 //     here: under uncertainty, bias toward classifying more blocks red
 //     rather than risking an incorrect blue).
+// ancestorQueueEntry is one BFS frontier item for ghostdagIsAncestor.
+// Named (not a function-local type) so ancestorScratch can hold the queue
+// across calls.
+type ancestorQueueEntry struct {
+	hash  string
+	depth int
+}
+
+// ancestorScratch lets ONE computeGHOSTDAGState call reuse a single BFS
+// working set across all of its ancestor queries.
+//
+// PERFORMANCE (2026-07-25, measured — this is where the time actually goes):
+// a CPU profile of block_ghostdag_scale_test.go's 100-validator run
+// (3001 blocks, ~45s) attributes 51% of total time to ghostdagIsAncestor,
+// and inside it 29% to runtime.mapassign_faststr plus 16% to map rehash/grow
+// — because every single query allocated a fresh map[string]bool and grew it
+// from empty up to visitCap. Classification asks this question O(n²) times
+// per block, so those short-lived maps also drove most of the ~27% the
+// profile spends in GC.
+//
+// Reusing one map (cleared, not reallocated — Go's clear() keeps the buckets)
+// and one queue removes both the allocation and the repeated growth. The
+// scratch lives on knightdagConcCache, which is created per
+// computeGHOSTDAGState call and used strictly sequentially within it, so no
+// synchronization is needed and no state leaks between blocks.
+//
+// NOTE: this is what actually mattered. An earlier attempt in the same
+// session optimized the memo lookup above this layer (string-keyed pair cache
+// → bitset) and measured 45.45s → 45.00s, i.e. nothing: with merge sets
+// capped at maxMergeVisits the memo was never the cost. Measure first.
+type ancestorScratch struct {
+	visited map[string]bool
+	queue   []ancestorQueueEntry
+}
+
 func (dag *BlockDAG) ghostdagIsAncestor(ancestorHash, descendantHash string, dbBudget *int) (isAncestor bool, missing string) {
+	return dag.ghostdagIsAncestorScratch(ancestorHash, descendantHash, dbBudget, nil)
+}
+
+// ghostdagIsAncestorScratch is ghostdagIsAncestor with an optional reusable
+// working set (see ancestorScratch). Passing nil allocates per call, exactly
+// as before this optimization — the traversal, its bounds, its ordering and
+// its missing-ancestor reporting are identical either way.
+func (dag *BlockDAG) ghostdagIsAncestorScratch(ancestorHash, descendantHash string, dbBudget *int, sc *ancestorScratch) (isAncestor bool, missing string) {
 	if ancestorHash == descendantHash {
 		return true, ""
 	}
-	type entry struct {
-		hash  string
-		depth int
-	}
 	visitCap := dag.maxMergeVisits()
-	visited := map[string]bool{descendantHash: true}
-	queue := []entry{{descendantHash, 0}}
-	for len(queue) > 0 {
+	var visited map[string]bool
+	var queue []ancestorQueueEntry
+	if sc != nil {
+		if sc.visited == nil {
+			sc.visited = make(map[string]bool, visitCap)
+			sc.queue = make([]ancestorQueueEntry, 0, visitCap)
+		} else {
+			clear(sc.visited)
+		}
+		visited = sc.visited
+		queue = sc.queue[:0]
+		// Store the (possibly regrown) backing array back, so the next query
+		// reuses it instead of starting from capacity zero again.
+		defer func() { sc.queue = queue }()
+	} else {
+		visited = make(map[string]bool, visitCap)
+		queue = make([]ancestorQueueEntry, 0, visitCap)
+	}
+	visited[descendantHash] = true
+	queue = append(queue, ancestorQueueEntry{descendantHash, 0})
+	// head-index dequeue rather than queue = queue[1:]: re-slicing advances
+	// the header away from the array start, which would make the reused
+	// backing array useless after a few calls.
+	for head := 0; head < len(queue); head++ {
 		if len(visited) >= visitCap {
 			return false, ""
 		}
-		cur := queue[0]
-		queue = queue[1:]
+		cur := queue[head]
 		if cur.depth >= dag.mergeDepthLimit() {
 			continue
 		}
@@ -7525,7 +7719,7 @@ func (dag *BlockDAG) ghostdagIsAncestor(ancestorHash, descendantHash string, dbB
 			}
 			if !visited[ph] {
 				visited[ph] = true
-				queue = append(queue, entry{ph, cur.depth + 1})
+				queue = append(queue, ancestorQueueEntry{ph, cur.depth + 1})
 				if len(visited) >= visitCap {
 					return false, ""
 				}
