@@ -312,6 +312,20 @@ peerChallenges         map[string]peerChallenge // address → pending challenge
 challengeMu            sync.Mutex
 replayedBlocks         map[string]bool  // tracks blocks already replayed — prevents double-credit on duplicate delivery
 replayedMu             sync.Mutex
+	// replayFailures backs off repeated replayTransactions attempts against a
+	// block that keeps failing — see that function's own comment (the
+	// "2026-07-25 hang incident") for why this exists: without it, a block
+	// containing one deterministically-failing TX (e.g. a sender genuinely
+	// out of balance) gets replayed from scratch on EVERY new descendant
+	// block's arrival, forever, since a failed attempt never marks anything
+	// and the next arriving block's ancestor walk finds the exact same
+	// unreplayed ancestor again. Under sustained block production (multiple
+	// validators, ENABLE_MULTI_BLOCK_TICK) that is many full replay attempts
+	// per second, indefinitely — confirmed live to hang a node's replay path
+	// (and, transitively, its HTTP API) for 9+ minutes on a single block.
+	// Guarded by replayedMu, same as replayedBlocks — the two are always
+	// updated together conceptually (one block, one outcome).
+	replayFailures map[string]replayFailureState
 	// replayMu serializes replayTransactions calls across concurrent
 	// AddPeerBlock invocations (e.g. the same or different blocks arriving
 	// via P2P and HTTP sync at the same time) — replay must happen in a
@@ -1044,6 +1058,7 @@ activeSyncPeers:        make(map[string]bool),
 warnedUnknownProposers: make(map[string]bool),
 peerChallenges:         make(map[string]peerChallenge),
 replayedBlocks:         make(map[string]bool),
+replayFailures:         make(map[string]replayFailureState),
 equivocationIndex:      make(map[string]string),
 newBlockSubs:           make(map[chan struct{}]struct{}),
 proposerBreaker:        newBoundedBreaker(proposerBreakerFailThreshold, proposerBreakerCooldown, proposerBreakerReopenProbes, maxTrackedProposers),
@@ -5410,6 +5425,37 @@ return tips
 // rejections, not signs of state divergence, and were already
 // self-consistent (TryClaimNullifier/ReleaseNullifier are already a
 // correctly paired claim/release).
+// replayFailureState tracks one block's replay-failure backoff — see
+// BlockDAG.replayFailures' own comment for why this exists.
+type replayFailureState struct {
+	count       int
+	lastTriedAt time.Time
+}
+
+// replayBackoffFor returns how long to wait before re-attempting a block
+// that has already failed replay `failCount` times. Capped exponential
+// (5s, 10s, 20s, ... up to 60s): long enough that a sustained stream of new
+// descendant blocks (the exact trigger of the 2026-07-25 hang — see
+// replayFailures' comment) can no longer force a fresh full replay attempt
+// on every single arrival, short enough that a genuinely transient failure
+// (a DB hiccup, not a deterministic one) still self-heals within a minute
+// without any operator action.
+func replayBackoffFor(failCount int) time.Duration {
+	const base = 5 * time.Second
+	const maxBackoff = 60 * time.Second
+	if failCount <= 0 {
+		return 0
+	}
+	d := base
+	for i := 1; i < failCount && d < maxBackoff; i++ {
+		d *= 2
+	}
+	if d > maxBackoff {
+		d = maxBackoff
+	}
+	return d
+}
+
 // replayTransactions applies block's transactions to chain_accounts. force
 // must be true ONLY from repairUnreplayedBlocks: it bypasses the
 // skipHeight/bootHeight "already covered by the loaded snapshot" guard
@@ -5420,13 +5466,60 @@ return tips
 // missing effects. Every other caller (the live AddPeerBlock/
 // replayInCanonicalOrder path) must keep passing false — see
 // ensureReplayedColumn's comment for the incident this parameter closes.
-func (dag *BlockDAG) replayTransactions(block *Block, force bool) bool {
+//
+// FIX (2026-07-25 hang incident): a block whose replay fails deterministically
+// (e.g. a sender genuinely out of balance — a legitimate rejection, not a bug
+// in itself) used to be retried from scratch on every single subsequent
+// descendant block's arrival, forever, because a failed attempt never marked
+// anything and the next block's ancestor walk (collectUnreplayedAncestors)
+// finds the exact same unreplayed ancestor again. Confirmed live: Contabo1
+// replayed the identical block, transaction-for-transaction, for 9+ minutes
+// straight — hanging its replay path and, transitively, its HTTP API — while
+// the rest of the network kept producing new blocks on top of it at roughly
+// one per second (faster still with ENABLE_MULTI_BLOCK_TICK). The named
+// return + defer below records the outcome of every exit path in ONE place
+// so none of the function's existing return statements had to change.
+func (dag *BlockDAG) replayTransactions(block *Block, force bool) (ok bool) {
+	defer func() {
+		dag.replayedMu.Lock()
+		if ok {
+			delete(dag.replayFailures, block.Hash)
+		} else {
+			f := dag.replayFailures[block.Hash]
+			f.count++
+			f.lastTriedAt = time.Now()
+			dag.replayFailures[block.Hash] = f
+			// Same unbounded-growth guard replayedBlocks already applies
+			// below (line ~6193) — this map can only grow from genuinely
+			// failing blocks, which should be rare, but "rare, over a
+			// process lifetime of weeks" is still worth bounding.
+			if len(dag.replayFailures) > 50000 {
+				dag.replayFailures = make(map[string]replayFailureState, 1000)
+			}
+		}
+		dag.replayedMu.Unlock()
+	}()
+
 	// Fix 4: Deduplication guard — if this block has already been replayed,
 	// skip it. Prevents double-credits when a block is delivered more than once.
 	dag.replayedMu.Lock()
 	if dag.replayedBlocks[block.Hash] {
 		dag.replayedMu.Unlock()
 		return true // already successfully replayed
+	}
+	// Backoff guard (see replayFailures' own comment): force=true is ONLY
+	// repairUnreplayedBlocks, a deliberate, operator-relevant, once-per-restart
+	// retry that must always actually attempt — never rate-limited. Every
+	// other (force=false) caller is a new block arrival that may be re-walking
+	// an ancestor it has already retried recently; skip cheaply instead of
+	// redoing the full transaction loop below.
+	if !force {
+		if fail, exists := dag.replayFailures[block.Hash]; exists {
+			if wait := replayBackoffFor(fail.count); time.Since(fail.lastTriedAt) < wait {
+				dag.replayedMu.Unlock()
+				return false
+			}
+		}
 	}
 	dag.replayedMu.Unlock()
 
@@ -5599,6 +5692,33 @@ func (dag *BlockDAG) replayTransactions(block *Block, force bool) bool {
 	}
 	hardFailure := false
 	var claimedNullifiers []string
+
+	// NOTE (2026-07-25): a parallel pre-pass applying "provably disjoint"
+	// transfers concurrently used to sit here (50k-TPS roadmap item 1). It
+	// was REVERTED the same day after its exact failure signature appeared
+	// live on Contabo2 minutes after deploy:
+	//
+	//   [BLOCK] ✗ Could not save peer block #1849827 header before replay:
+	//           pq: unexpected Parse response "(D) DataRow" — skipping
+	//   [REPLAY] ✗ Block #1849827: replay transaction commit failed
+	//           (rolled back, block rejected): driver: bad connection
+	//
+	// That is a Postgres wire-protocol desync: two goroutines used the same
+	// connection concurrently. The reverted code guarded its workers with a
+	// LOCAL sync.Mutex, which serializes those workers against each other but
+	// not against any other goroutine touching the same dag.state.activeTx —
+	// so it never actually established the invariant it claimed. The same
+	// signature had already been caught pre-deploy by
+	// TestReplayTransactions_ParallelTransfers_RealDB and was wrongly assumed
+	// fixed by that local mutex.
+	//
+	// Cost of the revert is small and was documented at the time: because
+	// every worker had to serialize on the DB round trip anyway, only the
+	// CPU-bound balance/demurrage arithmetic ever overlapped. Correctness of
+	// consensus-critical replay is not worth that trade. Any future attempt
+	// must first give each worker its OWN database connection (or move the DB
+	// write out of the parallel phase entirely) — a local mutex around a
+	// shared *sql.Tx is provably not sufficient.
 
 	for _, tx := range block.Transactions {
 		if hardFailure {

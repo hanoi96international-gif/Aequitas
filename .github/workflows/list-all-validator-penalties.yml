@@ -1,0 +1,81 @@
+name: List ALL validator penalties on both Contabos (manual, read-only)
+
+# Broader version of quick-slashing-check.yml (which only checks one
+# hardcoded address on Contabo2). Dumps every row of validator_penalties
+# and equivocation_evidence on BOTH boxes -- not just the trusted
+# bootstrap signer -- since a fork can equally be explained by any OTHER
+# validator address being locally suspended/banned on one node but not
+# the other (each node's slashing decisions are applied to ITS OWN local
+# state independently -- see slashing.go), which would make that node
+# reject blocks the rest of the network accepts. Purely read-only.
+on:
+  workflow_dispatch: {}
+
+jobs:
+  contabo1:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Dump validator_penalties + equivocation_evidence on Contabo1
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: 173.249.37.118
+          username: root
+          key: ${{ secrets.CONTABO_SSH_KEY }}
+          port: 22
+          fingerprint: "SHA256:noMtjHV8c+2iEFZu3TRUP6WRwGjkrvFke71KgU6Eyt4"
+          script_stop: true
+          timeout: 90s
+          command_timeout: 90s
+          script: |
+            set -uo pipefail
+            DATABASE_URL="$(grep -E '^DATABASE_URL=' /root/.aequitas.env 2>/dev/null | head -1 | cut -d= -f2-)"
+            if [ -z "$DATABASE_URL" ]; then
+              DATABASE_URL="$(docker inspect aequitas-node --format '{{range .Config.Env}}{{println .}}{{end}}' 2>/dev/null | grep -E '^DATABASE_URL=' | head -1 | cut -d= -f2-)"
+            fi
+            if [ -z "$DATABASE_URL" ]; then
+              echo "No DATABASE_URL found on Contabo1 -- cannot check."
+              exit 0
+            fi
+            NET="$(docker inspect aequitas-node --format '{{range $n,$v := .NetworkSettings.Networks}}{{$n}}{{end}}' 2>/dev/null)"
+            echo "=== Contabo1: ALL validator_penalties rows ==="
+            docker run --rm --network "$NET" postgres:16-alpine psql "$DATABASE_URL" -A -F' | ' -c \
+              "SELECT signing_address, offense_count, suspended_until, banned, last_offense_at FROM validator_penalties ORDER BY last_offense_at DESC" || echo "(query failed)"
+            echo "=== Contabo1: equivocation_evidence, most recent 20 ==="
+            docker run --rm --network "$NET" postgres:16-alpine psql "$DATABASE_URL" -A -F' | ' -c \
+              "SELECT signing_address, detected_at, slash_applied FROM equivocation_evidence ORDER BY detected_at DESC LIMIT 20" || echo "(query failed)"
+            echo "=== Contabo1: recent [SLASHING] log lines (last 3000 log lines scanned) ==="
+            docker logs aequitas-node 2>&1 | tail -3000 | grep -iE '\[SLASHING\]' | tail -20 || echo "(none found)"
+
+  contabo2:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Dump validator_penalties + equivocation_evidence on Contabo2
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: 194.163.188.71
+          username: root
+          key: ${{ secrets.CONTABO2_SSH_KEY }}
+          port: 22
+          fingerprint: "SHA256:VIwj7Faxiga2n45HVHZEQFPxcbRKHgSgHoxAFsf2wto"
+          script_stop: true
+          timeout: 90s
+          command_timeout: 90s
+          script: |
+            set -uo pipefail
+            DATABASE_URL="$(grep -E '^DATABASE_URL=' /root/.aequitas.env 2>/dev/null | head -1 | cut -d= -f2-)"
+            if [ -z "$DATABASE_URL" ]; then
+              DATABASE_URL="$(docker inspect aequitas-node --format '{{range .Config.Env}}{{println .}}{{end}}' 2>/dev/null | grep -E '^DATABASE_URL=' | head -1 | cut -d= -f2-)"
+            fi
+            if [ -z "$DATABASE_URL" ]; then
+              echo "No DATABASE_URL found on Contabo2 -- cannot check."
+              exit 0
+            fi
+            NET="$(docker inspect aequitas-node --format '{{range $n,$v := .NetworkSettings.Networks}}{{$n}}{{end}}' 2>/dev/null)"
+            echo "=== Contabo2: ALL validator_penalties rows ==="
+            docker run --rm --network "$NET" postgres:16-alpine psql "$DATABASE_URL" -A -F' | ' -c \
+              "SELECT signing_address, offense_count, suspended_until, banned, last_offense_at FROM validator_penalties ORDER BY last_offense_at DESC" || echo "(query failed)"
+            echo "=== Contabo2: equivocation_evidence, most recent 20 ==="
+            docker run --rm --network "$NET" postgres:16-alpine psql "$DATABASE_URL" -A -F' | ' -c \
+              "SELECT signing_address, detected_at, slash_applied FROM equivocation_evidence ORDER BY detected_at DESC LIMIT 20" || echo "(query failed)"
+            echo "=== Contabo2: recent [SLASHING] log lines (last 3000 log lines scanned) ==="
+            docker logs aequitas-node 2>&1 | tail -3000 | grep -iE '\[SLASHING\]' | tail -20 || echo "(none found)"

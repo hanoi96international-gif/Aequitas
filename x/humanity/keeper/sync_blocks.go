@@ -298,12 +298,101 @@ func (dag *BlockDAG) fetchBlocksSince(nodeURL string, minHeight int64, afterHash
 		body, _ := io.ReadAll(io.LimitReader(resp.Body, 4<<10))
 		return nil, fmt.Errorf("peer returned HTTP %d: %s", resp.StatusCode, strings.TrimSpace(string(body)))
 	}
-	body, _ := io.ReadAll(io.LimitReader(resp.Body, 10<<20))
+	// FIX (2026-07-25, "es merged nix" incident): this used to discard
+	// io.ReadAll's own error (`body, _ := ...`) — a connection cut short
+	// mid-response (peer WriteTimeout, reset) silently became "here is a
+	// complete, malformed JSON body" instead of "the read itself failed",
+	// indistinguishable from the peer having genuinely sent bad data.
+	// Surfacing readErr distinctly, and including the actual byte count on
+	// an unmarshal failure, is what let this incident's root cause (the
+	// primary silently truncating a large page write under load) be
+	// diagnosed at all instead of looking like unexplained peer corruption.
+	//
+	// FIX (2026-07-25, follow-up — the 10 MB cap this originally shipped
+	// with became the SAME failure by a different door): confirmed live on
+	// Contabo1/Contabo2 within the hour, both the full pageSize=500 request
+	// AND the smaller pageSize=25 fallback (see fetchWithSmallerPageFallback)
+	// failed with "decoding response body (10485760 bytes): unexpected end
+	// of JSON input" — 10485760 = exactly 10<<20, i.e. io.LimitReader itself
+	// was silently truncating a genuinely large-but-valid page at this
+	// chain's current block density (dense multi-proposer KnightDAG merges),
+	// not a peer-side write failure. io.LimitReader returns io.EOF once N
+	// bytes are read, which io.ReadAll treats as a normal, errorless end —
+	// so this looked identical to a truncated response with readErr==nil,
+	// same as the original incident. Worse, doSyncOnce returns immediately
+	// on a page==0 failure, before ever calling advancePeerSyncHeight — so
+	// minHeight never moves and the exact same oversized page is
+	// re-requested every single cycle, forever, which also permanently
+	// pins cleanSyncStreak at 0 and blocks local block production (the
+	// "Contabo produziert keine eigenen Blöcke" symptom). 64 MB matches the
+	// order of magnitude already trusted elsewhere for a full peer response
+	// (see snapshot.go's 50<<20) — generous enough for this chain's current
+	// live block sizes without removing the cap's original purpose (bounding
+	// memory use against a malicious/broken peer).
+	body, readErr := io.ReadAll(io.LimitReader(resp.Body, 64<<20))
+	if readErr != nil {
+		return nil, fmt.Errorf("reading response body: %w", readErr)
+	}
 	var blocks []*Block
 	if err := json.Unmarshal(body, &blocks); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("decoding response body (%d bytes): %w", len(body), err)
 	}
 	return blocks, nil
+}
+
+// fetchBlocksSinceWithFallback wraps fetchBlocksSince with one retry at a
+// much smaller page size on failure. A large page (pageSize=500, the max
+// doSyncOnce ever requests) can fail against a peer that's currently slow
+// (e.g. just restarted, still catching up itself) even though the peer is
+// otherwise reachable and healthy — see fetchBlocksSince's and handleBlocks'
+// (api.go) own comments for the mechanism. Confirmed live 2026-07-25: both
+// secondaries stuck retrying an identical failing 500-block page forever,
+// completely unable to advance ("es merged nix"), immediately after the
+// primary itself restarted under load. A much smaller page is far cheaper
+// for a loaded peer to build and far less likely to hit the same failure,
+// letting sync make SOME progress instead of stalling completely until the
+// peer's load happens to subside on its own.
+//
+// Returns usedFallback=true when the smaller retry is what actually
+// succeeded, so the caller's "a short page means we've reached the peer's
+// tip" pagination logic (doSyncOnce) knows NOT to draw that conclusion from
+// this page's size alone — a fallback page is short because it was asked to
+// be, not because the peer has nothing more.
+func (dag *BlockDAG) fetchBlocksSinceWithFallback(nodeURL string, minHeight int64, afterHash string, pageSize int) (blocks []*Block, usedFallback bool, err error) {
+	return fetchWithSmallerPageFallback(nodeURL, minHeight, pageSize, fallbackPageSize,
+		func(size int) ([]*Block, error) {
+			return dag.fetchBlocksSince(nodeURL, minHeight, afterHash, size)
+		})
+}
+
+// fallbackPageSize is how small fetchBlocksSinceWithFallback retries after a
+// full-size page fails — small enough to be cheap for an already-loaded
+// peer to build, per that function's own comment.
+const fallbackPageSize = 25
+
+// fetchWithSmallerPageFallback is fetchBlocksSinceWithFallback's retry
+// policy, factored out of it so it can be unit-tested against a fake
+// attempt function without any real network call — fetchBlocksSince always
+// goes through httpSyncClient's pinningDialer, which deliberately rejects
+// loopback/private addresses (an SSRF/DNS-rebinding guard — see
+// pinningDialer's own comment), making it unusable directly against an
+// httptest.Server. nodeURL/minHeight are passed through only for the
+// warning log line, not used in the retry decision itself.
+func fetchWithSmallerPageFallback(nodeURL string, minHeight int64, pageSize, smallerPageSize int, attempt func(size int) ([]*Block, error)) (blocks []*Block, usedFallback bool, err error) {
+	blocks, err = attempt(pageSize)
+	if err == nil {
+		return blocks, false, nil
+	}
+	if pageSize <= smallerPageSize {
+		return nil, false, err // already small; nothing smaller to fall back to
+	}
+	fmt.Printf("[HTTP-SYNC] ⚠ Page fetch (min_height=%d, pageSize=%d) from %s failed (%v) — retrying at a smaller page size (%d)\n",
+		minHeight, pageSize, nodeURL, err, smallerPageSize)
+	fallbackBlocks, fallbackErr := attempt(smallerPageSize)
+	if fallbackErr != nil {
+		return nil, false, fmt.Errorf("full page failed (%v), smaller fallback page also failed: %w", err, fallbackErr)
+	}
+	return fallbackBlocks, true, nil
 }
 
 // fetchBlocksByHashes resolves multiple missing-parent hashes in a single
@@ -858,6 +947,31 @@ func (dag *BlockDAG) lowerDeepScanFloor(nodeURL string, sweptFrom int64) {
 		sweptFrom, nodeURL, newFloor)
 }
 
+// deferralsAreNotResolving reports whether this sync cycle's deferred blocks
+// are evidence of a FORK rather than of ordinary catch-up — see the call site
+// in doSyncOnce for the full 2026-07-25 incident this closes.
+//
+// True only when all of the following hold, which is deliberately narrow so a
+// healthy restart backlog is completely unaffected:
+//   - this cycle deferred at least one block behind an in-flight parent, and
+//   - it merged nothing at all itself (totalAdded == 0), and
+//   - no block has successfully merged from ANY peer for longer than the very
+//     grace window those deferrals are being forgiven under.
+//
+// lastSuccessfulPeerSyncAt == 0 means "nothing has merged YET" (fresh process),
+// not "the last merge was in 1970" — a booting node must not be misread as
+// forked, so that case returns false.
+func deferralsAreNotResolving(dag *BlockDAG, totalDeferred, totalAdded int) bool {
+	if totalDeferred == 0 || totalAdded > 0 {
+		return false
+	}
+	lastMerge := dag.lastSuccessfulPeerSyncAt.Load()
+	if lastMerge <= 0 {
+		return false
+	}
+	return time.Now().Unix()-lastMerge > int64(proposerBreakerOrphanGrace.Seconds())
+}
+
 func (dag *BlockDAG) doSyncOnce(nodeURL string) (ok bool) {
 	const pageSize = 500
 	const maxPagesPerCall = 2000 // hard cap: 1,000,000 blocks per call — headroom, not unbounded
@@ -987,7 +1101,7 @@ func (dag *BlockDAG) doSyncOnce(nodeURL string) (ok bool) {
 	}
 	reachedPeerTip := false
 	for page := 0; page < pagesBudget; page++ {
-		blocks, err := dag.fetchBlocksSince(nodeURL, minHeight, afterHash, pageSize)
+		blocks, usedFallback, err := dag.fetchBlocksSinceWithFallback(nodeURL, minHeight, afterHash, pageSize)
 		if err != nil {
 			fmt.Printf("[HTTP-SYNC] ✗ Could not fetch page (min_height=%d) from %s: %v\n", minHeight, nodeURL, err)
 			if page == 0 {
@@ -1130,7 +1244,7 @@ func (dag *BlockDAG) doSyncOnce(nodeURL string) (ok bool) {
 		// fetched. Outside deepScan this remains a correct, cheap signal
 		// (normal forward sync only ever requests pages it expects to be
 		// at or near the tip), so only deepScan skips the early break.
-		if len(blocks) < pageSize && !deepScan {
+		if len(blocks) < pageSize && !deepScan && !usedFallback {
 			afterHash = "" // last page — reset cursor
 			break          // peer's tip is within this page
 		}
@@ -1203,7 +1317,54 @@ func (dag *BlockDAG) doSyncOnce(nodeURL string) (ok bool) {
 		}
 		fmt.Printf("[HTTP-SYNC] ✓ Added %d new blocks from %s | DAG tips: %d | height %d%s\n", totalAdded, nodeURL, tipCount, dag.Height(), deferredNote)
 	}
-	if sawUnmergedBlocks {
+	// FIX (P0, 2026-07-25 — root cause of "nothing merges", found after the
+	// secondaries forked below their own finality floor and could not be
+	// healed by anything short of a full snapshot resync):
+	//
+	// The IsWithinOrphanGrace exemption above (see its own FIX comment) stops
+	// a block DEFERRED behind an in-flight parent from resetting the streak,
+	// so an ordinary restart backlog can reach the threshold and resume
+	// producing. Its stated safety argument was: "a genuinely diverged peer
+	// serves blocks whose parents this node will never receive; those parents
+	// age past the grace within one window and every subsequent cycle resets
+	// the streak again."
+	//
+	// That argument does not hold on a live chain. The peer keeps producing,
+	// so every cycle brings BRAND NEW blocks whose parents are, by
+	// construction, always younger than the grace window — they are deferred,
+	// never refused, no matter how permanently forked this node is. The streak
+	// therefore climbed to the threshold on a node that had merged literally
+	// nothing (confirmed live: foreign_attach count 0 on both secondaries,
+	// while ~1000 blocks/cycle arrived and every single one orphaned).
+	// hasCaughtUpWithAllPeers then reported "caught up", ProduceBlock started
+	// producing on this node's OWN branch, and those self-produced blocks were
+	// finalized locally — putting the real common ancestor below this node's
+	// own finality floor, where isFinalityViolation rejects every one of the
+	// peer's blocks and lowerDeepScanFloor is not allowed to search. That is
+	// an unrecoverable fork: the node can then only ever be fixed by replacing
+	// its whole state from a snapshot, which is exactly the resync loop that
+	// ran all day.
+	//
+	// A deferral is only benign evidence of catch-up if deferrals are actually
+	// RESOLVING. lastSuccessfulPeerSyncAt is the timestamp of the last block
+	// genuinely merged from any peer (deliberately distinct from
+	// lastPeerContactAt, which mere arrival updates — see lastPeerActivityAt's
+	// own comment). If this cycle deferred blocks, merged none itself, and
+	// nothing has successfully merged for longer than the grace window those
+	// deferrals are being forgiven under, then the gap is not closing and
+	// treating the cycle as clean is precisely the mistake above. Reset
+	// instead, which holds production shut and lets the divergence auto-heal
+	// run — the outcome this gate exists to produce.
+	//
+	// Deliberately narrow: a cycle that merged anything (totalAdded > 0), or
+	// deferred nothing, is completely unaffected, so a healthy restart backlog
+	// still reaches the threshold exactly as fast as before.
+	deferralsNotResolving := deferralsAreNotResolving(dag, totalDeferred, totalAdded)
+	if deferralsNotResolving {
+		fmt.Printf("[HTTP-SYNC] ⚠ %s: %d block(s) deferred, none merged, and nothing has merged from any peer for %ds — treating as NOT caught up (a fork looks exactly like this; see doSyncOnce's own comment)\n",
+			nodeURL, totalDeferred, time.Now().Unix()-dag.lastSuccessfulPeerSyncAt.Load())
+	}
+	if sawUnmergedBlocks || deferralsNotResolving {
 		dag.resetCleanSyncStreak(nodeURL)
 	} else {
 		dag.recordCleanSyncCycle(nodeURL)

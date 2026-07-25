@@ -1,0 +1,40 @@
+name: Read-only check of deploy.sh on Contabo1 (manual, no mutation)
+
+# One-off diagnostic, same shape as verify-wal-contabo2.yml's original
+# read-only check of Contabo2's deploy script: before enabling
+# AEQUITAS_WAL_ENABLED on Contabo1, we need to know whether its deploy.sh
+# already persists WAL data across a container recreation (a host bind
+# mount) or whether it would silently repeat the exact data-loss bug that
+# deploy_safe_c2.sh v1/v2 had on Contabo2 (WAL file living only in the
+# container's own writable layer, destroyed by every `docker rm`) --
+# see patch-deploy-safe-c2.yml's header for that incident. Prints the full
+# script plus an explicit grep for any `-v`/`--mount` flag in its `docker
+# run` invocation. Touches nothing.
+on:
+  workflow_dispatch: {}
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Print Contabo1's deploy.sh (read-only)
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: 173.249.37.118
+          username: root
+          key: ${{ secrets.CONTABO_SSH_KEY }}
+          port: 22
+          fingerprint: "SHA256:noMtjHV8c+2iEFZu3TRUP6WRwGjkrvFke71KgU6Eyt4"
+          script_stop: true
+          timeout: 60s
+          command_timeout: 60s
+          script: |
+            set -uo pipefail
+            echo "=== Contabo1: /root/deploy.sh (full content) ==="
+            cat /root/deploy.sh
+            echo ""
+            echo "=== Contabo1: any -v/--mount flags in it (persistence check) ==="
+            grep -nE -- '-v |--mount' /root/deploy.sh || echo "(none found -- no host bind mount in deploy.sh)"
+            echo ""
+            echo "=== Contabo1: current aequitas-node mounts (live, from docker inspect) ==="
+            docker inspect aequitas-node --format '{{range .Mounts}}{{.Type}} {{.Source}} -> {{.Destination}}{{println}}{{end}}' || echo "(inspect failed)"
