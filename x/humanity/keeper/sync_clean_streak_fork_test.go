@@ -5,24 +5,25 @@ import (
 	"time"
 )
 
-// Regression guard for the 2026-07-25 "nothing merges anywhere" incident.
+// Regression guards for BOTH halves of the 2026-07-25 incident, which was
+// caused twice in one evening by the same gate judged two different wrong ways.
 //
-// Both secondaries reached cleanSyncStreakThreshold and resumed producing
-// while having merged literally nothing (foreign_attach count 0, ~1000
-// blocks/cycle arriving, every one orphaned). They then finalized their own
-// branch, which put the real common ancestor below their own finality floor —
-// where isFinalityViolation rejects every peer block and lowerDeepScanFloor
-// may not search. Unrecoverable without a full snapshot resync.
+// Half one — too lenient. The IsWithinOrphanGrace exemption forgave a deferred
+// block outright, so both secondaries reached cleanSyncStreakThreshold having
+// merged literally nothing (foreign_attach 0, ~1000 blocks/cycle arriving,
+// every one orphaned), resumed producing on their own branch, finalized it, and
+// put the real common ancestor below their own finality floor.
 //
-// The mechanism was the IsWithinOrphanGrace exemption in doSyncOnce: a
-// deferred block did not reset the streak, and on a live chain EVERY newly
-// produced peer block is younger than the grace window, so a permanently
-// forked node's cycles looked "clean" forever.
+// Half two — too strict. The first fix asked whether the blocks deferred THIS
+// cycle were in the DAG by the end of THIS cycle. On a live chain that is
+// always false and never means a fork: the newest blocks arrive by push while
+// their parents are still on the wire. Contabo1, 16 blocks off the primary and
+// merging normally, printed "21 of 21 deferred block(s) still not in the DAG"
+// and "Not yet 3 consecutive clean sync cycles" once a second, and neither
+// secondary produced a block at all.
 //
-// The rule that closes it is countUnresolvedDeferrals: a deferral is benign if
-// and only if the block is actually IN THE DAG by the end of the cycle, after
-// fetchMissingAncestors has had its chance. No timer, no grace window, no
-// "did we merge anything" proxy — either the block is there or it is not.
+// What separates the two cases is TIME, not the cycle boundary — which is what
+// reconcileDeferrals measures.
 
 func newDeferralTestDAG(present ...string) *BlockDAG {
 	dag := &BlockDAG{blocks: make(map[string]*Block, len(present))}
@@ -32,62 +33,134 @@ func newDeferralTestDAG(present ...string) *BlockDAG {
 	return dag
 }
 
-// The incident itself: a forked node defers the peer's whole live chain,
-// nothing resolves, and the cycle must NOT be scored as clean.
-func TestUnresolvedDeferrals_ForkedNodeMustNotCountCleanCycle(t *testing.T) {
-	dag := newDeferralTestDAG() // nothing merged
-	deferred := []string{"0xa", "0xb", "0xc"}
+// age makes a peer's tracked deferrals look older than they are, standing in
+// for cycles that have already elapsed.
+func (dag *BlockDAG) age(nodeURL string, by time.Duration) {
+	dag.deferredWatchMu.Lock()
+	for h, seen := range dag.deferredWatch[nodeURL] {
+		dag.deferredWatch[nodeURL][h] = seen - int64(by.Seconds())
+	}
+	dag.deferredWatchMu.Unlock()
+}
 
-	if got := dag.countUnresolvedDeferrals(deferred); got != len(deferred) {
-		t.Fatalf("every deferred block is still missing, so all %d must count as unresolved, got %d — "+
-			"anything less lets a permanently forked node climb to the clean-streak threshold", len(deferred), got)
+// Half two: a block deferred right now is a parent in flight, not a fork. This
+// is the case that deadlocked production, and it must score clean.
+func TestReconcileDeferrals_FreshDeferralIsNotYetEvidence(t *testing.T) {
+	dag := newDeferralTestDAG()
+
+	if got := dag.reconcileDeferrals("peerA", []string{"0xa", "0xb"}); got != 0 {
+		t.Fatalf("a deferral seen for the first time this cycle must not count, got %d — "+
+			"at BLOCK_TIME=1s every cycle ends with tip blocks whose parents are still "+
+			"on the wire, so counting them means the streak can never reach the threshold", got)
 	}
 }
 
-// The case the exemption exists for: an ordered paged catch-up splits a block
-// from its parent across a page boundary, fetchMissingAncestors closes the gap
-// within the same cycle, and the restart must still reach the threshold as
-// fast as it did before any of this.
-func TestUnresolvedDeferrals_ResolvedBacklogCountsClean(t *testing.T) {
-	dag := newDeferralTestDAG("0xa", "0xb", "0xc")
+// Half one: a deferral that outlives the grace is exactly the forked state —
+// a parent on a branch this node will never receive.
+func TestReconcileDeferrals_DeferralOutlivingTheGraceCounts(t *testing.T) {
+	dag := newDeferralTestDAG()
+	dag.reconcileDeferrals("peerA", []string{"0xa", "0xb"})
+	dag.age("peerA", proposerBreakerOrphanGrace+30*time.Second)
 
-	if got := dag.countUnresolvedDeferrals([]string{"0xa", "0xb", "0xc"}); got != 0 {
-		t.Fatalf("all deferred blocks were merged by the end of the cycle, so none may count "+
-			"as unresolved, got %d — otherwise every restart stalls production again", got)
+	if got := dag.reconcileDeferrals("peerA", nil); got != 2 {
+		t.Fatalf("both deferrals have outlived %s without arriving and must count as a fork, got %d",
+			proposerBreakerOrphanGrace, got)
 	}
 }
 
-// A single unresolved block is enough. The old time-based guard had a
-// `totalAdded > 0` early-out that scored the cycle clean whenever ANY block
-// merged, so a node orphaning the peer's entire chain while landing one
-// unrelated gap-fill still passed. It must not.
-func TestUnresolvedDeferrals_PartialResolutionIsNotClean(t *testing.T) {
-	dag := newDeferralTestDAG("0xa", "0xb") // 0xc never arrives
+// The ordinary healthy path: the parent lands a moment later, so the block is
+// in the DAG by the next cycle and stops being tracked at all.
+func TestReconcileDeferrals_ResolvedDeferralIsDroppedAndClean(t *testing.T) {
+	dag := newDeferralTestDAG()
+	dag.reconcileDeferrals("peerA", []string{"0xa"})
+	dag.age("peerA", proposerBreakerOrphanGrace+30*time.Second)
 
-	if got := dag.countUnresolvedDeferrals([]string{"0xa", "0xb", "0xc"}); got != 1 {
-		t.Fatalf("one deferred block is still missing and must count, got %d — progress on "+
-			"other blocks is exactly the hole the previous time-based guard had", got)
+	// The parent arrived; the block is now in the DAG.
+	dag.mu.Lock()
+	dag.blocks["0xa"] = &Block{Hash: "0xa"}
+	dag.mu.Unlock()
+
+	if got := dag.reconcileDeferrals("peerA", nil); got != 0 {
+		t.Fatalf("a deferral that resolved must not count however old it got, got %d", got)
+	}
+	dag.deferredWatchMu.Lock()
+	n := len(dag.deferredWatch["peerA"])
+	dag.deferredWatchMu.Unlock()
+	if n != 0 {
+		t.Fatalf("a resolved deferral must be forgotten, %d still tracked — otherwise the "+
+			"watch list grows without bound on a healthy node", n)
 	}
 }
 
-// Nothing deferred means there is no deferral evidence to judge (e.g. a
-// genuinely idle peer with nothing new), which must be left alone.
-func TestUnresolvedDeferrals_NoDeferralsIsAlwaysClean(t *testing.T) {
-	dag := newDeferralTestDAG("0xa")
+// A node merging fine except for one permanently unreachable parent is still
+// forked, and progress elsewhere must not mask it. This is the hole the earlier
+// time-based guard had via its totalAdded > 0 early-out.
+func TestReconcileDeferrals_PartialResolutionStillCounts(t *testing.T) {
+	dag := newDeferralTestDAG()
+	dag.reconcileDeferrals("peerA", []string{"0xa", "0xb", "0xc"})
+	dag.age("peerA", proposerBreakerOrphanGrace+30*time.Second)
 
-	if got := dag.countUnresolvedDeferrals(nil); got != 0 {
-		t.Fatalf("a cycle with nothing deferred has nothing to judge, got %d", got)
+	dag.mu.Lock()
+	dag.blocks["0xa"] = &Block{Hash: "0xa"}
+	dag.blocks["0xb"] = &Block{Hash: "0xb"}
+	dag.mu.Unlock()
+
+	if got := dag.reconcileDeferrals("peerA", nil); got != 1 {
+		t.Fatalf("the one block that never arrived must still count, got %d", got)
 	}
 }
 
-// A fresh process has an empty DAG map. The check must not panic or misreport
-// on it — a booting node deferring its first page is the normal start of every
-// catch-up, and it is correctly "unresolved" until the parents arrive.
-func TestUnresolvedDeferrals_FreshDAGDoesNotPanic(t *testing.T) {
-	dag := &BlockDAG{}
+// Peers are judged independently: one forked peer must not hold down the
+// streak of a peer that is merging perfectly well.
+func TestReconcileDeferrals_PeersAreIndependent(t *testing.T) {
+	dag := newDeferralTestDAG()
+	dag.reconcileDeferrals("forked", []string{"0xa"})
+	dag.reconcileDeferrals("healthy", []string{"0xb"})
+	dag.age("forked", proposerBreakerOrphanGrace+30*time.Second)
+	dag.age("healthy", proposerBreakerOrphanGrace+30*time.Second)
 
-	if got := dag.countUnresolvedDeferrals([]string{"0xa"}); got != 1 {
-		t.Fatalf("a block deferred against an empty DAG is unresolved, got %d", got)
+	dag.mu.Lock()
+	dag.blocks["0xb"] = &Block{Hash: "0xb"}
+	dag.mu.Unlock()
+
+	if got := dag.reconcileDeferrals("forked", nil); got != 1 {
+		t.Fatalf("the forked peer must count, got %d", got)
+	}
+	if got := dag.reconcileDeferrals("healthy", nil); got != 0 {
+		t.Fatalf("the healthy peer must stay clean, got %d", got)
+	}
+}
+
+// A resync replaces the chain wholesale, so every tracked hash refers to
+// history this node deliberately no longer has. Keeping them would condemn the
+// fresh chain for a whole grace window after the resync that fixed it.
+func TestForgetDeferralWatch_ClearsEverything(t *testing.T) {
+	dag := newDeferralTestDAG()
+	dag.reconcileDeferrals("peerA", []string{"0xa"})
+	dag.age("peerA", proposerBreakerOrphanGrace+30*time.Second)
+
+	dag.forgetDeferralWatch()
+
+	if got := dag.reconcileDeferrals("peerA", nil); got != 0 {
+		t.Fatalf("after a resync no pre-resync deferral may count, got %d", got)
+	}
+}
+
+// The watch list is bounded: a huge restart backlog must not grow it without
+// limit, and past the cap the already-tracked hashes answer the question.
+func TestReconcileDeferrals_WatchListIsBounded(t *testing.T) {
+	dag := newDeferralTestDAG()
+	huge := make([]string, maxTrackedDeferralsPerPeer+500)
+	for i := range huge {
+		huge[i] = string(rune('a'+i%26)) + "-" + time.Duration(i).String()
+	}
+	dag.reconcileDeferrals("peerA", huge)
+
+	dag.deferredWatchMu.Lock()
+	n := len(dag.deferredWatch["peerA"])
+	dag.deferredWatchMu.Unlock()
+	if n > maxTrackedDeferralsPerPeer {
+		t.Fatalf("watch list grew to %d, past the %d cap", n, maxTrackedDeferralsPerPeer)
 	}
 }
 
@@ -100,6 +173,6 @@ func TestDeferralsAreNotResolving_RetainedOnlyAsDocumentedDefect(t *testing.T) {
 
 	if deferralsAreNotResolving(dag, 500, 1) {
 		t.Fatal("the old guard is expected to return false here — that is precisely its defect, " +
-			"and countUnresolvedDeferrals is what doSyncOnce must use instead")
+			"and reconcileDeferrals is what doSyncOnce must use instead")
 	}
 }

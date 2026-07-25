@@ -50,6 +50,9 @@ jobs:
           BISECT_FROM: ${{ inputs.binary_search_from }}
         run: |
           set -uo pipefail
+          # bash -e would abort the whole job on the first curl timeout, and a
+          # node being unreachable is itself part of the measurement.
+          set +e
 
           PRIMARY="https://aequitas.digital"
           C1="http://173.249.37.118:8080"
@@ -61,13 +64,13 @@ jobs:
           # ---------- 1. liveness ----------
           echo "=== 1. LIVENESS — does each node's height actually advance? ==="
           for n in primary c1 c2; do
-            s="$(curl -sS --max-time 20 "$(url_of $n)/api/status" 2>/dev/null)"
+            s="$(curl -sS --max-time 20 "$(url_of $n)/api/status" 2>/dev/null || true)"
             echo "$s" > "status_$n.json"
             echo "$s" | jq -r '.height' 2>/dev/null > "h1_$n" || echo "" > "h1_$n"
           done
           sleep 25
           for n in primary c1 c2; do
-            curl -sS --max-time 20 "$(url_of $n)/api/status" 2>/dev/null \
+            { curl -sS --max-time 20 "$(url_of $n)/api/status" 2>/dev/null || true; } \
               | jq -r '.height' 2>/dev/null > "h2_$n" || echo "" > "h2_$n"
           done
           printf "%-9s %-12s %-12s %-9s %-9s %s\n" node h_t0 h_t25 delta uptime commit
@@ -100,8 +103,18 @@ jobs:
           }
 
           echo "=== 2. CANONICAL BLOCK AT COMMON HEIGHTS (lowest tip = $MIN) ==="
-          echo "    Same height, all three nodes. These must be identical."
+          echo "    Same height, all three nodes. Nodes that HAVE the block must agree."
           echo ""
+          # A node that answers null/404 does NOT have the block — which after a
+          # snapshot resync is the normal, expected answer for every height below
+          # the trusted checkpoint it restarted from, since it deliberately holds
+          # no history there. Counting that as a differing hash reports a fork
+          # from an absence, which is exactly the false claim this workflow
+          # exists to prevent (observed live: run 30169384297 printed
+          # "VERDICT: real fork ... at tip-50000" for two nodes resynced minutes
+          # earlier, whose chains were in fact identical wherever both had data).
+          # Only heights where at least TWO nodes return a real block can decide
+          # anything; everything else is reported as coverage, not as evidence.
           FORK_DEPTH=""
           for off in 10 100 500 5000 50000; do
             H=$((MIN - off))
@@ -112,23 +125,32 @@ jobs:
             for n in primary c1 c2; do
               r="$(canon $n $H)"
               set -- $r
+              h="${1:-null}"
+              if [ "$h" = "null" ] || [ "$h" = "-" ] || [ -z "$h" ]; then
+                printf "  %-9s %s\n" "$n" "(not in this node's window — no history below its resync checkpoint)"
+                continue
+              fi
               printf "  %-9s %-20s %-26s %-12s %s\n" "$n" \
-                "$(echo "${1:--}" | cut -c1-18)" "$(echo "${2:--}" | cut -c1-24)" \
+                "$(echo "$h" | cut -c1-18)" "$(echo "${2:--}" | cut -c1-24)" \
                 "${3:--}" "$(echo "${4:--}" | cut -c1-18)"
-              echo "${1:--}" >> "row_$off"
+              echo "$h" >> "row_$off"
             done
-            if [ "$(sort -u "row_$off" | wc -l)" -gt 1 ]; then
-              echo "  >>> DIVERGENT at height $H"
+            have="$(wc -l < "row_$off")"
+            distinct="$(sort -u "row_$off" | wc -l)"
+            if [ "$have" -lt 2 ]; then
+              echo "  inconclusive — only $have node(s) hold this height"
+            elif [ "$distinct" -gt 1 ]; then
+              echo "  >>> DIVERGENT at height $H ($have nodes hold it, $distinct different hashes)"
               FORK_DEPTH="$off"
             else
-              echo "  all three agree"
+              echo "  the $have node(s) that hold this height agree"
             fi
             echo ""
           done
           if [ -n "$FORK_DEPTH" ]; then
-            echo ">>> VERDICT: real fork — the canonical chains differ at depth tip-$FORK_DEPTH."
+            echo ">>> VERDICT: real fork — nodes that both hold tip-$FORK_DEPTH disagree on it."
           else
-            echo ">>> VERDICT: the canonical chains are identical at every sampled depth."
+            echo ">>> VERDICT: no disagreement at any height where two or more nodes hold data."
             echo "    Any blue-score difference visible in the explorer is confined to the"
             echo "    unfinalised tip and is normal DAG spread, not a fork."
           fi
@@ -150,19 +172,51 @@ jobs:
 
           # ---------- 4. cross-visibility: the direct test of "nothing merges" ----------
           echo "=== 4. CROSS-VISIBILITY — is each node's tip known to the other two? ==="
+          # The tip is re-read HERE, not taken from the status sample at the top
+          # of this run: at BLOCK_TIME=1s the chain has moved ~40 blocks by now,
+          # so an old tip hash is simply history and "not known" would say
+          # nothing. Each miss is also retried once after a few seconds, because
+          # a block produced this instant legitimately has not propagated yet —
+          # measured attach latency is ~1.3s avg, 6.4s max. Only a tip that is
+          # still unknown after that window is evidence of anything.
           for src in primary c1 c2; do
-            th="$(jq -r '.latest_hash // empty' "status_$src.json" 2>/dev/null)"
+            th="$(curl -sS --max-time 20 "$(url_of $src)/api/status" 2>/dev/null | jq -r '.latest_hash // empty')"
             [ -n "$th" ] || { echo "  $src: (unreachable)"; continue; }
             echo "  $src tip $(echo "$th" | cut -c1-18):"
             for dst in primary c1 c2; do
               [ "$dst" = "$src" ] && continue
-              r="$(curl -sS --max-time 25 "$(url_of $dst)/api/block?hash=$th" 2>/dev/null)"
-              if echo "$r" | jq -e '.height' >/dev/null 2>&1; then
-                echo "    known to $dst  (height $(echo "$r" | jq -r '.height'), blue_score $(echo "$r" | jq -r '.blue_score // 0'))"
+              seen=""
+              for attempt in 1 2; do
+                r="$(curl -sS --max-time 25 "$(url_of $dst)/api/block?hash=$th" 2>/dev/null)"
+                if echo "$r" | jq -e '.height' >/dev/null 2>&1; then seen="$r"; break; fi
+                [ "$attempt" = 1 ] && sleep 8
+              done
+              if [ -n "$seen" ]; then
+                echo "    known to $dst  (height $(echo "$seen" | jq -r '.height'), blue_score $(echo "$seen" | jq -r '.blue_score // 0'))"
               else
-                echo "    NOT known to $dst   <- $dst has never merged this block"
+                echo "    NOT known to $dst even after 8s   <- $dst has not merged this block"
               fi
             done
+          done
+          echo ""
+
+          # ---------- 4b. peer topology ----------
+          # The asymmetry observed on 2026-07-25 18:22 needs this: the primary's
+          # tip was known to c1, but NEITHER secondary's tip was known to the
+          # primary. A node only pulls from the peers it is configured with, and
+          # only pushes to the peers in activeSyncPeers (HTTPBroadcastBlock), so
+          # a one-directional topology reproduces "nothing merges" exactly while
+          # every node individually looks healthy.
+          echo "=== 4b. PEER TOPOLOGY — who does each node consider a peer? ==="
+          for n in primary c1 c2; do
+            echo "  --- $n ---"
+            curl -sS --max-time 20 "$(url_of $n)/api/peers" 2>/dev/null \
+              | jq -r 'if type=="array" then .[] else . end
+                       | "    " + ((.url // .URL // .address // tostring)|tostring)
+                         + "  height=" + ((.height // .Height // "?")|tostring)
+                         + "  clean_streak=" + ((.clean_sync_streak // .cleanSyncStreak // "?")|tostring)
+                         + "  caught_up=" + ((.caught_up // .caughtUp // "?")|tostring)' \
+              2>/dev/null || echo "    (no peers / unparseable)"
           done
           echo ""
 
@@ -205,9 +259,19 @@ jobs:
             docker inspect -f 'Status={{.State.Status}} Restarts={{.RestartCount}} StartedAt={{.State.StartedAt}}' aequitas-node 2>&1 || true
             echo ""
             echo "=== Contabo1: merge/fork evidence (last 600 lines, filtered) ==="
+            echo "--- outgoing pushes: is this node's block reaching its peers? ---"
+            docker logs --tail 3000 aequitas-node 2>&1 | grep -E 'BLOCK-PUSH' | tail -25 || echo "(no BLOCK-PUSH lines at all — this node never pushed to anyone)"
+            echo ""
+            echo "--- peer topology as this node sees it ---"
+            curl -sS --max-time 10 http://localhost:8080/api/peers 2>/dev/null | head -c 2000; echo ""
+            echo ""
+            echo "--- configured peers in the container env ---"
+            docker inspect -f '{{range .Config.Env}}{{println .}}{{end}}' aequitas-node 2>/dev/null | grep -E '^(PEER_NODES|PRIMARY_NODE_URL|PRIMARY_NODE_URLS|STATIC_PEERS|IS_PRIMARY_NODE|BLOCK_TIME)=' || echo "(none set)"
+            echo ""
+            echo "--- merge / sync evidence ---"
             docker logs --tail 600 aequitas-node 2>&1 | grep -Ei \
-              'foreign_attach|merged|orphan|StateRoot|mismatch|fork|resync|caught up|deferr|not resolving|breaker|blue' \
-              | tail -70 || echo "(no matching lines)"
+              'foreign_attach|Merged [0-9]+ tips|orphan|StateRoot|mismatch|fork|resync|caught up|deferr|not resolving|breaker|LATENCY' \
+              | tail -50 || echo "(no matching lines)"
 
   contabo2_logs:
     runs-on: ubuntu-latest
@@ -229,6 +293,16 @@ jobs:
             docker inspect -f 'Status={{.State.Status}} Restarts={{.RestartCount}} StartedAt={{.State.StartedAt}}' aequitas-node 2>&1 || true
             echo ""
             echo "=== Contabo2: merge/fork evidence (last 600 lines, filtered) ==="
+            echo "--- outgoing pushes: is this node's block reaching its peers? ---"
+            docker logs --tail 3000 aequitas-node 2>&1 | grep -E 'BLOCK-PUSH' | tail -25 || echo "(no BLOCK-PUSH lines at all — this node never pushed to anyone)"
+            echo ""
+            echo "--- peer topology as this node sees it ---"
+            curl -sS --max-time 10 http://localhost:8080/api/peers 2>/dev/null | head -c 2000; echo ""
+            echo ""
+            echo "--- configured peers in the container env ---"
+            docker inspect -f '{{range .Config.Env}}{{println .}}{{end}}' aequitas-node 2>/dev/null | grep -E '^(PEER_NODES|PRIMARY_NODE_URL|PRIMARY_NODE_URLS|STATIC_PEERS|IS_PRIMARY_NODE|BLOCK_TIME)=' || echo "(none set)"
+            echo ""
+            echo "--- merge / sync evidence ---"
             docker logs --tail 600 aequitas-node 2>&1 | grep -Ei \
-              'foreign_attach|merged|orphan|StateRoot|mismatch|fork|resync|caught up|deferr|not resolving|breaker|blue' \
-              | tail -70 || echo "(no matching lines)"
+              'foreign_attach|Merged [0-9]+ tips|orphan|StateRoot|mismatch|fork|resync|caught up|deferr|not resolving|breaker|LATENCY' \
+              | tail -50 || echo "(no matching lines)"

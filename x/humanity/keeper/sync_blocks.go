@@ -961,29 +961,88 @@ func (dag *BlockDAG) lowerDeepScanFloor(nodeURL string, sweptFrom int64) {
 //
 // Deliberately unreferenced. Do not reintroduce it as a gate.
 //
-// countUnresolvedDeferrals reports how many of this cycle's deferred blocks are
-// STILL absent from the DAG. It is the whole fork test, and it is deliberately
-// a fact rather than a heuristic: a block deferred behind a parent that was
-// merely one page further on is present by the time this runs (doSyncOnce calls
-// fetchMissingAncestors first); a block deferred behind a parent that lives on a
-// branch this node will never receive is not, and never will be.
+// maxTrackedDeferralsPerPeer bounds the watch list below. A restart backlog can
+// defer thousands of blocks in one cycle; past this many the peer is plainly
+// not merely a page boundary ahead, and keeping more hashes buys no extra
+// signal — the ones already tracked will answer the question.
+const maxTrackedDeferralsPerPeer = 4096
+
+// reconcileDeferrals decides whether this peer's deferred blocks are ordinary
+// catch-up or a fork, and returns how many are fork evidence.
 //
-// Takes the read lock once for the whole slice rather than per hash: a large
-// restart backlog can defer thousands of blocks in one cycle, and doSyncOnce
-// runs on the sync loop where dag.mu is heavily contended.
-func (dag *BlockDAG) countUnresolvedDeferrals(hashes []string) int {
-	if len(hashes) == 0 {
+// FIX (P0, 2026-07-25, second pass — the first pass deadlocked production):
+// the check this replaces asked whether the blocks deferred THIS cycle were in
+// the DAG by the end of THIS cycle. On a live chain the answer is always no,
+// and not because of a fork: the newest blocks arrive by push while their
+// parents are still in flight, so every single cycle ends with a handful of
+// tip blocks legitimately unresolved. Confirmed live within minutes of
+// deploying it — Contabo1 was 16 blocks off the primary's tip, merging
+// normally ("Added 130 new blocks", "Tips: 4", checkpoint advancing), and
+// still printed
+//
+//	[HTTP-SYNC] ⚠ 21 of 21 deferred block(s) still not in the DAG ...
+//	[BLOCK] ⏳ Not yet 3 consecutive clean sync cycles with every trusted seed
+//
+// once a second, forever. A healthy node could never reach the threshold, so
+// neither secondary produced a single block. That is the same class of defect
+// as the one it was fixing, from the opposite direction.
+//
+// The distinction that actually separates the two cases is TIME, not the cycle
+// boundary: a parent that is merely in flight arrives within a propagation
+// delay; a parent on a branch this node will never receive never arrives at
+// all. So a deferred hash is recorded with the moment it was first seen, and
+// only counts against the peer once it has survived proposerBreakerOrphanGrace
+// — the project's existing notion of how long a parent may legitimately still
+// be on the wire (8s baseline, widened by TuneProposerBreakerForBlockTime, and
+// the very window IsWithinOrphanGrace already deferred the block under).
+//
+// Resolved hashes are dropped, so the list only ever holds genuinely open
+// deferrals and a healthy node converges to zero and produces.
+func (dag *BlockDAG) reconcileDeferrals(nodeURL string, deferred []string) int {
+	now := time.Now().Unix()
+	graceSecs := int64(proposerBreakerOrphanGrace.Seconds())
+
+	dag.deferredWatchMu.Lock()
+	defer dag.deferredWatchMu.Unlock()
+	if dag.deferredWatch == nil {
+		dag.deferredWatch = make(map[string]map[string]int64)
+	}
+	watch := dag.deferredWatch[nodeURL]
+	if watch == nil {
+		watch = make(map[string]int64, len(deferred))
+		dag.deferredWatch[nodeURL] = watch
+	}
+	for _, h := range deferred {
+		if _, tracked := watch[h]; !tracked && len(watch) < maxTrackedDeferralsPerPeer {
+			watch[h] = now
+		}
+	}
+	if len(watch) == 0 {
 		return 0
 	}
-	unresolved := 0
+
+	stale := 0
 	dag.mu.RLock()
-	for _, h := range hashes {
-		if _, ok := dag.blocks[h]; !ok {
-			unresolved++
+	for h, firstSeen := range watch {
+		if _, present := dag.blocks[h]; present {
+			delete(watch, h)
+			continue
+		}
+		if now-firstSeen > graceSecs {
+			stale++
 		}
 	}
 	dag.mu.RUnlock()
-	return unresolved
+	return stale
+}
+
+// forgetDeferralWatch drops a peer's watch list. Called after a resync, where
+// every recorded hash refers to the pre-resync chain and would otherwise
+// condemn the fresh one it knows nothing about.
+func (dag *BlockDAG) forgetDeferralWatch() {
+	dag.deferredWatchMu.Lock()
+	dag.deferredWatch = nil
+	dag.deferredWatchMu.Unlock()
 }
 
 //nolint:unused // retained as documentation of a fixed defect
@@ -1403,10 +1462,10 @@ func (dag *BlockDAG) doSyncOnce(nodeURL string) (ok bool) {
 	// parent lives on a branch this node will never receive is still missing,
 	// counts as unmerged, and holds the streak at 0 on the very first cycle
 	// rather than after a grace window that never expires.
-	unresolvedDeferrals := dag.countUnresolvedDeferrals(deferredHashes)
+	unresolvedDeferrals := dag.reconcileDeferrals(nodeURL, deferredHashes)
 	if unresolvedDeferrals > 0 {
-		fmt.Printf("[HTTP-SYNC] ⚠ %s: %d of %d deferred block(s) still not in the DAG after fetching their parents — treating as NOT caught up (a fork looks exactly like this; see doSyncOnce's own comment)\n",
-			nodeURL, unresolvedDeferrals, len(deferredHashes))
+		fmt.Printf("[HTTP-SYNC] ⚠ %s: %d deferred block(s) have now gone unresolved for longer than %s — treating as NOT caught up (a fork looks exactly like this; see doSyncOnce's own comment)\n",
+			nodeURL, unresolvedDeferrals, proposerBreakerOrphanGrace)
 	}
 	if sawUnmergedBlocks || unresolvedDeferrals > 0 {
 		dag.resetCleanSyncStreak(nodeURL)
@@ -2343,7 +2402,12 @@ func (dag *BlockDAG) resetPeerSyncProgress() {
 	dag.lastDeepScanAt = make(map[string]int64)
 	dag.lastDeepScanAtMu.Unlock()
 
-	fmt.Println("[RESYNC] ✓ Cleared per-peer sync progress (peerSyncHeight, cleanSyncStreak, deepScan cursors) — the catch-up gates now measure against the post-resync chain, not the pre-resync one")
+	// Every tracked deferral refers to the PRE-resync chain; keeping them would
+	// let hashes this node deliberately no longer wants condemn the fresh chain
+	// as forked for a whole grace window after the resync that fixed it.
+	dag.forgetDeferralWatch()
+
+	fmt.Println("[RESYNC] ✓ Cleared per-peer sync progress (peerSyncHeight, cleanSyncStreak, deepScan cursors, deferral watch) — the catch-up gates now measure against the post-resync chain, not the pre-resync one")
 }
 
 // HTTPBroadcastBlock pushes a freshly-produced block to every active HTTP
