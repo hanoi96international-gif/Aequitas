@@ -975,7 +975,32 @@ func (a *APIServer) handleBlocks(w http.ResponseWriter, r *http.Request) {
 		// to a peer catching up from far behind.
 		afterHash := r.URL.Query().Get("after_hash")
 		result := a.blockchain.GetBlocksSince(minHeight, afterHash, limit)
-		json.NewEncoder(w).Encode(result)
+		// FIX (2026-07-25, "es merged nix" incident): this used to be
+		// json.NewEncoder(w).Encode(result), which streams directly to the
+		// response and DISCARDS its error. Encoder.Encode marshals into an
+		// internal buffer before writing, so a marshal failure partway
+		// through a large slice (one unmarshalable field on just ONE block
+		// in range) never reached the client as a clean error — but ANY
+		// write-side interruption while flushing that buffer (peer reset,
+		// server WriteTimeout under load) does produce a genuinely
+		// truncated body with zero server-side trace, surfacing only as a
+		// permanently-reproducible "unexpected end of JSON input" on every
+		// syncing peer that ever requests a range spanning that height —
+		// confirmed live: both secondaries stuck retrying the exact same
+		// min_height forever, unable to advance, right after the primary's
+		// own restart. Marshaling into a buffer FIRST and writing it in one
+		// shot means: a marshal error is caught and logged here (was
+		// silent before) instead of ever reaching the client, and the
+		// actual write is a single call the runtime can complete or fail
+		// atomically rather than a JSON encoder streaming piecemeal into a
+		// slow/interrupted connection.
+		body, err := json.Marshal(result)
+		if err != nil {
+			fmt.Printf("[API] ✗ /api/blocks marshal error for min_height=%d limit=%d (%d blocks): %v\n", minHeight, limit, len(result), err)
+			jsonError(w, "internal error building response", http.StatusInternalServerError)
+			return
+		}
+		w.Write(body)
 		return
 	}
 

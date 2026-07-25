@@ -298,12 +298,79 @@ func (dag *BlockDAG) fetchBlocksSince(nodeURL string, minHeight int64, afterHash
 		body, _ := io.ReadAll(io.LimitReader(resp.Body, 4<<10))
 		return nil, fmt.Errorf("peer returned HTTP %d: %s", resp.StatusCode, strings.TrimSpace(string(body)))
 	}
-	body, _ := io.ReadAll(io.LimitReader(resp.Body, 10<<20))
+	// FIX (2026-07-25, "es merged nix" incident): this used to discard
+	// io.ReadAll's own error (`body, _ := ...`) — a connection cut short
+	// mid-response (peer WriteTimeout, reset) silently became "here is a
+	// complete, malformed JSON body" instead of "the read itself failed",
+	// indistinguishable from the peer having genuinely sent bad data.
+	// Surfacing readErr distinctly, and including the actual byte count on
+	// an unmarshal failure, is what let this incident's root cause (the
+	// primary silently truncating a large page write under load) be
+	// diagnosed at all instead of looking like unexplained peer corruption.
+	body, readErr := io.ReadAll(io.LimitReader(resp.Body, 10<<20))
+	if readErr != nil {
+		return nil, fmt.Errorf("reading response body: %w", readErr)
+	}
 	var blocks []*Block
 	if err := json.Unmarshal(body, &blocks); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("decoding response body (%d bytes): %w", len(body), err)
 	}
 	return blocks, nil
+}
+
+// fetchBlocksSinceWithFallback wraps fetchBlocksSince with one retry at a
+// much smaller page size on failure. A large page (pageSize=500, the max
+// doSyncOnce ever requests) can fail against a peer that's currently slow
+// (e.g. just restarted, still catching up itself) even though the peer is
+// otherwise reachable and healthy — see fetchBlocksSince's and handleBlocks'
+// (api.go) own comments for the mechanism. Confirmed live 2026-07-25: both
+// secondaries stuck retrying an identical failing 500-block page forever,
+// completely unable to advance ("es merged nix"), immediately after the
+// primary itself restarted under load. A much smaller page is far cheaper
+// for a loaded peer to build and far less likely to hit the same failure,
+// letting sync make SOME progress instead of stalling completely until the
+// peer's load happens to subside on its own.
+//
+// Returns usedFallback=true when the smaller retry is what actually
+// succeeded, so the caller's "a short page means we've reached the peer's
+// tip" pagination logic (doSyncOnce) knows NOT to draw that conclusion from
+// this page's size alone — a fallback page is short because it was asked to
+// be, not because the peer has nothing more.
+func (dag *BlockDAG) fetchBlocksSinceWithFallback(nodeURL string, minHeight int64, afterHash string, pageSize int) (blocks []*Block, usedFallback bool, err error) {
+	return fetchWithSmallerPageFallback(nodeURL, minHeight, pageSize, fallbackPageSize,
+		func(size int) ([]*Block, error) {
+			return dag.fetchBlocksSince(nodeURL, minHeight, afterHash, size)
+		})
+}
+
+// fallbackPageSize is how small fetchBlocksSinceWithFallback retries after a
+// full-size page fails — small enough to be cheap for an already-loaded
+// peer to build, per that function's own comment.
+const fallbackPageSize = 25
+
+// fetchWithSmallerPageFallback is fetchBlocksSinceWithFallback's retry
+// policy, factored out of it so it can be unit-tested against a fake
+// attempt function without any real network call — fetchBlocksSince always
+// goes through httpSyncClient's pinningDialer, which deliberately rejects
+// loopback/private addresses (an SSRF/DNS-rebinding guard — see
+// pinningDialer's own comment), making it unusable directly against an
+// httptest.Server. nodeURL/minHeight are passed through only for the
+// warning log line, not used in the retry decision itself.
+func fetchWithSmallerPageFallback(nodeURL string, minHeight int64, pageSize, smallerPageSize int, attempt func(size int) ([]*Block, error)) (blocks []*Block, usedFallback bool, err error) {
+	blocks, err = attempt(pageSize)
+	if err == nil {
+		return blocks, false, nil
+	}
+	if pageSize <= smallerPageSize {
+		return nil, false, err // already small; nothing smaller to fall back to
+	}
+	fmt.Printf("[HTTP-SYNC] ⚠ Page fetch (min_height=%d, pageSize=%d) from %s failed (%v) — retrying at a smaller page size (%d)\n",
+		minHeight, pageSize, nodeURL, err, smallerPageSize)
+	fallbackBlocks, fallbackErr := attempt(smallerPageSize)
+	if fallbackErr != nil {
+		return nil, false, fmt.Errorf("full page failed (%v), smaller fallback page also failed: %w", err, fallbackErr)
+	}
+	return fallbackBlocks, true, nil
 }
 
 // fetchBlocksByHashes resolves multiple missing-parent hashes in a single
@@ -987,7 +1054,7 @@ func (dag *BlockDAG) doSyncOnce(nodeURL string) (ok bool) {
 	}
 	reachedPeerTip := false
 	for page := 0; page < pagesBudget; page++ {
-		blocks, err := dag.fetchBlocksSince(nodeURL, minHeight, afterHash, pageSize)
+		blocks, usedFallback, err := dag.fetchBlocksSinceWithFallback(nodeURL, minHeight, afterHash, pageSize)
 		if err != nil {
 			fmt.Printf("[HTTP-SYNC] ✗ Could not fetch page (min_height=%d) from %s: %v\n", minHeight, nodeURL, err)
 			if page == 0 {
@@ -1130,7 +1197,7 @@ func (dag *BlockDAG) doSyncOnce(nodeURL string) (ok bool) {
 		// fetched. Outside deepScan this remains a correct, cheap signal
 		// (normal forward sync only ever requests pages it expects to be
 		// at or near the tip), so only deepScan skips the early break.
-		if len(blocks) < pageSize && !deepScan {
+		if len(blocks) < pageSize && !deepScan && !usedFallback {
 			afterHash = "" // last page — reset cursor
 			break          // peer's tip is within this page
 		}
