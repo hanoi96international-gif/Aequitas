@@ -8,6 +8,7 @@ import (
 	"math/big"
 	"net/http"
 	"os"
+	"runtime"
 	"strconv"
 	"strings"
 	"sync"
@@ -226,20 +227,72 @@ func (s *EVMRPCServer) handleRPC(w http.ResponseWriter, r *http.Request) {
 			writeError(w, -32600, fmt.Sprintf("batch too large: max %d requests, got %d", maxBatchSize, len(batch)), nil)
 			return
 		}
+		// FIX (2026-07-25, 50k-TPS deep-dive): decode + ecrecover every
+		// eth_sendRawTransaction item in the batch up front, in parallel,
+		// before the serial dispatch loop below. types.Sender (secp256k1
+		// recovery) is the single most CPU-expensive step per tx (profiled at
+		// evm_storage.go:2230 — 17.54% of a benchmark run) and is a pure,
+		// side-effect-free function: decoding one tx's signature can never
+		// depend on or interfere with another's, so this is a safe, purely
+		// mechanical parallelization, unlike batching the signatures
+		// algebraically (not viable for standard ECDSA — see
+		// SCALING_ARCHITECTURE.md's 2026-07-25 deep-dive, finding D) or
+		// parallelizing the actual state mutation below (which stays fully
+		// serial — nonce reservation and dispatch order must not change).
+		precomputed := make([]*precomputedSendTx, len(batch))
+		var pending []int
+		for i, raw := range batch {
+			var env struct {
+				Method string            `json:"method"`
+				Params []json.RawMessage `json:"params"`
+			}
+			if err := json.Unmarshal(raw, &env); err != nil || env.Method != "eth_sendRawTransaction" || len(env.Params) == 0 {
+				continue
+			}
+			var rawHex string
+			if err := json.Unmarshal(env.Params[0], &rawHex); err != nil {
+				continue
+			}
+			pending = append(pending, i)
+			precomputed[i] = &precomputedSendTx{rawHex: rawHex}
+		}
+		if len(pending) > 0 {
+			workers := runtime.NumCPU()
+			if workers > len(pending) {
+				workers = len(pending)
+			}
+			var wg sync.WaitGroup
+			jobs := make(chan int)
+			for w := 0; w < workers; w++ {
+				wg.Add(1)
+				go func() {
+					defer wg.Done()
+					for i := range jobs {
+						p := precomputed[i]
+						p.tx, p.sender, p.senderErr, p.err = decodeAndRecoverSender(p.rawHex)
+					}
+				}()
+			}
+			for _, i := range pending {
+				jobs <- i
+			}
+			close(jobs)
+			wg.Wait()
+		}
 		var results []interface{}
-		for _, raw := range batch {
-			result := s.handleSingle(raw)
+		for i, raw := range batch {
+			result := s.handleSingle(raw, precomputed[i])
 			results = append(results, result)
 		}
 		json.NewEncoder(w).Encode(results)
 		return
 	}
 
-	result := s.handleSingle(body)
+	result := s.handleSingle(body, nil)
 	json.NewEncoder(w).Encode(result)
 }
 
-func (s *EVMRPCServer) handleSingle(body []byte) map[string]interface{} {
+func (s *EVMRPCServer) handleSingle(body []byte, pre *precomputedSendTx) map[string]interface{} {
 	var req struct {
 		JSONRPC string            `json:"jsonrpc"`
 		ID      interface{}       `json:"id"`
@@ -251,7 +304,7 @@ func (s *EVMRPCServer) handleSingle(body []byte) map[string]interface{} {
 		return errorResponse(nil, -32700, "Parse error")
 	}
 
-	result, rpcErr := s.dispatch(req.Method, req.Params)
+	result, rpcErr := s.dispatch(req.Method, req.Params, pre)
 	if rpcErr != nil {
 		return map[string]interface{}{
 			"jsonrpc": "2.0",
@@ -272,7 +325,7 @@ func (s *EVMRPCServer) handleSingle(body []byte) map[string]interface{} {
 
 // ─── DISPATCH ─────────────────────────────────────────────────────────────────
 
-func (s *EVMRPCServer) dispatch(method string, params []json.RawMessage) (interface{}, *RPCError) {
+func (s *EVMRPCServer) dispatch(method string, params []json.RawMessage, pre *precomputedSendTx) (interface{}, *RPCError) {
 	switch method {
 
 	case "eth_chainId":
@@ -318,7 +371,7 @@ func (s *EVMRPCServer) dispatch(method string, params []json.RawMessage) (interf
 		return s.ethCall(params)
 
 	case "eth_sendRawTransaction":
-		return s.sendRawTransaction(params)
+		return s.sendRawTransaction(params, pre)
 
 	case "eth_getTransactionReceipt":
 		return s.getTransactionReceipt(params)
@@ -528,7 +581,58 @@ func (s *EVMRPCServer) ethCall(params []json.RawMessage) (interface{}, *RPCError
 	return "0x" + hex.EncodeToString(result), nil
 }
 
-func (s *EVMRPCServer) sendRawTransaction(params []json.RawMessage) (interface{}, *RPCError) {
+// precomputedSendTx carries an eth_sendRawTransaction batch item's decode +
+// sender-recovery result, computed ahead of time (in parallel, across the
+// whole batch — see handleRPC's batch branch) so sendRawTransaction's serial
+// dispatch loop doesn't redo the most CPU-expensive step per tx. rawHex is
+// set by the pre-pass before the worker pool fills in the rest; a nil
+// *precomputedSendTx (the non-batch, single-request path) means "not
+// precomputed, decode inline" — sendRawTransaction handles both.
+type precomputedSendTx struct {
+	rawHex    string
+	tx        *types.Transaction
+	sender    string
+	senderErr bool // true if err came from sender recovery (-32603), not decode (-32602)
+	err       error
+}
+
+// decodeAndRecoverSender does the pure, side-effect-free half of
+// eth_sendRawTransaction: hex-decode, RLP/binary-unmarshal, and ecrecover
+// the sender. No shared state, no locks — safe to run concurrently for
+// distinct transactions, which is exactly what handleRPC's batch pre-pass
+// does. Kept identical in behavior to the inline code this replaced.
+func decodeAndRecoverSender(rawHex string) (tx *types.Transaction, senderAddr string, senderErr bool, err error) {
+	rawHex = strings.TrimPrefix(rawHex, "0x")
+
+	rawBytes, hexErr := hex.DecodeString(rawHex)
+	if hexErr != nil {
+		return nil, "", false, fmt.Errorf("Invalid hex")
+	}
+
+	t := new(types.Transaction)
+	// UnmarshalBinary handles all tx types: legacy (RLP), EIP-2930 (type 1), EIP-1559 (type 2)
+	if binErr := t.UnmarshalBinary(rawBytes); binErr != nil {
+		// Fallback to RLP for legacy transactions
+		if err2 := rlp.DecodeBytes(rawBytes, t); err2 != nil {
+			return nil, "", false, fmt.Errorf("Invalid transaction: %v", binErr)
+		}
+	}
+
+	// Recover sender
+	signer := types.LatestSignerForChainID(big.NewInt(1926))
+	sender, sErr := types.Sender(signer, t)
+	if sErr != nil {
+		signer = types.NewEIP155Signer(big.NewInt(1926))
+		sender, sErr = types.Sender(signer, t)
+		if sErr != nil {
+			return nil, "", true, fmt.Errorf("Cannot recover sender: %v", sErr)
+		}
+	}
+
+	return t, strings.ToLower(sender.Hex()), false, nil
+}
+
+func (s *EVMRPCServer) sendRawTransaction(params []json.RawMessage, pre *precomputedSendTx) (interface{}, *RPCError) {
 	if len(params) == 0 {
 		return nil, &RPCError{Code: -32602, Message: "Missing params"}
 	}
@@ -537,34 +641,36 @@ func (s *EVMRPCServer) sendRawTransaction(params []json.RawMessage) (interface{}
 	if err := json.Unmarshal(params[0], &rawHex); err != nil {
 		return nil, &RPCError{Code: -32602, Message: "invalid params"}
 	}
-	rawHex = strings.TrimPrefix(rawHex, "0x")
 
-	rawBytes, err := hex.DecodeString(rawHex)
-	if err != nil {
-		return nil, &RPCError{Code: -32602, Message: "Invalid hex"}
-	}
-
-	tx := new(types.Transaction)
-	// UnmarshalBinary handles all tx types: legacy (RLP), EIP-2930 (type 1), EIP-1559 (type 2)
-	if err := tx.UnmarshalBinary(rawBytes); err != nil {
-		// Fallback to RLP for legacy transactions
-		if err2 := rlp.DecodeBytes(rawBytes, tx); err2 != nil {
-			return nil, &RPCError{Code: -32602, Message: "Invalid transaction: " + err.Error()}
+	var tx *types.Transaction
+	var senderAddr string
+	if pre != nil {
+		// Precomputed by handleRPC's batch pre-pass (see precomputedSendTx's
+		// own comment) — reuse it instead of decoding+recovering again.
+		if pre.err != nil {
+			if pre.senderErr {
+				return nil, &RPCError{Code: -32603, Message: pre.err.Error()}
+			}
+			return nil, &RPCError{Code: -32602, Message: pre.err.Error()}
 		}
-	}
-
-	// Recover sender
-	signer := types.LatestSignerForChainID(big.NewInt(1926))
-	sender, err := types.Sender(signer, tx)
-	if err != nil {
-		signer = types.NewEIP155Signer(big.NewInt(1926))
-		sender, err = types.Sender(signer, tx)
+		tx = pre.tx
+		senderAddr = pre.sender
+	} else {
+		t, sender, senderErr, err := decodeAndRecoverSender(rawHex)
 		if err != nil {
-			return nil, &RPCError{Code: -32603, Message: "Cannot recover sender: " + err.Error()}
+			if senderErr {
+				return nil, &RPCError{Code: -32603, Message: err.Error()}
+			}
+			return nil, &RPCError{Code: -32602, Message: err.Error()}
 		}
+		tx = t
+		senderAddr = sender
 	}
+	// common.Address form, needed below for DeployContract/CallContract —
+	// round-tripping through the lowercased hex is exact (common.HexToAddress
+	// is case-insensitive), same value types.Sender originally returned.
+	sender := common.HexToAddress(senderAddr)
 
-	senderAddr := strings.ToLower(sender.Hex())
 	txHash := tx.Hash().Hex() // already has 0x prefix
 
 	// Gated: two unbuffered Printf per transaction is 100,000 log lines/s at

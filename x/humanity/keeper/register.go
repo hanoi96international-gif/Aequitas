@@ -682,7 +682,7 @@ func (a *APIServer) registerOnV7(evmRPC *EVMRPCServer, wallet string, req Regist
 	// Step 2: Submit the EVM tx.
 	result, rpcErr := evmRPC.sendRawTransaction([]json.RawMessage{
 		mustMarshal(rawHex),
-	})
+	}, nil)
 	if rpcErr != nil {
 		if intentID > 0 {
 			a.state.DeleteRegistrationIntent(intentID) // EVM never happened — clean up intent

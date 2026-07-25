@@ -582,7 +582,14 @@ func gzipMiddleware(next http.Handler) http.Handler {
 		// every gzip-capable client — nearly all of them — turning the
 		// whole endpoint into an immediate 500 rather than merely
 		// unbuffered.
-		if !strings.Contains(r.Header.Get("Accept-Encoding"), "gzip") || strings.HasPrefix(r.URL.Path, "/download/") || r.URL.Path == "/api/events" {
+		// FIX (2026-07-25, 50k-TPS deep-dive, finding 1): /rpc responses are
+		// tiny JSON objects (~80-150 bytes: a hash + an id) — gzip's own
+		// header/trailer overhead can exceed the uncompressed size, and
+		// spinning up a gzip.Writer per request is pure CPU cost with no
+		// bandwidth win at exactly the throughput this endpoint needs to
+		// sustain. Same rationale as the /download/ exclusion above, applied
+		// to small-payload JSON instead of already-compressed binaries.
+		if !strings.Contains(r.Header.Get("Accept-Encoding"), "gzip") || strings.HasPrefix(r.URL.Path, "/download/") || r.URL.Path == "/api/events" || r.URL.Path == "/rpc" {
 			next.ServeHTTP(w, r)
 			return
 		}
