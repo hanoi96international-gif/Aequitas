@@ -355,6 +355,24 @@ func (a *APIServer) syncProofServerStatus() {
 // Purpose is strictly operational: when two nodes log a StateRoot mismatch,
 // diffing this endpoint across them says WHICH input diverged, turning
 // "the roots differ" into a specific, fixable finding.
+// handleDAGGates serves GET /api/debug/dag-gates — the internal gates that
+// decide whether this node attaches peer blocks and produces its own.
+//
+// Deliberately lock-free (see BlockDAG.DAGGates): it must answer even while
+// cs.mu or dag.mu is held by something slow, because that is exactly the
+// situation an operator needs it in. On 2026-07-26 the primary orphaned ~99%
+// of incoming blocks while its own status endpoints took 11-16 seconds, and
+// no diagnostic could distinguish "a gate is shut" from "the chain forked".
+func (a *APIServer) handleDAGGates(w http.ResponseWriter, r *http.Request) {
+	writeJSONCORS(w)
+	body, err := json.Marshal(a.blockchain.DAGGates())
+	if err != nil {
+		jsonError(w, "internal error building response", http.StatusInternalServerError)
+		return
+	}
+	w.Write(body)
+}
+
 func (a *APIServer) handleStateRootComponents(w http.ResponseWriter, r *http.Request) {
 	writeJSONCORS(w)
 	body, err := json.Marshal(a.state.StateRootComponentBreakdown())
@@ -667,6 +685,7 @@ func (a *APIServer) Start(port int) {
 	mux.HandleFunc("/api/events", a.handleBlockEvents)
 	mux.HandleFunc("/api/health/combined", a.handleCombinedHealth)
 	mux.HandleFunc("/api/debug/stateroot-components", a.handleStateRootComponents)
+	mux.HandleFunc("/api/debug/dag-gates", a.handleDAGGates)
 	mux.HandleFunc("/api/blocks", a.handleBlocks)
 	mux.HandleFunc("/api/blocks/canonical", a.handleCanonicalBlocks)
 	mux.HandleFunc("/api/validator-labels", a.handleValidatorLabels)

@@ -3373,6 +3373,61 @@ func (dag *BlockDAG) isCatchingUpLocked() bool {
 // farAheadFrontier/farAheadFrontierLocked for the identical pattern), for
 // callers like queueOrphan that reach this check without already holding
 // dag.mu.
+// DAGGates reports the internal gates that decide whether this node attaches
+// peer blocks and produces its own — WITHOUT taking dag.mu or cs.mu.
+//
+// Why lock-free matters (2026-07-26): the night this was written, the primary
+// spent long stretches orphaning ~99% of incoming blocks (422 "queued as
+// orphan" against 4 "Added peer block" in one log window) while /api/status
+// and /api/health/combined intermittently took 11-16 SECONDS to answer. Every
+// diagnostic available from outside either needed a lock that was already
+// contended, or reported a symptom rather than which gate was actually shut.
+// Three plausible causes were checked and disproved from logs alone — a
+// running repair pass, expensive block replay, database errors (zero pq
+// errors, zero bad connections) — and the one remaining candidate,
+// ghostdagMigrationPending, could not be confirmed because the log window no
+// longer reached back to boot, which is when the migration would have
+// announced itself.
+//
+// ghostdagMigrationPending is the specific reason this exists. While it is
+// set, ghostdagBlockLookup returns nil for EVERY hash not already resident in
+// memory, skipping the DB fallback entirely — so every incoming block whose
+// parent has been pruned from the in-memory window orphans, with no error
+// logged and the block sitting readable in chain_blocks the whole time. That
+// failure is invisible from the outside and indistinguishable from a genuine
+// fork, which is exactly the confusion it caused.
+//
+// pprof would answer this too, but the primary runs on Railway: its pprof
+// listener is deliberately localhost-only and there is no docker exec. So the
+// node has to be able to say it itself.
+func (dag *BlockDAG) DAGGates() map[string]interface{} {
+	dag.orphansMu.Lock()
+	orphanKeys := len(dag.orphans)
+	finalityGaps := len(dag.finalityWalkGaps)
+	produceGaps := len(dag.produceStuckGaps)
+	waiting := 0
+	for _, blocks := range dag.orphans {
+		waiting += len(blocks)
+	}
+	dag.orphansMu.Unlock()
+
+	return map[string]interface{}{
+		// THE gate that silently disables the DB fallback in
+		// ghostdagBlockLookup — see this function's own comment.
+		"ghostdag_migration_pending": dag.ghostdagMigrationPending.Load(),
+		"resync_in_progress":         dag.resyncInProgress.Load(),
+		"sync_target_height":         dag.syncTargetHeight.Load(),
+		"boot_height":                dag.BootHeight(),
+		"height":                     dag.Height(),
+		// Orphan bookkeeping: how many distinct parents are being waited on,
+		// and how many blocks that is holding up.
+		"orphan_missing_parents": orphanKeys,
+		"orphan_blocks_waiting":  waiting,
+		"finality_walk_gaps":     finalityGaps,
+		"produce_stuck_gaps":     produceGaps,
+	}
+}
+
 func (dag *BlockDAG) isCatchingUp() bool {
 	dag.mu.RLock()
 	defer dag.mu.RUnlock()
