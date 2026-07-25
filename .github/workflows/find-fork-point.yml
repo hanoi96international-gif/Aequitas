@@ -220,6 +220,39 @@ jobs:
           done
           echo ""
 
+          # ---------- 4c. authorization: whose blocks will each node even accept? ----------
+          # AddPeerBlock rejects a block whose proposer is not in this node's
+          # authorizedValidators set, before any DAG logic runs. That produces
+          # a perfectly one-directional link — A accepts B's blocks, B silently
+          # drops every one of A's — which is indistinguishable from a fork in
+          # every other measurement here, and no resync touches it, because the
+          # validator list is not part of the snapshot.
+          #
+          # Observed 2026-07-25 18:45: the primary's tip was known to c1, while
+          # c1's tip was never known to the primary, with peer topology complete
+          # on both sides. This is the check that separates "cannot reach" from
+          # "will not accept".
+          echo "=== 4c. AUTHORIZED VALIDATORS per node ==="
+          for n in primary c1 c2; do
+            curl -sS --max-time 20 "$(url_of $n)/api/validators" 2>/dev/null \
+              | jq -r '(.validators // [])[] | (if type=="object" then (.signing_address // .address) else . end) | ascii_downcase' \
+              2>/dev/null | sort -u > "val_$n" || : > "val_$n"
+            echo "  $n holds $(wc -l < "val_$n") authorized validator(s):"
+            sed 's/^/    /' "val_$n"
+          done
+          echo ""
+          echo "  --- who is missing where (a missing proposer = every one of its blocks refused) ---"
+          for n in primary c1 c2; do
+            for m in primary c1 c2; do
+              [ "$n" = "$m" ] && continue
+              while read -r a; do
+                [ -n "$a" ] || continue
+                grep -qx "$a" "val_$n" || echo "    $a is authorized on $m but NOT on $n"
+              done < "val_$m"
+            done
+          done | sort -u
+          echo ""
+
           # ---------- 5. optional bisect for the exact fork height ----------
           if [ "${BISECT_FROM:-0}" != "0" ] && [ -n "$FORK_DEPTH" ]; then
             LO="$BISECT_FROM"; HI="$MIN"
