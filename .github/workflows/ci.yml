@@ -39,3 +39,41 @@ jobs:
           node-version: 22
       - run: npm ci
       - run: npx hardhat test
+
+  # FIX (2026-07-26): nothing in CI ever built the Dockerfile. `go build` above
+  # runs on ubuntu-latest with the runner's own toolchain — it says nothing
+  # about whether the IMAGE builds. The image is only ever built by deploy.sh /
+  # deploy_safe_c2.sh, i.e. ON A PRODUCTION NODE during a deploy, so a broken
+  # Dockerfile is discovered there and takes the deploy (and possibly the node)
+  # with it.
+  #
+  # This was not hypothetical: the cgo change that makes go-ethereum use
+  # libsecp256k1 instead of its pure-Go fallback (269us -> 106us per signature
+  # recovery, measured on Contabo1) had to sit unmerged precisely because there
+  # was no safe way to prove the Alpine build still worked. Verifying it by
+  # hand on a live validator — which is what I started to do — takes CPU from
+  # the node whose latency is under investigation.
+  #
+  # Builds the real multi-stage Dockerfile and then asserts the property the
+  # cgo change exists for: the binary must be DYNAMICALLY linked. A static
+  # binary means cgo was disabled and go-ethereum silently fell back to the
+  # slow signature path — exactly the regression this guards against, and one
+  # no Go-level test can see.
+  docker-image:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build the node image
+        run: docker build -t aequitas-node:ci .
+      - name: Assert the binary is cgo-linked (fast secp256k1 path)
+        run: |
+          set -euo pipefail
+          if docker run --rm --entrypoint sh aequitas-node:ci -c 'ldd /app/aequitasd' >/dev/null 2>&1; then
+            echo "✓ aequitasd is dynamically linked — cgo is active, go-ethereum uses libsecp256k1"
+          else
+            echo "✗ aequitasd is statically linked: cgo was NOT enabled for this build."
+            echo "  go-ethereum then falls back to crypto/signature_nocgo.go (pure-Go btcec),"
+            echo "  which measured 269us per recovery on Contabo1 versus 106us with cgo —"
+            echo "  13.5 cores instead of 5.3 at the 50k TPS target. See the Dockerfile comment."
+            exit 1
+          fi
