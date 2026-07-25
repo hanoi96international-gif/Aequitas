@@ -465,3 +465,207 @@ Auf explizite Anweisung ("Punkt 1 umsetzen") doch angegangen — der ursprüngli
 **Ehrliche Einordnung des tatsächlichen Gewinns:** durch `dbMu` ist der reale Parallelisierungsgewinn für den Postgres-gestützten Fall (= die echte Produktion) kleiner als ein erster Blick auf "N Worker" vermuten lässt — nur die CPU-gebundene Arbeit VOR dem Lock (Shard-Zugriff, Bilanz-/Demurrage-Prüfung) läuft pro Worker wirklich parallel; der eigentliche DB-Schreibzugriff bleibt faktisch seriell. Das ist dennoch strikt besser als der bisherige Zustand (vorher war ALLES seriell, inklusive der CPU-Arbeit) und beweisbar korrekt statt beweisbar kaputt — aber es ist NICHT der volle "6x auf 6 Kernen"-Gewinn, den die reine In-Memory-Messung suggerieren würde. Ein echter DB-seitiger Gewinn bräuchte eine größere Restrukturierung (Schreibmengen im Speicher sammeln, EINMAL am Ende der Parallel-Phase als einzelnes Batch-Statement committen, statt N einzelne Saves über dieselbe Tx zu serialisieren) — nicht in dieser Sitzung umgesetzt, siehe "Nächste Schritte".
 
 **Getestet:** volle Suite (`go test ./x/humanity/keeper/... -race`), `go vet ./...`, Determinismus-Tests (26 Fälle), bestehender Real-DB-Replay-Test, neuer Real-DB-Parallel-Test (5× unter `-race`) — alle grün. **NICHT deployed** auf Contabo1/2 — bleibt auf diesem Branch, bis explizit anders entschieden.
+
+---
+
+# Update (2026-07-25/26) — Roadmap-Schritte 5 und 6 abgeschlossen, 4 teilweise, mit Messwerten
+
+Diese Session hat die Roadmap-Punkte aus der Statustabelle abgearbeitet, so
+weit sie ohne Zugriff auf die Produktionsknoten abschließbar sind. Alles
+unten ist **gemessen**, nicht geschätzt; jede Zahl ist über einen Test im
+Repo reproduzierbar. Zwei Optimierungsversuche sind an echten Messungen
+gescheitert und wurden verworfen statt beschönigt — sie stehen hier mit
+ihren Zahlen, damit sie niemand erneut versucht.
+
+## Ausgangsmessung: der Replay-Pfad war der eigentliche Deckel
+
+Bisher hat keine Messung in diesem Projekt direkt beantwortet, wie schnell
+**ein Knoten einen Block voller Transfers wieder einspielt**. Genau das ist
+aber die Zahl, die über 50.000 TPS entscheidet: jeder Sekundärknoten macht
+das für jeden Block. `TestReplayThroughput_DisjointTransfers` (neu) misst es:
+
+| Stand | Replay-Durchsatz | SQL-Statements pro Transfer |
+|---|---|---|
+| vorher | **382 tx/s** (2,6 ms/tx) | 3,0 |
+| + Ausdrucks-Index auf `lower(address)` | 1.250 tx/s | 3,0 |
+| + ctx-skopierte "aufgelöste Adressen" | 2.000 tx/s | 2,0 |
+| + gepufferte Kontoschreibvorgänge | **24.918 tx/s** (40 µs/tx) | **4 Statements für den GANZEN Block** |
+
+Ein CPU-Profil des Ausgangszustands zeigte **13 % CPU, 87 % Warten**. Der
+Replay-Pfad war nie rechen-, sondern immer round-trip-gebunden.
+
+**Damit ist auch die Frage zu Roadmap 6 beantwortet, und zwar anders als
+erwartet.** Der am 2026-07-25 zurückgerollte Versuch, disjunkte Transfers
+auf mehreren Goroutinen auszuführen, hätte sich selbst dann nicht gelohnt,
+wenn er sicher gewesen wäre: parallelisiert worden wäre die Arithmetik, und
+die war nie der Kostenfaktor. Die zweite Option aus der damaligen
+Revert-Notiz ("die DB-Schreibvorgänge ganz aus der parallelen Phase
+herausziehen") war von Anfang an die richtige — genau das ist jetzt
+umgesetzt, mit demselben einen Goroutine und demselben einen `*sql.Tx`, in
+dem der Wire-Protocol-Desync strukturell unmöglich ist.
+
+### Der größte Einzelfund: jeder Kontozugriff war ein Sequential Scan
+
+Jede Kontoabfrage in diesem Code lautet `WHERE lower(address) = $1`. Ein
+B-Tree auf der blanken Spalte `address` kann dieses Prädikat **nicht**
+bedienen — Postgres weiß nicht, dass `lower()` ordnungserhaltend ist. Also:
+voller Tabellenscan bei **jedem einzelnen Kontoladen**, mit linear
+wachsenden Kosten.
+
+```
+EXPLAIN vorher:  Seq Scan on chain_accounts ... Rows Removed by Filter: 1999
+EXPLAIN nachher: Index Scan using idx_chain_accounts_lower_address
+```
+
+Bei nur 2.000 Konten kostete das `SELECT` in `ensureAccountLoaded` 750 µs,
+gegenüber 32 µs für das `UPDATE` daneben. Zwei Indizes in `initDB` nutzten
+die Ausdrucksform bereits (`idx_nullifiers_wallet`,
+`idx_bio_registrations_wallet`) — die heißen Tabellen hatten sie nur nie
+bekommen. Nachgezogen für `chain_accounts`, `evm_storage`, `evm_contracts`,
+`evm_nonces`, `registered_nodes`, `guardians`, `bio_hashes`, `chain_blocks`.
+
+`schema_index_coverage_test.go` leitet die nötige Menge jetzt aus dem SQL
+des Pakets selbst ab und schlägt fehl, sobald eine `lower()`-Abfrage ohne
+passenden Index existiert — plus ein `EXPLAIN`-Test, dass der Planer ihn
+wirklich benutzt.
+
+Die Kosten sind ebenfalls gemessen, nicht angenommen: der Index macht den
+100k-Zeilen-Bulk-Upsert **19 % langsamer** (1063 ms → 1306 ms) und einen
+Einzel-Lookup **~500× schneller** (56 ms Seq Scan bei 100k Zeilen, linear
+wachsend, gegen einen Index Scan). Beim Ingestion-Pfad bringt er dagegen
+ehrlicherweise fast nichts (4184 → 4358 TPS, ~4 %), weil dort die Konten
+bereits warm in `cs.accounts` liegen.
+
+### Zwei verworfene Optimierungen (mit Zahlen)
+
+1. **Chunking des Multi-Row-Upserts.** `EXPLAIN (ANALYZE, BUFFERS)` zeigt
+   bei 100.000 Zeilen einen auf Platte auslagernden Hash (~32 MB Temp-I/O)
+   — sieht nach einem Fall für work_mem-große Chunks aus. Ist es nicht:
+
+   | Chunk | 500 | 1000 | 2000 | 5000 | 10000 | ohne |
+   |---|---|---|---|---|---|---|
+   | tx/s | 7.203 | 7.807 | 10.006 | 15.920 | 19.213 | **22.547** |
+
+   Monoton schlechter. Parse-Kosten pro Statement und der erneut
+   ausgewertete `NOT IN`-Subplan kosten mehr als das Auslagern.
+
+2. **`work_mem` auf 256 MB.** Beseitigt das Auslagern vollständig, bewegt
+   dasselbe Statement aber nur von 1373 ms auf 1325 ms (3,5 %).
+
+Was bleibt, ist Postgres' echter Boden für diese Tabellenform: **~13 µs pro
+upserted Zeile**, dominiert von Heap- und Index-Pflege. Darunter kommt man
+nur, indem man nicht mehr jeden Kontostand pro Block synchron schreibt —
+also genau über Phase 7 (WAL als Durability-Grenze, Postgres asynchron
+dahinter). Der Replay-Pfad ist damit **nicht mehr der Engpass**; die
+nächste Grenze ist wieder die architektonische, die dieses Dokument von
+Anfang an beschreibt.
+
+## Schritt 5 — `cs.activeTx`-Migration: abgeschlossen
+
+Der Blocker war "[DB-GUARD]-Logs auswerten". Das hätte die falsche Frage
+beantwortet: `[DB-GUARD]` feuert nur für die Teilmenge der Pfade, die
+zusätzlich auf einer FREMDEN Goroutine laufen. Die Menge, die Nebenläufigkeit
+blockiert, ist die viel größere, die auf der EIGENEN Goroutine zurückfällt —
+und darüber schweigt die Produktion.
+
+Die Frage ist jetzt lokal beantwortet, doppelt und unabhängig:
+
+- `activetx_static_test.go` läuft den Aufrufgraphen des Pakets von den drei
+  Stellen ab, an denen eine Transaktion geöffnet wird, und schlägt bei jedem
+  erreichbaren DB-Schreibvorgang fehl, der `ctx` fallen lässt. Die sechs
+  Aufrufstellen, die tatsächlich außerhalb der Transaktion laufen, tragen
+  eine explizite `activetx:outside-tx`-Markierung und werden bei jedem Lauf
+  ausgegeben — keine undurchsichtige Allowlist.
+- `activetx_trace.go` protokolliert dieselben Rückfälle zur Laufzeit. Die
+  volle Suite gegen ein echtes Postgres erzeugt jetzt **null**.
+
+Von 38 Fundstellen auf 0. `replayTransactions` baut ein `replayCtx` aus dem
+eigenen `dbTx` und reicht es durch alle 41 Aufrufe innerhalb der Transaktion.
+`TestActiveTx_ConcurrentAtomicOperationsUseSeparateTransactions` hält fest,
+wofür das war: zwei gleichzeitige atomare Operationen lösen jetzt auf zwei
+getrennte, isolierte `*sql.Tx` auf — vorher strukturell nicht ausdrückbar.
+
+## Schritt 4 — Blockkörper als Referenzen: Voraussetzung fehlt, Teilfix geliefert
+
+Beim Lesen des Relay-Pfads kam eine Voraussetzung zutage, die in der
+Roadmap-Notiz fehlt und die den Schritt deutlich größer macht als eine
+Formatmigration: **Referenzen helfen nur, wenn die Peers die Transaktions-
+körper bereits haben, wenn der Block ankommt — und das haben sie hier
+nicht.** `pending_txs` ist ein rein lokaler Outbox-Tisch (`SavePendingTx`
+schreibt in die eigene DB des Knotens), und die P2P-Schicht broadcastet
+ausschließlich Blöcke. Ein Peer erfährt den Inhalt einer Transaktion also
+ausschließlich aus dem Block, der sie trägt. Hash-Referenzen ohne eine
+vorgelagerte **Transaktions-Gossip-Schicht** würden jeden Peer zwingen,
+jeden Körper beim Empfang nachzuladen: dieselben Bytes plus ein Round-Trip,
+also strikt schlechter. Diese Gossip-Schicht ist ein eigenes Projekt und
+wurde hier **nicht** angefangen.
+
+Dieselben Bytes lassen sich aber ohne Konsensänderung angreifen — der
+Relay-Payload war unkomprimiertes JSON:
+
+| TXs/Block | roh | gzip | Faktor |
+|---|---|---|---|
+| 1.000 | 0,24 MB | 0,01 MB | 17,6× |
+| 20.000 | 4,80 MB | 0,27 MB | 17,7× |
+| 50.000 | 12,00 MB | 0,68 MB | 17,7× |
+
+Konsens bleibt unberührt (der Blockhash wird über den dekodierten Block
+gebildet — komprimierter und unkomprimierter Relay erzeugen bitgleiche
+Hashes, festgehalten in einem Test). **Ausrollung bewusst zweistufig:** Phase
+1 (dieser Stand) akzeptiert beide Kodierungen und sendet keine — in
+beliebiger Reihenfolge auf beliebige Teilmengen deploybar. Phase 2 setzt
+`AEQUITAS_P2P_COMPRESS_BLOCKS=1`, **erst wenn jeder Knoten ein Phase-1-Binary
+fährt**, sonst partitioniert man das Netz still.
+
+## `cs.mu`-Kontention: Werkzeug geliefert, Diagnose braucht den Live-Knoten
+
+Diese Untersuchung hing nicht an der Analyse, sondern an einem fehlenden
+Werkzeug: es gab **keinen Weg, einen Goroutine-Dump vom Primary zu bekommen**
+(pprof ist bewusst localhost-only, die Plattform bietet kein `docker exec`).
+
+`GET /api/debug/goroutines` schließt das, hinter derselben
+`SNAPSHOT_TOKEN`-Prüfung wie die übrigen Betreiber-Endpunkte. Entscheidend:
+der Endpunkt nimmt **keine Applikationssperre** — weder `cs.mu` noch
+`dag.mu` — denn gebraucht wird er genau dann, wenn eine davon hängt. Ein
+Test hält `cs.mu` schreibend über eine laufende Anfrage und prüft, dass sie
+trotzdem antwortet.
+
+`?summary` gruppiert nach (Scheduler-Zustand, blockierendem Frame,
+äußerstem Projekt-Frame), zählt und sortiert nach längster Wartezeit — also
+"142 blockiert in `sync.(*RWMutex).Lock` unter `TransferAtomic`, wartet seit
+≥13 min" statt acht Megabyte Stacks.
+
+**Nächster Schritt (braucht Produktionszugriff, nicht mehr Code):** auf dem
+Primary unter Last `curl -H "Authorization: Bearer $SNAPSHOT_TOKEN"
+https://<primary>/api/debug/goroutines?summary` aufrufen. Die oberste
+Gruppe benennt den Halter. Die Peer-Registrierung hängt vermutlich an
+derselben Ursache und sollte mit demselben Dump beantwortbar sein.
+
+## Weiterhin offen
+
+| Punkt | Status |
+|---|---|
+| Schritt 1 — WAL auf C2 reaktivieren | Betriebsaufgabe, kein Code-Gap |
+| Schritt 3 — UBI auf Lazy-Claim | **nicht angefangen**, siehe unten |
+| Schritt 4 — Referenzen | braucht zuerst Transaktions-Gossip |
+| Schritt 7 — Finality-Gadget | nicht angefangen |
+| `cs.mu`-Kontention | Werkzeug da, Diagnose braucht Live-Knoten |
+| Peer-Registrierung | vermutlich Folge der Kontention |
+
+**Zu Schritt 3, damit die Größe nicht unterschätzt wird.** Lazy-Claim ist
+konsensverändernd auf der Kontoebene: es braucht einen Akkumulator im
+StateRoot, ein `ubi_claimed`-Feld pro Konto (inklusive Spalte, Aufnahme in
+`accountLeaf`, Snapshot-Import/-Export) und eine Aktivierungshöhe. Der
+heikle Teil ist die **Reihenfolgeabhängigkeit**: der Betrag, den ein Konto
+beim Abrechnen gutgeschrieben bekommt, hängt vom Akkumulatorstand in genau
+diesem Moment ab. Zwischen der Zustandsänderung auf dem Primary und dem
+Block, der die Verteilungs-TX trägt, existiert ein Fenster, in dem ein
+Transfer auf dem Primary gegen den NEUEN Akkumulator abrechnet, während der
+Sekundärknoten dieselbe Transaktion beim Replay gegen den ALTEN abrechnet —
+gleiche Endsalden, aber unterschiedliche gespeicherte Salden, also
+divergierender StateRoot. Der gangbare Weg ist der, den dieses Repo für
+Demurrage bereits nutzt: der Primary entscheidet den exakten Betrag und
+trägt ihn in der TX mit (`FromDemurrageLost` als Vorbild), der Sekundärknoten
+rechnet ihn nicht nach. Angefangen wurde davon bewusst nichts — eine halb
+verdrahtete Konsensänderung im geldbewegenden Kern wäre schlechter als
+keine.
