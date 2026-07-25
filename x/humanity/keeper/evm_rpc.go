@@ -171,9 +171,22 @@ func NewEVMRPCServer(dag *BlockDAG, state *ChainState) *EVMRPCServer {
 	if engine != nil {
 		dag.evm = engine
 		// Must run AFTER dag.evm is set (verifyZKProof needs it) and can only
-		// run here — dag.evm is nil for the whole of NewBlockchain. See
+		// start here — dag.evm is nil for the whole of NewBlockchain. See
 		// repairUnreplayedBlocks' own comment.
-		dag.repairUnreplayedBlocks()
+		//
+		// FIX (P0 availability, 2026-07-25 night — Primary served 502 for ~35
+		// minutes): this used to run SYNCHRONOUSLY, blocking the rest of boot
+		// (including the HTTP listener) until every unreplayed block was
+		// repaired. The unbounded finder (70e5b27, same day) surfaced a
+		// multi-thousand-block backlog including 50k-transfer loadtest blocks
+		// — each taking minutes — so the whole node was unreachable for the
+		// duration while the rest of the network kept running. The repair is
+		// pure background catch-up of HISTORICAL effects (live replay
+		// serializes against it per-block via replayMu, and production is
+		// separately gated by hasCaughtUpWithAllPeers) — nothing in serving
+		// HTTP requires it to have finished. Run it in the background so the
+		// node is reachable immediately.
+		SafeGoroutine("repairUnreplayedBlocks", dag.repairUnreplayedBlocks)
 	}
 	return &EVMRPCServer{
 		dag:               dag,

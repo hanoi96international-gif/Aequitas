@@ -3195,12 +3195,21 @@ func (cs *ChainState) SaveBlockWithPendingTxsAtomic(block *Block, ids []int64) e
 	// round trip (~380ms) and is exactly as durable here (a lone INSERT is its
 	// own implicit transaction). The transactional path is still used verbatim
 	// whenever there ARE pending-TX ids to reconcile atomically.
+	// replayed = true, EXPLICITLY (2026-07-25 night): this function persists
+	// this node's OWN freshly-produced block, whose transaction effects were
+	// already applied to chain_accounts synchronously at RPC time, before the
+	// block was even assembled — there is nothing for a later repair pass to
+	// redo. This previously relied on the column's schema DEFAULT true, which
+	// works but leaves the intent invisible and one schema-default change away
+	// from every self-produced block silently joining the boot-repair backlog
+	// (the exact backlog class that kept Primary unreachable for ~35 minutes).
+	cs.ensureReplayedColumn()
 	if len(ids) == 0 {
 		if _, err := cs.db.Exec(
 			`INSERT INTO chain_blocks
 			   (hash, height, parent_hashes, proposer, timestamp, humans, state_root,
-			    signature, transactions, selected_parent, blue_score, blues)
-			 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
+			    signature, transactions, selected_parent, blue_score, blues, replayed)
+			 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,true)
 			 ON CONFLICT (hash) DO NOTHING`,
 			block.Hash, block.Height, string(parentHashesJSON), block.Proposer, block.Timestamp,
 			block.Humans, block.StateRoot, block.Signature, string(txsJSON),
@@ -3262,8 +3271,8 @@ func (cs *ChainState) SaveBlockWithPendingTxsAtomic(block *Block, ids []int64) e
 	if _, err := tx.Exec(
 		`INSERT INTO chain_blocks
 		   (hash, height, parent_hashes, proposer, timestamp, humans, state_root,
-		    signature, transactions, selected_parent, blue_score, blues)
-		 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
+		    signature, transactions, selected_parent, blue_score, blues, replayed)
+		 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,true)
 		 ON CONFLICT (hash) DO NOTHING`,
 		block.Hash, block.Height, string(parentHashesJSON), block.Proposer, block.Timestamp,
 		block.Humans, block.StateRoot, block.Signature, string(txsJSON),
