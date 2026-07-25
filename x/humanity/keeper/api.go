@@ -812,7 +812,13 @@ func (a *APIServer) handleStatus(w http.ResponseWriter, r *http.Request) {
 	// Use a.state (PostgreSQL-backed ChainState) as the single source of
 	// truth for human count — see NewAPIServer's own comment for why there's
 	// no separate in-memory keeper field to accidentally diverge from it.
-	humans := a.state.TotalHumans()
+	// ONE aggregated read under a single read lock, instead of the nine
+	// separate lock acquisitions this used to make — four of them the WRITE
+	// lock, via GetBalance's lazy account load. See StatusMetrics' comment
+	// for the live 11-second /api/status that motivated this, and for the
+	// peer-registration timeouts it was causing on the far side.
+	m := a.state.StatusMetrics()
+	humans := m.Humans
 	growth := humans * 10
 	if growth > 100 {
 		growth = 100
@@ -827,8 +833,8 @@ func (a *APIServer) handleStatus(w http.ResponseWriter, r *http.Request) {
 		"git_commit":   buildGitCommit,
 		"height":       latest.Height,
 		"latest_hash":  latest.Hash,
-		"total_humans": a.state.TotalHumans(),
-		"total_supply": fmt.Sprintf("%.2f AEQ", a.state.TotalSupply()),
+		"total_humans": m.Humans,
+		"total_supply": fmt.Sprintf("%.2f AEQ", m.Supply),
 		"node_id":      a.p2pNode.GetNodeID(),
 		"uptime":       uptime,
 		"is_primary":   os.Getenv("IS_PRIMARY_NODE") == "true",
@@ -837,18 +843,19 @@ func (a *APIServer) handleStatus(w http.ResponseWriter, r *http.Request) {
 		// P3-8: V5/V6 legacy addresses removed from status — minimise attack surface.
 		"bio_verifier": BIO_VERIFIER_ADDR,
 		"chain_evm_id": 1926,
-		"index":        a.state.CalcAequitasIndex(),
-		"gini":         a.state.CalcGini(),
+		"index":        m.Index,
+		"gini":         m.Gini,
 		"growth":       growth,
 		"velocity":     50,
-		"phase":        a.state.CalcPhase(),
+		"phase":        m.Phase,
 		"fee_bps":      10,
-		// P2-FIX: use the pool address constants from state.go instead of duplicating
-		// the raw strings here. If addresses ever change, only one place needs updating.
-		"pool_validators":      fmt.Sprintf("%.4f", a.state.GetBalance(validatorsPoolAddr)),
-		"pool_lp":              fmt.Sprintf("%.4f", a.state.GetBalance(lpPoolAddr)),
-		"pool_ubi":             fmt.Sprintf("%.4f", a.state.GetBalance(ubiPoolAddr)),
-		"pool_treasury":        fmt.Sprintf("%.4f", a.state.GetBalance(treasuryPoolAddr)),
+		// Pool balances come from the same aggregated read (StatusMetrics) —
+		// they used to be four separate GetBalance calls, i.e. four
+		// acquisitions of the global state WRITE lock per status request.
+		"pool_validators":      fmt.Sprintf("%.4f", m.PoolValidators),
+		"pool_lp":              fmt.Sprintf("%.4f", m.PoolLP),
+		"pool_ubi":             fmt.Sprintf("%.4f", m.PoolUBI),
+		"pool_treasury":        fmt.Sprintf("%.4f", m.PoolTreasury),
 		"ubi_next_payout_secs": nextUBISecs,
 		// knightdag_activation_height: the AUTHORITATIVE, backend-configured
 		// height (KNIGHTDAG_ACTIVATION_HEIGHT env var, or the default — see
