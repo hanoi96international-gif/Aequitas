@@ -32,6 +32,45 @@ jobs:
     needs: test
     runs-on: ubuntu-latest
     steps:
+      # FIX (2026-07-25 night): see deploy-contabo.yml's matching comment —
+      # simultaneous restarts of all three nodes forked the network twice in
+      # one evening. This workflow restarts LAST: wait for the primary to
+      # serve traffic again (Railway redeploys it on this same push), then
+      # wait for Contabo1's deploy of this same commit to complete, so at
+      # every moment during a rollout at least two already-converged nodes
+      # are up. Both waits fail open after their timeout so nothing can
+      # permanently block deploying a fix.
+      - name: Wait for the primary to be healthy again (Railway redeploys on this same push)
+        run: |
+          for i in $(seq 1 60); do
+            code=$(curl -s -o /dev/null -w "%{http_code}" -m 10 https://aequitas.digital/api/status || true)
+            if [ "$code" = "200" ]; then
+              echo "primary healthy again (HTTP 200)"
+              exit 0
+            fi
+            echo "primary not ready yet (HTTP $code) — waiting ($i/60)"
+            sleep 15
+          done
+          echo "primary still unreachable after 15 min — proceeding anyway (fail-open)"
+      - name: Wait for Contabo1's deploy of this same commit to finish first
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          for i in $(seq 1 60); do
+            status=$(gh api "repos/${{ github.repository }}/actions/runs?head_sha=${{ github.sha }}&per_page=50" \
+              --jq '[.workflow_runs[] | select(.name=="Deploy to Contabo VPS")][0].status' 2>/dev/null || echo unknown)
+            if [ "$status" = "completed" ]; then
+              echo "Contabo1's deploy completed — proceeding with the Contabo2 deploy"
+              exit 0
+            fi
+            if [ -z "$status" ] || [ "$status" = "null" ]; then
+              echo "no Contabo1 deploy run found for this commit (docs-only path filter difference?) — proceeding"
+              exit 0
+            fi
+            echo "Contabo1 deploy status: $status — waiting ($i/60)"
+            sleep 20
+          done
+          echo "gave up waiting for Contabo1's deploy after 20 min — proceeding anyway (fail-open)"
       - name: Deploy to Contabo2
         uses: appleboy/ssh-action@v1.0.3
         with:

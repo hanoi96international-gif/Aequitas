@@ -36,6 +36,32 @@ jobs:
     needs: test
     runs-on: ubuntu-latest
     steps:
+      # FIX (2026-07-25 night — the second network-wide fork in one evening):
+      # a push to main restarts ALL THREE nodes at once (Railway redeploys the
+      # primary on the same push this workflow and deploy-contabo2.yml react
+      # to). At 1s block time, three simultaneous restarts are a network-wide
+      # partition: each node boots into dead/booting peers, the stall escape
+      # valves open, each produces its own branch, and the network forks —
+      # observed live twice today (18:37 and 20:00 UTC), each time requiring
+      # an authoritative resync of both secondaries to recover. Staggering the
+      # restarts keeps a quorum of already-converged nodes up at every moment:
+      # Railway restarts the primary first; Contabo1 deploys only after the
+      # primary serves traffic again; Contabo2 (its own workflow) additionally
+      # waits for this workflow to finish. Fail-open after the timeout so a
+      # down primary can never permanently block deploying a fix to the
+      # secondaries.
+      - name: Wait for the primary to be healthy again (Railway redeploys on this same push)
+        run: |
+          for i in $(seq 1 60); do
+            code=$(curl -s -o /dev/null -w "%{http_code}" -m 10 https://aequitas.digital/api/status || true)
+            if [ "$code" = "200" ]; then
+              echo "primary healthy again (HTTP 200) — proceeding with the Contabo1 deploy"
+              exit 0
+            fi
+            echo "primary not ready yet (HTTP $code) — waiting ($i/60)"
+            sleep 15
+          done
+          echo "primary still unreachable after 15 min — proceeding anyway (fail-open: a broken primary must not block fixing the secondaries)"
       - name: Deploy to Contabo
         uses: appleboy/ssh-action@v1.0.3
         with:
