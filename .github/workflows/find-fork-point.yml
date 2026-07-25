@@ -50,6 +50,9 @@ jobs:
           BISECT_FROM: ${{ inputs.binary_search_from }}
         run: |
           set -uo pipefail
+          # bash -e would abort the whole job on the first curl timeout, and a
+          # node being unreachable is itself part of the measurement.
+          set +e
 
           PRIMARY="https://aequitas.digital"
           C1="http://173.249.37.118:8080"
@@ -61,13 +64,13 @@ jobs:
           # ---------- 1. liveness ----------
           echo "=== 1. LIVENESS — does each node's height actually advance? ==="
           for n in primary c1 c2; do
-            s="$(curl -sS --max-time 20 "$(url_of $n)/api/status" 2>/dev/null)"
+            s="$(curl -sS --max-time 20 "$(url_of $n)/api/status" 2>/dev/null || true)"
             echo "$s" > "status_$n.json"
             echo "$s" | jq -r '.height' 2>/dev/null > "h1_$n" || echo "" > "h1_$n"
           done
           sleep 25
           for n in primary c1 c2; do
-            curl -sS --max-time 20 "$(url_of $n)/api/status" 2>/dev/null \
+            { curl -sS --max-time 20 "$(url_of $n)/api/status" 2>/dev/null || true; } \
               | jq -r '.height' 2>/dev/null > "h2_$n" || echo "" > "h2_$n"
           done
           printf "%-9s %-12s %-12s %-9s %-9s %s\n" node h_t0 h_t25 delta uptime commit

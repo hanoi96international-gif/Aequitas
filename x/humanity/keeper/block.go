@@ -361,6 +361,14 @@ replayedMu             sync.Mutex
 	// /api/health/combined (Gesamtaudit 2026-06-28, P2-4/P3-7: "Health/API
 	// zeigt nicht ... seit wann [ein StateRoot-Mismatch existiert]").
 	lastSuccessfulPeerSyncAt atomic.Int64
+	// deferredWatch tracks, per peer URL, every block that AddPeerBlock
+	// deferred behind a still-in-flight parent, together with the moment it
+	// was first deferred. reconcileDeferrals (sync_blocks.go) uses the age to
+	// tell an ordinary propagation delay from a fork; see its comment for why
+	// judging a deferral within the cycle that produced it deadlocks
+	// production on a live chain.
+	deferredWatchMu sync.Mutex
+	deferredWatch   map[string]map[string]int64
 	// lastPeerContactAt is the Unix timestamp of the last time this node
 	// received ANY block from a foreign peer, whether or not AddPeerBlock
 	// went on to merge it — set unconditionally at AddPeerBlock's entry,
