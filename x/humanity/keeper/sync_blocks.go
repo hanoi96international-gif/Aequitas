@@ -947,6 +947,31 @@ func (dag *BlockDAG) lowerDeepScanFloor(nodeURL string, sweptFrom int64) {
 		sweptFrom, nodeURL, newFloor)
 }
 
+// deferralsAreNotResolving reports whether this sync cycle's deferred blocks
+// are evidence of a FORK rather than of ordinary catch-up — see the call site
+// in doSyncOnce for the full 2026-07-25 incident this closes.
+//
+// True only when all of the following hold, which is deliberately narrow so a
+// healthy restart backlog is completely unaffected:
+//   - this cycle deferred at least one block behind an in-flight parent, and
+//   - it merged nothing at all itself (totalAdded == 0), and
+//   - no block has successfully merged from ANY peer for longer than the very
+//     grace window those deferrals are being forgiven under.
+//
+// lastSuccessfulPeerSyncAt == 0 means "nothing has merged YET" (fresh process),
+// not "the last merge was in 1970" — a booting node must not be misread as
+// forked, so that case returns false.
+func deferralsAreNotResolving(dag *BlockDAG, totalDeferred, totalAdded int) bool {
+	if totalDeferred == 0 || totalAdded > 0 {
+		return false
+	}
+	lastMerge := dag.lastSuccessfulPeerSyncAt.Load()
+	if lastMerge <= 0 {
+		return false
+	}
+	return time.Now().Unix()-lastMerge > int64(proposerBreakerOrphanGrace.Seconds())
+}
+
 func (dag *BlockDAG) doSyncOnce(nodeURL string) (ok bool) {
 	const pageSize = 500
 	const maxPagesPerCall = 2000 // hard cap: 1,000,000 blocks per call — headroom, not unbounded
@@ -1292,7 +1317,54 @@ func (dag *BlockDAG) doSyncOnce(nodeURL string) (ok bool) {
 		}
 		fmt.Printf("[HTTP-SYNC] ✓ Added %d new blocks from %s | DAG tips: %d | height %d%s\n", totalAdded, nodeURL, tipCount, dag.Height(), deferredNote)
 	}
-	if sawUnmergedBlocks {
+	// FIX (P0, 2026-07-25 — root cause of "nothing merges", found after the
+	// secondaries forked below their own finality floor and could not be
+	// healed by anything short of a full snapshot resync):
+	//
+	// The IsWithinOrphanGrace exemption above (see its own FIX comment) stops
+	// a block DEFERRED behind an in-flight parent from resetting the streak,
+	// so an ordinary restart backlog can reach the threshold and resume
+	// producing. Its stated safety argument was: "a genuinely diverged peer
+	// serves blocks whose parents this node will never receive; those parents
+	// age past the grace within one window and every subsequent cycle resets
+	// the streak again."
+	//
+	// That argument does not hold on a live chain. The peer keeps producing,
+	// so every cycle brings BRAND NEW blocks whose parents are, by
+	// construction, always younger than the grace window — they are deferred,
+	// never refused, no matter how permanently forked this node is. The streak
+	// therefore climbed to the threshold on a node that had merged literally
+	// nothing (confirmed live: foreign_attach count 0 on both secondaries,
+	// while ~1000 blocks/cycle arrived and every single one orphaned).
+	// hasCaughtUpWithAllPeers then reported "caught up", ProduceBlock started
+	// producing on this node's OWN branch, and those self-produced blocks were
+	// finalized locally — putting the real common ancestor below this node's
+	// own finality floor, where isFinalityViolation rejects every one of the
+	// peer's blocks and lowerDeepScanFloor is not allowed to search. That is
+	// an unrecoverable fork: the node can then only ever be fixed by replacing
+	// its whole state from a snapshot, which is exactly the resync loop that
+	// ran all day.
+	//
+	// A deferral is only benign evidence of catch-up if deferrals are actually
+	// RESOLVING. lastSuccessfulPeerSyncAt is the timestamp of the last block
+	// genuinely merged from any peer (deliberately distinct from
+	// lastPeerContactAt, which mere arrival updates — see lastPeerActivityAt's
+	// own comment). If this cycle deferred blocks, merged none itself, and
+	// nothing has successfully merged for longer than the grace window those
+	// deferrals are being forgiven under, then the gap is not closing and
+	// treating the cycle as clean is precisely the mistake above. Reset
+	// instead, which holds production shut and lets the divergence auto-heal
+	// run — the outcome this gate exists to produce.
+	//
+	// Deliberately narrow: a cycle that merged anything (totalAdded > 0), or
+	// deferred nothing, is completely unaffected, so a healthy restart backlog
+	// still reaches the threshold exactly as fast as before.
+	deferralsNotResolving := deferralsAreNotResolving(dag, totalDeferred, totalAdded)
+	if deferralsNotResolving {
+		fmt.Printf("[HTTP-SYNC] ⚠ %s: %d block(s) deferred, none merged, and nothing has merged from any peer for %ds — treating as NOT caught up (a fork looks exactly like this; see doSyncOnce's own comment)\n",
+			nodeURL, totalDeferred, time.Now().Unix()-dag.lastSuccessfulPeerSyncAt.Load())
+	}
+	if sawUnmergedBlocks || deferralsNotResolving {
 		dag.resetCleanSyncStreak(nodeURL)
 	} else {
 		dag.recordCleanSyncCycle(nodeURL)
