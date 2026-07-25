@@ -11,6 +11,10 @@ name: Find fork point between Contabos and primary (manual, read-only)
 on:
   workflow_dispatch:
     inputs:
+      secondary_url:
+        description: "Base URL of the secondary to compare against the primary (2026-07-25: parametrized -- was hardcoded to Contabo2)"
+        required: false
+        default: "http://194.163.188.71:8080"
       start_height:
         description: "First height to compare"
         required: false
@@ -24,8 +28,9 @@ jobs:
   compare:
     runs-on: ubuntu-latest
     steps:
-      - name: Fetch height->hash maps from Contabo2 and primary, diff them
+      - name: Fetch height->hash maps from the secondary and primary, diff them
         env:
+          SECONDARY: ${{ inputs.secondary_url }}
           START: ${{ inputs.start_height }}
           END: ${{ inputs.end_height }}
         run: |
@@ -49,26 +54,26 @@ jobs:
             sort -n -u -o "$2" "$2"
             echo "fetched $(wc -l < "$2") height/hash rows from $1"
           }
-          fetch_side "http://194.163.188.71:8080" contabo2.txt
-          fetch_side "https://aequitas.digital"   primary.txt
+          fetch_side "$SECONDARY"            secondary.txt
+          fetch_side "https://aequitas.digital" primary.txt
 
           echo ""
           echo "=== First disagreement (fork point) ==="
           # A height can legitimately appear on only one side (one chain is
           # ahead), so compare only heights present on BOTH sides; report
           # separately where one side simply ends.
-          join contabo2.txt primary.txt -o 1.1,1.2,2.2 2>/dev/null | awk '
-            $2 != $3 && !found { print "FORK at height " $1; print "  contabo2: " $2; print "  primary:  " $3; found=1; forkh=$1 }
+          join secondary.txt primary.txt -o 1.1,1.2,2.2 2>/dev/null | awk '
+            $2 != $3 && !found { print "FORK at height " $1; print "  secondary: " $2; print "  primary:   " $3; found=1; forkh=$1 }
             $2 == $3 { lastagree=$1 }
             END {
               if (!found) print "No disagreement on any shared height in the window."
               print "Last height both sides agree on (within window): " (lastagree ? lastagree : "none")
             }'
           echo ""
-          echo "=== Contabo2 rows around its own tail ==="
-          tail -5 contabo2.txt
+          echo "=== Secondary ($SECONDARY) rows around its own tail ==="
+          tail -5 secondary.txt
           echo "=== Primary rows around the same heights ==="
           tail -5 primary.txt
           echo ""
-          echo "=== Canonical-hash sample every 100 heights (c2 vs primary) ==="
-          join contabo2.txt primary.txt -o 1.1,1.2,2.2 2>/dev/null | awk '$1 % 100 == 0 { m = ($2==$3) ? "SAME" : "DIFF"; print $1 " " m " c2=" substr($2,1,16) " prim=" substr($3,1,16) }'
+          echo "=== Canonical-hash sample every 100 heights (secondary vs primary) ==="
+          join secondary.txt primary.txt -o 1.1,1.2,2.2 2>/dev/null | awk '$1 % 100 == 0 { m = ($2==$3) ? "SAME" : "DIFF"; print $1 " " m " sec=" substr($2,1,16) " prim=" substr($3,1,16) }'
