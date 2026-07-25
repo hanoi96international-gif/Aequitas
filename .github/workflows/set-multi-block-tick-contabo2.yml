@@ -91,7 +91,19 @@ jobs:
 
             CUR="$(grep -E "^${KEY}=" "$ENVFILE" 2>/dev/null | head -1 | cut -d= -f2- || true)"
             if [ "$CUR" = "$VALUE" ]; then
-              echo "=== Contabo2: already reads '$VALUE' — nothing to change ==="
+              echo "=== Contabo2: env file already reads '$VALUE' — nothing to change ==="
+              # But "the file says so" is not the question this workflow
+              # exists to answer. Confirmed live: the very first non-dry
+              # dispatch landed here, because the key was already set from an
+              # earlier session -- and exited without ever checking whether
+              # the RUNNING process had picked it up, which is the only thing
+              # that decides whether a load test measures one block per tick
+              # or five. The whole point of grepping the node's own startup
+              # line is defeated by skipping it on the one path where nothing
+              # else produces evidence.
+              echo "=== What the RUNNING process says (the actual answer) ==="
+              docker logs aequitas-node 2>&1 | grep -F 'ENABLE_MULTI_BLOCK_TICK' | tail -3 \
+                || echo "(no startup line — the process is running ONE block per tick despite the env file; it has not been restarted since the file was set)"
               exit 0
             fi
 
