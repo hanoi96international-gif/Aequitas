@@ -3080,7 +3080,26 @@ func (cs *ChainState) SaveBlockToDB(block *Block, replayed bool) error {
 	if err != nil {
 		bluesJSON = []byte("[]")
 	}
-	_, err = cs.dbExec().Exec(
+	// cs.db directly, NOT cs.dbExec() (P0, 2026-07-25 — the exact path the new
+	// [DB-GUARD] caught in production within minutes of shipping):
+	//
+	//   [DB-GUARD] dbExec from goroutine 2481 while goroutine 143 holds the
+	//   active transaction
+	//     → SaveBlockToDB (evm_storage.go) → AddPeerBlock → handleBlockPush
+	//
+	// A block arriving over HTTP push saves its header on its own goroutine
+	// while some other goroutine is midway through a replay transaction.
+	// dbExec()'s cs.activeTx fallback handed it that foreign *sql.Tx, putting
+	// two goroutines on one Postgres connection — which desyncs the wire
+	// protocol (`pq: unexpected Parse response "(D) DataRow"`) and cost two
+	// consensus blocks tonight.
+	//
+	// Every caller of this function is a standalone write that must not join
+	// anyone's transaction: AddPeerBlock deliberately saves the header BEFORE
+	// replay opens its own (and deletes it again if replay fails, see P0-02),
+	// and SeedTrustedCheckpoint runs after the resync transaction has already
+	// been cleared. So the pool is not merely safe here, it is correct.
+	_, err = cs.db.Exec(
 		`INSERT INTO chain_blocks
 		   (hash, height, parent_hashes, proposer, timestamp, humans, state_root,
 		    signature, transactions, selected_parent, blue_score, blues, replayed)
