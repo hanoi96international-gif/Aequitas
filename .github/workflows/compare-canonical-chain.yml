@@ -1,0 +1,185 @@
+name: Compare canonical chain + blue score across all three nodes (manual, read-only)
+
+# The decisive test for "es merged gar nix, der Blue Score passt nicht".
+#
+# Comparing StateRoots at each node's OWN tip cannot answer this: the tips are
+# at different heights by construction, so a mismatch there proves nothing and
+# a match there proves nothing either.
+#
+# The only comparison that settles it is the SAME height on all three nodes,
+# taken from the authoritative selected-parent walk (/api/block?height=N is
+# GetBlockByHeight -> canonicalBlockAtHeightLocked, the exact function the
+# autoheal divergence check trusts). If hash, proposer and blue_score agree at
+# a common height, the nodes share one chain and the disagreement is confined
+# to the unfinalised tip. If they differ, there is a real fork and this names
+# the height at which it starts.
+#
+# Blue score is sampled explicitly at three depths, because "blue score passt
+# nicht" has two very different causes:
+#   - differs at the TIP only  -> normal DAG: each node has a different subset
+#                                 of the newest siblings in its window
+#   - differs DEEP (-500, -5000) -> real divergence of the selected-parent chain
+#
+# Liveness is measured separately: two status samples 25s apart show whether a
+# node's height actually advances, which is what "Contabo 1 hängt" means.
+#
+# Strictly read-only: curls and docker logs, no writes, no restarts.
+on:
+  workflow_dispatch: {}
+
+jobs:
+  compare:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Sample all three nodes from Contabo1
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: 173.249.37.118
+          username: root
+          key: ${{ secrets.CONTABO_SSH_KEY }}
+          port: 22
+          fingerprint: "SHA256:noMtjHV8c+2iEFZu3TRUP6WRwGjkrvFke71KgU6Eyt4"
+          script_stop: false
+          timeout: 300s
+          command_timeout: 300s
+          script: |
+            set -uo pipefail
+
+            PRIMARY="https://aequitas.digital"
+            C1="http://localhost:8080"
+            C2="http://194.163.188.71:8080"
+
+            jget() { # jget <json> <key>  -- numeric or string, no jq dependency
+              echo "$1" | grep -o "\"$2\":[0-9]*" | head -1 | cut -d: -f2
+            }
+            jstr() {
+              echo "$1" | grep -o "\"$2\":\"[^\"]*\"" | head -1 | cut -d'"' -f4
+            }
+
+            echo "=== UTC ==="; date -u; echo ""
+
+            # ---------- 1. liveness: does each node's height move? ----------
+            echo "=== 1. LIVENESS (two samples, 25s apart) ==="
+            for n in primary c1 c2; do
+              case $n in primary) u=$PRIMARY;; c1) u=$C1;; c2) u=$C2;; esac
+              s="$(curl -sS --max-time 15 "$u/api/status" 2>/dev/null)"
+              eval "H1_$n=$(jget "$s" height)"
+              eval "UP_$n=$(jget "$s" uptime)"
+              eval "GC_$n=$(jstr "$s" git_commit)"
+            done
+            sleep 25
+            for n in primary c1 c2; do
+              case $n in primary) u=$PRIMARY;; c1) u=$C1;; c2) u=$C2;; esac
+              s="$(curl -sS --max-time 15 "$u/api/status" 2>/dev/null)"
+              eval "H2_$n=$(jget "$s" height)"
+            done
+            printf "%-8s %-12s %-12s %-8s %-10s %s\n" node h_t0 h_t25 delta uptime commit
+            for n in primary c1 c2; do
+              eval "a=\${H1_$n:-}"; eval "b=\${H2_$n:-}"
+              eval "up=\${UP_$n:-?}"; eval "gc=\${GC_$n:-?}"
+              d="?"; [ -n "$a" ] && [ -n "$b" ] && d=$((b - a))
+              printf "%-8s %-12s %-12s %-8s %-10s %s\n" "$n" "${a:-DOWN}" "${b:-DOWN}" "$d" "$up" "$gc"
+            done
+            echo ""
+            echo "  delta 0 over 25s = the node is not advancing (at BLOCK_TIME=1s it should be ~25)"
+            echo ""
+
+            # ---------- 2. common-height canonical comparison ----------
+            MIN=""
+            for n in primary c1 c2; do
+              eval "a=\${H1_$n:-}"
+              [ -n "$a" ] || continue
+              if [ -z "$MIN" ] || [ "$a" -lt "$MIN" ]; then MIN="$a"; fi
+            done
+            if [ -z "$MIN" ]; then echo "no node reachable, aborting"; exit 1; fi
+
+            echo "=== 2. CANONICAL BLOCK AT COMMON HEIGHTS (lowest tip = $MIN) ==="
+            echo "    hash/proposer/blue_score/state_root must be IDENTICAL across nodes at the same height."
+            echo ""
+            for off in 10 100 500 5000 50000; do
+              H=$((MIN - off))
+              [ "$H" -gt 0 ] || continue
+              echo "--- height $H (tip-$off) ---"
+              printf "  %-8s %-20s %-24s %-12s %s\n" node hash proposer blue_score state_root
+              for n in primary c1 c2; do
+                case $n in primary) u=$PRIMARY;; c1) u=$C1;; c2) u=$C2;; esac
+                b="$(curl -sS --max-time 20 "$u/api/block?height=$H" 2>/dev/null)"
+                if [ -z "$b" ] || echo "$b" | grep -q '"error"'; then
+                  printf "  %-8s %s\n" "$n" "(not found / unreachable)"
+                  continue
+                fi
+                printf "  %-8s %-20s %-24s %-12s %s\n" "$n" \
+                  "$(jstr "$b" hash | cut -c1-18)" \
+                  "$(jstr "$b" proposer | cut -c1-22)" \
+                  "$(jget "$b" blue_score)" \
+                  "$(jstr "$b" state_root | cut -c1-18)"
+              done
+              echo ""
+            done
+
+            # ---------- 3. tip blue score per node ----------
+            echo "=== 3. OWN TIP (blue score at each node's own head) ==="
+            printf "  %-8s %-12s %-14s %-24s %s\n" node height blue_score proposer hash
+            for n in primary c1 c2; do
+              case $n in primary) u=$PRIMARY;; c1) u=$C1;; c2) u=$C2;; esac
+              b="$(curl -sS --max-time 20 "$u/api/blocks/canonical?limit=1" 2>/dev/null | sed 's/^\[//; s/\]$//')"
+              printf "  %-8s %-12s %-14s %-24s %s\n" "$n" \
+                "$(jget "$b" height)" "$(jget "$b" blue_score)" \
+                "$(jstr "$b" proposer | cut -c1-22)" "$(jstr "$b" hash | cut -c1-18)"
+            done
+            echo ""
+            echo "  A blue-score gap here with agreement in section 2 = normal DAG tip spread, not a fork."
+            echo ""
+
+            # ---------- 4. does the peer's tip exist on this node at all? ----------
+            echo "=== 4. CROSS-VISIBILITY: is each node's tip hash known to the others? ==="
+            for src in primary c1 c2; do
+              case $src in primary) su=$PRIMARY;; c1) su=$C1;; c2) su=$C2;; esac
+              th="$(curl -sS --max-time 15 "$su/api/status" 2>/dev/null | grep -o '"latest_hash":"[^"]*"' | cut -d'"' -f4)"
+              [ -n "$th" ] || { echo "  $src tip: (unreachable)"; continue; }
+              echo "  $src tip $(echo "$th" | cut -c1-18) known to:"
+              for dst in primary c1 c2; do
+                [ "$dst" = "$src" ] && continue
+                case $dst in primary) du=$PRIMARY;; c1) du=$C1;; c2) du=$C2;; esac
+                r="$(curl -sS --max-time 20 "$du/api/block?hash=$th" 2>/dev/null)"
+                if echo "$r" | grep -q '"height"'; then
+                  echo "    $dst: YES (height $(jget "$r" height), blue_score $(jget "$r" blue_score))"
+                else
+                  echo "    $dst: NO  <- $dst has never merged this block"
+                fi
+              done
+            done
+            echo ""
+
+            # ---------- 5. Contabo1 merge evidence ----------
+            echo "=== 5. Contabo1 log evidence (last 400 lines, filtered) ==="
+            docker logs --tail 400 aequitas-node 2>&1 | grep -Ei \
+              'foreign_attach|merged|orphan|StateRoot|mismatch|fork|resync|caught up|deferr|not resolving|breaker' \
+              | tail -60 || echo "(no matching lines)"
+            echo ""
+            echo "=== 5b. Contabo1 container state ==="
+            docker inspect -f 'Status={{.State.Status}} Restarts={{.RestartCount}} StartedAt={{.State.StartedAt}}' aequitas-node 2>&1 || true
+
+  contabo2_logs:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Contabo2 log evidence
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: 194.163.188.71
+          username: root
+          key: ${{ secrets.CONTABO2_SSH_KEY }}
+          port: 22
+          fingerprint: "SHA256:VIwj7Faxiga2n45HVHZEQFPxcbRKHgSgHoxAFsf2wto"
+          script_stop: false
+          timeout: 120s
+          command_timeout: 120s
+          script: |
+            set -uo pipefail
+            echo "=== Contabo2 container state ==="
+            docker inspect -f 'Status={{.State.Status}} Restarts={{.RestartCount}} StartedAt={{.State.StartedAt}}' aequitas-node 2>&1 || true
+            echo ""
+            echo "=== Contabo2 log evidence (last 400 lines, filtered) ==="
+            docker logs --tail 400 aequitas-node 2>&1 | grep -Ei \
+              'foreign_attach|merged|orphan|StateRoot|mismatch|fork|resync|caught up|deferr|not resolving|breaker' \
+              | tail -60 || echo "(no matching lines)"
