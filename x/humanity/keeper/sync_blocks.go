@@ -307,7 +307,29 @@ func (dag *BlockDAG) fetchBlocksSince(nodeURL string, minHeight int64, afterHash
 	// an unmarshal failure, is what let this incident's root cause (the
 	// primary silently truncating a large page write under load) be
 	// diagnosed at all instead of looking like unexplained peer corruption.
-	body, readErr := io.ReadAll(io.LimitReader(resp.Body, 10<<20))
+	//
+	// FIX (2026-07-25, follow-up — the 10 MB cap this originally shipped
+	// with became the SAME failure by a different door): confirmed live on
+	// Contabo1/Contabo2 within the hour, both the full pageSize=500 request
+	// AND the smaller pageSize=25 fallback (see fetchWithSmallerPageFallback)
+	// failed with "decoding response body (10485760 bytes): unexpected end
+	// of JSON input" — 10485760 = exactly 10<<20, i.e. io.LimitReader itself
+	// was silently truncating a genuinely large-but-valid page at this
+	// chain's current block density (dense multi-proposer KnightDAG merges),
+	// not a peer-side write failure. io.LimitReader returns io.EOF once N
+	// bytes are read, which io.ReadAll treats as a normal, errorless end —
+	// so this looked identical to a truncated response with readErr==nil,
+	// same as the original incident. Worse, doSyncOnce returns immediately
+	// on a page==0 failure, before ever calling advancePeerSyncHeight — so
+	// minHeight never moves and the exact same oversized page is
+	// re-requested every single cycle, forever, which also permanently
+	// pins cleanSyncStreak at 0 and blocks local block production (the
+	// "Contabo produziert keine eigenen Blöcke" symptom). 64 MB matches the
+	// order of magnitude already trusted elsewhere for a full peer response
+	// (see snapshot.go's 50<<20) — generous enough for this chain's current
+	// live block sizes without removing the cap's original purpose (bounding
+	// memory use against a malicious/broken peer).
+	body, readErr := io.ReadAll(io.LimitReader(resp.Body, 64<<20))
 	if readErr != nil {
 		return nil, fmt.Errorf("reading response body: %w", readErr)
 	}
