@@ -1,0 +1,119 @@
+name: Check loadtest account balances on Contabo2 (manual, read-only)
+
+# Answers one question before a run is dispatched: do the disposable test
+# accounts still hold enough to sustain the run phase, or does the fund phase
+# need to run first?
+#
+# It matters because balance is a silent ceiling. The run phase's pairs send
+# transfer_amount_wei per transfer from a fixed sender; once that sender is
+# empty every further batch comes back "insufficient funds", which the tool
+# tallies as failures rather than throughput. A run can therefore look like a
+# node problem when it is really an accounting one. Checking first is seconds;
+# discovering it from a spoiled 60s measurement is not.
+#
+# check-seed-balances.yml answers the neighbouring question (did a HUMAN's
+# funding transaction to the 5 seeds actually land) and takes addresses as
+# input. This one needs no input: it reads the addresses out of the
+# accounts.csv already on the box.
+#
+# PRIVATE KEYS: accounts.csv is index,address,privkey_hex. This cuts field 2
+# and only field 2, with `cut -d, -f2`, so column 3 is never read into a
+# variable, never echoed, and never leaves the box -- the same handling
+# loadtest-prepare-contabo2.yml's own header commits to. Individual balances
+# are printed with their address (public data, already on the explorer); the
+# summary below is what the decision is actually made from.
+#
+# Read-only: one eth_getBalance per address over localhost. No funds move.
+on:
+  workflow_dispatch:
+    inputs:
+      num_seeds:
+        description: "How many leading accounts are seeds (reported separately; must match what prepare used)"
+        required: false
+        default: "5"
+      min_wei:
+        description: "Flag any non-seed account holding less than this (default 1e13 = one transfer at the shipped transfer_amount_wei)"
+        required: false
+        default: "10000000000000"
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Summarize test-account balances on Contabo2
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: 194.163.188.71
+          username: root
+          key: ${{ secrets.CONTABO2_SSH_KEY }}
+          port: 22
+          fingerprint: "SHA256:VIwj7Faxiga2n45HVHZEQFPxcbRKHgSgHoxAFsf2wto"
+          script_stop: false
+          timeout: 300s
+          command_timeout: 300s
+          envs: NUM_SEEDS,MIN_WEI
+          script: |
+            set -uo pipefail
+            CSV=/root/contabo-loadtest/accounts.csv
+            if [ ! -f "$CSV" ]; then
+              echo "✗ $CSV not found — loadtest-prepare-contabo2.yml has not been run on this box"
+              exit 1
+            fi
+            TOTAL="$(wc -l < "$CSV")"
+            echo "=== accounts.csv holds $TOTAL account(s); first ${NUM_SEEDS} are seeds ==="
+
+            # Field 2 only. Column 3 (the private key) is never selected.
+            ADDRS="$(cut -d, -f2 "$CSV")"
+
+            i=0
+            seedTotal=0
+            testTotal=0
+            testCount=0
+            lowCount=0
+            minSeen=""
+            maxSeen=0
+            echo "--- seed balances (these fund everything else) ---"
+            for addr in $ADDRS; do
+              resp="$(curl -s --max-time 10 -X POST http://localhost:8080/rpc \
+                -H 'Content-Type: application/json' \
+                -d "{\"jsonrpc\":\"2.0\",\"method\":\"eth_getBalance\",\"params\":[\"$addr\",\"latest\"],\"id\":1}")"
+              hexwei="$(echo "$resp" | grep -oP '"result":"\K0x[0-9a-fA-F]*' || true)"
+              if [ -z "$hexwei" ]; then
+                echo "  $addr -> unparseable: $resp"
+                i=$((i+1))
+                continue
+              fi
+              # Strip 0x and let bash parse hex. An empty body after 0x is zero.
+              hexdigits="${hexwei#0x}"
+              [ -z "$hexdigits" ] && hexdigits=0
+              wei=$((16#$hexdigits))
+              if [ "$i" -lt "$NUM_SEEDS" ]; then
+                printf '  seed[%d] %s  %s wei\n' "$i" "$addr" "$wei"
+                seedTotal=$((seedTotal + wei))
+              else
+                testTotal=$((testTotal + wei))
+                testCount=$((testCount + 1))
+                [ "$wei" -lt "$MIN_WEI" ] && lowCount=$((lowCount + 1))
+                if [ -z "$minSeen" ] || [ "$wei" -lt "$minSeen" ]; then minSeen=$wei; fi
+                if [ "$wei" -gt "$maxSeen" ]; then maxSeen=$wei; fi
+              fi
+              i=$((i+1))
+            done
+
+            echo "--- non-seed test accounts ---"
+            echo "  count:            $testCount"
+            echo "  total wei:        $testTotal"
+            echo "  min wei:          ${minSeen:-n/a}"
+            echo "  max wei:          $maxSeen"
+            [ "$testCount" -gt 0 ] && echo "  mean wei:         $((testTotal / testCount))"
+            echo "  below $MIN_WEI:  $lowCount"
+            echo "--- seeds ---"
+            echo "  total wei:        $seedTotal"
+
+            echo "=== verdict ==="
+            if [ "$lowCount" -eq 0 ] && [ "$testCount" -gt 0 ]; then
+              echo "✓ every test account is above the threshold — the run phase can be dispatched WITHOUT the fund phase"
+            else
+              echo "⚠ $lowCount of $testCount test account(s) below the threshold — include 'fund' in the run's phase list,"
+              echo "  or lower transfer_amount_wei so the balances on hand cover the whole timed window."
+            fi
