@@ -374,3 +374,71 @@ Abgeleitet aus (a) den jetzt realen Contabo-Zahlen oben, (b) den A/B-Messungen d
 | Postgres | gleicher Host, gemeinsame Kerne akzeptabel | **eigener Host oder mindestens eigene, dedizierte Kerne** — siehe CPU-Zeile |
 
 **Ausdrücklich nicht belastbar, weil ungemessen:** ob 6–8 Kerne tatsächlich für sustained 50k TPS reichen, ist eine Hochrechnung aus 4-Kern-Sandbox-Zahlen (30.000–47.000 TPS je nach Lastprofil), nicht direkt gemessen. Jetzt, wo SSH-Zugriff auf Contabo über GitHub Actions technisch funktioniert (dieser Workflow-Lauf ist der Beweis), ist ein echter Sustained-Load-Test DIREKT auf Contabo-Hardware zum ersten Mal praktisch möglich, ohne auf die separate, nie aufgesetzte Staging-Umgebung zu warten — das ist die mit Abstand wertvollste nächste Messung für alles in diesem Dokument, nicht nur für diesen Abschnitt.
+
+## Update (2026-07-25, tiefgehende Architektur-Analyse) — der eigentliche Flaschenhals: Block-Replay ist beweisbar einkernig, trotz bereits gebauter Parallelisierungs-Infrastruktur
+
+Die bisherigen Runden in diesem Dokument haben Constant-Factor-Optimierungen gefunden (Shard-Anzahl, Connection-Pool-Größe, gzip, gRPC-Batching). Diese Runde stellt eine andere Frage: **welche Funktion läuft für JEDEN Block, auf JEDEM Knoten, egal ob der Block selbst produziert oder von einem Peer übernommen wurde — und ist SIE parallelisiert?** Antwort, direkt aus dem Code: nein, und das ist der eigentliche Deckel über 50k TPS, nicht CPU-Kerne oder Netzwerklatenz.
+
+### Befund A: `replayTransactions` verarbeitet jeden Block strikt sequentiell, unter EINER globalen Sperre, in EINER DB-Transaktion
+
+`block.go:5634-5635`:
+```go
+dag.state.mu.Lock()
+defer dag.state.mu.Unlock()
+```
+Diese Sperre wird für die GESAMTE Dauer des Replays eines Blocks gehalten — nicht pro Transaktion, sondern einmal für den ganzen Block. `block.go:5664-5673` öffnet dazu genau EINE Postgres-Transaktion (`dbTx`) für den ganzen Block, `block.go:5696` iteriert dann:
+```go
+for _, tx := range block.Transactions {
+    if hardFailure { break }
+    ...
+    switch tx.Type { ... }
+}
+```
+Eine strikt sequentielle Schleife, eine Transaktion nach der anderen, in EINER Goroutine. Das gilt für jeden Block, den `AddPeerBlock` von einem anderen Validator übernimmt — also für praktisch den gesamten Datenverkehr, den ein Knoten unter Last verarbeitet, sobald mehr als ein Proposer gleichzeitig Blöcke produziert (KnightDAG/Multi-Tip, s.u.).
+
+Das Bemerkenswerte: **die Infrastruktur für parallele Ausführung existiert bereits im selben Repo** — `sharded_accounts.go`s `LockAddrs`/`TryLockAddrs` (deterministische, aufsteigend sortierte Sperr-Reihenfolge über betroffene Adress-Shards, exakt das Muster, das Deadlock-frei parallele Kontenzugriffe ermöglicht) wird von `transfer_concurrent.go` und `transfer_wal.go` für frisch eingereichte, EIGENE Transaktionen bereits genutzt. `replayTransactions` — der Pfad, der PEER-Blöcke validiert — nutzt diese Infrastruktur nicht und fällt stattdessen auf die grobe, block-weite `dag.state.mu` zurück. Der teuerste, am häufigsten durchlaufene Pfad im gesamten System ist der einzige, der die eigene bereits gebaute Parallelisierungs-Grundlage nicht verwendet.
+
+Zusätzlich: `produceBlockPool` (`workerpool.go:42`) — der einzige Worker-Pool im Blockproduktions-Pfad — ist fest auf Größe 2 codiert ("ProduceBlock always submits exactly 2 jobs per tick"), für den `LoadPendingTxs`/`StateRoot`-Zweiklang. Auf 6-Kern-Contabo-Hardware bleiben damit strukturell mindestens 4 Kerne während der Blockproduktion ungenutzt, unabhängig von jedem Pool-Tuning.
+
+### Befund B: das erklärt den heutigen Vorfall — mehr gleichzeitige Proposer erhöhen den seriellen Replay-Load pro Knoten, nicht die Kapazität
+
+KnightDAG erlaubt mehrere Blöcke pro Tick von verschiedenen Proposern gleichzeitig (`ENABLE_MULTI_BLOCK_TICK`, "not staging-validated" laut Dokument oben) — im Contabo1-Statuscheck von eben liefen live z.B. `[DAG] 🔀 Merged 3 tips into block #1837594` auf Contabo2. Jeder gemergte fremde Tip bedeutet für JEDEN ANDEREN Knoten einen vollständigen `replayTransactions`-Durchlauf durch die o.g. einkernige, block-weit gesperrte Schleife. Mehr gleichzeitige Proposer heißt: mehr Blöcke pro Tick, jeder davon muss von jedem anderen Knoten sequentiell nachvollzogen werden, bevor der Knoten wieder frei ist für den nächsten. Das ist exakt die Form von Rückstau, die zum bereits gefundenen und behobenen Replay-Retry-Sturm (Block #1834993, 9+ Minuten Hänger auf Contabo1, siehe Commit `5c3404a`) und zur beobachteten Tip-Fragmentierung (275→292+ auf Contabo1) geführt hat: der Lasttest hat mehr gleichzeitige Blockproduktion erzeugt, als der serielle Replay-Pfad — unabhängig von verfügbaren CPU-Kernen — absorbieren konnte. Das ist kein Zufallsbug, sondern die vorhersagbare Konsequenz dieser Architektur unter Last. **Konsequenz: `ENABLE_MULTI_BLOCK_TICK` sollte bis zur Behebung von Befund A ausgeschaltet bleiben oder sehr eng gedeckelt werden** — es erhöht genau den Parameter (gleichzeitige Proposer/Tick), der den unparallelisierten Replay-Pfad am stärksten belastet.
+
+### Befund C: `LoadPendingTxs` ist ein globaler Synchronisationspunkt unabhängig von Kernanzahl
+
+`evm_storage.go:2483-2488`: eine einzelne SQL-Anweisung pro Block-Tick —
+```sql
+UPDATE pending_txs SET included_at = $1
+ WHERE id IN (SELECT id FROM pending_txs WHERE included_at = 0 ORDER BY id LIMIT $2)
+ RETURNING id, tx_json
+```
+Das ist der GESAMTE Mempool-Zugriffsmechanismus: eine Postgres-Tabelle mit Row-Locking statt eines In-Memory-Mempools mit eigener Gossip-Verbreitung. Das ist an sich nicht falsch (verhindert Doppel-Einschluss robust, auch über Crashes hinweg), aber es bedeutet: die "Mempool-Sichtbarkeit" zwischen Validatoren läuft NICHT über Netzwerk-Gossip fertig ausgehandelter TX-Batches (wie Narwhal/Bullshark, s.u.), sondern jeder Knoten sammelt nur, was direkt bei IHM per RPC eingereicht wurde, und propagiert erst über fertig gebaute Blöcke weiter. Bei künftig vielen Validatoren ist das ein Fairness-/Latenz-Thema (ein TX, der nur bei Validator X eingereicht wird, wartet auf X's eigenen nächsten Block, statt von jedem beliebigen Proposer sofort aufgenommen werden zu können) — aktuell nicht der TPS-Flaschenhals, aber relevant, sobald "mehr Validatoren" wirklich verfolgt wird.
+
+### Befund D: ECDSA-Batch-Verifikation — die naheliegende Idee ist eine Sackgasse, die eigentliche Lösung ist Parallelisierung, nicht Batching
+
+Aequitas verifiziert Transaktionssignaturen per `ecrecover` (secp256k1/ECDSA, EVM-kompatibel — sichtbar an `chain_evm_id` im `/api/status` und den `ecrecover`-Kommentaren in `block.go`/`api.go`). Aktuelle Forschung (2026, IACR ePrint 2026/663) bestätigt: **Standard-ECDSA in der Form, wie sie üblich (und EVM-kompatibel) signiert wird, lässt sich NICHT effizient batch-verifizieren, ohne das Signaturformat selbst zu ändern** (ECDSA*-Varianten mit dem vollen Punkt R statt nur `r` ermöglichen Batch-Verifikation, sind aber nicht wire-kompatibel zu Standard-`ecrecover`). Selbst mit modifiziertem Format sind die gemessenen Gewinne mit ~10–30 % pro Batch moderat. Eine Umstellung des Signaturformats wäre ein hartes, sicherheitskritisches, Kompatibilität-brechendes Unterfangen für einen bescheidenen Gewinn — **nicht empfohlen.**
+
+Der eigentlich lohnende Hebel ist ein anderer: `handleRPC` (`evm_rpc.go:229-233`, bereits in der vorigen Runde als Befund 2 notiert) verifiziert bis zu 100 Signaturen pro Batch-Request SERIELL in einer Goroutine — nicht weil ECDSA das erfordert, sondern weil der Code es so schreibt. `ecrecover` ist eine zustandslose, reine Funktion ohne geteilten Zustand zwischen Aufrufen — trivial über einen Worker-Pool auf alle verfügbaren Kerne zu verteilen, ganz ohne die algebraischen Risiken einer echten Signatur-Batch-Verifikation. Bei 6 Kernen ist das ein strukturell bis zu 6-facher Gewinn auf genau diesem CPU-lastigen Schritt, ohne Sicherheits-Kompromiss. Gleiches Prinzip gilt für die Signaturprüfung innerhalb von `replayTransactions` selbst (Befund A) — sobald dessen Sperre pro Adress-Shard statt block-weit wird, kann auch die Signaturprüfung der einzelnen TXs vorab parallel über einen Worker-Pool laufen, bevor die (dann parallelisierte) Zustandsänderung beginnt.
+
+### Befund E: horizontale Skalierung über mehr Validatoren bräuchte echtes Sharding — 2026-Forschung bestätigt den Ansatz existiert, aber er passt aktuell nicht
+
+Externe Recherche (Juli 2026) bestätigt zwei Architekturfamilien, die genau das o.g. Problem (serielle Block-Verarbeitung) in Produktion gelöst haben:
+
+- **Block-STM (Aptos)** — optimistische parallele Ausführung: alle TXs eines Blocks werden parallel ausgeführt, unter der Annahme, dass sie sich nicht überschneiden; bei erkanntem Konflikt (gelesene Daten wurden von einer früheren TX im selben Block verändert) wird NUR die betroffene TX erneut ausgeführt. Bis zu 160.000 TPS theoretisch, in der Praxis mehrfach in Produktion bestätigt. Das ist konzeptionell fast identisch mit dem, was Befund A oben als Fix vorschlägt — nur mit einem echten Validierungsschritt statt nur "läuft parallel, weil Adressen ohnehin meist disjunkt sind".
+- **Narwhal/Bullshark (Sui und andere)** — trennt Datenverteilung (Mempool, hoher Durchsatz, DAG-strukturiert) von Konsens-Ordering (nur Hashes, niedriger Durchsatz). Bis zu 297.000 TPS bei 2s Latenz in Forschungsergebnissen. Das adressiert Befund C (Postgres-Tabelle statt Gossip-Mempool) — aber ist für 2–3 Validatoren aktuell überdimensioniert; relevant erst bei echtem Multi-Validator-Wachstum.
+
+**Beide Ansätze sind Skalierung PRO KNOTEN (mehr Durchsatz aus denselben Kernen holen), nicht Skalierung ÜBER Knoten (echtes Sharding/Partitionierung der Kontenmenge auf Validator-Gruppen).** Letzteres — Accounts nach Adress-Präfix auf Validator-Untergruppen aufteilen, jede Gruppe verantwortlich für ihre eigene Teilmenge, Cross-Shard-Transfers über asynchrone Receipts — würde tatsächlich echte Kapazität ÜBER die Validator-Anzahl skalieren (Befund oben zu "Replikation statt Sharding"), ist aber ein eigenständiges, monatelanges Forschungsprojekt, kollidiert mit der demurrage-/UBI-/Pool-Mechanik (globale, nicht schardierbare gemeinsame Zustände) und mit der "1 Mensch = 1 Validator"-Nebenbedingung (Sharding-Gruppen brauchen typischerweise Committee-Zuteilung). **Nicht empfohlen, solange Befund A–D nicht gehoben sind** — die aktuelle Zwei-Validator-Instabilität zeigt, dass selbst die einfachere Vollreplikation noch nicht robust genug ist, um eine zusätzliche Sharding-Komplexitätsebene zu rechtfertigen.
+
+Explizit weiterhin NICHT empfohlen (Konsistent mit der vorherigen Hintergrund-Recherche dieser Session): Solana Sealevel/Monad 1:1 übernehmen (Hardware-Voraussetzungen kollidieren mit der "1 Mensch = 1 Validator auf Consumer-Hardware"-Nebenbedingung), Ethereum Verkle Trees/Celestia-Style Data-Availability-Trennung (falsche Ebene — Aequitas ist bei 2–3 Knoten nicht DA-limitiert, sondern CPU/Lock-limitiert), volle GHOSTDAG-Parameterlosigkeit statt der bestehenden gedeckelten KnightDAG-Variante (mehr Forschungsrisiko für ein Problem, das nicht das aktuelle ist).
+
+### Priorisierter Fahrplan (aus dieser Analyse)
+
+1. **Höchster Hebel: `replayTransactions` parallelisieren.** Die vorhandene `LockAddrs`/`TryLockAddrs`-Infrastruktur (bereits getestet, bereits in Produktion für `transfer_concurrent.go`) auf den Replay-Pfad anwenden: TXs eines Blocks nach betroffenen Adressen gruppieren, disjunkte Gruppen parallel ausführen (Block-STM-artig: optimistisch parallel, bei Adress-Überlappung seriell nachziehen), EIN gesammeltes Write-Set am Ende in einer einzigen DB-Transaktion committen (bewahrt die bestehende Alles-oder-Nichts-Blockatomarität, ändert nur WIE das Write-Set entsteht). Das ist die einzige Änderung in dieser Liste, die die tatsächlich am häufigsten durchlaufene Funktion im System betrifft.
+2. **Signaturverifikation parallelisieren (nicht batchen).** `ecrecover`-Aufrufe im RPC-Batch-Pfad (`evm_rpc.go`) und im Replay-Pfad über einen Worker-Pool verteilen, VOR der (dann ebenfalls parallelen) Zustandsänderung. Kein algebraisches Batching (Befund D) — reine Parallelisierung einer zustandslosen Funktion, geringes Risiko.
+3. **`ENABLE_MULTI_BLOCK_TICK` bis Punkt 1 eng gedeckelt lassen.** Es verschärft aktuell genau den Engpass, den es umgehen soll (Befund B).
+4. **`/rpc` zur gzip-Ausnahmeliste hinzufügen** (bereits in der vorigen Runde als risikoärmster Punkt 1 notiert) — unabhängig von 1–3, sofort machbar.
+5. **Erst NACH 1–3, und nur bei echtem Bedarf (zweistellige Validator-Anzahl): Narwhal/Bullshark-Style Mempool-Trennung** für Befund C — löst ein Fairness-/Latenzproblem, nicht den aktuellen TPS-Deckel.
+6. **Echtes Sharding: bewusst zurückgestellt**, siehe Befund E.
+7. **Sicherheitsnetz, WICHTIGER als je zuvor sobald Punkt 1 umgesetzt wird:** die bereits von der Hintergrund-Recherche dieser Session empfohlene Determinismus-Fuzzing-Testsuite (Fastpath-Ausführung == Replay-Ausführung == identischer StateRoot) ist die Voraussetzung dafür, dass Punkt 1 nicht dieselbe Klasse von Bug einführt, die Solanas 4,5h-Ausfall im Februar 2026 verursacht hat (Nichtdeterminismus durch fehlerhafte parallele Ausführung). Parallelisierung des Replay-Pfads ohne diese Absicherung ist der riskanteste Einzelschritt in diesem gesamten Fahrplan — nicht weil die Idee falsch ist, sondern weil genau diese Klasse von Optimierung in der Praxis am häufigsten zu konsensrelevanten, schwer reproduzierbaren Bugs führt.
+
+**Quellen (externe Recherche, 2026):** Block-STM / Aptos (aptoslabs.com/pdf/2203.06871.pdf, Everstake-Übersicht 2026); ECDSA-Batch-Verifikation (IACR ePrint 2026/663, "Batch Verification of Modified ECDSA Signatures"); Narwhal/Bullshark (arXiv:2105.11827, arXiv:2507.04956).
