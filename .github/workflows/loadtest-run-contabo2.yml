@@ -86,11 +86,49 @@ jobs:
             set -euo pipefail
             cd /root/contabo-loadtest
 
-            MAIN="$(find . -name main.go | head -1)"
-            GEN="$(find . -name gen_accounts.go | head -1)"
-            [ "$MAIN" = "./main.go" ] || mv -f "$MAIN" ./main.go
-            [ "$GEN" = "./gen_accounts.go" ] || mv -f "$GEN" ./gen_accounts.go
-            find . -mindepth 1 -type d -empty -delete 2>/dev/null || true
+            # FIX (2026-07-25): this used to be
+            #   MAIN="$(find . -name main.go | head -1)"
+            #   [ "$MAIN" = "./main.go" ] || mv -f "$MAIN" ./main.go
+            # which is correct exactly once. scp lands the file at
+            # ./tools/contabo-loadtest/main.go; on the FIRST run ./main.go does
+            # not exist so it gets moved up, but on every run after that BOTH
+            # paths exist and `find | head -1` returns whichever the filesystem
+            # happens to yield first. When that is the stale ./main.go the mv is
+            # skipped, the freshly copied file is ignored, and the build silently
+            # uses the OLD source. Nondeterministic, so it sometimes worked --
+            # worse than always failing.
+            #
+            # Confirmed live: a run reported 88,221 failures and printed no
+            # failure causes at all, which the current tool cannot do (`failed`
+            # is incremented on exactly one line, immediately followed by
+            # recordErr). An older binary can.
+            #
+            # The original comment's premise was right -- scp-action's tar
+            # transfer may or may not preserve the tools/contabo-loadtest/
+            # prefix -- but `find | head -1` resolves that ambiguity by luck.
+            # Resolve it by PRECEDENCE instead: a nested copy is always the one
+            # scp just wrote, so it always wins; the root copy is used only when
+            # no nested copy exists, which is exactly the flattened-transfer
+            # case (and then scp has already overwritten it in place). Then
+            # delete the tree, so a stale nested copy can never linger into the
+            # next run. Missing in both layouts is a hard error, not a silent
+            # fallback to whatever was there before.
+            for f in main.go gen_accounts.go; do
+              if [ -f "tools/contabo-loadtest/$f" ]; then
+                mv -f "tools/contabo-loadtest/$f" "./$f"
+              elif [ ! -f "./$f" ]; then
+                echo "✗ $f landed in neither layout after scp — aborting rather than building something stale"
+                exit 1
+              fi
+            done
+            rm -rf ./tools
+
+            # Build identity, so "which binary produced this number" is answered
+            # by the log rather than reconstructed afterwards. Compare across
+            # runs: an unchanged sum after a source change means the copy did
+            # not land.
+            echo "=== source being built ==="
+            sha256sum main.go gen_accounts.go 2>/dev/null || true
 
             if [ ! -f accounts.csv ]; then
               echo "No accounts.csv found in /root/contabo-loadtest -- run loadtest-prepare-contabo2.yml first, fund its printed seed addresses, then retry."
@@ -98,7 +136,9 @@ jobs:
             fi
 
             echo "=== /api/status before the run ==="
-            curl -s http://localhost:8080/api/status || echo "(status endpoint unreachable)"
+            STATUS_BEFORE="$(curl -s --max-time 10 http://localhost:8080/api/status || true)"
+            echo "${STATUS_BEFORE:-(status endpoint unreachable)}"
+            UPTIME_BEFORE="$(echo "$STATUS_BEFORE" | grep -oP '"uptime":\K[0-9]+' || echo 0)"
             echo ""
 
             echo "=== Building loadtest binary (dockerized go, module cache reused across runs) ==="
@@ -127,7 +167,32 @@ jobs:
 
             echo ""
             echo "=== /api/status after the run ==="
-            curl -s http://localhost:8080/api/status || echo "(status endpoint unreachable)"
+            STATUS_AFTER="$(curl -s --max-time 10 http://localhost:8080/api/status || true)"
+            echo "${STATUS_AFTER:-(status endpoint unreachable)}"
+            UPTIME_AFTER="$(echo "$STATUS_AFTER" | grep -oP '"uptime":\K[0-9]+' || echo 0)"
+
+            # A node that restarted mid-run measures the restart, not the chain.
+            # Confirmed live 2026-07-25: a merge to main three minutes before a
+            # dispatch triggered deploy-contabo2.yml, whose CI finished at
+            # 05:44:30 -- nine seconds into the timed window. uptime went 340s
+            # -> 55s, the monitor logged "connection reset by peer", and the run
+            # reported 9.3 TPS with 88,221 failures. The workflow called that
+            # SUCCESS, which is the part worth fixing: a void measurement that
+            # exits 0 is worse than one that fails, because the number gets
+            # quoted.
+            echo ""
+            echo "=== run validity ==="
+            echo "  node uptime before: ${UPTIME_BEFORE}s"
+            echo "  node uptime after:  ${UPTIME_AFTER}s"
+            if [ "${UPTIME_AFTER:-0}" -lt "${UPTIME_BEFORE:-0}" ]; then
+              echo "✗ VOID: the node RESTARTED during this run (uptime went backwards)."
+              echo "  Every number above measures a restarting node, not the chain."
+              echo "  Most likely cause: a push to main redeployed this box mid-run"
+              echo "  (deploy-contabo2.yml runs on every push). Let any in-flight"
+              echo "  deploy finish, confirm uptime is climbing, then dispatch again."
+              exit 1
+            fi
+            echo "✓ the node did not restart during the run — the measurement stands"
         env:
           PHASE: ${{ inputs.phase }}
           NUM_SEEDS: ${{ inputs.num_seeds }}

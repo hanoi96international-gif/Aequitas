@@ -76,14 +76,32 @@ jobs:
             set -euo pipefail
             cd /root/contabo-loadtest
             # scp-action's tar-based transfer may or may not preserve the
-            # source paths' tools/contabo-loadtest/ subdirectory -- find
-            # each file wherever it landed and move it next to go.mod
-            # rather than assuming either layout.
-            MAIN="$(find . -name main.go | head -1)"
-            GEN="$(find . -name gen_accounts.go | head -1)"
-            [ "$MAIN" = "./main.go" ] || mv -f "$MAIN" ./main.go
-            [ "$GEN" = "./gen_accounts.go" ] || mv -f "$GEN" ./gen_accounts.go
-            find . -mindepth 1 -type d -empty -delete 2>/dev/null || true
+            # source paths' tools/contabo-loadtest/ subdirectory, so both
+            # layouts have to be handled. This used to do that with
+            #   MAIN="$(find . -name main.go | head -1)"
+            #   [ "$MAIN" = "./main.go" ] || mv -f "$MAIN" ./main.go
+            # which is correct exactly once: after the first run BOTH paths
+            # exist, and `find | head -1` returns whichever the filesystem
+            # yields first. When that is the stale ./main.go the mv is skipped
+            # and the freshly copied file is ignored -- nondeterministically,
+            # so it sometimes worked. See loadtest-run-contabo2.yml for the
+            # live run this was found from.
+            #
+            # Resolved by PRECEDENCE instead of luck: a nested copy is always
+            # the one scp just wrote, so it always wins; the root copy is used
+            # only when no nested copy exists, which is exactly the flattened-
+            # transfer case (and there scp has already overwritten it in
+            # place). The tree is then deleted so a stale nested copy cannot
+            # linger into the next run.
+            for f in main.go gen_accounts.go; do
+              if [ -f "tools/contabo-loadtest/$f" ]; then
+                mv -f "tools/contabo-loadtest/$f" "./$f"
+              elif [ ! -f "./$f" ]; then
+                echo "✗ $f landed in neither layout after scp — aborting rather than using something stale"
+                exit 1
+              fi
+            done
+            rm -rf ./tools
 
             if [ -f accounts.csv ]; then
               BACKUP="accounts.csv.bak.$(date +%s)"
