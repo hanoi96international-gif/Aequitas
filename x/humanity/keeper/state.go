@@ -514,6 +514,15 @@ func (cs *ChainState) dbExecCtx(ctx context.Context) sqlExecutor {
 	if cs.activeTx != nil {
 		gid := curGoroutineID()
 		if owner := cs.activeTxOwnerGID.Load(); owner == 0 || owner == gid {
+			// The owning goroutine's fallback is CORRECT today but is
+			// exactly what Roadmap step 5 has to eliminate: as long as a
+			// write can find its transaction through a ChainState-wide
+			// field, only one atomic operation can be in flight at a time.
+			// activetx_trace.go turns "which paths still do this" from a
+			// question about production logs into a measured, testable set.
+			if activeTxTraceEnabled() {
+				recordActiveTxFallback("dbExecCtx")
+			}
 			return cs.activeTx
 		}
 		nowNano := time.Now().UnixNano()
@@ -562,6 +571,9 @@ func curGoroutineID() int64 {
 func (cs *ChainState) activeTxCtx(ctx context.Context) *sql.Tx {
 	if tx := txFromContext(ctx); tx != nil {
 		return tx
+	}
+	if cs.activeTx != nil && activeTxTraceEnabled() {
+		recordActiveTxFallback("activeTxCtx")
 	}
 	return cs.activeTx
 }
@@ -1464,12 +1476,19 @@ ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value`, key, value); err != nil
 // any cs.mu hold (status endpoints, startup code, snapshot export) must use
 // getConfigValueDB instead, which always reads cs.db directly and never
 // touches cs.activeTx.
+// getConfigValue is the context.Background()-calling wrapper kept for
+// callers not yet migrated to thread ctx explicitly — see dbExecCtx's
+// comment for the migration this is part of.
 func (cs *ChainState) getConfigValue(key string) string {
+	return cs.getConfigValueCtx(context.Background(), key)
+}
+
+func (cs *ChainState) getConfigValueCtx(ctx context.Context, key string) string {
 	if cs.db == nil {
 		return ""
 	}
 	var v string
-	cs.dbExec().QueryRow(`SELECT value FROM chain_config WHERE key = $1`, key).Scan(&v)
+	cs.dbExecCtx(ctx).QueryRow(`SELECT value FROM chain_config WHERE key = $1`, key).Scan(&v)
 	return v
 }
 
@@ -1479,11 +1498,15 @@ func (cs *ChainState) getConfigValue(key string) string {
 // tell a rollback "delete this key" instead of "nothing to restore". See
 // configValueSnapshot. Same cs.mu-held precondition as getConfigValue.
 func (cs *ChainState) getConfigValueExists(key string) (string, bool) {
+	return cs.getConfigValueExistsCtx(context.Background(), key)
+}
+
+func (cs *ChainState) getConfigValueExistsCtx(ctx context.Context, key string) (string, bool) {
 	if cs.db == nil {
 		return "", false
 	}
 	var v string
-	err := cs.dbExec().QueryRow(`SELECT value FROM chain_config WHERE key = $1`, key).Scan(&v)
+	err := cs.dbExecCtx(ctx).QueryRow(`SELECT value FROM chain_config WHERE key = $1`, key).Scan(&v)
 	if err != nil {
 		return "", false
 	}
@@ -1497,10 +1520,14 @@ func (cs *ChainState) getConfigValueExists(key string) (string, bool) {
 // Routes through cs.dbExec() for the same reason as setConfigValue. Same
 // cs.mu-held precondition as getConfigValue.
 func (cs *ChainState) deleteConfigValue(key string) error {
+	return cs.deleteConfigValueCtx(context.Background(), key)
+}
+
+func (cs *ChainState) deleteConfigValueCtx(ctx context.Context, key string) error {
 	if cs.db == nil {
 		return nil
 	}
-	if _, err := cs.dbExec().Exec(`DELETE FROM chain_config WHERE key = $1`, key); err != nil {
+	if _, err := cs.dbExecCtx(ctx).Exec(`DELETE FROM chain_config WHERE key = $1`, key); err != nil {
 		fmt.Printf("[DB] Warning: deleteConfigValue(%q) failed: %v\n", key, err)
 		return fmt.Errorf("could not delete config %q: %w", key, err)
 	}
@@ -3875,14 +3902,17 @@ func (cs *ChainState) runAtomicWithOutbox(touchedAddrs []string, fullSnapshot bo
 	// decision — restoreFromRollbackLocked (not the public, self-locking
 	// restoreFromRollback) is used so the lock is never released and
 	// re-acquired in between.
+	// opCtx carries THIS operation's transaction. Everything the operation
+	// does — the rollback snapshot, fn itself, and the restore path on
+	// failure — takes it explicitly, so none of them depend on finding the
+	// transaction in cs.activeTx (Roadmap step 5; see dbExecCtx's comment
+	// and activetx_static_test.go, which proves no path under here still
+	// does).
+	opCtx := withTx(context.Background(), tx)
 	cs.mu.Lock()
 	cs.setActiveTx(tx)
-	snap := cs.snapshotForRollbackLocked(touchedAddrs, fullSnapshot, chainConfig)
-	// See processTransferBatch's own (now-historical) comment for why
-	// building ctx from cs.activeTx here, with cs.mu held throughout, is
-	// safe — fn now receives it directly instead of every caller
-	// reconstructing the same value from cs.activeTx itself.
-	pendingTx, fnErr := fn(withTx(context.Background(), tx))
+	snap := cs.snapshotForRollbackLockedCtx(opCtx, touchedAddrs, fullSnapshot, chainConfig)
+	pendingTx, fnErr := fn(opCtx)
 	var outboxErr error
 	if fnErr == nil {
 		outboxErr = savePendingTxExec(tx, pendingTx)
@@ -3891,7 +3921,10 @@ func (cs *ChainState) runAtomicWithOutbox(touchedAddrs []string, fullSnapshot bo
 	if fnErr != nil || outboxErr != nil {
 		cs.setActiveTx(nil)
 		tx.Rollback()
-		if rbErr := cs.restoreFromRollbackLocked(snap); rbErr != nil {
+		// The transaction is already resolved, so the restore must NOT
+		// reuse opCtx (writing into a rolled-back tx fails) — it writes
+		// standalone via the pool, exactly as it did before this migration.
+		if rbErr := cs.restoreFromRollbackLockedCtx(context.Background(), snap); rbErr != nil {
 			fmt.Printf("[ATOMIC] CRITICAL: rollback persistence failed after operation failure — memory/DB may now disagree: %v\n", rbErr)
 		}
 		cs.mu.Unlock()
@@ -3903,7 +3936,7 @@ func (cs *ChainState) runAtomicWithOutbox(touchedAddrs []string, fullSnapshot bo
 
 	if err := tx.Commit(); err != nil {
 		cs.setActiveTx(nil)
-		if rbErr := cs.restoreFromRollbackLocked(snap); rbErr != nil {
+		if rbErr := cs.restoreFromRollbackLockedCtx(context.Background(), snap); rbErr != nil {
 			fmt.Printf("[ATOMIC] CRITICAL: rollback persistence failed after commit failure — memory/DB may now disagree: %v\n", rbErr)
 		}
 		cs.mu.Unlock()
@@ -3977,10 +4010,11 @@ func (cs *ChainState) runAtomicDistributionWithOutbox(fn func(ctx context.Contex
 	// commit/rollback decision instead of being released beforehand, so no
 	// concurrent operation can observe the new memory state and write
 	// against cs.db while this transaction's fate is still undecided.
+	opCtx := withTx(context.Background(), tx) // see runAtomicWithOutbox's opCtx comment
 	cs.mu.Lock()
 	cs.setActiveTx(tx)
-	snap := cs.snapshotForRollbackLocked(nil, true, chainConfig)
-	txs, fnErr := fn(withTx(context.Background(), tx))
+	snap := cs.snapshotForRollbackLockedCtx(opCtx, nil, true, chainConfig)
+	txs, fnErr := fn(opCtx)
 	var outboxErr error
 	if fnErr == nil {
 		for _, t := range txs {
@@ -3993,7 +4027,7 @@ func (cs *ChainState) runAtomicDistributionWithOutbox(fn func(ctx context.Contex
 	if fnErr != nil || outboxErr != nil {
 		cs.setActiveTx(nil)
 		tx.Rollback()
-		if rbErr := cs.restoreFromRollbackLocked(snap); rbErr != nil {
+		if rbErr := cs.restoreFromRollbackLockedCtx(context.Background(), snap); rbErr != nil {
 			fmt.Printf("[ATOMIC] CRITICAL: distribution rollback persistence failed — memory/DB may now disagree: %v\n", rbErr)
 		}
 		cs.mu.Unlock()
@@ -4005,7 +4039,7 @@ func (cs *ChainState) runAtomicDistributionWithOutbox(fn func(ctx context.Contex
 
 	if err := tx.Commit(); err != nil {
 		cs.setActiveTx(nil)
-		if rbErr := cs.restoreFromRollbackLocked(snap); rbErr != nil {
+		if rbErr := cs.restoreFromRollbackLockedCtx(context.Background(), snap); rbErr != nil {
 			fmt.Printf("[ATOMIC] CRITICAL: distribution rollback persistence failed after commit failure — memory/DB may now disagree: %v\n", rbErr)
 		}
 		cs.mu.Unlock()
@@ -5224,7 +5258,7 @@ func (cs *ChainState) distributeSwapFeeCtx(ctx context.Context, fee float64, fee
 		// ubiContrib comment above — a cold pool address must be loaded from
 		// the DB before it's touched, or a fresh Version==0 AccountState here
 		// blindly overwrites its real, previously-accumulated DB balance.
-		cs.ensureAccountLoaded(s.addr)
+		cs.ensureAccountLoadedCtx(ctx, s.addr)
 		sAcc, ok := cs.accounts.Get(s.addr)
 		if !ok {
 			sAcc = &AccountState{Address: s.addr}
@@ -5828,7 +5862,14 @@ func (cs *ChainState) GetAccountsForAddresses(addrs []string) []*AccountState {
 // method instead, closing the gap without touching any of the other
 // (correctly unlocked) CallContract call sites in api.go/evm_rpc.go/
 // register.go.
+// getAccountsForAddressesLocked is the context.Background()-calling wrapper
+// kept for callers not yet migrated to thread ctx explicitly — see
+// dbExecCtx's comment for the migration this is part of.
 func (cs *ChainState) getAccountsForAddressesLocked(addrs []string) []*AccountState {
+	return cs.getAccountsForAddressesLockedCtx(context.Background(), addrs)
+}
+
+func (cs *ChainState) getAccountsForAddressesLockedCtx(ctx context.Context, addrs []string) []*AccountState {
 	result := make([]*AccountState, 0, len(addrs))
 	seen := make(map[string]bool, len(addrs))
 	unique := make([]string, 0, len(addrs))
@@ -5840,7 +5881,7 @@ func (cs *ChainState) getAccountsForAddressesLocked(addrs []string) []*AccountSt
 		seen[addr] = true
 		unique = append(unique, addr)
 	}
-	cs.ensureAccountsLoaded(unique)
+	cs.ensureAccountsLoadedCtx(ctx, unique)
 	for _, addr := range unique {
 		acc, ok := cs.accounts.Get(addr)
 		if !ok {
@@ -6575,7 +6616,14 @@ func (cs *ChainState) snapshotForRollback(addrs []string, full bool) *blockRollb
 // Calling this Locked variant from inside the SAME critical section as fn()
 // (snapshot and mutation under one unbroken cs.mu.Lock()) closes that gap —
 // nothing else can touch cs.accounts/cs.pool between the two.
+// snapshotForRollbackLocked is the context.Background()-calling wrapper
+// kept for callers not yet migrated to thread ctx explicitly — see
+// dbExecCtx's comment for the migration this is part of.
 func (cs *ChainState) snapshotForRollbackLocked(addrs []string, full bool, chainConfig map[string]configValueSnapshot) *blockRollbackSnapshot {
+	return cs.snapshotForRollbackLockedCtx(context.Background(), addrs, full, chainConfig)
+}
+
+func (cs *ChainState) snapshotForRollbackLockedCtx(ctx context.Context, addrs []string, full bool, chainConfig map[string]configValueSnapshot) *blockRollbackSnapshot {
 	// FIX (Monster Audit follow-up, 2026-07-12, P0): both branches below used
 	// to read cs.accounts[a] directly with no DB warm-up first. addrs always
 	// includes all 4 pool addresses (see blockTouchedAddresses) — exactly the
@@ -6592,7 +6640,7 @@ func (cs *ChainState) snapshotForRollbackLocked(addrs []string, full bool, chain
 	// cs.accounts, so anything warmed here is captured as existed:true with
 	// real state instead of falling into the addrs-only "doesn't exist yet"
 	// fallback).
-	cs.ensureAccountsLoaded(addrs)
+	cs.ensureAccountsLoadedCtx(ctx, addrs)
 	snap := &blockRollbackSnapshot{}
 	if full {
 		// ubi_distribution touches every human's account (see ApplyUBIDelta) —
@@ -6676,7 +6724,14 @@ func (cs *ChainState) restoreFromRollback(snap *blockRollbackSnapshot) error {
 // cs.mu beforehand for unrelated reasons, e.g. runAtomicWithOutbox, so this
 // duplication is intentional, not copy-paste: the two functions hold the
 // lock for genuinely different durations on purpose).
+// restoreFromRollbackLocked is the context.Background()-calling wrapper
+// kept for callers not yet migrated to thread ctx explicitly — see
+// dbExecCtx's comment for the migration this is part of.
 func (cs *ChainState) restoreFromRollbackLocked(snap *blockRollbackSnapshot) error {
+	return cs.restoreFromRollbackLockedCtx(context.Background(), snap)
+}
+
+func (cs *ChainState) restoreFromRollbackLockedCtx(ctx context.Context, snap *blockRollbackSnapshot) error {
 	var toDelete []string
 	for _, s := range snap.accounts {
 		if s.existed {
@@ -6704,12 +6759,12 @@ func (cs *ChainState) restoreFromRollbackLocked(snap *blockRollbackSnapshot) err
 
 	var firstErr error
 	for _, acc := range toSave {
-		if err := cs.saveAccountToDB(acc); err != nil && firstErr == nil {
+		if err := cs.saveAccountToDBCtx(ctx, acc); err != nil && firstErr == nil {
 			firstErr = fmt.Errorf("rollback: could not persist restored account %s: %w", acc.Address, err)
 		}
 	}
 	if poolToSave != nil {
-		if err := cs.savePoolToDB(); err != nil && firstErr == nil {
+		if err := cs.savePoolToDBCtx(ctx); err != nil && firstErr == nil {
 			firstErr = fmt.Errorf("rollback: could not persist restored pool: %w", err)
 		}
 	}
@@ -6720,7 +6775,7 @@ func (cs *ChainState) restoreFromRollbackLocked(snap *blockRollbackSnapshot) err
 		// function's own doc comment on why the lock stays held through
 		// these DB writes).
 		for _, addr := range toDelete {
-			if _, err := cs.dbExec().Exec(`DELETE FROM chain_accounts WHERE lower(address) = $1`, addr); err != nil {
+			if _, err := cs.dbExecCtx(ctx).Exec(`DELETE FROM chain_accounts WHERE lower(address) = $1`, addr); err != nil {
 				fmt.Printf("[ROLLBACK] Warning: could not delete rolled-back account %s: %v\n", addr, err)
 				if firstErr == nil {
 					firstErr = fmt.Errorf("rollback: could not delete rolled-back account %s: %w", addr, err)
@@ -6740,12 +6795,12 @@ func (cs *ChainState) restoreFromRollbackLocked(snap *blockRollbackSnapshot) err
 	// as "nothing to restore", indistinguishable from "key never existed").
 	for key, cv := range snap.chainConfig {
 		if !cv.existed {
-			if err := cs.deleteConfigValue(key); err != nil && firstErr == nil {
+			if err := cs.deleteConfigValueCtx(ctx, key); err != nil && firstErr == nil {
 				firstErr = fmt.Errorf("rollback: could not delete config %q: %w", key, err)
 			}
 			continue
 		}
-		if err := cs.setConfigValue(key, cv.value); err != nil && firstErr == nil {
+		if err := cs.setConfigValueCtx(ctx, key, cv.value); err != nil && firstErr == nil {
 			firstErr = fmt.Errorf("rollback: could not restore config %q: %w", key, err)
 		}
 	}
