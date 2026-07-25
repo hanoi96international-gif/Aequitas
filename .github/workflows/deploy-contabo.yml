@@ -46,7 +46,41 @@ jobs:
           # ECDSA host key. Verified live:
           # `ssh-keyscan -t ecdsa 173.249.37.118 | ssh-keygen -lf -`.
           fingerprint: "SHA256:noMtjHV8c+2iEFZu3TRUP6WRwGjkrvFke71KgU6Eyt4"
-          script: /root/deploy.sh
+          script: |
+            set -uo pipefail
+            /root/deploy.sh
+
+            # FIX (2026-07-25): cap the build cache after every deploy.
+            #
+            # deploy.sh rebuilds the image from scratch on each dispatch, and
+            # each rebuild leaves its layers in the builder cache. Nothing ever
+            # removed them. Measured on Contabo2 after one night of frequent
+            # deploys:
+            #
+            #     /dev/sda1  96G  96G  136K  100% /
+            #     Build Cache  209 entries  96.07GB
+            #
+            # The build cache alone was the entire disk. The next deploy then
+            # failed outright ("no space left on device" while copying the
+            # source), and a node whose filesystem is full cannot commit to
+            # Postgres or write its WAL either -- so this silently degrades the
+            # very throughput path being measured, long before it announces
+            # itself as a failed build.
+            #
+            # Safe to prune: an image's finished layers live in the image store
+            # (docker images), which is untouched. The build cache is purely an
+            # accelerator for the NEXT build, never a dependency of a running
+            # container.
+            #
+            # Bounded rather than emptied, so the next build still reuses most
+            # layers and deploys stay fast. --keep-storage is not present on
+            # every Docker version, hence the fallback to a full prune -- both
+            # are safe, the bounded form is merely kinder to build times.
+            docker builder prune -af --keep-storage 10GB 2>/dev/null | tail -2 \
+              || docker builder prune -af 2>/dev/null | tail -2 \
+              || echo "(builder prune unavailable — watch disk usage manually)"
+            echo "=== disk after deploy ==="
+            df -h / | tail -1
           script_stop: true
           timeout: 600s
           command_timeout: 600s
