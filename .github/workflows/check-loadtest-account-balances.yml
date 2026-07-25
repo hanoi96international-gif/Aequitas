@@ -63,7 +63,12 @@ jobs:
             echo "=== accounts.csv holds $TOTAL account(s); first ${NUM_SEEDS} are seeds ==="
 
             # Field 2 only. Column 3 (the private key) is never selected.
-            ADDRS="$(cut -d, -f2 "$CSV")"
+            # tail -n +2 skips the CSV's header row. Without it the header
+            # itself was treated as account 0 ("seed[0] address 0 wei" in the
+            # first live run), which shifted every seed index by one and put a
+            # real seed in the test-account group -- visibly, as a max balance
+            # 300x the mean. Harmless to the verdict, wrong in the labels.
+            ADDRS="$(tail -n +2 "$CSV" | cut -d, -f2)"
 
             i=0
             seedTotal=0
