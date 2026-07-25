@@ -213,3 +213,22 @@ func ResetActiveTxFallbackSites() {
 // SetActiveTxTraceForced turns tracing on/off for the caller's duration.
 // Test-only; returns the previous value so a test can restore it.
 func SetActiveTxTraceForced(on bool) bool { return activeTxTraceForce.Swap(on) }
+
+// dbRoundTrips counts how many times a caller asked dbExecCtx/dbExec for an
+// executor — one per SQL statement, since every call site in this package
+// follows the `cs.dbExecCtx(ctx).Exec(...)` idiom.
+//
+// This exists because the number turned out to be the whole story for
+// Roadmap step 6. A CPU profile of block replay showed 13% CPU and 87%
+// wait, i.e. the replay path is bound by how MANY times it talks to
+// Postgres, not by what it computes — so "run the arithmetic on more
+// cores" could not have helped, and counting statements is the measurement
+// that says what would. An unconditional atomic increment on a path that
+// is about to do a network round trip is not measurable next to the round
+// trip itself, so this is always on rather than behind a flag.
+var dbRoundTrips atomic.Int64
+
+// DBRoundTrips returns the process-wide count of SQL statements issued
+// through dbExecCtx. Exported for benchmarks that need to report
+// round-trips-per-transaction alongside wall time.
+func DBRoundTrips() int64 { return dbRoundTrips.Load() }

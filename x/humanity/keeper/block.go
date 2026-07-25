@@ -5761,7 +5761,14 @@ func (dag *BlockDAG) replayTransactions(block *Block, force bool) (ok bool) {
 	// Begin() (its cold-account warm-up must not hold a pool connection open
 	// alongside an idle transaction — see runAtomicWithOutbox's matching
 	// "deadlock, concurrency audit 2026-07-21" comment).
-	rollbackSnap := dag.state.snapshotForRollbackLocked(touchedAddrs, needsFullSnapshot, configBackup)
+	//
+	// The second return is the set of addresses that warm-up definitively
+	// resolved against the database. It matters because blockTouchedAddresses
+	// already names every wallet this block touches, so ONE batch query here
+	// answers the same question every per-transfer ensureAccountLoadedCtx
+	// below was re-asking one row at a time — see withResolvedAddrs. Handing
+	// it to replayCtx removed one SELECT per transfer from replay.
+	rollbackSnap, resolvedAddrs := dag.state.snapshotForRollbackLockedResolving(context.Background(), touchedAddrs, needsFullSnapshot, configBackup)
 
 	// FIX (audit 2026-06-28 full recheck, P0-4 — "Replay-Rollback ist nicht
 	// als DB-Transaktion isoliert"): every DB write this replay makes (via
@@ -5804,6 +5811,11 @@ func (dag *BlockDAG) replayTransactions(block *Block, force bool) (ok bool) {
 	if dbTx != nil {
 		replayCtx = withTx(replayCtx, dbTx)
 	}
+	// Safe to carry across the Begin() boundary: cs.mu has been held in write
+	// mode since before the batch load above and stays held until this replay
+	// finishes, so no other goroutine can have created one of these rows in
+	// between. The set dies with replayCtx.
+	replayCtx = withResolvedAddrs(replayCtx, resolvedAddrs)
 	// commitOrRollback finalizes dbTx according to success, clearing
 	// activeTx either way so no write after this point accidentally joins
 	// a transaction that's already been resolved. Returns an error if a
@@ -5860,10 +5872,50 @@ func (dag *BlockDAG) replayTransactions(block *Block, force bool) (ok bool) {
 	// must first give each worker its OWN database connection (or move the DB
 	// write out of the parallel phase entirely) — a local mutex around a
 	// shared *sql.Tx is provably not sufficient.
+	//
+	// RESOLVED (2026-07-25, by measurement rather than by another attempt):
+	// the second option above is the right one, and the first was never
+	// worth pursuing. A CPU profile of this loop showed 13% CPU and 87%
+	// wait — replay is bound by the NUMBER of Postgres round trips, not by
+	// the arithmetic those workers would have overlapped. So the DB write
+	// moved out of the loop entirely instead: every account row write below
+	// is buffered and issued as ONE multi-row upsert (see
+	// account_write_buffer.go for the full safety argument and the measured
+	// numbers). Same single goroutine, same single *sql.Tx — the
+	// wire-protocol desync that killed the parallel version is structurally
+	// impossible here — and a far larger win than parallelism could have
+	// delivered.
+	replayCtx, writeBuf := withAccountWriteBuffer(replayCtx, len(block.Transactions)+8)
+	_ = writeBuf // the buffer is reached through replayCtx; this pins the type at the call site
+
+	// flushWrites issues the buffered account rows. It must run before
+	// anything reads account rows back out of SQL (only non-transfer TX
+	// types do — ubi_distribution enumerates humans with WHERE is_human =
+	// true and would miss a register_human still sitting in the buffer) and
+	// before the StateRoot comparison, so the root is computed against
+	// fully-written state.
+	flushWrites := func(reason string) bool {
+		if err := dag.state.flushAccountWriteBuffer(replayCtx); err != nil {
+			fmt.Printf("[REPLAY] ✗ Block #%d: %s: %v — rolling back whole block\n", block.Height, reason, err)
+			return false
+		}
+		return true
+	}
 
 	for _, tx := range block.Transactions {
 		if hardFailure {
 			break // stop applying further TXs once we know this block is being rolled back
+		}
+		// Anything that is not a plain transfer may read account rows back
+		// out of SQL (ubi_distribution enumerates every human that way), so
+		// the buffered writes have to land first — see
+		// account_write_buffer.go. Transfers only ever read cs.accounts, so
+		// the common case flushes nothing and the buffer keeps growing.
+		if tx.Type != "transfer" {
+			if !flushWrites("buffered account writes could not be flushed before " + tx.Type) {
+				hardFailure = true
+				break
+			}
 		}
 		// Skip distribution TXs from a round this node has already applied.
 		if skipDistributionRound > 0 {
@@ -6300,6 +6352,15 @@ func (dag *BlockDAG) replayTransactions(block *Block, force bool) (ok bool) {
 			hardFailure = true
 			continue
 		}
+	}
+
+	// Final flush: every account this block touched becomes ONE multi-row
+	// upsert here, instead of two round trips per transfer inside the loop.
+	// Sequenced before the hardFailure branch below so a flush error joins
+	// the same rollback path, and before the StateRoot comparison so the
+	// root is computed against fully-written state.
+	if !hardFailure && !flushWrites("buffered account writes could not be flushed") {
+		hardFailure = true
 	}
 
 	if hardFailure {

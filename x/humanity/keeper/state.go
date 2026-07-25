@@ -466,6 +466,49 @@ func txFromContext(ctx context.Context) *sql.Tx {
 	return tx
 }
 
+// resolvedKey is the context key for the set of addresses a batch load has
+// already resolved definitively against the database.
+type resolvedKey struct{}
+
+// withResolvedAddrs marks addrs as "a batch query has already asked the
+// database about every one of these".
+//
+// This exists because ensureAccountLoadedCtx does not cache a negative
+// result: an address the database genuinely does not have yet (a
+// first-time transfer recipient — the common case in a block full of
+// payments to new wallets) is looked up, comes back sql.ErrNoRows, and is
+// then looked up AGAIN by the next caller, because "absent" is
+// indistinguishable from "not yet loaded" in cs.accounts.
+//
+// Caching absence globally would be wrong: another node's write, or this
+// node's own concurrent registration, can create the row at any moment, so
+// a process-lifetime negative cache would serve stale "doesn't exist"
+// answers indefinitely. Scoping it to ONE operation's ctx is both correct
+// and sufficient: within a single replay/atomic operation the whole point
+// is that cs.mu is held and nothing else can create that row, and the set
+// dies with the ctx.
+//
+// Measured: this removed one SELECT per transfer from block replay — 3 SQL
+// statements per transfer down to 2 — on top of the expression-index fix.
+func withResolvedAddrs(ctx context.Context, addrs map[string]struct{}) context.Context {
+	if len(addrs) == 0 {
+		return ctx
+	}
+	return context.WithValue(ctx, resolvedKey{}, addrs)
+}
+
+// addrResolvedInCtx reports whether a batch load in this operation already
+// asked the database about addr. A true answer plus a cs.accounts miss
+// means the row genuinely does not exist — no query needed.
+func addrResolvedInCtx(ctx context.Context, addr string) bool {
+	set, _ := ctx.Value(resolvedKey{}).(map[string]struct{})
+	if set == nil {
+		return false
+	}
+	_, ok := set[addr]
+	return ok
+}
+
 // dbExecCtx is dbExec's context-aware replacement — see
 // SCALING_ARCHITECTURE.md's Phase 5/7 "Update" section for the problem
 // this exists to eventually solve: cs.activeTx is a single, ChainState-wide
@@ -497,6 +540,7 @@ func txFromContext(ctx context.Context) *sql.Tx {
 // its own task) does removing cs.activeTx and enabling real concurrent
 // execution become possible.
 func (cs *ChainState) dbExecCtx(ctx context.Context) sqlExecutor {
+	dbRoundTrips.Add(1) // see DBRoundTrips' comment — this is the number that bounds replay
 	if tx := txFromContext(ctx); tx != nil {
 		return tx
 	}
@@ -1127,6 +1171,49 @@ blocks_produced BIGINT NOT NULL DEFAULT 0
 
 	// Slashing tables — safe to call repeatedly (CREATE IF NOT EXISTS / ALTER IF NOT EXISTS).
 	cs.initSlashingTables()
+
+	// FIX (2026-07-25, 50k-TPS replay measurement — the single largest cost
+	// found on the whole replay path): every account lookup in this codebase
+	// is written `WHERE lower(address) = $1`, and a b-tree on the bare
+	// `address` column CANNOT serve that predicate — Postgres has no way to
+	// know lower() is order-preserving, so it falls back to a SEQUENTIAL
+	// SCAN of chain_accounts for EVERY single account load.
+	//
+	// Measured on a local Postgres with only 2,000 accounts:
+	// ensureAccountLoaded's SELECT cost 750µs against 32µs for the UPDATE
+	// and 26µs for the INSERT beside it — 93% of block-replay wall time in
+	// one query, and the gap widens LINEARLY with the account count. Two
+	// indexes in this very function (idx_nullifiers_wallet,
+	// idx_bio_registrations_wallet) already use the expression form; the
+	// hot tables just never got it.
+	//
+	// EXPLAIN before: Seq Scan, Rows Removed by Filter: 1999.
+	// EXPLAIN after:  Index Scan using idx_chain_accounts_lower_address.
+	//
+	// The address columns are already written lowercase everywhere
+	// (strings.ToLower before every write), so an alternative fix would be
+	// dropping lower() from the ~10 read sites. An expression index is
+	// preferred: it makes the queries fast without depending on that
+	// invariant holding for every row ever written by every past version.
+	//
+	// Plain CREATE INDEX (not CONCURRENTLY) is deliberate: it takes a lock
+	// that blocks writes to the table for the duration of the build, but
+	// this runs in initDB, before the node serves anything, so there are no
+	// writes to block. CONCURRENTLY would trade that non-problem for a real
+	// one — a failed concurrent build leaves an INVALID index behind that
+	// the planner ignores while every lookup silently goes back to seq
+	// scanning, which is exactly the failure mode this fix exists to end.
+	// schema_index_coverage_test.go asserts the planner actually uses them.
+	dbExec(`CREATE INDEX IF NOT EXISTS idx_chain_accounts_lower_address ON chain_accounts(lower(address))`)
+	dbExec(`CREATE INDEX IF NOT EXISTS idx_evm_storage_lower_address ON evm_storage(lower(address), slot)`)
+	dbExec(`CREATE INDEX IF NOT EXISTS idx_evm_contracts_lower_address ON evm_contracts(lower(address))`)
+	dbExec(`CREATE INDEX IF NOT EXISTS idx_evm_nonces_lower_address ON evm_nonces(lower(address))`)
+	dbExec(`CREATE INDEX IF NOT EXISTS idx_registered_nodes_lower_wallet ON registered_nodes(lower(wallet_address))`)
+	dbExec(`CREATE INDEX IF NOT EXISTS idx_registered_nodes_lower_signing ON registered_nodes(lower(signing_address))`)
+	dbExec(`CREATE INDEX IF NOT EXISTS idx_guardians_lower_wallet ON guardians(lower(wallet_address))`)
+	dbExec(`CREATE INDEX IF NOT EXISTS idx_guardians_lower_guardian ON guardians(lower(guardian_address))`)
+	dbExec(`CREATE INDEX IF NOT EXISTS idx_bio_hashes_lower_wallet ON bio_hashes(lower(wallet_address))`)
+	dbExec(`CREATE INDEX IF NOT EXISTS idx_chain_blocks_height_lower_proposer ON chain_blocks(height, lower(proposer))`)
 }
 
 // resetDBStateForBootstrap is an explicit operator escape hatch for secondary
@@ -1733,6 +1820,13 @@ func (cs *ChainState) ensureAccountLoadedCtx(ctx context.Context, addr string) {
 	if cs.db == nil {
 		return
 	}
+	// A batch load earlier in this same operation already asked the database
+	// about this address and it wasn't there; asking again cannot produce a
+	// different answer while this operation holds cs.mu. See
+	// withResolvedAddrs' comment.
+	if addrResolvedInCtx(ctx, addr) {
+		return
+	}
 	acc := &AccountState{Address: addr}
 	var bal, tusd, lp float64
 	var version int64
@@ -1814,8 +1908,20 @@ func (cs *ChainState) ensureAccountsLoaded(addrs []string) {
 }
 
 func (cs *ChainState) ensureAccountsLoadedCtx(ctx context.Context, addrs []string) {
+	cs.ensureAccountsLoadedResolving(ctx, addrs)
+}
+
+// ensureAccountsLoadedResolving is ensureAccountsLoadedCtx plus the set of
+// addresses the query definitively resolved — i.e. every address it asked
+// the database about, whether or not a row came back. Hand that set to
+// withResolvedAddrs so the rest of the operation stops re-asking about the
+// ones that genuinely don't exist yet (see withResolvedAddrs' comment).
+//
+// Returns nil when there was nothing to ask (no DB, or everything already
+// warm), which withResolvedAddrs treats as "add nothing".
+func (cs *ChainState) ensureAccountsLoadedResolving(ctx context.Context, addrs []string) map[string]struct{} {
 	if cs.db == nil {
-		return
+		return nil
 	}
 	var missing []string
 	for _, addr := range addrs {
@@ -1824,7 +1930,7 @@ func (cs *ChainState) ensureAccountsLoadedCtx(ctx context.Context, addrs []strin
 		}
 	}
 	if len(missing) == 0 {
-		return
+		return nil
 	}
 	// FIX (deadlock, same as ensureAccountLoaded's FIX comment): route
 	// through cs.dbExecCtx(ctx) so this reuses an already-active
@@ -1848,7 +1954,11 @@ func (cs *ChainState) ensureAccountsLoadedCtx(ctx context.Context, addrs []strin
 		// observable; see the single-address version for why a full
 		// abort-on-error signature change isn't done here in this pass.
 		fmt.Printf("[STATE] ⚠ ensureAccountsLoaded: batch query failed for %d addresses — all will be treated as cold/fresh, which is WRONG for any that already have a balance: %v\n", len(missing), err)
-		return
+		// Deliberately nil, not `missing`: the query FAILED, so nothing was
+		// resolved. Reporting these as resolved would suppress the
+		// per-address retries that are the only remaining chance to load a
+		// real balance before it gets overwritten by a fresh zero account.
+		return nil
 	}
 	defer rows.Close()
 	for rows.Next() {
@@ -1875,6 +1985,18 @@ func (cs *ChainState) ensureAccountsLoadedCtx(ctx context.Context, addrs []strin
 		acc.leafHash = accountLeaf(acc)
 		cs.accounts.Set(addr, acc)
 	}
+	if err := rows.Err(); err != nil {
+		// Same reasoning as the query-failure branch above: a batch that
+		// ended early resolved only some prefix of `missing`, and which
+		// prefix is not knowable here — so resolve none of them.
+		fmt.Printf("[STATE] ⚠ ensureAccountsLoaded: row iteration ended early for %d addresses — all will be treated as cold/fresh: %v\n", len(missing), err)
+		return nil
+	}
+	resolved := make(map[string]struct{}, len(missing))
+	for _, a := range missing {
+		resolved[a] = struct{}{}
+	}
+	return resolved
 }
 
 func (cs *ChainState) loadFromDB() {
@@ -2187,6 +2309,15 @@ func (cs *ChainState) saveAccountToDB(acc *AccountState) error {
 // saveAccountToDBCtx is saveAccountToDB's real implementation — see
 // dbExecCtx's comment for the migration this is part of.
 func (cs *ChainState) saveAccountToDBCtx(ctx context.Context, acc *AccountState) error {
+	// Deferred-write path: when the operation carries a write buffer, record
+	// the account and let one multi-row upsert write them all at the end.
+	// See account_write_buffer.go for why this is behaviour-preserving —
+	// including why the accountSetXOR update below is deferred with it
+	// rather than done here.
+	if buf := accountWriteBufferFrom(ctx); buf != nil {
+		buf.add(acc)
+		return nil
+	}
 	err := cs.saveAccountToDBInnerCtx(ctx, acc)
 	if err == nil {
 		// Incremental state-root maintenance (see ChainState.accountSetXOR):
@@ -6624,6 +6755,16 @@ func (cs *ChainState) snapshotForRollbackLocked(addrs []string, full bool, chain
 }
 
 func (cs *ChainState) snapshotForRollbackLockedCtx(ctx context.Context, addrs []string, full bool, chainConfig map[string]configValueSnapshot) *blockRollbackSnapshot {
+	snap, _ := cs.snapshotForRollbackLockedResolving(ctx, addrs, full, chainConfig)
+	return snap
+}
+
+// snapshotForRollbackLockedResolving is snapshotForRollbackLockedCtx plus the
+// set of addresses its cold-load pass definitively resolved against the
+// database — see withResolvedAddrs. Block replay uses it so the one batch
+// query it already performs here also suppresses the per-transfer re-lookup
+// of recipients that genuinely don't exist yet.
+func (cs *ChainState) snapshotForRollbackLockedResolving(ctx context.Context, addrs []string, full bool, chainConfig map[string]configValueSnapshot) (*blockRollbackSnapshot, map[string]struct{}) {
 	// FIX (Monster Audit follow-up, 2026-07-12, P0): both branches below used
 	// to read cs.accounts[a] directly with no DB warm-up first. addrs always
 	// includes all 4 pool addresses (see blockTouchedAddresses) — exactly the
@@ -6640,7 +6781,7 @@ func (cs *ChainState) snapshotForRollbackLockedCtx(ctx context.Context, addrs []
 	// cs.accounts, so anything warmed here is captured as existed:true with
 	// real state instead of falling into the addrs-only "doesn't exist yet"
 	// fallback).
-	cs.ensureAccountsLoadedCtx(ctx, addrs)
+	resolved := cs.ensureAccountsLoadedResolving(ctx, addrs)
 	snap := &blockRollbackSnapshot{}
 	if full {
 		// ubi_distribution touches every human's account (see ApplyUBIDelta) —
@@ -6683,7 +6824,7 @@ func (cs *ChainState) snapshotForRollbackLockedCtx(ctx context.Context, addrs []
 	snap.chainConfig = chainConfig
 	snap.accountSetXOR = cs.accountSetXOR
 	snap.nullifierSetXOR = cs.nullifierSetXOR
-	return snap
+	return snap, resolved
 }
 
 // restoreFromRollback reverts cs.accounts/cs.pool to a previously captured
