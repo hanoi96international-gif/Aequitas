@@ -337,7 +337,7 @@ func (cs *ChainState) ImportSnapshotFromURL(peerURL, expectedSignerHex string) e
 	}
 
 	cs.mu.Lock()
-	cs.activeTx = tx
+	cs.setActiveTx(tx)
 	// See processTransferBatch's own comment for why capturing cs.activeTx
 	// into ctx here (cs.mu held throughout) is safe.
 	ctx := withTx(context.Background(), tx)
@@ -457,7 +457,7 @@ func (cs *ChainState) ImportSnapshotFromURL(peerURL, expectedSignerHex string) e
 		// FIX (audit 2026-06-28 recheck 4, P0-1/P0-2): cs.mu stays held from
 		// before cs.activeTx was set above through this commit/rollback
 		// decision — cleared and unlocked together below, never separately.
-		cs.activeTx = nil
+		cs.setActiveTx(nil)
 		if persistErr != nil {
 			if rbErr := tx.Rollback(); rbErr != nil {
 				fmt.Printf("[SNAPSHOT] CRITICAL: rollback after failed merge-persist also failed: %v\n", rbErr)
@@ -587,7 +587,7 @@ func (cs *ChainState) ResyncFromSnapshotURL(peerURL, expectedSignerHex string) e
 		cs.nullifiers = backupNullifiers
 	}
 
-	cs.activeTx = tx
+	cs.setActiveTx(tx)
 	// See processTransferBatch's own comment for why capturing cs.activeTx
 	// into ctx here (cs.mu held throughout) is safe.
 	ctx := withTx(context.Background(), tx)
@@ -595,7 +595,7 @@ func (cs *ChainState) ResyncFromSnapshotURL(peerURL, expectedSignerHex string) e
 
 	fail := func(stepErr error) error {
 		restoreInMemory()
-		cs.activeTx = nil
+		cs.setActiveTx(nil)
 		cs.mu.Unlock()
 		tx.Rollback()
 		return stepErr
@@ -755,7 +755,7 @@ func (cs *ChainState) ResyncFromSnapshotURL(peerURL, expectedSignerHex string) e
 	// failed and triggered a revert, that concurrent write would be
 	// clobbered without ever being told its assumptions were invalidated.
 	// cs.mu now stays held through the commit decision itself.
-	cs.activeTx = nil
+	cs.setActiveTx(nil)
 	if err := tx.Commit(); err != nil {
 		// Commit itself failed — none of the above actually persisted, so
 		// in-memory (already replaced above) must be reverted too, or this

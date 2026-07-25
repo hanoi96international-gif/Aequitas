@@ -1,4 +1,4 @@
-﻿package keeper
+package keeper
 
 import (
 "bytes"
@@ -3922,6 +3922,13 @@ if dag.resyncInProgress.Load() {
 // live, present-tense version of the "something genuinely needs it" claim
 // SelfFetched alone can only make in the past tense.
 if block != nil && block.Height > 0 && block.Height <= dag.BootHeight() && dag.BootHeightCheckpointBacked() && (!block.SelfFetched || !dag.hasAwaitingOrphan(block.Hash)) {
+	// FIX (P0, 2026-07-25 night): accepted-as-covered blocks are never
+	// stored in dag.blocks — the one acceptance outcome reconcileDeferrals'
+	// presence check can't see. Clear any deferral watch entry for this
+	// hash explicitly, or a block that first arrived as a deferral and was
+	// later waved through here stays "unresolved" forever and blocks
+	// production. See forgetDeferral's own comment.
+	dag.forgetDeferral(block.Hash)
 	return true
 }
 // Lock-free fork-flood shield (P0, 2026-07-02): reject a block whose height is
@@ -5488,7 +5495,24 @@ func replayBackoffFor(failCount int) time.Duration {
 // return + defer below records the outcome of every exit path in ONE place
 // so none of the function's existing return statements had to change.
 func (dag *BlockDAG) replayTransactions(block *Block, force bool) (ok bool) {
+	// FIX (P0, 2026-07-25 night — Contabo2 permanently stuck behind one block
+	// that failed replay exactly ONCE on a transient DB error): the backoff
+	// guard's own early return used to fall through this defer and be recorded
+	// as a brand-new failure — count++ AND lastTriedAt=now — on every skipped
+	// attempt. With fetchMissingAncestors re-driving an awaited block every few
+	// seconds, lastTriedAt was pushed forward faster than any backoff window
+	// could ever elapse: the block was never genuinely re-attempted again, the
+	// whole chain above it deferred forever, and the node fell behind until an
+	// operator resynced it (which then hit the same trap on the next transient
+	// error — confirmed live twice in one evening, at #1856714 and #1857181).
+	// A skip is not an attempt: only a REAL replay attempt may update the
+	// failure record, so the backoff can actually expire and the next re-drive
+	// runs a genuine retry.
+	skippedByBackoff := false
 	defer func() {
+		if skippedByBackoff {
+			return
+		}
 		dag.replayedMu.Lock()
 		if ok {
 			delete(dag.replayFailures, block.Hash)
@@ -5524,6 +5548,11 @@ func (dag *BlockDAG) replayTransactions(block *Block, force bool) (ok bool) {
 	if !force {
 		if fail, exists := dag.replayFailures[block.Hash]; exists {
 			if wait := replayBackoffFor(fail.count); time.Since(fail.lastTriedAt) < wait {
+				// See skippedByBackoff's comment at the top of this function:
+				// a skip must NOT be recorded as a fresh failure, or the
+				// backoff clock resets on every skipped attempt and never
+				// expires (the exact livelock that stranded Contabo2).
+				skippedByBackoff = true
 				dag.replayedMu.Unlock()
 				return false
 			}
@@ -5677,7 +5706,7 @@ func (dag *BlockDAG) replayTransactions(block *Block, force bool) (ok bool) {
 			fmt.Printf("[REPLAY] ✗ Block #%d: could not begin replay transaction: %v — block rejected\n", block.Height, err)
 			return false
 		}
-		dag.state.activeTx = dbTx
+		dag.state.setActiveTx(dbTx)
 	}
 	// commitOrRollback finalizes dbTx according to success, clearing
 	// activeTx either way so no write after this point accidentally joins
@@ -5686,10 +5715,10 @@ func (dag *BlockDAG) replayTransactions(block *Block, force bool) (ok bool) {
 	// like any other hardFailure, including the in-memory restore).
 	commitOrRollback := func(success bool) error {
 		if dbTx == nil {
-			dag.state.activeTx = nil
+			dag.state.setActiveTx(nil)
 			return nil
 		}
-		dag.state.activeTx = nil
+		dag.state.setActiveTx(nil)
 		if !success {
 			if err := dbTx.Rollback(); err != nil {
 				fmt.Printf("[REPLAY] Warning: replay transaction rollback for block #%d failed: %v\n", block.Height, err)
