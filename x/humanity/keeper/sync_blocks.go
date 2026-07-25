@@ -954,13 +954,19 @@ func (dag *BlockDAG) doSyncOnce(nodeURL string) (ok bool) {
 	highestSeen := int64(-1)
 	// sawUnmergedBlocks feeds cleanSyncStreak (see that field's own struct
 	// comment) — set true the instant a page contains a genuinely new block
-	// (not genesis, not already known, not a finality-violation skip — see
-	// the per-block loop below) that AddPeerBlock still could not attach.
-	// That is the live signature of an active fork: real data exists on
-	// nodeURL that this node cannot currently place, which no amount of
-	// waiting on a height number alone can distinguish from "genuinely
-	// nothing new".
+	// (not genesis, not already known — see the per-block loop below) that
+	// AddPeerBlock REFUSED. That is the live signature of an active fork:
+	// real data exists on nodeURL that this node cannot place, which no
+	// amount of waiting on a height number alone can distinguish from
+	// "genuinely nothing new".
+	//
+	// A block merely DEFERRED behind a still-in-flight parent is explicitly
+	// not that — see the IsWithinOrphanGrace branch in the per-block loop for
+	// why counting those here made a restart take minutes to resume
+	// producing. Those are counted separately, as totalDeferred, purely so
+	// the distinction is visible in the log.
 	sawUnmergedBlocks := false
+	totalDeferred := 0
 	// P1-02: track (minHeight, afterHash) cursor so same-height siblings that
 	// don't fit in one page are not skipped.  afterHash is empty for the first
 	// page (ordinary Height > minHeight query) and set to the last block's hash
@@ -994,6 +1000,7 @@ func (dag *BlockDAG) doSyncOnce(nodeURL string) (ok bool) {
 			break // caught up — peer has nothing newer than our height
 		}
 		addedThisPage := 0
+		deferredThisPage := 0
 		for _, block := range blocks {
 			// FIX: genesis is always created locally and AddPeerBlock always
 			// rejects a peer-supplied genesis (by design — see its own
@@ -1055,12 +1062,59 @@ func (dag *BlockDAG) doSyncOnce(nodeURL string) (ok bool) {
 			if !exists {
 				if dag.AddPeerBlock(block) {
 					addedThisPage++
+				} else if dag.IsWithinOrphanGrace(block) {
+					// FIX (P1, 2026-07-25 — "es dauert immer noch ewig bis die
+					// Contabos nach dem Redeploy wieder laufen"): a block that
+					// AddPeerBlock DEFERRED is not a block it REFUSED, and only
+					// the second is evidence of a fork.
+					//
+					// cleanSyncStreak gates block production through
+					// hasCaughtUpWithAllPeers (block.go): three CONSECUTIVE
+					// cycles per seed with nothing unmerged. Counting a
+					// deferred block as unmerged made that unreachable during
+					// exactly the situation a restart creates. Ordered paged
+					// catch-up walks a backlog in height order across pages of
+					// 500; a page boundary routinely lands between a block and
+					// a parent that is one page further on, so the child is
+					// queued as an orphan and resolved seconds later by
+					// fetchMissingAncestors or by the next page. That is the
+					// normal, healthy shape of catch-up — and it reset the
+					// streak to 0 on essentially every cycle for as long as the
+					// backlog lasted. Nothing bounded the wait:
+					// syncStallTimeout (ProduceBlock's escape valve) only opens
+					// after 90s of NO peer activity at all, and a node busily
+					// draining a backlog keeps it firmly shut. The node stayed
+					// up, synced, served /api/status — and silently produced
+					// nothing, which from the explorer is indistinguishable
+					// from a dead box. 75fc466 cut the deep-scan cost of a
+					// restart but never touched this, which is why redeploys
+					// still took many minutes to resume producing.
+					//
+					// IsWithinOrphanGrace (block.go) is the exact distinction
+					// already trusted for the same class of decision by both
+					// circuit breakers: true ONLY when the block fails purely
+					// on a missing parent that is still within
+					// proposerBreakerOrphanGrace (48s at BLOCK_TIME=1s). It
+					// re-derives the missing parent itself, so a block rejected
+					// for any other reason — bad signature, unauthorized
+					// proposer, finality violation, far-ahead fork — returns
+					// false and still resets the streak immediately.
+					//
+					// This deliberately does NOT weaken the fork protection the
+					// gate exists for. A genuinely diverged peer serves blocks
+					// whose parents this node will never receive; those parents
+					// age past the grace within one window and every subsequent
+					// cycle resets the streak again, holding production exactly
+					// as before. Only gaps that actually close in time are
+					// forgiven — a self-limiting exception, not a timeout.
+					deferredThisPage++
 				} else {
 					sawUnmergedBlocks = true
 				}
 			}
 		}
 		totalAdded += addedThisPage
+		totalDeferred += deferredThisPage
 		// FIX (P2-01 audit, confirmed live on Contabo 2026-06-30): a
 		// short page (< pageSize) does NOT reliably mean "peer's tip is
 		// within this page" once a deep scan is re-walking ALREADY-KNOWN
@@ -1140,7 +1194,14 @@ func (dag *BlockDAG) doSyncOnce(nodeURL string) (ok bool) {
 		dag.mu.RLock()
 		tipCount := len(dag.tips)
 		dag.mu.RUnlock()
-		fmt.Printf("[HTTP-SYNC] ✓ Added %d new blocks from %s | DAG tips: %d | height %d\n", totalAdded, nodeURL, tipCount, dag.Height())
+		deferredNote := ""
+		if totalDeferred > 0 {
+			// Deliberately distinct wording from "unmerged": these did not
+			// reset the clean-sync streak, and an operator watching a slow
+			// restart needs to be able to tell the two apart at a glance.
+			deferredNote = fmt.Sprintf(" | %d deferred behind in-flight parents", totalDeferred)
+		}
+		fmt.Printf("[HTTP-SYNC] ✓ Added %d new blocks from %s | DAG tips: %d | height %d%s\n", totalAdded, nodeURL, tipCount, dag.Height(), deferredNote)
 	}
 	if sawUnmergedBlocks {
 		dag.resetCleanSyncStreak(nodeURL)
