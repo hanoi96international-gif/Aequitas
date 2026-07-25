@@ -686,6 +686,11 @@ func (a *APIServer) Start(port int) {
 	mux.HandleFunc("/api/health/combined", a.handleCombinedHealth)
 	mux.HandleFunc("/api/debug/stateroot-components", a.handleStateRootComponents)
 	mux.HandleFunc("/api/debug/dag-gates", a.handleDAGGates)
+	// Lock-free, SNAPSHOT_TOKEN-gated goroutine dump — the missing tool for
+	// the cs.mu-contention investigation, which had no way to get a dump off
+	// the primary at all (pprof is localhost-only, the platform has no
+	// `docker exec`). See api_debug_goroutines.go.
+	mux.HandleFunc("/api/debug/goroutines", a.handleGoroutineDump)
 	mux.HandleFunc("/api/blocks", a.handleBlocks)
 	mux.HandleFunc("/api/blocks/canonical", a.handleCanonicalBlocks)
 	mux.HandleFunc("/api/validator-labels", a.handleValidatorLabels)
