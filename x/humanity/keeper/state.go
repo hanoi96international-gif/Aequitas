@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"math"
 	"os"
+	"runtime"
 	"runtime/debug"
 	"sort"
 	"strconv"
@@ -215,6 +216,24 @@ type ChainState struct {
 	// cs.mu-locked region at a time, and that goroutine is the only one
 	// that could have set it.
 	activeTx *sql.Tx
+	// activeTxOwnerGID pins activeTx to the goroutine that opened it. The
+	// comment above ("only one goroutine can be inside a cs.mu-locked region")
+	// stopped being the whole story once the 50k-TPS work added code paths
+	// that write WITHOUT holding cs.mu (sharded accounts, concurrent
+	// transfer/registration, background flushers): any of those calling a
+	// not-yet-migrated helper (plain dbExec(), ctx without a tx) while a
+	// replay/atomic op has activeTx set would silently join THAT goroutine's
+	// *sql.Tx — two goroutines on one Postgres connection, which desyncs the
+	// wire protocol (`pq: unexpected Parse response "(D) DataRow"` / `driver:
+	// bad connection`, confirmed live on Contabo2 twice on 2026-07-25, each
+	// time poisoning a consensus block). dbExecCtx now only returns activeTx
+	// to its owner goroutine; every other goroutine falls back to the cs.db
+	// pool (its own connection, no corruption) and logs loudly so the
+	// offending call path can be found and migrated. Set/cleared exclusively
+	// via setActiveTx.
+	activeTxOwnerGID atomic.Int64
+	// activeTxMisuseLogAt rate-limits the cross-goroutine warning above.
+	activeTxMisuseLogAt atomic.Int64
 
 	// transferBatchCh/transferBatchOnce back TransferAtomic's group-commit
 	// path (see runTransferBatcher's own comment) — coalesces concurrent
@@ -481,10 +500,58 @@ func (cs *ChainState) dbExecCtx(ctx context.Context) sqlExecutor {
 	if tx := txFromContext(ctx); tx != nil {
 		return tx
 	}
+	// Guard (P0, 2026-07-25 night — see activeTxOwnerGID's field comment):
+	// the activeTx fallback is only ever correct for the goroutine that
+	// opened the transaction. Any OTHER goroutine landing here used to be
+	// silently handed a *sql.Tx someone else is actively using — two
+	// goroutines interleaving on one Postgres connection, corrupting the
+	// wire protocol and (confirmed live, twice in one evening) getting a
+	// consensus block rejected on a poisoned connection. Hand foreign
+	// goroutines the pool instead: their write commits standalone — exactly
+	// what it would have done before anyone happened to have a transaction
+	// open — and the loud, stack-carrying log below identifies the call
+	// path that still needs migrating to an explicit ctx/tx.
 	if cs.activeTx != nil {
-		return cs.activeTx
+		gid := curGoroutineID()
+		if owner := cs.activeTxOwnerGID.Load(); owner == 0 || owner == gid {
+			return cs.activeTx
+		}
+		nowNano := time.Now().UnixNano()
+		last := cs.activeTxMisuseLogAt.Load()
+		if nowNano-last > int64(5*time.Second) && cs.activeTxMisuseLogAt.CompareAndSwap(last, nowNano) {
+			fmt.Printf("[DB-GUARD] ✗ dbExec from goroutine %d while goroutine %d holds the active transaction — routing this write to the pool instead, to prevent Postgres wire-protocol corruption. Migrate this call path to an explicit ctx/tx. (rate-limited) Stack:\n%s\n",
+				gid, cs.activeTxOwnerGID.Load(), debug.Stack())
+		}
 	}
 	return cs.db
+}
+
+// setActiveTx is the ONLY way activeTx may be set or cleared — it records
+// the owning goroutine alongside the transaction so dbExecCtx can refuse to
+// hand the tx to any other goroutine (see activeTxOwnerGID's field comment).
+func (cs *ChainState) setActiveTx(tx *sql.Tx) {
+	if tx != nil {
+		cs.activeTxOwnerGID.Store(curGoroutineID())
+	} else {
+		cs.activeTxOwnerGID.Store(0)
+	}
+	cs.activeTx = tx // the one exempt assignment — every other site must call setActiveTx
+}
+
+// curGoroutineID parses this goroutine's id from the runtime stack header
+// ("goroutine N [running]:"). Only called on paths that already hold or are
+// about to open a DB transaction, so the ~µs stack peek is negligible next
+// to the Postgres round trip it protects.
+func curGoroutineID() int64 {
+	var buf [64]byte
+	n := runtime.Stack(buf[:], false)
+	fields := strings.Fields(string(buf[:n]))
+	if len(fields) >= 2 {
+		if id, err := strconv.ParseInt(fields[1], 10, 64); err == nil {
+			return id
+		}
+	}
+	return -1 // unparseable (should never happen) — never matches a real owner
 }
 
 // activeTxCtx is dbExecCtx's counterpart for the handful of callers (e.g.
@@ -3768,7 +3835,7 @@ func (cs *ChainState) runAtomicWithOutbox(touchedAddrs []string, fullSnapshot bo
 	// restoreFromRollback) is used so the lock is never released and
 	// re-acquired in between.
 	cs.mu.Lock()
-	cs.activeTx = tx
+	cs.setActiveTx(tx)
 	snap := cs.snapshotForRollbackLocked(touchedAddrs, fullSnapshot, chainConfig)
 	// See processTransferBatch's own (now-historical) comment for why
 	// building ctx from cs.activeTx here, with cs.mu held throughout, is
@@ -3781,7 +3848,7 @@ func (cs *ChainState) runAtomicWithOutbox(touchedAddrs []string, fullSnapshot bo
 	}
 
 	if fnErr != nil || outboxErr != nil {
-		cs.activeTx = nil
+		cs.setActiveTx(nil)
 		tx.Rollback()
 		if rbErr := cs.restoreFromRollbackLocked(snap); rbErr != nil {
 			fmt.Printf("[ATOMIC] CRITICAL: rollback persistence failed after operation failure — memory/DB may now disagree: %v\n", rbErr)
@@ -3794,14 +3861,14 @@ func (cs *ChainState) runAtomicWithOutbox(touchedAddrs []string, fullSnapshot bo
 	}
 
 	if err := tx.Commit(); err != nil {
-		cs.activeTx = nil
+		cs.setActiveTx(nil)
 		if rbErr := cs.restoreFromRollbackLocked(snap); rbErr != nil {
 			fmt.Printf("[ATOMIC] CRITICAL: rollback persistence failed after commit failure — memory/DB may now disagree: %v\n", rbErr)
 		}
 		cs.mu.Unlock()
 		return fmt.Errorf("commit failed (state mutation rolled back): %w", err)
 	}
-	cs.activeTx = nil
+	cs.setActiveTx(nil)
 	cs.mu.Unlock()
 	return nil
 }
@@ -3870,7 +3937,7 @@ func (cs *ChainState) runAtomicDistributionWithOutbox(fn func(ctx context.Contex
 	// concurrent operation can observe the new memory state and write
 	// against cs.db while this transaction's fate is still undecided.
 	cs.mu.Lock()
-	cs.activeTx = tx
+	cs.setActiveTx(tx)
 	snap := cs.snapshotForRollbackLocked(nil, true, chainConfig)
 	txs, fnErr := fn(withTx(context.Background(), tx))
 	var outboxErr error
@@ -3883,7 +3950,7 @@ func (cs *ChainState) runAtomicDistributionWithOutbox(fn func(ctx context.Contex
 	}
 
 	if fnErr != nil || outboxErr != nil {
-		cs.activeTx = nil
+		cs.setActiveTx(nil)
 		tx.Rollback()
 		if rbErr := cs.restoreFromRollbackLocked(snap); rbErr != nil {
 			fmt.Printf("[ATOMIC] CRITICAL: distribution rollback persistence failed — memory/DB may now disagree: %v\n", rbErr)
@@ -3896,14 +3963,14 @@ func (cs *ChainState) runAtomicDistributionWithOutbox(fn func(ctx context.Contex
 	}
 
 	if err := tx.Commit(); err != nil {
-		cs.activeTx = nil
+		cs.setActiveTx(nil)
 		if rbErr := cs.restoreFromRollbackLocked(snap); rbErr != nil {
 			fmt.Printf("[ATOMIC] CRITICAL: distribution rollback persistence failed after commit failure — memory/DB may now disagree: %v\n", rbErr)
 		}
 		cs.mu.Unlock()
 		return fmt.Errorf("commit failed (state mutation rolled back): %w", err)
 	}
-	cs.activeTx = nil
+	cs.setActiveTx(nil)
 	cs.mu.Unlock()
 	return nil
 }

@@ -577,6 +577,33 @@ func (dag *BlockDAG) fetchMissingAncestors(nodeURL string) {
 				// hash was never a ProduceBlock stuck-gap).
 				dag.clearFinalityWalkGap(hash)
 				dag.clearProduceStuckGap(hash)
+				// FIX (P0, 2026-07-25 night — Contabo1 stopped producing over ONE
+				// stale orphan): a hash resolved LOCALLY (found in dag.blocks or
+				// via LoadBlocksByHashesFromDB — typically a parent below this
+				// node's in-memory window that lives only in the DB) never goes
+				// through AddPeerBlock, and AddPeerBlock's success path is the
+				// ONLY place waiting orphans were ever popped. So the orphans
+				// waiting on a locally-resolvable parent sat in the queue
+				// forever: never attached, never abandoned (the local resolve
+				// meant no fetch attempt was ever recorded against the hash),
+				// and counted as a permanently-unresolved deferral by
+				// reconcileDeferrals — which held the clean-sync streak at zero
+				// and blocked block production indefinitely (confirmed live:
+				// Contabo1 fully synced at the tip, "1 deferred block(s)
+				// unresolved" every cycle, zero blocks produced). Re-drive the
+				// waiters through AddPeerBlock now that their parent is
+				// resolvable: they either attach (prefetchParentsFromDB pulls
+				// the DB-resident parent into memory), queue on a DIFFERENT
+				// still-missing hash (progress), or get waved through the
+				// below-boot/finality gates as moot — in every case they leave
+				// this queue instead of gating production forever.
+				if waiting := dag.popOrphans(hash); len(waiting) > 0 {
+					fmt.Printf("[HTTP-SYNC] ✓ Missing parent %s... resolved locally — re-driving %d waiting orphan(s)\n",
+						hash[:min(16, len(hash))], len(waiting))
+					for _, w := range waiting {
+						dag.AddPeerBlock(w)
+					}
+				}
 				continue
 			}
 			if !dag.shouldAttemptFetch(hash) {
@@ -1002,6 +1029,32 @@ func (dag *BlockDAG) reconcileDeferrals(nodeURL string, deferred []string) int {
 	now := time.Now().Unix()
 	graceSecs := int64(proposerBreakerOrphanGrace.Seconds())
 
+	// FIX (P0, 2026-07-25 night — Contabo1 stopped producing over ONE stale
+	// orphan): a deferred block whose height has since fallen below the
+	// finality floor (finalized height minus finalityHeightSlack) is moot,
+	// not fork evidence: isFinalityViolation would REJECT that same block if
+	// it re-arrived today, and the below-boot checkpoint gate in AddPeerBlock
+	// deliberately never stores such blocks in dag.blocks — so the
+	// "resolved = present in dag.blocks" test below can never clear it, no
+	// matter how healthy the node is. Confirmed live: Contabo1, byte-identical
+	// with the network at the tip, sat with exactly one such historical
+	// deferral (#1856766, ~700 blocks below its finalized checkpoint) and
+	// produced nothing for hours. Judging catch-up by a block that finality
+	// has already passed judges nothing — drop it. Heights come from the
+	// orphan queue itself (the deferred block is, by construction, sitting
+	// there waiting on its missing parent). Both lookups happen before
+	// deferredWatchMu so lock ordering stays leaf-only.
+	var finalityFloor int64
+	if dag.state != nil {
+		if fh, _ := dag.state.GetFinalizedCheckpoint(); fh > finalityHeightSlack {
+			finalityFloor = fh - finalityHeightSlack
+		}
+	}
+	var queuedHeights map[string]int64
+	if finalityFloor > 0 {
+		queuedHeights = dag.queuedOrphanHeights()
+	}
+
 	dag.deferredWatchMu.Lock()
 	defer dag.deferredWatchMu.Unlock()
 	if dag.deferredWatch == nil {
@@ -1028,12 +1081,52 @@ func (dag *BlockDAG) reconcileDeferrals(nodeURL string, deferred []string) int {
 			delete(watch, h)
 			continue
 		}
+		// Moot check — see the finalityFloor comment above: finality has
+		// passed this block's height, it can never be stored, so it must
+		// never count against this peer's catch-up judgment.
+		if finalityFloor > 0 {
+			if height, known := queuedHeights[h]; known && height < finalityFloor {
+				delete(watch, h)
+				continue
+			}
+		}
 		if now-firstSeen > graceSecs {
 			stale++
 		}
 	}
 	dag.mu.RUnlock()
 	return stale
+}
+
+// queuedOrphanHeights returns hash→height for every block currently sitting
+// in the orphan queue (the values of dag.orphans, i.e. blocks waiting on a
+// missing parent). Used by reconcileDeferrals to recognize deferred blocks
+// whose height finality has since passed — see its finalityFloor comment.
+func (dag *BlockDAG) queuedOrphanHeights() map[string]int64 {
+	dag.orphansMu.Lock()
+	defer dag.orphansMu.Unlock()
+	m := make(map[string]int64)
+	for _, waiting := range dag.orphans {
+		for _, b := range waiting {
+			m[b.Hash] = b.Height
+		}
+	}
+	return m
+}
+
+// forgetDeferral removes ONE hash from every peer's deferral watch. Called
+// when a block is accepted WITHOUT being stored (AddPeerBlock's below-boot
+// checkpoint gate — "this data is already covered by the snapshot") — the one
+// acceptance path reconcileDeferrals' presence-in-dag.blocks test can never
+// clear on its own, which otherwise leaves a permanently-stale watch entry
+// gating production. See the 2026-07-25 Contabo1 incident in
+// reconcileDeferrals' finalityFloor comment.
+func (dag *BlockDAG) forgetDeferral(hash string) {
+	dag.deferredWatchMu.Lock()
+	for _, watch := range dag.deferredWatch {
+		delete(watch, hash)
+	}
+	dag.deferredWatchMu.Unlock()
 }
 
 // forgetDeferralWatch drops a peer's watch list. Called after a resync, where
