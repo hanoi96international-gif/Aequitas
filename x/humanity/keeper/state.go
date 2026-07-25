@@ -265,6 +265,19 @@ type ChainState struct {
 	evmMirrorDirty     map[evmMirrorDirtyKey]struct{}
 	evmMirrorFlushOnce sync.Once
 
+	// receiptBuf/receiptBufMu/receiptFlushOnce back SaveTxReceipt's deferred
+	// write -- same dirty-buffer-plus-periodic-worker shape as evmMirrorDirty
+	// above, and for the same reason: it used to be a synchronous INSERT per
+	// transaction on the RPC request path, which a live CPU profile showed as
+	// the last remaining per-transfer Postgres round trip. Keyed by tx hash so
+	// the buffer reproduces the ON CONFLICT DO UPDATE semantics of the single
+	// -row statement it replaces: a later write for the same hash (e.g. a
+	// success receipt superseded by a failure one) simply overwrites the
+	// buffered entry, exactly as the database would have.
+	receiptBufMu     sync.Mutex
+	receiptBuf       map[string]pendingReceipt
+	receiptFlushOnce sync.Once
+
 	// poolFlushDirty/poolFlushOnce back distributeSwapFee's deferred pool
 	// persistence (see pool_flush.go / SCALING_ARCHITECTURE.md Phase 3):
 	// with a real DB, a pool-address credit updates cs.accounts and

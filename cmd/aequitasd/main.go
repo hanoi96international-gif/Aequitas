@@ -785,6 +785,12 @@ chainState.FlushPoolAccountsNow()
 // — a clean shutdown flushes any pending balanceOf/isHuman/activity slot
 // writes rather than leaving them to the display-lag window.
 chainState.FlushEVMMirrorNow()
+// Same reasoning once more, for buffered EVM transaction receipts
+// (receipt_flush.go). These matter for a different reason than the two
+// above: getTransactionReceipt answers from in-memory maps that a restart
+// clears, so an unflushed receipt is exactly the row a wallet would need
+// after the restart and would not find.
+chainState.FlushTxReceiptsNow()
 fmt.Println("Node stopped.")
 }
 

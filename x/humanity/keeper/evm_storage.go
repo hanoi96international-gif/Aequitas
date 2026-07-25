@@ -2191,17 +2191,20 @@ func (cs *ChainState) SaveTxReceipt(txHash, fromAddr, toAddr, status, contractAd
 	if cs.db == nil {
 		return
 	}
-	_, err := cs.db.Exec(
-		`INSERT INTO evm_tx_receipts (tx_hash, from_addr, to_addr, status, contract_addr, created_at)
-		 VALUES ($1, $2, $3, $4, $5, $6)
-		 ON CONFLICT (tx_hash) DO UPDATE SET status = $4`,
-		strings.ToLower(txHash), strings.ToLower(fromAddr),
-		strings.ToLower(toAddr), status, strings.ToLower(contractAddr), time.Now().Unix(),
-	)
-	if err != nil {
-		fmt.Printf("[EVM] SaveTxReceipt error for %s: %v\n", txHash, err)
-		return
-	}
+	// Buffered, not written: see receipt_flush.go for the profile that made
+	// this the last per-transfer Postgres round trip on the request path, and
+	// for why deferring it is safe (getTransactionReceipt answers from the
+	// in-memory maps first, and GetTxReceipt below checks the buffer before
+	// the database). created_at is captured HERE, not at flush time, so the
+	// stored timestamp keeps meaning "when the transaction happened".
+	cs.bufferTxReceipt(pendingReceipt{
+		txHash:       strings.ToLower(txHash),
+		fromAddr:     strings.ToLower(fromAddr),
+		toAddr:       strings.ToLower(toAddr),
+		status:       status,
+		contractAddr: strings.ToLower(contractAddr),
+		createdAt:    time.Now().Unix(),
+	})
 	cs.maybePruneTxReceipts()
 }
 
@@ -2293,6 +2296,13 @@ func (cs *ChainState) maybePruneTxReceipts() {
 func (cs *ChainState) GetTxReceipt(txHash string) (fromAddr, toAddr, status, contractAddr string, found bool) {
 	if cs.db == nil {
 		return "", "", "", "", false
+	}
+	// Check the not-yet-flushed buffer first. Without this, a receipt written
+	// less than receiptFlushInterval ago would read as "not found" from here
+	// even though it exists -- turning an internal batching detail into a
+	// visible inconsistency for any caller that reaches this fallback.
+	if r, ok := cs.lookupBufferedReceipt(txHash); ok {
+		return r.fromAddr, r.toAddr, r.status, r.contractAddr, true
 	}
 	err := cs.db.QueryRow(
 		`SELECT from_addr, COALESCE(to_addr, ''), status, COALESCE(contract_addr, '') FROM evm_tx_receipts WHERE tx_hash = $1`,
