@@ -577,30 +577,47 @@ func (cs *ChainState) RestorePreUpgradeRelationshipSlots(contractAddr string) er
 // SyncBalancesToEVM writes the current Go-state AEQ balance for each addr into
 // the AequitasV7 contract's balanceOf storage slot (mapping at position 4),
 // keeping both ledgers consistent after every Go-state change.
+// FIX (P0 for throughput, 2026-07-25 — second finding from the same live CPU
+// profile as maybePruneTxReceipts): this used to write to Postgres
+// SYNCHRONOUSLY, once per address, on the RPC request path. sendRawTransaction
+// calls it with two addresses (sender and recipient) per transfer, so every
+// transfer paid two extra round trips plus two cs.mu.RLock acquisitions before
+// it could answer.
+//
+// Its own sibling was fixed for exactly this reason and this one was missed.
+// syncBalanceLocked's comment (below) already reads:
+//
+//	SCALING_ARCHITECTURE.md Phase 6: with a real DB, this no longer writes
+//	synchronously at all -- it just records addrs as needing a refresh
+//	(cheap, in-memory, own small mutex, not cs.mu) and returns; a background
+//	worker (evm_mirror_flush.go) drains that set periodically ... This is
+//	safe specifically BECAUSE evm_storage is already documented as a
+//	display-only mirror for eth_call/MetaMask, never the authoritative
+//	ledger.
+//
+// Every word of that applies here. The machinery is built, documented, tested
+// and running; this function simply never used it.
+//
+// Measured, profile after the receipt-prune fix landed: database/sql.(*DB).Exec
+// still at 30.21% cumulative and database/sql.withLock at 31.42%, inside a
+// sendRawTransaction that accounts for 57.48% of all samples -- with the
+// receipt prune gone, these two writes are what is left on that path.
+//
+// Also strictly MORE correct, not merely faster. The loop this replaces read
+// cs.accounts.Get and mirrored a cache miss as balance ZERO, silently writing a
+// wrong balance for any account not currently warm. doSyncBalanceLocked (which
+// the flush worker calls) pages a cold account in via ensureAccountLoaded
+// first, so the deferred path cannot make that mistake.
+//
+// The cost is display lag: eth_call/MetaMask can read a balance up to
+// evmMirrorFlushInterval (2s) stale. That is the tradeoff this codebase already
+// accepted for the locked variant, and it never touches the authoritative
+// ledger, which is cs.accounts plus the durable transfer path.
 func (cs *ChainState) SyncBalancesToEVM(contractAddr string, addrs ...string) {
 	if cs.db == nil {
 		return
 	}
-	contractAddr = strings.ToLower(contractAddr)
-	for _, addr := range addrs {
-		addr = strings.ToLower(addr)
-		cs.mu.RLock()
-		acc, ok := cs.accounts.Get(addr)
-		cs.mu.RUnlock()
-		var bal float64
-		if ok {
-			// P2-12: use effectiveBalance (with demurrage decay) so EVM
-			// storage matches what the user actually holds right now,
-			// not the raw stored value which may be higher than actual.
-			bal = effectiveBalance(acc).Float()
-		}
-		balBig := aeqToWei(bal)
-		slot := mappingSlot(common.HexToAddress(addr).Bytes(), 4).Hex()
-		val := common.BigToHash(balBig).Hex()
-		if err := cs.SaveStorageSlot(contractAddr, slot, val); err != nil {
-			fmt.Printf("[EVM] Warning: could not sync balance for %s: %v\n", addr, err)
-		}
-	}
+	cs.markEVMMirrorDirtyLocked(contractAddr, addrs...)
 }
 
 // syncHumanRegistrationLocked writes balanceOf (slot 4), isHuman (slot 6),
