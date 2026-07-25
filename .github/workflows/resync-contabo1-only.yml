@@ -1,0 +1,80 @@
+name: Authoritative resync of Contabo1 only from the trusted primary (manual)
+
+# Same mechanism as resync-both-contabos.yml's contabo1 job (see that
+# workflow's own header comment for the full rationale), split out standalone
+# so it can be dispatched without touching Contabo2, which is currently
+# healthy and actively producing its own blocks (Tips: 2) -- no reason to
+# restart it just to resync Contabo1.
+#
+# 2026-07-25: Contabo1 is stuck behind cleanSyncStreakThreshold ("Not yet 3
+# consecutive clean sync cycles with every trusted seed") with Tips in the
+# 600s (vs. a healthy 1-3) -- validator_penalties confirmed empty (0 rows),
+# so this is a sync backlog, not a slashing/penalty issue. This uses the
+# codebase's own existing, signature-verified resync path (snapshot.go's
+# ResyncFromSnapshotURL, wired in main.go's resyncMode block) rather than any
+# ad-hoc DB surgery: the importing node validates the snapshot's ECDSA
+# signature against BOOTSTRAP_SIGNER before accepting it, so this can only
+# ever replace local state with the trusted primary's own canonical state.
+#
+# Contabo1's deploy.sh runs the container with `--env-file
+# /root/.aequitas.env` DIRECTLY, and the file's RESYNC_FROM_SNAPSHOT normally
+# reads "false" -- so this flips it to "true", runs deploy.sh (full rebuild +
+# restart, picks up the flag), then flips it back to "false" immediately
+# after, so every future ordinary push-triggered deploy on Contabo1 does NOT
+# resync/wipe state on every single deploy.
+#
+# Gated behind `confirm: "true"` so a bare workflow_dispatch with defaults
+# does nothing destructive by accident.
+on:
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: "Type \"true\" to actually resync Contabo1"
+        required: false
+        default: "false"
+
+jobs:
+  contabo1:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Resync Contabo1 from the trusted primary
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: 173.249.37.118
+          username: root
+          key: ${{ secrets.CONTABO_SSH_KEY }}
+          port: 22
+          fingerprint: "SHA256:noMtjHV8c+2iEFZu3TRUP6WRwGjkrvFke71KgU6Eyt4"
+          script_stop: true
+          timeout: 900s
+          command_timeout: 900s
+          envs: CONFIRM
+          script: |
+            set -uo pipefail
+            if [ "${CONFIRM:-false}" != "true" ]; then
+              echo "confirm != true -- doing nothing. Re-run with confirm=true to actually resync Contabo1."
+              exit 0
+            fi
+            echo "=== Contabo1: RESYNC_FROM_SNAPSHOT before ==="
+            grep -E '^RESYNC_FROM_SNAPSHOT=' /root/.aequitas.env || echo "(not present)"
+            sed -i 's/^RESYNC_FROM_SNAPSHOT=.*/RESYNC_FROM_SNAPSHOT=true/' /root/.aequitas.env
+            echo "=== Contabo1: RESYNC_FROM_SNAPSHOT after flip (must read true) ==="
+            grep -E '^RESYNC_FROM_SNAPSHOT=' /root/.aequitas.env
+            if ! grep -qE '^RESYNC_FROM_SNAPSHOT=true$' /root/.aequitas.env; then
+              echo "✗ Flip did not take effect as expected -- aborting before calling deploy.sh."
+              exit 1
+            fi
+            echo "=== Contabo1: running deploy.sh (rebuild + restart; boot will run the authoritative resync) ==="
+            /root/deploy.sh
+            echo "=== Contabo1: reverting RESYNC_FROM_SNAPSHOT back to false so future ordinary deploys don't resync every time ==="
+            sed -i 's/^RESYNC_FROM_SNAPSHOT=.*/RESYNC_FROM_SNAPSHOT=false/' /root/.aequitas.env
+            grep -E '^RESYNC_FROM_SNAPSHOT=' /root/.aequitas.env
+            echo "=== Contabo1: waiting 15s for the node to finish booting ==="
+            sleep 15
+            echo "=== Contabo1: boot log lines mentioning RESYNC/BOOTSTRAP/AUTO-HEAL/DAG merge ==="
+            docker logs aequitas-node 2>&1 | grep -iE '\[RESYNC\]|\[BOOTSTRAP\]|\[AUTO-HEAL\]|Merged.*tips|orphan' | tail -60
+            echo "=== Contabo1: /api/status after resync ==="
+            curl -s http://localhost:8080/api/status
+            echo ""
+        env:
+          CONFIRM: ${{ inputs.confirm }}
