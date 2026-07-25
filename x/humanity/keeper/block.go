@@ -4308,11 +4308,18 @@ missingParent := ""
 // ghostdagBlockLookup already implements exactly the DB-fallback (plus
 // re-caching into dag.blocks) this needs; reusing it here instead of a
 // second bespoke lookup.
+hasStubParent := false
 for _, ph := range block.ParentHashes {
 parent := dag.ghostdagBlockLookup(ph, nil)
 if parent == nil {
 	missingParent = ph
 	break
+}
+if parent.Proposer == "synthetic-checkpoint" {
+	// See the stub-tolerant height check below — a stub's Height is a
+	// placeholder assigned at resync seeding, not this parent's real
+	// chain position.
+	hasStubParent = true
 }
 if parent.Height > maxParentHeight {
 maxParentHeight = parent.Height
@@ -4372,10 +4379,28 @@ if missingParent != "" {
 	return false
 }
 if maxParentHeight >= 0 && block.Height != maxParentHeight+1 {
-fmt.Printf("[DAG] ✗ Rejected peer block #%d: invalid height (parent max %d)\n",
-block.Height, maxParentHeight)
-dag.mu.Unlock()
-return false
+// FIX (P0, 2026-07-25 night — Contabo1 permanently stuck at its fresh
+// resync checkpoint): when one of the resolved parents is a
+// synthetic-checkpoint stub, its Height is a PLACEHOLDER assigned at
+// resync seeding (checkpointHeight-1), not the parent's real chain
+// position — so the strict equation cannot be evaluated honestly.
+// Confirmed live: the merge-sibling at checkpointHeight-1 (referenced
+// as a merge-parent by essentially every block above the boundary) was
+// re-fetched and re-rejected with "invalid height" forever, walling
+// the node's ENTIRE catch-up behind it, minutes after an otherwise
+// clean authoritative resync. History at/below the boundary is sealed
+// by the checkpoint's finality anyway (the same trust already extended
+// to the stub itself), so tolerate the mismatch instead of rejecting —
+// the block still passes every signature/authorization/TX check.
+if hasStubParent {
+	fmt.Printf("[DAG] ⚠ Height mismatch tolerated for block #%d (parent max %d includes a synthetic-checkpoint stub with placeholder height) — attaching at the resync trust boundary\n",
+		block.Height, maxParentHeight)
+} else {
+	fmt.Printf("[DAG] ✗ Rejected peer block #%d: invalid height (parent max %d)\n",
+		block.Height, maxParentHeight)
+	dag.mu.Unlock()
+	return false
+}
 }
 }
 
