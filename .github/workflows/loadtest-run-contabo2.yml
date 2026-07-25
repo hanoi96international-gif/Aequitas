@@ -198,6 +198,18 @@ jobs:
               | grep -E '\[RPC\]|\[TX\]|\[BLOCK\] ⏱|Warning|panic|WAL|rate limit|batch' \
               | tail -40 \
               || echo "(nothing matched — the node logged no RPC/TX/timing lines for this window)"
+            # THE ACTUAL THROUGHPUT NUMBER. The generator can only report what
+            # came back to it, and when responses time out that is 0.0 TPS no
+            # matter how much work the node did -- the 06:57 run applied
+            # transfers continuously while scoring exactly zero. This line is
+            # the node's own count of transfers it APPLIED, once per second,
+            # so it stays correct when responses are slow, late or lost.
+            echo "--- applied-transfer throughput, as counted by the node ---"
+            docker logs --since "$RUN_START" aequitas-node 2>&1 | grep -F '[RPC] ⚡' | tail -25 \
+              || echo "(no throughput lines — either no transfer was applied, or this node predates the counter)"
+            echo "--- peak second ---"
+            docker logs --since "$RUN_START" aequitas-node 2>&1 | grep -F '[RPC] ⚡' | tail -1 || true
+
             echo "--- slowest ticks during the run ---"
             docker logs --since "$RUN_START" aequitas-node 2>&1 | grep -F '[BLOCK] ⏱' | tail -10 || echo "(no slow-tick lines — production stayed inside its budget)"
 
