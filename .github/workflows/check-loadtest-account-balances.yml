@@ -117,3 +117,9 @@ jobs:
               echo "⚠ $lowCount of $testCount test account(s) below the threshold — include 'fund' in the run's phase list,"
               echo "  or lower transfer_amount_wei so the balances on hand cover the whole timed window."
             fi
+        # `envs:` above only says WHICH variables to forward to the remote
+        # shell; this is what puts them in the step's environment to forward.
+        # scripts/lint_workflow_envs.py now fails CI when the two disagree.
+        env:
+          NUM_SEEDS: ${{ inputs.num_seeds }}
+          MIN_WEI: ${{ inputs.min_wei }}

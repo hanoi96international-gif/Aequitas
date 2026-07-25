@@ -10,6 +10,20 @@ on:
   pull_request:
 
 jobs:
+  # A step that forwards a variable over SSH which nothing ever sets fails on
+  # the live node, not here -- see scripts/lint_workflow_envs.py for the two
+  # dispatches that motivated this. Its own job so it reports in seconds
+  # rather than behind the Go and hardhat suites.
+  workflows:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.x"
+      - run: pip install pyyaml
+      - run: python3 scripts/lint_workflow_envs.py
+
   test:
     runs-on: ubuntu-latest
     steps:
