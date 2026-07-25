@@ -197,6 +197,26 @@ jobs:
           done
           echo ""
 
+          # ---------- 4b. peer topology ----------
+          # The asymmetry observed on 2026-07-25 18:22 needs this: the primary's
+          # tip was known to c1, but NEITHER secondary's tip was known to the
+          # primary. A node only pulls from the peers it is configured with, and
+          # only pushes to the peers in activeSyncPeers (HTTPBroadcastBlock), so
+          # a one-directional topology reproduces "nothing merges" exactly while
+          # every node individually looks healthy.
+          echo "=== 4b. PEER TOPOLOGY — who does each node consider a peer? ==="
+          for n in primary c1 c2; do
+            echo "  --- $n ---"
+            curl -sS --max-time 20 "$(url_of $n)/api/peers" 2>/dev/null \
+              | jq -r 'if type=="array" then .[] else . end
+                       | "    " + ((.url // .URL // .address // tostring)|tostring)
+                         + "  height=" + ((.height // .Height // "?")|tostring)
+                         + "  clean_streak=" + ((.clean_sync_streak // .cleanSyncStreak // "?")|tostring)
+                         + "  caught_up=" + ((.caught_up // .caughtUp // "?")|tostring)' \
+              2>/dev/null || echo "    (no peers / unparseable)"
+          done
+          echo ""
+
           # ---------- 5. optional bisect for the exact fork height ----------
           if [ "${BISECT_FROM:-0}" != "0" ] && [ -n "$FORK_DEPTH" ]; then
             LO="$BISECT_FROM"; HI="$MIN"
@@ -236,9 +256,19 @@ jobs:
             docker inspect -f 'Status={{.State.Status}} Restarts={{.RestartCount}} StartedAt={{.State.StartedAt}}' aequitas-node 2>&1 || true
             echo ""
             echo "=== Contabo1: merge/fork evidence (last 600 lines, filtered) ==="
+            echo "--- outgoing pushes: is this node's block reaching its peers? ---"
+            docker logs --tail 3000 aequitas-node 2>&1 | grep -E 'BLOCK-PUSH' | tail -25 || echo "(no BLOCK-PUSH lines at all — this node never pushed to anyone)"
+            echo ""
+            echo "--- peer topology as this node sees it ---"
+            curl -sS --max-time 10 http://localhost:8080/api/peers 2>/dev/null | head -c 2000; echo ""
+            echo ""
+            echo "--- configured peers in the container env ---"
+            docker inspect -f '{{range .Config.Env}}{{println .}}{{end}}' aequitas-node 2>/dev/null | grep -E '^(PEER_NODES|PRIMARY_NODE_URL|PRIMARY_NODE_URLS|STATIC_PEERS|IS_PRIMARY_NODE|BLOCK_TIME)=' || echo "(none set)"
+            echo ""
+            echo "--- merge / sync evidence ---"
             docker logs --tail 600 aequitas-node 2>&1 | grep -Ei \
-              'foreign_attach|merged|orphan|StateRoot|mismatch|fork|resync|caught up|deferr|not resolving|breaker|blue' \
-              | tail -70 || echo "(no matching lines)"
+              'foreign_attach|Merged [0-9]+ tips|orphan|StateRoot|mismatch|fork|resync|caught up|deferr|not resolving|breaker|LATENCY' \
+              | tail -50 || echo "(no matching lines)"
 
   contabo2_logs:
     runs-on: ubuntu-latest
@@ -260,6 +290,16 @@ jobs:
             docker inspect -f 'Status={{.State.Status}} Restarts={{.RestartCount}} StartedAt={{.State.StartedAt}}' aequitas-node 2>&1 || true
             echo ""
             echo "=== Contabo2: merge/fork evidence (last 600 lines, filtered) ==="
+            echo "--- outgoing pushes: is this node's block reaching its peers? ---"
+            docker logs --tail 3000 aequitas-node 2>&1 | grep -E 'BLOCK-PUSH' | tail -25 || echo "(no BLOCK-PUSH lines at all — this node never pushed to anyone)"
+            echo ""
+            echo "--- peer topology as this node sees it ---"
+            curl -sS --max-time 10 http://localhost:8080/api/peers 2>/dev/null | head -c 2000; echo ""
+            echo ""
+            echo "--- configured peers in the container env ---"
+            docker inspect -f '{{range .Config.Env}}{{println .}}{{end}}' aequitas-node 2>/dev/null | grep -E '^(PEER_NODES|PRIMARY_NODE_URL|PRIMARY_NODE_URLS|STATIC_PEERS|IS_PRIMARY_NODE|BLOCK_TIME)=' || echo "(none set)"
+            echo ""
+            echo "--- merge / sync evidence ---"
             docker logs --tail 600 aequitas-node 2>&1 | grep -Ei \
-              'foreign_attach|merged|orphan|StateRoot|mismatch|fork|resync|caught up|deferr|not resolving|breaker|blue' \
-              | tail -70 || echo "(no matching lines)"
+              'foreign_attach|Merged [0-9]+ tips|orphan|StateRoot|mismatch|fork|resync|caught up|deferr|not resolving|breaker|LATENCY' \
+              | tail -50 || echo "(no matching lines)"
