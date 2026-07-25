@@ -1,0 +1,120 @@
+name: Set ENABLE_MULTI_BLOCK_TICK on Contabo2 (manual, load-test only)
+
+# Enables (or disables) backlog-driven multi-block ticks on Contabo2 ONLY.
+#
+# Why this is required for a 50,000 TPS measurement, not merely helpful:
+# maxTxsPerBlock=50000 (evm_storage.go) at BLOCK_TIME=1s means one block per
+# tick IS exactly 50,000 TPS -- the target is the ceiling itself, with zero
+# margin. Reaching it that way would require every single tick to produce a
+# perfectly full 50,000-transaction block, forever, which no real system does.
+# Any tick that comes up even slightly short is throughput permanently lost,
+# and there is nothing above the line to make it back from.
+#
+# ProduceBlocksForTick (block_cadence.go) is the headroom: after a block comes
+# back FULL -- len(block.Transactions) == maxTxsPerBlock, a cheap and strong
+# signal that more work is genuinely still queued -- it calls ProduceBlock()
+# again immediately, up to maxExtraBlocksPerTick=4 more times, stopping the
+# moment a block comes back not full (backlog drained) or nil (some other gate
+# engaged). That is a 250,000/s ceiling, i.e. 5x margin over the target
+# instead of 0x.
+#
+# WHAT THIS CHANGES, stated plainly: how many blocks one validator can produce
+# inside a single BLOCK_TIME window. block_cadence.go's own header calls this
+# out as NOT staging-validated and a different risk class from the storage-
+# layer work -- multi-node consensus timing cannot be fully validated by
+# single-process testing. Two things bound that risk, which is why it is
+# offered as a per-box switch at all:
+#
+#   - It is PER-VALIDATOR by construction. Every other node just receives and
+#     merges however many blocks arrive, exactly as GHOSTDAG multi-parent
+#     merging already does. Unlike shortening BLOCK_TIME, no coordinated
+#     network-wide upgrade is involved, and Contabo1/the primary are unaffected
+#     whether or not they ever set this.
+#   - The FIRST block of each tick still happens on the existing wall-clock-
+#     aligned tick, preserving the "every validator produces within ~50ms of
+#     every other" property that makes concurrent merging work. Only the extra
+#     blocks are new, and only when genuinely backlogged.
+#
+# Scoped to Contabo2, the box already designated as the one-at-a-time canary
+# (STAGING_RUNBOOK.md), for the same reason the RPC rate-limit switch is:
+# value=0 restores the shipped default in a single dispatch when the run is
+# over. Contabo1 and the primary are never touched by this workflow.
+#
+# Uses deploy_safe_c2.sh, which merges /root/.aequitas.env over the inherited
+# container env, so an appended/edited key here actually reaches the process.
+# Backs the env file up with a timestamp first. Idempotent: a box already
+# reading the requested value is reported and left untouched. Afterwards it
+# greps the node's own startup line, so the effective setting is confirmed
+# from the process rather than assumed from the file.
+on:
+  workflow_dispatch:
+    inputs:
+      value:
+        description: "1 = enable multi-block ticks (load test). 0 = shipped default (restore)."
+        required: false
+        default: "1"
+      dry_run:
+        description: "true = only report the current value, change nothing"
+        required: false
+        default: "true"
+
+jobs:
+  set:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Set ENABLE_MULTI_BLOCK_TICK on Contabo2
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: 194.163.188.71
+          username: root
+          key: ${{ secrets.CONTABO2_SSH_KEY }}
+          port: 22
+          fingerprint: "SHA256:VIwj7Faxiga2n45HVHZEQFPxcbRKHgSgHoxAFsf2wto"
+          script_stop: false
+          timeout: 600s
+          command_timeout: 600s
+          envs: VALUE,DRY
+          script: |
+            set -uo pipefail
+            ENVFILE=/root/.aequitas.env
+            KEY=ENABLE_MULTI_BLOCK_TICK
+
+            # main.go tests `== "1"` exactly, so anything other than 1 or 0
+            # here would silently mean "off" while reading as intentional.
+            case "${VALUE:-}" in
+              0|1) ;;
+              *) echo "✗ value must be exactly 0 or 1, got '${VALUE:-}' — aborting"; exit 1 ;;
+            esac
+
+            echo "=== Contabo2: current $KEY ==="
+            grep -E "^${KEY}=" "$ENVFILE" || echo "(not set — node uses its shipped default: one block per tick)"
+
+            CUR="$(grep -E "^${KEY}=" "$ENVFILE" 2>/dev/null | head -1 | cut -d= -f2- || true)"
+            if [ "$CUR" = "$VALUE" ]; then
+              echo "=== Contabo2: already reads '$VALUE' — nothing to change ==="
+              exit 0
+            fi
+
+            if [ "${DRY:-true}" = "true" ]; then
+              echo "=== DRY RUN: would set $KEY=$VALUE on Contabo2 (currently '${CUR:-unset}') ==="
+              exit 0
+            fi
+
+            cp -a "$ENVFILE" "${ENVFILE}.bak.$(date +%s)" && echo "(backup written)"
+            if grep -qE "^${KEY}=" "$ENVFILE"; then
+              sed -i "s/^${KEY}=.*/${KEY}=${VALUE}/" "$ENVFILE"
+            else
+              printf '%s=%s\n' "$KEY" "$VALUE" >> "$ENVFILE"
+            fi
+            echo "=== Contabo2: value after the edit ==="
+            grep -E "^${KEY}=" "$ENVFILE" || echo "(missing after edit — investigate)"
+
+            echo "=== Contabo2: restarting so the new env reaches the process ==="
+            /root/deploy_safe_c2.sh
+
+            echo "=== Contabo2: waiting for the node to come back ==="
+            sleep 25
+            echo "=== The node's own startup line (empty means it kept the default) ==="
+            docker logs aequitas-node 2>&1 | grep -F 'ENABLE_MULTI_BLOCK_TICK' | tail -3 || echo "(no line — running the shipped default: one block per tick)"
+            echo "=== Contabo2: /api/status ==="
+            curl -s --max-time 5 http://localhost:8080/api/status || echo "(unreachable)"
