@@ -5882,6 +5882,56 @@ func (cs *ChainState) stateRootLocked(lastUBIAt string) string {
 	return hex.EncodeToString(hash[:])
 }
 
+// StateRootComponents is the per-component breakdown of exactly what
+// stateRootLocked hashes, in the same order it concatenates them. Purely
+// diagnostic: it lets an operator compare two nodes that disagree on the
+// StateRoot and see WHICH of the four inputs actually differs, instead of
+// only that the final SHA256 does.
+//
+// Added 2026-07-25 for the persistent-divergence incident (see
+// ANALYSE_STATEROOT_DIVERGENZ.md): all economically visible aggregates
+// (total_supply, gini, every pool) matched bit-for-bit across all three
+// nodes while the roots disagreed on every single block, which narrows the
+// cause to a component with no aggregate of its own — but "narrows" is not
+// "identifies", and the primary runs on Railway with no SSH/psql access, so
+// the only way to read its side of the comparison is over HTTP.
+//
+// Deliberately exposes no wallet addresses and no per-account data: the two
+// accumulators are already-public set commitments (every block header
+// carries the root derived from them), the pool reserves are already in
+// /api/status, and last_ubi_at is a timestamp.
+type StateRootComponents struct {
+	AccountSetXOR   string `json:"account_set_xor"`
+	PoolReserveAEQ  int64  `json:"pool_reserve_aeq_micro"`
+	PoolReserveTUSD int64  `json:"pool_reserve_tusd_micro"`
+	PoolLPShares    int64  `json:"pool_lp_shares_micro"`
+	NullifierSetXOR string `json:"nullifier_set_xor"`
+	LastUBIAt       string `json:"last_ubi_at"`
+	StateRoot       string `json:"state_root"`
+}
+
+// StateRootComponentBreakdown returns the same inputs stateRootLocked hashes,
+// plus the resulting root, so two nodes can be diffed component by component.
+// Reads last_ubi_at before taking the lock for exactly the reason StateRoot's
+// own P1-1 comment describes.
+func (cs *ChainState) StateRootComponentBreakdown() StateRootComponents {
+	lastUBIAt := cs.getConfigValueDB("last_ubi_at")
+	cs.mu.RLock()
+	defer cs.mu.RUnlock()
+	out := StateRootComponents{
+		AccountSetXOR:   hex.EncodeToString(cs.accountSetXOR[:]),
+		NullifierSetXOR: hex.EncodeToString(cs.nullifierSetXOR[:]),
+		LastUBIAt:       lastUBIAt,
+		StateRoot:       cs.stateRootLocked(lastUBIAt),
+	}
+	if cs.pool != nil {
+		out.PoolReserveAEQ = cs.pool.ReserveAEQ.Micro()
+		out.PoolReserveTUSD = cs.pool.ReserveTUSD.Micro()
+		out.PoolLPShares = cs.pool.TotalLPShares.Micro()
+	}
+	return out
+}
+
 // xorInto XORs src into dst in place — the combine step of both set accumulators.
 func xorInto(dst *[32]byte, src [32]byte) {
 	for i := 0; i < 32; i++ {

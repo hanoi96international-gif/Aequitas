@@ -347,6 +347,24 @@ func (a *APIServer) syncProofServerStatus() {
 // caching the proof server's last known /health response every 30s) instead
 // of adding a second outbound HTTP call path; "proof_server_reachable"
 // reflects whether that cache currently holds anything.
+// handleStateRootComponents serves GET /api/debug/stateroot-components — the
+// per-component breakdown of what stateRootLocked hashes (see
+// StateRootComponents' own doc comment for why this exists and why it is
+// safe to expose). Read-only; changes nothing.
+//
+// Purpose is strictly operational: when two nodes log a StateRoot mismatch,
+// diffing this endpoint across them says WHICH input diverged, turning
+// "the roots differ" into a specific, fixable finding.
+func (a *APIServer) handleStateRootComponents(w http.ResponseWriter, r *http.Request) {
+	writeJSONCORS(w)
+	body, err := json.Marshal(a.state.StateRootComponentBreakdown())
+	if err != nil {
+		jsonError(w, "internal error building response", http.StatusInternalServerError)
+		return
+	}
+	w.Write(body)
+}
+
 func (a *APIServer) handleCombinedHealth(w http.ResponseWriter, r *http.Request) {
 	writeJSONCORS(w)
 	latest := a.blockchain.LatestBlock()
@@ -648,6 +666,7 @@ func (a *APIServer) Start(port int) {
 	mux.HandleFunc("/api/status", a.handleStatus)
 	mux.HandleFunc("/api/events", a.handleBlockEvents)
 	mux.HandleFunc("/api/health/combined", a.handleCombinedHealth)
+	mux.HandleFunc("/api/debug/stateroot-components", a.handleStateRootComponents)
 	mux.HandleFunc("/api/blocks", a.handleBlocks)
 	mux.HandleFunc("/api/blocks/canonical", a.handleCanonicalBlocks)
 	mux.HandleFunc("/api/validator-labels", a.handleValidatorLabels)

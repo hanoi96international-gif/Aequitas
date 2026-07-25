@@ -1,0 +1,141 @@
+name: Disable WAL + multi-block-tick on Contabo2 (restore uniform consensus config)
+
+# Counterpart to enable-wal-contabo2.yml. That workflow set THREE variables on
+# Contabo2 and only on Contabo2:
+#
+#   AEQUITAS_WAL_ENABLED=1
+#   AEQUITAS_WAL_PATH=/data/wal/aequitas_transfers.wal
+#   ENABLE_MULTI_BLOCK_TICK=1
+#
+# Two of those change behaviour the other two nodes (primary on Railway,
+# Contabo1) do not share:
+#
+#   - ENABLE_MULTI_BLOCK_TICK lets a backlogged validator emit several blocks
+#     inside one BLOCK_TIME tick. block_cadence.go labels it verbatim "NOT
+#     STAGING-VALIDATED ... multi-node consensus timing can't be fully
+#     validated by single-process testing".
+#   - The WAL fast path (transferConcurrentWAL) deliberately skips demurrage
+#     settlement and wealth-cap crediting for the transfers it accepts — a
+#     documented, still-open gap.
+#
+# While ONE node runs different rules from the other two, every StateRoot
+# comparison carries that as a confound. This restores a uniform baseline so
+# the persistent divergence (ANALYSE_STATEROOT_DIVERGENZ.md) can be attributed
+# to a real cause rather than to a known config difference.
+#
+# Direction matters: enabling WAL everywhere would instead roll the open
+# demurrage gap out to all three nodes. Uniform-OFF first, close the gap, then
+# uniform-ON later is the safe order.
+#
+# Config-only: reuses the SAME image (no rebuild), touches no database.
+#
+# RESYNC_FROM_SNAPSHOT: Contabo2's env file carries this permanently as "true"
+# by design (see deploy-contabo2.yml), and deploy_safe_c2.sh STRIPS it from
+# what actually reaches the container on every normal deploy so it can never
+# fire by accident. This workflow must do the same strip — passing
+# /root/.aequitas.env straight through (as resync-both-contabos.yml
+# deliberately does) would turn this config change into a full resync. So it
+# runs from a temporary, stripped copy and never mutates that key on disk.
+on:
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: 'Type "true" to actually disable WAL + multi-block-tick on Contabo2'
+        required: false
+        default: "false"
+
+jobs:
+  contabo2:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Remove WAL / multi-block-tick vars and restart Contabo2
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: 194.163.188.71
+          username: root
+          key: ${{ secrets.CONTABO2_SSH_KEY }}
+          port: 22
+          fingerprint: "SHA256:VIwj7Faxiga2n45HVHZEQFPxcbRKHgSgHoxAFsf2wto"
+          script_stop: true
+          timeout: 600s
+          command_timeout: 600s
+          envs: CONFIRM
+          script: |
+            set -uo pipefail
+            ENV_FILE=/root/.aequitas.env
+            RUN_ENV=/root/.aequitas.env.runtime-nowal
+
+            if [ "${CONFIRM:-false}" != "true" ]; then
+              echo "confirm != true — doing nothing. Re-run with confirm=true."
+              exit 0
+            fi
+
+            echo "=== BEFORE: the three keys this workflow removes ==="
+            grep -E '^(AEQUITAS_WAL_ENABLED|AEQUITAS_WAL_PATH|ENABLE_MULTI_BLOCK_TICK)=' "$ENV_FILE" || echo "(none present)"
+
+            cp "$ENV_FILE" "${ENV_FILE}.bak.$(date -u +%Y%m%dT%H%M%SZ)"
+            sed -i -E '/^(AEQUITAS_WAL_ENABLED|AEQUITAS_WAL_PATH|ENABLE_MULTI_BLOCK_TICK)=/d' "$ENV_FILE"
+
+            echo "=== AFTER: all three must be gone from the persistent env file ==="
+            if grep -qE '^(AEQUITAS_WAL_ENABLED|AEQUITAS_WAL_PATH|ENABLE_MULTI_BLOCK_TICK)=' "$ENV_FILE"; then
+              echo "✗ At least one key survived the edit — aborting without restarting."
+              exit 1
+            fi
+            echo "(confirmed: none of the three remain)"
+
+            # Runtime copy with RESYNC_FROM_SNAPSHOT stripped, mirroring exactly
+            # what deploy_safe_c2.sh does on every normal deploy. Without this
+            # the restart below would perform a full snapshot resync instead of
+            # a config change.
+            grep -vE '^RESYNC_FROM_SNAPSHOT=' "$ENV_FILE" > "$RUN_ENV"
+            chmod 600 "$RUN_ENV"
+            if grep -qE '^RESYNC_FROM_SNAPSHOT=' "$RUN_ENV"; then
+              echo "✗ RESYNC_FROM_SNAPSHOT survived the strip — aborting, refusing to trigger an unintended resync."
+              exit 1
+            fi
+            echo "(confirmed: RESYNC_FROM_SNAPSHOT stripped from the runtime env)"
+
+            # Same image, same run flags as resync-both-contabos.yml's proven
+            # Contabo2 restart (aequitas-net, /root/aequitas-wal-data:/data/wal,
+            # ports 8080/4001) — only the env file differs.
+            IMG="$(docker inspect aequitas-node --format '{{.Config.Image}}')"
+            echo "=== Restarting on the SAME image (no rebuild): $IMG ==="
+            docker stop aequitas-node
+            docker rm aequitas-node
+            mkdir -p /root/aequitas-wal-data
+            docker run -d --name aequitas-node \
+              --network aequitas-net \
+              --restart unless-stopped \
+              -v /root/aequitas-wal-data:/data/wal \
+              --env-file "$RUN_ENV" \
+              -p 8080:8080 -p 4001:4001 \
+              "$IMG"
+
+            echo "=== Container state ==="
+            sleep 10
+            docker inspect -f 'Status={{.State.Status}} ExitCode={{.State.ExitCode}} StartedAt={{.State.StartedAt}}' aequitas-node
+
+            echo "=== Verifying: no WAL banner, no multi-block-tick banner, no resync ==="
+            sleep 25
+            LOGS="$(docker logs aequitas-node 2>&1)"
+            FAIL=0
+            if printf '%s' "$LOGS" | grep -q 'WAL fast path active'; then
+              echo "✗ 'WAL fast path active' still present — WAL did not turn off."; FAIL=1
+            else
+              echo "✓ no WAL fast-path banner"
+            fi
+            if printf '%s' "$LOGS" | grep -q 'ENABLE_MULTI_BLOCK_TICK=1'; then
+              echo "✗ multi-block-tick banner still present."; FAIL=1
+            else
+              echo "✓ no multi-block-tick banner"
+            fi
+            if printf '%s' "$LOGS" | grep -q 'Authoritative resync: REPLACING local state'; then
+              echo "✗ a snapshot resync was triggered — the strip did not work as intended."; FAIL=1
+            else
+              echo "✓ no snapshot resync was triggered (config-only restart, as intended)"
+            fi
+            [ "$FAIL" -eq 0 ] || exit 1
+
+            echo "=== /api/status ==="
+            curl -s --max-time 10 http://localhost:8080/api/status || echo "(not answering yet)"
+            echo ""

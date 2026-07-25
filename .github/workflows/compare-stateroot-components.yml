@@ -1,0 +1,75 @@
+name: Compare StateRoot components across all three nodes (manual, read-only)
+
+# The decisive measurement for the persistent-divergence incident
+# (ANALYSE_STATEROOT_DIVERGENZ.md).
+#
+# Every block replayed from the primary logs a StateRoot mismatch on the
+# secondaries, with an IDENTICAL claimed value and an IDENTICAL local value
+# across consecutive blocks — i.e. both sides hold a stable state that simply
+# differs. Meanwhile every economically visible aggregate matches bit-for-bit
+# on all three nodes (total_supply 14000.00, gini 0.19207266236750017, all four
+# pools). So the difference sits in a StateRoot input that has no aggregate of
+# its own, and "the roots differ" alone cannot say which.
+#
+# stateRootLocked (state.go) hashes exactly four inputs:
+#   acctXOR  | pool:<reserveAEQ>:<reserveTUSD>:<lpShares> | nullXOR | ubi:<last_ubi_at>
+#
+# /api/debug/stateroot-components returns those four separately, so diffing
+# this output across the three nodes names the divergent component outright.
+#
+# Why over HTTP rather than psql: the primary runs on Railway with no SSH, so
+# an SQL-based comparison can never include the one node that actually matters.
+# Runs from Contabo1, which can reach the primary and Contabo2 directly.
+#
+# Strictly read-only: three GETs, no writes, no restarts.
+on:
+  workflow_dispatch:
+
+jobs:
+  compare:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Fetch StateRoot components from primary, Contabo1 and Contabo2
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: 173.249.37.118
+          username: root
+          key: ${{ secrets.CONTABO_SSH_KEY }}
+          port: 22
+          fingerprint: "SHA256:noMtjHV8c+2iEFZu3TRUP6WRwGjkrvFke71KgU6Eyt4"
+          script_stop: false
+          timeout: 180s
+          command_timeout: 180s
+          script: |
+            set -uo pipefail
+            EP=/api/debug/stateroot-components
+
+            echo "=== date ==="
+            date -u
+            echo ""
+
+            for target in \
+              "primary|https://aequitas.digital" \
+              "contabo1|http://localhost:8080" \
+              "contabo2|http://194.163.188.71:8080"
+            do
+              name="${target%%|*}"
+              url="${target#*|}"
+              echo "=== $name ($url$EP) ==="
+              curl -sS --max-time 20 "$url$EP" || echo "(unreachable)"
+              echo ""
+              echo ""
+            done
+
+            echo "=== heights, for context (a component may legitimately differ if the nodes are at different heights) ==="
+            for target in \
+              "primary|https://aequitas.digital" \
+              "contabo1|http://localhost:8080" \
+              "contabo2|http://194.163.188.71:8080"
+            do
+              name="${target%%|*}"
+              url="${target#*|}"
+              h="$(curl -sS --max-time 15 "$url/api/status" 2>/dev/null \
+                   | grep -o '"height":[0-9]*' | head -1)"
+              echo "  $name -> ${h:-(unreachable)}"
+            done
