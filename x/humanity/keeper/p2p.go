@@ -242,6 +242,14 @@ func parseIncomingBlock(r io.Reader) (*Block, error) {
 	if len(body) == 0 {
 		return nil, fmt.Errorf("empty block message")
 	}
+	// Accept both encodings — see p2p_block_compression.go. A gzip frame and
+	// a JSON object can never be confused (0x1f 0x8b versus '{'), so this
+	// needs no negotiation, and accepting both is what makes the compressed
+	// sender safe to enable later without partitioning the network.
+	body, err = decompressBlockPayload(body)
+	if err != nil {
+		return nil, err
+	}
 	var block Block
 	if err := json.Unmarshal(body, &block); err != nil {
 		return nil, err
@@ -298,6 +306,9 @@ func (n *P2PNode) broadcastExcept(block *Block, exclude peer.ID) {
 	data, err := json.Marshal(block)
 	if err != nil {
 		return
+	}
+	if blockCompressionEnabled() {
+		data = compressBlockPayload(data)
 	}
 
 	for _, peerID := range peers {
