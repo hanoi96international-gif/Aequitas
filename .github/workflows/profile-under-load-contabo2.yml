@@ -1,0 +1,214 @@
+name: CPU profile Contabo2 WHILE it is under load (manual)
+
+# The measurement that makes the 50,000 TPS question answerable instead of
+# arguable.
+#
+# Established by the 2026-07-25 07:11 run, from the node's OWN applied-transfer
+# counter (not the generator, which can only see its socket):
+#
+#   [RPC] ⚡ 185 transfers applied in the last second (peak 211/s, total 6021)
+#   [RPC] ⚡ 142 transfers applied in the last second (peak 211/s, total 9441)
+#
+# ~150/s sustained, 211/s peak, node stable, block production inside its budget
+# the whole time. The target is 240x that.
+#
+# Everything removed before that point sat ABOVE 150/s and therefore never
+# bound anything: generator round trips (~1,800/s), the per-IP rate limit
+# (2,000/s), one-block-per-tick (50,000/s), account balances (538 transfers per
+# sender). A 240x gap is not a configuration gap. It is whatever the
+# transfer-apply path spends its time on, and the only honest way to find that
+# is to look while it is happening.
+#
+# A goroutine dump (pprof-goroutine-dump.yml) answers "what is STUCK" and is
+# the right tool for a hang. This answers the different question "where does
+# the time GO" while everything is moving -- which is the case here, since the
+# node is demonstrably working, just 240x slower than the target.
+#
+# Load and profile run CONCURRENTLY on purpose: a profile of an idle node
+# measures nothing, and a load run without a profile is what the last several
+# runs already were. The profile window is deliberately shorter than the load
+# window and starts after the ramp, so every sample lands in steady state
+# rather than in start-up or drain.
+#
+# Reads pprof from 127.0.0.1:6061 INSIDE the container (never published, see
+# api.go) via docker exec, exactly as pprof-goroutine-dump.yml does. Go's
+# profile output carries its own symbol table, so it can be analysed without
+# shipping the binary anywhere -- nothing leaves the box but the text summary
+# printed here.
+#
+# Does not change any node setting. It does generate real load and move real
+# (dust-sized) AEQ, exactly as loadtest-run-contabo2.yml does.
+on:
+  workflow_dispatch:
+    inputs:
+      duration:
+        description: "Load duration. Keep comfortably longer than profile_seconds + ramp."
+        required: false
+        default: "60s"
+      ramp:
+        description: "Ramp seconds before the timed window"
+        required: false
+        default: "3"
+      profile_seconds:
+        description: "CPU profile length, started after the ramp so samples land in steady state"
+        required: false
+        default: "30"
+      batch_size:
+        description: "Transfers per JSON-RPC batch (1..100)"
+        required: false
+        default: "100"
+      http_timeout:
+        description: "Per-request HTTP timeout"
+        required: false
+        default: "20s"
+      transfer_amount_wei:
+        description: "Wei per transfer. Keep tiny so balances can never become the limit."
+        required: false
+        default: "1000"
+      num_seeds:
+        description: "Must match the num_seeds used in loadtest-prepare-contabo2.yml"
+        required: false
+        default: "5"
+
+jobs:
+  profile:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Copy current loadtest tool source to Contabo2
+        uses: appleboy/scp-action@v1.0.0
+        with:
+          host: 194.163.188.71
+          username: root
+          key: ${{ secrets.CONTABO2_SSH_KEY }}
+          port: 22
+          fingerprint: "SHA256:VIwj7Faxiga2n45HVHZEQFPxcbRKHgSgHoxAFsf2wto"
+          source: "tools/contabo-loadtest/main.go,tools/contabo-loadtest/gen_accounts.go,go.mod,go.sum"
+          target: "/root/contabo-loadtest"
+          overwrite: true
+
+      - name: Profile the node while driving load at it
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: 194.163.188.71
+          username: root
+          key: ${{ secrets.CONTABO2_SSH_KEY }}
+          port: 22
+          fingerprint: "SHA256:VIwj7Faxiga2n45HVHZEQFPxcbRKHgSgHoxAFsf2wto"
+          script_stop: false
+          timeout: 900s
+          command_timeout: 900s
+          envs: DURATION,RAMP,PROFILE_SECONDS,BATCH_SIZE,HTTP_TIMEOUT,TRANSFER_WEI,NUM_SEEDS
+          script: |
+            set -uo pipefail
+            cd /root/contabo-loadtest
+
+            # Same precedence rule as loadtest-run-contabo2.yml -- see its own
+            # comment for the stale-binary incident that motivated it.
+            for f in main.go gen_accounts.go; do
+              if [ -f "tools/contabo-loadtest/$f" ]; then
+                mv -f "tools/contabo-loadtest/$f" "./$f"
+              elif [ ! -f "./$f" ]; then
+                echo "✗ $f landed in neither layout after scp — aborting"
+                exit 1
+              fi
+            done
+            rm -rf ./tools
+            echo "=== source being profiled ==="
+            sha256sum main.go 2>/dev/null || true
+
+            if [ ! -f accounts.csv ]; then
+              echo "✗ no accounts.csv — run loadtest-prepare-contabo2.yml first"
+              exit 1
+            fi
+
+            echo "=== /api/status before ==="
+            STATUS_BEFORE="$(curl -s --max-time 10 http://localhost:8080/api/status || true)"
+            echo "${STATUS_BEFORE:-(unreachable)}"
+            UPTIME_BEFORE="$(echo "$STATUS_BEFORE" | grep -oP '"uptime":\K[0-9]+' || echo 0)"
+
+            echo "=== confirming pprof is reachable inside the container ==="
+            docker exec aequitas-node wget -qO- --timeout=5 'http://127.0.0.1:6061/debug/pprof/' >/dev/null 2>&1 \
+              && echo "✓ pprof responds" \
+              || { echo "✗ pprof unreachable inside the container — nothing to profile, aborting"; exit 1; }
+
+            mkdir -p /root/go-mod-cache
+            echo "=== building loadtest binary ==="
+            docker run --rm -v "$(pwd)":/w -w /w -v /root/go-mod-cache:/go/pkg/mod \
+              golang:1.24-alpine go build -o loadtest main.go
+
+            RUN_START="$(date -u +%Y-%m-%dT%H:%M:%S)"
+
+            # Load first, in the background; the profile starts after the ramp
+            # so that every sample lands in steady state rather than in the
+            # ramp-up or the drain.
+            echo "=== starting load (duration=$DURATION ramp=${RAMP}s batch=$BATCH_SIZE) ==="
+            docker run --rm --network host -v "$(pwd)":/w -w /w \
+              -v /root/go-mod-cache:/go/pkg/mod golang:1.24-alpine \
+              ./loadtest \
+                -accounts accounts.csv \
+                -rpc http://localhost:8080/rpc \
+                -status http://localhost:8080/api/status \
+                -phase run \
+                -seeds "$NUM_SEEDS" \
+                -duration "$DURATION" \
+                -ramp "$RAMP" \
+                -transfer-amount-wei "$TRANSFER_WEI" \
+                -batch-size "$BATCH_SIZE" \
+                -http-timeout "$HTTP_TIMEOUT" > /tmp/loadtest-out.txt 2>&1 &
+            LOAD_PID=$!
+
+            sleep "$((RAMP + 2))"
+            echo "=== capturing a ${PROFILE_SECONDS}s CPU profile while the load runs ==="
+            docker exec aequitas-node wget -qO- --timeout=$((PROFILE_SECONDS + 30)) \
+              "http://127.0.0.1:6061/debug/pprof/profile?seconds=${PROFILE_SECONDS}" > /root/cpu.pprof \
+              || echo "(profile fetch failed)"
+            echo "profile size: $(stat -c %s /root/cpu.pprof 2>/dev/null || echo 0) bytes"
+
+            echo "=== waiting for the load run to finish ==="
+            wait "$LOAD_PID" || true
+            echo "--- load generator output ---"
+            cat /tmp/loadtest-out.txt || true
+
+            echo ""
+            echo "=== applied-transfer throughput the node counted during this run ==="
+            docker logs --since "$RUN_START" aequitas-node 2>&1 | grep -F '[RPC] ⚡' | tail -20 \
+              || echo "(none — no transfer was applied)"
+
+            echo ""
+            echo "=== WHERE THE TIME WENT (cumulative, top 40) ==="
+            # Go's profile carries its own symbol table, so no binary is needed.
+            if [ -s /root/cpu.pprof ]; then
+              docker run --rm -v /root:/p -v /root/go-mod-cache:/go/pkg/mod golang:1.24-alpine \
+                go tool pprof -top -cum -nodecount=40 /p/cpu.pprof 2>&1 | head -60 \
+                || echo "(pprof analysis failed)"
+              echo ""
+              echo "=== WHERE THE TIME WENT (flat, top 25 — actual CPU burners) ==="
+              docker run --rm -v /root:/p -v /root/go-mod-cache:/go/pkg/mod golang:1.24-alpine \
+                go tool pprof -top -nodecount=25 /p/cpu.pprof 2>&1 | head -40 \
+                || echo "(pprof analysis failed)"
+            else
+              echo "(no profile captured — nothing to analyse)"
+            fi
+
+            echo ""
+            echo "=== /api/status after ==="
+            STATUS_AFTER="$(curl -s --max-time 10 http://localhost:8080/api/status || true)"
+            echo "${STATUS_AFTER:-(unreachable)}"
+            UPTIME_AFTER="$(echo "$STATUS_AFTER" | grep -oP '"uptime":\K[0-9]+' || echo 0)"
+            echo "=== run validity ==="
+            echo "  uptime before: ${UPTIME_BEFORE}s   after: ${UPTIME_AFTER}s"
+            if [ "${UPTIME_AFTER:-0}" -lt "${UPTIME_BEFORE:-0}" ]; then
+              echo "✗ VOID: the node restarted during this run — the profile describes a restart, not steady-state load"
+              exit 1
+            fi
+            echo "✓ the node did not restart — the profile stands"
+        env:
+          DURATION: ${{ inputs.duration }}
+          RAMP: ${{ inputs.ramp }}
+          PROFILE_SECONDS: ${{ inputs.profile_seconds }}
+          BATCH_SIZE: ${{ inputs.batch_size }}
+          HTTP_TIMEOUT: ${{ inputs.http_timeout }}
+          TRANSFER_WEI: ${{ inputs.transfer_amount_wei }}
+          NUM_SEEDS: ${{ inputs.num_seeds }}
