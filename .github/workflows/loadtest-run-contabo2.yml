@@ -157,7 +157,11 @@ jobs:
               golang:1.24-alpine \
               go build -o loadtest main.go
 
-            echo "=== Running phase(s) [$PHASE], seeds=$NUM_SEEDS, duration=$DURATION, ramp=${RAMP}s ==="
+            # Marker for the node-log window below: everything the node logs
+            # from here on belongs to this run and nothing before it does.
+            RUN_START="$(date -u +%Y-%m-%dT%H:%M:%S)"
+
+            echo "=== Running phase(s) [$PHASE], seeds=$NUM_SEEDS, duration=$DURATION, ramp=${RAMP}s, batch=$BATCH_SIZE, timeout=$HTTP_TIMEOUT ==="
             docker run --rm --network host \
               -v "$(pwd)":/w -w /w \
               -v /root/go-mod-cache:/go/pkg/mod \
@@ -174,6 +178,28 @@ jobs:
                 -transfer-amount-wei "$TRANSFER_WEI" \
                 -batch-size "$BATCH_SIZE" \
                 -http-timeout "$HTTP_TIMEOUT"
+
+            # WHAT THE NODE ITSELF SAW, bounded to this run's window.
+            #
+            # Every run so far has been diagnosed purely from the generator's
+            # side, which can only ever report "no answer came back". The
+            # 2026-07-25 06:45 run reached the end of what that can explain:
+            # 201 attempts, 201 timeouts at 30s, ZERO responses, while the node
+            # kept producing blocks at a steady 1/s throughout and answered
+            # /api/status fine before and after. Whatever the batch path is
+            # doing, the answer is on the node's side of the socket.
+            #
+            # --since bounds this to the run, so it stays cheap even on a box
+            # whose log is hours deep -- the earlier diagnose workflow's
+            # unbounded greps cost ~26s each and ran a step into its timeout.
+            echo ""
+            echo "=== what the node logged during this run ==="
+            docker logs --since "$RUN_START" aequitas-node 2>&1 \
+              | grep -E '\[RPC\]|\[TX\]|\[BLOCK\] ⏱|Warning|panic|WAL|rate limit|batch' \
+              | tail -40 \
+              || echo "(nothing matched — the node logged no RPC/TX/timing lines for this window)"
+            echo "--- slowest ticks during the run ---"
+            docker logs --since "$RUN_START" aequitas-node 2>&1 | grep -F '[BLOCK] ⏱' | tail -10 || echo "(no slow-tick lines — production stayed inside its budget)"
 
             echo ""
             echo "=== /api/status after the run ==="
