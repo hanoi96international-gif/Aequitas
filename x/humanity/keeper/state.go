@@ -6235,8 +6235,123 @@ func (cs *ChainState) CalcGini() float64 {
 
 func (cs *ChainState) CalcAequitasIndex() float64 {
 	gini := cs.CalcGini()
+	return aequitasIndexFromGini(gini)
+}
+
+// aequitasIndexFromGini is CalcAequitasIndex's arithmetic without the lock,
+// so StatusMetrics can derive the index from a gini it already computed.
+func aequitasIndexFromGini(gini float64) float64 {
 	index := gini * 100.0
 	return float64(int(index*10)) / 10.0
+}
+
+// StatusMetrics bundles everything /api/status needs out of ChainState.
+//
+// FIX (P0 availability, 2026-07-25 — measured on the live primary, which was
+// answering /api/status in ELEVEN SECONDS while /api/health/combined and
+// /api/blocks answered in 0.22s):
+//
+// handleStatus used to assemble its response from nine separate accessor
+// calls, each taking cs.mu independently:
+//
+//	CalcAequitasIndex -> CalcGini   RLock
+//	CalcGini                        RLock   (same value, computed again)
+//	CalcPhase -> CalcGini           RLock   (and again)
+//	TotalHumans                     RLock   x2
+//	GetBalance(4 pool addresses)    LOCK    x4  <- WRITE lock, not read
+//
+// GetBalance takes the WRITE lock because it may lazily load a cold account.
+// So every hit on a read-only display endpoint — the one the explorer polls
+// on a timer, from every open browser tab — acquired the global state write
+// lock four times. Go's RWMutex blocks incoming readers as soon as a writer
+// queues, so those four acquisitions each had to wait out whatever held the
+// lock, and in turn stalled every reader behind them.
+//
+// The 11s itself is not this function's arithmetic (gini over a few hundred
+// accounts is microseconds) — it is time spent WAITING, because a block
+// replay holds cs.mu for the duration of a block, and this chain still has
+// 50,000-transfer load-test blocks in its history. The knock-on effect was
+// the real damage: /api/peers/register contends for the same lock, so
+// Contabo1's registration POST timed out, its challenge expired before the
+// retry landed, and the primary logged "invalid/expired challenge signature"
+// in a loop while the retries tripped its own rate limiter.
+//
+// This computes the whole set under ONE read lock, and reads the four pool
+// balances from Postgres OUTSIDE the lock entirely — pool addresses are
+// tokenomics infrastructure that never has demurrage applied (see
+// distributeUBIPoolLocked's P0-FIX), so the stored balance IS the effective
+// balance and no settlement is needed to report it.
+type StatusMetrics struct {
+	Humans         int
+	Supply         float64
+	Gini           float64
+	Index          float64
+	Phase          int
+	PoolValidators float64
+	PoolLP         float64
+	PoolUBI        float64
+	PoolTreasury   float64
+}
+
+func (cs *ChainState) StatusMetrics() StatusMetrics {
+	// Pool balances first, without cs.mu: one DB round trip for all four.
+	pools := map[string]float64{}
+	if cs.db != nil {
+		rows, err := cs.db.Query(
+			`SELECT lower(address), balance FROM chain_accounts WHERE lower(address) = ANY($1)`,
+			pq.Array([]string{validatorsPoolAddr, lpPoolAddr, ubiPoolAddr, treasuryPoolAddr}),
+		)
+		if err == nil {
+			for rows.Next() {
+				var addr string
+				var bal float64
+				if rows.Scan(&addr, &bal) == nil {
+					pools[addr] = bal
+				}
+			}
+			rows.Close()
+		}
+	}
+
+	cs.mu.RLock()
+	humans := int(cs.humanCountLocked())
+	gini := cs.calcGiniLocked()
+	// No DB (unit tests) — fall back to the in-memory map while we already
+	// hold the read lock, rather than reaching for the write lock later.
+	if cs.db == nil {
+		for _, addr := range []string{validatorsPoolAddr, lpPoolAddr, ubiPoolAddr, treasuryPoolAddr} {
+			if acc, ok := cs.accounts.Get(addr); ok {
+				pools[addr] = acc.Balance.Float()
+			}
+		}
+	}
+	cs.mu.RUnlock()
+
+	// Supply is humans x 1000 by protocol design (see TotalSupply) — derived
+	// here from the count we just read instead of taking the lock again.
+	supply := float64(humans) * 1000.0
+
+	phase := 0
+	switch {
+	case humans >= 1000000 && gini < 0.3:
+		phase = 3
+	case humans >= 10000 || supply >= 10000000:
+		phase = 2
+	case humans >= 100:
+		phase = 1
+	}
+
+	return StatusMetrics{
+		Humans:         humans,
+		Supply:         supply,
+		Gini:           gini,
+		Index:          aequitasIndexFromGini(gini),
+		Phase:          phase,
+		PoolValidators: pools[validatorsPoolAddr],
+		PoolLP:         pools[lpPoolAddr],
+		PoolUBI:        pools[ubiPoolAddr],
+		PoolTreasury:   pools[treasuryPoolAddr],
+	}
 }
 
 func (cs *ChainState) CalcPhase() int {
