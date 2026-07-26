@@ -125,11 +125,32 @@ jobs:
             # Wait for the NODE to report applied transfers. Waiting on the node's
             # own counter, not on a fixed sleep, is what makes the dump provably
             # concurrent with real load -- that is the whole point of this file.
-            echo "=== waiting until the node reports applied transfers ==="
+            # WAIT FOR THE RUN PHASE, NOT MERELY FOR TRAFFIC.
+            #
+            # This previously waited for the node to report "transfers applied"
+            # and fired on the FUND phase, which moves seed money to the test
+            # accounts using just 5 seed senders. Every dump then showed 6-8
+            # concurrent requests -- the 5 seeds -- and that got misread as
+            # proof that the generator could not keep the node busy, when the
+            # 72-pair run phase had not started yet. The fund phase even ends
+            # with a deliberate 15s settle pause, so some dumps landed in dead
+            # air.
+            #
+            # The generator announces its phases, so wait for the run phase in
+            # ITS log, then confirm the node is actually applying transfers.
+            echo "=== waiting for the generator to enter the run phase ==="
             SEEN=0
-            for i in $(seq 1 60); do
-              if docker logs --since 4s aequitas-node 2>&1 | grep -q 'transfers applied'; then
-                SEEN=1; echo "load detected after ~${i}x2s"; break
+            for i in $(seq 1 90); do
+              if grep -q '=== PHASE run' /tmp/loadrun.log 2>/dev/null; then
+                echo "run phase started after ~$((i*2))s"
+                # Ramp is 5s; sample once pairs are actually sending.
+                sleep 8
+                if docker logs --since 4s aequitas-node 2>&1 | grep -q 'transfers applied'; then
+                  SEEN=1; echo "node confirmed applying transfers during the run phase"
+                else
+                  echo "run phase started but the node reports no applied transfers -- see generator log below"
+                fi
+                break
               fi
               sleep 2
             done
