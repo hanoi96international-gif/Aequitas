@@ -1,0 +1,105 @@
+name: Why Contabo1 will not produce (manual, read-only)
+
+# Contabo1 is fully synced and still refuses to produce. Measured 17:50:36:
+#
+#   contabo1  "Not yet 3 consecutive clean sync cycles": 780 hits, still firing
+#   contabo2  same gate: 1 hit, at startup, then produced ever since
+#   both at height 1939402, both orphan_missing_parents = 0
+#
+# Same code, same height, no orphans on either. So the gate on Contabo1 is not
+# reporting a real catch-up deficit — its cleanSyncStreak is being reset every
+# cycle by something Contabo2 does not experience.
+#
+# doSyncOnce resets the streak at exactly two places:
+#
+#   sync_blocks.go ~1368  violatesFinality  -> unreachable for a TRUSTED SEED,
+#                         because isFinalityViolation returns false outright for
+#                         block.FromSync (finality.go:500) and doSyncOnce sets
+#                         FromSync from isTrustedSyncSource. Only production
+#                         gating cares about seeds (hasCaughtUpWithAllPeers reads
+#                         dag.trustedSeeds), so this branch cannot be the cause.
+#
+#   sync_blocks.go ~1431  AddPeerBlock rejected the block AND IsWithinOrphanGrace
+#                         was false -> i.e. rejected for something OTHER than a
+#                         missing parent still inside the 48s grace: bad
+#                         signature, unauthorized proposer, finality violation,
+#                         far-ahead fork, suspension.
+#
+# By elimination it is the second one, and the rejection reason is printed by
+# AddPeerBlock itself. This reads that reason instead of guessing it — every
+# previous fix in this area is a comment documenting a wrong guess, so the
+# rejection line is worth one workflow.
+#
+# Also dumps /api/health/combined from all three, whose sync_diagnostics.peers
+# carries the two numbers that decide the shape of the fix: clean_sync_streak
+# per peer (which seed is pinned at 0) and deep_scan_floor_override (Contabo1
+# lowered its floor to ~1938013 at 17:41 and is now ~1400 blocks above it, so
+# every sweep re-walks that whole span).
+#
+# Strictly read-only: docker logs and GETs. No writes, no restarts.
+
+on:
+  workflow_dispatch:
+    inputs:
+      log_lines:
+        description: "How many recent log lines to scan on Contabo1."
+        required: false
+        default: "4000"
+
+jobs:
+  contabo1:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Read Contabo1's rejection reasons and per-peer sync state
+        env:
+          LOG_LINES: ${{ inputs.log_lines }}
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: 173.249.37.118
+          username: root
+          key: ${{ secrets.CONTABO_SSH_KEY }}
+          port: 22
+          fingerprint: "SHA256:noMtjHV8c+2iEFZu3TRUP6WRwGjkrvFke71KgU6Eyt4"
+          script_stop: false
+          timeout: 300s
+          command_timeout: 300s
+          envs: LOG_LINES
+          script: |
+            set -uo pipefail
+            echo "=== date ==="
+            date -u
+
+            echo ""
+            echo "=== per-peer sync state on all three (clean_sync_streak, deep_scan_floor_override) ==="
+            for t in "primary|https://aequitas.digital" "contabo1|http://localhost:8080" "contabo2|http://194.163.188.71:8080"; do
+              n="${t%%|*}"; u="${t#*|}"
+              echo "--- $n ---"
+              curl -sS --max-time 20 "$u/api/health/combined" 2>/dev/null \
+                | tr ',' '\n' | grep -E 'peer_url|clean_sync_streak|deep_scan_resume_height|deep_scan_floor_override|boot_height|finalized_height|"height"' \
+                || echo "(unreachable)"
+            done
+
+            echo ""
+            echo "=== Contabo1: what AddPeerBlock is REJECTING (the streak-resetting rejections) ==="
+            # These are the lines AddPeerBlock prints when it refuses a block.
+            # IsWithinOrphanGrace is false for every one of them, so each is a
+            # streak reset. Counted by kind first, then shown.
+            docker logs --tail "$LOG_LINES" aequitas-node 2>&1 \
+              | grep -E '\[DAG\] .*(Rejected|✗|Dropped|Unknown proposer|unauthorized|suspended)|\[FINALITY\] .*(reject|violation)' \
+              | sed -E 's/#[0-9]+/#N/g; s/0x[0-9a-fA-F]{6,}/0xADDR/g; s/[0-9a-f]{16,}/HASH/g' \
+              | sort | uniq -c | sort -rn | head -15
+            echo "--- the 20 most recent, unredacted ---"
+            docker logs --tail "$LOG_LINES" aequitas-node 2>&1 \
+              | grep -E '\[DAG\] .*(Rejected|✗|Dropped|Unknown proposer|unauthorized|suspended)|\[FINALITY\] .*(reject|violation)' \
+              | tail -20 || echo "(none — then the reset is NOT an AddPeerBlock rejection)"
+
+            echo ""
+            echo "=== Contabo1: deferral / unmerged accounting per cycle ==="
+            docker logs --tail "$LOG_LINES" aequitas-node 2>&1 \
+              | grep -E 'deferred block|still not in the DAG|NOT caught up|deepScan|clean sync' \
+              | tail -20 || echo "(none)"
+
+            echo ""
+            echo "=== Contabo1: is it merging at all? (last 10 merges) ==="
+            docker logs --tail "$LOG_LINES" aequitas-node 2>&1 \
+              | grep -E 'Added [0-9]+ new blocks|🔀 Merged' | tail -10 || echo "(none)"
