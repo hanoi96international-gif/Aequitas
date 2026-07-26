@@ -1916,22 +1916,39 @@ func (dag *BlockDAG) calculateHash(b *Block) string {
 func calculateBlockHash(b *Block) string {
 // The commitment to this block's transactions.
 //
-// Roadmap step 4 (see tx_batch.go): when the block carries its digest
-// explicitly, use that — which is what lets a block travel WITHOUT its body
-// while hashing identically. The preimage below always contained only this
-// one digest, never the transaction list, so nothing about the hash changes
-// and no activation height is needed.
+// AN ATTACHED BODY ALWAYS WINS. b.TxRoot is consulted ONLY when the block
+// carries no transactions at all, and that asymmetry is load-bearing
+// security rather than a style choice. This hash is what the proposer signs
+// and what AddPeerBlock re-derives and compares (integrity check 1) before
+// accepting any peer block. If a declared TxRoot could override an attached
+// body, a peer could keep a genuine block's signed root, swap the
+// transaction list for one of its own, and still pass BOTH the hash check
+// and the signature check — arbitrary forged transfers riding on a validly
+// signed block. Deriving from the body whenever one is present keeps the
+// hash binding whatever will actually be replayed, so a swapped body simply
+// fails to hash to the signed value and is rejected.
 //
-// A block that does NOT carry the field (produced before it existed, or by
-// an older peer) derives the root from its attached transactions exactly as
-// before, keeping every historical hash reproducible.
+// Roadmap step 4 (see tx_batch.go): when no body is attached, the declared
+// digest is used — and THAT is what lets a block travel without its
+// transactions while hashing identically, because the preimage below always
+// contained only this one digest, never the transaction list. A stripped
+// block and the same block carrying its body therefore produce the same
+// hash, with no activation height and no fork. AttachTxBatch independently
+// re-checks a fetched body against this same signed root before attaching
+// it, so on the by-reference path the body is verified twice over.
+//
+// A block carrying neither (produced before the field existed) derives the
+// root from its transactions exactly as before, keeping every historical
+// hash reproducible.
 //
 // Normalize nil to empty slice so JSON always produces "[]" not "null".
 // omitempty on the Transactions field strips the key during HTTP transport,
 // and the receiver deserialises to nil — without this normalisation the
 // tx_root differs between producer and receiver, causing hash mismatches.
-txRoot := b.TxRoot
-if txRoot == "" {
+var txRoot string
+if len(b.Transactions) == 0 && b.TxRoot != "" {
+txRoot = b.TxRoot
+} else {
 txs := b.Transactions
 if txs == nil {
 txs = []Transaction{}

@@ -82,6 +82,45 @@ func TestTxBatchRoot_MatchesBlockHashCommitment(t *testing.T) {
 	}
 }
 
+// THE ATTACK THIS PREVENTS, and the reason calculateBlockHash consults TxRoot
+// only when no body is attached:
+//
+// AddPeerBlock's integrity check 1 recomputes this hash and compares it to the
+// claimed one, and the proposer's signature is over exactly that hash. So the
+// hash is the ONLY thing binding a block to its transactions. If a declared
+// tx_root could override an attached body, a peer could take a genuine signed
+// block, keep its root and signature untouched, swap the transaction list for
+// one paying itself, and pass both checks — forged transfers on a validly
+// signed block, which is as bad as this system gets.
+//
+// Deriving the root from the body whenever there is one makes that swap
+// self-defeating: the hash follows the transactions that will actually be
+// replayed, so tampering changes the hash and the block is rejected.
+func TestCalculateBlockHash_AttachedBodyOverridesDeclaredRoot(t *testing.T) {
+	genuine := []Transaction{{Type: "transfer", Wallet: "0xvictim", To: "0xrecipient", Amount: 1, TxHash: "0x1"}}
+	signedRoot := txBatchRoot(genuine)
+
+	honest := &Block{Height: 9, Timestamp: 1, ParentHashes: []string{"p"}, Proposer: "0xp",
+		Transactions: genuine, TxRoot: signedRoot}
+
+	// The forgery: the signed root is kept verbatim, only the body is swapped.
+	forged := &Block{Height: 9, Timestamp: 1, ParentHashes: []string{"p"}, Proposer: "0xp",
+		Transactions: []Transaction{{Type: "transfer", Wallet: "0xvictim", To: "0xattacker", Amount: 1000000, TxHash: "0x1"}},
+		TxRoot:       signedRoot}
+
+	if calculateBlockHash(honest) == calculateBlockHash(forged) {
+		t.Fatal("a block whose body was swapped while keeping the signed tx_root must NOT hash to the same value — " +
+			"it would pass AddPeerBlock's hash check and the proposer signature check, letting a peer forge transfers on a validly signed block")
+	}
+
+	// And the by-reference case must still work: stripped of its body, the
+	// honest block hashes to exactly what it hashed to with the body attached.
+	stripped := &Block{Height: 9, Timestamp: 1, ParentHashes: []string{"p"}, Proposer: "0xp", TxRoot: signedRoot}
+	if calculateBlockHash(stripped) != calculateBlockHash(honest) {
+		t.Fatal("stripping the body from an honest block must not change its hash, or block-bodies-by-reference cannot work at all")
+	}
+}
+
 // A body served by a peer must be rejected unless it hashes to exactly the
 // root the signed block committed to. This is the security boundary of the
 // whole by-reference scheme.
