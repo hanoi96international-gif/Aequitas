@@ -1,0 +1,180 @@
+name: Trace the exact ancestor the primary is missing (manual, read-only)
+
+# THE MEASUREMENT THAT SEPARATES THE TWO REMAINING CAUSES of the 2026-07-26
+# one-way fork, and the reason the other tools could not.
+#
+# What is already proven (find-fork-point run 30211870141 / 30212008663):
+#   - real fork: at heights 1936832 / 1936880 / 1936970 all three nodes hold
+#     the height, Contabo1 and Contabo2 are byte-identical, the primary differs
+#   - the flow is ONE-WAY: the primary's tip is known to both Contabos, but
+#     neither Contabo's tip is known to the primary even 8s later
+#   - topology is fine: all three list each other as peers
+#   - the blue-score gap is GROWING (1457 -> 1580 -> 1806), so it is not a
+#     transient spread
+#   - the primary logs every Contabo block as "queued as orphan — missing
+#     parent <hash>" and reports 116/114 deferrals unresolved for >48s
+#
+# What find-fork-point's bisect could NOT answer: it compares
+# /api/block?height=N and scores a height where a node answers `null` as
+# DIFFER. Both Contabos answer null below ~1936660 simply because that is the
+# bottom of their in-memory window, so the bisect walked down to their window
+# floor and reported 1936481 as the "first divergent height". That is an
+# artifact, not a fork point. Comparing BY HEIGHT cannot distinguish "we
+# disagree here" from "I do not have this here".
+#
+# This walks BY HASH instead, which has no such ambiguity. Starting at
+# Contabo1's tip it follows the selected-parent chain backwards and asks, for
+# every ancestor hash, two independent questions:
+#
+#   does the PRIMARY have this block?      (GET /api/blocks/by-hash on primary)
+#   does CONTABO1 still SERVE this block?  (GET /api/blocks/by-hash on c1)
+#
+# The first hash where those two answers diverge is the whole diagnosis:
+#
+#   primary NO + contabo1 YES  -> the primary can close the gap and does not.
+#                                 The defect is in its fetch/accept path:
+#                                 fetchMissingAncestors' `fetchedThisRound == 0`
+#                                 early return (sync_blocks.go), an AddPeerBlock
+#                                 gate silently rejecting the fetched ancestor,
+#                                 or the one-shot unknown-proposer recovery in
+#                                 block.go that never retries.
+#
+#   primary NO + contabo1 NO   -> the backward walk terminates at an ancestor
+#                                 nobody will serve. Then no amount of retrying
+#                                 helps and the fix has to give the primary a
+#                                 way to bridge that boundary.
+#
+# Also prints /api/debug/dag-gates from all three (orphan_missing_parents,
+# orphan_blocks_waiting, boot_height, resync_in_progress) because those
+# counters say directly how big the primary's stuck set is.
+#
+# Strictly read-only: GETs only. No writes, no restarts, no resync.
+
+on:
+  workflow_dispatch:
+    inputs:
+      depth:
+        description: "How many ancestors to walk back from Contabo1's tip before giving up."
+        required: false
+        default: "400"
+      start_from:
+        description: "Optional block hash to start the walk from (default: Contabo1's current tip)."
+        required: false
+        default: ""
+
+jobs:
+  trace:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Walk Contabo1's ancestor chain and ask the primary about each hash
+        env:
+          DEPTH: ${{ inputs.depth }}
+          START_FROM: ${{ inputs.start_from }}
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          # From Contabo1: it reaches the primary over the public URL and
+          # Contabo2 over its IP, same vantage point compare-stateroot-components
+          # uses.
+          host: 173.249.37.118
+          username: root
+          key: ${{ secrets.CONTABO_SSH_KEY }}
+          port: 22
+          fingerprint: "SHA256:noMtjHV8c+2iEFZu3TRUP6WRwGjkrvFke71KgU6Eyt4"
+          script_stop: false
+          timeout: 600s
+          command_timeout: 600s
+          envs: DEPTH,START_FROM
+          script: |
+            set -uo pipefail
+            PRIMARY="https://aequitas.digital"
+            C1="http://localhost:8080"
+            C2="http://194.163.188.71:8080"
+
+            echo "=== date ==="
+            date -u
+
+            echo ""
+            echo "=== dag gates on all three ==="
+            for t in "primary|$PRIMARY" "contabo1|$C1" "contabo2|$C2"; do
+              n="${t%%|*}"; u="${t#*|}"
+              echo "  $n: $(curl -sS --max-time 15 "$u/api/debug/dag-gates" 2>/dev/null)"
+            done
+
+            # byhash <url> <hash> -> prints the block JSON array (possibly "[]")
+            byhash() {
+              curl -sS --max-time 20 -X POST -H 'Content-Type: application/json' \
+                -d "{\"hashes\":[\"$2\"]}" "$1/api/blocks/by-hash" 2>/dev/null
+            }
+            # has <url> <hash> -> "YES" if that node returned a block for the hash
+            has() {
+              case "$(byhash "$1" "$2")" in
+                *'"hash"'*) echo YES ;;
+                *)          echo NO  ;;
+              esac
+            }
+            # selected_parent <json> -> first entry of parent_hashes (the
+            # selected parent; the merge-set siblings follow it)
+            selected_parent() {
+              echo "$1" | grep -o '"parent_hashes":\[[^]]*\]' | head -1 \
+                | grep -o '"[0-9a-f]\{64\}"' | head -1 | tr -d '"'
+            }
+            height_of() {
+              echo "$1" | grep -o '"height":[0-9]*' | head -1 | cut -d: -f2
+            }
+
+            CUR="$START_FROM"
+            if [ -z "$CUR" ]; then
+              CUR="$(curl -sS --max-time 15 "$C1/api/status" | grep -o '"latest_hash":"[0-9a-f]*"' | head -1 | cut -d'"' -f4)"
+            fi
+            echo ""
+            echo "=== walking back from contabo1 hash $CUR (max $DEPTH steps) ==="
+            echo "  step  height     hash                primary  c1_serves  c2_serves"
+
+            BOUNDARY_FOUND=0
+            i=0
+            while [ "$i" -lt "$DEPTH" ]; do
+              JSON="$(byhash "$C1" "$CUR")"
+              case "$JSON" in
+                *'"hash"'*) : ;;
+                *)
+                  echo "  contabo1 no longer serves $CUR — walk ends here (this is c1's own window floor)"
+                  break ;;
+              esac
+              H="$(height_of "$JSON")"
+              PH="$(has "$PRIMARY" "$CUR")"
+              C2H="$(has "$C2" "$CUR")"
+              printf '  %-5s %-10s %-18s %-8s %-10s %-10s\n' "$i" "${H:-?}" "$(echo "$CUR" | cut -c1-18)" "$PH" "YES" "$C2H"
+
+              if [ "$PH" = "YES" ]; then
+                echo ""
+                echo "  >>> BOUNDARY: the primary HAS this block ($CUR, height ${H:-?})."
+                echo "      Everything printed above it is a block the primary lacks while"
+                echo "      contabo1 is serving it on request."
+                BOUNDARY_FOUND=1
+                break
+              fi
+
+              P="$(selected_parent "$JSON")"
+              if [ -z "$P" ]; then
+                echo "  no parent_hashes on this block — chain root reached"
+                break
+              fi
+              CUR="$P"
+              i=$((i+1))
+            done
+
+            echo ""
+            echo "=== VERDICT ==="
+            if [ "$BOUNDARY_FOUND" = "1" ]; then
+              echo "  Every ancestor above the boundary is one contabo1 SERVES and the"
+              echo "  primary LACKS. The primary is therefore able to fetch them and is"
+              echo "  not doing so (or is fetching and then rejecting them)."
+              echo "  -> cause is in the primary's fetch/accept path, not in availability."
+            else
+              echo "  No boundary found within $DEPTH steps: the primary lacked every"
+              echo "  ancestor walked. Either the fork is deeper than $DEPTH (re-run with"
+              echo "  a larger depth), or the walk ended at a block contabo1 itself no"
+              echo "  longer serves -- in which case the chain terminates at an ancestor"
+              echo "  nobody will hand over and the primary cannot close the gap by"
+              echo "  fetching at all."
+            fi
