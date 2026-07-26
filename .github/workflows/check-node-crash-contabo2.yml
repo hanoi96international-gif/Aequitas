@@ -1,0 +1,98 @@
+name: Check why the node process died on Contabo2 (read-only)
+
+# WHY THIS EXISTS.
+#
+# diagnose-tps-ceiling-contabo2.yml run 30210444258 (2026-07-26) never got to
+# take a goroutine dump. The fund phase (5 seed senders) and the warmup phase
+# both completed with zero failures, and then the moment the run phase opened
+# 72 concurrent senders the generator's monitor went
+#
+#   connection reset by peer -> EOF -> connection refused (repeatedly)
+#
+# That is not a slow node and not a rate limit. "Connection reset" mid-request
+# followed by "connection refused" is the process being gone: the listener
+# died with connections open, Docker restarted it, it came up (one
+# height=1934680 line got through), took load again and died again.
+#
+# A Go process ends that abruptly for a very short list of reasons, and the
+# runtime writes the reason to stderr before it aborts. This workflow reads it
+# instead of guessing: exit code, OOM flag, restart count, and the actual
+# `fatal error:` / `panic:` block from the container log, with the goroutine
+# frames underneath it.
+#
+# Read-only: docker inspect and docker logs. Starts nothing, changes nothing,
+# restarts nothing.
+
+on:
+  workflow_dispatch:
+    inputs:
+      host:
+        description: "Which box to inspect."
+        required: false
+        default: "contabo2"
+        type: choice
+        options: [contabo2, contabo1]
+
+jobs:
+  crash-report:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Read the crash reason from the container
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ inputs.host == 'contabo1' && '173.249.37.118' || '194.163.188.71' }}
+          username: root
+          key: ${{ inputs.host == 'contabo1' && secrets.CONTABO_SSH_KEY || secrets.CONTABO2_SSH_KEY }}
+          port: 22
+          fingerprint: ${{ inputs.host == 'contabo1' && 'SHA256:noMtjHV8c+2iEFZu3TRUP6WRwGjkrvFke71KgU6Eyt4' || 'SHA256:VIwj7Faxiga2n45HVHZEQFPxcbRKHgSgHoxAFsf2wto' }}
+          script_stop: false
+          timeout: 240s
+          command_timeout: 240s
+          script: |
+            set -uo pipefail
+
+            echo "=== container state ==="
+            # ExitCode and OOMKilled are the two facts that split the causes
+            # apart before any log is read: 137 + OOMKilled=true is the kernel
+            # killing it for memory, exit 2 is the Go runtime aborting itself
+            # (fatal error / unrecovered panic), 0 is a clean stop.
+            docker inspect -f 'Status={{.State.Status}} ExitCode={{.State.ExitCode}} OOMKilled={{.State.OOMKilled}} RestartCount={{.RestartCount}} StartedAt={{.State.StartedAt}} FinishedAt={{.State.FinishedAt}}' aequitas-node 2>&1 || echo "(container not found)"
+
+            echo ""
+            echo "=== how often it has died recently ==="
+            # Docker keeps only the CURRENT process's log after a restart when
+            # the container is recreated, but a restart-in-place keeps the
+            # whole stream -- so counting the runtime's start banner tells us
+            # how many separate process lifetimes this log covers.
+            docker logs -t aequitas-node 2>&1 | grep -cE 'fatal error:|^panic:' | sed 's/^/fatal-error or panic lines in log: /'
+
+            echo ""
+            echo "=== THE CRASH ITSELF (last fatal error / panic, with frames) ==="
+            # The reason is on the `fatal error:` line; the goroutine frames
+            # under it name the code that did it. 120 lines is enough for the
+            # aborting goroutine plus the handful the runtime prints with it,
+            # without dumping every goroutine on the box.
+            docker logs -t aequitas-node 2>&1 \
+              | grep -nE 'fatal error:|^[0-9-]+T[0-9:.]+Z panic:' \
+              | tail -5 \
+              | sed 's/^/  hit: /'
+            echo "--- context around the LAST one ---"
+            docker logs -t aequitas-node 2>&1 \
+              | awk '/fatal error:|panic: /{found=NR; buf=""} found && NR>=found && NR<found+120 {print}' \
+              | tail -120
+            echo "(if the section above is empty, the process did not abort in THIS log --"
+            echo " check ExitCode/OOMKilled above; a recreated container starts a fresh log)"
+
+            echo ""
+            echo "=== last 40 lines before the log ends ==="
+            docker logs -t --tail 40 aequitas-node 2>&1
+
+            echo ""
+            echo "=== memory, in case it was the kernel and not the runtime ==="
+            free -m
+            dmesg -T 2>/dev/null | grep -iE 'out of memory|oom-kill' | tail -5 || echo "(no OOM lines in dmesg)"
+
+            echo ""
+            echo "=== /api/status right now ==="
+            curl -s --max-time 5 http://localhost:8080/api/status || echo "(unreachable)"
+            echo ""
