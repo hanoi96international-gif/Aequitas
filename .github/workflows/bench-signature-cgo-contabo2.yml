@@ -90,12 +90,12 @@ jobs:
             curl -s --max-time 5 http://127.0.0.1:8080/api/status | head -c 200 || echo "(status nicht lesbar)"
             echo
             chmod +x /tmp/scaling_cgo.test
-            echo "=== signature verification WITH cgo/libsecp256k1 ==="
+            echo "=== secp256k1 WITH cgo/libsecp256k1, and ed25519 for comparison ==="
             # nice -n 10: this shares 6 cores with a live validator, so the node
             # wins every scheduling contest. The benchmark saturates all cores
             # by design, which is exactly why it must yield.
             AEQUITAS_SCALING_BENCH=1 nice -n 10 /tmp/scaling_cgo.test \
-              -test.run 'TestScalingUnknown_SignatureVerification' \
+              -test.run 'TestScalingUnknown_SignatureVerification|TestScalingUnknown_Ed25519VsSecp256k1' \
               -test.v -test.timeout 5m 2>&1 | grep -Ev '^(=== RUN|=== PAUSE|=== CONT)' | tail -30
             echo "=== cleanup ==="
             rm -f /tmp/scaling_cgo.test
