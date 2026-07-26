@@ -153,7 +153,6 @@ type EVMRPCServer struct {
 	state             *ChainState
 	evm               *EVMEngine
 	mu                sync.Mutex // guards all map fields below against concurrent writes
-	nonces            map[string]uint64
 	deployedContracts map[string]string // txHash -> contractAddress (lowercase)
 	txStatus          map[string]bool   // txHash -> true if execution succeeded
 	txError           map[string]string // txHash -> error message if failed
@@ -179,7 +178,7 @@ type EVMRPCServer struct {
 	// only need to cover the window where a wallet polls straight after
 	// getting its hash back.
 	txOrder []string
-	// nonceMu shards the nonce critical section by sender address.
+	// nonceShards shards the nonce critical section by sender address.
 	//
 	// FIX (2026-07-26, measured): sendRawTransaction used to hold the single mu
 	// across the whole load-check-reserve sequence -- INCLUDING two synchronous
@@ -200,7 +199,25 @@ type EVMRPCServer struct {
 	//
 	// Fixed-size array rather than a map: no allocation, no eviction, and no
 	// lock needed to find a lock.
-	nonceMu [nonceShardCount]sync.Mutex
+	nonceShards [nonceShardCount]nonceShard
+}
+
+// nonceShard is one slice of the nonce cache: a mutex and the map it alone
+// guards.
+//
+// FIX (2026-07-26): the map MUST be sharded together with the mutex. The first
+// version of this sharding kept a single `nonces map[string]uint64` on the
+// server and only split the lock, so two senders landing in different shards
+// held different mutexes while writing the same Go map. A Go map is unsafe for
+// concurrent writes regardless of whether the keys differ, and the runtime
+// aborts the whole process with "fatal error: concurrent map writes" when it
+// notices -- an unrecoverable crash, not a recoverable panic, which is exactly
+// the failure mode to expect from a node under multi-sender load. Giving each
+// shard its own map restores the invariant the sharding was supposed to
+// preserve: every access to a map happens under the one mutex beside it.
+type nonceShard struct {
+	mu     sync.Mutex
+	nonces map[string]uint64
 }
 
 // nonceShardCount is a power of two so the shard index is a mask rather than a
@@ -209,15 +226,16 @@ type EVMRPCServer struct {
 // cost for every pair.
 const nonceShardCount = 256
 
-// nonceShard returns the lock guarding addr's entry in s.nonces. Callers must
-// use this for EVERY access to s.nonces -- mixing it with mu would leave the
-// map guarded by two different locks, which is no guard at all.
-func (s *EVMRPCServer) nonceShard(addr string) *sync.Mutex {
+// nonceShardFor returns the shard owning addr's nonce -- both the lock and the
+// map that lock guards. Callers must use this for EVERY nonce access; reaching
+// a nonce map through any other shard would leave it guarded by two different
+// mutexes, which is no guard at all.
+func (s *EVMRPCServer) nonceShardFor(addr string) *nonceShard {
 	h := uint32(2166136261)
 	for i := 0; i < len(addr); i++ {
 		h = (h ^ uint32(addr[i])) * 16777619
 	}
-	return &s.nonceMu[h&(nonceShardCount-1)]
+	return &s.nonceShards[h&(nonceShardCount-1)]
 }
 
 // txMetaMax bounds the four txHash-keyed caches. Generous enough to cover any
@@ -275,16 +293,26 @@ func NewEVMRPCServer(dag *BlockDAG, state *ChainState) *EVMRPCServer {
 		// node is reachable immediately.
 		SafeGoroutine("repairUnreplayedBlocks", dag.repairUnreplayedBlocks)
 	}
-	return &EVMRPCServer{
+	s := &EVMRPCServer{
 		dag:               dag,
 		state:             state,
 		evm:               engine,
-		nonces:            make(map[string]uint64),
 		deployedContracts: make(map[string]string),
 		txStatus:          make(map[string]bool),
 		txError:           make(map[string]string),
 		txSenders:         make(map[string]string),
 		txTos:             make(map[string]string),
+	}
+	s.initNonceShards()
+	return s
+}
+
+// initNonceShards gives every shard its own map up front, so no code path has
+// to lazily initialise one and no nil map write can reach a live node. Split
+// out so the tests build the shards exactly the way production does.
+func (s *EVMRPCServer) initNonceShards() {
+	for i := range s.nonceShards {
+		s.nonceShards[i].nonces = make(map[string]uint64)
 	}
 }
 
@@ -530,15 +558,15 @@ func (s *EVMRPCServer) getTransactionCount(params []json.RawMessage) (interface{
 	// Read DB outside the lock (avoids blocking other goroutines on a DB call).
 	dbNonce := s.state.LoadNonce(addr)
 	// Lock only for the map read/write — brief critical section. Must be the
-	// SAME lock sendRawTransaction uses for this address, or s.nonces would be
-	// guarded by two different mutexes.
-	shard := s.nonceShard(addr)
-	shard.Lock()
-	if dbNonce > s.nonces[addr] {
-		s.nonces[addr] = dbNonce
+	// SAME shard sendRawTransaction uses for this address, or the nonce would
+	// be guarded by two different mutexes.
+	shard := s.nonceShardFor(addr)
+	shard.mu.Lock()
+	if dbNonce > shard.nonces[addr] {
+		shard.nonces[addr] = dbNonce
 	}
-	result := s.nonces[addr]
-	shard.Unlock()
+	result := shard.nonces[addr]
+	shard.mu.Unlock()
 	return fmt.Sprintf("0x%x", result), nil
 }
 
@@ -795,22 +823,22 @@ func (s *EVMRPCServer) sendRawTransaction(params []json.RawMessage, pre *precomp
 	// both load nonce=0 from DB (DB read outside lock), and then both pass the
 	// second lock's check — both reserving nonce 0 and executing the same tx.
 	// Fix: hold the mutex for the entire DB-load + check + reserve sequence.
-	nonceLock := s.nonceShard(senderAddr)
-	nonceLock.Lock()
+	nonceLock := s.nonceShardFor(senderAddr)
+	nonceLock.mu.Lock()
 	// Populate from DB on first sight to recover correct nonce after restart.
-	if s.nonces[senderAddr] == 0 {
+	if nonceLock.nonces[senderAddr] == 0 {
 		if dbNonce := s.state.LoadNonce(senderAddr); dbNonce > 0 {
-			s.nonces[senderAddr] = dbNonce
+			nonceLock.nonces[senderAddr] = dbNonce
 		}
 	}
-	storedNonce := s.nonces[senderAddr]
+	storedNonce := nonceLock.nonces[senderAddr]
 	txNonce := tx.Nonce()
 	if txNonce < storedNonce {
-		nonceLock.Unlock()
+		nonceLock.mu.Unlock()
 		return nil, &RPCError{Code: -32603, Message: fmt.Sprintf("nonce too low: tx=%d expected=%d", txNonce, storedNonce)}
 	}
 	if txNonce > storedNonce {
-		nonceLock.Unlock()
+		nonceLock.mu.Unlock()
 		return nil, &RPCError{Code: -32603, Message: fmt.Sprintf("nonce too high: tx=%d expected=%d", txNonce, storedNonce)}
 	}
 	// Reserve nonce immediately — prevents replay even if two identical
@@ -818,22 +846,22 @@ func (s *EVMRPCServer) sendRawTransaction(params []json.RawMessage, pre *precomp
 	nextNonce := storedNonce + 1
 	reserved, err := s.state.ReserveNonce(senderAddr, storedNonce, nextNonce)
 	if err != nil {
-		nonceLock.Unlock()
+		nonceLock.mu.Unlock()
 		return nil, &RPCError{Code: -32603, Message: "nonce reservation failed: " + err.Error()}
 	}
 	if !reserved {
 		dbNonce := s.state.LoadNonce(senderAddr)
-		s.nonces[senderAddr] = dbNonce
-		nonceLock.Unlock()
+		nonceLock.nonces[senderAddr] = dbNonce
+		nonceLock.mu.Unlock()
 		return nil, &RPCError{Code: -32603, Message: fmt.Sprintf("nonce already reserved: tx=%d expected=%d", txNonce, dbNonce)}
 	}
-	s.nonces[senderAddr] = nextNonce
+	nonceLock.nonces[senderAddr] = nextNonce
 	// Derived here, but recorded below under mu rather than this lock.
 	toAddrForReceipt := ""
 	if tx.To() != nil {
 		toAddrForReceipt = strings.ToLower(tx.To().Hex())
 	}
-	nonceLock.Unlock()
+	nonceLock.mu.Unlock()
 	// Receipt metadata is keyed by txHash and shared across senders, so it
 	// belongs under mu rather than a per-sender lock. Taken separately and
 	// briefly, after the nonce lock is released, so the two never nest.
