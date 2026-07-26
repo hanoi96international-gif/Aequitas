@@ -1,0 +1,174 @@
+name: Compare loadtest account balances across all three nodes (manual, read-only)
+
+# THE FOLLOW-UP MEASUREMENT to compare-stateroot-components.yml.
+#
+# That workflow narrowed the 2026-07-26 divergence to exactly one StateRoot
+# input: account_set_xor differs between the primary and the two Contabos,
+# while pool reserves, LP shares, the nullifier XOR and last_ubi_at are
+# bit-identical on all three. total_supply and gini also match everywhere --
+# which is what transfers look like, since they move balances between
+# accounts without changing the total.
+#
+# So the question is no longer "which component" but "which accounts", and
+# there is an obvious suspect: the 145 disposable loadtest accounts on
+# Contabo2. 13,407 transfers were pushed into Contabo2's RPC during the
+# 16:51-16:53 diagnose run. Contabo1 ended up with the same account_set_xor
+# as Contabo2, so those transfers propagated between the secondaries. The
+# primary did not. Its /api/status showed raw_arrival latency averaging
+# 61,105 ms over 4,128 samples in that window, against ~60 ms on both
+# Contabos -- it was buried.
+#
+# This asks each node what it thinks the SAME account holds. If the primary
+# reports different balances for the loadtest accounts and identical ones for
+# everything else, the divergence is fully explained and bounded to
+# throwaway test money. If the balances match, the delta is somewhere else
+# and a resync would be papering over an unknown.
+#
+# It also reports the pending_txs outbox depth, because that is the mechanism
+# by which a transfer applied on one node reaches the others: rows sitting at
+# included_at = 0, or piled into pending_txs_dead_letter, would name where
+# the propagation stopped.
+#
+# PRIVATE KEYS: accounts.csv is index,address,privkey_hex. This cuts field 2
+# and only field 2 with `cut -d, -f2`, exactly as
+# check-loadtest-account-balances.yml does -- column 3 is never read into a
+# variable, never echoed, and never leaves the box. Balances are printed with
+# their address, which is public data already visible on the explorer.
+#
+# Strictly read-only: HTTP GETs plus two SELECT COUNT(*). No writes, no
+# restarts, no resync, nothing that moves funds.
+
+on:
+  workflow_dispatch:
+    inputs:
+      limit:
+        description: "How many accounts from accounts.csv to compare (0 = all 145)."
+        required: false
+        default: "0"
+      show_rows:
+        description: "How many individual mismatching accounts to print in full."
+        required: false
+        default: "15"
+
+jobs:
+  compare:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ask all three nodes what the loadtest accounts hold
+        env:
+          LIMIT: ${{ inputs.limit }}
+          SHOW_ROWS: ${{ inputs.show_rows }}
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          # Runs from Contabo2 because accounts.csv lives here. Contabo2 can
+          # reach the primary over the public URL and Contabo1 over its IP,
+          # the mirror image of what compare-stateroot-components does from
+          # Contabo1.
+          host: 194.163.188.71
+          username: root
+          key: ${{ secrets.CONTABO2_SSH_KEY }}
+          port: 22
+          fingerprint: "SHA256:VIwj7Faxiga2n45HVHZEQFPxcbRKHgSgHoxAFsf2wto"
+          script_stop: false
+          timeout: 600s
+          command_timeout: 600s
+          envs: LIMIT,SHOW_ROWS
+          script: |
+            set -uo pipefail
+            PRIMARY="https://aequitas.digital"
+            C1="http://173.249.37.118:8080"
+            C2="http://localhost:8080"
+            CSV=/root/contabo-loadtest/accounts.csv
+
+            echo "=== date ==="
+            date -u
+            [ -f "$CSV" ] || { echo "accounts.csv missing -- run loadtest-prepare-contabo2.yml first"; exit 1; }
+
+            echo ""
+            echo "=== heights, for context ==="
+            for t in "primary|$PRIMARY" "contabo1|$C1" "contabo2|$C2"; do
+              n="${t%%|*}"; u="${t#*|}"
+              echo "  $n -> $(curl -sS --max-time 15 "$u/api/status" 2>/dev/null | grep -o '\"height\":[0-9]*' | head -1)"
+            done
+
+            # bal <url> <addr> -- the ChainState native balance, which is the
+            # exact quantity that feeds account_set_xor (see handleBalance's
+            # own comment in api.go: ChainState is the single source of truth,
+            # the V7 contract's balanceOf can lag it).
+            bal() {
+              curl -sS --max-time 15 "$1/api/balance?wallet=$2" 2>/dev/null \
+                | grep -o '"balance":[0-9.e+-]*' | head -1 | cut -d: -f2
+            }
+
+            ADDRS="$(cut -d, -f2 "$CSV" | grep -Ei '^0x[0-9a-f]{40}$')"
+            if [ "${LIMIT:-0}" != "0" ]; then
+              ADDRS="$(echo "$ADDRS" | head -n "$LIMIT")"
+            fi
+            TOTAL=$(echo "$ADDRS" | grep -c .)
+            echo ""
+            echo "=== comparing $TOTAL accounts across the three nodes ==="
+
+            SAME=0; DIFF=0; SHOWN=0; UNREACH=0
+            DIFF_LIST=""
+            for a in $ADDRS; do
+              bp="$(bal "$PRIMARY" "$a")"
+              b1="$(bal "$C1" "$a")"
+              b2="$(bal "$C2" "$a")"
+              if [ -z "$bp" ] || [ -z "$b1" ] || [ -z "$b2" ]; then
+                UNREACH=$((UNREACH+1)); continue
+              fi
+              if [ "$bp" = "$b1" ] && [ "$bp" = "$b2" ]; then
+                SAME=$((SAME+1))
+              else
+                DIFF=$((DIFF+1))
+                DIFF_LIST="$DIFF_LIST$a "
+                if [ "$SHOWN" -lt "${SHOW_ROWS:-15}" ]; then
+                  echo "  MISMATCH $a  primary=$bp  contabo1=$b1  contabo2=$b2"
+                  SHOWN=$((SHOWN+1))
+                fi
+              fi
+            done
+
+            echo ""
+            echo "=== SUMMARY ==="
+            echo "  accounts compared:            $TOTAL"
+            echo "  identical on all three:       $SAME"
+            echo "  DIFFERENT on at least one:    $DIFF"
+            echo "  skipped (a node not answering): $UNREACH"
+            echo ""
+            echo "  -> DIFF > 0 with contabo1 == contabo2 != primary means the"
+            echo "     divergence is the loadtest money and nothing else."
+            echo "  -> DIFF == 0 means the account delta is in OTHER accounts;"
+            echo "     do NOT resync on the loadtest theory in that case."
+
+            # Are the secondaries agreeing with each other but not the primary?
+            # Counted separately because that is the exact shape the
+            # StateRoot comparison predicted.
+            C1EQC2=0; PNEQ=0
+            for a in $DIFF_LIST; do
+              bp="$(bal "$PRIMARY" "$a")"; b1="$(bal "$C1" "$a")"; b2="$(bal "$C2" "$a")"
+              [ "$b1" = "$b2" ] && C1EQC2=$((C1EQC2+1))
+              [ "$bp" != "$b1" ] && PNEQ=$((PNEQ+1))
+            done
+            echo ""
+            echo "  of the $DIFF mismatching accounts:"
+            echo "    contabo1 == contabo2:       $C1EQC2"
+            echo "    primary  != contabo1:       $PNEQ"
+
+            echo ""
+            echo "=== the propagation path: pending_txs outbox on Contabo2 ==="
+            # A transfer applied locally reaches the other nodes through this
+            # outbox (TransferAtomic writes the state change and the row in
+            # one DB transaction). Rows stuck at included_at = 0, or moved to
+            # the dead-letter table, would say the propagation stopped here.
+            DBURL="$(grep -E '^DATABASE_URL=' /root/.aequitas.env 2>/dev/null | head -1 | cut -d= -f2-)"
+            NET="$(docker inspect aequitas-node --format '{{range $n,$v := .NetworkSettings.Networks}}{{$n}}{{end}}' 2>/dev/null)"
+            if [ -n "$DBURL" ] && [ -n "$NET" ]; then
+              docker run --rm --network "$NET" postgres:16-alpine psql "$DBURL" -A -F' | ' -c \
+                "SELECT 'pending_unincluded' AS what, count(*) FROM pending_txs WHERE included_at = 0
+                 UNION ALL SELECT 'pending_total', count(*) FROM pending_txs
+                 UNION ALL SELECT 'dead_letter', count(*) FROM pending_txs_dead_letter" 2>&1 \
+                || echo "(query failed)"
+            else
+              echo "(no DATABASE_URL or network found -- skipped)"
+            fi
