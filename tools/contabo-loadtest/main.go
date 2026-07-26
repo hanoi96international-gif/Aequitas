@@ -534,7 +534,41 @@ func main() {
 	senders := testAccs[:numPairs]
 	recipients := testAccs[numPairs : 2*numPairs]
 
-	client := &rpcClient{url: *rpcURL, hc: &http.Client{Timeout: *httpTimeout}}
+	// The connection pool is load-bearing here, and leaving it at the default
+	// made this tool measure ITSELF rather than the node.
+	//
+	// With Transport nil, Go uses http.DefaultTransport, whose
+	// MaxIdleConnsPerHost is 2. The run phase starts one goroutine per pair
+	// (72 for the standard 150 accounts), so 72 senders were sharing two
+	// reusable connections: every request beyond the second had to open a
+	// fresh TCP connection and discard it afterwards, because the idle pool
+	// was already full.
+	//
+	// Measured on Contabo2, 2026-07-26: goroutine dumps taken during confirmed
+	// load (the node reporting 423 transfers/s at that very instant) showed
+	// 72-74 goroutines against 65 idle — only 7 to 9 concurrent requests
+	// actually reaching the node, from 72 client goroutines. None of them were
+	// blocked on a lock, which is what ruled out the node's own serialisation
+	// (cs.mu, roadmap step 5) and pointed here instead.
+	//
+	// This also explains why the WAL group commit never batched: it can only
+	// bundle Appends that are in flight at the same moment, and with a handful
+	// of requests arriving at a time there was nothing to bundle. The disk
+	// measured 133-169 fsyncs/s carrying up to MaxBatchSize=500 records each;
+	// at 423 transfers/s it was carrying roughly one.
+	//
+	// Sized far above any realistic pair count so the pool cannot become the
+	// constraint again. MaxConnsPerHost stays 0 (unlimited) deliberately: a cap
+	// here would silently reintroduce the very queueing this removes.
+	client := &rpcClient{url: *rpcURL, hc: &http.Client{
+		Timeout: *httpTimeout,
+		Transport: &http.Transport{
+			MaxIdleConns:        1024,
+			MaxIdleConnsPerHost: 1024,
+			MaxConnsPerHost:     0,
+			IdleConnTimeout:     90 * time.Second,
+		},
+	}}
 	fundWei, ok := new(big.Int).SetString(*fundAmount, 10)
 	if !ok {
 		panic("bad fund-amount-wei")
