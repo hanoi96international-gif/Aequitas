@@ -188,8 +188,7 @@ jobs:
               # goroutine header carries the wait reason and how long it has
               # been blocked.
               echo "--- ONE FULL STACK of a request goroutine (what the wait is really on) ---"
-              awk '/^goroutine /{buf=$0; keep=0; next} {buf=buf"
-"$0} /sendRawTransaction/{keep=1} /^$/{if(keep){print buf; exit}}' "/tmp/gd_$n.txt" | head -32
+              awk 'BEGIN{RS=""} /sendRawTransaction/{print; exit}' "/tmp/gd_$n.txt" | head -32
               echo "--- wait reasons across all goroutines ---"
               grep -oE '^goroutine [0-9]+ \[[^]]+\]' "/tmp/gd_$n.txt" | sed -E 's/goroutine [0-9]+ //' | sort | uniq -c | sort -rn | head -10
               sleep 8
