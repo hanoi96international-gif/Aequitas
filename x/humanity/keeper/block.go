@@ -109,7 +109,15 @@ type Block struct {
 	IsGenesis    bool          `json:"is_genesis,omitempty"`
 	StateRoot    string        `json:"state_root,omitempty"`
 	Transactions []Transaction `json:"transactions,omitempty"`
-	Signature    string        `json:"signature,omitempty"`
+	// TxRoot is the digest calculateBlockHash commits to for Transactions.
+	// Carrying it explicitly is what lets a block travel WITHOUT its body
+	// (roadmap step 4, see tx_batch.go): the hash preimage already contained
+	// only this digest, never the transaction list, so transporting the two
+	// separately leaves block hashes byte-identical — no fork, no activation
+	// height. Empty on blocks produced before this field existed, which
+	// calculateBlockHash handles by computing the root the old way.
+	TxRoot    string `json:"tx_root,omitempty"`
+	Signature string `json:"signature,omitempty"`
 	// ProducedAtMs is a millisecond-precision production wall-clock
 	// timestamp, set once by ProduceBlock and transmitted to peers —
 	// deliberately NOT covered by calculateBlockHash (an explicit field list,
@@ -1906,17 +1914,32 @@ func (dag *BlockDAG) calculateHash(b *Block) string {
 // block during resync) without needing dag state — the computation never
 // touched dag in the first place.
 func calculateBlockHash(b *Block) string {
+// The commitment to this block's transactions.
+//
+// Roadmap step 4 (see tx_batch.go): when the block carries its digest
+// explicitly, use that — which is what lets a block travel WITHOUT its body
+// while hashing identically. The preimage below always contained only this
+// one digest, never the transaction list, so nothing about the hash changes
+// and no activation height is needed.
+//
+// A block that does NOT carry the field (produced before it existed, or by
+// an older peer) derives the root from its attached transactions exactly as
+// before, keeping every historical hash reproducible.
+//
 // Normalize nil to empty slice so JSON always produces "[]" not "null".
 // omitempty on the Transactions field strips the key during HTTP transport,
 // and the receiver deserialises to nil — without this normalisation the
 // tx_root differs between producer and receiver, causing hash mismatches.
+txRoot := b.TxRoot
+if txRoot == "" {
 txs := b.Transactions
 if txs == nil {
 txs = []Transaction{}
 }
 txData, _ := json.Marshal(txs)
 txRootBytes := sha256.Sum256(txData)
-txRoot := hex.EncodeToString(txRootBytes[:])
+txRoot = hex.EncodeToString(txRootBytes[:])
+}
 // Use parent hashes in the order stored on the block — do NOT sort here.
 // Sorting must happen when PRODUCING a block (in ProduceBlock) so the order
 // is baked into block.ParentHashes before the hash is computed. Re-sorting
@@ -2560,6 +2583,13 @@ if err := dag.state.SaveBlockWithPendingTxsAtomic(block, pendingTxIDs); err != n
 	fmt.Printf("[BLOCK] ⚠ Could not persist block #%d (%s...): %v — skipping broadcast, TXs stay queued\n",
 		block.Height, block.Hash[:16], err)
 	return nil
+}
+// Index this block's transactions for wallet lookups, exactly as the replay
+// path does for peer blocks — a transaction must resolve to its real block
+// no matter which node produced it or which node the wallet asks. See
+// tx_block_index.go. Non-fatal: the block is already durably saved.
+if err := dag.state.IndexBlockTransactions(block.Height, block.Hash, block.Transactions); err != nil {
+	fmt.Printf("[BLOCK] ⚠ Could not index transactions of block #%d for wallet lookups: %v\n", block.Height, err)
 }
 // Ongoing health check: this call runs synchronously while dag.mu is held
 // write-locked, so if it's slow, EVERY other dag.mu consumer (API reads,
@@ -6458,6 +6488,18 @@ func (dag *BlockDAG) replayTransactions(block *Block, force bool) (ok bool) {
 	// claims transfers were applied on a path that then rolled back.
 	if transfersApplied > 0 {
 		fmt.Printf("[REPLAY] ✓ Applied %d transfer(s) in block #%d\n", transfersApplied, block.Height)
+	}
+
+	// Record which block these transactions went into, so
+	// eth_getTransactionByHash / eth_getTransactionReceipt can answer with the
+	// real block instead of a placeholder — see tx_block_index.go for the
+	// wallet report that uncovered this. Deliberately AFTER the commit above:
+	// the index must only ever describe transactions that actually applied.
+	// A failure here is logged, not fatal — the block itself is valid and
+	// committed, and a missing index entry degrades to the pre-existing
+	// fallback behaviour rather than rejecting anything.
+	if err := dag.state.IndexBlockTransactions(block.Height, block.Hash, block.Transactions); err != nil {
+		fmt.Printf("[REPLAY] ⚠ Could not index transactions of block #%d for wallet lookups: %v\n", block.Height, err)
 	}
 
 	dag.replayedMu.Lock()
