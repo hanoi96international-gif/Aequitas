@@ -159,6 +159,54 @@ type EVMRPCServer struct {
 	txError           map[string]string // txHash -> error message if failed
 	txSenders         map[string]string // txHash -> sender address (lowercase)
 	txTos             map[string]string // txHash -> to address (lowercase, "" for contract creation)
+	// txOrder is the insertion order of the four txHash-keyed maps above, so
+	// the oldest entries can be dropped once they exceed txMetaMax.
+	//
+	// FIX (2026-07-26, measured): those four maps had no eviction at all. Each
+	// transaction added roughly four permanent entries, so they grew for the
+	// whole process lifetime. That is a memory leak, but the throughput cost
+	// came first: Go grows and rehashes a map while the caller holds the lock,
+	// and all of these live under the single mu above, taken eleven times
+	// across this file. Goroutine dumps taken under load on Contabo2 showed all
+	// 72 in-flight requests parked in runtime_SemacquireMutex at
+	// sendRawTransaction, with none in the WAL - the hold time grew with map
+	// size, so throughput decayed with uptime and a restart "fixed" it. That
+	// matches both incidents seen that day, on nodes with long uptimes.
+	//
+	// Bounding them is safe because they are short-lived caches, not the
+	// record of truth: SaveTxReceipt persists the same status durably, and
+	// chain_tx_block_index records which block a transaction landed in. They
+	// only need to cover the window where a wallet polls straight after
+	// getting its hash back.
+	txOrder []string
+}
+
+// txMetaMax bounds the four txHash-keyed caches. Generous enough to cover any
+// realistic poll window - at the 50k TPS the chain is tuned for this is still
+// several seconds of history - while keeping the maps small enough that a
+// rehash under the lock stays cheap.
+const txMetaMax = 100000
+
+// noteTxLocked records that txHash was just written into the tx metadata maps
+// and drops the oldest entries once the cache is over its bound. Callers must
+// already hold s.mu, exactly as they do for the map writes themselves.
+func (s *EVMRPCServer) noteTxLocked(txHash string) {
+	s.txOrder = append(s.txOrder, txHash)
+	if len(s.txOrder) <= txMetaMax {
+		return
+	}
+	drop := len(s.txOrder) - txMetaMax
+	for _, old := range s.txOrder[:drop] {
+		delete(s.txStatus, old)
+		delete(s.txError, old)
+		delete(s.txSenders, old)
+		delete(s.txTos, old)
+	}
+	// Re-slice into a fresh backing array: keeping the old one would retain
+	// every evicted string and defeat the point of evicting them.
+	kept := make([]string, len(s.txOrder)-drop)
+	copy(kept, s.txOrder[drop:])
+	s.txOrder = kept
 }
 
 func NewEVMRPCServer(dag *BlockDAG, state *ChainState) *EVMRPCServer {
@@ -760,6 +808,7 @@ func (s *EVMRPCServer) sendRawTransaction(params []json.RawMessage, pre *precomp
 		// "Senden fehlgeschlagen" even for successful transfers.
 		s.mu.Lock()
 		s.txStatus[txHash] = true
+		s.noteTxLocked(txHash)
 		s.mu.Unlock()
 		s.state.SaveTxReceipt(txHash, senderAddr, toAddr, "0x1", "")
 
@@ -775,6 +824,7 @@ func (s *EVMRPCServer) sendRawTransaction(params []json.RawMessage, pre *precomp
 			// Transfer failed — mark receipt as failed so MetaMask shows correct status.
 			s.mu.Lock()
 			s.txStatus[txHash] = false
+			s.noteTxLocked(txHash)
 			s.mu.Unlock()
 			s.state.SaveTxReceipt(txHash, senderAddr, toAddr, "0x0", "")
 			return nil, &RPCError{Code: -32603, Message: "Transfer failed: " + err.Error()}
@@ -808,6 +858,7 @@ func (s *EVMRPCServer) sendRawTransaction(params []json.RawMessage, pre *precomp
 		// the window while TransferWithV7Fee executes returned null receipts.
 		s.mu.Lock()
 		s.txStatus[txHash] = true
+		s.noteTxLocked(txHash)
 		s.mu.Unlock()
 		s.state.SaveTxReceipt(txHash, senderAddr, toAddr, "0x1", "")
 
@@ -824,6 +875,7 @@ func (s *EVMRPCServer) sendRawTransaction(params []json.RawMessage, pre *precomp
 			// Mark as failed
 			s.mu.Lock()
 			s.txStatus[txHash] = false
+			s.noteTxLocked(txHash)
 			s.mu.Unlock()
 			s.state.SaveTxReceipt(txHash, senderAddr, toAddr, "0x0", "")
 			return nil, &RPCError{Code: -32603, Message: "Transfer failed: " + err.Error()}
@@ -864,6 +916,7 @@ func (s *EVMRPCServer) sendRawTransaction(params []json.RawMessage, pre *precomp
 		s.mu.Lock()
 		s.deployedContracts[txHash] = contractAddrStr
 		s.txStatus[txHash] = true
+		s.noteTxLocked(txHash)
 		s.mu.Unlock()
 		// FIX 7: Persist receipt so post-restart MetaMask gets correct status for deployment.
 		// FIX: contractAddrStr is now persisted too (see SaveTxReceipt) — it used
@@ -916,6 +969,7 @@ func (s *EVMRPCServer) sendRawTransaction(params []json.RawMessage, pre *precomp
 		// a restart MetaMask would see null receipt and show "pending" forever.
 		s.mu.Lock()
 		s.txStatus[txHash] = true
+		s.noteTxLocked(txHash)
 		s.mu.Unlock()
 		s.state.SaveTxReceipt(txHash, senderAddr, toAddrForReceipt, "0x1", "")
 
@@ -930,6 +984,7 @@ func (s *EVMRPCServer) sendRawTransaction(params []json.RawMessage, pre *precomp
 			fmt.Printf("[RPC] ✗ Contract call failed: %v\n", callErr)
 			s.mu.Lock()
 			s.txStatus[txHash] = false
+			s.noteTxLocked(txHash)
 			s.txError[txHash] = callErr.Error()
 			s.mu.Unlock()
 			s.state.SaveTxReceipt(txHash, senderAddr, toAddrForReceipt, "0x0", "")
