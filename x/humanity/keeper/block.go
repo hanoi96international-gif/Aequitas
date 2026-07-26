@@ -1,38 +1,38 @@
 package keeper
 
 import (
-"bytes"
-"context"
-"crypto/ecdsa"
-"crypto/rand"
-"crypto/sha256"
-"database/sql"
-"encoding/hex"
-"encoding/json"
-"fmt"
-"math/big"
-"os"
-"runtime/debug"
-"strconv"
-"strings"
-"sort"
-"sync"
-"sync/atomic"
-"time"
+	"bytes"
+	"context"
+	"crypto/ecdsa"
+	"crypto/rand"
+	"crypto/sha256"
+	"database/sql"
+	"encoding/hex"
+	"encoding/json"
+	"fmt"
+	"math/big"
+	"os"
+	"runtime/debug"
+	"sort"
+	"strconv"
+	"strings"
+	"sync"
+	"sync/atomic"
+	"time"
 
-"github.com/ethereum/go-ethereum/accounts/abi"
-"github.com/ethereum/go-ethereum/common"
-"github.com/ethereum/go-ethereum/crypto"
+	"github.com/ethereum/go-ethereum/accounts/abi"
+	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/crypto"
 )
 
 type Transaction struct {
-	Type            string  `json:"type"`
-	Wallet          string  `json:"wallet"`
-	To              string  `json:"to,omitempty"`               // transfer destination
-	Amount          float64 `json:"amount,omitempty"`
-	AmountOut       float64 `json:"amount_out,omitempty"`       // swap output amount
-	AmountPerHuman  float64 `json:"amount_per_human,omitempty"` // for ubi_distribution
-	LPShares        float64 `json:"lp_shares,omitempty"`        // for add_liquidity; also reused on escrow_move for LP shares force-liquidated due to inactivity (see checkAndMoveToEscrowLocked)
+	Type           string  `json:"type"`
+	Wallet         string  `json:"wallet"`
+	To             string  `json:"to,omitempty"` // transfer destination
+	Amount         float64 `json:"amount,omitempty"`
+	AmountOut      float64 `json:"amount_out,omitempty"`       // swap output amount
+	AmountPerHuman float64 `json:"amount_per_human,omitempty"` // for ubi_distribution
+	LPShares       float64 `json:"lp_shares,omitempty"`        // for add_liquidity; also reused on escrow_move for LP shares force-liquidated due to inactivity (see checkAndMoveToEscrowLocked)
 	// EscrowTUsdConverted carries the tUSD balance an escrow_move TX's wallet
 	// held and had converted to AEQ (via the pool) before the escrow capture
 	// below — see checkAndMoveToEscrowLocked's comment. Secondaries replay
@@ -62,20 +62,20 @@ type Transaction struct {
 	// value once and uses it for both its own immediate state and this
 	// field, so secondaries replay the IDENTICAL value instead of any
 	// wall-clock reading of their own.
-	DistributionAt int64 `json:"distribution_at,omitempty"`
-	TxHash          string  `json:"tx_hash"`
+	DistributionAt int64  `json:"distribution_at,omitempty"`
+	TxHash         string `json:"tx_hash"`
 	// Nullifier and Commitment are set on register_human TXs so secondary
 	// nodes can apply the registration to their local state when they receive
 	// the block — without needing a separate snapshot or state sync.
-	Nullifier  string  `json:"nullifier,omitempty"`
-	Commitment string  `json:"commitment,omitempty"`
+	Nullifier  string `json:"nullifier,omitempty"`
+	Commitment string `json:"commitment,omitempty"`
 	// ZK proof fields for register_human — enables secondary nodes to
 	// independently verify the proof via BioVerifier without trusting
 	// the validator signature alone. Fields are omitted for non-registration
 	// TXs and for blocks produced by old nodes (backward-compatible).
-	ProofA     []string   `json:"proof_a,omitempty"`   // [2]string big.Int decimal
-	ProofB     [][]string `json:"proof_b,omitempty"`   // [2][2]string big.Int decimal
-	ProofC     []string   `json:"proof_c,omitempty"`   // [2]string big.Int decimal
+	ProofA     []string   `json:"proof_a,omitempty"`     // [2]string big.Int decimal
+	ProofB     [][]string `json:"proof_b,omitempty"`     // [2][2]string big.Int decimal
+	ProofC     []string   `json:"proof_c,omitempty"`     // [2]string big.Int decimal
 	PubSignals []string   `json:"pub_signals,omitempty"` // public signals (decimal)
 	// BlockAHash/BlockBHash identify the equivocation evidence pair for
 	// "slash_equivocation" TXs so the replay can be idempotent (see the
@@ -216,55 +216,55 @@ type peerChallenge struct {
 }
 
 type BlockDAG struct {
-blocks                 map[string]*Block
-tips                   map[string]bool
-mu                     sync.RWMutex
-state                  *ChainState
-evm                    *EVMEngine       // set by EVMRPCServer after construction; used by replayTransactions for ZK proof verification
-nodeID                 string
-height                 int64
-// bootHeight is dag.height's value at construction time (after restoring
-// it from the persisted "max_block_height" — see createGenesisBlock's
-// caller), captured ONCE and never updated again. Used by
-// replayTransactions to recognize "ancestor catch-up" blocks: cs.accounts
-// is loaded fully from the DB at startup and already reflects every
-// block up to and including bootHeight, but dag.blocks/dag.tips are
-// purely in-memory and start empty on every restart — so the node must
-// still fetch and insert those ancestor blocks for hash-chain/tips
-// bookkeeping, WITHOUT re-applying their transactions (already accounted
-// for) or comparing their claimed StateRoot against cs.accounts' current,
-// much-later state (guaranteed to "mismatch" despite no real divergence).
-bootHeight             int64
-// bootTime is this process's own wall-clock start time, captured once at
-// construction and never updated — distinct from bootHeight (a block-height
-// concept). ProduceBlock's double-production guard (see that call site's own
-// comment) now runs unconditionally rather than only within a post-boot
-// window; bootTime is kept for that guard's log line ("how long has this
-// process been alive when it caught a conflicting durable row") only.
-bootTime               time.Time
-// bootHeightCheckpointBacked is true only when bootHeight was set by
-// actually seeding dag.blocks/dag.tips with a real, stored block at that
-// exact height (RefreshBootHeightAfterSnapshotImport's checkpoint branch,
-// seededFromCheckpoint) — see AddPeerBlock's bootHeight-skip call site for
-// why this distinction is safety-critical, not cosmetic.
-bootHeightCheckpointBacked bool
-// unreplayedAtBoot holds blocks loaded from chain_blocks at startup whose
-// replayed column was false — i.e. a header was durably saved but the
-// process was killed before its transactions' effects were confirmed
-// committed to chain_accounts (see ensureReplayedColumn's comment for the
-// live incident). Populated once during the load loop in NewBlockchain,
-// consumed and cleared by repairUnreplayedBlocks() once dag.evm is
-// available (verifyZKProof needs it, and EVM isn't wired up until after
-// NewBlockchain returns — see NewEVMRPCServer's call site).
-unreplayedAtBoot       []*Block
-pendingTxs             []Transaction
-txMu                   sync.Mutex
-signingKey             *ecdsa.PrivateKey
-selfProposer           string           // lower-cased Ethereum address of this node's signing key
-authorizedValidators   map[string]bool  // Ethereum addresses allowed to propose blocks
-currentEpoch           *EpochCommittee  // active block-producer committee for the current epoch
-epochMu                sync.RWMutex    // guards currentEpoch
-activeSyncPeers        map[string]bool  // peers with a running syncWithNode goroutine
+	blocks map[string]*Block
+	tips   map[string]bool
+	mu     sync.RWMutex
+	state  *ChainState
+	evm    *EVMEngine // set by EVMRPCServer after construction; used by replayTransactions for ZK proof verification
+	nodeID string
+	height int64
+	// bootHeight is dag.height's value at construction time (after restoring
+	// it from the persisted "max_block_height" — see createGenesisBlock's
+	// caller), captured ONCE and never updated again. Used by
+	// replayTransactions to recognize "ancestor catch-up" blocks: cs.accounts
+	// is loaded fully from the DB at startup and already reflects every
+	// block up to and including bootHeight, but dag.blocks/dag.tips are
+	// purely in-memory and start empty on every restart — so the node must
+	// still fetch and insert those ancestor blocks for hash-chain/tips
+	// bookkeeping, WITHOUT re-applying their transactions (already accounted
+	// for) or comparing their claimed StateRoot against cs.accounts' current,
+	// much-later state (guaranteed to "mismatch" despite no real divergence).
+	bootHeight int64
+	// bootTime is this process's own wall-clock start time, captured once at
+	// construction and never updated — distinct from bootHeight (a block-height
+	// concept). ProduceBlock's double-production guard (see that call site's own
+	// comment) now runs unconditionally rather than only within a post-boot
+	// window; bootTime is kept for that guard's log line ("how long has this
+	// process been alive when it caught a conflicting durable row") only.
+	bootTime time.Time
+	// bootHeightCheckpointBacked is true only when bootHeight was set by
+	// actually seeding dag.blocks/dag.tips with a real, stored block at that
+	// exact height (RefreshBootHeightAfterSnapshotImport's checkpoint branch,
+	// seededFromCheckpoint) — see AddPeerBlock's bootHeight-skip call site for
+	// why this distinction is safety-critical, not cosmetic.
+	bootHeightCheckpointBacked bool
+	// unreplayedAtBoot holds blocks loaded from chain_blocks at startup whose
+	// replayed column was false — i.e. a header was durably saved but the
+	// process was killed before its transactions' effects were confirmed
+	// committed to chain_accounts (see ensureReplayedColumn's comment for the
+	// live incident). Populated once during the load loop in NewBlockchain,
+	// consumed and cleared by repairUnreplayedBlocks() once dag.evm is
+	// available (verifyZKProof needs it, and EVM isn't wired up until after
+	// NewBlockchain returns — see NewEVMRPCServer's call site).
+	unreplayedAtBoot     []*Block
+	pendingTxs           []Transaction
+	txMu                 sync.Mutex
+	signingKey           *ecdsa.PrivateKey
+	selfProposer         string          // lower-cased Ethereum address of this node's signing key
+	authorizedValidators map[string]bool // Ethereum addresses allowed to propose blocks
+	currentEpoch         *EpochCommittee // active block-producer committee for the current epoch
+	epochMu              sync.RWMutex    // guards currentEpoch
+	activeSyncPeers      map[string]bool // peers with a running syncWithNode goroutine
 	// peerSyncHeight tracks, per peer URL, the highest block height this
 	// node has actually SUCCESSFULLY imported FROM that specific peer via
 	// doSyncOnce — see that function's own FIX comment (2026-07-06) for the
@@ -280,7 +280,7 @@ activeSyncPeers        map[string]bool  // peers with a running syncWithNode gor
 	// the gap can silently persist forever with no missing-parent entry
 	// ever created to trigger recovery. Guarded by syncPeerMu, same as
 	// activeSyncPeers.
-	peerSyncHeight         map[string]int64
+	peerSyncHeight map[string]int64
 	// cleanSyncStreak tracks, per peer URL, how many CONSECUTIVE doSyncOnce
 	// calls in a row found nothing this node failed to merge — see
 	// recordCleanSyncCycle's own comment for the exact definition and the
@@ -291,7 +291,7 @@ activeSyncPeers        map[string]bool  // peers with a running syncWithNode gor
 	// progress) — none of them can tell "genuinely nothing new" apart from
 	// "new blocks exist but none of them merged". This can. Guarded by
 	// syncPeerMu, same as peerSyncHeight.
-	cleanSyncStreak        map[string]int
+	cleanSyncStreak map[string]int
 	// trustedSeeds holds the operator-configured seed/static-peer URLs
 	// (PRIMARY_NODE_URL, PRIMARY_NODE_URLS, PEER_NODES — see seedURLs/
 	// staticPeers in sync_blocks.go), populated once by StartPeerDiscovery.
@@ -302,7 +302,7 @@ activeSyncPeers        map[string]bool  // peers with a running syncWithNode gor
 	// URLs are set by this node's own operator and are not attacker-
 	// reachable, so bypassing authorization/suspension/finality gates for
 	// blocks fetched from them doesn't hand that bypass to an arbitrary peer.
-	trustedSeeds           map[string]bool
+	trustedSeeds map[string]bool
 	// syncGateSeeds is the exact seed list StartPeerDiscovery armed the
 	// initial-sync gate with (seedURLs(selfURL) — NOT trustedSeeds, which
 	// additionally contains PEER_NODES static peers whose height was never
@@ -314,12 +314,45 @@ activeSyncPeers        map[string]bool  // peers with a running syncWithNode gor
 	// armInitialSyncGate's own comment for the incident. Guarded by
 	// syncPeerMu, same as trustedSeeds.
 	syncGateSeeds          []string
-syncPeerMu             sync.Mutex
-warnedUnknownProposers map[string]bool  // suppresses repeated "not authorized" log lines
-peerChallenges         map[string]peerChallenge // address → pending challenge (P1-3)
-challengeMu            sync.Mutex
-replayedBlocks         map[string]bool  // tracks blocks already replayed — prevents double-credit on duplicate delivery
-replayedMu             sync.Mutex
+	syncPeerMu             sync.Mutex
+	warnedUnknownProposers map[string]bool // suppresses repeated "not authorized" log lines
+	// unknownProposerLastRecovery is when this node last tried to LEARN an unknown
+	// proposer by pulling the validator lists from its peers, per proposer address.
+	//
+	// FIX (2026-07-26, confirmed live on the primary): the recovery used to be
+	// driven off warnedUnknownProposers, whose documented job is suppressing
+	// repeated log lines. Overloading a log-suppression flag to also gate the
+	// recovery meant the recovery ran EXACTLY ONCE per proposer, ever. And
+	// syncValidatorsFromAllPeers does nothing at all when activeSyncPeers is still
+	// empty -- precisely the state a node is in for the first seconds after a
+	// restart, when peer registration has not completed yet but peer blocks are
+	// already arriving. One badly-timed attempt therefore left the proposer
+	// unauthorized permanently, with every later block from it rejected SILENTLY
+	// (the log line suppressed by that same flag) and its waiting orphans
+	// abandoned.
+	//
+	// Measured on 2026-07-26: the primary restarted at 16:45, never learned
+	// validator 0x0BE8b961..., and from then on merged nothing from either Contabo
+	// while its own blocks kept flowing to them. A one-way fork with 1386
+	// unresolvable missing parents on the primary and zero on both secondaries, a
+	// blue-score gap growing monotonically (1457 -> 1580 -> 1806), and account
+	// balances diverging because the rejected blocks carried the transfers.
+	//
+	// The secondaries are structurally immune: they hold the primary in
+	// trustedSeeds, so blocks fetched from it carry FromSync=true and skip this
+	// gate. The primary's trustedSeeds is permanently empty by construction (it is
+	// the seed, not a syncer -- see the hasCaughtUpWithAllPeers gate's own comment
+	// around bootHeight), so it is the ONE node that can be locked out of a
+	// validator it does not already know.
+	//
+	// Time-based and retried for as long as blocks from that proposer keep
+	// arriving, so a recovery lost to an empty peer list or a failed HTTP call is
+	// retried instead of having been the node's only chance.
+	unknownProposerLastRecovery map[string]time.Time
+	peerChallenges              map[string]peerChallenge // address → pending challenge (P1-3)
+	challengeMu                 sync.Mutex
+	replayedBlocks              map[string]bool // tracks blocks already replayed — prevents double-credit on duplicate delivery
+	replayedMu                  sync.Mutex
 	// replayFailures backs off repeated replayTransactions attempts against a
 	// block that keeps failing — see that function's own comment (the
 	// "2026-07-25 hang incident") for why this exists: without it, a block
@@ -361,7 +394,7 @@ replayedMu             sync.Mutex
 	// report only mismatches from proposers that have mismatched recently
 	// (see its own comment), not every proposer's lifetime peak.
 	stateRootMismatchLastAt map[string]int64
-	stateRootMismatchesMu sync.Mutex   // protects stateRootMismatches/stateRootMismatchLastAt (written under replayMu+cs.mu, read independently by TotalStateRootMismatches)
+	stateRootMismatchesMu   sync.Mutex // protects stateRootMismatches/stateRootMismatchLastAt (written under replayMu+cs.mu, read independently by TotalStateRootMismatches)
 	// lastSuccessfulPeerSyncAt is the Unix timestamp of the last time this
 	// node successfully accepted a peer block via AddPeerBlock. Read/written
 	// with atomic.Int64 (not dag.mu) since it's set from AddPeerBlock's
@@ -483,9 +516,9 @@ replayedMu             sync.Mutex
 	// unreachable at startup, or sync makes no further progress for
 	// syncStallTimeout (see ProduceBlock's gate), production proceeds
 	// independently so a downed seed never blocks all other nodes.
-	syncTargetHeight   atomic.Int64
-	activeGhostdagK    atomic.Int32 // live GHOSTDAG K for current epoch; 0 → use ghostdagKBase
-	startupTime        int64        // Unix timestamp of NewBlockchain — used by the initial-sync gate
+	syncTargetHeight atomic.Int64
+	activeGhostdagK  atomic.Int32 // live GHOSTDAG K for current epoch; 0 → use ghostdagKBase
+	startupTime      int64        // Unix timestamp of NewBlockchain — used by the initial-sync gate
 	// (ghostdagStuckHash/ghostdagStuckCount removed 2026-07-10 — ProduceBlock's
 	// stuck-ancestor escape hatch now shares the orphan-tracking machinery
 	// via produceStuckGaps instead of its own raw tick counter; see that
@@ -845,22 +878,22 @@ replayedMu             sync.Mutex
 	// works the same for freshly-synced history as for newly-arriving
 	// blocks. Protected by dag.mu, same as dag.blocks.
 	equivocationIndex map[string]string
-
 }
-
 
 // genesisTimestamp reads the genesis_time from genesis.json if present,
 // falling back to the hardcoded date. P2-11: avoid hardcoded timestamp.
 func genesisTimestamp() int64 {
-if data, err := os.ReadFile("genesis.json"); err == nil {
-var g struct { GenesisTime string `json:"genesis_time"` }
-if json.Unmarshal(data, &g) == nil && g.GenesisTime != "" {
-if t, err := time.Parse(time.RFC3339, g.GenesisTime); err == nil {
-return t.Unix()
-}
-}
-}
-return time.Date(2026, 6, 13, 0, 0, 0, 0, time.UTC).Unix()
+	if data, err := os.ReadFile("genesis.json"); err == nil {
+		var g struct {
+			GenesisTime string `json:"genesis_time"`
+		}
+		if json.Unmarshal(data, &g) == nil && g.GenesisTime != "" {
+			if t, err := time.Parse(time.RFC3339, g.GenesisTime); err == nil {
+				return t.Unix()
+			}
+		}
+	}
+	return time.Date(2026, 6, 13, 0, 0, 0, 0, time.UTC).Unix()
 }
 
 // loadAuthorizedValidators reads the AUTHORIZED_VALIDATORS env var
@@ -897,6 +930,7 @@ func loadAuthorizedValidators() map[string]bool {
 //     database to another's. This explicit, shared config is what actually
 //     guarantees every node's explorer shows the identical label for the
 //     identical address, which per-node-derived ordinals cannot.
+//
 // Any address not covered by this override falls back to the existing
 // GetValidatorOrdinals()-derived "Validator #N" numbering — unchanged
 // default behavior for any deployment that doesn't set this var, and a
@@ -1051,9 +1085,9 @@ func (dag *BlockDAG) AuthorizedValidatorList() []string {
 }
 
 func (dag *BlockDAG) AddTransaction(tx Transaction) {
-dag.txMu.Lock()
-defer dag.txMu.Unlock()
-dag.pendingTxs = append(dag.pendingTxs, tx)
+	dag.txMu.Lock()
+	defer dag.txMu.Unlock()
+	dag.pendingTxs = append(dag.pendingTxs, tx)
 }
 
 // FIX (P2-7, beta-launch audit 2026-07-05): NewBlockchain used to also take
@@ -1061,102 +1095,103 @@ dag.pendingTxs = append(dag.pendingTxs, tx)
 // keeper.go) purely to store it in a field nothing ever read — removed the
 // whole dead type; see NewAPIServer's comment (api.go) for the full reasoning.
 func NewBlockchain(nodeID string, state *ChainState) *BlockDAG {
-dag := &BlockDAG{
-blocks:                 make(map[string]*Block),
-tips:                   make(map[string]bool),
-state:                  state,
-nodeID:                 nodeID,
-bootTime:               time.Now(),
-authorizedValidators:   loadAuthorizedValidators(),
-activeSyncPeers:        make(map[string]bool),
-		peerSyncHeight:         make(map[string]int64),
-		cleanSyncStreak:        make(map[string]int),
-warnedUnknownProposers: make(map[string]bool),
-peerChallenges:         make(map[string]peerChallenge),
-replayedBlocks:         make(map[string]bool),
-replayFailures:         make(map[string]replayFailureState),
-equivocationIndex:      make(map[string]string),
-newBlockSubs:           make(map[chan struct{}]struct{}),
-proposerBreaker:        newBoundedBreaker(proposerBreakerFailThreshold, proposerBreakerCooldown, proposerBreakerReopenProbes, maxTrackedProposers),
-	lastSeenFromValidator:  make(map[string]int64),
-	lastMergedFromValidator: make(map[string]int64),
-	unverifiedStubHeights:  make(map[string]int64),
-	stateRootMismatches:    make(map[string]int),
-	stateRootMismatchLastAt: make(map[string]int64),
-	orphans:                make(map[string][]*Block),
-	orphanFirstSeen:        make(map[string]time.Time),
-	orphanLastAttempt:      make(map[string]time.Time),
-	orphanAttempts:         make(map[string]int),
-	finalityWalkGaps:       make(map[string]bool),
-	produceStuckGaps:       make(map[string]bool),
+	dag := &BlockDAG{
+		blocks:                      make(map[string]*Block),
+		tips:                        make(map[string]bool),
+		state:                       state,
+		nodeID:                      nodeID,
+		bootTime:                    time.Now(),
+		authorizedValidators:        loadAuthorizedValidators(),
+		activeSyncPeers:             make(map[string]bool),
+		peerSyncHeight:              make(map[string]int64),
+		cleanSyncStreak:             make(map[string]int),
+		warnedUnknownProposers:      make(map[string]bool),
+		unknownProposerLastRecovery: make(map[string]time.Time),
+		peerChallenges:              make(map[string]peerChallenge),
+		replayedBlocks:              make(map[string]bool),
+		replayFailures:              make(map[string]replayFailureState),
+		equivocationIndex:           make(map[string]string),
+		newBlockSubs:                make(map[chan struct{}]struct{}),
+		proposerBreaker:             newBoundedBreaker(proposerBreakerFailThreshold, proposerBreakerCooldown, proposerBreakerReopenProbes, maxTrackedProposers),
+		lastSeenFromValidator:       make(map[string]int64),
+		lastMergedFromValidator:     make(map[string]int64),
+		unverifiedStubHeights:       make(map[string]int64),
+		stateRootMismatches:         make(map[string]int),
+		stateRootMismatchLastAt:     make(map[string]int64),
+		orphans:                     make(map[string][]*Block),
+		orphanFirstSeen:             make(map[string]time.Time),
+		orphanLastAttempt:           make(map[string]time.Time),
+		orphanAttempts:              make(map[string]int),
+		finalityWalkGaps:            make(map[string]bool),
+		produceStuckGaps:            make(map[string]bool),
 
-	softRetryBlocks:        make(map[string]*Block),
-	softRetryFirstAt:       make(map[string]time.Time),
-	lastDeepScanAt:         make(map[string]int64),
-	deepScanResumeHeight:   make(map[string]int64),
-	deepScanFloorOverride:  make(map[string]int64),
-}
-if key, generated, err := loadOrCreateRelayerKey(); err != nil {
-	fmt.Printf("[BLOCK] Warning: RELAYER_PRIVATE_KEY invalid, blocks will be unsigned: %v\n", err)
-} else if key != nil {
-	dag.signingKey = key
-	// Always authorize ourselves — derived from the signing key, not the nodeID.
-	selfAddr := strings.ToLower(crypto.PubkeyToAddress(key.PublicKey).Hex())
-	dag.selfProposer = selfAddr
-	dag.authorizedValidators[selfAddr] = true
-	if generated {
-		fmt.Printf("✓ Block signing enabled (auto-generated key — see SAVE THIS warning above), proposer addr: %s\n", selfAddr)
-	} else {
-		fmt.Printf("✓ Block signing enabled (RELAYER_PRIVATE_KEY loaded), proposer addr: %s\n", selfAddr)
+		softRetryBlocks:       make(map[string]*Block),
+		softRetryFirstAt:      make(map[string]time.Time),
+		lastDeepScanAt:        make(map[string]int64),
+		deepScanResumeHeight:  make(map[string]int64),
+		deepScanFloorOverride: make(map[string]int64),
 	}
-}
+	if key, generated, err := loadOrCreateRelayerKey(); err != nil {
+		fmt.Printf("[BLOCK] Warning: RELAYER_PRIVATE_KEY invalid, blocks will be unsigned: %v\n", err)
+	} else if key != nil {
+		dag.signingKey = key
+		// Always authorize ourselves — derived from the signing key, not the nodeID.
+		selfAddr := strings.ToLower(crypto.PubkeyToAddress(key.PublicKey).Hex())
+		dag.selfProposer = selfAddr
+		dag.authorizedValidators[selfAddr] = true
+		if generated {
+			fmt.Printf("✓ Block signing enabled (auto-generated key — see SAVE THIS warning above), proposer addr: %s\n", selfAddr)
+		} else {
+			fmt.Printf("✓ Block signing enabled (RELAYER_PRIVATE_KEY loaded), proposer addr: %s\n", selfAddr)
+		}
+	}
 
-dag.createGenesisBlock()
+	dag.createGenesisBlock()
 
-// FIX (audit 2026-06-28 recheck 5, P1-2): recover any pending_txs row left
-// "included" by a process that crashed before its block ever reached
-// BroadcastBlock — see ResetStaleIncludedPendingTxs' own comment for why
-// that's always safe to retry. 10 minutes comfortably exceeds how long a
-// single ProduceBlock call could ever legitimately take.
-state.ResetStaleIncludedPendingTxs(10 * time.Minute)
+	// FIX (audit 2026-06-28 recheck 5, P1-2): recover any pending_txs row left
+	// "included" by a process that crashed before its block ever reached
+	// BroadcastBlock — see ResetStaleIncludedPendingTxs' own comment for why
+	// that's always safe to retry. 10 minutes comfortably exceeds how long a
+	// single ProduceBlock call could ever legitimately take.
+	state.ResetStaleIncludedPendingTxs(10 * time.Minute)
 
-// FIX (audit 2026-06-28 full recheck, P1-3): restore every durably-saved
-// block (see chain_blocks' own comment and SaveBlockToDB) BEFORE falling
-// back to the bare max_block_height counter below. This is what lets a
-// node recover its own previously produced/accepted blocks — and their
-// full transaction lists — across a restart without needing any peer to
-// still have them; the counter-only fallback further down only recovers
-// the height NUMBER, not the actual block data.
-// Load only the most-recent startupLoadWindow blocks into dag.blocks to
-// bound startup RAM. bootHeight (set below from the DB's max_block_height
-// entry) prevents re-replay of any block at or below the chain tip, so
-// the full history need not be in memory.
-startupMinH := int64(0)
-if tip := state.getMaxBlockHeightDB(); tip > startupLoadWindow {
-    startupMinH = tip - int64(startupLoadWindow)
-}
-loaded, loadErr := state.LoadBlocksFromDB(startupMinH)
-if loadErr != nil {
-	// FIX (2026-06-28, production incident): a transient DB error here
-	// used to be silently treated as "this node has zero durably-saved
-	// blocks" — for a node with a full chain_blocks table, that meant
-	// starting fresh at genesis and forcing a complete peer resync of its
-	// own history, repeatedly, on every restart that hit the hiccup (see
-	// LoadBlocksFromDB's own comment). Crashing here and letting the
-	// process supervisor (Docker --restart unless-stopped / Railway) retry
-	// the whole startup is safer than silently continuing with a DAG that
-	// doesn't reflect this node's real history.
-	fmt.Printf("[BLOCK] ✗ FATAL: could not restore blocks from chain_blocks: %v — exiting so the process supervisor restarts cleanly instead of starting with a falsely-empty DAG\n", loadErr)
-	os.Exit(1)
-}
-if len(loaded) > 0 {
-	referenced := make(map[string]bool, len(loaded))
-	for _, b := range loaded {
-		dag.blocks[b.Hash] = b
-		// Build equivocation index from history so detection works on
-		// freshly-restarted nodes without needing to re-download everything.
-		// No lock needed: NewBlockchain is single-threaded at this point.
-		dag.checkAndIndexEquivocation(b)
+	// FIX (audit 2026-06-28 full recheck, P1-3): restore every durably-saved
+	// block (see chain_blocks' own comment and SaveBlockToDB) BEFORE falling
+	// back to the bare max_block_height counter below. This is what lets a
+	// node recover its own previously produced/accepted blocks — and their
+	// full transaction lists — across a restart without needing any peer to
+	// still have them; the counter-only fallback further down only recovers
+	// the height NUMBER, not the actual block data.
+	// Load only the most-recent startupLoadWindow blocks into dag.blocks to
+	// bound startup RAM. bootHeight (set below from the DB's max_block_height
+	// entry) prevents re-replay of any block at or below the chain tip, so
+	// the full history need not be in memory.
+	startupMinH := int64(0)
+	if tip := state.getMaxBlockHeightDB(); tip > startupLoadWindow {
+		startupMinH = tip - int64(startupLoadWindow)
+	}
+	loaded, loadErr := state.LoadBlocksFromDB(startupMinH)
+	if loadErr != nil {
+		// FIX (2026-06-28, production incident): a transient DB error here
+		// used to be silently treated as "this node has zero durably-saved
+		// blocks" — for a node with a full chain_blocks table, that meant
+		// starting fresh at genesis and forcing a complete peer resync of its
+		// own history, repeatedly, on every restart that hit the hiccup (see
+		// LoadBlocksFromDB's own comment). Crashing here and letting the
+		// process supervisor (Docker --restart unless-stopped / Railway) retry
+		// the whole startup is safer than silently continuing with a DAG that
+		// doesn't reflect this node's real history.
+		fmt.Printf("[BLOCK] ✗ FATAL: could not restore blocks from chain_blocks: %v — exiting so the process supervisor restarts cleanly instead of starting with a falsely-empty DAG\n", loadErr)
+		os.Exit(1)
+	}
+	if len(loaded) > 0 {
+		referenced := make(map[string]bool, len(loaded))
+		for _, b := range loaded {
+			dag.blocks[b.Hash] = b
+			// Build equivocation index from history so detection works on
+			// freshly-restarted nodes without needing to re-download everything.
+			// No lock needed: NewBlockchain is single-threaded at this point.
+			dag.checkAndIndexEquivocation(b)
 			// Normally already reflected in chain_accounts (committed when
 			// these TXs were first applied, before this block was even
 			// assembled) — must not be re-applied by replayTransactions. But
@@ -1171,113 +1206,113 @@ if len(loaded) > 0 {
 			// unreplayedAtBoot here — LoadUnreplayedBlocksFromDB below finds
 			// every such row directly, unbounded by this loop's startupLoadWindow
 			// (a repair candidate can be arbitrarily far behind the current tip).
-		for _, ph := range b.ParentHashes {
-			referenced[ph] = true
+			for _, ph := range b.ParentHashes {
+				referenced[ph] = true
+			}
+			if b.Height > dag.height {
+				dag.height = b.Height
+			}
 		}
-		if b.Height > dag.height {
-			dag.height = b.Height
+		for hash := range dag.tips {
+			if referenced[hash] {
+				delete(dag.tips, hash)
+			}
 		}
-	}
-	for hash := range dag.tips {
-		if referenced[hash] {
-			delete(dag.tips, hash)
+		for hash := range loaded {
+			if !referenced[hash] {
+				dag.tips[hash] = true
+			}
 		}
-	}
-	for hash := range loaded {
-		if !referenced[hash] {
-			dag.tips[hash] = true
+		// Sort loaded blocks in topological order (height ASC) for GHOSTDAG computation.
+		sortedForGHOSTDAG := make([]*Block, 0, len(loaded))
+		for _, b := range loaded {
+			sortedForGHOSTDAG = append(sortedForGHOSTDAG, b)
 		}
-	}
-	// Sort loaded blocks in topological order (height ASC) for GHOSTDAG computation.
-	sortedForGHOSTDAG := make([]*Block, 0, len(loaded))
-	for _, b := range loaded {
-		sortedForGHOSTDAG = append(sortedForGHOSTDAG, b)
-	}
-	sort.Slice(sortedForGHOSTDAG, func(i, j int) bool {
-		return sortedForGHOSTDAG[i].Height < sortedForGHOSTDAG[j].Height
-	})
-	// If any non-genesis block lacks GHOSTDAG data (DB predates persistence
-	// columns), compute it now and save back to DB in the background.
-	needsMigration := false
-	for _, b := range sortedForGHOSTDAG {
-		if !b.IsGenesis && b.Height > 0 && b.SelectedParent == "" {
-			needsMigration = true
-			break
+		sort.Slice(sortedForGHOSTDAG, func(i, j int) bool {
+			return sortedForGHOSTDAG[i].Height < sortedForGHOSTDAG[j].Height
+		})
+		// If any non-genesis block lacks GHOSTDAG data (DB predates persistence
+		// columns), compute it now and save back to DB in the background.
+		needsMigration := false
+		for _, b := range sortedForGHOSTDAG {
+			if !b.IsGenesis && b.Height > 0 && b.SelectedParent == "" {
+				needsMigration = true
+				break
+			}
 		}
-	}
-	if needsMigration {
-		// FIX (2026-06-30, confirmed live in production): this used to compute
-		// GHOSTDAG state for every block SYNCHRONOUSLY here, before
-		// NewBlockchain (and everything that calls it, including main.go's
-		// http.ListenAndServe) ever returns. At chain length ~50,000 with
-		// 18,148 blocks needing migration, that held up the HTTP listener
-		// itself for minutes with zero progress output — Railway's proxy saw
-		// "Application failed to respond" the whole time because nothing was
-		// listening on the port yet, not because anything was deadlocked.
-		// Run the compute + save both in the background instead: dag.mu is
-		// now acquired per-block (not once for the whole migration) so normal
-		// traffic (new peer blocks, ProduceBlock, API reads) interleaves with
-		// migration progress instead of queuing behind it for the full
-		// duration. A block touched by normal traffic before its turn in this
-		// loop already has real GHOSTDAG data (SelectedParent != ""), so the
-		// migration's own !exists-style skip isn't needed — computeGHOSTDAGState
-		// is idempotent and just recomputes the same deterministic result.
-		fmt.Printf("[BLOCK] GHOSTDAG migration: computing real blue scores for %d blocks in the background...\n", len(sortedForGHOSTDAG))
-		dag.ghostdagMigrationPending.Store(true)
-		go func(blocks []*Block, d *BlockDAG, s *ChainState) {
-			defer d.ghostdagMigrationPending.Store(false)
-			// FIX (P0-3, beta-launch audit 2026-07-05): see panic_recovery.go.
-			defer func() {
-				if r := recover(); r != nil {
-					fmt.Printf("[PANIC RECOVERED] GHOSTDAG migration goroutine: %v\n%s\n", r, debug.Stack())
-				}
-			}()
-			const batchSize = 100
-			batch := make([]*Block, 0, batchSize)
+		if needsMigration {
+			// FIX (2026-06-30, confirmed live in production): this used to compute
+			// GHOSTDAG state for every block SYNCHRONOUSLY here, before
+			// NewBlockchain (and everything that calls it, including main.go's
+			// http.ListenAndServe) ever returns. At chain length ~50,000 with
+			// 18,148 blocks needing migration, that held up the HTTP listener
+			// itself for minutes with zero progress output — Railway's proxy saw
+			// "Application failed to respond" the whole time because nothing was
+			// listening on the port yet, not because anything was deadlocked.
+			// Run the compute + save both in the background instead: dag.mu is
+			// now acquired per-block (not once for the whole migration) so normal
+			// traffic (new peer blocks, ProduceBlock, API reads) interleaves with
+			// migration progress instead of queuing behind it for the full
+			// duration. A block touched by normal traffic before its turn in this
+			// loop already has real GHOSTDAG data (SelectedParent != ""), so the
+			// migration's own !exists-style skip isn't needed — computeGHOSTDAGState
+			// is idempotent and just recomputes the same deterministic result.
+			fmt.Printf("[BLOCK] GHOSTDAG migration: computing real blue scores for %d blocks in the background...\n", len(sortedForGHOSTDAG))
+			dag.ghostdagMigrationPending.Store(true)
+			go func(blocks []*Block, d *BlockDAG, s *ChainState) {
+				defer d.ghostdagMigrationPending.Store(false)
+				// FIX (P0-3, beta-launch audit 2026-07-05): see panic_recovery.go.
+				defer func() {
+					if r := recover(); r != nil {
+						fmt.Printf("[PANIC RECOVERED] GHOSTDAG migration goroutine: %v\n%s\n", r, debug.Stack())
+					}
+				}()
+				const batchSize = 100
+				batch := make([]*Block, 0, batchSize)
 
-			flushBatch := func() {
-				if s == nil || len(batch) == 0 {
+				flushBatch := func() {
+					if s == nil || len(batch) == 0 {
+						batch = batch[:0]
+						return
+					}
+					if err := s.SaveGHOSTDAGStateBatch(batch); err != nil {
+						d.degradedMu.Lock()
+						if d.degradedReason == "" {
+							d.degradedReason = fmt.Sprintf("GHOSTDAG migration: batch persist failed (last block #%d): %v", batch[len(batch)-1].Height, err)
+						}
+						d.degradedMu.Unlock()
+						fmt.Printf("[BLOCK] ✗ GHOSTDAG migration: batch persist failed: %v — node marked degraded\n", err)
+					}
 					batch = batch[:0]
-					return
 				}
-				if err := s.SaveGHOSTDAGStateBatch(batch); err != nil {
-					d.degradedMu.Lock()
-					if d.degradedReason == "" {
-						d.degradedReason = fmt.Sprintf("GHOSTDAG migration: batch persist failed (last block #%d): %v", batch[len(batch)-1].Height, err)
-					}
-					d.degradedMu.Unlock()
-					fmt.Printf("[BLOCK] ✗ GHOSTDAG migration: batch persist failed: %v — node marked degraded\n", err)
-				}
-				batch = batch[:0]
-			}
 
-			for i, b := range blocks {
-				d.mu.Lock()
-				d.computeGHOSTDAGState(b)
-				d.mu.Unlock()
-				// DB write happens outside the lock — SaveGHOSTDAGStateBatch
-				// only reads fields set above by computeGHOSTDAGState; the
-				// same fields AddPeerBlock would compute to identical values
-				// (deterministic), so no correctness hazard.
-				if s != nil {
-					batch = append(batch, b)
-					if len(batch) >= batchSize {
-						flushBatch()
+				for i, b := range blocks {
+					d.mu.Lock()
+					d.computeGHOSTDAGState(b)
+					d.mu.Unlock()
+					// DB write happens outside the lock — SaveGHOSTDAGStateBatch
+					// only reads fields set above by computeGHOSTDAGState; the
+					// same fields AddPeerBlock would compute to identical values
+					// (deterministic), so no correctness hazard.
+					if s != nil {
+						batch = append(batch, b)
+						if len(batch) >= batchSize {
+							flushBatch()
+						}
+					}
+					// FIX (2026-06-30): force a scheduling gap every 20 blocks
+					// so ProduceBlock / AddPeerBlock goroutines get dag.mu turns
+					// instead of starving behind the migration loop.
+					if i%20 == 19 {
+						time.Sleep(5 * time.Millisecond)
 					}
 				}
-				// FIX (2026-06-30): force a scheduling gap every 20 blocks
-				// so ProduceBlock / AddPeerBlock goroutines get dag.mu turns
-				// instead of starving behind the migration loop.
-				if i%20 == 19 {
-					time.Sleep(5 * time.Millisecond)
-				}
-			}
-			flushBatch() // persist remaining partial batch
-			fmt.Printf("[BLOCK] GHOSTDAG migration: computed and persisted %d blocks\n", len(blocks))
-		}(sortedForGHOSTDAG, dag, state)
+				flushBatch() // persist remaining partial batch
+				fmt.Printf("[BLOCK] GHOSTDAG migration: computed and persisted %d blocks\n", len(blocks))
+			}(sortedForGHOSTDAG, dag, state)
+		}
+		fmt.Printf("[BLOCK] Restored %d durable block(s) from chain_blocks — height=%d, tips=%d\n", len(loaded), dag.height, len(dag.tips))
 	}
-	fmt.Printf("[BLOCK] Restored %d durable block(s) from chain_blocks — height=%d, tips=%d\n", len(loaded), dag.height, len(dag.tips))
-}
 
 	// LoadUnreplayedBlocksFromDB is a SEPARATE, unbounded query (not
 	// limited by startupLoadWindow above) — a block needing repair can be
@@ -1292,68 +1327,68 @@ if len(loaded) > 0 {
 		dag.unreplayedAtBoot = unrep
 	}
 
-// FIX (double-apply): dag.height/dag.blocks/dag.tips used to be purely
-// in-memory — ReconstructState is a no-op when using Postgres, so they
-// reset to genesis on every process restart regardless of how much
-// chain history cs.accounts (loaded fresh from the DB above) actually
-// reflects. This counter-only fallback covers any block produced before
-// chain_blocks existed (or saved by a node that hadn't yet picked up
-// this fix): it can only raise dag.height, never lower what the loaded
-// blocks above already established, so ExportSnapshot reports the
-// chain's true cumulative height, not "blocks observed since this
-// process last started" — see the same fix's writes in
-// ProduceBlock/AddPeerBlock and StateSnapshot.Height's comment for the
-// bug this caused (a fresh-bootstrapped secondary's snapshot cutoff was
-// reported far too low, so it still re-replayed — and double-applied —
-// every block between the true height and the process-local one).
-// FIX (audit 2026-06-28 recheck 4, P0-1): startup code, no lock held —
-// must use the plain DB-only read.
-if persisted := state.getConfigValueDB("max_block_height"); persisted != "" {
-	var h int64
-	fmt.Sscanf(persisted, "%d", &h)
-	if h > dag.height {
-		dag.height = h
+	// FIX (double-apply): dag.height/dag.blocks/dag.tips used to be purely
+	// in-memory — ReconstructState is a no-op when using Postgres, so they
+	// reset to genesis on every process restart regardless of how much
+	// chain history cs.accounts (loaded fresh from the DB above) actually
+	// reflects. This counter-only fallback covers any block produced before
+	// chain_blocks existed (or saved by a node that hadn't yet picked up
+	// this fix): it can only raise dag.height, never lower what the loaded
+	// blocks above already established, so ExportSnapshot reports the
+	// chain's true cumulative height, not "blocks observed since this
+	// process last started" — see the same fix's writes in
+	// ProduceBlock/AddPeerBlock and StateSnapshot.Height's comment for the
+	// bug this caused (a fresh-bootstrapped secondary's snapshot cutoff was
+	// reported far too low, so it still re-replayed — and double-applied —
+	// every block between the true height and the process-local one).
+	// FIX (audit 2026-06-28 recheck 4, P0-1): startup code, no lock held —
+	// must use the plain DB-only read.
+	if persisted := state.getConfigValueDB("max_block_height"); persisted != "" {
+		var h int64
+		fmt.Sscanf(persisted, "%d", &h)
+		if h > dag.height {
+			dag.height = h
+		}
 	}
-}
 
-// FIX (P0, 2026-07-02 recurrence): a finalized checkpoint can never
-// legitimately sit above the height this node has actually synced —
-// GHOSTDAG finality is always behind-or-equal to the local tip, never
-// ahead of it. Confirmed live on Contabo: finalized_height=67293 while
-// chain_blocks held zero rows and max_block_height=0, because the wipe
-// that produced this ran under a binary predating a12009d's RESYNC-path
-// reset (stale cached Docker layer — see the fork-flood incident notes).
-// isFinalityViolation then rejects every block below the stale
-// checkpoint forever, hanging the node in a permanent "added 0 of 500"
-// loop that previously needed manual SQL surgery to clear. Checking the
-// invariant here — the one place every boot already reads both values —
-// makes the fix path-independent: it self-corrects no matter what caused
-// the incoherence (stale image, crash mid-wipe, manual tampering, or a
-// future bug), not just the one call site that caused it last time.
-if finalizedHeight, _ := state.GetFinalizedCheckpoint(); checkpointIsIncoherent(finalizedHeight, dag.height) {
-	fmt.Printf("[FINALITY] ⚠ Stale checkpoint detected: finalized_height=%d exceeds synced height=%d — this is impossible under honest operation, auto-correcting to 0 so re-finalization can advance naturally as the node syncs.\n",
-		finalizedHeight, dag.height)
-	state.setConfigValueDB("finalized_height", "0")
-	state.setConfigValueDB("finalized_blue_score", "0")
-	state.setConfigValueDB("finalized_hash", "0")
-}
+	// FIX (P0, 2026-07-02 recurrence): a finalized checkpoint can never
+	// legitimately sit above the height this node has actually synced —
+	// GHOSTDAG finality is always behind-or-equal to the local tip, never
+	// ahead of it. Confirmed live on Contabo: finalized_height=67293 while
+	// chain_blocks held zero rows and max_block_height=0, because the wipe
+	// that produced this ran under a binary predating a12009d's RESYNC-path
+	// reset (stale cached Docker layer — see the fork-flood incident notes).
+	// isFinalityViolation then rejects every block below the stale
+	// checkpoint forever, hanging the node in a permanent "added 0 of 500"
+	// loop that previously needed manual SQL surgery to clear. Checking the
+	// invariant here — the one place every boot already reads both values —
+	// makes the fix path-independent: it self-corrects no matter what caused
+	// the incoherence (stale image, crash mid-wipe, manual tampering, or a
+	// future bug), not just the one call site that caused it last time.
+	if finalizedHeight, _ := state.GetFinalizedCheckpoint(); checkpointIsIncoherent(finalizedHeight, dag.height) {
+		fmt.Printf("[FINALITY] ⚠ Stale checkpoint detected: finalized_height=%d exceeds synced height=%d — this is impossible under honest operation, auto-correcting to 0 so re-finalization can advance naturally as the node syncs.\n",
+			finalizedHeight, dag.height)
+		state.setConfigValueDB("finalized_height", "0")
+		state.setConfigValueDB("finalized_blue_score", "0")
+		state.setConfigValueDB("finalized_hash", "0")
+	}
 
-// Captured ONCE, after the restoration above and before any block
-// processing begins — see bootHeight's field comment.
-dag.bootHeight = dag.height
+	// Captured ONCE, after the restoration above and before any block
+	// processing begins — see bootHeight's field comment.
+	dag.bootHeight = dag.height
 
-// Background pruner: evict finalized blocks from dag.blocks every 60s
-// to bound long-running RAM usage. DB retains the full history.
-SafeGoroutine("pruneOldDAGBlocks-ticker", func() {
-    t := time.NewTicker(60 * time.Second)
-    defer t.Stop()
-    for range t.C {
-        // FIX (P0-3, beta-launch audit 2026-07-05): recover per-tick — see safeCall's comment.
-        SafeCall("pruneOldDAGBlocks-tick", dag.pruneOldDAGBlocks)
-    }
-})
+	// Background pruner: evict finalized blocks from dag.blocks every 60s
+	// to bound long-running RAM usage. DB retains the full history.
+	SafeGoroutine("pruneOldDAGBlocks-ticker", func() {
+		t := time.NewTicker(60 * time.Second)
+		defer t.Stop()
+		for range t.C {
+			// FIX (P0-3, beta-launch audit 2026-07-05): recover per-tick — see safeCall's comment.
+			SafeCall("pruneOldDAGBlocks-tick", dag.pruneOldDAGBlocks)
+		}
+	})
 
-return dag
+	return dag
 }
 
 // checkpointIsIncoherent reports whether a persisted finality checkpoint is
@@ -1870,38 +1905,38 @@ func (dag *BlockDAG) BridgeHistoricalGap(peerURLs []string) {
 }
 
 func (dag *BlockDAG) createGenesisBlock() {
-genesis := &Block{
-Height:       0,
-Timestamp:    genesisTimestamp(), // P2-11: reads from genesis.json when available
-ParentHashes: []string{},
-Proposer:     "genesis",
-// FIX: this used to be dag.state.TotalHumans() — i.e. however many humans
-// THIS node's own DB currently has loaded at the moment it happens to
-// start up. calculateHash() includes Humans in the hashed fields, so two
-// nodes starting at different points in registration history (e.g. one
-// freshly reset to 0 humans, another restarted after a registration
-// already succeeded) computed two DIFFERENT genesis hashes. Since
-// AddPeerBlock only removes a parent from dag.tips on an EXACT hash
-// match, a secondary's own (differently-hashed) genesis tip was never
-// removed when the primary's block #1 arrived — referencing the
-// PRIMARY's genesis hash as its parent, not the secondary's. The
-// secondary's orphaned genesis then sat in dag.tips forever (nothing
-// ever referenced it as a parent to remove it), permanently showing
-// "Tips: 2" with no merge ever happening — confirmed in production.
-// Genesis must be 100% deterministic across every node by definition
-// (it's the one block everyone is supposed to agree on without any
-// data exchange), so it can never depend on a node's own live state.
-Humans:       0,
-IsGenesis:    true,
-}
-genesis.Hash = dag.calculateHash(genesis)
-genesis.BlueScore = 0
-genesis.SelectedParent = ""
-genesis.Blues = nil
-dag.blocks[genesis.Hash] = genesis
-dag.tips[genesis.Hash] = true
-dag.height = 0
-fmt.Printf("✓ Genesis Block (DAG): %s\n", genesis.Hash[:16]+"...")
+	genesis := &Block{
+		Height:       0,
+		Timestamp:    genesisTimestamp(), // P2-11: reads from genesis.json when available
+		ParentHashes: []string{},
+		Proposer:     "genesis",
+		// FIX: this used to be dag.state.TotalHumans() — i.e. however many humans
+		// THIS node's own DB currently has loaded at the moment it happens to
+		// start up. calculateHash() includes Humans in the hashed fields, so two
+		// nodes starting at different points in registration history (e.g. one
+		// freshly reset to 0 humans, another restarted after a registration
+		// already succeeded) computed two DIFFERENT genesis hashes. Since
+		// AddPeerBlock only removes a parent from dag.tips on an EXACT hash
+		// match, a secondary's own (differently-hashed) genesis tip was never
+		// removed when the primary's block #1 arrived — referencing the
+		// PRIMARY's genesis hash as its parent, not the secondary's. The
+		// secondary's orphaned genesis then sat in dag.tips forever (nothing
+		// ever referenced it as a parent to remove it), permanently showing
+		// "Tips: 2" with no merge ever happening — confirmed in production.
+		// Genesis must be 100% deterministic across every node by definition
+		// (it's the one block everyone is supposed to agree on without any
+		// data exchange), so it can never depend on a node's own live state.
+		Humans:    0,
+		IsGenesis: true,
+	}
+	genesis.Hash = dag.calculateHash(genesis)
+	genesis.BlueScore = 0
+	genesis.SelectedParent = ""
+	genesis.Blues = nil
+	dag.blocks[genesis.Hash] = genesis
+	dag.tips[genesis.Hash] = true
+	dag.height = 0
+	fmt.Printf("✓ Genesis Block (DAG): %s\n", genesis.Hash[:16]+"...")
 }
 
 func (dag *BlockDAG) calculateHash(b *Block) string {
@@ -1914,803 +1949,803 @@ func (dag *BlockDAG) calculateHash(b *Block) string {
 // block during resync) without needing dag state — the computation never
 // touched dag in the first place.
 func calculateBlockHash(b *Block) string {
-// The commitment to this block's transactions.
-//
-// AN ATTACHED BODY ALWAYS WINS. b.TxRoot is consulted ONLY when the block
-// carries no transactions at all, and that asymmetry is load-bearing
-// security rather than a style choice. This hash is what the proposer signs
-// and what AddPeerBlock re-derives and compares (integrity check 1) before
-// accepting any peer block. If a declared TxRoot could override an attached
-// body, a peer could keep a genuine block's signed root, swap the
-// transaction list for one of its own, and still pass BOTH the hash check
-// and the signature check — arbitrary forged transfers riding on a validly
-// signed block. Deriving from the body whenever one is present keeps the
-// hash binding whatever will actually be replayed, so a swapped body simply
-// fails to hash to the signed value and is rejected.
-//
-// Roadmap step 4 (see tx_batch.go): when no body is attached, the declared
-// digest is used — and THAT is what lets a block travel without its
-// transactions while hashing identically, because the preimage below always
-// contained only this one digest, never the transaction list. A stripped
-// block and the same block carrying its body therefore produce the same
-// hash, with no activation height and no fork. AttachTxBatch independently
-// re-checks a fetched body against this same signed root before attaching
-// it, so on the by-reference path the body is verified twice over.
-//
-// A block carrying neither (produced before the field existed) derives the
-// root from its transactions exactly as before, keeping every historical
-// hash reproducible.
-//
-// Normalize nil to empty slice so JSON always produces "[]" not "null".
-// omitempty on the Transactions field strips the key during HTTP transport,
-// and the receiver deserialises to nil — without this normalisation the
-// tx_root differs between producer and receiver, causing hash mismatches.
-var txRoot string
-if len(b.Transactions) == 0 && b.TxRoot != "" {
-txRoot = b.TxRoot
-} else {
-txs := b.Transactions
-if txs == nil {
-txs = []Transaction{}
-}
-txData, _ := json.Marshal(txs)
-txRootBytes := sha256.Sum256(txData)
-txRoot = hex.EncodeToString(txRootBytes[:])
-}
-// Use parent hashes in the order stored on the block — do NOT sort here.
-// Sorting must happen when PRODUCING a block (in ProduceBlock) so the order
-// is baked into block.ParentHashes before the hash is computed. Re-sorting
-// during verification would break hashes for blocks produced by peers using
-// the original order.
-data, _ := json.Marshal(map[string]interface{}{
-"height":        b.Height,
-"timestamp":     b.Timestamp,
-"parent_hashes": b.ParentHashes,
-"proposer":      b.Proposer,
-"humans":        b.Humans,
-"state_root":    b.StateRoot,
-"tx_root":       txRoot,
-})
-hash := sha256.Sum256(data)
-return hex.EncodeToString(hash[:])
+	// The commitment to this block's transactions.
+	//
+	// AN ATTACHED BODY ALWAYS WINS. b.TxRoot is consulted ONLY when the block
+	// carries no transactions at all, and that asymmetry is load-bearing
+	// security rather than a style choice. This hash is what the proposer signs
+	// and what AddPeerBlock re-derives and compares (integrity check 1) before
+	// accepting any peer block. If a declared TxRoot could override an attached
+	// body, a peer could keep a genuine block's signed root, swap the
+	// transaction list for one of its own, and still pass BOTH the hash check
+	// and the signature check — arbitrary forged transfers riding on a validly
+	// signed block. Deriving from the body whenever one is present keeps the
+	// hash binding whatever will actually be replayed, so a swapped body simply
+	// fails to hash to the signed value and is rejected.
+	//
+	// Roadmap step 4 (see tx_batch.go): when no body is attached, the declared
+	// digest is used — and THAT is what lets a block travel without its
+	// transactions while hashing identically, because the preimage below always
+	// contained only this one digest, never the transaction list. A stripped
+	// block and the same block carrying its body therefore produce the same
+	// hash, with no activation height and no fork. AttachTxBatch independently
+	// re-checks a fetched body against this same signed root before attaching
+	// it, so on the by-reference path the body is verified twice over.
+	//
+	// A block carrying neither (produced before the field existed) derives the
+	// root from its transactions exactly as before, keeping every historical
+	// hash reproducible.
+	//
+	// Normalize nil to empty slice so JSON always produces "[]" not "null".
+	// omitempty on the Transactions field strips the key during HTTP transport,
+	// and the receiver deserialises to nil — without this normalisation the
+	// tx_root differs between producer and receiver, causing hash mismatches.
+	var txRoot string
+	if len(b.Transactions) == 0 && b.TxRoot != "" {
+		txRoot = b.TxRoot
+	} else {
+		txs := b.Transactions
+		if txs == nil {
+			txs = []Transaction{}
+		}
+		txData, _ := json.Marshal(txs)
+		txRootBytes := sha256.Sum256(txData)
+		txRoot = hex.EncodeToString(txRootBytes[:])
+	}
+	// Use parent hashes in the order stored on the block — do NOT sort here.
+	// Sorting must happen when PRODUCING a block (in ProduceBlock) so the order
+	// is baked into block.ParentHashes before the hash is computed. Re-sorting
+	// during verification would break hashes for blocks produced by peers using
+	// the original order.
+	data, _ := json.Marshal(map[string]interface{}{
+		"height":        b.Height,
+		"timestamp":     b.Timestamp,
+		"parent_hashes": b.ParentHashes,
+		"proposer":      b.Proposer,
+		"humans":        b.Humans,
+		"state_root":    b.StateRoot,
+		"tx_root":       txRoot,
+	})
+	hash := sha256.Sum256(data)
+	return hex.EncodeToString(hash[:])
 }
 
 func (dag *BlockDAG) ProduceBlock() *Block {
-if dag.resyncInProgress.Load() {
-	return nil // an in-process self-heal resync is atomically swapping account/DAG state right now — see resyncInProgress's field comment
-}
-// Ongoing health check, not tied to any specific past incident: warn if a
-// single ProduceBlock call takes unusually long, since it holds dag.mu for
-// its entire duration (every other dag.mu consumer — API reads,
-// AddPeerBlock — stalls for the same span). The 2026-07-02/03 cadence
-// investigation that originally added a detailed per-phase breakdown here
-// found and fixed its root cause (batch-fetched GHOSTDAG merge-set lookups,
-// commit 8c9321f); this simple total-time check is what's still worth
-// keeping permanently.
-produceStart := time.Now()
-defer func() {
-	if d := time.Since(produceStart); d > 500*time.Millisecond {
-		fmt.Printf("[BLOCK] ⏱ ProduceBlock itself took %s\n", d)
+	if dag.resyncInProgress.Load() {
+		return nil // an in-process self-heal resync is atomically swapping account/DAG state right now — see resyncInProgress's field comment
 	}
-}()
-// P0-01 (audit): acquire replayMu before dag.mu so ProduceBlock cannot
-// interleave with an in-progress AddPeerBlock replay. AddPeerBlock holds
-// replayMu from after its replay until after dag.mu.Unlock() on the success
-// path — both functions take locks in (replayMu, dag.mu) order, no deadlock.
-dag.replayMu.Lock()
-defer dag.replayMu.Unlock()
-dag.mu.Lock()
-defer dag.mu.Unlock()
+	// Ongoing health check, not tied to any specific past incident: warn if a
+	// single ProduceBlock call takes unusually long, since it holds dag.mu for
+	// its entire duration (every other dag.mu consumer — API reads,
+	// AddPeerBlock — stalls for the same span). The 2026-07-02/03 cadence
+	// investigation that originally added a detailed per-phase breakdown here
+	// found and fixed its root cause (batch-fetched GHOSTDAG merge-set lookups,
+	// commit 8c9321f); this simple total-time check is what's still worth
+	// keeping permanently.
+	produceStart := time.Now()
+	defer func() {
+		if d := time.Since(produceStart); d > 500*time.Millisecond {
+			fmt.Printf("[BLOCK] ⏱ ProduceBlock itself took %s\n", d)
+		}
+	}()
+	// P0-01 (audit): acquire replayMu before dag.mu so ProduceBlock cannot
+	// interleave with an in-progress AddPeerBlock replay. AddPeerBlock holds
+	// replayMu from after its replay until after dag.mu.Unlock() on the success
+	// path — both functions take locks in (replayMu, dag.mu) order, no deadlock.
+	dag.replayMu.Lock()
+	defer dag.replayMu.Unlock()
+	dag.mu.Lock()
+	defer dag.mu.Unlock()
 
-// P1-05 (audit): halt production when a prior peer-block persistence failure
-// left memory state ahead of durable DB state.
-dag.degradedMu.Lock()
-dr := dag.degradedReason
-dag.degradedMu.Unlock()
-if dr != "" {
-	fmt.Printf("[BLOCK] ✗ Node is degraded (%s) — block production halted. Restart to recover.\n", dr)
-	return nil
-}
-
-// FIX (P0, 2026-07-04 — real production outage, superseding the
-// audit-2026-06-30 gate this replaces): halting ALL production for the
-// full duration of a GHOSTDAG migration turned a routine restart into a
-// full network outage. Confirmed live, repeatedly, the same night this
-// gate was first hardened against a *different* risk: with heavy
-// concurrent traffic and a large migration backlog (~5,000 blocks,
-// recurring on EVERY restart because of a separate not-yet-fixed
-// two-phase block-save gap that keeps regenerating the backlog), the
-// migration itself did not reliably finish within any tolerable window
-// — height frozen, every API request timing out, for 6+ minutes at a
-// stretch, twice in a row. The gate's original concern (a new block's
-// SelectedParent chosen by comparing a migrated block's real BlueScore
-// against another block's not-yet-migrated zero-value placeholder) is
-// real but bounded and self-correcting: BlueScore/SelectedParent are
-// locally-computed bookkeeping fields, not covered by the block hash and
-// not consensus/security-critical (transactions are validated by
-// signature + replay, entirely separately) — a suboptimal SelectedParent
-// choice during the migration window heals itself as real scores get
-// backfilled, it cannot cause a double-spend or a hash-verified fork.
-// Recurring total outages are a strictly worse failure mode than that
-// bounded, temporary scoring imprecision. Migration still runs and still
-// backfills scores in the background; it just no longer blocks the node
-// while doing so.
-
-// FIX (audit 2026-06-30 monster audit, P1-05): refuse to mint new blocks
-// while this node is still trusting one or more synthetic-checkpoint
-// stubs instead of having verified that part of its ancestry. Producing
-// on top of unverified history would let a peer-induced trust bypass
-// silently propagate into newly-minted, otherwise-fully-verified blocks.
-// SyntheticCheckpointCount() now just reads an atomic counter (no lock),
-// safe to call here even though dag.mu is already held write-locked.
-// Only stubs ABOVE the trusted snapshot boundary halt production. A stub AT the
-// boundary (the signed-snapshot start-of-history) can never heal — no node
-// retains blocks below it — so gating on the total count would strand a
-// snapshot-bootstrapped node in permanent non-production (confirmed live on
-// Contabo). See UnverifiedSyntheticCheckpointCount.
-// Sweep finality-sealed stubs first (see releaseFinalitySealedStubs): the
-// sweep normally piggybacks on maybeAdvanceFinalizedCheckpoint, which only
-// runs on accepted peer blocks — a node whose peers are all down would
-// otherwise never release a sealed stub and never produce, exactly the
-// "downed primary must not halt everyone else" case the sync-stall valve
-// below exists for. dag.mu is held (write) here, as the sweep requires.
-dag.releaseFinalitySealedStubs()
-if syntheticCount := dag.UnverifiedSyntheticCheckpointCount(); syntheticCount > 0 {
-	fmt.Printf("[BLOCK] ✗ Node is bridging %d unverified synthetic checkpoint(s) above the snapshot boundary — block production halted until real history syncs in behind them.\n", syntheticCount)
-	return nil
-}
-
-// After a snapshot resync, bootHeight is set to snapshot_import_height
-// (e.g. 23093) while dag.height starts at 0.  Producing blocks here would
-// create height-1 blocks whose StateRoot encodes the full snapshot state —
-// peers replaying from genesis cannot reach that StateRoot and reject them
-// as orphans.  Gate until the sequential catch-up sync has delivered enough
-// headers that our state is consistent with the blocks we're building on.
-// A 10-block buffer avoids false negatives from in-flight sync races.
-//
-// FIX (P0, 2026-07-10 — closes the one gate in this function that had no
-// escape valve): every gate below this one that can block production
-// indefinitely (the trusted-seed catch-up gate and the syncTargetHeight
-// gate, both further down) explicitly falls through once
-// dag.lastSuccessfulPeerSyncAt has been silent for syncStallTimeout — "a
-// downed/unreachable primary must not halt this node forever" is the
-// documented rationale for both. This gate predates that pattern and never
-// got it: if dag.height ever stops climbing while bootHeight stays fixed
-// above it — the exact shape a stuck sync loop (of any cause, not only the
-// deepScan-monopolization incident this same session also fixed in
-// sync_blocks.go) produces — this unconditional check blocked production
-// forever, with no recovery short of an operator restart, unlike its two
-// siblings immediately below. Same reference time and same threshold as
-// those two gates, for the identical reason: only trip once there has been
-// genuinely NO sync progress at all for a long stretch, never merely
-// because catch-up is still in progress and actively succeeding.
-if dag.bootHeight > 0 && dag.height+10 < dag.bootHeight {
-	referenceTime := dag.lastPeerActivityAt()
-	if referenceTime == 0 {
-		referenceTime = dag.startupTime
-	}
-	if time.Now().Unix()-referenceTime < syncStallTimeout {
-		fmt.Printf("[BLOCK] ⏳ Catch-up in progress (dag.height=%d, bootHeight=%d) — skipping block production\n",
-			dag.height, dag.bootHeight)
+	// P1-05 (audit): halt production when a prior peer-block persistence failure
+	// left memory state ahead of durable DB state.
+	dag.degradedMu.Lock()
+	dr := dag.degradedReason
+	dag.degradedMu.Unlock()
+	if dr != "" {
+		fmt.Printf("[BLOCK] ✗ Node is degraded (%s) — block production halted. Restart to recover.\n", dr)
 		return nil
 	}
-	// else: no sync progress at all for syncStallTimeout — peers may be
-	// unreachable → produce independently rather than halt forever, same
-	// escape hatch as the two gates below.
-}
 
-// FIX (P0, 2026-07-10 — root cause of Contabo1 forking within its first
-// 30-45 blocks after every RESYNC_FROM_SNAPSHOT boot): every earlier
-// version of the gate below compares dag.height against some target — but
-// dag.height is exactly the field THIS node's own self-production also
-// advances. The instant that gate first opens even briefly, self-
-// production and the (correctly, continuously refreshed) target both then
-// climb at the same ~1-block/BLOCK_TIME pace, so "dag.height >= target-10"
-// stays satisfied forever after — a self-sustaining equilibrium with no
-// relation to whether genuine peer catch-up ever finished. Confirmed live:
-// even peerSyncHeight (immune to self-production, unlike raw dag.height)
-// didn't close this, because doSyncOnce deliberately advances it for every
-// block it SEES in a fetched page regardless of whether AddPeerBlock could
-// actually merge it. A fixed wall-clock minimum was tried next and also
-// confirmed insufficient: it bounds nothing about whether catch-up actually
-// finished, only how long it was blindly assumed to take — a slower cycle
-// (confirmed live: peer temporarily unreachable mid-boot) just let the
-// timer run out before catch-up was done, reproducing the same fork.
-//
-// hasCaughtUpWithAllPeers is a direct, positive signal instead of a proxy:
-// true only once doSyncOnce has completed cleanSyncStreakThreshold
-// CONSECUTIVE cycles against EVERY trusted seed with nothing left unmerged
-// (see cleanSyncStreak's own struct comment) — the actual condition this
-// gate needs, self-paced to however long real catch-up genuinely takes
-// rather than a guessed number.
-// FIX (P0, found live minutes after this shipped): bootHeight is set from
-// the DB's own persisted max_block_height on EVERY restart, not only a
-// RESYNC_FROM_SNAPSHOT boot (see bootHeight's own field comment) — so this
-// gate was firing for the PRIMARY node too after an ordinary redeploy.
-// Primary has no PRIMARY_NODE_URL/PRIMARY_NODE_URLS configured (it's the
-// seed, not a syncer — see StartPeerDiscovery's own "no PRIMARY_NODE_URL
-// configured" branch), so dag.trustedSeeds is permanently empty for it, and
-// hasCaughtUpWithAllPeers correctly refuses to call an empty seed list
-// "caught up" (that's the vacuous-truth trap it exists to avoid for a
-// secondary node whose discovery just hasn't run yet). Combined, the two
-// correct behaviors silenced Primary as a producer indefinitely: it kept
-// successfully receiving peer blocks (so the syncStallTimeout escape below
-// never triggered — that only fires on NO progress) while permanently
-// unable to produce (nothing it could ever be "caught up with"). Only
-// require this gate when there is genuinely something to catch up with.
-if dag.bootHeight > 0 && len(dag.trustedSeeds) > 0 {
-	seeds := make([]string, 0, len(dag.trustedSeeds))
-	for s := range dag.trustedSeeds {
-		seeds = append(seeds, s)
+	// FIX (P0, 2026-07-04 — real production outage, superseding the
+	// audit-2026-06-30 gate this replaces): halting ALL production for the
+	// full duration of a GHOSTDAG migration turned a routine restart into a
+	// full network outage. Confirmed live, repeatedly, the same night this
+	// gate was first hardened against a *different* risk: with heavy
+	// concurrent traffic and a large migration backlog (~5,000 blocks,
+	// recurring on EVERY restart because of a separate not-yet-fixed
+	// two-phase block-save gap that keeps regenerating the backlog), the
+	// migration itself did not reliably finish within any tolerable window
+	// — height frozen, every API request timing out, for 6+ minutes at a
+	// stretch, twice in a row. The gate's original concern (a new block's
+	// SelectedParent chosen by comparing a migrated block's real BlueScore
+	// against another block's not-yet-migrated zero-value placeholder) is
+	// real but bounded and self-correcting: BlueScore/SelectedParent are
+	// locally-computed bookkeeping fields, not covered by the block hash and
+	// not consensus/security-critical (transactions are validated by
+	// signature + replay, entirely separately) — a suboptimal SelectedParent
+	// choice during the migration window heals itself as real scores get
+	// backfilled, it cannot cause a double-spend or a hash-verified fork.
+	// Recurring total outages are a strictly worse failure mode than that
+	// bounded, temporary scoring imprecision. Migration still runs and still
+	// backfills scores in the background; it just no longer blocks the node
+	// while doing so.
+
+	// FIX (audit 2026-06-30 monster audit, P1-05): refuse to mint new blocks
+	// while this node is still trusting one or more synthetic-checkpoint
+	// stubs instead of having verified that part of its ancestry. Producing
+	// on top of unverified history would let a peer-induced trust bypass
+	// silently propagate into newly-minted, otherwise-fully-verified blocks.
+	// SyntheticCheckpointCount() now just reads an atomic counter (no lock),
+	// safe to call here even though dag.mu is already held write-locked.
+	// Only stubs ABOVE the trusted snapshot boundary halt production. A stub AT the
+	// boundary (the signed-snapshot start-of-history) can never heal — no node
+	// retains blocks below it — so gating on the total count would strand a
+	// snapshot-bootstrapped node in permanent non-production (confirmed live on
+	// Contabo). See UnverifiedSyntheticCheckpointCount.
+	// Sweep finality-sealed stubs first (see releaseFinalitySealedStubs): the
+	// sweep normally piggybacks on maybeAdvanceFinalizedCheckpoint, which only
+	// runs on accepted peer blocks — a node whose peers are all down would
+	// otherwise never release a sealed stub and never produce, exactly the
+	// "downed primary must not halt everyone else" case the sync-stall valve
+	// below exists for. dag.mu is held (write) here, as the sweep requires.
+	dag.releaseFinalitySealedStubs()
+	if syntheticCount := dag.UnverifiedSyntheticCheckpointCount(); syntheticCount > 0 {
+		fmt.Printf("[BLOCK] ✗ Node is bridging %d unverified synthetic checkpoint(s) above the snapshot boundary — block production halted until real history syncs in behind them.\n", syntheticCount)
+		return nil
 	}
-	if !dag.hasCaughtUpWithAllPeers(seeds) {
-		// Same safety valve as the syncTargetHeight gate below, and for the
-		// same reason: unlike that gate, hasCaughtUpWithAllPeers has no
-		// timeout of its own, so a genuinely-unreachable seed (not just a
-		// slow one) would otherwise block this node from ever producing —
-		// this node's own liveness must not depend on a peer that may never
-		// come back. lastSuccessfulPeerSyncAt reflects genuine progress
-		// against ANY peer, so this only fires when NOTHING is getting
-		// through, not merely because one of several configured seeds is
-		// down while another still feeds real progress.
+
+	// After a snapshot resync, bootHeight is set to snapshot_import_height
+	// (e.g. 23093) while dag.height starts at 0.  Producing blocks here would
+	// create height-1 blocks whose StateRoot encodes the full snapshot state —
+	// peers replaying from genesis cannot reach that StateRoot and reject them
+	// as orphans.  Gate until the sequential catch-up sync has delivered enough
+	// headers that our state is consistent with the blocks we're building on.
+	// A 10-block buffer avoids false negatives from in-flight sync races.
+	//
+	// FIX (P0, 2026-07-10 — closes the one gate in this function that had no
+	// escape valve): every gate below this one that can block production
+	// indefinitely (the trusted-seed catch-up gate and the syncTargetHeight
+	// gate, both further down) explicitly falls through once
+	// dag.lastSuccessfulPeerSyncAt has been silent for syncStallTimeout — "a
+	// downed/unreachable primary must not halt this node forever" is the
+	// documented rationale for both. This gate predates that pattern and never
+	// got it: if dag.height ever stops climbing while bootHeight stays fixed
+	// above it — the exact shape a stuck sync loop (of any cause, not only the
+	// deepScan-monopolization incident this same session also fixed in
+	// sync_blocks.go) produces — this unconditional check blocked production
+	// forever, with no recovery short of an operator restart, unlike its two
+	// siblings immediately below. Same reference time and same threshold as
+	// those two gates, for the identical reason: only trip once there has been
+	// genuinely NO sync progress at all for a long stretch, never merely
+	// because catch-up is still in progress and actively succeeding.
+	if dag.bootHeight > 0 && dag.height+10 < dag.bootHeight {
 		referenceTime := dag.lastPeerActivityAt()
 		if referenceTime == 0 {
 			referenceTime = dag.startupTime
 		}
 		if time.Now().Unix()-referenceTime < syncStallTimeout {
-			fmt.Printf("[BLOCK] ⏳ Not yet %d consecutive clean sync cycles with every trusted seed — skipping block production regardless of height-based gates\n",
-				cleanSyncStreakThreshold)
+			fmt.Printf("[BLOCK] ⏳ Catch-up in progress (dag.height=%d, bootHeight=%d) — skipping block production\n",
+				dag.height, dag.bootHeight)
 			return nil
 		}
-		// else: no sync progress at all for syncStallTimeout — fall through,
-		// same escape hatch as the gate below.
+		// else: no sync progress at all for syncStallTimeout — peers may be
+		// unreachable → produce independently rather than halt forever, same
+		// escape hatch as the two gates below.
 	}
-}
 
-// Initial-sync gate: after a restart, defer production until this node
-// has caught up to within 10 blocks of the height the seed reported at
-// startup. This prevents producing on a stale fork while the HTTP sync
-// loop is still pulling in the seed's newer blocks — the root cause of
-// "Contabo is ahead of Primary" divergence that required RESYNC_FROM_SNAPSHOT.
-//
-// Safety valve: if sync has made no progress for syncStallTimeout, the
-// seed is likely down — fall through and produce independently so a
-// downed primary never blocks all other nodes.
-//
-// FIX (P0, merge-reliability audit 2026-07-03): this used to measure the
-// 90s window from dag.startupTime — a FIXED deadline from process start,
-// regardless of whether sync was actively making progress. syncTargetHeight
-// is captured ONCE at startup from the seed's height at that instant; a
-// large historical gap (e.g. a fresh RESYNC_FROM_SNAPSHOT walking forward
-// from genesis) can easily take longer than 90s to close even while
-// succeeding continuously, since the seed keeps producing new blocks the
-// whole time too. Confirmed live on Contabo: a genesis resync made 400+
-// blocks of genuine progress (batches of successful "Added peer block"/
-// "Merged" log lines) but the 90s deadline expired before it reached the
-// target, so production resumed independently mid-catch-up — recreating
-// the exact divergence (and the mutual circuit-breaker lockout that
-// depends on it) the resync had just fixed. Now measured from the last
-// successful peer-block acceptance (dag.lastSuccessfulPeerSyncAt, already
-// tracked for /api/health/combined) instead: keeps waiting as long as sync
-// keeps making progress, however long that takes, and only concludes the
-// seed is down after syncStallTimeout of genuine silence.
-if target := dag.syncTargetHeight.Load(); target > 0 {
-	if dag.height >= target-10 {
-		dag.syncTargetHeight.Store(0) // caught up — clear gate permanently
-	} else {
-		referenceTime := dag.lastPeerActivityAt()
-		if referenceTime == 0 {
-			referenceTime = dag.startupTime // no progress yet — measure from boot
+	// FIX (P0, 2026-07-10 — root cause of Contabo1 forking within its first
+	// 30-45 blocks after every RESYNC_FROM_SNAPSHOT boot): every earlier
+	// version of the gate below compares dag.height against some target — but
+	// dag.height is exactly the field THIS node's own self-production also
+	// advances. The instant that gate first opens even briefly, self-
+	// production and the (correctly, continuously refreshed) target both then
+	// climb at the same ~1-block/BLOCK_TIME pace, so "dag.height >= target-10"
+	// stays satisfied forever after — a self-sustaining equilibrium with no
+	// relation to whether genuine peer catch-up ever finished. Confirmed live:
+	// even peerSyncHeight (immune to self-production, unlike raw dag.height)
+	// didn't close this, because doSyncOnce deliberately advances it for every
+	// block it SEES in a fetched page regardless of whether AddPeerBlock could
+	// actually merge it. A fixed wall-clock minimum was tried next and also
+	// confirmed insufficient: it bounds nothing about whether catch-up actually
+	// finished, only how long it was blindly assumed to take — a slower cycle
+	// (confirmed live: peer temporarily unreachable mid-boot) just let the
+	// timer run out before catch-up was done, reproducing the same fork.
+	//
+	// hasCaughtUpWithAllPeers is a direct, positive signal instead of a proxy:
+	// true only once doSyncOnce has completed cleanSyncStreakThreshold
+	// CONSECUTIVE cycles against EVERY trusted seed with nothing left unmerged
+	// (see cleanSyncStreak's own struct comment) — the actual condition this
+	// gate needs, self-paced to however long real catch-up genuinely takes
+	// rather than a guessed number.
+	// FIX (P0, found live minutes after this shipped): bootHeight is set from
+	// the DB's own persisted max_block_height on EVERY restart, not only a
+	// RESYNC_FROM_SNAPSHOT boot (see bootHeight's own field comment) — so this
+	// gate was firing for the PRIMARY node too after an ordinary redeploy.
+	// Primary has no PRIMARY_NODE_URL/PRIMARY_NODE_URLS configured (it's the
+	// seed, not a syncer — see StartPeerDiscovery's own "no PRIMARY_NODE_URL
+	// configured" branch), so dag.trustedSeeds is permanently empty for it, and
+	// hasCaughtUpWithAllPeers correctly refuses to call an empty seed list
+	// "caught up" (that's the vacuous-truth trap it exists to avoid for a
+	// secondary node whose discovery just hasn't run yet). Combined, the two
+	// correct behaviors silenced Primary as a producer indefinitely: it kept
+	// successfully receiving peer blocks (so the syncStallTimeout escape below
+	// never triggered — that only fires on NO progress) while permanently
+	// unable to produce (nothing it could ever be "caught up with"). Only
+	// require this gate when there is genuinely something to catch up with.
+	if dag.bootHeight > 0 && len(dag.trustedSeeds) > 0 {
+		seeds := make([]string, 0, len(dag.trustedSeeds))
+		for s := range dag.trustedSeeds {
+			seeds = append(seeds, s)
 		}
-		if time.Now().Unix()-referenceTime < syncStallTimeout {
-			return nil // sync is actively progressing (or just started) — keep waiting
+		if !dag.hasCaughtUpWithAllPeers(seeds) {
+			// Same safety valve as the syncTargetHeight gate below, and for the
+			// same reason: unlike that gate, hasCaughtUpWithAllPeers has no
+			// timeout of its own, so a genuinely-unreachable seed (not just a
+			// slow one) would otherwise block this node from ever producing —
+			// this node's own liveness must not depend on a peer that may never
+			// come back. lastSuccessfulPeerSyncAt reflects genuine progress
+			// against ANY peer, so this only fires when NOTHING is getting
+			// through, not merely because one of several configured seeds is
+			// down while another still feeds real progress.
+			referenceTime := dag.lastPeerActivityAt()
+			if referenceTime == 0 {
+				referenceTime = dag.startupTime
+			}
+			if time.Now().Unix()-referenceTime < syncStallTimeout {
+				fmt.Printf("[BLOCK] ⏳ Not yet %d consecutive clean sync cycles with every trusted seed — skipping block production regardless of height-based gates\n",
+					cleanSyncStreakThreshold)
+				return nil
+			}
+			// else: no sync progress at all for syncStallTimeout — fall through,
+			// same escape hatch as the gate below.
 		}
-		// else: no sync progress for syncStallTimeout — primary may be down → produce independently
 	}
-}
 
-// Epoch-committee gate: only the selected committee members produce blocks.
-// All registered node operators are ranked deterministically by
-// sha256(addr+epochNum) and the top targetCommitteeSize are chosen.
-// Non-committee nodes run in observer mode — syncing and verifying without
-// producing — which keeps simultaneous producers bounded regardless of how
-// many humans have registered. Returns nil (no block) when not selected;
-// committee is recomputed lazily when the epoch number changes.
-{
-	nextHeight := dag.height + 1
-	ec := dag.getEpochCommittee(nextHeight)
-	if ec != nil && !ec.Members[dag.selfProposer] {
+	// Initial-sync gate: after a restart, defer production until this node
+	// has caught up to within 10 blocks of the height the seed reported at
+	// startup. This prevents producing on a stale fork while the HTTP sync
+	// loop is still pulling in the seed's newer blocks — the root cause of
+	// "Contabo is ahead of Primary" divergence that required RESYNC_FROM_SNAPSHOT.
+	//
+	// Safety valve: if sync has made no progress for syncStallTimeout, the
+	// seed is likely down — fall through and produce independently so a
+	// downed primary never blocks all other nodes.
+	//
+	// FIX (P0, merge-reliability audit 2026-07-03): this used to measure the
+	// 90s window from dag.startupTime — a FIXED deadline from process start,
+	// regardless of whether sync was actively making progress. syncTargetHeight
+	// is captured ONCE at startup from the seed's height at that instant; a
+	// large historical gap (e.g. a fresh RESYNC_FROM_SNAPSHOT walking forward
+	// from genesis) can easily take longer than 90s to close even while
+	// succeeding continuously, since the seed keeps producing new blocks the
+	// whole time too. Confirmed live on Contabo: a genesis resync made 400+
+	// blocks of genuine progress (batches of successful "Added peer block"/
+	// "Merged" log lines) but the 90s deadline expired before it reached the
+	// target, so production resumed independently mid-catch-up — recreating
+	// the exact divergence (and the mutual circuit-breaker lockout that
+	// depends on it) the resync had just fixed. Now measured from the last
+	// successful peer-block acceptance (dag.lastSuccessfulPeerSyncAt, already
+	// tracked for /api/health/combined) instead: keeps waiting as long as sync
+	// keeps making progress, however long that takes, and only concludes the
+	// seed is down after syncStallTimeout of genuine silence.
+	if target := dag.syncTargetHeight.Load(); target > 0 {
+		if dag.height >= target-10 {
+			dag.syncTargetHeight.Store(0) // caught up — clear gate permanently
+		} else {
+			referenceTime := dag.lastPeerActivityAt()
+			if referenceTime == 0 {
+				referenceTime = dag.startupTime // no progress yet — measure from boot
+			}
+			if time.Now().Unix()-referenceTime < syncStallTimeout {
+				return nil // sync is actively progressing (or just started) — keep waiting
+			}
+			// else: no sync progress for syncStallTimeout — primary may be down → produce independently
+		}
+	}
+
+	// Epoch-committee gate: only the selected committee members produce blocks.
+	// All registered node operators are ranked deterministically by
+	// sha256(addr+epochNum) and the top targetCommitteeSize are chosen.
+	// Non-committee nodes run in observer mode — syncing and verifying without
+	// producing — which keeps simultaneous producers bounded regardless of how
+	// many humans have registered. Returns nil (no block) when not selected;
+	// committee is recomputed lazily when the epoch number changes.
+	{
+		nextHeight := dag.height + 1
+		ec := dag.getEpochCommittee(nextHeight)
+		if ec != nil && !ec.Members[dag.selfProposer] {
+			return nil
+		}
+	}
+	// Collect tips as parents, capped at maxParentsPerBlock.
+	// With many validators, every tip would create giant blocks and blow up
+	// GHOSTDAG merge-set computation. Select the highest-BlueScore tips
+	// (most recent, most authoritative) up to the cap, then sort by hash for
+	// deterministic block-hash computation across all nodes.
+	//
+	// FIX (P0, 2026-07-10 — the actual root cause behind the produceStuckGaps
+	// fix still not restoring production on Contabo1): a tip whose height has
+	// fallen behind the finalized checkpoint can never become canonical again
+	// — finality means the selected-parent chain already irreversibly grew
+	// past that height via a different path, so a competing tip stuck below
+	// it is provably a dead branch. Previously EVERY entry in dag.tips was a
+	// merge-parent candidate forever, sorted only by BlueScore — so once one
+	// of this node's own tips lost a race and stalled (nothing will ever
+	// build on a doomed branch again, so it can never regain BlueScore),
+	// every subsequent ProduceBlock tick still tried to merge it in. Confirmed
+	// live: a Contabo1 tip stuck at height 675762, 9631 blocks behind the
+	// finalized checkpoint at 685393, whose own parent is genuinely gone from
+	// every peer's memory (correctly so — it predates their own finality
+	// pruning). produceStuckGaps' active fetching could never resolve that:
+	// the ancestor really is gone. Excluding sub-finality tips here stops
+	// ProduceBlock from ever walking into that dead branch again; the tip
+	// itself is left in dag.tips untouched (only this call's parent
+	// candidates are filtered) since nothing here owns broader tip pruning.
+	finalizedHeight, _ := dag.state.GetFinalizedCheckpoint()
+	type tipEntry struct {
+		hash      string
+		blueScore int64
+	}
+	allTips := make([]tipEntry, 0, len(dag.tips))
+	for hash := range dag.tips {
+		score := int64(0)
+		if b, ok := dag.blocks[hash]; ok {
+			if finalizedHeight > 0 && b.Height < finalizedHeight {
+				continue
+			}
+			score = b.BlueScore
+		}
+		allTips = append(allTips, tipEntry{hash, score})
+	}
+	sort.Slice(allTips, func(i, j int) bool {
+		if allTips[i].blueScore != allTips[j].blueScore {
+			return allTips[i].blueScore > allTips[j].blueScore
+		}
+		return allTips[i].hash < allTips[j].hash
+	})
+	if len(allTips) > dag.maxParents() {
+		allTips = allTips[:dag.maxParents()]
+	}
+	parentHashes := make([]string, len(allTips))
+	for i, te := range allTips {
+		parentHashes[i] = te.hash
+	}
+	sort.Strings(parentHashes) // deterministic ordering for block hash
+
+	// Height = max parent height + 1
+	maxParentHeight := int64(0)
+	for _, ph := range parentHashes {
+		if parent, ok := dag.blocks[ph]; ok {
+			if parent.Height > maxParentHeight {
+				maxParentHeight = parent.Height
+			}
+		}
+	}
+
+	dag.txMu.Lock()
+	txs := make([]Transaction, len(dag.pendingTxs))
+	copy(txs, dag.pendingTxs)
+	// P2-06: do NOT clear pendingTxs here — if SaveBlockWithPendingTxsAtomic
+	// fails below, in-memory TXs would be permanently lost.  Clear only the
+	// snapshot count AFTER a successful save (see post-save section below).
+	nTxsSnapshotted := len(txs)
+	dag.txMu.Unlock()
+
+	// Drain DB-persisted pending TXs — these survived a node restart and
+	// must now be included in a block so secondary nodes receive them.
+	// Without this, a transfer applied just before a restart would never
+	// reach secondary nodes and balances would diverge permanently.
+	//
+	// CADENCE FIX (P0, follow-up to the merge-reliability audit 2026-07-03):
+	// this and StateRoot() below are each their own synchronous Postgres round
+	// trip (~400-590ms, confirmed live on the primary's remote DB proxy) and
+	// neither depends on the other's result — StateRoot hashes cs.accounts'
+	// CURRENT state, which already reflects every TX's effect regardless of
+	// which block ends up bundling it (see AddPeerBlock's "post-state, not
+	// pre-state" comment), while this call only affects which TXs land in
+	// THIS block's Transactions list. Running them concurrently instead of
+	// back-to-back turns 2 sequential round trips into the wall-clock cost of
+	// one, directly shortening how long ProduceBlock holds dag.mu.
+	//
+	// This matters beyond raw speed: main.go's block-production ticker aligns
+	// every node to the same wall-clock BLOCK_TIME boundary specifically so
+	// concurrent production merges naturally (see its own comment — "both
+	// validators produce within <50ms of each other on every tick"). A
+	// secondary with a fast LOCAL Postgres (e.g. Contabo, same Docker network,
+	// near-zero round-trip) sustains close to the true 1s cadence, while a
+	// primary whose DB calls each cost hundreds of ms falls further and
+	// further behind tick-for-tick — not a one-time "overtake" but a
+	// permanently widening height gap between two nodes that are still
+	// technically merging each other's blocks correctly. Narrowing the
+	// primary's own per-block DB cost is what keeps both sides' cadence close
+	// enough for that wall-clock alignment to do its job.
+	var dbTxs []Transaction
+	var pendingTxIDs []int64
+	var stateRoot string
+	var pendingDur, rootDur time.Duration
+	dbPairStart := time.Now()
+	var cadenceWG sync.WaitGroup
+	cadenceWG.Add(2)
+	// FIX (performance audit 2026-07-06): dispatched through produceBlockPool
+	// (workerpool.go) — 2 persistent workers reused every block (BLOCK_TIME
+	// cadence, i.e. continuously for the node's whole lifetime) instead of
+	// spawning 2 fresh goroutines per tick. Exactly 2 workers because exactly
+	// 2 jobs are submitted per tick and both are always awaited before the
+	// next tick's ProduceBlock call, so the pool is idle again before it's
+	// needed next — same concurrency shape as before, just without the
+	// per-tick goroutine spinup. Audit flagged this as low-effect (Go
+	// goroutine creation is already cheap), kept for consistency with the
+	// same class of fix applied elsewhere.
+	produceBlockPool.submit(func() {
+		defer cadenceWG.Done()
+		// FIX (P0-3, beta-launch audit 2026-07-05): see panic_recovery.go. Also
+		// prevents cadenceWG.Wait() below from deadlocking forever on a panic —
+		// Done() (deferred above, so it still runs during this unwind) must fire
+		// either way.
+		defer func() {
+			if r := recover(); r != nil {
+				fmt.Printf("[PANIC RECOVERED] ProduceBlock LoadPendingTxs goroutine: %v\n%s\n", r, debug.Stack())
+			}
+		}()
+		t0 := time.Now()
+		if dag.state != nil {
+			dbTxs, pendingTxIDs = dag.state.LoadPendingTxs()
+		}
+		pendingDur = time.Since(t0)
+	})
+	produceBlockPool.submit(func() {
+		defer cadenceWG.Done()
+		defer func() {
+			if r := recover(); r != nil {
+				fmt.Printf("[PANIC RECOVERED] ProduceBlock StateRoot goroutine: %v\n%s\n", r, debug.Stack())
+			}
+		}()
+		t0 := time.Now()
+		stateRoot = dag.state.StateRoot()
+		rootDur = time.Since(t0)
+	})
+	cadenceWG.Wait()
+	// Ongoing health check: these two DB round trips run concurrently
+	// specifically to shorten how long ProduceBlock holds dag.mu (see the
+	// comment above this block) — worth knowing which one is slow if the pair
+	// itself is ever slow, permanently, not just for the resolved 2026-07-03
+	// cadence incident this concurrency fix was originally built for.
+	if d := time.Since(dbPairStart); d > 1200*time.Millisecond {
+		fmt.Printf("[BLOCK] ⏱ dbpair detail: LoadPendingTxs=%s StateRoot=%s\n", pendingDur, rootDur)
+	}
+	if len(dbTxs) > 0 {
+		fmt.Printf("[DAG] Including %d restart-surviving TX(s) from DB in block\n", len(dbTxs))
+		txs = append(txs, dbTxs...)
+	}
+
+	proposer := dag.nodeID
+	if dag.signingKey != nil {
+		// Use the Ethereum address derived from the signing key so peer nodes
+		// can verify the block signature against a known Ethereum address.
+		// The libp2p nodeID is used for network routing; the signing address
+		// is what peers need for consensus verification.
+		proposer = crypto.PubkeyToAddress(dag.signingKey.PublicKey).Hex()
+	}
+
+	// FIX (P0, 2026-07-10 — Primary false-positive-equivocation-ban incident):
+	// a brief window where an OLD and NEW instance of this exact validator run
+	// simultaneously (e.g. a rolling redeploy that briefly overlaps the
+	// outgoing and incoming container) can otherwise have BOTH instances
+	// independently produce the "first" block from the identical pre-restart
+	// tip, seconds apart — same height, same parents, same BlueScore, only the
+	// timestamp (and therefore hash) differing. Every OTHER node's
+	// checkAndIndexEquivocation (slashing.go) correctly flags that as this
+	// validator signing two different blocks for the same parent set — because
+	// from the network's perspective, that's exactly what happened. Confirmed
+	// live: this exact pattern (identical height/parents/BlueScore/state_root,
+	// only signature+timestamp differing) hit Primary at least four times
+	// (2026-07-05, 07-08, 07-10, and again 07-12 — evidence in
+	// equivocation_evidence on Contabo1/Contabo2); the 07-12 recurrence actually
+	// triggered a real 14-day suspension on BOTH secondaries simultaneously
+	// (cleared manually after confirming via evidence-pair comparison it was
+	// this exact benign pattern, not real malicious equivocation).
+	//
+	// FIX (P0, 2026-07-12 — widened after the 07-12 recurrence): the original
+	// version of this guard only checked the SINGLE literal first tick
+	// (maxParentHeight+1 == bootHeight+1). The 07-12 incident's two colliding
+	// blocks were produced 21 SECONDS apart — the outgoing instance was still
+	// alive and still producing well past this process's first tick, so a
+	// one-shot check missed it (by the time this process's first tick ran, the
+	// outgoing instance's competing row for that exact height may not even
+	// have been durably committed yet either — a narrow race the one-shot
+	// version didn't close on top of the sustained-overlap gap). Widened from
+	// "check once, at one height" to "check on every tick, for whatever height
+	// is about to be produced, during a grace window after boot" — covers a
+	// sustained overlap, not just an instant one. dag.state.HasBlockFromProposerAtHeight
+	// hits the DURABLE store (chain_blocks), not this fresh process's own
+	// (necessarily empty-for-this-height) in-memory dag.blocks, so it can see
+	// what an outgoing sibling instance already committed moments ago even
+	// though this instance never received it directly. Skip this tick rather
+	// than mint a competing duplicate; ordinary peer sync pulls the other
+	// instance's already-broadcast block in within the next tick or two.
+	//
+	// FIX (P0, 2026-07-24 — fifth recurrence, this time escalating the primary
+	// to a real 2nd offense: 90-day suspension PLUS the 50 AEQ penalty, not
+	// just the no-balance-loss 1st-offense grace): the 07-12 fix's 45-second
+	// grace window was still too short — confirmed live again the same day
+	// this comment was written, on the very redeploy triggered by pushing that
+	// day's other merge-reliability fixes. Guessing a bigger constant would
+	// just repeat the same mistake, because the real answer (how long the
+	// hosting platform's rolling-deploy overlap can last) depends on Railway's
+	// own health-check/traffic-drain timing, which this process has no way to
+	// observe or bound. The check itself is a single cheap indexed EXISTS
+	// lookup that costs nothing once this validator's own tips are current —
+	// the overwhelmingly common case, and the only one steady-state production
+	// ever hits — so there was never a real correctness or performance reason
+	// to time-box it at all. Window removed entirely: this now runs on every
+	// tick, for the process's whole life, closing the incident class instead
+	// of re-guessing a magic number the next slow deploy will exceed again.
+	//
+	// REVERTED (P0, 2026-07-24, hours later — that reasoning was wrong and it
+	// halted the primary): removing the window did not make the check
+	// "harmless but always on", it made it PERMANENT, and the condition it
+	// tests is routinely true in ordinary steady-state operation. Once this
+	// node's own tip selection lags even one height behind what it has already
+	// durably stored — which happens constantly under normal merging —
+	// maxParentHeight+1 names a height where this validator's own block from a
+	// moment ago is already in chain_blocks. The guard then fires on EVERY
+	// tick and the node never produces again. Confirmed live from the
+	// primary's own Railway log, once per second, indefinitely:
+	//
+	//	[BLOCK] ⏸ Skipping production at height 1774182 — this validator
+	//	already has a block there in the durable store (likely a concurrent
+	//	instance from a redeploy overlap, 1m34s into this process's life)
+	//
+	// "1m34s into this process's life" is the tell: well past any redeploy
+	// overlap, in normal operation, blocking production for good.
+	//
+	// The window was never a magic number to be guessed away — it is what
+	// makes "I have a block here that I did not produce this run" evidence of
+	// an overlapping instance rather than a description of normal operation.
+	// Restored. The recurrence risk that motivated removing it is separately
+	// and much better handled now: a secondary no longer suspends its own
+	// BOOTSTRAP_SIGNER over a self-collision at all (see AddPeerBlock's
+	// equivocation goroutine, same date), so a missed overlap costs a
+	// duplicate block the DAG merges anyway, not a 14-day network partition.
+	const postBootDuplicateGuardWindow = 45 * time.Second
+	if time.Since(dag.bootTime) < postBootDuplicateGuardWindow &&
+		dag.state != nil && dag.state.HasBlockFromProposerAtHeight(proposer, maxParentHeight+1) {
+		fmt.Printf("[BLOCK] ⏸ Skipping production at height %d — this validator already has a block there in the durable store (likely a concurrent instance from a redeploy overlap, %s into this process's life); waiting for ordinary peer sync to pull it in instead of minting a conflicting duplicate\n", maxParentHeight+1, time.Since(dag.bootTime).Round(time.Second))
 		return nil
 	}
-}
-// Collect tips as parents, capped at maxParentsPerBlock.
-// With many validators, every tip would create giant blocks and blow up
-// GHOSTDAG merge-set computation. Select the highest-BlueScore tips
-// (most recent, most authoritative) up to the cap, then sort by hash for
-// deterministic block-hash computation across all nodes.
-//
-// FIX (P0, 2026-07-10 — the actual root cause behind the produceStuckGaps
-// fix still not restoring production on Contabo1): a tip whose height has
-// fallen behind the finalized checkpoint can never become canonical again
-// — finality means the selected-parent chain already irreversibly grew
-// past that height via a different path, so a competing tip stuck below
-// it is provably a dead branch. Previously EVERY entry in dag.tips was a
-// merge-parent candidate forever, sorted only by BlueScore — so once one
-// of this node's own tips lost a race and stalled (nothing will ever
-// build on a doomed branch again, so it can never regain BlueScore),
-// every subsequent ProduceBlock tick still tried to merge it in. Confirmed
-// live: a Contabo1 tip stuck at height 675762, 9631 blocks behind the
-// finalized checkpoint at 685393, whose own parent is genuinely gone from
-// every peer's memory (correctly so — it predates their own finality
-// pruning). produceStuckGaps' active fetching could never resolve that:
-// the ancestor really is gone. Excluding sub-finality tips here stops
-// ProduceBlock from ever walking into that dead branch again; the tip
-// itself is left in dag.tips untouched (only this call's parent
-// candidates are filtered) since nothing here owns broader tip pruning.
-finalizedHeight, _ := dag.state.GetFinalizedCheckpoint()
-type tipEntry struct {
-    hash      string
-    blueScore int64
-}
-allTips := make([]tipEntry, 0, len(dag.tips))
-for hash := range dag.tips {
-    score := int64(0)
-    if b, ok := dag.blocks[hash]; ok {
-        if finalizedHeight > 0 && b.Height < finalizedHeight {
-            continue
-        }
-        score = b.BlueScore
-    }
-    allTips = append(allTips, tipEntry{hash, score})
-}
-sort.Slice(allTips, func(i, j int) bool {
-    if allTips[i].blueScore != allTips[j].blueScore {
-        return allTips[i].blueScore > allTips[j].blueScore
-    }
-    return allTips[i].hash < allTips[j].hash
-})
-if len(allTips) > dag.maxParents() {
-    allTips = allTips[:dag.maxParents()]
-}
-parentHashes := make([]string, len(allTips))
-for i, te := range allTips {
-    parentHashes[i] = te.hash
-}
-sort.Strings(parentHashes) // deterministic ordering for block hash
 
-// Height = max parent height + 1
-maxParentHeight := int64(0)
-for _, ph := range parentHashes {
-if parent, ok := dag.blocks[ph]; ok {
-if parent.Height > maxParentHeight {
-maxParentHeight = parent.Height
-}
-}
-}
-
-dag.txMu.Lock()
-txs := make([]Transaction, len(dag.pendingTxs))
-copy(txs, dag.pendingTxs)
-// P2-06: do NOT clear pendingTxs here — if SaveBlockWithPendingTxsAtomic
-// fails below, in-memory TXs would be permanently lost.  Clear only the
-// snapshot count AFTER a successful save (see post-save section below).
-nTxsSnapshotted := len(txs)
-dag.txMu.Unlock()
-
-// Drain DB-persisted pending TXs — these survived a node restart and
-// must now be included in a block so secondary nodes receive them.
-// Without this, a transfer applied just before a restart would never
-// reach secondary nodes and balances would diverge permanently.
-//
-// CADENCE FIX (P0, follow-up to the merge-reliability audit 2026-07-03):
-// this and StateRoot() below are each their own synchronous Postgres round
-// trip (~400-590ms, confirmed live on the primary's remote DB proxy) and
-// neither depends on the other's result — StateRoot hashes cs.accounts'
-// CURRENT state, which already reflects every TX's effect regardless of
-// which block ends up bundling it (see AddPeerBlock's "post-state, not
-// pre-state" comment), while this call only affects which TXs land in
-// THIS block's Transactions list. Running them concurrently instead of
-// back-to-back turns 2 sequential round trips into the wall-clock cost of
-// one, directly shortening how long ProduceBlock holds dag.mu.
-//
-// This matters beyond raw speed: main.go's block-production ticker aligns
-// every node to the same wall-clock BLOCK_TIME boundary specifically so
-// concurrent production merges naturally (see its own comment — "both
-// validators produce within <50ms of each other on every tick"). A
-// secondary with a fast LOCAL Postgres (e.g. Contabo, same Docker network,
-// near-zero round-trip) sustains close to the true 1s cadence, while a
-// primary whose DB calls each cost hundreds of ms falls further and
-// further behind tick-for-tick — not a one-time "overtake" but a
-// permanently widening height gap between two nodes that are still
-// technically merging each other's blocks correctly. Narrowing the
-// primary's own per-block DB cost is what keeps both sides' cadence close
-// enough for that wall-clock alignment to do its job.
-var dbTxs []Transaction
-var pendingTxIDs []int64
-var stateRoot string
-var pendingDur, rootDur time.Duration
-dbPairStart := time.Now()
-var cadenceWG sync.WaitGroup
-cadenceWG.Add(2)
-// FIX (performance audit 2026-07-06): dispatched through produceBlockPool
-// (workerpool.go) — 2 persistent workers reused every block (BLOCK_TIME
-// cadence, i.e. continuously for the node's whole lifetime) instead of
-// spawning 2 fresh goroutines per tick. Exactly 2 workers because exactly
-// 2 jobs are submitted per tick and both are always awaited before the
-// next tick's ProduceBlock call, so the pool is idle again before it's
-// needed next — same concurrency shape as before, just without the
-// per-tick goroutine spinup. Audit flagged this as low-effect (Go
-// goroutine creation is already cheap), kept for consistency with the
-// same class of fix applied elsewhere.
-produceBlockPool.submit(func() {
-	defer cadenceWG.Done()
-	// FIX (P0-3, beta-launch audit 2026-07-05): see panic_recovery.go. Also
-	// prevents cadenceWG.Wait() below from deadlocking forever on a panic —
-	// Done() (deferred above, so it still runs during this unwind) must fire
-	// either way.
-	defer func() {
-		if r := recover(); r != nil {
-			fmt.Printf("[PANIC RECOVERED] ProduceBlock LoadPendingTxs goroutine: %v\n%s\n", r, debug.Stack())
+	block := &Block{
+		Height:       maxParentHeight + 1,
+		Timestamp:    time.Now().Unix(),
+		ParentHashes: parentHashes,
+		Proposer:     proposer,
+		Humans:       dag.state.TotalHumans(),
+		Transactions: txs,
+		StateRoot:    stateRoot,
+		ProducedAtMs: time.Now().UnixMilli(),
+	}
+	// Declare the body digest explicitly (roadmap step 4, tx_batch.go). This does
+	// not change the hash — with a body attached, calculateBlockHash derives the
+	// root from the transactions and ignores this field entirely, exactly as it
+	// always did. What it buys is that the block can later be stripped of its
+	// transactions for transport and still hash to this same value, and that the
+	// digest travels with the header so a receiver knows what body to ask for.
+	block.TxRoot = txBatchRoot(txs)
+	block.Hash = dag.calculateHash(block)
+	if dag.signingKey != nil {
+		hashBytes := common.HexToHash(block.Hash)
+		if sig, err := crypto.Sign(hashBytes[:], dag.signingKey); err == nil {
+			block.Signature = hex.EncodeToString(sig)
+		} else {
+			fmt.Printf("[BLOCK] Warning: could not sign block #%d: %v\n", block.Height, err)
 		}
-	}()
-	t0 := time.Now()
-	if dag.state != nil {
-		dbTxs, pendingTxIDs = dag.state.LoadPendingTxs()
 	}
-	pendingDur = time.Since(t0)
-})
-produceBlockPool.submit(func() {
-	defer cadenceWG.Done()
-	defer func() {
-		if r := recover(); r != nil {
-			fmt.Printf("[PANIC RECOVERED] ProduceBlock StateRoot goroutine: %v\n%s\n", r, debug.Stack())
-		}
-	}()
-	t0 := time.Now()
-	stateRoot = dag.state.StateRoot()
-	rootDur = time.Since(t0)
-})
-cadenceWG.Wait()
-// Ongoing health check: these two DB round trips run concurrently
-// specifically to shorten how long ProduceBlock holds dag.mu (see the
-// comment above this block) — worth knowing which one is slow if the pair
-// itself is ever slow, permanently, not just for the resolved 2026-07-03
-// cadence incident this concurrency fix was originally built for.
-if d := time.Since(dbPairStart); d > 1200*time.Millisecond {
-	fmt.Printf("[BLOCK] ⏱ dbpair detail: LoadPendingTxs=%s StateRoot=%s\n", pendingDur, rootDur)
-}
-if len(dbTxs) > 0 {
-	fmt.Printf("[DAG] Including %d restart-surviving TX(s) from DB in block\n", len(dbTxs))
-	txs = append(txs, dbTxs...)
-}
 
-proposer := dag.nodeID
-if dag.signingKey != nil {
-	// Use the Ethereum address derived from the signing key so peer nodes
-	// can verify the block signature against a known Ethereum address.
-	// The libp2p nodeID is used for network routing; the signing address
-	// is what peers need for consensus verification.
-	proposer = crypto.PubkeyToAddress(dag.signingKey.PublicKey).Hex()
-}
-
-// FIX (P0, 2026-07-10 — Primary false-positive-equivocation-ban incident):
-// a brief window where an OLD and NEW instance of this exact validator run
-// simultaneously (e.g. a rolling redeploy that briefly overlaps the
-// outgoing and incoming container) can otherwise have BOTH instances
-// independently produce the "first" block from the identical pre-restart
-// tip, seconds apart — same height, same parents, same BlueScore, only the
-// timestamp (and therefore hash) differing. Every OTHER node's
-// checkAndIndexEquivocation (slashing.go) correctly flags that as this
-// validator signing two different blocks for the same parent set — because
-// from the network's perspective, that's exactly what happened. Confirmed
-// live: this exact pattern (identical height/parents/BlueScore/state_root,
-// only signature+timestamp differing) hit Primary at least four times
-// (2026-07-05, 07-08, 07-10, and again 07-12 — evidence in
-// equivocation_evidence on Contabo1/Contabo2); the 07-12 recurrence actually
-// triggered a real 14-day suspension on BOTH secondaries simultaneously
-// (cleared manually after confirming via evidence-pair comparison it was
-// this exact benign pattern, not real malicious equivocation).
-//
-// FIX (P0, 2026-07-12 — widened after the 07-12 recurrence): the original
-// version of this guard only checked the SINGLE literal first tick
-// (maxParentHeight+1 == bootHeight+1). The 07-12 incident's two colliding
-// blocks were produced 21 SECONDS apart — the outgoing instance was still
-// alive and still producing well past this process's first tick, so a
-// one-shot check missed it (by the time this process's first tick ran, the
-// outgoing instance's competing row for that exact height may not even
-// have been durably committed yet either — a narrow race the one-shot
-// version didn't close on top of the sustained-overlap gap). Widened from
-// "check once, at one height" to "check on every tick, for whatever height
-// is about to be produced, during a grace window after boot" — covers a
-// sustained overlap, not just an instant one. dag.state.HasBlockFromProposerAtHeight
-// hits the DURABLE store (chain_blocks), not this fresh process's own
-// (necessarily empty-for-this-height) in-memory dag.blocks, so it can see
-// what an outgoing sibling instance already committed moments ago even
-// though this instance never received it directly. Skip this tick rather
-// than mint a competing duplicate; ordinary peer sync pulls the other
-// instance's already-broadcast block in within the next tick or two.
-//
-// FIX (P0, 2026-07-24 — fifth recurrence, this time escalating the primary
-// to a real 2nd offense: 90-day suspension PLUS the 50 AEQ penalty, not
-// just the no-balance-loss 1st-offense grace): the 07-12 fix's 45-second
-// grace window was still too short — confirmed live again the same day
-// this comment was written, on the very redeploy triggered by pushing that
-// day's other merge-reliability fixes. Guessing a bigger constant would
-// just repeat the same mistake, because the real answer (how long the
-// hosting platform's rolling-deploy overlap can last) depends on Railway's
-// own health-check/traffic-drain timing, which this process has no way to
-// observe or bound. The check itself is a single cheap indexed EXISTS
-// lookup that costs nothing once this validator's own tips are current —
-// the overwhelmingly common case, and the only one steady-state production
-// ever hits — so there was never a real correctness or performance reason
-// to time-box it at all. Window removed entirely: this now runs on every
-// tick, for the process's whole life, closing the incident class instead
-// of re-guessing a magic number the next slow deploy will exceed again.
-//
-// REVERTED (P0, 2026-07-24, hours later — that reasoning was wrong and it
-// halted the primary): removing the window did not make the check
-// "harmless but always on", it made it PERMANENT, and the condition it
-// tests is routinely true in ordinary steady-state operation. Once this
-// node's own tip selection lags even one height behind what it has already
-// durably stored — which happens constantly under normal merging —
-// maxParentHeight+1 names a height where this validator's own block from a
-// moment ago is already in chain_blocks. The guard then fires on EVERY
-// tick and the node never produces again. Confirmed live from the
-// primary's own Railway log, once per second, indefinitely:
-//
-//   [BLOCK] ⏸ Skipping production at height 1774182 — this validator
-//   already has a block there in the durable store (likely a concurrent
-//   instance from a redeploy overlap, 1m34s into this process's life)
-//
-// "1m34s into this process's life" is the tell: well past any redeploy
-// overlap, in normal operation, blocking production for good.
-//
-// The window was never a magic number to be guessed away — it is what
-// makes "I have a block here that I did not produce this run" evidence of
-// an overlapping instance rather than a description of normal operation.
-// Restored. The recurrence risk that motivated removing it is separately
-// and much better handled now: a secondary no longer suspends its own
-// BOOTSTRAP_SIGNER over a self-collision at all (see AddPeerBlock's
-// equivocation goroutine, same date), so a missed overlap costs a
-// duplicate block the DAG merges anyway, not a 14-day network partition.
-const postBootDuplicateGuardWindow = 45 * time.Second
-if time.Since(dag.bootTime) < postBootDuplicateGuardWindow &&
-	dag.state != nil && dag.state.HasBlockFromProposerAtHeight(proposer, maxParentHeight+1) {
-	fmt.Printf("[BLOCK] ⏸ Skipping production at height %d — this validator already has a block there in the durable store (likely a concurrent instance from a redeploy overlap, %s into this process's life); waiting for ordinary peer sync to pull it in instead of minting a conflicting duplicate\n", maxParentHeight+1, time.Since(dag.bootTime).Round(time.Second))
-	return nil
-}
-
-block := &Block{
-Height:       maxParentHeight + 1,
-Timestamp:    time.Now().Unix(),
-ParentHashes: parentHashes,
-Proposer:     proposer,
-Humans:       dag.state.TotalHumans(),
-Transactions: txs,
-StateRoot:    stateRoot,
-ProducedAtMs: time.Now().UnixMilli(),
-}
-// Declare the body digest explicitly (roadmap step 4, tx_batch.go). This does
-// not change the hash — with a body attached, calculateBlockHash derives the
-// root from the transactions and ignores this field entirely, exactly as it
-// always did. What it buys is that the block can later be stripped of its
-// transactions for transport and still hash to this same value, and that the
-// digest travels with the header so a receiver knows what body to ask for.
-block.TxRoot = txBatchRoot(txs)
-block.Hash = dag.calculateHash(block)
-if dag.signingKey != nil {
-	hashBytes := common.HexToHash(block.Hash)
-	if sig, err := crypto.Sign(hashBytes[:], dag.signingKey); err == nil {
-		block.Signature = hex.EncodeToString(sig)
-	} else {
-		fmt.Printf("[BLOCK] Warning: could not sign block #%d: %v\n", block.Height, err)
-	}
-}
-
-// P1-04 (audit): compute GHOSTDAG before persisting so the DB row has
-// correct selected_parent/blue_score/blues from the start — no crash window
-// with empty GHOSTDAG fields. dag.mu is already held here; parents are in
-// dag.blocks; the block is not yet in dag.blocks (not needed by compute).
-//
-// FIX (P0, 2026-07-10): parentHashes were chosen from dag.tips moments ago
-// (already locally present), so a genuinely-unresolvable DEEPER ancestor was
-// assumed rare here — but not impossible (e.g. one of our own tips itself
-// inherited an unresolved-at-the-time reference). Unlike a peer block,
-// there is nothing to "queue as an orphan": this block doesn't exist yet.
-// Skip producing this tick and let the next tick retry.
-//
-// FIX (P0, 2026-07-10 — found live within minutes of the above shipping):
-// that assumption was wrong in one specific way that turns "rare" into
-// "permanent": a hash can be genuinely, PERMANENTLY lost from the entire
-// network's memory (confirmed earlier this session for the finality-
-// checkpoint walk — see registerFinalityWalkGap's own comment for that
-// class of incident), not just transiently in flight. Skip-and-retry alone
-// has no escape from that case: the same unresolvable hash reappears every
-// single tick forever, halting this node's own production indefinitely —
-// confirmed live, 1000+ consecutive ticks stuck on the identical hash.
-//
-// FIX (P0, 2026-07-10 — third revision, found live via 620-783 accumulated
-// stubs on the two secondary production nodes): the first revision here
-// bridged after a raw 5-consecutive-tick counter (~5s at BLOCK_TIME=1s) with
-// NO active fetch ever registered for the missing hash — it just passively
-// hoped ordinary gossip would deliver it in time. queueOrphan's own
-// identical-purpose runtime bridge, by contrast, only bridges after
-// orphanAbandonAfter (15 minutes) AND minOrphanAttemptsBeforeAbandon (3)
-// genuine peer-fetch attempts AND !isCatchingUp AND an explicit
-// ALLOW_RUNTIME_ORPHAN_BRIDGE opt-in — see that function's "abandon"
-// comment. The 5-second version had none of that: it fired constantly for
-// perfectly ordinary cross-validator propagation lag (ancestors that would
-// have resolved fine within a few more seconds if only something had asked
-// a peer for them), fabricating hundreds of permanent stub entries whose
-// BlueScore offset (even with safeStubBlueScoreLocked) can never self-heal
-// once committed. Now: register the hash via registerProduceStuckGap so
-// fetchMissingAncestors (already polling every ~1s per active sync peer)
-// actively tries it, and only bridge once produceStuckGapReady says this
-// hash has genuinely exhausted the SAME patient standard every other
-// synthetic-checkpoint stub site already holds itself to.
-missing, ok := dag.computeGHOSTDAGState(block)
-if !ok {
-	dag.registerProduceStuckGap(missing)
-	if !dag.produceStuckGapReady(missing) {
-		fmt.Printf("[BLOCK] ⏳ Skipping production this tick — merge-set ancestor %s... not yet resolvable, actively fetching from peers\n",
-			missing[:min(16, len(missing))])
-		return nil
-	}
-	// FIX (P0, 2026-07-10 — found live via the explorer UI within minutes of
-	// this bridge shipping): BlueScore=0 made the stub look like it belonged
-	// at the very start of the chain's history. block itself then computed
-	// its own BlueScore as roughly stub.BlueScore+1 — near zero, light-years
-	// below the chain's real accumulated score — silently replacing this
-	// node's canonical chain with a permanently wrong-scored fork built on
-	// fabricated history (confirmed live: dropped from ~3.58M to ~1300).
-	// safeStubBlueScoreLocked anchors the stub to the current known
-	// frontier instead, so this block's own score stays roughly where the
-	// real chain already is. Height mirrors queueOrphan's own stub
-	// convention (minWaitingHeight-1, i.e. "immediately before whatever
-	// needed it") rather than a hardcoded 0 for the same reason.
-	fmt.Printf("[BLOCK] ⚠ Merge-set ancestor %s... still unresolvable after %s and %d peer-fetch attempt(s) — bridging with a synthetic checkpoint stub so production can continue (same class of genuinely-lost-block gap already handled elsewhere; no effect on account balances)\n",
-		missing[:min(16, len(missing))], orphanAbandonAfter, minOrphanAttemptsBeforeAbandon)
-	stubHeight := block.Height - 1
-	if stubHeight < 0 {
-		stubHeight = 0
-	}
-	dag.blocks[missing] = &Block{Hash: missing, Height: stubHeight, BlueScore: dag.safeStubBlueScoreLocked(), Proposer: "synthetic-checkpoint", ParentHashes: []string{}}
-	dag.syntheticCheckpointCount.Add(1)
-	if stubHeight > dag.bootHeight {
-		dag.unverifiedSyntheticCheckpointCount.Add(1)
-		dag.unverifiedStubHeights[missing] = stubHeight
-	}
-	if dag.state != nil {
-		SafeGoroutine("RecordSyntheticCheckpointEvent-producestuck", func() { dag.state.RecordSyntheticCheckpointEvent(missing, stubHeight, "produce-block-stuck") })
-	}
-	dag.clearProduceStuckGap(missing)
-	missing, ok = dag.computeGHOSTDAGState(block)
+	// P1-04 (audit): compute GHOSTDAG before persisting so the DB row has
+	// correct selected_parent/blue_score/blues from the start — no crash window
+	// with empty GHOSTDAG fields. dag.mu is already held here; parents are in
+	// dag.blocks; the block is not yet in dag.blocks (not needed by compute).
+	//
+	// FIX (P0, 2026-07-10): parentHashes were chosen from dag.tips moments ago
+	// (already locally present), so a genuinely-unresolvable DEEPER ancestor was
+	// assumed rare here — but not impossible (e.g. one of our own tips itself
+	// inherited an unresolved-at-the-time reference). Unlike a peer block,
+	// there is nothing to "queue as an orphan": this block doesn't exist yet.
+	// Skip producing this tick and let the next tick retry.
+	//
+	// FIX (P0, 2026-07-10 — found live within minutes of the above shipping):
+	// that assumption was wrong in one specific way that turns "rare" into
+	// "permanent": a hash can be genuinely, PERMANENTLY lost from the entire
+	// network's memory (confirmed earlier this session for the finality-
+	// checkpoint walk — see registerFinalityWalkGap's own comment for that
+	// class of incident), not just transiently in flight. Skip-and-retry alone
+	// has no escape from that case: the same unresolvable hash reappears every
+	// single tick forever, halting this node's own production indefinitely —
+	// confirmed live, 1000+ consecutive ticks stuck on the identical hash.
+	//
+	// FIX (P0, 2026-07-10 — third revision, found live via 620-783 accumulated
+	// stubs on the two secondary production nodes): the first revision here
+	// bridged after a raw 5-consecutive-tick counter (~5s at BLOCK_TIME=1s) with
+	// NO active fetch ever registered for the missing hash — it just passively
+	// hoped ordinary gossip would deliver it in time. queueOrphan's own
+	// identical-purpose runtime bridge, by contrast, only bridges after
+	// orphanAbandonAfter (15 minutes) AND minOrphanAttemptsBeforeAbandon (3)
+	// genuine peer-fetch attempts AND !isCatchingUp AND an explicit
+	// ALLOW_RUNTIME_ORPHAN_BRIDGE opt-in — see that function's "abandon"
+	// comment. The 5-second version had none of that: it fired constantly for
+	// perfectly ordinary cross-validator propagation lag (ancestors that would
+	// have resolved fine within a few more seconds if only something had asked
+	// a peer for them), fabricating hundreds of permanent stub entries whose
+	// BlueScore offset (even with safeStubBlueScoreLocked) can never self-heal
+	// once committed. Now: register the hash via registerProduceStuckGap so
+	// fetchMissingAncestors (already polling every ~1s per active sync peer)
+	// actively tries it, and only bridge once produceStuckGapReady says this
+	// hash has genuinely exhausted the SAME patient standard every other
+	// synthetic-checkpoint stub site already holds itself to.
+	missing, ok := dag.computeGHOSTDAGState(block)
 	if !ok {
-		// The bridge resolved one hash but the walk hit a second, different
-		// one — extremely unlikely (would need multiple independent gaps in
-		// the same merge-set walk) but stay safe: skip this tick rather than
-		// loop, the registration above will let that new hash reach the
-		// same patient bridge on its own schedule.
 		dag.registerProduceStuckGap(missing)
-		fmt.Printf("[BLOCK] ⏳ Skipping production this tick — merge-set ancestor %s... not yet resolvable\n", missing[:min(16, len(missing))])
+		if !dag.produceStuckGapReady(missing) {
+			fmt.Printf("[BLOCK] ⏳ Skipping production this tick — merge-set ancestor %s... not yet resolvable, actively fetching from peers\n",
+				missing[:min(16, len(missing))])
+			return nil
+		}
+		// FIX (P0, 2026-07-10 — found live via the explorer UI within minutes of
+		// this bridge shipping): BlueScore=0 made the stub look like it belonged
+		// at the very start of the chain's history. block itself then computed
+		// its own BlueScore as roughly stub.BlueScore+1 — near zero, light-years
+		// below the chain's real accumulated score — silently replacing this
+		// node's canonical chain with a permanently wrong-scored fork built on
+		// fabricated history (confirmed live: dropped from ~3.58M to ~1300).
+		// safeStubBlueScoreLocked anchors the stub to the current known
+		// frontier instead, so this block's own score stays roughly where the
+		// real chain already is. Height mirrors queueOrphan's own stub
+		// convention (minWaitingHeight-1, i.e. "immediately before whatever
+		// needed it") rather than a hardcoded 0 for the same reason.
+		fmt.Printf("[BLOCK] ⚠ Merge-set ancestor %s... still unresolvable after %s and %d peer-fetch attempt(s) — bridging with a synthetic checkpoint stub so production can continue (same class of genuinely-lost-block gap already handled elsewhere; no effect on account balances)\n",
+			missing[:min(16, len(missing))], orphanAbandonAfter, minOrphanAttemptsBeforeAbandon)
+		stubHeight := block.Height - 1
+		if stubHeight < 0 {
+			stubHeight = 0
+		}
+		dag.blocks[missing] = &Block{Hash: missing, Height: stubHeight, BlueScore: dag.safeStubBlueScoreLocked(), Proposer: "synthetic-checkpoint", ParentHashes: []string{}}
+		dag.syntheticCheckpointCount.Add(1)
+		if stubHeight > dag.bootHeight {
+			dag.unverifiedSyntheticCheckpointCount.Add(1)
+			dag.unverifiedStubHeights[missing] = stubHeight
+		}
+		if dag.state != nil {
+			SafeGoroutine("RecordSyntheticCheckpointEvent-producestuck", func() { dag.state.RecordSyntheticCheckpointEvent(missing, stubHeight, "produce-block-stuck") })
+		}
+		dag.clearProduceStuckGap(missing)
+		missing, ok = dag.computeGHOSTDAGState(block)
+		if !ok {
+			// The bridge resolved one hash but the walk hit a second, different
+			// one — extremely unlikely (would need multiple independent gaps in
+			// the same merge-set walk) but stay safe: skip this tick rather than
+			// loop, the registration above will let that new hash reach the
+			// same patient bridge on its own schedule.
+			dag.registerProduceStuckGap(missing)
+			fmt.Printf("[BLOCK] ⏳ Skipping production this tick — merge-set ancestor %s... not yet resolvable\n", missing[:min(16, len(missing))])
+			return nil
+		}
+	}
+
+	// P1-06 (audit): persist to DB BEFORE inserting into dag.blocks/dag.tips or
+	// returning the block for broadcast. If the DB save fails this block will be
+	// lost on restart while peers may have accepted it — return nil to skip
+	// broadcast entirely. TXs stay in pending_txs (atomic rollback) for the next
+	// ProduceBlock tick to re-include.
+	saveStart := time.Now()
+	if err := dag.state.SaveBlockWithPendingTxsAtomic(block, pendingTxIDs); err != nil {
+		fmt.Printf("[BLOCK] ⚠ Could not persist block #%d (%s...): %v — skipping broadcast, TXs stay queued\n",
+			block.Height, block.Hash[:16], err)
 		return nil
 	}
-}
-
-// P1-06 (audit): persist to DB BEFORE inserting into dag.blocks/dag.tips or
-// returning the block for broadcast. If the DB save fails this block will be
-// lost on restart while peers may have accepted it — return nil to skip
-// broadcast entirely. TXs stay in pending_txs (atomic rollback) for the next
-// ProduceBlock tick to re-include.
-saveStart := time.Now()
-if err := dag.state.SaveBlockWithPendingTxsAtomic(block, pendingTxIDs); err != nil {
-	fmt.Printf("[BLOCK] ⚠ Could not persist block #%d (%s...): %v — skipping broadcast, TXs stay queued\n",
-		block.Height, block.Hash[:16], err)
-	return nil
-}
-// Index this block's transactions for wallet lookups, exactly as the replay
-// path does for peer blocks — a transaction must resolve to its real block
-// no matter which node produced it or which node the wallet asks. See
-// tx_block_index.go. Non-fatal: the block is already durably saved.
-if err := dag.state.IndexBlockTransactions(block.Height, block.Hash, block.Transactions); err != nil {
-	fmt.Printf("[BLOCK] ⚠ Could not index transactions of block #%d for wallet lookups: %v\n", block.Height, err)
-}
-// Keep the body retrievable by digest so this node can serve it to a peer
-// that received the block stripped of its transactions (roadmap step 4,
-// tx_batch.go). Must happen before the broadcast below, or a peer could ask
-// for a body we have not stored yet. Non-fatal: a failure here only means
-// peers get the block with its body inline, as they always did.
-if err := dag.state.SaveTxBatch(block.TxRoot, block.Transactions); err != nil {
-	fmt.Printf("[BLOCK] ⚠ Could not store the transaction body of block #%d for by-reference serving: %v\n", block.Height, err)
-}
-// Ongoing health check: this call runs synchronously while dag.mu is held
-// write-locked, so if it's slow, EVERY other dag.mu consumer (API reads,
-// AddPeerBlock) stalls for the same duration.
-if saveDur := time.Since(saveStart); saveDur > 500*time.Millisecond {
-	fmt.Printf("[BLOCK] ⏱ SaveBlockWithPendingTxsAtomic took %s for block #%d (dag.mu held throughout)\n", saveDur, block.Height)
-}
-
-// P2-06: clear exactly the TXs we snapshotted — any TXs queued AFTER the
-// snapshot (positions [nTxsSnapshotted:]) stay for the next block.
-dag.txMu.Lock()
-if nTxsSnapshotted > 0 {
-	if nTxsSnapshotted <= len(dag.pendingTxs) {
-		dag.pendingTxs = dag.pendingTxs[nTxsSnapshotted:]
-	} else {
-		dag.pendingTxs = nil
+	// Index this block's transactions for wallet lookups, exactly as the replay
+	// path does for peer blocks — a transaction must resolve to its real block
+	// no matter which node produced it or which node the wallet asks. See
+	// tx_block_index.go. Non-fatal: the block is already durably saved.
+	if err := dag.state.IndexBlockTransactions(block.Height, block.Hash, block.Transactions); err != nil {
+		fmt.Printf("[BLOCK] ⚠ Could not index transactions of block #%d for wallet lookups: %v\n", block.Height, err)
 	}
-}
-dag.txMu.Unlock()
+	// Keep the body retrievable by digest so this node can serve it to a peer
+	// that received the block stripped of its transactions (roadmap step 4,
+	// tx_batch.go). Must happen before the broadcast below, or a peer could ask
+	// for a body we have not stored yet. Non-fatal: a failure here only means
+	// peers get the block with its body inline, as they always did.
+	if err := dag.state.SaveTxBatch(block.TxRoot, block.Transactions); err != nil {
+		fmt.Printf("[BLOCK] ⚠ Could not store the transaction body of block #%d for by-reference serving: %v\n", block.Height, err)
+	}
+	// Ongoing health check: this call runs synchronously while dag.mu is held
+	// write-locked, so if it's slow, EVERY other dag.mu consumer (API reads,
+	// AddPeerBlock) stalls for the same duration.
+	if saveDur := time.Since(saveStart); saveDur > 500*time.Millisecond {
+		fmt.Printf("[BLOCK] ⏱ SaveBlockWithPendingTxsAtomic took %s for block #%d (dag.mu held throughout)\n", saveDur, block.Height)
+	}
 
-dag.blocks[block.Hash] = block
-// GHOSTDAG already computed above (P1-04); no second call needed.
-dag.replayedMu.Lock()
-dag.replayedBlocks[block.Hash] = true
-dag.replayedMu.Unlock()
+	// P2-06: clear exactly the TXs we snapshotted — any TXs queued AFTER the
+	// snapshot (positions [nTxsSnapshotted:]) stay for the next block.
+	dag.txMu.Lock()
+	if nTxsSnapshotted > 0 {
+		if nTxsSnapshotted <= len(dag.pendingTxs) {
+			dag.pendingTxs = dag.pendingTxs[nTxsSnapshotted:]
+		} else {
+			dag.pendingTxs = nil
+		}
+	}
+	dag.txMu.Unlock()
 
-// Remove all parents from tips, add this block as new tip
-for _, ph := range parentHashes {
-delete(dag.tips, ph)
-}
-dag.tips[block.Hash] = true
-dag.height = block.Height
+	dag.blocks[block.Hash] = block
+	// GHOSTDAG already computed above (P1-04); no second call needed.
+	dag.replayedMu.Lock()
+	dag.replayedBlocks[block.Hash] = true
+	dag.replayedMu.Unlock()
 
-// FIX (P0, merge-reliability audit 2026-07-03): AddPeerBlock advances the
-// hard finality checkpoint after accepting a block, but ProduceBlock never
-// did — this is the ONLY other place a block's GHOSTDAG state (BlueScore/
-// SelectedParent, computed above) becomes final, so a node that produces
-// its own blocks but never successfully accepts a peer block (e.g. fully
-// isolated by a circuit-breaker lockout, or simply the only validator
-// currently reachable) could NEVER advance its own checkpoint at all,
-// confirmed live on Contabo: finalized_height stuck at 80094 through
-// 50,000+ of its own self-produced blocks. dag.mu is already held here,
-// matching maybeAdvanceFinalizedCheckpoint's precondition.
-//
-// FIX (P0, 2026-07-04 — Contabo 2 permanent-isolation incident): gated by
-// selfProducedFinalityAllowed so a node that's actually isolated from known
-// peers pauses its own hardening instead of permanently sealing off the
-// real chain at heights it never merged — see that function's own comment
-// and isolatedFinalityPauseWindow for the full incident and rationale.
-if dag.selfProducedFinalityAllowed() {
-	dag.maybeAdvanceFinalizedCheckpoint(block)
-} else if last := dag.lastIsolationPauseLogAt.Load(); time.Now().Unix()-last > 30 &&
-	dag.lastIsolationPauseLogAt.CompareAndSwap(last, time.Now().Unix()) {
-	fmt.Printf("[FINALITY] ⏸ Self-produced checkpoint advance paused at height %d — no other authorized validator's block merged in over %s despite %d known validator(s); this node may be isolated. Checkpoint will resume advancing the moment a peer block merges again.\n",
-		block.Height, isolatedFinalityPauseWindow, len(dag.authorizedValidators))
-}
+	// Remove all parents from tips, add this block as new tip
+	for _, ph := range parentHashes {
+		delete(dag.tips, ph)
+	}
+	dag.tips[block.Hash] = true
+	dag.height = block.Height
 
-// Post-commit bookkeeping (block-count reward weighting + the max_block_height
-// restart hint) — moved off the hot, lock-held path in ONE background write.
-//
-// CADENCE FIX (2026-07-02): both are plain DB writes that do NOT touch dag.mu
-// state, yet they ran synchronously while dag.mu was write-locked. Over the
-// primary's remote DB proxy (~560ms/round-trip, confirmed live) that added two
-// extra round trips (~1.1s) to every block's lock-held critical section — on
-// top of the block save itself — directly inflating cadence and starving peer
-// sync/merge. The block itself is already durably persisted above
-// (SaveBlockWithPendingTxsAtomic) BEFORE this point, so neither of these is
-// consensus-critical: IncrementBlockCount is reward weighting (additive, and
-// re-derivable), and max_block_height only seeds dag.height on the next boot —
-// a value LoadBlocksFromDB already reconstructs from chain_blocks' own max, so
-// this config key is a fast-path hint, not the source of truth. Losing at most
-// the last block's write on an ill-timed crash is harmless and self-corrects.
-heightVal := dag.height
-SafeGoroutine("ProduceBlock-post-persist", func() {
-	dag.state.IncrementBlockCount(proposer)
-	// setConfigValueDB, not setConfigValue: this goroutine holds neither
-	// cs.mu nor dag.mu, and setConfigValue's precondition (cs.mu held, so
-	// cs.dbExec() safely reads cs.activeTx) does not hold here — see
-	// setConfigValue's own doc comment. Using it unlocked would race on
-	// cs.activeTx against any concurrently-running cs.mu-holding operation.
-	dag.state.setConfigValueDB("max_block_height", fmt.Sprintf("%d", heightVal))
-})
+	// FIX (P0, merge-reliability audit 2026-07-03): AddPeerBlock advances the
+	// hard finality checkpoint after accepting a block, but ProduceBlock never
+	// did — this is the ONLY other place a block's GHOSTDAG state (BlueScore/
+	// SelectedParent, computed above) becomes final, so a node that produces
+	// its own blocks but never successfully accepts a peer block (e.g. fully
+	// isolated by a circuit-breaker lockout, or simply the only validator
+	// currently reachable) could NEVER advance its own checkpoint at all,
+	// confirmed live on Contabo: finalized_height stuck at 80094 through
+	// 50,000+ of its own self-produced blocks. dag.mu is already held here,
+	// matching maybeAdvanceFinalizedCheckpoint's precondition.
+	//
+	// FIX (P0, 2026-07-04 — Contabo 2 permanent-isolation incident): gated by
+	// selfProducedFinalityAllowed so a node that's actually isolated from known
+	// peers pauses its own hardening instead of permanently sealing off the
+	// real chain at heights it never merged — see that function's own comment
+	// and isolatedFinalityPauseWindow for the full incident and rationale.
+	if dag.selfProducedFinalityAllowed() {
+		dag.maybeAdvanceFinalizedCheckpoint(block)
+	} else if last := dag.lastIsolationPauseLogAt.Load(); time.Now().Unix()-last > 30 &&
+		dag.lastIsolationPauseLogAt.CompareAndSwap(last, time.Now().Unix()) {
+		fmt.Printf("[FINALITY] ⏸ Self-produced checkpoint advance paused at height %d — no other authorized validator's block merged in over %s despite %d known validator(s); this node may be isolated. Checkpoint will resume advancing the moment a peer block merges again.\n",
+			block.Height, isolatedFinalityPauseWindow, len(dag.authorizedValidators))
+	}
 
-if len(parentHashes) > 1 {
-fmt.Printf("[DAG] 🔀 Merged %d tips into block #%d\n", len(parentHashes), block.Height)
-}
+	// Post-commit bookkeeping (block-count reward weighting + the max_block_height
+	// restart hint) — moved off the hot, lock-held path in ONE background write.
+	//
+	// CADENCE FIX (2026-07-02): both are plain DB writes that do NOT touch dag.mu
+	// state, yet they ran synchronously while dag.mu was write-locked. Over the
+	// primary's remote DB proxy (~560ms/round-trip, confirmed live) that added two
+	// extra round trips (~1.1s) to every block's lock-held critical section — on
+	// top of the block save itself — directly inflating cadence and starving peer
+	// sync/merge. The block itself is already durably persisted above
+	// (SaveBlockWithPendingTxsAtomic) BEFORE this point, so neither of these is
+	// consensus-critical: IncrementBlockCount is reward weighting (additive, and
+	// re-derivable), and max_block_height only seeds dag.height on the next boot —
+	// a value LoadBlocksFromDB already reconstructs from chain_blocks' own max, so
+	// this config key is a fast-path hint, not the source of truth. Losing at most
+	// the last block's write on an ill-timed crash is harmless and self-corrects.
+	heightVal := dag.height
+	SafeGoroutine("ProduceBlock-post-persist", func() {
+		dag.state.IncrementBlockCount(proposer)
+		// setConfigValueDB, not setConfigValue: this goroutine holds neither
+		// cs.mu nor dag.mu, and setConfigValue's precondition (cs.mu held, so
+		// cs.dbExec() safely reads cs.activeTx) does not hold here — see
+		// setConfigValue's own doc comment. Using it unlocked would race on
+		// cs.activeTx against any concurrently-running cs.mu-holding operation.
+		dag.state.setConfigValueDB("max_block_height", fmt.Sprintf("%d", heightVal))
+	})
 
-dag.notifyNewBlock(block)
-return block
+	if len(parentHashes) > 1 {
+		fmt.Printf("[DAG] 🔀 Merged %d tips into block #%d\n", len(parentHashes), block.Height)
+	}
+
+	dag.notifyNewBlock(block)
+	return block
 }
 
 // WithBlockProductionPaused runs fn while holding the same lock
@@ -2813,6 +2848,15 @@ const maxOrphanHeightGap = 5000
 // /api/blocks/by-hash for one such "abandoned" hash returned the block
 // immediately — it was never unreachable, just never tried in time.
 const orphanAbandonAfter = 15 * time.Minute
+
+// unknownProposerRecoveryRetry is how long to wait before asking the peers
+// again about a proposer this node still does not recognise. Short enough that
+// a node which lost its one chance during a restart recovers within a minute
+// rather than never; long enough that a genuinely forged proposer address
+// hammering the node costs one validator-list sync per minute, not one per
+// block. Only ever reached while blocks from that proposer keep arriving, so a
+// proposer that goes away stops costing anything at all.
+const unknownProposerRecoveryRetry = 60 * time.Second
 
 // minOrphanAttemptsBeforeAbandon — see orphanAbandonAfter's comment. A hash
 // must have been genuinely included in at least this many fetch batches
@@ -3954,1033 +3998,1062 @@ func (dag *BlockDAG) prefetchMergeSetFromDB(block *Block) {
 }
 
 func (dag *BlockDAG) AddPeerBlock(block *Block) bool {
-// FIX (2026-07-05 — permanent operational diagnostic, not a temp one):
-// recordForeignAttachLatency further down only fires once a block clears
-// EVERY gate (circuit breaker, far-ahead cap, replay, etc.) — exactly the
-// blocks that are NOT the problem. A node whose circuit breaker is
-// currently open drops every foreign block right here, before that later
-// measurement point is ever reached, so it silently produces zero latency
-// samples for precisely the direction that's actually failing. Measure
-// the RAW arrival latency unconditionally, before any gate, so the real
-// network-transit number is visible even while a node is fully isolated.
-if block != nil && block.ProducedAtMs > 0 && !strings.EqualFold(block.Proposer, dag.selfProposer) {
-	if latency := time.Now().UnixMilli() - block.ProducedAtMs; latency >= 0 {
-		dag.recordRawArrivalLatency(latency)
+	// FIX (2026-07-05 — permanent operational diagnostic, not a temp one):
+	// recordForeignAttachLatency further down only fires once a block clears
+	// EVERY gate (circuit breaker, far-ahead cap, replay, etc.) — exactly the
+	// blocks that are NOT the problem. A node whose circuit breaker is
+	// currently open drops every foreign block right here, before that later
+	// measurement point is ever reached, so it silently produces zero latency
+	// samples for precisely the direction that's actually failing. Measure
+	// the RAW arrival latency unconditionally, before any gate, so the real
+	// network-transit number is visible even while a node is fully isolated.
+	if block != nil && block.ProducedAtMs > 0 && !strings.EqualFold(block.Proposer, dag.selfProposer) {
+		if latency := time.Now().UnixMilli() - block.ProducedAtMs; latency >= 0 {
+			dag.recordRawArrivalLatency(latency)
+		}
+		// See lastPeerContactAt's own struct comment: this must be set
+		// unconditionally here, before any gate, so a severely backlogged (but
+		// genuinely reachable) peer is never mistaken for a downed one by the
+		// stall-timeout escape valves below.
+		dag.lastPeerContactAt.Store(time.Now().Unix())
 	}
-	// See lastPeerContactAt's own struct comment: this must be set
-	// unconditionally here, before any gate, so a severely backlogged (but
-	// genuinely reachable) peer is never mistaken for a downed one by the
-	// stall-timeout escape valves below.
-	dag.lastPeerContactAt.Store(time.Now().Unix())
-}
-if dag.resyncInProgress.Load() {
-	return false // an in-process self-heal resync is atomically swapping account/DAG state right now — see resyncInProgress's field comment; the sender will redeliver, ordered sync fills the gap once the resync completes
-}
-// FIX (durable fix, 2026-07-04 — closes wasted-effort noise found live after
-// a fresh checkpoint-seeded resync): a block at or below BootHeight is
-// already fully accounted for by the snapshot/checkpoint this node just
-// seeded from (see BootHeight's own comment) — accepting or even attempting
-// to resolve it is pure waste, and confirmed live to actively hurt: gossip/
-// relay of a proposer's own PRE-resync blocks (still circulating from
-// before this node's chain_blocks was wiped) kept arriving after a fresh
-// resync, each one genuinely missing its own equally-stale parent (also
-// wiped), competing for the exact same orphan-resolution machinery that
-// SHOULD be spending all its effort catching up to the CURRENT tip instead.
-// Reported as accepted (true): this data is already correctly reflected in
-// this node's state via the checkpoint, so there is nothing wrong to signal
-// to the sender, and it correctly clears any breaker/orphan bookkeeping for
-// that proposer instead of counting genuinely irrelevant old data against it.
-//
-// FIX (P0, 2026-07-04 — permanent-isolation-after-plain-restart incident):
-// gated by BootHeightCheckpointBacked(). This skip is only sound when a
-// checkpoint-seeded resync actually stored a real block at exactly
-// BootHeight — SOMETHING later blocks can find as a parent. Confirmed live:
-// after a PLAIN restart (no resync), bootHeight gets ratcheted up to a bare
-// persisted max_block_height NUMBER (continuously bumped by this node's own
-// ongoing production) with no matching entry in dag.blocks/dag.tips. Every
-// real historical block up to that height got waved through here without
-// ever being stored, so every later block referencing one of them as a
-// parent orphaned permanently — the exact isolation loop found live on both
-// Contabo nodes tonight. Without checkpoint backing, fall through to the
-// normal path below instead, which safely resolves a genuinely-old-but-
-// still-known parent via ghostdagBlockLookup's own DB fallback.
-//
-// FIX (P0, 2026-07-04 — third layer of the same incident, found live even
-// WITH checkpoint backing correct): also excludes SelfFetched blocks now.
-// fetchMissingAncestors deliberately, individually fetches ONE specific
-// missing-parent hash because some already-orphaned child genuinely needs
-// it — that is precisely why it's SelfFetched. Confirmed live: it kept
-// resolving hashes that happened to land at or below BootHeight (a second
-// isolated peer's own historical chain, walked backward one hash at a
-// time), got the free pass here, and was reported "accepted" WITHOUT ever
-// being stored — so the orphaned child waiting on that exact hash could
-// never actually resolve, no matter how many times the fetch "succeeded".
-// The original bug this whole skip exists for is passively-arriving STALE
-// GOSSIP of a proposer's pre-resync blocks that nothing will ever need as a
-// parent — never a deliberate, targeted fetch for a hash something is
-// actively waiting on right now. Skipping storage for a SelfFetched block
-// defeats the entire point of targeted ancestor resolution.
-//
-// FIX (2026-07-05 — fourth layer of the same incident, found live even
-// with the SelfFetched exemption correct): "SelfFetched" only proves the
-// fetch was deliberately, individually issued for a hash something needed
-// AT THE TIME the request went out — it says nothing about whether that
-// need still exists when the response finally arrives. Confirmed live,
-// repeating on every single resync: fetchMissingAncestors/doSyncOnce
-// requests already in flight when a resync clears dag.orphans land
-// moments later still marked SelfFetched, and this exemption force-fed
-// them through as if still needed — scattered ancient-height blocks (seen
-// live: heights tens of thousands below a freshly-seeded checkpoint)
-// re-entering AddPeerBlock, queueing as brand-new orphans nothing is
-// waiting on anymore, burning real-time catch-up attention and proposer-
-// breaker budget on work that became moot the instant the resync ran.
-// hasAwaitingOrphan re-derives whether this exact hash is STILL the
-// missing-parent key for at least one currently-queued orphan — the
-// live, present-tense version of the "something genuinely needs it" claim
-// SelfFetched alone can only make in the past tense.
-if block != nil && block.Height > 0 && block.Height <= dag.BootHeight() && dag.BootHeightCheckpointBacked() && (!block.SelfFetched || !dag.hasAwaitingOrphan(block.Hash)) {
-	// FIX (P0, 2026-07-25 night): accepted-as-covered blocks are never
-	// stored in dag.blocks — the one acceptance outcome reconcileDeferrals'
-	// presence check can't see. Clear any deferral watch entry for this
-	// hash explicitly, or a block that first arrived as a deferral and was
-	// later waved through here stays "unresolved" forever and blocks
-	// production. See forgetDeferral's own comment.
-	dag.forgetDeferral(block.Hash)
-	return true
-}
-// Lock-free fork-flood shield (P0, 2026-07-02): reject a block whose height is
-// far above ours BEFORE taking the write lock, so a diverged/runaway fork
-// pushing thousands of unresolvable blocks can NEVER contend for dag.mu with
-// block production — the difference between a responsive node and the hang this
-// whole incident was. A brief RLock reads the height (concurrent with other
-// readers, only momentarily blocks the writer); the queueOrphan check remains
-// as a second line of defence. Ordered sync still fills any legitimate gap
-// parents-first, so nothing real is lost. Logging is rate-limited to once per
-// second so the flood can't make the log the new bottleneck.
-if block != nil {
-	// Per-proposer circuit breaker (see recordProposerOutcome). A proposer whose
-	// recent blocks all failed to attach — a diverged fork spamming blocks this
-	// node can never place — is dropped here, before the RLock and all dag.mu /
-	// hash / ECDSA work, until its cooldown expires. This is the path-independent
-	// counterpart to the per-IP push shield: it catches the flood no matter which
-	// ingress delivered it. Log rate-limited to once/sec.
-	// FIX (P0, merge-reliability audit 2026-07-03 — permanent fix for the
-	// recurring Contabo/Primary resync deadlock): skip this gate for FromSync
-	// blocks (fetched via HTTP-sync from an operator-configured trusted seed
-	// — see isTrustedSyncSource/trustedSeeds). This gate runs before
-	// FromSync's OTHER exemptions (the two "EXCEPT while WE are still in
-	// initial catch-up" cases further below, added for the exact same
-	// reason) ever get a chance to apply, so a trusted seed's catch-up
-	// blocks were still being dropped here even while this node was
-	// actively, legitimately resyncing from it. Confirmed live: after a
-	// fresh RESYNC_FROM_SNAPSHOT, Contabo's sync-derived blocks
-	// (FromSync=true, fetched straight from Primary) kept getting dropped by
-	// Primary's own breaker against Contabo's address (tripped during the
-	// PRE-resync divergence) — a permanent deadlock between "can't clear the
-	// breaker without an attaching block" and "can't attach a block while
-	// the breaker blocks even trusted-seed sync data". A block reaching
-	// this function with FromSync=true was fetched specifically because a
-	// configured seed vouches for it; the breaker's "untrusted, possibly
-	// malicious flood" heuristic does not apply to it.
+	if dag.resyncInProgress.Load() {
+		return false // an in-process self-heal resync is atomically swapping account/DAG state right now — see resyncInProgress's field comment; the sender will redeliver, ordered sync fills the gap once the resync completes
+	}
+	// FIX (durable fix, 2026-07-04 — closes wasted-effort noise found live after
+	// a fresh checkpoint-seeded resync): a block at or below BootHeight is
+	// already fully accounted for by the snapshot/checkpoint this node just
+	// seeded from (see BootHeight's own comment) — accepting or even attempting
+	// to resolve it is pure waste, and confirmed live to actively hurt: gossip/
+	// relay of a proposer's own PRE-resync blocks (still circulating from
+	// before this node's chain_blocks was wiped) kept arriving after a fresh
+	// resync, each one genuinely missing its own equally-stale parent (also
+	// wiped), competing for the exact same orphan-resolution machinery that
+	// SHOULD be spending all its effort catching up to the CURRENT tip instead.
+	// Reported as accepted (true): this data is already correctly reflected in
+	// this node's state via the checkpoint, so there is nothing wrong to signal
+	// to the sender, and it correctly clears any breaker/orphan bookkeeping for
+	// that proposer instead of counting genuinely irrelevant old data against it.
 	//
-	// SelfFetched (see its own field comment): the same exemption, but for a
-	// block THIS node deliberately fetched via its own catch-up sync from
-	// ANY already-authorized validator — not just a statically-configured
-	// trusted seed. Fixes the identical deadlock between two SECONDARY
-	// validators (neither is the other's trusted seed) without requiring
-	// every node's PEER_NODES to be hand-updated whenever a new validator
-	// joins.
-	if !block.FromSync && !block.SelfFetched && dag.proposerBlockBlocked(block.Proposer) {
+	// FIX (P0, 2026-07-04 — permanent-isolation-after-plain-restart incident):
+	// gated by BootHeightCheckpointBacked(). This skip is only sound when a
+	// checkpoint-seeded resync actually stored a real block at exactly
+	// BootHeight — SOMETHING later blocks can find as a parent. Confirmed live:
+	// after a PLAIN restart (no resync), bootHeight gets ratcheted up to a bare
+	// persisted max_block_height NUMBER (continuously bumped by this node's own
+	// ongoing production) with no matching entry in dag.blocks/dag.tips. Every
+	// real historical block up to that height got waved through here without
+	// ever being stored, so every later block referencing one of them as a
+	// parent orphaned permanently — the exact isolation loop found live on both
+	// Contabo nodes tonight. Without checkpoint backing, fall through to the
+	// normal path below instead, which safely resolves a genuinely-old-but-
+	// still-known parent via ghostdagBlockLookup's own DB fallback.
+	//
+	// FIX (P0, 2026-07-04 — third layer of the same incident, found live even
+	// WITH checkpoint backing correct): also excludes SelfFetched blocks now.
+	// fetchMissingAncestors deliberately, individually fetches ONE specific
+	// missing-parent hash because some already-orphaned child genuinely needs
+	// it — that is precisely why it's SelfFetched. Confirmed live: it kept
+	// resolving hashes that happened to land at or below BootHeight (a second
+	// isolated peer's own historical chain, walked backward one hash at a
+	// time), got the free pass here, and was reported "accepted" WITHOUT ever
+	// being stored — so the orphaned child waiting on that exact hash could
+	// never actually resolve, no matter how many times the fetch "succeeded".
+	// The original bug this whole skip exists for is passively-arriving STALE
+	// GOSSIP of a proposer's pre-resync blocks that nothing will ever need as a
+	// parent — never a deliberate, targeted fetch for a hash something is
+	// actively waiting on right now. Skipping storage for a SelfFetched block
+	// defeats the entire point of targeted ancestor resolution.
+	//
+	// FIX (2026-07-05 — fourth layer of the same incident, found live even
+	// with the SelfFetched exemption correct): "SelfFetched" only proves the
+	// fetch was deliberately, individually issued for a hash something needed
+	// AT THE TIME the request went out — it says nothing about whether that
+	// need still exists when the response finally arrives. Confirmed live,
+	// repeating on every single resync: fetchMissingAncestors/doSyncOnce
+	// requests already in flight when a resync clears dag.orphans land
+	// moments later still marked SelfFetched, and this exemption force-fed
+	// them through as if still needed — scattered ancient-height blocks (seen
+	// live: heights tens of thousands below a freshly-seeded checkpoint)
+	// re-entering AddPeerBlock, queueing as brand-new orphans nothing is
+	// waiting on anymore, burning real-time catch-up attention and proposer-
+	// breaker budget on work that became moot the instant the resync ran.
+	// hasAwaitingOrphan re-derives whether this exact hash is STILL the
+	// missing-parent key for at least one currently-queued orphan — the
+	// live, present-tense version of the "something genuinely needs it" claim
+	// SelfFetched alone can only make in the past tense.
+	if block != nil && block.Height > 0 && block.Height <= dag.BootHeight() && dag.BootHeightCheckpointBacked() && (!block.SelfFetched || !dag.hasAwaitingOrphan(block.Hash)) {
+		// FIX (P0, 2026-07-25 night): accepted-as-covered blocks are never
+		// stored in dag.blocks — the one acceptance outcome reconcileDeferrals'
+		// presence check can't see. Clear any deferral watch entry for this
+		// hash explicitly, or a block that first arrived as a deferral and was
+		// later waved through here stays "unresolved" forever and blocks
+		// production. See forgetDeferral's own comment.
+		dag.forgetDeferral(block.Hash)
+		return true
+	}
+	// Lock-free fork-flood shield (P0, 2026-07-02): reject a block whose height is
+	// far above ours BEFORE taking the write lock, so a diverged/runaway fork
+	// pushing thousands of unresolvable blocks can NEVER contend for dag.mu with
+	// block production — the difference between a responsive node and the hang this
+	// whole incident was. A brief RLock reads the height (concurrent with other
+	// readers, only momentarily blocks the writer); the queueOrphan check remains
+	// as a second line of defence. Ordered sync still fills any legitimate gap
+	// parents-first, so nothing real is lost. Logging is rate-limited to once per
+	// second so the flood can't make the log the new bottleneck.
+	if block != nil {
+		// Per-proposer circuit breaker (see recordProposerOutcome). A proposer whose
+		// recent blocks all failed to attach — a diverged fork spamming blocks this
+		// node can never place — is dropped here, before the RLock and all dag.mu /
+		// hash / ECDSA work, until its cooldown expires. This is the path-independent
+		// counterpart to the per-IP push shield: it catches the flood no matter which
+		// ingress delivered it. Log rate-limited to once/sec.
+		// FIX (P0, merge-reliability audit 2026-07-03 — permanent fix for the
+		// recurring Contabo/Primary resync deadlock): skip this gate for FromSync
+		// blocks (fetched via HTTP-sync from an operator-configured trusted seed
+		// — see isTrustedSyncSource/trustedSeeds). This gate runs before
+		// FromSync's OTHER exemptions (the two "EXCEPT while WE are still in
+		// initial catch-up" cases further below, added for the exact same
+		// reason) ever get a chance to apply, so a trusted seed's catch-up
+		// blocks were still being dropped here even while this node was
+		// actively, legitimately resyncing from it. Confirmed live: after a
+		// fresh RESYNC_FROM_SNAPSHOT, Contabo's sync-derived blocks
+		// (FromSync=true, fetched straight from Primary) kept getting dropped by
+		// Primary's own breaker against Contabo's address (tripped during the
+		// PRE-resync divergence) — a permanent deadlock between "can't clear the
+		// breaker without an attaching block" and "can't attach a block while
+		// the breaker blocks even trusted-seed sync data". A block reaching
+		// this function with FromSync=true was fetched specifically because a
+		// configured seed vouches for it; the breaker's "untrusted, possibly
+		// malicious flood" heuristic does not apply to it.
+		//
+		// SelfFetched (see its own field comment): the same exemption, but for a
+		// block THIS node deliberately fetched via its own catch-up sync from
+		// ANY already-authorized validator — not just a statically-configured
+		// trusted seed. Fixes the identical deadlock between two SECONDARY
+		// validators (neither is the other's trusted seed) without requiring
+		// every node's PEER_NODES to be hand-updated whenever a new validator
+		// joins.
+		if !block.FromSync && !block.SelfFetched && dag.proposerBlockBlocked(block.Proposer) {
+			nowNano := time.Now().UnixNano()
+			last := dag.lastProposerBreakerLogAt.Load()
+			if nowNano-last > int64(time.Second) && dag.lastProposerBreakerLogAt.CompareAndSwap(last, nowNano) {
+				fmt.Printf("[DAG] ✗ Circuit breaker open for %s — dropping its blocks (e.g. #%d) lock-free after a sustained run of non-attaching blocks. (rate-limited)\n",
+					block.Proposer, block.Height)
+			}
+			return false
+		}
+		dag.mu.RLock()
+		localHeight := dag.height
+		frontier := dag.farAheadFrontierLocked()
+		catchingUp := dag.isCatchingUpLocked()
+		dag.mu.RUnlock()
+		if block.Height > frontier+maxOrphanHeightGap {
+			// A far-ahead block never attaches here — feed the breaker so a sustained
+			// runaway-fork flood trips it and is then dropped above without even this
+			// RLock. EXCEPT while WE are still in initial catch-up (bootHeight far
+			// above our height): every real validator's live blocks look "far-ahead"
+			// purely because we haven't synced yet — that's not evidence the proposer
+			// is bad. Feeding it to the breaker then would trip it against an honest
+			// proposer (confirmed live on Contabo: tripped against Primary itself
+			// during a fresh resync, permanently blocking the one peer it needed to
+			// sync from). Still reject the block either way — only the breaker
+			// bookkeeping is skipped.
+			if !catchingUp {
+				dag.recordProposerOutcome(block.Proposer, false)
+			}
+			nowNano := time.Now().UnixNano()
+			last := dag.lastFarAheadLogAt.Load()
+			if nowNano-last > int64(time.Second) && dag.lastFarAheadLogAt.CompareAndSwap(last, nowNano) {
+				fmt.Printf("[DAG] ✗ Rejecting far-ahead blocks (e.g. #%d from %s, %d above frontier %d [local height %d], cap %d) — diverged fork; ordered sync pulls any real gap parents-first. (rate-limited)\n",
+					block.Height, block.Proposer, block.Height-frontier, frontier, localHeight, maxOrphanHeightGap)
+			}
+			return false
+		}
+	}
+	dag.prefetchParentsFromDB(block)
+	dag.prefetchMergeSetFromDB(block)
+	dag.mu.Lock()
+	// NOTE: no defer — we manually unlock before the channel send below (Fix 2).
+	// All early-return paths must call dag.mu.Unlock() explicitly.
+
+	// Skip if already known — UNLESS the existing entry is a
+	// synthetic-checkpoint stub (see BridgeHistoricalGap/queueOrphan's
+	// runtime-bridge branch). A stub exists only to satisfy this same
+	// parent-existence check for blocks built on top of it; it carries no
+	// transactions and is never replayed, so trusting it is a permanent,
+	// silent loss of whatever that block actually contained (a
+	// registration, a transfer, anything) — UNLESS this node later
+	// receives the real block with that exact hash, in which case it
+	// should heal the gap with real, verified, replayed data instead of
+	// staying stuck with the placeholder forever. A hash collision between
+	// a stub and an unrelated real block is not a concern: calculateHash
+	// covers the block's full content, so only the genuinely-corresponding
+	// real block can ever match a given stub's hash. The rest of this
+	// function (signature check, parent-existence, replay) still runs
+	// normally for the incoming block — this only removes the short-circuit
+	// that prevented it from ever being attempted.
+	if existing, exists := dag.blocks[block.Hash]; exists && existing.Proposer != "synthetic-checkpoint" {
+		dag.mu.Unlock()
+		return false
+	} else if exists {
+		fmt.Printf("[BLOCK] ⚕ Healing synthetic-checkpoint stub at height %d (%s...) with real block from peer\n", existing.Height, block.Hash[:min(16, len(block.Hash))])
+	}
+
+	// FIX (audit 2026-06-30 monster audit, P1-04): degraded means a prior
+	// persistence failure left this node's in-memory DAG ahead of what's
+	// durably saved (see ProduceBlock's own degraded gate above and
+	// degradedReason's struct comment). ProduceBlock already refuses to make
+	// the gap worse by minting new blocks on top of unconfirmed state — but
+	// AddPeerBlock had no equivalent gate, so a degraded node kept accepting
+	// and replaying peer blocks (mutating cs.accounts, advancing dag.height)
+	// on top of a DAG it already couldn't durably reconstruct. That widens
+	// the repair surface every block instead of freezing it. Reject outright;
+	// the peer's sync loop retries later once an operator restarts/resyncs
+	// this node and degradedReason clears.
+	dag.degradedMu.Lock()
+	dr := dag.degradedReason
+	dag.degradedMu.Unlock()
+	if dr != "" {
+		fmt.Printf("[DAG] ✗ Rejected peer block #%d: node is degraded (%s) — restart to recover\n", block.Height, dr)
+		dag.mu.Unlock()
+		return false
+	}
+
+	// FIX (audit 2026-06-30 monster audit, P1-03): see
+	// ghostdagMigrationPending's struct comment and ProduceBlock's matching
+	// gate — see the matching removal in ProduceBlock's own comment for the
+	// full reasoning (P0, 2026-07-04): blocking ALL peer-block acceptance for
+	// the full duration of a migration turned routine restarts into extended
+	// total outages, confirmed live and repeatedly, a strictly worse failure
+	// mode than the bounded, self-correcting scoring imprecision this gate
+	// was guarding against. Migration still runs and backfills scores in the
+	// background; it just no longer blocks acceptance while doing so.
+
+	// Genesis blocks are always created locally — never accept from peers.
+	// A peer could send any block with IsGenesis=true and it would bypass
+	// both the signature check and the parent check below.
+	if block.IsGenesis {
+		fmt.Printf("[DAG] ✗ Rejected peer genesis: genesis can only be created locally\n")
+		dag.mu.Unlock()
+		return false
+	}
+
+	// Integrity check 1: recompute hash from block fields.
+	expectedHash := dag.calculateHash(block)
+	if expectedHash != block.Hash {
+		fmt.Printf("[DAG] ✗ Rejected peer block #%d: hash mismatch (claimed %s..., computed %s...)\n",
+			block.Height, block.Hash[:min(16, len(block.Hash))], expectedHash[:16])
+		dag.mu.Unlock()
+		return false
+	}
+
+	// Integrity check 2: all non-genesis blocks must carry a valid ECDSA
+	// signature from the proposer. Unsigned blocks are rejected — this is the
+	// primary consensus enforcement mechanism.
+	if !block.IsGenesis && block.Signature == "" {
+		fmt.Printf("[DAG] ✗ Rejected peer block #%d from %s: missing signature\n",
+			block.Height, block.Proposer)
+		dag.mu.Unlock()
+		return false
+	}
+	proposer := strings.ToLower(block.Proposer)
+	if block.Signature != "" && !block.IsGenesis {
+		sigBytes, sigErr := hex.DecodeString(block.Signature)
+		if sigErr != nil || len(sigBytes) != 65 {
+			fmt.Printf("[DAG] ✗ Rejected peer block #%d: malformed signature\n", block.Height)
+			dag.mu.Unlock()
+			return false
+		}
+		hashBytes := common.HexToHash(block.Hash)
+		pubkeyBytes, recErr := crypto.Ecrecover(hashBytes[:], sigBytes)
+		if recErr != nil {
+			fmt.Printf("[DAG] ✗ Rejected peer block #%d: signature recovery failed: %v\n", block.Height, recErr)
+			dag.mu.Unlock()
+			return false
+		}
+		pubkey, parseErr := crypto.UnmarshalPubkey(pubkeyBytes)
+		if parseErr != nil {
+			fmt.Printf("[DAG] ✗ Rejected peer block #%d: invalid public key: %v\n", block.Height, parseErr)
+			dag.mu.Unlock()
+			return false
+		}
+		recoveredAddr := strings.ToLower(crypto.PubkeyToAddress(*pubkey).Hex())
+		// Proposer must be the Ethereum address that produced the signature.
+		// Blocks where the proposer field does not match the recovered signing
+		// address are unconditionally rejected — no libp2p-nodeID exemption.
+		if recoveredAddr != proposer {
+			fmt.Printf("[DAG] ✗ Rejected peer block #%d: signature mismatch (signer %s, proposer %s)\n",
+				block.Height, recoveredAddr, proposer)
+			dag.mu.Unlock()
+			return false
+		}
+		// Proposer must be in the authorized validator set. Without this check
+		// anyone can generate an Ethereum key, sign a block, and feed it in.
+		// Skipped for HTTP-SYNC blocks from a trusted seed (block.FromSync —
+		// see its field doc): a configured seed's canonical history is trusted
+		// by construction; abandoning orphans here would permanently deadlock
+		// any child block waiting on a historical block from an early validator
+		// whose registration was cleared from the local DB. Blocks synced from
+		// a non-seed peer get FromSync=false and are still checked normally.
+		if !dag.authorizedValidators[proposer] && !block.FromSync {
+			// P3-2: cap to prevent unbounded memory growth from forged proposer addresses
+			if len(dag.warnedUnknownProposers) > 500 {
+				dag.warnedUnknownProposers = make(map[string]bool)
+			}
+			firstSeen := !dag.warnedUnknownProposers[proposer]
+			if firstSeen {
+				dag.warnedUnknownProposers[proposer] = true
+				fmt.Printf("[DAG] Unknown proposer %s — fetching validator lists from all peers (block will be accepted if peer registration succeeds)\n", proposer)
+			}
+			// Recovery is driven by its OWN clock, not by firstSeen — see
+			// unknownProposerLastRecovery's field comment. firstSeen answers "have
+			// we logged about this proposer yet"; it must not also answer "may we
+			// try to learn it again", or one attempt that happened to find no peers
+			// becomes the only attempt this node will ever make.
+			now := time.Now()
+			lastTry, tried := dag.unknownProposerLastRecovery[proposer]
+			shouldRecover := !tried || now.Sub(lastTry) >= unknownProposerRecoveryRetry
+			if shouldRecover {
+				// Lazily created: several construction paths — and every test
+				// that builds a BlockDAG as a struct literal — leave this nil,
+				// and a write to a nil map panics. Same 500 cap as
+				// warnedUnknownProposers, for the same reason: forged proposer
+				// addresses must not grow it without bound.
+				if dag.unknownProposerLastRecovery == nil || len(dag.unknownProposerLastRecovery) > 500 {
+					dag.unknownProposerLastRecovery = make(map[string]time.Time)
+				}
+				dag.unknownProposerLastRecovery[proposer] = now
+				if !firstSeen {
+					// Deliberately logged on every RETRY even though the
+					// first-sight line is suppressed: a node silently rejecting a
+					// peer's entire chain is exactly the state that went unnoticed
+					// for hours on 2026-07-26. One line per proposer per retry
+					// interval is bounded and is the only outward sign this is
+					// happening at all.
+					fmt.Printf("[DAG] Proposer %s still unknown after %s — retrying validator-list sync from all peers\n",
+						proposer, now.Sub(lastTry).Truncate(time.Second))
+				}
+			}
+			hash := block.Hash
+			dag.mu.Unlock()
+			// Prune the orphan queue for this hash immediately: any block waiting
+			// on this rejected block as a parent can never be resolved either, so
+			// keeping them only burns through orphan-buffer space and delays the
+			// "gap closed" signal.  Without this, fetchMissingAncestors never calls
+			// RecordOrphanAttempt for a "peer has it but we reject it" block, so the
+			// TTL prune in queueOrphan never fires — orphans hang for the full 15 min.
+			dag.abandonOrphansWaitingFor(hash)
+			if shouldRecover {
+				// Pull the full validator list from every active sync peer right now.
+				// If this proposer registered with any of them (but not with us),
+				// AddAuthorizedValidator will add them and the next sync cycle will
+				// accept their blocks — no manual AUTHORIZED_VALIDATORS config needed.
+				SafeGoroutine("syncValidatorsFromAllPeers", dag.syncValidatorsFromAllPeers)
+			}
+			return false
+		}
+	}
+
+	// FIX (P0, 2026-07-10): record that we genuinely heard from this authorized
+	// validator right now — BEFORE any of the gates below (finality, suspension,
+	// missing-parent, GHOSTDAG) get a chance to reject the block for an entirely
+	// separate reason. See lastSeenFromValidator's own struct comment (block.go)
+	// for why this must be unconditional here rather than skipped whenever a
+	// later gate happens to reject it: a validator whose blocks are chronically
+	// rejected downstream is exactly the case selfProducedFinalityAllowed needs
+	// to be able to tell apart from "this validator has gone quiet".
+	if dag.authorizedValidators[proposer] {
+		dag.recordForeignSeen(proposer)
+	}
+
+	// GATE ORDER (P0, cadence 2026-07-03 night): the finality gate below runs
+	// BEFORE the equivocation suspension gate. Both reject independently of
+	// each other, so ordering cannot change WHICH blocks get through — but it
+	// changes what a rejection COSTS. isFinalityViolation is pure in-memory
+	// (cached checkpoint), while IsValidatorSuspended is a Postgres round trip
+	// (~0.5s over the primary's remote DB proxy) executed while dag.mu is held
+	// write-locked. Confirmed live: isolated/diverged peers re-deliver whole
+	// pages of far-below-checkpoint blocks continuously (heights #80-129 vs a
+	// ~140k checkpoint, dozens of [FINALITY] rejects/minute) — with the
+	// suspension gate first, EVERY one of those doomed blocks held dag.mu
+	// through a full DB round trip before the free check rejected it anyway,
+	// starving ProduceBlock's lock acquisition and inflating cadence from the
+	// 1s target to 3-5s (rising with flood volume).
+
+	// Finality gate: reject blocks so far below the finalized checkpoint that
+	// they could only matter for a deep reorg — which the hard finality
+	// guarantee forbids. Legitimate gap-fills within finalityHeightSlack of
+	// the checkpoint are still accepted.
+	if dag.isFinalityViolation(block) {
+		fH, _ := dag.state.GetFinalizedCheckpoint()
 		nowNano := time.Now().UnixNano()
-		last := dag.lastProposerBreakerLogAt.Load()
-		if nowNano-last > int64(time.Second) && dag.lastProposerBreakerLogAt.CompareAndSwap(last, nowNano) {
-			fmt.Printf("[DAG] ✗ Circuit breaker open for %s — dropping its blocks (e.g. #%d) lock-free after a sustained run of non-attaching blocks. (rate-limited)\n",
-				block.Proposer, block.Height)
-		}
-		return false
-	}
-	dag.mu.RLock()
-	localHeight := dag.height
-	frontier := dag.farAheadFrontierLocked()
-	catchingUp := dag.isCatchingUpLocked()
-	dag.mu.RUnlock()
-	if block.Height > frontier+maxOrphanHeightGap {
-		// A far-ahead block never attaches here — feed the breaker so a sustained
-		// runaway-fork flood trips it and is then dropped above without even this
-		// RLock. EXCEPT while WE are still in initial catch-up (bootHeight far
-		// above our height): every real validator's live blocks look "far-ahead"
-		// purely because we haven't synced yet — that's not evidence the proposer
-		// is bad. Feeding it to the breaker then would trip it against an honest
-		// proposer (confirmed live on Contabo: tripped against Primary itself
-		// during a fresh resync, permanently blocking the one peer it needed to
-		// sync from). Still reject the block either way — only the breaker
-		// bookkeeping is skipped.
-		if !catchingUp {
-			dag.recordProposerOutcome(block.Proposer, false)
-		}
-		nowNano := time.Now().UnixNano()
-		last := dag.lastFarAheadLogAt.Load()
-		if nowNano-last > int64(time.Second) && dag.lastFarAheadLogAt.CompareAndSwap(last, nowNano) {
-			fmt.Printf("[DAG] ✗ Rejecting far-ahead blocks (e.g. #%d from %s, %d above frontier %d [local height %d], cap %d) — diverged fork; ordered sync pulls any real gap parents-first. (rate-limited)\n",
-				block.Height, block.Proposer, block.Height-frontier, frontier, localHeight, maxOrphanHeightGap)
-		}
-		return false
-	}
-}
-dag.prefetchParentsFromDB(block)
-dag.prefetchMergeSetFromDB(block)
-dag.mu.Lock()
-// NOTE: no defer — we manually unlock before the channel send below (Fix 2).
-// All early-return paths must call dag.mu.Unlock() explicitly.
-
-// Skip if already known — UNLESS the existing entry is a
-// synthetic-checkpoint stub (see BridgeHistoricalGap/queueOrphan's
-// runtime-bridge branch). A stub exists only to satisfy this same
-// parent-existence check for blocks built on top of it; it carries no
-// transactions and is never replayed, so trusting it is a permanent,
-// silent loss of whatever that block actually contained (a
-// registration, a transfer, anything) — UNLESS this node later
-// receives the real block with that exact hash, in which case it
-// should heal the gap with real, verified, replayed data instead of
-// staying stuck with the placeholder forever. A hash collision between
-// a stub and an unrelated real block is not a concern: calculateHash
-// covers the block's full content, so only the genuinely-corresponding
-// real block can ever match a given stub's hash. The rest of this
-// function (signature check, parent-existence, replay) still runs
-// normally for the incoming block — this only removes the short-circuit
-// that prevented it from ever being attempted.
-if existing, exists := dag.blocks[block.Hash]; exists && existing.Proposer != "synthetic-checkpoint" {
-dag.mu.Unlock()
-return false
-} else if exists {
-fmt.Printf("[BLOCK] ⚕ Healing synthetic-checkpoint stub at height %d (%s...) with real block from peer\n", existing.Height, block.Hash[:min(16, len(block.Hash))])
-}
-
-// FIX (audit 2026-06-30 monster audit, P1-04): degraded means a prior
-// persistence failure left this node's in-memory DAG ahead of what's
-// durably saved (see ProduceBlock's own degraded gate above and
-// degradedReason's struct comment). ProduceBlock already refuses to make
-// the gap worse by minting new blocks on top of unconfirmed state — but
-// AddPeerBlock had no equivalent gate, so a degraded node kept accepting
-// and replaying peer blocks (mutating cs.accounts, advancing dag.height)
-// on top of a DAG it already couldn't durably reconstruct. That widens
-// the repair surface every block instead of freezing it. Reject outright;
-// the peer's sync loop retries later once an operator restarts/resyncs
-// this node and degradedReason clears.
-dag.degradedMu.Lock()
-dr := dag.degradedReason
-dag.degradedMu.Unlock()
-if dr != "" {
-fmt.Printf("[DAG] ✗ Rejected peer block #%d: node is degraded (%s) — restart to recover\n", block.Height, dr)
-dag.mu.Unlock()
-return false
-}
-
-// FIX (audit 2026-06-30 monster audit, P1-03): see
-// ghostdagMigrationPending's struct comment and ProduceBlock's matching
-// gate — see the matching removal in ProduceBlock's own comment for the
-// full reasoning (P0, 2026-07-04): blocking ALL peer-block acceptance for
-// the full duration of a migration turned routine restarts into extended
-// total outages, confirmed live and repeatedly, a strictly worse failure
-// mode than the bounded, self-correcting scoring imprecision this gate
-// was guarding against. Migration still runs and backfills scores in the
-// background; it just no longer blocks acceptance while doing so.
-
-// Genesis blocks are always created locally — never accept from peers.
-// A peer could send any block with IsGenesis=true and it would bypass
-// both the signature check and the parent check below.
-if block.IsGenesis {
-fmt.Printf("[DAG] ✗ Rejected peer genesis: genesis can only be created locally\n")
-dag.mu.Unlock()
-return false
-}
-
-// Integrity check 1: recompute hash from block fields.
-expectedHash := dag.calculateHash(block)
-if expectedHash != block.Hash {
-fmt.Printf("[DAG] ✗ Rejected peer block #%d: hash mismatch (claimed %s..., computed %s...)\n",
-block.Height, block.Hash[:min(16, len(block.Hash))], expectedHash[:16])
-dag.mu.Unlock()
-return false
-}
-
-// Integrity check 2: all non-genesis blocks must carry a valid ECDSA
-// signature from the proposer. Unsigned blocks are rejected — this is the
-// primary consensus enforcement mechanism.
-if !block.IsGenesis && block.Signature == "" {
-	fmt.Printf("[DAG] ✗ Rejected peer block #%d from %s: missing signature\n",
-		block.Height, block.Proposer)
-	dag.mu.Unlock()
-	return false
-}
-proposer := strings.ToLower(block.Proposer)
-if block.Signature != "" && !block.IsGenesis {
-	sigBytes, sigErr := hex.DecodeString(block.Signature)
-	if sigErr != nil || len(sigBytes) != 65 {
-		fmt.Printf("[DAG] ✗ Rejected peer block #%d: malformed signature\n", block.Height)
-		dag.mu.Unlock()
-		return false
-	}
-	hashBytes := common.HexToHash(block.Hash)
-	pubkeyBytes, recErr := crypto.Ecrecover(hashBytes[:], sigBytes)
-	if recErr != nil {
-		fmt.Printf("[DAG] ✗ Rejected peer block #%d: signature recovery failed: %v\n", block.Height, recErr)
-		dag.mu.Unlock()
-		return false
-	}
-	pubkey, parseErr := crypto.UnmarshalPubkey(pubkeyBytes)
-	if parseErr != nil {
-		fmt.Printf("[DAG] ✗ Rejected peer block #%d: invalid public key: %v\n", block.Height, parseErr)
-		dag.mu.Unlock()
-		return false
-	}
-	recoveredAddr := strings.ToLower(crypto.PubkeyToAddress(*pubkey).Hex())
-	// Proposer must be the Ethereum address that produced the signature.
-	// Blocks where the proposer field does not match the recovered signing
-	// address are unconditionally rejected — no libp2p-nodeID exemption.
-	if recoveredAddr != proposer {
-		fmt.Printf("[DAG] ✗ Rejected peer block #%d: signature mismatch (signer %s, proposer %s)\n",
-			block.Height, recoveredAddr, proposer)
-		dag.mu.Unlock()
-		return false
-	}
-	// Proposer must be in the authorized validator set. Without this check
-	// anyone can generate an Ethereum key, sign a block, and feed it in.
-	// Skipped for HTTP-SYNC blocks from a trusted seed (block.FromSync —
-	// see its field doc): a configured seed's canonical history is trusted
-	// by construction; abandoning orphans here would permanently deadlock
-	// any child block waiting on a historical block from an early validator
-	// whose registration was cleared from the local DB. Blocks synced from
-	// a non-seed peer get FromSync=false and are still checked normally.
-	if !dag.authorizedValidators[proposer] && !block.FromSync {
-		// P3-2: cap to prevent unbounded memory growth from forged proposer addresses
-		if len(dag.warnedUnknownProposers) > 500 {
-			dag.warnedUnknownProposers = make(map[string]bool)
-		}
-		firstSeen := !dag.warnedUnknownProposers[proposer]
-		if firstSeen {
-			dag.warnedUnknownProposers[proposer] = true
-			fmt.Printf("[DAG] Unknown proposer %s — fetching validator lists from all peers (block will be accepted if peer registration succeeds)\n", proposer)
+		last := dag.lastFinalityRejectLogAt.Load()
+		if nowNano-last > int64(time.Second) && dag.lastFinalityRejectLogAt.CompareAndSwap(last, nowNano) {
+			fmt.Printf("[FINALITY] ✗ Rejected block #%d: below finalized checkpoint %d (slack %d) (rate-limited)\n",
+				block.Height, fH, finalityHeightSlack)
 		}
 		hash := block.Hash
 		dag.mu.Unlock()
-		// Prune the orphan queue for this hash immediately: any block waiting
-		// on this rejected block as a parent can never be resolved either, so
-		// keeping them only burns through orphan-buffer space and delays the
-		// "gap closed" signal.  Without this, fetchMissingAncestors never calls
-		// RecordOrphanAttempt for a "peer has it but we reject it" block, so the
-		// TTL prune in queueOrphan never fires — orphans hang for the full 15 min.
+		// FIX (P0, 2026-07-10): finalizedHeight only ever advances (never
+		// retreats — see the "HARD FINALITY CHECKPOINTS" header comment,
+		// finality.go), so a block rejected here can never stop being a
+		// violation later; exactly the "permanently rejected" precondition
+		// abandonOrphansWaitingFor requires (mirrors the unauthorized-proposer
+		// gate above). Without this, any orphan waiting on this exact hash as
+		// its missing parent stayed queued forever: fetchMissingAncestors
+		// re-fetches it from a peer that genuinely has it every cycle,
+		// AddPeerBlock rejects it here every time for the same reason,
+		// RecordOrphanAttempt never fires for it (only recorded when a peer
+		// does NOT have the hash — sync_blocks.go), so queueOrphan's own
+		// TTL-based abandon check never re-triggers either. Net effect:
+		// MissingParentHashes() (and therefore wantDeepScan) stayed permanently
+		// non-empty for a gap that can never close, keeping deepScan spinning
+		// against this peer forever with nothing it can ever find.
 		dag.abandonOrphansWaitingFor(hash)
-		if firstSeen {
-			// Pull the full validator list from every active sync peer right now.
-			// If this proposer registered with any of them (but not with us),
-			// AddAuthorizedValidator will add them and the next sync cycle will
-			// accept their blocks — no manual AUTHORIZED_VALIDATORS config needed.
-			SafeGoroutine("syncValidatorsFromAllPeers", dag.syncValidatorsFromAllPeers)
-		}
 		return false
 	}
-}
 
-// FIX (P0, 2026-07-10): record that we genuinely heard from this authorized
-// validator right now — BEFORE any of the gates below (finality, suspension,
-// missing-parent, GHOSTDAG) get a chance to reject the block for an entirely
-// separate reason. See lastSeenFromValidator's own struct comment (block.go)
-// for why this must be unconditional here rather than skipped whenever a
-// later gate happens to reject it: a validator whose blocks are chronically
-// rejected downstream is exactly the case selfProducedFinalityAllowed needs
-// to be able to tell apart from "this validator has gone quiet".
-if dag.authorizedValidators[proposer] {
-	dag.recordForeignSeen(proposer)
-}
-
-// GATE ORDER (P0, cadence 2026-07-03 night): the finality gate below runs
-// BEFORE the equivocation suspension gate. Both reject independently of
-// each other, so ordering cannot change WHICH blocks get through — but it
-// changes what a rejection COSTS. isFinalityViolation is pure in-memory
-// (cached checkpoint), while IsValidatorSuspended is a Postgres round trip
-// (~0.5s over the primary's remote DB proxy) executed while dag.mu is held
-// write-locked. Confirmed live: isolated/diverged peers re-deliver whole
-// pages of far-below-checkpoint blocks continuously (heights #80-129 vs a
-// ~140k checkpoint, dozens of [FINALITY] rejects/minute) — with the
-// suspension gate first, EVERY one of those doomed blocks held dag.mu
-// through a full DB round trip before the free check rejected it anyway,
-// starving ProduceBlock's lock acquisition and inflating cadence from the
-// 1s target to 3-5s (rising with flood volume).
-
-// Finality gate: reject blocks so far below the finalized checkpoint that
-// they could only matter for a deep reorg — which the hard finality
-// guarantee forbids. Legitimate gap-fills within finalityHeightSlack of
-// the checkpoint are still accepted.
-if dag.isFinalityViolation(block) {
-	fH, _ := dag.state.GetFinalizedCheckpoint()
-	nowNano := time.Now().UnixNano()
-	last := dag.lastFinalityRejectLogAt.Load()
-	if nowNano-last > int64(time.Second) && dag.lastFinalityRejectLogAt.CompareAndSwap(last, nowNano) {
-		fmt.Printf("[FINALITY] ✗ Rejected block #%d: below finalized checkpoint %d (slack %d) (rate-limited)\n",
-			block.Height, fH, finalityHeightSlack)
+	// Equivocation suspension gate: a validator suspended or permanently banned
+	// for repeated equivocation may not produce further blocks until the penalty
+	// expires. Checked after the signature + authorization gates above so that
+	// the suspended proposer's identity is already confirmed cryptographically,
+	// and after the free finality gate so a flood of doomed below-checkpoint
+	// blocks can't turn this check's cost into a dag.mu bottleneck (see the
+	// GATE ORDER comment above — the check itself is now an in-memory cache
+	// read, the ordering is defense in depth).
+	//
+	// Skipped for blocks fetched via HTTP-SYNC from a trusted seed
+	// (block.FromSync == true — see its field doc): those blocks are part of a
+	// configured seed's canonical chain and were accepted before the local
+	// suspension record existed. Rejecting them here deadlocks catch-up sync
+	// whenever a historically-banned validator's blocks appear in the canonical
+	// history. Blocks synced from a non-seed peer get FromSync=false and are
+	// still checked against the current suspension record.
+	//
+	// FIX (P2-2, beta-launch audit 2026-07-05): also skipped for
+	// block.SelfFetched, mirroring the circuit-breaker gate above (see its own
+	// !block.FromSync && !block.SelfFetched condition) — this suspension check
+	// previously exempted FromSync only, leaving a gap: a SelfFetched block
+	// from a validator suspended AFTER that block was originally produced
+	// (suspension is keyed by the block's own timestamp, but the SUSPENSION
+	// RECORD is whatever the node currently holds, which can postdate an old
+	// block being re-fetched) could still be rejected here even though the
+	// circuit-breaker already decided this exact ancestor should be trusted
+	// enough to re-fetch — silently reintroducing the same class of merge-stall
+	// SelfFetched was added to close, just one gate later.
+	if dag.state != nil && !block.FromSync && !block.SelfFetched {
+		if suspended, reason := dag.state.IsValidatorSuspended(proposer, block.Timestamp); suspended {
+			fmt.Printf("[SLASHING] ✗ Rejected block #%d from %s: %s\n", block.Height, proposer, reason)
+			dag.mu.Unlock()
+			return false
+		}
 	}
-	hash := block.Hash
-	dag.mu.Unlock()
-	// FIX (P0, 2026-07-10): finalizedHeight only ever advances (never
-	// retreats — see the "HARD FINALITY CHECKPOINTS" header comment,
-	// finality.go), so a block rejected here can never stop being a
-	// violation later; exactly the "permanently rejected" precondition
-	// abandonOrphansWaitingFor requires (mirrors the unauthorized-proposer
-	// gate above). Without this, any orphan waiting on this exact hash as
-	// its missing parent stayed queued forever: fetchMissingAncestors
-	// re-fetches it from a peer that genuinely has it every cycle,
-	// AddPeerBlock rejects it here every time for the same reason,
-	// RecordOrphanAttempt never fires for it (only recorded when a peer
-	// does NOT have the hash — sync_blocks.go), so queueOrphan's own
-	// TTL-based abandon check never re-triggers either. Net effect:
-	// MissingParentHashes() (and therefore wantDeepScan) stayed permanently
-	// non-empty for a gap that can never close, keeping deepScan spinning
-	// against this peer forever with nothing it can ever find.
-	dag.abandonOrphansWaitingFor(hash)
-	return false
-}
 
-// Equivocation suspension gate: a validator suspended or permanently banned
-// for repeated equivocation may not produce further blocks until the penalty
-// expires. Checked after the signature + authorization gates above so that
-// the suspended proposer's identity is already confirmed cryptographically,
-// and after the free finality gate so a flood of doomed below-checkpoint
-// blocks can't turn this check's cost into a dag.mu bottleneck (see the
-// GATE ORDER comment above — the check itself is now an in-memory cache
-// read, the ordering is defense in depth).
-//
-// Skipped for blocks fetched via HTTP-SYNC from a trusted seed
-// (block.FromSync == true — see its field doc): those blocks are part of a
-// configured seed's canonical chain and were accepted before the local
-// suspension record existed. Rejecting them here deadlocks catch-up sync
-// whenever a historically-banned validator's blocks appear in the canonical
-// history. Blocks synced from a non-seed peer get FromSync=false and are
-// still checked against the current suspension record.
-//
-// FIX (P2-2, beta-launch audit 2026-07-05): also skipped for
-// block.SelfFetched, mirroring the circuit-breaker gate above (see its own
-// !block.FromSync && !block.SelfFetched condition) — this suspension check
-// previously exempted FromSync only, leaving a gap: a SelfFetched block
-// from a validator suspended AFTER that block was originally produced
-// (suspension is keyed by the block's own timestamp, but the SUSPENSION
-// RECORD is whatever the node currently holds, which can postdate an old
-// block being re-fetched) could still be rejected here even though the
-// circuit-breaker already decided this exact ancestor should be trusted
-// enough to re-fetch — silently reintroducing the same class of merge-stall
-// SelfFetched was added to close, just one gate later.
-if dag.state != nil && !block.FromSync && !block.SelfFetched {
-	if suspended, reason := dag.state.IsValidatorSuspended(proposer, block.Timestamp); suspended {
-		fmt.Printf("[SLASHING] ✗ Rejected block #%d from %s: %s\n", block.Height, proposer, reason)
+	// Integrity check 3: parent-existence and height validation.
+	//
+	// FIX (orphan buffer): this used to tolerate a missing parent only while
+	// len(dag.blocks) <= 10 — i.e. only during the first ~minute of a fresh
+	// node's life, since every node produces its own block every 6s regardless
+	// of sync status. Past that point, ANY block whose parent wasn't already
+	// in dag.blocks was silently dropped with NO log line (this branch had no
+	// fmt.Printf, unlike every other reject path in this function) and NEVER
+	// retried — and everything built on top of that block inherited the same
+	// fate, since ITS parent (the dropped block) would also never exist
+	// locally. Confirmed in production with 3 concurrent validators: every
+	// node's own /api/blocks ended up showing ONLY its own single-parent
+	// chain, never the other validators' blocks, because somewhere in their
+	// ancestry a single missing parent (a brief P2P gap, a sync page that
+	// didn't cover it, anything transient) permanently blocked the entire
+	// subtree above it — with no error anywhere to even reveal why.
+	//
+	// Now: a block with a missing parent is queued in dag.orphans, keyed by
+	// the missing hash, instead of being dropped. When that parent later
+	// arrives (via AddPeerBlock, below), every block waiting on it is
+	// automatically retried — and if THAT retry succeeds, its own dependents
+	// get retried too, recursively. A transient gap now costs one retry
+	// instead of permanently orphaning an entire branch.
+	if len(block.ParentHashes) == 0 {
+		fmt.Printf("[DAG] ✗ Rejected peer block #%d: no parent hashes\n", block.Height)
 		dag.mu.Unlock()
 		return false
 	}
-}
-
-// Integrity check 3: parent-existence and height validation.
-//
-// FIX (orphan buffer): this used to tolerate a missing parent only while
-// len(dag.blocks) <= 10 — i.e. only during the first ~minute of a fresh
-// node's life, since every node produces its own block every 6s regardless
-// of sync status. Past that point, ANY block whose parent wasn't already
-// in dag.blocks was silently dropped with NO log line (this branch had no
-// fmt.Printf, unlike every other reject path in this function) and NEVER
-// retried — and everything built on top of that block inherited the same
-// fate, since ITS parent (the dropped block) would also never exist
-// locally. Confirmed in production with 3 concurrent validators: every
-// node's own /api/blocks ended up showing ONLY its own single-parent
-// chain, never the other validators' blocks, because somewhere in their
-// ancestry a single missing parent (a brief P2P gap, a sync page that
-// didn't cover it, anything transient) permanently blocked the entire
-// subtree above it — with no error anywhere to even reveal why.
-//
-// Now: a block with a missing parent is queued in dag.orphans, keyed by
-// the missing hash, instead of being dropped. When that parent later
-// arrives (via AddPeerBlock, below), every block waiting on it is
-// automatically retried — and if THAT retry succeeds, its own dependents
-// get retried too, recursively. A transient gap now costs one retry
-// instead of permanently orphaning an entire branch.
-if len(block.ParentHashes) == 0 {
-fmt.Printf("[DAG] ✗ Rejected peer block #%d: no parent hashes\n", block.Height)
-dag.mu.Unlock()
-return false
-}
-if block.Height > 1 {
-maxParentHeight := int64(-1)
-missingParent := ""
-// FIX (durable fix, 2026-07-03 — the actual deepest root cause behind
-// tonight's whole "never merges" saga): this used to read dag.blocks[ph]
-// directly, the same in-memory-only pattern already fixed for GHOSTDAG
-// scoring (see ghostdagBlockLookup's comment) — but THIS is the gate
-// that decides whether an incoming block attaches AT ALL, so a miss here
-// is far more consequential than a miss in blue-score computation. Any
-// restart only loads the most recent startupLoadWindow (2000) blocks
-// into dag.blocks, regardless of how much further back a peer's parent
-// reference points (routine after any catch-up/merge). Confirmed live:
-// after a plain restart with NO resync, a node that had JUST reached
-// parity with its peer (matching hashes at recent heights) immediately
-// started orphaning peer blocks 60,000+ heights below its own tip —
-// blocks that were fully present and valid in its own local DB the
-// entire time, just outside the freshly-reloaded in-memory window.
-// ghostdagBlockLookup already implements exactly the DB-fallback (plus
-// re-caching into dag.blocks) this needs; reusing it here instead of a
-// second bespoke lookup.
-hasStubParent := false
-for _, ph := range block.ParentHashes {
-parent := dag.ghostdagBlockLookup(ph, nil)
-if parent == nil {
-	missingParent = ph
-	break
-}
-if parent.Proposer == "synthetic-checkpoint" {
-	// See the stub-tolerant height check below — a stub's Height is a
-	// placeholder assigned at resync seeding, not this parent's real
-	// chain position.
-	hasStubParent = true
-}
-if parent.Height > maxParentHeight {
-maxParentHeight = parent.Height
-}
-}
-if missingParent != "" {
-	dag.mu.Unlock()
-	dag.queueOrphan(missingParent, block)
-	// Feed the circuit breaker: a block that orphans on a missing parent did not
-	// attach. A proposer on a diverged fork does this every block (its fork-parents
-	// live only on its own chain), so proposerBreakerFailThreshold consecutive such
-	// blocks trip the lock-free drop at the top of AddPeerBlock.
-	//
-	// EXCEPT while WE are still in initial catch-up: a freshly-bootstrapping
-	// node's dag.blocks holds only genesis (plus any bridge stub), so EVERY
-	// honest validator's block orphans on a missing parent here — not because
-	// the proposer diverged, but because we haven't synced in its ancestry
-	// yet. Recording that as a failure would (and on Contabo, did) trip our
-	// breaker against the honest primary, permanently blocking the one peer
-	// we need to sync from. Still queue the orphan for later resolution —
-	// only the breaker bookkeeping is skipped.
-	//
-	// EXCEPT ALSO while this specific gap is still within its grace period —
-	// see proposerBreakerOrphanGrace's own comment: even a fully-synced,
-	// perfectly healthy node sees an occasional short-lived orphan from
-	// ordinary cross-network propagation timing, and counting that
-	// immediately (before giving it any chance to resolve on its own) is
-	// what let two healthy Contabo nodes trip their breakers against each
-	// other during completely normal operation.
-	//
-	// EXCEPT ALSO for SelfFetched/FromSync blocks (audit 2026-07-06): this
-	// used to be the one gap left in the SelfFetched exemption described
-	// above (2924-2930) and at line 2931's own gate — that gate only stops
-	// an ALREADY-tripped breaker from blocking a self-fetched delivery, it
-	// never stopped a self-fetched delivery from CONTRIBUTING to tripping
-	// the breaker in the first place. isCatchingUpLocked() only covers the
-	// gap between dag.height and bootHeight/syncTargetHeight, both of which
-	// a node reaches almost immediately after a snapshot resync (its own
-	// production catches up within a handful of blocks) — so a node can
-	// stop being "catching up" by this definition while it is still working
-	// through a large, late-arriving backlog of a PEER's pre-resync history
-	// via its own doSyncOnce (confirmed live 2026-07-06: two secondaries
-	// resynced ~60s apart each relayed the other's now-pruned ancestry,
-	// arriving 60-240s late — far past proposerBreakerOrphanGrace's 8s — and
-	// tripped each other's breakers even though every one of those blocks
-	// was fetched deliberately, not pushed by a misbehaving proposer). A
-	// block we asked for ourselves during our own catch-up can never be
-	// evidence the PROPOSER is misbehaving — any orphaning here is about our
-	// own missing ancestry, exactly the case SelfFetched/FromSync exist to
-	// name.
-	dag.mu.RLock()
-	catchingUp := dag.isCatchingUpLocked()
-	dag.mu.RUnlock()
-	if age, tracked := dag.orphanAge(missingParent); !block.SelfFetched && !block.FromSync && !catchingUp && (!tracked || age >= proposerBreakerOrphanGrace) {
-		dag.recordProposerOutcome(block.Proposer, false)
-	}
-	return false
-}
-if maxParentHeight >= 0 && block.Height != maxParentHeight+1 {
-// FIX (P0, 2026-07-25 night — Contabo1 permanently stuck at its fresh
-// resync checkpoint): when one of the resolved parents is a
-// synthetic-checkpoint stub, its Height is a PLACEHOLDER assigned at
-// resync seeding (checkpointHeight-1), not the parent's real chain
-// position — so the strict equation cannot be evaluated honestly.
-// Confirmed live: the merge-sibling at checkpointHeight-1 (referenced
-// as a merge-parent by essentially every block above the boundary) was
-// re-fetched and re-rejected with "invalid height" forever, walling
-// the node's ENTIRE catch-up behind it, minutes after an otherwise
-// clean authoritative resync. History at/below the boundary is sealed
-// by the checkpoint's finality anyway (the same trust already extended
-// to the stub itself), so tolerate the mismatch instead of rejecting —
-// the block still passes every signature/authorization/TX check.
-if hasStubParent {
-	fmt.Printf("[DAG] ⚠ Height mismatch tolerated for block #%d (parent max %d includes a synthetic-checkpoint stub with placeholder height) — attaching at the resync trust boundary\n",
-		block.Height, maxParentHeight)
-} else {
-	fmt.Printf("[DAG] ✗ Rejected peer block #%d: invalid height (parent max %d)\n",
-		block.Height, maxParentHeight)
-	dag.mu.Unlock()
-	return false
-}
-}
-}
-
-// Integrity check 4: transaction type whitelist — unknown types could
-// inject unrecognised state-change commands into the audit log.
-for _, tx := range block.Transactions {
-switch tx.Type {
-case "", "register_human", "transfer", "swap_aeq_tusd", "swap_tusd_aeq", "add_liquidity", "remove_liquidity", "faucet", "ubi_distribution", "ubi_distribution_finalize",
-	"validator_distribution", "validator_distribution_pool_zero", "lp_distribution", "lp_distribution_pool_zero", "escrow_move", "escrow_release", "escrow_recover",
-	"slash_equivocation":
-// known / empty — OK
-default:
-fmt.Printf("[DAG] ✗ Rejected peer block #%d: unknown tx type %q\n", block.Height, tx.Type)
-dag.mu.Unlock()
-return false
-}
-}
-
-// FIX (durable fix, 2026-07-04 — closes the two-phase block-save gap that
-// was this session's deepest recurring root cause): compute GHOSTDAG state
-// HERE, still holding dag.mu from the integrity checks above, BEFORE the
-// header is ever persisted — not after replay completes, several DB round
-// trips and a lock release/reacquire later, as it used to run. This needs
-// nothing this block doesn't already have available: computeGHOSTDAGState
-// only reads block.ParentHashes and looks up ANCESTORS (already verified
-// present by Integrity check 3 above) via ghostdagBlockLookup — it never
-// needs this block itself to be in dag.blocks/dag.tips yet, and it has
-// nothing to do with transaction replay. This unconditionally OVERWRITES
-// SelectedParent/Blues/BlueScore with locally-computed values, which is
-// what P1-03's old "strip peer-supplied GHOSTDAG fields before saving"
-// step existed to guarantee too — computing correctly up front makes that
-// separate strip step unnecessary, not just redundant.
-//
-// Why this matters: the OLD two-phase order (save header with fields
-// zeroed → replay → THEN compute and save the real values) left every
-// single peer block with a real window — spanning the full replay phase,
-// not a few instructions — where a restart (a crash, or simply another
-// deploy; this session's own redeploys are exactly what triggered it
-// live, repeatedly) permanently strands that block in chain_blocks with
-// SelectedParent="". Nothing after that ever revisits or repairs it later
-// (recordProposerOutcome/normal restarts always take the fast "SelectedParent
-// != ''" path in LoadBlocksFromDB's migration check) — it just silently
-// counts toward needsMigration forever. Confirmed live: this is why the
-// startup GHOSTDAG migration kept re-triggering for roughly the same
-// ~5,000-block count on EVERY restart tonight instead of shrinking, and
-// directly undermined GetBlockByHeight's canonical SelectedParent-chain
-// walk (a chain with holes in it can't be walked correctly). Computing
-// once, correctly, before the very first save closes this gap: the only
-// remaining risk window is between this computation and the save two
-// statements below — no replay, no DB round trip, no lock release in
-// between — and a crash there leaves the block simply absent from the DB
-// (the pre-existing, already-handled "block not saved yet" case), never
-// present-but-broken.
-// FIX (P0, 2026-07-10 — closes the remaining BlueScore-drift class:
-// computeGHOSTDAGState/ghostdagMergeSet now report when a DEEPER ancestor
-// (beyond the direct parents Integrity check 3 already verified) can't be
-// resolved yet, instead of silently computing from a truncated set — see
-// those functions' own FIX comments. Treat that exactly like Integrity
-// check 3's own missing-DIRECT-parent case: queue this block as an orphan
-// on the specific missing hash and retry once it arrives, rather than
-// attaching now with a BlueScore this node cannot yet compute correctly.
-if missing, ok := dag.computeGHOSTDAGState(block); !ok {
-	dag.mu.Unlock()
-	dag.queueOrphan(missing, block)
-	return false
-}
-
-// Structural validation passed. Release dag.mu before replay — replay
-// uses dag.state's own lock (cs.mu), not dag.mu, and must never run while
-// holding dag.mu (ProduceBlock and other dag.mu users would block for the
-// duration of every peer block's replay otherwise).
-dag.mu.Unlock()
-
-// P2-05 (audit): persist the block header BEFORE state replay.  Old order
-// was replay-then-save, which could commit account-balance changes to
-// chain_accounts and then fail to write the chain_blocks header — leaving
-// the node in an inconsistent state (state committed, block invisible on
-// restart) with no way to detect or recover.  Saving first means a DB
-// failure aborts before any state is touched; ON CONFLICT DO NOTHING makes
-// this idempotent if two concurrent deliveries of the same block race here.
-// Failure mode of the new order (save OK, replay fails): P0-02 fix above
-// deletes the pre-saved header when replay fails, so state is always consistent.
-if dag.state != nil {
-	if err := dag.state.SaveBlockToDB(block, false); err != nil {
-		fmt.Printf("[BLOCK] ✗ Could not save peer block #%d header before replay: %v — skipping\n", block.Height, err)
-		return false
-	}
-}
-
-// FIX (the actual BlockDAG correctness bug, not just a hardening pass):
-// this used to (1) compare block.StateRoot against dag.state.StateRoot()
-// BEFORE replaying this block's own transactions, and (2) insert the block
-// into dag.blocks/dag.tips unconditionally, with replay only queued
-// asynchronously onto a channel that could silently drop it if full.
-//
-// (1) is not just "risky" — it is structurally wrong and guaranteed to
-// "mismatch" on every single block that contains any transaction, even
-// between two perfectly healthy, fully-synced nodes: block.StateRoot is
-// computed by the PRODUCER *after* applying this block's own TXs (the
-// producer's RPC handlers apply state changes synchronously before queuing
-// them for inclusion — see evm_rpc.go/register.go/swap.go), so it is a
-// POST-state root. Comparing it against the RECEIVER's StateRoot at this
-// point — before the receiver has replayed this block's TXs — compares a
-// post-state against a pre-state. That's why "[DAG] StateRoot mismatch ...
-// accepted (warn only)" fired constantly throughout this project's history
-// on nearly every non-empty block: the check could never have detected real
-// divergence, it was comparing the wrong two snapshots by construction.
-//
-// (2) meant a block could be permanently "in the DAG" (counted in height,
-// returned by /api/blocks, used as a valid parent for later blocks) before
-// its own state changes were verified to apply cleanly, or even applied at
-// all if the replay queue happened to be full.
-//
-// Fixed by replaying SYNCHRONOUSLY, right here, before the block is
-// inserted anywhere — and only THEN comparing StateRoot, now correctly
-// post-state vs. post-state. replayMu serializes this across concurrent
-// AddPeerBlock calls (same ordering guarantee the old channel+goroutine
-// provided, without the "silently drop if busy" failure mode: this blocks
-// instead of dropping, and replayTransactions' own dedup guard makes that
-// safe even under concurrent delivery of the same block).
-dag.replayMu.Lock()
-replayOK := dag.replayInCanonicalOrder(block)
-// P0-01 (audit): do NOT release replayMu here on success — hold it through the
-// dag.mu section below so ProduceBlock (which also takes replayMu before dag.mu)
-// cannot read a post-replay state while this block is still absent from
-// dag.blocks/dag.tips. Released on the failure path and after dag.mu.Unlock().
-
-// FIX (block-level atomicity): replayTransactions now rolls back and
-// returns false if any of this block's transactions hit a genuine
-// state-inconsistency failure (not an expected idempotent skip like
-// "already registered"), OR if the post-replay StateRoot doesn't match
-// the producer's claimed root (audit recheck 2, P0 #1 — moved into
-// replayTransactions itself so a mismatch can use that function's own
-// rollback snapshot; see its comment).
-//
-// GHOSTDAG soft-retry: instead of permanently rejecting a replay failure,
-// queue the block for a retry after the next successful peer block is
-// accepted (which may have applied the state this block depends on —
-// e.g. Block X gives Bob 100, Block Y spends Bob→Carol 50; if Y arrives
-// first and Bob has 0, the old code permanently rejected Y).  Entries
-// older than softRetryTTL (5 min) are abandoned by retryAndFlushSoftRetry.
-if !replayOK {
-	dag.replayMu.Unlock() // P0-01: release on failure — block won't enter DAG
-	// P0-02 (audit): undo the pre-saved header — replay failed, state was
-	// never applied. Without this, a restart would mark this block as
-	// replayed in dag.replayedBlocks while chain_accounts has no record of
-	// its state changes ("header committed, state missing"). Delete now so
-	// the block is re-fetched from peers and replayed cleanly on next sync.
-	// P1-01 (audit): a single failed delete used to just log a warning and
-	// move on, leaving open the "header persisted, state missing" window
-	// across a restart. Retry a few times (DB errors here are typically a
-	// transient connection blip) and if it still fails, mark the node
-	// degraded so /api/health surfaces it rather than silently continuing
-	// on a DB that may now disagree with in-memory state after a restart.
-	if dag.state != nil {
-		var delErr error
-		for attempt := 0; attempt < 3; attempt++ {
-			if delErr = dag.state.DeleteBlockFromDB(block.Hash); delErr == nil {
+	if block.Height > 1 {
+		maxParentHeight := int64(-1)
+		missingParent := ""
+		// FIX (durable fix, 2026-07-03 — the actual deepest root cause behind
+		// tonight's whole "never merges" saga): this used to read dag.blocks[ph]
+		// directly, the same in-memory-only pattern already fixed for GHOSTDAG
+		// scoring (see ghostdagBlockLookup's comment) — but THIS is the gate
+		// that decides whether an incoming block attaches AT ALL, so a miss here
+		// is far more consequential than a miss in blue-score computation. Any
+		// restart only loads the most recent startupLoadWindow (2000) blocks
+		// into dag.blocks, regardless of how much further back a peer's parent
+		// reference points (routine after any catch-up/merge). Confirmed live:
+		// after a plain restart with NO resync, a node that had JUST reached
+		// parity with its peer (matching hashes at recent heights) immediately
+		// started orphaning peer blocks 60,000+ heights below its own tip —
+		// blocks that were fully present and valid in its own local DB the
+		// entire time, just outside the freshly-reloaded in-memory window.
+		// ghostdagBlockLookup already implements exactly the DB-fallback (plus
+		// re-caching into dag.blocks) this needs; reusing it here instead of a
+		// second bespoke lookup.
+		hasStubParent := false
+		for _, ph := range block.ParentHashes {
+			parent := dag.ghostdagBlockLookup(ph, nil)
+			if parent == nil {
+				missingParent = ph
 				break
 			}
-			time.Sleep(200 * time.Millisecond)
-		}
-		if delErr != nil {
-			dag.degradedMu.Lock()
-			dag.degradedReason = fmt.Sprintf("DeleteBlockFromDB failed for block #%d: %v", block.Height, delErr)
-			dag.degradedMu.Unlock()
-			fmt.Printf("[BLOCK] ✗ DEGRADED: could not remove unapplied block #%d header after 3 attempts: %v\n", block.Height, delErr)
-		}
-	}
-	dag.softRetryMu.Lock()
-	if _, alreadyQueued := dag.softRetryBlocks[block.Hash]; !alreadyQueued {
-		dag.softRetryBlocks[block.Hash] = block
-		dag.softRetryFirstAt[block.Hash] = time.Now()
-		fmt.Printf("[GHOSTDAG] Soft-retry queued block #%d (%s...)\n", block.Height, block.Hash[:16])
-	}
-	dag.softRetryMu.Unlock()
-	return false
-}
-
-dag.mu.Lock()
-if prev, hadStub := dag.blocks[block.Hash]; hadStub && prev.Proposer == "synthetic-checkpoint" {
-	// Healing a stub (see the "already known" check above): the gap this
-	// stub was bridging is now closed with real, replayed data.
-	dag.syntheticCheckpointCount.Add(-1)
-	// Decrement the unverified counter only while this stub is still TRACKED
-	// as unverified. Map membership (not the `prev.Height > dag.bootHeight`
-	// comparison used at insertion) is the authoritative test now:
-	// releaseFinalitySealedStubs may have already released this stub, and
-	// decrementing a second time here would drive the counter negative and
-	// desynchronize it from unverifiedStubHeights.
-	if _, tracked := dag.unverifiedStubHeights[block.Hash]; tracked {
-		delete(dag.unverifiedStubHeights, block.Hash)
-		dag.unverifiedSyntheticCheckpointCount.Add(-1)
-	}
-	fmt.Printf("[BLOCK] ✓ Synthetic checkpoint at height %d healed — %d still active\n", prev.Height, dag.syntheticCheckpointCount.Load())
-}
-// FIX (durable fix, 2026-07-04): GHOSTDAG state was already computed AND
-// persisted (as part of the single, correct SaveBlockToDB call) before
-// replay ran — see that call site's comment for why. Recomputing here
-// would be redundant (computeGHOSTDAGState is deterministic, so it can
-// only recompute the identical result) and re-saving would just repeat
-// the same DB write for no benefit — removed, not just deduplicated,
-// because the OLD two-phase version of this (compute+save AFTER replay)
-// is exactly the gap that let a restart during replay strand a block with
-// SelectedParent="" forever. block.SelectedParent/Blues/BlueScore are
-// already correct on this struct by the time it reaches dag.blocks here.
-dag.blocks[block.Hash] = block
-dag.notifyNewBlock(block) // wake /api/events subscribers — see notifyNewBlock's own comment
-
-// Remove parents from tips
-for _, ph := range block.ParentHashes {
-	delete(dag.tips, ph)
-}
-
-// Add this block as new tip
-dag.tips[block.Hash] = true
-
-if block.Height > dag.height {
-	dag.height = block.Height
-	// setConfigValueDB: this runs under dag.mu only, not cs.mu, so
-	// setConfigValue's cs.dbExec()/cs.activeTx precondition isn't met here
-	// (same reasoning as the ProduceBlock post-commit goroutine above).
-	dag.state.setConfigValueDB("max_block_height", fmt.Sprintf("%d", dag.height))
-}
-
-// Equivocation detection: index this block and trigger slashing if a
-// second block from the same proposer for the same parent set is found.
-// Runs under dag.mu (checkAndIndexEquivocation requires it) and spawns a
-// goroutine for the DB work so it doesn't delay block acceptance.
-if conflict, isEquivocation := dag.checkAndIndexEquivocation(block); isEquivocation && dag.state != nil && !block.FromSync &&
-	// Activation cutoff: evidence anchored before equivocationSlashingActivationUnix
-	// is indexed (above) but never penalized — otherwise a fresh node replaying
-	// history re-punishes the pre-feature incident chaos that long-running nodes
-	// never did, and ends up suspending every honest validator (confirmed live
-	// 2026-07-03; full rationale at the constant's definition in slashing.go).
-	block.Timestamp >= equivocationSlashingActivationUnix {
-	proposerAddr := block.Proposer
-	// Captured here, under dag.mu (this whole branch runs with it held —
-	// see checkAndIndexEquivocation's precondition), so the goroutine below
-	// never reads dag.selfProposer unsynchronised.
-	selfAddr := dag.selfProposer
-	blockAHash := conflict.Hash
-	blockBHash := block.Hash
-	detectedAt := block.Timestamp
-	SafeGoroutine("equivocation-slashing", func() {
-		// FIX (P0, 2026-07-24 — source of the slash_equivocation TXs that
-		// were STILL being minted against the primary hours after the
-		// BOOTSTRAP_SIGNER guard below shipped): nothing stopped a node from
-		// slashing ITSELF. A node receives copies of its own blocks back from
-		// peers (gossip echo, HTTP push, ordered sync), so if it ever
-		// produced two blocks for the same parent set — a redeploy overlap, a
-		// duplicate-guard window miss, a re-fork — it observes that conflict
-		// itself, records the evidence, and queues a slash TX against its own
-		// signing address, which consensus then replicates to everyone.
-		//
-		// The BOOTSTRAP_SIGNER guard below cannot cover this: it keys off
-		// THIS node's own BOOTSTRAP_SIGNER, and the primary is the seed —
-		// it has none configured (StartDivergenceAutoHeal's own comment
-		// records that: "the primary has neither"), so trustedBootstrapSigner()
-		// returns "" and the guard is skipped entirely on exactly the node
-		// whose address is being slashed. Confirmed live: block #1781171 on
-		// aequitas.digital itself carried a fresh wave of slash_equivocation
-		// TXs against 0x92cbedec…, long after both secondaries had been
-		// correctly guarded and their queues drained to zero.
-		//
-		// A node is never a neutral judge of its own equivocation, and
-		// propagating the verdict is a self-inflicted, network-wide ban. It
-		// also gains nothing: the node already knows what it produced. Drop
-		// the observation entirely — logged loudly, neither persisted nor
-		// propagated, exactly like the BOOTSTRAP_SIGNER case below and for
-		// the same reason. Any OTHER node that genuinely observes the same
-		// conflict is unaffected and can still slash through consensus.
-		if selfAddr != "" && strings.EqualFold(proposerAddr, selfAddr) {
-			fmt.Printf("[SLASHING] ⚠ Observed an equivocation by %s (%s vs %s) but applied NO suspension and propagated nothing — that is THIS NODE'S OWN signing address. A node cannot judge its own equivocation, and broadcasting the verdict is a self-inflicted network-wide ban. See this call site's own comment.\n",
-				proposerAddr, blockAHash, blockBHash)
-			return
-		}
-		// FIX (P0, 2026-07-24 — sixth recurrence of the same false-positive
-		// class, and the one that finally identified the structural cause):
-		// a node must NEVER unilaterally suspend its own configured
-		// BOOTSTRAP_SIGNER on evidence it alone observed. That address is,
-		// by the operator's own explicit configuration, the validator this
-		// node is willing to replace its ENTIRE account state from via a
-		// signed snapshot (StartDivergenceAutoHeal refuses to run at all
-		// without it). "I trust this signer enough to overwrite all my state
-		// from it, but I will also reject every block it produces for 14
-		// days based on something only I saw" is incoherent — and in
-		// practice it is a self-inflicted network partition, which is
-		// strictly worse than the misbehavior it purports to punish.
-		//
-		// Confirmed live repeatedly, most recently 2026-07-24 17:50 UTC:
-		// both secondaries suspended the primary minutes after a restart,
-		// while mid-catch-up, over what the rest of the network agreed was a
-		// single event — see selfHealUncorroboratedSeedSuspension's own
-		// comment for the same pattern on 07-10, 07-12 and 07-17. That
-		// self-heal cannot catch this case: its "uncorroborated" signal only
-		// exists at offense_count >= 2 (a 1st offense has no balance penalty,
-		// so slash_applied is always false for it), yet a 1st offense already
-		// applies the full 14-day suspension that stops merging dead.
-		//
-		// So: for THIS ONE address, this node's own unilateral observation is
-		// DROPPED entirely — logged loudly, but neither persisted nor
-		// propagated. It is deliberately not written to equivocation_evidence
-		// either: RecordEquivocationAndSuspend returns EARLY (no penalty at
-		// all) whenever the pair's evidence row already exists, so writing the
-		// row here from a purely local observation would permanently suppress
-		// the very consensus path this fix wants to preserve — the node would
-		// become immune to a corroborated suspension of that address forever,
-		// which is a much bigger silent policy change than the one intended.
-		// The log line below is the audit trail; equivocation_evidence stays
-		// reserved for pairs that actually went through consensus.
-		//
-		// Consensus is therefore still fully able to suspend this address on
-		// this node: if any OTHER node observes the conflict and queues the
-		// evidence TX, replayTransactions' slash_equivocation case calls
-		// RecordEquivocationAndSuspend here with no pre-existing row, and the
-		// suspension applies normally. What is removed is only the
-		// "judge, jury and executioner on my own trust anchor" shortcut.
-		// Deliberately scoped to BOOTSTRAP_SIGNER alone (same scoping as
-		// selfHealUncorroboratedSeedSuspension, same reasoning): a genuinely
-		// malicious THIRD validator is still suspended locally and
-		// immediately, exactly as before.
-		if trusted := trustedBootstrapSigner(); trusted != "" && strings.EqualFold(proposerAddr, trusted) {
-			fmt.Printf("[SLASHING] ⚠ Observed an equivocation by %s (%s vs %s) but applied NO suspension and propagated nothing — that address is this node's configured BOOTSTRAP_SIGNER, and a unilateral suspension of it is a self-inflicted partition. If this conflict is real, another node's evidence TX will still suspend it here via consensus replay. See this call site's own comment.\n",
-				proposerAddr, blockAHash, blockBHash)
-			return
-		}
-		// FIX (2026-07-07 — closes a node-local/consensus asymmetry): apply
-		// the suspension locally right away, same as before, so THIS node
-		// protects itself without waiting on its own block production — but
-		// RecordEquivocationAndSuspend only ever ran on whichever node(s)
-		// independently detected the SAME conflict (both blocks present in
-		// its own dag.blocks/equivocationIndex at the right moment). A node
-		// that never independently saw both blocks never suspended the
-		// validator at all, even though the financial-penalty TX (below) was
-		// already consensus-replicated — see IsValidatorSuspended's callers
-		// in AddPeerBlock, gated purely on this node's OWN validator_penalties
-		// row. Queuing the evidence unconditionally (not just when a balance
-		// penalty applies) lets replayTransactions' "slash_equivocation" case
-		// call this same idempotent function on EVERY node that replays the
-		// TX, so validator_penalties converges everywhere regardless of who
-		// detected it first.
-		count, slashWallet, rErr := dag.state.RecordEquivocationAndSuspend(proposerAddr, blockAHash, blockBHash, detectedAt)
-		if rErr != nil {
-			fmt.Printf("[SLASHING] ✗ Failed to record equivocation for %s: %v\n", proposerAddr, rErr)
-			return
-		}
-		fmt.Printf("[SLASHING] ✓ Equivocation recorded for %s (offense #%d)\n", proposerAddr, count)
-		if qErr := dag.state.QueueEquivocationEvidenceTx(proposerAddr, blockAHash, blockBHash, detectedAt); qErr != nil {
-			fmt.Printf("[SLASHING] ✗ Could not queue equivocation evidence TX for %s: %v\n", proposerAddr, qErr)
-		} else if slashWallet != "" {
-			fmt.Printf("[SLASHING] ✓ Equivocation evidence TX queued for %s (offense #%d, %.0f AEQ penalty pending replay)\n",
-				proposerAddr, count, equivocationSecondOffensePenaltyAEQ)
-		}
-	})
-}
-
-// Advance the hard finality checkpoint now that GHOSTDAG has been computed
-// for this block (SelectedParent and BlueScore are populated above).
-dag.maybeAdvanceFinalizedCheckpoint(block)
-// FIX (P0, 2026-07-04 — Contabo 2 permanent-isolation incident): a real,
-// successfully-attached OTHER validator's block is exactly the evidence
-// selfProducedFinalityAllowed needs to keep trusting self-produced blocks'
-// own hardening — see that function's comment. Compared case-insensitively;
-// block.Proposer is the raw hex address as received, dag.selfProposer is
-// stored lower-cased (see its own field comment).
-if !strings.EqualFold(block.Proposer, dag.selfProposer) {
-	dag.recordForeignMerge()
-	dag.recordForeignMergeForProposer(block.Proposer)
-	// FIX (2026-07-05 — permanent operational diagnostic, not a temp one):
-	// this is the actual number every circuit-breaker/BLOCK_TIME tuning
-	// decision tonight was ultimately guessing at without ever measuring
-	// directly — real end-to-end time from another validator producing a
-	// block to THIS node successfully attaching it. See ProducedAtMs's own
-	// field comment for why it's safe (not hash-covered) and why the
-	// second-resolution Timestamp field was too coarse for this. Skipped
-	// for a peer running an older binary without this field (ProducedAtMs
-	// still zero) rather than logging a nonsense multi-decade "latency".
-	if block.ProducedAtMs > 0 {
-		if latency := time.Now().UnixMilli() - block.ProducedAtMs; latency >= 0 {
-			dag.recordForeignAttachLatency(latency)
-		}
-	}
-}
-
-tipCount := len(dag.tips)
-dag.mu.Unlock()
-dag.replayMu.Unlock() // P0-01: released here, after block is fully visible in DAG
-
-// FIX (audit recheck3, P2 — "IncrementBlockCount laeuft asynchron und
-// ist nicht konsensual deterministisch"): this was worse than just
-// asynchronous — it was never called here at all. ProduceBlock only
-// ever incremented blocks_produced for blocks THIS node itself
-// produced; a peer block accepted here never touched the counter for
-// ITS proposer. distributeValidatorsPoolLocked reads blocks_produced
-// as the proportional reward weight (falling back to a minimum of 1
-// for any registered node stuck at 0) — so on whichever single node
-// actually runs distribution (DISTRIBUTION_ENABLED=true), every OTHER
-// validator's real block production was invisible and they were
-// floored to the same token "1" weight regardless of how active they
-// actually were, while the distribution node's own blocks counted
-// fully. Real fix, not just "make it synchronous": count every
-// accepted block here too, for whichever proposer signed it — that's
-// the only way this node's blocks_produced table ends up reflecting
-// every validator's actual production, not just its own.
-dag.state.IncrementBlockCount(block.Proposer)
-
-// Now that this block exists (and has been replayed), any blocks that were
-// queued as orphans waiting specifically on this hash as their missing
-// parent can be retried — this naturally cascades: if a retried orphan
-// succeeds, its own dependents get resolved the same way when ITS
-// insertion reaches this point.
-//
-// FIX (same class as the runtime-orphan-bridge cascade above, block.go
-// ~1712): calling dag.AddPeerBlock(waiting) directly in this call stack IS a
-// synchronous recursive call (Go has no TCO) despite the "fresh top-level
-// call, not recursing" comment this replaces — a long chain of resolved
-// orphans (plausible during any large catch-up burst) would block whichever
-// goroutine originally called AddPeerBlock (an HTTP push handler or P2P
-// stream handler) for the full cascade duration, the same stall the
-// runtime-orphan-bridge fix above was written to eliminate. Backgrounding it
-// lets this call return immediately; the retries still go through the
-// normal dag.mu-guarded AddPeerBlock path with no special priority.
-if waiting := dag.popOrphans(block.Hash); len(waiting) > 0 {
-	go func(toRetry []*Block) {
-		// FIX (P0-3, beta-launch audit 2026-07-05): see panic_recovery.go.
-		defer func() {
-			if r := recover(); r != nil {
-				fmt.Printf("[PANIC RECOVERED] orphan-retry goroutine: %v\n%s\n", r, debug.Stack())
+			if parent.Proposer == "synthetic-checkpoint" {
+				// See the stub-tolerant height check below — a stub's Height is a
+				// placeholder assigned at resync seeding, not this parent's real
+				// chain position.
+				hasStubParent = true
 			}
-		}()
-		for _, b := range toRetry {
-			dag.AddPeerBlock(b)
+			if parent.Height > maxParentHeight {
+				maxParentHeight = parent.Height
+			}
 		}
-	}(waiting)
-}
+		if missingParent != "" {
+			dag.mu.Unlock()
+			dag.queueOrphan(missingParent, block)
+			// Feed the circuit breaker: a block that orphans on a missing parent did not
+			// attach. A proposer on a diverged fork does this every block (its fork-parents
+			// live only on its own chain), so proposerBreakerFailThreshold consecutive such
+			// blocks trip the lock-free drop at the top of AddPeerBlock.
+			//
+			// EXCEPT while WE are still in initial catch-up: a freshly-bootstrapping
+			// node's dag.blocks holds only genesis (plus any bridge stub), so EVERY
+			// honest validator's block orphans on a missing parent here — not because
+			// the proposer diverged, but because we haven't synced in its ancestry
+			// yet. Recording that as a failure would (and on Contabo, did) trip our
+			// breaker against the honest primary, permanently blocking the one peer
+			// we need to sync from. Still queue the orphan for later resolution —
+			// only the breaker bookkeeping is skipped.
+			//
+			// EXCEPT ALSO while this specific gap is still within its grace period —
+			// see proposerBreakerOrphanGrace's own comment: even a fully-synced,
+			// perfectly healthy node sees an occasional short-lived orphan from
+			// ordinary cross-network propagation timing, and counting that
+			// immediately (before giving it any chance to resolve on its own) is
+			// what let two healthy Contabo nodes trip their breakers against each
+			// other during completely normal operation.
+			//
+			// EXCEPT ALSO for SelfFetched/FromSync blocks (audit 2026-07-06): this
+			// used to be the one gap left in the SelfFetched exemption described
+			// above (2924-2930) and at line 2931's own gate — that gate only stops
+			// an ALREADY-tripped breaker from blocking a self-fetched delivery, it
+			// never stopped a self-fetched delivery from CONTRIBUTING to tripping
+			// the breaker in the first place. isCatchingUpLocked() only covers the
+			// gap between dag.height and bootHeight/syncTargetHeight, both of which
+			// a node reaches almost immediately after a snapshot resync (its own
+			// production catches up within a handful of blocks) — so a node can
+			// stop being "catching up" by this definition while it is still working
+			// through a large, late-arriving backlog of a PEER's pre-resync history
+			// via its own doSyncOnce (confirmed live 2026-07-06: two secondaries
+			// resynced ~60s apart each relayed the other's now-pruned ancestry,
+			// arriving 60-240s late — far past proposerBreakerOrphanGrace's 8s — and
+			// tripped each other's breakers even though every one of those blocks
+			// was fetched deliberately, not pushed by a misbehaving proposer). A
+			// block we asked for ourselves during our own catch-up can never be
+			// evidence the PROPOSER is misbehaving — any orphaning here is about our
+			// own missing ancestry, exactly the case SelfFetched/FromSync exist to
+			// name.
+			dag.mu.RLock()
+			catchingUp := dag.isCatchingUpLocked()
+			dag.mu.RUnlock()
+			if age, tracked := dag.orphanAge(missingParent); !block.SelfFetched && !block.FromSync && !catchingUp && (!tracked || age >= proposerBreakerOrphanGrace) {
+				dag.recordProposerOutcome(block.Proposer, false)
+			}
+			return false
+		}
+		if maxParentHeight >= 0 && block.Height != maxParentHeight+1 {
+			// FIX (P0, 2026-07-25 night — Contabo1 permanently stuck at its fresh
+			// resync checkpoint): when one of the resolved parents is a
+			// synthetic-checkpoint stub, its Height is a PLACEHOLDER assigned at
+			// resync seeding (checkpointHeight-1), not the parent's real chain
+			// position — so the strict equation cannot be evaluated honestly.
+			// Confirmed live: the merge-sibling at checkpointHeight-1 (referenced
+			// as a merge-parent by essentially every block above the boundary) was
+			// re-fetched and re-rejected with "invalid height" forever, walling
+			// the node's ENTIRE catch-up behind it, minutes after an otherwise
+			// clean authoritative resync. History at/below the boundary is sealed
+			// by the checkpoint's finality anyway (the same trust already extended
+			// to the stub itself), so tolerate the mismatch instead of rejecting —
+			// the block still passes every signature/authorization/TX check.
+			if hasStubParent {
+				fmt.Printf("[DAG] ⚠ Height mismatch tolerated for block #%d (parent max %d includes a synthetic-checkpoint stub with placeholder height) — attaching at the resync trust boundary\n",
+					block.Height, maxParentHeight)
+			} else {
+				fmt.Printf("[DAG] ✗ Rejected peer block #%d: invalid height (parent max %d)\n",
+					block.Height, maxParentHeight)
+				dag.mu.Unlock()
+				return false
+			}
+		}
+	}
 
-// GHOSTDAG soft-retry: now that a new block's state changes are committed,
-// blocks that previously failed replayTransactions due to a state dependency
-// (e.g. insufficient balance because a sibling block hadn't applied yet)
-// get another chance.  Runs in a goroutine so the current AddPeerBlock call
-// returns promptly — retries cascade through AddPeerBlock's own orphan
-// resolution if they succeed.
-dag.triggerSoftRetryFlush()
+	// Integrity check 4: transaction type whitelist — unknown types could
+	// inject unrecognised state-change commands into the audit log.
+	for _, tx := range block.Transactions {
+		switch tx.Type {
+		case "", "register_human", "transfer", "swap_aeq_tusd", "swap_tusd_aeq", "add_liquidity", "remove_liquidity", "faucet", "ubi_distribution", "ubi_distribution_finalize",
+			"validator_distribution", "validator_distribution_pool_zero", "lp_distribution", "lp_distribution_pool_zero", "escrow_move", "escrow_release", "escrow_recover",
+			"slash_equivocation":
+		// known / empty — OK
+		default:
+			fmt.Printf("[DAG] ✗ Rejected peer block #%d: unknown tx type %q\n", block.Height, tx.Type)
+			dag.mu.Unlock()
+			return false
+		}
+	}
 
-dag.lastSuccessfulPeerSyncAt.Store(time.Now().Unix())
-// FIX (P0, 2026-07-03 night): don't blindly clear this proposer's breaker
-// run — if replayTransactions just logged a StateRoot mismatch for THIS
-// exact block, that already recorded a strike (see lastReplayMismatchHash's
-// struct comment); clearing it right back to zero here would make the
-// breaker unable to ever trip against a validator whose blocks always
-// mismatch. Only report a clean "true" when this block did NOT just mismatch.
-dag.replayMismatchMu.Lock()
-mismatched := dag.lastReplayMismatchHash == block.Hash
-if mismatched {
-	dag.lastReplayMismatchHash = ""
-}
-dag.replayMismatchMu.Unlock()
-if !mismatched {
-	dag.recordProposerOutcome(block.Proposer, true) // block attached cleanly — clear this proposer's breaker run
-}
-fmt.Printf("[DAG] ✓ Added peer block #%d | Tips: %d\n", block.Height, tipCount)
-return true
+	// FIX (durable fix, 2026-07-04 — closes the two-phase block-save gap that
+	// was this session's deepest recurring root cause): compute GHOSTDAG state
+	// HERE, still holding dag.mu from the integrity checks above, BEFORE the
+	// header is ever persisted — not after replay completes, several DB round
+	// trips and a lock release/reacquire later, as it used to run. This needs
+	// nothing this block doesn't already have available: computeGHOSTDAGState
+	// only reads block.ParentHashes and looks up ANCESTORS (already verified
+	// present by Integrity check 3 above) via ghostdagBlockLookup — it never
+	// needs this block itself to be in dag.blocks/dag.tips yet, and it has
+	// nothing to do with transaction replay. This unconditionally OVERWRITES
+	// SelectedParent/Blues/BlueScore with locally-computed values, which is
+	// what P1-03's old "strip peer-supplied GHOSTDAG fields before saving"
+	// step existed to guarantee too — computing correctly up front makes that
+	// separate strip step unnecessary, not just redundant.
+	//
+	// Why this matters: the OLD two-phase order (save header with fields
+	// zeroed → replay → THEN compute and save the real values) left every
+	// single peer block with a real window — spanning the full replay phase,
+	// not a few instructions — where a restart (a crash, or simply another
+	// deploy; this session's own redeploys are exactly what triggered it
+	// live, repeatedly) permanently strands that block in chain_blocks with
+	// SelectedParent="". Nothing after that ever revisits or repairs it later
+	// (recordProposerOutcome/normal restarts always take the fast "SelectedParent
+	// != ”" path in LoadBlocksFromDB's migration check) — it just silently
+	// counts toward needsMigration forever. Confirmed live: this is why the
+	// startup GHOSTDAG migration kept re-triggering for roughly the same
+	// ~5,000-block count on EVERY restart tonight instead of shrinking, and
+	// directly undermined GetBlockByHeight's canonical SelectedParent-chain
+	// walk (a chain with holes in it can't be walked correctly). Computing
+	// once, correctly, before the very first save closes this gap: the only
+	// remaining risk window is between this computation and the save two
+	// statements below — no replay, no DB round trip, no lock release in
+	// between — and a crash there leaves the block simply absent from the DB
+	// (the pre-existing, already-handled "block not saved yet" case), never
+	// present-but-broken.
+	// FIX (P0, 2026-07-10 — closes the remaining BlueScore-drift class:
+	// computeGHOSTDAGState/ghostdagMergeSet now report when a DEEPER ancestor
+	// (beyond the direct parents Integrity check 3 already verified) can't be
+	// resolved yet, instead of silently computing from a truncated set — see
+	// those functions' own FIX comments. Treat that exactly like Integrity
+	// check 3's own missing-DIRECT-parent case: queue this block as an orphan
+	// on the specific missing hash and retry once it arrives, rather than
+	// attaching now with a BlueScore this node cannot yet compute correctly.
+	if missing, ok := dag.computeGHOSTDAGState(block); !ok {
+		dag.mu.Unlock()
+		dag.queueOrphan(missing, block)
+		return false
+	}
+
+	// Structural validation passed. Release dag.mu before replay — replay
+	// uses dag.state's own lock (cs.mu), not dag.mu, and must never run while
+	// holding dag.mu (ProduceBlock and other dag.mu users would block for the
+	// duration of every peer block's replay otherwise).
+	dag.mu.Unlock()
+
+	// P2-05 (audit): persist the block header BEFORE state replay.  Old order
+	// was replay-then-save, which could commit account-balance changes to
+	// chain_accounts and then fail to write the chain_blocks header — leaving
+	// the node in an inconsistent state (state committed, block invisible on
+	// restart) with no way to detect or recover.  Saving first means a DB
+	// failure aborts before any state is touched; ON CONFLICT DO NOTHING makes
+	// this idempotent if two concurrent deliveries of the same block race here.
+	// Failure mode of the new order (save OK, replay fails): P0-02 fix above
+	// deletes the pre-saved header when replay fails, so state is always consistent.
+	if dag.state != nil {
+		if err := dag.state.SaveBlockToDB(block, false); err != nil {
+			fmt.Printf("[BLOCK] ✗ Could not save peer block #%d header before replay: %v — skipping\n", block.Height, err)
+			return false
+		}
+	}
+
+	// FIX (the actual BlockDAG correctness bug, not just a hardening pass):
+	// this used to (1) compare block.StateRoot against dag.state.StateRoot()
+	// BEFORE replaying this block's own transactions, and (2) insert the block
+	// into dag.blocks/dag.tips unconditionally, with replay only queued
+	// asynchronously onto a channel that could silently drop it if full.
+	//
+	// (1) is not just "risky" — it is structurally wrong and guaranteed to
+	// "mismatch" on every single block that contains any transaction, even
+	// between two perfectly healthy, fully-synced nodes: block.StateRoot is
+	// computed by the PRODUCER *after* applying this block's own TXs (the
+	// producer's RPC handlers apply state changes synchronously before queuing
+	// them for inclusion — see evm_rpc.go/register.go/swap.go), so it is a
+	// POST-state root. Comparing it against the RECEIVER's StateRoot at this
+	// point — before the receiver has replayed this block's TXs — compares a
+	// post-state against a pre-state. That's why "[DAG] StateRoot mismatch ...
+	// accepted (warn only)" fired constantly throughout this project's history
+	// on nearly every non-empty block: the check could never have detected real
+	// divergence, it was comparing the wrong two snapshots by construction.
+	//
+	// (2) meant a block could be permanently "in the DAG" (counted in height,
+	// returned by /api/blocks, used as a valid parent for later blocks) before
+	// its own state changes were verified to apply cleanly, or even applied at
+	// all if the replay queue happened to be full.
+	//
+	// Fixed by replaying SYNCHRONOUSLY, right here, before the block is
+	// inserted anywhere — and only THEN comparing StateRoot, now correctly
+	// post-state vs. post-state. replayMu serializes this across concurrent
+	// AddPeerBlock calls (same ordering guarantee the old channel+goroutine
+	// provided, without the "silently drop if busy" failure mode: this blocks
+	// instead of dropping, and replayTransactions' own dedup guard makes that
+	// safe even under concurrent delivery of the same block).
+	dag.replayMu.Lock()
+	replayOK := dag.replayInCanonicalOrder(block)
+	// P0-01 (audit): do NOT release replayMu here on success — hold it through the
+	// dag.mu section below so ProduceBlock (which also takes replayMu before dag.mu)
+	// cannot read a post-replay state while this block is still absent from
+	// dag.blocks/dag.tips. Released on the failure path and after dag.mu.Unlock().
+
+	// FIX (block-level atomicity): replayTransactions now rolls back and
+	// returns false if any of this block's transactions hit a genuine
+	// state-inconsistency failure (not an expected idempotent skip like
+	// "already registered"), OR if the post-replay StateRoot doesn't match
+	// the producer's claimed root (audit recheck 2, P0 #1 — moved into
+	// replayTransactions itself so a mismatch can use that function's own
+	// rollback snapshot; see its comment).
+	//
+	// GHOSTDAG soft-retry: instead of permanently rejecting a replay failure,
+	// queue the block for a retry after the next successful peer block is
+	// accepted (which may have applied the state this block depends on —
+	// e.g. Block X gives Bob 100, Block Y spends Bob→Carol 50; if Y arrives
+	// first and Bob has 0, the old code permanently rejected Y).  Entries
+	// older than softRetryTTL (5 min) are abandoned by retryAndFlushSoftRetry.
+	if !replayOK {
+		dag.replayMu.Unlock() // P0-01: release on failure — block won't enter DAG
+		// P0-02 (audit): undo the pre-saved header — replay failed, state was
+		// never applied. Without this, a restart would mark this block as
+		// replayed in dag.replayedBlocks while chain_accounts has no record of
+		// its state changes ("header committed, state missing"). Delete now so
+		// the block is re-fetched from peers and replayed cleanly on next sync.
+		// P1-01 (audit): a single failed delete used to just log a warning and
+		// move on, leaving open the "header persisted, state missing" window
+		// across a restart. Retry a few times (DB errors here are typically a
+		// transient connection blip) and if it still fails, mark the node
+		// degraded so /api/health surfaces it rather than silently continuing
+		// on a DB that may now disagree with in-memory state after a restart.
+		if dag.state != nil {
+			var delErr error
+			for attempt := 0; attempt < 3; attempt++ {
+				if delErr = dag.state.DeleteBlockFromDB(block.Hash); delErr == nil {
+					break
+				}
+				time.Sleep(200 * time.Millisecond)
+			}
+			if delErr != nil {
+				dag.degradedMu.Lock()
+				dag.degradedReason = fmt.Sprintf("DeleteBlockFromDB failed for block #%d: %v", block.Height, delErr)
+				dag.degradedMu.Unlock()
+				fmt.Printf("[BLOCK] ✗ DEGRADED: could not remove unapplied block #%d header after 3 attempts: %v\n", block.Height, delErr)
+			}
+		}
+		dag.softRetryMu.Lock()
+		if _, alreadyQueued := dag.softRetryBlocks[block.Hash]; !alreadyQueued {
+			dag.softRetryBlocks[block.Hash] = block
+			dag.softRetryFirstAt[block.Hash] = time.Now()
+			fmt.Printf("[GHOSTDAG] Soft-retry queued block #%d (%s...)\n", block.Height, block.Hash[:16])
+		}
+		dag.softRetryMu.Unlock()
+		return false
+	}
+
+	dag.mu.Lock()
+	if prev, hadStub := dag.blocks[block.Hash]; hadStub && prev.Proposer == "synthetic-checkpoint" {
+		// Healing a stub (see the "already known" check above): the gap this
+		// stub was bridging is now closed with real, replayed data.
+		dag.syntheticCheckpointCount.Add(-1)
+		// Decrement the unverified counter only while this stub is still TRACKED
+		// as unverified. Map membership (not the `prev.Height > dag.bootHeight`
+		// comparison used at insertion) is the authoritative test now:
+		// releaseFinalitySealedStubs may have already released this stub, and
+		// decrementing a second time here would drive the counter negative and
+		// desynchronize it from unverifiedStubHeights.
+		if _, tracked := dag.unverifiedStubHeights[block.Hash]; tracked {
+			delete(dag.unverifiedStubHeights, block.Hash)
+			dag.unverifiedSyntheticCheckpointCount.Add(-1)
+		}
+		fmt.Printf("[BLOCK] ✓ Synthetic checkpoint at height %d healed — %d still active\n", prev.Height, dag.syntheticCheckpointCount.Load())
+	}
+	// FIX (durable fix, 2026-07-04): GHOSTDAG state was already computed AND
+	// persisted (as part of the single, correct SaveBlockToDB call) before
+	// replay ran — see that call site's comment for why. Recomputing here
+	// would be redundant (computeGHOSTDAGState is deterministic, so it can
+	// only recompute the identical result) and re-saving would just repeat
+	// the same DB write for no benefit — removed, not just deduplicated,
+	// because the OLD two-phase version of this (compute+save AFTER replay)
+	// is exactly the gap that let a restart during replay strand a block with
+	// SelectedParent="" forever. block.SelectedParent/Blues/BlueScore are
+	// already correct on this struct by the time it reaches dag.blocks here.
+	dag.blocks[block.Hash] = block
+	dag.notifyNewBlock(block) // wake /api/events subscribers — see notifyNewBlock's own comment
+
+	// Remove parents from tips
+	for _, ph := range block.ParentHashes {
+		delete(dag.tips, ph)
+	}
+
+	// Add this block as new tip
+	dag.tips[block.Hash] = true
+
+	if block.Height > dag.height {
+		dag.height = block.Height
+		// setConfigValueDB: this runs under dag.mu only, not cs.mu, so
+		// setConfigValue's cs.dbExec()/cs.activeTx precondition isn't met here
+		// (same reasoning as the ProduceBlock post-commit goroutine above).
+		dag.state.setConfigValueDB("max_block_height", fmt.Sprintf("%d", dag.height))
+	}
+
+	// Equivocation detection: index this block and trigger slashing if a
+	// second block from the same proposer for the same parent set is found.
+	// Runs under dag.mu (checkAndIndexEquivocation requires it) and spawns a
+	// goroutine for the DB work so it doesn't delay block acceptance.
+	if conflict, isEquivocation := dag.checkAndIndexEquivocation(block); isEquivocation && dag.state != nil && !block.FromSync &&
+		// Activation cutoff: evidence anchored before equivocationSlashingActivationUnix
+		// is indexed (above) but never penalized — otherwise a fresh node replaying
+		// history re-punishes the pre-feature incident chaos that long-running nodes
+		// never did, and ends up suspending every honest validator (confirmed live
+		// 2026-07-03; full rationale at the constant's definition in slashing.go).
+		block.Timestamp >= equivocationSlashingActivationUnix {
+		proposerAddr := block.Proposer
+		// Captured here, under dag.mu (this whole branch runs with it held —
+		// see checkAndIndexEquivocation's precondition), so the goroutine below
+		// never reads dag.selfProposer unsynchronised.
+		selfAddr := dag.selfProposer
+		blockAHash := conflict.Hash
+		blockBHash := block.Hash
+		detectedAt := block.Timestamp
+		SafeGoroutine("equivocation-slashing", func() {
+			// FIX (P0, 2026-07-24 — source of the slash_equivocation TXs that
+			// were STILL being minted against the primary hours after the
+			// BOOTSTRAP_SIGNER guard below shipped): nothing stopped a node from
+			// slashing ITSELF. A node receives copies of its own blocks back from
+			// peers (gossip echo, HTTP push, ordered sync), so if it ever
+			// produced two blocks for the same parent set — a redeploy overlap, a
+			// duplicate-guard window miss, a re-fork — it observes that conflict
+			// itself, records the evidence, and queues a slash TX against its own
+			// signing address, which consensus then replicates to everyone.
+			//
+			// The BOOTSTRAP_SIGNER guard below cannot cover this: it keys off
+			// THIS node's own BOOTSTRAP_SIGNER, and the primary is the seed —
+			// it has none configured (StartDivergenceAutoHeal's own comment
+			// records that: "the primary has neither"), so trustedBootstrapSigner()
+			// returns "" and the guard is skipped entirely on exactly the node
+			// whose address is being slashed. Confirmed live: block #1781171 on
+			// aequitas.digital itself carried a fresh wave of slash_equivocation
+			// TXs against 0x92cbedec…, long after both secondaries had been
+			// correctly guarded and their queues drained to zero.
+			//
+			// A node is never a neutral judge of its own equivocation, and
+			// propagating the verdict is a self-inflicted, network-wide ban. It
+			// also gains nothing: the node already knows what it produced. Drop
+			// the observation entirely — logged loudly, neither persisted nor
+			// propagated, exactly like the BOOTSTRAP_SIGNER case below and for
+			// the same reason. Any OTHER node that genuinely observes the same
+			// conflict is unaffected and can still slash through consensus.
+			if selfAddr != "" && strings.EqualFold(proposerAddr, selfAddr) {
+				fmt.Printf("[SLASHING] ⚠ Observed an equivocation by %s (%s vs %s) but applied NO suspension and propagated nothing — that is THIS NODE'S OWN signing address. A node cannot judge its own equivocation, and broadcasting the verdict is a self-inflicted network-wide ban. See this call site's own comment.\n",
+					proposerAddr, blockAHash, blockBHash)
+				return
+			}
+			// FIX (P0, 2026-07-24 — sixth recurrence of the same false-positive
+			// class, and the one that finally identified the structural cause):
+			// a node must NEVER unilaterally suspend its own configured
+			// BOOTSTRAP_SIGNER on evidence it alone observed. That address is,
+			// by the operator's own explicit configuration, the validator this
+			// node is willing to replace its ENTIRE account state from via a
+			// signed snapshot (StartDivergenceAutoHeal refuses to run at all
+			// without it). "I trust this signer enough to overwrite all my state
+			// from it, but I will also reject every block it produces for 14
+			// days based on something only I saw" is incoherent — and in
+			// practice it is a self-inflicted network partition, which is
+			// strictly worse than the misbehavior it purports to punish.
+			//
+			// Confirmed live repeatedly, most recently 2026-07-24 17:50 UTC:
+			// both secondaries suspended the primary minutes after a restart,
+			// while mid-catch-up, over what the rest of the network agreed was a
+			// single event — see selfHealUncorroboratedSeedSuspension's own
+			// comment for the same pattern on 07-10, 07-12 and 07-17. That
+			// self-heal cannot catch this case: its "uncorroborated" signal only
+			// exists at offense_count >= 2 (a 1st offense has no balance penalty,
+			// so slash_applied is always false for it), yet a 1st offense already
+			// applies the full 14-day suspension that stops merging dead.
+			//
+			// So: for THIS ONE address, this node's own unilateral observation is
+			// DROPPED entirely — logged loudly, but neither persisted nor
+			// propagated. It is deliberately not written to equivocation_evidence
+			// either: RecordEquivocationAndSuspend returns EARLY (no penalty at
+			// all) whenever the pair's evidence row already exists, so writing the
+			// row here from a purely local observation would permanently suppress
+			// the very consensus path this fix wants to preserve — the node would
+			// become immune to a corroborated suspension of that address forever,
+			// which is a much bigger silent policy change than the one intended.
+			// The log line below is the audit trail; equivocation_evidence stays
+			// reserved for pairs that actually went through consensus.
+			//
+			// Consensus is therefore still fully able to suspend this address on
+			// this node: if any OTHER node observes the conflict and queues the
+			// evidence TX, replayTransactions' slash_equivocation case calls
+			// RecordEquivocationAndSuspend here with no pre-existing row, and the
+			// suspension applies normally. What is removed is only the
+			// "judge, jury and executioner on my own trust anchor" shortcut.
+			// Deliberately scoped to BOOTSTRAP_SIGNER alone (same scoping as
+			// selfHealUncorroboratedSeedSuspension, same reasoning): a genuinely
+			// malicious THIRD validator is still suspended locally and
+			// immediately, exactly as before.
+			if trusted := trustedBootstrapSigner(); trusted != "" && strings.EqualFold(proposerAddr, trusted) {
+				fmt.Printf("[SLASHING] ⚠ Observed an equivocation by %s (%s vs %s) but applied NO suspension and propagated nothing — that address is this node's configured BOOTSTRAP_SIGNER, and a unilateral suspension of it is a self-inflicted partition. If this conflict is real, another node's evidence TX will still suspend it here via consensus replay. See this call site's own comment.\n",
+					proposerAddr, blockAHash, blockBHash)
+				return
+			}
+			// FIX (2026-07-07 — closes a node-local/consensus asymmetry): apply
+			// the suspension locally right away, same as before, so THIS node
+			// protects itself without waiting on its own block production — but
+			// RecordEquivocationAndSuspend only ever ran on whichever node(s)
+			// independently detected the SAME conflict (both blocks present in
+			// its own dag.blocks/equivocationIndex at the right moment). A node
+			// that never independently saw both blocks never suspended the
+			// validator at all, even though the financial-penalty TX (below) was
+			// already consensus-replicated — see IsValidatorSuspended's callers
+			// in AddPeerBlock, gated purely on this node's OWN validator_penalties
+			// row. Queuing the evidence unconditionally (not just when a balance
+			// penalty applies) lets replayTransactions' "slash_equivocation" case
+			// call this same idempotent function on EVERY node that replays the
+			// TX, so validator_penalties converges everywhere regardless of who
+			// detected it first.
+			count, slashWallet, rErr := dag.state.RecordEquivocationAndSuspend(proposerAddr, blockAHash, blockBHash, detectedAt)
+			if rErr != nil {
+				fmt.Printf("[SLASHING] ✗ Failed to record equivocation for %s: %v\n", proposerAddr, rErr)
+				return
+			}
+			fmt.Printf("[SLASHING] ✓ Equivocation recorded for %s (offense #%d)\n", proposerAddr, count)
+			if qErr := dag.state.QueueEquivocationEvidenceTx(proposerAddr, blockAHash, blockBHash, detectedAt); qErr != nil {
+				fmt.Printf("[SLASHING] ✗ Could not queue equivocation evidence TX for %s: %v\n", proposerAddr, qErr)
+			} else if slashWallet != "" {
+				fmt.Printf("[SLASHING] ✓ Equivocation evidence TX queued for %s (offense #%d, %.0f AEQ penalty pending replay)\n",
+					proposerAddr, count, equivocationSecondOffensePenaltyAEQ)
+			}
+		})
+	}
+
+	// Advance the hard finality checkpoint now that GHOSTDAG has been computed
+	// for this block (SelectedParent and BlueScore are populated above).
+	dag.maybeAdvanceFinalizedCheckpoint(block)
+	// FIX (P0, 2026-07-04 — Contabo 2 permanent-isolation incident): a real,
+	// successfully-attached OTHER validator's block is exactly the evidence
+	// selfProducedFinalityAllowed needs to keep trusting self-produced blocks'
+	// own hardening — see that function's comment. Compared case-insensitively;
+	// block.Proposer is the raw hex address as received, dag.selfProposer is
+	// stored lower-cased (see its own field comment).
+	if !strings.EqualFold(block.Proposer, dag.selfProposer) {
+		dag.recordForeignMerge()
+		dag.recordForeignMergeForProposer(block.Proposer)
+		// FIX (2026-07-05 — permanent operational diagnostic, not a temp one):
+		// this is the actual number every circuit-breaker/BLOCK_TIME tuning
+		// decision tonight was ultimately guessing at without ever measuring
+		// directly — real end-to-end time from another validator producing a
+		// block to THIS node successfully attaching it. See ProducedAtMs's own
+		// field comment for why it's safe (not hash-covered) and why the
+		// second-resolution Timestamp field was too coarse for this. Skipped
+		// for a peer running an older binary without this field (ProducedAtMs
+		// still zero) rather than logging a nonsense multi-decade "latency".
+		if block.ProducedAtMs > 0 {
+			if latency := time.Now().UnixMilli() - block.ProducedAtMs; latency >= 0 {
+				dag.recordForeignAttachLatency(latency)
+			}
+		}
+	}
+
+	tipCount := len(dag.tips)
+	dag.mu.Unlock()
+	dag.replayMu.Unlock() // P0-01: released here, after block is fully visible in DAG
+
+	// FIX (audit recheck3, P2 — "IncrementBlockCount laeuft asynchron und
+	// ist nicht konsensual deterministisch"): this was worse than just
+	// asynchronous — it was never called here at all. ProduceBlock only
+	// ever incremented blocks_produced for blocks THIS node itself
+	// produced; a peer block accepted here never touched the counter for
+	// ITS proposer. distributeValidatorsPoolLocked reads blocks_produced
+	// as the proportional reward weight (falling back to a minimum of 1
+	// for any registered node stuck at 0) — so on whichever single node
+	// actually runs distribution (DISTRIBUTION_ENABLED=true), every OTHER
+	// validator's real block production was invisible and they were
+	// floored to the same token "1" weight regardless of how active they
+	// actually were, while the distribution node's own blocks counted
+	// fully. Real fix, not just "make it synchronous": count every
+	// accepted block here too, for whichever proposer signed it — that's
+	// the only way this node's blocks_produced table ends up reflecting
+	// every validator's actual production, not just its own.
+	dag.state.IncrementBlockCount(block.Proposer)
+
+	// Now that this block exists (and has been replayed), any blocks that were
+	// queued as orphans waiting specifically on this hash as their missing
+	// parent can be retried — this naturally cascades: if a retried orphan
+	// succeeds, its own dependents get resolved the same way when ITS
+	// insertion reaches this point.
+	//
+	// FIX (same class as the runtime-orphan-bridge cascade above, block.go
+	// ~1712): calling dag.AddPeerBlock(waiting) directly in this call stack IS a
+	// synchronous recursive call (Go has no TCO) despite the "fresh top-level
+	// call, not recursing" comment this replaces — a long chain of resolved
+	// orphans (plausible during any large catch-up burst) would block whichever
+	// goroutine originally called AddPeerBlock (an HTTP push handler or P2P
+	// stream handler) for the full cascade duration, the same stall the
+	// runtime-orphan-bridge fix above was written to eliminate. Backgrounding it
+	// lets this call return immediately; the retries still go through the
+	// normal dag.mu-guarded AddPeerBlock path with no special priority.
+	if waiting := dag.popOrphans(block.Hash); len(waiting) > 0 {
+		go func(toRetry []*Block) {
+			// FIX (P0-3, beta-launch audit 2026-07-05): see panic_recovery.go.
+			defer func() {
+				if r := recover(); r != nil {
+					fmt.Printf("[PANIC RECOVERED] orphan-retry goroutine: %v\n%s\n", r, debug.Stack())
+				}
+			}()
+			for _, b := range toRetry {
+				dag.AddPeerBlock(b)
+			}
+		}(waiting)
+	}
+
+	// GHOSTDAG soft-retry: now that a new block's state changes are committed,
+	// blocks that previously failed replayTransactions due to a state dependency
+	// (e.g. insufficient balance because a sibling block hadn't applied yet)
+	// get another chance.  Runs in a goroutine so the current AddPeerBlock call
+	// returns promptly — retries cascade through AddPeerBlock's own orphan
+	// resolution if they succeed.
+	dag.triggerSoftRetryFlush()
+
+	dag.lastSuccessfulPeerSyncAt.Store(time.Now().Unix())
+	// FIX (P0, 2026-07-03 night): don't blindly clear this proposer's breaker
+	// run — if replayTransactions just logged a StateRoot mismatch for THIS
+	// exact block, that already recorded a strike (see lastReplayMismatchHash's
+	// struct comment); clearing it right back to zero here would make the
+	// breaker unable to ever trip against a validator whose blocks always
+	// mismatch. Only report a clean "true" when this block did NOT just mismatch.
+	dag.replayMismatchMu.Lock()
+	mismatched := dag.lastReplayMismatchHash == block.Hash
+	if mismatched {
+		dag.lastReplayMismatchHash = ""
+	}
+	dag.replayMismatchMu.Unlock()
+	if !mismatched {
+		dag.recordProposerOutcome(block.Proposer, true) // block attached cleanly — clear this proposer's breaker run
+	}
+	fmt.Printf("[DAG] ✓ Added peer block #%d | Tips: %d\n", block.Height, tipCount)
+	return true
 }
 
 // TotalStateRootMismatches sums every proposer's consecutive StateRoot
@@ -5125,62 +5198,62 @@ func (dag *BlockDAG) lastPeerActivityAt() int64 {
 // identical BlueScore-DESC/Hash-ASC rule everywhere, so "do these nodes
 // agree" is answerable consistently no matter which endpoint is checked.
 func (dag *BlockDAG) LatestBlock() *Block {
-dag.mu.RLock()
-defer dag.mu.RUnlock()
-var latest *Block
-for hash := range dag.tips {
-b := dag.blocks[hash]
-if b == nil {
-continue
-}
-if latest == nil || b.BlueScore > latest.BlueScore || (b.BlueScore == latest.BlueScore && b.Hash < latest.Hash) {
-latest = b
-}
-}
-return latest
+	dag.mu.RLock()
+	defer dag.mu.RUnlock()
+	var latest *Block
+	for hash := range dag.tips {
+		b := dag.blocks[hash]
+		if b == nil {
+			continue
+		}
+		if latest == nil || b.BlueScore > latest.BlueScore || (b.BlueScore == latest.BlueScore && b.Hash < latest.Hash) {
+			latest = b
+		}
+	}
+	return latest
 }
 
 func (dag *BlockDAG) Height() int64 {
-dag.mu.RLock()
-defer dag.mu.RUnlock()
-return dag.height
+	dag.mu.RLock()
+	defer dag.mu.RUnlock()
+	return dag.height
 }
 
 func (dag *BlockDAG) GetBlocks() []*Block {
-dag.mu.RLock()
-defer dag.mu.RUnlock()
-result := make([]*Block, 0, len(dag.blocks))
-for _, b := range dag.blocks {
-// FIX (2026-06-30, confirmed live in production): synthetic-checkpoint
-// stubs (BridgeHistoricalGap / the orphan-bridge retry path) were being
-// served here and then over /api/blocks like real blocks. A stub's Hash
-// field is borrowed from whatever it was bridging (the real hash of the
-// block it's standing in for) — it was never produced by calculateHash
-// from the stub's own (mostly empty) fields, so it can NEVER pass a
-// peer's hash-mismatch check. Every peer fetching one rejected it, and
-// everything built on top of it (the real block that legitimately
-// references that parent hash) got stuck behind that rejection forever.
-// Stubs exist only to satisfy THIS node's own internal parent-existence
-// lookups (dag.blocks[hash] != nil) — never to be handed to a peer as if
-// they were a verifiable block.
-if b.Proposer == "synthetic-checkpoint" {
-continue
-}
-result = append(result, b)
-}
-// P1-03 (audit): stable tie-breaker prevents non-deterministic pagination
-// when same-height siblings exist. Order: height ASC, blueScore DESC, hash ASC.
-sort.Slice(result, func(i, j int) bool {
-	a, b := result[i], result[j]
-	if a.Height != b.Height {
-		return a.Height < b.Height
+	dag.mu.RLock()
+	defer dag.mu.RUnlock()
+	result := make([]*Block, 0, len(dag.blocks))
+	for _, b := range dag.blocks {
+		// FIX (2026-06-30, confirmed live in production): synthetic-checkpoint
+		// stubs (BridgeHistoricalGap / the orphan-bridge retry path) were being
+		// served here and then over /api/blocks like real blocks. A stub's Hash
+		// field is borrowed from whatever it was bridging (the real hash of the
+		// block it's standing in for) — it was never produced by calculateHash
+		// from the stub's own (mostly empty) fields, so it can NEVER pass a
+		// peer's hash-mismatch check. Every peer fetching one rejected it, and
+		// everything built on top of it (the real block that legitimately
+		// references that parent hash) got stuck behind that rejection forever.
+		// Stubs exist only to satisfy THIS node's own internal parent-existence
+		// lookups (dag.blocks[hash] != nil) — never to be handed to a peer as if
+		// they were a verifiable block.
+		if b.Proposer == "synthetic-checkpoint" {
+			continue
+		}
+		result = append(result, b)
 	}
-	if a.BlueScore != b.BlueScore {
-		return a.BlueScore > b.BlueScore
-	}
-	return a.Hash < b.Hash
-})
-return result
+	// P1-03 (audit): stable tie-breaker prevents non-deterministic pagination
+	// when same-height siblings exist. Order: height ASC, blueScore DESC, hash ASC.
+	sort.Slice(result, func(i, j int) bool {
+		a, b := result[i], result[j]
+		if a.Height != b.Height {
+			return a.Height < b.Height
+		}
+		if a.BlueScore != b.BlueScore {
+			return a.BlueScore > b.BlueScore
+		}
+		return a.Hash < b.Hash
+	})
+	return result
 }
 
 // selectBlocksSince filters an already canonically-sorted (height ASC,
@@ -5538,19 +5611,19 @@ func (dag *BlockDAG) canonicalBlockAtHeightLocked(height int64) *Block {
 }
 
 func (dag *BlockDAG) TotalBlocks() int {
-dag.mu.RLock()
-defer dag.mu.RUnlock()
-return len(dag.blocks)
+	dag.mu.RLock()
+	defer dag.mu.RUnlock()
+	return len(dag.blocks)
 }
 
 func (dag *BlockDAG) GetTips() []string {
-dag.mu.RLock()
-defer dag.mu.RUnlock()
-tips := make([]string, 0, len(dag.tips))
-for hash := range dag.tips {
-tips = append(tips, hash)
-}
-return tips
+	dag.mu.RLock()
+	defer dag.mu.RUnlock()
+	tips := make([]string, 0, len(dag.tips))
+	for hash := range dag.tips {
+		tips = append(tips, hash)
+	}
+	return tips
 }
 
 // replayTransactions applies all TX types from a peer block to the local
@@ -6157,9 +6230,9 @@ func (dag *BlockDAG) replayTransactions(block *Block, force bool) (ok bool) {
 			// never set that field.
 			if tx.AmountPerHuman > 0 {
 				// context.Background() is correct — see registerHumanLocked's
-			// comment: dag.state.activeTx was already set directly above
-			// this loop, and dbExecCtx falls back to it.
-			if err := dag.state.applyUBIDeltaLocked(context.Background(), tx.AmountPerHuman, block.Timestamp); err != nil {
+				// comment: dag.state.activeTx was already set directly above
+				// this loop, and dbExecCtx falls back to it.
+				if err := dag.state.applyUBIDeltaLocked(context.Background(), tx.AmountPerHuman, block.Timestamp); err != nil {
 					fmt.Printf("[REPLAY] ✗ legacy flat ubi_distribution: %v (block #%d) — rolling back whole block\n", err, block.Height)
 					hardFailure = true
 					continue
@@ -6167,9 +6240,9 @@ func (dag *BlockDAG) replayTransactions(block *Block, force bool) (ok bool) {
 				fmt.Printf("[REPLAY] ✓ Applied legacy flat UBI distribution %.6f AEQ/human (block #%d)\n", tx.AmountPerHuman, block.Height)
 			} else if wallet != "" && wallet != "0x0000000000000000000000000000000000000000" {
 				// context.Background() is correct — see registerHumanLocked's
-			// comment: dag.state.activeTx was already set directly above
-			// this loop, and dbExecCtx falls back to it.
-			if err := dag.state.applyUBIRewardDeltaLocked(context.Background(), wallet, tx.Amount, tx.FromDemurrageLost); err != nil {
+				// comment: dag.state.activeTx was already set directly above
+				// this loop, and dbExecCtx falls back to it.
+				if err := dag.state.applyUBIRewardDeltaLocked(context.Background(), wallet, tx.Amount, tx.FromDemurrageLost); err != nil {
 					fmt.Printf("[REPLAY] ✗ ubi_distribution %s: %v (block #%d) — rolling back whole block\n", wallet, err, block.Height)
 					hardFailure = true
 					continue
@@ -7787,6 +7860,7 @@ func (dag *BlockDAG) ghostdagBatchPrefetch(hashes []string, dbBudget *int) {
 //     "not an ancestor" (the same conservative direction as every other cap
 //     here: under uncertainty, bias toward classifying more blocks red
 //     rather than risking an incorrect blue).
+//
 // ancestorQueueEntry is one BFS frontier item for ghostdagIsAncestor.
 // Named (not a function-local type) so ancestorScratch can hold the queue
 // across calls.
