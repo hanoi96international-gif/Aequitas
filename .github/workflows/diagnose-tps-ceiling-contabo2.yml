@@ -41,12 +41,25 @@ on:
         description: "Must match the value used in loadtest-prepare-contabo2.yml"
         required: false
         default: "5"
+      phase:
+        description: "Phases to run. 'run' alone needs already-funded accounts; the working runs use fund,warmup,run."
+        required: false
+        default: "fund,warmup,run"
 
 jobs:
   diagnose:
     runs-on: ubuntu-latest
     steps:
       - name: Run load and dump goroutines while it is running
+        # These MUST be set here: `envs:` only forwards variables that exist
+        # in the step environment. Listing them without defining them left
+        # them unset on the remote side, and `set -u` then aborted the
+        # docker run line silently -- which is exactly why the first run
+        # produced an empty generator log and no load.
+        env:
+          DURATION: ${{ inputs.duration }}
+          NUM_SEEDS: ${{ inputs.num_seeds }}
+          PHASE: ${{ inputs.phase }}
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: 194.163.188.71
@@ -57,7 +70,7 @@ jobs:
           script_stop: false
           timeout: 600s
           command_timeout: 600s
-          envs: DURATION,NUM_SEEDS
+          envs: DURATION,NUM_SEEDS,PHASE
           script: |
             set -uo pipefail
             cd /root/contabo-loadtest || { echo "loadtest dir missing -- run loadtest-prepare-contabo2.yml first"; exit 1; }
@@ -74,7 +87,7 @@ jobs:
               ./loadtest -accounts accounts.csv \
                 -rpc http://localhost:8080/rpc \
                 -status http://localhost:8080/api/status \
-                -phase run -seeds "$NUM_SEEDS" -duration "$DURATION" -ramp 5 \
+                -phase "$PHASE" -seeds "$NUM_SEEDS" -duration "$DURATION" -ramp 5 \
                 > /tmp/loadrun.log 2>&1 &
 
             # Wait for the NODE to report applied transfers. Waiting on the node's
@@ -88,6 +101,8 @@ jobs:
               fi
               sleep 2
             done
+            echo "--- generator log so far (first 30 lines) ---"
+            head -30 /tmp/loadrun.log 2>/dev/null || echo "(leer)"
             if [ "$SEEN" = "0" ]; then
               echo "NO LOAD DETECTED -- the dumps below would be meaningless, so none were taken."
               echo "--- generator log ---"; tail -40 /tmp/loadrun.log
