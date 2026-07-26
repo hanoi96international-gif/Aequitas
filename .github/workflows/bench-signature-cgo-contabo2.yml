@@ -1,0 +1,103 @@
+name: Measure signature verification WITH cgo on Contabo2 (manual)
+
+# THE MISSING NUMBER for the 50k TPS goal.
+#
+# Measured on Contabo2 on 2026-07-26, pure-Go path (CGO_ENABLED=0):
+#   1 core   3,648 recoveries/s (274 us each)
+#   6 cores 18,829 recoveries/s (scales 5.2x -- parallelism is NOT the problem)
+#   => 50,000 TPS would need ~15.9 cores for secp256k1 recovery ALONE.
+#
+# The box has 6. So on that path the signature check alone caps the whole goal
+# at ~18,800 TPS, no matter what the WAL, sharding or parallel execution do.
+#
+# But that is NOT what production runs. The Dockerfile sets CGO_ENABLED=1, so
+# the node uses libsecp256k1 rather than the Go implementation -- typically
+# 2-4x faster. Whether 50k is reachable at all comes down to that number, and
+# it could not be produced locally: the dev machine has no gcc, so no cgo
+# cross-compile to linux/amd64 is possible there.
+#
+# This workflow closes that gap. The GitHub runner HAS gcc, so it builds the
+# test binary with cgo enabled, ships it to Contabo2, runs it, and deletes it.
+# NOTHING IS BUILT ON THE PRODUCTION BOX -- only a finished binary is executed,
+# at nice -n 10, for a few seconds. That constraint is deliberate: building on
+# a live validator is what caused trouble before.
+#
+# Statically linked on purpose: the runner's glibc is newer than the box's, and
+# a benchmark that cannot start measures nothing. secp256k1 is compiled in, so
+# static linking changes no arithmetic -- only how the binary loads.
+
+on:
+  workflow_dispatch: {}
+
+jobs:
+  bench:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Build the benchmark binary WITH cgo (this is the whole point)
+        env:
+          CGO_ENABLED: "1"
+          GOOS: linux
+          GOARCH: amd64
+        run: |
+          set -euo pipefail
+          go test -c -o scaling_cgo.test \
+            -ldflags '-extldflags "-static"' \
+            ./x/humanity/keeper/
+          echo "--- proving cgo is actually in this binary ---"
+          # If this says "not linked against libsecp256k1's cgo path" the whole
+          # run is meaningless, so fail loudly rather than report a pure-Go
+          # number a second time under a cgo-shaped label.
+          if go env CGO_ENABLED | grep -q '^1$'; then
+            echo "CGO_ENABLED=1 confirmed at build time"
+          else
+            echo "CGO was NOT enabled -- refusing to report this as a cgo measurement"; exit 1
+          fi
+          file scaling_cgo.test || true
+          ls -lh scaling_cgo.test
+
+      - name: Copy the binary to Contabo2
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: 194.163.188.71
+          username: root
+          key: ${{ secrets.CONTABO2_SSH_KEY }}
+          port: 22
+          fingerprint: "SHA256:VIwj7Faxiga2n45HVHZEQFPxcbRKHgSgHoxAFsf2wto"
+          source: scaling_cgo.test
+          target: /tmp/
+
+      - name: Run it on the real hardware, then delete it
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: 194.163.188.71
+          username: root
+          key: ${{ secrets.CONTABO2_SSH_KEY }}
+          port: 22
+          fingerprint: "SHA256:VIwj7Faxiga2n45HVHZEQFPxcbRKHgSgHoxAFsf2wto"
+          script_stop: false
+          timeout: 300s
+          command_timeout: 300s
+          script: |
+            set -uo pipefail
+            echo "=== host ==="
+            nproc; uptime
+            echo "=== the node must stay healthy while this runs ==="
+            curl -s --max-time 5 http://127.0.0.1:8080/api/status | head -c 200 || echo "(status nicht lesbar)"
+            echo
+            chmod +x /tmp/scaling_cgo.test
+            echo "=== signature verification WITH cgo/libsecp256k1 ==="
+            # nice -n 10: this shares 6 cores with a live validator, so the node
+            # wins every scheduling contest. The benchmark saturates all cores
+            # by design, which is exactly why it must yield.
+            AEQUITAS_SCALING_BENCH=1 nice -n 10 /tmp/scaling_cgo.test \
+              -test.run 'TestScalingUnknown_SignatureVerification' \
+              -test.v -test.timeout 5m 2>&1 | grep -Ev '^(=== RUN|=== PAUSE|=== CONT)' | tail -30
+            echo "=== cleanup ==="
+            rm -f /tmp/scaling_cgo.test
+            echo "=== node still healthy? ==="
+            curl -s --max-time 5 http://127.0.0.1:8080/api/status | head -c 200 || echo "(status nicht lesbar)"
