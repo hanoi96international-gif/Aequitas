@@ -111,7 +111,7 @@ jobs:
 
             echo "=== baseline: what the node looks like with NO load ==="
             docker exec aequitas-node wget -qO- 'http://127.0.0.1:6061/debug/pprof/goroutine?debug=2' > /tmp/gd_idle.txt 2>/dev/null
-            echo "goroutines idle: $(grep -c '^goroutine ' /tmp/gd_idle.txt)  lock-blocked idle: $(grep -cE 'semacquire|SemacquireMutex|sync\.Mutex\.Lock|sync\.RWMutex\.[RL]' /tmp/gd_idle.txt)"
+            echo "goroutines idle: $(grep -c '^goroutine ' /tmp/gd_idle.txt)  lock-blocked idle: $(grep -cE '^goroutine [0-9]+ \[(semacquire|sync\.(RW)?Mutex\.[RL]?[a-zA-Z]*)' /tmp/gd_idle.txt)"
 
             echo "=== starting load in the background ==="
             nohup docker run --rm --network host -v "$(pwd)":/w -w /w \
@@ -174,7 +174,7 @@ jobs:
               docker logs --since 3s aequitas-node 2>&1 | grep 'transfers applied' | tail -1
               docker exec aequitas-node wget -qO- 'http://127.0.0.1:6061/debug/pprof/goroutine?debug=2' > "/tmp/gd_$n.txt" 2>/dev/null
               TOTAL=$(grep -c '^goroutine ' "/tmp/gd_$n.txt")
-              SEM=$(grep -cE "semacquire|SemacquireMutex|sync\.Mutex\.Lock|sync\.RWMutex\.[RL]" "/tmp/gd_$n.txt")
+              SEM=$(grep -cE "^goroutine [0-9]+ \[(semacquire|sync\.(RW)?Mutex\.[RL]?[a-zA-Z]*)" "/tmp/gd_$n.txt")
               echo "goroutines: $TOTAL   blocked on a lock (semacquire): $SEM"
               echo "--- what the blocked ones are waiting in ---"
               grep -B2 -E "semacquire|SemacquireMutex|sync\.Mutex\.Lock" "/tmp/gd_$n.txt" | grep -oE 'keeper\.\(\*[A-Za-z]+\)\.[A-Za-z]+|wal\.\(\*[A-Za-z]+\)\.[A-Za-z]+' | sort | uniq -c | sort -rn | head -10
@@ -194,7 +194,9 @@ jobs:
               # goroutine header carries the wait reason and how long it has
               # been blocked.
               echo "--- ONE FULL STACK of a request goroutine (what the wait is really on) ---"
-              awk 'BEGIN{RS=""} /sendRawTransaction/{print; exit}' "/tmp/gd_$n.txt" | head -32
+              awk 'BEGIN{RS=""} /^goroutine [0-9]+ \[sync\.Mutex\.Lock/{print; exit}' "/tmp/gd_$n.txt" | head -32
+              echo "--- and one RWMutex waiter for comparison ---"
+              awk 'BEGIN{RS=""} /^goroutine [0-9]+ \[sync\.RWMutex/{print; exit}' "/tmp/gd_$n.txt" | head -20
               echo "--- wait reasons across all goroutines ---"
               grep -oE '^goroutine [0-9]+ \[[^]]+\]' "/tmp/gd_$n.txt" | sed -E 's/goroutine [0-9]+ //' | sort | uniq -c | sort -rn | head -10
               sleep 8
