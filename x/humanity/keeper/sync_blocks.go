@@ -226,11 +226,35 @@ func (dag *BlockDAG) syncValidatorsFromPeer(peerURL string) {
 // waiting up to validatorSyncInterval.
 func (dag *BlockDAG) syncValidatorsFromAllPeers() {
 	dag.syncPeerMu.Lock()
-	peers := make([]string, 0, len(dag.activeSyncPeers))
+	peers := make([]string, 0, len(dag.activeSyncPeers)+len(dag.trustedSeeds))
 	for p := range dag.activeSyncPeers {
 		peers = append(peers, p)
 	}
+	// FIX (2026-07-26): fall back to the configured seeds when no sync peer is
+	// registered yet. This function's only caller is AddPeerBlock's
+	// unknown-proposer gate, which fires the instant a block from an unknown
+	// validator arrives — and blocks start arriving before StartPeerDiscovery
+	// has finished registering anyone. Iterating an empty activeSyncPeers made
+	// the call a silent no-op at exactly the moment it mattered most, and
+	// (before unknownProposerLastRecovery) that no-op was the node's only
+	// attempt. A seed is a URL an operator configured, so asking it for a
+	// validator list is no weaker than asking a self-registered sync peer;
+	// AddAuthorizedValidator still applies its own checks to whatever comes
+	// back.
+	if len(peers) == 0 {
+		for s := range dag.trustedSeeds {
+			peers = append(peers, s)
+		}
+	}
 	dag.syncPeerMu.Unlock()
+	if len(peers) == 0 {
+		// The primary has no seeds and, this early, no registered peers — so
+		// there is genuinely nobody to ask. Say so: the caller has just
+		// rejected a block and dropped its orphans, and silence here is what
+		// made that state invisible for hours on 2026-07-26.
+		fmt.Println("[DAG] ⚠ Cannot learn unknown proposer: no sync peers registered and no seeds configured — will retry while blocks from it keep arriving")
+		return
+	}
 	for _, peer := range peers {
 		dag.syncValidatorsFromPeer(peer)
 	}
@@ -1619,44 +1643,46 @@ func (dag *BlockDAG) syncWithNode(nodeURL string) {
 // StartPeerDiscovery handles automatic peer registration and discovery.
 //
 // Environment variables:
-//   SELF_URL          — this node's own public URL (required for registration)
-//   PRIMARY_NODE_URL  — primary node to register with (omit on the primary itself).
-//                        Daily pool distribution (UBI/validator/LP/escrow, see
-//                        main.go) is gated separately by DISTRIBUTION_ENABLED,
-//                        NOT by this variable — a node missing PRIMARY_NODE_URL
-//                        used to silently self-identify as the distribution
-//                        authority, which is exactly the duplicate-distribution
-//                        failure class this whole mechanism exists to prevent.
-//                        All nodes distribute by default; set DISTRIBUTION_ENABLED=false
-//                        to opt a specific node out (cross-node dedup prevents double-credit).
-//   PRIMARY_NODE_URLS — OPTIONAL comma-separated list of ADDITIONAL seed nodes
-//                        to register/discover peers through, alongside
-//                        PRIMARY_NODE_URL. Purely a bootstrap-resilience
-//                        mechanism (scale audit): with only a single
-//                        PRIMARY_NODE_URL, that one node being temporarily
-//                        unreachable (deploy, restart, outage) stops a new
-//                        node from ever discovering the rest of the network
-//                        or registering as a validator, and stops every
-//                        already-connected node from learning about NEW
-//                        peers/validators until it comes back — a real
-//                        single point of failure at a 100-node target where
-//                        "exactly one fixed bootstrap node" doesn't hold up
-//                        the way it might at 2-3 nodes. Has NO effect on
-//                        DISTRIBUTION_ENABLED/distribution-authority
-//                        semantics, which remain governed solely by
-//                        PRIMARY_NODE_URL + DISTRIBUTION_ENABLED as before —
-//                        this only widens which nodes can be used to learn
-//                        the peer/validator list from.
-//   PEER_NODES        — comma-separated static peer list (optional fallback)
+//
+//	SELF_URL          — this node's own public URL (required for registration)
+//	PRIMARY_NODE_URL  — primary node to register with (omit on the primary itself).
+//	                     Daily pool distribution (UBI/validator/LP/escrow, see
+//	                     main.go) is gated separately by DISTRIBUTION_ENABLED,
+//	                     NOT by this variable — a node missing PRIMARY_NODE_URL
+//	                     used to silently self-identify as the distribution
+//	                     authority, which is exactly the duplicate-distribution
+//	                     failure class this whole mechanism exists to prevent.
+//	                     All nodes distribute by default; set DISTRIBUTION_ENABLED=false
+//	                     to opt a specific node out (cross-node dedup prevents double-credit).
+//	PRIMARY_NODE_URLS — OPTIONAL comma-separated list of ADDITIONAL seed nodes
+//	                     to register/discover peers through, alongside
+//	                     PRIMARY_NODE_URL. Purely a bootstrap-resilience
+//	                     mechanism (scale audit): with only a single
+//	                     PRIMARY_NODE_URL, that one node being temporarily
+//	                     unreachable (deploy, restart, outage) stops a new
+//	                     node from ever discovering the rest of the network
+//	                     or registering as a validator, and stops every
+//	                     already-connected node from learning about NEW
+//	                     peers/validators until it comes back — a real
+//	                     single point of failure at a 100-node target where
+//	                     "exactly one fixed bootstrap node" doesn't hold up
+//	                     the way it might at 2-3 nodes. Has NO effect on
+//	                     DISTRIBUTION_ENABLED/distribution-authority
+//	                     semantics, which remain governed solely by
+//	                     PRIMARY_NODE_URL + DISTRIBUTION_ENABLED as before —
+//	                     this only widens which nodes can be used to learn
+//	                     the peer/validator list from.
+//	PEER_NODES        — comma-separated static peer list (optional fallback)
 //
 // Flow for secondary nodes (Railway/VPS/self-hosted):
-//   1. POST /api/peers/register to EVERY configured seed (PRIMARY_NODE_URL
-//      plus PRIMARY_NODE_URLS) with our own URL, merging whichever respond
-//   2. Receive current peer list, start syncing each peer
-//   3. Every 30s: repeat against all configured seeds to heartbeat + discover new peers
+//  1. POST /api/peers/register to EVERY configured seed (PRIMARY_NODE_URL
+//     plus PRIMARY_NODE_URLS) with our own URL, merging whichever respond
+//  2. Receive current peer list, start syncing each peer
+//  3. Every 30s: repeat against all configured seeds to heartbeat + discover new peers
 //
 // Flow for the primary node (IS_PRIMARY_NODE=true):
 //   - Accepts registrations, serves peer list — no outbound registration needed
+//
 // NormalizeNodeURL prepends "https://" to rawURL if it has no http(s) scheme.
 // Several hosting providers' "public domain" variables (e.g. Railway's
 // RAILWAY_PUBLIC_DOMAIN) are bare hostnames with no scheme; SELF_URL/
