@@ -2490,6 +2490,13 @@ Transactions: txs,
 StateRoot:    stateRoot,
 ProducedAtMs: time.Now().UnixMilli(),
 }
+// Declare the body digest explicitly (roadmap step 4, tx_batch.go). This does
+// not change the hash — with a body attached, calculateBlockHash derives the
+// root from the transactions and ignores this field entirely, exactly as it
+// always did. What it buys is that the block can later be stripped of its
+// transactions for transport and still hash to this same value, and that the
+// digest travels with the header so a receiver knows what body to ask for.
+block.TxRoot = txBatchRoot(txs)
 block.Hash = dag.calculateHash(block)
 if dag.signingKey != nil {
 	hashBytes := common.HexToHash(block.Hash)
@@ -2607,6 +2614,14 @@ if err := dag.state.SaveBlockWithPendingTxsAtomic(block, pendingTxIDs); err != n
 // tx_block_index.go. Non-fatal: the block is already durably saved.
 if err := dag.state.IndexBlockTransactions(block.Height, block.Hash, block.Transactions); err != nil {
 	fmt.Printf("[BLOCK] ⚠ Could not index transactions of block #%d for wallet lookups: %v\n", block.Height, err)
+}
+// Keep the body retrievable by digest so this node can serve it to a peer
+// that received the block stripped of its transactions (roadmap step 4,
+// tx_batch.go). Must happen before the broadcast below, or a peer could ask
+// for a body we have not stored yet. Non-fatal: a failure here only means
+// peers get the block with its body inline, as they always did.
+if err := dag.state.SaveTxBatch(block.TxRoot, block.Transactions); err != nil {
+	fmt.Printf("[BLOCK] ⚠ Could not store the transaction body of block #%d for by-reference serving: %v\n", block.Height, err)
 }
 // Ongoing health check: this call runs synchronously while dag.mu is held
 // write-locked, so if it's slow, EVERY other dag.mu consumer (API reads,

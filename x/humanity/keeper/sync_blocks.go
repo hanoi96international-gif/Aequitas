@@ -2527,6 +2527,25 @@ func (dag *BlockDAG) HTTPBroadcastBlock(block *Block) {
 		return
 	}
 
+	// Roadmap step 4 (tx_batch_transport.go): the same block with its
+	// transactions removed. Hashes identically — the body is committed to
+	// through tx_root, which travels on the header — so a peer that
+	// understands the scheme fetches the body itself and validates it against
+	// that signed root.
+	//
+	// This matters precisely because of the 3 s timeout below. A full block at
+	// maxTxsPerBlock is megabytes; under load it does not reliably finish
+	// inside that window, the push fails, and the peer never adopts the tip —
+	// so its next ProduceBlock cannot use this block as a parent and the merge
+	// this broadcast exists to cause simply does not happen. The stripped
+	// header is a few hundred bytes regardless of how many transactions the
+	// block carries, so it always fits.
+	//
+	// Only ever sent to a peer that has PROVEN it understands it (see
+	// txBatchPeerSupports); everyone else keeps getting the complete block
+	// exactly as before.
+	strippedData, canStrip := strippedBlockPayload(block)
+
 	for _, peerURL := range peers {
 		peerURL := peerURL
 		go func() {
@@ -2536,63 +2555,126 @@ func (dag *BlockDAG) HTTPBroadcastBlock(block *Block) {
 					fmt.Printf("[PANIC RECOVERED] block-push goroutine to %s: %v\n%s\n", peerURL, r, debug.Stack())
 				}
 			}()
-			ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
-			defer cancel()
-			req, err := http.NewRequestWithContext(ctx, http.MethodPost, peerURL+"/api/blocks/push", bytes.NewReader(data))
-			if err != nil {
-				return
-			}
-			req.Header.Set("Content-Type", "application/json")
-			resp, err := httpSyncClient.Do(req)
-			if err != nil {
-				fmt.Printf("[BLOCK-PUSH] ✗ HTTP push block #%d to %s: %v\n", block.Height, peerURL, err)
-				return
-			}
-			defer resp.Body.Close()
-			// P0 fix (2026-07-02 liveness audit follow-up): read the response
-			// instead of discarding it. A peer that rejects our block because
-			// OUR proposer's breaker is open on ITS side is telling us WE may
-			// be the diverged one — see handleBlockPush (api.go) for where
-			// this signal originates. React through the same, already-gated
-			// auto-heal path StartDivergenceAutoHeal uses (autoheal.go),
-			// re-checking its exact safety gate here since triggerAutoResync
-			// itself has none: without it, a single malicious/misconfigured
-			// peer's response could force ANY node — including Primary,
-			// which must never self-wipe — through os.Exit(1).
-			//
-			// FIX (P0, 2026-07-04 brutal audit — "sender ignores almost all
-			// push rejections"): this used to look at Action alone, silently
-			// discarding OK and Reason. A peer whose pushes keep getting
-			// rejected for a real reason (not the benign, expected-to-
-			// self-resolve "orphaned, within grace period" case) never
-			// surfaced anywhere — a genuine, sustained divergence signal was
-			// invisible. See pushRejectStreak's own comment for the reaction.
-			var pushResp struct {
-				OK     bool   `json:"ok"`
-				Reason string `json:"reason"`
-				Action string `json:"action"`
-			}
-			body, err := io.ReadAll(io.LimitReader(resp.Body, 4<<10))
-			if err != nil || json.Unmarshal(body, &pushResp) != nil {
-				return
-			}
-			if pushResp.Action == "resync_required" {
-				if !dag.recordResyncSignal(peerURL) {
-					return // fewer than the current (peer-count-scaled) threshold so far
+			stripped := canStrip && txBatchPeerSupports(peerURL)
+			// At most two attempts, and only ever a stripped one followed by
+			// the complete block. This is the fail-soft half of bodies by
+			// reference: if the receiver cannot obtain the body it answers
+			// resend_full, and the block still arrives — one extra round trip,
+			// never a lost transaction.
+			for attempt := 0; ; attempt++ {
+				payload := data
+				if stripped {
+					payload = strippedData
 				}
-				bootstrapURL := os.Getenv("BOOTSTRAP_SNAPSHOT_URL")
-				bootstrapSigner := os.Getenv("BOOTSTRAP_SIGNER")
-				if os.Getenv("AUTO_HEAL_ON_DIVERGENCE") != "true" || bootstrapURL == "" || bootstrapSigner == "" {
-					return // same gate StartDivergenceAutoHeal requires — Primary has neither, so this is always a no-op there
+				pushResp, ok := dag.pushBlockOnce(block, peerURL, payload, stripped)
+				if !ok {
+					return
 				}
-				dag.triggerAutoResync(fmt.Sprintf(
-					"%d distinct peers signaled resync_required after rejecting our pushed blocks",
-					dag.resyncSignalThresholdFor(os.Getenv("SELF_URL"))))
+				if pushResp.Action == "resend_full" && stripped && attempt == 0 {
+					// This peer understands the scheme but could not reach the
+					// body — most likely it has no working route back to us
+					// right now. Send it the complete block immediately, and
+					// stop stripping toward it until a later response shows the
+					// capability working again.
+					fmt.Printf("[TX-BATCH] ↻ %s could not fetch the body of block #%d (%s) — resending the complete block\n",
+						peerURL, block.Height, pushResp.Reason)
+					recordTxBatchCapability(peerURL, false)
+					stripped = false
+					continue
+				}
+				if pushResp.Action == "resync_required" {
+					dag.reactToResyncSignal(peerURL)
+					return
+				}
+				dag.recordPushRejection(peerURL, pushResp.OK, pushResp.Reason)
 				return
 			}
-			dag.recordPushRejection(peerURL, pushResp.OK, pushResp.Reason)
 		}()
 	}
+}
+
+// blockPushResponse is what a peer answers to a pushed block.
+type blockPushResponse struct {
+	OK     bool   `json:"ok"`
+	Reason string `json:"reason"`
+	Action string `json:"action"`
+	// TxBatch carries txBatchCapabilityToken when the peer understands block
+	// bodies by reference. Present on EVERY response that peer sends, so
+	// capability is learned from traffic this node is already exchanging —
+	// no probe requests — and, just as importantly, is RE-learned each time:
+	// a peer redeployed onto older code stops advertising it and this node
+	// goes back to sending complete blocks after a single block.
+	TxBatch string `json:"tx_batch"`
+}
+
+// pushBlockOnce POSTs one payload to one peer and parses the reply. ok=false
+// means there is nothing further to act on (transport failure or unparseable
+// response) — both are already reported where they happen.
+func (dag *BlockDAG) pushBlockOnce(block *Block, peerURL string, payload []byte, stripped bool) (blockPushResponse, bool) {
+	var pushResp blockPushResponse
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, peerURL+"/api/blocks/push", bytes.NewReader(payload))
+	if err != nil {
+		return pushResp, false
+	}
+	// Names this node so the receiver knows which peer to ask for the body.
+	// Only a hint — resolveTxBatchSources accepts it solely to reorder peers
+	// it already talks to, never to add one.
+	if stripped {
+		if self := strings.TrimSpace(os.Getenv("SELF_URL")); self != "" {
+			req.Header.Set(txBatchSourceHeader, self)
+		}
+	}
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := httpSyncClient.Do(req)
+	if err != nil {
+		fmt.Printf("[BLOCK-PUSH] ✗ HTTP push block #%d to %s: %v\n", block.Height, peerURL, err)
+		return pushResp, false
+	}
+	defer resp.Body.Close()
+	// P0 fix (2026-07-02 liveness audit follow-up): read the response instead
+	// of discarding it. A peer that rejects our block because OUR proposer's
+	// breaker is open on ITS side is telling us WE may be the diverged one —
+	// see handleBlockPush (api.go) for where that signal originates and
+	// reactToResyncSignal below for the safety-gated reaction.
+	//
+	// FIX (P0, 2026-07-04 brutal audit — "sender ignores almost all push
+	// rejections"): this used to look at Action alone, silently discarding OK
+	// and Reason. A peer whose pushes keep getting rejected for a real reason
+	// (not the benign, expected-to-self-resolve "orphaned, within grace
+	// period" case) never surfaced anywhere — a genuine, sustained divergence
+	// signal was invisible. See pushRejectStreak's own comment for the
+	// reaction.
+	body, err := io.ReadAll(io.LimitReader(resp.Body, 4<<10))
+	if err != nil || json.Unmarshal(body, &pushResp) != nil {
+		return pushResp, false
+	}
+	// Learn (or unlearn) this peer's support for bodies by reference from the
+	// response it just sent, before the caller acts on anything else.
+	recordTxBatchCapability(peerURL, pushResp.TxBatch == txBatchCapabilityToken)
+	return pushResp, true
+}
+
+// reactToResyncSignal is HTTPBroadcastBlock's response to a peer reporting
+// that our pushes are not attaching on its side — it is telling us WE may be
+// the diverged one. Routed through the same already-gated auto-heal path
+// StartDivergenceAutoHeal uses (autoheal.go), re-checking its exact safety
+// gate here since triggerAutoResync itself has none: without it, a single
+// malicious or misconfigured peer's response could force ANY node — including
+// Primary, which must never self-wipe — through os.Exit(1).
+func (dag *BlockDAG) reactToResyncSignal(peerURL string) {
+	if !dag.recordResyncSignal(peerURL) {
+		return // fewer than the current (peer-count-scaled) threshold so far
+	}
+	bootstrapURL := os.Getenv("BOOTSTRAP_SNAPSHOT_URL")
+	bootstrapSigner := os.Getenv("BOOTSTRAP_SIGNER")
+	if os.Getenv("AUTO_HEAL_ON_DIVERGENCE") != "true" || bootstrapURL == "" || bootstrapSigner == "" {
+		return // same gate StartDivergenceAutoHeal requires — Primary has neither, so this is always a no-op there
+	}
+	dag.triggerAutoResync(fmt.Sprintf(
+		"%d distinct peers signaled resync_required after rejecting our pushed blocks",
+		dag.resyncSignalThresholdFor(os.Getenv("SELF_URL"))))
 }
 
 // pushRejectStreakThreshold bounds how many CONSECUTIVE non-benign push

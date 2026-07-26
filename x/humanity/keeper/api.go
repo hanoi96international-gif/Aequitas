@@ -692,6 +692,7 @@ func (a *APIServer) Start(port int) {
 	mux.HandleFunc("/api/block", a.handleBlockByHash)
 	mux.HandleFunc("/api/blocks/by-hash", a.handleBlocksByHash)
 	mux.HandleFunc("/api/blocks/push", a.handleBlockPush)
+	mux.HandleFunc("/api/txbatch", a.handleTxBatch)
 	mux.HandleFunc("/api/humanity/credential", a.handleHumanityCredential)
 	mux.HandleFunc("/api/humans", a.handleHumans)
 	mux.HandleFunc("/api/sepolia/humans", a.handleSepoliaHumans)
@@ -1341,7 +1342,7 @@ func (a *APIServer) handleBlockPush(w http.ResponseWriter, r *http.Request) {
 		// so the sender can learn about its own divergence instead of pushing
 		// into the void forever. See HTTPBroadcastBlock (sync_blocks.go) for the
 		// sender-side reaction, safety-gated behind AUTO_HEAL_ON_DIVERGENCE.
-		w.Write([]byte(`{"ok":false,"reason":"push flood shield open","action":"resync_required"}`))
+		w.Write([]byte(`{"ok":false,"reason":"push flood shield open","action":"resync_required","tx_batch":"`+txBatchCapabilityToken+`"}`))
 		return
 	}
 	// maxBlockStreamBytes (p2p.go), not a separate literal: this is the same
@@ -1390,7 +1391,23 @@ func (a *APIServer) handleBlockPush(w http.ResponseWriter, r *http.Request) {
 	// block this node already has, instead of paying a full AddPeerBlock
 	// call just to re-discover "already known" every time.
 	if a.blockchain.hasBlockInMemory(block.Hash) {
-		w.Write([]byte(`{"ok":true}`))
+		w.Write([]byte(`{"ok":true,"tx_batch":"` + txBatchCapabilityToken + `"}`))
+		return
+	}
+	// Roadmap step 4 (tx_batch_transport.go): the sender may have stripped the
+	// transactions and sent the header alone, which is what keeps a large block
+	// inside HTTPBroadcastBlock's 3 s push timeout. Fetch the body and attach it
+	// BEFORE AddPeerBlock, so every gate below — above all the hash check that
+	// binds a block to its transactions — sees a complete block, exactly as if
+	// it had arrived inline.
+	//
+	// A block whose body cannot be obtained is REJECTED, never accepted empty:
+	// replaying it without its transactions would silently drop every transfer
+	// it contains. action:"resend_full" makes the sender re-push the complete
+	// block at once, so a failed fetch costs one extra round trip and nothing
+	// else.
+	if !a.ensureBlockBody(&block, r.Header.Get(txBatchSourceHeader)) {
+		w.Write([]byte(`{"ok":false,"reason":"transaction body unavailable","action":"resend_full","tx_batch":"` + txBatchCapabilityToken + `"}`))
 		return
 	}
 	block.FromSync = false
@@ -1402,22 +1419,22 @@ func (a *APIServer) handleBlockPush(w http.ResponseWriter, r *http.Request) {
 	// this one against each other during ordinary propagation lag even after
 	// the per-proposer breaker was fixed to tolerate it.
 	if !accepted && a.blockchain.IsWithinOrphanGrace(&block) {
-		w.Write([]byte(`{"ok":false,"reason":"orphaned, within grace period"}`))
+		w.Write([]byte(`{"ok":false,"reason":"orphaned, within grace period","tx_batch":"`+txBatchCapabilityToken+`"}`))
 		return
 	}
 	blockPushRecordOutcome(ip, accepted)
 	if accepted {
 		fmt.Printf("[BLOCK-PUSH] ✓ Accepted block #%d via HTTP push\n", block.Height)
-		w.Write([]byte(`{"ok":true}`))
+		w.Write([]byte(`{"ok":true,"tx_batch":"`+txBatchCapabilityToken+`"}`))
 	} else {
 		// Not an error — block may already be known (idempotent). Only signal
 		// resync_required when the rejection is unambiguous (this proposer's
 		// own breaker is open) — an ordinary duplicate (arrived via P2P first)
 		// must never trigger it.
 		if a.blockchain.proposerBlockBlocked(block.Proposer) {
-			w.Write([]byte(`{"ok":false,"reason":"proposer circuit breaker open","action":"resync_required"}`))
+			w.Write([]byte(`{"ok":false,"reason":"proposer circuit breaker open","action":"resync_required","tx_batch":"`+txBatchCapabilityToken+`"}`))
 		} else {
-			w.Write([]byte(`{"ok":false,"reason":"rejected or already known"}`))
+			w.Write([]byte(`{"ok":false,"reason":"rejected or already known","tx_batch":"`+txBatchCapabilityToken+`"}`))
 		}
 	}
 }
