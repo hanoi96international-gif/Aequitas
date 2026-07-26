@@ -50,6 +50,26 @@ jobs:
   diagnose:
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v4
+
+      # WITHOUT THIS THE DIAGNOSIS MEASURES STALE CODE.
+      # The first version of this workflow ran the pre-built ./loadtest
+      # already on the box. When the generator's connection pool was fixed
+      # in main.go, the diagnosis kept running the OLD binary and reported
+      # unchanged concurrency -- which looked like the fix had not worked.
+      # loadtest-run-contabo2.yml ships and rebuilds the source every time;
+      # this must do the same or its verdict cannot be trusted.
+      - name: Ship current loadtest source to Contabo2
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: 194.163.188.71
+          username: root
+          key: ${{ secrets.CONTABO2_SSH_KEY }}
+          port: 22
+          fingerprint: "SHA256:VIwj7Faxiga2n45HVHZEQFPxcbRKHgSgHoxAFsf2wto"
+          source: "tools/contabo-loadtest/main.go,tools/contabo-loadtest/gen_accounts.go,go.mod,go.sum"
+          target: "/root/contabo-loadtest"
+
       - name: Run load and dump goroutines while it is running
         # These MUST be set here: `envs:` only forwards variables that exist
         # in the step environment. Listing them without defining them left
@@ -74,7 +94,15 @@ jobs:
           script: |
             set -uo pipefail
             cd /root/contabo-loadtest || { echo "loadtest dir missing -- run loadtest-prepare-contabo2.yml first"; exit 1; }
-            [ -f ./loadtest ] || { echo "loadtest binary missing -- run loadtest-run-contabo2.yml once to build it"; exit 1; }
+            # scp lands the files under tools/contabo-loadtest/; the build
+            # expects them beside go.mod, exactly as loadtest-run does.
+            for f in main.go gen_accounts.go; do
+              [ -f "tools/contabo-loadtest/$f" ] && mv -f "tools/contabo-loadtest/$f" "./$f"
+            done
+            echo "=== rebuilding the generator from the shipped source ==="
+            mkdir -p /root/go-mod-cache
+            docker run --rm -v "$(pwd)":/w -w /w \n              -v /root/go-mod-cache:/go/pkg/mod golang:1.24-alpine \n              go build -o loadtest main.go || { echo "build failed -- refusing to measure stale code"; exit 1; }
+            echo "generator built: $(date -u -r ./loadtest 2>/dev/null || stat -c %y ./loadtest)"
             [ -f accounts.csv ] || { echo "accounts.csv missing -- run loadtest-prepare-contabo2.yml first"; exit 1; }
 
             echo "=== baseline: what the node looks like with NO load ==="
