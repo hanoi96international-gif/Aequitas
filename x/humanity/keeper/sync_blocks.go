@@ -1074,10 +1074,10 @@ func (dag *BlockDAG) reconcileDeferrals(nodeURL string, deferred []string) int {
 			finalityFloor = fh - finalityHeightSlack
 		}
 	}
-	var queuedHeights map[string]int64
-	if finalityFloor > 0 {
-		queuedHeights = dag.queuedOrphanHeights()
-	}
+	// Fetched UNCONDITIONALLY, not just when a finality floor exists: the
+	// membership of this map — not only the heights in it — is now load-bearing.
+	// See the "no longer queued" check in the loop below.
+	queuedHeights := dag.queuedOrphanHeights()
 
 	dag.deferredWatchMu.Lock()
 	defer dag.deferredWatchMu.Unlock()
@@ -1105,14 +1105,58 @@ func (dag *BlockDAG) reconcileDeferrals(nodeURL string, deferred []string) int {
 			delete(watch, h)
 			continue
 		}
+		height, stillQueued := queuedHeights[h]
+		// FIX (P0, 2026-07-26 — Contabo1 produced nothing for hours over TWO
+		// stale deferrals): a deferred hash that is no longer in the orphan
+		// queue AND never made it into dag.blocks can never leave this watch
+		// list by any existing path, so it pins the peer's clean-sync streak at
+		// zero forever and blocks production for good.
+		//
+		// The 2026-07-25 moot check below was written for the same class of
+		// defect and misses this case by construction: it looks the height up
+		// in queuedOrphanHeights(), which only knows blocks STILL SITTING in
+		// the orphan queue. Once a deferral leaves that queue unresolved —
+		// abandonOrphansWaitingFor dropping it when its parent was refused, or
+		// the orphanAbandonAfter TTL expiring it — the hash is in neither
+		// dag.blocks nor the queue, so "resolved" is false and "known" is
+		// false, and both escape hatches are shut at once.
+		//
+		// Measured live: Contabo1 at height 1939945, byte-identical state root
+		// with both peers, orphan_missing_parents = 0, zero AddPeerBlock
+		// rejections in 4000 log lines — and clean_sync_streak 1059 against
+		// Contabo2 but exactly 0 against the primary, printing "2 deferred
+		// block(s) have now gone unresolved for longer than 48s" once a second
+		// and producing nothing. The two hashes were deferred during the
+		// unknown-proposer fork earlier that day and abandoned from the queue
+		// when it healed.
+		//
+		// Dropping them cannot blind the fork detector. This node has already
+		// stopped waiting for these blocks; nothing will ever act on them
+		// again. A peer that is genuinely forked keeps producing, so every
+		// cycle contributes FRESH deferrals that enter this watch normally and
+		// still stall the streak — which is precisely how the 2026-07-25
+		// "forgave deferrals outright" regression was caught. What is dropped
+		// here is only the residue of a fork that is already over.
+		// Deliberately gated on orphanAbandonAfter (15 min), NOT on the 48s
+		// grace: at the grace boundary a not-yet-queued deferral is still
+		// exactly the fork evidence TestReconcileDeferrals_DeferralOutlivingThe
+		// GraceCounts exists to protect, and dropping it there would re-open the
+		// 2026-07-25 hole where a forked node scored clean and produced on its
+		// own branch. orphanAbandonAfter is this codebase's own existing
+		// threshold for "this orphan is never going to resolve", so past it the
+		// hash is residue by the project's own definition. A genuinely forked
+		// peer keeps producing, so fresh deferrals keep entering this watch and
+		// keep the streak at zero long before anything here reaches 15 minutes.
+		if !stillQueued && now-firstSeen > int64(orphanAbandonAfter.Seconds()) {
+			delete(watch, h)
+			continue
+		}
 		// Moot check — see the finalityFloor comment above: finality has
 		// passed this block's height, it can never be stored, so it must
 		// never count against this peer's catch-up judgment.
-		if finalityFloor > 0 {
-			if height, known := queuedHeights[h]; known && height < finalityFloor {
-				delete(watch, h)
-				continue
-			}
+		if finalityFloor > 0 && height < finalityFloor {
+			delete(watch, h)
+			continue
 		}
 		if now-firstSeen > graceSecs {
 			stale++
