@@ -525,6 +525,20 @@ func (a *APIServer) handleCombinedHealth(w http.ResponseWriter, r *http.Request)
 	}
 
 	json.NewEncoder(w).Encode(map[string]interface{}{
+		// runtime is the answer to "why did the primary restart again?".
+		//
+		// The primary has restarted under load repeatedly, and every single
+		// time the cause stayed unknown — the node reported nothing about its
+		// own memory, and Railway's logs need a token this repo does not have.
+		// Without these numbers an operator can only observe that it happened.
+		// With them, a sample taken before the next restart shows whether the
+		// heap was climbing (a leak or an unbounded queue) or flat (killed for
+		// some other reason entirely), which are opposite investigations.
+		//
+		// ReadMemStats briefly stops the world, so this is deliberately only on
+		// this operator endpoint — never on /api/status, which the explorer
+		// polls every few seconds from every open tab.
+		"runtime": runtimeSnapshot(),
 		"chain": map[string]interface{}{
 			"status":       status,
 			"notes":        notes,

@@ -491,6 +491,15 @@ p2pNode.SetDAG(bc)
 	// in Railway's UI. Normalize here instead of fighting that — any
 	// SELF_URL without an http(s) scheme gets "https://" prepended.
 	selfURL = keeper.NormalizeNodeURL(selfURL)
+	// Leave evidence in the log BEFORE a memory-related restart, not after.
+	// The primary has restarted under load repeatedly and the cause was never
+	// established: the node reported nothing about its own heap, and reading
+	// Railway's container logs needs an API token this repository does not
+	// have. A process that is OOM-killed writes nothing on its way out by
+	// definition, so the only evidence that can ever exist is what it logged
+	// while still running. See StartHeapWatcher (runtime_health.go); a full
+	// snapshot is also exposed on /api/health/combined.
+	keeper.StartHeapWatcher()
 	bc.StartHTTPBlockSync(selfURL)
 	// Recover automatically from sustained divergence (opt-in, secondary-only)
 	// — see StartDivergenceAutoHeal. Started after sync so a healthy node has a
