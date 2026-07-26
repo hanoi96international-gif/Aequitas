@@ -5845,10 +5845,42 @@ func (dag *BlockDAG) replayTransactions(block *Block, force bool) (ok bool) {
 	// write out of the parallel phase entirely) — a local mutex around a
 	// shared *sql.Tx is provably not sufficient.
 
-	for _, tx := range block.Transactions {
+	for txIdx := 0; txIdx < len(block.Transactions); txIdx++ {
+		tx := block.Transactions[txIdx]
 		if hardFailure {
 			break // stop applying further TXs once we know this block is being rolled back
 		}
+
+		// Parallel fast path (roadmap step 6 — see replay_parallel.go for why
+		// REPLAY, not ingestion, is what bounds network throughput, and how
+		// this differs from the reverted 41b1eee attempt described above).
+		//
+		// Only ever engaged for a run of CONSECUTIVE, demurrage-free,
+		// pairwise-disjoint transfers — a set the determinism tests already
+		// prove is order-independent. Anything else ends the run and falls
+		// through to the serial switch below, unchanged.
+		if tx.Type == "transfer" && skipDistributionRound == 0 {
+			if batch, _ := collectDisjointTransferBatch(block.Transactions, txIdx); len(batch) >= parallelReplayMinBatch {
+				ok, batchErr := dag.state.applyTransferBatchParallel(context.Background(), batch)
+				if batchErr != nil {
+					// Memory already mutated, persistence failed — must NOT
+					// fall back to the serial path (that would apply every
+					// transfer twice). Fail the block; the caller's rollback
+					// snapshot undoes it.
+					fmt.Printf("[REPLAY] ✗ %v (block #%d) — rolling back whole block\n", batchErr, block.Height)
+					hardFailure = true
+					continue
+				}
+				if ok {
+					transfersApplied += len(batch)
+					txIdx += len(batch) - 1 // the loop's ++ moves past the last batched tx
+					continue
+				}
+				// Declined before mutating anything — fall through so the
+				// serial path handles this transaction exactly as before.
+			}
+		}
+
 		// Skip distribution TXs from a round this node has already applied.
 		if skipDistributionRound > 0 {
 			switch tx.Type {

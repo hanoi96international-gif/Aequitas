@@ -40,6 +40,26 @@ jobs:
       - run: npm ci
       - run: npx hardhat test
 
+  # The race detector, on its own job so it reports independently of the
+  # ordinary suite (it roughly triples runtime, and a data race is a different
+  # class of failure from a logic bug).
+  #
+  # SCALING_ARCHITECTURE.md's own test strategy calls `-race` non-negotiable
+  # for the concurrency work, and the reverted parallel-replay attempt
+  # (41b1eee) is what happens without it: workers sharing one *sql.Tx got
+  # through review and only announced themselves in production, as a Postgres
+  # wire-protocol desync that cost two consensus blocks. `-race` requires cgo,
+  # which the Windows dev host does not have — so this runner is the only
+  # place it can run at all.
+  race:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - run: go test -race ./x/humanity/...
+
   # FIX (2026-07-26): nothing in CI ever built the Dockerfile. `go build` above
   # runs on ubuntu-latest with the runner's own toolchain — it says nothing
   # about whether the IMAGE builds. The image is only ever built by deploy.sh /
