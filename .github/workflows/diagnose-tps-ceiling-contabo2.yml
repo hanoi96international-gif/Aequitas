@@ -174,6 +174,24 @@ jobs:
               grep -B2 semacquire "/tmp/gd_$n.txt" | grep -oE 'keeper\.\(\*[A-Za-z]+\)\.[A-Za-z]+|wal\.\(\*[A-Za-z]+\)\.[A-Za-z]+' | sort | uniq -c | sort -rn | head -10
               echo "--- busiest keeper/wal frames overall ---"
               grep -oE 'keeper\.\(\*[A-Za-z]+\)\.[A-Za-z]+|wal\.\(\*[A-Za-z]+\)\.[A-Za-z]+' "/tmp/gd_$n.txt" | sort | uniq -c | sort -rn | head -12
+              # THE FRAME THAT ACTUALLY ANSWERS THE QUESTION.
+              #
+              # Counting keeper/wal frames showed all 72 request goroutines
+              # sitting in sendRawTransaction with none in wal.Append and none
+              # on a mutex -- so the wait is neither the WAL nor a lock. But the
+              # innermost frame, the one naming what they are blocked ON
+              # (database/sql, pq, a channel, a syscall), is not a keeper or wal
+              # symbol, so that filter cut away the only line that matters.
+              #
+              # Print one whole stack instead. Every one of the 72 is in the
+              # same place, so a single representative trace is enough, and the
+              # goroutine header carries the wait reason and how long it has
+              # been blocked.
+              echo "--- ONE FULL STACK of a request goroutine (what the wait is really on) ---"
+              awk '/^goroutine /{buf=$0; keep=0; next} {buf=buf"
+"$0} /sendRawTransaction/{keep=1} /^$/{if(keep){print buf; exit}}' "/tmp/gd_$n.txt" | head -32
+              echo "--- wait reasons across all goroutines ---"
+              grep -oE '^goroutine [0-9]+ \[[^]]+\]' "/tmp/gd_$n.txt" | sed -E 's/goroutine [0-9]+ //' | sort | uniq -c | sort -rn | head -10
               sleep 8
             done
 
