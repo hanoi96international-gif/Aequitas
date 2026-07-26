@@ -101,7 +101,11 @@ jobs:
             done
             echo "=== rebuilding the generator from the shipped source ==="
             mkdir -p /root/go-mod-cache
-            docker run --rm -v "$(pwd)":/w -w /w \n              -v /root/go-mod-cache:/go/pkg/mod golang:1.24-alpine \n              go build -o loadtest main.go || { echo "build failed -- refusing to measure stale code"; exit 1; }
+            # Single line on purpose: this file was committed with CRLF endings
+            # and a backslash continuation followed by CR does not continue the
+            # line, it escapes the CR. That mangled the command into "docker run
+            # ... n" and the build died on a nonexistent image called "n".
+            docker run --rm -v "$(pwd)":/w -w /w -v /root/go-mod-cache:/go/pkg/mod golang:1.24-alpine go build -o loadtest main.go || { echo "build failed -- refusing to measure stale code"; exit 1; }
             echo "generator built: $(date -u -r ./loadtest 2>/dev/null || stat -c %y ./loadtest)"
             [ -f accounts.csv ] || { echo "accounts.csv missing -- run loadtest-prepare-contabo2.yml first"; exit 1; }
 
