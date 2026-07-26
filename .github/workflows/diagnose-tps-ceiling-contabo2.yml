@@ -143,12 +143,18 @@ jobs:
             for i in $(seq 1 90); do
               if grep -q '=== PHASE run' /tmp/loadrun.log 2>/dev/null; then
                 echo "run phase started after ~$((i*2))s"
-                # Ramp is 5s; sample once pairs are actually sending.
-                sleep 8
-                if docker logs --since 4s aequitas-node 2>&1 | grep -q 'transfers applied'; then
-                  SEEN=1; echo "node confirmed applying transfers during the run phase"
-                else
-                  echo "run phase started but the node reports no applied transfers -- see generator log below"
+                # Ramp is 5s, but the first pairs can take longer to get
+                # their first batch accepted, so checking once and giving up
+                # turned a slow start into a hard failure. Keep looking for up
+                # to 30s and only then conclude nothing is arriving.
+                for j in $(seq 1 10); do
+                  sleep 3
+                  if docker logs --since 5s aequitas-node 2>&1 | grep -q 'transfers applied'; then
+                    SEEN=1; echo "node confirmed applying transfers ~$((j*3))s into the run phase"; break
+                  fi
+                done
+                if [ "$SEEN" = "0" ]; then
+                  echo "run phase started but the node applied nothing for 30s -- see generator log below"
                 fi
                 break
               fi
