@@ -145,6 +145,15 @@ type ChainState struct {
 	// block save). See ensureReplayedColumn's own comment for what this
 	// column is for.
 	replayedColumnOnce sync.Once
+	// txBatchTableOnce/txBatches back the body store that lets a block travel
+	// without its transactions (roadmap step 4 — see tx_batch.go).
+	txBatchTableOnce sync.Once
+	txBatches        *txBatchCache
+	// txBlockIndexOnce guards the tx -> including-block index, without which
+	// eth_getTransactionByHash and eth_getTransactionReceipt answer with
+	// placeholders and wallets mark landed transactions as failed — see
+	// tx_block_index.go for the live report that uncovered it.
+	txBlockIndexOnce sync.Once
 	nullifiers map[string]string // nullifier hex → wallet address (in-memory cache)
 	// nullifiersMu guards cs.nullifiers (a plain, non-sharded Go map — unlike
 	// cs.accounts, nullifiers were never migrated to a per-key-lockable
@@ -603,6 +612,7 @@ func validatePoolAddresses() {
 func NewChainState(dataFile string) *ChainState {
 	validatePoolAddresses()
 	cs := &ChainState{
+		txBatches:  newTxBatchCache(),
 		accounts:   newShardedAccounts(),
 		nullifiers: make(map[string]string),
 	}

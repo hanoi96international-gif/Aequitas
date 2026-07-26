@@ -1004,17 +1004,35 @@ func (s *EVMRPCServer) getTransactionReceipt(params []json.RawMessage) (interfac
 		toField = toAddrMem
 	}
 
-	block := s.dag.LatestBlock()
+	// The block this transaction was ACTUALLY included in.
+	//
+	// FIX (2026-07-26, reported from a live wallet): this used to report
+	// dag.LatestBlock() — the current chain head — as the transaction's
+	// block, so the answer changed on every call (measured 0x1d5102, then
+	// 0x1d511a seconds later). A wallet computes confirmations as
+	// head - receipt.blockNumber, which under that behaviour is permanently
+	// zero, so MetaMask eventually gave up and showed a 150 AEQ transfer that
+	// had landed correctly in block #1918326 as "Senden fehlgeschlagen".
+	// See tx_block_index.go.
+	txHeight, txBlockHash, txIndex, indexed := s.state.LookupTxBlock(txHash)
 	height := uint64(0)
 	blockHash := "0x" + strings.Repeat("0", 63) + "1"
-	if block != nil {
+	logIndex := 0
+	if indexed {
+		height = uint64(txHeight)
+		blockHash = "0x" + txBlockHash
+		logIndex = txIndex
+	} else if block := s.dag.LatestBlock(); block != nil {
+		// Not indexed (a transaction from before this index existed): fall
+		// back to the old behaviour rather than returning nothing, so historic
+		// transactions still produce a receipt.
 		height = uint64(block.Height)
 		blockHash = "0x" + block.Hash
 	}
 
 	return map[string]interface{}{
 		"transactionHash":   txHash,
-		"transactionIndex":  "0x0",
+		"transactionIndex":  fmt.Sprintf("0x%x", logIndex),
 		"blockHash":         blockHash,
 		"blockNumber":       fmt.Sprintf("0x%x", height),
 		"from":              fromAddr,
@@ -1079,12 +1097,31 @@ func (s *EVMRPCServer) getTransactionByHash(params []json.RawMessage) (interface
 	// per-account nonce counter and persisted tx value, threaded through
 	// every transaction-recording path — a genuine feature, not a one-line
 	// fix, so left as an honest placeholder rather than a fabricated number.
+	// FIX (2026-07-26): blockHash/blockNumber are no longer placeholders.
+	// The comment above was right that this needed a real transaction-
+	// recording path rather than a fabricated number — chain_tx_block_index
+	// (tx_block_index.go) is that path, written by every node when it accepts
+	// a block. Claiming block 1 for a transaction that landed in #1918326 is
+	// what left a wallet unable to follow it, so it declared a successful
+	// 150 AEQ transfer failed.
+	//
+	// A transaction that is known but not yet in a block reports null for
+	// both fields, which is exactly what the Ethereum spec prescribes for a
+	// pending transaction — and what tells a wallet to keep waiting instead
+	// of concluding anything.
+	var blockHashField, blockNumberField, txIndexField interface{} = nil, nil, nil
+	if h, bh, idx, ok := s.state.LookupTxBlock(txHash); ok {
+		blockHashField = "0x" + bh
+		blockNumberField = fmt.Sprintf("0x%x", uint64(h))
+		txIndexField = fmt.Sprintf("0x%x", idx)
+	}
+
 	return map[string]interface{}{
 		"hash":             txHash,
 		"nonce":            "0x0",
-		"blockHash":        "0x" + strings.Repeat("0", 63) + "1",
-		"blockNumber":      "0x1",
-		"transactionIndex": "0x0",
+		"blockHash":        blockHashField,
+		"blockNumber":      blockNumberField,
+		"transactionIndex": txIndexField,
 		"from":             fromAddr,
 		"to":               toField,
 		"value":            "0x0",
