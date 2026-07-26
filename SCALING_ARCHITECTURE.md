@@ -95,13 +95,35 @@ Genau nach dem in diesem Dokument selbst für Phase 7 vorgeschriebenen Muster ("
 - `ReplayFile` liest sequentiell, stoppt am ersten beschädigten/unvollständigen Eintrag, meldet aber keinen Fehler dafür — das ist der erwartete, normale Fall eines Absturzes nach dem letzten bestätigten Eintrag, kein Bug.
 - `TruncateBefore` (Kompaktierung) per sicherem Rewrite+Rename, niemals ein halb-geschriebener Zustand sichtbar.
 - 12 Tests (inkl. simuliertem Absturz durch Byte-Abschneiden, absichtlicher Bit-Korruption mitten im Datensatz, `-race`-geprüfter Nebenläufigkeit über 2000 gleichzeitige Appends) — alle grün.
-- **Real gemessen** (`TestWALThroughput`, `AEQUITAS_WAL_BENCH=1`, in dieser Entwicklungsumgebung — NICHT auf echter Contabo-Produktionshardware, siehe Vorbehalt unten): bei 1000 gleichzeitigen Appends **~112.700 appends/sec** durch das Gruppen-Commit-fsync allein — beantwortet das erste der drei in "Realistisches Zielbild" genannten offenen Unbekannten (WAL-Fsync-Durchsatz) für diese Umgebung positiv: kein Hinweis, dass fsync-Durchsatz der limitierende Faktor wäre.
+- **Real gemessen** (`TestWALThroughput`, `AEQUITAS_WAL_BENCH=1`, in dieser Entwicklungsumgebung — NICHT auf echter Contabo-Produktionshardware, siehe Vorbehalt unten): bei 1000 gleichzeitigen Appends **~112.700 appends/sec** durch das Gruppen-Commit-fsync allein — beantwortet das erste der drei in "Realistisches Zielbild" genannten offenen Unbekannten (WAL-Fsync-Durchsatz) **nur für diese Umgebung**. ⚠️ **Diese Zahl ist für Produktionsentscheidungen nicht verwendbar** — die Nachmessung auf echter Contabo2-Hardware (2026-07-26, siehe Abschnitt weiter unten) ergab, dass die Platte nur 133–462 fsyncs/s leistet und die 112.700 appends/sec dort einen Batch von ~1024 voraussetzen, also mehr als `MaxBatchSize = 500` zulässt.
 
 **Ausdrücklich NICHT gemacht — der eigentliche, viel größere restliche Schritt:**
 1. **Nicht an `ChainState` angeschlossen.** `cs.accounts`/`cs.pool` bleiben exakt wie heute; nichts liest oder schreibt das WAL im echten Betrieb.
 2. **`cs.activeTx`-Kopplung ungelöst.** Bei der Phase-5-Untersuchung (Shard-Locks für den Transfer-Pfad) stellte sich heraus: `cs.activeTx` ist ein EINZIGES, ChainState-weites `*sql.Tx`-Feld, das `dbExec()` und jeder `saveAccountToDB`-Aufrufer implizit liest — echte Nebenläufigkeit mehrerer gleichzeitiger atomarer Operationen (egal ob über Shard-Locks oder über WAL) ist damit strukturell blockiert, bis dieses Feld durch etwas Operation-lokales ersetzt wird (z. B. explizit durchgereicht oder über `context.Context`). Das ist GENAU die Art von Umbau, den die WAL-Integration ohnehin braucht — Phase 5 und Phase 7 sind also enger gekoppelt, als die Phasennummerierung suggeriert; Phase 5 lässt sich nicht als kleinerer, unabhängiger Schritt VOR Phase 7 sauber abschließen.
-3. **Contabo-Produktionshardware nicht gemessen.** Die 112.700 appends/sec sind aus der aktuellen Entwicklungsumgebung (Cloud-Container, Overlay-Dateisystem) — ein reales VPS mit anderer Virtualisierungsschicht/Disk könnte spürbar anders abschneiden. Vor jeder Produktionsentscheidung mit echter Zielhardware nachmessen.
+3. ~~**Contabo-Produktionshardware nicht gemessen.**~~ **JETZT GEMESSEN (2026-07-26) — und der Vorbehalt war berechtigt, siehe direkt unten.**
 4. Go-GC-Pausen bei sehr hoher Allokationsrate und Shard-Zahl-vs-CPU-Kerne (die anderen beiden in "Realistisches Zielbild" genannten Unbekannten) — beide weiterhin ungemessen.
+
+### Nachmessung auf echter Contabo2-Hardware (2026-07-26) — die Sandbox-Zahl war irreführend
+
+Gemessen auf Contabo2 selbst, auf dem echten WAL-Verzeichnis (`/root/aequitas-wal-data`, ext4 auf `/dev/sda1`), bei Systemlast 0.00, 6 Kerne / 12 GB. Kein Go-Toolchain auf der Box nötig: `write()`+`fsync()` in derselben Reihenfolge und Datensatzgröße wie `wal.Append`, weil fsync-Latenz eine Eigenschaft von Kernel und Platte ist, nicht der Sprache.
+
+| Batch pro fsync | Appends/s | fsyncs/s | p50 | p99 | max |
+|---:|---:|---:|---:|---:|---:|
+| 1 | **462** | 462 | 1,84 ms | 6,96 ms | 12,3 ms |
+| 8 | 3.149 | 394 | 2,03 ms | 10,2 ms | 42,5 ms |
+| 64 | 15.349 | 240 | 3,09 ms | 17,5 ms | 38,0 ms |
+| 256 | 43.254 | 169 | 4,19 ms | 23,5 ms | 284 ms |
+| 1024 | 135.826 | 133 | 6,01 ms | 25,2 ms | 248 ms |
+
+**Was die Zahlen wirklich sagen — die entscheidende Größe ist nicht "Appends/s", sondern fsyncs/s.** Diese Platte leistet **133–462 fsyncs pro Sekunde, und zwar unabhängig davon, wie groß der Batch ist**. Der gesamte Durchsatz kommt ausschließlich daraus, wie viele Datensätze in einen fsync gebündelt werden. Die 112.700 appends/sec aus der Sandbox sind hier nur bei Batch ≈ 1024 erreichbar — also **oberhalb** von `MaxBatchSize = 500`.
+
+Drei Konsequenzen, die die ursprüngliche Formulierung ("kein Hinweis, dass fsync-Durchsatz der limitierende Faktor wäre") so nicht mehr trägt:
+
+1. **Ohne Gruppen-Commit sind es 462 Appends/s.** Jeder Pfad, der einzeln und unnebenläufig appendet, ist damit auf ~462 TPS gedeckelt — nicht auf 112.700. Der Gruppen-Commit ist keine Optimierung, er ist die einzige Sache, die diesen Weg überhaupt tragfähig macht.
+2. **Bei `MaxBatchSize = 500` liegt die Decke bei rund 66.000–84.000 Appends/s** (133–169 fsyncs/s × 500). Das trägt 50.000 TPS — aber mit Faktor 1,3–1,7 Luft, nicht mit der Größenordnung, die die Sandbox-Zahl suggerierte. Bei 50.000 TPS füllt sich jeder Batch auf ~300–376 Datensätze; `MaxBatchSize` ist damit richtig dimensioniert und darf nicht gesenkt werden.
+3. **Der Tail ist neu und real: max 248–284 ms bei großen Batches.** Jeder `Append`-Aufrufer blockiert, bis der fsync seines Batches zurückkommt. Ein einzelner solcher Ausreißer ist ein Viertel eines `BLOCK_TIME`-Ticks. Das ist die Zahl, die vor einer Produktionsentscheidung zu bewerten ist — nicht der Durchsatz.
+
+**`MaxBatchWait = 1 ms` bleibt vorerst unangetastet.** Der Kommentar an der Konstanten fordert ausdrücklich eine Nachmessung, falls die echte fsync-Latenz abweicht — sie weicht ab (p50 1,8–6,0 ms statt Sandbox-schnell). Aber die Wartezeit greift nur bei leerer Queue: während ein fsync 4–6 ms läuft, sammeln sich ankommende Appends ohnehin an, der nächste Batch ist also bereits voll, wenn der Writer wieder dran ist. Eine Änderung ohne Messung unter echter Last wäre genau das Raten, das dieses Dokument vermeiden soll.
 
 **Update (2026-07-23) — Live-Aktivierungsversuch auf Contabo2: Tooling-Bug gefunden UND gefixt, WAL kurz echt aktiv, dann wegen eines neuen Befunds bewusst wieder zurückgerollt.** Entgegen der Warnung oben wurde `AEQUITAS_WAL_ENABLED`/`ENABLE_MULTI_BLOCK_TICK` bereits einmal live auf Contabo2 gesetzt (`enable-wal-contabo2.yml`), vor der eigentlich vorgeschriebenen Staging-Kampagne. Root Cause bestätigt: `deploy_safe_c2.sh` übernahm Env-Variablen für einen neuen Container ausschließlich aus `docker inspect` des vorherigen Containers, nie aus `/root/.aequitas.env` — die Flags erreichten den laufenden Prozess deshalb nie. Auf explizite Nutzerfreigabe hin wurde der Fix tatsächlich live angewendet (`deploy_safe_c2.sh` gepatcht, per Backup+Syntaxcheck+atomarem Install, siehe STAGING_RUNBOOK.md für den genauen Ablauf) — danach zeigte der Boot-Log zum ersten Mal echte `[WAL] ✓ WAL fast path active`-Zeilen.
 
