@@ -8,6 +8,7 @@
 package main
 
 import (
+	"encoding/json"
 	"flag"
 	"fmt"
 	"math"
@@ -33,6 +34,12 @@ func main() {
 		err = signalCmd(os.Args[2:])
 	case "demo":
 		err = demoCmd(os.Args[2:])
+	case "experts":
+		err = expertsCmd(os.Args[2:])
+	case "interview":
+		err = interviewCmd(os.Args[2:])
+	case "discover":
+		err = discoverCmd(os.Args[2:])
 	case "-h", "--help", "help":
 		usage()
 		return
@@ -63,6 +70,20 @@ func usage() {
   signalctl demo
         Run the full evaluation on a synthetic random walk, to show what an
         honest "no edge here" result looks like.
+
+  signalctl experts
+        Print every asset-class and crypto-sector profile: which agents apply
+        where, what each segment is assumed to cost, and which segments this
+        framework refuses to trade at all.
+
+  signalctl interview -csv BARS.csv [-class crypto] [-sector major] [-perp]
+        Run the hiring panel for one instrument's segment. Candidates must
+        pass every criterion, including survival at double the assumed
+        slippage. Expect nobody to be hired.
+
+  signalctl discover -json TRENDING.json
+        Rank projects by credible, accelerating attention. Produces a
+        watchlist to screen, never a buy list.
 
 CSV columns: time,open,high,low,close,volume[,buy_volume,sell_volume][,funding]
 This tool never places an order.
@@ -205,6 +226,114 @@ trading costs are charged on a market with no edge, so the honest outcome of
 trading noise is to lose the fees. A framework that showed profits here would
 be broken.
 `)
+	return nil
+}
+
+func expertsCmd(args []string) error {
+	fs := flag.NewFlagSet("experts", flag.ExitOnError)
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	for _, i := range []ms.Instrument{
+		{Symbol: "SPY", Class: ms.ClassETF, Venue: ms.VenueExchange},
+		{Symbol: "AAPL", Class: ms.ClassEquity, Venue: ms.VenueExchange},
+		{Symbol: "BTC", Class: ms.ClassCrypto, Sector: ms.SectorMajor, Venue: ms.VenueCEX,
+			HasPerpetual: true, ContinuousTrading: true},
+		{Symbol: "ALT", Class: ms.ClassCrypto, Sector: ms.SectorLargeAlt, Venue: ms.VenueCEX,
+			ContinuousTrading: true},
+		{Symbol: "AI", Class: ms.ClassCrypto, Sector: ms.SectorNarrative, Venue: ms.VenueCEX,
+			ContinuousTrading: true},
+		{Symbol: "MEME", Class: ms.ClassCrypto, Sector: ms.SectorMeme, Venue: ms.VenueDEX,
+			Chain: "solana", Address: "So111", ContinuousTrading: true},
+		{Symbol: "NEW", Class: ms.ClassCrypto, Sector: ms.SectorNewLaunch, Venue: ms.VenueDEX,
+			Chain: "solana", Address: "So222", ContinuousTrading: true},
+		{Symbol: "USDX", Class: ms.ClassCrypto, Sector: ms.SectorStablecoin, Venue: ms.VenueCEX,
+			ContinuousTrading: true},
+	} {
+		p, err := ms.ExpertFor(i)
+		if err != nil {
+			return err
+		}
+		fmt.Printf("── %s ──\n%s\n", i, p.Describe())
+	}
+	return nil
+}
+
+func interviewCmd(args []string) error {
+	fs := flag.NewFlagSet("interview", flag.ExitOnError)
+	path := fs.String("csv", "", "path to a bars CSV (required)")
+	symbol := fs.String("symbol", "SERIES", "symbol label")
+	interval := fs.Duration("interval", time.Hour, "bar duration")
+	class := fs.String("class", "crypto", "asset class: crypto, etf or equity")
+	sector := fs.String("sector", "major", "crypto sector: major, large_alt, defi, infra, narrative, meme, new_launch, stablecoin")
+	perp := fs.Bool("perp", false, "instrument has a funding-bearing perpetual")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if *path == "" {
+		fs.Usage()
+		return fmt.Errorf("-csv is required")
+	}
+
+	inst := ms.Instrument{
+		Symbol: *symbol, Class: ms.AssetClass(*class), Venue: ms.VenueCEX,
+		HasPerpetual: *perp,
+	}
+	if inst.Class == ms.ClassCrypto {
+		inst.Sector = ms.CryptoSector(*sector)
+		inst.ContinuousTrading = true
+	} else {
+		inst.Venue = ms.VenueExchange
+	}
+
+	profile, err := ms.ExpertFor(inst)
+	if err != nil {
+		return err
+	}
+	fmt.Printf("── %s ──\n%s\n", inst, profile.Describe())
+	if !profile.TradeableAtAll {
+		return nil
+	}
+
+	s, err := ms.LoadCSV(*path, *symbol, *interval)
+	if err != nil {
+		return err
+	}
+
+	var cands []ms.Strategy
+	for _, a := range profile.Agents {
+		cands = append(cands, ms.AgentStrategy{Agent: a})
+	}
+	cands = append(cands, profile.Ensemble())
+
+	panel := profile.Panel()
+	ivs, err := panel.Conduct(s, cands...)
+	if err != nil {
+		return err
+	}
+	fmt.Print(panel.Report(ivs))
+	return nil
+}
+
+func discoverCmd(args []string) error {
+	fs := flag.NewFlagSet("discover", flag.ExitOnError)
+	path := fs.String("json", "", "path to a JSON array of ProjectAttention (required)")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if *path == "" {
+		fs.Usage()
+		return fmt.Errorf("-json is required")
+	}
+	b, err := os.ReadFile(*path)
+	if err != nil {
+		return err
+	}
+	var projects []ms.ProjectAttention
+	if err := json.Unmarshal(b, &projects); err != nil {
+		return fmt.Errorf("%s: %w", *path, err)
+	}
+	fmt.Print(ms.RankReport(ms.RankByCredibleAttention(projects)))
 	return nil
 }
 

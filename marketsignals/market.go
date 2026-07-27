@@ -81,6 +81,12 @@ type Series struct {
 	// need not be sorted; the View sorts and masks it. See events.go for what
 	// an agent is and is not allowed to know about an event before it lands.
 	Events []Event
+
+	// Social is per-bar public attention, aligned with Candles by index. Each
+	// entry must aggregate ONLY the window its bar covers; a snapshot that
+	// includes posts made after the bar closed is lookahead in the one input
+	// where it would be hardest to notice.
+	Social []SocialSnapshot
 }
 
 // Validate catches the input problems that silently corrupt a backtest:
@@ -194,6 +200,16 @@ func (v View) Funding() []float64 {
 		return nil
 	}
 	return v.series.Funding[:v.n:v.n]
+}
+
+// Social returns the visible attention snapshots, or nil when the series
+// carries none (or too few to cover the visible bars). Nil is meaningful: the
+// social agent stands down rather than reading absent data as silence.
+func (v View) Social() []SocialSnapshot {
+	if len(v.series.Social) < v.n {
+		return nil
+	}
+	return v.series.Social[:v.n:v.n]
 }
 
 // Now is the instant an agent holding this view is standing at: the close of

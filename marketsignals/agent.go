@@ -53,6 +53,13 @@ const (
 	// FamilyMacro is the political and macroeconomic calendar — the only
 	// family whose input is not derived from market data at all.
 	FamilyMacro Family = "macro"
+
+	// FamilySocial is public attention: posts, authors, and how credible the
+	// two look together. Genuinely independent of price, which is what makes
+	// it worth having — and also the easiest input in this package to
+	// fabricate, which is why its agent spends most of its logic decided
+	// whether to believe the data at all.
+	FamilySocial Family = "social"
 )
 
 // Signal is an agent's opinion about the next bar. Strength is the agent's

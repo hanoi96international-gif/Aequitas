@@ -1,0 +1,27 @@
+[
+  {
+    "instrument": {"symbol": "REALINFRA", "class": "crypto", "sector": "infra", "venue": "cex"},
+    "current": {"posts": 900, "unique_authors": 780, "duplicate_text_ratio": 0.05,
+                "median_author_age_days": 400, "new_account_ratio": 0.05},
+    "baseline_attention": 100
+  },
+  {
+    "instrument": {"symbol": "PUMPCOIN", "class": "crypto", "sector": "meme", "venue": "dex",
+                   "chain": "solana", "address": "So1111"},
+    "current": {"posts": 50000, "unique_authors": 400, "duplicate_text_ratio": 0.97,
+                "median_author_age_days": 3, "new_account_ratio": 0.98},
+    "baseline_attention": 1
+  },
+  {
+    "instrument": {"symbol": "AITHEME", "class": "crypto", "sector": "narrative", "venue": "cex"},
+    "current": {"posts": 4200, "unique_authors": 3100, "duplicate_text_ratio": 0.12,
+                "median_author_age_days": 260, "new_account_ratio": 0.15},
+    "baseline_attention": 400
+  },
+  {
+    "instrument": {"symbol": "OLDCOIN", "class": "crypto", "sector": "large_alt", "venue": "cex"},
+    "current": {"posts": 1200, "unique_authors": 950, "duplicate_text_ratio": 0.08,
+                "median_author_age_days": 500, "new_account_ratio": 0.06},
+    "baseline_attention": 1100
+  }
+]

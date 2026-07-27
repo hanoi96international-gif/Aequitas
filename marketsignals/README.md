@@ -1,6 +1,6 @@
 # marketsignals
 
-Ein eigenständiges Go-Modul für Marktsignal-Agenten: fünf spezialisierte
+Ein eigenständiges Go-Modul für Marktsignal-Agenten: neun spezialisierte
 Agenten, ein Ensemble, das nur bei unkorrelierter Übereinstimmung spricht, ein
 Risikomanager und eine Backtest-Engine, die bewusst schwer zu betrügen ist.
 
@@ -20,7 +20,41 @@ die sind bekannt — sondern in der Bewertung, die sich nicht selbst belügt.
 Das Modul platziert **keine Orders**. Es hält keine Keys und spricht mit keiner
 Börse.
 
-## Die fünf Agenten
+## Anlageklassen — getrennt behandelt
+
+`ETF`, `Aktie` und `Krypto` sind keine Etiketten, sondern unterschiedliche
+Annahmen. Krypto ist zusätzlich in Sektoren geteilt, weil "Krypto" kein Markt
+ist: Bitcoin und ein zwei Tage alter Memecoin teilen eine Settlement-Schicht
+und sonst nichts.
+
+Ein Experten-Profil (`experts.go`) ist kein eigener Algorithmus pro Sektor —
+ein Breakout bleibt ein Breakout. Unterschiedlich ist alles *drumherum*:
+
+| Segment | Kosten/Einheit | Max. Position | Besonderheit |
+|---|---|---|---|
+| ETF | 3bp | 100% | Mean Reversion erlaubt (ein Korb hat einen Mittelwert) |
+| Aktie | 3bp | 50% | Reversion gestrichen (Einzeltitelrisiko) |
+| Krypto Major | 9bp | 100% | Voller Agentensatz, Funding nur mit Perp |
+| Liquid Alt | 21bp | 50% | Reversion gestrichen |
+| Narrative (AI/RWA) | 33bp | 30% | Social-Agent aktiv, 80% der Folds müssen positiv sein |
+| Memecoin | **210bp** | 10% | Reversion undefiniert, Social-Agent, 50 Trades Minimum |
+| Neuer Launch | — | — | **Nicht handelbar** — zu wenig Historie |
+| Stablecoin | — | — | **Nicht handelbar** — Peg-Bruch nicht im Sample |
+
+Die Memecoin-Kostenannahme von 210bp pro Runde ist die wichtigste Zahl der
+ganzen Tabelle. Bei diesen Kosten braucht eine Strategie einen sehr großen
+Edge, nur um bei null herauszukommen — und die meisten Memecoin-"Edges"
+verschwinden genau dort vollständig.
+
+Zwei Segmente werden explizit **verweigert**. Das ist eine nützlichere Ausgabe
+als eine selbstbewusste Zahl aus dem Nichts: bei einem Stablecoin misst ein
+hoher Sharpe die Abwesenheit des Peg-Bruchs, nicht seine Unwahrscheinlichkeit.
+
+```bash
+go run ./cmd/signalctl experts     # alle Profile mit Begründung
+```
+
+## Die sieben Agenten
 
 | Agent | Familie | Idee | Warum verteidigbar |
 |---|---|---|---|
@@ -28,10 +62,46 @@ Börse.
 | `reversion` | reversion | Fadet Erschöpfung — nur mit Rejection-Wick, nur im Seitwärtsregime | Handelt *erzwungene* Verkäufer, nicht bloß schwache Preise |
 | `flow` | flow | Divergenz zwischen Preisextrem und kumulativer Taker-Delta | Einziger Agent, der früh statt bestätigend ist |
 | `funding` | positioning | Perp-Funding-Extreme über Perzentilrang | Misst Überfüllung statt Preis — Fehler unkorreliert zu den anderen |
+| `fibonacci` | structure | Retracement-Zone, die *gehalten* hat | Level wirken durch Aufmerksamkeit, nicht durch Magie — daher nur mit Rejection |
+| `pattern` | structure | Doppeltop/-boden, SKS, Dreiecke — erst beim Bruch | Trigger steht *vor* dem Bruch fest, nicht danach |
+| `macro` | macro | Politik-/Konjunkturkalender | Moduliert primär Risiko statt Richtung |
+| `social` | social | Glaubwürdige X-Aufmerksamkeit | Überwiegend **contrarian** — Aufmerksamkeit ist meist Ausstiegsliquidität |
 | `launch` | screen | Risiko-Screener für neue Token | Beantwortet nicht "wohin", sondern "überhaupt anfassbar?" |
 
-Die vier Markt-Agenten haben **bewusst ungetunte** Parameter (runde Zahlen).
+Alle Markt-Agenten haben **bewusst ungetunte** Parameter (runde Zahlen).
 Auf denselben Daten optimieren, auf denen man auch bewertet, ist Curve-Fitting.
+
+### Politik: Überraschung, nicht Ausgang
+
+Der Macro-Agent sagt **keine** Wahlausgänge, Zinsentscheide oder Urteile
+voraus. Das ist nicht prognostizierbar, und ein System, das darauf wettet,
+handelt nicht, sondern spielt. Stattdessen:
+
+- **Vor** einem terminierten binären Ereignis: Risiko runter, bis auf null.
+  Ein Referendum in zwei Stunden macht einen Long nicht besser oder schlechter
+  — es macht *jede* Größe falsch.
+- **Nach** dem Ereignis: mit der *Überraschung* lehnen (Ist gegen Konsens),
+  aber erst nach einer `ReactionDelay`. Die ersten Minuten gehören Systemen
+  neben der Matching-Engine. Ein Backtest, der sie beansprucht, beschreibt
+  einen Trade, den es nie gab.
+
+Der Kalender erzwingt eine Trennung, an der alles hängt: der **Termin** eines
+geplanten Ereignisses ist Monate vorher öffentlich, sein **Ausgang** nicht.
+`MaskEvents` behält Datum und Konsens, entfernt Ist-Werte und Überraschung bis
+zum Eintritt — und blendet *unangekündigte* Ereignisse vollständig aus.
+
+### Social: Aufmerksamkeit ist fast immer zu spät
+
+Rohe Erwähnungszahlen sind wertlos — sie sind der am leichtesten käufliche
+Wert im ganzen Paket. Der Agent bewertet stattdessen *Glaubwürdigkeit*:
+Autorenvielfalt × Originalität × Kontoalter × Anteil etablierter Konten,
+**multiplikativ**, weil jede dieser Größen ein vollständiger Weg ist,
+Aufmerksamkeit zu fälschen.
+
+Im mitgelieferten Beispiel landet ein Projekt mit 50.000 Posts auf dem letzten
+Platz (Glaubwürdigkeit 0.00) hinter einem mit 900 Posts. `discover` liefert
+eine **Watchlist zum Prüfen**, keine Kaufliste — die Rangliste von oben zu
+kaufen ist eine mechanische Methode, immer zuletzt anzukommen.
 
 ### Das Ensemble zählt Familien, nicht Agenten
 
@@ -84,6 +154,12 @@ Balken i+2 öffnet   →  Rendite wird realisiert
 *perfekte* Vorhersage der nächsten 5%-Lücke — und sie verdient trotzdem nichts
 außer Gebühren, weil die Bewegung vor der Ausführung stattfindet.
 
+**2b. Swings sind erst verzögert bekannt.** Ein Hoch auf Balken 100 ist auf
+Balken 100 nicht bekannt — erst wenn die Bestätigungsbalken geschlossen haben.
+Auf einem gedruckten Chart ist diese Verzögerung unsichtbar, und genau dort
+schummelt Pattern-/Fibonacci-Code üblicherweise. `FindSwings` gibt unbestätigte
+Extrema gar nicht erst heraus; ein Test fixiert den exakten Grenzbalken.
+
 **3. Selektion wird bestraft.** Wer 200 Varianten testet, findet immer eine
 mit gutem Sharpe — auch in reinem Rauschen. `SelectBest` vergleicht daher nicht
 gegen null, sondern gegen den Sharpe, den der *Beste von so vielen Versuchen*
@@ -92,6 +168,29 @@ Prado). Schiefe und Fat Tails gehen ein: dieselbe Sharpe-Zahl ist weniger wert,
 wenn sie durch das Verkaufen von Crash-Versicherung entsteht.
 
 Unter `P(edge real) = 0.95` lautet das ehrliche Fazit: **nichts nachgewiesen.**
+
+## Das Einstellungsverfahren
+
+`SelectBest` *rangiert*. Eine Rangliste hat immer einen Sieger — auch der Beste
+eines schlechten Feldes ist schlecht. Das Panel (`interview.go`) fragt etwas
+anderes: erfüllt *dieser* Kandidat eine absolute Hürde?
+
+| Kriterium | Wogegen es schützt |
+|---|---|
+| Deflated Sharpe ≥ 0.95 | Ergebnis ist der beste von vielen Rausch-Zügen |
+| ≥ 60% der Folds positiv | Edge existierte in *einem* Regime und ist tot |
+| Drawdown haltbar | Rendite real, aber praktisch nicht durchzuhalten |
+| Mindestanzahl Trades | Bilanz beruht auf ein paar Glücksfällen |
+| **Überlebt 2× Slippage** | Der "Edge" war eine optimistische Gebührenannahme |
+
+**Alle fünf** müssen bestehen. Mitteln würde einem spektakulären Sharpe
+erlauben, eine Strategie freizukaufen, deren Edge bei realistischen Kosten
+verschwindet. Auf einem Random Walk stellt das Panel **niemanden** ein und
+sagt das auch so.
+
+```bash
+go run ./cmd/signalctl interview -csv bars.csv -sector meme
+```
 
 ## Risikomanagement
 
@@ -117,6 +216,15 @@ go run ./cmd/signalctl signal -csv bars.csv
 # Neue Launches screenen
 go run ./cmd/signalctl screen -json examples/launches.json
 
+# Alle Experten-Profile mit Begründung
+go run ./cmd/signalctl experts
+
+# Einstellungsverfahren für ein Segment
+go run ./cmd/signalctl interview -csv bars.csv -class crypto -sector meme
+
+# Discovery: gehypte Projekte nach glaubwürdiger Aufmerksamkeit
+go run ./cmd/signalctl discover -json examples/trending.json
+
 go test ./...
 ```
 
@@ -124,9 +232,35 @@ CSV-Spalten: `time,open,high,low,close,volume[,buy_volume,sell_volume][,funding]
 — `time` als RFC3339 oder Unix-Epoch (s oder ms). Fehlen Taker-Split oder
 Funding, treten die betroffenen Agenten zurück, statt die Eingabe zu erfinden.
 
+## Datenquellen — und wo die Grenze liegt
+
+`venues.go` definiert, was das Framework von außen braucht: `BarSource`,
+`LaunchSource`, `SocialSource`. Mitgeliefert wird **eine** Implementierung:
+Dateien auf der Platte (`FileSource`). Es gibt bewusst **keinen** Live-Adapter
+für X, für eine CEX oder für einen DEX-Aggregator.
+
+Das ist kein Rückstand, sondern die ehrliche Grenze: jeder solche Adapter
+braucht Zugangsdaten, und Zugangsdaten sind eine Entscheidung darüber, was in
+wessen Namen handeln darf. Für dich, der die Keys hat, ist das eine kleine
+Arbeit — hier geraten, ergäbe es Code, der nicht testbar ist und dessen
+Fehlerfall ein stiller Strom falscher Preise wäre.
+
+Zwei Normalisierungsprobleme sind aber gelöst, weil sie leicht zu übersehen
+und teuer sind:
+
+- **AMM-Volumen ist überwiegend Arbitrage.** Ein Pool hat keine Käufer und
+  Verkäufer im Sinne eines Orderbuchs; ein großer Teil des Volumens sind Bots,
+  die den Pool auf den Preis zurückschieben, den er anderswo schon hat. Roh an
+  den Flow-Agenten gegeben ergibt das eine selbstbewusste Lesung von Robotern.
+- **CEX/DEX-Divergenz** ist kein Gratisgeld, sondern ein Datenhygiene-Alarm.
+
 ## Ehrliche Grenzen
 
 - **Keine Live-Anbindung.** Ein Broker-Adapter ist bewusst nicht enthalten.
+- **Politische Prognose findet nicht statt.** Nur Reaktion auf Überraschung,
+  und die erste Minute ist bewusst unerreichbar.
+- **Fibonacci hat keine physikalische Wirkung.** Die Level funktionieren, wenn
+  überhaupt, weil genug Leute hinschauen. Ob das reicht, entscheidet die Hürde.
 - **Keine getunten Parameter.** Wer sie tunt, muss die Trial-Zahl in
   `SelectBest` entsprechend erhöhen, sonst wird das Ergebnis wertlos.
 - **Slippage ist eine Annahme.** Ändert sich das Ranking, wenn man sie
