@@ -251,7 +251,11 @@ type ChainState struct {
 	// single-writer serialization model or touching any other atomic
 	// operation (swap/liquidity/registration/distribution keep using
 	// runAtomicWithOutbox exactly as before, one call at a time).
-	transferBatchCh   chan *transferBatchRequest
+	transferBatchCh chan *transferBatchRequest
+	// Batched nonce reservation; see nonce_batch.go for why the single-row
+	// version became the largest single item in the CPU profile.
+	nonceBatchOnce    sync.Once
+	nonceBatchCh      chan *nonceReserveRequest
 	transferBatchOnce sync.Once
 
 	// parallelBatchSem bounds how many transferBatchCh-collected batches can
