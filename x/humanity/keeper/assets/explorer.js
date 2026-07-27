@@ -3406,7 +3406,11 @@ async function loadBlocks() {
     // siblingsAt[h] = total count of blocks at that height (for DAG sibling display) —
     // purely cosmetic now, no longer used to pick which block represents the height.
     const siblingsAt = {};
-    (rawBlocks || []).forEach(function(b) { siblingsAt[b.height] = (siblingsAt[b.height] || 0) + 1; });
+    const txCountAt = {};
+    (rawBlocks || []).forEach(function(b) {
+      siblingsAt[b.height] = (siblingsAt[b.height] || 0) + 1;
+      txCountAt[b.height] = (txCountAt[b.height] || 0) + ((b.transactions || []).length);
+    });
     // DAG view needs every sibling (rawBlocks) plus the authoritative
     // canonical set (to mark which one is the real selected-parent chain) —
     // merge canonical blocks into allBlocks too, since a canonical block can
@@ -3444,7 +3448,12 @@ async function loadBlocks() {
     if (list) {
       list.innerHTML = dedupedBlocks.slice(0, 30).map(function(b) {
         const merge = b.parent_hashes && b.parent_hashes.length > 1;
-        const txCount = (b.transactions || []).length;
+        // Count transactions across EVERY block at this height, not just the
+        // canonical one. Same reason the transaction list below reads siblings:
+        // GHOSTDAG merges them, so a transfer in a sibling really was included
+        // at this height — showing "0" while the list underneath displays that
+        // very transfer is how a user concludes their transaction vanished.
+        const txCount = txCountAt[b.height] != null ? txCountAt[b.height] : (b.transactions || []).length;
         const vLabel = validatorLabel(b.proposer);
         const proposer = b.proposer ? short(b.proposer, 6, 4) : '—';
         const sibCount = siblingsAt[b.height] || 1;
@@ -3466,11 +3475,38 @@ async function loadBlocks() {
           '</tr>';
       }).join('');
     }
-    // Collect all transactions across blocks, newest first
+    // Collect all transactions across blocks, newest first.
+    //
+    // FIX (2026-07-27, reported live): this walked dedupedBlocks — the
+    // CANONICAL chain — and therefore missed every transaction that landed in a
+    // merged sibling. In a BlockDAG several validators produce at the same
+    // height; GHOSTDAG selects one as canonical and MERGES the rest, so a
+    // transaction in a sibling is fully valid, executed and reflected in state.
+    // It simply is not in the selected-parent block.
+    //
+    // Confirmed on the live chain: a user's 20 AEQ transfer sat in one of three
+    // blocks at height 2023173. eth_getTransactionReceipt returned it correctly
+    // and chain_tx_block_index recorded it — but the explorer showed "No
+    // transactions yet", because the canonical block at that height was one of
+    // the two empty siblings. From the user's side a successful transfer had
+    // simply vanished.
+    //
+    // rawBlocks (/api/blocks) already carries every sibling; it was being
+    // fetched only to count them for the parallel-blocks badge. Reading the
+    // transaction list from it costs nothing extra and shows what actually
+    // happened on the chain.
     if (txList) {
       const allTxs = [];
-      dedupedBlocks.forEach(function(b) {
+      const txSource = (rawBlocks && rawBlocks.length) ? rawBlocks : dedupedBlocks;
+      const seenTx = new Set();
+      txSource.slice().sort(function(a, b) { return b.height - a.height; }).forEach(function(b) {
         (b.transactions || []).forEach(function(tx) {
+          // The same transaction can legitimately appear in more than one
+          // sibling at a height — show it once, attributed to the first block
+          // seen, rather than listing an apparent duplicate transfer.
+          const key = tx.tx_hash || (b.hash + '|' + (tx.wallet || '') + '|' + (tx.to || '') + '|' + (tx.amount || ''));
+          if (seenTx.has(key)) return;
+          seenTx.add(key);
           allTxs.push({ tx: tx, blockHeight: b.height, blockHash: b.hash });
         });
       });
