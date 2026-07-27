@@ -539,17 +539,23 @@ func (a *APIServer) handleCombinedHealth(w http.ResponseWriter, r *http.Request)
 		// this operator endpoint — never on /api/status, which the explorer
 		// polls every few seconds from every open tab.
 		"runtime": runtimeSnapshot(),
+		// How much of the wall clock every concurrent transfer spends locked
+		// out by an exclusive holder (block replay, distributions). See
+		// exclusive_lock_stats.go: busy_pct is an upper bound on how much of
+		// the time this node can accept transfers at all, regardless of how
+		// well the transfer path itself performs.
+		"exclusive_lock": ExclusiveLockStats(),
 		"chain": map[string]interface{}{
-			"status":       status,
-			"notes":        notes,
-			"healthy":      status == "healthy", // kept for backward compatibility with existing callers
-			"degraded_reason": degradedReason,
-			"dag_degraded": dagDegraded,
-			"dag_degraded_reason": dagDegradedReason,
-			"checkpoint_trust_mode": checkpointTrustMode,
+			"status":                     status,
+			"notes":                      notes,
+			"healthy":                    status == "healthy", // kept for backward compatibility with existing callers
+			"degraded_reason":            degradedReason,
+			"dag_degraded":               dagDegraded,
+			"dag_degraded_reason":        dagDegradedReason,
+			"checkpoint_trust_mode":      checkpointTrustMode,
 			"synthetic_checkpoint_count": syntheticCheckpointCount,
-			"height":       latest.Height,
-			"dag_tips_count": a.blockchain.TipsCount(),
+			"height":                     latest.Height,
+			"dag_tips_count":             a.blockchain.TipsCount(),
 			// FIX (Monster Audit 2026-07-12, P2): documenting the trust model
 			// this counter represents, for anyone building against this API —
 			// StateRoot is a diagnostic drift signal, not a consensus
@@ -559,13 +565,13 @@ func (a *APIServer) handleCombinedHealth(w http.ResponseWriter, r *http.Request)
 			// state across nodes — verify convergence for anything
 			// consequential via an exact /api/block?height=N hash match
 			// instead of trusting this count alone.
-			"state_root_mismatch_count": mismatchCount,
+			"state_root_mismatch_count":          mismatchCount,
 			"last_successful_peer_sync_age_secs": lastSyncAgeSecs,
-			"total_humans": a.state.TotalHumans(),
-			"total_supply": fmt.Sprintf("%.2f AEQ", a.state.TotalSupply()),
-			"uptime_secs":  int64(time.Since(a.startTime).Seconds()),
-			"destructive_flags_set": destructiveFlagsSet,
-			"registration_recovery_pending": registrationRecoveryCount,
+			"total_humans":                       a.state.TotalHumans(),
+			"total_supply":                       fmt.Sprintf("%.2f AEQ", a.state.TotalSupply()),
+			"uptime_secs":                        int64(time.Since(a.startTime).Seconds()),
+			"destructive_flags_set":              destructiveFlagsSet,
+			"registration_recovery_pending":      registrationRecoveryCount,
 			// FIX (audit 2026-06-28 recheck 5, P2-3): "Health/Debug sollte
 			// Chain-Nullifier, Chain-BioHash und Proof-BioHash getrennt
 			// anzeigen." proof_server.last_status.bio_hash_count (below) is
@@ -584,7 +590,7 @@ func (a *APIServer) handleCombinedHealth(w http.ResponseWriter, r *http.Request)
 			},
 		},
 		"proof_server": map[string]interface{}{
-			"reachable": len(proofStatus) > 0,
+			"reachable":   len(proofStatus) > 0,
 			"last_status": proofStatus,
 		},
 		// FIX (P0, 2026-07-10): see SyncDiagnostics' own comment
@@ -1356,7 +1362,7 @@ func (a *APIServer) handleBlockPush(w http.ResponseWriter, r *http.Request) {
 		// so the sender can learn about its own divergence instead of pushing
 		// into the void forever. See HTTPBroadcastBlock (sync_blocks.go) for the
 		// sender-side reaction, safety-gated behind AUTO_HEAL_ON_DIVERGENCE.
-		w.Write([]byte(`{"ok":false,"reason":"push flood shield open","action":"resync_required","tx_batch":"`+txBatchCapabilityToken+`"}`))
+		w.Write([]byte(`{"ok":false,"reason":"push flood shield open","action":"resync_required","tx_batch":"` + txBatchCapabilityToken + `"}`))
 		return
 	}
 	// maxBlockStreamBytes (p2p.go), not a separate literal: this is the same
@@ -1433,22 +1439,22 @@ func (a *APIServer) handleBlockPush(w http.ResponseWriter, r *http.Request) {
 	// this one against each other during ordinary propagation lag even after
 	// the per-proposer breaker was fixed to tolerate it.
 	if !accepted && a.blockchain.IsWithinOrphanGrace(&block) {
-		w.Write([]byte(`{"ok":false,"reason":"orphaned, within grace period","tx_batch":"`+txBatchCapabilityToken+`"}`))
+		w.Write([]byte(`{"ok":false,"reason":"orphaned, within grace period","tx_batch":"` + txBatchCapabilityToken + `"}`))
 		return
 	}
 	blockPushRecordOutcome(ip, accepted)
 	if accepted {
 		fmt.Printf("[BLOCK-PUSH] ✓ Accepted block #%d via HTTP push\n", block.Height)
-		w.Write([]byte(`{"ok":true,"tx_batch":"`+txBatchCapabilityToken+`"}`))
+		w.Write([]byte(`{"ok":true,"tx_batch":"` + txBatchCapabilityToken + `"}`))
 	} else {
 		// Not an error — block may already be known (idempotent). Only signal
 		// resync_required when the rejection is unambiguous (this proposer's
 		// own breaker is open) — an ordinary duplicate (arrived via P2P first)
 		// must never trigger it.
 		if a.blockchain.proposerBlockBlocked(block.Proposer) {
-			w.Write([]byte(`{"ok":false,"reason":"proposer circuit breaker open","action":"resync_required","tx_batch":"`+txBatchCapabilityToken+`"}`))
+			w.Write([]byte(`{"ok":false,"reason":"proposer circuit breaker open","action":"resync_required","tx_batch":"` + txBatchCapabilityToken + `"}`))
 		} else {
-			w.Write([]byte(`{"ok":false,"reason":"rejected or already known","tx_batch":"`+txBatchCapabilityToken+`"}`))
+			w.Write([]byte(`{"ok":false,"reason":"rejected or already known","tx_batch":"` + txBatchCapabilityToken + `"}`))
 		}
 	}
 }
@@ -2191,8 +2197,9 @@ func (a *APIServer) handleSignValidatorChallenge(w http.ResponseWriter, r *http.
 // wallet, authorising that signing key to propose blocks.
 //
 // Requires TWO signatures proving control of BOTH keys:
-//   human_signature:      personal_sign("Aequitas: authorize validator {signing_address}", human_wallet)
-//   signing_key_signature: personal_sign("Aequitas: validator key linked to human {human_wallet}", signing_address)
+//
+//	human_signature:      personal_sign("Aequitas: authorize validator {signing_address}", human_wallet)
+//	signing_key_signature: personal_sign("Aequitas: validator key linked to human {human_wallet}", signing_address)
 //
 // The double-signature requirement proves the requester controls both the
 // human wallet AND the node signing key, preventing impersonation attacks
@@ -2303,8 +2310,8 @@ func (a *APIServer) handlePeerChallenge(w http.ResponseWriter, r *http.Request) 
 const registrationRateLimitWindow = 20 * time.Second
 
 var (
-	registrationRateLimitMu  sync.Mutex
-	lastRegistrationAttempt  = map[string]int64{} // lower-cased signing address -> unix-nano of last processed attempt
+	registrationRateLimitMu sync.Mutex
+	lastRegistrationAttempt = map[string]int64{} // lower-cased signing address -> unix-nano of last processed attempt
 )
 
 // registrationRateLimited reports whether addr registered too recently to
