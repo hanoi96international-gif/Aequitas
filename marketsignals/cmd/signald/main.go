@@ -35,16 +35,35 @@ func main() {
 	seedBars := flag.Int("seed", 600, "how many historical bars to load before starting")
 	out := flag.String("out", "", "optional JSONL file to append signals to")
 	sector := flag.String("sector", "major", "crypto sector, selecting the expert profile")
+	notify := flag.String("notify", "", "webhook URL for notifications (env NOTIFY_URL is safer)")
+	notifyField := flag.String("notify-field", "text", "JSON field for the message: text (Telegram/Slack), content (Discord), empty for raw JSON")
+	notifyChat := flag.String("notify-chat", "", "Telegram chat_id, if the endpoint needs one")
+	minChange := flag.Float64("notify-min-change", 0.20, "position change, as a fraction of equity, worth a message")
 	pollEvery := flag.Duration("poll", 0, "poll interval (default: a tenth of the bar interval)")
 	flag.Parse()
 
-	if err := run(*symbol, *interval, *market, *sector, *out, *seedBars, *pollEvery); err != nil {
+	// Preferring the environment keeps the token out of shell history and out
+	// of any `ps` listing on a shared box.
+	url := *notify
+	if fromEnv := os.Getenv("NOTIFY_URL"); fromEnv != "" {
+		url = fromEnv
+	}
+	cfg := notifyConfig{URL: url, Field: *notifyField, ChatID: *notifyChat, MinChange: *minChange}
+
+	if err := run(*symbol, *interval, *market, *sector, *out, *seedBars, *pollEvery, cfg); err != nil {
 		fmt.Fprintln(os.Stderr, "error:", err)
 		os.Exit(1)
 	}
 }
 
-func run(symbol, interval, market, sector, out string, seedBars int, pollEvery time.Duration) error {
+type notifyConfig struct {
+	URL       string
+	Field     string
+	ChatID    string
+	MinChange float64
+}
+
+func run(symbol, interval, market, sector, out string, seedBars int, pollEvery time.Duration, notify notifyConfig) error {
 	barDur, err := binance.ParseInterval(interval)
 	if err != nil {
 		return err
@@ -128,6 +147,20 @@ func run(symbol, interval, market, sector, out string, seedBars int, pollEvery t
 		defer f.Close()
 		sinks = append(sinks, &ms.JSONLSink{W: f})
 		fmt.Fprintf(os.Stderr, "appending signals to %s\n", out)
+	}
+
+	if notify.URL != "" {
+		hook := ms.NewWebhookSink(notify.URL, notify.Field)
+		if notify.ChatID != "" {
+			hook.Extra = map[string]any{"chat_id": notify.ChatID}
+		}
+		filter := ms.NewChangeNotifier(hook)
+		filter.MinChange = notify.MinChange
+		sinks = append(sinks, filter)
+		// The URL is never echoed: for most providers it contains the token.
+		fmt.Fprintf(os.Stderr,
+			"notifying on a position change of %.0f%% or more, and on every side change\n",
+			notify.MinChange*100)
 	}
 
 	fmt.Fprintf(os.Stderr, "polling every %s. This process places no orders.\n\n", pollEvery)

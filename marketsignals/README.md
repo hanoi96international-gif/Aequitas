@@ -315,6 +315,34 @@ der Code läuft, die Signale sehen plausibel aus, und die Verluste kommen als
 Deshalb prüfen **beide** Seiten unabhängig, dass ein Balken geschlossen ist —
 der Client wirft die laufende Kerze weg, und der Runner weist sie nochmal ab.
 
+### Benachrichtigungen
+
+```bash
+export NOTIFY_URL="https://api.telegram.org/bot<TOKEN>/sendMessage"
+go run ./cmd/signald -symbol BTCUSDT -notify-chat <CHAT_ID>
+```
+
+Funktioniert genauso mit Discord (`-notify-field content`), Slack, ntfy.sh
+oder einem eigenen Endpunkt — jeder nimmt ein POST mit JSON entgegen, der Rest
+ist Konfiguration. Der Token wird aus der Umgebung gelesen (nicht aus der
+Shell-History) und **nie** ausgegeben; auch die Fehlermeldung bei einem 401
+enthält die URL nicht, weil genau solche Zeilen in Issue-Tracker kopiert
+werden.
+
+**Benachrichtigt wird bei Positionsänderung, nicht pro Kerze.** Eine
+Stundenstrategie erzeugt 24 Signale am Tag, von denen 23 „keine Änderung"
+sagen — und die verlässliche Folge davon ist, dass das 24. auch ignoriert
+wird. Gefiltert wird auf:
+
+- Zielposition bewegt sich um ≥ 20 % des Kapitals, **und** höchstens eine
+  Nachricht pro Stunde
+- **Seitenwechsel immer** — long → short oder → flat wird nie unterdrückt,
+  auch nicht innerhalb der Sperrfrist. „Auf flat" heißt „Position schließen".
+
+Die Nachricht führt mit der Handlung, nicht mit der Analyse: Seite, Größe,
+Kerze. Danach erst, welcher Agent was gesehen hat — und die Warnung, falls der
+Drawdown-Stop mangels verdrahtetem Konto wirkungslos ist.
+
 ### Weitere Live-Eigenschaften
 
 - **Lücken stoppen den Betrieb.** Bricht die Verbindung ab, fehlen Balken. Jeder
