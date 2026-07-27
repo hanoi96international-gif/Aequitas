@@ -31,8 +31,12 @@ type Allocator interface {
 	Allocate(u *Universe, n int) (Allocation, error)
 }
 
-// Name identifies the cross-sectional allocator.
-func (c *CrossSectional) Name() string { return "cross-sectional" }
+// Name identifies the cross-sectional allocator, including the parameters that
+// distinguish one variant from another — a field of eighteen candidates all
+// called "cross-sectional" is a report nobody can act on.
+func (c *CrossSectional) Name() string {
+	return fmt.Sprintf("xs/lb%d/skip%d/frac%.1f", c.Lookback, c.SkipRecent, c.LongFraction)
+}
 
 // ExpertPanel runs one expert ensemble per instrument and combines their
 // targets into a book.
@@ -265,7 +269,8 @@ func (b *PortfolioBacktester) Run(u *Universe, a Allocator) (PortfolioResult, er
 
 	equity := 1.0
 	held := map[string]float64{}
-	var grossSum, divSum float64
+	var grossSum, divSum, turnoverSum float64
+	rebalances := 0
 
 	for i := warmup - 1; i <= bars-3; i++ {
 		alloc, err := a.Allocate(u, i+1)
@@ -273,10 +278,11 @@ func (b *PortfolioBacktester) Run(u *Universe, a Allocator) (PortfolioResult, er
 			return PortfolioResult{}, err
 		}
 
-		barRet := 0.0
+		barRet, barTurnover := 0.0, 0.0
 		for _, sym := range symbols {
 			target := alloc.Weights[sym]
 			turnover := math.Abs(target - held[sym])
+			barTurnover += turnover
 			barRet -= b.costFor(sym).CostFraction(turnover)
 			held[sym] = target
 
@@ -293,9 +299,19 @@ func (b *PortfolioBacktester) Run(u *Universe, a Allocator) (PortfolioResult, er
 
 		grossSum += alloc.Gross
 		divSum += alloc.DiversificationRatio
+		turnoverSum += barTurnover
+		if barTurnover > 0 {
+			rebalances++
+		}
 	}
 
 	res.Metrics = ComputeMetrics(res.Returns, res.BarsPerYear)
+	// ComputeMetrics works on a bare return stream and cannot see positions,
+	// so activity is filled in here. Leaving it at zero was not cosmetic: the
+	// hiring panel's evidence criterion reads it, so a book would have failed
+	// that criterion for ever regardless of how it performed.
+	res.Metrics.Turnover = turnoverSum
+	res.Metrics.Trades = rebalances
 	if n := float64(len(res.Allocations)); n > 0 {
 		res.AvgGross = grossSum / n
 		res.AvgDiversification = divSum / n

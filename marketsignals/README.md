@@ -273,6 +273,42 @@ go run ./cmd/signalctl search -csv btc.csv -csv eth.csv -csv sol.csv -grid full
 Mehrere `-csv` verlangen, dass dieselbe Methode auf mehreren Märkten überlebt
 — der Test, der ein Ergebnis am ehesten killt, und deshalb der wertvollste.
 
+## Ein Maßstab für alles
+
+Bücher und Einzelinstrument-Strategien treten jetzt im **selben Feld** an. Das
+war vorher eine Integritätslücke: alles hier weigert sich, eine ungeprüfte
+Strategie einzusetzen — aber ausgerechnet das Buch, das komplexere Objekt mit
+mehr Fehlermöglichkeiten, konnte gar nicht geprüft werden.
+
+Der Trial-Count zählt jetzt korrekt: wer fünf Agenten und drei Allokatoren
+probiert, hat **acht** Versuche gemacht, und die Hürde steigt entsprechend für
+alle.
+
+### Was kein Test sehen kann
+
+Jede statistische Kontrolle hier fragt: wie viel des Ergebnisses ist Selektion
+*innerhalb* der Daten? Keine kann ein Problem damit sehen, *welche Daten
+existieren* — und ein Universum hat eines, das ein Einzelinstrument nicht hat.
+
+Ein heute zusammengestelltes Universum enthält die Coins, die es **noch gibt**.
+Alles, was auf null ging, delistet wurde oder still aufhörte zu handeln, fehlt
+— und dieses Fehlen ist unsichtbar. Der Backtest sieht nie die Position, die er
+ins Delisting gehalten hätte.
+
+Der Deflated Sharpe kann das nicht erkennen, weil es keine Selektion in den
+Daten ist, sondern eine Selektion darüber, welche Daten es gibt. Portfolio-
+Kandidaten tragen das deshalb als **Vorbehalt** in den Bericht:
+
+```
+[!!!!] universe of 10 names: if it was assembled from instruments trading TODAY,
+       the result describes a strategy that only ever held survivors, and no
+       statistical control in this package can detect that
+```
+
+Das steht neben einer Einstellung, nicht dagegen. Die ehrliche Antwort auf
+etwas, das ein Test nicht sehen kann, ist es zu sagen — nicht so zu tun, als
+decke eine Zahl es ab.
+
 ## Das Einstellungsverfahren
 
 `SelectBest` *rangiert*. Eine Rangliste hat immer einen Sieger — auch der Beste

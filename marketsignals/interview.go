@@ -79,6 +79,11 @@ type Interview struct {
 	Assessments []Assessment
 	Result      Result
 	Stressed    Result
+	// Caveats are limitations no criterion above can test for — chiefly
+	// survivorship in a universe. They are printed alongside a hire rather
+	// than counted against it, because the honest response to something a
+	// test cannot see is to say so, not to pretend a number covers it.
+	Caveats []string
 }
 
 // FailureReasons lists the criteria this candidate failed.
@@ -222,6 +227,9 @@ func (p *Panel) Report(interviews []Interview) string {
 				mark = "pass"
 			}
 			out += fmt.Sprintf("    [%s] %-26s %s\n", mark, a.Criterion, a.Detail)
+		}
+		for _, c := range iv.Caveats {
+			out += "    [!!!!] " + c + "\n"
 		}
 	}
 	out += fmt.Sprintf("\n%d of %d candidates hired.\n", hired, len(interviews))
