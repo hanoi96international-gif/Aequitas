@@ -605,6 +605,51 @@ not verified: mint, freeze and upgrade authorities were never inspected
 
 Eine ungeprüfte Authority ist keine abwesende Authority.
 
+## Echter Broker und X — beides gebaut
+
+### Broker
+
+`binance/trade.go` implementiert `Broker` gegen Binance USDⓈ-M Futures.
+
+**Testnet ist die Voreinstellung.** Der Adapter zeigt auf `testnet.binancefuture.com`,
+solange `Live` nicht **im Code** gesetzt wird. Ein Flag wäre falsch: Flags landen
+in der Shell-History, in kopierten Kommandozeilen und in einer systemd-Unit, die
+jemand vor einem Jahr geschrieben hat. Die echte Börse zu erreichen soll
+erfordern, dass jemand eine Quelldatei bearbeitet und es so meint.
+
+Zugangsdaten kommen aus `BINANCE_API_KEY` / `BINANCE_API_SECRET` und werden
+nirgendwo geschrieben — nicht in die Config, nicht ins Log, und nicht in eine
+Fehlermeldung. Ein Test prüft, dass weder Key noch Signatur in einem Fehlertext
+auftauchen.
+
+Die Order trägt den deterministischen Schlüssel der Engine als
+`newClientOrderId` — das ist Binances **eigene** Duplikatsablehnung. Damit wird
+aus „nach unklarem Ausgang nicht neu senden" eine Regel, die die Börse
+durchsetzt, statt einer, die ich nur beabsichtige.
+
+Getestet gegen einen lokalen Server, der die HMAC-Signatur prüft wie die Börse.
+
+### X
+
+`xsocial/` liefert `SocialSource`. Der Endpunkt gibt rohe Posts; die Arbeit ist
+zu beurteilen, ob dahinter Menschen stehen. Drei Dinge, die die API nicht
+berechnet:
+
+| Manipulation | Erkennung |
+|---|---|
+| ein Konto postet fünfzigmal | eindeutige Autoren gegen Posts |
+| fünfzig Konten posten denselben Satz | Text normalisiert (Links, Handles weg), dann Duplikate |
+| fünfzig Konten von letzter Woche | Median-Kontoalter, Anteil junger Konten |
+
+Ein Autor, dessen Erstellungsdatum die API nicht liefert, gilt als **unbekannt,
+nicht als etabliert** — an dieser einen Stelle würde großzügiges Raten einen
+Bot-Schwarm schmeicheln.
+
+**Grenze, klar gesagt:** Die Recent-Search deckt etwa sieben Tage ab. Das reicht
+für den Livebetrieb und nicht, um Historie für einen Backtest nachzuladen. Wer
+eine backgetestete Social-Strategie auf normalem API-Zugang behauptet, hat
+entweder Archivzugang gekauft oder beschreibt etwas, das er nicht getan hat.
+
 ## Datenquellen — und wo die Grenze liegt
 
 `venues.go` definiert, was das Framework von außen braucht: `BarSource`,
