@@ -187,9 +187,11 @@ jobs:
             docker exec aequitas-node wget -qO- 'http://127.0.0.1:6061/debug/pprof/profile?seconds=30' > /tmp/cpu.pprof 2>/dev/null
             if [ -s /tmp/cpu.pprof ]; then
               echo "profile bytes: $(wc -c < /tmp/cpu.pprof)"
+              # Wrapped, not one line: base64 -w0 produces a single ~136 KB
+              # line and the Actions log silently drops it — the first attempt
+              # emitted nothing at all past the BEGIN marker.
               echo "--- BEGIN CPU PROFILE BASE64 ---"
-              base64 -w0 /tmp/cpu.pprof
-              echo ""
+              base64 -w 120 /tmp/cpu.pprof
               echo "--- END CPU PROFILE BASE64 ---"
               rm -f /tmp/cpu.pprof
             else
