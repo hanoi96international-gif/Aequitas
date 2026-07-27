@@ -648,9 +648,22 @@ func main() {
 		for _, s := range senders {
 			s.nonce = client.nonce(s.address)
 		}
+		for _, r := range recipients {
+			r.nonce = client.nonce(r.address)
+		}
 		var failed int
 		for i := 0; i < numPairs; i++ {
 			_, err := client.sendValue(senders[i], recipients[i].address, transferWei)
+			// Whichever side of the pair holds the money sends. A previous run
+			// ends with every sender empty and every recipient holding what it
+			// sent them -- so a fresh run in the fixed A->B direction fails on
+			// all 597 pairs with "insufficient balance", which is exactly what
+			// happened and is what stopped the measurement. Trying the reverse
+			// makes the harness self-correcting instead of needing the accounts
+			// re-funded from outside every time.
+			if err != nil && strings.Contains(err.Error(), "insufficient balance") {
+				_, err = client.sendValue(recipients[i], senders[i].address, transferWei)
+			}
 			if err != nil {
 				failed++
 				fmt.Printf("warmup pair %d FAILED: %v\n", i, err)
@@ -670,6 +683,11 @@ func main() {
 		fmt.Printf("=== PHASE run: %d pairs, ramping over %ds, then %s timed ===\n", numPairs, *rampSeconds, *runDuration)
 		for _, s := range senders {
 			s.nonce = client.nonce(s.address)
+		}
+		// Recipients send too now (see the direction-alternating loop below), so
+		// their nonces have to be current for the same reason the senders' are.
+		for _, r := range recipients {
+			r.nonce = client.nonce(r.address)
 		}
 
 		var succeeded, failed int64
@@ -715,10 +733,28 @@ func main() {
 				// pair's batches goes to the same recipient, and reallocating
 				// a batchSize slice inside the hot loop would add allocation
 				// pressure to the very process whose throughput is measured.
+				//
+				// Two of them, one per direction. The pair alternates which side
+				// sends: with a fixed direction every sender's balance walks
+				// monotonically to zero and the working set is single-use, which
+				// is why a run that had just measured 60,004 transfers could not
+				// be repeated -- all 1,195 accounts read 0 and the seeds were
+				// empty too, so there was nothing left to fund them from.
+				// Alternating makes the balance oscillate by one batch instead of
+				// draining, so the same accounts carry an unlimited number of
+				// runs. The pairs stay DISJOINT (no account appears in two pairs),
+				// which is the property that keeps concurrent transfers from
+				// contending on the same account shard -- a ring topology would
+				// have broken exactly that.
 				batchTargets := make([]string, effBatchSize)
 				for i := range batchTargets {
 					batchTargets[i] = to.address
 				}
+				reverseTargets := make([]string, effBatchSize)
+				for i := range reverseTargets {
+					reverseTargets[i] = from.address
+				}
+				forward := true
 				for {
 					select {
 					case <-stopCh:
@@ -732,8 +768,20 @@ func main() {
 					// same factor. succeeded/failed still count TRANSFERS, not
 					// requests, so the reported throughput stays comparable
 					// with every earlier run.
-					accepted, err := client.sendValueBatch(from, batchTargets, transferWei)
+					sender, targets := from, batchTargets
+					if !forward {
+						sender, targets = to, reverseTargets
+					}
+					accepted, err := client.sendValueBatch(sender, targets, transferWei)
 					atomic.AddInt64(&succeeded, int64(accepted))
+					// Flip for the next batch, so this pair's two balances
+					// oscillate around their starting point rather than one
+					// walking to zero. Flipped unconditionally, including after a
+					// failure: an "insufficient balance" means this side is the
+					// empty one, and the other side is then holding everything
+					// this side ever sent it -- so the very next batch is the one
+					// that can succeed.
+					forward = !forward
 					if err != nil {
 						atomic.AddInt64(&failed, int64(effBatchSize-accepted))
 						recordErr(err)
@@ -776,8 +824,14 @@ func main() {
 						// next failure simply re-syncs again, so it converges
 						// instead of latching. Failure to read is left alone
 						// rather than guessed at.
-						if n, ok := client.tryNonce(from.address); ok {
-							from.nonce = n
+						// Re-sync the account that actually sent this batch, not
+						// always `from` -- with alternating directions the sender
+						// is `to` on every other pass, and resyncing the wrong
+						// side would leave the real one permanently desynced,
+						// which is the exact failure this whole block exists to
+						// prevent.
+						if n, ok := client.tryNonce(sender.address); ok {
+							sender.nonce = n
 						}
 						// Back off before retrying. Without this, a persistently
 						// failing pair spins this loop as fast as the RPC can
