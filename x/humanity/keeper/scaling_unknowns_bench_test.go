@@ -1,6 +1,7 @@
 package keeper
 
 import (
+	"crypto/ed25519"
 	"fmt"
 	"os"
 	"runtime"
@@ -266,4 +267,82 @@ func TestScalingUnknown_WALFsyncOnThisHost(t *testing.T) {
 		t.Logf("VERDICT: %.0f appends/s clears the %d TPS target with %.1fx headroom on this disk",
 			rate, targetTPS, rate/float64(targetTPS))
 	}
+}
+
+// TestScalingUnknown_Ed25519VsSecp256k1 measures the one alternative that can
+// move the signature wall.
+//
+// secp256k1 recovery was measured on Contabo2 at 101.1 µs per operation with
+// cgo/libsecp256k1 (the production build), giving 40,970/s across 6 cores —
+// ~7.3 cores for 50k TPS, and roughly 10 for 100k. That is a CPU budget the
+// target hardware does not have, and no amount of scheduling work changes it:
+// FAFO (arXiv 2507.10757) reaches 1.1M TPS by removing EXECUTION contention,
+// on 96 cores, on synthetic workloads that do not appear to verify signatures
+// at all. Once execution stops being the limit, this is the whole remaining
+// budget.
+//
+// Ed25519 is the standard answer because verification BATCHES: checking n
+// signatures together costs far less than n individual checks, which secp256k1
+// ECDSA recovery cannot do at all (you cannot batch a recovery — there is no
+// public key to aggregate against until you have done the work).
+//
+// This measures stdlib crypto/ed25519, i.e. SINGLE verification, deliberately
+// WITHOUT adding a batch-verification dependency: the point is to decide
+// whether that dependency is worth taking, and adding it first would be
+// assuming the answer. Single verification is therefore a LOWER BOUND on what
+// Ed25519 offers — batch verification is typically several times better again.
+func TestScalingUnknown_Ed25519VsSecp256k1(t *testing.T) {
+	scalingBenchEnabled(t)
+
+	pub, priv, err := ed25519.GenerateKey(nil)
+	if err != nil {
+		t.Fatalf("generate ed25519 key: %v", err)
+	}
+	msg := []byte("aequitas-signature-verification-benchmark")
+	sig := ed25519.Sign(priv, msg)
+	if !ed25519.Verify(pub, msg, sig) {
+		t.Fatal("reference verification failed — the benchmark would be timing a fast error path")
+	}
+
+	// Same shape and count as the secp256k1 test above, so the two numbers are
+	// directly comparable rather than needing to be normalised.
+	const singleN = 20000
+	start := time.Now()
+	for i := 0; i < singleN; i++ {
+		if !ed25519.Verify(pub, msg, sig) {
+			t.Fatalf("verification %d failed", i)
+		}
+	}
+	elapsed := time.Since(start)
+	perOp := elapsed / singleN
+	rate := float64(singleN) / elapsed.Seconds()
+	coresAtTarget := float64(targetTPS) / rate
+
+	t.Logf("ed25519 single-core: %d verifications in %s → %.0f/s (%.1f µs each) → %.1f cores needed at %d TPS",
+		singleN, elapsed.Round(time.Millisecond), rate, float64(perOp.Nanoseconds())/1000, coresAtTarget, targetTPS)
+
+	// All cores, matching the secp256k1 test, so the comparison holds at the
+	// scale the decision is actually about.
+	cores := runtime.NumCPU()
+	perCore := singleN / cores
+	var wg sync.WaitGroup
+	start = time.Now()
+	for c := 0; c < cores; c++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for i := 0; i < perCore; i++ {
+				ed25519.Verify(pub, msg, sig)
+			}
+		}()
+	}
+	wg.Wait()
+	multiElapsed := time.Since(start)
+	multiRate := float64(perCore*cores) / multiElapsed.Seconds()
+
+	t.Logf("ed25519 %d cores: %d verifications in %s → %.0f/s (%.1fx over single core)",
+		cores, perCore*cores, multiElapsed.Round(time.Millisecond), multiRate, multiRate/rate)
+	t.Logf("VERDICT: at %d TPS ed25519 single-verification needs ~%.1f cores against secp256k1 recovery's measured ~7.3. "+
+		"Batch verification, which secp256k1 cannot do at all, would improve this further — this number is the floor, not the ceiling.",
+		targetTPS, coresAtTarget)
 }
