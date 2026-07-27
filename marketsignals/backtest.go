@@ -29,25 +29,6 @@ func (e *Ensemble) Decide(v View) Signal { return e.Evaluate(v).Signal }
 // Name identifies the ensemble in results.
 func (e *Ensemble) Name() string { return "ensemble" }
 
-// Costs are what separates a backtest from a fantasy. Both are charged on
-// every unit of position CHANGE, so a strategy that flips daily pays for it.
-type Costs struct {
-	// FeeRate is the taker fee as a fraction of notional traded (0.0005 = 5bp).
-	FeeRate float64
-	// SlippageRate is the expected adverse fill relative to the reference
-	// price, as a fraction. Set it pessimistically: it is the single easiest
-	// number to under-assume, and a strategy whose edge does not survive
-	// doubling it does not have an edge, it has a fee rebate.
-	SlippageRate float64
-}
-
-// DefaultCosts are deliberately unkind: 5bp fee plus 10bp slippage per side,
-// roughly a liquid perpetual taken with market orders in normal conditions.
-func DefaultCosts() Costs { return Costs{FeeRate: 0.0005, SlippageRate: 0.0010} }
-
-// PerUnit is the total cost charged per unit of position change.
-func (c Costs) PerUnit() float64 { return c.FeeRate + c.SlippageRate }
-
 // Backtester runs a Strategy over a Series.
 //
 // The execution model is the part that matters, and it is deliberately
@@ -63,7 +44,7 @@ func (c Costs) PerUnit() float64 { return c.FeeRate + c.SlippageRate }
 // at the next open costs the strategy the overnight gap, which is real money
 // and belongs in the result.
 type Backtester struct {
-	Costs Costs
+	Costs CostModel
 	Risk  *RiskManager
 }
 
@@ -144,7 +125,7 @@ func (b *Backtester) Run(s *Series, strat Strategy) (Result, error) {
 
 		// Fill the change at the next bar's open.
 		turnover := math.Abs(sized.Target - pos)
-		cost := turnover * b.Costs.PerUnit()
+		cost := b.Costs.CostFraction(turnover)
 		pos = sized.Target
 
 		// Realise the position over the following bar.

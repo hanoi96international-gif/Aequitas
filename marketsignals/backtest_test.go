@@ -55,7 +55,7 @@ func TestBacktester_ArithmeticIsHandCheckable(t *testing.T) {
 
 	// First step pays to establish the whole position; later steps hold it
 	// and pay nothing.
-	wantCost := wantPos * bt.Costs.PerUnit()
+	wantCost := bt.Costs.CostFraction(wantPos)
 	if math.Abs(res.Steps[0].Cost-wantCost) > 1e-12 {
 		t.Fatalf("entry cost %.12f, want %.12f", res.Steps[0].Cost, wantCost)
 	}

@@ -119,13 +119,13 @@ func (p *Panel) Conduct(s *Series, cands ...Strategy) ([]Interview, error) {
 		return nil, err
 	}
 
-	// Same costs, slippage multiplied — the stress round.
+	// The stress round, with each model's discretionary costs multiplied. What
+	// "harsher" means is the model's business: for an order book it is the
+	// slippage assumption, for an AMM the MEV allowance, since pool fees are
+	// contractual and price impact is arithmetic.
 	stress := &Backtester{
-		Costs: Costs{
-			FeeRate:      p.Backtester.Costs.FeeRate,
-			SlippageRate: p.Backtester.Costs.SlippageRate * p.Criteria.CostStressMultiple,
-		},
-		Risk: p.Backtester.Risk,
+		Costs: p.Backtester.Costs.Stressed(p.Criteria.CostStressMultiple),
+		Risk:  p.Backtester.Risk,
 	}
 
 	out := make([]Interview, 0, len(sel.Candidates))

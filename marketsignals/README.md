@@ -353,6 +353,60 @@ Abrechnung werden verworfen statt mit einer Null gefüllt — eine Null läse si
 als „Funding ist neutral", während die Wahrheit „unbekannt" ist. Tests prüfen
 beides, damit ein Formatfehler nicht erst nach einer Stunde Download auffällt.
 
+### DEX: das Kostenmodell war schlicht falsch
+
+An einer Börse mit Orderbuch ist eine feste Slippage-Zahl eine vertretbare
+Vereinfachung. An einem AMM ist sie **falsch**, und zwar in der gefährlichen
+Richtung. Ein Pool hat kein Buch — der Preis ist eine Funktion der Reserven,
+und dein eigener Trade bewegt ihn, bevor du gefüllt wirst. Bei konstantem
+Produkt ist das exakt, nicht näherungsweise:
+
+```
+Δx in Reserve X  →  Y·Δx/(X+Δx) heraus
+Effektivpreis = (X+Δx)/Y  gegen Spot X/Y
+Auswirkung = Δx / X
+```
+
+Die Auswirkung ist **linear** in der Größe, die Gesamtkosten also
+**quadratisch**. Doppelte Position, vierfache Kosten.
+
+Das entscheidet die meisten DEX-Strategien, und eine Flatrate versteckt es
+vollständig. Gemessen an einem 400.000-$-Pool:
+
+| Konto | Größte Position unter 1% Kosten |
+|---|---|
+| 5.000 $ | **8,0 %** des Kontos |
+| 500.000 $ | **0,08 %** des Kontos |
+
+Dieselbe Strategie, derselbe Pool, dasselbe Signal. Nur ist der Händler beim
+zweiten Fall selbst der Markt geworden — und **nichts in den Kursdaten** zeigt
+diesen Unterschied. Ein Backtest, der nicht weiß, wie viel Geld er handelt,
+kann dir nicht sagen, in welchem Fall du bist.
+
+Deshalb verlangt ein DEX-Instrument `PoolLiquidityUSD` **und** `AccountUSD`;
+fehlt eines, wird der Trade als unmöglich bepreist statt mit einer
+schmeichelhaften Flatrate.
+
+### DEX-Kursdaten
+
+Dexscreener veröffentlicht den **aktuellen** Zustand eines Pools — gut für den
+Screener, unbrauchbar für einen Backtest. GeckoTerminal veröffentlicht OHLCV
+pro Pool, kostenlos und ohne Key:
+
+```bash
+go run ./cmd/fetchdata dex -chain eth -address 0xTOKEN -bars 1000 -account 10000 -out token.csv
+```
+
+Wählt den **tiefsten** Pool, nicht den mit dem meisten Volumen — Volumen an
+einem dünnen Pool sind überwiegend Arbitrage-Bots, die ihn gegen eine tiefere
+Börse korrigieren, und danach zu sortieren wählt zuverlässig den Pool aus, an
+dem man am wenigsten handeln will. Danach wird ausgegeben, wie groß deine
+Position an diesem Pool überhaupt sein darf.
+
+Ein Taker-Split existiert bei dieser Quelle nicht. Der Flow-Agent tritt auf
+DEX-Serien deshalb zurück — korrekt, denn eine aus der Kerzenfarbe erfundene
+Aufteilung wäre kein Orderfluss, sondern die Preisreihe in Verkleidung.
+
 ### Unbekannt ist nicht sauber
 
 Dexscreener veröffentlicht Preise, Liquidität und Trade-Zahlen — aber **nicht**

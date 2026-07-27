@@ -84,6 +84,21 @@ type Instrument struct {
 	// on a $2bn/day name can be untradeable on a $200k/day one, and the
 	// difference is not visible anywhere in the price series.
 	MedianDailyVolumeUSD float64 `json:"median_daily_volume_usd,omitempty"`
+
+	// PoolLiquidityUSD is the AMM pool's total value locked. Required for a
+	// DEX instrument, because on an AMM the cost of a trade is a function of
+	// its size relative to the pool rather than a fixed spread.
+	PoolLiquidityUSD float64 `json:"pool_liquidity_usd,omitempty"`
+
+	// AccountUSD is how much capital this instrument's profile should assume
+	// is being traded.
+	//
+	// It sits on the instrument rather than somewhere more abstract because
+	// on a DEX it is not a portfolio detail — it is part of what makes the
+	// instrument tradeable or not. The same pool is a comfortable market for
+	// five thousand dollars and no market at all for five hundred thousand,
+	// and nothing in the price series distinguishes the two cases.
+	AccountUSD float64 `json:"account_usd,omitempty"`
 }
 
 // Validate catches instrument descriptions that would silently select the
@@ -108,8 +123,24 @@ func (i Instrument) Validate() error {
 	default:
 		return fmt.Errorf("%s: unknown asset class %q", i.Symbol, i.Class)
 	}
-	if i.Venue == VenueDEX && (i.Chain == "" || i.Address == "") {
-		return fmt.Errorf("%s: a DEX instrument needs a chain and a contract address", i.Symbol)
+	if i.Venue == VenueDEX {
+		if i.Chain == "" || i.Address == "" {
+			return fmt.Errorf("%s: a DEX instrument needs a chain and a contract address", i.Symbol)
+		}
+		// Both are required rather than defaulted. An AMM's cost is size
+		// relative to pool depth, so a missing pool size or account size does
+		// not make the model slightly less accurate — it removes the term
+		// that decides whether the strategy is tradeable at all, and leaves a
+		// flat rate that will look encouraging at any size.
+		if i.PoolLiquidityUSD <= 0 {
+			return fmt.Errorf("%s: a DEX instrument needs PoolLiquidityUSD — price impact "+
+				"cannot be modelled without it", i.Symbol)
+		}
+		if i.AccountUSD <= 0 {
+			return fmt.Errorf("%s: a DEX instrument needs AccountUSD — on an AMM the size "+
+				"you trade decides the cost, and assuming it away flatters every result",
+				i.Symbol)
+		}
 	}
 	return nil
 }

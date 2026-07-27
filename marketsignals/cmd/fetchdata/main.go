@@ -27,6 +27,7 @@ import (
 
 	ms "github.com/hanoi96international-gif/marketsignals"
 	"github.com/hanoi96international-gif/marketsignals/binance"
+	gecko "github.com/hanoi96international-gif/marketsignals/geckoterminal"
 )
 
 func main() {
@@ -40,6 +41,8 @@ func main() {
 		err = binanceCmd(os.Args[2:])
 	case "dexscreener":
 		err = dexscreenerCmd(os.Args[2:])
+	case "dex":
+		err = dexCmd(os.Args[2:])
 	case "-h", "--help", "help":
 		usage()
 		return
@@ -62,6 +65,13 @@ func usage() {
         split rather than a guess. With -market futures the funding rate
         history is fetched too and aligned to the bars, which is what the
         positioning agent needs.
+
+  fetchdata dex -chain eth -address 0xTOKEN [-timeframe hour] [-bars 1000] [-account 10000] -out FILE.csv
+        Download DEX pool bars via GeckoTerminal, which is the only free
+        public source of OHLCV history for a pool. Picks the DEEPEST pool for
+        the token, reports the pool's reserve, and prints how large a position
+        that reserve can actually absorb at your account size — on an AMM that
+        number decides viability before any Sharpe ratio does.
 
   fetchdata dexscreener -chain solana -address ADDR -out FILE.json
         Fetch what Dexscreener actually publishes about a token. This is NOT
@@ -177,6 +187,86 @@ func writeCSV(path string, bars []ms.Candle, funding map[int64]float64) error {
 		fmt.Fprintf(os.Stderr, "dropped %d leading bars with no funding settlement yet\n", skipped)
 	}
 	fmt.Fprintf(os.Stderr, "wrote %s\n", path)
+	return nil
+}
+
+// ── DEX bars ─────────────────────────────────────────────────────────────
+
+func dexCmd(args []string) error {
+	fs := flag.NewFlagSet("dex", flag.ExitOnError)
+	chain := fs.String("chain", "", "network id, e.g. eth, base, solana, bsc (required)")
+	address := fs.String("address", "", "token address (required)")
+	pool := fs.String("pool", "", "pool address; default is the deepest pool for the token")
+	timeframe := fs.String("timeframe", "hour", "minute, hour or day")
+	aggregate := fs.Int("aggregate", 1, "multiplier on the timeframe (hour + 4 = 4h bars)")
+	bars := fs.Int("bars", 1000, "how many bars to fetch")
+	account := fs.Float64("account", 10000, "account size in USD, for the cost analysis")
+	out := fs.String("out", "", "output CSV path (required)")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if *chain == "" || *out == "" || (*address == "" && *pool == "") {
+		fs.Usage()
+		return fmt.Errorf("-chain, -out and one of -address or -pool are required")
+	}
+
+	ctx := context.Background()
+	client := gecko.New()
+
+	poolAddr, liquidity := *pool, 0.0
+	if poolAddr == "" {
+		fmt.Fprintf(os.Stderr, "finding the deepest pool for %s on %s...\n", *address, *chain)
+		p, err := client.TopPool(ctx, *chain, *address)
+		if err != nil {
+			return err
+		}
+		poolAddr, liquidity = p.Address, p.LiquidityUSD
+		fmt.Fprintf(os.Stderr, "using %s (%s) — reserve $%.0f, 24h volume $%.0f\n",
+			p.Name, p.Address, p.LiquidityUSD, p.Volume24hUSD)
+	}
+
+	fmt.Fprintf(os.Stderr, "fetching %d %s bars...\n", *bars, *timeframe)
+	candles, err := client.OHLCV(ctx, *chain, poolAddr, *timeframe, *aggregate, *bars)
+	if err != nil {
+		return err
+	}
+	if len(candles) == 0 {
+		return fmt.Errorf("no bars returned for pool %s", poolAddr)
+	}
+	fmt.Fprintf(os.Stderr, "got %d bars (%s to %s)\n", len(candles),
+		candles[0].Time.Format("2006-01-02"), candles[len(candles)-1].Time.Format("2006-01-02"))
+
+	if err := writeCSV(*out, candles, nil); err != nil {
+		return err
+	}
+
+	fmt.Fprint(os.Stderr, `
+NOTE: this source reports total volume only, with no taker buy/sell split, so
+the order-flow agent will stand down on this series. Inferring a split from
+whether a candle closed green is not order flow — it is the price series
+wearing a disguise, and an agent fed that would duplicate what the price
+agents already said.
+`)
+
+	if liquidity > 0 {
+		costs := ms.DefaultAMMCosts(liquidity, *account)
+		fmt.Fprintf(os.Stderr, `
+COST ANALYSIS — read this before the Sharpe ratio.
+  %s
+
+  Largest position whose cost stays under 1%% per unit traded: %.2f%% of a
+  $%.0f account.
+
+On an AMM your own trade moves the price before you are filled, so cost grows
+with the SQUARE of position size. A strategy is not profitable or unprofitable
+in the abstract here — it is profitable up to a size. Run the search with:
+
+  go run ./cmd/signalctl search -csv %s -grid full
+
+but treat any result above that position size as describing a trade you cannot
+actually make.
+`, costs.Describe(), costs.MaxViablePosition(0.01)*100, *account, *out)
+	}
 	return nil
 }
 

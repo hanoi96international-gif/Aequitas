@@ -20,6 +20,8 @@ func memecoin() Instrument {
 		Symbol: "WIFHAT", Class: ClassCrypto, Sector: SectorMeme, Venue: VenueDEX,
 		Chain: "solana", Address: "So111", ContinuousTrading: true,
 		MedianDailyVolumeUSD: 3e6,
+		PoolLiquidityUSD:     500_000,
+		AccountUSD:           10_000,
 	}
 }
 
@@ -37,6 +39,12 @@ func TestInstrument_ValidateCatchesMisclassification(t *testing.T) {
 			Symbol: "SPY", Class: ClassETF, Venue: VenueExchange, ContinuousTrading: true},
 		"DEX token with no address": {
 			Symbol: "X", Class: ClassCrypto, Sector: SectorMeme, Venue: VenueDEX, Chain: "solana"},
+		"DEX token with no pool size": {
+			Symbol: "X", Class: ClassCrypto, Sector: SectorMeme, Venue: VenueDEX,
+			Chain: "solana", Address: "a", AccountUSD: 1000},
+		"DEX token with no account size": {
+			Symbol: "X", Class: ClassCrypto, Sector: SectorMeme, Venue: VenueDEX,
+			Chain: "solana", Address: "a", PoolLiquidityUSD: 100_000},
 		"unknown class": {Symbol: "X", Class: "commodity", Venue: VenueExchange},
 	}
 	for name, i := range cases {
@@ -68,10 +76,14 @@ func TestExpertFor_MemecoinsAreTreatedNothingLikeMajors(t *testing.T) {
 		t.Fatalf("meme: %v", err)
 	}
 
-	if !(meme.Costs.PerUnit() > 5*major.Costs.PerUnit()) {
-		t.Fatalf("memecoin cost %.4f is not materially above the major's %.4f — thin books "+
-			"and MEV are the dominant term in a memecoin round trip",
-			meme.Costs.PerUnit(), major.Costs.PerUnit())
+	// Compared at a representative position size, because an AMM's cost is a
+	// function of size and a single "per unit" number does not exist for it.
+	memeCost := meme.Costs.CostFraction(0.1)
+	majorCost := major.Costs.CostFraction(0.1)
+	if !(memeCost > 5*majorCost) {
+		t.Fatalf("memecoin cost %.4f is not materially above the major's %.4f at a 10%% "+
+			"position — thin pools and MEV are the dominant term in a memecoin round trip",
+			memeCost, majorCost)
 	}
 	if !(meme.MaxPositionFraction < major.MaxPositionFraction/2) {
 		t.Fatalf("memecoin max position %.2f against the major's %.2f",

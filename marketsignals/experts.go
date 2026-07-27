@@ -29,7 +29,7 @@ type ExpertProfile struct {
 	// Costs for this segment. These are the numbers most likely to be wrong
 	// by an order of magnitude, and being wrong here invalidates everything
 	// downstream more thoroughly than any signal error.
-	Costs Costs
+	Costs CostModel
 
 	// Risk caps for this segment.
 	MaxPositionFraction float64
@@ -161,6 +161,18 @@ func equityProfile(i Instrument) ExpertProfile {
 // ── Crypto ───────────────────────────────────────────────────────────────
 
 func cryptoProfile(i Instrument) ExpertProfile {
+	p := cryptoSectorProfile(i)
+	// A DEX instrument's cost is not a rate, it is a function of size against
+	// the pool. Substituting the AMM model here — after the sector has chosen
+	// the agents and the risk caps — keeps the sector logic in one place and
+	// the venue logic in another.
+	if i.Venue == VenueDEX && p.TradeableAtAll {
+		p.Costs = DefaultAMMCosts(i.PoolLiquidityUSD, i.AccountUSD)
+	}
+	return p
+}
+
+func cryptoSectorProfile(i Instrument) ExpertProfile {
 	switch i.Sector {
 	case SectorNewLaunch:
 		return newLaunchProfile()
@@ -335,8 +347,7 @@ func (p ExpertProfile) Describe() string {
 	if !p.TradeableAtAll {
 		return out + "NOT TRADEABLE BY THIS FRAMEWORK: " + p.NotTradeableReason + "\n"
 	}
-	out += fmt.Sprintf("  costs        %.0fbp fee + %.0fbp slippage per unit traded\n",
-		p.Costs.FeeRate*10_000, p.Costs.SlippageRate*10_000)
+	out += "  costs        " + p.Costs.Describe() + "\n"
 	out += fmt.Sprintf("  max position %.0f%% of equity, target vol %.0f%%, drawdown stop %.0f%%\n",
 		p.MaxPositionFraction*100, p.TargetVol*100, p.MaxDrawdown*100)
 	out += fmt.Sprintf("  hiring bar   P(edge) %.2f, %.0f%% of folds positive, %d trades minimum\n",
