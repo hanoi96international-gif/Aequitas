@@ -4203,6 +4203,14 @@ func (cs *ChainState) Transfer(from, to string, amount float64) (float64, float6
 // by default, so this branch does not change behavior for any node that
 // hasn't explicitly opted in.
 func (cs *ChainState) TransferAtomic(from, to string, amount float64, pendingTxTemplate Transaction) (fromLost, toLost float64, err error) {
+	// Time the whole call. Throughput has sat near 1,264/s while the node used
+	// 244% of 600% available CPU with no lock contention, no connection waits
+	// and only 6% of samples in database syscalls — so transfers are spending
+	// their time waiting, and until now nothing measured on what. Dividing
+	// throughput by the load generator's 72 concurrent senders implies roughly
+	// 57ms per transfer, which is the number this either confirms or refutes.
+	transferStart := time.Now()
+	defer func() { recordTransferLatency(time.Since(transferStart)) }()
 	from = strings.ToLower(from)
 	to = strings.ToLower(to)
 	if cs.db == nil {

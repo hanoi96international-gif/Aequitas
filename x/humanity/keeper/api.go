@@ -549,6 +549,9 @@ func (a *APIServer) handleCombinedHealth(w http.ResponseWriter, r *http.Request)
 		// and wait_total_ms answer that directly, instead of inferring it from
 		// a throughput number that swings by 2x between runs. See DBPoolStats.
 		"db_pool": a.state.DBPoolStats(),
+		// Which path transfers take, and how long each one actually takes —
+		// see transfer_stats.go for why a derived 57ms needed measuring.
+		"transfer_path": TransferPathStats(),
 		"chain": map[string]interface{}{
 			"status":                     status,
 			"notes":                      notes,
