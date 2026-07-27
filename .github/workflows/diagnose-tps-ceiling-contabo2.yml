@@ -45,12 +45,118 @@ on:
         description: "Phases to run. 'run' alone needs already-funded accounts; the working runs use fund,warmup,run."
         required: false
         default: "fund,warmup,run"
+      deploy_node:
+        description: "Rebuild aequitasd from THIS ref and hot-swap it into the running container before measuring. Restarts the node."
+        required: false
+        default: "false"
+      contention_profile:
+        description: "Value for AEQUITAS_CONTENTION_PROFILE on the node (empty = off). Only applied when deploy_node is true."
+        required: false
+        default: ""
 
 jobs:
   diagnose:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
+      # Hot-swapping the node binary, rather than merging to main to deploy it.
+      #
+      # The Contabo deploy workflows only trigger on a push to master/main, and
+      # merging also redeploys the Railway-hosted primary -- taking the primary
+      # down for minutes, which is exactly what must not happen repeatedly just
+      # to try a measurement. This path rebuilds aequitasd from whatever ref the
+      # dispatch selected and swaps it into the EXISTING container, so nothing
+      # on main moves and no other node is touched.
+      #
+      # No image is built on the box (a standing rule here): the build runs in a
+      # throwaway golang container and the result is copied into the container
+      # that already exists, which keeps its own image, mounts and network.
+      - name: Package node source
+        if: ${{ inputs.deploy_node == 'true' }}
+        run: tar czf ../node-src.tgz --exclude=.git --exclude=node_modules . && mv ../node-src.tgz .
+
+      - name: Ship node source to Contabo2
+        if: ${{ inputs.deploy_node == 'true' }}
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: 194.163.188.71
+          username: root
+          key: ${{ secrets.CONTABO2_SSH_KEY }}
+          port: 22
+          fingerprint: "SHA256:VIwj7Faxiga2n45HVHZEQFPxcbRKHgSgHoxAFsf2wto"
+          source: "node-src.tgz"
+          target: "/root/aequitas-src-inbox"
+
+      - name: Build aequitasd and hot-swap it into the running container
+        if: ${{ inputs.deploy_node == 'true' }}
+        env:
+          CONTENTION_PROFILE: ${{ inputs.contention_profile }}
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: 194.163.188.71
+          username: root
+          key: ${{ secrets.CONTABO2_SSH_KEY }}
+          port: 22
+          fingerprint: "SHA256:VIwj7Faxiga2n45HVHZEQFPxcbRKHgSgHoxAFsf2wto"
+          script_stop: false
+          timeout: 900s
+          command_timeout: 900s
+          envs: CONTENTION_PROFILE
+          script: |
+            set -uo pipefail
+            rm -rf /root/aequitas-src && mkdir -p /root/aequitas-src
+            tar xzf /root/aequitas-src-inbox/node-src.tgz -C /root/aequitas-src || { echo "untar failed"; exit 1; }
+            cd /root/aequitas-src
+            mkdir -p /root/go-mod-cache
+            echo "=== building aequitasd with cgo (same recipe as Dockerfile) ==="
+            # CGO_ENABLED=1 deliberately: the Dockerfile documents 106.3us vs
+            # 269.3us per secp256k1 recovery. Building without it here would
+            # measure a node 2.5x slower than production on the one cost that
+            # decides whether 50k TPS is reachable at all.
+            docker run --rm -v "$(pwd)":/w -w /w -v /root/go-mod-cache:/go/pkg/mod -e CGO_ENABLED=1 golang:1.24-alpine sh -c 'apk add --no-cache gcc musl-dev >/dev/null 2>&1 && go build -o aequitasd-new ./cmd/aequitasd' || { echo "BUILD FAILED -- node untouched"; exit 1; }
+            ls -l aequitasd-new || exit 1
+            echo "=== capturing the running container's configuration ==="
+            IMAGE=$(docker inspect aequitas-node --format '{{.Config.Image}}')
+            docker inspect aequitas-node --format '{{range .Config.Env}}{{println .}}{{end}}' > /root/.aequitas_env_backup
+            chmod 600 /root/.aequitas_env_backup
+            MOUNT_ARGS=()
+            while IFS= read -r m; do [ -n "$m" ] && MOUNT_ARGS+=(-v "$m"); done < <(docker inspect aequitas-node --format '{{range .Mounts}}{{if eq .Type "bind"}}{{.Source}}:{{.Destination}}{{println}}{{end}}{{end}}')
+            ENV_ARGS=()
+            while IFS= read -r line; do
+              [ -z "$line" ] && continue
+              case "$line" in
+                PATH=*|HOSTNAME=*|HOME=*|RESYNC_FROM_SNAPSHOT=*|AEQUITAS_CONTENTION_PROFILE=*) continue ;;
+              esac
+              ENV_ARGS+=(-e "$line")
+            done < /root/.aequitas_env_backup
+            # Contention profiling costs throughput on the payment path, so it
+            # is set ONLY when this run asked for it, and never persists into a
+            # later deploy (the case above drops any inherited value).
+            if [ -n "${CONTENTION_PROFILE:-}" ]; then ENV_ARGS+=(-e "AEQUITAS_CONTENTION_PROFILE=$CONTENTION_PROFILE"); echo "contention profiling requested: $CONTENTION_PROFILE"; fi
+            echo "image=$IMAGE env_count=${#ENV_ARGS[@]} mount_count=${#MOUNT_ARGS[@]}"
+            docker stop aequitas-node >/dev/null 2>&1 || true
+            docker rm aequitas-node >/dev/null 2>&1 || true
+            # create (not run) so the new binary is in place before PID 1 starts.
+            CID=$(docker create --name aequitas-node --network aequitas-net --restart unless-stopped "${ENV_ARGS[@]}" "${MOUNT_ARGS[@]}" -p 8080:8080 -p 4001:4001 "$IMAGE")
+            if [ -z "$CID" ]; then echo "docker create FAILED"; exit 1; fi
+            docker cp ./aequitasd-new aequitas-node:/app/aequitasd || { echo "docker cp FAILED"; exit 1; }
+            docker start aequitas-node >/dev/null || { echo "docker start FAILED"; exit 1; }
+            echo "=== waiting for the node to answer ==="
+            OK=0
+            for i in $(seq 1 60); do
+              if curl -fs --max-time 3 http://127.0.0.1:8080/api/status >/dev/null 2>&1; then OK=1; break; fi
+              sleep 2
+            done
+            if [ "$OK" != "1" ]; then
+              echo "NODE DID NOT COME UP -- restoring the image's own binary"
+              docker stop aequitas-node >/dev/null 2>&1 || true
+              docker rm aequitas-node >/dev/null 2>&1 || true
+              docker run -d --name aequitas-node --network aequitas-net --restart unless-stopped "${ENV_ARGS[@]}" "${MOUNT_ARGS[@]}" -p 8080:8080 -p 4001:4001 "$IMAGE" >/dev/null
+              echo "ROLLED BACK"; exit 1
+            fi
+            echo "NODE UP: $(curl -s --max-time 5 http://127.0.0.1:8080/api/status | head -c 200)"
+            docker logs --since 60s aequitas-node 2>&1 | grep -E '\[PROF\]' | head -3
 
       # WITHOUT THIS THE DIAGNOSIS MEASURES STALE CODE.
       # The first version of this workflow ran the pre-built ./loadtest
@@ -204,6 +310,15 @@ jobs:
               # without bound, this shows which allocation it is.
               docker exec aequitas-node wget -qO- 'http://127.0.0.1:6061/debug/pprof/heap' > /tmp/heap-latest.pprof 2>/dev/null
               echo "heap profile saved to /tmp/heap-latest.pprof ($(wc -c < /tmp/heap-latest.pprof) bytes)"
+              # Contention profiles. These are EMPTY unless the node was started
+              # with AEQUITAS_CONTENTION_PROFILE set -- both are governed by a
+              # sampling rate that defaults to zero, which is why every earlier
+              # attempt to locate the contention from CPU and goroutine data
+              # alone kept pointing at the wrong lock. Taken while the load is
+              # still running, since they are cumulative since process start.
+              docker exec aequitas-node wget -qO- 'http://127.0.0.1:6061/debug/pprof/mutex' > /tmp/mutex-latest.pprof 2>/dev/null
+              docker exec aequitas-node wget -qO- 'http://127.0.0.1:6061/debug/pprof/block' > /tmp/block-latest.pprof 2>/dev/null
+              echo "mutex profile: $(wc -c < /tmp/mutex-latest.pprof) bytes   block profile: $(wc -c < /tmp/block-latest.pprof) bytes"
               mv -f /tmp/cpu.pprof /tmp/cpu-latest.pprof
               echo "profile saved to /tmp/cpu-latest.pprof ($(wc -c < /tmp/cpu-latest.pprof) bytes)"
             else

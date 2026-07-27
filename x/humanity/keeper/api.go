@@ -833,6 +833,14 @@ func (a *APIServer) Start(port int) {
 // without loopback) is logged and otherwise harmless — nothing else in the
 // node depends on this listener.
 func startPprofServer() {
+	// The mutex and block profiles below are served by pprof.Index like any
+	// other named profile, but both are governed by a sampling rate that is
+	// zero unless something sets it — so without this call they answer with an
+	// empty profile rather than an error, which is exactly how a real lock
+	// contention problem stayed invisible through several rounds of
+	// measurement here. Off by default; see contention_profile.go.
+	StartContentionProfiling()
+
 	mux := http.NewServeMux()
 	mux.HandleFunc("/debug/pprof/", pprof.Index)
 	mux.HandleFunc("/debug/pprof/cmdline", pprof.Cmdline)
