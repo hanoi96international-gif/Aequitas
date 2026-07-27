@@ -1,0 +1,53 @@
+name: marketsignals tests
+
+# The suite is the product's only evidence that it behaves as documented, so it
+# runs on every push touching it.
+on:
+  push:
+    paths: ['marketsignals/**']
+  pull_request:
+    paths: ['marketsignals/**']
+  workflow_dispatch: {}
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: marketsignals
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.24'
+          cache-dependency-path: marketsignals/go.mod
+
+      - name: gofmt
+        run: |
+          unformatted=$(gofmt -l .)
+          if [ -n "$unformatted" ]; then
+            echo "not gofmt'd:"; echo "$unformatted"; exit 1
+          fi
+
+      - name: vet
+        run: go vet ./...
+
+      - name: test
+        run: go test -count=1 ./...
+
+      # The two controls have to hold together. A framework that reports no
+      # edge on noise AND no edge on an implanted one is not conservative, it
+      # is broken, and every rejection it has ever produced is unfalsifiable.
+      - name: positive and negative controls
+        run: |
+          go test -count=1 -run 'TestSearch_FindsAnEdgeThatIsReallyThere' ./...
+          go test -count=1 -run 'TestSearch_FindsNothingInNoise' ./...
+
+      - name: the example config must load
+        run: go test -count=1 -run 'TestLoadConfig_ReadsTheShippedExample' ./...
+
+      - name: binaries build
+        run: |
+          go build ./cmd/signalctl
+          go build ./cmd/signald
+          go build ./cmd/fetchdata

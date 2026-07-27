@@ -1,0 +1,56 @@
+{
+  "interval": "1h",
+  "data_dir": "data",
+
+  "universe": [
+    {"symbol": "BTCUSDT",  "class": "crypto", "sector": "major",     "venue": "cex", "has_perpetual": true, "continuous_trading": true},
+    {"symbol": "ETHUSDT",  "class": "crypto", "sector": "major",     "venue": "cex", "has_perpetual": true, "continuous_trading": true},
+    {"symbol": "SOLUSDT",  "class": "crypto", "sector": "large_alt", "venue": "cex", "has_perpetual": true, "continuous_trading": true},
+    {"symbol": "BNBUSDT",  "class": "crypto", "sector": "large_alt", "venue": "cex", "has_perpetual": true, "continuous_trading": true},
+    {"symbol": "XRPUSDT",  "class": "crypto", "sector": "large_alt", "venue": "cex", "has_perpetual": true, "continuous_trading": true},
+    {"symbol": "ADAUSDT",  "class": "crypto", "sector": "large_alt", "venue": "cex", "has_perpetual": true, "continuous_trading": true},
+    {"symbol": "AVAXUSDT", "class": "crypto", "sector": "infra",     "venue": "cex", "has_perpetual": true, "continuous_trading": true},
+    {"symbol": "LINKUSDT", "class": "crypto", "sector": "infra",     "venue": "cex", "has_perpetual": true, "continuous_trading": true},
+    {"symbol": "DOGEUSDT", "class": "crypto", "sector": "meme",      "venue": "cex", "has_perpetual": true, "continuous_trading": true},
+    {"symbol": "DOTUSDT",  "class": "crypto", "sector": "infra",     "venue": "cex", "has_perpetual": true, "continuous_trading": true},
+    {"symbol": "LTCUSDT",  "class": "crypto", "sector": "large_alt", "venue": "cex", "has_perpetual": true, "continuous_trading": true},
+    {"symbol": "ATOMUSDT", "class": "crypto", "sector": "infra",     "venue": "cex", "has_perpetual": true, "continuous_trading": true},
+
+    {"symbol": "FILUSDT",  "class": "crypto", "sector": "infra",     "venue": "cex", "has_perpetual": true, "continuous_trading": true},
+    {"symbol": "SANDUSDT", "class": "crypto", "sector": "narrative", "venue": "cex", "has_perpetual": true, "continuous_trading": true},
+    {"symbol": "APEUSDT",  "class": "crypto", "sector": "narrative", "venue": "cex", "has_perpetual": true, "continuous_trading": true},
+    {"symbol": "GALAUSDT", "class": "crypto", "sector": "narrative", "venue": "cex", "has_perpetual": true, "continuous_trading": true},
+    {"symbol": "ALGOUSDT", "class": "crypto", "sector": "infra",     "venue": "cex", "has_perpetual": true, "continuous_trading": true},
+    {"symbol": "ZILUSDT",  "class": "crypto", "sector": "infra",     "venue": "cex", "has_perpetual": true, "continuous_trading": true}
+  ],
+
+  "risk": {
+    "target_vol": 0.20,
+    "max_gross": 1.0,
+    "max_net": 0.5,
+    "max_drawdown": 0.15
+  },
+
+  "execution": {
+    "broker": "paper",
+    "equity_usd": 1000,
+    "max_position_fraction": 0.25,
+    "max_order_fraction": 0.10,
+    "max_daily_loss_fraction": 0.05,
+    "dry_run": false
+  },
+
+  "notify": {
+    "field": "text",
+    "min_change": 0.20
+  },
+
+  "hiring": {
+    "MinDeflatedSharpe": 0.95,
+    "MinPositiveFoldFraction": 0.6,
+    "MaxDrawdown": 0.35,
+    "MinTrades": 30,
+    "CostStressMultiple": 2.0,
+    "MinStressedSharpe": 0.0
+  }
+}

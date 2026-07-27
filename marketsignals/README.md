@@ -2,10 +2,28 @@
 
 Ein eigenständiges Go-Modul für Marktsignal-Agenten: neun spezialisierte
 Agenten, ein Ensemble, das nur bei unkorrelierter Übereinstimmung spricht, ein
-Risikomanager und eine Backtest-Engine, die bewusst schwer zu betrügen ist.
+Portfolio, das sich aus der Kovarianz dimensioniert, und eine Bewertung, die
+bewusst schwer zu betrügen ist.
 
-Dieses Modul ist vollständig unabhängig — eigene `go.mod`, nur Go-Standard-
-bibliothek, keine Verbindung zum restlichen Repository.
+Eigene `go.mod`, nur Standardbibliothek, keine Verbindung zum restlichen
+Repository.
+
+## Schnellstart
+
+```bash
+cd marketsignals
+make config          # Beispielkonfiguration nach config.json kopieren, dann editieren
+make fetch           # Kurse laden — der einzige Schritt, der Netz braucht
+make analyse         # Suche je Instrument, Buch über alle, ein Einstellungsverfahren
+make paper           # live gegen ein Papierkonto
+```
+
+`make help` zeigt alles. Ohne Go: `docker build -t marketsignals . && docker run
+--rm -v "$PWD/data:/home/signals/data" marketsignals analyse -dir data`.
+
+**Erwartungshaltung:** Auf echten Daten wird `analyse` wahrscheinlich
+**niemanden einstellen**. Das ist das übliche Ergebnis und ein Befund, kein
+Fehler — siehe „Das Einstellungsverfahren".
 
 ## Was das hier ist — und was nicht
 
