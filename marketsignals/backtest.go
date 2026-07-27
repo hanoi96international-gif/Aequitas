@@ -125,6 +125,23 @@ func (b *Backtester) Run(s *Series, strat Strategy) (Result, error) {
 		drawdown := (peak - equity) / peak
 		sized := b.Risk.Size(strat.Decide(v), v, drawdown)
 
+		// Risk modulation is applied AFTER sizing and can only ever shrink the
+		// position. Folding it into the signal's strength instead would let a
+		// calendar warning be traded off against conviction, which is exactly
+		// backwards: the whole point of a blackout is that it does not care
+		// how good the setup looks.
+		if m, ok := strat.(RiskModulator); ok {
+			adj := m.ModulateRisk(v)
+			scale := clamp(adj.Scale, 0, 1)
+			if adj.Veto {
+				scale = 0
+			}
+			if scale < 1 {
+				sized.Target *= scale
+				sized.Reason += fmt.Sprintf(" | %s cut size to %s: %s", adj.Source, pct(scale), adj.Reason)
+			}
+		}
+
 		// Fill the change at the next bar's open.
 		turnover := math.Abs(sized.Target - pos)
 		cost := turnover * b.Costs.PerUnit()

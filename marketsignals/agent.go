@@ -36,6 +36,23 @@ const (
 	FamilyFlow        Family = "flow"
 	FamilyPositioning Family = "positioning"
 	FamilyScreen      Family = "screen"
+
+	// FamilyStructure covers everything read off the SHAPE of the price path:
+	// Fibonacci retracements, chart patterns, trendlines, swing geometry.
+	//
+	// Fibonacci and chart patterns deliberately share this one family rather
+	// than getting one each. They are computed from the same swing points by
+	// the same logic and they agree with each other almost by construction —
+	// a double bottom will usually sit on a retracement level because both
+	// are describing the same low. Filing them separately would let the
+	// ensemble count a single reading of the chart as two independent
+	// confirmations, which is precisely the error the Family mechanism
+	// exists to prevent.
+	FamilyStructure Family = "structure"
+
+	// FamilyMacro is the political and macroeconomic calendar — the only
+	// family whose input is not derived from market data at all.
+	FamilyMacro Family = "macro"
 )
 
 // Signal is an agent's opinion about the next bar. Strength is the agent's
@@ -75,4 +92,35 @@ type SizedSignal struct {
 	Signal
 	Target float64
 	Reason string
+}
+
+// RiskAdjustment is an opinion about how much risk to carry, expressed
+// without any opinion about direction.
+//
+// This separation is the point. Some information tells you which way to lean;
+// other information tells you only that the next few hours are a bad time to
+// have a view at all. A referendum result due in two hours does not make a
+// long better or worse — it makes the SIZE of any position wrong, whichever
+// way it points. Forcing that into a directional vote loses it entirely,
+// which is why the macro agent modulates rather than votes.
+type RiskAdjustment struct {
+	// Scale multiplies the position the risk manager would otherwise take.
+	// Constrained to [0,1]: a modulator may take risk off the table, never
+	// add to it. Nothing on a calendar justifies betting bigger.
+	Scale  float64
+	Veto   bool
+	Source string
+	Reason string
+}
+
+// NoAdjustment leaves the position untouched.
+func NoAdjustment(source, reason string) RiskAdjustment {
+	return RiskAdjustment{Scale: 1, Source: source, Reason: reason}
+}
+
+// RiskModulator is implemented by anything that wants to shrink a position
+// without expressing a direction. Strategies may implement it in addition to
+// Strategy; the backtester applies it when present.
+type RiskModulator interface {
+	ModulateRisk(v View) RiskAdjustment
 }

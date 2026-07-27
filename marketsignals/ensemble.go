@@ -18,6 +18,13 @@ type Ensemble struct {
 	Agents  []Agent
 	Weights map[string]float64 // by agent name; absent means 1
 
+	// Modulators shrink the position without voting on direction. They are
+	// kept separate from Agents on purpose: something that only ever says
+	// "not now" would otherwise have to be encoded as a permanent Flat vote,
+	// where it would be indistinguishable from an agent that simply has no
+	// opinion, and its warning would be silently discarded.
+	Modulators []RiskModulator
+
 	MinAgents   int     // how many agents must point the same way
 	MinFamilies int     // how many DISTINCT families must be among them
 	MinStrength float64 // combined strength floor, below which we stay flat
@@ -31,18 +38,45 @@ type Ensemble struct {
 // makes the whole thing quiet: two agents from two different families, with
 // any cross-family disagreement vetoing the trade.
 func NewEnsemble() *Ensemble {
+	macro := NewMacroAgent()
 	return &Ensemble{
 		Agents: []Agent{
 			NewBreakoutAgent(),
 			NewReversionAgent(),
 			NewFlowAgent(),
 			NewFundingAgent(),
+			NewFibonacciAgent(),
+			NewPatternAgent(),
+			macro,
 		},
+		// The macro agent appears in both lists deliberately. Its directional
+		// opinion after a surprise is one vote among many; its judgement that
+		// a referendum lands in two hours is not a vote at all and must not be
+		// outvoted by six chart readings.
+		Modulators:     []RiskModulator{macro},
 		MinAgents:      2,
 		MinFamilies:    2,
 		MinStrength:    0.3,
 		VetoOnConflict: true,
 	}
+}
+
+// ModulateRisk combines every modulator by taking the MINIMUM scale rather
+// than the average. Risk warnings do not offset each other: two independent
+// reasons to be small are not one reason to be medium.
+func (e *Ensemble) ModulateRisk(v View) RiskAdjustment {
+	out := NoAdjustment("ensemble", "no modulator asked for less risk")
+	for _, m := range e.Modulators {
+		adj := m.ModulateRisk(v)
+		scale := clamp(adj.Scale, 0, 1)
+		if adj.Veto {
+			scale = 0
+		}
+		if scale < out.Scale {
+			out = RiskAdjustment{Scale: scale, Veto: scale == 0, Source: adj.Source, Reason: adj.Reason}
+		}
+	}
+	return out
 }
 
 // Warmup is the longest warmup among the members: until every agent can

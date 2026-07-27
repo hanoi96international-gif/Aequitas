@@ -44,11 +44,17 @@ func TestView_CannotReachPastItsEnd(t *testing.T) {
 func TestAgents_IgnoreRewrittenFuture(t *testing.T) {
 	const cut = 300
 
+	// The structural agents matter most here. Swing-based code is where
+	// lookahead usually hides: on a chart a peak is simply visible, so the
+	// confirmation delay is easy to forget, and forgetting it lets a pattern
+	// or a Fibonacci leg be drawn from bars that have not happened.
 	agents := []Agent{
 		NewBreakoutAgent(),
 		NewReversionAgent(),
 		NewFlowAgent(),
 		NewFundingAgent(),
+		NewFibonacciAgent(),
+		NewPatternAgent(),
 	}
 
 	original := withFlow(randomWalkSeries(600, 42, 0.02))

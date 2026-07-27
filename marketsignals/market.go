@@ -14,7 +14,15 @@ import (
 	"time"
 )
 
-// Candle is one OHLCV bar. BuyVolume/SellVolume hold the taker-side split
+// Candle is one OHLCV bar.
+//
+// Time is the bar's OPEN time, so the bar covers [Time, Time+Interval) and is
+// not fully known until Time+Interval. Every place in this package that asks
+// "what time is it for an agent looking at this bar" uses that closing
+// instant, because the open time would hand the agent a bar's worth of events
+// it could not yet have seen.
+//
+// BuyVolume/SellVolume hold the taker-side split
 // when the venue reports it (Binance aggTrades, Coinbase matches, most DEX
 // indexers); both zero means "this feed did not tell us", which is a
 // meaningful state — the order-flow agent stands down rather than inventing
@@ -68,6 +76,11 @@ type Series struct {
 	// Funding is the funding rate in effect over each bar, as a decimal per
 	// funding period (0.0001 = 1bp), aligned with Candles by index.
 	Funding []float64
+
+	// Events is the political and macroeconomic calendar for this market. It
+	// need not be sorted; the View sorts and masks it. See events.go for what
+	// an agent is and is not allowed to know about an event before it lands.
+	Events []Event
 }
 
 // Validate catches the input problems that silently corrupt a backtest:
@@ -181,4 +194,26 @@ func (v View) Funding() []float64 {
 		return nil
 	}
 	return v.series.Funding[:v.n:v.n]
+}
+
+// Now is the instant an agent holding this view is standing at: the close of
+// the most recent visible bar. Not its open — the bar is only knowable once
+// it has finished, and using the open time would grant the agent a full bar
+// of hindsight about anything timestamped inside it.
+func (v View) Now() time.Time {
+	if v.n == 0 {
+		return time.Time{}
+	}
+	return v.Last().Time.Add(v.series.Interval)
+}
+
+// Events returns the calendar as this view is permitted to see it: scheduled
+// events keep their dates but surrender their outcomes until they have
+// happened, and unscheduled events do not appear at all until they land. See
+// MaskEvents for the reasoning.
+func (v View) Events() []Event {
+	if v.n == 0 {
+		return nil
+	}
+	return MaskEvents(v.series.Events, v.Now())
 }
