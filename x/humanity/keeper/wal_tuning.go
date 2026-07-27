@@ -54,6 +54,29 @@ var walFlushStats struct {
 	maxHoldMs  atomic.Int64
 	dbNanos    atomic.Int64
 	maxBatchNo atomic.Int64
+
+	// Per-phase, because "the Postgres transaction is 27 of the 30ms" is not
+	// yet an answer -- that window also contains pure Go work (building two
+	// multi-row statements, JSON-marshaling one outbox row per item) which
+	// needs no lock at all and could move out of the critical section. Without
+	// splitting it, the fix would be a guess between "make the database faster"
+	// and "stop doing CPU work while holding 346 account shards".
+	snapNanos   atomic.Int64
+	acctSQLNs   atomic.Int64
+	acctExecNs  atomic.Int64
+	outboxSQLNs atomic.Int64
+	outboxExecN atomic.Int64
+	commitNanos atomic.Int64
+}
+
+// noteWALFlushPhases records the breakdown of one flush's database window.
+func noteWALFlushPhases(snap, acctSQL, acctExec, outboxSQL, outboxExec, commit time.Duration) {
+	walFlushStats.snapNanos.Add(int64(snap))
+	walFlushStats.acctSQLNs.Add(int64(acctSQL))
+	walFlushStats.acctExecNs.Add(int64(acctExec))
+	walFlushStats.outboxSQLNs.Add(int64(outboxSQL))
+	walFlushStats.outboxExecN.Add(int64(outboxExec))
+	walFlushStats.commitNanos.Add(int64(commit))
 }
 
 // applyWALTuningFromEnv overrides the flush parameters when asked. Called from
@@ -131,6 +154,15 @@ func WALFlushStats() map[string]interface{} {
 		out["addrs_per_flush"] = walFlushStats.addrs.Load() / n
 		out["hold_avg_ms"] = (walFlushStats.holdNanos.Load() / n) / 1e6
 		out["db_avg_ms"] = (walFlushStats.dbNanos.Load() / n) / 1e6
+		// Microseconds, not milliseconds: the point of the split is to separate
+		// phases that may well be under 1ms each, and rounding them to whole
+		// milliseconds would report most of them as 0.
+		out["p1_snapshot_us"] = (walFlushStats.snapNanos.Load() / n) / 1e3
+		out["p2_acct_sql_us"] = (walFlushStats.acctSQLNs.Load() / n) / 1e3
+		out["p3_acct_exec_us"] = (walFlushStats.acctExecNs.Load() / n) / 1e3
+		out["p4_outbox_sql_us"] = (walFlushStats.outboxSQLNs.Load() / n) / 1e3
+		out["p5_outbox_exec_us"] = (walFlushStats.outboxExecN.Load() / n) / 1e3
+		out["p6_commit_us"] = (walFlushStats.commitNanos.Load() / n) / 1e3
 	}
 	return out
 }
