@@ -169,6 +169,61 @@ wenn sie durch das Verkaufen von Crash-Versicherung entsteht.
 
 Unter `P(edge real) = 0.95` lautet das ehrliche Fazit: **nichts nachgewiesen.**
 
+## Die Suche
+
+Bewerten ist nur die halbe Arbeit. Sechs ungetunte Standardkonfigurationen zu
+testen und „kein Edge" zu schließen ist keine Suche, sondern eine Stichprobe
+von sechs. `search.go` durchsucht den Parameterraum (80 Varianten) — und zwei
+Regeln machen das Ergebnis erst brauchbar:
+
+**1. Ausgewählt wird nur mit Vergangenheit.** Anchored Walk-Forward: auf allem
+Bekannten eine Konfiguration wählen, auf dem *nächsten* Abschnitt bewerten,
+neu wählen. Das konvergiert langsamer und liefert deutlich hässlichere Zahlen
+als eine Optimierung über die Gesamthistorie — und genau die hässliche Zahl
+war real verfügbar.
+
+**2. Bewertet wird das Verfahren, nicht der Gewinner.** Die Performance der
+besten Konfiguration über die Gesamthistorie beantwortet „was hätte ich
+verdient, wenn ich die Parameter vorher gewusst hätte" — eine Frage, mit der
+niemand etwas anfangen kann.
+
+Auf reinem Rauschen sieht das so aus:
+
+```
+bars  866-1197  reversion/lb30/z2.0/wick0.3  in-sample 3.42 → out-of-sample -2.76
+VERDICT: no edge: the procedure lost money out of sample
+```
+
+Ein In-Sample-Sharpe von **3,42** — damit würden die meisten live gehen. Out
+of Sample: **-2,76**.
+
+### Die Hürde: warum die naive Formel echte Edges erschlägt
+
+Der Deflated Sharpe braucht die Streuung, die *edgelose* Varianten zufällig
+zeigen würden. Die Literatur schlägt vor, dafür die beobachtete Streuung der
+Varianten-Sharpes zu nehmen — das hat aber ein Versagen genau dann, wenn die
+Suche *erfolgreich* ist: Wenn ein echter Edge existiert, fangen ihn fast alle
+Varianten des richtigen Agenten ein, die Streuung wächst *weil der Edge real
+ist*, und die Hürde steigt, bis sie genau das erschlägt, was sie finden sollte.
+
+Gemessen auf denselben 80 Varianten:
+
+| | Nullhürde (analytisch) | Hürde aus beobachteter Streuung |
+|---|---|---|
+| Rauschen | 6,29 | 6,15 ✓ stimmen überein |
+| echter Edge | 6,29 | **21,08** — erschlägt Sharpe 17,24 |
+
+Deshalb entscheidet die analytische Nullhürde (`1/√T`). Die Divergenz der
+beiden ist selbst ein Befund: sie heißt „viele Varianten bewegen sich
+gemeinsam" — Evidenz *für* eine Entdeckung, nicht dagegen.
+
+```bash
+go run ./cmd/signalctl search -csv btc.csv -csv eth.csv -csv sol.csv -grid full
+```
+
+Mehrere `-csv` verlangen, dass dieselbe Methode auf mehreren Märkten überlebt
+— der Test, der ein Ergebnis am ehesten killt, und deshalb der wertvollste.
+
 ## Das Einstellungsverfahren
 
 `SelectBest` *rangiert*. Eine Rangliste hat immer einen Sieger — auch der Beste

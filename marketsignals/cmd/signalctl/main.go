@@ -14,6 +14,8 @@ import (
 	"math"
 	"math/rand"
 	"os"
+	"path/filepath"
+	"strings"
 	"time"
 
 	ms "github.com/hanoi96international-gif/marketsignals"
@@ -40,6 +42,8 @@ func main() {
 		err = interviewCmd(os.Args[2:])
 	case "discover":
 		err = discoverCmd(os.Args[2:])
+	case "search":
+		err = searchCmd(os.Args[2:])
 	case "-h", "--help", "help":
 		usage()
 		return
@@ -80,6 +84,11 @@ func usage() {
         Run the hiring panel for one instrument's segment. Candidates must
         pass every criterion, including survival at double the assumed
         slippage. Expect nobody to be hired.
+
+  signalctl search -csv BARS.csv [-csv BARS2.csv ...] [-folds 8] [-grid full]
+        Search the parameter space with anchored walk-forward selection, then
+        score THE SEARCH — not its hindsight winner. Pass several -csv flags
+        to require the method to survive on more than one market.
 
   signalctl discover -json TRENDING.json
         Rank projects by credible, accelerating attention. Produces a
@@ -335,6 +344,91 @@ func discoverCmd(args []string) error {
 	}
 	fmt.Print(ms.RankReport(ms.RankByCredibleAttention(projects)))
 	return nil
+}
+
+type csvList []string
+
+func (c *csvList) String() string     { return strings.Join(*c, ",") }
+func (c *csvList) Set(v string) error { *c = append(*c, v); return nil }
+
+func searchCmd(args []string) error {
+	fs := flag.NewFlagSet("search", flag.ExitOnError)
+	var paths csvList
+	fs.Var(&paths, "csv", "path to a bars CSV; repeat for a cross-market search")
+	interval := fs.Duration("interval", time.Hour, "bar duration")
+	folds := fs.Int("folds", 8, "walk-forward segments")
+	train := fs.Int("train", 3, "segments used before the first selection")
+	grid := fs.String("grid", "full", "variant space: full, breakout, reversion, flow, fibonacci, pattern, funding")
+	fee := fs.Float64("fee", ms.DefaultCosts().FeeRate, "taker fee as a fraction of notional")
+	slip := fs.Float64("slip", ms.DefaultCosts().SlippageRate, "assumed slippage as a fraction")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if len(paths) == 0 {
+		fs.Usage()
+		return fmt.Errorf("at least one -csv is required")
+	}
+
+	variants, err := gridByName(*grid)
+	if err != nil {
+		return err
+	}
+
+	se := ms.NewSearcher()
+	se.Folds, se.MinTrainFolds = *folds, *train
+	se.Backtester.Costs = ms.Costs{FeeRate: *fee, SlippageRate: *slip}
+
+	var set []*ms.Series
+	for _, p := range paths {
+		symbol := strings.TrimSuffix(filepath.Base(p), filepath.Ext(p))
+		s, err := ms.LoadCSV(p, symbol, *interval)
+		if err != nil {
+			return err
+		}
+		set = append(set, s)
+	}
+
+	fmt.Printf("Searching %d variants over %d market(s), %d folds, %d held back for training.\n\n",
+		len(variants), len(set), *folds, *train)
+
+	if len(set) == 1 {
+		res, err := se.Run(set[0], variants)
+		if err != nil {
+			return err
+		}
+		fmt.Print(res.Report())
+		return nil
+	}
+
+	res, err := se.SearchAcross(set, variants)
+	if err != nil {
+		return err
+	}
+	for _, s := range set {
+		fmt.Printf("── %s ──\n%s\n", s.Symbol, res.PerMarket[s.Symbol].Report())
+	}
+	fmt.Print(res.Report())
+	return nil
+}
+
+func gridByName(name string) ([]ms.Variant, error) {
+	switch name {
+	case "full":
+		return ms.FullGrid(), nil
+	case "breakout":
+		return ms.BreakoutGrid(), nil
+	case "reversion":
+		return ms.ReversionGrid(), nil
+	case "flow":
+		return ms.FlowGrid(), nil
+	case "fibonacci":
+		return ms.FibonacciGrid(), nil
+	case "pattern":
+		return ms.PatternGrid(), nil
+	case "funding":
+		return ms.FundingGrid(), nil
+	}
+	return nil, fmt.Errorf("unknown grid %q", name)
 }
 
 func candidates() []ms.Strategy {
