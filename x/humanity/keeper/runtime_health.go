@@ -121,3 +121,47 @@ func StartHeapWatcher() {
 		}
 	}()
 }
+
+// DBPoolStats answers, directly, whether the connection pool is the constraint.
+//
+// A CPU profile showed 20.8% of samples in syscalls with only two of six cores
+// busy, which looked like callers queueing for a database connection against a
+// pool of 20 — so the pool was made configurable and raised to 40 on Contabo2.
+// Throughput did not move: 1161/s afterwards against 1021, 1113, 1395 and
+// 1934/s before. But run-to-run variance there is larger than the effect being
+// looked for, so that comparison cannot decide anything either way.
+//
+// WaitCount does. database/sql increments it every time a caller had to WAIT
+// for a connection because none was free, and accumulates the total wait in
+// WaitDuration. If those are near zero, the pool was never the constraint and
+// no amount of raising it will help — the time is going into the queries
+// themselves or into Postgres. If they are large, the queueing is real and
+// measurable rather than inferred from a throughput number that swings by 2x
+// between runs.
+//
+// InUse against MaxOpenConnections shows the same thing from the other side:
+// a pool sitting at its ceiling is saturated; one sitting well below it is not.
+func (cs *ChainState) DBPoolStats() map[string]interface{} {
+	if cs.db == nil {
+		return map[string]interface{}{"configured": false}
+	}
+	st := cs.db.Stats()
+	return map[string]interface{}{
+		"configured": true,
+		"max_open":   st.MaxOpenConnections,
+		"open":       st.OpenConnections,
+		"in_use":     st.InUse,
+		"idle":       st.Idle,
+		// The two that actually answer the question.
+		"wait_count":    st.WaitCount,
+		"wait_total_ms": st.WaitDuration.Milliseconds(),
+		// Average wait per waiting caller — a large count with a negligible
+		// average is a pool that is merely busy, not one that is too small.
+		"wait_avg_ms": func() int64 {
+			if st.WaitCount == 0 {
+				return 0
+			}
+			return st.WaitDuration.Milliseconds() / st.WaitCount
+		}(),
+	}
+}
