@@ -122,18 +122,11 @@ func (cs *ChainState) ReserveNonce(address string, expected, next uint64) (bool,
 			return true, nil
 		}
 	}
-	res, err := cs.db.Exec(
-		`UPDATE evm_nonces SET nonce = $3 WHERE lower(address) = $1 AND nonce = $2`,
-		address, expected, next,
-	)
-	if err != nil {
-		return false, err
-	}
-	rows, err := res.RowsAffected()
-	if err != nil {
-		return false, err
-	}
-	return rows == 1, nil
+	// Batched: this is the same compare-and-swap, but many addresses travel to
+	// Postgres in one statement instead of one round trip each. It was 23.9% of
+	// the CPU profile under load — see nonce_batch.go for the measurements and
+	// for why a batch can never contain the same address twice.
+	return cs.reserveNonceBatched(address, expected, next)
 }
 
 func (cs *ChainState) LoadNonce(address string) uint64 {
@@ -2499,8 +2492,8 @@ func (cs *ChainState) LoadPendingTxs() ([]Transaction, []int64) {
 	// safety net for the early-return error paths above.
 	defer rows.Close()
 	type idTx struct {
-		id  int64
-		tx  Transaction
+		id int64
+		tx Transaction
 	}
 	type badRow struct {
 		id     int64
@@ -2645,7 +2638,7 @@ func (cs *ChainState) ResetStaleIncludedPendingTxs(maxAge time.Duration) {
 // which previously left the registration invisible to all secondary nodes.
 
 // SaveRegistrationIntent writes a pre-EVM intent record. evm_tx_hash is stored
-// as '' until the EVM transaction is confirmed. Returns the new row id.
+// as ” until the EVM transaction is confirmed. Returns the new row id.
 func (cs *ChainState) SaveRegistrationIntent(wallet, nullifier string, pendingTx Transaction) (int64, error) {
 	if cs.db == nil {
 		return 0, fmt.Errorf("db not available")
