@@ -199,10 +199,16 @@ type nonceShard struct {
 }
 
 // nonceShardCount is a power of two so the shard index is a mask rather than a
-// division. 256 is far above the core count of any node this runs on, so two
-// senders colliding on a shard is rare and costs only what the old global lock
-// cost for every pair.
-const nonceShardCount = 256
+// division.
+//
+// Was 256, chosen against the core count. That reasoning was wrong: what
+// collides here is concurrent SENDERS, not cores. Measured on Contabo2 with a
+// load generator driving 597 concurrent senders, that is 2.3 senders per shard
+// and 22 goroutines were waiting in sync.Mutex.Lock inside sendRawTransaction.
+// 2048 puts it back under one sender per shard at that concurrency, and the
+// array costs 8 bytes of mutex plus a map header per shard - kilobytes, against
+// a node already holding hundreds of megabytes under load.
+const nonceShardCount = 2048
 
 // nonceShardFor returns the shard owning addr's nonce -- both the lock and the
 // map that lock guards. Callers must use this for EVERY nonce access; reaching
