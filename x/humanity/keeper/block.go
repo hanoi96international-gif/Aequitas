@@ -5884,6 +5884,12 @@ func (dag *BlockDAG) replayTransactions(block *Block, force bool) (ok bool) {
 	// public lock-each-time wrapper, and the snapshot/rollback/StateRoot
 	// comparison below do the same.
 	dag.state.mu.Lock()
+	// Measures how long every concurrent transfer is shut out by this replay.
+	// Deferred BEFORE the Unlock so it runs after it — see
+	// exclusive_lock_stats.go for why this number decides whether the
+	// deliberately-atomic scope below is worth reworking.
+	exclusiveAcquired := time.Now()
+	defer trackExclusiveHold(exclusiveAcquired, "block replay")
 	defer dag.state.mu.Unlock()
 	configBackup := make(map[string]configValueSnapshot, len(stateRootRelevantConfigKeys))
 	for _, key := range stateRootRelevantConfigKeys {

@@ -154,7 +154,7 @@ type ChainState struct {
 	// placeholders and wallets mark landed transactions as failed — see
 	// tx_block_index.go for the live report that uncovered it.
 	txBlockIndexOnce sync.Once
-	nullifiers map[string]string // nullifier hex → wallet address (in-memory cache)
+	nullifiers       map[string]string // nullifier hex → wallet address (in-memory cache)
 	// nullifiersMu guards cs.nullifiers (a plain, non-sharded Go map — unlike
 	// cs.accounts, nullifiers were never migrated to a per-key-lockable
 	// structure) and cs.nullifierSetXOR's mutation together, specifically for
@@ -327,7 +327,7 @@ type ChainState struct {
 	// /api/health/combined so this doesn't silently sit unnoticed (audit
 	// 2026-06-28 recheck 5, P1-3: "Startup/Bootstrap sollte ... mindestens
 	// einen Health-Status degraded setzen").
-	degradedMu             sync.RWMutex
+	degradedMu              sync.RWMutex
 	bootstrapDegradedReason string
 
 	// accountsLoadFailed is set true if loadFromDB's SELECT against
@@ -1163,7 +1163,7 @@ func (cs *ChainState) resetDBStateForBootstrap() {
 	}
 
 	tables := []string{
-		"pending_txs",      // prevent stale TXs from polluting post-reset state
+		"pending_txs", // prevent stale TXs from polluting post-reset state
 		"bio_registrations",
 		"nullifiers",
 		"bio_hashes",
@@ -3291,6 +3291,8 @@ func (cs *ChainState) distributeLPPoolLocked(ctx context.Context) ([]Distributio
 // production distribution uses distributeUBIPoolLocked instead.
 func (cs *ChainState) DistributeUBIPool() []DistributionShare {
 	cs.mu.Lock()
+	acquired := time.Now()
+	defer trackExclusiveHold(acquired, "UBI distribution")
 	defer cs.mu.Unlock()
 	// cs.mu-only path, never runs inside runAtomicWithOutbox/
 	// runAtomicDistributionWithOutbox — see RegisterHuman's comment.
@@ -4652,9 +4654,11 @@ func (cs *ChainState) transferMutateLocked(ctx context.Context, from, to string,
 // the contract directly with no reason to know about this RPC-layer
 // intercept). Whatever documentation describes "the transfer fee" to users
 // should describe THIS fee, not the contract's.
-//   base = 0.1% of amount
-//   Concentration surcharge if sender holds ≥1/5/10% of total supply
-//   20% of fee → UBI pool, 80% burned (removed from supply)
+//
+//	base = 0.1% of amount
+//	Concentration surcharge if sender holds ≥1/5/10% of total supply
+//	20% of fee → UBI pool, 80% burned (removed from supply)
+//
 // Returns (netAmountCredited, fromDemurrageLost, toDemurrageLost, err) — the
 // two demurrage figures must be attached to the queued Transaction so
 // secondary nodes replay the exact decay instead of recomputing it (see
