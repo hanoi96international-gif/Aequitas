@@ -4,11 +4,13 @@ go 1.24.1
 
 require (
 	github.com/ethereum/go-ethereum v1.13.0
+	github.com/hdevalence/ed25519consensus v0.2.0
 	github.com/lib/pq v1.12.3
 	github.com/libp2p/go-libp2p v0.36.0
 )
 
 require (
+	filippo.io/edwards25519 v1.0.0 // indirect
 	github.com/DataDog/zstd v1.4.5 // indirect
 	github.com/StackExchange/wmi v1.2.1 // indirect
 	github.com/VictoriaMetrics/fastcache v1.6.0 // indirect

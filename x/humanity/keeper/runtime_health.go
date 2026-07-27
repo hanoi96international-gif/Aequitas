@@ -41,7 +41,18 @@ func runtimeSnapshot() map[string]interface{} {
 		// Total memory the runtime obtained from the OS — the closest thing to
 		// what an OOM killer sees.
 		"total_sys_mb": m.Sys / mb,
-		"num_gc":       m.NumGC,
+		// HeapReleased is the part of HeapSys already handed back to the OS.
+		// Without it total_sys_mb cannot answer the question it exists for.
+		// Measured on the primary 2026-07-26: total_sys 666 MB against a live
+		// heap of 10 MB. That gap means one of two opposite things — the process
+		// is still holding 656 MB the container counts against its limit, or it
+		// long since returned that memory and only the mapping remains. The
+		// first is a restart waiting to happen; the second is harmless. Only
+		// this field tells them apart.
+		"heap_released_mb": m.HeapReleased / mb,
+		// What the container limit actually sees: obtained minus returned.
+		"heap_retained_mb": (m.HeapSys - m.HeapReleased) / mb,
+		"num_gc":           m.NumGC,
 		// Cumulative stop-the-world pause. Rising fast means GC pressure;
 		// SCALING_ARCHITECTURE.md records this as measured-and-fine at 15.8x
 		// the target transaction rate, so a large value here would be new.
