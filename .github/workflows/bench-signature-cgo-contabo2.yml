@@ -95,7 +95,7 @@ jobs:
             # wins every scheduling contest. The benchmark saturates all cores
             # by design, which is exactly why it must yield.
             AEQUITAS_SCALING_BENCH=1 nice -n 10 /tmp/scaling_cgo.test \
-              -test.run 'TestScalingUnknown_SignatureVerification|TestScalingUnknown_Ed25519VsSecp256k1' \
+              -test.run 'TestScalingUnknown_SignatureVerification|TestScalingUnknown_Ed25519VsSecp256k1|TestScalingUnknown_Ed25519BatchVerification' \
               -test.v -test.timeout 5m 2>&1 | grep -Ev '^(=== RUN|=== PAUSE|=== CONT)' | tail -30
             echo "=== cleanup ==="
             rm -f /tmp/scaling_cgo.test
