@@ -21,7 +21,15 @@
     "unique_buyers_1h": 74,
     "deployer_prior_rugs": 3,
     "deployer_prior_tokens": 9,
-    "deployer_funded_by_mixer": true
+    "deployer_funded_by_mixer": true,
+    "checks": {
+      "authorities": true,
+      "liquidity_lock": true,
+      "sell_simulation": true,
+      "holder_distribution": true,
+      "deployer_history": true,
+      "source_verification": true
+    }
   },
   {
     "symbol": "DECENT",
@@ -42,7 +50,15 @@
     "tx_count_1h": 420,
     "unique_buyers_1h": 130,
     "deployer_prior_rugs": 0,
-    "deployer_prior_tokens": 0
+    "deployer_prior_tokens": 0,
+    "checks": {
+      "authorities": true,
+      "liquidity_lock": true,
+      "sell_simulation": true,
+      "holder_distribution": true,
+      "deployer_history": true,
+      "source_verification": true
+    }
   },
   {
     "symbol": "STEADY",
@@ -62,7 +78,15 @@
     "tx_count_1h": 2400,
     "unique_buyers_1h": 1150,
     "deployer_prior_rugs": 0,
-    "deployer_prior_tokens": 4
+    "deployer_prior_tokens": 4,
+    "checks": {
+      "authorities": true,
+      "liquidity_lock": true,
+      "sell_simulation": true,
+      "holder_distribution": true,
+      "deployer_history": true,
+      "source_verification": true
+    }
   },
   {
     "symbol": "LOOKSGOOD",
@@ -83,6 +107,14 @@
     "unique_buyers_1h": 5200,
     "deployer_prior_rugs": 0,
     "deployer_prior_tokens": 2,
-    "upgradeable_proxy": true
+    "upgradeable_proxy": true,
+    "checks": {
+      "authorities": true,
+      "liquidity_lock": true,
+      "sell_simulation": true,
+      "holder_distribution": true,
+      "deployer_history": true,
+      "source_verification": true
+    }
   }
 ]

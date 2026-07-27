@@ -34,6 +34,7 @@ func cleanLaunch() Launch {
 		UniqueBuyers1h:        900,
 		DeployerPriorRugs:     0,
 		DeployerPriorTokens:   3,
+		Checks:                AllChecksPerformed(),
 	}
 }
 
@@ -159,6 +160,47 @@ func TestLaunch_FlagsAnAnonymousDeployerAsAConcern(t *testing.T) {
 	}
 	t.Fatalf("a deployer with no history should be recorded as an unknown, not read as "+
 		"a clean record; concerns were %v", got.Concerns)
+}
+
+// TestLaunch_UncheckedIsNotClean is the veto that a real data source forces
+// into existence. Dexscreener and its peers publish prices, not authorities,
+// so a Launch built from one has MintAuthorityActive == false purely because
+// nobody looked — and false is the value that PASSES. The screener must
+// reject for the absence of the check, not accept for the absence of a
+// finding.
+func TestLaunch_UncheckedIsNotClean(t *testing.T) {
+	// Everything about this token is excellent, and nothing about it was
+	// verified. This is exactly the shape of a record assembled from a price
+	// aggregator.
+	l := cleanLaunch()
+	l.LiquidityUSD = 5_000_000
+	l.HolderCount = 40_000
+	l.Checks = LaunchChecks{}
+
+	got := NewLaunchAgent().Screen(l)
+	if got.Verdict != Reject {
+		t.Fatalf("verdict %s for a token nobody inspected:\n%s", got.Verdict, got.Summary())
+	}
+	joined := strings.Join(got.HardFails, " ")
+	for _, want := range []string{
+		"no sell was simulated",
+		"authorities were never inspected",
+		"LP lock or burn was never verified",
+		"deployer was never traced",
+	} {
+		if !strings.Contains(joined, want) {
+			t.Fatalf("hard fails do not mention %q: %v", want, got.HardFails)
+		}
+	}
+
+	// One missing check is enough. Partial diligence is still diligence that
+	// did not cover the thing it missed.
+	partial := cleanLaunch()
+	partial.Checks.Authorities = false
+	if got := NewLaunchAgent().Screen(partial); got.Verdict != Reject {
+		t.Fatalf("verdict %s with only the authority check skipped:\n%s",
+			got.Verdict, got.Summary())
+	}
 }
 
 // TestLaunch_MostRealisticLaunchesAreRejected states the base rate plainly.

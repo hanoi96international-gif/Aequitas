@@ -53,6 +53,70 @@ type Launch struct {
 	DeployerPriorRugs     int  `json:"deployer_prior_rugs"`
 	DeployerPriorTokens   int  `json:"deployer_prior_tokens"`
 	DeployerFundedByMixer bool `json:"deployer_funded_by_mixer"`
+
+	// Checks records which verifications were actually carried out. See
+	// LaunchChecks — this is what stops a partially populated record from
+	// passing vetoes it was never tested against.
+	Checks LaunchChecks `json:"checks"`
+}
+
+// LaunchChecks records which verifications a data source actually performed.
+//
+// This exists because of how Go zero values interact with a safety screener,
+// and the interaction is genuinely dangerous. MintAuthorityActive defaults to
+// false, and false means "no mint authority" — which is a PASS. So a Launch
+// assembled from a source that never looked at the mint authority sails
+// through the veto that exists to catch exactly that. Absence of evidence is
+// read as evidence of absence, silently, in the one place where the cost of
+// being wrong is the entire position.
+//
+// This is not hypothetical. A token record built from a price aggregator has
+// none of these fields, because price aggregators publish prices. Every
+// unperformed check is therefore a hard failure: an unchecked authority is
+// not an absent one.
+type LaunchChecks struct {
+	// Authorities: mint, freeze and upgradeability inspected on-chain.
+	Authorities bool `json:"authorities"`
+	// LiquidityLock: LP lock or burn verified against the locker contract.
+	LiquidityLock bool `json:"liquidity_lock"`
+	// SellSimulation: a sell actually simulated against the live pool.
+	SellSimulation bool `json:"sell_simulation"`
+	// HolderDistribution: holder table pulled, pool and burn addresses excluded.
+	HolderDistribution bool `json:"holder_distribution"`
+	// DeployerHistory: the deployer's prior deployments and funding traced.
+	DeployerHistory bool `json:"deployer_history"`
+	// SourceVerification: published source confirmed against the deployed code.
+	SourceVerification bool `json:"source_verification"`
+}
+
+// AllChecksPerformed marks every verification as done — for callers whose
+// source genuinely covers all of them, and for tests.
+func AllChecksPerformed() LaunchChecks {
+	return LaunchChecks{
+		Authorities: true, LiquidityLock: true, SellSimulation: true,
+		HolderDistribution: true, DeployerHistory: true, SourceVerification: true,
+	}
+}
+
+// Missing lists the verifications that were not carried out.
+func (c LaunchChecks) Missing() []string {
+	var out []string
+	for _, chk := range []struct {
+		done bool
+		what string
+	}{
+		{c.SellSimulation, "no sell was simulated — nobody established that the position can be exited"},
+		{c.Authorities, "mint, freeze and upgrade authorities were never inspected"},
+		{c.LiquidityLock, "the LP lock or burn was never verified against the locker"},
+		{c.HolderDistribution, "the holder table was never pulled"},
+		{c.DeployerHistory, "the deployer was never traced"},
+		{c.SourceVerification, "the published source was never confirmed against the deployed code"},
+	} {
+		if !chk.done {
+			out = append(out, chk.what)
+		}
+	}
+	return out
 }
 
 // Verdict is the screener's decision.
@@ -145,6 +209,15 @@ func (a *LaunchAgent) Screen(l Launch) LaunchScreen {
 
 	fail := func(format string, args ...any) {
 		s.HardFails = append(s.HardFails, fmt.Sprintf(format, args...))
+	}
+
+	// ── Veto zero: was anybody actually looking? ──
+	//
+	// Before any field is read, establish that the field means something. An
+	// unperformed check leaves a Go zero value that happens to spell "safe",
+	// and a screener that trusts it is not screening, it is agreeing.
+	for _, missing := range l.Checks.Missing() {
+		fail("not verified: %s", missing)
 	}
 
 	// ── Vetoes: can the position be exited, and can the rules change? ──

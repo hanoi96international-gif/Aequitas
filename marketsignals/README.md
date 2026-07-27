@@ -287,6 +287,52 @@ CSV-Spalten: `time,open,high,low,close,volume[,buy_volume,sell_volume][,funding]
 — `time` als RFC3339 oder Unix-Epoch (s oder ms). Fehlen Taker-Split oder
 Funding, treten die betroffenen Agenten zurück, statt die Eingabe zu erfinden.
 
+## Echte Daten holen
+
+Ein Befehl, keine Abhängigkeiten, läuft dort wo dein Netz offen ist:
+
+```bash
+# Spot-Historie mit echtem Taker-Split (Binance meldet das Taker-Buy-Volumen
+# pro Balken — der Flow-Agent bekommt damit eine echte Kauf/Verkauf-Aufteilung
+# statt einer Schätzung aus der Kerzenfarbe)
+go run ./cmd/fetchdata binance -symbol BTCUSDT -days 720 -out btc.csv
+
+# Perpetual: zusätzlich die Funding-Historie, an die Balken ausgerichtet
+go run ./cmd/fetchdata binance -market futures -symbol BTCUSDT -days 720 -out btc_perp.csv
+
+# Dann die Suche über mehrere Märkte
+go run ./cmd/signalctl search -csv btc.csv -csv eth.csv -csv sol.csv -grid full
+```
+
+Funding wird **vorwärts** gefüllt: ein Balken zeigt die Abrechnung, die zu
+seinem Zeitpunkt bereits galt, nie eine spätere. Balken vor der ersten
+Abrechnung werden verworfen statt mit einer Null gefüllt — eine Null läse sich
+als „Funding ist neutral", während die Wahrheit „unbekannt" ist. Tests prüfen
+beides, damit ein Formatfehler nicht erst nach einer Stunde Download auffällt.
+
+### Unbekannt ist nicht sauber
+
+Dexscreener veröffentlicht Preise, Liquidität und Trade-Zahlen — aber **nicht**
+das, was über Haltbarkeit entscheidet: Mint-/Freeze-Authority, LP-Lock,
+Honeypot-Simulation, Deployer-Historie.
+
+Das ist gefährlicher als es klingt. `MintAuthorityActive` ist im Go-Zero-Value
+`false`, und `false` heißt „keine Mint-Authority" — das ist ein **Bestehen**.
+Ein aus einem Preis-Aggregator zusammengesetzter Datensatz rutscht damit genau
+durch das Veto, das ihn fangen soll: Abwesenheit von Evidenz wird still als
+Evidenz von Abwesenheit gelesen, an der einen Stelle, wo der Irrtum die ganze
+Position kostet.
+
+`Launch.Checks` hält deshalb fest, welche Prüfungen *tatsächlich durchgeführt*
+wurden. Jede nicht durchgeführte Prüfung ist ein hartes Veto:
+
+```
+not verified: no sell was simulated — nobody established that the position can be exited
+not verified: mint, freeze and upgrade authorities were never inspected
+```
+
+Eine ungeprüfte Authority ist keine abwesende Authority.
+
 ## Datenquellen — und wo die Grenze liegt
 
 `venues.go` definiert, was das Framework von außen braucht: `BarSource`,
