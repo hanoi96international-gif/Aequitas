@@ -40,6 +40,11 @@ func main() {
 	notifyChat := flag.String("notify-chat", "", "Telegram chat_id, if the endpoint needs one")
 	minChange := flag.Float64("notify-min-change", 0.20, "position change, as a fraction of equity, worth a message")
 	pollEvery := flag.Duration("poll", 0, "poll interval (default: a tenth of the bar interval)")
+	trade := flag.Bool("trade", false, "run the execution engine (paper by default — see -broker)")
+	equity := flag.Float64("equity", 1000, "paper account size in USD")
+	maxPos := flag.Float64("max-position", 0.25, "hard cap on |position| as a fraction of equity")
+	maxOrder := flag.Float64("max-order", 0.10, "hard cap on any single order")
+	maxDD := flag.Float64("max-drawdown", 0.15, "flatten and halt at this drawdown from peak")
 	flag.Parse()
 
 	// Preferring the environment keeps the token out of shell history and out
@@ -49,11 +54,37 @@ func main() {
 		url = fromEnv
 	}
 	cfg := notifyConfig{URL: url, Field: *notifyField, ChatID: *notifyChat, MinChange: *minChange}
+	exec := execConfig{
+		Enabled: *trade, EquityUSD: *equity,
+		Rails: ms.Rails{
+			MaxPositionFraction:  *maxPos,
+			MaxOrderFraction:     *maxOrder,
+			MaxDailyLossFraction: 0.05,
+			MaxDrawdownFraction:  *maxDD,
+			// Never armed from a flag. Trading real money is a decision that
+			// should require editing code and supplying a broker, not
+			// remembering which flag was set in a shell history.
+			DryRun: false,
+		},
+	}
 
-	if err := run(*symbol, *interval, *market, *sector, *out, *seedBars, *pollEvery, cfg); err != nil {
+	if err := run(*symbol, *interval, *market, *sector, *out, *seedBars, *pollEvery, cfg, exec); err != nil {
 		fmt.Fprintln(os.Stderr, "error:", err)
 		os.Exit(1)
 	}
+}
+
+// execConfig configures the execution engine.
+//
+// There is no flag anywhere in this binary that points it at a real venue.
+// The Broker interface is satisfied here only by PaperBroker, and swapping in
+// something that trades money is a deliberate code change made by whoever
+// holds the credentials — not a flag they might set by accident, and not a
+// flag a copied command line might carry.
+type execConfig struct {
+	Enabled   bool
+	EquityUSD float64
+	Rails     ms.Rails
 }
 
 type notifyConfig struct {
@@ -63,7 +94,7 @@ type notifyConfig struct {
 	MinChange float64
 }
 
-func run(symbol, interval, market, sector, out string, seedBars int, pollEvery time.Duration, notify notifyConfig) error {
+func run(symbol, interval, market, sector, out string, seedBars int, pollEvery time.Duration, notify notifyConfig, exec execConfig) error {
 	barDur, err := binance.ParseInterval(interval)
 	if err != nil {
 		return err
@@ -163,7 +194,35 @@ func run(symbol, interval, market, sector, out string, seedBars int, pollEvery t
 			notify.MinChange*100)
 	}
 
-	fmt.Fprintf(os.Stderr, "polling every %s. This process places no orders.\n\n", pollEvery)
+	var engine *ms.Engine
+	var paper *ms.PaperBroker
+	if exec.Enabled {
+		paper = ms.NewPaperBroker(exec.EquityUSD)
+		engine = ms.NewEngine(paper)
+		engine.Rails = exec.Rails
+
+		// This is what makes the drawdown stop real rather than decorative:
+		// the runner asks the account, and the paper account has an equity
+		// curve because every closed bar revalues it.
+		runner.Drawdown = engine.Drawdown
+
+		sinks = append(sinks, ms.FuncSink(func(sig ms.LiveSignal) error {
+			paper.Mark(sig.Symbol, sig.Close)
+			act, err := engine.OnSignal(context.Background(), sig)
+			printAction(act, paper)
+			if err != nil && err != ms.ErrHalted {
+				return err
+			}
+			return nil
+		}))
+		fmt.Fprintf(os.Stderr,
+			"PAPER trading a $%.0f account: max position %.0f%%, max order %.0f%%, "+
+				"flatten at %.0f%% drawdown\n",
+			exec.EquityUSD, exec.Rails.MaxPositionFraction*100,
+			exec.Rails.MaxOrderFraction*100, exec.Rails.MaxDrawdownFraction*100)
+	}
+
+	fmt.Fprintf(os.Stderr, "polling every %s. This process places no real orders.\n\n", pollEvery)
 
 	feed := binance.PollFeed{Client: client, Market: mkt, Symbol: symbol,
 		Interval: interval, Lookback: 5}
@@ -214,6 +273,18 @@ func attachFunding(s *ms.Series, funding map[int64]float64) *ms.Series {
 		out.Funding = append(out.Funding, funding[stamps[idx]])
 	}
 	return out
+}
+
+func printAction(a ms.Action, p *ms.PaperBroker) {
+	switch {
+	case a.Halted:
+		fmt.Printf("    EXECUTION HALTED: %s\n", a.Reason)
+	case a.Fill != nil:
+		fmt.Printf("    filled %s %.8f at %.2f (fee %.4f) — paper equity now $%.2f\n",
+			a.Order.Side, a.Fill.Quantity, a.Fill.Price, a.Fill.Fee, p.Equity())
+	case a.Skipped != "":
+		fmt.Printf("    no order: %s\n", a.Skipped)
+	}
 }
 
 func printSignal(s ms.LiveSignal) error {

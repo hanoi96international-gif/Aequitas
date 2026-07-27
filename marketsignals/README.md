@@ -315,6 +315,50 @@ der Code läuft, die Signale sehen plausibel aus, und die Verluste kommen als
 Deshalb prüfen **beide** Seiten unabhängig, dass ein Balken geschlossen ist —
 der Client wirft die laufende Kerze weg, und der Runner weist sie nochmal ab.
 
+### Der Trading-Bot
+
+```bash
+go run ./cmd/signald -symbol BTCUSDT -trade -equity 1000
+```
+
+Führt die vollständige Ausführungskette aus — gegen ein **Papierkonto**. Das
+ist kein Platzhalter: fast jeder Fehler in einem Trading-Bot steckt in der
+Mechanik, nicht im Signal, und fast alle davon sind auf Papier sichtbar.
+
+Es gibt in diesem Binary **kein Flag, das auf eine echte Börse zeigt.** Das
+`Broker`-Interface wird hier nur von `PaperBroker` erfüllt; etwas
+Geld-bewegendes einzusetzen ist eine bewusste Code-Änderung durch den, der die
+Zugangsdaten hält — kein Schalter, den eine kopierte Kommandozeile mitbringt.
+
+Drei Dinge, an denen Retail-Bots still scheitern, und die Antwort darauf:
+
+**Abgleich.** Die Vorstellung des Bots von seiner Position und die der Börse
+laufen ständig auseinander: abgelehnte Order, Teilausführung, Liquidation,
+jemand handelt das Konto von Hand. Ein Bot, der seinem eigenen Gedächtnis
+traut, dimensioniert die nächste Order aus einer Position, die er nicht hat.
+Die Engine liest das Konto **vor jeder Entscheidung** neu und **hält an**
+statt weiterzuhandeln. Ein angehaltener Bot kostet eine Gelegenheit; ein Bot
+mit falscher Position kostet das Konto.
+
+Der Abgleich läuft in **Basiseinheiten**, nicht in Kapitalanteilen — 0,02 BTC
+sind bei 50.000 $ zehn Prozent und bei 20.000 $ vier Prozent, ohne dass sich
+irgendetwas geändert hätte. Eine frühere Fassung verglich Anteile und hielt
+bei jeder Kursbewegung fälschlich an.
+
+**Idempotenz.** Ein Timeout heißt nicht „Order abgelehnt", sondern „Ausgang
+unbekannt". Blind neu senden verdoppelt die Position. Jede Order trägt einen
+deterministischen Schlüssel aus Instrument, Kerze und Ziel — ein Resend ist
+dieselbe Order, und bei unklarem Ausgang wird **nicht** erneut gesendet,
+sondern angehalten.
+
+**Leitplanken.** Positionsgröße, Einzelordergröße, Tagesverlust und ein
+Drawdown-Stop, der die Position **tatsächlich schließt** statt nur keine neue
+zu öffnen. Rundung immer Richtung null, damit ein Rundungsfehler eine Order
+nie größer macht als beabsichtigt.
+
+Und das Papierkonto schließt die Lücke, vor der der Runner sonst warnen muss:
+der Killswitch braucht eine echte Kapitalkurve, und ein Papierkonto hat eine.
+
 ### Benachrichtigungen
 
 ```bash
