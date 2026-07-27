@@ -4586,6 +4586,31 @@ function activateTabFromPath(path) {
 activateTabFromPath(window.location.pathname);
 
 document.addEventListener('DOMContentLoaded', function() {
+  // Offer the browser extension when there IS one.
+  //
+  // FIX (2026-07-27, reported live): both "CONNECT METAMASK" buttons ship with
+  // style="display:none" in explorer.html and nothing in this file ever
+  // unhid them. Only the WalletConnect button was reachable, so a visitor with
+  // the MetaMask extension installed and already connected to this very site
+  // was still pushed into the QR-code flow to pair a phone. The extension was
+  // never "not detected" — the path to it simply was not offered.
+  //
+  // window.ethereum is the injected provider every extension wallet exposes;
+  // if it is absent (a plain browser, or mobile without an in-app browser)
+  // nothing changes and WalletConnect remains the only option, which is
+  // correct for those cases.
+  if (window.ethereum) {
+    ['btn-conn', 'swap-btn-conn'].forEach(function(id) {
+      const b = document.getElementById(id);
+      if (b) b.style.display = '';
+    });
+    // WalletConnect stays available — pairing a phone wallet is a legitimate
+    // choice — but it no longer looks like the only one.
+    ['btn-wc', 'swap-btn-wc'].forEach(function(id) {
+      const b = document.getElementById(id);
+      if (b) b.style.background = 'transparent', b.style.border = '1px solid rgba(59,153,252,0.5)', b.style.color = '#3b99fc';
+    });
+  }
   const amtInput = document.getElementById('swap-amount');
   if (amtInput) amtInput.addEventListener('input', updateFeeEstimate);
   const addliqAeq = document.getElementById('addliq-aeq');
