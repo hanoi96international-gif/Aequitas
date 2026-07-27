@@ -731,8 +731,36 @@ func NewChainState(dataFile string) *ChainState {
 			// use past this point anyway (see processTransferBatchConcurrent's
 			// own comment for where the real throughput gain from this
 			// session's investigation ended up coming from instead).
-			db.SetMaxOpenConns(20)
-			db.SetMaxIdleConns(20)
+			//
+			// MEASURED 2026-07-27: that reasoning is sound for the test suite
+			// and wrong for a production node. A CPU profile taken under load
+			// on Contabo2 showed the node running at 198% of 600% available
+			// CPU — four of six cores idle — with 20.8% of samples in
+			// syscalls and ReserveNonce alone accounting for 23.9%
+			// cumulative. The load generator drives 72 concurrent senders,
+			// each making a synchronous round trip per transaction, against
+			// this pool of 20. They queue for a connection, and the node is
+			// latency-bound on the database rather than short of CPU.
+			//
+			// The two situations the comment above conflates are different.
+			// The test suite runs MANY ChainState instances in one process
+			// against one shared Postgres, so a per-instance cap of 20 is
+			// what keeps their aggregate under max_connections. A production
+			// node is ONE instance with its own Postgres container, where 20
+			// is simply a throttle nothing asked for.
+			//
+			// So the default stays exactly 20 — tests, and any deployment
+			// that sets nothing, behave precisely as before — and production
+			// can raise it per box, where the operator knows that node's
+			// max_connections. Same shape as every other per-box decision
+			// here (BLOCK_TIME, AEQUITAS_WAL_ENABLED, the RPC rate limit).
+			maxConns := intFromEnv("AEQUITAS_DB_MAX_CONNS", 20)
+			db.SetMaxOpenConns(maxConns)
+			// Idle tracks open: a connection returned to the pool and then
+			// closed because idle capacity is smaller would have to be
+			// re-established on the next request, which is the very round
+			// trip this is trying to avoid.
+			db.SetMaxIdleConns(maxConns)
 			db.SetConnMaxLifetime(30 * time.Minute)
 			err = db.Ping()
 			if err == nil {
