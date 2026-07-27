@@ -190,10 +190,14 @@ jobs:
               # Wrapped, not one line: base64 -w0 produces a single ~136 KB
               # line and the Actions log silently drops it — the first attempt
               # emitted nothing at all past the BEGIN marker.
-              echo "--- BEGIN CPU PROFILE BASE64 ---"
-              base64 -w 120 /tmp/cpu.pprof
-              echo "--- END CPU PROFILE BASE64 ---"
-              rm -f /tmp/cpu.pprof
+              # Left on disk instead of printed. Emitting ~163 KB of base64 through
+              # the Actions log truncated it silently twice: the decoded file came
+              # back 90 bytes short and pprof rejected it with "gzip: invalid
+              # checksum", which reads like a corrupt profile rather than a lost
+              # log line - exactly the kind of failure that costs a whole run
+              # before anyone suspects the transport. Fetch it with scp/pscp.
+              mv -f /tmp/cpu.pprof /tmp/cpu-latest.pprof
+              echo "profile saved to /tmp/cpu-latest.pprof ($(wc -c < /tmp/cpu-latest.pprof) bytes)"
             else
               echo "(profile empty — is the pprof server reachable inside the container?)"
             fi
