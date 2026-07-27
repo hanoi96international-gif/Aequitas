@@ -169,6 +169,55 @@ wenn sie durch das Verkaufen von Crash-Versicherung entsteht.
 
 Unter `P(edge real) = 0.95` lautet das ehrliche Fazit: **nichts nachgewiesen.**
 
+## Das Buch: Experten über ein Universum
+
+Alles bisherige handelt **ein** Instrument. Das ist eine echte Einschränkung,
+keine Vereinfachung — der am konsistentesten belegte Effekt in Krypto-Renditen
+ist **cross-sectional** (vergangene Gewinner schlagen Verlierer, repliziert
+über ~3.900 Coins), und ein System, das ein Symbol ansieht, kann ihn gar nicht
+ausdrücken.
+
+```bash
+go run ./cmd/signalctl portfolio -csv btc.csv -csv eth.csv -csv sol.csv \
+    -allocator experts
+```
+
+Zwei Allokatoren, und die Wahl zwischen ihnen ist echt:
+
+- **`cross`** rangiert die Namen gegeneinander. Hat zu keinem einzelnen Markt
+  eine Meinung — hält in einem durchweg fallenden Universum den am wenigsten
+  schlechten Namen.
+- **`experts`** gibt jedem Instrument das Profil, das seine Klasse und sein
+  Sektor verlangen, und kombiniert deren unabhängige Meinungen. Kann sich
+  entscheiden, **gar nichts** zu halten.
+
+### Warum Einigkeit unter Experten nicht mehr Überzeugung ist
+
+Das ist die Familienregel des Ensembles, eine Ebene höher. Wenn zehn Experten
+long sagen, ist die naive Lesart zehnfache Überzeugung. Die richtige hängt
+davon ab, ob ihre zehn Märkte zehn Märkte sind — und in Krypto sind sie das
+meistens nicht.
+
+Gemessen an derselben **einstimmigen** Expertenmeinung:
+
+| Märkte | Brutto-Exposure | Diversifikationsverhältnis |
+|---|---|---|
+| unabhängig | **1,04** | 3,32 |
+| ein Faktor, zehn Namen | **0,34** | 1,02 |
+
+Dreifacher Unterschied, ohne dass sich eine einzige Meinung geändert hätte.
+Erreicht wird das nicht durch eine Regel über Positionszahlen, sondern indem
+das **Buch** aus der realisierten Kovarianz auf eine Zielvolatilität gebracht
+wird: Einigkeit unter korrelierten Namen erhöht die Portfoliovolatilität, und
+das Ziel verkleinert daraufhin das Buch. Niemand muss es bemerken.
+
+Kosten werden **pro Instrument** aus dessen eigenem Profil berechnet — ein Buch
+mit BTC und einem Memecoin unter einer Kostenannahme ist über beide falsch.
+
+Und beide Kontrollen laufen zusammen: auf reinem Rauschen findet das Buch
+nichts, auf einem eingebauten Cross-Sectional-Effekt findet es ihn. Ein
+Rahmen, der zu beidem schweigt, ist nicht vorsichtig, sondern kaputt.
+
 ## Die Suche
 
 Bewerten ist nur die halbe Arbeit. Sechs ungetunte Standardkonfigurationen zu

@@ -44,6 +44,8 @@ func main() {
 		err = discoverCmd(os.Args[2:])
 	case "search":
 		err = searchCmd(os.Args[2:])
+	case "portfolio":
+		err = portfolioCmd(os.Args[2:])
 	case "-h", "--help", "help":
 		usage()
 		return
@@ -89,6 +91,13 @@ func usage() {
         Search the parameter space with anchored walk-forward selection, then
         score THE SEARCH — not its hindsight winner. Pass several -csv flags
         to require the method to survive on more than one market.
+
+  signalctl portfolio -csv A.csv -csv B.csv ... [-allocator cross|experts]
+        Run a book across a universe. "cross" ranks the names against each
+        other; "experts" gives each instrument the profile its sector calls
+        for and combines their opinions. Both size the BOOK from the realised
+        covariance, so agreement among correlated names shrinks exposure
+        rather than concentrating it.
 
   signalctl discover -json TRENDING.json
         Rank projects by credible, accelerating attention. Produces a
@@ -408,6 +417,80 @@ func searchCmd(args []string) error {
 		fmt.Printf("── %s ──\n%s\n", s.Symbol, res.PerMarket[s.Symbol].Report())
 	}
 	fmt.Print(res.Report())
+	return nil
+}
+
+func portfolioCmd(args []string) error {
+	fs := flag.NewFlagSet("portfolio", flag.ExitOnError)
+	var paths csvList
+	fs.Var(&paths, "csv", "path to a bars CSV; repeat for each instrument")
+	interval := fs.Duration("interval", time.Hour, "bar duration")
+	which := fs.String("allocator", "cross", "cross or experts")
+	sector := fs.String("sector", "large_alt", "crypto sector for every instrument")
+	targetVol := fs.Float64("target-vol", 0.30, "annualised volatility target for the book")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if len(paths) < 2 {
+		fs.Usage()
+		return fmt.Errorf("a universe needs at least two -csv files")
+	}
+
+	u := &ms.Universe{Series: map[string]*ms.Series{}}
+	for _, p := range paths {
+		symbol := strings.TrimSuffix(filepath.Base(p), filepath.Ext(p))
+		s, err := ms.LoadCSV(p, symbol, *interval)
+		if err != nil {
+			return err
+		}
+		u.Series[symbol] = s
+		u.Instruments = append(u.Instruments, ms.Instrument{
+			Symbol: symbol, Class: ms.ClassCrypto, Sector: ms.CryptoSector(*sector),
+			Venue: ms.VenueCEX, ContinuousTrading: true,
+		})
+	}
+	if err := u.Align(); err != nil {
+		return err
+	}
+	fmt.Printf("%d instruments, %d aligned bars\n\n", len(u.Series), u.Bars())
+
+	var alloc ms.Allocator
+	switch *which {
+	case "cross":
+		cs := ms.NewCrossSectional()
+		cs.TargetVol = *targetVol
+		cs.MinNames = 2
+		alloc = cs
+	case "experts":
+		p, err := ms.NewExpertPanel(u)
+		if err != nil {
+			return err
+		}
+		p.TargetVol = *targetVol
+		alloc = p
+	default:
+		return fmt.Errorf("unknown allocator %q (want cross or experts)", *which)
+	}
+
+	bt := ms.NewPortfolioBacktester()
+	if err := bt.CostsFromUniverse(u); err != nil {
+		return err
+	}
+	res, err := bt.Run(u, alloc)
+	if err != nil {
+		return err
+	}
+	fmt.Print(res.Report())
+
+	if len(res.Allocations) > 0 {
+		fmt.Printf("\nlast book: %s\n", res.Allocations[len(res.Allocations)-1].Reason)
+	}
+	fmt.Print(`
+The diversification ratio is the number to read first. It is sqrt(N) when the
+names move independently and 1 when they move as one, and in a crypto drawdown
+it collapses toward 1 — which is the quantitative form of the observation that
+the asset class has one factor and everything else is detail.
+`)
 	return nil
 }
 
