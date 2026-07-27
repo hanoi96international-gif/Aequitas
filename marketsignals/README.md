@@ -287,6 +287,49 @@ CSV-Spalten: `time,open,high,low,close,volume[,buy_volume,sell_volume][,funding]
 — `time` als RFC3339 oder Unix-Epoch (s oder ms). Fehlen Taker-Split oder
 Funding, treten die betroffenen Agenten zurück, statt die Eingabe zu erfinden.
 
+## Echtzeit
+
+```bash
+go run ./cmd/signald -symbol BTCUSDT -interval 1h -market futures -out signals.jsonl
+```
+
+Lädt beim Start ~600 Balken Historie (damit die Agenten nicht tagelang im
+Warmup stehen), pollt dann auf Balkenschluss und schreibt bei jedem Schluss ein
+Signal — auf stdout und optional als JSONL.
+
+**Der Daemon handelt nicht.** Er hält keinen API-Key, authentifiziert sich nie,
+und es gibt in diesem Binary keinen Codepfad, der eine Order platzieren könnte.
+
+### Die eine Regel, an der Live scheitert
+
+Ein REST-Poll liefert als **letztes Element die laufende Kerze**. High, Low und
+Close bewegen sich noch. Ein Agent, dem man sie gibt, entscheidet auf Zahlen,
+die sich nicht gesetzt haben — sein Signal kippt mehrfach innerhalb einer
+Kerze, er steigt auf Spitzen ein, die vor Kerzenschluss wieder weg sind.
+
+Alles, was der Backtest bewiesen hat, ist damit ungültig, denn der Backtest hat
+ausschließlich fertige Balken bewertet. Und nichts davon wirft einen Fehler:
+der Code läuft, die Signale sehen plausibel aus, und die Verluste kommen als
+„die Strategie funktioniert nicht mehr" statt als Absturz.
+
+Deshalb prüfen **beide** Seiten unabhängig, dass ein Balken geschlossen ist —
+der Client wirft die laufende Kerze weg, und der Runner weist sie nochmal ab.
+
+### Weitere Live-Eigenschaften
+
+- **Lücken stoppen den Betrieb.** Bricht die Verbindung ab, fehlen Balken. Jeder
+  Indikator hier liest ein Fenster *aufeinanderfolgender* Balken; ein ATR über
+  ein Loch ist eine Zahl über einen Markt, den es nicht gab. Der Runner meldet
+  sich als ungesund und schweigt, bis er neu geseedet wird.
+- **Live entscheidet identisch zum Backtest.** Ein Test füttert beide Pfade mit
+  denselben Balken und vergleicht Richtung und Stärke. Ohne diese Gleichheit
+  wäre jede Zahl aus der Suche eine Aussage über ein anderes System.
+- **Der Killswitch braucht dein echtes Konto.** Im Backtest liest er eine
+  simulierte Equity-Kurve. Live existiert die nicht — und eine stille Null
+  hieße „kein Drawdown", was den einzigen Schutz vor einer verlierenden
+  Strategie dauerhaft entschärft. Ohne verdrahtetes `Drawdown` steht die
+  Warnung in jedem Signal.
+
 ## Echte Daten holen
 
 Ein Befehl, keine Abhängigkeiten, läuft dort wo dein Netz offen ist:

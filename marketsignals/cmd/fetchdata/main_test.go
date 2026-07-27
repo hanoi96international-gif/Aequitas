@@ -18,16 +18,16 @@ import (
 // format and the funding alignment, and both are pure functions of data
 // already in hand.
 
-func syntheticBars(n int, start time.Time) []bar {
-	out := make([]bar, 0, n)
+func syntheticBars(n int, start time.Time) []ms.Candle {
+	out := make([]ms.Candle, 0, n)
 	price := 100.0
 	for i := 0; i < n; i++ {
 		open := price
 		price = open * 1.001
-		out = append(out, bar{
+		out = append(out, ms.Candle{
 			Time: start.Add(time.Duration(i) * time.Hour),
 			Open: open, High: price * 1.002, Low: open * 0.998, Close: price,
-			Volume: 1000, TakerBuyVolume: 600,
+			Volume: 1000, BuyVolume: 600, SellVolume: 400,
 		})
 	}
 	return out
@@ -171,28 +171,6 @@ func TestWriteCSV_RefusesAnUnwritablePath(t *testing.T) {
 	if err := writeCSV(filepath.Join(t.TempDir(), "no", "such", "dir", "x.csv"),
 		syntheticBars(3, time.Now()), nil); err == nil {
 		t.Fatal("expected an error for an unwritable path")
-	}
-}
-
-func TestAsFloatAndAsInt_HandleBinancesMixedTypes(t *testing.T) {
-	// Binance returns times as JSON numbers and prices as JSON strings in the
-	// same array, which is why these helpers exist.
-	f, err := asFloat([]byte(`"12345.6789"`))
-	if err != nil || f != 12345.6789 {
-		t.Fatalf("asFloat on a quoted number = %v, %v", f, err)
-	}
-	if f, err := asFloat([]byte(`12345.6789`)); err != nil || f != 12345.6789 {
-		t.Fatalf("asFloat on a bare number = %v, %v", f, err)
-	}
-	i, err := asInt([]byte(`1704067200000`))
-	if err != nil || i != 1704067200000 {
-		t.Fatalf("asInt on a bare number = %v, %v", i, err)
-	}
-	if i, err := asInt([]byte(`"1704067200000"`)); err != nil || i != 1704067200000 {
-		t.Fatalf("asInt on a quoted number = %v, %v", i, err)
-	}
-	if _, err := asFloat([]byte(`"not a number"`)); err == nil {
-		t.Fatal("expected an error rather than a silent zero price")
 	}
 }
 

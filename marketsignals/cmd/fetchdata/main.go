@@ -15,6 +15,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"flag"
 	"fmt"
@@ -22,8 +23,10 @@ import (
 	"net/http"
 	"os"
 	"sort"
-	"strconv"
 	"time"
+
+	ms "github.com/hanoi96international-gif/marketsignals"
+	"github.com/hanoi96international-gif/marketsignals/binance"
 )
 
 func main() {
@@ -88,18 +91,22 @@ func binanceCmd(args []string) error {
 		return fmt.Errorf("-symbol and -out are required")
 	}
 
-	base := "https://api.binance.com/api/v3"
-	if *market == "futures" {
-		base = "https://fapi.binance.com/fapi/v1"
-	} else if *market != "spot" {
+	mkt := binance.Spot
+	switch *market {
+	case "spot":
+	case "futures":
+		mkt = binance.Futures
+	default:
 		return fmt.Errorf("-market must be spot or futures, got %q", *market)
 	}
 
+	ctx := context.Background()
+	client := binance.New()
 	start := time.Now().AddDate(0, 0, -*days)
+
 	fmt.Fprintf(os.Stderr, "fetching %s %s klines from %s...\n",
 		*symbol, *interval, start.Format("2006-01-02"))
-
-	bars, err := fetchKlines(base, *symbol, *interval, start)
+	bars, err := client.Klines(ctx, mkt, *symbol, *interval, start)
 	if err != nil {
 		return err
 	}
@@ -110,9 +117,9 @@ func binanceCmd(args []string) error {
 		bars[0].Time.Format("2006-01-02"), bars[len(bars)-1].Time.Format("2006-01-02"))
 
 	var funding map[int64]float64
-	if *market == "futures" {
+	if mkt == binance.Futures {
 		fmt.Fprintln(os.Stderr, "fetching funding history...")
-		funding, err = fetchFunding(*symbol, start)
+		funding, err = client.FundingHistory(ctx, *symbol, start)
 		if err != nil {
 			return err
 		}
@@ -122,132 +129,8 @@ func binanceCmd(args []string) error {
 	return writeCSV(*out, bars, funding)
 }
 
-type bar struct {
-	Time                   time.Time
-	Open, High, Low, Close float64
-	Volume                 float64
-	TakerBuyVolume         float64
-}
-
-// fetchKlines pages through Binance's 1000-bar-per-request limit.
-func fetchKlines(base, symbol, interval string, start time.Time) ([]bar, error) {
-	var out []bar
-	cursor := start.UnixMilli()
-	seen := map[int64]bool{}
-
-	for {
-		url := fmt.Sprintf("%s/klines?symbol=%s&interval=%s&startTime=%d&limit=1000",
-			base, symbol, interval, cursor)
-		body, err := get(url)
-		if err != nil {
-			return nil, err
-		}
-
-		// Each kline is a heterogeneous array; decode field by field.
-		var raw [][]json.RawMessage
-		if err := json.Unmarshal(body, &raw); err != nil {
-			return nil, fmt.Errorf("klines: %w (response: %.200s)", err, body)
-		}
-		if len(raw) == 0 {
-			break
-		}
-
-		progressed := false
-		for _, k := range raw {
-			if len(k) < 10 {
-				continue
-			}
-			openMs, err := asInt(k[0])
-			if err != nil {
-				return nil, err
-			}
-			if seen[openMs] {
-				continue
-			}
-			seen[openMs] = true
-			progressed = true
-
-			nums := make([]float64, 0, 5)
-			for _, idx := range []int{1, 2, 3, 4, 5} {
-				v, err := asFloat(k[idx])
-				if err != nil {
-					return nil, err
-				}
-				nums = append(nums, v)
-			}
-			// Field 9 is the taker BUY base-asset volume: the part of the
-			// bar's volume that lifted the offer. Everything else was a taker
-			// sell. This is a genuine order-flow split from the venue, not an
-			// inference from whether the candle closed green.
-			takerBuy, err := asFloat(k[9])
-			if err != nil {
-				return nil, err
-			}
-
-			out = append(out, bar{
-				Time: time.UnixMilli(openMs).UTC(),
-				Open: nums[0], High: nums[1], Low: nums[2], Close: nums[3],
-				Volume: nums[4], TakerBuyVolume: takerBuy,
-			})
-		}
-
-		if !progressed || len(raw) < 1000 {
-			break
-		}
-		last, err := asInt(raw[len(raw)-1][0])
-		if err != nil {
-			return nil, err
-		}
-		cursor = last + 1
-		fmt.Fprintf(os.Stderr, "  %d bars...\n", len(out))
-		time.Sleep(250 * time.Millisecond) // stay well inside the rate limit
-	}
-
-	sort.Slice(out, func(i, j int) bool { return out[i].Time.Before(out[j].Time) })
-	return out, nil
-}
-
-// fetchFunding returns funding rates keyed by their effective millisecond.
-func fetchFunding(symbol string, start time.Time) (map[int64]float64, error) {
-	out := map[int64]float64{}
-	cursor := start.UnixMilli()
-
-	for {
-		url := fmt.Sprintf("https://fapi.binance.com/fapi/v1/fundingRate?symbol=%s&startTime=%d&limit=1000",
-			symbol, cursor)
-		body, err := get(url)
-		if err != nil {
-			return nil, err
-		}
-		var page []struct {
-			FundingTime int64  `json:"fundingTime"`
-			FundingRate string `json:"fundingRate"`
-		}
-		if err := json.Unmarshal(body, &page); err != nil {
-			return nil, fmt.Errorf("funding: %w (response: %.200s)", err, body)
-		}
-		if len(page) == 0 {
-			break
-		}
-		before := len(out)
-		for _, p := range page {
-			r, err := strconv.ParseFloat(p.FundingRate, 64)
-			if err != nil {
-				return nil, err
-			}
-			out[p.FundingTime] = r
-		}
-		if len(out) == before || len(page) < 1000 {
-			break
-		}
-		cursor = page[len(page)-1].FundingTime + 1
-		time.Sleep(250 * time.Millisecond)
-	}
-	return out, nil
-}
-
 // writeCSV emits the exact column layout LoadCSV expects.
-func writeCSV(path string, bars []bar, funding map[int64]float64) error {
+func writeCSV(path string, bars []ms.Candle, funding map[int64]float64) error {
 	f, err := os.Create(path)
 	if err != nil {
 		return err
@@ -272,12 +155,8 @@ func writeCSV(path string, bars []bar, funding map[int64]float64) error {
 
 	skipped := 0
 	for _, b := range bars {
-		sell := b.Volume - b.TakerBuyVolume
-		if sell < 0 {
-			sell = 0
-		}
 		line := fmt.Sprintf("%d,%.10g,%.10g,%.10g,%.10g,%.10g,%.10g,%.10g",
-			b.Time.Unix(), b.Open, b.High, b.Low, b.Close, b.Volume, b.TakerBuyVolume, sell)
+			b.Time.Unix(), b.Open, b.High, b.Low, b.Close, b.Volume, b.BuyVolume, b.SellVolume)
 
 		if funding != nil {
 			ms := b.Time.UnixMilli()
@@ -423,26 +302,4 @@ func get(url string) ([]byte, error) {
 		return nil, fmt.Errorf("%s returned %d: %.200s", url, resp.StatusCode, body)
 	}
 	return body, nil
-}
-
-func asFloat(r json.RawMessage) (float64, error) {
-	var s string
-	if err := json.Unmarshal(r, &s); err == nil {
-		return strconv.ParseFloat(s, 64)
-	}
-	var f float64
-	err := json.Unmarshal(r, &f)
-	return f, err
-}
-
-func asInt(r json.RawMessage) (int64, error) {
-	var i int64
-	if err := json.Unmarshal(r, &i); err == nil {
-		return i, nil
-	}
-	var s string
-	if err := json.Unmarshal(r, &s); err != nil {
-		return 0, err
-	}
-	return strconv.ParseInt(s, 10, 64)
 }
