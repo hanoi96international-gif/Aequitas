@@ -20,7 +20,8 @@ help:
 	@echo "make fetch     download bars for every symbol in $(CONFIG)  (needs network)"
 	@echo "make analyse   search, build a book, and put both to the hiring panel"
 	@echo "make signal    print what the agents think about the latest bar"
-	@echo "make paper     run live against a paper account"
+	@echo "make paper     run live against a paper account (one instrument)"
+	@echo "make book      run the whole universe live as one book"
 	@echo "make test      run the test suite"
 	@echo "make check     format, vet and test — run before committing"
 	@echo ""
@@ -62,6 +63,14 @@ paper:
 	go run ./cmd/signald -symbol $(firstword $(SYMBOLS)) -interval $(INTERVAL) \
 		-market $(MARKET) -trade -out signals.jsonl
 
+.PHONY: book
+book: $(CONFIG)
+	go run ./cmd/bookd -config $(CONFIG) -allocator experts -out allocations.jsonl
+
+.PHONY: book-cross
+book-cross: $(CONFIG)
+	go run ./cmd/bookd -config $(CONFIG) -allocator cross -out allocations.jsonl
+
 .PHONY: experts
 experts:
 	go run ./cmd/signalctl experts
@@ -82,4 +91,4 @@ check:
 
 .PHONY: clean
 clean:
-	rm -f signals.jsonl
+	rm -f signals.jsonl allocations.jsonl

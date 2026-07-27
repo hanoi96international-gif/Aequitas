@@ -18,7 +18,7 @@ make analyse         # Suche je Instrument, Buch über alle, ein Einstellungsver
 make paper           # live gegen ein Papierkonto
 ```
 
-`make help` zeigt alles. Ohne Go: `docker build -t marketsignals . && docker run
+`make book` fährt das ganze Universum als ein Buch. `make help` zeigt alles. Ohne Go: `docker build -t marketsignals . && docker run
 --rm -v "$PWD/data:/home/signals/data" marketsignals analyse -dir data`.
 
 **Erwartungshaltung:** Auf echten Daten wird `analyse` wahrscheinlich

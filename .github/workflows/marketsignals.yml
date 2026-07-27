@@ -50,4 +50,5 @@ jobs:
         run: |
           go build ./cmd/signalctl
           go build ./cmd/signald
+          go build ./cmd/bookd
           go build ./cmd/fetchdata

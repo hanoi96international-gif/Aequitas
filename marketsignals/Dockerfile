@@ -7,6 +7,7 @@ COPY go.mod ./
 COPY . .
 RUN CGO_ENABLED=0 go build -trimpath -o /out/signalctl ./cmd/signalctl && \
     CGO_ENABLED=0 go build -trimpath -o /out/signald   ./cmd/signald && \
+    CGO_ENABLED=0 go build -trimpath -o /out/bookd     ./cmd/bookd && \
     CGO_ENABLED=0 go build -trimpath -o /out/fetchdata ./cmd/fetchdata
 
 FROM alpine:3.20

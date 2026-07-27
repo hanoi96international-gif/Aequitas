@@ -1,3 +1,4 @@
 config.json
 signals.jsonl
 *.test
+allocations.jsonl
