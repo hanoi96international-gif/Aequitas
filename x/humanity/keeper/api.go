@@ -552,6 +552,10 @@ func (a *APIServer) handleCombinedHealth(w http.ResponseWriter, r *http.Request)
 		// Which path transfers take, and how long each one actually takes —
 		// see transfer_stats.go for why a derived 57ms needed measuring.
 		"transfer_path": TransferPathStats(),
+		// The WAL flush loop, which a mutex profile identified as the single
+		// largest source of lock contention in the node (45.21%). addrs_per_flush
+		// and hold_avg_ms are the two numbers that explain it; see wal_tuning.go.
+		"wal_flush": WALFlushStats(),
 		"chain": map[string]interface{}{
 			"status":                     status,
 			"notes":                      notes,

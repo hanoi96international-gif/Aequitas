@@ -249,6 +249,7 @@ func (cs *ChainState) initWALIfEnabled() {
 		fmt.Println("[WAL] AEQUITAS_WAL_ENABLED=1 but no DB connection — WAL fast path needs Postgres to reconcile into, skipping")
 		return
 	}
+	applyWALTuningFromEnv()
 	path := os.Getenv("AEQUITAS_WAL_PATH")
 	if path == "" {
 		path = "aequitas_transfers.wal"
@@ -756,6 +757,20 @@ func (cs *ChainState) flushWALBatch(batch []walFlushItem) error {
 	// snapshot loop -- see this function's own doc comment (layer 2) for
 	// why that's the actual fix, not an optional hardening.
 	unlockAddrs := cs.accounts.LockAddrs(addrList...)
+	// Measured, not estimated: a mutex profile put 45.21% of the node's entire
+	// lock contention on this one hold, and the two numbers that explain it —
+	// how much of the address space one flush freezes, and for how long — were
+	// not recorded anywhere. Registered BEFORE the unlock defer so it runs
+	// after it (defers are LIFO) and the interval covers the whole hold.
+	lockAcquired := time.Now()
+	var dbStart time.Time
+	defer func() {
+		var dbDur time.Duration
+		if !dbStart.IsZero() {
+			dbDur = time.Since(dbStart)
+		}
+		noteWALFlush(len(batch), len(addrList), time.Since(lockAcquired), dbDur)
+	}()
 	defer unlockAddrs()
 	for _, addr := range addrList {
 		acc, ok := cs.accounts.GetLocked(addr)
@@ -769,6 +784,7 @@ func (cs *ChainState) flushWALBatch(batch []walFlushItem) error {
 	if err != nil {
 		return fmt.Errorf("could not begin WAL flush transaction: %w", err)
 	}
+	dbStart = time.Now()
 	ctx := withTx(context.Background(), tx)
 
 	// Single multi-row UPSERT for every touched account. is_human/
