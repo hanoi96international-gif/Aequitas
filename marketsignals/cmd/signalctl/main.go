@@ -46,6 +46,8 @@ func main() {
 		err = searchCmd(os.Args[2:])
 	case "portfolio":
 		err = portfolioCmd(os.Args[2:])
+	case "analyse", "analyze":
+		err = analyseCmd(os.Args[2:])
 	case "-h", "--help", "help":
 		usage()
 		return
@@ -91,6 +93,12 @@ func usage() {
         Search the parameter space with anchored walk-forward selection, then
         score THE SEARCH — not its hindsight winner. Pass several -csv flags
         to require the method to survive on more than one market.
+
+  signalctl analyse -dir data [-interval 1h] [-sector large_alt]
+        Everything, on every CSV in a directory: a variant search per
+        instrument, a book across the whole set, and both put to one hiring
+        panel in a single field so the trial count stays honest. This is the
+        command to run once real bars are on disk.
 
   signalctl portfolio -csv A.csv -csv B.csv ... [-allocator cross|experts]
         Run a book across a universe. "cross" ranks the names against each
@@ -417,6 +425,107 @@ func searchCmd(args []string) error {
 		fmt.Printf("── %s ──\n%s\n", s.Symbol, res.PerMarket[s.Symbol].Report())
 	}
 	fmt.Print(res.Report())
+	return nil
+}
+
+func analyseCmd(args []string) error {
+	fs := flag.NewFlagSet("analyse", flag.ExitOnError)
+	dir := fs.String("dir", "data", "directory of bars CSVs")
+	interval := fs.Duration("interval", time.Hour, "bar duration")
+	sector := fs.String("sector", "large_alt", "crypto sector for every instrument")
+	folds := fs.Int("folds", 5, "walk-forward folds")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+
+	paths, err := filepath.Glob(filepath.Join(*dir, "*.csv"))
+	if err != nil {
+		return err
+	}
+	if len(paths) == 0 {
+		return fmt.Errorf("no CSV files in %s — see %s/README.md for how to get some there",
+			*dir, *dir)
+	}
+
+	u := &ms.Universe{Series: map[string]*ms.Series{}}
+	for _, p := range paths {
+		symbol := strings.TrimSuffix(filepath.Base(p), filepath.Ext(p))
+		s, err := ms.LoadCSV(p, symbol, *interval)
+		if err != nil {
+			return fmt.Errorf("%s: %w", p, err)
+		}
+		u.Series[symbol] = s
+		u.Instruments = append(u.Instruments, ms.Instrument{
+			Symbol: symbol, Class: ms.ClassCrypto, Sector: ms.CryptoSector(*sector),
+			Venue: ms.VenueCEX, ContinuousTrading: true,
+		})
+	}
+
+	fmt.Printf("%d instrument(s) loaded from %s\n", len(u.Series), *dir)
+	for _, sym := range u.Symbols() {
+		s := u.Series[sym]
+		fmt.Printf("  %-12s %5d bars  %s to %s\n", sym, len(s.Candles),
+			s.Candles[0].Time.Format("2006-01-02"),
+			s.Candles[len(s.Candles)-1].Time.Format("2006-01-02"))
+	}
+
+	// ── Per instrument: search the variant space ──
+	se := ms.NewSearcher()
+	se.Folds, se.MinTrainFolds = 8, 3
+	for _, sym := range u.Symbols() {
+		fmt.Printf("\n══ search: %s ══\n\n", sym)
+		res, err := se.Run(u.Series[sym], ms.FullGrid())
+		if err != nil {
+			fmt.Printf("  skipped: %v\n", err)
+			continue
+		}
+		fmt.Print(res.Report())
+	}
+
+	// ── One field: the best single-instrument agents and the books ──
+	var field []ms.Runnable
+	for _, sym := range u.Symbols() {
+		for _, a := range []ms.Agent{
+			ms.NewBreakoutAgent(), ms.NewReversionAgent(), ms.NewFlowAgent(),
+			ms.NewFibonacciAgent(), ms.NewPatternAgent(),
+		} {
+			field = append(field, ms.StrategyRunnable{
+				Series:   u.Series[sym],
+				Strategy: ms.AgentStrategy{Agent: a},
+			})
+		}
+	}
+
+	if len(u.Series) >= 2 {
+		if err := u.Align(); err != nil {
+			return err
+		}
+		fmt.Printf("\n══ universe aligned to %d common bars ══\n", u.Bars())
+		for _, c := range ms.AllocatorGrid() {
+			c.MinNames = 2
+			field = append(field, ms.PortfolioRunnable{Universe: u, Allocator: c})
+		}
+		if p, err := ms.NewExpertPanel(u); err == nil {
+			field = append(field, ms.PortfolioRunnable{Universe: u, Allocator: p})
+		}
+	}
+
+	fmt.Printf("\n══ hiring panel: %d candidates in one field ══\n\n", len(field))
+	panel := ms.NewPanel()
+	panel.Folds = *folds
+	ivs, err := panel.ConductRunnables(field...)
+	if err != nil {
+		return err
+	}
+
+	// Only the top of the field is worth printing in full; the rest is noise
+	// by construction and a wall of it hides the part that matters.
+	const show = 8
+	if len(ivs) > show {
+		fmt.Printf("(showing the %d strongest of %d candidates)\n\n", show, len(ivs))
+		ivs = ivs[:show]
+	}
+	fmt.Print(panel.Report(ivs))
 	return nil
 }
 
