@@ -105,8 +105,9 @@ func TestUnknownProposer_RecoveryRetriesAfterInterval(t *testing.T) {
 
 	// Age the clock past the retry interval — the situation the live incident
 	// was stuck in: still unknown, blocks still arriving, nothing being done.
+	aged := time.Now().Add(-unknownProposerRecoveryRetry - time.Second)
 	dag.mu.Lock()
-	dag.unknownProposerLastRecovery[proposer] = time.Now().Add(-unknownProposerRecoveryRetry - time.Second)
+	dag.unknownProposerLastRecovery[proposer] = aged
 	dag.mu.Unlock()
 
 	blk3 := signTestBlockFromKey(t, key, 3, "deadbeef")
@@ -114,8 +115,21 @@ func TestUnknownProposer_RecoveryRetriesAfterInterval(t *testing.T) {
 	dag.AddPeerBlock(blk3)
 
 	retried := dag.unknownProposerLastRecovery[proposer]
-	if !retried.After(firstTry) {
-		t.Fatalf("recovery must be retried once the interval has elapsed — this is the whole fix. timestamp %v did not advance past %v", retried, firstTry)
+	// Compare against the AGED value, not against firstTry.
+	//
+	// Comparing to firstTry made this test fail on Windows roughly two runs in
+	// three: the system clock there has ~15.6ms granularity, so the retry's
+	// time.Now() frequently returns a value identical to firstTry's — down to
+	// the monotonic reading — even though the retry ran exactly as intended.
+	// Linux CI has nanosecond resolution and never saw it, which is why a test
+	// that fails most of the time locally was passing in CI.
+	//
+	// The aged timestamp is a full retry interval in the past, so advancing
+	// past it is unambiguous at any clock resolution, and it is also the
+	// stronger assertion: it proves the retry rewrote the value rather than
+	// merely that two clock readings differ.
+	if !retried.After(aged) {
+		t.Fatalf("recovery must be retried once the interval has elapsed — this is the whole fix. timestamp %v did not advance past the aged %v", retried, aged)
 	}
 	if time.Since(retried) > 5*time.Second {
 		t.Fatalf("retry timestamp should have been refreshed to now, got %v", retried)
