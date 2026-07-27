@@ -3800,10 +3800,38 @@ let loadHumansSeq = 0;
 async function loadHumans() {
   const mySeq = ++loadHumansSeq;
   try {
-    const d = await (await fetch('/api/humans')).json();
+    // FIX (2026-07-27, reported live): this read the JSON without ever looking
+    // at the HTTP status. /api/humans is rate limited to one request per 3s per
+    // IP, and a 429 body is {"error":"rate limited, try again shortly"} — no
+    // "humans" key. The check below then concluded the registry was empty and
+    // rendered "No humans registered yet", while the very same page showed
+    // "Total Humans 14" from /api/status right beside it.
+    //
+    // A transient rate limit was therefore making the strongest possible
+    // negative claim about the chain: that nobody has ever registered. Reload
+    // the page twice quickly, or keep a second tab open, and that is what a
+    // visitor saw.
+    const resp = await fetch('/api/humans');
+    if (mySeq !== loadHumansSeq) return;
+    const listEl = document.getElementById('humans-list');
+    if (!resp.ok) {
+      // Say what actually happened and keep whatever is already on screen
+      // rather than replacing it with a claim about the registry.
+      // Only replace a placeholder, never a list that is already showing real
+      // entries — a transient 429 must not wipe a correct registry off screen.
+      if (listEl && (!listEl.children.length || listEl.querySelector('.empty'))) {
+        listEl.innerHTML = '<div class="empty">' +
+          (resp.status === 429
+            ? 'Too many requests just now — the list will refresh in a moment.'
+            : 'Could not load the registry (HTTP ' + resp.status + '). Retrying shortly.') +
+          '</div>';
+      }
+      return;
+    }
+    const d = await resp.json();
     if (mySeq !== loadHumansSeq) return;
     document.getElementById('h-count').textContent = fmt(d.total);
-    const list = document.getElementById('humans-list');
+    const list = listEl;
     if (!d.humans || !d.humans.length) { list.innerHTML = '<div class="empty">No humans registered yet.<br><br>Download the Aequitas Android App and be the first!</div>'; return; }
     list.innerHTML = d.humans.map(h => {
       const color = avatarColor(h.address || '0x00');
