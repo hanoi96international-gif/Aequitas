@@ -555,6 +555,10 @@ func (a *APIServer) handleCombinedHealth(w http.ResponseWriter, r *http.Request)
 		// largest source of lock contention in the node (45.21%). addrs_per_flush
 		// and hold_avg_ms are the two numbers that explain it; see wal_tuning.go.
 		"wal_flush": WALFlushStats(),
+		// Wo die 1-3 Sekunden unter dag.mu hingehen: json.Marshal der
+		// Transaktionsliste (sperrfrei machbar) gegen den INSERT selbst
+		// (struktureller Umbau). Siehe block_save_stats.go.
+		"block_save": BlockSaveStats(),
 		// Who is actually driving the block-serving endpoints, which a CPU
 		// profile put at a quarter of the node's CPU with no identifiable
 		// caller. See endpoint_stats.go.

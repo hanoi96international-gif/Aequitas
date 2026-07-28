@@ -3180,6 +3180,7 @@ func (cs *ChainState) SaveBlockWithPendingTxsAtomic(block *Block, ids []int64) e
 	if cs.db == nil {
 		return nil
 	}
+	marshalStart := time.Now()
 	parentHashesJSON, err := json.Marshal(block.ParentHashes)
 	if err != nil {
 		return fmt.Errorf("marshal parent_hashes: %w", err)
@@ -3215,6 +3216,11 @@ func (cs *ChainState) SaveBlockWithPendingTxsAtomic(block *Block, ids []int64) e
 	// works but leaves the intent invisible and one schema-default change away
 	// from every self-produced block silently joining the boot-repair backlog
 	// (the exact backlog class that kept Primary unreachable for ~35 minutes).
+	marshalDur := time.Since(marshalStart)
+	dbStart := time.Now()
+	defer func() {
+		noteBlockSave(len(block.Transactions), len(ids), len(txsJSON), marshalDur, time.Since(dbStart))
+	}()
 	cs.ensureReplayedColumn()
 	if len(ids) == 0 {
 		if _, err := cs.db.Exec(
