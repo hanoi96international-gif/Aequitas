@@ -1,6 +1,11 @@
 package keeper
 
-import "testing"
+import (
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
+	"testing"
+)
 
 func txBatchTestState() *ChainState {
 	// No DB: LoadTxBatch then answers purely from the in-memory batch cache,
@@ -111,4 +116,37 @@ func TestServedStrippedBlockProvesPushCapability(t *testing.T) {
 		t.Fatal("a peer that stopped advertising support must stop being stripped to")
 	}
 	txBatchPeerCap.Delete(peer)
+}
+
+// Every response path of handleBlockPush must carry the capability token,
+// including the failures. One of them closes a loop that cannot open itself: a
+// COMPLETE block push under load is megabytes and draws "request body too
+// large", the untokenised 413 demotes the peer, the demotion stops stripping,
+// and the next push is another oversized complete block -- while the stripped
+// push would have been a few hundred bytes and would have fit.
+func TestPushErrorCarriesTheCapabilityToken(t *testing.T) {
+	rec := httptest.NewRecorder()
+	pushError(rec, http.StatusRequestEntityTooLarge, "request body too large")
+
+	if rec.Code != http.StatusRequestEntityTooLarge {
+		t.Fatalf("status %d, want 413", rec.Code)
+	}
+	var resp struct {
+		OK      bool   `json:"ok"`
+		Reason  string `json:"reason"`
+		TxBatch string `json:"tx_batch"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("error response is not valid JSON (%q): %v", rec.Body.String(), err)
+	}
+	if resp.TxBatch != txBatchCapabilityToken {
+		t.Fatalf("error response omits the capability token (tx_batch=%q); the sender would read that as "+
+			"'peer does not understand bodies by reference' and stop stripping toward it", resp.TxBatch)
+	}
+	if resp.OK {
+		t.Fatal("a rejection must not report ok:true")
+	}
+	if resp.Reason != "request body too large" {
+		t.Fatalf("reason was lost: %q", resp.Reason)
+	}
 }
