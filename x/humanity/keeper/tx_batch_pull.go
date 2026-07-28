@@ -2,7 +2,6 @@ package keeper
 
 import (
 	"net/http"
-	"sync"
 	"sync/atomic"
 )
 
@@ -137,68 +136,4 @@ func pushError(w http.ResponseWriter, status int, reason string) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
 	w.Write([]byte(`{"ok":false,"reason":"` + reason + `","tx_batch":"` + txBatchCapabilityToken + `"}`))
-}
-
-// txBatchStoreQueue carries bodies to be persisted off the caller's goroutine.
-//
-// Bounded and non-blocking on purpose. A caller holding dag.mu must never wait
-// here, and a backlog must never grow without limit: if the queue is full the
-// body is simply dropped, and the only consequence is that one block travels
-// whole to peers instead of as a header. That is the pre-existing behaviour, so
-// dropping is always safe.
-var txBatchStoreQueue = make(chan txBatchStoreItem, 256)
-
-type txBatchStoreItem struct {
-	state *ChainState
-	root  string
-	txs   []Transaction
-}
-
-var txBatchStoreOnce sync.Once
-
-// queueTxBatchStore hands a block's body to the background writer.
-//
-// The caller may be holding dag.mu, so this must not block and must not touch
-// the database itself.
-func queueTxBatchStore(state *ChainState, block *Block) {
-	if state == nil || block == nil || block.TxRoot == "" || len(block.Transactions) < txBatchMinTxsToStrip {
-		return
-	}
-	txBatchStoreOnce.Do(func() {
-		SafeGoroutine("txBatchStoreWorker", runTxBatchStoreWorker)
-	})
-	select {
-	case txBatchStoreQueue <- txBatchStoreItem{state: state, root: block.TxRoot, txs: block.Transactions}:
-	default:
-		// Full. Dropping costs nothing but a whole block on the wire.
-		txBatchStoreDropped.Add(1)
-	}
-}
-
-var (
-	txBatchStoreDropped atomic.Int64
-	txBatchStoreWritten atomic.Int64
-	txBatchStoreFailed  atomic.Int64
-)
-
-func runTxBatchStoreWorker() {
-	for item := range txBatchStoreQueue {
-		if err := item.state.SaveTxBatch(item.root, item.txs); err != nil {
-			txBatchStoreFailed.Add(1)
-			continue
-		}
-		txBatchStoreWritten.Add(1)
-	}
-}
-
-// TxBatchStoreStats reports what the background writer did. dropped being
-// non-zero means bodies are arriving faster than they can be persisted, which
-// costs bandwidth but never correctness.
-func TxBatchStoreStats() map[string]interface{} {
-	return map[string]interface{}{
-		"written": txBatchStoreWritten.Load(),
-		"failed":  txBatchStoreFailed.Load(),
-		"dropped": txBatchStoreDropped.Load(),
-		"queued":  len(txBatchStoreQueue),
-	}
 }
