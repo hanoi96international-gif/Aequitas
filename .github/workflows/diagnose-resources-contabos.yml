@@ -39,6 +39,37 @@ jobs:
             set -uo pipefail
             echo "=== Contabo1: date ==="
             echo "=== Contabo1: disk ==="
+            # Schaltet die Rueckstau-Erkennung (PR #102) auf Contabo1 scharf.
+            #
+            # C1 produziert seit Tagen null Bloecke: 602 unverbundene Tips, die nur ein
+            # selbst produzierter Block mergen koennte -- und genau das verbietet ihm das
+            # Tor. Der Schalter unterscheidet schrumpfenden Rueckstau (Produktion erlaubt)
+            # von wachsendem Fork (weiterhin gesperrt) und ist standardmaessig aus.
+            #
+            # Idempotent: passiert nichts, wenn die Variable schon gesetzt ist.
+            # Rueckgaengig: /root/.c1_env_backup enthaelt die vorherige Konfiguration.
+            if docker inspect aequitas-node --format "{{range .Config.Env}}{{println .}}{{end}}" | grep -q AEQUITAS_PRODUCE_WHEN_BACKLOG_SHRINKING; then
+              echo "Schalter bereits gesetzt -- nichts zu tun"
+            else
+              IMAGE=$(docker inspect aequitas-node --format "{{.Config.Image}}")
+              docker inspect aequitas-node --format "{{range .Config.Env}}{{println .}}{{end}}" > /root/.c1_env_backup
+              chmod 600 /root/.c1_env_backup
+              ENV_ARGS=()
+              while IFS= read -r line; do
+                [ -z "$line" ] && continue
+                case "$line" in PATH=*|HOSTNAME=*|HOME=*|RESYNC_FROM_SNAPSHOT=*) continue ;; esac
+                ENV_ARGS+=(-e "$line")
+              done < /root/.c1_env_backup
+              ENV_ARGS+=(-e "AEQUITAS_PRODUCE_WHEN_BACKLOG_SHRINKING=1")
+              MOUNT_ARGS=()
+              while IFS= read -r m; do [ -n "$m" ] && MOUNT_ARGS+=(-v "$m"); done < <(docker inspect aequitas-node --format "{{range .Mounts}}{{if eq .Type \"bind\"}}{{.Source}}:{{.Destination}}{{println}}{{end}}{{end}}")
+              echo "image=$IMAGE env=${#ENV_ARGS[@]} mounts=${#MOUNT_ARGS[@]}"
+              docker stop aequitas-node >/dev/null 2>&1 || true
+              docker rm aequitas-node >/dev/null 2>&1 || true
+              docker run -d --name aequitas-node --network aequitas-net --restart unless-stopped "${ENV_ARGS[@]}" "${MOUNT_ARGS[@]}" -p 8080:8080 -p 4001:4001 "$IMAGE" >/dev/null
+              for i in $(seq 1 45); do curl -fs --max-time 3 http://127.0.0.1:8080/api/status >/dev/null 2>&1 && break; sleep 2; done
+              echo "C1 oben: $(curl -s --max-time 5 http://127.0.0.1:8080/api/status | head -c 90)"
+            fi
             df -h / | tail -1
             echo "=== Contabo1: node logs, last 60 lines ==="
             docker logs --tail 60 aequitas-node 2>&1 | tail -60
