@@ -44,16 +44,16 @@ func TestPrunedBatchMeansTheBlockTravelsWhole(t *testing.T) {
 // A malformed override must not silently disable the bound — an unbounded table
 // is what this exists to prevent.
 func TestTxBatchKeep_RejectsUnusableOverride(t *testing.T) {
-	t.Setenv("AEQUITAS_TX_BATCH_KEEP_ROWS", "nonsense")
-	if got := txBatchKeep(); got != txBatchKeepRows {
-		t.Fatalf("keep=%d for an unparseable override; the default %d must stand", got, txBatchKeepRows)
+	t.Setenv("AEQUITAS_TX_BATCH_MAX_BYTES", "nonsense")
+	if got := txBatchKeep(); got != txBatchMaxBytes {
+		t.Fatalf("keep=%d for an unparseable override; the default %d must stand", got, txBatchMaxBytes)
 	}
-	t.Setenv("AEQUITAS_TX_BATCH_KEEP_ROWS", "-5")
-	if got := txBatchKeep(); got != txBatchKeepRows {
-		t.Fatalf("keep=%d for a negative override; the default %d must stand", got, txBatchKeepRows)
+	t.Setenv("AEQUITAS_TX_BATCH_MAX_BYTES", "-5")
+	if got := txBatchKeep(); got != txBatchMaxBytes {
+		t.Fatalf("keep=%d for a negative override; the default %d must stand", got, txBatchMaxBytes)
 	}
-	t.Setenv("AEQUITAS_TX_BATCH_KEEP_ROWS", "250")
-	if got := txBatchKeep(); got != 250 {
+	t.Setenv("AEQUITAS_TX_BATCH_MAX_BYTES", "250")
+	if got := txBatchKeep(); got != int64(250) {
 		t.Fatalf("keep=%d, want the operator's 250", got)
 	}
 }
@@ -63,5 +63,5 @@ func TestTxBatchKeep_RejectsUnusableOverride(t *testing.T) {
 func TestPruneTxBatches_NoDatabaseIsHarmless(t *testing.T) {
 	cs := pruneTestState()
 	cs.pruneTxBatches()
-	cs.ensureTxBatchPrunerStarted()
+	cs.StartTxBatchPruner()
 }
