@@ -139,6 +139,8 @@ func (cs *ChainState) SaveTxBatch(root string, txs []Transaction) error {
 		return nil
 	}
 	cs.ensureTxBatchTable()
+	// The table had nothing that ever removed a row; see tx_batch_prune.go.
+	cs.ensureTxBatchPrunerStarted()
 	data, err := json.Marshal(txs)
 	if err != nil {
 		return fmt.Errorf("marshal tx batch %s: %w", root, err)
