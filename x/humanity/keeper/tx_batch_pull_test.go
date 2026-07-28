@@ -85,3 +85,30 @@ func TestStripBlocksForPeer_HandlesEmptyAndNilBlocks(t *testing.T) {
 		t.Fatal("a nil entry was replaced")
 	}
 }
+
+// The push path learns a peer's capability only from a push RESPONSE, and a
+// push that times out has none. That produced a bootstrap deadlock measured on
+// the live network: pushes time out because blocks are large, blocks stay large
+// because stripping is off, and stripping stays off because it needs a
+// successful push. Ten minutes of production traffic showed zero stripped
+// pushes and a steady trickle of push timeouts to both peers.
+//
+// Serving a stripped block is independent evidence, so the pull path records it.
+func TestServedStrippedBlockProvesPushCapability(t *testing.T) {
+	const peer = "http://peer.example:8080"
+	txBatchPeerCap.Delete(peer)
+	if txBatchPeerSupports(peer) {
+		t.Fatal("precondition: an unknown peer must not be considered capable")
+	}
+	recordTxBatchCapability(peer, true)
+	if !txBatchPeerSupports(peer) {
+		t.Fatal("a peer that served a stripped block must become eligible for stripped pushes, or the deadlock persists")
+	}
+	// And the retraction path still works, so a peer rolled back to older code
+	// stops being stripped to.
+	recordTxBatchCapability(peer, false)
+	if txBatchPeerSupports(peer) {
+		t.Fatal("a peer that stopped advertising support must stop being stripped to")
+	}
+	txBatchPeerCap.Delete(peer)
+}
