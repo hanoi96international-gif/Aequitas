@@ -93,6 +93,22 @@ jobs:
           # existing redeploy_normal_c2.sh, plus an actual image rebuild.
           script: |
             set -uo pipefail
+            # Prune BEFORE the build, not only after it.
+            #
+            # The post-build prune below bounds how much cache a finished deploy
+            # leaves behind, but it cannot help a deploy that has no room to build
+            # in the first place -- and that is the failure that actually occurred:
+            # Contabo2 reached 100% (474MB free of 96GB) and the image build died
+            # with "no space left on device" at the go build step, long before
+            # anything downstream could reclaim a byte. Ordering the reclaim first
+            # makes the deploy self-healing instead of self-blocking.
+            #
+            # Costs nothing when the cache is already under the cap, and the node
+            # keeps running throughout either way: build cache is never a dependency
+            # of a running container.
+            echo "=== disk before deploy ==="
+            df -h / | tail -1
+            docker builder prune -af --max-used-space 10GB >/dev/null 2>&1 || docker builder prune -af >/dev/null 2>&1 || true
             /root/deploy_safe_c2.sh
 
             # FIX (2026-07-25): cap the build cache after every deploy.
