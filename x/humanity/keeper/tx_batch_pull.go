@@ -66,8 +66,18 @@ func (a *APIServer) stripBlocksForPeer(blocks []*Block) []*Block {
 	}
 	out := make([]*Block, len(blocks))
 	for i, b := range blocks {
-		// Nothing to strip, or nothing to strip it back to.
-		if b == nil || len(b.Transactions) == 0 || b.TxRoot == "" {
+		// Nothing to strip, nothing to strip it back to, or too little to be
+		// worth a second round trip. The last is the same break-even the push
+		// path applies (txBatchMinTxsToStrip), for the same reason: below it the
+		// extra request costs more than the bytes it saves.
+		//
+		// This stays strictly READ-ONLY. An earlier attempt also stored the body
+		// here so that more blocks became strippable, which put a write
+		// proportional to the served payload onto a read path: it wrote 851MB in
+		// minutes and starved this node's own sync until it stopped advancing at
+		// all. The population of the batch store belongs at produce/accept time,
+		// never here.
+		if b == nil || len(b.Transactions) < txBatchMinTxsToStrip || b.TxRoot == "" {
 			out[i] = b
 			strippedBlocksFull.Add(1)
 			continue
