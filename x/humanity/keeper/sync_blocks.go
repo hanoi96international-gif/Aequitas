@@ -396,6 +396,25 @@ func (dag *BlockDAG) fetchBlocksSincePage(nodeURL string, minHeight int64, after
 		if b == nil || !dag.state.NeedsTxBatch(b) {
 			continue
 		}
+		// This peer honoured ?stripped=1, which is proof it understands bodies
+		// by reference — so this node may strip its own PUSHES to it.
+		//
+		// That proof was previously unobtainable in exactly the case that needed
+		// it. recordTxBatchCapability is otherwise only called on a push
+		// RESPONSE, and a push that times out has no response: pushes time out
+		// because blocks are large, blocks stay large because stripping is off,
+		// and stripping stays off because it needs a successful push. Measured
+		// live after all three nodes were running the code: zero stripped pushes
+		// in ten minutes and a steady trickle of "[BLOCK-PUSH] ✗ context
+		// deadline exceeded" to both peers.
+		//
+		// Deliberately proof, not optimism. Stripping toward a peer that turned
+		// out not to understand it would hand it a block whose transaction list
+		// is empty but whose hash still verifies from the carried TxRoot — it
+		// would apply cleanly as an empty block and silently drop the transfers.
+		// A served stripped block is direct evidence, so nothing is assumed.
+		recordTxBatchCapability(nodeURL, true)
+
 		txs, err := dag.FetchTxBatch(b.TxRoot, nodeURL)
 		if err == nil {
 			err = dag.state.AttachTxBatch(b, txs)
