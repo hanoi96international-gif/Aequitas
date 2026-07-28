@@ -4678,6 +4678,22 @@ func (dag *BlockDAG) AddPeerBlock(block *Block) bool {
 			fmt.Printf("[BLOCK] ✗ Could not save peer block #%d header before replay: %v — skipping\n", block.Height, err)
 			return false
 		}
+		// Keep this peer block's body retrievable by digest, so this node can
+		// serve it to a third peer as a header rather than shipping the whole
+		// thing. ProduceBlock already does this for blocks this node makes
+		// itself; without it here only that fraction is ever strippable, which
+		// measured 352 stripped against 82,351 sent whole.
+		//
+		// ASYNCHRONOUS, DELIBERATELY. This writes the full transaction body,
+		// megabytes under load, and the caller holds dag.mu. Inline it would
+		// stall every other dag.mu consumer for the length of a database write
+		// — the same shape as the failure that took this node down once
+		// already, where a write on the serving path put 851MB into Postgres in
+		// minutes and starved the node's own sync until it stopped advancing.
+		// Nothing depends on the result: if it is slow, fails, or never runs,
+		// the only consequence is that this one block travels whole, exactly as
+		// it did before.
+		queueTxBatchStore(dag.state, block)
 	}
 
 	// FIX (the actual BlockDAG correctness bug, not just a hardening pass):

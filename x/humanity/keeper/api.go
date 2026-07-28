@@ -564,6 +564,10 @@ func (a *APIServer) handleCombinedHealth(w http.ResponseWriter, r *http.Request)
 		// it exists to answer -- is the saving being realised, or are bodies
 		// unretrievable and everything going out whole? -- was unanswerable.
 		"stripped_pull": StrippedPullStats(),
+		// The background writer that keeps peer blocks' bodies retrievable.
+		// dropped > 0 means bodies arrive faster than they can be persisted --
+		// costs bandwidth, never correctness.
+		"tx_batch_store": TxBatchStoreStats(),
 		"chain": map[string]interface{}{
 			"status":                     status,
 			"notes":                      notes,
