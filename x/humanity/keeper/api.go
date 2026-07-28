@@ -1085,6 +1085,14 @@ func (a *APIServer) handleBlocks(w http.ResponseWriter, r *http.Request) {
 		// to a peer catching up from far behind.
 		afterHash := r.URL.Query().Get("after_hash")
 		result := a.blockchain.GetBlocksSince(minHeight, afterHash, limit)
+		// A peer that asks for stripped blocks gets headers carrying a TxRoot
+		// and fetches the bodies separately from /api/txbatch. Opt-in by the
+		// REQUESTER, which is what makes it safe against older peers: they
+		// never send the parameter, so they never get a stripped response.
+		// See stripBlocksForPeer for what this endpoint measured without it.
+		if r.URL.Query().Get("stripped") == "1" {
+			result = a.stripBlocksForPeer(result)
+		}
 		// FIX (2026-07-25, "es merged nix" incident): this used to be
 		// json.NewEncoder(w).Encode(result), which streams directly to the
 		// response and DISCARDS its error. Encoder.Encode marshals into an
