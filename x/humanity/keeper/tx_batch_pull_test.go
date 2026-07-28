@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 )
 
 func txBatchTestState() *ChainState {
@@ -198,4 +199,47 @@ func txsForStrip(n int) []Transaction {
 		txs[i] = Transaction{Type: "transfer", Wallet: "0xaaa", To: "0xbbb", Amount: float64(i + 1)}
 	}
 	return txs
+}
+
+// queueTxBatchStore runs while the caller holds dag.mu, so it must never block
+// and never touch the database itself. A full queue must drop rather than wait:
+// the cost of dropping is one block travelling whole, which is exactly the
+// behaviour that existed before any of this.
+func TestQueueTxBatchStore_NeverBlocksWhenTheQueueIsFull(t *testing.T) {
+	cs := txBatchTestState()
+	txs := txsForStrip(40)
+	block := &Block{Hash: "0xb", Height: 1, TxRoot: txBatchRoot(txs), Transactions: txs}
+
+	before := txBatchStoreDropped.Load()
+	// Far more than the queue can hold, with no worker draining it fast enough.
+	done := make(chan struct{})
+	go func() {
+		for i := 0; i < cap(txBatchStoreQueue)*3; i++ {
+			queueTxBatchStore(cs, block)
+		}
+		close(done)
+	}()
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("queueTxBatchStore blocked; a caller holding dag.mu would stall the whole node")
+	}
+	if txBatchStoreDropped.Load() == before {
+		t.Skip("worker drained everything; the non-blocking path was not exercised")
+	}
+}
+
+// Below the break-even there is nothing to gain from storing the body, so the
+// queue must not carry it -- otherwise every tiny block costs a database write
+// for a saving that would never be taken.
+func TestQueueTxBatchStore_IgnoresBlocksBelowTheBreakEven(t *testing.T) {
+	cs := txBatchTestState()
+	txs := txsForStrip(txBatchMinTxsToStrip - 1)
+	block := &Block{Hash: "0xb", Height: 1, TxRoot: txBatchRoot(txs), Transactions: txs}
+
+	before := len(txBatchStoreQueue)
+	queueTxBatchStore(cs, block)
+	if len(txBatchStoreQueue) != before {
+		t.Fatal("a block below the break-even was queued for storage; it can never be stripped, so the write is pure cost")
+	}
 }
