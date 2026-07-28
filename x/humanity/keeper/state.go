@@ -780,6 +780,13 @@ func NewChainState(dataFile string) *ChainState {
 				cs.loadFromDB()
 				fmt.Println("✓ ChainState using PostgreSQL")
 				cs.initWALIfEnabled()
+				// chain_tx_batches has no DELETE anywhere and grows with every
+				// produced block — see tx_batch_prune.go. Started here rather
+				// than on first use: SaveTxBatch returns early for a block
+				// carrying no transactions, so on an idle chain the sweep would
+				// never run, which is exactly when an oversized table sits
+				// untouched.
+				cs.StartTxBatchPruner()
 				return cs
 			}
 		}
