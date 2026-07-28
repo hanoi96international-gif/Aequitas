@@ -1,6 +1,9 @@
 package keeper
 
-import "sync/atomic"
+import (
+	"net/http"
+	"sync/atomic"
+)
 
 // Stripped blocks on the PULL sync path.
 //
@@ -94,4 +97,33 @@ func StrippedPullStats() map[string]interface{} {
 		"blocks_stripped":   strippedBlocksServed.Load(),
 		"blocks_sent_whole": strippedBlocksFull.Load(),
 	}
+}
+
+// pushError answers a rejected block push, and carries this node's
+// body-by-reference capability while doing so.
+//
+// WHY THE TOKEN BELONGS ON AN ERROR TOO. The sender learns capability from
+// whatever the push response contains, and four of handleBlockPush's response
+// paths used to omit it. One of them closes a loop that cannot open itself:
+//
+//	jsonError(w, "request body too large", 413)
+//
+// Under load a COMPLETE block push is megabytes and exceeds the body limit, so
+// the receiver answers 413 with no token, the sender concludes the peer does
+// not understand bodies by reference and stops stripping toward it, and the
+// next push is another complete, oversized block. The stripped push would have
+// been a few hundred bytes and would have fit — the error response disables
+// precisely the mechanism that prevents the error.
+//
+// The token asserts what this build can do, which is true regardless of
+// whether one particular request was accepted. Withholding it on an error says
+// something the node does not mean.
+//
+// Observed live: Contabo2 logged "↩ https://aequitas.digital no longer
+// advertises body-by-reference" without any accompanying "could not fetch the
+// body" line, which is what pointed here rather than at the resend_full path.
+func pushError(w http.ResponseWriter, status int, reason string) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+	w.Write([]byte(`{"ok":false,"reason":"` + reason + `","tx_batch":"` + txBatchCapabilityToken + `"}`))
 }

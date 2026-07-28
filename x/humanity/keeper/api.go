@@ -1262,7 +1262,7 @@ const maxBlocksByHashPerRequest = 500
 func (a *APIServer) handleBlocksByHash(w http.ResponseWriter, r *http.Request) {
 	writeJSONCORS(w)
 	if r.Method != http.MethodPost {
-		http.Error(w, `{"error":"POST required"}`, http.StatusMethodNotAllowed)
+		pushError(w, http.StatusMethodNotAllowed, "POST required")
 		return
 	}
 	var req struct {
@@ -1270,7 +1270,7 @@ func (a *APIServer) handleBlocksByHash(w http.ResponseWriter, r *http.Request) {
 	}
 	body, tooLarge, err := readBodyLimited(w, r, 256<<10)
 	if tooLarge {
-		jsonError(w, "request body too large", http.StatusRequestEntityTooLarge)
+		pushError(w, http.StatusRequestEntityTooLarge, "request body too large")
 		return
 	}
 	if err != nil || json.Unmarshal(body, &req) != nil {
@@ -1433,12 +1433,12 @@ func (a *APIServer) handleBlockPush(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err != nil {
-		http.Error(w, `{"error":"read error"}`, http.StatusBadRequest)
+		pushError(w, http.StatusBadRequest, "read error")
 		return
 	}
 	var block Block
 	if err := json.Unmarshal(body, &block); err != nil {
-		http.Error(w, `{"error":"invalid block JSON"}`, http.StatusBadRequest)
+		pushError(w, http.StatusBadRequest, "invalid block JSON")
 		return
 	}
 	// FIX (P0, 2026-07-04 brutal audit): this endpoint is publicly reachable —

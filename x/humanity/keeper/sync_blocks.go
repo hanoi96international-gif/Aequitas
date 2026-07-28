@@ -2786,7 +2786,23 @@ func (dag *BlockDAG) pushBlockOnce(block *Block, peerURL string, payload []byte,
 	}
 	// Learn (or unlearn) this peer's support for bodies by reference from the
 	// response it just sent, before the caller acts on anything else.
-	recordTxBatchCapability(peerURL, pushResp.TxBatch == txBatchCapabilityToken)
+	//
+	// Only from a response the peer actually produced for this block, though.
+	// An HTTP error status says nothing about what the peer's code understands,
+	// and treating it as a denial closes a loop that cannot open itself: a
+	// COMPLETE block push under load is megabytes and draws a 413, the 413
+	// demotes the peer, the demotion stops stripping, and the next push is
+	// another oversized complete block. The stripped push would have fit. A
+	// peer genuinely running older code stays at the default (unsupported)
+	// either way, so declining to demote here cannot cause a block to be
+	// stripped toward someone who would not understand it.
+	if resp.StatusCode >= 200 && resp.StatusCode < 300 {
+		recordTxBatchCapability(peerURL, pushResp.TxBatch == txBatchCapabilityToken)
+	} else if pushResp.TxBatch == txBatchCapabilityToken {
+		// An error that still carries the token is positive evidence: the peer
+		// rejected this block for its own reasons but plainly speaks the scheme.
+		recordTxBatchCapability(peerURL, true)
+	}
 	return pushResp, true
 }
 
