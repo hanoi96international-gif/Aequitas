@@ -495,6 +495,7 @@ func main() {
 	csvPath := flag.String("accounts", "accounts.csv", "account CSV path")
 	phase := flag.String("phase", "fund,warmup,run", "comma-separated phases to run")
 	numSeeds := flag.Int("seeds", 5, "number of seed accounts (first N rows)")
+	maxPairs := flag.Int("pairs", 0, "cap on concurrent sender pairs (0 = every pair in the CSV). Lower values find the rate the network SUSTAINS, as opposed to the peak it briefly reaches.")
 	fundAmount := flag.String("fund-amount-wei", "1000000000000000", "wei sent from a seed to each test account (default 0.001 AEQ)")
 	transferAmount := flag.String("transfer-amount-wei", "10000000000000", "wei per load-test transfer (default 0.00001 AEQ)")
 	runDuration := flag.Duration("duration", 20*time.Second, "timed load phase duration")
@@ -531,6 +532,14 @@ func main() {
 	seeds := accs[:*numSeeds]
 	testAccs := accs[*numSeeds:]
 	numPairs := len(testAccs) / 2
+	// Capped deliberately. Peak throughput turned out to be the less useful
+	// number: every run at ~7-8k/s drove the node into an orphan backlog it
+	// needed half an hour to clear, because blocks were produced faster than
+	// the network could merge them. What matters is the rate it holds without
+	// falling behind, and finding that needs a knob.
+	if *maxPairs > 0 && *maxPairs < numPairs {
+		numPairs = *maxPairs
+	}
 	senders := testAccs[:numPairs]
 	recipients := testAccs[numPairs : 2*numPairs]
 
