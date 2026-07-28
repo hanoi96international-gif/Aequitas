@@ -13,23 +13,12 @@ func txBatchTestState() *ChainState {
 	return &ChainState{txBatches: newTxBatchCache()}
 }
 
-// txsFor builds a batch large enough to be worth stripping (see
-// txBatchMinTxsToStrip): below that break-even a block is deliberately sent
-// whole, so a smaller fixture would test the wrong branch.
-func txsFor(n int) []Transaction {
-	txs := make([]Transaction, n)
-	for i := range txs {
-		txs[i] = Transaction{Type: "transfer", Wallet: "0xaaa", To: "0xbbb", Amount: float64(i + 1)}
-	}
-	return txs
-}
-
 // GetBlocksSince hands back pointers into the live DAG. Stripping must copy,
 // because writing Transactions = nil through those pointers would delete the
 // bodies from this node's OWN memory -- it would serve a peer correctly once
 // and quietly destroy its own chain state doing it.
 func TestStripBlocksForPeer_DoesNotMutateTheDAGsOwnBlocks(t *testing.T) {
-	txs := txsFor(40)
+	txs := []Transaction{{Type: "transfer", Wallet: "0xaaa", To: "0xbbb", Amount: 5}}
 	root := txBatchRoot(txs)
 	cs := txBatchTestState()
 	cs.txBatches.put(root, txs)
@@ -39,7 +28,7 @@ func TestStripBlocksForPeer_DoesNotMutateTheDAGsOwnBlocks(t *testing.T) {
 
 	out := a.stripBlocksForPeer([]*Block{original})
 
-	if len(original.Transactions) != 40 {
+	if len(original.Transactions) != 1 {
 		t.Fatalf("the DAG's own block lost its transactions (%d left) -- stripping mutated shared state",
 			len(original.Transactions))
 	}
@@ -54,47 +43,38 @@ func TestStripBlocksForPeer_DoesNotMutateTheDAGsOwnBlocks(t *testing.T) {
 	}
 }
 
-// The case that made the whole mechanism inert in production. chain_blocks has
-// no tx_root column, so a block reloaded from the database arrives with the
-// field empty -- and every block this endpoint serves is a reloaded one,
-// because 100% of GetBlocksSince goes through LoadBlocksSinceFromDB. Measured
-// live: blocks_stripped 0 against blocks_sent_whole 11,400.
-func TestStripBlocksForPeer_DerivesTheRootForDatabaseLoadedBlocks(t *testing.T) {
-	txs := txsFor(40)
-	cs := txBatchTestState()
-	// No TxRoot, and nothing in the batch store -- exactly a DB-loaded block.
-	original := &Block{Hash: "0xblock", Height: 7, Transactions: txs}
-	a := &APIServer{state: cs}
-
-	out := a.stripBlocksForPeer([]*Block{original})
-
-	if len(out[0].Transactions) != 0 {
-		t.Fatal("a database-loaded block was sent whole; this is the case that made stripping a no-op")
-	}
-	want := txBatchRoot(txs)
-	if out[0].TxRoot != want {
-		t.Fatalf("derived TxRoot %q, want %q", out[0].TxRoot, want)
-	}
-	// And the body must now be retrievable, or the peer is stranded.
-	got, ok := cs.LoadTxBatch(want)
-	if !ok {
-		t.Fatal("the body was not stored, so the peer could never complete the block it was just handed a header for")
-	}
-	if len(got) != 40 {
-		t.Fatalf("stored body has %d transactions, want 40", len(got))
-	}
-}
-
-// Below the break-even a second round trip costs more than the bytes it saves,
-// so small blocks travel whole -- the same threshold the push path applies.
-func TestStripBlocksForPeer_KeepsBlocksBelowTheBreakEven(t *testing.T) {
-	original := &Block{Hash: "0xblock", Height: 7, Transactions: txsFor(txBatchMinTxsToStrip - 1)}
+// A body this node cannot serve must not be stripped. A peer receiving such a
+// header could never complete the block, and because calculateBlockHash falls
+// back to the carried TxRoot when the transaction list is empty, the block
+// would still hash correctly -- so the peer would apply it as though it had no
+// transactions rather than failing loudly.
+func TestStripBlocksForPeer_KeepsBodiesItCannotServe(t *testing.T) {
+	txs := []Transaction{{Type: "transfer", Wallet: "0xaaa", To: "0xbbb", Amount: 5}}
+	// Deliberately NOT stored in the batch cache.
+	original := &Block{Hash: "0xblock", Height: 7, TxRoot: txBatchRoot(txs), Transactions: txs}
 	a := &APIServer{state: txBatchTestState()}
 
 	out := a.stripBlocksForPeer([]*Block{original})
 
-	if len(out[0].Transactions) != txBatchMinTxsToStrip-1 {
-		t.Fatal("a block below the break-even was stripped; the extra round trip costs more than it saves")
+	if len(out[0].Transactions) != 1 {
+		t.Fatal("block was stripped even though its body is not retrievable from this node; the peer would be stranded")
+	}
+}
+
+// A block with no TxRoot predates the commitment scheme. There is nothing for a
+// peer to fetch the body by, so it has to travel whole.
+func TestStripBlocksForPeer_KeepsBlocksWithoutATxRoot(t *testing.T) {
+	original := &Block{
+		Hash:         "0xblock",
+		Height:       7,
+		Transactions: []Transaction{{Type: "transfer", Wallet: "0xaaa", To: "0xbbb", Amount: 5}},
+	}
+	a := &APIServer{state: txBatchTestState()}
+
+	out := a.stripBlocksForPeer([]*Block{original})
+
+	if len(out[0].Transactions) != 1 {
+		t.Fatal("a block with no TxRoot was stripped; nothing could ever reattach its body")
 	}
 }
 
