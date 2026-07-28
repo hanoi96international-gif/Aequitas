@@ -48,7 +48,12 @@ jobs:
             #
             # Idempotent: passiert nichts, wenn die Variable schon gesetzt ist.
             # Rueckgaengig: /root/.c1_env_backup enthaelt die vorherige Konfiguration.
-            if docker inspect aequitas-node --format "{{range .Config.Env}}{{println .}}{{end}}" | grep -q AEQUITAS_PRODUCE_WHEN_BACKLOG_SHRINKING; then
+            # grep liefert 1, wenn die Variable NICHT gesetzt ist -- also im Normalfall.
+            # Bei script_stop: true bricht das den ganzen Schritt ab, deshalb hier
+            # fehlertolerant zaehlen statt im if-Kopf greppen.
+            set +e
+            HAS=$(docker inspect aequitas-node --format "{{range .Config.Env}}{{println .}}{{end}}" 2>/dev/null | grep -c AEQUITAS_PRODUCE_WHEN_BACKLOG_SHRINKING)
+            if [ "${HAS:-0}" != "0" ]; then
               echo "Schalter bereits gesetzt -- nichts zu tun"
             else
               IMAGE=$(docker inspect aequitas-node --format "{{.Config.Image}}")
@@ -70,6 +75,7 @@ jobs:
               for i in $(seq 1 45); do curl -fs --max-time 3 http://127.0.0.1:8080/api/status >/dev/null 2>&1 && break; sleep 2; done
               echo "C1 oben: $(curl -s --max-time 5 http://127.0.0.1:8080/api/status | head -c 90)"
             fi
+            set -e
             df -h / | tail -1
             echo "=== Contabo1: node logs, last 60 lines ==="
             docker logs --tail 60 aequitas-node 2>&1 | tail -60
