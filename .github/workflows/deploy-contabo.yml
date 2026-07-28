@@ -105,13 +105,22 @@ jobs:
             # accelerator for the NEXT build, never a dependency of a running
             # container.
             #
-            # Bounded rather than emptied, so the next build still reuses most
-            # layers and deploys stay fast. --keep-storage is not present on
-            # every Docker version, hence the fallback to a full prune -- both
-            # are safe, the bounded form is merely kinder to build times.
-            docker builder prune -af --keep-storage 10GB 2>/dev/null | tail -2 \
-              || docker builder prune -af 2>/dev/null | tail -2 \
-              || echo "(builder prune unavailable — watch disk usage manually)"
+            # --max-used-space, NOT --keep-storage. This step has existed since
+            # 2026-07-25 and the cache still reached 91.21GB on a 96GB disk,
+            # filling it to 474MB free with Postgres writing to it. The reason
+            # is that modern Docker maps --keep-storage onto --reserved-space,
+            # which its own help text defines as "amount of disk space ALWAYS
+            # ALLOWED" -- a floor guaranteeing the cache survives, not a cap
+            # bounding it. The flag that actually bounds it is --max-used-space
+            # ("maximum amount of disk space allowed"). The old form ran
+            # successfully on every deploy and reported a plausible-looking
+            # "Total: ...", which is why it read as working for three days.
+            # Single line, no backslash continuations: this file is committed
+            # with CRLF, and a backslash followed by CR escapes the CR instead
+            # of continuing the line -- a trap already documented in
+            # diagnose-tps-ceiling-contabo2.yml after it silently mangled a
+            # command there.
+            if docker builder prune -af --max-used-space 10GB >/tmp/prune.out 2>/dev/null; then tail -2 /tmp/prune.out; else docker builder prune -af 2>/dev/null | tail -2 || echo "(builder prune unavailable - watch disk usage manually)"; fi
             echo "=== disk after deploy ==="
             df -h / | tail -1
           script_stop: true
