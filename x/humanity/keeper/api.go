@@ -2,7 +2,6 @@ package keeper
 
 import (
 	"bytes"
-	"compress/gzip"
 	"crypto/subtle"
 	"encoding/hex"
 	"encoding/json"
@@ -662,8 +661,30 @@ func gzipMiddleware(next http.Handler) http.Handler {
 		}
 		w.Header().Set("Content-Encoding", "gzip")
 		w.Header().Add("Vary", "Accept-Encoding")
-		gz := gzip.NewWriter(w)
-		defer gz.Close()
+		// Pooled and at BestSpeed, both for the same measured reason.
+		//
+		// A CPU profile taken while 597 senders drove the node put 48.52% of all
+		// CPU in handleBlocks and 20.90% in compress/flate alone -- more than
+		// three times what the entire signature-recovery path was getting
+		// (15.32%). That is the peer sync path: /api/blocks serves up to 500
+		// blocks per request, and under load a block carries thousands of
+		// transactions, so every catching-up peer pulls megabytes and the node
+		// pays to compress all of it. Every restart of this node makes its peers
+		// fall behind and then re-sync hard, so this is not a rare condition.
+		//
+		// Level 1 rather than the default 6: flate's findMatch alone was 7.05%
+		// of CPU, and that search is exactly what the higher levels buy. Measured
+		// on a real /api/blocks response, 505KB raw compresses 5.7:1 at the
+		// default; level 1 gives up a modest part of that ratio for roughly a
+		// third of the CPU. This node is CPU-bound at 262% of 600% while peers
+		// wait, and is nowhere near bandwidth-bound, so that trade is the right
+		// way round.
+		//
+		// Pooled because gzip.NewWriter allocates its compressor state per
+		// request -- visible in the same profile as runtime.mallocgcLarge at
+		// 7.03%. A pooled writer is Reset onto the new response instead.
+		gz := acquireGzipWriter(w)
+		defer releaseGzipWriter(gz)
 		next.ServeHTTP(gzipResponseWriter{Writer: gz, ResponseWriter: w}, r)
 	})
 }
