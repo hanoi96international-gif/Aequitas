@@ -249,6 +249,7 @@ func (cs *ChainState) initWALIfEnabled() {
 		fmt.Println("[WAL] AEQUITAS_WAL_ENABLED=1 but no DB connection — WAL fast path needs Postgres to reconcile into, skipping")
 		return
 	}
+	applyWALTuningFromEnv()
 	path := os.Getenv("AEQUITAS_WAL_PATH")
 	if path == "" {
 		path = "aequitas_transfers.wal"
@@ -756,6 +757,28 @@ func (cs *ChainState) flushWALBatch(batch []walFlushItem) error {
 	// snapshot loop -- see this function's own doc comment (layer 2) for
 	// why that's the actual fix, not an optional hardening.
 	unlockAddrs := cs.accounts.LockAddrs(addrList...)
+	// Measured, not estimated: a mutex profile put 45.21% of the node's entire
+	// lock contention on this one hold, and the two numbers that explain it —
+	// how much of the address space one flush freezes, and for how long — were
+	// not recorded anywhere. Registered BEFORE the unlock defer so it runs
+	// after it (defers are LIFO) and the interval covers the whole hold.
+	lockAcquired := time.Now()
+	var dbStart time.Time
+	// Phase timers. Split because "27 of the 30ms is the database window" is
+	// not yet an answer: that window also holds pure Go work (two multi-row
+	// statements built by hand, one json.Marshal per item) which needs no lock
+	// and could move out of the critical section entirely. Which fix is right
+	// depends on which phase actually costs.
+	var phSnapshot, phAcctSQL, phAcctExec, phOutboxSQL, phOutboxExec, phCommit time.Duration
+	phMark := time.Now()
+	defer func() {
+		var dbDur time.Duration
+		if !dbStart.IsZero() {
+			dbDur = time.Since(dbStart)
+		}
+		noteWALFlush(len(batch), len(addrList), time.Since(lockAcquired), dbDur)
+		noteWALFlushPhases(phSnapshot, phAcctSQL, phAcctExec, phOutboxSQL, phOutboxExec, phCommit)
+	}()
 	defer unlockAddrs()
 	for _, addr := range addrList {
 		acc, ok := cs.accounts.GetLocked(addr)
@@ -765,10 +788,14 @@ func (cs *ChainState) flushWALBatch(batch []walFlushItem) error {
 		snapshots[addr] = walSnapshot{balance: acc.Balance.Float(), walSeq: acc.WALSeq}
 	}
 
+	phSnapshot = time.Since(phMark)
+
 	tx, err := cs.db.Begin()
 	if err != nil {
 		return fmt.Errorf("could not begin WAL flush transaction: %w", err)
 	}
+	dbStart = time.Now()
+	phMark = dbStart
 	ctx := withTx(context.Background(), tx)
 
 	// Single multi-row UPSERT for every touched account. is_human/
@@ -803,10 +830,15 @@ SELECT address, balance, wal_seq, 1 FROM (VALUES ` + acctValuesSQL.String() + `)
 ON CONFLICT (address) DO UPDATE
 SET balance = EXCLUDED.balance, wal_seq = EXCLUDED.wal_seq
 WHERE chain_accounts.wal_seq < EXCLUDED.wal_seq`
+	phAcctSQL = time.Since(phMark)
+	phMark = time.Now()
 	if _, err := cs.dbExecCtx(ctx).Exec(acctQuery, acctArgs...); err != nil {
 		tx.Rollback()
 		return fmt.Errorf("could not upsert %d account(s) during WAL flush: %w", len(snapshots), err)
 	}
+
+	phAcctExec = time.Since(phMark)
+	phMark = time.Now()
 
 	// Single multi-row outbox INSERT for every item in the batch.
 	var txValuesSQL strings.Builder
@@ -830,14 +862,19 @@ WHERE chain_accounts.wal_seq < EXCLUDED.wal_seq`
 		txArgs = append(txArgs, string(data), now)
 	}
 	txQuery := `INSERT INTO pending_txs (tx_json, created_at) VALUES ` + txValuesSQL.String()
+	phOutboxSQL = time.Since(phMark)
+	phMark = time.Now()
 	if _, err := cs.dbExecCtx(ctx).Exec(txQuery, txArgs...); err != nil {
 		tx.Rollback()
 		return fmt.Errorf("could not queue %d outbox tx(s) during WAL flush: %w", len(batch), err)
 	}
+	phOutboxExec = time.Since(phMark)
+	phMark = time.Now()
 
 	if err := tx.Commit(); err != nil {
 		return fmt.Errorf("WAL flush commit failed: %w", err)
 	}
+	phCommit = time.Since(phMark)
 	return nil
 }
 

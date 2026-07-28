@@ -302,7 +302,23 @@ func (dag *BlockDAG) startSyncForPeer(peerURL string) {
 // same-height sibling skip bug (P1-02) where advancing min_height to the
 // last-seen height could miss siblings that didn't fit on the previous page.
 func (dag *BlockDAG) fetchBlocksSince(nodeURL string, minHeight int64, afterHash string, limit int) ([]*Block, error) {
+	// Ask for headers rather than whole blocks, then fill the bodies in below.
+	// This is the requester's own opt-in and is what makes the scheme safe: a
+	// peer on older code ignores the parameter and answers in full, which this
+	// function handles identically because the fill-in step is a no-op for a
+	// block that already has its transactions. See tx_batch_pull.go for the
+	// measurement that motivated it — 1.03 GB of compressed block bodies served
+	// in one minute, to two peers.
+	return dag.fetchBlocksSincePage(nodeURL, minHeight, afterHash, limit, true)
+}
+
+// fetchBlocksSincePage is fetchBlocksSince with an explicit choice of whether
+// to request stripped blocks, so the fallback path can re-ask for full ones.
+func (dag *BlockDAG) fetchBlocksSincePage(nodeURL string, minHeight int64, afterHash string, limit int, stripped bool) ([]*Block, error) {
 	url := fmt.Sprintf("%s/api/blocks?min_height=%d&limit=%d", nodeURL, minHeight, limit)
+	if stripped {
+		url += "&stripped=1"
+	}
 	if afterHash != "" {
 		url += "&after_hash=" + afterHash
 	}
@@ -360,6 +376,35 @@ func (dag *BlockDAG) fetchBlocksSince(nodeURL string, minHeight int64, afterHash
 	var blocks []*Block
 	if err := json.Unmarshal(body, &blocks); err != nil {
 		return nil, fmt.Errorf("decoding response body (%d bytes): %w", len(body), err)
+	}
+	if !stripped {
+		return blocks, nil
+	}
+	// Fill in any body the peer left out. FetchTxBatch checks this node's own
+	// batch store first, so a block whose transactions already arrived over the
+	// push path costs nothing at all here — that is where the saving comes
+	// from, not merely from moving the bytes to a second request.
+	//
+	// FAIL SOFT. If even one body cannot be obtained, the whole page is
+	// re-fetched in full rather than returned with holes. A block missing its
+	// transactions would not merely be incomplete: calculateBlockHash falls
+	// back to the carried TxRoot when the transaction list is empty, so an
+	// unfilled block still hashes correctly and would be applied as though it
+	// had no transactions at all. Silently dropping a page of transfers is the
+	// one outcome this must never produce, so the fallback is unconditional.
+	for _, b := range blocks {
+		if b == nil || !dag.state.NeedsTxBatch(b) {
+			continue
+		}
+		txs, err := dag.FetchTxBatch(b.TxRoot, nodeURL)
+		if err == nil {
+			err = dag.state.AttachTxBatch(b, txs)
+		}
+		if err != nil {
+			fmt.Printf("[HTTP-SYNC] ⚠ could not complete stripped block %s from %s (%v) — re-fetching this page in full\n",
+				b.Hash[:min(16, len(b.Hash))], nodeURL, err)
+			return dag.fetchBlocksSincePage(nodeURL, minHeight, afterHash, limit, false)
+		}
 	}
 	return blocks, nil
 }

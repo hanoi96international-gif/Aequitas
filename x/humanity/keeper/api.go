@@ -2,7 +2,6 @@ package keeper
 
 import (
 	"bytes"
-	"compress/gzip"
 	"crypto/subtle"
 	"encoding/hex"
 	"encoding/json"
@@ -552,6 +551,14 @@ func (a *APIServer) handleCombinedHealth(w http.ResponseWriter, r *http.Request)
 		// Which path transfers take, and how long each one actually takes —
 		// see transfer_stats.go for why a derived 57ms needed measuring.
 		"transfer_path": TransferPathStats(),
+		// The WAL flush loop, which a mutex profile identified as the single
+		// largest source of lock contention in the node (45.21%). addrs_per_flush
+		// and hold_avg_ms are the two numbers that explain it; see wal_tuning.go.
+		"wal_flush": WALFlushStats(),
+		// Who is actually driving the block-serving endpoints, which a CPU
+		// profile put at a quarter of the node's CPU with no identifiable
+		// caller. See endpoint_stats.go.
+		"endpoints": EndpointStats(),
 		"chain": map[string]interface{}{
 			"status":                     status,
 			"notes":                      notes,
@@ -658,8 +665,30 @@ func gzipMiddleware(next http.Handler) http.Handler {
 		}
 		w.Header().Set("Content-Encoding", "gzip")
 		w.Header().Add("Vary", "Accept-Encoding")
-		gz := gzip.NewWriter(w)
-		defer gz.Close()
+		// Pooled and at BestSpeed, both for the same measured reason.
+		//
+		// A CPU profile taken while 597 senders drove the node put 48.52% of all
+		// CPU in handleBlocks and 20.90% in compress/flate alone -- more than
+		// three times what the entire signature-recovery path was getting
+		// (15.32%). That is the peer sync path: /api/blocks serves up to 500
+		// blocks per request, and under load a block carries thousands of
+		// transactions, so every catching-up peer pulls megabytes and the node
+		// pays to compress all of it. Every restart of this node makes its peers
+		// fall behind and then re-sync hard, so this is not a rare condition.
+		//
+		// Level 1 rather than the default 6: flate's findMatch alone was 7.05%
+		// of CPU, and that search is exactly what the higher levels buy. Measured
+		// on a real /api/blocks response, 505KB raw compresses 5.7:1 at the
+		// default; level 1 gives up a modest part of that ratio for roughly a
+		// third of the CPU. This node is CPU-bound at 262% of 600% while peers
+		// wait, and is nowhere near bandwidth-bound, so that trade is the right
+		// way round.
+		//
+		// Pooled because gzip.NewWriter allocates its compressor state per
+		// request -- visible in the same profile as runtime.mallocgcLarge at
+		// 7.03%. A pooled writer is Reset onto the new response instead.
+		gz := acquireGzipWriter(w)
+		defer releaseGzipWriter(gz)
 		next.ServeHTTP(gzipResponseWriter{Writer: gz, ResponseWriter: w}, r)
 	})
 }
@@ -713,11 +742,11 @@ func (a *APIServer) Start(port int) {
 	mux.HandleFunc("/api/health/combined", a.handleCombinedHealth)
 	mux.HandleFunc("/api/debug/stateroot-components", a.handleStateRootComponents)
 	mux.HandleFunc("/api/debug/dag-gates", a.handleDAGGates)
-	mux.HandleFunc("/api/blocks", a.handleBlocks)
-	mux.HandleFunc("/api/blocks/canonical", a.handleCanonicalBlocks)
+	mux.HandleFunc("/api/blocks", countEndpoint(&statBlocks, a.handleBlocks))
+	mux.HandleFunc("/api/blocks/canonical", countEndpoint(&statCanonical, a.handleCanonicalBlocks))
 	mux.HandleFunc("/api/validator-labels", a.handleValidatorLabels)
 	mux.HandleFunc("/api/block", a.handleBlockByHash)
-	mux.HandleFunc("/api/blocks/by-hash", a.handleBlocksByHash)
+	mux.HandleFunc("/api/blocks/by-hash", countEndpoint(&statBlocksByHash, a.handleBlocksByHash))
 	mux.HandleFunc("/api/blocks/push", a.handleBlockPush)
 	mux.HandleFunc("/api/txbatch", a.handleTxBatch)
 	mux.HandleFunc("/api/humanity/credential", a.handleHumanityCredential)
@@ -833,6 +862,14 @@ func (a *APIServer) Start(port int) {
 // without loopback) is logged and otherwise harmless — nothing else in the
 // node depends on this listener.
 func startPprofServer() {
+	// The mutex and block profiles below are served by pprof.Index like any
+	// other named profile, but both are governed by a sampling rate that is
+	// zero unless something sets it — so without this call they answer with an
+	// empty profile rather than an error, which is exactly how a real lock
+	// contention problem stayed invisible through several rounds of
+	// measurement here. Off by default; see contention_profile.go.
+	StartContentionProfiling()
+
 	mux := http.NewServeMux()
 	mux.HandleFunc("/debug/pprof/", pprof.Index)
 	mux.HandleFunc("/debug/pprof/cmdline", pprof.Cmdline)
@@ -1048,6 +1085,14 @@ func (a *APIServer) handleBlocks(w http.ResponseWriter, r *http.Request) {
 		// to a peer catching up from far behind.
 		afterHash := r.URL.Query().Get("after_hash")
 		result := a.blockchain.GetBlocksSince(minHeight, afterHash, limit)
+		// A peer that asks for stripped blocks gets headers carrying a TxRoot
+		// and fetches the bodies separately from /api/txbatch. Opt-in by the
+		// REQUESTER, which is what makes it safe against older peers: they
+		// never send the parameter, so they never get a stripped response.
+		// See stripBlocksForPeer for what this endpoint measured without it.
+		if r.URL.Query().Get("stripped") == "1" {
+			result = a.stripBlocksForPeer(result)
+		}
 		// FIX (2026-07-25, "es merged nix" incident): this used to be
 		// json.NewEncoder(w).Encode(result), which streams directly to the
 		// response and DISCARDS its error. Encoder.Encode marshals into an

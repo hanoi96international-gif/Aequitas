@@ -199,10 +199,16 @@ type nonceShard struct {
 }
 
 // nonceShardCount is a power of two so the shard index is a mask rather than a
-// division. 256 is far above the core count of any node this runs on, so two
-// senders colliding on a shard is rare and costs only what the old global lock
-// cost for every pair.
-const nonceShardCount = 256
+// division.
+//
+// Was 256, chosen against the core count. That reasoning was wrong: what
+// collides here is concurrent SENDERS, not cores. Measured on Contabo2 with a
+// load generator driving 597 concurrent senders, that is 2.3 senders per shard
+// and 22 goroutines were waiting in sync.Mutex.Lock inside sendRawTransaction.
+// 2048 puts it back under one sender per shard at that concurrency, and the
+// array costs 8 bytes of mutex plus a map header per shard - kilobytes, against
+// a node already holding hundreds of megabytes under load.
+const nonceShardCount = 2048
 
 // nonceShardFor returns the shard owning addr's nonce -- both the lock and the
 // map that lock guards. Callers must use this for EVERY nonce access; reaching
@@ -244,7 +250,13 @@ type txMetaShard struct {
 	senders  map[string]string // txHash -> sender address (lowercase)
 	tos      map[string]string // txHash -> to address (lowercase, "" for contract creation)
 	deployed map[string]string // txHash -> deployed contract address (lowercase)
-	order    []string          // insertion order, for bounded eviction
+
+	// Insertion order, for bounded eviction — a ring buffer, not a slice that
+	// gets re-created. Allocated once at its final size and then only written
+	// through; see note() for the measurement that forced this shape.
+	order     []string
+	orderHead int // index of the oldest entry once full, next free slot while filling
+	orderLen  int // entries currently held, never above txMetaMaxPerShard
 }
 
 // txMetaShardCount is a power of two so the index is a mask. 64 is well above
@@ -283,24 +295,47 @@ func (s *EVMRPCServer) txMetaShardFor(txHash string) *txMetaShard {
 // note records that txHash was just written into this shard and drops the
 // oldest entries once the shard is over its share of the budget. The caller
 // must already hold sh.mu, exactly as for the map writes themselves.
+// A ring buffer, because the previous shape allocated on every single call
+// once the cache was full.
+//
+// It appended, found itself one over the cap, deleted the one oldest entry,
+// then allocated a FRESH []string of txMetaMaxPerShard entries and copied the
+// whole thing across — per transaction, forever, in steady state. An
+// allocation profile taken under 597-sender load on Contabo2 put 3.29GB, i.e.
+// 36.05% of every byte the node allocated, in this one function: about 25KB
+// per transfer, roughly 148MB/s of garbage at the 5,930 TPS measured
+// alongside it. Allocation and GC together accounted for 18.3% of the node's
+// CPU, and this was the largest single contributor to it.
+//
+// The eviction policy is unchanged — the cache still holds exactly the last
+// txMetaMaxPerShard hashes and drops the oldest to make room. Only the
+// bookkeeping changed: overwriting one slot costs nothing and retains nothing,
+// where re-creating the backing array cost a full copy. The old comment about
+// re-slicing to avoid retaining evicted strings was addressing a real hazard
+// in that shape; a ring has no such hazard, since the evicted string is
+// overwritten in place by its replacement.
 func (sh *txMetaShard) note(txHash string) {
-	sh.order = append(sh.order, txHash)
-	if len(sh.order) <= txMetaMaxPerShard {
-		return
+	if sh.order == nil {
+		// Allocated once per shard, at full size, and never grown or replaced.
+		sh.order = make([]string, txMetaMaxPerShard)
 	}
-	drop := len(sh.order) - txMetaMaxPerShard
-	for _, old := range sh.order[:drop] {
+	if sh.orderLen == txMetaMaxPerShard {
+		// Full: the slot about to be written holds the oldest hash, so drop its
+		// map entries before overwriting it.
+		old := sh.order[sh.orderHead]
 		delete(sh.status, old)
 		delete(sh.errMsg, old)
 		delete(sh.senders, old)
 		delete(sh.tos, old)
 		delete(sh.deployed, old)
+	} else {
+		sh.orderLen++
 	}
-	// Re-slice into a fresh backing array: keeping the old one would retain
-	// every evicted string and defeat the point of evicting them.
-	kept := make([]string, len(sh.order)-drop)
-	copy(kept, sh.order[drop:])
-	sh.order = kept
+	sh.order[sh.orderHead] = txHash
+	sh.orderHead++
+	if sh.orderHead == txMetaMaxPerShard {
+		sh.orderHead = 0
+	}
 }
 
 func NewEVMRPCServer(dag *BlockDAG, state *ChainState) *EVMRPCServer {
