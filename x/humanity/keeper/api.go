@@ -559,6 +559,11 @@ func (a *APIServer) handleCombinedHealth(w http.ResponseWriter, r *http.Request)
 		// profile put at a quarter of the node's CPU with no identifiable
 		// caller. See endpoint_stats.go.
 		"endpoints": EndpointStats(),
+		// How much of the pull path is actually being stripped. Built together
+		// with the stripping itself and then never wired up, so the one question
+		// it exists to answer -- is the saving being realised, or are bodies
+		// unretrievable and everything going out whole? -- was unanswerable.
+		"stripped_pull": StrippedPullStats(),
 		"chain": map[string]interface{}{
 			"status":                     status,
 			"notes":                      notes,
