@@ -555,6 +555,10 @@ func (a *APIServer) handleCombinedHealth(w http.ResponseWriter, r *http.Request)
 		// largest source of lock contention in the node (45.21%). addrs_per_flush
 		// and hold_avg_ms are the two numbers that explain it; see wal_tuning.go.
 		"wal_flush": WALFlushStats(),
+		// Who is actually driving the block-serving endpoints, which a CPU
+		// profile put at a quarter of the node's CPU with no identifiable
+		// caller. See endpoint_stats.go.
+		"endpoints": EndpointStats(),
 		"chain": map[string]interface{}{
 			"status":                     status,
 			"notes":                      notes,
@@ -738,11 +742,11 @@ func (a *APIServer) Start(port int) {
 	mux.HandleFunc("/api/health/combined", a.handleCombinedHealth)
 	mux.HandleFunc("/api/debug/stateroot-components", a.handleStateRootComponents)
 	mux.HandleFunc("/api/debug/dag-gates", a.handleDAGGates)
-	mux.HandleFunc("/api/blocks", a.handleBlocks)
-	mux.HandleFunc("/api/blocks/canonical", a.handleCanonicalBlocks)
+	mux.HandleFunc("/api/blocks", countEndpoint(&statBlocks, a.handleBlocks))
+	mux.HandleFunc("/api/blocks/canonical", countEndpoint(&statCanonical, a.handleCanonicalBlocks))
 	mux.HandleFunc("/api/validator-labels", a.handleValidatorLabels)
 	mux.HandleFunc("/api/block", a.handleBlockByHash)
-	mux.HandleFunc("/api/blocks/by-hash", a.handleBlocksByHash)
+	mux.HandleFunc("/api/blocks/by-hash", countEndpoint(&statBlocksByHash, a.handleBlocksByHash))
 	mux.HandleFunc("/api/blocks/push", a.handleBlockPush)
 	mux.HandleFunc("/api/txbatch", a.handleTxBatch)
 	mux.HandleFunc("/api/humanity/credential", a.handleHumanityCredential)
