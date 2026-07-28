@@ -66,23 +66,51 @@ func (a *APIServer) stripBlocksForPeer(blocks []*Block) []*Block {
 	}
 	out := make([]*Block, len(blocks))
 	for i, b := range blocks {
-		// Nothing to strip, or nothing to strip it back to.
-		if b == nil || len(b.Transactions) == 0 || b.TxRoot == "" {
+		// Too little to be worth a second round trip. Same break-even the push
+		// path uses, for the same reason.
+		if b == nil || len(b.Transactions) < txBatchMinTxsToStrip {
 			out[i] = b
 			strippedBlocksFull.Add(1)
 			continue
 		}
-		if _, ok := a.state.LoadTxBatch(b.TxRoot); !ok {
-			// The body is not retrievable from here, so sending a header would
-			// leave the peer unable to complete the block. Send it whole.
-			out[i] = b
-			strippedBlocksFull.Add(1)
-			continue
+		// Derive the root when the block does not carry one.
+		//
+		// Without this the whole mechanism is inert, which is exactly what it
+		// measured: blocks_stripped 0 against blocks_sent_whole 11,400.
+		// chain_blocks has no tx_root column, so a block reloaded from the
+		// database comes back with the field empty -- and 100% of
+		// GetBlocksSince goes through LoadBlocksSinceFromDB, so on this path
+		// EVERY block is a reloaded one. Those two facts were measured hours
+		// apart and only mean something together.
+		//
+		// Deriving it is sound rather than a workaround: txBatchRoot is a pure
+		// function of the transaction list, so this is the same digest the
+		// producer would have committed to. It also cannot change the block's
+		// hash: calculateBlockHash uses an ATTACHED body whenever there is one
+		// and falls back to TxRoot only for a stripped block, and the receiver
+		// attaches the body before the hash is ever checked. So even a block
+		// produced before TxRoot existed still verifies against the signature
+		// its producer made.
+		root := b.TxRoot
+		if root == "" {
+			root = txBatchRoot(b.Transactions)
+		}
+		// Make sure the body can actually be served back; a header whose body
+		// cannot be obtained would strand the peer. Storing is idempotent (ON
+		// CONFLICT DO NOTHING) and writes through an in-memory cache, so this
+		// costs one write per distinct batch, not one per request.
+		if _, ok := a.state.LoadTxBatch(root); !ok {
+			if err := a.state.SaveTxBatch(root, b.Transactions); err != nil {
+				out[i] = b
+				strippedBlocksFull.Add(1)
+				continue
+			}
 		}
 		// Shallow copy: the original belongs to the DAG and must keep its
 		// transactions.
 		stripped := *b
 		stripped.Transactions = nil
+		stripped.TxRoot = root
 		out[i] = &stripped
 		strippedBlocksServed.Add(1)
 	}
