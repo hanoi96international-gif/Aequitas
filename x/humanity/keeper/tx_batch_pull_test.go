@@ -18,7 +18,7 @@ func txBatchTestState() *ChainState {
 // bodies from this node's OWN memory -- it would serve a peer correctly once
 // and quietly destroy its own chain state doing it.
 func TestStripBlocksForPeer_DoesNotMutateTheDAGsOwnBlocks(t *testing.T) {
-	txs := []Transaction{{Type: "transfer", Wallet: "0xaaa", To: "0xbbb", Amount: 5}}
+	txs := txsForStrip(40)
 	root := txBatchRoot(txs)
 	cs := txBatchTestState()
 	cs.txBatches.put(root, txs)
@@ -28,7 +28,7 @@ func TestStripBlocksForPeer_DoesNotMutateTheDAGsOwnBlocks(t *testing.T) {
 
 	out := a.stripBlocksForPeer([]*Block{original})
 
-	if len(original.Transactions) != 1 {
+	if len(original.Transactions) != 40 {
 		t.Fatalf("the DAG's own block lost its transactions (%d left) -- stripping mutated shared state",
 			len(original.Transactions))
 	}
@@ -49,14 +49,14 @@ func TestStripBlocksForPeer_DoesNotMutateTheDAGsOwnBlocks(t *testing.T) {
 // would still hash correctly -- so the peer would apply it as though it had no
 // transactions rather than failing loudly.
 func TestStripBlocksForPeer_KeepsBodiesItCannotServe(t *testing.T) {
-	txs := []Transaction{{Type: "transfer", Wallet: "0xaaa", To: "0xbbb", Amount: 5}}
+	txs := txsForStrip(40)
 	// Deliberately NOT stored in the batch cache.
 	original := &Block{Hash: "0xblock", Height: 7, TxRoot: txBatchRoot(txs), Transactions: txs}
 	a := &APIServer{state: txBatchTestState()}
 
 	out := a.stripBlocksForPeer([]*Block{original})
 
-	if len(out[0].Transactions) != 1 {
+	if len(out[0].Transactions) != 40 {
 		t.Fatal("block was stripped even though its body is not retrievable from this node; the peer would be stranded")
 	}
 }
@@ -67,13 +67,13 @@ func TestStripBlocksForPeer_KeepsBlocksWithoutATxRoot(t *testing.T) {
 	original := &Block{
 		Hash:         "0xblock",
 		Height:       7,
-		Transactions: []Transaction{{Type: "transfer", Wallet: "0xaaa", To: "0xbbb", Amount: 5}},
+		Transactions: txsForStrip(40),
 	}
 	a := &APIServer{state: txBatchTestState()}
 
 	out := a.stripBlocksForPeer([]*Block{original})
 
-	if len(out[0].Transactions) != 1 {
+	if len(out[0].Transactions) != 40 {
 		t.Fatal("a block with no TxRoot was stripped; nothing could ever reattach its body")
 	}
 }
@@ -149,4 +149,53 @@ func TestPushErrorCarriesTheCapabilityToken(t *testing.T) {
 	if resp.Reason != "request body too large" {
 		t.Fatalf("reason was lost: %q", resp.Reason)
 	}
+}
+
+// The serving path must never write. An earlier version stored the body here so
+// that more blocks became strippable, which put a write proportional to the
+// served payload onto a read path: chain_tx_batches grew by 851MB in minutes and
+// the node stopped advancing entirely (+0 blocks in 100s) until it was reverted.
+//
+// Asserted by serving a block whose body is NOT in the store: it must go out
+// whole and the store must still not contain it afterwards.
+func TestStripBlocksForPeer_NeverWritesWhileServing(t *testing.T) {
+	txs := txsForStrip(40)
+	root := txBatchRoot(txs)
+	cs := txBatchTestState()
+	original := &Block{Hash: "0xblock", Height: 7, TxRoot: root, Transactions: txs}
+	a := &APIServer{state: cs}
+
+	out := a.stripBlocksForPeer([]*Block{original})
+
+	if len(out[0].Transactions) != 40 {
+		t.Fatal("a block whose body is not stored was stripped; the peer could never complete it")
+	}
+	if _, ok := cs.LoadTxBatch(root); ok {
+		t.Fatal("serving stored the body — this is the write-on-a-read-path that took the node down")
+	}
+}
+
+// Below the break-even a second round trip costs more than the bytes it saves,
+// so small blocks travel whole -- the same threshold the push path applies.
+func TestStripBlocksForPeer_KeepsBlocksBelowTheBreakEven(t *testing.T) {
+	txs := txsForStrip(txBatchMinTxsToStrip - 1)
+	cs := txBatchTestState()
+	root := txBatchRoot(txs)
+	cs.txBatches.put(root, txs)
+	original := &Block{Hash: "0xblock", Height: 7, TxRoot: root, Transactions: txs}
+	a := &APIServer{state: cs}
+
+	out := a.stripBlocksForPeer([]*Block{original})
+
+	if len(out[0].Transactions) != txBatchMinTxsToStrip-1 {
+		t.Fatal("a block below the break-even was stripped; the extra round trip costs more than it saves")
+	}
+}
+
+func txsForStrip(n int) []Transaction {
+	txs := make([]Transaction, n)
+	for i := range txs {
+		txs[i] = Transaction{Type: "transfer", Wallet: "0xaaa", To: "0xbbb", Amount: float64(i + 1)}
+	}
+	return txs
 }

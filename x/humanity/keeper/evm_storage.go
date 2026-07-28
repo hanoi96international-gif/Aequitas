@@ -2970,6 +2970,26 @@ func (cs *ChainState) ensureGHOSTDAGColumns() {
 		cs.db.Exec(`ALTER TABLE chain_blocks ADD COLUMN IF NOT EXISTS selected_parent TEXT DEFAULT ''`)
 		cs.db.Exec(`ALTER TABLE chain_blocks ADD COLUMN IF NOT EXISTS blue_score BIGINT DEFAULT 0`)
 		cs.db.Exec(`ALTER TABLE chain_blocks ADD COLUMN IF NOT EXISTS blues TEXT DEFAULT '[]'`)
+		// tx_root, so a block reloaded from here still knows the digest its
+		// producer committed to.
+		//
+		// Without it, bodies-by-reference is dead on the pull path and measured
+		// exactly that: blocks_stripped 0 against blocks_sent_whole 11,400.
+		// 100% of GetBlocksSince goes through LoadBlocksSinceFromDB, so every
+		// block this node serves is a reloaded one — and with the root lost in
+		// the round trip, none of them can be stripped, not even the ones whose
+		// bodies this node already stored when it produced them.
+		//
+		// The alternative, deriving the root at serve time, was tried and
+		// reverted: it also needed the body STORED to be servable, and calling
+		// SaveTxBatch from the serving path put a write proportional to the
+		// served payload on a read path. That wrote 851MB in minutes and
+		// starved this node's own sync until it stopped advancing entirely.
+		// Persisting one column at save time costs nothing per request.
+		//
+		// Backward compatible in both directions: older code neither writes nor
+		// reads the column, and this code COALESCEs it away when absent.
+		cs.db.Exec(`ALTER TABLE chain_blocks ADD COLUMN IF NOT EXISTS tx_root TEXT DEFAULT ''`)
 		// FIX (2026-07-04 — Contabo 2 catch-up-vs-real-time-production
 		// starvation at faster BLOCK_TIME): LoadBlocksSinceFromDB (the query
 		// that answers every peer's /api/blocks?min_height= page request —
@@ -3095,12 +3115,12 @@ func (cs *ChainState) SaveBlockToDB(block *Block, replayed bool) error {
 	_, err = cs.db.Exec(
 		`INSERT INTO chain_blocks
 		   (hash, height, parent_hashes, proposer, timestamp, humans, state_root,
-		    signature, transactions, selected_parent, blue_score, blues, replayed)
-		 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
+		    signature, transactions, selected_parent, blue_score, blues, replayed, tx_root)
+		 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
 		 ON CONFLICT (hash) DO NOTHING`,
 		block.Hash, block.Height, string(parentHashesJSON), block.Proposer, block.Timestamp,
 		block.Humans, block.StateRoot, block.Signature, string(txsJSON),
-		block.SelectedParent, block.BlueScore, string(bluesJSON), replayed,
+		block.SelectedParent, block.BlueScore, string(bluesJSON), replayed, block.TxRoot,
 	)
 	return err
 }
@@ -3220,12 +3240,12 @@ func (cs *ChainState) SaveBlockWithPendingTxsAtomic(block *Block, ids []int64) e
 		if _, err := cs.db.Exec(
 			`INSERT INTO chain_blocks
 			   (hash, height, parent_hashes, proposer, timestamp, humans, state_root,
-			    signature, transactions, selected_parent, blue_score, blues, replayed)
-			 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,true)
+			    signature, transactions, selected_parent, blue_score, blues, replayed, tx_root)
+			 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,true,$13)
 			 ON CONFLICT (hash) DO NOTHING`,
 			block.Hash, block.Height, string(parentHashesJSON), block.Proposer, block.Timestamp,
 			block.Humans, block.StateRoot, block.Signature, string(txsJSON),
-			block.SelectedParent, block.BlueScore, string(bluesJSONFast),
+			block.SelectedParent, block.BlueScore, string(bluesJSONFast), block.TxRoot,
 		); err != nil {
 			return fmt.Errorf("save block (fast path): %w", err)
 		}
@@ -3283,12 +3303,12 @@ func (cs *ChainState) SaveBlockWithPendingTxsAtomic(block *Block, ids []int64) e
 	if _, err := tx.Exec(
 		`INSERT INTO chain_blocks
 		   (hash, height, parent_hashes, proposer, timestamp, humans, state_root,
-		    signature, transactions, selected_parent, blue_score, blues, replayed)
-		 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,true)
+		    signature, transactions, selected_parent, blue_score, blues, replayed, tx_root)
+		 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,true,$13)
 		 ON CONFLICT (hash) DO NOTHING`,
 		block.Hash, block.Height, string(parentHashesJSON), block.Proposer, block.Timestamp,
 		block.Humans, block.StateRoot, block.Signature, string(txsJSON),
-		block.SelectedParent, block.BlueScore, string(bluesJSON),
+		block.SelectedParent, block.BlueScore, string(bluesJSON), block.TxRoot,
 	); err != nil {
 		rollback()
 		return fmt.Errorf("save block: %w", err)
@@ -3598,7 +3618,8 @@ func (cs *ChainState) LoadBlocksSinceFromDB(minHeight int64, afterHash string, l
 	fetchLimit := limit + dbSinceFetchWindow
 	rows, err := cs.db.Query(`SELECT hash, height, parent_hashes, proposer, timestamp, humans, state_root,
 	                 signature, transactions,
-	                 COALESCE(selected_parent,''), COALESCE(blue_score,0), COALESCE(blues,'[]')
+	                 COALESCE(selected_parent,''), COALESCE(blue_score,0), COALESCE(blues,'[]'),
+	                 COALESCE(tx_root,'')
 	          FROM chain_blocks
 	          WHERE height >= $1 AND proposer != 'synthetic-checkpoint'
 	          ORDER BY height ASC, blue_score DESC, hash ASC
@@ -3614,7 +3635,7 @@ func (cs *ChainState) LoadBlocksSinceFromDB(minHeight int64, afterHash string, l
 		if err := rows.Scan(
 			&b.Hash, &b.Height, &parentHashesRaw, &b.Proposer, &b.Timestamp,
 			&b.Humans, &b.StateRoot, &b.Signature, &txsRaw,
-			&b.SelectedParent, &b.BlueScore, &bluesRaw,
+			&b.SelectedParent, &b.BlueScore, &bluesRaw, &b.TxRoot,
 		); err != nil {
 			continue
 		}
