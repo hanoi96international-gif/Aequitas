@@ -1692,7 +1692,15 @@ func (dag *BlockDAG) doSyncOnce(nodeURL string) (ok bool) {
 		fmt.Printf("[HTTP-SYNC] ⚠ %s: %d deferred block(s) have now gone unresolved for longer than %s — treating as NOT caught up (a fork looks exactly like this; see doSyncOnce's own comment)\n",
 			nodeURL, unresolvedDeferrals, proposerBreakerOrphanGrace)
 	}
-	if sawUnmergedBlocks || unresolvedDeferrals > 0 {
+	// A shrinking unresolved set is a backlog, not a fork — see
+	// backlog_vs_fork.go for the trap this opens, and note that it is OFF
+	// unless an operator switched it on. sawUnmergedBlocks is deliberately NOT
+	// covered: that flag means a block failed for a reason other than a parent
+	// still in flight (bad signature, unauthorized proposer, finality
+	// violation, far-ahead fork), where an immediate reset is correct.
+	backlog := !sawUnmergedBlocks &&
+		dag.isShrinkingBacklogFor(nodeURL, unresolvedDeferrals)
+	if (sawUnmergedBlocks || unresolvedDeferrals > 0) && !backlog {
 		dag.resetCleanSyncStreak(nodeURL)
 	} else {
 		dag.recordCleanSyncCycle(nodeURL)
