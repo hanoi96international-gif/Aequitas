@@ -46,9 +46,9 @@ Bis 2000. Hier kam am 7. März 1998 Julia dazu, und damit wart ihr vollständig:
 
 ### Von-Emmich-Straße
 
-Bis etwa 2005. Das ist die Wohnung, in der alles auseinanderfiel.
+Bis etwa 2005. Das ist die Wohnung, in der aus einer Familie mit zwei Erwachsenen eine mit einer wurde.
 
-{{Hier gehört hin, was du über den 10. Mai 2001 schreiben willst — oder ein Verweis auf das eigene Kapitel. Sag mir Bescheid, wie du es haben möchtest.}}
+{{Woran du dich aus dieser Wohnung erinnerst. Alltägliches reicht — gerade hier ist das Alltägliche das Stärkste.}}
 
 ### Moltkestraße
 
