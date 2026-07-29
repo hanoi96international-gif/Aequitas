@@ -46,15 +46,33 @@ func TestShrinkingBacklog_FallingSetOnALevelNodeIsABacklog(t *testing.T) {
 	}
 }
 
-// Being far behind is the case the gate was built for and must stay untouched,
-// however the unresolved set is moving.
-func TestShrinkingBacklog_NodeFarBehindIsNeverABacklog(t *testing.T) {
+// A node far behind must still be able to escape, provided it is demonstrably
+// making progress. The first version required the node to be within
+// backlogHeightSlack before treating anything as a backlog — which is exactly
+// the condition a trapped node cannot meet, since not producing means falling
+// further behind every cycle. Contabo2 sat 780 blocks back and climbing and the
+// escape declined every single time.
+func TestShrinkingBacklog_FarBehindButShrinkingStillEscapes(t *testing.T) {
 	withBacklogEscape(t)
-	const peer = "http://peer:8080"
+	const peer = "http://peer.example:8080"
+	far := int64(1000 + backlogHeightSlack + 500)
 
-	isShrinkingBacklog(peer, 60, 1000, 1000)
-	if isShrinkingBacklog(peer, 20, 1000, 1000+backlogHeightSlack+1) {
-		t.Fatal("a node further behind than the slack was treated as a backlog; that is the situation the gate exists for")
+	isShrinkingBacklog(peer, 400, 1000, far) // Grundlinie
+	if !isShrinkingBacklog(peer, 350, 1000, far) {
+		t.Fatal("a node far behind whose unresolved set is falling must be able to escape; otherwise the trap is permanent")
+	}
+}
+
+// But far behind and NOT falling stays gated: merely holding steady is not
+// evidence of progress, and a stalled fork looks exactly like that.
+func TestShrinkingBacklog_FarBehindAndFlatStaysGated(t *testing.T) {
+	withBacklogEscape(t)
+	const peer = "http://peer.example:8080"
+	far := int64(1000 + backlogHeightSlack + 500)
+
+	isShrinkingBacklog(peer, 400, 1000, far)
+	if isShrinkingBacklog(peer, 400, 1000, far) {
+		t.Fatal("far behind with a flat unresolved set was treated as a backlog; that is indistinguishable from a stalled fork")
 	}
 }
 

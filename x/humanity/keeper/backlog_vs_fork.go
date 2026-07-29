@@ -53,10 +53,9 @@ func backlogEscapeEnabled() bool {
 	return v != "" && v != "0" && v != "false"
 }
 
-// backlogHeightSlack is how close to a peer's height this node must be for its
-// unresolved set to be read as a backlog at all. A genuinely forked node is not
-// merely a few blocks off: it is on a different chain, and its height diverges
-// and keeps diverging. A handful of blocks is ordinary DAG latency.
+// backlogHeightSlack separates "level with the peer" from "genuinely behind".
+// Within it, an unresolved set that merely holds steady is enough. Beyond it,
+// the set has to be actively SHRINKING — see isShrinkingBacklog.
 const backlogHeightSlack = 50
 
 var (
@@ -64,40 +63,51 @@ var (
 	prevUnresolved   = map[string]int{}
 )
 
-// noteUnresolvedDeferrals records this cycle's unresolved count for a peer and
-// reports whether it grew since the previous cycle.
-//
-// The first observation counts as growth: with nothing to compare against,
-// assuming the safe answer keeps a node that has just started from producing on
-// a single lucky reading.
-func noteUnresolvedDeferrals(peerURL string, unresolved int) (grew bool) {
-	prevUnresolvedMu.Lock()
-	defer prevUnresolvedMu.Unlock()
-	prev, seen := prevUnresolved[peerURL]
-	prevUnresolved[peerURL] = unresolved
-	if !seen {
-		return true
-	}
-	return unresolved > prev
-}
-
 // isShrinkingBacklog reports whether an unresolved set should be read as a
 // backlog this node can work off rather than as a fork it must not build on.
 //
-// Every condition has to hold: the operator asked for it, this node is level
-// with the peer, and the unresolved set is not growing. Any one of them missing
-// falls back to treating the cycle as unclean, exactly as before.
+// THE HEIGHT GUARD USED TO MAKE THIS UNREACHABLE. The first version required
+// the node to be within backlogHeightSlack of the peer before it would treat
+// anything as a backlog. That is precisely the condition a trapped node cannot
+// meet: not producing means not merging its own tips, so it falls further
+// behind every cycle. Contabo2 sat 780 blocks back and climbing, and the escape
+// declined every time — the same shape as the two bootstrap deadlocks found the
+// same day, where a mechanism could not engage under the condition it existed
+// for. It only ever worked on Contabo1 because that node happened to be six
+// blocks behind.
+//
+// Height distance is the wrong discriminator anyway: a node that was offline for
+// an hour is far behind without being forked. The trend is the real signal. A
+// fork GROWS — the diverged peer keeps producing blocks this node can never
+// attach. A backlog SHRINKS as it is worked off.
+//
+// So the height slack now only chooses HOW STRICT the trend test is:
+//
+//   - level with the peer  → holding steady is enough (ordinary DAG latency
+//     produces a stable trickle of deferrals that resolve and reappear)
+//   - genuinely behind     → the set must be strictly falling, i.e. this node
+//     is demonstrably making progress rather than merely not losing ground
+//
+// A stalled fork cannot satisfy the second: its unresolved set does not fall,
+// because nothing in it is attachable.
 func isShrinkingBacklog(peerURL string, unresolved int, ownHeight, peerHeight int64) bool {
 	if !backlogEscapeEnabled() || unresolved <= 0 {
 		return false
 	}
-	grew := noteUnresolvedDeferrals(peerURL, unresolved)
-	if grew {
+	prevUnresolvedMu.Lock()
+	prev, seen := prevUnresolved[peerURL]
+	prevUnresolved[peerURL] = unresolved
+	prevUnresolvedMu.Unlock()
+
+	// Nothing to compare against yet. Assuming the safe answer keeps a node that
+	// has just started from producing on a single lucky reading.
+	if !seen {
 		return false
 	}
-	// Level with the peer, or ahead of it. Behind by more than the slack is
-	// the case the gate was built for and is left untouched.
-	return peerHeight-ownHeight <= backlogHeightSlack
+	if peerHeight-ownHeight <= backlogHeightSlack {
+		return unresolved <= prev
+	}
+	return unresolved < prev
 }
 
 // isShrinkingBacklogFor is the BlockDAG-side entry point, so the decision site
