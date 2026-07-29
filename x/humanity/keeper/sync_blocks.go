@@ -1700,6 +1700,9 @@ func (dag *BlockDAG) doSyncOnce(nodeURL string) (ok bool) {
 	// violation, far-ahead fork), where an immediate reset is correct.
 	backlog := !sawUnmergedBlocks &&
 		dag.isShrinkingBacklogFor(nodeURL, unresolvedDeferrals)
+	// Which of the two causes is resetting the streak — inferred from logs
+	// three times and guessed wrong twice; see sync_streak_stats.go.
+	noteStreakOutcome(sawUnmergedBlocks, unresolvedDeferrals, backlog)
 	if (sawUnmergedBlocks || unresolvedDeferrals > 0) && !backlog {
 		dag.resetCleanSyncStreak(nodeURL)
 	} else {
