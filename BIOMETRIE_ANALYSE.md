@@ -32,11 +32,31 @@ if req.CircuitVersion != 3 || req.ZKNullifier == "" {
 
 Kryptographisch ist das sauber: der Nullifier ist per Groth16-Proof an die Circuit-Eingaben gebunden, `IsNullifierUsed` (`register.go:399`) verhindert Doppelnutzung, die TOCTOU-Lücke ist geschlossen (`register.go:525-539`). **Die Sybil-Mechanik funktioniert einwandfrei — sie schützt nur nichts, was mit einem Körper zu tun hat.**
 
-Denn was geht in den Circuit hinein? Die Antwort steht in `aequitas-dapp.html:393-403`, als korrigierender Audit-Kommentar:
+Denn was geht in den Circuit hinein? Nachgeprüft **im Quelltext der App selbst** (`hanoi96international-gif/aequitas-app`, HEAD `db5e359`), nicht nur im Audit-Kommentar des Chain-Repos — `lib/identity.ts:39-41`:
 
-> „No client (the Aequitas Android app included, see lib/identity.ts) **has ever scanned a face**; verification unlocks a **device-bound key behind the phone's own screen lock** (Secure Enclave/StrongBox)…"
+```ts
+const bytes = await Crypto.getRandomBytesAsync(32);
+```
 
-Und `x/humanity/keeper/api_html.go:77-79` benennt die Konsequenz für den parallelen WebAuthn-Pfad ausdrücklich:
+**Der „biometrische Hash" ist eine Zufallszahl, erzeugt beim ersten App-Start.** Das Projekt hat keine `expo-camera`-Abhängigkeit; es existiert kein Erfassungspfad für irgendein Körpermerkmal, auch kein ungenutzter. Nur `expo-local-authentication` (die Ja/Nein-Schranke, §4.2) und `expo-secure-store`.
+
+Drei zusätzliche Befunde aus demselben Quelltext, die über die reine Gerätebindung hinausgehen:
+
+**(a) `deriveBioHash` ist keine Hashfunktion** (`lib/identity.ts:23-29`):
+```ts
+h = (h * 256n + BigInt(input.charCodeAt(i))) % FIELD_SIZE;
+```
+Eine Basis-256-Stellenwertinterpretation modulo der BN254-Skalarordnung. Keine Einwegfunktion, keine Preimage-Resistenz, keine Kollisionsresistenz. Der Name behauptet eine Eigenschaft, die der Code nicht besitzt.
+
+**(b) Der „Blinding Factor" blendet nichts** (`lib/identity.ts:61`):
+```ts
+const salt = (bio * 7n + 12345n) % FIELD_SIZE;
+```
+`salt` ist eine affine Funktion von `bio` — null zusätzliche Entropie, keine Verschleierung. Der Circuit erhält zwei Eingaben, die dieselbe eine Geheimzahl sind. Jede Sicherheitsaussage, die auf zwei unabhängigen Faktoren beruht (die Kommentare sprechen von einem „2-factor prototype"), ist damit gegenstandslos.
+
+**(c) Der Zeuge wird im Klartext an die Verifizierer übertragen.** `lib/api.ts:176` sendet `{bio, salt, wallet}` an den Chain-Node, der an den Proof-Server weiterreicht; `postRegister` überträgt zusätzlich `bioHash: identity.bio`. Beide Instanzen kennen das vollständige Geheimnis. Der Groth16-Beweis beweist Wissen gegenüber Parteien, die dieses Wissen bereits haben — operativ ist die Zero-Knowledge-Eigenschaft gegenüber Betreiber und Proof-Server nicht vorhanden.
+
+Ergänzend benennt `x/humanity/keeper/api_html.go:77-79` die Gerätebindung für den parallelen WebAuthn-Pfad bereits selbst:
 
 > „…the WebAuthn ‚register via browser' flow (**device-bound, so a person with two devices could register twice**…)"
 
@@ -50,7 +70,13 @@ Und `x/humanity/keeper/api_html.go:77-79` benennt die Konsequenz für den parall
 | „biometrischer Hash" (`register.go:186`) | Ein Schlüssel aus dem Keystore, freigeschaltet durch *irgendeine* Bildschirmsperre |
 | Nullifier = 1 Mensch | Nullifier = **1 Geräte-Keystore-Eintrag** |
 
-Die Bildschirmsperre ist dabei nicht einmal notwendig biometrisch: Android's `BiometricPrompt` akzeptiert je nach Konfiguration auch PIN/Muster/Passwort als Fallback (`DEVICE_CREDENTIAL`). Der Angriff ist damit nicht einmal ein Angriff — es ist der bestimmungsgemäße Gebrauch: gebrauchtes Telefon kaufen, App installieren, registrieren, 1.000 AEQ abholen, wiederholen. Kosten pro zusätzlicher Identität: der Preis eines Gebrauchtgeräts, bei Emulatoren/gerooteten Geräten gegen Null.
+Die Bildschirmsperre ist dabei nicht einmal notwendig biometrisch: `requireAuthentication` wird auf `SecureStore.canUseBiometricAuthentication()` gesetzt — auf einem Gerät ohne eingelernte Biometrie ist der Wert `false` und das Geheimnis wird **ganz ohne Authentifizierungsschranke** abgelegt.
+
+**Kostenkorrektur (wichtig).** Eine frühere Fassung dieses Abschnitts bezifferte die Kosten einer Zusatzidentität mit dem Preis eines Gebrauchtgeräts. Das ist zu hoch gegriffen. Das Geheimnis liegt mit `WHEN_UNLOCKED_THIS_DEVICE_ONLY` in App-Daten, die Android bei der Deinstallation löscht; beim nächsten Start erzeugt `ensureDeviceSecret()` ein neues Zufallsgeheimnis. Der serverseitige `biometric_in_use`-Check kann nicht greifen, weil der neue Wert nie zuvor gesehen wurde.
+
+> **Kosten pro zusätzlicher Identität: eine Neuinstallation der App plus eine neue Wallet. Beides gratis und automatisierbar.**
+
+Empirisch in wenigen Minuten prüfbar (deinstallieren → neu installieren → neue Wallet → registrieren) und vor allen weiteren Maßnahmen zu verifizieren, weil davon die Dringlichkeit der Prämien-Streckung abhängt.
 
 Der zweite Verteidigungsring (`bio_hashes`-Tabelle, `register.go:434-446`) würde ohnehin nur denselben geräteabgeleiteten Hash abgleichen — und ist laut `AUDIT_2026-07-12.md` in Produktion mit `chain_bio_hashes: 0` bei 6 registrierten Humans **für niemanden aktiv**.
 
