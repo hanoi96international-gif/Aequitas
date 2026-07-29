@@ -58,7 +58,15 @@ Julia wurde am 7. März 2016 volljährig. Von jenem Mai an waren das **fünfzehn
 
 Fünfzehn Jahre sind keine schwere Phase. Fünfzehn Jahre sind ein halbes Erwachsenenleben.
 
-{{Hier kommt hin, wie sie das organisiert hat: Arbeit, Geld, der Takt eines Tages mit fünf Kindern.}}
+## Arbeit
+
+Vor uns hast du bei Bäckerei Brandt in Hildesheim gearbeitet, bis 1991. Dann kam Daniel, und danach kamen vier weitere, und zwischen 1991 und 2005 hast du keinen einzigen Tag Lohn bekommen.
+
+Gearbeitet hast du in diesen vierzehn Jahren trotzdem. Nur zahlt einem das niemand.
+
+2005 bist du zurück, zu Joey's Pizza. Julia war sieben, Christina acht — das jüngste Kind gerade so weit, dass es ging. Und dann bist du dort geblieben, {{bis etwa 2018}}: {{rund dreizehn}} Jahre.
+
+{{Was war das für ein Job? Schichten, Abende, Wochenenden? Und wer war dann bei euch, wenn sie arbeiten war?}}
 
 ## Die Von-Emmich-Straße
 
@@ -77,6 +85,18 @@ Und dann kam der nächste Morgen, und da standen wieder fünf Kinder in der Küc
 Und du bist aufgestanden.
 
 Fünfzehn Jahre lang, an jedem einzelnen dieser Morgen, bist du aufgestanden. Das ist der ganze Trick, und es gibt keinen schwereren.
+
+## Was ich mitbekommen habe
+
+Ich war der Älteste, und ab einem bestimmten Alter versteht man, was läuft.
+
+In der Schule merkt man es zuerst, und man merkt es an Kleinigkeiten: an Schuhen, an Jacken, an dem, was auf dem Etikett steht. Kinder vergleichen, sie können gar nicht anders. Und man sieht ziemlich schnell, dass man nicht hat, was die anderen haben.
+
+Ich schreibe das nicht als Vorwurf. Ich schreibe es, weil ich damals nur eine Seite gesehen habe — meine. Die andere habe ich erst viel später verstanden: dass da eine Mutter war, die dasselbe gesehen hat wie ich. Die genau wusste, wie es in dieser Schule zugeht. Und die es trotzdem nicht ändern konnte, weil das Geld nicht da war.
+
+Ich weiß nicht, wie oft du nein sagen musstest zu Dingen, die du uns gern gegeben hättest. Ich weiß nur inzwischen, auf welcher Seite dieses Nein mehr wehgetan hat.
+
+{{Falls dir eine konkrete Situation einfällt — eine Jacke, ein Schulausflug, ein Geburtstag —, steht sie hier besser als jede allgemeine Formulierung. Wenn es zu privat ist: weglassen, der Absatz trägt auch so.}}
 
 ## Was daraus geworden ist
 

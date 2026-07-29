@@ -39,16 +39,24 @@ an Dinge, die du komplett vergessen hast — und umgekehrt.
 
 {{Der Geruch, das Geräusch oder das Bild, bei dem du sofort zu Hause bist.}}
 
-## Weihnachten zu siebt
+## Das Mittagessen
 
-{{Wie das lief. Regeln, Reihenfolge, Essen, Chaos.}}
+Fünf Kinder, fünf Meinungen. Alle mäkelig, alle wollten etwas anderes, und zwar jeden Tag aufs Neue.
+
+Mittagessen war bei uns keine Mahlzeit, sondern eine Mammutaufgabe. Und du hast sie ungefähr fünftausendmal gelöst.
+
+{{Was gab es trotzdem ständig? Und gab es ein Gericht, bei dem ausnahmsweise alle fünf still waren?}}
+
+## Weihnachten
+
+Bei uns gab es eine Regel, und die galt ohne Ausnahme: Wer noch klein war, musste erst ein Gedicht aufsagen. Dann wurde ein Weihnachtslied gesungen. **Danach** war Bescherung.
+
+Und die Geschenke wurden nicht etwa der Reihe nach ausgeteilt, sondern völlig durcheinander verteilt.
+
+{{Wie das dann ablief. Wer konnte das Gedicht nie? Wer hat sich gedrückt? Und wer hat die Geschenke verteilt?}}
 
 ## Sonntags
 
 {{Was sonntags anders war als an anderen Tagen.}}
-
-## Unterwegs
-
-{{Urlaube, Ausflüge, das Auto, wie ihr zu fünft irgendwo ankamt.}}
 
 > {{Ein Satz, den sie in solchen Situationen immer gesagt hat.}}
