@@ -1,37 +1,37 @@
 # Vierunddreißig
 
 <!--
-SCHREIBHILFE — Ziel: 2–3 Seiten. Das wichtigste Kapitel des Buchs.
+SCHREIBHILFE — Ziel: 3 Seiten. Das wichtigste Kapitel des Buchs.
 
-Entscheidung ist gefallen: Giesberts Tod, die Trennung, der Betrug und
-die Schulden kommen NICHT vor. Kein Wort davon. Das Kapitel beginnt
-danach und handelt ausschließlich von ihr.
+Giesberts Tod, die Trennung, der Betrug, die Schulden: kommen nicht
+vor. Kein Wort. Das Kapitel handelt ausschließlich von ihr.
 
-Alle Zahlen hier sind exakt nachgerechnet:
-  - Marion war am 10.05.2001 vierunddreißig
+Alle Zahlen sind exakt nachgerechnet:
+  - Marion am 10.05.2001: vierunddreißig
   - Daniel 9, Steffanie 7, Marcus 6, Christina 4, Julia 3
-  - Bis Julia volljährig wurde (07.03.2016) vergingen 15 Jahre
-  - Da war Marion 49
+  - fünfzehn Jahre bis zu Julias Volljährigkeit (07.03.2016)
+  - an ihrem 60. sind ihre Kinder 35, 32, 31, 29 und 28 Jahre alt,
+    zusammen 155 Lebensjahre
 
-Der Absatz über das, was nicht im Buch steht, ist ein Angebot.
-Er sagt ihr: Ich weiß Bescheid, und ich habe mich entschieden, deinen
-Geburtstag nicht dazu zu machen. Wenn dir das zu direkt ist, lösch ihn
-ersatzlos — das Kapitel funktioniert auch ohne.
+ZWEI STELLEN, DIE DU FREIGEBEN MUSST:
+  1. Der Absatz "Was davor lag, steht nicht in diesem Buch."
+     Sagt ihr: Ich weiß Bescheid und habe mich entschieden.
+     Stark, aber direkt. Streichen ist okay.
+  2. Der Abschnitt über den abgestellten Strom und die Verzweiflung.
+     Das ist der ehrlichste Teil des Buchs — und der, bei dem du
+     dir sicher sein musst. Manche Menschen schämen sich für solche
+     Jahre und wollen sie nicht schwarz auf weiß. Andere fühlen sich
+     zum ersten Mal gesehen. Du kennst sie, ich nicht.
+     Wenn du unsicher bist: Der Abschnitt funktioniert auch ohne
+     das Wort "Strom" — dann bleibt "Es gab Monate, in denen hinten
+     und vorne nichts reichte."
 
-WAS ICH VON DIR BRAUCHE:
+WAS NOCH FEHLT:
   - Hat sie gearbeitet? Ab wann, was, wie viele Stunden?
-  - Wer hat geholfen — Rita, Monika, Anette, Nachbarn, Freundinnen?
-    Oder war da niemand?
-  - Wie sah ein ganz normaler Dienstag bei euch aus? Wer weckte wen,
-    wer machte Frühstück für fünf, wie kam man zu fünft irgendwohin?
-  - Woran habt ihr gemerkt, dass Geld knapp war? Und woran nicht?
-  - Was hat sie nie getan, was andere getan hätten?
-  - Gab es einen Moment, in dem du als Kind gemerkt hast, wie schwer
-    es für sie war?
-  - Und: Hat ihr das mal jemand gesagt? Also richtig, in Worten,
-    dass sie etwas Außergewöhnliches geleistet hat?
-    Falls nein — dann ist genau das der Zweck dieses Buchs, und du
-    solltest es in diesem Kapitel tun.
+  - War wirklich NIEMAND da? Auch Rita nicht, auch die Schwestern
+    nicht? (Falls nein: Das ist eine harte, wichtige Zeile.)
+  - Wie sah ein normaler Dienstagmorgen aus, fünf Kinder, ein Bad?
+  - Der Schlusssatz ganz unten. Der muss von dir kommen.
 -->
 
 Im Mai 2001 warst du vierunddreißig Jahre alt.
@@ -40,26 +40,46 @@ Wir waren neun, sieben, sechs, vier und drei.
 
 Und ab da warst du allein.
 
-Was davor lag, steht nicht in diesem Buch. Nicht, weil es nicht passiert wäre, sondern weil es dir gehört und nicht dem Papier. Dieses Buch handelt von dir, und an dieser Stelle fängt der Teil an, über den zu wenig geredet worden ist.
+Nicht allein in dem Sinne, dass jemand fehlte. Allein in dem Sinne, dass niemand da war. Keine zweite erwachsene Person im Flur. Niemand, der die Hälfte übernahm. Niemand, den man nachts um halb drei wecken konnte, wenn eins von uns fünf Fieber hatte. Niemand, mit dem man sich beraten konnte, bevor man eine Entscheidung traf, die fünf Kinder betraf.
+
+Was davor lag, steht nicht in diesem Buch. Nicht, weil es nicht passiert wäre, sondern weil es dir gehört und nicht dem Papier. Dieses Buch handelt von dir, und genau hier fängt der Teil an, über den viel zu wenig geredet worden ist.
 
 ## Rechne es einmal nach
 
 Fünf Kinder. Eine Erwachsene.
 
-Julia wurde am 7. März 2016 volljährig. Von diesem Mai 2001 an waren das **fünfzehn Jahre** — fünfzehn Jahre, in denen immer mindestens ein minderjähriges Kind in deiner Wohnung lebte, für das niemand sonst zuständig war. Du warst vierunddreißig, als das anfing, und neunundvierzig, als es aufhörte.
+Julia wurde am 7. März 2016 volljährig. Von jenem Mai an waren das **fünfzehn Jahre** — fünfzehn Jahre, in denen immer mindestens ein minderjähriges Kind in deiner Wohnung lebte, für das niemand sonst zuständig war. Du warst vierunddreißig, als das anfing, und neunundvierzig, als es aufhörte.
 
-Fünfzehn Jahre sind nicht eine schwere Phase. Fünfzehn Jahre sind ein halbes Erwachsenenleben.
+Fünfzehn Jahre sind keine schwere Phase. Fünfzehn Jahre sind ein halbes Erwachsenenleben.
 
-{{Hier kommt hin, wie sie das gemacht hat: Arbeit, Geld, Organisation, Hilfe von außen — oder eben keine.}}
+{{Hier kommt hin, wie sie das gemacht hat: Arbeit, Geld, Organisation — und wer geholfen hat, falls jemand geholfen hat.}}
 
-## Was wir nicht mitbekommen haben
+## Die Von-Emmich-Straße
 
-{{Das, was Kinder nicht sehen: die Formulare, die Nächte, das Rechnen am Monatsende, die Termine, die Entscheidungen, die sie mit niemandem besprechen konnte.}}
+Es war keine gute Gegend. Die Nachbarschaft war schwierig, manche Nachbarn waren mehr als das. Zu allem anderen kam also noch dazu, dass der Ort, an dem man abends die Tür hinter sich zumacht, kein Ort war, an dem man sich sicher fühlte.
 
-## Was wir mitbekommen haben
+Man vergisst leicht, was das mit einem Menschen macht: Wenn nicht einmal das Zuhause eine Pause ist.
 
-{{Und das, was wir sehr wohl gesehen haben — die Alltagsdinge, an die du dich erinnerst.}}
+## Die Tage, an denen nichts mehr ging
+
+Es gab Tage, an denen der Strom abgestellt war.
+
+Ich schreibe das hin, weil es wahr ist, und weil man es nur aussprechen kann, wenn es vorbei ist. Es gab Tage, an denen du vollkommen verzweifelt warst. Nicht müde, nicht überfordert — verzweifelt. Und wir haben das mitbekommen, auch wenn wir zu klein waren, um es zu benennen.
+
+Und dann kam der nächste Morgen, und da standen wieder fünf Kinder in der Küche, die etwas essen und irgendwohin gebracht werden mussten.
+
+Und du bist aufgestanden.
+
+Fünfzehn Jahre lang, an jedem einzelnen dieser Morgen, bist du aufgestanden. Das ist der ganze Trick, und es gibt keinen schwereren.
+
+## Was daraus geworden ist
+
+An deinem sechzigsten Geburtstag sind deine Kinder fünfunddreißig, zweiunddreißig, einunddreißig, neunundzwanzig und achtundzwanzig Jahre alt. Zusammen einhundertfünfundfünfzig Jahre Leben, die es ohne dich nicht gäbe — und, was mehr zählt: die es ohne dich nicht mehr gäbe.
+
+Wir sind alle da. Alle fünf.
+
+{{Was aus euch geworden ist, in ein, zwei Sätzen. Nicht angeben — nur zeigen, dass es weiterging.}}
 
 ~~~
 
-{{Der Satz, den du ihr eigentlich sagen willst. Der Grund, warum du dieses Buch schreibst. Schreib ihn hier hin, so einfach wie möglich — je schlichter, desto härter trifft er.}}
+{{Der Satz, den du ihr eigentlich sagen willst. Der Grund für dieses Buch. So schlicht wie möglich — je einfacher, desto härter trifft er. Wenn dir nichts einfällt, fang so an: „Ich weiß nicht, ob dir das jemals jemand gesagt hat, aber …"}}
