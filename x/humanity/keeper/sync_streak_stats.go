@@ -31,10 +31,19 @@ var syncStreakStats struct {
 	cleanCycles     atomic.Int64
 	backlogEscapes  atomic.Int64
 	gateSkips       atomic.Int64
+	agedOrphansSeen atomic.Int64
 }
 
 // noteStreakOutcome records one doSyncOnce verdict.
-func noteStreakOutcome(sawUnmerged bool, unresolved int, escaped bool) {
+// agedOrphans is the count this cycle routed away from the immediate-reset
+// path by PR #108 — orphans whose parent had been missing longer than the
+// grace window. It is reported separately because it is the quantity that
+// change was supposed to move: if it stays zero on a node that still will not
+// merge, the fix is not engaging there and something else is wrong.
+func noteStreakOutcome(sawUnmerged bool, unresolved int, escaped bool, agedOrphans int) {
+	if agedOrphans > 0 {
+		syncStreakStats.agedOrphansSeen.Add(int64(agedOrphans))
+	}
 	if escaped {
 		syncStreakStats.backlogEscapes.Add(1)
 	}
