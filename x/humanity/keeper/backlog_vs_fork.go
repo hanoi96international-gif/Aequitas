@@ -124,3 +124,32 @@ func (dag *BlockDAG) isShrinkingBacklogFor(peerURL string, unresolved int) bool 
 	dag.syncPeerMu.Unlock()
 	return isShrinkingBacklog(peerURL, unresolved, dag.Height(), peerHeight)
 }
+
+// IsOrphanRejection reports whether a block failed only because a parent is
+// missing, regardless of how long it has been missing.
+//
+// IsWithinOrphanGrace answers a narrower question and conflates two very
+// different situations in its false case: a block that is not an orphan at all
+// (bad signature, unauthorized proposer, finality violation, far-ahead fork)
+// and a block that IS an orphan whose parent has simply been missing longer
+// than the grace window. Both took the immediate-reset path, and on Contabo2
+// the second was the entire cause — counted at 39 resets against zero from
+// deferrals, while the node processed blocks a thousand heights back whose
+// parents it had never obtained.
+//
+// That is why the backlog escape did nothing there: it only ever saw
+// unresolvedDeferrals, and those were zero. The blocks it was meant to help
+// with were leaving through the other branch.
+func (dag *BlockDAG) IsOrphanRejection(block *Block) bool {
+	if block == nil {
+		return false
+	}
+	dag.mu.Lock()
+	defer dag.mu.Unlock()
+	for _, ph := range block.ParentHashes {
+		if dag.ghostdagBlockLookup(ph, nil) == nil {
+			return true
+		}
+	}
+	return false
+}

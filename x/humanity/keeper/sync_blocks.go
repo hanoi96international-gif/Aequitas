@@ -1390,6 +1390,7 @@ func (dag *BlockDAG) doSyncOnce(nodeURL string) (ok bool) {
 	// producing. Those are collected in deferredHashes instead and CHECKED at
 	// the end of the cycle: a deferral is benign only if it actually resolved.
 	sawUnmergedBlocks := false
+	agedOrphans := 0
 	deferredHashes := make([]string, 0, 64)
 	// P1-02: track (minHeight, afterHash) cursor so same-height siblings that
 	// don't fit in one page are not skipped.  afterHash is empty for the first
@@ -1535,7 +1536,20 @@ func (dag *BlockDAG) doSyncOnce(nodeURL string) (ok bool) {
 					// than the grace. See the post-loop comment for the whole
 					// failure chain.
 					deferredHashes = append(deferredHashes, block.Hash)
+				} else if dag.IsOrphanRejection(block) {
+					// An orphan whose parent aged past the grace window. Still
+					// an orphan, not an invalid block — so it belongs with the
+					// deferrals and their trend test, NOT on the immediate-reset
+					// path. Measured on Contabo2: 39 resets from this case
+					// against zero from deferrals, which is exactly why the
+					// backlog escape sat at zero escapes while the gate stayed
+					// shut. See IsOrphanRejection in backlog_vs_fork.go.
+					agedOrphans++
+					deferredHashes = append(deferredHashes, block.Hash)
 				} else {
+					// Genuinely not an orphan: bad signature, unauthorized
+					// proposer, finality violation, far-ahead fork. The
+					// immediate reset is correct here and nothing softens it.
 					sawUnmergedBlocks = true
 				}
 			}
