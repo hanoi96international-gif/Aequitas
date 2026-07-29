@@ -121,18 +121,63 @@ func (cs *ChainState) BuildSybilReport(windowHours int) SybilReport {
 	return rep
 }
 
+// burstThreshold liefert die Mindestzahl an Registrierungen pro Stunde, ab der
+// ein Stundenfenster als Spitze gilt: 10 % der bestehenden Population, aber nie
+// unter 5.
+//
+// Relativ statt absolut, damit die Schwelle mit dem Netz mitwaechst und nicht
+// bei jedem Wachstumsschub falsch anschlaegt. Der Boden von 5 verhindert das
+// Gegenteil — bei kleiner Population waeren 10 % sonst 0 oder 1 und jede
+// normale Registrierung ein Alarm.
+//
+// Als eigene Funktion herausgezogen, weil das die Groesse ist, die im Betrieb
+// nachjustiert werden muss, und weil sie sonst nur ueber eine Datenbank
+// pruefbar waere.
+func burstThreshold(humans int) int {
+	t := humans / 10
+	if t < 5 {
+		return 5
+	}
+	return t
+}
+
+// burstSeverity stuft eine gemessene Spitze ein. Ab dem Dreifachen der
+// Schwelle gilt sie als Alarm statt als Warnung — ein Vielfaches der
+// erwarteten Rate ist mit organischem Zustrom kaum noch erklaerbar.
+func burstSeverity(total, threshold int) SybilSeverity {
+	if threshold > 0 && total >= threshold*3 {
+		return SybilAlert
+	}
+	return SybilWarn
+}
+
+// dormantSeverity stuft den Anteil dauerhaft inaktiver Menschen ein.
+//
+// Unterhalb von 20 Konten bleibt es bewusst bei "info": bei kleiner Population
+// ist die Quote statistisch bedeutungslos, und ein Alarm bei 3 von 4 Konten
+// waere reines Rauschen. Die Prozentschwellen sind Erfahrungswerte, keine
+// gemessenen Groessen — sie gehoeren nachjustiert, sobald echte Nutzungsdaten
+// vorliegen.
+func dormantSeverity(dormant, humans int) SybilSeverity {
+	if humans < 20 {
+		return SybilInfo
+	}
+	share := float64(dormant) / float64(humans) * 100
+	switch {
+	case share >= 80:
+		return SybilAlert
+	case share >= 50:
+		return SybilWarn
+	default:
+		return SybilInfo
+	}
+}
+
 // checkRegistrationBurst sucht Stunden, in denen auffaellig viele
 // Registrierungen stattfanden. Echte Nutzerzustroeme sind ueber den Tag
 // verteilt; automatisierte Registrierung erzeugt Spitzen.
-//
-// Die Schwelle ist relativ zur bestehenden Population (10 %, mindestens 5)
-// statt absolut, damit sie mit dem Netz mitwaechst und nicht bei jedem
-// Wachstumsschub falsch anschlaegt.
 func (cs *ChainState) checkRegistrationBurst(windowHours int) (*SybilSignal, error) {
-	threshold := cs.TotalHumans() / 10
-	if threshold < 5 {
-		threshold = 5
-	}
+	threshold := burstThreshold(cs.TotalHumans())
 
 	rows, err := cs.db.Query(`
 		SELECT date_trunc('hour', registered_at) AS bucket, COUNT(*) AS n
@@ -166,13 +211,9 @@ func (cs *ChainState) checkRegistrationBurst(windowHours int) (*SybilSignal, err
 		return nil, nil
 	}
 
-	sev := SybilWarn
-	if total >= threshold*3 {
-		sev = SybilAlert
-	}
 	return &SybilSignal{
 		Kind:     "registration_burst",
-		Severity: sev,
+		Severity: burstSeverity(total, threshold),
 		Description: fmt.Sprintf(
 			"%d Registrierungen in Stundenfenstern mit je >= %d — automatisierte Registrierung erzeugt solche Spitzen, echter Zustrom verteilt sich",
 			total, threshold),
@@ -310,22 +351,9 @@ func (cs *ChainState) checkDormantSinceRegistration(_ int) (*SybilSignal, error)
 		share = float64(dormant) / float64(humans) * 100
 	}
 
-	// Die Schwellen sind Erfahrungswerte, keine gemessenen Groessen. Bei
-	// kleiner Population ist die Quote ohnehin wenig aussagekraeftig, deshalb
-	// bleibt es unterhalb von 20 Konten bei "info".
-	sev := SybilInfo
-	if humans >= 20 {
-		switch {
-		case share >= 80:
-			sev = SybilAlert
-		case share >= 50:
-			sev = SybilWarn
-		}
-	}
-
 	return &SybilSignal{
 		Kind:     "dormant_since_registration",
-		Severity: sev,
+		Severity: dormantSeverity(dormant, humans),
 		Description: fmt.Sprintf(
 			"%d von %d Menschen (%.1f %%) waren seit ihrer Registrierung nie aktiv",
 			dormant, humans, share),
