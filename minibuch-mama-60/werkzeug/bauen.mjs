@@ -140,6 +140,14 @@ function markdownZuHtml(md) {
       continue;
     }
 
+    // Rohes HTML durchreichen (für Notizseiten und Sonderlayouts)
+    if (z.startsWith("<") && z.endsWith(">")) {
+      absatzLeeren();
+      absatzSchliessen();
+      aus.push(z);
+      continue;
+    }
+
     absatzSchliessen();
     absatz.push(z);
   }

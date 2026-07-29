@@ -26,10 +26,14 @@ ZWEI STELLEN, DIE DU FREIGEBEN MUSST:
      das Wort "Strom" — dann bleibt "Es gab Monate, in denen hinten
      und vorne nichts reichte."
 
+KORRIGIERT: Eine frühere Fassung behauptete, es sei niemand da
+gewesen. Falsch — Anette und die Großeltern Rita und Willi waren da.
+Das steht jetzt richtig hier und ausführlich im Kapitel danach.
+Die Unterscheidung, die das Kapitel trägt: Hilfe ja, aber die
+Verantwortung war nicht teilbar.
+
 WAS NOCH FEHLT:
   - Hat sie gearbeitet? Ab wann, was, wie viele Stunden?
-  - War wirklich NIEMAND da? Auch Rita nicht, auch die Schwestern
-    nicht? (Falls nein: Das ist eine harte, wichtige Zeile.)
   - Wie sah ein normaler Dienstagmorgen aus, fünf Kinder, ein Bad?
   - Der Schlusssatz ganz unten. Der muss von dir kommen.
 -->
@@ -40,7 +44,9 @@ Wir waren neun, sieben, sechs, vier und drei.
 
 Und ab da warst du allein.
 
-Nicht allein in dem Sinne, dass jemand fehlte. Allein in dem Sinne, dass niemand da war. Keine zweite erwachsene Person im Flur. Niemand, der die Hälfte übernahm. Niemand, den man nachts um halb drei wecken konnte, wenn eins von uns fünf Fieber hatte. Niemand, mit dem man sich beraten konnte, bevor man eine Entscheidung traf, die fünf Kinder betraf.
+Nicht ohne Menschen — dazu kommt gleich ein eigenes Kapitel, denn deine Schwester Anette und deine Eltern waren da, und zwar nicht nur mit guten Worten.
+
+Aber allein in dem, was sich nicht teilen lässt. Es gab keine zweite Person, die morgens auch aufstehen musste. Niemanden, der die Hälfte trug, weil es seine Hälfte war. Niemanden, mit dem man sich nachts um halb drei beraten konnte, bevor man eine Entscheidung traf, die fünf Kinder betraf. Hilfe kann vieles abfedern. Die Verantwortung nimmt sie einem nicht ab, die bleibt bei einer einzigen Person, jeden Tag, fünfzehn Jahre lang.
 
 Was davor lag, steht nicht in diesem Buch. Nicht, weil es nicht passiert wäre, sondern weil es dir gehört und nicht dem Papier. Dieses Buch handelt von dir, und genau hier fängt der Teil an, über den viel zu wenig geredet worden ist.
 
@@ -52,7 +58,7 @@ Julia wurde am 7. März 2016 volljährig. Von jenem Mai an waren das **fünfzehn
 
 Fünfzehn Jahre sind keine schwere Phase. Fünfzehn Jahre sind ein halbes Erwachsenenleben.
 
-{{Hier kommt hin, wie sie das gemacht hat: Arbeit, Geld, Organisation — und wer geholfen hat, falls jemand geholfen hat.}}
+{{Hier kommt hin, wie sie das organisiert hat: Arbeit, Geld, der Takt eines Tages mit fünf Kindern.}}
 
 ## Die Von-Emmich-Straße
 
