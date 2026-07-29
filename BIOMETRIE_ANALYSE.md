@@ -38,7 +38,15 @@ Denn was geht in den Circuit hinein? Nachgeprüft **im Quelltext der App selbst*
 const bytes = await Crypto.getRandomBytesAsync(32);
 ```
 
-**Der „biometrische Hash" ist eine Zufallszahl, erzeugt beim ersten App-Start.** Das Projekt hat keine `expo-camera`-Abhängigkeit; es existiert kein Erfassungspfad für irgendein Körpermerkmal, auch kein ungenutzter. Nur `expo-local-authentication` (die Ja/Nein-Schranke, §4.2) und `expo-secure-store`.
+**Der „biometrische Hash" ist eine Zufallszahl, erzeugt beim ersten App-Start.**
+
+**Präzisierung zur Kameraerfassung.** Das App-Repo hat zwei divergente Branches. Auf `aequitas-app` (Default, `db5e359`, 13.07.) existiert keinerlei Kamera-Code. Auf `main` (`14e7ccf`, 28.06.) liegt ein natives `android/app/src/main/java/com/aequitasbio/FaceModule.kt` mit einer echten camera2-Erfassung — **es wird aus der JS-Schicht jedoch nirgends aufgerufen** (`captureFace` hat keinen einzigen Aufrufer). Die pauschale Aussage „kein Client hat je ein Gesicht gescannt" aus `aequitas-dapp.html:393-403` ist damit als Aussage über den *Code* ungenau, als Aussage über den *Registrierungspfad* aber zutreffend: In den Nullifier fließt auf beiden Branches ausschließlich das Zufallsgeheimnis.
+
+Bewertung des `FaceModule` selbst, da es den beabsichtigten Entwurf zeigt: Es mittelt die Luminanz über 8×8 Blöcke eines fest zugeschnittenen Bildmittendrittels (keine Gesichtserkennung), quantisiert auf 4 Bit je Block und bildet **SHA-256 über das Ergebnis**. Das ist ein Average-Hash — ein Verfahren zur Duplikatsuche in Bildarchiven, kein Erkennungsmerkmal. Entscheidend ist die Hashbildung: Sie zerstört die Metrik, auf die jede Biometrie angewiesen ist. Ein einziger Block, der um eine Quantisierungsstufe springt (Licht, Abstand, Kopfhaltung), ergibt einen völlig anderen Hash.
+
+Die Folge ist nicht nur eine hohe Falschrückweisungsrate, sondern eine Umkehrung des Schutzziels: **Aus einem Gesicht lassen sich durch minimale Beleuchtungsänderung beliebig viele verschiedene Hashes erzeugen.** Als Nullifier-Eingabe eingesetzt wäre die Konstruktion ein Sybil-Verstärker, kein Sybil-Schutz. Keine Verbesserung der Lebenderkennung — auch kein Blinzeltest — behebt das, weil der Fehler in der Merkmalsableitung liegt, nicht in der Angriffserkennung.
+
+Ansonsten hat das Projekt keine `expo-camera`-Abhängigkeit; nur `expo-local-authentication` (die Ja/Nein-Schranke, §4.2) und `expo-secure-store`.
 
 Drei zusätzliche Befunde aus demselben Quelltext, die über die reine Gerätebindung hinausgehen:
 
