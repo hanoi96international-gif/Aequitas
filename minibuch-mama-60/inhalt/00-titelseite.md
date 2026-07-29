@@ -5,22 +5,27 @@
 <!--
 SCHREIBHILFE — Kommentare wie dieser erscheinen NIE im fertigen Buch.
 
-Der Titel steht direkt hier, nicht in buch.json (das ist nur für Notizen).
-Ändere ihn, wenn dir etwas Besseres einfällt. Ein paar Ideen:
-
-  „Sechzig"
+Titel-Alternativen, falls dir "Für dich" zu schlicht ist:
+  „Sonntagskind"            — passt jetzt besonders gut, sie ist eines
   „Bevor ich dich kannte"
-  „Die Frau, die meine Mutter ist"
-  „Alles, was ich weiß, weil es dich gibt"
-  „Kapitel für Kapitel"
+  „Marion"
+  „Hoher Weg 46"            — schlicht, und sie weiß sofort, was gemeint ist
+  „Sechzig"
 
-Kurz und schlicht wirkt fast immer besser als witzig.
+Mein Favorit wäre „Sonntagskind". Das erklärt sich erst auf Seite 1,
+und genau das ist der Effekt.
+
+FRAGE AN DICH: Ist das Buch nur von dir, oder von euch fünf?
+Wenn Steffanie, Marcus, Christina und Julia mitmachen wollen, ändere
+die letzte Zeile in "von deinen Kindern" — und wir bauen hinten ein
+Kapitel ein, in dem jedes Kind eine Seite bekommt. Das ist mehr
+Koordination, aber es haut deutlich mehr rein.
 -->
 
 Zum 60. Geburtstag
 
-{{Datum des Geburtstags}}
+4. September 2026
 
 ~~~
 
-von {{dein Name}}
+von Daniel

@@ -1,9 +1,55 @@
 {
+  "_hinweis": "Nur Notizen zum Nachschlagen. Der echte Titel steht in inhalt/00-titelseite.md.",
+
   "titel": "Für dich",
   "untertitel": "Ein kleines Buch über ein großes Leben",
   "anlass": "Zum 60. Geburtstag",
-  "fuer": "Mama",
-  "von": "Daniel",
-  "jahr": "2026",
-  "geburtsjahr": "1966"
+  "geburtstag": "2026-09-04 (Freitag)",
+
+  "sie": {
+    "name": "Marion",
+    "geboren": "1966-09-04 (Sonntag) in Hildesheim",
+    "aufgewachsen": "Hildesheim, Hoher Weg 46",
+    "beruf": "Bäckerei- und Konditoreifachverkäuferin (Ausbildung nach der Schule)"
+  },
+
+  "herkunftsfamilie": {
+    "mutter": "Rita",
+    "vater": "Willi",
+    "schwestern": [
+      "Monika (die älteste)",
+      "Anette (die mittlere)"
+    ],
+    "position": "Marion ist die jüngste von drei Schwestern"
+  },
+
+  "ehemann": {
+    "name": "Giesbert",
+    "geboren": "1964-09-03",
+    "gestorben": "2001-05-10",
+    "hinweis": "Sein Geburtstag war einen Tag vor ihrem. Er starb mit 36, sie war 34."
+  },
+
+  "kinder": [
+    { "name": "Daniel",    "geboren": "1991-06-27" },
+    { "name": "Steffanie", "geboren": "1993-11-18" },
+    { "name": "Marcus",    "geboren": "1995-02-02" },
+    { "name": "Christina", "geboren": "1996-11-30" },
+    { "name": "Julia",     "geboren": "1998-03-07" }
+  ],
+
+  "recherchiert_1966": {
+    "wochentag": "Sonntag",
+    "nummer_eins": "Frank Sinatra — Strangers in the Night (8 Wochen ab 6. August)",
+    "kanzler": "Ludwig Erhard (CDU), Rücktritt am 30.11.1966",
+    "preise": {
+      "benzin_liter": "0,55 DM",
+      "kinokarte": "1,20 DM",
+      "butter_kg": "7,81 DM",
+      "milch_liter": "0,34 DM",
+      "ei": "0,23 DM"
+    },
+    "hildesheim": "unter 100.000 Einwohner; Großstadt erst in den 1970ern nach Eingemeindungen; Marktplatz-Rekonstruktion erst in den 1980ern",
+    "hoher_weg": "am 05.09.1966 offiziell zur Fußgängerzone erklärt — einen Tag nach Marions Geburt"
+  }
 }
