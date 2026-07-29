@@ -2193,6 +2193,7 @@ func (dag *BlockDAG) ProduceBlock() *Block {
 				referenceTime = dag.startupTime
 			}
 			if time.Now().Unix()-referenceTime < syncStallTimeout {
+				noteGateSkip()
 				fmt.Printf("[BLOCK] ⏳ Not yet %d consecutive clean sync cycles with every trusted seed — skipping block production regardless of height-based gates\n",
 					cleanSyncStreakThreshold)
 				return nil
