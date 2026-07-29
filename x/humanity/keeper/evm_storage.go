@@ -2970,6 +2970,11 @@ func (cs *ChainState) ensureGHOSTDAGColumns() {
 		cs.db.Exec(`ALTER TABLE chain_blocks ADD COLUMN IF NOT EXISTS selected_parent TEXT DEFAULT ''`)
 		cs.db.Exec(`ALTER TABLE chain_blocks ADD COLUMN IF NOT EXISTS blue_score BIGINT DEFAULT 0`)
 		cs.db.Exec(`ALTER TABLE chain_blocks ADD COLUMN IF NOT EXISTS blues TEXT DEFAULT '[]'`)
+		// transactions_z holds the gzip form of the same list. A row written
+		// with it leaves `transactions` empty; a row from before carries only
+		// `transactions`. See block_payload_codec.go for the measurement and
+		// for why enabling the write side is a one-way decision.
+		cs.db.Exec(`ALTER TABLE chain_blocks ADD COLUMN IF NOT EXISTS transactions_z BYTEA`)
 		// FIX (2026-07-04 — Contabo 2 catch-up-vs-real-time-production
 		// starvation at faster BLOCK_TIME): LoadBlocksSinceFromDB (the query
 		// that answers every peer's /api/blocks?min_height= page request —
@@ -3069,6 +3074,25 @@ func (cs *ChainState) SaveBlockToDB(block *Block, replayed bool) error {
 	if err != nil {
 		return fmt.Errorf("marshal transactions: %w", err)
 	}
+
+	// Compressed payload, when the operator has enabled it. The plain column is
+	// then left empty so exactly one of the two carries the transactions —
+	// decodeBlockPayload prefers the compressed one when it holds anything.
+	// Measured 3.5x faster on a full block; see block_payload_codec.go, which
+	// also explains why turning this on is a decision for the whole network.
+	//
+	// A compression failure falls back to writing the payload plainly rather
+	// than failing the save: a block that cannot be persisted is a far worse
+	// outcome than a block that is persisted uncompressed.
+	var txsZ []byte
+	if blockPayloadCompressionEnabled() {
+		if z, zErr := compressBlockPayload(txsJSON); zErr == nil {
+			txsZ = z
+			txsJSON = []byte("")
+		} else {
+			fmt.Printf("[BLOCK] ⚠ could not compress the payload of block #%d, storing it plainly: %v\n", block.Height, zErr)
+		}
+	}
 	bluesJSON, err := json.Marshal(block.Blues)
 	if err != nil {
 		bluesJSON = []byte("[]")
@@ -3095,12 +3119,12 @@ func (cs *ChainState) SaveBlockToDB(block *Block, replayed bool) error {
 	_, err = cs.db.Exec(
 		`INSERT INTO chain_blocks
 		   (hash, height, parent_hashes, proposer, timestamp, humans, state_root,
-		    signature, transactions, selected_parent, blue_score, blues, replayed)
-		 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
+		    signature, transactions, selected_parent, blue_score, blues, replayed, transactions_z)
+		 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
 		 ON CONFLICT (hash) DO NOTHING`,
 		block.Hash, block.Height, string(parentHashesJSON), block.Proposer, block.Timestamp,
 		block.Humans, block.StateRoot, block.Signature, string(txsJSON),
-		block.SelectedParent, block.BlueScore, string(bluesJSON), replayed,
+		block.SelectedParent, block.BlueScore, string(bluesJSON), replayed, txsZ,
 	)
 	return err
 }
@@ -3189,6 +3213,25 @@ func (cs *ChainState) SaveBlockWithPendingTxsAtomic(block *Block, ids []int64) e
 		return fmt.Errorf("marshal transactions: %w", err)
 	}
 
+	// Compressed payload, when the operator has enabled it. The plain column is
+	// then left empty so exactly one of the two carries the transactions —
+	// decodeBlockPayload prefers the compressed one when it holds anything.
+	// Measured 3.5x faster on a full block; see block_payload_codec.go, which
+	// also explains why turning this on is a decision for the whole network.
+	//
+	// A compression failure falls back to writing the payload plainly rather
+	// than failing the save: a block that cannot be persisted is a far worse
+	// outcome than a block that is persisted uncompressed.
+	var txsZ []byte
+	if blockPayloadCompressionEnabled() {
+		if z, zErr := compressBlockPayload(txsJSON); zErr == nil {
+			txsZ = z
+			txsJSON = []byte("")
+		} else {
+			fmt.Printf("[BLOCK] ⚠ could not compress the payload of block #%d, storing it plainly: %v\n", block.Height, zErr)
+		}
+	}
+
 	bluesJSONFast, _ := json.Marshal(block.Blues)
 	if bluesJSONFast == nil {
 		bluesJSONFast = []byte("[]")
@@ -3220,12 +3263,12 @@ func (cs *ChainState) SaveBlockWithPendingTxsAtomic(block *Block, ids []int64) e
 		if _, err := cs.db.Exec(
 			`INSERT INTO chain_blocks
 			   (hash, height, parent_hashes, proposer, timestamp, humans, state_root,
-			    signature, transactions, selected_parent, blue_score, blues, replayed)
-			 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,true)
+			    signature, transactions, selected_parent, blue_score, blues, replayed, transactions_z)
+			 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,true,$13)
 			 ON CONFLICT (hash) DO NOTHING`,
 			block.Hash, block.Height, string(parentHashesJSON), block.Proposer, block.Timestamp,
 			block.Humans, block.StateRoot, block.Signature, string(txsJSON),
-			block.SelectedParent, block.BlueScore, string(bluesJSONFast),
+			block.SelectedParent, block.BlueScore, string(bluesJSONFast), txsZ,
 		); err != nil {
 			return fmt.Errorf("save block (fast path): %w", err)
 		}
@@ -3283,12 +3326,12 @@ func (cs *ChainState) SaveBlockWithPendingTxsAtomic(block *Block, ids []int64) e
 	if _, err := tx.Exec(
 		`INSERT INTO chain_blocks
 		   (hash, height, parent_hashes, proposer, timestamp, humans, state_root,
-		    signature, transactions, selected_parent, blue_score, blues, replayed)
-		 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,true)
+		    signature, transactions, selected_parent, blue_score, blues, replayed, transactions_z)
+		 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,true,$13)
 		 ON CONFLICT (hash) DO NOTHING`,
 		block.Hash, block.Height, string(parentHashesJSON), block.Proposer, block.Timestamp,
 		block.Humans, block.StateRoot, block.Signature, string(txsJSON),
-		block.SelectedParent, block.BlueScore, string(bluesJSON),
+		block.SelectedParent, block.BlueScore, string(bluesJSON), txsZ,
 	); err != nil {
 		rollback()
 		return fmt.Errorf("save block: %w", err)
@@ -3597,7 +3640,7 @@ func (cs *ChainState) LoadBlocksSinceFromDB(minHeight int64, afterHash string, l
 	cs.ensureGHOSTDAGColumns()
 	fetchLimit := limit + dbSinceFetchWindow
 	rows, err := cs.db.Query(`SELECT hash, height, parent_hashes, proposer, timestamp, humans, state_root,
-	                 signature, transactions,
+	                 signature, transactions, COALESCE(transactions_z, ''::bytea),
 	                 COALESCE(selected_parent,''), COALESCE(blue_score,0), COALESCE(blues,'[]')
 	          FROM chain_blocks
 	          WHERE height >= $1 AND proposer != 'synthetic-checkpoint'
@@ -3611,15 +3654,26 @@ func (cs *ChainState) LoadBlocksSinceFromDB(minHeight int64, afterHash string, l
 	for rows.Next() {
 		var b Block
 		var parentHashesRaw, txsRaw, bluesRaw string
+		var txsZ []byte
 		if err := rows.Scan(
 			&b.Hash, &b.Height, &parentHashesRaw, &b.Proposer, &b.Timestamp,
-			&b.Humans, &b.StateRoot, &b.Signature, &txsRaw,
+			&b.Humans, &b.StateRoot, &b.Signature, &txsRaw, &txsZ,
 			&b.SelectedParent, &b.BlueScore, &bluesRaw,
 		); err != nil {
 			continue
 		}
 		_ = json.Unmarshal([]byte(parentHashesRaw), &b.ParentHashes)
-		_ = json.Unmarshal([]byte(txsRaw), &b.Transactions)
+		// Either form, and a failure is REPORTED. This line used to be
+		// `_ = json.Unmarshal(...)`: an unreadable payload silently became a
+		// block with no transactions, and such a block still hashes correctly
+		// through its TxRoot, so nothing downstream objected either. That is
+		// how a page of transfers disappears without a trace.
+		if txs, decErr := decodeBlockPayload(txsRaw, txsZ); decErr != nil {
+			fmt.Printf("[BLOCK] ✗ block %s at height %d has an unreadable payload, skipping it rather than serving it empty: %v\n", b.Hash, b.Height, decErr)
+			continue
+		} else {
+			b.Transactions = txs
+		}
 		if bluesRaw != "" && bluesRaw != "[]" && bluesRaw != "null" {
 			_ = json.Unmarshal([]byte(bluesRaw), &b.Blues)
 		}
