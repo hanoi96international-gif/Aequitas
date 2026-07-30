@@ -20,8 +20,10 @@ Das Wichtigste zuerst, weil es von anderen abhängt:
       lassen (vorher fragen). Die Fragen stehen unten.
 - [ ] **Anette anrufen.** Sie war dabei, und zwar durchgehend. Sie erzählt
       Dinge über ihre kleine Schwester, die Marion selbst nie erzählen würde.
-- [ ] **Rita und Willi fragen** — falls möglich. Sie sind die Einzigen, die
-      Teil Eins wirklich kennen: Hoher Weg 46, die Kindheit, die Jugend.
+- [ ] **Monika fragen.** Rita und Willi sind gestorben — damit sind Anette
+      und Monika die Einzigen, die Teil Eins noch aus erster Hand kennen:
+      Hoher Weg 46, die Kindheit, die Jugend. Diese Gespräche haben Vorrang
+      vor allem anderen; das ist Wissen, das sonst niemand mehr hat.
 - [ ] **Geschwister fragen**, ob sie mitmachen (jedes Kind eine handgeschriebene
       Seite). Wenn ja: **jetzt** Bescheid sagen, nicht Ende August.
 - [ ] **Fotos suchen.** Alben, Schuhkartons, Handys. Alles abfotografieren,
@@ -135,14 +137,19 @@ sind mehr wert als dreißig knappe.
 - Was hat sie durchgezogen, wovon sie selbst nie erzählt?
 - Was würdest du ihr zum Sechzigsten sagen, wenn du es aufschreiben müsstest?
 
-## Für Rita und Willi
+## Für Anette und Monika — über Rita und Willi
 
-- Wie war die Geburt am 4. September 1966? Wo, wie lange, wie spät?
+Diese Fragen hätte man den Eltern gestellt. Jetzt sind die Schwestern die
+Einzigen, die sie noch beantworten können.
+
+- Was wisst ihr über den 4. September 1966? Wo, wie lange, wie spät?
 - Woher kam der Name Marion?
 - Was für ein Kind war sie?
-- Wovor hatte sie Angst?
-- Was war das erste, worin sie richtig gut war?
-- Wann habt ihr gemerkt, dass sie erwachsen geworden ist?
+- Was war das Erste, worin sie richtig gut war?
+- Wie waren Rita und Willi als Eltern? Und später als Großeltern?
+- Was haben die beiden nach 2001 konkret für Marion getan?
+- Erzählt mir eine Geschichte über Willi. Und eine über Rita.
+  Irgendeine — eine Macke, ein Spruch, ein Streit, eine Angewohnheit.
 
 ## Für dich selbst — schriftlich beantworten, nicht nur denken
 
