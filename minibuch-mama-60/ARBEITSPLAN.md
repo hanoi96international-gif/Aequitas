@@ -44,7 +44,7 @@ Das ist die schwerste Woche. Plan sie großzügig.
 - [ ] `21-die-adressen.md` — die sieben Wohnungen
 - [ ] `22-vierunddreissig.md` — das Kernkapitel
 - [ ] `23-die-die-da-waren.md` — Anette, Rita, Willi
-- [ ] `25-rituale.md` — Weihnachten, Sonntage, Urlaube
+- [ ] `25-rituale.md` — Mittagessen, Weihnachten, Sonntage
 
 ## Woche 4 — bis Sonntag, 23. August: Teil Drei
 

@@ -1,4 +1,4 @@
-# Wie es bei uns roch
+# Was immer gleich blieb
 
 <!--
 SCHREIBHILFE — Ziel: 2 Seiten. Das leichteste Kapitel von Teil Zwei,
@@ -45,6 +45,10 @@ wolltest, geht es darin nicht mehr um die Wohnung, sondern um sie —
 und damit gehört er ins Kapitel über sie selbst.
 -->
 
+
+In deinem Leben hat sich fast alles mehrmals geändert. Acht Adressen, vier Arbeitgeber, eine Familie, die größer und dann wieder kleiner wurde.
+
+Ein paar Sachen aber nicht. Die liefen jede Woche gleich, jedes Jahr gleich, und deshalb weiß ich sie heute noch.
 
 ## Das Mittagessen
 
