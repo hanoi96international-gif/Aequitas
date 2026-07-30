@@ -226,6 +226,14 @@ figure.unterschrift .bildunterschrift {
 }
 .titelseite h1 + p::first-line { font-variant: normal; }
 
+.titelseite .testdruck-hinweis {
+  margin-top: 22mm;
+  font-size: 8.5pt;
+  line-height: 1.5;
+  color: #8a7f6d;
+  letter-spacing: 0.03em;
+}
+
 /* --------------------------------------------------------------- Widmung */
 
 .widmung {

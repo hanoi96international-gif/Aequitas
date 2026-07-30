@@ -42,11 +42,31 @@ FRAGE AN DICH:
 
 Im Dezember 1984 hast du angefangen. Du warst achtzehn.
 
-Bäckerei und Konditorei Brandt in Hildesheim, Ausbildung zur Konditoreifachverkäuferin. Im Juli 1988 warst du fertig, mit einundzwanzig, und bist geblieben — bis Juni 1991.
+Bäckerei und Konditorei Brandt in Hildesheim, Ausbildung zur Konditoreifachverkäuferin. Im Juli 1988 warst du fertig, mit einundzwanzig, und bist danach geblieben — bis zum Juni 1991, bis zu mir.
 
-Sechseinhalb Jahre in derselben Backstube. Es ist bis heute die längste Zeit, die du an einem Arbeitsplatz verbracht hast.
+Sechseinhalb Jahre in demselben Betrieb. Es ist bis heute die längste Zeit, die du an einem einzigen Arbeitsplatz verbracht hast, und niemand hat je darüber geredet.
 
-{{Wann der Wecker klingelte und wie es dort roch.}}
+## Was in dem Beruf drinsteckt
+
+In deinem Lebenslauf stehen drei Tätigkeiten: Verkauf. Dekoration. Herstellung von Süßspeisen.
+
+Das liest sich harmlos, ist aber ein Beruf, den man unterschätzt, solange man nur auf der Kundenseite steht.
+
+Verkauf heißt: freundlich sein zu Menschen, die vor ihrem ersten Kaffee noch keine sind. Es heißt, Namen zu behalten und zu wissen, was jemand immer nimmt, bevor er es sagt. Es heißt, in fünf Sekunden zu entscheiden, ob jemand einen Spruch möchte oder in Ruhe gelassen werden will.
+
+Dekoration heißt: Es muss nicht nur schmecken, es muss auch etwas hermachen — und zwar jeden Tag neu, für Leute, die es in vier Minuten essen.
+
+Und die Herstellung von Süßspeisen heißt schlicht, dass du das Handwerk konntest und nicht nur die Theke.
+
+## Und der Rest, den kein Zeugnis erwähnt
+
+Backwaren werden nachts gemacht und morgens verkauft. Wer in diesem Beruf arbeitet, steht auf, wenn andere ins Bett gehen.
+
+Du hast das mit achtzehn angefangen. In dem Alter, in dem die meisten Leute lernen, wie lange man aushält, hast du gelernt, wie früh man anfangen kann.
+
+Ich glaube, dass ein Teil von dem, was du später gebraucht hast, genau da entstanden ist. Wer mit neunzehn um halb fünf aufsteht und um sechs freundlich ist, dem sieht man das mit sechzig noch an.
+
+{{Wann genau klingelte der Wecker? Und wie roch es, wenn du morgens reinkamst?}}
 
 ## Was sie da gelernt hat
 

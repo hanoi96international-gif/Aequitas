@@ -33,9 +33,17 @@ entspannten Abend, weil sie bestimmt lachen muss:
     Was hat sie angehabt? Gibt es Fotos?
 -->
 
-Bevor es Apps gab, bevor es das Internet gab, gab es die Zeitung. Man las die Kleinanzeigen hinten, man schrieb einen Brief, man steckte ihn in einen Kasten, und dann wartete man Tage.
+Bevor es Apps gab, bevor es das Internet gab, gab es die Zeitung.
 
-So habt ihr euch gefunden. Eine Kontaktanzeige in der Zeitung. {{Wer von euch beiden sie aufgegeben hat, ist bis heute die bessere Geschichte — und die musst du erzählen.}}
+Man las die Kleinanzeigen hinten, wo sie in winzigen Buchstaben untereinanderstanden. Man suchte sich eine aus. Man schrieb einen Brief — von Hand, mit dem Risiko, sich zu vertun, weil es kein Löschen gab. Man steckte ihn in einen Umschlag, klebte eine Marke drauf und brachte ihn zum Kasten.
+
+Und dann wartete man. Tage. Manchmal eine Woche.
+
+Man konnte in dieser Woche nichts machen. Nicht nachschauen, ob es angekommen war, nicht sehen, ob jemand online ist, nicht kurz nachfassen. Man wusste nicht einmal, wie die Person aussah. Man hatte drei Zeilen Text und eine Handschrift, und daraus musste man sich einen Menschen zusammensetzen.
+
+So habt ihr euch gefunden. Über eine Kontaktanzeige in der Zeitung.
+
+{{Wer von euch beiden sie aufgegeben hat, ist bis heute die bessere Geschichte — und die musst du erzählen.}}
 
 Er war Soldat. {{Wo stationiert, bei welcher Einheit.}}
 
@@ -51,7 +59,15 @@ Zehn Wochen später, auf den Tag genau, fiel die Mauer. Ihr wart da noch keine d
 
 Daniel im Juni 1991. Steffanie im November 1993. Marcus im Februar 1995. Christina im November 1996. Julia im März 1998.
 
-Fünf Kinder in nicht ganz sieben Jahren. Rechne das einmal nach: Sie war fünfundzwanzig, als sie ihr erstes Kind bekam, und einunddreißig, als sie ihr fünftes bekam. Dazwischen liegt kein einziges Jahr, in dem sie nicht schwanger war, gestillt hat oder ein Kleinkind auf der Hüfte hatte.
+Fünf Kinder in nicht ganz sieben Jahren.
+
+Rechne das einmal in Ruhe nach. Du warst vierundzwanzig, als du mit dem ersten schwanger wurdest, und einunddreißig, als das fünfte kam. Dazwischen liegt kein einziges Jahr, in dem du nicht schwanger warst, gestillt hast oder ein Kleinkind auf der Hüfte hattest.
+
+Und es sind ja nicht nur die Geburten. Es sind, wenn man großzügig rechnet, gut zehn Jahre am Stück, in denen mindestens ein Kind in deiner Wohnung Windeln getragen hat. Zehn Jahre, in denen du keine Nacht sicher durchschlafen konntest, weil immer irgendjemand zu klein war.
+
+Deine Berufstätigkeit hast du im Juni 1991 unterbrochen, mit meiner Geburt. Wieder aufgenommen hast du sie im September 2005.
+
+Wer diese beiden Zahlen nebeneinanderlegt, sieht ziemlich genau, was in dieser Zeit deine Arbeit war.
 
 {{Was sie über diese Zeit erzählt. Was war schwer, was war schön?}}
 

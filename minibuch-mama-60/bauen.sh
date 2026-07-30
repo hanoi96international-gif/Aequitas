@@ -3,8 +3,16 @@
 #
 #   ./bauen.sh
 #
+#   ./bauen.sh beta     erzeugt stattdessen bau/minibuch-beta.pdf mit
+#                       Testdruck-Vermerk auf der Titelseite
 set -euo pipefail
 cd "$(dirname "$0")"
+
+NAME="minibuch"
+if [ "${1:-}" = "beta" ]; then
+  export BETA=1
+  NAME="minibuch-beta"
+fi
 
 # --- Node finden ------------------------------------------------------------
 NODE_BIN="$(command -v node || true)"
@@ -34,7 +42,7 @@ done
 if [ -z "$BROWSER" ]; then
   echo ""
   echo "  Kein Chrome/Chromium gefunden — das HTML liegt aber fertig unter:"
-  echo "     bau/minibuch.html"
+  echo "     bau/$NAME.html"
   echo "  Öffne es im Browser und drucke es mit Strg+P / Cmd+P als PDF"
   echo "  (Papierformat A5, Ränder: keine, Hintergrundgrafiken: an)."
   exit 0
@@ -47,8 +55,8 @@ fi
   --no-sandbox \
   --no-pdf-header-footer \
   --print-to-pdf-no-header \
-  --print-to-pdf="$PWD/bau/minibuch.pdf" \
-  "file://$PWD/bau/minibuch.html" 2>/dev/null
+  --print-to-pdf="$PWD/bau/$NAME.pdf" \
+  "file://$PWD/bau/$NAME.html" 2>/dev/null
 
-echo "  Fertig:  bau/minibuch.pdf"
+echo "  Fertig:  bau/$NAME.pdf"
 echo ""

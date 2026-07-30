@@ -34,9 +34,13 @@ dann aber ehrlich als "so einer war es" beschriften.
 
 Siebzehn Jahre lang bist du gelaufen.
 
-1991 kam das erste Kind, und von da an ging alles zu Fuß oder mit dem Bus. Einkäufe für sieben Leute. Arzttermine. Kindergarten, Schule, Sportverein. Fünf Kinder an einer Bushaltestelle im November, und du mittendrin, mit Tüten.
+1991 kam das erste Kind, und von da an ging alles zu Fuß oder mit dem Bus. Einkäufe für sieben Leute. Arzttermine. Kindergarten, Schule, Sportverein, Geburtstage anderer Kinder, Elternabende, Apotheke.
 
-Und dann, 2008, mit einundvierzig, hast du den Führerschein gemacht.
+Man muss sich das einmal praktisch vorstellen, nicht als Satz, sondern als Vorgang. Fünf Kinder an einer Bushaltestelle im November. Der Jüngste kann noch nicht richtig laufen, der Älteste hat keine Lust, zwei streiten, und du hast in beiden Händen Tüten. Der Bus kommt alle zwanzig Minuten. Wenn du ihn verpasst, stehst du zwanzig Minuten mit fünf Kindern im Regen.
+
+Und dann wiederhole das siebzehn Jahre lang.
+
+2008, mit einundvierzig, hast du den Führerschein gemacht.
 
 ## Der Fiesta
 

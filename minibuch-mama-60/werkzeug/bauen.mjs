@@ -216,9 +216,20 @@ ${verzeichnisEintraege}
 
 const ersterKapitelIndex = abschnitte.findIndex((a) => a.art === "teilseite" || a.art === "kapitel");
 
+const beta = !!process.env.BETA;
+
 const koerper = abschnitte
   .map((a, i) => {
-    const sektion = `<section class="seite ${a.art}" data-datei="${a.datei}">\n${a.html}\n</section>`;
+    let inhalt = a.html;
+    if (beta && a.art === "titelseite") {
+      const heute = new Date().toLocaleDateString("de-DE", {
+        day: "2-digit",
+        month: "2-digit",
+        year: "numeric",
+      });
+      inhalt += `\n<p class="testdruck-hinweis">Testdruck vom ${heute} — nicht die endgültige Fassung.<br>Gelb markierte Stellen sind noch offen.</p>`;
+    }
+    const sektion = `<section class="seite ${a.art}" data-datei="${a.datei}">\n${inhalt}\n</section>`;
     return i === ersterKapitelIndex ? verzeichnisHtml + "\n" + sektion : sektion;
   })
   .join("\n\n");
@@ -240,8 +251,9 @@ ${koerper}
 </html>
 `;
 
+const ausgabeName = beta ? "minibuch-beta" : "minibuch";
 if (!existsSync(bauDir)) mkdirSync(bauDir, { recursive: true });
-writeFileSync(join(bauDir, "minibuch.html"), html, "utf8");
+writeFileSync(join(bauDir, `${ausgabeName}.html`), html, "utf8");
 
 // ---------------------------------------------------------------- Fortschritt
 
@@ -260,7 +272,7 @@ const woerter = abschnitte
   .split(/\s+/)
   .filter((w) => w.length > 1 && !w.startsWith("{{")).length;
 
-console.log(`\n  bau/minibuch.html geschrieben`);
+console.log(`\n  bau/${ausgabeName}.html geschrieben${beta ? "  (Testdruck-Fassung)" : ""}`);
 console.log(`  ${abschnitte.length} Abschnitte, rund ${woerter} Wörter geschrieben`);
 if (offen) {
   console.log(`\n  Noch ${offen} offene Lücken {{...}}:`);

@@ -31,7 +31,11 @@ Es war ein Sonntag in einem Land, das gerade nervös wurde. Ludwig Erhard war Bu
 
 Im Radio lief Frank Sinatra. *Strangers in the Night* stand seit Anfang August auf Platz eins der deutschen Charts und blieb dort acht Wochen lang — es war also mit ziemlicher Sicherheit das Lied, das in dem Sommer aus jedem offenen Fenster kam, als du geboren wurdest.
 
-Ein Liter Benzin kostete 55 Pfennig. Eine Kinokarte 1,20 Mark. Ein Ei 23 Pfennig, ein Liter Milch 34, ein Kilo Butter 7,81 Mark — Butter war Luxus, Benzin war nichts.
+Ein Liter Benzin kostete 55 Pfennig. Eine Kinokarte 1,20 Mark. Ein Ei 23 Pfennig, ein Liter Milch 34, ein Kilo Butter 7,81 Mark.
+
+An dieser Reihe kann man ablesen, wie anders die Welt getickt hat. Butter war teuer, Benzin war fast geschenkt. Man fuhr, ohne nachzudenken, und beim Frühstück wurde gerechnet.
+
+Es war das Ende einer Zeit, in der es immer nur aufwärtsgegangen war. Die Erwachsenen um dich herum kannten Krieg und Wiederaufbau, und sie hatten sich gerade daran gewöhnt, dass es jedes Jahr ein bisschen besser wird. Genau das hörte in diesem Jahr auf.
 
 ## Und Hildesheim
 
