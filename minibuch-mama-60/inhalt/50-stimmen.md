@@ -13,15 +13,25 @@ DEN EINLADUNGSTEXT ZUM VERSCHICKEN findest du in der Datei
 EINLADUNGSTEXT.md — fertig zum Kopieren in WhatsApp, mit den drei
 Fragen, die verhindern, dass die Leute vor dem leeren Blatt sitzen.
 
-WEN FRAGEN — Vorschlag, streich und ergänze:
-  - Anette und Monika (Schwestern)
-  - Rita und Willi (Eltern)
-  - Steffanie, Marcus, Christina, Julia (Geschwister)
-  - ihre beste Freundin / ihre Freundinnen
-  - Nachbarn, Kolleginnen, Schwager, Schwägerinnen
-  - Enkelkinder, falls es welche gibt — auch ein Satz von einem
-    Sechsjährigen. Gerade der.
-  - Patenkinder, alte Weggefährten
+WEN FRAGEN: Die vollständige Liste mit Abhakkästchen steht in
+EINLADUNGSTEXT.md. Kurzfassung:
+
+  - Anette, Wolfgang, Sanja
+  - Monika, Manuel, Philipp
+  - Steffanie, Marcus, Christina, Julia
+  - Michael
+  - Pamela und Jörg
+  - die Bingo-Runde
+  - Kolleginnen von Joey's, Helios, Marktcafé
+  - Horst, Peter Schmolke
+
+Zu Sascha steht ein eigener Hinweis in EINLADUNGSTEXT.md.
+
+DIESER TEIL IST DIE STELLE, AN DER ALLE GLEICH STEHEN. Im übrigen Buch
+beschreibst du Menschen, und dabei bekommt zwangsläufig der mehr Raum,
+über den du mehr weißt. Hier nicht: Hier kommt jeder mit seinen eigenen
+Worten vor, jeder bekommt eine Seite, und niemand wird von dir
+eingeordnet. Deshalb ist es wichtig, hier niemanden zu vergessen.
 
 FORMAT: Pro Person eine eigene Seite. Zwischen den Beiträgen steht
 ein Seitenumbruch (die Zeile mit den drei Strichen). Setz die Beiträge

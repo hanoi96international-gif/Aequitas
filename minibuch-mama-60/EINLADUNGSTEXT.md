@@ -1,3 +1,52 @@
+# Wer angeschrieben wird
+
+Abhaken, sobald die Nachricht raus ist. Und ein zweites Mal, wenn der
+Beitrag da ist. Ohne so eine Liste vergisst man verlässlich jemanden —
+und zwar meistens den, der es am ehesten merkt.
+
+**Familie ihrer Schwestern**
+
+- [ ] Anette
+- [ ] Wolfgang
+- [ ] Sanja
+- [ ] Monika
+- [ ] Manuel
+- [ ] Philipp
+
+**Deine Geschwister** (eigene Nachricht, siehe unten)
+
+- [ ] Steffanie
+- [ ] Marcus
+- [ ] Christina
+- [ ] Julia
+- [ ] und deren Partnerinnen und Partner, falls sie mögen
+
+**Ihre Leute**
+
+- [ ] Michael — ihr bester Freund seit fünfundzwanzig Jahren. Wenn du
+      nur einen Menschen außerhalb der Familie fragst, dann ihn.
+- [ ] Pamela und Jörg — die Nachbarn aus der Moltkestraße
+- [ ] Ihre Bingo-Runde. Jeden Sonntag seit Jahren dieselben Leute —
+      die haben garantiert eine Geschichte, die in der Familie keiner kennt.
+- [ ] Kolleginnen von Joey's, vom Helios, aus dem Marktcafé
+- [ ] Horst, dein Patenonkel, falls es noch Kontakt gibt
+- [ ] Peter Schmolke
+
+**Zu Sascha**
+
+Sascha kann nichts schreiben. Weglassen wäre trotzdem falsch, denn
+zwischen ihm und deiner Mutter ist etwas, das im Buch ein eigenes
+Kapitel hat.
+
+Möglichkeiten, wenn Anette einverstanden ist: ein Foto von den beiden,
+ein Bild aus dem personalisierten Memory, ein Handabdruck — oder Anette
+schreibt ein paar Sätze darüber, wie er reagiert, wenn Marion kommt,
+und es steht unter seinem Namen mit dem Zusatz „aufgeschrieben von
+seiner Mutter". Frag Anette, was ihr richtig vorkommt. Das ist ihre
+Entscheidung, nicht deine und nicht meine.
+
+---
+
 # Zum Kopieren: die Nachricht an alle
 
 **Verschick das diese Woche.** Nicht nächste. Erfahrungsgemäß liefert
