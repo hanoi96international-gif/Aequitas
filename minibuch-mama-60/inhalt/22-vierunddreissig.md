@@ -60,15 +60,19 @@ Fünfzehn Jahre sind keine schwere Phase. Fünfzehn Jahre sind ein halbes Erwach
 
 ## Arbeit
 
-Vor uns hast du bei Bäckerei Brandt in Hildesheim gearbeitet, bis 1991. Dann kam Daniel, und danach kamen vier weitere, und zwischen 1991 und 2005 hast du keinen einzigen Tag Lohn bekommen.
+In deinem Lebenslauf steht für die Zeit von Juni 1991 bis September 2005 ein einziges Wort: **Elternzeit.**
 
-Gearbeitet hast du in diesen vierzehn Jahren trotzdem. Nur zahlt einem das niemand.
+Vierzehn Jahre und drei Monate.
 
-2005 bist du zurück, zu Joey's Pizza. Julia war sieben, Christina acht — das jüngste Kind gerade so weit, dass es ging. Und dann bist du dort geblieben, {{bis etwa 2018}}.
+Davor hattest du bei Bäckerei und Konditorei Brandt gelernt und gearbeitet, sechseinhalb Jahre am Stück. Dann kam Daniel, und danach kamen vier weitere, und ab da steht in dem Dokument, das dein Berufsleben zusammenfassen soll, vierzehn Jahre lang nichts.
 
-Danach Helios. Danach Edeka. Und dann so lange weiter, bis es mit den Knien nicht mehr ging.
+Man muss sich das einmal ansehen: Der längste Posten in deinem Lebenslauf ist der, für den du nie bezahlt worden bist.
 
-{{Die genauen Zeiträume — du wolltest da noch mal nachsehen. Und: Was waren das für Tätigkeiten? Schichten, Abende, Wochenenden? Wer war bei euch, wenn sie arbeiten war?}}
+Im September 2005 bist du zurück. Joey's Pizzaservice, zehn Jahre und vier Monate. Julia war sieben, Christina acht — das jüngste Kind gerade so weit, dass es ging. Ausliefern, Zutaten vorbereiten, putzen.
+
+Danach Helios Klinikum, Cafeteria, noch mal sieben Jahre.
+
+{{Wer war eigentlich bei euch, wenn sie arbeiten war?}}
 
 ## Die Von-Emmich-Straße
 

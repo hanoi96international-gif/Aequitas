@@ -1,48 +1,70 @@
 # Was jetzt noch kommt
 
 <!--
-SCHREIBHILFE — Ziel: 1 Seite. Der Schluss von Teil Drei.
+SCHREIBHILFE — Ziel: 1–2 Seiten. Der Schluss von Teil Drei.
 
-Ein Buch über sechzig Jahre darf nicht mit einem Rückblick enden,
-sonst klingt es wie ein Nachruf. Dieses Kapitel dreht den Blick
-nach vorn — und das ist dieses Jahr besonders wichtig, weil sie
-ihren Sechzigsten mitten in der Reha feiert.
+ALLE DATEN AUS IHREM LEBENSLAUF (Stand 19.09.2025), also belegt:
+  12/1984 – 07/1988  Ausbildung Konditoreifachverkäuferin, Brandt
+  08/1988 – 06/1991  Konditorfachverkäuferin, Brandt
+  06/1991 – 09/2005  Elternzeit (14 Jahre, 3 Monate)
+  09/2005 – 01/2016  Joey's Pizzaservice (10 Jahre, 4 Monate)
+  02/2016 – 05/2023  Helios Klinikum, Cafeteria (7 Jahre, 3 Monate)
+  06/2023 – 11/2023  Marktcafé Potratz, Bäckereifachverkäuferin
+  12/2023 – 07/2024  arbeitssuchend
+  seit 08/2024       Rehabilitationsphase
 
-Zwei schwere Knie-OPs, 2024 und 2025. Der Satz aus "Vierunddreißig"
-— dass sie fünfzehn Jahre lang jeden Morgen aufgestanden ist —
-bekommt dadurch eine zweite, wörtliche Bedeutung. Ich habe diesen
-Bogen EINMAL angetippt und dann in Ruhe gelassen. Nicht mehr
-darauf herumreiten, sonst wird aus einem guten Einfall eine Predigt.
+  Persönliche Stärken, von ihr selbst angegeben:
+  Hilfsbereitschaft, Freundlichkeit, Empathie, Kontaktfreudig
+  Hobbys: Sportveranstaltungen, Gesellschaftsspiele,
+  Unternehmungen mit Familie und Freunden
 
-WICHTIG: Das Kapitel darf nicht zum Krankenkapitel werden. Drei
-Sätze zu den Knien, dann geht es nach vorn. Ihr Geburtstag soll
-nicht von ihrem Knie handeln.
+EINE ABWEICHUNG: Du hattest Edeka gesagt, im Lebenslauf steht
+Marktcafé Potratz. Möglich, dass das Café in einem Edeka-Markt sitzt —
+das gibt es in der Gegend öfter. Bitte einmal nachfragen. Ich bin
+im Text der schriftlichen Angabe gefolgt.
+
+DEN LEBENSLAUF-ABSCHNITT MUSST DU FREIGEBEN. Ihr eigenes Dokument
+zurückzuspiegeln ist ein starker Effekt, kann aber auch übergriffig
+wirken. Wenn du zögerst: streichen, das Kapitel trägt auch ohne.
+
+WICHTIG: Kein Krankenkapitel daraus machen. Ihr Geburtstag soll nicht
+von ihrem Knie handeln.
 
 WAS NOCH FEHLT:
-  - Was wünschst du ihr konkret? Nicht "Gesundheit und alles Gute",
-    sondern etwas, das man sich vorstellen kann.
-  - Habt ihr etwas zusammen vor? Nur reinschreiben, wenn du es
-    auch machst.
+  - Was wünschst du ihr konkret? Nichts Allgemeines.
+  - Habt ihr etwas zusammen vor? Nur reinschreiben, wenn du es machst.
 
-UND EIN THEMA, DAS HIER NICHT AUFTAUCHEN SOLLTE: Enkelkinder.
-Es gibt noch keine, und vier von euch fünf sind verheiratet oder
-in festen Händen — damit ist das ein Thema, bei dem sie ohnehin
-wartet. Ein gedruckter Enkelwunsch macht Druck: auf sie, auf euch,
-auf eure Partner. Lass es weg. Wenn es so weit ist, freut sie sich
-auch ohne Vorbestellung.
+NICHT AUFNEHMEN: Enkelkinder. Es gibt noch keine, vier von fünf sind
+vergeben — ein gedruckter Enkelwunsch macht Druck auf sie, auf euch
+und auf eure Partner. Wenn es so weit ist, freut sie sich auch ohne
+Vorbestellung.
 -->
 
-2024 und 2025 lagen zwei schwere Knieoperationen. Gerade kämpfst du dich zurück, mit Reha und allem, was dazugehört, und dieser Geburtstag fällt mitten in diese Arbeit hinein.
+Im Juni 2023 hast du wieder hinter einer Verkaufstheke gestanden. Bäckereifachverkäuferin, Marktcafé Potratz.
 
-Weiter vorn in diesem Buch steht ein Satz, der dadurch eine zweite Bedeutung bekommt: dass du fünfzehn Jahre lang jeden Morgen aufgestanden bist. Damals war das ein Bild. Diesmal ist es wörtlich gemeint.
+Neununddreißig Jahre, nachdem du im Dezember 1984 als Achtzehnjährige bei Brandt angefangen hattest, warst du wieder genau da: Backwaren, Theke, Kundschaft. Dazwischen lagen fünf Kinder, vierzehn Jahre Elternzeit, zehn Jahre Pizza und sieben Jahre Klinik-Cafeteria.
 
-Ich habe dich noch nie etwas nicht zu Ende bringen sehen. Ich sehe nicht ein, warum ausgerechnet ein Knie damit anfangen sollte.
+Im November 2023 war Schluss. 2024 und 2025 kamen zwei schwere Knieoperationen, und seit August 2024 steht in deinem Lebenslauf ein Wort, das nach Warteschleife klingt und keine ist: **Rehabilitationsphase.**
+
+Bis zu deinem sechzigsten Geburtstag sind das gut zwei Jahre.
+
+~~~
+
+Weiter vorn in diesem Buch steht, dass du fünfzehn Jahre lang jeden Morgen aufgestanden bist. Damals war das ein Bild. Diesmal ist es wörtlich gemeint.
+
+Und dazu passt etwas, das mir aufgefallen ist. Im September 2025, mit neunundfünfzig, nach zwei Operationen und einem Jahr Reha, hast du dich hingesetzt und einen Lebenslauf geschrieben. Man schreibt keinen Lebenslauf, wenn man fertig ist. Man schreibt einen, wenn man vorhat, wiederzukommen.
+
+Unter "Persönliche Stärken" hast du vier Dinge angegeben: Hilfsbereitschaft. Freundlichkeit. Empathie. Kontaktfreudig.
+
+Keine einzige davon handelt von Zähigkeit, Belastbarkeit oder Durchhaltevermögen — von den drei Eigenschaften also, die dieses ganze Buch belegt. Du hast stattdessen aufgeschrieben, dass du nett zu Menschen bist.
+
+Das ist sehr typisch für dich, und es ist ungefähr die Hälfte der Wahrheit.
 
 ~~~
 
 Und dann kommt der Teil, der lange nicht dran war.
 
-Julia ist achtundzwanzig. Seit 1991 warst du ununterbrochen für jemanden zuständig — erst für fünf Kinder, dann für vier, dann für drei, und irgendwann war das einfach dein Zustand. Es gab kein Jahr dazwischen, das nur dir gehört hat.
+Julia ist achtundzwanzig. Seit Juni 1991 warst du ununterbrochen für jemanden zuständig — erst für fünf Kinder, dann für vier, dann für drei, und irgendwann war das einfach dein Zustand. Es gab kein Jahr dazwischen, das nur dir gehört hat.
 
 Jetzt schon.
 

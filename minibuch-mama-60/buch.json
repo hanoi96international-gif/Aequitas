@@ -10,7 +10,25 @@
     "name": "Marion",
     "geboren": "1966-09-04 (Sonntag) in Hildesheim",
     "aufgewachsen": "Hildesheim, Hoher Weg 46",
-    "beruf": "Bäckerei- und Konditoreifachverkäuferin (Ausbildung nach der Schule)"
+    "beruf": "Konditoreifachverkäuferin",
+    "wohnt_heute": "Hildesheim, Moritzberg (seit 2022)"
+  },
+
+  "werdegang_laut_lebenslauf_09_2025": [
+    "12/1984-07/1988  Ausbildung Konditoreifachverkäuferin, Bäckerei und Konditorei Brandt, Hildesheim",
+    "08/1988-06/1991  Konditorfachverkäuferin, Brandt (Verkauf, Dekoration, Süßspeisen)",
+    "06/1991-09/2005  Elternzeit (14 Jahre, 3 Monate)",
+    "09/2005-01/2016  Servicemitarbeiterin, Joey's Pizzaservice (10 Jahre, 4 Monate)",
+    "02/2016-05/2023  Cafeteria-Mitarbeiterin, Helios Klinikum (7 Jahre, 3 Monate)",
+    "06/2023-11/2023  Bäckereifachverkäuferin, Marktcafé Potratz",
+    "12/2023-07/2024  arbeitssuchend",
+    "seit 08/2024     Rehabilitationsphase"
+  ],
+
+  "selbstbeschreibung_lebenslauf": {
+    "staerken": ["Hilfsbereitschaft", "Freundlichkeit", "Empathie", "Kontaktfreudig"],
+    "hobbys": ["Sportveranstaltungen", "Gesellschaftsspiele", "Unternehmungen mit Familie und Freunden"],
+    "offen": "Daniel nannte Edeka, im Lebenslauf steht Marktcafé Potratz - nachfragen"
   },
 
   "herkunftsfamilie": {

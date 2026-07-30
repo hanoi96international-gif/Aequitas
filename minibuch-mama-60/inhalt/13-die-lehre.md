@@ -14,8 +14,16 @@ Wenn du eine Verbindung zu heute ziehen willst, liegt sie hier.
 Wer mit siebzehn lernt, um 4:30 Uhr freundlich zu sein, dem sieht man
 das mit sechzig noch an.
 
+AUS DEM LEBENSLAUF (September 2025) — alle Daten belegt:
+  - 12/1984 bis 07/1988: Ausbildung zur Konditoreifachverkäuferin
+    bei Bäckerei und Konditorei Brandt, Hildesheim
+  - 08/1988 bis 06/1991: dort weiter als Konditorfachverkäuferin
+    Tätigkeiten: Verkauf, Dekoration, Herstellung von Süßspeisen
+  - Zusammen sechs Jahre und sechs Monate — die längste Zeit, die sie
+    je an einem Arbeitsplatz war
+  - Sie war bei Ausbildungsbeginn 18 und bei Abschluss 21
+
 FRAGEN AN SIE:
-  - In welcher Bäckerei? Wie hieß sie, wo war sie?
   - Wann klingelte der Wecker? Wie bist du hingekommen?
   - Wer war dein Chef / deine Chefin? Streng, nett, unmöglich?
   - Was war dein Lieblingsgebäck? Was hast du selbst nie gegessen?
@@ -32,9 +40,13 @@ FRAGE AN DICH:
     dann baue ich eine Rezeptseite ins Layout.
 -->
 
-{{Wann der Wecker klingelte und wie es in der Backstube roch.}}
+Im Dezember 1984 hast du angefangen. Du warst achtzehn.
 
-{{Die Bäckerei: wo, bei wem, wie lange.}}
+Bäckerei und Konditorei Brandt in Hildesheim, Ausbildung zur Konditoreifachverkäuferin. Im Juli 1988 warst du fertig, mit einundzwanzig, und bist geblieben — bis Juni 1991.
+
+Sechseinhalb Jahre in derselben Backstube. Es ist bis heute die längste Zeit, die du an einem Arbeitsplatz verbracht hast.
+
+{{Wann der Wecker klingelte und wie es dort roch.}}
 
 ## Was sie da gelernt hat
 
