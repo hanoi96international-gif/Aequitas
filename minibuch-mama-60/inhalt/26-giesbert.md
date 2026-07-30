@@ -109,11 +109,13 @@ das ist eine Zeile Arbeit.
 
 Eine Kleinigkeit fehlt noch, und ohne sie ist die Geschichte nicht vollständig.
 
-Wir sind alle Hannover-Fans. Du, und dadurch auch wir fünf.
+Du hältst zu Hannover 96. Er hielt zu Eintracht Braunschweig.
 
-Er nicht. Er hielt zu Eintracht Braunschweig.
+Wer weiß, was das Niedersachsen-Derby ist, weiß, dass das keine Nebensache ist, sondern eine Grundsatzfrage. Und bei euch war es genau das — allerdings ausschließlich zwischen euch beiden. Wir waren alle viel zu klein, um überhaupt zu verstehen, worum es dabei ging.
 
-Wer weiß, was das Niedersachsen-Derby ist, weiß, dass das kein Detail ist, sondern eine Grundsatzfrage. An Derbytagen ging es bei uns entsprechend zur Sache.
+Was wir sehr wohl mitbekommen haben: dass ihr euch gegenseitig angestachelt habt.
+
+Das ist übrigens eine der ganz wenigen Erinnerungen, in denen ihr beide gemeinsam vorkommt — und in der ihr nicht Eltern seid, sondern einfach zwei Leute, die sich wegen zweier Fußballmannschaften aufziehen.
 
 Und jetzt schau noch einmal auf Lamspringe. Das Finale ging gegen Eintracht Braunschweig. Mein Vater stand als Betreuer an der Seitenlinie und sah zu, wie sein eigener Sohn seinen eigenen Verein aus dem Turnier hielt.
 
