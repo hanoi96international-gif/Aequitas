@@ -107,9 +107,15 @@ Ein Pokal und eine Katze, im selben Jahr, aus derselben Begegnung. Man kann sich
 
 Und dann ist da Brigitte.
 
-Ihr verbringt sehr viel Zeit miteinander und unternehmt viel zusammen. In einem Buch über sechzig Jahre klingt so ein Satz klein — er ist es nicht. Nach allem, was in Teil Zwei steht, ist eine Freundin, mit der man einfach Zeit verbringt, ohne dass es einen Anlass braucht, ziemlich genau das, was dir jahrzehntelang gefehlt hat.
+Ihr verbringt sehr viel Zeit miteinander und unternehmt viel zusammen. Ihr helft euch gegenseitig, ihr habt dieselben Interessen, und ihr tut euch gut. Das passende Gegenstück, wie man so sagt.
 
-{{Seit wann kennt ihr euch? Und woran erkennt man, dass das genau diese Sorte Freundschaft ist? Eine Sache, die ihr immer macht, reicht.}}
+Wie lange ihr euch schon kennt, weiß ich nicht genau. Aber es sind keine zehn Jahre.
+
+Und genau das ist der bemerkenswerte Teil. Rechne nach, wann die Jahre aufhörten, in denen für so etwas überhaupt kein Platz war — es ist ungefähr dieselbe Zeit, in der Brigitte auftaucht.
+
+Die meisten Menschen finden mit über fünfzig keine neue beste Freundin mehr. Die meisten sagen sich, dass der Freundeskreis eben ist, wie er ist, und dass sich das jetzt auch nicht mehr ändert.
+
+Du hast dir mit über fünfzig noch jemanden dazugeholt.
 
 ## Volleyball
 
