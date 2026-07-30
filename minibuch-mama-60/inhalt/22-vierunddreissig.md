@@ -76,6 +76,40 @@ Und eine Sache daran fällt erst auf, wenn man genauer hinsieht: Du hast gearbei
 
 Du hast deine Arbeitszeit nicht danach ausgesucht, was für dich am besten war. Du hast sie in das Loch gelegt, das wir übrig gelassen haben.
 
+## Der Scheck
+
+Die Witwen- und Waisenrente wurde nach Giesberts Tod monatelang nicht berechnet. Es hat sich hingezogen, wie sich solche Dinge immer genau dann hinziehen, wenn man am wenigsten Reserve hat. In der Zwischenzeit kam schlicht nichts.
+
+Eine Frau, fünf Kinder zwischen drei und neun, kein Einkommen, keine Rente.
+
+Und dann hat dir das Sozialamt fünfzig Euro angeboten.
+
+Du hast den Scheck zerrissen.
+
+Man kann darüber streiten, ob das klug war. Fünfzig Euro sind fünfzig Euro, und du hattest keine.
+
+Ich verstehe es trotzdem. Es ging nicht um das Geld. Es ging darum, was dieser Betrag über dich ausgesagt hätte — dass man eine Frau, die gerade alles verloren hat und fünf Kinder durchbringen muss, mit fünfzig Euro abhaken kann.
+
+Du hast lieber nichts genommen als das.
+
+Und dass es trotzdem weiterging, lag an deinen Eltern. Aber das ist das nächste Kapitel.
+
+<!--
+ZWEI DINGE ZU DIESEM ABSCHNITT:
+
+  1. WÄHRUNG PRÜFEN. Du hast 50 Euro gesagt. Giesbert starb im Mai
+     2001, da gab es noch D-Mark — der Euro kam als Bargeld erst im
+     Januar 2002. Wenn die Sache 2001 war, waren es fünfzig Mark.
+     Frag nach oder überleg, wann genau das war. Eine falsche Währung
+     ist genau die Sorte Detail, die sie sofort sieht.
+
+  2. FREIGABE. Der Absatz zeigt sie stolz und stur in einer Lage, in
+     der Stolz teuer war. Ich halte das für eine der stärksten Stellen
+     im Buch. Falls sie die Sache heute anders sieht — als Fehler, als
+     etwas, das sie sich nicht hätte leisten können — dann streich ihn.
+     Du kennst sie, ich nicht.
+-->
+
 ## Die Von-Emmich-Straße
 
 Es war keine gute Gegend. Die Nachbarschaft war schwierig, manche Nachbarn waren mehr als das. Zu allem anderen kam also noch dazu, dass der Ort, an dem man abends die Tür hinter sich zumacht, kein Ort war, an dem man sich sicher fühlte.

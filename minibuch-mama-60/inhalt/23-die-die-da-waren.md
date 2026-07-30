@@ -135,7 +135,13 @@ Deine Eltern waren da.
 
 Wir haben sie als Oma und Opa erlebt und deshalb jahrelang nicht verstanden, was sie eigentlich taten. Für uns waren das die Großeltern — das ist die Rolle, in der Kinder ihre Großeltern sehen, und mehr sehen sie nicht. Für dich waren das die zwei Menschen, die dafür sorgten, dass es überhaupt weiterging.
 
-{{Was Rita und Willi konkret getan haben — Kinder gehütet, gekocht, eingesprungen, da gewesen.}}
+Rita hat in der Küche eines Altersheims gearbeitet. Sie hat also beruflich für viele Menschen gekocht und an Weihnachten dann noch einmal für die ganze Familie. Willi war beim Bundesgrenzschutz und später {{… — was genau? Ich habe deine Angabe nicht entziffern können}}.
+
+Und dann haben die beiden das getan, was sich am schwersten erzählen lässt, weil es so unspektakulär klingt: Sie haben Geld gegeben.
+
+Immer wieder. Ohne Aufhebens. Sie haben dich nie hängen lassen.
+
+Besonders in der Zeit direkt nach 2001, als die Witwen- und Waisenrente monatelang nicht berechnet war und schlicht nichts kam. Diese Monate haben deine Eltern überbrückt. Ohne sie wäre in dieser Wohnung nicht nur das Geld ausgegangen.
 
 Von Rita ist mir vor allem eines geblieben: Am ersten Weihnachtstag sind wir zu ihnen gefahren, und sie hat für die gesamte Familie gekocht. Nicht für sieben Leute — für alle. Und es war jedes Mal sehr gut.
 
