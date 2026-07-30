@@ -98,9 +98,11 @@ Michael ist ihr bester Freund, und die beiden kennen sich seit 2001 oder 2002.
 
 Dieses Datum lohnt einen zweiten Blick. Es ist genau der Zeitpunkt, an dem alles auseinandergefallen war. In dem Jahr, in dem die meisten Leute vermutlich weniger geworden sind, ist einer dazugekommen — und der ist bis heute geblieben. Fünfundzwanzig Jahre inzwischen.
 
-Sie haben in Ochtersum zusammen trainiert, und sie sind füreinander da, in beide Richtungen, ohne dass darüber viel geredet werden müsste.
+Kennengelernt habt ihr euch über den Fußball, wie fast alles in diesen Jahren. Seine Tochter Jasmin spielte mit Steffanie zusammen, Marcus war mit seinem Sohn Kevin gut befreundet. Erst waren es also die Kinder, dann wart ihr es.
 
-{{Woher kennen die beiden sich? Über den Fußball, oder war er vorher schon da? Und eine konkrete Sache, an der man dieses Verhältnis erkennt.}}
+Später habt ihr in Ochtersum zusammen trainiert. Und ihr seid füreinander da, in beide Richtungen, ohne dass darüber viel geredet werden müsste.
+
+{{Eine konkrete Sache, an der man dieses Verhältnis erkennt. Nicht "die beiden sind gute Freunde" — sondern etwas, das sie tun.}}
 
 ## Ungeduldig
 
