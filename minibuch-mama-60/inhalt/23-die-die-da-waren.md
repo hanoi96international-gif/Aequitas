@@ -17,11 +17,18 @@ einzige Möglichkeit, sie an diesem Tag trotzdem dabeizuhaben. Für
 Marion wird das vermutlich die Stelle sein, an der sie weinen muss —
 und mit ziemlicher Sicherheit die, für die sie am dankbarsten ist.
 
+GEKLÄRT: Willi ist 2019 gestorben, Rita 2023. Beide haben also den
+gesamten Weg mitbekommen — den Führerschein 2008, die Jahre bei
+Joey's Pizza, und dass alle fünf Kinder erwachsen geworden sind.
+Rita hat Marion noch bis kurz vor deren siebenundfünfzigstem
+Geburtstag begleitet.
+
+Rita ist erst vor drei Jahren gestorben. Das ist frisch. Es kann
+gut sein, dass dieser Sechzigste der erste runde Geburtstag ohne
+ihre Mutter ist, an dem ihr das richtig auffällt — ein Grund mehr,
+dass dieses Kapitel im Buch steht.
+
 WAS ICH NOCH BRAUCHE:
-  - Wann sind Rita und Willi gestorben? Die Jahreszahlen ändern
-    einiges: Haben sie noch erlebt, dass ihr groß wurdet? Haben sie
-    Herbie noch gesehen? Waren sie noch da, als Marion wieder
-    arbeiten ging?
   - Lebt Anette noch? Und Monika?
   - Was genau haben Rita und Willi getan? Kinder gehütet, gekocht,
     Geld gegeben, Wäsche, einfach da gewesen?
@@ -70,9 +77,13 @@ Wir haben sie als Oma und Opa erlebt und deshalb jahrelang nicht verstanden, was
 
 ## Sie sind nicht mehr da
 
-Das ist der Absatz, den ich lieber nicht geschrieben hätte.
+Willi ist 2019 gestorben, Rita 2023.
 
-Rita und Willi erleben diesen Geburtstag nicht mehr. Sie sitzen nicht mit am Tisch, sie werden dieses Buch nicht aufschlagen, und sie werden nicht mitbekommen, dass ihre jüngste Tochter sechzig geworden ist.
+Eines haben die beiden noch erlebt, und das ist mehr wert, als es im ersten Moment klingt: Sie haben gesehen, dass aus den fünf Kindern, für die sie damals eingesprungen sind, fünf Erwachsene geworden sind. Als Rita starb, war Julia — das Kind, das im Mai 2001 drei Jahre alt war — fünfundzwanzig.
+
+Sie haben also miterlebt, wie die Sache ausgegangen ist. Sie wussten am Ende, dass es gut gegangen ist.
+
+Diesen Geburtstag erleben sie nicht mehr. Sie sitzen nicht mit am Tisch, sie werden dieses Buch nicht aufschlagen, und sie bekommen nicht mit, dass ihre Jüngste sechzig geworden ist.
 
 Deshalb steht es hier, schwarz auf weiß, damit es einmal irgendwo aufgeschrieben ist: Ohne die beiden wäre das alles anders ausgegangen. Nicht "schwieriger". Anders.
 
