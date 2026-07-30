@@ -78,15 +78,19 @@ Er war da. Bei den Spielen, beim Training, bei allem. Er hat mich begleitet und 
 
 Es gibt einen Tag, den ich behalten habe.
 
-Ein Turnier in Lamspringe, Finale gegen Eintracht Braunschweig. Und es war mein Geburtstag.
+Ein Turnier in Lamspringe, 1998 oder 1999. Finale gegen Eintracht Braunschweig. Und es war mein Geburtstag — ich wurde sieben oder acht.
 
 Ich habe an dem Tag gehalten wie selten. Wir haben das Finale gewonnen.
 
-Und mein Vater stand daneben.
+Und ihr wart alle da. Du, mein Vater, und meine vier Geschwister. Julia war noch ganz klein.
 
-Man bekommt als Kind nicht viele Tage geschenkt, an denen alles gleichzeitig zusammenfällt: der eigene Geburtstag, ein Finale, ein großer Gegner, ein Sieg — und der eigene Vater am Spielfeldrand, der genau das mitbekommt. Ich habe einen davon. Und ich habe ihn immer noch.
+Sieben Leute auf einem Sportplatz in einem Dorf im Landkreis, wegen eines Turniers der F-Jugend.
 
-{{Welches Jahr war das? Und weißt du noch, was er danach gesagt hat?}}
+Man bekommt als Kind nicht viele Tage geschenkt, an denen alles gleichzeitig zusammenfällt: der eigene Geburtstag, ein Finale, ein großer Gegner, ein Sieg — und die ganze Familie am Spielfeldrand, die genau das mitbekommt.
+
+Wenn ich dieses Buch nach einem Tag durchsuche, an dem wir alle sieben zusammen an einem Ort waren und es einfach nur gut war, dann komme ich hier heraus. Ich habe einen davon. Und ich habe ihn immer noch.
+
+{{Weißt du noch, was er danach gesagt hat? Oder was sie gesagt hat?}}
 
 ## Was von ihm übrig ist
 
