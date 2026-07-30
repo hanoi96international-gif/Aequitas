@@ -44,8 +44,10 @@ Sechzig Dinge, die ich weiß, weil es dich gibt.
 16. Bei dir ist die Tür in beide Richtungen offen. Wer auszieht, kann wiederkommen.
 17. Du bist mit vierzehn Jahren Elternzeit in einem Lebenslauf einer der wenigen Menschen, bei denen der längste Posten der unbezahlte ist.
 18. Du hast morgens um halb fünf in einer Backstube gestanden, bevor du zwanzig warst.
-19. {{…}}
-20. {{…}}
+19. Du regst dich beim Fußball auf, als würde es an dir liegen. Es ist großartig.
+20. Du brüllst die Namen deiner Katzen, wenn sie auf den Tisch wollen. Sie tun es trotzdem.
+21. {{…}}
+22. {{…}}
 
 <!--
 Ab hier weiter mit 21., 22., 23. … Wenn du deine Geschwister

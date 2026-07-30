@@ -50,7 +50,11 @@ Ich habe fünfundzwanzig Jahre gebraucht, um zu verstehen, was du damals eigentl
 
 Und es tut mir im Nachhinein leid. Dass wir über bestimmte Dinge nie geredet haben. Dass ich oft nicht wusste, wie es dir eigentlich geht. Und dass mir nicht klar war, wie stark du sein musstest, um gleichzeitig allen gerecht zu werden.
 
-{{Und wie ist es heute zwischen euch? Besser geworden, gleich geblieben, oder wünschst du dir mehr? Zwei, drei Sätze reichen.}}
+Später ist es dann noch einmal auseinandergegangen, ganz ohne Absicht. Ich bin nach Braunschweig gezogen, danach kam das Studium und die WG-Zeit in Wolfenbüttel. Irgendwann hatte ich das Gefühl, dass wir uns kurzzeitig aus den Augen verloren haben. Nicht im Streit, nicht mit einem Knall. Einfach, weil zwei Leben in verschiedene Richtungen laufen und niemand es aufhält.
+
+Heute ist es wieder deutlich besser. Wir haben wieder richtig Kontakt, und ich bin froh darüber.
+
+Ehrlich gesagt ist das einer der Gründe, warum dieses Buch überhaupt existiert. So etwas schreibt man nicht über jemanden, mit dem man fertig ist.
 
 Ich schreibe das nicht auf, damit wir es jetzt aufarbeiten. Ich schreibe es auf, weil es fünfundzwanzig Jahre lang niemand ausgesprochen hat, und weil ich nicht will, dass es noch einmal fünfundzwanzig werden.
 

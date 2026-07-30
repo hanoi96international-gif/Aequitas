@@ -57,7 +57,11 @@ Dann kam Findus. Und dann kam Luna.
 
 Die beiden werden von dir versorgt wie Kinder. Nicht wie Haustiere — wie Kinder. Wer dich schon mal mit den beiden reden gehört hat, weiß, was gemeint ist.
 
-{{Frag sie, ob Findus und Luna ihre Namen schon mitgebracht haben oder ob sie ihnen neue gegeben hat — Daniel weiß es nicht mehr. Falls sie umbenannt hat: Warum diese Namen? Und falls dir eine Szene mit den beiden einfällt, hier hin. Dazu ein Foto.}}
+Es gibt allerdings eine Regel in deiner Wohnung, und die ist nicht verhandelbar: **Auf den Tisch wird nicht gesprungen.**
+
+Wenn Findus oder Luna es trotzdem versuchen, hört man das. Du brüllst ihre Namen mit einer Energie, gegen die jede Schiedsrichterentscheidung harmlos wirkt. Die Katzen sind, so weit ich das beurteilen kann, bis heute nicht beeindruckt.
+
+{{Frag sie, ob Findus und Luna ihre Namen schon mitgebracht haben oder ob sie ihnen neue gegeben hat — du wusstest es nicht mehr. Und ein Foto von den beiden gehört unbedingt hierhin.}}
 
 ## Sonntag ist Bingo
 
@@ -108,6 +112,14 @@ Kennengelernt habt ihr euch über den Fußball, wie fast alles in diesen Jahren.
 Später habt ihr in Ochtersum zusammen trainiert. Und ihr seid füreinander da, in beide Richtungen, ohne dass darüber viel geredet werden müsste.
 
 {{Eine konkrete Sache, an der man dieses Verhältnis erkennt. Nicht "die beiden sind gute Freunde" — sondern etwas, das sie tun.}}
+
+## Und dann regst du dich auf
+
+Es gibt eine Sache, die ich an dir wirklich gern sehe, und die hat mit Fußball zu tun.
+
+Nicht das Zuschauen. Das Aufregen.
+
+Wenn ein Spiel läuft und etwas nicht so geht, wie es gehen sollte, dann ist das bei dir keine stille Angelegenheit. Ich weiß nicht, ob dir klar ist, wie unterhaltsam das für den Rest des Raums ist. Es gehört zu den Momenten, in denen du am wenigsten Mutter bist und am meisten einfach du.
 
 ## Ungeduldig
 
