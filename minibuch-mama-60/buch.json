@@ -39,6 +39,15 @@
     { "name": "Julia",     "geboren": "1998-03-07" }
   ],
 
+  "heute": {
+    "katzen_frueher": ["Donald", "Fiby"],
+    "katzen_heute": ["Findus", "Luna"],
+    "sonntags": "Bingo, jede Woche, bisher ohne nennenswerten Gewinn",
+    "fussball": "Hannover 96; war selbst Jugendtrainerin beim VfV Hildesheim",
+    "vereinsname": "seit der Fusion 2003 offiziell VfV Borussia 06 Hildesheim, umgangssprachlich VfV",
+    "enkelkinder": "noch keine; Daniel und Christina verheiratet, Steffanie und Julia in festen Haenden"
+  },
+
   "recherchiert_1966": {
     "wochentag": "Sonntag",
     "nummer_eins": "Frank Sinatra — Strangers in the Night (8 Wochen ab 6. August)",

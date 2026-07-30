@@ -26,6 +26,14 @@ WAS REIN KANN:
 VORSICHT: Nichts versprechen, was du nicht einlöst. So ein Satz
 steht dann gedruckt in einem Buch, das sie zwanzig Jahre lang
 aufhebt.
+
+UND EIN THEMA, DAS HIER NICHT AUFTAUCHEN SOLLTE: Enkelkinder.
+Es gibt noch keine, und vier von euch fünf sind verheiratet oder
+in festen Händen — damit ist das ein Thema, bei dem sie ohnehin
+wartet. Ein "ich wünsche dir Enkelkinder" in einem gedruckten Buch
+wird schnell zu einem Satz, der Druck macht: auf sie, auf euch,
+auf eure Partner. Lass es weg. Wenn es so weit ist, freut sie sich
+auch ohne gedruckte Vorbestellung.
 -->
 
 {{Der Blick nach vorn. Was du ihr wünschst — konkret, nicht allgemein.}}
