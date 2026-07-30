@@ -82,7 +82,13 @@ Der Schulweg war kurz. Zehn Minuten, höchstens.
 
 Bis etwa 2005. Das ist die Wohnung, in der aus einer Familie mit zwei Erwachsenen eine mit einer wurde.
 
-{{Woran du dich aus dieser Wohnung erinnerst. Alltägliches reicht — gerade hier ist das Alltägliche das Stärkste.}}
+Sie war eine Notlösung. Ihr seid dort hingezogen, weil es nach der Trennung sein musste, nicht weil irgendjemand es wollte.
+
+Und ich kann dieser Wohnung bis heute nichts Gutes abgewinnen. Mir fällt kein einziges schönes Detail dazu ein, und ich habe es beim Schreiben ehrlich versucht.
+
+Es gibt Wohnungen, in denen man wohnt. Und es gibt welche, in denen man wartet, dass es vorbeigeht. Das war eine von der zweiten Sorte.
+
+Was in diesen Jahren wirklich passiert ist, steht ein paar Seiten weiter. Hier reicht das.
 
 ### Moltkestraße
 
