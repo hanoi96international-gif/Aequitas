@@ -135,9 +135,13 @@ Deine Eltern waren da.
 
 Wir haben sie als Oma und Opa erlebt und deshalb jahrelang nicht verstanden, was sie eigentlich taten. Für uns waren das die Großeltern — das ist die Rolle, in der Kinder ihre Großeltern sehen, und mehr sehen sie nicht. Für dich waren das die zwei Menschen, die dafür sorgten, dass es überhaupt weiterging.
 
-Rita hat in der Küche eines Altersheims gearbeitet. Sie hat also beruflich für viele Menschen gekocht und an Weihnachten dann noch einmal für die ganze Familie.
+Rita hat zuerst bei Horten in Hildesheim gearbeitet, dem Kaufhaus, aus dem später Kaufhof wurde. Danach in der Küche eines Altersheims.
+
+Das heißt: Sie hat beruflich für sehr viele Menschen gekocht — und am ersten Weihnachtstag dann noch einmal für die ganze Familie. Von Leuten, die den ganzen Tag am Herd stehen, würde man das eigentlich nicht erwarten.
 
 Willi war beim Bundesgrenzschutz und später bei der Wurst-Kate in Hildesheim, einem Fleisch- und Wurstwarengroßhandel in der Schmiedestraße. Den Betrieb gibt es heute nicht mehr.
+
+Zwei Menschen, zwei ganz normale Arbeitsleben. Nichts davon steht in einem Nachruf, und nichts davon wäre je erwähnenswert gewesen — bis auf das, was daraus wurde, als du sie gebraucht hast.
 
 Und dann haben die beiden das getan, was sich am schwersten erzählen lässt, weil es so unspektakulär klingt: Sie haben Geld gegeben.
 
