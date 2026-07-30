@@ -37,7 +37,27 @@ TIPP: Frag deine Geschwister. Steffanie erinnert sich garantiert
 an Dinge, die du komplett vergessen hast — und umgekehrt.
 -->
 
-{{Der Geruch, das Geräusch oder das Bild, bei dem du sofort zu Hause bist.}}
+Du hast lange geraucht. Deshalb ist der Geruch, den ich mit unseren Wohnungen verbinde, auch der von Zigaretten.
+
+Das ist kein Vorwurf. In den Neunzigern und Zweitausendern roch es in den meisten Wohnungen dieses Landes so — das war nicht der Geruch von Rauchen, das war einfach der Geruch von Zuhause. Und ich stelle bis heute fest, dass er mich nicht stört, sondern etwas mit mir macht, das sich schwer erklären lässt.
+
+Aufgehört hast du vor über zehn Jahren. Nach Jahrzehnten, einfach so.
+
+Das steht hier nicht als Gesundheitshinweis. Es steht hier, weil Menschen in dem Alter selten noch etwas ablegen, das sie ihr halbes Leben begleitet hat. Die meisten sagen sich, dass sich das jetzt auch nicht mehr lohnt.
+
+Du hast es trotzdem gemacht.
+
+<!--
+ZU PRÜFEN:
+  - Ich habe deine Antwort so gelesen, dass Zigarettenrauch der
+    Geruch ist, den du mit zu Hause verbindest. Falls du eigentlich
+    etwas ganz anderes im Kopf hattest — Essen, Waschmittel, Kaffee,
+    ein bestimmtes Zimmer —, sag es, dann kommt das hier davor.
+  - Das genaue Datum wolltest du erfragen. Falls sie es auf den Tag
+    weiß, gehört das rein: Menschen, die aufhören, wissen den Tag
+    fast immer noch.
+-->
+
 
 ## Das Mittagessen
 
