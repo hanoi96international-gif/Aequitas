@@ -19,9 +19,8 @@ EINLADUNGSTEXT.md. Kurzfassung:
   - Anette, Wolfgang, Sanja
   - Monika, Manuel, Philipp
   - Steffanie, Marcus, Christina, Julia
-  - Michael
-  - Pamela und Jörg
-  - die Bingo-Runde
+  - Brigitte und Michael
+  - Pamela und Jörg, die Heimanns
   - Kolleginnen von Joey's, Helios, Marktcafé
   - Horst, Peter Schmolke
 

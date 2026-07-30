@@ -66,9 +66,11 @@ Wenn Findus oder Luna es trotzdem versuchen, hört man das. Du brüllst ihre Nam
 
 ## Sonntag ist Bingo
 
-Jeden Sonntag Bingo. Ohne Ausnahme.
+Die Sendung läuft sonntags, und du spielst mit. Über die Lotterie, Woche für Woche.
 
-Gewonnen hast du dabei, ehrlich gesagt, noch nie richtig. Seit Jahren nicht. Und du gehst trotzdem jeden Sonntag wieder hin, was entweder von großem Optimismus zeugt oder von einem außergewöhnlich schlechten Verhältnis zur Wahrscheinlichkeitsrechnung.
+Gewonnen hast du dabei, ehrlich gesagt, noch nie richtig. Seit Jahren nicht. Du spielst trotzdem weiter, was entweder von bemerkenswertem Optimismus zeugt oder von einem außergewöhnlich entspannten Verhältnis zur Wahrscheinlichkeitsrechnung.
+
+Und wenn sich die Gelegenheit ergibt, spielst du es auch in Gesellschaft. Das ist überhaupt eine Sache, die man über dich wissen muss: Spiele sind bei dir kein Zeitvertreib, sondern ein Grund, Leute zusammenzuholen.
 
 
 ## Neunzig Minuten
@@ -100,6 +102,22 @@ Und dann kommt der Teil, der die Geschichte erst rund macht. Im selben Jahr habe
 Das war Donald. Und geholt haben wir ihn in Moritzberg — dem Stadtteil, in dem du heute wohnst.
 
 Ein Pokal und eine Katze, im selben Jahr, aus derselben Begegnung. Man kann sich so etwas nicht ausdenken.
+
+## Brigitte
+
+Und dann ist da Brigitte.
+
+Ihr verbringt sehr viel Zeit miteinander und unternehmt viel zusammen. In einem Buch über sechzig Jahre klingt so ein Satz klein — er ist es nicht. Nach allem, was in Teil Zwei steht, ist eine Freundin, mit der man einfach Zeit verbringt, ohne dass es einen Anlass braucht, ziemlich genau das, was dir jahrzehntelang gefehlt hat.
+
+{{Seit wann kennt ihr euch? Und woran erkennt man, dass das genau diese Sorte Freundschaft ist? Eine Sache, die ihr immer macht, reicht.}}
+
+## Volleyball
+
+Neben Hannover 96 gibt es noch einen Verein, und den kennen die wenigsten, die dich nur flüchtig kennen: Du bist ein großer Fan der Helios Grizzlys Giesen, der Volleyball-Bundesligamannschaft in Hildesheim.
+
+Da gehst du mit Brigitte hin.
+
+Nebenbei bemerkt, weil es sonst niemandem auffällt: Du hast sieben Jahre lang in der Cafeteria des Helios Klinikums gearbeitet — und drückst dem Verein die Daumen, den derselbe Name sponsert. Das ist Zufall, aber ein ziemlich passender.
 
 ## Michael
 

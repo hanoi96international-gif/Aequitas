@@ -23,11 +23,12 @@ und zwar meistens den, der es am ehesten merkt.
 
 **Ihre Leute**
 
-- [ ] Michael — ihr bester Freund seit fünfundzwanzig Jahren. Wenn du
-      nur einen Menschen außerhalb der Familie fragst, dann ihn.
+- [ ] **Brigitte** — ihre engste Freundin. Sie verbringen sehr viel Zeit
+      miteinander und gehen zusammen zum Volleyball. Wenn du außerhalb der
+      Familie nur zwei Menschen fragst, dann Brigitte und Michael.
+- [ ] **Michael** — ihr bester Freund seit fünfundzwanzig Jahren.
 - [ ] Pamela und Jörg — die Nachbarn aus der Moltkestraße
-- [ ] Ihre Bingo-Runde. Jeden Sonntag seit Jahren dieselben Leute —
-      die haben garantiert eine Geschichte, die in der Familie keiner kennt.
+- [ ] Die Heimanns — die Nachbarn aus der Moltkestraße
 - [ ] Kolleginnen von Joey's, vom Helios, aus dem Marktcafé
 - [ ] Horst, dein Patenonkel, falls es noch Kontakt gibt
 - [ ] Peter Schmolke
