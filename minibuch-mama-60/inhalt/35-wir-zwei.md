@@ -52,7 +52,7 @@ Und es tut mir im Nachhinein leid. Dass wir über bestimmte Dinge nie geredet ha
 
 Später ist es dann noch einmal auseinandergegangen, ganz ohne Absicht. Ich bin nach Braunschweig gezogen, danach kam das Studium und die WG-Zeit in Wolfenbüttel. Irgendwann hatte ich das Gefühl, dass wir uns kurzzeitig aus den Augen verloren haben. Nicht im Streit, nicht mit einem Knall. Einfach, weil zwei Leben in verschiedene Richtungen laufen und niemand es aufhält.
 
-Heute ist es wieder deutlich besser. Wir haben wieder richtig Kontakt, und ich bin froh darüber.
+Heute ist es deutlich besser. Wir verlieren uns nicht mehr aus den Augen, und der Kontakt bleibt konstant — keine Lücken mehr von Wochen oder Monaten, in denen man sich vornimmt, mal anzurufen, und es dann doch nicht tut.
 
 Ehrlich gesagt ist das einer der Gründe, warum dieses Buch überhaupt existiert. So etwas schreibt man nicht über jemanden, mit dem man fertig ist.
 

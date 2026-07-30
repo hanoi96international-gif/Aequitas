@@ -72,7 +72,9 @@ Im September 2005 bist du zurück. Joey's Pizzaservice, zehn Jahre und vier Mona
 
 Danach Helios Klinikum, Cafeteria, noch mal sieben Jahre.
 
-{{Wer war eigentlich bei euch, wenn sie arbeiten war?}}
+Und eine Sache daran fällt erst auf, wenn man genauer hinsieht: Du hast gearbeitet, während wir in der Schule und im Kindergarten waren. Nicht abends, nicht am Wochenende, nicht dann, wenn die Schichten besser bezahlt gewesen wären.
+
+Du hast deine Arbeitszeit nicht danach ausgesucht, was für dich am besten war. Du hast sie in das Loch gelegt, das wir übrig gelassen haben.
 
 ## Die Von-Emmich-Straße
 

@@ -94,7 +94,9 @@ Wir haben sie als Oma und Opa erlebt und deshalb jahrelang nicht verstanden, was
 
 {{Was Rita und Willi konkret getan haben — Kinder gehütet, gekocht, eingesprungen, da gewesen.}}
 
-{{Ein Detail zu Rita. Eine Angewohnheit, ein Satz, ein Sessel, ein Geruch.}}
+Von Rita ist mir vor allem eines geblieben: Am ersten Weihnachtstag sind wir zu ihnen gefahren, und sie hat für die gesamte Familie gekocht. Nicht für sieben Leute — für alle. Und es war jedes Mal sehr gut.
+
+{{Ein weiteres Detail zu Rita, wenn dir eins einfällt. Eine Angewohnheit, ein Satz, ein Sessel, ein Geruch.}}
 
 ## Sie sind nicht mehr da
 

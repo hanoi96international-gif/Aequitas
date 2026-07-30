@@ -53,9 +53,19 @@ Bei uns gab es eine Regel, und die galt ohne Ausnahme: **Jeder, der alt genug wa
 
 Bei fünf Kindern bedeutet das im Zweifel fünf Gedichte, hintereinander weg, während im Nebenzimmer die Geschenke liegen.
 
-Und die Geschenke wurden nicht etwa der Reihe nach ausgeteilt, sondern völlig durcheinander verteilt.
+Und drücken konnte sich keiner. Nicht ein einziger, in all den Jahren. Das ist, wenn man ehrlich ist, eine bemerkenswerte Durchsetzungsquote bei fünf Kindern.
 
-{{Wie das dann ablief. Wer konnte das Gedicht nie? Wer hat sich gedrückt? Und wer hat die Geschenke verteilt?}}
+Die Geschenke wurden danach nicht etwa der Reihe nach ausgeteilt, sondern völlig durcheinander verteilt.
+
+Beim Essen warst du dagegen flexibel — das war jedes Jahr anders. Raclette ist mir besonders im Gedächtnis geblieben.
+
+## Der erste Weihnachtstag
+
+Oma und Opa waren an Heiligabend öfter mit dabei. Und am ersten Weihnachtstag sind wir oft zu ihnen gefahren.
+
+Oma hat damals, als sie noch jünger war, für die gesamte Familie gekocht. Für alle. Und es war jedes Mal sehr, sehr gut.
+
+{{Optional, aber es gehört hierhin, wenn du es aushältst: ein Satz darüber, dass es diese ersten Weihnachtstage nicht mehr gibt. Wenn du das lieber nicht ansprichst, lass diesen Absatz einfach weg — sie denkt es beim Lesen ohnehin.}}
 
 ## Sonntags
 
