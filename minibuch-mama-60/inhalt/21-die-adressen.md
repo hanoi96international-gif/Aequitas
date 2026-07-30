@@ -20,9 +20,14 @@ WAS ICH ABGELEITET HABE — bitte gegenprüfen, ich kann falsch liegen:
   - Von-Emmich-Straße: dort ist Giesbert gestorben (10.05.2001)
   - Algermissen 2008: der erste Umzug raus aus Hildesheim
 
+GEPRÜFT: Die Hammersteinstraße liegt in Hildesheim (PLZ 31137,
+Stadtteil Moritzberg) und ist nach der Adelsfamilie von Hammerstein
+benannt, insbesondere nach Oberforster Carl Freiherr von
+Hammerstein-Equord (1782–1867). Falls die Adresse doch nicht in
+Hildesheim liegt, sag Bescheid — dann fällt der ganze Absatz.
+
 WAS NOCH FEHLT:
   - Ab wann Brauhausstraße, ab wann Dingworthstraße?
-  - Wo wohnt sie seit 2022?
   - Warum jeder Umzug? Das ist die eigentliche Geschichte.
   - Ein Satz pro Wohnung, woran DU dich erinnerst: Treppenhaus,
     Balkon, Zimmeraufteilung, Nachbarn, Geruch.
@@ -70,10 +75,16 @@ Bemerkenswert, wenn man weiß, wo sie angefangen hat: Ein Kind vom Hohen Weg, au
 
 Bis 2022. {{Zwölf Jahre? Die längste Zeit an einem Ort. Was hat sich in dieser Zeit verändert — bei ihr, bei euch?}}
 
-### {{Und heute}}
+### Hammersteinstraße
 
-{{Wo wohnt sie jetzt, seit 2022? Und ist sie da angekommen?}}
+Seit 2022. Moritzberg, eine ruhige Wohnstraße.
+
+Der Name geht auf eine alte Hildesheimer Familie zurück, genauer auf einen Oberforster: Carl Freiherr von Hammerstein-Equord, der sich im neunzehnten Jahrhundert um die Aufforstung und den Erhalt des Hildesheimer Waldes verdient gemacht hat.
+
+Angefangen hast du am Hohen Weg — mitten in der Stadt, mitten in der Fußgängerzone, die einen Tag nach deiner Geburt eine wurde. Sechsundfünfzig Jahre später wohnst du in einer stillen Straße, die nach einem Mann benannt ist, der Bäume gepflanzt hat.
+
+{{Bist du da angekommen?}}
 
 ~~~
 
-{{Ein Schlusssatz. Zum Beispiel: sieben Adressen, fünf Kinder, und in jeder einzelnen Wohnung hat es nach ihr gerochen.}}
+{{Ein Schlusssatz.}}

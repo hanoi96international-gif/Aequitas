@@ -78,7 +78,15 @@ Nicht, weil sie Zeit übrig hatte. Sondern weil ihre Kinder spielen wollten.
 
 Ganz aus dem Nichts kam das allerdings nicht. Du hattest selbst gespielt, als Mädchen, in einer Zeit, in der das noch längst nicht vorgesehen war — das steht weiter vorn in diesem Buch.
 
-{{In welchen Jahren war das? Wie lange ging es? Und — das ist die eigentliche Frage — wie war es, die eigene Mutter als Trainerin zu haben? Hat sie dich härter rangenommen als die anderen? Habt ihr euch auf dem Platz gestritten?}}
+Beim VfV ging das bis ungefähr 2002 oder 2003. Danach beim VfR Ochtersum, bis 2005. Zusammen mit Michael.
+
+{{Wie war es, die eigene Mutter als Trainerin zu haben? Hat sie dich härter rangenommen als die anderen? Habt ihr euch auf dem Platz gestritten?}}
+
+## Michael
+
+Michael ist ihr bester Freund, seit sehr langer Zeit. Die beiden haben in Ochtersum zusammen trainiert, und sie sind füreinander da — in beide Richtungen, seit Jahren, ohne dass darüber viel geredet werden müsste.
+
+{{Wie lange kennen die beiden sich schon? Woher? Und eine Sache, an der man dieses Verhältnis erkennt.}}
 
 ## Ungeduldig
 

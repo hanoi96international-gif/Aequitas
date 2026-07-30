@@ -86,6 +86,10 @@ Und du bist aufgestanden.
 
 Fünfzehn Jahre lang, an jedem einzelnen dieser Morgen, bist du aufgestanden. Das ist der ganze Trick, und es gibt keinen schwereren.
 
+Und weil das offenbar noch nicht genug war: In genau diesen Jahren hast du nebenbei eine Jugendfußballmannschaft trainiert. Erst beim VfV, dann in Ochtersum, bis 2005. Während zu Hause das Geld nicht reichte, standest du am Wochenende auf einem Sportplatz und hast fremden und eigenen Kindern beigebracht, wie man einen Ball annimmt.
+
+Das steht hier, weil es niemand glaubt, dem man es erzählt.
+
 ## Was ich mitbekommen habe
 
 Ich war der Älteste, und ab einem bestimmten Alter versteht man, was läuft.
