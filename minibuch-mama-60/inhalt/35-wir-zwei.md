@@ -54,6 +54,12 @@ Später ist es dann noch einmal auseinandergegangen, ganz ohne Absicht. Ich bin 
 
 Heute ist es deutlich besser. Wir verlieren uns nicht mehr aus den Augen, und der Kontakt bleibt konstant — keine Lücken mehr von Wochen oder Monaten, in denen man sich vornimmt, mal anzurufen, und es dann doch nicht tut.
 
+Wir telefonieren oft. Und was mir dabei mehr bedeutet als die Häufigkeit: Wir telefonieren *lang*. Das sind keine Erledigungsanrufe.
+
+Ein Jahr lang habe ich wieder in Hildesheim gewohnt, da haben wir uns oft gesehen. Inzwischen bin ich zurück in Wolfsburg, und wir sehen uns seltener, als ich es gern hätte.
+
+Aber das ist etwas völlig anderes als damals. Damals war Abstand ein Zustand. Heute ist er nur Entfernung.
+
 Ehrlich gesagt ist das einer der Gründe, warum dieses Buch überhaupt existiert. So etwas schreibt man nicht über jemanden, mit dem man fertig ist.
 
 Ich schreibe das nicht auf, damit wir es jetzt aufarbeiten. Ich schreibe es auf, weil es fünfundzwanzig Jahre lang niemand ausgesprochen hat, und weil ich nicht will, dass es noch einmal fünfundzwanzig werden.

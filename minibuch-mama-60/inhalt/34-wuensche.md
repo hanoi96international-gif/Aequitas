@@ -72,6 +72,33 @@ Julia ist achtundzwanzig. Seit Juni 1991 warst du ununterbrochen für jemanden z
 
 Jetzt schon.
 
-{{Was du ihr konkret wünschst. Nicht "Gesundheit und alles Gute" — etwas, das man sich vorstellen kann.}}
+Was ich dir wünsche, ist eigentlich ganz einfach.
 
-{{Und, wenn du magst: etwas, das ihr zusammen vorhabt. Nur, wenn du es wirklich machst — der Satz steht dann gedruckt in einem Buch, das sie zwanzig Jahre aufhebt.}}
+Dass du wieder auf die Beine kommst. Ganz wörtlich, erst mal das.
+
+Und dass du danach anfängst, dein Leben zu genießen. Nicht irgendwann, wenn alles erledigt ist — es ist nie alles erledigt. Sondern dann.
+
+Ich hoffe außerdem, und das meine ich völlig ernst, auch wenn es albern klingt: dass du irgendwie durch Zufall zu Geld kommst. Nicht zu viel. Nur genug, um dir einmal die Sachen zu kaufen, die du dir jahrzehntelang angesehen und dann doch nicht geleistet hast.
+
+In diesem Buch stehen ungefähr fünfzehn Stellen, an denen du dir etwas nicht leisten konntest. Fünfzehn sind genug für ein Leben.
+
+Und dann natürlich das, was man sich zuletzt wünscht, weil es das Wichtigste ist: Gesundheit. Ein langes Leben. Und zum ersten Mal seit dreißig Jahren eines ohne Dauerstress.
+
+Im Grunde also einfach nur das Beste.
+
+Ich weiß, dass man das so dahersagt und dass es meistens nichts bedeutet. Bei dir meine ich es wörtlich.
+
+<!--
+NICHT AUFGENOMMEN — deine Entscheidung:
+
+Du hast auch Enkelkinder in naher Zukunft gewünscht. Das steht hier
+bewusst nicht, aus dem Grund, den ich dir vorher genannt hatte: Vier
+von euch fünf sind vergeben, einer nicht. Gedruckt in einem Buch,
+das die ganze Familie am Geburtstag durchblättert, wird aus einem
+Wunsch schnell eine Erwartung — an sie, an euch und an eure Partner.
+
+Wenn du es trotzdem drin haben willst, sag Bescheid, dann steht es
+drin. Es ist dein Buch, und mein Einwand ist nur ein Einwand.
+-->
+
+{{Optional: etwas, das ihr zusammen vorhabt. Nur reinschreiben, wenn du es wirklich machst — der Satz steht dann gedruckt in einem Buch, das sie zwanzig Jahre aufhebt.}}
