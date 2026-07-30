@@ -1,4 +1,4 @@
-# Anette, Rita und Willi
+# Anette und Wolfgang, Rita und Willi
 
 <!--
 SCHREIBHILFE — Ziel: 2 Seiten.
@@ -14,9 +14,10 @@ ZU PRÜFEN, BEVOR GEDRUCKT WIRD:
     stimmt — ich habe deine Formulierung übernommen.
   - Sanjas genaues Geburtsdatum (zwei Tage nach dem 27.06.1991
     wäre der 29. Juni).
-  - Kommt Wolfgang im Buch vor? Momentan steht er nur in dieser
-    einen Zeile. Falls er in den Jahren nach 2001 auch eingesprungen
-    ist, gehört er ausführlicher hinein.
+  - Wolfgang hat einen eigenen Abschnitt bekommen, weil er laut
+    Daniel genauso wichtig war wie Anette. Noch offen: eine
+    konkrete Szene. Ein bestimmter Umzug, ein bestimmtes Auto,
+    eine Reparatur — irgendetwas, woran man ihn erkennt.
 
 Warum dieses Kapitel jetzt wichtiger ist als vorher:
 An ihrem sechzigsten Geburtstag sitzen die zwei Menschen, die sie
@@ -77,6 +78,16 @@ Angefangen hat das früher, als die meisten wissen. Im Juni 1991 lagt ihr beide 
 Man kann sich schwer einen besseren Anfang für die nächsten dreißig Jahre ausdenken.
 
 {{Was Anette in den Jahren danach konkret gemacht hat. Und was das für ein Verhältnis ist, zwischen den beiden.}}
+
+## Wolfgang
+
+Und Wolfgang gehört genauso hierher, nicht als Anhängsel.
+
+Er ist nicht der leibliche Vater von Sascha und Sanja. Er ist trotzdem an Anettes Seite, solange ich denken kann, und die beiden sind heute verheiratet.
+
+Was er für uns gemacht hat, ist genau das, was in einem Haushalt ohne Mann liegen bleibt. Handwerkliches. Umzüge — und bei acht Adressen ist das kein Gefallen, das ist ein wiederkehrender Großeinsatz. Autokauf. Also all die Dinge, bei denen man jemanden braucht, der sich auskennt, ein Werkzeug hat und kommt, wenn man anruft.
+
+Über solche Sachen erzählt später niemand Geschichten. Es sind trotzdem die, ohne die es nicht geht.
 
 ## Sascha
 
