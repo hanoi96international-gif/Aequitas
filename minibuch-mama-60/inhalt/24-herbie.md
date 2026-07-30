@@ -46,10 +46,16 @@ Das muss man einmal sacken lassen. Herbie ist eigentlich ein VW Käfer, der ber�
 
 Ein Mensch, der sein erstes eigenes Auto tauft, hat nicht einfach ein Fahrzeug angeschafft. Der hat etwas zurückbekommen.
 
-{{Die Farbe, das Baujahr, der Zustand — und wer auf den Namen gekommen ist.}}
+Herbie war dunkelblau.
+
+{{Welches Baujahr, in welchem Zustand — und wer eigentlich auf den Namen gekommen ist.}}
 
 {{Wohin sie zum ersten Mal ganz allein gefahren ist.}}
 
 ~~~
 
-{{Was aus Herbie geworden ist.}}
+Irgendwann ging er kaputt.
+
+Das ist das Ende, das die meisten ersten Autos nehmen. Sie werden nicht verkauft und nicht in Ehren abgegeben, sie hören einfach irgendwann auf. Bei einem Auto, das nur ein Kennzeichen hat, ist das eine Reparaturrechnung.
+
+Bei einem, das einen Namen hat, ist es etwas anderes.
