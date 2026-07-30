@@ -26,8 +26,15 @@ benannt, insbesondere nach Oberforster Carl Freiherr von
 Hammerstein-Equord (1782–1867). Falls die Adresse doch nicht in
 Hildesheim liegt, sag Bescheid — dann fällt der ganze Absatz.
 
+BEWUSST NICHT AUFGENOMMEN: Daniel hat erwähnt, dass Steffanie in
+diesen Jahren "zwangsweise" umgezogen ist. Das steht hier nicht,
+weil die Umstände nicht geklärt sind und weil es -- wie alles
+Persönliche zu Steffanie -- ihre Sache ist und nicht die des Buchs.
+Im Text steht nur, dass sie zu dem Zeitpunkt nicht mehr zu Hause
+wohnte. Das ist wahr und reicht.
+
 WAS NOCH FEHLT:
-  - Ab wann Brauhausstraße, ab wann Dingworthstraße?
+  - Wann genau ging Brauhausstraße in Dingworthstraße über?
   - Warum jeder Umzug? Das ist die eigentliche Geschichte.
   - Ein Satz pro Wohnung, woran DU dich erinnerst: Treppenhaus,
     Balkon, Zimmeraufteilung, Nachbarn, Geruch.
@@ -81,15 +88,29 @@ Der 30. November ist Christinas Geburtstag. Sie wurde an dem Tag zwölf.
 
 Ihr wart gerade erst hingezogen. Das große Haus, das erste eigene, war noch keine paar Monate alt.
 
-{{Wie habt ihr das damals aufgefangen — ausgerechnet an einem Kindergeburtstag?}}
+Das war schwer zu verdauen, für alle.
+
+Und dann ist etwas passiert, das du vermutlich selbst nie so benannt hast: Donald hat von da an umso mehr Liebe abbekommen. Die ganze Zuwendung, die für zwei gedacht war, ging auf einen über.
+
+Es ist nicht das einzige Mal in diesem Buch, dass du nach einem Verlust genau das gemacht hast.
 
 ### Brauhausstraße
 
-{{Von wann bis wann? Was war da?}}
+Ab 2010, direkt nach Algermissen. Zurück nach Hildesheim.
+
+{{Von wann bis wann genau? Und was war in diesen Jahren?}}
 
 ### Dingworthstraße
 
-Bis 2022. {{Zwölf Jahre? Die längste Zeit an einem Ort. Was hat sich in dieser Zeit verändert — bei ihr, bei euch?}}
+Bis 2022. Und hier passiert das, was in jeder Familie irgendwann passiert — man merkt es nur immer erst hinterher: Es wurden weniger.
+
+Ich war da schon ausgezogen. Steffanie auch. In die Dingworthstraße sind nur noch du, Marcus, Christina und Julia gezogen.
+
+Rechne das einmal gegen den Anfang: 1997 seid ihr aus der Bismarckstraße raus, weil die Wohnung für vier Kinder zu klein war und das fünfte noch nicht mal da war. Fünfundzwanzig Jahre später zieht ihr wieder um, und man braucht deutlich weniger Platz.
+
+Alle sind älter geworden. Das klingt banal, aber es ist genau das, was in diesen Jahren passiert ist — und es ist auch das, worauf man die ganze Zeit hinarbeitet, wenn man Kinder großzieht. Man macht sich selbst überflüssig, und wenn es klappt, ist das der Erfolg.
+
+{{Was hat sich sonst verändert, bei ihr und bei euch?}}
 
 ### Hammersteinstraße
 
@@ -99,7 +120,7 @@ Der Name geht auf eine alte Hildesheimer Familie zurück, genauer auf einen Ober
 
 Angefangen hast du am Hohen Weg — mitten in der Stadt, mitten in der Fußgängerzone, die einen Tag nach deiner Geburt eine wurde. Sechsundfünfzig Jahre später wohnst du in einer stillen Straße, die nach einem Mann benannt ist, der Bäume gepflanzt hat.
 
-{{Bist du da angekommen?}}
+{{Wohnt sie dort allein, oder ist noch jemand mitgezogen? Und: Ist sie da angekommen?}}
 
 ~~~
 
