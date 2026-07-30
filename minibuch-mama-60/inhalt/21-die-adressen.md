@@ -116,6 +116,8 @@ Bis 2022. Und hier passiert das, was in jeder Familie irgendwann passiert — ma
 
 Ich war da schon ausgezogen. Steffanie auch. In die Dingworthstraße sind nur noch du, Marcus, Christina und Julia gezogen.
 
+Wobei das mit dem Ausziehen ohnehin keine Einbahnstraße war. Marcus ist 2014 gegangen und um 2017 herum wieder eingezogen. Auch das gehört zu dir: Bei dir steht die Tür in beide Richtungen offen. Wer geht, kann gehen. Und wer wiederkommt, kommt wieder rein, ohne dass groß darüber geredet werden muss.
+
 Rechne das einmal gegen den Anfang: 1997 seid ihr aus der Bismarckstraße raus, weil die Wohnung für vier Kinder zu klein war und das fünfte noch nicht mal da war. Fünfundzwanzig Jahre später zieht ihr wieder um, und man braucht deutlich weniger Platz.
 
 Alle sind älter geworden. Das klingt banal, aber es ist genau das, was in diesen Jahren passiert ist — und es ist auch das, worauf man die ganze Zeit hinarbeitet, wenn man Kinder großzieht. Man macht sich selbst überflüssig, und wenn es klappt, ist das der Erfolg.
