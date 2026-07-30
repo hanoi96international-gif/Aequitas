@@ -127,8 +127,23 @@ später. Bei gutem Tageslicht mit dem Handy reicht völlig für den Druck.
 
 ---
 
-## Und wenn du Monika auch fragst
+## Monika, Manuel und Philipp
 
-Bei ihr lohnen vor allem Block 1 und 2 — die Kindheit und die Eltern. Als
-Älteste erinnert sie Dinge, die Anette schon nicht mehr mitbekommen hat.
-Und die Frage aus Block 9 stellst du ihr genauso.
+Die drei kommen im Buch bisher gar nicht vor, und das muss sich ändern —
+sonst steht am Ende ein Buch da, in dem die eine Schwester zwei Seiten hat
+und die andere keine. Das fällt auf, und zwar zuerst den Betroffenen.
+
+**Frag Monika selbst**, nicht Anette über sie. Bei ihr lohnen vor allem
+Block 1 und 2 — Kindheit und Eltern. Als Älteste erinnert sie Dinge, die
+Anette gar nicht mehr mitbekommen hat. Dazu:
+
+- Wie ist euer Verhältnis heute, deins und Marions?
+- Was hast du in den Jahren nach 2001 mitbekommen?
+- Was ist Marion für eine Schwester?
+- Und Manuel — wie lange seid ihr schon zusammen? Was verbindet ihn
+  mit Marion?
+- Wie ist das Verhältnis zwischen Marion und Philipp?
+
+Und die Frage aus Block 9 stellst du ihr genauso — sie gehört mit einem
+eigenen Beitrag in den letzten Teil des Buchs. Manuel und Philipp
+übrigens auch, wenn sie wollen.
