@@ -39,12 +39,19 @@ er so nie erlebt hat. Das ist keine Formalie. Das ist der
 Unterschied zwischen einem Buch, das die Familie zusammenbringt,
 und einem, das an dem Tag einen Streit auslöst.
 
+GEKLÄRT — und wichtig, damit hier nichts Falsches steht:
+Marion hat NICHT seine Mannschaft übernommen. Sie hatte eine eigene,
+in der F-Jugend. Das sind zwei getrennte Sachen, und die dürfen im
+Buch nicht zu einer verschmolzen werden, so schön das klingen würde.
+
+Die Szene in Lamspringe ist belegt: Turnier, Finale gegen Eintracht
+Braunschweig, an Daniels Geburtstag (27. Juni), er stand im Tor und
+sie haben gewonnen. Das Jahr fehlt noch — es muss vor Mai 2001
+gewesen sein, Daniel war also zwischen sechs und neun.
+
 NOCH ZU KLÄREN:
-  - Hat Marion die Mannschaft übernommen, nachdem er nicht mehr da
-    war? Zeitlich würde es passen: Er war Betreuer, er starb im Mai
-    2001, sie trainierte bis 2005. Falls ja, gehört ein einziger
-    schlichter Satz dazu — nicht mehr, sonst wird es kitschig.
-  - In welchen Jahren war er Betreuer? Welche Mannschaft?
+  - Welches Jahr war Lamspringe?
+  - In welchen Jahren war er Betreuer, welche Mannschaft?
 -->
 
 Er hatte am 3. September Geburtstag. Einen Tag vor dir.
@@ -67,9 +74,19 @@ Er war Betreuer meiner Mannschaft. Wir waren erfolgreich, und ich stand im Tor.
 
 Er war da. Bei den Spielen, beim Training, bei allem. Er hat mich begleitet und versucht, mich besser zu machen. Für ein Kind, das im Tor steht, ist das keine Kleinigkeit — Torwart ist die einsamste Position auf dem Platz, und es macht einen Unterschied, ob draußen jemand steht, der zusieht.
 
-{{Eine konkrete Szene, wenn dir eine einfällt. Ein Spiel, ein Satz von ihm, eine Situation nach einem Gegentor.}}
+## Lamspringe
 
-{{Und falls sie danach die Mannschaft übernommen hat: hier ein einziger schlichter Satz dazu. Nicht mehr.}}
+Es gibt einen Tag, den ich behalten habe.
+
+Ein Turnier in Lamspringe, Finale gegen Eintracht Braunschweig. Und es war mein Geburtstag.
+
+Ich habe an dem Tag gehalten wie selten. Wir haben das Finale gewonnen.
+
+Und mein Vater stand daneben.
+
+Man bekommt als Kind nicht viele Tage geschenkt, an denen alles gleichzeitig zusammenfällt: der eigene Geburtstag, ein Finale, ein großer Gegner, ein Sieg — und der eigene Vater am Spielfeldrand, der genau das mitbekommt. Ich habe einen davon. Und ich habe ihn immer noch.
+
+{{Welches Jahr war das? Und weißt du noch, was er danach gesagt hat?}}
 
 ## Was von ihm übrig ist
 

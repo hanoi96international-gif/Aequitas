@@ -70,7 +70,7 @@ Du liebst Fußball, und du liebst Hannover 96. Das ist bei 96 keine Kleinigkeit 
 
 Und dann kommt das, was die meisten Leute nicht wissen: **Du warst selbst Jugendtrainerin beim VfV Hildesheim.**
 
-Und zwar nicht irgendwo. Du hast Steffis Mannschaft trainiert — und ich war eigentlich zu alt dafür und habe mich hineingeschmuggelt.
+Und zwar nicht irgendwo. Du hattest eine eigene Mannschaft in der F-Jugend, Steffis Jahrgang — und ich war eigentlich zu alt dafür und habe mich hineingeschmuggelt.
 
 Das muss man sich einmal von außen ansehen. Eine alleinerziehende Mutter von fünf Kindern, ohne Auto, alles zu Fuß oder mit dem Bus. Und die stellt sich zusätzlich Woche für Woche auf einen Fußballplatz und übernimmt eine Jugendmannschaft.
 
