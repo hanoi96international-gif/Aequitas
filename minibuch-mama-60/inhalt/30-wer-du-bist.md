@@ -70,11 +70,13 @@ Du liebst Fußball, und du liebst Hannover 96. Das ist bei 96 keine Kleinigkeit 
 
 Und dann kommt das, was die meisten Leute nicht wissen: **Du warst selbst Jugendtrainerin beim VfV Hildesheim.**
 
-Und zwar nicht irgendwo. Du hast uns trainiert — mich und Steffi.
+Und zwar nicht irgendwo. Du hast Steffis Mannschaft trainiert — und ich war eigentlich zu alt dafür und habe mich hineingeschmuggelt.
 
 Das muss man sich einmal von außen ansehen. Eine alleinerziehende Mutter von fünf Kindern, ohne Auto, alles zu Fuß oder mit dem Bus. Und die stellt sich zusätzlich Woche für Woche auf einen Fußballplatz und übernimmt eine Jugendmannschaft.
 
 Nicht, weil sie Zeit übrig hatte. Sondern weil ihre Kinder spielen wollten.
+
+Ganz aus dem Nichts kam das allerdings nicht. Du hattest selbst gespielt, als Mädchen, in einer Zeit, in der das noch längst nicht vorgesehen war — das steht weiter vorn in diesem Buch.
 
 {{In welchen Jahren war das? Wie lange ging es? Und — das ist die eigentliche Frage — wie war es, die eigene Mutter als Trainerin zu haben? Hat sie dich härter rangenommen als die anderen? Habt ihr euch auf dem Platz gestritten?}}
 
