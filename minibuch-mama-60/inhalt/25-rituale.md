@@ -101,6 +101,10 @@ Oma hat damals, als sie noch jünger war, für die gesamte Familie gekocht. Für
 
 ## Sonntags
 
-{{Was sonntags anders war als an anderen Tagen.}}
+Solange mein Vater noch lebte, war der Sonntag festgelegt, und zwar in dieser Reihenfolge: erst der Spaziergang, dann die Lindenstraße.
+
+Beides ohne Diskussion. Der Spaziergang wurde gemacht, auch wenn keiner Lust hatte. Und pünktlich zum Sonntagabend saßen wir vor dem Fernseher, wie halb Deutschland damals.
+
+Es ist bemerkenswert, wie wenig man dafür braucht, dass sich ein Tag wie ein Sonntag anfühlt. Einmal um den Block und eine Fernsehserie — mehr war es nicht. Und trotzdem weiß ich fünfundzwanzig Jahre später noch genau, wie sich das angefühlt hat.
 
 > {{Ein Satz, den sie in solchen Situationen immer gesagt hat.}}
