@@ -135,7 +135,9 @@ Deine Eltern waren da.
 
 Wir haben sie als Oma und Opa erlebt und deshalb jahrelang nicht verstanden, was sie eigentlich taten. Für uns waren das die Großeltern — das ist die Rolle, in der Kinder ihre Großeltern sehen, und mehr sehen sie nicht. Für dich waren das die zwei Menschen, die dafür sorgten, dass es überhaupt weiterging.
 
-Rita hat in der Küche eines Altersheims gearbeitet. Sie hat also beruflich für viele Menschen gekocht und an Weihnachten dann noch einmal für die ganze Familie. Willi war beim Bundesgrenzschutz und später {{… — was genau? Ich habe deine Angabe nicht entziffern können}}.
+Rita hat in der Küche eines Altersheims gearbeitet. Sie hat also beruflich für viele Menschen gekocht und an Weihnachten dann noch einmal für die ganze Familie.
+
+Willi war beim Bundesgrenzschutz und später bei der Wurst-Kate in Hildesheim, einem Fleisch- und Wurstwarengroßhandel in der Schmiedestraße. Den Betrieb gibt es heute nicht mehr.
 
 Und dann haben die beiden das getan, was sich am schwersten erzählen lässt, weil es so unspektakulär klingt: Sie haben Geld gegeben.
 
