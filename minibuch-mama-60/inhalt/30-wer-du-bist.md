@@ -54,7 +54,7 @@ Dann kam Findus. Und dann kam Luna.
 
 Die beiden werden von dir versorgt wie Kinder. Nicht wie Haustiere — wie Kinder. Wer dich schon mal mit den beiden reden gehört hat, weiß, was gemeint ist.
 
-{{Falls dir eine Szene mit Findus oder Luna einfällt: hier hin. Und ein Foto.}}
+{{Frag sie, ob Findus und Luna ihre Namen schon mitgebracht haben oder ob sie ihnen neue gegeben hat — Daniel weiß es nicht mehr. Falls sie umbenannt hat: Warum diese Namen? Und falls dir eine Szene mit den beiden einfällt, hier hin. Dazu ein Foto.}}
 
 ## Sonntag ist Bingo
 

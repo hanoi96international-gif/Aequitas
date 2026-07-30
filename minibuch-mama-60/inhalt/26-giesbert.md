@@ -90,7 +90,20 @@ Man bekommt als Kind nicht viele Tage geschenkt, an denen alles gleichzeitig zus
 
 Wenn ich dieses Buch nach einem Tag durchsuche, an dem wir alle sieben zusammen an einem Ort waren und es einfach nur gut war, dann komme ich hier heraus. Ich habe einen davon. Und ich habe ihn immer noch.
 
-{{Weißt du noch, was er danach gesagt hat? Oder was sie gesagt hat?}}
+Und einen Satz von diesem Tag weiß ich bis heute wörtlich:
+
+> Du hast gehalten wie ein Weltmeister.
+
+Man sagt so etwas zu einem Siebenjährigen, und man denkt sich nichts dabei. Und dann trägt der Siebenjährige den Satz achtundzwanzig Jahre mit sich herum und schreibt ihn irgendwann in ein Buch.
+
+<!--
+OFFEN: Wer hat das gesagt — dein Vater oder deine Mutter?
+Der Absatz funktioniert absichtlich ohne Namen, deshalb eilt es nicht.
+Aber wenn SIE es war, gehört das unbedingt dazu — dann steht in einem
+Kapitel über ihn plötzlich der schönste Satz von ihr. Sag Bescheid,
+das ist eine Zeile Arbeit.
+-->
+
 
 ## Was von ihm übrig ist
 

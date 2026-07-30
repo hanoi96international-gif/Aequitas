@@ -49,7 +49,9 @@ Mittagessen war bei uns keine Mahlzeit, sondern eine Mammutaufgabe. Und du hast 
 
 ## Weihnachten
 
-Bei uns gab es eine Regel, und die galt ohne Ausnahme: Wer noch klein war, musste erst ein Gedicht aufsagen. Dann wurde ein Weihnachtslied gesungen. **Danach** war Bescherung.
+Bei uns gab es eine Regel, und die galt ohne Ausnahme: **Jeder, der alt genug war, musste ein Gedicht aufsagen.** Danach wurde ein Weihnachtslied gesungen. Und erst danach war Bescherung.
+
+Bei fünf Kindern bedeutet das im Zweifel fünf Gedichte, hintereinander weg, während im Nebenzimmer die Geschenke liegen.
 
 Und die Geschenke wurden nicht etwa der Reihe nach ausgeteilt, sondern völlig durcheinander verteilt.
 
