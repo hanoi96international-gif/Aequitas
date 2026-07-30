@@ -46,7 +46,11 @@ Mit dreizehn, vierzehn habe ich angefangen, mehr und mehr mein eigenes Leben zu 
 
 Aber ich glaube, es hat uns etwas gekostet. Wir sind ein Stück auseinandergedriftet, und der Grund war nicht Streit und nicht Kälte, sondern Schweigen. Zwei Leute, die dasselbe erlebt haben und beide dachten, sie müssten es allein tragen.
 
-{{Wie es heute zwischen euch ist. Ehrlich — ob es besser geworden ist, ob es so geblieben ist, ob du dir mehr wünschst.}}
+Ich habe fünfundzwanzig Jahre gebraucht, um zu verstehen, was du damals eigentlich alles gemacht hast und durchstehen musstest.
+
+Und es tut mir im Nachhinein leid. Dass wir über bestimmte Dinge nie geredet haben. Dass ich oft nicht wusste, wie es dir eigentlich geht. Und dass mir nicht klar war, wie stark du sein musstest, um gleichzeitig allen gerecht zu werden.
+
+{{Und wie ist es heute zwischen euch? Besser geworden, gleich geblieben, oder wünschst du dir mehr? Zwei, drei Sätze reichen.}}
 
 Ich schreibe das nicht auf, damit wir es jetzt aufarbeiten. Ich schreibe es auf, weil es fünfundzwanzig Jahre lang niemand ausgesprochen hat, und weil ich nicht will, dass es noch einmal fünfundzwanzig werden.
 

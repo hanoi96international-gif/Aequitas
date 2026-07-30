@@ -17,7 +17,9 @@ Was hier gut funktioniert:
 Und dann ist Schluss. Nicht noch eine Runde drehen.
 -->
 
-{{Dass das Buch unvollständig ist — und warum das in Ordnung ist.}}
+Dieses Buch zu schreiben war emotional, mehr als ich gedacht hätte. Neben den schönen Erinnerungen musste ich auch den ganzen Schmerz aufschreiben, und dabei habe ich mich mehr in deine Lage versetzt, als ich es jahrelang getan hatte.
+
+{{Dass das Buch trotzdem unvollständig ist — und warum das in Ordnung ist.}}
 
 {{Die Einladung, es selbst weiterzuschreiben. Hinten ist Platz.}}
 

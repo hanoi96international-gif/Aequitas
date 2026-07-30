@@ -134,7 +134,7 @@ Angefangen hast du am Hohen Weg — mitten in der Stadt, mitten in der Fußgäng
 
 Und hier wohnst du zum ersten Mal allein.
 
-Das ist ein größerer Satz, als er aussieht. Vom Juni 1991 bis 2022 hat in jeder einzelnen deiner Wohnungen mindestens ein Kind gewohnt. Einunddreißig Jahre am Stück, ohne eine Unterbrechung, ohne ein einziges Jahr dazwischen.
+Das ist ein größerer Satz, als er aussieht. Vom Juni 1991 bis zu diesem Umzug hat in jeder einzelnen deiner Wohnungen mindestens ein Kind gewohnt. Einunddreißig Jahre am Stück, ohne eine Unterbrechung, ohne ein einziges Jahr dazwischen. Christina und Julia sind erst mit diesem Umzug ausgezogen.
 
 Und dann, mit Mitte fünfzig, machst du zum ersten Mal eine Tür hinter dir zu, hinter der niemand mehr ist außer dir. Und zwei Katzen.
 

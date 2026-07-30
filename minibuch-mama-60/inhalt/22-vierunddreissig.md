@@ -120,4 +120,12 @@ ENTSCHIEDEN: Hochzeiten, Partnerinnen und Partner kommen hier NICHT vor. Vier vo
 
 ~~~
 
-{{Der Satz, den du ihr eigentlich sagen willst. Der Grund für dieses Buch. So schlicht wie möglich — je einfacher, desto härter trifft er. Wenn dir nichts einfällt, fang so an: „Ich weiß nicht, ob dir das jemals jemand gesagt hat, aber …"}}
+Ich weiß nicht, ob dir das jemals jemand gesagt hat. Also sage ich es:
+
+Du hast mehr geschafft als die allermeisten Menschen in ihrem Leben.
+
+Viele hätten das nicht durchgestanden. Viele wären daran zerbrochen. Und kaum jemand hätte es mit fünf Kindern gleichzeitig geschafft — nicht nacheinander, nicht verteilt, sondern alle fünf, auf einmal, allein.
+
+Und aus allen fünf ist etwas geworden. Aus allen.
+
+Danke, dass du nicht gegangen bist.
