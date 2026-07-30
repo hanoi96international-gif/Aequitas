@@ -121,6 +121,18 @@ Nicht das Zuschauen. Das Aufregen.
 
 Wenn ein Spiel läuft und etwas nicht so geht, wie es gehen sollte, dann ist das bei dir keine stille Angelegenheit. Ich weiß nicht, ob dir klar ist, wie unterhaltsam das für den Rest des Raums ist. Es gehört zu den Momenten, in denen du am wenigsten Mutter bist und am meisten einfach du.
 
+## Aufgehört
+
+Du hast lange geraucht. Und dann hast du damit aufgehört, vor mittlerweile über zehn Jahren.
+
+Das steht hier nicht als Gesundheitshinweis. Es steht hier, weil Menschen selten noch etwas ablegen, das sie ihr halbes Leben lang begleitet hat. Die meisten sagen sich irgendwann, dass sich das jetzt sowieso nicht mehr lohnt.
+
+Und ehrlich gesagt beeindruckt mich nicht einmal das Aufhören am meisten. Aufhören kann man an einem schlechten Tag beschließen. Das Schwierige ist alles, was danach kommt.
+
+Du hältst es seit über zehn Jahren durch. Jeden einzelnen Tag davon.
+
+{{Weißt du noch, wann genau das war? Menschen, die aufgehört haben, wissen das Datum fast immer noch — und wenn sie es auf den Tag nennen kann, gehört es hier hin.}}
+
 ## Ungeduldig
 
 In letzter Zeit bist du ungeduldiger geworden.

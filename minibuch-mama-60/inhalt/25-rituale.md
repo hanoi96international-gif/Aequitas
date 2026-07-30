@@ -37,33 +37,13 @@ TIPP: Frag deine Geschwister. Steffanie erinnert sich garantiert
 an Dinge, die du komplett vergessen hast — und umgekehrt.
 -->
 
-{{Der Geruch, das Geräusch oder das Bild, bei dem du sofort zu Hause bist. Steht noch aus — Zigaretten waren es jedenfalls nicht, siehe unten.}}
-
-## Auf dem Balkon
-
-Du hast lange geraucht. Aber nicht in der Wohnung.
-
-Geraucht wurde auf dem Balkon, höchstens mal in der Küche. Bei uns hat es also gerade nicht nach Zigaretten gerochen, und das ist der eigentliche Punkt an dieser Geschichte.
-
-Denn in den Neunzigern war das alles andere als selbstverständlich. In den meisten Wohnungen wurde geraucht, wo man gerade saß — am Küchentisch, vor dem Fernseher, neben den Kindern. Du bist stattdessen rausgegangen. Bei jedem Wetter, jahrzehntelang, in eine Wohnung mit fünf Kindern zurück.
-
-Aufgehört hast du dann vor über zehn Jahren. Nach Jahrzehnten, einfach so.
-
-Das steht hier nicht als Gesundheitshinweis. Es steht hier, weil Menschen in dem Alter selten noch etwas ablegen, das sie ihr halbes Leben begleitet hat. Die meisten sagen sich, dass sich das jetzt auch nicht mehr lohnt.
-
-Du hast es trotzdem gemacht.
+{{Der Geruch, das Geräusch oder das Bild, bei dem du sofort zu Hause bist.}}
 
 <!--
-KORRIGIERT: Eine frühere Fassung behauptete, es habe bei euch nach
-Zigaretten gerochen. Falsch — geraucht wurde auf dem Balkon oder
-höchstens in der Küche. Aus dem Absatz ist dadurch das Gegenteil
-geworden, und er ist besser als vorher.
-
-OFFEN: Das genaue Datum des Aufhörens wolltest du erfragen. Falls sie
-es auf den Tag weiß, gehört es rein — Menschen, die aufgehört haben,
-wissen den Tag fast immer noch.
-
-OFFEN: Der eigentliche Geruch von zu Hause fehlt damit weiterhin.
+VERSCHOBEN: Der Abschnitt über das Rauchen steht jetzt in
+30-wer-du-bist.md. Ohne den Balkon-Zusammenhang, den du nicht
+wolltest, geht es darin nicht mehr um die Wohnung, sondern um sie —
+und damit gehört er ins Kapitel über sie selbst.
 -->
 
 
