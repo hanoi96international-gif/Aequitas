@@ -82,13 +82,13 @@ Die Witwen- und Waisenrente wurde nach Giesberts Tod monatelang nicht berechnet.
 
 Eine Frau, fünf Kinder zwischen drei und neun, kein Einkommen, keine Rente.
 
-Und dann hat dir das Sozialamt fünfzig Euro angeboten.
+Und dann hat dir das Sozialamt fünfzig Mark angeboten.
 
 Du hast den Scheck zerrissen.
 
-Man kann darüber streiten, ob das klug war. Fünfzig Euro sind fünfzig Euro, und du hattest keine.
+Man kann darüber streiten, ob das klug war. Fünfzig Mark sind fünfzig Mark, und du hattest keine.
 
-Ich verstehe es trotzdem. Es ging nicht um das Geld. Es ging darum, was dieser Betrag über dich ausgesagt hätte — dass man eine Frau, die gerade alles verloren hat und fünf Kinder durchbringen muss, mit fünfzig Euro abhaken kann.
+Ich verstehe es trotzdem. Es ging nicht um das Geld. Es ging darum, was dieser Betrag über dich ausgesagt hätte — dass man eine Frau, die gerade alles verloren hat und fünf Kinder durchbringen muss, mit fünfzig Mark abhaken kann. Umgerechnet sind das gut fünfundzwanzig Euro. Für sechs Menschen.
 
 Du hast lieber nichts genommen als das.
 
@@ -97,11 +97,11 @@ Und dass es trotzdem weiterging, lag an deinen Eltern. Aber das ist das nächste
 <!--
 ZWEI DINGE ZU DIESEM ABSCHNITT:
 
-  1. WÄHRUNG PRÜFEN. Du hast 50 Euro gesagt. Giesbert starb im Mai
-     2001, da gab es noch D-Mark — der Euro kam als Bargeld erst im
-     Januar 2002. Wenn die Sache 2001 war, waren es fünfzig Mark.
-     Frag nach oder überleg, wann genau das war. Eine falsche Währung
-     ist genau die Sorte Detail, die sie sofort sieht.
+  1. WÄHRUNG GEKLÄRT: Es waren fünfzig Mark, nicht Euro. Damit war
+     die Sache 2001, also unmittelbar nach Giesberts Tod. Die
+     Umrechnung steht im Text, weil die Zahl sonst für jüngere
+     Leser nichts aussagt: gut fünfundzwanzig Euro, für sechs
+     Menschen.
 
   2. FREIGABE. Der Absatz zeigt sie stolz und stur in einer Lage, in
      der Stolz teuer war. Ich halte das für eine der stärksten Stellen
