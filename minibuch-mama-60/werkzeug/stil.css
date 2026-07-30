@@ -148,6 +148,44 @@ img {
   text-align: center;
 }
 
+/* ------------------------------------------------------- Handschriftliches
+
+   Für eingescannte Beiträge. Zwei Größen:
+
+   .handschrift        ganze Seite, so groß wie der Satzspiegel hergibt
+   .unterschrift       nur der Namenszug unter einem gesetzten Beitrag
+
+   Im Text so einbinden (die Klasse steht als erstes Wort in der
+   Bildunterschrift und wird vom Bauskript ausgewertet):
+
+     ![handschrift Anette](bilder/anette.jpg)
+     ![unterschrift Anette](bilder/anette-name.jpg)
+*/
+
+figure.handschrift img {
+  max-height: 165mm;
+  max-width: 100%;
+}
+
+figure.handschrift .bildunterschrift {
+  margin-top: 1em;
+}
+
+figure.unterschrift {
+  margin: 0.8em 0 0 0;
+  text-align: left;
+  break-inside: avoid;
+}
+
+figure.unterschrift img {
+  max-height: 22mm;
+  max-width: 60%;
+}
+
+figure.unterschrift .bildunterschrift {
+  display: none;
+}
+
 /* --------------------------------------------------- noch offene Lücken */
 
 .luecke {

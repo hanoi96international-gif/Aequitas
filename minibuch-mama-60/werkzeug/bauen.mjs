@@ -136,7 +136,19 @@ function markdownZuHtml(md) {
     if (/^!\[[^\]]*\]\([^)]+\)$/.test(z)) {
       absatzLeeren();
       absatzSchliessen();
-      aus.push(`<figure>${inline(z)}</figure>`);
+      // Beginnt die Bildunterschrift mit "handschrift" oder "unterschrift",
+      // wird das als Layoutklasse verwendet und nicht mitgedruckt.
+      const sonderformat = z.match(/^!\[(handschrift|unterschrift)\s*([^\]]*)\]\(([^)]+)\)$/);
+      if (sonderformat) {
+        const [, klasse, text, quelle] = sonderformat;
+        aus.push(
+          `<figure class="${klasse}"><img src="${quelle}" alt="${escapeHtml(text)}">` +
+            (text ? `<span class="bildunterschrift">${inline(text)}</span>` : "") +
+            `</figure>`
+        );
+      } else {
+        aus.push(`<figure>${inline(z)}</figure>`);
+      }
       continue;
     }
 

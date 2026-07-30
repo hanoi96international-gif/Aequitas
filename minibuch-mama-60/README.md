@@ -71,6 +71,40 @@ JPG oder PNG, gern 1500 px lange Kante — größer bringt im Druck nichts,
 kleiner wird unscharf. Alte Papierfotos einfach bei gutem Tageslicht
 mit dem Handy abfotografieren, das reicht völlig.
 
+## Handschriftliche Beiträge
+
+Zwei Formate stehen bereit:
+
+```
+![handschrift Anette, ihre Schwester](bilder/anette.jpg)
+![unterschrift Anette](bilder/anette-name.jpg)
+```
+
+`handschrift` setzt das Bild groß, fast auf Seitenhöhe — für einen
+vollständig handgeschriebenen Beitrag.
+`unterschrift` setzt es klein und linksbündig — für den Namenszug unter
+einem gesetzten Text.
+
+**Empfehlung:** Beitrag setzen, Unterschrift scannen. Dann bleibt alles
+lesbar, und die persönliche Spur ist trotzdem da. Ganze Seiten nur dort
+handschriftlich, wo die Handschrift selbst die Botschaft ist.
+
+### So wird das Foto brauchbar
+
+- **Weißes, unliniertes Papier.** Liniertes sieht im Druck unruhig aus.
+  Gib den Leuten am besten gleich ein paar Blätter mit.
+- **Blaue oder schwarze Tinte, kein Bleistift.** Bleistift verschwindet
+  beim Kopieren fast vollständig.
+- **Tageslicht, keine Deckenlampe.** Am Fenster, aber nicht in der
+  prallen Sonne — Schatten des eigenen Kopfes vermeiden.
+- **Senkrecht von oben** fotografieren, Blatt formatfüllend, Kanten
+  parallel zum Bildrand.
+- Danach am Handy **Helligkeit hoch und Kontrast hoch** ziehen, bis das
+  Papier weiß statt grau ist. Das ist der Schritt, der den größten
+  Unterschied macht.
+- Wenn möglich: **A5 schreiben lassen** oder ein A4-Blatt quer
+  halbieren. Dann muss beim Druck nichts verkleinert werden.
+
 ## Drucken lassen
 
 `bau/minibuch.pdf` ist bereits **A5, einseitig fortlaufend**. Damit gehst du
