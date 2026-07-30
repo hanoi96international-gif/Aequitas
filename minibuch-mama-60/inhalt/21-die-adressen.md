@@ -75,11 +75,13 @@ Es hat nur leider nicht gehalten. Heinrich, der Vermieter, hat am Haus nichts ge
 
 ## Daisy
 
-An einem 30. November ist in Algermissen Daisy von einem Auto angefahren worden. Sie musste eingeschläfert werden.
+Am 30. November 2008 ist in Algermissen unsere Katze Daisy von einem Auto angefahren worden. Sie musste eingeschläfert werden.
 
-Der 30. November ist Christinas Geburtstag.
+Der 30. November ist Christinas Geburtstag. Sie wurde an dem Tag zwölf.
 
-{{In welchem Jahr war das? Und wie habt ihr das damals aufgefangen — an einem Kindergeburtstag?}}
+Ihr wart gerade erst hingezogen. Das große Haus, das erste eigene, war noch keine paar Monate alt.
+
+{{Wie habt ihr das damals aufgefangen — ausgerechnet an einem Kindergeburtstag?}}
 
 ### Brauhausstraße
 

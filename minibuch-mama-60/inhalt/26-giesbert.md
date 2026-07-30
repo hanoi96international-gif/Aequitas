@@ -105,6 +105,20 @@ das ist eine Zeile Arbeit.
 -->
 
 
+## Das Derby im eigenen Haus
+
+Eine Kleinigkeit fehlt noch, und ohne sie ist die Geschichte nicht vollständig.
+
+Wir sind alle Hannover-Fans. Du, und dadurch auch wir fünf.
+
+Er nicht. Er hielt zu Eintracht Braunschweig.
+
+Wer weiß, was das Niedersachsen-Derby ist, weiß, dass das kein Detail ist, sondern eine Grundsatzfrage. An Derbytagen ging es bei uns entsprechend zur Sache.
+
+Und jetzt schau noch einmal auf Lamspringe. Das Finale ging gegen Eintracht Braunschweig. Mein Vater stand als Betreuer an der Seitenlinie und sah zu, wie sein eigener Sohn seinen eigenen Verein aus dem Turnier hielt.
+
+Und hinterher fiel trotzdem der Satz mit dem Weltmeister.
+
 ## Was von ihm übrig ist
 
 Man sieht ihn noch. Bei mir, und vor allem bei Marcus.

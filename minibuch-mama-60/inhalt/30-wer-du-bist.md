@@ -49,7 +49,7 @@ Es gibt ein paar Dinge an dir, die mit uns fünf nichts zu tun haben. Die gehör
 
 ## Die Katzen
 
-Es waren mehrere über die Jahre. Zuerst Daisy und Donald — wobei Donald auf eine Art zu uns kam, die ein paar Seiten weiter erzählt werden muss, weil sie mit Fußball zu tun hat. Daisy ist in Algermissen gestorben. Fiby kam später dazu, in der Brauhausstraße.
+Es waren mehrere über die Jahre. Zuerst Daisy und Donald — wobei Donald auf eine Art zu uns kam, die ein paar Seiten weiter erzählt werden muss, weil sie mit Fußball zu tun hat. Daisy ist 2008 in Algermissen gestorben. Fiby kam später dazu, in der Brauhausstraße.
 
 Als die beiden am Ende nicht mehr da waren, hast du lange gebraucht. Du wolltest nicht gleich wieder ein Tier. Du hast dir die Zeit genommen, die du gebraucht hast, bis du bereit warst, das noch einmal zu machen.
 
@@ -70,6 +70,8 @@ Gewonnen hast du dabei, ehrlich gesagt, noch nie richtig. Seit Jahren nicht. Und
 ## Neunzig Minuten
 
 Du liebst Fußball, und du liebst Hannover 96. Das ist bei 96 keine Kleinigkeit — das ist ein Verein, der einem selten etwas zurückgibt, und du hältst trotzdem seit Jahrzehnten die Stellung.
+
+Und du hast es weitergegeben. Wir sind alle fünf 96-Fans geworden. Das ist keine Selbstverständlichkeit in einem Haushalt, in dem der Vater zu Braunschweig hielt — es war also eine Entscheidung, und sie ist zu deinen Gunsten ausgegangen.
 
 Und dann kommt das, was die meisten Leute nicht wissen: **Du warst selbst Jugendtrainerin beim VfV Hildesheim.**
 
