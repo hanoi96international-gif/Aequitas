@@ -146,10 +146,13 @@ Einzigen, die sie noch beantworten können.
 - Woher kam der Name Marion?
 - Was für ein Kind war sie?
 - Was war das Erste, worin sie richtig gut war?
-- Wie waren Rita und Willi als Eltern? Und später als Großeltern?
-- Was haben die beiden nach 2001 konkret für Marion getan?
-- Erzählt mir eine Geschichte über Willi. Und eine über Rita.
-  Irgendeine — eine Macke, ein Spruch, ein Streit, eine Angewohnheit.
+- Was haben Rita und Willi nach 2001 konkret für Marion getan?
+- Erzählt mir eine Geschichte über Rita — eine Angewohnheit, ein Spruch,
+  irgendetwas Konkretes.
+
+Frag hier nur das, was du wissen willst. Das Kapitel erzählt, was die
+beiden **getan** haben, nicht, wer sie waren — dafür reicht die erste
+Frage vollkommen aus.
 
 ## Für dich selbst — schriftlich beantworten, nicht nur denken
 
