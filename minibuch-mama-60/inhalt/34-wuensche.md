@@ -84,21 +84,35 @@ In diesem Buch stehen ungefähr fünfzehn Stellen, an denen du dir etwas nicht l
 
 Und dann natürlich das, was man sich zuletzt wünscht, weil es das Wichtigste ist: Gesundheit. Ein langes Leben. Und zum ersten Mal seit dreißig Jahren eines ohne Dauerstress.
 
+## Und dann die Sache mit den Enkelkindern
+
+Ja, die schreibe ich auch hin.
+
+Du sagst es nicht oft. Aber wir sind zu fünft, und wir sind nicht auf den Kopf gefallen.
+
+Rein rechnerisch stehen deine Chancen übrigens ausgezeichnet. Fünf Kinder sind fünf Möglichkeiten — das ist deutlich mehr, als die meisten Menschen zur Verfügung haben. Man könnte fast von einem breit aufgestellten Portfolio sprechen.
+
+Trotzdem, einmal fürs Protokoll und in aller Deutlichkeit: Das ist ein Wunsch und kein Auftrag. Keiner von uns muss irgendetwas, und unsere Partnerinnen und Partner erst recht nicht. Jeder entscheidet das für sich, in seinem Tempo, oder eben gar nicht.
+
+Und falls du vorhast, dieses Buch nach dem Lesen auffällig lange aufgeschlagen auf dem Küchentisch liegen zu lassen: Wir haben es gesehen.
+
+~~~
+
 Im Grunde also einfach nur das Beste.
 
 Ich weiß, dass man das so dahersagt und dass es meistens nichts bedeutet. Bei dir meine ich es wörtlich.
 
 <!--
-NICHT AUFGENOMMEN — deine Entscheidung:
+ENTSCHIEDEN: Die Enkelkinder kommen vor, auf ausdrücklichen Wunsch,
+und zwar humorvoll. Der Absatz ist bewusst so gebaut, dass der Witz
+auf alle fünf gleichmäßig verteilt ist und niemand einzeln gemeint
+sein kann — und dass ausdrücklich dasteht, dass niemand etwas muss.
+Damit ist der Wunsch drin, ohne dass jemand am Geburtstagstisch das
+Gefühl bekommt, gerade gemeint gewesen zu sein.
 
-Du hast auch Enkelkinder in naher Zukunft gewünscht. Das steht hier
-bewusst nicht, aus dem Grund, den ich dir vorher genannt hatte: Vier
-von euch fünf sind vergeben, einer nicht. Gedruckt in einem Buch,
-das die ganze Familie am Geburtstag durchblättert, wird aus einem
-Wunsch schnell eine Erwartung — an sie, an euch und an eure Partner.
-
-Wenn du es trotzdem drin haben willst, sag Bescheid, dann steht es
-drin. Es ist dein Buch, und mein Einwand ist nur ein Einwand.
+Lies ihn trotzdem einmal laut und stell dir dabei deine Geschwister
+vor, wie sie zuhören. Wenn einer davon zusammenzucken würde, sag es
+mir.
 -->
 
 {{Optional: etwas, das ihr zusammen vorhabt. Nur reinschreiben, wenn du es wirklich machst — der Satz steht dann gedruckt in einem Buch, das sie zwanzig Jahre aufhebt.}}
