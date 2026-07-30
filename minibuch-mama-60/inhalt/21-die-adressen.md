@@ -33,6 +33,21 @@ Persönliche zu Steffanie -- ihre Sache ist und nicht die des Buchs.
 Im Text steht nur, dass sie zu dem Zeitpunkt nicht mehr zu Hause
 wohnte. Das ist wahr und reicht.
 
+ZWEI HINWEISE ZUM KOHLENMONOXID-ABSCHNITT:
+
+  1. Das ist inzwischen einer der schwersten Absätze im ganzen Buch,
+     und er steht in einem Kapitel, das sonst eher leicht ist. Lies
+     ihn einmal laut. Wenn er dir dort zu groß vorkommt, verschieben
+     wir ihn nach "Vierunddreißig" — dort wäre er thematisch auch
+     zu Hause.
+  2. Offen ist das Jahr. Falls du es weißt oder herausbekommst,
+     gehört es rein.
+
+ZU MINH: Du hast "mein Kollege Minh" geschrieben. Im Buch steht nur
+"Minh war zufällig da", weil ein Nachname fehlt und weil unklar ist,
+ob deine Mutter ihn einordnen kann. Falls sie ihn kennt, ergänze
+kurz, wer er ist.
+
 WIDERSPRUCH BEI DEN DATEN — bitte einmal klären:
 Du hattest zuerst gesagt: Brauhausstraße nach Algermissen (also ab
 2010), Dingworthstraße bis 2022. Später hast du den Wechsel von der
@@ -88,13 +103,45 @@ Und ich kann dieser Wohnung bis heute nichts Gutes abgewinnen. Mir fällt kein e
 
 Es gibt Wohnungen, in denen man wohnt. Und es gibt welche, in denen man wartet, dass es vorbeigeht. Das war eine von der zweiten Sorte.
 
-Was in diesen Jahren wirklich passiert ist, steht ein paar Seiten weiter. Hier reicht das.
+Und dann ist da noch der Grund, aus dem ich diese Wohnung wohl nie wohlwollend betrachten werde.
+
+## In dieser Wohnung wären wir fast gestorben
+
+Aus der Therme ist Kohlenmonoxid ausgetreten.
+
+Kohlenmonoxid riecht nach nichts. Man schmeckt es nicht, man sieht es nicht, und man merkt auch nicht, dass man vergiftet wird. Man wird müde. Und irgendwann wacht man nicht mehr auf.
+
+Gefunden hat das Leck ein Mann, der zum Ablesen kam. Reiner Zufall. Er war nicht da, weil jemand einen Verdacht hatte oder weil jemand etwas gerochen hätte — er war da, weil ein Zählerstand fällig war.
+
+Ohne diesen Termin wären wir irgendwann alle nicht mehr aufgewacht.
+
+Ich weiß nicht, ob dir jemals klar geworden ist, wie knapp das war. Mir schon. Und ich denke ehrlich gesagt öfter daran, als ich es je erwähnt habe.
+
+Was in diesen Jahren sonst noch passiert ist, steht ein paar Seiten weiter.
 
 ### Moltkestraße
 
-Bis 2008. Hier wohnten Pamela und Jörg nebenan, Freunde von dir — und die sind der Grund, warum es als Nächstes aufs Dorf ging.
+Bis 2008. Und das war, bei allem was vorher lag, eigentlich eine gute Zeit.
 
-{{Was in diesen Jahren sonst war.}}
+Vermieterinnen waren Frau Loss und Frau Tostmann. Die wohnten im angebauten Hinterhaus, waren ausgesprochen spießig und haben gelegentlich ein bisschen zu viel Detektiv gespielt.
+
+Die Nachbarn dagegen waren großartig. Die Heimanns. Und Pamela und Jörg, deine Freunde — die sind übrigens auch der Grund, warum es als Nächstes aufs Dorf ging.
+
+## Donald geht raus
+
+Hier durfte Donald zum ersten Mal nach draußen.
+
+Das hatte Folgen. Er kam nämlich zurück, und zwar selten mit leeren Pfoten. Der Balkon sah manchmal aus wie ein Schlachtfeld.
+
+Es gibt vermutlich keinen kürzeren Weg, einer Katze mitzuteilen, dass sie jetzt endlich ernst genommen wird, als ihr eine Tür aufzumachen.
+
+## Und einmal kam die Feuerwehr
+
+Es hat nach Gas gerochen, also rückte die Feuerwehr an. Minh war zufällig da.
+
+Passiert ist zum Glück nichts.
+
+{{Weißt du noch, was es am Ende war? Und wie ihr reagiert habt?}}
 
 ### Algermissen
 
