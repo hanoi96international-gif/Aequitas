@@ -6,8 +6,17 @@ SCHREIBHILFE — Ziel: 2 Seiten.
 WICHTIG: Rita und Willi sind gestorben. Das gesamte Kapitel steht
 deshalb im Präteritum, und der letzte Abschnitt spricht es aus.
 
-Anettes Status ist noch offen — falls sie noch lebt, muss ihr
-Abschnitt ins Präsens. Sag mir Bescheid, ich stelle es um.
+Anette lebt und ist mit Wolfgang verheiratet. Ihre Söhne Sascha und
+Sanja leben ebenfalls. Ihr Abschnitt steht deshalb im Präsens.
+
+ZU PRÜFEN, BEVOR GEDRUCKT WIRD:
+  - Schreibweise von Sanja und Sascha, und ob "Neffen" für beide
+    stimmt — ich habe deine Formulierung übernommen.
+  - Sanjas genaues Geburtsdatum (zwei Tage nach dem 27.06.1991
+    wäre der 29. Juni).
+  - Kommt Wolfgang im Buch vor? Momentan steht er nur in dieser
+    einen Zeile. Falls er in den Jahren nach 2001 auch eingesprungen
+    ist, gehört er ausführlicher hinein.
 
 Warum dieses Kapitel jetzt wichtiger ist als vorher:
 An ihrem sechzigsten Geburtstag sitzen die zwei Menschen, die sie
@@ -61,9 +70,21 @@ Verantwortlich warst du allein, daran ändert das nichts. Aber es gab Menschen, 
 
 ## Anette
 
-Deine Schwester war da. Nicht gelegentlich, nicht wenn es gerade passte — durchgehend.
+Deine Schwester war da. Nicht gelegentlich, nicht wenn es gerade passte — durchgehend. Und sie ist es bis heute.
 
-{{Was Anette gemacht hat. Und was für ein Verhältnis das ist, zwischen den beiden.}}
+Angefangen hat das früher, als die meisten wissen. Im Juni 1991 lagt ihr beide gleichzeitig im Krankenhaus, im selben Zimmer. Daniel kam am 27., Sanja zwei Tage später. Zwei Schwestern, zwei Neugeborene, ein Zimmer.
+
+Man kann sich schwer einen besseren Anfang für die nächsten dreißig Jahre ausdenken.
+
+{{Was Anette in den Jahren danach konkret gemacht hat. Und was das für ein Verhältnis ist, zwischen den beiden.}}
+
+## Sascha
+
+Zwischen dir und Sascha ist etwas, das sich von außen schlecht erklären lässt.
+
+{{Hier beschreibst du es. Und zwar konkret: was passiert, wenn die beiden sich sehen? Was macht sie mit ihm, was sonst niemand so macht? Woran merkt man, dass das etwas Eigenes ist?
+
+Ein Hinweis zum Ton: Schreib über Sascha wie über jeden anderen Menschen in diesem Buch — mit einer konkreten Szene, nicht mit einer Erklärung. Seine Behinderung darf vorkommen, aber sie ist nicht die Geschichte. Die Geschichte ist, dass die beiden ein Verhältnis haben, das sonst niemand hat.}}
 
 ## Rita und Willi
 
