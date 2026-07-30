@@ -43,9 +43,17 @@ Geruch im Treppenhaus, der Name der Nachbarin, das eine Weihnachten.
 
 ## Monika, Anette und die Kleine
 
-Ihr wart zu dritt. Monika die Älteste, Anette in der Mitte, und du am Ende.
+Ihr wart zu dritt. Monika, geboren 1961. Anette, 1963. Und dann du, 1966.
 
-{{Die drei Schwestern: Wie viele Jahre lagen dazwischen? Was für eine Rolle hatte die Jüngste — die Nachzüglerin, die Verwöhnte, die, die sich durchboxen musste?}}
+Zwischen Monika und Anette liegen zwei Jahre, zwischen Anette und dir drei. Das klingt nach nichts, macht in einer Kindheit aber einen Unterschied: Die beiden Großen waren fast ein Doppelpack, und du kamst danach.
+
+Als du geboren wurdest, war Anette drei und Monika fünf. Als du eingeschult wurdest, waren beide längst in der Schule. Was immer du zum ersten Mal gemacht hast — die beiden hatten es schon hinter sich.
+
+Du warst also, ob du wolltest oder nicht, die Kleine. Diejenige, die alles ein paar Jahre später durfte. Und gleichzeitig diejenige, die alles ein paar Jahre zu früh mitbekam, weil in derselben Wohnung schon zwei ältere Mädchen lebten und Türen selten geschlossen sind, wenn man zu fünft auf wenigen Quadratmetern wohnt.
+
+Bemerkenswert finde ich dabei etwas anderes: Die engste Bindung hattest du nicht zu der Schwester, die dir altersmäßig am nächsten war — sondern zu Anette, mit drei Jahren Abstand. Und die hat sechzig Jahre gehalten.
+
+{{Was für eine Rolle war das genau? Die Nachzüglerin, die Verwöhnte, die, die sich durchboxen musste? Das ist eine gute Frage für sie oder für Anette.}}
 
 {{Und hier gehört Monika hin. Frag sie selbst danach, nicht Anette über sie — als Älteste erinnert sie Dinge aus dieser Wohnung, die sonst niemand mehr weiß. Ein zwanzigminütiges Telefonat reicht, und dann steht sie hier mit einer eigenen Geschichte statt mit einer Erwähnung.}}
 

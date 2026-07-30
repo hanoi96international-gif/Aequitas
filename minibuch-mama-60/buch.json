@@ -36,9 +36,10 @@
     "vater": "Willi (gestorben 2019)",
     "hinweis": "Beide Eltern sind gestorben. Alle Kapitel, in denen sie vorkommen, stehen im Praeteritum.",
     "schwestern": [
-      "Monika (die älteste), verheiratet mit Manuel, Sohn Philipp",
-      "Anette (die mittlere), verheiratet mit Wolfgang, Söhne Sascha und Sanja"
+      "Monika, geboren 1961 (die aelteste), verheiratet mit Manuel, Sohn Philipp",
+      "Anette, geboren 1963 (die mittlere), verheiratet mit Wolfgang, Soehne Sascha und Sanja"
     ],
+    "altersabstaende": "Monika zu Anette 2 Jahre, Anette zu Marion 3 Jahre",
     "position": "Marion ist die jüngste von drei Schwestern"
   },
 
