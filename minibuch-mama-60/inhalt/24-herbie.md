@@ -46,11 +46,21 @@ Das muss man einmal sacken lassen. Herbie ist eigentlich ein VW Käfer, der ber�
 
 Ein Mensch, der sein erstes eigenes Auto tauft, hat nicht einfach ein Fahrzeug angeschafft. Der hat etwas zurückbekommen.
 
-Herbie war dunkelblau.
+Herbie war dunkelblau. Und der Name war deine Idee, wegen des Films.
 
-{{Welches Baujahr, in welchem Zustand — und wer eigentlich auf den Namen gekommen ist.}}
+{{Welches Baujahr, in welchem Zustand?}}
 
-{{Wohin sie zum ersten Mal ganz allein gefahren ist.}}
+## Mönchengladbach, ohne Navi
+
+Zwei Jahre nach dem Führerschein, 2010, seid ihr nach Mönchengladbach gefahren. Über dreihundert Kilometer, einmal quer durchs Land.
+
+Ohne Navigationsgerät. Es gab nur eine Route, die vorher bei Google ausgedruckt worden war. Auf Papier. In der Hand des Beifahrers.
+
+Und dann haben wir uns verfahren, und ab da ging es nach Instinkt weiter.
+
+Angekommen sind wir trotzdem.
+
+{{Warum eigentlich Mönchengladbach? Und wie lange habt ihr am Ende gebraucht?}}
 
 ~~~
 
