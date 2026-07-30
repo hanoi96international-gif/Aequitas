@@ -40,13 +40,13 @@ ZWEI HINWEISE ZUM KOHLENMONOXID-ABSCHNITT:
      ihn einmal laut. Wenn er dir dort zu groß vorkommt, verschieben
      wir ihn nach "Vierunddreißig" — dort wäre er thematisch auch
      zu Hause.
-  2. Offen ist das Jahr. Falls du es weißt oder herausbekommst,
-     gehört es rein.
+  2. Das Jahr ist inzwischen drin: 2003, also zwei Jahre nach
+     Giesberts Tod. Daniel war zwölf, Julia fünf, Marion
+     sechsunddreißig.
 
-ZU MINH: Du hast "mein Kollege Minh" geschrieben. Im Buch steht nur
-"Minh war zufällig da", weil ein Nachname fehlt und weil unklar ist,
-ob deine Mutter ihn einordnen kann. Falls sie ihn kennt, ergänze
-kurz, wer er ist.
+ZU MINH: Geklärt — Marion kennt ihn. Deshalb bleibt es bei dem
+schlichten "Minh war zufällig da", ohne Erklärung. Namen, die die
+Leserin selbst einordnen kann, brauchen keine Fußnote.
 
 WIDERSPRUCH BEI DEN DATEN — bitte einmal klären:
 Du hattest zuerst gesagt: Brauhausstraße nach Algermissen (also ab
@@ -106,6 +106,8 @@ Es gibt Wohnungen, in denen man wohnt. Und es gibt welche, in denen man wartet, 
 Und dann ist da noch der Grund, aus dem ich diese Wohnung wohl nie wohlwollend betrachten werde.
 
 ## In dieser Wohnung wären wir fast gestorben
+
+Das war 2003. Zwei Jahre, nachdem du mit uns allein geblieben warst. Ich war zwölf, Julia fünf.
 
 Aus der Therme ist Kohlenmonoxid ausgetreten.
 
