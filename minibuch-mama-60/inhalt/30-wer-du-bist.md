@@ -117,7 +117,11 @@ Neben Hannover 96 gibt es noch einen Verein, und den kennen die wenigsten, die d
 
 Da gehst du mit Brigitte hin.
 
-Nebenbei bemerkt, weil es sonst niemandem auffällt: Du hast sieben Jahre lang in der Cafeteria des Helios Klinikums gearbeitet — und drückst dem Verein die Daumen, den derselbe Name sponsert. Das ist Zufall, aber ein ziemlich passender.
+Dazu gekommen bist du über die Arbeit. Sieben Jahre Cafeteria im Helios Klinikum, und immer wieder mal Freikarten für die Mannschaft, die denselben Namen trägt.
+
+So fängt so etwas meistens an: Man geht hin, weil man eine Karte geschenkt bekommt. Und irgendwann geht man hin, weil man hinwill.
+
+Deinen Job dort gibt es seit 2023 nicht mehr. Den Verein hast du behalten.
 
 ## Michael
 
