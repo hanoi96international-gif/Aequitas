@@ -38,7 +38,10 @@ WAS NOCH FEHLT:
     aus "Vierunddreißig" darauf.
   - Woher kommt die Liebe zu 96? Von Willi? Von Giesbert? Von selbst?
   - Wo spielt sie Bingo, mit wem, seit wann?
-  - Wie hießen die Katzen mit vollem Namen, und wer hat sie benannt?
+  - War Daisy ein Hund oder eine Katze? Das steht bewusst nirgends,
+    weil ich es nicht weiß — bitte einmal sagen, dann schreibe ich es
+    sauber hin.
+  - Wie hießen die Tiere mit vollem Namen, und wer hat sie benannt?
   - Ein Foto von Findus und Luna gehört unbedingt in dieses Kapitel.
 -->
 
@@ -46,9 +49,9 @@ Es gibt ein paar Dinge an dir, die mit uns fünf nichts zu tun haben. Die gehör
 
 ## Die Katzen
 
-Donald und Fiby haben uns durch die ganze Kindheit begleitet. Wobei Donald auf eine Art zu uns kam, die ein paar Seiten weiter erzählt werden muss, weil sie mit Fußball zu tun hat.
+Es waren mehrere über die Jahre. Zuerst Daisy und Donald — wobei Donald auf eine Art zu uns kam, die ein paar Seiten weiter erzählt werden muss, weil sie mit Fußball zu tun hat. Daisy ist in Algermissen gestorben. Fiby kam später dazu, in der Brauhausstraße.
 
-Als sie starben, hast du lange gebraucht. Du wolltest nicht gleich wieder ein Tier, und du hast dir die Zeit genommen, die du gebraucht hast, bis du bereit warst, das noch einmal zu machen.
+Als die beiden am Ende nicht mehr da waren, hast du lange gebraucht. Du wolltest nicht gleich wieder ein Tier. Du hast dir die Zeit genommen, die du gebraucht hast, bis du bereit warst, das noch einmal zu machen.
 
 Dann kam Findus. Und dann kam Luna.
 

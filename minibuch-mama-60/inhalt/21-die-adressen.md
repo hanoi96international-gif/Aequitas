@@ -39,9 +39,11 @@ Deine Mutter Rita wohnte am Hohen Weg 46, mitten in der Stadt, mitten in der Fu�
 
 ### Bismarckstraße
 
-{{Bis etwa 1997.}} In diesen Jahren wurdet ihr vier: Daniel 1991, Steffanie 1993, Marcus 1995, Christina 1996. Fünf Jahre, vier Kinder.
+Bis etwa 1997. In diesen Jahren wurdet ihr vier: Daniel 1991, Steffanie 1993, Marcus 1995, Christina 1996. Fünf Jahre, vier Kinder.
 
-{{Woran du dich erinnerst — und warum ihr ausgezogen seid.}}
+Im selben Haus wohnte Horst, mein Patenonkel. Und Peter Schmolke, der später inoffiziell Christinas Patenonkel wurde. So war das damals: Die Patenonkel wohnten nicht am anderen Ende der Stadt, sie wohnten im selben Treppenhaus.
+
+Ausgezogen seid ihr aus dem schlichtesten Grund, den es gibt. Die Wohnung wurde zu klein. Vier Kinder passen irgendwann nicht mehr, und das fünfte war noch nicht mal da.
 
 ### Stresemannstraße
 
@@ -57,15 +59,27 @@ Bis etwa 2005. Das ist die Wohnung, in der aus einer Familie mit zwei Erwachsene
 
 ### Moltkestraße
 
-Bis 2008. {{Was in diesen Jahren war.}}
+Bis 2008. Hier wohnten Pamela und Jörg nebenan, Freunde von dir — und die sind der Grund, warum es als Nächstes aufs Dorf ging.
+
+{{Was in diesen Jahren sonst war.}}
 
 ### Algermissen
 
-Bis 2010. Zum ersten Mal raus aus Hildesheim — ein Dorf mit gut achttausend Einwohnern, nach einem Leben in einer Stadt.
+Bis 2010. Zum ersten Mal raus aus Hildesheim — ein Ort mit gut achttausend Einwohnern, nach einem Leben in der Stadt. Pamela und Jörg waren vorgezogen und haben so lange für Algermissen geworben, bis ihr hinterhergekommen seid.
 
-Bemerkenswert, wenn man weiß, wo sie angefangen hat: Ein Kind vom Hohen Weg, aufgewachsen zwischen Schaufenstern und Fußgängern, wohnt mit Anfang vierzig auf dem Dorf.
+Und dort gab es zum ersten Mal etwas, das es vorher nie gegeben hatte: **ein ganzes Haus, nur für uns.**
 
-{{Warum Algermissen? Und warum nur zwei Jahre?}}
+Bemerkenswert, wenn man weiß, wo du angefangen hast. Ein Kind vom Hohen Weg, aufgewachsen zwischen Schaufenstern und Fußgängern, wohnt mit Anfang vierzig in einem eigenen Haus auf dem Dorf.
+
+Es hat nur leider nicht gehalten. Heinrich, der Vermieter, hat am Haus nichts gemacht — gar nichts. Und irgendwann passte es einfach nicht mehr.
+
+## Daisy
+
+An einem 30. November ist in Algermissen Daisy von einem Auto angefahren worden. Sie musste eingeschläfert werden.
+
+Der 30. November ist Christinas Geburtstag.
+
+{{In welchem Jahr war das? Und wie habt ihr das damals aufgefangen — an einem Kindergeburtstag?}}
 
 ### Brauhausstraße
 
