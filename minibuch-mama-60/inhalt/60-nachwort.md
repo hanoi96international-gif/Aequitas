@@ -20,4 +20,6 @@ Deshalb ist hinten Platz gelassen. Widersprich mir. Schreib dazu, was ich verges
 
 ~~~
 
-{{Dein Name, Ort und Datum — zum Beispiel: Daniel. Hildesheim, im September 2026}}
+*Dein Sohn Daniel*
+
+*September 2026*

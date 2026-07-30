@@ -115,4 +115,26 @@ vor, wie sie zuhören. Wenn einer davon zusammenzucken würde, sag es
 mir.
 -->
 
-{{Optional: etwas, das ihr zusammen vorhabt. Nur reinschreiben, wenn du es wirklich machst — der Satz steht dann gedruckt in einem Buch, das sie zwanzig Jahre aufhebt.}}
+## Und das hier haben wir vor
+
+Drei Sachen, die ich nicht als Wunsch aufschreibe, sondern als Vorhaben.
+
+**Wieder öfter zu 96 ins Stadion.** Nicht irgendwann, sondern in dieser Saison. Du warst diejenige, die uns allen den Verein vererbt hat — es ist ziemlich absurd, dass wir da nicht regelmäßig zusammen stehen.
+
+**Einmal gemeinsam in den Urlaub.** Richtig, mit Ankommen und Nichtstun, nicht nur ein Wochenende.
+
+**Und das dritte:** dass du ein Enkelkind von Ayu und mir erlebst. Das kann man nicht versprechen, und deshalb verspreche ich es auch nicht. Aber gewünscht ist es, von uns beiden.
+
+<!--
+ZUM DRITTEN PUNKT: Bewusst als Hoffnung formuliert und nicht als
+Ankündigung. Ein gedrucktes Versprechen über ein Kind steht zwanzig
+Jahre in ihrem Regal und kann sehr weh tun, wenn es nicht klappt oder
+länger dauert. So, wie es jetzt dasteht, ist es warm und trotzdem
+ohne Fallhöhe.
+
+Falls Ayu das anders möchte — mit oder ohne Namen, deutlicher oder
+gar nicht —, dann entscheidet sie das, nicht du. Frag sie einmal,
+bevor es gedruckt wird. Es ist auch ihr Satz.
+-->
+
+Bei den ersten beiden Punkten gilt: Wenn das hier gedruckt ist, ist es verbindlich. Genau deshalb steht es hier.

@@ -141,9 +141,9 @@ Es gibt vermutlich keinen kürzeren Weg, einer Katze mitzuteilen, dass sie jetzt
 
 Es hat nach Gas gerochen, also rückte die Feuerwehr an. Minh war zufällig da.
 
-Passiert ist zum Glück nichts.
+Festgestellt wurde am Ende nichts. Kein Leck, keine Ursache, nichts.
 
-{{Weißt du noch, was es am Ende war? Und wie ihr reagiert habt?}}
+Nach dem, was in der Von-Emmich-Straße passiert war, hat vermutlich niemand von uns auch nur eine Sekunde überlegt, ob man deswegen anruft.
 
 ### Algermissen
 
@@ -171,13 +171,13 @@ Es ist nicht das einzige Mal in diesem Buch, dass du nach einem Verlust genau da
 
 ### Brauhausstraße
 
-Ab 2010, direkt nach Algermissen. Zurück nach Hildesheim.
+Direkt nach Algermissen, zurück nach Hildesheim. Und dann fast zehn Jahre lang, bis 2018 — die längste Zeit, die du je an einer Adresse verbracht hast.
 
-{{Von wann bis wann genau? Und was war in diesen Jahren?}}
+Hier kam auch Fiby dazu.
 
 ### Dingworthstraße
 
-Bis 2022. Und hier passiert das, was in jeder Familie irgendwann passiert — man merkt es nur immer erst hinterher: Es wurden weniger.
+2018 bis 2022. Und hier passiert das, was in jeder Familie irgendwann passiert — man merkt es nur immer erst hinterher: Es wurden weniger.
 
 Ich war da schon ausgezogen. Steffanie auch. In die Dingworthstraße sind nur noch du, Marcus, Christina und Julia gezogen.
 
@@ -185,9 +185,11 @@ Wobei das mit dem Ausziehen ohnehin keine Einbahnstraße war. Marcus ist 2014 ge
 
 Rechne das einmal gegen den Anfang: 1997 seid ihr aus der Bismarckstraße raus, weil die Wohnung für vier Kinder zu klein war und das fünfte noch nicht mal da war. Fünfundzwanzig Jahre später zieht ihr wieder um, und man braucht deutlich weniger Platz.
 
-Alle sind älter geworden. Das klingt banal, aber es ist genau das, was in diesen Jahren passiert ist — und es ist auch das, worauf man die ganze Zeit hinarbeitet, wenn man Kinder großzieht. Man macht sich selbst überflüssig, und wenn es klappt, ist das der Erfolg.
+Alle sind älter geworden und selbstständiger. Mehrere waren schon draußen, und der Gedanke, dass irgendwann alle draußen sein würden, rückte spürbar näher.
 
-{{Was hat sich sonst verändert, bei ihr und bei euch?}}
+Das klingt banal, aber es ist genau das, worauf man die ganze Zeit hinarbeitet, wenn man Kinder großzieht. Man macht sich selbst überflüssig. Und wenn es klappt, ist das der Erfolg — auch wenn es sich vermutlich nicht danach anfühlt, wenn es so weit ist.
+
+Gleichzeitig wurde dein Knie in diesen Jahren immer schlechter. Die Wohnung leerte sich, und das Gehen wurde schwerer. Beides gleichzeitig.
 
 ### Hammersteinstraße
 

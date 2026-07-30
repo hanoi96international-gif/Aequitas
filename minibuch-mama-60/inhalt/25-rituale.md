@@ -37,7 +37,6 @@ TIPP: Frag deine Geschwister. Steffanie erinnert sich garantiert
 an Dinge, die du komplett vergessen hast — und umgekehrt.
 -->
 
-{{Der Geruch, das Geräusch oder das Bild, bei dem du sofort zu Hause bist.}}
 
 <!--
 VERSCHOBEN: Der Abschnitt über das Rauchen steht jetzt in
@@ -77,7 +76,6 @@ Oma und Opa waren an Heiligabend öfter mit dabei. Und am ersten Weihnachtstag s
 
 Oma hat damals, als sie noch jünger war, für die gesamte Familie gekocht. Für alle. Und es war jedes Mal sehr, sehr gut.
 
-{{Optional, aber es gehört hierhin, wenn du es aushältst: ein Satz darüber, dass es diese ersten Weihnachtstage nicht mehr gibt. Wenn du das lieber nicht ansprichst, lass diesen Absatz einfach weg — sie denkt es beim Lesen ohnehin.}}
 
 ## Sonntags
 
@@ -87,4 +85,3 @@ Beides ohne Diskussion. Der Spaziergang wurde gemacht, auch wenn keiner Lust hat
 
 Es ist bemerkenswert, wie wenig man dafür braucht, dass sich ein Tag wie ein Sonntag anfühlt. Einmal um den Block und eine Fernsehserie — mehr war es nicht. Und trotzdem weiß ich fünfundzwanzig Jahre später noch genau, wie sich das angefühlt hat.
 
-> {{Ein Satz, den sie in solchen Situationen immer gesagt hat.}}
