@@ -112,4 +112,6 @@ Deshalb steht es hier, schwarz auf weiß, damit es einmal irgendwo aufgeschriebe
 
 ~~~
 
-{{Ein Schlusssatz. Zum Beispiel darüber, dass man von einer Familie erst dann weiß, was sie wert ist, wenn es eng wird.}}
+Was eine Familie wert ist, weiß man nicht an guten Tagen. Man weiß es erst, wenn es eng wird und man sieht, wer dann vor der Tür steht.
+
+Bei dir standen sie da.

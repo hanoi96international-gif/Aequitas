@@ -1,30 +1,31 @@
 # Warum es dieses Buch gibt
 
 <!--
-SCHREIBHILFE — Ziel: knapp 1 Seite (ca. 200 Wörter).
+ENTWURF — aus dem echten Entstehungsprozess geschrieben. Ändere alles,
+was nicht nach dir klingt, besonders den Ton. Wenn du beim lauten
+Lesen an einer Stelle zusammenzuckst, ist sie zu feierlich.
 
-Hier erklärst du in deiner ganz normalen Sprechstimme, was sie da in
-der Hand hält. Drei Dinge reichen:
+Was hier bewusst drinsteht:
+  - dass du nicht wusstest, wo du anfangen sollst (ehrlich und
+    sympathisch)
+  - woher das Material kommt (Recherche, Familie, ihr Lebenslauf)
+  - der Hinweis, dass Erinnerungen ungenau sind — der nimmt dir
+    den Druck und ihr die Möglichkeit, jeden Fehler als Vorwurf
+    zu lesen
 
-  1. Wie du auf die Idee gekommen bist.
-  2. Wie du recherchiert hast ("Ich habe Oma angerufen", "Ich habe
-     die alten Fotoalben durchgeschaut", "Ich habe dich im Mai beim
-     Kaffee ausgefragt und du wusstest nicht, warum").
-  3. Der ehrliche Hinweis, dass Erinnerungen ungenau sind — das nimmt
-     dir den Druck, alles korrekt haben zu müssen, und wirkt sympathisch.
-
-WICHTIG: Nicht feierlich werden. So schreiben, wie du mit ihr redest.
-Wenn du beim Vorlesen zusammenzuckst, ist es zu pathetisch.
-
-Satzanfänge, falls du feststeckst:
-  „Ein Geschenk zu finden war dieses Jahr unmöglich, also …"
-  „Mir ist aufgefallen, dass ich über die ersten dreißig Jahre deines
-   Lebens fast nichts weiß."
-  „Das hier ist kein besonders ordentliches Buch. Es ist …"
+NOCH ZU ERGÄNZEN, wenn es zutrifft:
+  - Wen du alles gefragt hast (Anette? Monika? die Geschwister?)
+  - Ob du sie selbst ausgefragt hast, ohne zu verraten, warum
 -->
 
-{{Hier steht, wie du auf die Idee gekommen bist.}}
+Ein Geschenk zu finden war dieses Jahr schwierig. Und irgendwann ist mir aufgefallen, dass mir zu deinem Leben zwar eine Menge einfällt, ich aber über ganze Jahrzehnte davon fast nichts weiß.
 
-{{Hier steht, woher du das alles hast — wen du gefragt hast, was du gefunden hast.}}
+Ich wusste zum Beispiel nicht, an welchem Wochentag du geboren wurdest. Ich wusste nicht, was in Hildesheim los war, als du auf die Welt kamst. Ich wusste ungefähr, was du gearbeitet hast, aber nicht, wie lange, und nicht, wie es sich angefühlt hat.
 
-{{Und hier der Satz, dass manches vielleicht nicht ganz stimmt, aber alles ehrlich gemeint ist.}}
+Also habe ich angefangen zu suchen. Ich habe nachgeschlagen, was 1966 passiert ist. Ich habe in deinem Lebenslauf gelesen. Ich habe Leute gefragt und Dinge zusammengetragen, die niemand aufgeschrieben hatte, weil so etwas eben niemand aufschreibt.
+
+Herausgekommen ist dieses Buch.
+
+Es ist mit Sicherheit an einigen Stellen falsch. Erinnerungen sind unzuverlässig, meine besonders, und manches habe ich aus zweiter Hand. Wenn du beim Lesen denkst, dass etwas so nicht stimmt, hast du wahrscheinlich recht. Schreib es dazu — hinten ist Platz.
+
+Alles darin ist trotzdem ehrlich gemeint.

@@ -1,30 +1,23 @@
 # Zum Schluss
 
 <!--
-SCHREIBHILFE — Ziel: eine halbe Seite. Kurz halten.
+ENTWURF. Der erste Absatz stammt wörtlich von dir, nur leicht
+geglättet. Der Rest ist gebaut — überschreib, was nicht passt.
 
-Das Nachwort ist kein zweites Vorwort. Drei bis fünf Sätze reichen.
+Kurz halten. Ein Nachwort ist kein zweites Vorwort.
 
-Was hier gut funktioniert:
-  - Ein Satz darüber, dass das Buch unvollständig ist. Ist es ja.
-    Sechzig Jahre auf vierzig Seiten — das kann nicht aufgehen,
-    und wenn du das zugibst, wirkt das Buch größer, nicht kleiner.
-  - Eine Einladung: Sie soll die Lücken selbst füllen, dir
-    widersprechen, es richtigstellen. Dafür sind die leeren Seiten
-    hinten da.
-  - Ein letzter direkter Satz an sie.
-
-Und dann ist Schluss. Nicht noch eine Runde drehen.
+NOCH ZU ERGÄNZEN: Ort und Datum unten, und ob du mit Vornamen
+unterschreibst oder anders.
 -->
 
 Dieses Buch zu schreiben war emotional, mehr als ich gedacht hätte. Neben den schönen Erinnerungen musste ich auch den ganzen Schmerz aufschreiben, und dabei habe ich mich mehr in deine Lage versetzt, als ich es jahrelang getan hatte.
 
-{{Dass das Buch trotzdem unvollständig ist — und warum das in Ordnung ist.}}
+Vollständig ist es trotzdem nicht. Sechzig Jahre passen nicht auf vierzig Seiten, und das Meiste von dem, was dein Leben ausgemacht hat, weiß ohnehin nur du. Ganze Jahre kommen hier gar nicht vor. Menschen fehlen. Manches steht falsch da.
 
-{{Die Einladung, es selbst weiterzuschreiben. Hinten ist Platz.}}
+Deshalb ist hinten Platz gelassen. Widersprich mir. Schreib dazu, was ich vergessen habe, und streich durch, was nicht stimmt. Das Buch ist nicht fertig — es ist nur angefangen, und angefangen habe ich es, damit es überhaupt irgendwo steht.
 
-{{Der letzte Satz.}}
+{{Der letzte Satz. Deiner.}}
 
 ~~~
 
-{{Dein Name, Ort, Datum — zum Beispiel: Hildesheim, im September 2026}}
+{{Dein Name, Ort und Datum — zum Beispiel: Daniel. Hildesheim, im September 2026}}

@@ -131,4 +131,8 @@ Das ist eine merkwürdige Sache mit dem Aussehen: Ein Mensch ist seit fünfundzw
 
 Er starb am 10. Mai 2001, mit sechsunddreißig Jahren.
 
-{{Ein Schlusssatz. Er muss nichts auflösen und nichts geradebiegen. Er darf einfach nur wahr sein.}}
+Ich weiß nicht, wie man ein solches Kapitel beendet. Wahrscheinlich gar nicht.
+
+Es steht hier, weil er dazugehört. Zu diesen Jahren, zu diesem Haus, zu uns fünf und zu dir. Ein Buch über dein Leben ohne ihn wäre ein zurechtgelegtes Buch, und darum ging es hier nie.
+
+{{Wenn du noch einen eigenen Satz hast, ersetz die letzten beiden Absätze. Deiner ist besser.}}

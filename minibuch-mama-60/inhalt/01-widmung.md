@@ -1,22 +1,29 @@
 # Widmung
 
 <!--
-SCHREIBHILFE
+ENTWURF — geschrieben aus dem, was du mir erzählt hast. Überschreib
+ihn ohne schlechtes Gewissen, das ist die persönlichste Seite im Buch.
 
-Eine einzelne Seite, mittig, 1–3 Sätze. Mehr nicht. Diese Seite hat nur
-eine Aufgabe: dass sie beim Aufschlagen kurz schlucken muss.
+Die Regel für diese Seite: EIN Gedanke, drei Sätze, mehr nicht.
 
-Nicht zusammenfassen, was im Buch kommt. Einen einzigen Gedanken sagen.
+Bewusst nicht verwendet: "Danke, dass du nicht gegangen bist." Der
+Satz steht schon am Ende von "Vierunddreißig" und ist dort an der
+richtigen Stelle. Zweimal wäre er halb so stark.
 
-Muster, die funktionieren:
-  „Für dich, weil dir noch nie jemand aufgeschrieben hat, wie das war."
-  „Für {{Name}}. Sechzig Jahre, und ich kenne nur die Hälfte davon.
-   Hier ist der Versuch, aufzuholen."
-  „Für meine Mutter — die einzige Person, die diese Geschichte
-   von innen kennt."
+ALTERNATIVEN, falls dir der Entwurf nicht passt:
 
-Tipp: Schreib die Widmung ganz zum Schluss, wenn alle Kapitel stehen.
-Dann weißt du erst, was dein Buch eigentlich sagen will.
+  "Für Marion. Die meisten kennen dich als Mama.
+   Dieses Buch versucht, dich auch als alles andere zu zeigen."
+
+  "Für dich — weil sechzig Jahre zu viel sind, um sie niemandem
+   zu erzählen."
+
+  "Für meine Mutter, die nie darum gebeten hat, dass jemand
+   aufschreibt, was sie geleistet hat."
 -->
 
-{{Für dich — weil …}}
+Für dich.
+
+Weil in sechzig Jahren viel passiert ist, über das nie jemand geredet hat.
+
+Und weil ich fand, dass das lange genug so war.

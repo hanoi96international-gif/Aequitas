@@ -142,4 +142,6 @@ Und dann, mit Mitte fünfzig, machst du zum ersten Mal eine Tür hinter dir zu, 
 
 ~~~
 
-{{Ein Schlusssatz.}}
+Acht Adressen in sechsundfünfzig Jahren, und alle bis auf eine in derselben Stadt. Zwischen der ersten und der letzten liegen ein paar Kilometer.
+
+Dazwischen liegt alles andere.
