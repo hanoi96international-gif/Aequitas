@@ -33,6 +33,16 @@ Persönliche zu Steffanie -- ihre Sache ist und nicht die des Buchs.
 Im Text steht nur, dass sie zu dem Zeitpunkt nicht mehr zu Hause
 wohnte. Das ist wahr und reicht.
 
+WIDERSPRUCH BEI DEN DATEN — bitte einmal klären:
+Du hattest zuerst gesagt: Brauhausstraße nach Algermissen (also ab
+2010), Dingworthstraße bis 2022. Später hast du den Wechsel von der
+Brauhaus- in die Dingworthstraße auf 2021 oder 2022 geschätzt. Beides
+zusammen geht nicht auf — dann wäre die Dingworthstraße nur ein paar
+Monate gewesen. Wahrscheinlich ist entweder der Wechsel früher
+gewesen, oder der Umzug 2021/2022 war schon der in die
+Hammersteinstraße. Der Text steht deshalb bewusst ohne feste
+Jahreszahl für diesen einen Wechsel.
+
 WAS NOCH FEHLT:
   - Wann genau ging Brauhausstraße in Dingworthstraße über?
   - Warum jeder Umzug? Das ist die eigentliche Geschichte.
@@ -120,7 +130,13 @@ Der Name geht auf eine alte Hildesheimer Familie zurück, genauer auf einen Ober
 
 Angefangen hast du am Hohen Weg — mitten in der Stadt, mitten in der Fußgängerzone, die einen Tag nach deiner Geburt eine wurde. Sechsundfünfzig Jahre später wohnst du in einer stillen Straße, die nach einem Mann benannt ist, der Bäume gepflanzt hat.
 
-{{Wohnt sie dort allein, oder ist noch jemand mitgezogen? Und: Ist sie da angekommen?}}
+Und hier wohnst du zum ersten Mal allein.
+
+Das ist ein größerer Satz, als er aussieht. Vom Juni 1991 bis 2022 hat in jeder einzelnen deiner Wohnungen mindestens ein Kind gewohnt. Einunddreißig Jahre am Stück, ohne eine Unterbrechung, ohne ein einziges Jahr dazwischen.
+
+Und dann, mit Mitte fünfzig, machst du zum ersten Mal eine Tür hinter dir zu, hinter der niemand mehr ist außer dir. Und zwei Katzen.
+
+{{Wie ist das für sie? Frag sie das — und rechne damit, dass die Antwort komplizierter ausfällt als "schön ruhig".}}
 
 ~~~
 
