@@ -93,11 +93,28 @@ Was er für uns gemacht hat, ist genau das, was in einem Haushalt ohne Mann lieg
 
 ## Sascha
 
-Zwischen dir und Sascha ist etwas, das sich von außen schlecht erklären lässt.
+Sascha ist Anettes ältester Sohn. Er ist schwerbehindert und vollständig auf Hilfe angewiesen.
 
-{{Hier beschreibst du es. Und zwar konkret: was passiert, wenn die beiden sich sehen? Was macht sie mit ihm, was sonst niemand so macht? Woran merkt man, dass das etwas Eigenes ist?
+Ich finde ja, dass Menschen wie Sascha die ehrlichsten sind, die es gibt. Sie verstellen sich nicht. Was sie fühlen, sieht man, und zwar sofort.
 
-Ein Hinweis zum Ton: Schreib über Sascha wie über jeden anderen Menschen in diesem Buch — mit einer konkreten Szene, nicht mit einer Erklärung. Seine Behinderung darf vorkommen, aber sie ist nicht die Geschichte. Die Geschichte ist, dass die beiden ein Verhältnis haben, das sonst niemand hat.}}
+Genau deshalb kann ich das hier ohne jeden Zweifel sagen: Man sieht die Freude in Saschas Gesicht, wenn er dich kommen sieht.
+
+Du nimmst dir Zeit für ihn. Viel Zeit. Du versuchst zu erahnen, was er gerade braucht, statt darauf zu warten, dass es jemand für ihn ausspricht. Und du nimmst ihn vollständig so, wie er ist — ohne dass das nach Anstrengung aussieht und ohne dass du je ein Wort darüber verlierst.
+
+Am deutlichsten sieht man es an den Geschenken. Du suchst für ihn nicht irgendetwas aus, sondern immer etwas Persönliches. Sascha spielt gern Memory — also gab es irgendwann ein Memory, das eigens auf ihn zugeschnitten war.
+
+Das ist keine große Geste. Das ist einfach jemand, der zugehört hat.
+
+Und wenn Anette und Wolfgang einmal einen Tag weg mussten, hast du ihn betreut. Also nicht nur zugewandt, sondern zuständig — bei einem Menschen, bei dem Zuständigkeit wirklich etwas bedeutet.
+
+<!--
+ZU PRÜFEN: Ich habe es so gelesen, dass deine Mutter das
+personalisierte Memory machen ließ beziehungsweise angefertigt hat.
+Falls es anders war — jemand anderes hat es gemacht, oder Sascha
+hat es selbst zusammengestellt — sag Bescheid, das ist eine Zeile.
+Und falls du sein Alter nennen willst, sag mir, wie alt er ist.
+-->
+
 
 ## Rita und Willi
 
