@@ -84,6 +84,14 @@ In diesem Buch stehen ungefähr fünfzehn Stellen, an denen du dir etwas nicht l
 
 Und dann natürlich das, was man sich zuletzt wünscht, weil es das Wichtigste ist: Gesundheit. Ein langes Leben. Und zum ersten Mal seit dreißig Jahren eines ohne Dauerstress.
 
+## Dieses Jahr
+
+Bevor dieses Buch überhaupt fertig war, hat dir 2026 schon zwei Hochzeiten geliefert.
+
+Am 7. Februar haben Ayu und ich in Dänemark geheiratet. Am 9. Mai dann Christina und David.
+
+Zwei Hochzeiten in einem Jahr, und im September dein Sechzigster. Wenn man dieses Buch von vorn liest und dann hier ankommt, wirkt das fast wie eine Wiedergutmachung — als hätte irgendjemand nachgerechnet und beschlossen, dir einmal ein Jahr zu geben, in dem die Termine schöne Anlässe haben.
+
 ## Und dann die Sache mit den Enkelkindern
 
 Ja, die schreibe ich auch hin.
