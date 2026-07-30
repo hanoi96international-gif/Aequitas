@@ -66,7 +66,17 @@ Ausgezogen seid ihr aus dem schlichtesten Grund, den es gibt. Die Wohnung wurde 
 
 Bis 2000. Hier kam am 7. März 1998 Julia dazu, und damit wart ihr vollständig: fünf Kinder in sieben Jahren.
 
-{{Woran du dich erinnerst.}}
+Es war eine große Wohnung mit einem langen Flur. Und dieser Flur war ein Fußballplatz.
+
+Wir haben dort oft gespielt, du und ich, mit einem Softball. Und aus diesen Spielen stammt ein Wort, das es auf der ganzen Welt nur bei uns gibt: **Keramikarsch.**
+
+So hieß es, wenn du einen Ball mit dem Hintern abgewehrt hast.
+
+Ich will kurz festhalten, was das eigentlich bedeutet. Du hattest fünf Kinder, einen Haushalt und keinen Feierabend — und hast trotzdem im Flur mit deinem Sohn Fußball gespielt. Und zwar so oft, dass sich dafür eine eigene Fachsprache entwickelt hat.
+
+Draußen gab es einen Spielplatz direkt vor der Haustür. Nur mussten wir dort ständig leise sein wegen der Nachbarn, und deshalb sind wir lieber auf den Spielplatz in der Von-Emmich-Straße ausgewichen. Also in die Straße, in die wir ein paar Jahre später ziehen sollten, ohne dass es damals irgendjemand ahnte.
+
+Der Schulweg war kurz. Zehn Minuten, höchstens.
 
 ### Von-Emmich-Straße
 

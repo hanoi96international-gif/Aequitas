@@ -46,8 +46,9 @@ Sechzig Dinge, die ich weiß, weil es dich gibt.
 18. Du hast morgens um halb fünf in einer Backstube gestanden, bevor du zwanzig warst.
 19. Du regst dich beim Fußball auf, als würde es an dir liegen. Es ist großartig.
 20. Du brüllst die Namen deiner Katzen, wenn sie auf den Tisch wollen. Sie tun es trotzdem.
-21. {{…}}
+21. Du hast im Flur der Stresemannstraße Bälle mit dem Hintern abgewehrt. Der Fachbegriff dafür lautet bis heute Keramikarsch.
 22. {{…}}
+23. {{…}}
 
 <!--
 Ab hier weiter mit 21., 22., 23. … Wenn du deine Geschwister
