@@ -104,7 +104,9 @@ An deinem sechzigsten Geburtstag sind deine Kinder fünfunddreißig, zweiunddrei
 
 Wir sind alle da. Alle fünf.
 
-{{Was aus euch geworden ist, in ein, zwei Sätzen. Nicht angeben — nur zeigen, dass es weiterging. ACHTUNG: Wenn du Hochzeiten und Partner aufzählst, zähl entweder alle fünf auf oder keinen. Vier zu nennen und einen auszulassen fällt genau der Person auf, die fehlt — und sie liest das Buch mit.}}
+{{Was aus euch geworden ist, in ein, zwei Sätzen. Nicht angeben — nur zeigen, dass es weiterging.
+
+ENTSCHIEDEN: Hochzeiten, Partnerinnen und Partner kommen hier NICHT vor. Vier von euch sind vergeben, Marcus ist es nicht — eine solche Aufzählung liest sich für genau eine Person im Raum wie eine Bilanz, in der sie fehlt. Schreib stattdessen über etwas, das für alle fünf gilt: dass ihr durchgekommen seid, dass ihr Kontakt habt, dass ihr an ihrem Geburtstag da seid.}}
 
 ~~~
 

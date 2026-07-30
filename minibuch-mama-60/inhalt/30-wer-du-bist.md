@@ -27,9 +27,15 @@ wer dreißig Jahre lang gewartet hat, darf damit aufhören. Wenn dir
 das zu heikel ist, streich den Abschnitt ersatzlos.
 
 WAS NOCH FEHLT:
-  - Wann war sie Jugendtrainerin? Vor 2001 oder danach? Welche
-    Altersklasse, Jungen oder Mädchen, wie lange? Das ist das
-    überraschendste Detail im ganzen Kapitel — da lohnt Nachfragen.
+  - In welchen Jahren war sie Trainerin? Sie hat Daniel und Steffi
+    trainiert; Daniel ist 1991 geboren, Steffi 1993. Jugendfußball
+    beginnt meist mit sechs — das legt nahe, dass es irgendwann ab
+    Ende der Neunziger losging und mitten in die Jahre nach 2001
+    hineinreichte. Falls das stimmt, ist es eine der stärksten
+    Zeilen im ganzen Buch: In genau den Jahren, in denen der Strom
+    abgestellt wurde, hat sie nebenbei eine Jugendmannschaft
+    trainiert. Bitte nachfragen und mir sagen — dann verweise ich
+    aus "Vierunddreißig" darauf.
   - Woher kommt die Liebe zu 96? Von Willi? Von Giesbert? Von selbst?
   - Wo spielt sie Bingo, mit wem, seit wann?
   - Wie hießen die Katzen mit vollem Namen, und wer hat sie benannt?
@@ -64,9 +70,13 @@ Du liebst Fußball, und du liebst Hannover 96. Das ist bei 96 keine Kleinigkeit 
 
 Und dann kommt das, was die meisten Leute nicht wissen: **Du warst selbst Jugendtrainerin beim VfV Hildesheim.**
 
-Eine Frau mit fünf eigenen Kindern hat sich in ihrer Freizeit auch noch an einen Platz gestellt und fremden Kindern Fußball beigebracht.
+Und zwar nicht irgendwo. Du hast uns trainiert — mich und Steffi.
 
-{{Wann war das, welche Mannschaft, wie lange? Und was hat sie da eigentlich hingetrieben?}}
+Das muss man sich einmal von außen ansehen. Eine alleinerziehende Mutter von fünf Kindern, ohne Auto, alles zu Fuß oder mit dem Bus. Und die stellt sich zusätzlich Woche für Woche auf einen Fußballplatz und übernimmt eine Jugendmannschaft.
+
+Nicht, weil sie Zeit übrig hatte. Sondern weil ihre Kinder spielen wollten.
+
+{{In welchen Jahren war das? Wie lange ging es? Und — das ist die eigentliche Frage — wie war es, die eigene Mutter als Trainerin zu haben? Hat sie dich härter rangenommen als die anderen? Habt ihr euch auf dem Platz gestritten?}}
 
 ## Ungeduldig
 
