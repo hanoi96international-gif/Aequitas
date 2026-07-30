@@ -46,14 +46,19 @@ WAS ICH NOCH BRAUCHE:
   - Ein Detail zu Rita: eine Angewohnheit, ein Satz, ein Sessel, ein
     Geruch. Ein einziges konkretes Detail macht einen Menschen auf
     Papier lebendiger als eine Seite Beschreibung.
-  - Monika, ihr Mann Manuel und ihr Sohn Philipp haben jetzt einen
-    eigenen Abschnitt, weil sie im Buch bisher gar nicht vorkamen.
-    Der Abschnitt ist aber leer — ich weiß über die drei nichts.
-    Wichtig: Wenn Anette und Wolfgang je zwei Seiten bekommen und
-    Monikas Familie einen Halbsatz, fällt genau das auf. Entweder
-    alle bekommen etwas Substanzielles, oder der Abschnitt handelt
-    ehrlich davon, dass die Verhältnisse unterschiedlich eng sind.
-    Beides ist in Ordnung, nur die halbe Lösung nicht.
+ZU MONIKA, MANUEL UND PHILIPP — bewusst NICHT in diesem Kapitel:
+Dieses Kapitel handelt von den Jahren nach 2001 und davon, wer damals
+konkret geholfen hat. Daniel weiss über Monikas Familie am wenigsten,
+und jemanden in ein Dankeskapitel hineinzuschreiben, ohne sagen zu
+können wofür, merkt man auf Anhieb — dann steht dort eine Höflichkeit
+statt eines Dankes.
+
+Stattdessen bekommt Monika ihren Platz dort, wo sie ihn ohne jede
+Konstruktion hat: im Kindheitskapitel, als eine der drei Schwestern.
+Und Monika, Manuel und Philipp bekommen wie alle anderen eine eigene
+Seite in Teil Vier. Dort stehen alle auf derselben Stufe, weil dort
+jeder mit seinen eigenen Worten vorkommt. Das ist die sauberste
+Gleichbehandlung, die dieses Buch anbieten kann.
 
 ZU WILLI — FESTGEHALTEN, DAMIT ES NICHT WIEDER AUFKOMMT:
 Daniel hat gesagt, dass es über seinen Großvater dunklere Geschichten
@@ -73,7 +78,7 @@ legitime Entscheidung, und niemand außer dir merkt es.
 
 Es gehört zur Wahrheit dieser Jahre, dass du nicht allein warst.
 
-Verantwortlich warst du allein, daran ändert das nichts. Aber es gab Menschen, die kamen, ohne dass man sie zweimal fragen musste: Anette und Wolfgang. Monika und Manuel. Und Rita und Willi.
+Verantwortlich warst du allein, daran ändert das nichts. Aber es gab Menschen, die kamen, ohne dass man sie zweimal fragen musste: Anette und Wolfgang, und deine Eltern.
 
 Dieses Kapitel gehört ihnen.
 
@@ -123,14 +128,6 @@ hat es selbst zusammengestellt — sag Bescheid, das ist eine Zeile.
 Und falls du sein Alter nennen willst, sag mir, wie alt er ist.
 -->
 
-
-## Monika und Manuel
-
-Und dann ist da noch deine älteste Schwester.
-
-{{Was Monika und Manuel gemacht haben und was sie dir bedeuten. Das weiß ich noch nicht — bisher hast du vor allem von Anette erzählt, und ich habe deshalb nichts über Monika geschrieben, statt etwas zu erfinden. Sag mir: War sie in den Jahren nach 2001 auch da? Was ist das für ein Verhältnis zwischen den beiden? Und was für ein Mensch ist Manuel?}}
-
-{{Und Philipp — was ist das für ein Verhältnis zu deiner Mutter? Bei Sascha steht eine ganze Seite. Bei ihm bisher nichts, und das fällt auf.}}
 
 ## Rita und Willi
 

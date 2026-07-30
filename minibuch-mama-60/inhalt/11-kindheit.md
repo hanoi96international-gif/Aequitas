@@ -43,6 +43,10 @@ Geruch im Treppenhaus, der Name der Nachbarin, das eine Weihnachten.
 
 ## Monika, Anette und die Kleine
 
-{{Die drei Schwestern. Was für eine Rolle hatte die Jüngste?}}
+Ihr wart zu dritt. Monika die Älteste, Anette in der Mitte, und du am Ende.
+
+{{Die drei Schwestern: Wie viele Jahre lagen dazwischen? Was für eine Rolle hatte die Jüngste — die Nachzüglerin, die Verwöhnte, die, die sich durchboxen musste?}}
+
+{{Und hier gehört Monika hin. Frag sie selbst danach, nicht Anette über sie — als Älteste erinnert sie Dinge aus dieser Wohnung, die sonst niemand mehr weiß. Ein zwanzigminütiges Telefonat reicht, und dann steht sie hier mit einer eigenen Geschichte statt mit einer Erwähnung.}}
 
 > {{Ein Satz, den sie über ihre Kindheit erzählt — möglichst wörtlich, so wie sie ihn sagt.}}
