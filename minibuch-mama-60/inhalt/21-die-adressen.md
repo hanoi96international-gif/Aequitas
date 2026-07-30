@@ -203,7 +203,6 @@ Das ist ein größerer Satz, als er aussieht. Vom Juni 1991 bis zu diesem Umzug 
 
 Und dann, mit Mitte fünfzig, machst du zum ersten Mal eine Tür hinter dir zu, hinter der niemand mehr ist außer dir. Und zwei Katzen.
 
-{{Wie ist das für sie? Frag sie das — und rechne damit, dass die Antwort komplizierter ausfällt als "schön ruhig".}}
 
 ~~~
 

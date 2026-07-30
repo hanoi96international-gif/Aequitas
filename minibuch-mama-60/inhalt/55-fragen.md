@@ -75,15 +75,18 @@ Also stehen die Fragen jetzt einfach hier. Beantworte sie, wann du willst, oder 
 
 ## Über Herbie
 
-- Wie alt war der Wagen, als du ihn gekauft hast?
+- Wie alt war der Wagen, als du ihn gekauft hast? In welchem Zustand?
 - Wohin bist du zum ersten Mal ganz allein gefahren?
 - Wie lange haben wir 2010 wirklich nach Mönchengladbach gebraucht?
 
 ## Über heute
 
-- Seit wann gehst du zum Bingo, und mit wem?
+- Seit wann gehst du zum Bingo, mit wem, und wo?
+- Und was passiert eigentlich, wenn du doch mal etwas gewinnst?
 - Hatten Findus und Luna ihre Namen schon, oder hast du sie ihnen gegeben?
+- Wann genau hast du mit dem Rauchen aufgehört? Weißt du noch den Tag?
 - Wie ist es, zum ersten Mal seit 1991 allein zu wohnen?
+- Was sagst du eigentlich, wenn du an Oma und Opa denkst?
 
 ---
 

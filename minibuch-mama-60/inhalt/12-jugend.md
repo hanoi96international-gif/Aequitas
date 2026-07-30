@@ -64,9 +64,9 @@ Aufgehoben wurde das Verbot am 31. Oktober 1970. Da warst du vier.
 
 Als du anfingst zu spielen, war Mädchenfußball in diesem Land also seit nicht einmal einem Jahrzehnt überhaupt wieder erlaubt. Es gab keine Selbstverständlichkeit, auf die man sich hätte berufen können, keine Vorbilder im Fernsehen, keine Mädchen, die davon leben konnten.
 
-Du hast trotzdem gespielt.
+Du hast trotzdem gespielt. Bei der DJK Blau-Weiß Hildesheim.
 
-{{In welchem Verein, welche Position, wie lange — und was die Leute damals dazu gesagt haben.}}
+{{Auf welcher Position, und wie lange? Und was haben die Leute damals dazu gesagt?}}
 
 {{Warum sie aufgehört hat.}}
 

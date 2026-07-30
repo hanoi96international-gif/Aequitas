@@ -147,7 +147,6 @@ Besonders in der Zeit direkt nach 2001, als die Witwen- und Waisenrente monatela
 
 Von Rita ist mir vor allem eines geblieben: Am ersten Weihnachtstag sind wir zu ihnen gefahren, und sie hat für die gesamte Familie gekocht. Nicht für sieben Leute — für alle. Und es war jedes Mal sehr gut.
 
-{{Ein weiteres Detail zu Rita, wenn dir eins einfällt. Eine Angewohnheit, ein Satz, ein Sessel, ein Geruch.}}
 
 ## Sie sind nicht mehr da
 
@@ -161,7 +160,6 @@ Diesen Geburtstag erleben sie nicht mehr. Sie sitzen nicht mit am Tisch, sie wer
 
 Deshalb steht es hier, schwarz auf weiß, damit es einmal irgendwo aufgeschrieben ist: Ohne die beiden wäre das alles anders ausgegangen. Nicht "schwieriger". Anders.
 
-{{Optional, aber es würde hierhin gehören: Was sie über ihre Eltern sagt, wenn sie von ihnen redet. Oder — falls sie es nie tut — auch das ist eine Zeile wert.}}
 
 ~~~
 

@@ -48,8 +48,6 @@ Ein Mensch, der sein erstes eigenes Auto tauft, hat nicht einfach ein Fahrzeug a
 
 Herbie war dunkelblau. Und der Name war deine Idee, wegen des Films.
 
-{{Welches Baujahr, in welchem Zustand?}}
-
 ## Mönchengladbach, ohne Navi
 
 Zwei Jahre nach dem Führerschein, 2010, seid ihr nach Mönchengladbach gefahren. Über dreihundert Kilometer, einmal quer durchs Land.
@@ -64,7 +62,6 @@ Und dann haben wir uns verfahren, und ab da ging es nach Instinkt weiter.
 
 Angekommen sind wir trotzdem.
 
-{{Wie lange habt ihr am Ende gebraucht?}}
 
 <!--
 Die damalige Freundin heißt namentlich nicht im Text — genau wie die

@@ -61,7 +61,8 @@ Es gibt allerdings eine Regel in deiner Wohnung, und die ist nicht verhandelbar:
 
 Wenn Findus oder Luna es trotzdem versuchen, hört man das. Du brüllst ihre Namen mit einer Energie, gegen die jede Schiedsrichterentscheidung harmlos wirkt. Die Katzen sind, so weit ich das beurteilen kann, bis heute nicht beeindruckt.
 
-{{Frag sie, ob Findus und Luna ihre Namen schon mitgebracht haben oder ob sie ihnen neue gegeben hat — du wusstest es nicht mehr. Und ein Foto von den beiden gehört unbedingt hierhin.}}
+<!-- Foto von Findus und Luna gehört hierhin, sobald du eins hast. -->
+
 
 ## Sonntag ist Bingo
 
@@ -69,7 +70,6 @@ Jeden Sonntag Bingo. Ohne Ausnahme.
 
 Gewonnen hast du dabei, ehrlich gesagt, noch nie richtig. Seit Jahren nicht. Und du gehst trotzdem jeden Sonntag wieder hin, was entweder von großem Optimismus zeugt oder von einem außergewöhnlich schlechten Verhältnis zur Wahrscheinlichkeitsrechnung.
 
-{{Seit wann, wo, und mit wem? Und was passiert, wenn sie doch mal etwas gewinnt?}}
 
 ## Neunzig Minuten
 
@@ -131,7 +131,6 @@ Und ehrlich gesagt beeindruckt mich nicht einmal das Aufhören am meisten. Aufh�
 
 Du hältst es seit über zehn Jahren durch. Jeden einzelnen Tag davon.
 
-{{Weißt du noch, wann genau das war? Menschen, die aufgehört haben, wissen das Datum fast immer noch — und wenn sie es auf den Tag nennen kann, gehört es hier hin.}}
 
 ## Ungeduldig
 
@@ -141,4 +140,3 @@ Das schreibe ich nicht als Kritik, sondern weil ich glaube, dass es dir zusteht.
 
 Wer so lange gewartet hat, darf damit irgendwann aufhören.
 
-{{Wenn dieser Abschnitt für sie zu direkt ist: streichen. Er ist ein Angebot, keine Pflicht.}}
