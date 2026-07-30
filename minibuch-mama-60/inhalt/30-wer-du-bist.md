@@ -46,7 +46,7 @@ Es gibt ein paar Dinge an dir, die mit uns fünf nichts zu tun haben. Die gehör
 
 ## Die Katzen
 
-Donald und Fiby haben uns durch die ganze Kindheit begleitet.
+Donald und Fiby haben uns durch die ganze Kindheit begleitet. Wobei Donald auf eine Art zu uns kam, die ein paar Seiten weiter erzählt werden muss, weil sie mit Fußball zu tun hat.
 
 Als sie starben, hast du lange gebraucht. Du wolltest nicht gleich wieder ein Tier, und du hast dir die Zeit genommen, die du gebraucht hast, bis du bereit warst, das noch einmal zu machen.
 
@@ -80,13 +80,27 @@ Ganz aus dem Nichts kam das allerdings nicht. Du hattest selbst gespielt, als M�
 
 Beim VfV ging das bis ungefähr 2002 oder 2003. Danach beim VfR Ochtersum, bis 2005. Zusammen mit Michael.
 
-{{Wie war es, die eigene Mutter als Trainerin zu haben? Hat sie dich härter rangenommen als die anderen? Habt ihr euch auf dem Platz gestritten?}}
+Und bevor jetzt jemand denkt, das sei eine strenge Angelegenheit gewesen: Es war ziemlich locker. Ich hatte allerdings einen kleinen Vorteil, den ich hier zum ersten Mal öffentlich zugebe. Ich war ein bis zwei Jahre älter als der Rest der Mannschaft. Unter Erwachsenen ist das nichts. Mit elf ist das ungefähr so ausgeglichen wie Sackhüpfen gegen Grundschüler.
+
+## Itzum, 2002
+
+Der größte Titel deiner Trainerlaufbahn: ein Turnier in Itzum, und wir haben den Pokal geholt.
+
+Und dann kommt der Teil, der die Geschichte erst rund macht. Im selben Jahr haben wir bei den Eltern eines Kindes aus genau der Mannschaft, die wir im Finale geschlagen hatten, einen Kater abgeholt.
+
+Das war Donald. Und geholt haben wir ihn in Moritzberg — dem Stadtteil, in dem du heute wohnst.
+
+Ein Pokal und eine Katze, im selben Jahr, aus derselben Begegnung. Man kann sich so etwas nicht ausdenken.
 
 ## Michael
 
-Michael ist ihr bester Freund, seit sehr langer Zeit. Die beiden haben in Ochtersum zusammen trainiert, und sie sind füreinander da — in beide Richtungen, seit Jahren, ohne dass darüber viel geredet werden müsste.
+Michael ist ihr bester Freund, und die beiden kennen sich seit 2001 oder 2002.
 
-{{Wie lange kennen die beiden sich schon? Woher? Und eine Sache, an der man dieses Verhältnis erkennt.}}
+Dieses Datum lohnt einen zweiten Blick. Es ist genau der Zeitpunkt, an dem alles auseinandergefallen war. In dem Jahr, in dem die meisten Leute vermutlich weniger geworden sind, ist einer dazugekommen — und der ist bis heute geblieben. Fünfundzwanzig Jahre inzwischen.
+
+Sie haben in Ochtersum zusammen trainiert, und sie sind füreinander da, in beide Richtungen, ohne dass darüber viel geredet werden müsste.
+
+{{Woher kennen die beiden sich? Über den Fußball, oder war er vorher schon da? Und eine konkrete Sache, an der man dieses Verhältnis erkennt.}}
 
 ## Ungeduldig
 

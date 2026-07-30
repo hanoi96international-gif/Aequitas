@@ -64,9 +64,11 @@ Vor uns hast du bei Bäckerei Brandt in Hildesheim gearbeitet, bis 1991. Dann ka
 
 Gearbeitet hast du in diesen vierzehn Jahren trotzdem. Nur zahlt einem das niemand.
 
-2005 bist du zurück, zu Joey's Pizza. Julia war sieben, Christina acht — das jüngste Kind gerade so weit, dass es ging. Und dann bist du dort geblieben, {{bis etwa 2018}}: {{rund dreizehn}} Jahre.
+2005 bist du zurück, zu Joey's Pizza. Julia war sieben, Christina acht — das jüngste Kind gerade so weit, dass es ging. Und dann bist du dort geblieben, {{bis etwa 2018}}.
 
-{{Was war das für ein Job? Schichten, Abende, Wochenenden? Und wer war dann bei euch, wenn sie arbeiten war?}}
+Danach Helios. Danach Edeka. Und dann so lange weiter, bis es mit den Knien nicht mehr ging.
+
+{{Die genauen Zeiträume — du wolltest da noch mal nachsehen. Und: Was waren das für Tätigkeiten? Schichten, Abende, Wochenenden? Wer war bei euch, wenn sie arbeiten war?}}
 
 ## Die Von-Emmich-Straße
 
