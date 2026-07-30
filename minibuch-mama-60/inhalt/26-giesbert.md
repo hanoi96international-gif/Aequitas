@@ -34,14 +34,9 @@ WAS DU NOCH LIEFERN WOLLTEST — "sehr ausführlich", deine Worte:
     für sie ist dieses Kapitel möglicherweise das Wertvollste im
     ganzen Buch.
 
-OFFENE ENTSCHEIDUNG — sag mir, welche Variante:
-  (a) Sein Tod wird gar nicht benannt, das Kapitel endet vorher
-  (b) Nur das Datum: "Er starb am 10. Mai 2001, mit sechsunddreißig"
-  (c) Datum und Umstände
-
-Ich habe (b) vorbereitet, weil das zu deiner Entscheidung passt,
-ihn nicht zu streichen, ohne die bittere Vorgeschichte auszubreiten.
-Ändern ist eine Sache von zwei Minuten.
+ENTSCHIEDEN: Sein Tod steht mit Datum und Alter da, ohne Umstände.
+"Es gehört zum Leben dazu" — Daniels Worte. Damit ist die Grenze
+gezogen: benannt, aber nicht ausgebreitet.
 
 TON: Dieses Kapitel muss nichts glattziehen. Es darf ihn zeigen, wie
 er war, mit allem, was du zeigen willst. Was es nicht tun sollte:

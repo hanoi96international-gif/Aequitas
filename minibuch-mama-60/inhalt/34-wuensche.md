@@ -18,14 +18,14 @@ ALLE DATEN AUS IHREM LEBENSLAUF (Stand 19.09.2025), also belegt:
   Hobbys: Sportveranstaltungen, Gesellschaftsspiele,
   Unternehmungen mit Familie und Freunden
 
-EINE ABWEICHUNG: Du hattest Edeka gesagt, im Lebenslauf steht
-Marktcafé Potratz. Möglich, dass das Café in einem Edeka-Markt sitzt —
-das gibt es in der Gegend öfter. Bitte einmal nachfragen. Ich bin
-im Text der schriftlichen Angabe gefolgt.
+GEKLÄRT: Das Marktcafé Potratz saß in einem Edeka — beide Angaben
+stimmen also. Und: Sie ist dort nie glücklich geworden, mit den
+Knien war jede Schicht eine Quälerei. Der Abschnitt sagt das jetzt,
+statt einen schönen Kreisschluss daraus zu machen. Es ist ohnehin
+die bessere Version, weil das, was danach kommt — mit 59 noch einmal
+einen Lebenslauf schreiben — dadurch erst sein volles Gewicht bekommt.
 
-DEN LEBENSLAUF-ABSCHNITT MUSST DU FREIGEBEN. Ihr eigenes Dokument
-zurückzuspiegeln ist ein starker Effekt, kann aber auch übergriffig
-wirken. Wenn du zögerst: streichen, das Kapitel trägt auch ohne.
+FREIGEGEBEN: Der Lebenslauf-Abschnitt bleibt drin.
 
 WICHTIG: Kein Krankenkapitel daraus machen. Ihr Geburtstag soll nicht
 von ihrem Knie handeln.
@@ -40,11 +40,15 @@ und auf eure Partner. Wenn es so weit ist, freut sie sich auch ohne
 Vorbestellung.
 -->
 
-Im Juni 2023 hast du wieder hinter einer Verkaufstheke gestanden. Bäckereifachverkäuferin, Marktcafé Potratz.
+Im Juni 2023 hast du wieder hinter einer Verkaufstheke gestanden. Bäckereifachverkäuferin, Marktcafé Potratz, im Edeka.
 
 Neununddreißig Jahre, nachdem du im Dezember 1984 als Achtzehnjährige bei Brandt angefangen hattest, warst du wieder genau da: Backwaren, Theke, Kundschaft. Dazwischen lagen fünf Kinder, vierzehn Jahre Elternzeit, zehn Jahre Pizza und sieben Jahre Klinik-Cafeteria.
 
-Im November 2023 war Schluss. 2024 und 2025 kamen zwei schwere Knieoperationen, und seit August 2024 steht in deinem Lebenslauf ein Wort, das nach Warteschleife klingt und keine ist: **Rehabilitationsphase.**
+Man könnte das jetzt als schönen Kreis beschreiben, der sich schließt. Nur war es das nicht.
+
+Du bist dort nie glücklich geworden. Und mit den Knien war jede Schicht eine Quälerei — Stehen, acht Stunden, auf zwei Gelenken, die schon nicht mehr mitmachten. Du bist trotzdem hingegangen. Ein halbes Jahr lang, jeden Tag, bis im November nichts mehr ging.
+
+2024 und 2025 kamen zwei schwere Knieoperationen, und seit August 2024 steht in deinem Lebenslauf ein Wort, das nach Warteschleife klingt und keine ist: **Rehabilitationsphase.**
 
 Bis zu deinem sechzigsten Geburtstag sind das gut zwei Jahre.
 
