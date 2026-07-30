@@ -108,7 +108,13 @@ Ich schreibe das nicht als Vorwurf. Ich schreibe es, weil ich damals nur eine Se
 
 Ich weiß nicht, wie oft du nein sagen musstest zu Dingen, die du uns gern gegeben hättest. Ich weiß nur inzwischen, auf welcher Seite dieses Nein mehr wehgetan hat.
 
-{{Falls dir eine konkrete Situation einfällt — eine Jacke, ein Schulausflug, ein Geburtstag —, steht sie hier besser als jede allgemeine Formulierung. Wenn es zu privat ist: weglassen, der Absatz trägt auch so.}}
+Und eine Sache habe ich erst beim Schreiben dieses Buches begriffen.
+
+Du kanntest das. Weiter vorn steht die Geschichte von deiner eigenen Markenhose, die dir ein Mitschüler kaputt gemacht hat, und davon, dass sie geflickt wurde und nie wieder dieselbe war.
+
+Du wusstest also ganz genau, worum es in so einer Schule geht. Nicht theoretisch, nicht als Mutter, die sich das vorstellt — sondern weil du selbst mal das Mädchen mit der einen guten Hose warst.
+
+Das macht es nicht besser. Aber es macht es anders. Du hast nicht nur nein gesagt. Du hast nein gesagt und dabei genau gewusst, wie sich das auf der anderen Seite anfühlt.
 
 ## Was daraus geworden ist
 

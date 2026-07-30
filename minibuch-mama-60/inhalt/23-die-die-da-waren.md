@@ -77,7 +77,9 @@ Angefangen hat das früher, als die meisten wissen. Im Juni 1991 lagt ihr beide 
 
 Man kann sich schwer einen besseren Anfang für die nächsten dreißig Jahre ausdenken.
 
-{{Was Anette in den Jahren danach konkret gemacht hat. Und was das für ein Verhältnis ist, zwischen den beiden.}}
+Zwischen euch beiden war die Bindung schon in der Kindheit die engere von den dreien. Und sie ist es geblieben, über fünfzig Jahre hinweg.
+
+Unterstützt habt ihr euch, wo es ging, und zwar in jeder Form, die gerade gebraucht wurde: mit einem Rat, mit Geld, mit Händen. Es wurde nicht abgewogen, was zumutbar ist. Es wurde gemacht.
 
 ## Wolfgang
 

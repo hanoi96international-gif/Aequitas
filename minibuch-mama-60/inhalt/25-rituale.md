@@ -45,7 +45,11 @@ Fünf Kinder, fünf Meinungen. Alle mäkelig, alle wollten etwas anderes, und zw
 
 Mittagessen war bei uns keine Mahlzeit, sondern eine Mammutaufgabe. Und du hast sie ungefähr fünftausendmal gelöst.
 
-{{Was gab es trotzdem ständig? Und gab es ein Gericht, bei dem ausnahmsweise alle fünf still waren?}}
+Der mäkeligste war Marcus. Mit Abstand.
+
+Deshalb gab es bei uns auffällig oft Chicken Nuggets oder Chicken Dinos mit Pommes — also das, was garantiert gegessen wurde, ohne Diskussion, von allen.
+
+Es ist übrigens besser geworden, je älter er wurde. Nur hat das damals niemandem geholfen.
 
 ## Weihnachten
 
