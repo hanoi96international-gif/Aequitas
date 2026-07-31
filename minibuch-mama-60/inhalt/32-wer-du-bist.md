@@ -49,15 +49,44 @@ Es gibt ein paar Dinge an dir, die mit uns fünf nichts zu tun haben. Die gehör
 
 ## Die Katzen
 
-Es waren mehrere über die Jahre. Zuerst Daisy und Donald — wobei Donald auf eine Art zu uns kam, die ein paar Seiten weiter erzählt werden muss, weil sie mit Fußball zu tun hat. Daisy ist 2008 in Algermissen gestorben. Fiby kam später dazu, in der Brauhausstraße.
+Es waren vier über die Jahre, und du weißt bei jeder einzelnen das Datum.
 
-Als die beiden am Ende nicht mehr da waren, hast du lange gebraucht. Du wolltest nicht gleich wieder ein Tier. Du hast dir die Zeit genommen, die du gebraucht hast, bis du bereit warst, das noch einmal zu machen.
+Daisy war die Erste. Sie ist am 30. November 2008 in Algermissen gestorben.
 
-Dann kam Findus, am 6. Januar 2024. Und am 20. Oktober 2024 kam Luna dazu.
+**Donald** kam am 27. Juni 2001 und ist am 11. Juli 2021 gestorben. Zwanzig Jahre und zwei Wochen. Für eine Katze ist das ein außergewöhnlich langes Leben, und für uns war es der halbe Weg vom Kind zum Erwachsenen.
 
-Jetzt leg diese Daten einmal neben den Rest. 2023 bist du in die Hammersteinstraße gezogen, zum ersten Mal seit zweiunddreißig Jahren allein. Im selben Jahr ist Oma gestorben. Ein paar Monate später stand Findus in der Wohnung, und noch im selben Jahr kam Luna hinterher.
+**Fiby** kam am 1. Mai 2009 und ist am 10. August 2023 gestorben. Vierzehn Jahre.
+
+## Das Jahr 2023
+
+Leg jetzt einmal die Jahreszahlen nebeneinander.
+
+2023 ist Fiby gestorben. Im selben Jahr ist Oma gestorben. Und im selben Jahr bist du umgezogen — zum ersten Mal seit zweiunddreißig Jahren in eine Wohnung ohne Kinder, und nun auch ohne Katze.
+
+Fünf Monate nach Fibys Tod stand Findus in der Wohnung. Am 6. Januar 2024. Und am 20. Oktober kam Luna hinterher.
 
 Man kann das nüchtern erklären: Wer allein wohnt, hat Platz für ein Tier. Ich lese es anders. Ich glaube, du bist einfach nicht besonders gut darin, für niemanden zuständig zu sein.
+
+<!--
+WIDERSPRUCH — muss vor dem Druck geklärt werden:
+
+Du hattest erzählt, ihr hättet Donald 2002 bei den Eltern eines
+Kindes aus der im Finale geschlagenen Mannschaft geholt, nach dem
+Turniersieg in Itzum. Jetzt nennst du als Donalds Ankunft den
+27. Juni 2001.
+
+Beides zusammen geht nicht. Entweder war das Turnier in Itzum 2001,
+oder Donald kam 2002. Weiter unten im Kapitel steht die Itzum-Szene
+noch mit der Jahreszahl 2002.
+
+Und noch etwas, das du vielleicht nicht auf dem Schirm hattest:
+Der 27. Juni ist dein Geburtstag. Donald kam also an deinem zehnten
+Geburtstag — sieben Wochen nach dem 10. Mai 2001.
+
+Falls das Datum stimmt, ist das eine der stärksten Stellen im ganzen
+Buch, und sie gehört ausgeschrieben. Sag mir, was zutrifft.
+-->
+
 
 Die beiden werden von dir versorgt wie Kinder. Nicht wie Haustiere — wie Kinder. Wer dich schon mal mit den beiden reden gehört hat, weiß, was gemeint ist.
 

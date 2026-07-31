@@ -195,11 +195,11 @@ Und dann ist etwas passiert, das du vermutlich selbst nie so benannt hast: Donal
 
 Es ist nicht das einzige Mal in diesem Buch, dass du nach einem Verlust genau das gemacht hast.
 
+Ein halbes Jahr später, am 1. Mai 2009, kam Fiby dazu.
+
 ## Brauhausstraße
 
 Ende 2009 zurück nach Hildesheim, und dann rund sechs Jahre lang, bis 2015.
-
-Hier kam auch Fiby dazu.
 
 ## Dingworthstraße
 
