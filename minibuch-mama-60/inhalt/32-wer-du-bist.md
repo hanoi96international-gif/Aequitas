@@ -53,7 +53,11 @@ Es waren mehrere über die Jahre. Zuerst Daisy und Donald — wobei Donald auf e
 
 Als die beiden am Ende nicht mehr da waren, hast du lange gebraucht. Du wolltest nicht gleich wieder ein Tier. Du hast dir die Zeit genommen, die du gebraucht hast, bis du bereit warst, das noch einmal zu machen.
 
-Dann kam Findus. Und dann kam Luna.
+Dann kam Findus, am 6. Januar 2024. Und am 20. Oktober 2024 kam Luna dazu.
+
+Jetzt leg diese Daten einmal neben den Rest. 2023 bist du in die Hammersteinstraße gezogen, zum ersten Mal seit zweiunddreißig Jahren allein. Im selben Jahr ist Oma gestorben. Ein paar Monate später stand Findus in der Wohnung, und noch im selben Jahr kam Luna hinterher.
+
+Man kann das nüchtern erklären: Wer allein wohnt, hat Platz für ein Tier. Ich lese es anders. Ich glaube, du bist einfach nicht besonders gut darin, für niemanden zuständig zu sein.
 
 Die beiden werden von dir versorgt wie Kinder. Nicht wie Haustiere — wie Kinder. Wer dich schon mal mit den beiden reden gehört hat, weiß, was gemeint ist.
 
