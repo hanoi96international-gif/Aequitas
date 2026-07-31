@@ -1,149 +1,151 @@
 # Gespräch mit Anette
 
-Zum Ausdrucken oder aufs Handy. Du musst nicht alles fragen — drei gute
-Antworten sind mehr wert als dreißig knappe.
+Gekürzt auf das, was noch offen ist. Alles, was du mir schon erzählt hast,
+steht unten unter „Schon geklärt" — das musst du nicht noch einmal fragen.
 
 ---
 
 ## Vorher
 
-**Sag ihr gleich zu Anfang, dass es eine Überraschung ist.** Sonst rutscht
-ihr das beim nächsten Kaffee raus, ohne böse Absicht. Ein Satz reicht:
-*„Mama weiß nichts davon und soll es auch nicht wissen."*
+**Sag ihr im ersten Satz, dass es eine Überraschung ist.** Sonst rutscht es
+ihr beim nächsten Kaffee raus, ohne böse Absicht.
 
-**Nimm es auf.** Frag vorher, ob es okay ist. Du wirst dich sonst an die
-Hälfte nicht mehr erinnern, und gerade die wörtlichen Sätze gehen als
-Erstes verloren.
+**Nimm es auf**, nach kurzer Rückfrage. Du erinnerst dich sonst an die
+Hälfte nicht, und die wörtlichen Sätze gehen als Erstes verloren.
 
-**Plan zwei Stunden ein, nicht dreißig Minuten.** Am Telefon geht es auch,
-aber persönlich ist besser — dann könnt ihr nebenbei Fotos durchgehen.
-
-**Rechne damit, dass es auch um Rita und Willi geht.** Anette hat 2019 und
-2023 ihre Eltern verloren, genau wie deine Mutter. Manche Fragen werden
-nicht nur nett. Lass ihr Zeit und drängle nicht.
+**Rechne mit anderthalb Stunden.** Und damit, dass es stellenweise schwer
+wird — sie hat 2019 und 2023 dieselben Eltern verloren wie deine Mutter.
 
 ---
 
-## 1. Die drei Schwestern
+## 1. Die Geburt und die frühen Jahre
 
-- Wie viele Jahre lagen zwischen euch dreien?
-- Was für ein Kind war Marion? Laut, leise, frech, ängstlich?
-- Warst du eher die große Schwester oder eher die Verbündete?
-- Wer von euch dreien hat den meisten Ärger gemacht — ehrlich?
-- Erinnerst du dich an ihre Geburt am 4. September 1966?
-- **Weißt du, wer sich den Namen Marion ausgedacht hat?**
-- Wie sah die Wohnung am Hohen Weg aus? Wer schlief mit wem in einem Zimmer?
+- Weißt du etwas über den 4. September 1966? Uhrzeit, Gewicht, Klinik
+  oder zu Hause?
+- **Wer hat sich den Namen Marion ausgedacht?**
+- Wie sah die Wohnung am Hohen Weg aus? Wer schlief mit wem im Zimmer?
 - Wie war das, mitten in der Fußgängerzone aufzuwachsen? War die Straße
   euer Spielplatz?
+- Was für ein Kind war Marion? Laut, leise, frech, ängstlich?
+- Was war das für eine Rolle, die Jüngste zu sein?
+- Wer von euch dreien hat den meisten Ärger gemacht — ehrlich?
 
-## 2. Rita und Willi
+## 2. Eine Geschichte über Oma
 
-- Was haben eure Eltern gearbeitet?
-- Wie waren sie als Eltern?
-- Und wie waren sie später als Oma und Opa — anders?
-- **Erzähl mir eine Geschichte über Oma.** Irgendeine. Eine Angewohnheit,
-  ein Spruch, wie sie in der Küche stand.
-- Was hat Marion von Rita? Und was von Willi?
+Dass Rita bei Horten gearbeitet hat, im Altersheim gekocht hat und an
+Weihnachten für die ganze Familie — das steht schon im Buch. Was fehlt,
+ist etwas Kleines:
 
-> Zu Opa musst du nichts fragen, was du nicht wissen willst. Das Buch
-> erzählt bei den beiden bewusst, was sie **getan** haben, nicht, wer
-> sie waren. Die Frage nach dem Beruf und nach der Hilfe reicht völlig.
+- **Erzähl mir eine Angewohnheit von ihr.** Einen Spruch, einen Sessel,
+  einen Geruch, eine Macke. Irgendetwas, woran man sie sofort erkennt.
 
 ## 3. Marion als Jugendliche
 
-- **In welchem Verein hat sie Fußball gespielt? Auf welcher Position?**
+Der Verein ist bekannt: DJK Blau-Weiß Hildesheim. Offen ist der Rest.
+
+- **Auf welcher Position hat sie gespielt? Wie lange?**
 - Wie ist sie überhaupt dazu gekommen?
-- Was haben die Leute damals gesagt, dass ein Mädchen im Verein spielt?
+- **Was haben die Leute damals dazu gesagt, dass ein Mädchen im Verein
+  spielt?** Da hängt garantiert eine Geschichte dran.
 - Warum hat sie aufgehört?
-- Kennst du die Geschichte mit der kaputten Markenhose? Wie ging die aus?
-- Und die Sache bei C&A — was weißt du darüber?
-- Welche Musik lief bei ihr? Was hing an ihrer Wand?
-- Wer war ihre beste Freundin damals?
+- Die Geschichte mit der kaputten Markenhose — wie ging die aus? Was ist
+  mit dem Jungen passiert?
+- Und die Sache bei C&A: Was wollte sie mitnehmen? Hat Rita es je erfahren?
+- Welche Musik lief bei ihr? Was hing an der Wand?
+- Wer war ihre beste Freundin? Gibt es noch Kontakt?
 - Was wollte sie werden?
 
-## 4. Die Bäckerei und die frühen Jahre
+## 4. Die Lehre
 
-- Weißt du noch, wie sie zur Lehre bei Brandt gekommen ist?
-- Wie war sie in der Zeit — mit achtzehn, mit zwanzig?
-- Wofür hat sie ihr erstes Geld ausgegeben?
+- Wie ist sie zur Ausbildung bei Brandt gekommen?
+- Wie war sie mit achtzehn, mit zwanzig?
 
 ## 5. 1989
 
-- **Was weißt du über die Kontaktanzeige? Wer hat sie aufgegeben?**
-- Wie war das erste Treffen — hat sie dir davon erzählt?
-- Was hat Rita dazu gesagt?
-- Wie war die Hochzeit am 31. August 1989? Warst du dabei? Was hatte sie an?
+- **Wer hat die Kontaktanzeige aufgegeben — Marion oder Giesbert?**
+- Weißt du noch, was darin stand?
+- Wie war das erste Treffen? Hat sie dir davon erzählt?
+- Was hat Rita gesagt, als sie einen Mann aus der Zeitung mitbrachte?
+- Wie war die Hochzeit am 31. August 1989? Wer war da, was hatte sie an?
 - **Gibt es Fotos davon?**
-
-> Über alles, was danach kam, musst du nichts fragen. Wenn Anette von
-> selbst darauf kommt, hör zu — aber du brauchst es nicht fürs Buch,
-> und das Buch erzählt es auch nicht.
 
 ## 6. Juni 1991
 
-- Du hast zwei Tage nach ihr entbunden, im selben Zimmer. **Wie war das?**
-- War das Zufall oder habt ihr das halbwegs geplant?
+Dass ihr zwei Tage auseinander im selben Zimmer entbunden habt, steht schon
+im Buch. Was fehlt, ist deine Sicht:
+
+- Wie war das eigentlich? Zufall oder halbwegs geplant?
 - Woran erinnerst du dich aus diesen Tagen?
 
-## 7. Die Jahre nach 2001
+## 7. Giesbert
 
-- Was hast du damals konkret gemacht? Kinder gehütet, gekocht, Geld,
-  einfach da gewesen?
-- **Was haben Rita und Willi konkret getan?**
-- Und Wolfgang — woran erinnerst du dich am ehesten? Umzüge, Autos,
-  Reparaturen? Gibt es da eine Geschichte?
-- Was hat Marion in diesen Jahren durchgezogen, wovon sie selbst nie
-  erzählt?
-- Gab es einen Moment, in dem du gedacht hast, dass sie es nicht schafft?
-- Wie hat sie es geschafft?
+Vorsichtig fragen, und nur das:
 
-## 8. Sascha
+- Was für ein Mensch war er? Hatte er Talente, Macken, Eigenarten?
+- Woran erinnerst du dich, wenn du an ihn denkst?
 
-- Wie ist das zwischen Marion und Sascha? Von außen sieht man das anders
-  als von innen.
-- Das personalisierte Memory — war das ihre Idee? Wie ist das entstanden?
+> Über alles, was danach kam, musst du nichts fragen. Das Buch erzählt es
+> auch nicht.
 
-## 9. Und dann die wichtigste Frage
+## 8. Die wichtigste Frage
 
 **„Was würdest du Marion zum Sechzigsten sagen, wenn du es aufschreiben
 müsstest?"**
 
-Das ist gleichzeitig ihr Beitrag für den letzten Teil des Buchs. Wenn sie
-loslegt: mitschreiben oder aufnehmen. Danach vorlesen und fragen, ob es
-so im Buch stehen darf.
+Das ist gleichzeitig ihr Beitrag für Teil Vier. Wenn sie loslegt:
+mitschreiben oder aufnehmen, danach vorlesen und fragen, ob es so im Buch
+stehen darf. Vier bis zehn Sätze reichen, Tippfehler und krumme Sätze
+ausdrücklich erwünscht.
 
-Vier bis zehn Sätze reichen. Und sag ihr, dass Tippfehler und krumme Sätze
-ausdrücklich erwünscht sind — im Buch steht es wörtlich so, wie sie es sagt.
+**Frag Wolfgang gleich mit.** Er hat ein eigenes Kapitel im Buch und
+gehört genauso in Teil Vier.
 
-## 10. Zum Schluss: Fotos
+## 9. Fotos
 
-- Hat sie Fotos von Marion als Kind? Als Jugendliche?
-- Von der Hochzeit 1989?
-- Von Rita und Willi?
-- Vom Juni 1991, aus dem Krankenhaus?
+- Marion als Kind und als Jugendliche
+- Die Hochzeit 1989
+- Rita und Willi
+- Juni 1991, aus dem Krankenhaus
+- Irgendetwas mit Marion und Sascha
 
-**Alles abfotografieren, was auch nur in Frage kommt.** Aussortiert wird
-später. Bei gutem Tageslicht mit dem Handy reicht völlig für den Druck.
+**Alles abfotografieren, was in Frage kommt.** Aussortiert wird später.
 
 ---
 
-## Monika, Manuel und Philipp
+# Schon geklärt — nicht noch einmal fragen
 
-Die drei kommen im Buch bisher gar nicht vor, und das muss sich ändern —
-sonst steht am Ende ein Buch da, in dem die eine Schwester zwei Seiten hat
-und die andere keine. Das fällt auf, und zwar zuerst den Betroffenen.
+Damit du nicht doppelt arbeitest und Anettes Zeit nicht mit Bekanntem
+verbrauchst. Wenn dir etwas davon falsch vorkommt, sag es mir.
 
-**Frag Monika selbst**, nicht Anette über sie. Bei ihr lohnen vor allem
-Block 1 und 2 — Kindheit und Eltern. Als Älteste erinnert sie Dinge, die
-Anette gar nicht mehr mitbekommen hat. Dazu:
+- **Altersabstände:** Monika 1961, Anette 1963, Marion 1966
+- **Rita:** erst Horten in Hildesheim (später Kaufhof), dann Küche im
+  Altersheim; hat am ersten Weihnachtstag für die ganze Familie gekocht
+- **Willi:** Bundesgrenzschutz, später Wurst-Kate in der Schmiedestraße
+- **Die Großeltern** haben immer wieder finanziell ausgeholfen und die
+  Monate überbrückt, in denen die Witwenrente nicht berechnet war
+- **Anette und Wolfgang** waren durchgehend da — Rat, Geld, Hände
+- **Wolfgang:** nicht der leibliche Vater von Sascha und Sanja, seit
+  jeher an Anettes Seite, heute verheiratet; Handwerk, Umzüge, Autokauf
+- **Sascha:** schwerbehindert, das personalisierte Memory, Marion hat ihn
+  auch betreut, wenn Anette und Wolfgang weg mussten
+- **Verein:** DJK Blau-Weiß Hildesheim
+- **Juni 1991:** Marion und Anette im selben Krankenhauszimmer, Sanja kam
+  zwei Tage nach Daniel
+
+---
+
+# Und für Monika
+
+Sie kommt im Buch bisher fast nicht vor, und das sollte sich ändern.
+
+Frag sie **selbst**, nicht Anette über sie. Bei ihr lohnen vor allem die
+Fragen aus Abschnitt 1 — als Älteste erinnert sie Dinge aus der Wohnung am
+Hohen Weg, die Anette gar nicht mehr mitbekommen hat.
+
+Dazu:
 
 - Wie ist euer Verhältnis heute, deins und Marions?
-- Was hast du in den Jahren nach 2001 mitbekommen?
 - Was ist Marion für eine Schwester?
-- Und Manuel — wie lange seid ihr schon zusammen? Was verbindet ihn
-  mit Marion?
-- Wie ist das Verhältnis zwischen Marion und Philipp?
+- Und die Frage aus Abschnitt 8 — für ihren eigenen Beitrag.
 
-Und die Frage aus Block 9 stellst du ihr genauso — sie gehört mit einem
-eigenen Beitrag in den letzten Teil des Buchs. Manuel und Philipp
-übrigens auch, wenn sie wollen.
+Manuel und Philipp gehören ebenfalls in Teil Vier, wenn sie mögen.
