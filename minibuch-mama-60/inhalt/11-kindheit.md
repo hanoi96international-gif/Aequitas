@@ -51,7 +51,9 @@ Als du geboren wurdest, war Anette drei und Monika fünf. Als du eingeschult wur
 
 Du warst also, ob du wolltest oder nicht, die Kleine. Diejenige, die alles ein paar Jahre später durfte. Und gleichzeitig diejenige, die alles ein paar Jahre zu früh mitbekam, weil in derselben Wohnung schon zwei ältere Mädchen lebten und Türen selten geschlossen sind, wenn man zu fünft auf wenigen Quadratmetern wohnt.
 
-Bemerkenswert finde ich dabei etwas anderes: Die engste Bindung hattest du nicht zu der Schwester, die dir altersmäßig am nächsten war — sondern zu Anette, mit drei Jahren Abstand. Und die hat sechzig Jahre gehalten.
+Der kleinste Abstand von allen dreien liegt übrigens zwischen Monika und Anette. Die beiden hätten also das naheliegende Paar sein müssen.
+
+Geblieben ist am Ende die Bindung zwischen Anette und dir. Die hält jetzt seit sechzig Jahren und ist in diesem Buch noch mehrmals der Grund, warum Dinge gut ausgegangen sind.
 
 {{Was für eine Rolle war das genau? Die Nachzüglerin, die Verwöhnte, die, die sich durchboxen musste? Das ist eine gute Frage für sie oder für Anette.}}
 
