@@ -98,9 +98,9 @@ Und dann kommt das, was die meisten Leute nicht wissen: **Du warst selbst Jugend
 
 Und zwar nicht irgendwo. Du hattest eine eigene Mannschaft in der F-Jugend, Steffis Jahrgang — und ich war eigentlich zu alt dafür und habe mich hineingeschmuggelt.
 
-Das muss man sich einmal von außen ansehen. Eine alleinerziehende Mutter von fünf Kindern, ohne Auto, alles zu Fuß oder mit dem Bus. Und die stellt sich zusätzlich Woche für Woche auf einen Fußballplatz und übernimmt eine Jugendmannschaft.
+Das muss man sich einmal von außen ansehen. Eine alleinerziehende Mutter von fünf Kindern, ohne Auto, alles zu Fuß oder mit dem Bus — und die stellt sich zusätzlich Woche für Woche auf einen Fußballplatz und übernimmt eine Jugendmannschaft.
 
-Nicht, weil sie Zeit übrig hatte. Sondern weil ihre Kinder spielen wollten.
+Nicht, weil du Zeit übrig gehabt hättest. Sondern weil deine Kinder spielen wollten.
 
 Ganz aus dem Nichts kam das allerdings nicht. Du hattest selbst gespielt, als Mädchen, in einer Zeit, in der das noch längst nicht vorgesehen war — das steht weiter vorn in diesem Buch.
 
