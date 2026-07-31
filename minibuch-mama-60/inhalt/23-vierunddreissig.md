@@ -110,7 +110,7 @@ ZWEI DINGE ZU DIESEM ABSCHNITT:
      Du kennst sie, ich nicht.
 -->
 
-## Die Gegend
+## Nicht einmal zu Hause
 
 Es war keine gute Gegend. Die Nachbarschaft war schwierig, manche Nachbarn waren mehr als das. Zu allem anderen kam also noch dazu, dass der Ort, an dem man abends die Tür hinter sich zumacht, kein Ort war, an dem man sich sicher fühlte.
 
