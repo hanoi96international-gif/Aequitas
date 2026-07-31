@@ -14,7 +14,7 @@ ihr beim nächsten Kaffee raus, ohne böse Absicht.
 Hälfte nicht, und die wörtlichen Sätze gehen als Erstes verloren.
 
 **Rechne mit anderthalb Stunden.** Und damit, dass es stellenweise schwer
-wird — sie hat 2019 und 2023 dieselben Eltern verloren wie deine Mutter.
+wird — sie hat 2019 und 2022 dieselben Eltern verloren wie deine Mutter.
 
 ---
 

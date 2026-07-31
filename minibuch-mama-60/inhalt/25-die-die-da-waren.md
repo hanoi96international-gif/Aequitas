@@ -27,13 +27,13 @@ einzige Möglichkeit, sie an diesem Tag trotzdem dabeizuhaben. Für
 Marion wird das vermutlich die Stelle sein, an der sie weinen muss —
 und mit ziemlicher Sicherheit die, für die sie am dankbarsten ist.
 
-GEKLÄRT: Willi ist 2019 gestorben, Rita 2023. Beide haben also den
+GEKLÄRT: Willi ist 2019 gestorben, Rita am 22. Mai 2022. Beide haben also den
 gesamten Weg mitbekommen — den Führerschein 2008, die Jahre bei
 Joey's Pizza, und dass alle fünf Kinder erwachsen geworden sind.
 Rita hat Marion noch bis kurz vor deren siebenundfünfzigstem
 Geburtstag begleitet.
 
-Rita ist erst vor drei Jahren gestorben. Das ist frisch. Es kann
+Rita ist erst vor vier Jahren gestorben. Das ist frisch. Es kann
 gut sein, dass dieser Sechzigste der erste runde Geburtstag ohne
 ihre Mutter ist, an dem ihr das richtig auffällt — ein Grund mehr,
 dass dieses Kapitel im Buch steht.
@@ -152,9 +152,9 @@ Besonders in der Zeit direkt nach 2001, als die Witwen- und Waisenrente monatela
 
 ## Sie sind nicht mehr da
 
-Willi ist 2019 gestorben, Rita 2023.
+Willi ist 2019 gestorben, Rita am 22. Mai 2022.
 
-Eines haben die beiden noch erlebt, und das ist mehr wert, als es im ersten Moment klingt: Sie haben gesehen, dass aus den fünf Kindern, für die sie damals eingesprungen sind, fünf Erwachsene geworden sind. Als Rita starb, war Julia — das Kind, das im Mai 2001 drei Jahre alt war — fünfundzwanzig.
+Eines haben die beiden noch erlebt, und das ist mehr wert, als es im ersten Moment klingt: Sie haben gesehen, dass aus den fünf Kindern, für die sie damals eingesprungen sind, fünf Erwachsene geworden sind. Als Rita starb, war Julia — das Kind, das im Mai 2001 drei Jahre alt war — vierundzwanzig.
 
 Sie haben also miterlebt, wie die Sache ausgegangen ist. Sie wussten am Ende, dass es gut gegangen ist.
 

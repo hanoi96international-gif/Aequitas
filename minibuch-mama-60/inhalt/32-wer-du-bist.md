@@ -57,13 +57,13 @@ Daisy war die Erste. Sie ist am 30. November 2008 in Algermissen gestorben.
 
 **Fiby** kam am 1. Mai 2009 und ist am 10. August 2023 gestorben. Vierzehn Jahre.
 
-## Das Jahr 2023
+## Zwei Jahre
 
-Leg jetzt einmal die Jahreszahlen nebeneinander.
+Leg jetzt einmal die Daten nebeneinander.
 
-2023 ist Fiby gestorben. Im selben Jahr ist Oma gestorben. Und im selben Jahr bist du umgezogen — zum ersten Mal seit zweiunddreißig Jahren in eine Wohnung ohne Kinder, und nun auch ohne Katze.
+Im Mai 2022 ist Oma gestorben. 2023 bist du umgezogen, zum ersten Mal seit zweiunddreißig Jahren in eine Wohnung ohne Kinder. Und im August desselben Jahres ist Fiby gestorben — damit war zum ersten Mal überhaupt niemand mehr da.
 
-Fünf Monate nach Fibys Tod stand Findus in der Wohnung. Am 6. Januar 2024. Und am 20. Oktober kam Luna hinterher.
+Fünf Monate später stand Findus in der Wohnung. Am 6. Januar 2024. Und am 20. Oktober kam Luna hinterher.
 
 Man kann das nüchtern erklären: Wer allein wohnt, hat Platz für ein Tier. Ich lese es anders. Ich glaube, du bist einfach nicht besonders gut darin, für niemanden zuständig zu sein.
 
