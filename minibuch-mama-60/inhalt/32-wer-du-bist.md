@@ -53,7 +53,9 @@ Es waren vier über die Jahre, und du weißt bei jeder einzelnen das Datum.
 
 Daisy war die Erste. Sie ist am 30. November 2008 in Algermissen gestorben.
 
-**Donald** kam am 27. Juni 2001 und ist am 11. Juli 2021 gestorben. Zwanzig Jahre und zwei Wochen. Für eine Katze ist das ein außergewöhnlich langes Leben, und für uns war es der halbe Weg vom Kind zum Erwachsenen. Wie er zu uns kam, steht ein paar Seiten weiter — es hat mit Fußball zu tun.
+**Donald** wurde am 27. Juni 2001 geboren und ist am 11. Juli 2021 gestorben. Zwanzig Jahre und zwei Wochen. Für eine Katze ist das ein außergewöhnlich langes Leben, und für uns war es der halbe Weg vom Kind zum Erwachsenen.
+
+Der 27. Juni ist übrigens mein Geburtstag. Der Kater hatte also am selben Tag Geburtstag wie ich, nur zehn Jahre später. Wie er zu uns kam, steht ein paar Seiten weiter — es hat mit Fußball zu tun.
 
 **Fiby** kam am 1. Mai 2009 und ist am 10. August 2023 gestorben. Vierzehn Jahre.
 
@@ -112,19 +114,17 @@ Der größte Titel deiner Trainerlaufbahn: ein Turnier in Itzum, und wir haben d
 
 Und dann kommt der Teil, der die Geschichte erst rund macht. Bei den Eltern eines Kindes aus genau der Mannschaft, die wir im Finale geschlagen hatten, haben wir einen Kater abgeholt. In Moritzberg — dem Stadtteil, in dem du heute wohnst.
 
-Das war Donald. Und wir haben ihn am 27. Juni 2001 geholt.
-
-Das ist mein Geburtstag. Ich wurde an dem Tag zehn.
+Das war Donald. Geholt haben wir ihn im September 2001, da war er zwölf Wochen alt.
 
 ## Und jetzt rechne das Jahr nach
 
 2001.
 
-Sieben Wochen nach dem 10. Mai hast du deinem ältesten Sohn zum zehnten Geburtstag einen Kater besorgt. Im selben Jahr hast du nebenbei eine Jugendmannschaft zu einem Turniersieg geführt.
+Vier Monate nach dem 10. Mai, in einer Wohnung mit fünf Kindern und ohne Geld, hast du ein zwölf Wochen altes Kätzchen aufgenommen. Und im selben Jahr hast du nebenbei eine Jugendmannschaft zu einem Turniersieg geführt.
 
 In dem Jahr, in dem dein Leben auseinandergefallen ist.
 
-Der Kater ist dann zwanzig Jahre geblieben.
+Der Kater ist dann zwanzig Jahre geblieben. Länger als alles andere aus dieser Zeit.
 
 ## Nummer 36
 
