@@ -66,4 +66,8 @@ Ich schreibe das nicht auf, damit wir es jetzt aufarbeiten. Ich schreibe es auf,
 
 Und weil du wissen sollst, dass ich es weiß. Dass ich weiß, was du damals allein getragen hast — und dass ich nicht vergessen habe, dass ich dabei war.
 
-{{Ein letzter Satz. Wahrscheinlich der einfachste im ganzen Buch: was du dir von hier an wünschst.}}
+Was ich mir von hier an wünsche, ist ziemlich einfach.
+
+Dass es so bleibt. Und dass wir das Reden, das wir fünfundzwanzig Jahre lang nicht hingekriegt haben, einfach nachholen. Ohne Anlass, ohne dass vorher etwas passieren muss, und ohne dass es ein großes Gespräch sein müsste.
+
+Wir haben ja schon angefangen. Dieses Buch ist im Grunde nichts anderes.

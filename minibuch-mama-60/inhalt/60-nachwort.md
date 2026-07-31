@@ -16,7 +16,7 @@ Vollständig ist es trotzdem nicht. Sechzig Jahre passen nicht auf vierzig Seite
 
 Deshalb ist hinten Platz gelassen. Widersprich mir. Schreib dazu, was ich vergessen habe, und streich durch, was nicht stimmt. Das Buch ist nicht fertig — es ist nur angefangen, und angefangen habe ich es, damit es überhaupt irgendwo steht.
 
-{{Der letzte Satz. Deiner.}}
+Alles Gute zum Sechzigsten, Mama.
 
 ~~~
 
