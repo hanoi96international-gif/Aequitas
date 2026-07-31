@@ -61,6 +61,11 @@ jedem Lauf, wie viele noch offen sind. Wenn die Zahl null ist, bist du fertig.
 | `---` (eigene Zeile) | Seitenumbruch erzwingen |
 | `~~~` (eigene Zeile) | Zierlinie ❦ |
 | `{{...}}` | offene Lücke |
+| `4\. September` | Datum am Zeilenanfang, wird keine Liste |
+
+Der letzte Punkt ist wichtig: Eine Zeile, die mit **Zahl, Punkt, Leerzeichen**
+beginnt, gilt als nummerierte Liste. Ein Datum am Zeilenanfang braucht deshalb
+einen Schrägstrich vor dem Punkt — sonst steht im Buch plötzlich `1.` statt `4.`
 
 Leerzeile = neuer Absatz. Sonst gilt: einfach schreiben.
 

@@ -24,7 +24,7 @@ Koordination, aber es haut deutlich mehr rein.
 
 Zum 60. Geburtstag
 
-4. September 2026
+4\. September 2026
 
 ~~~
 

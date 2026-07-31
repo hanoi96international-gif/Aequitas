@@ -31,6 +31,8 @@ function inline(text) {
   s = s.replace(/\{\{([^}]*)\}\}/g, '<span class="luecke">$1</span>');
   s = s.replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>");
   s = s.replace(/(^|[^*])\*([^*]+)\*/g, "$1<em>$2</em>");
+  // Maskierter Punkt: "4\. September" bleibt Text und wird keine Liste
+  s = s.replace(/\\\./g, ".");
   return s;
 }
 
@@ -120,7 +122,9 @@ function markdownZuHtml(md) {
       continue;
     }
 
-    const ol = z.match(/^\d+\.\s+(.*)$/);
+    // "4\. September 2026" ist ein Datum, keine Liste — der maskierte
+    // Punkt verhindert, dass daraus ein Aufzählungspunkt wird.
+    const ol = /^\d+\\\./.test(z) ? null : z.match(/^\d+\.\s+(.*)$/);
     if (ol) {
       absatzLeeren();
       zitatSchliessen();
