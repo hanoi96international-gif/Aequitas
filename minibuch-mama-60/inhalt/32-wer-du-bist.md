@@ -103,6 +103,32 @@ Das war Donald. Und geholt haben wir ihn in Moritzberg — dem Stadtteil, in dem
 
 Ein Pokal und eine Katze, im selben Jahr, aus derselben Begegnung. Man kann sich so etwas nicht ausdenken.
 
+## Nummer 36
+
+Bei Hannover 96 erinnert sich natürlich bis heute jeder an die Legende mit der Nummer 36. Marion.
+
+Das Trikot war das erste Geschenk, für das wir alle zusammen richtigen Aufwand betrieben haben. Personalisiert beflockt, hinten dein Name und die 36.
+
+Zusammengetan haben wir uns dafür mit Michael und seiner damaligen Frau Silvia. Wir haben unser Taschengeld gespart, so weit das eben ging, und den Rest bei Oma und Opa abgepumpt.
+
+Fünf Kinder, die Taschengeld sparen, sind keine ernstzunehmende Finanzierungsquelle. Es hat trotzdem gereicht.
+
+Und der Grund dafür ist die einfachste Sache in diesem ganzen Buch, deshalb steht sie hier auch genau so:
+
+Weil wir dich sehr lieb haben.
+
+## Und jetzt rechne nach
+
+Die 36 stand für deinen sechsunddreißigsten Geburtstag. Also für den 4. September 2002.
+
+Das war ein Jahr und knapp vier Monate nach dem, was in Teil Zwei steht.
+
+Ein Jahr danach. Kein Geld im Haus, fünf Kinder zwischen vier und elf — und die legen ihr Taschengeld zusammen, um ihrer Mutter ein Trikot mit ihrem Namen darauf zu kaufen. Michael, der zu diesem Zeitpunkt gerade erst dazugekommen war, hat sofort mitgemacht.
+
+Vierundzwanzig Jahre später steht dein Name wieder auf etwas drauf, das wir dir schenken.
+
+Diesmal ist es ein Buch.
+
 ## Brigitte
 
 Und dann ist da Brigitte.
