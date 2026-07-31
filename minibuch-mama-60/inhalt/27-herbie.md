@@ -9,17 +9,13 @@ kein belangloses Kapitel, weil es von Freiheit handelt.
 
 Die Fakten, die Daniel geliefert hat:
   - Bis 2008 alles zu Fuß oder mit dem Bus. Fünf Kinder.
-  - Führerschein: Ende 2008 oder 2009. Bei Daisys Tod am
-    30.11.2008 hatte sie ihn noch nicht — deshalb steht im Text
-    "kurz nach deinem zweiundvierzigsten Geburtstag" statt einer
-    Jahreszahl. Das stimmt für beide Möglichkeiten. Wenn du im
-    Führerschein nachschaust, steht das Datum drauf.
+  - Führerschein: Oktober 2009, sie war dreiundvierzig.
   - Erstes Auto: ein Ford Fiesta, getauft auf den Namen Herbie
 
-Rechnung: 1991 kam das erste Kind, 2008 kam der Führerschein.
-Das sind siebzehn Jahre Kinderwagen, Bushaltestelle und Einkäufe
-tragen. Marion war 2008 einundvierzig (zweiundvierzig ab dem
-4. September).
+Rechnung: Juni 1991 kam das erste Kind, Oktober 2009 der
+Führerschein. Das sind achtzehn Jahre Kinderwagen, Bushaltestelle
+und Einkäufe tragen. Und die Fahrt nach Mönchengladbach 2010 lag
+damit weniger als ein Jahr nach der Prüfung.
 
 ZU PRÜFEN, bevor das gedruckt wird:
   - War es wirklich 2008? Du warst dir nicht sicher.
@@ -36,15 +32,15 @@ Notfalls tut es auch ein Bild aus dem Internet vom selben Modell,
 dann aber ehrlich als "so einer war es" beschriften.
 -->
 
-Siebzehn Jahre lang bist du gelaufen.
+Achtzehn Jahre lang bist du gelaufen.
 
 1991 kam das erste Kind, und von da an ging alles zu Fuß oder mit dem Bus. Einkäufe für sieben Leute. Arzttermine. Kindergarten, Schule, Sportverein, Geburtstage anderer Kinder, Elternabende, Apotheke.
 
 Man muss sich das einmal praktisch vorstellen, nicht als Satz, sondern als Vorgang. Fünf Kinder an einer Bushaltestelle im November. Der Jüngste kann noch nicht richtig laufen, der Älteste hat keine Lust, zwei streiten, und du hast in beiden Händen Tüten. Der Bus kommt alle zwanzig Minuten. Wenn du ihn verpasst, stehst du zwanzig Minuten mit fünf Kindern im Regen.
 
-Und dann wiederhole das siebzehn Jahre lang.
+Und dann wiederhole das achtzehn Jahre lang.
 
-Kurz nach deinem zweiundvierzigsten Geburtstag hast du den Führerschein gemacht.
+Im Oktober 2009, mit dreiundvierzig, hast du den Führerschein gemacht.
 
 ## Der Fiesta
 
@@ -58,7 +54,7 @@ Herbie war dunkelblau. Und der Name war deine Idee, wegen des Films.
 
 ## Mönchengladbach, ohne Navi
 
-Ungefähr zwei Jahre nach dem Führerschein, 2010, seid ihr nach Mönchengladbach gefahren. Über dreihundert Kilometer, einmal quer durchs Land.
+Kein Jahr nach dem Führerschein, 2010, seid ihr nach Mönchengladbach gefahren. Über dreihundert Kilometer, einmal quer durchs Land.
 
 Der Anlass war kein großer: Die Familie meiner damaligen Freundin wohnte dort. Mehr nicht. Du hast uns hingefahren.
 

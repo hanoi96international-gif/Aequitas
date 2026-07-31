@@ -41,7 +41,7 @@ Ich kenne das an mir. Und ich weiß inzwischen ziemlich genau, wo ich es herhabe
 
 Gleichzeitig ist es genau das, weshalb die fünfzehn Jahre funktioniert haben.
 
-Wer nicht dickköpfig ist, steht nicht jeden Morgen wieder auf. Wer nicht dickköpfig ist, macht mit einundvierzig keinen Führerschein mehr, fährt nicht ohne Navi dreihundert Kilometer, trainiert keine Jugendmannschaft, während zu Hause das Geld nicht reicht, und hört nach Jahrzehnten nicht mit dem Rauchen auf.
+Wer nicht dickköpfig ist, steht nicht jeden Morgen wieder auf. Wer nicht dickköpfig ist, macht mit dreiundvierzig keinen Führerschein mehr, fährt nicht ohne Navi dreihundert Kilometer, trainiert keine Jugendmannschaft, während zu Hause das Geld nicht reicht, und hört nach Jahrzehnten nicht mit dem Rauchen auf.
 
 Es ist dieselbe Eigenschaft. Man kann sie nicht halb haben.
 

@@ -30,7 +30,7 @@ Sechzig Dinge, die ich weiß, weil es dich gibt.
 2. Du gehst seit Jahren jeden Sonntag zum Bingo und hast noch nie richtig gewonnen. Und gehst trotzdem wieder hin.
 3. Du redest mit deinen Katzen, als würden sie antworten. Manchmal glaube ich, sie tun es.
 4. Du hast dein erstes eigenes Auto Herbie genannt.
-5. Du hast mit einundvierzig den Führerschein gemacht, nachdem du siebzehn Jahre lang alles zu Fuß und mit dem Bus geschafft hast.
+5. Du hast mit dreiundvierzig den Führerschein gemacht, nachdem du achtzehn Jahre lang alles zu Fuß und mit dem Bus geschafft hast.
 6. Du hältst zu Hannover 96, obwohl 96 es dir nie leicht gemacht hat.
 7. Du hast einer Horde Achtjähriger Fußball beigebracht, obwohl du selbst genug eigene Kinder hattest.
 8. Du hast als Mädchen selbst gespielt, zu einer Zeit, in der das für Mädchen kaum vorgesehen war.
@@ -55,7 +55,7 @@ Sechzig Dinge, die ich weiß, weil es dich gibt.
 27. Du hast dir das Rauchen abgewöhnt, als es schon niemand mehr von dir erwartet hätte.
 28. Du bist arbeiten gegangen, wenn wir in der Schule waren. Nicht dann, wenn es dir gepasst hätte.
 29. Du hast eine Jugendmannschaft trainiert, während zu Hause das Geld nicht reichte.
-30. Du bist mit einundvierzig zum ersten Mal allein irgendwohin gefahren.
+30. Du bist mit dreiundvierzig zum ersten Mal allein irgendwohin gefahren.
 31. {{…}}
 32. {{…}}
 
