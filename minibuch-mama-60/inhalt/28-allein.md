@@ -47,11 +47,34 @@ kein Geld mehr da war. Mehr steht auch nicht im Text.
 
 ZEITLICH: 2005, Moltkestraße, du warst vierzehn. Passt zu den
 Adressen — der Umzug dorthin war um 2005.
+
+DER AUFBAU: Das Kapitel fängt bewusst mit der Kur von 2000 an, der
+guten. Erst dadurch wird aus "ich musste zu Hause bleiben" die
+eigentliche Geschichte: Beim ersten Mal wart ihr alle dabei, und es
+ist die schönste Erinnerung dieser Art geblieben. Fünf Jahre später
+war dasselbe Format der Grund, warum du nicht mitdurftest.
+
+Ohne den ersten Teil ist das Kapitel eine Klage. Mit ihm ist es
+eine Geschichte.
 -->
+
+## Niendorf, 2000
+
+Die erste Kur war die beste.
+
+Niendorf am Timmendorfer Strand, Ostsee. Du und wir fünf. Ich war neun, Julia war zwei.
+
+Das muss man sich kurz vorstellen: eine Mutter, fünf Kinder zwischen zwei und neun, zweihundertfünfzig Kilometer von zu Hause, am Meer. Was für dich vermutlich eher Arbeitsplatzwechsel als Erholung war, ist für uns die beste Erinnerung dieser Art geblieben.
+
+{{Woran du dich erinnerst: Strand, Unterkunft, Wetter, was ihr gemacht habt. Das ist eines der wenigen rein schönen Kapitel im Buch — nutz den Platz.}}
+
+Es war das Jahr 2000. Was ein paar Monate später passiert ist, steht weiter vorn in diesem Buch.
+
+## Fünf Jahre später
 
 2005. Ich war vierzehn.
 
-Du hattest eine Mutter-Kind-Kur beantragt. Vier Jahre nach allem, was passiert war, mit fünf Kindern und ohne einen einzigen freien Tag dazwischen — es wäre schwer zu erklären, warum du sie nicht gebraucht hättest.
+Du hattest wieder eine Mutter-Kind-Kur beantragt. Vier Jahre nach allem, was passiert war, mit fünf Kindern und ohne einen einzigen freien Tag dazwischen — es wäre schwer zu erklären, warum du sie nicht gebraucht hättest.
 
 Bewilligt wurde sie auch. Für dich und für Kinder bis dreizehn.
 
