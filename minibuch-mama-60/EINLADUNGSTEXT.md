@@ -19,7 +19,16 @@ und zwar meistens den, der es am ehesten merkt.
 - [ ] Marcus
 - [ ] Christina
 - [ ] Julia
-- [ ] und deren Partnerinnen und Partner, falls sie mögen
+
+**Die Dazugekommenen**
+
+Die drei haben eine Perspektive, die sonst niemand hat: Sie kennen
+Marion als Erwachsene, von außen, und sind trotzdem Familie. Das ist
+im Buch bisher gar nicht vertreten.
+
+- [ ] Ayu — deine Frau, seit Februar 2026
+- [ ] David — Christinas Mann, seit Mai 2026
+- [ ] die Partner von Steffanie und Julia
 
 **Ihre Leute**
 
