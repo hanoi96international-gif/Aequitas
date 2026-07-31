@@ -53,7 +53,7 @@ Es waren vier über die Jahre, und du weißt bei jeder einzelnen das Datum.
 
 Daisy war die Erste. Sie ist am 30. November 2008 in Algermissen gestorben.
 
-**Donald** kam am 27. Juni 2001 und ist am 11. Juli 2021 gestorben. Zwanzig Jahre und zwei Wochen. Für eine Katze ist das ein außergewöhnlich langes Leben, und für uns war es der halbe Weg vom Kind zum Erwachsenen.
+**Donald** kam am 27. Juni 2001 und ist am 11. Juli 2021 gestorben. Zwanzig Jahre und zwei Wochen. Für eine Katze ist das ein außergewöhnlich langes Leben, und für uns war es der halbe Weg vom Kind zum Erwachsenen. Wie er zu uns kam, steht ein paar Seiten weiter — es hat mit Fußball zu tun.
 
 **Fiby** kam am 1. Mai 2009 und ist am 10. August 2023 gestorben. Vierzehn Jahre.
 
@@ -66,26 +66,6 @@ Im Mai 2022 ist Oma gestorben. 2023 bist du umgezogen, zum ersten Mal seit zweiu
 Fünf Monate später stand Findus in der Wohnung. Am 6. Januar 2024. Und am 20. Oktober kam Luna hinterher.
 
 Man kann das nüchtern erklären: Wer allein wohnt, hat Platz für ein Tier. Ich lese es anders. Ich glaube, du bist einfach nicht besonders gut darin, für niemanden zuständig zu sein.
-
-<!--
-WIDERSPRUCH — muss vor dem Druck geklärt werden:
-
-Du hattest erzählt, ihr hättet Donald 2002 bei den Eltern eines
-Kindes aus der im Finale geschlagenen Mannschaft geholt, nach dem
-Turniersieg in Itzum. Jetzt nennst du als Donalds Ankunft den
-27. Juni 2001.
-
-Beides zusammen geht nicht. Entweder war das Turnier in Itzum 2001,
-oder Donald kam 2002. Weiter unten im Kapitel steht die Itzum-Szene
-noch mit der Jahreszahl 2002.
-
-Und noch etwas, das du vielleicht nicht auf dem Schirm hattest:
-Der 27. Juni ist dein Geburtstag. Donald kam also an deinem zehnten
-Geburtstag — sieben Wochen nach dem 10. Mai 2001.
-
-Falls das Datum stimmt, ist das eine der stärksten Stellen im ganzen
-Buch, und sie gehört ausgeschrieben. Sag mir, was zutrifft.
--->
 
 
 Die beiden werden von dir versorgt wie Kinder. Nicht wie Haustiere — wie Kinder. Wer dich schon mal mit den beiden reden gehört hat, weiß, was gemeint ist.
@@ -126,15 +106,25 @@ Beim VfV ging das bis ungefähr 2002 oder 2003. Danach beim VfR Ochtersum, bis 2
 
 Und bevor jetzt jemand denkt, das sei eine strenge Angelegenheit gewesen: Es war ziemlich locker. Ich hatte allerdings einen kleinen Vorteil, den ich hier zum ersten Mal öffentlich zugebe. Ich war ein bis zwei Jahre älter als der Rest der Mannschaft. Unter Erwachsenen ist das nichts. Mit elf ist das ungefähr so ausgeglichen wie Sackhüpfen gegen Grundschüler.
 
-## Itzum, 2002
+## Itzum, 2001
 
 Der größte Titel deiner Trainerlaufbahn: ein Turnier in Itzum, und wir haben den Pokal geholt.
 
-Und dann kommt der Teil, der die Geschichte erst rund macht. Im selben Jahr haben wir bei den Eltern eines Kindes aus genau der Mannschaft, die wir im Finale geschlagen hatten, einen Kater abgeholt.
+Und dann kommt der Teil, der die Geschichte erst rund macht. Bei den Eltern eines Kindes aus genau der Mannschaft, die wir im Finale geschlagen hatten, haben wir einen Kater abgeholt. In Moritzberg — dem Stadtteil, in dem du heute wohnst.
 
-Das war Donald. Und geholt haben wir ihn in Moritzberg — dem Stadtteil, in dem du heute wohnst.
+Das war Donald. Und wir haben ihn am 27. Juni 2001 geholt.
 
-Ein Pokal und eine Katze, im selben Jahr, aus derselben Begegnung. Man kann sich so etwas nicht ausdenken.
+Das ist mein Geburtstag. Ich wurde an dem Tag zehn.
+
+## Und jetzt rechne das Jahr nach
+
+2001.
+
+Sieben Wochen nach dem 10. Mai hast du deinem ältesten Sohn zum zehnten Geburtstag einen Kater besorgt. Im selben Jahr hast du nebenbei eine Jugendmannschaft zu einem Turniersieg geführt.
+
+In dem Jahr, in dem dein Leben auseinandergefallen ist.
+
+Der Kater ist dann zwanzig Jahre geblieben.
 
 ## Nummer 36
 
