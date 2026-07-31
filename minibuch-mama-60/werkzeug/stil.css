@@ -237,17 +237,28 @@ figure.unterschrift .bildunterschrift {
 /* --------------------------------------------------------------- Widmung */
 
 .widmung {
-  padding-top: 45mm;
+  padding-top: 62mm;
   text-align: center;
   hyphens: none;
 }
 .widmung h1 { display: none; }
 .widmung p {
+  max-width: 74%;
+  margin: 0 auto 1.5em auto;
   text-indent: 0;
   text-align: center;
   font-style: italic;
   font-size: 12.5pt;
-  line-height: 1.9;
+  line-height: 1.85;
+}
+/* Auf dieser Seite ist die Überschrift ausgeblendet — die
+   Kapitälchen-Regel für Kapitelanfänge darf hier nicht greifen. */
+.widmung p::first-line {
+  font-variant: normal;
+  letter-spacing: normal;
+}
+.widmung p:first-of-type {
+  margin-bottom: 2.2em;
 }
 
 /* ------------------------------------------------------- Teil-Trennseite */
