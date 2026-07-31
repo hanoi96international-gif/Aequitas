@@ -111,6 +111,17 @@ li {
   break-inside: avoid;
 }
 
+/* Quellenzeile unter einem fremden Beitrag */
+p.quelle {
+  margin-top: 1.4em;
+  text-indent: 0;
+  text-align: right;
+  font-style: italic;
+  font-size: 10pt;
+  color: #6b6153;
+  hyphens: none;
+}
+
 hr.zierlinie {
   border: none;
   margin: 1.8em auto;

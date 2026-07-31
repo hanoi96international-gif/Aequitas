@@ -102,6 +102,15 @@ function markdownZuHtml(md) {
       continue;
     }
 
+    // Quellenzeile unter einem Beitrag: "— Anette, ihre Schwester"
+    const quelle = z.match(/^—\s+(.+)$/);
+    if (quelle) {
+      absatzLeeren();
+      absatzSchliessen();
+      aus.push(`<p class="quelle">${inline(quelle[1])}</p>`);
+      continue;
+    }
+
     if (z.startsWith("> ")) {
       absatzLeeren();
       listeSchliessen();

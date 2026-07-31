@@ -1,55 +1,87 @@
 # Von den Menschen, die dich kennen
 
 <!--
-SCHREIBHILFE — der Schlussteil des Buchs. Kein Kapitel, das du
-schreibst, sondern eines, das du einsammelst.
+SO WIRD EIN BEITRAG GESETZT — immer nach demselben Muster:
 
-DEADLINE: Alle Beiträge müssen bis **Sonntag, 23. August** bei dir
-sein. Das ist keine willkürliche Zahl — du brauchst danach noch eine
-Woche zum Setzen, Korrekturlesen und Drucken. Rechne fest damit, dass
-ein Drittel der Leute erst nach der ersten Erinnerung liefert.
+    ---
 
-DEN EINLADUNGSTEXT ZUM VERSCHICKEN findest du in der Datei
-EINLADUNGSTEXT.md — fertig zum Kopieren in WhatsApp, mit den drei
-Fragen, die verhindern, dass die Leute vor dem leeren Blatt sitzen.
+    ## Anette
 
-WEN FRAGEN: Die vollständige Liste mit Abhakkästchen steht in
-EINLADUNGSTEXT.md. Kurzfassung:
+    Der Beitrag, wörtlich so, wie er gekommen ist.
 
-  - Anette, Wolfgang, Sanja
-  - Monika, Manuel, Philipp
-  - Steffanie, Marcus, Christina, Julia
-  - Brigitte und Michael
-  - Pamela und Jörg, die Heimanns
-  - Kolleginnen von Joey's, Helios, Marktcafé
-  - Horst, Peter Schmolke
+    — Ihre Schwester, seit 1963
 
-Zu Sascha steht ein eigener Hinweis in EINLADUNGSTEXT.md.
+Die drei Striche erzwingen einen Seitenumbruch, jeder bekommt also
+eine eigene Seite. Die Zeile mit dem Gedankenstrich am Anfang wird
+automatisch als Quellenzeile gesetzt: kleiner, kursiv, rechtsbündig.
+Der Name steht also oben als Überschrift und unten nur noch die
+Beziehung.
 
-DIESER TEIL IST DIE STELLE, AN DER ALLE GLEICH STEHEN. Im übrigen Buch
-beschreibst du Menschen, und dabei bekommt zwangsläufig der mehr Raum,
-über den du mehr weißt. Hier nicht: Hier kommt jeder mit seinen eigenen
-Worten vor, jeder bekommt eine Seite, und niemand wird von dir
-eingeordnet. Deshalb ist es wichtig, hier niemanden zu vergessen.
 
-FORMAT: Pro Person eine eigene Seite. Zwischen den Beiträgen steht
-ein Seitenumbruch (die Zeile mit den drei Strichen). Setz die Beiträge
-WÖRTLICH, so wie sie geschrieben wurden. Nicht glattziehen, nicht
-korrigieren, nicht kürzen — außer die Person hat ausdrücklich um
-Redigieren gebeten. Tippfehler von der Oma sind ein Feature.
+REIHENFOLGE — nach Dauer der Bekanntschaft, die Längste zuerst.
 
-Unter jeden Beitrag gehört der Name und, wenn es hilft, die
-Beziehung: "Anette, ihre Schwester" oder "Lisa, seit 1982".
+Das ist die einzige Sortierung, die niemanden bewertet. Alphabetisch
+wirkt behördlich, nach Wichtigkeit wäre eine Rangliste, und nach
+Eingang wäre Zufall. Nach Jahren ergibt sich außerdem ein Bogen:
+Es beginnt bei den Menschen, die sie ihr Leben lang kennen, und
+endet bei denen, die erst später dazugekommen sind.
 
-TIPP: Wenn jemand nicht liefert, ruf an statt zu schreiben. Am
-Telefon erzählen die Leute in drei Minuten, was sie schriftlich seit
-zwei Wochen vor sich herschieben — dann tippst du es mit und liest
-es ihnen zur Freigabe vor.
+    Monika          seit 1966
+    Anette          seit 1966
+    Wolfgang        seit ?
+    Daniel          seit 1991
+    Steffanie       seit 1993
+    Marcus          seit 1995
+    Christina       seit 1996
+    Julia           seit 1998
+    Sanja, Sascha, Philipp, Manuel
+    Michael         seit 2001
+    Pamela und Jörg, die Heimanns
+    Brigitte        seit ?
 
-WICHTIG: Alle müssen dichthalten. Schreib das in die erste Nachricht.
+Brigitte am Schluss ist kein Zufall: Sie ist die Einzige, die Marion
+ohne die Vorgeschichte kennt. Als letzte Stimme im Buch beschreibt
+sie die Frau, die am Ende dabei herausgekommen ist.
+
+
+WÖRTLICH SETZEN, NICHT GLATTZIEHEN
+
+  - Tippfehler bleiben. Krumme Sätze bleiben. Der Sound einer Person
+    steckt genau darin.
+  - Nur eingreifen, wenn eine Autokorrektur den Satz unlesbar macht.
+  - Nicht kürzen. Wenn jemand drei Zeilen schreibt, sind es drei
+    Zeilen. Ungleiche Längen sind kein Problem — sie sind der Beweis,
+    dass niemand dieselbe Vorlage abgeschrieben hat.
+  - Nichts hinzuerfinden, um jemanden aufzuwerten.
+
+DREI ZEILEN AUF EINER SEITE sehen übrigens nicht leer aus, sondern
+absichtlich. Genau deshalb bekommt jeder eine eigene Seite: Auf einer
+eigenen Seite wirkt ein kurzer Beitrag wie eine Karte, in einer Liste
+wirkt er wie zu wenig.
+
+
+HANDSCHRIFT
+
+Wenn jemand von Hand geschrieben hat, hast du zwei Möglichkeiten:
+
+    ![handschrift Anette](bilder/anette.jpg)      ganze Seite als Scan
+    ![unterschrift Anette](bilder/anette-sig.jpg) nur der Namenszug
+
+Empfehlung steht in der README: Text setzen, Unterschrift scannen.
+
+
+WENN JEMAND NICHTS LIEFERT
+
+Anrufen statt erinnern. Am Telefon erzählen die Leute in drei
+Minuten, was sie schriftlich seit zwei Wochen vor sich herschieben.
+Mitschreiben, vorlesen, freigeben lassen — und dann setzt du es
+genauso, mit dem Zusatz "aufgeschrieben von Daniel" in der
+Quellenzeile.
 -->
 
-Ich habe ein paar Leute gefragt, was sie über dich sagen würden, wenn sie es einmal aufschreiben müssten. Das kam zurück.
+Ich habe ein paar Leute gefragt, was sie über dich sagen würden, wenn sie es einmal aufschreiben müssten.
+
+Das kam zurück.
 
 ---
 
@@ -57,7 +89,7 @@ Ich habe ein paar Leute gefragt, was sie über dich sagen würden, wenn sie es e
 
 {{Beitrag, wörtlich wie geschrieben.}}
 
-*{{Name, Beziehung}}*
+— {{Beziehung, seit wann}}
 
 ---
 
@@ -65,7 +97,7 @@ Ich habe ein paar Leute gefragt, was sie über dich sagen würden, wenn sie es e
 
 {{Beitrag}}
 
-*{{Name, Beziehung}}*
+— {{Beziehung, seit wann}}
 
 ---
 
@@ -73,9 +105,4 @@ Ich habe ein paar Leute gefragt, was sie über dich sagen würden, wenn sie es e
 
 {{Beitrag}}
 
-*{{Name, Beziehung}}*
-
-<!--
-Weitere Beiträge: einfach diesen Block kopieren — drei Striche als
-Seitenumbruch, dann ## Name, dann der Text, dann die kursive Zeile.
--->
+— {{Beziehung, seit wann}}
