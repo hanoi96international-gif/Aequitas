@@ -49,7 +49,7 @@ Er war Soldat. {{Wo stationiert, bei welcher Einheit.}}
 
 ## Donnerstag, der 31. August 1989
 
-Geheiratet habt ihr an einem Donnerstag. Sie war zweiundzwanzig und wurde vier Tage später dreiundzwanzig; er war vierundzwanzig und hatte drei Tage danach Geburtstag. Zwei Menschen, deren Geburtstage einen Tag auseinanderlagen, haben in der Woche davor geheiratet — man konnte den Kalender kaum enger packen.
+Geheiratet habt ihr an einem Donnerstag. Du warst zweiundzwanzig und wurdest vier Tage später dreiundzwanzig; er war vierundzwanzig und hatte drei Tage danach Geburtstag. Zwei Menschen, deren Geburtstage einen Tag auseinanderliegen, heiraten in der Woche davor — man konnte den Kalender kaum enger packen.
 
 Zehn Wochen später, auf den Tag genau, fiel die Mauer. Ihr wart da noch keine drei Monate verheiratet, und das Land, in dem ihr geheiratet hattet, gab es so schon nicht mehr.
 

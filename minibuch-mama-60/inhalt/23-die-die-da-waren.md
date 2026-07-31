@@ -149,8 +149,6 @@ Immer wieder. Ohne Aufhebens. Sie haben dich nie hängen lassen.
 
 Besonders in der Zeit direkt nach 2001, als die Witwen- und Waisenrente monatelang nicht berechnet war und schlicht nichts kam. Diese Monate haben deine Eltern überbrückt. Ohne sie wäre in dieser Wohnung nicht nur das Geld ausgegangen.
 
-Von Rita ist mir vor allem eines geblieben: Am ersten Weihnachtstag sind wir zu ihnen gefahren, und sie hat für die gesamte Familie gekocht. Nicht für sieben Leute — für alle. Und es war jedes Mal sehr gut.
-
 
 ## Sie sind nicht mehr da
 

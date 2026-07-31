@@ -56,15 +56,15 @@ Herbie war dunkelblau. Und der Name war deine Idee, wegen des Films.
 
 Zwei Jahre nach dem Führerschein, 2010, seid ihr nach Mönchengladbach gefahren. Über dreihundert Kilometer, einmal quer durchs Land.
 
-Und der Anlass war kein großer: Die Familie meiner damaligen Freundin wohnte dort. Mehr nicht. Du hast uns hingefahren.
+Der Anlass war kein großer: Die Familie meiner damaligen Freundin wohnte dort. Mehr nicht. Du hast uns hingefahren.
 
-Das ist im Grunde alles, was man über dich wissen muss, in einem einzigen Satz. Zwei Jahre Fahrpraxis, dreihundert Kilometer, kein Navigationsgerät — weil dein Sohn eine Freundin hatte, deren Familie am anderen Ende der Republik wohnte.
+Und zwar ohne Navigationsgerät. Es gab nur eine Route, die vorher bei Google ausgedruckt worden war. Auf Papier. In der Hand des Beifahrers.
 
-Ohne Navigationsgerät. Es gab nur eine Route, die vorher bei Google ausgedruckt worden war. Auf Papier. In der Hand des Beifahrers.
-
-Und dann haben wir uns verfahren, und ab da ging es nach Instinkt weiter.
+Dann haben wir uns verfahren, und ab da ging es nach Instinkt weiter.
 
 Angekommen sind wir trotzdem.
+
+Das ist im Grunde alles, was man über dich wissen muss, in einem einzigen Satz: zwei Jahre Fahrpraxis, dreihundert Kilometer, keine Navigation — weil dein Sohn eine Freundin hatte, deren Familie am anderen Ende der Republik wohnte.
 
 
 <!--

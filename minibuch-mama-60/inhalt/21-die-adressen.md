@@ -1,4 +1,4 @@
-# Sieben Adressen
+# Acht Adressen
 
 <!--
 SCHREIBHILFE — Ziel: 2–3 Seiten. Das Rückgrat von Teil Zwei.
@@ -67,9 +67,9 @@ WAS NOCH FEHLT:
 
 Man kann ein Leben über die Jahreszahlen erzählen. Man kann es auch über die Schlüssel erzählen, die man mal am Bund hatte.
 
-Deine Mutter Rita wohnte am Hohen Weg 46, mitten in der Stadt, mitten in der Fußgängerzone. Von dort bist du losgegangen, und dann ging es so weiter:
+Angefangen hat es am Hohen Weg 46, bei Rita und Willi, mitten in der Stadt und mitten in der Fußgängerzone. Von dort bist du losgegangen, und dann ging es so weiter:
 
-### Bismarckstraße
+## Bismarckstraße
 
 Bis etwa 1997. In diesen Jahren wurdet ihr vier: Daniel 1991, Steffanie 1993, Marcus 1995, Christina 1996. Fünf Jahre, vier Kinder.
 
@@ -77,7 +77,7 @@ Im selben Haus wohnte Horst, mein Patenonkel. Und Peter Schmolke, der später in
 
 Ausgezogen seid ihr aus dem schlichtesten Grund, den es gibt. Die Wohnung wurde zu klein. Vier Kinder passen irgendwann nicht mehr, und das fünfte war noch nicht mal da.
 
-### Stresemannstraße
+## Stresemannstraße
 
 Bis 2000. Hier kam am 7. März 1998 Julia dazu, und damit wart ihr vollständig: fünf Kinder in sieben Jahren.
 
@@ -93,7 +93,7 @@ Draußen gab es einen Spielplatz direkt vor der Haustür. Nur mussten wir dort s
 
 Der Schulweg war kurz. Zehn Minuten, höchstens.
 
-### Von-Emmich-Straße
+## Von-Emmich-Straße
 
 Bis etwa 2005. Das ist die Wohnung, in der aus einer Familie mit zwei Erwachsenen eine mit einer wurde.
 
@@ -105,7 +105,7 @@ Es gibt Wohnungen, in denen man wohnt. Und es gibt welche, in denen man wartet, 
 
 Und dann ist da noch der Grund, aus dem ich diese Wohnung wohl nie wohlwollend betrachten werde.
 
-## In dieser Wohnung wären wir fast gestorben
+### In dieser Wohnung wären wir fast gestorben
 
 Das war 2003. Zwei Jahre, nachdem du mit uns allein geblieben warst. Ich war zwölf, Julia fünf.
 
@@ -121,7 +121,7 @@ Ich weiß nicht, ob dir jemals klar geworden ist, wie knapp das war. Mir schon. 
 
 Was in diesen Jahren sonst noch passiert ist, steht ein paar Seiten weiter.
 
-### Moltkestraße
+## Moltkestraße
 
 Bis 2008. Und das war, bei allem was vorher lag, eigentlich eine gute Zeit.
 
@@ -129,7 +129,7 @@ Vermieterinnen waren Frau Loss und Frau Tostmann. Die wohnten im angebauten Hint
 
 Die Nachbarn dagegen waren großartig. Die Heimanns. Und Pamela und Jörg, deine Freunde — die sind übrigens auch der Grund, warum es als Nächstes aufs Dorf ging.
 
-## Donald geht raus
+### Donald geht raus
 
 Hier durfte Donald zum ersten Mal nach draußen.
 
@@ -137,7 +137,7 @@ Das hatte Folgen. Er kam nämlich zurück, und zwar selten mit leeren Pfoten. De
 
 Es gibt vermutlich keinen kürzeren Weg, einer Katze mitzuteilen, dass sie jetzt endlich ernst genommen wird, als ihr eine Tür aufzumachen.
 
-## Und einmal kam die Feuerwehr
+### Und einmal kam die Feuerwehr
 
 Es hat nach Gas gerochen, also rückte die Feuerwehr an. Minh war zufällig da.
 
@@ -145,7 +145,7 @@ Festgestellt wurde am Ende nichts. Kein Leck, keine Ursache, nichts.
 
 Nach dem, was in der Von-Emmich-Straße passiert war, hat vermutlich niemand von uns auch nur eine Sekunde überlegt, ob man deswegen anruft.
 
-### Algermissen
+## Algermissen
 
 Bis 2010. Zum ersten Mal raus aus Hildesheim — ein Ort mit gut achttausend Einwohnern, nach einem Leben in der Stadt. Pamela und Jörg waren vorgezogen und haben so lange für Algermissen geworben, bis ihr hinterhergekommen seid.
 
@@ -155,7 +155,7 @@ Bemerkenswert, wenn man weiß, wo du angefangen hast. Ein Kind vom Hohen Weg, au
 
 Es hat nur leider nicht gehalten. Heinrich, der Vermieter, hat am Haus nichts gemacht — gar nichts. Und irgendwann passte es einfach nicht mehr.
 
-## Daisy
+### Daisy
 
 Am 30. November 2008 ist in Algermissen unsere Katze Daisy von einem Auto angefahren worden. Sie musste eingeschläfert werden.
 
@@ -169,13 +169,13 @@ Und dann ist etwas passiert, das du vermutlich selbst nie so benannt hast: Donal
 
 Es ist nicht das einzige Mal in diesem Buch, dass du nach einem Verlust genau das gemacht hast.
 
-### Brauhausstraße
+## Brauhausstraße
 
 Direkt nach Algermissen, zurück nach Hildesheim. Und dann fast zehn Jahre lang, bis 2018 — die längste Zeit, die du je an einer Adresse verbracht hast.
 
 Hier kam auch Fiby dazu.
 
-### Dingworthstraße
+## Dingworthstraße
 
 2018 bis 2022. Und hier passiert das, was in jeder Familie irgendwann passiert — man merkt es nur immer erst hinterher: Es wurden weniger.
 
@@ -191,7 +191,7 @@ Das klingt banal, aber es ist genau das, worauf man die ganze Zeit hinarbeitet, 
 
 Gleichzeitig wurde dein Knie in diesen Jahren immer schlechter. Die Wohnung leerte sich, und das Gehen wurde schwerer. Beides gleichzeitig.
 
-### Hammersteinstraße
+## Hammersteinstraße
 
 Seit 2022. Moritzberg, eine ruhige Wohnstraße.
 

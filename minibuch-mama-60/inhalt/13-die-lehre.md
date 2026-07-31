@@ -68,8 +68,6 @@ Ich glaube, dass ein Teil von dem, was du später gebraucht hast, genau da entst
 
 {{Wann genau klingelte der Wecker? Und wie roch es, wenn du morgens reinkamst?}}
 
-## Was sie da gelernt hat
-
-{{Nicht nur den Beruf — was noch? Der Bogen zu der Frau, die sie heute ist.}}
+{{Was du dort noch gelernt hast, außer dem Beruf. Der Bogen zu der Frau, die du heute bist.}}
 
 > {{Zitat}}
