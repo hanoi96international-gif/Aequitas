@@ -48,15 +48,19 @@ ZU MINH: Geklärt — Marion kennt ihn. Deshalb bleibt es bei dem
 schlichten "Minh war zufällig da", ohne Erklärung. Namen, die die
 Leserin selbst einordnen kann, brauchen keine Fußnote.
 
-WIDERSPRUCH BEI DEN DATEN — bitte einmal klären:
-Du hattest zuerst gesagt: Brauhausstraße nach Algermissen (also ab
-2010), Dingworthstraße bis 2022. Später hast du den Wechsel von der
-Brauhaus- in die Dingworthstraße auf 2021 oder 2022 geschätzt. Beides
-zusammen geht nicht auf — dann wäre die Dingworthstraße nur ein paar
-Monate gewesen. Wahrscheinlich ist entweder der Wechsel früher
-gewesen, oder der Umzug 2021/2022 war schon der in die
-Hammersteinstraße. Der Text steht deshalb bewusst ohne feste
-Jahreszahl für diesen einen Wechsel.
+ADRESSDATEN (bestätigt):
+  Bismarckstraße        bis etwa 1997
+  Stresemannstraße      bis 2000
+  Von-Emmich-Straße     2000 bis Dezember 2006
+  Moltkestraße          bis Dezember 2006
+  Algermissen           Dezember 2006 bis Ende 2009
+  Brauhausstraße        Ende 2009 bis 2015
+  Dingworthstraße       2015 bis 2023
+  Hammersteinstraße     seit 2023
+
+OFFEN: Wann genau endete die Von-Emmich-Straße und begann die
+Moltkestraße? Bisher stand dort "bis etwa 2005", und der Umzug nach
+Algermissen war im Dezember 2006. Dazwischen liegt die Moltkestraße.
 
 DATUMSKONFLIKT — bitte klären:
 Im Kapitel "Herbie" steht, dass sie 2008 den Führerschein gemacht
@@ -133,7 +137,7 @@ Was in diesen Jahren sonst noch passiert ist, steht weiter vorn in diesem Buch.
 
 ## Moltkestraße
 
-Bis 2008. Und das war, bei allem was vorher lag, eigentlich eine gute Zeit.
+Bis Dezember 2006. Und das war, bei allem was vorher lag, eigentlich eine gute Zeit.
 
 Vermieterinnen waren Frau Loss und Frau Tostmann. Die wohnten im angebauten Hinterhaus, waren ausgesprochen spießig und haben gelegentlich ein bisschen zu viel Detektiv gespielt.
 
@@ -157,7 +161,7 @@ Nach dem, was in der Von-Emmich-Straße passiert war, hat vermutlich niemand von
 
 ## Algermissen
 
-Bis 2010. Zum ersten Mal raus aus Hildesheim — ein Ort mit gut achttausend Einwohnern, nach einem Leben in der Stadt. Pamela und Jörg waren vorgezogen und haben so lange für Algermissen geworben, bis ihr hinterhergekommen seid.
+Dezember 2006 bis Ende 2009. Zum ersten Mal raus aus Hildesheim — ein Ort mit gut achttausend Einwohnern, nach einem Leben in der Stadt. Pamela und Jörg waren vorgezogen und haben so lange für Algermissen geworben, bis ihr hinterhergekommen seid.
 
 Und dort gab es zum ersten Mal etwas, das es vorher nie gegeben hatte: **ein ganzes Haus, nur für uns.**
 
@@ -171,7 +175,7 @@ Am 30. November 2008 ist in Algermissen unsere Katze Daisy von einem Auto angefa
 
 Der 30. November ist Christinas Geburtstag. Sie wurde an dem Tag zwölf.
 
-Ihr wart gerade erst hingezogen. Das große Haus, das erste eigene, war noch keine paar Monate alt.
+Ihr wart zu dem Zeitpunkt zwei Jahre dort. Das große Haus, das erste eigene, war gerade zur Gewohnheit geworden.
 
 Und dann kommt der Teil, den man sich kaum ausdenken kann.
 
@@ -193,19 +197,19 @@ Es ist nicht das einzige Mal in diesem Buch, dass du nach einem Verlust genau da
 
 ## Brauhausstraße
 
-Direkt nach Algermissen, zurück nach Hildesheim. Und dann fast zehn Jahre lang, bis 2018 — die längste Zeit, die du je an einer Adresse verbracht hast.
+Ende 2009 zurück nach Hildesheim, und dann rund sechs Jahre lang, bis 2015.
 
 Hier kam auch Fiby dazu.
 
 ## Dingworthstraße
 
-2018 bis 2022. Und hier passiert das, was in jeder Familie irgendwann passiert — man merkt es nur immer erst hinterher: Es wurden weniger.
+2015 bis 2023 — acht Jahre, und damit die längste Zeit, die du je an einer Adresse verbracht hast. Und hier passiert das, was in jeder Familie irgendwann passiert — man merkt es nur immer erst hinterher: Es wurden weniger.
 
 Ich war da schon ausgezogen. Steffanie auch. In die Dingworthstraße sind nur noch du, Marcus, Christina und Julia gezogen.
 
 Wobei das mit dem Ausziehen ohnehin keine Einbahnstraße war. Marcus ist 2014 gegangen und um 2017 herum wieder eingezogen. Auch das gehört zu dir: Bei dir steht die Tür in beide Richtungen offen. Wer geht, kann gehen. Und wer wiederkommt, kommt wieder rein, ohne dass groß darüber geredet werden muss.
 
-Rechne das einmal gegen den Anfang: 1997 seid ihr aus der Bismarckstraße raus, weil die Wohnung für vier Kinder zu klein war und das fünfte noch nicht mal da war. Fünfundzwanzig Jahre später zieht ihr wieder um, und man braucht deutlich weniger Platz.
+Rechne das einmal gegen den Anfang: 1997 seid ihr aus der Bismarckstraße raus, weil die Wohnung für vier Kinder zu klein war und das fünfte noch nicht mal da war. Sechsundzwanzig Jahre später ziehst du wieder um, und diesmal reicht deutlich weniger Platz.
 
 Alle sind älter geworden und selbstständiger. Mehrere waren schon draußen, und der Gedanke, dass irgendwann alle draußen sein würden, rückte spürbar näher.
 
@@ -215,21 +219,21 @@ Gleichzeitig wurde dein Knie in diesen Jahren immer schlechter. Die Wohnung leer
 
 ## Hammersteinstraße
 
-Seit 2022. Moritzberg, eine ruhige Wohnstraße.
+Seit 2023. Moritzberg, eine ruhige Wohnstraße.
 
 Der Name geht auf eine alte Hildesheimer Familie zurück, genauer auf einen Oberforster: Carl Freiherr von Hammerstein-Equord, der sich im neunzehnten Jahrhundert um die Aufforstung und den Erhalt des Hildesheimer Waldes verdient gemacht hat.
 
-Angefangen hast du am Hohen Weg — mitten in der Stadt, mitten in der Fußgängerzone, die einen Tag nach deiner Geburt eine wurde. Sechsundfünfzig Jahre später wohnst du in einer stillen Straße, die nach einem Mann benannt ist, der Bäume gepflanzt hat.
+Angefangen hast du am Hohen Weg — mitten in der Stadt, mitten in der Fußgängerzone, die einen Tag nach deiner Geburt eine wurde. Siebenundfünfzig Jahre später wohnst du in einer stillen Straße, die nach einem Mann benannt ist, der Bäume gepflanzt hat.
 
 Und hier wohnst du zum ersten Mal allein.
 
-Das ist ein größerer Satz, als er aussieht. Vom Juni 1991 bis zu diesem Umzug hat in jeder einzelnen deiner Wohnungen mindestens ein Kind gewohnt. Einunddreißig Jahre am Stück, ohne eine Unterbrechung, ohne ein einziges Jahr dazwischen. Christina und Julia sind erst mit diesem Umzug ausgezogen.
+Das ist ein größerer Satz, als er aussieht. Vom Juni 1991 bis zu diesem Umzug hat in jeder einzelnen deiner Wohnungen mindestens ein Kind gewohnt. Zweiunddreißig Jahre am Stück, ohne eine Unterbrechung, ohne ein einziges Jahr dazwischen. Christina und Julia sind erst mit diesem Umzug ausgezogen.
 
-Und dann, mit Mitte fünfzig, machst du zum ersten Mal eine Tür hinter dir zu, hinter der niemand mehr ist außer dir. Und zwei Katzen.
+Und dann, mit sechsundfünfzig, machst du zum ersten Mal eine Tür hinter dir zu, hinter der niemand mehr ist außer dir. Und zwei Katzen.
 
 
 ~~~
 
-Acht Adressen in sechsundfünfzig Jahren, und alle bis auf eine in derselben Stadt. Zwischen der ersten und der letzten liegen ein paar Kilometer.
+Acht Adressen in siebenundfünfzig Jahren, und alle bis auf eine in derselben Stadt. Zwischen der ersten und der letzten liegen ein paar Kilometer.
 
 Dazwischen liegt alles andere.

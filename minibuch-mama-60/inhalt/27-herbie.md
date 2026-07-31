@@ -9,7 +9,11 @@ kein belangloses Kapitel, weil es von Freiheit handelt.
 
 Die Fakten, die Daniel geliefert hat:
   - Bis 2008 alles zu Fuß oder mit dem Bus. Fünf Kinder.
-  - 2008 (ungefähr) endlich der Führerschein
+  - Führerschein: Ende 2008 oder 2009. Bei Daisys Tod am
+    30.11.2008 hatte sie ihn noch nicht — deshalb steht im Text
+    "kurz nach deinem zweiundvierzigsten Geburtstag" statt einer
+    Jahreszahl. Das stimmt für beide Möglichkeiten. Wenn du im
+    Führerschein nachschaust, steht das Datum drauf.
   - Erstes Auto: ein Ford Fiesta, getauft auf den Namen Herbie
 
 Rechnung: 1991 kam das erste Kind, 2008 kam der Führerschein.
@@ -40,7 +44,7 @@ Man muss sich das einmal praktisch vorstellen, nicht als Satz, sondern als Vorga
 
 Und dann wiederhole das siebzehn Jahre lang.
 
-2008, mit einundvierzig, hast du den Führerschein gemacht.
+Kurz nach deinem zweiundvierzigsten Geburtstag hast du den Führerschein gemacht.
 
 ## Der Fiesta
 
@@ -54,7 +58,7 @@ Herbie war dunkelblau. Und der Name war deine Idee, wegen des Films.
 
 ## Mönchengladbach, ohne Navi
 
-Zwei Jahre nach dem Führerschein, 2010, seid ihr nach Mönchengladbach gefahren. Über dreihundert Kilometer, einmal quer durchs Land.
+Ungefähr zwei Jahre nach dem Führerschein, 2010, seid ihr nach Mönchengladbach gefahren. Über dreihundert Kilometer, einmal quer durchs Land.
 
 Der Anlass war kein großer: Die Familie meiner damaligen Freundin wohnte dort. Mehr nicht. Du hast uns hingefahren.
 
