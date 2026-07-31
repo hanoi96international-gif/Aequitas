@@ -11,13 +11,14 @@ DATEN, soweit rekonstruiert:
   - Stadion: Marcus war zehn oder elf, also 2005 oder 2006.
   - Marienfriedhof: 2004 oder 2005.
 
-ZU PRÜFEN:
-  - Du hast "City Roller und Tungus" geschrieben — das zweite Wort
-    konnte ich nicht entziffern. Im Text steht deshalb nur
-    "Fahrräder und Roller". Sag mir, was gemeint war.
-  - Hat Rita zu der Zeit noch bei Horten gearbeitet? Falls ja, wird
-    aus dem Zufall eine richtige Pointe, und ich schreibe es um.
-  - Welches Spiel war das im Stadion? Gegner, Saison?
+GEKLÄRT:
+  - "Tungus" war Autokorrektur, auch Daniel weiß nicht mehr, was
+    gemeint war. Im Text steht deshalb nur "Fahrräder und Roller".
+  - Rita hat zu diesem Zeitpunkt nicht mehr bei Horten gearbeitet.
+    Der Zufall steht trotzdem drin, aber richtig eingeordnet.
+  - Der Gegner war vermutlich Bielefeld. Weil das unsicher ist,
+    steht es als Vermutung im Text — und die Begründung dafür ist
+    selbst eine gute Zeile.
 
 TON: Die drei Geschichten dürfen komisch sein. Der Schrecken steht
 ohnehin zwischen den Zeilen, den muss man nicht betonen.
@@ -39,11 +40,13 @@ Du hast die halbe Innenstadt abgesucht, und zwar mit einem Säugling dabei. Ewig
 
 Gefunden hast du mich schließlich bei Horten. Ich fuhr mit dem Fahrstuhl. Hoch. Und wieder runter. Und wieder hoch. Offenbar seit geraumer Zeit und in bester Laune.
 
-Horten ist übrigens dasselbe Kaufhaus, in dem deine Mutter gearbeitet hat. Ich bin also, das nur als Randnotiz, in dem einzigen Gebäude der Innenstadt verloren gegangen, in dem sich unsere Familie besonders gut auskannte.
+Horten ist übrigens dasselbe Kaufhaus, in dem Oma einmal gearbeitet hat. Damals war sie längst nicht mehr dort. Trotzdem bin ich, das nur als Randnotiz, ausgerechnet in dem Gebäude der Innenstadt verschwunden, in dem sich unsere Familie am besten auskannte.
 
 ## Ausgerufen im Stadion
 
-Ein paar Jahre später, Hannover, 96-Spiel. Wir waren alle da.
+Ein paar Jahre später, Hannover, ein 96-Spiel. Wir waren alle da.
+
+Ich glaube, es ging gegen Bielefeld. Sicher bin ich mir nicht, und das hat einen Grund: Was an diesem Nachmittag sonst noch passiert ist, hat das Spiel ziemlich zuverlässig überschrieben.
 
 Marcus war zehn oder elf, und irgendwo im Getümmel war er plötzlich nicht mehr bei uns. Wir haben gesucht, wir haben ihn nicht gefunden, und irgendwann wurde er über den Stadionsprecher ausgerufen.
 
