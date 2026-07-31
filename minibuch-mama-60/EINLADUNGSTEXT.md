@@ -117,10 +117,9 @@ dazu. Frag sie anders:
 > 2. Deine Erinnerungen für die Kapitel. Ich habe vieles vergessen,
 >    und du erinnerst dich garantiert an anderes als ich.
 >
-> Und eine konkrete Frage dazu, die mir wichtig ist: **Was habt ihr
-> mal zu zweit gemacht, nur du und Mama?** Ein Urlaub, ein Ausflug,
-> irgendwas, wo die anderen nicht dabei waren. Ich weiß von Steffis
-> Türkei und von Marcus' Ostsee, aber nichts davon aus erster Hand.
+> Und eine konkrete Frage dazu, die mir wichtig ist: **Was ist deine
+> stärkste Erinnerung an Mama?** Egal ob schön, komisch oder
+> beknackt — Hauptsache, es ist deine und nicht meine.
 >
 > Deadline für die Seite: 23. August. Und sie weiß nichts.
 
