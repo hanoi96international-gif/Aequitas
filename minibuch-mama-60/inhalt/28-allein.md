@@ -20,7 +20,17 @@ So ist es umgesetzt:
      hat: warum die Münzen weg waren.
   4. Es endet nicht bei der Wunde, sondern übergibt an "Wir zwei".
 
-DREI STELLEN MUSST DU FREIGEBEN:
+VIER STELLEN MUSST DU FREIGEBEN:
+
+  - Der Abschnitt "Der letzte Tag". Er sagt, dass niemand nach dir
+    geschaut hat und dass deine Großeltern dich am Ende zusammen-
+    gefaltet haben. Das steht in einem Buch, in dem dieselben beiden
+    Menschen ein eigenes Dankeskapitel haben — und beide sind tot,
+    können sich also nicht äußern. Deshalb steht direkt dahinter der
+    Absatz, der das Dankeskapitel ausdrücklich nicht zurücknimmt.
+    Lies beides zusammen. Wenn dir das Verhältnis nicht stimmt,
+    streichen wir den Abschnitt oder kürzen ihn auf den ersten Satz.
+    Deine Mutter hat ihre Eltern verloren, 2019 und 2023.
 
   - Die Wellensittiche. Nicki und Nocki haben es nicht überlebt. Das
     steht schlicht da, ohne Erklärung — genau deshalb kann es aber
@@ -62,6 +72,20 @@ Damals habe ich das nicht verstanden. Damals habe ich mich ausgesetzt gefühlt.
 Das ist kein Vorwurf, und ich möchte, dass dieser Satz genau so stehen bleibt: **Ein Vierzehnjähriger kann sich ausgesetzt fühlen, ohne dass ihn jemand ausgesetzt hat.** Beides ist gleichzeitig wahr. Es hat nur ziemlich lange gedauert, bis ich das trennen konnte.
 
 Zurückgeblieben bin ich mit Donald und den beiden Wellensittichen, Nicki und Nocki. Die beiden Vögel haben es nicht überlebt.
+
+## Der letzte Tag
+
+In der ganzen Zeit hat niemand nach mir geschaut. Nicht einmal.
+
+Erst am letzten Tag kamen Oma und Opa. Sie haben die Wohnung geputzt, und danach haben sie mich zusammengefaltet. Gründlich.
+
+Das war unfair. Ich finde es bis heute unfair.
+
+Und trotzdem verstehe ich inzwischen, was da eigentlich passiert ist. Die beiden sind nicht gekommen, um nach mir zu sehen. Sie sind gekommen, damit die Wohnung in Ordnung ist, wenn ihre Tochter aus der Kur zurückkommt. In dieser Rechnung war ich nicht das Kind, um das man sich kümmert, sondern der Grund, warum es unordentlich aussah.
+
+Das ist ungefähr die Rolle, die ich in diesen Jahren hatte. Der Älteste kommt klar. Der Älteste macht keinen Ärger. Und wenn doch, dann ist er der Ärger.
+
+Ich schreibe das nicht, um das Kapitel über Oma und Opa zurückzunehmen. Was die beiden fünfzehn Jahre lang für dich getan haben, steht dort, und jedes Wort davon stimmt. Menschen können beides sein: die, die kommen, wenn es eng wird — und die, die an einem Nachmittag im Jahr 2005 einen Vierzehnjährigen zusammenfalten, ohne vorher zu fragen, wie es ihm die Wochen davor ergangen ist.
 
 ## Die Münzen
 
