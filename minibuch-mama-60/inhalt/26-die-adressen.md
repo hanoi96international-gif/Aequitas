@@ -65,7 +65,9 @@ WAS NOCH FEHLT:
     Balkon, Zimmeraufteilung, Nachbarn, Geruch.
 -->
 
-Man kann ein Leben über die Jahreszahlen erzählen. Man kann es auch über die Schlüssel erzählen, die man mal am Bund hatte.
+Alles, was bis hierher in diesem Teil steht, hat sich in acht Wohnungen abgespielt. Dieses Kapitel geht sie der Reihe nach durch — und läuft dabei bis heute.
+
+Man kann ein Leben über Jahreszahlen erzählen. Man kann es auch über die Schlüssel erzählen, die man mal am Bund hatte.
 
 Angefangen hat es am Hohen Weg 46, bei Rita und Willi, mitten in der Stadt und mitten in der Fußgängerzone. Von dort bist du losgegangen, und dann ging es so weiter:
 
@@ -119,7 +121,7 @@ Ohne diesen Termin wären wir irgendwann alle nicht mehr aufgewacht.
 
 Ich weiß nicht, ob dir jemals klar geworden ist, wie knapp das war. Mir schon. Und ich denke ehrlich gesagt öfter daran, als ich es je erwähnt habe.
 
-Was in diesen Jahren sonst noch passiert ist, steht ein paar Seiten weiter.
+Was in diesen Jahren sonst noch passiert ist, steht weiter vorn in diesem Buch.
 
 ## Moltkestraße
 

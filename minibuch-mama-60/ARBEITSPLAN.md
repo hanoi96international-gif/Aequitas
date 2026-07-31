@@ -41,20 +41,20 @@ Das Wichtigste zuerst, weil es von anderen abhängt:
 Das ist die schwerste Woche. Plan sie großzügig.
 
 - [ ] `20-die-kontaktanzeige.md` — Kennenlernen, Hochzeit, fünf Kinder
-- [ ] `21-die-adressen.md` — die sieben Wohnungen
-- [ ] `22-vierunddreissig.md` — das Kernkapitel
-- [ ] `23-die-die-da-waren.md` — Anette, Rita, Willi
-- [ ] `25-rituale.md` — Mittagessen, Weihnachten, Sonntage
+- [ ] `26-die-adressen.md` — die acht Wohnungen
+- [ ] `23-vierunddreissig.md` — das Kernkapitel
+- [ ] `24-die-die-da-waren.md` — Anette, Wolfgang, Rita, Willi
+- [ ] `22-rituale.md` — Mittagessen, Weihnachten, Sonntage
 
 ## Woche 4 — bis Sonntag, 23. August: Teil Drei
 
 Nach der schweren Woche kommt die leichte. So ist das absichtlich gebaut.
 
 - [ ] `30-wer-du-bist.md`
-- [ ] `31-deine-saetze.md` — sammelst du längst nebenbei
-- [ ] `32-gelernt.md`
-- [ ] `33-sechzig.md` — Geschwister um Zulieferung bitten
-- [ ] `34-wuensche.md`
+- [ ] `27-wir-zwei.md` und `21-giesbert.md`
+- [ ] `31-gelernt.md`
+- [ ] `32-sechzig.md` — Geschwister um Zulieferung bitten
+- [ ] `33-wuensche.md`
 
 ## Woche 5 — bis Sonntag, 30. August: Rahmen und Feinschliff
 
