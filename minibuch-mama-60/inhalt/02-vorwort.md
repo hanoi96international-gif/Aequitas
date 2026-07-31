@@ -26,6 +26,8 @@ Also habe ich angefangen zu suchen. Ich habe nachgeschlagen, was 1966 passiert i
 
 Herausgekommen ist dieses Buch.
 
+Eine Sache noch, bevor es losgeht: Das hier ist aus meiner Sicht geschrieben, und meine Sicht ist die eines Ältesten, der manches mitbekommen hat, was die anderen nicht mitbekommen haben — und der von vielem nichts weiß, was Steffanie, Marcus, Christina und Julia erlebt haben. Ihre Erinnerungen sind anders als meine. Deshalb kommen sie hinten mit ihren eigenen Worten vor und nicht mit meinen.
+
 Es ist mit Sicherheit an einigen Stellen falsch. Erinnerungen sind unzuverlässig, meine besonders, und manches habe ich aus zweiter Hand. Wenn du beim Lesen denkst, dass etwas so nicht stimmt, hast du wahrscheinlich recht. Schreib es dazu — hinten ist Platz.
 
 Alles darin ist trotzdem ehrlich gemeint.

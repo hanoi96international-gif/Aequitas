@@ -115,8 +115,12 @@ dazu. Frag sie anders:
 >
 > 1. Eine Seite von dir für sie. Was du willst, ich fasse nichts an.
 > 2. Deine Erinnerungen für die Kapitel. Ich habe vieles vergessen,
->    und du erinnerst dich garantiert an anderes als ich. Vor allem:
->    Sätze, die sie immer sagt. Sammelst du mir welche?
+>    und du erinnerst dich garantiert an anderes als ich.
+>
+> Und eine konkrete Frage dazu, die mir wichtig ist: **Was habt ihr
+> mal zu zweit gemacht, nur du und Mama?** Ein Urlaub, ein Ausflug,
+> irgendwas, wo die anderen nicht dabei waren. Ich weiß von Steffis
+> Türkei und von Marcus' Ostsee, aber nichts davon aus erster Hand.
 >
 > Deadline für die Seite: 23. August. Und sie weiß nichts.
 
