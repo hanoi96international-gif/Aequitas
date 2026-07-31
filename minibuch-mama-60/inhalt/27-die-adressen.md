@@ -58,6 +58,14 @@ gewesen, oder der Umzug 2021/2022 war schon der in die
 Hammersteinstraße. Der Text steht deshalb bewusst ohne feste
 Jahreszahl für diesen einen Wechsel.
 
+DATUMSKONFLIKT — bitte klären:
+Im Kapitel "Herbie" steht, dass sie 2008 den Führerschein gemacht
+hat. Bei Daisys Tod am 30. November 2008 hatte sie ihn laut dir noch
+nicht. Beides geht nur zusammen, wenn der Führerschein erst im
+Dezember 2008 kam. Wahrscheinlicher ist, dass eine der beiden
+Angaben um ein Jahr danebenliegt. Frag sie oder schau im
+Führerschein nach — das Datum steht drauf.
+
 WAS NOCH FEHLT:
   - Wann genau ging Brauhausstraße in Dingworthstraße über?
   - Warum jeder Umzug? Das ist die eigentliche Geschichte.
@@ -164,6 +172,18 @@ Am 30. November 2008 ist in Algermissen unsere Katze Daisy von einem Auto angefa
 Der 30. November ist Christinas Geburtstag. Sie wurde an dem Tag zwölf.
 
 Ihr wart gerade erst hingezogen. Das große Haus, das erste eigene, war noch keine paar Monate alt.
+
+Und dann kommt der Teil, den man sich kaum ausdenken kann.
+
+Du hattest damals noch keinen Führerschein. Also kamen deine Eltern.
+
+Opa ist mit dir von Algermissen zur Tierarztpraxis nach Sarstedt gefahren, abends im Dunkeln. Er hatte zu der Zeit starke Probleme mit den Augen und konnte abends kaum etwas sehen.
+
+Du beschreibst diese Fahrt bis heute als Horrorfahrt. Du hast unterwegs ernsthaft damit gerechnet, nicht heil nach Hause zu kommen.
+
+Man muss sich das einmal zusammensetzen: im Auto eine sterbende Katze, am Steuer ein Mann, der im Dunkeln fast nichts sieht, daneben seine Tochter, die selbst nicht fahren darf. Und trotzdem hat niemand auch nur eine Sekunde erwogen, es nicht zu tun.
+
+Das ist, in einer einzigen Autofahrt, das ganze Verhältnis zwischen dir und deinen Eltern.
 
 Das war schwer zu verdauen, für alle.
 
