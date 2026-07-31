@@ -1,36 +1,50 @@
 # Was ich von dir habe
 
 <!--
-SCHREIBHILFE — Ziel: 1–2 Seiten. Das persönlichste Kapitel.
+SCHREIBHILFE — das persönlichste Kapitel, jetzt weitgehend gefüllt.
 
-Hier drehst du das Buch um: Es ging bisher um sie. Jetzt geht es
-darum, was von ihr in dir gelandet ist.
+Grundlage ist Daniels eigene Antwort auf die Frage, was er von ihr
+hat: dickköpfig. Ein Wort, und es trägt das ganze Kapitel — vor allem
+deshalb, weil der Beleg dafür schon im Buch steht, nämlich der
+zerrissene Scheck in "Vierunddreißig".
 
-Zwei Ebenen, und du brauchst beide:
+Deshalb funktioniert das Kapitel: Es behauptet nichts, es verweist.
+Sie kann selbst nachschlagen.
 
-  1. Die kleinen Dinge. Wie du Kaffee kochst, wie du Betten machst,
-     ein Wort, das du benutzt, weil sie es benutzt, eine Bewegung.
-     Das sind die Stellen, an denen sie lachen wird.
+WAS NOCH FEHLT: eine kleine, alltägliche Angewohnheit. Etwas
+Konkretes und möglichst Albernes — wie du Kaffee kochst, ein Wort,
+das du benutzt, weil sie es benutzt, wie du Türen zumachst, wie du
+die Spülmaschine einräumst. Das ist das Gegengewicht zum ernsten
+Teil, und ohne das kippt das Kapitel ins Feierliche.
 
-  2. Die große Sache. Was du aus diesen fünfzehn Jahren mitgenommen
-     hast, ohne dass jemand es dir beigebracht hat. Zum Beispiel:
-     dass man morgens aufsteht, auch wenn es keinen Grund gibt.
-     Dass man Sachen zu Ende bringt. Dass man nicht jammert.
-     Was auch immer bei dir stimmt.
-
-EHRLICHKEIT LOHNT SICH:
-Es darf hier auch etwas stehen, das nicht nur schön ist. "Ich kann
-schlecht um Hilfe bitten, und ich weiß ziemlich genau, von wem ich
-das habe" — so ein Satz ist kein Vorwurf, sondern ein Beweis, dass
-du hingeschaut hast. Solche Sätze glaubt man; reine Lobhudelei nicht.
-
-Aber: kein Abrechnungskapitel. Ein Satz dieser Art reicht.
+Frag deine Geschwister danach. Von außen sieht man so etwas sofort,
+bei sich selbst so gut wie nie.
 -->
 
-{{Ein, zwei kleine Dinge, die du genau wie sie machst — und die dir jedes Mal auffallen.}}
+Dickköpfig.
 
-## Und das Große
+Das ist das Erste, was mir einfällt. Und es ist auch das Ehrlichste.
 
-{{Was du aus diesen Jahren mitgenommen hast, ohne dass es dir jemand beigebracht hat.}}
+Ich muss dafür nicht lange suchen, wo ich das herhabe. Der Beleg steht ein paar Kapitel weiter vorn in diesem Buch, in Form eines zerrissenen Schecks.
 
-{{Optional, aber stark: eine Sache, die du von ihr hast und die nicht nur bequem ist.}}
+Fünfzig Mark. Kein Geld im Haus. Fünf Kinder zwischen drei und neun. Und du hast lieber nichts genommen als das.
+
+## Die unbequeme Hälfte
+
+Dickköpfigkeit ist keine angenehme Eigenschaft, und ich will hier nichts schönreden.
+
+Sie sorgt dafür, dass man Dinge nicht annimmt, die man gut gebrauchen könnte. Dass man schlecht um Hilfe bittet, weil Fragen sich wie Aufgeben anfühlt. Dass man Sachen länger allein macht, als irgendjemand sie allein machen müsste.
+
+Ich kenne das an mir. Und ich weiß inzwischen ziemlich genau, wo ich es herhabe.
+
+## Und die andere Hälfte
+
+Gleichzeitig ist es genau das, weshalb die fünfzehn Jahre funktioniert haben.
+
+Wer nicht dickköpfig ist, steht nicht jeden Morgen wieder auf. Wer nicht dickköpfig ist, macht mit einundvierzig keinen Führerschein mehr, fährt nicht ohne Navi dreihundert Kilometer, trainiert keine Jugendmannschaft, während zu Hause das Geld nicht reicht, und hört nach Jahrzehnten nicht mit dem Rauchen auf.
+
+Es ist dieselbe Eigenschaft. Man kann sie nicht halb haben.
+
+Ich habe also beides von dir bekommen — den Teil, der mir hilft, und den, der mir im Weg steht. Und ehrlich gesagt nehme ich das komplette Paket ganz gern.
+
+{{Und dann noch etwas Kleines, Alltägliches: eine Angewohnheit, ein Wort, ein Handgriff, den du genau wie sie machst. Am besten etwas Albernes — das Kapitel braucht an dieser Stelle ein Gegengewicht, sonst wird es zu feierlich. Frag deine Geschwister, die sehen so etwas sofort.}}
