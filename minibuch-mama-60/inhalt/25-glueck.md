@@ -12,8 +12,10 @@ DATEN, soweit rekonstruiert:
   - Marienfriedhof: 2004 oder 2005.
 
 GEKLÄRT:
-  - "Tungus" war Autokorrektur, auch Daniel weiß nicht mehr, was
-    gemeint war. Im Text steht deshalb nur "Fahrräder und Roller".
+  - "Tungus" war Autokorrektur und meinte "zu Fuß": Nicht alle Kinder
+    hatten ein Fahrrad oder einen City-Roller, ein Teil lief nebenher.
+    Das steht jetzt so im Text, ohne Kommentar — wer das Kapitel
+    "Vierunddreißig" gelesen hat, zieht die Verbindung von selbst.
   - Rita hat zu diesem Zeitpunkt nicht mehr bei Horten gearbeitet.
     Der Zufall steht trotzdem drin, aber richtig eingeordnet.
   - Der Gegner war vermutlich Bielefeld. Weil das unsicher ist,
@@ -58,7 +60,7 @@ Er kam also aus der Sache zurück wie jemand, der etwas gewonnen hat. Und du has
 
 ## Die Mauer am Marienfriedhof
 
-2004 oder 2005, am Marienfriedhof. Wir waren mit Fahrrädern und Rollern unterwegs.
+2004 oder 2005, am Marienfriedhof. Wir waren mit Fahrrädern und City-Rollern unterwegs — und wer nichts von beidem hatte, ging zu Fuß nebenher.
 
 Um von der Brücke herunterzukommen, musste man einen schmalen Pfad nehmen, der ziemlich steil bergab ging. Steffanie ist ihn mit dem Fahrrad gefahren.
 
