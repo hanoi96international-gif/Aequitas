@@ -84,7 +84,7 @@ Also stehen die Fragen jetzt einfach hier. Beantworte sie, wann du willst, oder 
 - Seit wann gehst du zum Bingo, mit wem, und wo?
 - Und was passiert eigentlich, wenn du doch mal etwas gewinnst?
 - Hatten Findus und Luna ihre Namen schon, oder hast du sie ihnen gegeben?
-- Wann genau hast du mit dem Rauchen aufgehört? Weißt du noch den Tag?
+- Der 24. September 2021 steht in diesem Buch. Was war an dem Tag?
 - Wie ist es, zum ersten Mal seit 1991 allein zu wohnen?
 - Was sagst du eigentlich, wenn du an Oma und Opa denkst?
 

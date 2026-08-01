@@ -205,13 +205,19 @@ Ich weiß nicht, ob dir klar ist, wie unterhaltsam das für den Rest des Raums i
 
 ## Aufgehört
 
-Du hast lange geraucht. Und dann hast du damit aufgehört, vor mittlerweile über zehn Jahren.
+Du hast lange geraucht. Und dann hast du damit aufgehört, am 24. September 2021.
 
-Das steht hier nicht als Gesundheitshinweis, davon hast du in deinem Leben genug gehört. Es steht hier, weil Menschen ab einem gewissen Alter selten noch etwas ablegen, das sie ihr halbes Leben lang begleitet hat. Die meisten sagen sich irgendwann, dass sich das jetzt ohnehin nicht mehr lohnt, dass man auch noch etwas haben muss, dass es Schlimmeres gibt. Das sind gute Argumente, und sie funktionieren jahrzehntelang.
+Auf den Tag genau. Auch das ist so ein Datum, das du weißt, ohne nachzusehen — genau wie bei den Katzen.
 
-Und ehrlich gesagt beeindruckt mich nicht einmal das Aufhören am meisten. Aufhören kann man an einem schlechten Tag beschließen, das haben schon viele getan. Das Schwierige ist alles, was danach kommt: der zweite Monat, das erste Fest, der erste richtig schlechte Tag, an dem es einen guten Grund gäbe.
+Das steht hier nicht als Gesundheitshinweis, davon hast du in deinem Leben genug gehört. Es steht hier, weil Menschen ab einem gewissen Alter selten noch etwas ablegen, das sie ihr halbes Leben lang begleitet hat. Die meisten sagen sich irgendwann, dass sich das jetzt ohnehin nicht mehr lohnt, dass man auch noch etwas haben muss, dass es Schlimmeres gibt. Das sind gute Argumente, und sie funktionieren jahrzehntelang. Du warst fünfundfünfzig.
 
-Du hältst es seit über zehn Jahren durch. Jeden einzelnen Tag davon, und keinen davon hat dir jemand abgenommen.
+Und ehrlich gesagt beeindruckt mich nicht einmal das Aufhören am meisten. Aufhören kann man an einem schlechten Tag beschließen, das haben schon viele getan, und die meisten davon mehrfach. Das Schwierige ist alles, was danach kommt: der zweite Monat, das erste Fest, der erste richtig schlechte Tag, an dem es einen guten Grund gäbe.
+
+Und dann rechne einmal das Datum gegen deinen Geburtstag.
+
+An dem Tag, an dem du diesen Satz liest, sind es vier Jahre und elf Monate. Am 24. September, zwanzig Tage nach deinem Sechzigsten, werden es fünf Jahre. Fünf Jahre, in denen du es jeden einzelnen Tag neu durchgehalten hast, und keinen davon hat dir jemand abgenommen.
+
+Das ist einer der wenigen Jahrestage in diesem Buch, den außer dir niemand feiert. Ich fände, man sollte damit anfangen.
 
 
 ## Ungeduldig

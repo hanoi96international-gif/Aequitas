@@ -52,7 +52,7 @@ Sechzig Dinge, die ich weiß, weil es dich gibt.
 24. Du hast Sascha ein Memory machen lassen, das nur für ihn gemacht war.
 25. Du hast einen Scheck vom Sozialamt zerrissen, obwohl du kein Geld hattest.
 26. Du hast nie zugelassen, dass sich jemand vor dem Weihnachtsgedicht drückt. Fünf Kinder, kein einziger Ausfall.
-27. Du hast dir das Rauchen abgewöhnt, als es schon niemand mehr von dir erwartet hätte.
+27. Du hast am 24. September 2021 mit dem Rauchen aufgehört und weißt das Datum bis heute auswendig.
 28. Du bist arbeiten gegangen, wenn wir in der Schule waren. Nicht dann, wenn es dir gepasst hätte.
 29. Du hast eine Jugendmannschaft trainiert, während zu Hause das Geld nicht reichte.
 30. Du bist mit dreiundvierzig zum ersten Mal allein irgendwohin gefahren.
