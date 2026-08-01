@@ -26,9 +26,7 @@ Mir fällt zu deinem Leben eine Menge ein. Aber über ganze Jahrzehnte davon wei
 
 Ich wusste zum Beispiel nicht, an welchem Wochentag du geboren wurdest. Ich wusste nicht, was 1966 in Hildesheim los war, als du auf die Welt kamst. Ich wusste ungefähr, was du gearbeitet hast, aber nicht, wie lange, nicht ab wann, und schon gar nicht, wie es sich angefühlt hat. Ich kenne dich seit fünfunddreißig Jahren, und die ersten fünfundzwanzig davon waren für mich im Wesentlichen ein weißer Fleck.
 
-Also habe ich angefangen zu suchen.
-
-Ich habe nachgeschlagen, was in dem Jahr passiert ist, in dem du geboren wurdest — was im Radio lief, was die Butter kostete, wie die Stadt damals aussah. Ich habe in deinem Lebenslauf gelesen, Zeile für Zeile, und dabei zum ersten Mal gesehen, wie deine sechzig Jahre auf einem Blatt Papier aussehen. Ich habe Leute gefragt, die länger dabei sind als ich. Und ich habe Dinge zusammengetragen, die nie jemand aufgeschrieben hat, weil so etwas eben niemand aufschreibt, solange es die Leute noch gibt, die sich erinnern.
+Also habe ich angefangen zu suchen. Wie das ausgegangen ist, steht gleich im ersten Kapitel — die Kurzfassung lautet, dass ich für die Jugend meiner eigenen Mutter recherchieren musste wie für einen Schulaufsatz.
 
 Herausgekommen ist dieses Buch.
 
