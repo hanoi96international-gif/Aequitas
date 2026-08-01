@@ -62,9 +62,11 @@ eine Geschichte.
 
 Die erste Kur war die beste.
 
-Niendorf am Timmendorfer Strand, Ostsee. Du und wir fünf. Ich war neun, Julia war zwei.
+Niendorf am Timmendorfer Strand, Ostsee. Du und wir fünf, vollzählig. Ich war neun, Julia war zwei.
 
-Das muss man sich kurz vorstellen: eine Mutter, fünf Kinder zwischen zwei und neun, zweihundertfünfzig Kilometer von zu Hause, am Meer. Was für dich vermutlich eher Arbeitsplatzwechsel als Erholung war, ist für uns die beste Erinnerung dieser Art geblieben.
+Das muss man sich einen Moment lang vorstellen, weil es sonst nach einem gewöhnlichen Urlaub klingt: eine Mutter, fünf Kinder zwischen zwei und neun, zweihundertfünfzig Kilometer von zu Hause entfernt, am Meer, für mehrere Wochen. Ich weiß nicht, wie viel Erholung darin für dich tatsächlich steckte. Vermutlich war es weniger Urlaub als ein Wechsel des Arbeitsplatzes — dieselben fünf Kinder, dieselben Mahlzeiten, dieselben Streitigkeiten, nur mit Sand.
+
+Für uns ist es die beste Erinnerung dieser Art geblieben. Das ist wahrscheinlich der Unterschied zwischen den beiden Seiten dieser Familie: Was für dich Arbeit war, war für uns das Meer.
 
 {{Woran du dich erinnerst: Strand, Unterkunft, Wetter, was ihr gemacht habt. Das ist eines der wenigen rein schönen Kapitel im Buch — nutz den Platz.}}
 
@@ -74,15 +76,15 @@ Es war das Jahr 2000. Was ein paar Monate später passiert ist, steht weiter vor
 
 2005. Ich war vierzehn.
 
-Du hattest wieder eine Mutter-Kind-Kur beantragt. Vier Jahre nach allem, was passiert war, mit fünf Kindern und ohne einen einzigen freien Tag dazwischen — es wäre schwer zu erklären, warum du sie nicht gebraucht hättest.
+Du hattest wieder eine Mutter-Kind-Kur beantragt, und man muss dazu nicht viel erklären. Vier Jahre nach allem, was passiert war, mit fünf Kindern, ohne Auto, ohne einen einzigen freien Tag dazwischen — es wäre erheblich schwerer zu begründen, warum du sie nicht gebraucht hättest.
 
-Bewilligt wurde sie auch. Für dich und für Kinder bis dreizehn.
+Bewilligt wurde sie auch. Für dich und für Kinder bis dreizehn Jahre.
 
-Ich war vierzehn.
+Ich war vierzehn. Um genau zu sein: seit Juni.
 
-Du hast versucht, das zu ändern. Du hast angerufen, du hast argumentiert, du hast es mehrfach versucht. Die Antwort blieb dieselbe: Höchstalter dreizehn, keine Ausnahme.
+Du hast versucht, das zu ändern. Du hast angerufen, du hast argumentiert, du hast es mehr als einmal versucht. Die Antwort blieb jedes Mal dieselbe: Höchstalter dreizehn, keine Ausnahme, auch nicht bei fünf Kindern, auch nicht bei dieser Vorgeschichte.
 
-Heute würde man einer alleinerziehenden Mutter von fünf Kindern so etwas vermutlich nicht mehr sagen. Damals war es die Regel, und Regeln waren Regeln.
+Heute würde man einer alleinerziehenden Mutter von fünf Kindern so etwas vermutlich nicht mehr ohne Weiteres sagen. Damals war es die Regel, und Regeln waren Regeln. Der einzige Ausweg wäre gewesen, gar nicht zu fahren — und das hätte bedeutet, dass wegen eines Vierzehnjährigen vier jüngere Kinder und eine erschöpfte Mutter zu Hause bleiben.
 
 Also seid ihr nach Bad Essen gefahren. Und ich bin in der Moltkestraße geblieben.
 

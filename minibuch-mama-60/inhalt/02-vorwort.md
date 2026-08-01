@@ -18,16 +18,24 @@ NOCH ZU ERGÄNZEN, wenn es zutrifft:
   - Ob du sie selbst ausgefragt hast, ohne zu verraten, warum
 -->
 
-Ein Geschenk zu finden war dieses Jahr schwierig. Und irgendwann ist mir aufgefallen, dass mir zu deinem Leben zwar eine Menge einfällt, ich aber über ganze Jahrzehnte davon fast nichts weiß.
+Ein Geschenk zu finden war dieses Jahr schwierig.
 
-Ich wusste zum Beispiel nicht, an welchem Wochentag du geboren wurdest. Ich wusste nicht, was in Hildesheim los war, als du auf die Welt kamst. Ich wusste ungefähr, was du gearbeitet hast, aber nicht, wie lange, und nicht, wie es sich angefühlt hat.
+Beim Sechzigsten geht das nicht mehr wie sonst. Du sagst ohnehin jedes Jahr, dass du nichts brauchst, und dieses Mal stimmte es vermutlich sogar. Also habe ich eine Weile darüber nachgedacht, was man jemandem schenkt, der seit sechzig Jahren dabei ist — und dabei ist mir etwas aufgefallen, das mir vorher nie aufgefallen war.
 
-Also habe ich angefangen zu suchen. Ich habe nachgeschlagen, was 1966 passiert ist. Ich habe in deinem Lebenslauf gelesen. Ich habe Leute gefragt und Dinge zusammengetragen, die niemand aufgeschrieben hatte, weil so etwas eben niemand aufschreibt.
+Mir fällt zu deinem Leben eine Menge ein. Aber über ganze Jahrzehnte davon weiß ich fast nichts.
+
+Ich wusste zum Beispiel nicht, an welchem Wochentag du geboren wurdest. Ich wusste nicht, was 1966 in Hildesheim los war, als du auf die Welt kamst. Ich wusste ungefähr, was du gearbeitet hast, aber nicht, wie lange, nicht ab wann, und schon gar nicht, wie es sich angefühlt hat. Ich kenne dich seit fünfunddreißig Jahren, und die ersten fünfundzwanzig davon waren für mich im Wesentlichen ein weißer Fleck.
+
+Also habe ich angefangen zu suchen.
+
+Ich habe nachgeschlagen, was in dem Jahr passiert ist, in dem du geboren wurdest — was im Radio lief, was die Butter kostete, wie die Stadt damals aussah. Ich habe in deinem Lebenslauf gelesen, Zeile für Zeile, und dabei zum ersten Mal gesehen, wie deine sechzig Jahre auf einem Blatt Papier aussehen. Ich habe Leute gefragt, die länger dabei sind als ich. Und ich habe Dinge zusammengetragen, die nie jemand aufgeschrieben hat, weil so etwas eben niemand aufschreibt, solange es die Leute noch gibt, die sich erinnern.
 
 Herausgekommen ist dieses Buch.
 
-Eine Sache noch, bevor es losgeht: Das hier ist aus meiner Sicht geschrieben, und meine Sicht ist die eines Ältesten, der manches mitbekommen hat, was die anderen nicht mitbekommen haben — und der von vielem nichts weiß, was Steffanie, Marcus, Christina und Julia erlebt haben. Ihre Erinnerungen sind anders als meine. Deshalb kommen sie hinten mit ihren eigenen Worten vor und nicht mit meinen.
+Zwei Sachen noch, bevor es losgeht.
 
-Es ist mit Sicherheit an einigen Stellen falsch. Erinnerungen sind unzuverlässig, meine besonders, und manches habe ich aus zweiter Hand. Wenn du beim Lesen denkst, dass etwas so nicht stimmt, hast du wahrscheinlich recht. Schreib es dazu — hinten ist Platz.
+Das hier ist aus meiner Sicht geschrieben, und meine Sicht ist die eines Ältesten. Ich habe manches mitbekommen, was die anderen vier nicht mitbekommen haben, weil ich alt genug dafür war. Und von vielem, was Steffanie, Marcus, Christina und Julia erlebt haben, weiß ich nichts, weil ich zu der Zeit schon aus dem Haus war oder weil sie mir nie davon erzählt haben. Ihre Erinnerungen an dieselbe Familie sind andere als meine. Deshalb kommen sie hinten in diesem Buch mit ihren eigenen Worten vor und nicht mit meinen — das ist mir wichtig, und es ist die einzige faire Lösung.
+
+Und: Es ist mit Sicherheit an einigen Stellen falsch. Erinnerungen sind unzuverlässig, meine ganz besonders, und einiges habe ich aus zweiter Hand. Ich habe Jahreszahlen dreimal geprüft und trotzdem welche vertauscht. Wenn du beim Lesen denkst, dass etwas so nicht stimmt, dann hast du wahrscheinlich recht — du warst schließlich dabei und ich nicht. Schreib es dazu. Hinten ist Platz dafür gelassen, und zwar absichtlich.
 
 Alles darin ist trotzdem ehrlich gemeint.

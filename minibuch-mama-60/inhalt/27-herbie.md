@@ -34,37 +34,39 @@ dann aber ehrlich als "so einer war es" beschriften.
 
 Achtzehn Jahre lang bist du gelaufen.
 
-1991 kam das erste Kind, und von da an ging alles zu Fuß oder mit dem Bus. Einkäufe für sieben Leute. Arzttermine. Kindergarten, Schule, Sportverein, Geburtstage anderer Kinder, Elternabende, Apotheke.
+1991 kam das erste Kind, und von da an ging alles zu Fuß oder mit dem Bus. Die Einkäufe für sieben Leute. Die Arzttermine, und bei fünf Kindern gibt es davon mehr, als man denkt. Kindergarten, Schule, Sportverein, die Geburtstage anderer Kinder, Elternabende, Apotheke, Amt.
 
-Man muss sich das einmal praktisch vorstellen, nicht als Satz, sondern als Vorgang. Fünf Kinder an einer Bushaltestelle im November. Der Jüngste kann noch nicht richtig laufen, der Älteste hat keine Lust, zwei streiten, und du hast in beiden Händen Tüten. Der Bus kommt alle zwanzig Minuten. Wenn du ihn verpasst, stehst du zwanzig Minuten mit fünf Kindern im Regen.
+Man muss sich das einmal praktisch vorstellen, nicht als Satz, sondern als Vorgang, der tatsächlich stattfindet. Fünf Kinder an einer Bushaltestelle, November, halb fünf, es ist schon dunkel. Der Jüngste kann noch nicht richtig laufen und muss also getragen werden. Der Älteste hat keine Lust und sagt das auch. Zwei streiten über irgendetwas, das in vier Minuten vergessen ist. Und du hast in beiden Händen Tüten, weil ihr auf dem Rückweg vom Einkaufen seid und ein Einkauf für sieben Leute nicht in einen Rucksack passt.
 
-Und dann wiederhole das achtzehn Jahre lang.
+Der Bus kommt alle zwanzig Minuten. Wenn du ihn verpasst, stehst du zwanzig Minuten mit fünf Kindern im Regen, und es gibt nichts, was du in diesen zwanzig Minuten tun kannst.
+
+Und jetzt wiederhole das achtzehn Jahre lang. Nicht als Ausnahme, sondern als Normalzustand. So sah bei dir jeder Weg aus, den andere Leute nebenbei mit dem Auto erledigen.
 
 Im Oktober 2009, mit dreiundvierzig, hast du den Führerschein gemacht.
 
 ## Der Fiesta
 
-Das erste Auto war ein Ford Fiesta, und er hieß Herbie.
+Das erste Auto war ein Ford Fiesta, dunkelblau, und er hieß Herbie.
 
-Das muss man einmal sacken lassen. Herbie ist eigentlich ein VW Käfer, der berühmteste Filmwagen der Welt, mit Startnummer und eigenem Willen. Und du hast einen Ford Fiesta gekauft und ihn trotzdem so genannt.
+Das muss man einen Moment sacken lassen. Herbie ist eigentlich ein VW Käfer — der berühmteste Filmwagen der Welt, mit Startnummer, Eigensinn und der Angewohnheit, Rennen zu gewinnen, obwohl er der kleinste im Feld ist. Und du hast einen Ford Fiesta gekauft und ihn trotzdem so genannt. Der Name war deine Idee, wegen des Films.
 
-Ein Mensch, der sein erstes eigenes Auto tauft, hat nicht einfach ein Fahrzeug angeschafft. Der hat etwas zurückbekommen.
+Das ist keine Nebensächlichkeit, finde ich. Ein Mensch, der sein erstes eigenes Auto tauft, hat nicht einfach ein Fahrzeug angeschafft. Der hat etwas zurückbekommen, das lange weg war. Ein Auto ist für die meisten Leute Blech mit einem Kennzeichen. Für jemanden, der achtzehn Jahre lang mit Tüten an einer Bushaltestelle gestanden hat, ist es die Möglichkeit, um Viertel nach acht abends noch loszufahren, ohne vorher einen Fahrplan zu lesen.
 
-Herbie war dunkelblau. Und der Name war deine Idee, wegen des Films.
+Und ausgerechnet den kleinsten Wagen im Feld nach dem Film zu benennen, in dem der kleinste Wagen im Feld gewinnt — das kann man passend nennen.
 
 ## Mönchengladbach, ohne Navi
 
-Kein Jahr nach dem Führerschein, 2010, seid ihr nach Mönchengladbach gefahren. Über dreihundert Kilometer, einmal quer durchs Land.
+Kein Jahr nach dem Führerschein, 2010, seid ihr nach Mönchengladbach gefahren. Über dreihundert Kilometer, einmal quer durchs Land, überwiegend Autobahn.
 
-Der Anlass war kein großer: Die Familie meiner damaligen Freundin wohnte dort. Mehr nicht. Du hast uns hingefahren.
+Der Anlass war kein besonders großer: Die Familie meiner damaligen Freundin wohnte dort. Mehr nicht. Kein Notfall, kein Termin, nichts, was hätte sein müssen. Du hast uns einfach hingefahren, weil ich hinwollte.
 
-Und zwar ohne Navigationsgerät. Es gab nur eine Route, die vorher bei Google ausgedruckt worden war. Auf Papier. In der Hand des Beifahrers.
+Und zwar ohne Navigationsgerät. Es gab nur eine Route, die vorher zu Hause bei Google herausgesucht und ausgedruckt worden war. Auf Papier. In der Hand des Beifahrers. Wer heute nie ohne Handy gefahren ist, kann sich schwer vorstellen, wie wenig Spielraum das lässt: Solange man auf der Strecke bleibt, funktioniert es. In der Sekunde, in der man abweicht, ist das Blatt wertlos.
 
 Dann haben wir uns verfahren, und ab da ging es nach Instinkt weiter.
 
 Angekommen sind wir trotzdem.
 
-Das ist im Grunde alles, was man über dich wissen muss, in einem einzigen Satz: zwei Jahre Fahrpraxis, dreihundert Kilometer, keine Navigation — weil dein Sohn eine Freundin hatte, deren Familie am anderen Ende der Republik wohnte.
+Das ist im Grunde alles, was man über dich wissen muss, und es passt in einen einzigen Satz: zwei Jahre Fahrpraxis, dreihundert Kilometer, keine Navigation — weil dein Sohn eine Freundin hatte, deren Familie am anderen Ende der Republik wohnte.
 
 
 <!--

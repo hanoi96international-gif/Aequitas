@@ -45,11 +45,11 @@ WAS NOCH FEHLT:
   - Ein Foto von Findus und Luna gehört unbedingt in dieses Kapitel.
 -->
 
-Es gibt ein paar Dinge an dir, die mit uns fünf nichts zu tun haben. Die gehören hier hin, weil ein Buch über dich sonst nur ein Buch über uns wäre.
+Es gibt ein paar Dinge an dir, die mit uns fünf überhaupt nichts zu tun haben. Dinge, die du auch dann hättest, wenn es uns nie gegeben hätte. Die gehören hierhin, denn sonst wäre dieses Buch am Ende gar kein Buch über dich, sondern nur eines über uns — und davon gibt es genug in dieser Familie.
 
 ## Die Katzen
 
-Es waren vier über die Jahre, und du weißt bei jeder einzelnen das Datum.
+Es waren vier über die Jahre, und du weißt bei jeder einzelnen das Datum. Nicht ungefähr das Jahr, sondern den Tag. Ich musste beim Schreiben dieses Buches bei den meisten Ereignissen nachfragen und nachrechnen; bei den Katzen kamen die Daten sofort.
 
 Daisy war die Erste. Sie ist am 30. November 2008 in Algermissen gestorben.
 
@@ -61,36 +61,39 @@ Der 27. Juni ist übrigens mein Geburtstag. Der Kater hatte also am selben Tag G
 
 ## Zwei Jahre
 
-Leg jetzt einmal die Daten nebeneinander.
+Leg jetzt einmal die Daten nebeneinander, so wie ich es beim Sortieren dieses Buches getan habe. Es sind nur vier Zeilen, und sie stehen alle innerhalb von zwei Jahren.
 
-Im Mai 2022 ist Oma gestorben. 2023 bist du umgezogen, zum ersten Mal seit zweiunddreißig Jahren in eine Wohnung ohne Kinder. Und im August desselben Jahres ist Fiby gestorben — damit war zum ersten Mal überhaupt niemand mehr da.
+Im Mai 2022 ist Oma gestorben — deine Mutter. 2023 bist du umgezogen, und zwar zum ersten Mal seit zweiunddreißig Jahren in eine Wohnung ohne Kinder. Und im August desselben Jahres ist Fiby gestorben. Damit war zum ersten Mal, seit du vierundzwanzig warst, überhaupt niemand mehr da. Kein Kind, kein Tier, keine Mutter, die man anrufen könnte.
 
-Fünf Monate später stand Findus in der Wohnung. Am 6. Januar 2024. Und am 20. Oktober kam Luna hinterher.
+Fünf Monate später stand Findus in der Wohnung. Am 6. Januar 2024. Und am 20. Oktober desselben Jahres kam Luna hinterher.
 
-Man kann das nüchtern erklären: Wer allein wohnt, hat Platz für ein Tier. Ich lese es anders. Ich glaube, du bist einfach nicht besonders gut darin, für niemanden zuständig zu sein.
+Man kann das nüchtern erklären, und die Erklärung ist auch nicht falsch: Wer allein wohnt und keine kleinen Kinder mehr im Haus hat, hat Platz für ein Tier. Ich lese es trotzdem anders. Ich glaube, du bist einfach nicht besonders gut darin, für niemanden zuständig zu sein. Fünf Monate hast du es ausgehalten, dann stand wieder jemand in der Wohnung, für den du morgens aufstehen musst.
 
-
-Die beiden werden von dir versorgt wie Kinder. Nicht wie Haustiere — wie Kinder. Wer dich schon mal mit den beiden reden gehört hat, weiß, was gemeint ist.
+Die beiden werden von dir auch entsprechend versorgt. Nicht wie Haustiere — wie Kinder. Wer dich schon einmal mit den beiden hat reden hören, weiß genau, was gemeint ist: Das sind keine Kommandos, das sind Gespräche, mit Pausen an den Stellen, an denen eine Antwort käme, wenn Katzen antworten könnten.
 
 Es gibt allerdings eine Regel in deiner Wohnung, und die ist nicht verhandelbar: **Auf den Tisch wird nicht gesprungen.**
 
-Wenn Findus oder Luna es trotzdem versuchen, hört man das. Du brüllst ihre Namen mit einer Energie, gegen die jede Schiedsrichterentscheidung harmlos wirkt. Die Katzen sind, so weit ich das beurteilen kann, bis heute nicht beeindruckt.
+Wenn Findus oder Luna es trotzdem versuchen, und sie versuchen es, dann hört man das. Du brüllst ihre Namen mit einer Energie, gegen die jede strittige Schiedsrichterentscheidung im Fernsehen harmlos wirkt. Die Katzen sind, soweit ich das beurteilen kann, bis heute vollständig unbeeindruckt. Es hat sich in den zwei Jahren nichts geändert, weder an der Regel noch an ihrer Missachtung, und ich habe den Verdacht, dass beide Seiten inzwischen ganz zufrieden mit dieser Lage sind.
 
 <!-- Foto von Findus und Luna gehört hierhin, sobald du eins hast. -->
 
 
 ## Sonntag ist Bingo
 
-Die Sendung läuft sonntags, und du spielst mit. Über die Lotterie, Woche für Woche.
+Die Sendung läuft sonntags, und du spielst mit. Über die Lotterie, Woche für Woche, ohne Ausnahme.
 
-Gewonnen hast du dabei, ehrlich gesagt, noch nie richtig. Seit Jahren nicht. Du spielst trotzdem weiter, was entweder von bemerkenswertem Optimismus zeugt oder von einem außergewöhnlich entspannten Verhältnis zur Wahrscheinlichkeitsrechnung.
+Gewonnen hast du dabei, ehrlich gesagt, noch nie richtig. Seit Jahren nicht. Kein großer Treffer, nicht einmal ein mittlerer, jedenfalls nichts, wovon in der Familie erzählt worden wäre. Du spielst trotzdem weiter, und das zeugt entweder von bemerkenswertem Optimismus oder von einem außergewöhnlich entspannten Verhältnis zur Wahrscheinlichkeitsrechnung.
 
-Und wenn sich die Gelegenheit ergibt, spielst du es auch in Gesellschaft. Das ist überhaupt eine Sache, die man über dich wissen muss: Spiele sind bei dir kein Zeitvertreib, sondern ein Grund, Leute zusammenzuholen.
+Ich glaube allerdings, dass es um das Gewinnen ohnehin nur am Rande geht. Es geht um den festen Punkt in der Woche. Es gibt in deinem Leben eine ganze Reihe Dinge, die sich über die Jahre erledigt haben — Adressen, Arbeitsplätze, Menschen. Sonntags ist Bingo, und das ist seit Jahren so.
+
+Und wenn sich die Gelegenheit ergibt, spielst du es auch in Gesellschaft. Das ist überhaupt etwas, das man über dich wissen muss, und es steht sogar in deinem eigenen Lebenslauf unter den Hobbys: Gesellschaftsspiele. Bei dir sind Spiele kein Zeitvertreib für einen verregneten Nachmittag, sondern ein Grund, Leute zusammenzuholen. Das Spiel ist der Anlass. Die Leute sind der Punkt.
 
 
 ## Neunzig Minuten
 
-Du liebst Fußball, und du liebst Hannover 96. Das ist bei 96 keine Kleinigkeit — das ist ein Verein, der einem selten etwas zurückgibt, und du hältst trotzdem seit Jahrzehnten die Stellung.
+Du liebst Fußball, und du liebst Hannover 96.
+
+Das ist, und darüber muss man in dieser Familie niemandem etwas vormachen, keine Kleinigkeit. 96 ist ein Verein, der seinen Leuten selten etwas zurückgibt. Es gibt Jahre, in denen es aufwärtsgeht, und danach kommen zuverlässig die anderen. Wer dort hält, hält nicht wegen der Erfolge, sondern trotz ihres Ausbleibens — und du hältst seit Jahrzehnten die Stellung, ohne dass jemals ernsthaft zur Debatte stand, dass sich das ändern könnte.
 
 Und du hast es weitergegeben. Wir sind alle fünf 96-Fans geworden. Das ist keine Selbstverständlichkeit in einem Haushalt, in dem der Vater zu Braunschweig hielt — es war also eine Entscheidung, und sie ist zu deinen Gunsten ausgegangen.
 
@@ -156,27 +159,27 @@ Diesmal ist es ein Buch.
 
 Und dann ist da Brigitte.
 
-Ihr verbringt sehr viel Zeit miteinander und unternehmt viel zusammen. Ihr helft euch gegenseitig, ihr habt dieselben Interessen, und ihr tut euch gut. Das passende Gegenstück, wie man so sagt.
+Ihr verbringt sehr viel Zeit miteinander und unternehmt viel zusammen. Ihr helft euch gegenseitig, ihr habt dieselben Interessen, ihr geht zu denselben Veranstaltungen, und ihr tut euch gut. Das passende Gegenstück, wie man so sagt — und in eurem Fall stimmt die Redensart ausnahmsweise einmal.
 
 Wie lange ihr euch schon kennt, weiß ich nicht genau. Aber es sind keine zehn Jahre.
 
-Und genau das ist der bemerkenswerte Teil. Rechne nach, wann die Jahre aufhörten, in denen für so etwas überhaupt kein Platz war — es ist ungefähr dieselbe Zeit, in der Brigitte auftaucht.
+Und genau das ist der eigentlich bemerkenswerte Teil, auf den ich erst beim Schreiben gekommen bin. Rechne einmal nach, wann in deinem Leben die Jahre aufhörten, in denen für so etwas überhaupt kein Platz war — keine Zeit, kein Geld, keine Kraft und niemand, der die Kinder nimmt. Es ist ungefähr dieselbe Zeit, in der Brigitte auftaucht.
 
-Die meisten Menschen finden mit über fünfzig keine neue beste Freundin mehr. Die meisten sagen sich, dass der Freundeskreis eben ist, wie er ist, und dass sich das jetzt auch nicht mehr ändert.
+Die meisten Menschen finden mit über fünfzig keine neue beste Freundin mehr. Nicht, weil sie keine wollen, sondern weil der Aufwand zu groß erscheint. Man kennt, wen man kennt. Man sagt sich, dass der Freundeskreis eben ist, wie er ist, und dass sich daran jetzt nichts mehr ändern wird, und dann stimmt das auch.
 
-Du hast dir mit über fünfzig noch jemanden dazugeholt.
+Du hast dir mit über fünfzig noch jemanden dazugeholt. Das können nicht viele.
 
 ## Volleyball
 
-Neben Hannover 96 gibt es noch einen Verein, und den kennen die wenigsten, die dich nur flüchtig kennen: Du bist ein großer Fan der Helios Grizzlys Giesen, der Volleyball-Bundesligamannschaft in Hildesheim.
+Neben Hannover 96 gibt es noch einen Verein in deinem Leben, und den kennen die wenigsten, die dich nur flüchtig kennen: Du bist ein großer Fan der Helios Grizzlys Giesen, der Volleyball-Bundesligamannschaft in Hildesheim.
 
 Da gehst du mit Brigitte hin.
 
-Dazu gekommen bist du über die Arbeit. Sieben Jahre Cafeteria im Helios Klinikum, und immer wieder mal Freikarten für die Mannschaft, die denselben Namen trägt.
+Dazu gekommen bist du über die Arbeit, und der Weg ist so unspektakulär, dass er schon wieder schön ist. Sieben Jahre Cafeteria im Helios Klinikum, und immer wieder einmal Freikarten für die Mannschaft, die denselben Namen trägt wie der Arbeitgeber.
 
-So fängt so etwas meistens an: Man geht hin, weil man eine Karte geschenkt bekommt. Und irgendwann geht man hin, weil man hinwill.
+So fängt es meistens an: Man geht hin, weil man eine Karte geschenkt bekommt und weil es nichts kostet. Und irgendwann geht man hin, weil man hinwill, und kauft die Karte selbst.
 
-Deinen Job dort gibt es seit 2023 nicht mehr. Den Verein hast du behalten.
+Deinen Job dort gibt es seit 2023 nicht mehr. Den Verein hast du behalten. Das eine war Arbeit, das andere ist deins.
 
 ## Michael
 
@@ -192,28 +195,32 @@ Später habt ihr in Ochtersum zusammen trainiert. Und ihr seid füreinander da, 
 
 ## Und dann regst du dich auf
 
-Es gibt eine Sache, die ich an dir wirklich gern sehe, und die hat mit Fußball zu tun.
+Es gibt eine Sache, die ich an dir wirklich ausgesprochen gern sehe, und auch die hat mit Fußball zu tun.
 
 Nicht das Zuschauen. Das Aufregen.
 
-Wenn ein Spiel läuft und etwas nicht so geht, wie es gehen sollte, dann ist das bei dir keine stille Angelegenheit. Ich weiß nicht, ob dir klar ist, wie unterhaltsam das für den Rest des Raums ist. Es gehört zu den Momenten, in denen du am wenigsten Mutter bist und am meisten einfach du.
+Wenn ein Spiel läuft und etwas nicht so geht, wie es nach deiner Auffassung zu gehen hätte — eine Fehlentscheidung, ein verschlafener Zweikampf, ein Ball, den man wirklich hätte reinmachen müssen —, dann ist das bei dir keine stille Angelegenheit. Es wird kommentiert, und zwar in Lautstärke und Wortwahl, die keinen Zweifel daran lassen, wie ernst die Lage ist.
+
+Ich weiß nicht, ob dir klar ist, wie unterhaltsam das für den Rest des Raums ist. Vermutlich nicht, weil du in diesen Sekunden vollständig mit dem Spiel beschäftigt bist. Es gehört jedenfalls zu den Momenten, in denen du am wenigsten Mutter bist und am meisten einfach du: keine Rücksicht, keine Zuständigkeit für irgendwen, nur ein Mensch und ein Ball, der nicht dorthin geht, wo er hinsoll.
 
 ## Aufgehört
 
 Du hast lange geraucht. Und dann hast du damit aufgehört, vor mittlerweile über zehn Jahren.
 
-Das steht hier nicht als Gesundheitshinweis. Es steht hier, weil Menschen selten noch etwas ablegen, das sie ihr halbes Leben lang begleitet hat. Die meisten sagen sich irgendwann, dass sich das jetzt sowieso nicht mehr lohnt.
+Das steht hier nicht als Gesundheitshinweis, davon hast du in deinem Leben genug gehört. Es steht hier, weil Menschen ab einem gewissen Alter selten noch etwas ablegen, das sie ihr halbes Leben lang begleitet hat. Die meisten sagen sich irgendwann, dass sich das jetzt ohnehin nicht mehr lohnt, dass man auch noch etwas haben muss, dass es Schlimmeres gibt. Das sind gute Argumente, und sie funktionieren jahrzehntelang.
 
-Und ehrlich gesagt beeindruckt mich nicht einmal das Aufhören am meisten. Aufhören kann man an einem schlechten Tag beschließen. Das Schwierige ist alles, was danach kommt.
+Und ehrlich gesagt beeindruckt mich nicht einmal das Aufhören am meisten. Aufhören kann man an einem schlechten Tag beschließen, das haben schon viele getan. Das Schwierige ist alles, was danach kommt: der zweite Monat, das erste Fest, der erste richtig schlechte Tag, an dem es einen guten Grund gäbe.
 
-Du hältst es seit über zehn Jahren durch. Jeden einzelnen Tag davon.
+Du hältst es seit über zehn Jahren durch. Jeden einzelnen Tag davon, und keinen davon hat dir jemand abgenommen.
 
 
 ## Ungeduldig
 
 In letzter Zeit bist du ungeduldiger geworden.
 
-Das schreibe ich nicht als Kritik, sondern weil ich glaube, dass es dir zusteht. Du hast dreißig Jahre lang gewartet: auf den Bus, auf das Monatsende, darauf, dass fünf Kinder fertig angezogen sind, darauf, dass es leichter wird, darauf, dass irgendwann du mal dran bist.
+Das schreibe ich nicht als Kritik, sondern weil ich ehrlich glaube, dass es dir zusteht.
+
+Du hast nämlich, wenn man einmal zusammenzählt, den größten Teil deines Lebens mit Warten verbracht. Auf den Bus, achtzehn Jahre lang, bei jedem Wetter. Auf das Monatsende, wenn das Geld nicht bis dorthin reichte. Darauf, dass fünf Kinder endlich fertig angezogen sind und alle gleichzeitig an der Tür stehen. Auf Termine, auf Bescheide, auf Rückrufe von Ämtern. Und, das vor allem: darauf, dass es irgendwann leichter wird und dass irgendwann einmal du an der Reihe bist.
 
 Wer so lange gewartet hat, darf damit irgendwann aufhören.
 

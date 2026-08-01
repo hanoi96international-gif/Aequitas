@@ -40,6 +40,8 @@ WAS NOCH FEHLT:
 
 Im Mai 2001 warst du vierunddreißig Jahre alt.
 
+Vierunddreißig. Das ist ein Alter, in dem die meisten Menschen gerade erst richtig anfangen — in dem sie überlegen, ob sie noch einmal etwas anderes machen wollen, ob sie ein Kind bekommen sollten, wo sie in zehn Jahren wohnen möchten.
+
 Wir waren neun, sieben, sechs, vier und drei.
 
 Und ab da warst du allein.
@@ -112,21 +114,25 @@ ZWEI DINGE ZU DIESEM ABSCHNITT:
 
 ## Nicht einmal zu Hause
 
-Es war keine gute Gegend. Die Nachbarschaft war schwierig, manche Nachbarn waren mehr als das. Zu allem anderen kam also noch dazu, dass der Ort, an dem man abends die Tür hinter sich zumacht, kein Ort war, an dem man sich sicher fühlte.
+Es war keine gute Gegend. Die Nachbarschaft war schwierig, und manche Nachbarn waren erheblich mehr als das.
 
-Man vergisst leicht, was das mit einem Menschen macht: Wenn nicht einmal das Zuhause eine Pause ist.
+Zu allem anderen kam also noch hinzu, dass der Ort, an dem man abends die Tür hinter sich zumacht, kein Ort war, an dem man sich sicher fühlen konnte. Kein Rückzug, keine Pause, kein Punkt am Tag, an dem man die Schultern fallen lassen darf. Und mit fünf Kindern kommt dazu, dass man sich nicht nur um sich selbst sorgt, sondern um fünf weitere Leute, die draußen spielen wollen.
+
+Man vergisst leicht, was das mit einem Menschen macht, wenn es Jahre so geht. Anstrengung kann man aushalten, solange es irgendwo einen Ort gibt, an dem sie aufhört. Wenn es diesen Ort nicht gibt, hört sie nie auf.
 
 ## Die Tage, an denen nichts mehr ging
 
 Es gab Tage, an denen der Strom abgestellt war.
 
-Ich schreibe das hin, weil es wahr ist, und weil man es nur aussprechen kann, wenn es vorbei ist. Es gab Tage, an denen du vollkommen verzweifelt warst. Nicht müde, nicht überfordert — verzweifelt. Und wir haben das mitbekommen, auch wenn wir zu klein waren, um es zu benennen.
+Ich schreibe das hin, weil es wahr ist, und weil man solche Sätze überhaupt nur aussprechen kann, wenn sie vorbei sind. Zwanzig Jahre später ist es ein Satz in einem Buch. Damals war es ein dunkler Nachmittag in einer Wohnung mit fünf Kindern und die Frage, wie man das Abendessen warm bekommt.
 
-Und dann kam der nächste Morgen, und da standen wieder fünf Kinder in der Küche, die etwas essen und irgendwohin gebracht werden mussten.
+Es gab Tage, an denen du vollkommen verzweifelt warst. Nicht müde, nicht überfordert, nicht genervt — verzweifelt. Und wir haben das mitbekommen, alle fünf, auch wenn wir viel zu klein waren, um dafür ein Wort zu haben. Kinder merken so etwas sofort. Sie können es nur nicht einordnen, und deshalb reden sie auch nicht darüber.
+
+Und dann kam der nächste Morgen. Und da standen wieder fünf Kinder in der Küche, die etwas essen mussten, angezogen werden mussten und irgendwohin gebracht werden mussten, und keines von ihnen konnte etwas dafür.
 
 Und du bist aufgestanden.
 
-Fünfzehn Jahre lang, an jedem einzelnen dieser Morgen, bist du aufgestanden. Das ist der ganze Trick, und es gibt keinen schwereren.
+Fünfzehn Jahre lang, an jedem einzelnen dieser Morgen, bist du aufgestanden. Nicht an den guten Tagen — an den guten Tagen steht jeder auf. Sondern an den anderen. Das ist der ganze Trick, und es gibt keinen schwereren.
 
 Und weil das offenbar noch nicht genug war: In genau diesen Jahren hast du nebenbei eine Jugendfußballmannschaft trainiert. Erst beim VfV, dann in Ochtersum, bis 2005. Während zu Hause das Geld nicht reichte, standest du am Wochenende auf einem Sportplatz und hast fremden und eigenen Kindern beigebracht, wie man einen Ball annimmt.
 

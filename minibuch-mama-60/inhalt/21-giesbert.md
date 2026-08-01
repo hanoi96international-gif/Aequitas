@@ -56,35 +56,37 @@ NOCH ZU KLÄREN:
 
 Er hatte am 3. September Geburtstag. Einen Tag vor dir.
 
-Ihr habt eure Geburtstage also immer zusammen gehabt, jedes Jahr, zwei Tage hintereinander. Auch dieses Jahr: Am 3. September wäre er zweiundsechzig geworden, und am 4. wirst du sechzig.
+Ihr habt eure Geburtstage also immer zusammen gehabt, jedes Jahr, zwei Tage hintereinander, und in den Jahren, in denen ihr verheiratet wart, kam der Hochzeitstag noch dazu. Auch in diesem Jahr steht das so im Kalender: Am 3. September wäre er zweiundsechzig geworden. Am 4. wirst du sechzig.
 
 ## Was ich von ihm habe
 
 Ich schreibe das hier aus meiner Sicht, und ich weiß, dass sie nicht die einzige ist.
 
-Meine Geschwister erinnern sich anders an ihn, manche kaum, manche vor allem daran, dass er nicht mehr da war. Ich beanspruche nicht, recht zu haben. Ich hatte im Vergleich zu ihnen einfach das Glück, etwas mehr Zeit mit ihm zu haben — und was ich habe, will ich aufschreiben, weil es sonst keiner tut.
+Meine Geschwister erinnern sich anders an ihn. Manche kaum, weil sie zu klein waren. Manche vor allem daran, dass er nicht mehr da war, und das ist eine Erinnerung, gegen die man schlecht anschreiben kann. Ich beanspruche hier nicht, recht zu haben, und ich will auch niemandem seine Version wegnehmen. Ich hatte im Vergleich zu meinen Geschwistern einfach das Glück, etwas mehr Zeit mit ihm zu haben — schlicht deshalb, weil ich der Älteste bin und die Jahre mitbekommen habe, die für die anderen zu früh lagen. Und was ich davon habe, will ich aufschreiben, weil es sonst niemand tut und weil es sonst mit mir verschwindet.
 
-In meiner Erinnerung war er liebevoll. Und ihr habt euch wirklich geliebt, das ist eines der wenigen Dinge aus dieser Zeit, bei denen ich mir vollkommen sicher bin.
+In meiner Erinnerung war er liebevoll. Und ihr habt euch wirklich geliebt — das ist eines der ganz wenigen Dinge aus dieser Zeit, bei denen ich mir vollkommen sicher bin, und ich finde, es soll in diesem Buch stehen, egal was danach kam.
 
-Er war bei der Bundeswehr und hat gut verdient.
+Er war bei der Bundeswehr und hat gut verdient. Auch das gehört dazu, weil es erklärt, warum die Jahre danach finanziell so aussahen, wie sie aussahen.
 
 ## Der Mann hinter dem Tor
 
 Er war Betreuer meiner Mannschaft. Wir waren erfolgreich, und ich stand im Tor.
 
-Er war da. Bei den Spielen, beim Training, bei allem. Er hat mich begleitet und versucht, mich besser zu machen. Für ein Kind, das im Tor steht, ist das keine Kleinigkeit — Torwart ist die einsamste Position auf dem Platz, und es macht einen Unterschied, ob draußen jemand steht, der zusieht.
+Er war da. Bei den Spielen, beim Training, bei allem, was dazugehört — den Fahrten, dem Warten im Regen, den Gesprächen auf dem Rückweg. Er hat mich begleitet und versucht, mich besser zu machen.
+
+Für ein Kind, das im Tor steht, ist das keine Kleinigkeit. Torwart ist die einsamste Position auf dem Platz. Zehn Leute laufen vorne herum und teilen sich alles, und einer steht hinten allein und ist an jedem Gegentor irgendwie beteiligt. Es macht einen erheblichen Unterschied, ob draußen jemand steht, der das mitbekommt.
 
 ## Lamspringe
 
-Es gibt einen Tag, den ich behalten habe.
+Es gibt einen Tag, den ich behalten habe. Einen einzigen, aber der sitzt.
 
 Ein Turnier in Lamspringe, 1998 oder 1999. Finale gegen Eintracht Braunschweig. Und es war mein Geburtstag — ich wurde sieben oder acht.
 
-Ich habe an dem Tag gehalten wie selten. Wir haben das Finale gewonnen.
+Ich habe an diesem Tag gehalten wie selten, was in dem Alter vor allem heißt: Es ging alles auf. Wir haben das Finale gewonnen.
 
-Und ihr wart alle da. Du, mein Vater, und meine vier Geschwister. Julia war noch ganz klein.
+Und ihr wart alle da. Du, mein Vater, und meine vier Geschwister. Julia war noch ganz klein und hat mit Sicherheit nichts davon mitbekommen.
 
-Sieben Leute auf einem Sportplatz in einem Dorf im Landkreis, wegen eines Turniers der F-Jugend.
+Sieben Leute auf einem Sportplatz in einem Dorf im Landkreis Hildesheim, an einem Samstag, wegen eines Turniers der F-Jugend.
 
 Man bekommt als Kind nicht viele Tage geschenkt, an denen alles gleichzeitig zusammenfällt: der eigene Geburtstag, ein Finale, ein großer Gegner, ein Sieg — und die ganze Familie am Spielfeldrand, die genau das mitbekommt.
 
@@ -111,13 +113,13 @@ Eine Kleinigkeit fehlt noch, und ohne sie ist die Geschichte nicht vollständig.
 
 Du hältst zu Hannover 96. Er hielt zu Eintracht Braunschweig.
 
-Wer weiß, was das Niedersachsen-Derby ist, weiß, dass das keine Nebensache ist, sondern eine Grundsatzfrage. Und bei euch war es genau das — allerdings ausschließlich zwischen euch beiden. Wir waren alle viel zu klein, um überhaupt zu verstehen, worum es dabei ging.
+Wer weiß, was das Niedersachsen-Derby ist, weiß auch, dass das keine Nebensache ist, sondern eine Grundsatzfrage. Zwischen diesen beiden Vereinen liegen sechzig Kilometer und eine Feindschaft, die älter ist als alle Beteiligten. Und bei euch zu Hause lief diese Grenze mitten durch die Küche — allerdings ausschließlich zwischen euch beiden. Wir waren alle viel zu klein, um überhaupt zu verstehen, worum es dabei eigentlich ging.
 
-Was wir sehr wohl mitbekommen haben: dass ihr euch gegenseitig angestachelt habt.
+Was wir sehr wohl mitbekommen haben, ist, dass ihr euch gegenseitig angestachelt habt. Nicht bösartig, sondern so, wie das unter Leuten läuft, die sich mögen und zufällig auf unvereinbaren Seiten stehen.
 
-Das ist übrigens eine der ganz wenigen Erinnerungen, in denen ihr beide gemeinsam vorkommt — und in der ihr nicht Eltern seid, sondern einfach zwei Leute, die sich wegen zweier Fußballmannschaften aufziehen.
+Das ist übrigens eine der ganz wenigen Erinnerungen, in denen ihr beide gemeinsam vorkommt und in denen ihr nicht Eltern seid. Keine Zuständigkeiten, keine Sorgen, kein Haushalt mit fünf Kindern. Einfach zwei Leute, die sich wegen zweier Fußballmannschaften aufziehen.
 
-Und jetzt schau noch einmal auf Lamspringe. Das Finale ging gegen Eintracht Braunschweig. Mein Vater stand als Betreuer an der Seitenlinie und sah zu, wie sein eigener Sohn seinen eigenen Verein aus dem Turnier hielt.
+Und jetzt schau noch einmal auf Lamspringe. Das Finale ging gegen Eintracht Braunschweig. Mein Vater stand als Betreuer an der Seitenlinie und sah dabei zu, wie sein eigener Sohn seinen eigenen Verein aus dem Turnier hielt, ausgerechnet an dessen Geburtstag.
 
 Und hinterher fiel trotzdem der Satz mit dem Weltmeister.
 
@@ -125,7 +127,7 @@ Und hinterher fiel trotzdem der Satz mit dem Weltmeister.
 
 Man sieht ihn noch. Bei mir, und vor allem bei Marcus.
 
-Das ist eine merkwürdige Sache mit dem Aussehen: Ein Mensch ist seit fünfundzwanzig Jahren tot, und trotzdem läuft sein Gesicht durch Hildesheim.
+Das ist eine merkwürdige Sache mit dem Aussehen, und mir fällt sie immer wieder auf, wenn ich meinen Bruder eine Weile nicht gesehen habe. Ein Mensch ist seit fünfundzwanzig Jahren tot, und trotzdem läuft sein Gesicht durch Hildesheim. Es gibt Dinge, die man nicht regeln kann, weder im Guten noch im Schlechten, und das ist eines davon.
 
 {{Was noch — Talente, Macken, Eigenarten? Und falls Marion etwas dazu sagen kann, frag sie. Aber frag vorsichtig.}}
 
