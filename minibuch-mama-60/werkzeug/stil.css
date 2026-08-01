@@ -197,6 +197,50 @@ figure.unterschrift .bildunterschrift {
   display: none;
 }
 
+/* ------------------------------------------------------------------ Fotos
+
+   Alte Abzüge sind abfotografiert und entzerrt; ihre Auflösung setzt die
+   Obergrenze für die Druckbreite. Deshalb vier feste Größen statt "so breit
+   wie möglich" — jedes Bild bekommt die, bei der es noch über 250 dpi liegt.
+
+     ![foto-s Bildunterschrift](bilder/x.jpg)     66 mm
+     ![foto-m …](…)                               82 mm
+     ![foto-l …](…)                               96 mm
+     ![foto-xl …](…)                             112 mm, volle Satzbreite
+
+   Der schmale Rahmen ist Absicht: Ein alter Abzug soll auf der Seite wie
+   ein aufgeklebtes Bild wirken und nicht wie eine randlose Illustration.
+*/
+
+figure[class^="foto"] {
+  margin: 1.8em auto;
+  text-align: center;
+  break-inside: avoid;
+}
+
+figure[class^="foto"] img {
+  max-height: none;
+  width: 100%;
+  height: auto;
+  padding: 2.5mm;
+  background: #fff;
+  border: 0.4pt solid #d8cfc0;
+  box-shadow: 0 0.6mm 1.6mm rgba(60, 50, 35, 0.18);
+}
+
+figure.foto-s  { width: 66mm; }
+figure.foto-m  { width: 82mm; }
+figure.foto-l  { width: 96mm; }
+figure.foto-xl { width: 112mm; }
+figure.foto    { width: 82mm; }
+
+figure[class^="foto"] .bildunterschrift {
+  margin-top: 0.7em;
+  font-size: 8.5pt;
+  line-height: 1.45;
+  hyphens: none;
+}
+
 /* --------------------------------------------------- noch offene Lücken */
 
 .luecke {

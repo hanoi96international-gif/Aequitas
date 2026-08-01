@@ -38,6 +38,8 @@ Man muss sich klarmachen, was das für eine Kindheit bedeutet. Die meisten Kinde
 
 {{Wie die Wohnung aussah, wer dort wohnte, wie es dort roch. Frag Anette und Monika getrennt — die erinnern unterschiedliche Dinge, und Monika hat als Älteste noch Jahre mitbekommen, die Anette gar nicht mehr kennt.}}
 
+![foto-l {{Wer ist hier zu sehen, und wann war das? Ich vermute Ende der sechziger Jahre — dann wärst du eines der beiden kleinen Mädchen.}}](bilder/sw-wohnzimmer-sechziger.jpg)
+
 ## Rita und Willi
 
 {{Was du über ihre Eltern weißt — wie sie waren, wie sie miteinander umgegangen sind, was Marion von ihnen mitbekommen hat. Die Berufe stehen schon an anderer Stelle im Buch; hier fehlt der Mensch, nicht der Lebenslauf.}}
@@ -63,3 +65,5 @@ Geblieben ist am Ende etwas anderes: die Bindung zwischen Anette und dir. Die h�
 {{Und hier gehört Monika hin. Frag sie selbst danach, nicht Anette über sie — als Älteste erinnert sie Dinge aus dieser Wohnung, die sonst niemand mehr weiß. Ein zwanzigminütiges Telefonat reicht, und dann steht sie hier mit einer eigenen Geschichte statt mit einer Erwähnung.}}
 
 > {{Ein Satz, den sie über ihre Kindheit erzählt — möglichst wörtlich, so wie sie ihn sagt.}}
+
+![foto-xl Rita und Willi mit ihren drei Töchtern. {{Welches Jahr, und welche der drei bist du? Und war das ein bestimmter Anlass — die Kleidung sieht danach aus.}}](bilder/familienportrait.jpg)

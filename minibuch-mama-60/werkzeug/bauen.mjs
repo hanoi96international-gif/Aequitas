@@ -19,13 +19,34 @@ const buch = JSON.parse(readFileSync(join(wurzel, "buch.json"), "utf8"));
 const escapeHtml = (s) =>
   s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 
+// Bilder werden als data:-URI eingebettet. Damit ist bau/minibuch.html eine
+// einzige, in sich geschlossene Datei — Chromium braucht dann keine relativen
+// Pfade aufzuloesen, und die HTML-Fassung laesst sich verschicken.
+const bildCache = new Map();
+function bildQuelle(pfad) {
+  if (bildCache.has(pfad)) return bildCache.get(pfad);
+  let ergebnis = pfad;
+  const datei = join(inhaltDir, pfad);
+  if (existsSync(datei)) {
+    const typ = { jpg: "jpeg", jpeg: "jpeg", png: "png", gif: "gif", webp: "webp" }[
+      pfad.split(".").pop().toLowerCase()
+    ];
+    if (typ) ergebnis = `data:image/${typ};base64,${readFileSync(datei).toString("base64")}`;
+  } else {
+    fehlendeBilder.add(pfad);
+  }
+  bildCache.set(pfad, ergebnis);
+  return ergebnis;
+}
+const fehlendeBilder = new Set();
+
 function inline(text) {
   let s = escapeHtml(text);
   // Bild:  ![Bildunterschrift](bilder/foto.jpg)
   s = s.replace(
     /!\[([^\]]*)\]\(([^)]+)\)/g,
     (_, alt, src) =>
-      `<img src="${src}" alt="${alt}">${alt ? `<span class="bildunterschrift">${alt}</span>` : ""}`
+      `<img src="${bildQuelle(src)}" alt="${alt}">${alt ? `<span class="bildunterschrift">${alt}</span>` : ""}`
   );
   // {{Luecke}} = noch zu schreiben, wird im Entwurf sichtbar markiert
   s = s.replace(/\{\{([^}]*)\}\}/g, '<span class="luecke">$1</span>');
@@ -149,13 +170,17 @@ function markdownZuHtml(md) {
     if (/^!\[[^\]]*\]\([^)]+\)$/.test(z)) {
       absatzLeeren();
       absatzSchliessen();
-      // Beginnt die Bildunterschrift mit "handschrift" oder "unterschrift",
-      // wird das als Layoutklasse verwendet und nicht mitgedruckt.
-      const sonderformat = z.match(/^!\[(handschrift|unterschrift)\s*([^\]]*)\]\(([^)]+)\)$/);
+      // Beginnt die Bildunterschrift mit einem Layoutwort, wird das als
+      // CSS-Klasse verwendet und nicht mitgedruckt:
+      //   handschrift | unterschrift     eingescannte Beitraege
+      //   foto-s / -m / -l / -xl         Fotos, Wortbreite je nach Aufloesung
+      const sonderformat = z.match(
+        /^!\[(handschrift|unterschrift|foto(?:-(?:s|m|l|xl))?)\s*([^\]]*)\]\(([^)]+)\)$/
+      );
       if (sonderformat) {
         const [, klasse, text, quelle] = sonderformat;
         aus.push(
-          `<figure class="${klasse}"><img src="${quelle}" alt="${escapeHtml(text)}">` +
+          `<figure class="${klasse}"><img src="${bildQuelle(quelle)}" alt="${escapeHtml(text)}">` +
             (text ? `<span class="bildunterschrift">${inline(text)}</span>` : "") +
             `</figure>`
         );
@@ -287,6 +312,12 @@ const woerter = abschnitte
 
 console.log(`\n  bau/${ausgabeName}.html geschrieben${beta ? "  (Testdruck-Fassung)" : ""}`);
 console.log(`  ${abschnitte.length} Abschnitte, rund ${woerter} Wörter geschrieben`);
+const bilder = [...bildCache.keys()].filter((p) => !fehlendeBilder.has(p));
+if (bilder.length) console.log(`  ${bilder.length} Bilder eingebettet`);
+if (fehlendeBilder.size) {
+  console.log(`\n  ACHTUNG — ${fehlendeBilder.size} Bilddatei(en) fehlen:`);
+  for (const p of fehlendeBilder) console.log(`   inhalt/${p}`);
+}
 if (offen) {
   console.log(`\n  Noch ${offen} offene Lücken {{...}}:`);
   console.log(proDatei.join("\n"));

@@ -75,6 +75,8 @@ Deine Berufstätigkeit hast du im Juni 1991 unterbrochen, mit meiner Geburt. Wie
 
 Wer diese beiden Zahlen nebeneinanderlegt — vierzehn Jahre und drei Monate — sieht ziemlich genau, was in dieser Zeit deine Arbeit war. In deinem Lebenslauf steht dafür ein einziges Wort: Elternzeit. Es ist der kürzeste Eintrag auf dem Blatt und der mit Abstand längste Zeitraum.
 
+![foto-s {{Wer sitzt hier mit welchem Kind am Tisch, und bei welcher Gelegenheit? Ich habe das Bild wegen der Frisur und der Einrichtung auf Anfang der Neunziger geschätzt.}}](bilder/kaffeetafel-mit-kind.jpg)
+
 {{Was sie über diese Zeit erzählt. Was war schwer, was war schön?}}
 
 > {{Zitat von ihr über die Zeit mit fünf kleinen Kindern}}

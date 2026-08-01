@@ -110,6 +110,59 @@ handschriftlich, wo die Handschrift selbst die Botschaft ist.
 - Wenn möglich: **A5 schreiben lassen** oder ein A4-Blatt quer
   halbieren. Dann muss beim Druck nichts verkleinert werden.
 
+## Alte Fotos ins Buch bringen
+
+Die Bilder liegen in `inhalt/bilder/` und werden beim Bauen als
+data-URI direkt in die HTML-Datei einbettet. `bau/minibuch.html` ist
+dadurch eine einzige, in sich geschlossene Datei.
+
+Im Text einbinden mit einer von vier Breiten:
+
+```
+![foto-s  Bildunterschrift](bilder/x.jpg)     66 mm
+![foto-m  Bildunterschrift](bilder/x.jpg)     82 mm
+![foto-l  Bildunterschrift](bilder/x.jpg)     96 mm
+![foto-xl Bildunterschrift](bilder/x.jpg)    112 mm — volle Satzbreite
+```
+
+Die Breite richtet sich nach der **Auflösung**, nicht nach dem Motiv:
+Ein Bild soll im Druck nicht unter etwa 250 dpi rutschen. Faustregel —
+Pixelbreite geteilt durch 10 ergibt ungefähr die maximale Breite in
+Millimetern. Ein 800 Pixel breites Bild verträgt also rund 80 mm.
+
+Fehlt eine Bilddatei, sagt das Bauskript das beim Bauen an — es bricht
+nicht ab.
+
+### Abzüge aufbereiten
+
+`werkzeug/fotos-aufbereiten.py` entzerrt abfotografierte Abzüge und
+nimmt den Farbstich heraus. Es braucht `pillow` und `numpy`:
+
+```
+pip install pillow numpy
+python3 werkzeug/fotos-aufbereiten.py
+```
+
+Die vier Eckpunkte jedes Abzugs stehen in `werkzeug/fotos-ecken.json`,
+Beschnitt und Korrekturstärke in der Tabelle `PLAN` im Skript selbst.
+
+### So wird das Abfotografieren gut
+
+- **Senkrecht von oben**, Abzug formatfüllend, Kanten möglichst parallel
+  zum Bildrand. Je weniger schräg, desto weniger muss gerechnet werden.
+- **Tageslicht am Fenster**, keine Deckenlampe und kein Blitz —
+  Hochglanzabzüge spiegeln sonst.
+- **Kein Ausschnitt.** Lieber den ganzen Abzug mit etwas Rand drumherum;
+  beschneiden lässt sich später, dazuerfinden nicht.
+- **Nichts am Handy nachbearbeiten.** Filter und Auto-Korrektur machen
+  die Entzerrung schlechter, nicht besser.
+
+**Besser als jedes Handyfoto ist ein Flachbettscanner mit 600 dpi.** Ein
+9×13-Abzug ergibt damit rund 2100 × 3000 Pixel — genug für volle
+Satzbreite in bester Qualität. Die Handyfotos reichen für 66 bis 112 mm.
+Wenn irgendwo in der Familie ein Drucker mit Scanner steht, lohnt der
+Umweg für die wichtigsten Bilder.
+
 ## Drucken lassen
 
 `bau/minibuch.pdf` ist bereits **A5, einseitig fortlaufend**. Damit gehst du

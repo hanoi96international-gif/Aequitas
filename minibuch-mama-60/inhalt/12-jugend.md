@@ -52,6 +52,8 @@ WAS NOCH FEHLT:
 
 {{Marion mit sechzehn: wie sie aussah, was sie hörte, wovon sie träumte. Anette weiß das, und wenn Anette es nicht weiß, weiß es die beste Freundin von damals.}}
 
+![foto-m {{Bist du das auf dem Fahrrad? Falls ja: Wie alt warst du da, und wo war das? Falls nein, sag mir, wer es ist — dann rutscht das Bild in ein anderes Kapitel.}}](bilder/maedchen-auf-dem-fahrrad.jpg)
+
 ## Fußball
 
 Du hast als Jugendliche Fußball gespielt. Nicht auf dem Hof, nicht zum Spaß beim Kindergeburtstag, sondern in einer richtigen Mannschaft, in einem richtigen Verein: bei der DJK Blau-Weiß Hildesheim.
@@ -99,6 +101,8 @@ Gerettet hat dich eine Bekannte der Familie, die zufällig im Laden war, mitbeko
 Nennen wir es, wie es ist: Schwein gehabt.
 
 {{Was hast du eigentlich klauen wollen? Und hat Rita es je erfahren?}}
+
+![foto-l {{Und hier: bist du das? Wenn ja, wo war das — noch am Hohen Weg oder schon woanders? Das ist eines der wenigen Bilder aus diesen Jahren.}}](bilder/junge-frau-eckbank.jpg)
 
 ## Der Rest der Jugend
 
