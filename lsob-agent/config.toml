@@ -1,0 +1,82 @@
+# LSOB trade agent — every strategy rule is a value in this file.
+#
+# The defaults are a reasonable starting point, not a tuned strategy. Change
+# them one at a time and re-run the backtest; changing several at once tells
+# you nothing about which one mattered.
+
+[market]
+exchange  = "binance"
+symbol    = "BTC/USDT"
+timeframe = "15m"
+
+[data]
+csv           = ""       # set a path to backtest a local file instead of an exchange
+cache_dir     = "data"
+history_bars  = 3000
+
+[structure]
+swing_left   = 3         # bars either side of a pivot; higher = fewer, more meaningful swings
+swing_right  = 3         # also the delay before a pivot is knowable
+atr_period   = 14
+bos_use_close = true     # a break needs a close through the level, not just a wick
+
+[liquidity]
+equal_level_atr      = 0.15   # swing highs within this ATR distance are one pool, not two
+min_penetration_atr  = 0.0    # how far past the level price must reach to count as a raid
+max_penetration_atr  = 1.5    # beyond this it is a breakout, not a sweep
+reclaim_bars         = 2      # bars allowed for price to close back inside (0 = same bar only)
+pool_max_age_bars    = 500    # forget untouched levels this old (0 = never)
+min_touches          = 1      # 2+ trades only equal highs/lows, where more stops rest
+
+[orderblock]
+displacement_atr        = 1.0   # the move away from the raid, in ATR
+displacement_max_bars   = 8     # displacement must arrive within this many bars of the sweep
+require_bos             = true  # and it must break the opposing swing
+require_fvg             = false # optionally also demand a fair-value gap in the leg
+ob_max_lookback         = 12    # how far back to hunt for the last opposing candle
+ob_include_sweep_candle = true
+zone_mode               = "body_to_extreme"  # body | full | body_to_extreme
+
+[entry]
+edge               = "proximal"      # proximal fills first and risks less; distal fills less often
+valid_bars         = 20              # pull the resting order after this many bars
+sl_anchor          = "sweep_extreme" # sweep_extreme | ob_extreme
+sl_buffer_atr      = 0.25
+tp_mode            = "rr"            # rr | liquidity (aim at the opposing pool)
+tp_rr              = [1.5, 3.0]      # ascending R multiples
+tp_weights         = [0.5, 0.5]      # must sum to 1.0
+breakeven_after_tp = 1               # move the stop to entry after the 1st target (0 = off)
+min_rr             = 1.5             # skip setups that cannot pay this
+
+[bias]
+mode           = "off"   # off | ema | htf_structure
+ema_period     = 200
+htf_multiplier = 4       # htf_structure: 4 × 15m = 1h
+
+[risk]
+starting_equity  = 10000.0
+risk_pct         = 0.5   # percent of equity risked per trade
+max_concurrent   = 1
+cooldown_bars    = 3
+max_position_pct = 100.0
+allow_long       = true
+allow_short      = true
+
+[costs]
+maker_fee_bps = 2.0      # limit entries and take-profits
+taker_fee_bps = 5.0      # stops
+slippage_bps  = 1.0      # applied to stops only
+
+[live]
+enabled        = false   # must be true before `lsob run` will do anything
+mode           = "paper" # paper | live
+sandbox        = true    # live mode uses the exchange testnet unless this is false
+poll_seconds   = 15
+state_file     = "state/agent.json"
+api_key_env    = "LSOB_API_KEY"
+api_secret_env = "LSOB_API_SECRET"
+
+[notify]
+console            = true
+telegram_token_env = "LSOB_TG_TOKEN"
+telegram_chat_env  = "LSOB_TG_CHAT"

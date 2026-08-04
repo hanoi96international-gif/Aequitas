@@ -1,0 +1,24 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "lsob-agent"
+version = "0.1.0"
+description = "Liquidity sweep + order block trading agent: detection, backtest, paper and live execution"
+requires-python = ">=3.11"
+dependencies = []          # the engine, backtester and tests are stdlib-only
+
+[project.optional-dependencies]
+exchange = ["ccxt>=4.2"]   # only needed to pull candles or place orders
+dev = ["pytest>=8.0"]
+
+[project.scripts]
+lsob = "lsob.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["lsob*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = [".", "tests"]
