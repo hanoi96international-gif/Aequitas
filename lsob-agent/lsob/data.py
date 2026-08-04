@@ -30,6 +30,10 @@ def load_csv(path: str | Path) -> list[Candle]:
             raise ValueError(f"{path}: empty file")
         cols = {name.strip().lower(): name for name in reader.fieldnames}
         ts_col = next((cols[a] for a in _TS_ALIASES if a in cols), None)
+        if ts_col is None and reader.fieldnames and not reader.fieldnames[0].strip():
+            # A pandas `to_csv` of a time-indexed frame leaves the index column
+            # unnamed. That first column is the timestamp.
+            ts_col = reader.fieldnames[0]
         if ts_col is None:
             raise ValueError(f"{path}: no timestamp column (looked for {_TS_ALIASES})")
         for needed in ("open", "high", "low", "close"):

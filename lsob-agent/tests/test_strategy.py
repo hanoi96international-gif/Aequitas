@@ -168,3 +168,30 @@ def test_liquidity_targets_fall_back_to_r_multiples_when_no_pool_exists():
     signals = run(cfg)
     assert len(signals) == 1
     assert signals[0].targets[-1] < signals[0].entry
+
+
+def test_a_short_whose_target_would_fall_below_zero_is_rejected():
+    """Found on real monthly BTC data: a wide stop pushed 3R under zero.
+
+    The setup is scaled so the stop sits far from entry; the resulting
+    R-multiple target is a negative price, which no market can reach.
+    """
+    scaled = [
+        candle(
+            i,
+            c.open * 400,
+            c.high * 400,
+            c.low * 400,
+            c.close * 400,
+            c.volume,
+        )
+        for i, c in enumerate(SETUP)
+    ]
+    cfg = base_config()
+    cfg.entry.tp_rr = [1.5, 300.0]  # a target far beyond zero for this short
+    cfg.entry.tp_weights = [0.5, 0.5]
+    cfg.entry.min_rr = 1.0
+
+    for sig in run(cfg, scaled):
+        assert all(t > 0 for t in sig.targets), f"unreachable target: {sig.targets}"
+    assert run(cfg, scaled) == [], "the setup cannot pay its target, so it is not emitted"

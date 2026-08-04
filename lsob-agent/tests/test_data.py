@@ -38,6 +38,14 @@ def test_a_missing_price_column_is_named_in_the_error(tmp_path):
         load_csv(path)
 
 
+def test_an_unnamed_leading_index_column_is_treated_as_the_timestamp(tmp_path):
+    """What `pandas.DataFrame.to_csv` produces for a time-indexed frame."""
+    path = write(tmp_path, ",Open,High,Low,Close,Volume\n2024-01-01 00:00:00,100,101,99,100.5,5\n")
+    candle = load_csv(path)[0]
+    assert candle.ts == 1_704_067_200_000
+    assert candle.close == 100.5
+
+
 def test_a_missing_timestamp_column_is_rejected(tmp_path):
     path = write(tmp_path, "open,high,low,close\n100,101,99,100\n")
     with pytest.raises(ValueError, match="no timestamp column"):

@@ -219,6 +219,11 @@ class LsobStrategy:
         targets = self._targets(sweep.direction, entry, risk)
         if not targets:
             return None
+        if any(t <= 0 for t in targets):
+            # A short whose stop is far enough away can put an R-multiple
+            # target below zero. Price cannot go there, so the setup cannot
+            # pay what it promises and is not tradeable.
+            return None
         final_rr = abs(targets[-1] - entry) / risk
         if final_rr < cfg.entry.min_rr:
             return None
