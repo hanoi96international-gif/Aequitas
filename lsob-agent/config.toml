@@ -80,3 +80,18 @@ api_secret_env = "LSOB_API_SECRET"
 console            = true
 telegram_token_env = "LSOB_TG_TOKEN"
 telegram_chat_env  = "LSOB_TG_CHAT"
+
+[walkforward]
+# `lsob walkforward` optimises on train_bars, then scores the winner on the
+# next test_bars — data it was never chosen on — and rolls forward.
+train_bars = 2000
+test_bars  = 1000
+min_trades = 10
+metric     = "expectancy_r"   # expectancy_r | total_r | profit_factor
+
+[walkforward.grid]
+# Dotted paths into any section above. Every combination is searched, so
+# keep this small: 4 x 3 x 3 is already 36 sets per fold.
+"orderblock.displacement_atr"   = [0.5, 1.0, 1.5, 2.0]
+"liquidity.max_penetration_atr" = [1.0, 1.5, 2.5]
+"entry.valid_bars"              = [10, 20, 40]

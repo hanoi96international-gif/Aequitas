@@ -94,6 +94,53 @@ def cmd_scan(cfg: Config, args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_walkforward(cfg: Config, args: argparse.Namespace) -> int:
+    from .walkforward import expand_grid, walk_forward
+
+    candles = _load_candles(cfg, refresh=args.refresh)
+    if not candles:
+        print("No candles loaded.", file=sys.stderr)
+        return 1
+    wf = cfg.walkforward
+    if not wf.grid:
+        print(
+            "walkforward.grid is empty — add the parameters to search, e.g.\n"
+            '  [walkforward.grid]\n'
+            '  "orderblock.displacement_atr" = [0.5, 1.0, 1.5]',
+            file=sys.stderr,
+        )
+        return 1
+
+    needed = wf.train_bars + wf.test_bars
+    if len(candles) < needed:
+        print(
+            f"Need at least {needed} bars for one fold, have {len(candles)}.", file=sys.stderr
+        )
+        return 1
+
+    print(_describe(cfg, candles))
+    runs = len(expand_grid(wf.grid)) * 2 * (1 + (len(candles) - needed) // wf.test_bars)
+    print(f"Searching {len(expand_grid(wf.grid))} parameter sets ({runs} backtests)...\n")
+
+    result = walk_forward(
+        cfg,
+        candles,
+        wf.grid,
+        train_bars=wf.train_bars,
+        test_bars=wf.test_bars,
+        min_trades=wf.min_trades,
+        metric=wf.metric,
+    )
+    print(result.format())
+
+    if args.params:
+        print("\nWinning parameters per fold")
+        for fold in result.folds:
+            chosen = ", ".join(f"{k}={v}" for k, v in sorted(fold.params.items()))
+            print(f"  fold {fold.index}: {chosen}")
+    return 0
+
+
 def cmd_fetch(cfg: Config, args: argparse.Namespace) -> int:
     from .data import fetch_ohlcv
 
@@ -148,6 +195,13 @@ def build_parser() -> argparse.ArgumentParser:
     scan.add_argument("--limit", type=int, default=50, help="show at most N most recent setups")
     scan.add_argument("--refresh", action="store_true", help="ignore the candle cache")
     scan.set_defaults(func=cmd_scan)
+
+    wf = sub.add_parser(
+        "walkforward", help="optimise on past windows, score on the windows that follow"
+    )
+    wf.add_argument("--params", action="store_true", help="print the winner of each fold")
+    wf.add_argument("--refresh", action="store_true", help="ignore the candle cache")
+    wf.set_defaults(func=cmd_walkforward)
 
     fetch = sub.add_parser("fetch", help="download candles to CSV")
     fetch.add_argument("--bars", type=int, help="how many bars (default data.history_bars)")

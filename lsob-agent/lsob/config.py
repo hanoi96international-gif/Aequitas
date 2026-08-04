@@ -108,6 +108,17 @@ class NotifyConfig:
 
 
 @dataclass(slots=True)
+class WalkForwardConfig:
+    train_bars: int = 2000
+    test_bars: int = 1000
+    min_trades: int = 10
+    metric: str = "expectancy_r"  # expectancy_r | total_r | profit_factor
+    # Dotted paths into any other section, e.g.
+    #   "orderblock.displacement_atr" = [0.5, 1.0, 1.5]
+    grid: dict = field(default_factory=dict)
+
+
+@dataclass(slots=True)
 class Config:
     market: MarketConfig = field(default_factory=MarketConfig)
     data: DataConfig = field(default_factory=DataConfig)
@@ -120,6 +131,7 @@ class Config:
     costs: CostConfig = field(default_factory=CostConfig)
     live: LiveConfig = field(default_factory=LiveConfig)
     notify: NotifyConfig = field(default_factory=NotifyConfig)
+    walkforward: WalkForwardConfig = field(default_factory=WalkForwardConfig)
 
 
 def _build(cls: type, raw: dict[str, Any], section: str) -> Any:
@@ -204,3 +216,14 @@ def validate(cfg: Config) -> None:
         )
     if cfg.live.enabled and cfg.live.mode not in ("paper", "live"):
         raise ValueError("live.mode must be paper or live")
+
+    wf = cfg.walkforward
+    if wf.metric not in ("expectancy_r", "total_r", "profit_factor"):
+        raise ValueError("walkforward.metric must be expectancy_r, total_r or profit_factor")
+    if wf.train_bars < 1 or wf.test_bars < 1:
+        raise ValueError("walkforward.train_bars and test_bars must be positive")
+    for key, values in wf.grid.items():
+        if "." not in key:
+            raise ValueError(f"walkforward.grid key {key!r} must be 'section.field'")
+        if not isinstance(values, list) or not values:
+            raise ValueError(f"walkforward.grid[{key!r}] must be a non-empty list")
