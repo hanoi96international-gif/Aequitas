@@ -380,3 +380,40 @@ Wenn deine LSOB-Variante von der hier umgesetzten abweicht — andere
 Sweep-Definition, andere OB-Auswahl, andere Ziellogik — sind das meistens
 Werte in `config.toml`. Was sich dort nicht abbilden lässt, gehört in
 `strategy.py`; die Zustandsmaschine dort ist bewusst klein gehalten.
+
+---
+
+## Stand der Messungen
+
+Damit niemand — auch nicht ich beim nächsten Mal — die Zahlen freundlicher
+erinnert, als sie waren:
+
+| Datensatz | Kerzen | Trades | Erwartung | PF | Bemerkung |
+|---|---|---|---|---|---|
+| BTC/USD 1h, 2011–2017 | 46.244 | 101 | **+0,294 R** | 1,36 | +15,1 %, max. DD 13,35 % |
+| EUR/USD 1h | 5.000 | 15 | −0,474 R | 0,57 | zu wenig Trades |
+| GOOG 1d | 2.148 | 2 | −1,064 R | 0,00 | zu wenig Trades |
+
+Die Sniper-Vorlage (0.882-Einstieg, Stop auf 1.0, Ziele auf Sprossen) ist
+das beste ehrlich gemessene Ergebnis. Sie ist **nicht als übertragbar
+belegt**: die Walk-Forward-Rangkorrelation auf demselben Datensatz liegt bei
+**+0,021**, auf EUR/USD bei **−0,341**. Von 4.152 durchsuchten
+Parametersätzen hatte kein einziger eine positive mittlere
+Out-of-Sample-Erwartung. Jede Verfeinerung hat in-sample geholfen und
+out-of-sample nicht.
+
+Übersetzt: die +0,294 R können der Ausdruck einer echten Marktmechanik sein
+oder das Portrait einer einzelnen Bitcoin-Epoche. Diese Daten können das
+nicht unterscheiden.
+
+**Die eine offene Frage** ist deshalb nicht Code, sondern Daten — Märkte und
+Zeiträume außerhalb BTC/USD 2011–2017, mit jeweils ≥ 30 Trades:
+
+```bash
+python -m lsob -c config.toml fetch --months 2023-01:2024-12
+# Datensätze in [compare] markets eintragen, dann:
+python -m lsob -c config.toml compare
+```
+
+Trägt 0.882 dort ebenfalls, ist es ein Muster. Trägt es nicht, war es diese
+eine Epoche — und das ist ein Ergebnis, kein Rückschlag.
