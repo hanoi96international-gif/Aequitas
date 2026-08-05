@@ -49,9 +49,10 @@ zone_mode               = "body_to_extreme"  # body | full | body_to_extreme
 
 [entry]
 edge               = "proximal"      # proximal fills first and risks less; distal fills less often
-# edge = "retracement": Einstieg auf der 88,2-%-Ebene des Displacement-Beins
+# edge = "retracement": Einstieg auf einer Rücklaufebene des Displacement-Beins
 # statt an der Blockkante. Tieferer Einstieg = engerer Stop = mehr R, dafür
 # muss der Rücklauf fast das ganze Bein zurücklegen, um überhaupt zu füllen.
+# 0.882 ist nur der Vorgabewert, keine belegte Regel — setz hier deine eigene.
 retracement          = 0.882
 retracement_in_block = true    # Rücklaufebene muss im Order Block liegen
 valid_bars         = 20              # pull the resting order after this many bars

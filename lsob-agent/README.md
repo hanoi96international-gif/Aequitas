@@ -95,9 +95,8 @@ python -m lsob -c config.toml chart --index -1 --out setup.svg
 ```
 
 Zeichnet ein Setup mit allem, was der Agent gesehen hat: geraidetes Level,
-Raid-Extrem, Order Block, Einstieg (bei `edge = "retracement"` die
-88,2-%-Linie), Stop und Ziele — auf den Kerzen, an der Stelle, an der er
-gehandelt hat.
+Raid-Extrem, Order Block, Einstieg, Stop und Ziele — auf den Kerzen, an der
+Stelle, an der er gehandelt hat.
 
 Ein Backtest sagt dir, *was* passiert ist. Er kann dir nicht sagen, ob die
 Linien dort liegen, wo **du** sie gezogen hättest. Dafür ist dieses Bild da.
@@ -168,7 +167,7 @@ wichtigsten Stellschrauben:
 | | `require_fvg` | Verlangt zusätzlich eine Fair-Value-Gap im Impuls. |
 | | `zone_mode` | `body` / `full` / `body_to_extreme` — wie die Zone geschnitten wird. |
 | `[entry]` | `edge` | `proximal` / `mid` / `distal` an der Blockkante, oder `retracement` auf einer Fib-Ebene des Beins. |
-| | `retracement` | Rücklauftiefe für `edge = "retracement"`. `0.882` ist ein tiefer Einstieg. |
+| | `retracement` | Rücklauftiefe für `edge = "retracement"`, als Anteil des Beins. `0.882` ist der Vorgabewert, kein belegter Standard. |
 | | `sl_anchor` | Stop hinter dem Sweep-Extrem oder hinter dem Order Block. |
 | | `tp_rr` / `tp_weights` | Gestaffelte Ziele, Gewichte müssen 1.0 ergeben. |
 | | `breakeven_after_tp` | Stop nach dem N-ten Ziel auf Einstand. |

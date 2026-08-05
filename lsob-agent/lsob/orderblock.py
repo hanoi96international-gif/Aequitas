@@ -132,7 +132,7 @@ def retracement_level(
     """The price `ratio` of the way back across the displacement leg.
 
     The leg runs from the raid's extreme to the furthest point displacement
-    reached. A deep ratio such as 0.882 puts the entry almost back at the
+    reached. A deep ratio (0.8+) puts the entry almost back at the
     raid's extreme, which is the point: the stop sits just beyond that
     extreme, so the deeper the entry the tighter the risk and the larger the
     R multiple — bought at the cost of the retracement having to travel

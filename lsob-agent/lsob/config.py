@@ -60,7 +60,8 @@ class OrderBlockConfig:
 class EntryConfig:
     edge: str = "proximal"  # proximal | mid | distal | retracement
     # Used when edge = "retracement": how far back across the displacement leg
-    # the limit sits. 0.882 is a deep retracement entry.
+    # the limit sits, as a fraction. 0.882 is this project's default, not a
+    # standard — set it to whatever ratio the strategy being modelled uses.
     retracement: float = 0.882
     # Reject a retracement entry that lands outside the order block. The two
     # are meant to agree; when they do not, the leg and the block are
