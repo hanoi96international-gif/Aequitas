@@ -58,6 +58,74 @@ def load_csv(path: str | Path) -> list[Candle]:
     return rows
 
 
+def load_klines(path: str | Path) -> list[Candle]:
+    """Read Binance's public archive format — no API key, no rate limit.
+
+    The monthly and daily dumps at data.binance.vision are plain CSV with no
+    header, twelve columns per row, of which the first six are the candle.
+    Newer files ship *with* a header, so both are accepted. `.zip` archives
+    are read in place; there is no need to unpack them first.
+
+    This exists because the REST endpoint is the awkward way to get years of
+    history: it pages, it rate-limits, and it needs the network to stay up
+    for the whole walk. The archive is one file per month.
+    """
+    target = Path(path)
+    if target.suffix.lower() == ".zip":
+        import zipfile
+
+        with zipfile.ZipFile(target) as archive:
+            names = [n for n in archive.namelist() if n.lower().endswith(".csv")]
+            if not names:
+                raise ValueError(f"{path}: archive contains no CSV")
+            with archive.open(names[0]) as fh:
+                text = fh.read().decode("utf-8")
+    else:
+        text = target.read_text(encoding="utf-8")
+
+    candles: list[Candle] = []
+    for lineno, line in enumerate(text.splitlines(), start=1):
+        line = line.strip()
+        if not line:
+            continue
+        parts = line.split(",")
+        if len(parts) < 6:
+            raise ValueError(f"{path}:{lineno}: expected at least 6 columns, got {len(parts)}")
+        try:
+            candles.append(
+                Candle(
+                    ts=_parse_ts(parts[0]),
+                    open=float(parts[1]),
+                    high=float(parts[2]),
+                    low=float(parts[3]),
+                    close=float(parts[4]),
+                    volume=float(parts[5]),
+                )
+            )
+        except ValueError:
+            if lineno == 1:
+                continue  # a header row on a newer dump
+            raise ValueError(f"{path}:{lineno}: could not parse candle") from None
+    candles.sort(key=lambda c: c.ts)
+    return candles
+
+
+def load_any(path: str | Path) -> list[Candle]:
+    """Load candles from whichever of the supported layouts `path` holds.
+
+    Tries the labelled-CSV reader first and falls back to the headerless
+    Binance archive layout, so `data.csv` in the config accepts either
+    without the operator having to say which one it is.
+    """
+    target = Path(path)
+    if target.suffix.lower() == ".zip":
+        return load_klines(target)
+    try:
+        return load_csv(target)
+    except ValueError:
+        return load_klines(target)
+
+
 def _parse_ts(raw: str) -> int:
     value = raw.strip()
     if not value:
@@ -70,9 +138,16 @@ def _parse_ts(raw: str) -> int:
         if dt.tzinfo is None:
             dt = dt.replace(tzinfo=timezone.utc)
         return int(dt.timestamp() * 1000)
-    # Seconds and milliseconds are told apart by magnitude: anything below
-    # ~Nov 2286 in ms would be an implausible date if read as seconds.
-    return int(number if number > 1e11 else number * 1000)
+    # Units are told apart by magnitude. A contemporary date is ~1.7e9 in
+    # seconds, ~1.7e12 in milliseconds and ~1.7e15 in microseconds, so the
+    # gaps between them are three orders wide and unambiguous in practice.
+    # Binance's archive switched from milliseconds to microseconds, which is
+    # exactly the silent off-by-1000 this guards against.
+    if number > 1e14:
+        return int(number / 1000)
+    if number > 1e11:
+        return int(number)
+    return int(number * 1000)
 
 
 def save_csv(path: str | Path, candles: list[Candle]) -> None:
@@ -133,6 +208,68 @@ def fetch_ohlcv(
     while candles and candles[-1].ts + step > now:
         candles.pop()
     return candles[-limit:]
+
+
+ARCHIVE_BASE = "https://data.binance.vision/data/spot/monthly/klines"
+
+
+def archive_url(symbol: str, timeframe: str, month: str) -> str:
+    """Build the public-archive URL for one month of candles.
+
+    `symbol` is given in ccxt form ("BTC/USDT"); the archive uses the
+    unslashed form. `month` is "YYYY-MM".
+    """
+    pair = symbol.replace("/", "").replace(":", "").upper()
+    return f"{ARCHIVE_BASE}/{pair}/{timeframe}/{pair}-{timeframe}-{month}.zip"
+
+
+def download_archive(symbol: str, timeframe: str, month: str, dest_dir: str | Path) -> Path:
+    """Fetch one monthly archive to disk and return its path.
+
+    Uses urllib rather than ccxt: this endpoint is a static file server, so
+    it needs no API key, no signing and no rate limiting.
+    """
+    import urllib.error
+    import urllib.request
+
+    url = archive_url(symbol, timeframe, month)
+    target = Path(dest_dir) / Path(url).name
+    target.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        with urllib.request.urlopen(url, timeout=120) as response:
+            target.write_bytes(response.read())
+    except urllib.error.HTTPError as exc:
+        if exc.code == 404:
+            raise RuntimeError(
+                f"no archive for {symbol} {timeframe} {month} — check the symbol, "
+                f"the timeframe, and that the month has finished ({url})"
+            ) from exc
+        raise RuntimeError(f"archive download failed ({exc.code}): {url}") from exc
+    except urllib.error.URLError as exc:
+        raise RuntimeError(f"could not reach the Binance archive: {exc.reason}") from exc
+    return target
+
+
+def months_between(start: str, end: str) -> list[str]:
+    """Every "YYYY-MM" from `start` to `end` inclusive."""
+    try:
+        start_year, start_month = (int(x) for x in start.split("-"))
+        end_year, end_month = (int(x) for x in end.split("-"))
+    except ValueError as exc:
+        raise ValueError("months must look like 'YYYY-MM'") from exc
+    if not (1 <= start_month <= 12 and 1 <= end_month <= 12):
+        raise ValueError("month must be 01-12")
+    if (start_year, start_month) > (end_year, end_month):
+        raise ValueError(f"{start} is after {end}")
+
+    out: list[str] = []
+    year, month = start_year, start_month
+    while (year, month) <= (end_year, end_month):
+        out.append(f"{year:04d}-{month:02d}")
+        month += 1
+        if month > 12:
+            year, month = year + 1, 1
+    return out
 
 
 def cached_ohlcv(

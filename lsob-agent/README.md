@@ -70,6 +70,24 @@ Eigene CSV statt Börse: in `config.toml` unter `[data]` einfach
 
 ---
 
+## Echte Binance-Daten ohne API-Key
+
+```bash
+# Ganze Monate aus dem öffentlichen Archiv (data.binance.vision)
+python -m lsob -c config.toml fetch --months 2024-01:2024-12
+```
+
+Kein Schlüssel, kein Rate-Limit, eine Datei pro Monat — der REST-Endpunkt
+ist für mehrere Jahre Historie der umständliche Weg. Die `.zip`-Archive
+werden direkt gelesen, ohne Entpacken, und `data.csv` akzeptiert beide
+Formate (beschriftete CSV wie auch das headerlose Archivlayout).
+
+Alternativ weiterhin über ccxt, wenn du nur die letzten N Kerzen brauchst:
+
+```bash
+pip install ccxt && python -m lsob -c config.toml fetch --bars 5000
+```
+
 ## Backtest-Ausgabe
 
 ```
@@ -109,6 +127,9 @@ wichtigsten Stellschrauben:
 | | `sl_anchor` | Stop hinter dem Sweep-Extrem oder hinter dem Order Block. |
 | | `tp_rr` / `tp_weights` | Gestaffelte Ziele, Gewichte müssen 1.0 ergeben. |
 | | `breakeven_after_tp` | Stop nach dem N-ten Ziel auf Einstand. |
+| `[filters]` | `session_enabled` | Nur in den Kill Zones handeln (UTC-Fenster). |
+| | `premium_discount` | Shorts nur oberhalb, Longs nur unterhalb des Equilibriums. |
+| | `require_unmitigated` | Blocks verwerfen, in die der Preis schon zurücklief. |
 | `[bias]` | `mode` | `off` / `ema` / `htf_structure` — Richtungsfilter. |
 | `[risk]` | `risk_pct` | Prozent des Kapitals pro Trade. |
 
@@ -142,7 +163,7 @@ Wert dort wäre der Beweis für einen Lookahead-Fehler, und der Test schlägt
 in dem Fall fehl.
 
 ```bash
-pip install pytest && python -m pytest -q      # 90 Tests, ~3 s
+pip install pytest && python -m pytest -q      # 127 Tests, ~3 s
 ```
 
 ---
@@ -236,6 +257,7 @@ lsob/
   liquidity.py   Liquiditätspools, Sweep- vs. Ausbruch-Erkennung
   orderblock.py  Order Blocks, Displacement, Fair Value Gaps
   bias.py        optionaler Richtungsfilter (EMA / höherer Zeitrahmen)
+  filters.py     Premium/Discount, Mitigation, Session-Fenster
   strategy.py    die Zustandsmaschine, die daraus Signale macht
   execution.py   Order- und Positionsverwaltung, pessimistische Fills
   backtest.py    Durchlauf über historische Kerzen

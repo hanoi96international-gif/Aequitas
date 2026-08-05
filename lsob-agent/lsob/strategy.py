@@ -24,9 +24,16 @@ from dataclasses import dataclass
 
 from .bias import BiasFilter
 from .config import Config
+from .filters import SessionFilter, dealing_range
 from .liquidity import LiquidityBook, Sweep
 from .model import ATR, Candle
-from .orderblock import OrderBlock, displacement_atr, find_order_block, has_fvg
+from .orderblock import (
+    OrderBlock,
+    displacement_atr,
+    find_order_block,
+    has_fvg,
+    is_mitigated,
+)
 from .structure import MarketStructure
 
 
@@ -82,7 +89,15 @@ class LsobStrategy:
         )
         self.book = LiquidityBook(cfg.liquidity)
         self.bias = BiasFilter(cfg)
+        self.session = SessionFilter(
+            cfg.filters.session_enabled,
+            list(cfg.filters.session_windows),
+            [int(d) for d in cfg.filters.session_days],
+        )
         self.index = -1
+        # Why setups were dropped, so `scan` can explain an empty result
+        # instead of leaving you guessing which filter did it.
+        self.rejections: dict[str, int] = {}
 
         # Bars are kept only as far back as the order-block search can reach,
         # plus the displacement window it may have to scan for an FVG.
@@ -185,10 +200,12 @@ class LsobStrategy:
     ) -> Signal | None:
         cfg = self.cfg
         if not self.bias.allows(sweep.direction):
-            return None
+            return self._drop("bias")
+        if not self.session.allows(candle.ts):
+            return self._drop("session")
         if self._last_signal_index is not None:
             if i - self._last_signal_index < cfg.risk.cooldown_bars:
-                return None
+                return self._drop("cooldown")
 
         first = sweep.pierce_index if cfg.orderblock.ob_include_sweep_candle else sweep.pierce_index + 1
         window = [
@@ -201,7 +218,23 @@ class LsobStrategy:
 
         ob = find_order_block(window, sweep.direction, cfg.orderblock.zone_mode, candle.close)
         if ob is None:
-            return None
+            return self._drop("no_order_block")
+
+        if cfg.filters.require_unmitigated:
+            seen = [(idx, c) for idx, c in self._recent if idx <= i]
+            if is_mitigated(seen, ob):
+                return self._drop("mitigated")
+
+        if cfg.filters.premium_discount:
+            rng = dealing_range(
+                [s.price for s in self.structure.highs],
+                [s.price for s in self.structure.lows],
+                cfg.filters.range_swings,
+            )
+            if rng is None or not rng.allows(
+                sweep.direction, ob.edge(cfg.entry.edge), cfg.filters.pd_threshold
+            ):
+                return self._drop("premium_discount")
 
         entry = ob.edge(cfg.entry.edge)
         buffer = cfg.entry.sl_buffer_atr * atr
@@ -214,19 +247,19 @@ class LsobStrategy:
 
         risk = abs(entry - stop)
         if risk <= 0:
-            return None
+            return self._drop("degenerate_risk")
 
         targets = self._targets(sweep.direction, entry, risk)
         if not targets:
-            return None
+            return self._drop("no_targets")
         if any(t <= 0 for t in targets):
             # A short whose stop is far enough away can put an R-multiple
             # target below zero. Price cannot go there, so the setup cannot
             # pay what it promises and is not tradeable.
-            return None
+            return self._drop("target_below_zero")
         final_rr = abs(targets[-1] - entry) / risk
         if final_rr < cfg.entry.min_rr:
-            return None
+            return self._drop("below_min_rr")
 
         return Signal(
             direction=sweep.direction,
@@ -246,6 +279,11 @@ class LsobStrategy:
             displacement=disp,
             atr=atr,
         )
+
+    def _drop(self, reason: str) -> None:
+        """Record why a setup was discarded, and return None for the caller."""
+        self.rejections[reason] = self.rejections.get(reason, 0) + 1
+        return None
 
     def _targets(self, direction: str, entry: float, risk: float) -> list[float]:
         cfg = self.cfg.entry

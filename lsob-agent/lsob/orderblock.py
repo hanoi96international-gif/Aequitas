@@ -82,6 +82,34 @@ def find_order_block(
     return None
 
 
+def is_mitigated(window: list[tuple[int, Candle]], ob: OrderBlock) -> bool:
+    """True if price has already traded back into the zone since it formed.
+
+    The trade thesis is that unfilled orders are still sitting in the block.
+    Once price has returned and traded through it, whatever was resting there
+    has been filled — the zone has done its job and is not a second entry.
+
+    A return only counts once price has actually *left*. The displacement
+    candle starts inside the block by construction, since it opens where the
+    block closed; treating that as a visit would mark every block mitigated
+    on the bar after it formed.
+    """
+    departed = False
+    for index, candle in window:
+        if index <= ob.index:
+            continue
+        if not departed:
+            # Left the zone entirely, in the direction the move went.
+            if ob.direction == "short" and candle.high < ob.bottom:
+                departed = True
+            elif ob.direction == "long" and candle.low > ob.top:
+                departed = True
+            continue
+        if candle.high >= ob.bottom and candle.low <= ob.top:
+            return True
+    return False
+
+
 def has_fvg(window: list[tuple[int, Candle]], direction: str) -> bool:
     """True if the leg contains a fair-value gap in the traded direction.
 

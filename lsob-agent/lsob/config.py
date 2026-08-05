@@ -65,6 +65,23 @@ class EntryConfig:
 
 
 @dataclass(slots=True)
+class FilterConfig:
+    """Context filters — where in the range, and at what time, a setup counts.
+
+    All off by default: each one cuts the trade count sharply, and a filter
+    validated on the sample it was chosen on has demonstrated nothing.
+    """
+
+    premium_discount: bool = False  # shorts only in premium, longs only in discount
+    range_swings: int = 5  # swings per side that define the dealing range
+    pd_threshold: float = 0.5  # 0.5 = equilibrium; higher demands a deeper premium
+    require_unmitigated: bool = False  # reject blocks price has already traded back into
+    session_enabled: bool = False
+    session_windows: list = field(default_factory=lambda: ["07:00-10:00", "12:00-15:00"])
+    session_days: list = field(default_factory=lambda: [0, 1, 2, 3, 4])  # Mon-Fri
+
+
+@dataclass(slots=True)
 class BiasConfig:
     mode: str = "off"  # off | ema | htf_structure
     ema_period: int = 200
@@ -127,6 +144,7 @@ class Config:
     liquidity: LiquidityConfig = field(default_factory=LiquidityConfig)
     orderblock: OrderBlockConfig = field(default_factory=OrderBlockConfig)
     entry: EntryConfig = field(default_factory=EntryConfig)
+    filters: FilterConfig = field(default_factory=FilterConfig)
     bias: BiasConfig = field(default_factory=BiasConfig)
     risk: RiskConfig = field(default_factory=RiskConfig)
     costs: CostConfig = field(default_factory=CostConfig)
@@ -154,7 +172,15 @@ def _build(cls: type, raw: dict[str, Any], section: str) -> Any:
         if want is float and isinstance(value, int) and not isinstance(value, bool):
             value = float(value)
         elif want is list and isinstance(value, list):
-            value = [float(v) if isinstance(v, int) else v for v in value]
+            # Only widen to float where the field's own default is a float
+            # list. Coercing every list would turn weekday numbers and window
+            # strings into something their consumers do not expect.
+            default_list = getattr(blank, name)
+            if default_list and isinstance(default_list[0], float):
+                value = [
+                    float(v) if isinstance(v, int) and not isinstance(v, bool) else v
+                    for v in value
+                ]
         elif not isinstance(value, want):
             raise ValueError(
                 f"[{section}] {name}: expected {want.__name__}, got {type(value).__name__}"
@@ -217,6 +243,20 @@ def validate(cfg: Config) -> None:
         )
     if cfg.live.enabled and cfg.live.mode not in ("paper", "live"):
         raise ValueError("live.mode must be paper or live")
+
+    f = cfg.filters
+    if not 0.0 <= f.pd_threshold <= 1.0:
+        raise ValueError("filters.pd_threshold must be between 0.0 and 1.0")
+    if f.range_swings < 1:
+        raise ValueError("filters.range_swings must be >= 1")
+    if f.session_enabled:
+        if not f.session_windows:
+            raise ValueError("filters.session_windows must not be empty when sessions are on")
+        if not f.session_days or any(d not in range(7) for d in f.session_days):
+            raise ValueError("filters.session_days must be weekday numbers 0-6")
+        from .filters import SessionFilter
+
+        SessionFilter(True, list(f.session_windows), list(f.session_days))
 
     wf = cfg.walkforward
     if wf.metric not in ("expectancy_r", "total_r", "profit_factor"):

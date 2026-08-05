@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from lsob.data import load_csv
+from lsob.data import archive_url, load_any, load_csv, load_klines, months_between
 
 
 def write(tmp_path, body: str):
@@ -66,3 +66,88 @@ def test_headers_are_matched_case_insensitively(tmp_path):
     path = write(tmp_path, "Open_Time,Open,High,Low,Close,Volume\n1704067200000,1,2,0.5,1.5,9\n")
     candle = load_csv(path)[0]
     assert candle.high == 2.0 and candle.volume == 9.0
+
+
+# ── Binance public archive ───────────────────────────────────────────────
+
+
+def test_the_headerless_binance_archive_layout_is_read(tmp_path):
+    """Twelve columns, no header — the format the monthly dumps ship in."""
+    path = tmp_path / "BTCUSDT-15m-2024-01.csv"
+    path.write_text(
+        "1704067200000,42000.1,42100.5,41900.0,42050.2,123.45,"
+        "1704068099999,5187000.0,1500,60.1,2500000.0,0\n"
+        "1704068100000,42050.2,42200.0,42000.0,42150.0,98.76,"
+        "1704068999999,4160000.0,1200,50.0,2100000.0,0\n",
+        encoding="utf-8",
+    )
+    candles = load_klines(path)
+    assert len(candles) == 2
+    assert candles[0].ts == 1_704_067_200_000
+    assert candles[0].open == 42000.1
+    assert candles[0].volume == 123.45
+    assert candles[1].close == 42150.0
+
+
+def test_a_header_row_on_a_newer_dump_is_skipped(tmp_path):
+    path = tmp_path / "k.csv"
+    path.write_text(
+        "open_time,open,high,low,close,volume,close_time,qav,trades,tbb,tbq,ignore\n"
+        "1704067200000,42000,42100,41900,42050,123,1,2,3,4,5,0\n",
+        encoding="utf-8",
+    )
+    assert len(load_klines(path)) == 1
+
+
+def test_microsecond_timestamps_are_recognised(tmp_path):
+    """Binance switched the archive from milliseconds to microseconds."""
+    path = tmp_path / "k.csv"
+    path.write_text("1704067200000000,42000,42100,41900,42050,123,1,2,3,4,5,0\n", encoding="utf-8")
+    assert load_klines(path)[0].ts == 1_704_067_200_000
+
+
+def test_a_zipped_archive_is_read_without_unpacking(tmp_path):
+    import zipfile
+
+    inner = "BTCUSDT-15m-2024-01.csv"
+    archive = tmp_path / "BTCUSDT-15m-2024-01.zip"
+    with zipfile.ZipFile(archive, "w") as zf:
+        zf.writestr(inner, "1704067200000,42000,42100,41900,42050,123,1,2,3,4,5,0\n")
+    candles = load_klines(archive)
+    assert len(candles) == 1 and candles[0].close == 42050.0
+
+
+def test_load_any_accepts_both_layouts(tmp_path):
+    labelled = tmp_path / "a.csv"
+    labelled.write_text("timestamp,open,high,low,close\n1704067200000,1,2,0.5,1.5\n")
+    headerless = tmp_path / "b.csv"
+    headerless.write_text("1704067200000,1,2,0.5,1.5,9,1,2,3,4,5,0\n")
+    assert load_any(labelled)[0].close == 1.5
+    assert load_any(headerless)[0].close == 1.5
+
+
+def test_a_short_archive_row_is_rejected(tmp_path):
+    path = tmp_path / "k.csv"
+    path.write_text("1704067200000,42000,42100\n", encoding="utf-8")
+    with pytest.raises(ValueError, match="at least 6 columns"):
+        load_klines(path)
+
+
+def test_the_archive_url_matches_binances_layout():
+    assert archive_url("BTC/USDT", "15m", "2024-01") == (
+        "https://data.binance.vision/data/spot/monthly/klines/"
+        "BTCUSDT/15m/BTCUSDT-15m-2024-01.zip"
+    )
+
+
+def test_month_ranges_expand_across_year_boundaries():
+    assert months_between("2024-11", "2025-02") == ["2024-11", "2024-12", "2025-01", "2025-02"]
+    assert months_between("2024-03", "2024-03") == ["2024-03"]
+
+
+@pytest.mark.parametrize(
+    "start, end", [("2024-13", "2024-14"), ("2024-05", "2024-01"), ("nope", "2024-01")]
+)
+def test_bad_month_ranges_are_rejected(start, end):
+    with pytest.raises(ValueError):
+        months_between(start, end)

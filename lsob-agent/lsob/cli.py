@@ -9,9 +9,10 @@ import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
-from .backtest import run_backtest, scan_signals
+from .backtest import run_backtest
+from .strategy import LsobStrategy
 from .config import Config, load_config
-from .data import cached_ohlcv, load_csv, save_csv
+from .data import cached_ohlcv, load_any, save_csv
 from .model import Candle
 
 
@@ -21,7 +22,7 @@ def _iso(ts: int) -> str:
 
 def _load_candles(cfg: Config, refresh: bool = False) -> list[Candle]:
     if cfg.data.csv:
-        candles = load_csv(cfg.data.csv)
+        candles = load_any(cfg.data.csv)
         return candles[-cfg.data.history_bars :] if cfg.data.history_bars > 0 else candles
     return cached_ohlcv(
         cfg.data.cache_dir,
@@ -79,11 +80,27 @@ def cmd_scan(cfg: Config, args: argparse.Namespace) -> int:
         print("No candles loaded.", file=sys.stderr)
         return 1
     print(_describe(cfg, candles))
-    signals = scan_signals(cfg, candles)
+    strategy = LsobStrategy(cfg)
+    signals = []
+    for candle in candles:
+        signals.extend(strategy.on_bar(candle))
     if not signals:
-        print("\nNo setups found. Loosen orderblock.displacement_atr or entry.min_rr.")
+        print("\nNo setups found.")
+        if strategy.rejections:
+            print("Setups were built and then dropped by:")
+            for reason, count in sorted(strategy.rejections.items(), key=lambda kv: -kv[1]):
+                print(f"  {reason}: {count}")
+        else:
+            print("Nothing even reached the order-block stage — loosen")
+            print("orderblock.displacement_atr or liquidity.max_penetration_atr.")
         return 0
-    print(f"\n{len(signals)} setups\n")
+    print(f"\n{len(signals)} setups")
+    if strategy.rejections:
+        dropped = ", ".join(
+            f"{k}={v}" for k, v in sorted(strategy.rejections.items(), key=lambda kv: -kv[1])
+        )
+        print(f"({dropped})")
+    print()
     print(f"{'time (UTC)':<18}{'dir':<7}{'entry':>13}{'stop':>13}{'R':>7}{'disp':>7}  targets")
     for s in signals[-args.limit :]:
         targets = ", ".join(f"{t:.6g}" for t in s.targets)
@@ -165,6 +182,9 @@ def cmd_walkforward(cfg: Config, args: argparse.Namespace) -> int:
 def cmd_fetch(cfg: Config, args: argparse.Namespace) -> int:
     from .data import fetch_ohlcv
 
+    if args.months:
+        return _fetch_archive(cfg, args)
+
     bars = args.bars or cfg.data.history_bars
     candles = fetch_ohlcv(cfg.market.exchange, cfg.market.symbol, cfg.market.timeframe, bars)
     if not candles:
@@ -175,6 +195,43 @@ def cmd_fetch(cfg: Config, args: argparse.Namespace) -> int:
     )
     save_csv(out, candles)
     print(f"{len(candles)} bars ({_iso(candles[0].ts)} to {_iso(candles[-1].ts)} UTC) -> {out}")
+    return 0
+
+
+def _fetch_archive(cfg: Config, args: argparse.Namespace) -> int:
+    """Pull whole months from Binance's public archive — no API key needed."""
+    from .data import download_archive, load_klines, months_between
+
+    start, _, end = args.months.partition(":")
+    months = months_between(start, end or start)
+    cache = Path(cfg.data.cache_dir)
+    candles: list[Candle] = []
+    for month in months:
+        path = cache / Path(
+            f"{cfg.market.symbol.replace('/', '')}-{cfg.market.timeframe}-{month}.zip"
+        ).name
+        if not path.exists():
+            print(f"  downloading {month} ...")
+            path = download_archive(
+                cfg.market.symbol, cfg.market.timeframe, month, cache
+            )
+        candles.extend(load_klines(path))
+
+    if not candles:
+        print("Archive returned no candles.", file=sys.stderr)
+        return 1
+    candles.sort(key=lambda c: c.ts)
+    deduped = {c.ts: c for c in candles}
+    candles = [deduped[k] for k in sorted(deduped)]
+
+    out = Path(args.out) if args.out else cache / (
+        f"binance_{cfg.market.symbol.replace('/', '-')}_{cfg.market.timeframe}.csv"
+    )
+    save_csv(out, candles)
+    print(
+        f"{len(candles)} bars ({_iso(candles[0].ts)} to {_iso(candles[-1].ts)} UTC) -> {out}\n"
+        f"Set data.csv = \"{out}\" in your config to backtest it."
+    )
     return 0
 
 
@@ -240,6 +297,11 @@ def build_parser() -> argparse.ArgumentParser:
     fetch = sub.add_parser("fetch", help="download candles to CSV")
     fetch.add_argument("--bars", type=int, help="how many bars (default data.history_bars)")
     fetch.add_argument("--out", help="output CSV path")
+    fetch.add_argument(
+        "--months",
+        help="pull whole months from Binance's public archive instead of the REST "
+        "API — no API key needed. Format: YYYY-MM or YYYY-MM:YYYY-MM",
+    )
     fetch.set_defaults(func=cmd_fetch)
 
     run = sub.add_parser("run", help="run the agent (paper unless --live)")

@@ -10,7 +10,11 @@ symbol    = "BTC/USDT"
 timeframe = "15m"
 
 [data]
-csv           = ""       # set a path to backtest a local file instead of an exchange
+# Pfad zu eigenen Kerzen. Akzeptiert beschriftete CSVs *und* das
+# headerlose Binance-Archivformat (auch als .zip, ohne Entpacken).
+# Ganze Monate ohne API-Key holen:
+#   python -m lsob fetch --months 2024-01:2024-12
+csv           = ""
 cache_dir     = "data"
 history_bars  = 3000
 
@@ -47,6 +51,20 @@ tp_rr              = [1.5, 3.0]      # ascending R multiples
 tp_weights         = [0.5, 0.5]      # must sum to 1.0
 breakeven_after_tp = 1               # move the stop to entry after the 1st target (0 = off)
 min_rr             = 1.5             # skip setups that cannot pay this
+
+[filters]
+# Kontextfilter: WO in der Range und WANN ein Setup zählt.
+# Alle standardmäßig aus — jeder schneidet die Trade-Zahl stark, und ein
+# Filter, der auf der Stichprobe validiert wurde, auf der er gewählt wurde,
+# hat nichts bewiesen. Einzeln zuschalten und per walkforward prüfen.
+premium_discount    = false   # Shorts nur im Premium, Longs nur im Discount
+range_swings        = 5       # Swings je Seite, die die Dealing Range aufspannen
+pd_threshold        = 0.5     # 0.5 = Equilibrium; höher verlangt tieferes Premium
+require_unmitigated = false   # Blocks verwerfen, in die der Preis schon zurücklief
+                              # (greift selten: ~2% der Setups bei ob_max_lookback=12)
+session_enabled     = false   # nur in den Kill Zones handeln
+session_windows     = ["07:00-10:00", "12:00-15:00"]   # UTC
+session_days        = [0, 1, 2, 3, 4]                  # Mo-Fr
 
 [bias]
 mode           = "off"   # off | ema | htf_structure
