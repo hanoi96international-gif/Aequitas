@@ -128,10 +128,34 @@ max_position_pct = 100.0
 allow_long       = true
 allow_short      = true
 
+[daytrade]
+# Flat nach Uhr statt nach Chart. Alles aus, bis du es einschaltest — eine
+# Swing-Konfiguration soll nicht heimlich zur Day-Trading-Konfiguration werden.
+# Alle Zeiten in UTC, der Handelstag ist der UTC-Kalendertag.
+enabled            = false
+flat_at            = ""    # "22:00" — Positionen auf dem Balken schließen, der hier endet
+no_entry_after     = ""    # "20:00" — vorher schon keine neuen Fills mehr
+max_bars_in_trade  = 0     # Zeitstopp in Balken (0 = aus). Der Stop ist ein Preis,
+                           # das hier ist die andere Achse.
+max_trades_per_day = 0     # 0 = unbegrenzt
+# Storniert der Cut-off auch die *ruhenden Orders*, oder stoppt er nur neue Fills?
+# Das sind zwei verschiedene Regeln, und sie kosten sehr unterschiedlich viel.
+# Eine Position über Nacht trägt Gap-Risiko. Eine unausgeführte Limit-Order
+# trägt keines — sie um 22:00 zu löschen und um 08:00 identisch neu zu setzen
+# ist dieselbe Order, abzüglich der Fills, die du im Schlaf verpasst hast.
+# Auf den gemessenen Daten ist das der Unterschied zwischen +0.285 R und -0.016 R.
+cancel_orders_at_cutoff = true
+
 [costs]
 maker_fee_bps = 2.0      # limit entries and take-profits
 taker_fee_bps = 5.0      # stops
 slippage_bps  = 1.0      # applied to stops only
+# Setups verwerfen, deren Round Trip mehr als diesen Anteil des Risikos kostet.
+# Auf dem Tageschart sind Gebühren ein Rundungsfehler; auf 1m-Kerzen mit einem
+# Stop wenige Ticks entfernt sind sie der ganze Trade. Der Backtest meldet den
+# Median immer, auch wenn der Filter aus ist — lies ihn, bevor du einen
+# Zeitrahmen wählst. 0 = kein Filter.
+max_cost_r    = 0.0
 
 [live]
 enabled        = false   # must be true before `lsob run` will do anything
@@ -193,3 +217,22 @@ selection  = "robust"         # robust prefers a broad plateau over a lone spike
 # oft beide Preise umspannt. Der Backtester wertet das als Stop und meldet
 # den Anteil. Lag er über 25 %, entscheidet die Kerzenauflösung und nicht
 # die Strategie — dann brauchst du 1m-Daten, um die Trades aufzulösen.
+#
+# ─────────────────────────────────────────────────────────────────────────
+# DAY-TRADING-VORLAGE (nichts über Nacht, gemessen auf BTC/USD 1h)
+#
+#   [daytrade]
+#   enabled                 = true
+#   flat_at                 = "23:00"
+#   max_bars_in_trade       = 8
+#   max_trades_per_day      = 3
+#   cancel_orders_at_cutoff = false   # ← die entscheidende Zeile
+#
+# Gemessen: 97 Trades, +0.285 R, PF 1.35, max. DD 13.16 %, null Positionen
+# über Nacht — gegen +0.294 R ohne jede Tagesregel. Die volle Disziplin
+# kostet also 0.009 R pro Trade.
+#
+# Mit `cancel_orders_at_cutoff = true` fällt dasselbe auf -0.016 R. Nicht die
+# Positionen kosten die Kante, sondern das Löschen der ruhenden Orders: bei
+# valid_bars = 20 kreuzt fast jede Order den Cut-off, und 274 von 380
+# Signalen sterben, bevor der Preis sie erreicht.

@@ -150,6 +150,72 @@ Pro Markt dürfen nur Zeitrahmen und Gebühren abweichen; beides gehört zur
 Börse, nicht zur Strategie. Ergebnisse unter 30 Trades werden markiert und
 zählen nicht für das Urteil — sie beschreiben ihre Stichprobe.
 
+## Day Trading
+
+Day Trading heißt nicht „kleinerer Zeitrahmen", sondern **nach Uhr schließen
+statt nach Chart**. Der Abschnitt `[daytrade]` macht genau das, und er gilt
+im Backtest *und* im Live-Broker — beide fragen dieselbe Uhr, damit eine
+Regel nicht im Test etwas anderes bedeutet als im Konto.
+
+```toml
+[daytrade]
+enabled                 = true
+flat_at                 = "23:00"   # UTC; schließt auf dem Balken, der hier endet
+no_entry_after          = "21:00"   # keine neuen Fills mehr (optional)
+max_bars_in_trade       = 8         # Zeitstopp: der Stop ist ein Preis, das die andere Achse
+max_trades_per_day      = 3         # gegen den häufigsten Day-Trading-Fehler
+cancel_orders_at_cutoff = false     # ← lies den nächsten Absatz, bevor du das änderst
+```
+
+**Die eine Zeile, die zählt.** „Nichts über Nacht" meint zwei verschiedene
+Dinge, und sie kosten sehr unterschiedlich viel:
+
+| BTC/USD 1h, Sniper-Konfiguration | Trades | Erwartung | PF | über Nacht |
+|---|---|---|---|---|
+| ohne Tagesregeln | 101 | +0,294 R | 1,36 | 11 |
+| flat 23:00 + Zeitstopp, Orders bleiben liegen | 97 | **+0,285 R** | 1,35 | **0** |
+| dasselbe, aber Orders werden storniert | 66 | −0,016 R | 0,97 | 0 |
+
+Volle Tagesdisziplin kostet **0,009 R pro Trade** — praktisch nichts. Die
+Orders zu stornieren kostet die ganze Kante. Der Grund ist Geometrie, nicht
+Glück: eine Position über Nacht trägt Gap-Risiko, eine unausgeführte Order
+trägt keines. Bei `valid_bars = 20` liegt fast jede Order irgendwann im
+Cut-off-Fenster, und 274 von 380 Signalen sterben, bevor der Preis sie
+erreicht. Sie um 22:00 zu löschen und um 08:00 identisch neu zu setzen ist
+dieselbe Order — abzüglich der Fills, die du im Schlaf verpasst hast.
+
+Wer das Konto wirklich leer haben will, setzt `true` und weiß, was es kostet.
+
+**Was die Zahlen sonst noch sagen:** dieselbe Konfiguration hält im Schnitt
+3 Balken und schließt 89 % der Trades ohnehin am selben Tag. Sie war bereits
+intraday — `[daytrade]` schreibt das fest, statt es zu hoffen.
+
+## Was ein Round Trip kostet
+
+Auf feinen Zeitrahmen entscheiden nicht die Signale, sondern die Gebühren.
+Der Backtest meldet deshalb immer:
+
+```
+Cost per round trip 0.22 R median (0.01-1.05)
+```
+
+Gelesen: die Hälfte aller Setups zahlt über 22 % des Risikos an die Börse,
+bevor der Markt eine Meinung hat — und eines zahlte mehr als sein ganzes
+Risiko. Die Zahl ist reine Arithmetik aus Einstieg, Stop und Gebühren, also
+schon bei wenigen Trades belastbar. Auf einer echten 1m-Serie (10 Tage BTC,
+Maker 0,8 / Taker 3,15 / Slippage 2 bp):
+
+| Zeitrahmen | Kosten je Round Trip (Median) |
+|---|---|
+| 1m | **0,43 R** |
+| 5m | 0,25 R |
+| 15m | 0,10 R |
+
+Bei 0,43 R muss die Strategie 43 % besser als break-even sein, nur um null zu
+spielen. Das ist der Grund, warum die 0.882 mit Stop auf der 1.0 auf 1m
+strukturell nicht funktioniert: Risiko ist dort 11,8 % eines sehr kleinen
+Beins. `costs.max_cost_r` verwirft solche Setups, statt sie zu handeln.
+
 ## Mehrdeutige Kerzen auflösen
 
 ```toml
@@ -219,6 +285,11 @@ wichtigsten Stellschrauben:
 | | `require_inducement` | Einstieg erst, wenn die Liquidität des Zwischenswings vor dem Block abgeholt wurde. |
 | `[bias]` | `mode` | `off` / `ema` / `htf_structure` — Richtungsfilter. |
 | `[risk]` | `risk_pct` | Prozent des Kapitals pro Trade. |
+| `[daytrade]` | `flat_at` | Tagesschluss in UTC — alles glattstellen, Backtest wie live. |
+| | `max_bars_in_trade` | Zeitstopp: der Stop ist ein Preis, das die andere Achse. |
+| | `max_trades_per_day` | Deckel gegen Overtrading. |
+| | `cancel_orders_at_cutoff` | Ob der Cut-off auch ruhende Orders löscht — die teuerste Zeile der Datei. |
+| `[costs]` | `max_cost_r` | Setups verwerfen, deren Round Trip zu viel vom Risiko frisst. |
 
 Tippfehler in Schlüsseln sind ein **Fehler**, kein stilles Ignorieren — ein
 überlesener Schwellenwert wäre eine Strategieänderung, die du nicht
@@ -253,7 +324,7 @@ Wert dort wäre der Beweis für einen Lookahead-Fehler, und der Test schlägt
 in dem Fall fehl.
 
 ```bash
-pip install pytest && python -m pytest -q      # 212 Tests, ~3 s
+pip install pytest && python -m pytest -q      # 248 Tests, ~3 s
 ```
 
 ---
@@ -348,6 +419,7 @@ lsob/
   orderblock.py  Order Blocks, Displacement, Fair Value Gaps
   bias.py        optionaler Richtungsfilter (EMA / höherer Zeitrahmen)
   filters.py     Premium/Discount, Mitigation, Session-Fenster
+  daytrade.py    die Uhr: Tagesschluss, Zeitstopp, Trades pro Tag
   strategy.py    die Zustandsmaschine, die daraus Signale macht
   execution.py   Order- und Positionsverwaltung, pessimistische Fills
   backtest.py    Durchlauf über historische Kerzen
@@ -393,6 +465,12 @@ erinnert, als sie waren:
 | BTC/USD 1h, 2011–2017 | 46.244 | 101 | **+0,294 R** | 1,36 | +15,1 %, max. DD 13,35 % |
 | EUR/USD 1h | 5.000 | 15 | −0,474 R | 0,57 | zu wenig Trades |
 | GOOG 1d | 2.148 | 2 | −1,064 R | 0,00 | zu wenig Trades |
+
+Mit voller Day-Trading-Disziplin (flat 23:00 UTC, Zeitstopp 8 Balken, max.
+3 Trades/Tag, ruhende Orders bleiben liegen) auf demselben BTC/USD-Datensatz:
+**97 Trades, +0,285 R, PF 1,35, max. DD 13,16 %, null Positionen über Nacht.**
+Die Tagesregeln kosten also 0,009 R pro Trade — sie sind fast gratis, aber
+sie machen die Zahlen darunter nicht belastbarer.
 
 Die Sniper-Vorlage (0.882-Einstieg, Stop auf 1.0, Ziele auf Sprossen) ist
 das beste ehrlich gemessene Ergebnis. Sie ist **nicht als übertragbar

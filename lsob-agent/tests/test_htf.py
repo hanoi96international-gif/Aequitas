@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import pytest
-from conftest import BASE_MS, candle
+from conftest import BASE_MS
 
 from lsob.htf import HtfSwings
 from lsob.model import Candle

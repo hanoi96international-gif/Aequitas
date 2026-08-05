@@ -20,6 +20,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 
 from .config import Config
+from .daytrade import day_clock
 from .intrabar import IntrabarIndex, first_of, touched_after_fill
 from .model import Candle
 from .strategy import Signal
@@ -116,11 +117,28 @@ class Executor:
         # stop sits close enough to the entry that bar granularity, not the
         # strategy, is deciding the outcome.
         self.stopped_on_entry_bar = 0
+        # Day-trading rules live on the clock, not the chart — see daytrade.py.
+        self.clock = day_clock(cfg)
+        self.entries_by_day: dict[int, int] = {}
+        # What a round trip costs, expressed in the trade's own risk. Collected
+        # for every signal whether or not the guard is on, because on fine
+        # timeframes this number decides playability before the strategy does.
+        self.cost_r_values: list[float] = []
 
     # ── intake ───────────────────────────────────────────────────────────
 
     def on_signal(self, index: int, signal: Signal) -> bool:
         """Place a resting limit order, unless a risk rule says otherwise."""
+        # Cost is measured before anything else, and for every signal. It is a
+        # property of the setup, not of the order book — recording it only for
+        # signals that got past the capacity check would let a busy stretch
+        # quietly drop the expensive ones out of the statistic.
+        cost = self.cost_r(signal)
+        self.cost_r_values.append(cost)
+        guard = self.cfg.costs.max_cost_r
+        if guard and cost > guard:
+            self._reject("cost_vs_risk")
+            return False
         # A working order counts against the limit as much as an open
         # position does — otherwise `max_concurrent = 1` would still let a
         # queue of resting orders all fill on the same impulsive bar.
@@ -133,6 +151,22 @@ class Executor:
         self.pending.append(PendingOrder(signal=signal, placed_index=index))
         return True
 
+    def cost_r(self, signal: Signal) -> float:
+        """Round-trip cost of this setup, measured in its own risk.
+
+        Entry is a resting limit (maker); the exit that decides survival is
+        the stop (taker, plus slippage). Position size cancels out, so this is
+        knowable before a single unit is bought: a value of 0.5 means half the
+        risk is paid to the exchange before the market has an opinion, and the
+        strategy has to be that much better than break-even just to draw.
+        """
+        risk = abs(signal.entry - signal.stop)
+        if risk <= 0:
+            return float("inf")
+        c = self.cfg.costs
+        bps = c.maker_fee_bps + c.taker_fee_bps + c.slippage_bps
+        return abs(signal.entry) * (bps / 10_000.0) / risk
+
     def _reject(self, reason: str) -> None:
         self.rejected[reason] = self.rejected.get(reason, 0) + 1
 
@@ -144,10 +178,46 @@ class Executor:
         Open positions are handled *before* pending fills so that an order
         filling on this bar is not also exited on it — a same-bar round trip
         is an artefact of bar granularity, not a trade anyone could take.
+
+        The day-trading rules run between the two: price gets to resolve the
+        bar first (a stop that was hit is a stop, not a flatten), and only
+        what survived is closed out by the clock.
         """
         closed = self._manage_positions(index, candle)
+        closed += self._clock_exits(index, candle)
         self._manage_pending(index, candle)
         self.equity_curve.append((index, self.mark_to_market(candle)))
+        return closed
+
+    def _clock_exits(self, index: int, candle: Candle) -> list[Trade]:
+        """Close what the clock says is over: the session, or the time stop.
+
+        Exits at the bar's close as a market order, because that is what the
+        rule actually is — no level was reached, a deadline passed.
+        """
+        if not self.clock.enabled:
+            return []
+
+        flatten = self.clock.must_flatten(candle.ts)
+        closed: list[Trade] = []
+        survivors: list[Position] = []
+        for pos in self.positions:
+            if index <= pos.entry_index:
+                survivors.append(pos)
+                continue
+            reason = (
+                "session_end"
+                if flatten
+                else ("time_stop" if self.clock.timed_out(index - pos.entry_index) else "")
+            )
+            if not reason:
+                survivors.append(pos)
+                continue
+            self._exit(index, candle, pos, candle.close, pos.remaining, reason, taker=True)
+            trade = self._close(index, candle, pos, reason)
+            closed.append(trade)
+            self.trades.append(trade)
+        self.positions = survivors
         return closed
 
     def mark_to_market(self, candle: Candle) -> float:
@@ -158,6 +228,19 @@ class Executor:
         return self.equity + unrealized
 
     def _manage_pending(self, index: int, candle: Candle) -> None:
+        # Past the day's cutoff nothing new is started: a fill on the bar you
+        # are about to flatten is not a trade. Whether the working orders are
+        # also pulled is a separate decision — see daytrade.cancel_orders_at_cutoff.
+        if self.clock.entries_closed(candle.ts):
+            if self.cfg.daytrade.cancel_orders_at_cutoff:
+                for _ in self.pending:
+                    self._reject("after_cutoff")
+                self.pending = []
+            # Orders left working are not counted as rejected: they were not
+            # refused, only asked to wait, and tallying them once per bar in
+            # the window would drown every other reason in the report.
+            return
+
         survivors: list[PendingOrder] = []
         for order in self.pending:
             sig = order.signal
@@ -176,7 +259,10 @@ class Executor:
 
             fill_price = self._limit_fill(candle, sig)
             if fill_price is not None:
-                if len(self.positions) < self.cfg.risk.max_concurrent:
+                taken = self.entries_by_day.get(self.clock.day_key(candle.ts), 0)
+                if self.clock.day_full(taken):
+                    self._reject("day_limit")
+                elif len(self.positions) < self.cfg.risk.max_concurrent:
                     self._open(index, candle, sig, fill_price)
                     self._stop_on_entry_bar(index, candle)
                 else:
@@ -278,6 +364,8 @@ class Executor:
         )
         pos.fills.append(Fill(index, candle.ts, price, qty, "entry"))
         self.positions.append(pos)
+        day = self.clock.day_key(candle.ts)
+        self.entries_by_day[day] = self.entries_by_day.get(day, 0) + 1
 
     def _manage_positions(self, index: int, candle: Candle) -> list[Trade]:
         closed: list[Trade] = []

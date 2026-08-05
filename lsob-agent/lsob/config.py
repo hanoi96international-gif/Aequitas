@@ -151,10 +151,44 @@ class RiskConfig:
 
 
 @dataclass(slots=True)
+class DayTradeConfig:
+    """Flat by the end of the session, by the clock rather than by the chart.
+
+    Off by default, because these rules cut trades that would otherwise have
+    worked and a swing configuration should not silently become a day-trading
+    one. All times are UTC; see lsob/daytrade.py for how a cutoff lands on a
+    bar boundary.
+    """
+
+    enabled: bool = False
+    flat_at: str = ""  # "21:55" — close everything on the bar ending at/after this
+    no_entry_after: str = ""  # "20:00" — stop filling new orders (defaults to flat_at)
+    max_bars_in_trade: int = 0  # time stop in bars; 0 = off
+    max_trades_per_day: int = 0  # 0 = unlimited
+    # Does the cutoff also pull the *working orders*, or only stop new fills?
+    #
+    # These are two different rules that "no overnight" gets used for, and they
+    # cost very different amounts. A position held overnight carries gap risk.
+    # An unfilled limit order carries none — cancelling it at 22:00 and placing
+    # the identical order again at 08:00 is the same order, minus the fills you
+    # missed while asleep. Strict is the default because it is what "flat"
+    # normally means; false is the honest version for a level that does not
+    # move overnight, and on the measured data it is the difference between an
+    # edge and none.
+    cancel_orders_at_cutoff: bool = True
+
+
+@dataclass(slots=True)
 class CostConfig:
     maker_fee_bps: float = 2.0
     taker_fee_bps: float = 5.0
     slippage_bps: float = 1.0
+    # Reject setups whose round trip costs more than this share of the risk.
+    # On a daily chart costs are a rounding error; on 1m candles with a stop a
+    # few ticks away they are the whole trade, and the same strategy that
+    # looked fine on 1h quietly stops being playable. 0 = no guard, which
+    # measures the cost anyway and reports it.
+    max_cost_r: float = 0.0
 
 
 @dataclass(slots=True)
@@ -210,6 +244,7 @@ class Config:
     filters: FilterConfig = field(default_factory=FilterConfig)
     bias: BiasConfig = field(default_factory=BiasConfig)
     risk: RiskConfig = field(default_factory=RiskConfig)
+    daytrade: DayTradeConfig = field(default_factory=DayTradeConfig)
     costs: CostConfig = field(default_factory=CostConfig)
     live: LiveConfig = field(default_factory=LiveConfig)
     notify: NotifyConfig = field(default_factory=NotifyConfig)
@@ -344,6 +379,34 @@ def validate(cfg: Config) -> None:
 
     if cfg.data.spike_ratio <= 1.0 or cfg.data.jump_ratio <= 1.0:
         raise ValueError("data.spike_ratio and data.jump_ratio must be greater than 1.0")
+
+    if cfg.costs.max_cost_r < 0:
+        raise ValueError("costs.max_cost_r must not be negative (0 disables the guard)")
+
+    d = cfg.daytrade
+    if d.max_bars_in_trade < 0 or d.max_trades_per_day < 0:
+        raise ValueError("daytrade counters must not be negative (0 = off)")
+    if d.enabled:
+        from .daytrade import parse_hhmm
+
+        flat = parse_hhmm(d.flat_at, "daytrade.flat_at") if d.flat_at else None
+        cutoff = (
+            parse_hhmm(d.no_entry_after, "daytrade.no_entry_after") if d.no_entry_after else None
+        )
+        if flat is None and not d.max_bars_in_trade and not d.max_trades_per_day:
+            # Switching it on and configuring nothing changes nothing, which is
+            # the kind of setting that gets believed for months.
+            raise ValueError(
+                "daytrade.enabled is true but no rule is set — give it flat_at, "
+                "max_bars_in_trade or max_trades_per_day"
+            )
+        if cutoff is not None and flat is not None and cutoff > flat:
+            raise ValueError(
+                "daytrade.no_entry_after must not be later than daytrade.flat_at, "
+                "or entries would open after the flatten they are meant to precede"
+            )
+        if cutoff is not None and flat is None:
+            raise ValueError("daytrade.no_entry_after needs daytrade.flat_at to be set too")
 
     f = cfg.filters
     if not 0.0 <= f.pd_threshold <= 1.0:

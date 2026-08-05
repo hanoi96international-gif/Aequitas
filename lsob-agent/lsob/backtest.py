@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 
 from .config import Config
+from .daytrade import DayClock
 from .execution import Executor, Trade
 from .intrabar import IntrabarIndex
 from .metrics import Stats, compute
@@ -24,6 +25,9 @@ class BacktestResult:
     stopped_on_entry_bar: int = 0
     resolved_by_intrabar: int = 0
     worst_risk_fraction: float = 1.0
+    cost_r: list[float] = field(default_factory=list)
+    overnight: int = 0
+    daytrade: bool = False
 
     def format(self) -> str:
         head = f"Bars {self.bars}   Signals {len(self.signals)}   Filled {len(self.trades)}"
@@ -44,6 +48,26 @@ class BacktestResult:
                     "A high share means the stop is tight relative to bar range, "
                     "which is a fact about the strategy rather than the backtest."
                 )
+        if self.cost_r:
+            ranked = sorted(self.cost_r)
+            median = ranked[len(ranked) // 2]
+            body += (
+                f"\nCost per round trip {median:.2f} R median "
+                f"({ranked[0]:.2f}-{ranked[-1]:.2f})"
+            )
+            if median >= 0.25:
+                body += (
+                    f" — fees and slippage eat {median * 100:.0f}% of the risk before the "
+                    f"market has an opinion. On this timeframe the strategy is paying a "
+                    f"toll it has to out-earn; either the stop is too tight for the venue "
+                    f"or the venue is too expensive for the stop. `costs.max_cost_r` "
+                    f"rejects the worst of them."
+                )
+        if self.trades:
+            share = 100.0 * self.overnight / len(self.trades)
+            body += f"\nHeld overnight     {self.overnight} ({share:.0f}% of trades)"
+            if self.overnight and not self.daytrade:
+                body += " — [daytrade] is off, so gap risk is in these numbers"
         if self.resolved_by_intrabar:
             body += (
                 f"\nResolved with finer candles {self.resolved_by_intrabar} "
@@ -85,6 +109,8 @@ def run_backtest(
         executor.force_close_all(len(candles) - 1, candles[-1])
 
     stats = compute(executor.trades, executor.equity_curve, cfg.risk.starting_equity)
+    day = DayClock.day_key
+    overnight = sum(1 for t in executor.trades if day(t.entry_ts) != day(t.exit_ts))
     return BacktestResult(
         stats=stats,
         trades=executor.trades,
@@ -96,6 +122,9 @@ def run_backtest(
         stopped_on_entry_bar=executor.stopped_on_entry_bar,
         resolved_by_intrabar=executor.resolved_by_intrabar,
         worst_risk_fraction=executor.worst_risk_fraction,
+        cost_r=[c for c in executor.cost_r_values if c != float("inf")],
+        overnight=overnight,
+        daytrade=cfg.daytrade.enabled,
     )
 
 
