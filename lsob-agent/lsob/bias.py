@@ -38,7 +38,7 @@ class _Ema:
         return self.value
 
 
-class _HtfAggregator:
+class HtfAggregator:
     """Folds trading-timeframe candles into higher-timeframe ones.
 
     Only emits a bar once its bucket is complete, so the bias never reflects
@@ -80,7 +80,7 @@ class BiasFilter:
     def __init__(self, cfg: Config) -> None:
         self.mode = cfg.bias.mode
         self._ema: _Ema | None = None
-        self._agg: _HtfAggregator | None = None
+        self._agg: HtfAggregator | None = None
         self._htf: MarketStructure | None = None
         self._last_close: float | None = None
 
@@ -88,7 +88,7 @@ class BiasFilter:
             self._ema = _Ema(cfg.bias.ema_period)
         elif self.mode == "htf_structure":
             bucket = timeframe_ms(cfg.market.timeframe) * cfg.bias.htf_multiplier
-            self._agg = _HtfAggregator(bucket)
+            self._agg = HtfAggregator(bucket)
             self._htf = MarketStructure(
                 cfg.structure.swing_left,
                 cfg.structure.swing_right,

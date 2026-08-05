@@ -13,7 +13,7 @@ from .backtest import run_backtest, scan_signals
 from .strategy import LsobStrategy
 from .config import Config, load_config
 from .data import audit_candles, cached_ohlcv, clean_candles, load_any, save_csv
-from .model import Candle
+from .model import Candle, timeframe_ms
 
 
 def _iso(ts: int) -> str:
@@ -34,6 +34,25 @@ def _load_candles(cfg: Config, refresh: bool = False) -> list[Candle]:
         )
 
     audit = audit_candles(candles, cfg.data.spike_ratio, cfg.data.jump_ratio)
+
+    # A timeframe that disagrees with the data is silent and expensive.
+    # Every higher-timeframe feature — the bias filter, the ladder's anchor —
+    # multiplies `market.timeframe`, so a config saying 15m over hourly
+    # candles turns "4h" into 1h without anything looking wrong.
+    if audit.interval_ms:
+        try:
+            configured = timeframe_ms(cfg.market.timeframe)
+        except ValueError:
+            configured = 0
+        if configured and configured != audit.interval_ms:
+            print(
+                f"WARNING: market.timeframe is {cfg.market.timeframe} but the candles are "
+                f"{_describe_interval(audit.interval_ms)} apart. Higher-timeframe settings "
+                f"multiply the configured value, so they are currently off by "
+                f"{audit.interval_ms / configured:.3g}x.",
+                file=sys.stderr,
+            )
+
     if not audit.clean:
         print(f"Data integrity: {audit.format()}", file=sys.stderr)
         if cfg.data.clean:
@@ -44,6 +63,13 @@ def _load_candles(cfg: Config, refresh: bool = False) -> list[Candle]:
     if cfg.data.history_bars > 0:
         candles = candles[-cfg.data.history_bars :]
     return candles
+
+
+def _describe_interval(ms: int) -> str:
+    for unit, size in (("d", 86_400_000), ("h", 3_600_000), ("m", 60_000)):
+        if ms % size == 0:
+            return f"{ms // size}{unit}"
+    return f"{ms}ms"
 
 
 def _describe(cfg: Config, candles: list[Candle]) -> str:

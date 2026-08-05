@@ -67,6 +67,16 @@ class EntryConfig:
     # are meant to agree; when they do not, the leg and the block are
     # describing different moves and the setup is not the one being traded.
     retracement_in_block: bool = True
+    # Which span the ratios are measured across.
+    #   "displacement" — the leg from the raid extreme to the far end of the
+    #                    move that followed it. Local, and it moves with every
+    #                    setup.
+    #   "htf"          — the most recent confirmed swing on candles aggregated
+    #                    `htf_multiplier` higher. This is what a ladder drawn
+    #                    by hand on the 4h chart is anchored to, and it stays
+    #                    put while price works inside it.
+    leg_anchor: str = "displacement"
+    htf_multiplier: int = 4  # 4 x 1h = 4h
     # The ratios drawn as a ladder across the leg. These are the successive
     # square roots of the golden ratio — 0.786 = sqrt(0.618), 0.882 =
     # sqrt(0.786), 0.941 = sqrt(0.882) — which is why the deep levels cluster.
@@ -244,6 +254,10 @@ def validate(cfg: Config) -> None:
         raise ValueError("entry.tp_rr must be listed in ascending order")
     if e.edge not in ("proximal", "mid", "distal", "retracement"):
         raise ValueError("entry.edge must be proximal, mid, distal or retracement")
+    if e.leg_anchor not in ("displacement", "htf"):
+        raise ValueError('entry.leg_anchor must be "displacement" or "htf"')
+    if e.htf_multiplier < 1:
+        raise ValueError("entry.htf_multiplier must be >= 1")
     if not 0.0 < e.retracement <= 1.0:
         raise ValueError("entry.retracement must be greater than 0 and at most 1.0")
     if any(not 0.0 <= level <= 1.0 for level in e.fib_levels):

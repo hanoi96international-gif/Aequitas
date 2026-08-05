@@ -172,6 +172,7 @@ wichtigsten Stellschrauben:
 | `[entry]` | `edge` | `proximal` / `mid` / `distal` an der Blockkante, oder `retracement` auf einer Fib-Ebene des Beins. |
 | | `retracement` | Rücklauftiefe für `edge = "retracement"`, als Anteil des Beins. |
 | | `fib_levels` | Die Leiter, die `chart --fib` zeichnet — Vorgabe ist die Wurzelreihe 0.236 … 0.941. |
+| | `leg_anchor` | `displacement` (lokales Bein) oder `htf` (Swing auf höherem Zeitrahmen, z. B. 4h). |
 | | `sl_anchor` | Stop hinter dem Sweep-Extrem oder hinter dem Order Block. |
 | | `tp_mode` | `rr` (R-Vielfache), `liquidity` (gegenüberliegender Pool) oder `fib` (tiefere Sprossen derselben Leiter). |
 | | `tp_rr` / `tp_fib` / `tp_weights` | Gestaffelte Ziele, Gewichte müssen 1.0 ergeben. |
@@ -213,7 +214,7 @@ Wert dort wäre der Beweis für einen Lookahead-Fehler, und der Test schlägt
 in dem Fall fehl.
 
 ```bash
-pip install pytest && python -m pytest -q      # 171 Tests, ~3 s
+pip install pytest && python -m pytest -q      # 180 Tests, ~3 s
 ```
 
 ---

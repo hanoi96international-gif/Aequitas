@@ -25,6 +25,7 @@ from dataclasses import dataclass, replace
 from .bias import BiasFilter
 from .config import Config
 from .filters import SessionFilter, dealing_range
+from .htf import HtfSwings
 from .liquidity import LiquidityBook, Sweep
 from .model import ATR, Candle
 from .orderblock import (
@@ -62,6 +63,9 @@ class Signal:
     # the span every retracement ratio is measured across, so a chart can
     # redraw the whole ladder without recomputing the setup.
     leg_extreme: float = 0.0
+    # The other end of that span. Usually the raid extreme, but an
+    # htf-anchored ladder measures across a swing the raid sits inside.
+    leg_raid_end: float = 0.0
 
     @property
     def label(self) -> str:
@@ -114,6 +118,16 @@ class LsobStrategy:
         )
         self.book = LiquidityBook(cfg.liquidity)
         self.bias = BiasFilter(cfg)
+        self.htf = (
+            HtfSwings(
+                cfg.market.timeframe,
+                cfg.entry.htf_multiplier,
+                cfg.structure.swing_left,
+                cfg.structure.swing_right,
+            )
+            if cfg.entry.leg_anchor == "htf"
+            else None
+        )
         self.session = SessionFilter(
             cfg.filters.session_enabled,
             list(cfg.filters.session_windows),
@@ -140,6 +154,8 @@ class LsobStrategy:
 
         atr = self.atr.update(candle)
         self.bias.update(candle)
+        if self.htf is not None:
+            self.htf.update(candle)
 
         swings, brk = self.structure.update(i, candle)
         if atr is None or atr <= 0:
@@ -324,14 +340,21 @@ class LsobStrategy:
             ):
                 return self._drop("premium_discount")
 
-        leg = [c for idx, c in self._recent if sweep.pierce_index <= idx <= i]
-        leg_extreme = (
-            min(c.low for c in leg) if sweep.direction == "short"
-            else max(c.high for c in leg)
-        )
+        if self.htf is not None:
+            anchored = self.htf.leg(sweep.direction)
+            if anchored is None:
+                return self._drop("no_htf_swing")
+            raid_end, leg_extreme = anchored
+        else:
+            leg = [c for idx, c in self._recent if sweep.pierce_index <= idx <= i]
+            leg_extreme = (
+                min(c.low for c in leg) if sweep.direction == "short"
+                else max(c.high for c in leg)
+            )
+            raid_end = sweep.extreme
         if cfg.entry.edge == "retracement":
             entry = retracement_level(
-                sweep.extreme, leg_extreme, sweep.direction, cfg.entry.retracement
+                raid_end, leg_extreme, sweep.direction, cfg.entry.retracement
             )
             if cfg.entry.retracement_in_block and not (ob.bottom <= entry <= ob.top):
                 return self._drop("retracement_outside_block")
@@ -355,9 +378,7 @@ class LsobStrategy:
         if risk <= 0:
             return self._drop("degenerate_risk")
 
-        targets = self._targets(
-            sweep.direction, entry, risk, sweep.extreme, leg_extreme
-        )
+        targets = self._targets(sweep.direction, entry, risk, raid_end, leg_extreme)
         if not targets:
             return self._drop("no_targets")
         if any(t <= 0 for t in targets):
@@ -387,6 +408,7 @@ class LsobStrategy:
             displacement=disp,
             atr=atr,
             leg_extreme=leg_extreme,
+            leg_raid_end=raid_end,
         )
 
     def _drop(self, reason: str) -> None:

@@ -72,6 +72,7 @@ class CandleAudit:
     jumps: int = 0  # bars disconnected from the previous good close
     duplicate_ts: int = 0
     gaps: int = 0  # missing bars, at the series' own dominant interval
+    interval_ms: int = 0  # the dominant spacing actually found in the data
 
     @property
     def bad_bars(self) -> int:
@@ -156,6 +157,7 @@ def audit_candles(
             steps[delta] = steps.get(delta, 0) + 1
     if steps:
         interval = max(steps, key=lambda k: steps[k])
+        audit.interval_ms = interval
         audit.gaps = sum((d // interval) - 1 for d in deltas if d > interval)
     return audit
 

@@ -253,3 +253,22 @@ def test_the_audit_names_every_defect_it_found():
     ]
     text = audit_candles(series).format()
     assert "sentinel" in text and "spike" in text
+
+
+def test_the_audit_reports_the_interval_it_actually_found():
+    """Higher-timeframe settings multiply the configured timeframe, so a
+    mismatch between config and data silently rescales them.
+    """
+    hourly = [bar(i, 100.0 + i * 0.1) for i in range(20)]
+    assert audit_candles(hourly).interval_ms == 3_600_000
+
+    quarter = [
+        Candle(ts=1_704_067_200_000 + i * 900_000, open=100, high=101, low=99, close=100)
+        for i in range(20)
+    ]
+    assert audit_candles(quarter).interval_ms == 900_000
+
+
+def test_an_empty_or_single_bar_series_reports_no_interval():
+    assert audit_candles([]).interval_ms == 0
+    assert audit_candles([bar(0, 100.0)]).interval_ms == 0

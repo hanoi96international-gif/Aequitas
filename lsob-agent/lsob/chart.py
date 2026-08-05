@@ -93,9 +93,8 @@ def fib_ladder(signal: Signal, ratios: list[float]) -> list[Level]:
         return []
     out: list[Level] = []
     for ratio in ratios:
-        price = retracement_level(
-            signal.sweep_extreme, signal.leg_extreme, signal.direction, ratio
-        )
+        raid_end = signal.leg_raid_end or signal.sweep_extreme
+        price = retracement_level(raid_end, signal.leg_extreme, signal.direction, ratio)
         out.append(Level(price, f"{ratio:.3f}  {_fmt(price)}", "fib"))
     return out
 

@@ -55,6 +55,16 @@ edge               = "proximal"      # proximal fills first and risks less; dist
 # 0.882 ist nur der Vorgabewert, keine belegte Regel — setz hier deine eigene.
 retracement          = 0.882
 retracement_in_block = true    # Rücklaufebene muss im Order Block liegen
+# Über welche Spanne die Verhältnisse gemessen werden:
+#   "displacement" — das Bein vom Raid-Extrem bis zum weitesten Punkt danach.
+#                    Lokal, und es verschiebt sich mit jedem Setup.
+#   "htf"          — der letzte bestätigte Swing auf `htf_multiplier`-fach
+#                    höheren Kerzen. Das ist der Anker einer von Hand im
+#                    4h-Chart gezogenen Leiter: er bleibt tagelang stehen.
+# WICHTIG: der Multiplikator rechnet gegen [market] timeframe. Steht der
+# falsch, wird aus "4h" still etwas anderes — der Agent warnt beim Laden.
+leg_anchor     = "displacement"
+htf_multiplier = 4             # 4 x 1h = 4h
 # Die Leiter, die `lsob chart --fib` zeichnet. Das sind die fortgesetzten
 # Quadratwurzeln des Goldenen Schnitts — 0.786 = √0.618, 0.882 = √0.786,
 # 0.941 = √0.882 — weshalb sich die tiefen Ebenen zusammendrängen.
