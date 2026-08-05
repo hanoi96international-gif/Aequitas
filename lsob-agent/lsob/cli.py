@@ -12,7 +12,7 @@ from pathlib import Path
 from .backtest import run_backtest
 from .strategy import LsobStrategy
 from .config import Config, load_config
-from .data import cached_ohlcv, load_any, save_csv
+from .data import audit_candles, cached_ohlcv, clean_candles, load_any, save_csv
 from .model import Candle
 
 
@@ -23,15 +23,27 @@ def _iso(ts: int) -> str:
 def _load_candles(cfg: Config, refresh: bool = False) -> list[Candle]:
     if cfg.data.csv:
         candles = load_any(cfg.data.csv)
-        return candles[-cfg.data.history_bars :] if cfg.data.history_bars > 0 else candles
-    return cached_ohlcv(
-        cfg.data.cache_dir,
-        cfg.market.exchange,
-        cfg.market.symbol,
-        cfg.market.timeframe,
-        cfg.data.history_bars,
-        refresh=refresh,
-    )
+    else:
+        candles = cached_ohlcv(
+            cfg.data.cache_dir,
+            cfg.market.exchange,
+            cfg.market.symbol,
+            cfg.market.timeframe,
+            cfg.data.history_bars,
+            refresh=refresh,
+        )
+
+    audit = audit_candles(candles, cfg.data.spike_ratio, cfg.data.jump_ratio)
+    if not audit.clean:
+        print(f"Data integrity: {audit.format()}", file=sys.stderr)
+        if cfg.data.clean:
+            before = len(candles)
+            candles = clean_candles(candles, cfg.data.spike_ratio, cfg.data.jump_ratio)
+            print(f"  dropped {before - len(candles)} unusable bars", file=sys.stderr)
+
+    if cfg.data.history_bars > 0:
+        candles = candles[-cfg.data.history_bars :]
+    return candles
 
 
 def _describe(cfg: Config, candles: list[Candle]) -> str:

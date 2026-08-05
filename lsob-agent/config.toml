@@ -17,6 +17,12 @@ timeframe = "15m"
 csv           = ""
 cache_dir     = "data"
 history_bars  = 3000
+# Echte Kursreihen enthalten Balken, die kein Markt gedruckt hat. Standardmäßig
+# an, weil ein einziger kaputter Balken den ATR für `atr_period` Balken
+# vergiftet — und die Strategie dann still gar keine Signale mehr liefert.
+clean         = true
+spike_ratio   = 10.0    # max. High/Low innerhalb eines Balkens
+jump_ratio    = 10.0    # max. Close-zu-Close gegen den letzten guten Balken
 
 [structure]
 swing_left   = 3         # bars either side of a pivot; higher = fewer, more meaningful swings

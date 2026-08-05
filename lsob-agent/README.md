@@ -88,6 +88,30 @@ Alternativ weiterhin über ccxt, wenn du nur die letzten N Kerzen brauchst:
 pip install ccxt && python -m lsob -c config.toml fetch --bars 5000
 ```
 
+## Datenqualität
+
+Jeder Ladevorgang wird geprüft und meldet, was er findet:
+
+```
+Data integrity: 52057 candles, 5751 non-finite or sentinel, 1 intra-bar spikes,
+                61 duplicate timestamps, 84 missing bars
+  dropped 5813 unusable bars
+```
+
+Das ist kein hypothetisches Problem. Ein öffentlicher BTC/USD-Datensatz, an
+dem dieser Agent getestet wurde, füllt **11 % seiner Zeilen** mit `1.7e308`
+in *jeder* Spalte — Open, High, Low und Close stimmen dann perfekt überein,
+das High/Low-Verhältnis ist exakt 1,00, und keine Plausibilitätsprüfung
+*innerhalb* eines Balkens findet das. Erst der Vergleich mit dem letzten
+guten Close entlarvt es.
+
+Warum das zählt: ATR wird aus der True Range gebildet. Ein solcher Balken
+vergiftet jede ATR-skalierte Schwelle für `atr_period` Balken danach — die
+Strategie lieferte auf diesem Datensatz **null Signale über 52.000 Kerzen**,
+ohne einen einzigen Fehler zu werfen. Lücken werden gezählt, aber nie
+gefüllt: eine fehlende Stunde ist eine Information, und sie zu interpolieren
+würde Kursverlauf erfinden.
+
 ## Backtest-Ausgabe
 
 ```
@@ -163,7 +187,7 @@ Wert dort wäre der Beweis für einen Lookahead-Fehler, und der Test schlägt
 in dem Fall fehl.
 
 ```bash
-pip install pytest && python -m pytest -q      # 127 Tests, ~3 s
+pip install pytest && python -m pytest -q      # 137 Tests, ~3 s
 ```
 
 ---

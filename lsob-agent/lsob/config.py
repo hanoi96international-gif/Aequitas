@@ -30,6 +30,11 @@ class DataConfig:
     csv: str = ""  # when set, read this file instead of calling an exchange
     cache_dir: str = "data"
     history_bars: int = 3000
+    # Real series contain bars no market printed. Dropping them is on by
+    # default because one 395x-range bar poisons ATR for `atr_period` bars.
+    clean: bool = True
+    spike_ratio: float = 10.0   # max high/low within one bar
+    jump_ratio: float = 10.0    # max close-to-close move against the previous good bar
 
 
 @dataclass(slots=True)
@@ -243,6 +248,9 @@ def validate(cfg: Config) -> None:
         )
     if cfg.live.enabled and cfg.live.mode not in ("paper", "live"):
         raise ValueError("live.mode must be paper or live")
+
+    if cfg.data.spike_ratio <= 1.0 or cfg.data.jump_ratio <= 1.0:
+        raise ValueError("data.spike_ratio and data.jump_ratio must be greater than 1.0")
 
     f = cfg.filters
     if not 0.0 <= f.pd_threshold <= 1.0:

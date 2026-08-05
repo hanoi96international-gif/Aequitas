@@ -2,7 +2,16 @@ from __future__ import annotations
 
 import pytest
 
-from lsob.data import archive_url, load_any, load_csv, load_klines, months_between
+from lsob.data import (
+    archive_url,
+    audit_candles,
+    clean_candles,
+    load_any,
+    load_csv,
+    load_klines,
+    months_between,
+)
+from lsob.model import Candle
 
 
 def write(tmp_path, body: str):
@@ -151,3 +160,96 @@ def test_month_ranges_expand_across_year_boundaries():
 def test_bad_month_ranges_are_rejected(start, end):
     with pytest.raises(ValueError):
         months_between(start, end)
+
+
+# ── integrity of real-world series ───────────────────────────────────────
+
+
+def bar(ts_index: int, price: float, span: float = 0.01) -> Candle:
+    return Candle(
+        ts=1_704_067_200_000 + ts_index * 3_600_000,
+        open=price,
+        high=price * (1 + span),
+        low=price * (1 - span),
+        close=price,
+        volume=1.0,
+    )
+
+
+def test_a_sentinel_filled_gap_is_caught_even_though_the_bar_looks_consistent():
+    """The real defect: 1.7e308 in every column, so high/low is exactly 1.00."""
+    sentinel = 1.7e308
+    series = [
+        bar(0, 5.65),
+        Candle(ts=1_704_070_800_000, open=sentinel, high=sentinel, low=sentinel, close=sentinel),
+        bar(2, 5.70),
+    ]
+    audit = audit_candles(series)
+    assert audit.non_finite == 1
+    assert audit.clean is False
+    assert len(clean_candles(series)) == 2
+
+
+@pytest.mark.parametrize("value", [float("inf"), float("nan")])
+def test_infinities_and_nans_are_rejected(value):
+    series = [bar(0, 100.0), Candle(ts=1_704_070_800_000, open=value, high=value, low=value, close=value)]
+    assert audit_candles(series).non_finite == 1
+    assert len(clean_candles(series)) == 1
+
+
+def test_a_bar_disconnected_from_the_previous_close_is_rejected():
+    series = [bar(0, 100.0), bar(1, 5000.0), bar(2, 101.0)]
+    audit = audit_candles(series, jump_ratio=10.0)
+    assert audit.jumps == 1
+    kept = clean_candles(series, jump_ratio=10.0)
+    assert [round(c.close) for c in kept] == [100, 101], "the good bars either side survive"
+
+
+def test_a_long_term_trend_is_not_mistaken_for_corruption():
+    """BTC went from ~5 to ~4000 in this dataset; gradual moves must survive."""
+    series = [bar(i, 5.0 * (1.001**i)) for i in range(3000)]
+    assert series[-1].close / series[0].close > 15
+    audit = audit_candles(series)
+    assert audit.jumps == 0
+    assert audit.clean is True
+    assert len(clean_candles(series)) == len(series)
+
+
+def test_an_intra_bar_spike_is_still_caught():
+    spike = Candle(ts=1_704_070_800_000, open=592.63, high=593.0, low=1.5, close=581.13)
+    series = [bar(0, 590.0), spike, bar(2, 585.0)]
+    assert audit_candles(series).spikes == 1
+    assert len(clean_candles(series)) == 2
+
+
+def test_duplicate_timestamps_collapse_to_one_bar():
+    duplicate = Candle(ts=bar(0, 100.0).ts, open=100.0, high=101.0, low=99.0, close=100.5)
+    series = [bar(0, 100.0), duplicate, bar(1, 100.2)]
+    assert audit_candles(series).duplicate_ts == 1
+    kept = clean_candles(series)
+    assert len(kept) == 2
+    assert kept[0].close == 100.5, "the later duplicate wins"
+
+
+def test_missing_bars_are_counted_but_never_invented():
+    series = [bar(0, 100.0), bar(1, 100.1), bar(5, 100.2)]
+    audit = audit_candles(series)
+    assert audit.gaps == 3
+    assert len(clean_candles(series)) == 3, "gaps are reported, not filled"
+
+
+def test_a_clean_series_says_so():
+    series = [bar(i, 100.0 + i * 0.1) for i in range(50)]
+    assert audit_candles(series).clean is True
+    assert "no integrity problems" in audit_candles(series).format()
+
+
+def test_the_audit_names_every_defect_it_found():
+    sentinel = 1.7e308
+    series = [
+        bar(0, 100.0),
+        Candle(ts=1_704_070_800_000, open=sentinel, high=sentinel, low=sentinel, close=sentinel),
+        Candle(ts=1_704_074_400_000, open=100.0, high=101.0, low=1.0, close=100.0),
+    ]
+    text = audit_candles(series).format()
+    assert "sentinel" in text and "spike" in text

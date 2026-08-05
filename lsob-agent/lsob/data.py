@@ -7,7 +7,9 @@ suite run on a bare Python 3.11 with nothing installed.
 from __future__ import annotations
 
 import csv
+import math
 import time
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -56,6 +58,124 @@ def load_csv(path: str | Path) -> list[Candle]:
             rows.append(candle)
     rows.sort(key=lambda c: c.ts)
     return rows
+
+
+@dataclass(slots=True)
+class CandleAudit:
+    """What is wrong with a candle series, counted rather than assumed."""
+
+    total: int = 0
+    non_finite: int = 0  # inf/NaN, or a sentinel standing in for missing data
+    impossible: int = 0  # high below the body, or low above it
+    non_positive: int = 0
+    spikes: int = 0  # single bars with an implausible high/low ratio
+    jumps: int = 0  # bars disconnected from the previous good close
+    duplicate_ts: int = 0
+    gaps: int = 0  # missing bars, at the series' own dominant interval
+
+    @property
+    def bad_bars(self) -> int:
+        return self.non_finite + self.impossible + self.non_positive + self.spikes + self.jumps
+
+    @property
+    def clean(self) -> bool:
+        return not (self.bad_bars or self.duplicate_ts)
+
+    def format(self) -> str:
+        if self.clean and not self.gaps:
+            return f"{self.total} candles, no integrity problems found."
+        parts = [f"{self.total} candles"]
+        for count, label in (
+            (self.non_finite, "non-finite or sentinel"),
+            (self.impossible, "structurally impossible"),
+            (self.non_positive, "non-positive prices"),
+            (self.spikes, "intra-bar spikes"),
+            (self.jumps, "disconnected from the previous close"),
+            (self.duplicate_ts, "duplicate timestamps"),
+            (self.gaps, "missing bars"),
+        ):
+            if count:
+                parts.append(f"{count} {label}")
+        return ", ".join(parts)
+
+
+# Anything at or above this is not a price any market printed; the public
+# BTC/USD series that motivated these checks fills its gaps with 1.7e308.
+_ABSURD_PRICE = 1e12
+
+
+def _defect(candle: Candle, previous_close: float | None, spike_ratio: float, jump_ratio: float) -> str | None:
+    """Classify one bar, or return None if it is usable."""
+    prices = (candle.open, candle.high, candle.low, candle.close)
+    if not all(math.isfinite(p) for p in prices) or max(prices) >= _ABSURD_PRICE:
+        return "non_finite"
+    if min(prices) <= 0:
+        return "non_positive"
+    if candle.high < max(candle.open, candle.close) or candle.low > min(candle.open, candle.close):
+        return "impossible"
+    if candle.high / candle.low > spike_ratio:
+        return "spikes"
+    if previous_close is not None and previous_close > 0:
+        move = candle.close / previous_close
+        if move > jump_ratio or move < 1.0 / jump_ratio:
+            return "jumps"
+    return None
+
+
+def audit_candles(
+    candles: list[Candle], spike_ratio: float = 10.0, jump_ratio: float = 10.0
+) -> CandleAudit:
+    """Look for the defects real market data actually contains.
+
+    Two kinds, and the second is why an intra-bar check is not enough. A
+    public BTC/USD series used here held a bar with a low of 1.50 against a
+    close of 581 — caught by the high/low ratio. It also filled 11% of its
+    rows with 1.7e308 in *every* column, so open, high, low and close agreed
+    perfectly and the ratio was exactly 1.00. Only comparison with the
+    previous good close exposes those.
+
+    Both matter because ATR is built from true range: one bar like either of
+    these poisons every ATR-scaled threshold for `atr_period` bars after it,
+    and the strategy then silently stops producing signals at all.
+    """
+    audit = CandleAudit(total=len(candles))
+    previous_close: float | None = None
+    for candle in candles:
+        defect = _defect(candle, previous_close, spike_ratio, jump_ratio)
+        if defect is None:
+            previous_close = candle.close
+        else:
+            setattr(audit, defect, getattr(audit, defect) + 1)
+
+    steps: dict[int, int] = {}
+    deltas = [later.ts - earlier.ts for earlier, later in zip(candles, candles[1:], strict=False)]
+    for delta in deltas:
+        if delta == 0:
+            audit.duplicate_ts += 1
+        elif delta > 0:
+            steps[delta] = steps.get(delta, 0) + 1
+    if steps:
+        interval = max(steps, key=lambda k: steps[k])
+        audit.gaps = sum((d // interval) - 1 for d in deltas if d > interval)
+    return audit
+
+
+def clean_candles(
+    candles: list[Candle], spike_ratio: float = 10.0, jump_ratio: float = 10.0
+) -> list[Candle]:
+    """Drop unusable bars and collapse duplicate timestamps.
+
+    Gaps are left alone. A missing hour is information, and interpolating one
+    would invent price action the market never printed.
+    """
+    kept: dict[int, Candle] = {}
+    previous_close: float | None = None
+    for candle in candles:
+        if _defect(candle, previous_close, spike_ratio, jump_ratio) is not None:
+            continue
+        previous_close = candle.close
+        kept[candle.ts] = candle  # a later duplicate wins
+    return [kept[ts] for ts in sorted(kept)]
 
 
 def load_klines(path: str | Path) -> list[Candle]:
