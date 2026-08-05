@@ -19,6 +19,8 @@ class BacktestResult:
     equity_curve: list[tuple[int, float]]
     rejected: dict[str, int] = field(default_factory=dict)
     bars: int = 0
+    capped_entries: int = 0
+    worst_risk_fraction: float = 1.0
 
     def format(self) -> str:
         head = f"Bars {self.bars}   Signals {len(self.signals)}   Filled {len(self.trades)}"
@@ -26,6 +28,15 @@ class BacktestResult:
         if self.rejected:
             skipped = ", ".join(f"{k}={v}" for k, v in sorted(self.rejected.items()))
             body += f"\nSignals not traded {skipped}"
+        if self.capped_entries:
+            body += (
+                f"\n\nWARNING: risk.max_position_pct capped {self.capped_entries} of "
+                f"{len(self.trades)} entries. Those trades risked as little as "
+                f"{self.worst_risk_fraction * 100:.0f}% of risk_pct, so R multiples are "
+                f"not comparable across trades and the expectancy above overstates the "
+                f"cash result. Raise max_position_pct (leveraged markets) or lower "
+                f"risk_pct until nothing is capped."
+            )
         return f"{head}\n{'-' * len(head)}\n{body}"
 
 
@@ -58,6 +69,8 @@ def run_backtest(cfg: Config, candles: list[Candle]) -> BacktestResult:
         equity_curve=executor.equity_curve,
         rejected=dict(executor.rejected),
         bars=len(candles),
+        capped_entries=executor.capped_entries,
+        worst_risk_fraction=executor.worst_risk_fraction,
     )
 
 

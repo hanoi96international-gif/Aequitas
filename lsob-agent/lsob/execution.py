@@ -103,6 +103,10 @@ class Executor:
         self.trades: list[Trade] = []
         self.equity_curve: list[tuple[int, float]] = []
         self.rejected: dict[str, int] = {}
+        # How often max_position_pct forced a smaller size than risk_pct asked
+        # for, and the worst shortfall it caused. See `_open`.
+        self.capped_entries = 0
+        self.worst_risk_fraction = 1.0
 
     # ── intake ───────────────────────────────────────────────────────────
 
@@ -194,7 +198,18 @@ class Executor:
         qty = risk_cash / risk_per_unit
         cap = self.equity * (self.cfg.risk.max_position_pct / 100.0)
         if price > 0 and qty * price > cap:
+            # The notional cap binds, so this trade risks less than risk_pct
+            # asked for — and how much less depends entirely on how tight the
+            # stop is. That silently breaks the constant-risk assumption every
+            # R-based statistic rests on: tight-stop trades get shrunk while
+            # wide-stop trades keep full size, so averaging R across them stops
+            # describing the cash outcome. Counted here so the backtest can say
+            # so out loud instead of reporting a flattering expectancy.
             qty = cap / price
+            self.capped_entries += 1
+            self.worst_risk_fraction = min(
+                self.worst_risk_fraction, (qty * risk_per_unit) / risk_cash
+            )
         if qty <= 0:
             self._reject("size_zero")
             return

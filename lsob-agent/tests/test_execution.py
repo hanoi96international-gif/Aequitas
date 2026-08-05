@@ -154,3 +154,34 @@ def test_fees_and_slippage_reduce_the_result():
     assert plain.trades and costed.trades
     assert costed.trades[0].pnl < plain.trades[0].pnl
     assert costed.trades[0].fees > 0
+
+
+def test_the_notional_cap_is_reported_because_it_breaks_constant_risk():
+    """A tight stop makes the notional cap bind, and the trade then risks
+    far less than risk_pct — which silently makes R multiples incomparable.
+    """
+    cfg = zero_cost_config()
+    cfg.risk.risk_pct = 1.0
+    cfg.risk.max_position_pct = 100.0  # notional may not exceed equity
+    ex = Executor(cfg)
+
+    # Stop is 0.1 wide at a price of 100: 1% of 10,000 = 100 at risk would
+    # need 1,000 units = 100,000 notional, ten times the cap.
+    ex.on_signal(0, short_signal(entry=100.0, stop=100.1, targets=[99.0]))
+    ex.on_bar(1, candle(1, 99.5, 100.5, 99.0, 99.5))
+
+    assert ex.capped_entries == 1
+    assert ex.worst_risk_fraction < 0.2, "the trade risked a fraction of what was asked"
+    pos = ex.positions[0]
+    assert pos.qty * pos.entry_price <= cfg.risk.starting_equity * 1.0000001
+
+
+def test_no_warning_when_the_cap_never_binds():
+    cfg = zero_cost_config()
+    cfg.risk.risk_pct = 1.0
+    cfg.risk.max_position_pct = 10_000.0
+    ex = Executor(cfg)
+    ex.on_signal(0, short_signal(entry=100.0, stop=102.0))
+    ex.on_bar(1, candle(1, 99.0, 100.5, 98.0, 99.0))
+    assert ex.capped_entries == 0
+    assert ex.worst_risk_fraction == 1.0
