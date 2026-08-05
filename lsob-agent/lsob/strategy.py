@@ -20,7 +20,7 @@ Every step is a config knob, because everyone's variant of this differs.
 from __future__ import annotations
 
 from collections import deque
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 from .bias import BiasFilter
 from .config import Config
@@ -34,7 +34,7 @@ from .orderblock import (
     has_fvg,
     is_mitigated,
 )
-from .structure import MarketStructure
+from .structure import MarketStructure, SwingDetector
 
 
 @dataclass(frozen=True, slots=True)
@@ -65,6 +65,26 @@ class Signal:
             f"SL {self.stop:.6g} TP {', '.join(f'{t:.6g}' for t in self.targets)} "
             f"({self.reward_risk:.2f}R)"
         )
+
+
+@dataclass(slots=True)
+class _Armed:
+    """A built setup held back until inducement has been taken.
+
+    The order block is not the first thing price reaches on its way back.
+    A minor swing forms in front of it, and the stops behind that swing are
+    the inducement — the liquidity that funds the move into the block. A tap
+    that arrives without collecting it is early, and the block is far more
+    likely to be run straight through.
+
+    Held here rather than in the executor because the inducement forms
+    *after* the setup is built and *before* the entry is offered, so nothing
+    downstream is in a position to see it.
+    """
+
+    signal: Signal
+    detector: SwingDetector
+    inducement: float | None = None
 
 
 @dataclass(slots=True)
@@ -104,6 +124,7 @@ class LsobStrategy:
         span = cfg.orderblock.ob_max_lookback + cfg.orderblock.displacement_max_bars + 4
         self._recent: deque[tuple[int, Candle]] = deque(maxlen=max(span, 8))
         self._watching: list[_Watch] = []
+        self._armed: list[_Armed] = []
         self._last_signal_index: int | None = None
 
     def on_bar(self, candle: Candle) -> list[Signal]:
@@ -139,7 +160,9 @@ class LsobStrategy:
         for sweep in self.book.update(i, candle, atr):
             self._start_watch(sweep)
 
-        return self._resolve_watches(i, candle, atr)
+        signals = self._resolve_armed(i, candle)
+        signals.extend(self._resolve_watches(i, candle, atr))
+        return signals
 
     # ── internals ────────────────────────────────────────────────────────
 
@@ -189,11 +212,71 @@ class LsobStrategy:
             if signal is None:
                 still_watching.append(watch)
                 continue
+            if cfg.filters.require_inducement:
+                self._armed.append(
+                    _Armed(
+                        signal=signal,
+                        detector=SwingDetector(
+                            cfg.filters.inducement_swing, cfg.filters.inducement_swing
+                        ),
+                    )
+                )
+                continue
             signals.append(signal)
             self._last_signal_index = i
 
         self._watching = still_watching
         return signals
+
+    def _resolve_armed(self, i: int, candle: Candle) -> list[Signal]:
+        """Offer armed setups once price has taken the inducement in front of them.
+
+        Order within a bar matters: inducement is checked before the block is,
+        because the ideal bar does both — it runs the minor swing and taps the
+        block in one move, and that is a valid entry, not a voided one.
+        """
+        emitted: list[Signal] = []
+        surviving: list[_Armed] = []
+
+        for armed in self._armed:
+            sig = armed.signal
+            ob = sig.order_block
+            short = sig.direction == "short"
+
+            if i > sig.expires_at:
+                self._drop("inducement_never_taken")
+                continue
+
+            for swing in armed.detector.update(candle):
+                # Only swings between price and the block can be inducement;
+                # anything past the block is on the far side of the entry.
+                if short and swing.kind == "high" and swing.price < ob.bottom:
+                    armed.inducement = swing.price
+                elif not short and swing.kind == "low" and swing.price > ob.top:
+                    armed.inducement = swing.price
+
+            taken = armed.inducement is not None and (
+                candle.high > armed.inducement if short else candle.low < armed.inducement
+            )
+            if taken:
+                emitted.append(replace(sig, index=i, ts=candle.ts, expires_at=i + self.cfg.entry.valid_bars))
+                self._last_signal_index = i
+                continue
+
+            reached_block = candle.high >= ob.bottom if short else candle.low <= ob.top
+            if reached_block:
+                self._drop("block_tapped_before_inducement")
+                continue
+
+            beyond_stop = candle.close >= sig.stop if short else candle.close <= sig.stop
+            if beyond_stop:
+                self._drop("invalidated_while_arming")
+                continue
+
+            surviving.append(armed)
+
+        self._armed = surviving
+        return emitted
 
     def _build_signal(
         self, i: int, candle: Candle, atr: float, sweep: Sweep, disp: float

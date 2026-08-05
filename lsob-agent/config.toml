@@ -68,6 +68,10 @@ range_swings        = 5       # Swings je Seite, die die Dealing Range aufspanne
 pd_threshold        = 0.5     # 0.5 = Equilibrium; höher verlangt tieferes Premium
 require_unmitigated = false   # Blocks verwerfen, in die der Preis schon zurücklief
                               # (greift selten: ~2% der Setups bei ob_max_lookback=12)
+require_inducement  = false   # Erst einsteigen, wenn der Preis das Zwischenhoch/-tief
+                              # VOR dem Block abgeholt hat. Läuft er ohne diesen
+                              # Abgriff direkt hinein, ist der Tap verfrüht.
+inducement_swing    = 1       # Fraktalgröße für diese Zwischenswings
 session_enabled     = false   # nur in den Kill Zones handeln
 session_windows     = ["07:00-10:00", "12:00-15:00"]   # UTC
 session_days        = [0, 1, 2, 3, 4]                  # Mo-Fr

@@ -188,3 +188,92 @@ def test_the_session_filter_can_veto_a_valid_setup():
 
     cfg.filters.session_windows = ["07:00-10:00"]
     assert len(run(cfg)) == 1
+
+
+# ── inducement ───────────────────────────────────────────────────────────
+#
+# After the short setup completes on bar 33, price has to come back up to the
+# block at 103.8-107. The question inducement asks is *how* it comes back:
+# collecting the stops above a minor high on the way (valid), or running
+# straight into the block without them (early, and skipped).
+
+
+def retrace(*bars):
+    return list(SETUP[:34]) + list(bars)
+
+
+def test_without_the_filter_a_direct_run_into_the_block_still_signals():
+    direct = retrace(
+        candle(34, 99.0, 100.5, 98.5, 100.2),
+        candle(35, 100.2, 104.5, 100.0, 104.0),  # straight up into the block
+    )
+    assert len(run(base_config(), direct)) == 1
+
+
+def test_a_block_tapped_without_taking_inducement_is_skipped():
+    direct = retrace(
+        candle(34, 99.0, 100.5, 98.5, 100.2),
+        candle(35, 100.2, 104.5, 100.0, 104.0),
+    )
+    cfg = base_config()
+    cfg.filters.require_inducement = True
+    assert run(cfg, direct) == []
+
+
+# A minor high has to be *confirmed* before it can be inducement, and the
+# fractal detector needs a bar either side of it. Arming happens on bar 33, so
+# the earliest a minor high can be confirmed is bar 36 — for one sitting on 35.
+WITH_INDUCEMENT = (
+    candle(34, 99.0, 100.5, 98.5, 100.2),
+    candle(35, 100.2, 101.8, 100.0, 101.5),  # the minor high
+    candle(36, 101.5, 101.6, 99.8, 100.0),   # pullback confirms it as a swing
+    candle(37, 100.0, 102.5, 99.9, 102.2),   # runs 101.8: inducement taken
+)
+
+
+def test_taking_the_minor_high_first_releases_the_signal():
+    cfg = base_config()
+    cfg.filters.require_inducement = True
+    signals = run(cfg, retrace(*WITH_INDUCEMENT))
+    assert len(signals) == 1
+    assert signals[0].index == 37, "the signal is offered on the bar that takes inducement"
+    assert signals[0].entry == 103.8, "the entry is still the block, not the inducement"
+
+
+def test_the_signal_carries_the_bar_it_was_released_on():
+    with_idm = retrace(*WITH_INDUCEMENT)
+    cfg = base_config()
+    cfg.filters.require_inducement = True
+    sig = run(cfg, with_idm)[0]
+    assert sig.ts == with_idm[37].ts
+    assert sig.expires_at == 37 + cfg.entry.valid_bars
+
+
+def test_an_armed_setup_expires_if_inducement_never_comes():
+    quiet = retrace(*[candle(34 + i, 99.0, 99.5, 98.5, 99.0) for i in range(40)])
+    cfg = base_config()
+    cfg.filters.require_inducement = True
+    assert run(cfg, quiet) == []
+
+
+def test_a_run_beyond_the_stop_while_arming_abandons_the_setup():
+    blown = retrace(
+        candle(34, 99.0, 101.0, 98.5, 100.5),
+        candle(35, 100.5, 108.5, 100.0, 108.2),  # closes past the stop
+        candle(36, 108.2, 109.0, 107.0, 108.0),
+    )
+    cfg = base_config()
+    cfg.filters.require_inducement = True
+    assert run(cfg, blown) == []
+
+
+def test_inducement_only_counts_between_price_and_the_block():
+    """A swing above the block is past the entry, so it cannot be inducement."""
+    beyond = retrace(
+        candle(34, 99.0, 105.5, 98.5, 105.0),  # high above the block bottom already
+        candle(35, 105.0, 105.2, 103.0, 103.5),
+        candle(36, 103.5, 106.0, 103.4, 105.5),
+    )
+    cfg = base_config()
+    cfg.filters.require_inducement = True
+    assert run(cfg, beyond) == []

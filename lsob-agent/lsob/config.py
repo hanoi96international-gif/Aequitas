@@ -81,6 +81,8 @@ class FilterConfig:
     range_swings: int = 5  # swings per side that define the dealing range
     pd_threshold: float = 0.5  # 0.5 = equilibrium; higher demands a deeper premium
     require_unmitigated: bool = False  # reject blocks price has already traded back into
+    require_inducement: bool = False  # wait for the minor swing in front of the block to be run
+    inducement_swing: int = 1  # fractal size for those minor swings
     session_enabled: bool = False
     session_windows: list = field(default_factory=lambda: ["07:00-10:00", "12:00-15:00"])
     session_days: list = field(default_factory=lambda: [0, 1, 2, 3, 4])  # Mon-Fri
@@ -255,6 +257,8 @@ def validate(cfg: Config) -> None:
     f = cfg.filters
     if not 0.0 <= f.pd_threshold <= 1.0:
         raise ValueError("filters.pd_threshold must be between 0.0 and 1.0")
+    if f.inducement_swing < 1:
+        raise ValueError("filters.inducement_swing must be >= 1")
     if f.range_swings < 1:
         raise ValueError("filters.range_swings must be >= 1")
     if f.session_enabled:

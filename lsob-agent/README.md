@@ -154,6 +154,7 @@ wichtigsten Stellschrauben:
 | `[filters]` | `session_enabled` | Nur in den Kill Zones handeln (UTC-Fenster). |
 | | `premium_discount` | Shorts nur oberhalb, Longs nur unterhalb des Equilibriums. |
 | | `require_unmitigated` | Blocks verwerfen, in die der Preis schon zurücklief. |
+| | `require_inducement` | Einstieg erst, wenn die Liquidität des Zwischenswings vor dem Block abgeholt wurde. |
 | `[bias]` | `mode` | `off` / `ema` / `htf_structure` — Richtungsfilter. |
 | `[risk]` | `risk_pct` | Prozent des Kapitals pro Trade. |
 
@@ -187,7 +188,7 @@ Wert dort wäre der Beweis für einen Lookahead-Fehler, und der Test schlägt
 in dem Fall fehl.
 
 ```bash
-pip install pytest && python -m pytest -q      # 137 Tests, ~3 s
+pip install pytest && python -m pytest -q      # 144 Tests, ~3 s
 ```
 
 ---
