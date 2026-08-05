@@ -281,3 +281,74 @@ def test_an_out_of_range_ratio_is_rejected_by_config_validation():
         cfg.entry.retracement = bad
         with pytest.raises(ValueError, match="retracement"):
             validate(cfg)
+
+
+# ── fib-level take profits (sniping a rung, exiting on rungs) ────────────
+
+
+def sniper_config(tp_fib, ratio=0.882):
+    cfg = base_config()
+    cfg.entry.edge = "retracement"
+    cfg.entry.retracement = ratio
+    cfg.entry.retracement_in_block = False
+    cfg.entry.tp_mode = "fib"
+    cfg.entry.tp_fib = list(tp_fib)
+    cfg.entry.tp_weights = [1.0 / len(tp_fib)] * len(tp_fib)
+    cfg.entry.min_rr = 0.1
+    return cfg
+
+
+def test_fib_targets_land_on_the_rungs_they_name():
+    from lsob.orderblock import retracement_level
+
+    cfg = sniper_config([0.786, 0.5])
+    sig = run(cfg)[0]
+    for target, ratio in zip(sig.targets, [0.786, 0.5], strict=True):
+        expected = retracement_level(sig.sweep_extreme, sig.leg_extreme, "short", ratio)
+        assert target == pytest.approx(expected, abs=1e-9)
+
+
+def test_the_entry_rung_and_the_target_rungs_share_one_leg():
+    """Entry and exits must be measured across the same span, or R is fiction."""
+    cfg = sniper_config([0.5])
+    sig = run(cfg)[0]
+    span = abs(sig.sweep_extreme - sig.leg_extreme)
+    assert abs(sig.entry - sig.leg_extreme) / span == pytest.approx(0.882, abs=1e-9)
+    assert abs(sig.targets[0] - sig.leg_extreme) / span == pytest.approx(0.5, abs=1e-9)
+
+
+def test_scalping_to_the_next_rung_cannot_pay_one_r():
+    """Geometry, not market behaviour: 0.882 to 0.786 is 0.096 of the leg
+    while the stop beyond 1.0 costs at least 0.118 of it. The setup is
+    rejected by min_rr rather than taken at a structural loss.
+    """
+    cfg = sniper_config([0.786])
+    cfg.entry.min_rr = 1.0
+    assert run(cfg) == []
+
+    generous = sniper_config([0.65])
+    generous.entry.min_rr = 1.0
+    assert len(run(generous)) == 1, "the next rung down clears 1R comfortably"
+
+
+def test_a_rung_behind_price_voids_the_setup_rather_than_retargeting_it():
+    """0.941 sits above a 0.882 short entry — that is not a target."""
+    cfg = sniper_config([0.941])
+    assert run(cfg) == []
+
+
+def test_fib_targets_must_be_ordered_from_nearest_to_furthest():
+    from lsob.config import validate
+
+    cfg = sniper_config([0.5, 0.786])  # the wrong way round
+    with pytest.raises(ValueError, match="nearest rung"):
+        validate(cfg)
+
+
+def test_fib_target_mode_needs_matching_weights():
+    from lsob.config import validate
+
+    cfg = sniper_config([0.786, 0.5])
+    cfg.entry.tp_weights = [1.0]
+    with pytest.raises(ValueError, match="same length"):
+        validate(cfg)

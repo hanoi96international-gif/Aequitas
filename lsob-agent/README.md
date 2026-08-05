@@ -173,7 +173,8 @@ wichtigsten Stellschrauben:
 | | `retracement` | Rücklauftiefe für `edge = "retracement"`, als Anteil des Beins. |
 | | `fib_levels` | Die Leiter, die `chart --fib` zeichnet — Vorgabe ist die Wurzelreihe 0.236 … 0.941. |
 | | `sl_anchor` | Stop hinter dem Sweep-Extrem oder hinter dem Order Block. |
-| | `tp_rr` / `tp_weights` | Gestaffelte Ziele, Gewichte müssen 1.0 ergeben. |
+| | `tp_mode` | `rr` (R-Vielfache), `liquidity` (gegenüberliegender Pool) oder `fib` (tiefere Sprossen derselben Leiter). |
+| | `tp_rr` / `tp_fib` / `tp_weights` | Gestaffelte Ziele, Gewichte müssen 1.0 ergeben. |
 | | `breakeven_after_tp` | Stop nach dem N-ten Ziel auf Einstand. |
 | `[filters]` | `session_enabled` | Nur in den Kill Zones handeln (UTC-Fenster). |
 | | `premium_discount` | Shorts nur oberhalb, Longs nur unterhalb des Equilibriums. |
@@ -212,7 +213,7 @@ Wert dort wäre der Beweis für einen Lookahead-Fehler, und der Test schlägt
 in dem Fall fehl.
 
 ```bash
-pip install pytest && python -m pytest -q      # 165 Tests, ~3 s
+pip install pytest && python -m pytest -q      # 171 Tests, ~3 s
 ```
 
 ---

@@ -59,11 +59,22 @@ retracement_in_block = true    # Rücklaufebene muss im Order Block liegen
 # Quadratwurzeln des Goldenen Schnitts — 0.786 = √0.618, 0.882 = √0.786,
 # 0.941 = √0.882 — weshalb sich die tiefen Ebenen zusammendrängen.
 # Nur `retracement` wählt den Einstieg; der Rest ist Kontext.
-fib_levels = [0.236, 0.382, 0.5, 0.686, 0.786, 0.882, 0.941]
+# Acht der neun Sprossen sind gegen einen echten Chart nachgerechnet und
+# stimmen auf die Nachkommastelle. Die Sprosse zwischen 0.5 und 0.786 war im
+# Screenshot nicht sicher lesbar — 0.65 ist die beste Lesart, ändere sie hier.
+fib_levels = [0.236, 0.382, 0.5, 0.65, 0.786, 0.882, 0.941]
 valid_bars         = 20              # pull the resting order after this many bars
 sl_anchor          = "sweep_extreme" # sweep_extreme | ob_extreme
 sl_buffer_atr      = 0.25
-tp_mode            = "rr"            # rr | liquidity (aim at the opposing pool)
+tp_mode            = "rr"            # rr | liquidity | fib
+# tp_mode = "fib": Ausstiege auf tieferen Sprossen derselben Leiter.
+# Wer eine Sprosse snipert, sollte auf Sprossen aussteigen — R und Fib
+# sind zwei Maßstäbe, und sie zu mischen verwischt beide.
+# ACHTUNG zur Geometrie: Einstieg 0.882 mit Stop hinter 1.0 riskiert 0.118
+# des Beins. Die Sprosse 0.786 liegt nur 0.096 entfernt — ein Scalp dorthin
+# zahlt strukturell unter 1R und wird von min_rr verworfen, egal wie gut der
+# Markt läuft. Die erste Sprosse, die 1R trägt, liegt bei rund 0.764.
+tp_fib             = [0.786, 0.5]
 tp_rr              = [1.5, 3.0]      # ascending R multiples
 tp_weights         = [0.5, 0.5]      # must sum to 1.0
 breakeven_after_tp = 1               # move the stop to entry after the 1st target (0 = off)

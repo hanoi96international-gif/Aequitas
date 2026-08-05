@@ -355,7 +355,9 @@ class LsobStrategy:
         if risk <= 0:
             return self._drop("degenerate_risk")
 
-        targets = self._targets(sweep.direction, entry, risk)
+        targets = self._targets(
+            sweep.direction, entry, risk, sweep.extreme, leg_extreme
+        )
         if not targets:
             return self._drop("no_targets")
         if any(t <= 0 for t in targets):
@@ -392,12 +394,37 @@ class LsobStrategy:
         self.rejections[reason] = self.rejections.get(reason, 0) + 1
         return None
 
-    def _targets(self, direction: str, entry: float, risk: float) -> list[float]:
+    def _targets(
+        self,
+        direction: str,
+        entry: float,
+        risk: float,
+        sweep_extreme: float | None = None,
+        leg_extreme: float | None = None,
+    ) -> list[float]:
         cfg = self.cfg.entry
         sign = -1.0 if direction == "short" else 1.0
         rr_targets = [entry + sign * r * risk for r in cfg.tp_rr]
         if cfg.tp_mode == "rr":
             return rr_targets
+
+        if cfg.tp_mode == "fib":
+            # Exits on lower rungs of the leg the entry was measured across.
+            # A rung above the entry is behind price, not a target, so the
+            # whole setup is dropped rather than silently retargeted — a
+            # partial ladder would quietly change the trade being taken.
+            if sweep_extreme is None or leg_extreme is None:
+                return []
+            rungs = [
+                retracement_level(sweep_extreme, leg_extreme, direction, ratio)
+                for ratio in cfg.tp_fib
+            ]
+            ahead = (
+                all(price < entry for price in rungs)
+                if direction == "short"
+                else all(price > entry for price in rungs)
+            )
+            return rungs if ahead else []
 
         # 'liquidity': aim the final target at the nearest untouched pool on
         # the other side, and fall back to the R target when there is none.

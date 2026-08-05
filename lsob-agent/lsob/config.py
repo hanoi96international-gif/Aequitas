@@ -77,7 +77,11 @@ class EntryConfig:
     valid_bars: int = 20
     sl_anchor: str = "sweep_extreme"  # sweep_extreme | ob_extreme
     sl_buffer_atr: float = 0.25
-    tp_mode: str = "rr"  # rr | liquidity
+    tp_mode: str = "rr"  # rr | liquidity | fib
+    # Used when tp_mode = "fib": exits on lower rungs of the same ladder the
+    # entry was taken from. Sniping a rung and then measuring the exit in R
+    # mixes two rulers; a level entry wants level exits.
+    tp_fib: list[float] = field(default_factory=lambda: [0.786, 0.5])
     tp_rr: list[float] = field(default_factory=lambda: [2.0])
     tp_weights: list[float] = field(default_factory=lambda: [1.0])
     breakeven_after_tp: int = 1  # 0 disables; N moves SL to entry after the Nth TP
@@ -248,8 +252,17 @@ def validate(cfg: Config) -> None:
         raise ValueError("entry.fib_levels must be listed in ascending order")
     if e.sl_anchor not in ("sweep_extreme", "ob_extreme"):
         raise ValueError("entry.sl_anchor must be sweep_extreme or ob_extreme")
-    if e.tp_mode not in ("rr", "liquidity"):
-        raise ValueError("entry.tp_mode must be rr or liquidity")
+    if e.tp_mode not in ("rr", "liquidity", "fib"):
+        raise ValueError("entry.tp_mode must be rr, liquidity or fib")
+    if e.tp_mode == "fib":
+        if not e.tp_fib:
+            raise ValueError('entry.tp_fib must list at least one rung when tp_mode = "fib"')
+        if any(not 0.0 <= r <= 1.0 for r in e.tp_fib):
+            raise ValueError("entry.tp_fib values must be between 0.0 and 1.0")
+        if list(e.tp_fib) != sorted(e.tp_fib, reverse=True):
+            raise ValueError("entry.tp_fib must be listed from nearest rung to furthest")
+        if len(e.tp_fib) != len(e.tp_weights):
+            raise ValueError("entry.tp_fib and entry.tp_weights must have the same length")
     if not 0 <= e.breakeven_after_tp <= len(e.tp_rr):
         raise ValueError("entry.breakeven_after_tp must be 0..len(tp_rr)")
 
