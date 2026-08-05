@@ -352,3 +352,78 @@ def test_fib_target_mode_needs_matching_weights():
     cfg.entry.tp_weights = [1.0]
     with pytest.raises(ValueError, match="same length"):
         validate(cfg)
+
+
+# ── stop on the 1.0 rung ─────────────────────────────────────────────────
+
+
+def test_the_stop_sits_exactly_on_the_rung_it_names():
+    from lsob.orderblock import retracement_level
+
+    cfg = sniper_config([0.5])
+    cfg.entry.sl_anchor = "fib"
+    cfg.entry.sl_fib = 1.0
+    sig = run(cfg)[0]
+
+    expected = retracement_level(sig.leg_raid_end or sig.sweep_extreme, sig.leg_extreme, "short", 1.0)
+    assert sig.stop == pytest.approx(expected, abs=1e-9)
+    assert sig.stop == pytest.approx(sig.sweep_extreme, abs=1e-9), (
+        "under a local anchor the 1.0 rung is the raid extreme itself"
+    )
+
+
+def test_a_fib_stop_ignores_the_atr_buffer_on_purpose():
+    """One ruler for the whole trade — an ATR pad would reintroduce a second."""
+    tight = sniper_config([0.5])
+    tight.entry.sl_anchor = "fib"
+    tight.entry.sl_buffer_atr = 0.0
+    wide = sniper_config([0.5])
+    wide.entry.sl_anchor = "fib"
+    wide.entry.sl_buffer_atr = 5.0
+
+    assert run(tight)[0].stop == run(wide)[0].stop
+
+
+def test_clearance_belongs_in_the_rung_not_the_buffer():
+    at_one = sniper_config([0.5])
+    at_one.entry.sl_anchor = "fib"
+    at_one.entry.sl_fib = 1.0
+    beyond = sniper_config([0.5])
+    beyond.entry.sl_anchor = "fib"
+    beyond.entry.sl_fib = 1.05
+
+    assert run(beyond)[0].stop > run(at_one)[0].stop, "1.05 sits past the leg's end"
+
+
+def test_the_whole_trade_is_measured_on_one_ladder():
+    """Entry 0.882, stop 1.0, target 0.5 — every price is a rung of one leg."""
+    cfg = sniper_config([0.5])
+    cfg.entry.sl_anchor = "fib"
+    cfg.entry.sl_fib = 1.0
+    sig = run(cfg)[0]
+
+    span = abs((sig.leg_raid_end or sig.sweep_extreme) - sig.leg_extreme)
+    for price, ratio in ((sig.entry, 0.882), (sig.stop, 1.0), (sig.targets[0], 0.5)):
+        assert abs(price - sig.leg_extreme) / span == pytest.approx(ratio, abs=1e-9)
+
+    # Risk is then a pure property of the ladder: 1.0 - 0.882 of the leg.
+    assert sig.risk / span == pytest.approx(1.0 - 0.882, abs=1e-9)
+
+
+def test_a_stop_rung_inside_the_entry_is_rejected():
+    from lsob.config import validate
+
+    cfg = sniper_config([0.5])
+    cfg.entry.sl_anchor = "fib"
+    cfg.entry.sl_fib = 0.8  # nearer the leg's far end than the 0.882 entry
+    with pytest.raises(ValueError, match="beyond"):
+        validate(cfg)
+
+
+def test_a_fib_stop_requires_a_fib_entry():
+    from lsob.config import validate
+
+    cfg = base_config()
+    cfg.entry.sl_anchor = "fib"
+    with pytest.raises(ValueError, match="retracement"):
+        validate(cfg)

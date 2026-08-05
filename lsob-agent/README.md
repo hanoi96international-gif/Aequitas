@@ -173,7 +173,7 @@ wichtigsten Stellschrauben:
 | | `retracement` | Rücklauftiefe für `edge = "retracement"`, als Anteil des Beins. |
 | | `fib_levels` | Die Leiter, die `chart --fib` zeichnet — Vorgabe ist die Wurzelreihe 0.236 … 0.941. |
 | | `leg_anchor` | `displacement` (lokales Bein) oder `htf` (Swing auf höherem Zeitrahmen, z. B. 4h). |
-| | `sl_anchor` | Stop hinter dem Sweep-Extrem oder hinter dem Order Block. |
+| | `sl_anchor` | `sweep_extreme` / `ob_extreme` (ATR-Puffer) oder `fib` — Stop auf einer Sprosse, z. B. `sl_fib = 1.0`. |
 | | `tp_mode` | `rr` (R-Vielfache), `liquidity` (gegenüberliegender Pool) oder `fib` (tiefere Sprossen derselben Leiter). |
 | | `tp_rr` / `tp_fib` / `tp_weights` | Gestaffelte Ziele, Gewichte müssen 1.0 ergeben. |
 | | `breakeven_after_tp` | Stop nach dem N-ten Ziel auf Einstand. |
@@ -200,7 +200,10 @@ alle Annahmen pessimistisch gewählt:
   Live-Agent nutzen wörtlich denselben Code, es gibt keinen zweiten Pfad,
   der auseinanderdriften könnte.
 - **Bei Mehrdeutigkeit gewinnt der Stop.** Eine Kerze, die Stop *und* Ziel
-  berührt haben könnte, wird als Stop gewertet — in jeder Phase des Trades.
+  berührt haben könnte, wird als Stop gewertet — in jeder Phase des Trades,
+  **auch auf der Einstiegskerze selbst**. Ziele werden dort *nicht* geprüft:
+  ein Ein- und Ausstieg in derselben Kerze ist ein Artefakt der Auflösung,
+  ein Stop dagegen ist eine Bewegung, die die Kerze nachweislich gemacht hat.
 - **Kein Same-Bar-Fill.** Ein Signal aus Kerze *i* kann frühestens in *i+1*
   gefüllt werden.
 - **Limit-Fills werden nie besser als der Limitpreis.** Springt der Kurs
@@ -214,7 +217,7 @@ Wert dort wäre der Beweis für einen Lookahead-Fehler, und der Test schlägt
 in dem Fall fehl.
 
 ```bash
-pip install pytest && python -m pytest -q      # 180 Tests, ~3 s
+pip install pytest && python -m pytest -q      # 189 Tests, ~3 s
 ```
 
 ---

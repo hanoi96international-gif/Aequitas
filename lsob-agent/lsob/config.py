@@ -85,7 +85,16 @@ class EntryConfig:
         default_factory=lambda: [0.236, 0.382, 0.5, 0.686, 0.786, 0.882, 0.941]
     )
     valid_bars: int = 20
-    sl_anchor: str = "sweep_extreme"  # sweep_extreme | ob_extreme
+    sl_anchor: str = "sweep_extreme"  # sweep_extreme | ob_extreme | fib
+    # Used when sl_anchor = "fib": the rung the stop sits on. 1.0 is the far
+    # end of the leg — the raid extreme itself under a local anchor, the swing
+    # extreme under an htf one. Above 1.0 places it beyond that end.
+    #
+    # In this mode `sl_buffer_atr` is deliberately NOT applied. The point of a
+    # stop on a rung is that entry, stop and targets are all measured with one
+    # ruler; adding an ATR pad would reintroduce the second scale it exists to
+    # remove. Put the clearance in `sl_fib` instead (e.g. 1.02).
+    sl_fib: float = 1.0
     sl_buffer_atr: float = 0.25
     tp_mode: str = "rr"  # rr | liquidity | fib
     # Used when tp_mode = "fib": exits on lower rungs of the same ladder the
@@ -242,7 +251,10 @@ def load_config(path: str | Path) -> Config:
 def validate(cfg: Config) -> None:
     """Reject configurations that would silently misbehave rather than fail."""
     e = cfg.entry
-    if len(e.tp_rr) != len(e.tp_weights):
+    # Which target list has to match the weights depends on the mode. Holding
+    # an unused list in sync is busywork, and worse, it makes the error for a
+    # real mistake name a setting the run never reads.
+    if e.tp_mode != "fib" and len(e.tp_rr) != len(e.tp_weights):
         raise ValueError("entry.tp_rr and entry.tp_weights must have the same length")
     if not e.tp_rr:
         raise ValueError("entry.tp_rr must list at least one target")
@@ -264,8 +276,18 @@ def validate(cfg: Config) -> None:
         raise ValueError("entry.fib_levels must all be between 0.0 and 1.0")
     if list(e.fib_levels) != sorted(e.fib_levels):
         raise ValueError("entry.fib_levels must be listed in ascending order")
-    if e.sl_anchor not in ("sweep_extreme", "ob_extreme"):
-        raise ValueError("entry.sl_anchor must be sweep_extreme or ob_extreme")
+    if e.sl_anchor not in ("sweep_extreme", "ob_extreme", "fib"):
+        raise ValueError("entry.sl_anchor must be sweep_extreme, ob_extreme or fib")
+    if e.sl_anchor == "fib":
+        if e.sl_fib <= 0:
+            raise ValueError("entry.sl_fib must be positive")
+        if e.edge != "retracement":
+            raise ValueError('entry.sl_anchor = "fib" requires entry.edge = "retracement"')
+        if e.sl_fib <= e.retracement:
+            raise ValueError(
+                f"entry.sl_fib ({e.sl_fib}) must sit beyond entry.retracement "
+                f"({e.retracement}), or the stop is on the wrong side of the entry"
+            )
     if e.tp_mode not in ("rr", "liquidity", "fib"):
         raise ValueError("entry.tp_mode must be rr, liquidity or fib")
     if e.tp_mode == "fib":
@@ -277,7 +299,9 @@ def validate(cfg: Config) -> None:
             raise ValueError("entry.tp_fib must be listed from nearest rung to furthest")
         if len(e.tp_fib) != len(e.tp_weights):
             raise ValueError("entry.tp_fib and entry.tp_weights must have the same length")
-    if not 0 <= e.breakeven_after_tp <= len(e.tp_rr):
+        if e.breakeven_after_tp > len(e.tp_fib):
+            raise ValueError("entry.breakeven_after_tp must be 0..len(tp_fib)")
+    if e.tp_mode != "fib" and not 0 <= e.breakeven_after_tp <= len(e.tp_rr):
         raise ValueError("entry.breakeven_after_tp must be 0..len(tp_rr)")
 
     if cfg.orderblock.zone_mode not in ("body", "full", "body_to_extreme"):

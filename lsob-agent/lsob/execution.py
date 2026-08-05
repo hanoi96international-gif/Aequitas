@@ -107,6 +107,10 @@ class Executor:
         # for, and the worst shortfall it caused. See `_open`.
         self.capped_entries = 0
         self.worst_risk_fraction = 1.0
+        # Fills whose own bar already traded to the stop. High counts mean the
+        # stop sits close enough to the entry that bar granularity, not the
+        # strategy, is deciding the outcome.
+        self.stopped_on_entry_bar = 0
 
     # ── intake ───────────────────────────────────────────────────────────
 
@@ -169,6 +173,7 @@ class Executor:
             if fill_price is not None:
                 if len(self.positions) < self.cfg.risk.max_concurrent:
                     self._open(index, candle, sig, fill_price)
+                    self._stop_on_entry_bar(index, candle)
                 else:
                     self._reject("filled_but_at_capacity")
                 continue
@@ -189,6 +194,34 @@ class Executor:
         if candle.open <= sig.entry:
             return candle.open
         return sig.entry if candle.low <= sig.entry else None
+
+    def _stop_on_entry_bar(self, index: int, candle: Candle) -> None:
+        """Stop out on the fill bar when its own range already reached the stop.
+
+        Targets are deliberately not checked here — a same-bar entry and take
+        profit is an artefact of bar granularity. A stop is the opposite case:
+        the bar demonstrably traded there, and refusing to record it credits
+        the strategy with surviving a move that happened.
+
+        This matters most exactly where it is easiest to miss. With a stop a
+        few ticks from the entry — a deep retracement entry with the stop on
+        the next rung — a single bar routinely spans both, and skipping the
+        check turned 42% of trades in one real run into survivors that were
+        not.
+        """
+        if not self.positions:
+            return
+        pos = self.positions[-1]
+        if pos.entry_index != index:
+            return
+        hit = candle.low <= pos.stop if pos.direction == "long" else candle.high >= pos.stop
+        if not hit:
+            return
+        self._exit(index, candle, pos, pos.stop, pos.remaining, "stop", taker=True)
+        trade = self._close(index, candle, pos, "stop")
+        self.positions.remove(pos)
+        self.trades.append(trade)
+        self.stopped_on_entry_bar += 1
 
     def _open(self, index: int, candle: Candle, sig: Signal, price: float) -> None:
         risk_per_unit = abs(price - sig.stop)

@@ -366,13 +366,22 @@ class LsobStrategy:
                 return self._drop("retracement_behind_price")
         else:
             entry = ob.edge(cfg.entry.edge)
-        buffer = cfg.entry.sl_buffer_atr * atr
-        if sweep.direction == "short":
-            anchor = sweep.extreme if cfg.entry.sl_anchor == "sweep_extreme" else ob.top
-            stop = anchor + buffer
+        if cfg.entry.sl_anchor == "fib":
+            # One ruler for the whole trade: the stop is a rung like the entry
+            # and the targets, so the risk scales with the leg rather than
+            # with local volatility. That is what makes a slower anchor
+            # coherent — an ATR stop under an htf leg mixes two scales.
+            stop = retracement_level(
+                raid_end, leg_extreme, sweep.direction, cfg.entry.sl_fib
+            )
         else:
-            anchor = sweep.extreme if cfg.entry.sl_anchor == "sweep_extreme" else ob.bottom
-            stop = anchor - buffer
+            buffer = cfg.entry.sl_buffer_atr * atr
+            if sweep.direction == "short":
+                anchor = sweep.extreme if cfg.entry.sl_anchor == "sweep_extreme" else ob.top
+                stop = anchor + buffer
+            else:
+                anchor = sweep.extreme if cfg.entry.sl_anchor == "sweep_extreme" else ob.bottom
+                stop = anchor - buffer
 
         risk = abs(entry - stop)
         if risk <= 0:

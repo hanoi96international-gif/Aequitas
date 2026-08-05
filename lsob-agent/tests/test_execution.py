@@ -168,7 +168,9 @@ def test_the_notional_cap_is_reported_because_it_breaks_constant_risk():
     # Stop is 0.1 wide at a price of 100: 1% of 10,000 = 100 at risk would
     # need 1,000 units = 100,000 notional, ten times the cap.
     ex.on_signal(0, short_signal(entry=100.0, stop=100.1, targets=[99.0]))
-    ex.on_bar(1, candle(1, 99.5, 100.5, 99.0, 99.5))
+    # The bar must reach the entry without reaching the stop, or the position
+    # is stopped on its own fill bar and there is nothing left to inspect.
+    ex.on_bar(1, candle(1, 99.5, 100.05, 99.0, 99.5))
 
     assert ex.capped_entries == 1
     assert ex.worst_risk_fraction < 0.2, "the trade risked a fraction of what was asked"
@@ -185,3 +187,41 @@ def test_no_warning_when_the_cap_never_binds():
     ex.on_bar(1, candle(1, 99.0, 100.5, 98.0, 99.0))
     assert ex.capped_entries == 0
     assert ex.worst_risk_fraction == 1.0
+
+
+def test_a_fill_bar_that_already_reached_the_stop_is_scored_as_stopped():
+    """Not recording it would credit the strategy with surviving a move the
+    bar demonstrably made. Targets stay unchecked on the fill bar; a stop is
+    the opposite case.
+    """
+    ex = Executor(zero_cost_config())
+    ex.on_signal(0, short_signal(entry=100.0, stop=102.0, targets=[96.0]))
+    ex.on_bar(1, candle(1, 99.0, 102.5, 98.0, 99.5))  # fills at 100, then to 102.5
+
+    assert ex.positions == []
+    assert len(ex.trades) == 1
+    assert ex.trades[0].exit_reason == "stop"
+    assert ex.trades[0].r_multiple < 0
+    assert ex.stopped_on_entry_bar == 1
+
+
+def test_a_fill_bar_that_reached_a_target_is_not_scored_as_a_win():
+    """The mirror case stays optimistic-free: no same-bar take profit."""
+    ex = Executor(zero_cost_config())
+    ex.on_signal(0, short_signal(entry=100.0, stop=102.0, targets=[96.0]))
+    ex.on_bar(1, candle(1, 99.0, 100.5, 95.0, 99.0))  # fills, then runs to the target
+
+    assert len(ex.positions) == 1, "the target is not taken on the fill bar"
+    assert ex.trades == []
+    assert ex.stopped_on_entry_bar == 0
+
+
+def test_a_close_stop_makes_bar_granularity_the_deciding_factor():
+    """The count exists so this is visible rather than silently flattering."""
+    ex = Executor(zero_cost_config())
+    for i in range(3):
+        ex.on_signal(i * 3, short_signal(index=i * 3, entry=100.0, stop=100.2))
+        ex.on_bar(i * 3 + 1, candle(i * 3 + 1, 99.0, 100.4, 98.5, 99.0))
+        ex.on_bar(i * 3 + 2, candle(i * 3 + 2, 99.0, 99.5, 98.5, 99.0))
+    assert ex.stopped_on_entry_bar == 3
+    assert all(t.exit_reason == "stop" for t in ex.trades)

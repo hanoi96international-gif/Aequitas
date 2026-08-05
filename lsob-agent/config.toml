@@ -157,3 +157,25 @@ selection  = "robust"         # robust prefers a broad plateau over a lone spike
 "orderblock.displacement_atr"   = [0.5, 1.0, 1.5, 2.0]
 "liquidity.max_penetration_atr" = [1.0, 1.5, 2.5]
 "entry.valid_bars"              = [10, 20, 40]
+
+# ─────────────────────────────────────────────────────────────────────────
+# SNIPER-VORLAGE (0.882 auf einer Leiter, ein einziger Maßstab)
+#
+#   [entry]
+#   edge        = "retracement"   # Einstieg auf einer Sprosse
+#   retracement = 0.882
+#   sl_anchor   = "fib"
+#   sl_fib      = 1.0             # Stop auf dem Bein-Ende
+#   tp_mode     = "fib"
+#   tp_fib      = [0.5, 0.236]    # Ausstiege ebenfalls auf Sprossen
+#   tp_weights  = [0.5, 0.5]
+#   min_rr      = 1.0
+#
+# Geometrie: Risiko = 1.0 - 0.882 = 11,8 % des Beins. Ziel 0.5 zahlt 3,2 R,
+# Ziel 0.236 zahlt 5,5 R. Die Sprosse 0.786 liegt nur 9,6 % entfernt und
+# zahlt strukturell unter 1R — sie taugt nicht als Ziel.
+#
+# WARNUNG: Ein Stop so dicht am Einstieg heisst, dass eine einzelne Kerze
+# oft beide Preise umspannt. Der Backtester wertet das als Stop und meldet
+# den Anteil. Lag er über 25 %, entscheidet die Kerzenauflösung und nicht
+# die Strategie — dann brauchst du 1m-Daten, um die Trades aufzulösen.

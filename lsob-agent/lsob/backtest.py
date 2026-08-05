@@ -20,6 +20,7 @@ class BacktestResult:
     rejected: dict[str, int] = field(default_factory=dict)
     bars: int = 0
     capped_entries: int = 0
+    stopped_on_entry_bar: int = 0
     worst_risk_fraction: float = 1.0
 
     def format(self) -> str:
@@ -28,6 +29,18 @@ class BacktestResult:
         if self.rejected:
             skipped = ", ".join(f"{k}={v}" for k, v in sorted(self.rejected.items()))
             body += f"\nSignals not traded {skipped}"
+        if self.stopped_on_entry_bar and self.trades:
+            share = 100.0 * self.stopped_on_entry_bar / len(self.trades)
+            body += (
+                f"\nStopped on the fill bar {self.stopped_on_entry_bar} "
+                f"({share:.0f}% of trades)"
+            )
+            if share > 25.0:
+                body += (
+                    " — the stop is close enough to the entry that bar granularity "
+                    "is deciding these outcomes. Lower-timeframe data would resolve "
+                    "them; on this data they are coin flips scored as losses."
+                )
         if self.capped_entries:
             body += (
                 f"\n\nWARNING: risk.max_position_pct capped {self.capped_entries} of "
@@ -70,6 +83,7 @@ def run_backtest(cfg: Config, candles: list[Candle]) -> BacktestResult:
         rejected=dict(executor.rejected),
         bars=len(candles),
         capped_entries=executor.capped_entries,
+        stopped_on_entry_bar=executor.stopped_on_entry_bar,
         worst_risk_fraction=executor.worst_risk_fraction,
     )
 
