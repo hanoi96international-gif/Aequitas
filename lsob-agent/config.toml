@@ -147,6 +147,14 @@ console            = true
 telegram_token_env = "LSOB_TG_TOKEN"
 telegram_chat_env  = "LSOB_TG_CHAT"
 
+[compare]
+# `lsob compare` bewertet DIESE Konfiguration auf mehreren Märkten, ohne sie
+# anzufassen. Pro Markt dürfen nur Zeitrahmen und Gebühren abweichen — das
+# sind Eigenschaften der Börse. Alles andere gehört zur Strategie und bleibt
+# fest, sonst ist der Vergleich nur eine zweite Anpassungsrunde.
+# Format: [Name, csv, timeframe, maker_bps, taker_bps, slippage_bps]
+markets = []
+
 [walkforward]
 # `lsob walkforward` optimises on train_bars, then scores the winner on the
 # next test_bars — data it was never chosen on — and rolls forward.

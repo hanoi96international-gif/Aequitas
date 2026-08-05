@@ -209,6 +209,27 @@ def cmd_chart(cfg: Config, args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_compare(cfg: Config, args: argparse.Namespace) -> int:
+    from .compare import compare
+
+    if not cfg.compare.markets:
+        print(
+            "compare.markets is empty — list the files to score against, e.g.\n"
+            '  [compare]\n'
+            '  markets = [["BTC/USD 1h", "btc.csv", "1h", 0.8, 3.15, 2.0]]',
+            file=sys.stderr,
+        )
+        return 1
+
+    markets = [
+        (str(name), str(path), str(tf), (float(mk), float(tk), float(sl)))
+        for name, path, tf, mk, tk, sl in cfg.compare.markets
+    ]
+    print(f"Scoring one configuration on {len(markets)} markets, unaltered.\n")
+    print(compare(cfg, markets).format())
+    return 0
+
+
 def cmd_risk(cfg: Config, args: argparse.Namespace) -> int:
     from .sizing import format_sweep, sweep
 
@@ -382,6 +403,11 @@ def build_parser() -> argparse.ArgumentParser:
         "--fib", action="store_true", help="draw the full retracement ladder"
     )
     chart.set_defaults(func=cmd_chart)
+
+    cmp_parser = sub.add_parser(
+        "compare", help="score this configuration on several markets, unaltered"
+    )
+    cmp_parser.set_defaults(func=cmd_compare)
 
     risk = sub.add_parser("risk", help="what each risk-per-trade level does to drawdown")
     risk.add_argument(

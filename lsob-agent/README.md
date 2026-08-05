@@ -134,6 +134,22 @@ ohne einen einzigen Fehler zu werfen. Lücken werden gezählt, aber nie
 gefüllt: eine fehlende Stunde ist eine Information, und sie zu interpolieren
 würde Kursverlauf erfinden.
 
+## Auf einem zweiten Markt prüfen
+
+```bash
+python -m lsob -c config.toml compare
+```
+
+Eine Konfiguration, die auf einem Markt entstanden ist, wurde von diesem
+Markt geformt — auch ohne bewusstes Tuning, denn jede verworfene Variante
+auf dem Weg dorthin war eine Entscheidung anhand derselben Daten. Der
+einzige Test, der das durchschaut, ist derselbe Aufbau **unverändert** dort,
+wo er noch nie war.
+
+Pro Markt dürfen nur Zeitrahmen und Gebühren abweichen; beides gehört zur
+Börse, nicht zur Strategie. Ergebnisse unter 30 Trades werden markiert und
+zählen nicht für das Urteil — sie beschreiben ihre Stichprobe.
+
 ## Mehrdeutige Kerzen auflösen
 
 ```toml
@@ -237,7 +253,7 @@ Wert dort wäre der Beweis für einen Lookahead-Fehler, und der Test schlägt
 in dem Fall fehl.
 
 ```bash
-pip install pytest && python -m pytest -q      # 204 Tests, ~3 s
+pip install pytest && python -m pytest -q      # 212 Tests, ~3 s
 ```
 
 ---
@@ -341,7 +357,9 @@ lsob/
   broker.py      PaperBroker (nutzt execution.py) und LiveBroker (ccxt)
   agent.py       Live-Loop: pollen, füttern, handeln, Status sichern
   chart.py       ein Setup mit allen Ebenen als SVG zeichnen
-  cli.py         backtest / scan / chart / walkforward / risk / fetch / run
+  compare.py     eine Konfiguration auf mehreren Märkten, unverändert
+  intrabar.py    feinere Kerzen für mehrdeutige Bars
+  cli.py         backtest / scan / chart / compare / walkforward / risk / fetch / run
 ```
 
 ---

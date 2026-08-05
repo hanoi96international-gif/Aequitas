@@ -176,6 +176,18 @@ class NotifyConfig:
 
 
 @dataclass(slots=True)
+class CompareConfig:
+    """Markets to score one configuration against, unaltered.
+
+    Each entry is [name, csv, timeframe, maker_bps, taker_bps, slippage_bps].
+    Only the last four vary per market: the timeframe and the costs belong to
+    the venue, everything else belongs to the strategy and is held fixed.
+    """
+
+    markets: list = field(default_factory=list)
+
+
+@dataclass(slots=True)
 class WalkForwardConfig:
     train_bars: int = 2000
     test_bars: int = 1000
@@ -202,6 +214,7 @@ class Config:
     live: LiveConfig = field(default_factory=LiveConfig)
     notify: NotifyConfig = field(default_factory=NotifyConfig)
     walkforward: WalkForwardConfig = field(default_factory=WalkForwardConfig)
+    compare: CompareConfig = field(default_factory=CompareConfig)
 
 
 def _build(cls: type, raw: dict[str, Any], section: str) -> Any:
@@ -347,6 +360,13 @@ def validate(cfg: Config) -> None:
         from .filters import SessionFilter
 
         SessionFilter(True, list(f.session_windows), list(f.session_days))
+
+    for row in cfg.compare.markets:
+        if not isinstance(row, list) or len(row) != 6:
+            raise ValueError(
+                "each compare.markets entry must be "
+                "[name, csv, timeframe, maker_bps, taker_bps, slippage_bps]"
+            )
 
     wf = cfg.walkforward
     if wf.metric not in ("expectancy_r", "total_r", "profit_factor"):
