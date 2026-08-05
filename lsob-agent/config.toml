@@ -88,6 +88,8 @@ train_bars = 2000
 test_bars  = 1000
 min_trades = 10
 metric     = "expectancy_r"   # expectancy_r | total_r | profit_factor
+selection  = "robust"         # robust prefers a broad plateau over a lone spike;
+                              # "peak" takes the single best score and fits noise
 
 [walkforward.grid]
 # Dotted paths into any section above. Every combination is searched, so

@@ -142,10 +142,60 @@ Wert dort wäre der Beweis für einen Lookahead-Fehler, und der Test schlägt
 in dem Fall fehl.
 
 ```bash
-pip install pytest && python -m pytest -q      # 64 Tests, ~1 s
+pip install pytest && python -m pytest -q      # 90 Tests, ~3 s
 ```
 
 ---
+
+## Parameter wählen, ohne sich selbst zu betrügen
+
+```bash
+python -m lsob -c config.toml walkforward --params
+```
+
+Optimiert auf einem Zeitfenster, wendet den Gewinner **unverändert** auf das
+folgende Fenster an und rollt weiter. Nur diese ungesehenen Abschnitte
+werden addiert.
+
+Lies dort **nicht** die beste Zeile, sondern zwei andere Zahlen:
+
+- **Out-of-sample expectancy** — was der *Vorgang* „optimieren und dann
+  handeln" tatsächlich eingebracht hätte.
+- **IS/OOS rank correlation** — wie stark sich die Rangfolge überhaupt
+  überträgt. Nahe null heißt: die Daten können gute Einstellungen nicht von
+  glücklichen unterscheiden, und einen „Besten" zu küren ist Selbstbetrug.
+  Das Tool schreibt dieses Urteil selbst hin und verweigert jede Aussage
+  unter 30 Out-of-Sample-Trades.
+
+`selection = "robust"` (Standard) wählt nicht die höchste Einzelpunktzahl,
+sondern das breiteste **Plateau** — eine Einstellung, deren Nachbarwerte
+ebenfalls funktionieren. Ein einzelner Ausreißer, der bei genau einem Wert
+glänzt und daneben abfällt, ist an die Stichprobe angepasst, nicht an den
+Markt. `selection = "peak"` gibt es zum Vergleich; es fittet Rauschen.
+
+## Wie groß darf eine Position sein?
+
+```bash
+python -m lsob -c config.toml risk --levels 0.25,0.5,1,2,3
+```
+
+Das ist der einzige Teil hier, der **Arithmetik statt Prognose** ist: ob ein
+Setup einen Vorteil hat, ist eine Vorhersage — wie tief der Drawdown bei
+gegebenem Risiko pro Trade ausfällt, folgt zwingend aus der Verteilung. Die
+Simulation zieht aus deinen tatsächlich beobachteten R-Werten, behält also
+die echte Form der Ergebnisse samt fettem linken Rand.
+
+Zwei Dinge werden dabei sichtbar, die der Intuition widersprechen:
+
+- **Drawdown wächst schneller als das Risiko.** Doppeltes Risiko pro Trade
+  kostet mehr als doppelten Drawdown, weil Verluste gegen ein schrumpfendes
+  Konto compounden.
+- **Verlustserien sind länger als gedacht.** Bei 40 % Trefferquote sind acht
+  Verluste in Folge normal, nicht ungewöhnlich.
+
+Und die unbequeme Konsequenz: **Positionsgröße steuert, wie schnell du
+verlierst, nicht ob.** Ohne Vorteil verschiebt kleineres Risiko nur den
+Zeitpunkt.
 
 ## Live-Handel
 
@@ -190,9 +240,11 @@ lsob/
   execution.py   Order- und Positionsverwaltung, pessimistische Fills
   backtest.py    Durchlauf über historische Kerzen
   metrics.py     Kennzahlen in R und in Euro
+  walkforward.py Optimieren auf der Vergangenheit, werten auf der Zukunft
+  sizing.py      Risiko pro Trade -> Drawdown-Wahrscheinlichkeiten
   broker.py      PaperBroker (nutzt execution.py) und LiveBroker (ccxt)
   agent.py       Live-Loop: pollen, füttern, handeln, Status sichern
-  cli.py         backtest / scan / fetch / run
+  cli.py         backtest / scan / walkforward / risk / fetch / run
 ```
 
 ---

@@ -105,3 +105,45 @@ def test_tied_scores_get_averaged_ranks_not_arbitrary_ones():
     # Half tied, half separated: the correlation is real but not perfect.
     partial = spearman([1.0, 1.0, 2.0, 3.0], [1.0, 2.0, 3.0, 4.0])
     assert 0.0 < partial < 1.0
+
+
+def test_robust_selection_prefers_a_plateau_over_an_isolated_spike():
+    """A lone high score surrounded by bad neighbours must lose to a plateau."""
+    from lsob.walkforward import neighbourhood_scores
+
+    spike = {"a.x": 1, "b.y": 1}
+    plateau = {"a.x": 3, "b.y": 3}
+    scored = [
+        (9.0, spike),          # brilliant alone...
+        (0.0, {"a.x": 2, "b.y": 1}),  # ...but its neighbours are terrible
+        (0.0, {"a.x": 1, "b.y": 2}),
+        (5.0, plateau),        # good, and so is everything next to it
+        (5.0, {"a.x": 2, "b.y": 3}),
+        (5.0, {"a.x": 3, "b.y": 2}),
+    ]
+    ranked = sorted(neighbourhood_scores(scored), key=lambda row: -row[0])
+    assert ranked[0][1] is plateau
+
+
+def test_peak_selection_still_takes_the_highest_raw_score():
+    candles = random_walk(4_000, seed=13)
+    grid = {"orderblock.displacement_atr": [0.5, 1.0, 1.5]}
+    peak = walk_forward(
+        Config(), candles, grid, train_bars=2_000, test_bars=1_000, min_trades=1, selection="peak"
+    )
+    assert peak.folds
+    for fold in peak.folds:
+        assert fold.in_sample.trades >= 1
+
+
+def test_an_unknown_selection_mode_is_rejected():
+    with pytest.raises(ValueError, match="selection mode"):
+        walk_forward(
+            Config(),
+            random_walk(3_500, seed=1),
+            {"orderblock.displacement_atr": [1.0]},
+            train_bars=2_000,
+            test_bars=1_000,
+            min_trades=1,
+            selection="vibes",
+        )

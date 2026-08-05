@@ -113,6 +113,7 @@ class WalkForwardConfig:
     test_bars: int = 1000
     min_trades: int = 10
     metric: str = "expectancy_r"  # expectancy_r | total_r | profit_factor
+    selection: str = "robust"  # robust (prefer a plateau) | peak (highest score)
     # Dotted paths into any other section, e.g.
     #   "orderblock.displacement_atr" = [0.5, 1.0, 1.5]
     grid: dict = field(default_factory=dict)
@@ -220,6 +221,8 @@ def validate(cfg: Config) -> None:
     wf = cfg.walkforward
     if wf.metric not in ("expectancy_r", "total_r", "profit_factor"):
         raise ValueError("walkforward.metric must be expectancy_r, total_r or profit_factor")
+    if wf.selection not in ("robust", "peak"):
+        raise ValueError("walkforward.selection must be robust or peak")
     if wf.train_bars < 1 or wf.test_bars < 1:
         raise ValueError("walkforward.train_bars and test_bars must be positive")
     for key, values in wf.grid.items():

@@ -171,6 +171,31 @@ def spearman(xs: list[float], ys: list[float]) -> float:
     return num / den if den else 0.0
 
 
+def neighbourhood_scores(
+    scored: list[tuple[float, dict[str, Any]]],
+) -> list[tuple[float, dict[str, Any]]]:
+    """Re-score each set by the average of itself and its immediate neighbours.
+
+    A neighbour is a set differing in exactly one parameter value. The point
+    is to prefer a broad plateau over a lone spike: a setting that only works
+    at one exact value, with worse results on either side of it, is fitted to
+    the sample rather than to the market. A plateau survives the market
+    moving slightly; a spike does not.
+    """
+    out: list[tuple[float, dict[str, Any]]] = []
+    for score, params in scored:
+        total, count = score, 1
+        for other_score, other in scored:
+            if other is params:
+                continue
+            differences = sum(1 for k, v in params.items() if other.get(k) != v)
+            if differences == 1:
+                total += other_score
+                count += 1
+        out.append((total / count, params))
+    return out
+
+
 def _score(stats: Stats, metric: str) -> float:
     if metric == "expectancy_r":
         return stats.expectancy_r
@@ -189,6 +214,7 @@ def walk_forward(
     test_bars: int,
     min_trades: int = 10,
     metric: str = "expectancy_r",
+    selection: str = "robust",
 ) -> WalkForwardResult:
     combos = expand_grid(grid)
     configs = [(params, apply_overrides(cfg, params)) for params in combos]
@@ -215,8 +241,16 @@ def walk_forward(
                 scored.append((_score(is_stats, metric), params, is_stats, oos_stats))
 
         if scored:
-            scored.sort(key=lambda row: -row[0])
-            _, params, is_stats, oos_stats = scored[0]
+            if selection == "robust":
+                ranked = neighbourhood_scores([(row[0], row[1]) for row in scored])
+                ranked.sort(key=lambda row: -row[0])
+                winner = ranked[0][1]
+                chosen = next(row for row in scored if row[1] is winner)
+            elif selection == "peak":
+                chosen = max(scored, key=lambda row: row[0])
+            else:
+                raise ValueError(f"unknown selection mode {selection!r}")
+            _, params, is_stats, oos_stats = chosen
             result.folds.append(
                 Fold(
                     index=fold_index,

@@ -94,6 +94,26 @@ def cmd_scan(cfg: Config, args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_risk(cfg: Config, args: argparse.Namespace) -> int:
+    from .sizing import format_sweep, sweep
+
+    candles = _load_candles(cfg, refresh=False)
+    if not candles:
+        print("No candles loaded.", file=sys.stderr)
+        return 1
+    result = run_backtest(cfg, candles)
+    if not result.trades:
+        print("The backtest produced no trades, so there is nothing to resample.", file=sys.stderr)
+        return 1
+
+    rs = [t.r_multiple for t in result.trades]
+    levels = [float(x) for x in args.levels.split(",")]
+    print(_describe(cfg, candles))
+    print()
+    print(format_sweep(sweep(rs, levels, trades=args.trades, runs=args.runs), len(rs)))
+    return 0
+
+
 def cmd_walkforward(cfg: Config, args: argparse.Namespace) -> int:
     from .walkforward import expand_grid, walk_forward
 
@@ -130,6 +150,7 @@ def cmd_walkforward(cfg: Config, args: argparse.Namespace) -> int:
         test_bars=wf.test_bars,
         min_trades=wf.min_trades,
         metric=wf.metric,
+        selection=args.selection or wf.selection,
     )
     print(result.format())
 
@@ -196,10 +217,23 @@ def build_parser() -> argparse.ArgumentParser:
     scan.add_argument("--refresh", action="store_true", help="ignore the candle cache")
     scan.set_defaults(func=cmd_scan)
 
+    risk = sub.add_parser("risk", help="what each risk-per-trade level does to drawdown")
+    risk.add_argument(
+        "--levels", default="0.25,0.5,1.0,2.0,3.0", help="risk-per-trade percentages to compare"
+    )
+    risk.add_argument("--trades", type=int, default=200, help="trades per simulated run")
+    risk.add_argument("--runs", type=int, default=5000, help="number of simulated runs")
+    risk.set_defaults(func=cmd_risk)
+
     wf = sub.add_parser(
         "walkforward", help="optimise on past windows, score on the windows that follow"
     )
     wf.add_argument("--params", action="store_true", help="print the winner of each fold")
+    wf.add_argument(
+        "--selection",
+        choices=["robust", "peak"],
+        help="robust prefers a broad plateau; peak takes the single best score",
+    )
     wf.add_argument("--refresh", action="store_true", help="ignore the candle cache")
     wf.set_defaults(func=cmd_walkforward)
 
