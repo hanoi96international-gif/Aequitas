@@ -9,7 +9,7 @@ import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
-from .backtest import run_backtest
+from .backtest import run_backtest, scan_signals
 from .strategy import LsobStrategy
 from .config import Config, load_config
 from .data import audit_candles, cached_ohlcv, clean_candles, load_any, save_csv
@@ -120,6 +120,32 @@ def cmd_scan(cfg: Config, args: argparse.Namespace) -> int:
             f"{_iso(s.ts):<18}{s.direction:<7}{s.entry:>13.6g}{s.stop:>13.6g}"
             f"{s.reward_risk:>7.2f}{s.displacement:>7.2f}  {targets}"
         )
+    return 0
+
+
+def cmd_chart(cfg: Config, args: argparse.Namespace) -> int:
+    from .chart import levels_for, render_svg, window_around
+
+    candles = _load_candles(cfg, refresh=False)
+    if not candles:
+        print("No candles loaded.", file=sys.stderr)
+        return 1
+    signals = scan_signals(cfg, candles)
+    if not signals:
+        print("No setups to draw.", file=sys.stderr)
+        return 1
+
+    chosen = signals[args.index] if -len(signals) <= args.index < len(signals) else signals[-1]
+    window = window_around(candles, chosen, args.before, args.after)
+    title = (
+        f"{cfg.market.symbol} {cfg.market.timeframe} — {chosen.direction.upper()} "
+        f"{_iso(chosen.ts)} UTC · {chosen.reward_risk:.2f}R"
+    )
+    svg = render_svg(window, chosen, title, levels_for(chosen), theme=args.theme)
+    out = Path(args.out)
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text(svg, encoding="utf-8")
+    print(f"{len(signals)} setups; drew #{args.index} -> {out}")
     return 0
 
 
@@ -285,6 +311,14 @@ def build_parser() -> argparse.ArgumentParser:
     scan.add_argument("--limit", type=int, default=50, help="show at most N most recent setups")
     scan.add_argument("--refresh", action="store_true", help="ignore the candle cache")
     scan.set_defaults(func=cmd_scan)
+
+    chart = sub.add_parser("chart", help="draw a setup and its levels as SVG")
+    chart.add_argument("--index", type=int, default=-1, help="which setup (-1 = most recent)")
+    chart.add_argument("--before", type=int, default=45, help="bars of context before the signal")
+    chart.add_argument("--after", type=int, default=25, help="bars after it")
+    chart.add_argument("--out", default="chart.svg", help="output SVG path")
+    chart.add_argument("--theme", choices=["light", "dark"], default="light")
+    chart.set_defaults(func=cmd_chart)
 
     risk = sub.add_parser("risk", help="what each risk-per-trade level does to drawdown")
     risk.add_argument(

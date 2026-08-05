@@ -88,6 +88,26 @@ Alternativ weiterhin über ccxt, wenn du nur die letzten N Kerzen brauchst:
 pip install ccxt && python -m lsob -c config.toml fetch --bars 5000
 ```
 
+## Die Ebenen ansehen
+
+```bash
+python -m lsob -c config.toml chart --index -1 --out setup.svg
+```
+
+Zeichnet ein Setup mit allem, was der Agent gesehen hat: geraidetes Level,
+Raid-Extrem, Order Block, Einstieg (bei `edge = "retracement"` die
+88,2-%-Linie), Stop und Ziele — auf den Kerzen, an der Stelle, an der er
+gehandelt hat.
+
+Ein Backtest sagt dir, *was* passiert ist. Er kann dir nicht sagen, ob die
+Linien dort liegen, wo **du** sie gezogen hättest. Dafür ist dieses Bild da.
+
+Farbe trägt nur zwei Dinge: die **Rücklauflinie** und die
+**Liquiditätsebenen**. Die Kerzen bleiben neutral — sie rot und grün zu
+malen würde vier kräftige Farbtöne gegen die zwei stellen, die etwas
+bedeuten. Jede Linie ist zusätzlich direkt beschriftet, nichts hängt allein
+an der Farbe. Hell und Dunkel sind getrennt geprüft.
+
 ## Datenqualität
 
 Jeder Ladevorgang wird geprüft und meldet, was er findet:
@@ -189,7 +209,7 @@ Wert dort wäre der Beweis für einen Lookahead-Fehler, und der Test schlägt
 in dem Fall fehl.
 
 ```bash
-pip install pytest && python -m pytest -q      # 151 Tests, ~3 s
+pip install pytest && python -m pytest -q      # 160 Tests, ~3 s
 ```
 
 ---
@@ -292,7 +312,8 @@ lsob/
   sizing.py      Risiko pro Trade -> Drawdown-Wahrscheinlichkeiten
   broker.py      PaperBroker (nutzt execution.py) und LiveBroker (ccxt)
   agent.py       Live-Loop: pollen, füttern, handeln, Status sichern
-  cli.py         backtest / scan / walkforward / risk / fetch / run
+  chart.py       ein Setup mit allen Ebenen als SVG zeichnen
+  cli.py         backtest / scan / chart / walkforward / risk / fetch / run
 ```
 
 ---
