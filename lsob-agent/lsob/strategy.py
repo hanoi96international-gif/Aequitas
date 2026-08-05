@@ -33,6 +33,7 @@ from .orderblock import (
     find_order_block,
     has_fvg,
     is_mitigated,
+    retracement_level,
 )
 from .structure import MarketStructure, SwingDetector
 
@@ -319,7 +320,25 @@ class LsobStrategy:
             ):
                 return self._drop("premium_discount")
 
-        entry = ob.edge(cfg.entry.edge)
+        if cfg.entry.edge == "retracement":
+            leg = [c for idx, c in self._recent if sweep.pierce_index <= idx <= i]
+            leg_extreme = (
+                min(c.low for c in leg) if sweep.direction == "short"
+                else max(c.high for c in leg)
+            )
+            entry = retracement_level(
+                sweep.extreme, leg_extreme, sweep.direction, cfg.entry.retracement
+            )
+            if cfg.entry.retracement_in_block and not (ob.bottom <= entry <= ob.top):
+                return self._drop("retracement_outside_block")
+            # The limit has to sit on the far side of price, or it is not a
+            # retracement entry — price is already past it.
+            if sweep.direction == "short" and entry <= candle.close:
+                return self._drop("retracement_behind_price")
+            if sweep.direction == "long" and entry >= candle.close:
+                return self._drop("retracement_behind_price")
+        else:
+            entry = ob.edge(cfg.entry.edge)
         buffer = cfg.entry.sl_buffer_atr * atr
         if sweep.direction == "short":
             anchor = sweep.extreme if cfg.entry.sl_anchor == "sweep_extreme" else ob.top

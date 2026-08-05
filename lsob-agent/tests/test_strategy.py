@@ -10,6 +10,8 @@ from __future__ import annotations
 
 import copy
 
+import pytest
+
 from conftest import candle, flat
 
 from lsob.config import Config
@@ -195,3 +197,87 @@ def test_a_short_whose_target_would_fall_below_zero_is_rejected():
     for sig in run(cfg, scaled):
         assert all(t > 0 for t in sig.targets), f"unreachable target: {sig.targets}"
     assert run(cfg, scaled) == [], "the setup cannot pay its target, so it is not emitted"
+
+
+# ── 88.2% retracement entry ──────────────────────────────────────────────
+#
+# The displacement leg on the reference setup runs from the raid extreme at
+# 107 down to a low of 98.5. A 0.882 retracement of that leg sits at
+# 98.5 + 0.882 * 8.5 = 105.997 — inside the order block (103.8-107), which is
+# the arrangement these two rules are meant to produce.
+
+
+def test_the_retracement_entry_lands_where_the_leg_says_it_should():
+    from lsob.orderblock import retracement_level
+
+    assert retracement_level(107.0, 98.5, "short", 0.882) == pytest.approx(105.997)
+    assert retracement_level(98.5, 107.0, "long", 0.882) == pytest.approx(99.503)
+    # A full retracement returns to the raid's own extreme.
+    assert retracement_level(107.0, 98.5, "short", 1.0) == pytest.approx(107.0)
+
+
+def test_edge_retracement_prices_the_entry_off_the_leg_not_the_block():
+    cfg = base_config()
+    cfg.entry.edge = "retracement"
+    signals = run(cfg)
+    assert len(signals) == 1
+    sig = signals[0]
+    assert sig.entry == pytest.approx(105.997, abs=0.01)
+    assert sig.order_block.bottom <= sig.entry <= sig.order_block.top
+
+
+def test_a_deeper_entry_buys_a_tighter_stop_and_more_r():
+    shallow = base_config()
+    shallow.entry.edge = "proximal"  # the block's near edge, at 103.8
+    deep = base_config()
+    deep.entry.edge = "retracement"  # 88.2% of the leg, at ~106.0
+
+    near = run(shallow)[0]
+    far = run(deep)[0]
+    assert far.entry > near.entry, "the deep entry sits closer to the raid extreme"
+    assert far.risk < near.risk, "and therefore risks less per unit"
+
+
+def test_a_retracement_that_misses_the_block_is_rejected_only_when_required():
+    """0.30 of the leg is 101.05 — a real level, but not inside the block."""
+    cfg = base_config()
+    cfg.entry.edge = "retracement"
+    cfg.entry.retracement = 0.30
+    cfg.entry.retracement_in_block = True
+    assert run(cfg) == []
+
+    cfg.entry.retracement_in_block = False
+    signals = run(cfg)
+    assert len(signals) == 1, "without the agreement rule the shallow level stands"
+    assert signals[0].entry == pytest.approx(101.05, abs=0.01)
+    assert signals[0].entry > SETUP[33].close, "still on the far side of price"
+
+
+def test_a_retracement_shallower_than_price_has_already_come_is_rejected():
+    """1% of the leg is 98.58, below the close of 99 — price is already past it."""
+    cfg = base_config()
+    cfg.entry.edge = "retracement"
+    cfg.entry.retracement = 0.01
+    cfg.entry.retracement_in_block = False
+    assert run(cfg) == []
+
+
+def test_the_ratio_is_configurable_for_any_variant_of_this_rule():
+    for ratio, expected in ((0.886, 106.03), (0.79, 105.22), (0.95, 106.58)):
+        cfg = base_config()
+        cfg.entry.edge = "retracement"
+        cfg.entry.retracement = ratio
+        cfg.entry.retracement_in_block = False
+        signals = run(cfg)
+        assert len(signals) == 1, f"ratio {ratio} produced no setup"
+        assert signals[0].entry == pytest.approx(expected, abs=0.02)
+
+
+def test_an_out_of_range_ratio_is_rejected_by_config_validation():
+    from lsob.config import validate
+
+    cfg = base_config()
+    for bad in (0.0, -0.5, 1.5):
+        cfg.entry.retracement = bad
+        with pytest.raises(ValueError, match="retracement"):
+            validate(cfg)

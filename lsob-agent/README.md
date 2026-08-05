@@ -147,7 +147,8 @@ wichtigsten Stellschrauben:
 | | `require_bos` | Verlangt den Bruch des gegenüberliegenden Swings. |
 | | `require_fvg` | Verlangt zusätzlich eine Fair-Value-Gap im Impuls. |
 | | `zone_mode` | `body` / `full` / `body_to_extreme` — wie die Zone geschnitten wird. |
-| `[entry]` | `edge` | `proximal` füllt öfter und riskiert weniger, `distal` gibt bessere Preise bei weniger Fills. |
+| `[entry]` | `edge` | `proximal` / `mid` / `distal` an der Blockkante, oder `retracement` auf einer Fib-Ebene des Beins. |
+| | `retracement` | Rücklauftiefe für `edge = "retracement"`. `0.882` ist ein tiefer Einstieg. |
 | | `sl_anchor` | Stop hinter dem Sweep-Extrem oder hinter dem Order Block. |
 | | `tp_rr` / `tp_weights` | Gestaffelte Ziele, Gewichte müssen 1.0 ergeben. |
 | | `breakeven_after_tp` | Stop nach dem N-ten Ziel auf Einstand. |
@@ -188,7 +189,7 @@ Wert dort wäre der Beweis für einen Lookahead-Fehler, und der Test schlägt
 in dem Fall fehl.
 
 ```bash
-pip install pytest && python -m pytest -q      # 144 Tests, ~3 s
+pip install pytest && python -m pytest -q      # 151 Tests, ~3 s
 ```
 
 ---

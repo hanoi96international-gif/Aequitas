@@ -58,7 +58,14 @@ class OrderBlockConfig:
 
 @dataclass(slots=True)
 class EntryConfig:
-    edge: str = "proximal"  # proximal | mid | distal
+    edge: str = "proximal"  # proximal | mid | distal | retracement
+    # Used when edge = "retracement": how far back across the displacement leg
+    # the limit sits. 0.882 is a deep retracement entry.
+    retracement: float = 0.882
+    # Reject a retracement entry that lands outside the order block. The two
+    # are meant to agree; when they do not, the leg and the block are
+    # describing different moves and the setup is not the one being traded.
+    retracement_in_block: bool = True
     valid_bars: int = 20
     sl_anchor: str = "sweep_extreme"  # sweep_extreme | ob_extreme
     sl_buffer_atr: float = 0.25
@@ -223,8 +230,10 @@ def validate(cfg: Config) -> None:
         raise ValueError(f"entry.tp_weights must sum to 1.0 (got {sum(e.tp_weights)})")
     if list(e.tp_rr) != sorted(e.tp_rr):
         raise ValueError("entry.tp_rr must be listed in ascending order")
-    if e.edge not in ("proximal", "mid", "distal"):
-        raise ValueError("entry.edge must be proximal, mid or distal")
+    if e.edge not in ("proximal", "mid", "distal", "retracement"):
+        raise ValueError("entry.edge must be proximal, mid, distal or retracement")
+    if not 0.0 < e.retracement <= 1.0:
+        raise ValueError("entry.retracement must be greater than 0 and at most 1.0")
     if e.sl_anchor not in ("sweep_extreme", "ob_extreme"):
         raise ValueError("entry.sl_anchor must be sweep_extreme or ob_extreme")
     if e.tp_mode not in ("rr", "liquidity"):

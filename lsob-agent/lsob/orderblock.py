@@ -126,6 +126,24 @@ def has_fvg(window: list[tuple[int, Candle]], direction: str) -> bool:
     return False
 
 
+def retracement_level(
+    sweep_extreme: float, leg_extreme: float, direction: str, ratio: float
+) -> float:
+    """The price `ratio` of the way back across the displacement leg.
+
+    The leg runs from the raid's extreme to the furthest point displacement
+    reached. A deep ratio such as 0.882 puts the entry almost back at the
+    raid's extreme, which is the point: the stop sits just beyond that
+    extreme, so the deeper the entry the tighter the risk and the larger the
+    R multiple — bought at the cost of the retracement having to travel
+    nearly the whole leg before it fills at all.
+    """
+    span = abs(sweep_extreme - leg_extreme)
+    if direction == "short":
+        return leg_extreme + ratio * span
+    return leg_extreme - ratio * span
+
+
 def displacement_atr(sweep_extreme: float, close: float, direction: str, atr: float) -> float:
     """How far price has travelled away from the raided level, in ATR units."""
     if atr <= 0:
