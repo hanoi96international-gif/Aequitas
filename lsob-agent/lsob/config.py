@@ -30,6 +30,12 @@ class DataConfig:
     csv: str = ""  # when set, read this file instead of calling an exchange
     cache_dir: str = "data"
     history_bars: int = 3000
+    # A second, finer series covering the same period. Where a coarse bar
+    # touches both the stop and a target, the backtester looks inside it
+    # instead of assuming the stop came first. Only that ambiguity — a stop on
+    # the fill bar is not one, since the entry lies between the open and the
+    # stop by construction.
+    intrabar_csv: str = ""
     # Real series contain bars no market printed. Dropping them is on by
     # default because one 395x-range bar poisons ATR for `atr_period` bars.
     clean: bool = True

@@ -82,13 +82,44 @@ def _describe(cfg: Config, candles: list[Candle]) -> str:
     )
 
 
+def _load_intrabar(cfg: Config, candles: list[Candle]):
+    """The finer series, bucketed to the trading timeframe, if one is set."""
+    if not cfg.data.intrabar_csv:
+        return None
+    from .intrabar import IntrabarIndex
+
+    fine = clean_candles(load_any(cfg.data.intrabar_csv), cfg.data.spike_ratio, cfg.data.jump_ratio)
+    if not fine:
+        print("intrabar_csv held no usable candles.", file=sys.stderr)
+        return None
+
+    bucket = timeframe_ms(cfg.market.timeframe)
+    fine_audit = audit_candles(fine, cfg.data.spike_ratio, cfg.data.jump_ratio)
+    if fine_audit.interval_ms and fine_audit.interval_ms >= bucket:
+        print(
+            f"WARNING: intrabar_csv is {_describe_interval(fine_audit.interval_ms)} data, "
+            f"which is not finer than the {cfg.market.timeframe} bars it should resolve. "
+            f"Ignoring it.",
+            file=sys.stderr,
+        )
+        return None
+
+    index = IntrabarIndex(fine, bucket)
+    covered = sum(1 for c in candles if index.covers(c.ts))
+    print(
+        f"Intrabar: {len(fine)} finer candles covering {covered}/{len(candles)} bars "
+        f"({100 * covered / max(len(candles), 1):.0f}%)"
+    )
+    return index
+
+
 def cmd_backtest(cfg: Config, args: argparse.Namespace) -> int:
     candles = _load_candles(cfg, refresh=args.refresh)
     if not candles:
         print("No candles loaded.", file=sys.stderr)
         return 1
     print(_describe(cfg, candles))
-    result = run_backtest(cfg, candles)
+    result = run_backtest(cfg, candles, _load_intrabar(cfg, candles))
     print()
     print(result.format())
 

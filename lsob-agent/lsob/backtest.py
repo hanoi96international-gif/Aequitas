@@ -6,6 +6,7 @@ from dataclasses import dataclass, field
 
 from .config import Config
 from .execution import Executor, Trade
+from .intrabar import IntrabarIndex
 from .metrics import Stats, compute
 from .model import Candle
 from .strategy import LsobStrategy, Signal
@@ -21,6 +22,7 @@ class BacktestResult:
     bars: int = 0
     capped_entries: int = 0
     stopped_on_entry_bar: int = 0
+    resolved_by_intrabar: int = 0
     worst_risk_fraction: float = 1.0
 
     def format(self) -> str:
@@ -37,10 +39,16 @@ class BacktestResult:
             )
             if share > 25.0:
                 body += (
-                    " — the stop is close enough to the entry that bar granularity "
-                    "is deciding these outcomes. Lower-timeframe data would resolve "
-                    "them; on this data they are coin flips scored as losses."
+                    " — these are real stops, not artefacts: the entry sits between "
+                    "the bar's open and the stop, so price had to cross it first. "
+                    "A high share means the stop is tight relative to bar range, "
+                    "which is a fact about the strategy rather than the backtest."
                 )
+        if self.resolved_by_intrabar:
+            body += (
+                f"\nResolved with finer candles {self.resolved_by_intrabar} "
+                f"ambiguous bar(s) — decided by evidence rather than assumption"
+            )
         if self.capped_entries:
             body += (
                 f"\n\nWARNING: risk.max_position_pct capped {self.capped_entries} of "
@@ -53,7 +61,9 @@ class BacktestResult:
         return f"{head}\n{'-' * len(head)}\n{body}"
 
 
-def run_backtest(cfg: Config, candles: list[Candle]) -> BacktestResult:
+def run_backtest(
+    cfg: Config, candles: list[Candle], intrabar: IntrabarIndex | None = None
+) -> BacktestResult:
     """Feed `candles` through the strategy and executor a single bar at a time.
 
     Order within a bar matters and is fixed here: the executor sees the bar
@@ -62,7 +72,7 @@ def run_backtest(cfg: Config, candles: list[Candle]) -> BacktestResult:
     bar, which can only be filled from the *next* bar onwards.
     """
     strategy = LsobStrategy(cfg)
-    executor = Executor(cfg)
+    executor = Executor(cfg, intrabar)
     signals: list[Signal] = []
 
     for index, candle in enumerate(candles):
@@ -84,6 +94,7 @@ def run_backtest(cfg: Config, candles: list[Candle]) -> BacktestResult:
         bars=len(candles),
         capped_entries=executor.capped_entries,
         stopped_on_entry_bar=executor.stopped_on_entry_bar,
+        resolved_by_intrabar=executor.resolved_by_intrabar,
         worst_risk_fraction=executor.worst_risk_fraction,
     )
 

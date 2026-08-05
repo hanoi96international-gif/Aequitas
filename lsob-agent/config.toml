@@ -20,6 +20,12 @@ history_bars  = 3000
 # Echte Kursreihen enthalten Balken, die kein Markt gedruckt hat. Standardmäßig
 # an, weil ein einziger kaputter Balken den ATR für `atr_period` Balken
 # vergiftet — und die Strategie dann still gar keine Signale mehr liefert.
+# Zweite, feinere Serie über denselben Zeitraum (z. B. 1m zu 15m-Kerzen).
+# Wo eine Kerze Stop UND Ziel berührt, schaut der Backtester hinein statt
+# den Stop anzunehmen. Nur diese Mehrdeutigkeit — ein Stop auf der
+# Einstiegskerze ist keine: der Einstieg liegt bauartbedingt zwischen
+# Eröffnung und Stop, der Preis muss ihn also zuerst kreuzen.
+intrabar_csv  = ""
 clean         = true
 spike_ratio   = 10.0    # max. High/Low innerhalb eines Balkens
 jump_ratio    = 10.0    # max. Close-zu-Close gegen den letzten guten Balken

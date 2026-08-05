@@ -134,6 +134,26 @@ ohne einen einzigen Fehler zu werfen. Lücken werden gezählt, aber nie
 gefüllt: eine fehlende Stunde ist eine Information, und sie zu interpolieren
 würde Kursverlauf erfinden.
 
+## Mehrdeutige Kerzen auflösen
+
+```toml
+[data]
+csv          = "btc-15m.csv"
+intrabar_csv = "btc-1m.csv"    # feinere Serie, gleicher Zeitraum
+```
+
+Berührt eine 15m-Kerze sowohl den Stop als auch ein Ziel, weiß sie nicht,
+was zuerst kam — der Backtester nimmt den Stop an. Mit einer 1m-Serie
+schaut er stattdessen hinein. Ist selbst die Minutenkerze mehrdeutig, bleibt
+es beim Stop: Auflösung verbessert die Antwort, sie erfindet keine.
+
+**Was das nicht auflöst:** einen Stop auf der Einstiegskerze. Bei einer
+ruhenden Limit-Order liegt der Einstieg bauartbedingt zwischen Eröffnung und
+Stop — der Preis *muss* ihn zuerst kreuzen. Diese Trades sind echte Stops,
+nachgemessen an realen Daten (42 von 42). Eine hohe Quote sagt dir, dass
+dein Stop eng gegenüber der Kerzenspanne ist; das ist eine Eigenschaft der
+Strategie, nicht des Backtests.
+
 ## Backtest-Ausgabe
 
 ```
@@ -217,7 +237,7 @@ Wert dort wäre der Beweis für einen Lookahead-Fehler, und der Test schlägt
 in dem Fall fehl.
 
 ```bash
-pip install pytest && python -m pytest -q      # 189 Tests, ~3 s
+pip install pytest && python -m pytest -q      # 204 Tests, ~3 s
 ```
 
 ---

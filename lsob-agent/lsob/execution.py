@@ -20,6 +20,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 
 from .config import Config
+from .intrabar import IntrabarIndex, first_of, touched_after_fill
 from .model import Candle
 from .strategy import Signal
 
@@ -95,8 +96,12 @@ class Executor:
     position may be.
     """
 
-    def __init__(self, cfg: Config) -> None:
+    def __init__(self, cfg: Config, intrabar: IntrabarIndex | None = None) -> None:
         self.cfg = cfg
+        # Optional finer series. Where a coarse bar cannot say which of two
+        # levels came first, this can — see lsob/intrabar.py.
+        self.intrabar = intrabar
+        self.resolved_by_intrabar = 0
         self.equity = cfg.risk.starting_equity
         self.pending: list[PendingOrder] = []
         self.positions: list[Position] = []
@@ -217,6 +222,17 @@ class Executor:
         hit = candle.low <= pos.stop if pos.direction == "long" else candle.high >= pos.stop
         if not hit:
             return
+
+        if self.intrabar is not None:
+            after = touched_after_fill(
+                self.intrabar.within(candle.ts), pos.entry_price, pos.stop, pos.direction
+            )
+            if after is not None:
+                self.resolved_by_intrabar += 1
+                if not after:
+                    # The bar reached the stop, but before the entry filled.
+                    # The position was never exposed to it.
+                    return
         self._exit(index, candle, pos, pos.stop, pos.remaining, "stop", taker=True)
         trade = self._close(index, candle, pos, "stop")
         self.positions.remove(pos)
@@ -284,7 +300,23 @@ class Executor:
         stop_hit = candle.low <= pos.stop if long else candle.high >= pos.stop
 
         # Worst case first: a bar that touched the stop is scored as stopped,
-        # even if it also traded through a target.
+        # even if it also traded through a target — unless a finer series can
+        # say which came first, in which case it is asked rather than assumed.
+        if stop_hit and self.intrabar is not None and pos.filled_targets < len(pos.targets):
+            target = pos.targets[pos.filled_targets]
+            reached_target = candle.high >= target if long else candle.low <= target
+            if reached_target:
+                stop, tgt = pos.stop, target
+                events = (
+                    [("stop", lambda c: c.low <= stop), ("target", lambda c: c.high >= tgt)]
+                    if long
+                    else [("stop", lambda c: c.high >= stop), ("target", lambda c: c.low <= tgt)]
+                )
+                first = first_of(self.intrabar.within(candle.ts), events, pessimistic="stop")
+                if first is not None:
+                    self.resolved_by_intrabar += 1
+                    stop_hit = first == "stop"
+
         if stop_hit:
             self._exit(index, candle, pos, pos.stop, pos.remaining, "stop", taker=True)
             return self._close(index, candle, pos, "stop")
