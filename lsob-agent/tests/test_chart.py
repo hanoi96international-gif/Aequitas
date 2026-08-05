@@ -87,3 +87,71 @@ def test_an_inducement_level_is_included_when_given():
 def test_drawing_nothing_is_an_error_not_a_blank_chart():
     with pytest.raises(ValueError, match="nothing to draw"):
         render_svg([], a_signal(), "t")
+
+
+# ── the retracement ladder ───────────────────────────────────────────────
+
+
+def test_the_ladder_reproduces_the_ratios_it_was_given():
+    from lsob.chart import fib_ladder
+
+    sig = a_signal()
+    ratios = [0.236, 0.5, 0.882]
+    ladder = fib_ladder(sig, ratios)
+    assert len(ladder) == 3
+
+    span = abs(sig.sweep_extreme - sig.leg_extreme)
+    assert span > 0, "the fixture's signal must carry its leg"
+    for level, ratio in zip(ladder, ratios, strict=True):
+        travelled = abs(level.price - sig.leg_extreme) / span
+        assert travelled == pytest.approx(ratio, abs=1e-9)
+        assert f"{ratio:.3f}" in level.label
+
+
+def test_the_entry_ratio_lands_on_its_own_rung():
+    """The 0.882 rung and a 0.882 entry must be the same price, not merely close."""
+    from lsob.chart import fib_ladder
+    from test_strategy import base_config
+
+    cfg = base_config()
+    cfg.entry.edge = "retracement"
+    cfg.entry.retracement = 0.882
+    cfg.entry.retracement_in_block = False
+    sig = run(cfg, WITH_RETRACE)[0]
+
+    rung = next(lv for lv in fib_ladder(sig, [0.882]))
+    assert rung.price == pytest.approx(sig.entry, abs=1e-9)
+
+
+def test_a_signal_without_a_leg_draws_no_ladder():
+    from dataclasses import replace
+
+    from lsob.chart import fib_ladder
+
+    assert fib_ladder(replace(a_signal(), leg_extreme=0.0), [0.5]) == []
+
+
+def test_ladder_rungs_are_drawn_and_labelled_with_ratio_and_price():
+    from lsob.chart import fib_ladder
+
+    sig = a_signal()
+    svg = render_svg(WITH_RETRACE, sig, "t", levels_for(sig) + fib_ladder(sig, [0.5, 0.786]))
+    assert "0.500" in svg and "0.786" in svg
+
+
+def test_crowded_rungs_get_separated_labels():
+    """0.786/0.882/0.941 sit within a few ticks — their labels must not stack."""
+    from lsob.chart import fib_ladder
+
+    sig = a_signal()
+    ladder = fib_ladder(sig, [0.786, 0.882, 0.941])
+    svg = render_svg(WITH_RETRACE, sig, "t", ladder)
+    ys = [
+        float(m)
+        for m in re.findall(
+            r'<text x="[\d.]+" y="([\d.]+)" fill="#[0-9a-f]{6}" font-size="9.5"', svg
+        )
+    ]
+    assert len(ys) == 3
+    for earlier, later in zip(sorted(ys), sorted(ys)[1:], strict=False):
+        assert later - earlier >= 10.0

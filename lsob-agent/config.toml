@@ -55,6 +55,11 @@ edge               = "proximal"      # proximal fills first and risks less; dist
 # 0.882 ist nur der Vorgabewert, keine belegte Regel — setz hier deine eigene.
 retracement          = 0.882
 retracement_in_block = true    # Rücklaufebene muss im Order Block liegen
+# Die Leiter, die `lsob chart --fib` zeichnet. Das sind die fortgesetzten
+# Quadratwurzeln des Goldenen Schnitts — 0.786 = √0.618, 0.882 = √0.786,
+# 0.941 = √0.882 — weshalb sich die tiefen Ebenen zusammendrängen.
+# Nur `retracement` wählt den Einstieg; der Rest ist Kontext.
+fib_levels = [0.236, 0.382, 0.5, 0.686, 0.786, 0.882, 0.941]
 valid_bars         = 20              # pull the resting order after this many bars
 sl_anchor          = "sweep_extreme" # sweep_extreme | ob_extreme
 sl_buffer_atr      = 0.25

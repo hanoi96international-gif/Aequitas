@@ -124,7 +124,7 @@ def cmd_scan(cfg: Config, args: argparse.Namespace) -> int:
 
 
 def cmd_chart(cfg: Config, args: argparse.Namespace) -> int:
-    from .chart import levels_for, render_svg, window_around
+    from .chart import fib_ladder, levels_for, render_svg, window_around
 
     candles = _load_candles(cfg, refresh=False)
     if not candles:
@@ -141,7 +141,10 @@ def cmd_chart(cfg: Config, args: argparse.Namespace) -> int:
         f"{cfg.market.symbol} {cfg.market.timeframe} — {chosen.direction.upper()} "
         f"{_iso(chosen.ts)} UTC · {chosen.reward_risk:.2f}R"
     )
-    svg = render_svg(window, chosen, title, levels_for(chosen), theme=args.theme)
+    marks = levels_for(chosen)
+    if args.fib:
+        marks += fib_ladder(chosen, list(cfg.entry.fib_levels))
+    svg = render_svg(window, chosen, title, marks, theme=args.theme)
     out = Path(args.out)
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(svg, encoding="utf-8")
@@ -318,6 +321,9 @@ def build_parser() -> argparse.ArgumentParser:
     chart.add_argument("--after", type=int, default=25, help="bars after it")
     chart.add_argument("--out", default="chart.svg", help="output SVG path")
     chart.add_argument("--theme", choices=["light", "dark"], default="light")
+    chart.add_argument(
+        "--fib", action="store_true", help="draw the full retracement ladder"
+    )
     chart.set_defaults(func=cmd_chart)
 
     risk = sub.add_parser("risk", help="what each risk-per-trade level does to drawdown")

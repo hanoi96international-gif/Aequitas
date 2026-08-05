@@ -58,6 +58,10 @@ class Signal:
     sweep_touches: int
     displacement: float  # in ATR units
     atr: float
+    # The far end of the displacement leg. With the raid extreme it defines
+    # the span every retracement ratio is measured across, so a chart can
+    # redraw the whole ladder without recomputing the setup.
+    leg_extreme: float = 0.0
 
     @property
     def label(self) -> str:
@@ -320,12 +324,12 @@ class LsobStrategy:
             ):
                 return self._drop("premium_discount")
 
+        leg = [c for idx, c in self._recent if sweep.pierce_index <= idx <= i]
+        leg_extreme = (
+            min(c.low for c in leg) if sweep.direction == "short"
+            else max(c.high for c in leg)
+        )
         if cfg.entry.edge == "retracement":
-            leg = [c for idx, c in self._recent if sweep.pierce_index <= idx <= i]
-            leg_extreme = (
-                min(c.low for c in leg) if sweep.direction == "short"
-                else max(c.high for c in leg)
-            )
             entry = retracement_level(
                 sweep.extreme, leg_extreme, sweep.direction, cfg.entry.retracement
             )
@@ -380,6 +384,7 @@ class LsobStrategy:
             sweep_touches=sweep.touches,
             displacement=disp,
             atr=atr,
+            leg_extreme=leg_extreme,
         )
 
     def _drop(self, reason: str) -> None:

@@ -91,12 +91,15 @@ pip install ccxt && python -m lsob -c config.toml fetch --bars 5000
 ## Die Ebenen ansehen
 
 ```bash
-python -m lsob -c config.toml chart --index -1 --out setup.svg
+python -m lsob -c config.toml chart --index -1 --fib --out setup.svg
 ```
 
 Zeichnet ein Setup mit allem, was der Agent gesehen hat: geraidetes Level,
 Raid-Extrem, Order Block, Einstieg, Stop und Ziele — auf den Kerzen, an der
-Stelle, an der er gehandelt hat.
+Stelle, an der er gehandelt hat. Mit `--fib` kommt die volle Rücklaufleiter
+dazu (`entry.fib_levels`), damit sichtbar wird, in welchem Teil des Beins
+der Einstieg liegt. Eine einzelne Linie sagt darüber nichts; neben 0.5 und
+0.786 ist es sofort erkennbar.
 
 Ein Backtest sagt dir, *was* passiert ist. Er kann dir nicht sagen, ob die
 Linien dort liegen, wo **du** sie gezogen hättest. Dafür ist dieses Bild da.
@@ -167,7 +170,8 @@ wichtigsten Stellschrauben:
 | | `require_fvg` | Verlangt zusätzlich eine Fair-Value-Gap im Impuls. |
 | | `zone_mode` | `body` / `full` / `body_to_extreme` — wie die Zone geschnitten wird. |
 | `[entry]` | `edge` | `proximal` / `mid` / `distal` an der Blockkante, oder `retracement` auf einer Fib-Ebene des Beins. |
-| | `retracement` | Rücklauftiefe für `edge = "retracement"`, als Anteil des Beins. `0.882` ist der Vorgabewert, kein belegter Standard. |
+| | `retracement` | Rücklauftiefe für `edge = "retracement"`, als Anteil des Beins. |
+| | `fib_levels` | Die Leiter, die `chart --fib` zeichnet — Vorgabe ist die Wurzelreihe 0.236 … 0.941. |
 | | `sl_anchor` | Stop hinter dem Sweep-Extrem oder hinter dem Order Block. |
 | | `tp_rr` / `tp_weights` | Gestaffelte Ziele, Gewichte müssen 1.0 ergeben. |
 | | `breakeven_after_tp` | Stop nach dem N-ten Ziel auf Einstand. |
@@ -208,7 +212,7 @@ Wert dort wäre der Beweis für einen Lookahead-Fehler, und der Test schlägt
 in dem Fall fehl.
 
 ```bash
-pip install pytest && python -m pytest -q      # 160 Tests, ~3 s
+pip install pytest && python -m pytest -q      # 165 Tests, ~3 s
 ```
 
 ---

@@ -20,6 +20,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 
 from .model import Candle
+from .orderblock import retracement_level
 from .strategy import Signal
 
 # Validated in both modes against the chart surfaces below (all-pairs:
@@ -34,6 +35,7 @@ _LIGHT = {
     "liquidity": "#eb6834",
     "stop": "#d03b3b",
     "target": "#0ca30c",
+    "fib": "#7d7b75",
     "zone": "rgba(11,11,11,0.07)",
     "candle_up": "#fcfcfb",
     "candle_down": "#52514e",
@@ -49,6 +51,7 @@ _DARK = {
     "liquidity": "#d95926",
     "stop": "#d03b3b",
     "target": "#0ca30c",
+    "fib": "#918f88",
     "zone": "rgba(255,255,255,0.09)",
     "candle_up": "#1a1a19",
     "candle_down": "#c3c2b7",
@@ -76,6 +79,25 @@ def _fmt(price: float) -> str:
     if price >= 10:
         return f"{price:.2f}"
     return f"{price:.5g}"
+
+
+def fib_ladder(signal: Signal, ratios: list[float]) -> list[Level]:
+    """Every configured retracement ratio across the leg, priced and labelled.
+
+    The chart draws the whole ladder even though only one ratio selects the
+    entry. Read on its own, a single line says nothing about whether it sits
+    where it should; beside 0.5 and 0.786 it is immediately obvious which
+    part of the leg the entry is in.
+    """
+    if signal.leg_extreme <= 0:
+        return []
+    out: list[Level] = []
+    for ratio in ratios:
+        price = retracement_level(
+            signal.sweep_extreme, signal.leg_extreme, signal.direction, ratio
+        )
+        out.append(Level(price, f"{ratio:.3f}  {_fmt(price)}", "fib"))
+    return out
 
 
 def levels_for(signal: Signal, inducement: float | None = None) -> list[Level]:
@@ -160,12 +182,13 @@ def render_svg(
     # Above the band, or below it when the band sits at the very top of the
     # plot. Inside would read as a label *on* the entry line, which crosses it.
     caption_y = zone_top - 6 if zone_top - 6 > pad_top + 10 else zone_bottom + 12
+    caption_x = pad_left + plot_w - 64
     add(
-        f'<rect x="{pad_left + 2}" y="{caption_y - 7:.1f}" width="62" height="14" '
+        f'<rect x="{caption_x - 3:.1f}" y="{caption_y - 7:.1f}" width="64" height="14" '
         f'rx="2" fill="{palette["surface"]}" opacity="0.88"/>'
     )
     add(
-        f'<text x="{pad_left + 5}" y="{caption_y + 3.5:.1f}" '
+        f'<text x="{caption_x:.1f}" y="{caption_y + 3.5:.1f}" '
         f'fill="{palette["muted"]}" font-size="10">order block</text>'
     )
 
@@ -202,11 +225,45 @@ def render_svg(
             f'font-size="10" text-anchor="middle">signal</text>'
         )
 
-    # Levels last, so nothing draws over them. Labels sit in the right gutter,
+    # The ladder goes under the trade levels: it is the ruler the entry is
+    # read against, not a line anyone acts on. Labels sit on the left so the
+    # right gutter stays reserved for the levels that carry orders.
+    ladder = [lv for lv in levels if lv.role == "fib"]
+    ladder = sorted(
+        (lv for lv in ladder if pad_top <= y_of(lv.price) <= pad_top + plot_h),
+        key=lambda lv: -lv.price,
+    )
+    # The square-root series clusters hard at the deep end — 0.786, 0.882 and
+    # 0.941 can land within a few ticks of each other — so the labels need the
+    # same nudging the trade levels get, or the deepest three are unreadable
+    # exactly where the entry is.
+    ladder_y: list[float] = []
+    for level in ladder:
+        y = y_of(level.price)
+        if ladder_y and y - ladder_y[-1] < 11.0:
+            y = ladder_y[-1] + 11.0
+        ladder_y.append(y)
+
+    for level, ly in zip(ladder, ladder_y, strict=True):
+        y = y_of(level.price)
+        add(
+            f'<line x1="{pad_left}" y1="{y:.1f}" x2="{pad_left + plot_w:.1f}" y2="{y:.1f}" '
+            f'stroke="{palette["fib"]}" stroke-width="1" opacity="0.5"/>'
+        )
+        add(
+            f'<rect x="{pad_left + 1}" y="{ly - 6.5:.1f}" width="78" height="13" rx="2" '
+            f'fill="{palette["surface"]}" opacity="0.85"/>'
+        )
+        add(
+            f'<text x="{pad_left + 4}" y="{ly + 3.5:.1f}" fill="{palette["fib"]}" '
+            f'font-size="9.5" font-variant-numeric="tabular-nums">{_escape(level.label)}</text>'
+        )
+
+    # Trade levels last, so nothing draws over them. Labels sit in the right gutter,
     # nudged apart where the levels themselves are closer together than the
     # text is tall — a stop and a raid extreme two ticks apart are common, and
     # overlapping labels would make exactly those setups unreadable.
-    ordered = sorted(levels, key=lambda lv: -lv.price)
+    ordered = sorted([lv for lv in levels if lv.role != "fib"], key=lambda lv: -lv.price)
     label_y: list[float] = []
     min_gap = 13.0
     for level in ordered:

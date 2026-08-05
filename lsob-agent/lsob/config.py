@@ -67,6 +67,13 @@ class EntryConfig:
     # are meant to agree; when they do not, the leg and the block are
     # describing different moves and the setup is not the one being traded.
     retracement_in_block: bool = True
+    # The ratios drawn as a ladder across the leg. These are the successive
+    # square roots of the golden ratio — 0.786 = sqrt(0.618), 0.882 =
+    # sqrt(0.786), 0.941 = sqrt(0.882) — which is why the deep levels cluster.
+    # Only `retracement` selects the entry; the rest are drawn for context.
+    fib_levels: list[float] = field(
+        default_factory=lambda: [0.236, 0.382, 0.5, 0.686, 0.786, 0.882, 0.941]
+    )
     valid_bars: int = 20
     sl_anchor: str = "sweep_extreme"  # sweep_extreme | ob_extreme
     sl_buffer_atr: float = 0.25
@@ -235,6 +242,10 @@ def validate(cfg: Config) -> None:
         raise ValueError("entry.edge must be proximal, mid, distal or retracement")
     if not 0.0 < e.retracement <= 1.0:
         raise ValueError("entry.retracement must be greater than 0 and at most 1.0")
+    if any(not 0.0 <= level <= 1.0 for level in e.fib_levels):
+        raise ValueError("entry.fib_levels must all be between 0.0 and 1.0")
+    if list(e.fib_levels) != sorted(e.fib_levels):
+        raise ValueError("entry.fib_levels must be listed in ascending order")
     if e.sl_anchor not in ("sweep_extreme", "ob_extreme"):
         raise ValueError("entry.sl_anchor must be sweep_extreme or ob_extreme")
     if e.tp_mode not in ("rr", "liquidity"):
