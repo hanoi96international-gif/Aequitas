@@ -96,6 +96,23 @@ jobs:
             cut -d= -f1 /root/.node-env-new | sort
             echo "peer -> $PEER_URL"
 
+            # Persist into the env file deploy.sh rebuilds the container from,
+            # otherwise the next ordinary deploy silently reverts all of this.
+            for ENVF in /root/.aequitas.env /root/aequitas.env; do
+              [ -f "$ENVF" ] || continue
+              cp -a "$ENVF" "$ENVF.bak-$(date +%s)"
+              grep -vE '^(PRIMARY_NODE_URL|PRIMARY_NODE_URLS|BOOTSTRAP_SNAPSHOT_URL|PROOF_SERVER_URLS|PROOF_SERVER_URL|CHAIN_SERVICE_TOKEN)=' "$ENVF" > "$ENVF.tmp"
+              {
+                printf 'PRIMARY_NODE_URL=%s\n'       "$PEER_URL"
+                printf 'PRIMARY_NODE_URLS=%s\n'      "$PEER_URL"
+                printf 'BOOTSTRAP_SNAPSHOT_URL=%s\n' "$PEER_URL/api/snapshot"
+                printf 'PROOF_SERVER_URLS=%s\n'      "http://proof-server:3000"
+                printf 'CHAIN_SERVICE_TOKEN=%s\n'    "$TOKEN"
+              } >> "$ENVF.tmp"
+              mv "$ENVF.tmp" "$ENVF"
+              echo "persisted into $ENVF (backup kept alongside)"
+            done
+
             PREV="${NODE}-prev-$(date +%s)"
             docker rename "$NODE" "$PREV"
             docker stop "$PREV" >/dev/null 2>&1 || true
@@ -176,6 +193,23 @@ jobs:
             echo "=== variable NAMES to be applied (values never printed) ==="
             cut -d= -f1 /root/.node-env-new | sort
             echo "peer -> $PEER_URL"
+
+            # Persist into the env file deploy.sh rebuilds the container from,
+            # otherwise the next ordinary deploy silently reverts all of this.
+            for ENVF in /root/.aequitas.env /root/aequitas.env; do
+              [ -f "$ENVF" ] || continue
+              cp -a "$ENVF" "$ENVF.bak-$(date +%s)"
+              grep -vE '^(PRIMARY_NODE_URL|PRIMARY_NODE_URLS|BOOTSTRAP_SNAPSHOT_URL|PROOF_SERVER_URLS|PROOF_SERVER_URL|CHAIN_SERVICE_TOKEN)=' "$ENVF" > "$ENVF.tmp"
+              {
+                printf 'PRIMARY_NODE_URL=%s\n'       "$PEER_URL"
+                printf 'PRIMARY_NODE_URLS=%s\n'      "$PEER_URL"
+                printf 'BOOTSTRAP_SNAPSHOT_URL=%s\n' "$PEER_URL/api/snapshot"
+                printf 'PROOF_SERVER_URLS=%s\n'      "http://proof-server:3000"
+                printf 'CHAIN_SERVICE_TOKEN=%s\n'    "$TOKEN"
+              } >> "$ENVF.tmp"
+              mv "$ENVF.tmp" "$ENVF"
+              echo "persisted into $ENVF (backup kept alongside)"
+            done
 
             PREV="${NODE}-prev-$(date +%s)"
             docker rename "$NODE" "$PREV"
