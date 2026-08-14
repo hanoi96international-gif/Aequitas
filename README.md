@@ -35,12 +35,20 @@ Aequitas has a Gini coefficient of ~0.08 — compared to ~0.85 for Bitcoin, the 
 
 ## Live / Website
 
+> **Infrastruktur-Umzug (Stand 2026-08-14).** Das Netzwerk lief bis dahin
+> teilweise auf Railway. Railway ist abgeschaltet; alle Dienste laufen jetzt
+> auf den beiden Contabo-Validatoren. Die Domain `aequitas.digital` wird zum
+> **18.08.2026** frei und dann auf Contabo1 gezeigt — bis dahin sind die
+> IP-Endpunkte maßgeblich. Ablauf und Checkliste:
+> [`docs/MIGRATION_RAILWAY_TO_CONTABO.md`](docs/MIGRATION_RAILWAY_TO_CONTABO.md).
+
 | | URL |
 |---|---|
-| 🌐 Website & Explorer | https://aequitas.digital |
-| ⛓ RPC Endpoint | https://aequitas.digital/rpc |
-| 🔒 Proof Server | https://aequitas-proof-server-production.up.railway.app |
-| 📡 Bootstrap Node | `/dns4/reseau.proxy.rlwy.net/tcp/41277/p2p/12D3KooWFuP5HtD1Xy9bj3ZdWL7eisWTx72V26hpGieMmqsGLV5R` |
+| 🌐 Website & Explorer | https://aequitas.digital *(ab 18.08.2026; aktuell: http://173.249.37.118:8080)* |
+| ⛓ RPC Endpoint | https://aequitas.digital/rpc *(ab 18.08.2026; aktuell: http://173.249.37.118:8080/rpc)* |
+| 🔒 Proof Server | Pro Validator eine eigene Instanz, konfiguriert über `PROOF_SERVER_URLS` — es gibt bewusst **keinen** eingebauten Default mehr (ein Node soll bei Fehlkonfiguration laut scheitern, statt still die Infrastruktur eines Dritten zu benutzen) |
+| 📡 Bootstrap Node (Contabo1) | `/ip4/173.249.37.118/tcp/4001/p2p/12D3KooWHfPy6g3jvyC1mvqzCHvy5QBsDmHHsvfwvwXQGrtQ2pVm` |
+| 📡 Bootstrap Node (Contabo2) | `/ip4/194.163.188.71/tcp/4001/p2p/12D3KooWBv34kuVcmNDxZT4kCZFvNVGhy4zgkBZDGMtp7YSx2UUN` |
 
 ---
 
