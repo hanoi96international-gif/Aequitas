@@ -1,11 +1,11 @@
-name: Deploy to Contabo VPS
+﻿name: Deploy to Contabo VPS
 
 on:
   push:
     branches: [master, main]
     # A deploy rebuilds the image and restarts the node. Nothing under
     # .github/ or in a Markdown file can change the binary, so a push that
-    # touches only those must not take the chain down for a rebuild — which
+    # touches only those must not take the chain down for a rebuild â€” which
     # it did, every time a diagnostic workflow was added during an incident.
     paths-ignore:
       - '.github/**'
@@ -13,7 +13,7 @@ on:
 
 jobs:
   # FIX (Monster Audit 2026-07-12, P1): deploy used to run straight off a
-  # push with zero test/build gate — a red `go test`/`go vet` or a broken
+  # push with zero test/build gate â€” a red `go test`/`go vet` or a broken
   # Solidity/Hardhat build could still reach production. `deploy` now
   # `needs: test`, so a failing build blocks the SSH deploy step entirely.
   test:
@@ -36,12 +36,12 @@ jobs:
     needs: test
     runs-on: ubuntu-latest
     steps:
-      # FIX (2026-07-25 night — the second network-wide fork in one evening):
+      # FIX (2026-07-25 night â€” the second network-wide fork in one evening):
       # a push to main restarts ALL THREE nodes at once (Railway redeploys the
       # primary on the same push this workflow and deploy-contabo2.yml react
       # to). At 1s block time, three simultaneous restarts are a network-wide
       # partition: each node boots into dead/booting peers, the stall escape
-      # valves open, each produces its own branch, and the network forks —
+      # valves open, each produces its own branch, and the network forks â€”
       # observed live twice today (18:37 and 20:00 UTC), each time requiring
       # an authoritative resync of both secondaries to recover. Staggering the
       # restarts keeps a quorum of already-converged nodes up at every moment:
@@ -50,18 +50,34 @@ jobs:
       # waits for this workflow to finish. Fail-open after the timeout so a
       # down primary can never permanently block deploying a fix to the
       # secondaries.
-      - name: Wait for the primary to be healthy again (Railway redeploys on this same push)
+      # FIX (2026-08-14): this used to poll https://aequitas.digital/api/status
+      # for HTTP 200, because Railway redeployed the primary on the same push
+      # and Contabo1 had to wait its turn. Railway is decommissioned and that
+      # URL now answers 404 forever, so the loop burned its full 15 minutes on
+      # every single deploy before failing open. Combined with the missing
+      # .dockerignore (1.22 GB of build context) that pushed the deploy past
+      # its command timeout â€” killing it AFTER the old container had already
+      # been stopped, which is how Contabo1 ended up down.
+      #
+      # The staggering it provided is still worth keeping: at 1s block time,
+      # restarting every validator at once is a network-wide partition (twice
+      # observed live on 2026-07-25). With only two boxes left, the quorum to
+      # protect is simply "the other one". Contabo1 therefore waits for
+      # Contabo2, and deploy-contabo2.yml continues to wait for THIS workflow â€”
+      # so the two never restart simultaneously. Still fail-open: a down peer
+      # must never permanently block shipping a fix.
+      - name: Wait for Contabo2 to be healthy (never restart both validators at once)
         run: |
-          for i in $(seq 1 60); do
-            code=$(curl -s -o /dev/null -w "%{http_code}" -m 10 https://aequitas.digital/api/status || true)
+          for i in $(seq 1 40); do
+            code=$(curl -s -o /dev/null -w "%{http_code}" -m 10 http://194.163.188.71:8080/api/status || true)
             if [ "$code" = "200" ]; then
-              echo "primary healthy again (HTTP 200) — proceeding with the Contabo1 deploy"
+              echo "Contabo2 healthy (HTTP 200) â€” proceeding with the Contabo1 deploy"
               exit 0
             fi
-            echo "primary not ready yet (HTTP $code) — waiting ($i/60)"
+            echo "Contabo2 not ready yet (HTTP $code) â€” waiting ($i/40)"
             sleep 15
           done
-          echo "primary still unreachable after 15 min — proceeding anyway (fail-open: a broken primary must not block fixing the secondaries)"
+          echo "Contabo2 still unreachable after 10 min â€” proceeding anyway (fail-open)"
       - name: Deploy to Contabo
         uses: appleboy/ssh-action@v1.0.3
         with:
@@ -72,7 +88,7 @@ jobs:
           # FIX (fresh Monster Audit 2026-07-12): appleboy/ssh-action's
           # `fingerprint` input expects the SSH SHA256 fingerprint string
           # (ssh-keygen -lf output, "SHA256:...") of whichever host key type
-          # the SSH client actually negotiates — not the raw base64
+          # the SSH client actually negotiates â€” not the raw base64
           # public-key blob (what this used to hold). Contabo1 offers
           # ecdsa/rsa/ed25519; RSA and ed25519 were each tried and failed
           # handshake ("fingerprint mismatch"), so this is the remaining
@@ -140,5 +156,5 @@ jobs:
             echo "=== disk after deploy ==="
             df -h / | tail -1
           script_stop: true
-          timeout: 600s
-          command_timeout: 600s
+          timeout: 1800s
+          command_timeout: 1800s

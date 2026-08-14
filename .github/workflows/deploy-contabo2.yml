@@ -1,4 +1,4 @@
-name: Deploy to Contabo2 VPS
+﻿name: Deploy to Contabo2 VPS
 
 on:
   push:
@@ -10,7 +10,7 @@ on:
       - '**.md'
 
 jobs:
-  # Mirrors deploy-contabo.yml's test gate (Monster Audit 2026-07-12, P1) —
+  # Mirrors deploy-contabo.yml's test gate (Monster Audit 2026-07-12, P1) â€”
   # a failing build/test blocks the SSH deploy step entirely.
   test:
     runs-on: ubuntu-latest
@@ -32,7 +32,7 @@ jobs:
     needs: test
     runs-on: ubuntu-latest
     steps:
-      # FIX (2026-07-25 night): see deploy-contabo.yml's matching comment —
+      # FIX (2026-07-25 night): see deploy-contabo.yml's matching comment â€”
       # simultaneous restarts of all three nodes forked the network twice in
       # one evening. This workflow restarts LAST: wait for the primary to
       # serve traffic again (Railway redeploys it on this same push), then
@@ -40,18 +40,13 @@ jobs:
       # every moment during a rollout at least two already-converged nodes
       # are up. Both waits fail open after their timeout so nothing can
       # permanently block deploying a fix.
-      - name: Wait for the primary to be healthy again (Railway redeploys on this same push)
-        run: |
-          for i in $(seq 1 60); do
-            code=$(curl -s -o /dev/null -w "%{http_code}" -m 10 https://aequitas.digital/api/status || true)
-            if [ "$code" = "200" ]; then
-              echo "primary healthy again (HTTP 200)"
-              exit 0
-            fi
-            echo "primary not ready yet (HTTP $code) — waiting ($i/60)"
-            sleep 15
-          done
-          echo "primary still unreachable after 15 min — proceeding anyway (fail-open)"
+      # FIX (2026-08-14): removed a poll of https://aequitas.digital/api/status
+      # that waited for Railway to finish redeploying the primary. Railway is
+      # decommissioned and that URL answers 404 forever, so this loop spent its
+      # full 15 minutes doing nothing on every deploy. The staggering it was
+      # part of is preserved by the step below, which waits for Contabo1's
+      # deploy of this same commit â€” with only two boxes left, that is the
+      # whole ordering constraint.
       - name: Wait for Contabo1's deploy of this same commit to finish first
         env:
           GH_TOKEN: ${{ github.token }}
@@ -60,17 +55,17 @@ jobs:
             status=$(gh api "repos/${{ github.repository }}/actions/runs?head_sha=${{ github.sha }}&per_page=50" \
               --jq '[.workflow_runs[] | select(.name=="Deploy to Contabo VPS")][0].status' 2>/dev/null || echo unknown)
             if [ "$status" = "completed" ]; then
-              echo "Contabo1's deploy completed — proceeding with the Contabo2 deploy"
+              echo "Contabo1's deploy completed â€” proceeding with the Contabo2 deploy"
               exit 0
             fi
             if [ -z "$status" ] || [ "$status" = "null" ]; then
-              echo "no Contabo1 deploy run found for this commit (docs-only path filter difference?) — proceeding"
+              echo "no Contabo1 deploy run found for this commit (docs-only path filter difference?) â€” proceeding"
               exit 0
             fi
-            echo "Contabo1 deploy status: $status — waiting ($i/60)"
+            echo "Contabo1 deploy status: $status â€” waiting ($i/60)"
             sleep 20
           done
-          echo "gave up waiting for Contabo1's deploy after 20 min — proceeding anyway (fail-open)"
+          echo "gave up waiting for Contabo1's deploy after 20 min â€” proceeding anyway (fail-open)"
       - name: Deploy to Contabo2
         uses: appleboy/ssh-action@v1.0.3
         with:
@@ -78,18 +73,18 @@ jobs:
           username: root
           key: ${{ secrets.CONTABO2_SSH_KEY }}
           port: 22
-          # SHA256 fingerprint of Contabo2's negotiated host key (ECDSA —
+          # SHA256 fingerprint of Contabo2's negotiated host key (ECDSA â€”
           # same type Contabo1 ended up negotiating, see deploy-contabo.yml's
           # own comment on how that was determined). Verified live:
           # `ssh-keyscan -t ecdsa 194.163.188.71 | ssh-keygen -lf -`.
           fingerprint: "SHA256:VIwj7Faxiga2n45HVHZEQFPxcbRKHgSgHoxAFsf2wto"
           # IMPORTANT: intentionally NOT /root/deploy.sh (Contabo1's script)
-          # — that recreates the container with --env-file /root/.aequitas.env
+          # â€” that recreates the container with --env-file /root/.aequitas.env
           # directly, and this box's .aequitas.env permanently contains
           # RESYNC_FROM_SNAPSHOT=true, which would wipe the DB on every
           # single deploy. deploy_safe_c2.sh rebuilds the image, then
           # preserves the currently-running container's own env (stripping
-          # PATH/HOSTNAME/HOME/RESYNC_FROM_SNAPSHOT) — same pattern as the
+          # PATH/HOSTNAME/HOME/RESYNC_FROM_SNAPSHOT) â€” same pattern as the
           # existing redeploy_normal_c2.sh, plus an actual image rebuild.
           script: |
             set -uo pipefail
@@ -152,5 +147,5 @@ jobs:
             echo "=== disk after deploy ==="
             df -h / | tail -1
           script_stop: true
-          timeout: 600s
-          command_timeout: 600s
+          timeout: 1800s
+          command_timeout: 1800s

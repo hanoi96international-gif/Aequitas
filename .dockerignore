@@ -1,0 +1,68 @@
+# Build context exclusions.
+#
+# FIX (2026-08-14): there was no .dockerignore at all, so `docker build` on the
+# validator box shipped the ENTIRE working directory as build context — 1.22 GB,
+# measured in the deploy log. Breakdown at the time:
+#
+#     .git           1079 MB
+#     node_modules    365 MB
+#     .venv           176 MB
+#     aequitasd.exe    51 MB
+#
+# None of it is used by the Dockerfile. Transferring it cost ~107 s before the
+# build even started, and that overhead was a direct contributor to the deploy
+# exceeding its 600 s command timeout — which killed the deploy AFTER the old
+# container had already been stopped, leaving Contabo1 down.
+#
+# Keep in mind what the Dockerfile actually needs from the context:
+#   go.mod / go.sum, the Go sources, genesis.json, aequitas-dapp.html, downloads/
+# Everything else can go.
+
+# Version control — by far the largest single item.
+.git
+.gitattributes
+.gitignore
+.github
+
+# Dependency trees for the OTHER toolchains (Hardhat/TS, Python). The Go build
+# needs neither.
+node_modules
+.venv
+__pycache__
+*.pyc
+
+# Prebuilt binaries and release artifacts. The image builds its own.
+*.exe
+*.apk
+aequitasd
+
+# Hardhat / Solidity build output — compiled inside CI, never by this image.
+artifacts
+cache
+ignition
+contracts
+test
+scripts
+typechain
+types
+coverage
+
+# Local tooling and scratch space.
+.claude
+.agents
+build
+*.log
+.job_log.txt
+
+# Screenshots and other stray media committed at the repo root.
+screen_check*.png
+
+# Docs — not needed to compile a binary.
+*.md
+docs
+deploy
+
+# Local env files must never enter an image layer.
+.env
+.env.*
+!.env.example
