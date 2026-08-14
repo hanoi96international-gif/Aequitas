@@ -306,13 +306,39 @@ func addProofServerAuth(req *http.Request) {
 // its own timeout (proof generation can legitimately take up to 120s),
 // so this takes one instead of being a single shared client like
 // httpSyncClient.
+// FIX (2026-08-14, found live): pinningDialer rejects any address that
+// resolves to a private/loopback IP. That is exactly right for PEER URLs,
+// which are discovered from the network and effectively attacker-influenced —
+// but it is wrong here, and it made the intended proof-server deployment
+// impossible.
+//
+// The proof server is this operator's own component, and it is supposed to be
+// unreachable from the internet: it listens only on loopback or on a private
+// Docker network, and clients reach it through this node's authenticated
+// /api/prove* proxy. Both production boxes run it exactly that way (container
+// "proof-server" on the aequitas-net bridge). Every sane value of
+// PROOF_SERVER_URLS is therefore private by design —
+// http://127.0.0.1:3000 or http://proof-server:3000 — and pinningDialer
+// refused all of them, so the proxy answered 502 "proof server unreachable"
+// while the service was up and answering /health from the very same node
+// container. Confirmed live on both boxes.
+//
+// Dropping the private-IP check here does not reintroduce SSRF. The danger
+// pinningDialer defends against is an ATTACKER choosing the destination;
+// PROOF_SERVER_URLS is set only by whoever configures the process, and no
+// request field influences it. What did matter from the original hardening is
+// kept: redirects are still never followed, so a compromised or misconfigured
+// proof server cannot bounce this node — carrying CHAIN_SERVICE_TOKEN — to an
+// arbitrary third address.
 func proofProxyClient(timeout time.Duration) *http.Client {
 	return &http.Client{
 		Timeout: timeout,
 		CheckRedirect: func(req *http.Request, via []*http.Request) error {
 			return http.ErrUseLastResponse
 		},
-		Transport: &http.Transport{DialContext: pinningDialer},
+		Transport: &http.Transport{
+			DialContext: (&net.Dialer{Timeout: 10 * time.Second}).DialContext,
+		},
 	}
 }
 
