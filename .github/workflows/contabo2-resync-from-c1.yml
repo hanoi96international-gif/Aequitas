@@ -1,0 +1,166 @@
+name: Resync Contabo2 from Contabo1
+
+# Contabo2 lost its chain and cannot recover on its own.
+#
+# State as found 2026-08-14: C2 sits at height ~9165 while C1 is past
+# 3,743,000. Its log repeats
+#   "Rejecting far-ahead blocks (... 2243739 above frontier 9165, cap 5000)"
+#   "Page above height 2252991 added 0 of 500 blocks"
+# — every block C1 offers is far beyond the far-ahead cap, so ordinary sync
+# adds nothing, ever. A 3.7-million-block gap is not something incremental
+# sync is meant to close; the designed path for this is a signed snapshot
+# resync, which is what this workflow performs.
+#
+# C1 IS THE PRIMARY. Its database is intact (15 humans, 15000 AEQ, producing
+# normally) and is the authoritative chain. C2 is rebuilt from it.
+#
+# THE CRITICAL PART is step 3. The reset is gated behind RESET_DB_STATE +
+# ALLOW_DESTRUCTIVE_MAINTENANCE + BOOTSTRAP_SNAPSHOT_URL + a 5-minute
+# post-start window (see resetDBStateForBootstrap, state.go). Those flags must
+# NOT survive the operation: a container that keeps them re-wipes its database
+# on every future restart. This is exactly the trap C2's own env carried
+# before, and why deploy_safe_c2.sh exists. So the container is started WITH
+# them for the resync and then immediately recreated WITHOUT them, and the
+# persisted env file never receives them at all.
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: Type RESYNC-C2 to confirm wiping Contabo2's database
+        required: true
+        default: ""
+
+jobs:
+  resync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Guard
+        run: |
+          if [ "${{ inputs.confirm }}" != "RESYNC-C2" ]; then
+            echo "confirm input was not RESYNC-C2 — refusing"; exit 1
+          fi
+
+      - name: Verify Contabo1 is healthy and serving a snapshot
+        run: |
+          h=$(curl -s -m 15 http://173.249.37.118:8080/api/status | grep -o '"height":[0-9]*' | cut -d: -f2)
+          echo "Contabo1 height: ${h:-UNREACHABLE}"
+          if [ -z "$h" ] || [ "$h" -lt 1000 ]; then
+            echo "Contabo1 is not a usable source — aborting"; exit 1
+          fi
+          code=$(curl -s -o /dev/null -w '%{http_code}' -m 60 http://173.249.37.118:8080/api/snapshot)
+          echo "Contabo1 /api/snapshot -> $code"
+          [ "$code" = "200" ] || { echo "snapshot not served — aborting"; exit 1; }
+
+      - name: Resync Contabo2
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: 194.163.188.71
+          username: root
+          key: ${{ secrets.CONTABO2_SSH_KEY }}
+          port: 22
+          fingerprint: "SHA256:VIwj7Faxiga2n45HVHZEQFPxcbRKHgSgHoxAFsf2wto"
+          script_stop: true
+          timeout: 1800s
+          command_timeout: 1800s
+          script: |
+            set -euo pipefail
+            NODE=aequitas-node
+            SNAP="http://173.249.37.118:8080/api/snapshot"
+            SIGNER="0x0BE8b961CBf6564bd1931B0803D35C0659E0D016"   # Contabo1's block proposer
+            IMAGE=$(docker inspect "$NODE" --format '{{.Config.Image}}')
+            NETS=$(docker inspect "$NODE" --format '{{range $k,$v := .NetworkSettings.Networks}}{{$k}} {{end}}')
+            echo "image=$IMAGE nets=$NETS"
+
+            # Base env: everything the node needs, with every destructive or
+            # resync-related key removed. This is the env it will run on
+            # PERMANENTLY after the resync completes.
+            umask 077
+            docker inspect "$NODE" --format '{{range .Config.Env}}{{println .}}{{end}}' \
+              | grep -vE '^(PATH|HOSTNAME|HOME|RESET_DB_STATE|ALLOW_DESTRUCTIVE_MAINTENANCE|RESYNC_FROM_SNAPSHOT|CLEAR_REGISTRATIONS|CLEAR_REGISTRATIONS_CONFIRM|BOOTSTRAP_SNAPSHOT_URL|BOOTSTRAP_SIGNER)=' \
+              | grep -v '^$' > /root/.node-env-clean
+            {
+              printf 'BOOTSTRAP_SNAPSHOT_URL=%s\n' "$SNAP"
+              printf 'BOOTSTRAP_SIGNER=%s\n'       "$SIGNER"
+            } >> /root/.node-env-clean
+
+            # Resync env = clean env + the one-shot destructive flags.
+            cp /root/.node-env-clean /root/.node-env-resync
+            {
+              printf 'RESET_DB_STATE=true\n'
+              printf 'ALLOW_DESTRUCTIVE_MAINTENANCE=true\n'
+              printf 'RESYNC_FROM_SNAPSHOT=true\n'
+            } >> /root/.node-env-resync
+
+            NETARGS=""; for n in $NETS; do NETARGS="$NETARGS --network $n"; done
+
+            echo "=== stopping current node ==="
+            PREV="${NODE}-preresync-$(date +%s)"
+            docker rename "$NODE" "$PREV"
+            docker stop "$PREV" >/dev/null 2>&1 || true
+
+            echo "=== starting with resync flags (one shot) ==="
+            # shellcheck disable=SC2086
+            docker run -d --name "$NODE" --restart no \
+              --env-file /root/.node-env-resync $NETARGS \
+              -p 8080:8080 -p 4001:4001 \
+              --log-opt max-size=10m --log-opt max-file=3 \
+              "$IMAGE"
+
+            echo "=== waiting for the snapshot import to take effect ==="
+            best=0
+            for i in $(seq 1 120); do
+              h=$(curl -s -m 5 http://127.0.0.1:8080/api/status | grep -o '"height":[0-9]*' | cut -d: -f2 || true)
+              [ -n "$h" ] && [ "$h" -gt "$best" ] && best=$h
+              [ $((i % 10)) -eq 0 ] && echo "  ${i}0s: height=${h:-booting} best=$best"
+              # The snapshot lands the node near C1's frontier; anything past
+              # a million means the import worked (pre-resync it was ~9k).
+              if [ -n "$h" ] && [ "$h" -gt 1000000 ]; then
+                echo "snapshot imported — height $h after ${i}s"; break
+              fi
+              sleep 5
+            done
+
+            h=$(curl -s -m 8 http://127.0.0.1:8080/api/status | grep -o '"height":[0-9]*' | cut -d: -f2 || echo 0)
+            if [ -z "$h" ] || [ "$h" -le 1000000 ]; then
+              echo "RESYNC DID NOT TAKE (height=$h) — restoring the previous container"
+              docker logs --tail 60 "$NODE" || true
+              docker rm -f "$NODE" || true
+              docker rename "$PREV" "$NODE"
+              docker start "$NODE"
+              exit 1
+            fi
+
+            echo "=== removing the destructive flags (permanent env) ==="
+            docker rm -f "$NODE"
+            # shellcheck disable=SC2086
+            docker run -d --name "$NODE" --restart unless-stopped \
+              --env-file /root/.node-env-clean $NETARGS \
+              -p 8080:8080 -p 4001:4001 \
+              --log-opt max-size=10m --log-opt max-file=3 \
+              "$IMAGE"
+
+            ok=0
+            for i in $(seq 1 120); do
+              code=$(curl -s -o /dev/null -w '%{http_code}' -m 5 http://127.0.0.1:8080/api/status || true)
+              [ "$code" = "200" ] && { echo "node healthy after ${i}s"; ok=1; break; }
+              sleep 2
+            done
+            [ "$ok" = "1" ] || { echo "node did not come back up"; docker logs --tail 60 "$NODE"; exit 1; }
+
+            # Persist the CLEAN env (never the destructive flags) so the next
+            # ordinary deploy cannot resurrect a wipe-on-boot configuration.
+            for ENVF in /root/.aequitas.env /root/aequitas.env; do
+              [ -f "$ENVF" ] || continue
+              cp -a "$ENVF" "$ENVF.bak-$(date +%s)"
+              grep -vE '^(RESET_DB_STATE|ALLOW_DESTRUCTIVE_MAINTENANCE|RESYNC_FROM_SNAPSHOT|CLEAR_REGISTRATIONS|CLEAR_REGISTRATIONS_CONFIRM|BOOTSTRAP_SNAPSHOT_URL|BOOTSTRAP_SIGNER)=' "$ENVF" > "$ENVF.tmp"
+              { printf 'BOOTSTRAP_SNAPSHOT_URL=%s\n' "$SNAP"; printf 'BOOTSTRAP_SIGNER=%s\n' "$SIGNER"; } >> "$ENVF.tmp"
+              mv "$ENVF.tmp" "$ENVF"
+              echo "persisted clean env into $ENVF"
+            done
+
+            echo "=== final ==="
+            curl -s -m 10 http://127.0.0.1:8080/api/status | head -c 260; echo
+            echo "destructive flags present in running container (must be empty):"
+            docker inspect "$NODE" --format '{{range .Config.Env}}{{println .}}{{end}}' | grep -E '^(RESET_DB_STATE|ALLOW_DESTRUCTIVE_MAINTENANCE|RESYNC_FROM_SNAPSHOT)=' || echo "  (none — correct)"
+            echo "pre-resync container kept as $PREV"
