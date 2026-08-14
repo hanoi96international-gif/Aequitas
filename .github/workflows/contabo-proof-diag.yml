@@ -1,0 +1,77 @@
+name: Proof-server reachability diagnosis (read-only)
+
+# After wiring PROOF_SERVER_URLS the chain node's proxy went 503 -> 502, i.e.
+# "configured but unreachable". Both containers sit on the same docker network
+# (aequitas-net), so name resolution should work — this pins down which layer
+# actually fails: DNS, TCP, or the HTTP path.
+#
+# Read-only: no restarts, no writes, no config changes.
+
+on:
+  workflow_dispatch:
+    inputs:
+      box:
+        required: true
+        default: contabo2
+        type: choice
+        options: [contabo1, contabo2]
+
+jobs:
+  diag:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Diagnose Contabo1
+        if: ${{ inputs.box == 'contabo1' }}
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: 173.249.37.118
+          username: root
+          key: ${{ secrets.CONTABO_SSH_KEY }}
+          port: 22
+          fingerprint: "SHA256:noMtjHV8c+2iEFZu3TRUP6WRwGjkrvFke71KgU6Eyt4"
+          script_stop: false
+          timeout: 300s
+          command_timeout: 300s
+          script: |
+            echo "===== proof-server container ====="
+            docker inspect proof-server --format 'status={{.State.Status}} restarts={{.RestartCount}}'
+            echo "--- what address does it LISTEN on inside its own netns? ---"
+            docker exec proof-server sh -c "netstat -tlnp 2>/dev/null || ss -tlnp 2>/dev/null" | grep -E '3000|LISTEN' || echo "(no netstat/ss in image)"
+            echo "--- does it answer itself? ---"
+            docker exec proof-server sh -c "wget -qO- --timeout=5 http://127.0.0.1:3000/health 2>&1 | head -c 200 || echo WGET_FAILED" || echo "(exec failed)"
+            echo "===== last 30 proof-server log lines ====="
+            docker logs --tail 30 proof-server 2>&1 | tail -30
+            echo "===== from the NODE container: DNS + TCP + HTTP ====="
+            docker exec aequitas-node sh -c "getent hosts proof-server || nslookup proof-server 2>&1 | head -5" || echo "DNS: FAILED"
+            docker exec aequitas-node sh -c "wget -qO- --timeout=5 http://proof-server:3000/health 2>&1 | head -c 200 || echo NODE_TO_PROOF_FAILED" || echo "(exec failed)"
+            echo "===== network membership ====="
+            docker inspect proof-server --format 'proof nets: {{range $k,$v := .NetworkSettings.Networks}}{{$k}}={{$v.IPAddress}} {{end}}'
+            docker inspect aequitas-node --format 'node  nets: {{range $k,$v := .NetworkSettings.Networks}}{{$k}}={{$v.IPAddress}} {{end}}'
+
+      - name: Diagnose Contabo2
+        if: ${{ inputs.box == 'contabo2' }}
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: 194.163.188.71
+          username: root
+          key: ${{ secrets.CONTABO2_SSH_KEY }}
+          port: 22
+          fingerprint: "SHA256:VIwj7Faxiga2n45HVHZEQFPxcbRKHgSgHoxAFsf2wto"
+          script_stop: false
+          timeout: 300s
+          command_timeout: 300s
+          script: |
+            echo "===== proof-server container ====="
+            docker inspect proof-server --format 'status={{.State.Status}} restarts={{.RestartCount}}'
+            echo "--- what address does it LISTEN on inside its own netns? ---"
+            docker exec proof-server sh -c "netstat -tlnp 2>/dev/null || ss -tlnp 2>/dev/null" | grep -E '3000|LISTEN' || echo "(no netstat/ss in image)"
+            echo "--- does it answer itself? ---"
+            docker exec proof-server sh -c "wget -qO- --timeout=5 http://127.0.0.1:3000/health 2>&1 | head -c 200 || echo WGET_FAILED" || echo "(exec failed)"
+            echo "===== last 30 proof-server log lines ====="
+            docker logs --tail 30 proof-server 2>&1 | tail -30
+            echo "===== from the NODE container: DNS + TCP + HTTP ====="
+            docker exec aequitas-node sh -c "getent hosts proof-server || nslookup proof-server 2>&1 | head -5" || echo "DNS: FAILED"
+            docker exec aequitas-node sh -c "wget -qO- --timeout=5 http://proof-server:3000/health 2>&1 | head -c 200 || echo NODE_TO_PROOF_FAILED" || echo "(exec failed)"
+            echo "===== network membership ====="
+            docker inspect proof-server --format 'proof nets: {{range $k,$v := .NetworkSettings.Networks}}{{$k}}={{$v.IPAddress}} {{end}}'
+            docker inspect aequitas-node --format 'node  nets: {{range $k,$v := .NetworkSettings.Networks}}{{$k}}={{$v.IPAddress}} {{end}}'
