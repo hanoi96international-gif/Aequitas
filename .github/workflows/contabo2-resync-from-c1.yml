@@ -99,39 +99,75 @@ jobs:
             docker rename "$NODE" "$PREV"
             docker stop "$PREV" >/dev/null 2>&1 || true
 
-            echo "=== starting with resync flags (one shot) ==="
+            # PHASE 1 - wipe. The node TRUNCATES the DB and then deliberately
+            # EXITS ("Exiting so this node cannot start with the reset flags
+            # still set", state.go). Exiting is the success signal here, not a
+            # failure: waiting for it to serve /api/status would always time
+            # out. --restart no so docker does not fight that shutdown.
+            echo "=== phase 1: wipe (node is expected to exit on its own) ==="
             # shellcheck disable=SC2086
-            docker run -d --name "$NODE" --restart no \
+            docker run -d --name "${NODE}-wipe" --restart no \
               --env-file /root/.node-env-resync $NETARGS \
+              --log-opt max-size=10m --log-opt max-file=3 \
+              "$IMAGE"
+
+            wiped=0
+            for i in $(seq 1 60); do
+              st=$(docker inspect "${NODE}-wipe" --format '{{.State.Status}}' 2>/dev/null || echo gone)
+              if [ "$st" = "exited" ]; then
+                if docker logs "${NODE}-wipe" 2>&1 | grep -q '\[DB-RESET\] Done'; then
+                  echo "database truncated after ${i}s"; wiped=1
+                else
+                  echo "container exited WITHOUT completing the reset:"
+                  docker logs --tail 40 "${NODE}-wipe" 2>&1 | tail -40
+                fi
+                break
+              fi
+              sleep 5
+            done
+            docker rm -f "${NODE}-wipe" >/dev/null 2>&1 || true
+
+            if [ "$wiped" != "1" ]; then
+              echo "WIPE DID NOT COMPLETE — restoring the previous container untouched"
+              docker rename "$PREV" "$NODE"
+              docker start "$NODE"
+              exit 1
+            fi
+
+            # PHASE 2 - import. No RESET flags any more (the node refuses to
+            # serve with them), but RESYNC_FROM_SNAPSHOT + BOOTSTRAP_SNAPSHOT_URL
+            # still present so it seeds from C1's signed snapshot on this boot.
+            echo "=== phase 2: import C1 snapshot ==="
+            cp /root/.node-env-clean /root/.node-env-import
+            printf 'RESYNC_FROM_SNAPSHOT=true\n' >> /root/.node-env-import
+            # shellcheck disable=SC2086
+            docker run -d --name "$NODE" --restart unless-stopped \
+              --env-file /root/.node-env-import $NETARGS \
               -p 8080:8080 -p 4001:4001 \
               --log-opt max-size=10m --log-opt max-file=3 \
               "$IMAGE"
 
-            echo "=== waiting for the snapshot import to take effect ==="
             best=0
             for i in $(seq 1 120); do
               h=$(curl -s -m 5 http://127.0.0.1:8080/api/status | grep -o '"height":[0-9]*' | cut -d: -f2 || true)
               [ -n "$h" ] && [ "$h" -gt "$best" ] && best=$h
-              [ $((i % 10)) -eq 0 ] && echo "  ${i}0s: height=${h:-booting} best=$best"
-              # The snapshot lands the node near C1's frontier; anything past
-              # a million means the import worked (pre-resync it was ~9k).
+              [ $((i % 10)) -eq 0 ] && echo "  $((i*5))s: height=${h:-booting} best=$best"
               if [ -n "$h" ] && [ "$h" -gt 1000000 ]; then
-                echo "snapshot imported — height $h after ${i}s"; break
+                echo "snapshot imported — height $h after $((i*5))s"; break
               fi
               sleep 5
             done
 
             h=$(curl -s -m 8 http://127.0.0.1:8080/api/status | grep -o '"height":[0-9]*' | cut -d: -f2 || echo 0)
             if [ -z "$h" ] || [ "$h" -le 1000000 ]; then
-              echo "RESYNC DID NOT TAKE (height=$h) — restoring the previous container"
+              echo "IMPORT DID NOT TAKE (height=$h) — logs follow, previous container kept as $PREV"
               docker logs --tail 60 "$NODE" || true
-              docker rm -f "$NODE" || true
-              docker rename "$PREV" "$NODE"
-              docker start "$NODE"
               exit 1
             fi
 
-            echo "=== removing the destructive flags (permanent env) ==="
+            # PHASE 3 - drop RESYNC_FROM_SNAPSHOT so an ordinary restart never
+            # reseeds again.
+            echo "=== phase 3: final env, no resync flags ==="
             docker rm -f "$NODE"
             # shellcheck disable=SC2086
             docker run -d --name "$NODE" --restart unless-stopped \
