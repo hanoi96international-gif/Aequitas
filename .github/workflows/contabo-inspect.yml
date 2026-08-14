@@ -1,0 +1,96 @@
+name: Contabo inspect (read-only)
+
+# Manually-triggered, READ-ONLY snapshot of a validator box's runtime layout.
+#
+# Why this exists: the 2026-08-14 migration off Railway still needs three
+# things configured ON the boxes (TLS/Caddy, the proof server, and the node's
+# PROOF_SERVER_URLS). Doing that blind risks breaking a running validator —
+# e.g. restarting the node with a hand-guessed env set would silently drop
+# whatever variables the current container actually has. This job reports the
+# real layout first so the follow-up changes are made against facts.
+#
+# Deliberately read-only: no writes, no restarts, no installs. Secret VALUES
+# are masked — only variable NAMES are listed, so the log can be read safely.
+
+on:
+  workflow_dispatch:
+    inputs:
+      box:
+        description: Which box to inspect
+        required: true
+        default: contabo1
+        type: choice
+        options: [contabo1, contabo2]
+
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Inspect Contabo1
+        if: ${{ inputs.box == 'contabo1' }}
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: 173.249.37.118
+          username: root
+          key: ${{ secrets.CONTABO_SSH_KEY }}
+          port: 22
+          fingerprint: "SHA256:noMtjHV8c+2iEFZu3TRUP6WRwGjkrvFke71KgU6Eyt4"
+          script_stop: false
+          timeout: 300s
+          command_timeout: 300s
+          script: |
+            echo "===== CONTAINERS ====="
+            docker ps -a --format '{{.Names}}\t{{.Status}}\t{{.Image}}\t{{.Ports}}'
+            echo "===== NODE ENV VAR NAMES (values masked) ====="
+            docker inspect aequitas-node --format '{{range .Config.Env}}{{println .}}{{end}}' 2>/dev/null | cut -d= -f1 | sort || echo "container 'aequitas-node' not found"
+            echo "===== PROOF_SERVER / CHAIN_SERVICE set? (presence only) ====="
+            docker inspect aequitas-node --format '{{range .Config.Env}}{{println .}}{{end}}' 2>/dev/null | grep -E '^(PROOF_SERVER_URLS|PROOF_SERVER_URL|CHAIN_SERVICE_TOKEN|IS_PRIMARY_NODE|SELF_URL|PRIMARY_NODE_URLS)=' | sed 's/=.*/=<set>/' || echo "none of them set"
+            echo "===== CADDY ====="
+            systemctl is-active caddy 2>/dev/null || echo "caddy: not a systemd service"
+            which caddy 2>/dev/null || echo "caddy: not in PATH"
+            ls -la /etc/caddy/ 2>/dev/null || echo "/etc/caddy missing"
+            echo "--- what actually listens on 80/443 ---"
+            ss -tlnp 2>/dev/null | grep -E ':(80|443|3000|5432|8080|4001)\s' || true
+            echo "===== POSTGRES ====="
+            systemctl is-active postgresql 2>/dev/null || echo "postgresql: not a systemd service"
+            docker ps --filter 'ancestor=postgres' --format '{{.Names}}\t{{.Image}}' || true
+            echo "===== FILES WE CARE ABOUT ====="
+            for f in /root/deploy.sh /root/deploy_safe_c2.sh /root/proof-deploy.sh /root/proof-server.env /root/aequitas-proof-server; do
+              if [ -e "$f" ]; then echo "present: $f"; else echo "absent : $f"; fi
+            done
+            echo "===== DISK ====="
+            df -h / | tail -1
+
+      - name: Inspect Contabo2
+        if: ${{ inputs.box == 'contabo2' }}
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: 194.163.188.71
+          username: root
+          key: ${{ secrets.CONTABO2_SSH_KEY }}
+          port: 22
+          script_stop: false
+          timeout: 300s
+          command_timeout: 300s
+          script: |
+            echo "===== CONTAINERS ====="
+            docker ps -a --format '{{.Names}}\t{{.Status}}\t{{.Image}}\t{{.Ports}}'
+            echo "===== NODE ENV VAR NAMES (values masked) ====="
+            docker inspect aequitas-node --format '{{range .Config.Env}}{{println .}}{{end}}' 2>/dev/null | cut -d= -f1 | sort || echo "container 'aequitas-node' not found"
+            echo "===== PROOF_SERVER / CHAIN_SERVICE set? (presence only) ====="
+            docker inspect aequitas-node --format '{{range .Config.Env}}{{println .}}{{end}}' 2>/dev/null | grep -E '^(PROOF_SERVER_URLS|PROOF_SERVER_URL|CHAIN_SERVICE_TOKEN|IS_PRIMARY_NODE|SELF_URL|PRIMARY_NODE_URLS)=' | sed 's/=.*/=<set>/' || echo "none of them set"
+            echo "===== CADDY ====="
+            systemctl is-active caddy 2>/dev/null || echo "caddy: not a systemd service"
+            which caddy 2>/dev/null || echo "caddy: not in PATH"
+            ls -la /etc/caddy/ 2>/dev/null || echo "/etc/caddy missing"
+            echo "--- what actually listens on 80/443 ---"
+            ss -tlnp 2>/dev/null | grep -E ':(80|443|3000|5432|8080|4001)\s' || true
+            echo "===== POSTGRES ====="
+            systemctl is-active postgresql 2>/dev/null || echo "postgresql: not a systemd service"
+            docker ps --filter 'ancestor=postgres' --format '{{.Names}}\t{{.Image}}' || true
+            echo "===== FILES WE CARE ABOUT ====="
+            for f in /root/deploy.sh /root/deploy_safe_c2.sh /root/proof-deploy.sh /root/proof-server.env /root/aequitas-proof-server; do
+              if [ -e "$f" ]; then echo "present: $f"; else echo "absent : $f"; fi
+            done
+            echo "===== DISK ====="
+            df -h / | tail -1
