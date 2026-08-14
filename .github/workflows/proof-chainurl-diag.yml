@@ -1,0 +1,80 @@
+name: How does the proof server resolve its chain URL (read-only)
+
+# The proof server's CHAIN_BASE_URL is https://aequitas.digital — a host that
+# answers 404 from the public internet, yet returns a valid /api/status from
+# inside the proof-server container. Something on the box is resolving or
+# intercepting that name. Before changing CHAIN_BASE_URL to the local node,
+# establish exactly what path it takes today, so the change is a deliberate
+# simplification rather than a blind swap that might break a working route.
+#
+# Read-only.
+
+on:
+  workflow_dispatch:
+    inputs:
+      box:
+        required: true
+        default: contabo1
+        type: choice
+        options: [contabo1, contabo2]
+
+jobs:
+  diag:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Diagnose Contabo1
+        if: ${{ inputs.box == 'contabo1' }}
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: 173.249.37.118
+          username: root
+          key: ${{ secrets.CONTABO_SSH_KEY }}
+          port: 22
+          fingerprint: "SHA256:noMtjHV8c+2iEFZu3TRUP6WRwGjkrvFke71KgU6Eyt4"
+          script_stop: false
+          timeout: 300s
+          command_timeout: 300s
+          script: |
+            echo "===== what does aequitas.digital resolve to INSIDE the proof-server? ====="
+            docker exec proof-server sh -c "getent hosts aequitas.digital || nslookup aequitas.digital 2>&1 | head -6" || echo "(lookup failed)"
+            echo "===== container /etc/hosts overrides? ====="
+            docker exec proof-server sh -c "cat /etc/hosts" || true
+            echo "===== docker extra_hosts on the proof-server ====="
+            docker inspect proof-server --format '{{json .HostConfig.ExtraHosts}}'
+            echo "===== and on the node, for comparison ====="
+            docker inspect aequitas-node --format '{{json .HostConfig.ExtraHosts}}'
+            echo "===== what serves :443 on this box (proof-caddy config) ====="
+            docker inspect proof-caddy --format 'image={{.Config.Image}} cmd={{json .Config.Cmd}}'
+            docker exec proof-caddy sh -c "cat /etc/caddy/Caddyfile 2>/dev/null || ls -la /etc/caddy/ 2>/dev/null" || echo "(no /etc/caddy in proof-caddy)"
+            echo "===== does the public internet agree? (from the box itself) ====="
+            curl -s -o /dev/null -w '  from box: https://aequitas.digital/api/status -> %{http_code}\n' -m 15 https://aequitas.digital/api/status || true
+            echo "===== can the proof server reach the node directly instead? ====="
+            for target in http://aequitas-node:8080 http://host.docker.internal:8080 http://172.17.0.1:8080; do
+              r=$(docker exec proof-server sh -c "wget -qO- --timeout=5 $target/api/status 2>/dev/null | head -c 60" || true)
+              if [ -n "$r" ]; then echo "  $target -> OK ($r...)"; else echo "  $target -> unreachable"; fi
+            done
+
+      - name: Diagnose Contabo2
+        if: ${{ inputs.box == 'contabo2' }}
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: 194.163.188.71
+          username: root
+          key: ${{ secrets.CONTABO2_SSH_KEY }}
+          port: 22
+          fingerprint: "SHA256:VIwj7Faxiga2n45HVHZEQFPxcbRKHgSgHoxAFsf2wto"
+          script_stop: false
+          timeout: 300s
+          command_timeout: 300s
+          script: |
+            echo "===== proof-server CHAIN_BASE_URL ====="
+            docker inspect proof-server --format '{{range .Config.Env}}{{println .}}{{end}}' | grep '^CHAIN_BASE_URL=' || echo "(not set)"
+            echo "===== resolves to? ====="
+            docker exec proof-server sh -c "getent hosts aequitas.digital || nslookup aequitas.digital 2>&1 | head -6" || echo "(lookup failed)"
+            docker exec proof-server sh -c "cat /etc/hosts" || true
+            docker inspect proof-server --format '{{json .HostConfig.ExtraHosts}}'
+            echo "===== reachable alternatives ====="
+            for target in http://aequitas-node:8080 http://host.docker.internal:8080 http://172.17.0.1:8080; do
+              r=$(docker exec proof-server sh -c "wget -qO- --timeout=5 $target/api/status 2>/dev/null | head -c 60" || true)
+              if [ -n "$r" ]; then echo "  $target -> OK ($r...)"; else echo "  $target -> unreachable"; fi
+            done
