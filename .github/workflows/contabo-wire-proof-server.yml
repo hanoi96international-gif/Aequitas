@@ -1,0 +1,143 @@
+name: Wire the node to its local proof server
+
+# The proof server ALREADY RUNS on Contabo1 (container "proof-server", 4 weeks
+# uptime, listening on 3000/tcp inside Docker). What was missing is the link:
+# the node container has no PROOF_SERVER_URLS and no CHAIN_SERVICE_TOKEN, so
+# /api/prove* answers 503 "no PROOF_SERVER_URL/PROOF_SERVER_URLS configured"
+# and registering a new human is impossible. Confirmed live 2026-08-14.
+#
+# This recreates the node container with those two variables added and
+# everything else preserved.
+#
+# SAFETY — three things this must never do:
+#
+#   1. Never lose existing env. The node's configuration lives only in the
+#      running container (DATABASE_URL, NODE_KEY, RELAYER_PRIVATE_KEY,
+#      SELF_URL, ...). We read it back from `docker inspect` and re-apply it
+#      verbatim, the same approach deploy_safe_c2.sh already uses on Contabo2.
+#
+#   2. Never trigger a resync. RESYNC_FROM_SNAPSHOT is present in this box's
+#      env and BOOTSTRAP_SNAPSHOT_URL still points at https://aequitas.digital,
+#      which is dead since Railway was decommissioned. A restart that honours
+#      those would try to reseed from a URL that answers 404 — the most likely
+#      explanation for Contabo2 currently sitting at height 1 with intact
+#      accounts. Both are stripped here, along with the docker-injected
+#      PATH/HOSTNAME/HOME.
+#
+#   3. Never print a secret. Env is moved through a root-only file on the box
+#      and never echoed. Only variable NAMES are logged.
+#
+# The old container is renamed rather than removed, so a failed start can be
+# rolled back to the exact previous container.
+
+on:
+  workflow_dispatch:
+    inputs:
+      box:
+        description: Which box to wire
+        required: true
+        default: contabo1
+        type: choice
+        options: [contabo1, contabo2]
+      proof_server_url:
+        description: URL the NODE uses to reach the proof server
+        required: true
+        default: http://proof-server:3000
+
+jobs:
+  wire:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Wire Contabo1
+        if: ${{ inputs.box == 'contabo1' }}
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: 173.249.37.118
+          username: root
+          key: ${{ secrets.CONTABO_SSH_KEY }}
+          port: 22
+          fingerprint: "SHA256:noMtjHV8c+2iEFZu3TRUP6WRwGjkrvFke71KgU6Eyt4"
+          script_stop: true
+          timeout: 900s
+          command_timeout: 900s
+          envs: PROOF_URL
+          script: |
+            set -euo pipefail
+            PROOF_URL='${{ inputs.proof_server_url }}'
+            NODE=aequitas-node
+
+            echo "=== current container ==="
+            docker inspect "$NODE" --format '{{.Name}} {{.State.Status}} image={{.Config.Image}}'
+
+            IMAGE=$(docker inspect "$NODE" --format '{{.Config.Image}}')
+
+            # Which docker network is the proof server on? The node must be able
+            # to resolve it by name, otherwise PROOF_URL is unreachable.
+            PROOF_NET=$(docker inspect proof-server --format '{{range $k,$v := .NetworkSettings.Networks}}{{$k}} {{end}}' | awk '{print $1}')
+            NODE_NETS=$(docker inspect "$NODE" --format '{{range $k,$v := .NetworkSettings.Networks}}{{$k}} {{end}}')
+            echo "proof-server network: $PROOF_NET"
+            echo "node networks       : $NODE_NETS"
+
+            # Preserve the node's env verbatim, minus the docker-injected
+            # entries and minus anything that could trigger a reseed.
+            umask 077
+            docker inspect "$NODE" --format '{{range .Config.Env}}{{println .}}{{end}}' \
+              | grep -vE '^(PATH|HOSTNAME|HOME|RESYNC_FROM_SNAPSHOT|PROOF_SERVER_URLS|PROOF_SERVER_URL|CHAIN_SERVICE_TOKEN)=' \
+              | grep -v '^$' > /root/.node-env-preserved
+
+            # CHAIN_SERVICE_TOKEN must match what the proof server itself
+            # expects; read it from that container rather than inventing one.
+            TOKEN=$(docker inspect proof-server --format '{{range .Config.Env}}{{println .}}{{end}}' | grep '^CHAIN_SERVICE_TOKEN=' | head -1 | cut -d= -f2- || true)
+            if [ -z "$TOKEN" ]; then
+              echo "ERROR: proof-server has no CHAIN_SERVICE_TOKEN — refusing to wire a token-less link"
+              exit 1
+            fi
+            printf 'PROOF_SERVER_URLS=%s\n' "$PROOF_URL" >> /root/.node-env-preserved
+            printf 'CHAIN_SERVICE_TOKEN=%s\n' "$TOKEN"   >> /root/.node-env-preserved
+
+            echo "=== env var NAMES that will be applied (values never printed) ==="
+            cut -d= -f1 /root/.node-env-preserved | sort
+
+            echo "=== swapping container ==="
+            docker rename "$NODE" "${NODE}-prev-$(date +%s)"
+            docker stop "${NODE}-prev-"* >/dev/null 2>&1 || true
+
+            NETARGS=""
+            for n in $NODE_NETS; do NETARGS="$NETARGS --network $n"; done
+            if [ -n "$PROOF_NET" ] && ! echo "$NODE_NETS" | grep -qw "$PROOF_NET"; then
+              echo "node is not on $PROOF_NET — attaching it so $PROOF_URL resolves"
+              NETARGS="$NETARGS --network $PROOF_NET"
+            fi
+
+            # shellcheck disable=SC2086
+            docker run -d --name "$NODE" --restart unless-stopped \
+              --env-file /root/.node-env-preserved \
+              $NETARGS \
+              -p 8080:8080 -p 4001:4001 \
+              --log-opt max-size=10m --log-opt max-file=3 \
+              "$IMAGE"
+
+            echo "=== waiting for the node to answer ==="
+            ok=0
+            for i in $(seq 1 60); do
+              code=$(curl -s -o /dev/null -w '%{http_code}' -m 5 http://127.0.0.1:8080/api/status || true)
+              if [ "$code" = "200" ]; then echo "node healthy after ${i}s"; ok=1; break; fi
+              sleep 1
+            done
+
+            if [ "$ok" != "1" ]; then
+              echo "node did not come up — rolling back to the previous container"
+              docker logs --tail 40 "$NODE" || true
+              docker rm -f "$NODE" || true
+              PREV=$(docker ps -a --filter "name=${NODE}-prev-" --format '{{.Names}}' | head -1)
+              docker rename "$PREV" "$NODE"
+              docker start "$NODE"
+              exit 1
+            fi
+
+            echo "=== proof-server link ==="
+            curl -s -o /dev/null -w 'GET /api/prove/get/probe -> %{http_code}\n' -m 15 http://127.0.0.1:8080/api/prove/get/probe || true
+            echo "(503 = still unwired, 502 = wired but unreachable, 404/400 = proof server answered)"
+
+            echo "=== cleanup: previous container kept, remove manually once satisfied ==="
+            docker ps -a --filter "name=${NODE}-prev-" --format '{{.Names}}\t{{.Status}}'
