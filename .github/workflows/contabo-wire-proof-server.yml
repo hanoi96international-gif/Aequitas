@@ -90,6 +90,15 @@ jobs:
               printf 'BOOTSTRAP_SNAPSHOT_URL=%s\n' "$PEER_URL/api/snapshot"
               printf 'PROOF_SERVER_URLS=%s\n'      "http://proof-server:3000"
               printf 'CHAIN_SERVICE_TOKEN=%s\n'    "$TOKEN"
+              # Contabo1 is the primary and holds the authoritative chain.
+              # IS_PRIMARY_NODE is NOT a consensus role (pool distribution is
+              # decentralised via TryLockDistribution's Postgres CAS), but it
+              # does make resetDBStateForBootstrap refuse RESET_DB_STATE
+              # outright - the single guard standing between this database and
+              # a stray environment variable. On the one box that must never be
+              # rebuilt, set it. Deliberately NOT set on Contabo2, which has to
+              # stay resyncable.
+              printf 'IS_PRIMARY_NODE=true\n'
             } >> /root/.node-env-new
 
             echo "=== variable NAMES to be applied (values never printed) ==="
@@ -101,13 +110,14 @@ jobs:
             for ENVF in /root/.aequitas.env /root/aequitas.env; do
               [ -f "$ENVF" ] || continue
               cp -a "$ENVF" "$ENVF.bak-$(date +%s)"
-              grep -vE '^(PRIMARY_NODE_URL|PRIMARY_NODE_URLS|BOOTSTRAP_SNAPSHOT_URL|PROOF_SERVER_URLS|PROOF_SERVER_URL|CHAIN_SERVICE_TOKEN)=' "$ENVF" > "$ENVF.tmp"
+              grep -vE '^(PRIMARY_NODE_URL|PRIMARY_NODE_URLS|BOOTSTRAP_SNAPSHOT_URL|PROOF_SERVER_URLS|PROOF_SERVER_URL|CHAIN_SERVICE_TOKEN|IS_PRIMARY_NODE)=' "$ENVF" > "$ENVF.tmp"
               {
                 printf 'PRIMARY_NODE_URL=%s\n'       "$PEER_URL"
                 printf 'PRIMARY_NODE_URLS=%s\n'      "$PEER_URL"
                 printf 'BOOTSTRAP_SNAPSHOT_URL=%s\n' "$PEER_URL/api/snapshot"
                 printf 'PROOF_SERVER_URLS=%s\n'      "http://proof-server:3000"
                 printf 'CHAIN_SERVICE_TOKEN=%s\n'    "$TOKEN"
+                printf 'IS_PRIMARY_NODE=true\n'
               } >> "$ENVF.tmp"
               mv "$ENVF.tmp" "$ENVF"
               echo "persisted into $ENVF (backup kept alongside)"
