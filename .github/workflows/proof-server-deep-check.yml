@@ -1,0 +1,136 @@
+name: Proof server deep check (read-only)
+
+# Goes past "does it answer": verifies the proof server is actually WIRED
+# CORRECTLY for this deployment. Read-only — no restarts, no writes.
+#
+# The specific risk being checked: the proof server has its OWN CHAIN_BASE_URL,
+# which it uses to verify a wallet's is_human status against the chain before
+# trusting anything (/prove and /store-bio both do this). If that still points
+# at https://aequitas.digital — dead since Railway was decommissioned — the
+# service answers /health perfectly while being unable to complete a single
+# real registration. A green /health proves nothing about that path.
+
+on:
+  workflow_dispatch:
+    inputs:
+      box:
+        required: true
+        default: contabo1
+        type: choice
+        options: [contabo1, contabo2]
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check Contabo1
+        if: ${{ inputs.box == 'contabo1' }}
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: 173.249.37.118
+          username: root
+          key: ${{ secrets.CONTABO_SSH_KEY }}
+          port: 22
+          fingerprint: "SHA256:noMtjHV8c+2iEFZu3TRUP6WRwGjkrvFke71KgU6Eyt4"
+          script_stop: false
+          timeout: 600s
+          command_timeout: 600s
+          script: |
+            echo "===== 1. proof-server config (VALUES for non-secrets, presence for secrets) ====="
+            docker inspect proof-server --format '{{range .Config.Env}}{{println .}}{{end}}' \
+              | grep -E '^(CHAIN_BASE_URL|NODE_ENV|PORT|TRUST_PROXY|DB_SSL_REJECT_UNAUTHORIZED|RAILWAY_ENVIRONMENT|ALLOW_UNAUTHENTICATED_DEV)=' || echo "  (none of these set)"
+            echo "  secrets present?"
+            docker inspect proof-server --format '{{range .Config.Env}}{{println .}}{{end}}' \
+              | grep -E '^(CHAIN_SERVICE_TOKEN|DATABASE_URL)=' | sed 's/=.*/=<set>/' || echo "  MISSING"
+
+            echo ""
+            echo "===== 2. can the proof server actually REACH its chain? ====="
+            CBU=$(docker inspect proof-server --format '{{range .Config.Env}}{{println .}}{{end}}' | grep '^CHAIN_BASE_URL=' | cut -d= -f2-)
+            echo "  CHAIN_BASE_URL=$CBU"
+            if [ -n "$CBU" ]; then
+              docker exec proof-server sh -c "wget -qO- --timeout=8 '$CBU/api/status' 2>&1 | head -c 160" \
+                && echo "" || echo "  >>> UNREACHABLE from inside the proof-server container <<<"
+            else
+              echo "  >>> CHAIN_BASE_URL NOT SET — /prove and /store-bio cannot verify is_human <<<"
+            fi
+
+            echo ""
+            echo "===== 3. does the token the NODE sends match what the proof server expects? ====="
+            NT=$(docker inspect aequitas-node --format '{{range .Config.Env}}{{println .}}{{end}}' | grep '^CHAIN_SERVICE_TOKEN=' | cut -d= -f2- || true)
+            PT=$(docker inspect proof-server --format '{{range .Config.Env}}{{println .}}{{end}}' | grep '^CHAIN_SERVICE_TOKEN=' | cut -d= -f2- || true)
+            if [ -z "$NT" ]; then echo "  node has NO token"; elif [ -z "$PT" ]; then echo "  proof server has NO token";
+            elif [ "$NT" = "$PT" ]; then echo "  MATCH (values not printed)"; else echo "  >>> MISMATCH — authenticated calls will be rejected <<<"; fi
+
+            echo ""
+            echo "===== 4. proof server health + storage ====="
+            docker exec proof-server sh -c "wget -qO- --timeout=8 http://127.0.0.1:3000/health 2>&1 | head -c 300"; echo
+
+            echo ""
+            echo "===== 5. through the node proxy, as the APP calls it ====="
+            for ep in /api/prove/get/probe /api/proof/check; do
+              printf '  %-26s -> HTTP %s\n' "$ep" "$(curl -s -o /dev/null -w '%{http_code}' -m 25 "http://127.0.0.1:8080$ep")"
+            done
+
+            echo ""
+            echo "===== 6. proof-server DB: is it the node's DB or its own? ====="
+            PDB=$(docker inspect proof-server --format '{{range .Config.Env}}{{println .}}{{end}}' | grep '^DATABASE_URL=' | cut -d= -f2- | sed 's|://[^@]*@|://***@|')
+            NDB=$(docker inspect aequitas-node --format '{{range .Config.Env}}{{println .}}{{end}}' | grep '^DATABASE_URL=' | cut -d= -f2- | sed 's|://[^@]*@|://***@|')
+            echo "  proof: $PDB"
+            echo "  node : $NDB"
+            [ "$PDB" = "$NDB" ] && echo "  >>> SAME DATABASE — they are supposed to be separate <<<" || echo "  separate (correct)"
+
+            echo ""
+            echo "===== 7. recent proof-server errors ====="
+            docker logs --tail 200 proof-server 2>&1 | grep -iE 'error|fail|refused|ECONN|timeout|unauthor' | tail -12 || echo "  (no error lines in last 200)"
+
+      - name: Check Contabo2
+        if: ${{ inputs.box == 'contabo2' }}
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: 194.163.188.71
+          username: root
+          key: ${{ secrets.CONTABO2_SSH_KEY }}
+          port: 22
+          fingerprint: "SHA256:VIwj7Faxiga2n45HVHZEQFPxcbRKHgSgHoxAFsf2wto"
+          script_stop: false
+          timeout: 600s
+          command_timeout: 600s
+          script: |
+            echo "===== 1. proof-server config ====="
+            docker inspect proof-server --format '{{range .Config.Env}}{{println .}}{{end}}' \
+              | grep -E '^(CHAIN_BASE_URL|NODE_ENV|PORT|TRUST_PROXY|DB_SSL_REJECT_UNAUTHORIZED|RAILWAY_ENVIRONMENT|ALLOW_UNAUTHENTICATED_DEV)=' || echo "  (none of these set)"
+            docker inspect proof-server --format '{{range .Config.Env}}{{println .}}{{end}}' \
+              | grep -E '^(CHAIN_SERVICE_TOKEN|DATABASE_URL)=' | sed 's/=.*/=<set>/' || echo "  MISSING"
+            echo ""
+            echo "===== 2. can the proof server reach its chain? ====="
+            CBU=$(docker inspect proof-server --format '{{range .Config.Env}}{{println .}}{{end}}' | grep '^CHAIN_BASE_URL=' | cut -d= -f2-)
+            echo "  CHAIN_BASE_URL=$CBU"
+            if [ -n "$CBU" ]; then
+              docker exec proof-server sh -c "wget -qO- --timeout=8 '$CBU/api/status' 2>&1 | head -c 160" && echo "" || echo "  >>> UNREACHABLE <<<"
+            else
+              echo "  >>> CHAIN_BASE_URL NOT SET <<<"
+            fi
+            echo ""
+            echo "===== 3. token match node vs proof server ====="
+            NT=$(docker inspect aequitas-node --format '{{range .Config.Env}}{{println .}}{{end}}' | grep '^CHAIN_SERVICE_TOKEN=' | cut -d= -f2- || true)
+            PT=$(docker inspect proof-server --format '{{range .Config.Env}}{{println .}}{{end}}' | grep '^CHAIN_SERVICE_TOKEN=' | cut -d= -f2- || true)
+            if [ -z "$NT" ]; then echo "  node has NO token"; elif [ -z "$PT" ]; then echo "  proof server has NO token";
+            elif [ "$NT" = "$PT" ]; then echo "  MATCH"; else echo "  >>> MISMATCH <<<"; fi
+            echo ""
+            echo "===== 4. health ====="
+            docker exec proof-server sh -c "wget -qO- --timeout=8 http://127.0.0.1:3000/health 2>&1 | head -c 300"; echo
+            echo ""
+            echo "===== 5. via node proxy ====="
+            for ep in /api/prove/get/probe /api/proof/check; do
+              printf '  %-26s -> HTTP %s\n' "$ep" "$(curl -s -o /dev/null -w '%{http_code}' -m 25 "http://127.0.0.1:8080$ep")"
+            done
+            echo ""
+            echo "===== 6. DB separation ====="
+            PDB=$(docker inspect proof-server --format '{{range .Config.Env}}{{println .}}{{end}}' | grep '^DATABASE_URL=' | cut -d= -f2- | sed 's|://[^@]*@|://***@|')
+            NDB=$(docker inspect aequitas-node --format '{{range .Config.Env}}{{println .}}{{end}}' | grep '^DATABASE_URL=' | cut -d= -f2- | sed 's|://[^@]*@|://***@|')
+            echo "  proof: $PDB"
+            echo "  node : $NDB"
+            [ "$PDB" = "$NDB" ] && echo "  >>> SAME DATABASE <<<" || echo "  separate (correct)"
+            echo ""
+            echo "===== 7. recent errors ====="
+            docker logs --tail 200 proof-server 2>&1 | grep -iE 'error|fail|refused|ECONN|timeout|unauthor' | tail -12 || echo "  (none)"
