@@ -1614,7 +1614,17 @@ func (a *APIServer) handleHumans(w http.ResponseWriter, r *http.Request) {
 			if len(humans) >= limit {
 				continue
 			}
-			liquid := effectiveBalance(acc).Float()
+			// acc.Balance is ALREADY demurrage-adjusted: GetAllAccounts hands
+			// back a copy whose Balance was set to effectiveBalance(acc). Calling
+			// effectiveBalance again here re-applied the decay factor a second
+			// time (factor², over the same idle period), so every account past
+			// the grace period was published lighter than it really is — and the
+			// Lorenz curve drawn from these numbers disagreed with the Gini in
+			// /api/status, which computes from the real wealth. Measured live on
+			// 2026-08-15: list 0.12361229 vs chain 0.13244174, stable to the last
+			// digit across repeated calls. Exactly the divergence the comment on
+			// humanAEQWealthLocked warns about, arriving through the other side.
+			liquid := acc.Balance.Float()
 			lpShares := acc.LPShares.Float()
 			var lpValueAEQ, lpValueTUSD float64
 			if totalLPShares > 0 && lpShares > 0 {
@@ -1624,8 +1634,8 @@ func (a *APIServer) handleHumans(w http.ResponseWriter, r *http.Request) {
 			}
 			humans = append(humans, map[string]interface{}{
 				"address": acc.Address,
-				// Use effectiveBalance so the Lorenz curve and Score tab show the same Gini.
-				// Raw acc.Balance ignores demurrage decay → different Gini than CalcGini().
+				// Demurrage-adjusted (once), so the Lorenz curve the frontend
+				// draws from total_value_aeq reproduces CalcGini() exactly.
 				"balance":         liquid,
 				"lp_shares":       lpShares,
 				"lp_value_aeq":    lpValueAEQ,

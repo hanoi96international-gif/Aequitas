@@ -58,15 +58,27 @@ func TestCalcGini_TwoEqualHumans(t *testing.T) {
 }
 
 func TestCalcGini_TwoHumansMaxConcentration(t *testing.T) {
-	// One human has nearly everything. With n=2, biased Gini would cap at 0.5;
-	// the unbiased estimator (×n/(n-1)) must push it close to 1.
+	// One human has nearly everything, so the Gini must sit at essentially the
+	// worst value two people can produce.
+	//
+	// That worst value is (n-1)/n = 0.5, not 1.0. With only two holders, "one
+	// has everything" still means half the population holds the whole supply —
+	// a population Gini cannot exceed (n-1)/n, and this is a population, not a
+	// sample (see calcGiniFromBalances). This test previously asserted >0.99,
+	// which was only reachable via the ×n/(n-1) sample correction that has been
+	// removed; the assertion now tracks the real ceiling instead of a number
+	// that correction happened to produce.
 	cs := newTestState()
 	addHuman(cs, "0x01", 1)
 	addHuman(cs, "0x02", 9999)
 	g := cs.CalcGini()
-	// biased = 9998/(2*10000) ≈ 0.4999; unbiased ≈ 0.9998 — must be > 0.99
-	if g < 0.99 {
-		t.Errorf("near-total concentration: want Gini>0.99, got %v", g)
+	maxForN := 0.5 // (n-1)/n for n=2
+	if g > maxForN+1e-12 {
+		t.Errorf("Gini exceeded the mathematical maximum for n=2: got %v, max %v", g, maxForN)
+	}
+	// 9998/(2*10000) = 0.4999 — within 0.1% of the ceiling.
+	if g < maxForN*0.999 {
+		t.Errorf("near-total concentration: want Gini within 0.1%% of %v, got %v", maxForN, g)
 	}
 }
 
@@ -83,14 +95,19 @@ func TestCalcGini_ThreeEqualHumans(t *testing.T) {
 
 func TestCalcGini_ThreeHumansKnownValue(t *testing.T) {
 	// balances=[1,2,6], n=3, sum=9
-	// biased Gini: numerator = (-2)*1 + 0*2 + 2*6 = 10; gini = 10/27 ≈ 0.3704
-	// unbiased = 0.3704 * (3/2) ≈ 0.5556
+	// numerator = (2*0+1-3)*1 + (2*1+1-3)*2 + (2*2+1-3)*6 = -2 + 0 + 12 = 10
+	// population Gini = 10 / (3*9) = 10/27 ≈ 0.370370
+	//
+	// Cross-check by the textbook definition (mean absolute difference over
+	// twice the mean): pairs |1-2|+|1-6|+|2-6| = 1+5+4 = 10; G = 10/(n²·mean)
+	// = 10/(9·3) = 10/27. Same number, arrived at independently — which is the
+	// point of pinning a hand-computed value here.
 	cs := newTestState()
 	addHuman(cs, "0x01", 1)
 	addHuman(cs, "0x02", 2)
 	addHuman(cs, "0x03", 6)
 	g := cs.CalcGini()
-	want := 10.0 / 27.0 * 3.0 / 2.0 // exact unbiased value
+	want := 10.0 / 27.0
 	if math.Abs(g-want) > 1e-9 {
 		t.Errorf("three humans [1,2,6]: want %v, got %v", want, g)
 	}
@@ -129,9 +146,22 @@ func TestCalcGini_CountsLPWealth(t *testing.T) {
 	cs.accounts.Set("0x02", &AccountState{Address: "0x02", IsHuman: true, Balance: NewDecimal(0), LPShares: NewDecimal(900)})
 	g := cs.CalcGini()
 	// Wealth is [100, 900] → highly unequal. The old code returned ~0 here
-	// (0x02 dropped, lone human left), the exact "LP wallet shows 0" bug.
-	if g < 0.7 {
-		t.Errorf("LP wealth must count toward Gini: want >0.7 for wealth [100,900], got %v", g)
+	// (0x02 dropped for having Balance 0, leaving a lone human), the exact
+	// "LP wallet shows 0" bug this test exists to prevent.
+	//
+	// Pin the exact value rather than a threshold: numerator = -100 + 900 = 800,
+	// sum = 1000, so the population Gini is 800/(2·1000) = 0.4. It is meaningful
+	// that this is 0.4 and not something near 1 — with two holders the ceiling
+	// is (n-1)/n = 0.5, and 0.4 is 80% of the way to it. The threshold here used
+	// to be >0.7, which only the removed ×n/(n-1) sample correction could reach.
+	want := 0.4
+	if math.Abs(g-want) > 1e-9 {
+		t.Errorf("LP wealth must count toward Gini: wealth [100,900] → want %v, got %v", want, g)
+	}
+	// The regression guard proper: had 0x02 been dropped, one human would remain
+	// and calcGiniFromBalances returns 0 for n<2.
+	if g == 0.0 {
+		t.Error("Gini is 0 — the all-LP human was dropped from the distribution")
 	}
 }
 

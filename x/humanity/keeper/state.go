@@ -6284,12 +6284,35 @@ func calcGiniFromBalances(balances []float64) float64 {
 	if gini < 0 {
 		gini = -gini
 	}
-	if n > 1 {
-		gini = gini * float64(n) / float64(n-1)
-	}
-	if gini > 1.0 {
-		gini = 1.0
-	}
+	// This is the POPULATION Gini, deliberately without the ×n/(n-1) sample
+	// correction that used to be applied here.
+	//
+	// That correction estimates the Gini of a large unknown population from a
+	// small sample of it. This chain is not sampling anything: it knows every
+	// registered human, so the balances above ARE the whole population. Applying
+	// the correction inflated our own published figure by n/(n-1) — 7.1% at the
+	// 15 humans live on 2026-08-15, 20% at n=6, and a full 2× at n=2, exactly
+	// when the network is smallest and most scrutinised.
+	//
+	// Two things made the inflation actively wrong rather than merely debatable:
+	//
+	//   1. The landing page and explorer put this number directly beside World
+	//      Bank / OECD country figures (Scandinavia 0.27, Germany 0.31, USA
+	//      0.41, Bitcoin 0.85) and call it "the international standard, adopted
+	//      by the World Bank, OECD and UN". Those are population Ginis. Comparing
+	//      a sample-corrected number against them measured a different quantity
+	//      and made Aequitas look less equal than it is.
+	//
+	//   2. The Lorenz curve is the population Gini stated geometrically. With the
+	//      correction the curve and the coefficient printed next to it could never
+	//      agree — measured live: curve 0.12361229 vs published 0.13244174, a
+	//      ratio of exactly 15/14. humanAEQWealthLocked's comment records that
+	//      this same class of curve-vs-coefficient divergence had already been
+	//      chased down once from the other side.
+	//
+	// The old ×n/(n-1) also needed a >1.0 clamp, because it could push the value
+	// past 1 for small n — a maximum that a Gini cannot exceed by definition. No
+	// clamp is needed now: the population Gini is bounded by (n-1)/n < 1.
 	return gini
 }
 

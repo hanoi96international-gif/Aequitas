@@ -71,15 +71,31 @@ async function loadLorenz() {
   if (!path) return;
 
   try {
-    const d = await fetch('/api/humans?limit=500').then(r => r.json());
+    // 2000 is the endpoint's maximum page size. Ask for all of it: the curve
+    // must cover the same population the Gini beside it is computed over.
+    const d = await fetch('/api/humans?limit=2000').then(r => r.json());
     const values = (d.humans || [])
+      // No filtering. calcGiniFromBalances counts EVERY registered human,
+      // including any whose wealth is 0 — and a human holding nothing is the
+      // most important point on an inequality curve, not one to drop. Removing
+      // them would flatten the curve while the Gini printed beside it still
+      // counted them, reintroducing exactly the disagreement that state.go's
+      // humanAEQWealthLocked comment was written about.
       .map(h => (typeof h.total_value_aeq === 'number' ? h.total_value_aeq : h.balance) || 0)
-      .filter(v => v > 0)
       .sort((a, b) => a - b);
 
     if (values.length < 2) {
       // Not enough wallets for a meaningful curve. Say so plainly instead of
       // drawing something that implies a distribution we cannot see.
+      if (wrap) wrap.style.display = 'none';
+      return;
+    }
+
+    // If the network ever outgrows one page, this curve would be a partial
+    // sample sitting next to a whole-population Gini — two different things
+    // presented as one. Hide it rather than mislead; a page whose argument is
+    // "we publish our own inequality" cannot show a cropped distribution.
+    if (typeof d.total === 'number' && d.total > values.length) {
       if (wrap) wrap.style.display = 'none';
       return;
     }
