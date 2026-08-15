@@ -1,0 +1,140 @@
+name: Install proof-server auto-deploy on the boxes
+
+# The proof server currently runs from a container nobody can rebuild without
+# manual SSH: Railway used to deploy it from git, and when Railway went away
+# no automated path replaced it. aequitas-proof-server#2 added deploy.sh and a
+# workflow, but that workflow calls /root/proof-deploy.sh — which does not
+# exist on either box yet. This installs it, once.
+#
+# Why it matters beyond convenience: the security fix in that PR (an unset
+# NODE_ENV is now treated as production, so ALLOW_UNAUTHENTICATED_DEV cannot
+# silently disable chain authentication) only takes effect once the container
+# is rebuilt from current source. Right now both boxes run an image built
+# before it.
+#
+# This does NOT rebuild or restart the proof server. It only places the script
+# and the environment file, so the aequitas-proof-server repo's own deploy
+# workflow can take over from here. Deliberately separated: installing tooling
+# and restarting a running service are different risks.
+
+on:
+  workflow_dispatch:
+    inputs:
+      box:
+        required: true
+        default: contabo1
+        type: choice
+        options: [contabo1, contabo2]
+
+jobs:
+  install:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Install on Contabo1
+        if: ${{ inputs.box == 'contabo1' }}
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: 173.249.37.118
+          username: root
+          key: ${{ secrets.CONTABO_SSH_KEY }}
+          port: 22
+          fingerprint: "SHA256:noMtjHV8c+2iEFZu3TRUP6WRwGjkrvFke71KgU6Eyt4"
+          script_stop: true
+          timeout: 900s
+          command_timeout: 900s
+          script: |
+            set -euo pipefail
+            REPO=/root/aequitas-proof-server
+
+            echo "=== source checkout ==="
+            if [ -d "$REPO/.git" ]; then
+              git -C "$REPO" remote set-url origin https://github.com/hanoi96international-gif/aequitas-proof-server.git
+              git -C "$REPO" fetch --quiet origin main
+              git -C "$REPO" reset --hard --quiet origin/main
+            else
+              git clone --quiet https://github.com/hanoi96international-gif/aequitas-proof-server.git "$REPO"
+            fi
+            echo "now at $(git -C "$REPO" rev-parse --short HEAD) — $(git -C "$REPO" log -1 --format=%s)"
+
+            echo "=== install deploy script ==="
+            install -m 755 "$REPO/deploy.sh" /root/proof-deploy.sh
+            echo "installed /root/proof-deploy.sh"
+
+            echo "=== environment file ==="
+            # Reconstructed from the RUNNING container so the values are exactly
+            # what the service already uses — no guessing, no secret ever
+            # printed. CHAIN_BASE_URL is forced to the local node (see
+            # proof-server-point-at-local-node.yml for why the public domain was
+            # wrong), and NODE_ENV=production is added because the guard in the
+            # new code treats an unset value as production anyway — making it
+            # explicit keeps intent visible in `docker inspect`.
+            umask 077
+            if [ -f /root/proof-server.env ]; then
+              cp -a /root/proof-server.env "/root/proof-server.env.bak-$(date +%s)"
+            fi
+            docker inspect proof-server --format '{{range .Config.Env}}{{println .}}{{end}}' \
+              | grep -E '^(DATABASE_URL|CHAIN_SERVICE_TOKEN|DB_SSL_REJECT_UNAUTHORIZED|PORT|EXTRA_CORS_ORIGIN)=' \
+              > /root/proof-server.env
+            printf 'CHAIN_BASE_URL=%s\n' "http://aequitas-node:8080" >> /root/proof-server.env
+            printf 'NODE_ENV=production\n' >> /root/proof-server.env
+            chmod 600 /root/proof-server.env
+
+            echo "variable NAMES written (values never printed):"
+            cut -d= -f1 /root/proof-server.env | sort
+
+            for k in DATABASE_URL CHAIN_SERVICE_TOKEN; do
+              grep -q "^$k=" /root/proof-server.env || { echo "ERROR: $k missing — the repo deploy would refuse to run"; exit 1; }
+            done
+
+            echo ""
+            echo "=== done. NOT rebuilt or restarted on purpose. ==="
+            echo "The proof server keeps running its current image. To roll out"
+            echo "the new source, run the deploy workflow in the"
+            echo "aequitas-proof-server repo, or 'bash /root/proof-deploy.sh' here."
+
+      - name: Install on Contabo2
+        if: ${{ inputs.box == 'contabo2' }}
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: 194.163.188.71
+          username: root
+          key: ${{ secrets.CONTABO2_SSH_KEY }}
+          port: 22
+          fingerprint: "SHA256:VIwj7Faxiga2n45HVHZEQFPxcbRKHgSgHoxAFsf2wto"
+          script_stop: true
+          timeout: 900s
+          command_timeout: 900s
+          script: |
+            set -euo pipefail
+            REPO=/root/aequitas-proof-server
+
+            if [ -d "$REPO/.git" ]; then
+              git -C "$REPO" remote set-url origin https://github.com/hanoi96international-gif/aequitas-proof-server.git
+              git -C "$REPO" fetch --quiet origin main
+              git -C "$REPO" reset --hard --quiet origin/main
+            else
+              git clone --quiet https://github.com/hanoi96international-gif/aequitas-proof-server.git "$REPO"
+            fi
+            echo "now at $(git -C "$REPO" rev-parse --short HEAD) — $(git -C "$REPO" log -1 --format=%s)"
+
+            install -m 755 "$REPO/deploy.sh" /root/proof-deploy.sh
+            echo "installed /root/proof-deploy.sh"
+
+            umask 077
+            if [ -f /root/proof-server.env ]; then
+              cp -a /root/proof-server.env "/root/proof-server.env.bak-$(date +%s)"
+            fi
+            docker inspect proof-server --format '{{range .Config.Env}}{{println .}}{{end}}' \
+              | grep -E '^(DATABASE_URL|CHAIN_SERVICE_TOKEN|DB_SSL_REJECT_UNAUTHORIZED|PORT|EXTRA_CORS_ORIGIN)=' \
+              > /root/proof-server.env
+            printf 'CHAIN_BASE_URL=%s\n' "http://aequitas-node:8080" >> /root/proof-server.env
+            printf 'NODE_ENV=production\n' >> /root/proof-server.env
+            chmod 600 /root/proof-server.env
+
+            echo "variable NAMES written (values never printed):"
+            cut -d= -f1 /root/proof-server.env | sort
+            for k in DATABASE_URL CHAIN_SERVICE_TOKEN; do
+              grep -q "^$k=" /root/proof-server.env || { echo "ERROR: $k missing"; exit 1; }
+            done
+            echo ""
+            echo "=== done. NOT rebuilt or restarted on purpose. ==="
