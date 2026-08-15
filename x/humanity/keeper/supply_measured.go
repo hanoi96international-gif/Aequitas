@@ -43,15 +43,29 @@ import (
 // exists to answer just as well.
 const measuredSupplyTTL = 60 * time.Second
 
-type measuredSupply struct {
-	mu      sync.Mutex
-	value   float64
-	ok      bool
-	err     string
-	fetched time.Time
-}
-
-var measuredSupplyCache measuredSupply
+// FIX (2026-08-15, same day, my own regression): the mutex used to live INSIDE
+// this struct, and the code below refreshed the cache by assigning a whole new
+// struct value — which overwrote the held, locked mutex with a fresh, unlocked
+// one. The deferred Unlock then released a mutex that was no longer locked, and
+// Go answers that with `fatal error: sync: unlock of unlocked mutex`, which is
+// NOT recoverable: it terminates the process. Every single call to
+// /api/health/combined therefore killed the node, and the deploy verification
+// step added earlier today polls exactly that endpoint.
+//
+// The lock is a separate variable now, so the whole-struct assignment that
+// caused this cannot reach it. Guarding a value with a mutex stored beside the
+// value it guards is only safe if the value is never replaced wholesale — and
+// the safe arrangement is the one where the unsafe version does not compile
+// into something plausible.
+var (
+	measuredSupplyMu    sync.Mutex
+	measuredSupplyCache struct {
+		value   float64
+		ok      bool
+		err     string
+		fetched time.Time
+	}
+)
 
 // MeasuredTotalAEQ returns the summed ledger total, whether it could be
 // measured at all, and — when it could not — why. It never fabricates a number
@@ -61,15 +75,19 @@ func (cs *ChainState) MeasuredTotalAEQ() (total float64, ok bool, reason string)
 	if cs.db == nil {
 		return 0, false, "no database configured"
 	}
-	measuredSupplyCache.mu.Lock()
-	defer measuredSupplyCache.mu.Unlock()
+	measuredSupplyMu.Lock()
+	defer measuredSupplyMu.Unlock()
 	if time.Since(measuredSupplyCache.fetched) < measuredSupplyTTL && !measuredSupplyCache.fetched.IsZero() {
 		return measuredSupplyCache.value, measuredSupplyCache.ok, measuredSupplyCache.err
 	}
 
 	var accounts, reserve float64
 	if err := cs.db.QueryRow(`SELECT COALESCE(sum(balance), 0) FROM chain_accounts`).Scan(&accounts); err != nil {
-		measuredSupplyCache = measuredSupply{fetched: time.Now(), err: "could not sum chain_accounts: " + err.Error()}
+		// Field-wise, never a whole-struct assignment — see the var block above.
+		measuredSupplyCache.value = 0
+		measuredSupplyCache.ok = false
+		measuredSupplyCache.err = "could not sum chain_accounts: " + err.Error()
+		measuredSupplyCache.fetched = time.Now()
 		return 0, false, measuredSupplyCache.err
 	}
 	// The pool row is absent on a node that has never had liquidity; that is a
@@ -77,7 +95,10 @@ func (cs *ChainState) MeasuredTotalAEQ() (total float64, ok bool, reason string)
 	if err := cs.db.QueryRow(`SELECT COALESCE(reserve_aeq, 0) FROM liquidity_pool WHERE id = 1`).Scan(&reserve); err != nil {
 		reserve = 0
 	}
-	measuredSupplyCache = measuredSupply{value: accounts + reserve, ok: true, fetched: time.Now()}
+	measuredSupplyCache.value = accounts + reserve
+	measuredSupplyCache.ok = true
+	measuredSupplyCache.err = ""
+	measuredSupplyCache.fetched = time.Now()
 	return measuredSupplyCache.value, true, ""
 }
 
