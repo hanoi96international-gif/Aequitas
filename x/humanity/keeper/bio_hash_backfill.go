@@ -29,6 +29,26 @@ import (
 // rows store it empty by design — see block.go's register_human case) cannot
 // be recovered here and is skipped; the nullifier, which is the actual
 // guarantee, covers those regardless.
+//
+// MEASURED ON THE LIVE NETWORK (2026-08-15, after this ran on both validators):
+// it recovered nothing, and that is the correct answer rather than a failure.
+// All 15 humans registered against the previous primary and reached Contabo1
+// and Contabo2 as BLOCKS, so their bio_registrations rows carry the empty
+// bio_hash that replay writes by design, and SaveBioHash — which only exists on
+// the API registration path — never ran on either box for them. The raw
+// biometric hash simply never reached these nodes; only the nullifier did, and
+// that is one-way. So this index cannot be reconstructed for pre-migration
+// humans by any means, here or elsewhere, and it fills from the next
+// API-path registration onward.
+//
+// The consequence is worth stating plainly instead of papering over: for those
+// 15, the chain-side bio_hashes duplicate check and the proof servers' own
+// caches (7 of 15 — they are fresh databases that only saw post-migration
+// registrations) are both incomplete. The authoritative check is unaffected —
+// all 15 nullifiers are present on-chain, replayed, and claimed atomically with
+// the registration — so a second registration attempt by any of them still
+// fails. It fails later and with a less helpful message than it would with a
+// warm cache, which is a UX cost, not a security one.
 func (cs *ChainState) backfillBioHashesOnce() {
 	if cs.db == nil {
 		return
@@ -67,9 +87,16 @@ func (cs *ChainState) backfillBioHashesOnce() {
 	rows.Close()
 
 	if len(entries) == 0 {
-		if unparsable > 0 {
-			fmt.Printf("[BIO-BACKFILL] no recoverable entries (%d row(s) had a bio_hash that is not a decimal integer)\n", unparsable)
-		}
+		// Always say so. An earlier version of this function returned silently
+		// when there was nothing to recover AND nothing unparsable — i.e. in
+		// the single most likely case, an empty bio_registrations.bio_hash
+		// column — which would have left "chain_bio_hashes: 0" looking exactly
+		// as unexplained as the bug this whole change exists to end. Reporting
+		// a zero result is not noise; it is the difference between "repaired,
+		// nothing to recover" and "did not run".
+		fmt.Printf("[BIO-BACKFILL] nothing to recover: bio_registrations has no usable bio_hash values "+
+			"(%d row(s) present but not a decimal integer). The index starts empty and fills from the next registration on.\n",
+			unparsable)
 		return
 	}
 

@@ -1,0 +1,120 @@
+name: Domain switch preflight (read-only)
+
+# Rehearses "Serve aequitas.digital from Contabo1" without changing anything.
+#
+# WHY. The domain arrives on 2026-08-18 and the launch is the same day, so the
+# DNS -> TLS -> verify sequence gets one attempt with an audience. Every check
+# the real workflow performs before it writes anything can be performed today,
+# against the live box, while there is time to fix what it finds. The only step
+# that genuinely cannot be rehearsed is certificate issuance, which needs the
+# DNS record to exist.
+#
+# Deliberately read-only: no docker network changes, no config install, no
+# reload, no restart. It reports; it does not repair. If it reports a problem,
+# fix that before launch day rather than discovering it during the switch.
+
+on:
+  workflow_dispatch:
+
+jobs:
+  preflight:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Where does the domain point today
+        run: |
+          set -uo pipefail
+          ip=$(getent hosts aequitas.digital | awk '{print $1}' | head -1)
+          echo "aequitas.digital -> ${ip:-<unresolved>}"
+          if [ "$ip" = "173.249.37.118" ]; then
+            echo "DNS already points at Contabo1 — the real workflow would proceed."
+          else
+            echo "DNS does not point at Contabo1 yet. Expected before 2026-08-18; not a failure today."
+          fi
+          echo "--- what answers there now ---"
+          curl -s -m 15 "https://aequitas.digital/api/status" \
+            | head -c 300 || echo "(no answer)"
+          echo ""
+          echo "--- what SHOULD answer after the switch (Contabo1, direct) ---"
+          curl -s -m 15 "http://173.249.37.118:8080/api/status" | head -c 300 || echo "(no answer)"
+          echo ""
+
+      - name: Rehearse the box-side preconditions
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: 173.249.37.118
+          username: root
+          key: ${{ secrets.CONTABO_SSH_KEY }}
+          port: 22
+          fingerprint: "SHA256:noMtjHV8c+2iEFZu3TRUP6WRwGjkrvFke71KgU6Eyt4"
+          script_stop: false
+          timeout: 600s
+          command_timeout: 600s
+          script: |
+            fail=0
+
+            echo "===== 1. containers the Caddyfile names must all exist ====="
+            for c in proof-caddy aequitas-node proof-server; do
+              if docker inspect "$c" >/dev/null 2>&1; then
+                echo "  ok      $c"
+              else
+                echo "  MISSING $c"; fail=1
+              fi
+            done
+
+            echo "===== 2. shared docker network (reverse_proxy resolves by container name) ====="
+            CADDY_NETS=$(docker inspect proof-caddy --format '{{range $k,$v := .NetworkSettings.Networks}}{{$k}} {{end}}' 2>/dev/null)
+            NODE_NETS=$(docker inspect aequitas-node --format '{{range $k,$v := .NetworkSettings.Networks}}{{$k}} {{end}}' 2>/dev/null)
+            echo "  caddy nets: ${CADDY_NETS:-<none>}"
+            echo "  node  nets: ${NODE_NETS:-<none>}"
+            SHARED=""
+            for c in $CADDY_NETS; do for n in $NODE_NETS; do [ "$c" = "$n" ] && SHARED="$c"; done; done
+            if [ -n "$SHARED" ]; then
+              echo "  ok      shared network: $SHARED"
+            else
+              echo "  NOTE    no shared network — the real workflow attaches one (docker network connect)."
+              echo "          Not a failure, but it means the switch performs a change under time pressure."
+            fi
+
+            echo "===== 3. can Caddy actually reach the node right now ====="
+            if docker exec proof-caddy sh -c "wget -qO- --timeout=5 http://aequitas-node:8080/api/status >/dev/null 2>&1"; then
+              echo "  ok      caddy -> aequitas-node:8080"
+            else
+              echo "  NOTE    caddy cannot reach aequitas-node:8080 yet (expected if step 2 said no shared network)"
+            fi
+
+            echo "===== 4. the config path the install writes to ====="
+            if docker exec proof-caddy sh -c "test -f /etc/caddy/Caddyfile"; then
+              echo "  ok      /etc/caddy/Caddyfile exists inside proof-caddy"
+              echo "  --- current contents (this is what gets backed up and replaced) ---"
+              docker exec proof-caddy sh -c "cat /etc/caddy/Caddyfile" | sed 's/^/      /'
+            else
+              echo "  MISSING /etc/caddy/Caddyfile inside proof-caddy"; fail=1
+            fi
+
+            echo "===== 5. caddy validate works in this container ====="
+            if docker exec proof-caddy caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile >/dev/null 2>&1; then
+              echo "  ok      the CURRENT config validates (so the pre-swap gate is functional)"
+            else
+              echo "  WARN    caddy validate failed on the current config — the real workflow's"
+              echo "          safety gate would then block the swap. Investigate before launch day."
+              fail=1
+            fi
+
+            echo "===== 6. the existing site must survive the change ====="
+            code=$(curl -s -o /dev/null -w '%{http_code}' -m 10 https://proof1.aequitas.digital/health || echo 000)
+            echo "  proof1.aequitas.digital/health -> HTTP $code"
+            [ "$code" = "200" ] || { echo "  WARN it is not healthy NOW, so a post-switch failure would be ambiguous"; fail=1; }
+
+            echo "===== 7. ports Let's Encrypt HTTP-01 needs ====="
+            ss -ltnp 2>/dev/null | grep -E ':(80|443)\s' | sed 's/^/  /' || echo "  could not read listeners"
+
+            echo ""
+            if [ "$fail" = "0" ]; then
+              echo "PREFLIGHT: everything the switch depends on is in place. The remaining"
+              echo "unknown is certificate issuance, which needs the DNS record to exist."
+            else
+              echo "PREFLIGHT: at least one precondition needs attention before 2026-08-18 (see MISSING/WARN above)."
+              exit 1
+            fi
