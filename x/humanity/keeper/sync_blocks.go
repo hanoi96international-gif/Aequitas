@@ -1866,21 +1866,31 @@ const defaultPublicSeed = "https://aequitas.digital"
 //
 // MIGRATION (Railway decommissioned, 2026-08-14): this used to be the single
 // defaultPublicSeed constant above. Railway hosted what that domain pointed
-// at; with Railway gone the domain answers 404 (DNS still points at a
-// non-Aequitas host), so a zero-config node's ONLY built-in HTTP entry point
-// was dead — and the P2P bootstrap default had gone stale at the same time
-// for the same reason (see defaultBootstrapNodes, p2p.go). A newcomer could
-// therefore reach the network by neither transport. Confirmed live
-// 2026-08-14: both surviving validators reported "peers":null.
+// at, and with Railway gone a zero-config node's only built-in HTTP entry
+// point stopped being the chain — while the P2P bootstrap default had gone
+// stale at the same time for the same reason (see defaultBootstrapNodes,
+// p2p.go). A newcomer could reach the network by neither transport. Confirmed
+// live 2026-08-14: both surviving validators reported "peers":null.
 //
-// The domain is kept FIRST because it is the intended long-term entry point:
-// it becomes available for this project on 2026-08-18 and will then point at
-// Contabo1. Until it does — and whenever it is mid-migration, expired, or its
-// TLS certificate is being reissued — the two validator IPs below keep
-// zero-config onboarding working. They are plain http:// on purpose:
-// isAllowedPeerURL (this file) deliberately permits http for LITERAL public
-// IPs and requires https only for HOSTNAMES, because the https requirement
-// exists to stop DNS rebinding, which a literal IP is not subject to.
+// ORDER MATTERS, AND THE VALIDATOR IPs COME FIRST. The obvious arrangement —
+// canonical domain first, IPs as fallback — was tried and is wrong here. A
+// hostname only says who ANSWERS, never which chain they answer FOR. Measured
+// the same day: aequitas.digital resolved to a host serving a node at height
+// 96 with 0 humans and no peers, while the real chain was past 3.74 million.
+// A newcomer taking that as its first seed would have bootstrapped from an
+// empty chain and then had to be rebuilt.
+//
+// The validator IPs are addresses this project controls and can verify. The
+// domain stays in the list — it is the intended long-term entry point and
+// costs only one extra attempt when it is right — but it is consulted AFTER
+// the addresses that are known to carry the real chain, so a
+// misconfigured, expired, or hijacked DNS record cannot silently seed a new
+// node from the wrong chain.
+//
+// The IPs are plain http:// on purpose: isAllowedPeerURL (this file)
+// deliberately permits http for LITERAL public IPs and requires https only
+// for HOSTNAMES, because that requirement exists to stop DNS rebinding, which
+// an IP literal is not subject to.
 //
 // NOTE for the bootstrap validators themselves: these entries are aliases for
 // those very nodes, and seedURLs can only filter out an exact selfURL match —
@@ -1889,9 +1899,9 @@ const defaultPublicSeed = "https://aequitas.digital"
 // PRIMARY_NODE_URLS explicitly (pointing at each other), which bypasses this
 // default list entirely. See docs/MIGRATION_RAILWAY_TO_CONTABO.md.
 var defaultPublicSeeds = []string{
-	defaultPublicSeed,
-	"http://173.249.37.118:8080", // Contabo1
-	"http://194.163.188.71:8080", // Contabo2
+	"http://173.249.37.118:8080", // Contabo1 — verified to carry the real chain
+	"http://194.163.188.71:8080", // Contabo2 — verified to carry the real chain
+	defaultPublicSeed,            // canonical domain, consulted last (see above)
 }
 
 func seedURLs(selfURL string) []string {

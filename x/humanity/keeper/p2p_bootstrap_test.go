@@ -52,11 +52,20 @@ func TestSeedURLs_DefaultsToPublicSeedWhenUnset(t *testing.T) {
 	if len(got) != len(defaultPublicSeeds) {
 		t.Fatalf("got %v, want %v (a fresh operator with no config must default to joining the public network)", got, defaultPublicSeeds)
 	}
-	// The canonical domain must stay FIRST — it is the intended long-term
-	// entry point; the validator IPs behind it are the fallback that keeps
-	// onboarding working while the domain is unavailable.
-	if got[0] != defaultPublicSeed {
-		t.Fatalf("got[0] = %s, want %s first", got[0], defaultPublicSeed)
+	// A VERIFIED VALIDATOR ADDRESS MUST COME FIRST, never the domain.
+	//
+	// Measured 2026-08-14: aequitas.digital resolved to a host serving a node
+	// at height 96 with 0 humans and no peers, while the real chain was past
+	// 3.74 million. A hostname only says who answers, never which chain they
+	// answer for — so a zero-config newcomer taking the domain as its first
+	// seed would have bootstrapped from an empty chain. The validator IPs are
+	// addresses this project controls and can verify; the domain is kept in
+	// the list but consulted last.
+	if got[0] == defaultPublicSeed {
+		t.Fatalf("got[0] = %s — the canonical domain must NOT be the first seed; a misconfigured or hijacked DNS record would then seed newcomers from the wrong chain", got[0])
+	}
+	if last := got[len(got)-1]; last != defaultPublicSeed {
+		t.Fatalf("last seed = %s, want the canonical domain %s (it belongs in the list, just not first)", last, defaultPublicSeed)
 	}
 }
 
