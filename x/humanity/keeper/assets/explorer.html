@@ -972,10 +972,11 @@
   </div>
   <div class="nc">
     <div class="nc-title" data-i18n="bootstrap-title">Connect a New Node</div>
-    <div style="font-size:0.63rem;color:var(--muted);line-height:1.8;margin-bottom:10px" data-i18n="bootstrap-desc">To run your own Aequitas node, set PRIMARY_NODE_URL=https://aequitas.digital in your environment. Your node registers automatically, syncs the full chain state, and begins participating in block production.</div>
-    <div style="font-size:0.6rem;color:var(--muted);margin-bottom:6px;letter-spacing:1px">LIBP2P MULTIADDRESS</div>
-    <div class="bsbox">/dns4/reseau.proxy.rlwy.net/tcp/41277/p2p/12D3KooWFuP5HtD1Xy9bj3ZdWL7eisWTx72V26hpGieMmqsGLV5R</div>
-    <div style="font-size:0.6rem;color:var(--muted);margin-top:10px;line-height:1.7">Set in your environment: <span style="color:var(--purple);font-family:var(--font-mono)">PRIMARY_NODE_URL=https://aequitas.digital</span></div>
+    <div style="font-size:0.63rem;color:var(--muted);line-height:1.8;margin-bottom:10px" data-i18n="bootstrap-desc">A new node needs no configuration to find the network — the validator addresses below are built in. Your node registers itself, syncs the full chain state, and starts participating in block production. Set PRIMARY_NODE_URL only if you deliberately want to pin a specific entry point.</div>
+    <div style="font-size:0.6rem;color:var(--muted);margin-bottom:6px;letter-spacing:1px">LIBP2P BOOTSTRAP ADDRESSES</div>
+    <div class="bsbox">/ip4/173.249.37.118/tcp/4001/p2p/12D3KooWHfPy6g3jvyC1mvqzCHvy5QBsDmHHsvfwvwXQGrtQ2pVm</div>
+    <div class="bsbox" style="margin-top:6px">/ip4/194.163.188.71/tcp/4001/p2p/12D3KooWBv34kuVcmNDxZT4kCZFvNVGhy4zgkBZDGMtp7YSx2UUN</div>
+    <div style="font-size:0.6rem;color:var(--muted);margin-top:10px;line-height:1.7">Both are compiled in as defaults, so a node with no <span style="color:var(--purple);font-family:var(--font-mono)">BOOTSTRAP_P2P_ADDR</span> still finds the network. Two are listed so one validator being down never strands a newcomer.</div>
   </div>
   <div class="nc">
     <div class="nc-title" data-i18n="tech-title">Technical Specifications</div>
@@ -1090,7 +1091,7 @@
         <div style="font-size:1.5rem;margin-bottom:10px">&#128421;&#65039;</div>
         <div style="font-size:0.72rem;font-weight:700;color:var(--text);margin-bottom:8px" data-i18n="path-node-title">I am a Node Operator</div>
         <div style="font-size:0.62rem;color:var(--muted);line-height:1.75;margin-bottom:14px" data-i18n="path-node-desc">I want to run a full node, participate in block production, and earn from the 40% validator pool.</div>
-        <div style="font-size:0.6rem;color:var(--teal);font-weight:600;line-height:1.9" data-i18n="path-node-steps">1. Register as a human (required)<br>2. Set PRIMARY_NODE_URL=https://aequitas.digital<br>3. Deploy on Railway/Contabo/VPS<br>4. Earn daily from validator pool</div>
+        <div style="font-size:0.6rem;color:var(--teal);font-weight:600;line-height:1.9" data-i18n="path-node-steps">1. Register as a human (required)<br>2. Generate your node binding signature<br>3. Deploy on any VPS (Contabo, Hetzner, ...)<br>4. Earn daily from validator pool</div>
       </div>
       <div style="background:var(--card2);border:1px solid var(--border);border-radius:var(--radius);padding:20px;box-shadow:var(--shadow)">
         <div style="font-size:1.5rem;margin-bottom:10px">&#128187;</div>
@@ -1192,15 +1193,15 @@
       <div style="font-size:0.58rem;color:var(--purple);font-weight:700;letter-spacing:1px;text-transform:uppercase;margin-bottom:10px;border-bottom:1px solid var(--border);padding-bottom:6px">Before You Start &mdash; What You Need</div>
       <div style="font-size:0.62rem;color:var(--muted);line-height:2.1;margin-bottom:18px">
         <div style="display:flex;align-items:flex-start;gap:10px;margin-bottom:6px"><span style="color:var(--gold);font-weight:700;min-width:16px">1.</span><span><strong style="color:var(--text)">An Aequitas account:</strong> You must first be registered as a human on Aequitas. Install the Android app, complete biometric registration, and note your wallet address. Without this, you cannot receive validator rewards.</span></div>
-        <div style="display:flex;align-items:flex-start;gap:10px;margin-bottom:6px"><span style="color:var(--gold);font-weight:700;min-width:16px">2.</span><span><strong style="color:var(--text)">A GitHub account (free):</strong> Go to github.com and create a free account. You need this to copy (fork) the Aequitas code so Railway can deploy it.</span></div>
-        <div style="display:flex;align-items:flex-start;gap:10px;margin-bottom:6px"><span style="color:var(--gold);font-weight:700;min-width:16px">3.</span><span><strong style="color:var(--text)">A Railway account (free):</strong> Go to railway.app and sign in with GitHub. Railway is a hosting platform that runs your node in the cloud &mdash; no server or command line required.</span></div>
+        <div style="display:flex;align-items:flex-start;gap:10px;margin-bottom:6px"><span style="color:var(--gold);font-weight:700;min-width:16px">2.</span><span><strong style="color:var(--text)">A GitHub account (free):</strong> Go to github.com and create a free account. Optional — only needed if you want to build from your own fork rather than the published image.</span></div>
+        <div style="display:flex;align-items:flex-start;gap:10px;margin-bottom:6px"><span style="color:var(--gold);font-weight:700;min-width:16px">3.</span><span><strong style="color:var(--text)">A Linux server (VPS):</strong> Any provider works — Contabo, Hetzner, DigitalOcean. You need SSH access and about 2 GB RAM. A small instance is enough to validate.</span></div>
         <div style="display:flex;align-items:flex-start;gap:10px;margin-bottom:6px"><span style="color:var(--gold);font-weight:700;min-width:16px">4.</span><span><strong style="color:var(--text)">Node signing key (RELAYER_PRIVATE_KEY):</strong> Your node needs a dedicated Ethereum wallet to sign on-chain registrations. This can be any MetaMask wallet. Export its private key: MetaMask &rarr; Account Details &rarr; Show Private Key &rarr; enter password &rarr; copy. Keep strictly private. <strong style="color:var(--gold)">IMPORTANT:</strong> To receive validator rewards you also need NODE_OPERATOR_WALLET set to your <strong style="color:var(--neon)">registered Aequitas human wallet</strong> (the one verified with the Aequitas app). Only verified humans can earn validator rewards.</span></div>
-        <div style="display:flex;align-items:flex-start;gap:10px"><span style="color:var(--gold);font-weight:700;min-width:16px">5.</span><span><strong style="color:var(--text)">10&ndash;30 minutes of your time.</strong> Railway does most of the work automatically.</span></div>
+        <div style="display:flex;align-items:flex-start;gap:10px"><span style="color:var(--gold);font-weight:700;min-width:16px">5.</span><span><strong style="color:var(--text)">20&ndash;40 minutes of your time.</strong> Most of it is waiting for the initial chain sync.</span></div>
       </div>
 
       <!-- Step 1: Fork -->
       <div style="font-size:0.58rem;color:var(--purple);font-weight:700;letter-spacing:1px;text-transform:uppercase;margin-bottom:10px;border-bottom:1px solid var(--border);padding-bottom:6px">Step 1 &mdash; Fork the Aequitas Repository on GitHub</div>
-      <div style="background:rgba(0,220,170,0.05);border:1px solid rgba(0,220,170,0.15);border-radius:6px;padding:10px 14px;margin-bottom:10px;font-size:0.6rem"><span style="color:var(--teal);font-weight:700">What is a fork?</span> <span style="color:var(--muted)">A fork is your own personal copy of the Aequitas code on GitHub. Railway deploys directly from your fork, so you need one first.</span></div>
+      <div style="background:rgba(0,220,170,0.05);border:1px solid rgba(0,220,170,0.15);border-radius:6px;padding:10px 14px;margin-bottom:10px;font-size:0.6rem"><span style="color:var(--teal);font-weight:700">What is a fork?</span> <span style="color:var(--muted)">A fork is your own personal copy of the Aequitas code on GitHub. You only need one if you intend to modify the node or build the image yourself.</span></div>
       <div style="font-size:0.62rem;color:var(--muted);line-height:2.2;margin-bottom:18px">
         <div><span style="color:var(--gold);font-weight:700">a)</span> Open <span style="font-family:var(--font-mono);color:var(--neon)">github.com/hanoi96international-gif/Aequitas</span> in your browser</div>
         <div><span style="color:var(--gold);font-weight:700">b)</span> Click the <strong style="color:var(--text)">Fork</strong> button in the top-right corner of the page</div>
@@ -1212,16 +1213,8 @@
       <div style="font-size:0.58rem;color:var(--purple);font-weight:700;letter-spacing:1px;text-transform:uppercase;margin-bottom:10px;border-bottom:1px solid var(--border);padding-bottom:6px">Step 2 &mdash; Create a PostgreSQL Database</div>
       <div style="background:rgba(0,220,170,0.05);border:1px solid rgba(0,220,170,0.15);border-radius:6px;padding:10px 14px;margin-bottom:10px;font-size:0.6rem"><span style="color:var(--teal);font-weight:700">What is a database?</span> <span style="color:var(--muted)">Your node needs permanent storage for all block data and human registrations. Without it, your node loses all data on every restart. PostgreSQL is the storage system Aequitas uses. Each node must have its <strong style="color:var(--text)">own dedicated database</strong> — never share one database between two nodes.</span></div>
 
-      <div style="font-size:0.62rem;color:var(--purple);font-weight:700;margin-bottom:6px;margin-top:4px">Option A &mdash; Railway (easiest, recommended for beginners)</div>
-      <div style="font-size:0.62rem;color:var(--muted);line-height:2.2;margin-bottom:14px">
-        <div><span style="color:var(--gold);font-weight:700">a)</span> Go to <strong style="color:var(--text)">railway.app</strong> and sign in with your GitHub account</div>
-        <div><span style="color:var(--gold);font-weight:700">b)</span> Click <strong style="color:var(--text)">New Project</strong></div>
-        <div><span style="color:var(--gold);font-weight:700">c)</span> Inside your new project, click <strong style="color:var(--text)">+ New</strong> &rarr; <strong style="color:var(--text)">Database</strong> &rarr; <strong style="color:var(--text)">Add PostgreSQL</strong></div>
-        <div><span style="color:var(--gold);font-weight:700">d)</span> Railway creates and manages your database automatically. DATABASE_URL is injected into your node service for free &mdash; no manual configuration needed.</div>
-      </div>
-
-      <div style="font-size:0.62rem;color:var(--purple);font-weight:700;margin-bottom:6px">Option B &mdash; VPS / own server (Contabo, Hetzner, DigitalOcean)</div>
-      <div style="background:rgba(245,166,35,0.05);border:1px solid rgba(245,166,35,0.2);border-radius:6px;padding:8px 12px;margin-bottom:8px;font-size:0.6rem;color:var(--muted)"><strong style="color:var(--gold)">Important:</strong> Install PostgreSQL directly on your VPS — do <strong>not</strong> connect to Railway's PostgreSQL from a different VPS. Both nodes would share one database → state conflicts and your data could be overwritten.</div>
+      <div style="font-size:0.62rem;color:var(--purple);font-weight:700;margin-bottom:6px">On your VPS (Contabo, Hetzner, DigitalOcean, or any Linux server)</div>
+      <div style="background:rgba(245,166,35,0.05);border:1px solid rgba(245,166,35,0.2);border-radius:6px;padding:8px 12px;margin-bottom:8px;font-size:0.6rem;color:var(--muted)"><strong style="color:var(--gold)">One database per node.</strong> Install PostgreSQL on the same machine as your node and keep it there. Two nodes sharing one database will overwrite each other's state — this is the single most damaging mistake you can make when setting up.</div>
       <div style="font-family:var(--font-mono);background:rgba(0,0,0,0.3);border:1px solid rgba(139,92,246,0.15);border-radius:6px;padding:14px;margin-bottom:8px;font-size:0.61rem;line-height:2.3;overflow-x:auto">
         <span style="color:var(--muted)"># 1. Install PostgreSQL (Ubuntu / Debian)</span><br>
         sudo apt update &amp;&amp; sudo apt install -y postgresql postgresql-contrib<br>
@@ -1255,7 +1248,7 @@
         <tr style="border-bottom:1px solid rgba(139,92,246,0.08)">
           <td style="font-size:0.61rem;font-family:var(--font-mono);color:var(--neon);padding:8px">DATABASE_URL</td>
           <td style="font-size:0.6rem;color:#f87171;padding:8px;font-weight:700">YES</td>
-          <td style="font-size:0.61rem;color:var(--muted);padding:8px">Your PostgreSQL connection string. On Railway: auto-injected when PostgreSQL is in the same project. Format: <span style="font-family:var(--font-mono)">postgres://user:pass@host:5432/dbname</span></td>
+          <td style="font-size:0.61rem;color:var(--muted);padding:8px">Your PostgreSQL connection string. Point it at the PostgreSQL you installed on this same machine. Format: <span style="font-family:var(--font-mono)">postgres://user:pass@host:5432/dbname</span></td>
         </tr>
         <tr style="border-bottom:1px solid rgba(139,92,246,0.08);background:rgba(0,0,0,0.1)">
           <td style="font-size:0.61rem;font-family:var(--font-mono);color:var(--neon);padding:8px">RELAYER_PRIVATE_KEY</td>
@@ -1285,7 +1278,7 @@
         <tr style="border-bottom:1px solid rgba(139,92,246,0.08);background:rgba(0,0,0,0.1)">
           <td style="font-size:0.61rem;font-family:var(--font-mono);color:var(--neon);padding:8px">SELF_URL</td>
           <td style="font-size:0.6rem;color:#f87171;padding:8px;font-weight:700">YES</td>
-          <td style="font-size:0.61rem;color:var(--muted);padding:8px">Your node's own public URL (e.g. <span style="font-family:var(--font-mono);color:var(--neon)">https://my-node.up.railway.app</span> or <span style="font-family:var(--font-mono);color:var(--neon)">http://YOUR-IP:8080</span> on VPS). Without it the node starts in isolated mode — it cannot register with peers, cannot propagate blocks, and other nodes cannot reach it. On Railway: Settings &rarr; Networking &rarr; Public Networking.</td>
+          <td style="font-size:0.61rem;color:var(--muted);padding:8px">Your node's own public URL (e.g. <span style="font-family:var(--font-mono);color:var(--neon)">http://YOUR-IP:8080</span>, or an https:// hostname if you put a reverse proxy in front). Without it the node starts in isolated mode — it cannot register with peers, cannot propagate blocks, and other nodes cannot reach it. On Railway: Settings &rarr; Networking &rarr; Public Networking.</td>
         </tr>
         <tr style="border-bottom:1px solid rgba(139,92,246,0.08)">
           <td style="font-size:0.61rem;font-family:var(--font-mono);color:var(--neon);padding:8px">PRIMARY_NODE_URL</td>
@@ -1295,7 +1288,7 @@
         <tr style="border-bottom:1px solid rgba(139,92,246,0.08);background:rgba(0,0,0,0.1)">
           <td style="font-size:0.61rem;font-family:var(--font-mono);color:var(--muted);padding:8px">PORT</td>
           <td style="font-size:0.6rem;color:var(--muted);padding:8px">No</td>
-          <td style="font-size:0.61rem;color:var(--muted);padding:8px">Leave unset on Railway &mdash; Railway sets this automatically. Default is 8080.</td>
+          <td style="font-size:0.61rem;color:var(--muted);padding:8px">Leave unset unless your host requires a specific port. Default is 8080.</td>
         </tr>
         <tr style="border-bottom:1px solid rgba(139,92,246,0.08)">
           <td style="font-size:0.61rem;font-family:var(--font-mono);color:var(--muted);padding:8px">NODE_KEY</td>
