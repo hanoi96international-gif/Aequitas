@@ -133,3 +133,40 @@ func TestReplay_ActivityClockIdenticalSerialAndParallel(t *testing.T) {
 		}
 	}
 }
+
+// Nothing on the block-acceptance path validates block.Timestamp against the
+// local clock — the only comparison against it in block.go is a fixed
+// activation constant. Since replay now stamps the demurrage clock FROM that
+// field, a proposer could otherwise push any account it touches years into the
+// future and exempt it from both demurrage and the 2.5-year escrow sweep.
+func TestReplay_ActivityClockNeverStampsTheFuture(t *testing.T) {
+	const count = parallelReplayMinBatch + 4
+	const n = count * 2
+	addrs := make([]string, n)
+	for i := range addrs {
+		addrs[i] = fmt.Sprintf("0xacct-%04d", i)
+	}
+	txs := oneToOneTransfers(addrs, count)
+
+	future := nowUnix() + 100*365*24*3600 // a century ahead
+	dag, cs := newDeterminismTestDAG()
+	seedAccounts(cs, n, 1000)
+	block := &Block{Height: 1, Hash: "0xfuture-clock", Timestamp: future, Transactions: txs}
+	if ok := dag.replayTransactions(block, true); !ok {
+		t.Fatal("replayTransactions returned false for a well-formed block")
+	}
+
+	cs.mu.Lock()
+	defer cs.mu.Unlock()
+	for _, a := range addrs {
+		acc, ok := cs.accounts.Get(a)
+		if !ok {
+			t.Fatalf("account %s vanished", a)
+		}
+		if acc.LastActivityAt > nowUnix() {
+			t.Fatalf("%s: LastActivityAt = %d is in the future (block claimed %d)\n"+
+				"a proposer-supplied timestamp must never exempt an account from demurrage",
+				a, acc.LastActivityAt, future)
+		}
+	}
+}

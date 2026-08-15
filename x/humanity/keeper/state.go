@@ -2588,9 +2588,25 @@ func touchActivity(acc *AccountState) {
 //
 // at <= 0 falls back to nowUnix() for the handful of non-block callers (see
 // ApplyTransferDelta), preserving their existing behaviour exactly.
+//
+// The stamp is also clamped to now, because block.Timestamp is chosen by the
+// PROPOSER and nothing validates it: there is no future-drift check anywhere on
+// the block-acceptance path (the only comparison against Timestamp in block.go
+// is the fixed equivocationSlashingActivationUnix constant). Without the clamp,
+// a validator could stamp LastActivityAt years into the future on any account
+// it touches — and since demurrage and the 2.5-year escrow sweep are both
+// measured from this field, that would exempt those accounts from decay and
+// from inactivity recovery permanently. Clamping turns an unbounded, chain-wide
+// exploit into at worst a per-node difference of a few seconds, in a field that
+// is deliberately not part of accountLeaf and therefore not consensus-hashed.
+// (The missing future-drift validation on blocks themselves is a separate,
+// pre-existing gap — it is not created or worsened here.)
 func touchActivityAt(acc *AccountState, at int64) {
 	if at <= 0 {
 		at = nowUnix()
+	}
+	if now := nowUnix(); at > now {
+		at = now
 	}
 	if at <= acc.LastActivityAt {
 		return
