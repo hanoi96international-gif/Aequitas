@@ -373,6 +373,19 @@ input[type=number]::-webkit-inner-spin-button{opacity:0.5}
 @media(max-width:580px){.pools4-grid{grid-template-columns:1fr}}
 .pool4-card{background:var(--card2);border:1px solid var(--border);border-radius:var(--radius-sm);padding:16px;transition:all 0.2s}
 .pool4-card:hover{transform:translateY(-2px);box-shadow:var(--glow-purple)}
+/* FIX (launch audit 2026-08-15): the four pool cards and the three node-guide
+   buttons carried inline onmouseover=/onmouseout= handlers for their hover
+   accent. Every HTML handler on this page is served under
+   Content-Security-Policy "script-src 'self'" (api.go), which blocks inline
+   event handlers outright — so the hover effect never fired for any visitor
+   and each element logged a CSP violation to the console on page load. The
+   per-card accent colour is passed in as --pc-bh via the (CSP-allowed) style
+   attribute and applied here, so the effect is real CSS again. */
+.pool4-card:hover{border-color:var(--pc-bh,var(--border))}
+.hover-fade{transition:opacity 0.2s}
+.hover-fade:hover{opacity:0.87}
+.hover-lift{transition:all 0.2s}
+.hover-lift:hover{opacity:0.87;transform:translateY(-2px)}
 .pool4-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px}
 .pool4-name{font-size:0.61rem;font-weight:700;letter-spacing:0.3px}
 .pool4-badge{font-size:0.56rem;color:var(--muted);background:var(--card);border:1px solid var(--border);padding:2px 8px;border-radius:10px}

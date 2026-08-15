@@ -1,5 +1,17 @@
 // ── CONFIG ──────────────────────────────────────────────────────────────────
-const API          = 'https://aequitas.digital/api';
+// FIX (launch audit 2026-08-15): this was hardcoded to
+// 'https://aequitas.digital/api'. But this file is only ever served by
+// handleDapp, from a node that already exposes the full /api surface on its
+// own origin — so every node's /dapp page was reading a DIFFERENT node's
+// chain instead of its own. Verified today: aequitas.digital answers
+// /api/status with total_humans 0 and height ~17k while the Contabo node
+// serving this page is at height 3.8M with 15 humans, so the dApp showed an
+// empty chain, a 0 balance and a 0 supply to everyone regardless of which
+// node they loaded it from. It also made the page depend on a second host's
+// CORS headers and DNS for no reason. Same-origin is what the Explorer
+// already does (plain '/api/...' throughout explorer.js) — match it, so the
+// dApp always reports the state of the node the user actually connected to.
+const API          = '/api';
 const CHAIN_ID     = '0x786';  // 1926
 const V7           = '0x20D271028f32577FCd07b4583A8e0E4eBBdB4F78';
 
@@ -125,7 +137,15 @@ async function loadStatus() {
   try {
     const d = await api('/status');
     document.getElementById('h-height').textContent  = d.height ? '#' + d.height.toLocaleString() : '—';
-    document.getElementById('h-humans').textContent  = fmtAEQ(d.total_humans);
+    // FIX (launch audit 2026-08-15): total_humans is a COUNT of people, not an
+    // AEQ amount, but it was routed through fmtAEQ — the currency formatter.
+    // That rendered the "Verified Humans" tile as "15.0000" today, and would
+    // abbreviate it to "1.50K" once the registry passed a thousand people,
+    // losing the exact figure precisely when it starts to matter. The explorer
+    // already prints this field with plain toLocaleString (fmt in explorer.js);
+    // match it so both pages agree.
+    document.getElementById('h-humans').textContent  =
+      (typeof d.total_humans === 'number') ? d.total_humans.toLocaleString() : '—';
     document.getElementById('h-supply').textContent  = d.total_supply || '—';
     document.getElementById('h-index').textContent   = typeof d.index === 'number' ? d.index.toFixed(1) : '—';
     document.getElementById('h-gini').textContent    = typeof d.gini === 'number' ? d.gini.toFixed(4) : '—';
