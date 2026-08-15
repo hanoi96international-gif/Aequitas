@@ -11,6 +11,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 
@@ -543,6 +544,34 @@ func (cs *ChainState) ResyncFromSnapshotURL(peerURL, expectedSignerHex string) e
 		return err
 	}
 	snap := *snapPtr
+
+	// FIX (audit 2026-08-15, after a live near-miss): refuse a snapshot that
+	// would move this node BACKWARDS by more than a rollout's worth of blocks.
+	//
+	// Resync exists to rescue a node that has fallen behind, so a legitimate
+	// snapshot sits at or ahead of local height. The opposite direction is the
+	// dangerous one, and it was live: Contabo1 — the authoritative chain, past
+	// 3.8 million blocks — had BOOTSTRAP_SNAPSHOT_URL pointing at Contabo2, and
+	// its own log carries a boot where it tried to replace its state from there.
+	// That evening Contabo2 was serving height 1. The attempt failed on an HTTP
+	// 429, and the only other thing in its way was that BOOTSTRAP_SIGNER matched
+	// neither node's actual signing key. Two accidents, both outside this code,
+	// were all that stood between a restart and 3.8 million blocks being replaced
+	// by a chain of one.
+	//
+	// snap.Height is the producer's own height and is covered by the signature
+	// (see ExportSnapshot), so it cannot be forged apart from the payload. The
+	// tolerance is deliberately generous — a snapshot is already slightly stale
+	// when it is applied, and a busy node advances during the fetch — but it is
+	// finite, which is the entire point.
+	if localHeight := cs.localChainHeightForResync(); localHeight > 0 &&
+		snap.Height+resyncBackwardsTolerance < localHeight {
+		if os.Getenv("ALLOW_RESYNC_REGRESSION") != "true" {
+			return fmt.Errorf("%s", resyncRegressionMessage(peerURL, snap.Height, localHeight))
+		}
+		fmt.Printf("[RESYNC] ⚠ ALLOW_RESYNC_REGRESSION=true — accepting a snapshot %d blocks behind local height %d\n",
+			localHeight-snap.Height, localHeight)
+	}
 
 	fmt.Printf("[RESYNC] ⚠ Authoritative resync: REPLACING local state with snapshot from %s (signed by %s)\n", peerURL, expectedSignerHex)
 
@@ -1091,3 +1120,50 @@ func (cs *ChainState) replaceInMemoryFromSnapshotLocked(snap *StateSnapshot) {
 	}
 }
 
+
+// resyncBackwardsTolerance is how far behind local height a resync snapshot may
+// be before it is refused outright.
+//
+// A snapshot is always a little stale by the time it is validated and applied,
+// and a node under load keeps advancing during the fetch, so a small backwards
+// step is normal and harmless — those blocks come back from peers immediately.
+// 1,000 blocks is roughly seventeen minutes at BLOCK_TIME=1s: far more slack
+// than any real fetch needs, and still nowhere near the millions that separate a
+// healthy validator from an empty one.
+const resyncBackwardsTolerance = 1000
+
+// localChainHeightForResync reports this node's own chain height from durable
+// state, for the regression guard above.
+//
+// Deliberately read from the DB rather than the BlockDAG: this runs during
+// startup resync, before the DAG is loaded, and ChainState has no handle on it
+// anyway. max_block_height is the same counter NewBlockchain uses to establish
+// bootHeight, so it is exactly "what this node believes it already has".
+// Returns 0 when it cannot be determined, which disables the guard rather than
+// blocking a legitimate first-time bootstrap on a node that has no height yet.
+func (cs *ChainState) localChainHeightForResync() int64 {
+	if cs.db == nil {
+		return 0
+	}
+	raw := cs.getConfigValueDB("max_block_height")
+	if raw == "" {
+		return 0
+	}
+	h, err := strconv.ParseInt(strings.TrimSpace(raw), 10, 64)
+	if err != nil || h < 0 {
+		return 0
+	}
+	return h
+}
+
+// resyncRegressionMessage is the refusal an operator actually reads. Split out
+// so its content can be pinned by a test: meeting this at 3am, the numbers and
+// the deliberate override are the whole point of the message.
+func resyncRegressionMessage(peerURL string, snapHeight, localHeight int64) string {
+	behind := localHeight - snapHeight
+	return fmt.Sprintf(
+		"refusing resync: the snapshot from %s is at height %d, %d blocks BEHIND this node's %d — "+
+			"resync replaces local state wholesale, so this would discard %d blocks of real history. "+
+			"If that rollback is intended, set ALLOW_RESYNC_REGRESSION=true",
+		peerURL, snapHeight, behind, localHeight, behind)
+}
