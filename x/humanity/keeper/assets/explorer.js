@@ -2194,8 +2194,8 @@ async function loadTopology() {
     const norm = function(u) { return (u || '').replace(/\/+$/, ''); };
     const peerUrls = Array.isArray(peersRes.peers) ? peersRes.peers : [];
     const dedupedPeers = peerUrls.filter(function(u) { return u && norm(u) !== norm(selfUrl); });
-    const nodes = [{ url: selfUrl, isPrimary: !!statusRes.is_primary, self: true, gitCommit: statusRes.git_commit }]
-      .concat(dedupedPeers.map(function(u) { return { url: u, isPrimary: false, self: false, gitCommit: null }; }));
+    const nodes = [{ url: selfUrl, isPrimary: !!statusRes.is_primary, self: true, roleKnown: typeof statusRes.is_primary === 'boolean', gitCommit: statusRes.git_commit }]
+      .concat(dedupedPeers.map(function(u) { return { url: u, isPrimary: false, self: false, roleKnown: false, gitCommit: null }; }));
 
     if (badge) badge.textContent = '(' + nodes.length + ')';
 
@@ -2212,7 +2212,18 @@ async function loadTopology() {
     await Promise.all(nodes.filter(function(n) { return !n.self; }).map(function(n) {
       return fetch(n.url + '/api/status').then(function(r) { return r.json(); }).then(function(s) {
         n.gitCommit = s.git_commit || null;
-      }).catch(function() { n.gitCommit = null; });
+        // FIX (2026-08-15, reported live with a screenshot): this response was
+        // read for git_commit and its is_primary discarded, while every peer
+        // was hardcoded isPrimary:false above and rendered through
+        // `isPrimary ? 'Primary' : 'Secondary'`. So the PRIMARY node showed up
+        // as "Secondary" on every other node's page. That is exactly the guess
+        // this function's own comment says it refuses to make ("labeled
+        // generically ... rather than guessing a role we can't verify") — the
+        // comment was right, the code did not follow it, and the role is in
+        // fact verifiable: it is in the very response already being fetched.
+        n.roleKnown = typeof s.is_primary === 'boolean';
+        n.isPrimary = !!s.is_primary;
+      }).catch(function() { n.gitCommit = null; n.roleKnown = false; });
     }));
     if (mySeq !== loadTopologySeq) return;
 
@@ -2224,7 +2235,8 @@ async function loadTopology() {
       grid.innerHTML = nodes.map(function(n) {
         let host;
         try { host = new URL(n.url).host; } catch (e) { host = n.url; }
-        const role = n.isPrimary ? 'Primary' : 'Secondary';
+        // Unreachable peer: say so, never assert a role that was never read.
+        const role = n.roleKnown ? (n.isPrimary ? 'Primary' : 'Secondary') : 'Node (role unverified)';
         const tag = n.self ? ' (this node)' : '';
         const mismatch = n.gitCommit && commits.length > 1 && !allSame;
         const commitLine = '<div class="ndesc" style="' + (mismatch ? 'color:var(--dag-red);font-weight:700' : 'color:var(--muted)') + '" title="Build commit this node is running — compare across nodes to confirm the fleet is in sync">'
@@ -2276,7 +2288,7 @@ function renderTopologySVG(svg, nodes) {
     const color = colors[i % colors.length];
     let host;
     try { host = new URL(node.url).host; } catch (e) { host = node.url; }
-    const roleLine = (node.isPrimary ? 'Primary' : 'Secondary') + (node.self ? ' (this node)' : '');
+    const roleLine = (node.roleKnown ? (node.isPrimary ? 'Primary' : 'Secondary') : 'role unverified') + (node.self ? ' (this node)' : '');
     svgHtml += '<rect x="' + x + '" y="' + boxY + '" width="' + boxW + '" height="' + boxH + '" rx="8" fill="' + color + '22" stroke="' + color + '" stroke-width="1.5"/>' +
       '<text x="' + cx + '" y="' + (boxY + 22) + '" text-anchor="middle" font-size="9" font-weight="700" fill="' + color + '">' + sanitize(host.length > 22 ? host.slice(0, 20) + '…' : host) + '</text>' +
       '<text x="' + cx + '" y="' + (boxY + 36) + '" text-anchor="middle" font-size="7.5" fill="rgba(136,146,164,0.9)">' + sanitize(roleLine) + '</text>' +
@@ -2548,7 +2560,22 @@ async function drawGiniHistoryChart() {
   } catch(e) {}
 }
 
+// Guards the one self-scheduled redraw after a 429 (see the fetch below), so a
+// visitor flipping between sub-tabs cannot stack timers.
+var drawLorenzRetryPending = false;
+// FIX (2026-08-15): drawLorenzCurve is reached from five places — sub-tab
+// clicks, direct-URL activation, the IntersectionObserver, the retry above and
+// resize — and it awaits a network call in the middle while drawing to a single
+// shared canvas. Two overlapping runs therefore interleaved: one cleared the
+// canvas and went to the network, the other finished drawing the curve, and the
+// first then printed its placeholder ON TOP of that finished chart. That is
+// visible in the report this fix came from: a fully drawn Lorenz curve with
+// 'Need 2+ registered humans' floating in the middle of it. Same sequence guard
+// loadHumans and loadTopology already use — the newest run wins, older ones
+// return without touching the canvas.
+var drawLorenzSeq = 0;
 async function drawLorenzCurve() {
+  var mySeq = ++drawLorenzSeq;
   var canvas = document.getElementById('lorenz-chart');
   if (!canvas || !canvas.offsetParent) return;
   canvas.width = canvas.offsetWidth;
@@ -2588,7 +2615,33 @@ async function drawLorenzCurve() {
     // that actually matters stays correct regardless; only this
     // supplementary visual would start drawing an approximation once
     // registrations pass 500.
-    var d = await (await fetch('/api/humans')).json();
+    // FIX (2026-08-15, reported live with a screenshot): this read the JSON
+    // without looking at the HTTP status — the identical defect loadHumans had
+    // fixed on 2026-07-27, left standing at this second call site. /api/humans
+    // allows one request per 3s per IP, and THIS PAGE CALLS IT TWICE: the
+    // 10s-poll loadHumans and this curve. Opening the Distribution tab lands
+    // both inside one window, so the loser gets a 429 whose body has no
+    // "humans" key, `humans` becomes [], and the canvas states "Need 2+
+    // registered humans" — a claim that the chain has almost no humans, on a
+    // node whose /api/status right above it reads 15. Reproduced against
+    // production: two calls 0.3s apart return 200 then 429.
+    var resp = await fetch('/api/humans');
+    if (mySeq !== drawLorenzSeq) return;
+    if (!resp.ok) {
+      ctx.fillStyle = 'rgba(155,114,246,0.6)'; ctx.font = '13px Inter'; ctx.textAlign = 'center';
+      ctx.fillText(resp.status === 429
+        ? 'Too many requests just now — redrawing in a moment…'
+        : 'Could not load the distribution (HTTP ' + resp.status + ').', W / 2, H / 2);
+      // A 429 clears in three seconds. Come back once on our own rather than
+      // leaving a wrong-looking chart until the visitor happens to switch tabs.
+      if (resp.status === 429 && !drawLorenzRetryPending) {
+        drawLorenzRetryPending = true;
+        setTimeout(function () { drawLorenzRetryPending = false; drawLorenzCurve(); }, 3500);
+      }
+      return;
+    }
+    var d = await resp.json();
+    if (mySeq !== drawLorenzSeq) return;
     var humans = d.humans || [];
     if (humans.length < 2) {
       ctx.fillStyle='rgba(155,114,246,0.6)'; ctx.font='13px Inter'; ctx.textAlign='center';
@@ -2608,10 +2661,16 @@ async function drawLorenzCurve() {
     var area=0;
     for(var i=1;i<lorenz.length;i++){area+=(lorenz[i].x-lorenz[i-1].x)*(lorenz[i].y+lorenz[i-1].y)/2;}
     var gini=Math.max(0,1-2*area);
-    // Apply same small-sample bias correction as Go's calcGiniFromBalances: gini * n/(n-1)
-    // Without this the Lorenz Gini differs from the Score Gini by factor n/(n-1).
-    // At n=7: 0.0841 * 7/6 = 0.0981 — matching the server value.
-    if(n>1) gini=Math.min(1, gini * n/(n-1));
+    // FIX (2026-08-15, reported live): this used to multiply by n/(n-1), added
+    // deliberately to match what the server published. The server's own copy of
+    // that factor was removed the same day: it is the correction for estimating
+    // a large population's Gini from a SAMPLE, and this chain samples nothing —
+    // it knows every registered human, so these balances are the whole
+    // population. Keeping it here after the server dropped it recreated exactly
+    // the discrepancy it was written to remove, in the opposite direction: the
+    // curve printed 0.1324 while /api/status beside it reported 0.1236 — the
+    // same 15/14 at the 15 humans then live, and a full 2x at n=2. The Lorenz
+    // area below IS the population Gini; nothing further is applied to it.
 
     var gEl=document.getElementById('lorenz-gini-val');
     if(gEl){gEl.textContent=gini.toFixed(4);gEl.style.color=gini<0.30?'#34D399':'#F0B429';}
