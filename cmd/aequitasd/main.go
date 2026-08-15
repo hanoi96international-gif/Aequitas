@@ -673,6 +673,7 @@ keeper.SafeCall("daily-distribution-round", func() {
 retrySoon := false
 if os.Getenv("DISTRIBUTION_ENABLED") == "false" {
 	fmt.Println("[POOLS] Distribution disabled on this node (DISTRIBUTION_ENABLED=false)")
+	keeper.RecordDistributionOutcome("skipped", "DISTRIBUTION_ENABLED=false on this node")
 } else if syncIssue := distributionSyncHealthIssue(bc); syncIssue != "" {
 	// FIX (scale audit, SPOF): DistributeValidatorsPool weights every
 	// validator's reward by registered_nodes.blocks_produced read from
@@ -700,6 +701,7 @@ if os.Getenv("DISTRIBUTION_ENABLED") == "false" {
 	// before attempting the lock either way), so a node that heals
 	// mid-day distributes that same day instead of missing it entirely.
 	fmt.Printf("[POOLS] ✗ Skipping distribution this round: %s — will re-check in %s\n", syncIssue, distributionHealthRetryInterval)
+	keeper.RecordDistributionOutcome("skipped", syncIssue)
 	retrySoon = true
 } else if chainState.TryLockDistribution() {
 	// FIX (audit3, P0 #3): the entire distribution round — UBI, validator
@@ -721,12 +723,15 @@ if os.Getenv("DISTRIBUTION_ENABLED") == "false" {
 		ubiAt := time.Now().Unix()
 		if err := chainState.RunDailyDistributionAtomic(ubiAt); err != nil {
 			fmt.Printf("[POOLS] ✗ Distribution FAILED and was fully rolled back: %v\n", err)
+			keeper.RecordDistributionOutcome("failed", err.Error())
 			return
 		}
 		fmt.Printf("[POOLS] ✓ Distribution done at %s\n", time.Now().In(berlin).Format("02.01. 15:04:05"))
+		keeper.RecordDistributionOutcome("ran", "round executed; whether it paid anything depends on pool balances")
 	})
 } else {
 	fmt.Printf("[POOLS] Distribution already ran within the last 24h on this or another node — skipping\n")
+	keeper.RecordDistributionOutcome("skipped", "another node already distributed within the last 24h")
 }
 if retrySoon {
 firstTarget = time.Now().Add(distributionHealthRetryInterval)

@@ -692,6 +692,9 @@ func (a *APIServer) handleCombinedHealth(w http.ResponseWriter, r *http.Request)
 			// SupplyReconciliation. total_supply above is the RULE
 			// (humans x 1000); this is what the accounts actually hold.
 			"supply_reconciliation": a.state.SupplyReconciliation(),
+			// What the daily-round scheduler actually decided. Note this is NOT
+			// last_ubi_at: that only advances when a round had something to pay.
+			"distribution": a.state.DistributionHealth(),
 			"chain_nullifiers": a.state.CountChainNullifiers(),
 			"chain_bio_hashes": a.state.CountChainBioHashes(),
 			"proof_server_sync_queue": map[string]interface{}{
