@@ -1278,7 +1278,7 @@
         <tr style="border-bottom:1px solid rgba(139,92,246,0.08);background:rgba(0,0,0,0.1)">
           <td style="font-size:0.61rem;font-family:var(--font-mono);color:var(--neon);padding:8px">SELF_URL</td>
           <td style="font-size:0.6rem;color:#f87171;padding:8px;font-weight:700">YES</td>
-          <td style="font-size:0.61rem;color:var(--muted);padding:8px">Your node's own public URL (e.g. <span style="font-family:var(--font-mono);color:var(--neon)">http://YOUR-IP:8080</span>, or an https:// hostname if you put a reverse proxy in front). Without it the node starts in isolated mode — it cannot register with peers, cannot propagate blocks, and other nodes cannot reach it. On Railway: Settings &rarr; Networking &rarr; Public Networking.</td>
+          <td style="font-size:0.61rem;color:var(--muted);padding:8px">Your node's own public URL (e.g. <span style="font-family:var(--font-mono);color:var(--neon)">http://YOUR-IP:8080</span>, or an https:// hostname if you put a reverse proxy in front). Without it the node starts in isolated mode — it cannot register with peers, cannot propagate blocks, and other nodes cannot reach it.</td>
         </tr>
         <tr style="border-bottom:1px solid rgba(139,92,246,0.08)">
           <td style="font-size:0.61rem;font-family:var(--font-mono);color:var(--neon);padding:8px">PRIMARY_NODE_URL</td>
@@ -1333,7 +1333,7 @@
         <tr style="border-bottom:1px solid rgba(139,92,246,0.08)">
           <td style="font-size:0.61rem;font-family:var(--font-mono);color:var(--neon);padding:8px">SNAPSHOT_RESTRICT_TO_PRIVATE_NETWORK</td>
           <td style="font-size:0.6rem;color:var(--muted);padding:8px">No</td>
-          <td style="font-size:0.61rem;color:var(--muted);padding:8px">Opt-in: when set to <code style="color:var(--gold)">true</code>, /api/snapshot only answers requests from private/loopback addresses instead of any caller with the right token. Off by default because this project's bootstrap/resync mechanism relies on cross-cloud-provider access (Railway ↔ VPS ↔ Railway); only enable this if every node you run shares a private network.</td>
+          <td style="font-size:0.61rem;color:var(--muted);padding:8px">Opt-in: when set to <code style="color:var(--gold)">true</code>, /api/snapshot only answers requests from private/loopback addresses instead of any caller with the right token. Off by default because this project's bootstrap/resync mechanism relies on cross-provider access between servers; only enable this if every node you run shares a private network.</td>
         </tr>
         <tr>
           <td style="font-size:0.61rem;font-family:var(--font-mono);color:#f87171;padding:8px">RESET_STATE</td>
@@ -1358,42 +1358,22 @@
         <tr>
           <td style="font-size:0.61rem;font-family:var(--font-mono);color:#f87171;padding:8px">ALLOW_DESTRUCTIVE_MAINTENANCE</td>
           <td style="font-size:0.6rem;color:var(--muted);padding:8px">No</td>
-          <td style="font-size:0.61rem;color:var(--muted);padding:8px">Required alongside RESET_DB_STATE=true or CLEAR_REGISTRATIONS=true &mdash; must be set to <code style="color:var(--gold)">true</code>. Without it, both are refused even with their other confirmation values correct. One more explicit gate so a wrong Railway/Render service selection or a stray copy-pasted env file can't trigger either destructive path alone. Visible at /api/health/combined (destructive_flags_set) whenever any destructive flag is currently set, even if it was refused.</td>
+          <td style="font-size:0.61rem;color:var(--muted);padding:8px">Required alongside RESET_DB_STATE=true or CLEAR_REGISTRATIONS=true &mdash; must be set to <code style="color:var(--gold)">true</code>. Without it, both are refused even with their other confirmation values correct. One more explicit gate so a wrong server selection or a stray copy-pasted env file can't trigger either destructive path alone. Visible at /api/health/combined (destructive_flags_set) whenever any destructive flag is currently set, even if it was refused.</td>
         </tr>
         <tr style="background:rgba(0,0,0,0.1)">
           <td style="font-size:0.61rem;font-family:var(--font-mono);color:var(--neon);padding:8px">BOOTSTRAP_P2P_ADDR</td>
           <td style="font-size:0.6rem;color:var(--muted);padding:8px">No</td>
-          <td style="font-size:0.61rem;color:var(--muted);padding:8px">Overrides the built-in libp2p bootstrap multiaddress (see Step 7 below). Only needed if the network operator's Railway TCP-proxy address changes again in the future &mdash; set this instead of waiting for a code deploy.</td>
+          <td style="font-size:0.61rem;color:var(--muted);padding:8px">Overrides the built-in libp2p bootstrap multiaddress (see Step 7 below). Only needed if you want to pin a specific entry point; the two validator addresses are compiled in as defaults again in the future &mdash; set this instead of waiting for a code deploy.</td>
         </tr>
       </table>
 
-      <!-- Step 4 Railway -->
-      <div style="font-size:0.58rem;color:var(--purple);font-weight:700;letter-spacing:1px;text-transform:uppercase;margin-bottom:10px;border-bottom:1px solid var(--border);padding-bottom:6px">Step 4 &mdash; Deploy on Railway (Recommended)</div>
-      <div style="font-size:0.62rem;color:var(--muted);line-height:1.9;margin-bottom:12px">Railway is the easiest way to run your node &mdash; no server setup, no command line required. The free tier covers all requirements. Total time: about 10&ndash;15 minutes.</div>
-      <div style="font-size:0.62rem;color:var(--muted);line-height:2.2;margin-bottom:18px">
-        <div style="display:flex;align-items:flex-start;gap:10px;margin-bottom:6px"><span style="display:inline-flex;align-items:center;justify-content:center;background:rgba(139,92,246,0.2);color:var(--purple);font-weight:700;font-size:0.58rem;min-width:22px;height:22px;border-radius:50%">1</span><span>In your Railway project (from Step 2), click <strong style="color:var(--text)">+ New</strong> &rarr; <strong style="color:var(--text)">GitHub Repo</strong></span></div>
-        <div style="display:flex;align-items:flex-start;gap:10px;margin-bottom:6px"><span style="display:inline-flex;align-items:center;justify-content:center;background:rgba(139,92,246,0.2);color:var(--purple);font-weight:700;font-size:0.58rem;min-width:22px;height:22px;border-radius:50%">2</span><span>Select your Aequitas fork (from Step 1) &mdash; Railway detects the Dockerfile automatically</span></div>
-        <div style="display:flex;align-items:flex-start;gap:10px;margin-bottom:6px"><span style="display:inline-flex;align-items:center;justify-content:center;background:rgba(139,92,246,0.2);color:var(--purple);font-weight:700;font-size:0.58rem;min-width:22px;height:22px;border-radius:50%">3</span><span>Click <strong style="color:var(--text)">Deploy Now</strong> &mdash; a first build starts (may fail without env vars, that is normal)</span></div>
-        <div style="display:flex;align-items:flex-start;gap:10px;margin-bottom:6px"><span style="display:inline-flex;align-items:center;justify-content:center;background:rgba(139,92,246,0.2);color:var(--purple);font-weight:700;font-size:0.58rem;min-width:22px;height:22px;border-radius:50%">4</span><span>Click your Aequitas service &rarr; <strong style="color:var(--text)">Variables</strong> &rarr; add each variable:</span></div>
-        <div style="font-family:var(--font-mono);background:rgba(0,0,0,0.3);border:1px solid rgba(139,92,246,0.15);border-radius:6px;padding:12px;margin:4px 0 8px 32px;font-size:0.61rem;line-height:2.1;overflow-x:auto">
-          <span style="color:var(--muted)"># Railway auto-sets DATABASE_URL if PostgreSQL is in the same project</span><br>
-          <span style="color:var(--neon)">RELAYER_PRIVATE_KEY</span> = <span style="color:var(--gold)">0xYOUR_PRIVATE_KEY</span><br>
-          <span style="color:var(--neon)">RELAYER_ADDRESS</span> = <span style="color:var(--gold)">0xYOUR_NODE_WALLET_ADDRESS</span><br>
-          <span style="color:var(--neon)">NODE_OPERATOR_WALLET</span> = <span style="color:var(--gold)">0xYOUR_HUMAN_WALLET</span><br>
-          <span style="color:var(--neon)">NODE_OPERATOR_BINDING_SIGNATURE</span> = <span style="color:var(--gold)">generate-at-/node-binding</span><br>
-          <span style="color:var(--neon)">SELF_URL</span> = <span style="color:var(--gold)">https://YOUR-RAILWAY-DOMAIN.up.railway.app</span><br>
-          <span style="color:var(--neon)">PRIMARY_NODE_URL</span> = <span style="color:var(--gold)">https://aequitas.digital</span><br>
-          <span style="color:var(--neon)">AUTO_HEAL_ON_DIVERGENCE</span> = <span style="color:var(--gold)">true</span> <span style="color:var(--muted)"># strongly recommended: auto-resyncs if your chain ever diverges</span>
-        </div>
-        <div style="display:flex;align-items:flex-start;gap:10px;margin-bottom:6px"><span style="display:inline-flex;align-items:center;justify-content:center;background:rgba(139,92,246,0.2);color:var(--purple);font-weight:700;font-size:0.58rem;min-width:22px;height:22px;border-radius:50%">5</span><span>Click <strong style="color:var(--text)">Deploy</strong> (or save variables to trigger auto-redeploy). Build takes ~3 minutes while Go compiles the node binary.</span></div>
-        <div style="display:flex;align-items:flex-start;gap:10px;margin-bottom:6px"><span style="display:inline-flex;align-items:center;justify-content:center;background:rgba(139,92,246,0.2);color:var(--purple);font-weight:700;font-size:0.58rem;min-width:22px;height:22px;border-radius:50%">6</span><span>Watch <strong style="color:var(--text)">Deploy Logs</strong>. Success looks like: <span style="font-family:var(--font-mono);color:var(--teal)">Aequitas Node Running V</span> and <span style="font-family:var(--font-mono);color:var(--teal)">[NODE] Registered node operator wallet: 0x...</span></span></div>
-        <div style="display:flex;align-items:flex-start;gap:10px;margin-bottom:6px"><span style="display:inline-flex;align-items:center;justify-content:center;background:rgba(139,92,246,0.2);color:var(--purple);font-weight:700;font-size:0.58rem;min-width:22px;height:22px;border-radius:50%">7</span><span>Go to <strong style="color:var(--text)">Settings</strong> &rarr; <strong style="color:var(--text)">Networking</strong> &rarr; <strong style="color:var(--text)">Generate Domain</strong> to get your public URL</span></div>
-        <div style="display:flex;align-items:flex-start;gap:10px"><span style="display:inline-flex;align-items:center;justify-content:center;background:rgba(139,92,246,0.2);color:var(--purple);font-weight:700;font-size:0.58rem;min-width:22px;height:22px;border-radius:50%">8</span><span>Open <span style="font-family:var(--font-mono);color:var(--neon)">https://YOUR-URL/api/status</span> in your browser &mdash; you should see JSON with <strong style="color:var(--text)">height</strong> climbing steadily (check <span style="font-family:var(--font-mono);color:var(--teal)">block_time</span> in the same response for the current cadence)</span></div>
-      </div>
-
-      <!-- Step 4b Docker -->
-      <div style="font-size:0.58rem;color:var(--purple);font-weight:700;letter-spacing:1px;text-transform:uppercase;margin-bottom:10px;border-bottom:1px solid var(--border);padding-bottom:6px">Step 4b &mdash; Alternative: Deploy on a VPS with Docker</div>
-      <div style="font-size:0.62rem;color:var(--muted);line-height:1.9;margin-bottom:8px">For your own server (Contabo, Hetzner, DigitalOcean). Requires Docker installed on the VPS and a local PostgreSQL database set up via Step 2 Option B above. <strong style="color:var(--gold)">Do not connect to Railway's PostgreSQL from a VPS</strong> — each node must have its own separate database. NODE_OPERATOR_WALLET must be a registered Aequitas human wallet.</div>
+      <!-- Step 4 was a Railway walkthrough. Railway was decommissioned on
+           2026-08-14 and hosts nothing for this project; following it produced
+           a node that could never reach the network. The Docker path below is
+           now the only supported way and applies to any Linux VPS. -->
+      <!-- Step 4 Docker -->
+      <div style="font-size:0.58rem;color:var(--purple);font-weight:700;letter-spacing:1px;text-transform:uppercase;margin-bottom:10px;border-bottom:1px solid var(--border);padding-bottom:6px">Step 4 &mdash; Alternative: Deploy on a VPS with Docker</div>
+      <div style="font-size:0.62rem;color:var(--muted);line-height:1.9;margin-bottom:8px">For your own server (Contabo, Hetzner, DigitalOcean). Requires Docker installed on the VPS and a local PostgreSQL database set up via Step 2 Option B above. <strong style="color:var(--gold)">Do not point two nodes at one PostgreSQL</strong> — each node must have its own separate database. NODE_OPERATOR_WALLET must be a registered Aequitas human wallet.</div>
       <div style="font-family:var(--font-mono);background:rgba(0,0,0,0.3);border:1px solid rgba(139,92,246,0.15);border-radius:6px;padding:14px;margin-bottom:8px;font-size:0.61rem;line-height:2.2;overflow-x:auto">
         <span style="color:var(--muted)"># 1. Install Docker (if not already installed)</span><br>
         curl -fsSL https://get.docker.com | sh<br><br>
@@ -1442,7 +1422,7 @@
 
       <!-- Step 5: Verify -->
       <div style="font-size:0.58rem;color:var(--purple);font-weight:700;letter-spacing:1px;text-transform:uppercase;margin-bottom:10px;border-bottom:1px solid var(--border);padding-bottom:6px">Step 5 &mdash; Verify Your Node is Running</div>
-      <div style="font-size:0.62rem;color:var(--muted);line-height:1.9;margin-bottom:8px">Open these URLs in your browser. Replace <span style="font-family:var(--font-mono);color:var(--neon)">YOUR-NODE-URL</span> with your actual Railway domain or server address.</div>
+      <div style="font-size:0.62rem;color:var(--muted);line-height:1.9;margin-bottom:8px">Open these URLs in your browser. Replace <span style="font-family:var(--font-mono);color:var(--neon)">YOUR-NODE-URL</span> with your server's address.</div>
       <div style="font-family:var(--font-mono);background:rgba(0,0,0,0.3);border:1px solid rgba(139,92,246,0.15);border-radius:6px;padding:14px;margin-bottom:8px;font-size:0.61rem;line-height:2.2">
         https://YOUR-NODE-URL/api/status<br>
         <span style="color:var(--muted)">&nbsp;&rarr; Expected: {"height": 1234, "total_humans": N, "aequitas_index": N}</span><br><br>
@@ -1501,8 +1481,8 @@
       <div style="background:rgba(245,166,35,0.05);border:1px solid rgba(245,166,35,0.2);border-radius:6px;padding:12px 14px;margin-bottom:12px;font-size:0.62rem;color:var(--muted);line-height:1.9">The Validators Pool collects 40% of all protocol fees (swap fees, demurrage, wealth cap overflow). Every day at <strong style="color:var(--gold)">20:00 Berlin time</strong> (CEST/CET, handles DST automatically) the primary node distributes the pool balance to all registered node operator wallets proportionally. The more consistently your node runs, the larger your share.</div>
       <div style="font-size:0.62rem;color:var(--muted);line-height:2.2;margin-bottom:18px">
         <div style="display:flex;align-items:flex-start;gap:10px;margin-bottom:4px"><span style="color:var(--gold);font-weight:700;min-width:16px">1.</span><span>Make sure you are registered as a human on Aequitas. If not: install the Android app and complete biometric registration first. You will receive a wallet address and 1,000 AEQ.</span></div>
-        <div style="display:flex;align-items:flex-start;gap:10px;margin-bottom:4px"><span style="color:var(--gold);font-weight:700;min-width:16px">2.</span><span>Set <span style="font-family:var(--font-mono);color:var(--neon)">NODE_OPERATOR_WALLET</span> = your Aequitas human wallet address in your Railway Variables</span></div>
-        <div style="display:flex;align-items:flex-start;gap:10px;margin-bottom:4px"><span style="color:var(--gold);font-weight:700;min-width:16px">3.</span><span>Save &mdash; Railway redeploys automatically. On Docker: <span style="font-family:var(--font-mono);color:var(--teal)">docker restart aequitas-node</span></span></div>
+        <div style="display:flex;align-items:flex-start;gap:10px;margin-bottom:4px"><span style="color:var(--gold);font-weight:700;min-width:16px">2.</span><span>Set <span style="font-family:var(--font-mono);color:var(--neon)">NODE_OPERATOR_WALLET</span> = your Aequitas human wallet address in your node's environment</span></div>
+        <div style="display:flex;align-items:flex-start;gap:10px;margin-bottom:4px"><span style="color:var(--gold);font-weight:700;min-width:16px">3.</span><span>Restart the node so it picks the value up: <span style="font-family:var(--font-mono);color:var(--teal)">docker restart aequitas-node</span></span></div>
         <div style="display:flex;align-items:flex-start;gap:10px;margin-bottom:4px"><span style="color:var(--gold);font-weight:700;min-width:16px">4.</span><span>In your node logs, confirm: <span style="font-family:var(--font-mono);color:var(--teal)">[NODE] Registered node operator wallet: 0x...</span></span></div>
         <div style="display:flex;align-items:flex-start;gap:10px"><span style="color:var(--gold);font-weight:700;min-width:16px">5.</span><span>Rewards are distributed automatically every day at 20:00 Berlin time (CEST/CET). Just keep your node running &mdash; no further action needed.</span></div>
       </div>
@@ -1536,9 +1516,9 @@
           <td style="font-size:0.61rem;color:var(--muted);padding:8px">Add NODE_OPERATOR_WALLET=0xYOUR_HUMAN_WALLET to your variables. Node runs fine without it but you won't receive rewards.</td>
         </tr>
         <tr style="border-bottom:1px solid rgba(139,92,246,0.08)">
-          <td style="font-size:0.61rem;color:var(--muted);padding:8px">Railway shows "Application error"</td>
+          <td style="font-size:0.61rem;color:var(--muted);padding:8px">Node container exits immediately</td>
           <td style="font-size:0.61rem;color:var(--muted);padding:8px">Build or startup failure</td>
-          <td style="font-size:0.61rem;color:var(--muted);padding:8px">Check Deploy Logs in Railway for the error message. Most common cause: DATABASE_URL missing or RELAYER_PRIVATE_KEY in wrong format (must start with 0x).</td>
+          <td style="font-size:0.61rem;color:var(--muted);padding:8px">Run docker logs aequitas-node for the error message. Most common cause: DATABASE_URL missing or RELAYER_PRIVATE_KEY in wrong format (must start with 0x).</td>
         </tr>
         <tr style="border-bottom:1px solid rgba(139,92,246,0.08);background:rgba(0,0,0,0.1)">
           <td style="font-size:0.61rem;color:var(--muted);padding:8px">Port 8080 not reachable (Docker)</td>
@@ -1548,7 +1528,7 @@
         <tr style="border-bottom:1px solid rgba(139,92,246,0.08);background:rgba(0,0,0,0.1)">
           <td style="font-size:0.61rem;color:var(--muted);padding:8px">Docker build fails with module error</td>
           <td style="font-size:0.61rem;color:var(--muted);padding:8px">No internet access during build</td>
-          <td style="font-size:0.61rem;color:var(--muted);padding:8px">Docker build needs outbound internet to download Go modules. Railway handles this automatically.</td>
+          <td style="font-size:0.61rem;color:var(--muted);padding:8px">The Docker build needs outbound internet to download Go modules. Check the VPS firewall allows outbound HTTPS.</td>
         </tr>
         <tr style="border-bottom:1px solid rgba(139,92,246,0.08)">
           <td style="font-size:0.61rem;color:var(--muted);padding:8px">⚠ P2P bootstrap unreachable (HTTP sync still works)</td>
@@ -1656,8 +1636,8 @@
   </div>
   <div class="idx" style="margin-bottom:12px;background:linear-gradient(135deg,rgba(139,92,246,0.06),rgba(13,8,32,0.9));border-color:rgba(139,92,246,0.2)">
     <div class="idx-title" style="color:var(--purple)">Node Decentralization Roadmap</div>
-    <div style="font-size:0.63rem;color:var(--muted);line-height:1.9">Currently the network runs on 2 active nodes (Railway primary + Contabo VPS secondary) with MERGE events from both. Only registered humans can run validator nodes — this is a security requirement. Decentralization is a staged process:<br><br>
-    <span style="color:var(--neon)">Phase 0 (now):</span> 2-node bootstrapping — Railway (aequitas.digital) + Contabo VPS. Trust established through code transparency. Registered humans can apply to join as validators.<br>
+    <div style="font-size:0.63rem;color:var(--muted);line-height:1.9">Currently the network runs on 2 active validators, each on its own server with its own database, with MERGE events from both. Only registered humans can run validator nodes — this is a security requirement. Decentralization is a staged process:<br><br>
+    <span style="color:var(--neon)">Phase 0 (now):</span> 2-node bootstrapping — two independent Contabo servers, each with its own database and its own proof server. Trust established through code transparency. Any registered human can join as a validator — no application, no stake.<br>
     <span style="color:var(--blue)">Phase 1 (100+ humans):</span> Open node join — any registered human can run a full node and earn validator rewards from the 40% pool.<br>
     <span style="color:var(--gold)">Phase 2 (1,000+ humans):</span> Minimum 10 independent node operators required. Node diversity enforced by smart contract.<br>
     <span style="color:var(--purple)">Phase 3 (10,000+ humans):</span> Fully decentralized BlockDAG. No single operator can censor or halt the chain.<br><br>
@@ -1665,6 +1645,11 @@
   </div>
 </div>
 </div>
+</div><!-- /tab-network — this close was missing: without it every element from
+     line 956 onward nested inside the Network tab, so hiding that tab hid the
+     rest of the page with it, and the browser only papered over it by closing
+     the div implicitly at </body>. Verified with html.parser: this is now the
+     only structural fix needed; nothing else in the file is unbalanced. -->
 
 <script src="/explorer.js"></script>
 </body>
