@@ -2,7 +2,8 @@
 
 on:
   push:
-    branches: [master, main]
+    # main only — see deploy-contabo.yml for why master was removed.
+    branches: [main]
     # See deploy-contabo.yml: a workflow- or docs-only push must not restart
     # the node.
     paths-ignore:
@@ -52,8 +53,23 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           for i in $(seq 1 60); do
-            status=$(gh api "repos/${{ github.repository }}/actions/runs?head_sha=${{ github.sha }}&per_page=50" \
-              --jq '[.workflow_runs[] | select(.name=="Deploy to Contabo VPS")][0].status' 2>/dev/null || echo unknown)
+            run=$(gh api "repos/${{ github.repository }}/actions/runs?head_sha=${{ github.sha }}&per_page=50" \
+              --jq '[.workflow_runs[] | select(.name=="Deploy to Contabo VPS")][0] | "\(.status) \(.conclusion)"' 2>/dev/null || echo "unknown unknown")
+            status=${run%% *}
+            conclusion=${run##* }
+            if [ "$status" = "completed" ] && [ "$conclusion" != "success" ]; then
+              # The whole point of this wait is that two converged nodes stay up
+              # during a rollout. "completed" alone includes failure, cancelled
+              # and timed_out: if Contabo1's deploy just broke the primary,
+              # proceeding here would stop and rebuild the ONLY remaining
+              # validator, taking the entire network down at once. Refuse, and
+              # fail loudly so someone looks. Contabo2 keeps serving the old
+              # image, which is the safe state. Re-run this workflow by hand
+              # once Contabo1 is healthy.
+              echo "Contabo1's deploy finished with conclusion='$conclusion', not success."
+              echo "NOT restarting Contabo2 - it is currently the healthy validator."
+              exit 1
+            fi
             if [ "$status" = "completed" ]; then
               echo "Contabo1's deploy completed â€” proceeding with the Contabo2 deploy"
               exit 0

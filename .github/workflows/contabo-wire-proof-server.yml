@@ -64,7 +64,14 @@ jobs:
           script_stop: true
           timeout: 900s
           command_timeout: 900s
-          envs: PEER_URL
+          # NOTE: no `envs: PEER_URL` here. It used to forward a runner
+          # variable of that name that no `env:` block ever defined — so
+          # ssh-action exported an empty PEER_URL which the next line
+          # immediately overwrote anyway. Behaviourally a no-op, but it failed
+          # scripts/lint_workflow_envs.py (the CI job that exists to catch
+          # exactly this shape), leaving CI red on every PR. The value comes
+          # from the expression substitution below, as it does in the Contabo2
+          # step, which never had the stray line.
           script: |
             set -euo pipefail
             PEER_URL='${{ steps.cfg.outputs.peer }}'

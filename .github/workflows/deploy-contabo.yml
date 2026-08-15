@@ -2,7 +2,13 @@
 
 on:
   push:
-    branches: [master, main]
+    # main only. `master` was removed on 2026-08-15: production runs from
+    # main, and the box-side script hard-resets to origin/main regardless of
+    # which branch triggered the run. So a push to the long-dead master (it
+    # sat 20+ commits behind) deployed main's code while the test job above
+    # validated master's — shipping something no one had just pushed, past a
+    # gate that had checked different code. Nothing deploys from master now.
+    branches: [main]
     # A deploy rebuilds the image and restarts the node. Nothing under
     # .github/ or in a Markdown file can change the binary, so a push that
     # touches only those must not take the chain down for a rebuild â€” which
@@ -158,3 +164,54 @@ jobs:
           script_stop: true
           timeout: 1800s
           command_timeout: 1800s
+
+      # Until now a deploy counted as successful the moment deploy.sh exited 0,
+      # which only means `docker run` returned a container ID. It did not mean
+      # the node started, opened its port, joined the network, or advanced a
+      # single block.
+      #
+      # That gap mattered more than it looks, because deploy-contabo2.yml gates
+      # Contabo2's rollout on THIS run's conclusion: a green-but-broken primary
+      # let the second validator stop and rebuild on top of it, which is how
+      # both validators end up down at once. The conclusion is only worth
+      # gating on if it reflects the node's actual state, so establish that
+      # here before this run is allowed to report success.
+      - name: Verify Contabo1 is alive and advancing after the deploy
+        run: |
+          set -uo pipefail
+          BASE=http://173.249.37.118:8080
+          # /api/health/combined answers in ~50ms; /api/status has historically
+          # taken seconds under load and once took eleven. Poll the cheap one,
+          # and read height exactly twice - this is the live primary, not a
+          # load target, and hammering it is itself a way to take it down.
+          up=""
+          for i in $(seq 1 30); do
+            code=$(curl -s -m 10 -o /dev/null -w '%{http_code}' "$BASE/api/health/combined" || echo 000)
+            if [ "$code" = "200" ]; then
+              up=yes
+              echo "node is answering (after $i attempt(s))"
+              break
+            fi
+            echo "waiting for the node to answer - attempt $i/30, last HTTP $code"
+            sleep 10
+          done
+          if [ -z "$up" ]; then
+            echo "FAILED: no 200 from /api/health/combined within 5 minutes."
+            echo "The container may have exited, or the build produced a binary that cannot start."
+            exit 1
+          fi
+          h1=$(curl -s -m 25 "$BASE/api/status" | jq -r '.height // empty')
+          sleep 60
+          h2=$(curl -s -m 25 "$BASE/api/status" | jq -r '.height // empty')
+          if [ -z "$h1" ] || [ -z "$h2" ]; then
+            echo "FAILED: could not read .height from /api/status (h1='$h1' h2='$h2')."
+            exit 1
+          fi
+          echo "height $h1 -> $h2 over 60s"
+          if [ "$h2" -le "$h1" ]; then
+            echo "FAILED: the node answers but its height did not move in 60 seconds."
+            echo "At BLOCK_TIME=1s that is a stall, not slow progress. Deploying Contabo2"
+            echo "on top of this would leave the network with no advancing validator."
+            exit 1
+          fi
+          echo "OK: node is alive and advancing."
