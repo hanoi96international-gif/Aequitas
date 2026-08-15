@@ -1,0 +1,179 @@
+name: Point the proof server at its own local node
+
+# LAUNCH-CRITICAL. The proof server verifies a wallet's is_human status against
+# the chain before it will issue anything — both /prove and /store-bio do this,
+# using its own CHAIN_BASE_URL.
+#
+# Measured 2026-08-14: CHAIN_BASE_URL is https://aequitas.digital, and that
+# name resolves to 69.46.46.73 — a host running a node at height ~550 with 0
+# humans, while the real chain on this very box is past 3,777,000. So the proof
+# server has been asking an EMPTY chain whether a wallet is human. It answers
+# HTTP 200 the whole time, which is why nothing flagged it.
+#
+# The fix is not to wait for DNS: the node runs in the same docker network as
+# the proof server, so `http://aequitas-node:8080` reaches it directly. That is
+# also strictly better than the domain even after DNS is corrected — no public
+# round trip, no TLS handshake, no dependency on a certificate or an A record
+# for a service talking to a container beside it. Verified reachable from
+# inside the proof-server container before anything is changed.
+#
+# Safety: the container is recreated with its existing environment preserved
+# verbatim (docker inspect → --env-file), with only CHAIN_BASE_URL replaced.
+# The previous container is renamed rather than removed and is restored
+# automatically if the new one does not come back healthy.
+
+on:
+  workflow_dispatch:
+    inputs:
+      box:
+        required: true
+        default: contabo1
+        type: choice
+        options: [contabo1, contabo2]
+
+jobs:
+  repoint:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Repoint Contabo1
+        if: ${{ inputs.box == 'contabo1' }}
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: 173.249.37.118
+          username: root
+          key: ${{ secrets.CONTABO_SSH_KEY }}
+          port: 22
+          fingerprint: "SHA256:noMtjHV8c+2iEFZu3TRUP6WRwGjkrvFke71KgU6Eyt4"
+          script_stop: true
+          timeout: 900s
+          command_timeout: 900s
+          script: |
+            set -euo pipefail
+            PS=proof-server
+            NEW_URL="http://aequitas-node:8080"
+
+            echo "=== current ==="
+            docker inspect "$PS" --format '{{.State.Status}} image={{.Config.Image}}'
+            docker inspect "$PS" --format '{{range .Config.Env}}{{println .}}{{end}}' | grep '^CHAIN_BASE_URL=' || echo "CHAIN_BASE_URL not set"
+
+            # Prove the new target works from inside the proof server BEFORE
+            # changing anything. A wrong value here silently breaks every
+            # registration while /health stays green.
+            docker exec "$PS" sh -c "wget -qO- --timeout=8 $NEW_URL/api/status | head -c 80" \
+              || { echo "ERROR: $NEW_URL not reachable from inside $PS — aborting"; exit 1; }
+            echo ""
+            echo "target reachable — proceeding"
+
+            IMAGE=$(docker inspect "$PS" --format '{{.Config.Image}}')
+            NETS=$(docker inspect "$PS" --format '{{range $k,$v := .NetworkSettings.Networks}}{{$k}} {{end}}')
+            PORTS=$(docker inspect "$PS" --format '{{range $p,$c := .HostConfig.PortBindings}}{{range $c}}-p {{if .HostIp}}{{.HostIp}}:{{end}}{{.HostPort}}:{{$p}} {{end}}{{end}}' | sed 's|/tcp||g')
+            echo "image=$IMAGE nets=$NETS ports=${PORTS:-<none>}"
+
+            umask 077
+            docker inspect "$PS" --format '{{range .Config.Env}}{{println .}}{{end}}' \
+              | grep -vE '^(PATH|HOSTNAME|HOME|CHAIN_BASE_URL)=' | grep -v '^$' > /root/.proof-env-new
+            printf 'CHAIN_BASE_URL=%s\n' "$NEW_URL" >> /root/.proof-env-new
+            echo "=== variable NAMES applied (values never printed) ==="
+            cut -d= -f1 /root/.proof-env-new | sort
+
+            PREV="${PS}-prev-$(date +%s)"
+            docker rename "$PS" "$PREV"
+            docker stop "$PREV" >/dev/null 2>&1 || true
+
+            NETARGS=""; for n in $NETS; do NETARGS="$NETARGS --network $n"; done
+            # shellcheck disable=SC2086
+            docker run -d --name "$PS" --restart unless-stopped \
+              --env-file /root/.proof-env-new $NETARGS $PORTS \
+              --log-opt max-size=10m --log-opt max-file=3 \
+              "$IMAGE"
+
+            ok=0
+            for i in $(seq 1 60); do
+              if docker exec "$PS" sh -c "wget -qO- --timeout=3 http://127.0.0.1:3000/health" >/dev/null 2>&1; then
+                echo "proof server healthy after ${i}s"; ok=1; break
+              fi
+              sleep 2
+            done
+            if [ "$ok" != "1" ]; then
+              echo "did not come back healthy — rolling back"
+              docker logs --tail 40 "$PS" || true
+              docker rm -f "$PS" || true
+              docker rename "$PREV" "$PS"
+              docker start "$PS"
+              exit 1
+            fi
+
+            echo "=== verification ==="
+            docker inspect "$PS" --format '{{range .Config.Env}}{{println .}}{{end}}' | grep '^CHAIN_BASE_URL='
+            echo -n "  proof server sees chain height: "
+            docker exec "$PS" sh -c "wget -qO- --timeout=8 $NEW_URL/api/status" | grep -o '\"height\":[0-9]*' | cut -d: -f2
+            echo -n "  /health: "; docker exec "$PS" sh -c "wget -qO- --timeout=5 http://127.0.0.1:3000/health"; echo
+            echo -n "  via node proxy: HTTP "
+            curl -s -o /dev/null -w '%{http_code}\n' -m 20 http://127.0.0.1:8080/api/prove/get/probe
+            echo "  (404/400 = proof server answered, 502 = unreachable, 503 = unwired)"
+            echo "previous container kept as $PREV"
+
+      - name: Repoint Contabo2
+        if: ${{ inputs.box == 'contabo2' }}
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: 194.163.188.71
+          username: root
+          key: ${{ secrets.CONTABO2_SSH_KEY }}
+          port: 22
+          fingerprint: "SHA256:VIwj7Faxiga2n45HVHZEQFPxcbRKHgSgHoxAFsf2wto"
+          script_stop: true
+          timeout: 900s
+          command_timeout: 900s
+          script: |
+            set -euo pipefail
+            PS=proof-server
+            NEW_URL="http://aequitas-node:8080"
+
+            docker inspect "$PS" --format '{{range .Config.Env}}{{println .}}{{end}}' | grep '^CHAIN_BASE_URL=' || echo "CHAIN_BASE_URL not set"
+            docker exec "$PS" sh -c "wget -qO- --timeout=8 $NEW_URL/api/status | head -c 80" \
+              || { echo "ERROR: $NEW_URL not reachable from inside $PS — aborting"; exit 1; }
+            echo ""
+
+            IMAGE=$(docker inspect "$PS" --format '{{.Config.Image}}')
+            NETS=$(docker inspect "$PS" --format '{{range $k,$v := .NetworkSettings.Networks}}{{$k}} {{end}}')
+            PORTS=$(docker inspect "$PS" --format '{{range $p,$c := .HostConfig.PortBindings}}{{range $c}}-p {{if .HostIp}}{{.HostIp}}:{{end}}{{.HostPort}}:{{$p}} {{end}}{{end}}' | sed 's|/tcp||g')
+
+            umask 077
+            docker inspect "$PS" --format '{{range .Config.Env}}{{println .}}{{end}}' \
+              | grep -vE '^(PATH|HOSTNAME|HOME|CHAIN_BASE_URL)=' | grep -v '^$' > /root/.proof-env-new
+            printf 'CHAIN_BASE_URL=%s\n' "$NEW_URL" >> /root/.proof-env-new
+            cut -d= -f1 /root/.proof-env-new | sort
+
+            PREV="${PS}-prev-$(date +%s)"
+            docker rename "$PS" "$PREV"
+            docker stop "$PREV" >/dev/null 2>&1 || true
+
+            NETARGS=""; for n in $NETS; do NETARGS="$NETARGS --network $n"; done
+            # shellcheck disable=SC2086
+            docker run -d --name "$PS" --restart unless-stopped \
+              --env-file /root/.proof-env-new $NETARGS $PORTS \
+              --log-opt max-size=10m --log-opt max-file=3 \
+              "$IMAGE"
+
+            ok=0
+            for i in $(seq 1 60); do
+              if docker exec "$PS" sh -c "wget -qO- --timeout=3 http://127.0.0.1:3000/health" >/dev/null 2>&1; then
+                echo "proof server healthy after ${i}s"; ok=1; break
+              fi
+              sleep 2
+            done
+            if [ "$ok" != "1" ]; then
+              echo "did not come back healthy — rolling back"
+              docker logs --tail 40 "$PS" || true
+              docker rm -f "$PS" || true
+              docker rename "$PREV" "$PS"
+              docker start "$PS"
+              exit 1
+            fi
+
+            docker inspect "$PS" --format '{{range .Config.Env}}{{println .}}{{end}}' | grep '^CHAIN_BASE_URL='
+            echo -n "  proof server sees chain height: "
+            docker exec "$PS" sh -c "wget -qO- --timeout=8 $NEW_URL/api/status" | grep -o '\"height\":[0-9]*' | cut -d: -f2
+            curl -s -o /dev/null -w '  via node proxy: HTTP %{http_code}\n' -m 20 http://127.0.0.1:8080/api/prove/get/probe
+            echo "previous container kept as $PREV"
