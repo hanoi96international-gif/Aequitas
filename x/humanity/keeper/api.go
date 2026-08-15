@@ -688,6 +688,10 @@ func (a *APIServer) handleCombinedHealth(w http.ResponseWriter, r *http.Request)
 			// Chain-Nullifier, Chain-BioHash und Proof-BioHash getrennt
 			// anzeigen." proof_server.last_status.bio_hash_count (below) is
 			// the proof-server side of this comparison.
+			// The rule, the ledger, and the gap between them — see
+			// SupplyReconciliation. total_supply above is the RULE
+			// (humans x 1000); this is what the accounts actually hold.
+			"supply_reconciliation": a.state.SupplyReconciliation(),
 			"chain_nullifiers": a.state.CountChainNullifiers(),
 			"chain_bio_hashes": a.state.CountChainBioHashes(),
 			"proof_server_sync_queue": map[string]interface{}{

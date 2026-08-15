@@ -5858,12 +5858,23 @@ func (cs *ChainState) GetLPShares(address string) (float64, float64) {
 }
 
 func (cs *ChainState) TotalSupply() float64 {
-	// Total supply is always exactly Humans × 1,000 AEQ by protocol design.
-	// Each registered human receives exactly 1,000 AEQ upon registration —
-	// no more, no less. Floating-point drift from swap fees and demurrage
-	// calculations means the sum of all account balances + pool reserves
-	// diverges slightly from this over time, so we compute it directly
-	// from the human count instead of summing balances.
+	// Total supply is Humans × 1,000 AEQ by protocol design: each registered
+	// human receives exactly 1,000 AEQ, and nothing else creates any.
+	//
+	// CORRECTION (audit 2026-08-15): this comment used to add that the sum of
+	// balances "diverges slightly from this over time" through "floating-point
+	// drift from swap fees and demurrage calculations", and that is why the
+	// count is computed from the rule instead of measured. The live divergence
+	// is +305.278004 AEQ on 15,000 — 2.04%, identical on both validators.
+	// Float64 drift across fifteen accounts is about 1e-10, so that
+	// explanation was wrong by nine orders of magnitude and hid a real gap
+	// behind a plausible sentence. See MeasuredTotalAEQ for the measurement,
+	// now published beside this number, and TestSupplyConservation_* for the
+	// proof that no current path mints.
+	//
+	// This function still returns the RULE, deliberately: it is the protocol
+	// statement, it is O(1), and a measurement belongs next to it rather than
+	// silently in place of it.
 	//
 	// FIX (performance audit 2026-07-06): this used to scan cs.accounts —
 	// capped at maxInMemAccounts, so it would undercount at scale exactly
