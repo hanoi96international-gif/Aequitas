@@ -855,6 +855,36 @@ is_human BOOLEAN NOT NULL DEFAULT false
 	dbExec(`ALTER TABLE chain_accounts ALTER COLUMN balance TYPE NUMERIC(20,6) USING balance::NUMERIC(20,6)`)
 	dbExec(`ALTER TABLE chain_accounts ALTER COLUMN tusd_balance TYPE NUMERIC(20,6) USING tusd_balance::NUMERIC(20,6)`)
 	dbExec(`ALTER TABLE chain_accounts ALTER COLUMN lp_shares TYPE NUMERIC(20,6) USING lp_shares::NUMERIC(20,6)`)
+	// The chain's OWN biometric-hash index — see SaveBioHash for what it is
+	// and, explicitly, what it is not (the authoritative one-human-one-
+	// registration guarantee is the ZK nullifier, not this).
+	//
+	// FIX (audit 2026-08-15): this table was read by GetWalletByStoredBioHash,
+	// written by SaveBioHash, counted by CountChainBioHashes and listed among
+	// the tables the destructive-maintenance paths DELETE — but it was never
+	// created. Nowhere in this repository was there a CREATE TABLE for it.
+	//
+	// So every INSERT failed with "relation bio_hashes does not exist" and was
+	// swallowed as a warning; CountChainBioHashes turned the same error into a
+	// plain 0, which is indistinguishable from an empty table, which is why
+	// /api/health/combined has reported chain_bio_hashes: 0 against 15 humans
+	// and 15 nullifiers since at least 2026-07-12 and the cause stayed
+	// unexplained for a month. Confirmed live on both validators today.
+	//
+	// What it actually broke: registerOnV7 runs three duplicate-biometric
+	// checks — this table, bio_registrations, and the nullifier claim. The
+	// first has been inert for the whole life of both current databases, so
+	// the "the two tables can't silently disagree" its own comment promises
+	// was never true. The nullifier check is unaffected, which is why no
+	// duplicate registration got through.
+	dbExec(`CREATE TABLE IF NOT EXISTS bio_hashes (
+hash           TEXT PRIMARY KEY,
+wallet_address TEXT NOT NULL,
+created_at     TIMESTAMP DEFAULT NOW()
+)`)
+	// GetHumanRegistrationInfo looks this table up by wallet, not by hash.
+	dbExec(`CREATE INDEX IF NOT EXISTS idx_bio_hashes_wallet ON bio_hashes (lower(wallet_address))`)
+
 	// Links a ZK proof commitment to the wallet that successfully registered
 	// with it, so the app can ask "did MY proof get registered, and to which
 	// wallet?" instead of guessing from a global, unfiltered list.
@@ -1164,6 +1194,7 @@ blocks_produced BIGINT NOT NULL DEFAULT 0
 
 	// Slashing tables — safe to call repeatedly (CREATE IF NOT EXISTS / ALTER IF NOT EXISTS).
 	cs.initSlashingTables()
+	cs.backfillBioHashesOnce()
 }
 
 // resetDBStateForBootstrap is an explicit operator escape hatch for secondary
@@ -1403,14 +1434,21 @@ func (cs *ChainState) clearRegistrationsFromDB() {
 		// secondary whose liquidity_pool row was never touched.
 		`UPDATE liquidity_pool SET reserve_aeq = 0, reserve_tusd = 0, total_lp_shares = 0 WHERE id = 1`,
 	}
-	// FIX: bio_hashes and evm_upgrade_relationship_slots are only ever
-	// created lazily (by SaveBioHash / SavePreUpgradeRelationshipSlots) —
-	// unlike nullifiers/bio_registrations/chain_accounts, which initDB
-	// always creates upfront. On a node whose DB has never gone through a
-	// registration or a contract-version upgrade, those two tables
-	// genuinely don't exist yet, and DELETE FROM a nonexistent table prints
-	// a scary "relation does not exist" warning that looks like a real
-	// problem but is actually a harmless no-op. Skip cleanly instead.
+	// evm_upgrade_relationship_slots is created lazily, by
+	// SavePreUpgradeRelationshipSlots, so on a node that has never performed a
+	// contract-version upgrade it genuinely does not exist yet, and DELETE FROM
+	// a nonexistent table prints a scary "relation does not exist" warning that
+	// looks like a real problem but is a harmless no-op. Skip cleanly instead.
+	//
+	// CORRECTION (audit 2026-08-15): this comment used to make the same claim
+	// about bio_hashes — "created lazily by SaveBioHash". SaveBioHash does no
+	// such thing; it is a bare INSERT. Nothing anywhere created that table, so
+	// it never existed on any current database, every write failed as a
+	// warning, and the counter reported a tidy 0. This sentence is very
+	// probably why the month-old "chain_bio_hashes = 0 with 15 humans" puzzle
+	// went unexplained: it told each reader the absence was by design.
+	// bio_hashes is now created upfront in initDBTables like every other table
+	// this package depends on, so it is no longer skipped here.
 	// FIX: track failures instead of printing an easy-to-miss "Warning" and
 	// unconditionally claiming success at the end. This reset's entire job
 	// is to guarantee no stale registration data survives it — a statement

@@ -1239,6 +1239,14 @@ func (cs *ChainState) CountChainBioHashes() int {
 	}
 	var count int
 	if err := cs.db.QueryRow(`SELECT COUNT(*) FROM bio_hashes`).Scan(&count); err != nil {
+		// FIX (audit 2026-08-15): this used to return a bare 0, which reads in
+		// /api/health/combined as "the table is empty" — a statement about the
+		// data — when the actual meaning was "the query failed". The table did
+		// not exist at all (see its CREATE in initDBTables), so this reported a
+		// tidy 0 against 15 humans and 15 nullifiers for a month while nothing
+		// pointed at the cause. Same shape as the failures fixed elsewhere in
+		// this audit: never derive a value from an error you did not look at.
+		fmt.Printf("[STATE] ⚠ CountChainBioHashes failed, reporting 0 — this is a QUERY failure, not an empty table: %v\n", err)
 		return 0
 	}
 	return count
