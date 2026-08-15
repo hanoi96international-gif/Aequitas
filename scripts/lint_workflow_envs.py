@@ -55,8 +55,13 @@ def main(paths):
     failures = []
     for path in sorted(paths):
         try:
-            doc = yaml.safe_load(path.read_text())
-        except yaml.YAMLError as exc:
+            # encoding is explicit because read_text() otherwise uses the
+            # platform default, which is cp1252 on Windows. Several workflows
+            # contain UTF-8 punctuation, so running this linter locally on
+            # Windows died with a UnicodeDecodeError before reaching a single
+            # check - it only ever worked on the UTF-8 CI runners.
+            doc = yaml.safe_load(path.read_text(encoding="utf-8"))
+        except (yaml.YAMLError, UnicodeDecodeError) as exc:
             failures.append(f"{path}: not valid YAML: {exc}")
             continue
         if not isinstance(doc, dict):

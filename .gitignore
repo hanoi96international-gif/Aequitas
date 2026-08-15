@@ -42,3 +42,20 @@ build/msyh_extracted.ttf
 # tools/contabo-loadtest generates disposable test-account private keys
 # into this file — NEVER commit it, see gen_accounts.go's own comment.
 /tools/contabo-loadtest/accounts.csv
+
+# Credential material. The `.env` / `.env.*` rules above only match files whose
+# name STARTS with ".env" — the operational files this project actually handles
+# do not (`.aequitas.env`, `proof-server.env`, `*.env.bak-<ts>` produced by
+# proof-server-install-autodeploy.yml). A copy pulled off a box for debugging
+# would have been committable. Same for key material: nothing here matched
+# *.pem / *.key / an SSH private key before.
+*.env
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+id_rsa
+id_rsa*
+id_ed25519
+id_ed25519*

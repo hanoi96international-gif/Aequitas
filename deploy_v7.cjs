@@ -3,6 +3,7 @@ const fs = require('fs');
 const path = require('path');
 const solc = require('solc');
 const https = require('https');
+const http = require('http');
 
 // MIGRATION (Railway decommissioned, 2026-08-14): the default used to be
 // 'https://aequitas-production-9fba.up.railway.app/rpc'. Railway hosts nothing
@@ -29,8 +30,23 @@ function rpcCall(method, params) {
   return new Promise((resolve, reject) => {
     const body = JSON.stringify({ jsonrpc:'2.0', id:1, method, params });
     const url = new URL(RPC_URL);
-    const opts = { hostname: url.hostname, path: url.pathname, method: 'POST', headers: { 'Content-Type':'application/json', 'Content-Length': Buffer.byteLength(body) } };
-    const req = https.request(opts, res => {
+    // FIX (2026-08-15 audit): this used to call https.request() unconditionally
+    // and never pass url.port. That was survivable while RPC_URL defaulted to a
+    // Railway https:// host on port 443, but the post-migration default is
+    // http://173.249.37.118:8080/rpc — so every call opened a TLS handshake
+    // against 173.249.37.118:443 (nothing listens there) and the whole script
+    // failed before it could deploy anything. Pick the module from the scheme
+    // and forward the explicit port, matching what ethers.JsonRpcProvider (used
+    // further down in this same file, with the same URL) already does.
+    const transport = url.protocol === 'http:' ? http : https;
+    const opts = {
+      hostname: url.hostname,
+      port: url.port || (url.protocol === 'http:' ? 80 : 443),
+      path: url.pathname + url.search,
+      method: 'POST',
+      headers: { 'Content-Type':'application/json', 'Content-Length': Buffer.byteLength(body) }
+    };
+    const req = transport.request(opts, res => {
       let data = '';
       res.on('data', d => data += d);
       res.on('end', () => {
