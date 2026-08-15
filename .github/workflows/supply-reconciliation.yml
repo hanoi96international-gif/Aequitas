@@ -1,0 +1,115 @@
+name: Supply reconciliation (read-only)
+
+# Does the money supply equal what the protocol claims?
+#
+# /api/status reports total_supply as humans x 1,000 AEQ. That number is not
+# measured — TotalSupply() (state.go) computes it straight from the human
+# count, with a comment attributing any divergence from the real sum to
+# "floating-point drift from swap fees and demurrage".
+#
+# Measured from the API on 2026-08-15 the divergence was +290 AEQ on a claimed
+# 15,000 — 1.9%, which is nine orders of magnitude larger than float64 drift
+# over 15 accounts. Either the API-derived measurement is incomplete (it can
+# only see humans and the pool reserve, not every account), or AEQ exists that
+# was never granted. For a currency whose entire premise is "money exists
+# because people exist", that difference has to be resolved from the ledger
+# itself rather than from a formula.
+#
+# Read-only: SELECTs only, run in a throwaway psql container on the node's own
+# docker network. Nothing is written, nothing is restarted.
+
+on:
+  workflow_dispatch:
+    inputs:
+      box:
+        required: true
+        default: contabo1
+        type: choice
+        options: [contabo1, contabo2]
+
+jobs:
+  reconcile:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Reconcile on Contabo1
+        if: ${{ inputs.box == 'contabo1' }}
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: 173.249.37.118
+          username: root
+          key: ${{ secrets.CONTABO_SSH_KEY }}
+          port: 22
+          fingerprint: "SHA256:noMtjHV8c+2iEFZu3TRUP6WRwGjkrvFke71KgU6Eyt4"
+          script_stop: false
+          timeout: 600s
+          command_timeout: 600s
+          script: |
+            DATABASE_URL="$(docker inspect aequitas-node --format '{{range .Config.Env}}{{println .}}{{end}}' | grep '^DATABASE_URL=' | cut -d= -f2-)"
+            NET="$(docker inspect aequitas-node --format '{{range $n,$v := .NetworkSettings.Networks}}{{$n}}{{end}}')"
+            q() { docker run --rm --network "$NET" postgres:16-alpine psql "$DATABASE_URL" -t -A -F'|' -c "$1"; }
+
+            echo "===== 1. the claim ====="
+            q "SELECT 'humans', count(*) FROM chain_accounts WHERE is_human = true"
+            echo "  claimed supply = humans x 1000"
+
+            echo "===== 2. the ledger ====="
+            q "SELECT 'sum_balance_all_accounts', COALESCE(sum(balance),0) FROM chain_accounts"
+            q "SELECT 'sum_balance_humans', COALESCE(sum(balance),0) FROM chain_accounts WHERE is_human = true"
+            q "SELECT 'sum_balance_non_humans', COALESCE(sum(balance),0) FROM chain_accounts WHERE is_human = false"
+            q "SELECT 'pool_reserve_aeq', COALESCE(reserve_aeq,0) FROM liquidity_pool WHERE id = 1"
+
+            echo "===== 3. the difference that matters ====="
+            q "SELECT 'total_aeq_in_existence',
+                      (SELECT COALESCE(sum(balance),0) FROM chain_accounts)
+                    + (SELECT COALESCE(reserve_aeq,0) FROM liquidity_pool WHERE id = 1)"
+            q "SELECT 'expected_humans_x_1000', count(*) * 1000 FROM chain_accounts WHERE is_human = true"
+            q "SELECT 'difference',
+                      (SELECT COALESCE(sum(balance),0) FROM chain_accounts)
+                    + (SELECT COALESCE(reserve_aeq,0) FROM liquidity_pool WHERE id = 1)
+                    - (SELECT count(*) * 1000 FROM chain_accounts WHERE is_human = true)"
+
+            echo "===== 4. where any excess sits — every account holding AEQ ====="
+            q "SELECT address, balance, is_human, tusd_balance, lp_shares
+                 FROM chain_accounts
+                WHERE balance <> 0 OR lp_shares <> 0
+                ORDER BY balance DESC"
+
+            echo "===== 5. tUSD, which the faucet mints freely (not part of the AEQ claim) ====="
+            q "SELECT 'sum_tusd_accounts', COALESCE(sum(tusd_balance),0) FROM chain_accounts"
+            q "SELECT 'pool_reserve_tusd', COALESCE(reserve_tusd,0) FROM liquidity_pool WHERE id = 1"
+
+            echo "===== 6. how many registration grants were ever applied ====="
+            q "SELECT 'register_human_txs_in_blocks', count(*)
+                 FROM chain_blocks
+                WHERE transactions LIKE '%register_human%'"
+
+      - name: Reconcile on Contabo2
+        if: ${{ inputs.box == 'contabo2' }}
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: 194.163.188.71
+          username: root
+          key: ${{ secrets.CONTABO2_SSH_KEY }}
+          port: 22
+          fingerprint: "SHA256:VIwj7Faxiga2n45HVHZEQFPxcbRKHgSgHoxAFsf2wto"
+          script_stop: false
+          timeout: 600s
+          command_timeout: 600s
+          script: |
+            DATABASE_URL="$(docker inspect aequitas-node --format '{{range .Config.Env}}{{println .}}{{end}}' | grep '^DATABASE_URL=' | cut -d= -f2-)"
+            NET="$(docker inspect aequitas-node --format '{{range $n,$v := .NetworkSettings.Networks}}{{$n}}{{end}}')"
+            q() { docker run --rm --network "$NET" postgres:16-alpine psql "$DATABASE_URL" -t -A -F'|' -c "$1"; }
+            echo "===== the difference that matters (Contabo2's own ledger) ====="
+            q "SELECT 'humans', count(*) FROM chain_accounts WHERE is_human = true"
+            q "SELECT 'total_aeq_in_existence',
+                      (SELECT COALESCE(sum(balance),0) FROM chain_accounts)
+                    + (SELECT COALESCE(reserve_aeq,0) FROM liquidity_pool WHERE id = 1)"
+            q "SELECT 'difference',
+                      (SELECT COALESCE(sum(balance),0) FROM chain_accounts)
+                    + (SELECT COALESCE(reserve_aeq,0) FROM liquidity_pool WHERE id = 1)
+                    - (SELECT count(*) * 1000 FROM chain_accounts WHERE is_human = true)"
+            echo "===== every account holding AEQ ====="
+            q "SELECT address, balance, is_human, tusd_balance, lp_shares
+                 FROM chain_accounts
+                WHERE balance <> 0 OR lp_shares <> 0
+                ORDER BY balance DESC"
