@@ -1,0 +1,139 @@
+name: Serve aequitas.digital from Contabo1
+
+# Installs deploy/Caddyfile on Contabo1 so the canonical domain serves the REAL
+# chain node over TLS.
+#
+# WHY THIS IS THE LAST BETA BLOCKER. The mobile app's API_BASE, RPC_URL and
+# WEBAPP all default to https://aequitas.digital (app repo, lib/config.ts).
+# Measured 2026-08-14: that name resolved to 69.46.46.73, a host serving a node
+# at height 96 with 0 humans and no peers, while the real chain on Contabo1 was
+# past 3,776,000. It answered HTTP 200 with a well-formed /api/status
+# throughout, so no uptime check would have flagged it — every app install was
+# simply talking to an empty chain.
+#
+# Contabo1 already runs Caddy as a container (`proof-caddy`) serving exactly
+# one site, proof1.aequitas.digital -> proof-server:3000, which works. The
+# chain node was never exposed over TLS at all. The new config keeps that site
+# verbatim and adds the node alongside it.
+#
+# ORDER MATTERS: DNS FIRST. Caddy can only obtain a certificate for a name that
+# already resolves to this box (HTTP-01). Running this before the DNS change
+# would leave the site permanently retrying. So the job REFUSES to install
+# unless aequitas.digital already resolves to Contabo1 — override only if you
+# know why.
+
+on:
+  workflow_dispatch:
+    inputs:
+      skip_dns_check:
+        description: Install even if DNS does not point here yet (not recommended)
+        required: false
+        default: "false"
+
+jobs:
+  serve:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Refuse unless DNS already points at Contabo1
+        run: |
+          ip=$(getent hosts aequitas.digital | awk '{print $1}' | head -1)
+          echo "aequitas.digital -> ${ip:-<unresolved>}"
+          if [ "$ip" = "173.249.37.118" ]; then
+            echo "DNS is correct — proceeding"; exit 0
+          fi
+          if [ "${{ inputs.skip_dns_check }}" = "true" ]; then
+            echo "DNS does NOT point at Contabo1, but skip_dns_check=true — proceeding anyway"
+            echo "Caddy will keep retrying the certificate until DNS is fixed."
+            exit 0
+          fi
+          echo ""
+          echo "REFUSING: aequitas.digital must resolve to 173.249.37.118 first."
+          echo "Set the A record, wait for it to propagate, then re-run this workflow."
+          exit 1
+
+      - name: Install the Caddy config
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: 173.249.37.118
+          username: root
+          key: ${{ secrets.CONTABO_SSH_KEY }}
+          port: 22
+          fingerprint: "SHA256:noMtjHV8c+2iEFZu3TRUP6WRwGjkrvFke71KgU6Eyt4"
+          script_stop: true
+          timeout: 900s
+          command_timeout: 900s
+          script: |
+            set -euo pipefail
+
+            # Both containers must share a network for `aequitas-node:8080` to
+            # resolve from inside Caddy. Check before changing anything.
+            CADDY_NETS=$(docker inspect proof-caddy --format '{{range $k,$v := .NetworkSettings.Networks}}{{$k}} {{end}}')
+            NODE_NETS=$(docker inspect aequitas-node --format '{{range $k,$v := .NetworkSettings.Networks}}{{$k}} {{end}}')
+            echo "caddy nets: $CADDY_NETS"
+            echo "node  nets: $NODE_NETS"
+            SHARED=""
+            for c in $CADDY_NETS; do for n in $NODE_NETS; do [ "$c" = "$n" ] && SHARED="$c"; done; done
+            if [ -z "$SHARED" ]; then
+              echo "no shared docker network — attaching proof-caddy to the node's network"
+              FIRST=$(echo $NODE_NETS | awk '{print $1}')
+              docker network connect "$FIRST" proof-caddy
+              SHARED="$FIRST"
+            fi
+            echo "shared network: $SHARED"
+
+            docker exec proof-caddy sh -c "wget -qO- --timeout=5 http://aequitas-node:8080/api/status >/dev/null 2>&1" \
+              && echo "caddy can reach aequitas-node:8080" \
+              || { echo "ERROR: caddy cannot reach aequitas-node:8080 — refusing to install a config that would 502"; exit 1; }
+
+            echo "=== backing up the current config ==="
+            docker exec proof-caddy sh -c "cp /etc/caddy/Caddyfile /etc/caddy/Caddyfile.bak-$(date +%s)" || true
+            docker exec proof-caddy sh -c "cat /etc/caddy/Caddyfile"
+
+      - name: Copy and reload
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: 173.249.37.118
+          username: root
+          key: ${{ secrets.CONTABO_SSH_KEY }}
+          port: 22
+          source: deploy/Caddyfile
+          target: /root/
+          strip_components: 1
+
+      - name: Validate and apply
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: 173.249.37.118
+          username: root
+          key: ${{ secrets.CONTABO_SSH_KEY }}
+          port: 22
+          fingerprint: "SHA256:noMtjHV8c+2iEFZu3TRUP6WRwGjkrvFke71KgU6Eyt4"
+          script_stop: true
+          timeout: 900s
+          command_timeout: 900s
+          script: |
+            set -euo pipefail
+            docker cp /root/Caddyfile proof-caddy:/etc/caddy/Caddyfile.new
+
+            # Validate BEFORE swapping — a bad config must never take
+            # proof1.aequitas.digital down with it.
+            docker exec proof-caddy caddy validate --config /etc/caddy/Caddyfile.new --adapter caddyfile \
+              || { echo "config invalid — nothing changed"; exit 1; }
+
+            docker exec proof-caddy sh -c "mv /etc/caddy/Caddyfile.new /etc/caddy/Caddyfile"
+            docker exec proof-caddy caddy reload --config /etc/caddy/Caddyfile --adapter caddyfile
+
+            echo "=== waiting for the certificate ==="
+            ok=0
+            for i in $(seq 1 40); do
+              code=$(curl -s -o /dev/null -w '%{http_code}' -m 10 https://aequitas.digital/api/status || true)
+              if [ "$code" = "200" ]; then echo "https://aequitas.digital/api/status -> 200 after $((i*5))s"; ok=1; break; fi
+              sleep 5
+            done
+
+            echo "=== result ==="
+            curl -s -m 10 https://aequitas.digital/api/status | head -c 220; echo
+            echo "proof1 still up? -> $(curl -s -o /dev/null -w '%{http_code}' -m 10 https://proof1.aequitas.digital/health)"
+            [ "$ok" = "1" ] || { echo "certificate not issued yet — Caddy keeps retrying; check 'docker logs proof-caddy'"; exit 1; }
