@@ -2,7 +2,10 @@ package keeper
 
 import (
 	"bytes"
+	"context"
 	"crypto/subtle"
+	"database/sql"
+	"database/sql/driver"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -23,6 +26,8 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"github.com/lib/pq"
 
 	"github.com/ethereum/go-ethereum/accounts"
 	"github.com/ethereum/go-ethereum/common"
@@ -126,6 +131,61 @@ func jsonError(w http.ResponseWriter, msg string, code int) {
 	w.WriteHeader(code)
 	enc, _ := json.Marshal(map[string]string{"error": msg})
 	w.Write(enc)
+}
+
+// jsonStateError answers a failure that came back from the state layer without
+// handing the caller the internal error text.
+//
+// FIX (audit 2026-08-15): three endpoints — register-validator-key,
+// set-guardian and recover-escrow — passed the state layer's error straight
+// through as `jsonError(w, err.Error(), 400)`. Those functions wrap whatever
+// went wrong underneath (`could not persist recovered balance for %s: %w`), so
+// on a database failure an unauthenticated caller received the driver's own
+// message: pq error codes, constraint and column names, and on a connection
+// failure the host and database being dialed. That is the same leak class the
+// proof server was fixed for on 2026-07-12; the chain's own API still had it.
+//
+// The status code was wrong in the same breath. A DB outage was reported as
+// 400, telling the caller its request was malformed when the request was fine
+// and the server was not — a client that trusts that will never retry.
+//
+// Genuine validation failures ("already registered", "no escrow to recover")
+// are still passed through verbatim: they are the caller's business, they carry
+// nothing internal, and existing clients display them.
+func jsonStateError(w http.ResponseWriter, what, subject string, err error) {
+	if isInternalError(err) {
+		// Server-side only — the operator needs the detail, the caller does not.
+		fmt.Printf("[API] %s failed for %s: %v\n", what, subject, err)
+		jsonError(w, "internal error, please retry shortly", http.StatusInternalServerError)
+		return
+	}
+	jsonError(w, err.Error(), http.StatusBadRequest)
+}
+
+// isInternalError reports whether err came from infrastructure (database,
+// driver, cancelled context) rather than from this project's own validation.
+// Detected through the wrap chain, so a validation error that merely happens to
+// wrap one still counts as internal — the conservative direction.
+func isInternalError(err error) bool {
+	if err == nil {
+		return false
+	}
+	var pqErr *pq.Error
+	if errors.As(err, &pqErr) {
+		return true
+	}
+	for _, target := range []error{
+		sql.ErrConnDone, sql.ErrTxDone, sql.ErrNoRows,
+		context.DeadlineExceeded, context.Canceled, driver.ErrBadConn,
+	} {
+		if errors.Is(err, target) {
+			return true
+		}
+	}
+	// Not every driver failure is one of the sentinels above (a dial failure is
+	// a plain *net.OpError, and it carries the host being connected to).
+	var netErr net.Error
+	return errors.As(err, &netErr)
 }
 
 // readBodyLimited reads r.Body capped at maxBytes.
@@ -757,7 +817,14 @@ func recoverMiddleware(next http.Handler) http.Handler {
 	})
 }
 
-func (a *APIServer) Start(port int) {
+// buildMux registers every route this node serves.
+//
+// Split out of Start (audit 2026-08-15) so the routing table can be exercised
+// by a test at all: Start binds a listener, starts the EVM engine and deploys
+// contracts, so nothing about which paths exist — or what an unrouted one
+// answers — was reachable without standing up a real node. The catch-all's
+// behaviour in particular had never been pinned, and it was wrong.
+func (a *APIServer) buildMux() *http.ServeMux {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/landing", a.handleLanding)
 	mux.HandleFunc("/landing.js", a.handleLandingJS)
@@ -771,6 +838,35 @@ func (a *APIServer) Start(port int) {
 		// Root path: serve landing page; anything else falls to handleUI
 		if r.URL.Path == "/" {
 			a.handleLanding(w, r)
+			return
+		}
+		// FIX (audit 2026-08-15): this catch-all answered EVERY unrouted path
+		// with HTTP 200 and the full 182 KB explorer page — including paths
+		// under /api/ and /debug/. Two concrete consequences, both measured
+		// against production:
+		//
+		//   - No API call can fail cleanly. A mistyped, removed or
+		//     not-yet-deployed endpoint returns 200 with an HTML body, so a
+		//     caller doing (await fetch(...)).json() gets a parse error, or
+		//     worse, code that reads an optional field concludes the field is
+		//     absent and states something false about the chain. That is
+		//     exactly the defect class fixed twice in this same audit (the
+		//     Lorenz curve and loadHumans both turned a non-data response into
+		//     a claim about the registry). Renaming an endpoint would silently
+		//     do this to every old client instead of failing loudly.
+		//   - A 60-byte request produces a 182 KB response, unauthenticated
+		//     and unlimited. Every background scanner probing /.env, /wp-admin
+		//     and friends is served a full copy of the explorer, so the node
+		//     pays roughly 3000x the request's own size in egress for traffic
+		//     that was never going to be a visitor.
+		//
+		// The SPA still needs its client-side routes (/index/distribution,
+		// /network/overview, ...) to return the page, so only the two prefixes
+		// that are unambiguously machine-facing are answered honestly here.
+		if strings.HasPrefix(r.URL.Path, "/api/") || strings.HasPrefix(r.URL.Path, "/debug/") {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusNotFound)
+			w.Write([]byte(`{"error":"no such endpoint"}`))
 			return
 		}
 		a.handleUI(w, r)
@@ -837,11 +933,16 @@ func (a *APIServer) Start(port int) {
 			a.handleStaticDownload(w, r, "downloads/Aequitas_Node_Guide_"+up+".pdf", "Aequitas_Node_Guide_"+up+".pdf", "application/pdf")
 		})
 	}
-	fmt.Println("── Starting EVM RPC ─────────────────────")
 	// Use the shared EVMRPCServer (a.evmRPC) so /rpc and /api/register share
 	// one nonce map + mutex — creating a second instance here caused separate
 	// nonce maps, making the atomic nonce reservation ineffective.
 	mux.HandleFunc("/rpc", a.evmRPC.handleRPC)
+	return mux
+}
+
+func (a *APIServer) Start(port int) {
+	mux := a.buildMux()
+	fmt.Println("── Starting EVM RPC ─────────────────────")
 	if a.evmRPC.evm != nil {
 		fmt.Println("✓ EVM Engine ready")
 		// Ensure V7 contract is deployed — redeploys from hardcoded bytecode
@@ -2366,7 +2467,7 @@ func (a *APIServer) handleRegisterValidatorKey(w http.ResponseWriter, r *http.Re
 		return
 	}
 	if err := a.state.RegisterValidatorKey(signingAddr, humanWallet); err != nil {
-		jsonError(w, err.Error(), 400)
+		jsonStateError(w, "register-validator-key", signingAddr, err)
 		return
 	}
 	a.blockchain.AddAuthorizedValidator(signingAddr)
@@ -3302,7 +3403,7 @@ func (a *APIServer) handleSetGuardian(w http.ResponseWriter, r *http.Request) {
 	}
 	now := time.Now().Unix()
 	if err := a.state.SetGuardian(wallet, guardian); err != nil {
-		jsonError(w, err.Error(), 400)
+		jsonStateError(w, "set-guardian", wallet, err)
 		return
 	}
 	json.NewEncoder(w).Encode(map[string]interface{}{
@@ -3487,7 +3588,7 @@ func (a *APIServer) handleRecoverEscrow(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	if err := a.state.RecoverFromEscrow(wallet); err != nil {
-		jsonError(w, err.Error(), 400)
+		jsonStateError(w, "recover-escrow", wallet, err)
 		return
 	}
 	newBalance := a.state.GetBalance(wallet)
