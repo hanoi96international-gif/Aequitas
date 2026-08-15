@@ -123,7 +123,7 @@ func TestParallelReplay_DeclinesUnaffordableBatchWithoutMutating(t *testing.T) {
 	cs.mu.Unlock()
 
 	cs.mu.Lock()
-	applied, err := cs.applyTransferBatchParallel(t.Context(), txs)
+	applied, err := cs.applyTransferBatchParallel(t.Context(), txs, testBlockActivityTs)
 	cs.mu.Unlock()
 	if err != nil {
 		t.Fatalf("unexpected hard error: %v", err)

@@ -258,6 +258,21 @@ func (cs *ChainState) ConfirmAlive(wallet, expectedGuardian string) error {
 	cs.mu.Lock()
 	defer cs.mu.Unlock()
 
+	// FIX (audit 2026-08-15, cold-cache class): this read went straight to
+	// cs.accounts, so a wallet that is merely not resident answered "account
+	// not found". That is not a rare edge here — it is the NORMAL state for
+	// exactly the wallets this endpoint exists for. loadFromDB preloads
+	// "ORDER BY last_activity_at DESC LIMIT maxInMemAccounts", so the accounts
+	// dropped first are the least recently active ones, i.e. precisely those
+	// drifting toward the 2.5-year escrow sweep that a guardian calls
+	// /api/confirm-alive to prevent. The guardian's proof-of-life would
+	// therefore fail with a message reading like the wallet does not exist,
+	// the inactivity clock would never reset, and checkAndMoveToEscrowLocked
+	// would eventually sweep the funds of a human whose guardian had been
+	// confirming them alive the whole time. Warming first is a no-op when the
+	// account is already resident, and a genuinely unregistered wallet still
+	// falls through to the same error below.
+	cs.ensureAccountLoaded(wallet)
 	acc, ok := cs.accounts.Get(wallet)
 	if !ok {
 		return fmt.Errorf("account %s not found", wallet)
@@ -326,6 +341,27 @@ func (cs *ChainState) RecoverFromEscrow(wallet string) error {
 
 		// Credit balance back. If the account was lost from memory recreate
 		// it as a human — escrow only exists for registered humans.
+		//
+		// FIX (audit 2026-08-15, cold-cache class): the ensureAccountLoadedCtx
+		// below was missing here, while this function's own REPLAY counterpart
+		// — applyEscrowRecoverDeltaLocked, a few hundred lines down — had
+		// exactly this fix applied in the 2026-07-12 Monster Audit pass, with
+		// the matching comment. The originating (primary) side kept the
+		// identical blind-create that comment describes: a wallet that is
+		// merely not resident reads as absent and gets a fresh
+		// AccountState{IsHuman:true} with every other field at its zero value,
+		// which then reaches saveAccountToDBCtx at Version==0 — the branch
+		// whose INSERT ... ON CONFLICT DO UPDATE rewrites every column of the
+		// real row. Recovering escrow would therefore erase whatever the wallet
+		// had accumulated in the meantime: any AEQ received after the sweep,
+		// its tUSD balance, its LP shares, and its faucet_claimed flag (letting
+		// the faucet be claimed a second time). Escrow is only reachable after
+		// 2.5 years of inactivity — precisely the accounts loadFromDB's
+		// "ORDER BY last_activity_at DESC LIMIT maxInMemAccounts" preload drops
+		// first — so cold is the EXPECTED state here, not an edge case.
+		// Warming first is a no-op whenever the account is already resident,
+		// and makes this side agree with the replay side it must mirror.
+		cs.ensureAccountLoadedCtx(ctx, wallet)
 		if _, ok := cs.accounts.Get(wallet); !ok {
 			cs.accounts.Set(wallet, &AccountState{Address: wallet, IsHuman: true})
 		}
@@ -653,7 +689,9 @@ func (cs *ChainState) releaseEscrowToUBILocked(ctx context.Context) ([]Distribut
 // dag.state.activeTx itself before this runs, and dbExecCtx falls back to
 // that field when ctx carries no transaction, so behavior there is
 // unchanged — see registerHumanLocked's comment for the same reasoning.
-func (cs *ChainState) applyEscrowRecoverDeltaLocked(ctx context.Context, wallet string, amount float64) error {
+// activityAt is the replayed block's own Timestamp — see touchActivityAt for
+// why a replay handler must not read this node's wall clock.
+func (cs *ChainState) applyEscrowRecoverDeltaLocked(ctx context.Context, wallet string, amount float64, activityAt int64) error {
 	if amount <= 0 {
 		return fmt.Errorf("escrow_recover amount must be positive, got %.6f", amount)
 	}
@@ -669,7 +707,7 @@ func (cs *ChainState) applyEscrowRecoverDeltaLocked(ctx context.Context, wallet 
 		cs.accounts.Set(wallet, acc)
 	}
 	acc.Balance = acc.Balance.Add(NewDecimal(amount))
-	touchActivity(acc)
+	touchActivityAt(acc, activityAt)
 	if err := cs.enforceWealthCapLockedCtx(ctx, acc); err != nil {
 		return fmt.Errorf("could not enforce wealth cap for %s: %w", wallet, err)
 	}

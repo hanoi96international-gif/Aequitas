@@ -6073,7 +6073,7 @@ func (dag *BlockDAG) replayTransactions(block *Block, force bool) (ok bool) {
 		// through to the serial switch below, unchanged.
 		if tx.Type == "transfer" && skipDistributionRound == 0 {
 			if batch, _ := collectDisjointTransferBatch(block.Transactions, txIdx); len(batch) >= parallelReplayMinBatch {
-				ok, batchErr := dag.state.applyTransferBatchParallel(context.Background(), batch)
+				ok, batchErr := dag.state.applyTransferBatchParallel(context.Background(), batch, block.Timestamp)
 				if batchErr != nil {
 					// Memory already mutated, persistence failed — must NOT
 					// fall back to the serial path (that would apply every
@@ -6214,7 +6214,7 @@ func (dag *BlockDAG) replayTransactions(block *Block, force bool) (ok bool) {
 			// context.Background() is correct — see registerHumanLocked's
 			// comment: dag.state.activeTx was already set directly above
 			// this loop, and dbExecCtx falls back to it.
-			if err := dag.state.applyTransferDeltaLocked(context.Background(), wallet, to, tx.Amount, tx.FromDemurrageLost, tx.ToDemurrageLost); err != nil {
+			if err := dag.state.applyTransferDeltaLocked(context.Background(), wallet, to, tx.Amount, tx.FromDemurrageLost, tx.ToDemurrageLost, block.Timestamp); err != nil {
 				fmt.Printf("[REPLAY] ✗ Transfer %s->%s %.6f: %v (block #%d) — rolling back whole block\n", wallet, to, tx.Amount, err, block.Height)
 				hardFailure = true
 				continue
@@ -6231,7 +6231,7 @@ func (dag *BlockDAG) replayTransactions(block *Block, force bool) (ok bool) {
 			// context.Background() is correct — see registerHumanLocked's
 			// comment: dag.state.activeTx was already set directly above
 			// this loop, and dbExecCtx falls back to it.
-			if err := dag.state.applySwapDeltaLocked(context.Background(), wallet, tx.Amount, tx.AmountOut, true, tx.FromDemurrageLost); err != nil {
+			if err := dag.state.applySwapDeltaLocked(context.Background(), wallet, tx.Amount, tx.AmountOut, true, tx.FromDemurrageLost, block.Timestamp); err != nil {
 				fmt.Printf("[REPLAY] ✗ swap_aeq_tusd %s: %v (block #%d) — rolling back whole block\n", wallet, err, block.Height)
 				hardFailure = true
 				continue
@@ -6246,7 +6246,7 @@ func (dag *BlockDAG) replayTransactions(block *Block, force bool) (ok bool) {
 			// context.Background() is correct — see registerHumanLocked's
 			// comment: dag.state.activeTx was already set directly above
 			// this loop, and dbExecCtx falls back to it.
-			if err := dag.state.applySwapDeltaLocked(context.Background(), wallet, tx.Amount, tx.AmountOut, false, tx.FromDemurrageLost); err != nil {
+			if err := dag.state.applySwapDeltaLocked(context.Background(), wallet, tx.Amount, tx.AmountOut, false, tx.FromDemurrageLost, block.Timestamp); err != nil {
 				fmt.Printf("[REPLAY] ✗ swap_tusd_aeq %s: %v (block #%d) — rolling back whole block\n", wallet, err, block.Height)
 				hardFailure = true
 				continue
@@ -6261,7 +6261,7 @@ func (dag *BlockDAG) replayTransactions(block *Block, force bool) (ok bool) {
 			// context.Background() is correct — see registerHumanLocked's
 			// comment: dag.state.activeTx was already set directly above
 			// this loop, and dbExecCtx falls back to it.
-			if err := dag.state.addLiquidityDeltaLocked(context.Background(), wallet, tx.Amount, tx.AmountOut, tx.LPShares, tx.FromDemurrageLost); err != nil {
+			if err := dag.state.addLiquidityDeltaLocked(context.Background(), wallet, tx.Amount, tx.AmountOut, tx.LPShares, tx.FromDemurrageLost, block.Timestamp); err != nil {
 				fmt.Printf("[REPLAY] ✗ add_liquidity %s: %v (block #%d) — rolling back whole block\n", wallet, err, block.Height)
 				hardFailure = true
 				continue
@@ -6276,7 +6276,7 @@ func (dag *BlockDAG) replayTransactions(block *Block, force bool) (ok bool) {
 			// context.Background() is correct — see registerHumanLocked's
 			// comment: dag.state.activeTx was already set directly above
 			// this loop, and dbExecCtx falls back to it.
-			if err := dag.state.removeLiquidityDeltaLocked(context.Background(), wallet, tx.Amount, tx.FromDemurrageLost); err != nil {
+			if err := dag.state.removeLiquidityDeltaLocked(context.Background(), wallet, tx.Amount, tx.FromDemurrageLost, block.Timestamp); err != nil {
 				fmt.Printf("[REPLAY] ✗ remove_liquidity %s: %v (block #%d) — rolling back whole block\n", wallet, err, block.Height)
 				hardFailure = true
 				continue
@@ -6319,7 +6319,7 @@ func (dag *BlockDAG) replayTransactions(block *Block, force bool) (ok bool) {
 				// context.Background() is correct — see registerHumanLocked's
 				// comment: dag.state.activeTx was already set directly above
 				// this loop, and dbExecCtx falls back to it.
-				if err := dag.state.applyUBIRewardDeltaLocked(context.Background(), wallet, tx.Amount, tx.FromDemurrageLost); err != nil {
+				if err := dag.state.applyUBIRewardDeltaLocked(context.Background(), wallet, tx.Amount, tx.FromDemurrageLost, block.Timestamp); err != nil {
 					fmt.Printf("[REPLAY] ✗ ubi_distribution %s: %v (block #%d) — rolling back whole block\n", wallet, err, block.Height)
 					hardFailure = true
 					continue
@@ -6354,7 +6354,7 @@ func (dag *BlockDAG) replayTransactions(block *Block, force bool) (ok bool) {
 			// context.Background() is correct — see registerHumanLocked's
 			// comment: dag.state.activeTx was already set directly above
 			// this loop, and dbExecCtx falls back to it.
-			if err := dag.state.applyValidatorRewardDeltaLocked(context.Background(), wallet, tx.Amount, tx.FromDemurrageLost); err != nil {
+			if err := dag.state.applyValidatorRewardDeltaLocked(context.Background(), wallet, tx.Amount, tx.FromDemurrageLost, block.Timestamp); err != nil {
 				fmt.Printf("[REPLAY] ✗ validator_distribution %s: %v (block #%d) — rolling back whole block\n", wallet, err, block.Height)
 				hardFailure = true
 				continue
@@ -6377,7 +6377,7 @@ func (dag *BlockDAG) replayTransactions(block *Block, force bool) (ok bool) {
 			// context.Background() is correct — see registerHumanLocked's
 			// comment: dag.state.activeTx was already set directly above
 			// this loop, and dbExecCtx falls back to it.
-			if err := dag.state.applyLPRewardDeltaLocked(context.Background(), wallet, tx.Amount, tx.FromDemurrageLost); err != nil {
+			if err := dag.state.applyLPRewardDeltaLocked(context.Background(), wallet, tx.Amount, tx.FromDemurrageLost, block.Timestamp); err != nil {
 				fmt.Printf("[REPLAY] ✗ lp_distribution %s: %v (block #%d) — rolling back whole block\n", wallet, err, block.Height)
 				hardFailure = true
 				continue
@@ -6423,7 +6423,7 @@ func (dag *BlockDAG) replayTransactions(block *Block, force bool) (ok bool) {
 			// context.Background() is correct — see registerHumanLocked's
 			// comment: dag.state.activeTx was already set directly above
 			// this loop, and dbExecCtx falls back to it.
-			if err := dag.state.applyEscrowRecoverDeltaLocked(context.Background(), wallet, tx.Amount); err != nil {
+			if err := dag.state.applyEscrowRecoverDeltaLocked(context.Background(), wallet, tx.Amount, block.Timestamp); err != nil {
 				fmt.Printf("[REPLAY] ✗ escrow_recover %s: %v (block #%d) — rolling back whole block\n", wallet, err, block.Height)
 				hardFailure = true
 				continue
@@ -6491,8 +6491,26 @@ func (dag *BlockDAG) replayTransactions(block *Block, force bool) (ok bool) {
 			}
 			// Apply the balance deduction, capping at the wallet's current balance
 			// in case it has shrunk since the offense was recorded.
+			//
+			// FIX (audit 2026-08-15, cold-cache class): this read used to go
+			// straight to cs.accounts with no ensureAccountLoaded, so a wallet
+			// that is simply not resident (never paged in on this node, or
+			// beyond the startup preload's maxInMemAccounts limit) reported
+			// ok=false and left penaltyAmt at the full 50 AEQ — a value
+			// assumption derived from "not found", which is exactly the pattern
+			// that has bitten this file before. applyTransferDeltaLocked on the
+			// very next line DOES warm the same address, which is what makes
+			// this inconsistent rather than merely unlucky: it then finds the
+			// real (smaller) balance and hard-fails the whole block with
+			// "insufficient balance". Cache residency is per-node and not part
+			// of consensus, so the identical block would be accepted by a node
+			// holding the wallet warm and rejected by one that does not —
+			// non-deterministic replay, i.e. a fork. Warming first makes the
+			// cap read the same real balance on every node; it is a no-op
+			// whenever the account was already resident.
 			opWallet := strings.ToLower(slashWallet)
 			penaltyAmt := equivocationSecondOffensePenaltyAEQ
+			dag.state.ensureAccountLoadedCtx(context.Background(), opWallet)
 			if acc, ok := dag.state.accounts.Get(opWallet); ok && acc.Balance.Float() < penaltyAmt {
 				penaltyAmt = acc.Balance.Float()
 			}
@@ -6500,7 +6518,7 @@ func (dag *BlockDAG) replayTransactions(block *Block, force bool) (ok bool) {
 				// context.Background() is correct — see registerHumanLocked's
 				// comment: dag.state.activeTx was already set directly above
 				// this loop, and dbExecCtx falls back to it.
-				if err := dag.state.applyTransferDeltaLocked(context.Background(), opWallet, ubiPoolAddr, penaltyAmt, 0, 0); err != nil {
+				if err := dag.state.applyTransferDeltaLocked(context.Background(), opWallet, ubiPoolAddr, penaltyAmt, 0, 0, block.Timestamp); err != nil {
 					fmt.Printf("[REPLAY] ✗ slash_equivocation transfer %s→UBI %.4f: %v (block #%d) — rolling back whole block\n",
 						opWallet, penaltyAmt, err, block.Height)
 					hardFailure = true

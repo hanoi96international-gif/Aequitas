@@ -2566,6 +2566,39 @@ func touchActivity(acc *AccountState) {
 	acc.Demurrage14DayWarningShown = false // new grace period — the 14-day notice can fire again when this one nears its end
 }
 
+// touchActivityAt is touchActivity for the REPLAY side, where "now" is the
+// wrong instant to use.
+//
+// The producing node stamps nowUnix() while processing the transaction. Every
+// other node sees that same transaction inside a block, possibly seconds later
+// (normal operation) and possibly years later (a resync replaying historical
+// blocks). Stamping the replaying node's own clock there is the exact pattern
+// FromDemurrageLost and DistributionAt exist to avoid — see Transaction's own
+// field comments: a value the primary decided must be replayed, never
+// recomputed from local wall-clock time. block.Timestamp is that value here,
+// already carried by every block and already part of its hash, so no new
+// transaction field is needed.
+//
+// The stamp only ever moves FORWARD. A DAG merges blocks from competing tips,
+// so replay order is not timestamp order; without this, replaying an older
+// block after a newer one would drag an account's clock backwards and hand it
+// demurrage it does not owe. Monotonic means the result does not depend on the
+// order blocks happen to arrive in, which is the property the whole replay path
+// is built on.
+//
+// at <= 0 falls back to nowUnix() for the handful of non-block callers (see
+// ApplyTransferDelta), preserving their existing behaviour exactly.
+func touchActivityAt(acc *AccountState, at int64) {
+	if at <= 0 {
+		at = nowUnix()
+	}
+	if at <= acc.LastActivityAt {
+		return
+	}
+	acc.LastActivityAt = at
+	acc.Demurrage14DayWarningShown = false
+}
+
 // nowUnix exists as a single seam so demurrage timing could be mocked in
 // tests later; right now it's just time.Now().Unix().
 func nowUnix() int64 {
@@ -6859,7 +6892,12 @@ func (cs *ChainState) ApplyTransferDelta(from, to string, netAmount, fromLost, t
 	defer cs.mu.Unlock()
 	// cs.mu-only path, never runs inside runAtomicWithOutbox — see
 	// RegisterHuman's comment.
-	return cs.applyTransferDeltaLocked(context.Background(), from, to, netAmount, fromLost, toLost)
+	//
+	// activityAt 0: this wrapper has no block to read a timestamp from, so
+	// touchActivityAt falls back to nowUnix() — see its comment. Every
+	// block-replay caller goes through applyTransferDeltaLocked directly and
+	// passes block.Timestamp.
+	return cs.applyTransferDeltaLocked(context.Background(), from, to, netAmount, fromLost, toLost, 0)
 }
 
 // applyTransferDeltaLocked is ApplyTransferDelta's body, for callers that
@@ -6872,7 +6910,11 @@ func (cs *ChainState) ApplyTransferDelta(from, to string, netAmount, fromLost, t
 // runs, and dbExecCtx falls back to that field when ctx carries no
 // transaction, so behavior there is unchanged — see registerHumanLocked's
 // comment for the same reasoning.
-func (cs *ChainState) applyTransferDeltaLocked(ctx context.Context, from, to string, netAmount, fromLost, toLost float64) error {
+//
+// activityAt is the instant to stamp on both parties' demurrage clock — the
+// replayed block's own Timestamp. See touchActivityAt for why replay must not
+// read its own wall clock, and why this used to reset no clock at all.
+func (cs *ChainState) applyTransferDeltaLocked(ctx context.Context, from, to string, netAmount, fromLost, toLost float64, activityAt int64) error {
 	from = strings.ToLower(from)
 	to = strings.ToLower(to)
 	// FIX (Monster Audit follow-up, 2026-07-12, P0): same cold-cache pattern
@@ -6909,6 +6951,21 @@ func (cs *ChainState) applyTransferDeltaLocked(ctx context.Context, from, to str
 		return fmt.Errorf("transfer: could not settle sender %s demurrage: %w", from, err)
 	}
 	fromAcc.Balance = fromAcc.Balance.Sub(NewDecimal(netAmount))
+	// FIX (audit 2026-08-15): the ingestion path this mirrors (transferLocked)
+	// calls touchActivity on BOTH sides — "sending counts as using the money",
+	// per its own comment — and every other apply*Delta counterpart in this
+	// file was given the matching call in the 2026-07-04 audit. Plain
+	// transfers, by far the most common transaction on the chain, were the one
+	// case left out: a node that merely REPLAYED a transfer left both wallets'
+	// demurrage clocks untouched, so on every node except the one that produced
+	// the block the two parties kept ageing as if idle. That decides real
+	// money — settleDemurrageLocked charges decay from this field, and
+	// checkAndMoveToEscrowLocked sweeps a wallet to escrow after 2.5 years of
+	// it — and the daily distribution round runs on whichever node wins
+	// TryLockDistribution, so which numbers the chain committed depended on
+	// which node happened to run it. Stamped from the block, not from this
+	// node's clock: see touchActivityAt.
+	touchActivityAt(fromAcc, activityAt)
 	// FIX (audit recheck2, P0 #3): this and every other saveAccountToDB/
 	// savePoolToDB call in this function used to discard the returned error
 	// — replayTransactions's caller checks THIS function's own return value
@@ -6930,6 +6987,7 @@ func (cs *ChainState) applyTransferDeltaLocked(ctx context.Context, from, to str
 		return fmt.Errorf("transfer: could not settle recipient %s demurrage: %w", to, err)
 	}
 	toAcc.Balance = toAcc.Balance.Add(NewDecimal(netAmount))
+	touchActivityAt(toAcc, activityAt) // see the sender's own call above; transferLocked touches both sides
 	if err := cs.enforceWealthCapLockedCtx(ctx, toAcc); err != nil {
 		return fmt.Errorf("transfer: could not enforce wealth cap for recipient %s: %w", to, err)
 	}
@@ -6951,13 +7009,17 @@ func (cs *ChainState) ApplySwapDelta(wallet string, amountIn, amountOut float64,
 	defer cs.mu.Unlock()
 	// cs.mu-only path, never runs inside runAtomicWithOutbox — see
 	// RegisterHuman's comment.
-	return cs.applySwapDeltaLocked(context.Background(), wallet, amountIn, amountOut, aeqToTusd, demurrageLost)
+	// activityAt 0 — no block here, so touchActivityAt falls back to nowUnix();
+	// see ApplyTransferDelta's identical note.
+	return cs.applySwapDeltaLocked(context.Background(), wallet, amountIn, amountOut, aeqToTusd, demurrageLost, 0)
 }
 
 // applySwapDeltaLocked is ApplySwapDelta's body — see
 // applyTransferDeltaLocked's comment (both for the cs.mu contract and for
 // why block replay's own context.Background() call sites are correct).
-func (cs *ChainState) applySwapDeltaLocked(ctx context.Context, wallet string, amountIn, amountOut float64, aeqToTusd bool, demurrageLost float64) error {
+// activityAt is the replayed block's own Timestamp — see touchActivityAt for
+// why a replay handler must not read this node's wall clock.
+func (cs *ChainState) applySwapDeltaLocked(ctx context.Context, wallet string, amountIn, amountOut float64, aeqToTusd bool, demurrageLost float64, activityAt int64) error {
 	wallet = strings.ToLower(wallet)
 	cs.ensureAccountLoadedCtx(ctx, wallet)
 	acc, ok := cs.accounts.Get(wallet)
@@ -6998,7 +7060,7 @@ func (cs *ChainState) applySwapDeltaLocked(ctx context.Context, wallet string, a
 	// AccountSetXOR and pool state diverge, surfacing as a StateRoot
 	// mismatch that looks unrelated to swaps at all. Mirroring exactly what
 	// the primary does, in the same order, before saving.
-	touchActivity(acc)
+	touchActivityAt(acc, activityAt)
 	if !aeqToTusd {
 		if err := cs.enforceWealthCapLockedCtx(ctx, acc); err != nil {
 			return fmt.Errorf("swap: could not enforce wealth cap for %s: %w", wallet, err)
@@ -7051,12 +7113,16 @@ func (cs *ChainState) AddLiquidityDelta(wallet string, aeqAmount, tusdAmount, lp
 	defer cs.mu.Unlock()
 	// cs.mu-only path, never runs inside runAtomicWithOutbox — see
 	// RegisterHuman's comment.
-	return cs.addLiquidityDeltaLocked(context.Background(), wallet, aeqAmount, tusdAmount, lpShares, demurrageLost)
+	// activityAt 0 — no block here, so touchActivityAt falls back to nowUnix();
+	// see ApplyTransferDelta's identical note.
+	return cs.addLiquidityDeltaLocked(context.Background(), wallet, aeqAmount, tusdAmount, lpShares, demurrageLost, 0)
 }
 
 // addLiquidityDeltaLocked is AddLiquidityDelta's body — see
 // applyTransferDeltaLocked's comment.
-func (cs *ChainState) addLiquidityDeltaLocked(ctx context.Context, wallet string, aeqAmount, tusdAmount, lpShares, demurrageLost float64) error {
+// activityAt is the replayed block's own Timestamp — see touchActivityAt for
+// why a replay handler must not read this node's wall clock.
+func (cs *ChainState) addLiquidityDeltaLocked(ctx context.Context, wallet string, aeqAmount, tusdAmount, lpShares, demurrageLost float64, activityAt int64) error {
 	wallet = strings.ToLower(wallet)
 	cs.ensureAccountLoadedCtx(ctx, wallet)
 	acc, ok := cs.accounts.Get(wallet)
@@ -7094,6 +7160,13 @@ func (cs *ChainState) addLiquidityDeltaLocked(ctx context.Context, wallet string
 	acc.Balance = acc.Balance.Sub(NewDecimal(aeqAmount))
 	acc.TUsdBalance = acc.TUsdBalance.Sub(NewDecimal(tusdAmount))
 	acc.LPShares = acc.LPShares.Add(NewDecimal(mintedShares))
+	// FIX (audit 2026-08-15): missing entirely, the same gap as the transfer
+	// path's — addLiquidityLocked (the ingestion side this mirrors) calls
+	// touchActivity here, "depositing into the pool counts as using the AEQ"
+	// per its own comment, and this replay counterpart never did. The wallet
+	// therefore kept ageing toward demurrage and the 2.5-year escrow sweep on
+	// every node except the one that produced the block.
+	touchActivityAt(acc, activityAt)
 	// FIX (audit recheck2, P0 #3): see ApplyTransferDelta's comment.
 	if cs.pool != nil {
 		cs.pool.ReserveAEQ = cs.pool.ReserveAEQ.Add(NewDecimal(aeqAmount))
@@ -7119,12 +7192,16 @@ func (cs *ChainState) RemoveLiquidityDelta(wallet string, sharesToBurn, demurrag
 	defer cs.mu.Unlock()
 	// cs.mu-only path, never runs inside runAtomicWithOutbox — see
 	// RegisterHuman's comment.
-	return cs.removeLiquidityDeltaLocked(context.Background(), wallet, sharesToBurn, demurrageLost)
+	// activityAt 0 — no block here, so touchActivityAt falls back to nowUnix();
+	// see ApplyTransferDelta's identical note.
+	return cs.removeLiquidityDeltaLocked(context.Background(), wallet, sharesToBurn, demurrageLost, 0)
 }
 
 // removeLiquidityDeltaLocked is RemoveLiquidityDelta's body — see
 // applyTransferDeltaLocked's comment.
-func (cs *ChainState) removeLiquidityDeltaLocked(ctx context.Context, wallet string, sharesToBurn, demurrageLost float64) error {
+// activityAt is the replayed block's own Timestamp — see touchActivityAt for
+// why a replay handler must not read this node's wall clock.
+func (cs *ChainState) removeLiquidityDeltaLocked(ctx context.Context, wallet string, sharesToBurn, demurrageLost float64, activityAt int64) error {
 	wallet = strings.ToLower(wallet)
 	cs.ensureAccountLoadedCtx(ctx, wallet)
 	acc, ok := cs.accounts.Get(wallet)
@@ -7179,7 +7256,7 @@ func (cs *ChainState) removeLiquidityDeltaLocked(ctx context.Context, wallet str
 	// surfaces as a StateRoot mismatch that looks unrelated to liquidity at
 	// all. Mirroring exactly what the primary does, in the same order,
 	// before saving.
-	touchActivity(acc)
+	touchActivityAt(acc, activityAt)
 	if err := cs.enforceWealthCapLockedCtx(ctx, acc); err != nil {
 		return fmt.Errorf("remove_liquidity: could not enforce wealth cap for %s: %w", wallet, err)
 	}
@@ -7253,7 +7330,7 @@ func (cs *ChainState) applyUBIDeltaLocked(ctx context.Context, amountPerHuman fl
 			return true
 		}
 		acc.Balance = acc.Balance.Add(NewDecimal(amountPerHuman))
-		touchActivity(acc)
+		touchActivityAt(acc, ubiAt)
 		if err := cs.enforceWealthCapLockedCtx(ctx, acc); err != nil {
 			rangeErr = fmt.Errorf("ubi (legacy flat): could not enforce wealth cap for %s: %w", addr, err)
 			return false
@@ -7301,12 +7378,16 @@ func (cs *ChainState) ApplyUBIRewardDelta(wallet string, amount, demurrageLost f
 	defer cs.mu.Unlock()
 	// cs.mu-only path, never runs inside runAtomicWithOutbox — see
 	// RegisterHuman's comment.
-	return cs.applyUBIRewardDeltaLocked(context.Background(), wallet, amount, demurrageLost)
+	// activityAt 0 — no block here, so touchActivityAt falls back to nowUnix();
+	// see ApplyTransferDelta's identical note.
+	return cs.applyUBIRewardDeltaLocked(context.Background(), wallet, amount, demurrageLost, 0)
 }
 
 // applyUBIRewardDeltaLocked is ApplyUBIRewardDelta's body — see
 // applyTransferDeltaLocked's comment.
-func (cs *ChainState) applyUBIRewardDeltaLocked(ctx context.Context, wallet string, amount, demurrageLost float64) error {
+// activityAt is the replayed block's own Timestamp — see touchActivityAt for
+// why a replay handler must not read this node's wall clock.
+func (cs *ChainState) applyUBIRewardDeltaLocked(ctx context.Context, wallet string, amount, demurrageLost float64, activityAt int64) error {
 	wallet = strings.ToLower(wallet)
 	// FIX (Monster Audit follow-up, 2026-07-12, P0): see applyTransferDeltaLocked's
 	// comment — same cold-cache pattern. Here a cold wallet fails as
@@ -7321,7 +7402,7 @@ func (cs *ChainState) applyUBIRewardDeltaLocked(ctx context.Context, wallet stri
 		return fmt.Errorf("ubi reward: could not settle %s demurrage: %w", wallet, err)
 	}
 	acc.Balance = acc.Balance.Add(NewDecimal(amount))
-	touchActivity(acc)
+	touchActivityAt(acc, activityAt)
 	if err := cs.enforceWealthCapLockedCtx(ctx, acc); err != nil {
 		return fmt.Errorf("ubi reward: could not enforce wealth cap for %s: %w", wallet, err)
 	}
@@ -7388,12 +7469,16 @@ func (cs *ChainState) ApplyValidatorRewardDelta(wallet string, amount, demurrage
 	defer cs.mu.Unlock()
 	// cs.mu-only path, never runs inside runAtomicWithOutbox — see
 	// RegisterHuman's comment.
-	return cs.applyValidatorRewardDeltaLocked(context.Background(), wallet, amount, demurrageLost)
+	// activityAt 0 — no block here, so touchActivityAt falls back to nowUnix();
+	// see ApplyTransferDelta's identical note.
+	return cs.applyValidatorRewardDeltaLocked(context.Background(), wallet, amount, demurrageLost, 0)
 }
 
 // applyValidatorRewardDeltaLocked is ApplyValidatorRewardDelta's body — see
 // applyTransferDeltaLocked's comment.
-func (cs *ChainState) applyValidatorRewardDeltaLocked(ctx context.Context, wallet string, amount, demurrageLost float64) error {
+// activityAt is the replayed block's own Timestamp — see touchActivityAt for
+// why a replay handler must not read this node's wall clock.
+func (cs *ChainState) applyValidatorRewardDeltaLocked(ctx context.Context, wallet string, amount, demurrageLost float64, activityAt int64) error {
 	wallet = strings.ToLower(wallet)
 	// FIX (Monster Audit follow-up, 2026-07-12, P0): see applyTransferDeltaLocked's
 	// comment — same cold-cache pattern. Here a cold wallet was blind-created
@@ -7409,7 +7494,7 @@ func (cs *ChainState) applyValidatorRewardDeltaLocked(ctx context.Context, walle
 		return fmt.Errorf("validator reward: could not settle %s demurrage: %w", wallet, err)
 	}
 	acc.Balance = acc.Balance.Add(NewDecimal(amount))
-	touchActivity(acc)
+	touchActivityAt(acc, activityAt)
 	if err := cs.enforceWealthCapLockedCtx(ctx, acc); err != nil {
 		return fmt.Errorf("validator reward: could not enforce wealth cap for %s: %w", wallet, err)
 	}
@@ -7470,12 +7555,16 @@ func (cs *ChainState) ApplyLPRewardDelta(wallet string, amount, demurrageLost fl
 	defer cs.mu.Unlock()
 	// cs.mu-only path, never runs inside runAtomicWithOutbox — see
 	// RegisterHuman's comment.
-	return cs.applyLPRewardDeltaLocked(context.Background(), wallet, amount, demurrageLost)
+	// activityAt 0 — no block here, so touchActivityAt falls back to nowUnix();
+	// see ApplyTransferDelta's identical note.
+	return cs.applyLPRewardDeltaLocked(context.Background(), wallet, amount, demurrageLost, 0)
 }
 
 // applyLPRewardDeltaLocked is ApplyLPRewardDelta's body — see
 // applyTransferDeltaLocked's comment.
-func (cs *ChainState) applyLPRewardDeltaLocked(ctx context.Context, wallet string, amount, demurrageLost float64) error {
+// activityAt is the replayed block's own Timestamp — see touchActivityAt for
+// why a replay handler must not read this node's wall clock.
+func (cs *ChainState) applyLPRewardDeltaLocked(ctx context.Context, wallet string, amount, demurrageLost float64, activityAt int64) error {
 	wallet = strings.ToLower(wallet)
 	// FIX (Monster Audit follow-up, 2026-07-12, P0): see applyValidatorRewardDeltaLocked's
 	// comment — same cold-cache blind-create/silent-wipe pattern.
@@ -7488,7 +7577,7 @@ func (cs *ChainState) applyLPRewardDeltaLocked(ctx context.Context, wallet strin
 		return fmt.Errorf("lp reward: could not settle %s demurrage: %w", wallet, err)
 	}
 	acc.Balance = acc.Balance.Add(NewDecimal(amount))
-	touchActivity(acc)
+	touchActivityAt(acc, activityAt)
 	if err := cs.enforceWealthCapLockedCtx(ctx, acc); err != nil {
 		return fmt.Errorf("lp reward: could not enforce wealth cap for %s: %w", wallet, err)
 	}

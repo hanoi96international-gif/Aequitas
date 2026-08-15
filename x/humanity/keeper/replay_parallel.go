@@ -137,8 +137,12 @@ func collectDisjointTransferBatch(txs []Transaction, start int) (batch []Transac
 // write, which would have double-applied the whole batch — the same defect
 // class that drove 74 production accounts negative on 2026-07-25.
 //
+// activityAt is the replayed block's own Timestamp, stamped onto every
+// participant's demurrage clock exactly as the serial path does — see
+// touchActivityAt for why this must not be the replaying node's wall clock.
+//
 // Caller must hold cs.mu (write), exactly as the serial path does.
-func (cs *ChainState) applyTransferBatchParallel(ctx context.Context, batch []Transaction) (applied bool, err error) {
+func (cs *ChainState) applyTransferBatchParallel(ctx context.Context, batch []Transaction, activityAt int64) (applied bool, err error) {
 	if len(batch) < parallelReplayMinBatch {
 		return false, nil
 	}
@@ -166,8 +170,40 @@ func (cs *ChainState) applyTransferBatchParallel(ctx context.Context, batch []Tr
 	// authoritative as the serial path's own, just hoisted. If any single
 	// transfer would fail, the whole batch is declined and the serial path
 	// replays all of them, reproducing its error handling verbatim.
+	//
+	// FIX (audit 2026-08-15): the wealth-cap check below was missing entirely.
+	// The serial path this replaces (applyTransferDeltaLocked) calls
+	// enforceWealthCapLockedCtx on every recipient, which trims a balance that
+	// lands above avg×multiplier back down to the cap and credits the excess to
+	// the four tokenomics pools. Phase 2 cannot do that — enforceWealthCap
+	// credits pools through distributeSwapFeeCtx, i.e. shared state and DB
+	// work, exactly what phase 2 is forbidden to touch — so a cap crossing
+	// inside a batchable run was silently skipped: the recipient kept the full
+	// uncapped amount and the pools were never credited.
+	//
+	// That is a fork, not a rounding difference. The three INGESTION fast paths
+	// (transferConcurrent, transferBatchConcurrent, transferConcurrentWAL) each
+	// draw exactly this eligibility line for exactly this reason and hand the
+	// transfer to the slow path, which caps it — so a block genuinely can carry
+	// a capped transfer, while every node replaying it through this batch path
+	// would apply it uncapped. Proven by
+	// TestParallelReplay_EnforcesWealthCapLikeSerial: recipient 26,000 vs
+	// 25,000 AEQ, all four pools 0 vs 400/300/200/100, different StateRoot.
+	//
+	// Declining here (rather than trying to cap in phase 2) keeps this path
+	// what its doc comment promises — a pure speed-up whose declines cost only
+	// speed — and lets the serial path reproduce the cap, the pool credits and
+	// the log line verbatim. Recipients appear at most once in a disjoint
+	// batch, so post-transfer balance is exact; the Decimal add mirrors the
+	// arithmetic enforceWealthCapLockedCtx itself would see, and tokenomics
+	// pool addresses are exempt there, so they must not trigger a decline here.
+	capAmt, hasCap := cs.wealthCapAmountLocked()
 	for _, it := range items {
 		if it.from.Balance.Float() < it.amount {
+			return false, nil
+		}
+		if hasCap && !isTokenomicsPoolAddress(it.toKey) &&
+			it.to.Balance.Add(NewDecimal(it.amount)).Float() > capAmt {
 			return false, nil
 		}
 	}
@@ -197,9 +233,9 @@ func (cs *ChainState) applyTransferBatchParallel(ctx context.Context, batch []Tr
 			for _, it := range part {
 				amt := NewDecimal(it.amount)
 				it.from.Balance = it.from.Balance.Sub(amt)
-				touchActivity(it.from)
+				touchActivityAt(it.from, activityAt)
 				it.to.Balance = it.to.Balance.Add(amt)
-				touchActivity(it.to)
+				touchActivityAt(it.to, activityAt)
 				// The one piece of genuinely shared state; guarded by
 				// accountSetXORMu inside, which exists for precisely this.
 				cs.updateAccountLeafLocked(it.from)
