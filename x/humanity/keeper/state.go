@@ -3753,7 +3753,7 @@ func (cs *ChainState) RegisterHuman(address string) error {
 	// cs.mu-only path, never runs inside runAtomicWithOutbox, so there is no
 	// active transaction to join — context.Background() is correct, not a
 	// placeholder. See dbExecCtx's comment for the migration this is part of.
-	return cs.registerHumanLocked(context.Background(), address)
+	return cs.registerHumanLocked(context.Background(), address, 0)
 }
 
 // RegisterHumanAtomic behaves like RegisterHuman, except the state
@@ -3787,7 +3787,7 @@ func (cs *ChainState) RegisterHumanAtomic(address string, pendingTx Transaction)
 		return err
 	}
 	return cs.runAtomicWithOutbox([]string{address}, false, func(ctx context.Context) (Transaction, error) {
-		if err := cs.registerHumanLocked(ctx, address); err != nil {
+		if err := cs.registerHumanLocked(ctx, address, 0); err != nil {
 			return Transaction{}, err
 		}
 		if pendingTx.Nullifier != "" {
@@ -3807,7 +3807,13 @@ func (cs *ChainState) RegisterHumanAtomic(address string, pendingTx Transaction)
 // dag.state.activeTx itself before this runs, and dbExecCtx falls back to
 // that field when ctx carries no transaction, so behavior there is
 // unchanged.
-func (cs *ChainState) registerHumanLocked(ctx context.Context, address string) error {
+// activityAt is the instant to start the 1,000 AEQ grant's demurrage grace
+// period from. This function is shared by ingestion and replay, so callers
+// that are applying a BLOCK pass its Timestamp (see touchActivityAt for why a
+// replay handler must not read this node's wall clock — a resync replaying a
+// years-old registration would otherwise hand it a brand-new grace period).
+// Live callers pass 0, which keeps nowUnix().
+func (cs *ChainState) registerHumanLocked(ctx context.Context, address string, activityAt int64) error {
 	address = strings.ToLower(address)
 	cs.ensureAccountLoadedCtx(ctx, address)
 
@@ -3822,7 +3828,7 @@ func (cs *ChainState) registerHumanLocked(ctx context.Context, address string) e
 
 	acc.IsHuman = true
 	acc.Balance = acc.Balance.Add(NewDecimal(1000))
-	touchActivity(acc) // starts this 1,000 AEQ's own grace period fresh
+	touchActivityAt(acc, activityAt) // starts this 1,000 AEQ's own grace period fresh
 	if err := cs.enforceWealthCapLockedCtx(ctx, acc); err != nil {
 		return fmt.Errorf("could not enforce wealth cap: %w", err)
 	}
