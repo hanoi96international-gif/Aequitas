@@ -6,6 +6,7 @@ import (
 	"math/big"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/ethereum/go-ethereum/accounts"
 	"github.com/ethereum/go-ethereum/crypto"
@@ -60,6 +61,25 @@ func (a *APIServer) handleHumanityCredential(w http.ResponseWriter, r *http.Requ
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Access-Control-Allow-Origin", "*")
+
+	// FIX (P2, security audit 2026-07-21, ported to main 2026-08-14): this
+	// endpoint is public and unauthenticated, but unlike its neighbours
+	// (handleCheckRegistrationByBioHash, handleRecoverEscrow,
+	// handleSetGuardian, handleConfirmAlive — all of which use the shared
+	// registerRateLimit cooldown) it had no rate limit at all, even though
+	// GetRegistrationProof below does a sequential scan over chain_blocks
+	// (millions of rows and growing) with a JSONB transaction-array expansion
+	// for every is_human=true lookup. Same package-level registerRateLimit
+	// map and same per-IP 5s window as the biohash check, keyed separately so
+	// it cannot be used to also throttle other endpoints.
+	ip := clientIP(r)
+	if ts, loaded := registerRateLimit.Load("credential:" + ip); loaded {
+		if time.Since(ts.(time.Time)) < 5*time.Second {
+			jsonError(w, "rate limited, try again shortly", http.StatusTooManyRequests)
+			return
+		}
+	}
+	registerRateLimit.Store("credential:"+ip, time.Now())
 
 	wallet := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("wallet")))
 	if len(wallet) != 42 || wallet[:2] != "0x" {

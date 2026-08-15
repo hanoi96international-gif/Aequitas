@@ -411,10 +411,7 @@ func (s *EVMRPCServer) handleRPC(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if rpcRateLimited(clientIP(r)) {
-		writeError(w, -32005, "rate limited: too many requests, try again shortly", nil)
-		return
-	}
+	ip := clientIP(r)
 
 	r.Body = http.MaxBytesReader(w, r.Body, 1<<20) // 1 MB limit — prevents memory exhaustion via /rpc
 	body, err := io.ReadAll(r.Body)
@@ -449,9 +446,32 @@ func (s *EVMRPCServer) handleRPC(w http.ResponseWriter, r *http.Request) {
 		// SCALING_ARCHITECTURE.md's 2026-07-25 deep-dive, finding D) or
 		// parallelizing the actual state mutation below (which stays fully
 		// serial — nonce reservation and dispatch order must not change).
+		// FIX (P1, security audit 2026-07-21, ported to main 2026-08-14):
+		// rpcRateLimited used to be checked exactly ONCE per HTTP request,
+		// before the body was even parsed — so a single request carrying a
+		// maxBatchSize batch consumed one unit of the per-IP budget no matter
+		// how many calls it dispatched. That let a caller reach
+		// rpcRateLimitMax * maxBatchSize (200 * 100 = 20,000) dispatches per
+		// window instead of the documented rpcRateLimitMax.
+		//
+		// Charged per batch ITEM here, and deliberately BEFORE the parallel
+		// decode below rather than in the dispatch loop: decodeAndRecoverSender
+		// is secp256k1 recovery, the single most CPU-expensive step per
+		// transaction (~17.5% of a profiled run). Rejecting over-budget items
+		// first means a flood costs the node a map lookup each, not a signature
+		// recovery each — which is the whole point of a rate limit on this
+		// endpoint.
+		overBudget := make([]bool, len(batch))
+		for i := range batch {
+			overBudget[i] = rpcRateLimited(ip)
+		}
+
 		precomputed := make([]*precomputedSendTx, len(batch))
 		var pending []int
 		for i, raw := range batch {
+			if overBudget[i] {
+				continue
+			}
 			var env struct {
 				Method string            `json:"method"`
 				Params []json.RawMessage `json:"params"`
@@ -491,6 +511,12 @@ func (s *EVMRPCServer) handleRPC(w http.ResponseWriter, r *http.Request) {
 		}
 		var results []interface{}
 		for i, raw := range batch {
+			if overBudget[i] {
+				// Fail closed, exactly like the single-request path below:
+				// the item is answered, but never dispatched.
+				results = append(results, errorResponse(nil, -32005, "rate limited: too many requests, try again shortly"))
+				continue
+			}
 			result := s.handleSingle(raw, precomputed[i])
 			results = append(results, result)
 		}
@@ -498,6 +524,10 @@ func (s *EVMRPCServer) handleRPC(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if rpcRateLimited(ip) {
+		writeError(w, -32005, "rate limited: too many requests, try again shortly", nil)
+		return
+	}
 	result := s.handleSingle(body, nil)
 	json.NewEncoder(w).Encode(result)
 }
