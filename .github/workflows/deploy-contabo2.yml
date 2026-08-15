@@ -165,3 +165,50 @@ jobs:
           script_stop: true
           timeout: 1800s
           command_timeout: 1800s
+      # Contabo1's own deploy gained this check first; without the same one
+      # here, half the rollout still reports success on evidence that does not
+      # include the node running. deploy_safe_c2.sh exiting 0 means `docker run`
+      # returned a container ID, nothing more.
+      #
+      # Nothing downstream gates on this run, which is exactly why a silent
+      # failure here is easy to miss: Contabo1 is already redeployed and
+      # healthy by this point, so the chain keeps producing and looks fine
+      # while quietly running on ONE validator — the precise state the whole
+      # staggered rollout exists to prevent. Measured on the 2026-08-15 deploy,
+      # this box needs about 90 seconds before its first answer, so the poll
+      # below allows five minutes.
+      - name: Verify Contabo2 is alive and advancing after the deploy
+        run: |
+          set -uo pipefail
+          BASE=http://194.163.188.71:8080
+          up=""
+          for i in $(seq 1 30); do
+            code=$(curl -s -m 10 -o /dev/null -w '%{http_code}' "$BASE/api/health/combined" || echo 000)
+            if [ "$code" = "200" ]; then
+              up=yes
+              echo "node is answering (after $i attempt(s))"
+              break
+            fi
+            echo "waiting for the node to answer - attempt $i/30, last HTTP $code"
+            sleep 10
+          done
+          if [ -z "$up" ]; then
+            echo "FAILED: no 200 from /api/health/combined within 5 minutes."
+            echo "The container may have exited, or the build produced a binary that cannot start."
+            echo "The network is now running on Contabo1 alone."
+            exit 1
+          fi
+          h1=$(curl -s -m 25 "$BASE/api/status" | jq -r '.height // empty')
+          sleep 60
+          h2=$(curl -s -m 25 "$BASE/api/status" | jq -r '.height // empty')
+          if [ -z "$h1" ] || [ -z "$h2" ]; then
+            echo "FAILED: could not read .height from /api/status (h1='$h1' h2='$h2')."
+            exit 1
+          fi
+          echo "height $h1 -> $h2 over 60s"
+          if [ "$h2" -le "$h1" ]; then
+            echo "FAILED: the node answers but its height did not move in 60 seconds."
+            echo "It is up without following the chain - merging or replay is stuck."
+            exit 1
+          fi
+          echo "OK: node is alive and advancing."
