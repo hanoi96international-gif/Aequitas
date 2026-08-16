@@ -29,7 +29,19 @@ WORKDIR /app
 COPY go.mod go.sum ./
 RUN go mod download
 COPY . .
-RUN go build -o aequitasd ./cmd/aequitasd/
+# The commit this image was built from.
+#
+# Go stamps vcs.revision automatically, but only when the build can see a
+# repository — and .dockerignore excludes .git (correctly: it was 1079 MB of
+# a 1.22 GB build context). So every node reported git_commit "unknown", and
+# the explorer's Network tab could never answer the one question a rollout
+# actually asks: is the whole fleet on the same build?
+#
+# The deploy scripts pass --build-arg GIT_COMMIT=$(git rev-parse --short HEAD)
+# from the checkout they just pulled. Unset, it falls back to "unknown", which
+# is what a local `docker build` without the arg should say.
+ARG GIT_COMMIT=unknown
+RUN go build -ldflags "-X github.com/hanoi96international-gif/aequitas-chain/x/humanity/keeper.buildGitCommitStamp=${GIT_COMMIT}" -o aequitasd ./cmd/aequitasd/
 
 FROM alpine:latest
 WORKDIR /app

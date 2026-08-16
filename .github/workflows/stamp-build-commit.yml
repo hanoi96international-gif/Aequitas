@@ -1,0 +1,84 @@
+name: Teach the box deploy scripts to stamp the build commit
+
+# Every node reports git_commit "unknown", so the explorer's Network tab cannot
+# answer the one question a rollout asks — is the whole fleet on the same build?
+#
+# Cause: Go stamps vcs.revision only when the build can see a repository, and
+# .dockerignore excludes .git. That exclusion is correct (it was 1079 MB of a
+# 1.22 GB build context, and shrinking it fixed a deploy that timed out AFTER
+# stopping the node). So the commit has to reach the build from outside the
+# image: the Dockerfile now takes ARG GIT_COMMIT and stamps it via -ldflags, and
+# the box-side scripts need to pass it.
+#
+# Both scripts build from /root/Aequitas, which IS a git checkout — they just
+# never told the builder about it. This adds --build-arg to the docker build
+# line, and nothing else.
+#
+# Idempotent: a script that already passes --build-arg is left alone. Backs up
+# each file first. Restarts nothing — the change takes effect on the next
+# ordinary deploy.
+
+on:
+  workflow_dispatch:
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    strategy:
+      max-parallel: 1
+      matrix:
+        include:
+          - box: contabo1
+            host: 173.249.37.118
+            script: /root/deploy.sh
+          - box: contabo2
+            host: 194.163.188.71
+            script: /root/deploy_safe_c2.sh
+    steps:
+      - name: Patch ${{ matrix.box }} (${{ matrix.script }})
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ matrix.host }}
+          username: root
+          key: ${{ matrix.box == 'contabo1' && secrets.CONTABO_SSH_KEY || secrets.CONTABO2_SSH_KEY }}
+          port: 22
+          script_stop: false
+          timeout: 600s
+          command_timeout: 600s
+          script: |
+            S="${{ matrix.script }}"
+            if [ ! -f "$S" ]; then
+              echo "SKIP: $S does not exist on this box"
+              exit 0
+            fi
+
+            echo "===== before ====="
+            grep -n 'docker build' "$S" || { echo "no docker build line — nothing to patch"; exit 0; }
+
+            if grep -q 'build-arg GIT_COMMIT' "$S"; then
+              echo "already patched — leaving it alone"
+              exit 0
+            fi
+
+            cp -a "$S" "$S.bak-$(date +%s)"
+
+            # Insert the build arg into the existing docker build invocation,
+            # whatever its tag and context are. Only the first occurrence.
+            sed -i '0,/docker build /{s|docker build |docker build --build-arg GIT_COMMIT="$(git rev-parse --short HEAD)" |}' "$S"
+
+            echo "===== after ====="
+            grep -n 'docker build' "$S"
+
+            echo "===== syntax check (bash -n, nothing executed) ====="
+            if bash -n "$S"; then
+              echo "  ok"
+            else
+              echo "  FAILED — restoring the backup"
+              cp -a "$(ls -t $S.bak-* | head -1)" "$S"
+              exit 1
+            fi
+
+            echo "===== what the arg will evaluate to right now ====="
+            cd /root/Aequitas 2>/dev/null && echo "  $(git rev-parse --short HEAD)" || echo "  (checkout not at /root/Aequitas — verify the script's own cd)"
+
+            echo "OK: the next deploy stamps the commit. git_commit stops reading 'unknown'."
