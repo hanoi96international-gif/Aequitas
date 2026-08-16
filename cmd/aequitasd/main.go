@@ -223,6 +223,56 @@ err = json.Unmarshal(data, &genesis)
 return &genesis, err
 }
 
+// detectMemoryLimitBytes reports how much memory this process should consider
+// available, or 0 if it cannot tell. See the GOMEMLIMIT block in main() for
+// why this exists.
+//
+// Order matters and is not arbitrary. A cgroup limit, when one is set, is the
+// real ceiling for this process and is usually SMALLER than the host's total,
+// so it must win. Reading the host total first would hand back a number this
+// process can never actually reach inside a memory-capped container, and the
+// soft limit derived from it would never bind -- which is precisely the
+// failure being fixed here.
+//
+// Everything is best-effort: on any platform or filesystem layout where these
+// files are absent (notably Windows, where the whole /proc and /sys tree does
+// not exist), this returns 0 and the caller simply runs without a soft limit,
+// exactly as the process did before.
+func detectMemoryLimitBytes() int64 {
+// cgroup v2. "max" means no limit is set at this level, which is the
+// common case for a container started without --memory; fall through.
+if b, err := os.ReadFile("/sys/fs/cgroup/memory.max"); err == nil {
+if v := strings.TrimSpace(string(b)); v != "max" {
+if n, err := strconv.ParseInt(v, 10, 64); err == nil && n > 0 {
+return n
+}
+}
+}
+// cgroup v1. An unset limit here is not a word but a sentinel close to
+// int64 max, so reject implausibly large values rather than trusting them.
+if b, err := os.ReadFile("/sys/fs/cgroup/memory/memory.limit_in_bytes"); err == nil {
+if n, err := strconv.ParseInt(strings.TrimSpace(string(b)), 10, 64); err == nil && n > 0 && n < (1<<62) {
+return n
+}
+}
+// Host total, from /proc/meminfo's "MemTotal: <n> kB" line.
+if b, err := os.ReadFile("/proc/meminfo"); err == nil {
+for _, line := range strings.Split(string(b), "\n") {
+if !strings.HasPrefix(line, "MemTotal:") {
+continue
+}
+f := strings.Fields(line)
+if len(f) >= 2 {
+if kb, err := strconv.ParseInt(f[1], 10, 64); err == nil && kb > 0 {
+return kb * 1024
+}
+}
+break
+}
+}
+return 0
+}
+
 func main() {
 fmt.Println("╔════════════════════════════════════════╗")
 fmt.Println("║         AEQUITAS CHAIN NODE            ║")
@@ -256,6 +306,49 @@ fmt.Println()
 // their explicit choice wins over this default in every case.
 if os.Getenv("GOGC") == "" {
 debug.SetGCPercent(200)
+}
+
+// FIX (audit 2026-08-16): the GOGC=200 decision above raised the ceiling on
+// how much garbage may accumulate before a collection, and deliberately noted
+// that this process's live heap "grows with registered-human/account count
+// over the node's real operational lifetime in a way this benchmark's small,
+// synthetic account set can't characterize". What was missing was the other
+// half: a ceiling. There was none, so the only thing that ever stopped the
+// heap growing was the kernel.
+//
+// Observed on Contabo2 (194.163.188.71), 12 GB box, from its kernel ring
+// buffer:
+//
+//	Out of memory: Killed process (aequitasd) anon-rss:11353476kB
+//	Out of memory: Killed process (aequitasd) anon-rss:11387540kB
+//
+// RestartCount was 9. Docker reported ExitCode=0 and OOMKilled=false for all
+// of them, because this is a GLOBAL kernel OOM (constraint=CONSTRAINT_NONE),
+// not a cgroup-limit kill -- Docker only sets OOMKilled for the latter. So
+// every one of these read as a clean, voluntary exit, and the node looked
+// like it was restarting itself for no reason. The same OOM event also took
+// postgres down with it, which is how a memory problem in this process turns
+// into a database outage on the same box.
+//
+// GOMEMLIMIT is the documented remedy: a SOFT limit that makes the collector
+// work progressively harder as the heap approaches it, rather than letting it
+// run into the kernel's hard wall. Soft matters here -- if the live heap
+// genuinely needs more, Go exceeds the limit and keeps running (slowly)
+// instead of deadlocking or aborting. A slow node is recoverable; an
+// OOM-killed one takes the database with it.
+//
+// Default is 75% of detected memory, leaving room for postgres and the OS on
+// a shared box. An operator who sets GOMEMLIMIT themselves wins outright: the
+// Go runtime already honours that variable, so this does nothing at all.
+if os.Getenv("GOMEMLIMIT") == "" {
+if limit := detectMemoryLimitBytes(); limit > 0 {
+soft := limit / 100 * 75
+debug.SetMemoryLimit(soft)
+fmt.Printf("[MEM] soft heap limit %d MiB (75%% of %d MiB detected) — set GOMEMLIMIT to override\n",
+soft>>20, limit>>20)
+} else {
+fmt.Println("[MEM] could not detect a memory limit; running without a soft heap limit (set GOMEMLIMIT to impose one)")
+}
 }
 
 // FIX (2026-07-04): several circuit-breaker constants in the keeper
