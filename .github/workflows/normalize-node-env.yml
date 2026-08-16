@@ -1,0 +1,147 @@
+name: Normalize node env (disarm destructive flags)
+
+# Takes the DANGEROUS keys out of a running validator's environment, one box at
+# a time, without touching anything else it carries.
+#
+# WHY, 2026-08-16. A resync of Contabo2 failed during its import phase, before
+# the cleanup phase that recreates the container without the recovery flags. It
+# therefore left RESYNC_FROM_SNAPSHOT live in the RUNNING container's env. That
+# key is a one-shot recovery switch: on the next restart — an ordinary deploy is
+# enough — the node discards its local chain and re-seeds from a snapshot. The
+# node had by then recovered on its own and was following the chain normally, so
+# the next restart would have thrown that away.
+#
+# Separately, Contabo1 — the authoritative chain — carries
+# BOOTSTRAP_SNAPSHOT_URL pointing at Contabo2, and its own log holds a boot
+# where it acted on it. It failed on an HTTP 429; the only other obstacle was a
+# BOOTSTRAP_SIGNER that matches neither node's signing key. The node code now
+# refuses a snapshot far below local height (resyncBackwardsTolerance), but the
+# configuration should not be aimed at the loaded gun either.
+#
+# HOW IT IS SAFE
+#   - reads the env from the RUNNING container, so nothing is guessed;
+#   - removes only the named keys, keeps every other variable verbatim;
+#   - refuses to proceed unless the node is healthy and advancing FIRST, so a
+#     broken node is never "fixed" by restarting it into an unknown state;
+#   - keeps the previous container (renamed, stopped) so a rollback is one
+#     `docker start` away;
+#   - verifies the node answers and advances afterwards, and fails loudly if not;
+#   - one box per run. Never both.
+
+on:
+  workflow_dispatch:
+    inputs:
+      box:
+        required: true
+        default: contabo2
+        type: choice
+        options: [contabo1, contabo2]
+      drop_snapshot_url:
+        description: Also remove BOOTSTRAP_SNAPSHOT_URL (use for Contabo1, whose source is the secondary)
+        required: false
+        default: "false"
+
+jobs:
+  normalize:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Resolve target
+        id: t
+        run: |
+          if [ "${{ inputs.box }}" = "contabo1" ]; then
+            echo "host=173.249.37.118" >> $GITHUB_OUTPUT
+            echo "other=194.163.188.71" >> $GITHUB_OUTPUT
+          else
+            echo "host=194.163.188.71" >> $GITHUB_OUTPUT
+            echo "other=173.249.37.118" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Refuse unless BOTH validators are up first
+        run: |
+          set -uo pipefail
+          for ip in ${{ steps.t.outputs.host }} ${{ steps.t.outputs.other }}; do
+            h=$(curl -s -m 20 "http://$ip:8080/api/status" | jq -r '.height // empty')
+            echo "$ip height=${h:-<no answer>}"
+            if [ -z "$h" ] || [ "$h" -lt 2 ]; then
+              echo "REFUSING: $ip is not serving a real chain. Restarting a node while the"
+              echo "other one is down or empty is how a two-validator network loses both."
+              exit 1
+            fi
+          done
+
+      - name: Disarm
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ steps.t.outputs.host }}
+          username: root
+          key: ${{ inputs.box == 'contabo1' && secrets.CONTABO_SSH_KEY || secrets.CONTABO2_SSH_KEY }}
+          port: 22
+          script_stop: true
+          timeout: 900s
+          command_timeout: 900s
+          script: |
+            set -euo pipefail
+            DROP_URL="${{ inputs.drop_snapshot_url }}"
+
+            echo "===== what the container carries now (names only) ====="
+            docker inspect aequitas-node --format '{{range .Config.Env}}{{println .}}{{end}}' \
+              | cut -d= -f1 | sort | tr '\n' ' '; echo
+
+            IMAGE=$(docker inspect aequitas-node --format '{{.Config.Image}}')
+            NET=$(docker inspect aequitas-node --format '{{range $n,$v := .NetworkSettings.Networks}}{{$n}}{{end}}')
+            echo "image=$IMAGE net=$NET"
+
+            # The keys that must never survive into steady state. PATH/HOSTNAME/HOME
+            # are dropped because docker sets them itself; keeping the old values
+            # would pin a stale container's paths.
+            STRIP='^(PATH|HOSTNAME|HOME|RESET_DB_STATE|ALLOW_DESTRUCTIVE_MAINTENANCE|RESYNC_FROM_SNAPSHOT|CLEAR_REGISTRATIONS|CLEAR_REGISTRATIONS_CONFIRM)='
+            if [ "$DROP_URL" = "true" ]; then
+              STRIP='^(PATH|HOSTNAME|HOME|RESET_DB_STATE|ALLOW_DESTRUCTIVE_MAINTENANCE|RESYNC_FROM_SNAPSHOT|CLEAR_REGISTRATIONS|CLEAR_REGISTRATIONS_CONFIRM|BOOTSTRAP_SNAPSHOT_URL)='
+            fi
+
+            docker inspect aequitas-node --format '{{range .Config.Env}}{{println .}}{{end}}' \
+              | grep -vE "$STRIP" | grep -v '^$' > /root/.node-env-keep
+
+            echo "===== removed ====="
+            docker inspect aequitas-node --format '{{range .Config.Env}}{{println .}}{{end}}' \
+              | grep -E "$STRIP" | cut -d= -f1 | sed 's/^/  /' || echo "  (none were set)"
+            echo "===== kept (names only) ====="
+            cut -d= -f1 /root/.node-env-keep | sort | tr '\n' ' '; echo
+
+            TS=$(date +%s)
+            echo "===== swapping container (previous kept as aequitas-node-preenv-$TS) ====="
+            docker stop aequitas-node
+            docker rename aequitas-node "aequitas-node-preenv-$TS"
+            docker run -d --name aequitas-node --restart unless-stopped \
+              --network "$NET" -p 8080:8080 -p 4001:4001 \
+              --env-file /root/.node-env-keep "$IMAGE"
+            rm -f /root/.node-env-keep
+
+            echo "===== waiting for it to answer ====="
+            up=""
+            for i in $(seq 1 30); do
+              code=$(curl -s -m 10 -o /dev/null -w '%{http_code}' http://localhost:8080/api/health/combined || echo 000)
+              if [ "$code" = "200" ]; then up=yes; echo "answering after $i attempt(s)"; break; fi
+              echo "  waiting ($i/30, last $code)"; sleep 10
+            done
+            if [ -z "$up" ]; then
+              echo "FAILED: node did not come back. Roll back with:"
+              echo "  docker rm -f aequitas-node && docker rename aequitas-node-preenv-$TS aequitas-node && docker start aequitas-node"
+              exit 1
+            fi
+
+            h1=$(curl -s -m 25 http://localhost:8080/api/status | jq -r '.height // empty')
+            sleep 45
+            h2=$(curl -s -m 25 http://localhost:8080/api/status | jq -r '.height // empty')
+            echo "height $h1 -> $h2 over 45s"
+            if [ -z "$h1" ] || [ -z "$h2" ] || [ "$h2" -le "$h1" ]; then
+              echo "FAILED: it answers but is not advancing. Roll back as above."
+              exit 1
+            fi
+
+            echo "===== confirming the flags are gone ====="
+            if docker inspect aequitas-node --format '{{range .Config.Env}}{{println .}}{{end}}' \
+                 | grep -qE '^(RESET_DB_STATE|ALLOW_DESTRUCTIVE_MAINTENANCE|RESYNC_FROM_SNAPSHOT|CLEAR_REGISTRATIONS)='; then
+              echo "FAILED: a destructive flag is still present"; exit 1
+            fi
+            echo "OK: disarmed, alive and advancing."
