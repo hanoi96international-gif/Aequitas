@@ -121,7 +121,15 @@ func TestRegisterHumanConcurrent_NullifierReuseByDifferentWalletFails(t *testing
 	cs := newConcurrentTransferTestState(t)
 	addrA := distTestAddr(1005)
 	addrB := distTestAddr(1006)
-	const nullifier = "0xsharednullifier1005"
+	// FIX (pre-launch audit 2026-08-16): this used to be the descriptive
+	// string "0xsharednullifier1005", which is not a hexadecimal integer.
+	// Since nullifier validation was added, registerHumanConcurrent rejects it
+	// outright — so this test failed at its FIRST registration and never
+	// reached the reuse it exists to check. It is skipped without Postgres, so
+	// nothing surfaced it: the project's own security-critical test for "one
+	// biometric cannot mint two grants" had quietly stopped testing that.
+	// Real nullifiers are 32-byte hex values; the fixture now is one.
+	const nullifier = "0x00000000000000000000000000000000000000000000000000000000000003ed"
 
 	appliedA, errA := cs.registerHumanConcurrent(addrA, Transaction{Type: "register_human", Wallet: addrA, Nullifier: nullifier})
 	if !appliedA || errA != nil {
@@ -191,7 +199,10 @@ func TestRegisterHumanConcurrent_ConcurrentDistinctRegistrationsAllSucceed(t *te
 		go func(i int) {
 			defer wg.Done()
 			err := cs.RegisterHumanAtomic(addrs[i], Transaction{
-				Type: "register_human", Wallet: addrs[i], Nullifier: fmt.Sprintf("0xnull-concurrent-%04d", i), TxHash: fmt.Sprintf("0xregconc%04d", i),
+				// Hex, for the same reason as the fixture above: a
+				// non-hex nullifier is rejected before the concurrency this
+				// test exists to exercise is ever reached.
+				Type: "register_human", Wallet: addrs[i], Nullifier: fmt.Sprintf("0x%064x", 0xC0FFEE0000+i), TxHash: fmt.Sprintf("0xregconc%04d", i),
 			})
 			if err != nil {
 				t.Errorf("goroutine %d: RegisterHumanAtomic failed: %v", i, err)
@@ -238,7 +249,7 @@ func TestRegisterHumanConcurrent_ViaRegisterHumanAtomic(t *testing.T) {
 	cs := newConcurrentTransferTestState(t)
 	addr := distTestAddr(1200)
 
-	if err := cs.RegisterHumanAtomic(addr, Transaction{Type: "register_human", Wallet: addr, Nullifier: "0xnull-atomic-1200", TxHash: "0xregatomic1200"}); err != nil {
+	if err := cs.RegisterHumanAtomic(addr, Transaction{Type: "register_human", Wallet: addr, Nullifier: "0x00000000000000000000000000000000000000000000000000000000000004b0", TxHash: "0xregatomic1200"}); err != nil {
 		t.Fatalf("RegisterHumanAtomic: %v", err)
 	}
 

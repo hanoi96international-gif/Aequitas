@@ -3,6 +3,7 @@ package keeper
 import (
 	"os"
 	"testing"
+	"time"
 )
 
 // TestRecoverFromEscrow_RealDB is RecoverFromEscrow's only regression test
@@ -107,9 +108,13 @@ func TestConfirmAlive_ColdAccount_RealDB(t *testing.T) {
 	cs.mu.Unlock()
 
 	if _, err := cs.db.Exec(
-		`INSERT INTO guardians (wallet_address, guardian_address) VALUES ($1, $2)
-		 ON CONFLICT (wallet_address) DO UPDATE SET guardian_address = EXCLUDED.guardian_address`,
-		wallet, guardian,
+		// FIX (pre-launch audit 2026-08-16): set_at is NOT NULL in the schema
+		// and has no default, so this seed used to fail with a constraint
+		// violation before the test reached anything it was written to check.
+		// Skipped without Postgres, so it never showed up.
+		`INSERT INTO guardians (wallet_address, guardian_address, set_at) VALUES ($1, $2, $3)
+		 ON CONFLICT (wallet_address) DO UPDATE SET guardian_address = EXCLUDED.guardian_address, set_at = EXCLUDED.set_at`,
+		wallet, guardian, time.Now().Unix(),
 	); err != nil {
 		t.Fatalf("seed guardian row: %v", err)
 	}
