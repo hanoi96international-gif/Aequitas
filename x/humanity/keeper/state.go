@@ -1814,12 +1814,47 @@ func (cs *ChainState) ensureAccountLoadedCtx(ctx context.Context, addr string) {
 	// already-held transaction's own connection when one is active (same
 	// existing pattern every write in this file already uses), so this
 	// query needs zero extra pool capacity instead of one more.
+	// FIX (P0 consensus, launch audit 2026-08-16): this SELECT used to omit
+	// faucet_claimed, and accountLeaf commits to it (the ":fc=" component).
+	// Every account paged in on demand was therefore reconstructed with
+	// FaucetClaimed=false, and the leafHash cached at the bottom of this
+	// function was the leaf of an account that does not exist in the DB.
+	// Three consequences, all real:
+	//
+	//  1. CONSENSUS. rebuildStateAccumulators folds leaf(fc=true) into
+	//     accountSetXOR at startup, reading the column straight from the DB. A
+	//     node that only ever pages the same account in caches leaf(fc=false),
+	//     so the next mutation makes updateAccountLeafLocked XOR OUT a leaf
+	//     that was never XORed IN. A warm node and a cold node then compute
+	//     different accountSetXOR — different StateRoots for the same block,
+	//     which is exactly the account_set_xor-only divergence signature.
+	//  2. FAUCET DOUBLE-CLAIM. claimTUsdFaucetLocked and applyFaucetDeltaLocked
+	//     both gate on acc.FaucetClaimed. The latter's own FIX comment says its
+	//     ensureAccountLoaded call is there to stop a cold wallet claiming
+	//     twice; it could not work, because the loader never read the column
+	//     the guard tests.
+	//  3. SILENT ERASURE. Every save writes the flag back from memory, so the
+	//     first ordinary transfer touching a paged-in account overwrote
+	//     faucet_claimed=false into the DB permanently — destroying the record
+	//     rather than merely mis-reading it once.
+	//
+	// demurrage_14_day_warning_shown is read back for the same reason minus the
+	// consensus part: it is not in the leaf, but losing it re-fires the
+	// one-time notice and the next save writes the cleared value back.
+	//
+	// Both are COALESCEd even though the migration declares them NOT NULL: a
+	// Scan failure here would not merely mis-read a flag, it would take the err
+	// path below, which treats a fully populated account as cold/fresh — the
+	// far worse bug. See cold_account_consensus_fields_audit_test.go.
 	err := cs.dbExecCtx(ctx).QueryRow(
 		`SELECT balance, is_human, tusd_balance, lp_shares,
-		        COALESCE(last_activity_at, 0), COALESCE(version, 1)
+		        COALESCE(last_activity_at, 0), COALESCE(version, 1),
+		        COALESCE(faucet_claimed, false),
+		        COALESCE(demurrage_14_day_warning_shown, false)
 		 FROM chain_accounts WHERE lower(address) = $1`,
 		addr,
-	).Scan(&bal, &acc.IsHuman, &tusd, &lp, &acc.LastActivityAt, &version)
+	).Scan(&bal, &acc.IsHuman, &tusd, &lp, &acc.LastActivityAt, &version,
+		&acc.FaucetClaimed, &acc.Demurrage14DayWarningShown)
 	if err != nil {
 		// FIX (fresh Monster Audit 2026-07-12, P2): sql.ErrNoRows (genuinely
 		// never registered) and a real transient DB error (connection drop,
@@ -1892,9 +1927,17 @@ func (cs *ChainState) ensureAccountsLoadedCtx(ctx context.Context, addrs []strin
 	// the shared pool — this is snapshotForRollbackLocked's own cold-load
 	// call, reached from inside every runAtomicWithOutbox/
 	// runAtomicDistributionWithOutbox critical section.
+	// FIX (P0 consensus, launch audit 2026-08-16): this batch loader carried
+	// the SAME missing-column defect as its single-address counterpart above —
+	// see that function's FIX comment for the full mechanism. It is the more
+	// dangerous of the two: this is snapshotForRollbackLocked's cold-load call
+	// and distributeUBIPoolLocked's, so the leaf was wrong for every human in
+	// a distribution round at once, not for one address.
 	rows, err := cs.dbExecCtx(ctx).Query(
 		`SELECT address, balance, is_human, tusd_balance, lp_shares,
-		        COALESCE(last_activity_at, 0), COALESCE(version, 1)
+		        COALESCE(last_activity_at, 0), COALESCE(version, 1),
+		        COALESCE(faucet_claimed, false),
+		        COALESCE(demurrage_14_day_warning_shown, false)
 		 FROM chain_accounts WHERE lower(address) = ANY($1)`,
 		pq.Array(missing),
 	)
@@ -1916,7 +1959,8 @@ func (cs *ChainState) ensureAccountsLoadedCtx(ctx context.Context, addrs []strin
 		acc := &AccountState{}
 		var bal, tusd, lp float64
 		var version int64
-		if err := rows.Scan(&addr, &bal, &acc.IsHuman, &tusd, &lp, &acc.LastActivityAt, &version); err != nil {
+		if err := rows.Scan(&addr, &bal, &acc.IsHuman, &tusd, &lp, &acc.LastActivityAt, &version,
+			&acc.FaucetClaimed, &acc.Demurrage14DayWarningShown); err != nil {
 			fmt.Printf("[STATE] ⚠ ensureAccountsLoaded: row scan failed mid-batch — this address will be treated as cold/fresh, which is WRONG if it already has a balance: %v\n", err)
 			continue
 		}

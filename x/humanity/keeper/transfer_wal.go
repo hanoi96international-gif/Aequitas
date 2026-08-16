@@ -71,6 +71,23 @@ type walTransferRecord struct {
 	To     string  `json:"to"`
 	Amount float64 `json:"amount"`
 	TxHash string  `json:"tx_hash"`
+	// At is the instant the transfer actually happened, in unix seconds.
+	//
+	// FIX (pre-launch audit 2026-08-16): the record used to carry no timestamp
+	// at all, so recoverFromWAL had nothing it COULD stamp the activity clock
+	// with and called plain touchActivity(acc) — nowUnix(), i.e. whenever the
+	// node happened to restart. Every crash-recovered transfer therefore reset
+	// both participants' demurrage clock forward by the length of the outage,
+	// handing them unearned demurrage-free time at the tokenomics pools'
+	// expense, purely as a function of how long the node was down. Block
+	// replay already avoids exactly this by stamping the block's own timestamp
+	// (see touchActivityAt's doc comment); WAL recovery could not, for want of
+	// this field.
+	//
+	// Records written before this field existed decode as 0, and
+	// touchActivityAt treats a non-positive value as "use now" — the old
+	// behaviour, confined to WAL files that predate the upgrade.
+	At int64 `json:"at"`
 }
 
 // walFlushItem is one WAL-durable transfer waiting for its async Postgres
@@ -337,7 +354,11 @@ func (cs *ChainState) transferConcurrentWAL(from, to string, amount float64, pen
 		return 0, 0, false, nil
 	}
 
-	payload, err := json.Marshal(walTransferRecord{From: from, To: to, Amount: amount, TxHash: pendingTxTemplate.TxHash})
+	// One instant, recorded in the WAL and used for the live stamp below, so a
+	// crash-recovered replay reproduces exactly what this node did rather than
+	// stamping its own restart time (see walTransferRecord.At).
+	at := nowUnix()
+	payload, err := json.Marshal(walTransferRecord{From: from, To: to, Amount: amount, TxHash: pendingTxTemplate.TxHash, At: at})
 	if err != nil {
 		return 0, 0, false, nil // encode failure -- nothing mutated, safe to fall back
 	}
@@ -354,12 +375,12 @@ func (cs *ChainState) transferConcurrentWAL(from, to string, amount float64, pen
 	// nothing left that can fail and need reverting).
 	fromAcc.Balance = fromAcc.Balance.Sub(NewDecimal(amount))
 	fromAcc.WALSeq = seq
-	touchActivity(fromAcc)
+	touchActivityAt(fromAcc, at)
 	cs.updateAccountLeafLocked(fromAcc)
 
 	toAcc.Balance = toAcc.Balance.Add(NewDecimal(amount))
 	toAcc.WALSeq = seq
-	touchActivity(toAcc)
+	touchActivityAt(toAcc, at)
 	cs.updateAccountLeafLocked(toAcc)
 
 	pendingTxTemplate.Wallet = from
@@ -1012,24 +1033,27 @@ func (cs *ChainState) recoverFromWAL(path string) error {
 		acc.WALSeq = uint64(seq)
 	}
 
-	applyFrom := func(acc *AccountState, seq uint64, amount float64) bool {
+	// `at` is the recorded instant of the original transfer, NOT now — see
+	// walTransferRecord.At. Stamping nowUnix() here credited every recovered
+	// account with the entire outage as demurrage-free time.
+	applyFrom := func(acc *AccountState, seq uint64, amount float64, at int64) bool {
 		seedWALSeq(acc)
 		if acc.WALSeq >= seq {
 			return false
 		}
 		acc.Balance = acc.Balance.Sub(NewDecimal(amount))
-		touchActivity(acc)
+		touchActivityAt(acc, at)
 		acc.WALSeq = seq
 		cs.updateAccountLeafLocked(acc)
 		return true
 	}
-	applyTo := func(acc *AccountState, seq uint64, amount float64) bool {
+	applyTo := func(acc *AccountState, seq uint64, amount float64, at int64) bool {
 		seedWALSeq(acc)
 		if acc.WALSeq >= seq {
 			return false
 		}
 		acc.Balance = acc.Balance.Add(NewDecimal(amount))
-		touchActivity(acc)
+		touchActivityAt(acc, at)
 		acc.WALSeq = seq
 		cs.updateAccountLeafLocked(acc)
 		return true
@@ -1059,8 +1083,8 @@ func (cs *ChainState) recoverFromWAL(path string) error {
 		if !ok {
 			return fmt.Errorf("WAL record seq %d: unknown recipient %s", entry.Seq, rec.To)
 		}
-		fromApplied := applyFrom(fromAcc, entry.Seq, rec.Amount)
-		toApplied := applyTo(toAcc, entry.Seq, rec.Amount)
+		fromApplied := applyFrom(fromAcc, entry.Seq, rec.Amount, rec.At)
+		toApplied := applyTo(toAcc, entry.Seq, rec.Amount, rec.At)
 		if fromApplied || toApplied {
 			reappliedCount++
 			if cs.db != nil {

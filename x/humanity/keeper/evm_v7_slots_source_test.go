@@ -103,6 +103,12 @@ func TestV7SlotListsMatchContractSource(t *testing.T) {
 	// reading the actual declarations above, not assumed blindly.
 	var gotSimple, gotMappings, gotArrays []int64
 	var gotSpecialCommitments, gotSpecialNullifiers int64 = -1, -1
+	// grantIssuedTo is the third non-address-keyed mapping (bytes32 => bool,
+	// keyed by the biometric nullifier), added by the pre-launch audit
+	// 2026-08-16. Like the two above it cannot live in v7AddressMappingSlots —
+	// that list is iterated with an ADDRESS key — so it is persisted alongside
+	// slot 8 in dumpAndPersistStorageWithNullifier and checked separately here.
+	var gotSpecialGrantIssued int64 = -1
 	next := int64(0)
 	for _, d := range derived {
 		switch {
@@ -117,6 +123,8 @@ func TestV7SlotListsMatchContractSource(t *testing.T) {
 				gotSpecialCommitments = next
 			case "usedNullifiers":
 				gotSpecialNullifiers = next
+			case "grantIssuedTo":
+				gotSpecialGrantIssued = next
 			default:
 				gotMappings = append(gotMappings, next)
 			}
@@ -135,6 +143,12 @@ func TestV7SlotListsMatchContractSource(t *testing.T) {
 	}
 	if gotSpecialNullifiers != 8 {
 		t.Errorf("usedNullifiers derived at slot %d from the contract source, but evm_engine.go hardcodes slot 8 for it", gotSpecialNullifiers)
+	}
+	if gotSpecialGrantIssued != 29 {
+		t.Errorf("grantIssuedTo derived at slot %d from the contract source, but "+
+			"dumpAndPersistStorageWithNullifier (evm_engine.go) hardcodes slot 29 for it. "+
+			"If this moved, the once-per-biometric grant guard stops persisting and a swept, "+
+			"re-registering human can draw a second INITIAL_GRANT after any restart.", gotSpecialGrantIssued)
 	}
 }
 

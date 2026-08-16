@@ -203,6 +203,11 @@ describe("AequitasV7 beta-launch-audit fixes", async function () {
 
     await networkHelpers.time.increase(INACTIVITY_UBI + 1);
     await v7.write.triggerEscrow([guardian.account.address]);
+    // Since v7.14 (RED 2) forfeiture is measured from escrowedAt, so the
+    // recovery window has to elapse before the sweep is reachable at all.
+    // Without this the assertion below would be satisfied by a "Too soon"
+    // revert and would no longer be testing the guardian guard.
+    await networkHelpers.time.increase(INACTIVITY_UBI - INACTIVITY_ESCROW + 1);
 
     // Blocked: guardian still has an active ward pointing guardianOf at them.
     await viem.assertions.revertWith(
