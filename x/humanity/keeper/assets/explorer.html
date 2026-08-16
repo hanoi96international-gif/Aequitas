@@ -969,6 +969,11 @@
     <div id="node-grid" style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px">
       <div class="nbox"><div class="nstat">Loading…</div></div>
     </div>
+    <!-- Filled by loadTopology only when the fleet is not on one build.
+         One statement for the fleet, rather than tagging every node as the
+         odd one out — which is what the per-card warning did, and could not
+         be true of all of them at once. -->
+    <div id="fleet-build-note" style="display:none;margin-top:10px;font-size:0.6rem;color:var(--muted);letter-spacing:0.3px"></div>
   </div>
   <div class="nc">
     <div class="nc-title" data-i18n="bootstrap-title">Connect a New Node</div>

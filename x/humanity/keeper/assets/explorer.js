@@ -2255,9 +2255,16 @@ async function loadTopology() {
         // Unreachable peer: say so, never assert a role that was never read.
         const role = n.roleKnown ? (n.isPrimary ? 'Primary' : 'Secondary') : 'Node (role unverified)';
         const tag = n.self ? ' (this node)' : '';
-        const mismatch = n.gitCommit && commits.length > 1 && !allSame;
-        const commitLine = '<div class="ndesc" style="' + (mismatch ? 'color:var(--dag-red);font-weight:700' : 'color:var(--muted)') + '" title="Build commit this node is running — compare across nodes to confirm the fleet is in sync">'
-          + (n.gitCommit ? ('commit ' + sanitize(n.gitCommit) + (mismatch ? ' ⚠ differs from other nodes' : '')) : 'commit — (peer unreachable from this page, e.g. plain-HTTP node on an HTTPS page)')
+        // FIX (2026-08-16, reported live): every card used to be tagged
+        // "⚠ differs from other nodes" whenever the builds were not all
+        // identical — so with two nodes on two commits, BOTH were marked as
+        // the odd one out, which cannot be true of both at once. A short
+        // SHA carries no ordering either, so the page cannot tell which node
+        // is behind; claiming per-node fault was inventing information it
+        // does not have. Each card now simply states its own build, and the
+        // fleet-level observation is made ONCE, below the grid.
+        const commitLine = '<div class="ndesc" style="color:var(--muted)" title="Build commit this node is running">'
+          + (n.gitCommit ? ('commit ' + sanitize(n.gitCommit)) : 'commit — (not reported by this node)')
           + '</div>';
         return '<div class="nbox">' +
           '<div class="nstat"><span class="ndot"></span>' + sanitize(role + tag) + '</div>' +
@@ -2266,6 +2273,24 @@ async function loadTopology() {
           commitLine +
           '</div>';
       }).join('');
+
+      // One fleet-level statement, made once. Two nodes on two builds is the
+      // normal look of a rollout in progress — each box is deployed in turn —
+      // so this reports the fact without calling it a fault. It only becomes
+      // one if it stays that way, and a human reading this line can tell the
+      // difference; the page cannot, because a short SHA has no ordering.
+      const fleetNote = document.getElementById('fleet-build-note');
+      if (fleetNote) {
+        if (commits.length > 1 && !allSame) {
+          const distinct = [];
+          commits.forEach(function(c) { if (distinct.indexOf(c) === -1) distinct.push(c); });
+          fleetNote.textContent = distinct.length + ' different builds across ' + commits.length +
+            ' nodes (' + distinct.join(', ') + ') — expected while a deploy rolls from one box to the next.';
+          fleetNote.style.display = '';
+        } else {
+          fleetNote.style.display = 'none';
+        }
+      }
     }
 
     if (svg) renderTopologySVG(svg, nodes);
