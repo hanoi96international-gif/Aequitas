@@ -124,14 +124,22 @@ describe("AequitasV7 _confirmAlive UBI-forfeiture fix (P0 regression)", async fu
 
     const balanceBeforeWakeup = await v7.read.balanceOf([w1.account.address]);
     const fairShareAtWakeup = await v7.read.fairShare();
+    const poolAtWakeup = await v7.read.ubiPool();
+    // Since v7.14 (RED 1) the wake-up bonus is funded from ubiPool instead of
+    // minted, so it is one fairShare() OR whatever the pool can afford,
+    // whichever is smaller. This test is about the owed-UBI credit, not about
+    // the bonus, so it computes the bonus the same way the contract does
+    // rather than assuming a full fairShare().
+    const expectedBonus =
+      fairShareAtWakeup < poolAtWakeup ? fairShareAtWakeup : poolAtWakeup;
 
-    // Wake up: this returns the escrow principal + one fairShare() wake-up
-    // bonus mint. It should ALSO credit owedAtWakeup, mirroring claimUBI().
+    // Wake up: this returns the escrow principal + the wake-up bonus. It should
+    // ALSO credit owedAtWakeup, mirroring claimUBI().
     await v7.write.confirmAlive({ account: w1.account });
 
     const balanceAfterWakeup = await v7.read.balanceOf([w1.account.address]);
     const actualIncrease = balanceAfterWakeup - balanceBeforeWakeup;
-    const expectedIncrease = escrowedAmount + fairShareAtWakeup + owedAtWakeup;
+    const expectedIncrease = escrowedAmount + expectedBonus + owedAtWakeup;
 
     // THE BUG: current AequitasV7 code sets ubiClaimed[w1] = ubiPerHumanAccumulated
     // without ever adding owedAtWakeup to balanceOf[w1]. actualIncrease will
@@ -143,7 +151,7 @@ describe("AequitasV7 _confirmAlive UBI-forfeiture fix (P0 regression)", async fu
       expectedIncrease,
       `confirmAlive() must credit the UBI owed at wake-up. ` +
         `balanceOf increased by ${actualIncrease} but should have increased by ` +
-        `${expectedIncrease} (escrow ${escrowedAmount} + wake-up bonus ${fairShareAtWakeup} + owed UBI ${owedAtWakeup}). ` +
+        `${expectedIncrease} (escrow ${escrowedAmount} + wake-up bonus ${expectedBonus} + owed UBI ${owedAtWakeup}). ` +
         `Missing ${expectedIncrease - actualIncrease} wei of AEQ that was already deducted from ubiPool ` +
         `on w1's behalf but never landed in balanceOf, escrowOf, or ubiPool — a silent, permanent leak ` +
         `that breaks SUM(balanceOf)+SUM(escrowOf)+ubiPool == totalSupply.`,

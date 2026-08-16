@@ -607,6 +607,17 @@ return make([]byte, 32), nil
 return nil, fmt.Errorf("no code at %s", to.Hex())
 }
 
+// FIX (pre-launch audit 2026-08-16): some calls modify state for an address
+// or nullifier that is only reachable THROUGH storage which the call itself
+// then clears (a swept human's guardian and biometric records, a revoker's
+// guardian). Read those pointers now, while sdb is still the pre-call state —
+// after the call the pointer is gone and the write can no longer be found.
+var preAddrs []common.Address
+var releasedNullifiers [][32]byte
+if persist {
+preAddrs, releasedNullifiers = extractPreCallEntities(sdb, to, from, data)
+}
+
 txCtx := vm.TxContext{Origin: from, GasPrice: big.NewInt(0)}
 evm := vm.NewEVM(blockContext(ts), txCtx, sdb, chainConfig(), vm.Config{})
 
@@ -640,8 +651,9 @@ if commitErr != nil {
 fmt.Printf("[EVM] revert Commit failed: %v\n", commitErr)
 } else {
 touchedAddrs, touchedCommitments := extractTouchedEntities(from, data)
+touchedAddrs = append(touchedAddrs, preAddrs...)
 _, _, calldataNullifier := extractTouchedEntitiesWithNullifier(from, data)
-e.dumpAndPersistStorageWithNullifier(root, db, to, touchedAddrs, touchedCommitments, calldataNullifier)
+e.dumpAndPersistStorageWithNullifier(root, db, to, touchedAddrs, touchedCommitments, calldataNullifier, releasedNullifiers)
 }
 // P0-3: Go-State is authoritative. Removed syncBalancesFromDB — it overwrote
 // correct Go-state with stale EVM-memory values causing balance divergence.
@@ -681,6 +693,11 @@ var v7AddressMappingSlots = []int64{
 14, // pendingGuardian
 15, // guardianRequestedAt
 16, // wardCount
+// Slots 17-26 are CAPS[5]+THRESHOLDS[5] (see v7ArrayBaseSlots below).
+// Added by the pre-launch audit 2026-08-16, declared last in the contract
+// precisely so nothing above renumbers:
+27, // escrowedAt   (RED 2 — anchors the escrow recovery window)
+28, // nullifierOf  (RED 3 — lets a sweep release the biometric record)
 }
 
 // v7ArrayBaseSlots: the 10 fixed-size-array slots (CAPS[5] + THRESHOLDS[5]).
@@ -711,7 +728,24 @@ var v7ArrayBaseSlots = []int64{17, 18, 19, 20, 21, 22, 23, 24, 25, 26}
 // solc 0.8.28 doesn't support constant/immutable arrays, see the
 // contract's own comment on those two lines), so the slot lists above are
 // unchanged.
-const v7SlotsVerifiedForVersion = "v7.13-redundant-sload-cleanup"
+// v7.14-prelaunch-audit (pre-launch audit 2026-08-16): verified —
+// this version DOES add state, the first version to do so since these lists
+// were written. Three mappings were appended AFTER THRESHOLDS
+// (escrowedAt=27, nullifierOf=28, grantIssuedTo=29), deliberately last so no
+// existing slot moved: slots 0-26 are byte-for-byte where they were. The two
+// address-keyed ones are listed in v7AddressMappingSlots above;
+// grantIssuedTo is keyed by bytes32 like usedNullifiers, so it is persisted
+// alongside slot 8 in dumpAndPersistStorageWithNullifier instead.
+//
+// KNOWN LIMIT, pre-existing and NOT introduced here: extractTouchedEntities
+// has an explicit case only for registerWithSig; every other selector falls
+// to `default`, which reports only the CALLER as touched. So a third party
+// calling triggerEscrowToUBI(human) persists nothing for `human` — including
+// RED 3's release of usedNullifiers/nullifierOf. That path already failed to
+// persist isHuman/escrowOf/wardCount the same way, so this is one more
+// instance of an existing gap rather than a new one; it is written down here
+// because RED 3's on-chain half depends on it.
+const v7SlotsVerifiedForVersion = "v7.14-prelaunch-audit"
 
 // checkV7SlotsMatchDeployedVersion prints a prominent warning if
 // V7ContractVersion has been bumped (contract_deploy.go) without a
@@ -781,15 +815,134 @@ commitment := new(big.Int).SetBytes(data[260 : 260+32])
 commitments = append(commitments, commitment)
 }
 return addrs, commitments
+
+// FIX (pre-launch audit 2026-08-16): every one of these used to fall through
+// to `default` below, which reports ONLY the caller. Each of them writes
+// per-address state for an address given in the CALLDATA, not for msg.sender:
+//
+//	transfer(to, …)              balanceOf[to], lastActivity[to], lastDemurrage[to]
+//	triggerEscrow(human)         balanceOf/escrowOf/escrowedAt/lastDemurrage[human]
+//	triggerEscrowToUBI(human)    isHuman/escrowOf/ubiClaimed/nullifierOf[human]
+//	guardianConfirmAlive(ward)   the ward's whole escrow recovery
+//	applyWealthCap(human)        balanceOf[human]
+//	applyDemurrage(human)        balanceOf/lastDemurrage[human]
+//	proposeGuardian(guardian)    pendingGuardian/guardianRequestedAt[msg.sender]
+//
+// Every one of those writes succeeded in the live EVM and was then dropped
+// on the floor, because the address never entered touchedAddrs. The single
+// shared ABI shape makes this cheap: one leading `address` argument occupies
+// bytes 4..36, and common.BytesToAddress takes the low 20 bytes of it.
+case "a9059cbb", // transfer(address,uint256)
+	"d3d2770c", // triggerEscrow(address)
+	"e54655d2", // triggerEscrowToUBI(address)
+	"35a1e72b", // guardianConfirmAlive(address)
+	"434c099e", // applyWealthCap(address)
+	"e14f2020", // applyDemurrage(address)
+	"c304555f": // proposeGuardian(address)
+addrs := []common.Address{from}
+if len(data) >= 36 {
+subject := common.BytesToAddress(data[4:36])
+if subject != (common.Address{}) && subject != from {
+addrs = append(addrs, subject)
+}
+}
+return addrs, nil
 default:
 // Unknown selector: at minimum, the caller's own address may have
 // been touched (e.g. a simple register() or transfer() from msg.sender).
+// Anything reached here that writes state for a THIRD address needs its
+// own case above, and — if that address is only discoverable from
+// storage rather than calldata — an entry in extractPreCallEntities.
 return []common.Address{from}, nil
 }
 }
 
-func (e *EVMEngine) dumpAndPersistStorageWithNullifier(root common.Hash, db state.Database, addr common.Address, touchedAddrs []common.Address, touchedCommitments []*big.Int, calldataNullifier *[32]byte) {
+// extractPreCallEntities covers what calldata alone cannot: addresses and
+// nullifiers that a call modifies but only NAMES in storage, which means they
+// have to be read BEFORE the call runs — afterwards the very writes we want to
+// persist have already erased the pointer to them.
+//
+// FIX (pre-launch audit 2026-08-16). Three cases, all real:
+//
+//   - triggerEscrowToUBI(human) releases the human's biometric records
+//     (usedNullifiers/grantIssuedTo, keyed by the nullifier held in
+//     nullifierOf[human]) and decrements wardCount on guardianOf[human].
+//     Both pointers are cleared by the call itself.
+//   - revokeGuardian() decrements wardCount on the CALLER's guardian, an
+//     address that appears nowhere in the calldata.
+//   - confirmGuardian() moves the caller between pendingGuardian and
+//     guardianOf, changing wardCount on both.
+//
+// sdb is the pre-call state, which is exactly what this needs. Reads are
+// cheap (a handful of GetState calls on slots this package already computes
+// elsewhere) and only happen for the three selectors below.
+func extractPreCallEntities(sdb *state.StateDB, contract, from common.Address, data []byte) ([]common.Address, [][32]byte) {
+	if len(data) < 4 {
+		return nil, nil
+	}
+	readAddr := func(holder common.Address, base int64) (common.Address, bool) {
+		v := sdb.GetState(contract, mappingSlot(holder.Bytes(), base))
+		a := common.BytesToAddress(v.Bytes())
+		return a, a != (common.Address{})
+	}
+
+	var addrs []common.Address
+	var nullifiers [][32]byte
+
+	switch fmt.Sprintf("%x", data[:4]) {
+	case "e54655d2": // triggerEscrowToUBI(address)
+		if len(data) < 36 {
+			return nil, nil
+		}
+		human := common.BytesToAddress(data[4:36])
+		if g, ok := readAddr(human, 13); ok { // guardianOf[human]
+			addrs = append(addrs, g)
+		}
+		// nullifierOf[human] (slot 28) is the key into usedNullifiers (slot 8)
+		// and grantIssuedTo (slot 29). The sweep zeroes the first two; the
+		// zeroing is the state change that has to survive, so it is persisted
+		// unconditionally rather than only when non-zero.
+		if n := sdb.GetState(contract, mappingSlot(human.Bytes(), 28)); n != (common.Hash{}) {
+			var key [32]byte
+			copy(key[:], n.Bytes())
+			nullifiers = append(nullifiers, key)
+		}
+	case "b44be095": // revokeGuardian()
+		if g, ok := readAddr(from, 13); ok {
+			addrs = append(addrs, g)
+		}
+	case "1e0ea61e": // confirmGuardian()
+		if g, ok := readAddr(from, 14); ok { // pendingGuardian[msg.sender]
+			addrs = append(addrs, g)
+		}
+		if g, ok := readAddr(from, 13); ok { // the guardian being replaced
+			addrs = append(addrs, g)
+		}
+	}
+	return addrs, nullifiers
+}
+
+func (e *EVMEngine) dumpAndPersistStorageWithNullifier(root common.Hash, db state.Database, addr common.Address, touchedAddrs []common.Address, touchedCommitments []*big.Int, calldataNullifier *[32]byte, releasedNullifiers [][32]byte) {
 e.dumpAndPersistStorage(root, db, addr, touchedAddrs, touchedCommitments)
+// FIX (pre-launch audit 2026-08-16): nullifiers RELEASED by a sweep must be
+// persisted even though their new value is zero. The guard below deliberately
+// skips zero values — correct for a registration, where a zero means "this
+// call did not touch that slot" — but a release IS the zeroing, so skipping
+// it would leave the old non-zero value in the database and the ban would
+// silently come back on the next restart. These keys were read from the
+// pre-call state precisely because the call erases the pointer to them.
+if len(releasedNullifiers) > 0 {
+addrStr := strings.ToLower(addr.Hex())
+if freshDB, err := state.New(root, db, nil); err == nil {
+for _, n := range releasedNullifiers {
+key := common.BytesToHash(n[:])
+for _, base := range []int64{8, 29} { // usedNullifiers, grantIssuedTo
+slot := mappingSlotBytes32(key, base)
+e.chainState.SaveStorageSlot(addrStr, slot.Hex(), freshDB.GetState(addr, slot).Hex())
+}
+}
+}
+}
 if calldataNullifier != nil {
 addrStr := strings.ToLower(addr.Hex())
 nullKey := common.BytesToHash(calldataNullifier[:])
@@ -799,6 +952,17 @@ if err2 == nil {
 nullSlot := mappingSlotBytes32(nullKey, 8)
 val := freshDB2.GetState(addr, nullSlot)
 if val != (common.Hash{}) { e.chainState.SaveStorageSlot(addrStr, nullSlot.Hex(), val.Hex()) }
+// FIX (RED 3, pre-launch audit 2026-08-16): grantIssuedTo (slot 29) is
+// keyed by the same bytes32 nullifier, so it needs the same treatment
+// as slot 8 above — it is not an address mapping and would otherwise
+// never be persisted at all. It is what stops a swept-and-re-registered
+// human from drawing a second INITIAL_GRANT; if it silently failed to
+// persist, the guard would evaporate on the next restart and the
+// re-registration path would mint fresh money every time.
+grantSlot := mappingSlotBytes32(nullKey, 29)
+if gv := freshDB2.GetState(addr, grantSlot); gv != (common.Hash{}) {
+e.chainState.SaveStorageSlot(addrStr, grantSlot.Hex(), gv.Hex())
+}
 }
 }
 }

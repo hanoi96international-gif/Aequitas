@@ -108,9 +108,72 @@ contract AequitasV7 {
     // CAPS above — see that comment. Left as a plain storage array.
     uint256[5] public THRESHOLDS = [0, 100, 1_000, 10_000, 100_000];
 
+    // ─────────────────────────────────────────────────────────────────────
+    // Storage added by the pre-launch audit 2026-08-16.
+    //
+    // DECLARED LAST, DELIBERATELY. The Go keeper persists this contract's EVM
+    // state through hardcoded slot lists (v7SimpleSlots /
+    // v7AddressMappingSlots / v7ArrayBaseSlots in evm_engine.go), and
+    // TestV7SlotListsMatchContractSource derives the layout from THIS file to
+    // check them. Inserting these three anywhere above would renumber
+    // CAPS/THRESHOLDS and silently break currentPhase() on the live chain.
+    // Appending leaves every existing slot exactly where it is.
+    //
+    // Any variable added here must ALSO be added to the Go slot lists, or the
+    // live EVM will accept writes to it that are never persisted.
+    // ─────────────────────────────────────────────────────────────────────
+
+    // FIX (RED 2): escrow and forfeiture were BOTH measured from lastActivity,
+    // so the ~550-day recovery window the constants promise
+    // (INACTIVITY_UBI - INACTIVITY_ESCROW) only existed if someone called
+    // triggerEscrow punctually on day 910. Called late — on day 1460 or after
+    // — escrow and forfeiture became reachable in the same block and a human's
+    // balance could be swept with no window at all. The Go keeper anchors
+    // forfeiture to the escrow row's own moved_at (guardian.go:622); this is
+    // that anchor.
+    mapping(address => uint256) public escrowedAt;
+
+    // FIX (RED 3): triggerEscrowToUBI clears isHuman but used to leave
+    // usedNullifiers/usedCommitments set forever. A biometric nullifier is
+    // deterministic and unregenerable, so a LIVING person swept for inactivity
+    // was permanently barred from this currency — "one human = one
+    // registration" silently became "one human = one chance". Releasing the
+    // records requires knowing which nullifier belongs to the swept address,
+    // which nothing recorded.
+    mapping(address => bytes32) public nullifierOf;
+
+    // Guards the abuse that releasing a nullifier would otherwise open: move
+    // the balance out, wait out the inactivity window, get swept, re-register,
+    // collect a SECOND INITIAL_GRANT. The grant is once per biometric for all
+    // time; a returning human comes back as a human (UBI entitlement, guardian
+    // rights, cap protection) but not with new money. This keeps "money is
+    // created in exactly one place, once per person" literally true.
+    mapping(bytes32 => bool) public grantIssuedTo;
+
     event Registered(address indexed human, uint256 commitment, uint256 grant);
-    /// @dev Standard ERC-20 Transfer event used to signal mints (from == address(0)).
-    /// Emitted in _confirmAlive() for the wake-up bonus mint so off-chain indexers can track supply changes.
+    /// @dev Standard ERC-20 Transfer event.
+    ///
+    /// FIX (F1, pre-launch audit 2026-08-16): this event used to be emitted in
+    /// exactly ONE place — the escrow wake-up mint — so every ERC-20 indexer,
+    /// block explorer and wallet that reconstructs balances from Transfer logs
+    /// showed every holder at zero. RED 1 then removed that mint, which would
+    /// have left the contract emitting no Transfer events at all. It is now
+    /// emitted on every path that moves value, under one consistent model:
+    ///
+    ///   address(0)       = creation and destruction (registration grant, burn)
+    ///   address(this)    = value held BY THE CONTRACT, i.e. ubiPool plus every
+    ///                      escrowOf balance
+    ///   any other address = that holder's balanceOf
+    ///
+    /// Replaying every Transfer log therefore reproduces balanceOf exactly for
+    /// every ordinary address. NOTE the one deliberate asymmetry: the contract
+    /// does NOT keep balanceOf[address(this)] in storage — the value it holds
+    /// lives in `ubiPool` and in the per-human `escrowOf` entries, because the
+    /// core invariant is defined over those (SUM(balanceOf)+SUM(escrowOf)+
+    /// ubiPool == totalSupply) and mirroring it into balanceOf would double
+    /// count it. An indexer summing logs for address(this) is therefore
+    /// tracking `ubiPool + SUM(escrowOf)`, which is the honest reading; query
+    /// ubiPool() / escrowOf() for the split.
     event Transfer(address indexed from, address indexed to, uint256 value);
     event Transferred(address indexed from, address indexed to, uint256 amount, uint256 fee);
     event DemurrageApplied(address indexed human, uint256 amount);
@@ -118,6 +181,10 @@ contract AequitasV7 {
     event UBIAccumulated(uint256 addedPerHuman, uint256 total);
     event UBIClaimed(address indexed human, uint256 amount);
     event EscrowCreated(address indexed human, uint256 amount);
+    /// @dev The escrow wake-up bonus, funded from ubiPool (see _confirmAlive).
+    /// Replaces the Transfer(address(0), …) mint event that used to be emitted
+    /// here: the bonus is a transfer out of the pool now, not new money.
+    event WakeUpBonusPaid(address indexed human, uint256 amount);
     event EscrowReleased(address indexed human, uint256 amount);
     event EscrowToUBI(address indexed human, uint256 amount);
     event GuardianProposed(address indexed human, address indexed proposed);
@@ -223,10 +290,21 @@ contract AequitasV7 {
         usedCommitments[commitment] = true;
         commitmentOf[claimedHuman] = commitment;
         usedNullifiers[effectiveNullifier] = claimedHuman;
+        // FIX (RED 3): record which biometric this address registered with, so
+        // triggerEscrowToUBI can release it if this human is ever swept.
+        nullifierOf[claimedHuman] = effectiveNullifier;
         isHuman[claimedHuman] = true;
         totalHumans++;
-        balanceOf[claimedHuman] += INITIAL_GRANT;
-        totalSupply += INITIAL_GRANT;
+        // FIX (RED 3): the initial grant is once per BIOMETRIC, not once per
+        // registration. Re-registering after an inactivity sweep restores
+        // personhood — UBI entitlement, guardian rights, cap protection — but
+        // mints nothing, so releasing the nullifier above cannot be farmed for
+        // a second 1000 AEQ by anyone willing to empty their wallet and wait
+        // out the window.
+        uint256 grant = grantIssuedTo[effectiveNullifier] ? 0 : INITIAL_GRANT;
+        grantIssuedTo[effectiveNullifier] = true;
+        balanceOf[claimedHuman] += grant;
+        totalSupply += grant;
         ubiClaimed[claimedHuman] = ubiPerHumanAccumulated;
         lastActivity[claimedHuman] = block.timestamp;
         lastDemurrage[claimedHuman] = block.timestamp;
@@ -234,7 +312,10 @@ contract AequitasV7 {
         // External call last
         require(bioVerifier.verifyProof(pA, pB, pC, pubSignals), "Invalid proof");
 
-        emit Registered(claimedHuman, commitment, INITIAL_GRANT);
+        emit Registered(claimedHuman, commitment, grant);
+        // FIX (F1): the registration mint is the one place this currency
+        // creates money, and it emitted no standard Transfer event at all.
+        if (grant > 0) emit Transfer(address(0), claimedHuman, grant);
     }
 
     function _recoverSigner(bytes32 ethSignedHash, bytes calldata signature) internal pure returns (address) {
@@ -275,11 +356,29 @@ contract AequitasV7 {
         uint256 ubiContrib = (fee * UBI_SHARE_BPS) / 10_000;
         uint256 burned = fee - ubiContrib;
         balanceOf[msg.sender] = senderBalance - amount;
+        // FIX (RED 4, pre-launch audit 2026-08-16): settle the RECIPIENT's
+        // demurrage before crediting them. transfer() updated lastActivity[to]
+        // but never lastDemurrage[to], so an incoming payment was retroactively
+        // charged demurrage for the recipient's entire dormant period — money
+        // taxed for years during which they did not hold it. Measured by the
+        // audit: 35.64 AEQ taken from a 900 AEQ payment held for one block.
+        // The Go keeper settles the recipient immediately before the credit
+        // (state.go:4972/4976); this is the same ordering. Guarded on isHuman
+        // to match the lastActivity line below — non-humans are not demurraged
+        // anywhere else in this contract either.
+        if (isHuman[to]) _applyDemurrage(to);
         balanceOf[to] += amount - fee;
         ubiPool += ubiContrib;
         totalSupply -= burned;
         lastActivity[msg.sender] = block.timestamp;
         if (isHuman[to]) lastActivity[to] = block.timestamp;
+        // FIX (F1): emit the standard events BEFORE _applyWealthCap, which
+        // emits its own, so the log order matches the order value actually
+        // moved. The transfer splits three ways and each leg is reported:
+        // what the recipient got, what went to the pool, and what was burned.
+        emit Transfer(msg.sender, to, amount - fee);
+        if (ubiContrib > 0) emit Transfer(msg.sender, address(this), ubiContrib);
+        if (burned > 0) emit Transfer(msg.sender, address(0), burned);
         _applyWealthCap(to);
         emit Transferred(msg.sender, to, amount, fee);
         return true;
@@ -324,6 +423,7 @@ contract AequitasV7 {
         ubiPool += fee;
         lastDemurrage[human] = block.timestamp;
         emit DemurrageApplied(human, fee);
+        emit Transfer(human, address(this), fee); // FIX (F1)
     }
 
     function applyWealthCap(address human) external { require(isHuman[human],"Not human"); _applyWealthCap(human); }
@@ -340,6 +440,7 @@ contract AequitasV7 {
         balanceOf[human] = cap;
         ubiPool += excess;
         emit WealthCapApplied(human, excess);
+        emit Transfer(human, address(this), excess); // FIX (F1)
     }
 
     function accumulateUBI() external {
@@ -372,6 +473,10 @@ contract AequitasV7 {
         // fairShare() and wealthCap() to drift upward with every claim.
         // totalSupply += owed;  <-- REMOVED
         lastActivity[msg.sender] = block.timestamp;
+        // FIX (F1): emitted before _applyWealthCap so the log order follows the
+        // order value moved. The UBI was already debited from ubiPool by
+        // accumulateUBI, so from the contract's balance it leaves here.
+        emit Transfer(address(this), msg.sender, owed);
         _applyWealthCap(msg.sender);
         emit UBIClaimed(msg.sender, owed);
     }
@@ -393,6 +498,10 @@ contract AequitasV7 {
         if (escrowOf[human] > 0) {
             uint256 amount = escrowOf[human];
             escrowOf[human] = 0;
+            // FIX (RED 2): clear the escrow stamp on recovery, so a LATER
+            // escrow starts its recovery window from its own beginning rather
+            // than inheriting the previous cycle's already-elapsed clock.
+            escrowedAt[human] = 0;
             // FIX: lastDemurrage was never reset on escrow release. Without
             // this, the very next _applyDemurrage(human) call computes
             // elapsed = block.timestamp - lastDemurrage[human] over the ENTIRE
@@ -422,22 +531,47 @@ contract AequitasV7 {
             // fix. Mirrors claimUBI()'s guard and calculation exactly.
             require(ubiClaimed[human] <= ubiPerHumanAccumulated, "UBI accounting error");
             uint256 owedUBI = ubiPerHumanAccumulated - ubiClaimed[human];
-            // NOTE (FIX 5 / FIX 9): When recovering from escrow, the human receives their
-            // escrowed amount PLUS one fairShare() of newly minted AEQ as an incentive to
-            // confirm aliveness. totalSupply increases by fairShare() (not by owedUBI — that
-            // AEQ was already counted in totalSupply when accumulated into ubiPool, exactly
-            // as in claimUBI()) to maintain the supply invariant. This is intentional
-            // economic policy — not a bug.
-            // Three events are emitted for auditability:
-            //   EscrowReleased — the return of the original escrowed balance
-            //   Transfer(address(0), human, fs) — the mint of the wake-up bonus
-            //   UBIClaimed — the UBI entitlement accrued while in escrow, same event claimUBI() emits
-            balanceOf[human] += amount + fs + owedUBI;
-            totalSupply += fs;
+            // FIX (RED 1, pre-launch audit 2026-08-16): the wake-up bonus is
+            // still paid — the incentive to prove aliveness is worth keeping —
+            // but it is FUNDED FROM ubiPool instead of minted.
+            //
+            // The previous NOTE here called the mint "intentional economic
+            // policy — not a bug", and as policy the reasoning was sound. As
+            // arithmetic it was not: fairShare() is totalSupply/totalHumans, so
+            // a single registered human's bonus IS the entire supply. One
+            // person alone could double the money supply every 910 days by
+            // going quiet and waking up — the audit measured 1000 AEQ becoming
+            // 32000 AEQ over five cycles with one registration. Nothing gated
+            // it: triggerEscrow is permissionless and confirmAlive is free.
+            //
+            // That contradicts this contract's own headline invariant and the
+            // Go keeper, where TotalSupply() IS humanCount * 1000 by
+            // construction (state.go:5939-5966) — money is created in exactly
+            // one place, registration, and nowhere else. Paying the bonus out
+            // of ubiPool keeps the incentive, keeps
+            // SUM(balanceOf)+SUM(escrowOf)+ubiPool == totalSupply exact, and
+            // leaves totalSupply untouched. If the pool is short, the bonus is
+            // whatever the pool can afford (possibly zero) — a bonus that
+            // cannot be funded is simply not paid, rather than conjured.
+            //
+            // Events emitted for auditability (invariant [5]):
+            //   EscrowReleased    — the return of the original escrowed balance
+            //   WakeUpBonusPaid   — the bonus, and the matching ubiPool debit
+            //   UBIClaimed        — the entitlement accrued while in escrow
+            uint256 bonus = fs;
+            if (bonus > ubiPool) bonus = ubiPool;
+            ubiPool -= bonus;
+            balanceOf[human] += amount + bonus + owedUBI;
             ubiClaimed[human] = ubiPerHumanAccumulated;
             emit EscrowReleased(human, amount);
-            if (fs > 0) emit Transfer(address(0), human, fs); // mint event for the wake-up bonus
+            if (bonus > 0) emit WakeUpBonusPaid(human, bonus);
             if (owedUBI > 0) emit UBIClaimed(human, owedUBI);
+            // FIX (F1): one standard event for everything leaving the
+            // contract's custody here — the returned escrow, the pool-funded
+            // bonus and the UBI accrued while asleep. The three events above
+            // give the breakdown; this one keeps balance reconstruction from
+            // logs exact.
+            emit Transfer(address(this), human, amount + bonus + owedUBI);
             // FIX (P2, launch audit 2026-07-03): a returning human's pre-escrow
             // balance (which could already have been near the OLD cap) plus the
             // fairShare() wake-up bonus above can exceed the CURRENT cap. Every
@@ -453,9 +587,27 @@ contract AequitasV7 {
         require(isHuman[human], "Not human");
         require(escrowOf[human] == 0, "Already in escrow");
         require(block.timestamp >= lastActivity[human] + INACTIVITY_ESCROW, "Not inactive enough");
+        // FIX (E4, pre-launch audit 2026-08-16): settle demurrage on the way IN.
+        // This used to zero the balance without ever calling _applyDemurrage,
+        // and _confirmAlive then reset lastDemurrage outright on the way out —
+        // so routing through escrow FORGAVE every second of decay accrued over
+        // the 910+ idle days. Combined with the old wake-up mint, staying
+        // maximally idle was strictly more profitable than participating, which
+        // inverts the entire premise of a demurrage currency. The Go keeper
+        // settles on both edges (guardian.go:404-406 in, :369 out); this is the
+        // inbound edge. The outbound reset in _confirmAlive stays correct and
+        // necessary: while in escrow the human genuinely holds nothing, so no
+        // decay should accrue for that span either.
+        _applyDemurrage(human);
         uint256 amount = balanceOf[human];
         balanceOf[human] = 0;
         escrowOf[human] = amount;
+        // FIX (F1): value moved from the human to the contract's custody.
+        if (amount > 0) emit Transfer(human, address(this), amount);
+        // FIX (RED 2): stamp when escrow actually began. triggerEscrowToUBI
+        // measures the recovery window from here, not from lastActivity, so
+        // the window is granted in full however late this call happens.
+        escrowedAt[human] = block.timestamp;
         emit EscrowCreated(human, amount);
     }
 
@@ -465,6 +617,16 @@ contract AequitasV7 {
         require(isHuman[human], "Not a registered human");
         require(escrowOf[human] > 0, "Not in escrow");
         require(block.timestamp >= lastActivity[human] + INACTIVITY_UBI, "Too soon");
+        // FIX (RED 2): the check above alone made the promised recovery window
+        // collapse to nothing whenever triggerEscrow ran late — both stages
+        // read the same lastActivity stamp, so on day 1460 a caller could put
+        // a human into escrow and sweep them in the very next instruction.
+        // The window is a promise about time spent IN ESCROW, so it must be
+        // measured from when escrow began.
+        require(
+            block.timestamp >= escrowedAt[human] + (INACTIVITY_UBI - INACTIVITY_ESCROW),
+            "Too soon"
+        );
         // FIX (P2-a, audit 2026-07-06): a human who is themselves acting as
         // guardian for others (wardCount[human] > 0) must not be swept away
         // here — doing so would clear isHuman[human] while every ward's
@@ -500,6 +662,28 @@ contract AequitasV7 {
         }
         isHuman[human] = false;
         totalHumans--;
+        // FIX (RED 3): release this human's biometric records along with their
+        // personhood. Without this, an inactivity sweep was irreversible for a
+        // LIVING person: their nullifier is derived from their body, cannot be
+        // regenerated or chosen, and stayed marked as used forever — so the
+        // one currency premised on "money exists because people exist" would
+        // have permanently refused to recognise an existing person. The Go
+        // keeper never de-registers anyone at all; this is the closest the
+        // contract can come to that guarantee while keeping the sweep.
+        //
+        // Re-registration mints nothing (see grantIssuedTo in registerWithSig),
+        // so this cannot be farmed for a second grant.
+        escrowedAt[human] = 0;
+        bytes32 sweptNullifier = nullifierOf[human];
+        if (sweptNullifier != bytes32(0)) {
+            usedNullifiers[sweptNullifier] = address(0);
+            nullifierOf[human] = bytes32(0);
+        }
+        uint256 sweptCommitment = commitmentOf[human];
+        if (sweptCommitment != 0) {
+            usedCommitments[sweptCommitment] = false;
+            commitmentOf[human] = 0;
+        }
         // FIX (wardCount leak): revokeGuardian()'s comment claimed this cleanup
         // was "handled by triggerEscrowToUBI", but it never actually was — a
         // ward swept to UBI by inactivity kept occupying a wardCount slot on
