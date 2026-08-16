@@ -731,7 +731,7 @@ if os.Getenv("DISTRIBUTION_ENABLED") == "false" {
 	})
 } else {
 	fmt.Printf("[POOLS] Distribution already ran within the last 24h on this or another node — skipping\n")
-	keeper.RecordDistributionOutcome("skipped", "another node already distributed within the last 24h")
+	keeper.RecordDistributionOutcome("ran_elsewhere", "another node already distributed within the last 24h")
 }
 if retrySoon {
 firstTarget = time.Now().Add(distributionHealthRetryInterval)

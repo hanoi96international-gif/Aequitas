@@ -91,3 +91,22 @@ func resetDistributionOutcomeForTest() {
 	lastDistribution.attempts = 0
 	lastDistribution.lastRan = time.Time{}
 }
+
+// Standing down because the distributed lock shows another validator already
+// ran the round is the mechanism working — not a decline. Shipping this metric
+// without that distinction made Contabo1 report itself unhealthy within the
+// hour, which is precisely the false alarm the metric exists to replace.
+func TestDistributionHealth_StandingDownForAnotherNodeIsHealthy(t *testing.T) {
+	resetDistributionOutcomeForTest()
+	cs := newTestState()
+	RecordDistributionOutcome("ran_elsewhere", "another node already distributed within the last 24h")
+
+	h := cs.DistributionHealth()
+	if h["healthy"] != true {
+		t.Fatalf("deferring to another validator must read as healthy, got %v (problem: %v)",
+			h["healthy"], h["problem"])
+	}
+	if h["problem"] != nil {
+		t.Errorf("no problem should be reported, got %v", h["problem"])
+	}
+}

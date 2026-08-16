@@ -37,7 +37,7 @@ import (
 type distributionOutcome struct {
 	mu       sync.Mutex
 	at       time.Time
-	outcome  string // "ran" | "skipped" | "failed"; empty before the first attempt
+	outcome  string // "ran" | "ran_elsewhere" | "skipped" | "failed"; empty before the first attempt
 	reason   string
 	attempts int
 	lastRan  time.Time // last attempt that actually executed a round
@@ -54,7 +54,12 @@ func RecordDistributionOutcome(outcome, reason string) {
 	lastDistribution.outcome = outcome
 	lastDistribution.reason = reason
 	lastDistribution.attempts++
-	if outcome == "ran" {
+	// "ran_elsewhere" counts as a round that happened: the node stood down
+	// because the distributed lock showed another validator had already done
+	// it, which is the mechanism working, not a fault. Treating it as a
+	// decline made this metric raise the exact kind of false alarm it exists
+	// to replace — observed on Contabo1 within an hour of shipping it.
+	if outcome == "ran" || outcome == "ran_elsewhere" {
 		lastDistribution.lastRan = time.Now()
 	}
 }
@@ -102,7 +107,7 @@ func (cs *ChainState) DistributionHealth() map[string]interface{} {
 	// executed within a day. That is the shape a silently-blocked scheduler
 	// has, and the shape the peer-sync gate produced.
 	stale := !lastDistribution.lastRan.IsZero() && time.Since(lastDistribution.lastRan) > distributionStaleAfter
-	neverRan := lastDistribution.lastRan.IsZero() && lastDistribution.attempts > 0 && lastDistribution.outcome != "ran"
+	neverRan := lastDistribution.lastRan.IsZero() && lastDistribution.attempts > 0
 	out["healthy"] = !(stale || neverRan)
 	if stale {
 		out["problem"] = fmt.Sprintf("no round has executed in %.1f hours despite %d attempt(s) — last outcome %q: %s",
