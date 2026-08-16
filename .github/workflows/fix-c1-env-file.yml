@@ -1,0 +1,79 @@
+name: Remove Contabo1's snapshot source from its env FILE
+
+# Contabo1's running container no longer carries BOOTSTRAP_SNAPSHOT_URL (see
+# normalize-node-env.yml), so its auto-heal now reports:
+#
+#   [AUTO-HEAL] Disabled: AUTO_HEAL_ON_DIVERGENCE=true but
+#   BOOTSTRAP_SNAPSHOT_URL/BOOTSTRAP_SIGNER are not both set — refusing to
+#   self-wipe without a trusted, signed snapshot source.
+#
+# That is the state the authoritative node should be in. It is not durable yet:
+# /root/deploy.sh recreates the container with `--env-file /root/.aequitas.env`,
+# and that file still contains
+#
+#   BOOTSTRAP_SNAPSHOT_URL=http://194.163.188.71:8080/api/snapshot
+#
+# pointing at the secondary. So the next ordinary deploy would hand the primary
+# its self-wipe target back, and its auto-heal — which had a resync PENDING,
+# suppressed only by a 30-minute cooldown — would be armed again.
+#
+# Only Contabo1 is touched. Contabo2 keeps its BOOTSTRAP_SNAPSHOT_URL because it
+# points at Contabo1, which is the correct direction, and its own deploy path
+# (deploy_safe_c2.sh) already preserves the running container's env rather than
+# re-reading the file.
+#
+# Nothing restarts here. The file is what the NEXT deploy will read; the running
+# container is already correct.
+
+on:
+  workflow_dispatch:
+
+jobs:
+  fix:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Edit the env file (no restart)
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: 173.249.37.118
+          username: root
+          key: ${{ secrets.CONTABO_SSH_KEY }}
+          port: 22
+          script_stop: true
+          timeout: 600s
+          command_timeout: 600s
+          script: |
+            set -euo pipefail
+            ENVF=/root/.aequitas.env
+            TS=$(date +%s)
+
+            echo "===== before (keys only) ====="
+            cut -d= -f1 "$ENVF" | sort | tr '\n' ' '; echo
+
+            cp -a "$ENVF" "$ENVF.bak-$TS"
+            echo "backup: $ENVF.bak-$TS"
+
+            # Remove the self-wipe target, and make the one-shot recovery switch
+            # explicitly false rather than merely absent.
+            grep -vE '^(BOOTSTRAP_SNAPSHOT_URL|RESYNC_FROM_SNAPSHOT)=' "$ENVF" > "$ENVF.tmp"
+            printf 'RESYNC_FROM_SNAPSHOT=false\n' >> "$ENVF.tmp"
+            mv "$ENVF.tmp" "$ENVF"
+            chmod 600 "$ENVF"
+
+            echo "===== after (keys only) ====="
+            cut -d= -f1 "$ENVF" | sort | tr '\n' ' '; echo
+
+            echo "===== the two keys that matter ====="
+            grep -E '^(BOOTSTRAP_SNAPSHOT_URL|RESYNC_FROM_SNAPSHOT|BOOTSTRAP_SIGNER)=' "$ENVF" \
+              | sed -E 's/^(BOOTSTRAP_SIGNER)=.*/\1=<set>/' || true
+            if grep -qE '^BOOTSTRAP_SNAPSHOT_URL=' "$ENVF"; then
+              echo "FAILED: BOOTSTRAP_SNAPSHOT_URL is still present"; exit 1
+            fi
+
+            echo "===== sanity: the file still has everything else the node needs ====="
+            for k in DATABASE_URL NODE_KEY NODE_OPERATOR_WALLET PROOF_SERVER_URLS CHAIN_SERVICE_TOKEN SELF_URL; do
+              grep -qE "^$k=" "$ENVF" && echo "  ok      $k" || echo "  MISSING $k"
+            done
+
+            echo "OK: the next deploy will start Contabo1 without a self-wipe target."
+            echo "Roll back with: cp -a $ENVF.bak-$TS $ENVF"
