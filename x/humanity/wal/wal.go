@@ -130,6 +130,33 @@ func Open(path string) (*WAL, error) {
 		f.Close()
 		return nil, fmt.Errorf("wal: could not scan %s: %w", path, err)
 	}
+
+	// FIX (audit 2026-08-16, finding WAL-SEQ): the file alone is not a
+	// sufficient source for the next sequence number. TruncateBefore can
+	// legitimately remove EVERY record, and scan then reports lastSeq 0, so
+	// numbering would restart at 1 and hand out values this log already
+	// issued — breaking the "never reused" guarantee writeBatch states and two
+	// persistent keeper consumers rely on across restarts
+	// (chain_accounts.wal_seq's monotonic UPSERT guard, which silently updates
+	// zero rows for a stale seq, and chain_config.wal_recovery_floor_seq,
+	// which silently skips every record at or below the floor). The
+	// high-water mark written by TruncateBefore survives compaction and is
+	// consulted here; whichever source is higher wins.
+	//
+	// Losing the WAL file itself still restarts numbering — no in-package fix
+	// exists for that, and it is pinned deliberately by
+	// TestWAL_SeqRestartsAtOneWhenFileIsLost. That case must be handled
+	// keeper-side by invalidating the floor and the per-account marker when
+	// the WAL's identity changes.
+	hwm, err := readSeqHighWaterMark(path)
+	if err != nil {
+		f.Close()
+		return nil, fmt.Errorf("wal: could not read sequence high-water mark for %s: %w", path, err)
+	}
+	nextSeq := lastSeq + 1
+	if hwm+1 > nextSeq {
+		nextSeq = hwm + 1
+	}
 	if err := f.Truncate(validEnd); err != nil {
 		f.Close()
 		return nil, fmt.Errorf("wal: could not truncate %s to last valid record: %w", path, err)
@@ -142,7 +169,7 @@ func Open(path string) (*WAL, error) {
 	w := &WAL{
 		path:       path,
 		file:       f,
-		nextSeq:    lastSeq + 1,
+		nextSeq:    nextSeq,
 		appendCh:   make(chan *appendRequest, MaxBatchSize*8),
 		writerDone: make(chan struct{}),
 	}
@@ -336,6 +363,17 @@ func (w *WAL) TruncateBefore(before uint64) error {
 		os.Remove(tmpPath)
 		return fmt.Errorf("wal: could not close compacted file: %w", err)
 	}
+	// FIX (audit 2026-08-16, finding WAL-SEQ): persist the highest sequence
+	// number ever issued BEFORE the rename makes the compacted file live.
+	// Compaction is the one operation that can remove the only record of that
+	// number from the log, so the mark has to outlive it — and it has to be
+	// durable before the truncated file becomes the file Open will scan, or a
+	// crash in between would leave a short log with no mark and restart
+	// numbering. Written first, renamed second: the ordering is the guarantee.
+	if err := writeSeqHighWaterMark(w.path, w.nextSeq-1); err != nil {
+		os.Remove(tmpPath)
+		return fmt.Errorf("wal: could not persist sequence high-water mark: %w", err)
+	}
 	if err := w.file.Close(); err != nil {
 		return fmt.Errorf("wal: could not close original file before rename: %w", err)
 	}
@@ -351,6 +389,77 @@ func (w *WAL) TruncateBefore(before uint64) error {
 		return fmt.Errorf("wal: could not seek reopened file to end: %w", err)
 	}
 	w.file = f
+	return nil
+}
+
+// seqHighWaterMarkPath is the sidecar holding the highest sequence number the
+// log at path has ever issued. A sidecar rather than a header record: the
+// record format is what Replay and every keeper consumer parse, and a
+// zero-payload marker inside it could not be told apart from a real empty
+// payload. Keeping the mark outside the log leaves replay semantics untouched.
+func seqHighWaterMarkPath(path string) string { return path + ".seqhwm" }
+
+// readSeqHighWaterMark returns the persisted high-water mark for path, or 0 if
+// no mark has ever been written (the normal case — the mark only appears once
+// TruncateBefore has run).
+//
+// A mark that exists but cannot be parsed is an ERROR, not a 0: falling back to
+// "start from whatever the file says" is precisely the sequence reuse this
+// mechanism exists to prevent, and doing it silently would hide the one
+// condition worth shouting about. Refusing to open is the safe direction — the
+// node fails to start instead of quietly corrupting two Postgres-side
+// invariants that no consumer can detect being violated.
+func readSeqHighWaterMark(path string) (uint64, error) {
+	data, err := os.ReadFile(seqHighWaterMarkPath(path))
+	if err != nil {
+		if os.IsNotExist(err) {
+			return 0, nil
+		}
+		return 0, err
+	}
+	var v uint64
+	if _, err := fmt.Sscanf(string(data), "%d", &v); err != nil {
+		return 0, fmt.Errorf("mark file %s is present but unreadable (%q): refusing to guess a "+
+			"starting sequence number, because guessing low silently reuses numbers already issued",
+			seqHighWaterMarkPath(path), string(data))
+	}
+	return v, nil
+}
+
+// writeSeqHighWaterMark durably records seq as the highest sequence number ever
+// issued for the log at path. Written to a temp file, fsynced, then renamed
+// over the mark: a crash can leave the old mark or the new one, never a
+// half-written number.
+//
+// Like TruncateBefore's own rename, this does not fsync the containing
+// directory, so a power loss immediately after the rename could in principle
+// lose the rename itself — matching the durability level the rest of this file
+// already commits to rather than silently claiming a stronger one here.
+func writeSeqHighWaterMark(path string, seq uint64) error {
+	markPath := seqHighWaterMarkPath(path)
+	tmpPath := markPath + ".tmp"
+	f, err := os.OpenFile(tmpPath, os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0o600)
+	if err != nil {
+		return err
+	}
+	if _, err := f.Write([]byte(fmt.Sprintf("%d", seq))); err != nil {
+		f.Close()
+		os.Remove(tmpPath)
+		return err
+	}
+	if err := f.Sync(); err != nil {
+		f.Close()
+		os.Remove(tmpPath)
+		return err
+	}
+	if err := f.Close(); err != nil {
+		os.Remove(tmpPath)
+		return err
+	}
+	if err := os.Rename(tmpPath, markPath); err != nil {
+		os.Remove(tmpPath)
+		return err
+	}
 	return nil
 }
 
