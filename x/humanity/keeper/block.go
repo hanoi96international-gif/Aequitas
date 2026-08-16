@@ -4601,7 +4601,7 @@ func (dag *BlockDAG) AddPeerBlock(block *Block) bool {
 		switch tx.Type {
 		case "", "register_human", "transfer", "swap_aeq_tusd", "swap_tusd_aeq", "add_liquidity", "remove_liquidity", "faucet", "ubi_distribution", "ubi_distribution_finalize",
 			"validator_distribution", "validator_distribution_pool_zero", "lp_distribution", "lp_distribution_pool_zero", "escrow_move", "escrow_release", "escrow_recover",
-			"slash_equivocation":
+			"slash_equivocation", "distribution_round_marker":
 		// known / empty — OK
 		default:
 			fmt.Printf("[DAG] ✗ Rejected peer block #%d: unknown tx type %q\n", block.Height, tx.Type)
@@ -5780,6 +5780,77 @@ func replayBackoffFor(failCount int) time.Duration {
 // one per second (faster still with ENABLE_MULTI_BLOCK_TICK). The named
 // return + defer below records the outcome of every exit path in ONE place
 // so none of the function's existing return statements had to change.
+// distributionRoundToSkip scans txs for a distribution-round anchor and
+// returns the DistributionAt to skip if this round was already applied —
+// 0 if not. Pure and side-effect-free on purpose (audit 2026-08-16): the
+// decision used to be inlined in replayTransactions, reading two DB config
+// values that are unavailable in every no-DB unit test in this package, so
+// the mechanism it implements had never actually been exercised by a test —
+// only approximated by hand-modeling its effect. Extracted so the decision
+// itself — not just its DB plumbing — is directly testable.
+//
+// Two anchors are checked, not one:
+//
+//   - distribution_round_marker (state.go's RunDailyDistributionAtomic) fires
+//     whenever a round produced ANY transaction, regardless of which sub-pool
+//     paid. This is the primary signal, checked against lastDistributionRoundAt.
+//   - ubi_distribution_finalize fires only `if ubiTotal > 0`, a strict subset.
+//     Kept as a second, independent check (not a fallback contingent on the
+//     marker missing) so a block from a node on either side of this exact
+//     deploy — one that emits only finalize, one that emits both — is still
+//     handled correctly, checked against lastUBIAt.
+//
+// The whole list is scanned rather than stopping at the first match:
+// RunDailyDistributionAtomic appends the marker LAST (it can only fire once
+// everything else in the round is known) while finalize sits earlier, so an
+// early break on whichever appears first in this loop would silently skip
+// checking the other for the rest of the block.
+//
+// The 24h window, not exact equality, is what makes this work across two
+// nodes that fired 2 seconds apart on the same calendar round — see the
+// call site's own historical comment for the derivation ("20:00:01 vs
+// 20:00:03").
+func distributionRoundToSkip(txs []Transaction, lastDistributionRoundAt, lastUBIAt int64) int64 {
+	skip := int64(0)
+	for _, tx := range txs {
+		if tx.Type == "distribution_round_marker" && tx.DistributionAt > 0 {
+			if lastDistributionRoundAt > 0 && tx.DistributionAt-lastDistributionRoundAt < 24*3600 {
+				skip = tx.DistributionAt
+			}
+		}
+		if skip == 0 && tx.Type == "ubi_distribution_finalize" && tx.DistributionAt > 0 {
+			if lastUBIAt > 0 && tx.DistributionAt-lastUBIAt < 24*3600 {
+				skip = tx.DistributionAt
+			}
+		}
+	}
+	return skip
+}
+
+// isDistributionRoundTxType reports whether a TX type belongs to a daily
+// distribution round and must therefore be skipped when
+// distributionRoundToSkip has flagged this round as already applied.
+//
+// FIX (audit 2026-08-16, proven double-credit): escrow_move and
+// escrow_release were absent from this list, so neither was ever skipped
+// even when the round they belong to was correctly detected as a duplicate —
+// every other TX in the block got skipped, these two didn't. Proven by
+// TestDoublePayAudit_EscrowReleaseIsNeverSkipped (a duplicated escrow_release
+// inflated the UBI pool 40 -> 80). distribution_round_marker is included too:
+// it must not itself be re-applied a second time once its own round has
+// already been matched.
+func isDistributionRoundTxType(txType string) bool {
+	switch txType {
+	case "ubi_distribution", "ubi_distribution_finalize",
+		"validator_distribution", "validator_distribution_pool_zero",
+		"lp_distribution", "lp_distribution_pool_zero",
+		"escrow_move", "escrow_release", "distribution_round_marker":
+		return true
+	default:
+		return false
+	}
+}
+
 func (dag *BlockDAG) replayTransactions(block *Block, force bool) (ok bool) {
 	// FIX (P0, 2026-07-25 night — Contabo2 permanently stuck behind one block
 	// that failed replay exactly ONCE on a transient DB error): the backoff
@@ -5825,6 +5896,22 @@ func (dag *BlockDAG) replayTransactions(block *Block, force bool) (ok bool) {
 		dag.replayedMu.Unlock()
 		return true // already successfully replayed
 	}
+	dag.replayedMu.Unlock()
+	// FIX (audit 2026-08-16, proven double-credit/double-spend): the
+	// in-memory cache above is periodically wiped wholesale (see
+	// IsBlockReplayedInDB's own comment) and was, until now, the ONLY dedup
+	// check — a wipe followed by any re-delivery of an already-replayed block
+	// re-applied its entire transaction list a second time, transfers and
+	// swaps included, not just distribution TXs. The durable column is the
+	// backstop for exactly the window the cache cannot cover. Checked only on
+	// a cache MISS, so this adds no cost to the common hit path.
+	if cs := dag.state; cs != nil && cs.IsBlockReplayedInDB(block.Hash) {
+		dag.replayedMu.Lock()
+		dag.replayedBlocks[block.Hash] = true // repopulate so the next delivery hits the fast path
+		dag.replayedMu.Unlock()
+		return true
+	}
+	dag.replayedMu.Lock()
 	// Backoff guard (see replayFailures' own comment): force=true is ONLY
 	// repairUnreplayedBlocks, a deliberate, operator-relevant, once-per-restart
 	// retry that must always actually attempt — never rate-limited. Every
@@ -5923,17 +6010,24 @@ func (dag *BlockDAG) replayTransactions(block *Block, force bool) (ok bool) {
 	// the same daily window; the negative case (lastUBIAt > DistributionAt)
 	// is also correctly skipped since negative int64 < 86400.
 	// Plain DB read before cs.mu — same pattern as snapshot_import_height.
-	skipDistributionRound := int64(0)
-	for _, tx := range block.Transactions {
-		if tx.Type == "ubi_distribution_finalize" && tx.DistributionAt > 0 {
-			var lastUBIAt int64
-			fmt.Sscan(dag.state.getConfigValueDB("last_ubi_at"), &lastUBIAt)
-			if lastUBIAt > 0 && tx.DistributionAt-lastUBIAt < 24*3600 {
-				skipDistributionRound = tx.DistributionAt
-			}
-			break
-		}
-	}
+	//
+	// FIX (audit 2026-08-16, proven double-credit): this used to key SOLELY on
+	// "ubi_distribution_finalize", which RunDailyDistributionAtomic only ever
+	// emits `if ubiTotal > 0`. A round that paid validators and/or LP holders
+	// while the UBI pool was empty — the ordinary case on a low-traffic chain,
+	// measured live: pool_ubi 0.0000 — carried no anchor at all, so this
+	// pre-pass never fired for it and every one of its distribution TXs
+	// replayed in full on a second delivery. distribution_round_marker
+	// (state.go) closes that: it is unconditional, firing whenever the round
+	// produced ANY transaction. Checked against last_distribution_round_at, a
+	// value kept deliberately separate from last_ubi_at — see that function's
+	// own comment for why conflating them would be wrong. The finalize-based
+	// check is kept alongside it rather than replaced, so a block from a node
+	// on either side of this exact deploy is still handled correctly.
+	var lastRoundAt, lastUBIAt int64
+	fmt.Sscan(dag.state.getConfigValueDB("last_distribution_round_at"), &lastRoundAt)
+	fmt.Sscan(dag.state.getConfigValueDB("last_ubi_at"), &lastUBIAt)
+	skipDistributionRound := distributionRoundToSkip(block.Transactions, lastRoundAt, lastUBIAt)
 
 	touchedAddrs, needsFullSnapshot := blockTouchedAddresses(block)
 	// FIX (audit recheck3, P0/P1 — "Block-Replay-Rollback ist nicht gegen
@@ -6094,15 +6188,20 @@ func (dag *BlockDAG) replayTransactions(block *Block, force bool) (ok bool) {
 		}
 
 		// Skip distribution TXs from a round this node has already applied.
-		if skipDistributionRound > 0 {
-			switch tx.Type {
-			case "ubi_distribution", "ubi_distribution_finalize",
-				"validator_distribution", "validator_distribution_pool_zero",
-				"lp_distribution", "lp_distribution_pool_zero":
-				fmt.Printf("[REPLAY] ℹ Skipping %s (distribution round %d already applied, block #%d)\n",
-					tx.Type, skipDistributionRound, block.Height)
-				continue
-			}
+		//
+		// FIX (audit 2026-08-16, proven double-credit): escrow_move and
+		// escrow_release were absent from this list, so neither was ever
+		// skipped even when the round they belong to was correctly detected
+		// as a duplicate — every other TX in the block got skipped, these
+		// two didn't. Proven by TestDoublePayAudit_EscrowReleaseIsNeverSkipped
+		// (a duplicated escrow_release inflated the UBI pool 40 -> 80).
+		// distribution_round_marker is included too: it must not itself be
+		// re-applied (it would just re-stamp the same timestamp, harmless,
+		// but there is no reason to let it through the skip once matched).
+		if skipDistributionRound > 0 && isDistributionRoundTxType(tx.Type) {
+			fmt.Printf("[REPLAY] ℹ Skipping %s (distribution round %d already applied, block #%d)\n",
+				tx.Type, skipDistributionRound, block.Height)
+			continue
 		}
 		wallet := strings.ToLower(strings.TrimSpace(tx.Wallet))
 		switch tx.Type {
@@ -6348,6 +6447,19 @@ func (dag *BlockDAG) replayTransactions(block *Block, force bool) (ok bool) {
 				continue
 			}
 			fmt.Printf("[REPLAY] ✓ Finalized UBI round, last_ubi_at=%d (block #%d)\n", tx.DistributionAt, block.Height)
+
+		case "distribution_round_marker":
+			// See RunDailyDistributionAtomic's comment (state.go) and this
+			// block's own skipDistributionRound pre-pass for what this closes:
+			// an unconditional per-round anchor, independent of which sub-pool
+			// actually paid, so a round that only credited validators/LP/escrow
+			// is still detectable as "already applied" on a second delivery.
+			if err := dag.state.applyDistributionRoundMarkerDeltaLocked(context.Background(), tx.DistributionAt); err != nil {
+				fmt.Printf("[REPLAY] ✗ distribution_round_marker: %v (block #%d) — rolling back whole block\n", err, block.Height)
+				hardFailure = true
+				continue
+			}
+			fmt.Printf("[REPLAY] ✓ Marked distribution round, last_distribution_round_at=%d (block #%d)\n", tx.DistributionAt, block.Height)
 
 		case "validator_distribution":
 			wallet := strings.ToLower(tx.Wallet)

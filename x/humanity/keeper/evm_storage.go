@@ -385,7 +385,19 @@ func (cs *ChainState) MigrateEVMFromGoState(contractAddr string) error {
 			if wallet == "" {
 				wallet = "0x0000000000000000000000000000000000000001"
 			}
-			nullKey := common.HexToHash(strings.TrimPrefix(nullifier, "0x"))
+			// FIX (audit 2026-08-16): this was common.HexToHash on a DECIMAL
+			// string. Every decimal digit is also a hex digit, so the parse
+			// quietly succeeded and produced a different number — the rebuilt
+			// mapping landed at a slot the contract never reads. Since this
+			// migration runs after every snapshot import, every resync and
+			// every contract upgrade, AequitasV7's "nullifier already used"
+			// check then saw address(0) for every real nullifier.
+			nullBytes, nullErr := nullifierBytes32(nullifier)
+			if nullErr != nil {
+				fmt.Printf("[MIGRATE] skipping unparseable nullifier %q: %v\n", nullifier, nullErr)
+				continue
+			}
+			nullKey := common.BytesToHash(nullBytes[:])
 			nullSlot := mappingSlotBytes32(nullKey, 8)
 			walletHash := common.BigToHash(common.HexToAddress(wallet).Big())
 			save(contractAddr, nullSlot.Hex(), walletHash.Hex())
@@ -1392,6 +1404,16 @@ func (cs *ChainState) RemoveFromProofServerSyncQueue(bioHashKey string) {
 // style), removing even the SHA256 link.
 
 func (cs *ChainState) IsNullifierUsed(nullifier string) bool {
+	// Canonical form first — see nullifier_canonical.go. Looking a nullifier
+	// up in the shape the caller happened to type is how nine variants of one
+	// biometric each got their own registration.
+	canon, err := canonicalNullifier(nullifier)
+	if err != nil {
+		// Unparseable: treat as USED rather than free. A value we cannot make
+		// sense of must never open a fresh registration slot.
+		return true
+	}
+	nullifier = canon
 	// nullifiersMu, not cs.mu: see that field's own comment -- cs.nullifiers
 	// is a plain Go map, unsafe for concurrent access from multiple
 	// RLock-holding goroutines (the concurrent-registration fast path,
@@ -1410,8 +1432,8 @@ func (cs *ChainState) IsNullifierUsed(nullifier string) bool {
 	// (public snapshots, where wallet_address = '') are correctly treated as
 	// used. The old wallet != "" check returned false for those rows.
 	var exists bool
-	err := cs.db.QueryRow(`SELECT EXISTS(SELECT 1 FROM nullifiers WHERE nullifier = $1)`, nullifier).Scan(&exists)
-	return err == nil && exists
+	queryErr := cs.db.QueryRow(`SELECT EXISTS(SELECT 1 FROM nullifiers WHERE nullifier = $1)`, nullifier).Scan(&exists)
+	return queryErr == nil && exists
 }
 
 // maxInMemNullifiers caps the in-memory nullifier cache to ~50 MB at 1M entries.
@@ -1462,6 +1484,12 @@ func (cs *ChainState) tryClaimNullifierLocked(ctx context.Context, nullifier, wa
 	if nullifier == "" {
 		return false, nil
 	}
+	// One key per biometric — see nullifier_canonical.go.
+	canon, err := canonicalNullifier(nullifier)
+	if err != nil {
+		return false, fmt.Errorf("refusing to claim an unparseable nullifier: %w", err)
+	}
+	nullifier = canon
 	walletAddress = strings.ToLower(walletAddress)
 	if cs.db == nil {
 		if _, exists := cs.nullifiers[nullifier]; exists {
@@ -1515,16 +1543,33 @@ func (cs *ChainState) SaveNullifier(ctx context.Context, nullifier, walletAddres
 	if nullifier == "" {
 		return nil
 	}
+	canon, err := canonicalNullifier(nullifier)
+	if err != nil {
+		return fmt.Errorf("refusing to save an unparseable nullifier: %w", err)
+	}
+	nullifier = canon
 	walletAddress = strings.ToLower(walletAddress)
 	if cs.db == nil {
 		// No-DB mode: the map is authoritative. Fold into the accumulator only
 		// when the key is genuinely new so repeated saves can't double-count.
 		// nullifiersMu: see that field's own comment.
+		//
+		// FIX (audit 2026-08-16): this branch had NO owner check, while the
+		// Postgres branch below fails closed on exactly this case and says in
+		// its own comment which double-mint that prevents. So on a DB-less
+		// node — a supported configuration — the identical nullifier
+		// registered a second wallet and minted another 1,000 AEQ. Proven by
+		// TestAudit_Q6_NoDBSaveNullifierSkipsTheOwnerCheck.
 		cs.nullifiersMu.Lock()
-		if _, exists := cs.nullifiers[nullifier]; !exists {
-			cs.nullifiers[nullifier] = walletAddress
-			xorInto(&cs.nullifierSetXOR, nullifierLeaf(nullifier))
+		if owner, exists := cs.nullifiers[nullifier]; exists {
+			cs.nullifiersMu.Unlock()
+			if owner == walletAddress {
+				return nil // idempotent re-save by the same wallet
+			}
+			return fmt.Errorf("nullifier already registered to %s", owner)
 		}
+		cs.nullifiers[nullifier] = walletAddress
+		xorInto(&cs.nullifierSetXOR, nullifierLeaf(nullifier))
 		cs.nullifiersMu.Unlock()
 		return nil
 	}
@@ -1600,6 +1645,11 @@ func (cs *ChainState) ReleaseNullifier(nullifier string) {
 func (cs *ChainState) releaseNullifierLocked(ctx context.Context, nullifier string) {
 	if nullifier == "" {
 		return
+	}
+	// Same key the claim used, or the release silently frees nothing and the
+	// biometric stays burned — see nullifier_canonical.go.
+	if canon, err := canonicalNullifier(nullifier); err == nil {
+		nullifier = canon
 	}
 	_, wasCached := cs.nullifiers[nullifier]
 	delete(cs.nullifiers, nullifier)
@@ -3054,6 +3104,38 @@ func (cs *ChainState) MarkBlockReplayed(ctx context.Context, hash string) error 
 	cs.ensureReplayedColumn()
 	_, err := cs.dbExecCtx(ctx).Exec(`UPDATE chain_blocks SET replayed = true WHERE hash = $1`, hash)
 	return err
+}
+
+// IsBlockReplayedInDB reports whether hash's effects are already durably
+// applied, per the SAME column MarkBlockReplayed sets — the fallback for
+// exactly the case dag.replayedBlocks (the in-memory dedup cache) cannot
+// cover.
+//
+// FIX (audit 2026-08-16, proven double-credit/double-spend): dag.replayedBlocks
+// was the ONLY dedup check before a block's entire transaction list — every
+// ordinary transfer as much as every distribution TX — was replayed again.
+// That map is capped at 50,000 entries and wiped wholesale past the cap
+// (block.go, "Cap the cache to prevent unbounded growth"), which at
+// BLOCK_TIME=1s is roughly every 14 hours. A block delivered a second time
+// after that wipe — a peer resync, a retry after a network blip, anything
+// that re-sends a hash this node already has — looked exactly like a block
+// never seen before, and every transfer, swap, and distribution credit in it
+// re-applied in full. Proven by
+// TestDoublePayAudit_ReplayedBlocksCacheWipeAllowsReapply: identical block
+// hash, 50 -> 100 AEQ.
+//
+// chain_blocks.hash is the table's PRIMARY KEY (see its CREATE TABLE), so
+// this is a single indexed point lookup — negligible next to the several
+// account writes replay already performs per block. Called only on an
+// in-memory cache MISS, never on the (overwhelmingly common) hit path, so it
+// adds no cost to blocks the fast path already recognizes.
+func (cs *ChainState) IsBlockReplayedInDB(hash string) bool {
+	if cs.db == nil {
+		return false
+	}
+	var replayed bool
+	err := cs.db.QueryRow(`SELECT replayed FROM chain_blocks WHERE hash = $1`, hash).Scan(&replayed)
+	return err == nil && replayed
 }
 
 // SaveBlockToDB persists a block header, with replayed marking whether its

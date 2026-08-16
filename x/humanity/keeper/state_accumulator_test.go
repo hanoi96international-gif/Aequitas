@@ -104,21 +104,21 @@ func TestStateRootAccumulator_MatchesFullRecompute(t *testing.T) {
 	assertMatch("0xbbb re-included")
 
 	// Nullifiers: claim, save (distinct key), release.
-	if _, err := cs.tryClaimNullifierLocked(context.Background(), "null-1", "0xaaa"); err != nil {
+	if _, err := cs.tryClaimNullifierLocked(context.Background(), "111111111111111111", "0xaaa"); err != nil {
 		t.Fatal(err)
 	}
-	assertMatch("claim null-1")
-	if err := cs.SaveNullifier(context.Background(), "null-2", "0xbbb"); err != nil {
+	assertMatch("claim 111111111111111111")
+	if err := cs.SaveNullifier(context.Background(), "222222222222222222", "0xbbb"); err != nil {
 		t.Fatal(err)
 	}
-	assertMatch("save null-2")
+	assertMatch("save 222222222222222222")
 	// Claiming an already-present key must be a no-op for the accumulator.
-	if _, err := cs.tryClaimNullifierLocked(context.Background(), "null-1", "0xaaa"); err != nil {
+	if _, err := cs.tryClaimNullifierLocked(context.Background(), "111111111111111111", "0xaaa"); err != nil {
 		t.Fatal(err)
 	}
-	assertMatch("re-claim null-1 (no-op)")
-	cs.releaseNullifierLocked(context.Background(), "null-1")
-	assertMatch("release null-1")
+	assertMatch("re-claim 111111111111111111 (no-op)")
+	cs.releaseNullifierLocked(context.Background(), "111111111111111111")
+	assertMatch("release 111111111111111111")
 
 	// StateRoot must be deterministic and non-empty.
 	r1 := cs.stateRootLocked("123")

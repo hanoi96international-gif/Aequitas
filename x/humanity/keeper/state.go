@@ -4238,8 +4238,50 @@ func (cs *ChainState) RunDailyDistributionAtomic(ubiAt int64) error {
 			txs = append(txs, Transaction{Type: "escrow_release", Wallet: s.Wallet, Amount: s.Amount})
 		}
 
+		// FIX (audit 2026-08-16, proven double-credit): block.go's replay-side
+		// idempotency guard (skipDistributionRound) could only detect "this
+		// round was already applied" by finding a "ubi_distribution_finalize"
+		// TX in the incoming block — but that TX is only ever emitted `if
+		// ubiTotal > 0`, a few lines up. A round that pays validators and/or
+		// LP holders while the UBI pool happens to be empty (the everyday case
+		// on a chain with little trading — measured live: pool_ubi 0.0000)
+		// therefore carries NO anchor at all. A competing round from another
+		// node, or this exact block replayed a second time, had nothing to
+		// key the skip on and re-credited every validator/LP/escrow TX in it
+		// in full — proven by TestDoublePayAudit_ValidatorAndLPRoundWithout
+		// FinalizeIsFullyReapplied and TestDoublePayAudit_EscrowReleaseIs
+		// NeverSkipped (validator 30->60, LP 60->120, UBI pool 40->80 from one
+		// duplicated block).
+		//
+		// distribution_round_marker is unconditional: it fires whenever this
+		// round produced ANY transaction, regardless of which sub-pool paid.
+		// It is deliberately a SEPARATE config key (last_distribution_round_at)
+		// from last_ubi_at, not a repurposing of it — last_ubi_at has its own,
+		// already-tested meaning ("the last time UBI ITSELF paid something",
+		// see DistributionHealth's last_payout_note) and conflating the two
+		// would make a validator-only round look like a UBI payout to anyone
+		// reading that field.
+		if len(txs) > 0 {
+			if err := cs.applyDistributionRoundMarkerDeltaLocked(ctx, ubiAt); err != nil {
+				return nil, fmt.Errorf("distribution round marker failed: %w", err)
+			}
+			txs = append(txs, Transaction{Type: "distribution_round_marker", DistributionAt: ubiAt})
+		}
+
 		return txs, nil
 	})
+}
+
+// applyDistributionRoundMarkerDeltaLocked stamps last_distribution_round_at —
+// see RunDailyDistributionAtomic's own comment on distribution_round_marker
+// for why this exists as a value distinct from last_ubi_at. Called on the
+// primary inline above, and by secondaries replaying the
+// "distribution_round_marker" TX (block.go).
+func (cs *ChainState) applyDistributionRoundMarkerDeltaLocked(ctx context.Context, at int64) error {
+	if err := cs.setConfigValueCtx(ctx, "last_distribution_round_at", fmt.Sprintf("%d", at)); err != nil {
+		return fmt.Errorf("distribution round marker: could not save last_distribution_round_at: %w", err)
+	}
+	return nil
 }
 
 // Transfer moves amount AEQ from->to on the primary node. Returns the AEQ
@@ -7395,25 +7437,36 @@ func (cs *ChainState) ApplyUBIDelta(amountPerHuman float64, ubiAt int64) error {
 // applyUBIDeltaLocked is ApplyUBIDelta's body — see applyTransferDeltaLocked's
 // comment.
 func (cs *ChainState) applyUBIDeltaLocked(ctx context.Context, amountPerHuman float64, ubiAt int64) error {
-	var rangeErr error
-	cs.accounts.Range(func(addr string, acc *AccountState) bool {
-		if !acc.IsHuman {
-			return true
-		}
-		acc.Balance = acc.Balance.Add(NewDecimal(amountPerHuman))
-		touchActivityAt(acc, ubiAt)
-		if err := cs.enforceWealthCapLockedCtx(ctx, acc); err != nil {
-			rangeErr = fmt.Errorf("ubi (legacy flat): could not enforce wealth cap for %s: %w", addr, err)
-			return false
-		}
-		if err := cs.saveAccountToDBCtx(ctx, acc); err != nil {
-			rangeErr = fmt.Errorf("ubi (legacy flat): could not save account %s: %w", addr, err)
-			return false
+	// FIX (audit 2026-08-16): this used to do the wealth-cap check and the save
+	// INSIDE the Range callback. enforceWealthCapLockedCtx -> getAverageBalanceLocked
+	// -> humanCountLocked, and humanCountLocked itself calls cs.accounts.Range
+	// whenever cs.useDB is false (the file-backed fallback a node uses when
+	// Postgres is unavailable — not just tests) — re-entering the same shard's
+	// mutex from inside the callback Range is already holding it under. Go's
+	// sync.Mutex is not reentrant, so that goroutine deadlocks permanently,
+	// while still holding cs.mu (replayTransactions holds it for the whole
+	// block) — freezing every transfer and every other replay on the node, not
+	// just this one. Range's own doc comment says exactly why: "fn must NOT
+	// call back into sa for the same shard." This function was the one
+	// violation. Fixed by snapshotting the human accounts first (pure
+	// iteration, no nested calls), then doing the wealth-cap/save work in a
+	// second pass outside Range.
+	var humans []*AccountState
+	cs.accounts.Range(func(_ string, acc *AccountState) bool {
+		if acc.IsHuman {
+			humans = append(humans, acc)
 		}
 		return true
 	})
-	if rangeErr != nil {
-		return rangeErr
+	for _, acc := range humans {
+		acc.Balance = acc.Balance.Add(NewDecimal(amountPerHuman))
+		touchActivityAt(acc, ubiAt)
+		if err := cs.enforceWealthCapLockedCtx(ctx, acc); err != nil {
+			return fmt.Errorf("ubi (legacy flat): could not enforce wealth cap for %s: %w", acc.Address, err)
+		}
+		if err := cs.saveAccountToDBCtx(ctx, acc); err != nil {
+			return fmt.Errorf("ubi (legacy flat): could not save account %s: %w", acc.Address, err)
+		}
 	}
 	// Zero the UBI pool on secondary (it was zeroed on primary after distribution)
 	// FIX (Monster Audit 2026-07-12, P1): a cold pool address used to read as
