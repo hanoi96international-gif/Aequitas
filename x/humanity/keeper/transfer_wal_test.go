@@ -60,6 +60,21 @@ func newWALTestState(t *testing.T, walPath string) *ChainState {
 	// (100) when the full package suite runs in one process.
 	t.Cleanup(func() {
 		cs.stopWALFlushWorkerForTest()
+		// Close the WAL file too, after the flush worker has stopped using it.
+		// On Linux an open file can be unlinked, so leaving it open was
+		// invisible; on Windows it is not, and t.TempDir()'s RemoveAll fails
+		// with "the process cannot access the file because it is being used by
+		// another process" — which testing reports as a FAILURE of the test
+		// that just passed its own assertions. A test that only fails on one
+		// developer's platform, for a reason unrelated to what it asserts, is
+		// worse than no test: it trains the reader to ignore red.
+		//
+		// A test that already closed the WAL itself (the crash-simulation
+		// tests do) gets an "already closed" error here, which is the correct
+		// no-op and deliberately ignored.
+		if cs.wal != nil {
+			_ = cs.wal.Close()
+		}
 		cs.db.Close()
 	})
 	return cs
