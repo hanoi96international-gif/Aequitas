@@ -64,7 +64,13 @@ func idleHumansState(balances []float64) (*ChainState, []string) {
 }
 
 func TestHandleHumans_BalanceIsDemurragedExactlyOnce(t *testing.T) {
-	cs, addrs := idleHumansState([]float64{100, 250, 500, 1000, 5000})
+	// Every balance is above one fair share. Demurrage decays only the excess
+	// over fairShare and never the portion at or below it (see
+	// effectiveBalance and demurrage_fairshare_test.go), so the old fixture —
+	// which started at 100 AEQ, a tenth of a fair share — now decays by
+	// nothing, and the guard below correctly refuses to let this test pass
+	// while proving nothing.
+	cs, addrs := idleHumansState([]float64{1100, 1250, 1500, 2000, 6000})
 	a := &APIServer{state: cs}
 	out := doHumansRequest(t, a, "203.0.113.10:1", "")
 
@@ -88,9 +94,10 @@ func TestHandleHumans_BalanceIsDemurragedExactlyOnce(t *testing.T) {
 		// Guard the fixture first: if no decay applies, both the correct and
 		// the buggy value are identical and the assertion below proves nothing.
 		if math.Abs(want-raw) < 1e-9 {
-			t.Fatalf("%s: no decay applied (raw=%.10f effective=%.10f) — fixture is "+
-				"not past the grace period, so this test cannot detect double application",
-				addr, raw, want)
+			t.Fatalf("%s: no decay applied (raw=%.10f effective=%.10f) — the fixture is "+
+				"either not past the grace period or not above the %.0f AEQ fair share, "+
+				"so this test cannot detect double application",
+				addr, raw, want, registrationGrant)
 		}
 		if math.Abs(got-want) > 1e-9 {
 			extra := ""
