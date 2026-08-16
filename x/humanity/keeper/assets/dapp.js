@@ -62,8 +62,12 @@ async function addToMetaMask() {
       chainId: CHAIN_ID,
       chainName: 'Aequitas Chain',
       nativeCurrency: { name: 'Aequitas', symbol: 'AEQ', decimals: 18 },
-      rpcUrls: ['https://aequitas.digital/rpc'],
-      blockExplorerUrls: ['https://aequitas.digital'],
+      // FIX (audit 2026-08-16): same class as this file's own API_BASE fix
+      // above — hardcoded to a domain that doesn't resolve to this network
+      // until 2026-08-18. window.location.origin is whichever node actually
+      // served this page, correct on both sides of the domain switch.
+      rpcUrls: [window.location.origin + '/rpc'],
+      blockExplorerUrls: [window.location.origin],
     }]});
   } catch(e) { console.error(e); }
 }

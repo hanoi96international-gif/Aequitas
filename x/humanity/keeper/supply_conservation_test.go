@@ -148,10 +148,16 @@ func TestSupplyConservation_Liquidity(t *testing.T) {
 
 // Demurrage takes decayed AEQ off a wallet and hands it to the pools. It is the
 // clearest movement in the protocol and must not change the whole.
+//
+// The balance is deliberately well ABOVE one fair share. Demurrage only decays
+// the excess over fairShare (see demurrage_fairshare_test.go and
+// effectiveBalance's own comment), so a fixture holding exactly the 1,000 AEQ
+// grant — which this used to hold — decays by nothing and would let this test
+// pass while exercising no movement at all.
 func TestSupplyConservation_Demurrage(t *testing.T) {
 	cs := newTestState()
 	old := nowUnix() - 400*24*3600 // well past any grace period
-	cs.accounts.Set("0xidle", &AccountState{Address: "0xidle", Balance: NewDecimal(1000), IsHuman: true, LastActivityAt: old})
+	cs.accounts.Set("0xidle", &AccountState{Address: "0xidle", Balance: NewDecimal(9000), IsHuman: true, LastActivityAt: old})
 	cs.humanCount = 1
 	cs.pool = &PoolState{}
 

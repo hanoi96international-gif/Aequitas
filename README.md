@@ -205,7 +205,7 @@ migration time, not kept live — the Go-side UBI/guardian model has no
 |-----------|-------------|
 | Sprache / Language | Go 1.24 (Chain) · Node.js (Proof Server) |
 | Konsens / Consensus | BlockDAG + GHOSTDAG (Sompolinsky-Zohar) + Proof of Humanity |
-| Blockzeit / Block Time | ~6 Sekunden / seconds |
+| Blockzeit / Block Time | ~1 Sekunde / second |
 | Chain ID | 1926 (0x786) |
 | EVM | Ja / Yes — go-ethereum Engine |
 | ZKP-System / ZKP System | Groth16 / snarkjs / circom |

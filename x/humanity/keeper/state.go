@@ -2581,6 +2581,19 @@ SELECT address, version FROM upd UNION ALL SELECT address, version FROM ins`
 const demurrageGracePeriodSeconds = 90 * 24 * 60 * 60 // 3 months
 const demurrageMonthlyRate = 0.005                    // 0.5%/month
 
+// registrationGrant is the AEQ a newly registered human receives
+// (registerHumanLocked adds exactly this), and it is simultaneously this
+// chain's fairShare(): TotalSupply() is DEFINED here as humanCount x 1000
+// (state.go's TotalSupply and getAverageBalanceLocked both compute it that
+// way), so fairShare = TotalSupply/humanCount is identically this number for
+// every non-zero human count. AequitasV7.sol reaches the same value from the
+// other direction — its fairShare() falls back to INITIAL_GRANT when
+// totalHumans is 0.
+//
+// It is named and used below because demurrage is defined against the fair
+// share, not against the whole balance. See effectiveBalance.
+const registrationGrant = 1000.0
+
 // wealthCapMultiplier defines the maximum AEQ a single account may hold,
 // expressed as a multiple of the current average AEQ balance across all
 // registered humans — not a fixed number. This makes the cap self-
@@ -2675,10 +2688,34 @@ func effectiveBalance(acc *AccountState) Decimal {
 	if idleSeconds <= demurrageGracePeriodSeconds {
 		return acc.Balance
 	}
+	// FIX (audit 2026-08-16): this decayed acc.Balance IN FULL, which is not
+	// the demurrage this protocol promises anywhere else. Every other
+	// description of the rule — WHITEPAPER.md, README.md, the landing page's
+	// own formula card ("(balance - fair_share) x 0.5% / month ... only on the
+	// portion above your fair share"), and AequitasV7.sol's _applyDemurrage
+	// ("if (bal <= fs) return; excess = bal - fs") — agrees that the fair
+	// share is a FLOOR that never decays. The Go chain, which is the one
+	// actually holding everyone's balance, was the sole outlier.
+	//
+	// What that meant in practice: a person holding exactly their 1,000 AEQ
+	// registration grant and nothing else — the poorest possible participant,
+	// and the one this protocol exists for — was charged demurrage after three
+	// idle months, while the documents shown to them promised they would not
+	// be. That is the opposite of the intended direction, so the whole-balance
+	// behaviour is the bug and the four agreeing descriptions are the spec.
+	//
+	// The floor is applied AFTER the grace period, not instead of it: the two
+	// are independent protections and Solidity's lack of a grace period is a
+	// separate (gentler-here) divergence, deliberately left alone.
+	fairShare := NewDecimal(registrationGrant)
+	if acc.Balance <= fairShare {
+		return acc.Balance
+	}
+	excess := acc.Balance.Sub(fairShare)
 	decayingSeconds := float64(idleSeconds - demurrageGracePeriodSeconds)
 	monthsDecaying := decayingSeconds / float64(secondsPerMonth)
 	factor := math.Pow(1-demurrageMonthlyRate, monthsDecaying)
-	return acc.Balance.MulFloat(factor)
+	return fairShare.Add(excess.MulFloat(factor))
 }
 
 // settleDemurrageLocked actually writes off the decay computed by

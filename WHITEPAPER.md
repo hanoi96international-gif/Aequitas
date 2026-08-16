@@ -85,16 +85,16 @@ Das zentrale Problem eines auf menschlicher Existenz basierenden Währungssystem
 Aequitas löst dies mit biometrischer Verifikation und Zero-Knowledge-Proofs:
 
 **Registrierungsablauf:**
-1. Die Android-App scannt den Fingerabdruck via **Hardware Secure Element (HSE)**
-2. Das HSE leitet einen deterministischen biometrischen Hash ab — die Rohdaten verlassen das Gerät **niemals**
+1. Die Android-App ermittelt eine Identitätsquelle. Ist der Biometrie-Modus aktiv, ist das eine Kamera-Aufnahme von Gesicht und Handfläche, die von mehreren unabhängigen Vergleichsdiensten per Quorum gegen alle bestehenden Anmeldungen geprüft wird; ist er inaktiv (Standard zum Start), ist es ein zufälliges, gerätegebundenes Geheimnis. Siehe §3.2.
+2. Daraus wird ein deterministischer Hash abgeleitet — die Rohdaten verlassen das Gerät **niemals**
 3. Der Hash wird an den Proof-Server gesendet
 4. Der Proof-Server generiert einen **Groth16 Zero-Knowledge-Proof** (Groth16/BN128-Kurve)
-5. Der Proof enthält `commitment` (Einmaligkeit-Nachweis) und `nullifier` (Replay-Schutz)
+5. Der Proof enthält `commitment` (Bindung an die Identitätsquelle) und `nullifier` (Replay-Schutz)
 6. Die Blockchain verifiziert den Proof on-chain via BioVerifier-Contract
 7. Bei Erfolg: 1.000 AEQ werden der Wallet gutgeschrieben
 
 **Garantien:**
-- Ein Mensch kann sich nur einmal registrieren (Nullifier-Bindung)
+- Dieselbe Identitätsquelle kann sich nur einmal registrieren (Nullifier-Bindung). Ob diese Quelle ein Mensch oder ein Gerät ist, entscheidet der Modus aus Schritt 1 — siehe §3.2
 - Kein persönliches Datum wird gespeichert
 - Verifikation ist dauerhaft und unveränderbar
 - Kein Dritter (auch nicht Aequitas) kann eine Registrierung rückgängig machen
@@ -105,16 +105,16 @@ The central problem of a monetary system based on human existence is verificatio
 Aequitas solves this with biometric verification and Zero-Knowledge Proofs:
 
 **Registration Flow:**
-1. The Android app scans the fingerprint via **Hardware Secure Element (HSE)**
-2. The HSE derives a deterministic biometric hash — raw data **never** leaves the device
+1. The Android app establishes an identity source. With biometric mode active this is a camera capture of face and palm, checked by quorum across several independent matching services against every existing enrolment; with it inactive (the default at launch) it is a random, device-bound secret. See §3.2.
+2. A deterministic hash is derived from it — raw data **never** leaves the device
 3. The hash is sent to the Proof Server
 4. The Proof Server generates a **Groth16 Zero-Knowledge Proof** (Groth16/BN128 curve)
-5. The proof contains `commitment` (uniqueness proof) and `nullifier` (replay protection)
+5. The proof contains `commitment` (binding to the identity source) and `nullifier` (replay protection)
 6. The blockchain verifies the proof on-chain via BioVerifier contract
 7. On success: 1,000 AEQ credited to the wallet
 
 **Guarantees:**
-- A human can only register once (nullifier binding)
+- The same identity source can only register once (nullifier binding). Whether that source is a human or a device is decided by the mode in step 1 — see §3.2
 - No personal data is stored
 - Verification is permanent and immutable
 - No third party (not even Aequitas) can reverse a registration
@@ -124,13 +124,15 @@ Aequitas solves this with biometric verification and Zero-Knowledge Proofs:
 ### 3.1 Biometrisches 3-Faktor-System / 3-Factor Biometric System
 
 #### DE
-Um echte biologische Einzigartigkeit zu garantieren — vollständig unabhängig vom Gerät — setzt Aequitas auf ein physisches, mehrstufiges Biometrik-System. Die Registrierung erfolgt über ein dediziertes Hardware-Kit, das über die AequitasBio-App kommuniziert.
+Langfristig soll biologische Einzigartigkeit vollständig geräteunabhängig nachgewiesen werden. Die folgenden Phasen beschreiben diesen Weg. **Keine davon ist zum Start am 18.08.2026 aktiv** — was tatsächlich ausgeliefert wird, steht direkt darunter unter „Was zum Start läuft".
 
-**Phase 1 — Alle 10 Fingerabdrücke + Lebenderkennung** *(aktiv)*
-- **R503 optischer Fingerabdruckscanner** (GROW, UART-Interface): Alle 10 Finger werden gescannt und zu einem einzigen biometrischen Hash kombiniert. Das verhindert Manipulationen mit künstlichen Fingern — ein fehlendes Muster wird sofort erkannt.
-- **MAX30102 PPG-Sensor**: Photoplethysmographie-Signal (Herzfrequenz via IR/Rot-LED) bestätigt, dass die Person lebendig ist. Verhindert Replay-Attacken mit gespeicherten Abdrücken oder Gipsabgüssen.
+**Phase 1 — Alle 10 Fingerabdrücke + Lebenderkennung** *(Referenzdesign, nicht ausgeliefert)*
+- **R503 optischer Fingerabdruckscanner** (GROW, UART-Interface): Alle 10 Finger würden gescannt und zu einem einzigen biometrischen Hash kombiniert.
+- **MAX30102 PPG-Sensor**: Photoplethysmographie-Signal (Herzfrequenz via IR/Rot-LED) als Lebendnachweis gegen Replay-Attacken mit gespeicherten Abdrücken oder Gipsabgüssen.
 
-| Eigenschaft | Wert |
+Dieses Hardware-Kit existiert als Entwurf. Es gibt kein Gerät zu kaufen, und die ausgelieferte App spricht mit keiner solchen Hardware. Die Zahlen unten sind theoretische Eigenschaften der Sensorik, keine gemessenen Eigenschaften des laufenden Systems.
+
+| Eigenschaft (theoretisch) | Wert |
 |------------|------|
 | Einzigartigkeit Fingerabdruck (einzeln) | 1 von 10⁹ |
 | Alle 10 Finger kombiniert | 1 von 10⁹⁰ (theoretisch) |
@@ -159,13 +161,15 @@ Um echte biologische Einzigartigkeit zu garantieren — vollständig unabhängig
 | Falsch-Positiv-Rate (globaler Vergleich) | < 10⁻⁷⁸ |
 
 #### EN
-To guarantee genuine biological uniqueness — fully independent of the device — Aequitas uses a physical, multi-stage biometric system. Registration takes place via a dedicated hardware kit communicating through the AequitasBio app.
+The long-term goal is to prove biological uniqueness fully independently of the device. The phases below describe that path. **None of them is active at the 2026-08-18 launch** — what actually ships is stated directly below, under "What runs at launch".
 
-**Phase 1 — All 10 Fingerprints + Liveness** *(active)*
-- **R503 optical fingerprint scanner** (GROW, UART interface): All 10 fingers are scanned and combined into a single biometric hash. This prevents spoofing with artificial fingers — a missing pattern is immediately detected.
-- **MAX30102 PPG sensor**: Photoplethysmography signal (heart rate via IR/red LED) confirms the person is alive. Prevents replay attacks using stored fingerprint images or plaster casts.
+**Phase 1 — All 10 Fingerprints + Liveness** *(reference design, not shipped)*
+- **R503 optical fingerprint scanner** (GROW, UART interface): all 10 fingers would be scanned and combined into a single biometric hash.
+- **MAX30102 PPG sensor**: photoplethysmography signal (heart rate via IR/red LED) as a liveness proof against replay attacks using stored fingerprint images or plaster casts.
 
-| Property | Value |
+This hardware kit exists as a design. There is no device to buy, and the shipped app talks to no such hardware. The figures below are theoretical properties of the sensors, not measured properties of the running system.
+
+| Property (theoretical) | Value |
 |----------|-------|
 | Single fingerprint uniqueness | 1 in 10⁹ |
 | All 10 fingers combined | 1 in 10⁹⁰ (theoretical) |
@@ -192,6 +196,32 @@ To guarantee genuine biological uniqueness — fully independent of the device �
 | Identical twins: same? | ❌ (absolutely different) |
 | Device-independent | ✅ |
 | False-match rate (global comparison) | < 10⁻⁷⁸ |
+
+---
+
+### 3.2 Was zum Start läuft / What runs at launch
+
+#### DE
+Dieser Abschnitt beschreibt den Stand am 18.08.2026. Er hat Vorrang vor jeder Beschreibung oben, wenn beide sich widersprechen.
+
+Es gibt **keine Spezial-Hardware**. Die Registrierung läuft über die Android-App und die Kamera des Telefons. Zwei Betriebsarten:
+
+**a) Biometrie aktiviert** (Koordinator erreichbar): Die App nimmt Gesicht und Handfläche mit der Telefonkamera auf. Mehrere unabhängige Vergleichsdienste prüfen die Aufnahme gegen die bestehenden Anmeldungen und müssen mehrheitlich (M von N) zustimmen, bevor ein `bio_hash` ausgestellt wird. Dieser Hash geht in den Nullifier des ZK-Beweises ein, und die Kette lehnt jeden bereits benutzten Nullifier ab.
+
+**b) Biometrie deaktiviert** (Standard, wenn kein Koordinator konfiguriert ist): Die App leitet die Identität aus einem **zufälligen, gerätegebundenen Geheimnis** ab. Das ist ausdrücklich *keine* Biometrie. In dieser Betriebsart bindet die Anmeldung an ein **Gerät**, nicht an einen Menschen: dieselbe Person kann sich auf einem zweiten Telefon erneut anmelden und ein zweites Mal 1.000 AEQ erhalten.
+
+**Was die Einmaligkeit zum Start wirklich trägt:** der Nullifier auf der Kette. Er ist kryptografisch und lückenlos — ein zweites Mal derselbe Nullifier wird abgelehnt, egal über welchen Weg er eingereicht wird. Er beweist aber nur, dass *dieselbe Identitätsquelle* nicht zweimal zählt. Ob diese Quelle ein Mensch oder ein Gerät ist, entscheidet die Betriebsart oben.
+
+#### EN
+This section describes the state on 2026-08-18. Where it contradicts anything above, this section is correct.
+
+There is **no special hardware**. Registration runs through the Android app and the phone's own camera. Two modes:
+
+**a) Biometrics enabled** (coordinator reachable): the app captures face and palm with the phone camera. Several independent matching services compare the capture against existing enrolments and must agree by quorum (M of N) before a `bio_hash` is issued. That hash goes into the ZK proof's nullifier, and the chain rejects any nullifier it has already seen.
+
+**b) Biometrics disabled** (the default when no coordinator is configured): the app derives identity from a **random, device-bound secret**. This is explicitly *not* biometrics. In this mode registration binds to a **device**, not to a person: the same human can register again on a second phone and receive a second 1,000 AEQ grant.
+
+**What actually carries uniqueness at launch:** the on-chain nullifier. It is cryptographic and airtight — the same nullifier is refused the second time, whatever path submits it. But it only proves that *the same identity source* cannot count twice. Whether that source is a human or a device is decided by the mode above.
 
 ---
 
@@ -336,7 +366,7 @@ Node 1 (Railway, Berlin)          Node 2 (Railway/VPS)
 |-----------|-------------|
 | Programmiersprache / Language | Go 1.24 |
 | Konsens / Consensus | BlockDAG + Proof of Humanity |
-| Blockzeit / Block Time | ~6 Sekunden / seconds |
+| Blockzeit / Block Time | ~1 Sekunde / second |
 | Chain ID | 1926 |
 | EVM-Kompatibilität / EVM Compat. | Vollständig / Full (go-ethereum) |
 | P2P-Protokoll / P2P Protocol | libp2p |
