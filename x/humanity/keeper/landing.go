@@ -9,9 +9,19 @@ const landingHTML = `<!DOCTYPE html>
 <title>Aequitas — Proof of Humanity Chain</title>
 <meta name="description" content="The world's first currency where every verified human receives equal money. Gini coefficient 0.08 — fairer than any country on Earth.">
 <meta name="theme-color" content="#0C0E16">
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=DM+Serif+Display&display=swap" rel="stylesheet">
+<!-- FIX (audit 2026-08-14): this page loaded its fonts from Google
+     (fonts.googleapis.com / fonts.gstatic.com) while handleLanding's own CSP
+     allows style-src/font-src only from fonts.bunny.net — so the stylesheet
+     was BLOCKED by CSP and the page silently rendered in the fallback
+     sans-serif, not Inter/DM Serif Display. The <link rel=preconnect> tags
+     were worse than useless: preconnect is not governed by style-src, so the
+     browser still opened a DNS+TLS connection to Google on every page load,
+     leaking visitor IPs to a third party for a stylesheet that was then
+     discarded. The explorer and /dapp were already migrated to fonts.bunny.net
+     (GDPR-friendly, no request logging); this page was missed. Same families,
+     same weights, now actually within the CSP. -->
+<link rel="preconnect" href="https://fonts.bunny.net">
+<link href="https://fonts.bunny.net/css?family=inter:300,400,500,600,700,800,900|dm-serif-display:400&display=swap" rel="stylesheet">
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 :root{

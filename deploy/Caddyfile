@@ -1,0 +1,72 @@
+# Aequitas — TLS reverse proxy for a validator node (Contabo).
+#
+# WHY THIS FILE EXISTS
+# --------------------
+# Until 2026-08-14 the public HTTPS entry point of this network was hosted on
+# Railway, which terminated TLS itself. Railway is decommissioned; the network
+# now runs on the two Contabo boxes, which serve the node directly on :8080
+# over plain HTTP. Two things in the codebase require real TLS on a real
+# hostname, so this is not optional:
+#
+#   1. isAllowedPeerURL (x/humanity/keeper/sync_blocks.go) accepts http:// ONLY
+#      for literal public IPs. For a HOSTNAME it requires https:// — that check
+#      exists to stop DNS rebinding. So "https://aequitas.digital" can only
+#      ever work as a peer seed if the hostname genuinely serves TLS.
+#   2. The browser-facing pages (explorer, /dapp) use getUserMedia (camera) and
+#      wallet APIs, which browsers gate on a secure context.
+#
+# STATUS AS FOUND (2026-08-14, verified live)
+# -------------------------------------------
+# Both boxes already answer on :80 with a 308 redirect to https, but the TLS
+# handshake on :443 fails for EVERY hostname tried (aequitas.digital,
+# www/node1/c1/rpc subdomains) — there is no valid certificate. So HTTPS is
+# currently non-functional on both boxes and the only working entry point is
+# :8080 directly. Installing this file (and pointing DNS at the box) is what
+# fixes that.
+#
+# DEPLOY
+# ------
+#   sudo cp deploy/Caddyfile /etc/caddy/Caddyfile
+#   sudo caddy validate --config /etc/caddy/Caddyfile
+#   sudo systemctl reload caddy
+#
+# Caddy obtains and renews the certificate automatically via Let's Encrypt
+# (HTTP-01 over port 80). Port 80 must stay open and reachable — it already is.
+# Do NOT put the ACME challenge behind the redirect; Caddy handles that itself.
+
+aequitas.digital, www.aequitas.digital {
+	# The node listens on plain HTTP on the loopback interface only. Caddy is
+	# the only thing that should be publicly exposed on 80/443.
+	#
+	# X-Forwarded-For: Caddy sets this automatically, and the node's clientIP()
+	# (x/humanity/keeper/register.go) only trusts the header when the TCP peer
+	# is private/loopback — i.e. exactly this proxy. That combination is what
+	# makes the per-IP rate limits count real client IPs instead of lumping
+	# every request under 127.0.0.1. Do not add a trusted_proxies directive
+	# that would forward this header from anywhere else.
+	reverse_proxy 127.0.0.1:8080
+
+	# Compression is deliberately NOT enabled here. The node already spends
+	# measurable CPU on gzip for /rpc responses (~3.5% in the 2026-07-27 CPU
+	# profile); adding a second compression pass in front of it costs CPU on a
+	# box whose throughput ceiling is already CPU-bound, for no gain.
+
+	# Security headers are set per-route by the node itself (X-Frame-Options,
+	# X-Content-Type-Options, Referrer-Policy, and a per-page CSP — see
+	# handleUI/handleDapp/handleLanding in x/humanity/keeper/api.go).
+	# Deliberately not duplicated here: a blanket header at the proxy would
+	# silently override the per-page CSPs, which differ by page on purpose.
+
+	log {
+		output file /var/log/caddy/aequitas.log {
+			roll_size 50MiB
+			roll_keep 5
+		}
+	}
+}
+
+# NOTE — the libp2p P2P listener (port 4001) is NOT proxied and must not be.
+# It speaks its own transport with its own encryption and peer-ID
+# authentication, not HTTP. It needs to stay directly reachable on 4001/tcp,
+# which is what the bootstrap multiaddrs in x/humanity/keeper/p2p.go point at.
+# Verify with:  nc -vz <ip> 4001

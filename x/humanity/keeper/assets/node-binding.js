@@ -22,10 +22,25 @@ async function signBinding() {
       method: 'personal_sign',
       params: [message, wallet],
     });
-    outEl.innerHTML = 'Wallet: <span class="hl">' + wallet + '</span><br><br>' +
-      'Set these on your node:<br><br>' +
-      'NODE_OPERATOR_WALLET=' + wallet + '<br>' +
-      'NODE_OPERATOR_BINDING_SIGNATURE=' + signature;
+    // FIX (P2, security audit 2026-07-21): `wallet` comes straight from
+    // eth_requestAccounts (wallet-provider-supplied, unvalidated) — building
+    // this via string-concatenated innerHTML would let a malicious/compromised
+    // wallet provider inject markup/script into this page. Build the DOM with
+    // textContent instead so wallet/signature are always treated as plain text.
+    outEl.textContent = '';
+    outEl.appendChild(document.createTextNode('Wallet: '));
+    const walletSpan = document.createElement('span');
+    walletSpan.className = 'hl';
+    walletSpan.textContent = wallet;
+    outEl.appendChild(walletSpan);
+    outEl.appendChild(document.createElement('br'));
+    outEl.appendChild(document.createElement('br'));
+    outEl.appendChild(document.createTextNode('Set these on your node:'));
+    outEl.appendChild(document.createElement('br'));
+    outEl.appendChild(document.createElement('br'));
+    outEl.appendChild(document.createTextNode('NODE_OPERATOR_WALLET=' + wallet));
+    outEl.appendChild(document.createElement('br'));
+    outEl.appendChild(document.createTextNode('NODE_OPERATOR_BINDING_SIGNATURE=' + signature));
     outEl.style.display = 'block';
   } catch (e) {
     errEl.textContent = 'Signing failed or was rejected: ' + (e && e.message ? e.message : e);

@@ -306,6 +306,28 @@ contract AequitasV7 {
 
     function applyDemurrage(address human) external { require(isHuman[human],"Not human"); _applyDemurrage(human); }
 
+    // NOTE (economic-parameter documentation drift, audit 2026-07-21): this
+    // function's DEMURRAGE_BPS=100 (1%/year, no grace period, 100% of the
+    // fee to ubiPool via UBI_SHARE_BPS above) is NOT the demurrage policy
+    // that ever actually runs against a real user's balance on this chain.
+    // WHITEPAPER.md describes a different schedule entirely (0.5%/month,
+    // only after a 3-month inactivity grace period, split 40% validators /
+    // 30% LPs / 20% UBI / 10% treasury instead of 100% to UBI) — and even
+    // that description only matches the Go RPC layer's own independent
+    // implementation, which is what production actually enforces:
+    // settleDemurrageLocked / applyDemurrageLossLocked (x/humanity/keeper/
+    // state.go) compute and apply demurrage directly against the Go
+    // ledger's AccountState, never by calling into this contract.
+    // The applyDemurrage()/_applyDemurrage() pair below is not reachable in
+    // production either way: checkPersistedCallAllowed's
+    // knownV7PublicPersistSelectors allowlist (x/humanity/keeper/
+    // evm_engine.go) does not include applyDemurrage's selector, so a
+    // direct call attempting to persist state through it is rejected before
+    // it would ever execute. Treat this function (and DEMURRAGE_BPS above)
+    // as historical/reference Solidity, not live economic policy — do not
+    // use it to infer what demurrage rate a real account is actually
+    // charged; read state.go's settleDemurrageLocked for that.
+    //
     // FIX (P3-a, performance audit 2026-07-06): balanceOf[human] used to be
     // read three times (the fairShare comparison, the excess calculation,
     // and the final `-= fee`); caching it into `bal` once removes the two
@@ -512,6 +534,31 @@ contract AequitasV7 {
             guardianOf[human] = address(0);
             emit GuardianRevoked(human, g);
         }
+        // FIX (stale pending-guardian survives deregistration, audit
+        // 2026-07-21): pendingGuardian[human]/guardianRequestedAt[human] were
+        // never cleared here — only the CONFIRMED guardianOf relationship
+        // above was. pendingGuardian never reserves a wardCount slot (that
+        // only happens on confirmGuardian), so clearing it needs no matching
+        // wardCount adjustment; it cannot under- or over-count.
+        // Two concrete problems this closes:
+        //   1. If `human` had proposed a guardian but never confirmed before
+        //      being swept, that stale proposal used to survive this sweep
+        //      untouched.
+        //   2. registerWithSig has no isHuman==true path other than through
+        //      here first clearing isHuman[human] — so if this address is
+        //      later reused for a fresh registration (a recycled address),
+        //      the old, already-timelock-expired guardianRequestedAt would
+        //      let the new registrant call confirmGuardian() immediately,
+        //      completely skipping the 7-day GUARDIAN_TIMELOCK the propose
+        //      step is supposed to enforce for whoever registers next at
+        //      this address.
+        // Clearing both here (the only place isHuman ever transitions to
+        // false) closes both cases without registerWithSig needing to know
+        // anything about guardian state at all.
+        if (pendingGuardian[human] != address(0)) {
+            pendingGuardian[human] = address(0);
+            guardianRequestedAt[human] = 0;
+        }
         emit EscrowToUBI(human, amount);
     }
 
@@ -600,6 +647,21 @@ contract AequitasV7 {
     }
 
     function wealthCap() public view returns (uint256) {
+        // FIX (division-to-zero guard, audit 2026-07-21): fairShare() below
+        // is totalSupply / totalHumans, which truncates to 0 whenever
+        // totalSupply < totalHumans (integer division floors toward zero).
+        // CAPS[phase] * 0 == 0, and _applyWealthCap treats ANY positive
+        // balance as 100% "excess" over a 0 cap — it would seize every
+        // registered human's entire balance into ubiPool the next time
+        // _applyWealthCap runs for them. Not reachable through this
+        // contract's own minting paths today (registerWithSig always mints
+        // INITIAL_GRANT before incrementing totalHumans, so totalSupply >=
+        // totalHumans holds after every registration, and no path burns
+        // supply below that), but nothing here enforces that invariant, so
+        // don't rely on it staying true forever. Fail safe instead: report
+        // "no effective cap" rather than 0 so this degenerate state can
+        // never trigger a seizure.
+        if (totalHumans > 0 && totalSupply < totalHumans) return type(uint256).max;
         return CAPS[currentPhase()] * fairShare();
     }
 

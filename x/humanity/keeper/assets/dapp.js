@@ -79,6 +79,14 @@ window.ethereum && window.ethereum.on('accountsChanged', accs => {
   else { wallet = null; }
 });
 
+// FIX (P1, security audit 2026-07-21): no chainChanged listener existed —
+// same issue explorer.js already fixed (beta-launch audit 2026-07-05, see
+// its own comment there). Without this, a wallet that switches away from
+// Aequitas mid-session keeps showing this page as if still connected, and a
+// send/swap can go out against the wrong chain before the user notices.
+// Reloading on chainChanged is MetaMask's own documented recommendation.
+window.ethereum && window.ethereum.on('chainChanged', () => window.location.reload());
+
 // ── API HELPERS ──────────────────────────────────────────────────────────────
 // FIX (P3-h, audit 2026-07-06): loadStatus/loadBalance/loadPriceHistory/loadPool
 // all swallow fetch failures via empty catch(e) {} with zero user-facing
@@ -377,6 +385,11 @@ async function doSend() {
   if (amtWei === null || amtWei <= 0n) { setStatus('send-status', 'Enter an amount', 'err'); return; }
   setStatus('send-status', 'Confirm in MetaMask…', 'info');
   try {
+    // FIX (P1, security audit 2026-07-21): belt-and-suspenders alongside the
+    // chainChanged reload handler above — closes the race between a chain
+    // switch and the click landing before the reload has finished, right
+    // before the one call that actually moves funds.
+    await ensureChain();
     const value = '0x' + amtWei.toString(16);
     const txHash = await window.ethereum.request({ method: 'eth_sendTransaction', params: [{ from: wallet, to, value }] });
     setStatus('send-status', '✓ Sent! Tx: ' + txHash.slice(0, 12) + '…', 'ok');

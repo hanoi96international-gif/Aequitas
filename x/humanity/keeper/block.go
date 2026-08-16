@@ -4833,6 +4833,55 @@ func (dag *BlockDAG) seedCheckpointParentStubsLocked(cp *Block) {
 	}
 }
 
+// maxCanonicalWalkHops bounds canonicalBlockAtHeightLocked's linear
+// SelectedParent walk.
+//
+// FIX (P0, security audit 2026-08-14 — unauthenticated remote DoS + OOM,
+// reproduced live on Contabo1): the walk below had NO hop bound at all, and
+// the DB-lookup budget it passed to ghostdagBlockLookup stopped gating that
+// function on 2026-07-10 (see ghostdagBlockLookup's own "budget is now
+// advisory only" comment). That change reasoned every caller's BFS already
+// self-limits via maxMergeVisits/mergeDepthLimit — true for the merge-set
+// callers it was written for, but this walk is a plain linear loop with no
+// visitCap of any kind, so it was left with nothing bounding it whatsoever.
+//
+// Consequence: a single unauthenticated GET /api/block?height=1 (or
+// eth_getBlockByNumber("0x1") on /rpc, same entry point via
+// GetBlockByHeight) walked from the current tip all the way down — at the
+// observed production height that is ~3.7 MILLION iterations, all but the
+// most recent startupLoadWindow (2000) of them a synchronous Postgres round
+// trip, every one of them holding the GLOBAL dag.mu WRITE lock. That
+// serializes block production, peer sync and every other API read behind it
+// for the whole duration (measured: minutes-to-hours; the node keeps
+// accepting TCP on :8080 but answers no HTTP at all, which is exactly how
+// this was found). ghostdagBlockLookup also caches each fetched block into
+// dag.blocks, so the same request grows the in-memory DAG without bound —
+// an OOM path on top of the stall.
+//
+// The fix is the bound the 2026-07-04 comment above already describes as
+// this function's contract ("a bounded budget, falling back to the caller's
+// existing DB-heuristic fallback instead of blocking indefinitely"), made
+// explicit here rather than borrowed from a shared helper whose gating
+// semantics legitimately changed for its consensus callers. Two layers:
+//
+//  1. Distance precheck — if the requested height is further below the tip
+//     than this bound, don't start the walk at all (O(1) rejection).
+//  2. Hop counter + a HARD DB-lookup gate inside the loop, so a chain with
+//     height gaps (one SelectedParent link can span many heights) or a
+//     sparse in-memory window still cannot exceed the bound.
+//
+// Returning nil is not a behavior change for callers: GetBlockByHeight
+// already falls back to LoadBlockFromDBByHeight for exactly this case, and
+// that fallback is a single indexed `WHERE height = $1` query applying the
+// SAME canonical selection rule this walk does (highest BlueScore, ties
+// broken by lowest hash, synthetic-checkpoint stubs skipped). For any
+// height deep enough to trip this bound the block is long since finalized,
+// so there is no competing sibling for the two paths to disagree about;
+// near-tip heights — the explorer's /api/blocks/canonical window (max 200)
+// and autoheal's finalized-checkpoint comparison — stay well inside the
+// bound and keep taking the exact SelectedParent walk as before.
+const maxCanonicalWalkHops = 10000
+
 func (dag *BlockDAG) canonicalBlockAtHeightLocked(height int64) *Block {
 	var best *Block
 	for hash := range dag.tips {
@@ -4847,13 +4896,33 @@ func (dag *BlockDAG) canonicalBlockAtHeightLocked(height int64) *Block {
 	if best == nil {
 		return nil
 	}
-	dbBudget := dag.maxGhostdagDBLookups()
+	// Layer 1: reject deep lookups before walking a single hop.
+	if best.Height-height > maxCanonicalWalkHops {
+		return nil
+	}
+	// Layer 2: bound both the hop count and, separately, the number of
+	// blocks this walk may pull from the DB. maxGhostdagDBLookups is still
+	// passed to ghostdagBlockLookup so its telemetry/migration behavior is
+	// unchanged, but it no longer gates anything there — dbLookups below is
+	// what actually stops the walk, checked BEFORE the round trip happens.
+	maxDBLookups := dag.maxGhostdagDBLookups()
+	dbLookups := 0
+	advisoryBudget := maxDBLookups
 	cur := best
-	for cur != nil && cur.Height > height {
+	for hops := 0; cur != nil && cur.Height > height; hops++ {
+		if hops >= maxCanonicalWalkHops {
+			return nil
+		}
 		if cur.SelectedParent == "" {
 			return nil
 		}
-		cur = dag.ghostdagBlockLookup(cur.SelectedParent, &dbBudget)
+		if _, inMemory := dag.blocks[cur.SelectedParent]; !inMemory {
+			if dbLookups >= maxDBLookups {
+				return nil
+			}
+			dbLookups++
+		}
+		cur = dag.ghostdagBlockLookup(cur.SelectedParent, &advisoryBudget)
 	}
 	if cur != nil && cur.Height == height && cur.Proposer != "synthetic-checkpoint" {
 		return cur

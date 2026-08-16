@@ -192,6 +192,10 @@ header::before{content:'';position:absolute;top:0;left:0;right:0;height:2px;back
 .nc:hover{border-color:rgba(107,70,193,0.3);box-shadow:0 4px 20px rgba(107,70,193,0.10)}
 .nc-title{font-size:0.6rem;color:var(--purple);letter-spacing:1.5px;text-transform:uppercase;margin-bottom:14px;font-weight:700;display:flex;align-items:center;gap:8px}
 .nc-title::before{content:'';display:inline-block;width:3px;height:12px;background:linear-gradient(180deg,var(--purple),var(--teal));border-radius:2px;flex-shrink:0}
+/* FIX (P2, security audit 2026-07-21): same rationale as .dl-app-btn:hover
+   above — replaces the 3 run-node action links' onmouseover/onmouseout
+   this.style.opacity=... with a plain :hover rule. */
+.node-link-btn:hover{opacity:.87}
 .nbox{background:var(--card2);border-radius:var(--radius-sm);padding:14px;border:1px solid var(--border);margin-bottom:10px}
 .nstat{display:flex;align-items:center;gap:6px;font-size:0.67rem;color:var(--neon);margin-bottom:5px;font-weight:600}
 .ndot{width:7px;height:7px;border-radius:50%;background:var(--neon);box-shadow:0 0 8px var(--neon)}
@@ -208,6 +212,11 @@ header::before{content:'';position:absolute;top:0;left:0;right:0;height:2px;back
 .rhero{background:linear-gradient(135deg,rgba(139,92,246,0.1),rgba(6,182,212,0.05));border:1px solid rgba(139,92,246,0.25);border-radius:var(--radius);padding:24px;margin-bottom:16px;text-align:center;box-shadow:var(--glow-purple)}
 .rhero-title{font-size:1.05rem;font-weight:700;color:var(--text);margin-bottom:8px;font-family:var(--font-display)}
 .rhero-sub{font-size:0.67rem;color:var(--muted);line-height:1.9}
+/* FIX (P2, security audit 2026-07-21): replaces this.style.opacity/transform
+   set via inline onmouseover/onmouseout (inert under CSP script-src, and an
+   XSS/CSP-injection risk even where it does run) with a plain :hover rule —
+   this was always a pure style toggle, no JS logic involved. */
+.dl-app-btn:hover{opacity:.87;transform:translateY(-2px)}
 .aonly{background:rgba(139,92,246,0.06);border:1px solid rgba(139,92,246,0.2);border-radius:var(--radius);padding:20px;text-align:center;margin-bottom:16px}
 .aonly-icon{font-size:2rem;margin-bottom:8px}
 .aonly-title{font-size:0.7rem;color:var(--purple);font-weight:700;letter-spacing:1px;margin-bottom:10px;text-shadow:0 0 10px rgba(139,92,246,0.4)}
@@ -299,8 +308,15 @@ input[type=number]::-webkit-inner-spin-button{opacity:0.5}
 .ubi-src-desc{font-size:0.57rem;color:var(--muted);line-height:1.75}
 .pools4-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
 @media(max-width:580px){.pools4-grid{grid-template-columns:1fr}}
-.pool4-card{background:var(--card2);border:1px solid var(--border);border-radius:var(--radius-sm);padding:16px;transition:all 0.2s}
-.pool4-card:hover{transform:translateY(-2px);box-shadow:var(--glow-purple)}
+.pool4-card{background:var(--card2);border:1px solid var(--border);border-color:var(--bc,var(--border));border-radius:var(--radius-sm);padding:16px;transition:all 0.2s}
+/* FIX (P2, security audit 2026-07-21): the 4 pool4-card instances used to set
+   their (differing, per-card) border-color via onmouseover/onmouseout
+   this.style.borderColor=... — inert under CSP script-src and unnecessary
+   for a pure style toggle. --bc/--hb are per-instance CSS custom properties
+   set via each card's own inline style="" (values only, no event handlers),
+   consumed here so both the base and :hover border-color live in this
+   stylesheet rule instead of being pushed around by JS. */
+.pool4-card:hover{transform:translateY(-2px);box-shadow:var(--glow-purple);border-color:var(--hb,var(--bc,var(--border)))}
 .pool4-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px}
 .pool4-name{font-size:0.61rem;font-weight:700;letter-spacing:0.3px}
 .pool4-badge{font-size:0.56rem;color:var(--muted);background:var(--card);border:1px solid var(--border);padding:2px 8px;border-radius:10px}

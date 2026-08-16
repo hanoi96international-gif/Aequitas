@@ -24,8 +24,19 @@ import (
 // ─── PEER REGISTRY ───────────────────────────────────────────────────────────
 
 // PeerRegistry tracks known peer nodes with heartbeat timestamps.
-// The primary node (IS_PRIMARY_NODE=true) collects registrations from
-// secondary nodes; secondary nodes query it to discover all peers.
+//
+// DOC FIX (audit 2026-08-14): this used to say "the primary node
+// (IS_PRIMARY_NODE=true) collects registrations from secondary nodes". That
+// has not been true for a long time and actively misleads — nothing in this
+// file, or anywhere else, branches on IS_PRIMARY_NODE. EVERY node accepts
+// /api/peers/register and serves /api/peers; "primary" is purely a matter of
+// which URL other operators happen to have configured as their seed, not a
+// role the code assigns or enforces. IS_PRIMARY_NODE today controls exactly
+// two things, neither of them peer-related: the cosmetic "is_primary" field
+// in /api/status, and the RESET_DB_STATE refusal in resetDBStateForBootstrap
+// (state.go). Daily pool distribution is likewise decentralized — every node
+// is eligible, deduplicated via TryLockDistribution's Postgres CAS (see
+// main.go's own comment on the distribution round).
 var GlobalPeerRegistry = &PeerRegistry{peers: make(map[string]time.Time)}
 
 type PeerRegistry struct {
@@ -1172,6 +1183,40 @@ func NormalizeNodeURL(rawURL string) string {
 // SELF_URL happens to equal this default simply filters it out below.
 const defaultPublicSeed = "https://aequitas.digital"
 
+// defaultPublicSeeds is the built-in seed list used when neither
+// PRIMARY_NODE_URL nor PRIMARY_NODE_URLS is set.
+//
+// MIGRATION (Railway decommissioned, 2026-08-14): this used to be the single
+// defaultPublicSeed constant above. Railway hosted what that domain pointed
+// at; with Railway gone the domain answers 404 (DNS still points at a
+// non-Aequitas host), so a zero-config node's ONLY built-in HTTP entry point
+// was dead — and the P2P bootstrap default had gone stale at the same time
+// for the same reason (see defaultBootstrapNodes, p2p.go). A newcomer could
+// therefore reach the network by neither transport. Confirmed live
+// 2026-08-14: both surviving validators reported "peers":null.
+//
+// The domain is kept FIRST because it is the intended long-term entry point:
+// it becomes available for this project on 2026-08-18 and will then point at
+// Contabo1. Until it does — and whenever it is mid-migration, expired, or its
+// TLS certificate is being reissued — the two validator IPs below keep
+// zero-config onboarding working. They are plain http:// on purpose:
+// isAllowedPeerURL (this file) deliberately permits http for LITERAL public
+// IPs and requires https only for HOSTNAMES, because the https requirement
+// exists to stop DNS rebinding, which a literal IP is not subject to.
+//
+// NOTE for the bootstrap validators themselves: these entries are aliases for
+// those very nodes, and seedURLs can only filter out an exact selfURL match —
+// it cannot know that "https://aequitas.digital" and "http://173.249.37.118:8080"
+// are the same machine. Contabo1 and Contabo2 must therefore set
+// PRIMARY_NODE_URLS explicitly (pointing at each other), which bypasses this
+// default list entirely. That is already how both are configured; this note
+// exists so it stays that way.
+var defaultPublicSeeds = []string{
+	defaultPublicSeed,
+	"http://173.249.37.118:8080", // Contabo1
+	"http://194.163.188.71:8080", // Contabo2
+}
+
 func seedURLs(selfURL string) []string {
 	seen := map[string]bool{selfURL: true}
 	var out []string
@@ -1188,7 +1233,9 @@ func seedURLs(selfURL string) []string {
 		add(raw)
 	}
 	if len(out) == 0 {
-		add(defaultPublicSeed)
+		for _, s := range defaultPublicSeeds {
+			add(s)
+		}
 	}
 	return out
 }

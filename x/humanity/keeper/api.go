@@ -1579,7 +1579,15 @@ func (a *APIServer) handleRegistered(w http.ResponseWriter, r *http.Request) {
 	// attributes and zero <script> tags at all (pure static markup plus one
 	// escaped %s interpolation, see below) — script-src never needed
 	// 'unsafe-inline' here.
-	w.Header().Set("Content-Security-Policy", "default-src 'self' 'unsafe-inline'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.bunny.net; font-src https://fonts.bunny.net; connect-src 'self'; img-src 'self' data:")
+	w.Header().Set("Content-Security-Policy", "default-src 'self' 'unsafe-inline'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.bunny.net; font-src https://fonts.bunny.net; connect-src 'self'; img-src 'self' data:; frame-ancestors 'none'")
+	// FIX (P1/P2, security audit 2026-07-21): clickjacking + baseline headers.
+	// frame-ancestors 'none' (in the CSP above) plus X-Frame-Options: DENY for
+	// browsers that only honor the older header stops this page from being
+	// framed by another site. Neither restricts what this page itself can do
+	// (open popups, e.g. WalletConnect) — they only govern who may embed it.
+	w.Header().Set("X-Frame-Options", "DENY")
+	w.Header().Set("X-Content-Type-Options", "nosniff")
+	w.Header().Set("Referrer-Policy", "strict-origin-when-cross-origin")
 	// XSS fix: escape wallet parameter before writing to HTML — without this,
 	// a crafted URL like /registered?wallet=<script>... would execute JS.
 	wallet := html.EscapeString(r.URL.Query().Get("wallet"))
@@ -1633,7 +1641,12 @@ func (a *APIServer) handleNodeBinding(w http.ResponseWriter, r *http.Request) {
 	// FIX (Monster Audit 2026-07-12 follow-up, P1): script-src no longer needs
 	// 'unsafe-inline' now that signBinding() lives in the same-origin
 	// /node-binding.js file (see nodeBindingJS's comment in api_html.go).
-	w.Header().Set("Content-Security-Policy", "default-src 'self' 'unsafe-inline'; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self'")
+	w.Header().Set("Content-Security-Policy", "default-src 'self' 'unsafe-inline'; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self'; frame-ancestors 'none'")
+	// FIX (P1/P2, security audit 2026-07-21): clickjacking + baseline headers,
+	// same rationale as handleRegistered above.
+	w.Header().Set("X-Frame-Options", "DENY")
+	w.Header().Set("X-Content-Type-Options", "nosniff")
+	w.Header().Set("Referrer-Policy", "strict-origin-when-cross-origin")
 	fmt.Fprint(w, `<!DOCTYPE html>
 <html>
 <head>
@@ -1688,7 +1701,14 @@ func (a *APIServer) handleUI(w http.ResponseWriter, r *http.Request) {
 	// delegated listener in explorer.js (see CLICK_ACTIONS there). explorer.html
 	// itself has zero inline <script> blocks (only external /vendor + /explorer.js
 	// src= tags), so script-src no longer needs 'unsafe-inline' at all.
-	w.Header().Set("Content-Security-Policy", "default-src 'self' 'unsafe-inline'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.bunny.net; font-src https://fonts.bunny.net; connect-src 'self' https://aequitas.digital; img-src 'self' data:")
+	w.Header().Set("Content-Security-Policy", "default-src 'self' 'unsafe-inline'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.bunny.net; font-src https://fonts.bunny.net; connect-src 'self' https://aequitas.digital; img-src 'self' data:; frame-ancestors 'none'")
+	// FIX (P1/P2, security audit 2026-07-21): clickjacking + baseline headers,
+	// same rationale as handleRegistered's own comment. frame-ancestors 'none'
+	// only controls who may iframe this Explorer page — it does not affect
+	// anything the page itself opens (wallet popups, etc).
+	w.Header().Set("X-Frame-Options", "DENY")
+	w.Header().Set("X-Content-Type-Options", "nosniff")
+	w.Header().Set("Referrer-Policy", "strict-origin-when-cross-origin")
 	path := strings.Trim(r.URL.Path, "/")
 	if idx := strings.Index(path, "/"); idx >= 0 {
 		path = path[:idx]
@@ -2757,7 +2777,15 @@ func (a *APIServer) handleDapp(w http.ResponseWriter, r *http.Request) {
 	// script is now external+self-hosted (see dappJS's comment in
 	// api_html.go) and its 21 onclick=/oninput= attributes are gone, so this
 	// can go straight to a strict script-src with zero exceptions.
-	w.Header().Set("Content-Security-Policy", "default-src 'self' 'unsafe-inline'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.bunny.net; font-src https://fonts.bunny.net; connect-src 'self' https://aequitas.digital; img-src 'self' data:")
+	w.Header().Set("Content-Security-Policy", "default-src 'self' 'unsafe-inline'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.bunny.net; font-src https://fonts.bunny.net; connect-src 'self' https://aequitas.digital; img-src 'self' data:; frame-ancestors 'none'")
+	// FIX (P1/P2, security audit 2026-07-21): clickjacking + baseline headers,
+	// same rationale as handleRegistered's own comment. This page's biometric
+	// capture uses getUserMedia (camera), which frame-ancestors does not
+	// touch — that permission is granted per-origin to this page directly,
+	// not gated on whether the page can be framed by someone else.
+	w.Header().Set("X-Frame-Options", "DENY")
+	w.Header().Set("X-Content-Type-Options", "nosniff")
+	w.Header().Set("Referrer-Policy", "strict-origin-when-cross-origin")
 	http.ServeContent(w, r, "aequitas-dapp.html", fi.ModTime(), f)
 }
 
@@ -2815,7 +2843,12 @@ func (a *APIServer) handleLanding(w http.ResponseWriter, r *http.Request) {
 	// FIX (Monster Audit 2026-07-12 follow-up, P1): loadStats()/the smooth-scroll
 	// handler now live in the same-origin /landing.js file (see landingJS's
 	// comment in api_html.go), so script-src no longer needs 'unsafe-inline'.
-	w.Header().Set("Content-Security-Policy", "default-src 'self' 'unsafe-inline'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.bunny.net; font-src https://fonts.bunny.net; connect-src 'self'; img-src 'self' data:")
+	w.Header().Set("Content-Security-Policy", "default-src 'self' 'unsafe-inline'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.bunny.net; font-src https://fonts.bunny.net; connect-src 'self'; img-src 'self' data:; frame-ancestors 'none'")
+	// FIX (P1/P2, security audit 2026-07-21): clickjacking + baseline headers,
+	// same rationale as handleRegistered's own comment.
+	w.Header().Set("X-Frame-Options", "DENY")
+	w.Header().Set("X-Content-Type-Options", "nosniff")
+	w.Header().Set("Referrer-Policy", "strict-origin-when-cross-origin")
 	fmt.Fprint(w, landingHTML)
 }
 

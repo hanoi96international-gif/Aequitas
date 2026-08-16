@@ -6,6 +6,7 @@ import (
 	"math/big"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/ethereum/go-ethereum/accounts"
 	"github.com/ethereum/go-ethereum/crypto"
@@ -60,6 +61,25 @@ func (a *APIServer) handleHumanityCredential(w http.ResponseWriter, r *http.Requ
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Access-Control-Allow-Origin", "*")
+
+	// FIX (P2, security audit 2026-07-21): this endpoint is public and
+	// unauthenticated, like handleCheckRegistrationByBioHash below it in
+	// spirit, but unlike that endpoint (and handleRecoverEscrow,
+	// handleSetGuardian, handleConfirmAlive — all of which use the shared
+	// registerRateLimit cooldown pattern) it had no rate limit at all, even
+	// though GetRegistrationProof does a sequential scan over chain_blocks
+	// (1.4M+ rows and growing) with a JSONB transaction-array expansion for
+	// every is_human=true lookup. Same package-level registerRateLimit
+	// sync.Map, same per-IP 5s window as biohash-check, keyed separately so
+	// it can't be used to also throttle other endpoints.
+	ip := clientIP(r)
+	if ts, loaded := registerRateLimit.Load("credential:" + ip); loaded {
+		if time.Since(ts.(time.Time)) < 5*time.Second {
+			jsonError(w, "rate limited, try again shortly", 429)
+			return
+		}
+	}
+	registerRateLimit.Store("credential:"+ip, time.Now())
 
 	wallet := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("wallet")))
 	if len(wallet) != 42 || wallet[:2] != "0x" {
@@ -145,6 +165,11 @@ func (cs *ChainState) GetNullifierByWallet(wallet string) string {
 // GetRegistrationProof finds the register_human transaction for wallet in
 // chain_blocks and returns the block height, hash, unix timestamp, and the
 // Groth16 ZK proof fields. Returns nil proof if no registration block is found.
+// KNOWN FOLLOW-UP: the query below is a sequential scan over chain_blocks
+// (1.4M+ rows and growing) with a JSONB transaction-array expansion — no
+// index supports it. Rate-limited by the caller (handleHumanityCredential)
+// as of 2026-07-21, but a real fix needs a deliberate schema-migration
+// decision on this live table, not a quick add here.
 func (cs *ChainState) GetRegistrationProof(wallet string) (height int64, blockHash string, blockTime int64, proof *ZKProof) {
 	wallet = strings.ToLower(wallet)
 	if cs.db == nil {

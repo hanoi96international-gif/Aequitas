@@ -56,7 +56,7 @@
   <div class="rhero">
     <div class="rhero-title" data-i18n="reg-title">🔐 Register as a Verified Human</div>
     <div class="rhero-sub" data-i18n="reg-sub">Join the Aequitas network and receive your 1,000 AEQ Universal Basic Income grant. Registration is one-time, permanent, and completely gasless. No personal data is ever stored — only a cryptographic proof that you control a device key.</div>
-    <a href="/download/app.apk" style="display:inline-flex;align-items:center;gap:10px;margin-top:18px;background:var(--grad);color:#fff;padding:13px 28px;border-radius:10px;font-size:0.75rem;font-weight:700;text-decoration:none;letter-spacing:0.5px;box-shadow:var(--glow-purple);transition:all 0.2s" onmouseover="this.style.opacity='0.87';this.style.transform='translateY(-2px)'" onmouseout="this.style.opacity='1';this.style.transform='translateY(0)'">
+    <a href="/download/app.apk" class="dl-app-btn" style="display:inline-flex;align-items:center;gap:10px;margin-top:18px;background:var(--grad);color:#fff;padding:13px 28px;border-radius:10px;font-size:0.75rem;font-weight:700;text-decoration:none;letter-spacing:0.5px;box-shadow:var(--glow-purple);transition:all 0.2s">
       <span style="width:22px;height:22px;border-radius:6px;background:var(--grad);display:inline-flex;align-items:center;justify-content:center;font-size:13px;flex-shrink:0">⚖</span>
       <span data-i18n="btn-download-app">DOWNLOAD AEQUITAS APP</span>
     </a>
@@ -728,7 +728,7 @@
     <!-- ALL FOUR POOLS GRID -->
     <div style="font-size:0.54rem;color:var(--muted);letter-spacing:2.5px;text-transform:uppercase;font-weight:600;margin:16px 0 10px" data-i18n="pools4-header">All four redistribution pools</div>
     <div class="pools4-grid">
-      <div class="pool4-card" style="border-color:rgba(139,92,246,0.2)" onmouseover="this.style.borderColor='rgba(139,92,246,0.4)'" onmouseout="this.style.borderColor='rgba(139,92,246,0.2)'">
+      <div class="pool4-card" style="--bc:rgba(139,92,246,0.2);--hb:rgba(139,92,246,0.4)">
         <div class="pool4-head">
           <span class="pool4-name" style="color:var(--purple)" data-i18n="vel-pool">VALIDATORS</span>
           <span class="pool4-badge">40% of fees</span>
@@ -737,7 +737,7 @@
         <div class="pool4-timer" style="color:var(--purple)">⏰ Next: <span id="validators-timer">—</span></div>
         <div class="pool4-desc" data-i18n="vel-pool-desc">Node operators who produce blocks, validate ZK registrations, and secure the Aequitas BlockDAG. Paid daily, proportional to block production.</div>
       </div>
-      <div class="pool4-card" style="border-color:rgba(6,182,212,0.2)" onmouseover="this.style.borderColor='rgba(6,182,212,0.4)'" onmouseout="this.style.borderColor='rgba(6,182,212,0.2)'">
+      <div class="pool4-card" style="--bc:rgba(6,182,212,0.2);--hb:rgba(6,182,212,0.4)">
         <div class="pool4-head">
           <span class="pool4-name" style="color:var(--teal)" data-i18n="liq-pool">LIQUIDITY PROVIDERS</span>
           <span class="pool4-badge">30% of fees</span>
@@ -746,7 +746,7 @@
         <div class="pool4-timer" style="color:var(--teal)">⏰ Next: <span id="lp-timer">—</span></div>
         <div class="pool4-desc" data-i18n="liq-pool-desc">Providers of AEQ/tUSD liquidity to the AMM pool receive 30% of all fees, proportional to their LP share. Deeper liquidity = lower price impact for every trader.</div>
       </div>
-      <div class="pool4-card" style="border:1px solid rgba(245,166,35,0.3);background:linear-gradient(135deg,rgba(245,166,35,0.06),var(--card2))" onmouseover="this.style.borderColor='rgba(245,166,35,0.5)'" onmouseout="this.style.borderColor='rgba(245,166,35,0.3)'">
+      <div class="pool4-card" style="--bc:rgba(245,166,35,0.3);--hb:rgba(245,166,35,0.5);background:linear-gradient(135deg,rgba(245,166,35,0.06),var(--card2))">
         <div class="pool4-head">
           <span class="pool4-name" style="color:var(--gold)" data-i18n="ubi-pool">UBI POOL</span>
           <span class="pool4-badge">20% of fees</span>
@@ -755,7 +755,7 @@
         <div class="pool4-timer" style="color:var(--gold)" data-i18n="ubi-timer-above">⏰ countdown displayed above</div>
         <div class="pool4-desc" data-i18n="ubi-pool-desc">20% of swap fees + demurrage + wealth cap overflow → divided equally among all verified humans every 24 hours. Even with zero trading, demurrage and wealth cap ensure the pool always fills.</div>
       </div>
-      <div class="pool4-card" style="border-color:rgba(96,165,250,0.2)" onmouseover="this.style.borderColor='rgba(96,165,250,0.4)'" onmouseout="this.style.borderColor='rgba(96,165,250,0.2)'">
+      <div class="pool4-card" style="--bc:rgba(96,165,250,0.2);--hb:rgba(96,165,250,0.4)">
         <div class="pool4-head">
           <span class="pool4-name" style="color:var(--blue)" data-i18n="treasury">TREASURY</span>
           <span class="pool4-badge">10% of fees</span>
@@ -1078,13 +1078,13 @@
     <div class="nc-title" style="color:var(--gold)" data-i18n="run-node-title">Run Your Own Node — Help Secure the Network</div>
     <div style="font-size:0.67rem;color:var(--muted);line-height:1.9;margin-bottom:16px" data-i18n="run-node-desc">Registered humans can run an Aequitas validator node — no stake, no application required, but <strong style="color:var(--gold)">NODE_OPERATOR_WALLET must be a registered Aequitas human</strong> (this is a protocol security requirement). Nodes participate in block production, validate the human registry, and synchronize the BlockDAG. Node operators earn a share of protocol fees via the Validators Pool (40% of all protocol fees, distributed daily). The more nodes that run, the more decentralized and resilient the network becomes.</div>
     <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:16px">
-      <a id="node-guide-pdf-btn" href="/download/node-guide-en.pdf" download style="display:inline-flex;align-items:center;gap:8px;background:var(--gold);color:#06091A;padding:12px 20px;border-radius:8px;font-size:0.7rem;font-weight:700;text-decoration:none;transition:opacity 0.2s" onmouseover="this.style.opacity=0.87" onmouseout="this.style.opacity=1">
+      <a id="node-guide-pdf-btn" href="/download/node-guide-en.pdf" download class="node-link-btn" style="display:inline-flex;align-items:center;gap:8px;background:var(--gold);color:#06091A;padding:12px 20px;border-radius:8px;font-size:0.7rem;font-weight:700;text-decoration:none;transition:opacity 0.2s">
         📄 Node Operator Guide (PDF)
       </a>
-      <a href="https://github.com/hanoi96international-gif/Aequitas" target="_blank" style="display:inline-flex;align-items:center;gap:8px;background:rgba(139,92,246,0.15);color:var(--purple);border:1px solid rgba(139,92,246,0.3);padding:12px 20px;border-radius:8px;font-size:0.7rem;font-weight:700;text-decoration:none;transition:all 0.2s" onmouseover="this.style.opacity=0.87" onmouseout="this.style.opacity=1">
+      <a href="https://github.com/hanoi96international-gif/Aequitas" target="_blank" class="node-link-btn" style="display:inline-flex;align-items:center;gap:8px;background:rgba(139,92,246,0.15);color:var(--purple);border:1px solid rgba(139,92,246,0.3);padding:12px 20px;border-radius:8px;font-size:0.7rem;font-weight:700;text-decoration:none;transition:all 0.2s">
         🐙 View Source on GitHub
       </a>
-      <a href="/node-binding" target="_blank" style="display:inline-flex;align-items:center;gap:8px;background:rgba(0,230,118,0.12);color:var(--neon);border:1px solid rgba(0,230,118,0.3);padding:12px 20px;border-radius:8px;font-size:0.7rem;font-weight:700;text-decoration:none;transition:all 0.2s" onmouseover="this.style.opacity=0.87" onmouseout="this.style.opacity=1">
+      <a href="/node-binding" target="_blank" class="node-link-btn" style="display:inline-flex;align-items:center;gap:8px;background:rgba(0,230,118,0.12);color:var(--neon);border:1px solid rgba(0,230,118,0.3);padding:12px 20px;border-radius:8px;font-size:0.7rem;font-weight:700;text-decoration:none;transition:all 0.2s">
         🔗 Generate Node Binding Signature
       </a>
     </div>

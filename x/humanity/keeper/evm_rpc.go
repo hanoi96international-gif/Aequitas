@@ -154,10 +154,7 @@ func (s *EVMRPCServer) handleRPC(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if rpcRateLimited(clientIP(r)) {
-		writeError(w, -32005, "rate limited: too many requests, try again shortly", nil)
-		return
-	}
+	ip := clientIP(r)
 
 	r.Body = http.MaxBytesReader(w, r.Body, 1<<20) // 1 MB limit — prevents memory exhaustion via /rpc
 	body, err := io.ReadAll(r.Body)
@@ -180,8 +177,22 @@ func (s *EVMRPCServer) handleRPC(w http.ResponseWriter, r *http.Request) {
 			writeError(w, -32600, fmt.Sprintf("batch too large: max %d requests, got %d", maxBatchSize, len(batch)), nil)
 			return
 		}
+		// FIX (P1, security audit 2026-07-21): rpcRateLimited used to be
+		// checked exactly once per HTTP request, above this block, before the
+		// body was even parsed — so a single request carrying a
+		// maxBatchSize-sized batch consumed only 1 unit of the per-IP budget
+		// no matter how many individual calls it dispatched, letting a caller
+		// reach rpcRateLimitMax * maxBatchSize (200 * 100 = 20,000) dispatches
+		// per window instead of the documented rpcRateLimitMax. Count each
+		// batch item against the same budget individually, failing closed
+		// (skipping dispatch) the same way the single-request path below
+		// already does once the budget is exhausted.
 		var results []interface{}
 		for _, raw := range batch {
+			if rpcRateLimited(ip) {
+				results = append(results, errorResponse(nil, -32005, "rate limited: too many requests, try again shortly"))
+				continue
+			}
 			result := s.handleSingle(raw)
 			results = append(results, result)
 		}
@@ -189,6 +200,10 @@ func (s *EVMRPCServer) handleRPC(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if rpcRateLimited(ip) {
+		writeError(w, -32005, "rate limited: too many requests, try again shortly", nil)
+		return
+	}
 	result := s.handleSingle(body)
 	json.NewEncoder(w).Encode(result)
 }
