@@ -911,6 +911,10 @@ func (a *APIServer) buildMux() *http.ServeMux {
 	mux.HandleFunc("/api/sign-validator-challenge", a.handleSignValidatorChallenge)
 	mux.HandleFunc("/api/nonce", a.handleNonce)
 	mux.HandleFunc("/api/peers", a.handlePeers)
+	// Peer roles and build commits, fetched BY THIS NODE. The page cannot do
+	// it itself: its own CSP refuses cross-origin peer reads, and after the
+	// domain switch they would be mixed content too. See handlePeerStatuses.
+	mux.HandleFunc("/api/peers/status", a.handlePeerStatuses)
 	mux.HandleFunc("/api/signing-address", a.handleSigningAddress)
 	mux.HandleFunc("/api/admin/registration-debug", a.handleRegistrationDebug)
 	mux.HandleFunc("/api/admin/registration-recovery", a.handleRegistrationRecovery)

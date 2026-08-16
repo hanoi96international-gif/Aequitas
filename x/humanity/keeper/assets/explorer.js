@@ -2209,22 +2209,39 @@ async function loadTopology() {
     // bare-IP node with no TLS cert) gets blocked by the browser as mixed
     // content — gitCommit just stays null for that peer, rendered as "—"
     // rather than breaking the rest of the grid.
-    await Promise.all(nodes.filter(function(n) { return !n.self; }).map(function(n) {
-      return fetch(n.url + '/api/status').then(function(r) { return r.json(); }).then(function(s) {
-        n.gitCommit = s.git_commit || null;
-        // FIX (2026-08-15, reported live with a screenshot): this response was
-        // read for git_commit and its is_primary discarded, while every peer
-        // was hardcoded isPrimary:false above and rendered through
-        // `isPrimary ? 'Primary' : 'Secondary'`. So the PRIMARY node showed up
-        // as "Secondary" on every other node's page. That is exactly the guess
-        // this function's own comment says it refuses to make ("labeled
-        // generically ... rather than guessing a role we can't verify") — the
-        // comment was right, the code did not follow it, and the role is in
-        // fact verifiable: it is in the very response already being fetched.
-        n.roleKnown = typeof s.is_primary === 'boolean';
-        n.isPrimary = !!s.is_primary;
-      }).catch(function() { n.gitCommit = null; n.roleKnown = false; });
-    }));
+    // FIX (2026-08-16, reported live): this used to fetch each peer's
+    // /api/status straight from the browser, and every one of those reads was
+    // refused by this page's OWN Content-Security-Policy —
+    //   "Connecting to 'http://173.249.37.118:8080/api/status' violates the
+    //    following Content Security Policy directive: connect-src 'self' …"
+    // So the primary showed up on a secondary's Network tab as a node whose
+    // role could not be verified, and the commit column was permanently "—".
+    // Widening connect-src to arbitrary peer origins would be the wrong trade,
+    // and would not help anyway once this page is served over HTTPS on
+    // 2026-08-18 while the validators answer on plain HTTP (mixed content).
+    // The node has no such restriction and already talks to its peers, so it
+    // asks on our behalf: one same-origin call, /api/peers/status.
+    const peerInfo = {};
+    try {
+      const ps = await fetch('/api/peers/status');
+      if (ps.ok) {
+        const pj = await ps.json();
+        (pj.peers || []).forEach(function(p) { peerInfo[norm(p.url)] = p; });
+      }
+    } catch (e) { /* leave every peer unverified rather than guessing */ }
+    if (mySeq !== loadTopologySeq) return;
+
+    nodes.filter(function(n) { return !n.self; }).forEach(function(n) {
+      const info = peerInfo[norm(n.url)];
+      if (info && info.reachable) {
+        n.gitCommit = info.git_commit && info.git_commit !== 'unknown' ? info.git_commit : null;
+        n.roleKnown = typeof info.is_primary === 'boolean';
+        n.isPrimary = !!info.is_primary;
+      } else {
+        n.gitCommit = null;
+        n.roleKnown = false;
+      }
+    });
     if (mySeq !== loadTopologySeq) return;
 
     if (grid) {
