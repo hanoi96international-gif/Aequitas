@@ -29,7 +29,8 @@ Money that belongs to every human equally. Proof-of-Humanity chain, Chain ID 192
 
 - **Website:** `https://aequitas.digital`
 - **Standort:** leer lassen oder „On chain — Chain ID 1926"
-- **Angeheftet:** Post 1 des Launch-Threads (unten)
+- **Angeheftet:** zuerst der Vorstellungspost (Abschnitt 2), ab dem 18.08.
+  Post 1/7 des Launch-Threads
 
 ---
 
@@ -139,7 +140,76 @@ Früh dran, nicht klein.
 
 ---
 
-## 4. Launch-Thread (DE) — 18.08.2026
+## 4. Der dritte Post — was läuft, was beweist, was gebaut wird
+
+Drei Sachen sollen hier rein: die Vorteile, der Beweis-Stack von heute, und
+woran gearbeitet wird. Das passt nicht in 280 Zeichen, ohne dass alles drei
+zur Aufzählung verkommt — also ein kurzer Thread aus drei Posts, plus eine
+Ein-Post-Fassung darunter, falls es doch nur einer werden soll.
+
+**Was hier belegt ist und was nicht:** Groth16, circom/snarkjs, BN128,
+`BioVerifier.sol` und der keccak256-Nullifier laufen heute — sie stehen in
+den technischen Kenndaten des Whitepapers und im deployten Contract
+(`0xc369D27b…`). Die MPC-Deduplizierung dagegen ist Code im Repo
+(`x/humanity/mpc/`, 1406 Zeilen mit Tests), aber **noch nicht verdrahtet**:
+kein Paket außerhalb von `x/humanity/mpc` importiert sie. Deshalb steht sie
+im Post unter „arbeiten wir dran" und nicht unter „haben wir" — nachprüfbar
+mit einem grep, und genau das wird jemand tun.
+
+**3a — die Vorteile (274 Zeichen)**
+
+```text
+What the chain already does: ~1 second blocks, no gas fees, EVM so MetaMask just works, no premine and no team allocation, a wealth cap and demurrage that redistribute instead of burning — and a Gini index the network publishes about itself.
+
+Chain ID 1926, all open source.
+```
+
+**3b — was eine Registrierung heute beweist (277 Zeichen)**
+
+```text
+What proves a registration today: a Groth16 zk-SNARK, circom and snarkjs, BN128 curve, verified on chain by BioVerifier.sol.
+
+It carries two values: a commitment and a nullifier. The nullifier is claimed with the registration, in the same step. Replay it and the chain refuses.
+```
+
+**3c — woran gearbeitet wird (264 Zeichen)**
+
+```text
+What we are working on: de-duplication under multi-party computation. Templates are secret-shared across validators and compared by Hamming distance in the field — no single party ever holds a face.
+
+Code and tests are in the repo. Not yet wired into registration.
+```
+
+**3d — optional, die Designregel dahinter (261 Zeichen)**
+
+Lohnt sich, weil sie zeigt, dass die Fehlerrate mitgedacht ist statt
+verschwiegen. Steht so auch im Code (`OutcomeReview` in `mpc/registry.go`).
+
+```text
+One design rule we hold to: a near-match never auto-rejects.
+
+Biometric matching has a false-match rate that is never zero, and a wrongly rejected person would be locked out of a currency whose whole premise is that existing is enough. Close calls go to review.
+```
+
+**Ein-Post-Fassung (272 Zeichen)**
+
+```text
+Under the hood today: Groth16 zk-SNARKs verified on chain, a keccak256 nullifier that can be claimed exactly once, ~1 second blocks and no gas fees.
+
+Next up: de-duplication under multi-party computation, so uniqueness can be checked without any party ever holding a face.
+```
+
+**Ein-Post-Fassung, DE (271 Zeichen)**
+
+```text
+Was heute unter der Haube läuft: Groth16-zk-SNARKs, on-chain verifiziert, ein keccak256-Nullifier, der genau einmal gilt, ~1 Sekunde Blockzeit, keine Gas-Gebühren.
+
+Als Nächstes: Dedup per Multi-Party-Computation — Einmaligkeit prüfen, ohne dass jemand ein Gesicht sieht.
+```
+
+---
+
+## 5. Launch-Thread (DE) — 18.08.2026
 
 Sieben Posts, als Thread hintereinander. Jeder Post steht auch allein.
 
@@ -221,7 +291,7 @@ Fragen sind willkommen. Die skeptischen zuerst.
 
 ---
 
-## 5. Launch thread (EN) — same seven posts
+## 6. Launch thread (EN) — same seven posts
 
 **1/7**
 
@@ -301,7 +371,7 @@ Questions welcome. The sceptical ones first.
 
 ---
 
-## 6. Einzelposts für die ersten Tage
+## 7. Einzelposts für die ersten Tage
 
 Nicht alles am ersten Tag. Einer pro Tag reicht; jeder erklärt genau einen
 Mechanismus und steht für sich.
@@ -392,7 +462,7 @@ aequitas.digital
 
 ---
 
-## 7. Telegram
+## 8. Telegram
 
 ### Gruppenbeschreibung (max. 255 Zeichen)
 
@@ -450,7 +520,7 @@ Fragen bitte hier in die Gruppe, nicht per DM.
 
 ---
 
-## 8. Was wir nicht behaupten
+## 9. Was wir nicht behaupten
 
 Gilt für jeden Post, auch für spontane Antworten in Replies:
 
