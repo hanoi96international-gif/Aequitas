@@ -147,37 +147,54 @@ woran gearbeitet wird. Das passt nicht in 280 Zeichen, ohne dass alles drei
 zur Aufzählung verkommt — also ein kurzer Thread aus drei Posts, plus eine
 Ein-Post-Fassung darunter, falls es doch nur einer werden soll.
 
-**Was hier belegt ist und was nicht:** Groth16, circom/snarkjs, BN128,
-`BioVerifier.sol` und der keccak256-Nullifier laufen heute — sie stehen in
-den technischen Kenndaten des Whitepapers und im deployten Contract
-(`0xc369D27b…`). Die MPC-Deduplizierung dagegen ist Code im Repo
-(`x/humanity/mpc/`, 1406 Zeilen mit Tests), aber **noch nicht verdrahtet**:
-kein Paket außerhalb von `x/humanity/mpc` importiert sie. Deshalb steht sie
-im Post unter „arbeiten wir dran" und nicht unter „haben wir" — nachprüfbar
+**Der Thread muss einen Bogen haben, sonst widerspricht er sich.** Die erste
+Fassung tat genau das, an zwei Stellen:
+
+1. Post 3c beschrieb im Präsens, was gar nicht läuft — „Templates *are*
+   secret-shared across validators", und zwei Zeilen später „Not yet wired
+   into registration". Ein Post, der sich selbst widerlegt.
+2. Post 3b hieß „What proves a registration today" und klang damit nach
+   nachgewiesenem Menschen — während Post 2 gerade gesagt hatte, dass zwei
+   Telefone noch zwei Registrierungen sein können. Wer beide liest, hält
+   einen für gelogen.
+
+Die Reparatur ist kein Weichspülen, sondern ein Bogen: **was läuft → was
+der Beweis genau hergibt → was er nicht hergibt und wer daran arbeitet.**
+Post 3b endet auf der Grenze, Post 3c fängt bei ihr an. Damit ist die
+Einschränkung nicht mehr das Kleingedruckte, sondern das Scharnier.
+
+**Was belegt ist und was nicht:** Groth16, circom/snarkjs, BN128,
+`BioVerifier.sol` und der keccak256-Nullifier laufen heute — technische
+Kenndaten im Whitepaper, deployter Verifier-Contract (`0xc369D27b…`). Die
+MPC-Deduplizierung ist Code im Repo (`x/humanity/mpc/`, 1406 Zeilen mit
+Tests), aber **nicht verdrahtet**: kein Paket außerhalb von
+`x/humanity/mpc` importiert sie. Deshalb Futur, nicht Präsens — nachprüfbar
 mit einem grep, und genau das wird jemand tun.
 
-**3a — die Vorteile (274 Zeichen)**
+**3a — was heute läuft (265 Zeichen)**
 
 ```text
-What the chain already does: ~1 second blocks, no gas fees, EVM so MetaMask just works, no premine and no team allocation, a wealth cap and demurrage that redistribute instead of burning — and a Gini index the network publishes about itself.
+What runs today: one-second blocks, EVM so MetaMask connects to Chain ID 1926, and no gas fees — a 0.1% transaction fee feeds the pools instead.
 
-Chain ID 1926, all open source.
+No mining, no premine, no team allocation. And the chain publishes its own Gini index rather than asking to be trusted.
 ```
 
-**3b — was eine Registrierung heute beweist (277 Zeichen)**
+**3b — was der Beweis hergibt (267 Zeichen)**
 
 ```text
-What proves a registration today: a Groth16 zk-SNARK, circom and snarkjs, BN128 curve, verified on chain by BioVerifier.sol.
+Registration runs on a Groth16 zk-SNARK — circom, snarkjs, BN128 — verified on chain by BioVerifier.sol. It carries a commitment and a nullifier, claimed in the same step as the registration itself.
 
-It carries two values: a commitment and a nullifier. The nullifier is claimed with the registration, in the same step. Replay it and the chain refuses.
+What that proves: this identity source has never registered before.
 ```
 
-**3c — woran gearbeitet wird (264 Zeichen)**
+**3c — was er nicht hergibt, und die Arbeit daran (276 Zeichen)**
 
 ```text
-What we are working on: de-duplication under multi-party computation. Templates are secret-shared across validators and compared by Hamming distance in the field — no single party ever holds a face.
+What it does not prove: that the source is a person and not a second phone.
 
-Code and tests are in the repo. Not yet wired into registration.
+Closing that is the current work — de-duplication under multi-party computation, so validators can compare templates without any one of them reconstructing one.
+
+Written and tested. Not yet wired in.
 ```
 
 **3d — optional, die Designregel dahinter (261 Zeichen)**
@@ -191,20 +208,20 @@ One design rule we hold to: a near-match never auto-rejects.
 Biometric matching has a false-match rate that is never zero, and a wrongly rejected person would be locked out of a currency whose whole premise is that existing is enough. Close calls go to review.
 ```
 
-**Ein-Post-Fassung (272 Zeichen)**
+**Ein-Post-Fassung (268 Zeichen)** — derselbe Bogen, zusammengezogen
 
 ```text
-Under the hood today: Groth16 zk-SNARKs verified on chain, a keccak256 nullifier that can be claimed exactly once, ~1 second blocks and no gas fees.
+Registration runs on a Groth16 zk-SNARK verified on chain, carrying a nullifier that can be claimed exactly once. That proves one thing: this identity source has not registered before.
 
-Next up: de-duplication under multi-party computation, so uniqueness can be checked without any party ever holding a face.
+Proving the source is a person is the work in progress — de-duplication under MPC.
 ```
 
-**Ein-Post-Fassung, DE (271 Zeichen)**
+**Ein-Post-Fassung, DE (274 Zeichen)**
 
 ```text
-Was heute unter der Haube läuft: Groth16-zk-SNARKs, on-chain verifiziert, ein keccak256-Nullifier, der genau einmal gilt, ~1 Sekunde Blockzeit, keine Gas-Gebühren.
+Was heute läuft: ein Groth16-zk-SNARK, on-chain verifiziert, mit einem Nullifier, der genau einmal eingelöst wird. Bewiesen ist damit eins: diese Identitätsquelle war noch nie registriert.
 
-Als Nächstes: Dedup per Multi-Party-Computation — Einmaligkeit prüfen, ohne dass jemand ein Gesicht sieht.
+Dass dahinter ein Mensch steht und kein zweites Telefon — daran arbeiten wir gerade.
 ```
 
 ---
