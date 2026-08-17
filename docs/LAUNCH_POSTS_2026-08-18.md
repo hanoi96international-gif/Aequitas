@@ -37,44 +37,39 @@ Money that belongs to every human equally. Proof-of-Humanity chain, Chain ID 192
 ## 2. Der erste Post — kurze Vorstellung (EN)
 
 Der allererste Post auf dem Account, angepinnt bis der Launch-Thread ihn
-ablöst. Kurz, ohne Hook-Rhetorik, sagt was die Sache ist.
+ablöst. Kurz, ohne Hook-Rhetorik, sagt was die Sache ist — und schließt mit
+dem Satz, der ohnehin im Footer der Landing Page und über dem README steht.
+Der Account soll mit demselben Satz anfangen, mit dem die Seite aufhört.
 
-**Achtung Link:** `aequitas.digital` löst erst nach dem DNS-Switch am
-18.08. auf (`docs/LAUNCH_2026-08-18.md`, Schritt 1–4). Wird der Post schon
-heute abgesetzt, die Fassung **A ohne Domain** nehmen — ein toter Link im
-ersten Post des Accounts ist teuer. Nach den Verify-Checks dann Fassung B
-posten oder A um die Zeile ergänzen.
+**Achtung Link:** `aequitas.digital` löst erst nach dem DNS-Switch am 18.08.
+auf (`docs/LAUNCH_2026-08-18.md`, Schritt 1–4). Wird der Post heute
+abgesetzt, Fassung **A ohne Domain** nehmen — ein toter Link im ersten Post
+eines Accounts ist teuer, und die Domain steht ohnehin im Profilfeld
+„Website".
 
-**A — heute, ohne Domain (empfohlen, wenn jetzt gepostet wird)**
+**A — heute, ohne Domain (272 Zeichen)**
 
 ```text
-Hello. We are Aequitas, a blockchain with one unusual rule: new money is created by exactly one event, a verified human joining. Each one receives 1,000 AEQ. Once.
+We are Aequitas, a blockchain with one unusual rule: new money is created by exactly one event, a verified human joining. Each one receives 1,000 AEQ. Once.
 
 No mining, no staking, no presale, nothing to buy.
 
-Fifteen humans so far. The site opens tomorrow.
+Money exists because people exist. Nothing more, nothing less.
 ```
 
-**B — ab 18.08., mit Domain**
+**B — ab 18.08., mit Domain (280 Zeichen, X zählt jede URL als 23)**
+
+Um den Link unterzubringen, ohne den Schlusssatz zu verlieren, fällt
+„We are" und „no staking" weg. Der Schlusssatz bleibt der Schlusssatz.
 
 ```text
-Hello. We are Aequitas, a blockchain with one unusual rule: new money is created by exactly one event, a verified human joining. Each one receives 1,000 AEQ. Once.
+Aequitas is a blockchain with one unusual rule: new money is created by exactly one event, a verified human joining. Each one receives 1,000 AEQ. Once.
 
-No mining, no staking, no presale, nothing to buy.
-
-Chain ID 1926, open source.
+No mining, no presale, nothing to buy.
 
 aequitas.digital
-```
 
-**C — kürzere Variante**, falls der Account eher trocken auftreten soll:
-
-```text
-New account, so: Aequitas is a proof-of-humanity chain. Every verified human receives 1,000 AEQ, once — and nothing else creates money. No mining, no presale, no listing.
-
-The chain has been running since June. The code is open.
-
-aequitas.digital
+Money exists because people exist. Nothing more, nothing less.
 ```
 
 ---
