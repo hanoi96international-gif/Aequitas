@@ -9,8 +9,7 @@ keine Zahl in diesen Posts steht ohne Deckung im Code.
 auf eine Domain ohne Zertifikat zeigt, ist der eine Fehler, der sich nicht
 zurücknehmen lässt.
 
-Der Telegram-Link fehlt noch: überall wo `<TELEGRAM-LINK>` steht, den
-Einladungslink der Gruppe einsetzen (`t.me/…`).
+Die beiden Kanäle: X `@AequitasMoney`, Telegram `https://t.me/aequitasmoney`.
 
 ---
 
@@ -74,14 +73,62 @@ Money exists because people exist. Nothing more, nothing less.
 
 ---
 
-## 3. Launch-Thread (DE) — 18.08.2026
+## 3. Der zweite Post — das langfristige Ziel und der Alpha-Stand
+
+Kommt nach der Vorstellung. Er sagt, wohin das Ganze soll — und im selben
+Atemzug, wo es heute steht.
+
+Das ist keine Bescheidenheitsgeste, sondern das, was das Whitepaper selbst
+festhält. §3.2 („Was zum Start läuft", und dieser Abschnitt hat laut eigener
+Ansage Vorrang vor allem darüber): Was die Einmaligkeit heute trägt, ist der
+Nullifier auf der Kette. Der ist lückenlos — aber er beweist nur, dass
+dieselbe *Identitätsquelle* nicht zweimal zählt. Ob diese Quelle ein Mensch
+ist oder ein Gerät, entscheidet die Betriebsart: ohne erreichbaren
+Koordinator bindet die Anmeldung an ein **Gerät**, und dieselbe Person kann
+sich auf einem zweiten Telefon erneut anmelden.
+
+Ein Post, der „ein Mensch, eine Wallet" heute als erledigt verkauft, ist
+also am ersten Tag widerlegbar — von jemandem mit zwei Telefonen. Deshalb
+steht das Ziel im Futur und der Stand im Präsens.
+
+**Empfohlen (276 Zeichen)**
+
+```text
+The long-term goal: one human, one registration. Everyone on Earth, nobody counted twice.
+
+That is what the final launch has to hold. Today it does not — this is still alpha. The chain refuses a repeated identity source, but one person with two phones is a gap we are closing.
+```
+
+**Variante mit härterem Schluss (277 Zeichen)**
+
+```text
+The long-term goal: one human, one registration. Everyone on Earth, nobody counted twice.
+
+Today the chain refuses a repeated identity source — but one person with two phones is still a gap.
+
+This is alpha. The rule is written. Making it airtight is what the full launch means.
+```
+
+**DE, falls der Account zweisprachig posten soll**
+
+```text
+Das langfristige Ziel: ein Mensch, eine Registrierung. Weltweit, niemand doppelt.
+
+Heute lehnt die Chain eine wiederholte Identitätsquelle ab — aber ein Mensch mit zwei Telefonen ist noch eine Lücke.
+
+Das ist Alpha. Die Regel steht. Sie dicht zu machen ist der Weg zum Launch.
+```
+
+---
+
+## 4. Launch-Thread (DE) — 18.08.2026
 
 Sieben Posts, als Thread hintereinander. Jeder Post steht auch allein.
 
 **1/7**
 
 ```text
-Aequitas ist live: eine Blockchain, in der die Geldmenge an nachgewiesene menschliche Existenz gebunden ist.
+Aequitas ist live: eine Blockchain, deren Geldmenge an nachgewiesene menschliche Existenz gebunden ist.
 
 Jeder verifizierte Mensch bekommt 1.000 AEQ. Einmal. Kein Mining, kein Vorverkauf, keine Investition.
 
@@ -103,11 +150,11 @@ Kommt niemand dazu, entsteht kein Geld. Das ist die gesamte Geldpolitik.
 **3/7**
 
 ```text
-Wie die Verifikation läuft:
+Wie die Einmaligkeit funktioniert:
 
-Der Fingerabdruck wird im Secure Element des Handys gelesen. Die Rohdaten verlassen das Gerät nie. Auf die Chain geht ein Groth16-Zero-Knowledge-Proof und ein Nullifier, der genau einmal gültig ist.
+Auf die Chain geht kein Bild und kein biometrischer Datensatz, sondern ein Commitment und ein Nullifier — ein Wert, der genau einmal gilt. Dieselbe Quelle ein zweites Mal: abgelehnt, egal über welchen Weg.
 
-Ein Mensch, eine Wallet.
+Kryptografie, kein Versprechen.
 ```
 
 **4/7**
@@ -149,14 +196,14 @@ Alles offen einsehbar:
 Website & Explorer → aequitas.digital
 Code → github.com/hanoi96international-gif/Aequitas
 Whitepaper → im Repo
-Chat → <TELEGRAM-LINK>
+Chat → https://t.me/aequitasmoney
 
 Fragen sind willkommen. Die skeptischen zuerst.
 ```
 
 ---
 
-## 4. Launch thread (EN) — same seven posts
+## 5. Launch thread (EN) — same seven posts
 
 **1/7**
 
@@ -183,11 +230,11 @@ If nobody joins, no money is created. That is the entire monetary policy.
 **3/7**
 
 ```text
-How verification works:
+How uniqueness works:
 
-Your fingerprint is read inside your phone's secure element. The raw data never leaves the device. What reaches the chain is a Groth16 zero-knowledge proof and a nullifier that is valid exactly once.
+The chain never sees an image or a biometric record. It stores a commitment and a nullifier — a value valid exactly once. Send the same identity source again, by any path, and the chain refuses it.
 
-One human, one wallet.
+That part is cryptography, not a promise.
 ```
 
 **4/7**
@@ -229,14 +276,14 @@ Everything is public:
 Site & explorer → aequitas.digital
 Code → github.com/hanoi96international-gif/Aequitas
 Whitepaper → in the repo
-Chat → <TELEGRAM-LINK>
+Chat → https://t.me/aequitasmoney
 
 Questions welcome. The sceptical ones first.
 ```
 
 ---
 
-## 5. Einzelposts für die ersten Tage
+## 6. Einzelposts für die ersten Tage
 
 Nicht alles am ersten Tag. Einer pro Tag reicht; jeder erklärt genau einen
 Mechanismus und steht für sich.
@@ -292,21 +339,17 @@ It comes from a 0.1% transaction fee, from balances above the wealth cap, and fr
 **Biometrie / Datenschutz (DE)**
 
 ```text
-„Biometrie" klingt nach Überwachung. Hier ist, was Aequitas tatsächlich speichert:
+„Biometrie" klingt nach Überwachung. Was Aequitas wirklich macht:
 
-Einen Commitment-Hash und einen Nullifier. Kein Fingerabdruck, kein Bild, nichts Rückrechenbares. Die Rohdaten bleiben im Secure Element deines Handys.
-
-Der Code dazu ist offen.
+Gesicht und Handfläche nimmt die Telefonkamera auf. Mehrere unabhängige Vergleichsdienste müssen mehrheitlich zustimmen, bevor eine Anmeldung zählt. Auf die Chain geht nur ein Commitment und ein Nullifier.
 ```
 
 **Biometrics / privacy (EN)**
 
 ```text
-"Biometrics" sounds like surveillance. Here is what Aequitas actually stores:
+"Biometrics" sounds like surveillance. What Aequitas actually does:
 
-A commitment hash and a nullifier. No fingerprint, no image, nothing reversible. The raw data stays inside your phone's secure element.
-
-The code for it is open.
+Face and palm are captured by your own phone's camera. Several independent matchers must agree by quorum before an enrolment counts. What reaches the chain is a commitment and a nullifier — nothing reversible.
 ```
 
 **Node betreiben (DE)**
@@ -331,7 +374,7 @@ aequitas.digital
 
 ---
 
-## 6. Telegram
+## 7. Telegram
 
 ### Gruppenbeschreibung (max. 255 Zeichen)
 
@@ -348,8 +391,11 @@ Aequitas ist eine Blockchain, in der neues Geld nur durch einen nachgewiesenen n
 
 MITMACHEN
 1. App laden: aequitas.digital → Download (Android)
-2. Fingerabdruck im Secure Element des Handys verifizieren — die Rohdaten verlassen dein Gerät nie
+2. Identität in der App verifizieren — auf die Chain geht nur ein Commitment und ein Nullifier, kein Bild und kein biometrischer Datensatz
 3. Wallet verbinden, registrieren, 1.000 AEQ erhalten
+
+STAND: ALPHA
+Die Kette läuft, aber das Projekt ist Alpha, und das langfristige Ziel — ein Mensch, eine Registrierung — trägt heute noch nicht vollständig. Der Nullifier auf der Kette verhindert lückenlos, dass dieselbe Identitätsquelle zweimal zählt. Ob hinter dieser Quelle ein Mensch oder ein Gerät steht, hängt von der Betriebsart ab: ohne erreichbaren Koordinator bindet die Anmeldung an ein Gerät, und dieselbe Person kann sich auf einem zweiten Telefon erneut anmelden. Nachzulesen im Whitepaper, Abschnitt 3.2. Wer hier mitmacht, macht bei einer Alpha mit.
 
 LINKS
 Website & Explorer: https://aequitas.digital
@@ -386,7 +432,7 @@ Fragen bitte hier in die Gruppe, nicht per DM.
 
 ---
 
-## 7. Was wir nicht behaupten
+## 8. Was wir nicht behaupten
 
 Gilt für jeden Post, auch für spontane Antworten in Replies:
 
@@ -399,7 +445,18 @@ Gilt für jeden Post, auch für spontane Antworten in Replies:
   DEX-Integration existieren nicht. Der Android-Client und die Chain existieren.
 - **Bei Biometrie exakt bleiben.** Gespeichert werden Commitment-Hash und
   Nullifier. Nicht „verschlüsselte Fingerabdrücke", nicht „biometrische Daten
-  auf der Chain" — das wäre schlicht falsch beschrieben.
+  auf der Chain" — das wäre schlicht falsch beschrieben. Und die Erfassung
+  läuft über die Telefonkamera (Gesicht und Handfläche), nicht über den
+  Fingerabdrucksensor: Whitepaper §3.2 hat hier Vorrang vor der älteren
+  Beschreibung im README.
+- **„Ein Mensch, eine Wallet" nicht im Präsens behaupten.** Das ist das Ziel,
+  nicht der heutige Stand. Was heute gilt: dieselbe Identitätsquelle zählt nie
+  zweimal. Ohne erreichbaren Koordinator ist diese Quelle aber das Gerät, nicht
+  der Mensch — zwei Telefone, zwei Registrierungen. Wer den Satz trotzdem im
+  Präsens postet, wird am ersten Tag von jemandem mit zwei Telefonen widerlegt.
+- **Alpha nennen, solange es Alpha ist.** Die Kette läuft echt, mit echten
+  Guthaben — aber sie ist nicht fertig, und der Unterschied gehört in jeden
+  Post, der neue Leute holt.
 - **UBI-Zahlungen nicht ankündigen, solange die Pools leer sind.** Bei fünfzehn
   Wallets ohne Handel entstehen fast keine Gebühren, also wird fast nichts
   ausgeschüttet. Das ist erwartetes Verhalten einer ruhigen Chain — aber wer
