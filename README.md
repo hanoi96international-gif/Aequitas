@@ -299,6 +299,7 @@ The answer is simple: **Money exists because people exist. Therefore, every pers
 - 🌐 [Website & Explorer](https://aequitas.digital)
 - 📄 [Whitepaper](WHITEPAPER.md)
 - 💻 [GitHub](https://github.com/hanoi96international-gif/Aequitas)
+- 𝕏 [X / Twitter — @AequitasMoney](https://x.com/AequitasMoney)
 - 🔍 [V5 Sepolia (Legacy)](https://sepolia.etherscan.io/address/0x4f147d5B3388AF07993CC4fC548502A78Af0B8b5)
 
 ---

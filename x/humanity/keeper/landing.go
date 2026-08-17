@@ -514,6 +514,7 @@ section{padding:60px 20px}
         <a href="/download/app.apk" class="btn-primary">📱 Download Aequitas App (Android)</a>
         <a href="/register" class="btn-secondary">🌐 Open Explorer</a>
       </div>
+      <p style="font-size:0.85rem;color:var(--muted);margin-top:4px">Questions, or want to follow the launch? <a href="https://x.com/AequitasMoney" target="_blank" rel="noopener noreferrer" style="color:var(--purple)">@AequitasMoney on X</a></p>
       <p style="font-size:0.75rem;color:var(--muted);margin-top:20px">Chain ID 1926 · EVM Compatible · Open Source · <a href="https://github.com/hanoi96international-gif/Aequitas" style="color:var(--purple)">View on GitHub</a></p>
     </div>
   </div>
@@ -530,6 +531,7 @@ section{padding:60px 20px}
     <a href="/download/node-guide-en.pdf">Node Guide (EN)</a>
     <a href="/download/node-guide-de.pdf">Node Guide (DE)</a>
     <a href="https://github.com/hanoi96international-gif/Aequitas">GitHub</a>
+    <a href="https://x.com/AequitasMoney" target="_blank" rel="noopener noreferrer">X — @AequitasMoney</a>
   </div>
   <p>Aequitas Chain · Chain ID 1926 · <span>aequitas.digital</span> · Launched June 2026</p>
   <p style="margin-top:6px">"<em>Money exists because people exist. Nothing more, nothing less.</em>"</p>
