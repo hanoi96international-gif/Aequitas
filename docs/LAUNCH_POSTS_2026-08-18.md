@@ -91,32 +91,50 @@ Ein Post, der „ein Mensch, eine Wallet" heute als erledigt verkauft, ist
 also am ersten Tag widerlegbar — von jemandem mit zwei Telefonen. Deshalb
 steht das Ziel im Futur und der Stand im Präsens.
 
+**Aber die Reihenfolge entscheidet.** Ein Post, der mit der Einschränkung
+anfängt, klingt wie eine Entschuldigung für ein kleines Projekt. Das Ziel
+ist nicht klein: acht Milliarden Menschen, jeder genau einmal gezählt, jeder
+mit demselben Anfangsbetrag. Also zuerst die Größe der Sache, dann der Stand
+— und der Schlusssatz trägt die Haltung, nicht die Einschränkung.
+
 **Empfohlen (276 Zeichen)**
 
 ```text
-The long-term goal: one human, one registration. Everyone on Earth, nobody counted twice.
+Money has never been handed out one equal share per person. That is what we are building: every human on Earth registered exactly once, eight billion of us starting from the same 1,000 AEQ.
 
-That is what the final launch has to hold. Today it does not — this is still alpha. The chain refuses a repeated identity source, but one person with two phones is a gap we are closing.
+This is alpha: two phones can still mean two registrations.
+
+We are early, not small.
 ```
 
-**Variante mit härterem Schluss (277 Zeichen)**
+**Variante, Ziel zuerst benannt (273 Zeichen)**
 
 ```text
-The long-term goal: one human, one registration. Everyone on Earth, nobody counted twice.
+We are building a currency that counts people, not capital: every human on Earth registered once, with the same 1,000 AEQ to start.
 
-Today the chain refuses a repeated identity source — but one person with two phones is still a gap.
+Eight billion, one count each. That is the target.
 
-This is alpha. The rule is written. Making it airtight is what the full launch means.
+Today we are alpha — two phones can still mean two registrations. The goal is unchanged.
 ```
 
-**DE, falls der Account zweisprachig posten soll**
+**Variante, nüchterner (275 Zeichen)**
 
 ```text
-Das langfristige Ziel: ein Mensch, eine Registrierung. Weltweit, niemand doppelt.
+The goal, in full: every human on Earth counted exactly once. Eight billion people, one registration each, all starting from the same 1,000 AEQ.
 
-Heute lehnt die Chain eine wiederholte Identitätsquelle ab — aber ein Mensch mit zwei Telefonen ist noch eine Lücke.
+Today we are alpha — two phones can still mean two registrations.
 
-Das ist Alpha. Die Regel steht. Sie dicht zu machen ist der Weg zum Launch.
+Big goal, early days. Both true, and we would rather say both.
+```
+
+**DE, falls der Account zweisprachig posten soll (279 Zeichen)**
+
+```text
+Geld wurde noch nie pro Kopf zu gleichen Teilen ausgegeben. Genau das bauen wir: jeder Mensch auf der Erde einmal registriert, acht Milliarden mit denselben 1.000 AEQ am Start.
+
+Alpha ist es trotzdem: zwei Telefone können heute zwei Registrierungen sein.
+
+Früh dran, nicht klein.
 ```
 
 ---
