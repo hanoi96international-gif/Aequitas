@@ -101,6 +101,25 @@ var nodeBindingJS string
 //go:embed assets/landing.js
 var landingJS string
 
+// Brand assets. The favicon is an SVG so one file covers every size a browser
+// asks for, and it draws the balance as paths rather than the ⚖ character —
+// a glyph would render with whatever font the viewer happens to have, or not
+// at all. apple-touch-icon.png exists because iOS ignores SVG icons when a
+// page is added to the home screen.
+//
+//go:embed assets/favicon.svg
+var faviconSVG string
+
+//go:embed assets/apple-touch-icon.png
+var appleTouchIcon []byte
+
+// The card image link previews use. Until this existed, every link to the
+// site posted on X or Telegram — the two channels the site itself points
+// people at — rendered as a bare URL with no title, image or description.
+//
+//go:embed assets/og-image.png
+var ogImagePNG []byte
+
 // FIX (Monster Audit follow-up, 2026-07-12, P0/P1): aequitas-dapp.html (the
 // mobile wallet SPA served by handleDapp) had NO CSP header at all — not
 // even the permissive 'unsafe-inline' one the other HTML handlers used to

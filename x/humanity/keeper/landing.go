@@ -9,10 +9,46 @@ const landingHTML = `<!DOCTYPE html>
 <title>Aequitas — Proof of Humanity Chain</title>
 <meta name="description" content="The world's first currency where every verified human receives equal money. The network measures and publishes its own inequality — live, on chain.">
 <meta name="theme-color" content="#0C0E16">
+<link rel="canonical" href="https://aequitas.digital/">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<!-- Link previews. Without these, every link to this site posted on X or
+     Telegram — the two channels the site itself sends people to — renders as
+     a bare URL: no title, no image, no description. og:image must be an
+     absolute URL; crawlers do not resolve relative paths. -->
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Aequitas">
+<meta property="og:url" content="https://aequitas.digital/">
+<meta property="og:title" content="Aequitas — money that belongs to every human equally">
+<meta property="og:description" content="The first blockchain where the money supply is tied to verified human existence. Every person receives 1,000 AEQ. The network measures its own inequality and publishes it live, on chain.">
+<meta property="og:image" content="https://aequitas.digital/og-image.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="Aequitas — money that belongs to every human equally. 1,000 AEQ per verified human, Gini measured on chain, zero gas fees.">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:site" content="@AequitasMoney">
+<meta name="twitter:title" content="Aequitas — money that belongs to every human equally">
+<meta name="twitter:description" content="The first blockchain where the money supply is tied to verified human existence. Every person receives 1,000 AEQ. The network measures its own inequality and publishes it live, on chain.">
+<meta name="twitter:image" content="https://aequitas.digital/og-image.png">
 <link rel="preconnect" href="https://fonts.bunny.net">
 <link href="https://fonts.bunny.net/css?family=inter:300,400,500,600,700,800,900|dm-serif-display:400&display=swap" rel="stylesheet">
 <style>
-*{box-sizing:border-box;margin:0;padding:0}
+/* Flex and grid items default to min-width:auto — meaning a flex/grid item
+   refuses to shrink below its own content's unwrapped width. .header-right
+   and the rendered wallet-address row already work around this explicitly
+   (min-width:0 on each), because without it a single long unbreakable value
+   forces its container wider than the viewport, and that width then
+   propagates straight up through the grid track to the whole page: every
+   sibling column shifts along with it, text that could otherwise wrap gets
+   pushed off-screen, and the entire document scrolls horizontally instead of
+   the one long value wrapping or eliding. With twelve translations of
+   unpredictable length sharing the same layout, a rule fixing this in two
+   places and not the other thirty was always going to resurface — this
+   applies the same fix everywhere at once. It only changes flex/grid item
+   sizing: an element that still needs a hard floor keeps it, since an
+   explicit min-width elsewhere in this file is more specific than this
+   universal rule and wins regardless of source order. */
+*{box-sizing:border-box;margin:0;padding:0;min-width:0}
 :root{
   --bg:#0C0E16;--card:#131620;--card2:#1A1D2B;
   --purple:#9B72F6;--teal:#22D3EE;--gold:#F0B429;--green:#34D399;
@@ -39,18 +75,30 @@ nav::before{content:'';position:absolute;top:0;left:0;right:0;height:2px;backgro
    as purple underlined AEQUITAS with no gradient tile. */
 .logo-wrap{display:flex;align-items:center;gap:12px;flex-shrink:0;text-decoration:none;position:relative;z-index:1}
 .logo-icon{width:34px;height:34px;border-radius:9px;background:var(--grad);display:flex;align-items:center;justify-content:center;font-size:17px;box-shadow:0 0 24px rgba(155,114,246,0.18)}
-.logo-text{font-size:1rem;font-weight:900;letter-spacing:3px;background:var(--grad);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent}
-.logo-sub{font-size:0.48rem;color:var(--muted);letter-spacing:2.5px;text-transform:uppercase}
+.logo-text{font-size:1.06rem;font-weight:900;letter-spacing:3px;background:var(--grad);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent}
+.logo-sub{font-size:0.69rem;color:var(--muted);letter-spacing:2.5px;text-transform:uppercase}
 /* Badges, values from explorer.css so both headers stay one header. --neon
    there is #34D399, which is --green here, so the colour is the same value
    under a different name rather than a second shade of the same idea. */
 /* Values lifted from explorer.css .lang-sel — the selector has to look the
    same on both pages, since it is the same control. */
-.lang-sel{background:rgba(255,255,255,0.06);color:var(--muted);border:1px solid rgba(255,255,255,0.1);border-radius:6px;padding:5px 10px;font-family:inherit;font-size:0.62rem;outline:none;cursor:pointer;flex-shrink:0}
-.header-right{display:flex;gap:8px;align-items:center;position:relative;z-index:1;min-width:0;overflow-x:auto;-webkit-overflow-scrolling:touch;scrollbar-width:none}
+.lang-sel{background:rgba(255,255,255,0.06);color:var(--muted);border:1px solid rgba(255,255,255,0.1);border-radius:6px;padding:5px 10px;font-family:inherit;font-size:0.79rem;outline:none;cursor:pointer;flex-shrink:0}
+.header-right{display:flex;gap:8px;align-items:center;position:relative;z-index:1;min-width:0;overflow-x:auto;-webkit-overflow-scrolling:touch;scrollbar-width:none;
+  /* Same scroll-shadow as the explorer's .header-right — this row is a
+     deliberate copy of that header, so it needed the same fix: without it,
+     GHOSTDAG/KNIGHTDAG could scroll out of view on a narrow screen with no
+     hint that they still exist. */
+  background:
+    linear-gradient(90deg,rgba(12,14,22,0.92) 30%,rgba(12,14,22,0)),
+    linear-gradient(270deg,rgba(12,14,22,0.92) 30%,rgba(12,14,22,0)) 100% 0,
+    radial-gradient(farthest-side at 0 50%,rgba(155,114,246,0.45),transparent),
+    radial-gradient(farthest-side at 100% 50%,rgba(155,114,246,0.45),transparent) 100% 0;
+  background-repeat:no-repeat;
+  background-size:32px 100%,32px 100%,10px 100%,10px 100%;
+  background-attachment:local,local,scroll,scroll}
 .header-right::-webkit-scrollbar{display:none}
 .header-right .badge{flex-shrink:0}
-.badge{display:flex;align-items:center;gap:5px;padding:5px 11px;border-radius:20px;font-size:0.58rem;letter-spacing:0.5px;font-weight:600}
+.badge{display:flex;align-items:center;gap:5px;padding:5px 11px;border-radius:20px;font-size:0.76rem;letter-spacing:0.5px;font-weight:600}
 .badge-live{background:rgba(4,120,87,0.08);border:1px solid rgba(4,120,87,0.25);color:var(--green)}
 .badge-dag{background:linear-gradient(135deg,rgba(155,114,246,0.14),rgba(34,211,238,0.08));border:1px solid rgba(155,114,246,0.4);color:var(--purple);font-weight:700;text-shadow:0 0 12px rgba(155,114,246,0.5);animation:knightGlow 3s ease-in-out infinite}
 @keyframes knightGlow{0%,100%{box-shadow:0 0 0 rgba(155,114,246,0)}50%{box-shadow:0 0 10px rgba(155,114,246,0.35)}}
@@ -60,13 +108,19 @@ nav::before{content:'';position:absolute;top:0;left:0;right:0;height:2px;backgro
 @keyframes healthPulse{0%,100%{opacity:1}50%{opacity:0.55}}
 .tabs{border-top:1px solid var(--border);padding:8px 18px;display:flex;overflow-x:auto;-webkit-overflow-scrolling:touch;scrollbar-width:none;gap:6px}
 .tabs::-webkit-scrollbar{display:none}
-.tab{padding:10px 16px;font-size:0.65rem;color:var(--muted);text-decoration:none;border-radius:20px;letter-spacing:0.5px;font-weight:600;white-space:nowrap;transition:all 0.2s;flex-shrink:0;border:1px solid transparent}
+.tab{padding:10px 16px;font-size:0.81rem;color:var(--muted);text-decoration:none;border-radius:20px;letter-spacing:0.5px;font-weight:600;white-space:nowrap;transition:all 0.2s;flex-shrink:0;border:1px solid transparent}
 .tab:hover{color:var(--text);background:rgba(255,255,255,0.04)}
 .tab.active{color:#fff;background:var(--grad);box-shadow:0 0 24px rgba(155,114,246,0.18);border-color:transparent}
 @media(max-width:600px){
 .nav-top{padding:0 14px;height:56px}
 .logo-icon{width:30px;height:30px;font-size:15px}
-.logo-text{font-size:0.9rem;letter-spacing:2px}
+.logo-text{font-size:0.95rem;letter-spacing:2px}
+/* Matches explorer.css's identical fix: at a 390px phone, the German
+   subtitle alone (MENSCHLICHKEITSNACHWEIS, with its letter-spacing) measured
+   222 of the header's 390px, leaving no real room for LIVE + GHOSTDAG +
+   KNIGHTDAG. The wordmark alone still identifies the brand; the tagline is
+   the one thing here that's safe to drop. */
+.logo-sub{display:none}
 .tabs{padding:6px 10px;gap:4px}
 .tab{padding:9px 13px}
 }
@@ -103,7 +157,7 @@ h1 span{background:var(--grad);-webkit-background-clip:text;-webkit-text-fill-co
 /* ── SECTION ─────────────────────────────────────────────────── */
 section{padding:80px 24px}
 .section-inner{max-width:1100px;margin:0 auto}
-.section-label{font-size:0.65rem;color:var(--purple);letter-spacing:3px;text-transform:uppercase;font-weight:600;margin-bottom:12px}
+.section-label{font-size:0.72rem;color:var(--purple);letter-spacing:3px;text-transform:uppercase;font-weight:600;margin-bottom:12px}
 
 h2{font-family:'DM Serif Display',serif;font-size:clamp(1.8rem,4vw,2.8rem);line-height:1.2;font-weight:400;margin-bottom:16px}
 .section-sub{font-size:1rem;color:var(--muted);max-width:560px;margin-bottom:48px;line-height:1.7}
@@ -180,6 +234,17 @@ footer{border-top:1px solid var(--border);padding:40px 24px;text-align:center}
 footer p{font-size:0.75rem;color:var(--muted)}
 footer p span{color:var(--purple)}
 
+/* ── KEYBOARD FOCUS ──────────────────────────────────────────── */
+/* Nothing outside a few text inputs had a focus style, so navigating by
+   keyboard meant guessing where you were. :focus-visible rather than :focus
+   so a mouse click does not leave a ring behind — the outline appears only
+   when the browser judges the interaction to be keyboard-driven. */
+:focus-visible{outline:2px solid var(--purple);outline-offset:3px;border-radius:4px}
+a:focus-visible,button:focus-visible,select:focus-visible,
+[role="button"]:focus-visible,[tabindex]:focus-visible{outline:2px solid var(--purple);outline-offset:3px}
+/* Against the gradient pill of the active tab, purple-on-purple disappears. */
+.tab.active:focus-visible,.stab.active:focus-visible{outline-color:#fff}
+
 /* ── MOBILE TOUCH TARGETS ────────────────────────────────────── */
 @media(max-width:480px){
 .btn-primary,.btn-secondary{padding:16px 24px;font-size:0.9rem;width:100%;justify-content:center;border-radius:12px}
@@ -230,6 +295,7 @@ section{padding:60px 20px}
   </div>
 </nav>
 
+<main>
 <!-- HERO -->
 <section class="hero">
   <div class="hero-badge">
@@ -387,6 +453,8 @@ section{padding:60px 20px}
     </div>
   </div>
 </section>
+
+</main>
 
 <!-- FOOTER -->
 <footer>

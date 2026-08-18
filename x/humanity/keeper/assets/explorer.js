@@ -164,6 +164,7 @@ en:{
   'soc-x-desc':'Announcements, and what the chain is actually doing. Short form.','soc-tg-desc':'The open group: questions, node operators, and help getting registered.',
   'expl-consensus':'Consensus: GHOSTDAG + KnightDAG','expl-consensus-d':'How every node agrees on one order · the 2026 KnightDAG upgrade explained',
   's-validators':'Active Validators',
+  'expl-heading':'Block Explorer',
 },
 de:{
   'logo-sub':'MENSCHLICHKEITSNACHWEIS','live':'LIVE',
@@ -331,6 +332,7 @@ de:{
   'soc-x-desc':'Ankündigungen und was die Chain tatsächlich tut. Kurzform.','soc-tg-desc':'Die offene Gruppe: Fragen, Node-Betreiber und Hilfe bei der Registrierung.',
   'expl-consensus':'Konsens: GHOSTDAG + KnightDAG','expl-consensus-d':'Wie sich jeder Node auf eine Reihenfolge einigt · das KnightDAG-Upgrade 2026 erklärt',
   's-validators':'Aktive Validatoren',
+  'expl-heading':'Block-Explorer',
 },
 es:{
   'logo-sub':'PRUEBA DE HUMANIDAD','live':'EN VIVO',
@@ -486,6 +488,7 @@ es:{
   'soc-x-desc':'Anuncios y lo que la cadena está haciendo realmente. Formato breve.','soc-tg-desc':'El grupo abierto: preguntas, operadores de nodos y ayuda para registrarse.',
   'expl-consensus':'Consenso: GHOSTDAG + KnightDAG','expl-consensus-d':'Cómo cada nodo acuerda un único orden · la actualización KnightDAG de 2026 explicada',
   's-validators':'Validadores Activos',
+  'expl-heading':'Explorador de Bloques',
 },
 ru:{
   'logo-sub':'ДОКАЗАТЕЛЬСТВО ЧЕЛОВЕЧНОСТИ','live':'ОНЛАЙН',
@@ -638,6 +641,7 @@ ru:{
   'soc-x-desc':'Объявления и то, чем сеть занята на самом деле. Коротко.','soc-tg-desc':'Открытая группа: вопросы, операторы узлов и помощь с регистрацией.',
   'expl-consensus':'Консенсус: GHOSTDAG + KnightDAG','expl-consensus-d':'Как все узлы приходят к одному порядку · обновление KnightDAG 2026 года',
   's-validators':'Активные валидаторы',
+  'expl-heading':'Обозреватель блоков',
 },
 zh:{
   'logo-sub':'人类证明','live':'实时',
@@ -792,6 +796,7 @@ zh:{
   'soc-x-desc':'公告，以及链实际在做什么。短内容。','soc-tg-desc':'公开群组：提问、节点运营者，以及注册方面的帮助。',
   'expl-consensus':'共识：GHOSTDAG + KnightDAG','expl-consensus-d':'每个节点如何就同一顺序达成一致 · 2026 年 KnightDAG 升级详解',
   's-validators':'活跃验证者',
+  'expl-heading':'区块浏览器',
 },
 id:{
   'logo-sub':'BUKTI KEMANUSIAAN','live':'LANGSUNG',
@@ -938,6 +943,7 @@ id:{
   'soc-x-desc':'Pengumuman, dan apa yang sebenarnya dilakukan rantai ini. Bentuk singkat.','soc-tg-desc':'Grup terbuka: pertanyaan, operator node, dan bantuan untuk mendaftar.',
   'expl-consensus':'Konsensus: GHOSTDAG + KnightDAG','expl-consensus-d':'Bagaimana setiap node menyepakati satu urutan · pembaruan KnightDAG 2026 dijelaskan',
   's-validators':'Validator Aktif',
+  'expl-heading':'Penjelajah Blok',
 },
 it:{
   'logo-sub':'PROVA DI UMANITÀ','live':'LIVE',
@@ -1085,6 +1091,7 @@ it:{
   'soc-x-desc':'Annunci, e cosa sta facendo davvero la catena. Formato breve.','soc-tg-desc':'Il gruppo aperto: domande, operatori di nodi e aiuto per registrarsi.',
   'expl-consensus':'Consenso: GHOSTDAG + KnightDAG','expl-consensus-d':'Come ogni nodo concorda su un unico ordine · l\'aggiornamento KnightDAG del 2026 spiegato',
   's-validators':'Validatori Attivi',
+  'expl-heading':'Esplora blocchi',
 },
 tr:{
   'logo-sub':'İNSANLIK KANITI','live':'CANLI',
@@ -1239,6 +1246,7 @@ tr:{
   'soc-x-desc':'Duyurular ve zincirin gerçekte ne yaptığı. Kısa biçim.','soc-tg-desc':'Açık grup: sorular, node işletenler ve kayıt olma konusunda yardım.',
   'expl-consensus':'Konsensüs: GHOSTDAG + KnightDAG','expl-consensus-d':'Her düğümün tek bir sıra üzerinde nasıl anlaştığı · 2026 KnightDAG yükseltmesi açıklanıyor',
   's-validators':'Aktif Doğrulayıcılar',
+  'expl-heading':'Blok Gezgini',
 },
 fr:{
   'logo-sub':'PREUVE D\'HUMANITÉ','live':'EN DIRECT',
@@ -1392,6 +1400,7 @@ fr:{
   'soc-x-desc':'Les annonces, et ce que la chaîne fait vraiment. Format court.','soc-tg-desc':'Le groupe ouvert : questions, opérateurs de nœuds et aide à l\'inscription.',
   'expl-consensus':'Consensus : GHOSTDAG + KnightDAG','expl-consensus-d':'Comment chaque nœud s\'accorde sur un ordre unique · la mise à niveau KnightDAG de 2026 expliquée',
   's-validators':'Validateurs actifs',
+  'expl-heading':'Explorateur de blocs',
 },
 pt:{
   'logo-sub':'PROVA DE HUMANIDADE','live':'AO VIVO',
@@ -1545,6 +1554,7 @@ pt:{
   'soc-x-desc':'Anúncios, e o que a cadeia está realmente fazendo. Formato curto.','soc-tg-desc':'O grupo aberto: perguntas, operadores de nós e ajuda para se registrar.',
   'expl-consensus':'Consenso: GHOSTDAG + KnightDAG','expl-consensus-d':'Como cada nó concorda com uma única ordem · a atualização KnightDAG de 2026 explicada',
   's-validators':'Validadores Ativos',
+  'expl-heading':'Explorador de Blocos',
 },
 ar:{
   'logo-sub':'إثبات الإنسانية','live':'مباشر',
@@ -1696,6 +1706,7 @@ ar:{
   'soc-x-desc':'الإعلانات، وما تفعله السلسلة فعليًا. بصيغة مختصرة.','soc-tg-desc':'المجموعة المفتوحة: الأسئلة، ومشغّلو العقد، والمساعدة في التسجيل.',
   'expl-consensus':'الإجماع: GHOSTDAG + KnightDAG','expl-consensus-d':'كيف تتفق كل عقدة على ترتيب واحد · شرح ترقية KnightDAG لعام 2026',
   's-validators':'المدققون النشطون',
+  'expl-heading':'مستكشف الكتل',
 },
 hi:{
   'logo-sub':'मानवता का प्रमाण','live':'लाइव',
@@ -1847,6 +1858,7 @@ hi:{
   'soc-x-desc':'घोषणाएँ, और चेन असल में क्या कर रही है। संक्षिप्त रूप।','soc-tg-desc':'खुला समूह: सवाल, नोड संचालक, और रजिस्टर करने में मदद।',
   'expl-consensus':'सर्वसम्मति: GHOSTDAG + KnightDAG','expl-consensus-d':'हर नोड एक ही क्रम पर कैसे सहमत होता है · 2026 का KnightDAG अपग्रेड समझाया गया',
   's-validators':'सक्रिय वैलिडेटर',
+  'expl-heading':'ब्लॉक एक्सप्लोरर',
 }
 };
 
@@ -1875,6 +1887,7 @@ function showStab(parentId, stabId, el) {
   const tabSlug = tabSlugMap[parentId];
   const stabSlug = stabSlugMap[stabId];
   if (tabSlug && stabSlug) history.pushState(null, '', '/' + tabSlug + '/' + stabSlug);
+  syncActiveAria();
 }
 
 function showTab(name, el) {
@@ -1896,6 +1909,7 @@ function showTab(name, el) {
   if (stabs2.length) stabs2[0].classList.add('active');
   if (name === 'exchange') { loadPoolStatus(); preloadPriceHistory(); }
   history.pushState(null, '', '/' + name);
+  syncActiveAria();
 }
 
 function goTab(name, stabId) {
@@ -4688,6 +4702,8 @@ document.addEventListener('DOMContentLoaded', function() {
   var storedLang = null;
   try { storedLang = localStorage.getItem(LANG_KEY); } catch (e) { /* private mode */ }
   if (storedLang && T[storedLang]) setLang(storedLang);
+  // Mirror whatever the markup shipped as active before anyone clicks.
+  syncActiveAria();
   const expSearchInput = document.getElementById('exp-search-input');
   if (expSearchInput) expSearchInput.addEventListener('keydown', function(ev) { if (ev.key === 'Enter') expSearch(); });
   // Resolve __RPC__ once at load. setLang() also calls this, but setLang only
@@ -4754,9 +4770,13 @@ const CLICK_ACTIONS = {
   registerValidatorKey: registerValidatorKey,
 };
 
-document.addEventListener('click', function(ev) {
-  const el = ev.target.closest('[data-act]');
-  if (!el) return;
+// Activation is deliberately not click-only. 28 of the elements carrying
+// data-act are <div>s — every tab in the section bar, every sub-tab, the
+// explorer's shortcut cards — and a div takes neither focus nor Enter on its
+// own. Until this handler existed, a visitor navigating by keyboard could
+// reach the page and then go nowhere: the entire section bar was unreachable.
+// The markup gives those divs tabindex/role; this gives them the key.
+function dispatchAction(ev, el) {
   const fn = CLICK_ACTIONS[el.getAttribute('data-act')];
   if (typeof fn !== 'function') return;
   let args = [];
@@ -4765,7 +4785,38 @@ document.addEventListener('click', function(ev) {
     try { args = JSON.parse(raw); } catch (e) { args = []; }
   }
   fn.apply(null, args.concat([el, ev]));
+}
+
+document.addEventListener('click', function (ev) {
+  const el = ev.target.closest('[data-act]');
+  if (el) dispatchAction(ev, el);
 });
+
+document.addEventListener('keydown', function (ev) {
+  if (ev.key !== 'Enter' && ev.key !== ' ' && ev.key !== 'Spacebar') return;
+  const el = ev.target.closest('[data-act]');
+  if (!el) return;
+  // Native controls already do this themselves; intercepting them would
+  // double-fire the action and, on <button>, swallow the browser's own
+  // handling.
+  const tag = el.tagName;
+  if (tag === 'BUTTON' || tag === 'A' || tag === 'INPUT' || tag === 'SELECT' || tag === 'TEXTAREA') return;
+  // Space scrolls the page by default, which is exactly what must not happen
+  // when the thing under the cursor is being activated.
+  ev.preventDefault();
+  dispatchAction(ev, el);
+});
+
+// The .active class is the single source of truth for which section is
+// showing; this mirrors it into the accessibility tree. These elements change
+// the URL via pushState, so aria-current="page" describes them accurately —
+// they navigate, they do not merely toggle.
+function syncActiveAria() {
+  document.querySelectorAll('.tab[data-act], .stab[data-act]').forEach(function (el) {
+    if (el.classList.contains('active')) el.setAttribute('aria-current', 'page');
+    else el.removeAttribute('aria-current');
+  });
+}
 
 // HTML-attribute-safe escaping for values spliced into data-args="..." when
 // building table rows via innerHTML (block hashes are validator-controlled,
