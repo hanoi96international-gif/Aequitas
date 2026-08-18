@@ -159,7 +159,6 @@ footer{border-top:1px solid var(--border);padding:40px 24px;text-align:center}
    label on hover instead of staying a fixed colour. */
 .social{display:inline-flex;align-items:center;gap:7px}
 .social svg{width:15px;height:15px;flex:none;fill:currentColor}
-.social-row{display:flex;flex-wrap:wrap;gap:12px;justify-content:center;margin-top:14px}
 
 /* ── SOCIAL SECTION ──────────────────────────────────────────── */
 /* Its own section rather than another footer link: the marks were only in
@@ -175,9 +174,6 @@ footer{border-top:1px solid var(--border);padding:40px 24px;text-align:center}
 .social-handle{font-size:0.85rem;font-weight:600;color:var(--purple)}
 .social-desc{font-size:0.78rem;color:var(--muted);line-height:1.7;max-width:260px}
 @media(max-width:600px){.social-card{padding:30px 22px}.social-card svg{width:52px;height:52px}}
-.social-btn{background:rgba(255,255,255,0.05);border:1px solid var(--border);color:var(--text);padding:9px 18px;border-radius:999px;font-size:0.8rem;font-weight:600;text-decoration:none;transition:all 0.2s}
-.social-btn:hover{background:rgba(255,255,255,0.09);border-color:rgba(155,114,246,0.4)}
-.social-btn svg{width:16px;height:16px}
 footer p{font-size:0.75rem;color:var(--muted)}
 footer p span{color:var(--purple)}
 
@@ -562,11 +558,6 @@ section{padding:60px 20px}
       <div class="hero-btns">
         <a href="/download/app.apk" class="btn-primary">📱 Download Aequitas App (Android)</a>
         <a href="/register" class="btn-secondary">🌐 Open Explorer</a>
-      </div>
-      <p style="font-size:0.85rem;color:var(--muted);margin-top:4px">Questions, or want to follow the launch?</p>
-      <div class="social-row">
-        <a href="https://x.com/AequitasMoney" target="_blank" rel="noopener noreferrer" class="social social-btn"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/></svg>@AequitasMoney</a>
-        <a href="https://t.me/aequitasmoney" target="_blank" rel="noopener noreferrer" class="social social-btn"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M11.944 0A12 12 0 0 0 0 12a12 12 0 0 0 12 12 12 12 0 0 0 12-12A12 12 0 0 0 12 0a12 12 0 0 0-.056 0zm4.962 7.224c.1-.002.321.023.465.14a.506.506 0 0 1 .171.325c.016.093.036.306.02.472-.18 1.898-.962 6.502-1.36 8.627-.168.9-.499 1.201-.82 1.23-.696.065-1.225-.46-1.9-.902-1.056-.693-1.653-1.124-2.678-1.8-1.185-.78-.417-1.21.258-1.91.177-.184 3.247-2.977 3.307-3.23.007-.032.014-.15-.056-.212s-.174-.041-.249-.024c-.106.024-1.793 1.14-5.061 3.345-.48.33-.913.49-1.302.48-.428-.008-1.252-.241-1.865-.44-.752-.245-1.349-.374-1.297-.789.027-.216.325-.437.893-.663 3.498-1.524 5.83-2.529 6.998-3.014 3.332-1.386 4.025-1.627 4.476-1.635z"/></svg>Telegram</a>
       </div>
       <p style="font-size:0.75rem;color:var(--muted);margin-top:20px">Chain ID 1926 · EVM Compatible · Open Source · <a href="https://github.com/hanoi96international-gif/Aequitas" style="color:var(--purple)">View on GitHub</a></p>
     </div>
