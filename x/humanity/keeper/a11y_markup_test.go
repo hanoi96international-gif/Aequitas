@@ -146,3 +146,47 @@ func TestStylesheets_NoUnreadablyTinyText(t *testing.T) {
 		}
 	}
 }
+
+// The bug this guards against: flex and grid items default to
+// min-width:auto, meaning they refuse to shrink below their own content's
+// unwrapped width. .header-right already worked around this on its own
+// (min-width:0), which meant the fix was known and simply not applied
+// everywhere — a translated value longer than its English source (German
+// ran ~30% longer) then forced a grid track wider than the viewport, and
+// that width propagated straight up through the whole page. Measured
+// directly: 141px of real horizontal overflow on the Humans panel in German
+// before this rule existed, zero after, across all twelve locales and every
+// panel.
+var universalResetRe = regexp.MustCompile(`\*\{[^}]*\}`)
+
+func TestStylesheets_ResetMinWidthOnFlexGridItems(t *testing.T) {
+	for _, tc := range []struct{ name, css string }{
+		{"landing.go", landingHTML},
+		{"explorer.css", explorerCSS},
+	} {
+		reset := universalResetRe.FindString(tc.css)
+		if reset == "" {
+			t.Fatalf("%s: no universal *{...} reset rule found — has it been renamed or restructured?", tc.name)
+		}
+		// Checked against the *{...} rule specifically, not the file as a whole:
+		// min-width:0 is legitimately declared elsewhere too (.header-right, for
+		// one), so a whole-file substring check would still pass even with the
+		// universal rule reverted — exactly the case that must fail here.
+		if !strings.Contains(reset, "min-width:0") {
+			t.Errorf("%s: the universal reset (%s) no longer sets min-width:0 — flex/grid"+
+				" items can blow out their container again the moment translated text"+
+				" runs longer than English", tc.name, reset)
+		}
+	}
+}
+
+// KNIGHTDAG was set to display:none below 600px — hiding it on effectively
+// every phone, the opposite of what PR #125 added the badge for. Guards
+// against that specific rule coming back, not against .badge-dag being
+// styled at all (it still legitimately needs display:none logic nowhere).
+func TestExplorerCSS_KnightDAGBadgeIsNotHiddenOnPhones(t *testing.T) {
+	if strings.Contains(explorerCSS, ".badge-dag{display:none}") {
+		t.Error("explorer.css hides .badge-dag (the KNIGHTDAG badge) in a media query — " +
+			"this was hiding it on every screen narrower than the breakpoint, i.e. most phones")
+	}
+}

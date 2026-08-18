@@ -33,7 +33,22 @@ const landingHTML = `<!DOCTYPE html>
 <link rel="preconnect" href="https://fonts.bunny.net">
 <link href="https://fonts.bunny.net/css?family=inter:300,400,500,600,700,800,900|dm-serif-display:400&display=swap" rel="stylesheet">
 <style>
-*{box-sizing:border-box;margin:0;padding:0}
+/* Flex and grid items default to min-width:auto — meaning a flex/grid item
+   refuses to shrink below its own content's unwrapped width. .header-right
+   and the rendered wallet-address row already work around this explicitly
+   (min-width:0 on each), because without it a single long unbreakable value
+   forces its container wider than the viewport, and that width then
+   propagates straight up through the grid track to the whole page: every
+   sibling column shifts along with it, text that could otherwise wrap gets
+   pushed off-screen, and the entire document scrolls horizontally instead of
+   the one long value wrapping or eliding. With twelve translations of
+   unpredictable length sharing the same layout, a rule fixing this in two
+   places and not the other thirty was always going to resurface — this
+   applies the same fix everywhere at once. It only changes flex/grid item
+   sizing: an element that still needs a hard floor keeps it, since an
+   explicit min-width elsewhere in this file is more specific than this
+   universal rule and wins regardless of source order. */
+*{box-sizing:border-box;margin:0;padding:0;min-width:0}
 :root{
   --bg:#0C0E16;--card:#131620;--card2:#1A1D2B;
   --purple:#9B72F6;--teal:#22D3EE;--gold:#F0B429;--green:#34D399;
@@ -68,7 +83,19 @@ nav::before{content:'';position:absolute;top:0;left:0;right:0;height:2px;backgro
 /* Values lifted from explorer.css .lang-sel — the selector has to look the
    same on both pages, since it is the same control. */
 .lang-sel{background:rgba(255,255,255,0.06);color:var(--muted);border:1px solid rgba(255,255,255,0.1);border-radius:6px;padding:5px 10px;font-family:inherit;font-size:0.79rem;outline:none;cursor:pointer;flex-shrink:0}
-.header-right{display:flex;gap:8px;align-items:center;position:relative;z-index:1;min-width:0;overflow-x:auto;-webkit-overflow-scrolling:touch;scrollbar-width:none}
+.header-right{display:flex;gap:8px;align-items:center;position:relative;z-index:1;min-width:0;overflow-x:auto;-webkit-overflow-scrolling:touch;scrollbar-width:none;
+  /* Same scroll-shadow as the explorer's .header-right — this row is a
+     deliberate copy of that header, so it needed the same fix: without it,
+     GHOSTDAG/KNIGHTDAG could scroll out of view on a narrow screen with no
+     hint that they still exist. */
+  background:
+    linear-gradient(90deg,rgba(12,14,22,0.92) 30%,rgba(12,14,22,0)),
+    linear-gradient(270deg,rgba(12,14,22,0.92) 30%,rgba(12,14,22,0)) 100% 0,
+    radial-gradient(farthest-side at 0 50%,rgba(155,114,246,0.45),transparent),
+    radial-gradient(farthest-side at 100% 50%,rgba(155,114,246,0.45),transparent) 100% 0;
+  background-repeat:no-repeat;
+  background-size:32px 100%,32px 100%,10px 100%,10px 100%;
+  background-attachment:local,local,scroll,scroll}
 .header-right::-webkit-scrollbar{display:none}
 .header-right .badge{flex-shrink:0}
 .badge{display:flex;align-items:center;gap:5px;padding:5px 11px;border-radius:20px;font-size:0.76rem;letter-spacing:0.5px;font-weight:600}
@@ -88,6 +115,12 @@ nav::before{content:'';position:absolute;top:0;left:0;right:0;height:2px;backgro
 .nav-top{padding:0 14px;height:56px}
 .logo-icon{width:30px;height:30px;font-size:15px}
 .logo-text{font-size:0.95rem;letter-spacing:2px}
+/* Matches explorer.css's identical fix: at a 390px phone, the German
+   subtitle alone (MENSCHLICHKEITSNACHWEIS, with its letter-spacing) measured
+   222 of the header's 390px, leaving no real room for LIVE + GHOSTDAG +
+   KNIGHTDAG. The wordmark alone still identifies the brand; the tagline is
+   the one thing here that's safe to drop. */
+.logo-sub{display:none}
 .tabs{padding:6px 10px;gap:4px}
 .tab{padding:9px 13px}
 }

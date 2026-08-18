@@ -1276,7 +1276,7 @@
       <div style="font-size:0.76rem;color:var(--purple);font-weight:700;letter-spacing:1px;text-transform:uppercase;margin-bottom:10px;border-bottom:1px solid var(--border);padding-bottom:6px">Step 3 &mdash; Understand the Environment Variables</div>
       <div style="font-size:0.79rem;color:var(--muted);line-height:1.9;margin-bottom:10px">Environment variables are configuration settings you pass to your node before it starts. Think of them like a settings file. Collect these values before deploying &mdash; you will enter them in Step 4.</div>
       <div style="background:rgba(220,50,50,0.06);border:1px solid rgba(220,50,50,0.2);border-radius:6px;padding:10px 14px;margin-bottom:12px;font-size:0.77rem"><span style="color:#f87171;font-weight:700">Security Warning: </span><span style="color:var(--muted)">Your RELAYER_PRIVATE_KEY is like a master password. Anyone who has it controls your node wallet. Never share it publicly, never paste it in chat or email. Use a separate MetaMask wallet for RELAYER_PRIVATE_KEY (signing). NODE_OPERATOR_WALLET (for rewards) must be your registered Aequitas human wallet.</span></div>
-      <table style="width:100%;border-collapse:collapse;margin-bottom:18px">
+      <div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;margin-bottom:18px">
         <tr style="background:rgba(139,92,246,0.15)">
           <td style="font-size:0.77rem;color:var(--text);padding:8px;font-weight:700;width:36%">Variable</td>
           <td style="font-size:0.77rem;color:var(--text);padding:8px;font-weight:700;width:12%">Required?</td>
@@ -1402,7 +1402,7 @@
           <td style="font-size:0.77rem;color:var(--muted);padding:8px">No</td>
           <td style="font-size:0.78rem;color:var(--muted);padding:8px">Overrides the built-in libp2p bootstrap multiaddress (see Step 7 below). Only needed if you want to pin a specific entry point; the two validator addresses are compiled in as defaults again in the future &mdash; set this instead of waiting for a code deploy.</td>
         </tr>
-      </table>
+      </table></div>
 
       <!-- Step 4 was a Railway walkthrough. Railway was decommissioned on
            2026-08-14 and hosts nothing for this project; following it produced
@@ -1504,14 +1504,14 @@
       <!-- Step 6: MetaMask -->
       <div style="font-size:0.76rem;color:var(--purple);font-weight:700;letter-spacing:1px;text-transform:uppercase;margin-bottom:10px;border-bottom:1px solid var(--border);padding-bottom:6px">Step 6 &mdash; Connect MetaMask to Your Node (Optional)</div>
       <div style="font-size:0.79rem;color:var(--muted);line-height:1.9;margin-bottom:8px">You can use your own node as a custom RPC in MetaMask so your wallet connects through your node instead of the shared public node. In MetaMask: click the network dropdown at the top &rarr; <strong style="color:var(--text)">Add network</strong> &rarr; <strong style="color:var(--text)">Add a network manually</strong>, then enter:</div>
-      <table style="width:100%;border-collapse:collapse;margin-bottom:18px">
+      <div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;margin-bottom:18px">
         <tr style="border-bottom:1px solid rgba(139,92,246,0.08)"><td style="font-size:0.79rem;color:var(--muted);padding:7px 0;width:40%">Network Name</td><td style="font-size:0.79rem;font-family:var(--font-mono);color:var(--text);padding:7px 0">Aequitas Chain</td></tr>
         <tr style="border-bottom:1px solid rgba(139,92,246,0.08)"><td style="font-size:0.79rem;color:var(--muted);padding:7px 0">RPC URL</td><td style="font-size:0.79rem;font-family:var(--font-mono);color:var(--neon);padding:7px 0">https://YOUR-NODE-URL/rpc</td></tr>
         <tr style="border-bottom:1px solid rgba(139,92,246,0.08)"><td style="font-size:0.79rem;color:var(--muted);padding:7px 0">Chain ID</td><td style="font-size:0.79rem;font-family:var(--font-mono);color:var(--text);padding:7px 0">1926</td></tr>
         <tr style="border-bottom:1px solid rgba(139,92,246,0.08)"><td style="font-size:0.79rem;color:var(--muted);padding:7px 0">Currency Symbol</td><td style="font-size:0.79rem;font-family:var(--font-mono);color:var(--text);padding:7px 0">AEQ</td></tr>
         <tr style="border-bottom:1px solid rgba(139,92,246,0.08)"><td style="font-size:0.79rem;color:var(--muted);padding:7px 0">Decimals</td><td style="font-size:0.79rem;font-family:var(--font-mono);color:var(--text);padding:7px 0">18</td></tr>
         <tr><td style="font-size:0.79rem;color:var(--muted);padding:7px 0">Block Explorer</td><td style="font-size:0.79rem;font-family:var(--font-mono);color:var(--purple);padding:7px 0">https://aequitas.digital</td></tr>
-      </table>
+      </table></div>
 
       <!-- Step 7: Rewards -->
       <div style="font-size:0.76rem;color:var(--gold);font-weight:700;letter-spacing:1px;text-transform:uppercase;margin-bottom:10px;border-bottom:1px solid rgba(245,166,35,0.2);padding-bottom:6px">Step 7 &mdash; Earning Validator Rewards</div>
@@ -1526,7 +1526,7 @@
 
       <!-- Troubleshooting -->
       <div style="font-size:0.76rem;color:var(--purple);font-weight:700;letter-spacing:1px;text-transform:uppercase;margin-bottom:10px;border-bottom:1px solid var(--border);padding-bottom:6px">Troubleshooting</div>
-      <table style="width:100%;border-collapse:collapse;margin-bottom:18px">
+      <div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;margin-bottom:18px">
         <tr style="background:rgba(139,92,246,0.12)">
           <td style="font-size:0.77rem;color:var(--text);padding:8px;font-weight:700;width:32%">Symptom</td>
           <td style="font-size:0.77rem;color:var(--text);padding:8px;font-weight:700;width:32%">Likely cause</td>
@@ -1592,7 +1592,7 @@
           <td style="font-size:0.78rem;color:var(--muted);padding:8px">NODE_KEY env var not set</td>
           <td style="font-size:0.78rem;color:var(--muted);padding:8px">On first start, look for <code>SAVE THIS AS NODE_KEY ENVIRONMENT VAR: &lt;base64&gt;</code> in logs. Copy that value and add it as NODE_KEY environment variable. Restart once — P2P identity is now stable across all future restarts.</td>
         </tr>
-      </table>
+      </table></div>
 
       <!-- Footer -->
       <div style="font-size:0.76rem;color:var(--gold);font-weight:700;letter-spacing:1px;text-transform:uppercase;margin-bottom:10px;border-bottom:1px solid rgba(245,166,35,0.2);padding-bottom:6px">Questions / Feedback</div>
