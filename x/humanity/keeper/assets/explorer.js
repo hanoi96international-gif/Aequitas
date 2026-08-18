@@ -170,6 +170,8 @@ en:{
   'swap-price-title':'AEQ / tUSD — Live Price','swap-price-desc':'Real-time price derived from pool reserves (x·y=k). Updates every 8 seconds as new pool data arrives.','swap-price-empty':'No pool data yet — add liquidity to see the price chart.',
   'node-guide-lang-note':'This inline guide is in English. A translated PDF is available in your language using the button above.',
   'k-zkp':'ZKP System','k-hash':'Hash System','k-sybil-prot':'Sybil Protection',
+  'soc-title':'💬 Social Media','soc-sub':'Announcements, the state of the chain, and the awkward questions &mdash; in public, on both.',
+  'soc-x-desc':'Announcements, and what the chain is actually doing. Short form.','soc-tg-desc':'The open group: questions, node operators, and help getting registered.',
 },
 de:{
   'logo-sub':'MENSCHLICHKEITSNACHWEIS','live':'LIVE',
@@ -348,6 +350,8 @@ de:{
   'swap-price-title':'AEQ / tUSD — Live-Preis','swap-price-desc':'Echtzeit-Preis aus Pool-Reserven (x·y=k). Aktualisiert alle 8 Sekunden mit neuen Pool-Daten.','swap-price-empty':'Noch keine Pool-Daten — Liquidität hinzufügen, um das Preisdiagramm zu sehen.',
   'node-guide-lang-note':'Diese Anleitung ist auf Englisch. Eine übersetzte PDF-Version ist in deiner Sprache über den Button oben verfügbar.',
   'k-zkp':'ZKP-System','k-hash':'Hash-System','k-sybil-prot':'Sybil-Schutz',
+  'soc-title':'💬 Soziale Medien','soc-sub':'Ankündigungen, der Zustand der Chain und die unbequemen Fragen &mdash; öffentlich, auf beiden.',
+  'soc-x-desc':'Ankündigungen und was die Chain tatsächlich tut. Kurzform.','soc-tg-desc':'Die offene Gruppe: Fragen, Node-Betreiber und Hilfe bei der Registrierung.',
 },
 es:{
   'logo-sub':'PRUEBA DE HUMANIDAD','live':'EN VIVO',
@@ -512,6 +516,8 @@ es:{
   'swap-price-title':'AEQ / tUSD — Precio en Vivo','swap-price-desc':'Precio en tiempo real derivado de las reservas del pool (x·y=k). Se actualiza cada 8 segundos con nuevos datos del pool.','swap-price-empty':'Sin datos del pool aún — añade liquidez para ver el gráfico de precios.',
   'node-guide-lang-note':'Esta guía está en inglés. Una traducción en PDF está disponible en tu idioma con el botón de arriba.',
   'k-zkp':'Sistema ZKP','k-hash':'Sistema Hash','k-sybil-prot':'Protección Sybil',
+  'soc-title':'💬 Redes Sociales','soc-sub':'Anuncios, el estado de la cadena y las preguntas incómodas &mdash; en público, en ambas.',
+  'soc-x-desc':'Anuncios y lo que la cadena está haciendo realmente. Formato breve.','soc-tg-desc':'El grupo abierto: preguntas, operadores de nodos y ayuda para registrarse.',
 },
 ru:{
   'logo-sub':'ДОКАЗАТЕЛЬСТВО ЧЕЛОВЕЧНОСТИ','live':'ОНЛАЙН',
@@ -670,6 +676,8 @@ ru:{
   'swap-price-title':'AEQ / tUSD — Живая Цена','swap-price-desc':'Цена в реальном времени из резервов пула (x·y=k). Обновляется каждые 8 секунд с новыми данными пула.','swap-price-empty':'Данных пула ещё нет — добавьте ликвидность для просмотра графика цены.',
   'node-guide-lang-note':'Это руководство на английском. Перевод доступен в PDF на вашем языке — используйте кнопку выше.',
   'k-zkp':'ZKP-Система','k-hash':'Хеш-Система','k-sybil-prot':'Защита от Sybil',
+  'soc-title':'💬 Социальные сети','soc-sub':'Объявления, состояние сети и неудобные вопросы &mdash; публично, в обеих.',
+  'soc-x-desc':'Объявления и то, чем сеть занята на самом деле. Коротко.','soc-tg-desc':'Открытая группа: вопросы, операторы узлов и помощь с регистрацией.',
 },
 zh:{
   'logo-sub':'人类证明','live':'实时',
@@ -830,6 +838,8 @@ zh:{
   'swap-price-title':'AEQ / tUSD — 实时价格','swap-price-desc':'从池储备（x·y=k）实时派生的价格。每8秒更新一次。','swap-price-empty':'暂无池数据——添加流动性以查看价格图表。',
   'node-guide-lang-note':'此内联指南为英文。您语言的翻译PDF可通过上方按钮获取。',
   'k-zkp':'ZKP系统','k-hash':'哈希系统','k-sybil-prot':'女巫攻击防护',
+  'soc-title':'💬 社交媒体','soc-sub':'公告、链的真实状态，以及那些不好回答的问题 &mdash; 两个平台，都公开。',
+  'soc-x-desc':'公告，以及链实际在做什么。短内容。','soc-tg-desc':'公开群组：提问、节点运营者，以及注册方面的帮助。',
 },
 id:{
   'logo-sub':'BUKTI KEMANUSIAAN','live':'LANGSUNG',
@@ -982,6 +992,8 @@ id:{
   'swap-price-title':'AEQ / tUSD — Harga Live','swap-price-desc':'Harga real-time dari cadangan pool (x·y=k). Diperbarui setiap 8 detik dengan data pool terbaru.','swap-price-empty':'Belum ada data pool — tambahkan likuiditas untuk melihat grafik harga.',
   'node-guide-lang-note':'Panduan inline ini dalam bahasa Inggris. PDF terjemahan tersedia dalam bahasa Anda menggunakan tombol di atas.',
   'k-zkp':'Sistem ZKP','k-hash':'Sistem Hash','k-sybil-prot':'Perlindungan Sybil',
+  'soc-title':'💬 Media Sosial','soc-sub':'Pengumuman, keadaan rantai, dan pertanyaan yang canggung &mdash; terbuka, di keduanya.',
+  'soc-x-desc':'Pengumuman, dan apa yang sebenarnya dilakukan rantai ini. Bentuk singkat.','soc-tg-desc':'Grup terbuka: pertanyaan, operator node, dan bantuan untuk mendaftar.',
 },
 it:{
   'logo-sub':'PROVA DI UMANITÀ','live':'LIVE',
@@ -1135,6 +1147,8 @@ it:{
   'swap-price-title':'AEQ / tUSD — Prezzo Live','swap-price-desc':'Prezzo in tempo reale derivato dalle riserve del pool (x·y=k). Si aggiorna ogni 8 secondi con nuovi dati.','swap-price-empty':'Nessun dato del pool ancora — aggiungi liquidità per vedere il grafico dei prezzi.',
   'node-guide-lang-note':'Questa guida inline è in inglese. Un PDF tradotto nella tua lingua è disponibile tramite il pulsante sopra.',
   'k-zkp':'Sistema ZKP','k-hash':'Sistema Hash','k-sybil-prot':'Protezione Sybil',
+  'soc-title':'💬 Social Media','soc-sub':'Annunci, lo stato della catena e le domande scomode &mdash; in pubblico, su entrambi.',
+  'soc-x-desc':'Annunci, e cosa sta facendo davvero la catena. Formato breve.','soc-tg-desc':'Il gruppo aperto: domande, operatori di nodi e aiuto per registrarsi.',
 },
 tr:{
   'logo-sub':'İNSANLIK KANITI','live':'CANLI',
@@ -1295,6 +1309,8 @@ tr:{
   'swap-price-title':'AEQ / tUSD — Canlı Fiyat','swap-price-desc':'Havuz rezervlerinden gerçek zamanlı fiyat (x·y=k). Her 8 saniyede yeni havuz verileriyle güncellenir.','swap-price-empty':'Henüz havuz verisi yok — fiyat grafiğini görmek için likidite ekleyin.',
   'node-guide-lang-note':'Bu kılavuz İngilizce\'dir. Dilinizde çevrilmiş PDF yukarıdaki düğmeyle mevcuttur.',
   'k-zkp':'ZKP Sistemi','k-hash':'Hash Sistemi','k-sybil-prot':'Sybil Koruması',
+  'soc-title':'💬 Sosyal Medya','soc-sub':'Duyurular, zincirin durumu ve zor sorular &mdash; herkese açık, her ikisinde de.',
+  'soc-x-desc':'Duyurular ve zincirin gerçekte ne yaptığı. Kısa biçim.','soc-tg-desc':'Açık grup: sorular, node işletenler ve kayıt olma konusunda yardım.',
 },
 fr:{
   'logo-sub':'PREUVE D\'HUMANITÉ','live':'EN DIRECT',
@@ -1454,6 +1470,8 @@ fr:{
   'swap-price-title':'AEQ / tUSD — Prix en Direct','swap-price-desc':'Prix en temps réel dérivé des réserves du pool (x·y=k). Mis à jour toutes les 8 secondes.','swap-price-empty':'Pas encore de données de pool — ajoutez de la liquidité pour voir le graphique de prix.',
   'node-guide-lang-note':'Ce guide en ligne est en anglais. Un PDF traduit dans votre langue est disponible via le bouton ci-dessus.',
   'k-zkp':'Système ZKP','k-hash':'Système de Hachage','k-sybil-prot':'Protection Sybil',
+  'soc-title':'💬 Réseaux sociaux','soc-sub':'Les annonces, l\'état de la chaîne et les questions qui dérangent &mdash; en public, sur les deux.',
+  'soc-x-desc':'Les annonces, et ce que la chaîne fait vraiment. Format court.','soc-tg-desc':'Le groupe ouvert : questions, opérateurs de nœuds et aide à l\'inscription.',
 },
 pt:{
   'logo-sub':'PROVA DE HUMANIDADE','live':'AO VIVO',
@@ -1613,6 +1631,8 @@ pt:{
   'swap-price-title':'AEQ / tUSD — Preço ao Vivo','swap-price-desc':'Preço em tempo real derivado das reservas do pool (x·y=k). Atualizado a cada 8 segundos.','swap-price-empty':'Sem dados do pool ainda — adicione liquidez para ver o gráfico de preços.',
   'node-guide-lang-note':'Este guia inline está em inglês. Um PDF traduzido na sua língua está disponível através do botão acima.',
   'k-zkp':'Sistema ZKP','k-hash':'Sistema Hash','k-sybil-prot':'Proteção Sybil',
+  'soc-title':'💬 Redes Sociais','soc-sub':'Anúncios, o estado da cadeia e as perguntas incômodas &mdash; em público, em ambas.',
+  'soc-x-desc':'Anúncios, e o que a cadeia está realmente fazendo. Formato curto.','soc-tg-desc':'O grupo aberto: perguntas, operadores de nós e ajuda para se registrar.',
 },
 ar:{
   'logo-sub':'إثبات الإنسانية','live':'مباشر',
@@ -1770,6 +1790,8 @@ ar:{
   'swap-price-title':'AEQ / tUSD — السعر المباشر','swap-price-desc':'سعر فوري مشتق من احتياطيات المجموعة (x·y=k). يتحدث كل 8 ثوانٍ.','swap-price-empty':'لا توجد بيانات مجموعة بعد — أضف سيولة لرؤية مخطط السعر.',
   'node-guide-lang-note':'هذا الدليل المضمّن باللغة الإنجليزية. ملف PDF مترجم بلغتك متاح عبر الزر أعلاه.',
   'k-zkp':'نظام ZKP','k-hash':'نظام التجزئة','k-sybil-prot':'حماية سيبل',
+  'soc-title':'💬 وسائل التواصل الاجتماعي','soc-sub':'الإعلانات، وحالة السلسلة، والأسئلة المحرجة &mdash; علنًا، على كليهما.',
+  'soc-x-desc':'الإعلانات، وما تفعله السلسلة فعليًا. بصيغة مختصرة.','soc-tg-desc':'المجموعة المفتوحة: الأسئلة، ومشغّلو العقد، والمساعدة في التسجيل.',
 },
 hi:{
   'logo-sub':'मानवता का प्रमाण','live':'लाइव',
@@ -1927,6 +1949,8 @@ hi:{
   'swap-price-title':'AEQ / tUSD — लाइव मूल्य','swap-price-desc':'पूल रिज़र्व से रियल-टाइम मूल्य (x·y=k)। हर 8 सेकंड में नए पूल डेटा के साथ अपडेट।','swap-price-empty':'अभी पूल डेटा नहीं — मूल्य चार्ट देखने के लिए लिक्विडिटी जोड़ें।',
   'node-guide-lang-note':'यह इनलाइन गाइड अंग्रेज़ी में है। आपकी भाषा में PDF ऊपर के बटन से उपलब्ध है।',
   'k-zkp':'ZKP सिस्टम','k-hash':'हैश सिस्टम','k-sybil-prot':'Sybil सुरक्षा',
+  'soc-title':'💬 सोशल मीडिया','soc-sub':'घोषणाएँ, चेन की स्थिति, और असहज सवाल &mdash; सार्वजनिक रूप से, दोनों पर।',
+  'soc-x-desc':'घोषणाएँ, और चेन असल में क्या कर रही है। संक्षिप्त रूप।','soc-tg-desc':'खुला समूह: सवाल, नोड संचालक, और रजिस्टर करने में मदद।',
 }
 };
 
