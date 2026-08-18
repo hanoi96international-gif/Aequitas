@@ -1,0 +1,173 @@
+name: Fix Contabo2's 30-minute resync loop
+
+# WHAT THIS FIXES, measured 2026-08-18 (see why-does-the-node-restart.yml).
+#
+# Contabo2 restarts itself every 30 minutes, 66 times so far. Its own last
+# words before each exit:
+#
+#   [AUTO-HEAL] 1807 StateRoot mismatches in the last 10 minutes
+#   [AUTO-HEAL] Attempting an in-process resync (no restart) first.
+#   [AUTO-HEAL] In-process resync failed (snapshot signed by 0x0be8b961...,
+#               expected 0x92cbedec...) - falling back to the restart path.
+#   [AUTO-HEAL] Restarting now.
+#
+# The node has genuinely diverged and knows it. The repair it wants to run --
+# an in-process resync, no restart -- is refused at the signature check,
+# because BOOTSTRAP_SIGNER names an address that signs nothing here. So it
+# falls back to exit(1), Docker's unless-stopped policy brings it back, the
+# boot-time resync hits the same wall, and 30 minutes later (autoHealCooldown)
+# it happens again. The signer mismatch is not protecting anything on this
+# box; it is what makes the loop permanent.
+#
+# CONTABO1 IS THE PRIMARY AND IS NOT TOUCHED. There is deliberately no host
+# input: this workflow is wired to 194.163.188.71 and cannot be pointed at the
+# primary by picking the wrong option, and it refuses outright if the node it
+# reaches reports is_primary=true. Nothing here changes Contabo1, which still
+# has no snapshot source at all and therefore still cannot reseed itself from
+# this box -- the near-miss the launch runbook records.
+#
+# The resync direction here is the correct one: Contabo2 learns from Contabo1.
+# A snapshot far below local height is refused in code anyway
+# (resyncBackwardsTolerance), and both boxes are at ~4.07M.
+
+on:
+  workflow_dispatch:
+    inputs:
+      expected_signer:
+        description: The address that actually signs Contabo1's snapshots.
+        required: true
+        default: "0x0be8b961cbf6564bd1931b0803d35c0659e0d016"
+      drop_loadtest_env:
+        description: Also remove the load-test RPC settings this box still carries.
+        required: false
+        default: "true"
+
+jobs:
+  fix:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Repoint BOOTSTRAP_SIGNER and restart Contabo2 once
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: 194.163.188.71
+          username: root
+          key: ${{ secrets.CONTABO2_SSH_KEY }}
+          port: 22
+          fingerprint: "SHA256:VIwj7Faxiga2n45HVHZEQFPxcbRKHgSgHoxAFsf2wto"
+          script_stop: true
+          timeout: 900s
+          command_timeout: 900s
+          script: |
+            set -euo pipefail
+            SIGNER=$(echo "${{ inputs.expected_signer }}" | tr 'A-Z' 'a-z')
+            DROP_LOADTEST="${{ inputs.drop_loadtest_env }}"
+
+            echo "$SIGNER" | grep -qE '^0x[0-9a-f]{40}$' \
+              || { echo "REFUSING: '$SIGNER' is not an address"; exit 1; }
+
+            echo "===== 0. this must be Contabo2, never the primary ====="
+            # A node reporting is_primary=true is the wrong box for an
+            # authoritative resync, whatever the IP says. Cheap, and it makes
+            # the guard real rather than a comment.
+            PRIM=$(curl -s -m 10 http://localhost:8080/api/status | grep -o '"is_primary":[a-z]*' | cut -d: -f2 || echo unknown)
+            echo "is_primary=$PRIM"
+            [ "$PRIM" = "false" ] || { echo "REFUSING: this node reports is_primary=$PRIM"; exit 1; }
+
+            echo ""
+            echo "===== 1. what it carries now ====="
+            docker inspect aequitas-node --format '{{range .Config.Env}}{{println .}}{{end}}' \
+              | grep -E '^(BOOTSTRAP_SIGNER|BOOTSTRAP_SNAPSHOT_URL|RESYNC_FROM_SNAPSHOT|AEQUITAS_RPC_RATE_LIMIT_MAX|AEQUITAS_RPC_QUIET_TX)=' \
+              | sed 's/^/  /' || echo "  (none of them set)"
+
+            IMAGE=$(docker inspect aequitas-node --format '{{.Config.Image}}')
+            NET=$(docker inspect aequitas-node --format '{{range $n,$v := .NetworkSettings.Networks}}{{$n}}{{end}}')
+            echo "  image=$IMAGE net=$NET"
+
+            echo ""
+            echo "===== 2. build the new env ====="
+            # Same strip list as normalize-node-env: docker sets PATH/HOSTNAME/HOME
+            # itself, and the destructive flags must never survive into steady
+            # state. BOOTSTRAP_SIGNER is dropped here and re-added with the real
+            # value below.
+            STRIP='^(PATH|HOSTNAME|HOME|RESET_DB_STATE|ALLOW_DESTRUCTIVE_MAINTENANCE|RESYNC_FROM_SNAPSHOT|CLEAR_REGISTRATIONS|CLEAR_REGISTRATIONS_CONFIRM|BOOTSTRAP_SIGNER)='
+            if [ "$DROP_LOADTEST" = "true" ]; then
+              STRIP='^(PATH|HOSTNAME|HOME|RESET_DB_STATE|ALLOW_DESTRUCTIVE_MAINTENANCE|RESYNC_FROM_SNAPSHOT|CLEAR_REGISTRATIONS|CLEAR_REGISTRATIONS_CONFIRM|BOOTSTRAP_SIGNER|AEQUITAS_RPC_RATE_LIMIT_MAX|AEQUITAS_RPC_QUIET_TX)='
+            fi
+            echo "  removed:"
+            docker inspect aequitas-node --format '{{range .Config.Env}}{{println .}}{{end}}' \
+              | grep -E "$STRIP" | cut -d= -f1 | sed 's/^/    /' || echo "    (none)"
+            docker inspect aequitas-node --format '{{range .Config.Env}}{{println .}}{{end}}' \
+              | grep -vE "$STRIP" | grep -v '^$' > /root/.node-env-new
+            echo "BOOTSTRAP_SIGNER=$SIGNER" >> /root/.node-env-new
+            echo "  BOOTSTRAP_SIGNER now: $SIGNER"
+
+            echo ""
+            echo "===== 3. the same change in /root/.aequitas.env, or a deploy undoes it ====="
+            # deploy_safe_c2.sh recreates the container with
+            # --env-file /root/.aequitas.env, so a container-only change lasts
+            # exactly until the next deploy.
+            if [ -f /root/.aequitas.env ]; then
+              cp /root/.aequitas.env "/root/.aequitas.env.bak-$(date +%s)"
+              sed -i '/^BOOTSTRAP_SIGNER=/d' /root/.aequitas.env
+              if [ "$DROP_LOADTEST" = "true" ]; then
+                sed -i '/^AEQUITAS_RPC_RATE_LIMIT_MAX=/d;/^AEQUITAS_RPC_QUIET_TX=/d' /root/.aequitas.env
+              fi
+              echo "BOOTSTRAP_SIGNER=$SIGNER" >> /root/.aequitas.env
+              echo "  updated (timestamped backup kept alongside it)"
+              grep -E '^(BOOTSTRAP_SIGNER|BOOTSTRAP_SNAPSHOT_URL|RESYNC_FROM_SNAPSHOT)=' /root/.aequitas.env | sed 's/^/    /'
+            else
+              echo "  (no /root/.aequitas.env on this box)"
+            fi
+
+            echo ""
+            TS=$(date +%s)
+            echo "===== 4. swapping the container (previous kept as aequitas-node-presigner-$TS) ====="
+            docker stop aequitas-node
+            docker rename aequitas-node "aequitas-node-presigner-$TS"
+            docker run -d --name aequitas-node --restart unless-stopped \
+              --network "$NET" -p 8080:8080 -p 4001:4001 \
+              --env-file /root/.node-env-new "$IMAGE"
+            rm -f /root/.node-env-new
+
+            echo ""
+            echo "===== 5. does it come back ====="
+            up=""
+            for i in $(seq 1 30); do
+              code=$(curl -s -m 10 -o /dev/null -w '%{http_code}' http://localhost:8080/api/health/combined || echo 000)
+              if [ "$code" = "200" ]; then up=yes; echo "  answering after $i attempt(s)"; break; fi
+              echo "  waiting ($i/30, last $code)"; sleep 10
+            done
+            if [ -z "$up" ]; then
+              echo "FAILED: the node did not come back. Roll back with:"
+              echo "  docker rm -f aequitas-node && docker rename aequitas-node-presigner-$TS aequitas-node && docker start aequitas-node"
+              exit 1
+            fi
+
+            echo ""
+            echo "===== 6. is the chain still moving ====="
+            h1=$(curl -s -m 25 http://localhost:8080/api/status | grep -o '"height":[0-9]*' | cut -d: -f2)
+            sleep 45
+            h2=$(curl -s -m 25 http://localhost:8080/api/status | grep -o '"height":[0-9]*' | cut -d: -f2)
+            echo "  height $h1 -> $h2 over 45s"
+            if [ -z "${h2:-}" ] || [ "${h2:-0}" -le "${h1:-0}" ]; then
+              echo "  WARNING: height did not advance yet - it may still be catching up after the restart"
+            fi
+
+            echo ""
+            echo "===== 7. did the signature check stop refusing ====="
+            # The point of the whole change. The old failure names 0x92cbedec...;
+            # if that string still appears in this FRESH log, the address given
+            # is not the one signing Contabo1's snapshots and the loop continues.
+            if docker logs aequitas-node 2>&1 | grep -q '0x92cbedec'; then
+              echo "  STILL REFUSING against 0x92cbedec... - the address given is not the right one"
+              echo "  roll back: docker rm -f aequitas-node && docker rename aequitas-node-presigner-$TS aequitas-node && docker start aequitas-node"
+              exit 1
+            fi
+            echo "  no 0x92cbedec... refusal in this process's log"
+            docker logs aequitas-node 2>&1 | grep -E '\[SNAPSHOT\]|\[RESYNC\]|\[AUTO-HEAL\]' | tail -12 | sed 's/^/    /' \
+              || echo "    (no snapshot/resync/autoheal lines yet - the first autoheal round is up to 10 minutes away)"
+
+            echo ""
+            echo "Done. Thirty minutes without a restart is the proof."
+            echo "Roll back at any time with:"
+            echo "  docker rm -f aequitas-node && docker rename aequitas-node-presigner-$TS aequitas-node && docker start aequitas-node"
