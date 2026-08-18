@@ -1,0 +1,93 @@
+name: Who actually produces the blocks (read-only)
+
+# WHY THIS EXISTS.
+#
+# On 2026-08-18 Contabo2's log showed "[BLOCK] ProduceBlock itself took 923ms"
+# and "[Block #4074221] ... Sent block to 12D3KooWHfPy", which reads like the
+# node producing and shipping its own blocks. That is not proof: a log line
+# says what a process attempted, not what the chain accepted, and it says
+# nothing about which key signed the result.
+#
+# The chain itself answers the question. Every block carries a `proposer`
+# (block.go), so counting proposers across the recent range says exactly who
+# is producing and in what proportion — and asking BOTH boxes the same
+# question shows whether they even agree about it, which is its own signal.
+#
+# Read-only: three GETs per box against its own localhost. Starts nothing,
+# changes nothing.
+
+on:
+  workflow_dispatch:
+    inputs:
+      blocks:
+        description: How many recent blocks to count proposers over (max 500).
+        required: false
+        default: "200"
+
+jobs:
+  contabo1:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ask Contabo1
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: 173.249.37.118
+          username: root
+          key: ${{ secrets.CONTABO_SSH_KEY }}
+          port: 22
+          fingerprint: "SHA256:noMtjHV8c+2iEFZu3TRUP6WRwGjkrvFke71KgU6Eyt4"
+          script_stop: false
+          timeout: 240s
+          command_timeout: 240s
+          script: |
+            set -uo pipefail
+            N="${{ inputs.blocks }}"
+            echo "===== CONTABO1 — who does this node think it is ====="
+            curl -s -m 15 http://localhost:8080/api/status \
+              | tr ',' '\n' | grep -E '"node_id"|"is_primary"|"height"' | sed 's/^/  /'
+            echo ""
+            echo "===== validators it knows ====="
+            curl -s -m 15 http://localhost:8080/api/validators | head -c 800; echo
+            echo ""
+            echo "===== proposers of the last $N blocks, as THIS node sees them ====="
+            curl -s -m 30 "http://localhost:8080/api/blocks?limit=$N" \
+              | grep -o '"proposer":"[^"]*"' | cut -d'"' -f4 \
+              | sort | uniq -c | sort -rn | sed 's/^/  /'
+
+  contabo2:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ask Contabo2
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: 194.163.188.71
+          username: root
+          key: ${{ secrets.CONTABO2_SSH_KEY }}
+          port: 22
+          fingerprint: "SHA256:VIwj7Faxiga2n45HVHZEQFPxcbRKHgSgHoxAFsf2wto"
+          script_stop: false
+          timeout: 240s
+          command_timeout: 240s
+          script: |
+            set -uo pipefail
+            N="${{ inputs.blocks }}"
+            echo "===== CONTABO2 — who does this node think it is ====="
+            curl -s -m 15 http://localhost:8080/api/status \
+              | tr ',' '\n' | grep -E '"node_id"|"is_primary"|"height"' | sed 's/^/  /'
+            echo ""
+            echo "===== validators it knows ====="
+            curl -s -m 15 http://localhost:8080/api/validators | head -c 800; echo
+            echo ""
+            echo "===== proposers of the last $N blocks, as THIS node sees them ====="
+            curl -s -m 30 "http://localhost:8080/api/blocks?limit=$N" \
+              | grep -o '"proposer":"[^"]*"' | cut -d'"' -f4 \
+              | sort | uniq -c | sort -rn | sed 's/^/  /'
+            echo ""
+            echo "===== what this node says about its own production ====="
+            # Both lines matter and they contradict each other when something is
+            # wrong: the gate line means it decided NOT to produce, the tick line
+            # means it did. Seeing the gate line recently while the proposer
+            # count above shows only one address is the whole answer.
+            docker logs --tail 400 aequitas-node 2>&1 \
+              | grep -E 'skipping block production|ProduceBlock itself took|NODE_OPERATOR_WALLET' \
+              | tail -8 | sed 's/^/  /' || echo "  (neither line in the last 400 log lines)"
