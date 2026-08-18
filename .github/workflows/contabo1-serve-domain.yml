@@ -133,7 +133,15 @@ jobs:
             docker exec proof-caddy caddy validate --config /etc/caddy/Caddyfile.new --adapter caddyfile \
               || { echo "config invalid — nothing changed"; exit 1; }
 
-            docker exec proof-caddy sh -c "mv /etc/caddy/Caddyfile.new /etc/caddy/Caddyfile"
+            # /etc/caddy/Caddyfile is a bind mount inside this container, so
+            # renaming over it fails with "Resource busy" — rename() on a mount
+            # point is EBUSY. That is what broke the first real run on
+            # 2026-08-18: validate passed, the mv failed, and the reload never
+            # happened. Write through the existing inode instead. The content is
+            # byte-identical to what validate just accepted.
+            docker exec proof-caddy sh -c "cat /etc/caddy/Caddyfile.new > /etc/caddy/Caddyfile && rm -f /etc/caddy/Caddyfile.new"
+            echo "--- installed config ---"
+            docker exec proof-caddy sh -c "cat /etc/caddy/Caddyfile" | sed 's/^/    /'
             docker exec proof-caddy caddy reload --config /etc/caddy/Caddyfile --adapter caddyfile
 
             echo "=== waiting for the certificate ==="
