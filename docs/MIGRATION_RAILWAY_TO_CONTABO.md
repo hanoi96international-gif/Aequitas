@@ -2,8 +2,13 @@
 
 **Stand: 2026-08-14.** Railway ist abgeschaltet und hostet keinen Teil dieses
 Netzwerks mehr. Dieses Dokument beschreibt, was im Code bereits umgestellt
-wurde, und was am **18.08.2026** (Freigabe der Domain `aequitas.digital`) noch
-manuell zu tun ist.
+wurde, und was am **18.08.2026** noch manuell zu tun ist.
+
+Korrektur zum Datum: der 18.08. ist *nicht* die „Freigabe" der Domain. Die
+Domain ist längst registriert, Railway verwaltet ihr DNS (name.com-Nameserver).
+Am 18.08. endet nur die 60-Tage-Sperre der ICANN, ab der ein Registrar-Wechsel
+möglich wäre. Für die DNS-Umstellung unten spielt das keine Rolle — die
+Records sind jederzeit änderbar.
 
 ---
 
@@ -58,10 +63,15 @@ erreichen — deshalb `peers:null` auf beiden Boxen.
 ## 3. Checkliste für den 18.08.2026
 
 ### 3.1 DNS
+
+Zuerst den bestehenden `ANAME @` auf das Railway-Ziel löschen — daher kommt
+die Auflösung auf 69.46.46.73, und ein Apex kann ANAME und A nicht gleichzeitig
+führen. Danach:
 ```
 aequitas.digital.      A    173.249.37.118
 www.aequitas.digital.  A    173.249.37.118
 ```
+Die `proof1`/`proof2`-A-Records bleiben, wie sie sind.
 Vor dem nächsten Schritt abwarten, bis die Auflösung greift:
 ```bash
 dig +short aequitas.digital
