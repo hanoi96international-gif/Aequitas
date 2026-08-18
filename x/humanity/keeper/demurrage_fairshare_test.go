@@ -10,7 +10,7 @@ import (
 //
 //	WHITEPAPER.md            "(Balance - fairShare) x 0.5%/month"
 //	README.md                same formula
-//	landing.go's mechanism   "only on the portion above your fair share"
+//	explorer.js dem-box      "only on the portion above your fair share"
 //	AequitasV7.sol:313       if (bal <= fs) return; excess = bal - fs
 //
 // The Go chain — the one that actually holds everyone's balance — decayed
