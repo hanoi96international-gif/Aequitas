@@ -1063,7 +1063,7 @@ func NewPersistentStateDB(cs *ChainState) (*state.StateDB, error) {
 		// to get the AEQ float value before converting to wei. Using
 		// int64(acc.Balance) directly would re-interpret micro-AEQ as whole-AEQ
 		// and multiply by 1e18 a second time, overstating balances by 1e6×.
-		sdb.SetBalance(addr, aeqToWei(acc.Balance.Float()))
+		sdb.SetBalance(addr, evmBalanceWei(acc.Address, acc.Balance.Float()))
 	}
 
 	for _, addrStr := range cs.GetAllContracts() {

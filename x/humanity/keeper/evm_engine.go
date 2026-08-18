@@ -43,7 +43,39 @@ func aeqToWei(aeq float64) *big.Int {
 	if wei == nil {
 		wei = new(big.Int)
 	}
+	// A negative balance must never reach the EVM state, and this is not
+	// tidiness. A negative big.Int cannot be RLP-encoded, so ONE negative
+	// account makes the whole state fail to commit — go-ethereum aborts with
+	// "rlp: cannot encode negative big.Int". Measured on Contabo2 on
+	// 2026-08-18: the V7 contract deploy died with exactly that at every boot,
+	// the EVM mirror was therefore never rebuilt, and from then on every
+	// single block produced a StateRoot the primary disagreed with. The node
+	// spent the day resyncing itself over and over against a cause no resync
+	// could touch.
+	//
+	// So the clamp is the lesser wrong by a wide margin: one account mirrored
+	// as zero is a bug to hunt down (evmBalanceWei logs which one), while an
+	// uncommittable mirror silently diverges the entire node from the network.
+	if wei.Sign() < 0 {
+		return new(big.Int)
+	}
 	return wei
+}
+
+// evmBalanceWei converts an account balance for the EVM mirror and says so
+// loudly when it had to clamp. aeqToWei alone would hide the account: by the
+// time the value reaches it there is no address left to name, and a negative
+// balance is a real defect in whatever wrote it — worth finding, not worth
+// crashing the mirror over.
+func evmBalanceWei(addrHex string, aeq float64) *big.Int {
+	if aeq < 0 {
+		fmt.Printf("[ALERT] [EVM-MIRROR] %s holds a negative balance (%.6f AEQ) — mirrored as 0. "+
+			"A negative big.Int cannot be RLP-encoded, so mirroring it as-is would make the EVM state "+
+			"fail to commit and this node's StateRoot diverge from the network's. Find the write that produced it.\n",
+			addrHex, aeq)
+		return new(big.Int)
+	}
+	return aeqToWei(aeq)
 }
 
 // EVMEngine wraps go-ethereum EVM for contract deployment and calls.
@@ -160,7 +192,7 @@ addr := common.HexToAddress(acc.Address)
 // Use .Float() to get the real AEQ value, then convert to wei (×1e18).
 // The previous code used big.NewInt(int64(acc.Balance)) which treated the
 // raw micro-unit integer as whole-AEQ, producing balances 1e6× too high.
-sdb.SetBalance(addr, aeqToWei(acc.Balance.Float()))
+sdb.SetBalance(addr, evmBalanceWei(acc.Address, acc.Balance.Float()))
 }
 
 // Load all contract bytecodes and storage. Performance audit 2026-07-06:
@@ -226,7 +258,7 @@ addrStrs[i] = strings.ToLower(a.Hex())
 }
 for _, acc := range e.chainState.getAccountsForAddressesLocked(addrStrs) {
 addr := common.HexToAddress(acc.Address)
-sdb.SetBalance(addr, aeqToWei(acc.Balance.Float()))
+sdb.SetBalance(addr, evmBalanceWei(acc.Address, acc.Balance.Float()))
 }
 
 // Contract code/storage loading is plain DB I/O — GetAllContracts/
