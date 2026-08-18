@@ -50,6 +50,7 @@
   <div class="tab" data-act="showTab" data-args='["index"]'>⚖️ Equality</div>
   <div class="tab" data-act="showTab" data-args='["network"]'>🌐 Network</div>
   <div class="tab" data-act="showTabAndPriceChart" data-args='["exchange"]'>🔄 Exchange</div>
+  <div class="tab" data-act="showTab" data-args='["social"]'>💬 Social</div>
 </div>
 
 <!-- REGISTER -->
@@ -1656,6 +1657,20 @@
      rest of the page with it, and the browser only papered over it by closing
      the div implicitly at </body>. Verified with html.parser: this is now the
      only structural fix needed; nothing else in the file is unbalanced. -->
+
+<!-- SOCIAL -->
+<div id="tab-social" class="tab-content">
+  <div class="rs">
+    <div class="rhero">
+      <div class="rhero-title">💬 Social Media</div>
+      <div class="rhero-sub">Announcements, the state of the chain, and the awkward questions &mdash; in public, on both.</div>
+    </div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:18px;max-width:720px;margin:26px auto 0">
+<a href="https://x.com/AequitasMoney" target="_blank" rel="noopener noreferrer" style="display:flex;flex-direction:column;align-items:center;text-align:center;gap:12px;text-decoration:none;background:var(--card2,#12151f);border:1px solid var(--border,rgba(255,255,255,0.08));border-radius:14px;padding:38px 26px;transition:border-color .2s,transform .2s" onmouseover="this.style.borderColor='var(--purple)';this.style.transform='translateY(-3px)'" onmouseout="this.style.borderColor='';this.style.transform=''"><svg viewBox="0 0 24 24" width="64" height="64" fill="currentColor" style="color:var(--text,#e8edf5)" aria-hidden="true"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/></svg><div style="font-size:1.15rem;font-weight:700;color:var(--text,#e8edf5)">X</div><div style="font-size:0.85rem;font-weight:600;color:var(--purple)">@AequitasMoney</div><div style="font-size:0.72rem;color:var(--muted,#8892a4);line-height:1.7;max-width:260px">Announcements, and what the chain is actually doing. Short form.</div></a>
+<a href="https://t.me/aequitasmoney" target="_blank" rel="noopener noreferrer" style="display:flex;flex-direction:column;align-items:center;text-align:center;gap:12px;text-decoration:none;background:var(--card2,#12151f);border:1px solid var(--border,rgba(255,255,255,0.08));border-radius:14px;padding:38px 26px;transition:border-color .2s,transform .2s" onmouseover="this.style.borderColor='var(--purple)';this.style.transform='translateY(-3px)'" onmouseout="this.style.borderColor='';this.style.transform=''"><svg viewBox="0 0 24 24" width="64" height="64" fill="currentColor" style="color:var(--text,#e8edf5)" aria-hidden="true"><path d="M11.944 0A12 12 0 0 0 0 12a12 12 0 0 0 12 12 12 12 0 0 0 12-12A12 12 0 0 0 12 0a12 12 0 0 0-.056 0zm4.962 7.224c.1-.002.321.023.465.14a.506.506 0 0 1 .171.325c.016.093.036.306.02.472-.18 1.898-.962 6.502-1.36 8.627-.168.9-.499 1.201-.82 1.23-.696.065-1.225-.46-1.9-.902-1.056-.693-1.653-1.124-2.678-1.8-1.185-.78-.417-1.21.258-1.91.177-.184 3.247-2.977 3.307-3.23.007-.032.014-.15-.056-.212s-.174-.041-.249-.024c-.106.024-1.793 1.14-5.061 3.345-.48.33-.913.49-1.302.48-.428-.008-1.252-.241-1.865-.44-.752-.245-1.349-.374-1.297-.789.027-.216.325-.437.893-.663 3.498-1.524 5.83-2.529 6.998-3.014 3.332-1.386 4.025-1.627 4.476-1.635z"/></svg><div style="font-size:1.15rem;font-weight:700;color:var(--text,#e8edf5)">Telegram</div><div style="font-size:0.85rem;font-weight:600;color:var(--purple)">t.me/aequitasmoney</div><div style="font-size:0.72rem;color:var(--muted,#8892a4);line-height:1.7;max-width:260px">The open group: questions, node operators, and help getting registered.</div></a>
+    </div>
+  </div>
+</div>
 
 <script src="/explorer.js"></script>
 </body>
