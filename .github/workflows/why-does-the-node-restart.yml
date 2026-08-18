@@ -1,0 +1,104 @@
+name: Why is this node restarting (read-only)
+
+# WHY THIS EXISTS.
+#
+# Contabo2, measured 2026-08-18: RestartCount=66, ExitCode=0, OOMKilled=false,
+# zero panics or fatal errors in the log, 0.45s between FinishedAt and
+# StartedAt. So the process is not crashing and the kernel is not killing it
+# (the 2026-08-16 OOM kills stopped once GOMEMLIMIT shipped — the box now
+# holds 1.1 GB of 12 GB). Something ends it cleanly, over and over, and
+# check-node-crash-contabo2.yml cannot say what: it reads the CURRENT
+# process's log, and the interesting words are the ones the PREVIOUS process
+# said on its way out.
+#
+# The candidates split cleanly and each leaves a different fingerprint:
+#
+#   - the node itself           -> its own last log lines before the banner
+#   - a failing healthcheck     -> State.Health + the health log's exit codes
+#   - a watchdog container      -> something like willfarrell/autoheal in ps -a
+#   - cron or a systemd timer   -> the schedule names the container
+#   - a human or a deploy       -> docker's journal records the stop
+#
+# Read-only by construction: inspect, logs, ps, crontab -l, list-timers,
+# journalctl. It starts nothing, stops nothing, changes nothing.
+
+on:
+  workflow_dispatch:
+    inputs:
+      box:
+        description: Which box to probe.
+        required: false
+        default: "contabo2"
+        type: choice
+        options: [contabo2, contabo1]
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Name the restarter
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ inputs.box == 'contabo1' && '173.249.37.118' || '194.163.188.71' }}
+          username: root
+          key: ${{ inputs.box == 'contabo1' && secrets.CONTABO_SSH_KEY || secrets.CONTABO2_SSH_KEY }}
+          port: 22
+          fingerprint: ${{ inputs.box == 'contabo1' && 'SHA256:noMtjHV8c+2iEFZu3TRUP6WRwGjkrvFke71KgU6Eyt4' || 'SHA256:VIwj7Faxiga2n45HVHZEQFPxcbRKHgSgHoxAFsf2wto' }}
+          script_stop: false
+          timeout: 300s
+          command_timeout: 300s
+          script: |
+            set -uo pipefail
+
+            echo "===== 1. restart policy and current state ====="
+            # RestartPolicy matters: 'always' restarts even a clean exit 0,
+            # 'on-failure' would not — so the policy tells us whether a
+            # voluntary exit is enough to produce this loop at all.
+            docker inspect aequitas-node -f 'Policy={{.HostConfig.RestartPolicy.Name}} MaxRetry={{.HostConfig.RestartPolicy.MaximumRetryCount}} RestartCount={{.RestartCount}} ExitCode={{.State.ExitCode}} OOMKilled={{.State.OOMKilled}} Started={{.State.StartedAt}} Finished={{.State.FinishedAt}}' 2>&1
+
+            echo ""
+            echo "===== 2. healthcheck (an unhealthy container plus a watchdog is the classic pair) ====="
+            docker inspect aequitas-node -f '{{json .Config.Healthcheck}}' 2>&1
+            docker inspect aequitas-node -f '{{if .State.Health}}Status={{.State.Health.Status}} FailingStreak={{.State.Health.FailingStreak}}{{else}}(no healthcheck configured){{end}}' 2>&1
+            docker inspect aequitas-node -f '{{if .State.Health}}{{range .State.Health.Log}}{{.Start}} exit={{.ExitCode}} {{printf "%.160s" .Output}}{{println}}{{end}}{{end}}' 2>&1 | tail -5
+
+            echo ""
+            echo "===== 3. anything else on this box whose job is restarting containers ====="
+            docker ps -a --format '{{.Names}}\t{{.Image}}\t{{.Status}}' 2>&1
+
+            echo ""
+            echo "===== 4. scheduled work that could touch it ====="
+            crontab -l 2>/dev/null | grep -vE '^[[:space:]]*#' | sed '/^[[:space:]]*$/d' || echo "(no root crontab)"
+            grep -rlE 'docker[[:space:]]+(restart|stop|kill|compose)|aequitas-node' /etc/cron.d /etc/cron.hourly /etc/cron.daily /etc/cron.weekly 2>/dev/null || echo "(no cron file mentions docker or the node)"
+            systemctl list-timers --all --no-pager 2>/dev/null | head -12 || echo "(no systemd timers)"
+
+            echo ""
+            echo "===== 5. what the docker daemon recorded ====="
+            # A "stop"/"kill" line names an external actor. Only "died" with no
+            # stop before it means the process left on its own.
+            CID=$(docker inspect -f '{{.Id}}' aequitas-node 2>/dev/null)
+            echo "container id: ${CID:0:12}"
+            journalctl -u docker --since "-3h" --no-pager 2>/dev/null \
+              | grep -E "aequitas-node|${CID:0:12}" | tail -25 \
+              || echo "(nothing in the docker journal for this container)"
+
+            echo ""
+            echo "===== 6. THE LAST WORDS OF THE PREVIOUS PROCESS ====="
+            # A restart-in-place keeps the whole stream, so each startup banner
+            # marks where a new process began. The lines just above the LAST
+            # banner are what the dying process said on its way out — which is
+            # exactly what the crash report could not show.
+            LAST=$(docker logs aequitas-node 2>&1 | grep -n 'AEQUITAS CHAIN NODE' | tail -1 | cut -d: -f1)
+            echo "last startup banner at log line: ${LAST:-<none found>}"
+            if [ -n "${LAST:-}" ] && [ "${LAST:-0}" -gt 1 ] 2>/dev/null; then
+              FROM=$((LAST-45))
+              if [ "$FROM" -lt 1 ]; then FROM=1; fi
+              docker logs aequitas-node 2>&1 | sed -n "${FROM},$((LAST-1))p"
+            else
+              echo "(only one lifetime in this log — the container was recreated rather than restarted in place,"
+              echo " which itself points at a deploy or a watchdog doing docker rm/run instead of docker restart)"
+            fi
+
+            echo ""
+            echo "===== 7. how many lifetimes this log covers ====="
+            docker logs aequitas-node 2>&1 | grep -c 'AEQUITAS CHAIN NODE' | sed 's/^/startup banners in the current log: /'
