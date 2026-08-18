@@ -33,7 +33,21 @@ nav{position:fixed;top:0;left:0;right:0;z-index:100;background:rgba(12,14,22,0.9
 .nav-link:hover{color:var(--text);background:rgba(255,255,255,0.06)}
 .nav-cta{background:var(--grad);color:#fff;padding:8px 18px;border-radius:20px;font-size:0.75rem;font-weight:700;text-decoration:none;transition:opacity 0.2s}
 .nav-cta:hover{opacity:0.85}
-@media(max-width:600px){.nav-links{display:none}}
+/* On a phone this used to be display:none — the whole nav simply vanished
+   below 600px. On desktop that was invisible; on a phone it meant the landing
+   page had NO navigation at all, so anyone arriving here from the explorer's
+   Overview entry landed on a page with no way back to Register, Explorer or
+   anything else. Scroll the row instead of deleting it, the same way the
+   explorer's own tab bar already behaves on the same screens. */
+@media(max-width:600px){
+nav{padding:0 12px;gap:8px}
+.nav-sub{display:none}
+.nav-brand{font-size:0.72rem;letter-spacing:1px}
+.nav-links{flex:1;min-width:0;overflow-x:auto;-webkit-overflow-scrolling:touch;scrollbar-width:none;gap:2px;justify-content:flex-start}
+.nav-links::-webkit-scrollbar{display:none}
+.nav-link{padding:6px 9px;font-size:0.68rem;flex-shrink:0}
+.nav-cta{padding:7px 13px;font-size:0.68rem;flex-shrink:0}
+}
 
 /* ── HERO ────────────────────────────────────────────────────── */
 .hero{min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:100px 24px 60px;position:relative;overflow:hidden}
