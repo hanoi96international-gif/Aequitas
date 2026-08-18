@@ -14,9 +14,24 @@ function setText(id, value) {
   if (el) el.textContent = value;
 }
 
+// The GHOSTDAG badge in the header reports whether this page can actually
+// reach the node, not whether someone remembered to write "healthy" into the
+// markup. loadStats already fetches /api/status every cycle, so the badge
+// rides on a request that has to happen anyway: it goes red the moment that
+// request stops coming back, which is the only state worth showing.
+function setHealthBadge(ok, note) {
+  const el = document.getElementById('health-badge');
+  if (!el) return;
+  el.classList.toggle('badge-health-healthy', ok);
+  el.classList.toggle('badge-health-unhealthy', !ok);
+  el.textContent = ok ? '● GHOSTDAG' : '● NO NODE';
+  el.title = note;
+}
+
 async function loadStats() {
   try {
     const d = await fetch('/api/status').then(r => r.json());
+    setHealthBadge(true, 'Node answering — height ' + (d.height !== undefined ? d.height.toLocaleString() : '?'));
 
     if (d.total_humans !== undefined) setText('stat-humans', d.total_humans.toLocaleString());
     if (d.total_supply) setText('stat-supply', d.total_supply.replace(' AEQ', ''));
@@ -44,7 +59,10 @@ async function loadStats() {
       const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60);
       setText('mech-ubi-next', h > 0 ? `${h}h ${m}m` : `${m}m`);
     }
-  } catch (e) { /* endpoint unavailable — placeholders stay */ }
+  } catch (e) {
+    // The one state the badge exists for: the page is up, the node is not.
+    setHealthBadge(false, 'Cannot reach /api/status from this page');
+  }
 }
 
 async function loadWealthCap() {
