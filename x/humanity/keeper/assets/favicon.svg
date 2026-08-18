@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Aequitas">
+  <defs>
+    <linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#9B72F6"/>
+      <stop offset="1" stop-color="#22D3EE"/>
+    </linearGradient>
+  </defs>
+  <rect width="64" height="64" rx="14" fill="url(#g)"/>
+  <!-- The balance is drawn as paths, never as the ⚖ character: a glyph would
+       render with whatever font the viewer happens to have, or not at all.
+       Deliberately coarse — at a 16px tab icon only the silhouette survives,
+       so the beam and pans carry the shape and finer detail is left out. -->
+  <g fill="none" stroke="#fff" stroke-width="4" stroke-linecap="round">
+    <path d="M32 18 V47"/>
+    <path d="M13 21 H51"/>
+    <path d="M22 47 H42"/>
+  </g>
+  <g fill="#fff">
+    <path d="M9.5 23 h13.5 a1.4 1.4 0 0 1 1.25 2.05 C21.4 32.6 11.1 32.6 8.25 25.05 A1.4 1.4 0 0 1 9.5 23 z"/>
+    <path d="M41 23 h13.5 a1.4 1.4 0 0 1 1.25 2.05 C52.9 32.6 42.6 32.6 39.75 25.05 A1.4 1.4 0 0 1 41 23 z"/>
+  </g>
+</svg>

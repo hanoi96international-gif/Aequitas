@@ -9,6 +9,27 @@ const landingHTML = `<!DOCTYPE html>
 <title>Aequitas — Proof of Humanity Chain</title>
 <meta name="description" content="The world's first currency where every verified human receives equal money. The network measures and publishes its own inequality — live, on chain.">
 <meta name="theme-color" content="#0C0E16">
+<link rel="canonical" href="https://aequitas.digital/">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<!-- Link previews. Without these, every link to this site posted on X or
+     Telegram — the two channels the site itself sends people to — renders as
+     a bare URL: no title, no image, no description. og:image must be an
+     absolute URL; crawlers do not resolve relative paths. -->
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Aequitas">
+<meta property="og:url" content="https://aequitas.digital/">
+<meta property="og:title" content="Aequitas — money that belongs to every human equally">
+<meta property="og:description" content="The first blockchain where the money supply is tied to verified human existence. Every person receives 1,000 AEQ. The network measures its own inequality and publishes it live, on chain.">
+<meta property="og:image" content="https://aequitas.digital/og-image.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="Aequitas — money that belongs to every human equally. 1,000 AEQ per verified human, Gini measured on chain, zero gas fees.">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:site" content="@AequitasMoney">
+<meta name="twitter:title" content="Aequitas — money that belongs to every human equally">
+<meta name="twitter:description" content="The first blockchain where the money supply is tied to verified human existence. Every person receives 1,000 AEQ. The network measures its own inequality and publishes it live, on chain.">
+<meta name="twitter:image" content="https://aequitas.digital/og-image.png">
 <link rel="preconnect" href="https://fonts.bunny.net">
 <link href="https://fonts.bunny.net/css?family=inter:300,400,500,600,700,800,900|dm-serif-display:400&display=swap" rel="stylesheet">
 <style>

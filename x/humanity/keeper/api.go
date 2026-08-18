@@ -764,7 +764,7 @@ func gzipMiddleware(next http.Handler) http.Handler {
 		// bandwidth win at exactly the throughput this endpoint needs to
 		// sustain. Same rationale as the /download/ exclusion above, applied
 		// to small-payload JSON instead of already-compressed binaries.
-		if !strings.Contains(r.Header.Get("Accept-Encoding"), "gzip") || strings.HasPrefix(r.URL.Path, "/download/") || r.URL.Path == "/api/events" || r.URL.Path == "/rpc" {
+		if !strings.Contains(r.Header.Get("Accept-Encoding"), "gzip") || strings.HasPrefix(r.URL.Path, "/download/") || r.URL.Path == "/api/events" || r.URL.Path == "/rpc" || strings.HasSuffix(r.URL.Path, ".png") {
 			next.ServeHTTP(w, r)
 			return
 		}
@@ -835,6 +835,10 @@ func (a *APIServer) buildMux() *http.ServeMux {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/landing", a.handleLanding)
 	mux.HandleFunc("/landing.js", a.handleLandingJS)
+	mux.HandleFunc("/favicon.svg", a.handleFaviconSVG)
+	mux.HandleFunc("/favicon.ico", a.handleFaviconSVG)
+	mux.HandleFunc("/apple-touch-icon.png", a.handleAppleTouchIcon)
+	mux.HandleFunc("/og-image.png", a.handleOGImage)
 	mux.HandleFunc("/explorer.css", a.handleExplorerCSS)
 	mux.HandleFunc("/explorer.js", a.handleExplorerJS)
 	mux.HandleFunc("/node-binding.js", a.handleNodeBindingJS)
@@ -3350,6 +3354,36 @@ func (a *APIServer) handleLandingJS(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/javascript; charset=utf-8")
 	w.Header().Set("Cache-Control", "public, max-age=3600")
 	fmt.Fprint(w, landingJS)
+}
+
+// Brand assets. Cached for a day rather than the hour the scripts use: these
+// change on a redesign, not on a deploy, and the favicon is requested on
+// every single page load.
+//
+// /favicon.ico is served the SVG deliberately. Browsers still probe that path
+// even when a page declares an icon, and answering it with the real image
+// beats letting it fall through to the catch-all — content sniffing settles
+// the format, and every browser that asks for .ico today also reads SVG.
+func (a *APIServer) handleFaviconSVG(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "image/svg+xml")
+	w.Header().Set("Cache-Control", "public, max-age=86400")
+	fmt.Fprint(w, faviconSVG)
+}
+
+func (a *APIServer) handleAppleTouchIcon(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "image/png")
+	w.Header().Set("Cache-Control", "public, max-age=86400")
+	w.Write(appleTouchIcon)
+}
+
+// The link-preview card. Crawlers fetch it cross-origin from X and Telegram,
+// so it carries an explicit permissive CORS header the way the APK download
+// already does.
+func (a *APIServer) handleOGImage(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "image/png")
+	w.Header().Set("Cache-Control", "public, max-age=86400")
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	w.Write(ogImagePNG)
 }
 
 func (a *APIServer) handleNodeBindingJS(w http.ResponseWriter, r *http.Request) {
