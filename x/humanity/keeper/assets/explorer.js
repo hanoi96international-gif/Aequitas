@@ -1910,13 +1910,23 @@ function goTab(name, stabId) {
   }
 }
 
+// The chosen language has to outlive the page view. Every tab in the bar is a
+// real URL served as its own document (/register, /network, ...), and the
+// landing page at / is a separate document again — so "switching language"
+// only ever applied to whatever was on screen at that second, and the next
+// click put everything back to English. Storing the choice is what makes the
+// selector mean anything at all.
+const LANG_KEY = 'aeq_lang';
+
 function setLang(lang) {
+  if (!T[lang]) return;
   curLang = lang;
-  document.getElementById('lang-sel').value = lang;
+  const sel = document.getElementById('lang-sel');
+  if (sel) sel.value = lang;
   document.documentElement.dir = lang === 'ar' ? 'rtl' : 'ltr';
   document.documentElement.lang = lang;
+  try { localStorage.setItem(LANG_KEY, lang); } catch (e) { /* private mode — language then lasts this page view only */ }
   const t = T[lang];
-  if (!t) return;
   document.querySelectorAll('[data-i18n]').forEach(el => {
     const key = el.getAttribute('data-i18n');
     // Translation strings may contain safe HTML (bold, emphasis) — this is intentional.
@@ -4672,6 +4682,12 @@ document.addEventListener('DOMContentLoaded', function() {
   if (removePctInput) removePctInput.addEventListener('input', function() { setRemovePctManual(this.value); });
   const langSel = document.getElementById('lang-sel');
   if (langSel) langSel.addEventListener('change', function() { setLang(this.value); });
+  // Restore the stored choice. Nothing called setLang() on load before this,
+  // so a visitor who had picked a language got English back on every
+  // navigation and every reload.
+  var storedLang = null;
+  try { storedLang = localStorage.getItem(LANG_KEY); } catch (e) { /* private mode */ }
+  if (storedLang && T[storedLang]) setLang(storedLang);
   const expSearchInput = document.getElementById('exp-search-input');
   if (expSearchInput) expSearchInput.addEventListener('keydown', function(ev) { if (ev.key === 'Enter') expSearch(); });
   // Resolve __RPC__ once at load. setLang() also calls this, but setLang only

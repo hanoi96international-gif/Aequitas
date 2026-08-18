@@ -44,6 +44,9 @@ nav::before{content:'';position:absolute;top:0;left:0;right:0;height:2px;backgro
 /* Badges, values from explorer.css so both headers stay one header. --neon
    there is #34D399, which is --green here, so the colour is the same value
    under a different name rather than a second shade of the same idea. */
+/* Values lifted from explorer.css .lang-sel — the selector has to look the
+   same on both pages, since it is the same control. */
+.lang-sel{background:rgba(255,255,255,0.06);color:var(--muted);border:1px solid rgba(255,255,255,0.1);border-radius:6px;padding:5px 10px;font-family:inherit;font-size:0.62rem;outline:none;cursor:pointer;flex-shrink:0}
 .header-right{display:flex;gap:8px;align-items:center;position:relative;z-index:1;min-width:0;overflow-x:auto;-webkit-overflow-scrolling:touch;scrollbar-width:none}
 .header-right::-webkit-scrollbar{display:none}
 .header-right .badge{flex-shrink:0}
@@ -82,8 +85,11 @@ h1 span{background:var(--grad);-webkit-background-clip:text;-webkit-text-fill-co
 .btn-primary:hover{opacity:0.88}
 .btn-secondary{display:inline-flex;align-items:center;gap:8px;background:rgba(255,255,255,0.05);border:1px solid var(--border);color:var(--text);padding:14px 28px;border-radius:10px;font-size:0.85rem;font-weight:600;text-decoration:none;transition:all 0.2s}
 .btn-secondary:hover{background:rgba(255,255,255,0.09);border-color:rgba(155,114,246,0.4)}
-.hero-proof{font-size:0.72rem;color:var(--muted);display:flex;align-items:center;gap:8px}
-.hero-proof span{color:var(--green)}
+.hero-proof{font-size:0.72rem;color:var(--muted);display:flex;align-items:center;gap:8px;flex-wrap:wrap;justify-content:center}
+/* Was '.hero-proof span'. The line now carries translated spans as well as
+   the ticks, and a bare element selector would have painted the prose green
+   too. */
+.hero-proof .ok{color:var(--green)}
 
 /* ── STATS BAR ───────────────────────────────────────────────── */
 .stats-bar{background:var(--card);border-top:1px solid var(--border);border-bottom:1px solid var(--border);padding:28px 24px;display:flex;justify-content:center;gap:0}
@@ -197,10 +203,24 @@ section{padding:60px 20px}
   <div class="nav-top">
     <a href="/" class="logo-wrap">
       <div class="logo-icon">⚖</div>
-      <div><div class="logo-text">AEQUITAS</div><div class="logo-sub">PROOF OF HUMANITY</div></div>
+      <div><div class="logo-text">AEQUITAS</div><div class="logo-sub" data-i18n="logo-sub">PROOF OF HUMANITY</div></div>
     </a>
+    <select class="lang-sel" id="lang-sel" aria-label="Language">
+      <option value="en">🌐 EN</option>
+      <option value="de">🌐 DE</option>
+      <option value="es">🌐 ES</option>
+      <option value="fr">🌐 FR</option>
+      <option value="pt">🌐 PT</option>
+      <option value="ru">🌐 RU</option>
+      <option value="zh">🌐 ZH</option>
+      <option value="ar">🌐 AR</option>
+      <option value="hi">🌐 HI</option>
+      <option value="id">🌐 ID</option>
+      <option value="it">🌐 IT</option>
+      <option value="tr">🌐 TR</option>
+    </select>
     <div class="header-right">
-      <div class="badge badge-live"><span class="pulse"></span>LIVE</div>
+      <div class="badge badge-live"><span class="pulse"></span><span data-i18n="live">LIVE</span></div>
       <div class="badge badge-health badge-health-healthy" id="health-badge" title="Checking network health…">● GHOSTDAG</div>
       <div class="badge badge-dag" title="KnightDAG: each block infers its own smallest secure K instead of a fixed epoch-wide worst case — inspired by DAGKNIGHT (Sompolinsky &amp; Sutton, 2022), evolving GHOSTDAG beyond a rigid parameter.">◆ KNIGHTDAG</div>
     </div>
@@ -220,18 +240,18 @@ section{padding:60px 20px}
 <section class="hero">
   <div class="hero-badge">
     <span class="pulse"></span>
-    LIVE ON CHAIN ID 1926
+    <span data-i18n="hero-badge">LIVE ON CHAIN ID 1926</span>
   </div>
-  <h1>Money that belongs<br>to <span>every human</span> equally</h1>
-  <p class="hero-sub">One verified human, 1,000 AEQ — no mining, no investment, no early advantage. The network measures its own inequality and publishes it live.</p>
+  <h1 data-i18n="hero-h1">Money that belongs<br>to <span>every human</span> equally</h1>
+  <p class="hero-sub" data-i18n="hero-sub">One verified human, 1,000 AEQ — no mining, no investment, no early advantage. The network measures its own inequality and publishes it live.</p>
   <div class="hero-btns">
-    <a href="/download/app.apk" class="btn-primary">📱 Download Aequitas App</a>
-    <a href="/register" class="btn-secondary">🌐 Open Explorer</a>
+    <a href="/download/app.apk" class="btn-primary" data-i18n="btn-download">📱 Download Aequitas App</a>
+    <a href="/register" class="btn-secondary" data-i18n="btn-explorer">🌐 Open Explorer</a>
   </div>
   <div class="hero-proof">
-    <span>✓</span> Gini <span id="gini-inline">—</span> — measured on chain, published live &nbsp;·&nbsp;
-    <span>✓</span> Zero gas fees &nbsp;·&nbsp;
-    <span>✓</span> Open source
+    <span class="ok">✓</span> <span data-i18n="proof-gini">Gini</span> <span class="ok" id="gini-inline">—</span> <span data-i18n="proof-gini-note">— measured on chain, published live</span> &nbsp;·&nbsp;
+    <span class="ok">✓</span> <span data-i18n="proof-gas">Zero gas fees</span> &nbsp;·&nbsp;
+    <span class="ok">✓</span> <span data-i18n="proof-oss">Open source</span>
   </div>
 </section>
 
@@ -239,56 +259,56 @@ section{padding:60px 20px}
 <div class="stats-bar">
   <div class="stat-item">
     <div class="stat-num" id="stat-humans" style="color:#34D399">—</div>
-    <div class="stat-lbl">Verified Humans</div>
+    <div class="stat-lbl" data-i18n="stat-humans-lbl">Verified Humans</div>
   </div>
   <div class="stat-item">
     <div class="stat-num" id="stat-supply" style="color:#9B72F6">—</div>
-    <div class="stat-lbl">AEQ in Circulation</div>
+    <div class="stat-lbl" data-i18n="stat-supply-lbl">AEQ in Circulation</div>
   </div>
   <div class="stat-item">
     <div class="stat-num" id="stat-gini" style="color:#F0B429">—</div>
-    <div class="stat-lbl">Gini Coefficient</div>
+    <div class="stat-lbl" data-i18n="stat-gini-lbl">Gini Coefficient</div>
   </div>
   <div class="stat-item">
     <div class="stat-num" id="stat-blocks" style="color:#22D3EE">—</div>
-    <div class="stat-lbl">Blocks Produced</div>
+    <div class="stat-lbl" data-i18n="stat-blocks-lbl">Blocks Produced</div>
   </div>
 </div>
-<div class="stats-live">Next equal split in <strong id="ubi-next">—</strong> · the pool holds <strong id="ubi-pool">—</strong> AEQ</div>
+<div class="stats-live"><span data-i18n="ubi-pre">Next equal split in</span> <strong id="ubi-next">—</strong> <span data-i18n="ubi-mid">· the pool holds</span> <strong id="ubi-pool">—</strong> AEQ</div>
 
 <!-- HOW IT WORKS -->
 <section>
   <div class="section-inner">
-    <div class="section-label">How it works</div>
-    <h2>Three steps, about a minute</h2>
-    <p class="section-sub">No bank account, no crypto background, no investment. A smartphone with a fingerprint sensor is the whole requirement.</p>
+    <div class="section-label" data-i18n="how-label">How it works</div>
+    <h2 data-i18n="how-h2">Three steps, about a minute</h2>
+    <p class="section-sub" data-i18n="how-sub">No bank account, no crypto background, no investment. A smartphone with a fingerprint sensor is the whole requirement.</p>
     <div class="steps">
       <div class="step">
         <div class="step-num">1</div>
-        <h3>Scan</h3>
-        <p>Your phone reduces your biometrics to a one-way hash. The raw images never leave the device and are never stored.</p>
+        <h3 data-i18n="step1-h">Scan</h3>
+        <p data-i18n="step1-p">Your phone reduces your biometrics to a one-way hash. The raw images never leave the device and are never stored.</p>
       </div>
       <div class="step">
         <div class="step-num">2</div>
-        <h3>Prove</h3>
-        <p>A zero-knowledge proof shows the chain one thing: that you are a human who has not registered before.</p>
+        <h3 data-i18n="step2-h">Prove</h3>
+        <p data-i18n="step2-p">A zero-knowledge proof shows the chain one thing: that you are a human who has not registered before.</p>
       </div>
       <div class="step">
         <div class="step-num">3</div>
-        <h3>Receive</h3>
-        <p>1,000 AEQ arrive in your wallet within a second. Free, once per human, permanent.</p>
+        <h3 data-i18n="step3-h">Receive</h3>
+        <p data-i18n="step3-p">1,000 AEQ arrive in your wallet within a second. Free, once per human, permanent.</p>
       </div>
     </div>
-    <a class="section-link" href="/register">Register and claim your 1,000 AEQ →</a>
+    <a class="section-link" href="/register" data-i18n="how-link">Register and claim your 1,000 AEQ →</a>
   </div>
 </section>
 
 <!-- WHY — the one number the project stands or falls on -->
 <section style="background:var(--card);border-top:1px solid var(--border);border-bottom:1px solid var(--border)">
   <div class="section-inner">
-    <div class="section-label">Why Aequitas</div>
-    <h2>Bitcoin's Gini is 0.85 — higher than any country</h2>
-    <p class="section-sub">Total supply is verified humans × 1,000 AEQ. No pre-mine, no founder allocation, no admin key, no early-adopter advantage. The chain recomputes its own inequality after every distribution and publishes it — the figure below is read from a live node, not from a slide.</p>
+    <div class="section-label" data-i18n="why-label">Why Aequitas</div>
+    <h2 data-i18n="why-h2">Bitcoin's Gini is 0.85 — higher than any country</h2>
+    <p class="section-sub" data-i18n="why-sub">Total supply is verified humans × 1,000 AEQ. No pre-mine, no founder allocation, no admin key, no early-adopter advantage. The chain recomputes its own inequality after every distribution and publishes it — the figure below is read from a live node, not from a slide.</p>
     <div class="gini-compact">
       <div class="gini-row aeq">
         <span class="gini-label">Aequitas</span>
@@ -301,7 +321,7 @@ section{padding:60px 20px}
         <span class="gini-val" style="color:#F87171">~0.85</span>
       </div>
     </div>
-    <a class="section-link" href="/index/score">Lorenz curve, history and the country ladder →</a>
+    <a class="section-link" href="/index/score" data-i18n="why-link">Lorenz curve, history and the country ladder →</a>
   </div>
 </section>
 
@@ -313,39 +333,39 @@ section{padding:60px 20px}
      overview. It now states the claim and hands over. -->
 <section>
   <div class="section-inner">
-    <div class="section-label">The rest of the site</div>
-    <h2>Everything else has its own section</h2>
-    <p class="section-sub">This page stops here on purpose. Each section below holds the detail — served live by this node, not written down here a second time.</p>
+    <div class="section-label" data-i18n="rest-label">The rest of the site</div>
+    <h2 data-i18n="rest-h2">Everything else has its own section</h2>
+    <p class="section-sub" data-i18n="rest-sub">This page stops here on purpose. Each section below holds the detail — served live by this node, not written down here a second time.</p>
     <div class="explore-grid">
       <a class="explore-card" href="/register">
         <span class="explore-icon">🔐</span>
         <span class="explore-name">Register</span>
-        <span class="explore-desc">Get verified and claim the 1,000 AEQ that come with being a human.</span>
+        <span class="explore-desc" data-i18n="card-register-d">Get verified and claim the 1,000 AEQ that come with being a human.</span>
       </a>
       <a class="explore-card" href="/explorer">
         <span class="explore-icon">🔍</span>
         <span class="explore-name">Explorer</span>
-        <span class="explore-desc">Blocks, transactions and the human registry as they happen.</span>
+        <span class="explore-desc" data-i18n="card-explorer-d">Blocks, transactions and the human registry as they happen.</span>
       </a>
       <a class="explore-card" href="/index/score">
         <span class="explore-icon">⚖️</span>
         <span class="explore-name">Equality</span>
-        <span class="explore-desc">The Gini coefficient in full: Lorenz curve, history, wealth cap.</span>
+        <span class="explore-desc" data-i18n="card-equality-d">The Gini coefficient in full: Lorenz curve, history, wealth cap.</span>
       </a>
       <a class="explore-card" href="/network">
         <span class="explore-icon">🌐</span>
         <span class="explore-name">Network</span>
-        <span class="explore-desc">Consensus, nodes, UBI, demurrage and guardians — the rules themselves.</span>
+        <span class="explore-desc" data-i18n="card-network-d">Consensus, nodes, UBI, demurrage and guardians — the rules themselves.</span>
       </a>
       <a class="explore-card" href="/exchange">
         <span class="explore-icon">🔄</span>
         <span class="explore-name">Exchange</span>
-        <span class="explore-desc">Swap, liquidity, and where every fee goes: 40 / 30 / 20 / 10.</span>
+        <span class="explore-desc" data-i18n="card-exchange-d">Swap, liquidity, and where every fee goes: 40 / 30 / 20 / 10.</span>
       </a>
       <a class="explore-card" href="#social">
         <span class="explore-icon">💬</span>
         <span class="explore-name">Social</span>
-        <span class="explore-desc">X and Telegram — announcements and the awkward questions.</span>
+        <span class="explore-desc" data-i18n="card-social-d">X and Telegram — announcements and the awkward questions.</span>
       </a>
     </div>
   </div>
@@ -354,21 +374,21 @@ section{padding:60px 20px}
 <!-- SOCIAL -->
 <section id="social" style="background:var(--card);border-top:1px solid var(--border);border-bottom:1px solid var(--border)">
   <div class="section-inner">
-    <div class="section-label" style="text-align:center">Social media</div>
-    <h2 style="text-align:center">Where the network talks</h2>
-    <p class="section-sub" style="text-align:center;margin-left:auto;margin-right:auto">Announcements, the state of the chain, and the awkward questions &mdash; in public, on both.</p>
+    <div class="section-label" style="text-align:center" data-i18n="soc-label">Social media</div>
+    <h2 style="text-align:center" data-i18n="soc-h2">Where the network talks</h2>
+    <p class="section-sub" style="text-align:center;margin-left:auto;margin-right:auto" data-i18n="soc-sub">Announcements, the state of the chain, and the awkward questions &mdash; in public, on both.</p>
     <div class="social-grid">
       <a class="social-card" href="https://x.com/AequitasMoney" target="_blank" rel="noopener noreferrer">
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/></svg>
         <div class="social-name">X</div>
-        <div class="social-handle">@AequitasMoney</div>
-        <div class="social-desc">Announcements, and what the chain is actually doing. Short form.</div>
+        <div class="social-handle" dir="ltr">@AequitasMoney</div>
+        <div class="social-desc" data-i18n="soc-x-d">Announcements, and what the chain is actually doing. Short form.</div>
       </a>
       <a class="social-card" href="https://t.me/aequitasmoney" target="_blank" rel="noopener noreferrer">
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M11.944 0A12 12 0 0 0 0 12a12 12 0 0 0 12 12 12 12 0 0 0 12-12A12 12 0 0 0 12 0a12 12 0 0 0-.056 0zm4.962 7.224c.1-.002.321.023.465.14a.506.506 0 0 1 .171.325c.016.093.036.306.02.472-.18 1.898-.962 6.502-1.36 8.627-.168.9-.499 1.201-.82 1.23-.696.065-1.225-.46-1.9-.902-1.056-.693-1.653-1.124-2.678-1.8-1.185-.78-.417-1.21.258-1.91.177-.184 3.247-2.977 3.307-3.23.007-.032.014-.15-.056-.212s-.174-.041-.249-.024c-.106.024-1.793 1.14-5.061 3.345-.48.33-.913.49-1.302.48-.428-.008-1.252-.241-1.865-.44-.752-.245-1.349-.374-1.297-.789.027-.216.325-.437.893-.663 3.498-1.524 5.83-2.529 6.998-3.014 3.332-1.386 4.025-1.627 4.476-1.635z"/></svg>
         <div class="social-name">Telegram</div>
-        <div class="social-handle">t.me/aequitasmoney</div>
-        <div class="social-desc">The open group: questions, node operators, and help getting registered.</div>
+        <div class="social-handle" dir="ltr">t.me/aequitasmoney</div>
+        <div class="social-desc" data-i18n="soc-tg-d">The open group: questions, node operators, and help getting registered.</div>
       </a>
     </div>
   </div>
@@ -378,14 +398,14 @@ section{padding:60px 20px}
 <section>
   <div class="section-inner">
     <div class="cta-section">
-      <div class="section-label" style="text-align:center">Get started</div>
-      <h2>Join the fairest currency on Earth</h2>
-      <p>Download the Aequitas app, scan your biometrics, and receive 1,000 AEQ within 1 second. No fees, no investment, no prerequisites.</p>
+      <div class="section-label" style="text-align:center" data-i18n="cta-label">Get started</div>
+      <h2 data-i18n="cta-h2">Join the fairest currency on Earth</h2>
+      <p data-i18n="cta-p">Download the Aequitas app, scan your biometrics, and receive 1,000 AEQ within 1 second. No fees, no investment, no prerequisites.</p>
       <div class="hero-btns">
-        <a href="/download/app.apk" class="btn-primary">📱 Download Aequitas App (Android)</a>
+        <a href="/download/app.apk" class="btn-primary" data-i18n="cta-btn">📱 Download Aequitas App (Android)</a>
         <a href="/register" class="btn-secondary">🌐 Open Explorer</a>
       </div>
-      <p style="font-size:0.75rem;color:var(--muted);margin-top:20px">Chain ID 1926 · EVM Compatible · Open Source · <a href="https://github.com/hanoi96international-gif/Aequitas" style="color:var(--purple)">View on GitHub</a></p>
+      <p style="font-size:0.75rem;color:var(--muted);margin-top:20px">Chain ID 1926 · EVM Compatible · Open Source · <a href="https://github.com/hanoi96international-gif/Aequitas" style="color:var(--purple)" data-i18n="cta-github">View on GitHub</a></p>
     </div>
   </div>
 </section>
@@ -404,8 +424,8 @@ section{padding:60px 20px}
     <a href="https://x.com/AequitasMoney" target="_blank" rel="noopener noreferrer" class="social"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/></svg>@AequitasMoney</a>
     <a href="https://t.me/aequitasmoney" target="_blank" rel="noopener noreferrer" class="social"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M11.944 0A12 12 0 0 0 0 12a12 12 0 0 0 12 12 12 12 0 0 0 12-12A12 12 0 0 0 12 0a12 12 0 0 0-.056 0zm4.962 7.224c.1-.002.321.023.465.14a.506.506 0 0 1 .171.325c.016.093.036.306.02.472-.18 1.898-.962 6.502-1.36 8.627-.168.9-.499 1.201-.82 1.23-.696.065-1.225-.46-1.9-.902-1.056-.693-1.653-1.124-2.678-1.8-1.185-.78-.417-1.21.258-1.91.177-.184 3.247-2.977 3.307-3.23.007-.032.014-.15-.056-.212s-.174-.041-.249-.024c-.106.024-1.793 1.14-5.061 3.345-.48.33-.913.49-1.302.48-.428-.008-1.252-.241-1.865-.44-.752-.245-1.349-.374-1.297-.789.027-.216.325-.437.893-.663 3.498-1.524 5.83-2.529 6.998-3.014 3.332-1.386 4.025-1.627 4.476-1.635z"/></svg>Telegram</a>
   </div>
-  <p>Aequitas Chain · Chain ID 1926 · <span>aequitas.digital</span> · Launched June 2026</p>
-  <p style="margin-top:6px">"<em>Money exists because people exist. Nothing more, nothing less.</em>"</p>
+  <p>Aequitas Chain · Chain ID 1926 · <span>aequitas.digital</span> · <span data-i18n="foot-launched">Launched June 2026</span></p>
+  <p style="margin-top:6px">"<em data-i18n="foot-quote">Money exists because people exist. Nothing more, nothing less.</em>"</p>
 </footer>
 
 <script src="/landing.js"></script>
