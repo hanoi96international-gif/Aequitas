@@ -60,18 +60,18 @@ nav::before{content:'';position:absolute;top:0;left:0;right:0;height:2px;backgro
    as purple underlined AEQUITAS with no gradient tile. */
 .logo-wrap{display:flex;align-items:center;gap:12px;flex-shrink:0;text-decoration:none;position:relative;z-index:1}
 .logo-icon{width:34px;height:34px;border-radius:9px;background:var(--grad);display:flex;align-items:center;justify-content:center;font-size:17px;box-shadow:0 0 24px rgba(155,114,246,0.18)}
-.logo-text{font-size:1rem;font-weight:900;letter-spacing:3px;background:var(--grad);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent}
-.logo-sub{font-size:0.48rem;color:var(--muted);letter-spacing:2.5px;text-transform:uppercase}
+.logo-text{font-size:1.06rem;font-weight:900;letter-spacing:3px;background:var(--grad);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent}
+.logo-sub{font-size:0.69rem;color:var(--muted);letter-spacing:2.5px;text-transform:uppercase}
 /* Badges, values from explorer.css so both headers stay one header. --neon
    there is #34D399, which is --green here, so the colour is the same value
    under a different name rather than a second shade of the same idea. */
 /* Values lifted from explorer.css .lang-sel — the selector has to look the
    same on both pages, since it is the same control. */
-.lang-sel{background:rgba(255,255,255,0.06);color:var(--muted);border:1px solid rgba(255,255,255,0.1);border-radius:6px;padding:5px 10px;font-family:inherit;font-size:0.62rem;outline:none;cursor:pointer;flex-shrink:0}
+.lang-sel{background:rgba(255,255,255,0.06);color:var(--muted);border:1px solid rgba(255,255,255,0.1);border-radius:6px;padding:5px 10px;font-family:inherit;font-size:0.79rem;outline:none;cursor:pointer;flex-shrink:0}
 .header-right{display:flex;gap:8px;align-items:center;position:relative;z-index:1;min-width:0;overflow-x:auto;-webkit-overflow-scrolling:touch;scrollbar-width:none}
 .header-right::-webkit-scrollbar{display:none}
 .header-right .badge{flex-shrink:0}
-.badge{display:flex;align-items:center;gap:5px;padding:5px 11px;border-radius:20px;font-size:0.58rem;letter-spacing:0.5px;font-weight:600}
+.badge{display:flex;align-items:center;gap:5px;padding:5px 11px;border-radius:20px;font-size:0.76rem;letter-spacing:0.5px;font-weight:600}
 .badge-live{background:rgba(4,120,87,0.08);border:1px solid rgba(4,120,87,0.25);color:var(--green)}
 .badge-dag{background:linear-gradient(135deg,rgba(155,114,246,0.14),rgba(34,211,238,0.08));border:1px solid rgba(155,114,246,0.4);color:var(--purple);font-weight:700;text-shadow:0 0 12px rgba(155,114,246,0.5);animation:knightGlow 3s ease-in-out infinite}
 @keyframes knightGlow{0%,100%{box-shadow:0 0 0 rgba(155,114,246,0)}50%{box-shadow:0 0 10px rgba(155,114,246,0.35)}}
@@ -81,13 +81,13 @@ nav::before{content:'';position:absolute;top:0;left:0;right:0;height:2px;backgro
 @keyframes healthPulse{0%,100%{opacity:1}50%{opacity:0.55}}
 .tabs{border-top:1px solid var(--border);padding:8px 18px;display:flex;overflow-x:auto;-webkit-overflow-scrolling:touch;scrollbar-width:none;gap:6px}
 .tabs::-webkit-scrollbar{display:none}
-.tab{padding:10px 16px;font-size:0.65rem;color:var(--muted);text-decoration:none;border-radius:20px;letter-spacing:0.5px;font-weight:600;white-space:nowrap;transition:all 0.2s;flex-shrink:0;border:1px solid transparent}
+.tab{padding:10px 16px;font-size:0.81rem;color:var(--muted);text-decoration:none;border-radius:20px;letter-spacing:0.5px;font-weight:600;white-space:nowrap;transition:all 0.2s;flex-shrink:0;border:1px solid transparent}
 .tab:hover{color:var(--text);background:rgba(255,255,255,0.04)}
 .tab.active{color:#fff;background:var(--grad);box-shadow:0 0 24px rgba(155,114,246,0.18);border-color:transparent}
 @media(max-width:600px){
 .nav-top{padding:0 14px;height:56px}
 .logo-icon{width:30px;height:30px;font-size:15px}
-.logo-text{font-size:0.9rem;letter-spacing:2px}
+.logo-text{font-size:0.95rem;letter-spacing:2px}
 .tabs{padding:6px 10px;gap:4px}
 .tab{padding:9px 13px}
 }
@@ -124,7 +124,7 @@ h1 span{background:var(--grad);-webkit-background-clip:text;-webkit-text-fill-co
 /* ── SECTION ─────────────────────────────────────────────────── */
 section{padding:80px 24px}
 .section-inner{max-width:1100px;margin:0 auto}
-.section-label{font-size:0.65rem;color:var(--purple);letter-spacing:3px;text-transform:uppercase;font-weight:600;margin-bottom:12px}
+.section-label{font-size:0.72rem;color:var(--purple);letter-spacing:3px;text-transform:uppercase;font-weight:600;margin-bottom:12px}
 
 h2{font-family:'DM Serif Display',serif;font-size:clamp(1.8rem,4vw,2.8rem);line-height:1.2;font-weight:400;margin-bottom:16px}
 .section-sub{font-size:1rem;color:var(--muted);max-width:560px;margin-bottom:48px;line-height:1.7}

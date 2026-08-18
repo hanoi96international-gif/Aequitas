@@ -1,6 +1,7 @@
 package keeper
 
 import (
+	"fmt"
 	"regexp"
 	"strings"
 	"testing"
@@ -109,6 +110,39 @@ func TestStylesheets_DefineAVisibleFocusStyle(t *testing.T) {
 	} {
 		if !strings.Contains(tc.css, ":focus-visible") {
 			t.Errorf("%s stylesheet defines no :focus-visible style — keyboard focus is invisible", tc.name)
+		}
+	}
+}
+
+// The explorer used to set ~260 of its font sizes between 0.6rem and 0.63rem
+// — under 10px — with the smallest label at 0.48rem, or 7.7px. Contrast was
+// never the problem on this site (every palette role clears WCAG AA); size
+// was. The scale was lifted by a single monotonic curve rather than a floor,
+// so the hierarchy the design builds with those steps survives.
+//
+// This pins the bottom of that scale. It is deliberately a floor and not an
+// exact set: adding a new size is fine, adding an unreadable one is not.
+var remFontSizeRe = regexp.MustCompile(`font-size:([0-9.]+)rem`)
+
+func TestStylesheets_NoUnreadablyTinyText(t *testing.T) {
+	const floorRem = 0.68 // 10.9px at a 16px root
+
+	for _, tc := range []struct{ name, css string }{
+		{"landing.go", landingHTML},
+		{"explorer.css", explorerCSS},
+		{"explorer.html", explorerHTML},
+	} {
+		seen := map[string]bool{}
+		for _, m := range remFontSizeRe.FindAllStringSubmatch(tc.css, -1) {
+			var v float64
+			if _, err := fmt.Sscanf(m[1], "%g", &v); err != nil {
+				continue
+			}
+			if v < floorRem && !seen[m[1]] {
+				seen[m[1]] = true
+				t.Errorf("%s sets font-size:%srem (%.1fpx) — below the %.2frem floor this scale was lifted to",
+					tc.name, m[1], v*16, floorRem)
+			}
 		}
 	}
 }
