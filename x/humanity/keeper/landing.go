@@ -20,37 +20,31 @@ const landingHTML = `<!DOCTYPE html>
   --radius:12px;--grad:linear-gradient(135deg,#9B72F6,#22D3EE);
 }
 html{scroll-behavior:smooth}
+section[id]{scroll-margin-top:122px}
 body{background:var(--bg);color:var(--text);font-family:'Inter',-apple-system,sans-serif;line-height:1.6;overflow-x:hidden}
 
 /* ── NAV ─────────────────────────────────────────────────────── */
-nav{position:fixed;top:0;left:0;right:0;z-index:100;background:rgba(12,14,22,0.92);backdrop-filter:blur(12px);border-bottom:1px solid var(--border);padding:0 24px;height:60px;display:flex;align-items:center;justify-content:space-between}
-.nav-logo{display:flex;align-items:center;gap:10px;text-decoration:none}
-.nav-logo img,.nav-icon{width:32px;height:32px;background:var(--grad);border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:1rem}
-.nav-brand{font-weight:800;font-size:0.85rem;letter-spacing:1.5px;color:var(--text)}
-.nav-sub{font-size:0.52rem;color:var(--muted);letter-spacing:1px;line-height:1}
-.nav-links{display:flex;align-items:center;gap:8px}
-.nav-link{color:var(--muted);text-decoration:none;font-size:0.75rem;font-weight:500;padding:6px 12px;border-radius:6px;transition:all 0.2s}
-.nav-link:hover{color:var(--text);background:rgba(255,255,255,0.06)}
-.nav-cta{background:var(--grad);color:#fff;padding:8px 18px;border-radius:20px;font-size:0.75rem;font-weight:700;text-decoration:none;transition:opacity 0.2s}
-.nav-cta:hover{opacity:0.85}
-/* On a phone this used to be display:none — the whole nav simply vanished
-   below 600px. On desktop that was invisible; on a phone it meant the landing
-   page had NO navigation at all, so anyone arriving here from the explorer's
-   Overview entry landed on a page with no way back to Register, Explorer or
-   anything else. Scroll the row instead of deleting it, the same way the
-   explorer's own tab bar already behaves on the same screens. */
+/* The header is the explorer's, deliberately down to the pixel values. This
+   page used to carry its own text-link navigation, so moving between Overview
+   and any other section changed how the site looked, not just what it showed.
+   Same two rows, same pill tabs, same active gradient — the only difference is
+   which entry is active. Values lifted from explorer.css so the two cannot
+   drift apart by being retyped. */
+nav{position:fixed;top:0;left:0;right:0;z-index:100;background:rgba(12,14,22,0.92);backdrop-filter:blur(12px);border-bottom:1px solid var(--border);display:flex;flex-direction:column}
+.nav-top{padding:10px 24px;display:flex;align-items:center;justify-content:space-between}
+.tabs{border-top:1px solid var(--border);padding:8px 18px;display:flex;overflow-x:auto;-webkit-overflow-scrolling:touch;scrollbar-width:none;gap:6px}
+.tabs::-webkit-scrollbar{display:none}
+.tab{padding:10px 16px;font-size:0.65rem;color:var(--muted);text-decoration:none;border-radius:20px;letter-spacing:0.5px;font-weight:600;white-space:nowrap;transition:all 0.2s;flex-shrink:0;border:1px solid transparent}
+.tab:hover{color:var(--text);background:rgba(255,255,255,0.04)}
+.tab.active{color:#fff;background:var(--grad);box-shadow:0 0 24px rgba(155,114,246,0.18);border-color:transparent}
 @media(max-width:600px){
-nav{padding:0 12px;gap:8px}
-.nav-sub{display:none}
-.nav-brand{font-size:0.72rem;letter-spacing:1px}
-.nav-links{flex:1;min-width:0;overflow-x:auto;-webkit-overflow-scrolling:touch;scrollbar-width:none;gap:2px;justify-content:flex-start}
-.nav-links::-webkit-scrollbar{display:none}
-.nav-link{padding:6px 9px;font-size:0.68rem;flex-shrink:0}
-.nav-cta{padding:7px 13px;font-size:0.68rem;flex-shrink:0}
+.nav-top{padding:8px 14px}
+.tabs{padding:6px 10px;gap:4px}
+.tab{padding:9px 13px}
 }
 
 /* ── HERO ────────────────────────────────────────────────────── */
-.hero{min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:100px 24px 60px;position:relative;overflow:hidden}
+.hero{min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:158px 24px 60px;position:relative;overflow:hidden}
 .hero::before{content:'';position:absolute;inset:0;background:radial-gradient(ellipse 80% 50% at 50% 0%,rgba(155,114,246,0.12) 0%,transparent 60%),radial-gradient(ellipse 60% 40% at 80% 100%,rgba(34,211,238,0.06) 0%,transparent 60%);pointer-events:none}
 .hero-badge{display:inline-flex;align-items:center;gap:8px;background:rgba(155,114,246,0.12);border:1px solid rgba(155,114,246,0.25);border-radius:20px;padding:6px 16px;font-size:0.72rem;color:var(--purple);font-weight:600;letter-spacing:0.5px;margin-bottom:28px}
 .pulse{width:7px;height:7px;border-radius:50%;background:var(--green);animation:pulse 2s infinite}
@@ -199,7 +193,7 @@ footer p span{color:var(--purple)}
 .btn-primary,.btn-secondary{padding:16px 24px;font-size:0.9rem;width:100%;justify-content:center;border-radius:12px}
 .hero-btns{flex-direction:column;width:100%;max-width:320px}
 h1{font-size:2rem}
-.hero{padding:90px 20px 50px}
+.hero{padding:150px 20px 50px}
 section{padding:60px 20px}
 }
 </style>
@@ -208,22 +202,23 @@ section{padding:60px 20px}
 
 <!-- NAV -->
 <nav>
-  <a href="/" class="nav-logo">
-    <div class="nav-icon">⚖</div>
-    <div>
-      <div class="nav-brand">AEQUITAS</div>
-      <div class="nav-sub">PROOF OF HUMANITY</div>
-    </div>
-  </a>
-  <div class="nav-links">
-    <a href="#mechanisms" class="nav-link">Mechanisms</a>
-    <a href="#architecture" class="nav-link">Architecture</a>
-    <a href="/explorer" class="nav-link">Explorer</a>
-    <a href="/index/score" class="nav-link">Equality</a>
-    <a href="/network" class="nav-link">Network</a>
-    <a href="/exchange" class="nav-link">Exchange</a>
-    <a href="#social" class="nav-link">Social</a>
-    <a href="/register" class="nav-cta">Register →</a>
+  <div class="nav-top">
+    <a href="/" class="nav-logo">
+      <div class="nav-icon">⚖</div>
+      <div>
+        <div class="nav-brand">AEQUITAS</div>
+        <div class="nav-sub">PROOF OF HUMANITY</div>
+      </div>
+    </a>
+  </div>
+  <div class="tabs">
+    <a href="/" class="tab active">🏠 Overview</a>
+    <a href="/register" class="tab">🔐 Register</a>
+    <a href="/explorer" class="tab">🔍 Explorer</a>
+    <a href="/index/score" class="tab">⚖️ Equality</a>
+    <a href="/network" class="tab">🌐 Network</a>
+    <a href="/exchange" class="tab">🔄 Exchange</a>
+    <a href="#social" class="tab">💬 Social</a>
   </div>
 </nav>
 
