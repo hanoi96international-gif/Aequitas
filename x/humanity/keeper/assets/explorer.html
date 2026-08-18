@@ -45,6 +45,11 @@
   </div>
 </header>
 <div class="tabs">
+  <!-- Not a tab switch but a real link: the landing page is a separate page,
+       and until now the explorer had no way back to it at all. It sits first
+       because that is where someone looks for "what is this", and it carries
+       no data-act, so showTab never tries to find a #tab-overview panel. -->
+  <a class="tab" href="/" style="text-decoration:none;display:inline-block">🏠 Overview</a>
   <div class="tab active" data-act="showTab" data-args='["register"]'>🔐 Register</div>
   <div class="tab" data-act="showTab" data-args='["explorer"]'>🔍 Explorer</div>
   <div class="tab" data-act="showTab" data-args='["index"]'>⚖️ Equality</div>
