@@ -2,7 +2,9 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<!-- maximum-scale removed: pinning the zoom fails WCAG 1.4.4, and the
+     landing page never did it, so the two pages disagreed. -->
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
 <meta name="google" content="notranslate">
 <meta name="translation" content="notranslate">
 <title>Aequitas — Proof of Humanity Chain</title>
@@ -71,19 +73,20 @@
        because that is where someone looks for "what is this", and it carries
        no data-act, so showTab never tries to find a #tab-overview panel. -->
   <a class="tab" href="/" style="text-decoration:none;display:inline-block">🏠 Overview</a>
-  <div class="tab active" data-act="showTab" data-args='["register"]'>🔐 Register</div>
-  <div class="tab" data-act="showTab" data-args='["explorer"]'>🔍 Explorer</div>
-  <div class="tab" data-act="showTab" data-args='["index"]'>⚖️ Equality</div>
-  <div class="tab" data-act="showTab" data-args='["network"]'>🌐 Network</div>
-  <div class="tab" data-act="showTabAndPriceChart" data-args='["exchange"]'>🔄 Exchange</div>
-  <div class="tab" data-act="showTab" data-args='["social"]'>💬 Social</div>
+  <div class="tab active" data-act="showTab" data-args='["register"]' role="button" tabindex="0">🔐 Register</div>
+  <div class="tab" data-act="showTab" data-args='["explorer"]' role="button" tabindex="0">🔍 Explorer</div>
+  <div class="tab" data-act="showTab" data-args='["index"]' role="button" tabindex="0">⚖️ Equality</div>
+  <div class="tab" data-act="showTab" data-args='["network"]' role="button" tabindex="0">🌐 Network</div>
+  <div class="tab" data-act="showTabAndPriceChart" data-args='["exchange"]' role="button" tabindex="0">🔄 Exchange</div>
+  <div class="tab" data-act="showTab" data-args='["social"]' role="button" tabindex="0">💬 Social</div>
 </div>
 
+<main id="content">
 <!-- REGISTER -->
 <div id="tab-register" class="tab-content active">
 <div class="rs">
   <div class="rhero">
-    <div class="rhero-title" data-i18n="reg-title">🔐 Register as a Verified Human</div>
+    <h1 class="rhero-title" data-i18n="reg-title">🔐 Register as a Verified Human</h1>
     <div class="rhero-sub" data-i18n="reg-sub">Join the Aequitas network and receive your 1,000 AEQ Universal Basic Income grant. Registration is one-time, permanent, and completely gasless. No personal data is ever stored — only a cryptographic proof that you control a device key.</div>
     <a href="/download/app.apk" style="display:inline-flex;align-items:center;gap:10px;margin-top:18px;background:var(--grad);color:#fff;padding:13px 28px;border-radius:10px;font-size:0.75rem;font-weight:700;text-decoration:none;letter-spacing:0.5px;box-shadow:var(--glow-purple);transition:all 0.2s" onmouseover="this.style.opacity='0.87';this.style.transform='translateY(-2px)'" onmouseout="this.style.opacity='1';this.style.transform='translateY(0)'">
       <span style="width:22px;height:22px;border-radius:6px;background:var(--grad);display:inline-flex;align-items:center;justify-content:center;font-size:13px;flex-shrink:0">⚖</span>
@@ -192,37 +195,37 @@
   <div style="margin-top:20px;background:linear-gradient(135deg,rgba(139,92,246,0.07),rgba(6,182,212,0.03));border:1px solid rgba(139,92,246,0.2);border-radius:var(--radius);padding:20px">
     <div style="font-size:0.57rem;color:var(--purple);letter-spacing:2.5px;text-transform:uppercase;font-weight:700;margin-bottom:14px" data-i18n="explore-title">Explore Aequitas</div>
     <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:8px">
-      <div class="expl-card" data-act="goTab" data-args='["index","eqi-score"]'>
+      <div class="expl-card" data-act="goTab" data-args='["index","eqi-score"]' role="button" tabindex="0">
         <div class="expl-icon">⚖️</div>
         <div class="expl-name" data-i18n="expl-score">Equality Score</div>
         <div class="expl-desc" data-i18n="expl-score-d">Live Gini coefficient · Aequitas Index · wealth distribution in real time</div>
       </div>
-      <div class="expl-card" data-act="goTab" data-args='["index","eqi-economy"]'>
+      <div class="expl-card" data-act="goTab" data-args='["index","eqi-economy"]' role="button" tabindex="0">
         <div class="expl-icon">💸</div>
         <div class="expl-name" data-i18n="expl-economy">UBI &amp; Redistribution Pools</div>
         <div class="expl-desc" data-i18n="expl-economy-d">Daily UBI countdown · 4 on-chain pools · demurrage · Protocol Phases</div>
       </div>
-      <div class="expl-card" data-act="goTab" data-args='["index","eqi-lorenz"]'>
+      <div class="expl-card" data-act="goTab" data-args='["index","eqi-lorenz"]' role="button" tabindex="0">
         <div class="expl-icon">📈</div>
         <div class="expl-name" data-i18n="expl-charts">Charts &amp; History</div>
         <div class="expl-desc" data-i18n="expl-charts-d">Gini history · Lorenz curve · Wealth Cap bootstrap slider · The story of Aequitas</div>
       </div>
-      <div class="expl-card" data-act="goTab" data-args='["network","net-protocol"]'>
+      <div class="expl-card" data-act="goTab" data-args='["network","net-protocol"]' role="button" tabindex="0">
         <div class="expl-icon">📜</div>
         <div class="expl-name" data-i18n="expl-v7">Protocol V7 Docs</div>
         <div class="expl-desc" data-i18n="expl-v7-d">AequitasV7 contract · 6 mechanisms · ZK proof · wealth cap · demurrage · immutable code</div>
       </div>
-      <div class="expl-card" data-act="goTab" data-args='["explorer","sep-blocks"]'>
+      <div class="expl-card" data-act="goTab" data-args='["explorer","sep-blocks"]' role="button" tabindex="0">
         <div class="expl-icon">🔍</div>
         <div class="expl-name" data-i18n="expl-explorer">Block Explorer</div>
         <div class="expl-desc" data-i18n="expl-explorer-d">Live BlockDAG · click any block to see validator, hash, transactions, parent hashes</div>
       </div>
-      <div class="expl-card" data-act="goTab" data-args='["network","net-overview"]'>
+      <div class="expl-card" data-act="goTab" data-args='["network","net-overview"]' role="button" tabindex="0">
         <div class="expl-icon">🌐</div>
         <div class="expl-name" data-i18n="expl-network">Network &amp; Nodes</div>
         <div class="expl-desc" data-i18n="expl-network-d">Node topology · run your own node · technical specs · Chain ID 1926</div>
       </div>
-      <div class="expl-card" data-act="goTab" data-args='["network","net-consensus"]'>
+      <div class="expl-card" data-act="goTab" data-args='["network","net-consensus"]' role="button" tabindex="0">
         <div class="expl-icon">🔗</div>
         <div class="expl-name" data-i18n="expl-consensus">Consensus: GHOSTDAG + KnightDAG</div>
         <div class="expl-desc" data-i18n="expl-consensus-d">How every node agrees on one order · the 2026 KnightDAG upgrade explained</div>
@@ -234,9 +237,10 @@
 
 <!-- EXPLORER + HUMANS -->
 <div id="tab-explorer" class="tab-content">
+<h1 class="sr-only" data-i18n="expl-heading">Block Explorer</h1>
 <nav class="stabs">
-  <div class="stab active" data-act="showStab" data-args='["tab-explorer","sep-blocks"]'>📦 Blocks</div>
-  <div class="stab" data-act="showStab" data-args='["tab-explorer","sep-humans"]'>👥 Humans</div>
+  <div class="stab active" data-act="showStab" data-args='["tab-explorer","sep-blocks"]' role="button" tabindex="0">📦 Blocks</div>
+  <div class="stab" data-act="showStab" data-args='["tab-explorer","sep-humans"]' role="button" tabindex="0">👥 Humans</div>
 </nav>
 <div id="sep-blocks" class="stab-panel active">
 <!-- hidden elements needed by loadStatus() -->
@@ -327,11 +331,11 @@
   </div>
 </div>
 <!-- Block detail overlay -->
-<div class="block-detail-overlay" id="block-detail-overlay" data-act="closeBlockOnBackdropClick">
+<div class="block-detail-overlay" id="block-detail-overlay" data-act="closeBlockOnBackdropClick" role="button" tabindex="0">
   <div class="bdc">
     <div class="bdc-hdr">
       <div style="font-size:0.75rem;font-weight:700;color:var(--purple);font-family:var(--font-mono)" id="bdc-title">Block #—</div>
-      <div class="bdc-close" data-act="closeBlock">✕ Close</div>
+      <div class="bdc-close" data-act="closeBlock" role="button" tabindex="0">✕ Close</div>
     </div>
     <div id="bdc-content"></div>
   </div>
@@ -408,8 +412,8 @@
 <!-- EXCHANGE -->
 <div id="tab-exchange" class="tab-content">
 <nav class="stabs">
-  <div class="stab active" data-act="showStabAndPriceChart" data-args='["tab-exchange","exch-swap"]'>🔄 Swap</div>
-  <div class="stab" data-act="showStab" data-args='["tab-exchange","exch-liquidity"]'>💧 Liquidity</div>
+  <div class="stab active" data-act="showStabAndPriceChart" data-args='["tab-exchange","exch-swap"]' role="button" tabindex="0">🔄 Swap</div>
+  <div class="stab" data-act="showStab" data-args='["tab-exchange","exch-liquidity"]' role="button" tabindex="0">💧 Liquidity</div>
 </nav>
 <div id="exch-swap" class="stab-panel active">
 <div style="padding:16px 20px 0">
@@ -446,7 +450,7 @@
 </div>
 <div class="rs">
   <div class="rhero">
-    <div class="rhero-title" data-i18n="swap-title">🔄 Swap AEQ ↔ tUSD</div>
+    <h1 class="rhero-title" data-i18n="swap-title">🔄 Swap AEQ ↔ tUSD</h1>
     <div class="rhero-sub" data-i18n="swap-sub">Exchange AEQ for tUSD (a simulated test-dollar) through the native liquidity pool. A 0.1% fee applies only to swaps — ordinary AEQ transfers between people remain completely free.</div>
   </div>
   <div class="pbar" data-i18n="swap-priv-bar">🔒 0.1% swap fee only · AEQ-to-AEQ transfers stay free · tUSD is a test currency with no real-world value</div>
@@ -518,7 +522,7 @@
 <div id="exch-liquidity" class="stab-panel">
 <div class="rs">
   <div class="rhero">
-    <div class="rhero-title">💧 Liquidity</div>
+    <h2 class="rhero-title">💧 Liquidity</h2>
     <div class="rhero-sub">Provide AEQ / tUSD liquidity to earn 30% of all swap fees, distributed daily.</div>
   </div>
 
@@ -598,15 +602,15 @@
 <!-- INDEX (Equality) -->
 <div id="tab-index" class="tab-content">
 <nav class="stabs">
-  <div class="stab active" data-act="showStab" data-args='["tab-index","eqi-score"]'>📊 Score</div>
-  <div class="stab" data-act="showStabAndLorenzChart" data-args='["tab-index","eqi-lorenz"]'>📈 Distribution</div>
-  <div class="stab" data-act="showStab" data-args='["tab-index","eqi-economy"]'>💸 Economy</div>
-  <div class="stab" data-act="showStab" data-args='["tab-index","eqi-story"]'>📖 Story</div>
+  <div class="stab active" data-act="showStab" data-args='["tab-index","eqi-score"]' role="button" tabindex="0">📊 Score</div>
+  <div class="stab" data-act="showStabAndLorenzChart" data-args='["tab-index","eqi-lorenz"]' role="button" tabindex="0">📈 Distribution</div>
+  <div class="stab" data-act="showStab" data-args='["tab-index","eqi-economy"]' role="button" tabindex="0">💸 Economy</div>
+  <div class="stab" data-act="showStab" data-args='["tab-index","eqi-story"]' role="button" tabindex="0">📖 Story</div>
 </nav>
 <div id="eqi-score" class="stab-panel active">
 <div class="is">
   <div class="idx" style="grid-column:1/-1">
-    <div class="idx-title" data-i18n="idx-title">Aequitas Index — Real-Time Economic Equality Score</div>
+    <h1 class="idx-title" data-i18n="idx-title">Aequitas Index — Real-Time Economic Equality Score</h1>
     <div class="idx-desc" data-i18n="idx-desc">The Aequitas Index is derived from the <strong style="color:var(--teal)">Gini coefficient</strong> — the international standard for measuring wealth inequality, adopted by the World Bank, OECD, and UN. Unlike a simple richest-vs-poorest ratio, the Gini coefficient captures the <em style="color:var(--text)">entire distribution</em> across every verified human simultaneously, in a single number. <strong style="color:var(--neon)">0 = perfect equality</strong> (every wallet holds the same AEQ). <strong style="color:var(--red)">100 = maximum concentration</strong> (one wallet holds all AEQ in existence). For context: Bitcoin Gini ≈ 0.85 (Index 85) · most unequal country on Earth (South Africa) ≈ 0.63 · Scandinavia ≈ 0.27. Aequitas targets Gini below 0.30 at scale — comparable to the most equal developed economies — enforced automatically by the wealth cap and redistribution pools, no governance vote required.</div>
     <div style="display:grid;grid-template-columns:auto 1fr;gap:20px;align-items:center;margin-top:12px">
       <div><div class="idx-big" id="idx-score">—</div><div class="idx-lbl" data-i18n="curr-idx">Current Index</div></div>
@@ -982,16 +986,16 @@
 <!-- NETWORK (merged) -->
 <div id="tab-network" class="tab-content">
 <nav class="stabs">
-  <div class="stab active" data-act="showStab" data-args='["tab-network","net-overview"]'>🌐 Overview</div>
-  <div class="stab" data-act="showStab" data-args='["tab-network","net-consensus"]'>🔗 Consensus</div>
-  <div class="stab" data-act="showStab" data-args='["tab-network","net-story"]'>📖 Story</div>
-  <div class="stab" data-act="showStab" data-args='["tab-network","net-runnode"]'>⚙️ Run a Node</div>
-  <div class="stab" data-act="showStab" data-args='["tab-network","net-protocol"]'>📜 Protocol V7</div>
+  <div class="stab active" data-act="showStab" data-args='["tab-network","net-overview"]' role="button" tabindex="0">🌐 Overview</div>
+  <div class="stab" data-act="showStab" data-args='["tab-network","net-consensus"]' role="button" tabindex="0">🔗 Consensus</div>
+  <div class="stab" data-act="showStab" data-args='["tab-network","net-story"]' role="button" tabindex="0">📖 Story</div>
+  <div class="stab" data-act="showStab" data-args='["tab-network","net-runnode"]' role="button" tabindex="0">⚙️ Run a Node</div>
+  <div class="stab" data-act="showStab" data-args='["tab-network","net-protocol"]' role="button" tabindex="0">📜 Protocol V7</div>
 </nav>
 <div id="net-overview" class="stab-panel active">
 <div class="ns">
 <div class="nc" style="grid-column:1/-1">
-    <div class="nc-title"><span data-i18n="nodes-title">Active Nodes — Current Network Topology</span> <span id="node-count-badge" style="color:var(--teal)"></span></div>
+    <h1 class="nc-title"><span data-i18n="nodes-title">Active Nodes — Current Network Topology</span> <span id="node-count-badge" style="color:var(--teal)"></span></h1>
     <div style="font-size:0.65rem;color:var(--muted);line-height:1.8;margin-bottom:12px" data-i18n="nodes-desc">The Aequitas network currently operates on multiple geographically distributed nodes (live count above) — one primary and any number of secondaries. All of them participate in block production, state synchronization, and API serving with active MERGE events. They communicate peer-to-peer via libp2p and synchronize block state via HTTP. The network is designed to support additional nodes — any registered human can run a validator node by setting the required environment variables. Authorization is identity-based: your NODE_OPERATOR_WALLET must be a verified registered human, and it is permanently bound to your node's signing key the first time you connect — one verified human runs exactly one validator. There is no shared secret to obtain from the operator for this.</div>
     <div id="node-grid" style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px">
       <div class="nbox"><div class="nstat">Loading…</div></div>
@@ -1052,7 +1056,7 @@
       <span style="font-size:0.56rem;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:var(--purple);background:rgba(155,114,246,0.12);border:1px solid rgba(155,114,246,0.3);border-radius:20px;padding:4px 10px">Core Technology</span>
       <span style="font-size:0.56rem;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:var(--gold);background:rgba(240,180,41,0.1);border:1px solid rgba(240,180,41,0.3);border-radius:20px;padding:4px 10px">◆ New in 2026</span>
     </div>
-    <div class="rhero-title" style="font-size:1.3rem;text-align:left;background:var(--grad);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text">GHOSTDAG + KnightDAG</div>
+    <h2 class="rhero-title" style="font-size:1.3rem;text-align:left;background:var(--grad);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text">GHOSTDAG + KnightDAG</h2>
     <div class="rhero-sub" style="text-align:left">This is not a 0815 blockchain with one block at a time. Aequitas runs a real BlockDAG, ordered by GHOSTDAG — and since 2026, secured by KnightDAG, Aequitas's own adaptive evolution of it. This is the mechanism every balance, every UBI payout, and every wealth-cap enforcement ultimately depends on for a single, agreed-upon history.</div>
   </div>
 
@@ -1665,7 +1669,7 @@
   </div>
   <div class="idx" style="margin-bottom:12px;background:linear-gradient(135deg,rgba(139,92,246,0.08),rgba(6,182,212,0.04));border-color:rgba(139,92,246,0.25)">
     <div class="idx-title" style="color:var(--purple)">◆ Consensus: GHOSTDAG + KNIGHTDAG</div>
-    <div style="font-size:0.65rem;color:var(--muted);line-height:1.9">How every node agrees on one shared order for concurrently-produced blocks — including the 2026 KnightDAG upgrade that lets each block infer its own optimal security margin instead of trusting one fixed network-wide worst case — now has its own dedicated tab: <b data-act="goTab" data-args='["network","net-consensus"]' style="color:var(--teal);cursor:pointer;text-decoration:underline">→ Network / Consensus</b>.</div>
+    <div style="font-size:0.65rem;color:var(--muted);line-height:1.9">How every node agrees on one shared order for concurrently-produced blocks — including the 2026 KnightDAG upgrade that lets each block infer its own optimal security margin instead of trusting one fixed network-wide worst case — now has its own dedicated tab: <b data-act="goTab" data-args='["network","net-consensus"]' style="color:var(--teal);cursor:pointer;text-decoration:underline" role="button" tabindex="0">→ Network / Consensus</b>.</div>
   </div>
   <div class="idx" style="margin-bottom:12px;background:linear-gradient(135deg,rgba(139,92,246,0.06),rgba(13,8,32,0.9));border-color:rgba(139,92,246,0.2)">
     <div class="idx-title" style="color:var(--purple)">Node Decentralization Roadmap</div>
@@ -1688,7 +1692,7 @@
 <div id="tab-social" class="tab-content">
   <div class="rs">
     <div class="rhero">
-      <div class="rhero-title" data-i18n="soc-title">💬 Social Media</div>
+      <h1 class="rhero-title" data-i18n="soc-title">💬 Social Media</h1>
       <div class="rhero-sub" data-i18n="soc-sub">Announcements, the state of the chain, and the awkward questions &mdash; in public, on both.</div>
     </div>
     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:18px;max-width:720px;margin:26px auto 0">
@@ -1697,6 +1701,8 @@
     </div>
   </div>
 </div>
+
+</main>
 
 <script src="/explorer.js"></script>
 </body>

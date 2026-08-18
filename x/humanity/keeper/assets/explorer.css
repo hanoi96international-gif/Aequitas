@@ -407,3 +407,19 @@ input[type=number]::-webkit-inner-spin-button{opacity:0.5}
 .stab.active::after{content:'';position:absolute;bottom:-1px;left:0;right:0;height:2px;background:linear-gradient(90deg,var(--purple),var(--teal));border-radius:2px 2px 0 0}
 .stab-panel{display:none}
 .stab-panel.active{display:block}
+
+/* ── KEYBOARD FOCUS ──────────────────────────────────────────── */
+/* Nothing outside a few text inputs had a focus style, so navigating by
+   keyboard meant guessing where you were. :focus-visible rather than :focus
+   so a mouse click does not leave a ring behind — the outline appears only
+   when the browser judges the interaction to be keyboard-driven. */
+:focus-visible{outline:2px solid var(--purple);outline-offset:3px;border-radius:4px}
+a:focus-visible,button:focus-visible,select:focus-visible,
+[role="button"]:focus-visible,[tabindex]:focus-visible{outline:2px solid var(--purple);outline-offset:3px}
+/* Against the gradient pill of the active tab, purple-on-purple disappears. */
+.tab.active:focus-visible,.stab.active:focus-visible{outline-color:#fff}
+
+/* Visually hidden, still read aloud. The Blocks panel opens on a search bar
+   with no visible title, and a panel with no heading at all is invisible to
+   anything navigating by document structure. */
+.sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}

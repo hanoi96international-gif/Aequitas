@@ -201,6 +201,17 @@ footer{border-top:1px solid var(--border);padding:40px 24px;text-align:center}
 footer p{font-size:0.75rem;color:var(--muted)}
 footer p span{color:var(--purple)}
 
+/* ── KEYBOARD FOCUS ──────────────────────────────────────────── */
+/* Nothing outside a few text inputs had a focus style, so navigating by
+   keyboard meant guessing where you were. :focus-visible rather than :focus
+   so a mouse click does not leave a ring behind — the outline appears only
+   when the browser judges the interaction to be keyboard-driven. */
+:focus-visible{outline:2px solid var(--purple);outline-offset:3px;border-radius:4px}
+a:focus-visible,button:focus-visible,select:focus-visible,
+[role="button"]:focus-visible,[tabindex]:focus-visible{outline:2px solid var(--purple);outline-offset:3px}
+/* Against the gradient pill of the active tab, purple-on-purple disappears. */
+.tab.active:focus-visible,.stab.active:focus-visible{outline-color:#fff}
+
 /* ── MOBILE TOUCH TARGETS ────────────────────────────────────── */
 @media(max-width:480px){
 .btn-primary,.btn-secondary{padding:16px 24px;font-size:0.9rem;width:100%;justify-content:center;border-radius:12px}
@@ -251,6 +262,7 @@ section{padding:60px 20px}
   </div>
 </nav>
 
+<main>
 <!-- HERO -->
 <section class="hero">
   <div class="hero-badge">
@@ -408,6 +420,8 @@ section{padding:60px 20px}
     </div>
   </div>
 </section>
+
+</main>
 
 <!-- FOOTER -->
 <footer>
