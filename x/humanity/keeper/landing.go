@@ -151,12 +151,6 @@ h2{font-family:'DM Serif Display',serif;font-size:clamp(1.8rem,4vw,2.8rem);line-
 .gini-row.aeq .gini-label{color:var(--gold);font-weight:700}
 .gini-row.aeq .gini-bar{background:var(--gold)}
 
-/* ── CTA ─────────────────────────────────────────────────────── */
-.cta-section{background:linear-gradient(135deg,rgba(155,114,246,0.12),rgba(34,211,238,0.06));border:1px solid rgba(155,114,246,0.2);border-radius:20px;padding:60px 40px;text-align:center;margin:0 24px}
-.cta-section h2{max-width:500px;margin:0 auto 16px}
-.cta-section p{color:var(--muted);margin-bottom:36px;font-size:0.95rem}
-@media(max-width:600px){.cta-section{padding:40px 24px;border-radius:14px}}
-
 /* ── FOOTER ──────────────────────────────────────────────────── */
 footer{border-top:1px solid var(--border);padding:40px 24px;text-align:center}
 .footer-links{display:flex;flex-wrap:wrap;justify-content:center;gap:24px;margin-bottom:20px}
@@ -170,10 +164,10 @@ footer{border-top:1px solid var(--border);padding:40px 24px;text-align:center}
 .social svg{width:15px;height:15px;flex:none;fill:currentColor}
 
 /* ── SOCIAL SECTION ──────────────────────────────────────────── */
-/* Its own section rather than another footer link: the marks were only in
-   the footer and under the CTA, which is where a first-time visitor never
-   looks. Big enough to be the thing you see, and the whole card is the
-   link — not just the wordmark. */
+/* Its own section rather than another footer link: the marks used to live
+   only in the footer, which is where a first-time visitor never looks. Big
+   enough to be the thing you see, and the whole card is the link — not just
+   the wordmark. */
 .social-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:20px;margin-top:36px;max-width:760px;margin-left:auto;margin-right:auto}
 .social-card{background:var(--card2);border:1px solid var(--border);border-radius:var(--radius);padding:38px 28px;display:flex;flex-direction:column;align-items:center;text-align:center;gap:12px;text-decoration:none;transition:transform 0.2s,border-color 0.2s,background 0.2s}
 .social-card:hover{border-color:rgba(155,114,246,0.45);background:var(--card);transform:translateY(-3px)}
@@ -390,22 +384,6 @@ section{padding:60px 20px}
         <div class="social-handle" dir="ltr">t.me/aequitasmoney</div>
         <div class="social-desc" data-i18n="soc-tg-d">The open group: questions, node operators, and help getting registered.</div>
       </a>
-    </div>
-  </div>
-</section>
-
-<!-- CTA -->
-<section>
-  <div class="section-inner">
-    <div class="cta-section">
-      <div class="section-label" style="text-align:center" data-i18n="cta-label">Get started</div>
-      <h2 data-i18n="cta-h2">Join the fairest currency on Earth</h2>
-      <p data-i18n="cta-p">Download the Aequitas app, scan your biometrics, and receive 1,000 AEQ within 1 second. No fees, no investment, no prerequisites.</p>
-      <div class="hero-btns">
-        <a href="/download/app.apk" class="btn-primary" data-i18n="cta-btn">📱 Download Aequitas App (Android)</a>
-        <a href="/register" class="btn-secondary">🌐 Open Explorer</a>
-      </div>
-      <p style="font-size:0.75rem;color:var(--muted);margin-top:20px">Chain ID 1926 · EVM Compatible · Open Source · <a href="https://github.com/hanoi96international-gif/Aequitas" style="color:var(--purple)" data-i18n="cta-github">View on GitHub</a></p>
     </div>
   </div>
 </section>
