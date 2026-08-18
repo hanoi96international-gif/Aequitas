@@ -44,6 +44,7 @@ nav::before{content:'';position:absolute;top:0;left:0;right:0;height:2px;backgro
 /* Badges, values from explorer.css so both headers stay one header. --neon
    there is #34D399, which is --green here, so the colour is the same value
    under a different name rather than a second shade of the same idea. */
+.lang-sel{background:rgba(255,255,255,0.06);color:var(--muted);border:1px solid rgba(255,255,255,0.1);border-radius:6px;padding:5px 10px;font-family:inherit;font-size:0.62rem;outline:none;cursor:pointer;flex-shrink:0}
 .header-right{display:flex;gap:8px;align-items:center;position:relative;z-index:1;min-width:0;overflow-x:auto;-webkit-overflow-scrolling:touch;scrollbar-width:none}
 .header-right::-webkit-scrollbar{display:none}
 .header-right .badge{flex-shrink:0}
@@ -230,36 +231,37 @@ section{padding:60px 20px}
   <div class="nav-top">
     <a href="/" class="logo-wrap">
       <div class="logo-icon">⚖</div>
-      <div><div class="logo-text">AEQUITAS</div><div class="logo-sub">PROOF OF HUMANITY</div></div>
+      <div><div class="logo-text" data-i18n="aequitas">AEQUITAS</div><div class="logo-sub" data-i18n="proof-of-humanity">PROOF OF HUMANITY</div></div>
     </a>
+    <select class="lang-sel" id="lang-sel" aria-label="Language"></select>
     <div class="header-right">
-      <div class="badge badge-live"><span class="pulse"></span>LIVE</div>
-      <div class="badge badge-health badge-health-healthy" id="health-badge" title="Checking network health…">● GHOSTDAG</div>
-      <div class="badge badge-dag" title="KnightDAG: each block infers its own smallest secure K instead of a fixed epoch-wide worst case — inspired by DAGKNIGHT (Sompolinsky &amp; Sutton, 2022), evolving GHOSTDAG beyond a rigid parameter.">◆ KNIGHTDAG</div>
+      <div class="badge badge-live" data-i18n="live"><span class="pulse"></span>LIVE</div>
+      <div class="badge badge-health badge-health-healthy" id="health-badge" title="Checking network health…" data-i18n="ghostdag">● GHOSTDAG</div>
+      <div class="badge badge-dag" title="KnightDAG: each block infers its own smallest secure K instead of a fixed epoch-wide worst case — inspired by DAGKNIGHT (Sompolinsky &amp; Sutton, 2022), evolving GHOSTDAG beyond a rigid parameter." data-i18n="knightdag">◆ KNIGHTDAG</div>
     </div>
   </div>
   <div class="tabs">
-    <a href="/" class="tab active">🏠 Overview</a>
-    <a href="/register" class="tab">🔐 Register</a>
-    <a href="/explorer" class="tab">🔍 Explorer</a>
-    <a href="/index/score" class="tab">⚖️ Equality</a>
-    <a href="/network" class="tab">🌐 Network</a>
-    <a href="/exchange" class="tab">🔄 Exchange</a>
-    <a href="#social" class="tab">💬 Social</a>
+    <a href="/" class="tab active" data-i18n="overview">🏠 Overview</a>
+    <a href="/register" class="tab" data-i18n="register">🔐 Register</a>
+    <a href="/explorer" class="tab" data-i18n="explorer">🔍 Explorer</a>
+    <a href="/index/score" class="tab" data-i18n="equality">⚖️ Equality</a>
+    <a href="/network" class="tab" data-i18n="network">🌐 Network</a>
+    <a href="/exchange" class="tab" data-i18n="exchange">🔄 Exchange</a>
+    <a href="#social" class="tab" data-i18n="social">💬 Social</a>
   </div>
 </nav>
 
 <!-- HERO -->
 <section class="hero">
-  <div class="hero-badge">
+  <div class="hero-badge" data-i18n="live-on-chain-id">
     <span class="pulse"></span>
     LIVE ON CHAIN ID 1926
   </div>
-  <h1>Money that belongs<br>to <span>every human</span> equally</h1>
-  <p class="hero-sub">Aequitas is the first blockchain where the money supply is mathematically tied to verified human existence. Every person receives 1,000 AEQ — no mining, no investment, no early advantage.</p>
+  <h1 data-i18n="money-that-belongsto-every">Money that belongs<br>to <span>every human</span> equally</h1>
+  <p class="hero-sub" data-i18n="aequitas-is-the-first">Aequitas is the first blockchain where the money supply is mathematically tied to verified human existence. Every person receives 1,000 AEQ — no mining, no investment, no early advantage.</p>
   <div class="hero-btns">
-    <a href="/download/app.apk" class="btn-primary">📱 Download Aequitas App</a>
-    <a href="/register" class="btn-secondary">🌐 Open Explorer</a>
+    <a href="/download/app.apk" class="btn-primary" data-i18n="download-aequitas-app">📱 Download Aequitas App</a>
+    <a href="/register" class="btn-secondary" data-i18n="open-explorer">🌐 Open Explorer</a>
   </div>
   <div class="hero-proof">
     <span>✓</span> Gini <span id="gini-inline">—</span> — measured on chain, published live &nbsp;·&nbsp;
@@ -272,43 +274,43 @@ section{padding:60px 20px}
 <div class="stats-bar">
   <div class="stat-item">
     <div class="stat-num" id="stat-humans" style="color:#34D399">—</div>
-    <div class="stat-lbl">Verified Humans</div>
+    <div class="stat-lbl" data-i18n="verified-humans">Verified Humans</div>
   </div>
   <div class="stat-item">
     <div class="stat-num" id="stat-supply" style="color:#9B72F6">—</div>
-    <div class="stat-lbl">AEQ in Circulation</div>
+    <div class="stat-lbl" data-i18n="aeq-in-circulation">AEQ in Circulation</div>
   </div>
   <div class="stat-item">
     <div class="stat-num" id="stat-gini" style="color:#F0B429">—</div>
-    <div class="stat-lbl">Gini Coefficient</div>
+    <div class="stat-lbl" data-i18n="gini-coefficient">Gini Coefficient</div>
   </div>
   <div class="stat-item">
     <div class="stat-num" id="stat-blocks" style="color:#22D3EE">—</div>
-    <div class="stat-lbl">Blocks Produced</div>
+    <div class="stat-lbl" data-i18n="blocks-produced">Blocks Produced</div>
   </div>
 </div>
 
 <!-- HOW IT WORKS -->
 <section>
   <div class="section-inner">
-    <div class="section-label">How it works</div>
-    <h2>Three steps to financial inclusion</h2>
-    <p class="section-sub">No bank account, no crypto background, no investment required. Just a smartphone with a fingerprint sensor.</p>
+    <div class="section-label" data-i18n="how-it-works">How it works</div>
+    <h2 data-i18n="three-steps-to-financial">Three steps to financial inclusion</h2>
+    <p class="section-sub" data-i18n="no-bank-account-no">No bank account, no crypto background, no investment required. Just a smartphone with a fingerprint sensor.</p>
     <div class="steps">
       <div class="step">
         <div class="step-num">1</div>
-        <h3>Biometric Capture</h3>
-        <p>Your device captures the biometric signals and reduces them to a one-way hash. The <strong>raw images are never stored</strong> — neither on your phone nor on the network. Only the derived hash is used.</p>
+        <h3 data-i18n="biometric-capture">Biometric Capture</h3>
+        <p data-i18n="your-device-captures-the">Your device captures the biometric signals and reduces them to a one-way hash. The <strong>raw images are never stored</strong> — neither on your phone nor on the network. Only the derived hash is used.</p>
       </div>
       <div class="step">
         <div class="step-num">2</div>
-        <h3>Zero-Knowledge Proof</h3>
-        <p>A Groth16 proof (BN128) is generated against that hash. It proves you are a <strong>unique, not-yet-registered human</strong> — the chain learns that fact and nothing else about you.</p>
+        <h3 data-i18n="zeroknowledge-proof">Zero-Knowledge Proof</h3>
+        <p data-i18n="a-groth16-proof-bn128">A Groth16 proof (BN128) is generated against that hash. It proves you are a <strong>unique, not-yet-registered human</strong> — the chain learns that fact and nothing else about you.</p>
       </div>
       <div class="step">
         <div class="step-num">3</div>
-        <h3>1,000 AEQ Granted</h3>
-        <p>Your wallet is permanently registered on-chain within 1 second. You receive 1,000 AEQ instantly — completely free, forever immutable.</p>
+        <h3 data-i18n="1000-aeq-granted">1,000 AEQ Granted</h3>
+        <p data-i18n="your-wallet-is-permanently">Your wallet is permanently registered on-chain within 1 second. You receive 1,000 AEQ instantly — completely free, forever immutable.</p>
       </div>
     </div>
   </div>
@@ -317,29 +319,29 @@ section{padding:60px 20px}
 <!-- WHY AEQUITAS -->
 <section style="background:var(--card);border-top:1px solid var(--border);border-bottom:1px solid var(--border)">
   <div class="section-inner">
-    <div class="section-label">Why Aequitas</div>
-    <h2>Bitcoin's Gini is 0.85 — higher than any country</h2>
-    <p class="section-sub">The cryptocurrency that was supposed to democratize finance created the most extreme wealth concentration in history. Aequitas was designed from scratch to be different.</p>
+    <div class="section-label" data-i18n="why-aequitas">Why Aequitas</div>
+    <h2 data-i18n="bitcoins-gini-is-085">Bitcoin's Gini is 0.85 — higher than any country</h2>
+    <p class="section-sub" data-i18n="the-cryptocurrency-that-was">The cryptocurrency that was supposed to democratize finance created the most extreme wealth concentration in history. Aequitas was designed from scratch to be different.</p>
     <div class="why-grid">
       <div class="why-card why-highlight">
         <div class="icon">⚖️</div>
-        <h3>Radical Equality by Design</h3>
-        <p>Total supply = verified humans × 1,000 AEQ. No pre-mine, no founder allocation, no early-adopter advantage. The protocol enforces equality through math, not policy.</p>
+        <h3 data-i18n="radical-equality-by-design">Radical Equality by Design</h3>
+        <p data-i18n="total-supply-verified-humans">Total supply = verified humans × 1,000 AEQ. No pre-mine, no founder allocation, no early-adopter advantage. The protocol enforces equality through math, not policy.</p>
       </div>
       <div class="why-card">
         <div class="icon">🔒</div>
-        <h3>Privacy-First Verification</h3>
-        <p>Zero-Knowledge proofs ensure one human, one wallet — without storing any biometric data. Your identity is verified, never recorded.</p>
+        <h3 data-i18n="privacyfirst-verification">Privacy-First Verification</h3>
+        <p data-i18n="zeroknowledge-proofs-ensure-one">Zero-Knowledge proofs ensure one human, one wallet — without storing any biometric data. Your identity is verified, never recorded.</p>
       </div>
       <div class="why-card">
         <div class="icon">📊</div>
-        <h3>Transparent Inequality Tracking</h3>
+        <h3 data-i18n="transparent-inequality-tracking">Transparent Inequality Tracking</h3>
         <p>The Gini coefficient is computed on-chain after every distribution. Aequitas publishes its own inequality score — currently <span id="gini-inline" style="color:var(--gold);font-weight:700">—</span> — lower than Sweden.</p>
       </div>
       <div class="why-card">
         <div class="icon">🌍</div>
-        <h3>For Everyone on Earth</h3>
-        <p>No bank account, no credit card, no ID document. An Android phone is all you need. 8 billion potential participants — every one equal from day one.</p>
+        <h3 data-i18n="for-everyone-on-earth">For Everyone on Earth</h3>
+        <p data-i18n="no-bank-account-no-2">No bank account, no credit card, no ID document. An Android phone is all you need. 8 billion potential participants — every one equal from day one.</p>
       </div>
     </div>
   </div>
@@ -349,9 +351,9 @@ section{padding:60px 20px}
 <section>
   <div class="section-inner" style="display:grid;grid-template-columns:1fr 1fr;gap:60px;align-items:center">
     <div>
-      <div class="section-label">Wealth Equality</div>
-      <h2>The fairest currency ever created</h2>
-      <p style="color:var(--muted);font-size:0.9rem;line-height:1.8">Lower Gini = more equality. Aequitas's target is below 0.30 — comparable to Scandinavia. Today we are already far below.</p>
+      <div class="section-label" data-i18n="wealth-equality">Wealth Equality</div>
+      <h2 data-i18n="the-fairest-currency-ever">The fairest currency ever created</h2>
+      <p style="color:var(--muted);font-size:0.9rem;line-height:1.8" data-i18n="lower-gini-more-equality">Lower Gini = more equality. Aequitas's target is below 0.30 — comparable to Scandinavia. Today we are already far below.</p>
     </div>
     <div>
       <div class="gini-row aeq">
@@ -390,8 +392,8 @@ section{padding:60px 20px}
     <div class="lorenz-wrap">
       <div class="lorenz-head">
         <div>
-          <div class="lorenz-title">Lorenz curve — live</div>
-          <div class="lorenz-sub">Drawn from every registered wallet's actual balance. The straight line is perfect equality; the gap between the two is the Gini coefficient.</div>
+          <div class="lorenz-title" data-i18n="lorenz-curve-live">Lorenz curve — live</div>
+          <div class="lorenz-sub" data-i18n="drawn-from-every-registered">Drawn from every registered wallet's actual balance. The straight line is perfect equality; the gap between the two is the Gini coefficient.</div>
         </div>
         <div class="lorenz-legend">
           <span><i style="background:var(--muted)"></i>Perfect equality</span>
@@ -407,7 +409,7 @@ section{padding:60px 20px}
         <text x="170" y="205" fill="#8892A4" font-size="9" text-anchor="middle">Share of humans (poorest → richest)</text>
         <text x="14" y="100" fill="#8892A4" font-size="9" text-anchor="middle" transform="rotate(-90 14 100)">Share of wealth</text>
       </svg>
-      <div class="lorenz-note" id="lorenz-note">Loading distribution…</div>
+      <div class="lorenz-note" id="lorenz-note" data-i18n="loading-distribution">Loading distribution…</div>
     </div>
   </div>
 
@@ -416,23 +418,23 @@ section{padding:60px 20px}
 <!-- THE FOUR MECHANISMS -->
 <section id="mechanisms">
   <div class="section-inner">
-    <div class="section-label">The mechanisms</div>
-    <h2>Four rules keep it fair — permanently</h2>
-    <p class="section-sub">Equality is not a promise on this chain, it is enforced by code that runs without a vote, an admin key, or anyone's permission. These four mechanisms all operate automatically.</p>
+    <div class="section-label" data-i18n="the-mechanisms">The mechanisms</div>
+    <h2 data-i18n="four-rules-keep-it">Four rules keep it fair — permanently</h2>
+    <p class="section-sub" data-i18n="equality-is-not-a">Equality is not a promise on this chain, it is enforced by code that runs without a vote, an admin key, or anyone's permission. These four mechanisms all operate automatically.</p>
 
     <div class="mech-grid">
 
       <div class="mech-card">
         <div class="mech-icon" style="background:rgba(52,211,153,0.12);color:var(--green)">◈</div>
-        <h3>Universal Basic Income</h3>
-        <p class="mech-lead">Every verified human receives an equal share of the UBI pool every 24 hours — no application, no means test, no vote.</p>
+        <h3 data-i18n="universal-basic-income">Universal Basic Income</h3>
+        <p class="mech-lead" data-i18n="every-verified-human-receives">Every verified human receives an equal share of the UBI pool every 24 hours — no application, no means test, no vote.</p>
         <div class="mech-detail">
-          <div class="mech-detail-label">The pool fills from four sources</div>
+          <div class="mech-detail-label" data-i18n="the-pool-fills-from">The pool fills from four sources</div>
           <ul>
-            <li><strong>20%</strong> of every transaction fee</li>
-            <li><strong>Wealth-cap overflow</strong> — redistributed the moment it occurs</li>
-            <li><strong>20% of demurrage</strong> charged on hoarded balances</li>
-            <li><strong>Abandoned wallets</strong> — after 2.5 years to escrow, then to the pool</li>
+            <li data-i18n="20-of-every-transaction"><strong>20%</strong> of every transaction fee</li>
+            <li data-i18n="wealthcap-overflow-redistributed-t"><strong>Wealth-cap overflow</strong> — redistributed the moment it occurs</li>
+            <li data-i18n="20-of-demurrage-charged"><strong>20% of demurrage</strong> charged on hoarded balances</li>
+            <li data-i18n="abandoned-wallets-after-25"><strong>Abandoned wallets</strong> — after 2.5 years to escrow, then to the pool</li>
           </ul>
         </div>
         <div class="mech-live">Next distribution in <strong id="mech-ubi-next">—</strong> · pool holds <strong id="mech-ubi-pool">—</strong> AEQ</div>
@@ -440,41 +442,41 @@ section{padding:60px 20px}
 
       <div class="mech-card">
         <div class="mech-icon" style="background:rgba(240,180,41,0.12);color:var(--gold)">▲</div>
-        <h3>Wealth Cap</h3>
-        <p class="mech-lead">No wallet may hold more than a fixed multiple of the average balance. Everything above that flows straight back into the pools.</p>
+        <h3 data-i18n="wealth-cap">Wealth Cap</h3>
+        <p class="mech-lead" data-i18n="no-wallet-may-hold">No wallet may hold more than a fixed multiple of the average balance. Everything above that flows straight back into the pools.</p>
         <div class="mech-detail">
-          <div class="mech-detail-label">The formula, in full</div>
+          <div class="mech-detail-label" data-i18n="the-formula-in-full">The formula, in full</div>
           <code class="mech-formula">cap = max(5, min(N, 25)) × average_balance</code>
-          <p class="mech-detail-note">N is the number of registered humans. The multiplier grows by one with each new person and locks permanently at <strong>25×</strong> from the 25th human onward — there is no admin key and no governance vote that can change it.</p>
+          <p class="mech-detail-note" data-i18n="n-is-the-number">N is the number of registered humans. The multiplier grows by one with each new person and locks permanently at <strong>25×</strong> from the 25th human onward — there is no admin key and no governance vote that can change it.</p>
         </div>
         <div class="mech-live">Currently <strong id="mech-cap">—</strong> AEQ &nbsp;·&nbsp; <span id="mech-cap-formula">—</span></div>
       </div>
 
       <div class="mech-card">
         <div class="mech-icon" style="background:rgba(155,114,246,0.12);color:var(--purple)">↻</div>
-        <h3>Demurrage</h3>
-        <p class="mech-lead">Money is a tool, not a trophy. Holding far above your fair share while doing nothing with it carries a small, steady cost.</p>
+        <h3 data-i18n="demurrage">Demurrage</h3>
+        <p class="mech-lead" data-i18n="money-is-a-tool">Money is a tool, not a trophy. Holding far above your fair share while doing nothing with it carries a small, steady cost.</p>
         <div class="mech-detail">
-          <div class="mech-detail-label">How it is charged</div>
+          <div class="mech-detail-label" data-i18n="how-it-is-charged">How it is charged</div>
           <code class="mech-formula">(balance − fair_share) × 0.5% / month</code>
-          <p class="mech-detail-note">Only after <strong>three months of inactivity</strong>, and only on the portion above your fair share. Nothing is ever destroyed — the fee is split across the four pools and returns to circulation.</p>
+          <p class="mech-detail-note" data-i18n="only-after-three-months">Only after <strong>three months of inactivity</strong>, and only on the portion above your fair share. Nothing is ever destroyed — the fee is split across the four pools and returns to circulation.</p>
         </div>
         <div class="mech-live">Fair share today: <strong id="mech-fairshare">—</strong> AEQ per human</div>
       </div>
 
       <div class="mech-card">
         <div class="mech-icon" style="background:rgba(34,211,238,0.12);color:var(--teal)">⚭</div>
-        <h3>Escrow &amp; Guardians</h3>
-        <p class="mech-lead">A wallet that falls silent for years does not lock its value away from everyone else forever.</p>
+        <h3 data-i18n="escrow-amp-guardians">Escrow &amp; Guardians</h3>
+        <p class="mech-lead" data-i18n="a-wallet-that-falls">A wallet that falls silent for years does not lock its value away from everyone else forever.</p>
         <div class="mech-detail">
-          <div class="mech-detail-label">What happens over time</div>
+          <div class="mech-detail-label" data-i18n="what-happens-over-time">What happens over time</div>
           <ul>
-            <li><strong>2.5 years</strong> inactive → balance moves to escrow, recoverable at any time</li>
-            <li><strong>+1.5 years</strong> → escrow flows into the UBI pool for everyone</li>
-            <li>A <strong>guardian</strong> you nominate can recover the wallet — after a 7-day timelock that gives you time to object</li>
+            <li data-i18n="25-years-inactive-balance"><strong>2.5 years</strong> inactive → balance moves to escrow, recoverable at any time</li>
+            <li data-i18n="15-years-escrow-flows"><strong>+1.5 years</strong> → escrow flows into the UBI pool for everyone</li>
+            <li data-i18n="a-guardian-you-nominate">A <strong>guardian</strong> you nominate can recover the wallet — after a 7-day timelock that gives you time to object</li>
           </ul>
         </div>
-        <div class="mech-live">Recovery stays possible the entire time the balance sits in escrow</div>
+        <div class="mech-live" data-i18n="recovery-stays-possible-the">Recovery stays possible the entire time the balance sits in escrow</div>
       </div>
 
     </div>
@@ -484,29 +486,29 @@ section{padding:60px 20px}
 <!-- TOKENOMICS -->
 <section style="background:var(--card);border-top:1px solid var(--border);border-bottom:1px solid var(--border)">
   <div class="section-inner">
-    <div class="section-label">Tokenomics</div>
-    <h2>Self-correcting economic mechanisms</h2>
-    <p class="section-sub">Every fee is automatically redistributed. No manual intervention, no governance vote.</p>
+    <div class="section-label" data-i18n="tokenomics">Tokenomics</div>
+    <h2 data-i18n="selfcorrecting-economic-mechanisms">Self-correcting economic mechanisms</h2>
+    <p class="section-sub" data-i18n="every-fee-is-automatically">Every fee is automatically redistributed. No manual intervention, no governance vote.</p>
     <div class="token-grid">
       <div class="token-card">
         <div class="token-pct" style="color:#9B72F6">40%</div>
-        <div class="token-name">Validators Pool</div>
-        <div class="token-desc">Node operators who secure the network earn 40% of all swap fees. Distributed daily at 20:00 Berlin time.</div>
+        <div class="token-name" data-i18n="validators-pool">Validators Pool</div>
+        <div class="token-desc" data-i18n="node-operators-who-secure">Node operators who secure the network earn 40% of all swap fees. Distributed daily at 20:00 Berlin time.</div>
       </div>
       <div class="token-card">
         <div class="token-pct" style="color:#22D3EE">30%</div>
-        <div class="token-name">Liquidity Providers</div>
-        <div class="token-desc">LP pool contributors earn 30% proportional to their share. Deeper pools = lower price impact for everyone.</div>
+        <div class="token-name" data-i18n="liquidity-providers">Liquidity Providers</div>
+        <div class="token-desc" data-i18n="lp-pool-contributors-earn">LP pool contributors earn 30% proportional to their share. Deeper pools = lower price impact for everyone.</div>
       </div>
       <div class="token-card">
         <div class="token-pct" style="color:#34D399">20%</div>
-        <div class="token-name">UBI Pool</div>
-        <div class="token-desc">20% of all fees flow into the UBI pool, split equally among all verified humans every 24 hours.</div>
+        <div class="token-name" data-i18n="ubi-pool">UBI Pool</div>
+        <div class="token-desc" data-i18n="20-of-all-fees">20% of all fees flow into the UBI pool, split equally among all verified humans every 24 hours.</div>
       </div>
       <div class="token-card">
         <div class="token-pct" style="color:#F0B429">10%</div>
-        <div class="token-name">Treasury</div>
-        <div class="token-desc">10% funds protocol development, security audits, and infrastructure — fully on-chain transparent.</div>
+        <div class="token-name" data-i18n="treasury">Treasury</div>
+        <div class="token-desc" data-i18n="10-funds-protocol-development">10% funds protocol development, security audits, and infrastructure — fully on-chain transparent.</div>
       </div>
     </div>
   </div>
@@ -515,46 +517,46 @@ section{padding:60px 20px}
 <!-- ARCHITECTURE & SECURITY -->
 <section id="architecture">
   <div class="section-inner">
-    <div class="section-label">Under the hood</div>
-    <h2>Built to be verified, not trusted</h2>
-    <p class="section-sub">Every claim on this page is checkable against a running node. The chain is open source, EVM-compatible, and every number above is served by the same API any node exposes.</p>
+    <div class="section-label" data-i18n="under-the-hood">Under the hood</div>
+    <h2 data-i18n="built-to-be-verified">Built to be verified, not trusted</h2>
+    <p class="section-sub" data-i18n="every-claim-on-this">Every claim on this page is checkable against a running node. The chain is open source, EVM-compatible, and every number above is served by the same API any node exposes.</p>
 
     <div class="arch-grid">
       <div class="arch-col">
-        <div class="arch-col-title">Consensus &amp; network</div>
+        <div class="arch-col-title" data-i18n="consensus-amp-network">Consensus &amp; network</div>
         <dl class="arch-list">
-          <dt>Consensus</dt><dd>BlockDAG with GHOSTDAG ordering — validators produce concurrently instead of competing for one slot</dd>
-          <dt>Block time</dt><dd>1 second</dd>
-          <dt>Validator entry</dt><dd>No stake required. A node operator must be a registered human — that is the whole barrier</dd>
-          <dt>Peer transport</dt><dd>libp2p, plus an independent HTTP sync path so a firewalled node still participates</dd>
-          <dt>Finality</dt><dd>Hard checkpoints; equivocating validators are slashed automatically</dd>
+          <dt data-i18n="consensus">Consensus</dt><dd data-i18n="blockdag-with-ghostdag-ordering">BlockDAG with GHOSTDAG ordering — validators produce concurrently instead of competing for one slot</dd>
+          <dt data-i18n="block-time">Block time</dt><dd data-i18n="1-second">1 second</dd>
+          <dt data-i18n="validator-entry">Validator entry</dt><dd data-i18n="no-stake-required-a">No stake required. A node operator must be a registered human — that is the whole barrier</dd>
+          <dt data-i18n="peer-transport">Peer transport</dt><dd data-i18n="libp2p-plus-an-independent">libp2p, plus an independent HTTP sync path so a firewalled node still participates</dd>
+          <dt data-i18n="finality">Finality</dt><dd data-i18n="hard-checkpoints-equivocating-vali">Hard checkpoints; equivocating validators are slashed automatically</dd>
         </dl>
       </div>
 
       <div class="arch-col">
-        <div class="arch-col-title">Identity &amp; privacy</div>
+        <div class="arch-col-title" data-i18n="identity-amp-privacy">Identity &amp; privacy</div>
         <dl class="arch-list">
-          <dt>Proof system</dt><dd>Groth16 over BN128 (circom / snarkjs)</dd>
-          <dt>What the chain stores</dt><dd>A nullifier and a one-way hash. No image, no template, no name, no document</dd>
-          <dt>What it proves</dt><dd>That this human has not registered before — and nothing else</dd>
-          <dt>Duplicate defence</dt><dd>Strength-aware multi-signal matching: a strong biometric match decides alone, weaker signals must corroborate each other</dd>
-          <dt>Recovery</dt><dd>Nominated guardian with a 7-day timelock</dd>
+          <dt data-i18n="proof-system">Proof system</dt><dd data-i18n="groth16-over-bn128-circom">Groth16 over BN128 (circom / snarkjs)</dd>
+          <dt data-i18n="what-the-chain-stores">What the chain stores</dt><dd data-i18n="a-nullifier-and-a">A nullifier and a one-way hash. No image, no template, no name, no document</dd>
+          <dt data-i18n="what-it-proves">What it proves</dt><dd data-i18n="that-this-human-has">That this human has not registered before — and nothing else</dd>
+          <dt data-i18n="duplicate-defence">Duplicate defence</dt><dd data-i18n="strengthaware-multisignal-matching">Strength-aware multi-signal matching: a strong biometric match decides alone, weaker signals must corroborate each other</dd>
+          <dt data-i18n="recovery">Recovery</dt><dd data-i18n="nominated-guardian-with-a">Nominated guardian with a 7-day timelock</dd>
         </dl>
       </div>
 
       <div class="arch-col">
-        <div class="arch-col-title">Chain &amp; compatibility</div>
+        <div class="arch-col-title" data-i18n="chain-amp-compatibility">Chain &amp; compatibility</div>
         <dl class="arch-list">
-          <dt>Chain ID</dt><dd>1926 — add it to MetaMask like any EVM network</dd>
-          <dt>EVM</dt><dd>Full go-ethereum execution; standard tooling works unchanged</dd>
-          <dt>Precision</dt><dd>6 decimals (1 AEQ = 1,000,000 micro-AEQ)</dd>
-          <dt>Transaction fee</dt><dd>0.1%, redistributed — never burned, never kept by an operator</dd>
-          <dt>State</dt><dd>PostgreSQL per node, reconstructable from the chain alone</dd>
+          <dt data-i18n="chain-id">Chain ID</dt><dd data-i18n="1926-add-it-to">1926 — add it to MetaMask like any EVM network</dd>
+          <dt data-i18n="evm">EVM</dt><dd data-i18n="full-goethereum-execution-standard">Full go-ethereum execution; standard tooling works unchanged</dd>
+          <dt data-i18n="precision">Precision</dt><dd data-i18n="6-decimals-1-aeq">6 decimals (1 AEQ = 1,000,000 micro-AEQ)</dd>
+          <dt data-i18n="transaction-fee">Transaction fee</dt><dd data-i18n="01-redistributed-never-burned">0.1%, redistributed — never burned, never kept by an operator</dd>
+          <dt data-i18n="state">State</dt><dd data-i18n="postgresql-per-node-reconstructabl">PostgreSQL per node, reconstructable from the chain alone</dd>
         </dl>
       </div>
     </div>
 
-    <div class="arch-note">
+    <div class="arch-note" data-i18n="no-premine-no-founder">
       <strong>No pre-mine. No founder allocation. No admin key.</strong>
       Total supply equals verified humans × 1,000 AEQ — the supply cannot grow except by a human joining, and no address can be granted an exception to the wealth cap.
     </div>
@@ -564,21 +566,21 @@ section{padding:60px 20px}
 <!-- SOCIAL -->
 <section id="social" style="background:var(--card);border-top:1px solid var(--border);border-bottom:1px solid var(--border)">
   <div class="section-inner">
-    <div class="section-label" style="text-align:center">Social media</div>
-    <h2 style="text-align:center">Where the network talks</h2>
-    <p class="section-sub" style="text-align:center;margin-left:auto;margin-right:auto">Announcements, the state of the chain, and the awkward questions &mdash; in public, on both.</p>
+    <div class="section-label" style="text-align:center" data-i18n="social-media">Social media</div>
+    <h2 style="text-align:center" data-i18n="where-the-network-talks">Where the network talks</h2>
+    <p class="section-sub" style="text-align:center;margin-left:auto;margin-right:auto" data-i18n="announcements-the-state-of">Announcements, the state of the chain, and the awkward questions &mdash; in public, on both.</p>
     <div class="social-grid">
       <a class="social-card" href="https://x.com/AequitasMoney" target="_blank" rel="noopener noreferrer">
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/></svg>
         <div class="social-name">X</div>
-        <div class="social-handle">@AequitasMoney</div>
-        <div class="social-desc">Announcements, and what the chain is actually doing. Short form.</div>
+        <div class="social-handle" data-i18n="aequitasmoney">@AequitasMoney</div>
+        <div class="social-desc" data-i18n="announcements-and-what-the">Announcements, and what the chain is actually doing. Short form.</div>
       </a>
       <a class="social-card" href="https://t.me/aequitasmoney" target="_blank" rel="noopener noreferrer">
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M11.944 0A12 12 0 0 0 0 12a12 12 0 0 0 12 12 12 12 0 0 0 12-12A12 12 0 0 0 12 0a12 12 0 0 0-.056 0zm4.962 7.224c.1-.002.321.023.465.14a.506.506 0 0 1 .171.325c.016.093.036.306.02.472-.18 1.898-.962 6.502-1.36 8.627-.168.9-.499 1.201-.82 1.23-.696.065-1.225-.46-1.9-.902-1.056-.693-1.653-1.124-2.678-1.8-1.185-.78-.417-1.21.258-1.91.177-.184 3.247-2.977 3.307-3.23.007-.032.014-.15-.056-.212s-.174-.041-.249-.024c-.106.024-1.793 1.14-5.061 3.345-.48.33-.913.49-1.302.48-.428-.008-1.252-.241-1.865-.44-.752-.245-1.349-.374-1.297-.789.027-.216.325-.437.893-.663 3.498-1.524 5.83-2.529 6.998-3.014 3.332-1.386 4.025-1.627 4.476-1.635z"/></svg>
-        <div class="social-name">Telegram</div>
-        <div class="social-handle">t.me/aequitasmoney</div>
-        <div class="social-desc">The open group: questions, node operators, and help getting registered.</div>
+        <div class="social-name" data-i18n="telegram">Telegram</div>
+        <div class="social-handle" data-i18n="tmeaequitasmoney">t.me/aequitasmoney</div>
+        <div class="social-desc" data-i18n="the-open-group-questions">The open group: questions, node operators, and help getting registered.</div>
       </a>
     </div>
   </div>
@@ -588,14 +590,14 @@ section{padding:60px 20px}
 <section>
   <div class="section-inner">
     <div class="cta-section">
-      <div class="section-label" style="text-align:center">Get started</div>
-      <h2>Join the fairest currency on Earth</h2>
-      <p>Download the Aequitas app, scan your biometrics, and receive 1,000 AEQ within 1 second. No fees, no investment, no prerequisites.</p>
+      <div class="section-label" style="text-align:center" data-i18n="get-started">Get started</div>
+      <h2 data-i18n="join-the-fairest-currency">Join the fairest currency on Earth</h2>
+      <p data-i18n="download-the-aequitas-app">Download the Aequitas app, scan your biometrics, and receive 1,000 AEQ within 1 second. No fees, no investment, no prerequisites.</p>
       <div class="hero-btns">
-        <a href="/download/app.apk" class="btn-primary">📱 Download Aequitas App (Android)</a>
-        <a href="/register" class="btn-secondary">🌐 Open Explorer</a>
+        <a href="/download/app.apk" class="btn-primary" data-i18n="download-aequitas-app-android">📱 Download Aequitas App (Android)</a>
+        <a href="/register" class="btn-secondary" data-i18n="open-explorer">🌐 Open Explorer</a>
       </div>
-      <p style="font-size:0.75rem;color:var(--muted);margin-top:20px">Chain ID 1926 · EVM Compatible · Open Source · <a href="https://github.com/hanoi96international-gif/Aequitas" style="color:var(--purple)">View on GitHub</a></p>
+      <p style="font-size:0.75rem;color:var(--muted);margin-top:20px">Chain ID 1926 · EVM Compatible · Open Source · <a href="https://github.com/hanoi96international-gif/Aequitas" style="color:var(--purple)" data-i18n="view-on-github">View on GitHub</a></p>
     </div>
   </div>
 </section>
@@ -603,19 +605,19 @@ section{padding:60px 20px}
 <!-- FOOTER -->
 <footer>
   <div class="footer-links">
-    <a href="/register">Register</a>
-    <a href="/explorer">Block Explorer</a>
-    <a href="/index/score">Equality Score</a>
-    <a href="/network">Network</a>
-    <a href="/exchange">Exchange</a>
-    <a href="/download/node-guide-en.pdf">Node Guide (EN)</a>
-    <a href="/download/node-guide-de.pdf">Node Guide (DE)</a>
-    <a href="https://github.com/hanoi96international-gif/Aequitas">GitHub</a>
+    <a href="/register" data-i18n="register-2">Register</a>
+    <a href="/explorer" data-i18n="block-explorer">Block Explorer</a>
+    <a href="/index/score" data-i18n="equality-score">Equality Score</a>
+    <a href="/network" data-i18n="network-2">Network</a>
+    <a href="/exchange" data-i18n="exchange-2">Exchange</a>
+    <a href="/download/node-guide-en.pdf" data-i18n="node-guide-en">Node Guide (EN)</a>
+    <a href="/download/node-guide-de.pdf" data-i18n="node-guide-de">Node Guide (DE)</a>
+    <a href="https://github.com/hanoi96international-gif/Aequitas" data-i18n="github">GitHub</a>
     <a href="https://x.com/AequitasMoney" target="_blank" rel="noopener noreferrer" class="social"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/></svg>@AequitasMoney</a>
     <a href="https://t.me/aequitasmoney" target="_blank" rel="noopener noreferrer" class="social"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M11.944 0A12 12 0 0 0 0 12a12 12 0 0 0 12 12 12 12 0 0 0 12-12A12 12 0 0 0 12 0a12 12 0 0 0-.056 0zm4.962 7.224c.1-.002.321.023.465.14a.506.506 0 0 1 .171.325c.016.093.036.306.02.472-.18 1.898-.962 6.502-1.36 8.627-.168.9-.499 1.201-.82 1.23-.696.065-1.225-.46-1.9-.902-1.056-.693-1.653-1.124-2.678-1.8-1.185-.78-.417-1.21.258-1.91.177-.184 3.247-2.977 3.307-3.23.007-.032.014-.15-.056-.212s-.174-.041-.249-.024c-.106.024-1.793 1.14-5.061 3.345-.48.33-.913.49-1.302.48-.428-.008-1.252-.241-1.865-.44-.752-.245-1.349-.374-1.297-.789.027-.216.325-.437.893-.663 3.498-1.524 5.83-2.529 6.998-3.014 3.332-1.386 4.025-1.627 4.476-1.635z"/></svg>Telegram</a>
   </div>
-  <p>Aequitas Chain · Chain ID 1926 · <span>aequitas.digital</span> · Launched June 2026</p>
-  <p style="margin-top:6px">"<em>Money exists because people exist. Nothing more, nothing less.</em>"</p>
+  <p data-i18n="aequitas-chain-chain-id">Aequitas Chain · Chain ID 1926 · <span>aequitas.digital</span> · Launched June 2026</p>
+  <p style="margin-top:6px" data-i18n="money-exists-because-people">"<em>Money exists because people exist. Nothing more, nothing less.</em>"</p>
 </footer>
 
 <script src="/landing.js"></script>
