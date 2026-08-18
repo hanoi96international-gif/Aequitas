@@ -423,11 +423,6 @@ input[type=number]::-webkit-inner-spin-button{opacity:0.5}
 .pool4-timer{font-size:0.76rem;font-weight:600;margin-bottom:7px}
 .pool4-desc{font-size:0.75rem;color:var(--muted);line-height:1.75}
 /* ── EXPLORE CARDS ───────────────────────────────────────────── */
-.expl-card{background:var(--card);border:1px solid var(--border);border-radius:var(--radius-sm);padding:14px;cursor:pointer;transition:all 0.2s}
-.expl-card:hover{border-color:rgba(139,92,246,0.4);background:rgba(139,92,246,0.06);transform:translateY(-2px);box-shadow:var(--glow-purple)}
-.expl-icon{font-size:1.13rem;margin-bottom:6px}
-.expl-name{font-size:0.79rem;font-weight:700;color:var(--text);margin-bottom:4px}
-.expl-desc{font-size:0.75rem;color:var(--muted);line-height:1.7}
 /* ── SUB-TAB NAVIGATION ─────────────────────────────────────── */
 .stabs{display:flex;gap:2px;padding:8px 20px 0;overflow-x:auto;background:var(--card2);border-bottom:1px solid var(--border);-webkit-overflow-scrolling:touch;scrollbar-width:none}
 .stabs::-webkit-scrollbar{display:none}
