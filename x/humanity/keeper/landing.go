@@ -57,7 +57,7 @@ const landingHTML = `<!DOCTYPE html>
 }
 html{scroll-behavior:smooth}
 section[id]{scroll-margin-top:122px}
-body{background:var(--bg);color:var(--text);font-family:'Inter',-apple-system,sans-serif;line-height:1.6;overflow-x:hidden}
+body{background:var(--bg);color:var(--text);font-family:'Inter',-apple-system,sans-serif;line-height:1.6;overflow-x:hidden;overflow-wrap:break-word}
 
 /* ── NAV ─────────────────────────────────────────────────────── */
 /* The header is the explorer's, deliberately down to the pixel values. This
