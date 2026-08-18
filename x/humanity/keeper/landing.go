@@ -31,14 +31,25 @@ body{background:var(--bg);color:var(--text);font-family:'Inter',-apple-system,sa
    which entry is active. Values lifted from explorer.css so the two cannot
    drift apart by being retyped. */
 nav{position:fixed;top:0;left:0;right:0;z-index:100;background:rgba(12,14,22,0.92);backdrop-filter:blur(12px);border-bottom:1px solid var(--border);display:flex;flex-direction:column}
-.nav-top{padding:10px 24px;display:flex;align-items:center;justify-content:space-between}
+nav::before{content:'';position:absolute;top:0;left:0;right:0;height:2px;background:var(--grad);opacity:0.8}
+.nav-top{padding:0 24px;height:60px;display:flex;align-items:center;justify-content:space-between;gap:10px}
+/* Lifted from explorer.css .logo-wrap/.logo-icon/.logo-text/.logo-sub. The
+   previous edit replaced the whole nav block and dropped these rules with it,
+   so the brand rendered as a bare underlined link — visible in the screenshot
+   as purple underlined AEQUITAS with no gradient tile. */
+.logo-wrap{display:flex;align-items:center;gap:12px;flex-shrink:0;text-decoration:none;position:relative;z-index:1}
+.logo-icon{width:34px;height:34px;border-radius:9px;background:var(--grad);display:flex;align-items:center;justify-content:center;font-size:17px;box-shadow:0 0 24px rgba(155,114,246,0.18)}
+.logo-text{font-size:1rem;font-weight:900;letter-spacing:3px;background:var(--grad);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent}
+.logo-sub{font-size:0.48rem;color:var(--muted);letter-spacing:2.5px;text-transform:uppercase}
 .tabs{border-top:1px solid var(--border);padding:8px 18px;display:flex;overflow-x:auto;-webkit-overflow-scrolling:touch;scrollbar-width:none;gap:6px}
 .tabs::-webkit-scrollbar{display:none}
 .tab{padding:10px 16px;font-size:0.65rem;color:var(--muted);text-decoration:none;border-radius:20px;letter-spacing:0.5px;font-weight:600;white-space:nowrap;transition:all 0.2s;flex-shrink:0;border:1px solid transparent}
 .tab:hover{color:var(--text);background:rgba(255,255,255,0.04)}
 .tab.active{color:#fff;background:var(--grad);box-shadow:0 0 24px rgba(155,114,246,0.18);border-color:transparent}
 @media(max-width:600px){
-.nav-top{padding:8px 14px}
+.nav-top{padding:0 14px;height:56px}
+.logo-icon{width:30px;height:30px;font-size:15px}
+.logo-text{font-size:0.9rem;letter-spacing:2px}
 .tabs{padding:6px 10px;gap:4px}
 .tab{padding:9px 13px}
 }
@@ -203,12 +214,9 @@ section{padding:60px 20px}
 <!-- NAV -->
 <nav>
   <div class="nav-top">
-    <a href="/" class="nav-logo">
-      <div class="nav-icon">⚖</div>
-      <div>
-        <div class="nav-brand">AEQUITAS</div>
-        <div class="nav-sub">PROOF OF HUMANITY</div>
-      </div>
+    <a href="/" class="logo-wrap">
+      <div class="logo-icon">⚖</div>
+      <div><div class="logo-text">AEQUITAS</div><div class="logo-sub">PROOF OF HUMANITY</div></div>
     </a>
   </div>
   <div class="tabs">
