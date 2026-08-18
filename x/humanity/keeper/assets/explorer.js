@@ -2444,8 +2444,17 @@ async function drawGiniHistoryChart() {
     ctx.strokeStyle='rgba(0,255,209,0.55)'; ctx.lineWidth=1.5; ctx.setLineDash([6,5]);
     ctx.beginPath(); ctx.moveTo(pad.l,targetY); ctx.lineTo(W-pad.r,targetY); ctx.stroke();
     ctx.setLineDash([]); ctx.restore();
-    ctx.fillStyle='rgba(4,120,87,0.85)'; ctx.font='bold 9px JetBrains Mono,monospace'; ctx.textAlign='right';
-    ctx.fillText('TARGET 0.30', W-pad.r-2, targetY-5);
+    // Names both scales. This axis is the Index (0-100); the surrounding copy
+    // and the whole project talk in Gini (0-1). Printing only "0.30" beside an
+    // Index axis is what let the point label below be read on the wrong scale.
+    //
+    // Anchored LEFT: the latest-value label sits at the right, beside the final
+    // data point, so putting both on the same side made them overlap each other
+    // and the curve on a phone-width canvas.
+    ctx.fillStyle='rgba(4,120,87,0.85)'; ctx.font='bold 9px JetBrains Mono,monospace'; ctx.textAlign='left';
+    var tgtLong='TARGET  INDEX 30 = GINI 0.30', tgtShort='TARGET 30';
+    var tgtTxt = ctx.measureText(tgtLong).width <= (W-pad.l-pad.r)*0.62 ? tgtLong : tgtShort;
+    ctx.fillText(tgtTxt, pad.l+2, targetY-5);
     // bezier path helper
     var pathBez = function(pts) {
       ctx.moveTo(toX(0), toY(pts[0].idx));
@@ -2474,13 +2483,42 @@ async function drawGiniHistoryChart() {
       ctx.beginPath(); ctx.arc(x,y,2,0,2*Math.PI); ctx.fillStyle='#fff'; ctx.fill();
     });
     // latest value label
+    // FIX: this printed lpt.idx — the Aequitas Index, the 0-100 value this
+    // whole chart is plotted on — under the label "Gini", the 0-1 value.
+    // On screen that read "Gini: 9.581" directly beside "TARGET 0.30",
+    // i.e. thirty-two times over target, when the chain was actually at
+    // Gini 0.096, comfortably under it. The chart was stating the exact
+    // opposite of the one number this project is built on. Both scales are
+    // now shown, so neither can be read as the other.
     var lpt=history[history.length-1], lx=toX(history.length-1), ly=toY(lpt.idx);
+    var lgini = (typeof lpt.gini === 'number') ? lpt.gini : lpt.idx/100;
     ctx.fillStyle='rgba(200,168,76,0.95)'; ctx.font='bold 11px JetBrains Mono,monospace';
-    ctx.textAlign = lx>W*0.7?'right':'left';
-    ctx.fillText('Gini: '+lpt.idx.toFixed(3), lx+(lx>W*0.7?-8:8), ly-9);
+    // Drop the parenthetical Gini on a canvas too narrow to hold it rather
+    // than letting it run over the curve.
+    var lLong='Index '+lpt.idx.toFixed(1)+'  (Gini '+lgini.toFixed(3)+')';
+    var lShort='Index '+lpt.idx.toFixed(1);
+    var llabel = ctx.measureText(lLong).width <= (W-pad.l-pad.r)*0.55 ? lLong : lShort;
+    var lw = ctx.measureText(llabel).width;
+    // Right-align once the label would otherwise run off the canvas, and clamp
+    // so it can never start left of the plot area.
+    var lright = lx + 8 + lw > W - pad.r;
+    ctx.textAlign = lright ? 'right' : 'left';
+    var lxPos = lright ? Math.max(lx-8, pad.l+lw) : lx+8;
+    // The target line is a fixed horizontal at Index 30. When the latest point
+    // sits close to it the label collides with the dashes, so flip below.
+    var lyPos = (Math.abs(ly-targetY) < 18) ? ly+18 : ly-9;
+    ctx.fillText(llabel, lxPos, lyPos);
     // title
+    // The long form does not fit a phone-width canvas — it was being cut
+    // mid-sentence at the right edge ("... 100 ="). Canvas does not wrap or
+    // ellipsize, so pick the form that fits.
     ctx.fillStyle='rgba(107,70,193,0.55)'; ctx.font='10px Inter,sans-serif'; ctx.textAlign='left';
-    ctx.fillText('GINI INDEX HISTORY  —  0 = perfect equality  ·  100 = max inequality', pad.l, 20);
+    var tLong = 'GINI INDEX HISTORY  —  0 = perfect equality  ·  100 = max inequality';
+    var tShort = 'GINI INDEX HISTORY  —  0 = equal  ·  100 = unequal';
+    var avail = W - pad.l - pad.r;
+    var title = ctx.measureText(tLong).width <= avail ? tLong
+              : (ctx.measureText(tShort).width <= avail ? tShort : 'GINI INDEX HISTORY');
+    ctx.fillText(title, pad.l, 20);
   } catch(e) {}
 }
 

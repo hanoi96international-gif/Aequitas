@@ -190,3 +190,32 @@ func TestExplorerCSS_KnightDAGBadgeIsNotHiddenOnPhones(t *testing.T) {
 			"this was hiding it on every screen narrower than the breakpoint, i.e. most phones")
 	}
 }
+
+// The Gini history chart plots pt.idx — the Aequitas Index, a 0-100 value —
+// against a 0-100 axis. Its latest-value label printed that same number under
+// the word "Gini", the 0-1 value, directly beside a target line reading
+// "TARGET 0.30". On screen that read as Gini 9.581 against a target of 0.30:
+// thirty-two times over target, when the chain was actually at Gini 0.096,
+// comfortably under it. The chart asserted the exact opposite of the one
+// number this whole project is built on.
+//
+// Guards the specific confusion, not the wording: an idx value must never be
+// formatted under a bare "Gini" label.
+func TestExplorerJS_GiniChartDoesNotLabelIndexAsGini(t *testing.T) {
+	for _, bad := range []string{
+		"'Gini: '+lpt.idx",
+		"'Gini: ' + lpt.idx",
+		"'Gini '+lpt.idx",
+	} {
+		if strings.Contains(explorerJS, bad) {
+			t.Errorf("explorer.js formats %s — that prints the 0-100 Index under the"+
+				" name of the 0-1 Gini, making the chain look far worse than it is", bad)
+		}
+	}
+	// The fix keeps both scales on screen; if neither name survives, the label
+	// has been rewritten into something this test can no longer vouch for.
+	if !strings.Contains(explorerJS, "INDEX 30 = GINI 0.30") {
+		t.Error("explorer.js no longer states the Index/Gini equivalence on the target line —" +
+			" a bare number beside a 0-100 axis is what caused the original misreading")
+	}
+}

@@ -99,7 +99,7 @@
     <div style="position:absolute;top:0;left:0;right:0;height:2px;background:linear-gradient(90deg,var(--neon),var(--purple))"></div>
     <div style="font-size:0.9rem;font-weight:700;font-family:var(--font-display);color:var(--neon);margin-bottom:4px;line-height:1.4" data-i18n="usp-headline">For the first time in history — everyone starts equal</div>
     <div style="font-size:0.79rem;color:var(--muted);margin-bottom:16px;line-height:1.7" data-i18n="usp-sub">If you own an Android smartphone, you qualify. No bank, no crypto background, no investment needed.</div>
-    <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:8px">
+    <div class="rwd-1col" style="display:grid;grid-template-columns:repeat(2,1fr);gap:8px">
       <div style="background:var(--card);border:1px solid rgba(0,255,209,0.15);border-radius:var(--radius-sm);padding:12px">
         <div style="font-size:0.82rem;font-weight:700;color:var(--neon);margin-bottom:4px" data-i18n="usp-c1-title">0.00 Start Investment</div>
         <div style="font-size:0.76rem;color:var(--muted);line-height:1.75" data-i18n="usp-c1-desc">Registration is completely gasless. No ETH, no MATIC, no credit card. The protocol pays all fees on your behalf.</div>
@@ -601,7 +601,7 @@
         <div style="font-size:0.74rem;color:var(--muted);margin-top:4px" data-i18n="humans-desc">Biometrically verified unique humans</div>
       </div>
     </div>
-    <div style="margin-top:20px;display:grid;grid-template-columns:1fr 1fr;gap:10px">
+    <div class="rwd-1col" style="margin-top:20px;display:grid;grid-template-columns:1fr 1fr;gap:10px">
       <div style="background:var(--card2);border:1px solid rgba(6,182,212,0.2);border-radius:var(--radius-sm);padding:16px">
         <div style="font-size:0.77rem;color:var(--teal);letter-spacing:1.5px;text-transform:uppercase;margin-bottom:10px;font-weight:600" data-i18n="gini-what-title">What is the Gini Coefficient?</div>
         <div style="font-size:0.8rem;color:var(--muted);line-height:1.9" data-i18n="gini-what-text">Developed by Italian statistician Corrado Gini (1912). It measures wealth distribution by comparing the actual balance distribution against a hypothetical perfectly equal baseline — visualized as the Lorenz curve. The coefficient equals the ratio of the area between the Lorenz curve and the diagonal of equality to the total area below that diagonal. Scale: 0 means every person holds identical wealth. 1 means one person holds all wealth in existence. Used by the World Bank, OECD, and UN to compare countries. Reference values: Bitcoin ≈ 0.85 · South Africa (world record) ≈ 0.63 · Brazil ≈ 0.53 · USA ≈ 0.41 · Germany ≈ 0.31 · Scandinavia ≈ 0.27 · Aequitas long-term target: Gini below 0.30 — comparable to Scandinavian countries, enforced by wealth cap (bootstrap: 5×→25× per human).</div>
@@ -819,7 +819,7 @@
   </div>
 
   <!-- HOW IT WORKS -->
-  <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px">
+  <div class="rwd-1col" style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px">
     <div class="idx">
       <div class="idx-title">The Core Innovation</div>
       <div style="font-size:0.81rem;color:var(--muted);line-height:1.9">
@@ -872,7 +872,7 @@
   <div class="idx" style="margin-bottom:16px;background:linear-gradient(135deg,rgba(8,145,178,0.05),rgba(107,70,193,0.03));border-color:rgba(8,145,178,0.2)">
     <div class="idx-title" style="color:var(--teal)">Guardian System &#8212; Human Failsafe for Lost Wallets</div>
     <div style="font-size:0.81rem;color:var(--muted);line-height:1.9;margin-bottom:14px">What happens when someone is hospitalized, incarcerated, or dies? In most crypto systems, lost wallets mean lost coins forever. Aequitas has a three-layer inactivity recovery system.</div>
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px">
+    <div class="rwd-1col" style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px">
       <div>
         <div style="font-size:0.77rem;color:var(--teal);font-weight:700;letter-spacing:1px;text-transform:uppercase;margin-bottom:8px">What is a Guardian?</div>
         <div style="font-size:0.79rem;color:var(--muted);line-height:1.85">A Guardian is a <strong style="color:var(--text)">trusted verified human</strong> you designate. They have exactly one power: confirming you are still alive. They cannot move funds, transfer AEQ, or access your wallet under any circumstances. Maximum 3 wards per Guardian prevents centralization of trust.</div>
@@ -902,7 +902,7 @@
   <!-- PROOF OF ALIVE -->
   <div class="idx" style="margin-bottom:16px">
     <div class="idx-title">Sybil Resistance &#8212; Current State, Honestly</div>
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:12px">
+    <div class="rwd-1col" style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:12px">
       <div>
         <div style="font-size:0.77rem;color:var(--purple);font-weight:700;letter-spacing:1px;text-transform:uppercase;margin-bottom:8px">Why Device Keys?</div>
         <div style="font-size:0.79rem;color:var(--muted);line-height:1.85">Sybil resistance &#8212; preventing one person from registering multiple wallets &#8212; is the core unsolved problem of fair money distribution. Aequitas today uses device-bound Zero-Knowledge Proofs: mathematically proven control of a device key with <strong style="color:var(--text)">zero personal data exposed</strong>. This is a step toward Sybil resistance, not yet a complete solution &#8212; see below.</div>

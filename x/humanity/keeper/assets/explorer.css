@@ -366,6 +366,12 @@ input[type=number]::-webkit-inner-spin-button{opacity:0.5}
 .path-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
 @media(max-width:580px){.path-grid{grid-template-columns:1fr}}
 .deploy-opts{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+/* .rwd-1col collapses a grid that is pinned to two columns by an inline
+   style. It was defined here but applied to nothing — meanwhile five
+   prose grids sat at a hardcoded 1fr 1fr, which on a 390px phone is a
+   ~145px column: two or three German words per line, and three of them
+   measurably pushed their text past the card border (23px, 29px, 17px).
+   !important is required to beat the inline style. */
 @media(max-width:480px){.deploy-opts{grid-template-columns:1fr}.rwd-1col{grid-template-columns:1fr!important}}
 /* ── SWAP ENHANCEMENTS ────────────────────────────────────── */
 .sd-panel{background:var(--card2);border:1px solid rgba(139,92,246,0.18);border-radius:var(--radius-sm);padding:13px;margin:8px 0;animation:sdIn 0.18s ease}
