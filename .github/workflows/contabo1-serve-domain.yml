@@ -39,7 +39,18 @@ jobs:
       - name: Refuse unless DNS already points at Contabo1
         run: |
           ip=$(getent hosts aequitas.digital | awk '{print $1}' | head -1)
-          echo "aequitas.digital -> ${ip:-<unresolved>}"
+          wip=$(getent hosts www.aequitas.digital | awk '{print $1}' | head -1)
+          echo "aequitas.digital     -> ${ip:-<unresolved>}"
+          echo "www.aequitas.digital -> ${wip:-<unresolved>}"
+          if [ "$wip" != "173.249.37.118" ]; then
+            echo ""
+            echo "WARNING: www does not point at Contabo1. deploy/Caddyfile serves"
+            echo "'aequitas.digital, www.aequitas.digital', so Caddy will request a"
+            echo "certificate for www too and retry that request indefinitely while the"
+            echo "name does not resolve here. The apex is unaffected. Either add the www"
+            echo "A record, or drop www from deploy/Caddyfile."
+            echo ""
+          fi
           if [ "$ip" = "173.249.37.118" ]; then
             echo "DNS is correct — proceeding"; exit 0
           fi
@@ -132,8 +143,50 @@ jobs:
               if [ "$code" = "200" ]; then echo "https://aequitas.digital/api/status -> 200 after $((i*5))s"; ok=1; break; fi
               sleep 5
             done
-
-            echo "=== result ==="
-            curl -s -m 10 https://aequitas.digital/api/status | head -c 220; echo
-            echo "proof1 still up? -> $(curl -s -o /dev/null -w '%{http_code}' -m 10 https://proof1.aequitas.digital/health)"
             [ "$ok" = "1" ] || { echo "certificate not issued yet — Caddy keeps retrying; check 'docker logs proof-caddy'"; exit 1; }
+
+            # HTTP 200 was never the problem. 69.46.46.73 answered 200 with a
+            # well-formed /api/status for a chain at height 96 and 0 humans, which
+            # is exactly why every app install talked to an empty chain without a
+            # single check going red. So assert the numbers, not the status code.
+            echo "=== is this the real chain? ==="
+            status=$(curl -s -m 10 https://aequitas.digital/api/status)
+            echo "$status" | head -c 400; echo
+            height=$(echo "$status" | grep -o '"height"[[:space:]]*:[[:space:]]*[0-9]*' | head -1 | grep -o '[0-9]*$' || true)
+            humans=$(echo "$status" | grep -o '"total_humans"[[:space:]]*:[[:space:]]*[0-9]*' | head -1 | grep -o '[0-9]*$' || true)
+            evmid=$(echo "$status" | grep -o '"chain_evm_id"[[:space:]]*:[[:space:]]*[0-9]*' | head -1 | grep -o '[0-9]*$' || true)
+            echo "height=${height:-?} total_humans=${humans:-?} chain_evm_id=${evmid:-?}"
+            [ -n "$height" ] && [ "$height" -ge 1000000 ] \
+              || { echo "WRONG CHAIN: height '${height:-<none>}' — the domain is not serving this validator"; exit 1; }
+            [ "$evmid" = "1926" ] \
+              || { echo "WRONG CHAIN: chain_evm_id '${evmid:-<none>}' (expected 1926)"; exit 1; }
+
+            # The three endpoints the shipped app hardcodes (app repo,
+            # lib/config.ts): API_BASE, RPC_URL, WEBAPP. All three, not just the
+            # first, because an install fails on whichever one is missing.
+            echo "=== /rpc ==="
+            rpc=$(curl -s -m 10 -X POST https://aequitas.digital/rpc \
+              -H 'Content-Type: application/json' \
+              -d '{"jsonrpc":"2.0","id":1,"method":"eth_chainId","params":[]}' || true)
+            echo "$rpc"
+            echo "$rpc" | grep -q '"result":"0x786"' \
+              || { echo "RPC did not answer chain id 0x786 (1926)"; exit 1; }
+
+            echo "=== landing page ==="
+            lp=$(curl -s -o /dev/null -w '%{http_code}' -m 10 https://aequitas.digital/ || true)
+            echo "GET / -> $lp"
+            [ "$lp" = "200" ] || { echo "the landing page returned $lp"; exit 1; }
+
+            echo "=== www ==="
+            wcode=$(curl -s -o /dev/null -w '%{http_code}' -m 10 https://www.aequitas.digital/api/status || true)
+            echo "www -> $wcode"
+            [ "$wcode" = "200" ] || echo "WARNING: www is not serving (see the DNS note at the top of this run)"
+
+            echo "=== proof1 must still be up ==="
+            p1=$(curl -s -o /dev/null -w '%{http_code}' -m 10 https://proof1.aequitas.digital/health || true)
+            echo "proof1 -> $p1"
+            [ "$p1" = "200" ] \
+              || { echo "REGRESSION: proof1 is no longer healthy. Restore /etc/caddy/Caddyfile.bak-* inside proof-caddy and reload — see docs/LAUNCH_2026-08-18.md"; exit 1; }
+
+            echo ""
+            echo "aequitas.digital serves the real chain over TLS, and proof1 is untouched."
