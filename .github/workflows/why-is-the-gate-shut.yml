@@ -1,0 +1,77 @@
+name: Why is Contabo2's production gate shut (read-only)
+
+# Slashing is ruled out (2026-08-18): validator_penalties is empty on
+# Contabo2, the only equivocation_evidence rows are old, against
+# 0x92cbedec..., and all have slash_applied = false, and neither box has a
+# [SLASHING] log line. The node is not being punished — it is holding itself
+# back, and it says so 160 times in three minutes:
+#
+#   [BLOCK] Not yet 3 consecutive clean sync cycles with every trusted seed
+#           — skipping block production regardless of height-based gates
+#
+# Exactly two things reset cleanSyncStreak, and sync_streak_stats.go exists
+# because which one it is "has been inferred from logs three times and guessed
+# wrong twice". The counters are already exposed on /api/health/combined, so
+# this reads them rather than adding a fourth guess.
+#
+#   resets_unmerged   a block failed for a real reason — bad signature,
+#                     unauthorized proposer, finality violation, far-ahead
+#                     fork. An immediate reset is correct and must not be
+#                     softened.
+#   resets_deferrals  parents did not arrive in the grace window. Ambiguous:
+#                     a backlog and a fork both look like this.
+#   backlog_escapes   how often the separation between those two actually
+#                     fired. Zero with a shut gate means the escape is
+#                     unreachable; climbing with a shut gate means it works
+#                     and something else holds the streak down.
+#
+# Read-only: two GETs against the node's own localhost.
+
+on:
+  workflow_dispatch: {}
+
+jobs:
+  gate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Read the streak counters on Contabo2
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: 194.163.188.71
+          username: root
+          key: ${{ secrets.CONTABO2_SSH_KEY }}
+          port: 22
+          fingerprint: "SHA256:VIwj7Faxiga2n45HVHZEQFPxcbRKHgSgHoxAFsf2wto"
+          script_stop: false
+          timeout: 240s
+          command_timeout: 240s
+          script: |
+            set -uo pipefail
+
+            echo "===== sync_streak — why the gate is shut ====="
+            curl -s -m 20 http://localhost:8080/api/health/combined \
+              | tr ',' '\n' \
+              | grep -E 'clean_cycles|resets_unmerged|resets_deferrals|resets_both|backlog_escapes|gate_skips' \
+              | sed 's/[{}"]//g;s/^/  /'
+
+            echo ""
+            echo "===== the same counters 60s later, to see which one is MOVING ====="
+            # A static count says what happened since boot; the delta says what
+            # is happening now, which is the question.
+            sleep 60
+            curl -s -m 20 http://localhost:8080/api/health/combined \
+              | tr ',' '\n' \
+              | grep -E 'clean_cycles|resets_unmerged|resets_deferrals|resets_both|backlog_escapes|gate_skips' \
+              | sed 's/[{}"]//g;s/^/  /'
+
+            echo ""
+            echo "===== how far behind is it, if at all ====="
+            LOCAL=$(curl -s -m 15 http://localhost:8080/api/status | grep -o '"height":[0-9]*' | cut -d: -f2)
+            PEER=$(curl -s -m 15 http://173.249.37.118:8080/api/status | grep -o '"height":[0-9]*' | cut -d: -f2)
+            echo "  contabo2=$LOCAL contabo1=$PEER lag=$(( ${PEER:-0} - ${LOCAL:-0} ))"
+
+            echo ""
+            echo "===== what it is actually failing on, in its own words ====="
+            docker logs --tail 600 aequitas-node 2>&1 \
+              | grep -iE 'unauthorized|bad signature|finality violation|far-ahead|deferr|orphan|unmerged' \
+              | tail -12 | sed 's/^/  /' || echo "  (no such line in the last 600)"
