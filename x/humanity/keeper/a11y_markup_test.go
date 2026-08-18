@@ -219,3 +219,27 @@ func TestExplorerJS_GiniChartDoesNotLabelIndexAsGini(t *testing.T) {
 			" a bare number beside a 0-100 axis is what caused the original misreading")
 	}
 }
+
+// min-width:0 lets a flex/grid BOX shrink. It cannot make the text inside it
+// wrap: a 42-character wallet address, or a German compound noun, is a single
+// token with no break opportunity, so it runs straight past its card border no
+// matter how the box is sized. That is a different failure from the layout
+// blowout, and it was reported separately — the connected-wallet address
+// crossing its own box, and step descriptions crossing theirs.
+func TestStylesheets_LongTokensCanWrap(t *testing.T) {
+	for _, tc := range []struct{ name, css string }{
+		{"landing.go", landingHTML},
+		{"explorer.css", explorerCSS},
+	} {
+		if !strings.Contains(tc.css, "overflow-wrap:break-word") {
+			t.Errorf("%s: body no longer sets overflow-wrap:break-word — an unbreakable"+
+				" token (a wallet address, a long compound noun) will cross its container"+
+				" border again instead of wrapping", tc.name)
+		}
+	}
+	// The address is the worst case and gets the stronger value.
+	if !strings.Contains(explorerCSS, "overflow-wrap:anywhere") {
+		t.Error("explorer.css: .wadr no longer sets overflow-wrap:anywhere — the connected" +
+			" wallet address is one 42-character token and will overflow its box")
+	}
+}

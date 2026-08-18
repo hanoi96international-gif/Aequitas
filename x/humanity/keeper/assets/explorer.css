@@ -37,7 +37,7 @@
    explicit min-width elsewhere in this file is more specific than this
    universal rule and wins regardless of source order. */
 *{box-sizing:border-box;margin:0;padding:0;min-width:0}
-body{background:var(--bg);color:var(--text);font-family:var(--font-body);min-height:100vh;overflow-x:hidden;line-height:1.5;background-image:radial-gradient(ellipse 80% 50% at 20% 0%,rgba(155,114,246,0.06) 0%,transparent 60%),radial-gradient(ellipse 60% 40% at 80% 100%,rgba(34,211,238,0.04) 0%,transparent 60%)}
+body{background:var(--bg);color:var(--text);font-family:var(--font-body);min-height:100vh;overflow-x:hidden;overflow-wrap:break-word;line-height:1.5;background-image:radial-gradient(ellipse 80% 50% at 20% 0%,rgba(155,114,246,0.06) 0%,transparent 60%),radial-gradient(ellipse 60% 40% at 80% 100%,rgba(34,211,238,0.04) 0%,transparent 60%)}
 body::before{display:none}
 @keyframes starFloat{0%{transform:translateY(0)}100%{transform:translateY(-8px)}}
 header{background:rgba(13,15,22,0.96);border-bottom:1px solid rgba(255,255,255,0.07);padding:0 24px;position:sticky;top:0;z-index:100;display:flex;align-items:center;justify-content:space-between;height:60px;gap:10px;box-shadow:0 1px 24px rgba(0,0,0,0.5);backdrop-filter:blur(12px)}
@@ -118,7 +118,12 @@ header::before{content:'';position:absolute;top:0;left:0;right:0;height:2px;back
 .sec-head{padding:14px 18px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;background:var(--card2)}
 .sec-title{font-size:0.81rem;color:var(--muted);letter-spacing:1px;text-transform:uppercase;display:flex;align-items:center;gap:8px;font-weight:600}
 .sec-dot{width:6px;height:6px;border-radius:50%;background:var(--neon);box-shadow:0 0 8px var(--neon)}
-.sec-count{font-size:0.77rem;color:var(--muted);background:var(--card2);padding:3px 8px;border-radius:10px;border:1px solid var(--border)}
+/* flex-shrink:0 — this is a count pill of a few characters inside a
+   space-between row. Left shrinkable it was squeezed below its own
+   content width (16px allotted for 20px of content) and its border
+   crossed the row's edge. The title beside it wraps, so it is the one
+   that should absorb a narrow screen. */
+.sec-count{font-size:0.77rem;color:var(--muted);background:var(--card2);padding:3px 8px;border-radius:10px;border:1px solid var(--border);flex-shrink:0}
 .sec-desc{padding:10px 18px;font-size:0.81rem;color:var(--muted);background:rgba(139,92,246,0.03);border-bottom:1px solid var(--border);line-height:1.7}
 .block-item{padding:12px 18px;border-bottom:1px solid rgba(139,92,246,0.08);display:grid;grid-template-columns:60px 1fr auto;gap:10px;align-items:center;transition:all 0.15s;cursor:pointer}
 .block-item:hover{background:rgba(139,92,246,0.09)}.block-item:last-child{border-bottom:none}
@@ -313,6 +318,9 @@ header::before{content:'';position:absolute;top:0;left:0;right:0;height:2px;back
 .aonly-text{font-size:0.81rem;color:var(--muted);line-height:1.9}
 .rsteps{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:16px}
 @media(max-width:520px){.rsteps{grid-template-columns:repeat(2,1fr)}}
+/* Two columns still leaves a ~148px text column on a 390px phone, where the
+   step descriptions measurably ran past their card border (42px, 30px). */
+@media(max-width:480px){.rsteps{grid-template-columns:1fr}}
 .rstep{background:var(--card);border:1px solid var(--border);border-radius:var(--radius-sm);padding:16px;text-align:center;transition:all 0.2s}
 .rstep:hover{border-color:rgba(139,92,246,0.4);box-shadow:var(--glow-purple);transform:translateY(-2px)}
 .snum{width:28px;height:28px;background:var(--grad);border-radius:50%;display:flex;align-items:center;justify-content:center;margin:0 auto 10px;font-weight:700;font-size:0.86rem;color:#fff;box-shadow:var(--glow-purple)}
@@ -322,7 +330,7 @@ header::before{content:'';position:absolute;top:0;left:0;right:0;height:2px;back
 .rcard{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:20px;margin-bottom:14px;box-shadow:0 2px 12px rgba(0,0,0,0.06)}
 .wbox{background:rgba(0,255,209,0.05);border:1px solid rgba(0,255,209,0.15);border-radius:var(--radius-sm);padding:10px;margin-bottom:10px;display:none}
 .wlbl{font-size:0.75rem;color:var(--muted);margin-bottom:2px;letter-spacing:1px;font-weight:500}
-.wadr{font-size:0.86rem;color:var(--neon);font-weight:700;font-family:var(--font-mono);text-shadow:0 0 8px rgba(0,255,209,0.3)}
+.wadr{font-size:0.86rem;color:var(--neon);font-weight:700;font-family:var(--font-mono);text-shadow:0 0 8px rgba(0,255,209,0.3);overflow-wrap:anywhere}
 .pbox{background:var(--card2);border:1px solid rgba(245,166,35,0.15);border-radius:var(--radius-sm);padding:10px;margin-bottom:10px;display:none}
 .plbl{font-size:0.75rem;color:var(--gold);margin-bottom:2px;letter-spacing:1px;font-weight:500}
 .pval{font-size:0.79rem;color:var(--muted);font-family:var(--font-mono)}
