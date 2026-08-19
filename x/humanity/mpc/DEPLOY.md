@@ -349,6 +349,54 @@ to exactly one party. After that split no single machine can reconstruct the
 template, which is the entire security argument. That code lives in the app and
 matching-service repositories; this repo only ever sees one row.
 
+## Activation, in order
+
+Every step is a precondition for the next. Skipping one does not degrade the
+system gracefully — it produces something that looks like it works.
+
+**1. Give every party an HTTPS endpoint.** Checked 2026-08-19: neither box
+serves TLS on its IP, and only `aequitas.digital` (in front of C1) has a
+certificate. C2 has no HTTPS endpoint at all, so no committee can form today.
+`NewHTTPTransport` refuses plaintext peers on purpose — anyone able to inject on
+that path can force a "no match" and mint a second account for someone already
+registered. There is precedent for the setup in
+`.github/workflows/contabo1-serve-domain.yml`.
+
+**2. Let the peers re-register**, so the registry records each one's signing
+address alongside its URL. Committee membership is derived from that pairing;
+before it exists, `MPCCandidates` returns too few entries and
+`SelectCommittee` refuses.
+
+**3. Run the dealer, somewhere that is neither party:**
+
+```
+go run ./cmd/mpc-dealer -count 5000000 -parties 2 -out /secure/triples
+```
+
+Deliver each file to exactly one party, set `MPC_TRIPLE_FILE` there, and destroy
+the dealer's copies. Sizing: one registration against 1200 candidates needs
+`TriplesForVerifiedWork(1200 x 2 x 512)`, roughly 2.5M triples, so 5M covers two
+registrations. This is the part that does not yet scale — see the open gaps.
+
+**4. Turn on the parties**, without the gate:
+
+```
+MPC_ENABLED=true
+MPC_COMMITTEE_SIZE=2
+MPC_CLIENT_TOKEN=<shared with the capture pipeline>
+MPC_TRIPLE_FILE=/secure/triples/triples-party-N.bin
+```
+
+Registration is unaffected while `MPC_REQUIRED` is unset. Watch that
+`/mpc/check` returns verdicts and that the two parties agree.
+
+**5. Calibrate**, with at least 1000 labelled pairs per class from real captures
+through the real sketch pipeline. `RecommendThreshold` refuses smaller samples.
+
+**6. Only then set `MPC_REQUIRED=true`.** Before calibration the threshold is a
+guess, and turning the gate on would refuse real people on a number nobody has
+measured.
+
 ## Open gaps
 
 Still open, and deliberately so:
