@@ -2366,7 +2366,16 @@ async function drawGiniHistoryChart() {
   ctx.clearRect(0, 0, W, H);
   try {
     const d = await (await fetch('/api/gini/history')).json();
-    const history = (d.history || []).slice().reverse();
+    // NOT reversed. The server already hands these over oldest-first:
+    // GetGiniHistory queries `ORDER BY captured_at DESC` to take the newest N,
+    // then reverses the rows itself ("Reverse to get chronological order").
+    // Reversing again here put the NEWEST snapshot at x=0 and the OLDEST at the
+    // right-hand edge, so the curve ran backwards in time — a chain growing
+    // steadily less equal was drawn as one steadily improving — and
+    // history[length-1], the point the latest-value label names, was the very
+    // first snapshot ever taken. Nothing on the canvas dates the x axis, so the
+    // only visible symptom was the trend pointing the wrong way.
+    const history = (d.history || []).slice();
     const emptyEl = document.getElementById('gini-history-empty');
     if (!history.length) {
       if (emptyEl) { emptyEl.style.display = 'block'; canvas.style.display = 'none'; } return;
