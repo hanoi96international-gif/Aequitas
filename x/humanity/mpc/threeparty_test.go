@@ -219,3 +219,100 @@ func TestVerificationWorksAcrossTheNetwork(t *testing.T) {
 		}
 	}
 }
+
+// TestDealerDistributedTriplesMakeAComparisonWork is the end-to-end proof that
+// was missing while the node generated its own triples.
+//
+// Triples take the whole path a deployment puts them through: generated once,
+// encoded to the distribution format, written out per party, read back
+// independently, and used by parties that reach each other only over HTTP. If
+// the correlation survives all of that, the comparison returns the answer the
+// plaintext distance implies. If it does not, CompareMany refuses — which is
+// exactly what the broken local-generation path did.
+func TestDealerDistributedTriplesMakeAComparisonWork(t *testing.T) {
+	const length, parties, threshold = 32, 2, 4
+
+	// The dealer, once.
+	dealt, err := GenerateTriples(TriplesForManyComparison(length, 2)+4096, parties)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Through the file format, one blob per party.
+	blobs := make([][]byte, parties)
+	for i := range dealt {
+		blobs[i] = EncodeTriples(dealt[i])
+	}
+
+	transports, _ := validators(t, parties, nil)
+
+	cand := make([]uint8, length)
+	for i := range cand {
+		cand[i] = uint8(i % 2)
+	}
+	same := make([]uint8, length)
+	copy(same, cand)
+	same[5] ^= 1 // a returning person
+	// A genuinely different person. Note (i*7)%2 == i%2 — an earlier version of
+	// this line produced a "stranger" byte-identical to the candidate, and the
+	// test duly reported a false accusation that was actually a correct match.
+	stranger := make([]uint8, length)
+	copy(stranger, cand)
+	for i := 0; i < length/2; i++ {
+		stranger[i] ^= 1 // half the bits flipped: far past any sane threshold
+	}
+	enrolled := [][]uint8{same, stranger}
+
+	candRows, err := SplitTemplateForParties(cand, parties)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rows := make([][]PartyTemplate, len(enrolled))
+	for i, e := range enrolled {
+		if rows[i], err = SplitTemplateForParties(e, parties); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	results := make([][]MatchResult, parties)
+	errs := make([]error, parties)
+	var wg sync.WaitGroup
+	for p := 0; p < parties; p++ {
+		wg.Add(1)
+		go func(p int) {
+			defer wg.Done()
+			// Each party reads ONLY its own blob, the way it reads its own file.
+			mine, err := DecodeTriples(blobs[p])
+			if err != nil {
+				errs[p] = err
+				return
+			}
+			enrol := make([]PartyTemplate, len(rows))
+			for i := range rows {
+				enrol[i] = rows[i][p]
+			}
+			m := &DistributedMatcher{
+				Session:   NewSession(transports[p], NewTripleStore(mine)),
+				Threshold: threshold,
+			}
+			ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+			defer cancel()
+			results[p], errs[p] = m.CompareMany(ctx, candRows[p], enrol)
+		}(p)
+	}
+	wg.Wait()
+
+	for p, err := range errs {
+		if err != nil {
+			t.Fatalf("party %d: %v — dealer-distributed triples did not survive the round trip", p, err)
+		}
+	}
+	if results[0][0].Similar != results[1][0].Similar {
+		t.Fatal("the parties disagreed")
+	}
+	if !results[0][0].Similar {
+		t.Error("the returning person was not recognised")
+	}
+	if results[0][1].Similar {
+		t.Error("a stranger was flagged as already registered")
+	}
+}

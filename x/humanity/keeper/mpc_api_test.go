@@ -6,6 +6,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/hanoi96international-gif/aequitas-chain/x/humanity/mpc"
 )
 
 func resetVerdicts() {
@@ -156,5 +158,53 @@ func TestEnrolWithoutBucketKeysIsRefused(t *testing.T) {
 	}
 	if rec.Code != http.StatusBadRequest {
 		t.Errorf("got %d, want 400", rec.Code)
+	}
+}
+
+// TestTriplesAreNeverGeneratedLocally pins the mistake that shipped.
+//
+// The first version of mpcTriples called GenerateTriples on each party. Beaver
+// triples are a correlated secret, so a party that draws its own gets a set
+// that does not belong with its peers', and every comparison becomes noise. It
+// failed closed rather than lying, but it could never have worked.
+//
+// With no triple file configured this must now say so plainly instead of
+// producing something that looks usable.
+func TestTriplesAreNeverGeneratedLocally(t *testing.T) {
+	t.Setenv("MPC_TRIPLE_FILE", "")
+	a := &APIServer{mpc: &mpcNode{size: 2}}
+
+	store, err := a.mpcTriples(100)
+	if err == nil {
+		t.Fatalf("triples were supplied with no dealer file configured (%d available) — a party "+
+			"that makes its own gets an uncorrelated set", store.Remaining())
+	}
+	if !strings.Contains(err.Error(), "MPC_TRIPLE_FILE") {
+		t.Errorf("error %q does not name what is missing", err)
+	}
+}
+
+// TestTripleFileRoundTrips: the dealer writes, the party reads, and the shares
+// must survive the trip unchanged — they are the correlation.
+func TestTripleFileRoundTrips(t *testing.T) {
+	rows, err := mpc.GenerateTriples(64, 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	encoded := mpc.EncodeTriples(rows[0])
+	decoded, err := mpc.DecodeTriples(encoded)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(decoded) != len(rows[0]) {
+		t.Fatalf("got %d triples, want %d", len(decoded), len(rows[0]))
+	}
+	for i := range decoded {
+		if decoded[i] != rows[0][i] {
+			t.Fatalf("triple %d changed in transit: %+v vs %+v", i, decoded[i], rows[0][i])
+		}
+	}
+	if _, err := mpc.DecodeTriples([]byte{1, 2, 3}); err == nil {
+		t.Error("a truncated triple file was accepted")
 	}
 }

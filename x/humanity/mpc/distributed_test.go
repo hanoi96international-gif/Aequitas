@@ -235,3 +235,74 @@ func TestRoundCountIsIndependentOfCandidates(t *testing.T) {
 			"candidates is not working, and a crowded bucket becomes a slow registration", one, ten)
 	}
 }
+
+// TestIndependentlyGeneratedTriplesCannotWork pins a mistake that shipped.
+//
+// Beaver triples are SHARES of one correlated secret: party 0 holds a_0, party
+// 1 holds a_1, and a_0+a_1 = a with c = a*b. GenerateTriples produces all
+// parties' rows from one draw, and the caller hands each party its own row.
+//
+// Calling it once PER PARTY instead gives every party a row from a different
+// draw. Nothing in the types objects — the shapes match perfectly — and the
+// arithmetic silently stops meaning anything. That is exactly what the node's
+// first triple-supply implementation did.
+//
+// The saving grace is the direction it fails in, which this also pins: the
+// opened verdict is then a uniformly random field element rather than 0 or 1,
+// and CompareMany refuses it instead of reporting a decision about a person.
+func TestIndependentlyGeneratedTriplesCannotWork(t *testing.T) {
+	const length, parties = 16, 2
+
+	cand := make([]uint8, length)
+	for i := range cand {
+		cand[i] = uint8(i % 2)
+	}
+	candRows, err := SplitTemplateForParties(cand, parties)
+	if err != nil {
+		t.Fatal(err)
+	}
+	enrolRows, err := SplitTemplateForParties(cand, parties)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	transports, err := NewLocalTransports(parties)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// The mistake: each party draws its own triples.
+	need := TriplesForManyComparison(length, 1) + 1024
+	errs := make([]error, parties)
+	var wg sync.WaitGroup
+	for p := 0; p < parties; p++ {
+		wg.Add(1)
+		go func(p int) {
+			defer wg.Done()
+			own, err := GenerateTriples(need, parties)
+			if err != nil {
+				errs[p] = err
+				return
+			}
+			m := &DistributedMatcher{
+				Session:   NewSession(transports[p], NewTripleStore(own[p])),
+				Threshold: 4,
+			}
+			_, errs[p] = m.CompareMany(context.Background(), candRows[p], []PartyTemplate{enrolRows[p]})
+		}(p)
+	}
+	wg.Wait()
+
+	failed := false
+	for _, err := range errs {
+		if err != nil {
+			failed = true
+			t.Logf("refused, as it must: %v", err)
+		}
+	}
+	if !failed {
+		t.Fatal("uncorrelated triples produced an answer. Every party drew its own, so the " +
+			"shares do not belong together and the result is arithmetic noise — reporting it " +
+			"as a verdict on whether someone is already registered is the worst possible outcome")
+	}
+}

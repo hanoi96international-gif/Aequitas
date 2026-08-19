@@ -9,6 +9,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -315,38 +316,73 @@ func (a *APIServer) mpcCommittee() (*mpc.Committee, int, error) {
 	return c, idx, nil
 }
 
-// mpcTriples supplies verified multiplication triples for one comparison.
+// mpcTriples hands out this party's share of pre-distributed triples.
 //
-// Verification is not optional: an unverified triple is one the dealer could
-// have forged, and a forged triple flips a duplicate check silently. See
-// mpc/sacrifice.go. TriplesForVerifiedWork is why twice as many are generated
-// as the comparison consumes.
+// # WHY THIS DOES NOT GENERATE THEM
+//
+// A Beaver triple is a CORRELATED secret: party 0 holds a_0, party 1 holds a_1,
+// and a_0+a_1 = a with c = a*b. They have to be produced once and their rows
+// handed out. The first version of this function called GenerateTriples locally
+// on every party, which gives each party a row from a different draw. Nothing
+// objects — the shapes match — and the arithmetic silently stops meaning
+// anything. TestIndependentlyGeneratedTriplesCannotWork pins it.
+//
+// It failed closed rather than lying (the opened verdict is then a random field
+// element, and CompareMany refuses anything that is not 0 or 1), but it could
+// never have worked. So triples are LOADED here and never made.
+//
+// # WHY THE OFFSET IS PERSISTED
+//
+// A triple may be used at most once. Reusing one stops the blinding and leaks
+// the difference of the two secrets it was used on. Reloading the file from the
+// start after a restart would do exactly that, silently, so the consumed offset
+// is written to the config table before the triples are handed out — losing
+// unused triples on a crash is the acceptable direction, reusing them is not.
 func (a *APIServer) mpcTriples(need int) (*mpc.TripleStore, error) {
 	if need <= 0 {
 		return mpc.NewTripleStore(nil), nil
 	}
-	if strings.ToLower(os.Getenv("MPC_ALLOW_UNVERIFIED_TRIPLES")) == "true" {
-		// Present so a local harness can skip the offline cost, and loud so it
-		// cannot be mistaken for a supported production setting.
-		fmt.Println("[MPC] WARNING: using UNVERIFIED triples — a forged triple can silently " +
-			"decide that an already-registered person is new")
+	path := strings.TrimSpace(os.Getenv("MPC_TRIPLE_FILE"))
+	if path == "" {
+		return nil, fmt.Errorf("MPC_TRIPLE_FILE is not set: this party has no multiplication " +
+			"triples. They must be generated ONCE by a dealer that is not a computing party, " +
+			"and each party's row delivered to it — a party that makes its own gets an " +
+			"uncorrelated set and every comparison becomes noise")
 	}
-	all, err := mpc.GenerateTriples(mpc.TriplesForVerifiedWork(need), a.mpc.size)
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		return nil, fmt.Errorf("mpc: reading %s: %w", path, err)
+	}
+	all, err := mpc.DecodeTriples(raw)
 	if err != nil {
 		return nil, err
 	}
-	idx := a.mpc.index
-	if a.mpc.discover != nil {
-		c, _, err := a.mpcCommittee()
-		if err != nil {
-			return nil, err
+
+	// Verification doubles the requirement: half the supply is spent proving
+	// the other half was not forged (mpc/sacrifice.go).
+	want := mpc.TriplesForVerifiedWork(need)
+
+	const offsetKey = "mpc_triple_offset"
+	offset := 0
+	if raw := a.blockchain.state.getConfigValueDB(offsetKey); raw != "" {
+		if v, err := strconv.Atoi(raw); err == nil {
+			offset = v
 		}
-		idx = c.IndexOf(a.mpc.selfAddr)
 	}
-	if idx < 0 || idx >= len(all) {
-		return nil, fmt.Errorf("mpc: this node has no party index for the current committee")
+	if offset+want > len(all) {
+		return nil, fmt.Errorf("mpc: %d triples left in %s, this comparison needs %d — refusing "+
+			"to reuse, because a reused triple stops blinding and leaks the difference of the "+
+			"secrets it was used on; have the dealer deliver more",
+			len(all)-offset, path, want)
 	}
-	return mpc.NewTripleStore(all[idx]), nil
+
+	// Advance BEFORE handing them out, so a crash mid-comparison loses triples
+	// rather than replaying them.
+	if err := a.blockchain.state.setConfigValueDB(offsetKey, strconv.Itoa(offset+want)); err != nil {
+		return nil, fmt.Errorf("mpc: could not record triple consumption, refusing to proceed "+
+			"rather than risk reusing them: %w", err)
+	}
+	return mpc.NewTripleStore(all[offset : offset+want]), nil
 }
 
 // mpcGateAllows decides whether a registration may proceed.
