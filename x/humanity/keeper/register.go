@@ -195,6 +195,10 @@ type RegisterRequest struct {
 	// Nullifier is SHA256(bioHash + ":aequitas-ubi-v1") for v1 circuit, or
 	// the hex representation of pubSignals[1] for v2 circuit (ZK-bound).
 	Nullifier string `json:"nullifier"`
+	// MPCSession names the fuzzy duplicate check performed before this call
+	// (see mpc_api.go). The verdict is held server-side and consumed here; the
+	// client cannot assert its own result. Ignored unless MPC_REQUIRED=true.
+	MPCSession string `json:"mpc_session"`
 	// ZKNullifier is pubSignals[1] from the v2 circuit — the nullifier
 	// derived INSIDE the ZK proof, making it cryptographically binding.
 	// When present, it overrides the client-SHA256 nullifier.
@@ -260,6 +264,21 @@ func (a *APIServer) handleRegister(w http.ResponseWriter, r *http.Request) {
 	// we must reject here so bad inputs never reach consensus state.
 	if !isValidWalletAddr(wallet) {
 		json.NewEncoder(w).Encode(RegisterResponse{Success: false, Message: "invalid wallet address format"})
+		return
+	}
+
+	// The fuzzy duplicate check (mpc_api.go), if this deployment requires it.
+	//
+	// Placed alongside the other admission checks and before any state is
+	// touched. The nullifier below catches a repeat of the SAME proof and
+	// bio_hashes catches a byte-identical capture; neither catches the same
+	// person photographed twice, which is the whole point of this one.
+	//
+	// Every refusal here is retryable by design: a check that could not run
+	// refuses the attempt rather than approving it, and says so in words that
+	// do not accuse the person of anything.
+	if ok, msg := mpcGateAllows(req.MPCSession); !ok {
+		json.NewEncoder(w).Encode(RegisterResponse{Success: false, Message: msg})
 		return
 	}
 

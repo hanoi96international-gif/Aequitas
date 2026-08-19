@@ -923,6 +923,9 @@ func (a *APIServer) buildMux() *http.ServeMux {
 			os.Getenv("SELF_URL"), a.blockchain.SelfSigningAddress())
 	})
 
+	mux.HandleFunc("/mpc/enroll", a.handleMPCEnroll)
+	mux.HandleFunc("/mpc/check", a.handleMPCCheck)
+
 	mux.HandleFunc("/api/status", a.handleStatus)
 	mux.HandleFunc("/api/events", a.handleBlockEvents)
 	mux.HandleFunc("/api/health/combined", a.handleCombinedHealth)

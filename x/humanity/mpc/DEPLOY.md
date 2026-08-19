@@ -300,6 +300,55 @@ Use `EffectiveDuplicateCatchRate` to combine the threshold with the index
 recall. A 99% recall index in front of a comparison that misses a third of
 duplicates catches two thirds, not 99%.
 
+## Turning it on for registration
+
+The comparison only counts once registration consults it. Two endpoints and one
+switch:
+
+| Variable | Meaning |
+|---|---|
+| `MPC_CLIENT_TOKEN` | authenticates the capture pipeline to `/mpc/check` and `/mpc/enroll` |
+| `MPC_REQUIRED` | `true` makes `/api/register` refuse without a passed check |
+
+`POST /mpc/check` — the capture pipeline sends **each party its own row** and the
+bucket keys. Every party runs the comparison against the enrolments it holds and
+records the verdict under the session id. `POST /api/register` then carries
+`mpc_session`, and the verdict is consumed there.
+
+The client never asserts its own result. It could otherwise simply post "not a
+duplicate" and the whole subsystem would be decorative. A verdict is spent once
+and expires after 10 minutes — a stale pass was measured against an older
+enrolment set, so anyone who registered in between was never compared.
+
+`POST /mpc/enroll` stores the new person's row after a successful registration.
+
+### The direction of failure is deliberate
+
+Approving someone already registered mints a second account for one person and
+is effectively irreversible. Refusing this attempt costs a retry.
+
+So a check that cannot run — peer down, committee not formed, triples exhausted
+— **refuses the attempt and says to try again**. It never approves by default,
+and it never records a permanent rejection: nobody is locked out because a
+validator was rebooting. Operational failures are worded so they do not accuse
+the person of anything; only an actual match says "already registered".
+
+### `MPC_CLIENT_TOKEN` is a shared secret, and that is correct here
+
+Between validators a shared token was wrong, because it lets any party
+impersonate any other and those parties decide who is a duplicate. This is a
+service credential for one caller, which impersonates nobody: the most it grants
+is the ability to submit captures, which is what the caller exists to do. Do not
+"make it consistent" with the peer authentication — that would undo the point.
+
+### What is NOT in this repo
+
+Splitting a capture into per-party rows happens where the biometric still exists
+in the clear — on the device or in the matching service — and then each row goes
+to exactly one party. After that split no single machine can reconstruct the
+template, which is the entire security argument. That code lives in the app and
+matching-service repositories; this repo only ever sees one row.
+
 ## Open gaps
 
 Still open, and deliberately so:
@@ -310,6 +359,9 @@ Still open, and deliberately so:
   today; what is missing is an independent operator.
 - **No sharding**, so throughput is capped by one link's bandwidth at roughly 3
   registrations/second on 1 Gbit/s.
+- **Registration is not gated by default.** `MPC_REQUIRED` is off until the
+  threshold is calibrated; turning it on before that would refuse real people
+  on a guessed number.
 - **The threshold is not yet calibrated.** The harness is ready and tested
   against known ground truth; it has not been run on real captures, because
   there are none yet. Until it is, the deployed threshold is still a guess.
