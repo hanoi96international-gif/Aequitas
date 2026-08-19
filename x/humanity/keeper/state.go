@@ -885,6 +885,17 @@ created_at     TIMESTAMP DEFAULT NOW()
 	// GetHumanRegistrationInfo looks this table up by wallet, not by hash.
 	dbExec(`CREATE INDEX IF NOT EXISTS idx_bio_hashes_wallet ON bio_hashes (lower(wallet_address))`)
 
+	// This validator's rows of the shared biometric templates, and the LSH
+	// index that finds candidates without scanning everyone. See mpc_store.go
+	// for what may and may not be stored here — in particular that a row is
+	// only ever THIS party's, because two parties' rows in one place is a
+	// reconstructable template.
+	//
+	// Without these tables the enrolment index lives in memory and a restart
+	// empties it: the duplicate check then compares against nothing, approves
+	// everybody, and looks entirely healthy from the outside.
+	cs.mpcSchema(dbExec)
+
 	// Links a ZK proof commitment to the wallet that successfully registered
 	// with it, so the app can ask "did MY proof get registered, and to which
 	// wallet?" instead of guessing from a global, unfiltered list.
