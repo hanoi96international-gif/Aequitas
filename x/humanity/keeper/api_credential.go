@@ -22,17 +22,17 @@ const BioVerifierAddress = "0xc369D27b49DE017d113Bbcb9A1884a9e745B6BE2"
 //  2. Nullifier: confirms the biometric was unique at registration time.
 //  3. ValidatorSignature: ECDSA attestation from an authorized Aequitas node.
 type HumanityCredential struct {
-	Wallet             string    `json:"wallet"`
-	IsHuman            bool      `json:"is_human"`
-	ChainID            int       `json:"chain_id"`
-	RegisteredAtHeight int64     `json:"registered_at_height,omitempty"`
-	RegisteredAtBlock  string    `json:"registered_at_block,omitempty"`
-	RegisteredAtUnix   int64     `json:"registered_at_unix,omitempty"`
-	Nullifier          string    `json:"nullifier,omitempty"`
-	ZKProof            *ZKProof  `json:"zk_proof,omitempty"`
-	VerifierContract   string    `json:"verifier_contract"`
-	ValidatorAddress   string    `json:"validator_address"`
-	ValidatorSignature string    `json:"validator_signature"`
+	Wallet             string   `json:"wallet"`
+	IsHuman            bool     `json:"is_human"`
+	ChainID            int      `json:"chain_id"`
+	RegisteredAtHeight int64    `json:"registered_at_height,omitempty"`
+	RegisteredAtBlock  string   `json:"registered_at_block,omitempty"`
+	RegisteredAtUnix   int64    `json:"registered_at_unix,omitempty"`
+	Nullifier          string   `json:"nullifier,omitempty"`
+	ZKProof            *ZKProof `json:"zk_proof,omitempty"`
+	VerifierContract   string   `json:"verifier_contract"`
+	ValidatorAddress   string   `json:"validator_address"`
+	ValidatorSignature string   `json:"validator_signature"`
 }
 
 type ZKProof struct {

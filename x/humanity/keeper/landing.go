@@ -30,8 +30,8 @@ const landingHTML = `<!DOCTYPE html>
 <meta name="twitter:title" content="Aequitas — money that belongs to every human equally">
 <meta name="twitter:description" content="The first blockchain where the money supply is tied to verified human existence. Every person receives 1,000 AEQ. The network measures its own inequality and publishes it live, on chain.">
 <meta name="twitter:image" content="https://aequitas.digital/og-image.png">
-<link rel="preconnect" href="https://fonts.bunny.net">
-<link href="https://fonts.bunny.net/css?family=inter:300,400,500,600,700,800,900|dm-serif-display:400&display=swap" rel="stylesheet">
+<link rel="preconnect" href="https://fonts.bunny.net" crossorigin="anonymous">
+<link href="https://fonts.bunny.net/css?family=inter:300,400,500,600,700,800,900|dm-serif-display:400&display=swap" rel="stylesheet" referrerpolicy="no-referrer" crossorigin="anonymous">
 <style>
 /* Flex and grid items default to min-width:auto — meaning a flex/grid item
    refuses to shrink below its own content's unwrapped width. .header-right

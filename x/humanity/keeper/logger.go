@@ -10,9 +10,10 @@ import (
 // log aggregators can filter and search by field, not just grep text.
 //
 // Usage:
-//   Log.Info("transfer completed", "from", from, "to", to, "amount", amount)
-//   Log.Warn("optimistic lock conflict", "address", addr, "version", v)
-//   Log.Error("DB write failed", "error", err)
+//
+//	Log.Info("transfer completed", "from", from, "to", to, "amount", amount)
+//	Log.Warn("optimistic lock conflict", "address", addr, "version", v)
+//	Log.Error("DB write failed", "error", err)
 var Log *slog.Logger
 
 func init() {

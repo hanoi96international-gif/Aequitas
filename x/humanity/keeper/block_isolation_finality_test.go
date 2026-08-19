@@ -164,7 +164,7 @@ func TestSelfProducedFinalityAllowed_SeenButNotMergedValidatorBlocksHardening(t 
 	dag.authorizedValidators["0xself"] = true
 	dag.authorizedValidators["0xhealthy"] = true
 	dag.authorizedValidators["0xisolated"] = true
-	dag.recordForeignMerge()                    // dag-wide: satisfied (matches cd20 merging fine)
+	dag.recordForeignMerge()                       // dag-wide: satisfied (matches cd20 merging fine)
 	dag.recordForeignMergeForProposer("0xhealthy") // 0xhealthy is genuinely merging
 	dag.recordForeignSeen("0xisolated")            // 0xisolated's blocks keep arriving...
 	// ...but recordForeignMergeForProposer("0xisolated") is deliberately never called —

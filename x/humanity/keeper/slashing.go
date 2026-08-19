@@ -20,17 +20,18 @@ import (
 // degrades GHOSTDAG's blue-score accuracy.
 //
 // Graduated policy (confirmed with the project owner 2026-06-30):
-//   1st offense: 14-day validator suspension. NO balance loss.
-//   2nd offense within secondOffenseWindowDays: 90-day suspension PLUS a
-//               fixed 50 AEQ penalty (= secondOffensePenaltyAEQ, 5% of
-//               the initial 1,000 AEQ grant that every human receives —
-//               a fixed amount that every node computes identically, with
-//               no timing-dependent balance percentage that could cause
-//               StateRoot divergence between partially-synced nodes).
-//               Penalty credited to the UBI pool, never destroyed
-//               (consistent with demurrage/wealth-cap overflow handling).
-//   3rd+ offense: permanent validator ban. Balance and UBI rights are
-//               NEVER touched beyond the 2nd-offense penalty.
+//
+//	1st offense: 14-day validator suspension. NO balance loss.
+//	2nd offense within secondOffenseWindowDays: 90-day suspension PLUS a
+//	            fixed 50 AEQ penalty (= secondOffensePenaltyAEQ, 5% of
+//	            the initial 1,000 AEQ grant that every human receives —
+//	            a fixed amount that every node computes identically, with
+//	            no timing-dependent balance percentage that could cause
+//	            StateRoot divergence between partially-synced nodes).
+//	            Penalty credited to the UBI pool, never destroyed
+//	            (consistent with demurrage/wealth-cap overflow handling).
+//	3rd+ offense: permanent validator ban. Balance and UBI rights are
+//	            NEVER touched beyond the 2nd-offense penalty.
 //
 // Rationale for the first-offense grace (no balance loss):
 // GHOSTDAG's merge-set/blue-red classification already resolves concurrent

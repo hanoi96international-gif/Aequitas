@@ -27,8 +27,8 @@ import (
 const SnapshotVersion = 1
 
 type StateSnapshot struct {
-	Version          int                       `json:"version"`
-	Timestamp        int64                     `json:"timestamp"`
+	Version   int   `json:"version"`
+	Timestamp int64 `json:"timestamp"`
 	// Height is the producer's BlockDAG height at export time. A node that
 	// bootstraps from this snapshot already reflects the cumulative effect
 	// of every block up to and including this height — without recording
@@ -40,14 +40,14 @@ type StateSnapshot struct {
 	// silently double-applying every transfer/swap/registration that ever
 	// happened before the snapshot was taken. See ImportSnapshotFromURL
 	// and replayTransactions' use of "snapshot_import_height".
-	Height           int64                     `json:"height"`
-	Accounts         []*AccountState           `json:"accounts"`
-	Pool             *PoolState                `json:"pool"`
-	Nullifiers          map[string]string         `json:"nullifiers"`           // nullifier → wallet (sentinel 0x01 if wallet redacted)
-	NullifiersRedacted  bool                      `json:"nullifiers_redacted"`  // true when wallet addresses replaced with sentinel (public tier)
-	BioRegistrations    []SnapshotBioRegistration `json:"bio_registrations"`
-	ChainConfig         map[string]string         `json:"chain_config,omitempty"` // critical timing keys for secondary state sync
-	Signature           string                    `json:"signature,omitempty"`  // ECDSA over SHA256(JSON without this field)
+	Height             int64                     `json:"height"`
+	Accounts           []*AccountState           `json:"accounts"`
+	Pool               *PoolState                `json:"pool"`
+	Nullifiers         map[string]string         `json:"nullifiers"`          // nullifier → wallet (sentinel 0x01 if wallet redacted)
+	NullifiersRedacted bool                      `json:"nullifiers_redacted"` // true when wallet addresses replaced with sentinel (public tier)
+	BioRegistrations   []SnapshotBioRegistration `json:"bio_registrations"`
+	ChainConfig        map[string]string         `json:"chain_config,omitempty"` // critical timing keys for secondary state sync
+	Signature          string                    `json:"signature,omitempty"`    // ECDSA over SHA256(JSON without this field)
 }
 
 type SnapshotBioRegistration struct {
@@ -1119,7 +1119,6 @@ func (cs *ChainState) replaceInMemoryFromSnapshotLocked(snap *StateSnapshot) {
 		cs.nullifiers[nullifier] = strings.ToLower(wallet)
 	}
 }
-
 
 // resyncBackwardsTolerance is how far behind local height a resync snapshot may
 // be before it is refused outright.

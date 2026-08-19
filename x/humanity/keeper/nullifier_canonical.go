@@ -134,3 +134,30 @@ func nullifierBytes32(nullifier string) ([32]byte, error) {
 	copy(out[32-len(b):], b)
 	return out, nil
 }
+
+// nullifierProofBindingActivationUnix is the block timestamp from which
+// replayTransactions REJECTS a register_human transaction whose claimed
+// nullifier is not the one its own ZK proof commits to (see that call site in
+// block.go for the mint this closes).
+//
+// Why an activation timestamp at all, when the rule only ever rejects data
+// that was already invalid: because a rejection rule applied retroactively to
+// accepted history is a liveness risk, not a safety win. A resync from genesis
+// replays every historical block, so a single legacy registration that predates
+// the contract-side binding (AequitasV7.sol:257-270) would hard-fail forever
+// and the node could never finish syncing. Anchoring on the block's own
+// timestamp — never on wall-clock time — keeps the verdict identical on every
+// node, whether it is live today or bootstrapping in a year. Same mechanism and
+// the same reasoning as equivocationSlashingActivationUnix (slashing.go).
+//
+// Blocks BELOW this timestamp are still checked; a mismatch there is logged as
+// a warning rather than swallowed, so the question "does any legacy block
+// actually violate this?" answers itself from the logs instead of needing a
+// manual survey of chain_blocks.
+//
+// 2026-08-19 00:00:00 UTC — the day after the audit that found this, so the
+// window between merge and deploy stays measured in hours. Honest blocks
+// satisfy the rule already: /api/register runs a registerWithSig dry-run, and
+// the contract derives the nullifier from pubSignals[1] itself, so nothing
+// legitimate is affected by moving this earlier or later.
+const nullifierProofBindingActivationUnix = 1787097600

@@ -59,3 +59,8 @@ id_rsa
 id_rsa*
 id_ed25519
 id_ed25519*
+
+# Written by the deploy workflows on the validator box immediately before
+# `docker build`, so the image can record which commit it was built from.
+# It belongs to a checkout, never to the repository.
+.git-commit-stamp

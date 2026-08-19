@@ -22,9 +22,9 @@ import (
 // SaveBlockWithPendingTxsAtomic actually issues so the expensive one is
 // identifiable rather than guessed at:
 //
-//	1. UPDATE pending_txs SET included_block_hash = ... WHERE id = ANY(...)
-//	2. INSERT INTO chain_blocks (... an ~11.6 MB transactions JSON blob ...)
-//	3. DELETE FROM pending_txs WHERE id = ANY(...)
+//  1. UPDATE pending_txs SET included_block_hash = ... WHERE id = ANY(...)
+//  2. INSERT INTO chain_blocks (... an ~11.6 MB transactions JSON blob ...)
+//  3. DELETE FROM pending_txs WHERE id = ANY(...)
 //
 // Statements 1 and 3 touch the SAME 50,000 rows inside the SAME transaction,
 // and in Postgres an UPDATE writes an entirely new row version (MVCC) — so

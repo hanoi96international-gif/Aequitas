@@ -109,6 +109,32 @@ func NewAPIServer(bc *BlockDAG, p2p *P2PNode, state *ChainState) *APIServer {
 // writeJSON sets the standard JSON response Content-Type header. Centralizes
 // boilerplate that was previously duplicated across ~35 handlers individually
 // (P3-c, audit 2026-07-06).
+// setHSTS asks the browser to refuse plain HTTP for this host for a year.
+//
+// FIX (M4, Audit 2026-08-18): the node set CSP, X-Frame-Options,
+// X-Content-Type-Options and Referrer-Policy carefully on every HTML route and
+// no Strict-Transport-Security anywhere — not here and not in deploy/Caddyfile,
+// which explicitly delegates security headers to this file. Caddy redirects
+// HTTP to HTTPS, but a redirect only protects a visitor who already arrived
+// safely; without HSTS the FIRST request of a session is still downgradeable,
+// on pages where wallets are connected and registrations are signed.
+//
+// Sent only over TLS. Emitting it on a plain-HTTP response is meaningless (a
+// browser ignores it) and actively harmful on a node reached directly on :8080
+// over HTTP for diagnostics, which would pin that host to HTTPS it does not
+// serve. r.TLS covers direct TLS; X-Forwarded-Proto covers the Caddy path,
+// where the proxy terminates TLS and the node itself sees plain HTTP.
+//
+// No preload directive: preloading is a one-way door for the whole domain,
+// including any subdomain that might later need plain HTTP, and it is the
+// operator's decision rather than a default.
+func setHSTS(w http.ResponseWriter, r *http.Request) {
+	if r.TLS == nil && !strings.EqualFold(r.Header.Get("X-Forwarded-Proto"), "https") {
+		return
+	}
+	w.Header().Set("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
+}
+
 func writeJSON(w http.ResponseWriter) {
 	w.Header().Set("Content-Type", "application/json")
 }
@@ -694,7 +720,7 @@ func (a *APIServer) handleCombinedHealth(w http.ResponseWriter, r *http.Request)
 			"supply_reconciliation": a.state.SupplyReconciliation(),
 			// What the daily-round scheduler actually decided. Note this is NOT
 			// last_ubi_at: that only advances when a round had something to pay.
-			"distribution": a.state.DistributionHealth(),
+			"distribution":     a.state.DistributionHealth(),
 			"chain_nullifiers": a.state.CountChainNullifiers(),
 			"chain_bio_hashes": a.state.CountChainBioHashes(),
 			"proof_server_sync_queue": map[string]interface{}{
@@ -1056,6 +1082,16 @@ func (a *APIServer) handleStatus(w http.ResponseWriter, r *http.Request) {
 	// for the live 11-second /api/status that motivated this, and for the
 	// peer-registration timeouts it was causing on the far side.
 	m := a.state.StatusMetrics()
+	// Measured ledger total, published beside the rule — see supply_measured
+	// below. Cached for a minute inside MeasuredTotalAEQ, so this is one cheap
+	// read even though /api/status is polled from every open browser tab.
+	var supplyMeasured, supplyDifference, supplyMeasuredErr interface{}
+	if measured, ok, reason := a.state.MeasuredTotalAEQ(); ok {
+		supplyMeasured = fmt.Sprintf("%.6f AEQ", measured)
+		supplyDifference = fmt.Sprintf("%+.6f AEQ", measured-m.Supply)
+	} else {
+		supplyMeasuredErr = reason
+	}
 	humans := m.Humans
 	growth := humans * 10
 	if growth > 100 {
@@ -1087,6 +1123,22 @@ func (a *APIServer) handleStatus(w http.ResponseWriter, r *http.Request) {
 		"velocity":     50,
 		"phase":        m.Phase,
 		"fee_bps":      10,
+		// FIX (H1, Audit 2026-08-18): total_supply above is the RULE
+		// (humans × 1000, see TotalSupply), and the explorer prints it as
+		// "Total Supply". Measured from both validators' own databases on
+		// 2026-08-15 the ledger actually held 15,305.278004 AEQ against a
+		// claimed 15,000 — 2.04% more. The true figure existed only on
+		// /api/health/combined, an operations endpoint nobody visiting the
+		// site ever sees, so the public number was the one number about this
+		// currency that was quietly wrong.
+		//
+		// Published here beside the rule rather than instead of it: the rule
+		// is the protocol statement and stays, the measurement is what is
+		// actually in the ledger, and the difference is the thing worth
+		// watching. Null when it cannot be measured — never a plausible zero.
+		"supply_measured":       supplyMeasured,
+		"supply_measured_error": supplyMeasuredErr,
+		"supply_difference":     supplyDifference,
 		// Pool balances come from the same aggregated read (StatusMetrics) —
 		// they used to be four separate GetBalance calls, i.e. four
 		// acquisitions of the global state WRITE lock per status request.
@@ -2065,6 +2117,7 @@ func (a *APIServer) handleRegistered(w http.ResponseWriter, r *http.Request) {
 	// 'unsafe-inline' here.
 	w.Header().Set("Content-Security-Policy", "default-src 'self' 'unsafe-inline'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.bunny.net; font-src https://fonts.bunny.net; connect-src 'self'; img-src 'self' data:; frame-ancestors 'none'")
 	w.Header().Set("X-Frame-Options", "DENY")
+	setHSTS(w, r)
 	w.Header().Set("X-Content-Type-Options", "nosniff")
 	w.Header().Set("Referrer-Policy", "strict-origin-when-cross-origin")
 	// XSS fix: escape wallet parameter before writing to HTML — without this,
@@ -2122,6 +2175,7 @@ func (a *APIServer) handleNodeBinding(w http.ResponseWriter, r *http.Request) {
 	// /node-binding.js file (see nodeBindingJS's comment in api_html.go).
 	w.Header().Set("Content-Security-Policy", "default-src 'self' 'unsafe-inline'; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self'; frame-ancestors 'none'")
 	w.Header().Set("X-Frame-Options", "DENY")
+	setHSTS(w, r)
 	w.Header().Set("X-Content-Type-Options", "nosniff")
 	w.Header().Set("Referrer-Policy", "strict-origin-when-cross-origin")
 	fmt.Fprint(w, `<!DOCTYPE html>
@@ -2190,6 +2244,7 @@ func (a *APIServer) handleUI(w http.ResponseWriter, r *http.Request) {
 	// itself is never used directly as an <img> src, only blob: is.
 	w.Header().Set("Content-Security-Policy", "default-src 'self' 'unsafe-inline'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.bunny.net; font-src https://fonts.bunny.net; connect-src 'self' https://aequitas.digital wss://relay.walletconnect.org https://relay.walletconnect.org https://api.web3modal.org https://verify.walletconnect.org https://verify.walletconnect.com; img-src 'self' data: blob: https://api.web3modal.org; frame-ancestors 'none'")
 	w.Header().Set("X-Frame-Options", "DENY")
+	setHSTS(w, r)
 	w.Header().Set("X-Content-Type-Options", "nosniff")
 	w.Header().Set("Referrer-Policy", "strict-origin-when-cross-origin")
 	path := strings.Trim(r.URL.Path, "/")
@@ -3284,6 +3339,7 @@ func (a *APIServer) handleDapp(w http.ResponseWriter, r *http.Request) {
 	// can go straight to a strict script-src with zero exceptions.
 	w.Header().Set("Content-Security-Policy", "default-src 'self' 'unsafe-inline'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.bunny.net; font-src https://fonts.bunny.net; connect-src 'self' https://aequitas.digital; img-src 'self' data:; frame-ancestors 'none'")
 	w.Header().Set("X-Frame-Options", "DENY")
+	setHSTS(w, r)
 	w.Header().Set("X-Content-Type-Options", "nosniff")
 	w.Header().Set("Referrer-Policy", "strict-origin-when-cross-origin")
 	http.ServeContent(w, r, "aequitas-dapp.html", fi.ModTime(), f)
@@ -3297,7 +3353,28 @@ func (a *APIServer) handleDappJS(w http.ResponseWriter, r *http.Request) {
 
 func (a *APIServer) handleAppDownload(w http.ResponseWriter, r *http.Request) {
 	const apkPath = "downloads/aequitas-app.apk"
-	const fallbackURL = "https://github.com/hanoi96international-gif/Aequitas/releases/download/app-v1.3.3/app-release.apk"
+	// FIX (N1, Audit 2026-08-18): this "fallback" is in practice the ONLY path.
+	// downloads/*.apk is gitignored, so the file is never in the build context
+	// and never in the image; os.Open therefore always fails and every download
+	// takes the redirect. That made the app version a compile-time constant:
+	// shipping a new APK required a code change and a full node redeploy, which
+	// restarts both validators.
+	//
+	// AEQUITAS_APK_URL decouples the two. The default is the release that was
+	// hardcoded here, so behaviour is unchanged until an operator sets it —
+	// pointing it at a new release is now an env change and a container
+	// restart, not a chain deploy.
+	fallbackURL := os.Getenv("AEQUITAS_APK_URL")
+	if fallbackURL == "" {
+		fallbackURL = "https://github.com/hanoi96international-gif/Aequitas/releases/download/app-v1.3.3/app-release.apk"
+	}
+	// Only ever redirect to an absolute http(s) URL: an operator typo that left
+	// a relative path here would otherwise turn this endpoint into an
+	// open-redirect-shaped surprise on the node's own origin.
+	if !strings.HasPrefix(fallbackURL, "https://") && !strings.HasPrefix(fallbackURL, "http://") {
+		fmt.Printf("[APK] ⚠ AEQUITAS_APK_URL=%q is not an absolute http(s) URL — ignoring it\n", fallbackURL)
+		fallbackURL = "https://github.com/hanoi96international-gif/Aequitas/releases/download/app-v1.3.3/app-release.apk"
+	}
 	f, err := os.Open(apkPath)
 	if err != nil {
 		// File not found in container — redirect to GitHub raw URL.
@@ -3345,6 +3422,7 @@ func (a *APIServer) handleLanding(w http.ResponseWriter, r *http.Request) {
 	// comment in api_html.go), so script-src no longer needs 'unsafe-inline'.
 	w.Header().Set("Content-Security-Policy", "default-src 'self' 'unsafe-inline'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.bunny.net; font-src https://fonts.bunny.net; connect-src 'self'; img-src 'self' data:; frame-ancestors 'none'")
 	w.Header().Set("X-Frame-Options", "DENY")
+	setHSTS(w, r)
 	w.Header().Set("X-Content-Type-Options", "nosniff")
 	w.Header().Set("Referrer-Policy", "strict-origin-when-cross-origin")
 	fmt.Fprint(w, landingHTML)

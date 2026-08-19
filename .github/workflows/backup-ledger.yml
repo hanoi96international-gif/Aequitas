@@ -1,0 +1,201 @@
+name: Backup the ledger (scheduled + manual)
+
+# THE LEDGER HAD NO BACKUP. THAT IS WHAT THIS FIXES.
+#
+# Audit 2026-08-18, K1: there was no pg_dump, no pg_basebackup, no WAL
+# archiving and no volume snapshot anywhere in this repository. The ledger is
+# Postgres — the code says so itself (evm_rpc.go: "Go state is authoritative
+# for balances") — and it existed in exactly two copies, on two Contabo boxes,
+# whose only recovery path was "resync from the other one".
+#
+# Both are deployed from the same push. The staggering in deploy-contabo.yml
+# and deploy-contabo2.yml is good, but both waits fail OPEN after their
+# timeout, so a deploy that damages both is unlikely rather than impossible.
+# And staggering does nothing at all against a datacentre loss, a Postgres
+# corruption, or a migration that runs everywhere.
+#
+# /api/snapshot is not a substitute: it serves account state, not chain_blocks,
+# and it is served BY the nodes this is meant to survive the loss of.
+#
+# WHAT THIS DOES
+#
+# Takes a compressed pg_dump of each validator's database, verifies the dump
+# can actually be restored (into a throwaway database on the same box, then
+# dropped), and uploads it as a workflow artifact. Retention is 90 days, which
+# is GitHub's storage rather than the operator's — a second location by
+# construction, which is the entire point.
+#
+# A dump that has never been restored is not a backup, it is a file. The
+# restore check is not optional here and the job fails if it does not pass.
+#
+# LIMITS, STATED PLAINLY
+#
+# - Artifact storage is bounded by the GitHub plan. At today's chain size the
+#   compressed dump is small; if it outgrows that, move the upload to object
+#   storage and keep the restore verification exactly as it is.
+# - This is a nightly point-in-time copy, not continuous archiving. Losing up
+#   to a day of blocks is survivable for a chain that can re-sync from its
+#   peers; losing BOTH databases is not, and that is the case this covers.
+# - The dump contains every account balance. It is a private repository's
+#   artifact, and it should stay that way.
+
+on:
+  schedule:
+    # 03:17 UTC — off the hour so it does not land with every other cron on
+    # the box, and outside the daily distribution window.
+    - cron: "17 3 * * *"
+  workflow_dispatch:
+    inputs:
+      box:
+        description: "Which validator to back up"
+        required: true
+        default: both
+        type: choice
+        options: [both, contabo1, contabo2]
+
+concurrency:
+  group: backup-ledger
+  cancel-in-progress: false
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    strategy:
+      # Sequential: both jobs run pg_dump against a live validator, and doing
+      # that to both at once is exactly the kind of simultaneous load this
+      # project has been bitten by before.
+      max-parallel: 1
+      fail-fast: false
+      matrix:
+        include:
+          - box: contabo1
+            host: 173.249.37.118
+            secret_name: CONTABO_SSH_KEY
+            fingerprint: "SHA256:noMtjHV8c+2iEFZu3TRUP6WRwGjkrvFke71KgU6Eyt4"
+          - box: contabo2
+            host: 194.163.188.71
+            secret_name: CONTABO2_SSH_KEY
+            fingerprint: "SHA256:VIwj7Faxiga2n45HVHZEQFPxcbRKHgSgHoxAFsf2wto"
+    steps:
+      - name: Skip boxes this run does not target
+        id: gate
+        run: |
+          want="${{ github.event.inputs.box || 'both' }}"
+          if [ "$want" = "both" ] || [ "$want" = "${{ matrix.box }}" ]; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "run=false" >> "$GITHUB_OUTPUT"
+            echo "Not targeted this run."
+          fi
+
+      - name: Dump and verify on ${{ matrix.box }}
+        if: steps.gate.outputs.run == 'true'
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ matrix.host }}
+          username: root
+          key: ${{ secrets[matrix.secret_name] }}
+          port: 22
+          fingerprint: ${{ matrix.fingerprint }}
+          script_stop: true
+          timeout: 1800s
+          command_timeout: 1800s
+          script: |
+            set -euo pipefail
+
+            DATABASE_URL="$(grep -E '^DATABASE_URL=' /root/.aequitas.env 2>/dev/null | head -1 | cut -d= -f2- || true)"
+            if [ -z "$DATABASE_URL" ]; then
+              DATABASE_URL="$(docker inspect aequitas-node --format '{{range .Config.Env}}{{println .}}{{end}}' 2>/dev/null | grep -E '^DATABASE_URL=' | head -1 | cut -d= -f2- || true)"
+            fi
+            if [ -z "$DATABASE_URL" ]; then
+              echo "No DATABASE_URL on this box — cannot back up. Failing loudly rather than reporting success."
+              exit 1
+            fi
+
+            # DATABASE_URL's host is a docker DNS name that only resolves on
+            # aequitas-node's own network — same reason every other diagnostic
+            # workflow here joins it.
+            NET="$(docker inspect aequitas-node --format '{{range $n,$v := .NetworkSettings.Networks}}{{$n}}{{end}}')"
+            STAMP="$(date -u +%Y%m%dT%H%M%SZ)"
+            OUT="/root/backups"
+            mkdir -p "$OUT"
+            DUMP="$OUT/aequitas-${STAMP}.dump"
+
+            echo "=== pg_dump (custom format, compressed) ==="
+            # -Fc so the restore check can use pg_restore and so the file is
+            # compressed without a second pass. --no-owner/--no-acl so it can be
+            # restored into a fresh database that has different role names.
+            docker run --rm --network "$NET" -v "$OUT:/out" postgres:16-alpine \
+              pg_dump "$DATABASE_URL" -Fc --no-owner --no-acl -f "/out/$(basename "$DUMP")"
+
+            ls -lh "$DUMP"
+            SIZE=$(stat -c %s "$DUMP")
+            if [ "$SIZE" -lt 100000 ]; then
+              echo "Dump is only ${SIZE} bytes — that is not a whole ledger. Failing."
+              exit 1
+            fi
+
+            echo "=== restore verification (throwaway database, dropped afterwards) ==="
+            # A dump nobody has restored is a file, not a backup.
+            ADMIN="$(echo "$DATABASE_URL" | sed 's#/[^/?]*\(?\|$\)#/postgres\1#')"
+            VERIFY="aequitas_restore_check_${STAMP}"
+            docker run --rm --network "$NET" postgres:16-alpine \
+              psql "$ADMIN" -c "DROP DATABASE IF EXISTS ${VERIFY};" >/dev/null
+            docker run --rm --network "$NET" postgres:16-alpine \
+              psql "$ADMIN" -c "CREATE DATABASE ${VERIFY};" >/dev/null
+
+            VERIFY_URL="$(echo "$DATABASE_URL" | sed "s#/[^/?]*\(?\|$\)#/${VERIFY}\1#")"
+            set +e
+            docker run --rm --network "$NET" -v "$OUT:/out" postgres:16-alpine \
+              pg_restore --no-owner --no-acl -d "$VERIFY_URL" "/out/$(basename "$DUMP")"
+            RESTORE_RC=$?
+            set -e
+
+            echo "=== does the restored copy actually hold the ledger? ==="
+            q() { docker run --rm --network "$NET" postgres:16-alpine psql "$VERIFY_URL" -t -A -c "$1"; }
+            HUMANS="$(q "SELECT count(*) FROM chain_accounts WHERE is_human = true" || echo 0)"
+            BLOCKS="$(q "SELECT count(*) FROM chain_blocks" || echo 0)"
+            NULLS="$(q "SELECT count(*) FROM nullifiers" || echo 0)"
+            SUPPLY="$(q "SELECT COALESCE(sum(balance),0) FROM chain_accounts" || echo 0)"
+            echo "restored: humans=${HUMANS} blocks=${BLOCKS} nullifiers=${NULLS} sum_balance=${SUPPLY}"
+
+            docker run --rm --network "$NET" postgres:16-alpine \
+              psql "$ADMIN" -c "DROP DATABASE IF EXISTS ${VERIFY};" >/dev/null
+
+            if [ "$RESTORE_RC" -ne 0 ]; then
+              echo "pg_restore exited ${RESTORE_RC} — this dump is not restorable. Failing."
+              exit 1
+            fi
+            if [ "${HUMANS:-0}" -lt 1 ] || [ "${BLOCKS:-0}" -lt 1 ]; then
+              echo "The restored copy has humans=${HUMANS} blocks=${BLOCKS} — it restored, but it is empty. Failing."
+              exit 1
+            fi
+            echo "✓ dump restores cleanly and contains a real ledger"
+
+            echo "=== retention on the box: keep the last 7, drop older ==="
+            ls -1t "$OUT"/aequitas-*.dump 2>/dev/null | tail -n +8 | xargs -r rm -f
+            ls -lh "$OUT"
+
+            # Hand the newest dump to the upload step under a fixed name.
+            cp "$DUMP" /root/backup-latest.dump
+
+      - name: Fetch the dump off the box
+        if: steps.gate.outputs.run == 'true'
+        uses: nicklasfrahm/scp-action@main
+        with:
+          direction: download
+          host: ${{ matrix.host }}
+          username: root
+          key: ${{ secrets[matrix.secret_name] }}
+          fingerprint: ${{ matrix.fingerprint }}
+          source: /root/backup-latest.dump
+          target: ${{ matrix.box }}-ledger.dump
+
+      - name: Upload as an artifact (the second location)
+        if: steps.gate.outputs.run == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: ledger-${{ matrix.box }}-${{ github.run_id }}
+          path: ${{ matrix.box }}-ledger.dump
+          retention-days: 90
+          if-no-files-found: error

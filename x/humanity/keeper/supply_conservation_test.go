@@ -50,7 +50,12 @@ func assertConserved(t *testing.T, cs *ChainState, what string, fn func()) {
 	before := totalAEQ(cs)
 	fn()
 	after := totalAEQ(cs)
-	if math.Abs(after-before) > 1e-6 {
+	// 1e-9, not 1e-6. The old bound tolerated a full micro-AEQ, which is
+	// exactly the size of the drift these rounds actually produce — so this
+	// helper could never have caught the minting the daily distributions were
+	// doing (see floor6's comment). At 1e-9 it catches a single micro-AEQ while
+	// staying far above float64 noise on the magnitudes involved here.
+	if math.Abs(after-before) > 1e-9 {
 		t.Errorf("%s changed the total AEQ supply by %+.6f (before %.6f, after %.6f)\n"+
 			"  only registration may create AEQ; every other operation must move it",
 			what, after-before, before, after)
@@ -229,21 +234,24 @@ func TestSupplyConservation_UBIDistribution(t *testing.T) {
 	t.Logf("pool 100.000001 over %d humans: credited %.6f to %d recipient(s), total %+.6f",
 		humans, credited, len(shares), after-before)
 
-	// MEASURED BEHAVIOUR, pinned deliberately rather than "fixed" three days
-	// before launch: the per-head amount is rounded down to micro-AEQ and the
-	// pool is then zeroed by the separate finalize transaction, so a remainder
-	// of up to one micro-AEQ per recipient is destroyed. Two properties make
-	// that acceptable and worth pinning as-is:
+	// CORRECTION (Audit 2026-08-18): this block used to pin "it can only ever
+	// BURN, never mint" as measured behaviour, and that was false. The comment
+	// said the per-head amount was "rounded down"; the code used round6 and
+	// NewDecimal, both math.Round, i.e. half away from zero. With a remainder
+	// at or above half a micro-AEQ every share rounded UP, the credits summed
+	// to more than the pool, and the pool was zeroed anyway — a mint. Measured:
+	// a 0.000007 AEQ pool over two humans created one micro-AEQ, and the LP
+	// round did it on every value probed. This fixture (100.000001 over 7)
+	// happens to land on the rounding-down side, which is why it never showed.
 	//
-	//   - it can only ever BURN, never mint. Supply drifts imperceptibly down,
-	//     which is the safe direction for a currency, and it cannot explain the
-	//     +305 AEQ measured on the live chain.
-	//   - the bound is tight: 1e-6 x recipients, i.e. 15 micro-AEQ per round at
-	//     today's size, roughly five thousandths of an AEQ per year.
+	// The distributions floor now (see floor6), so the claim below is finally
+	// the truth rather than an assumption: the shares can never sum above the
+	// pool, and the finalize that zeroes it can only destroy the remainder.
+	// The burn bound is unchanged at 1e-6 x recipients.
 	//
-	// Closing it means changing what the distribution credits, and the per-head
-	// amount travels in the block, so a rollout window with two rules in flight
-	// would diverge. It is a deliberate, documented no-op, not an oversight.
+	// The old block's CONCLUSION still holds — at n=15 this drift would need
+	// ~43 million rounds to reach the +305 AEQ measured live, so this path
+	// never explained that gap. Only its reasoning was wrong.
 	delta := after - before
 	if delta > 1e-9 {
 		t.Errorf("the UBI round CREATED %+.6f AEQ — a distribution may only move money", delta)
@@ -251,6 +259,73 @@ func TestSupplyConservation_UBIDistribution(t *testing.T) {
 	if maxBurn := 1e-6 * float64(len(shares)); -delta > maxBurn {
 		t.Errorf("the UBI round destroyed %.9f AEQ, more than the %.9f rounding bound "+
 			"(1 micro-AEQ per recipient) — that is no longer rounding", -delta, maxBurn)
+	}
+}
+
+// The fixture above lands on the rounding-DOWN side by luck, which is how a
+// minting bug sat behind a test asserting the opposite for weeks. These are the
+// pool/recipient combinations where total_micro / n has a fractional part at or
+// above one half — the ones that rounded UP and created money. Each is checked
+// for exact non-creation, not merely for a small delta.
+func TestSupplyConservation_UBIDistribution_RemaindersThatUsedToMint(t *testing.T) {
+	for _, tc := range []struct {
+		poolAEQ float64
+		humans  int
+	}{
+		{0.000005, 2}, // 5 micro / 2 = 2.5 -> rounded to 3 each -> 6 > 5
+		{0.000007, 2}, // 3.5 -> 4 each -> 8 > 7
+		{0.000011, 2}, // 5.5 -> 6 each -> 12 > 11
+		{0.000003, 2}, // 1.5 -> 2 each -> 4 > 3
+		{0.000025, 10},
+		{1.0000005, 2},
+	} {
+		cs := newTestState()
+		for i := 0; i < tc.humans; i++ {
+			addr := fmt.Sprintf("0xr%02d", i)
+			cs.accounts.Set(addr, &AccountState{Address: addr, Balance: NewDecimal(1000), IsHuman: true})
+			cs.humanCount++
+		}
+		cs.accounts.Set(ubiPoolAddr, &AccountState{Address: ubiPoolAddr, Balance: NewDecimal(tc.poolAEQ)})
+		cs.pool = &PoolState{}
+
+		before := totalAEQ(cs)
+		cs.mu.Lock()
+		_, err := cs.distributeUBIPoolLocked(t.Context())
+		cs.mu.Unlock()
+		if err != nil {
+			t.Fatalf("pool %.6f over %d: %v", tc.poolAEQ, tc.humans, err)
+		}
+		if delta := totalAEQ(cs) - before; delta > 1e-9 {
+			t.Errorf("pool %.6f AEQ over %d humans CREATED %+.9f AEQ — the shares summed "+
+				"above the pool and the pool was zeroed anyway", tc.poolAEQ, tc.humans, delta)
+		}
+	}
+}
+
+// Same shape for the LP round, which minted on every value probed before the
+// distributions were changed to floor.
+func TestSupplyConservation_LPDistribution_RemaindersThatUsedToMint(t *testing.T) {
+	for _, poolAEQ := range []float64{0.000003, 0.000005, 0.000007, 0.000011} {
+		cs := newTestState()
+		for i := 0; i < 2; i++ {
+			addr := fmt.Sprintf("0xl%02d", i)
+			acc := &AccountState{Address: addr, Balance: NewDecimal(1000), IsHuman: true, LPShares: NewDecimal(100)}
+			cs.accounts.Set(addr, acc)
+			cs.humanCount++
+		}
+		cs.accounts.Set(lpPoolAddr, &AccountState{Address: lpPoolAddr, Balance: NewDecimal(poolAEQ)})
+		cs.pool = &PoolState{TotalLPShares: NewDecimal(200)}
+
+		before := totalAEQ(cs)
+		cs.mu.Lock()
+		_, err := cs.distributeLPPoolLocked(t.Context())
+		cs.mu.Unlock()
+		if err != nil {
+			t.Fatalf("LP pool %.6f: %v", poolAEQ, err)
+		}
+		if delta := totalAEQ(cs) - before; delta > 1e-9 {
+			t.Errorf("LP pool %.6f AEQ over 2 holders CREATED %+.9f AEQ", poolAEQ, delta)
+		}
 	}
 }
 

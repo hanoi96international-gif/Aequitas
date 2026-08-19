@@ -265,7 +265,7 @@ func TestPrefetchParentsFromDB_AllParentsAlreadyCachedIsHarmless(t *testing.T) {
 // for testing this code path without a real Postgres instance).
 func TestPrefetchParentsFromDB_MissingParentsSafeWithNoRealDB(t *testing.T) {
 	dag := newGhostdagTestDAG()
-	dag.state = &ChainState{} // db == nil
+	dag.state = &ChainState{}                        // db == nil
 	dag.blocks["p1"] = &Block{Hash: "p1", Height: 1} // one present, one missing
 	dag.prefetchParentsFromDB(&Block{Hash: "child", ParentHashes: []string{"p1", "p2-missing"}})
 	if _, ok := dag.blocks["p2-missing"]; ok {

@@ -3,7 +3,7 @@
 // template is "too close" to one already registered, WITHOUT any single party
 // ever seeing a template.
 //
-// WHY THIS EXISTS
+// # WHY THIS EXISTS
 //
 // The registration path this replaces derived a nullifier as Poseidon(bio) and
 // enforced uniqueness by exact hash equality. That cannot work, for two
@@ -24,7 +24,7 @@
 // together they can answer the single question that matters — "is this person
 // already registered?" — and learn nothing else.
 //
-// THE AEQUITAS CONSTRAINT
+// # THE AEQUITAS CONSTRAINT
 //
 // This design is chosen so that being recognised as a human requires nothing
 // but a body: no passport, no government, no device of a particular price, no
@@ -36,7 +36,7 @@
 // alternative is exactly the unappealable exclusion this project treats as a
 // defect.
 //
-// SECURITY MODEL, STATED PLAINLY
+// # SECURITY MODEL, STATED PLAINLY
 //
 // Additive sharing over a prime field is information-theoretically hiding: any
 // strict subset of the shares is uniformly distributed and reveals NOTHING

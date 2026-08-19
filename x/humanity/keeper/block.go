@@ -187,13 +187,30 @@ type Block struct {
 	// a new validator joins — explicitly rejected as not scaling to a
 	// growing, non-technical-operator-friendly network.
 	//
-	// SelfFetched is orthogonal to FromSync's authorization/equivocation/
-	// finality bypasses (deliberately NOT touched here) -- a proposer must
-	// still be authorized via the exact same NODE_OPERATOR_BINDING_SIGNATURE-
-	// backed check as any other block; this only lets an ALREADY-authorized
-	// proposer's block, fetched by OUR OWN deliberate request (not
-	// unsolicited push/gossip), get past the circuit breaker's reputation
-	// gate long enough to actually close the gap that tripped it. Works
+	// What SelfFetched does and does NOT bypass, stated exactly — this used to
+	// claim it was "orthogonal to FromSync's authorization/equivocation/
+	// finality bypasses (deliberately NOT touched here)", and that stopped
+	// being true when P2-2 (beta-launch audit 2026-07-05) extended it to the
+	// suspension gate. Corrected 2026-08-18:
+	//
+	//   authorization  NOT bypassed. A proposer must still be authorized via
+	//                  the exact same NODE_OPERATOR_BINDING_SIGNATURE-backed
+	//                  check as any other block (AddPeerBlock keys that gate on
+	//                  FromSync alone).
+	//   finality       NOT bypassed.
+	//   circuit breaker  bypassed — the original purpose: let an ALREADY-
+	//                  authorized proposer's block, fetched by OUR OWN
+	//                  deliberate request rather than unsolicited push/gossip,
+	//                  past the reputation gate long enough to close the very
+	//                  gap that tripped it.
+	//   suspension     bypassed too, since P2-2. A re-fetched block can predate
+	//                  a suspension record this node only holds today, and
+	//                  rejecting it reintroduces exactly the merge-stall
+	//                  SelfFetched exists to prevent. See that call site.
+	//
+	// Not attacker-reachable either way: the field is `json:"-"`, never
+	// deserialized, and set only by this node's own fetch paths in
+	// sync_blocks.go. Works
 	// automatically for any current or future validator, regardless of
 	// which peer URLs happen to be statically configured anywhere.
 	SelfFetched bool `json:"-"`
@@ -237,11 +254,30 @@ type BlockDAG struct {
 	bootHeight int64
 	// bootTime is this process's own wall-clock start time, captured once at
 	// construction and never updated — distinct from bootHeight (a block-height
-	// concept). ProduceBlock's double-production guard (see that call site's own
-	// comment) now runs unconditionally rather than only within a post-boot
-	// window; bootTime is kept for that guard's log line ("how long has this
-	// process been alive when it caught a conflicting durable row") only.
+	// concept). ProduceBlock's double-production guard runs unconditionally —
+	// it distinguishes a redeploy overlap from ordinary operation via
+	// producedHeights below, not via elapsed time — so bootTime is kept only
+	// for that guard's log line ("how long has this process been alive when it
+	// caught a conflicting durable row").
 	bootTime time.Time
+	// producedHeights records every height THIS process has itself produced a
+	// block at. It is what lets the double-production guard below run for the
+	// process's whole life instead of only for a 45-second window after boot —
+	// see that guard's own comment for the five equivocation incidents that
+	// motivated removing the window and the halt that forced it back.
+	//
+	// The halt happened because "chain_blocks already has a block from me at
+	// this height" is true in ordinary steady-state operation, once this node's
+	// tip selection lags one height behind what it just durably stored. That
+	// sentence describes normal operation. "chain_blocks has a block from me at
+	// this height that I did NOT write in this process" does not — it can only
+	// mean another instance of this validator is running. This map is the
+	// difference between the two.
+	//
+	// Bounded: entries below the finalized checkpoint are dropped by
+	// pruneOldDAGBlocks, so it tracks the live window, not all history.
+	producedHeights   map[int64]bool
+	producedHeightsMu sync.Mutex
 	// bootHeightCheckpointBacked is true only when bootHeight was set by
 	// actually seeding dag.blocks/dag.tips with a real, stored block at that
 	// exact height (RefreshBootHeightAfterSnapshotImport's checkpoint branch,
@@ -1125,6 +1161,7 @@ func NewBlockchain(nodeID string, state *ChainState) *BlockDAG {
 		finalityWalkGaps:            make(map[string]bool),
 		produceStuckGaps:            make(map[string]bool),
 
+		producedHeights:       make(map[int64]bool),
 		softRetryBlocks:       make(map[string]*Block),
 		softRetryFirstAt:      make(map[string]time.Time),
 		lastDeepScanAt:        make(map[string]int64),
@@ -1718,6 +1755,26 @@ func (dag *BlockDAG) RefreshBootHeightAfterSnapshotImport(resyncHappened bool) {
 // BootHeight returns the boot height (the DB-persisted chain height or
 // snapshot import height, whichever is larger) — the frontier below which
 // replayTransactions already encodes state and blocks need not be re-applied.
+// ownsProducedHeight reports whether THIS process produced a block at height.
+// Nil-safe so test helpers that build a BlockDAG literal (rather than going
+// through NewBlockchain) behave as "produced nothing", which is the correct
+// conservative answer.
+func (dag *BlockDAG) ownsProducedHeight(height int64) bool {
+	dag.producedHeightsMu.Lock()
+	defer dag.producedHeightsMu.Unlock()
+	return dag.producedHeights[height]
+}
+
+// noteProducedHeight records that this process durably produced height.
+func (dag *BlockDAG) noteProducedHeight(height int64) {
+	dag.producedHeightsMu.Lock()
+	defer dag.producedHeightsMu.Unlock()
+	if dag.producedHeights == nil {
+		dag.producedHeights = make(map[int64]bool)
+	}
+	dag.producedHeights[height] = true
+}
+
 func (dag *BlockDAG) BootHeight() int64 {
 	dag.mu.RLock()
 	defer dag.mu.RUnlock()
@@ -2509,10 +2566,32 @@ func (dag *BlockDAG) ProduceBlock() *Block {
 	// BOOTSTRAP_SIGNER over a self-collision at all (see AddPeerBlock's
 	// equivocation goroutine, same date), so a missed overlap costs a
 	// duplicate block the DAG merges anyway, not a 14-day network partition.
-	const postBootDuplicateGuardWindow = 45 * time.Second
-	if time.Since(dag.bootTime) < postBootDuplicateGuardWindow &&
-		dag.state != nil && dag.state.HasBlockFromProposerAtHeight(proposer, maxParentHeight+1) {
-		fmt.Printf("[BLOCK] ⏸ Skipping production at height %d — this validator already has a block there in the durable store (likely a concurrent instance from a redeploy overlap, %s into this process's life); waiting for ordinary peer sync to pull it in instead of minting a conflicting duplicate\n", maxParentHeight+1, time.Since(dag.bootTime).Round(time.Second))
+	// FIX (P1, Audit 2026-08-18 — the window is gone, and this time it stays
+	// gone): the 45-second window was never the right control, it was a proxy
+	// for one. The revert above is right that "chain_blocks already has a block
+	// from me at this height" is routinely true in ordinary operation — but
+	// only because this node wrote that block ITSELF, moments ago, in this same
+	// process. The condition that actually means "another instance of me is
+	// running" is narrower: a durable block from this validator at this height
+	// that THIS PROCESS did not write.
+	//
+	// producedHeights (see its own comment) supplies the missing half. It turns
+	// the guard from a time-boxed guess into an exact statement, so it can run
+	// for the process's whole life without ever firing on the node's own work —
+	// which is what halted the primary on 2026-07-24 and forced the window back.
+	//
+	// Why this matters beyond tidiness: the fallback that made a missed overlap
+	// survivable — a node no longer suspending its own signer over a
+	// self-collision — is deliberately scoped to BOOTSTRAP_SIGNER alone (see
+	// the equivocation goroutine in AddPeerBlock). It protects this
+	// deployment's own validators and nobody else's. A third-party operator
+	// whose rolling deploy overlaps by more than 45 seconds was suspended by
+	// every other node for doing nothing wrong. This project's premise is that
+	// any registered human can run a validator, so a guard that only covers the
+	// operator's own two boxes is not the guard it needs.
+	if dag.state != nil && !dag.ownsProducedHeight(maxParentHeight+1) &&
+		dag.state.HasBlockFromProposerAtHeight(proposer, maxParentHeight+1) {
+		fmt.Printf("[BLOCK] ⏸ Skipping production at height %d — the durable store already holds a block from this validator there, and this process did not write it. That means a second instance of this validator is running (a redeploy overlap, %s into this process's life). Waiting for ordinary peer sync to pull it in instead of minting a conflicting duplicate every other node would correctly read as equivocation.\n", maxParentHeight+1, time.Since(dag.bootTime).Round(time.Second))
 		return nil
 	}
 
@@ -2679,6 +2758,12 @@ func (dag *BlockDAG) ProduceBlock() *Block {
 	dag.txMu.Unlock()
 
 	dag.blocks[block.Hash] = block
+	// This process now owns this height — see producedHeights' own comment.
+	// Recorded only after SaveBlockWithPendingTxsAtomic above returned without
+	// error, so the map can never claim a height whose block was not actually
+	// persisted; an unpersisted height must stay "not mine" so the guard still
+	// fires for it on the next tick.
+	dag.noteProducedHeight(block.Height)
 	// GHOSTDAG already computed above (P1-04); no second call needed.
 	dag.replayedMu.Lock()
 	dag.replayedBlocks[block.Hash] = true
@@ -6262,6 +6347,62 @@ func (dag *BlockDAG) replayTransactions(block *Block, force bool) (ok bool) {
 				continue
 			}
 			fmt.Printf("[REPLAY] ✓ ZK proof verified for %s (block #%d)\n", wallet, block.Height)
+			// FIX (P0, Audit 2026-08-18): bind the claimed nullifier to the
+			// proof that was just verified.
+			//
+			// verifyZKProof above answers exactly one question — "is
+			// (pA,pB,pC,pubSignals) a valid Groth16 proof?" — and says
+			// NOTHING about tx.Nullifier. The claim below then took
+			// tx.Nullifier at face value. The two were never compared, so a
+			// validator could pair ANY published proof (they travel in the
+			// clear inside every register_human block and are served by
+			// /api/blocks) with a nullifier of its own choosing and a fresh
+			// wallet: proof verifies, nullifier is unused, 1,000 AEQ are
+			// minted. Repeatable with 1, 2, 3, … — each a different canonical
+			// nullifier, so the dedup never fires. Unlimited supply creation
+			// by a single authorized validator.
+			//
+			// nullifierMatchesProof was written for precisely this, and its
+			// own doc comment describes precisely this attack — it was simply
+			// never called from anywhere. It is called now.
+			//
+			// AequitasV7.sol:257-270 gets this right (effectiveNullifier =
+			// bytes32(pubSignals[1]), plus a require() rejecting a mismatched
+			// caller-supplied one), which is why honestly-produced blocks all
+			// satisfy this check already: /api/register goes through a
+			// registerWithSig dry-run before the TX is ever queued. But the
+			// contract does not run during block replay, and replay is what
+			// writes balances — so the guarantee has to exist here too.
+			//
+			// ACTIVATION (same reasoning and mechanism as
+			// equivocationSlashingActivationUnix, slashing.go): a new
+			// rejection rule applied to already-accepted history would make a
+			// resync-from-genesis fail on any legacy block that predates the
+			// contract-side binding, permanently stalling the node. Anchoring
+			// on the block's own timestamp keeps replay deterministic in both
+			// directions — every node, syncing today or bootstrapping in a
+			// year, computes the same verdict for the same block — while
+			// every block produced from now on is bound.
+			// Pre-activation blocks are CHECKED but not rejected: a mismatch
+			// there is logged loudly instead. That costs nothing, cannot stall
+			// a resync, and means the operator finds out whether any legacy
+			// block actually violates the binding — the one question this
+			// activation window exists to be careful about — from the node's
+			// own logs rather than from a manual DB survey.
+			if bound, bindErr := nullifierMatchesProof(nullifier, tx.PubSignals); bindErr != nil || !bound {
+				reason := "claimed nullifier does not match pubSignals[1]"
+				if bindErr != nil {
+					reason = bindErr.Error()
+				}
+				if block.Timestamp >= nullifierProofBindingActivationUnix {
+					fmt.Printf("[REPLAY] ✗ register_human for %s (block #%d): %s — rolling back whole block\n",
+						wallet, block.Height, reason)
+					hardFailure = true
+					continue
+				}
+				fmt.Printf("[REPLAY] ⚠ register_human for %s (block #%d, pre-activation): %s — ACCEPTED because this block predates the binding rule, but this is exactly the case that rule exists for. Investigate this registration.\n",
+					wallet, block.Height, reason)
+			}
 			// FIX (audit 2026-06-28 recheck 5, P1-1): tryClaimNullifierLocked
 			// now returns an error distinctly from "already used" — a genuine
 			// DB failure during the claim must roll back the block, not be
@@ -8241,6 +8382,18 @@ func (dag *BlockDAG) pruneOldDAGBlocks() {
 	// dag.blocks[existingHash] lookup already treats it as "no conflict"
 	// (slashing.go) — the entry is dead weight, not a detection gap, once
 	// evicted.
+	// producedHeights only needs to cover the window where a redeploy overlap
+	// could still be in flight; anything below the finalized checkpoint is
+	// long settled. Trimming it here keeps the map bounded on a node that
+	// runs for months without a restart.
+	dag.producedHeightsMu.Lock()
+	for h := range dag.producedHeights {
+		if h < cutoff {
+			delete(dag.producedHeights, h)
+		}
+	}
+	dag.producedHeightsMu.Unlock()
+
 	evicted := 0
 	for key, hash := range dag.equivocationIndex {
 		if _, stillPresent := dag.blocks[hash]; !stillPresent {

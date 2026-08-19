@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"fmt"
 	"os"
+	"sync"
 	"testing"
 	"time"
 
@@ -71,9 +72,34 @@ func truncateDistTestTables(t *testing.T) {
 		t.Fatalf("truncateDistTestTables: open: %v", err)
 	}
 	defer db.Close()
+	// FIX (Audit 2026-08-18): this used to TRUNCATE straight away, which only
+	// works on a database some earlier run had already populated — a developer
+	// machine that had started the node at least once. Against a FRESH
+	// database it failed with `relation "chain_accounts" does not exist`, so
+	// these tests could never be pointed at a disposable Postgres service
+	// container, which is exactly what CI has to do. Creating the schema first
+	// makes the whole _RealDB set self-sufficient: hand it an empty database
+	// and it works.
+	ensureRealDBSchema(t, db)
 	if _, err := db.Exec(`TRUNCATE chain_accounts, chain_config, nullifiers, liquidity_pool, escrow_accounts, registered_nodes, pending_txs CASCADE`); err != nil {
 		t.Fatalf("truncateDistTestTables: %v", err)
 	}
+}
+
+// realDBSchemaOnce keeps the schema creation to one pass per test binary; the
+// DDL is all IF NOT EXISTS, so repeating it would be correct but wasteful.
+var realDBSchemaOnce sync.Once
+
+// ensureRealDBSchema runs the node's own initDB against db, so the _RealDB
+// tests describe their requirements completely instead of inheriting a schema
+// from whatever happened to run before them. Deliberately constructs a bare
+// ChainState rather than calling NewChainState: initDB only needs cs.db, and
+// the full constructor would start background goroutines a test does not want.
+func ensureRealDBSchema(t *testing.T, db *sql.DB) {
+	t.Helper()
+	realDBSchemaOnce.Do(func() {
+		(&ChainState{db: db, useDB: true}).initDB()
+	})
 }
 
 // TestRunDailyDistributionAtomic_RealDB is the DB-backed counterpart to

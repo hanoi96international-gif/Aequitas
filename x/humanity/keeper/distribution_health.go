@@ -96,10 +96,10 @@ func (cs *ChainState) DistributionHealth() map[string]interface{} {
 	}
 
 	out["last_attempt"] = map[string]interface{}{
-		"at":               lastDistribution.at.Unix(),
-		"seconds_ago":      int64(time.Since(lastDistribution.at).Seconds()),
-		"outcome":          lastDistribution.outcome,
-		"reason":           lastDistribution.reason,
+		"at":                   lastDistribution.at.Unix(),
+		"seconds_ago":          int64(time.Since(lastDistribution.at).Seconds()),
+		"outcome":              lastDistribution.outcome,
+		"reason":               lastDistribution.reason,
 		"attempts_this_uptime": lastDistribution.attempts,
 	}
 

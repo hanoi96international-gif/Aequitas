@@ -41,7 +41,26 @@ COPY . .
 # from the checkout they just pulled. Unset, it falls back to "unknown", which
 # is what a local `docker build` without the arg should say.
 ARG GIT_COMMIT=unknown
-RUN go build -ldflags "-X github.com/hanoi96international-gif/aequitas-chain/x/humanity/keeper.buildGitCommitStamp=${GIT_COMMIT}" -o aequitasd ./cmd/aequitasd/
+# FIX (Audit 2026-08-18): --build-arg alone never actually reached this. The
+# ARG above and the -ldflags below were both in place, but nothing in this
+# repository ever passed the value: the docker build runs inside
+# /root/deploy.sh and /root/deploy_safe_c2.sh, which live only on the boxes
+# and are not version-controlled here. So git_commit stayed "unknown" on both
+# validators and the explorer's Network tab could never answer the one
+# question a rollout asks — is the whole fleet on the same build?
+#
+# .git-commit-stamp closes that without needing either script. The deploy
+# workflows (which ARE in this repository) write it into the checkout right
+# before invoking the box script, so it arrives as part of the build context.
+# An explicit --build-arg still wins if one is ever passed; the file is the
+# fallback; "unknown" remains the answer for a bare local `docker build`,
+# which is correct.
+RUN GIT_COMMIT_EFFECTIVE="${GIT_COMMIT}"; \
+    if [ "$GIT_COMMIT_EFFECTIVE" = "unknown" ] && [ -s .git-commit-stamp ]; then \
+      GIT_COMMIT_EFFECTIVE="$(tr -d '[:space:]' < .git-commit-stamp)"; \
+    fi; \
+    echo "building with git commit: ${GIT_COMMIT_EFFECTIVE}"; \
+    go build -ldflags "-X github.com/hanoi96international-gif/aequitas-chain/x/humanity/keeper.buildGitCommitStamp=${GIT_COMMIT_EFFECTIVE}" -o aequitasd ./cmd/aequitasd/
 
 FROM alpine:latest
 WORKDIR /app

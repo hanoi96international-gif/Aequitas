@@ -19,13 +19,13 @@ func TestCanonicalNullifier_AllSpellingsOfOneValueCollapse(t *testing.T) {
 	}
 
 	variants := map[string]string{
-		"as sent":          decimal,
-		"one leading zero": "0" + decimal,
+		"as sent":           decimal,
+		"one leading zero":  "0" + decimal,
 		"two leading zeros": "00" + decimal,
-		"leading space":    " " + decimal,
-		"trailing space":   decimal + " ",
-		"trailing newline": decimal + "\n",
-		"trailing tab":     decimal + "\t",
+		"leading space":     " " + decimal,
+		"trailing space":    decimal + " ",
+		"trailing newline":  decimal + "\n",
+		"trailing tab":      decimal + "\t",
 	}
 	for name, v := range variants {
 		got, err := canonicalNullifier(v)

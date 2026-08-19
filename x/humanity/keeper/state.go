@@ -2639,12 +2639,25 @@ const demurrageMonthlyRate = 0.005                    // 0.5%/month
 const registrationGrant = 1000.0
 
 // wealthCapMultiplier defines the maximum AEQ a single account may hold,
-// expressed as a multiple of the current average AEQ balance across all
-// registered humans — not a fixed number. This makes the cap self-
-// adapting: as the system grows and average wealth naturally rises
-// through normal economic activity, the cap rises proportionally with
-// it, rather than needing to be manually raised through discrete
-// "phases" as the project matures. The cap only kicks in on incoming
+// expressed as a multiple of the fair share — which on this chain is a
+// constant.
+//
+// CORRECTION (Audit 2026-08-18): this used to describe the cap as
+// "self-adapting: as the system grows and average wealth naturally rises
+// through normal economic activity, the cap rises proportionally with it".
+// It does not, and cannot. getAverageBalanceLocked returns TotalSupply /
+// humans, and TotalSupply is DEFINED as humans × 1000 (see registrationGrant
+// above and TotalSupply's own comment), so that quotient is the literal
+// constant 1000 for every non-zero human count — the function even returns
+// the literal. The cap is therefore a flat 25,000 AEQ, permanently, and no
+// amount of economic activity moves it.
+//
+// The rule itself is coherent — "25 × the fair share" is a perfectly good
+// cap, and it is what the whitepaper's phase table describes numerically.
+// Only the claim that it tracks a measured average was wrong, and that claim
+// also reached the whitepaper ("× Ø-Balance") and the explorer
+// ("× average balance"), where a reader would reasonably expect the cap to
+// move as the network grows. The cap only kicks in on incoming
 // AEQ (registration grants, transfers, swap/liquidity payouts) — see
 // enforceWealthCapLocked — never on a balance that's already there, so
 // it can't retroactively punish someone for an average that later rose.
@@ -3261,7 +3274,10 @@ func (cs *ChainState) distributeValidatorsPoolLocked(ctx context.Context) ([]Dis
 			fmt.Printf("[VALIDATORS] Skipping invalid wallet address: %q\n", wallet)
 			continue
 		}
-		share := round6(total * float64(ns.blocks) / float64(totalBlocks))
+		// floor6, not round6 — see floor6's own comment: rounding to nearest
+		// lets the credited shares sum to MORE than the pool that is zeroed
+		// immediately afterwards, which mints money.
+		share := floor6(total * float64(ns.blocks) / float64(totalBlocks))
 		if share <= 0 {
 			continue
 		} // E4-FIX: skip rounding-to-zero to preserve pool
@@ -3439,7 +3455,9 @@ func (cs *ChainState) distributeLPPoolLocked(ctx context.Context) ([]Distributio
 	var totalDistributed float64
 	var shares []DistributionShare
 	for _, h := range holders {
-		share := round6((h.shares / totalShares) * total)
+		// floor6, not round6 — see floor6's own comment. Measured minting one
+		// micro-AEQ per round on every probed pool value before this changed.
+		share := floor6((h.shares / totalShares) * total)
 		totalDistributed += share
 		acc, _ := cs.accounts.Get(h.addr)
 		acc.Balance = acc.Balance.Add(NewDecimal(share))
@@ -3587,9 +3605,15 @@ func (cs *ChainState) distributeUBIPoolLocked(ctx context.Context) ([]Distributi
 	// P0-FIX: Do NOT call settleDemurrageLocked on the pool account itself —
 	// pool addresses are tokenomics infrastructure and must never have demurrage applied.
 	total := poolAcc.Balance.Float()
-	share := total / float64(len(humanAddrs))
+	// floor6, not the raw quotient — see floor6's own comment. The credit below
+	// used to be NewDecimal(share) on an unfloored quotient, which rounds to
+	// nearest: with a remainder at or above half a micro-AEQ every human was
+	// credited UP and the sum exceeded the pool that gets zeroed right after.
+	// Flooring here makes the credited amount, the amount reported in the
+	// block, and the amount a secondary replays all the same exact number.
+	share := floor6(total / float64(len(humanAddrs)))
 	// P0-5/P2-9: prevent funds vanishing via float rounding to 0
-	if round6(share) == 0 {
+	if share == 0 {
 		fmt.Printf("[UBI] Share %.10f rounds to zero — pool left intact for next distribution\n", share)
 		return nil, nil
 	}
@@ -3612,7 +3636,7 @@ func (cs *ChainState) distributeUBIPoolLocked(ctx context.Context) ([]Distributi
 			return nil, fmt.Errorf("could not enforce wealth cap for %s: %w", addr, err)
 		}
 		batch = append(batch, acc)
-		shares = append(shares, DistributionShare{Wallet: addr, Amount: round6(share), DemurrageLost: demurrageLost[addr]})
+		shares = append(shares, DistributionShare{Wallet: addr, Amount: share, DemurrageLost: demurrageLost[addr]})
 	}
 	if err := cs.saveAccountsToDBBatchCtx(ctx, batch); err != nil {
 		return nil, fmt.Errorf("could not save UBI rewards batch: %w", err)
@@ -4920,7 +4944,15 @@ func (cs *ChainState) transferMutateLocked(ctx context.Context, from, to string,
 //
 //	base = 0.1% of amount
 //	Concentration surcharge if sender holds ≥1/5/10% of total supply
-//	20% of fee → UBI pool, 80% burned (removed from supply)
+//	100% of the fee → UBI pool; nothing is burned
+//
+// CORRECTION (Audit 2026-08-18): the last line used to read "20% of fee → UBI
+// pool, 80% burned (removed from supply)", which is what AequitasV7.sol does
+// and the exact opposite of what the body below does. The Go ledger cannot
+// burn — supply is defined as humans × 1000 — so the implementation routes the
+// whole fee to the UBI pool and says so in its own inline comment, twenty lines
+// further down. Two contradictory descriptions of the same function, one of
+// them in its doc comment.
 //
 // Returns (netAmountCredited, fromDemurrageLost, toDemurrageLost, err) — the
 // two demurrage figures must be attached to the queued Transaction so
@@ -5486,14 +5518,42 @@ func (cs *ChainState) distributeSwapFeeCtx(ctx context.Context, fee float64, fee
 			}
 		}
 	}
+	// FIX (P1, Audit 2026-08-18): split in exact micro-units, not four
+	// independent float roundings.
+	//
+	// This used to be {fee*0.40, fee*0.30, fee*0.20, fee*0.10}, each then
+	// passed through NewDecimal — four separate math.Round calls whose results
+	// need not sum back to fee. The payer was debited `fee` exactly, so
+	// whenever the four rounded credits summed HIGHER, the difference was money
+	// that had never existed. This is not a rare path: every swap fee, every
+	// demurrage settlement and every wealth-cap overflow lands here, so it fired
+	// on ordinary user activity rather than once a day.
+	//
+	// It was invisible because assertConserved tolerated 1e-6 — exactly the
+	// magnitude of the drift. Tightening that bound to 1e-9 while fixing the
+	// daily rounds (see floor6) is what surfaced it, in
+	// TestSupplyConservation_Swap and TestSupplyConservation_Demurrage.
+	//
+	// Integer allocation makes the identity exact by construction: the first
+	// three shares floor, and the treasury takes whatever is left, so the four
+	// always sum to feeMicro and never to feeMicro±1. Treasury absorbs at most
+	// 3 micro-AEQ more than its nominal 10%, deterministically, on every node.
+	//
+	// feeMicro*40 overflows int64 only above ~2.3e11 AEQ in a single fee, which
+	// is seven orders of magnitude beyond the entire supply.
+	feeMicro := NewDecimal(fee).Micro()
+	vMicro := feeMicro * 40 / 100
+	lMicro := feeMicro * 30 / 100
+	uMicro := feeMicro * 20 / 100
+	tMicro := feeMicro - vMicro - lMicro - uMicro
 	shares := [4]struct {
 		addr   string
 		amount float64
 	}{
-		{validatorsPoolAddr, fee * 0.40},
-		{lpPoolAddr, fee * 0.30},
-		{ubiPoolAddr, fee * 0.20},
-		{treasuryPoolAddr, fee * 0.10},
+		{validatorsPoolAddr, NewDecimalFromMicro(vMicro).Float()},
+		{lpPoolAddr, NewDecimalFromMicro(lMicro).Float()},
+		{ubiPoolAddr, NewDecimalFromMicro(uMicro).Float()},
+		{treasuryPoolAddr, NewDecimalFromMicro(tMicro).Float()},
 	}
 	accs := make([]*AccountState, len(shares))
 	for i, s := range shares {

@@ -18,22 +18,23 @@ import (
 // pending an explicit operator decision (see prior version of this comment
 // in git history); the other two were found and fixed in the same
 // 2026-07-05 pass:
-//   1. register() removed — its ZK proof has no binding to msg.sender, so a
-//      front-runner observing a pending tx could resubmit the same calldata
-//      from their own address, stealing the grant and permanently burning
-//      the victim's nullifier. registerWithSig (ECDSA-signed over the
-//      claimed address) is the only registration path now.
-//   2. _confirmAlive() reapplies the wealth cap; proposeGuardian() layering
-//      protection restored (both from the 2026-07-03 pass).
-//   3. confirmGuardian() now re-validates both layering invariants
-//      (wardCount[msg.sender]==0 and guardianOf[g]==0) at CONFIRM time, not
-//      just at PROPOSE time — closing a TOCTOU race where two pending
-//      proposals confirmed in either order during the 7-day timelock could
-//      still assemble a multi-hop guardian chain.
-//   4. triggerEscrowToUBI() now recycles a swept human's outstanding
-//      (unclaimed) UBI entitlement into ubiPool instead of silently
-//      violating the SUM(balanceOf)+SUM(escrowOf)+ubiPool == totalSupply
-//      invariant forever.
+//  1. register() removed — its ZK proof has no binding to msg.sender, so a
+//     front-runner observing a pending tx could resubmit the same calldata
+//     from their own address, stealing the grant and permanently burning
+//     the victim's nullifier. registerWithSig (ECDSA-signed over the
+//     claimed address) is the only registration path now.
+//  2. _confirmAlive() reapplies the wealth cap; proposeGuardian() layering
+//     protection restored (both from the 2026-07-03 pass).
+//  3. confirmGuardian() now re-validates both layering invariants
+//     (wardCount[msg.sender]==0 and guardianOf[g]==0) at CONFIRM time, not
+//     just at PROPOSE time — closing a TOCTOU race where two pending
+//     proposals confirmed in either order during the 7-day timelock could
+//     still assemble a multi-hop guardian chain.
+//  4. triggerEscrowToUBI() now recycles a swept human's outstanding
+//     (unclaimed) UBI entitlement into ubiPool instead of silently
+//     violating the SUM(balanceOf)+SUM(escrowOf)+ubiPool == totalSupply
+//     invariant forever.
+//
 // Compiled from AequitasV7.sol on 2026-07-05 (solc 0.8.28, optimizer 200
 // runs — see hardhat.config.ts) — see test/AequitasV7_guardian_ubi_fixes.ts
 // for regression coverage of fixes 3 and 4 (fixes 1-2 predate this repo's
@@ -75,34 +76,35 @@ import (
 // mappings appended after THRESHOLDS (escrowedAt, nullifierOf,
 // grantIssuedTo), so slots 0-26 are unmoved and evm_engine.go's slot lists
 // were updated to match (see v7SlotsVerifiedForVersion there). Four fixes:
-//   RED 1: the escrow wake-up bonus was MINTED (totalSupply += fairShare()).
-//      fairShare() is totalSupply/totalHumans, so a lone registered human
-//      doubled the entire money supply every 910 days, permissionlessly —
-//      measured at 1000 -> 32000 AEQ over five cycles. The bonus is now paid
-//      from ubiPool, so it survives as an incentive without creating money.
-//   RED 2: escrow and forfeiture both measured from lastActivity, so a late
-//      triggerEscrow collapsed the promised ~550-day recovery window to zero
-//      and a human could be swept in the same block escrow began. Forfeiture
-//      is now anchored to escrowedAt, matching guardian.go's moved_at.
-//   RED 3: an inactivity sweep left usedNullifiers/usedCommitments set
-//      forever, permanently barring a LIVING person — a biometric nullifier
-//      cannot be regenerated. The sweep now releases both, and a second
-//      INITIAL_GRANT is blocked by grantIssuedTo rather than by the ban.
-//   RED 4: transfer() settled only the sender, so an incoming payment was
-//      charged the recipient's entire dormancy as demurrage (35.64 AEQ taken
-//      from a 900 AEQ payment held one block). It now settles the recipient
-//      before crediting, as the Go keeper already did.
-//   E4: routing through escrow FORGAVE all accrued demurrage — triggerEscrow
-//      zeroed the balance without settling, and the wake-up path then reset
-//      the clock. Idling was strictly more profitable than participating, in
-//      a demurrage currency. Demurrage is now settled on the way IN, matching
-//      guardian.go's both-edges behaviour.
-//   F1: the contract emitted a standard ERC-20 Transfer event in exactly one
-//      place (the wake-up mint), so every indexer and wallet reconstructing
-//      balances from logs showed all holders at zero — and RED 1's removal of
-//      that mint would have left none at all. Every value-moving path now
-//      emits one, under a documented model where address(this) represents
-//      contract-held value (ubiPool + escrows) and address(0) creation/burn.
+//
+//	RED 1: the escrow wake-up bonus was MINTED (totalSupply += fairShare()).
+//	   fairShare() is totalSupply/totalHumans, so a lone registered human
+//	   doubled the entire money supply every 910 days, permissionlessly —
+//	   measured at 1000 -> 32000 AEQ over five cycles. The bonus is now paid
+//	   from ubiPool, so it survives as an incentive without creating money.
+//	RED 2: escrow and forfeiture both measured from lastActivity, so a late
+//	   triggerEscrow collapsed the promised ~550-day recovery window to zero
+//	   and a human could be swept in the same block escrow began. Forfeiture
+//	   is now anchored to escrowedAt, matching guardian.go's moved_at.
+//	RED 3: an inactivity sweep left usedNullifiers/usedCommitments set
+//	   forever, permanently barring a LIVING person — a biometric nullifier
+//	   cannot be regenerated. The sweep now releases both, and a second
+//	   INITIAL_GRANT is blocked by grantIssuedTo rather than by the ban.
+//	RED 4: transfer() settled only the sender, so an incoming payment was
+//	   charged the recipient's entire dormancy as demurrage (35.64 AEQ taken
+//	   from a 900 AEQ payment held one block). It now settles the recipient
+//	   before crediting, as the Go keeper already did.
+//	E4: routing through escrow FORGAVE all accrued demurrage — triggerEscrow
+//	   zeroed the balance without settling, and the wake-up path then reset
+//	   the clock. Idling was strictly more profitable than participating, in
+//	   a demurrage currency. Demurrage is now settled on the way IN, matching
+//	   guardian.go's both-edges behaviour.
+//	F1: the contract emitted a standard ERC-20 Transfer event in exactly one
+//	   place (the wake-up mint), so every indexer and wallet reconstructing
+//	   balances from logs showed all holders at zero — and RED 1's removal of
+//	   that mint would have left none at all. Every value-moving path now
+//	   emits one, under a documented model where address(this) represents
+//	   contract-held value (ubiPool + escrows) and address(0) creation/burn.
 const V7ContractVersion = "v7.14-prelaunch-audit"
 
 // V7ContractBytecode is the compiled bytecode of AequitasV7.sol (solc 0.8.28, optimizer 200 runs

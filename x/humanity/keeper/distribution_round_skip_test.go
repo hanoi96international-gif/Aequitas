@@ -117,7 +117,6 @@ func TestIsDistributionRoundTxType_OrdinaryTxTypesAreUnaffected(t *testing.T) {
 	}
 }
 
-
 // IsBlockReplayedInDB is the durable backstop for the in-memory dag.replayedBlocks
 // cache, which is wiped wholesale every ~50,000 entries (~14h at BLOCK_TIME=1s).
 // Without a database it must report false — never true, which would let a
