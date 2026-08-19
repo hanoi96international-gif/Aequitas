@@ -212,6 +212,12 @@ Es gibt **keine Spezial-Hardware**. Die Registrierung läuft über die Android-A
 
 **Was die Einmaligkeit zum Start wirklich trägt:** der Nullifier auf der Kette. Er ist kryptografisch und lückenlos — ein zweites Mal derselbe Nullifier wird abgelehnt, egal über welchen Weg er eingereicht wird. Er beweist aber nur, dass *dieselbe Identitätsquelle* nicht zweimal zählt. Ob diese Quelle ein Mensch oder ein Gerät ist, entscheidet die Betriebsart oben.
 
+**Und wie viele Quellen jemand haben kann, entscheidet zurzeit nichts.** Der Nullifier ist `Poseidon(bioHash)`, und `bioHash` ist ein privater Eingabewert, den der Beweis-Circuit nicht prüft. Der Proof-Server hat dafür ein Tor — `BIO_ATTESTATION_MODE` —, das nur eine vom Koordinator signierte Bestätigung durchlässt. Dieses Tor steht auf `off`, dem Auslieferungszustand, auf beiden Validatoren (gemessen 19.08.2026), und es kann derzeit gar nicht geschlossen werden: einen Koordinator gibt es noch nicht. Wer `/prove` erreicht, darf also eine beliebige Zahl als `bioHash` einreichen und erhält dafür einen gültigen, neuen Nullifier.
+
+Praktisch heißt das: die Schranke zum Start ist **nicht** „ein Gerät, eine Anmeldung", sondern „eine frei gewählte Zahl, eine Anmeldung" — mit Ratenbegrenzung pro IP und pro Wallet als einziger Bremse. Solange das so ist, ist „verifizierter Mensch" in §4.1 eine Bezeichnung für einen Registrierungsvorgang, keine Aussage über einen Menschen, und die Geldmenge ist keine Funktion menschlicher Existenz, sondern eine Funktion der Anzahl abgegebener Registrierungen.
+
+Zu schließen ist das in dieser Reihenfolge: Koordinator bauen → `BIO_ATTESTATION_MODE=optional` mit ausgelieferten Schlüsseln → App-Build, der Bestätigungen holt → `required`. Der Zwischenschritt ist nicht optional: direkt auf `required` sperrt jede bereits installierte App aus.
+
 #### EN
 This section describes the state on 2026-08-18. Where it contradicts anything above, this section is correct.
 
@@ -222,6 +228,12 @@ There is **no special hardware**. Registration runs through the Android app and 
 **b) Biometrics disabled** (the default when no coordinator is configured): the app derives identity from a **random, device-bound secret**. This is explicitly *not* biometrics. In this mode registration binds to a **device**, not to a person: the same human can register again on a second phone and receive a second 1,000 AEQ grant.
 
 **What actually carries uniqueness at launch:** the on-chain nullifier. It is cryptographic and airtight — the same nullifier is refused the second time, whatever path submits it. But it only proves that *the same identity source* cannot count twice. Whether that source is a human or a device is decided by the mode above.
+
+**And how many sources one person may hold is, at present, decided by nothing.** The nullifier is `Poseidon(bioHash)`, and `bioHash` is a private input the proving circuit does not constrain. The proof server has a gate for exactly this — `BIO_ATTESTATION_MODE` — which admits only a coordinator-signed attestation. That gate is `off`, its shipped default, on both validators (measured 2026-08-19), and it cannot currently be closed: no coordinator exists yet. Anyone who can reach `/prove` may therefore submit any number as `bioHash` and receive a valid, fresh nullifier for it.
+
+In practice the bound at launch is **not** "one device, one registration" but "one freely chosen number, one registration" — with per-IP and per-wallet rate limits as the only brake. While that holds, "verified human" in §4.1 names a registration event rather than stating anything about a person, and the supply is not a function of human existence but a function of how many registrations were submitted.
+
+Closing it has a required order: build the coordinator → `BIO_ATTESTATION_MODE=optional` with keys deployed → ship an app build that obtains attestations → `required`. The intermediate step is not a nicety: going straight to `required` locks out every already-installed app.
 
 ---
 
