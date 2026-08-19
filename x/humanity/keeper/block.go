@@ -242,6 +242,24 @@ type BlockDAG struct {
 	// window; bootTime is kept for that guard's log line ("how long has this
 	// process been alive when it caught a conflicting durable row") only.
 	bootTime time.Time
+	// producedHeights records every height THIS process has itself produced a
+	// block at. It is what lets the double-production guard below run for the
+	// process's whole life instead of only for a 45-second window after boot —
+	// see that guard's own comment for the five equivocation incidents that
+	// motivated removing the window and the halt that forced it back.
+	//
+	// The halt happened because "chain_blocks already has a block from me at
+	// this height" is true in ordinary steady-state operation, once this node's
+	// tip selection lags one height behind what it just durably stored. That
+	// sentence describes normal operation. "chain_blocks has a block from me at
+	// this height that I did NOT write in this process" does not — it can only
+	// mean another instance of this validator is running. This map is the
+	// difference between the two.
+	//
+	// Bounded: entries below the finalized checkpoint are dropped by
+	// pruneOldDAGBlocks, so it tracks the live window, not all history.
+	producedHeights   map[int64]bool
+	producedHeightsMu sync.Mutex
 	// bootHeightCheckpointBacked is true only when bootHeight was set by
 	// actually seeding dag.blocks/dag.tips with a real, stored block at that
 	// exact height (RefreshBootHeightAfterSnapshotImport's checkpoint branch,
@@ -1125,6 +1143,7 @@ func NewBlockchain(nodeID string, state *ChainState) *BlockDAG {
 		finalityWalkGaps:            make(map[string]bool),
 		produceStuckGaps:            make(map[string]bool),
 
+		producedHeights:       make(map[int64]bool),
 		softRetryBlocks:       make(map[string]*Block),
 		softRetryFirstAt:      make(map[string]time.Time),
 		lastDeepScanAt:        make(map[string]int64),
@@ -1718,6 +1737,26 @@ func (dag *BlockDAG) RefreshBootHeightAfterSnapshotImport(resyncHappened bool) {
 // BootHeight returns the boot height (the DB-persisted chain height or
 // snapshot import height, whichever is larger) — the frontier below which
 // replayTransactions already encodes state and blocks need not be re-applied.
+// ownsProducedHeight reports whether THIS process produced a block at height.
+// Nil-safe so test helpers that build a BlockDAG literal (rather than going
+// through NewBlockchain) behave as "produced nothing", which is the correct
+// conservative answer.
+func (dag *BlockDAG) ownsProducedHeight(height int64) bool {
+	dag.producedHeightsMu.Lock()
+	defer dag.producedHeightsMu.Unlock()
+	return dag.producedHeights[height]
+}
+
+// noteProducedHeight records that this process durably produced height.
+func (dag *BlockDAG) noteProducedHeight(height int64) {
+	dag.producedHeightsMu.Lock()
+	defer dag.producedHeightsMu.Unlock()
+	if dag.producedHeights == nil {
+		dag.producedHeights = make(map[int64]bool)
+	}
+	dag.producedHeights[height] = true
+}
+
 func (dag *BlockDAG) BootHeight() int64 {
 	dag.mu.RLock()
 	defer dag.mu.RUnlock()
@@ -2509,10 +2548,32 @@ func (dag *BlockDAG) ProduceBlock() *Block {
 	// BOOTSTRAP_SIGNER over a self-collision at all (see AddPeerBlock's
 	// equivocation goroutine, same date), so a missed overlap costs a
 	// duplicate block the DAG merges anyway, not a 14-day network partition.
-	const postBootDuplicateGuardWindow = 45 * time.Second
-	if time.Since(dag.bootTime) < postBootDuplicateGuardWindow &&
-		dag.state != nil && dag.state.HasBlockFromProposerAtHeight(proposer, maxParentHeight+1) {
-		fmt.Printf("[BLOCK] ⏸ Skipping production at height %d — this validator already has a block there in the durable store (likely a concurrent instance from a redeploy overlap, %s into this process's life); waiting for ordinary peer sync to pull it in instead of minting a conflicting duplicate\n", maxParentHeight+1, time.Since(dag.bootTime).Round(time.Second))
+	// FIX (P1, Audit 2026-08-18 — the window is gone, and this time it stays
+	// gone): the 45-second window was never the right control, it was a proxy
+	// for one. The revert above is right that "chain_blocks already has a block
+	// from me at this height" is routinely true in ordinary operation — but
+	// only because this node wrote that block ITSELF, moments ago, in this same
+	// process. The condition that actually means "another instance of me is
+	// running" is narrower: a durable block from this validator at this height
+	// that THIS PROCESS did not write.
+	//
+	// producedHeights (see its own comment) supplies the missing half. It turns
+	// the guard from a time-boxed guess into an exact statement, so it can run
+	// for the process's whole life without ever firing on the node's own work —
+	// which is what halted the primary on 2026-07-24 and forced the window back.
+	//
+	// Why this matters beyond tidiness: the fallback that made a missed overlap
+	// survivable — a node no longer suspending its own signer over a
+	// self-collision — is deliberately scoped to BOOTSTRAP_SIGNER alone (see
+	// the equivocation goroutine in AddPeerBlock). It protects this
+	// deployment's own validators and nobody else's. A third-party operator
+	// whose rolling deploy overlaps by more than 45 seconds was suspended by
+	// every other node for doing nothing wrong. This project's premise is that
+	// any registered human can run a validator, so a guard that only covers the
+	// operator's own two boxes is not the guard it needs.
+	if dag.state != nil && !dag.ownsProducedHeight(maxParentHeight+1) &&
+		dag.state.HasBlockFromProposerAtHeight(proposer, maxParentHeight+1) {
+		fmt.Printf("[BLOCK] ⏸ Skipping production at height %d — the durable store already holds a block from this validator there, and this process did not write it. That means a second instance of this validator is running (a redeploy overlap, %s into this process's life). Waiting for ordinary peer sync to pull it in instead of minting a conflicting duplicate every other node would correctly read as equivocation.\n", maxParentHeight+1, time.Since(dag.bootTime).Round(time.Second))
 		return nil
 	}
 
@@ -2679,6 +2740,12 @@ func (dag *BlockDAG) ProduceBlock() *Block {
 	dag.txMu.Unlock()
 
 	dag.blocks[block.Hash] = block
+	// This process now owns this height — see producedHeights' own comment.
+	// Recorded only after SaveBlockWithPendingTxsAtomic above returned without
+	// error, so the map can never claim a height whose block was not actually
+	// persisted; an unpersisted height must stay "not mine" so the guard still
+	// fires for it on the next tick.
+	dag.noteProducedHeight(block.Height)
 	// GHOSTDAG already computed above (P1-04); no second call needed.
 	dag.replayedMu.Lock()
 	dag.replayedBlocks[block.Hash] = true
@@ -8297,6 +8364,18 @@ func (dag *BlockDAG) pruneOldDAGBlocks() {
 	// dag.blocks[existingHash] lookup already treats it as "no conflict"
 	// (slashing.go) — the entry is dead weight, not a detection gap, once
 	// evicted.
+	// producedHeights only needs to cover the window where a redeploy overlap
+	// could still be in flight; anything below the finalized checkpoint is
+	// long settled. Trimming it here keeps the map bounded on a node that
+	// runs for months without a restart.
+	dag.producedHeightsMu.Lock()
+	for h := range dag.producedHeights {
+		if h < cutoff {
+			delete(dag.producedHeights, h)
+		}
+	}
+	dag.producedHeightsMu.Unlock()
+
 	evicted := 0
 	for key, hash := range dag.equivocationIndex {
 		if _, stillPresent := dag.blocks[hash]; !stillPresent {
