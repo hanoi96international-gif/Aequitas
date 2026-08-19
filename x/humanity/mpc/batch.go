@@ -129,8 +129,8 @@ func SecurePowers(d Shares, maxExp int, stores []*TripleStore) ([]Shares, error)
 			if powers[e] != nil || popcount(e) != width {
 				continue
 			}
-			low := e & (-e)      // lowest set bit: a power of two, already known
-			rest := e &^ low     // the rest: one bit fewer, computed in an earlier width
+			low := e & (-e)  // lowest set bit: a power of two, already known
+			rest := e &^ low // the rest: one bit fewer, computed in an earlier width
 			if powers[low] == nil || powers[rest] == nil {
 				continue
 			}

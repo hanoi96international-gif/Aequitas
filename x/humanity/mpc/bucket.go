@@ -7,7 +7,7 @@ import (
 
 // Bucketing: the only thing that makes private de-duplication survive scale.
 //
-// THE ARITHMETIC THAT FORCES THIS
+// # THE ARITHMETIC THAT FORCES THIS
 //
 // One secure comparison of a 512-bit template across three parties costs about
 // 93 ms (measured, see TestSecureComparisonCostAndItsConsequence). Comparing a
@@ -23,7 +23,7 @@ import (
 // the NUMBER of comparisons is. Anything that scales must compare against a
 // few dozen candidates instead of billions, and everything else is detail.
 //
-// HOW THE CANDIDATES ARE FOUND
+// # HOW THE CANDIDATES ARE FOUND
 //
 // The sketch this package already produces (see binarize.go) is a
 // sign-random-projection code: similar faces produce similar codes, bit for
@@ -32,7 +32,7 @@ import (
 // drawn at random. Grouping enrolments by that prefix turns "compare against
 // everyone" into "compare against the handful who share a prefix".
 //
-// WHAT THIS COSTS IN PRIVACY, STATED PLAINLY
+// # WHAT THIS COSTS IN PRIVACY, STATED PLAINLY
 //
 // The bucket key is derived from the template, so publishing it leaks
 // something: which of 2^k regions of sketch space a person falls into. With
@@ -45,7 +45,7 @@ import (
 // biometric de-duplication at scale" always contains a leak of exactly this
 // shape; systems that claim otherwise have usually just not written it down.
 //
-// WHAT IT COSTS IN ACCURACY
+// # WHAT IT COSTS IN ACCURACY
 //
 // A prefix match is a heuristic. Two captures of one person can land in
 // different buckets — noise flips a prefix bit — and that person is then not

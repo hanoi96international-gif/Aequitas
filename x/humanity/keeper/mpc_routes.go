@@ -36,10 +36,10 @@ import (
 
 // mpcNode is this process's participation in the comparison protocol.
 type mpcNode struct {
-	mailbox *mpc.Mailbox
-	index   int
-	peers   []string
-	token   string
+	mailbox  *mpc.Mailbox
+	index    int
+	peers    []string
+	token    string
 	insecure bool
 }
 

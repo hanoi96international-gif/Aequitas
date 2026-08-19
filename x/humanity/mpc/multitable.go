@@ -167,9 +167,9 @@ func (c *MultiTableConfig) ExpectedCandidates(population int) float64 {
 // union of the buckets a candidate lands in.
 type MultiTableRegistry struct {
 	cfg    *MultiTableConfig
-	tables []map[BucketKey][]string     // table -> key -> enrolment ids
-	byID   map[string]Enrollment        // id -> enrolment
-	keysOf map[string][]BucketKey       // id -> its key per table, for removal
+	tables []map[BucketKey][]string // table -> key -> enrolment ids
+	byID   map[string]Enrollment    // id -> enrolment
+	keysOf map[string][]BucketKey   // id -> its key per table, for removal
 }
 
 // NewMultiTableRegistry creates an empty index.

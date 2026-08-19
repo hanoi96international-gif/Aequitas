@@ -23,7 +23,7 @@ import (
 //     is what makes "no party ever sees a template" checkable rather than
 //     merely claimed.
 //
-// WHAT CROSSES THE WIRE, AND WHY IT IS SAFE
+// # WHAT CROSSES THE WIRE, AND WHY IT IS SAFE
 //
 // Only blinded differences: d = x - a and e = y - b, where a and b are fresh,
 // uniformly random values from a multiplication triple. Because a and b are
