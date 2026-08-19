@@ -3,8 +3,8 @@ package mpc
 import (
 	"bytes"
 	"context"
-	"crypto/subtle"
 	"encoding/binary"
+	"encoding/hex"
 	"fmt"
 	"io"
 	"net/http"
@@ -31,9 +31,10 @@ import (
 //
 // Can, if unauthenticated: inject values, and thereby steer a comparison into
 // saying "no match" for someone already registered. That is a Sybil hole rather
-// than a privacy hole, and it is why every request carries a token and why
-// plaintext HTTP is refused outside an explicit local harness. Integrity is
-// what protects one-human-one-account here; confidentiality is the cheap part.
+// than a privacy hole, and it is why every round is signed by the party that
+// produced it (auth.go) and why plaintext HTTP is refused outside an explicit
+// local harness. Integrity is what protects one-human-one-account here;
+// confidentiality is the cheap part.
 //
 // Can, always: count rounds and measure payload sizes, and so learn how many
 // candidates a registration was compared against. Batching reduces that to one
@@ -156,25 +157,24 @@ func (m *Mailbox) Await(ctx context.Context, session string, round int) ([][]Ele
 
 // Handler serves the endpoint peers post their contributions to.
 //
-// token authenticates peers. It must not be empty: an empty token would
-// authenticate everyone, which is worse than having no endpoint at all because
-// it looks protected.
-func (m *Mailbox) Handler(token string) (http.Handler, error) {
-	if token == "" {
-		return nil, fmt.Errorf("mpc: refusing to serve the exchange endpoint without a token — " +
-			"an unauthenticated peer can steer a duplicate check into saying 'no match' and so " +
-			"mint a second account for the same person")
+// auth verifies that each contribution was signed by the party it claims to be
+// from. There is no shared secret: a peer proves who it is with its own key, so
+// no validator can speak for another and onboarding a new one never means
+// handing anybody a secret.
+func (m *Mailbox) Handler(auth Authenticator) (http.Handler, error) {
+	if auth == nil {
+		return nil, fmt.Errorf("mpc: refusing to serve the exchange endpoint without an " +
+			"authenticator — an unauthenticated peer can steer a duplicate check into saying " +
+			"'no match' and so mint a second account for the same person")
 	}
-	want := []byte(token)
+	if auth.Parties() != m.parties {
+		return nil, fmt.Errorf("mpc: the authenticator knows %d parties, the mailbox expects %d",
+			auth.Parties(), m.parties)
+	}
 
 	return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 		if req.Method != http.MethodPost {
 			http.Error(w, "POST only", http.StatusMethodNotAllowed)
-			return
-		}
-		got := strings.TrimPrefix(req.Header.Get("Authorization"), "Bearer ")
-		if subtle.ConstantTimeCompare([]byte(got), want) != 1 {
-			http.Error(w, "unauthorized", http.StatusUnauthorized)
 			return
 		}
 
@@ -193,12 +193,27 @@ func (m *Mailbox) Handler(token string) (http.Handler, error) {
 			http.Error(w, "bad party", http.StatusBadRequest)
 			return
 		}
+		sig, err := hex.DecodeString(strings.TrimPrefix(req.Header.Get("X-Mpc-Signature"), "0x"))
+		if err != nil || len(sig) == 0 {
+			http.Error(w, "missing or malformed signature", http.StatusUnauthorized)
+			return
+		}
 
 		body, err := io.ReadAll(http.MaxBytesReader(w, req.Body, maxExchangeBytes))
 		if err != nil {
 			http.Error(w, "body too large or unreadable", http.StatusRequestEntityTooLarge)
 			return
 		}
+
+		// Verify BEFORE decoding: an unauthenticated caller must not be able to
+		// spend this node's CPU on parsing megabytes of attacker-chosen input.
+		// The digest binds the payload to this session, round and party, so a
+		// contribution cannot be replayed into a different one.
+		if err := auth.VerifyParty(party, RoundDigest(session, round, party, body), sig); err != nil {
+			http.Error(w, "unauthorized", http.StatusUnauthorized)
+			return
+		}
+
 		values, err := DecodeElements(body)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
@@ -249,7 +264,7 @@ type HTTPTransport struct {
 	parties int
 	peers   []string // peer base URLs by party index; own entry unused
 	session string
-	token   string
+	auth    Authenticator
 	mail    *Mailbox
 	client  *http.Client
 }
@@ -259,9 +274,13 @@ type HTTPConfig struct {
 	Index   int      // which party this process is
 	Peers   []string // base URL per party; the entry at Index is ignored
 	Session string   // unique per registration; peers must agree on it
-	Token   string   // shared secret authenticating peers
 	Mailbox *Mailbox
 	Client  *http.Client
+
+	// Auth signs this party's contributions and verifies its peers'. Per-party
+	// keys, never a shared secret: see auth.go for why that distinction
+	// decides whether the validator set can grow.
+	Auth Authenticator
 
 	// AllowInsecure permits http:// peer URLs. For a local harness only; a
 	// production deployment leaves this false so an unencrypted, forgeable
@@ -283,8 +302,14 @@ func NewHTTPTransport(cfg HTTPConfig) (*HTTPTransport, error) {
 		return nil, fmt.Errorf("mpc: empty session id — two concurrent registrations would share " +
 			"round numbers and read each other's contributions")
 	}
-	if cfg.Token == "" {
-		return nil, fmt.Errorf("mpc: empty peer token")
+	if cfg.Auth == nil {
+		return nil, fmt.Errorf("mpc: no authenticator — peers would be unauthenticated, and " +
+			"anyone able to reach the endpoint could decide that a returning person is new")
+	}
+	if cfg.Auth.Parties() != parties {
+		return nil, fmt.Errorf("mpc: the authenticator knows %d parties but %d peers are "+
+			"configured; a party with no key would be unverifiable",
+			cfg.Auth.Parties(), parties)
 	}
 	if cfg.Mailbox == nil {
 		return nil, fmt.Errorf("mpc: no mailbox — this party has nowhere to receive peers' values")
@@ -316,7 +341,7 @@ func NewHTTPTransport(cfg HTTPConfig) (*HTTPTransport, error) {
 		parties: parties,
 		peers:   append([]string(nil), cfg.Peers...),
 		session: cfg.Session,
-		token:   cfg.Token,
+		auth:    cfg.Auth,
 		mail:    cfg.Mailbox,
 		client:  client,
 	}, nil
@@ -365,6 +390,14 @@ func (t *HTTPTransport) Exchange(ctx context.Context, round int, mine []Element)
 // as a failure quickly rather than holding a person in a spinner.
 func (t *HTTPTransport) post(ctx context.Context, base string, round int, body []byte) error {
 	url := strings.TrimRight(base, "/") + ExchangePath
+
+	// One signature per round, not per element: 19 rounds per registration
+	// makes the cost irrelevant, and the digest covers the whole payload.
+	sig, err := t.auth.Sign(RoundDigest(t.session, round, t.index, body))
+	if err != nil {
+		return fmt.Errorf("signing round %d: %w", round, err)
+	}
+	sigHex := hex.EncodeToString(sig)
 	var lastErr error
 	for attempt := 0; attempt < 3; attempt++ {
 		if attempt > 0 {
@@ -378,7 +411,7 @@ func (t *HTTPTransport) post(ctx context.Context, base string, round int, body [
 		if err != nil {
 			return err
 		}
-		req.Header.Set("Authorization", "Bearer "+t.token)
+		req.Header.Set("X-Mpc-Signature", sigHex)
 		req.Header.Set("Content-Type", "application/octet-stream")
 		req.Header.Set("X-Mpc-Session", t.session)
 		req.Header.Set("X-Mpc-Round", strconv.Itoa(round))

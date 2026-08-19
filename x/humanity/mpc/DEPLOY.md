@@ -57,30 +57,59 @@ third party exists.
 
 ## Configuration
 
-Both boxes need all of these. They must agree on the peer list and its order.
+Peers are identified by their **validator signing address** — the same key that
+already signs blocks, and the same address the Node Binding Signature ties to an
+operator wallet. There is no shared secret anywhere in this design.
 
 | Variable | C1 (`173.249.37.118`) | C2 (`194.163.188.71`) |
 |---|---|---|
 | `MPC_ENABLED` | `true` | `true` |
 | `MPC_PARTY_INDEX` | `0` | `1` |
-| `MPC_PEERS` | `https://<c1>,https://<c2>` | `https://<c1>,https://<c2>` |
-| `MPC_PEER_TOKEN` | same secret on both | same secret on both |
+| `MPC_PEERS` | `https://c1\|0x<c1-addr>,https://c2\|0x<c2-addr>` | identical |
+| `RELAYER_PRIVATE_KEY` | already set | already set |
 
-`MPC_PEERS` is in **party order**: entry 0 is party 0's base URL. Both boxes get
-the identical list; only `MPC_PARTY_INDEX` differs.
+`MPC_PEERS` is in **party order** and identical on every box; only
+`MPC_PARTY_INDEX` differs. Each entry is `URL\|0xSigningAddress`. The node
+refuses to start MPC if its own key does not produce the address listed for its
+index — otherwise every contribution it signed would be rejected by its peers,
+and it would find that out only mid-registration.
 
-### The token
+### Adding a validator
 
-`MPC_PEER_TOKEN` is the only thing preventing a stranger from contributing to a
-comparison and steering it to answer "this person is new". At least 32
-characters, generated with a CSPRNG, never committed. Generate it on the box:
+Publish its URL and signing address, and append one entry to `MPC_PEERS` on
+every box. That is the whole procedure:
 
-```bash
-openssl rand -hex 32
-```
+- **nothing is rotated** on the existing validators; their keys are untouched,
+- **no secret is handed to anybody**, so onboarding needs no trusted channel,
+- **removing** a validator means deleting its entry, after which it can no
+  longer sign anything the others accept.
 
-Set the same value on both boxes. Rotating it requires restarting both;
-mid-flight comparisons will fail closed, which is the intended behaviour.
+This is why the earlier shared-token design was replaced rather than kept for
+convenience. One secret held by everyone means **every validator can impersonate
+every other** — and since these contributions decide whether someone counts as a
+duplicate, a validator could forge its peers' answers and register the same
+person twice. It also made every join or departure a synchronised secret
+rotation across the whole set, which does not survive more than a handful of
+operators. See `auth.go`.
+
+### Relationship to the Node Binding Signature
+
+They do different jobs, and both are needed:
+
+- **Node Binding Signature** — a one-time, human-driven proof, made in a browser
+  with MetaMask, that a node is operated by the holder of a particular wallet.
+  It anchors a signing key to an on-chain identity.
+- **MPC round signatures** — per-message, machine-to-machine proof that *this
+  payload*, in *this round*, of *this session*, came from party `i`.
+
+A one-time binding cannot authenticate individual messages, so it cannot replace
+the round signatures. The round signatures say nothing about who an operator is,
+so they cannot replace the binding. The binding is what makes the round
+signatures meaningful: it says which key belongs to which validator.
+
+Replacing the shared token removed `MPC_PEER_TOKEN` entirely. It did not remove
+the need for node binding — it made it more load-bearing.
+
 
 ### HTTPS is required
 
@@ -110,7 +139,11 @@ is the healthy answer:
 curl -s -o /dev/null -w '%{http_code}\n' -X POST https://<box>/mpc/exchange
 ```
 
-`401` = mounted and protected. `404` = not mounted, check the startup log.
+`401` = mounted and protected (the probe carries no signature). `404` = not
+mounted, check the startup log.
+
+The startup line names the address this node signs as, so a copy-paste error in
+`MPC_PEERS` shows up without waiting for a registration to fail.
 
 ## What one registration costs
 

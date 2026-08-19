@@ -2,6 +2,7 @@ package mpc
 
 import (
 	"context"
+	"crypto/ed25519"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -18,8 +19,46 @@ import (
 // template, so with n=2 the operators can collude. A third independently
 // operated party is the single largest available improvement, and this exists
 // so that path is exercised rather than merely asserted to be possible.
-func validators(t *testing.T, n int, token string) ([]Transport, *int64) {
+// newPartyKeys makes one ed25519 keypair per party. Per-party keys, not a
+// shared secret: that difference is what lets the validator set grow (auth.go).
+func newPartyKeys(t *testing.T, n int) ([]ed25519.PrivateKey, []ed25519.PublicKey) {
 	t.Helper()
+	privs := make([]ed25519.PrivateKey, n)
+	pubs := make([]ed25519.PublicKey, n)
+	for i := 0; i < n; i++ {
+		pub, priv, err := ed25519.GenerateKey(nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		privs[i], pubs[i] = priv, pub
+	}
+	return privs, pubs
+}
+
+// validators stands up n independent HTTP servers, one per party.
+//
+// Two parties is the minimum that hides anything and provides no margin: both
+// shares together reconstruct every template, so with n=2 the operators can
+// collude. A third independently operated party is the largest available
+// improvement, and this exists so that path is exercised rather than merely
+// asserted to be possible.
+//
+// If auths is nil, fresh ed25519 keys are generated. Passing them lets a test
+// hand one party the wrong key on purpose.
+func validators(t *testing.T, n int, auths []Authenticator) ([]Transport, *int64) {
+	t.Helper()
+
+	if auths == nil {
+		privs, pubs := newPartyKeys(t, n)
+		auths = make([]Authenticator, n)
+		for i := 0; i < n; i++ {
+			a, err := NewEd25519Authenticator(i, privs[i], pubs)
+			if err != nil {
+				t.Fatal(err)
+			}
+			auths[i] = a
+		}
+	}
 
 	mailboxes := make([]*Mailbox, n)
 	var counted int64
@@ -37,7 +76,7 @@ func validators(t *testing.T, n int, token string) ([]Transport, *int64) {
 			t.Fatal(err)
 		}
 		mailboxes[i] = m
-		h, err := m.Handler(token)
+		h, err := m.Handler(auths[i])
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -51,8 +90,8 @@ func validators(t *testing.T, n int, token string) ([]Transport, *int64) {
 	transports := make([]Transport, n)
 	for i := 0; i < n; i++ {
 		tr, err := NewHTTPTransport(HTTPConfig{
-			Index: i, Peers: peers, Session: "n-party-session", Token: token,
-			Mailbox: mailboxes[i], AllowInsecure: true,
+			Index: i, Peers: peers, Session: "n-party-session",
+			Mailbox: mailboxes[i], Auth: auths[i], AllowInsecure: true,
 		})
 		if err != nil {
 			t.Fatal(err)
@@ -72,7 +111,7 @@ func TestThirdPartyWorksToday(t *testing.T) {
 	const length = 32
 	for _, parties := range []int{2, 3, 4} {
 		t.Run(fmt.Sprintf("%d-parties", parties), func(t *testing.T) {
-			transports, wire := validators(t, parties, "three-party-token")
+			transports, wire := validators(t, parties, nil)
 
 			cand := make([]uint8, length)
 			for i := range cand {
@@ -152,7 +191,7 @@ func TestThirdPartyWorksToday(t *testing.T) {
 // the real transport too, not only in the in-memory harness.
 func TestVerificationWorksAcrossTheNetwork(t *testing.T) {
 	const parties, count = 3, 32
-	transports, _ := validators(t, parties, "verify-over-http-token")
+	transports, _ := validators(t, parties, nil)
 
 	triples, err := GenerateTriples(2*count, parties)
 	if err != nil {
