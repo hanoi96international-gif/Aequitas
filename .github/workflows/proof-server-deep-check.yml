@@ -38,7 +38,26 @@ jobs:
           script: |
             echo "===== 1. proof-server config (VALUES for non-secrets, presence for secrets) ====="
             docker inspect proof-server --format '{{range .Config.Env}}{{println .}}{{end}}' \
-              | grep -E '^(CHAIN_BASE_URL|NODE_ENV|PORT|TRUST_PROXY|DB_SSL_REJECT_UNAUTHORIZED|RAILWAY_ENVIRONMENT|ALLOW_UNAUTHENTICATED_DEV)=' || echo "  (none of these set)"
+              | grep -E '^(CHAIN_BASE_URL|NODE_ENV|PORT|TRUST_PROXY|DB_SSL_REJECT_UNAUTHORIZED|RAILWAY_ENVIRONMENT|ALLOW_UNAUTHENTICATED_DEV|BIO_ATTESTATION_MODE)=' || echo "  (none of these set)"
+            echo "  biometric gate:"
+            # BIO_ATTESTATION_MODE decides whether the biometric pipeline is a
+            # GATE or advice. bio_attestation.js says it plainly: with the
+            # default `off`, "/prove has always accepted whatever `bio` it was
+            # given […] an attacker does not defeat it, they skip it. They pick
+            # their own scalar, call /prove, and receive a valid nullifier."
+            # Since the nullifier is the chain's only real uniqueness
+            # guarantee, `off` means one person can hold unlimited registered
+            # identities. A wiring check that does not report this is checking
+            # the plumbing and ignoring whether the door is locked.
+            BAM=$(docker inspect proof-server --format '{{range .Config.Env}}{{println .}}{{end}}' | grep '^BIO_ATTESTATION_MODE=' | cut -d= -f2- || true)
+            case "${BAM:-off}" in
+              required) echo "    BIO_ATTESTATION_MODE=required — /prove refuses an unattested bio" ;;
+              optional) echo "    BIO_ATTESTATION_MODE=optional — MIGRATION setting: an unattested bio still passes" ;;
+              *)        echo "    BIO_ATTESTATION_MODE=${BAM:-off (unset, the default)} — the biometric pipeline gates NOTHING:"
+                        echo "    any caller can choose its own bio scalar and receive a valid nullifier." ;;
+            esac
+            KEYS=$(docker inspect proof-server --format '{{range .Config.Env}}{{println .}}{{end}}' | grep -c '^COORDINATOR_PUBLIC_KEYS=' || true)
+            echo "    COORDINATOR_PUBLIC_KEYS present: ${KEYS:-0}"
             echo "  secrets present?"
             docker inspect proof-server --format '{{range .Config.Env}}{{println .}}{{end}}' \
               | grep -E '^(CHAIN_SERVICE_TOKEN|DATABASE_URL)=' | sed 's/=.*/=<set>/' || echo "  MISSING"
@@ -98,9 +117,23 @@ jobs:
           script: |
             echo "===== 1. proof-server config ====="
             docker inspect proof-server --format '{{range .Config.Env}}{{println .}}{{end}}' \
-              | grep -E '^(CHAIN_BASE_URL|NODE_ENV|PORT|TRUST_PROXY|DB_SSL_REJECT_UNAUTHORIZED|RAILWAY_ENVIRONMENT|ALLOW_UNAUTHENTICATED_DEV)=' || echo "  (none of these set)"
+              | grep -E '^(CHAIN_BASE_URL|NODE_ENV|PORT|TRUST_PROXY|DB_SSL_REJECT_UNAUTHORIZED|RAILWAY_ENVIRONMENT|ALLOW_UNAUTHENTICATED_DEV|BIO_ATTESTATION_MODE)=' || echo "  (none of these set)"
             docker inspect proof-server --format '{{range .Config.Env}}{{println .}}{{end}}' \
               | grep -E '^(CHAIN_SERVICE_TOKEN|DATABASE_URL)=' | sed 's/=.*/=<set>/' || echo "  MISSING"
+            echo "  biometric gate:"
+            # See the Contabo1 branch above for why this is reported: with
+            # BIO_ATTESTATION_MODE unset, /prove accepts any caller-chosen bio
+            # scalar and mints a valid nullifier, so the biometric pipeline
+            # gates nothing and one person can hold unlimited identities.
+            BAM=$(docker inspect proof-server --format '{{range .Config.Env}}{{println .}}{{end}}' | grep '^BIO_ATTESTATION_MODE=' | cut -d= -f2- || true)
+            case "${BAM:-off}" in
+              required) echo "    BIO_ATTESTATION_MODE=required — /prove refuses an unattested bio" ;;
+              optional) echo "    BIO_ATTESTATION_MODE=optional — MIGRATION setting: an unattested bio still passes" ;;
+              *)        echo "    BIO_ATTESTATION_MODE=${BAM:-off (unset, the default)} — the biometric pipeline gates NOTHING:"
+                        echo "    any caller can choose its own bio scalar and receive a valid nullifier." ;;
+            esac
+            KEYS=$(docker inspect proof-server --format '{{range .Config.Env}}{{println .}}{{end}}' | grep -c '^COORDINATOR_PUBLIC_KEYS=' || true)
+            echo "    COORDINATOR_PUBLIC_KEYS present: ${KEYS:-0}"
             echo ""
             echo "===== 2. can the proof server reach its chain? ====="
             CBU=$(docker inspect proof-server --format '{{range .Config.Env}}{{println .}}{{end}}' | grep '^CHAIN_BASE_URL=' | cut -d= -f2-)
