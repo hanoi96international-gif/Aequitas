@@ -3517,7 +3517,7 @@ func (cs *ChainState) LoadBlocksFromDB(minHeight int64) (map[string]*Block, erro
 	cs.ensureGHOSTDAGColumns()
 	cs.ensureReplayedColumn()
 	baseQuery := `SELECT hash, height, parent_hashes, proposer, timestamp, humans, state_root,
-	                 signature, transactions,
+	                 signature, transactions, COALESCE(transactions_z, ''::bytea),
 	                 COALESCE(selected_parent,''), COALESCE(blue_score,0), COALESCE(blues,'[]'),
 	                 COALESCE(replayed,true)
 	          FROM chain_blocks`
@@ -3545,9 +3545,10 @@ func (cs *ChainState) LoadBlocksFromDB(minHeight int64) (map[string]*Block, erro
 	for rows.Next() {
 		var b Block
 		var parentHashesRaw, txsRaw, bluesRaw string
+		var txsZ []byte
 		if err := rows.Scan(
 			&b.Hash, &b.Height, &parentHashesRaw, &b.Proposer, &b.Timestamp,
-			&b.Humans, &b.StateRoot, &b.Signature, &txsRaw,
+			&b.Humans, &b.StateRoot, &b.Signature, &txsRaw, &txsZ,
 			&b.SelectedParent, &b.BlueScore, &bluesRaw, &b.Replayed,
 		); err != nil {
 			fmt.Printf("[BLOCK] LoadBlocksFromDB scan error: %v\n", err)
@@ -3557,9 +3558,25 @@ func (cs *ChainState) LoadBlocksFromDB(minHeight int64) (map[string]*Block, erro
 			fmt.Printf("[BLOCK] LoadBlocksFromDB parent_hashes unmarshal error for %s: %v\n", b.Hash, err)
 			continue
 		}
-		if err := json.Unmarshal([]byte(txsRaw), &b.Transactions); err != nil {
-			fmt.Printf("[BLOCK] LoadBlocksFromDB transactions unmarshal error for %s: %v\n", b.Hash, err)
+		// Either stored form, and a failure is REPORTED rather than discarded.
+		//
+		// FIX (2026-08-19): this line was `_ = json.Unmarshal([]byte(txsRaw), ...)`,
+		// which turned an unreadable payload into a block with no transactions,
+		// silently — and such a block still hashes correctly through its TxRoot, so
+		// nothing downstream objected either. The first attempt at closing that
+		// error-checked the plain column alone, and that took Contabo2 down: a block
+		// written with AEQUITAS_COMPRESS_BLOCK_PAYLOAD leaves `transactions` EMPTY on
+		// purpose and puts the payload in transactions_z, so json.Unmarshal("") fails
+		// with "unexpected end of JSON input" on every compressed row and the node
+		// could not rebuild its DAG at all (height stuck at 0). decodeBlockPayload is
+		// the function that already knew all of this — block_payload_codec.go's header
+		// names this precise failure as the reason compression is off by default — and
+		// LoadBlocksSinceFromDB was the only loader that had been migrated to it.
+		if txs, decErr := decodeBlockPayload(txsRaw, txsZ); decErr != nil {
+			fmt.Printf("[BLOCK] LoadBlocksFromDB: block %s at height %d has an unreadable transaction payload, skipping it: %v\n", b.Hash, b.Height, decErr)
 			continue
+		} else {
+			b.Transactions = txs
 		}
 		if bluesRaw != "" && bluesRaw != "[]" && bluesRaw != "null" {
 			if err := json.Unmarshal([]byte(bluesRaw), &b.Blues); err != nil {
@@ -3589,7 +3606,7 @@ func (cs *ChainState) LoadUnreplayedBlocksFromDB() ([]*Block, error) {
 	cs.ensureGHOSTDAGColumns()
 	cs.ensureReplayedColumn()
 	rows, err := cs.db.Query(`SELECT hash, height, parent_hashes, proposer, timestamp, humans, state_root,
-	                 signature, transactions,
+	                 signature, transactions, COALESCE(transactions_z, ''::bytea),
 	                 COALESCE(selected_parent,''), COALESCE(blue_score,0), COALESCE(blues,'[]')
 	          FROM chain_blocks WHERE replayed = false`)
 	if err != nil {
@@ -3600,9 +3617,10 @@ func (cs *ChainState) LoadUnreplayedBlocksFromDB() ([]*Block, error) {
 	for rows.Next() {
 		var b Block
 		var parentHashesRaw, txsRaw, bluesRaw string
+		var txsZ []byte
 		if err := rows.Scan(
 			&b.Hash, &b.Height, &parentHashesRaw, &b.Proposer, &b.Timestamp,
-			&b.Humans, &b.StateRoot, &b.Signature, &txsRaw,
+			&b.Humans, &b.StateRoot, &b.Signature, &txsRaw, &txsZ,
 			&b.SelectedParent, &b.BlueScore, &bluesRaw,
 		); err != nil {
 			fmt.Printf("[BLOCK] LoadUnreplayedBlocksFromDB scan error: %v\n", err)
@@ -3612,9 +3630,14 @@ func (cs *ChainState) LoadUnreplayedBlocksFromDB() ([]*Block, error) {
 			fmt.Printf("[BLOCK] LoadUnreplayedBlocksFromDB parent_hashes unmarshal error for %s: %v\n", b.Hash, err)
 			continue
 		}
-		if err := json.Unmarshal([]byte(txsRaw), &b.Transactions); err != nil {
-			fmt.Printf("[BLOCK] LoadUnreplayedBlocksFromDB transactions unmarshal error for %s: %v\n", b.Hash, err)
+		// Either stored form, and a failure is REPORTED rather than discarded — see
+		// LoadBlocksFromDB above for why error-checking the plain column ALONE is
+		// what took Contabo2 to height 0: a compressed row leaves it empty on purpose.
+		if txs, decErr := decodeBlockPayload(txsRaw, txsZ); decErr != nil {
+			fmt.Printf("[BLOCK] LoadUnreplayedBlocksFromDB: block %s at height %d has an unreadable transaction payload, skipping it: %v\n", b.Hash, b.Height, decErr)
 			continue
+		} else {
+			b.Transactions = txs
 		}
 		if bluesRaw != "" && bluesRaw != "[]" && bluesRaw != "null" {
 			json.Unmarshal([]byte(bluesRaw), &b.Blues)
@@ -3648,7 +3671,7 @@ func (cs *ChainState) LoadBlockFromDBByHeight(height int64) *Block {
 	}
 	cs.ensureGHOSTDAGColumns()
 	rows, err := cs.db.Query(`SELECT hash, height, parent_hashes, proposer, timestamp, humans, state_root,
-	                 signature, transactions,
+	                 signature, transactions, COALESCE(transactions_z, ''::bytea),
 	                 COALESCE(selected_parent,''), COALESCE(blue_score,0), COALESCE(blues,'[]')
 	          FROM chain_blocks WHERE height = $1`, height)
 	if err != nil {
@@ -3659,9 +3682,10 @@ func (cs *ChainState) LoadBlockFromDBByHeight(height int64) *Block {
 	for rows.Next() {
 		var b Block
 		var parentHashesRaw, txsRaw, bluesRaw string
+		var txsZ []byte
 		if err := rows.Scan(
 			&b.Hash, &b.Height, &parentHashesRaw, &b.Proposer, &b.Timestamp,
-			&b.Humans, &b.StateRoot, &b.Signature, &txsRaw,
+			&b.Humans, &b.StateRoot, &b.Signature, &txsRaw, &txsZ,
 			&b.SelectedParent, &b.BlueScore, &bluesRaw,
 		); err != nil {
 			continue
@@ -3676,10 +3700,26 @@ func (cs *ChainState) LoadBlockFromDBByHeight(height int64) *Block {
 		// digest is part of the preimage and chain_blocks deliberately stores
 		// no tx_root — see tx_batch_transport.go), but that is a downstream
 		// side effect, not a decision made here. Skip the row and say so.
-		if err := json.Unmarshal([]byte(txsRaw), &b.Transactions); err != nil {
-			fmt.Printf("[DB] ✗ Block %s at height %d has an unparseable transaction list (%v) — skipping the row rather than returning it as an empty block\n",
-				b.Hash, b.Height, err)
+		// Either stored form, and a failure is REPORTED rather than discarded.
+		//
+		// FIX (2026-08-19): this line was `_ = json.Unmarshal([]byte(txsRaw), ...)`,
+		// which turned an unreadable payload into a block with no transactions,
+		// silently — and such a block still hashes correctly through its TxRoot, so
+		// nothing downstream objected either. The first attempt at closing that
+		// error-checked the plain column alone, and that took Contabo2 down: a block
+		// written with AEQUITAS_COMPRESS_BLOCK_PAYLOAD leaves `transactions` EMPTY on
+		// purpose and puts the payload in transactions_z, so json.Unmarshal("") fails
+		// with "unexpected end of JSON input" on every compressed row and the node
+		// could not rebuild its DAG at all (height stuck at 0). decodeBlockPayload is
+		// the function that already knew all of this — block_payload_codec.go's header
+		// names this precise failure as the reason compression is off by default — and
+		// LoadBlocksSinceFromDB was the only loader that had been migrated to it.
+		if txs, decErr := decodeBlockPayload(txsRaw, txsZ); decErr != nil {
+			fmt.Printf("[DB] ✗ Block %s at height %d has an unreadable transaction payload (%v) — skipping the row rather than returning it as an empty block\n",
+				b.Hash, b.Height, decErr)
 			continue
+		} else {
+			b.Transactions = txs
 		}
 		if bluesRaw != "" && bluesRaw != "[]" && bluesRaw != "null" {
 			_ = json.Unmarshal([]byte(bluesRaw), &b.Blues)
@@ -3726,25 +3766,29 @@ func (cs *ChainState) LoadBlockFromDBByHash(hash string) *Block {
 	}
 	cs.ensureGHOSTDAGColumns()
 	row := cs.db.QueryRow(`SELECT hash, height, parent_hashes, proposer, timestamp, humans, state_root,
-	                 signature, transactions,
+	                 signature, transactions, COALESCE(transactions_z, ''::bytea),
 	                 COALESCE(selected_parent,''), COALESCE(blue_score,0), COALESCE(blues,'[]')
 	          FROM chain_blocks WHERE hash = $1`, hash)
 	var b Block
 	var parentHashesRaw, txsRaw, bluesRaw string
+	var txsZ []byte
 	if err := row.Scan(
 		&b.Hash, &b.Height, &parentHashesRaw, &b.Proposer, &b.Timestamp,
-		&b.Humans, &b.StateRoot, &b.Signature, &txsRaw,
+		&b.Humans, &b.StateRoot, &b.Signature, &txsRaw, &txsZ,
 		&b.SelectedParent, &b.BlueScore, &bluesRaw,
 	); err != nil {
 		return nil
 	}
 	_ = json.Unmarshal([]byte(parentHashesRaw), &b.ParentHashes)
-	// See the loop variants above: an unparseable transaction list must not be
-	// returned as an empty block.
-	if err := json.Unmarshal([]byte(txsRaw), &b.Transactions); err != nil {
-		fmt.Printf("[DB] ✗ Block %s at height %d has an unparseable transaction list (%v) — refusing to return it as an empty block\n",
-			b.Hash, b.Height, err)
+	// Either stored form, and a failure is REPORTED rather than discarded — see
+	// LoadBlocksFromDB above for why error-checking the plain column ALONE is what
+	// took Contabo2 to height 0: a compressed row leaves it empty on purpose.
+	if txs, decErr := decodeBlockPayload(txsRaw, txsZ); decErr != nil {
+		fmt.Printf("[DB] ✗ Block %s at height %d has an unreadable transaction payload (%v) — refusing to return it as an empty block\n",
+			b.Hash, b.Height, decErr)
 		return nil
+	} else {
+		b.Transactions = txs
 	}
 	if bluesRaw != "" && bluesRaw != "[]" && bluesRaw != "null" {
 		_ = json.Unmarshal([]byte(bluesRaw), &b.Blues)
@@ -3831,7 +3875,7 @@ func (cs *ChainState) LoadBlocksByHashesFromDB(hashes []string) ([]*Block, error
 	}
 	cs.ensureGHOSTDAGColumns()
 	rows, err := cs.db.Query(`SELECT hash, height, parent_hashes, proposer, timestamp, humans, state_root,
-	                 signature, transactions,
+	                 signature, transactions, COALESCE(transactions_z, ''::bytea),
 	                 COALESCE(selected_parent,''), COALESCE(blue_score,0), COALESCE(blues,'[]')
 	          FROM chain_blocks
 	          WHERE hash = ANY($1) AND proposer != 'synthetic-checkpoint'`, pq.Array(hashes))
@@ -3843,9 +3887,10 @@ func (cs *ChainState) LoadBlocksByHashesFromDB(hashes []string) ([]*Block, error
 	for rows.Next() {
 		var b Block
 		var parentHashesRaw, txsRaw, bluesRaw string
+		var txsZ []byte
 		if err := rows.Scan(
 			&b.Hash, &b.Height, &parentHashesRaw, &b.Proposer, &b.Timestamp,
-			&b.Humans, &b.StateRoot, &b.Signature, &txsRaw,
+			&b.Humans, &b.StateRoot, &b.Signature, &txsRaw, &txsZ,
 			&b.SelectedParent, &b.BlueScore, &bluesRaw,
 		); err != nil {
 			continue
@@ -3857,10 +3902,26 @@ func (cs *ChainState) LoadBlocksByHashesFromDB(hashes []string) ([]*Block, error
 		// digest is part of the preimage and chain_blocks deliberately stores
 		// no tx_root — see tx_batch_transport.go), but that is a downstream
 		// side effect, not a decision made here. Skip the row and say so.
-		if err := json.Unmarshal([]byte(txsRaw), &b.Transactions); err != nil {
-			fmt.Printf("[DB] ✗ Block %s at height %d has an unparseable transaction list (%v) — skipping the row rather than returning it as an empty block\n",
-				b.Hash, b.Height, err)
+		// Either stored form, and a failure is REPORTED rather than discarded.
+		//
+		// FIX (2026-08-19): this line was `_ = json.Unmarshal([]byte(txsRaw), ...)`,
+		// which turned an unreadable payload into a block with no transactions,
+		// silently — and such a block still hashes correctly through its TxRoot, so
+		// nothing downstream objected either. The first attempt at closing that
+		// error-checked the plain column alone, and that took Contabo2 down: a block
+		// written with AEQUITAS_COMPRESS_BLOCK_PAYLOAD leaves `transactions` EMPTY on
+		// purpose and puts the payload in transactions_z, so json.Unmarshal("") fails
+		// with "unexpected end of JSON input" on every compressed row and the node
+		// could not rebuild its DAG at all (height stuck at 0). decodeBlockPayload is
+		// the function that already knew all of this — block_payload_codec.go's header
+		// names this precise failure as the reason compression is off by default — and
+		// LoadBlocksSinceFromDB was the only loader that had been migrated to it.
+		if txs, decErr := decodeBlockPayload(txsRaw, txsZ); decErr != nil {
+			fmt.Printf("[DB] ✗ Block %s at height %d has an unreadable transaction payload (%v) — skipping the row rather than returning it as an empty block\n",
+				b.Hash, b.Height, decErr)
 			continue
+		} else {
+			b.Transactions = txs
 		}
 		if bluesRaw != "" && bluesRaw != "[]" && bluesRaw != "null" {
 			_ = json.Unmarshal([]byte(bluesRaw), &b.Blues)
