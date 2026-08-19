@@ -270,15 +270,28 @@ The fee is split across the four tokenomics pools (40% validators / 30% LPs / 20
 ### 4.4 Wealth Cap — Vermögensobergrenze
 
 ### DE
-Die Wealth Cap verwendet einen Bootstrap-Multiplikator in Phase 0: `max(5, min(N, 25)) × Durchschnittsbalance`. Kein Admin-Key, kein Governance-Vote — alle Übergänge erfolgen automatisch durch die Anzahl registrierter Menschen.
+Die Wealth Cap verwendet einen Bootstrap-Multiplikator in Phase 0: `max(5, min(N, 25)) × Fair Share (1.000 AEQ)`. Kein Admin-Key, kein Governance-Vote — alle Übergänge erfolgen automatisch durch die Anzahl registrierter Menschen.
 
-**Formel Phase 0:** `cap = max(5, min(N, 25)) × Ø-Balance`
+**Formel Phase 0:** `cap = max(5, min(N, 25)) × 1.000 AEQ`
+
+> **Klarstellung (Audit 2026-08-18).** Frühere Fassungen schrieben hier
+> „× Ø-Balance" bzw. „× average balance" und legten damit nahe, die Obergrenze
+> wachse mit dem tatsächlich gemessenen Durchschnittsvermögen mit. Sie tut es
+> nicht. Der Bezugswert ist der *Fair Share*, und der ist auf dieser Chain per
+> Definition konstant: `TotalSupply / Menschen = (Menschen × 1.000) / Menschen
+> = 1.000 AEQ`. Die Obergrenze liegt damit dauerhaft bei 25.000 AEQ. Die Regel
+> selbst ist unverändert — nur ihre Beschreibung war irreführend.
+> / *Clarification: earlier versions wrote "× average balance", implying the cap
+> tracks measured average wealth. It does not — the reference is the fair share,
+> which is constant by definition (TotalSupply / humans = 1,000 AEQ), so the cap
+> is a permanent 25,000 AEQ. The rule is unchanged; only its description was
+> misleading.*
 - Menschen 1–4: Multiplikator = **5×**
 - Jeder neue Mensch: Multiplikator +1×
 - Ab dem 25. Menschen: dauerhaft **25×** (unveränderbar, kein Vote erforderlich)
 
 ### EN
-The wealth cap uses a bootstrap multiplier during Phase 0: `max(5, min(N, 25)) × average balance`. No admin key, no governance vote — all transitions trigger automatically by human count.
+The wealth cap uses a bootstrap multiplier during Phase 0: `max(5, min(N, 25)) × fair share (1,000 AEQ)`. No admin key, no governance vote — all transitions trigger automatically by human count.
 
 **Phase 0 formula:** `cap = max(5, min(N, 25)) × avg_balance`
 - Humans 1–4: multiplier = **5×**
@@ -290,9 +303,9 @@ The wealth cap uses a bootstrap multiplier during Phase 0: `max(5, min(N, 25)) �
 | Phase | Menschen / Humans | Formel / Formula | Status |
 |-------|------------------|-----------------|--------|
 | **0** Bootstrap | 1–99 | `max(5, min(N,25)) × Ø` | ● Aktiv / Active |
-| **1** Growth | 100–9.999 | `25 × Ø-Balance` | ○ Geplant / Planned |
-| **2** Stability | 10.000–999.999 | `25 × Ø-Balance` | ○ Geplant / Planned |
-| **3** Maturity | 1.000.000+ | `25 × Ø-Balance` | ○ Geplant / Planned |
+| **1** Growth | 100–9.999 | `25 × 1.000 AEQ = 25.000 AEQ` | ○ Geplant / Planned |
+| **2** Stability | 10.000–999.999 | `25 × 1.000 AEQ = 25.000 AEQ` | ○ Geplant / Planned |
+| **3** Maturity | 1.000.000+ | `25 × 1.000 AEQ = 25.000 AEQ` | ○ Geplant / Planned |
 
 **Beispiel / Example (Phase 0, N=10 Menschen, Ø=1.000 AEQ):**
 ```

@@ -1056,6 +1056,16 @@ func (a *APIServer) handleStatus(w http.ResponseWriter, r *http.Request) {
 	// for the live 11-second /api/status that motivated this, and for the
 	// peer-registration timeouts it was causing on the far side.
 	m := a.state.StatusMetrics()
+	// Measured ledger total, published beside the rule — see supply_measured
+	// below. Cached for a minute inside MeasuredTotalAEQ, so this is one cheap
+	// read even though /api/status is polled from every open browser tab.
+	var supplyMeasured, supplyDifference, supplyMeasuredErr interface{}
+	if measured, ok, reason := a.state.MeasuredTotalAEQ(); ok {
+		supplyMeasured = fmt.Sprintf("%.6f AEQ", measured)
+		supplyDifference = fmt.Sprintf("%+.6f AEQ", measured-m.Supply)
+	} else {
+		supplyMeasuredErr = reason
+	}
 	humans := m.Humans
 	growth := humans * 10
 	if growth > 100 {
@@ -1087,6 +1097,22 @@ func (a *APIServer) handleStatus(w http.ResponseWriter, r *http.Request) {
 		"velocity":     50,
 		"phase":        m.Phase,
 		"fee_bps":      10,
+		// FIX (H1, Audit 2026-08-18): total_supply above is the RULE
+		// (humans × 1000, see TotalSupply), and the explorer prints it as
+		// "Total Supply". Measured from both validators' own databases on
+		// 2026-08-15 the ledger actually held 15,305.278004 AEQ against a
+		// claimed 15,000 — 2.04% more. The true figure existed only on
+		// /api/health/combined, an operations endpoint nobody visiting the
+		// site ever sees, so the public number was the one number about this
+		// currency that was quietly wrong.
+		//
+		// Published here beside the rule rather than instead of it: the rule
+		// is the protocol statement and stays, the measurement is what is
+		// actually in the ledger, and the difference is the thing worth
+		// watching. Null when it cannot be measured — never a plausible zero.
+		"supply_measured":       supplyMeasured,
+		"supply_measured_error": supplyMeasuredErr,
+		"supply_difference":     supplyDifference,
 		// Pool balances come from the same aggregated read (StatusMetrics) —
 		// they used to be four separate GetBalance calls, i.e. four
 		// acquisitions of the global state WRITE lock per status request.
