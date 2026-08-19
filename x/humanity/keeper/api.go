@@ -109,6 +109,32 @@ func NewAPIServer(bc *BlockDAG, p2p *P2PNode, state *ChainState) *APIServer {
 // writeJSON sets the standard JSON response Content-Type header. Centralizes
 // boilerplate that was previously duplicated across ~35 handlers individually
 // (P3-c, audit 2026-07-06).
+// setHSTS asks the browser to refuse plain HTTP for this host for a year.
+//
+// FIX (M4, Audit 2026-08-18): the node set CSP, X-Frame-Options,
+// X-Content-Type-Options and Referrer-Policy carefully on every HTML route and
+// no Strict-Transport-Security anywhere — not here and not in deploy/Caddyfile,
+// which explicitly delegates security headers to this file. Caddy redirects
+// HTTP to HTTPS, but a redirect only protects a visitor who already arrived
+// safely; without HSTS the FIRST request of a session is still downgradeable,
+// on pages where wallets are connected and registrations are signed.
+//
+// Sent only over TLS. Emitting it on a plain-HTTP response is meaningless (a
+// browser ignores it) and actively harmful on a node reached directly on :8080
+// over HTTP for diagnostics, which would pin that host to HTTPS it does not
+// serve. r.TLS covers direct TLS; X-Forwarded-Proto covers the Caddy path,
+// where the proxy terminates TLS and the node itself sees plain HTTP.
+//
+// No preload directive: preloading is a one-way door for the whole domain,
+// including any subdomain that might later need plain HTTP, and it is the
+// operator's decision rather than a default.
+func setHSTS(w http.ResponseWriter, r *http.Request) {
+	if r.TLS == nil && !strings.EqualFold(r.Header.Get("X-Forwarded-Proto"), "https") {
+		return
+	}
+	w.Header().Set("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
+}
+
 func writeJSON(w http.ResponseWriter) {
 	w.Header().Set("Content-Type", "application/json")
 }
@@ -2091,6 +2117,7 @@ func (a *APIServer) handleRegistered(w http.ResponseWriter, r *http.Request) {
 	// 'unsafe-inline' here.
 	w.Header().Set("Content-Security-Policy", "default-src 'self' 'unsafe-inline'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.bunny.net; font-src https://fonts.bunny.net; connect-src 'self'; img-src 'self' data:; frame-ancestors 'none'")
 	w.Header().Set("X-Frame-Options", "DENY")
+	setHSTS(w, r)
 	w.Header().Set("X-Content-Type-Options", "nosniff")
 	w.Header().Set("Referrer-Policy", "strict-origin-when-cross-origin")
 	// XSS fix: escape wallet parameter before writing to HTML — without this,
@@ -2148,6 +2175,7 @@ func (a *APIServer) handleNodeBinding(w http.ResponseWriter, r *http.Request) {
 	// /node-binding.js file (see nodeBindingJS's comment in api_html.go).
 	w.Header().Set("Content-Security-Policy", "default-src 'self' 'unsafe-inline'; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self'; frame-ancestors 'none'")
 	w.Header().Set("X-Frame-Options", "DENY")
+	setHSTS(w, r)
 	w.Header().Set("X-Content-Type-Options", "nosniff")
 	w.Header().Set("Referrer-Policy", "strict-origin-when-cross-origin")
 	fmt.Fprint(w, `<!DOCTYPE html>
@@ -2216,6 +2244,7 @@ func (a *APIServer) handleUI(w http.ResponseWriter, r *http.Request) {
 	// itself is never used directly as an <img> src, only blob: is.
 	w.Header().Set("Content-Security-Policy", "default-src 'self' 'unsafe-inline'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.bunny.net; font-src https://fonts.bunny.net; connect-src 'self' https://aequitas.digital wss://relay.walletconnect.org https://relay.walletconnect.org https://api.web3modal.org https://verify.walletconnect.org https://verify.walletconnect.com; img-src 'self' data: blob: https://api.web3modal.org; frame-ancestors 'none'")
 	w.Header().Set("X-Frame-Options", "DENY")
+	setHSTS(w, r)
 	w.Header().Set("X-Content-Type-Options", "nosniff")
 	w.Header().Set("Referrer-Policy", "strict-origin-when-cross-origin")
 	path := strings.Trim(r.URL.Path, "/")
@@ -3310,6 +3339,7 @@ func (a *APIServer) handleDapp(w http.ResponseWriter, r *http.Request) {
 	// can go straight to a strict script-src with zero exceptions.
 	w.Header().Set("Content-Security-Policy", "default-src 'self' 'unsafe-inline'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.bunny.net; font-src https://fonts.bunny.net; connect-src 'self' https://aequitas.digital; img-src 'self' data:; frame-ancestors 'none'")
 	w.Header().Set("X-Frame-Options", "DENY")
+	setHSTS(w, r)
 	w.Header().Set("X-Content-Type-Options", "nosniff")
 	w.Header().Set("Referrer-Policy", "strict-origin-when-cross-origin")
 	http.ServeContent(w, r, "aequitas-dapp.html", fi.ModTime(), f)
@@ -3323,7 +3353,28 @@ func (a *APIServer) handleDappJS(w http.ResponseWriter, r *http.Request) {
 
 func (a *APIServer) handleAppDownload(w http.ResponseWriter, r *http.Request) {
 	const apkPath = "downloads/aequitas-app.apk"
-	const fallbackURL = "https://github.com/hanoi96international-gif/Aequitas/releases/download/app-v1.3.3/app-release.apk"
+	// FIX (N1, Audit 2026-08-18): this "fallback" is in practice the ONLY path.
+	// downloads/*.apk is gitignored, so the file is never in the build context
+	// and never in the image; os.Open therefore always fails and every download
+	// takes the redirect. That made the app version a compile-time constant:
+	// shipping a new APK required a code change and a full node redeploy, which
+	// restarts both validators.
+	//
+	// AEQUITAS_APK_URL decouples the two. The default is the release that was
+	// hardcoded here, so behaviour is unchanged until an operator sets it —
+	// pointing it at a new release is now an env change and a container
+	// restart, not a chain deploy.
+	fallbackURL := os.Getenv("AEQUITAS_APK_URL")
+	if fallbackURL == "" {
+		fallbackURL = "https://github.com/hanoi96international-gif/Aequitas/releases/download/app-v1.3.3/app-release.apk"
+	}
+	// Only ever redirect to an absolute http(s) URL: an operator typo that left
+	// a relative path here would otherwise turn this endpoint into an
+	// open-redirect-shaped surprise on the node's own origin.
+	if !strings.HasPrefix(fallbackURL, "https://") && !strings.HasPrefix(fallbackURL, "http://") {
+		fmt.Printf("[APK] ⚠ AEQUITAS_APK_URL=%q is not an absolute http(s) URL — ignoring it\n", fallbackURL)
+		fallbackURL = "https://github.com/hanoi96international-gif/Aequitas/releases/download/app-v1.3.3/app-release.apk"
+	}
 	f, err := os.Open(apkPath)
 	if err != nil {
 		// File not found in container — redirect to GitHub raw URL.
@@ -3371,6 +3422,7 @@ func (a *APIServer) handleLanding(w http.ResponseWriter, r *http.Request) {
 	// comment in api_html.go), so script-src no longer needs 'unsafe-inline'.
 	w.Header().Set("Content-Security-Policy", "default-src 'self' 'unsafe-inline'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.bunny.net; font-src https://fonts.bunny.net; connect-src 'self'; img-src 'self' data:; frame-ancestors 'none'")
 	w.Header().Set("X-Frame-Options", "DENY")
+	setHSTS(w, r)
 	w.Header().Set("X-Content-Type-Options", "nosniff")
 	w.Header().Set("Referrer-Policy", "strict-origin-when-cross-origin")
 	fmt.Fprint(w, landingHTML)
