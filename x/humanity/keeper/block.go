@@ -684,6 +684,31 @@ type BlockDAG struct {
 	// load-bearing on its own.
 	replayMismatchMu       sync.Mutex
 	lastReplayMismatchHash string
+	// replayCmpMu guards replayCmpTips, the snapshot of this node's tip set
+	// taken immediately BEFORE a replay batch is applied — see the StateRoot
+	// comparison in replayTransactions for what it is used to decide.
+	//
+	// FIX (P0, launch audit 2026-08-16): the StateRoot comparison had no way
+	// to tell a MEANINGFUL comparison from a structurally meaningless one, so
+	// it treated every honest concurrent validator as a diverged fork.
+	// Measured live on production that day: +91 mismatches per +129 blocks on
+	// BOTH validators, counters at 2511 (C1) and 1080 (C2) and climbing ~1/s,
+	// while the two nodes were byte-identical (same height, same latest_hash,
+	// same 15 nullifiers, same supply). The counter never reset because it
+	// never could — see the comparison's own comment for why. A snapshot taken
+	// here, under the dag.mu.RLock() replayInCanonicalOrder already holds, is
+	// the only way to answer the question without taking dag.mu at the
+	// comparison site, where cs.mu is held exclusively (state.go:5957) and
+	// reaching for dag.mu would invert this package's dag.mu -> cs.mu lock
+	// order — the exact shape of the 2026-07-11 self-deadlock.
+	replayCmpMu   sync.Mutex
+	replayCmpTips map[string]bool
+	// stateRootDriftExpected counts comparisons SKIPPED as structurally
+	// meaningless (concurrent-sibling drift). Diagnostics only: it never
+	// gates anything, but it keeps the volume visible so "the check went
+	// quiet" can be told apart from "the check stopped running".
+	stateRootDriftExpected atomic.Int64
+	lastDriftLogAt         atomic.Int64
 	// resyncSignalMu guards resyncSignalFrom, this node's own record of peers
 	// that responded action:"resync_required" to a block THIS node pushed —
 	// i.e. peers telling THIS node it may be the one that's diverged. See
