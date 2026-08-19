@@ -11,7 +11,7 @@ on:
       - '**.md'
 
 jobs:
-  # Mirrors deploy-contabo.yml's test gate (Monster Audit 2026-07-12, P1) â€”
+  # Mirrors deploy-contabo.yml's test gate (Monster Audit 2026-07-12, P1) —
   # a failing build/test blocks the SSH deploy step entirely.
   test:
     runs-on: ubuntu-latest
@@ -33,7 +33,7 @@ jobs:
     needs: test
     runs-on: ubuntu-latest
     steps:
-      # FIX (2026-07-25 night): see deploy-contabo.yml's matching comment â€”
+      # FIX (2026-07-25 night): see deploy-contabo.yml's matching comment —
       # simultaneous restarts of all three nodes forked the network twice in
       # one evening. This workflow restarts LAST: wait for the primary to
       # serve traffic again (Railway redeploys it on this same push), then
@@ -46,13 +46,21 @@ jobs:
       # decommissioned and that URL answers 404 forever, so this loop spent its
       # full 15 minutes doing nothing on every deploy. The staggering it was
       # part of is preserved by the step below, which waits for Contabo1's
-      # deploy of this same commit â€” with only two boxes left, that is the
+      # deploy of this same commit — with only two boxes left, that is the
       # whole ordering constraint.
       - name: Wait for Contabo1's deploy of this same commit to finish first
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          for i in $(seq 1 60); do
+          # 40 minutes, not 20. Contabo1's job now runs its "alive and
+          # advancing" check until the height actually moves (up to ~10 min on
+          # top of a ~5 min wait for the node to answer at all), on top of the
+          # build itself and its own fail-open wait for THIS box. If this loop
+          # can expire before that job can finish, it falls open and deploys
+          # Contabo2 while Contabo1 is still mid-rollout - which is exactly the
+          # simultaneous restart the staggering exists to prevent, arriving
+          # silently through a timeout rather than a decision.
+          for i in $(seq 1 120); do
             run=$(gh api "repos/${{ github.repository }}/actions/runs?head_sha=${{ github.sha }}&per_page=50" \
               --jq '[.workflow_runs[] | select(.name=="Deploy to Contabo VPS")][0] | "\(.status) \(.conclusion)"' 2>/dev/null || echo "unknown unknown")
             status=${run%% *}
@@ -71,17 +79,17 @@ jobs:
               exit 1
             fi
             if [ "$status" = "completed" ]; then
-              echo "Contabo1's deploy completed â€” proceeding with the Contabo2 deploy"
+              echo "Contabo1's deploy completed — proceeding with the Contabo2 deploy"
               exit 0
             fi
             if [ -z "$status" ] || [ "$status" = "null" ]; then
-              echo "no Contabo1 deploy run found for this commit (docs-only path filter difference?) â€” proceeding"
+              echo "no Contabo1 deploy run found for this commit (docs-only path filter difference?) — proceeding"
               exit 0
             fi
-            echo "Contabo1 deploy status: $status â€” waiting ($i/60)"
+            echo "Contabo1 deploy status: $status — waiting ($i/120)"
             sleep 20
           done
-          echo "gave up waiting for Contabo1's deploy after 20 min â€” proceeding anyway (fail-open)"
+          echo "gave up waiting for Contabo1's deploy after 40 min — proceeding anyway (fail-open)"
       - name: Deploy to Contabo2
         uses: appleboy/ssh-action@v1.0.3
         with:
@@ -89,18 +97,18 @@ jobs:
           username: root
           key: ${{ secrets.CONTABO2_SSH_KEY }}
           port: 22
-          # SHA256 fingerprint of Contabo2's negotiated host key (ECDSA â€”
+          # SHA256 fingerprint of Contabo2's negotiated host key (ECDSA —
           # same type Contabo1 ended up negotiating, see deploy-contabo.yml's
           # own comment on how that was determined). Verified live:
           # `ssh-keyscan -t ecdsa 194.163.188.71 | ssh-keygen -lf -`.
           fingerprint: "SHA256:VIwj7Faxiga2n45HVHZEQFPxcbRKHgSgHoxAFsf2wto"
           # IMPORTANT: intentionally NOT /root/deploy.sh (Contabo1's script)
-          # â€” that recreates the container with --env-file /root/.aequitas.env
+          # — that recreates the container with --env-file /root/.aequitas.env
           # directly, and this box's .aequitas.env permanently contains
           # RESYNC_FROM_SNAPSHOT=true, which would wipe the DB on every
           # single deploy. deploy_safe_c2.sh rebuilds the image, then
           # preserves the currently-running container's own env (stripping
-          # PATH/HOSTNAME/HOME/RESYNC_FROM_SNAPSHOT) â€” same pattern as the
+          # PATH/HOSTNAME/HOME/RESYNC_FROM_SNAPSHOT) — same pattern as the
           # existing redeploy_normal_c2.sh, plus an actual image rebuild.
           script: |
             set -uo pipefail
@@ -207,17 +215,78 @@ jobs:
             echo "The network is now running on Contabo1 alone."
             exit 1
           fi
-          h1=$(curl -s -m 25 "$BASE/api/status" | jq -r '.height // empty')
-          sleep 60
-          h2=$(curl -s -m 25 "$BASE/api/status" | jq -r '.height // empty')
-          if [ -z "$h1" ] || [ -z "$h2" ]; then
-            echo "FAILED: could not read .height from /api/status (h1='$h1' h2='$h2')."
-            exit 1
-          fi
-          echo "height $h1 -> $h2 over 60s"
-          if [ "$h2" -le "$h1" ]; then
-            echo "FAILED: the node answers but its height did not move in 60 seconds."
-            echo "It is up without following the chain - merging or replay is stuck."
+          # A restarted node answers /api/health/combined BEFORE it is following
+          # the chain: it has to rebuild the DAG from chain_blocks and finish
+          # replay first, and on the box that stores its payloads gzipped that
+          # means gunzipping millions of rows. Sampling height exactly twice, 60
+          # seconds apart, therefore measures whichever moment the deploy
+          # happens to land in.
+          #
+          # THE INCIDENT THIS PINS (2026-08-19, the second one that day). The
+          # hotfix that got Contabo2 off height 0 deployed cleanly and the node
+          # came back correctly - and this step failed it anyway, on
+          # "height 4166335 -> 4166335 over 60s", because it read the two
+          # samples during the window between "answers HTTP" and "starts
+          # merging". Half an hour later the box was at 4168501 and in sync with
+          # Contabo1 the whole time. A red deploy on a healthy validator is not
+          # a harmless false alarm: it is the same signal as a real stall, so
+          # the next real one gets read as noise, and it fires the
+          # non-success branch of Contabo2's wait step, which by design refuses
+          # to deploy at all.
+          #
+          # So: keep sampling until the height MOVES, and fail only when it has
+          # not moved for the whole budget. A healthy node still passes on the
+          # first sample; a genuinely stuck one still fails, just later. The
+          # budget is bounded by Contabo2's "wait for Contabo1's deploy" step -
+          # if this can outlast that wait, Contabo2 stops being staggered behind
+          # Contabo1. Change one, check the other.
+          #
+          # read_height echoes a non-negative integer, or nothing at all. Every
+          # non-numeric answer - empty body, null, an HTML error page from a
+          # proxy, a JSON error object - has to land in the same bucket as "no
+          # answer". The previous version let one through: `[ "$h2" -le "$h1" ]`
+          # on a non-numeric value is a bash *error*, and an erroring `if`
+          # condition is simply false, so the step fell through to "OK: node is
+          # alive and advancing" and reported a PASS for a node whose height it
+          # had never actually read.
+          read_height() {
+            local h
+            h=$(curl -s -m 25 "$BASE/api/status" | jq -r '.height // empty' 2>/dev/null || true)
+            case "$h" in
+              ''|*[!0-9]*) return 1 ;;
+            esac
+            echo "$h"
+          }
+          h0=""
+          advanced=""
+          for i in $(seq 1 21); do
+            h=$(read_height) || h=""
+            if [ -z "$h" ]; then
+              echo "sample $i/21: /api/status returned no numeric .height"
+            elif [ -z "$h0" ]; then
+              h0=$h
+              echo "sample $i/21: baseline height $h0"
+            elif [ "$h" -gt "$h0" ]; then
+              echo "sample $i/21: height $h0 -> $h"
+              advanced=yes
+              break
+            else
+              echo "sample $i/21: height still $h (baseline $h0)"
+            fi
+            sleep 30
+          done
+          if [ -z "$advanced" ]; then
+            if [ -z "$h0" ]; then
+              echo "FAILED: /api/status never returned a numeric .height in 10 minutes,"
+              echo "even though /api/health/combined answers 200."
+            else
+              echo "FAILED: the node answers but its height never moved in 10 minutes"
+              echo "(baseline $h0). It is up without following the chain - merging or"
+              echo "replay is stuck."
+            fi
+            echo "Contabo1 is already redeployed by this point, so the chain keeps"
+            echo "producing on ONE validator - the state the staggered rollout exists"
+            echo "to prevent."
             exit 1
           fi
           echo "OK: node is alive and advancing."
