@@ -399,3 +399,109 @@ func TestSupplyConservation_ConcurrentTransferFastPath(t *testing.T) {
 		}
 	})
 }
+
+// The paths a survey on 2026-08-19 found had no conservation test of their own.
+//
+// The existing tests cover transfer, registration, swap, liquidity, demurrage,
+// the wealth cap and the three daily distributions. Mapping every site in
+// state.go that increases an AEQ balance turned up four more that no test held
+// to the invariant: the two escrow helpers, the swap-fee distribution, and the
+// one-time stranded-fee migration. A path with no test is exactly where the
+// last two minting bugs were found.
+
+// TestSupplyConservation_TUsdFeeConversion covers the conversion the stranded-
+// fee migration and every ongoing swap fee run through.
+//
+// Written while chasing a suspected rounding asymmetry: the function debits the
+// reserve by aeqOut and returns round6(aeqOut), which looks like it could
+// credit more than the pool gave up. It cannot. aeqOut comes from AMMSwapOut,
+// which returns a Decimal — an int64 of micro-units — so the value is always
+// exactly on the micro-grid and round6 is a no-op there.
+//
+// Kept anyway, because the reasoning only holds while that stays true. If
+// anyone ever makes AMMSwapOut return a raw float, or routes an off-grid amount
+// through here, the two sides stop matching and this test says so.
+func TestSupplyConservation_TUsdFeeConversion(t *testing.T) {
+	// Values chosen so the AMM output lands off a micro-AEQ boundary, which is
+	// where the asymmetry showed.
+	for _, fee := range []float64{0.1, 0.333333, 1.0, 0.000007, 2.5} {
+		cs := newTestState()
+		cs.pool = &PoolState{
+			ReserveAEQ:  NewDecimal(10000),
+			ReserveTUSD: NewDecimal(3000),
+		}
+		acc := &AccountState{Address: "0xfee", Balance: NewDecimal(0)}
+		cs.accounts.Set(acc.Address, acc)
+
+		before := totalAEQ(cs)
+		cs.mu.Lock()
+		out, ok := cs.convertTUsdFeeToAEQLocked(fee)
+		cs.mu.Unlock()
+		if !ok {
+			continue
+		}
+		acc.Balance = acc.Balance.Add(NewDecimal(out))
+
+		if delta := totalAEQ(cs) - before; math.Abs(delta) > 1e-9 {
+			t.Errorf("converting %.6f tUSD moved the AEQ supply by %+.9f — the pool must give up "+
+				"exactly what the account is credited", fee, delta)
+		}
+	}
+}
+
+// TestSupplyConservation_EscrowLiquidation: the inactivity sweep burns LP
+// shares into a balance. It moves value out of the pool, so it must not create
+// any on the way.
+func TestSupplyConservation_EscrowLiquidation(t *testing.T) {
+	cs := newTestState()
+	cs.pool = &PoolState{
+		ReserveAEQ:    NewDecimal(5000),
+		ReserveTUSD:   NewDecimal(5000),
+		TotalLPShares: NewDecimal(1000),
+	}
+	acc := &AccountState{
+		Address:  "0xescrow",
+		Balance:  NewDecimal(100),
+		IsHuman:  true,
+		LPShares: NewDecimal(400),
+	}
+	cs.accounts.Set(acc.Address, acc)
+	cs.humanCount++
+
+	assertConserved(t, cs, "escrow LP liquidation", func() {
+		cs.mu.Lock()
+		defer cs.mu.Unlock()
+		if _, _, _, err := cs.liquidateLPSharesForEscrowLocked(t.Context(), acc, 400); err != nil {
+			t.Fatalf("liquidate: %v", err)
+		}
+	})
+}
+
+// TestSupplyConservation_SwapFeeDistribution: the fee is split four ways. Every
+// share must come out of the fee, not out of nowhere — the daily distributions
+// got exactly this wrong by rounding each share up and zeroing the pool anyway.
+func TestSupplyConservation_SwapFeeDistribution(t *testing.T) {
+	for _, fee := range []float64{0.000003, 0.000007, 0.1, 1.0} {
+		cs := newTestState()
+		cs.pool = &PoolState{ReserveAEQ: NewDecimal(10000), ReserveTUSD: NewDecimal(10000)}
+
+		payer := &AccountState{Address: "0xpayer", Balance: NewDecimal(1000), IsHuman: true}
+		cs.accounts.Set(payer.Address, payer)
+		cs.humanCount++
+
+		before := totalAEQ(cs)
+		// The fee has already been taken from the payer by the caller; model
+		// that, then distribute it.
+		payer.Balance = payer.Balance.Sub(NewDecimal(fee))
+		cs.mu.Lock()
+		err := cs.distributeSwapFeeCtx(t.Context(), fee, true)
+		cs.mu.Unlock()
+		if err != nil {
+			t.Fatalf("fee %.6f: %v", fee, err)
+		}
+		if delta := totalAEQ(cs) - before; delta > 1e-9 {
+			t.Errorf("distributing a %.6f AEQ fee CREATED %+.9f AEQ — the four shares summed "+
+				"above the fee", fee, delta)
+		}
+	}
+}

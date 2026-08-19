@@ -128,6 +128,7 @@ jobs:
           run_group transfer 'TestTransferConcurrent|TestTransferAtomic|TestProcessTransferBatchConcurrent'
           run_group wal      'TestWAL|TestTransferWAL'
           run_group plumbing 'TestPoolFlush|TestPendingTxs|TestEvmMirrorFlush'
+          run_group mpcstore 'TestSharesSurvive|TestCandidatesAreScoped|TestDeletionIsHonoured|TestRewritingAnEnrolment'
         env:
           ADMIN_URL: "postgres://postgres:postgres@localhost:5432/postgres?sslmode=disable"
 

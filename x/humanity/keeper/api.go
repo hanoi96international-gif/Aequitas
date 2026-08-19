@@ -32,6 +32,8 @@ import (
 	"github.com/ethereum/go-ethereum/accounts"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/crypto"
+
+	"github.com/hanoi96international-gif/aequitas-chain/x/humanity/mpc"
 )
 
 type APIServer struct {
@@ -45,6 +47,11 @@ type APIServer struct {
 	// the same nonce map and mutex, preventing parallel registrations from
 	// reading the same DB nonce and writing the same follower value.
 	evmRPC *EVMRPCServer
+
+	// This node's participation in secure duplicate matching, or nil when it
+	// is not one of the parties. Nil is the safe value: no MPC at all, rather
+	// than one machine performing a two-party protocol by itself.
+	mpc *mpcNode
 }
 
 // FIX (P2-7, beta-launch audit 2026-07-05): NewAPIServer used to also take a
@@ -908,6 +915,17 @@ func (a *APIServer) buildMux() *http.ServeMux {
 		}
 		a.handleUI(w, r)
 	})
+	// Secure duplicate matching, if this node is one of the parties. The exact
+	// pattern beats the "/" SPA fallback on specificity, so peers reach the
+	// endpoint rather than a copy of the explorer page.
+	a.mpc = registerMPCRoutes(mux, func() []mpc.Party {
+		return GlobalPeerRegistry.MPCCandidates(
+			os.Getenv("SELF_URL"), a.blockchain.SelfSigningAddress())
+	})
+
+	mux.HandleFunc("/mpc/enroll", a.handleMPCEnroll)
+	mux.HandleFunc("/mpc/check", a.handleMPCCheck)
+
 	mux.HandleFunc("/api/status", a.handleStatus)
 	mux.HandleFunc("/api/events", a.handleBlockEvents)
 	mux.HandleFunc("/api/health/combined", a.handleCombinedHealth)
@@ -2768,7 +2786,10 @@ func (a *APIServer) handlePeerRegister(w http.ResponseWriter, r *http.Request) {
 	registerURLIfAuthorized := func() {
 		if req.URL != "" && isAllowedPeerURL(req.URL) {
 			if urlAuthorized {
-				GlobalPeerRegistry.Register(req.URL)
+				// Record the signing address alongside the URL: this
+				// registration has just proved ownership of that key, and it
+				// is the only moment the two halves are known together.
+				GlobalPeerRegistry.RegisterWithAddress(req.URL, req.SigningAddress)
 				fmt.Printf("[PEERS] Registered: %s\n", req.URL)
 				a.blockchain.startSyncForPeer(req.URL)
 			} else {

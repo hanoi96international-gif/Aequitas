@@ -70,6 +70,16 @@ func TestGiniHistory_ChartPlotsTheServerOrderAsGiven(t *testing.T) {
 // funcBody returns the source of the function whose declaration starts with
 // decl, by brace matching from its opening brace.
 func funcBody(src, decl string) string {
+	// Normalise line endings first. This repo checks out CRLF on Windows, so a
+	// file read with os.ReadFile contains "{\r\n" and the "{\n" search below
+	// matched nothing — the test then reported the function as missing when it
+	// was plainly there.
+	//
+	// It only ever failed locally: CI checks out LF, so the fault was invisible
+	// where anyone would look for it, while making a local run of this package
+	// untrustworthy on Windows.
+	src = strings.ReplaceAll(src, "\r\n", "\n")
+
 	i := strings.Index(src, decl)
 	if i < 0 {
 		return ""
