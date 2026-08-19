@@ -56,6 +56,81 @@ jobs:
       - run: npm ci
       - run: npx hardhat test
 
+  # FIX (Audit 2026-08-18): every one of the 740 Go tests built its state with
+  # newTestState(), i.e. useDB:false. The entire Postgres-backed half — the
+  # atomic outbox, optimistic locking, loadFromDB, rebuildStateAccumulators,
+  # snapshot import, the WAL fast path — was exercised only by tests that
+  # skip themselves unless an operator hands them a DATABASE_URL by hand, and
+  # nothing in CI ever did. Coverage read 30.4% and the uncovered majority was
+  # precisely the code that touches real money in production.
+  #
+  # This is not hypothetical. The parallel-replay attempt reverted in 41b1eee
+  # shipped a Postgres wire-protocol desync to a live validator and cost two
+  # consensus blocks. TestReplayTransactions_ParallelTransfers_RealDB — which
+  # exists, in this repository — had already found it. Its result was
+  # misread, because it was not part of any run anybody looked at.
+  #
+  # A Postgres service container costs seconds and makes those tests part of
+  # every push. Scoped to the _RealDB set by name so the TPS/WAL benchmarks
+  # that share the same opt-in flag stay out of the ordinary CI path.
+  db-tests:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: aequitas_ci
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+        ports:
+          - 5432:5432
+    env:
+      DATABASE_URL: "postgres://postgres:postgres@localhost:5432/aequitas_ci?sslmode=disable"
+      AEQUITAS_TPS_BENCH: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: Run the Postgres-backed tests
+        run: |
+          set -euo pipefail
+
+          # Each group gets its OWN database. These tests share state through
+          # the DB and clean up by TRUNCATE, so several of them pass alone and
+          # fail when run together — TestTransferConcurrent_*RingConserveBalance
+          # is the clearest pair. That is a test-isolation gap, not a code
+          # defect (verified: green in isolation, on this commit and on main),
+          # and giving each group a fresh database keeps this job honest until
+          # the isolation itself is fixed.
+          run_group() {
+            local name="$1"; shift
+            local db="aeq_ci_${name}"
+            psql "$ADMIN_URL" -c "DROP DATABASE IF EXISTS ${db};" >/dev/null
+            psql "$ADMIN_URL" -c "CREATE DATABASE ${db};" >/dev/null
+            echo "::group::${name}"
+            DATABASE_URL="postgres://postgres:postgres@localhost:5432/${db}?sslmode=disable" \
+              go test ./x/humanity/keeper/ -run "$1" -v -timeout 10m 2>&1 | tee "out_${name}.txt"
+            echo "::endgroup::"
+            # A group where everything skipped is a green tick that proves
+            # nothing — the exact failure mode this job exists to end.
+            if ! grep -qE '^--- PASS' "out_${name}.txt"; then
+              echo "No test in group '${name}' actually executed — the gate or the filter is wrong."
+              exit 1
+            fi
+          }
+
+          run_group realdb   '_RealDB$|RealDB$'
+          run_group transfer 'TestTransferConcurrent|TestTransferAtomic|TestProcessTransferBatchConcurrent'
+          run_group wal      'TestWAL|TestTransferWAL'
+          run_group plumbing 'TestPoolFlush|TestPendingTxs|TestEvmMirrorFlush'
+        env:
+          ADMIN_URL: "postgres://postgres:postgres@localhost:5432/postgres?sslmode=disable"
+
   # The race detector, on its own job so it reports independently of the
   # ordinary suite (it roughly triples runtime, and a data race is a different
   # class of failure from a logic bug).

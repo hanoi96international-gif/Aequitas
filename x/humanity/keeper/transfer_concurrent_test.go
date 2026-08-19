@@ -144,7 +144,15 @@ func TestTransferConcurrent_DemurrageEligibleFallsBack(t *testing.T) {
 	from := distTestAddr(405)
 	to := distTestAddr(406)
 	longInactive := time.Now().Unix() - demurrageGracePeriodSeconds - 3600*24*60 // well past the grace period
-	seedConcurrentTestAccount(t, cs, from, 1000, longInactive)
+	// FIX (Audit 2026-08-18): this used to seed exactly 1000 AEQ, which is the
+	// fair share — and demurrage only ever decays the EXCESS above the fair
+	// share (see effectiveBalance / TestDemurrage_OnlyTheExcessDecays). So the
+	// account this test called "demurrage-eligible" had nothing to decay, the
+	// fast path was right to proceed, and the assertion below was asserting
+	// something untrue. The test never failed because nothing ever ran it: it
+	// is gated on AEQUITAS_TPS_BENCH + DATABASE_URL and CI supplied neither.
+	// Seed above the fair share so there is genuinely something to settle.
+	seedConcurrentTestAccount(t, cs, from, 5000, longInactive)
 	seedConcurrentTestAccount(t, cs, to, 0, time.Now().Unix())
 
 	_, _, applied, err := cs.transferConcurrent(from, to, 10, Transaction{Type: "transfer", Wallet: from, To: to, Amount: 10})
@@ -159,8 +167,9 @@ func TestTransferConcurrent_DemurrageEligibleFallsBack(t *testing.T) {
 	cs.mu.RLock()
 	fromAcc, _ := cs.accounts.Get(from)
 	cs.mu.RUnlock()
-	if fromAcc.Balance.Float() != 1000 {
-		t.Errorf("sender balance changed despite applied=false: got %v, want 1000", fromAcc.Balance.Float())
+	if fromAcc.Balance.Float() != 5000 {
+		t.Errorf("sender balance changed despite applied=false: got %v, want 5000 (the seeded amount, "+
+			"untouched — a fallback must settle nothing, not partially settle)", fromAcc.Balance.Float())
 	}
 }
 

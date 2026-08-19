@@ -83,6 +83,42 @@ jobs:
                  FROM chain_blocks
                 WHERE transactions LIKE '%register_human%'"
 
+            echo "===== 7. one human, one nullifier ====="
+            # FIX (Audit 2026-08-18): the difference in section 5 is
+            # STRUCTURALLY BLIND to the one bug this chain has actually had.
+            # A spurious registration raises BOTH sides by 1000 — humanCount by
+            # one, and the balance by the grant — so the gap does not move. On
+            # 2026-08-16 nine spellings of one nullifier each claimed their own
+            # registration and their own 1,000 AEQ, live, through the public
+            # /api/register endpoint (commit ed22dc3). Canonicalisation stops
+            # that going forward; nothing looks backwards.
+            #
+            # These two numbers do. Every registration claims exactly one
+            # nullifier atomically, so they must be equal. They are also the
+            # only check here that can see a duplicate at all.
+            q "SELECT 'nullifiers', count(*) FROM nullifiers"
+            q "SELECT 'humans_again', count(*) FROM chain_accounts WHERE is_human = true"
+            q "SELECT 'nullifiers_minus_humans',
+                      (SELECT count(*) FROM nullifiers)
+                    - (SELECT count(*) FROM chain_accounts WHERE is_human = true)"
+            echo "-- any nullifier claimed by more than one wallet (must be empty):"
+            q "SELECT nullifier, count(DISTINCT wallet_address)
+                 FROM nullifiers
+                WHERE wallet_address <> ''
+                GROUP BY nullifier HAVING count(DISTINCT wallet_address) > 1"
+            echo "-- any wallet holding more than one nullifier (must be empty):"
+            q "SELECT wallet_address, count(*)
+                 FROM nullifiers
+                WHERE wallet_address <> ''
+                GROUP BY wallet_address HAVING count(*) > 1"
+            echo "-- distinct numeric values vs stored rows: a difference here means two"
+            echo "   spellings of ONE value were stored as two nullifiers (the ed22dc3 bug):"
+            q "SELECT 'stored_rows', count(*) FROM nullifiers"
+            q "SELECT 'distinct_numeric_values', count(DISTINCT
+                        CASE WHEN nullifier ~ '^[0-9]+$' THEN ltrim(nullifier, '0')
+                             ELSE lower(ltrim(replace(nullifier, '0x', ''), '0')) END)
+                 FROM nullifiers"
+
       - name: Reconcile on Contabo2
         if: ${{ inputs.box == 'contabo2' }}
         uses: appleboy/ssh-action@v1.0.3

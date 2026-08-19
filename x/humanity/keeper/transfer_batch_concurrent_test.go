@@ -146,7 +146,17 @@ func TestProcessTransferBatchConcurrent_PoolTouchingMemberFallsBackWhole(t *test
 	// A LastActivityAt far enough in the past that effectiveBalance()
 	// differs from the stored Balance -- the same demurrage-eligibility
 	// trigger TestTransferConcurrent_DemurrageEligibleFallsBack uses.
-	seedConcurrentTestAccount(t, cs, staleFrom, 100, time.Now().Unix()-int64(demurrageGracePeriodSeconds)-int64(60*60*24*40))
+	//
+	// FIX (Audit 2026-08-18): the balance here used to be 100 AEQ, and an idle
+	// clock alone is not enough. Demurrage decays only the EXCESS above the
+	// fair share (1000 AEQ — see effectiveBalance), so 100 AEQ decays by
+	// nothing no matter how long it sits, effectiveBalance equalled Balance,
+	// the batch was genuinely eligible, and this test was asserting a fallback
+	// that correctly did not happen. It inherited the mistake from
+	// TestTransferConcurrent_DemurrageEligibleFallsBack, which had the same
+	// wrong fixture — and neither ever failed, because both are gated on
+	// AEQUITAS_TPS_BENCH + DATABASE_URL and nothing in CI supplied either.
+	seedConcurrentTestAccount(t, cs, staleFrom, 5000, time.Now().Unix()-int64(demurrageGracePeriodSeconds)-int64(60*60*24*40))
 	seedConcurrentTestAccount(t, cs, staleTo, 0, time.Now().Unix())
 
 	batch := []*transferBatchRequest{
