@@ -154,3 +154,34 @@ func MulShares(x, y Shares, stores []*TripleStore) (Shares, error) {
 	}
 	return out, nil
 }
+
+// EncodeTriples packs one party's triples for distribution.
+//
+// Triples must be generated ONCE and their rows handed to the parties. A party
+// that draws its own gets an uncorrelated set, the shares stop belonging
+// together, and the arithmetic quietly stops meaning anything — see
+// TestIndependentlyGeneratedTriplesCannotWork. That is why this file format
+// exists at all: so the correlation survives leaving the dealer.
+func EncodeTriples(ts []Triple) []byte {
+	buf := make([]byte, 0, 24*len(ts))
+	for _, t := range ts {
+		buf = append(buf, EncodeElements([]Element{t.A, t.B, t.C})...)
+	}
+	return buf
+}
+
+// DecodeTriples is the inverse, rejecting anything outside the field.
+func DecodeTriples(buf []byte) ([]Triple, error) {
+	if len(buf)%24 != 0 {
+		return nil, fmt.Errorf("mpc: %d bytes is not a whole number of triples", len(buf))
+	}
+	out := make([]Triple, 0, len(buf)/24)
+	for i := 0; i+24 <= len(buf); i += 24 {
+		vals, err := DecodeElements(buf[i : i+24])
+		if err != nil {
+			return nil, fmt.Errorf("mpc: triple %d: %w", i/24, err)
+		}
+		out = append(out, Triple{A: vals[0], B: vals[1], C: vals[2]})
+	}
+	return out, nil
+}
