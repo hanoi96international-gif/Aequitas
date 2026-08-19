@@ -45,6 +45,11 @@ type APIServer struct {
 	// the same nonce map and mutex, preventing parallel registrations from
 	// reading the same DB nonce and writing the same follower value.
 	evmRPC *EVMRPCServer
+
+	// This node's participation in secure duplicate matching, or nil when it
+	// is not one of the parties. Nil is the safe value: no MPC at all, rather
+	// than one machine performing a two-party protocol by itself.
+	mpc *mpcNode
 }
 
 // FIX (P2-7, beta-launch audit 2026-07-05): NewAPIServer used to also take a
@@ -908,6 +913,11 @@ func (a *APIServer) buildMux() *http.ServeMux {
 		}
 		a.handleUI(w, r)
 	})
+	// Secure duplicate matching, if this node is one of the parties. The exact
+	// pattern beats the "/" SPA fallback on specificity, so peers reach the
+	// endpoint rather than a copy of the explorer page.
+	a.mpc = registerMPCRoutes(mux)
+
 	mux.HandleFunc("/api/status", a.handleStatus)
 	mux.HandleFunc("/api/events", a.handleBlockEvents)
 	mux.HandleFunc("/api/health/combined", a.handleCombinedHealth)
