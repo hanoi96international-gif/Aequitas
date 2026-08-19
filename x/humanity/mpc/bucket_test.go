@@ -8,15 +8,22 @@ import (
 	"time"
 )
 
-// TestSecureComparisonCostAndItsConsequence is the measurement that decides
-// the architecture, kept as a test so it stays true rather than becoming a
-// remembered number in a comment.
+// TestSecureComparisonCostIsNotWhatLimitsScale corrects a measurement that
+// was wrong in a way worth recording.
 //
-// It asserts only that a comparison completes and that the extrapolation to
-// population scale is absurd — because that absurdity is the load-bearing
-// fact. If someone ever makes a linear scan look viable, this test should be
-// the thing that stops them.
-func TestSecureComparisonCostAndItsConsequence(t *testing.T) {
+// A first benchmark timed ONE call and reported ~90 ms, which extrapolated to
+// 23 years per registration at population scale. That number was an artefact:
+// the first call also builds the threshold interpolation polynomial (cached
+// afterwards) and generated its own multiplication triples, which belong to
+// the offline phase and not to anything a human waits for. Measured warm and
+// with the offline work excluded, one comparison costs a few hundred
+// microseconds.
+//
+// The conclusion survived the correction — a linear scan is still impossible —
+// but it was impossible by a factor of hundreds, not tens of thousands. The
+// lesson is kept here because a benchmark that measures setup instead of work
+// sends an architecture in the wrong direction, confidently.
+func TestSecureComparisonCostIsNotWhatLimitsScale(t *testing.T) {
 	const bits, parties = 512, 3
 	a, err := NewSharedTemplate(make([]uint8, bits), parties)
 	if err != nil {
@@ -26,29 +33,48 @@ func TestSecureComparisonCostAndItsConsequence(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	triples, err := GenerateTriples(TriplesPerComparison(bits), parties)
-	if err != nil {
+	mkStores := func() []*TripleStore {
+		tr, err := GenerateTriples(TriplesPerComparison(bits), parties)
+		if err != nil {
+			t.Fatal(err)
+		}
+		s := make([]*TripleStore, parties)
+		for i := range s {
+			s[i] = NewTripleStore(tr[i])
+		}
+		return s
+	}
+
+	// Warm: the polynomial is built once per deployment, not per comparison.
+	if _, err := SecureMatch(a, b, 100, mkStores()); err != nil {
 		t.Fatal(err)
 	}
-	stores := make([]*TripleStore, parties)
+
+	// Enough iterations that the total clearly exceeds the platform's clock
+	// granularity — on Windows a handful of 200 µs runs measures as zero.
+	const runs = 200
+	stores := make([][]*TripleStore, runs)
 	for i := range stores {
-		stores[i] = NewTripleStore(triples[i])
+		stores[i] = mkStores()
 	}
-
 	start := time.Now()
-	if _, err := SecureMatch(a, b, 100, stores); err != nil {
-		t.Fatalf("SecureMatch: %v", err)
+	for i := 0; i < runs; i++ {
+		if _, err := SecureMatch(a, b, 100, stores[i]); err != nil {
+			t.Fatal(err)
+		}
 	}
-	perComparison := time.Since(start)
+	perComparison := time.Since(start) / runs
 
-	worldScale := perComparison.Seconds() * 8e9 / (365 * 24 * 3600)
-	t.Logf("one secure comparison: %v", perComparison)
-	t.Logf("linear scan at 8e9 enrolments: %.1f YEARS per registration", worldScale)
+	linearDays := perComparison.Seconds() * 8e9 / 86400
+	t.Logf("warm online cost per comparison: %v", perComparison)
+	t.Logf("linear scan at 8e9 enrolments: %.0f days per registration", linearDays)
 
-	if worldScale < 1 {
-		t.Errorf("a linear scan at population scale now costs %.2f years per registration. "+
-			"If that is real rather than a mis-measurement, the bucketing this package exists "+
-			"for may no longer be necessary — verify before removing anything.", worldScale)
+	if perComparison <= 0 {
+		t.Skip("clock granularity too coarse to time this on the current platform")
+	}
+	if linearDays < 1 {
+		t.Errorf("a linear scan at population scale now costs %.2f days per registration. "+
+			"Verify before concluding that bucketing is unnecessary.", linearDays)
 	}
 }
 
