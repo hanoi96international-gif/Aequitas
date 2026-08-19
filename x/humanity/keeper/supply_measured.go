@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"sync"
 	"time"
+
+	"github.com/lib/pq"
 )
 
 // MeasuredTotalAEQ sums what the ledger actually holds: every account's balance
@@ -120,5 +122,63 @@ func (cs *ChainState) SupplyReconciliation() map[string]interface{} {
 	// Anything past a micro-AEQ is structural, not arithmetic: balances are
 	// stored as micro-integers, so a correct implementation is exact.
 	out["reconciled"] = measured-claimed < 1e-6 && claimed-measured < 1e-6
+
+	// The breakdown that tells the two explanations apart.
+	//
+	// A positive difference means either AEQ was created, or fewer humans are
+	// counted than were granted 1,000. Those need opposite responses, and the
+	// numbers below separate them without anyone needing shell access to the
+	// database — which is what has kept the live +305.278 unexplained since
+	// 2026-08-15.
+	//
+	//   humans ~= claimed        the humans hold what they were granted, so a
+	//                            gap lives somewhere else
+	//   non_humans ~= difference the AEQ sits in accounts no longer counted as
+	//                            people: deregistered, or never marked human
+	//   pools carry it           it is fee revenue in the tokenomics pools,
+	//                            which is granted money that merely moved
+	//   none of the above        something created it
+	if parts, err := cs.supplyBreakdown(); err == nil {
+		out["breakdown"] = parts
+	} else {
+		out["breakdown_error"] = err.Error()
+	}
 	return out
+}
+
+// supplyBreakdown splits the measured total by where the AEQ actually sits.
+func (cs *ChainState) supplyBreakdown() (map[string]string, error) {
+	if cs.db == nil {
+		return nil, fmt.Errorf("no database configured")
+	}
+	var humans, nonHumans, pools, reserve float64
+	var nonHumanAccounts int
+
+	if err := cs.db.QueryRow(
+		`SELECT COALESCE(sum(balance),0) FROM chain_accounts WHERE is_human = true`).Scan(&humans); err != nil {
+		return nil, err
+	}
+	if err := cs.db.QueryRow(
+		`SELECT COALESCE(sum(balance),0), count(*) FROM chain_accounts
+		 WHERE is_human = false AND balance > 0`).Scan(&nonHumans, &nonHumanAccounts); err != nil {
+		return nil, err
+	}
+	if err := cs.db.QueryRow(
+		`SELECT COALESCE(sum(balance),0) FROM chain_accounts WHERE lower(address) = ANY($1)`,
+		pq.Array([]string{ubiPoolAddr, lpPoolAddr, validatorsPoolAddr, treasuryPoolAddr}),
+	).Scan(&pools); err != nil {
+		return nil, err
+	}
+	if err := cs.db.QueryRow(
+		`SELECT COALESCE(reserve_aeq,0) FROM liquidity_pool WHERE id = 1`).Scan(&reserve); err != nil {
+		reserve = 0
+	}
+
+	return map[string]string{
+		"humans":             fmt.Sprintf("%.6f", humans),
+		"non_humans":         fmt.Sprintf("%.6f", nonHumans),
+		"non_human_accounts": fmt.Sprintf("%d", nonHumanAccounts),
+		"tokenomics_pools":   fmt.Sprintf("%.6f", pools),
+		"amm_reserve":        fmt.Sprintf("%.6f", reserve),
+	}, nil
 }

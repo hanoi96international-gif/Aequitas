@@ -505,3 +505,20 @@ func TestSupplyConservation_SwapFeeDistribution(t *testing.T) {
 		}
 	}
 }
+
+// TestSupplyBreakdownIsRefusedWithoutADatabase: the breakdown reads the ledger,
+// so with no database it must say so rather than report zeros.
+//
+// Zeros would be actively misleading here — "non_humans: 0.000000" reads like a
+// measurement that rules out an explanation, when nothing was measured at all.
+func TestSupplyBreakdownIsRefusedWithoutADatabase(t *testing.T) {
+	cs := &ChainState{}
+	if _, err := cs.supplyBreakdown(); err == nil {
+		t.Error("a breakdown was produced with no database — zeros would read as evidence")
+	}
+
+	out := cs.SupplyReconciliation()
+	if _, hasBreakdown := out["breakdown"]; hasBreakdown {
+		t.Error("SupplyReconciliation published a breakdown it could not measure")
+	}
+}
