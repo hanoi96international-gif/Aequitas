@@ -10,15 +10,39 @@ one additive share — a vector of uniformly random field elements. Reconstructi
 requires both. If one box is seized, compromised, or subpoenaed, the templates
 on it are noise.
 
-**Does not protect against:** the two operators colluding. With two parties,
-both shares together reconstruct everything. Two parties is the minimum that
-provides any protection at all, not a comfortable margin. The security argument
-is only as strong as the independence of the two operators, and today both boxes
-are administered by the same person — so the current deployment protects against
-an attacker who takes one box, and not against the operator.
+**Does not protect against:** anyone who can obtain both shares. With two
+parties, both shares together reconstruct everything, so the whole argument rests
+on no single actor controlling both.
 
-Adding a third independently-operated party is the single largest improvement
-available, and the protocol already supports any number.
+Ownership of the two boxes is separate (C1 and C2 have different owners), which
+is real: it means an attacker who compromises, steals, or seizes ONE box gets
+noise. That is the most likely attack, and the split defeats it.
+
+Operational control, however, is not yet separate, and that is what the
+assumption actually depends on. Three things currently converge:
+
+1. **Both SSH keys live in this repository's GitHub secrets.**
+   `resync-both-contabos.yml` uses `CONTABO_SSH_KEY` and `CONTABO2_SSH_KEY` in
+   one workflow to reach both hosts. One GitHub account therefore holds root on
+   both parties.
+2. **Both boxes deploy from this repository**, so a change merged to `main`
+   reaches both parties. A single malicious or compromised commit is a two-party
+   compromise.
+3. **Both boxes are at the same provider** (Contabo), so a provider-level
+   compromise or legal order is correlated across them.
+
+None of that is an argument against the split — it is the list of what has to
+move for the split to carry the weight the protocol puts on it:
+
+- move `CONTABO2_SSH_KEY` out of this repository, into a secrets store held by
+  C2's owner;
+- deploy the MPC party independently of the chain node, so a node deploy cannot
+  rewrite both parties' matching code;
+- put any third party at a different provider.
+
+Adding a third independently-operated party remains the single largest
+improvement available, and the protocol already supports any number
+(`TestThirdPartyWorksToday`).
 
 ## The two-party quorum problem
 
