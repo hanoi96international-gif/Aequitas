@@ -120,6 +120,15 @@ jobs:
             echo "=== disk before deploy ==="
             df -h / | tail -1
             docker builder prune -af --max-used-space 10GB >/dev/null 2>&1 || docker builder prune -af >/dev/null 2>&1 || true
+            # Record which commit this image is built from. The Dockerfile reads
+            # this file when no --build-arg GIT_COMMIT is passed, which is the
+            # case here because the build happens inside the box-side script and
+            # that script is not version-controlled in this repository. Without
+            # it every node reports git_commit "unknown" and the explorer cannot
+            # tell whether the fleet is on one build. Best-effort: a checkout
+            # that cannot answer leaves the file absent and the build falls back
+            # to "unknown", exactly as before.
+            ( cd /root/Aequitas 2>/dev/null && git rev-parse --short HEAD > .git-commit-stamp ) || true
             /root/deploy_safe_c2.sh
 
             # FIX (2026-07-25): cap the build cache after every deploy.

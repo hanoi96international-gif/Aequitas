@@ -66,3 +66,9 @@ deploy
 .env
 .env.*
 !.env.example
+
+# ...except the build-commit stamp, which the deploy workflows write into the
+# checkout right before `docker build` so the image can record which commit it
+# was built from. Kept explicit: this file is small, required, and easy to
+# exclude by accident with a broader dot-file rule later.
+!.git-commit-stamp
