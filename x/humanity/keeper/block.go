@@ -187,13 +187,30 @@ type Block struct {
 	// a new validator joins — explicitly rejected as not scaling to a
 	// growing, non-technical-operator-friendly network.
 	//
-	// SelfFetched is orthogonal to FromSync's authorization/equivocation/
-	// finality bypasses (deliberately NOT touched here) -- a proposer must
-	// still be authorized via the exact same NODE_OPERATOR_BINDING_SIGNATURE-
-	// backed check as any other block; this only lets an ALREADY-authorized
-	// proposer's block, fetched by OUR OWN deliberate request (not
-	// unsolicited push/gossip), get past the circuit breaker's reputation
-	// gate long enough to actually close the gap that tripped it. Works
+	// What SelfFetched does and does NOT bypass, stated exactly — this used to
+	// claim it was "orthogonal to FromSync's authorization/equivocation/
+	// finality bypasses (deliberately NOT touched here)", and that stopped
+	// being true when P2-2 (beta-launch audit 2026-07-05) extended it to the
+	// suspension gate. Corrected 2026-08-18:
+	//
+	//   authorization  NOT bypassed. A proposer must still be authorized via
+	//                  the exact same NODE_OPERATOR_BINDING_SIGNATURE-backed
+	//                  check as any other block (AddPeerBlock keys that gate on
+	//                  FromSync alone).
+	//   finality       NOT bypassed.
+	//   circuit breaker  bypassed — the original purpose: let an ALREADY-
+	//                  authorized proposer's block, fetched by OUR OWN
+	//                  deliberate request rather than unsolicited push/gossip,
+	//                  past the reputation gate long enough to close the very
+	//                  gap that tripped it.
+	//   suspension     bypassed too, since P2-2. A re-fetched block can predate
+	//                  a suspension record this node only holds today, and
+	//                  rejecting it reintroduces exactly the merge-stall
+	//                  SelfFetched exists to prevent. See that call site.
+	//
+	// Not attacker-reachable either way: the field is `json:"-"`, never
+	// deserialized, and set only by this node's own fetch paths in
+	// sync_blocks.go. Works
 	// automatically for any current or future validator, regardless of
 	// which peer URLs happen to be statically configured anywhere.
 	SelfFetched bool `json:"-"`
@@ -237,10 +254,11 @@ type BlockDAG struct {
 	bootHeight int64
 	// bootTime is this process's own wall-clock start time, captured once at
 	// construction and never updated — distinct from bootHeight (a block-height
-	// concept). ProduceBlock's double-production guard (see that call site's own
-	// comment) now runs unconditionally rather than only within a post-boot
-	// window; bootTime is kept for that guard's log line ("how long has this
-	// process been alive when it caught a conflicting durable row") only.
+	// concept). ProduceBlock's double-production guard runs unconditionally —
+	// it distinguishes a redeploy overlap from ordinary operation via
+	// producedHeights below, not via elapsed time — so bootTime is kept only
+	// for that guard's log line ("how long has this process been alive when it
+	// caught a conflicting durable row").
 	bootTime time.Time
 	// producedHeights records every height THIS process has itself produced a
 	// block at. It is what lets the double-production guard below run for the

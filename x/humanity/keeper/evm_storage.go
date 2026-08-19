@@ -3670,7 +3670,17 @@ func (cs *ChainState) LoadBlockFromDBByHeight(height int64) *Block {
 			continue
 		}
 		_ = json.Unmarshal([]byte(parentHashesRaw), &b.ParentHashes)
-		_ = json.Unmarshal([]byte(txsRaw), &b.Transactions)
+		// A block whose transaction list will not parse must NOT come back
+		// looking like an empty block: replaying it would silently drop every
+		// transfer it contains. The hash check catches it downstream (the tx
+		// digest is part of the preimage and chain_blocks deliberately stores
+		// no tx_root — see tx_batch_transport.go), but that is a downstream
+		// side effect, not a decision made here. Skip the row and say so.
+		if err := json.Unmarshal([]byte(txsRaw), &b.Transactions); err != nil {
+			fmt.Printf("[DB] ✗ Block %s at height %d has an unparseable transaction list (%v) — skipping the row rather than returning it as an empty block\n",
+				b.Hash, b.Height, err)
+			continue
+		}
 		if bluesRaw != "" && bluesRaw != "[]" && bluesRaw != "null" {
 			_ = json.Unmarshal([]byte(bluesRaw), &b.Blues)
 		}
@@ -3729,7 +3739,13 @@ func (cs *ChainState) LoadBlockFromDBByHash(hash string) *Block {
 		return nil
 	}
 	_ = json.Unmarshal([]byte(parentHashesRaw), &b.ParentHashes)
-	_ = json.Unmarshal([]byte(txsRaw), &b.Transactions)
+	// See the loop variants above: an unparseable transaction list must not be
+	// returned as an empty block.
+	if err := json.Unmarshal([]byte(txsRaw), &b.Transactions); err != nil {
+		fmt.Printf("[DB] ✗ Block %s at height %d has an unparseable transaction list (%v) — refusing to return it as an empty block\n",
+			b.Hash, b.Height, err)
+		return nil
+	}
 	if bluesRaw != "" && bluesRaw != "[]" && bluesRaw != "null" {
 		_ = json.Unmarshal([]byte(bluesRaw), &b.Blues)
 	}
@@ -3835,7 +3851,17 @@ func (cs *ChainState) LoadBlocksByHashesFromDB(hashes []string) ([]*Block, error
 			continue
 		}
 		_ = json.Unmarshal([]byte(parentHashesRaw), &b.ParentHashes)
-		_ = json.Unmarshal([]byte(txsRaw), &b.Transactions)
+		// A block whose transaction list will not parse must NOT come back
+		// looking like an empty block: replaying it would silently drop every
+		// transfer it contains. The hash check catches it downstream (the tx
+		// digest is part of the preimage and chain_blocks deliberately stores
+		// no tx_root — see tx_batch_transport.go), but that is a downstream
+		// side effect, not a decision made here. Skip the row and say so.
+		if err := json.Unmarshal([]byte(txsRaw), &b.Transactions); err != nil {
+			fmt.Printf("[DB] ✗ Block %s at height %d has an unparseable transaction list (%v) — skipping the row rather than returning it as an empty block\n",
+				b.Hash, b.Height, err)
+			continue
+		}
 		if bluesRaw != "" && bluesRaw != "[]" && bluesRaw != "null" {
 			_ = json.Unmarshal([]byte(bluesRaw), &b.Blues)
 		}

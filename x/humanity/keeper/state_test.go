@@ -170,7 +170,7 @@ func TestCalcGini_LPAndLiquidEqual_IsZero(t *testing.T) {
 	// one all-LP) are perfectly equal → Gini 0.
 	cs := newTestState()
 	cs.pool = &PoolState{ReserveAEQ: NewDecimal(500), TotalLPShares: NewDecimal(500)}
-	addHuman(cs, "0x01", 500) // 500 liquid
+	addHuman(cs, "0x01", 500)                                                                                                 // 500 liquid
 	cs.accounts.Set("0x02", &AccountState{Address: "0x02", IsHuman: true, Balance: NewDecimal(0), LPShares: NewDecimal(500)}) // 500 via LP
 	if g := cs.CalcGini(); g != 0.0 {
 		t.Errorf("equal total wealth (liquid vs LP): want Gini=0, got %v", g)

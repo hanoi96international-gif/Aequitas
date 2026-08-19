@@ -45,8 +45,8 @@ func TestSimulateMaxTPS_Ingestion(t *testing.T) {
 		t.Fatal("expected a live PostgreSQL connection (state.useDB == false) — check DATABASE_URL")
 	}
 
-	const numSenders = 100     // simulates 100 distinct wallets submitting concurrently
-	const txsPerSender = 100   // 10,000 transfers total
+	const numSenders = 100   // simulates 100 distinct wallets submitting concurrently
+	const txsPerSender = 100 // 10,000 transfers total
 	const recipient = "0x00000000000000000000000000000000000bee"
 
 	senderAddrs := make([]string, numSenders)

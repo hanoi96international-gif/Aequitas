@@ -72,17 +72,17 @@ type SwapRequest struct {
 	// (a stripped/altered MinAmountOut only removes the caller's own
 	// protection, it cannot move funds anywhere).
 	MinAmountOut float64 `json:"min_amount_out,omitempty"`
-	Nonce     int64   `json:"nonce"`     // per-wallet monotonic counter — atomically consumed on use
-	Timestamp int64   `json:"timestamp"` // Unix time — secondary guard against stale requests
-	Signature string  `json:"signature"`
+	Nonce        int64   `json:"nonce"`     // per-wallet monotonic counter — atomically consumed on use
+	Timestamp    int64   `json:"timestamp"` // Unix time — secondary guard against stale requests
+	Signature    string  `json:"signature"`
 }
 
 type SwapResponse struct {
-	Success    bool    `json:"success"`
-	Message    string  `json:"message"`
-	AmountOut  float64 `json:"amount_out"`
-	NewAEQ     float64 `json:"new_aeq_balance"`
-	NewTUSD    float64 `json:"new_tusd_balance"`
+	Success   bool    `json:"success"`
+	Message   string  `json:"message"`
+	AmountOut float64 `json:"amount_out"`
+	NewAEQ    float64 `json:"new_aeq_balance"`
+	NewTUSD   float64 `json:"new_tusd_balance"`
 }
 
 func (a *APIServer) handleSwap(w http.ResponseWriter, r *http.Request) {
@@ -351,15 +351,19 @@ func (a *APIServer) handleLPPosition(w http.ResponseWriter, r *http.Request) {
 		return math.Floor(v*1_000_000) / 1_000_000
 	}
 	json.NewEncoder(w).Encode(map[string]interface{}{
-		"shares":          mine,
-		"total_shares":    total,
-		"pool_share_pct":  pct,
+		"shares":         mine,
+		"total_shares":   total,
+		"pool_share_pct": pct,
 		"withdrawable_aeq": func() float64 {
-			if total == 0 { return 0 }
+			if total == 0 {
+				return 0
+			}
 			return floorD(reserveAEQ * (mine / total))
 		}(),
 		"withdrawable_tusd": func() float64 {
-			if total == 0 { return 0 }
+			if total == 0 {
+				return 0
+			}
 			return floorD(reserveTUSD * (mine / total))
 		}(),
 	})

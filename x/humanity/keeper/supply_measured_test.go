@@ -47,7 +47,7 @@ func TestMeasuredSupplyCache_ConcurrentRefresh(t *testing.T) {
 			defer func() { done <- struct{}{} }()
 			for i := 0; i < 50; i++ {
 				measuredSupplyMu.Lock()
-				measuredSupplyCache.value = float64(n*i) 
+				measuredSupplyCache.value = float64(n * i)
 				measuredSupplyCache.fetched = time.Now()
 				measuredSupplyMu.Unlock()
 			}

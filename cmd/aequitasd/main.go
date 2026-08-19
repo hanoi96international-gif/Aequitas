@@ -1,21 +1,21 @@
 package main
 
 import (
-"context"
-"encoding/json"
-"fmt"
-"net"
-"net/url"
-"os"
-"os/signal"
-"runtime/debug"
-"strconv"
-"strings"
-"syscall"
-"time"
-_ "time/tzdata" // embed IANA timezone DB so Europe/Berlin works on Alpine without system tzdata
+	"context"
+	"encoding/json"
+	"fmt"
+	"net"
+	"net/url"
+	"os"
+	"os/signal"
+	"runtime/debug"
+	"strconv"
+	"strings"
+	"syscall"
+	"time"
+	_ "time/tzdata" // embed IANA timezone DB so Europe/Berlin works on Alpine without system tzdata
 
-"github.com/hanoi96international-gif/aequitas-chain/x/humanity/keeper"
+	"github.com/hanoi96international-gif/aequitas-chain/x/humanity/keeper"
 )
 
 // ── ENVIRONMENT VARIABLES ──────────────────────────────────────────────────
@@ -101,41 +101,41 @@ _ "time/tzdata" // embed IANA timezone DB so Europe/Berlin works on Alpine witho
 //                          working verbosity switch yet.
 
 const (
-VERSION       = "v0.3.0"
-// NOTE: the actually-active contract addresses (V6, V7, bio verifier) live
-// in x/humanity/keeper/evm_v6mirror.go (V6_CONTRACT_ADDR, V7_CONTRACT_ADDR,
-// BIO_VERIFIER_ADDR) — that is the single source of truth. Do not redeclare
-// addresses here; a previous version of this file had a stale CONTRACT_V6
-// and BIO_VERIFIER value that didn't match what was actually deployed and
-// was never even referenced anywhere in this file.
-INITIAL_GRANT = 1000
-CHAIN_ID      = "aequitas-1"
-// BLOCK_TIME (2026-07-04): raised 1s -> 2s -> 6s earlier tonight while the
-// real convergence bugs were still unfixed (see git history on this
-// constant for that incident). Since then the actual root causes were
-// found and fixed: GHOSTDAG merge-set ancestor lookups now batch-fetch
-// instead of one DB round trip per hash (was the primary reason
-// ProduceBlock regularly exceeded BLOCK_TIME), and checkpoint resyncs now
-// seed GHOSTDAG sibling blocks, not just the canonical one, so peers no
-// longer permanently orphan on a missing merge parent. With the actual
-// bottlenecks gone, and several real fixes landed along the way: a DB
-// index for the serving-node query cost, TuneProposerBreakerForBlockTime
-// scaling the circuit breaker's fail threshold with BLOCK_TIME, and
-// hasAwaitingOrphan closing a real mechanism behind repeated
-// re-divergence (a SelfFetched ancestor fetch still in flight when a
-// resync cleared the orphan queue got force-processed anyway, flooding
-// real-time catch-up with stale work). 1s still fails immediately even
-// with all of that in place — investigating the remaining root cause
-// (see block.go/sync_blocks.go for the active investigation) rather than
-// settling for 2s. Explicit operator decision to keep pushing at 1s.
-BLOCK_TIME = 1 * time.Second
-// API_PORT is the default HTTP API port. apiPort() below reads an
-// optional API_PORT env var override — exists for the same reason
-// keeper's P2P_LISTEN_PORT does (see that constant's own comment): running
-// more than one node on the SAME host (a local multi-node simulation)
-// needs each instance on its own port. Almost every real deployment
-// should leave the env var unset and get this default.
-API_PORT = 8080
+	VERSION = "v0.3.0"
+	// NOTE: the actually-active contract addresses (V6, V7, bio verifier) live
+	// in x/humanity/keeper/evm_v6mirror.go (V6_CONTRACT_ADDR, V7_CONTRACT_ADDR,
+	// BIO_VERIFIER_ADDR) — that is the single source of truth. Do not redeclare
+	// addresses here; a previous version of this file had a stale CONTRACT_V6
+	// and BIO_VERIFIER value that didn't match what was actually deployed and
+	// was never even referenced anywhere in this file.
+	INITIAL_GRANT = 1000
+	CHAIN_ID      = "aequitas-1"
+	// BLOCK_TIME (2026-07-04): raised 1s -> 2s -> 6s earlier tonight while the
+	// real convergence bugs were still unfixed (see git history on this
+	// constant for that incident). Since then the actual root causes were
+	// found and fixed: GHOSTDAG merge-set ancestor lookups now batch-fetch
+	// instead of one DB round trip per hash (was the primary reason
+	// ProduceBlock regularly exceeded BLOCK_TIME), and checkpoint resyncs now
+	// seed GHOSTDAG sibling blocks, not just the canonical one, so peers no
+	// longer permanently orphan on a missing merge parent. With the actual
+	// bottlenecks gone, and several real fixes landed along the way: a DB
+	// index for the serving-node query cost, TuneProposerBreakerForBlockTime
+	// scaling the circuit breaker's fail threshold with BLOCK_TIME, and
+	// hasAwaitingOrphan closing a real mechanism behind repeated
+	// re-divergence (a SelfFetched ancestor fetch still in flight when a
+	// resync cleared the orphan queue got force-processed anyway, flooding
+	// real-time catch-up with stale work). 1s still fails immediately even
+	// with all of that in place — investigating the remaining root cause
+	// (see block.go/sync_blocks.go for the active investigation) rather than
+	// settling for 2s. Explicit operator decision to keep pushing at 1s.
+	BLOCK_TIME = 1 * time.Second
+	// API_PORT is the default HTTP API port. apiPort() below reads an
+	// optional API_PORT env var override — exists for the same reason
+	// keeper's P2P_LISTEN_PORT does (see that constant's own comment): running
+	// more than one node on the SAME host (a local multi-node simulation)
+	// needs each instance on its own port. Almost every real deployment
+	// should leave the env var unset and get this default.
+	API_PORT = 8080
 )
 
 // apiPort returns the API_PORT env var if set to a valid port number,
@@ -162,12 +162,12 @@ const distributionHealthRetryInterval = 15 * time.Minute
 // regardless of DST transitions -- Add(24h) would be 1h off on the two
 // DST changeover nights per year.
 func nextDaily20(after time.Time, berlin *time.Location) time.Time {
-t := after.In(berlin)
-candidate := time.Date(t.Year(), t.Month(), t.Day(), 20, 0, 0, 0, berlin)
-if !after.Before(candidate) {
-candidate = time.Date(t.Year(), t.Month(), t.Day()+1, 20, 0, 0, 0, berlin)
-}
-return candidate
+	t := after.In(berlin)
+	candidate := time.Date(t.Year(), t.Month(), t.Day(), 20, 0, 0, 0, berlin)
+	if !after.Before(candidate) {
+		candidate = time.Date(t.Year(), t.Month(), t.Day()+1, 20, 0, 0, 0, berlin)
+	}
+	return candidate
 }
 
 // computeFirstUBITarget picks when the distribution goroutine should first
@@ -188,39 +188,39 @@ return candidate
 // now instead of waiting another day. TryLockDistribution's cross-node CAS
 // still prevents a double-run if another node's replayed TX beat us to it.
 func computeFirstUBITarget(lastAt int64, now time.Time, berlin *time.Location) time.Time {
-switch {
-case lastAt == 0 || now.Sub(time.Unix(lastAt, 0)) < time.Hour:
-// FIX 10: 1-hour guard for fresh DBs so distribution doesn't fire
-// immediately on a brand-new node startup.
-return nextDaily20(now.Add(time.Hour), berlin)
-case now.Sub(time.Unix(lastAt, 0)) >= 24*time.Hour:
-// FIX (durable fix, 2026-07-03): a round is already overdue once a
-// full day has passed since the last success -- catch up almost
-// immediately instead of waiting for the next calendar slot.
-return now.Add(time.Minute)
-default:
-todayTarget := time.Date(now.In(berlin).Year(), now.In(berlin).Month(), now.In(berlin).Day(), 20, 0, 0, 0, berlin)
-if !now.Before(todayTarget) && time.Unix(lastAt, 0).Before(todayTarget) {
-return now.Add(time.Minute)
-}
-return nextDaily20(now, berlin)
-}
+	switch {
+	case lastAt == 0 || now.Sub(time.Unix(lastAt, 0)) < time.Hour:
+		// FIX 10: 1-hour guard for fresh DBs so distribution doesn't fire
+		// immediately on a brand-new node startup.
+		return nextDaily20(now.Add(time.Hour), berlin)
+	case now.Sub(time.Unix(lastAt, 0)) >= 24*time.Hour:
+		// FIX (durable fix, 2026-07-03): a round is already overdue once a
+		// full day has passed since the last success -- catch up almost
+		// immediately instead of waiting for the next calendar slot.
+		return now.Add(time.Minute)
+	default:
+		todayTarget := time.Date(now.In(berlin).Year(), now.In(berlin).Month(), now.In(berlin).Day(), 20, 0, 0, 0, berlin)
+		if !now.Before(todayTarget) && time.Unix(lastAt, 0).Before(todayTarget) {
+			return now.Add(time.Minute)
+		}
+		return nextDaily20(now, berlin)
+	}
 }
 
 type Genesis struct {
-ChainID     string      `json:"chain_id"`
-GenesisTime string      `json:"genesis_time"`
-AppState    interface{} `json:"app_state"`
+	ChainID     string      `json:"chain_id"`
+	GenesisTime string      `json:"genesis_time"`
+	AppState    interface{} `json:"app_state"`
 }
 
 func loadGenesis() (*Genesis, error) {
-data, err := os.ReadFile("genesis.json")
-if err != nil {
-return nil, err
-}
-var genesis Genesis
-err = json.Unmarshal(data, &genesis)
-return &genesis, err
+	data, err := os.ReadFile("genesis.json")
+	if err != nil {
+		return nil, err
+	}
+	var genesis Genesis
+	err = json.Unmarshal(data, &genesis)
+	return &genesis, err
 }
 
 // detectMemoryLimitBytes reports how much memory this process should consider
@@ -239,158 +239,158 @@ return &genesis, err
 // not exist), this returns 0 and the caller simply runs without a soft limit,
 // exactly as the process did before.
 func detectMemoryLimitBytes() int64 {
-// cgroup v2. "max" means no limit is set at this level, which is the
-// common case for a container started without --memory; fall through.
-if b, err := os.ReadFile("/sys/fs/cgroup/memory.max"); err == nil {
-if v := strings.TrimSpace(string(b)); v != "max" {
-if n, err := strconv.ParseInt(v, 10, 64); err == nil && n > 0 {
-return n
-}
-}
-}
-// cgroup v1. An unset limit here is not a word but a sentinel close to
-// int64 max, so reject implausibly large values rather than trusting them.
-if b, err := os.ReadFile("/sys/fs/cgroup/memory/memory.limit_in_bytes"); err == nil {
-if n, err := strconv.ParseInt(strings.TrimSpace(string(b)), 10, 64); err == nil && n > 0 && n < (1<<62) {
-return n
-}
-}
-// Host total, from /proc/meminfo's "MemTotal: <n> kB" line.
-if b, err := os.ReadFile("/proc/meminfo"); err == nil {
-for _, line := range strings.Split(string(b), "\n") {
-if !strings.HasPrefix(line, "MemTotal:") {
-continue
-}
-f := strings.Fields(line)
-if len(f) >= 2 {
-if kb, err := strconv.ParseInt(f[1], 10, 64); err == nil && kb > 0 {
-return kb * 1024
-}
-}
-break
-}
-}
-return 0
+	// cgroup v2. "max" means no limit is set at this level, which is the
+	// common case for a container started without --memory; fall through.
+	if b, err := os.ReadFile("/sys/fs/cgroup/memory.max"); err == nil {
+		if v := strings.TrimSpace(string(b)); v != "max" {
+			if n, err := strconv.ParseInt(v, 10, 64); err == nil && n > 0 {
+				return n
+			}
+		}
+	}
+	// cgroup v1. An unset limit here is not a word but a sentinel close to
+	// int64 max, so reject implausibly large values rather than trusting them.
+	if b, err := os.ReadFile("/sys/fs/cgroup/memory/memory.limit_in_bytes"); err == nil {
+		if n, err := strconv.ParseInt(strings.TrimSpace(string(b)), 10, 64); err == nil && n > 0 && n < (1<<62) {
+			return n
+		}
+	}
+	// Host total, from /proc/meminfo's "MemTotal: <n> kB" line.
+	if b, err := os.ReadFile("/proc/meminfo"); err == nil {
+		for _, line := range strings.Split(string(b), "\n") {
+			if !strings.HasPrefix(line, "MemTotal:") {
+				continue
+			}
+			f := strings.Fields(line)
+			if len(f) >= 2 {
+				if kb, err := strconv.ParseInt(f[1], 10, 64); err == nil && kb > 0 {
+					return kb * 1024
+				}
+			}
+			break
+		}
+	}
+	return 0
 }
 
 func main() {
-fmt.Println("╔════════════════════════════════════════╗")
-fmt.Println("║         AEQUITAS CHAIN NODE            ║")
-fmt.Println("║      Proof of Humanity Consensus       ║")
-fmt.Println("╚════════════════════════════════════════╝")
-fmt.Println()
-fmt.Printf("Version:       %s\n", VERSION)
-fmt.Printf("Chain ID:      %s\n", CHAIN_ID)
-fmt.Printf("Block Time:    %s\n", BLOCK_TIME)
-fmt.Println()
+	fmt.Println("╔════════════════════════════════════════╗")
+	fmt.Println("║         AEQUITAS CHAIN NODE            ║")
+	fmt.Println("║      Proof of Humanity Consensus       ║")
+	fmt.Println("╚════════════════════════════════════════╝")
+	fmt.Println()
+	fmt.Printf("Version:       %s\n", VERSION)
+	fmt.Printf("Chain ID:      %s\n", CHAIN_ID)
+	fmt.Printf("Block Time:    %s\n", BLOCK_TIME)
+	fmt.Println()
 
-// THROUGHPUT (2026-07-23, TPS-benchmark investigation): the group-commit
-// transfer batcher (x/humanity/keeper/state.go, processTransferBatch)
-// allocates heavily under sustained load -- building per-transfer request
-// structs, batched SQL args, JSON-marshaled outbox rows, etc. -- and Go's
-// default GOGC=100 (a new GC cycle once live heap doubles) means the
-// garbage collector competes directly with that same batcher for CPU on
-// every cycle. Measured on the shared-recipient TPS benchmark at 2000
-// concurrent senders (3 runs each, same system load): GOGC=100 (default)
-// averaged ~15.0k TPS, GOGC=200 ~17.1k (+14%), GOGC=400 ~19.1k (+27%).
-// Chose 200 over chasing the full 400 gain: it's a real memory-for-CPU
-// trade (the heap is allowed to grow to ~3x live size instead of ~2x
-// before a collection triggers), and this process's live heap grows with
-// registered-human/account count over the node's real operational
-// lifetime in a way this benchmark's small, synthetic account set can't
-// characterize -- 200 captures most of the throughput gain with a less
-// aggressive memory ceiling than 400. Skipped entirely if the operator
-// has already set GOGC themselves (standard Go env var, not
-// Aequitas-specific -- see this file's own "ENVIRONMENT VARIABLES"
-// section for why new operator-facing knobs are added sparingly here):
-// their explicit choice wins over this default in every case.
-if os.Getenv("GOGC") == "" {
-debug.SetGCPercent(200)
-}
+	// THROUGHPUT (2026-07-23, TPS-benchmark investigation): the group-commit
+	// transfer batcher (x/humanity/keeper/state.go, processTransferBatch)
+	// allocates heavily under sustained load -- building per-transfer request
+	// structs, batched SQL args, JSON-marshaled outbox rows, etc. -- and Go's
+	// default GOGC=100 (a new GC cycle once live heap doubles) means the
+	// garbage collector competes directly with that same batcher for CPU on
+	// every cycle. Measured on the shared-recipient TPS benchmark at 2000
+	// concurrent senders (3 runs each, same system load): GOGC=100 (default)
+	// averaged ~15.0k TPS, GOGC=200 ~17.1k (+14%), GOGC=400 ~19.1k (+27%).
+	// Chose 200 over chasing the full 400 gain: it's a real memory-for-CPU
+	// trade (the heap is allowed to grow to ~3x live size instead of ~2x
+	// before a collection triggers), and this process's live heap grows with
+	// registered-human/account count over the node's real operational
+	// lifetime in a way this benchmark's small, synthetic account set can't
+	// characterize -- 200 captures most of the throughput gain with a less
+	// aggressive memory ceiling than 400. Skipped entirely if the operator
+	// has already set GOGC themselves (standard Go env var, not
+	// Aequitas-specific -- see this file's own "ENVIRONMENT VARIABLES"
+	// section for why new operator-facing knobs are added sparingly here):
+	// their explicit choice wins over this default in every case.
+	if os.Getenv("GOGC") == "" {
+		debug.SetGCPercent(200)
+	}
 
-// FIX (audit 2026-08-16): the GOGC=200 decision above raised the ceiling on
-// how much garbage may accumulate before a collection, and deliberately noted
-// that this process's live heap "grows with registered-human/account count
-// over the node's real operational lifetime in a way this benchmark's small,
-// synthetic account set can't characterize". What was missing was the other
-// half: a ceiling. There was none, so the only thing that ever stopped the
-// heap growing was the kernel.
-//
-// Observed on Contabo2 (194.163.188.71), 12 GB box, from its kernel ring
-// buffer:
-//
-//	Out of memory: Killed process (aequitasd) anon-rss:11353476kB
-//	Out of memory: Killed process (aequitasd) anon-rss:11387540kB
-//
-// RestartCount was 9. Docker reported ExitCode=0 and OOMKilled=false for all
-// of them, because this is a GLOBAL kernel OOM (constraint=CONSTRAINT_NONE),
-// not a cgroup-limit kill -- Docker only sets OOMKilled for the latter. So
-// every one of these read as a clean, voluntary exit, and the node looked
-// like it was restarting itself for no reason. The same OOM event also took
-// postgres down with it, which is how a memory problem in this process turns
-// into a database outage on the same box.
-//
-// GOMEMLIMIT is the documented remedy: a SOFT limit that makes the collector
-// work progressively harder as the heap approaches it, rather than letting it
-// run into the kernel's hard wall. Soft matters here -- if the live heap
-// genuinely needs more, Go exceeds the limit and keeps running (slowly)
-// instead of deadlocking or aborting. A slow node is recoverable; an
-// OOM-killed one takes the database with it.
-//
-// Default is 75% of detected memory, leaving room for postgres and the OS on
-// a shared box. An operator who sets GOMEMLIMIT themselves wins outright: the
-// Go runtime already honours that variable, so this does nothing at all.
-if os.Getenv("GOMEMLIMIT") == "" {
-if limit := detectMemoryLimitBytes(); limit > 0 {
-soft := limit / 100 * 75
-debug.SetMemoryLimit(soft)
-fmt.Printf("[MEM] soft heap limit %d MiB (75%% of %d MiB detected) — set GOMEMLIMIT to override\n",
-soft>>20, limit>>20)
-} else {
-fmt.Println("[MEM] could not detect a memory limit; running without a soft heap limit (set GOMEMLIMIT to impose one)")
-}
-}
+	// FIX (audit 2026-08-16): the GOGC=200 decision above raised the ceiling on
+	// how much garbage may accumulate before a collection, and deliberately noted
+	// that this process's live heap "grows with registered-human/account count
+	// over the node's real operational lifetime in a way this benchmark's small,
+	// synthetic account set can't characterize". What was missing was the other
+	// half: a ceiling. There was none, so the only thing that ever stopped the
+	// heap growing was the kernel.
+	//
+	// Observed on Contabo2 (194.163.188.71), 12 GB box, from its kernel ring
+	// buffer:
+	//
+	//	Out of memory: Killed process (aequitasd) anon-rss:11353476kB
+	//	Out of memory: Killed process (aequitasd) anon-rss:11387540kB
+	//
+	// RestartCount was 9. Docker reported ExitCode=0 and OOMKilled=false for all
+	// of them, because this is a GLOBAL kernel OOM (constraint=CONSTRAINT_NONE),
+	// not a cgroup-limit kill -- Docker only sets OOMKilled for the latter. So
+	// every one of these read as a clean, voluntary exit, and the node looked
+	// like it was restarting itself for no reason. The same OOM event also took
+	// postgres down with it, which is how a memory problem in this process turns
+	// into a database outage on the same box.
+	//
+	// GOMEMLIMIT is the documented remedy: a SOFT limit that makes the collector
+	// work progressively harder as the heap approaches it, rather than letting it
+	// run into the kernel's hard wall. Soft matters here -- if the live heap
+	// genuinely needs more, Go exceeds the limit and keeps running (slowly)
+	// instead of deadlocking or aborting. A slow node is recoverable; an
+	// OOM-killed one takes the database with it.
+	//
+	// Default is 75% of detected memory, leaving room for postgres and the OS on
+	// a shared box. An operator who sets GOMEMLIMIT themselves wins outright: the
+	// Go runtime already honours that variable, so this does nothing at all.
+	if os.Getenv("GOMEMLIMIT") == "" {
+		if limit := detectMemoryLimitBytes(); limit > 0 {
+			soft := limit / 100 * 75
+			debug.SetMemoryLimit(soft)
+			fmt.Printf("[MEM] soft heap limit %d MiB (75%% of %d MiB detected) — set GOMEMLIMIT to override\n",
+				soft>>20, limit>>20)
+		} else {
+			fmt.Println("[MEM] could not detect a memory limit; running without a soft heap limit (set GOMEMLIMIT to impose one)")
+		}
+	}
 
-// FIX (2026-07-04): several circuit-breaker constants in the keeper
-// package (x/humanity/keeper/block.go) were tuned assuming a 2s
-// BLOCK_TIME baseline — see TuneProposerBreakerForBlockTime's own
-// comment. Must run before any sync/production goroutines start, so
-// right at the top of main(), before anything else touches the DAG.
-keeper.TuneProposerBreakerForBlockTime(BLOCK_TIME)
-// FIX (2026-07-09/10): finalityHeightSlack/finalityBlueScoreDepth were the
-// one constant pair the 2026-07-04 scaling pass missed — see
-// TuneFinalitySlackForBlockTime's own comment for the live incident this
-// closes (permanent, unrecoverable rejection of every foreign validator's
-// block once real propagation exceeded the unscaled 50s window).
-keeper.TuneFinalitySlackForBlockTime(BLOCK_TIME)
+	// FIX (2026-07-04): several circuit-breaker constants in the keeper
+	// package (x/humanity/keeper/block.go) were tuned assuming a 2s
+	// BLOCK_TIME baseline — see TuneProposerBreakerForBlockTime's own
+	// comment. Must run before any sync/production goroutines start, so
+	// right at the top of main(), before anything else touches the DAG.
+	keeper.TuneProposerBreakerForBlockTime(BLOCK_TIME)
+	// FIX (2026-07-09/10): finalityHeightSlack/finalityBlueScoreDepth were the
+	// one constant pair the 2026-07-04 scaling pass missed — see
+	// TuneFinalitySlackForBlockTime's own comment for the live incident this
+	// closes (permanent, unrecoverable rejection of every foreign validator's
+	// block once real propagation exceeded the unscaled 50s window).
+	keeper.TuneFinalitySlackForBlockTime(BLOCK_TIME)
 
-fmt.Println("── Loading Genesis Block ────────────────")
-genesis, err := loadGenesis()
-if err != nil {
-fmt.Printf("✗ Genesis error: %v\n", err)
-} else {
-fmt.Printf("✓ Chain ID: %s\n", genesis.ChainID)
-fmt.Printf("✓ Genesis Time: %s\n", genesis.GenesisTime)
-}
-fmt.Println()
+	fmt.Println("── Loading Genesis Block ────────────────")
+	genesis, err := loadGenesis()
+	if err != nil {
+		fmt.Printf("✗ Genesis error: %v\n", err)
+	} else {
+		fmt.Printf("✓ Chain ID: %s\n", genesis.ChainID)
+		fmt.Printf("✓ Genesis Time: %s\n", genesis.GenesisTime)
+	}
+	fmt.Println()
 
-fmt.Println()
+	fmt.Println()
 
-fmt.Println("── Initializing Blockchain ──────────────")
-p2pNode, err := keeper.NewP2PNode()
-if err != nil {
-fmt.Printf("✗ P2P Error: %v\n", err)
-return
-}
+	fmt.Println("── Initializing Blockchain ──────────────")
+	p2pNode, err := keeper.NewP2PNode()
+	if err != nil {
+		fmt.Printf("✗ P2P Error: %v\n", err)
+		return
+	}
 
-chainState := keeper.NewChainState("/tmp/aequitas_state.json")
-bc := keeper.NewBlockchain(p2pNode.GetNodeID(), chainState)
-// Load individually-registered validator keys from DB into the DAG's
-// authorized set so they survive node restarts without re-registration.
-chainState.LoadValidatorKeysIntoDAG(bc)
-fmt.Println()
+	chainState := keeper.NewChainState("/tmp/aequitas_state.json")
+	bc := keeper.NewBlockchain(p2pNode.GetNodeID(), chainState)
+	// Load individually-registered validator keys from DB into the DAG's
+	// authorized set so they survive node restarts without re-registration.
+	chainState.LoadValidatorKeysIntoDAG(bc)
+	fmt.Println()
 
-p2pNode.SetDAG(bc)
+	p2pNode.SetDAG(bc)
 
 	// FIX: NewAPIServer must be constructed (and therefore NewEVMRPCServer,
 	// which sets dag.evm) BEFORE bc.StartHTTPBlockSync below. StartHTTPBlockSync
@@ -609,296 +609,297 @@ p2pNode.SetDAG(bc)
 	p2pNode.Start()
 	bc.ReconstructState(chainState)
 
-// Humans register natively via the V7 contract (see register.go) and are
-// reconstructed from blockchain transactions above via ReconstructState.
-// An old Sepolia-polling sync (humanKeeper.StartSync(), in the now-removed
-// sync.go) used to inject placeholder "sepolia_human_N" entries into the
-// keeper on every tick — exactly the fake registrations that were
-// deliberately removed earlier in this project. That code path is gone
-// now, not just disabled, so it can't be accidentally re-enabled.
+	// Humans register natively via the V7 contract (see register.go) and are
+	// reconstructed from blockchain transactions above via ReconstructState.
+	// An old Sepolia-polling sync (humanKeeper.StartSync(), in the now-removed
+	// sync.go) used to inject placeholder "sepolia_human_N" entries into the
+	// keeper on every tick — exactly the fake registrations that were
+	// deliberately removed earlier in this project. That code path is gone
+	// now, not just disabled, so it can't be accidentally re-enabled.
 
-multiaddr := p2pNode.GetMultiaddr()
-fmt.Println("── Share this address to join network ───")
-fmt.Printf("%s\n", multiaddr)
-fmt.Println()
+	multiaddr := p2pNode.GetMultiaddr()
+	fmt.Println("── Share this address to join network ───")
+	fmt.Printf("%s\n", multiaddr)
+	fmt.Println()
 
-// REVERTED: block production was temporarily gated to the primary only
-// (PRIMARY_NODE_URL check) as a workaround for secondaries' self-produced
-// blocks going nowhere and permanently forking their local chain. The
-// actual root cause was a stale hardcoded P2P bootstrap address (see
-// BootstrapNode in p2p.go) — every node's P2P bootstrap dial timed out
-// forever, so BroadcastBlock had no connected peers to send to. Gating
-// production defeats the entire point of a BlockDAG, which is meant to
-// scale via MULTIPLE validators producing in parallel and merging — not
-// funnel everything through one proposer like a plain linear chain. With
-// the bootstrap address fixed, every node produces its own blocks again;
-// genuine multi-parent merges in the DAG are the expected, healthy
-// outcome of concurrent production, not a bug to engineer away.
-fmt.Println("── Starting Block Production ────────────")
-keeper.SafeGoroutine("block-production-ticker", func() {
-	// Align to the nearest BLOCK_TIME boundary on the wall clock so that
-	// every validator node fires its ticker within NTP accuracy (~10–50ms)
-	// of all other nodes. Without alignment, two independent tickers started
-	// at random times are offset by up to BLOCK_TIME/2 on average and almost
-	// never fire simultaneously — blocks arrive sequentially and the DAG
-	// degenerates to a linear chain with 1-parent blocks only. With wall-clock
-	// alignment, both validators produce within <50ms of each other on every
-	// tick: the propagation delay (~100ms) means each node's block arrives at
-	// its peer just AFTER the peer already committed to producing its own block
-	// for that tick — creating two concurrent tips at the same height, which
-	// the next tick's ProduceBlock merges into a 2-parent block. This turns
-	// GHOSTDAG concurrent production from a probabilistic ~10% event into the
-	// default steady-state behavior.
-	alignDelay := time.Until(time.Now().Truncate(BLOCK_TIME).Add(BLOCK_TIME))
-	time.Sleep(alignDelay)
-	// FIX (SCALING_ARCHITECTURE.md Phase 9 cadence follow-up, NOT
-	// staging-validated — see keeper.ProduceBlocksForTick's own doc
-	// comment): default OFF, same explicit-operator-decision class as
-	// BLOCK_TIME itself. When enabled, a validator whose mempool is
-	// genuinely backlogged (its block came back completely full) produces
-	// a few MORE blocks immediately within the same tick instead of
-	// waiting for the next one — a per-validator decision, not a
-	// network-wide coordinated change the way shortening BLOCK_TIME would
-	// be (every other node, including ones that never set this, just
-	// receives and merges however many blocks arrive, exactly as GHOSTDAG
-	// already does today).
-	multiBlockTick := os.Getenv("ENABLE_MULTI_BLOCK_TICK") == "1"
-	if multiBlockTick {
-		fmt.Println("⚠ ENABLE_MULTI_BLOCK_TICK=1 — up to", keeper.MaxExtraBlocksPerTick(), "extra block(s)/tick when backlogged. NOT staging-validated (multi-node consensus-timing change).")
-	}
-	ticker := time.NewTicker(BLOCK_TIME)
-for range ticker.C {
-	// FIX (P0-3, beta-launch audit 2026-07-05): recover per-tick — see
-	// keeper.SafeCall's comment. This is the block-production heartbeat: a
-	// panic here without per-tick recovery would crash the entire node
-	// (Go: any unrecovered panic in any goroutine kills the whole process),
-	// stopping ALL block production, not just degrading this one tick.
-	keeper.SafeCall("block-production-tick", func() {
-		tickStart := time.Now() // ongoing health check — feeds the slow-tick warning below
-		var blocks []*keeper.Block
+	// REVERTED: block production was temporarily gated to the primary only
+	// (PRIMARY_NODE_URL check) as a workaround for secondaries' self-produced
+	// blocks going nowhere and permanently forking their local chain. The
+	// actual root cause was a stale hardcoded P2P bootstrap address (see
+	// BootstrapNode in p2p.go) — every node's P2P bootstrap dial timed out
+	// forever, so BroadcastBlock had no connected peers to send to. Gating
+	// production defeats the entire point of a BlockDAG, which is meant to
+	// scale via MULTIPLE validators producing in parallel and merging — not
+	// funnel everything through one proposer like a plain linear chain. With
+	// the bootstrap address fixed, every node produces its own blocks again;
+	// genuine multi-parent merges in the DAG are the expected, healthy
+	// outcome of concurrent production, not a bug to engineer away.
+	fmt.Println("── Starting Block Production ────────────")
+	keeper.SafeGoroutine("block-production-ticker", func() {
+		// Align to the nearest BLOCK_TIME boundary on the wall clock so that
+		// every validator node fires its ticker within NTP accuracy (~10–50ms)
+		// of all other nodes. Without alignment, two independent tickers started
+		// at random times are offset by up to BLOCK_TIME/2 on average and almost
+		// never fire simultaneously — blocks arrive sequentially and the DAG
+		// degenerates to a linear chain with 1-parent blocks only. With wall-clock
+		// alignment, both validators produce within <50ms of each other on every
+		// tick: the propagation delay (~100ms) means each node's block arrives at
+		// its peer just AFTER the peer already committed to producing its own block
+		// for that tick — creating two concurrent tips at the same height, which
+		// the next tick's ProduceBlock merges into a 2-parent block. This turns
+		// GHOSTDAG concurrent production from a probabilistic ~10% event into the
+		// default steady-state behavior.
+		alignDelay := time.Until(time.Now().Truncate(BLOCK_TIME).Add(BLOCK_TIME))
+		time.Sleep(alignDelay)
+		// FIX (SCALING_ARCHITECTURE.md Phase 9 cadence follow-up, NOT
+		// staging-validated — see keeper.ProduceBlocksForTick's own doc
+		// comment): default OFF, same explicit-operator-decision class as
+		// BLOCK_TIME itself. When enabled, a validator whose mempool is
+		// genuinely backlogged (its block came back completely full) produces
+		// a few MORE blocks immediately within the same tick instead of
+		// waiting for the next one — a per-validator decision, not a
+		// network-wide coordinated change the way shortening BLOCK_TIME would
+		// be (every other node, including ones that never set this, just
+		// receives and merges however many blocks arrive, exactly as GHOSTDAG
+		// already does today).
+		multiBlockTick := os.Getenv("ENABLE_MULTI_BLOCK_TICK") == "1"
 		if multiBlockTick {
-			blocks = bc.ProduceBlocksForTick()
-		} else if block := bc.ProduceBlock(); block != nil {
-			blocks = []*keeper.Block{block}
+			fmt.Println("⚠ ENABLE_MULTI_BLOCK_TICK=1 — up to", keeper.MaxExtraBlocksPerTick(), "extra block(s)/tick when backlogged. NOT staging-validated (multi-node consensus-timing change).")
 		}
-		if len(blocks) == 0 {
-			return // catch-up gate — skip this tick
-		}
-		for _, block := range blocks {
-			p2pNode.BroadcastBlock(block)
-			bc.HTTPBroadcastBlock(block) // HTTP push for peers where port 4001 is firewalled
-			fmt.Printf("[Block #%d] Hash: %s... | Humans: %d | Time: %s\n",
-				block.Height,
-				block.Hash[:16],
-				block.Humans,
-				time.Unix(block.Timestamp, 0).Format("15:04:05"),
-			)
-		}
-		if len(blocks) > 1 {
-			fmt.Printf("[BLOCK] produced %d blocks this tick (backlog-driven, ENABLE_MULTI_BLOCK_TICK)\n", len(blocks))
-		}
-		if tickDur := time.Since(tickStart); tickDur > 500*time.Millisecond {
-			fmt.Printf("[BLOCK] ⏱ Full tick (ProduceBlock+broadcast) took %s for %d block(s), last #%d\n", tickDur, len(blocks), blocks[len(blocks)-1].Height)
+		ticker := time.NewTicker(BLOCK_TIME)
+		for range ticker.C {
+			// FIX (P0-3, beta-launch audit 2026-07-05): recover per-tick — see
+			// keeper.SafeCall's comment. This is the block-production heartbeat: a
+			// panic here without per-tick recovery would crash the entire node
+			// (Go: any unrecovered panic in any goroutine kills the whole process),
+			// stopping ALL block production, not just degrading this one tick.
+			keeper.SafeCall("block-production-tick", func() {
+				tickStart := time.Now() // ongoing health check — feeds the slow-tick warning below
+				var blocks []*keeper.Block
+				if multiBlockTick {
+					blocks = bc.ProduceBlocksForTick()
+				} else if block := bc.ProduceBlock(); block != nil {
+					blocks = []*keeper.Block{block}
+				}
+				if len(blocks) == 0 {
+					return // catch-up gate — skip this tick
+				}
+				for _, block := range blocks {
+					p2pNode.BroadcastBlock(block)
+					bc.HTTPBroadcastBlock(block) // HTTP push for peers where port 4001 is firewalled
+					fmt.Printf("[Block #%d] Hash: %s... | Humans: %d | Time: %s\n",
+						block.Height,
+						block.Hash[:16],
+						block.Humans,
+						time.Unix(block.Timestamp, 0).Format("15:04:05"),
+					)
+				}
+				if len(blocks) > 1 {
+					fmt.Printf("[BLOCK] produced %d blocks this tick (backlog-driven, ENABLE_MULTI_BLOCK_TICK)\n", len(blocks))
+				}
+				if tickDur := time.Since(tickStart); tickDur > 500*time.Millisecond {
+					fmt.Printf("[BLOCK] ⏱ Full tick (ProduceBlock+broadcast) took %s for %d block(s), last #%d\n", tickDur, len(blocks), blocks[len(blocks)-1].Height)
+				}
+			})
 		}
 	})
+
+	fmt.Println("── Starting Daily Pool Distributions ───")
+	// FIX (P0, independent audit recheck 2026-06-27): the comment this replaced
+	// claimed TryLockDistribution's PostgreSQL CAS lock "ensures only ONE node
+	// actually executes" — that's false. Each node has its OWN, separate
+	// Postgres database (by design — see CLAUDE.md/AGENTS.md architecture
+	// notes), so the CAS lock only ever prevents the SAME node re-running
+	// within 24h. It provides ZERO cross-node coordination. Every node was
+	// independently winning its own local lock and running the full
+	// distribution (UBI + validator pool + LP pool + escrow) on its own
+	// state, then ALSO replaying the one TX that existed (ubi_distribution)
+	// on top — multiplying distribution by however many nodes are running.
+	// FIX 11: Create a cancellable context for the distribution goroutine so
+	// it can be cleanly stopped on node shutdown.
+	distCtx, distCancel := context.WithCancel(context.Background())
+	_ = distCancel // called in shutdown handler below
+	// FIX 6: distDone is closed when the goroutine exits so the shutdown handler
+	// can wait for any in-progress distribution to finish before the process exits.
+	distDone := make(chan struct{})
+	keeper.SafeGoroutine("daily-distribution", func() {
+		ctx := distCtx
+		defer close(distDone)
+		berlin, err := time.LoadLocation("Europe/Berlin")
+		if err != nil {
+			berlin = time.FixedZone("CET", 2*60*60) // CEST fallback (summer, UTC+2)
+		}
+
+		lastAt := chainState.GetLastUBIAt()
+		firstTarget := computeFirstUBITarget(lastAt, time.Now(), berlin)
+
+		firstDelay := time.Until(firstTarget)
+		chainState.SetNextUBIAt(firstTarget.Unix())
+		fmt.Printf("[POOLS] Next distribution at %s Berlin time (in %s)\n",
+			firstTarget.In(berlin).Format("02.01. 15:04:05"), firstDelay.Round(time.Minute))
+
+		for {
+			// FIX 11: Use a select so the goroutine unblocks on shutdown.
+			select {
+			case <-ctx.Done():
+				return
+			case <-time.After(time.Until(firstTarget)):
+			}
+			// Decentralized distribution: every node is eligible to trigger the
+			// daily round. Three dedup layers prevent double-credit:
+			//  1. TryLockDistribution: cross-node guard reads last_ubi_at (set by
+			//     TX replay) — if another node already ran this round and its block
+			//     propagated, this node returns false immediately. Intra-node CAS
+			//     on distribution_lock_at prevents the goroutine firing twice.
+			//  2. distributionSyncHealthIssue: nodes with incomplete history skip
+			//     rather than distribute with wrong validator reward weights.
+			//  3. replayTransactions pre-pass: when replaying a block from a
+			//     competing node, skips all distribution TXs if last_ubi_at is
+			//     within 24h of the block's DistributionAt (same-round window).
+			//
+			// Set DISTRIBUTION_ENABLED=false to opt a specific node out.
+			//
+			// FIX (P0-3, beta-launch audit 2026-07-05): wrapped in keeper.SafeCall — a
+			// panic partway through a distribution round must not silently end every
+			// future round of UBI/validator/LP distribution for the rest of this
+			// node's uptime (worse than a crash: nothing else would notice).
+			keeper.SafeCall("daily-distribution-round", func() {
+				retrySoon := false
+				if os.Getenv("DISTRIBUTION_ENABLED") == "false" {
+					fmt.Println("[POOLS] Distribution disabled on this node (DISTRIBUTION_ENABLED=false)")
+					keeper.RecordDistributionOutcome("skipped", "DISTRIBUTION_ENABLED=false on this node")
+				} else if syncIssue := distributionSyncHealthIssue(bc); syncIssue != "" {
+					// FIX (scale audit, SPOF): DistributeValidatorsPool weights every
+					// validator's reward by registered_nodes.blocks_produced read from
+					// THIS node's own local Postgres database (state.go) — there is no
+					// cross-node reconciliation. If this node's own view of the chain is
+					// known to be incomplete (active synthetic-checkpoint stubs means it
+					// is trusting a placeholder instead of real history for at least one
+					// span of blocks; degraded means a prior persistence failure left
+					// memory ahead of what's durably saved), distributing now would
+					// silently under-credit -- or in the synthetic-checkpoint case,
+					// possibly never even SEE -- whatever validator produced blocks in
+					// the gap this node doesn't actually have. Skip this round rather
+					// than confidently distribute wrong amounts; the next scheduled
+					// round re-checks.
+					//
+					// FIX (durable fix, 2026-07-03): "the next scheduled round re-checks"
+					// used to be a false promise -- the unconditional
+					// nextDaily20(time.Now()) below always resolves to TOMORROW at this
+					// point in the cycle (now is right at today's slot), so a single
+					// transient health hiccup exactly at 20:00 cost a full day's delay
+					// with no same-day retry, contradicting this comment's own claim.
+					// retrySoon makes the promise true: re-check in
+					// distributionHealthRetryInterval instead of waiting for tomorrow.
+					// Does NOT consume TryLockDistribution's 24h window (the check runs
+					// before attempting the lock either way), so a node that heals
+					// mid-day distributes that same day instead of missing it entirely.
+					fmt.Printf("[POOLS] ✗ Skipping distribution this round: %s — will re-check in %s\n", syncIssue, distributionHealthRetryInterval)
+					keeper.RecordDistributionOutcome("skipped", syncIssue)
+					retrySoon = true
+				} else if chainState.TryLockDistribution() {
+					// FIX (audit3, P0 #3): the entire distribution round — UBI, validator
+					// pool, LP pool, escrow move/release, AND every resulting outbox TX —
+					// now runs as ONE all-or-nothing DB transaction via
+					// RunDailyDistributionAtomic (state.go). The previous version ran each
+					// sub-step as its own immediately-committing operation and only
+					// serialized them against ProduceBlock's ticker via
+					// WithBlockProductionPaused — that closed the block-timing race but
+					// never made the mutations and their outbox TXs atomic with each other:
+					// a crash or DB error between any mutation and its SavePendingTx call
+					// still produced state no other node could ever replay, and an outbox
+					// failure was only ever logged as an ALERT with an in-memory fallback,
+					// never rolled back. WithBlockProductionPaused is kept wrapping this
+					// call as defense-in-depth (it blocks ProduceBlock from even starting
+					// tip/parent selection during this window, not just the cs.mu-guarded
+					// part RunDailyDistributionAtomic itself already serializes against).
+					bc.WithBlockProductionPaused(func() {
+						ubiAt := time.Now().Unix()
+						if err := chainState.RunDailyDistributionAtomic(ubiAt); err != nil {
+							fmt.Printf("[POOLS] ✗ Distribution FAILED and was fully rolled back: %v\n", err)
+							keeper.RecordDistributionOutcome("failed", err.Error())
+							return
+						}
+						fmt.Printf("[POOLS] ✓ Distribution done at %s\n", time.Now().In(berlin).Format("02.01. 15:04:05"))
+						keeper.RecordDistributionOutcome("ran", "round executed; whether it paid anything depends on pool balances")
+					})
+				} else {
+					fmt.Printf("[POOLS] Distribution already ran within the last 24h on this or another node — skipping\n")
+					keeper.RecordDistributionOutcome("ran_elsewhere", "another node already distributed within the last 24h")
+				}
+				if retrySoon {
+					firstTarget = time.Now().Add(distributionHealthRetryInterval)
+				} else {
+					firstTarget = nextDaily20(time.Now(), berlin)
+				}
+				chainState.SetNextUBIAt(firstTarget.Unix())
+				fmt.Printf("[POOLS] Next distribution at %s Berlin time\n", firstTarget.In(berlin).Format("02.01. 15:04:05"))
+			})
+		}
+	})
+
+	// Register this node's operator wallet so it participates in validator
+	// pool distributions. Any node that sets NODE_OPERATOR_WALLET gets
+	// included automatically — no code change needed when new nodes join.
+	if wallet := os.Getenv("NODE_OPERATOR_WALLET"); wallet != "" {
+		if warn := chainState.ValidateNodeOperatorWallet(wallet); warn != "" {
+			fmt.Printf("[NODE] ERROR: %s\n", warn)
+			fmt.Println("[NODE] NODE_OPERATOR_WALLET rejected — complete biometric registration first")
+			// Do NOT register — only verified humans receive validator rewards
+		} else {
+			chainState.RegisterNode(wallet)
+		}
+	} else {
+		fmt.Println("[NODE] NODE_OPERATOR_WALLET not set — this node won't receive validator rewards")
 	}
-	})
 
-fmt.Println("── Starting Daily Pool Distributions ───")
-// FIX (P0, independent audit recheck 2026-06-27): the comment this replaced
-// claimed TryLockDistribution's PostgreSQL CAS lock "ensures only ONE node
-// actually executes" — that's false. Each node has its OWN, separate
-// Postgres database (by design — see CLAUDE.md/AGENTS.md architecture
-// notes), so the CAS lock only ever prevents the SAME node re-running
-// within 24h. It provides ZERO cross-node coordination. Every node was
-// independently winning its own local lock and running the full
-// distribution (UBI + validator pool + LP pool + escrow) on its own
-// state, then ALSO replaying the one TX that existed (ubi_distribution)
-// on top — multiplying distribution by however many nodes are running.
-// FIX 11: Create a cancellable context for the distribution goroutine so
-// it can be cleanly stopped on node shutdown.
-distCtx, distCancel := context.WithCancel(context.Background())
-_ = distCancel // called in shutdown handler below
-// FIX 6: distDone is closed when the goroutine exits so the shutdown handler
-// can wait for any in-progress distribution to finish before the process exits.
-distDone := make(chan struct{})
-keeper.SafeGoroutine("daily-distribution", func() {
-	ctx := distCtx
-	defer close(distDone)
-berlin, err := time.LoadLocation("Europe/Berlin")
-if err != nil {
-berlin = time.FixedZone("CET", 2*60*60) // CEST fallback (summer, UTC+2)
-}
+	fmt.Println("╔════════════════════════════════════════╗")
+	fmt.Println("║     Aequitas Node Running ✓            ║")
+	// FIX (2026-07-05 audit finding): this was a hardcoded "every 1 second" —
+	// the exact same staleness pattern found and fixed everywhere else
+	// tonight (/api/status's block_time, the explorer's "~6s" label): correct
+	// only by coincidence with whatever BLOCK_TIME happened to be. Build the
+	// line from the real constant and pad to match the box width above.
+	prodMsg := "     Producing blocks every " + BLOCK_TIME.String()
+	trailing := 40 - len(prodMsg)
+	if trailing < 1 {
+		trailing = 1
+	}
+	fmt.Printf("║%s%s║\n", prodMsg, strings.Repeat(" ", trailing))
+	fmt.Println("╚════════════════════════════════════════╝")
 
-lastAt := chainState.GetLastUBIAt()
-firstTarget := computeFirstUBITarget(lastAt, time.Now(), berlin)
-
-firstDelay := time.Until(firstTarget)
-chainState.SetNextUBIAt(firstTarget.Unix())
-fmt.Printf("[POOLS] Next distribution at %s Berlin time (in %s)\n",
-firstTarget.In(berlin).Format("02.01. 15:04:05"), firstDelay.Round(time.Minute))
-
-for {
-// FIX 11: Use a select so the goroutine unblocks on shutdown.
-select {
-case <-ctx.Done():
-return
-case <-time.After(time.Until(firstTarget)):
-}
-// Decentralized distribution: every node is eligible to trigger the
-// daily round. Three dedup layers prevent double-credit:
-//   1. TryLockDistribution: cross-node guard reads last_ubi_at (set by
-//      TX replay) — if another node already ran this round and its block
-//      propagated, this node returns false immediately. Intra-node CAS
-//      on distribution_lock_at prevents the goroutine firing twice.
-//   2. distributionSyncHealthIssue: nodes with incomplete history skip
-//      rather than distribute with wrong validator reward weights.
-//   3. replayTransactions pre-pass: when replaying a block from a
-//      competing node, skips all distribution TXs if last_ubi_at is
-//      within 24h of the block's DistributionAt (same-round window).
-// Set DISTRIBUTION_ENABLED=false to opt a specific node out.
-//
-// FIX (P0-3, beta-launch audit 2026-07-05): wrapped in keeper.SafeCall — a
-// panic partway through a distribution round must not silently end every
-// future round of UBI/validator/LP distribution for the rest of this
-// node's uptime (worse than a crash: nothing else would notice).
-keeper.SafeCall("daily-distribution-round", func() {
-retrySoon := false
-if os.Getenv("DISTRIBUTION_ENABLED") == "false" {
-	fmt.Println("[POOLS] Distribution disabled on this node (DISTRIBUTION_ENABLED=false)")
-	keeper.RecordDistributionOutcome("skipped", "DISTRIBUTION_ENABLED=false on this node")
-} else if syncIssue := distributionSyncHealthIssue(bc); syncIssue != "" {
-	// FIX (scale audit, SPOF): DistributeValidatorsPool weights every
-	// validator's reward by registered_nodes.blocks_produced read from
-	// THIS node's own local Postgres database (state.go) — there is no
-	// cross-node reconciliation. If this node's own view of the chain is
-	// known to be incomplete (active synthetic-checkpoint stubs means it
-	// is trusting a placeholder instead of real history for at least one
-	// span of blocks; degraded means a prior persistence failure left
-	// memory ahead of what's durably saved), distributing now would
-	// silently under-credit -- or in the synthetic-checkpoint case,
-	// possibly never even SEE -- whatever validator produced blocks in
-	// the gap this node doesn't actually have. Skip this round rather
-	// than confidently distribute wrong amounts; the next scheduled
-	// round re-checks.
-	//
-	// FIX (durable fix, 2026-07-03): "the next scheduled round re-checks"
-	// used to be a false promise -- the unconditional
-	// nextDaily20(time.Now()) below always resolves to TOMORROW at this
-	// point in the cycle (now is right at today's slot), so a single
-	// transient health hiccup exactly at 20:00 cost a full day's delay
-	// with no same-day retry, contradicting this comment's own claim.
-	// retrySoon makes the promise true: re-check in
-	// distributionHealthRetryInterval instead of waiting for tomorrow.
-	// Does NOT consume TryLockDistribution's 24h window (the check runs
-	// before attempting the lock either way), so a node that heals
-	// mid-day distributes that same day instead of missing it entirely.
-	fmt.Printf("[POOLS] ✗ Skipping distribution this round: %s — will re-check in %s\n", syncIssue, distributionHealthRetryInterval)
-	keeper.RecordDistributionOutcome("skipped", syncIssue)
-	retrySoon = true
-} else if chainState.TryLockDistribution() {
-	// FIX (audit3, P0 #3): the entire distribution round — UBI, validator
-	// pool, LP pool, escrow move/release, AND every resulting outbox TX —
-	// now runs as ONE all-or-nothing DB transaction via
-	// RunDailyDistributionAtomic (state.go). The previous version ran each
-	// sub-step as its own immediately-committing operation and only
-	// serialized them against ProduceBlock's ticker via
-	// WithBlockProductionPaused — that closed the block-timing race but
-	// never made the mutations and their outbox TXs atomic with each other:
-	// a crash or DB error between any mutation and its SavePendingTx call
-	// still produced state no other node could ever replay, and an outbox
-	// failure was only ever logged as an ALERT with an in-memory fallback,
-	// never rolled back. WithBlockProductionPaused is kept wrapping this
-	// call as defense-in-depth (it blocks ProduceBlock from even starting
-	// tip/parent selection during this window, not just the cs.mu-guarded
-	// part RunDailyDistributionAtomic itself already serializes against).
-	bc.WithBlockProductionPaused(func() {
-		ubiAt := time.Now().Unix()
-		if err := chainState.RunDailyDistributionAtomic(ubiAt); err != nil {
-			fmt.Printf("[POOLS] ✗ Distribution FAILED and was fully rolled back: %v\n", err)
-			keeper.RecordDistributionOutcome("failed", err.Error())
-			return
-		}
-		fmt.Printf("[POOLS] ✓ Distribution done at %s\n", time.Now().In(berlin).Format("02.01. 15:04:05"))
-		keeper.RecordDistributionOutcome("ran", "round executed; whether it paid anything depends on pool balances")
-	})
-} else {
-	fmt.Printf("[POOLS] Distribution already ran within the last 24h on this or another node — skipping\n")
-	keeper.RecordDistributionOutcome("ran_elsewhere", "another node already distributed within the last 24h")
-}
-if retrySoon {
-firstTarget = time.Now().Add(distributionHealthRetryInterval)
-} else {
-firstTarget = nextDaily20(time.Now(), berlin)
-}
-chainState.SetNextUBIAt(firstTarget.Unix())
-fmt.Printf("[POOLS] Next distribution at %s Berlin time\n", firstTarget.In(berlin).Format("02.01. 15:04:05"))
-})
-}
-})
-
-// Register this node's operator wallet so it participates in validator
-// pool distributions. Any node that sets NODE_OPERATOR_WALLET gets
-// included automatically — no code change needed when new nodes join.
-if wallet := os.Getenv("NODE_OPERATOR_WALLET"); wallet != "" {
-if warn := chainState.ValidateNodeOperatorWallet(wallet); warn != "" {
-fmt.Printf("[NODE] ERROR: %s\n", warn)
-fmt.Println("[NODE] NODE_OPERATOR_WALLET rejected — complete biometric registration first")
-// Do NOT register — only verified humans receive validator rewards
-} else {
-chainState.RegisterNode(wallet)
-}
-} else {
-fmt.Println("[NODE] NODE_OPERATOR_WALLET not set — this node won't receive validator rewards")
-}
-
-fmt.Println("╔════════════════════════════════════════╗")
-fmt.Println("║     Aequitas Node Running ✓            ║")
-// FIX (2026-07-05 audit finding): this was a hardcoded "every 1 second" —
-// the exact same staleness pattern found and fixed everywhere else
-// tonight (/api/status's block_time, the explorer's "~6s" label): correct
-// only by coincidence with whatever BLOCK_TIME happened to be. Build the
-// line from the real constant and pad to match the box width above.
-prodMsg := "     Producing blocks every " + BLOCK_TIME.String()
-trailing := 40 - len(prodMsg)
-if trailing < 1 {
-	trailing = 1
-}
-fmt.Printf("║%s%s║\n", prodMsg, strings.Repeat(" ", trailing))
-fmt.Println("╚════════════════════════════════════════╝")
-
-quit := make(chan os.Signal, 1)
-signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
-<-quit
-// FIX 11: Signal the distribution goroutine to stop cleanly.
-distCancel()
-// FIX 6: Wait for the distribution goroutine to finish any in-progress work
-// before exiting. A 10-second timeout prevents hanging indefinitely.
-select {
-case <-distDone:
-case <-time.After(10 * time.Second):
-	fmt.Println("[WARN] Distribution goroutine did not stop in 10 seconds — forcing exit")
-}
-// SCALING_ARCHITECTURE.md Phase 3: pool-address credits are flushed to
-// Postgres on a periodic background timer rather than synchronously per
-// transfer (see pool_flush.go) — a clean shutdown (SIGINT/SIGTERM, e.g.
-// every auto-deploy) is exactly the moment to flush any still-pending
-// credits one last time, so a routine restart never has to rely on the
-// bounded "eventually consistent" window that trade-off accepts for a
-// genuine crash.
-chainState.FlushPoolAccountsNow()
-// SCALING_ARCHITECTURE.md Phase 6: same reasoning as the pool-account
-// flush just above, for the deferred EVM-mirror sync (evm_mirror_flush.go)
-// — a clean shutdown flushes any pending balanceOf/isHuman/activity slot
-// writes rather than leaving them to the display-lag window.
-chainState.FlushEVMMirrorNow()
-// Same reasoning once more, for buffered EVM transaction receipts
-// (receipt_flush.go). These matter for a different reason than the two
-// above: getTransactionReceipt answers from in-memory maps that a restart
-// clears, so an unflushed receipt is exactly the row a wallet would need
-// after the restart and would not find.
-chainState.FlushTxReceiptsNow()
-fmt.Println("Node stopped.")
+	quit := make(chan os.Signal, 1)
+	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
+	<-quit
+	// FIX 11: Signal the distribution goroutine to stop cleanly.
+	distCancel()
+	// FIX 6: Wait for the distribution goroutine to finish any in-progress work
+	// before exiting. A 10-second timeout prevents hanging indefinitely.
+	select {
+	case <-distDone:
+	case <-time.After(10 * time.Second):
+		fmt.Println("[WARN] Distribution goroutine did not stop in 10 seconds — forcing exit")
+	}
+	// SCALING_ARCHITECTURE.md Phase 3: pool-address credits are flushed to
+	// Postgres on a periodic background timer rather than synchronously per
+	// transfer (see pool_flush.go) — a clean shutdown (SIGINT/SIGTERM, e.g.
+	// every auto-deploy) is exactly the moment to flush any still-pending
+	// credits one last time, so a routine restart never has to rely on the
+	// bounded "eventually consistent" window that trade-off accepts for a
+	// genuine crash.
+	chainState.FlushPoolAccountsNow()
+	// SCALING_ARCHITECTURE.md Phase 6: same reasoning as the pool-account
+	// flush just above, for the deferred EVM-mirror sync (evm_mirror_flush.go)
+	// — a clean shutdown flushes any pending balanceOf/isHuman/activity slot
+	// writes rather than leaving them to the display-lag window.
+	chainState.FlushEVMMirrorNow()
+	// Same reasoning once more, for buffered EVM transaction receipts
+	// (receipt_flush.go). These matter for a different reason than the two
+	// above: getTransactionReceipt answers from in-memory maps that a restart
+	// clears, so an unflushed receipt is exactly the row a wallet would need
+	// after the restart and would not find.
+	chainState.FlushTxReceiptsNow()
+	fmt.Println("Node stopped.")
 }
 
 // distributionSyncHealthIssue returns a non-empty, human-readable reason if

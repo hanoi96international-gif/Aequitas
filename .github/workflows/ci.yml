@@ -33,6 +33,22 @@ jobs:
           go-version-file: go.mod
       - run: go build ./cmd/aequitasd
       - run: go vet ./...
+      # FIX (Audit 2026-08-18): CI checked vet but never gofmt, and twenty
+      # files had drifted — including api.go, evm_engine.go, swap.go,
+      # snapshot.go and slashing.go. Failing loudly with the diff is cheaper
+      # than a reviewer noticing formatting noise inside a real change.
+      - name: gofmt
+        run: |
+          set -euo pipefail
+          unformatted="$(gofmt -l . | grep -v node_modules || true)"
+          if [ -n "$unformatted" ]; then
+            echo "These files are not gofmt-clean:"
+            echo "$unformatted"
+            echo "--- diff ---"
+            gofmt -d $unformatted
+            exit 1
+          fi
+          echo "✓ gofmt clean"
       - run: go test ./...
       - uses: actions/setup-node@v4
         with:

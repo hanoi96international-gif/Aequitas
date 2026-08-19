@@ -565,10 +565,10 @@ func (a *APIServer) registerOnV7(evmRPC *EVMRPCServer, wallet string, req Regist
 				TxHash:     crypto.Keccak256Hash(append(calldata, claimedHuman.Bytes()...)).Hex(),
 				Nullifier:  effectiveNullifier,
 				Commitment: mirrorCommitment,
-				ProofA:     bigIntsToHexStrings(mirrorPAslice),
-				ProofB:     bigInt2x2ToHexStrings(pB),
-				ProofC:     bigIntsToHexStrings(mirrorPCslice),
-				PubSignals: bigIntsToHexStrings(mirrorPSslice),
+				ProofA:     bigIntsToDecimalStrings(mirrorPAslice),
+				ProofB:     bigInt2x2ToDecimalStrings(pB),
+				ProofC:     bigIntsToDecimalStrings(mirrorPCslice),
+				PubSignals: bigIntsToDecimalStrings(mirrorPSslice),
 			}
 		}
 		txHash, mirrorErr := a.persistRegisterWithSigMirror(evmRPC, to, claimedHuman, pA, pB, pC, pubSignals, sigBytes, calldata, effectiveNullifier, pendingRegTx)
@@ -664,10 +664,10 @@ func (a *APIServer) registerOnV7(evmRPC *EVMRPCServer, wallet string, req Regist
 		Wallet:     wallet,
 		Nullifier:  nullifierToStore,
 		Commitment: commitment,
-		ProofA:     bigIntsToHexStrings(pAslice),
-		ProofB:     bigInt2x2ToHexStrings(pB),
-		ProofC:     bigIntsToHexStrings(pCslice),
-		PubSignals: bigIntsToHexStrings(psSlice),
+		ProofA:     bigIntsToDecimalStrings(pAslice),
+		ProofB:     bigInt2x2ToDecimalStrings(pB),
+		ProofC:     bigIntsToDecimalStrings(pCslice),
+		PubSignals: bigIntsToDecimalStrings(psSlice),
 	}
 
 	// ── REGISTRATION STATE MACHINE (audit P1-02) ─────────────────────────
@@ -1187,11 +1187,20 @@ func mustMarshal(v interface{}) json.RawMessage {
 	return b
 }
 
-// bigIntsToHexStrings converts a slice of *big.Int to their decimal string
+// bigIntsToDecimalStrings converts a slice of *big.Int to their decimal string
 // representations for JSON serialization in block transactions.
 // Decimal (base-10) is used instead of hex to match the ZK proof wire format
 // used by the client and the Groth16 verifier ABI.
-func bigIntsToHexStrings(vals []*big.Int) []string {
+// bigIntsToDecimalStrings renders each value as a base-10 string.
+//
+// Renamed from bigIntsToHexStrings (Audit 2026-08-18): it never produced hex.
+// v.Text(10) is decimal, which is what it has to be — verifyZKProof
+// (block.go) parses these back with SetString(s, 10), so a genuinely hex
+// rendering would have failed every proof on the replay path. The behaviour
+// was always right; only the name said the opposite, on the one field where
+// a hex-vs-decimal mix-up silently changes which number you mean (see
+// canonicalNullifier's own comment for what that costs).
+func bigIntsToDecimalStrings(vals []*big.Int) []string {
 	out := make([]string, len(vals))
 	for i, v := range vals {
 		if v == nil {
@@ -1203,9 +1212,9 @@ func bigIntsToHexStrings(vals []*big.Int) []string {
 	return out
 }
 
-// bigInt2x2ToHexStrings converts a [2][2]*big.Int matrix to [][]string
+// bigInt2x2ToDecimalStrings converts a [2][2]*big.Int matrix to [][]string
 // for JSON serialization in block transactions.
-func bigInt2x2ToHexStrings(vals [2][2]*big.Int) [][]string {
+func bigInt2x2ToDecimalStrings(vals [2][2]*big.Int) [][]string {
 	out := make([][]string, 2)
 	for i := 0; i < 2; i++ {
 		out[i] = make([]string, 2)

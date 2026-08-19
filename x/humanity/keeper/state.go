@@ -2639,12 +2639,25 @@ const demurrageMonthlyRate = 0.005                    // 0.5%/month
 const registrationGrant = 1000.0
 
 // wealthCapMultiplier defines the maximum AEQ a single account may hold,
-// expressed as a multiple of the current average AEQ balance across all
-// registered humans — not a fixed number. This makes the cap self-
-// adapting: as the system grows and average wealth naturally rises
-// through normal economic activity, the cap rises proportionally with
-// it, rather than needing to be manually raised through discrete
-// "phases" as the project matures. The cap only kicks in on incoming
+// expressed as a multiple of the fair share — which on this chain is a
+// constant.
+//
+// CORRECTION (Audit 2026-08-18): this used to describe the cap as
+// "self-adapting: as the system grows and average wealth naturally rises
+// through normal economic activity, the cap rises proportionally with it".
+// It does not, and cannot. getAverageBalanceLocked returns TotalSupply /
+// humans, and TotalSupply is DEFINED as humans × 1000 (see registrationGrant
+// above and TotalSupply's own comment), so that quotient is the literal
+// constant 1000 for every non-zero human count — the function even returns
+// the literal. The cap is therefore a flat 25,000 AEQ, permanently, and no
+// amount of economic activity moves it.
+//
+// The rule itself is coherent — "25 × the fair share" is a perfectly good
+// cap, and it is what the whitepaper's phase table describes numerically.
+// Only the claim that it tracks a measured average was wrong, and that claim
+// also reached the whitepaper ("× Ø-Balance") and the explorer
+// ("× average balance"), where a reader would reasonably expect the cap to
+// move as the network grows. The cap only kicks in on incoming
 // AEQ (registration grants, transfers, swap/liquidity payouts) — see
 // enforceWealthCapLocked — never on a balance that's already there, so
 // it can't retroactively punish someone for an average that later rose.
@@ -4931,7 +4944,15 @@ func (cs *ChainState) transferMutateLocked(ctx context.Context, from, to string,
 //
 //	base = 0.1% of amount
 //	Concentration surcharge if sender holds ≥1/5/10% of total supply
-//	20% of fee → UBI pool, 80% burned (removed from supply)
+//	100% of the fee → UBI pool; nothing is burned
+//
+// CORRECTION (Audit 2026-08-18): the last line used to read "20% of fee → UBI
+// pool, 80% burned (removed from supply)", which is what AequitasV7.sol does
+// and the exact opposite of what the body below does. The Go ledger cannot
+// burn — supply is defined as humans × 1000 — so the implementation routes the
+// whole fee to the UBI pool and says so in its own inline comment, twenty lines
+// further down. Two contradictory descriptions of the same function, one of
+// them in its doc comment.
 //
 // Returns (netAmountCredited, fromDemurrageLost, toDemurrageLost, err) — the
 // two demurrage figures must be attached to the queued Transaction so
