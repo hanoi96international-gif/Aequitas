@@ -5659,23 +5659,48 @@ func (cs *ChainState) MigrateStrandedPoolTUsdFeesV1() {
 		if stranded <= 0 {
 			continue
 		}
+		// Captured BEFORE the conversion, which mutates cs.pool in place —
+		// reading them afterwards would snapshot the already-debited values
+		// and make the rollback below a no-op.
+		aeqBefore, tusdBefore := cs.pool.ReserveAEQ, cs.pool.ReserveTUSD
+
 		aeqOut, ok := cs.convertTUsdFeeToAEQLocked(stranded)
 		if !ok {
 			fmt.Printf("[MIGRATE] ✗ Could not convert %.6f stranded tUSD for %s (pool too shallow to price it) — left as-is, will retry next restart\n", stranded, addr)
 			continue
 		}
+		// Persist the RESERVE DEBIT before the account credit.
+		//
+		// FIX (supply audit 2026-08-19): these are two separate writes, and
+		// the order decides which way a failure between them falls.
+		// Credit-then-debit was the CREATING order: the account keeps its
+		// new AEQ, the reserve never gives it up, and the retry this
+		// function advertises does nothing, because the account's stranded
+		// tUSD is already zero. The AEQ is then permanent, and exactly the
+		// size of the conversion.
+		//
+		// Debit-first fails the other way: the pool gives up AEQ nobody
+		// receives. That destroys money instead of creating it, which for a
+		// currency whose premise is "money exists because people exist" is
+		// the only acceptable direction to fail in.
+		if err := cs.savePoolToDB(); err != nil {
+			// Nothing credited yet, so undoing the in-memory debit leaves no
+			// trace and the advertised retry is real.
+			cs.pool.ReserveAEQ, cs.pool.ReserveTUSD = aeqBefore, tusdBefore
+			fmt.Printf("[MIGRATE] ✗ Could not persist pool debit for %s: %v — nothing credited, will retry next restart\n", addr, err)
+			continue
+		}
+
 		acc.TUsdBalance = acc.TUsdBalance.Sub(NewDecimal(stranded))
 		acc.Balance = acc.Balance.Add(NewDecimal(aeqOut))
 		if err := cs.saveAccountToDB(acc); err != nil {
-			fmt.Printf("[MIGRATE] ✗ Could not persist converted balance for %s: %v\n", addr, err)
+			// The reserve already gave the AEQ up and nobody received it.
+			// Loud, because this line is the only record that it happened.
+			fmt.Printf("[MIGRATE] ✗ Reserve debited %.6f AEQ for %s but the credit did not persist: %v — that AEQ is gone, not duplicated\n", aeqOut, addr, err)
 			continue
 		}
 		converted++
 		fmt.Printf("[MIGRATE] ✓ Converted %.6f stranded tUSD -> %.6f AEQ for %s\n", stranded, aeqOut, addr)
-	}
-	if err := cs.savePoolToDB(); err != nil {
-		fmt.Printf("[MIGRATE] ✗ Could not persist pool after stranded-tUSD conversion: %v — will retry next restart\n", err)
-		return
 	}
 	if converted > 0 {
 		cs.save()
