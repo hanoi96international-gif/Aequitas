@@ -6262,6 +6262,62 @@ func (dag *BlockDAG) replayTransactions(block *Block, force bool) (ok bool) {
 				continue
 			}
 			fmt.Printf("[REPLAY] ✓ ZK proof verified for %s (block #%d)\n", wallet, block.Height)
+			// FIX (P0, Audit 2026-08-18): bind the claimed nullifier to the
+			// proof that was just verified.
+			//
+			// verifyZKProof above answers exactly one question — "is
+			// (pA,pB,pC,pubSignals) a valid Groth16 proof?" — and says
+			// NOTHING about tx.Nullifier. The claim below then took
+			// tx.Nullifier at face value. The two were never compared, so a
+			// validator could pair ANY published proof (they travel in the
+			// clear inside every register_human block and are served by
+			// /api/blocks) with a nullifier of its own choosing and a fresh
+			// wallet: proof verifies, nullifier is unused, 1,000 AEQ are
+			// minted. Repeatable with 1, 2, 3, … — each a different canonical
+			// nullifier, so the dedup never fires. Unlimited supply creation
+			// by a single authorized validator.
+			//
+			// nullifierMatchesProof was written for precisely this, and its
+			// own doc comment describes precisely this attack — it was simply
+			// never called from anywhere. It is called now.
+			//
+			// AequitasV7.sol:257-270 gets this right (effectiveNullifier =
+			// bytes32(pubSignals[1]), plus a require() rejecting a mismatched
+			// caller-supplied one), which is why honestly-produced blocks all
+			// satisfy this check already: /api/register goes through a
+			// registerWithSig dry-run before the TX is ever queued. But the
+			// contract does not run during block replay, and replay is what
+			// writes balances — so the guarantee has to exist here too.
+			//
+			// ACTIVATION (same reasoning and mechanism as
+			// equivocationSlashingActivationUnix, slashing.go): a new
+			// rejection rule applied to already-accepted history would make a
+			// resync-from-genesis fail on any legacy block that predates the
+			// contract-side binding, permanently stalling the node. Anchoring
+			// on the block's own timestamp keeps replay deterministic in both
+			// directions — every node, syncing today or bootstrapping in a
+			// year, computes the same verdict for the same block — while
+			// every block produced from now on is bound.
+			// Pre-activation blocks are CHECKED but not rejected: a mismatch
+			// there is logged loudly instead. That costs nothing, cannot stall
+			// a resync, and means the operator finds out whether any legacy
+			// block actually violates the binding — the one question this
+			// activation window exists to be careful about — from the node's
+			// own logs rather than from a manual DB survey.
+			if bound, bindErr := nullifierMatchesProof(nullifier, tx.PubSignals); bindErr != nil || !bound {
+				reason := "claimed nullifier does not match pubSignals[1]"
+				if bindErr != nil {
+					reason = bindErr.Error()
+				}
+				if block.Timestamp >= nullifierProofBindingActivationUnix {
+					fmt.Printf("[REPLAY] ✗ register_human for %s (block #%d): %s — rolling back whole block\n",
+						wallet, block.Height, reason)
+					hardFailure = true
+					continue
+				}
+				fmt.Printf("[REPLAY] ⚠ register_human for %s (block #%d, pre-activation): %s — ACCEPTED because this block predates the binding rule, but this is exactly the case that rule exists for. Investigate this registration.\n",
+					wallet, block.Height, reason)
+			}
 			// FIX (audit 2026-06-28 recheck 5, P1-1): tryClaimNullifierLocked
 			// now returns an error distinctly from "already used" — a genuine
 			// DB failure during the claim must roll back the block, not be
