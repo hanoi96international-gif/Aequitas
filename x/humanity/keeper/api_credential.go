@@ -173,16 +173,38 @@ func (cs *ChainState) GetRegistrationProof(wallet string) (height int64, blockHa
 
 	// Query chain_blocks: find the first block containing a register_human TX
 	// for this wallet. The transactions column is stored as a JSON array.
+	//
+	// FIX (2026-08-19, found while diagnosing the Contabo2 height-0 incident):
+	// the cast used to be a bare `b.transactions::jsonb`, and that made this
+	// whole function return nothing on any node with
+	// AEQUITAS_COMPRESS_BLOCK_PAYLOAD set. A block written compressed leaves
+	// `transactions` EMPTY on purpose (block_payload_codec.go) and ''::jsonb is
+	// not valid JSON, so Postgres aborted the entire query at the first such
+	// row — taking down the lookup for every OTHER wallet too, including the
+	// ones whose registration sits in an ordinary plain row. And it failed
+	// silently, because the error return below is indistinguishable from
+	// "no registration found".
+	//
+	// The CASE keeps those rows from aborting the query. It does NOT make the
+	// compressed rows searchable — SQL cannot gunzip, and a registration inside
+	// a compressed block is still invisible here. That is a real remaining gap,
+	// stated rather than papered over: it needs the payload decoded in Go
+	// (decodeBlockPayload), which is a bigger change than this outage warranted.
+	// The err path now says so out loud instead of looking like an empty result.
 	rows, err := cs.db.Query(`
 		SELECT b.hash, b.height, b.timestamp, tx.value
 		FROM chain_blocks b,
-		     jsonb_array_elements(b.transactions::jsonb) AS tx(value)
+		     jsonb_array_elements(
+		       CASE WHEN b.transactions LIKE '[%' THEN b.transactions::jsonb
+		            ELSE '[]'::jsonb END
+		     ) AS tx(value)
 		WHERE tx.value->>'type' = 'register_human'
 		  AND lower(tx.value->>'wallet') = $1
 		ORDER BY b.height ASC
 		LIMIT 1
 	`, wallet)
 	if err != nil {
+		fmt.Printf("[CREDENTIAL] ✗ registration-proof lookup for %s failed: %v — reporting 'no proof' to the caller, which is NOT the same as 'not registered'\n", wallet, err)
 		return
 	}
 	defer rows.Close()
