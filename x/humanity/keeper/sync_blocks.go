@@ -19,6 +19,8 @@ import (
 	"time"
 
 	"github.com/ethereum/go-ethereum/crypto"
+
+	"github.com/hanoi96international-gif/aequitas-chain/x/humanity/mpc"
 )
 
 // ─── PEER REGISTRY ───────────────────────────────────────────────────────────
@@ -42,16 +44,71 @@ var GlobalPeerRegistry = &PeerRegistry{peers: make(map[string]time.Time)}
 type PeerRegistry struct {
 	mu    sync.RWMutex
 	peers map[string]time.Time // URL → last heartbeat
+
+	// signingAddr maps URL → the peer's validator signing address, recorded
+	// when a peer registers and proves ownership of that key.
+	//
+	// The registration endpoint has always received both halves and kept only
+	// the URL, which left nothing able to answer "which address is reachable
+	// where". MPC committee selection needs exactly that join: a validator can
+	// only be a committee member if its endpoint is known AND its signing
+	// address is known, because peers authenticate its contributions against
+	// that address.
+	signingAddr map[string]string
 }
 
 func (pr *PeerRegistry) Register(url string) {
+	pr.RegisterWithAddress(url, "")
+}
+
+// RegisterWithAddress records a peer's URL together with the signing address it
+// authenticated as.
+//
+// An empty address records the heartbeat but leaves the peer ineligible for MPC
+// committee membership — correct, because without a verified address there is
+// nothing to check its contributions against.
+func (pr *PeerRegistry) RegisterWithAddress(url, signingAddress string) {
 	if url == "" {
 		return
 	}
 	url = strings.TrimRight(url, "/")
 	pr.mu.Lock()
 	pr.peers[url] = time.Now()
+	if signingAddress != "" {
+		if pr.signingAddr == nil {
+			pr.signingAddr = map[string]string{}
+		}
+		pr.signingAddr[url] = strings.ToLower(signingAddress)
+	}
 	pr.mu.Unlock()
+}
+
+// MPCCandidates returns peers that advertise both an endpoint and a verified
+// signing address, plus this node itself.
+//
+// Only recently-seen peers: a committee member that is not reachable cannot
+// take part, and additive sharing means one absent member stalls every
+// comparison the committee is asked for.
+func (pr *PeerRegistry) MPCCandidates(selfURL, selfAddress string) []mpc.Party {
+	pr.mu.RLock()
+	defer pr.mu.RUnlock()
+
+	var out []mpc.Party
+	self := strings.TrimRight(selfURL, "/")
+	if self != "" && selfAddress != "" {
+		out = append(out, mpc.Party{URL: self, Address: strings.ToLower(selfAddress)})
+	}
+	for url, lastSeen := range pr.peers {
+		if url == self || time.Since(lastSeen) >= 5*time.Minute {
+			continue
+		}
+		addr := pr.signingAddr[url]
+		if addr == "" {
+			continue
+		}
+		out = append(out, mpc.Party{URL: url, Address: addr})
+	}
+	return out
 }
 
 // ActivePeers returns peers that sent a heartbeat in the last 5 minutes,

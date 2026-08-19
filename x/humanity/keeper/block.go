@@ -1105,6 +1105,24 @@ func (dag *BlockDAG) ValidatorKeyPairs() []ValidatorKeyPair {
 	return dag.state.GetValidatorKeyPairsForSync()
 }
 
+// SelfSigningAddress is the address this node signs blocks with, derived from
+// RELAYER_PRIVATE_KEY. Empty when no key is configured.
+//
+// Used by MPC committee selection: a node has to know its own address to work
+// out whether the committee drew it, and the peer registry has to publish that
+// same address so others can verify its contributions.
+func (dag *BlockDAG) SelfSigningAddress() string {
+	pk := strings.TrimPrefix(strings.TrimSpace(os.Getenv("RELAYER_PRIVATE_KEY")), "0x")
+	if pk == "" {
+		return ""
+	}
+	priv, err := crypto.HexToECDSA(pk)
+	if err != nil {
+		return ""
+	}
+	return strings.ToLower(crypto.PubkeyToAddress(priv.PublicKey).Hex())
+}
+
 // AuthorizedValidatorList returns a snapshot of all currently-authorized
 // proposer addresses.  Used by /api/validators so peer nodes can sync the
 // full validator set from each other — removing the need for manual

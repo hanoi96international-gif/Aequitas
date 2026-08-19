@@ -76,21 +76,65 @@ and it would find that out only mid-registration.
 
 ### Adding a validator
 
-Publish its URL and signing address, and append one entry to `MPC_PEERS` on
-every box. That is the whole procedure:
+**Nothing.** With `MPC_PEERS` unset the committee is derived from the chain, so a
+validator becomes eligible the moment it registers as a peer — the registration
+already proves ownership of its signing key, and the peer registry now records
+that address alongside the URL. No file is edited, no box is restarted, and
+nobody approves anybody.
 
-- **nothing is rotated** on the existing validators; their keys are untouched,
-- **no secret is handed to anybody**, so onboarding needs no trusted channel,
-- **removing** a validator means deleting its entry, after which it can no
-  longer sign anything the others accept.
+    MPC_ENABLED=true
+    MPC_COMMITTEE_SIZE=2        # 2..7
+    RELAYER_PRIVATE_KEY=...     # already set
 
-This is why the earlier shared-token design was replaced rather than kept for
-convenience. One secret held by everyone means **every validator can impersonate
-every other** — and since these contributions decide whether someone counts as a
-duplicate, a validator could forge its peers' answers and register the same
-person twice. It also made every join or departure a synchronised secret
-rotation across the whole set, which does not survive more than a handful of
-operators. See `auth.go`.
+Membership is resolved **per registration**, not at startup, so a validator that
+joins while the nodes are running is seen without a restart.
+
+`MPC_PEERS=URL|0xAddr,...` still works and pins an explicit set. It is the
+override, not the normal path — it has to be edited on every box whenever the
+set changes, which is exactly the manual-config problem the validator set itself
+already solved by syncing from peers.
+
+### Why not every validator is a party
+
+Traffic grows with the number of ordered pairs, n(n-1), because every party
+publishes each round to every other. Measured on one identical comparison:
+2 parties 4.0 KB, 3 parties 12.2 KB, 4 parties 24.4 KB — exactly 1x, 3x, 6x.
+Scaled to a real registration, which costs 37.5 MB between two parties:
+
+| committee | traffic per registration |
+|---|---|
+| 2 | 37.5 MB |
+| 3 | 112 MB |
+| 5 | 375 MB |
+| 7 | 788 MB |
+| 50 | ~46 GB |
+
+Availability moves the same way. Additive sharing is all-or-nothing: **every**
+member must answer or the comparison cannot finish. At 99% per-node uptime, 2
+parties are jointly available 98% of the time and 50 parties 61% — a bigger
+committee is a system that more often cannot register anyone.
+
+So the committee is a small, deterministically drawn subset. Growing the
+validator set makes membership *more* decentralised — more independent operators
+eligible, chosen by hash rather than by anyone's decision — without making every
+registration more expensive. `MPC_COMMITTEE_SIZE` is capped at 7 for this
+reason.
+
+### Committees are history, not a current value
+
+An enrolment's shares belong to the committee that created them. If the
+committee later changes, those shares do not move — **nobody can move them**,
+because moving them would mean reconstructing the template, which is the one
+thing that must never happen.
+
+So every enrolment must record its `Committee.ID`, and a comparison against it
+convenes *that* committee. The consequence is real and has to be planned for: a
+committee whose members are permanently gone takes its enrolments with it, and
+those people can register again undetected. Committee members should therefore
+be long-lived validators, and committees should change rarely.
+
+A threshold scheme with proactive resharing would remove this constraint. The
+current sharing is additive n-of-n, so it does not.
 
 ### Relationship to the Node Binding Signature
 

@@ -93,6 +93,30 @@ type mpcNode struct {
 	index    int
 	peers    []string
 	insecure bool
+
+	// discover resolves committee candidates at call time. Non-nil when the
+	// committee comes from the chain rather than from MPC_PEERS.
+	//
+	// Resolved per registration, not at startup: validators join and leave
+	// while the node is running, and a set frozen at boot would need a restart
+	// to notice — which is the manual step this exists to remove.
+	discover func() []mpc.Party
+	size     int
+	selfAddr string
+}
+
+// committeeNow resolves the current committee from the chain.
+func (n *mpcNode) committeeNow() (*mpc.Committee, error) {
+	if n.discover == nil {
+		return nil, fmt.Errorf("mpc: this node uses a static peer list")
+	}
+	candidates := n.discover()
+	c, err := mpc.SelectCommittee(candidates, n.size, "")
+	if err != nil {
+		return nil, fmt.Errorf("mpc: no committee could be formed from %d candidates: %w",
+			len(candidates), err)
+	}
+	return c, nil
 }
 
 // parsePeerSpec splits "https://host|0xAddress" into its two halves.
@@ -117,14 +141,14 @@ func parsePeerSpec(spec string) (string, common.Address, error) {
 //
 // Returns (nil, nil) when MPC is simply not enabled — the ordinary case for a
 // node that does not take part.
-func newMPCNodeFromEnv() (*mpcNode, error) {
+func newMPCNodeFromEnv(discover func() []mpc.Party) (*mpcNode, error) {
 	if strings.ToLower(os.Getenv("MPC_ENABLED")) != "true" {
 		return nil, nil
 	}
 
 	rawPeers := os.Getenv("MPC_PEERS")
 	if rawPeers == "" {
-		return nil, fmt.Errorf("MPC_ENABLED is set but MPC_PEERS is empty")
+		return newDiscoveringMPCNode(discover)
 	}
 	var peers []string
 	var addrs []common.Address
@@ -204,6 +228,62 @@ func newMPCNodeFromEnv() (*mpcNode, error) {
 	}, nil
 }
 
+// newDiscoveringMPCNode builds a node whose committee comes from the chain.
+//
+// This is the path that scales. A static MPC_PEERS has to be edited on every
+// box whenever a validator joins or leaves — the same manual-config problem the
+// validator set itself already solved by syncing from peers, and reintroducing
+// it here was a mistake. Here the node learns the candidates from the peer
+// registry, which records a URL and a proven signing address for every peer
+// that registered, and derives the committee deterministically. A new validator
+// becomes eligible by registering. Nothing is edited, nothing is restarted, and
+// nobody approves it.
+func newDiscoveringMPCNode(discover func() []mpc.Party) (*mpcNode, error) {
+	if discover == nil {
+		return nil, fmt.Errorf("MPC_PEERS is empty and this node has no peer registry to " +
+			"discover a committee from")
+	}
+
+	size := 2
+	if raw := strings.TrimSpace(os.Getenv("MPC_COMMITTEE_SIZE")); raw != "" {
+		v, err := strconv.Atoi(raw)
+		if err != nil {
+			return nil, fmt.Errorf("MPC_COMMITTEE_SIZE %q is not a number", raw)
+		}
+		size = v
+	}
+	if size < mpc.MinCommitteeSize || size > mpc.MaxCommitteeSize {
+		return nil, fmt.Errorf("MPC_COMMITTEE_SIZE %d is outside %d..%d — below that one party "+
+			"holds every share, and above it traffic grows with n(n-1) while every member has to "+
+			"be online for any registration to finish",
+			size, mpc.MinCommitteeSize, mpc.MaxCommitteeSize)
+	}
+
+	pkHex := strings.TrimPrefix(strings.TrimSpace(os.Getenv("RELAYER_PRIVATE_KEY")), "0x")
+	if pkHex == "" {
+		return nil, fmt.Errorf("RELAYER_PRIVATE_KEY is empty — it is the key this node signs its " +
+			"MPC contributions with, and peers verify against its address")
+	}
+	priv, err := crypto.HexToECDSA(pkHex)
+	if err != nil {
+		return nil, fmt.Errorf("RELAYER_PRIVATE_KEY is not a valid key: %w", err)
+	}
+	self := strings.ToLower(crypto.PubkeyToAddress(priv.PublicKey).Hex())
+
+	mailbox, err := mpc.NewMailbox(size, 10*time.Minute)
+	if err != nil {
+		return nil, err
+	}
+	return &mpcNode{
+		mailbox:  mailbox,
+		auth:     &validatorAuthenticator{priv: priv},
+		insecure: strings.ToLower(os.Getenv("MPC_ALLOW_INSECURE")) == "true",
+		discover: discover,
+		size:     size,
+		selfAddr: self,
+	}, nil
+}
+
 func isLoopbackURL(u string) bool {
 	return strings.HasPrefix(u, "http://127.0.0.1") ||
 		strings.HasPrefix(u, "http://localhost") ||
@@ -216,12 +296,33 @@ func isLoopbackURL(u string) bool {
 // derive it from something both already agree on, never from a counter, or two
 // concurrent registrations will read each other's rounds.
 func (n *mpcNode) TransportFor(session string) (mpc.Transport, error) {
+	index, peers, auth := n.index, n.peers, n.auth
+
+	if n.discover != nil {
+		c, err := n.committeeNow()
+		if err != nil {
+			return nil, err
+		}
+		index = c.IndexOf(n.selfAddr)
+		if index < 0 {
+			// The ordinary case for most validators: eligible, not drawn.
+			return nil, fmt.Errorf("mpc: this node is not in committee %s — it holds no shares "+
+				"for these enrolments and must not take part", c.ID)
+		}
+		peers = c.URLs()
+		addrs := make([]common.Address, len(c.Parties))
+		for i, p := range c.Parties {
+			addrs[i] = common.HexToAddress(p.Address)
+		}
+		auth = &validatorAuthenticator{index: index, priv: n.auth.priv, addrs: addrs}
+	}
+
 	return mpc.NewHTTPTransport(mpc.HTTPConfig{
-		Index:         n.index,
-		Peers:         n.peers,
+		Index:         index,
+		Peers:         peers,
 		Session:       session,
 		Mailbox:       n.mailbox,
-		Auth:          n.auth,
+		Auth:          auth,
 		AllowInsecure: n.insecure,
 	})
 }
@@ -232,8 +333,8 @@ func (n *mpcNode) TransportFor(session string) (mpc.Transport, error) {
 // stop the node: a validator that cannot take part in duplicate checks should
 // still produce blocks, and its peers will fail their comparisons with a clear
 // error rather than quietly deciding alone.
-func registerMPCRoutes(mux *http.ServeMux) *mpcNode {
-	node, err := newMPCNodeFromEnv()
+func registerMPCRoutes(mux *http.ServeMux, discover func() []mpc.Party) *mpcNode {
+	node, err := newMPCNodeFromEnv(discover)
 	if err != nil {
 		log.Printf("[MPC] NOT running: %v", err)
 		return nil
@@ -241,14 +342,57 @@ func registerMPCRoutes(mux *http.ServeMux) *mpcNode {
 	if node == nil {
 		return nil
 	}
-	handler, err := node.mailbox.Handler(node.auth)
+	var verifier mpc.Authenticator = node.auth
+	if node.discover != nil {
+		verifier = &liveCommitteeVerifier{node: node}
+	}
+	handler, err := node.mailbox.Handler(verifier)
 	if err != nil {
 		log.Printf("[MPC] NOT running: %v", err)
 		return nil
 	}
 	mux.Handle(mpc.ExchangePath, handler)
-	log.Printf("[MPC] party %d of %d serving %s as %s; peers=%v",
-		node.index, len(node.peers), mpc.ExchangePath,
-		node.auth.addrs[node.index].Hex(), node.peers)
+	if node.discover != nil {
+		log.Printf("[MPC] serving %s as %s; committee of %d drawn from the chain, membership "+
+			"resolved per registration", mpc.ExchangePath, node.selfAddr, node.size)
+	} else {
+		log.Printf("[MPC] party %d of %d serving %s as %s; peers=%v",
+			node.index, len(node.peers), mpc.ExchangePath,
+			node.auth.addrs[node.index].Hex(), node.peers)
+	}
 	return node
+}
+
+// liveCommitteeVerifier authenticates incoming rounds against the committee as
+// it stands right now.
+//
+// In discovery mode the membership is not known at startup, and pinning it
+// there would defeat the point. Resolving per request costs one deterministic
+// selection over a list the node already holds in memory.
+type liveCommitteeVerifier struct{ node *mpcNode }
+
+func (v *liveCommitteeVerifier) Sign(digest []byte) ([]byte, error) {
+	return v.node.auth.Sign(digest)
+}
+
+func (v *liveCommitteeVerifier) Parties() int { return v.node.size }
+
+func (v *liveCommitteeVerifier) VerifyParty(index int, digest, sig []byte) error {
+	c, err := v.node.committeeNow()
+	if err != nil {
+		return fmt.Errorf("mpc: cannot verify a contribution without a committee: %w", err)
+	}
+	if index < 0 || index >= len(c.Parties) {
+		return fmt.Errorf("mpc: party %d is outside committee %s", index, c.ID)
+	}
+	want := common.HexToAddress(c.Parties[index].Address)
+	pub, err := crypto.SigToPub(digest, sig)
+	if err != nil {
+		return fmt.Errorf("mpc: signature from party %d does not recover: %w", index, err)
+	}
+	if got := crypto.PubkeyToAddress(*pub); got != want {
+		return fmt.Errorf("mpc: round was signed by %s but party %d of committee %s is %s",
+			got.Hex(), index, c.ID, want.Hex())
+	}
+	return nil
 }

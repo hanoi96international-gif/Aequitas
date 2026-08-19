@@ -32,6 +32,8 @@ import (
 	"github.com/ethereum/go-ethereum/accounts"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/crypto"
+
+	"github.com/hanoi96international-gif/aequitas-chain/x/humanity/mpc"
 )
 
 type APIServer struct {
@@ -916,7 +918,10 @@ func (a *APIServer) buildMux() *http.ServeMux {
 	// Secure duplicate matching, if this node is one of the parties. The exact
 	// pattern beats the "/" SPA fallback on specificity, so peers reach the
 	// endpoint rather than a copy of the explorer page.
-	a.mpc = registerMPCRoutes(mux)
+	a.mpc = registerMPCRoutes(mux, func() []mpc.Party {
+		return GlobalPeerRegistry.MPCCandidates(
+			os.Getenv("SELF_URL"), a.blockchain.SelfSigningAddress())
+	})
 
 	mux.HandleFunc("/api/status", a.handleStatus)
 	mux.HandleFunc("/api/events", a.handleBlockEvents)
@@ -2778,7 +2783,10 @@ func (a *APIServer) handlePeerRegister(w http.ResponseWriter, r *http.Request) {
 	registerURLIfAuthorized := func() {
 		if req.URL != "" && isAllowedPeerURL(req.URL) {
 			if urlAuthorized {
-				GlobalPeerRegistry.Register(req.URL)
+				// Record the signing address alongside the URL: this
+				// registration has just proved ownership of that key, and it
+				// is the only moment the two halves are known together.
+				GlobalPeerRegistry.RegisterWithAddress(req.URL, req.SigningAddress)
 				fmt.Printf("[PEERS] Registered: %s\n", req.URL)
 				a.blockchain.startSyncForPeer(req.URL)
 			} else {

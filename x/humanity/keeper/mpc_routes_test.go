@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/ethereum/go-ethereum/crypto"
@@ -109,7 +110,7 @@ func TestMPCConfigFailsClosed(t *testing.T) {
 			for k, v := range tc.env {
 				t.Setenv(k, v)
 			}
-			node, err := newMPCNodeFromEnv()
+			node, err := newMPCNodeFromEnv(nil)
 			switch tc.want {
 			case "off":
 				if err != nil || node != nil {
@@ -150,7 +151,7 @@ func TestValidatorSignaturesVerifyAcrossParties(t *testing.T) {
 		t.Setenv("MPC_PEERS", peers)
 		t.Setenv("MPC_PARTY_INDEX", fmt.Sprint(index))
 		t.Setenv("RELAYER_PRIVATE_KEY", key)
-		n, err := newMPCNodeFromEnv()
+		n, err := newMPCNodeFromEnv(nil)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -203,7 +204,7 @@ func TestBrokenConfigMountsNoEndpoint(t *testing.T) {
 	t.Setenv("RELAYER_PRIVATE_KEY", keyA)
 
 	mux := http.NewServeMux()
-	if node := registerMPCRoutes(mux); node != nil {
+	if node := registerMPCRoutes(mux, nil); node != nil {
 		t.Fatal("a node was returned for an invalid configuration")
 	}
 	req := httptest.NewRequest(http.MethodPost, mpc.ExchangePath, nil)
@@ -227,7 +228,7 @@ func TestAddingAValidatorNeedsNoSecret(t *testing.T) {
 	t.Setenv("RELAYER_PRIVATE_KEY", keyA)
 
 	t.Setenv("MPC_PEERS", fmt.Sprintf("https://a|%s,https://b|%s", addrA, addrB))
-	two, err := newMPCNodeFromEnv()
+	two, err := newMPCNodeFromEnv(nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -235,7 +236,7 @@ func TestAddingAValidatorNeedsNoSecret(t *testing.T) {
 	// The only change to add a third: one more entry. Party 0's key is
 	// untouched, and it can already verify the newcomer.
 	t.Setenv("MPC_PEERS", fmt.Sprintf("https://a|%s,https://b|%s,https://c|%s", addrA, addrB, addrC))
-	three, err := newMPCNodeFromEnv()
+	three, err := newMPCNodeFromEnv(nil)
 	if err != nil {
 		t.Fatalf("adding a third validator by publishing its address failed: %v", err)
 	}
@@ -245,5 +246,82 @@ func TestAddingAValidatorNeedsNoSecret(t *testing.T) {
 	if two.auth.addrs[0] != three.auth.addrs[0] {
 		t.Error("party 0's identity changed when a validator was added; onboarding must not " +
 			"disturb the existing parties")
+	}
+}
+
+// TestCommitteeIsDiscoveredNotConfigured is the answer to "must every new
+// validator be added to MPC_PEERS by hand": no. With MPC_PEERS empty the node
+// derives the committee from the peers it already knows, so a validator becomes
+// eligible by registering — no edit, no restart, no approval.
+func TestCommitteeIsDiscoveredNotConfigured(t *testing.T) {
+	keyA, addrA := mpcTestKey(t)
+	_, addrB := mpcTestKey(t)
+	_, addrC := mpcTestKey(t)
+
+	known := []mpc.Party{
+		{URL: "https://a.example", Address: strings.ToLower(addrA)},
+		{URL: "https://b.example", Address: strings.ToLower(addrB)},
+	}
+	discover := func() []mpc.Party { return known }
+
+	t.Setenv("MPC_ENABLED", "true")
+	t.Setenv("MPC_PEERS", "")
+	t.Setenv("MPC_COMMITTEE_SIZE", "2")
+	t.Setenv("RELAYER_PRIVATE_KEY", keyA)
+
+	node, err := newMPCNodeFromEnv(discover)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if node == nil {
+		t.Fatal("no node built from discovery")
+	}
+	first, err := node.committeeNow()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// A third validator registers. Nothing on this node changes.
+	known = append(known, mpc.Party{URL: "https://c.example", Address: strings.ToLower(addrC)})
+	second, err := node.committeeNow()
+	if err != nil {
+		t.Fatalf("a newly registered validator broke committee resolution: %v", err)
+	}
+	if second.Size() != 2 {
+		t.Errorf("committee size drifted to %d when a validator joined", second.Size())
+	}
+	t.Logf("committee before %s, after %s", first.ID, second.ID)
+
+	// And the newcomer is genuinely eligible: with a larger committee it is drawn.
+	t.Setenv("MPC_COMMITTEE_SIZE", "3")
+	bigger, err := newMPCNodeFromEnv(discover)
+	if err != nil {
+		t.Fatal(err)
+	}
+	c3, err := bigger.committeeNow()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c3.IndexOf(strings.ToLower(addrC)) < 0 {
+		t.Error("a registered validator was not eligible for the committee; discovery is not " +
+			"actually reading the peer set")
+	}
+}
+
+// TestOversizedCommitteeIsRefused encodes the measurement rather than a taste:
+// traffic grows with n(n-1), and every member must be online for any
+// registration to complete.
+func TestOversizedCommitteeIsRefused(t *testing.T) {
+	keyA, _ := mpcTestKey(t)
+	t.Setenv("MPC_ENABLED", "true")
+	t.Setenv("MPC_PEERS", "")
+	t.Setenv("RELAYER_PRIVATE_KEY", keyA)
+	discover := func() []mpc.Party { return nil }
+
+	for _, size := range []string{"1", "50"} {
+		t.Setenv("MPC_COMMITTEE_SIZE", size)
+		if _, err := newMPCNodeFromEnv(discover); err == nil {
+			t.Errorf("committee size %s was accepted", size)
+		}
 	}
 }
