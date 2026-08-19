@@ -1,0 +1,171 @@
+name: Serve Contabo2 over TLS (MPC party endpoint)
+
+# Gives Contabo2 an HTTPS endpoint, which is step one of activating the private
+# duplicate check.
+#
+# Measured 2026-08-19: neither box serves TLS on its IP, and only
+# aequitas.digital (Caddy on Contabo1) has a certificate. Contabo2 has no HTTPS
+# endpoint at all, so no MPC committee can form.
+#
+# That is not a formality. NewHTTPTransport refuses plaintext peers because
+# anyone able to inject on the path between the parties can force a "no match"
+# and mint a second account for a person who already exists. The fix is a
+# certificate here, not relaxing that check.
+#
+# ORDER MATTERS: DNS FIRST. Caddy obtains certificates over HTTP-01, which only
+# works for a name that already resolves to this box. Running this before the
+# DNS record exists leaves Caddy retrying indefinitely and, worse, can burn
+# Let's Encrypt failure quota for that name. So this REFUSES to install until
+# the name resolves to 194.163.188.71.
+#
+# Unlike Contabo1, this box may have no Caddy at all. The job handles both: it
+# reuses an existing container if there is one, and otherwise starts one with a
+# NAMED VOLUME for certificate storage — without that, every container restart
+# re-requests certificates and hits the rate limit for the name.
+
+on:
+  workflow_dispatch:
+    inputs:
+      hostname:
+        description: "The name that must already resolve to 194.163.188.71 (e.g. c2.aequitas.digital)"
+        required: true
+      skip_dns_check:
+        description: "Install even if DNS does not point here yet (not recommended)"
+        required: false
+        default: "false"
+
+jobs:
+  serve:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Refuse unless DNS already points at Contabo2
+        env:
+          HOSTNAME_INPUT: ${{ inputs.hostname }}
+        run: |
+          set -uo pipefail
+          ip=$(getent hosts "$HOSTNAME_INPUT" | awk '{print $1}' | head -1)
+          echo "$HOSTNAME_INPUT -> ${ip:-<unresolved>}"
+          if [ "$ip" = "194.163.188.71" ]; then
+            echo "DNS is correct — proceeding"
+            exit 0
+          fi
+          if [ "${{ inputs.skip_dns_check }}" = "true" ]; then
+            echo "DNS does NOT point at Contabo2, but skip_dns_check=true — proceeding."
+            echo "Caddy will keep retrying, and repeated failures count against this name's"
+            echo "Let's Encrypt quota. Fix DNS rather than leaving it in this state."
+            exit 0
+          fi
+          echo
+          echo "REFUSING: $HOSTNAME_INPUT must resolve to 194.163.188.71 first."
+          echo "Add the A record, wait for it to propagate, then re-run."
+          exit 1
+
+      - name: Copy the Caddy config
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: 194.163.188.71
+          username: root
+          key: ${{ secrets.CONTABO2_SSH_KEY }}
+          port: 22
+          source: deploy/Caddyfile.contabo2
+          target: /root/
+          strip_components: 1
+
+      - name: Install, validate, reload
+        uses: appleboy/ssh-action@v1.0.3
+        env:
+          HOSTNAME_INPUT: ${{ inputs.hostname }}
+        with:
+          host: 194.163.188.71
+          username: root
+          key: ${{ secrets.CONTABO2_SSH_KEY }}
+          port: 22
+          script_stop: true
+          timeout: 900s
+          command_timeout: 900s
+          envs: HOSTNAME_INPUT
+          script: |
+            set -euo pipefail
+
+            NODE_NETS=$(docker inspect aequitas-node --format '{{range $k,$v := .NetworkSettings.Networks}}{{$k}} {{end}}')
+            NET=$(echo $NODE_NETS | awk '{print $1}')
+            echo "node network: $NET"
+            if [ -z "$NET" ]; then
+              echo "ERROR: aequitas-node is not on a docker network — refusing"
+              exit 1
+            fi
+
+            CREATED=no
+            if docker inspect aequitas-caddy >/dev/null 2>&1; then
+              echo "=== reusing the existing aequitas-caddy container ==="
+              docker exec aequitas-caddy sh -c "cp /etc/caddy/Caddyfile /etc/caddy/Caddyfile.bak-$(date +%s)" || true
+            else
+              echo "=== no Caddy on this box — checking ports 80/443 are free ==="
+              # Binding a port already in use would take down whatever holds it.
+              for p in 80 443; do
+                if ss -ltn "( sport = :$p )" | tail -n +2 | grep -q . ; then
+                  echo "ERROR: port $p is already in use. Refusing to bind it — find what"
+                  echo "holds it and decide deliberately rather than displacing it."
+                  ss -ltnp "( sport = :$p )" || true
+                  exit 1
+                fi
+              done
+
+              # Named volumes for certificates and Caddy's own state. Without
+              # these, a container restart re-requests every certificate and
+              # burns the rate limit for the name.
+              docker volume create aequitas-caddy-data >/dev/null
+              docker volume create aequitas-caddy-config >/dev/null
+
+              docker run -d --name aequitas-caddy --restart unless-stopped \
+                --network "$NET" \
+                -p 80:80 -p 443:443 -p 443:443/udp \
+                -v aequitas-caddy-data:/data \
+                -v aequitas-caddy-config:/config \
+                -v /root/Caddyfile.contabo2:/etc/caddy/Caddyfile:ro \
+                -e MPC_PARTY_HOSTNAME="$HOSTNAME_INPUT" \
+                caddy:2-alpine
+              echo "started aequitas-caddy"
+              CREATED=yes
+              sleep 5
+            fi
+
+            # Reaching the node BEFORE reloading, so a config that would 502 is
+            # never installed.
+            docker exec aequitas-caddy sh -c "wget -qO- --timeout=5 http://aequitas-node:8080/api/status >/dev/null 2>&1" \
+              && echo "caddy can reach aequitas-node:8080" \
+              || { echo "ERROR: caddy cannot reach aequitas-node:8080 — refusing"; exit 1; }
+
+            # A container created above already has /root/Caddyfile.contabo2
+            # bind-mounted READ-ONLY, which is the better arrangement — the
+            # config survives the container being recreated. Copying into it
+            # would simply fail against that mount, so only the reuse path
+            # copies.
+            if [ "$CREATED" = "no" ]; then
+              docker cp /root/Caddyfile.contabo2 aequitas-caddy:/etc/caddy/Caddyfile
+            fi
+            docker exec -e MPC_PARTY_HOSTNAME="$HOSTNAME_INPUT" aequitas-caddy \
+              caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile
+            docker exec -e MPC_PARTY_HOSTNAME="$HOSTNAME_INPUT" aequitas-caddy \
+              caddy reload --config /etc/caddy/Caddyfile --adapter caddyfile
+
+            echo "=== waiting for the certificate ==="
+            for i in $(seq 1 24); do
+              code=$(curl -s -o /dev/null -m 10 -w '%{http_code}' "https://$HOSTNAME_INPUT/api/status" || true)
+              echo "  attempt $i: $code"
+              # 200 means the node answers. 401 on /mpc/exchange is also healthy
+              # (unsigned probe), but /api/status is the simpler signal.
+              [ "$code" = "200" ] && break
+              sleep 10
+            done
+
+            echo "=== result ==="
+            curl -s -o /dev/null -m 10 -w 'GET  /api/status    -> %{http_code}\n' "https://$HOSTNAME_INPUT/api/status" || true
+            curl -s -o /dev/null -m 10 -X POST -w 'POST /mpc/exchange  -> %{http_code}  (401 = mounted and protected)\n' "https://$HOSTNAME_INPUT/mpc/exchange" || true
+            echo
+            echo "If /api/status is 200, Contabo2 now has the HTTPS endpoint the MPC"
+            echo "committee needs. Next: let the peers re-register so the registry pairs"
+            echo "each URL with a signing address, then run the dealer. See"
+            echo "x/humanity/mpc/DEPLOY.md, 'Activation, in order'."
