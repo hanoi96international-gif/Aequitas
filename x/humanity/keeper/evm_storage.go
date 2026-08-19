@@ -27,6 +27,37 @@ func round6(v float64) float64 {
 	return math.Round(v*1_000_000) / 1_000_000
 }
 
+// floor6 truncates toward zero at micro-AEQ instead of rounding to nearest.
+//
+// FIX (P1, Audit 2026-08-18): every daily distribution splits a pool N ways,
+// credits each recipient a rounded share, and then zeroes the pool
+// unconditionally. With round6/NewDecimal — both math.Round, i.e. half away
+// from zero — a remainder whose fractional part lands at or above half rounds
+// every share UP, the credits sum to MORE than the pool held, and the round
+// mints money. Measured, not theorised: a 0.000007 AEQ UBI pool over two
+// humans credited 0.000008 and the pool was zeroed, creating one micro-AEQ.
+// The LP round did the same on every value probed.
+//
+// supply_conservation_test.go pinned the opposite as measured behaviour — "it
+// can only ever BURN, never mint. Supply drifts imperceptibly down, which is
+// the safe direction for a currency" — and that claim was the reason this path
+// had been excluded as a source of the +305 AEQ gap. The claim was wrong
+// because the comment said "rounded down" while the code rounded to nearest.
+// Flooring makes the comment true: the sum of the shares can never exceed the
+// pool, so the pool-zeroing that follows can only ever destroy the remainder,
+// never create one.
+//
+// Deliberately NOT solved by carrying the remainder forward in the pool: the
+// per-head amount travels inside the block and secondaries replay the
+// primary's numbers, but the pool-zeroing is a separate finalize transaction
+// applied identically everywhere. Leaving a remainder would require changing
+// both sides at once, i.e. a consensus migration, to buy back at most N
+// micro-AEQ per round. Flooring needs neither, because it only changes a
+// number the block already carries.
+func floor6(v float64) float64 {
+	return math.Floor(v*1_000_000) / 1_000_000
+}
+
 // ─── CONTRACT STORAGE ─────────────────────────────────────────────────────────
 
 func (cs *ChainState) SaveContract(address string, bytecode []byte, deployer string) error {
