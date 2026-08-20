@@ -152,10 +152,19 @@ func (cs *ChainState) supplyBreakdown() (map[string]string, error) {
 		return nil, fmt.Errorf("no database configured")
 	}
 	var humans, nonHumans, pools, reserve float64
-	var nonHumanAccounts int
+	var nonHumanAccounts, humanAccounts int
 
+	// The human COUNT straight from the ledger, next to the counter the rule is
+	// computed from.
+	//
+	// TotalSupply is humanCountLocked x 1,000, and that counter is seeded by a
+	// full scan once and then maintained incrementally. An incremental counter
+	// that drifts low makes the claimed supply too small, and the gap looks
+	// exactly like minted money while nothing was minted at all. Comparing it
+	// against COUNT(*) is one query and rules that out — or finds it.
 	if err := cs.db.QueryRow(
-		`SELECT COALESCE(sum(balance),0) FROM chain_accounts WHERE is_human = true`).Scan(&humans); err != nil {
+		`SELECT COALESCE(sum(balance),0), count(*) FROM chain_accounts WHERE is_human = true`,
+	).Scan(&humans, &humanAccounts); err != nil {
 		return nil, err
 	}
 	if err := cs.db.QueryRow(
@@ -174,7 +183,14 @@ func (cs *ChainState) supplyBreakdown() (map[string]string, error) {
 		reserve = 0
 	}
 
+	// What the rule would claim if it counted the ledger instead of the
+	// incremental counter. If this differs from claimed_humans_x_1000, the
+	// counter has drifted and the "excess" is arithmetic, not creation.
+	claimedFromLedger := float64(humanAccounts) * 1000
+
 	return map[string]string{
+		"human_accounts":     fmt.Sprintf("%d", humanAccounts),
+		"claimed_if_counted": fmt.Sprintf("%.6f", claimedFromLedger),
 		"humans":             fmt.Sprintf("%.6f", humans),
 		"non_humans":         fmt.Sprintf("%.6f", nonHumans),
 		"non_human_accounts": fmt.Sprintf("%d", nonHumanAccounts),
