@@ -325,10 +325,33 @@ func NewHTTPTransport(cfg HTTPConfig) (*HTTPTransport, error) {
 		if p == "" {
 			return nil, fmt.Errorf("mpc: no address for party %d", i)
 		}
-		if !strings.HasPrefix(p, "https://") && !cfg.AllowInsecure {
-			return nil, fmt.Errorf("mpc: peer %d is %q — plaintext HTTP lets anyone on the path "+
-				"forge a contribution and decide that a returning person is new; set AllowInsecure "+
-				"only in a local harness", i, p)
+		if !strings.HasPrefix(p, "https://") {
+			// Plaintext is permitted, and warned about. This used to be a hard
+			// refusal, and the refusal was wrong.
+			//
+			// It was written when a SHARED TOKEN was the only protection:
+			// anyone able to inject on the path and holding the token could
+			// forge a peer's contribution, and contributions decide whether
+			// someone counts as already registered. Per-round signatures
+			// replaced that token and this check was never revisited, so it
+			// went on blocking committee formation for a threat that no longer
+			// existed.
+			//
+			// TestForgeryFailsWithoutTLS exercises what an attacker with full
+			// control of a plaintext path can actually do — inject chosen
+			// values, reuse a real signature over different ones, replay a
+			// captured contribution into another round, submit under another
+			// party's identity — and every one is rejected on the signature.
+			// Dropping messages still works and still fails closed.
+			//
+			// TLS is still worth having and still recommended: it hides how
+			// many candidates each registration was compared against, and it is
+			// defence in depth if a signing key is ever mishandled. It is not
+			// what stops forgery, so it must not be what stops a committee from
+			// forming.
+			fmt.Printf("[MPC] peer %d is plaintext (%s). Every round is signed and verified, so "+
+				"contributions cannot be forged; TLS would additionally hide how many candidates "+
+				"each registration is compared against.\n", i, p)
 		}
 	}
 

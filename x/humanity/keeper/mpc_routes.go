@@ -202,17 +202,25 @@ func newMPCNodeFromEnv(discover func() []mpc.Party) (*mpcNode, error) {
 			"contribution would be rejected by the peers", mine.Hex(), addrs[index].Hex(), index)
 	}
 
+	// Plaintext peers are permitted and logged.
+	//
+	// This used to refuse any non-loopback plaintext peer, matching a transport
+	// check written when a shared token was the only protection. Per-round
+	// signatures replaced that token, and mpc.TestForgeryFailsWithoutTLS shows
+	// that an attacker with full control of a plaintext path can inject nothing
+	// a peer will accept. Both checks went on blocking committee formation over
+	// a threat that no longer existed.
+	//
+	// TLS is still recommended — it hides how many candidates each registration
+	// is compared against — so a plaintext peer is called out at startup rather
+	// than passing silently.
 	insecure := strings.ToLower(os.Getenv("MPC_ALLOW_INSECURE")) == "true"
-	if insecure {
-		for i, p := range peers {
-			if i == index {
-				continue
-			}
-			if !isLoopbackURL(p) {
-				return nil, fmt.Errorf("MPC_ALLOW_INSECURE is set with a non-loopback peer %q — "+
-					"that combination is for a local harness only", p)
-			}
+	for i, p := range peers {
+		if i == index || strings.HasPrefix(p, "https://") {
+			continue
 		}
+		log.Printf("[MPC] peer %d is plaintext (%s). Contributions are signed and verified, so "+
+			"they cannot be forged; TLS would additionally hide the candidate counts.", i, p)
 	}
 
 	mailbox, err := mpc.NewMailbox(len(peers), 10*time.Minute)

@@ -274,9 +274,15 @@ func TestMismatchedPrivateKeyIsRefused(t *testing.T) {
 	}
 }
 
-// TestPlaintextPeerIsRefused: the wire carries no templates, but it does carry
-// the values that decide whether someone counts as new.
-func TestPlaintextPeerIsRefused(t *testing.T) {
+// TestPlaintextPeerIsAccepted: the wire carries no templates, and the values it
+// does carry are signed.
+//
+// This asserted a refusal until 2026-08-20. That refusal was written when a
+// shared token was the only protection and forgery was genuinely possible; it
+// survived the move to per-round signatures unexamined and went on blocking
+// committee formation for a threat that no longer existed.
+// TestForgeryFailsWithoutTLS is the demonstration.
+func TestPlaintextPeerIsAccepted(t *testing.T) {
 	privs, pubs := newPartyKeys(t, 2)
 	auth, err := NewEd25519Authenticator(0, privs[0], pubs)
 	if err != nil {
@@ -287,8 +293,10 @@ func TestPlaintextPeerIsRefused(t *testing.T) {
 		Index: 0, Peers: []string{"http://a", "http://b"}, Session: "s",
 		Mailbox: mail, Auth: auth,
 	})
-	if err == nil {
-		t.Error("a plaintext http:// peer was accepted without AllowInsecure")
+	if err != nil {
+		t.Fatalf("a plaintext peer was refused: %v\n"+
+			"  TLS is not what stops forgery — every round is signed and verified — so refusing "+
+			"here blocks deployments over a threat the signatures already cover", err)
 	}
 }
 
