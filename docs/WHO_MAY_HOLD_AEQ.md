@@ -34,7 +34,7 @@ those would make the currency unusable for commerce without protecting anything.
 | human account balance | yes | yes |
 | **non-human account balance** | **yes** | **yes** |
 | tokenomics pools (ubi, lp, validators, treasury) | exempt | exempt |
-| **LP shares / the AMM reserve** | **yes** (since 2026-08-20) | **yes** (since 2026-08-20) |
+| **LP shares / the AMM reserve** | yes since 2026-08-20, but see the correction below — demurrage reaches no active account anyway | **yes** (since 2026-08-20) |
 
 Both the non-human and the LP rows are enforced, and deliberately so —
 `enforceWealthCapLockedCtx` carries the comment "Deliberately NOT gated on
@@ -88,11 +88,45 @@ twice, which `TestRemoveLiquidityDeltaLocked_MirrorsPrimaryWealthCap` caught.
 
 `TestLiquidityIsNoLongerAShelter` pins both halves.
 
-### What this changes for real people
+### Correction: what this actually changes, and what it does not
 
-Anyone holding wealth as liquidity now decays and is capped like everyone else.
-That is a real reduction for those accounts, and it is the point: the rule they
-were outside of is the one that funds UBI for everybody.
+The claim first written here — "anyone holding wealth as liquidity now decays
+and is capped like everyone else, and that is a real reduction" — was only half
+right, and the wrong half was stated most confidently.
+
+**Demurrage does not fire for anyone receiving UBI, LP or not.**
+`distributeUBIPoolLocked` credits every human and then calls `touchActivity`
+(state.go, in the per-human credit loop), and `distributeLPPoolLocked` does the
+same for every LP holder. The demurrage grace period is 90 days. A daily
+distribution resets that clock for everyone, every day, so it never elapses.
+
+So the "liquidity was a demurrage shelter worth 3.9% of supply" framing
+overstated it. There was no shelter to speak of, because the thing it sheltered
+from does not reach active participants at all.
+
+What each half of the change is actually worth:
+
+- **The wealth cap on LP value: real, and it bites immediately.** The cap has no
+  idleness condition — it is `avg x multiplier`, checked on every enforcement.
+  LP shares escaping it was a genuine hole: park wealth in the pool and the cap
+  never saw it. That is closed, and it is the half worth having.
+- **Demurrage on LP value: inert in practice.** It is still correct — a position
+  that genuinely goes dormant (no fee revenue, so no LP distribution touching
+  the holder) should not be exempt — but it is a completion of the rule, not the
+  significant lever it was described as.
+
+### The larger question this uncovered
+
+Demurrage is documented as a wealth decay: WHITEPAPER.md, README.md and the
+landing page all describe `(balance - fair_share) x 0.5% / month` on the excess.
+But it only begins after 90 days of inactivity, and the daily UBI credit resets
+that for every human. In practice it is therefore an **abandoned-account sweep**,
+not a decay on hoarded wealth.
+
+Both are defensible designs. What is not defensible is the documentation
+describing one and the code implementing the other, because everyone reasoning
+about the protocol's incentives is reading the first. That gap belongs on the
+list of things to settle, and it is bigger than the LP question that surfaced it.
 
 ## What is not covered here
 

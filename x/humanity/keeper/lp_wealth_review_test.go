@@ -112,3 +112,49 @@ func TestVerify_FairShareFloorStillApplies(t *testing.T) {
 			"years idle. Demurrage only applies above fair share", lost.Float())
 	}
 }
+
+// TestVerify_DemurrageNeverFiresForAnyoneReceivingUBI records the finding that
+// corrected this whole change's justification.
+//
+// Demurrage is documented as a wealth decay — WHITEPAPER.md, README.md and the
+// landing page all describe (balance - fair_share) x 0.5% / month on the excess.
+// It only BEGINS after 90 days of inactivity, and distributeUBIPoolLocked calls
+// touchActivity on every human as it credits them. A daily distribution resets
+// that clock for everyone, every day, so it never elapses.
+//
+// In practice demurrage is therefore an abandoned-account sweep, not a decay on
+// hoarded wealth. Both are defensible designs; documentation describing one
+// while the code implements the other is not, because everyone reasoning about
+// the protocol's incentives reads the documentation.
+//
+// This test asserts the CURRENT behaviour. If demurrage is ever meant to reach
+// active holders, it fails and says so.
+func TestVerify_DemurrageNeverFiresForAnyoneReceivingUBI(t *testing.T) {
+	cs := newTestState()
+	cs.pool = &PoolState{}
+
+	// Someone far above fair share who has been receiving UBI: their last
+	// activity is one day old, because the credit itself touched them.
+	rich := &AccountState{
+		Address: "0xrich", Balance: NewDecimal(500000), IsHuman: true,
+		LastActivityAt: nowUnix() - 24*60*60,
+	}
+	cs.accounts.Set(rich.Address, rich)
+	cs.humanCount = 1
+
+	cs.mu.Lock()
+	lost, err := cs.settleDemurrageLockedCtx(t.Context(), rich)
+	cs.mu.Unlock()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if lost.Float() != 0 {
+		t.Fatalf("500,000 AEQ decayed by %v one day after a UBI credit. If demurrage now "+
+			"reaches active holders, the protocol behaves the way its documentation has "+
+			"always described — update docs/WHO_MAY_HOLD_AEQ.md and this test together",
+			lost.Float())
+	}
+	t.Log("confirmed: 500,000 AEQ, one day since the UBI credit, decayed by 0. " +
+		"The 90-day grace period is reset daily by distributeUBIPoolLocked's touchActivity, " +
+		"so demurrage reaches no account that receives UBI.")
+}

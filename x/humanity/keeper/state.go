@@ -2680,6 +2680,40 @@ const secondsPerMonth = 30 * 24 * 60 * 60 // approximation, consistent with the 
 // AddLiquidity/RemoveLiquidity, registration) — NOT by pure balance
 // reads, since merely checking a balance isn't "using" the money. Caller
 // must hold cs.mu (write lock).
+// touchActivity restarts an account's demurrage clock.
+//
+// THE RULE: it records what the HOLDER did with their money, never what
+// happened to them.
+//
+// Sending, swapping, depositing and withdrawing all count — the holder used the
+// money. Receiving does not, and neither does the protocol crediting them: UBI,
+// LP yield and validator rewards arrive whether or not anyone is there.
+//
+// The distinction is the difference between demurrage working and demurrage
+// being decorative. Every human is credited UBI daily and touched by it, and
+// the grace period is 90 days, so resetting on credit meant the clock never
+// elapsed for anybody — the mechanism WHITEPAPER.md describes had never once
+// fired. Resetting on receipt was separately gameable for nothing: a micro-AEQ
+// from a second wallet every 89 days reset the clock on an entire balance.
+//
+// What this does NOT do is decay people who are merely poor. effectiveBalance
+// only decays the amount ABOVE the fair share, so a holding at or below an
+// equal share never loses anything however long it sits.
+// startClockIfUnset begins an account's demurrage clock the first time it holds
+// money, without restarting it afterwards.
+//
+// Receiving must not reset the clock — that was gameable for nothing, a
+// micro-AEQ from a second wallet every 89 days. But it must still START it,
+// because effectiveBalance treats LastActivityAt == 0 as "never active" and
+// exempts the account entirely. Without this, an address that is only ever paid
+// into and never spends from would be the very shelter closing the reset was
+// meant to remove.
+func startClockIfUnset(acc *AccountState) {
+	if acc != nil && acc.LastActivityAt == 0 {
+		acc.LastActivityAt = nowUnix()
+	}
+}
+
 func touchActivity(acc *AccountState) {
 	acc.LastActivityAt = nowUnix()
 	acc.Demurrage14DayWarningShown = false // new grace period — the 14-day notice can fire again when this one nears its end
@@ -3328,7 +3362,9 @@ func (cs *ChainState) distributeValidatorsPoolLocked(ctx context.Context) ([]Dis
 			return nil, fmt.Errorf("could not settle demurrage for %s: %w", wallet, err)
 		}
 		acc.Balance = acc.Balance.Add(NewDecimal(share))
-		touchActivity(acc)
+		// No touchActivity: the protocol credited them, they did not act.
+		// See touchActivity's comment — resetting here is what kept demurrage
+		// from ever firing for anyone.
 		if err := cs.enforceWealthCapLockedCtx(ctx, acc); err != nil {
 			return nil, fmt.Errorf("could not enforce wealth cap for %s: %w", wallet, err)
 		}
@@ -3498,7 +3534,9 @@ func (cs *ChainState) distributeLPPoolLocked(ctx context.Context) ([]Distributio
 		totalDistributed += share
 		acc, _ := cs.accounts.Get(h.addr)
 		acc.Balance = acc.Balance.Add(NewDecimal(share))
-		touchActivity(acc)
+		// No touchActivity: the protocol credited them, they did not act.
+		// See touchActivity's comment — resetting here is what kept demurrage
+		// from ever firing for anyone.
 		if err := cs.enforceWealthCapLockedCtx(ctx, acc); err != nil {
 			return nil, fmt.Errorf("could not enforce wealth cap for %s: %w", h.addr, err)
 		}
@@ -3668,7 +3706,9 @@ func (cs *ChainState) distributeUBIPoolLocked(ctx context.Context) ([]Distributi
 	for _, addr := range humanAddrs {
 		acc, _ := cs.accounts.Get(addr)
 		acc.Balance = acc.Balance.Add(NewDecimal(share))
-		touchActivity(acc)
+		// No touchActivity: the protocol credited them, they did not act.
+		// See touchActivity's comment — resetting here is what kept demurrage
+		// from ever firing for anyone.
 		if err := cs.enforceWealthCapLockedCtx(ctx, acc); err != nil {
 			return nil, fmt.Errorf("could not enforce wealth cap for %s: %w", addr, err)
 		}
@@ -5029,7 +5069,9 @@ func (cs *ChainState) transferMutateLocked(ctx context.Context, from, to string,
 		return 0, 0, nil, nil, fmt.Errorf("could not settle demurrage for recipient: %w", err)
 	}
 	toAcc.Balance = toAcc.Balance.Add(NewDecimal(amount))
-	touchActivity(toAcc) // receiving also resets the clock on the recipient's whole balance
+	// Receiving is not the holder acting, so it does not reset the clock —
+	// only starts it if this is the first money the account has held.
+	startClockIfUnset(toAcc)
 	if err := cs.enforceWealthCapLockedCtx(ctx, toAcc); err != nil {
 		return 0, 0, nil, nil, fmt.Errorf("could not enforce wealth cap for recipient: %w", err)
 	}
@@ -5167,7 +5209,9 @@ func (cs *ChainState) transferWithV7FeeLocked(ctx context.Context, from, to stri
 		return 0, 0, 0, fmt.Errorf("could not settle demurrage for recipient: %w", err)
 	}
 	toAcc.Balance = toAcc.Balance.Add(NewDecimal(netToRecipient))
-	touchActivity(toAcc)
+	// Receiving is not the holder acting, so it does not reset the clock —
+	// only starts it if this is the first money the account has held.
+	startClockIfUnset(toAcc)
 	if err := cs.enforceWealthCapLockedCtx(ctx, toAcc); err != nil {
 		return 0, 0, 0, fmt.Errorf("could not enforce wealth cap for recipient: %w", err)
 	}
