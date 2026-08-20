@@ -122,24 +122,52 @@ registration still succeeds for a genuine capture before enforcing.
 
 ---
 
-## 6. Throughput is limited by block propagation, not by writes
+## 6. Throughput: two caps removed, the real ceiling not yet re-measured
 
-**State:** WAL is now enabled and durable on both boxes (2026-08-20). Earlier
-measurements put the CPU ceiling near 12,300 TPS on six cores (486 µs per
-transfer), but sustained throughput collapsed at roughly 3,600/s: pushing from
+**Target:** at least 10,000 TPS.
+
+**Fixed 2026-08-20, both measured rather than assumed:**
+
+*Contabo1's connection pool was saturated before any load arrived.* It ran the
+default `AEQUITAS_DB_MAX_CONNS` of 20 with **18 connections in use while the
+chain was idle**, against a Postgres `max_connections` of 100, on a box now
+hosting eight containers. Contabo2 ran pool 100 against 250 and sat at 10.
+Since throughput is bounded by the slowest REPLAYING node, Contabo1 capped the
+whole network — and this matches the 87,534 pool waits measured earlier.
+Raised to pool 100 against `max_connections` 250; idle usage is now 13.
+
+*WAL was only ever on Contabo2.* Contabo1 had no WAL flags, no host mount, and
+a `deploy.sh` whose `docker run` carried no `-v` at all. Both were fixed, and
+the deploy script was patched too — without that, the next code deploy would
+have removed WAL silently, and a node with WAL off looks completely healthy.
+
+**Corrected:** the previous entry said Contabo1 merges but never produces
+blocks. That was true on 2026-07-28 and is **not true now**: over the last 60
+blocks the split was 31 (Contabo1) to 29 (Contabo2). Both validators produce.
+
+**Still open — and this is the part that needs a measurement, not a theory.**
+Earlier numbers put the CPU ceiling near 12,300 TPS on six cores (486 µs per
+transfer) while sustained throughput collapsed at roughly 3,600/s: pushing from
 3,624 to 7,078 tx/s dropped block production from +76 to +9 blocks and DAG tips
-from 7 to 1.
+from 7 to 1. Those numbers predate both fixes above, so the current ceiling is
+unknown.
 
-**Why it matters:** The target is at least 10,000 TPS. WAL removes a durability
-cost, not the merge and propagation cost, so WAL alone will not reach it. The
-next measurement should be of propagation, and it should be a measurement — the
-last several throughput hypotheses on this project (WAL lock, batch size, fsync,
-bloat, gzip) were all plausible and all wrong.
+Re-measuring means a load test, and the load test **moves real AEQ** and
+requires seed addresses to be funded by hand first
+(`loadtest-prepare-contabo2.yml` → `loadtest-run-contabo2.yml`). With the
++305 AEQ supply gap still unexplained (item 7), that is a decision to take
+deliberately rather than a thing to run casually.
 
-**Also still open:** Contabo1 merges but does not produce blocks, so only two
-of three validators produce. Its gate ("3 clean sync cycles") is correct and
-must not be loosened; it reports truthfully that C1 never fetches missing
-sibling parents.
+Contabo1 still lacks three settings Contabo2 has: `ENABLE_MULTI_BLOCK_TICK`,
+`AEQUITAS_COMPRESS_BLOCK_PAYLOAD` and `AEQUITAS_PRODUCE_WHEN_BACKLOG_SHRINKING`.
+They were left alone on purpose — they change consensus timing and wire format,
+and bundling them with the pool change would have made the next measurement
+uninterpretable. One change, then measure.
+
+**A caution worth keeping:** the last several throughput hypotheses on this
+project (WAL lock, batch size, fsync, bloat, gzip) were all plausible and all
+wrong. The two fixed above were found by reading live state, not by reasoning
+about the code.
 
 ---
 
