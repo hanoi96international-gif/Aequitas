@@ -93,8 +93,22 @@ jobs:
 
             mkdir -p /root/mpc-migration
             ENVOUT=/root/mpc-migration/inherited.env
-            docker inspect aequitas-node --format '{{range .Config.Env}}{{println .}}{{end}}' | grep -vE '^(RESYNC_FROM_SNAPSHOT|HOSTNAME|PATH|HOME|MPC_ENABLED|MPC_COMMITTEE_SIZE|MPC_TRIPLE_FILE)=' | grep -E '^[A-Za-z_][A-Za-z0-9_]*=' > "$ENVOUT"
-            printf 'MPC_ENABLED=true\nMPC_COMMITTEE_SIZE=2\nMPC_TRIPLE_FILE=/data/mpc/triples.bin\n' >> "$ENVOUT"
+            docker inspect aequitas-node --format '{{range .Config.Env}}{{println .}}{{end}}' | grep -vE '^(RESYNC_FROM_SNAPSHOT|HOSTNAME|PATH|HOME)=' | grep -E '^[A-Za-z_][A-Za-z0-9_]*=' > /tmp/proc.env
+            # Operator-set values in .aequitas.env must WIN over whatever the
+            # old process happened to carry. MPC_CLIENT_TOKEN is the case that
+            # forced this: it is written to the file, so a container rebuilt
+            # only from the previous process's env would never pick it up and
+            # the parties would go on answering "unauthorized" after a restart
+            # that looked completely successful. RESYNC_FROM_SNAPSHOT is
+            # dropped from both sides -- deploy_safe_c2.sh records that
+            # honouring it from the file wipes the database.
+            grep -E '^[A-Za-z_][A-Za-z0-9_]*=' /root/.aequitas.env 2>/dev/null | grep -vE '^(RESYNC_FROM_SNAPSHOT|HOSTNAME|PATH|HOME)=' > /tmp/file.env || true
+            awk -F= '!seen[$1]++' /tmp/file.env /tmp/proc.env > "$ENVOUT"
+            grep -q '^MPC_ENABLED=' "$ENVOUT" || echo 'MPC_ENABLED=true' >> "$ENVOUT"
+            grep -q '^MPC_COMMITTEE_SIZE=' "$ENVOUT" || echo 'MPC_COMMITTEE_SIZE=2' >> "$ENVOUT"
+            grep -q '^MPC_TRIPLE_FILE=' "$ENVOUT" || echo 'MPC_TRIPLE_FILE=/data/mpc/triples.bin' >> "$ENVOUT"
+            echo "--- MPC_CLIENT_TOKEN in the set about to be applied? ---"
+            grep -q '^MPC_CLIENT_TOKEN=' "$ENVOUT" && echo "yes" || echo "NO -- the client endpoints will keep answering unauthorized"
             echo "--- keys that will be passed (names only) ---"
             cut -d= -f1 "$ENVOUT" | sort | tr '\n' ' '; echo
 
@@ -189,8 +203,22 @@ jobs:
 
             mkdir -p /root/mpc-migration
             ENVOUT=/root/mpc-migration/inherited.env
-            docker inspect aequitas-node --format '{{range .Config.Env}}{{println .}}{{end}}' | grep -vE '^(RESYNC_FROM_SNAPSHOT|HOSTNAME|PATH|HOME|MPC_ENABLED|MPC_COMMITTEE_SIZE|MPC_TRIPLE_FILE)=' | grep -E '^[A-Za-z_][A-Za-z0-9_]*=' > "$ENVOUT"
-            printf 'MPC_ENABLED=true\nMPC_COMMITTEE_SIZE=2\nMPC_TRIPLE_FILE=/data/mpc/triples.bin\n' >> "$ENVOUT"
+            docker inspect aequitas-node --format '{{range .Config.Env}}{{println .}}{{end}}' | grep -vE '^(RESYNC_FROM_SNAPSHOT|HOSTNAME|PATH|HOME)=' | grep -E '^[A-Za-z_][A-Za-z0-9_]*=' > /tmp/proc.env
+            # Operator-set values in .aequitas.env must WIN over whatever the
+            # old process happened to carry. MPC_CLIENT_TOKEN is the case that
+            # forced this: it is written to the file, so a container rebuilt
+            # only from the previous process's env would never pick it up and
+            # the parties would go on answering "unauthorized" after a restart
+            # that looked completely successful. RESYNC_FROM_SNAPSHOT is
+            # dropped from both sides -- deploy_safe_c2.sh records that
+            # honouring it from the file wipes the database.
+            grep -E '^[A-Za-z_][A-Za-z0-9_]*=' /root/.aequitas.env 2>/dev/null | grep -vE '^(RESYNC_FROM_SNAPSHOT|HOSTNAME|PATH|HOME)=' > /tmp/file.env || true
+            awk -F= '!seen[$1]++' /tmp/file.env /tmp/proc.env > "$ENVOUT"
+            grep -q '^MPC_ENABLED=' "$ENVOUT" || echo 'MPC_ENABLED=true' >> "$ENVOUT"
+            grep -q '^MPC_COMMITTEE_SIZE=' "$ENVOUT" || echo 'MPC_COMMITTEE_SIZE=2' >> "$ENVOUT"
+            grep -q '^MPC_TRIPLE_FILE=' "$ENVOUT" || echo 'MPC_TRIPLE_FILE=/data/mpc/triples.bin' >> "$ENVOUT"
+            echo "--- MPC_CLIENT_TOKEN in the set about to be applied? ---"
+            grep -q '^MPC_CLIENT_TOKEN=' "$ENVOUT" && echo "yes" || echo "NO -- the client endpoints will keep answering unauthorized"
             echo "--- keys that will be passed (names only) ---"
             cut -d= -f1 "$ENVOUT" | sort | tr '\n' ' '; echo
             echo "--- WAL keys still present in that set? ---"
