@@ -1,44 +1,47 @@
 name: Activate MPC on both boxes (inspect first, then apply)
 
-# MPC is fully built and its tests pass, and no validator runs any of it: a
-# live read on 2026-08-20 found none of the eight MPC_* settings set on either
-# box, and the dealer's two triple files had never left the developer's
-# machine. See docs/OPEN_TASKS.md item 1.
+# MPC is fully built and its tests pass, and no validator ran any of it: a live
+# read on 2026-08-20 found none of the eight MPC_* settings set on either box.
+# mpc-triples-distribute.yml has since delivered one dealer row to each
+# (Contabo1 party 0, Contabo2 party 1, checksums verified, neither box holding
+# the other's row). This turns the subsystem on.
 #
-# WHICH MODE THIS USES, AND WHY
+# WHICH MODE, AND WHY
 #
 # newMPCNodeFromEnv has two paths. With MPC_PEERS set, every peer is written
 # out by hand as URL|0xAddress and every node needs its own MPC_PARTY_INDEX --
-# which means editing every existing box each time a validator joins. That was
-# rejected as not future-proof, and it is: it makes adding a validator an
-# O(n) manual operation across machines that are not all owned by one person.
+# so adding a validator means editing every existing box, an O(n) manual step
+# across machines that are not all owned by one person. That was rejected as
+# not future-proof.
 #
 # With MPC_PEERS EMPTY, newDiscoveringMPCNode draws the committee from the
-# chain's own peer registry. A new validator advertises mpc_ready and becomes
-# eligible with no edit to any existing box. That is the mode used here, so
-# this workflow sets only MPC_ENABLED, MPC_COMMITTEE_SIZE and MPC_TRIPLE_FILE.
-# RELAYER_PRIVATE_KEY is already present on both boxes and is what a node signs
-# its contributions with.
+# chain's own peer registry: a new validator advertises mpc_ready and becomes
+# eligible with no edit anywhere else. That is the mode used here, so only
+# MPC_ENABLED, MPC_COMMITTEE_SIZE and MPC_TRIPLE_FILE are set.
+# RELAYER_PRIVATE_KEY is already on both boxes and is what a node signs its
+# contributions with.
 #
-# WHICH TRIPLE FILE GOES WHERE
+# MPC_REQUIRED IS DELIBERATELY NOT SET
 #
-# SelectCommittee orders parties by ascending lowercase address:
+# It stays unset, so the gate is advisory. The matching threshold has never
+# been calibrated against real captures (MinPairsForCalibration is 1000 pairs
+# and none have been collected), so enforcing it would reject or accept on a
+# guessed number, and the cost of that lands on applicants who cannot appeal.
+# See docs/OPEN_TASKS.md item 2.
 #
-#   sort.Slice(chosen, func(i, j int) bool { return chosen[i].Address < chosen[j].Address })
+# WHAT APPLY RECREATES, AND WHAT IT PRESERVES
 #
-# with the comment that numbering must not depend on how the committee was
-# drawn. So for two validators the assignment is fixed: the lower address is
-# party 0. This workflow reads both addresses and says which file each box
-# needs rather than assuming.
-#
-# The two files must NEVER both land on one machine. A dealer's row per party
-# is what keeps any single box from reconstructing a template; both rows in one
-# place is the whole subsystem defeated. mode=inspect only reports.
+# Ports, network and existing mounts are read off the RUNNING container rather
+# than written out per box: Contabo2 already carries the WAL mount added on
+# 2026-08-20, and hard-coding a docker run here would silently drop it. The
+# same reasoning applies to the env, which is inherited from the process with
+# RESYNC_FROM_SNAPSHOT stripped -- deploy_safe_c2.sh records that using the
+# env FILE directly wipes the database on that box.
 on:
   workflow_dispatch:
     inputs:
       mode:
-        description: "inspect (read-only) or apply"
+        description: "inspect (read-only) or apply (recreates both containers)"
         required: true
         default: inspect
         type: choice
@@ -57,23 +60,86 @@ jobs:
           port: 22
           fingerprint: "SHA256:noMtjHV8c+2iEFZu3TRUP6WRwGjkrvFke71KgU6Eyt4"
           script_stop: false
-          timeout: 300s
-          command_timeout: 300s
+          timeout: 600s
+          command_timeout: 600s
           script: |
             set -uo pipefail
-            echo "### CONTABO1 ###"
-            echo "--- this node's own signing address (from its own startup log) ---"
-            docker logs aequitas-node 2>&1 | grep -i "proposer addr" | tail -1 || echo "(not in the retained log)"
-            echo "--- SELF_URL (what it advertises to peers) ---"
-            docker inspect aequitas-node --format '{{range .Config.Env}}{{println .}}{{end}}' | grep '^SELF_URL=' || echo "(SELF_URL not set)"
-            echo "--- MPC settings currently in the process ---"
-            docker inspect aequitas-node --format '{{range .Config.Env}}{{println .}}{{end}}' | grep -E '^MPC_' || echo "(none -- MPC is not running here)"
-            echo "--- MPC settings in .aequitas.env ---"
-            grep -E '^MPC_' /root/.aequitas.env || echo "(none in file)"
-            echo "--- any [MPC] lines the node has logged ---"
+            MODE="${{ inputs.mode }}"
+            BOX=Contabo1
+            TRIPLE_HOST_DIR=/root/aequitas-mpc
+            echo "### $BOX ###"
+
+            echo "--- signing address ---"
+            docker logs aequitas-node 2>&1 | grep -i "proposer addr" | tail -1 || echo "(not in retained log)"
+            echo "--- triple row present? ---"
+            ls -la "$TRIPLE_HOST_DIR" 2>/dev/null || echo "(MISSING -- run mpc-triples-distribute.yml first)"
+            echo "--- MPC settings in the running process ---"
+            docker inspect aequitas-node --format '{{range .Config.Env}}{{println .}}{{end}}' | grep -E '^MPC_' || echo "(none)"
+            echo "--- [MPC] log lines ---"
             docker logs aequitas-node --since 30m 2>&1 | grep -F '[MPC]' | tail -10 || echo "(none)"
-            echo "--- is a triple file already present? ---"
-            ls -la /root/aequitas-mpc/ 2>/dev/null || echo "(no /root/aequitas-mpc)"
+
+            IMAGE="$(docker inspect aequitas-node --format '{{.Config.Image}}')"
+            NET="$(docker inspect aequitas-node --format '{{range $k, $v := .NetworkSettings.Networks}}{{$k}} {{end}}' | awk '{print $1}')"
+            PORTS="$(docker inspect aequitas-node --format '{{range $p, $c := .HostConfig.PortBindings}}-p {{(index $c 0).HostPort}}:{{$p}} {{end}}' | sed 's|/tcp||g')"
+            MOUNTS="$(docker inspect aequitas-node --format '{{range .Mounts}}-v {{.Source}}:{{.Destination}} {{end}}')"
+            case "$MOUNTS" in
+              *":/data/mpc"*) : ;;
+              *) MOUNTS="$MOUNTS -v $TRIPLE_HOST_DIR:/data/mpc" ;;
+            esac
+            echo "image  : $IMAGE"
+            echo "network: $NET"
+            echo "ports  : $PORTS"
+            echo "mounts : $MOUNTS"
+
+            mkdir -p /root/mpc-migration
+            ENVOUT=/root/mpc-migration/inherited.env
+            docker inspect aequitas-node --format '{{range .Config.Env}}{{println .}}{{end}}' | grep -vE '^(RESYNC_FROM_SNAPSHOT|HOSTNAME|PATH|HOME|MPC_ENABLED|MPC_COMMITTEE_SIZE|MPC_TRIPLE_FILE)=' | grep -E '^[A-Za-z_][A-Za-z0-9_]*=' > "$ENVOUT"
+            printf 'MPC_ENABLED=true\nMPC_COMMITTEE_SIZE=2\nMPC_TRIPLE_FILE=/data/mpc/triples.bin\n' >> "$ENVOUT"
+            echo "--- keys that will be passed (names only) ---"
+            cut -d= -f1 "$ENVOUT" | sort | tr '\n' ' '; echo
+
+            if [ "$MODE" != "apply" ]; then
+              echo ""
+              echo "would run:"
+              echo "  docker run -d --name aequitas-node --network $NET $PORTS $MOUNTS --env-file $ENVOUT --restart unless-stopped $IMAGE"
+              echo "mode=inspect -- nothing changed."
+              exit 0
+            fi
+
+            if [ ! -f "$TRIPLE_HOST_DIR/triples.bin" ]; then
+              echo "REFUSING to apply: $TRIPLE_HOST_DIR/triples.bin is missing. Starting MPC without"
+              echo "this party's dealer row would fail at the first registration, and the node would"
+              echo "have restarted for nothing."
+              exit 1
+            fi
+
+            echo ""
+            echo "=== persisting MPC settings for future deploys ==="
+            cp /root/.aequitas.env "/root/.aequitas.env.bak.$(date +%Y%m%d-%H%M%S)"
+            grep -q '^MPC_ENABLED=' /root/.aequitas.env || echo 'MPC_ENABLED=true' >> /root/.aequitas.env
+            grep -q '^MPC_COMMITTEE_SIZE=' /root/.aequitas.env || echo 'MPC_COMMITTEE_SIZE=2' >> /root/.aequitas.env
+            grep -q '^MPC_TRIPLE_FILE=' /root/.aequitas.env || echo 'MPC_TRIPLE_FILE=/data/mpc/triples.bin' >> /root/.aequitas.env
+            grep -E '^MPC_' /root/.aequitas.env
+            if grep -q 'docker run -d --name aequitas-node' /root/deploy.sh; then
+              cp /root/deploy.sh "/root/deploy.sh.bak.$(date +%Y%m%d-%H%M%S)"
+              grep -q -- "-v $TRIPLE_HOST_DIR:/data/mpc" /root/deploy.sh || sed -i "s|--env-file /root/.aequitas.env|-v $TRIPLE_HOST_DIR:/data/mpc --env-file /root/.aequitas.env|" /root/deploy.sh
+              echo "--- deploy.sh docker run line now: ---"
+              grep 'docker run -d --name aequitas-node' /root/deploy.sh
+            fi
+
+            echo ""
+            echo "=== recreating ==="
+            docker stop aequitas-node && docker rm aequitas-node
+            docker run -d --name aequitas-node --network "$NET" $PORTS $MOUNTS --env-file "$ENVOUT" --restart unless-stopped "$IMAGE"
+            sleep 45
+            echo "--- [MPC] lines after restart ---"
+            docker logs aequitas-node --since 3m 2>&1 | grep -F '[MPC]' | tail -10 || echo "(NONE -- MPC did not start; look for '[MPC] NOT running')"
+            echo "--- panics ---"
+            docker logs aequitas-node --since 3m 2>&1 | grep -iE 'panic|fatal' | tail -5 || echo "(none)"
+            echo "--- mounts now ---"
+            docker inspect aequitas-node --format '{{range .Mounts}}{{.Source}} -> {{.Destination}}{{println}}{{end}}'
+            echo "--- status ---"
+            curl -s --max-time 15 http://127.0.0.1:8080/api/status | tr ',' '\n' | grep -E '"height"|git_commit' || echo "(unreachable)"
 
   c2:
     runs-on: ubuntu-latest
@@ -86,22 +152,85 @@ jobs:
           key: ${{ secrets.CONTABO2_SSH_KEY }}
           port: 22
           script_stop: false
-          timeout: 300s
-          command_timeout: 300s
+          timeout: 600s
+          command_timeout: 600s
           script: |
             set -uo pipefail
-            echo "### CONTABO2 ###"
-            echo "--- this node's own signing address (from its own startup log) ---"
-            docker logs aequitas-node 2>&1 | grep -i "proposer addr" | tail -1 || echo "(not in the retained log)"
-            echo "--- SELF_URL (what it advertises to peers) ---"
-            docker inspect aequitas-node --format '{{range .Config.Env}}{{println .}}{{end}}' | grep '^SELF_URL=' || echo "(SELF_URL not set)"
-            echo "--- RELAYER_ADDRESS if the box records one ---"
-            docker inspect aequitas-node --format '{{range .Config.Env}}{{println .}}{{end}}' | grep '^RELAYER_ADDRESS=' || echo "(not set)"
-            echo "--- MPC settings currently in the process ---"
-            docker inspect aequitas-node --format '{{range .Config.Env}}{{println .}}{{end}}' | grep -E '^MPC_' || echo "(none -- MPC is not running here)"
-            echo "--- MPC settings in .aequitas.env ---"
-            grep -E '^MPC_' /root/.aequitas.env || echo "(none in file)"
-            echo "--- any [MPC] lines the node has logged ---"
+            MODE="${{ inputs.mode }}"
+            BOX=Contabo2
+            TRIPLE_HOST_DIR=/root/aequitas-mpc
+            echo "### $BOX ###"
+
+            echo "--- signing address ---"
+            docker logs aequitas-node 2>&1 | grep -i "proposer addr" | tail -1 || echo "(not in retained log)"
+            echo "--- triple row present? ---"
+            ls -la "$TRIPLE_HOST_DIR" 2>/dev/null || echo "(MISSING -- run mpc-triples-distribute.yml first)"
+            echo "--- MPC settings in the running process ---"
+            docker inspect aequitas-node --format '{{range .Config.Env}}{{println .}}{{end}}' | grep -E '^MPC_' || echo "(none)"
+            echo "--- [MPC] log lines ---"
             docker logs aequitas-node --since 30m 2>&1 | grep -F '[MPC]' | tail -10 || echo "(none)"
-            echo "--- is a triple file already present? ---"
-            ls -la /root/aequitas-mpc/ 2>/dev/null || echo "(no /root/aequitas-mpc)"
+
+            IMAGE="$(docker inspect aequitas-node --format '{{.Config.Image}}')"
+            NET="$(docker inspect aequitas-node --format '{{range $k, $v := .NetworkSettings.Networks}}{{$k}} {{end}}' | awk '{print $1}')"
+            PORTS="$(docker inspect aequitas-node --format '{{range $p, $c := .HostConfig.PortBindings}}-p {{(index $c 0).HostPort}}:{{$p}} {{end}}' | sed 's|/tcp||g')"
+            MOUNTS="$(docker inspect aequitas-node --format '{{range .Mounts}}-v {{.Source}}:{{.Destination}} {{end}}')"
+            case "$MOUNTS" in
+              *":/data/mpc"*) : ;;
+              *) MOUNTS="$MOUNTS -v $TRIPLE_HOST_DIR:/data/mpc" ;;
+            esac
+            echo "image  : $IMAGE"
+            echo "network: $NET"
+            echo "ports  : $PORTS"
+            echo "mounts : $MOUNTS   <-- the WAL mount must still be in here"
+
+            mkdir -p /root/mpc-migration
+            ENVOUT=/root/mpc-migration/inherited.env
+            docker inspect aequitas-node --format '{{range .Config.Env}}{{println .}}{{end}}' | grep -vE '^(RESYNC_FROM_SNAPSHOT|HOSTNAME|PATH|HOME|MPC_ENABLED|MPC_COMMITTEE_SIZE|MPC_TRIPLE_FILE)=' | grep -E '^[A-Za-z_][A-Za-z0-9_]*=' > "$ENVOUT"
+            printf 'MPC_ENABLED=true\nMPC_COMMITTEE_SIZE=2\nMPC_TRIPLE_FILE=/data/mpc/triples.bin\n' >> "$ENVOUT"
+            echo "--- keys that will be passed (names only) ---"
+            cut -d= -f1 "$ENVOUT" | sort | tr '\n' ' '; echo
+            echo "--- WAL keys still present in that set? ---"
+            grep -E '^AEQUITAS_WAL' "$ENVOUT" || echo "(MISSING -- would turn WAL off on this box)"
+
+            if [ "$MODE" != "apply" ]; then
+              echo ""
+              echo "would run:"
+              echo "  docker run -d --name aequitas-node --network $NET $PORTS $MOUNTS --env-file $ENVOUT --restart unless-stopped $IMAGE"
+              echo "mode=inspect -- nothing changed."
+              exit 0
+            fi
+
+            if [ ! -f "$TRIPLE_HOST_DIR/triples.bin" ]; then
+              echo "REFUSING to apply: $TRIPLE_HOST_DIR/triples.bin is missing."
+              exit 1
+            fi
+
+            echo ""
+            echo "=== persisting MPC settings for future deploys ==="
+            cp /root/.aequitas.env "/root/.aequitas.env.bak.$(date +%Y%m%d-%H%M%S)"
+            grep -q '^MPC_ENABLED=' /root/.aequitas.env || echo 'MPC_ENABLED=true' >> /root/.aequitas.env
+            grep -q '^MPC_COMMITTEE_SIZE=' /root/.aequitas.env || echo 'MPC_COMMITTEE_SIZE=2' >> /root/.aequitas.env
+            grep -q '^MPC_TRIPLE_FILE=' /root/.aequitas.env || echo 'MPC_TRIPLE_FILE=/data/mpc/triples.bin' >> /root/.aequitas.env
+            grep -E '^MPC_' /root/.aequitas.env
+            if [ -f /root/deploy_safe_c2.sh ] && grep -q 'docker run' /root/deploy_safe_c2.sh; then
+              cp /root/deploy_safe_c2.sh "/root/deploy_safe_c2.sh.bak.$(date +%Y%m%d-%H%M%S)"
+              grep -q -- "-v $TRIPLE_HOST_DIR:/data/mpc" /root/deploy_safe_c2.sh || sed -i "s|-v /root/aequitas-wal-data:/data/wal|-v /root/aequitas-wal-data:/data/wal -v $TRIPLE_HOST_DIR:/data/mpc|" /root/deploy_safe_c2.sh
+              echo "--- deploy_safe_c2.sh docker run line now: ---"
+              grep 'docker run' /root/deploy_safe_c2.sh
+            fi
+
+            echo ""
+            echo "=== recreating ==="
+            docker stop aequitas-node && docker rm aequitas-node
+            docker run -d --name aequitas-node --network "$NET" $PORTS $MOUNTS --env-file "$ENVOUT" --restart unless-stopped "$IMAGE"
+            sleep 45
+            echo "--- [MPC] lines after restart ---"
+            docker logs aequitas-node --since 3m 2>&1 | grep -F '[MPC]' | tail -10 || echo "(NONE -- MPC did not start; look for '[MPC] NOT running')"
+            echo "--- WAL still on? ---"
+            docker inspect aequitas-node --format '{{range .Config.Env}}{{println .}}{{end}}' | grep -E '^AEQUITAS_WAL' || echo "(MISSING -- WAL was lost in this restart)"
+            echo "--- panics ---"
+            docker logs aequitas-node --since 3m 2>&1 | grep -iE 'panic|fatal' | tail -5 || echo "(none)"
+            echo "--- mounts now ---"
+            docker inspect aequitas-node --format '{{range .Mounts}}{{.Source}} -> {{.Destination}}{{println}}{{end}}'
+            echo "--- status ---"
+            curl -s --max-time 15 http://127.0.0.1:8080/api/status | tr ',' '\n' | grep -E '"height"|git_commit' || echo "(unreachable)"
