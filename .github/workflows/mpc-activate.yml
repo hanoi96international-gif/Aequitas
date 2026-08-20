@@ -1,0 +1,107 @@
+name: Activate MPC on both boxes (inspect first, then apply)
+
+# MPC is fully built and its tests pass, and no validator runs any of it: a
+# live read on 2026-08-20 found none of the eight MPC_* settings set on either
+# box, and the dealer's two triple files had never left the developer's
+# machine. See docs/OPEN_TASKS.md item 1.
+#
+# WHICH MODE THIS USES, AND WHY
+#
+# newMPCNodeFromEnv has two paths. With MPC_PEERS set, every peer is written
+# out by hand as URL|0xAddress and every node needs its own MPC_PARTY_INDEX --
+# which means editing every existing box each time a validator joins. That was
+# rejected as not future-proof, and it is: it makes adding a validator an
+# O(n) manual operation across machines that are not all owned by one person.
+#
+# With MPC_PEERS EMPTY, newDiscoveringMPCNode draws the committee from the
+# chain's own peer registry. A new validator advertises mpc_ready and becomes
+# eligible with no edit to any existing box. That is the mode used here, so
+# this workflow sets only MPC_ENABLED, MPC_COMMITTEE_SIZE and MPC_TRIPLE_FILE.
+# RELAYER_PRIVATE_KEY is already present on both boxes and is what a node signs
+# its contributions with.
+#
+# WHICH TRIPLE FILE GOES WHERE
+#
+# SelectCommittee orders parties by ascending lowercase address:
+#
+#   sort.Slice(chosen, func(i, j int) bool { return chosen[i].Address < chosen[j].Address })
+#
+# with the comment that numbering must not depend on how the committee was
+# drawn. So for two validators the assignment is fixed: the lower address is
+# party 0. This workflow reads both addresses and says which file each box
+# needs rather than assuming.
+#
+# The two files must NEVER both land on one machine. A dealer's row per party
+# is what keeps any single box from reconstructing a template; both rows in one
+# place is the whole subsystem defeated. mode=inspect only reports.
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "inspect (read-only) or apply"
+        required: true
+        default: inspect
+        type: choice
+        options: [inspect, apply]
+
+jobs:
+  c1:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Contabo1
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: 173.249.37.118
+          username: root
+          key: ${{ secrets.CONTABO_SSH_KEY }}
+          port: 22
+          fingerprint: "SHA256:noMtjHV8c+2iEFZu3TRUP6WRwGjkrvFke71KgU6Eyt4"
+          script_stop: false
+          timeout: 300s
+          command_timeout: 300s
+          script: |
+            set -uo pipefail
+            echo "### CONTABO1 ###"
+            echo "--- this node's own signing address (from its own startup log) ---"
+            docker logs aequitas-node 2>&1 | grep -i "proposer addr" | tail -1 || echo "(not in the retained log)"
+            echo "--- SELF_URL (what it advertises to peers) ---"
+            docker inspect aequitas-node --format '{{range .Config.Env}}{{println .}}{{end}}' | grep '^SELF_URL=' || echo "(SELF_URL not set)"
+            echo "--- MPC settings currently in the process ---"
+            docker inspect aequitas-node --format '{{range .Config.Env}}{{println .}}{{end}}' | grep -E '^MPC_' || echo "(none -- MPC is not running here)"
+            echo "--- MPC settings in .aequitas.env ---"
+            grep -E '^MPC_' /root/.aequitas.env || echo "(none in file)"
+            echo "--- any [MPC] lines the node has logged ---"
+            docker logs aequitas-node --since 30m 2>&1 | grep -F '[MPC]' | tail -10 || echo "(none)"
+            echo "--- is a triple file already present? ---"
+            ls -la /root/aequitas-mpc/ 2>/dev/null || echo "(no /root/aequitas-mpc)"
+
+  c2:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Contabo2
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: 194.163.188.71
+          username: root
+          key: ${{ secrets.CONTABO2_SSH_KEY }}
+          port: 22
+          script_stop: false
+          timeout: 300s
+          command_timeout: 300s
+          script: |
+            set -uo pipefail
+            echo "### CONTABO2 ###"
+            echo "--- this node's own signing address (from its own startup log) ---"
+            docker logs aequitas-node 2>&1 | grep -i "proposer addr" | tail -1 || echo "(not in the retained log)"
+            echo "--- SELF_URL (what it advertises to peers) ---"
+            docker inspect aequitas-node --format '{{range .Config.Env}}{{println .}}{{end}}' | grep '^SELF_URL=' || echo "(SELF_URL not set)"
+            echo "--- RELAYER_ADDRESS if the box records one ---"
+            docker inspect aequitas-node --format '{{range .Config.Env}}{{println .}}{{end}}' | grep '^RELAYER_ADDRESS=' || echo "(not set)"
+            echo "--- MPC settings currently in the process ---"
+            docker inspect aequitas-node --format '{{range .Config.Env}}{{println .}}{{end}}' | grep -E '^MPC_' || echo "(none -- MPC is not running here)"
+            echo "--- MPC settings in .aequitas.env ---"
+            grep -E '^MPC_' /root/.aequitas.env || echo "(none in file)"
+            echo "--- any [MPC] lines the node has logged ---"
+            docker logs aequitas-node --since 30m 2>&1 | grep -F '[MPC]' | tail -10 || echo "(none)"
+            echo "--- is a triple file already present? ---"
+            ls -la /root/aequitas-mpc/ 2>/dev/null || echo "(no /root/aequitas-mpc)"
