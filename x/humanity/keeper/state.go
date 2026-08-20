@@ -5273,11 +5273,43 @@ func (cs *ChainState) swapLocked(ctx context.Context, address string, amountIn f
 		}
 	}
 
-	if err := cs.saveAccountToDBCtx(ctx, acc); err != nil {
-		return 0, 0, fmt.Errorf("could not save account: %w", err)
-	}
-	if err := cs.savePoolToDBCtx(ctx); err != nil {
-		return 0, 0, fmt.Errorf("could not save pool: %w", err)
+	// PERSIST THE AEQ DEBIT BEFORE THE AEQ CREDIT.
+	//
+	// FIX (supply audit 2026-08-20): the account and the pool are two separate
+	// writes, and if the second fails the first still stands. Which way that
+	// falls depends on which side gave the AEQ up.
+	//
+	// Unlike a withdrawal, a swap moves value in BOTH directions, so no fixed
+	// order is safe for both. Saving the account first is right for aeqToTusd
+	// (the account loses the AEQ); saving the pool first is right for the other
+	// direction (the reserve loses it). The wrong order creates money: the side
+	// that received AEQ keeps it durably while the side that owed it never
+	// records the loss.
+	//
+	// The rule, stated once: whichever side is LOSING AEQ is persisted first.
+	// Then a failure between the writes destroys supply rather than creating
+	// it, which is the only acceptable direction to fail in.
+	//
+	// This is still not atomic. Two writes that must both land want one
+	// transaction; ordering only chooses which way the crack falls until they
+	// get one.
+	saveAccountFirst := aeqToTusd
+	if saveAccountFirst {
+		if err := cs.saveAccountToDBCtx(ctx, acc); err != nil {
+			return 0, 0, fmt.Errorf("could not save account: %w", err)
+		}
+		if err := cs.savePoolToDBCtx(ctx); err != nil {
+			fmt.Printf("[SWAP] %s was debited but the pool credit did not persist: %v (destroyed, not duplicated)\n", address, err)
+			return 0, 0, fmt.Errorf("could not save pool: %w", err)
+		}
+	} else {
+		if err := cs.savePoolToDBCtx(ctx); err != nil {
+			return 0, 0, fmt.Errorf("could not save pool, swap not applied: %w", err)
+		}
+		if err := cs.saveAccountToDBCtx(ctx, acc); err != nil {
+			fmt.Printf("[SWAP] pool debited but the credit to %s did not persist: %v (destroyed, not duplicated)\n", address, err)
+			return 0, 0, fmt.Errorf("could not save account: %w", err)
+		}
 	}
 	if err := cs.distributeSwapFeeCtx(ctx, fee, aeqToTusd); err != nil {
 		return 0, 0, fmt.Errorf("could not persist swap fee distribution: %w", err)
@@ -5936,11 +5968,30 @@ func (cs *ChainState) removeLiquidityLocked(ctx context.Context, address string,
 			cs.pool.ReserveAEQ = NewDecimal(0)
 			cs.pool.ReserveTUSD = NewDecimal(0)
 			cs.pool.TotalLPShares = NewDecimal(0)
-			if err := cs.saveAccountToDBCtx(ctx, acc); err != nil {
-				return 0, 0, 0, fmt.Errorf("could not save account: %w", err)
-			}
+			// Persist the POOL DEBIT before the account credit.
+			//
+			// FIX (supply audit 2026-08-20): these are two separate writes and the
+			// order decides which way a failure between them falls. Crediting the
+			// account first and debiting the reserve second is the CREATING order:
+			// the withdrawal is durable, the pool never gives the AEQ up, and the
+			// difference is new money. The same mistake was found in
+			// MigrateStrandedPoolTUsdFeesV1, and this is the path where the live
+			// excess actually sits - the AMM reserve holds the bulk of it.
+			//
+			// Debit-first fails the other way: the pool gives up AEQ that nobody
+			// receives. That destroys supply rather than creating it, which for a
+			// currency whose premise is "money exists because people exist" is the
+			// only acceptable direction to fail in.
 			if err := cs.savePoolToDBCtx(ctx); err != nil {
-				return 0, 0, 0, fmt.Errorf("could not save pool: %w", err)
+				// Nothing was credited durably, so the withdrawal simply did not
+				// happen; the in-memory account mutation is discarded with the error.
+				return 0, 0, 0, fmt.Errorf("could not save pool, withdrawal not applied: %w", err)
+			}
+			if err := cs.saveAccountToDBCtx(ctx, acc); err != nil {
+				// The pool already gave the AEQ up and nobody received it. Loud,
+				// because this line is the only record that it happened.
+				fmt.Printf("[POOL] pool debited but the credit to %s did not persist: %v (destroyed, not duplicated)\n", address, err)
+				return 0, 0, 0, fmt.Errorf("could not save account: %w", err)
 			}
 			cs.save()
 			cs.syncBalanceLocked(V7_CONTRACT_ADDR, address)
@@ -5997,11 +6048,30 @@ func (cs *ChainState) removeLiquidityLocked(ctx context.Context, address string,
 		cs.pool.ReserveAEQ = NewDecimal(newResAEQ17)
 		cs.pool.ReserveTUSD = NewDecimal(newResTUSD17)
 		cs.pool.TotalLPShares = cs.pool.TotalLPShares.Sub(NewDecimal(sharesToBurn))
-		if err := cs.saveAccountToDBCtx(ctx, acc); err != nil {
-			return 0, 0, 0, fmt.Errorf("could not save account: %w", err)
-		}
+		// Persist the POOL DEBIT before the account credit.
+		//
+		// FIX (supply audit 2026-08-20): these are two separate writes and the
+		// order decides which way a failure between them falls. Crediting the
+		// account first and debiting the reserve second is the CREATING order:
+		// the withdrawal is durable, the pool never gives the AEQ up, and the
+		// difference is new money. The same mistake was found in
+		// MigrateStrandedPoolTUsdFeesV1, and this is the path where the live
+		// excess actually sits - the AMM reserve holds the bulk of it.
+		//
+		// Debit-first fails the other way: the pool gives up AEQ that nobody
+		// receives. That destroys supply rather than creating it, which for a
+		// currency whose premise is "money exists because people exist" is the
+		// only acceptable direction to fail in.
 		if err := cs.savePoolToDBCtx(ctx); err != nil {
-			return 0, 0, 0, fmt.Errorf("could not save pool: %w", err)
+			// Nothing was credited durably, so the withdrawal simply did not
+			// happen; the in-memory account mutation is discarded with the error.
+			return 0, 0, 0, fmt.Errorf("could not save pool, withdrawal not applied: %w", err)
+		}
+		if err := cs.saveAccountToDBCtx(ctx, acc); err != nil {
+			// The pool already gave the AEQ up and nobody received it. Loud,
+			// because this line is the only record that it happened.
+			fmt.Printf("[POOL] pool debited but the credit to %s did not persist: %v (destroyed, not duplicated)\n", address, err)
+			return 0, 0, 0, fmt.Errorf("could not save account: %w", err)
 		}
 		cs.save()
 		cs.syncBalanceLocked(V7_CONTRACT_ADDR, address)
@@ -6042,11 +6112,30 @@ func (cs *ChainState) removeLiquidityLocked(ctx context.Context, address string,
 	cs.pool.ReserveTUSD = NewDecimal(newReserveTUSD)
 	cs.pool.TotalLPShares = cs.pool.TotalLPShares.Sub(NewDecimal(sharesToBurn))
 
-	if err := cs.saveAccountToDBCtx(ctx, acc); err != nil {
-		return 0, 0, 0, fmt.Errorf("could not save account: %w", err)
-	}
+	// Persist the POOL DEBIT before the account credit.
+	//
+	// FIX (supply audit 2026-08-20): these are two separate writes and the
+	// order decides which way a failure between them falls. Crediting the
+	// account first and debiting the reserve second is the CREATING order:
+	// the withdrawal is durable, the pool never gives the AEQ up, and the
+	// difference is new money. The same mistake was found in
+	// MigrateStrandedPoolTUsdFeesV1, and this is the path where the live
+	// excess actually sits - the AMM reserve holds the bulk of it.
+	//
+	// Debit-first fails the other way: the pool gives up AEQ that nobody
+	// receives. That destroys supply rather than creating it, which for a
+	// currency whose premise is "money exists because people exist" is the
+	// only acceptable direction to fail in.
 	if err := cs.savePoolToDBCtx(ctx); err != nil {
-		return 0, 0, 0, fmt.Errorf("could not save pool: %w", err)
+		// Nothing was credited durably, so the withdrawal simply did not
+		// happen; the in-memory account mutation is discarded with the error.
+		return 0, 0, 0, fmt.Errorf("could not save pool, withdrawal not applied: %w", err)
+	}
+	if err := cs.saveAccountToDBCtx(ctx, acc); err != nil {
+		// The pool already gave the AEQ up and nobody received it. Loud,
+		// because this line is the only record that it happened.
+		fmt.Printf("[POOL] pool debited but the credit to %s did not persist: %v (destroyed, not duplicated)\n", address, err)
+		return 0, 0, 0, fmt.Errorf("could not save account: %w", err)
 	}
 	cs.save()
 
