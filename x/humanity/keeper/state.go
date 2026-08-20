@@ -2754,6 +2754,18 @@ func touchActivity(acc *AccountState) {
 // is deliberately not part of accountLeaf and therefore not consensus-hashed.
 // (The missing future-drift validation on blocks themselves is a separate,
 // pre-existing gap — it is not created or worsened here.)
+// startClockIfUnsetAt is startClockIfUnset for the replay paths, stamping the
+// block's time rather than this node's clock.
+//
+// A receiving account must have its clock STARTED (effectiveBalance exempts
+// LastActivityAt == 0 entirely) without having it RESET. The primary uses
+// nowUnix(); replay must not, or every node would stamp a different moment.
+func startClockIfUnsetAt(acc *AccountState, at int64) {
+	if acc != nil && acc.LastActivityAt == 0 {
+		touchActivityAt(acc, at)
+	}
+}
+
 func touchActivityAt(acc *AccountState, at int64) {
 	if at <= 0 {
 		at = nowUnix()
@@ -7536,7 +7548,9 @@ func (cs *ChainState) applyTransferDeltaLocked(ctx context.Context, from, to str
 		return fmt.Errorf("transfer: could not settle recipient %s demurrage: %w", to, err)
 	}
 	toAcc.Balance = toAcc.Balance.Add(NewDecimal(netAmount))
-	touchActivityAt(toAcc, activityAt) // see the sender's own call above; transferLocked touches both sides
+	// Receiving is not the holder acting: start the clock, never reset it.
+	// Mirrors transferMutateLocked/transferWithV7FeeLocked on the primary.
+	startClockIfUnsetAt(toAcc, activityAt)
 	if err := cs.enforceWealthCapLockedCtx(ctx, toAcc); err != nil {
 		return fmt.Errorf("transfer: could not enforce wealth cap for recipient %s: %w", to, err)
 	}
@@ -7896,7 +7910,10 @@ func (cs *ChainState) applyUBIDeltaLocked(ctx context.Context, amountPerHuman fl
 	})
 	for _, acc := range humans {
 		acc.Balance = acc.Balance.Add(NewDecimal(amountPerHuman))
-		touchActivityAt(acc, ubiAt)
+		// No activity stamp: the protocol credited them, they did not act.
+		// Mirrors the primary path — see touchActivity's comment. Leaving it
+		// here would undo the fix on every node that is not producing, and
+		// silently restore it the moment one of them became primary.
 		if err := cs.enforceWealthCapLockedCtx(ctx, acc); err != nil {
 			return fmt.Errorf("ubi (legacy flat): could not enforce wealth cap for %s: %w", acc.Address, err)
 		}
@@ -7962,7 +7979,10 @@ func (cs *ChainState) applyUBIRewardDeltaLocked(ctx context.Context, wallet stri
 		return fmt.Errorf("ubi reward: could not settle %s demurrage: %w", wallet, err)
 	}
 	acc.Balance = acc.Balance.Add(NewDecimal(amount))
-	touchActivityAt(acc, activityAt)
+	// No activity stamp: the protocol credited them, they did not act.
+	// Mirrors the primary path — see touchActivity's comment. Leaving it
+	// here would undo the fix on every node that is not producing, and
+	// silently restore it the moment one of them became primary.
 	if err := cs.enforceWealthCapLockedCtx(ctx, acc); err != nil {
 		return fmt.Errorf("ubi reward: could not enforce wealth cap for %s: %w", wallet, err)
 	}
@@ -8054,7 +8074,10 @@ func (cs *ChainState) applyValidatorRewardDeltaLocked(ctx context.Context, walle
 		return fmt.Errorf("validator reward: could not settle %s demurrage: %w", wallet, err)
 	}
 	acc.Balance = acc.Balance.Add(NewDecimal(amount))
-	touchActivityAt(acc, activityAt)
+	// No activity stamp: the protocol credited them, they did not act.
+	// Mirrors the primary path — see touchActivity's comment. Leaving it
+	// here would undo the fix on every node that is not producing, and
+	// silently restore it the moment one of them became primary.
 	if err := cs.enforceWealthCapLockedCtx(ctx, acc); err != nil {
 		return fmt.Errorf("validator reward: could not enforce wealth cap for %s: %w", wallet, err)
 	}
@@ -8137,7 +8160,10 @@ func (cs *ChainState) applyLPRewardDeltaLocked(ctx context.Context, wallet strin
 		return fmt.Errorf("lp reward: could not settle %s demurrage: %w", wallet, err)
 	}
 	acc.Balance = acc.Balance.Add(NewDecimal(amount))
-	touchActivityAt(acc, activityAt)
+	// No activity stamp: the protocol credited them, they did not act.
+	// Mirrors the primary path — see touchActivity's comment. Leaving it
+	// here would undo the fix on every node that is not producing, and
+	// silently restore it the moment one of them became primary.
 	if err := cs.enforceWealthCapLockedCtx(ctx, acc); err != nil {
 		return fmt.Errorf("lp reward: could not enforce wealth cap for %s: %w", wallet, err)
 	}

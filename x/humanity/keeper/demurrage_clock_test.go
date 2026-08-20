@@ -150,3 +150,78 @@ func TestDemurrageMagnitudeIsGentle(t *testing.T) {
 		}
 	}
 }
+
+// TestReplayMirrorsTheClockRule is the check the suite was missing.
+//
+// The rule was applied to the primary paths only. The replay paths kept calling
+// touchActivityAt on UBI, on the three reward credits and on transfer
+// recipients — so every node that was not producing went on resetting the clock
+// exactly as before.
+//
+// Nothing broke visibly: LastActivityAt is deliberately outside accountLeaf, so
+// consensus was unaffected, and demurrage amounts travel in the delta rather
+// than being recomputed on replay. The failure was silent and deferred — the
+// moment another node became primary, every account there looked freshly
+// active and demurrage stopped firing again. The fix would have undone itself
+// at exactly the moment nobody was watching.
+func TestReplayMirrorsTheClockRule(t *testing.T) {
+	// In the PAST on purpose. touchActivityAt clamps a stamp to now, because
+	// block.Timestamp is chosen by the proposer and nothing validates it — an
+	// unclamped future stamp would exempt any account it touched from decay
+	// permanently. A future timestamp here would test the clamp, not the rule.
+	blockTs := nowUnix() - 3600
+
+	t.Run("a UBI credit on replay does not reset the clock", func(t *testing.T) {
+		cs := newTestState()
+		cs.pool = &PoolState{}
+		acc := idleAcc("0xreplay", 50000, 200)
+		cs.accounts.Set(acc.Address, acc)
+		cs.humanCount = 1
+		before := acc.LastActivityAt
+
+		cs.mu.Lock()
+		err := cs.applyUBIDeltaLocked(t.Context(), 1.0, blockTs)
+		cs.mu.Unlock()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if acc.LastActivityAt != before {
+			t.Errorf("replaying a UBI credit moved LastActivityAt from %d to %d. The primary no "+
+				"longer does this, so a node that only replays would disagree — and the "+
+				"disagreement surfaces as demurrage silently switching off the moment that node "+
+				"starts producing", before, acc.LastActivityAt)
+		}
+	})
+
+	t.Run("receiving on replay starts the clock without resetting it", func(t *testing.T) {
+		cs := newTestState()
+		cs.pool = &PoolState{}
+		sender := &AccountState{Address: "0xs", Balance: NewDecimal(1000), IsHuman: true, LastActivityAt: nowUnix()}
+		idle := idleAcc("0xr", 50000, 200)
+		fresh := &AccountState{Address: "0xf", Balance: NewDecimal(0), IsHuman: true}
+		for _, a := range []*AccountState{sender, idle, fresh} {
+			cs.accounts.Set(a.Address, a)
+		}
+		cs.humanCount = 3
+
+		idleBefore := idle.LastActivityAt
+		cs.mu.Lock()
+		err1 := cs.applyTransferDeltaLocked(t.Context(), sender.Address, idle.Address, 1, 0, 0, blockTs)
+		err2 := cs.applyTransferDeltaLocked(t.Context(), sender.Address, fresh.Address, 1, 0, 0, blockTs)
+		cs.mu.Unlock()
+		if err1 != nil || err2 != nil {
+			t.Fatalf("replay transfer: %v / %v", err1, err2)
+		}
+
+		if idle.LastActivityAt != idleBefore {
+			t.Errorf("a replayed transfer reset an idle recipient's clock (%d -> %d) — the "+
+				"micro-transfer evasion would still work on every replaying node",
+				idleBefore, idle.LastActivityAt)
+		}
+		if fresh.LastActivityAt != blockTs {
+			t.Errorf("a fresh recipient's clock started at %d, want the block time %d. Using this "+
+				"node's clock instead would stamp a different moment on every node",
+				fresh.LastActivityAt, blockTs)
+		}
+	})
+}
