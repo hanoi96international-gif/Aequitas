@@ -408,3 +408,92 @@ func TestAbandonedRoundsDoNotAccumulate(t *testing.T) {
 }
 
 func bytesReader(b []byte) *bytes.Reader { return bytes.NewReader(b) }
+
+// TestForgeryFailsWithoutTLS is the claim that decides whether the transport
+// may run over plain HTTP between parties.
+//
+// The https requirement was written when a SHARED TOKEN was the only
+// protection: anyone who could inject on the path and had the token could forge
+// a peer's contribution, and contributions decide whether someone counts as
+// already registered. Per-round signatures replaced that token, and the
+// requirement was never revisited.
+//
+// This exercises what an attacker with full control of a plaintext path can
+// actually do: inject a chosen contribution, replay a captured one into another
+// round, and submit under another party's identity. Each must fail on the
+// signature, not on the channel.
+func TestForgeryFailsWithoutTLS(t *testing.T) {
+	const n = 2
+	privs, pubs := newPartyKeys(t, n)
+	mail, err := NewMailbox(n, time.Minute)
+	if err != nil {
+		t.Fatal(err)
+	}
+	verifier, err := NewEd25519Authenticator(0, privs[0], pubs)
+	if err != nil {
+		t.Fatal(err)
+	}
+	h, err := mail.Handler(verifier)
+	if err != nil {
+		t.Fatal(err)
+	}
+	mux := http.NewServeMux()
+	mux.Handle(ExchangePath, h)
+	srv := httptest.NewServer(mux) // plain http, exactly what an attacker would want
+	defer srv.Close()
+
+	post := func(session string, round, party int, body []byte, sig []byte) int {
+		req, err := http.NewRequest(http.MethodPost, srv.URL+ExchangePath, bytesReader(body))
+		if err != nil {
+			t.Fatal(err)
+		}
+		req.Header.Set("X-Mpc-Session", session)
+		req.Header.Set("X-Mpc-Round", fmt.Sprint(round))
+		req.Header.Set("X-Mpc-Party", fmt.Sprint(party))
+		req.Header.Set("X-Mpc-Signature", hex.EncodeToString(sig))
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer resp.Body.Close()
+		return resp.StatusCode
+	}
+
+	genuine := EncodeElements([]Element{1, 2, 3})
+	genuineSig := ed25519.Sign(privs[1], RoundDigest("s", 0, 1, genuine))
+
+	t.Run("chosen values with no valid signature", func(t *testing.T) {
+		evil := EncodeElements([]Element{99, 99, 99})
+		if code := post("s", 0, 1, evil, []byte("not a signature")); code != http.StatusUnauthorized {
+			t.Errorf("injected values got %d, want 401 — the channel is plaintext, so only the "+
+				"signature stands between an attacker and deciding who is a duplicate", code)
+		}
+	})
+
+	t.Run("genuine signature over swapped values", func(t *testing.T) {
+		evil := EncodeElements([]Element{99, 99, 99})
+		if code := post("s", 0, 1, evil, genuineSig); code != http.StatusUnauthorized {
+			t.Errorf("a real signature reused over different values got %d, want 401", code)
+		}
+	})
+
+	t.Run("captured contribution replayed into another round", func(t *testing.T) {
+		if code := post("s", 7, 1, genuine, genuineSig); code != http.StatusUnauthorized {
+			t.Errorf("a round-0 contribution replayed as round 7 got %d, want 401 — the digest "+
+				"binds the round precisely so a recorded exchange cannot be reused", code)
+		}
+	})
+
+	t.Run("submitted under another party's identity", func(t *testing.T) {
+		if code := post("s", 0, 0, genuine, genuineSig); code != http.StatusUnauthorized {
+			t.Errorf("party 1's contribution submitted as party 0 got %d, want 401", code)
+		}
+	})
+
+	t.Run("the genuine one still works", func(t *testing.T) {
+		if code := post("s", 0, 1, genuine, genuineSig); code != http.StatusNoContent {
+			t.Fatalf("the real contribution got %d, want 204 — a check that rejects everything "+
+				"proves nothing", code)
+		}
+	})
+}
