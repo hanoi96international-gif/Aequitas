@@ -142,6 +142,10 @@ jobs:
             curl -s --max-time 15 http://127.0.0.1:8080/api/status | tr ',' '\n' | grep -E '"height"|git_commit' || echo "(unreachable)"
 
   c2:
+    # Sequenced after c1 on purpose: with only two validators, restarting both
+    # at once takes every producing node down together. needs: c1 also means a
+    # failure on the first box stops the second from restarting at all.
+    needs: c1
     runs-on: ubuntu-latest
     steps:
       - name: Contabo2
