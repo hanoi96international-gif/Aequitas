@@ -2818,12 +2818,38 @@ func (cs *ChainState) settleDemurrageLockedCtx(ctx context.Context, acc *Account
 	if isTokenomicsPoolAddress(acc.Address) {
 		return 0, nil
 	}
-	current := effectiveBalance(acc)
-	lost := acc.Balance.Sub(current)
+	// Demurrage is levied on WEALTH, so LP shares count.
+	//
+	// FIX (2026-08-20): this decayed acc.Balance alone. LP shares are not
+	// balance and the AMM reserve is not an account, so AEQ parked as liquidity
+	// simply stopped decaying — deposit, wait, withdraw, and the decay for that
+	// period was avoided. Liquidity providers are already paid for the service
+	// out of swap fees (distributeLPPoolLocked); exempting them from demurrage
+	// on top was a second, unvoted payment that scaled with wealth.
+	//
+	// The decay formula is not duplicated here. The same effectiveBalance runs
+	// against a copy whose balance is the account's whole holding, so the
+	// grace period, the fair-share floor and the rate stay in exactly one place.
+	lpValue := cs.lpValueLockedAEQ(acc)
+	basis := *acc
+	basis.Balance = NewDecimal(acc.Balance.Float() + lpValue)
+	lost := basis.Balance.Sub(effectiveBalance(&basis))
 	if lost <= 0 {
 		return 0, nil
 	}
-	acc.Balance = current
+	// Take it from balance first, reaching into liquidity only for the rest.
+	if acc.Balance.Float() < lost.Float() {
+		need := lost.Float() - acc.Balance.Float()
+		if _, err := cs.releaseLPForAEQ(ctx, acc, need); err != nil {
+			return 0, fmt.Errorf("demurrage: could not release LP value for %s: %w", acc.Address, err)
+		}
+	}
+	if lost.Float() > acc.Balance.Float() {
+		// Shallow reserve or share rounding left less than the decay owed.
+		// Take what is there; the remainder is caught on the next settlement.
+		lost = acc.Balance
+	}
+	acc.Balance = acc.Balance.Sub(lost).AtLeastZero()
 	if err := cs.distributeSwapFeeCtx(ctx, lost.Float(), true); err != nil {
 		return 0, fmt.Errorf("demurrage: could not persist pool credits for %s: %w", acc.Address, err)
 	}
@@ -3769,6 +3795,60 @@ func (cs *ChainState) bootstrapMultiplierLocked() float64 {
 // error here lets it reach that transaction's fn() and trigger a real
 // rollback — the same fix class already applied to ApplyUBIDelta,
 // transferLocked, etc. (see their "audit recheck2, P0 #3" comments).
+// lpValueLockedAEQ is the AEQ an account's LP shares are a claim on.
+//
+// LP shares are wealth. They were bought with AEQ, they can be turned back into
+// AEQ at will, and their value moves with the reserve. Any rule about how much
+// AEQ someone holds that reads only acc.Balance is therefore reading half the
+// number — which is how liquidity became a shelter from both the wealth cap and
+// demurrage (see docs/WHO_MAY_HOLD_AEQ.md).
+//
+// Caller holds cs.mu.
+func (cs *ChainState) lpValueLockedAEQ(acc *AccountState) float64 {
+	if cs.pool == nil || acc == nil {
+		return 0
+	}
+	total := cs.pool.TotalLPShares.Float()
+	mine := acc.LPShares.Float()
+	if total <= 0 || mine <= 0 {
+		return 0
+	}
+	if mine > total {
+		mine = total // corrupted share accounting must not inflate the claim
+	}
+	return cs.pool.ReserveAEQ.Float() * (mine / total)
+}
+
+// releaseLPForAEQ burns just enough of acc's LP shares to free `need` AEQ into
+// its balance, and reports what was actually freed.
+//
+// Used when a rule has to act on wealth the account holds as liquidity rather
+// than as balance. Reuses the escrow liquidation helper so there is one
+// implementation of turning shares back into reserves, not two that can drift.
+func (cs *ChainState) releaseLPForAEQ(ctx context.Context, acc *AccountState, need float64) (float64, error) {
+	if need <= 0 || cs.pool == nil {
+		return 0, nil
+	}
+	reserve := cs.pool.ReserveAEQ.Float()
+	totalShares := cs.pool.TotalLPShares.Float()
+	if reserve <= 0 || totalShares <= 0 || acc.LPShares.Float() <= 0 {
+		return 0, nil
+	}
+	shares := need * totalShares / reserve
+	if shares > acc.LPShares.Float() {
+		shares = acc.LPShares.Float()
+	}
+	// liquidateLPSharesForEscrowLocked already burns the shares, credits both
+	// balances and debits the reserves. Repeating any of that here credits the
+	// account twice — which is what the first version of this helper did, and
+	// what TestRemoveLiquidityDeltaLocked_MirrorsPrimaryWealthCap caught.
+	_, outAEQ, _, err := cs.liquidateLPSharesForEscrowLocked(ctx, acc, shares)
+	if err != nil {
+		return 0, err
+	}
+	return outAEQ, nil
+}
+
 func (cs *ChainState) enforceWealthCapLocked(acc *AccountState) error {
 	return cs.enforceWealthCapLockedCtx(context.Background(), acc)
 }
@@ -3792,11 +3872,37 @@ func (cs *ChainState) enforceWealthCapLockedCtx(ctx context.Context, acc *Accoun
 	}
 	multiplier := cs.bootstrapMultiplierLocked()
 	wealthCapAmt := avg * multiplier
-	if acc.Balance.Float() <= wealthCapAmt {
+	// The cap is on WEALTH, so it counts LP shares too.
+	//
+	// FIX (2026-08-20): this read acc.Balance alone, so the entire mechanism was
+	// avoidable in one step — deposit into the pool and hold the same value as
+	// LP shares, which no cap ever looked at. A cap that is evaded by one click
+	// is not a cap, and the people it still bound were the ones who did not know
+	// the trick. That is unfairness by sophistication, which is the opposite of
+	// what this protocol is for.
+	lpValue := cs.lpValueLockedAEQ(acc)
+	totalWealth := acc.Balance.Float() + lpValue
+	if totalWealth <= wealthCapAmt {
 		return nil
 	}
-	excess := acc.Balance.Float() - wealthCapAmt
-	acc.Balance = NewDecimal(wealthCapAmt)
+	excess := totalWealth - wealthCapAmt
+
+	// Take it from balance first, and only reach into liquidity for what is
+	// left — the gentler order, and it leaves a provider's position alone
+	// whenever their balance already covers the excess.
+	if acc.Balance.Float() < excess {
+		need := excess - acc.Balance.Float()
+		if _, err := cs.releaseLPForAEQ(ctx, acc, need); err != nil {
+			return fmt.Errorf("wealth cap: could not release LP value for %s: %w", acc.Address, err)
+		}
+	}
+	if excess > acc.Balance.Float() {
+		// The pool could not free the whole amount (shallow reserve, share
+		// rounding). Take what is there rather than driving the balance
+		// negative; the rest is caught on the next enforcement.
+		excess = acc.Balance.Float()
+	}
+	acc.Balance = acc.Balance.Sub(NewDecimal(excess)).AtLeastZero()
 	if err := cs.distributeSwapFeeCtx(ctx, excess, true); err != nil {
 		return fmt.Errorf("wealth cap: could not persist pool credits for %s excess: %w", acc.Address, err)
 	}
@@ -5946,6 +6052,15 @@ func (cs *ChainState) removeLiquidityLocked(ctx context.Context, address string,
 	// wealthy account could dodge decay indefinitely by periodically
 	// removing/re-adding trivial liquidity amounts (touchActivity() below
 	// resets the decay clock without the decay ever having been applied).
+	// The position as the caller saw it, BEFORE settlement.
+	//
+	// Demurrage now reaches LP shares, so settling can burn some of the very
+	// shares this call is about. Comparing the request against what is left
+	// afterwards told an idle provider asking to withdraw everything that they
+	// had "insufficient LP shares" - blaming them for asking about the position
+	// they actually held when they clicked.
+	sharesBeforeSettlement := acc.LPShares.Float()
+
 	lost, err := cs.settleDemurrageLockedCtx(ctx, acc)
 	if err != nil {
 		return 0, 0, 0, fmt.Errorf("could not settle demurrage: %w", err)
@@ -6002,8 +6117,19 @@ func (cs *ChainState) removeLiquidityLocked(ctx context.Context, address string,
 		return 0, 0, 0, fmt.Errorf("liquidity pool is empty")
 	}
 
-	if acc.LPShares.Float() < sharesToBurn {
-		return 0, 0, 0, fmt.Errorf("insufficient LP shares (have %.6f, requested %.6f)", acc.LPShares.Float(), sharesToBurn)
+	if sharesToBurn > sharesBeforeSettlement {
+		// More than they ever had: a real error, still reported as one.
+		return 0, 0, 0, fmt.Errorf("insufficient LP shares (have %.6f, requested %.6f)",
+			sharesBeforeSettlement, sharesToBurn)
+	}
+	if sharesToBurn > acc.LPShares.Float() {
+		// The request was valid when made; demurrage consumed part of it in
+		// between. Withdraw what remains rather than refusing - the shortfall
+		// is the decay they owed, not a mistake on their part.
+		sharesToBurn = acc.LPShares.Float()
+	}
+	if sharesToBurn <= 0 {
+		return 0, 0, 0, fmt.Errorf("no LP shares remain after settling demurrage")
 	}
 	// F17-FIX: guard against TotalLPShares corruption (< actual shares).
 	// Capping fraction to 1.0 above prevents over-withdrawal from reserves,
