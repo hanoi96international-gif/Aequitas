@@ -126,3 +126,57 @@ func TestSwapWriteOrderIsDirectionAware(t *testing.T) {
 		}
 	}
 }
+
+// TestEveryPoolWritingPathIsAccountedFor keeps the sweep from decaying into a
+// one-off.
+//
+// A systematic pass on 2026-08-20 compared every *DeltaLocked path against its
+// primary and found three divergences, every one of them invisible because both
+// sides agree whenever nothing fails. That pass is worth nothing a month from
+// now unless a NEW path that writes both an account and the pool is made to
+// declare which side loses AEQ.
+//
+// So any function that saves both must appear in the table in
+// TestPoolWriteOrderMatchesBetweenPrimaryAndReplay, or here as a deliberate
+// exemption with a reason.
+func TestEveryPoolWritingPathIsAccountedFor(t *testing.T) {
+	src, err := os.ReadFile("state.go")
+	if err != nil {
+		t.Fatal(err)
+	}
+	content := strings.ReplaceAll(string(src), "\r\n", "\n")
+
+	accounted := map[string]string{
+		"addLiquidityLocked":         "declared: the account loses AEQ",
+		"addLiquidityDeltaLocked":    "declared: the account loses AEQ",
+		"removeLiquidityLocked":      "declared: the pool loses AEQ",
+		"removeLiquidityDeltaLocked": "declared: the pool loses AEQ",
+		"swapLocked":                 "direction-aware, see TestSwapWriteOrderIsDirectionAware",
+		"applySwapDeltaLocked":       "direction-aware, see TestSwapWriteOrderIsDirectionAware",
+	}
+
+	fnRe := regexp.MustCompile(`(?m)^func (?:\([^)]*\) )?(\w+)`)
+	locs := fnRe.FindAllStringSubmatchIndex(content, -1)
+
+	for i, loc := range locs {
+		name := content[loc[2]:loc[3]]
+		end := len(content)
+		if i+1 < len(locs) {
+			end = locs[i+1][0]
+		}
+		body := content[loc[0]:end]
+
+		if !strings.Contains(body, "saveAccountToDBCtx(ctx, acc)") ||
+			!strings.Contains(body, "savePoolToDBCtx(ctx)") {
+			continue
+		}
+		if _, ok := accounted[name]; ok {
+			continue
+		}
+		t.Errorf("%s writes both an account and the pool but is not accounted for.\n"+
+			"  The two writes are not atomic, so their order decides whether a failure between\n"+
+			"  them destroys supply or creates it. Add it to the table in\n"+
+			"  TestPoolWriteOrderMatchesBetweenPrimaryAndReplay with the side that loses AEQ,\n"+
+			"  or here with a reason it is exempt.", name)
+	}
+}
