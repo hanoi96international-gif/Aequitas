@@ -1,0 +1,110 @@
+name: WAL on Contabo1 (inspect first, then apply)
+
+# Contabo1 has none of the performance work Contabo2 got: no WAL, no host
+# mount, no multi-block tick. Enabling WAL here is NOT just setting a flag,
+# for two reasons that have both already caused damage on this project:
+#
+#   1. NO MOUNT. Contabo1's deploy.sh runs `docker run` with no -v at all, so
+#      a WAL file would live in the container's writable layer and be thrown
+#      away by the next `docker rm`. That is the deploy_safe_c2.sh v1/v2 bug
+#      (see patch-deploy-safe-c2.yml). A WAL that silently vanishes is worse
+#      than no WAL: it reports durability it does not have.
+#
+#   2. RESYNC_FROM_SNAPSHOT. Contabo1's .aequitas.env contains it, and
+#      deploy_safe_c2.sh's own comment records what that does on Contabo2:
+#      recreating the container with --env-file wipes the database. So this
+#      does NOT use --env-file from that path. It inherits the RUNNING
+#      container's env, drops RESYNC_FROM_SNAPSHOT, and appends the WAL keys.
+#
+# It also does NOT rebuild the image. Contabo1 is already on the same commit
+# as Contabo2 (ee6c394, which contains both WAL corruption fixes 8a49c38 and
+# 1073fe2), and Contabo1 now also hosts the coordinator, matching service,
+# redis and postgres -- a `docker build` there has more memory pressure than
+# when deploy.sh was written, and a build on a production box has already
+# caused a global kernel OOM once. Same image, new container, nothing fetched.
+#
+# mode=inspect prints the exact command that mode=apply would run and changes
+# nothing. Run inspect first and read it.
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "inspect (read-only) or apply (recreates the container)"
+        required: true
+        default: inspect
+        type: choice
+        options: [inspect, apply]
+
+jobs:
+  wal:
+    runs-on: ubuntu-latest
+    steps:
+      - name: WAL on Contabo1
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: 173.249.37.118
+          username: root
+          key: ${{ secrets.CONTABO_SSH_KEY }}
+          port: 22
+          fingerprint: "SHA256:noMtjHV8c+2iEFZu3TRUP6WRwGjkrvFke71KgU6Eyt4"
+          script_stop: false
+          timeout: 600s
+          command_timeout: 600s
+          script: |
+            MODE="${{ inputs.mode }}"
+            set -uo pipefail
+
+            IMAGE="$(docker inspect aequitas-node --format '{{.Config.Image}}')"
+            echo "current image     : $IMAGE"
+            echo "current height    : $(curl -s --max-time 10 http://127.0.0.1:8080/api/status | tr ',' '\n' | grep -o '"height":[0-9]*')"
+            echo "--- RESYNC_FROM_SNAPSHOT in the env FILE (the one deploy.sh uses) ---"
+            grep '^RESYNC_FROM_SNAPSHOT=' /root/.aequitas.env || echo "  (not in file)"
+            echo "--- RESYNC_FROM_SNAPSHOT in the RUNNING process ---"
+            docker inspect aequitas-node --format '{{range .Config.Env}}{{println .}}{{end}}' | grep '^RESYNC_FROM_SNAPSHOT=' || echo "  (not in process)"
+            echo "existing mounts   : $(docker inspect aequitas-node --format '{{len .Mounts}}')"
+
+            # Inherit the RUNNING env, minus the keys that must not be carried
+            # into a new container: RESYNC_FROM_SNAPSHOT wipes the DB, and
+            # HOSTNAME/PATH/HOME are container-specific.
+            mkdir -p /root/wal-migration
+            ENVOUT=/root/wal-migration/inherited.env
+            docker inspect aequitas-node --format '{{range .Config.Env}}{{println .}}{{end}}' | grep -vE '^(RESYNC_FROM_SNAPSHOT|HOSTNAME|PATH|HOME|AEQUITAS_WAL_ENABLED|AEQUITAS_WAL_PATH)=' | grep -E '^[A-Za-z_][A-Za-z0-9_]*=' > "$ENVOUT"
+            echo "AEQUITAS_WAL_ENABLED=1" >> "$ENVOUT"
+            echo "AEQUITAS_WAL_PATH=/data/wal/aequitas_transfers.wal" >> "$ENVOUT"
+            echo "inherited env keys: $(wc -l < $ENVOUT)"
+            echo "--- keys that will be passed (names only, no values) ---"
+            cut -d= -f1 "$ENVOUT" | sort
+
+            echo ""
+            echo "=== the command apply would run ==="
+            echo "  mkdir -p /root/aequitas-wal-data"
+            echo "  docker stop aequitas-node && docker rm aequitas-node"
+            echo "  docker run -d --name aequitas-node --network aequitas-net -p 4001:4001 -p 8080:8080 -v /root/aequitas-wal-data:/data/wal --env-file $ENVOUT --restart unless-stopped $IMAGE"
+
+            if [ "$MODE" != "apply" ]; then
+              echo ""
+              echo "mode=inspect -- nothing was changed."
+              exit 0
+            fi
+
+            echo ""
+            echo "=== APPLYING ==="
+            mkdir -p /root/aequitas-wal-data
+            docker stop aequitas-node
+            docker rm aequitas-node
+            docker run -d --name aequitas-node --network aequitas-net -p 4001:4001 -p 8080:8080 -v /root/aequitas-wal-data:/data/wal --env-file "$ENVOUT" --restart unless-stopped "$IMAGE"
+
+            echo "--- waiting 45s for startup ---"
+            sleep 45
+            echo "--- WAL flags in the new container ---"
+            docker inspect aequitas-node --format '{{range .Config.Env}}{{println .}}{{end}}' | grep -E '^(AEQUITAS_WAL_ENABLED|AEQUITAS_WAL_PATH)=' || echo "(MISSING -- flags did not reach the process)"
+            echo "--- mounts ---"
+            docker inspect aequitas-node --format '{{range .Mounts}}{{.Source}} -> {{.Destination}}{{println}}{{end}}'
+            echo "--- host WAL dir ---"
+            ls -la /root/aequitas-wal-data/ 2>/dev/null || echo "(empty)"
+            echo "--- the node's own [WAL] lines ---"
+            docker logs aequitas-node --since 5m 2>&1 | grep -F '[WAL]' | tail -20 || echo "(no [WAL] lines)"
+            echo "--- errors/panics since restart ---"
+            docker logs aequitas-node --since 5m 2>&1 | grep -iE 'panic|fatal|FATAL' | tail -10 || echo "(none)"
+            echo "--- status ---"
+            curl -s --max-time 15 http://127.0.0.1:8080/api/status | tr ',' '\n' | grep -E '"height"|git_commit' || echo "(unreachable)"
