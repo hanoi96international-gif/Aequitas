@@ -133,7 +133,10 @@ jobs:
             grep -q '^MPC_ENABLED=' /root/.aequitas.env || echo 'MPC_ENABLED=true' >> /root/.aequitas.env
             grep -q '^MPC_COMMITTEE_SIZE=' /root/.aequitas.env || echo 'MPC_COMMITTEE_SIZE=2' >> /root/.aequitas.env
             grep -q '^MPC_TRIPLE_FILE=' /root/.aequitas.env || echo 'MPC_TRIPLE_FILE=/data/mpc/triples.bin' >> /root/.aequitas.env
-            grep -E '^MPC_' /root/.aequitas.env
+            # Names and <set>, never values: MPC_CLIENT_TOKEN starts with MPC_,
+            # so an unmasked grep here printed a live credential straight into a
+            # workflow log readable by anyone with repository access.
+            grep -E '^MPC_' /root/.aequitas.env | sed 's/=.*/=<set>/'
             if grep -q 'docker run -d --name aequitas-node' /root/deploy.sh; then
               cp /root/deploy.sh "/root/deploy.sh.bak.$(date +%Y%m%d-%H%M%S)"
               grep -q -- "-v $TRIPLE_HOST_DIR:/data/mpc" /root/deploy.sh || sed -i "s|--env-file /root/.aequitas.env|-v $TRIPLE_HOST_DIR:/data/mpc --env-file /root/.aequitas.env|" /root/deploy.sh
@@ -243,7 +246,10 @@ jobs:
             grep -q '^MPC_ENABLED=' /root/.aequitas.env || echo 'MPC_ENABLED=true' >> /root/.aequitas.env
             grep -q '^MPC_COMMITTEE_SIZE=' /root/.aequitas.env || echo 'MPC_COMMITTEE_SIZE=2' >> /root/.aequitas.env
             grep -q '^MPC_TRIPLE_FILE=' /root/.aequitas.env || echo 'MPC_TRIPLE_FILE=/data/mpc/triples.bin' >> /root/.aequitas.env
-            grep -E '^MPC_' /root/.aequitas.env
+            # Names and <set>, never values: MPC_CLIENT_TOKEN starts with MPC_,
+            # so an unmasked grep here printed a live credential straight into a
+            # workflow log readable by anyone with repository access.
+            grep -E '^MPC_' /root/.aequitas.env | sed 's/=.*/=<set>/'
             if [ -f /root/deploy_safe_c2.sh ] && grep -q 'docker run' /root/deploy_safe_c2.sh; then
               cp /root/deploy_safe_c2.sh "/root/deploy_safe_c2.sh.bak.$(date +%Y%m%d-%H%M%S)"
               grep -q -- "-v $TRIPLE_HOST_DIR:/data/mpc" /root/deploy_safe_c2.sh || sed -i "s|-v /root/aequitas-wal-data:/data/wal|-v /root/aequitas-wal-data:/data/wal -v $TRIPLE_HOST_DIR:/data/mpc|" /root/deploy_safe_c2.sh
