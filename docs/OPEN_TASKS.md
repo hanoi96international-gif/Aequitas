@@ -10,25 +10,43 @@ is named so it can be repeated.
 
 ---
 
-## 1. MPC is built but not activated anywhere
+## 1. MPC is live on both validators (was: built but not activated)
 
-**State:** The chain reads eight MPC settings — `MPC_ENABLED`, `MPC_PEERS`,
-`MPC_PARTY_INDEX`, `MPC_TRIPLE_FILE`, `MPC_CLIENT_TOKEN`,
-`MPC_COMMITTEE_SIZE`, `MPC_REQUIRED`, `MPC_ALLOW_INSECURE`. **None of them is
-set on Contabo1 or Contabo2.** (Read 2026-08-20 via `wal-status-both.yml` and
-`wal-contabo1.yml` mode=inspect: C1 carries 16 env keys, C2 carries 22,
-and no `MPC_` key appears in either.)
+**Done 2026-08-20, in this order:**
 
-The two Beaver triple files produced by `cmd/mpc-dealer` (48 MB each) are still
-on the developer's machine in `mpc-triples/`. They were never transferred.
+1. `mpc-triples-distribute.yml` generated both dealer rows in one CI run and
+   delivered exactly one to each box — Contabo1 party 0, Contabo2 party 1, by
+   ascending signing address, checksums verified, each box checked for the
+   ABSENCE of the other's row.
+2. `mpc-activate.yml` set `MPC_ENABLED`, `MPC_COMMITTEE_SIZE=2` and
+   `MPC_TRIPLE_FILE`, mounted the row at `/data/mpc`, and recreated both
+   containers — sequenced, never both at once, since two validators restarting
+   together stops the chain.
+3. `mpc-client-token.yml` set one shared `MPC_CLIENT_TOKEN` on both.
 
-**Why it matters:** Green tests for a subsystem nothing runs is the most
-expensive kind of false confidence — it reads as finished in every summary.
+Both nodes now log, after restart:
 
-**To do:** place `triples-party-0.bin` on one box and `triples-party-1.bin` on
-the other (never both files on one box — that single machine could then
-reconstruct), set the five wiring variables per box, and confirm a committee
-forms against the live nodes rather than in a test harness.
+    [MPC] serving /mpc/exchange as 0x…; committee of 2 drawn from the chain,
+    membership resolved per registration
+
+**Discovering mode was chosen deliberately.** `MPC_PEERS` is left empty, so the
+committee comes from the chain's peer registry and a new validator becomes
+eligible by advertising `mpc_ready` — no edit on any existing box. The
+alternative writes every peer out by hand with a per-node party index, which
+makes adding a validator an O(n) manual change across machines that are not all
+owned by one person.
+
+**Credential exposure, 2026-08-20.** The activation workflow confirmed its work
+with `grep -E '^MPC_' /root/.aequitas.env`, and `MPC_CLIENT_TOKEN` shares that
+prefix — so the first token was printed in clear text into a workflow log
+readable by anyone with repository access. It was rotated and the output now
+prints `=<set>`. Worth generalising: a prefix filter written to confirm
+configuration will match a secret that shares the prefix.
+
+**Still open here:** `MPC_REQUIRED` is deliberately unset, so the gate is
+advisory — see item 2. And the caller has not been wired: the matching service
+needs the same token before it can submit anything. Read it off a box with
+`grep '^MPC_CLIENT_TOKEN=' /root/.aequitas.env`.
 
 ---
 
