@@ -919,8 +919,15 @@ func (a *APIServer) buildMux() *http.ServeMux {
 	// pattern beats the "/" SPA fallback on specificity, so peers reach the
 	// endpoint rather than a copy of the explorer page.
 	a.mpc = registerMPCRoutes(mux, func() []mpc.Party {
-		return GlobalPeerRegistry.MPCCandidates(
-			os.Getenv("SELF_URL"), a.blockchain.SelfSigningAddress())
+		// Offer THIS node as a candidate only once it is actually serving.
+		// a.mpc is nil until registerMPCRoutes succeeds, and it stays nil for
+		// any node that has not configured MPC — so an empty address keeps a
+		// non-participant out of its own candidate list.
+		self := ""
+		if a.mpc != nil {
+			self = a.blockchain.SelfSigningAddress()
+		}
+		return GlobalPeerRegistry.MPCCandidates(os.Getenv("SELF_URL"), self)
 	})
 
 	mux.HandleFunc("/mpc/enroll", a.handleMPCEnroll)
@@ -2645,8 +2652,13 @@ func (a *APIServer) handlePeerRegister(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var req struct {
-		URL                string `json:"url"`
-		SigningAddress     string `json:"signing_address"`
+		URL            string `json:"url"`
+		SigningAddress string `json:"signing_address"`
+		// MPCReady: this peer offers to serve the private duplicate check.
+		// Absent (older nodes, or nodes not offering it) means false, which
+		// keeps them out of committee selection — a drawn member that cannot
+		// take part stalls every comparison the committee is asked for.
+		MPCReady           bool   `json:"mpc_ready"`
 		PeerSecret         string `json:"peer_secret"`
 		Signature          string `json:"signature"` // P1-3 challenge-response
 		NodeOperatorWallet string `json:"node_operator_wallet"`
@@ -2789,7 +2801,7 @@ func (a *APIServer) handlePeerRegister(w http.ResponseWriter, r *http.Request) {
 				// Record the signing address alongside the URL: this
 				// registration has just proved ownership of that key, and it
 				// is the only moment the two halves are known together.
-				GlobalPeerRegistry.RegisterWithAddress(req.URL, req.SigningAddress)
+				GlobalPeerRegistry.RegisterWithMPC(req.URL, req.SigningAddress, req.MPCReady)
 				fmt.Printf("[PEERS] Registered: %s\n", req.URL)
 				a.blockchain.startSyncForPeer(req.URL)
 			} else {

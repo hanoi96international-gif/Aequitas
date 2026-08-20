@@ -1362,6 +1362,22 @@
         </tr>
       </table></div>
 
+      <!-- Optional: serving the private duplicate check.
+           Deliberately placed AFTER the required-variables table and marked
+           optional throughout. Committee membership is drawn from the chain by
+           hash, and a node that does not offer the service is never drawn (see
+           PeerRegistry.MPCCandidates), so none of this is needed to run a
+           validator. Presenting it as a requirement would discourage exactly
+           the operators the network wants. -->
+      <div style="font-size:0.76rem;color:var(--purple);font-weight:700;letter-spacing:1px;text-transform:uppercase;margin-bottom:10px;border-bottom:1px solid var(--border);padding-bottom:6px" data-i18n="mpc-optin-title">Optional &mdash; Help check for duplicate registrations</div>
+      <div style="font-size:0.79rem;color:var(--muted);line-height:1.9;margin-bottom:12px" data-i18n="mpc-optin-desc">Your node can also help verify that nobody registers twice, without ever seeing anyone's biometric data. Each participating validator holds one mathematical share of every enrolled template &mdash; noise on its own &mdash; and they compare a new capture together, so no single machine can reconstruct anything. This is entirely optional: a small committee is drawn automatically from the validators that offer the service, and a node that does not offer it is never drawn and runs completely normally. If you want to take part, set the three variables below and ask the operator for your share file.</div>
+      <div style="font-family:var(--font-mono);background:rgba(0,0,0,0.3);border:1px solid rgba(139,92,246,0.15);border-radius:6px;padding:12px 14px;margin-bottom:12px;font-size:0.76rem;line-height:1.9;overflow-x:auto">
+        -e <span style="color:var(--neon)">MPC_ENABLED</span>="<span style="color:var(--gold)">true</span>" \<br>
+        -e <span style="color:var(--neon)">MPC_COMMITTEE_SIZE</span>="<span style="color:var(--gold)">2</span>" \<br>
+        -e <span style="color:var(--neon)">MPC_TRIPLE_FILE</span>="<span style="color:var(--gold)">/data/triples-party-N.bin</span>" \
+      </div>
+      <div style="font-size:0.77rem;color:var(--muted);line-height:1.8;margin-bottom:16px" data-i18n="mpc-optin-note">The share file contains one-time randomness that only your node may hold &mdash; never copy it to another machine and never commit it anywhere. Your node is identified to the other committee members by the same signing key it already uses for blocks, so there is no additional secret to obtain and no extra step when a new validator joins.</div>
+
       <!-- Step 4 was a Railway walkthrough. Railway was decommissioned on
            2026-08-14 and hosts nothing for this project; following it produced
            a node that could never reach the network. The Docker path below is

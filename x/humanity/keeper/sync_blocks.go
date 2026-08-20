@@ -45,6 +45,17 @@ type PeerRegistry struct {
 	mu    sync.RWMutex
 	peers map[string]time.Time // URL → last heartbeat
 
+	// mpcReady records which peers advertised that they can actually serve the
+	// duplicate check.
+	//
+	// Committee selection draws from candidates by hash. Without this it would
+	// draw from EVERY registered peer, including ones that never enabled MPC —
+	// and a drawn member that cannot take part stalls every comparison the
+	// committee is asked for, halting registration for everybody. The default is
+	// false, so a peer running older code, or one that simply does not offer the
+	// service, is never drawn.
+	mpcReady map[string]bool
+
 	// signingAddr maps URL → the peer's validator signing address, recorded
 	// when a peer registers and proves ownership of that key.
 	//
@@ -68,6 +79,12 @@ func (pr *PeerRegistry) Register(url string) {
 // committee membership — correct, because without a verified address there is
 // nothing to check its contributions against.
 func (pr *PeerRegistry) RegisterWithAddress(url, signingAddress string) {
+	pr.RegisterWithMPC(url, signingAddress, false)
+}
+
+// RegisterWithMPC additionally records whether the peer offers to serve the
+// private duplicate check.
+func (pr *PeerRegistry) RegisterWithMPC(url, signingAddress string, mpcReady bool) {
 	if url == "" {
 		return
 	}
@@ -80,6 +97,10 @@ func (pr *PeerRegistry) RegisterWithAddress(url, signingAddress string) {
 		}
 		pr.signingAddr[url] = strings.ToLower(signingAddress)
 	}
+	if pr.mpcReady == nil {
+		pr.mpcReady = map[string]bool{}
+	}
+	pr.mpcReady[url] = mpcReady
 	pr.mu.Unlock()
 }
 
@@ -89,6 +110,11 @@ func (pr *PeerRegistry) RegisterWithAddress(url, signingAddress string) {
 // Only recently-seen peers: a committee member that is not reachable cannot
 // take part, and additive sharing means one absent member stalls every
 // comparison the committee is asked for.
+// MPCCandidates returns peers eligible for committee membership: recently seen,
+// with a verified signing address, AND advertising that they serve the check.
+//
+// selfAddress is empty when THIS node is not an MPC party, which keeps it out of
+// its own candidate list for the same reason.
 func (pr *PeerRegistry) MPCCandidates(selfURL, selfAddress string) []mpc.Party {
 	pr.mu.RLock()
 	defer pr.mu.RUnlock()
@@ -104,6 +130,11 @@ func (pr *PeerRegistry) MPCCandidates(selfURL, selfAddress string) []mpc.Party {
 		}
 		addr := pr.signingAddr[url]
 		if addr == "" {
+			continue
+		}
+		if !pr.mpcReady[url] {
+			// Eligible only if the peer said it can serve. A committee member
+			// that cannot take part stalls every comparison it is asked for.
 			continue
 		}
 		out = append(out, mpc.Party{URL: url, Address: addr})

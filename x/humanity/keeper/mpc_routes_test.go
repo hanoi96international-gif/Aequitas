@@ -84,13 +84,22 @@ func TestMPCConfigFailsClosed(t *testing.T) {
 			}, "error",
 		},
 		{
-			"insecure with a remote peer is refused",
+			// Plaintext peers are accepted since 2026-08-20. The refusal was
+			// written when a shared token was the only protection and forgery
+			// was genuinely possible; per-round signatures replaced it, and
+			// mpc.TestForgeryFailsWithoutTLS shows nothing an attacker on a
+			// plaintext path submits is accepted. It was blocking committee
+			// formation over a threat that no longer existed.
+			//
+			// The peers must still carry signing addresses — that is what the
+			// contributions are verified against, and it is the part that
+			// actually matters.
+			"plaintext peers are accepted, because every round is signed",
 			map[string]string{
 				"MPC_ENABLED":     "true",
 				"MPC_PEERS":       fmt.Sprintf("http://a.example|%s,http://b.example|%s", addrA, addrB),
 				"MPC_PARTY_INDEX": "0", "RELAYER_PRIVATE_KEY": keyA,
-				"MPC_ALLOW_INSECURE": "true",
-			}, "error",
+			}, "on",
 		},
 		{
 			"two https peers with matching key is accepted",

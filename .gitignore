@@ -64,3 +64,14 @@ id_ed25519*
 # `docker build`, so the image can record which commit it was built from.
 # It belongs to a checkout, never to the repository.
 .git-commit-stamp
+
+# Beaver multiplication triples produced by cmd/mpc-dealer.
+#
+# NEVER COMMIT THESE. Each file is one MPC party's secret correlated randomness.
+# Anyone holding two parties' files for the same batch can reconstruct the
+# triples, and a triple plus the traffic between the parties reconstructs the
+# biometric templates that traffic was about. They are also single-use: a
+# committed file would be restored and replayed, and a reused triple stops
+# blinding and leaks the difference of the secrets it was used on.
+mpc-triples/
+*.bin

@@ -13,6 +13,9 @@ function activeProvider() { return wcProvider || window.ethereum; }
 
 const T = {
 en:{
+  'mpc-optin-title':'Optional — Help check for duplicate registrations',
+  'mpc-optin-desc':'Your node can also help verify that nobody registers twice, without ever seeing anyone\'s biometric data. Each participating validator holds one mathematical share of every enrolled template — noise on its own — and they compare a new capture together, so no single machine can reconstruct anything. This is entirely optional: a small committee is drawn automatically from the validators that offer the service, and a node that does not offer it is never drawn and runs completely normally.',
+  'mpc-optin-note':'The share file contains one-time randomness that only your node may hold — never copy it to another machine and never commit it anywhere. Your node is identified to the other committee members by the same signing key it already uses for blocks, so there is no additional secret to obtain.',
   'logo-sub':'PROOF OF HUMANITY','live':'LIVE',
   'reg-title':'🔐 Register as a Verified Human',
   'reg-sub':'Join the Aequitas network and receive your 1,000 AEQ Universal Basic Income grant. Registration is one-time, permanent, and completely gasless. No personal data is ever stored.',
@@ -159,6 +162,9 @@ en:{
   'expl-heading':'Block Explorer',
 },
 de:{
+  'mpc-optin-title':'Optional — Bei der Duplikatsprüfung mithelfen',
+  'mpc-optin-desc':'Dein Node kann mit prüfen, dass sich niemand zweimal registriert, ohne je die biometrischen Daten eines Menschen zu sehen. Jeder teilnehmende Validator hält nur einen mathematischen Anteil jeder hinterlegten Vorlage — für sich genommen Rauschen — und sie vergleichen eine neue Aufnahme gemeinsam, sodass keine einzelne Maschine etwas rekonstruieren kann. Das ist völlig freiwillig: ein kleines Komitee wird automatisch aus den Validatoren gezogen, die den Dienst anbieten, und wer ihn nicht anbietet, wird nie gezogen und läuft ganz normal weiter.',
+  'mpc-optin-note':'Die Anteilsdatei enthält Einmal-Zufall, den nur dein Node halten darf — kopiere sie nie auf eine andere Maschine und checke sie nirgends ein. Gegenüber den anderen Komitee-Mitgliedern weist sich dein Node mit demselben Signierschlüssel aus, den er ohnehin für Blöcke nutzt; es gibt also kein weiteres Geheimnis zu beschaffen.',
   'logo-sub':'MENSCHLICHKEITSNACHWEIS','live':'LIVE',
   'reg-title':'🔐 Als verifizierter Mensch registrieren',
   'reg-sub':'Tritt dem Aequitas-Netzwerk bei und erhalte dein Universelles Grundeinkommen von 1.000 AEQ. Einmalig, permanent und vollständig gebührenfrei. Keine persönlichen Daten werden jemals gespeichert.',
@@ -319,6 +325,9 @@ de:{
   'expl-heading':'Block-Explorer',
 },
 es:{
+  'mpc-optin-title':'Opcional — Ayuda a comprobar registros duplicados',
+  'mpc-optin-desc':'Tu nodo también puede ayudar a verificar que nadie se registre dos veces, sin ver jamás los datos biométricos de nadie. Cada validador participante guarda solo una parte matemática de cada plantilla registrada — ruido por sí sola — y comparan juntos una nueva captura, de modo que ninguna máquina puede reconstruir nada. Es totalmente opcional: se selecciona automáticamente un pequeño comité entre los validadores que ofrecen el servicio, y un nodo que no lo ofrece nunca es elegido y funciona con total normalidad.',
+  'mpc-optin-note':'El archivo de partes contiene aleatoriedad de un solo uso que solo tu nodo puede tener — nunca lo copies a otra máquina ni lo subas a ningún repositorio. Tu nodo se identifica ante los demás miembros del comité con la misma clave de firma que ya usa para los bloques, así que no hay ningún secreto adicional que obtener.',
   'logo-sub':'PRUEBA DE HUMANIDAD','live':'EN VIVO',
   'reg-title':'🔐 Regístrate como Humano Verificado',
   'reg-sub':'Únete a la red Aequitas y recibe tu subsidio de Renta Básica Universal de 1,000 AEQ. Único, permanente y completamente gratuito. Ningún dato personal es almacenado.',
@@ -467,6 +476,9 @@ es:{
   'expl-heading':'Explorador de Bloques',
 },
 ru:{
+  'mpc-optin-title':'Необязательно — помочь в проверке повторных регистраций',
+  'mpc-optin-desc':'Ваш узел может помогать проверять, что никто не регистрируется дважды, никогда не видя чужих биометрических данных. Каждый участвующий валидатор хранит лишь одну математическую долю каждого шаблона — сама по себе это шум — и они сравнивают новый снимок совместно, так что ни одна машина не может ничего восстановить. Это полностью добровольно: небольшой комитет выбирается автоматически из валидаторов, предлагающих услугу, а узел, который её не предлагает, никогда не выбирается и работает как обычно.',
+  'mpc-optin-note':'Файл долей содержит одноразовую случайность, которой может владеть только ваш узел — никогда не копируйте его на другую машину и никуда не публикуйте. Перед остальными участниками комитета ваш узел удостоверяется тем же ключом подписи, который он уже использует для блоков.',
   'logo-sub':'ДОКАЗАТЕЛЬСТВО ЧЕЛОВЕЧНОСТИ','live':'ОНЛАЙН',
   'reg-title':'🔐 Зарегистрируйтесь как Верифицированный Человек',
   'reg-sub':'Присоединитесь к сети Aequitas и получите 1 000 AEQ в качестве Универсального Базового Дохода. Однократно, постоянно и полностью бесплатно. Никакие личные данные никогда не сохраняются.',
@@ -613,6 +625,9 @@ ru:{
   'expl-heading':'Обозреватель блоков',
 },
 zh:{
+  'mpc-optin-title':'可选 — 协助检查重复注册',
+  'mpc-optin-desc':'您的节点还可以协助验证没有人重复注册，而无需查看任何人的生物特征数据。每个参与的验证者仅持有每份已登记模板的一个数学份额——单独看只是噪声——他们共同比对新采集的数据，因此没有任何一台机器能够还原出内容。这完全是自愿的：系统会自动从提供该服务的验证者中抽取一个小型委员会，未提供该服务的节点永远不会被抽中，并且完全正常运行。',
+  'mpc-optin-note':'份额文件包含只有您的节点才可持有的一次性随机数——切勿复制到其他机器，也切勿提交到任何代码库。您的节点使用它已用于区块的同一签名密钥向其他委员会成员表明身份，因此无需获取额外的密钥。',
   'logo-sub':'人类证明','live':'实时',
   'reg-title':'🔐 注册成为经过验证的人类',
   'reg-sub':'加入Aequitas网络并获得1,000 AEQ的普遍基本收入补贴。一次性、永久性且完全免费。永远不会存储任何个人数据。',
@@ -761,6 +776,9 @@ zh:{
   'expl-heading':'区块浏览器',
 },
 id:{
+  'mpc-optin-title':'Opsional — Bantu memeriksa pendaftaran ganda',
+  'mpc-optin-desc':'Node Anda juga dapat membantu memverifikasi bahwa tidak ada yang mendaftar dua kali, tanpa pernah melihat data biometrik siapa pun. Setiap validator yang ikut serta hanya menyimpan satu bagian matematis dari setiap templat terdaftar — berupa derau jika berdiri sendiri — dan mereka membandingkan tangkapan baru secara bersama, sehingga tidak ada satu mesin pun yang bisa merekonstruksi apa pun. Ini sepenuhnya opsional: sebuah komite kecil dipilih otomatis dari validator yang menawarkan layanan ini, dan node yang tidak menawarkannya tidak pernah terpilih serta berjalan sepenuhnya normal.',
+  'mpc-optin-note':'Berkas bagian berisi keacakan sekali pakai yang hanya boleh dipegang node Anda — jangan pernah menyalinnya ke mesin lain dan jangan pernah menyimpannya di repositori. Node Anda dikenali oleh anggota komite lain melalui kunci penanda tangan yang sama yang sudah dipakai untuk blok, jadi tidak ada rahasia tambahan yang perlu diperoleh.',
   'logo-sub':'BUKTI KEMANUSIAAN','live':'LANGSUNG',
   'reg-title':'🔐 Daftar sebagai Manusia Terverifikasi',
   'reg-sub':'Bergabunglah dengan jaringan Aequitas dan terima hibah Pendapatan Dasar Universal sebesar 1.000 AEQ. Satu kali, permanen, dan sepenuhnya gratis. Tidak ada data pribadi yang pernah disimpan.',
@@ -901,6 +919,9 @@ id:{
   'expl-heading':'Penjelajah Blok',
 },
 it:{
+  'mpc-optin-title':'Facoltativo — Aiuta a verificare le registrazioni doppie',
+  'mpc-optin-desc':'Il tuo nodo può anche contribuire a verificare che nessuno si registri due volte, senza mai vedere i dati biometrici di nessuno. Ogni validatore partecipante detiene una sola quota matematica di ogni modello registrato — di per sé solo rumore — e confrontano insieme una nuova acquisizione, così nessuna singola macchina può ricostruire nulla. È del tutto facoltativo: un piccolo comitato viene estratto automaticamente tra i validatori che offrono il servizio, e un nodo che non lo offre non viene mai estratto e funziona del tutto normalmente.',
+  'mpc-optin-note':'Il file delle quote contiene casualità monouso che solo il tuo nodo può detenere — non copiarlo mai su un\'altra macchina e non inserirlo mai in un repository. Il tuo nodo si identifica agli altri membri del comitato con la stessa chiave di firma che usa già per i blocchi, quindi non c\'è alcun segreto aggiuntivo da procurarsi.',
   'logo-sub':'PROVA DI UMANITÀ','live':'LIVE',
   'reg-title':'🔐 Registrati come Umano Verificato',
   'reg-sub':'Unisciti alla rete Aequitas e ricevi il tuo sussidio di Reddito Universale di Base di 1.000 AEQ. Una tantum, permanente e completamente gratuito. Nessun dato personale viene mai memorizzato.',
@@ -1042,6 +1063,9 @@ it:{
   'expl-heading':'Esplora blocchi',
 },
 tr:{
+  'mpc-optin-title':'İsteğe bağlı — Mükerrer kayıt kontrolüne yardım et',
+  'mpc-optin-desc':'Node\'unuz, kimsenin biyometrik verisini görmeden, kimsenin iki kez kayıt olmadığını doğrulamaya da yardım edebilir. Katılan her doğrulayıcı, kayıtlı her şablonun yalnızca bir matematiksel payını tutar — tek başına yalnızca gürültüdür — ve yeni bir kaydı birlikte karşılaştırırlar, böylece hiçbir makine tek başına hiçbir şeyi geri getiremez. Bu tamamen isteğe bağlıdır: hizmeti sunan doğrulayıcılar arasından otomatik olarak küçük bir komite seçilir; sunmayan bir node asla seçilmez ve tamamen normal çalışır.',
+  'mpc-optin-note':'Pay dosyası yalnızca sizin node\'unuzun tutabileceği tek kullanımlık rastgelelik içerir — başka bir makineye asla kopyalamayın ve hiçbir depoya eklemeyin. Node\'unuz diğer komite üyelerine, bloklar için zaten kullandığı aynı imza anahtarıyla tanıtılır; bu yüzden edinilecek ek bir sır yoktur.',
   'logo-sub':'İNSANLIK KANITI','live':'CANLI',
   'reg-title':'🔐 Doğrulanmış İnsan Olarak Kayıt Ol',
   'reg-sub':'Aequitas ağına katıl ve 1.000 AEQ Evrensel Temel Gelir hibeni al. Tek seferlik, kalıcı ve tamamen ücretsiz. Hiçbir kişisel veri asla saklanmaz.',
@@ -1189,6 +1213,9 @@ tr:{
   'expl-heading':'Blok Gezgini',
 },
 fr:{
+  'mpc-optin-title':'Facultatif — Aider à détecter les inscriptions en double',
+  'mpc-optin-desc':'Votre nœud peut aussi aider à vérifier que personne ne s\'inscrit deux fois, sans jamais voir les données biométriques de qui que ce soit. Chaque validateur participant ne détient qu\'une part mathématique de chaque modèle enregistré — du bruit à elle seule — et ils comparent ensemble une nouvelle capture, de sorte qu\'aucune machine ne peut rien reconstituer. C\'est entièrement facultatif : un petit comité est tiré automatiquement parmi les validateurs qui proposent le service, et un nœud qui ne le propose pas n\'est jamais tiré et fonctionne tout à fait normalement.',
+  'mpc-optin-note':'Le fichier de parts contient un aléa à usage unique que seul votre nœud peut détenir — ne le copiez jamais sur une autre machine et ne le versionnez nulle part. Votre nœud s\'identifie auprès des autres membres du comité avec la même clé de signature qu\'il utilise déjà pour les blocs : il n\'y a donc aucun secret supplémentaire à obtenir.',
   'logo-sub':'PREUVE D\'HUMANITÉ','live':'EN DIRECT',
   'reg-title':'🔐 S\'inscrire en tant qu\'humain vérifié',
   'reg-sub':'Rejoignez le réseau Aequitas et recevez 1 000 AEQ de Revenu de Base Universel. L\'inscription est unique, permanente et totalement sans frais. Aucune donnée personnelle n\'est stockée.',
@@ -1335,6 +1362,9 @@ fr:{
   'expl-heading':'Explorateur de blocs',
 },
 pt:{
+  'mpc-optin-title':'Opcional — Ajude a verificar registros duplicados',
+  'mpc-optin-desc':'Seu node também pode ajudar a verificar que ninguém se registre duas vezes, sem jamais ver os dados biométricos de ninguém. Cada validador participante guarda apenas uma parte matemática de cada modelo registrado — ruído por si só — e comparam juntos uma nova captura, de modo que nenhuma máquina isolada consegue reconstruir nada. É totalmente opcional: um pequeno comitê é sorteado automaticamente entre os validadores que oferecem o serviço, e um node que não o oferece nunca é sorteado e funciona normalmente.',
+  'mpc-optin-note':'O arquivo de partes contém aleatoriedade de uso único que só o seu node pode ter — nunca o copie para outra máquina nem o envie para qualquer repositório. Seu node se identifica aos demais membros do comitê com a mesma chave de assinatura que já usa para os blocos, portanto não há segredo adicional a obter.',
   'logo-sub':'PROVA DE HUMANIDADE','live':'AO VIVO',
   'reg-title':'🔐 Registrar como Humano Verificado',
   'reg-sub':'Junte-se à rede Aequitas e receba 1.000 AEQ de Renda Básica Universal. Registro único, permanente e completamente sem taxas. Nenhum dado pessoal é armazenado.',
@@ -1481,6 +1511,9 @@ pt:{
   'expl-heading':'Explorador de Blocos',
 },
 ar:{
+  'mpc-optin-title':'اختياري — ساعد في كشف التسجيلات المكرّرة',
+  'mpc-optin-desc':'يمكن لعقدتك أيضاً أن تساعد في التحقّق من أنّ أحداً لا يسجّل مرّتين، دون أن ترى بيانات أي شخص الحيوية إطلاقاً. كل مدقّق مشارك يحتفظ بحصّة رياضية واحدة فقط من كل قالب مسجّل — وهي بمفردها مجرّد تشويش — ويقارنون معاً أي التقاط جديد، فلا تستطيع أي آلة منفردة استعادة أي شيء. هذا اختياري تماماً: تُختار لجنة صغيرة تلقائياً من بين المدقّقين الذين يقدّمون الخدمة، والعقدة التي لا تقدّمها لا تُختار أبداً وتعمل بشكل طبيعي تماماً.',
+  'mpc-optin-note':'يحتوي ملف الحصص على عشوائية تُستخدم مرّة واحدة ولا يجوز أن يحتفظ بها سوى عقدتك — لا تنسخه أبداً إلى جهاز آخر ولا ترفعه إلى أي مستودع. تتعرّف عليك بقية أعضاء اللجنة عبر مفتاح التوقيع نفسه الذي تستخدمه عقدتك للكتل، فلا حاجة للحصول على أي سرّ إضافي.',
   'logo-sub':'إثبات الإنسانية','live':'مباشر',
   'reg-title':'🔐 التسجيل كإنسان موثق',
   'reg-sub':'انضم إلى شبكة Aequitas واحصل على منحة دخل أساسي شامل تبلغ 1,000 AEQ. التسجيل لمرة واحدة، دائم، ومجاني تماماً. لا يتم تخزين أي بيانات شخصية.',
@@ -1625,6 +1658,9 @@ ar:{
   'expl-heading':'مستكشف الكتل',
 },
 hi:{
+  'mpc-optin-title':'वैकल्पिक — दोहरे पंजीकरण की जाँच में मदद करें',
+  'mpc-optin-desc':'आपका नोड यह सत्यापित करने में भी मदद कर सकता है कि कोई दो बार पंजीकरण न करे, और वह भी किसी का बायोमेट्रिक डेटा देखे बिना। भाग लेने वाला हर validator प्रत्येक दर्ज टेम्पलेट का केवल एक गणितीय हिस्सा रखता है — अकेले में वह मात्र शोर है — और वे मिलकर नई कैप्चर की तुलना करते हैं, इसलिए कोई भी अकेली मशीन कुछ भी पुनर्निर्मित नहीं कर सकती। यह पूरी तरह वैकल्पिक है: सेवा देने वाले validators में से एक छोटी समिति स्वतः चुनी जाती है, और जो नोड यह सेवा नहीं देता वह कभी नहीं चुना जाता और सामान्य रूप से चलता रहता है।',
+  'mpc-optin-note':'हिस्सा फ़ाइल में एक-बार उपयोग होने वाली यादृच्छिकता होती है जिसे केवल आपका नोड रख सकता है — इसे कभी किसी दूसरी मशीन पर न कॉपी करें और कहीं भी कमिट न करें। समिति के अन्य सदस्यों के सामने आपका नोड उसी signing key से पहचाना जाता है जो वह पहले से ब्लॉक्स के लिए उपयोग करता है।',
   'logo-sub':'मानवता का प्रमाण','live':'लाइव',
   'reg-title':'🔐 सत्यापित मानव के रूप में रजिस्टर करें',
   'reg-sub':'Aequitas नेटवर्क से जुड़ें और 1,000 AEQ का यूनिवर्सल बेसिक इनकम अनुदान प्राप्त करें। रजिस्ट्रेशन एक बार, स्थायी और पूरी तरह निःशुल्क है। कोई व्यक्तिगत डेटा संग्रहीत नहीं किया जाता।',
