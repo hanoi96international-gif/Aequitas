@@ -6052,6 +6052,15 @@ func (cs *ChainState) removeLiquidityLocked(ctx context.Context, address string,
 	// wealthy account could dodge decay indefinitely by periodically
 	// removing/re-adding trivial liquidity amounts (touchActivity() below
 	// resets the decay clock without the decay ever having been applied).
+	// The position as the caller saw it, BEFORE settlement.
+	//
+	// Demurrage now reaches LP shares, so settling can burn some of the very
+	// shares this call is about. Comparing the request against what is left
+	// afterwards told an idle provider asking to withdraw everything that they
+	// had "insufficient LP shares" - blaming them for asking about the position
+	// they actually held when they clicked.
+	sharesBeforeSettlement := acc.LPShares.Float()
+
 	lost, err := cs.settleDemurrageLockedCtx(ctx, acc)
 	if err != nil {
 		return 0, 0, 0, fmt.Errorf("could not settle demurrage: %w", err)
@@ -6108,8 +6117,19 @@ func (cs *ChainState) removeLiquidityLocked(ctx context.Context, address string,
 		return 0, 0, 0, fmt.Errorf("liquidity pool is empty")
 	}
 
-	if acc.LPShares.Float() < sharesToBurn {
-		return 0, 0, 0, fmt.Errorf("insufficient LP shares (have %.6f, requested %.6f)", acc.LPShares.Float(), sharesToBurn)
+	if sharesToBurn > sharesBeforeSettlement {
+		// More than they ever had: a real error, still reported as one.
+		return 0, 0, 0, fmt.Errorf("insufficient LP shares (have %.6f, requested %.6f)",
+			sharesBeforeSettlement, sharesToBurn)
+	}
+	if sharesToBurn > acc.LPShares.Float() {
+		// The request was valid when made; demurrage consumed part of it in
+		// between. Withdraw what remains rather than refusing - the shortfall
+		// is the decay they owed, not a mistake on their part.
+		sharesToBurn = acc.LPShares.Float()
+	}
+	if sharesToBurn <= 0 {
+		return 0, 0, 0, fmt.Errorf("no LP shares remain after settling demurrage")
 	}
 	// F17-FIX: guard against TotalLPShares corruption (< actual shares).
 	// Capping fraction to 1.0 above prevents over-withdrawal from reserves,
