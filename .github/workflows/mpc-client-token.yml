@@ -88,9 +88,10 @@ jobs:
           key: ${{ secrets.CONTABO_SSH_KEY }}
           port: 22
           fingerprint: "SHA256:noMtjHV8c+2iEFZu3TRUP6WRwGjkrvFke71KgU6Eyt4"
-          script_stop: true
+          script_stop: false
           envs: MPC_TOKEN
           script: |
+            echo "step start"
             ROTATE="${{ inputs.rotate }}"
             if grep -q '^MPC_CLIENT_TOKEN=' /root/.aequitas.env && [ "$ROTATE" != "yes" ]; then
               echo "Contabo1 already has a token; leaving it. Re-run with rotate=yes to replace it."
@@ -113,9 +114,10 @@ jobs:
           username: root
           key: ${{ secrets.CONTABO2_SSH_KEY }}
           port: 22
-          script_stop: true
+          script_stop: false
           envs: MPC_TOKEN
           script: |
+            echo "step start"
             ROTATE="${{ inputs.rotate }}"
             if grep -q '^MPC_CLIENT_TOKEN=' /root/.aequitas.env && [ "$ROTATE" != "yes" ]; then
               echo "Contabo2 already has a token; leaving it. Re-run with rotate=yes to replace it."
