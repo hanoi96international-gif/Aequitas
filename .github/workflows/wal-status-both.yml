@@ -48,10 +48,11 @@ jobs:
             echo "--- mounts ---"
             docker inspect -f '{{range .Mounts}}{{.Type}} {{.Source}} -> {{.Destination}}{{println}}{{end}}' aequitas-node 2>/dev/null || echo "(none)"
             echo "--- WAL file on the HOST, at the mount SOURCE (not the container path) ---"
-            SRC="$(docker inspect aequitas-node --format '{{range .Mounts}}{{.Source}}:{{.Destination}} {{end}}' 2>/dev/null | tr ' ' '
-' | grep ':/data/wal$' | cut -d: -f1)"
+            SRC="$(docker inspect aequitas-node --format '{{range .Mounts}}{{.Source}}:{{.Destination}}{{println}}{{end}}' 2>/dev/null | grep ':/data/wal$' | cut -d: -f1)"
             echo "mount source: ${SRC:-<none>}"
             [ -n "$SRC" ] && ls -la "$SRC" 2>/dev/null || echo "(nothing at the mount source)"
+            echo "--- the node's own [WAL] log lines (the real proof it is writing) ---"
+            docker logs aequitas-node --since 60m 2>&1 | grep -iE 'WAL|write-ahead' | tail -15 || echo "(no WAL log lines in the last hour)"
             echo "--- running commit ---"
             curl -s --max-time 10 http://127.0.0.1:8080/api/status | tr ',' '\n' | grep -E 'git_commit|height' || echo "(status unreachable)"
 
@@ -80,12 +81,13 @@ jobs:
             echo "--- mounts ---"
             docker inspect -f '{{range .Mounts}}{{.Type}} {{.Source}} -> {{.Destination}}{{println}}{{end}}' aequitas-node 2>/dev/null || echo "(none)"
             echo "--- WAL file on the HOST, at the mount SOURCE (not the container path) ---"
-            SRC="$(docker inspect aequitas-node --format '{{range .Mounts}}{{.Source}}:{{.Destination}} {{end}}' 2>/dev/null | tr ' ' '
-' | grep ':/data/wal$' | cut -d: -f1)"
+            SRC="$(docker inspect aequitas-node --format '{{range .Mounts}}{{.Source}}:{{.Destination}}{{println}}{{end}}' 2>/dev/null | grep ':/data/wal$' | cut -d: -f1)"
             echo "mount source: ${SRC:-<none>}"
             [ -n "$SRC" ] && ls -la "$SRC" 2>/dev/null || echo "(nothing at the mount source)"
             sleep 5
             echo "--- same listing 5s later (size should move if WAL is live) ---"
             [ -n "$SRC" ] && ls -la "$SRC" 2>/dev/null || echo "(nothing at the mount source)"
+            echo "--- the node's own [WAL] log lines (the real proof it is writing) ---"
+            docker logs aequitas-node --since 60m 2>&1 | grep -iE 'WAL|write-ahead' | tail -15 || echo "(no WAL log lines in the last hour)"
             echo "--- running commit ---"
             curl -s --max-time 10 http://127.0.0.1:8080/api/status | tr ',' '\n' | grep -E 'git_commit|height' || echo "(status unreachable)"
