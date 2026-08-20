@@ -48,7 +48,8 @@ jobs:
             echo "--- mounts ---"
             docker inspect -f '{{range .Mounts}}{{.Type}} {{.Source}} -> {{.Destination}}{{println}}{{end}}' aequitas-node 2>/dev/null || echo "(none)"
             echo "--- WAL file on the HOST, at the mount SOURCE (not the container path) ---"
-            SRC="$(docker inspect -f '{{range .Mounts}}{{if eq .Destination \"/data/wal\"}}{{.Source}}{{end}}{{end}}' aequitas-node 2>/dev/null)"
+            SRC="$(docker inspect aequitas-node --format '{{range .Mounts}}{{.Source}}:{{.Destination}} {{end}}' 2>/dev/null | tr ' ' '
+' | grep ':/data/wal$' | cut -d: -f1)"
             echo "mount source: ${SRC:-<none>}"
             [ -n "$SRC" ] && ls -la "$SRC" 2>/dev/null || echo "(nothing at the mount source)"
             echo "--- running commit ---"
@@ -79,7 +80,8 @@ jobs:
             echo "--- mounts ---"
             docker inspect -f '{{range .Mounts}}{{.Type}} {{.Source}} -> {{.Destination}}{{println}}{{end}}' aequitas-node 2>/dev/null || echo "(none)"
             echo "--- WAL file on the HOST, at the mount SOURCE (not the container path) ---"
-            SRC="$(docker inspect -f '{{range .Mounts}}{{if eq .Destination \"/data/wal\"}}{{.Source}}{{end}}{{end}}' aequitas-node 2>/dev/null)"
+            SRC="$(docker inspect aequitas-node --format '{{range .Mounts}}{{.Source}}:{{.Destination}} {{end}}' 2>/dev/null | tr ' ' '
+' | grep ':/data/wal$' | cut -d: -f1)"
             echo "mount source: ${SRC:-<none>}"
             [ -n "$SRC" ] && ls -la "$SRC" 2>/dev/null || echo "(nothing at the mount source)"
             sleep 5
