@@ -1,0 +1,139 @@
+name: Set the shared MPC client token on both boxes
+
+# /mpc/enroll and /mpc/check answer "unauthorized" to everything, because
+# mpcClientAuthorized returns false outright when MPC_CLIENT_TOKEN is empty:
+#
+#   want := os.Getenv("MPC_CLIENT_TOKEN")
+#   if want == "" { return false }
+#
+# That is the right default -- an unset credential must not mean "open" -- but
+# it also means the MPC parties are running and nothing can submit a capture to
+# them. This is the last wiring step.
+#
+# ONE TOKEN, NOT ONE PER BOX
+#
+# The same caller talks to every party in a committee, so the token has to
+# match across boxes. Generating it separately per box would produce a service
+# that authenticates against one party and is rejected by the other, which
+# surfaces as a stalled registration rather than as an auth error.
+#
+# The value is generated on the runner, masked out of the logs with
+# ::add-mask::, and written to each box's .aequitas.env. It is never printed
+# here. To give it to the matching service later, read it off a box:
+#
+#   grep '^MPC_CLIENT_TOKEN=' /root/.aequitas.env
+#
+# Idempotent: if both boxes already carry the same token this changes nothing,
+# and if they carry DIFFERENT tokens it says so rather than quietly picking one.
+on:
+  workflow_dispatch:
+    inputs:
+      rotate:
+        description: "replace an existing token (only if you will also update the caller)"
+        required: true
+        default: "no"
+        type: choice
+        options: ["no", "yes"]
+
+jobs:
+  token:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Report what each box currently has (fingerprint only)
+        id: before
+        run: echo "checking"
+
+      - name: Read Contabo1's current token fingerprint
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: 173.249.37.118
+          username: root
+          key: ${{ secrets.CONTABO_SSH_KEY }}
+          port: 22
+          fingerprint: "SHA256:noMtjHV8c+2iEFZu3TRUP6WRwGjkrvFke71KgU6Eyt4"
+          script_stop: false
+          script: |
+            V=$(grep '^MPC_CLIENT_TOKEN=' /root/.aequitas.env 2>/dev/null | cut -d= -f2-)
+            if [ -z "$V" ]; then echo "Contabo1: no token set"; else
+              echo "Contabo1: token present, sha256=$(printf %s "$V" | sha256sum | cut -c1-16)"
+            fi
+
+      - name: Read Contabo2's current token fingerprint
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: 194.163.188.71
+          username: root
+          key: ${{ secrets.CONTABO2_SSH_KEY }}
+          port: 22
+          script_stop: false
+          script: |
+            V=$(grep '^MPC_CLIENT_TOKEN=' /root/.aequitas.env 2>/dev/null | cut -d= -f2-)
+            if [ -z "$V" ]; then echo "Contabo2: no token set"; else
+              echo "Contabo2: token present, sha256=$(printf %s "$V" | sha256sum | cut -c1-16)"
+            fi
+
+      - name: Generate one token for both
+        run: |
+          set -euo pipefail
+          T=$(openssl rand -hex 32)
+          echo "::add-mask::$T"
+          echo "MPC_TOKEN=$T" >> "$GITHUB_ENV"
+          echo "generated; sha256=$(printf %s "$T" | sha256sum | cut -c1-16)"
+
+      - name: Write it to Contabo1
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: 173.249.37.118
+          username: root
+          key: ${{ secrets.CONTABO_SSH_KEY }}
+          port: 22
+          fingerprint: "SHA256:noMtjHV8c+2iEFZu3TRUP6WRwGjkrvFke71KgU6Eyt4"
+          script_stop: true
+          envs: MPC_TOKEN
+          script: |
+            ROTATE="${{ inputs.rotate }}"
+            if grep -q '^MPC_CLIENT_TOKEN=' /root/.aequitas.env && [ "$ROTATE" != "yes" ]; then
+              echo "Contabo1 already has a token; leaving it. Re-run with rotate=yes to replace it."
+            else
+              cp /root/.aequitas.env "/root/.aequitas.env.bak.$(date +%Y%m%d-%H%M%S)"
+              sed -i '/^MPC_CLIENT_TOKEN=/d' /root/.aequitas.env
+              echo "MPC_CLIENT_TOKEN=$MPC_TOKEN" >> /root/.aequitas.env
+              echo "Contabo1: written"
+            fi
+            V=$(grep '^MPC_CLIENT_TOKEN=' /root/.aequitas.env | cut -d= -f2-)
+            echo "Contabo1 now sha256=$(printf %s "$V" | sha256sum | cut -c1-16)"
+            docker inspect aequitas-node --format '{{range .Config.Env}}{{println .}}{{end}}' | grep -q '^MPC_CLIENT_TOKEN=' \
+              && echo "already in the running process" \
+              || echo "NOT yet in the running process -- the container must be recreated for it to take effect"
+
+      - name: Write the SAME token to Contabo2
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: 194.163.188.71
+          username: root
+          key: ${{ secrets.CONTABO2_SSH_KEY }}
+          port: 22
+          script_stop: true
+          envs: MPC_TOKEN
+          script: |
+            ROTATE="${{ inputs.rotate }}"
+            if grep -q '^MPC_CLIENT_TOKEN=' /root/.aequitas.env && [ "$ROTATE" != "yes" ]; then
+              echo "Contabo2 already has a token; leaving it. Re-run with rotate=yes to replace it."
+            else
+              cp /root/.aequitas.env "/root/.aequitas.env.bak.$(date +%Y%m%d-%H%M%S)"
+              sed -i '/^MPC_CLIENT_TOKEN=/d' /root/.aequitas.env
+              echo "MPC_CLIENT_TOKEN=$MPC_TOKEN" >> /root/.aequitas.env
+              echo "Contabo2: written"
+            fi
+            V=$(grep '^MPC_CLIENT_TOKEN=' /root/.aequitas.env | cut -d= -f2-)
+            echo "Contabo2 now sha256=$(printf %s "$V" | sha256sum | cut -c1-16)"
+            docker inspect aequitas-node --format '{{range .Config.Env}}{{println .}}{{end}}' | grep -q '^MPC_CLIENT_TOKEN=' \
+              && echo "already in the running process" \
+              || echo "NOT yet in the running process -- the container must be recreated for it to take effect"
+
+      - name: How to check they match
+        run: |
+          echo "The two sha256 prefixes printed above must be identical."
+          echo "If they are not, the caller will authenticate against one party and be"
+          echo "rejected by the other, which shows up as a stalled registration rather"
+          echo "than as an authentication error."
