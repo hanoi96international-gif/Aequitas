@@ -64,6 +64,17 @@ jobs:
           echo "--- sha256 ---"
           sha256sum out/*.bin
 
+      - name: Make the rows readable to the copy step
+        run: |
+          set -euo pipefail
+          # The dealer writes 0600 on purpose -- these are secret shares. The
+          # scp action tars them as a different user and gets "Permission
+          # denied", so they have to be readable for the copy itself. This is
+          # an ephemeral runner that is destroyed with its filesystem, and the
+          # dealer's own instruction is to delete its copies once delivered.
+          chmod a+r out/*.bin
+          ls -la out/
+
       - name: Refuse to continue if the two rows are identical
         run: |
           set -euo pipefail
