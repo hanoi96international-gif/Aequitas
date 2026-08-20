@@ -522,3 +522,119 @@ func TestSupplyBreakdownIsRefusedWithoutADatabase(t *testing.T) {
 		t.Error("SupplyReconciliation published a breakdown it could not measure")
 	}
 }
+
+// Who may hold AEQ — see docs/WHO_MAY_HOLD_AEQ.md.
+//
+// The rule is a property, not a quota: anyone may hold AEQ, and every holding
+// decays and is capped whether or not a registered human is behind it. That is
+// what makes the NUMBER of non-human accounts uninteresting, and it is only
+// true while nobody adds an IsHuman check to either mechanism.
+//
+// Both of these pass today. They exist so that adding such a check fails a test
+// instead of quietly turning non-human wallets into an escape hatch.
+
+func TestNonHumanAccountsAreNotAnEscapeHatch(t *testing.T) {
+	t.Run("demurrage applies to a non-human balance", func(t *testing.T) {
+		cs := newTestState()
+		cs.pool = &PoolState{}
+		idle := nowUnix() - 400*24*3600
+
+		human := &AccountState{Address: "0xperson", Balance: NewDecimal(9000), IsHuman: true, LastActivityAt: idle}
+		other := &AccountState{Address: "0xwallet", Balance: NewDecimal(9000), IsHuman: false, LastActivityAt: idle}
+		cs.accounts.Set(human.Address, human)
+		cs.accounts.Set(other.Address, other)
+		cs.humanCount = 1
+
+		cs.mu.Lock()
+		humanLost, err1 := cs.settleDemurrageLockedCtx(t.Context(), human)
+		otherLost, err2 := cs.settleDemurrageLockedCtx(t.Context(), other)
+		cs.mu.Unlock()
+		if err1 != nil || err2 != nil {
+			t.Fatalf("settle: %v / %v", err1, err2)
+		}
+
+		if otherLost <= 0 {
+			t.Error("a non-human balance did not decay. Demurrage would then be avoidable by " +
+				"holding AEQ in an unregistered wallet, and the count of such wallets would " +
+				"suddenly matter very much")
+		}
+		if humanLost != otherLost {
+			t.Errorf("identical idle balances decayed differently: human %v, non-human %v — "+
+				"whichever decays less is the address everyone would use", humanLost, otherLost)
+		}
+	})
+
+	t.Run("the wealth cap applies to a non-human balance", func(t *testing.T) {
+		cs := newTestState()
+		cs.pool = &PoolState{}
+		// Several humans, so an average exists for the cap to be a multiple of.
+		for i := 0; i < 4; i++ {
+			addr := fmt.Sprintf("0xh%d", i)
+			cs.accounts.Set(addr, &AccountState{Address: addr, Balance: NewDecimal(1000), IsHuman: true})
+			cs.humanCount++
+		}
+		rich := &AccountState{Address: "0xhoard", Balance: NewDecimal(500000), IsHuman: false}
+		cs.accounts.Set(rich.Address, rich)
+
+		before := rich.Balance.Float()
+		cs.mu.Lock()
+		err := cs.enforceWealthCapLockedCtx(t.Context(), rich)
+		cs.mu.Unlock()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if rich.Balance.Float() >= before {
+			t.Errorf("a non-human account kept %.2f AEQ, far above any cap on a %d-human "+
+				"average. The cap would be evaded by moving funds to an unregistered address",
+				rich.Balance.Float(), cs.humanCount)
+		}
+	})
+}
+
+// TestLiquidityIsCurrentlyOutsideBothRules records a real gap rather than
+// asserting it away.
+//
+// Demurrage is levied on acc.Balance; LP shares are not balance, and the AMM
+// reserve is not an account. So AEQ deposited as liquidity stops decaying, and
+// the wealth cap has the same blind spot. Measured 2026-08-20 the reserve held
+// 596.89 AEQ — 3.9% of the whole supply — outside both rules.
+//
+// This test PASSES on the current behaviour on purpose. It exists so the
+// exemption is visible in the test suite instead of living only in the gap
+// between two functions, and so that whoever closes it (see
+// docs/WHO_MAY_HOLD_AEQ.md for the three options) has a place that fails and
+// tells them the decision was made.
+func TestLiquidityIsCurrentlyOutsideBothRules(t *testing.T) {
+	cs := newTestState()
+	cs.pool = &PoolState{
+		ReserveAEQ:    NewDecimal(5000),
+		ReserveTUSD:   NewDecimal(5000),
+		TotalLPShares: NewDecimal(1000),
+	}
+	idle := nowUnix() - 400*24*3600
+	lp := &AccountState{
+		Address: "0xlp", Balance: NewDecimal(0), IsHuman: true,
+		LPShares: NewDecimal(1000), LastActivityAt: idle,
+	}
+	cs.accounts.Set(lp.Address, lp)
+	cs.humanCount = 1
+
+	reserveBefore := cs.pool.ReserveAEQ.Float()
+	cs.mu.Lock()
+	lost, err := cs.settleDemurrageLockedCtx(t.Context(), lp)
+	cs.mu.Unlock()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if lost.Float() != 0 {
+		t.Fatalf("an account whose entire holding is LP shares decayed by %v. If demurrage now "+
+			"reaches LP value, the shelter documented in docs/WHO_MAY_HOLD_AEQ.md is closed — "+
+			"update that document and delete this test", lost.Float())
+	}
+	if cs.pool.ReserveAEQ.Float() != reserveBefore {
+		t.Fatal("the AMM reserve decayed, which the current implementation does not do")
+	}
+	t.Log("confirmed: AEQ held as liquidity does not decay. See docs/WHO_MAY_HOLD_AEQ.md — " +
+		"this is an exemption nobody decided on, currently worth ~3.9% of supply.")
+}
