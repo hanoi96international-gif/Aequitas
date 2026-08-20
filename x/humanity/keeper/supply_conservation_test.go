@@ -591,50 +591,82 @@ func TestNonHumanAccountsAreNotAnEscapeHatch(t *testing.T) {
 	})
 }
 
-// TestLiquidityIsCurrentlyOutsideBothRules records a real gap rather than
-// asserting it away.
+// TestLiquidityIsNoLongerAShelter is the closed version of a gap this file
+// used to record.
 //
-// Demurrage is levied on acc.Balance; LP shares are not balance, and the AMM
-// reserve is not an account. So AEQ deposited as liquidity stops decaying, and
-// the wealth cap has the same blind spot. Measured 2026-08-20 the reserve held
-// 596.89 AEQ — 3.9% of the whole supply — outside both rules.
+// Demurrage was levied on acc.Balance, and the wealth cap read acc.Balance.
+// LP shares are not balance and the AMM reserve is not an account, so AEQ
+// parked as liquidity escaped both: deposit, wait, withdraw, and the decay for
+// that period was simply avoided. Measured 2026-08-20 the reserve held 3.9% of
+// the entire supply that way.
 //
-// This test PASSES on the current behaviour on purpose. It exists so the
-// exemption is visible in the test suite instead of living only in the gap
-// between two functions, and so that whoever closes it (see
-// docs/WHO_MAY_HOLD_AEQ.md for the three options) has a place that fails and
-// tells them the decision was made.
-func TestLiquidityIsCurrentlyOutsideBothRules(t *testing.T) {
-	cs := newTestState()
-	cs.pool = &PoolState{
-		ReserveAEQ:    NewDecimal(5000),
-		ReserveTUSD:   NewDecimal(5000),
-		TotalLPShares: NewDecimal(1000),
-	}
-	idle := nowUnix() - 400*24*3600
-	lp := &AccountState{
-		Address: "0xlp", Balance: NewDecimal(0), IsHuman: true,
-		LPShares: NewDecimal(1000), LastActivityAt: idle,
-	}
-	cs.accounts.Set(lp.Address, lp)
-	cs.humanCount = 1
+// It was not defensible on the argument that pooled liquidity "is not idle".
+// Providers are already paid for that service out of swap fees
+// (distributeLPPoolLocked); the exemption was a second, unvoted payment that
+// scaled with wealth — and it bound only the people who did not know the trick.
+func TestLiquidityIsNoLongerAShelter(t *testing.T) {
+	t.Run("demurrage reaches AEQ held as LP shares", func(t *testing.T) {
+		cs := newTestState()
+		cs.pool = &PoolState{
+			ReserveAEQ:    NewDecimal(5000),
+			ReserveTUSD:   NewDecimal(5000),
+			TotalLPShares: NewDecimal(1000),
+		}
+		idle := nowUnix() - 400*24*3600
+		lp := &AccountState{
+			Address: "0xlp", Balance: NewDecimal(0), IsHuman: true,
+			LPShares: NewDecimal(1000), LastActivityAt: idle,
+		}
+		cs.accounts.Set(lp.Address, lp)
+		cs.humanCount = 1
 
-	reserveBefore := cs.pool.ReserveAEQ.Float()
-	cs.mu.Lock()
-	lost, err := cs.settleDemurrageLockedCtx(t.Context(), lp)
-	cs.mu.Unlock()
-	if err != nil {
-		t.Fatal(err)
-	}
+		cs.mu.Lock()
+		lost, err := cs.settleDemurrageLockedCtx(t.Context(), lp)
+		cs.mu.Unlock()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if lost.Float() <= 0 {
+			t.Fatal("an idle holding of 5,000 AEQ worth of LP shares did not decay at all — " +
+				"liquidity is a shelter again, and the rule binds only those who do not use it")
+		}
+		t.Logf("decayed %.6f AEQ of LP-held wealth", lost.Float())
+	})
 
-	if lost.Float() != 0 {
-		t.Fatalf("an account whose entire holding is LP shares decayed by %v. If demurrage now "+
-			"reaches LP value, the shelter documented in docs/WHO_MAY_HOLD_AEQ.md is closed — "+
-			"update that document and delete this test", lost.Float())
-	}
-	if cs.pool.ReserveAEQ.Float() != reserveBefore {
-		t.Fatal("the AMM reserve decayed, which the current implementation does not do")
-	}
-	t.Log("confirmed: AEQ held as liquidity does not decay. See docs/WHO_MAY_HOLD_AEQ.md — " +
-		"this is an exemption nobody decided on, currently worth ~3.9% of supply.")
+	t.Run("the wealth cap counts LP shares", func(t *testing.T) {
+		cs := newTestState()
+		for i := 0; i < 4; i++ {
+			addr := fmt.Sprintf("0xh%d", i)
+			cs.accounts.Set(addr, &AccountState{Address: addr, Balance: NewDecimal(1000), IsHuman: true})
+			cs.humanCount++
+		}
+		cs.pool = &PoolState{
+			ReserveAEQ:    NewDecimal(400000),
+			ReserveTUSD:   NewDecimal(400000),
+			TotalLPShares: NewDecimal(1000),
+		}
+		// Balance well under any cap, wealth far above it — the exact shape the
+		// old implementation waved through.
+		hoard := &AccountState{
+			Address: "0xhoard", Balance: NewDecimal(10), IsHuman: true,
+			LPShares: NewDecimal(1000),
+		}
+		cs.accounts.Set(hoard.Address, hoard)
+		cs.humanCount++
+
+		cs.mu.Lock()
+		before := cs.lpValueLockedAEQ(hoard) + hoard.Balance.Float()
+		err := cs.enforceWealthCapLockedCtx(t.Context(), hoard)
+		after := cs.lpValueLockedAEQ(hoard) + hoard.Balance.Float()
+		cs.mu.Unlock()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if after >= before {
+			t.Fatalf("wealth of %.2f AEQ held almost entirely as LP shares was not capped "+
+				"(still %.2f). The cap would be evaded in one click by anyone who knew to "+
+				"deposit into the pool", before, after)
+		}
+		t.Logf("capped total wealth from %.2f to %.2f AEQ", before, after)
+	})
 }

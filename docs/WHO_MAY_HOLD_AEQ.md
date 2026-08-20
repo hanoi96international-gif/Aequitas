@@ -34,9 +34,9 @@ those would make the currency unusable for commerce without protecting anything.
 | human account balance | yes | yes |
 | **non-human account balance** | **yes** | **yes** |
 | tokenomics pools (ubi, lp, validators, treasury) | exempt | exempt |
-| **LP shares / the AMM reserve** | **no** | **no** |
+| **LP shares / the AMM reserve** | **yes** (since 2026-08-20) | **yes** (since 2026-08-20) |
 
-The non-human row is already correct, and deliberately so —
+Both the non-human and the LP rows are enforced, and deliberately so —
 `enforceWealthCapLockedCtx` carries the comment "Deliberately NOT gated on
 acc.IsHuman", and `settleDemurrageLockedCtx` exempts only the tokenomics pool
 addresses. `TestNonHumanAccountsAreNotAnEscapeHatch` pins both, so an
@@ -47,40 +47,52 @@ lands there as fees and leaves again as UBI, LP yield and validator rewards.
 Decaying money on its way to being redistributed would just be a second, hidden
 fee.
 
-## The gap this exposed: liquidity is a demurrage shelter
+## The gap this exposed, and how it was settled
 
-Demurrage is levied on `acc.Balance`. LP shares are not balance, and the AMM
-reserve is not an account, so **AEQ deposited as liquidity stops decaying**.
-The wealth cap has the same blind spot: it reads `acc.Balance` and ignores LP
-shares entirely.
+Demurrage was levied on `acc.Balance`, and the wealth cap read `acc.Balance`.
+LP shares are not balance and the AMM reserve is not an account, so **AEQ
+deposited as liquidity escaped both rules**. Deposit, wait, withdraw: the decay
+for that period was avoided, and the cap never saw the holding at all. Measured
+on 2026-08-20 the reserve held **596.89 AEQ — 3.9% of the entire supply** —
+outside both rules while every ordinary balance decayed.
 
-Measured on 2026-08-20, the reserve holds **596.89 AEQ — 3.9% of the entire
-supply** — sitting outside both rules while every human balance decays.
+### The decision: both rules apply to LP value
 
-The route is not subtle: deposit into the pool, wait, withdraw. Demurrage for
-that period is avoided. Nothing stops it and nothing reports it.
+The tempting exemption is the demurrage one, on the argument that pooled
+liquidity "is not idle" and demurrage exists to punish idleness. That argument
+does not survive contact with what the protocol is for.
 
-### This is left open deliberately, and needs a decision
+**Liquidity providers are already paid for the service**, out of swap fees, via
+`distributeLPPoolLocked`. Exempting them from demurrage on top was a *second*
+payment — one nobody voted for, that scaled with wealth, and that was available
+only to people who knew the trick. A rule that binds whoever has not discovered
+the workaround is unfairness by sophistication, which is the precise opposite of
+a protocol premised on everyone standing equal.
 
-Three coherent answers, and the choice is an economic one rather than a
-technical one:
+So:
 
-1. **Levy demurrage on the AEQ value of LP shares.** Closes the shelter
-   completely. Also taxes people for providing liquidity the exchange needs, and
-   may empty the pool.
-2. **Count LP-share value toward the wealth cap only.** Stops the cap being
-   evaded while leaving liquidity provision undiscouraged. The demurrage shelter
-   stays open.
-3. **Accept it as an intended incentive** — liquidity is a service the protocol
-   wants, and exemption is the payment. Then say so out loud, because at 3.9% of
-   supply it is a meaningful subsidy that currently exists by accident rather
-   than by decision.
+- **Demurrage** is levied on balance *plus* the AEQ value of LP shares.
+  `effectiveBalance` is not duplicated — it runs against a copy whose balance is
+  the whole holding — so the grace period, the fair-share floor and the rate stay
+  in exactly one place.
+- **The wealth cap** counts the same total.
+- Both take the amount owed from balance first, and reach into liquidity only
+  for the remainder. Someone whose balance already covers it keeps their
+  position untouched.
 
-Whichever is chosen, the current state should not persist by default: an
-exemption nobody decided on is the same thing as a bug that has not been noticed
-yet. The measurement is already published — `amm_reserve` in
-`/api/health/combined` — so the size of the subsidy can be watched while the
-decision is made.
+`lpValueLockedAEQ` is the one definition of "AEQ held as LP shares", and
+`releaseLPForAEQ` is the one way to turn shares back into balance. It delegates
+to `liquidateLPSharesForEscrowLocked`, which already burns the shares and
+credits the account — the first version of the helper repeated that and credited
+twice, which `TestRemoveLiquidityDeltaLocked_MirrorsPrimaryWealthCap` caught.
+
+`TestLiquidityIsNoLongerAShelter` pins both halves.
+
+### What this changes for real people
+
+Anyone holding wealth as liquidity now decays and is capped like everyone else.
+That is a real reduction for those accounts, and it is the point: the rule they
+were outside of is the one that funds UBI for everybody.
 
 ## What is not covered here
 
