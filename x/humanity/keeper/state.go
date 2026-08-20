@@ -7632,12 +7632,32 @@ func (cs *ChainState) applySwapDeltaLocked(ctx context.Context, wallet string, a
 	// FIX (audit recheck2, P0 #3): see ApplyTransferDelta's comment — every
 	// saveAccountToDB/savePoolToDB call in this function used to discard its
 	// returned error.
-	if err := cs.saveAccountToDBCtx(ctx, acc); err != nil {
-		return fmt.Errorf("swap: could not save account %s: %w", wallet, err)
-	}
-
 	// Update pool reserves to match what swapLocked() did on primary.
 	// fee is swapFeeBps (0.1%); amountInAfterFee is what enters the pool.
+	//
+	// PERSIST THE AEQ DEBIT BEFORE THE CREDIT, exactly as swapLocked does.
+	//
+	// FIX (supply audit 2026-08-20): this always saved the account first,
+	// whatever the direction. That is right for aeqToTusd, where the account
+	// gives the AEQ up — and wrong for the other direction, where the account
+	// RECEIVES AEQ: the credit was durable while the reserve debit was lost,
+	// and the difference is new money. The primary was made direction-aware and
+	// this path was not, so the same swap failed safely on a producing node and
+	// unsafely on a replaying one.
+	saveAccountFirst := aeqToTusd
+	saveAcct := func() error {
+		if err := cs.saveAccountToDBCtx(ctx, acc); err != nil {
+			return fmt.Errorf("swap: could not save account %s: %w", wallet, err)
+		}
+		return nil
+	}
+	savePool := func() error {
+		if err := cs.savePoolToDBCtx(ctx); err != nil {
+			return fmt.Errorf("swap: could not save pool: %w", err)
+		}
+		return nil
+	}
+
 	if cs.pool != nil {
 		fee := amountIn * float64(swapFeeBps) / 10000.0
 		amountInAfterFee := amountIn - fee
@@ -7650,8 +7670,20 @@ func (cs *ChainState) applySwapDeltaLocked(ctx context.Context, wallet string, a
 			cs.pool.ReserveTUSD = cs.pool.ReserveTUSD.Add(NewDecimal(amountInAfterFee))
 			cs.pool.ReserveAEQ = cs.pool.ReserveAEQ.Sub(NewDecimal(amountOut)).AtLeastZero()
 		}
-		if err := cs.savePoolToDBCtx(ctx); err != nil {
-			return fmt.Errorf("swap: could not save pool: %w", err)
+		if saveAccountFirst {
+			if err := saveAcct(); err != nil {
+				return err
+			}
+			if err := savePool(); err != nil {
+				return err
+			}
+		} else {
+			if err := savePool(); err != nil {
+				return err
+			}
+			if err := saveAcct(); err != nil {
+				return err
+			}
 		}
 		// Distribute swap fee to the 4 tokenomics pools (40% validators /
 		// 30% LP / 20% UBI / 10% treasury) — mirrors swapLocked() on primary.
@@ -7660,6 +7692,12 @@ func (cs *ChainState) applySwapDeltaLocked(ctx context.Context, wallet string, a
 		if err := cs.distributeSwapFeeCtx(ctx, fee, aeqToTusd); err != nil {
 			return fmt.Errorf("could not persist swap fee distribution: %w", err)
 		}
+	} else if err := saveAcct(); err != nil {
+		// No pool on this node: there is no ordering question, but the account
+		// must still be written. Moving the save into the pool branch above
+		// would otherwise drop it entirely here — the balance would change in
+		// memory and never be persisted.
+		return err
 	}
 	return nil
 }
@@ -7731,16 +7769,29 @@ func (cs *ChainState) addLiquidityDeltaLocked(ctx context.Context, wallet string
 	// every node except the one that produced the block.
 	touchActivityAt(acc, activityAt)
 	// FIX (audit recheck2, P0 #3): see ApplyTransferDelta's comment.
+	// PERSIST THE AEQ DEBIT BEFORE THE CREDIT — the account is the side losing
+	// AEQ in a deposit, so it is saved first.
+	//
+	// FIX (supply audit 2026-08-20): this saved the pool first, which is the
+	// CREATING order here. The pool credit would be durable while the account
+	// debit was lost, and the difference is new money. It also disagreed with
+	// addLiquidityLocked on the primary, which already saved the account first
+	// — so the same deposit failed safely on a producing node and unsafely on a
+	// replaying one, which is invisible until a write actually fails.
+	if err := cs.saveAccountToDBCtx(ctx, acc); err != nil {
+		return fmt.Errorf("add_liquidity: could not save account %s: %w", wallet, err)
+	}
 	if cs.pool != nil {
 		cs.pool.ReserveAEQ = cs.pool.ReserveAEQ.Add(NewDecimal(aeqAmount))
 		cs.pool.ReserveTUSD = cs.pool.ReserveTUSD.Add(NewDecimal(tusdAmount))
 		cs.pool.TotalLPShares = cs.pool.TotalLPShares.Add(NewDecimal(mintedShares))
 		if err := cs.savePoolToDBCtx(ctx); err != nil {
+			// The account gave the AEQ up and the pool never received it.
+			// Loud, because this line is the only record that it happened.
+			fmt.Printf("[POOL] %s was debited but the pool credit did not persist: %v "+
+				"(destroyed, not duplicated)\n", wallet, err)
 			return fmt.Errorf("add_liquidity: could not save pool: %w", err)
 		}
-	}
-	if err := cs.saveAccountToDBCtx(ctx, acc); err != nil {
-		return fmt.Errorf("add_liquidity: could not save account %s: %w", wallet, err)
 	}
 	return nil
 }
