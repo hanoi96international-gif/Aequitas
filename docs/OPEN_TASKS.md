@@ -140,17 +140,33 @@ the day: a node fell behind, could not rejoin, and needed a resync.
 
 **10,000 TPS was not reached**, and the honest reason is below.
 
-### Why 10k could not even be measured here
+### Why it stops at ~3,400, stated honestly
 
-Throughput = concurrency / latency. The load generator has 380 funded sender
-pairs and each transfer takes ~60 ms, so its own ceiling is
+Throughput = concurrency / latency. The harness holds 380 funded sender pairs
+and a transfer measures 62 ms end to end on the server, so the harness's own
+ceiling is
 
-    380 / 0.06 s = ~6,300 TPS
+    380 / 0.062 s = ~6,100 TPS
 
-Measured 3,400, about half of that. Demonstrating 10,000 would need roughly 600
-funded senders AND a latency well under 60 ms. Only 985 disposable accounts
-hold any AEQ at all and just 761 of them are in the account file, so the
-harness cannot produce the load, independently of what the chain could absorb.
+**Measured 3,400 — about half of that.** That gap is the important number, and
+it says the harness is *not* the binding constraint at the rate actually
+achieved. Working backwards, 380 / 3,400 = **112 ms of real per-transfer
+latency**, against 62 ms measured inside the transfer path. So roughly 50 ms
+per transfer is spent somewhere the current instrumentation does not see —
+client-side queuing in the generator, RPC handling before the transfer path
+starts, or response handling after it ends.
+
+**Do not conclude "just add more senders."** More senders only help once the
+harness ceiling is the thing being hit, and it is not. The first job is finding
+the missing 50 ms, because it is nearly half of every transfer and no current
+measurement covers it.
+
+Both possible outcomes are actionable: if the 50 ms is on the client, the
+harness needs fixing and the chain is faster than it appears; if it is in RPC
+handling, that is a chain fix that no amount of load generation substitutes for.
+Instrument the RPC handler end to end (arrival to response write, not just the
+transfer path) and compare against the client's own observed latency. That one
+measurement decides which.
 
 ### Ten hypotheses measured and rejected — do not retry these
 
