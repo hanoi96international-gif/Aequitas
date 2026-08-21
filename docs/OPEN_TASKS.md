@@ -122,117 +122,111 @@ registration still succeeds for a genuine capture before enforcing.
 
 ---
 
-## 6. Throughput: Contabo1 is now level with Contabo2; the ceiling needs one measurement
+## 6. Throughput and stability under load
 
-**Target:** at least 10,000 TPS.
+**Target stated 2026-08-21: 30,000-40,000 TPS. That is not reachable on these
+boxes, and the arithmetic is not close.** A transfer costs 486 us of CPU
+(measured). Six cores deliver 6,000,000 us/s, so the ceiling is **~12,300 TPS**
+even at perfect parallelism. Signature verification alone runs at 40,577/s on
+six cores with cgo, so 40,000 TPS would consume every core on signatures before
+any state work, WAL, database, block or network cost. 40,000 needs roughly 24
+cores; 10,000 needs about 4.9 of 6 and is realistic.
 
-### Signature verification is NOT the blocker at 10k — the number already existed
+### Measured today
 
-`bench-signature-cgo-contabo2.yml` ran successfully on 2026-07-27 and its
-result was never read. On the production path (the Dockerfile sets
-`CGO_ENABLED=1`, so libsecp256k1, not the Go implementation):
-
-| path | 6 cores | cores needed at 10,000 TPS | at 50,000 |
-|---|---|---|---|
-| pure Go (`CGO_ENABLED=0`) | 18,829 rec/s | 3.2 | 15.9 |
-| **cgo (what production runs)** | **40,577 rec/s** | **1.5** | 7.4 |
-
-So signature verification costs about 1.5 of 6 cores at the 10k target. It only
-becomes the binding constraint near 50k. Any note still saying "the cgo number
-is missing" is out of date.
-
-### Four caps removed on Contabo1, all measured first
-
-Contabo1 had **none** of Contabo2's throughput work. Every item below was found
-by reading live state, not by reasoning about code:
-
-1. **Connection pool saturated at idle** — default `AEQUITAS_DB_MAX_CONNS` of 20
-   with 18 in use while the chain was idle, against `max_connections` 100, on a
-   box now running eight containers. Throughput is bounded by the slowest
-   REPLAYING node, so this capped the network regardless of Contabo2. Now pool
-   100 against 250; idle usage 13. Matches the 87,534 pool waits measured
-   earlier.
-2. **No WAL at all** — no flags, no host mount, and a `deploy.sh` whose
-   `docker run` carried no `-v`. Fixed, and the deploy script patched too:
-   without that the next code deploy would have removed it silently.
-3. **No block-payload compression.** This is the one aimed squarely at the
-   collapse. Its own header: `SaveBlockWithPendingTxsAtomic` holds `dag.mu`
-   while writing, and under load "block production fell to 9 blocks in 85
-   seconds where 85 were due", with `AddPeerBlock` locked out for the same
-   window — which is what piles up orphans and collapses the DAG to one tip.
-   Measured 3.5x at full-block size with compression time counted.
-   **Verified live afterwards**, not just assumed from the flag: both boxes'
-   most recent `chain_blocks` rows now have `transactions` empty and
-   `transactions_z` populated.
-4. **No `ENABLE_MULTI_BLOCK_TICK`, no `AEQUITAS_PRODUCE_WHEN_BACKLOG_SHRINKING`.**
-   The latter keeps a node producing while it works off a backlog instead of
-   mistaking one for a fork — precisely the state a node is in under load.
-
-**Corrected:** a previous entry said Contabo1 merges but never produces blocks.
-True on 2026-07-28, not true now — 31 of the last 60 blocks were Contabo1's
-against Contabo2's 29.
-
-### Measured 2026-08-21: ~2,150 TPS, and the chain is the limit
-
-The seed rows were empty, but /api/snapshot showed 722 rows of accounts.csv
-still holding 4.49 AEQ between them, and a load-test transfer moves 0.00001
-AEQ. So the fund phase — and any transfer out of a real account — was
-unnecessary: `loadtest-find-funded.yml` writes `accounts-funded.csv` (funded
-rows only, richest first) and the run drives from that.
-
-| sender pairs | TPS |
+| | |
 |---|---|
-| 100 | 1,847 |
-| 358 | 2,164 (repeat of an earlier 2,117) |
+| Before the day's fixes | 2,117 / 2,164 TPS (two runs) |
+| After block cap + multi-block tick off | **3,264 TPS** |
+| Node's own applied counter | 2,000-4,000/s sustained, **peak 6,787/s** |
+| Replay capacity (Contabo1) | ~10,600 tx/s |
+| CPU used at 2,150 TPS | about **1 core of 6** |
 
-**3.6x the senders bought 1.17x the throughput.** That plateau is the answer to
-the question the earlier notes left open: this is the CHAIN's ceiling, not the
-load generator measuring itself. Roughly 2,150 TPS against a 10,000 target.
+The generator's number and the node's own counter differ because the generator
+counts successes over the whole elapsed window including ramp. The node is
+faster than the client-side figure suggests.
 
-Two things had to be cleared before the number meant anything:
+### What was fixed, each from a measurement
 
-- **The RPC rate limiter, not the chain, capped the first run.** 200 requests
-  per 10s per IP; 7,960 rejected batches x 100 transfers = essentially every
-  failure. `set-rpc-rate-limit-contabo2.yml` exists for exactly this. Raised
-  for the measurement and **restored to the shipped 200 afterwards**.
-- Some senders ran dry mid-run, which shows up as "insufficient balance"
-  rather than as a throughput fact.
+1. **Blocks nobody could replay.** Contabo2 produced block #4391949 with
+   exactly 50,000 transfers -- maxTxsPerBlock at the ceiling. Contabo1 needed
+   ~4.7s to replay it under the exclusive lock against BLOCK_TIME=1s, falling
+   behind ~4.7x per block. Cap lowered to 10,000, which is the measured replay
+   capacity for one block time. Nothing is dropped: pending transactions beyond
+   the cap keep included_at=0 and go in the next block.
+2. **Multi-block tick outran replay.** It emits up to 5 full blocks per tick,
+   i.e. 5x what a replayer absorbs, and it engages exactly when a backlog
+   exists -- which is exactly when the replayer is already behind. Off on both
+   boxes.
+3. **Admission control, which did not exist.** The node kept accepting
+   transfers while its height was frozen for over 15s, and every accepted one
+   grew the backlog that kept the production gate shut. It now refuses with the
+   retryable -32005 after 30s without producing a block. Confirmed working
+   live: a stuck Contabo1 reported `refusing: true, stalled_seconds: 1233`
+   while a healthy one reports `refusing: false`.
+4. **A resync could never finish on a long-running node.** `DELETE FROM
+   chain_blocks` on 4.38M rows exceeded statement_timeout, so every resync --
+   boot-time and auto-heal alike -- rolled back, and the only trace was
+   degraded_reason. TRUNCATE instead, with the timeout lifted for that
+   transaction. This is what made Contabo1 recoverable at all.
+5. **Ancestor fetches destroyed a node's bandwidth.** A 20 MB client read cap
+   sized against 2 KB blocks truncates when blocks are full; the client now
+   splits, and the server caps its response at a 12 MB budget and says so with
+   X-Blocks-Truncated, which the client must honour or it abandons ancestors
+   the peer actually holds.
 
-CPU is not the constraint: at 486 us per transfer, 2,150 TPS is about one core
-of six. Signature verification needs ~1.5 cores at 10k. So the remaining
-suspect is serialisation — the global write lock — which is what
-`diagnose-tps-ceiling-contabo2.yml` was built to confirm through goroutine
-dumps. It now accepts `accounts_csv` so it can run without funding; its
-analysis step still fails and is the next thing to fix.
+### Ruled out by measurement, so nobody repeats them
 
-### The throughput run exposed a bug that took a validator down
+- **Parallel replay is not the problem.** On block #4391949, 297 disjoint
+  batches covered 49,886 of 50,000 transfers: 99.8% already parallel.
+- **WAL flush batch size is not the lever.** Swept 4000/1000/400/150: the
+  default 4000 won (3,264 TPS vs 1,949 / 624 / 2,060), and addrs_per_flush
+  barely moved because a ~716-account working set yields the same addresses at
+  any batch size.
+- **Moving the flush's Go work out of the lock buys 6%.** Phase breakdown per
+  flush: acct_sql 556us + outbox_sql 2517us against a 50.8ms window. The
+  database phases, which cannot leave the lock, are 93%.
 
-Contabo2 restarted, fell ~500 blocks behind, and stopped advancing. Every
-cycle:
+### Where the remaining headroom is
 
-    Could not batch-fetch 412 missing ancestor(s): unexpected end of JSON input
+A mutex profile under load puts **45.90% of all lock contention on one hold**:
+flushWALBatch keeping cs.accounts.LockAddrs across its whole Postgres
+transaction. That hold must not be narrowed -- two earlier attempts reopened
+Postgres deadlocks, measured at up to 23.6% failed transfers at 500 concurrent
+senders.
 
-`fetchBlocksByHashes` read peer responses under a 20 MB cap and passed whatever
-arrived to `json.Unmarshal`. `maxBlocksByHashPerRequest` is 500 because api.go
-sized it against blocks of "~2 KB each ... at 500 hashes is ~1 MB". True of
-near-empty blocks; false once blocks carry thousands of transfers, which is
-precisely what a throughput run produces. The read truncated, the parse failed,
-and the message named JSON rather than size — so nothing pointed at the batch.
-The node looked healthy the whole time: /api/status answered, peers connected,
-one repeated line.
+`synchronous_commit=off` on Contabo2 cut the database phases sharply --
+p6_commit 12,042us to 4,123us, p3_acct_exec 26,109us to 12,725us -- which is
+legitimate here because transfer_wal.go makes the WAL append, not a Postgres
+commit, the durability point. Its throughput effect could not be separated from
+noise in the same run because the load test's senders were running dry.
 
-Fixed in `fb2176f`: the read goes one byte past the cap so a filled response is
-distinguishable from a near-miss and returns `errResponseTooLarge`, and
-`splitOnOversize` halves the batch until it fits. Four tests pin it. Raising
-the cap was rejected — an unbounded read from a peer is a memory DoS, and no
-constant can know what blocks weigh, which is how the 500 was chosen and how it
-failed.
+### The open defect, and it is the important one
 
-**Confirmed working in production while recovering from this**: Contabo2's WAL
-replayed 8,206,534 records and correctly fenced off every one as superseded by
-a state replacement, reapplying none. That is `wal_recovery_floor_seq` doing
-its job on a live node — the fix for the corruption that once produced 74
-negative accounts.
+**A node that restarts cannot rejoin on its own.** Every restart today ended
+the same way: Contabo1 fell a few hundred blocks behind, accumulated deferrals
+(1,197 at one point, ~2 GB of heap holding them), ended up with two DAG tips,
+and froze -- because merging its own stale tip requires producing a block, and
+the production gate is shut precisely because of the unmerged tip.
+backlog_vs_fork.go names this exactly: "the state is a trap... a resync has so
+often been the only remedy in this project's history: not because data was
+corrupt, but because the state is a trap."
+
+`AEQUITAS_PRODUCE_WHEN_BACKLOG_SHRINKING` is enabled on both boxes and is the
+right idea, but it only helps while the backlog SHRINKS -- and it cannot shrink
+while the peer keeps producing faster than the lagging node catches up.
+
+Resync works reliably now (item 4), so recovery is a dispatch away rather than
+an outage. But needing it after every restart is not stability, and closing it
+is the next real piece of work: either a node must be able to abandon its own
+diverged tip and follow the peer, or the gate needs a signal that separates
+"behind a fast producer" from "on a fork" without requiring the backlog to
+shrink.
+
+**A caution that keeps proving itself:** every hypothesis this project has had
+about throughput -- WAL lock, batch size, fsync, bloat, gzip, parallel replay,
+flush batch size -- was plausible and wrong. Each fix above came from a
+measurement that contradicted the guess that preceded it.
 
 ---
 
