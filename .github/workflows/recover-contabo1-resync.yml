@@ -105,3 +105,5 @@ jobs:
               sleep 20
               curl -s --max-time 10 http://127.0.0.1:8080/api/status | tr ',' '\n' | grep '"height"' || echo "  (unreachable)"
             done
+        env:
+          CONFIRM: ${{ inputs.confirm }}
