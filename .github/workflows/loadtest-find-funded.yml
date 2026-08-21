@@ -1,0 +1,60 @@
+name: Which loadtest accounts still hold AEQ? (read-only)
+
+# The loadtest takes the FIRST N rows of accounts.csv as its seeds
+# (main.go: seeds := accs[:*numSeeds]), and those five read zero -- they were
+# spent during the July runs. But 1,201 accounts were generated, and the later
+# ones may still hold the small amounts the fund phase gave them.
+#
+# If they do, no AEQ has to be moved at all: making a funded account a seed is
+# a matter of which ROW it sits in, not of sending it anything. This workflow
+# only measures; the reordering is a separate, deliberate step.
+#
+# Addresses only. main.go's docstring is explicit that accounts.csv holds
+# private keys and must never be printed, copied off the box, or uploaded, so
+# this reads column 2 alone and looks balances up through the local API.
+on:
+  workflow_dispatch: {}
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Contabo2
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: 194.163.188.71
+          username: root
+          key: ${{ secrets.CONTABO2_SSH_KEY }}
+          port: 22
+          script_stop: false
+          timeout: 900s
+          command_timeout: 900s
+          script: |
+            CSV=/root/contabo-loadtest/accounts.csv
+            [ -f "$CSV" ] || { echo "no accounts.csv"; exit 1; }
+            echo "rows: $(wc -l < "$CSV")"
+            echo ""
+            echo "Scanning balances. Printing only rows that hold something."
+            echo "row,address,balance"
+            FUNDED=0
+            TOTAL=0
+            ROW=0
+            while IFS=, read -r idx addr rest; do
+              ROW=$((ROW+1))
+              case "$addr" in 0x*) ;; *) continue ;; esac
+              B=$(curl -s --max-time 5 "http://127.0.0.1:8080/api/balance?address=$addr" 2>/dev/null | sed 's/.*"balance"://; s/,.*//; s/}.*//')
+              case "$B" in
+                ""|0|0.0|0.00) continue ;;
+              esac
+              FUNDED=$((FUNDED+1))
+              TOTAL=$(awk -v a="$TOTAL" -v b="$B" 'BEGIN{printf "%.6f", a+b}')
+              if [ "$FUNDED" -le 40 ]; then
+                echo "$ROW,$addr,$B"
+              fi
+            done < "$CSV"
+            echo ""
+            echo "accounts holding AEQ : $FUNDED"
+            echo "combined balance     : $TOTAL AEQ"
+            echo ""
+            echo "The loadtest's fund phase sends 0.001 AEQ per test account by default,"
+            echo "so roughly 1.2 AEQ total is enough for a full 1,196-account run."
