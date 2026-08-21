@@ -1,0 +1,110 @@
+name: Set ENABLE_MULTI_BLOCK_TICK on BOTH boxes
+
+# Multi-block tick keeps producing blocks while each one comes back full, up to
+# maxExtraBlocksPerTick+1 per tick. With maxTxsPerBlock at 10,000 that is up to
+# 50,000 transactions emitted in one BLOCK_TIME.
+#
+# Replay costs per TRANSACTION, not per block, and Contabo1's measured replay
+# capacity is ~10,600/s. So a full tick can hand the replaying node roughly 5x
+# what it can absorb -- and the feature only engages when a block came back
+# full, which is precisely when a backlog exists, which is precisely when the
+# replayer is already behind. It drains the backlog by pushing the other node
+# further under.
+#
+# That is the same overshoot maxTxsPerBlock was lowered to prevent, relocated
+# from one big block to several. Turning it off keeps one tick inside the
+# replay budget.
+#
+# Value 0 is the shipped default. Set it back to 1 only with a replay
+# measurement that says a tick's worth can actually be absorbed.
+#
+# Sequenced, never parallel: with two validators, restarting both at once
+# leaves nothing producing.
+on:
+  workflow_dispatch:
+    inputs:
+      value:
+        description: "0 = shipped default (one block per tick). 1 = multi-block tick."
+        required: true
+        default: "0"
+        type: choice
+        options: ["0", "1"]
+
+jobs:
+  c1:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Contabo1
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: 173.249.37.118
+          username: root
+          key: ${{ secrets.CONTABO_SSH_KEY }}
+          port: 22
+          fingerprint: "SHA256:noMtjHV8c+2iEFZu3TRUP6WRwGjkrvFke71KgU6Eyt4"
+          script_stop: false
+          timeout: 600s
+          command_timeout: 600s
+          envs: TICKVAL
+          script: |
+            echo "### CONTABO1 -> ENABLE_MULTI_BLOCK_TICK=$TICKVAL ###"
+            cp /root/.aequitas.env "/root/.aequitas.env.bak.$(date +%Y%m%d-%H%M%S)"
+            sed -i '/^ENABLE_MULTI_BLOCK_TICK=/d' /root/.aequitas.env
+            echo "ENABLE_MULTI_BLOCK_TICK=$TICKVAL" >> /root/.aequitas.env
+            grep '^ENABLE_MULTI_BLOCK_TICK=' /root/.aequitas.env
+
+            IMAGE="$(docker inspect aequitas-node --format '{{.Config.Image}}')"
+            NET="$(docker inspect aequitas-node --format '{{range $k, $v := .NetworkSettings.Networks}}{{$k}} {{end}}' | awk '{print $1}')"
+            PORTS="$(docker inspect aequitas-node --format '{{range $p, $c := .HostConfig.PortBindings}}-p {{(index $c 0).HostPort}}:{{$p}} {{end}}' | sed 's|/tcp||g')"
+            MOUNTS="$(docker inspect aequitas-node --format '{{range .Mounts}}-v {{.Source}}:{{.Destination}} {{end}}')"
+            mkdir -p /root/tick-migration
+            ENVOUT=/root/tick-migration/inherited.env
+            docker inspect aequitas-node --format '{{range .Config.Env}}{{println .}}{{end}}' | grep -vE '^(RESYNC_FROM_SNAPSHOT|HOSTNAME|PATH|HOME)=' | grep -E '^[A-Za-z_][A-Za-z0-9_]*=' > /tmp/proc.env
+            grep -E '^[A-Za-z_][A-Za-z0-9_]*=' /root/.aequitas.env | grep -vE '^(RESYNC_FROM_SNAPSHOT|HOSTNAME|PATH|HOME)=' > /tmp/file.env || true
+            awk -F= '!seen[$1]++' /tmp/file.env /tmp/proc.env > "$ENVOUT"
+            docker stop aequitas-node && docker rm aequitas-node
+            docker run -d --name aequitas-node --network "$NET" $PORTS $MOUNTS --env-file "$ENVOUT" --restart unless-stopped "$IMAGE"
+            sleep 40
+            docker inspect aequitas-node --format '{{range .Config.Env}}{{println .}}{{end}}' | grep -E '^(ENABLE_MULTI_BLOCK_TICK|AEQUITAS_WAL_ENABLED|MPC_ENABLED)=' || echo "(missing)"
+            curl -s --max-time 15 http://127.0.0.1:8080/api/status | grep -o '"height":[0-9]*' || echo "(unreachable)"
+        env:
+          TICKVAL: ${{ inputs.value }}
+
+  c2:
+    needs: c1
+    runs-on: ubuntu-latest
+    steps:
+      - name: Contabo2
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: 194.163.188.71
+          username: root
+          key: ${{ secrets.CONTABO2_SSH_KEY }}
+          port: 22
+          script_stop: false
+          timeout: 600s
+          command_timeout: 600s
+          envs: TICKVAL
+          script: |
+            echo "### CONTABO2 -> ENABLE_MULTI_BLOCK_TICK=$TICKVAL ###"
+            cp /root/.aequitas.env "/root/.aequitas.env.bak.$(date +%Y%m%d-%H%M%S)"
+            sed -i '/^ENABLE_MULTI_BLOCK_TICK=/d' /root/.aequitas.env
+            echo "ENABLE_MULTI_BLOCK_TICK=$TICKVAL" >> /root/.aequitas.env
+            grep '^ENABLE_MULTI_BLOCK_TICK=' /root/.aequitas.env
+
+            IMAGE="$(docker inspect aequitas-node --format '{{.Config.Image}}')"
+            NET="$(docker inspect aequitas-node --format '{{range $k, $v := .NetworkSettings.Networks}}{{$k}} {{end}}' | awk '{print $1}')"
+            PORTS="$(docker inspect aequitas-node --format '{{range $p, $c := .HostConfig.PortBindings}}-p {{(index $c 0).HostPort}}:{{$p}} {{end}}' | sed 's|/tcp||g')"
+            MOUNTS="$(docker inspect aequitas-node --format '{{range .Mounts}}-v {{.Source}}:{{.Destination}} {{end}}')"
+            mkdir -p /root/tick-migration
+            ENVOUT=/root/tick-migration/inherited.env
+            docker inspect aequitas-node --format '{{range .Config.Env}}{{println .}}{{end}}' | grep -vE '^(RESYNC_FROM_SNAPSHOT|HOSTNAME|PATH|HOME)=' | grep -E '^[A-Za-z_][A-Za-z0-9_]*=' > /tmp/proc.env
+            grep -E '^[A-Za-z_][A-Za-z0-9_]*=' /root/.aequitas.env | grep -vE '^(RESYNC_FROM_SNAPSHOT|HOSTNAME|PATH|HOME)=' > /tmp/file.env || true
+            awk -F= '!seen[$1]++' /tmp/file.env /tmp/proc.env > "$ENVOUT"
+            docker stop aequitas-node && docker rm aequitas-node
+            docker run -d --name aequitas-node --network "$NET" $PORTS $MOUNTS --env-file "$ENVOUT" --restart unless-stopped "$IMAGE"
+            sleep 40
+            docker inspect aequitas-node --format '{{range .Config.Env}}{{println .}}{{end}}' | grep -E '^(ENABLE_MULTI_BLOCK_TICK|AEQUITAS_WAL_ENABLED|MPC_ENABLED)=' || echo "(missing)"
+            curl -s --max-time 15 http://127.0.0.1:8080/api/status | grep -o '"height":[0-9]*' || echo "(unreachable)"
+        env:
+          TICKVAL: ${{ inputs.value }}
