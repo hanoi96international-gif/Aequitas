@@ -401,6 +401,14 @@ func (s *EVMRPCServer) initNonceShards() {
 // ─── HTTP HANDLER ─────────────────────────────────────────────────────────────
 
 func (s *EVMRPCServer) handleRPC(w http.ResponseWriter, r *http.Request) {
+	// Timed from the first line of the handler to the encoded response, so the
+	// figure is directly comparable with TransferAtomic's own average. The
+	// subtraction between the two is the whole point -- see rpc_phase_stats.go
+	// for the arithmetic that made this necessary.
+	handlerStart := time.Now()
+	handlerItems := 0
+	defer func() { noteRPCHandler(time.Since(handlerStart), handlerItems) }()
+
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	w.Header().Set("Access-Control-Allow-Methods", "POST, OPTIONS")
@@ -487,6 +495,7 @@ func (s *EVMRPCServer) handleRPC(w http.ResponseWriter, r *http.Request) {
 			precomputed[i] = &precomputedSendTx{rawHex: rawHex}
 		}
 		if len(pending) > 0 {
+			decodeStart := time.Now()
 			workers := runtime.NumCPU()
 			if workers > len(pending) {
 				workers = len(pending)
@@ -508,6 +517,7 @@ func (s *EVMRPCServer) handleRPC(w http.ResponseWriter, r *http.Request) {
 			}
 			close(jobs)
 			wg.Wait()
+			noteRPCDecode(time.Since(decodeStart))
 		}
 		var results []interface{}
 		for i, raw := range batch {
@@ -520,7 +530,10 @@ func (s *EVMRPCServer) handleRPC(w http.ResponseWriter, r *http.Request) {
 			result := s.handleSingle(raw, precomputed[i])
 			results = append(results, result)
 		}
+		handlerItems = len(batch)
+		encodeStart := time.Now()
 		json.NewEncoder(w).Encode(results)
+		noteRPCEncode(time.Since(encodeStart))
 		return
 	}
 
@@ -529,7 +542,10 @@ func (s *EVMRPCServer) handleRPC(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	result := s.handleSingle(body, nil)
+	handlerItems = 1
+	encodeStart := time.Now()
 	json.NewEncoder(w).Encode(result)
+	noteRPCEncode(time.Since(encodeStart))
 }
 
 func (s *EVMRPCServer) handleSingle(body []byte, pre *precomputedSendTx) map[string]interface{} {
@@ -876,6 +892,9 @@ func decodeAndRecoverSender(rawHex string) (tx *types.Transaction, senderAddr st
 }
 
 func (s *EVMRPCServer) sendRawTransaction(params []json.RawMessage, pre *precomputedSendTx) (interface{}, *RPCError) {
+	sendStart := time.Now()
+	defer func() { noteRPCSend(time.Since(sendStart)) }()
+
 	// Refuse before doing any work if this node cannot currently turn
 	// transactions into blocks. Accepting them anyway is what turns a node
 	// that is briefly behind into one that is permanently stuck: every
@@ -946,6 +965,7 @@ func (s *EVMRPCServer) sendRawTransaction(params []json.RawMessage, pre *precomp
 	// both load nonce=0 from DB (DB read outside lock), and then both pass the
 	// second lock's check — both reserving nonce 0 and executing the same tx.
 	// Fix: hold the mutex for the entire DB-load + check + reserve sequence.
+	nonceStart := time.Now()
 	nonceLock := s.nonceShardFor(senderAddr)
 	nonceLock.mu.Lock()
 	// Populate from DB on first sight to recover correct nonce after restart.
@@ -985,6 +1005,7 @@ func (s *EVMRPCServer) sendRawTransaction(params []json.RawMessage, pre *precomp
 		toAddrForReceipt = strings.ToLower(tx.To().Hex())
 	}
 	nonceLock.mu.Unlock()
+	noteRPCNonce(time.Since(nonceStart))
 	// Receipt metadata is keyed by txHash and shared across senders, so it
 	// belongs under mu rather than a per-sender lock. Taken separately and
 	// briefly, after the nonce lock is released, so the two never nest.

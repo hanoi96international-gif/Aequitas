@@ -678,6 +678,10 @@ func (a *APIServer) handleCombinedHealth(w http.ResponseWriter, r *http.Request)
 		"admission":  AdmissionStats(),
 		"wal_writer": wal.WriterStats(),
 		"tx_index":   TxIndexStats(),
+		// The request split, so the ~50ms per transfer that TransferAtomic does
+		// not account for can be subtracted out instead of guessed at. Read
+		// unaccounted_in_send_ms first; see rpc_phase_stats.go.
+		"rpc_phases": RPCPhaseStats(),
 		// chain_tx_batches hatte keine Obergrenze und keinen DELETE-Pfad;
 		// siehe tx_batch_prune.go.
 		"tx_batch_prune": TxBatchPruneStats(),
