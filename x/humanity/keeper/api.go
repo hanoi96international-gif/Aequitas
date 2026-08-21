@@ -1527,7 +1527,57 @@ func (a *APIServer) handleBlocksByHash(w http.ResponseWriter, r *http.Request) {
 		valid = append(valid, h)
 	}
 	found := a.blockchain.GetBlocksByHashesForPeer(valid)
+
+	// Cap the RESPONSE BY BYTES, not only by hash count.
+	//
+	// maxBlocksByHashPerRequest is 500 because this was sized against blocks
+	// of "~2 KB each ... at 500 hashes is ~1 MB". A block carrying a few
+	// thousand transfers is closer to 1 MB by itself, so under real load the
+	// same 500 hashes produce hundreds of MB, the client stops reading at its
+	// 20 MB cap, and the truncated body fails to parse. The client now halves
+	// and retries, but every failed attempt still transfers ~20 MB first --
+	// on 2026-08-21 Contabo1 spent its whole bandwidth on discarded responses
+	// (327 -> 163 -> 81 -> 40 -> 21 -> 10) and could not catch up at all.
+	//
+	// Serving what fits is strictly better: the caller re-asks for whatever is
+	// still missing on its next cycle, so progress is the same and nothing is
+	// transferred twice.
+	found, truncated := capBlocksByResponseBytes(found)
+	if truncated {
+		// The client must NOT read the omitted hashes as "this peer does not
+		// have them" -- it counts those toward orphanAbandonAfter, and
+		// abandoning a block the peer actually holds is how a node ends up
+		// permanently unable to bridge to the chain.
+		w.Header().Set("X-Blocks-Truncated", "1")
+	}
 	json.NewEncoder(w).Encode(found)
+}
+
+// blocksByHashResponseBudget is the byte budget for one /api/blocks/by-hash
+// response. Below the client's 20 MB read cap with room for JSON overhead, so
+// a response that fits this budget always fits the client.
+const blocksByHashResponseBudget = 12 << 20
+
+// capBlocksByResponseBytes keeps blocks while they fit the budget and reports
+// whether anything was left out.
+//
+// Always keeps the FIRST block even when it alone exceeds the budget: an empty
+// response would tell the caller the peer has nothing, and it would make no
+// progress on that hash ever again. One oversized block is the client's
+// problem to report, not a reason to stall the whole catch-up.
+func capBlocksByResponseBytes(blocks []*Block) ([]*Block, bool) {
+	total := 2 // the enclosing [ ]
+	for i, b := range blocks {
+		enc, err := json.Marshal(b)
+		if err != nil {
+			continue
+		}
+		total += len(enc) + 1 // + comma
+		if total > blocksByHashResponseBudget && i > 0 {
+			return blocks[:i], true
+		}
+	}
+	return blocks, false
 }
 
 // --- /api/blocks/push flood shield (P0, 2026-07-02 fork-flood recurrence) ---

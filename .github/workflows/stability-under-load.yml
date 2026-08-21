@@ -86,6 +86,13 @@ jobs:
 
       - name: Watch both boxes through the load and the recovery window
         run: |
+          # GitHub runs `run:` under `bash -e`, so a plain `[ cond ] && act`
+          # ends the STEP the moment cond is false. The watch loop below is
+          # built out of exactly those, and on 2026-08-21 that killed the run
+          # at t=150s -- mid-measurement, while it was recording the very
+          # divergence it exists to catch. Turned off explicitly here; the
+          # verdict at the end decides the exit code.
+          set +e
           set -uo pipefail
           RECOVERY=$(( ${{ inputs.recovery_minutes }} * 60 ))
           # Poll for the load plus the recovery window. Duration is a Go

@@ -590,18 +590,25 @@ func fetchWithSmallerPageFallback(nodeURL string, minHeight int64, pageSize, sma
 // still missing afterward). See fetchMissingAncestors' comment for why this
 // batching, not a longer timeout, is the real fix for the orphan-abandon
 // storm seen during a large catch-up.
-func (dag *BlockDAG) fetchBlocksByHashes(nodeURL string, hashes []string) ([]*Block, error) {
+func (dag *BlockDAG) fetchBlocksByHashes(nodeURL string, hashes []string) ([]*Block, bool, error) {
 	body, _ := json.Marshal(map[string][]string{"hashes": hashes})
 	resp, err := httpSyncClient.Post(nodeURL+"/api/blocks/by-hash", "application/json", bytes.NewReader(body))
 	if err != nil {
-		return nil, err
+		return nil, false, err
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
 		respBody, _ := io.ReadAll(io.LimitReader(resp.Body, 4<<10))
-		return nil, fmt.Errorf("peer returned HTTP %d: %s", resp.StatusCode, strings.TrimSpace(string(respBody)))
+		return nil, false, fmt.Errorf("peer returned HTTP %d: %s", resp.StatusCode, strings.TrimSpace(string(respBody)))
 	}
-	return decodeBlocksByHashResponse(resp.Body)
+	// The peer says it stopped early because the response hit its byte budget.
+	// The hashes it left out were never looked up, so they must NOT be counted
+	// as ones it does not have -- that count drives orphanAbandonAfter, and
+	// abandoning a block the peer actually holds is how a node ends up unable
+	// to bridge back to the chain at all.
+	truncated := resp.Header.Get("X-Blocks-Truncated") == "1"
+	blocks, err := decodeBlocksByHashResponse(resp.Body)
+	return blocks, truncated, err
 }
 
 // blocksByHashReadCap bounds how much of a peer's answer is read. An unbounded
@@ -654,8 +661,8 @@ var errResponseTooLarge = errors.New("peer response exceeded the client read cap
 // fetchBlocksByHashesAdaptive fetches a chunk, halving it on each
 // errResponseTooLarge until it fits or a single hash is left. A lone hash that
 // still does not fit is a genuine error: no split can make it smaller.
-func (dag *BlockDAG) fetchBlocksByHashesAdaptive(nodeURL string, hashes []string) ([]*Block, error) {
-	return splitOnOversize(hashes, nodeURL, func(chunk []string) ([]*Block, error) {
+func (dag *BlockDAG) fetchBlocksByHashesAdaptive(nodeURL string, hashes []string) ([]*Block, bool, error) {
+	return splitOnOversize(hashes, nodeURL, func(chunk []string) ([]*Block, bool, error) {
 		return dag.fetchBlocksByHashes(nodeURL, chunk)
 	})
 }
@@ -670,26 +677,26 @@ func (dag *BlockDAG) fetchBlocksByHashesAdaptive(nodeURL string, hashes []string
 // Takes fetch as a parameter so the splitting can be tested without a network:
 // httpSyncClient refuses loopback addresses (pinningDialer's DNS-rebinding
 // guard), which is correct and not worth weakening for a test.
-func splitOnOversize(hashes []string, label string, fetch func([]string) ([]*Block, error)) ([]*Block, error) {
-	blocks, err := fetch(hashes)
+func splitOnOversize(hashes []string, label string, fetch func([]string) ([]*Block, bool, error)) ([]*Block, bool, error) {
+	blocks, truncated, err := fetch(hashes)
 	if !errors.Is(err, errResponseTooLarge) {
-		return blocks, err
+		return blocks, truncated, err
 	}
 	if len(hashes) <= 1 {
-		return nil, fmt.Errorf("a single block from %s exceeds the %d MB read cap", label, blocksByHashReadCap>>20)
+		return nil, false, fmt.Errorf("a single block from %s exceeds the %d MB read cap", label, blocksByHashReadCap>>20)
 	}
 	mid := len(hashes) / 2
 	fmt.Printf("[HTTP-SYNC] response for %d blocks from %s exceeded the read cap - splitting into %d + %d\n",
 		len(hashes), label, mid, len(hashes)-mid)
-	first, err := splitOnOversize(hashes[:mid], label, fetch)
+	first, t1, err := splitOnOversize(hashes[:mid], label, fetch)
 	if err != nil {
-		return nil, err
+		return nil, false, err
 	}
-	second, err := splitOnOversize(hashes[mid:], label, fetch)
+	second, t2, err := splitOnOversize(hashes[mid:], label, fetch)
 	if err != nil {
-		return nil, err
+		return nil, false, err
 	}
-	return append(first, second...), nil
+	return append(first, second...), t1 || t2, nil
 }
 
 // fetchMissingAncestors resolves orphaned blocks by walking backward one
@@ -891,7 +898,7 @@ func (dag *BlockDAG) fetchMissingAncestors(nodeURL string) {
 		fetchedThisRound := 0
 		for i := 0; i < len(pending); i += maxBatchSize {
 			chunk := pending[i:min(i+maxBatchSize, len(pending))]
-			blocks, err := dag.fetchBlocksByHashesAdaptive(nodeURL, chunk)
+			blocks, truncated, err := dag.fetchBlocksByHashesAdaptive(nodeURL, chunk)
 			if err != nil {
 				fmt.Printf("[HTTP-SYNC] ✗ Could not batch-fetch %d missing ancestor(s) from %s: %v\n", len(chunk), nodeURL, err)
 				continue // network failure — don't count as genuine peer confirmation
@@ -901,13 +908,22 @@ func (dag *BlockDAG) fetchMissingAncestors(nodeURL string) {
 			// A network error never counts — it says nothing about whether the peer
 			// has the block, and we must not burn through orphanAbandonAfter budget
 			// on transient connectivity issues.
-			returned := make(map[string]bool, len(blocks))
-			for _, block := range blocks {
-				returned[block.Hash] = true
-			}
-			for _, h := range chunk {
-				if !returned[h] {
-					dag.RecordOrphanAttempt(h)
+			// A TRUNCATED answer says nothing about the hashes it left out --
+			// the peer stopped at its response byte budget before looking them
+			// up. Counting those as "the peer does not have it" spends
+			// orphanAbandonAfter budget on blocks the peer is holding, and a
+			// node that abandons the ancestors bridging it to the chain never
+			// reconnects to it. Under load, when blocks are full, truncation is
+			// the NORMAL case rather than the exception.
+			if !truncated {
+				returned := make(map[string]bool, len(blocks))
+				for _, block := range blocks {
+					returned[block.Hash] = true
+				}
+				for _, h := range chunk {
+					if !returned[h] {
+						dag.RecordOrphanAttempt(h)
+					}
 				}
 			}
 			for _, block := range blocks {
@@ -2352,7 +2368,7 @@ func (dag *BlockDAG) healSyntheticCheckpoints() {
 	for _, peerURL := range peers {
 		for i := 0; i < len(hashes); i += maxBlocksByHashPerRequest {
 			chunk := hashes[i:min(i+maxBlocksByHashPerRequest, len(hashes))]
-			blocks, err := dag.fetchBlocksByHashes(peerURL, chunk)
+			blocks, _, err := dag.fetchBlocksByHashes(peerURL, chunk)
 			if err != nil || len(blocks) == 0 {
 				continue
 			}
