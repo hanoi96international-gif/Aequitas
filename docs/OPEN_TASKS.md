@@ -122,52 +122,75 @@ registration still succeeds for a genuine capture before enforcing.
 
 ---
 
-## 6. Throughput: two caps removed, the real ceiling not yet re-measured
+## 6. Throughput: Contabo1 is now level with Contabo2; the ceiling needs one measurement
 
 **Target:** at least 10,000 TPS.
 
-**Fixed 2026-08-20, both measured rather than assumed:**
+### Signature verification is NOT the blocker at 10k — the number already existed
 
-*Contabo1's connection pool was saturated before any load arrived.* It ran the
-default `AEQUITAS_DB_MAX_CONNS` of 20 with **18 connections in use while the
-chain was idle**, against a Postgres `max_connections` of 100, on a box now
-hosting eight containers. Contabo2 ran pool 100 against 250 and sat at 10.
-Since throughput is bounded by the slowest REPLAYING node, Contabo1 capped the
-whole network — and this matches the 87,534 pool waits measured earlier.
-Raised to pool 100 against `max_connections` 250; idle usage is now 13.
+`bench-signature-cgo-contabo2.yml` ran successfully on 2026-07-27 and its
+result was never read. On the production path (the Dockerfile sets
+`CGO_ENABLED=1`, so libsecp256k1, not the Go implementation):
 
-*WAL was only ever on Contabo2.* Contabo1 had no WAL flags, no host mount, and
-a `deploy.sh` whose `docker run` carried no `-v` at all. Both were fixed, and
-the deploy script was patched too — without that, the next code deploy would
-have removed WAL silently, and a node with WAL off looks completely healthy.
+| path | 6 cores | cores needed at 10,000 TPS | at 50,000 |
+|---|---|---|---|
+| pure Go (`CGO_ENABLED=0`) | 18,829 rec/s | 3.2 | 15.9 |
+| **cgo (what production runs)** | **40,577 rec/s** | **1.5** | 7.4 |
 
-**Corrected:** the previous entry said Contabo1 merges but never produces
-blocks. That was true on 2026-07-28 and is **not true now**: over the last 60
-blocks the split was 31 (Contabo1) to 29 (Contabo2). Both validators produce.
+So signature verification costs about 1.5 of 6 cores at the 10k target. It only
+becomes the binding constraint near 50k. Any note still saying "the cgo number
+is missing" is out of date.
 
-**Still open — and this is the part that needs a measurement, not a theory.**
-Earlier numbers put the CPU ceiling near 12,300 TPS on six cores (486 µs per
-transfer) while sustained throughput collapsed at roughly 3,600/s: pushing from
-3,624 to 7,078 tx/s dropped block production from +76 to +9 blocks and DAG tips
-from 7 to 1. Those numbers predate both fixes above, so the current ceiling is
-unknown.
+### Four caps removed on Contabo1, all measured first
 
-Re-measuring means a load test, and the load test **moves real AEQ** and
-requires seed addresses to be funded by hand first
-(`loadtest-prepare-contabo2.yml` → `loadtest-run-contabo2.yml`). With the
-+305 AEQ supply gap still unexplained (item 7), that is a decision to take
-deliberately rather than a thing to run casually.
+Contabo1 had **none** of Contabo2's throughput work. Every item below was found
+by reading live state, not by reasoning about code:
 
-Contabo1 still lacks three settings Contabo2 has: `ENABLE_MULTI_BLOCK_TICK`,
-`AEQUITAS_COMPRESS_BLOCK_PAYLOAD` and `AEQUITAS_PRODUCE_WHEN_BACKLOG_SHRINKING`.
-They were left alone on purpose — they change consensus timing and wire format,
-and bundling them with the pool change would have made the next measurement
-uninterpretable. One change, then measure.
+1. **Connection pool saturated at idle** — default `AEQUITAS_DB_MAX_CONNS` of 20
+   with 18 in use while the chain was idle, against `max_connections` 100, on a
+   box now running eight containers. Throughput is bounded by the slowest
+   REPLAYING node, so this capped the network regardless of Contabo2. Now pool
+   100 against 250; idle usage 13. Matches the 87,534 pool waits measured
+   earlier.
+2. **No WAL at all** — no flags, no host mount, and a `deploy.sh` whose
+   `docker run` carried no `-v`. Fixed, and the deploy script patched too:
+   without that the next code deploy would have removed it silently.
+3. **No block-payload compression.** This is the one aimed squarely at the
+   collapse. Its own header: `SaveBlockWithPendingTxsAtomic` holds `dag.mu`
+   while writing, and under load "block production fell to 9 blocks in 85
+   seconds where 85 were due", with `AddPeerBlock` locked out for the same
+   window — which is what piles up orphans and collapses the DAG to one tip.
+   Measured 3.5x at full-block size with compression time counted.
+   **Verified live afterwards**, not just assumed from the flag: both boxes'
+   most recent `chain_blocks` rows now have `transactions` empty and
+   `transactions_z` populated.
+4. **No `ENABLE_MULTI_BLOCK_TICK`, no `AEQUITAS_PRODUCE_WHEN_BACKLOG_SHRINKING`.**
+   The latter keeps a node producing while it works off a backlog instead of
+   mistaking one for a fork — precisely the state a node is in under load.
 
-**A caution worth keeping:** the last several throughput hypotheses on this
-project (WAL lock, batch size, fsync, bloat, gzip) were all plausible and all
-wrong. The two fixed above were found by reading live state, not by reasoning
-about the code.
+**Corrected:** a previous entry said Contabo1 merges but never produces blocks.
+True on 2026-07-28, not true now — 31 of the last 60 blocks were Contabo1's
+against Contabo2's 29.
+
+### What is left, and what it needs from a person
+
+Re-measuring throughput needs `loadtest-run-contabo2.yml`, and that needs seed
+accounts holding real AEQ. **They are empty**: the tool takes the first N rows
+of `accounts.csv` as seeds (`seeds := accs[:*numSeeds]`), and all of them read
+zero — they were spent during the July runs. `loadtest-readiness.yml` reports
+this without touching anything.
+
+Funding them is a transfer of real AEQ from a real account and is a decision
+for the operator, not something to do automatically — more so while the
++305 AEQ supply gap (item 7) is unexplained.
+
+Every throughput figure on record (~3,600/s sustained, collapse above it)
+predates all four fixes, so the current ceiling is **unknown rather than
+known-bad**.
+
+**A caution worth keeping:** the last several throughput hypotheses here (WAL
+lock, batch size, fsync, bloat, gzip) were all plausible and all wrong. The
+four above were found by reading live state.
 
 ---
 
