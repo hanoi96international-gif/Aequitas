@@ -677,6 +677,7 @@ func (a *APIServer) handleCombinedHealth(w http.ResponseWriter, r *http.Request)
 		"wal_flush":  WALFlushStats(),
 		"admission":  AdmissionStats(),
 		"wal_writer": wal.WriterStats(),
+		"tx_index":   TxIndexStats(),
 		// chain_tx_batches hatte keine Obergrenze und keinen DELETE-Pfad;
 		// siehe tx_batch_prune.go.
 		"tx_batch_prune": TxBatchPruneStats(),

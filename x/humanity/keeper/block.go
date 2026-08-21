@@ -2745,9 +2745,11 @@ func (dag *BlockDAG) ProduceBlock() *Block {
 	// path does for peer blocks — a transaction must resolve to its real block
 	// no matter which node produced it or which node the wallet asks. See
 	// tx_block_index.go. Non-fatal: the block is already durably saved.
-	if err := dag.state.IndexBlockTransactions(block.Height, block.Hash, block.Transactions); err != nil {
-		fmt.Printf("[BLOCK] ⚠ Could not index transactions of block #%d for wallet lookups: %v\n", block.Height, err)
-	}
+	// Asynchronous: one row per transaction, up to maxTxsPerBlock of them,
+	// and this is not consensus -- see tx_block_index_async.go. This call
+	// site already treated a failure here as non-fatal, so deferring it is
+	// weaker than what the code already tolerated.
+	dag.state.IndexBlockTransactionsAsync(block.Height, block.Hash, block.Transactions)
 	// Keep the body retrievable by digest so this node can serve it to a peer
 	// that received the block stripped of its transactions (roadmap step 4,
 	// tx_batch.go). Must happen before the broadcast below, or a peer could ask
@@ -6973,9 +6975,12 @@ func (dag *BlockDAG) replayTransactions(block *Block, force bool) (ok bool) {
 	// A failure here is logged, not fatal — the block itself is valid and
 	// committed, and a missing index entry degrades to the pre-existing
 	// fallback behaviour rather than rejecting anything.
-	if err := dag.state.IndexBlockTransactions(block.Height, block.Hash, block.Transactions); err != nil {
-		fmt.Printf("[REPLAY] ⚠ Could not index transactions of block #%d for wallet lookups: %v\n", block.Height, err)
-	}
+	// Asynchronous, and this is the call site that matters most: replay holds
+	// the EXCLUSIVE state lock -- measured at 4.697s for one full block, with
+	// every concurrent transfer blocked for that entire time. Writing up to
+	// 10,000 index rows inside that window bought nothing consensus depends
+	// on. See tx_block_index_async.go.
+	dag.state.IndexBlockTransactionsAsync(block.Height, block.Hash, block.Transactions)
 
 	dag.replayedMu.Lock()
 	// FIX 1: Cap the cache to prevent unbounded growth (memory leak).
