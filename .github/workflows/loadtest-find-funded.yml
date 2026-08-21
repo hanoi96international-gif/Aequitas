@@ -1,17 +1,25 @@
 name: Which loadtest accounts still hold AEQ? (read-only)
 
 # The loadtest takes the FIRST N rows of accounts.csv as its seeds
-# (main.go: seeds := accs[:*numSeeds]), and those five read zero -- they were
-# spent during the July runs. But 1,201 accounts were generated, and the later
-# ones may still hold the small amounts the fund phase gave them.
+# (main.go: seeds := accs[:*numSeeds]), and those five hold nothing. But 1,201
+# accounts were generated and /api/snapshot shows 946 non-human accounts still
+# holding 15.5 AEQ between them -- far more than the ~1.2 AEQ a full run needs.
 #
-# If they do, no AEQ has to be moved at all: making a funded account a seed is
-# a matter of which ROW it sits in, not of sending it anything. This workflow
-# only measures; the reordering is a separate, deliberate step.
+# If those are loadtest accounts, nothing has to be sent anywhere: which
+# account is a seed is a question of which ROW it occupies, not of funding it.
 #
-# Addresses only. main.go's docstring is explicit that accounts.csv holds
-# private keys and must never be printed, copied off the box, or uploaded, so
-# this reads column 2 alone and looks balances up through the local API.
+# WHY THIS JOINS A SNAPSHOT INSTEAD OF QUERYING PER ACCOUNT
+#
+# The first version of this workflow asked /api/balance once per account and
+# reported all 1,201 as empty -- including accounts a snapshot proved held
+# 0.971 AEQ. The endpoint's parameter is `wallet`, not `address`, and
+# handleBalance answers a missing one with {"balance":0,...} rather than an
+# error, so every request looked like a funded-account-with-nothing-in-it. One
+# snapshot read on the box and a local join cannot fail that way, and does not
+# risk a rate limit either.
+#
+# Addresses only. accounts.csv holds private keys and main.go's docstring is
+# explicit that it must never be printed, copied off the box, or uploaded.
 on:
   workflow_dispatch: {}
 
@@ -27,34 +35,41 @@ jobs:
           key: ${{ secrets.CONTABO2_SSH_KEY }}
           port: 22
           script_stop: false
-          timeout: 900s
-          command_timeout: 900s
+          timeout: 600s
+          command_timeout: 600s
           script: |
             CSV=/root/contabo-loadtest/accounts.csv
+            BAK=/root/contabo-loadtest/accounts.csv.funded-seeds.bak
             [ -f "$CSV" ] || { echo "no accounts.csv"; exit 1; }
-            echo "rows: $(wc -l < "$CSV")"
+
+            curl -s --max-time 60 http://127.0.0.1:8080/api/snapshot -o /tmp/snap.json
+            echo "snapshot bytes: $(wc -c < /tmp/snap.json)"
+
+            # address<TAB>balance for every account carrying anything
+            python3 - <<'PY'
+            import json
+            d=json.load(open("/tmp/snap.json"))
+            with open("/tmp/funded.tsv","w") as f:
+                n=0
+                for a in d.get("accounts",[]):
+                    b=float(a.get("balance") or 0)
+                    if b>0:
+                        f.write("%s\t%.6f\n"%(a["address"].lower(),b)); n+=1
+            print("accounts holding AEQ on chain:",n)
+            PY
+
+            for FILE in "$CSV" "$BAK"; do
+              [ -f "$FILE" ] || continue
+              echo ""
+              echo "=== $(basename "$FILE") -- rows: $(wc -l < "$FILE") ==="
+              awk -F, 'NF>=2 && $2 ~ /^0x/ {print tolower($2)"\t"NR}' "$FILE" | sort > /tmp/csvaddr.tsv
+              sort /tmp/funded.tsv > /tmp/f.tsv
+              join -t "$(printf '\t')" /tmp/csvaddr.tsv /tmp/f.tsv > /tmp/hit.tsv 2>/dev/null || true
+              echo "rows in this file that hold AEQ: $(wc -l < /tmp/hit.tsv)"
+              echo "combined: $(awk -F'\t' '{s+=$3} END{printf "%.6f", s+0}' /tmp/hit.tsv) AEQ"
+              echo "--- the 10 richest, as row,address,balance ---"
+              sort -t "$(printf '\t')" -k3 -gr /tmp/hit.tsv | head -10 | awk -F'\t' '{print "  row "$2"  "$1"  "$3}'
+            done
+
             echo ""
-            echo "Scanning balances. Printing only rows that hold something."
-            echo "row,address,balance"
-            FUNDED=0
-            TOTAL=0
-            ROW=0
-            while IFS=, read -r idx addr rest; do
-              ROW=$((ROW+1))
-              case "$addr" in 0x*) ;; *) continue ;; esac
-              B=$(curl -s --max-time 5 "http://127.0.0.1:8080/api/balance?address=$addr" 2>/dev/null | sed 's/.*"balance"://; s/,.*//; s/}.*//')
-              case "$B" in
-                ""|0|0.0|0.00) continue ;;
-              esac
-              FUNDED=$((FUNDED+1))
-              TOTAL=$(awk -v a="$TOTAL" -v b="$B" 'BEGIN{printf "%.6f", a+b}')
-              if [ "$FUNDED" -le 40 ]; then
-                echo "$ROW,$addr,$B"
-              fi
-            done < "$CSV"
-            echo ""
-            echo "accounts holding AEQ : $FUNDED"
-            echo "combined balance     : $TOTAL AEQ"
-            echo ""
-            echo "The loadtest's fund phase sends 0.001 AEQ per test account by default,"
-            echo "so roughly 1.2 AEQ total is enough for a full 1,196-account run."
+            echo "A full 1,196-account run needs about 1.2 AEQ across the five seed rows."
