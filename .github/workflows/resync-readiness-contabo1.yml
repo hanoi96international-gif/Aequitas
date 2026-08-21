@@ -1,0 +1,67 @@
+name: Can Contabo1 actually resync from Contabo2? (read-only)
+
+# resync-contabo1-only.yml flips RESYNC_FROM_SNAPSHOT=true and restarts. But
+# main.go only performs the resync inside
+#
+#   if bootstrapURL := os.Getenv("BOOTSTRAP_SNAPSHOT_URL"); bootstrapURL != "" && (freshNodeBootstrap || resyncMode)
+#
+# and Contabo1 has no BOOTSTRAP_SNAPSHOT_URL -- only Contabo2 carries one.
+# Dispatching the resync as-is would restart the node and silently do nothing,
+# which on a node that is already stuck reads exactly like "the resync did not
+# help".
+#
+# The second precondition is the signer. fetchAndValidateSnapshot verifies the
+# snapshot's ECDSA signature against BOOTSTRAP_SIGNER, and Contabo2 signs with
+# its own key (0x1a37dcda...). If Contabo1 expects a different signer -- the
+# decommissioned Railway primary, for instance -- the snapshot is refused and
+# the resync fails closed. That is the correct behaviour and the reason to
+# check first rather than find out mid-outage.
+#
+# Prints addresses and URLs only. Neither is a secret; the key never leaves the
+# box.
+on:
+  workflow_dispatch: {}
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Contabo1
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: 173.249.37.118
+          username: root
+          key: ${{ secrets.CONTABO_SSH_KEY }}
+          port: 22
+          fingerprint: "SHA256:noMtjHV8c+2iEFZu3TRUP6WRwGjkrvFke71KgU6Eyt4"
+          script_stop: false
+          timeout: 300s
+          command_timeout: 300s
+          script: |
+            echo "### CONTABO1 ###"
+            echo "--- BOOTSTRAP_SNAPSHOT_URL (must be non-empty for a resync to do anything) ---"
+            docker inspect aequitas-node --format '{{range .Config.Env}}{{println .}}{{end}}' | grep '^BOOTSTRAP_SNAPSHOT_URL=' || echo "(NOT SET -- a resync would restart the node and do nothing)"
+            grep '^BOOTSTRAP_SNAPSHOT_URL=' /root/.aequitas.env || echo "(not in .aequitas.env either)"
+            echo "--- BOOTSTRAP_SIGNER (the address a snapshot must be signed by) ---"
+            docker inspect aequitas-node --format '{{range .Config.Env}}{{println .}}{{end}}' | grep '^BOOTSTRAP_SIGNER=' || echo "(not set -- ResyncFromSnapshotURL refuses an empty expected signer)"
+            echo "--- who Contabo2 signs as (its own proposer address) ---"
+            echo "  0x1a37dcdaa42cf3f7e1f6e41379961f40df44a4e3"
+            echo "  If BOOTSTRAP_SIGNER above is not this address, the snapshot is refused."
+            echo "--- peers this node is pointed at ---"
+            docker inspect aequitas-node --format '{{range .Config.Env}}{{println .}}{{end}}' | grep -E '^(PRIMARY_NODE_URL|PRIMARY_NODE_URLS|SELF_URL)=' || echo "(none)"
+            echo "--- is Contabo2's snapshot reachable and signed? ---"
+            curl -s --max-time 60 http://194.163.188.71:8080/api/snapshot -o /tmp/peer_snap.json
+            echo "bytes: $(wc -c < /tmp/peer_snap.json)"
+            python3 - <<'PY'
+            import json
+            try:
+                d=json.load(open("/tmp/peer_snap.json"))
+            except Exception as e:
+                print("  could not parse:",e); raise SystemExit
+            print("  height  :",d.get("height"))
+            print("  accounts:",len(d.get("accounts",[])))
+            print("  signed  :", "yes" if d.get("signature") else "NO -- an unsigned snapshot is refused")
+            PY
+            echo "--- where this node is stuck ---"
+            curl -s --max-time 15 http://127.0.0.1:8080/api/status | tr ',' '\n' | grep -E '"height"|dag_tips|git_commit' || true
+            docker logs aequitas-node --since 5m 2>&1 | grep -E 'rolled back due to|state-inconsistency' | tail -3 || echo "(no rollback lines in the last 5m)"
