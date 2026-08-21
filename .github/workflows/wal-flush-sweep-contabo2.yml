@@ -51,6 +51,10 @@ on:
         description: "AEQUITAS_WAL_FLUSH_CONCURRENCY for every run (empty = leave default)"
         required: false
         default: ""
+      intervals_ms:
+        description: "Comma-separated AEQUITAS_WAL_FLUSH_INTERVAL_MS values. The interval, not the batch cap, decides how many addresses one flush freezes. Empty = leave the default."
+        required: false
+        default: ""
       duration:
         description: "Load duration per value"
         required: false
@@ -70,7 +74,7 @@ jobs:
           script_stop: false
           timeout: 3600s
           command_timeout: 3600s
-          envs: BATCHES,CONC,DUR
+          envs: BATCHES,INTERVALS,CONC,DUR
           script: |
             set +e
             cd /root/contabo-loadtest || { echo "no loadtest dir"; exit 1; }
@@ -83,14 +87,26 @@ jobs:
             mkdir -p /root/sweep
             echo "image=$IMAGE net=$NET"
             echo ""
-            printf '%-8s %-9s %-11s %-9s %-9s %-9s %s\n' "batch" "TPS" "addrs/fl" "hold_ms" "holdmax" "items/fl" "db_ms"
+            printf '%-8s %-9s %-11s %-9s %-9s %-9s %s\n' "value" "TPS" "addrs/fl" "hold_ms" "holdmax" "items/fl" "db_ms"
 
-            for B in $(echo "$BATCHES" | tr ',' ' '); do
+            # Sweep the interval when given, otherwise the batch sizes. The
+            # interval is the lever that actually moves addrs_per_flush: the
+            # batch cap measured 402 items against a 4,000 limit, so it never
+            # bound anything.
+            SWEEP_KIND=batch
+            VALUES="$BATCHES"
+            if [ -n "${INTERVALS:-}" ]; then SWEEP_KIND=interval_ms; VALUES="$INTERVALS"; fi
+            echo "sweeping: $SWEEP_KIND over [$VALUES]"
+            for B in $(echo "$VALUES" | tr ',' ' '); do
               ENVOUT=/root/sweep/env.$B
               docker inspect aequitas-node --format '{{range .Config.Env}}{{println .}}{{end}}' \
-                | grep -vE '^(RESYNC_FROM_SNAPSHOT|HOSTNAME|PATH|HOME|AEQUITAS_WAL_FLUSH_BATCH|AEQUITAS_WAL_FLUSH_CONCURRENCY)=' \
+                | grep -vE '^(RESYNC_FROM_SNAPSHOT|HOSTNAME|PATH|HOME|AEQUITAS_WAL_FLUSH_BATCH|AEQUITAS_WAL_FLUSH_CONCURRENCY|AEQUITAS_WAL_FLUSH_INTERVAL_MS)=' \
                 | grep -E '^[A-Za-z_][A-Za-z0-9_]*=' > "$ENVOUT"
-              echo "AEQUITAS_WAL_FLUSH_BATCH=$B" >> "$ENVOUT"
+              if [ "$SWEEP_KIND" = "interval_ms" ]; then
+                echo "AEQUITAS_WAL_FLUSH_INTERVAL_MS=$B" >> "$ENVOUT"
+              else
+                echo "AEQUITAS_WAL_FLUSH_BATCH=$B" >> "$ENVOUT"
+              fi
               [ -n "${CONC:-}" ] && echo "AEQUITAS_WAL_FLUSH_CONCURRENCY=$CONC" >> "$ENVOUT"
 
               docker stop aequitas-node >/dev/null 2>&1
@@ -127,5 +143,6 @@ jobs:
             echo "single value to settle on one."
         env:
           BATCHES: ${{ inputs.batches }}
+          INTERVALS: ${{ inputs.intervals_ms }}
           CONC: ${{ inputs.concurrency }}
           DUR: ${{ inputs.duration }}
