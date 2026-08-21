@@ -1,0 +1,107 @@
+name: Spread Postgres checkpoints so they stop stalling the WAL (Contabo2)
+
+# THE STALL THIS TARGETS, measured 2026-08-21.
+#
+# The chain's own WAL writer, under load:
+#
+#   avg_batch 47.3   sync_avg_us 15989   sync_max_us 1708300   write_avg_us 402
+#
+# A single fsync taking 1.708 SECONDS. The same filesystem measured on its own
+# does 426 fsyncs/s at a p50 of 1976us, so the device is not slow -- it is
+# being saturated in bursts. And the node's applied-transfer counter shows
+# exactly that shape: 7374/s at peak, then seconds of 168, 89, 1, 1, 18.
+#
+# It matters far beyond the WAL, because transferConcurrentWAL holds
+# cs.mu.RLock() across its Append. Go's RWMutex blocks new readers once a
+# writer is waiting, so one 1.7s fsync stops every incoming transfer AND the
+# block production that wants the write lock -- which is what puts the node
+# over the 30s admission threshold and makes it refuse work entirely.
+#
+# WHY POSTGRES IS THE SOURCE. It shares /dev/sda1 with the WAL and, at load,
+# the flush worker writes one account UPSERT per address plus one outbox row
+# per item -- thousands of rows a second. Its settings are stock:
+#
+#   max_wal_size 1GB   checkpoint_timeout 5min   wal_compression off
+#
+# 1GB fills in a minute or two at that write rate, which forces a checkpoint,
+# and a checkpoint with no completion target writes its dirty buffers as fast
+# as it can. That burst is the 1.7s.
+#
+# WHAT THIS CHANGES, all standard and all reloadable without a restart:
+#
+#   max_wal_size 1GB -> 8GB       far fewer forced checkpoints. The volume now
+#                                 has 77GB free (68GB of docker build cache was
+#                                 reclaimed today), so the space is there.
+#   checkpoint_completion_target  -> 0.9, so a checkpoint spreads its writes
+#                                 over 90% of the interval instead of bursting.
+#   wal_compression -> on         less WAL I/O for CPU this node has spare --
+#                                 measured at about one core of six in use.
+#
+# full_page_writes stays ON. It is what protects against torn pages on a crash,
+# and this is a validator.
+on:
+  workflow_dispatch:
+    inputs:
+      revert:
+        description: "true = restore the stock values instead"
+        required: false
+        default: "false"
+
+jobs:
+  tune:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Contabo2
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: 194.163.188.71
+          username: root
+          key: ${{ secrets.CONTABO2_SSH_KEY }}
+          port: 22
+          script_stop: false
+          timeout: 600s
+          command_timeout: 600s
+          envs: REVERT
+          script: |
+            set +e
+            P() { docker exec aequitas-postgres psql -U postgres -tAc "$1" 2>/dev/null | tr -d ' \r'; }
+            echo "=== before ==="
+            for s in max_wal_size checkpoint_timeout checkpoint_completion_target wal_compression full_page_writes synchronous_commit; do
+              printf '  %-30s %s\n' "$s" "$(P "SHOW $s;")"
+            done
+
+            if [ "${REVERT:-false}" = "true" ]; then
+              echo "=== reverting to stock ==="
+              docker exec aequitas-postgres psql -U postgres -c "ALTER SYSTEM RESET max_wal_size;" >/dev/null
+              docker exec aequitas-postgres psql -U postgres -c "ALTER SYSTEM RESET checkpoint_completion_target;" >/dev/null
+              docker exec aequitas-postgres psql -U postgres -c "ALTER SYSTEM RESET wal_compression;" >/dev/null
+            else
+              echo "=== applying ==="
+              docker exec aequitas-postgres psql -U postgres -c "ALTER SYSTEM SET max_wal_size = '8GB';" >/dev/null
+              docker exec aequitas-postgres psql -U postgres -c "ALTER SYSTEM SET checkpoint_completion_target = 0.9;" >/dev/null
+              docker exec aequitas-postgres psql -U postgres -c "ALTER SYSTEM SET wal_compression = on;" >/dev/null
+            fi
+            docker exec aequitas-postgres psql -U postgres -c "SELECT pg_reload_conf();" >/dev/null
+            sleep 3
+
+            echo "=== after ==="
+            for s in max_wal_size checkpoint_timeout checkpoint_completion_target wal_compression full_page_writes synchronous_commit; do
+              printf '  %-30s %s\n' "$s" "$(P "SHOW $s;")"
+            done
+
+            echo ""
+            echo "=== checkpoint history so far (how bursty has it been?) ==="
+            docker exec aequitas-postgres psql -U postgres -tAc \
+              "SELECT 'timed='||num_timed||' requested='||num_requested||' write_time_ms='||round(write_time)||' sync_time_ms='||round(sync_time) FROM pg_stat_checkpointer;" 2>/dev/null \
+              || docker exec aequitas-postgres psql -U postgres -tAc \
+              "SELECT 'timed='||checkpoints_timed||' requested='||checkpoints_req||' write_time_ms='||round(checkpoint_write_time)||' sync_time_ms='||round(checkpoint_sync_time) FROM pg_stat_bgwriter;" 2>/dev/null \
+              || echo "  (checkpoint stats unavailable on this version)"
+            echo ""
+            echo "  requested >> timed means checkpoints are being FORCED by max_wal_size"
+            echo "  rather than happening on schedule -- which is the burst pattern that"
+            echo "  stalls the chain's own fsync."
+            echo ""
+            echo "=== disk ==="
+            df -hT / | tail -1
+        env:
+          REVERT: ${{ inputs.revert }}
