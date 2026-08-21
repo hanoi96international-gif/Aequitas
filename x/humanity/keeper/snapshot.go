@@ -647,17 +647,37 @@ func (cs *ChainState) ResyncFromSnapshotURL(peerURL, expectedSignerHex string) e
 	// previous run) would set dag.height to the old max, and doSyncOnce
 	// would start from there — leaving a gap whose parent hashes don't
 	// exist in dag.blocks, causing every subsequent block to orphan.
-	if _, err := tx.Exec(`DELETE FROM chain_blocks`); err != nil {
-		return fail(fmt.Errorf("resync: could not clear chain_blocks: %w", err))
+	// TRUNCATE, not DELETE, and with the statement timeout lifted for this
+	// transaction only.
+	//
+	// WHY: on 2026-08-21 Contabo1 diverged and could not resync. Every attempt
+	// -- boot-time and in-process auto-heal alike -- died at this exact step:
+	//
+	//   resync failed: resync: could not clear chain_blocks:
+	//   pq: canceling statement due to statement timeout (57014)
+	//
+	// The node held 4.38 million blocks. `DELETE FROM chain_blocks` walks every
+	// row and writes an equal volume of WAL, so it cannot finish inside
+	// statement_timeout. TRUNCATE unlinks the file instead: constant time, no
+	// per-row work.
+	//
+	// This is a trap that GROWS WITH UPTIME. A young node resyncs fine; the
+	// same node months later cannot, and the failure is quiet -- it keeps
+	// answering /api/status and looks healthy while being permanently unable to
+	// rejoin the chain it diverged from. The only place the reason surfaced was
+	// degraded_reason in /api/health/combined.
+	//
+	// One statement for all four: TRUNCATE takes an ACCESS EXCLUSIVE lock and
+	// refuses a table that another references by foreign key unless they go
+	// together. That is fine here -- this transaction replaces all of them.
+	//
+	// SET LOCAL reverts when the transaction ends, so the timeout protecting
+	// every other query on this connection is untouched.
+	if _, err := tx.Exec(`SET LOCAL statement_timeout = 0`); err != nil {
+		return fail(fmt.Errorf("resync: could not lift the statement timeout: %w", err))
 	}
-	if _, err := tx.Exec(`DELETE FROM chain_accounts`); err != nil {
-		return fail(fmt.Errorf("resync: could not clear chain_accounts: %w", err))
-	}
-	if _, err := tx.Exec(`DELETE FROM nullifiers`); err != nil {
-		return fail(fmt.Errorf("resync: could not clear nullifiers: %w", err))
-	}
-	if _, err := tx.Exec(`DELETE FROM bio_registrations`); err != nil {
-		return fail(fmt.Errorf("resync: could not clear bio_registrations: %w", err))
+	if _, err := tx.Exec(`TRUNCATE chain_blocks, chain_accounts, nullifiers, bio_registrations`); err != nil {
+		return fail(fmt.Errorf("resync: could not clear chain_blocks/chain_accounts/nullifiers/bio_registrations: %w", err))
 	}
 	// FIX (audit recheck3, P1 — "Snapshot/Resync verliert Chain-seitige
 	// bio_hashes"): this used to DELETE FROM bio_hashes here and then only
