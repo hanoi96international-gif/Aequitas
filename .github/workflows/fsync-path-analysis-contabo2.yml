@@ -1,0 +1,120 @@
+name: Where do the 2ms in an fsync actually go? (read-only)
+
+# THE CONTRADICTION THIS RESOLVES.
+#
+# The box is reported to have NVMe. An NVMe flush costs 50-200us. The measured
+# fsync on this filesystem is 1929-2435us at p50 -- ten to fifty times that,
+# and that is with the chain IDLE. Under the node's own load it degrades to 151
+# fsyncs/s.
+#
+# So either the device is not what it appears, or the cost is not in the device
+# at all but in the path above it. That distinction decides everything: one is
+# a hardware purchase, the other is a code change.
+#
+# WHAT COULD BE ADDING IT. The WAL appends to a growing file. On ext4 an fsync
+# of a file whose SIZE changed must also write the inode and a journal
+# transaction -- several dependent writes, each waiting on the one before.
+# Postgres, SQLite and every serious WAL implementation avoid this the same
+# way: preallocate the file, write INSIDE the existing size, and use fdatasync,
+# which is allowed to skip metadata the reader does not need.
+#
+# THE FOUR MEASUREMENTS, all on the same filesystem, back to back:
+#
+#   1. fsync,     appending      - what the node does today
+#   2. fdatasync, appending      - does skipping metadata help while growing?
+#   3. fsync,     preallocated   - does not growing help, on its own?
+#   4. fdatasync, preallocated   - both together, i.e. the standard WAL shape
+#
+# If 4 is far cheaper than 1, the fix is in wal.go and the hardware is fine.
+# If they are all the same, the cost is below the filesystem and only faster
+# storage moves it.
+#
+# Also reports what the device and mount actually are, since "NVMe" at the
+# provider and what the guest kernel sees are not always the same thing.
+#
+# Creates and deletes its own scratch files. Never touches the real WAL.
+on:
+  workflow_dispatch: {}
+
+jobs:
+  analyse:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Contabo2
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: 194.163.188.71
+          username: root
+          key: ${{ secrets.CONTABO2_SSH_KEY }}
+          port: 22
+          script_stop: false
+          timeout: 900s
+          command_timeout: 900s
+          script: |
+            set +e
+            echo "=== what the guest kernel sees ==="
+            ls -la /dev/nvme* 2>/dev/null || echo "  no /dev/nvme* devices — the disk is presented as SCSI/virtio, not NVMe"
+            lsblk -o NAME,ROTA,TYPE,SIZE,MODEL,TRAN 2>/dev/null | head -8
+            echo ""
+            echo "  device model  : $(cat /sys/block/sda/device/model 2>/dev/null)"
+            echo "  rotational    : $(cat /sys/block/sda/queue/rotational 2>/dev/null)"
+            echo "  scheduler     : $(cat /sys/block/sda/queue/scheduler 2>/dev/null)"
+            echo "  write cache   : $(cat /sys/block/sda/queue/write_cache 2>/dev/null)"
+            echo "  nr_requests   : $(cat /sys/block/sda/queue/nr_requests 2>/dev/null)"
+            echo "  virtio driver : $(basename $(readlink -f /sys/block/sda/device/driver 2>/dev/null) 2>/dev/null)"
+            echo ""
+            echo "=== how the filesystem is mounted ==="
+            findmnt -no SOURCE,FSTYPE,OPTIONS / 2>/dev/null
+            echo "  (data=ordered plus a journal is what makes a size-changing fsync expensive)"
+            echo ""
+            echo "=== the four shapes ==="
+            python3 - /root/aequitas-wal-data <<'PY'
+            import os, sys, time
+
+            d = sys.argv[1]
+            rec = b"x" * 220
+            SECS = 6
+
+            def run(label, prealloc, sync):
+                p = os.path.join(d, ".shape-probe.tmp")
+                f = os.open(p, os.O_CREAT | os.O_WRONLY | os.O_TRUNC)
+                try:
+                    if prealloc:
+                        # Fill 64MB up front, then write INSIDE it so the file
+                        # size never changes -- no inode update per sync.
+                        os.write(f, b"\0" * (64 << 20))
+                        os.fsync(f)
+                        os.lseek(f, 0, os.SEEK_SET)
+                    lat = []
+                    end = time.time() + SECS
+                    written = 0
+                    while time.time() < end:
+                        os.write(f, rec)
+                        written += len(rec)
+                        if prealloc and written > (64 << 20) - 4096:
+                            os.lseek(f, 0, os.SEEK_SET)
+                            written = 0
+                        t0 = time.perf_counter()
+                        if sync == "fdatasync":
+                            os.fdatasync(f)
+                        else:
+                            os.fsync(f)
+                        lat.append((time.perf_counter() - t0) * 1e6)
+                finally:
+                    os.close(f)
+                    os.unlink(p)
+                lat.sort()
+                n = len(lat)
+                print("%-34s %8.0f/s   p50 %7.0f   p90 %7.0f   p99 %8.0f"
+                      % (label, n / SECS, lat[n // 2], lat[int(n * .9)], lat[int(n * .99)]))
+
+            print("%-34s %10s   %11s %11s %12s" % ("shape", "syncs", "p50 us", "p90 us", "p99 us"))
+            run("1. fsync,     appending", False, "fsync")
+            run("2. fdatasync, appending", False, "fdatasync")
+            run("3. fsync,     preallocated", True, "fsync")
+            run("4. fdatasync, preallocated", True, "fdatasync")
+            print("")
+            print("Row 1 is what the WAL does today. If row 4 is several times faster,")
+            print("the cost is the filesystem's metadata and journal work, not the device,")
+            print("and preallocating the WAL plus fdatasync is a code fix worth making.")
+            PY
