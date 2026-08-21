@@ -1,0 +1,78 @@
+name: What is filling Contabo2's disk, and does it matter? (read-only)
+
+# WHY THIS IS A THROUGHPUT QUESTION, NOT HOUSEKEEPING.
+#
+# Measured 2026-08-21. The WAL writer's own counters under load:
+#
+#   avg_batch 48.1   sync_avg_us 9864   sync_max_us 466551   write_avg_us 266
+#
+# The same filesystem measured on its own, with no chain running:
+#
+#   426 fsyncs/s   p50 1976us   p90 3378us   p99 6507us   max 44894us
+#
+# So the disk can do a 2ms fsync and the node sees 9.9ms -- five times slower
+# under load, with outliers at 466ms. At the idle rate, 426/s x the measured
+# batch of 48 would be ~20,000 records/s, which is twice the 10,000 target. The
+# storage is not the ceiling; something is making it behave like it.
+#
+# Two candidates, both measurable here:
+#
+#  1. Postgres shares this disk. The WAL flush worker writes one account UPSERT
+#     per address plus one outbox row per item, several thousand rows a second
+#     at load, onto the same /dev/sda1 the WAL fsyncs to. That would explain why
+#     four separate LOCK-side fixes changed nothing: the contention was never
+#     the lock, it was the device.
+#
+#  2. The filesystem is 84% full (81G of 96G) and the WAL file alone has grown
+#     to 2.69 GB. ext4 allocation degrades as a volume fills, and this one also
+#     still carries a .pre-floor-fix backup from July.
+#
+# Reports what is actually consuming the space and what the I/O looks like, so
+# the next step is a decision rather than a guess. Deletes nothing.
+on:
+  workflow_dispatch: {}
+
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Contabo2
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: 194.163.188.71
+          username: root
+          key: ${{ secrets.CONTABO2_SSH_KEY }}
+          port: 22
+          script_stop: false
+          timeout: 600s
+          command_timeout: 600s
+          script: |
+            set +e
+            echo "=== filesystem ==="
+            df -hT / | tail -2
+            echo ""
+            echo "=== biggest consumers under / (top 15) ==="
+            du -xh --max-depth=2 / 2>/dev/null | sort -rh | head -15
+            echo ""
+            echo "=== the WAL file and its neighbours ==="
+            ls -lah /root/aequitas-wal-data/ 2>/dev/null
+            echo ""
+            echo "=== docker ==="
+            docker system df 2>/dev/null
+            echo ""
+            echo "=== postgres data size ==="
+            docker exec aequitas-postgres psql -U postgres -tAc \
+              "SELECT pg_size_pretty(pg_database_size(current_database()));" 2>/dev/null || echo "(query failed)"
+            docker exec aequitas-postgres psql -U postgres -d aequitas -tAc \
+              "SELECT relname, pg_size_pretty(pg_total_relation_size(relid)) FROM pg_catalog.pg_statio_user_tables ORDER BY pg_total_relation_size(relid) DESC LIMIT 8;" 2>/dev/null || echo "(table sizes unavailable)"
+            echo ""
+            echo "=== is the WAL being compacted at all? ==="
+            docker logs aequitas-node --since 24h 2>&1 | grep -iE 'compact' | tail -5 || echo "(no compaction lines in 24h)"
+            echo ""
+            echo "=== who is doing the I/O right now (5s sample) ==="
+            command -v iostat >/dev/null && iostat -x 5 2 | tail -12 || echo "(iostat not installed)"
+            echo ""
+            echo "=== postgres settings that decide how much it writes ==="
+            for s in synchronous_commit full_page_writes wal_compression checkpoint_timeout max_wal_size; do
+              printf '  %-22s %s\n' "$s" "$(docker exec aequitas-postgres psql -U postgres -tAc "SHOW $s;" 2>/dev/null | tr -d ' \r')"
+            done
