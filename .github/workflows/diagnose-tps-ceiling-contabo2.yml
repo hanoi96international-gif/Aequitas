@@ -361,6 +361,18 @@ jobs:
               curl -s --max-time 10 http://127.0.0.1:8080/api/health/combined | tr ',' '\n' | grep -A 0 -E 'wal_flush|addrs_per_flush|hold_avg_ms|hold_max_ms|items_per_flush|db_avg_ms|cfg_batch|cfg_concurrency|"flushes"' | head -12
               mv -f /tmp/cpu.pprof /tmp/cpu-latest.pprof
               echo "profile saved to /tmp/cpu-latest.pprof ($(wc -c < /tmp/cpu-latest.pprof) bytes)"
+
+              # RENDER them. Capturing a profile and never reading it is how
+              # this workflow kept producing a verdict from goroutine counts
+              # alone -- which say who is WAITING, never who is HOLDING. The
+              # mutex profile names the holder, and that is the only thing that
+              # says which lock to fix.
+              for prof in mutex block cpu; do
+                f=/tmp/$prof-latest.pprof
+                [ -s "$f" ] || { echo "--- $prof profile: empty, skipped ---"; continue; }
+                echo "--- $prof profile, top 20 by cumulative ---"
+                docker run --rm -v /tmp:/t golang:1.24-alpine                   go tool pprof -top -cum -nodecount=20 "/t/$prof-latest.pprof" 2>&1                   | grep -vE '^(Type|Time|Duration|Showing|Dropped|File|Build)' | head -24
+              done
             else
               echo "(profile empty — is the pprof server reachable inside the container?)"
             fi
