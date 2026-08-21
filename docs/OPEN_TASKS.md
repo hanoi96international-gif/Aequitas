@@ -124,109 +124,96 @@ registration still succeeds for a genuine capture before enforcing.
 
 ## 6. Throughput and stability under load
 
-**Target stated 2026-08-21: 30,000-40,000 TPS. That is not reachable on these
-boxes, and the arithmetic is not close.** A transfer costs 486 us of CPU
-(measured). Six cores deliver 6,000,000 us/s, so the ceiling is **~12,300 TPS**
-even at perfect parallelism. Signature verification alone runs at 40,577/s on
-six cores with cgo, so 40,000 TPS would consume every core on signatures before
-any state work, WAL, database, block or network cost. 40,000 needs roughly 24
-cores; 10,000 needs about 4.9 of 6 and is realistic.
+### The constraint, established by controlled experiment
 
-### Measured today
+**Disk I/O, saturated by the node's own writes.** The decisive test: an
+independent scratch-file fsync loop, sharing the device with the node and
+nothing else, run twice.
 
-| | |
+| | chain idle | chain under load |
+|---|---|---|
+| fsyncs/s | 305 | **151** |
+| p50 | 2,435 us | 3,370 us |
+| p90 | 5,566 us | **11,330 us** |
+| p99 | 14,736 us | **55,441 us** |
+| max | 46,462 us | **535,061 us** |
+
+A process that shares only the block device halves its own fsync rate when the
+chain is loaded. That is device saturation, not a lock and not a code path.
+
+### Ruled out by measurement — do not re-try these
+
+| hypothesis | how it was rejected |
 |---|---|
-| Before the day's fixes | 2,117 / 2,164 TPS (two runs) |
-| After block cap + multi-block tick off | **3,264 TPS** |
-| Node's own applied counter | 2,000-4,000/s sustained, **peak 6,787/s** |
-| Replay capacity (Contabo1) | ~10,600 tx/s |
-| CPU used at 2,150 TPS | about **1 core of 6** |
+| Parallel replay too small | Real block #4391949: 297 disjoint batches covered 49,886 of 50,000 transfers. Already 99.8% parallel. |
+| WAL flush batch size | Swept 4000/1000/400/150. Default won (3,264 vs 1,949/624/2,060). items_per_flush was 402 against a 4,000 cap, so it never bound. |
+| WAL flush interval | Swept 5/15/40/100/250/600 ms. The 100 ms default won in BOTH directions, even though short intervals moved addrs_per_flush 348 to 134 and hold_ms 40 to 21 exactly as predicted. |
+| Postgres checkpoints | max_wal_size 1GB to 8GB plus wal_compression moved sync_avg only 15,989 to 14,605 us. |
+| GC / memory | 67 cycles and 159 ms of total pause across a 109 s run at 2,745 TPS: **0.15% of wall time**, on a 475 MB live heap and a 12 GB box. |
+| The WAL file's own size | Same probe on a 1 MB and a 3 GB file, alternated three times: p50 1,929/1,935/1,769 vs 1,941/1,836/1,865 us. Identical. |
+| Lock contention | A mutex profile put 45.90% on flushWALBatch's LockAddrs hold. Four separate changes reduced that hold as intended and moved throughput not at all. |
 
-The generator's number and the node's own counter differ because the generator
-counts successes over the whole elapsed window including ramp. The node is
-faster than the client-side figure suggests.
+**A correction worth keeping**: an apparent fourfold gap between the node's
+fsync (14.4 ms) and the probe's (3.4 ms) was an artefact of comparing a MEAN to
+a MEDIAN. With the probe's own p90 at 11.3 ms and p99 at 55 ms, its mean lands
+in the same place. There was no unexplained in-process gap.
 
-### What was fixed, each from a measurement
+### Fixed today, each from a measurement
 
-1. **Blocks nobody could replay.** Contabo2 produced block #4391949 with
-   exactly 50,000 transfers -- maxTxsPerBlock at the ceiling. Contabo1 needed
-   ~4.7s to replay it under the exclusive lock against BLOCK_TIME=1s, falling
-   behind ~4.7x per block. Cap lowered to 10,000, which is the measured replay
-   capacity for one block time. Nothing is dropped: pending transactions beyond
-   the cap keep included_at=0 and go in the next block.
-2. **Multi-block tick outran replay.** It emits up to 5 full blocks per tick,
-   i.e. 5x what a replayer absorbs, and it engages exactly when a backlog
-   exists -- which is exactly when the replayer is already behind. Off on both
-   boxes.
-3. **Admission control, which did not exist.** The node kept accepting
-   transfers while its height was frozen for over 15s, and every accepted one
-   grew the backlog that kept the production gate shut. It now refuses with the
-   retryable -32005 after 30s without producing a block. Confirmed working
-   live: a stuck Contabo1 reported `refusing: true, stalled_seconds: 1233`
-   while a healthy one reports `refusing: false`.
+1. **Blocks nobody could replay.** Block #4391949 carried 50,000 transfers;
+   replaying it took 4.7 s under the exclusive lock against a 1 s block time.
+   `maxTxsPerBlock` 50,000 -> 10,000, the measured replay capacity for one
+   block time. Nothing is dropped, only deferred.
+2. **Multi-block tick outran replay** — up to 5 full blocks per tick, engaging
+   exactly when the partner is already behind. Off on both boxes.
+3. **No admission control existed.** The node accepted transfers while its
+   height was frozen for 15 s, growing the backlog that kept the gate shut. Now
+   refuses with retryable -32005 after 30 s without a block. Confirmed live.
 4. **A resync could never finish on a long-running node.** `DELETE FROM
-   chain_blocks` on 4.38M rows exceeded statement_timeout, so every resync --
-   boot-time and auto-heal alike -- rolled back, and the only trace was
-   degraded_reason. TRUNCATE instead, with the timeout lifted for that
-   transaction. This is what made Contabo1 recoverable at all.
-5. **Ancestor fetches destroyed a node's bandwidth.** A 20 MB client read cap
-   sized against 2 KB blocks truncates when blocks are full; the client now
-   splits, and the server caps its response at a 12 MB budget and says so with
-   X-Blocks-Truncated, which the client must honour or it abandons ancestors
-   the peer actually holds.
+   chain_blocks` on 4.38 M rows exceeded statement_timeout, so every attempt
+   rolled back, visible only in `degraded_reason`. TRUNCATE instead.
+5. **Ancestor fetches burned a node's bandwidth** — a 20 MB read cap sized
+   against 2 KB blocks. Server-side byte budget plus `X-Blocks-Truncated`,
+   which the client must honour or it abandons blocks the peer actually holds.
+6. **A restarted node was stranded on a tip nobody knew about.** It re-offers
+   its tips after 60 s without producing, so a peer can merge them.
+7. **184 GB of docker build cache** across both boxes (C1 116 GB, C2 68 GB).
+   C1 went 65% -> 9% full, C2 84% -> 21%. A validator that fills its disk stops
+   writing its WAL and its database.
+8. **The wallet-lookup index ran on the block path** — one row per transaction,
+   up to 10,000 per block, and on the replay path *inside the exclusive lock*.
+   Not consensus, and both call sites already discarded its error. Now
+   asynchronous: `sync_avg_us` 14,374 -> 10,260 and `sync_max_us` 1,708,300 ->
+   445,791.
 
-### Ruled out by measurement, so nobody repeats them
+### What the numbers say about the targets
 
-- **Parallel replay is not the problem.** On block #4391949, 297 disjoint
-  batches covered 49,886 of 50,000 transfers: 99.8% already parallel.
-- **WAL flush batch size is not the lever.** Swept 4000/1000/400/150: the
-  default 4000 won (3,264 TPS vs 1,949 / 624 / 2,060), and addrs_per_flush
-  barely moved because a ~716-account working set yields the same addresses at
-  any batch size.
-- **Moving the flush's Go work out of the lock buys 6%.** Phase breakdown per
-  flush: acct_sql 556us + outbox_sql 2517us against a 50.8ms window. The
-  database phases, which cannot leave the lock, are 93%.
+**30,000-40,000 TPS is not reachable on these boxes.** 486 us of CPU per
+transfer against six cores puts the ceiling near **12,300 TPS**, and signature
+verification alone runs at 40,577/s on six cores with cgo — at 40,000 TPS that
+is every core spent on signatures before any state, WAL, database or network
+work. 40,000 needs roughly 24 cores.
 
-### Where the remaining headroom is
+**10,000 TPS is not reachable on this storage.** Throughput sits in a
+2,000-3,000 band while the disk delivers 151 fsyncs/s under the node's own
+load. The node's applied-transfer counter peaks at 6,272-7,374/s in good
+seconds and collapses to single digits when an fsync stalls.
 
-A mutex profile under load puts **45.90% of all lock contention on one hold**:
-flushWALBatch keeping cs.accounts.LockAddrs across its whole Postgres
-transaction. That hold must not be narrowed -- two earlier attempts reopened
-Postgres deadlocks, measured at up to 23.6% failed transfers at 500 concurrent
-senders.
+**Measurement noise is now the limit on tuning.** Nine runs today gave 2,117 /
+2,164 / 3,264 / 2,990 / 3,014 / 1,816 / 1,879 / 2,745 / 2,381 — a spread of
++-40%. Single runs cannot resolve anything smaller than a ~50% change, so any
+further tuning needs repeated runs and a median, not one number.
 
-`synchronous_commit=off` on Contabo2 cut the database phases sharply --
-p6_commit 12,042us to 4,123us, p3_acct_exec 26,109us to 12,725us -- which is
-legitimate here because transfer_wal.go makes the WAL append, not a Postgres
-commit, the durability point. Its throughput effect could not be separated from
-noise in the same run because the load test's senders were running dry.
+### What would actually raise it
 
-### The open defect, and it is the important one
-
-**A node that restarts cannot rejoin on its own.** Every restart today ended
-the same way: Contabo1 fell a few hundred blocks behind, accumulated deferrals
-(1,197 at one point, ~2 GB of heap holding them), ended up with two DAG tips,
-and froze -- because merging its own stale tip requires producing a block, and
-the production gate is shut precisely because of the unmerged tip.
-backlog_vs_fork.go names this exactly: "the state is a trap... a resync has so
-often been the only remedy in this project's history: not because data was
-corrupt, but because the state is a trap."
-
-`AEQUITAS_PRODUCE_WHEN_BACKLOG_SHRINKING` is enabled on both boxes and is the
-right idea, but it only helps while the backlog SHRINKS -- and it cannot shrink
-while the peer keeps producing faster than the lagging node catches up.
-
-Resync works reliably now (item 4), so recovery is a dispatch away rather than
-an outage. But needing it after every restart is not stability, and closing it
-is the next real piece of work: either a node must be able to abandon its own
-diverged tip and follow the peer, or the gate needs a signal that separates
-"behind a fast producer" from "on a fork" without requiring the backlog to
-shrink.
-
-**A caution that keeps proving itself:** every hypothesis this project has had
-about throughput -- WAL lock, batch size, fsync, bloat, gzip, parallel replay,
-flush batch size -- was plausible and wrong. Each fix above came from a
-measurement that contradicted the guess that preceded it.
+- **Faster storage.** The single highest-value change. The device does 2 ms
+  when idle and collapses under the node's own writes; NVMe-backed storage
+  would move the binding constraint somewhere else entirely.
+- **Less I/O per transfer.** The remaining large writer is the Postgres mirror:
+  an outbox row per transfer plus account UPSERTs, on a path whose durability
+  the WAL already provides. Removing or deferring that mirror is the
+  architectural change that follows item 8's success.
+- **More cores**, but only after the above — CPU is at about one of six.
 
 ---
 
