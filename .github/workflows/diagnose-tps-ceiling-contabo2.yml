@@ -45,6 +45,10 @@ on:
         description: "Phases to run. 'run' alone needs already-funded accounts; the working runs use fund,warmup,run."
         required: false
         default: "fund,warmup,run"
+      accounts_csv:
+        description: "Account CSV to drive from. accounts-funded.csv holds only rows that still carry AEQ, so the fund phase can be skipped entirely."
+        required: false
+        default: "accounts.csv"
       deploy_node:
         description: "Rebuild aequitasd from THIS ref and hot-swap it into the running container before measuring. Restarts the node."
         required: false
@@ -204,6 +208,7 @@ jobs:
           DURATION: ${{ inputs.duration }}
           NUM_SEEDS: ${{ inputs.num_seeds }}
           PHASE: ${{ inputs.phase }}
+          ACCOUNTS_CSV: ${{ inputs.accounts_csv }}
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: 194.163.188.71
@@ -214,7 +219,7 @@ jobs:
           script_stop: false
           timeout: 600s
           command_timeout: 600s
-          envs: DURATION,NUM_SEEDS,PHASE
+          envs: DURATION,NUM_SEEDS,PHASE,ACCOUNTS_CSV
           script: |
             set -uo pipefail
             cd /root/contabo-loadtest || { echo "loadtest dir missing -- run loadtest-prepare-contabo2.yml first"; exit 1; }
@@ -231,7 +236,7 @@ jobs:
             # ... n" and the build died on a nonexistent image called "n".
             docker run --rm -v "$(pwd)":/w -w /w -v /root/go-mod-cache:/go/pkg/mod golang:1.24-alpine go build -o loadtest main.go || { echo "build failed -- refusing to measure stale code"; exit 1; }
             echo "generator built: $(date -u -r ./loadtest 2>/dev/null || stat -c %y ./loadtest)"
-            [ -f accounts.csv ] || { echo "accounts.csv missing -- run loadtest-prepare-contabo2.yml first"; exit 1; }
+            [ -f "$ACCOUNTS_CSV" ] || { echo "$ACCOUNTS_CSV missing -- run loadtest-prepare-contabo2.yml (and loadtest-find-funded.yml for accounts-funded.csv) first"; exit 1; }
 
             echo "=== baseline: what the node looks like with NO load ==="
             docker exec aequitas-node wget -qO- 'http://127.0.0.1:6061/debug/pprof/goroutine?debug=2' > /tmp/gd_idle.txt 2>/dev/null
@@ -240,7 +245,7 @@ jobs:
             echo "=== starting load in the background ==="
             nohup docker run --rm --network host -v "$(pwd)":/w -w /w \
               -v /root/go-mod-cache:/go/pkg/mod golang:1.24-alpine \
-              ./loadtest -accounts accounts.csv \
+              ./loadtest -accounts "$ACCOUNTS_CSV" \
                 -rpc http://localhost:8080/rpc \
                 -status http://localhost:8080/api/status \
                 -phase "$PHASE" -seeds "$NUM_SEEDS" -duration "$DURATION" -ramp 5 \
