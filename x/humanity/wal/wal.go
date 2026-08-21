@@ -76,6 +76,18 @@ type WAL struct {
 	nextSeq uint64
 	closed  bool
 
+	// writeOff is where the next record goes; allocEnd is how far the file is
+	// preallocated. Records are written AT AN OFFSET inside an already-sized
+	// file rather than appended, so the file size does not change per batch and
+	// fdatasync has no metadata to persist. See datasync_linux.go for the
+	// measurement that made this worth doing (4x the sync rate, a seventh of
+	// the p99) and why neither half of it works alone.
+	//
+	// Both are guarded by mu, like file and nextSeq, and only the single writer
+	// goroutine advances writeOff.
+	writeOff int64
+	allocEnd int64
+
 	appendCh   chan *appendRequest
 	writerDone chan struct{}
 }
@@ -167,9 +179,14 @@ func Open(path string) (*WAL, error) {
 	}
 
 	w := &WAL{
-		path:       path,
-		file:       f,
-		nextSeq:    nextSeq,
+		path:    path,
+		file:    f,
+		nextSeq: nextSeq,
+		// Both start at the end of the valid data Open just truncated to.
+		// Preallocation happens lazily on the first write, so opening a WAL
+		// costs nothing extra and a node that never writes never grows a file.
+		writeOff:   validEnd,
+		allocEnd:   validEnd,
 		appendCh:   make(chan *appendRequest, MaxBatchSize*8),
 		writerDone: make(chan struct{}),
 	}
@@ -245,14 +262,21 @@ func (w *WAL) writeBatch(batch []*appendRequest) {
 		buf = appendRecord(buf, seq, req.payload)
 	}
 
+	// WriteAt into an already-sized file, then fdatasync. Appending would grow
+	// the file on every batch, and a size change forces the kernel to journal
+	// the inode -- which measured four times more expensive than this on the
+	// production filesystem. See datasync_linux.go.
 	writeStart := time.Now()
-	_, writeErr := w.file.Write(buf)
+	writeErr := w.ensureCapacity(int64(len(buf)))
+	if writeErr == nil {
+		_, writeErr = w.file.WriteAt(buf, w.writeOff)
+	}
 	writeDur := time.Since(writeStart)
 	var syncErr error
 	var syncDur time.Duration
 	if writeErr == nil {
 		syncStart := time.Now()
-		syncErr = w.file.Sync()
+		syncErr = datasync(w.file)
 		syncDur = time.Since(syncStart)
 	}
 	// Recorded for every batch, successful or not: a batch that failed still
@@ -279,9 +303,56 @@ func (w *WAL) writeBatch(batch []*appendRequest) {
 		}
 		return
 	}
+	// Only now, and only on success. A batch that failed leaves writeOff where
+	// it was, so the next one overwrites whatever partial bytes reached the
+	// file -- which is right: those records are not durable, scan stops at the
+	// first one that does not parse, and their sequence numbers stay burned
+	// exactly as the failure path above describes.
+	w.writeOff += int64(len(buf))
+
 	for i, req := range batch {
 		req.result <- appendResult{seq: assigned[i]}
 	}
+}
+
+// preallocChunk is how much space one extension reserves.
+//
+// 64 MB is roughly 260,000 records at the ~250 bytes a transfer record takes,
+// so the one full fsync an extension costs is amortised to nothing. Smaller
+// would reintroduce the metadata write this exists to avoid; larger would make
+// a fresh WAL claim more disk than a quiet node ever uses.
+const preallocChunk = 64 << 20
+
+// ensureCapacity grows the preallocated region so that n more bytes fit
+// without the file's size changing.
+//
+// Caller holds w.mu.
+func (w *WAL) ensureCapacity(n int64) error {
+	if w.writeOff+n <= w.allocEnd {
+		return nil
+	}
+	end := w.allocEnd
+	if end < w.writeOff {
+		// Defensive: a WAL opened on a file shorter than its own write offset
+		// should extend from the offset, never leave a hole.
+		end = w.writeOff
+	}
+	grow := int64(preallocChunk)
+	if need := w.writeOff + n - end; need > grow {
+		grow = need
+	}
+	if err := preallocate(w.file, end, grow); err != nil {
+		return fmt.Errorf("wal: preallocate %d bytes at offset %d: %w", grow, end, err)
+	}
+	// A FULL fsync here, once per chunk rather than once per batch: this is
+	// the only moment the file's size changes, so it is the only moment the
+	// metadata has to be made durable. Every write until the next extension
+	// then needs data only.
+	if err := w.file.Sync(); err != nil {
+		return fmt.Errorf("wal: sync after preallocating to %d: %w", end+grow, err)
+	}
+	w.allocEnd = end + grow
+	return nil
 }
 
 // HeadSeq returns the highest sequence number this WAL has assigned so far
@@ -312,6 +383,18 @@ func (w *WAL) Close() error {
 
 	close(w.appendCh)
 	<-w.writerDone
+
+	// Trim the preallocated tail so a cleanly closed WAL is exactly its data.
+	// Open would truncate it anyway on the next start, but leaving 64 MB of
+	// zeros behind makes every external reader -- ls, du, a backup, a human --
+	// see a file that is mostly padding, and makes ReplayFile depend on the
+	// seq-0 guard rather than simply not encountering one.
+	//
+	// Failure here is not worth failing Close over: the padding is harmless
+	// and self-correcting, so the close still proceeds.
+	if err := w.file.Truncate(w.writeOff); err != nil {
+		fmt.Printf("[WAL] could not trim the preallocated tail on close: %v (harmless, the next Open truncates it)\n", err)
+	}
 	return w.file.Close()
 }
 
@@ -355,6 +438,15 @@ func (w *WAL) TruncateBefore(before uint64) error {
 		if !ok {
 			break
 		}
+		// Stop at the preallocated tail. Zero bytes parse as a valid record
+		// with seq 0 and an empty payload -- crc32 of an empty payload is
+		// zero, so the checksum matches -- and copying those into the
+		// compacted file would write megabytes of empty records and, worse,
+		// carry a seq of 0 forward. Sequence numbers start at 1, so seq 0 is
+		// only ever padding.
+		if entry.Seq == 0 {
+			break
+		}
 		if entry.Seq < before {
 			continue
 		}
@@ -394,11 +486,18 @@ func (w *WAL) TruncateBefore(before uint64) error {
 	if err != nil {
 		return fmt.Errorf("wal: could not reopen compacted file: %w", err)
 	}
-	if _, err := f.Seek(0, io.SeekEnd); err != nil {
+	end, err := f.Seek(0, io.SeekEnd)
+	if err != nil {
 		f.Close()
 		return fmt.Errorf("wal: could not seek reopened file to end: %w", err)
 	}
 	w.file = f
+	// The compacted file is exactly its data, with no preallocated tail, so
+	// both offsets restart there. Missing this would leave writeOff pointing
+	// into the OLD file's coordinates and the next batch would write past the
+	// end of the new one -- or worse, over data it had just kept.
+	w.writeOff = end
+	w.allocEnd = end
 	return nil
 }
 
@@ -542,6 +641,26 @@ func scan(f *os.File) (lastSeq uint64, validEnd int64, count int, err error) {
 		if !ok {
 			break
 		}
+
+		// A sequence number that does not advance ends the log.
+		//
+		// Sequence numbers are assigned strictly increasing and are never
+		// reused (writeBatch burns them rather than rolling back on a failed
+		// write), so a record whose seq does not move forward is not data.
+		//
+		// It is specifically what PREALLOCATED PADDING looks like: zero bytes
+		// read as seq=0, length=0, and crc32 of an empty payload is 0, so the
+		// checksum MATCHES. Without this the scan would walk the entire
+		// preallocated tail as an endless run of valid empty records and
+		// return lastSeq=0 -- reporting the high-water mark of a live log as
+		// zero, which is the worst possible answer.
+		//
+		// It also guards the failure class that already hit production once:
+		// commit 8a49c38, "compacting the write-ahead log handed out sequence
+		// numbers it had already used".
+		if entry.Seq == 0 || (count > 0 && entry.Seq <= lastSeq) {
+			break
+		}
 		offset += int64(headerSize) + int64(len(entry.Payload)) + int64(checksumSize)
 		lastSeq = entry.Seq
 		count++
@@ -574,6 +693,7 @@ func ReplayFile(path string, fn func(Entry) error) (count int, truncated bool, e
 	defer f.Close()
 
 	r := bufio.NewReader(f)
+	var lastSeq uint64
 	for {
 		entry, ok, recErr := readRecord(r)
 		if recErr != nil {
@@ -582,6 +702,22 @@ func ReplayFile(path string, fn func(Entry) error) (count int, truncated bool, e
 		if !ok {
 			return count, false, nil
 		}
+		// Preallocated padding is the normal tail of a WAL whose process died
+		// before Close could trim it: zero bytes parse as a valid record with
+		// seq 0 and an empty payload, and crc32 of an empty payload IS zero,
+		// so the checksum matches. Sequence numbers start at 1, so seq 0 can
+		// only be padding -- and it is the clean end of the log, not damage.
+		if entry.Seq == 0 {
+			return count, false, nil
+		}
+		// A non-zero sequence that does not advance is something else, and
+		// worth reporting: sequence numbers are strictly increasing and never
+		// reused. Commit 8a49c38 records what it looked like when compaction
+		// broke that.
+		if count > 0 && entry.Seq <= lastSeq {
+			return count, true, nil
+		}
+		lastSeq = entry.Seq
 		if err := fn(entry); err != nil {
 			return count, false, fmt.Errorf("wal: replay callback failed at seq %d: %w", entry.Seq, err)
 		}
