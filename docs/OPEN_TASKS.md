@@ -172,25 +172,67 @@ by reading live state, not by reasoning about code:
 True on 2026-07-28, not true now — 31 of the last 60 blocks were Contabo1's
 against Contabo2's 29.
 
-### What is left, and what it needs from a person
+### Measured 2026-08-21: ~2,150 TPS, and the chain is the limit
 
-Re-measuring throughput needs `loadtest-run-contabo2.yml`, and that needs seed
-accounts holding real AEQ. **They are empty**: the tool takes the first N rows
-of `accounts.csv` as seeds (`seeds := accs[:*numSeeds]`), and all of them read
-zero — they were spent during the July runs. `loadtest-readiness.yml` reports
-this without touching anything.
+The seed rows were empty, but /api/snapshot showed 722 rows of accounts.csv
+still holding 4.49 AEQ between them, and a load-test transfer moves 0.00001
+AEQ. So the fund phase — and any transfer out of a real account — was
+unnecessary: `loadtest-find-funded.yml` writes `accounts-funded.csv` (funded
+rows only, richest first) and the run drives from that.
 
-Funding them is a transfer of real AEQ from a real account and is a decision
-for the operator, not something to do automatically — more so while the
-+305 AEQ supply gap (item 7) is unexplained.
+| sender pairs | TPS |
+|---|---|
+| 100 | 1,847 |
+| 358 | 2,164 (repeat of an earlier 2,117) |
 
-Every throughput figure on record (~3,600/s sustained, collapse above it)
-predates all four fixes, so the current ceiling is **unknown rather than
-known-bad**.
+**3.6x the senders bought 1.17x the throughput.** That plateau is the answer to
+the question the earlier notes left open: this is the CHAIN's ceiling, not the
+load generator measuring itself. Roughly 2,150 TPS against a 10,000 target.
 
-**A caution worth keeping:** the last several throughput hypotheses here (WAL
-lock, batch size, fsync, bloat, gzip) were all plausible and all wrong. The
-four above were found by reading live state.
+Two things had to be cleared before the number meant anything:
+
+- **The RPC rate limiter, not the chain, capped the first run.** 200 requests
+  per 10s per IP; 7,960 rejected batches x 100 transfers = essentially every
+  failure. `set-rpc-rate-limit-contabo2.yml` exists for exactly this. Raised
+  for the measurement and **restored to the shipped 200 afterwards**.
+- Some senders ran dry mid-run, which shows up as "insufficient balance"
+  rather than as a throughput fact.
+
+CPU is not the constraint: at 486 us per transfer, 2,150 TPS is about one core
+of six. Signature verification needs ~1.5 cores at 10k. So the remaining
+suspect is serialisation — the global write lock — which is what
+`diagnose-tps-ceiling-contabo2.yml` was built to confirm through goroutine
+dumps. It now accepts `accounts_csv` so it can run without funding; its
+analysis step still fails and is the next thing to fix.
+
+### The throughput run exposed a bug that took a validator down
+
+Contabo2 restarted, fell ~500 blocks behind, and stopped advancing. Every
+cycle:
+
+    Could not batch-fetch 412 missing ancestor(s): unexpected end of JSON input
+
+`fetchBlocksByHashes` read peer responses under a 20 MB cap and passed whatever
+arrived to `json.Unmarshal`. `maxBlocksByHashPerRequest` is 500 because api.go
+sized it against blocks of "~2 KB each ... at 500 hashes is ~1 MB". True of
+near-empty blocks; false once blocks carry thousands of transfers, which is
+precisely what a throughput run produces. The read truncated, the parse failed,
+and the message named JSON rather than size — so nothing pointed at the batch.
+The node looked healthy the whole time: /api/status answered, peers connected,
+one repeated line.
+
+Fixed in `fb2176f`: the read goes one byte past the cap so a filled response is
+distinguishable from a near-miss and returns `errResponseTooLarge`, and
+`splitOnOversize` halves the batch until it fits. Four tests pin it. Raising
+the cap was rejected — an unbounded read from a peer is a memory DoS, and no
+constant can know what blocks weigh, which is how the 500 was chosen and how it
+failed.
+
+**Confirmed working in production while recovering from this**: Contabo2's WAL
+replayed 8,206,534 records and correctly fenced off every one as superseded by
+a state replacement, reapplying none. That is `wal_recovery_floor_seq` doing
+its job on a live node — the fix for the corruption that once produced 74
+negative accounts.
 
 ---
 
