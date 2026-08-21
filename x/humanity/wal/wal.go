@@ -245,11 +245,21 @@ func (w *WAL) writeBatch(batch []*appendRequest) {
 		buf = appendRecord(buf, seq, req.payload)
 	}
 
+	writeStart := time.Now()
 	_, writeErr := w.file.Write(buf)
+	writeDur := time.Since(writeStart)
 	var syncErr error
+	var syncDur time.Duration
 	if writeErr == nil {
+		syncStart := time.Now()
 		syncErr = w.file.Sync()
+		syncDur = time.Since(syncStart)
 	}
+	// Recorded for every batch, successful or not: a batch that failed still
+	// cost the time, and hiding failures would make the average look better
+	// than the disk is. See writer_stats.go for why avg_batch is the number
+	// that decides where the ceiling is.
+	noteWriterBatch(len(batch), writeDur, syncDur)
 	err := writeErr
 	if err == nil {
 		err = syncErr

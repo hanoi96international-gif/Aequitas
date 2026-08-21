@@ -34,6 +34,7 @@ import (
 	"github.com/ethereum/go-ethereum/crypto"
 
 	"github.com/hanoi96international-gif/aequitas-chain/x/humanity/mpc"
+	"github.com/hanoi96international-gif/aequitas-chain/x/humanity/wal"
 )
 
 type APIServer struct {
@@ -673,8 +674,9 @@ func (a *APIServer) handleCombinedHealth(w http.ResponseWriter, r *http.Request)
 		// The WAL flush loop, which a mutex profile identified as the single
 		// largest source of lock contention in the node (45.21%). addrs_per_flush
 		// and hold_avg_ms are the two numbers that explain it; see wal_tuning.go.
-		"wal_flush": WALFlushStats(),
-		"admission": AdmissionStats(),
+		"wal_flush":  WALFlushStats(),
+		"admission":  AdmissionStats(),
+		"wal_writer": wal.WriterStats(),
 		// chain_tx_batches hatte keine Obergrenze und keinen DELETE-Pfad;
 		// siehe tx_batch_prune.go.
 		"tx_batch_prune": TxBatchPruneStats(),
