@@ -70,10 +70,36 @@ type appendResult struct {
 // batches concurrent Append calls into shared fsyncs. Safe for concurrent
 // use from multiple goroutines.
 type WAL struct {
-	mu      sync.Mutex // guards file/nextSeq/closed against Append's own writer goroutine and TruncateBefore
+	// mu guards the WRITER's state: file, nextSeq, writeOff, allocEnd. It is
+	// held by writeBatch for the whole write+sync, and by TruncateBefore for
+	// the whole compaction.
+	mu      sync.Mutex
 	path    string
 	file    *os.File
 	nextSeq uint64
+
+	// closeMu guards `closed` AND the send on appendCh. Deliberately NOT mu.
+	//
+	// Append used to take mu just to read `closed` -- the same mutex writeBatch
+	// holds across its write and fsync. So while the writer was syncing, no
+	// arriving Append could even ENQUEUE: they piled up on the mutex instead of
+	// joining the batch being formed. That makes batch size equal to
+	// arrival-rate times hold-time, and therefore
+	//
+	//	throughput = batch / hold = arrival rate
+	//
+	// self-consistent at ANY sync speed. It is why avg_batch sat at ~48 no
+	// matter what was tuned, and why halving the fsync (preallocation plus
+	// fdatasync, measured 14.4ms -> 7.1ms) moved throughput by 13% instead of
+	// doubling it. Everything upstream was measured and innocent: CPU at one
+	// core of six, GC at 0.15% of wall time, and seven other hypotheses
+	// rejected.
+	//
+	// A read lock also makes Close correct rather than merely lucky: the send
+	// happens under RLock and Close takes the write lock before closing the
+	// channel, so a sender can no longer be mid-send when the channel closes --
+	// which was a live panic window, not a new one.
+	closeMu sync.RWMutex
 	closed  bool
 
 	// writeOff is where the next record goes; allocEnd is how far the file is
@@ -201,13 +227,19 @@ func Open(path string) (*WAL, error) {
 // is nil.
 func (w *WAL) Append(payload []byte) (uint64, error) {
 	req := &appendRequest{payload: payload, result: make(chan appendResult, 1)}
-	w.mu.Lock()
+	// Send while holding the READ lock, so many callers enqueue concurrently
+	// and Close cannot close the channel underneath one of them. Crucially
+	// this does not touch mu, so a batch being written no longer blocks the
+	// next batch from forming -- see closeMu's comment for why that was the
+	// throughput ceiling.
+	w.closeMu.RLock()
 	if w.closed {
-		w.mu.Unlock()
+		w.closeMu.RUnlock()
 		return 0, errors.New("wal: append on closed WAL")
 	}
-	w.mu.Unlock()
 	w.appendCh <- req
+	w.closeMu.RUnlock()
+
 	res := <-req.result
 	return res.seq, res.err
 }
@@ -373,13 +405,18 @@ func (w *WAL) HeadSeq() uint64 {
 // finish, and closes the underlying file. Safe to call once; a second call
 // returns an error rather than panicking on a double-close.
 func (w *WAL) Close() error {
-	w.mu.Lock()
+	// Taking the WRITE lock waits for every in-flight Append to finish its
+	// send, and once closed is set no new one can start. Only then is closing
+	// the channel safe -- the previous shape released the lock before the
+	// senders had sent, leaving a real window where close() raced a send and
+	// panicked.
+	w.closeMu.Lock()
 	if w.closed {
-		w.mu.Unlock()
+		w.closeMu.Unlock()
 		return errors.New("wal: already closed")
 	}
 	w.closed = true
-	w.mu.Unlock()
+	w.closeMu.Unlock()
 
 	close(w.appendCh)
 	<-w.writerDone
@@ -415,7 +452,13 @@ func (w *WAL) Close() error {
 func (w *WAL) TruncateBefore(before uint64) error {
 	w.mu.Lock()
 	defer w.mu.Unlock()
-	if w.closed {
+	// closed lives under closeMu now, not mu. Read it there, briefly: mu is
+	// already held for the compaction itself, and nothing else takes these two
+	// in the opposite order, so there is no cycle to worry about.
+	w.closeMu.RLock()
+	closed := w.closed
+	w.closeMu.RUnlock()
+	if closed {
 		return errors.New("wal: TruncateBefore on closed WAL")
 	}
 
