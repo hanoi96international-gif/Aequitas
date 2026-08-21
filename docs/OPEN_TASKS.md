@@ -124,96 +124,83 @@ registration still succeeds for a genuine capture before enforcing.
 
 ## 6. Throughput and stability under load
 
-### The constraint, established by controlled experiment
+### Where it ended up
 
-**Disk I/O, saturated by the node's own writes.** The decisive test: an
-independent scratch-file fsync loop, sharing the device with the node and
-nothing else, run twice.
-
-| | chain idle | chain under load |
+| | session start | now |
 |---|---|---|
-| fsyncs/s | 305 | **151** |
-| p50 | 2,435 us | 3,370 us |
-| p90 | 5,566 us | **11,330 us** |
-| p99 | 14,736 us | **55,441 us** |
-| max | 46,462 us | **535,061 us** |
+| Sustained throughput (median) | ~2,381 TPS | **3,376 TPS** (runs: 3,914 / 3,376 / 3,263) |
+| Transfer latency | not measured | 55-62 ms, of which WAL sync is ~6 ms |
+| WAL fsync | 14,374 us avg, 1,708,300 us max | **5,606 us avg** |
+| Failed transfers in a run | tens of thousands | **788 of 390,800 (0.2%)** |
+| After a heavy run | Contabo1 stuck, needed an operator resync | **converged after all three consecutive runs** |
 
-A process that shares only the block device halves its own fsync rate when the
-chain is loaded. That is device saturation, not a lock and not a code path.
+**Stability is the part that now works.** Three heavy runs back to back, and the
+two nodes ended byte-identical every time. That was the failure that dominated
+the day: a node fell behind, could not rejoin, and needed a resync.
 
-### Ruled out by measurement — do not re-try these
+**10,000 TPS was not reached**, and the honest reason is below.
+
+### Why 10k could not even be measured here
+
+Throughput = concurrency / latency. The load generator has 380 funded sender
+pairs and each transfer takes ~60 ms, so its own ceiling is
+
+    380 / 0.06 s = ~6,300 TPS
+
+Measured 3,400, about half of that. Demonstrating 10,000 would need roughly 600
+funded senders AND a latency well under 60 ms. Only 985 disposable accounts
+hold any AEQ at all and just 761 of them are in the account file, so the
+harness cannot produce the load, independently of what the chain could absorb.
+
+### Ten hypotheses measured and rejected — do not retry these
 
 | hypothesis | how it was rejected |
 |---|---|
 | Parallel replay too small | Real block #4391949: 297 disjoint batches covered 49,886 of 50,000 transfers. Already 99.8% parallel. |
-| WAL flush batch size | Swept 4000/1000/400/150. Default won (3,264 vs 1,949/624/2,060). items_per_flush was 402 against a 4,000 cap, so it never bound. |
-| WAL flush interval | Swept 5/15/40/100/250/600 ms. The 100 ms default won in BOTH directions, even though short intervals moved addrs_per_flush 348 to 134 and hold_ms 40 to 21 exactly as predicted. |
-| Postgres checkpoints | max_wal_size 1GB to 8GB plus wal_compression moved sync_avg only 15,989 to 14,605 us. |
-| GC / memory | 67 cycles and 159 ms of total pause across a 109 s run at 2,745 TPS: **0.15% of wall time**, on a 475 MB live heap and a 12 GB box. |
-| The WAL file's own size | Same probe on a 1 MB and a 3 GB file, alternated three times: p50 1,929/1,935/1,769 vs 1,941/1,836/1,865 us. Identical. |
-| Lock contention | A mutex profile put 45.90% on flushWALBatch's LockAddrs hold. Four separate changes reduced that hold as intended and moved throughput not at all. |
+| WAL flush batch size | Swept 4000/1000/400/150; default won. items_per_flush was 402 against a 4,000 cap, so it never bound. |
+| WAL flush interval | Swept 5/15/40/100/250/600 ms. The 100 ms default won in BOTH directions. |
+| Postgres checkpoints | max_wal_size 1GB->8GB plus wal_compression moved sync_avg only 15,989 -> 14,605 us. |
+| GC / memory | 67 cycles, 159 ms total pause across 109 s at 2,745 TPS: 0.15% of wall time, 475 MB live heap. |
+| The WAL file's own size | Identical fsync on a 1 MB and a 3 GB file, alternated three times. |
+| The exclusive state lock | `exclusive_busy_pct` measured **0.67%**. Block production is not blocking transfers. |
+| Transfers falling off the fast path | `fast_path_pct` measured **99.90%**. Almost none fall back to the batcher. |
+| The disk being slow | It does 426 fsyncs/s at a p50 of 1,976 us when idle. |
+| Append blocked by the writer's mutex | Real and fixed, but worth only ~55 avg_batch -> 56. |
 
-**A correction worth keeping**: an apparent fourfold gap between the node's
-fsync (14.4 ms) and the probe's (3.4 ms) was an artefact of comparing a MEAN to
-a MEDIAN. With the probe's own p90 at 11.3 ms and p99 at 55 ms, its mean lands
-in the same place. There was no unexplained in-process gap.
+### What actually moved it, each from a measurement
 
-### Fixed today, each from a measurement
+1. **`maxTxsPerBlock` 50,000 -> 10,000.** A 50,000-transfer block took 4.7 s to
+   replay against a 1 s block time, so the replaying node fell behind by 4.7x
+   per block.
+2. **Multi-block tick off.** It emits up to 5 full blocks per tick, and engages
+   exactly when the partner is already behind.
+3. **Admission control.** A node that has not produced for 30 s refuses with a
+   retryable -32005 instead of growing the backlog that keeps its gate shut.
+4. **Resync made possible at all.** `DELETE FROM chain_blocks` on 4.38M rows
+   exceeded statement_timeout, so every resync silently rolled back. TRUNCATE.
+5. **Ancestor fetch.** A 20 MB read cap sized against 2 KB blocks; server-side
+   byte budget plus `X-Blocks-Truncated`.
+6. **Tip re-announce** for a restarted node holding a tip no peer knows about.
+7. **184 GB of docker build cache** reclaimed (C1 65%->9% full, C2 84%->21%).
+8. **The wallet index off the block path** — up to 10,000 rows per block, and
+   on the replay path inside the exclusive lock.
+9. **WAL preallocation + fdatasync.** Measured 352 -> 1,429 syncs/s in
+   isolation; neither half works alone.
+10. **Flush concurrency 4 -> 32.** hold_max 557 ms -> 162 ms. The flush holds
+    account locks across its Postgres transaction, and transfers wait behind
+    it — most of a transfer's 60 ms.
 
-1. **Blocks nobody could replay.** Block #4391949 carried 50,000 transfers;
-   replaying it took 4.7 s under the exclusive lock against a 1 s block time.
-   `maxTxsPerBlock` 50,000 -> 10,000, the measured replay capacity for one
-   block time. Nothing is dropped, only deferred.
-2. **Multi-block tick outran replay** — up to 5 full blocks per tick, engaging
-   exactly when the partner is already behind. Off on both boxes.
-3. **No admission control existed.** The node accepted transfers while its
-   height was frozen for 15 s, growing the backlog that kept the gate shut. Now
-   refuses with retryable -32005 after 30 s without a block. Confirmed live.
-4. **A resync could never finish on a long-running node.** `DELETE FROM
-   chain_blocks` on 4.38 M rows exceeded statement_timeout, so every attempt
-   rolled back, visible only in `degraded_reason`. TRUNCATE instead.
-5. **Ancestor fetches burned a node's bandwidth** — a 20 MB read cap sized
-   against 2 KB blocks. Server-side byte budget plus `X-Blocks-Truncated`,
-   which the client must honour or it abandons blocks the peer actually holds.
-6. **A restarted node was stranded on a tip nobody knew about.** It re-offers
-   its tips after 60 s without producing, so a peer can merge them.
-7. **184 GB of docker build cache** across both boxes (C1 116 GB, C2 68 GB).
-   C1 went 65% -> 9% full, C2 84% -> 21%. A validator that fills its disk stops
-   writing its WAL and its database.
-8. **The wallet-lookup index ran on the block path** — one row per transaction,
-   up to 10,000 per block, and on the replay path *inside the exclusive lock*.
-   Not consensus, and both call sites already discarded its error. Now
-   asynchronous: `sync_avg_us` 14,374 -> 10,260 and `sync_max_us` 1,708,300 ->
-   445,791.
+### What is still open
 
-### What the numbers say about the targets
+The remaining latency is spread across many small costs with none dominant:
+~60 ms per transfer, ~6 ms of it the WAL. CPU sits at about one core of six, so
+the machine is not the limit either. Getting past this needs either the load
+harness extended to several hundred more funded senders — which is the only way
+to even observe 10k — or a structural reduction in what one transfer waits on.
 
-**30,000-40,000 TPS is not reachable on these boxes.** 486 us of CPU per
-transfer against six cores puts the ceiling near **12,300 TPS**, and signature
-verification alone runs at 40,577/s on six cores with cgo — at 40,000 TPS that
-is every core spent on signatures before any state, WAL, database or network
-work. 40,000 needs roughly 24 cores.
-
-**10,000 TPS is not reachable on this storage.** Throughput sits in a
-2,000-3,000 band while the disk delivers 151 fsyncs/s under the node's own
-load. The node's applied-transfer counter peaks at 6,272-7,374/s in good
-seconds and collapses to single digits when an fsync stalls.
-
-**Measurement noise is now the limit on tuning.** Nine runs today gave 2,117 /
-2,164 / 3,264 / 2,990 / 3,014 / 1,816 / 1,879 / 2,745 / 2,381 — a spread of
-+-40%. Single runs cannot resolve anything smaller than a ~50% change, so any
-further tuning needs repeated runs and a median, not one number.
-
-### What would actually raise it
-
-- **Faster storage.** The single highest-value change. The device does 2 ms
-  when idle and collapses under the node's own writes; NVMe-backed storage
-  would move the binding constraint somewhere else entirely.
-- **Less I/O per transfer.** The remaining large writer is the Postgres mirror:
-  an outbox row per transfer plus account UPSERTs, on a path whose durability
-  the WAL already provides. Removing or deferring that mirror is the
-  architectural change that follows item 8's success.
-- **More cores**, but only after the above — CPU is at about one of six.
+**30,000-40,000 TPS remains arithmetically out of reach on six cores**: 486 us
+of CPU per transfer puts the ceiling near 12,300 TPS, and signature
+verification alone runs at 40,577/s on six cores with cgo.
 
 ---
 
