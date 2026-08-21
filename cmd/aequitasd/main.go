@@ -606,6 +606,13 @@ func main() {
 	// the project is designed around.
 	bc.StartDivergenceAutoHeal(os.Getenv("BOOTSTRAP_SNAPSHOT_URL"), os.Getenv("BOOTSTRAP_SIGNER"),
 		keeper.PrimarySeedURL(selfURL))
+	// Re-offer our own tips to peers while we cannot produce. After a restart
+	// this node's last block was never broadcast (the process died before it
+	// could be), so no peer knows it exists and none can merge it -- and
+	// merging it ourselves needs a block we are not allowed to produce. See
+	// tip_reannounce.go. Started next to the auto-heal for the same reason:
+	// both only matter once a node is already in trouble.
+	bc.StartTipReannouncer()
 	p2pNode.Start()
 	bc.ReconstructState(chainState)
 
