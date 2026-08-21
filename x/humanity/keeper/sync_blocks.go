@@ -6,6 +6,7 @@ import (
 	"crypto/ecdsa"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -600,12 +601,95 @@ func (dag *BlockDAG) fetchBlocksByHashes(nodeURL string, hashes []string) ([]*Bl
 		respBody, _ := io.ReadAll(io.LimitReader(resp.Body, 4<<10))
 		return nil, fmt.Errorf("peer returned HTTP %d: %s", resp.StatusCode, strings.TrimSpace(string(respBody)))
 	}
-	respBody, _ := io.ReadAll(io.LimitReader(resp.Body, 20<<20))
+	return decodeBlocksByHashResponse(resp.Body)
+}
+
+// blocksByHashReadCap bounds how much of a peer's answer is read. An unbounded
+// read from a peer is a memory DoS, so the cap stays; what adapts is the batch.
+const blocksByHashReadCap = 20 << 20
+
+// decodeBlocksByHashResponse applies the read cap and decodes.
+//
+// Kept separate from the HTTP call so the size policy is testable without a
+// network: httpSyncClient refuses loopback addresses (pinningDialer's
+// DNS-rebinding guard), which is correct and not worth weakening for a test.
+//
+// Reads ONE BYTE past the cap so a response that fills it can be told apart
+// from one that merely came close. Without that distinction the truncated body
+// reaches json.Unmarshal and surfaces as "unexpected end of JSON input" - a
+// parse error that says nothing about size, and that is exactly how this
+// failure presented on 2026-08-21.
+func decodeBlocksByHashResponse(r io.Reader) ([]*Block, error) {
+	body, err := io.ReadAll(io.LimitReader(r, blocksByHashReadCap+1))
+	if err != nil {
+		return nil, err
+	}
+	if len(body) > blocksByHashReadCap {
+		return nil, errResponseTooLarge
+	}
 	var blocks []*Block
-	if err := json.Unmarshal(respBody, &blocks); err != nil {
+	if err := json.Unmarshal(body, &blocks); err != nil {
 		return nil, err
 	}
 	return blocks, nil
+}
+
+// errResponseTooLarge reports that a peer's answer exceeded the client read
+// cap, so the batch has to be split rather than retried unchanged.
+//
+// maxBlocksByHashPerRequest is 500, and api.go sized it against blocks of
+// "~2 KB each ... at 500 hashes is ~1 MB — still comfortably under the 20 MB
+// client read cap". That holds for near-empty blocks. A block carrying a few
+// thousand transfers is closer to 1 MB on its own, so the same 500 hashes ask
+// for several hundred MB — and the cap silently truncates rather than
+// refusing. A node that fell behind during a throughput run therefore could
+// not fetch the ancestors it needed to catch up, every later block queued as
+// an orphan, and the node stopped advancing entirely while looking healthy.
+//
+// Splitting on this error rather than raising the cap keeps the cap doing its
+// job (an unbounded read from a peer is a memory DoS) while making the batch
+// size adapt to what blocks actually weigh, which no fixed constant can know.
+var errResponseTooLarge = errors.New("peer response exceeded the client read cap")
+
+// fetchBlocksByHashesAdaptive fetches a chunk, halving it on each
+// errResponseTooLarge until it fits or a single hash is left. A lone hash that
+// still does not fit is a genuine error: no split can make it smaller.
+func (dag *BlockDAG) fetchBlocksByHashesAdaptive(nodeURL string, hashes []string) ([]*Block, error) {
+	return splitOnOversize(hashes, nodeURL, func(chunk []string) ([]*Block, error) {
+		return dag.fetchBlocksByHashes(nodeURL, chunk)
+	})
+}
+
+// splitOnOversize runs fetch, halving the batch on each errResponseTooLarge
+// until it fits or one hash is left. A lone hash that still does not fit is a
+// genuine error: no split makes it smaller.
+//
+// The full batch is tried first, so an ordinary catch-up still costs one round
+// trip and only a genuinely heavy one pays for extra requests.
+//
+// Takes fetch as a parameter so the splitting can be tested without a network:
+// httpSyncClient refuses loopback addresses (pinningDialer's DNS-rebinding
+// guard), which is correct and not worth weakening for a test.
+func splitOnOversize(hashes []string, label string, fetch func([]string) ([]*Block, error)) ([]*Block, error) {
+	blocks, err := fetch(hashes)
+	if !errors.Is(err, errResponseTooLarge) {
+		return blocks, err
+	}
+	if len(hashes) <= 1 {
+		return nil, fmt.Errorf("a single block from %s exceeds the %d MB read cap", label, blocksByHashReadCap>>20)
+	}
+	mid := len(hashes) / 2
+	fmt.Printf("[HTTP-SYNC] response for %d blocks from %s exceeded the read cap - splitting into %d + %d\n",
+		len(hashes), label, mid, len(hashes)-mid)
+	first, err := splitOnOversize(hashes[:mid], label, fetch)
+	if err != nil {
+		return nil, err
+	}
+	second, err := splitOnOversize(hashes[mid:], label, fetch)
+	if err != nil {
+		return nil, err
+	}
+	return append(first, second...), nil
 }
 
 // fetchMissingAncestors resolves orphaned blocks by walking backward one
@@ -807,7 +891,7 @@ func (dag *BlockDAG) fetchMissingAncestors(nodeURL string) {
 		fetchedThisRound := 0
 		for i := 0; i < len(pending); i += maxBatchSize {
 			chunk := pending[i:min(i+maxBatchSize, len(pending))]
-			blocks, err := dag.fetchBlocksByHashes(nodeURL, chunk)
+			blocks, err := dag.fetchBlocksByHashesAdaptive(nodeURL, chunk)
 			if err != nil {
 				fmt.Printf("[HTTP-SYNC] ✗ Could not batch-fetch %d missing ancestor(s) from %s: %v\n", len(chunk), nodeURL, err)
 				continue // network failure — don't count as genuine peer confirmation
