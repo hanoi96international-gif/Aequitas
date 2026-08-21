@@ -1,0 +1,50 @@
+name: Is a loadtest runnable right now? (read-only)
+
+# loadtest-run-contabo2.yml needs seed accounts that a human has funded with
+# real AEQ. Earlier runs on Contabo2 left an accounts.csv behind, so the
+# question before asking anyone to fund anything is whether the existing seeds
+# still hold enough.
+#
+# Addresses only. main.go's docstring is explicit that the CSV
+# (index,address,privkey_hex) stays on the server and is never printed, scp'd
+# or uploaded, so this reads the address column alone and looks their balances
+# up through the public API.
+on:
+  workflow_dispatch: {}
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Contabo2
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: 194.163.188.71
+          username: root
+          key: ${{ secrets.CONTABO2_SSH_KEY }}
+          port: 22
+          script_stop: false
+          timeout: 300s
+          command_timeout: 300s
+          script: |
+            echo "=== /root/contabo-loadtest ==="
+            ls -la /root/contabo-loadtest/ 2>/dev/null || echo "(directory does not exist -- prepare has never run, or cleanup shredded it)"
+            CSV=/root/contabo-loadtest/accounts.csv
+            if [ ! -f "$CSV" ]; then
+              echo "no accounts.csv -- loadtest-prepare-contabo2.yml has to run first"
+              exit 0
+            fi
+            echo "accounts in CSV: $(wc -l < "$CSV")"
+            echo ""
+            echo "=== balances of the first 8 accounts (addresses only, no keys) ==="
+            head -8 "$CSV" | while IFS=, read -r idx addr rest; do
+              case "$addr" in
+                0x*) ;;
+                *) continue ;;
+              esac
+              B=$(curl -s --max-time 10 "http://127.0.0.1:8080/api/balance?address=$addr" | head -c 200)
+              echo "  $idx $addr -> $B"
+            done
+            echo ""
+            echo "=== is the tool built? ==="
+            ls -la /root/contabo-loadtest/*.go /root/contabo-loadtest/loadtest 2>/dev/null || echo "(no built binary; the run workflow rebuilds it anyway)"
