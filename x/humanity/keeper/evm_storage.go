@@ -2556,7 +2556,45 @@ func savePendingTxsBatchExec(ex sqlExecutor, txs []Transaction) error {
 // WHERE clause) and is picked up by the NEXT LoadPendingTxs call — no TX is
 // ever dropped, only deferred, exactly the same FIFO backlog-draining
 // property a real bounded queue needs.
-const maxTxsPerBlock = 50000
+// LOWERED 50,000 -> 10,000 on 2026-08-21, from a measurement rather than a
+// preference.
+//
+// Contabo2 produced block #4391949 carrying exactly 50,000 transfers -- this
+// cap, at the ceiling. Contabo1 needed ~4.7s to replay it while holding the
+// exclusive state lock, against a BLOCK_TIME of 1s. It therefore fell behind
+// by a factor of ~4.7 for every such block, and once behind it stopped
+// merging, orphaned everything arriving, and could not recover on its own.
+//
+// The asymmetry is the whole story. The PRODUCER applies transfers
+// incrementally and concurrently as they arrive (transferConcurrentWAL,
+// measured at ~2,900/s). The REPLAYER receives the same work as one lump and
+// applies it under one exclusive lock. Nothing about a 50,000-transfer block
+// says the network can do 50,000 TPS -- it says a backlog of 50,000 had
+// accumulated because block production had already collapsed to 0.43
+// blocks/s, and that backlog then went out in a single block, which is what
+// made the next node fall further behind. A circle, and it only turns one way.
+//
+// 10,000 is C1's MEASURED replay capacity for one block time: 50,000 in 4.7s
+// is ~10,600/s, and at BLOCK_TIME=1s a block of 10,000 replays in ~0.94s. The
+// number is deliberately tied to that measurement rather than to a target,
+// because the binding constraint here is the slowest REPLAYING node, never the
+// producer.
+//
+// Parallel replay was NOT the problem and is not the lever. Measured on that
+// same block: 297 disjoint batches covered 49,886 of the 50,000 transfers, so
+// 99.8% already replayed in parallel. The remaining cost is the work itself.
+//
+// Nothing is lost by lowering it. Any pending TX beyond the cap keeps
+// included_at=0 and is picked up by the next LoadPendingTxs call, so this
+// defers rather than drops -- the FIFO backlog property described below,
+// which is exactly what makes a lower cap safe backpressure instead of a
+// throughput ceiling.
+//
+// NOTE ON maxExtraBlocksPerTick: multi-block tick produces further blocks
+// while each comes back full, so it can still emit 5 x this cap in one tick.
+// That drains a backlog faster than any replayer can absorb it, which is the
+// same overshoot in a different place -- see block_cadence.go.
+const maxTxsPerBlock = 10000
 
 func (cs *ChainState) LoadPendingTxs() ([]Transaction, []int64) {
 	if cs.db == nil {
