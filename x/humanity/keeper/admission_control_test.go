@@ -103,3 +103,51 @@ func TestAdmissionStatsReportTheDecision(t *testing.T) {
 		t.Errorf("stalled_seconds is %v, want at least %d", st["stalled_seconds"], admissionStallSeconds)
 	}
 }
+
+// A node that has never produced a block must still be refused once it has had
+// the full stall limit to produce one.
+//
+// This is the exact shape observed on Contabo2 on 2026-08-22: restarted, never
+// produced, and therefore permanently exempt from the check written to protect
+// it. It accepted 104,060 transfers it could not include and drifted 135 blocks
+// behind. Its stats read last_block_produced_unix 0, stalled_seconds 0,
+// refusing false -- while it was frozen.
+func TestNeverProducedIsNotAnUnboundedExemption(t *testing.T) {
+	lastBlockProducedUnix.Store(0)
+	t.Cleanup(func() { lastBlockProducedUnix.Store(0) })
+
+	origin := processStartUnix
+	t.Cleanup(func() { processStartUnix = origin })
+
+	// Just started: still inside the grace, so it accepts.
+	processStartUnix = time.Now().Unix()
+	if reason := admissionRefusalReason(); reason != "" {
+		t.Fatalf("a node that started moments ago refused with %q — the grace between "+
+			"process start and the first block is the one case the exemption exists for", reason)
+	}
+
+	// Up well past the stall limit and still no block. This is the frozen node.
+	processStartUnix = time.Now().Unix() - int64(admissionStallLimit()) - 5
+	reason := admissionRefusalReason()
+	if reason == "" {
+		t.Fatal("a node up past the stall limit that has NEVER produced a block still accepts " +
+			"transfers.\n" +
+			"  That is the unbounded exemption: the node least able to include a transaction " +
+			"is the one node never refused, and every transfer it takes grows the backlog " +
+			"that keeps its production gate shut.")
+	}
+	if !strings.Contains(reason, "since starting") {
+		t.Errorf("refusal reads %q; the never-produced case needs its own wording because it "+
+			"calls for different operator action than a node draining a backlog", reason)
+	}
+}
+
+// The normal case must keep working: a node that produced recently accepts.
+func TestRecentlyProducedStillAccepts(t *testing.T) {
+	lastBlockProducedUnix.Store(time.Now().Unix())
+	t.Cleanup(func() { lastBlockProducedUnix.Store(0) })
+
+	if reason := admissionRefusalReason(); reason != "" {
+		t.Fatalf("a node that just produced a block refused with %q", reason)
+	}
+}
