@@ -1,0 +1,131 @@
+name: Sweep the WAL flush parameters against real load (Contabo2)
+
+# THE MEASUREMENT wal_tuning.go ASKS FOR, WITH THE NUMBERS THAT JUSTIFY IT.
+#
+# A mutex profile taken under load on 2026-08-21 put 45.90% of the node's
+# entire lock contention on one hold: flushWALBatch keeping
+# cs.accounts.LockAddrs across its whole Postgres transaction. That hold is
+# deliberate and must NOT be narrowed -- two earlier attempts to release it
+# early reopened Postgres deadlocks (40P01), measured at up to 23.6% failed
+# transfers at 500 concurrent senders.
+#
+# What can change is how much of the address space one flush freezes. Live
+# WALFlushStats during that same run:
+#
+#   addrs_per_flush 327      hold_avg_ms 54      hold_max_ms 616
+#   items_per_flush 260      cfg_batch 4000      cfg_concurrency 4
+#
+# Against a ~716-account working set, one flush locks nearly half of it for
+# 54ms at a time. transfer_wal.go predicted exactly this ("a 4,000-item batch
+# drawn from only 200 addresses dedupes to nearly the WHOLE address space") and
+# kept 4,000 anyway because real traffic was far below the synthetic topology
+# then. A sustained multi-hundred-sender run is the condition it said to
+# re-measure under.
+#
+# AND THE PHASE BREAKDOWN SAYS WHY SHRINKING THE BATCH IS THE RIGHT LEVER.
+# Per flush, in microseconds:
+#
+#   p1_snapshot 724   p2_acct_sql 556    p3_acct_exec 26109
+#   p4_outbox_sql 2517   p5_outbox_exec 9092   p6_commit 12042
+#
+# The pure-Go phases that need no lock (p2 + p4) are 3.1ms of a 50.8ms window
+# -- 6%. Moving them out, which the code suggests as a possible fix, buys 6%.
+# The database phases are 93%, and they cannot leave the lock. So the only
+# lever with real headroom is holding FEWER addresses for a SHORTER time, i.e.
+# the batch size, with concurrency to keep total drain capacity up.
+#
+# The right value is a property of the traffic, not of the code: the previous
+# sweep found +32% at 1,000 pairs and -14% at 100 pairs for the SAME setting.
+# So this measures instead of guessing, and reports the mechanism (hold time,
+# addresses frozen) next to the throughput so a win can be explained.
+#
+# Contabo2 only -- the designated canary. Each value costs one restart.
+on:
+  workflow_dispatch:
+    inputs:
+      batches:
+        description: "Comma-separated AEQUITAS_WAL_FLUSH_BATCH values to try"
+        required: false
+        default: "4000,1000,400,150"
+      concurrency:
+        description: "AEQUITAS_WAL_FLUSH_CONCURRENCY for every run (empty = leave default)"
+        required: false
+        default: ""
+      duration:
+        description: "Load duration per value"
+        required: false
+        default: "60s"
+
+jobs:
+  sweep:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Sweep
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: 194.163.188.71
+          username: root
+          key: ${{ secrets.CONTABO2_SSH_KEY }}
+          port: 22
+          script_stop: false
+          timeout: 3600s
+          command_timeout: 3600s
+          envs: BATCHES,CONC,DUR
+          script: |
+            set +e
+            cd /root/contabo-loadtest || { echo "no loadtest dir"; exit 1; }
+            [ -f accounts-funded.csv ] || { echo "accounts-funded.csv missing"; exit 1; }
+
+            IMAGE="$(docker inspect aequitas-node --format '{{.Config.Image}}')"
+            NET="$(docker inspect aequitas-node --format '{{range $k, $v := .NetworkSettings.Networks}}{{$k}} {{end}}' | awk '{print $1}')"
+            PORTS="$(docker inspect aequitas-node --format '{{range $p, $c := .HostConfig.PortBindings}}-p {{(index $c 0).HostPort}}:{{$p}} {{end}}' | sed 's|/tcp||g')"
+            MOUNTS="$(docker inspect aequitas-node --format '{{range .Mounts}}-v {{.Source}}:{{.Destination}} {{end}}')"
+            mkdir -p /root/sweep
+            echo "image=$IMAGE net=$NET"
+            echo ""
+            printf '%-8s %-9s %-11s %-9s %-9s %-9s %s\n' "batch" "TPS" "addrs/fl" "hold_ms" "holdmax" "items/fl" "db_ms"
+
+            for B in $(echo "$BATCHES" | tr ',' ' '); do
+              ENVOUT=/root/sweep/env.$B
+              docker inspect aequitas-node --format '{{range .Config.Env}}{{println .}}{{end}}' \
+                | grep -vE '^(RESYNC_FROM_SNAPSHOT|HOSTNAME|PATH|HOME|AEQUITAS_WAL_FLUSH_BATCH|AEQUITAS_WAL_FLUSH_CONCURRENCY)=' \
+                | grep -E '^[A-Za-z_][A-Za-z0-9_]*=' > "$ENVOUT"
+              echo "AEQUITAS_WAL_FLUSH_BATCH=$B" >> "$ENVOUT"
+              [ -n "${CONC:-}" ] && echo "AEQUITAS_WAL_FLUSH_CONCURRENCY=$CONC" >> "$ENVOUT"
+
+              docker stop aequitas-node >/dev/null 2>&1
+              docker rm aequitas-node >/dev/null 2>&1
+              docker run -d --name aequitas-node --network "$NET" $PORTS $MOUNTS \
+                --env-file "$ENVOUT" --restart unless-stopped "$IMAGE" >/dev/null
+              # Wait for the node, then let it settle so the first flushes are
+              # not measured against a cold cache.
+              for i in $(seq 1 30); do
+                sleep 5
+                curl -s --max-time 5 http://127.0.0.1:8080/api/status >/dev/null 2>&1 && break
+              done
+              sleep 20
+
+              OUT=$(docker run --rm --network host -v "$(pwd)":/w -w /w \
+                -v /root/go-mod-cache:/go/pkg/mod golang:1.24-alpine \
+                ./loadtest -accounts accounts-funded.csv \
+                  -rpc http://localhost:8080/rpc \
+                  -status http://localhost:8080/api/status \
+                  -phase warmup,run -seeds 5 -duration "$DUR" -ramp 5 2>&1)
+              TPS=$(echo "$OUT" | grep -oE 'TPS \(succeeded/elapsed\): [0-9.]+' | grep -oE '[0-9.]+$')
+
+              S=$(curl -s --max-time 15 http://127.0.0.1:8080/api/health/combined)
+              g() { echo "$S" | tr ',' '\n' | grep -oE "\"$1\":[0-9]+" | head -1 | cut -d: -f2; }
+              printf '%-8s %-9s %-11s %-9s %-9s %-9s %s\n' \
+                "$B" "${TPS:-n/a}" "$(g addrs_per_flush)" "$(g hold_avg_ms)" "$(g hold_max_ms)" "$(g items_per_flush)" "$(g db_avg_ms)"
+            done
+
+            echo ""
+            echo "Read the mechanism next to the number: a higher TPS that did not shrink"
+            echo "addrs_per_flush or hold_avg_ms is run-to-run noise, not the parameter."
+            echo ""
+            echo "The node is left running with the LAST value in the list. Re-run with a"
+            echo "single value to settle on one."
+        env:
+          BATCHES: ${{ inputs.batches }}
+          CONC: ${{ inputs.concurrency }}
+          DUR: ${{ inputs.duration }}
