@@ -72,4 +72,25 @@ jobs:
             done
 
             echo ""
-            echo "A full 1,196-account run needs about 1.2 AEQ across the five seed rows."
+            echo "=== writing accounts-funded.csv (funded rows only, richest first) ==="
+            # Rows whose address still holds AEQ, ordered by balance descending
+            # so the first rows -- the ones the tool would treat as seeds -- are
+            # the richest. Nothing is sent anywhere: which account is a seed is
+            # a matter of which row it sits in.
+            #
+            # Stays on the box, exactly like accounts.csv: it carries the same
+            # private keys and must never be printed, copied off, or uploaded.
+            OUT=/root/contabo-loadtest/accounts-funded.csv
+            awk -F, 'NF>=2 && $2 ~ /^0x/ {print tolower($2)"	"$0}' "$CSV" | sort > /tmp/csvfull.tsv
+            join -t "$(printf '	')" /tmp/csvfull.tsv /tmp/f.tsv 2>/dev/null | sort -t "$(printf '	')" -k3 -gr | cut -f2 > "$OUT"
+            chmod 600 "$OUT"
+            echo "rows written: $(wc -l < "$OUT")"
+            echo "combined balance in it: $(join -t "$(printf '	')" /tmp/csvfull.tsv /tmp/f.tsv 2>/dev/null | awk -F'	' '{s+=$3} END{printf "%.6f", s+0}') AEQ"
+            echo "(addresses of the first 3 rows, no keys)"
+            head -3 "$OUT" | cut -d, -f2 | sed 's/^/  /'
+            echo ""
+            echo "Run with accounts_csv=accounts-funded.csv and phase=warmup,run:"
+            echo "the accounts already hold AEQ, so no fund phase and no transfer"
+            echo "from any real account is needed. A load-test transfer moves"
+            echo "0.00001 AEQ by default, so ~0.006 AEQ per account covers roughly"
+            echo "600 sends each."
