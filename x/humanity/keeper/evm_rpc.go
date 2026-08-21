@@ -876,6 +876,17 @@ func decodeAndRecoverSender(rawHex string) (tx *types.Transaction, senderAddr st
 }
 
 func (s *EVMRPCServer) sendRawTransaction(params []json.RawMessage, pre *precomputedSendTx) (interface{}, *RPCError) {
+	// Refuse before doing any work if this node cannot currently turn
+	// transactions into blocks. Accepting them anyway is what turns a node
+	// that is briefly behind into one that is permanently stuck: every
+	// accepted transfer grows the backlog that keeps the production gate
+	// shut, which stops the backlog draining. See admission_control.go.
+	//
+	// -32005 is the same retryable code the rate limiter uses, so existing
+	// clients already back off and retry on it.
+	if reason := admissionRefusalReason(); reason != "" {
+		return nil, &RPCError{Code: -32005, Message: reason}
+	}
 	if len(params) == 0 {
 		return nil, &RPCError{Code: -32602, Message: "Missing params"}
 	}

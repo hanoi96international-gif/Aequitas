@@ -2849,6 +2849,10 @@ func (dag *BlockDAG) ProduceBlock() *Block {
 	}
 
 	dag.notifyNewBlock(block)
+	// Admission control's one input: this node can turn work into blocks right
+	// now. See admission_control.go for why time-since-a-block is the signal
+	// rather than queue depth.
+	noteBlockProduced()
 	return block
 }
 
