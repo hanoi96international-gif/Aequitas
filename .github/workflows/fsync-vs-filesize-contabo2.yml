@@ -1,0 +1,121 @@
+name: Does fsync cost depend on the file's size? (read-only)
+
+# THE GAP THIS EXPLAINS, OR RULES OUT.
+#
+# Measured 2026-08-21, both while the chain was under the same load:
+#
+#   independent scratch-file probe : p50 3370us   p90 11330us   p99 55441us
+#   the node's own WAL writer      : sync_avg 14374us   max 1708300us
+#
+# Four times slower, for two processes fsyncing the same filesystem at the same
+# moment. Device saturation explains part of it -- the probe's own rate halved
+# under load, 305 to 151 fsyncs/s -- but not a fourfold gap on top of that.
+#
+# Ruled out by measurement already: parallel replay, WAL flush batch size,
+# flush interval in both directions, Postgres checkpoint tuning, and GC (67
+# cycles and 159ms of total pause across a 109s run at 2,745 TPS -- 0.15% of
+# wall time, on a heap of 475MB live).
+#
+# THE DIFFERENCE NOBODY CONTROLLED FOR: the probe writes a fresh file of a few
+# hundred KB. The node appends to aequitas_transfers.wal, which has grown to
+# 2.6 GB and has logged no compaction in 24 hours. On ext4, fsync must also
+# flush the file's metadata, and a file that has grown by append for weeks
+# carries a large extent tree. If that is the cause, the fix is WAL rotation
+# and the hardware is again innocent.
+#
+# So: the same probe, on a small file and on one pre-grown to the WAL's size,
+# alternating so a drifting background load cannot fake the difference.
+#
+# Creates and deletes its own scratch files. Never touches the real WAL. Needs
+# free space equal to the size it probes -- the volume has 77 GB free.
+on:
+  workflow_dispatch:
+    inputs:
+      big_gb:
+        description: "Size of the large probe file in GB (the live WAL is ~2.6)"
+        required: false
+        default: "3"
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Contabo2
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: 194.163.188.71
+          username: root
+          key: ${{ secrets.CONTABO2_SSH_KEY }}
+          port: 22
+          script_stop: false
+          timeout: 900s
+          command_timeout: 900s
+          envs: BIGGB
+          script: |
+            set +e
+            echo "=== the real WAL, for reference ==="
+            ls -lah /root/aequitas-wal-data/aequitas_transfers.wal
+            df -h / | tail -1
+            echo ""
+            python3 /dev/stdin /root/aequitas-wal-data "${BIGGB:-3}" <<'PY'
+            import os, sys, time
+
+            d = sys.argv[1]
+            big_gb = float(sys.argv[2])
+            small = os.path.join(d, ".probe-small.tmp")
+            big = os.path.join(d, ".probe-big.tmp")
+            rec = b"x" * 220
+
+            def grow(path, gb):
+                # Grow by real appends, not truncate: a sparse file has no
+                # extent tree worth speaking of, and the extent tree is the
+                # thing under test.
+                f = os.open(path, os.O_CREAT | os.O_WRONLY | os.O_TRUNC)
+                chunk = b"y" * (1 << 20)
+                try:
+                    for _ in range(int(gb * 1024)):
+                        os.write(f, chunk)
+                    os.fsync(f)
+                finally:
+                    os.close(f)
+
+            def probe(path, secs):
+                f = os.open(path, os.O_WRONLY | os.O_APPEND)
+                lat = []
+                end = time.time() + secs
+                try:
+                    while time.time() < end:
+                        os.write(f, rec)
+                        t0 = time.perf_counter()
+                        os.fsync(f)
+                        lat.append((time.perf_counter() - t0) * 1e6)
+                finally:
+                    os.close(f)
+                lat.sort()
+                n = len(lat)
+                return n / secs, lat[n // 2], lat[int(n * .9)], lat[int(n * .99)], lat[-1]
+
+            print("building a %.1f GB file by appending (this takes a moment)..." % big_gb)
+            grow(big, big_gb)
+            grow(small, 0.001)
+            print("  small: %s bytes" % os.path.getsize(small))
+            print("  big  : %s bytes" % os.path.getsize(big))
+            print("")
+
+            # Alternate, so a load that drifts during the run cannot masquerade
+            # as a size effect.
+            print("%-8s %-11s %-9s %-9s %-9s %s" % ("file", "fsyncs/s", "p50 us", "p90 us", "p99 us", "max us"))
+            for rnd in range(3):
+                for name, path in (("small", small), ("big", big)):
+                    r, p50, p90, p99, mx = probe(path, 6)
+                    print("%-8s %-11.0f %-9.0f %-9.0f %-9.0f %.0f" % (name, r, p50, p90, p99, mx))
+
+            os.unlink(small)
+            os.unlink(big)
+            print("")
+            print("If 'big' is consistently slower, the WAL's own size is part of the cost")
+            print("and rotation/compaction is the fix. If the two match, file size is not")
+            print("the explanation and the remaining gap is elsewhere in the process.")
+            PY
+        env:
+          BIGGB: ${{ inputs.big_gb }}
