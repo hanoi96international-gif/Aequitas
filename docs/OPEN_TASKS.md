@@ -271,6 +271,60 @@ byte-identical. `tools/snapshot-signer` was written so BOOTSTRAP_SIGNER is
 recovered from the live snapshot rather than assumed — a wrong value makes a
 resync fail closed, which looks exactly like it never ran.
 
+### The path to 10k, and the one step that needs you
+
+Throughput is **pairs / latency**, and latency is no longer what binds — two
+large, real reductions landed today and throughput did not follow them. The
+pair count is the missing multiplier.
+
+    623 funded rows  = 311 pairs   ->  ~3,400-3,800 TPS
+    ~1,900 funded    = ~950 pairs  ->  ~10,000 TPS at the same latency
+
+`accounts.csv` now holds **2,000 accounts** (`loadtest-add-accounts.yml`,
+append-only, every one of the 1,200 originals verified preserved). Funding them
+costs **2.82 AEQ of the 4.49** the load-test float holds.
+
+The funding step moves AEQ, so it needs a human to dispatch:
+
+```bash
+gh workflow run loadtest-widen-senders.yml -f confirm=true -f seeds=120 -f fund_amount_wei=1500000000000000
+gh workflow run loadtest-find-funded.yml
+gh workflow run set-rpc-rate-limit-contabo2.yml -f value=3000000 -f dry_run=false
+gh workflow run stability-under-load.yml -f duration=3m -f pairs=0 -f recovery_minutes=3
+gh workflow run set-rpc-rate-limit-contabo2.yml -f value=200 -f dry_run=false
+```
+
+Dry-run verified: 120 seeds, 1,880 targets, budget printed.
+
+### Two more things measured and rejected — do not retry these
+
+**Flush concurrency 64 is worse than 32** (3,476 vs 3,779). `addrs_per_flush`
+stays at ~371 whatever the worker count, so more workers only freeze more of the
+address space simultaneously.
+
+**Capping a flush by distinct addresses is much worse.** A cap of 64 addresses
+took throughput to **1,490**. Smaller flushes do not amortise: the fix is in
+`wal_flush_addr_cap.go`, defaults to off, and should stay off. The knob exists
+so the result is reproducible, not because it helps.
+
+### The self-heal was armed — it just could not see this failure
+
+Contabo1 forked mid-load (a genuinely different block at height 4467699), froze,
+and fell 600+ blocks behind. `autoheal-status-both.yml` confirms all four
+monitors were armed and correctly configured on both boxes. The one whose
+description fits exactly — "receives blocks but attaches none while behind the
+primary" — never confirmed a single tick.
+
+`attachDelta > 0` was why. A stuck node is rarely attaching *nothing*: it still
+bridges the odd orphan. One attachment in a 60-second tick reset the watch, so a
+node attaching one block a minute while losing sixty read as "normal (possibly
+slow) operation" indefinitely. Only the 25-minute height-stall check could still
+catch it.
+
+Now a **growing gap** confirms starvation regardless of the trickle. Shrinking
+and steady gaps still do not, so an ordinary catch-up after a restart is
+untouched.
+
 ### What is still open
 
 The remaining latency is spread across many small costs with none dominant:
