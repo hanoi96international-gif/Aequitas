@@ -79,10 +79,24 @@ jobs:
             docker stop aequitas-node && docker rm aequitas-node
             docker run -d --name aequitas-node --network "$NET" $PORTS $MOUNTS \
               --env-file /root/apkurl/env --restart unless-stopped "$IMAGE"
-            sleep 40
+            # Warten statt einmal nachsehen. Ein fester sleep meldete auf
+            # Contabo2 HTTP 000 und liess den Job scheitern, obwohl die
+            # Umstellung sauber gegriffen hatte -- der Knoten war schlicht noch
+            # nicht so weit. Ein Fehlschlag, der keiner ist, kostet mehr als die
+            # paar Sekunden, die er spart.
             echo "=== was der Knoten jetzt ausliefert ==="
-            curl -s --max-time 20 -o /dev/null -w "  /download/app.apk -> HTTP %{http_code}  Ziel: %{redirect_url}\n" \
-              http://127.0.0.1:8080/download/app.apk
+            OUT=""
+            for i in $(seq 1 20); do
+              OUT=$(curl -s --max-time 15 -o /dev/null -w "%{http_code} %{redirect_url}" http://127.0.0.1:8080/download/app.apk)
+              case "$OUT" in
+                302*) echo "  /download/app.apk -> $OUT"; break ;;
+              esac
+              sleep 15
+            done
+            case "$OUT" in
+              302*) ;;
+              *) echo "  Knoten antwortet nach 5 Minuten nicht mit einer Umleitung: $OUT"; exit 1 ;;
+            esac
         env:
           APKURL: ${{ inputs.url }}
 
@@ -134,8 +148,23 @@ jobs:
             docker stop aequitas-node && docker rm aequitas-node
             docker run -d --name aequitas-node --network "$NET" $PORTS $MOUNTS \
               --env-file /root/apkurl/env --restart unless-stopped "$IMAGE"
-            sleep 40
-            curl -s --max-time 20 -o /dev/null -w "  /download/app.apk -> HTTP %{http_code}  Ziel: %{redirect_url}\n" \
-              http://127.0.0.1:8080/download/app.apk
+            # Warten statt einmal nachsehen. Ein fester sleep meldete auf
+            # Contabo2 HTTP 000 und liess den Job scheitern, obwohl die
+            # Umstellung sauber gegriffen hatte -- der Knoten war schlicht noch
+            # nicht so weit. Ein Fehlschlag, der keiner ist, kostet mehr als die
+            # paar Sekunden, die er spart.
+            echo "=== was der Knoten jetzt ausliefert ==="
+            OUT=""
+            for i in $(seq 1 20); do
+              OUT=$(curl -s --max-time 15 -o /dev/null -w "%{http_code} %{redirect_url}" http://127.0.0.1:8080/download/app.apk)
+              case "$OUT" in
+                302*) echo "  /download/app.apk -> $OUT"; break ;;
+              esac
+              sleep 15
+            done
+            case "$OUT" in
+              302*) ;;
+              *) echo "  Knoten antwortet nach 5 Minuten nicht mit einer Umleitung: $OUT"; exit 1 ;;
+            esac
         env:
           APKURL: ${{ inputs.url }}
