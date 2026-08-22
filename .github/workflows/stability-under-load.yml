@@ -245,6 +245,12 @@ jobs:
           script_stop: false
           script: |
             echo "=== generator ==="
+            # The RAW tail first. A narrower grep is how three separate stalls
+            # this session reported nothing at all: the run hung in warmup, and
+            # every line explaining why was filtered out by the report itself.
+            echo "--- last 30 lines of the generator log, unfiltered ---"
+            tail -30 /tmp/stability.log 2>/dev/null || echo "(no log)"
+            echo "--- summary lines ---"
             grep -E 'PHASE|elapsed|TPS|failure causes' /tmp/stability.log 2>/dev/null | head -20 || echo "(no log)"
             echo "=== top failure causes ==="
             sed -n '/failure causes/,$p' /tmp/stability.log 2>/dev/null | head -8 || true
