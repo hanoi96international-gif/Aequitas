@@ -173,6 +173,9 @@ func WALFlushStats() map[string]interface{} {
 		"max_batch_items": walFlushStats.maxBatchNo.Load(),
 		"hold_max_ms":     walFlushStats.maxHoldMs.Load(),
 		"cfg_batch":       walFlushMaxBatch,
+		// 0 = no address cap (the shipped behaviour). Read together with
+		// addrs_per_flush and hold_avg_ms: the cap exists to bound exactly those.
+		"cfg_max_addrs":   walFlushMaxAddrs(),
 		"cfg_interval_ms": walFlushInterval.Milliseconds(),
 		"cfg_concurrency": walFlushConcurrency,
 		"cfg_queue_depth": walFlushMaxQueueDepth,
