@@ -38,6 +38,10 @@ on:
         description: "Concurrent sender pairs (0 = all). Raise this to push harder."
         required: false
         default: "0"
+      topology:
+        description: "pairs (disjoint couples, senders = accounts/2) or ring (every account sends, twice the concurrency)"
+        required: false
+        default: "pairs"
       recovery_minutes:
         description: "How long to keep watching after the load stops"
         required: false
@@ -55,6 +59,48 @@ jobs:
             echo "$h  $(echo "$S" | tr ',' '\n' | grep -E '"height"|uptime' | tr '\n' ' ')"
           done
 
+      # Rebuild from current source. This workflow used to run whatever binary
+      # happened to be sitting on the box, so a change to the generator measured
+      # nothing until someone remembered to dispatch loadtest-run-contabo2.yml
+      # first -- and a stale binary is invisible in the output.
+      - uses: actions/checkout@v4
+      - name: Copy the current generator source to Contabo2
+        uses: appleboy/scp-action@v1.0.0
+        with:
+          host: 194.163.188.71
+          username: root
+          key: ${{ secrets.CONTABO2_SSH_KEY }}
+          port: 22
+          source: "tools/contabo-loadtest/main.go,tools/contabo-loadtest/gen_accounts.go,go.mod,go.sum"
+          target: "/root/contabo-loadtest"
+
+      - name: Rebuild the generator
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: 194.163.188.71
+          username: root
+          key: ${{ secrets.CONTABO2_SSH_KEY }}
+          port: 22
+          script_stop: false
+          timeout: 600s
+          command_timeout: 600s
+          script: |
+            set +e
+            cd /root/contabo-loadtest || exit 1
+            # scp-action may or may not keep the tools/contabo-loadtest/ prefix.
+            # Resolve by PRECEDENCE, never by `find | head -1`: a nested copy is
+            # always the fresher one. loadtest-run-contabo2.yml records the run
+            # that ambiguity silently invalidated.
+            if [ -f tools/contabo-loadtest/main.go ]; then
+              cp -f tools/contabo-loadtest/main.go ./main.go
+              cp -f tools/contabo-loadtest/gen_accounts.go ./gen_accounts.go
+            fi
+            docker run --rm --network host -v "$(pwd)":/w -w /w \
+              -v /root/go-mod-cache:/go/pkg/mod golang:1.24-alpine \
+              go build -o loadtest . 2>&1 | tail -20
+            [ -x ./loadtest ] || { echo "build produced no binary"; exit 1; }
+            echo "generator rebuilt: $(stat -c %y ./loadtest)"
+
       - name: Start the load on Contabo2 (returns immediately)
         uses: appleboy/ssh-action@v1.0.3
         with:
@@ -65,7 +111,7 @@ jobs:
           script_stop: false
           timeout: 300s
           command_timeout: 300s
-          envs: DURATION,PAIRS
+          envs: DURATION,PAIRS,TOPOLOGY
           script: |
             cd /root/contabo-loadtest || { echo "no loadtest directory"; exit 1; }
             [ -f accounts-funded.csv ] || { echo "accounts-funded.csv missing -- run loadtest-find-funded.yml"; exit 1; }
@@ -116,12 +162,14 @@ jobs:
                 -rpc http://localhost:8080/rpc \
                 -status http://localhost:8080/api/status \
                 -phase warmup,run -seeds 5 \
+                -topology "$TOPOLOGY" \
                 -duration "$DURATION" -ramp 5 -pairs "$PAIRS" \
                 > /tmp/stability.log 2>&1 &
             echo "generator started; log at /tmp/stability.log"
         env:
           DURATION: ${{ inputs.duration }}
           PAIRS: ${{ inputs.pairs }}
+          TOPOLOGY: ${{ inputs.topology }}
 
       - name: Watch both boxes through the load and the recovery window
         run: |

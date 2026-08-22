@@ -496,6 +496,7 @@ func main() {
 	phase := flag.String("phase", "fund,warmup,run", "comma-separated phases to run")
 	numSeeds := flag.Int("seeds", 5, "number of seed accounts (first N rows)")
 	maxPairs := flag.Int("pairs", 0, "cap on concurrent sender pairs (0 = every pair in the CSV). Lower values find the rate the network SUSTAINS, as opposed to the peak it briefly reaches.")
+	topology := flag.String("topology", "pairs", "pairs = disjoint A<->B couples, half as many senders as accounts; ring = every account sends to the next, twice the concurrency but neighbouring senders share an account")
 	fundAmount := flag.String("fund-amount-wei", "1000000000000000", "wei sent from a seed to each test account (default 0.001 AEQ)")
 	transferAmount := flag.String("transfer-amount-wei", "10000000000000", "wei per load-test transfer (default 0.00001 AEQ)")
 	runDuration := flag.Duration("duration", 20*time.Second, "timed load phase duration")
@@ -531,7 +532,36 @@ func main() {
 	}
 	seeds := accs[:*numSeeds]
 	testAccs := accs[*numSeeds:]
+	// TOPOLOGY. Throughput here is senders divided by per-transfer latency,
+	// because one JSON-RPC batch carries transfers from a single sender and the
+	// node applies a batch in order. So the sender count IS the concurrency the
+	// node ever sees, and with "pairs" it is only half the accounts:
+	//
+	//	623 funded accounts -> 311 pairs -> ~3,400-3,800 TPS measured
+	//
+	// "ring" makes every account a sender (i sends to i+1), doubling that for
+	// free. The cost is that neighbouring senders share an account: goroutine i
+	// touches accounts i and i+1, goroutine i+1 touches i+1 and i+2.
+	//
+	// That overlap is exactly what the run loop's own comment below warns a
+	// ring would break, and the warning was right WHEN IT WAS WRITTEN: a
+	// contended shard used to make a transfer BLOCK, because
+	// transferConcurrentWAL's eligibility checks called shardedAccounts.Get,
+	// which locks. That was removed on 2026-08-22 after it measured 46ms of a
+	// 67ms transfer, and a contended shard now bails cleanly to the batcher
+	// instead -- which amortises commits across many transfers and is the
+	// path TryLockAddrs was always designed to fall through to.
+	//
+	// So the trade changed and is worth measuring rather than assuming. Default
+	// stays "pairs": this flag exists to produce a number, not to be believed
+	// in advance.
 	numPairs := len(testAccs) / 2
+	ring := *topology == "ring"
+	if ring {
+		numPairs = len(testAccs)
+	} else if *topology != "pairs" {
+		fmt.Printf("unknown -topology %q, using pairs\n", *topology)
+	}
 	// Capped deliberately. Peak throughput turned out to be the less useful
 	// number: every run at ~7-8k/s drove the node into an orphan backlog it
 	// needed half an hour to clear, because blocks were produced faster than
@@ -540,8 +570,19 @@ func main() {
 	if *maxPairs > 0 && *maxPairs < numPairs {
 		numPairs = *maxPairs
 	}
-	senders := testAccs[:numPairs]
-	recipients := testAccs[numPairs : 2*numPairs]
+	var senders, recipients []*account
+	if ring {
+		senders = testAccs[:numPairs]
+		recipients = make([]*account, numPairs)
+		for i := range recipients {
+			recipients[i] = testAccs[(i+1)%numPairs]
+		}
+	} else {
+		senders = testAccs[:numPairs]
+		recipients = testAccs[numPairs : 2*numPairs]
+	}
+	fmt.Printf("topology %s: %d concurrent senders over %d accounts\n",
+		*topology, numPairs, len(testAccs))
 
 	// The connection pool is load-bearing here, and leaving it at the default
 	// made this tool measure ITSELF rather than the node.
@@ -763,6 +804,16 @@ func main() {
 				for i := range reverseTargets {
 					reverseTargets[i] = from.address
 				}
+				// Direction alternation is a PAIRS-only device, and it would
+				// be a correctness bug in a ring: goroutine i sending from
+				// acc[i+1] would use the very account goroutine i+1 is already
+				// sending from, and two goroutines assigning one account's
+				// nonces desynchronise both for the rest of the run.
+				//
+				// It is also unnecessary there. Alternation exists because a
+				// fixed direction walks every sender's balance to zero; in a
+				// ring each account sends one batch and receives one batch per
+				// round, so balances stay level on their own.
 				forward := true
 				for {
 					select {
@@ -790,7 +841,9 @@ func main() {
 					// empty one, and the other side is then holding everything
 					// this side ever sent it -- so the very next batch is the one
 					// that can succeed.
-					forward = !forward
+					if !ring {
+						forward = !forward
+					}
 					if err != nil {
 						atomic.AddInt64(&failed, int64(effBatchSize-accepted))
 						recordErr(err)
