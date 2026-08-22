@@ -327,12 +327,34 @@ func (cs *ChainState) transferConcurrentWAL(from, to string, amount float64, pen
 	cs.mu.RLock()
 	defer cs.mu.RUnlock()
 
-	if _, ok := cs.accounts.Get(from); !ok {
-		return 0, 0, false, nil
-	}
-	if _, ok := cs.accounts.Get(to); !ok {
-		return 0, 0, false, nil
-	}
+	// FIX (2026-08-22, measured): two shardedAccounts.Get calls used to sit
+	// here, checking that both accounts exist before bothering with the lock.
+	//
+	// Get takes the shard mutex with a BLOCKING s.mu.Lock(). Those are the very
+	// mutexes flushWALBatch holds, via LockAddrs, for its entire Postgres
+	// transaction -- measured at a 37ms average hold across 371 addresses. So
+	// every transfer waited on the flush right here, and the phase split showed
+	// exactly that:
+	//
+	//	precheck    46.41ms   <- these two Gets
+	//	wal_append  20.62ms
+	//	lock         0.003ms  <- TryLockAddrs, by then uncontended
+	//	apply        0.014ms
+	//	enqueue      0.46ms
+	//
+	// 69% of a transfer, spent waiting for a lock the next line is specifically
+	// designed NOT to wait for. TryLockAddrs exists to bail instantly to the
+	// batcher on a contended shard rather than serialize behind a solo commit
+	// (see its own comment for the 2x slowdown that motivated it) -- and these
+	// two lines defeated it, because by the time the blocking Get returned the
+	// shard was free and TryLockAddrs always succeeded. The 99.82% fast-path
+	// rate was not evidence of low contention; it was evidence that transfers
+	// waited instead of bailing.
+	//
+	// Deleting them changes no behaviour. GetLocked repeats both existence
+	// checks under the lock a few lines below and returns the identical
+	// (0, 0, false, nil) bail, so this was duplicated work whose only effect
+	// was the wait.
 	capAmt, hasCapAmt := cs.wealthCapAmountLocked()
 	ph.precheck = time.Since(phMark)
 
