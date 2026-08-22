@@ -181,9 +181,15 @@ const (
 // counter sendRawTransaction compares against (evm_rpc.go: storedNonce). So
 // this reads exactly what the node will expect next, with no pending-vs-latest
 // discrepancy to reason about, which is what makes a mid-run resync sound.
+// lastNonceErr carries WHY the most recent tryNonce failed. Without it the
+// retry loop reports "giving up after 8 attempts" and nothing about the cause,
+// so a rate limit, a transport timeout and a malformed reply all look alike.
+var lastNonceErr error
+
 func (c *rpcClient) tryNonce(addr string) (uint64, bool) {
 	res, err := c.call("eth_getTransactionCount", []string{addr, "latest"})
 	if err != nil {
+		lastNonceErr = err
 		return 0, false
 	}
 	var hexStr string
@@ -197,20 +203,69 @@ func (c *rpcClient) tryNonce(addr string) (uint64, bool) {
 	return n, true
 }
 
-func (c *rpcClient) nonce(addr string) uint64 {
-	var n uint64
-	var ok bool
+// tryNonceRetrying is nonce() without the panic: it reports failure instead of
+// ending the process.
+//
+// WHY THAT MATTERS. On 2026-08-22 three separate runs produced no measurement
+// at all. The generator was aborting in warmup, on ONE account out of 617,
+// before a single transfer had been sent:
+//
+//	nonce(0x621d...): giving up after 8 attempts
+//	panic: could not read nonce for 0x621d... after 8 attempts
+//
+// One unreadable account is not a reason to throw away a run across the other
+// 616. It is a reason to drop that account and say so.
+func (c *rpcClient) tryNonceRetrying(addr string) (uint64, bool) {
 	for attempt := 1; attempt <= nonceMaxAttempts; attempt++ {
-		if n, ok = c.tryNonce(addr); ok {
-			return n
+		if n, ok := c.tryNonce(addr); ok {
+			return n, true
 		}
 		if attempt == nonceMaxAttempts {
-			fmt.Printf("nonce(%s): giving up after %d attempts\n", addr, nonceMaxAttempts)
-			must(fmt.Errorf("could not read nonce for %s after %d attempts", addr, nonceMaxAttempts))
+			fmt.Printf("nonce(%s): giving up after %d attempts (last error: %v)\n",
+				addr, nonceMaxAttempts, lastNonceErr)
+			return 0, false
 		}
 		time.Sleep(time.Duration(attempt) * nonceRetryBackoff)
 	}
+	return 0, false
+}
+
+// nonce keeps the hard-failure behaviour for the one caller where a single
+// account genuinely IS the run: the fund phase seeds, which pay for the rest.
+func (c *rpcClient) nonce(addr string) uint64 {
+	n, ok := c.tryNonceRetrying(addr)
+	if !ok {
+		must(fmt.Errorf("could not read nonce for %s after %d attempts (last error: %v)",
+			addr, nonceMaxAttempts, lastNonceErr))
+	}
 	return n
+}
+
+// prefetchNonces reads every pair's two nonces and keeps only the pairs where
+// BOTH sides answered. A pair with one unreadable side cannot transact in
+// either direction, so keeping it would only add failures to the throughput
+// number it is supposed to contribute to.
+func prefetchNonces(c *rpcClient, senders, recipients []*account) ([]*account, []*account) {
+	keptS := make([]*account, 0, len(senders))
+	keptR := make([]*account, 0, len(recipients))
+	dropped := 0
+	for i := range senders {
+		sn, sok := c.tryNonceRetrying(senders[i].address)
+		rn, rok := c.tryNonceRetrying(recipients[i].address)
+		if !sok || !rok {
+			dropped++
+			continue
+		}
+		senders[i].nonce = sn
+		recipients[i].nonce = rn
+		keptS = append(keptS, senders[i])
+		keptR = append(keptR, recipients[i])
+	}
+	if dropped > 0 {
+		fmt.Printf("dropped %d of %d pair(s) whose nonce could not be read; running with %d\n",
+			dropped, len(senders), len(keptS))
+	}
+	return keptS, keptR
 }
 
 func (c *rpcClient) sendValue(from *account, toAddr string, amountWei *big.Int) (string, error) {
@@ -695,11 +750,13 @@ func main() {
 
 	if runPhase("warmup") {
 		fmt.Printf("=== PHASE warmup: %d pairs, one transfer each ===\n", numPairs)
-		for _, s := range senders {
-			s.nonce = client.nonce(s.address)
-		}
-		for _, r := range recipients {
-			r.nonce = client.nonce(r.address)
+		// Tolerant: one account whose nonce cannot be read drops its pair
+		// rather than aborting the whole run. See tryNonceRetrying.
+		senders, recipients = prefetchNonces(client, senders, recipients)
+		numPairs = len(senders)
+		if numPairs == 0 {
+			fmt.Println("no pair had both nonces readable — nothing to measure")
+			return
 		}
 		var failed int
 		for i := 0; i < numPairs; i++ {
@@ -731,13 +788,14 @@ func main() {
 
 	if runPhase("run") {
 		fmt.Printf("=== PHASE run: %d pairs, ramping over %ds, then %s timed ===\n", numPairs, *rampSeconds, *runDuration)
-		for _, s := range senders {
-			s.nonce = client.nonce(s.address)
-		}
-		// Recipients send too now (see the direction-alternating loop below), so
-		// their nonces have to be current for the same reason the senders' are.
-		for _, r := range recipients {
-			r.nonce = client.nonce(r.address)
+		// Recipients send too in the pairs topology (the direction-alternating
+		// loop below), so their nonces have to be current for the same reason
+		// the senders' are. Tolerant for the same reason as warmup.
+		senders, recipients = prefetchNonces(client, senders, recipients)
+		numPairs = len(senders)
+		if numPairs == 0 {
+			fmt.Println("no pair had both nonces readable — nothing to measure")
+			return
 		}
 
 		var succeeded, failed int64
