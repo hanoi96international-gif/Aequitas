@@ -38,6 +38,10 @@ on:
         description: "Concurrent sender pairs (0 = all). Raise this to push harder."
         required: false
         default: "0"
+      transfer_wei:
+        description: "Wei per load-test transfer. The default 10000000000000 (0.00001 AEQ) drained accounts mid-run: 137,439 of 683,500 transfers failed on insufficient balance. 1000000000000 gives every account ten times the runway."
+        required: false
+        default: "1000000000000"
       topology:
         description: "pairs (disjoint couples, senders = accounts/2) or ring (every account sends, twice the concurrency)"
         required: false
@@ -111,7 +115,7 @@ jobs:
           script_stop: false
           timeout: 300s
           command_timeout: 300s
-          envs: DURATION,PAIRS,TOPOLOGY
+          envs: DURATION,PAIRS,TOPOLOGY,TRANSFERWEI
           script: |
             cd /root/contabo-loadtest || { echo "no loadtest directory"; exit 1; }
             [ -f accounts-funded.csv ] || { echo "accounts-funded.csv missing -- run loadtest-find-funded.yml"; exit 1; }
@@ -163,6 +167,7 @@ jobs:
                 -status http://localhost:8080/api/status \
                 -phase warmup,run -seeds 5 \
                 -topology "$TOPOLOGY" \
+                -transfer-amount-wei "$TRANSFERWEI" \
                 -duration "$DURATION" -ramp 5 -pairs "$PAIRS" \
                 > /tmp/stability.log 2>&1 &
             echo "generator started; log at /tmp/stability.log"
@@ -170,6 +175,7 @@ jobs:
           DURATION: ${{ inputs.duration }}
           PAIRS: ${{ inputs.pairs }}
           TOPOLOGY: ${{ inputs.topology }}
+          TRANSFERWEI: ${{ inputs.transfer_wei }}
 
       - name: Watch both boxes through the load and the recovery window
         run: |
