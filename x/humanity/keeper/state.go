@@ -399,6 +399,12 @@ type ChainState struct {
 	// ceiling once flushWALBatch stopped needing cs.mu's full exclusivity.
 	walFlushSem chan struct{}
 	walFlushWG  sync.WaitGroup
+	// walAppliesInFlight counts transferConcurrentWAL calls between a
+	// successful Append and enqueue. compactWALIfSafe must see zero here
+	// plus an empty flush queue, or it could TruncateBefore a record that
+	// is durable on disk but not yet queued for Postgres.
+	walAppliesInFlight atomic.Int32
+	lastWALCompactUnix atomic.Int64
 }
 
 // validatorPenalty is one cached validator_penalties row — everything

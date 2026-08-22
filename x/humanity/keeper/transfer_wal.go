@@ -44,11 +44,10 @@ import (
 //
 // What this file does NOT implement, on purpose (deliberately narrowed
 // scope, same discipline as every other phase this session):
-//   - Compaction (wal.TruncateBefore is never called here). The WAL file
-//     grows without bound for the lifetime of the process. Fine for testing;
-//     NOT fine for any real deployment — this is the single largest gap
-//     before this could ever be considered for staging, let alone
-//     production.
+//   - Compaction: compactWALIfSafe now calls wal.TruncateBefore after a
+//     successful flush when the queue is empty and no apply is in-flight.
+//     Still not segment-based; rate-limited to 30s. Staging soak still
+//     required before treating WAL as production-ready.
 //   - Any subsystem other than the narrow-eligibility transfer fast path
 //     transferConcurrentWAL already inherits from transferConcurrent (no
 //     demurrage settlement, no wealth-cap crediting, warm accounts only —
@@ -400,6 +399,8 @@ func (cs *ChainState) transferConcurrentWAL(from, to string, amount float64, pen
 	}
 	ph.apply = time.Since(phMark)
 	phMark = time.Now()
+	cs.walAppliesInFlight.Add(1)
+	defer cs.walAppliesInFlight.Add(-1)
 	seq, err := cs.wal.Append(payload)
 	ph.append_ = time.Since(phMark)
 	phMark = time.Now()
@@ -698,7 +699,40 @@ func (cs *ChainState) flushWALQueue() {
 		cs.walFlushMu.Lock()
 		cs.walFlushQueue = append(batch, cs.walFlushQueue...)
 		cs.walFlushMu.Unlock()
+		return
 	}
+	cs.compactWALIfSafe()
+}
+
+// compactWALIfSafe drops WAL records that are already in Postgres.
+// Only runs when the flush queue is empty AND no transfer is between
+// Append and enqueue — otherwise TruncateBefore could drop a record
+// that crash recovery still needs. Rate-limited to once per 30s because
+// TruncateBefore rewrites the whole file.
+func (cs *ChainState) compactWALIfSafe() {
+	if cs.wal == nil {
+		return
+	}
+	now := time.Now().Unix()
+	last := cs.lastWALCompactUnix.Load()
+	if last != 0 && now-last < 30 {
+		return
+	}
+	if cs.WALFlushQueueDepth() != 0 || cs.walAppliesInFlight.Load() != 0 {
+		return
+	}
+	head := cs.wal.HeadSeq()
+	if head == 0 {
+		return
+	}
+	if !cs.lastWALCompactUnix.CompareAndSwap(last, now) {
+		return
+	}
+	if err := cs.wal.TruncateBefore(head + 1); err != nil {
+		fmt.Printf("[WAL] compact TruncateBefore(%d) failed: %v\n", head+1, err)
+		return
+	}
+	fmt.Printf("[WAL] compact dropped records with seq < %d\n", head+1)
 }
 
 // flushWALBatch performs the actual reconciliation write for one batch.
