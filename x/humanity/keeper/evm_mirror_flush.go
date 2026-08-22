@@ -88,7 +88,21 @@ func (cs *ChainState) flushEVMMirrorDirty() {
 	// any caller's transaction (the whole point of deferring this past the
 	// original operation's own commit/rollback — see syncBalanceLocked's
 	// comment). One lock acquisition per contract group, not per address.
+	// Instrumented because it was not: exclusive_lock_stats covered two of
+	// the package's 85 exclusive sites, and this one -- a DISPLAY-ONLY mirror
+	// for eth_call, by its own documentation -- takes the node's global write
+	// lock every 2 seconds and holds it across a DB write per dirty address.
+	// Under load every transfer marks two addresses dirty, so that is the
+	// whole working set, every cycle. Transfers measured 45.88ms of an
+	// 87.80ms transfer just acquiring cs.mu.RLock(), and Go's RWMutex blocks
+	// every new reader as soon as a writer is waiting.
 	cs.mu.Lock()
+	// AFTER the Lock, not before: trackExclusiveHold measures how long other
+	// goroutines are shut out, not how long this worker queued. Timing from
+	// the attempt would inflate busy_pct and make it incomparable with the
+	// block-replay figure it sits next to.
+	exclusiveAcquired := time.Now()
+	defer trackExclusiveHold(exclusiveAcquired, "EVM mirror flush")
 	defer cs.mu.Unlock()
 	for contractAddr, addrs := range byContract {
 		cs.doSyncBalanceLocked(contractAddr, addrs...)
