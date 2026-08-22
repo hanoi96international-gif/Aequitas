@@ -126,13 +126,26 @@ jobs:
             # idle node. Both are cumulative since the process started, so the
             # window includes the ramp -- fine, the ratios are what matter.
             sleep 75
+            # startPprofServer binds 127.0.0.1:6061 INSIDE the container, not the
+            # published 8080. From the host that address belongs to the host, so
+            # the first version of this workflow fetched
+            # http://127.0.0.1:8080/debug/pprof/mutex and got
+            # {"error":"no such endpoint"} -- which reads like pprof is missing
+            # rather than like the request went to the wrong place.
+            #
+            # Sharing the node's network namespace reaches its loopback without
+            # publishing a debug port or needing curl inside the node image.
+            fetch_prof() {
+              docker run --rm --network "container:aequitas-node" curlimages/curl:latest                 -s --max-time 60 "http://127.0.0.1:6061/debug/pprof/$1?debug=1"
+            }
+
             echo "=== MUTEX profile (who holds locks others wait on) ==="
-            curl -s --max-time 60 "http://127.0.0.1:8080/debug/pprof/mutex?debug=1" -o /tmp/mutex.txt
+            fetch_prof mutex > /tmp/mutex.txt
             head -45 /tmp/mutex.txt
 
             echo ""
             echo "=== BLOCK profile (where goroutines wait) ==="
-            curl -s --max-time 60 "http://127.0.0.1:8080/debug/pprof/block?debug=1" -o /tmp/block.txt
+            fetch_prof block > /tmp/block.txt
             head -45 /tmp/block.txt
 
             echo ""
