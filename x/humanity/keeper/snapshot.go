@@ -7,6 +7,7 @@ import (
 	"database/sql"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -180,6 +181,60 @@ func (cs *ChainState) ExportSnapshot(signingKey *ecdsa.PrivateKey, height int64,
 // client, age window, signature verification) must apply identically to
 // both, so it lives in exactly one place instead of two copies that could
 // drift apart.
+// errSnapshotRateLimited marks the one failure that is worth waiting out
+// rather than giving up on: the peer's own anti-bulk-download throttle.
+var errSnapshotRateLimited = errors.New("snapshot server is rate limiting this node (HTTP 429)")
+
+// fetchSnapshotWaitingOutRateLimit retries fetchAndValidateSnapshot when, and
+// only when, the peer answers 429.
+//
+// The peer's window is 30 seconds per IP, so the wait is deliberately just past
+// it. Everything else -- a bad signature, an unreachable host, a stale
+// snapshot -- still fails on the first attempt, because those do not get better
+// by asking again and a recovering node must not sit in a retry loop against a
+// peer that is genuinely wrong.
+func fetchSnapshotWaitingOutRateLimit(peerURL, expectedSignerHex string) (*StateSnapshot, error) {
+	return retryWhileRateLimited(snapshotRetryAttempts, snapshotRetryWait, func() (*StateSnapshot, error) {
+		return fetchAndValidateSnapshot(peerURL, expectedSignerHex)
+	})
+}
+
+// snapshotRetryWait is deliberately just past handleSnapshot's 30-second
+// public-tier window, so one wait is enough rather than merely likely.
+const (
+	snapshotRetryAttempts = 4
+	snapshotRetryWait     = 35 * time.Second
+)
+
+// retryWhileRateLimited is the decision this fix turns on, separated from the
+// network so it can be tested without one: the snapshot fetcher refuses
+// loopback addresses (SSRF guard), which makes an httptest server unusable
+// against the real fetch path.
+//
+// Retries ONLY errSnapshotRateLimited. Everything else -- a bad signature, an
+// unreachable host, a stale snapshot -- returns immediately, because those do
+// not improve by asking again and a recovering node must not sit in a retry
+// loop against a peer that is genuinely wrong.
+func retryWhileRateLimited(attempts int, wait time.Duration, fetch func() (*StateSnapshot, error)) (*StateSnapshot, error) {
+	var err error
+	for i := 1; i <= attempts; i++ {
+		var snap *StateSnapshot
+		snap, err = fetch()
+		if err == nil {
+			return snap, nil
+		}
+		if !errors.Is(err, errSnapshotRateLimited) {
+			return nil, err
+		}
+		if i < attempts {
+			fmt.Printf("[SNAPSHOT] peer is rate limiting this node; waiting %s before attempt %d of %d\n",
+				wait, i+1, attempts)
+			time.Sleep(wait)
+		}
+	}
+	return nil, fmt.Errorf("peer kept rate limiting the snapshot fetch across %d attempts: %w", attempts, err)
+}
+
 func fetchAndValidateSnapshot(peerURL, expectedSignerHex string) (*StateSnapshot, error) {
 	// F18-FIX: use redirect-blocking client with IP validation to prevent
 	// SSRF if BOOTSTRAP_SNAPSHOT_URL is set to a private/cloud-metadata IP.
@@ -204,6 +259,28 @@ func fetchAndValidateSnapshot(peerURL, expectedSignerHex string) (*StateSnapshot
 		return nil, fmt.Errorf("download failed: %w", err)
 	}
 	defer resp.Body.Close()
+	if resp.StatusCode == http.StatusTooManyRequests {
+		// FIX (2026-08-22, observed on the primary): a 429 here was treated as
+		// a terminal failure, and it is the opposite -- the server is saying
+		// "try again shortly" and means it.
+		//
+		// handleSnapshot throttles its public tier to one request per 30
+		// seconds per IP, as an anti-bulk-download measure. A recovering
+		// validator is polling that same peer for blocks continuously, so a
+		// 429 on the snapshot fetch is ordinary, not exceptional. Treating it
+		// as fatal turned a clean in-process self-heal into the restart-based
+		// fallback, and the restart then hit the same window again at boot.
+		//
+		// Measured live: the primary sat 1,866 blocks behind for 33 minutes
+		// with all four self-heal monitors armed and correctly firing, and
+		// recovered only when an operator intervened -- because every attempt
+		// died on this line.
+		//
+		// Reported as its own error so a caller can retry sensibly rather than
+		// having to string-match. The endpoint's protection is untouched: this
+		// is a client that now waits its turn.
+		return nil, errSnapshotRateLimited
+	}
 	if resp.StatusCode != 200 {
 		return nil, fmt.Errorf("snapshot server returned HTTP %d", resp.StatusCode)
 	}
@@ -283,7 +360,10 @@ func (cs *ChainState) ImportSnapshotFromURL(peerURL, expectedSignerHex string) e
 	if local > 0 {
 		fmt.Printf("[SNAPSHOT] Merging into existing state (%d humans local) — adding missing entries\n", local)
 	}
-	snapPtr, err := fetchAndValidateSnapshot(peerURL, expectedSignerHex)
+	// Waits out the peer's 30s public-tier throttle instead of failing on it.
+	// A recovering node polls that same peer for blocks continuously, so a 429
+	// here is ordinary; see fetchSnapshotWaitingOutRateLimit.
+	snapPtr, err := fetchSnapshotWaitingOutRateLimit(peerURL, expectedSignerHex)
 	if err != nil {
 		return err
 	}
@@ -539,7 +619,10 @@ func (cs *ChainState) ResyncFromSnapshotURL(peerURL, expectedSignerHex string) e
 	if expectedSignerHex == "" {
 		return fmt.Errorf("RESYNC_FROM_SNAPSHOT requires BOOTSTRAP_SIGNER set — refusing to replace local state from an unverified source")
 	}
-	snapPtr, err := fetchAndValidateSnapshot(peerURL, expectedSignerHex)
+	// Waits out the peer's 30s public-tier throttle instead of failing on it.
+	// A recovering node polls that same peer for blocks continuously, so a 429
+	// here is ordinary; see fetchSnapshotWaitingOutRateLimit.
+	snapPtr, err := fetchSnapshotWaitingOutRateLimit(peerURL, expectedSignerHex)
 	if err != nil {
 		return err
 	}
