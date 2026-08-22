@@ -95,6 +95,24 @@ jobs:
             echo "(first 3 addresses, no keys)"
             cut -d, -f2 /tmp/widen.csv | head -3
 
+            # BUDGET, printed so a run cannot be started that the seeds cannot
+            # finish. The whole load-test float was 4.49 AEQ across 623 rows, so
+            # this is a real constraint rather than a formality. A run that
+            # empties the seeds halfway is the worst outcome: the finder then
+            # rebuilds a list whose tail is unusable, and the next measurement
+            # silently uses fewer pairs than it reports.
+            TARGETS=$(wc -l < /tmp/targets.csv)
+            echo ""
+            echo "=== budget ==="
+            awk -v t="$TARGETS" -v w="$FUNDWEI" 'BEGIN{
+              print "targets:              " t
+              print "per account (AEQ):    " w/1e18
+              print "total required (AEQ): " t*w/1e18
+            }'
+            echo "Compare that with the 'combined balance' loadtest-find-funded.yml"
+            echo "last reported for accounts-funded.csv. If required exceeds it,"
+            echo "lower fund_amount_wei -- the seeds are part of that same float." 
+
             if [ "${CONFIRM:-false}" != "true" ]; then
               echo ""
               echo "confirm != true -- built the CSV and sent nothing."
