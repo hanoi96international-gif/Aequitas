@@ -1,0 +1,89 @@
+name: Set AEQUITAS_WAL_FLUSH_MAX_ADDRS on Contabo2 (sweep the flush hold)
+
+# What this tunes, and why item count was the wrong knob.
+#
+# flushWALBatch holds cs.accounts.LockAddrs over every address in its batch for
+# the whole Postgres transaction. That hold is what transfers collide with, and
+# nothing bounded it: the only cap was on ITEMS (walFlushMaxBatch, 4000), while
+# the measurement that matters is addresses. Under load a flush carried 393
+# items and locked 371 distinct addresses for 37ms.
+#
+#   addrs_per_flush 371   hold_avg_ms 37   p3_acct_exec 20351us
+#
+# WHAT TO WATCH, in this order:
+#
+#   addrs_per_flush   should fall to roughly the cap
+#   hold_avg_ms       should fall with it -- this is the point
+#   flushes           should rise (smaller batches, more of them)
+#   items             must keep up; if the queue stops draining the cap is
+#                     too tight and transfers will start bailing on
+#                     backpressure instead
+#   transfer_phases.precheck_ms   the number the cap is meant to reduce
+#
+# A cap that shortens the hold but stalls the queue is a regression, not a win.
+# Check WALFlushQueueDepth and the fallback_to_batch counter together with the
+# throughput number before keeping any value.
+#
+# 0 restores the shipped behaviour (no cap).
+#
+# Contabo2 only: this is a measurement setting, and sweeping it on the box that
+# takes the load keeps the other validator on known-good configuration.
+on:
+  workflow_dispatch:
+    inputs:
+      value:
+        description: "Distinct addresses per flush (0 = no cap, the shipped default)"
+        required: true
+        default: "64"
+
+jobs:
+  set:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Set the flush address cap on Contabo2
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: 194.163.188.71
+          username: root
+          key: ${{ secrets.CONTABO2_SSH_KEY }}
+          port: 22
+          script_stop: false
+          timeout: 600s
+          command_timeout: 600s
+          envs: CAP
+          script: |
+            set +e
+            echo "### CONTABO2 -> AEQUITAS_WAL_FLUSH_MAX_ADDRS=$CAP ###"
+            cp /root/.aequitas.env "/root/.aequitas.env.bak.$(date +%Y%m%d-%H%M%S)"
+            sed -i '/^AEQUITAS_WAL_FLUSH_MAX_ADDRS=/d' /root/.aequitas.env
+            if [ "$CAP" != "0" ]; then
+              echo "AEQUITAS_WAL_FLUSH_MAX_ADDRS=$CAP" >> /root/.aequitas.env
+            fi
+            grep -E '^AEQUITAS_WAL_FLUSH' /root/.aequitas.env || echo "(no flush overrides set — defaults apply)"
+
+            IMAGE="$(docker inspect aequitas-node --format '{{.Config.Image}}')"
+            NET="$(docker inspect aequitas-node --format '{{range $k, $v := .NetworkSettings.Networks}}{{$k}} {{end}}' | awk '{print $1}')"
+            PORTS="$(docker inspect aequitas-node --format '{{range $p, $c := .HostConfig.PortBindings}}-p {{(index $c 0).HostPort}}:{{$p}} {{end}}' | sed 's|/tcp||g')"
+            MOUNTS="$(docker inspect aequitas-node --format '{{range .Mounts}}-v {{.Source}}:{{.Destination}} {{end}}')"
+            mkdir -p /root/flushaddrs
+            ENVOUT=/root/flushaddrs/env
+            # The running process's own env is the base, MINUS this key, so a
+            # previous sweep value cannot survive into the next run. The file
+            # wins for everything else, exactly as the other tuning workflows do.
+            docker inspect aequitas-node --format '{{range .Config.Env}}{{println .}}{{end}}' \
+              | grep -vE '^(RESYNC_FROM_SNAPSHOT|HOSTNAME|PATH|HOME|AEQUITAS_WAL_FLUSH_MAX_ADDRS)=' \
+              | grep -E '^[A-Za-z_][A-Za-z0-9_]*=' > /tmp/proc.env
+            grep -E '^[A-Za-z_][A-Za-z0-9_]*=' /root/.aequitas.env \
+              | grep -vE '^(RESYNC_FROM_SNAPSHOT|HOSTNAME|PATH|HOME)=' > /tmp/file.env || true
+            awk -F= '!seen[$1]++' /tmp/file.env /tmp/proc.env > "$ENVOUT"
+
+            docker stop aequitas-node && docker rm aequitas-node
+            docker run -d --name aequitas-node --network "$NET" $PORTS $MOUNTS \
+              --env-file "$ENVOUT" --restart unless-stopped "$IMAGE"
+            sleep 40
+            echo "=== what the process now has ==="
+            docker inspect aequitas-node --format '{{range .Config.Env}}{{println .}}{{end}}' \
+              | grep -E '^AEQUITAS_WAL_FLUSH' || echo "(no cap set — shipped behaviour)"
+            curl -s --max-time 15 http://127.0.0.1:8080/api/status | grep -o '"height":[0-9]*' || echo "(unreachable)"
+        env:
+          CAP: ${{ inputs.value }}
