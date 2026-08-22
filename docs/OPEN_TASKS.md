@@ -140,33 +140,59 @@ the day: a node fell behind, could not rejoin, and needed a resync.
 
 **10,000 TPS was not reached**, and the honest reason is below.
 
-### Why it stops at ~3,400, stated honestly
+### The measurement was capped by our own rate limiter
 
-Throughput = concurrency / latency. The harness holds 380 funded sender pairs
-and a transfer measures 62 ms end to end on the server, so the harness's own
-ceiling is
+**Every throughput number taken with the limiter at 10,000 was measuring the
+limiter, not the chain.** After the P1 security fix the limiter charges per
+JSON-RPC batch ITEM, and the window is 10 seconds:
 
-    380 / 0.062 s = ~6,100 TPS
+    10,000 items / 10s = 1,000 transfers/s per IP
 
-**Measured 3,400 — about half of that.** That gap is the important number, and
-it says the harness is *not* the binding constraint at the rate actually
-achieved. Working backwards, 380 / 3,400 = **112 ms of real per-transfer
-latency**, against 62 ms measured inside the transfer path. So roughly 50 ms
-per transfer is spent somewhere the current instrumentation does not see —
-client-side queuing in the generator, RPC handling before the transfer path
-starts, or response handling after it ends.
+A 3-minute run at that setting: **824 TPS, and 12,117 `-32005 rate limited`
+errors** as the dominant failure cause. Only 4.3% of submitted batch items ever
+reached the chain.
 
-**Do not conclude "just add more senders."** More senders only help once the
-harness ceiling is the thing being hit, and it is not. The first job is finding
-the missing 50 ms, because it is nearly half of every transfer and no current
-measurement covers it.
+Raised to 3,000,000 (300k/s, cannot bind) the same run gave **3,253 TPS,
+peak 7,151/s, and zero rate-limit errors** — 98.3% of items reached the chain.
 
-Both possible outcomes are actionable: if the 50 ms is on the client, the
-harness needs fixing and the chain is faster than it appears; if it is in RPC
-handling, that is a chain fix that no amount of load generation substitutes for.
-Instrument the RPC handler end to end (arrival to response write, not just the
-transfer path) and compare against the client's own observed latency. That one
-measurement decides which.
+Before any throughput measurement on this project: raise the limiter, and check
+the run's failure causes for `-32005`. **Put it back to 200 afterwards** —
+it is a protection on a public endpoint.
+
+### Where a transfer's time actually goes
+
+Measured with `rpc_phases` (rpc_phase_stats.go), limiter out of the way:
+
+| phase | ms | share |
+|---|---|---|
+| whole handler, per batch item | 74.75 | — |
+| `sendRawTransaction` | 75.63 | 100% |
+| ├ nonce reservation | 19.59 | **26%** |
+| ├ `TransferAtomic` | 52.12 | **69%** |
+| └ everything else | 3.92 | 5% |
+
+**`rpc_total_per_item` 74.75 ≈ `send_tx` 75.63, so the node owns essentially
+all of it — there is no hidden client-side gap.** That answers the question the
+instrument was built for, and it rules out the "fix the harness" branch.
+
+### The next target, and why it is not a quick patch
+
+**Nonce reservation is 26% of every transfer.** The batcher's own wait is
+capped at 1ms (`nonceBatchMaxWait`), so the 19.6ms is the Postgres round trip
+under load — and the per-sender shard lock is held across it, while a batch's
+100 transfers from one sender are necessarily serial.
+
+The in-memory nonce map already provides ordering while the process is alive;
+the database compare-and-swap is there for restart durability. Making it
+asynchronous would remove the 19.6ms but opens a replay window across a crash.
+That is a real durability trade-off and needs its own design pass, not a patch.
+
+Arithmetic for the target: at 380 senders, 10,000 TPS needs 38ms per transfer.
+`TransferAtomic` alone is 52ms, so **the nonce fix is necessary but not
+sufficient** — reaching 10k needs either TransferAtomic reduced as well, or
+substantially more concurrent senders.
+
+---
 
 ### Ten hypotheses measured and rejected — do not retry these
 
@@ -205,6 +231,45 @@ measurement decides which.
 10. **Flush concurrency 4 -> 32.** hold_max 557 ms -> 162 ms. The flush holds
     account locks across its Postgres transaction, and transfers wait behind
     it — most of a transfer's 60 ms.
+
+### The stability failure, root-caused and fixed
+
+A heavy run left Contabo2 frozen at its exact starting height while still
+applying 4,349 transfers a second, and a restart did not help. Two separate
+defects, both now fixed:
+
+**1. Admission control had a hole exactly where it was needed.**
+`productionStalledFor` returned zero whenever the node had never produced a
+block — so a node that had not produced *since starting* was permanently
+exempt. Contabo2's stats read `last_block_produced_unix: 0`, `refusing: false`,
+`stalled_seconds: 0` while it was frozen. It accepted 104,060 transfers it
+could never include. Fixed by anchoring the stall origin to process start: a
+node still gets the full stall limit to produce its first block, and no longer
+gets an unbounded pass after that.
+
+**2. Why it could not rejoin, measured rather than assumed.** Six checks, five
+clean: the data was reachable from the box in 13ms, the chain was linked (block
+4425914's parent IS Contabo2's own tip), blocks were 717 bytes not oversized,
+the box rejected nothing, no proposer was banned, and it was 470 blocks behind
+against a far-ahead cap of 5000.
+
+The real cause: it held orphan blocks from the load run, reloaded from its own
+Postgres at boot, waiting on parent `b99fa340...` — a hash that exists nowhere
+on Contabo1. They can never resolve, and while they sit there they count as
+unresolved deferrals, pinning `clean_sync_streak` at 0 and holding the
+production gate shut.
+
+**The deepScan actively made it worse.** Its sweep started at the right height,
+failed to merge, and concluded the common ancestor must lie further BACK — so
+it walked its floor down (4425913 → 4425755 → 4425600), spending the bounded
+sweep budget re-walking history the box already had while the real gap ahead
+grew a block a second. Those two causes need opposite responses and the code
+cannot yet tell them apart; that distinction is still open.
+
+Recovered with `recover-contabo2-resync.yml`. Both nodes now produce and sit
+byte-identical. `tools/snapshot-signer` was written so BOOTSTRAP_SIGNER is
+recovered from the live snapshot rather than assumed — a wrong value makes a
+resync fail closed, which looks exactly like it never ran.
 
 ### What is still open
 
