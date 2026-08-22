@@ -306,6 +306,11 @@ func (cs *ChainState) transferConcurrentWAL(from, to string, amount float64, pen
 	if cs.wal == nil {
 		return 0, 0, false, nil
 	}
+	// Phase clock. Recorded only when this path actually applies the transfer,
+	// so a bail to the batcher does not dilute the averages with work it never
+	// did. See transfer_phase_stats.go for what is unexplained and why.
+	ph := beginTransferPhases()
+	phMark := time.Now()
 	// Backpressure: see walFlushMaxQueueDepth's own comment. A clean bail to
 	// the batcher, same shape as any other ineligibility below -- nothing
 	// has been mutated or appended to the WAL yet at this point.
@@ -329,12 +334,16 @@ func (cs *ChainState) transferConcurrentWAL(from, to string, amount float64, pen
 		return 0, 0, false, nil
 	}
 	capAmt, hasCapAmt := cs.wealthCapAmountLocked()
+	ph.precheck = time.Since(phMark)
 
+	phMark = time.Now()
 	unlock, ok := cs.accounts.TryLockAddrs(from, to)
+	ph.lock = time.Since(phMark)
 	if !ok {
 		return 0, 0, false, nil
 	}
 	defer unlock()
+	phMark = time.Now()
 
 	fromAcc, ok := cs.accounts.GetLocked(from)
 	if !ok {
@@ -362,7 +371,11 @@ func (cs *ChainState) transferConcurrentWAL(from, to string, amount float64, pen
 	if err != nil {
 		return 0, 0, false, nil // encode failure -- nothing mutated, safe to fall back
 	}
+	ph.apply = time.Since(phMark)
+	phMark = time.Now()
 	seq, err := cs.wal.Append(payload)
+	ph.append_ = time.Since(phMark)
+	phMark = time.Now()
 	if err != nil {
 		// Nothing mutated yet -- a WAL append failure (disk full, closed WAL,
 		// etc.) is a clean bail to the existing, proven paths, same as any
@@ -389,6 +402,8 @@ func (cs *ChainState) transferConcurrentWAL(from, to string, amount float64, pen
 	pendingTxTemplate.FromDemurrageLost = 0
 	pendingTxTemplate.ToDemurrageLost = 0
 	cs.enqueueWALFlushLocked(from, to, pendingTxTemplate)
+	ph.enqueue = time.Since(phMark)
+	ph.record()
 	cs.markEVMMirrorDirtyForAddrsLocked(from, to)
 
 	return 0, 0, true, nil

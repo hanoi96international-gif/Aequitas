@@ -686,6 +686,10 @@ func (a *APIServer) handleCombinedHealth(w http.ResponseWriter, r *http.Request)
 		// covered_pct first -- it only applies to consecutive runs from one
 		// sender, so a differently-batching client correctly gets none of it.
 		"batch_nonce": BatchNonceStats(),
+		// The fast path split. Read other_ms first: it is the time no named
+		// phase covers, and the named ones only add up to ~7ms of a measured
+		// 78ms. See transfer_phase_stats.go.
+		"transfer_phases": TransferPhaseStats(),
 		// chain_tx_batches hatte keine Obergrenze und keinen DELETE-Pfad;
 		// siehe tx_batch_prune.go.
 		"tx_batch_prune": TxBatchPruneStats(),
