@@ -504,8 +504,13 @@ func (dag *BlockDAG) startSyncStarvationCheck(primaryURL string) {
 				}
 				if starvingSince.IsZero() {
 					starvingSince = time.Now()
-					fmt.Printf("[AUTO-HEAL] Sync-starvation watch: received %d block(s) this interval but attached 0 while %d+ behind the primary — watching (threshold %s).\n",
-						rawDelta, syncStarvationMinGap, syncStarvationThreshold)
+					// Reports what actually confirmed the tick. The old wording said
+					// "attached 0" unconditionally, which became wrong the moment a
+					// GROWING GAP could confirm too: an operator would read zero
+					// attachments and go looking for an isolated node, when the real
+					// state was a node attaching a trickle and still losing ground.
+					fmt.Printf("[AUTO-HEAL] Sync-starvation watch: received %d block(s) this interval, attached %d, now %d behind the primary — watching (threshold %s).\n",
+						rawDelta, attachDelta, gap, syncStarvationThreshold)
 					return
 				}
 				if starving := time.Since(starvingSince); starving >= syncStarvationThreshold {
