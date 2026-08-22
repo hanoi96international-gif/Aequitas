@@ -1,0 +1,92 @@
+name: Warum ist C1 immer der schwache Knoten? (read-only Vergleich)
+
+# DIE BEOBACHTUNG, ueber viele Vorfaelle hinweg: es ist immer C1, das haengt,
+# zurueckfaellt und einen Resync braucht. Nie C2. Das ist zu bestaendig fuer
+# Zufall und zu bestaendig fuer einen Kettenfehler -- ein Fehler im Konsens
+# haette keinen Grund, sich eine Box auszusuchen.
+#
+# DIE HYPOTHESE, aus der Topologie des Launch-Audits: auf C1 laeuft der ganze
+# uebrige Stack mit -- Proof-Server, Matching, Redis, Postgres, Caddy,
+# Coordinator -- waehrend C2 im Wesentlichen nur den Knoten faehrt. Dann ist C1
+# nicht schwach, weil die Kette dort anders liefe, sondern weil derselbe
+# Prozess sich CPU, Platte und Speicher mit allem anderen teilt.
+#
+# Das ist keine Kleinigkeit fuer den Durchsatz: ein Transfer verbringt 45,88 ms
+# von 87,80 ms mit Warten auf eine Sperre und 40,39 ms auf den WAL-Commit. Beide
+# Zahlen wachsen, wenn die Platte und die Kerne anderweitig beschaeftigt sind --
+# und der nachspielende Knoten zahlt dieselbe Rechnung wie der annehmende, ohne
+# selbst Last anzunehmen.
+#
+# Rein lesend. Aendert nichts, startet nichts neu.
+on:
+  workflow_dispatch: {}
+
+jobs:
+  compare:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - name: C1-Primary
+            host: 173.249.37.118
+            secret: CONTABO_SSH_KEY
+          - name: C2
+            host: 194.163.188.71
+            secret: CONTABO2_SSH_KEY
+      fail-fast: false
+    steps:
+      - name: ${{ matrix.name }}
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ matrix.host }}
+          username: root
+          key: ${{ secrets[matrix.secret] }}
+          port: 22
+          script_stop: false
+          timeout: 300s
+          command_timeout: 300s
+          script: |
+            set +e
+            echo "################ ${{ matrix.name }} ################"
+            echo "--- Kerne / RAM ---"
+            echo "  Kerne: $(nproc)"
+            free -m | awk '/^Mem:/{printf "  RAM: %s MB gesamt, %s benutzt, %s verfuegbar\n", $2, $3, $7}'
+            echo "  Load average: $(cut -d' ' -f1-3 /proc/loadavg)   (pro Kern: $(awk -v c=$(nproc) '{printf "%.2f", $1/c}' /proc/loadavg))"
+
+            echo ""
+            echo "--- was laeuft hier ueberhaupt? ---"
+            docker ps --format '  {{.Names}}  ({{.Image}})' | head -20
+            echo "  Container gesamt: $(docker ps -q | wc -l)"
+
+            echo ""
+            echo "--- wer verbraucht was? (eine Momentaufnahme) ---"
+            docker stats --no-stream --format '  {{.Name}}\t{{.CPUPerc}}\tMEM {{.MemUsage}}' 2>/dev/null | head -20
+
+            echo ""
+            echo "--- Platte: Auslastung und Wartezeit ---"
+            df -h / | tail -1 | sed 's/^/  /'
+            # %iowait ist die Zahl, die zaehlt: ein Kern, der auf die Platte
+            # wartet, steht dem WAL-Commit nicht zur Verfuegung.
+            if command -v iostat >/dev/null 2>&1; then
+              iostat -x 1 2 | tail -20 | sed 's/^/  /'
+            else
+              echo "  (iostat nicht installiert)"
+              awk '{printf "  procs blockiert auf IO: %s\n", $10}' /proc/stat 2>/dev/null | head -1
+              cat /proc/pressure/io 2>/dev/null | sed 's/^/  PSI io: /' || echo "  (kein /proc/pressure/io)"
+            fi
+            cat /proc/pressure/cpu 2>/dev/null | sed 's/^/  PSI cpu: /'
+
+            echo ""
+            echo "--- Postgres: laeuft er hier, und wie beschaeftigt? ---"
+            for c in aequitas-postgres proof-postgres bench-pg; do
+              docker inspect "$c" >/dev/null 2>&1 || continue
+              N=$(docker exec "$c" psql -U postgres -tAc "select count(*) from pg_stat_activity where state='active'" 2>/dev/null)
+              echo "  $c: aktive Verbindungen ${N:-?}"
+            done
+
+            echo ""
+            echo "--- der Knoten selbst ---"
+            docker inspect aequitas-node --format '  gestartet: {{.State.StartedAt}}  Neustarts: {{.RestartCount}}  OOM: {{.State.OOMKilled}}'
+            curl -s --max-time 15 http://127.0.0.1:8080/api/health/combined 2>/dev/null \
+              | grep -oE '"(exclusive_max_ms|exclusive_busy_pct|hold_avg_ms|sync_avg_us|refusing|stalled_seconds)":[^,}]*' \
+              | sed 's/^/  /' | head -10
