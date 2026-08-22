@@ -70,6 +70,45 @@ jobs:
             cd /root/contabo-loadtest || { echo "no loadtest directory"; exit 1; }
             [ -f accounts-funded.csv ] || { echo "accounts-funded.csv missing -- run loadtest-find-funded.yml"; exit 1; }
             [ -x ./loadtest ] || { echo "no built loadtest binary -- run loadtest-run-contabo2.yml once"; exit 1; }
+            # WAIT UNTIL THE NODE ACTUALLY PRODUCES BLOCKS.
+            #
+            # Measured 2026-08-22: a 100-pair run started 60s after a restart
+            # produced 140 transfers and a peak of 41/s, then stopped. The node
+            # was not broken -- it was correctly REFUSING, because admission
+            # control refuses a node that has not produced a block, and this
+            # one took 533 seconds from process start to its first block while
+            # the initial-sync gate cleared.
+            #
+            # A refusing node answers every request with a retryable -32005, so
+            # the run looks like a throughput collapse rather than a node that
+            # was never asked to do anything. Two earlier comparisons in that
+            # session are untrustworthy for exactly this reason.
+            #
+            # never_produced AND refusing both have to be clear: the first says
+            # it has entered production at all, the second that it is not
+            # stalled right now.
+            echo "waiting for the node to be producing before generating load..."
+            READY=no
+            for i in $(seq 1 60); do
+              H=$(curl -s --max-time 10 http://localhost:8080/api/health/combined)
+              case "$H" in
+                *'"never_produced":false'*)
+                  case "$H" in
+                    *'"refusing":false'*) READY=yes ;;
+                  esac
+                  ;;
+              esac
+              [ "$READY" = yes ] && break
+              sleep 10
+            done
+            if [ "$READY" != yes ]; then
+              echo "node still not producing after 10 minutes -- refusing to generate load against it."
+              echo "A run here would measure admission refusals, not throughput."
+              curl -s --max-time 10 http://localhost:8080/api/health/combined | grep -oE '"(never_produced|refusing)":[a-z]+|"stalled_seconds":[0-9]+' || true
+              exit 1
+            fi
+            echo "node is producing; starting the generator."
+
             rm -f /tmp/stability.log
             nohup docker run --rm --network host -v "$(pwd)":/w -w /w \
               -v /root/go-mod-cache:/go/pkg/mod golang:1.24-alpine \
