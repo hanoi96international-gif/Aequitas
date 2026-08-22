@@ -143,94 +143,94 @@ the day: a node fell behind, could not rejoin, and needed a resync.
 ### The measurement was capped by our own rate limiter
 
 **Every throughput number taken with the limiter at 10,000 was measuring the
-limiter, not the chain.** After the P1 security fix the limiter charges per
-JSON-RPC batch ITEM, and the window is 10 seconds:
+limiter, not the chain.** After the P1 security fix it charges per JSON-RPC
+batch ITEM, over a 10-second window: `10,000 / 10s = 1,000 transfers/s per IP`.
 
-    10,000 items / 10s = 1,000 transfers/s per IP
+A 3-minute run there: **824 TPS, 12,117 `-32005 rate limited` errors**, and only
+4.3% of submitted items reaching the chain. Raised to 3,000,000 the same run
+gave **3,253 TPS and none** — 98.3% of items reached the chain.
 
-A 3-minute run at that setting: **824 TPS, and 12,117 `-32005 rate limited`
-errors** as the dominant failure cause. Only 4.3% of submitted batch items ever
-reached the chain.
+Before any throughput measurement: raise the limiter, and grep the run's
+failure causes for `-32005`. **Put it back to 200 afterwards.**
 
-Raised to 3,000,000 (300k/s, cannot bind) the same run gave **3,253 TPS,
-peak 7,151/s, and zero rate-limit errors** — 98.3% of items reached the chain.
+### A load test against a refusing node looks exactly like a slow node
 
-Before any throughput measurement on this project: raise the limiter, and check
-the run's failure causes for `-32005`. **Put it back to 200 afterwards** —
-it is a protection on a public endpoint.
+A 100-pair run started 60 seconds after a restart produced 140 transfers and a
+peak of 41/s. The node was not slow — it was correctly refusing, because
+admission control turns away a node that has not produced a block, and this one
+took **533 seconds** from process start to its first block while the
+initial-sync gate cleared.
 
-### Where a transfer's time actually goes
+`stability-under-load.yml` now waits for `never_produced` and `refusing` to both
+clear before generating anything, and fails loudly rather than measuring
+refusals. Two comparisons made before that gate existed had to be thrown away.
 
-Measured with `rpc_phases` (rpc_phase_stats.go), limiter out of the way:
+### Where a transfer's time goes, phase by phase
 
-| phase | ms | share |
+Two instruments were added, because at every stage the sum of the known parts
+came out an order of magnitude below the measured whole.
+
+**The request** (`rpc_phases`): nonce reservation was 19.59 ms of a 75.63 ms
+`sendRawTransaction` — 26%. Fixed by reserving a batch's whole consecutive nonce
+range in one round trip instead of 100 (`nonce_batch_reserve.go`):
+
+    nonce_ms      19.59  ->  0.003     covered_pct 99.92, avg_run 100
+    throughput     3,253 ->  3,779
+
+**The transfer** (`transfer_phases`). Every candidate had already been measured
+and cleared — `TryLockAddrs` never waits, the enqueue is a plain append, the
+exclusive lock is 0.35% busy, the WAL sync averages 6.8 ms — which sums to about
+7 ms against a measured 78.5 ms. The split found the missing time immediately:
+
+| phase | before | after |
 |---|---|---|
-| whole handler, per batch item | 74.75 | — |
-| `sendRawTransaction` | 75.63 | 100% |
-| ├ nonce reservation | 19.59 | **26%** |
-| ├ `TransferAtomic` | 52.12 | **69%** |
-| └ everything else | 3.92 | 5% |
+| precheck | **46.41 ms** | 22.98 ms |
+| wal_append | 20.62 ms | 18.98 ms |
+| enqueue | 0.46 ms | 0.24 ms |
+| apply | 0.014 ms | 0.017 ms |
+| lock (`TryLockAddrs`) | 0.003 ms | 0.005 ms |
+| **total** | **67.5 ms** | **42.2 ms** |
 
-**`rpc_total_per_item` 74.75 ≈ `send_tx` 75.63, so the node owns essentially
-all of it — there is no hidden client-side gap.** That answers the question the
-instrument was built for, and it rules out the "fix the harness" branch.
+**69% of a transfer was two `shardedAccounts.Get` calls.** `Get` takes the shard
+mutex with a *blocking* `s.mu.Lock()`, and those are the mutexes `flushWALBatch`
+holds across its whole Postgres transaction — 37 ms over 371 addresses. So every
+transfer queued behind the flush two lines before reaching `TryLockAddrs`, whose
+entire purpose is to bail instantly instead of waiting.
 
-### The next target, and why it is not a quick patch
+**It disguised itself as good news.** `fast_path_pct` read 99.82%, which looks
+like almost no contention. It actually meant transfers *waited* for the shard
+and then found it free, so the bail-out never fired. After the fix the fallback
+rate rose from 1,345 to 36,817 — transfers now correctly divert to the batcher —
+and the fast path dropped from 67.5 ms to 42.2 ms.
 
-**Nonce reservation is 26% of every transfer.** The batcher's own wait is
-capped at 1ms (`nonceBatchMaxWait`), so the 19.6ms is the Postgres round trip
-under load — and the per-sender shard lock is held across it, while a batch's
-100 transfers from one sender are necessarily serial.
+### Throughput is no longer latency-bound, and that is the finding
 
-The in-memory nonce map already provides ordering while the process is alive;
-the database compare-and-swap is there for restart durability. Making it
-asynchronous would remove the 19.6ms but opens a replay window across a crash.
-That is a real durability trade-off and needs its own design pass, not a patch.
+Cutting the fast path by 37% did **not** raise throughput: 3,779 → 3,356, inside
+the run-to-run noise band of roughly 3,400–3,800. Removing 19.6 ms of nonce cost
+earlier moved it only 16%. Two large, real latency reductions that throughput
+did not follow means **latency is no longer what binds.**
 
-Arithmetic for the target: at 380 senders, 10,000 TPS needs 38ms per transfer.
-`TransferAtomic` alone is 52ms, so **the nonce fix is necessary but not
-sufficient** — reaching 10k needs either TransferAtomic reduced as well, or
-substantially more concurrent senders.
+Two candidates remain, and they are testable independently:
 
----
+1. **Not enough senders.** Throughput is pairs ÷ latency, and one JSON-RPC batch
+   carries transfers from a single sender, so the node never sees more
+   parallelism than there are funded pairs. There are **623 funded rows = 311
+   pairs**. `loadtest-widen-senders.yml` funds the 578 accounts already
+   generated but empty, roughly doubling that. Built and dry-run verified;
+   needs a human to dispatch with `confirm=true` because it moves AEQ.
 
-### Ten hypotheses measured and rejected — do not retry these
+2. **An RWMutex convoy between the flush and block production.** `flushWALBatch`
+   holds `cs.mu.RLock()` for its entire 37 ms DB transaction, up to 32 at once.
+   Go's RWMutex gives writers priority, so the moment block production calls
+   `cs.mu.Lock()` every subsequent transfer's own `RLock()` blocks until all
+   those flushes drain. `exclusive_avg_ms: 6` measures the hold, not the stall
+   it induces — which is the shape of the 23 ms still left in `precheck`.
 
-| hypothesis | how it was rejected |
-|---|---|
-| Parallel replay too small | Real block #4391949: 297 disjoint batches covered 49,886 of 50,000 transfers. Already 99.8% parallel. |
-| WAL flush batch size | Swept 4000/1000/400/150; default won. items_per_flush was 402 against a 4,000 cap, so it never bound. |
-| WAL flush interval | Swept 5/15/40/100/250/600 ms. The 100 ms default won in BOTH directions. |
-| Postgres checkpoints | max_wal_size 1GB->8GB plus wal_compression moved sync_avg only 15,989 -> 14,605 us. |
-| GC / memory | 67 cycles, 159 ms total pause across 109 s at 2,745 TPS: 0.15% of wall time, 475 MB live heap. |
-| The WAL file's own size | Identical fsync on a 1 MB and a 3 GB file, alternated three times. |
-| The exclusive state lock | `exclusive_busy_pct` measured **0.67%**. Block production is not blocking transfers. |
-| Transfers falling off the fast path | `fast_path_pct` measured **99.90%**. Almost none fall back to the batcher. |
-| The disk being slow | It does 426 fsyncs/s at a p50 of 1,976 us when idle. |
-| Append blocked by the writer's mutex | Real and fixed, but worth only ~55 avg_batch -> 56. |
-
-### What actually moved it, each from a measurement
-
-1. **`maxTxsPerBlock` 50,000 -> 10,000.** A 50,000-transfer block took 4.7 s to
-   replay against a 1 s block time, so the replaying node fell behind by 4.7x
-   per block.
-2. **Multi-block tick off.** It emits up to 5 full blocks per tick, and engages
-   exactly when the partner is already behind.
-3. **Admission control.** A node that has not produced for 30 s refuses with a
-   retryable -32005 instead of growing the backlog that keeps its gate shut.
-4. **Resync made possible at all.** `DELETE FROM chain_blocks` on 4.38M rows
-   exceeded statement_timeout, so every resync silently rolled back. TRUNCATE.
-5. **Ancestor fetch.** A 20 MB read cap sized against 2 KB blocks; server-side
-   byte budget plus `X-Blocks-Truncated`.
-6. **Tip re-announce** for a restarted node holding a tip no peer knows about.
-7. **184 GB of docker build cache** reclaimed (C1 65%->9% full, C2 84%->21%).
-8. **The wallet index off the block path** — up to 10,000 rows per block, and
-   on the replay path inside the exclusive lock.
-9. **WAL preallocation + fdatasync.** Measured 352 -> 1,429 syncs/s in
-   isolation; neither half works alone.
-10. **Flush concurrency 4 -> 32.** hold_max 557 ms -> 162 ms. The flush holds
-    account locks across its Postgres transaction, and transfers wait behind
-    it — most of a transfer's 60 ms.
+   **Do not "fix" this by releasing the flush's locks early.** That has been
+   tried twice and reverted twice, both times producing
+   `pq: deadlock detected (40P01)` against `saveAccountsToDBBatchCtx`. The lock
+   hold is what makes a Postgres-level deadlock structurally impossible. See
+   `flushWALBatch`'s own doc comment before touching it.
 
 ### The stability failure, root-caused and fixed
 
