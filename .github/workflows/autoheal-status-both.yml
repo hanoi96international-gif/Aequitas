@@ -1,0 +1,85 @@
+name: Which self-heal monitors are actually armed? (read-only, both boxes)
+
+# WHY THIS EXISTS. On 2026-08-22 Contabo1 forked during a load run -- a
+# genuinely different block at height 4467699 -- and sat frozen there while
+# Contabo2 advanced. It never healed itself, and an operator resync was the
+# only way back. That is the third such recovery in this session alone.
+#
+# The machinery to prevent it already exists. StartDivergenceAutoHeal arms FOUR
+# independent monitors, and one of them, startSyncStarvationCheck, describes
+# this exact failure: "receives blocks but attaches none for N minutes while
+# behind the primary". A frozen node produces precisely that signature.
+#
+# But each monitor silently disables itself when its configuration is missing:
+#
+#   AUTO_HEAL_ON_DIVERGENCE != true      -> all four off, no message at all
+#   BOOTSTRAP_SNAPSHOT_URL/SIGNER unset  -> all four off, refusing to self-wipe
+#   PRIMARY_NODE_URL unset               -> starvation + divergence checks off
+#
+# A monitor that is off looks exactly like a monitor that is on and has nothing
+# to report. This prints which ones actually armed at boot, from the node's own
+# startup lines, so that distinction stops being invisible.
+#
+# Read-only. Changes nothing.
+on:
+  workflow_dispatch: {}
+
+jobs:
+  c1:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Contabo1
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: 173.249.37.118
+          username: root
+          key: ${{ secrets.CONTABO_SSH_KEY }}
+          port: 22
+          fingerprint: "SHA256:noMtjHV8c+2iEFZu3TRUP6WRwGjkrvFke71KgU6Eyt4"
+          script_stop: false
+          timeout: 300s
+          command_timeout: 300s
+          script: |
+            set +e
+            echo "### CONTABO1 ###"
+            echo "--- config that decides which monitors arm ---"
+            docker inspect aequitas-node --format '{{range .Config.Env}}{{println .}}{{end}}' \
+              | grep -E '^(AUTO_HEAL_ON_DIVERGENCE|BOOTSTRAP_SNAPSHOT_URL|BOOTSTRAP_SIGNER|PRIMARY_NODE_URL)=' \
+              || echo "(none of the four are set — every self-heal monitor is off)"
+            echo ""
+            echo "--- what the node said at boot (searching its whole log) ---"
+            docker logs aequitas-node 2>&1 | grep -a 'AUTO-HEAL' | head -12
+            echo "(nothing above = AUTO_HEAL_ON_DIVERGENCE is not 'true', which prints no message at all)"
+            echo ""
+            echo "--- any self-heal actually fired since boot? ---"
+            docker logs aequitas-node 2>&1 | grep -aE 'triggerAutoResync|AUTO-HEAL.*(resync|trigger|starv|stall)' | tail -6
+            echo "(empty = none fired)"
+
+  c2:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Contabo2
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: 194.163.188.71
+          username: root
+          key: ${{ secrets.CONTABO2_SSH_KEY }}
+          port: 22
+          script_stop: false
+          timeout: 300s
+          command_timeout: 300s
+          script: |
+            set +e
+            echo "### CONTABO2 ###"
+            echo "--- config that decides which monitors arm ---"
+            docker inspect aequitas-node --format '{{range .Config.Env}}{{println .}}{{end}}' \
+              | grep -E '^(AUTO_HEAL_ON_DIVERGENCE|BOOTSTRAP_SNAPSHOT_URL|BOOTSTRAP_SIGNER|PRIMARY_NODE_URL)=' \
+              || echo "(none of the four are set — every self-heal monitor is off)"
+            echo ""
+            echo "--- what the node said at boot (searching its whole log) ---"
+            docker logs aequitas-node 2>&1 | grep -a 'AUTO-HEAL' | head -12
+            echo "(nothing above = AUTO_HEAL_ON_DIVERGENCE is not 'true', which prints no message at all)"
+            echo ""
+            echo "--- any self-heal actually fired since boot? ---"
+            docker logs aequitas-node 2>&1 | grep -aE 'triggerAutoResync|AUTO-HEAL.*(resync|trigger|starv|stall)' | tail -6
+            echo "(empty = none fired)"
