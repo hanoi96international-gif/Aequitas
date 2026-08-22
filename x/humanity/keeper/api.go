@@ -682,6 +682,10 @@ func (a *APIServer) handleCombinedHealth(w http.ResponseWriter, r *http.Request)
 		// not account for can be subtracted out instead of guessed at. Read
 		// unaccounted_in_send_ms first; see rpc_phase_stats.go.
 		"rpc_phases": RPCPhaseStats(),
+		// How much of the nonce cost the range reservation removed. Read
+		// covered_pct first -- it only applies to consecutive runs from one
+		// sender, so a differently-batching client correctly gets none of it.
+		"batch_nonce": BatchNonceStats(),
 		// chain_tx_batches hatte keine Obergrenze und keinen DELETE-Pfad;
 		// siehe tx_batch_prune.go.
 		"tx_batch_prune": TxBatchPruneStats(),

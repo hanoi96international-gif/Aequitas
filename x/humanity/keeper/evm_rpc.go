@@ -518,6 +518,11 @@ func (s *EVMRPCServer) handleRPC(w http.ResponseWriter, r *http.Request) {
 			close(jobs)
 			wg.Wait()
 			noteRPCDecode(time.Since(decodeStart))
+
+			// Every sender and nonce is known now, so a batch's consecutive run
+			// can be reserved in ONE database round trip instead of one per
+			// transaction. Deliberately after the decode -- it needs tx.Nonce().
+			s.preReserveBatchNonces(precomputed, pending)
 		}
 		var results []interface{}
 		for i, raw := range batch {
@@ -853,6 +858,62 @@ type precomputedSendTx struct {
 	sender    string
 	senderErr bool // true if err came from sender recovery (-32603), not decode (-32602)
 	err       error
+
+	// nonceReserved is set by handleRPC's batch pre-pass when this
+	// transaction's nonce was already reserved as part of a consecutive run
+	// (see nonce_batch_reserve.go). sendRawTransaction then skips its own
+	// reservation, which is 26% of a transfer's time.
+	nonceReserved bool
+}
+
+// reserveNoncePerItem is the original one-transaction-at-a-time nonce check
+// and reservation, unchanged in behaviour and still the path for anything the
+// batch pre-pass did not cover: single-transaction requests, non-consecutive
+// nonces, a second sender's remainder, or a range reservation that failed.
+//
+// The shard lock is held across the DB load, the comparison and the swap.
+// P0-AUDIT: an earlier two-lock version had a TOCTOU race where two goroutines
+// for the same sender could both read nonce=0, both load 0 from the database
+// outside the lock, and both reserve it.
+func (s *EVMRPCServer) reserveNoncePerItem(tx *types.Transaction, senderAddr string) *RPCError {
+	nonceStart := time.Now()
+	nonceLock := s.nonceShardFor(senderAddr)
+	nonceLock.mu.Lock()
+	defer func() { noteRPCNonce(time.Since(nonceStart)) }()
+
+	// Populate from DB on first sight to recover correct nonce after restart.
+	if nonceLock.nonces[senderAddr] == 0 {
+		if dbNonce := s.state.LoadNonce(senderAddr); dbNonce > 0 {
+			nonceLock.nonces[senderAddr] = dbNonce
+		}
+	}
+	storedNonce := nonceLock.nonces[senderAddr]
+	txNonce := tx.Nonce()
+	if txNonce < storedNonce {
+		nonceLock.mu.Unlock()
+		return &RPCError{Code: -32603, Message: fmt.Sprintf("nonce too low: tx=%d expected=%d", txNonce, storedNonce)}
+	}
+	if txNonce > storedNonce {
+		nonceLock.mu.Unlock()
+		return &RPCError{Code: -32603, Message: fmt.Sprintf("nonce too high: tx=%d expected=%d", txNonce, storedNonce)}
+	}
+	// Reserve nonce immediately — prevents replay even if two identical
+	// requests arrive concurrently.
+	nextNonce := storedNonce + 1
+	reserved, err := s.state.ReserveNonce(senderAddr, storedNonce, nextNonce)
+	if err != nil {
+		nonceLock.mu.Unlock()
+		return &RPCError{Code: -32603, Message: "nonce reservation failed: " + err.Error()}
+	}
+	if !reserved {
+		dbNonce := s.state.LoadNonce(senderAddr)
+		nonceLock.nonces[senderAddr] = dbNonce
+		nonceLock.mu.Unlock()
+		return &RPCError{Code: -32603, Message: fmt.Sprintf("nonce already reserved: tx=%d expected=%d", txNonce, dbNonce)}
+	}
+	nonceLock.nonces[senderAddr] = nextNonce
+	nonceLock.mu.Unlock()
+	return nil
 }
 
 // decodeAndRecoverSender does the pure, side-effect-free half of
@@ -965,47 +1026,27 @@ func (s *EVMRPCServer) sendRawTransaction(params []json.RawMessage, pre *precomp
 	// both load nonce=0 from DB (DB read outside lock), and then both pass the
 	// second lock's check — both reserving nonce 0 and executing the same tx.
 	// Fix: hold the mutex for the entire DB-load + check + reserve sequence.
-	nonceStart := time.Now()
-	nonceLock := s.nonceShardFor(senderAddr)
-	nonceLock.mu.Lock()
-	// Populate from DB on first sight to recover correct nonce after restart.
-	if nonceLock.nonces[senderAddr] == 0 {
-		if dbNonce := s.state.LoadNonce(senderAddr); dbNonce > 0 {
-			nonceLock.nonces[senderAddr] = dbNonce
-		}
-	}
-	storedNonce := nonceLock.nonces[senderAddr]
-	txNonce := tx.Nonce()
-	if txNonce < storedNonce {
-		nonceLock.mu.Unlock()
-		return nil, &RPCError{Code: -32603, Message: fmt.Sprintf("nonce too low: tx=%d expected=%d", txNonce, storedNonce)}
-	}
-	if txNonce > storedNonce {
-		nonceLock.mu.Unlock()
-		return nil, &RPCError{Code: -32603, Message: fmt.Sprintf("nonce too high: tx=%d expected=%d", txNonce, storedNonce)}
-	}
-	// Reserve nonce immediately — prevents replay even if two identical
-	// requests arrive concurrently.
-	nextNonce := storedNonce + 1
-	reserved, err := s.state.ReserveNonce(senderAddr, storedNonce, nextNonce)
-	if err != nil {
-		nonceLock.mu.Unlock()
-		return nil, &RPCError{Code: -32603, Message: "nonce reservation failed: " + err.Error()}
-	}
-	if !reserved {
-		dbNonce := s.state.LoadNonce(senderAddr)
-		nonceLock.nonces[senderAddr] = dbNonce
-		nonceLock.mu.Unlock()
-		return nil, &RPCError{Code: -32603, Message: fmt.Sprintf("nonce already reserved: tx=%d expected=%d", txNonce, dbNonce)}
-	}
-	nonceLock.nonces[senderAddr] = nextNonce
-	// Derived here, but recorded below under mu rather than this lock.
+	// Derived outside the nonce section because it is needed either way, and
+	// the whole section is skipped when the batch pre-pass already reserved
+	// this transaction's nonce.
 	toAddrForReceipt := ""
 	if tx.To() != nil {
 		toAddrForReceipt = strings.ToLower(tx.To().Hex())
 	}
-	nonceLock.mu.Unlock()
-	noteRPCNonce(time.Since(nonceStart))
+
+	if pre != nil && pre.nonceReserved {
+		// Reserved as part of a consecutive run under the same shard lock and
+		// against the same stored value this block would have checked -- see
+		// nonce_batch_reserve.go. Repeating it here would be a second round
+		// trip that could only fail.
+		noteRPCNonce(0)
+	} else {
+		noteBatchNonceFallback()
+		if rpcErr := s.reserveNoncePerItem(tx, senderAddr); rpcErr != nil {
+			return nil, rpcErr
+		}
+	}
+
 	// Receipt metadata is keyed by txHash and shared across senders, so it
 	// belongs under mu rather than a per-sender lock. Taken separately and
 	// briefly, after the nonce lock is released, so the two never nest.
