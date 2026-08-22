@@ -28,12 +28,24 @@ import (
 
 var (
 	txPhasePrecheckNanos atomic.Int64 // eligibility checks before locking
-	txPhaseLockNanos     atomic.Int64 // TryLockAddrs itself
-	txPhaseApplyNanos    atomic.Int64 // in-memory balance mutation + encode
-	txPhaseAppendNanos   atomic.Int64 // wal.Append -- waits for the group commit
-	txPhaseEnqueueNanos  atomic.Int64 // handing the item to the flush queue
-	txPhaseTotalNanos    atomic.Int64 // the whole fast path
-	txPhaseCount         atomic.Int64
+	// Precheck broken down. It was 46ms before the blocking Get calls came
+	// out and is still 23ms, which is more than the WAL sync -- and nothing
+	// distinguishes its three parts. The suspect is cs.mu.RLock(): a Go
+	// RWMutex gives writers priority, flushWALBatch holds RLock across its
+	// entire 37ms Postgres transaction with up to 32 workers doing so at once,
+	// and the moment block production calls Lock() every subsequent reader
+	// queues behind it. exclusive_busy_pct measures the HOLD (0.35%), never
+	// the stall it induces, so that number has been quietly misread as
+	// evidence the exclusive lock is cheap.
+	txPhaseQueueNanos   atomic.Int64 // WALFlushQueueDepth (its own small mutex)
+	txPhaseRLockNanos   atomic.Int64 // cs.mu.RLock() acquisition
+	txPhaseCapNanos     atomic.Int64 // wealthCapAmountLocked (humanCountMu)
+	txPhaseLockNanos    atomic.Int64 // TryLockAddrs itself
+	txPhaseApplyNanos   atomic.Int64 // in-memory balance mutation + encode
+	txPhaseAppendNanos  atomic.Int64 // wal.Append -- waits for the group commit
+	txPhaseEnqueueNanos atomic.Int64 // handing the item to the flush queue
+	txPhaseTotalNanos   atomic.Int64 // the whole fast path
+	txPhaseCount        atomic.Int64
 
 	// Appends slower than this are counted separately: the writer's sync_max
 	// is 316ms against a 6.8ms average, so a mean alone would hide whether
@@ -45,6 +57,7 @@ const slowAppendThreshold = 20 * time.Millisecond
 
 type transferPhases struct {
 	precheck, lock, apply, append_, enqueue time.Duration
+	queue, rlock, cap                       time.Duration
 	start                                   time.Time
 }
 
@@ -57,6 +70,9 @@ func (p *transferPhases) record() {
 		return
 	}
 	txPhasePrecheckNanos.Add(int64(p.precheck))
+	txPhaseQueueNanos.Add(int64(p.queue))
+	txPhaseRLockNanos.Add(int64(p.rlock))
+	txPhaseCapNanos.Add(int64(p.cap))
 	txPhaseLockNanos.Add(int64(p.lock))
 	txPhaseApplyNanos.Add(int64(p.apply))
 	txPhaseAppendNanos.Add(int64(p.append_))
@@ -93,9 +109,14 @@ func TransferPhaseStats() map[string]interface{} {
 	}
 
 	return map[string]interface{}{
-		"transfers":       n,
-		"total_ms":        total,
-		"precheck_ms":     pre,
+		"transfers":   n,
+		"total_ms":    total,
+		"precheck_ms": pre,
+		// The three parts of precheck. They sum to it; whichever dominates is
+		// the next thing to fix.
+		"pre_queue_ms":    msPer(txPhaseQueueNanos.Load(), n),
+		"pre_rlock_ms":    msPer(txPhaseRLockNanos.Load(), n),
+		"pre_cap_ms":      msPer(txPhaseCapNanos.Load(), n),
 		"lock_ms":         lock,
 		"apply_ms":        apply,
 		"wal_append_ms":   app,

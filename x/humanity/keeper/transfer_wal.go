@@ -317,6 +317,7 @@ func (cs *ChainState) transferConcurrentWAL(from, to string, amount float64, pen
 	if cs.WALFlushQueueDepth() >= walFlushMaxQueueDepth {
 		return 0, 0, false, nil
 	}
+	ph.queue = time.Since(phMark)
 	if from == to {
 		return 0, 0, true, fmt.Errorf("self-transfer not allowed")
 	}
@@ -324,7 +325,9 @@ func (cs *ChainState) transferConcurrentWAL(from, to string, amount float64, pen
 		return 0, 0, true, fmt.Errorf("invalid transfer amount: %v", amount)
 	}
 
+	rlockMark := time.Now()
 	cs.mu.RLock()
+	ph.rlock = time.Since(rlockMark)
 	defer cs.mu.RUnlock()
 
 	// FIX (2026-08-22, measured): two shardedAccounts.Get calls used to sit
@@ -355,7 +358,9 @@ func (cs *ChainState) transferConcurrentWAL(from, to string, amount float64, pen
 	// checks under the lock a few lines below and returns the identical
 	// (0, 0, false, nil) bail, so this was duplicated work whose only effect
 	// was the wait.
+	capMark := time.Now()
 	capAmt, hasCapAmt := cs.wealthCapAmountLocked()
+	ph.cap = time.Since(capMark)
 	ph.precheck = time.Since(phMark)
 
 	phMark = time.Now()
