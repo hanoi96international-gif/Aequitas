@@ -610,6 +610,21 @@ func main() {
 	// So the trade changed and is worth measuring rather than assuming. Default
 	// stays "pairs": this flag exists to produce a number, not to be believed
 	// in advance.
+	//
+	// MEASURED 2026-08-22, and the result does NOT settle the question:
+	//
+	//	pairs  308 senders   2,616 TPS    1,631 failures
+	//	ring   617 senders   1,965 TPS  216,306 failures
+	//
+	// Every one of those 216,306 was "insufficient balance", not contention.
+	// accounts-funded.csv is written richest-first, so in the pairs topology
+	// the senders are the RICH half and the recipients the poor half. The ring
+	// makes the poor half send too, and they run dry within the first minute.
+	//
+	// So this measured the CSV's wealth distribution, not the topology. A fair
+	// comparison needs evenly funded accounts (loadtest-widen-senders.yml),
+	// and until that exists the ring number should not be quoted as evidence
+	// against the ring.
 	numPairs := len(testAccs) / 2
 	ring := *topology == "ring"
 	if ring {
