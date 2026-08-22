@@ -1,0 +1,202 @@
+name: APK direkt von den Knoten ausliefern (statt zu GitHub umzuleiten)
+
+# handleAppDownload oeffnet downloads/aequitas-app.apk und leitet nur um, wenn
+# die Datei fehlt. Sie fehlte immer: *.apk ist gitignored, also ist der Ordner
+# im Image leer. Dieser Lauf legt sie dort hin.
+#
+# EINZELNE DATEI EINHAENGEN, NICHT DAS VERZEICHNIS. /app/downloads ist nicht
+# leer -- dort liegen die Node-Guide-PDFs aus dem Image, die
+# /download/node-guide-*.pdf ausliefert. Ein Verzeichnis-Mount wuerde sie
+# verdecken und zwoelf Sprachversionen der Anleitung auf einmal in einen 404
+# verwandeln.
+#
+# DIE BOX HOLT DIE DATEI SELBST, direkt vom Release. Sie geht damit nie durch
+# einen Rechner dazwischen, und die Pruefsumme laesst sich gegen das Release
+# vergleichen.
+#
+# BEIDE DEPLOY-SKRIPTE WERDEN MITGEPATCHT. Der Knoten wird aus festen
+# -v-Angaben gestartet; ein einmalig angehaengtes Mount ueberlebt den naechsten
+# Deploy nicht. Genau so verschwand hier schon einmal die WAL, unbemerkt.
+#
+# WAS DAS KOSTET, ehrlich: jede Auslieferung von 215 MB laeuft danach ueber
+# einen Validator, der gleichzeitig Konsens macht, statt ueber GitHubs CDN. Bei
+# der heutigen Nutzerzahl ist das unerheblich; bei Zehntausenden waere es das
+# nicht, und dann gehoert ein CDN oder ein eigener Datei-Host davor.
+on:
+  workflow_dispatch:
+    inputs:
+      url:
+        description: "Release-URL der APK"
+        required: true
+        default: "https://github.com/hanoi96international-gif/Aequitas-App/releases/download/app-v1.4.1/app-release.apk"
+      confirm:
+        description: "true = wirklich herunterladen, einhaengen und neu starten"
+        required: true
+        default: "false"
+
+jobs:
+  c1:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Contabo1
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: 173.249.37.118
+          username: root
+          key: ${{ secrets.CONTABO_SSH_KEY }}
+          port: 22
+          fingerprint: "SHA256:noMtjHV8c+2iEFZu3TRUP6WRwGjkrvFke71KgU6Eyt4"
+          script_stop: false
+          timeout: 1800s
+          command_timeout: 1800s
+          envs: APKURL,CONFIRM
+          script: |
+            set +e
+            HOSTFILE=/root/aequitas-downloads/aequitas-app.apk
+            MOUNT="-v $HOSTFILE:/app/downloads/aequitas-app.apk"
+            echo "### CONTABO1 ###"
+            echo "Quelle: $APKURL"
+            df -BM --output=avail / | tail -1 | sed 's/^/verfuegbar: /'
+
+            if [ "${CONFIRM:-false}" != "true" ]; then
+              echo "confirm != true -- nichts getan."
+              exit 0
+            fi
+
+            mkdir -p /root/aequitas-downloads
+            echo "=== herunterladen ==="
+            curl -fL --max-time 900 -o "$HOSTFILE.part" "$APKURL"
+            if [ $? -ne 0 ]; then echo "Download fehlgeschlagen"; rm -f "$HOSTFILE.part"; exit 1; fi
+            SIZE=$(stat -c %s "$HOSTFILE.part")
+            # Eine vollstaendige APK dieser App liegt bei ueber 200 MB. Alles
+            # deutlich darunter ist eine Fehlerseite, kein Programm -- und die
+            # waere hier sonst als App ausgeliefert worden.
+            if [ "$SIZE" -lt 50000000 ]; then
+              echo "nur $SIZE Bytes -- das ist keine vollstaendige APK, abgebrochen"
+              head -c 200 "$HOSTFILE.part"; rm -f "$HOSTFILE.part"; exit 1
+            fi
+            mv "$HOSTFILE.part" "$HOSTFILE"
+            echo "  $SIZE Bytes, sha256 $(sha256sum "$HOSTFILE" | cut -c1-16)..."
+
+            echo "=== deploy.sh patchen, damit das Mount den naechsten Deploy ueberlebt ==="
+            for f in /root/deploy.sh /root/deploy_safe_c2.sh; do
+              [ -f "$f" ] || continue
+              if grep -q "aequitas-downloads/aequitas-app.apk" "$f"; then
+                echo "  $f: schon gepatcht"
+              else
+                cp "$f" "$f.bak.$(date +%Y%m%d-%H%M%S)"
+                sed -i "s|-v /root/aequitas-mpc:/data/mpc|-v /root/aequitas-mpc:/data/mpc $MOUNT|g" "$f"
+                grep -q "aequitas-downloads" "$f" && echo "  $f: gepatcht" || echo "  $f: ⚠ Muster nicht gefunden — Mount ueberlebt den naechsten Deploy NICHT"
+              fi
+            done
+
+            echo "=== Container mit dem Mount neu starten ==="
+            IMAGE="$(docker inspect aequitas-node --format '{{.Config.Image}}')"
+            NET="$(docker inspect aequitas-node --format '{{range $k, $v := .NetworkSettings.Networks}}{{$k}} {{end}}' | awk '{print $1}')"
+            PORTS="$(docker inspect aequitas-node --format '{{range $p, $c := .HostConfig.PortBindings}}-p {{(index $c 0).HostPort}}:{{$p}} {{end}}' | sed 's|/tcp||g')"
+            MOUNTS="$(docker inspect aequitas-node --format '{{range .Mounts}}-v {{.Source}}:{{.Destination}} {{end}}')"
+            mkdir -p /root/apkhost
+            docker inspect aequitas-node --format '{{range .Config.Env}}{{println .}}{{end}}' \
+              | grep -vE '^(RESYNC_FROM_SNAPSHOT|HOSTNAME|PATH|HOME)=' \
+              | grep -E '^[A-Za-z_][A-Za-z0-9_]*=' > /tmp/proc.env
+            grep -E '^[A-Za-z_][A-Za-z0-9_]*=' /root/.aequitas.env \
+              | grep -vE '^(RESYNC_FROM_SNAPSHOT|HOSTNAME|PATH|HOME)=' > /tmp/file.env
+            awk -F= '!seen[$1]++' /tmp/file.env /tmp/proc.env > /root/apkhost/env
+            docker stop aequitas-node && docker rm aequitas-node
+            docker run -d --name aequitas-node --network "$NET" $PORTS $MOUNTS $MOUNT \
+              --env-file /root/apkhost/env --restart unless-stopped "$IMAGE"
+
+            echo "=== liefert der Knoten die Datei jetzt selbst aus? ==="
+            OUT=""
+            for i in $(seq 1 20); do
+              OUT=$(curl -s --max-time 20 -o /dev/null -w "%{http_code} %{size_download} %{content_type}" \
+                -r 0-1023 http://127.0.0.1:8080/download/app.apk)
+              case "$OUT" in 20*) echo "  $OUT"; break ;; esac
+              sleep 15
+            done
+            case "$OUT" in
+              20*) echo "  ✓ direkt ausgeliefert, keine Umleitung mehr" ;;
+              *)   echo "  ⚠ noch keine direkte Auslieferung: $OUT" ;;
+            esac
+            echo "--- die Node-Guides muessen weiterhin gehen ---"
+            curl -s --max-time 20 -o /dev/null -w "  node-guide-de.pdf -> HTTP %{http_code}\n" \
+              http://127.0.0.1:8080/download/node-guide-de.pdf
+        env:
+          APKURL: ${{ inputs.url }}
+          CONFIRM: ${{ inputs.confirm }}
+
+  c2:
+    needs: c1
+    runs-on: ubuntu-latest
+    steps:
+      - name: Contabo2
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: 194.163.188.71
+          username: root
+          key: ${{ secrets.CONTABO2_SSH_KEY }}
+          port: 22
+          script_stop: false
+          timeout: 1800s
+          command_timeout: 1800s
+          envs: APKURL,CONFIRM
+          script: |
+            set +e
+            HOSTFILE=/root/aequitas-downloads/aequitas-app.apk
+            MOUNT="-v $HOSTFILE:/app/downloads/aequitas-app.apk"
+            echo "### CONTABO2 ###"
+            df -BM --output=avail / | tail -1 | sed 's/^/verfuegbar: /'
+            if [ "${CONFIRM:-false}" != "true" ]; then echo "confirm != true -- nichts getan."; exit 0; fi
+
+            mkdir -p /root/aequitas-downloads
+            curl -fL --max-time 900 -o "$HOSTFILE.part" "$APKURL"
+            if [ $? -ne 0 ]; then echo "Download fehlgeschlagen"; rm -f "$HOSTFILE.part"; exit 1; fi
+            SIZE=$(stat -c %s "$HOSTFILE.part")
+            if [ "$SIZE" -lt 50000000 ]; then
+              echo "nur $SIZE Bytes -- keine vollstaendige APK, abgebrochen"; rm -f "$HOSTFILE.part"; exit 1
+            fi
+            mv "$HOSTFILE.part" "$HOSTFILE"
+            echo "  $SIZE Bytes, sha256 $(sha256sum "$HOSTFILE" | cut -c1-16)..."
+
+            for f in /root/deploy.sh /root/deploy_safe_c2.sh; do
+              [ -f "$f" ] || continue
+              if grep -q "aequitas-downloads/aequitas-app.apk" "$f"; then
+                echo "  $f: schon gepatcht"
+              else
+                cp "$f" "$f.bak.$(date +%Y%m%d-%H%M%S)"
+                sed -i "s|-v /root/aequitas-mpc:/data/mpc|-v /root/aequitas-mpc:/data/mpc $MOUNT|g" "$f"
+                grep -q "aequitas-downloads" "$f" && echo "  $f: gepatcht" || echo "  $f: ⚠ Muster nicht gefunden — Mount ueberlebt den naechsten Deploy NICHT"
+              fi
+            done
+
+            IMAGE="$(docker inspect aequitas-node --format '{{.Config.Image}}')"
+            NET="$(docker inspect aequitas-node --format '{{range $k, $v := .NetworkSettings.Networks}}{{$k}} {{end}}' | awk '{print $1}')"
+            PORTS="$(docker inspect aequitas-node --format '{{range $p, $c := .HostConfig.PortBindings}}-p {{(index $c 0).HostPort}}:{{$p}} {{end}}' | sed 's|/tcp||g')"
+            MOUNTS="$(docker inspect aequitas-node --format '{{range .Mounts}}-v {{.Source}}:{{.Destination}} {{end}}')"
+            mkdir -p /root/apkhost
+            docker inspect aequitas-node --format '{{range .Config.Env}}{{println .}}{{end}}' \
+              | grep -vE '^(RESYNC_FROM_SNAPSHOT|HOSTNAME|PATH|HOME)=' \
+              | grep -E '^[A-Za-z_][A-Za-z0-9_]*=' > /tmp/proc.env
+            grep -E '^[A-Za-z_][A-Za-z0-9_]*=' /root/.aequitas.env \
+              | grep -vE '^(RESYNC_FROM_SNAPSHOT|HOSTNAME|PATH|HOME)=' > /tmp/file.env
+            awk -F= '!seen[$1]++' /tmp/file.env /tmp/proc.env > /root/apkhost/env
+            docker stop aequitas-node && docker rm aequitas-node
+            docker run -d --name aequitas-node --network "$NET" $PORTS $MOUNTS $MOUNT \
+              --env-file /root/apkhost/env --restart unless-stopped "$IMAGE"
+
+            OUT=""
+            for i in $(seq 1 20); do
+              OUT=$(curl -s --max-time 20 -o /dev/null -w "%{http_code} %{size_download} %{content_type}" \
+                -r 0-1023 http://127.0.0.1:8080/download/app.apk)
+              case "$OUT" in 20*) echo "  $OUT"; break ;; esac
+              sleep 15
+            done
+            case "$OUT" in
+              20*) echo "  ✓ direkt ausgeliefert" ;;
+              *)   echo "  ⚠ noch keine direkte Auslieferung: $OUT" ;;
+            esac
+            curl -s --max-time 20 -o /dev/null -w "  node-guide-de.pdf -> HTTP %{http_code}\n" \
+              http://127.0.0.1:8080/download/node-guide-de.pdf
+        env:
+          APKURL: ${{ inputs.url }}
+          CONFIRM: ${{ inputs.confirm }}
