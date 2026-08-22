@@ -1,0 +1,80 @@
+name: Kann die APK direkt von den Knoten ausgeliefert werden? (nur pruefen)
+
+# ZIEL. /download/app.apk soll die Datei selbst ausliefern statt zu GitHub
+# umzuleiten. handleAppDownload kann das bereits: es oeffnet
+# downloads/aequitas-app.apk und leitet nur um, wenn die Datei fehlt. Das
+# Dockerfile kopiert downloads/ nach /app/downloads, aber *.apk ist
+# gitignored -- der Ordner ist im Image also leer, und deshalb war der Redirect
+# bisher der einzige Weg.
+#
+# WAS VORHER GEKLAERT SEIN MUSS, und genau deshalb aendert dieser Lauf nichts:
+#
+# 1. PLATZ. Die APK ist 215 MB, pro Box. Auf diesen Maschinen war voller
+#    Datentraeger schon einmal die Ursache eines Ausfalls.
+#
+# 2. UEBERLEBT DIE EINBINDUNG DEN NAECHSTEN DEPLOY? Der Knoten laeuft mit
+#    festen -v-Angaben. Ein Verzeichnis nur einmalig anzuhaengen reicht nicht:
+#    deploy.sh baut den Container neu und wuerde die Einbindung still
+#    entfernen. Genau so verschwand hier schon einmal die WAL. Also muss auch
+#    das Skript gepatcht werden -- und dafuer muss man erst wissen, wie es die
+#    Mounts bildet.
+#
+# 3. BANDBREITE, ehrlich benannt: jede Auslieferung von 215 MB laeuft dann ueber
+#    einen Validator, der gleichzeitig Konsens macht. GitHub liefert das heute
+#    ueber sein CDN. Das ist ein echter Nachteil, kein Detail.
+on:
+  workflow_dispatch: {}
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - name: Contabo1
+            host: 173.249.37.118
+            secret: CONTABO_SSH_KEY
+          - name: Contabo2
+            host: 194.163.188.71
+            secret: CONTABO2_SSH_KEY
+      fail-fast: false
+    steps:
+      - name: ${{ matrix.name }}
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ matrix.host }}
+          username: root
+          key: ${{ secrets[matrix.secret] }}
+          port: 22
+          script_stop: false
+          timeout: 300s
+          command_timeout: 300s
+          script: |
+            set +e
+            echo "### ${{ matrix.name }} ###"
+            echo "--- 1. Platz ---"
+            df -h / | tail -1
+            echo "verfuegbar: $(df -BM --output=avail / | tail -1 | tr -d ' ')  (gebraucht: ~215M je Box)"
+
+            echo ""
+            echo "--- 2. wie startet deploy.sh den Container? ---"
+            for f in /root/deploy.sh /root/deploy_safe_c2.sh; do
+              [ -f "$f" ] || continue
+              echo "  $f:"
+              grep -nE 'docker run|[-]v ' "$f" | head -8
+            done
+
+            echo ""
+            echo "--- 3. aktuelle Mounts des laufenden Knotens ---"
+            docker inspect aequitas-node --format '{{range .Mounts}}  {{.Source}} -> {{.Destination}}{{println}}{{end}}'
+
+            echo ""
+            echo "--- 4. existiert /app/downloads im Container, und was liegt drin? ---"
+            docker exec aequitas-node ls -la /app/downloads 2>&1 | head -6
+            echo "(leer = genau der Grund, warum bisher umgeleitet wird)"
+
+            echo ""
+            echo "--- 5. kann die Box die Release-Datei selbst holen? ---"
+            curl -sIL --max-time 30 -o /dev/null \
+              -w "  GitHub-Release: HTTP %{http_code}  %{size_download} Bytes angekuendigt: %{size_header}\n" \
+              "https://github.com/hanoi96international-gif/Aequitas-App/releases/download/app-v1.4.1/app-release.apk"
