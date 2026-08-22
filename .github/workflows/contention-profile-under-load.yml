@@ -148,6 +148,35 @@ jobs:
             fetch_prof block > /tmp/block.txt
             head -45 /tmp/block.txt
 
+            # Resolve the heaviest stacks HERE, not in a follow-up workflow.
+            # The restore step below restarts the node with profiling off,
+            # which throws the samples away -- a separate resolve run found an
+            # empty profile and printed only the header, which reads like the
+            # profile is broken rather than like it was already gone.
+            #
+            # debug=1 prints raw program counters when the binary has no inline
+            # symbol table. /debug/pprof/symbol turns them into names.
+            post_symbols() {
+              docker run --rm -i --network "container:aequitas-node" curlimages/curl:latest -s --max-time 60 --data-binary @- "http://127.0.0.1:6061/debug/pprof/symbol"
+            }
+            HZ=$(grep -o 'cycles/second=[0-9]*' /tmp/mutex.txt | cut -d= -f2)
+            echo ""
+            echo "=== the three heaviest MUTEX stacks, resolved ==="
+            grep -E '^[0-9]+ [0-9]+ @' /tmp/mutex.txt | sort -rn | head -3 > /tmp/top.txt
+            n=0
+            while read -r line; do
+              n=$((n+1))
+              CYC=$(echo "$line" | awk '{print $1}')
+              CNT=$(echo "$line" | awk '{print $2}')
+              awk -v c="$CYC" -v hz="$HZ" -v n="$n" -v cnt="$CNT" 'BEGIN{
+                printf "----- STACK %d: %.1f seconds blocked, %d samples -----", n, c/hz, cnt
+              }'
+              echo ""
+              echo "$line" | sed 's/^.*@ //' | tr ' ' '\n' | grep -v '^$' > /tmp/addrs.txt
+              post_symbols < /tmp/addrs.txt
+              echo ""
+            done < /tmp/top.txt
+
             echo ""
             echo "=== what the load did (throughput here is NOT representative) ==="
             sleep 40
