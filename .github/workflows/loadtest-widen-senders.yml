@@ -79,7 +79,10 @@ jobs:
             # question of which row you occupy, not of being funded separately.
             head -n "$SEEDS" accounts-funded.csv > /tmp/seeds.csv
             cut -d, -f2 /tmp/seeds.csv | tr 'A-Z' 'a-z' | sort -u > /tmp/seedaddrs.txt
-            awk -F, 'NR==FNR{seen[$1];next} {a=tolower($2); if(!(a in seen)) print}' \
+            # The 0x guard is load-bearing: gen_accounts.go writes a header row,
+            # and without it the fund phase would be handed an "account" whose
+            # address is the literal string "address".
+            awk -F, 'NR==FNR{seen[$1];next} $2 ~ /^0[xX][0-9a-fA-F]{40}$/ {a=tolower($2); if(!(a in seen)) print}' \
               /tmp/seedaddrs.txt accounts.csv > /tmp/targets.csv
 
             # Renumber the index column so it stays consistent, seeds first.
