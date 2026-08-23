@@ -85,7 +85,7 @@ Das zentrale Problem eines auf menschlicher Existenz basierenden Währungssystem
 Aequitas löst dies mit biometrischer Verifikation und Zero-Knowledge-Proofs:
 
 **Registrierungsablauf:**
-1. Die Android-App ermittelt eine Identitätsquelle. Ist der Biometrie-Modus aktiv, ist das eine Kamera-Aufnahme von Gesicht und Handfläche, die von mehreren unabhängigen Vergleichsdiensten per Quorum gegen alle bestehenden Anmeldungen geprüft wird; ist er inaktiv (Standard zum Start), ist es ein zufälliges, gerätegebundenes Geheimnis. Siehe §3.2.
+1. Die Android-App ermittelt eine Identitätsquelle. Seit dem 23.08.2026 ist das im Normalfall eine Kamera-Aufnahme **des Gesichts** (nur des Gesichts), die von mehreren unabhängigen Vergleichsdiensten per Quorum gegen alle bestehenden Anmeldungen geprüft wird. Nur wenn kein Koordinator konfiguriert ist, tritt der alte Weg an seine Stelle: ein zufälliges, gerätegebundenes Geheimnis, das an ein Gerät bindet und nicht an einen Menschen. Siehe §3.2.
 2. Daraus wird ein deterministischer Hash abgeleitet — die Rohdaten verlassen das Gerät **niemals**
 3. Der Hash wird an den Proof-Server gesendet
 4. Der Proof-Server generiert einen **Groth16 Zero-Knowledge-Proof** (Groth16/BN128-Kurve)
@@ -105,7 +105,7 @@ The central problem of a monetary system based on human existence is verificatio
 Aequitas solves this with biometric verification and Zero-Knowledge Proofs:
 
 **Registration Flow:**
-1. The Android app establishes an identity source. With biometric mode active this is a camera capture of face and palm, checked by quorum across several independent matching services against every existing enrolment; with it inactive (the default at launch) it is a random, device-bound secret. See §3.2.
+1. The Android app establishes an identity source. Since 2026-08-23 this is normally a camera capture of **the face** (the face only), checked by quorum across several independent matching services against every existing enrolment. Only where no coordinator is configured does the older path apply: a random, device-bound secret, which binds to a device rather than to a person. See §3.2.
 2. A deterministic hash is derived from it — raw data **never** leaves the device
 3. The hash is sent to the Proof Server
 4. The Proof Server generates a **Groth16 Zero-Knowledge Proof** (Groth16/BN128 curve)
@@ -202,26 +202,43 @@ This hardware kit exists as a design. There is no device to buy, and the shipped
 ### 3.2 Was zum Start läuft / What runs at launch
 
 #### DE
-Dieser Abschnitt beschreibt den Stand am 18.08.2026. Er hat Vorrang vor jeder Beschreibung oben, wenn beide sich widersprechen.
+Dieser Abschnitt beschreibt den Stand am **23.08.2026**. Er hat Vorrang vor jeder Beschreibung oben, wenn beide sich widersprechen.
 
-Es gibt **keine Spezial-Hardware**. Die Registrierung läuft über die Android-App und die Kamera des Telefons. Zwei Betriebsarten:
+Es gibt **keine Spezial-Hardware**. Die Registrierung läuft über die Android-App und die Kamera des Telefons.
 
-**a) Biometrie aktiviert** (Koordinator erreichbar): Die App nimmt Gesicht und Handfläche mit der Telefonkamera auf. Mehrere unabhängige Vergleichsdienste prüfen die Aufnahme gegen die bestehenden Anmeldungen und müssen mehrheitlich (M von N) zustimmen, bevor ein `bio_hash` ausgestellt wird. Dieser Hash geht in den Nullifier des ZK-Beweises ein, und die Kette lehnt jeden bereits benutzten Nullifier ab.
+**Erfasst wird ausschließlich das Gesicht** — ein Standbild und eine kurze Aufnahme für die Lebendigkeitsprüfung. Handfläche, Fingerkuppe, Ohr und ein akustischer Test waren bis zum 23.08.2026 zusätzlich vorgesehen und sind entfernt worden: sie waren allesamt *schwache* Merkmale, und die Entscheidungsregel verlangt zwei übereinstimmende schwache Merkmale, während alle schwachen abgeschaltet ausgeliefert werden. Keines konnte eine Duplikatsentscheidung beeinflussen — erhoben und nach Art. 9 DSGVO gespeichert wurden sie trotzdem.
 
-**b) Biometrie deaktiviert** (Standard, wenn kein Koordinator konfiguriert ist): Die App leitet die Identität aus einem **zufälligen, gerätegebundenen Geheimnis** ab. Das ist ausdrücklich *keine* Biometrie. In dieser Betriebsart bindet die Anmeldung an ein **Gerät**, nicht an einen Menschen: dieselbe Person kann sich auf einem zweiten Telefon erneut anmelden und ein zweites Mal 1.000 AEQ erhalten.
+**Biometrie ist seit dem 23.08.2026 der Normalfall**, nicht mehr die Ausnahme: die ausgelieferte App (`app-v1.5.2`) hat den Gesichtsabgleich aktiv und einen erreichbaren Koordinator eingebacken. Die frühere Standardbetriebsart — Identität aus einem zufälligen, gerätegebundenen Geheimnis — band an ein **Gerät**, nicht an einen Menschen; dieselbe Person konnte sich auf einem zweiten Telefon ein zweites Mal anmelden. Sie greift nur noch, wenn kein Koordinator konfiguriert ist.
 
-**Was die Einmaligkeit zum Start wirklich trägt:** der Nullifier auf der Kette. Er ist kryptografisch und lückenlos — ein zweites Mal derselbe Nullifier wird abgelehnt, egal über welchen Weg er eingereicht wird. Er beweist aber nur, dass *dieselbe Identitätsquelle* nicht zweimal zählt. Ob diese Quelle ein Mensch oder ein Gerät ist, entscheidet die Betriebsart oben.
+Der Ablauf: die App nimmt das Gesicht auf, unabhängige Vergleichsdienste prüfen gegen die bestehenden Anmeldungen und müssen mehrheitlich (M von N) zustimmen, bevor ein `bio_hash` ausgestellt wird. Dieser Hash geht in den Nullifier des ZK-Beweises ein, und die Kette lehnt jeden bereits benutzten Nullifier ab.
+
+**Erste Messung an einem echten Gerät (23.08.2026):** dieselbe Person wurde beim zweiten Versuch als Duplikat erkannt, mit und ohne Brille — Ähnlichkeit 0,846 bzw. 0,677 bei einer Schwelle von 0,40. Das ist ein Datenpunkt, keine Falschakzeptanzrate; die Schwelle stammt weiterhin aus der Modellliteratur und nicht aus eigenen Messungen.
+
+**Wo die Templates liegen — und was daran noch offen ist.** Auf der Platte des Vergleichsdienstes liegen sie AES-256-GCM-verschlüsselt, gebunden an die Zeile, zu der sie gehören. Parallel läuft seit dem 23.08.2026 ein MPC-Verfahren mit: jede Aufnahme wird additiv geteilt, je eine Zeile pro Partei, auf zwei getrennt kontrollierten Maschinen — keine von beiden kann aus ihrer Hälfte etwas rekonstruieren.
+
+Solange jedoch der Klartext-Vergleich entscheidet, **muss** der Vergleichsdienst jedes eingeschriebene Template halten, um dagegen zu vergleichen. Verschlüsselung schützt dort die Datei, nicht den Dienst, der den Schlüssel hält. Der Modus, in dem das Komitee entscheidet und lokal gar nichts Ganzes mehr abgelegt wird, ist gebaut und getestet, aber **abgeschaltet**: seine Schwelle ist nie gegen echte Aufnahmen kalibriert worden, und wer sie rät, entscheidet auf einer geratenen Zahl darüber, wer existieren darf. Nötig sind dafür rund 1.000 Impostor-Paare.
+
+**Was die Einmaligkeit heute wirklich trägt:** der Nullifier auf der Kette. Er ist kryptografisch und lückenlos — derselbe Nullifier wird beim zweiten Mal abgelehnt, egal über welchen Weg er eingereicht wird. Er beweist aber nur, dass *dieselbe Identitätsquelle* nicht zweimal zählt. Dass diese Quelle ein Mensch ist, trägt der Gesichtsabgleich — mit einer Schwelle, die noch nicht kalibriert ist.
 
 #### EN
-This section describes the state on 2026-08-18. Where it contradicts anything above, this section is correct.
 
-There is **no special hardware**. Registration runs through the Android app and the phone's own camera. Two modes:
+This section describes the state on **2026-08-23**. Where it contradicts anything above, this section is correct.
 
-**a) Biometrics enabled** (coordinator reachable): the app captures face and palm with the phone camera. Several independent matching services compare the capture against existing enrolments and must agree by quorum (M of N) before a `bio_hash` is issued. That hash goes into the ZK proof's nullifier, and the chain rejects any nullifier it has already seen.
+There is **no special hardware**. Registration runs through the Android app and the phone's own camera.
 
-**b) Biometrics disabled** (the default when no coordinator is configured): the app derives identity from a **random, device-bound secret**. This is explicitly *not* biometrics. In this mode registration binds to a **device**, not to a person: the same human can register again on a second phone and receive a second 1,000 AEQ grant.
+**Only the face is captured** — one still and a short recording for the liveness checks. Palm, fingertip, ear and an acoustic test were part of it until 2026-08-23 and have been removed: all were *weak* modalities, and the decision rule requires two weak modalities to agree while every weak one ships disabled. None could influence a duplicate decision — they were collected and stored as GDPR Art. 9 data regardless.
 
-**What actually carries uniqueness at launch:** the on-chain nullifier. It is cryptographic and airtight — the same nullifier is refused the second time, whatever path submits it. But it only proves that *the same identity source* cannot count twice. Whether that source is a human or a device is decided by the mode above.
+**Biometrics is the normal case since 2026-08-23**, no longer the exception: the shipped app (`app-v1.5.2`) has face matching active and a reachable coordinator compiled in. The former default — identity from a random, device-bound secret — bound to a **device**, not to a person; the same human could register again on a second phone. It now applies only when no coordinator is configured.
+
+The flow: the app captures the face, independent matching services compare it against existing enrolments and must agree by quorum (M of N) before a `bio_hash` is issued. That hash goes into the ZK proof's nullifier, and the chain rejects any nullifier it has already seen.
+
+**First measurement on a real device (2026-08-23):** the same person was detected as a duplicate on the second attempt, with and without glasses — similarity 0.846 and 0.677 against a threshold of 0.40. That is one data point, not a false-accept rate; the threshold still comes from the model literature, not from our own measurements.
+
+**Where templates live — and what is still open.** On the matching service's disk they are AES-256-GCM encrypted, bound to the row they belong to. Alongside that, an MPC path has run since 2026-08-23: every capture is split additively, one row per party, across two separately controlled machines — neither can reconstruct anything from its half.
+
+But while the plaintext comparison decides, the matching service **must** hold every enrolled template to compare against. Encryption there protects the file, not the service holding the key. The mode in which the committee decides and nothing whole is stored locally is built and tested, but **switched off**: its threshold has never been calibrated against real captures, and guessing it means deciding who may exist on a guessed number. That needs roughly 1,000 impostor pairs.
+
+**What actually carries uniqueness today:** the on-chain nullifier. It is cryptographic and airtight — the same nullifier is refused the second time, whatever path submits it. But it only proves that *the same identity source* cannot count twice. That the source is a human is carried by the face match — with a threshold that is not yet calibrated.
 
 ---
 
@@ -434,7 +451,9 @@ The AequitasV7 contract is the core of the protocol. Written in Solidity, deploy
 ### DE
 Aequitas nutzt Groth16-Proofs auf der BN128-Kurve — eines der effizientesten ZKP-Systeme mit kleinen Proofs (~200 Bytes) und schneller On-Chain-Verifikation (~10ms).
 
-**Nullifier-Bindung:** Der ZKP enthält einen eindeutigen Nullifier (`pubSignals[1]`), der kryptographisch an den biometrischen Hash gebunden ist. Derselbe Mensch kann denselben Nullifier nie zweimal verwenden — Sybil-Attacken sind mathematisch ausgeschlossen.
+**Nullifier-Bindung:** Der ZKP enthält einen eindeutigen Nullifier (`pubSignals[1]`), der kryptographisch an den biometrischen Hash gebunden ist. **Derselbe Nullifier** kann nie zweimal verwendet werden.
+
+> **Was das nicht heißt.** Eine frühere Fassung dieses Absatzes schrieb, Sybil-Angriffe seien „mathematisch ausgeschlossen". Das ist falsch und wird hier korrigiert. Der Nullifier schließt lückenlos aus, dass *dieselbe Identitätsquelle* zweimal zählt — er sagt nichts darüber, ob zwei Aufnahmen desselben Menschen zum selben `bio_hash` führen. Das entscheidet der Gesichtsabgleich, mit einer Schwelle, die noch nicht gegen eigene Aufnahmen kalibriert ist (§3.2). Die Kryptografie ist hier scharf; die Biometrie darunter ist eine Messung mit einer Fehlerrate, die noch nicht beziffert ist.
 
 **Multi-Faktor ZK-Commitment (Phase 3 Zielarchitektur):**
 ```
@@ -443,7 +462,9 @@ commitment   = keccak256(iris_hash ‖ vein_hash ‖ fingers_hash ‖ wallet_add
 nullifier    = keccak256(iris_hash ‖ vein_hash ‖ domain_separator)
 ```
 
-Der Nullifier ist ausschließlich an physische Körpermerkmale gebunden — kein Gerät, keine SIM-Karte, kein Betriebssystem. Eine Person, die ihr Telefon verliert, kann sich mit denselben biometrischen Merkmalen (Iris + Handvenen) neu verifizieren, ohne eine zweite Identität zu erzeugen.
+**In dieser Zielarchitektur** wäre der Nullifier ausschließlich an physische Körpermerkmale gebunden — kein Gerät, keine SIM-Karte, kein Betriebssystem; wer sein Telefon verliert, verifiziert sich mit denselben Merkmalen neu, ohne eine zweite Identität zu erzeugen.
+
+**Heute (23.08.2026)** ist davon das Gesicht umgesetzt, und zwar allein: kein Iris-Hash, kein Venen-Hash, keine Fingerabdrücke — die dafür nötige Hardware existiert nicht (§3.1). Wer sein Telefon verliert, kommt über eine erneute Gesichtsaufnahme zurück; ob das gelingt, hängt an derselben unkalibrierten Schwelle wie alles andere.
 
 | Phase | Commitment-Faktoren | Nullifier-Faktoren |
 |-------|--------------------|--------------------|
@@ -463,7 +484,9 @@ Der Nullifier ist ausschließlich an physische Körpermerkmale gebunden — kein
 ### EN
 Aequitas uses Groth16 proofs on the BN128 curve — one of the most efficient ZKP systems with small proofs (~200 bytes) and fast on-chain verification (~10ms).
 
-**Nullifier Binding:** The ZKP contains a unique nullifier (`pubSignals[1]`), cryptographically bound to the biometric hash. The same human can never use the same nullifier twice — Sybil attacks are mathematically impossible.
+**Nullifier Binding:** The ZKP contains a unique nullifier (`pubSignals[1]`), cryptographically bound to the biometric hash. **The same nullifier** can never be used twice.
+
+> **What that does not mean.** An earlier version of this paragraph said Sybil attacks were "mathematically impossible". That is wrong and is corrected here. The nullifier airtightly prevents *the same identity source* from counting twice — it says nothing about whether two captures of the same human produce the same `bio_hash`. That is decided by the face match, with a threshold not yet calibrated against our own captures (§3.2). The cryptography here is exact; the biometrics underneath it is a measurement with an error rate that has not yet been quantified.
 
 **Multi-Factor ZK Commitment (Phase 3 target architecture):**
 ```
@@ -472,7 +495,9 @@ commitment   = keccak256(iris_hash ‖ vein_hash ‖ fingers_hash ‖ wallet_add
 nullifier    = keccak256(iris_hash ‖ vein_hash ‖ domain_separator)
 ```
 
-The nullifier is bound exclusively to physical body features — no device, no SIM card, no OS. A person who loses their phone can re-verify with the same biometric traits (iris + hand veins) without creating a second identity.
+**In that target architecture** the nullifier would be bound exclusively to physical body features — no device, no SIM card, no OS; someone who loses their phone re-verifies with the same traits without creating a second identity.
+
+**Today (2026-08-23)** the face is the only part of this that exists, on its own: no iris hash, no vein hash, no fingerprints — the hardware for those does not exist (§3.1). Someone who loses their phone returns through another face capture; whether that succeeds rests on the same uncalibrated threshold as everything else.
 
 | Phase | Commitment factors | Nullifier factors |
 |-------|--------------------|-------------------|
