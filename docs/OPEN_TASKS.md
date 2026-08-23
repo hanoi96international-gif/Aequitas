@@ -271,6 +271,68 @@ byte-identical. `tools/snapshot-signer` was written so BOOTSTRAP_SIGNER is
 recovered from the live snapshot rather than assumed — a wrong value makes a
 resync fail closed, which looks exactly like it never ran.
 
+### The lock is solved. Block replay is the last holder.
+
+A display-only mirror was holding the node's global write lock. Measured, then
+fixed, then measured again:
+
+| | before | chunked write lock | **read lock** |
+|---|---|---|---|
+| transfer total | 87.80 ms | 97.71 ms | **45.77 ms** |
+| waiting on `cs.mu.RLock()` | 45.88 ms | 68.62 ms | **18.05 ms** |
+| `exclusive_busy_pct` (C2) | 50.26% | 3.00% | **0.65%** |
+| `exclusive_busy_pct` (C1) | ~31% | — | **2.65%** |
+| C1 worst hold | 17,070 ms | — | **399 ms** |
+| TPS | ~2,400 | 2,382 | **3,027** |
+
+**The middle column is the important one.** Chunking the hold made
+`exclusive_busy_pct` 16x better and made transfers SLOWER. Go's RWMutex blocks
+new readers the moment a writer ARRIVES, not only while it holds, so 1,135
+short holds convoyed readers more often than 90 long ones. The cost was never
+the holding — it was being a writer on that lock at all.
+
+One call made it a writer: `ensureAccountLoaded`, paging in a cold account.
+Everything else read state and wrote to Postgres. Cold accounts are now skipped
+and the flush takes a read lock; readers do not block readers.
+
+**`exclusive_lock.by_caller` now reports a single entry on both nodes: `block
+replay`.** Nothing else takes the exclusive lock.
+
+### Why C1 is always the node that stalls
+
+Not a chain bug — it had no reason to prefer one machine, and that is what made
+it worth measuring:
+
+| | C1 | C2 |
+|---|---|---|
+| load per core | **1.14** | 0.28 |
+| containers | **8** | 6 |
+| RAM used | 5,899 MB | 2,281 MB |
+| replay holds | **346** | 190 |
+| replay avg | **30 ms** | 8 ms |
+
+C1 carries the whole rest of the stack — proof server, matching, redis,
+postgres, caddy, coordinator — and its disk is SATA where C2's is NVMe. Same
+code, same block, four times the cost per replay.
+
+**And `fast_path_pct: 0` on C1 is not a misconfiguration.** The WAL is armed
+there and the log says so; C1 simply accepts no transfers. It only REPLAYS
+them, and replay has no fast path — it applies a whole block under
+`dag.state.mu.Lock()`. The accepting node uses the WAL; the replaying node pays
+the full lock. That asymmetry is the remaining structural item, and it is what
+both launch audits name as their first scaling blocker.
+
+### Do not narrow the replay lock casually
+
+`block.go`'s comment states the scope is deliberate: config backup, rollback
+snapshot, every delta including its database writes, the StateRoot comparison,
+and any rollback — rollback atomicity depends on all of it being one hold.
+Narrowing it is a real design change to the consensus path, not a tuning knob,
+and it needs its own pass rather than the end of a long session.
+
+Cheaper levers that need no consensus change: move the biometric stack off C1,
+and put C1's Postgres and WAL on NVMe.
+
 ### The path to 10k, and the one step that needs you
 
 Throughput is **pairs / latency**, and latency is no longer what binds — two
