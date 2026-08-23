@@ -100,3 +100,11 @@ jobs:
             echo "  (muss 200 sein -- sonst haette das Stilllegen doch etwas getroffen)"
             echo ""
             echo "Rueckgaengig: docker update --restart=unless-stopped <name> && docker start <name>"
+        env:
+          # envs: CONFIRM sagt der ssh-action nur, WELCHE Variable sie
+          # weiterreichen soll -- gesetzt wird sie erst hier. Ohne diesen
+          # Block ist CONFIRM im Skript leer, der Lauf meldet brav
+          # "confirm != true" und tut nichts, waehrend er nach Erfolg
+          # aussieht. Genau dieser Fehler stand schon einmal in
+          # recover-contabo1-resync.yml.
+          CONFIRM: ${{ inputs.confirm }}
