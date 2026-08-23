@@ -8,6 +8,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/ethereum/go-ethereum/common"
@@ -335,6 +336,22 @@ func (n *mpcNode) TransportFor(session string) (mpc.Transport, error) {
 	})
 }
 
+// mpcServing records whether THIS node actually ended up serving the private
+// duplicate check.
+//
+// Set only after the exchange handler is mounted, never from the environment
+// alone: MPC_ENABLED=true with a missing triple file, a bad party index or an
+// unusable key leaves the endpoint unmounted, and a node that advertised
+// readiness on the strength of an env var would then be drawn into committees
+// it cannot serve. One absent member stalls every comparison the committee is
+// asked for, so an over-optimistic answer here halts registration for everyone,
+// not just for this node.
+var mpcServing atomic.Bool
+
+// MPCServing reports whether this node offers the private duplicate check, for
+// the peer registration that advertises it.
+func MPCServing() bool { return mpcServing.Load() }
+
 // registerMPCRoutes mounts the exchange endpoint if MPC is configured.
 //
 // A configuration error is loud and leaves the endpoint unmounted. It does not
@@ -360,6 +377,7 @@ func registerMPCRoutes(mux *http.ServeMux, discover func() []mpc.Party) *mpcNode
 		return nil
 	}
 	mux.Handle(mpc.ExchangePath, handler)
+	mpcServing.Store(true)
 	if node.discover != nil {
 		log.Printf("[MPC] serving %s as %s; committee of %d drawn from the chain, membership "+
 			"resolved per registration", mpc.ExchangePath, node.selfAddr, node.size)
