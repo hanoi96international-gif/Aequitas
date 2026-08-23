@@ -46,6 +46,16 @@ on:
         default: inspect
         type: choice
         options: [inspect, apply]
+      committee:
+        description: "static (MPC_PEERS — works today) or discovery (needs the advertise fix first)"
+        required: true
+        default: static
+        type: choice
+        options: [static, discovery]
+      peers:
+        description: "static committee: URL|0xSigningAddress, comma-separated. ORDER DEFINES THE PARTY INDEX."
+        required: false
+        default: "http://173.249.37.118:8080|0x0be8b961cbf6564bd1931b0803d35c0659e0d016,http://194.163.188.71:8080|0x1a37dcdaa42cf3f7e1f6e41379961f40df44a4e3"
 
 jobs:
   c1:
@@ -66,6 +76,14 @@ jobs:
             set -uo pipefail
             MODE="${{ inputs.mode }}"
             BOX=Contabo1
+            # The order in MPC_PEERS decides the party index, and the index
+            # decides which dealer row fits. mpc-triples-distribute.yml gave
+            # Contabo1 the row for party 0. Swapping them produces no error at
+            # all -- just noise, which reads as "no duplicate" on a system that
+            # looks perfectly healthy.
+            PARTY_INDEX=0
+            COMMITTEE="${{ inputs.committee }}"
+            PEERS="${{ inputs.peers }}"
             TRIPLE_HOST_DIR=/root/aequitas-mpc
             echo "### $BOX ###"
 
@@ -107,6 +125,25 @@ jobs:
             grep -q '^MPC_ENABLED=' "$ENVOUT" || echo 'MPC_ENABLED=true' >> "$ENVOUT"
             grep -q '^MPC_COMMITTEE_SIZE=' "$ENVOUT" || echo 'MPC_COMMITTEE_SIZE=2' >> "$ENVOUT"
             grep -q '^MPC_TRIPLE_FILE=' "$ENVOUT" || echo 'MPC_TRIPLE_FILE=/data/mpc/triples.bin' >> "$ENVOUT"
+            # Discovery cannot form a committee, measured 2026-08-23: both boxes
+            # answered 503 "1 validators advertise an MPC endpoint, need 2".
+            # mpc_ready appears exactly ONCE in the whole Go tree -- as an
+            # incoming field on /api/peers/register -- so nothing ever sends it,
+            # and every ordinary heartbeat resets it to false anyway
+            # (Register -> RegisterWithAddress -> RegisterWithMPC(..., false)).
+            # Each node therefore counted only itself. With a static list the
+            # peer list IS the committee (mpc_api.go), so no advertisement is
+            # involved. Two parties need nothing more; a third validator is what
+            # makes discovery worth fixing.
+            sed -i '/^MPC_PEERS=/d;/^MPC_PARTY_INDEX=/d' "$ENVOUT"
+            if [ "$COMMITTEE" = "static" ]; then
+              echo "MPC_PEERS=$PEERS" >> "$ENVOUT"
+              echo "MPC_PARTY_INDEX=$PARTY_INDEX" >> "$ENVOUT"
+              echo "--- static committee: this node is index $PARTY_INDEX ---"
+              echo "  $PEERS" | tr ',' '\n' | sed 's/^/    /'
+            else
+              echo "--- discovery committee (no MPC_PEERS written) ---"
+            fi
             echo "--- MPC_CLIENT_TOKEN in the set about to be applied? ---"
             grep -q '^MPC_CLIENT_TOKEN=' "$ENVOUT" && echo "yes" || echo "NO -- the client endpoints will keep answering unauthorized"
             echo "--- keys that will be passed (names only) ---"
@@ -133,6 +170,14 @@ jobs:
             grep -q '^MPC_ENABLED=' /root/.aequitas.env || echo 'MPC_ENABLED=true' >> /root/.aequitas.env
             grep -q '^MPC_COMMITTEE_SIZE=' /root/.aequitas.env || echo 'MPC_COMMITTEE_SIZE=2' >> /root/.aequitas.env
             grep -q '^MPC_TRIPLE_FILE=' /root/.aequitas.env || echo 'MPC_TRIPLE_FILE=/data/mpc/triples.bin' >> /root/.aequitas.env
+            # Into the file as well, or the next deploy silently drops the
+            # committee configuration -- exactly how the WAL disappeared here
+            # once before.
+            sed -i '/^MPC_PEERS=/d;/^MPC_PARTY_INDEX=/d' /root/.aequitas.env
+            if [ "$COMMITTEE" = "static" ]; then
+              echo "MPC_PEERS=$PEERS" >> /root/.aequitas.env
+              echo "MPC_PARTY_INDEX=$PARTY_INDEX" >> /root/.aequitas.env
+            fi
             # Names and <set>, never values: MPC_CLIENT_TOKEN starts with MPC_,
             # so an unmasked grep here printed a live credential straight into a
             # workflow log readable by anyone with repository access.
@@ -179,6 +224,9 @@ jobs:
             set -uo pipefail
             MODE="${{ inputs.mode }}"
             BOX=Contabo2
+            PARTY_INDEX=1
+            COMMITTEE="${{ inputs.committee }}"
+            PEERS="${{ inputs.peers }}"
             TRIPLE_HOST_DIR=/root/aequitas-mpc
             echo "### $BOX ###"
 
@@ -220,6 +268,25 @@ jobs:
             grep -q '^MPC_ENABLED=' "$ENVOUT" || echo 'MPC_ENABLED=true' >> "$ENVOUT"
             grep -q '^MPC_COMMITTEE_SIZE=' "$ENVOUT" || echo 'MPC_COMMITTEE_SIZE=2' >> "$ENVOUT"
             grep -q '^MPC_TRIPLE_FILE=' "$ENVOUT" || echo 'MPC_TRIPLE_FILE=/data/mpc/triples.bin' >> "$ENVOUT"
+            # Discovery cannot form a committee, measured 2026-08-23: both boxes
+            # answered 503 "1 validators advertise an MPC endpoint, need 2".
+            # mpc_ready appears exactly ONCE in the whole Go tree -- as an
+            # incoming field on /api/peers/register -- so nothing ever sends it,
+            # and every ordinary heartbeat resets it to false anyway
+            # (Register -> RegisterWithAddress -> RegisterWithMPC(..., false)).
+            # Each node therefore counted only itself. With a static list the
+            # peer list IS the committee (mpc_api.go), so no advertisement is
+            # involved. Two parties need nothing more; a third validator is what
+            # makes discovery worth fixing.
+            sed -i '/^MPC_PEERS=/d;/^MPC_PARTY_INDEX=/d' "$ENVOUT"
+            if [ "$COMMITTEE" = "static" ]; then
+              echo "MPC_PEERS=$PEERS" >> "$ENVOUT"
+              echo "MPC_PARTY_INDEX=$PARTY_INDEX" >> "$ENVOUT"
+              echo "--- static committee: this node is index $PARTY_INDEX ---"
+              echo "  $PEERS" | tr ',' '\n' | sed 's/^/    /'
+            else
+              echo "--- discovery committee (no MPC_PEERS written) ---"
+            fi
             echo "--- MPC_CLIENT_TOKEN in the set about to be applied? ---"
             grep -q '^MPC_CLIENT_TOKEN=' "$ENVOUT" && echo "yes" || echo "NO -- the client endpoints will keep answering unauthorized"
             echo "--- keys that will be passed (names only) ---"
@@ -246,6 +313,14 @@ jobs:
             grep -q '^MPC_ENABLED=' /root/.aequitas.env || echo 'MPC_ENABLED=true' >> /root/.aequitas.env
             grep -q '^MPC_COMMITTEE_SIZE=' /root/.aequitas.env || echo 'MPC_COMMITTEE_SIZE=2' >> /root/.aequitas.env
             grep -q '^MPC_TRIPLE_FILE=' /root/.aequitas.env || echo 'MPC_TRIPLE_FILE=/data/mpc/triples.bin' >> /root/.aequitas.env
+            # Into the file as well, or the next deploy silently drops the
+            # committee configuration -- exactly how the WAL disappeared here
+            # once before.
+            sed -i '/^MPC_PEERS=/d;/^MPC_PARTY_INDEX=/d' /root/.aequitas.env
+            if [ "$COMMITTEE" = "static" ]; then
+              echo "MPC_PEERS=$PEERS" >> /root/.aequitas.env
+              echo "MPC_PARTY_INDEX=$PARTY_INDEX" >> /root/.aequitas.env
+            fi
             # Names and <set>, never values: MPC_CLIENT_TOKEN starts with MPC_,
             # so an unmasked grep here printed a live credential straight into a
             # workflow log readable by anyone with repository access.
