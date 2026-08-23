@@ -27,6 +27,7 @@ or workflow does. Anything a workflow deliberately expects from the ambient
 runner environment can be listed in ALLOWED_AMBIENT below.
 """
 
+import re
 import sys
 import pathlib
 import yaml
@@ -48,6 +49,39 @@ def declared_names(*envs):
     for env in envs:
         if isinstance(env, dict):
             out |= set(env.keys())
+    return out
+
+
+# `echo "NAME=value" >> "$GITHUB_ENV"` in an earlier step of the same job.
+#
+# The runner reads that file between steps and puts every name in it into the
+# PROCESS environment of every later step -- which is exactly where
+# appleboy/ssh-action's `envs:` looks. So a name set this way is genuinely
+# forwarded, and flagging it is a false alarm.
+#
+# That distinction is worth the code: a linter that is red for no reason gets
+# ignored, and then it stops catching the thing it exists for. This one was
+# reporting four such names across two workflows -- mpc-client-token.yml
+# deliberately routes its token through GITHUB_ENV precisely so the value never
+# appears in a `with:` block or a log.
+_GITHUB_ENV_WRITE = re.compile(
+    r"""(?mx)
+    ^\s*echo \s+ ["']?          # echo, optionally quoted argument
+    (?P<name>[A-Za-z_][A-Za-z0-9_]*)  # NAME
+    = .*? >> \s* ["']? \$\{?GITHUB_ENV
+    """
+)
+
+
+def names_set_via_github_env(steps, before_index):
+    """Names an earlier step in this job wrote to $GITHUB_ENV."""
+    out = set()
+    for step in steps[:before_index]:
+        if not isinstance(step, dict):
+            continue
+        run = step.get("run")
+        if isinstance(run, str):
+            out |= {m.group("name") for m in _GITHUB_ENV_WRITE.finditer(run)}
     return out
 
 
@@ -79,6 +113,7 @@ def main(paths):
                     continue
                 names = [n.strip() for n in forwarded.split(",") if n.strip()]
                 have = declared_names(step.get("env"), job_env, workflow_env)
+                have |= names_set_via_github_env(job.get("steps") or [], idx)
                 missing = [n for n in names if n not in have and n not in ALLOWED_AMBIENT]
                 if missing:
                     label = step.get("name") or f"step #{idx + 1}"
