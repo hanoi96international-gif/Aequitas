@@ -149,6 +149,9 @@ type ChainState struct {
 	// without its transactions (roadmap step 4 — see tx_batch.go).
 	txBatchTableOnce sync.Once
 	txBatches        *txBatchCache
+	// ubiEpoch holds an in-flight chunked UBI distribution; see ubi_chunked.go.
+	// Guarded by cs.mu like every other field here.
+	ubiEpoch ubiEpochHolder
 	// txBlockIndexOnce guards the tx -> including-block index, without which
 	// eth_getTransactionByHash and eth_getTransactionReceipt answer with
 	// placeholders and wallets mark landed transactions as failed — see
@@ -1568,6 +1571,20 @@ func (cs *ChainState) getConfigValue(key string) string {
 	}
 	var v string
 	cs.dbExec().QueryRow(`SELECT value FROM chain_config WHERE key = $1`, key).Scan(&v)
+	return v
+}
+
+// getConfigValueCtx is getConfigValue routed through ctx, so a read inside an
+// atomic operation sees that operation's own uncommitted writes rather than
+// the last committed value. The chunked UBI epoch needs exactly that: it
+// writes the cursor and reads it back within one distribution round.
+// Same cs.mu-held precondition as getConfigValue.
+func (cs *ChainState) getConfigValueCtx(ctx context.Context, key string) string {
+	if cs.db == nil {
+		return ""
+	}
+	var v string
+	cs.dbExecCtx(ctx).QueryRow(`SELECT value FROM chain_config WHERE key = $1`, key).Scan(&v)
 	return v
 }
 
