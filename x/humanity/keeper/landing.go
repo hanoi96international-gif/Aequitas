@@ -346,7 +346,7 @@ section{padding:60px 20px}
       <div class="step">
         <div class="step-num">1</div>
         <h3 data-i18n="step1-h">Scan</h3>
-        <p data-i18n="step1-p">Your phone reduces your biometrics to a one-way hash. The raw images never leave the device and are never stored.</p>
+        <p data-i18n="step1-p">Your face is captured and checked by independent matching services against everyone already registered. The images are discarded after processing; what is kept is an encrypted template, split so that no validator holds a whole one.</p>
       </div>
       <div class="step">
         <div class="step-num">2</div>
