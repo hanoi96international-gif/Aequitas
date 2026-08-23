@@ -241,6 +241,7 @@ func (a *APIServer) handleMPCCheck(w http.ResponseWriter, r *http.Request) {
 	}
 
 	duplicate := false
+	matchedID := ""
 	if len(rows) > 0 {
 		transport, err := a.mpc.TransportFor(sub.Session)
 		if err != nil {
@@ -271,6 +272,7 @@ func (a *APIServer) handleMPCCheck(w http.ResponseWriter, r *http.Request) {
 		for i, res := range results {
 			if res.Similar {
 				duplicate = true
+				matchedID = ids[i]
 				fmt.Printf("[MPC] session %s matches enrolment %s\n", sub.Session, ids[i])
 				break
 			}
@@ -285,10 +287,22 @@ func (a *APIServer) handleMPCCheck(w http.ResponseWriter, r *http.Request) {
 	})
 
 	w.Header().Set("Content-Type", "application/json")
+	// matched_enrollment_id, not just the boolean.
+	//
+	// Without it a returning person is told "duplicate" and given nothing —
+	// their enrolment id IS their bio_hash, and the app rebuilds their identity
+	// from it (identityFromBioHash). A verdict with no id would lock out
+	// precisely the people the check got RIGHT, which is the irreversible
+	// direction this project refuses to fail in.
+	//
+	// It is not a new disclosure: the caller already holds MPC_CLIENT_TOKEN,
+	// already learns that a duplicate exists, and is the service that has to
+	// serve that person. The id belongs to them.
 	json.NewEncoder(w).Encode(map[string]interface{}{
-		"duplicate":    duplicate,
-		"compared":     len(rows),
-		"committee_id": committee.ID,
+		"duplicate":             duplicate,
+		"compared":              len(rows),
+		"committee_id":          committee.ID,
+		"matched_enrollment_id": matchedID,
 	})
 }
 
