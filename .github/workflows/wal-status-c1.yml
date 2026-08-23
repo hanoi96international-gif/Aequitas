@@ -1,0 +1,96 @@
+name: Laeuft die WAL auf C1 ueberhaupt? (read-only)
+
+# DER BEFUND, aus dem Audit vom 23.08. und von mir vorher falsch abgetan:
+#
+#   C1  wal_records 0          exclusive avg 339 ms   max 17 070 ms   busy ~31 %
+#   C2  wal_records 544 382    exclusive avg   8 ms   max    147 ms   busy ~0,5 %
+#
+# Unter denselben Bedingungen. Ich hatte die 0 fuer einen Leerlauf-Effekt
+# gehalten -- bei gleichzeitig 544 382 auf C2 ist sie das nicht. Ohne WAL geht
+# jeder Transfer und jedes Replay auf C1 direkt in den langsamen, durablen
+# Postgres-Pfad, und zwar unter der globalen Schreibsperre. Das erklaert
+# Haltevorgaenge von 17 Sekunden und damit, warum C1 in jedem Vorfall dieser
+# Sitzung der Knoten war, der haengen blieb.
+#
+# Die WAL WURDE auf C1 nachgeruestet, zusammen mit einem Patch an deploy.sh --
+# weil ein Deploy sie sonst still wieder entfernt. Genau das ist offenbar
+# passiert, und es ist zu pruefen statt zu vermuten: Variable, Mount,
+# Verzeichnis und die Zeile im Skript einzeln.
+#
+# Rein lesend.
+on:
+  workflow_dispatch: {}
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - name: C1
+            host: 173.249.37.118
+            secret: CONTABO_SSH_KEY
+          - name: C2-Vergleich
+            host: 194.163.188.71
+            secret: CONTABO2_SSH_KEY
+      fail-fast: false
+    steps:
+      - name: ${{ matrix.name }}
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ matrix.host }}
+          username: root
+          key: ${{ secrets[matrix.secret] }}
+          port: 22
+          script_stop: false
+          timeout: 300s
+          command_timeout: 300s
+          script: |
+            set +e
+            echo "################ ${{ matrix.name }} ################"
+
+            echo "--- 1. Was sieht der PROZESS? (nicht die Datei) ---"
+            # Die Datei ist nicht die Wahrheit: ein Container laeuft mit der
+            # Umgebung, mit der er gestartet wurde.
+            docker inspect aequitas-node --format '{{range .Config.Env}}{{println .}}{{end}}' \
+              | grep -E '^AEQUITAS_WAL' | sed 's/^/  /' \
+              || echo "  KEINE AEQUITAS_WAL_* Variable im Prozess"
+
+            echo ""
+            echo "--- 2. Was steht in der Datei? ---"
+            grep -E '^AEQUITAS_WAL' /root/.aequitas.env | sed 's/^/  /' \
+              || echo "  keine AEQUITAS_WAL_* in /root/.aequitas.env"
+
+            echo ""
+            echo "--- 3. Ist der WAL-Pfad ueberhaupt eingehaengt? ---"
+            docker inspect aequitas-node --format '{{range .Mounts}}  {{.Source}} -> {{.Destination}}{{println}}{{end}}'
+
+            echo ""
+            echo "--- 4. Liegt eine WAL-Datei da, und waechst sie? ---"
+            ls -la /root/aequitas-wal-data/ 2>/dev/null | head -5 || echo "  /root/aequitas-wal-data fehlt"
+            S1=$(du -sb /root/aequitas-wal-data 2>/dev/null | cut -f1)
+            sleep 10
+            S2=$(du -sb /root/aequitas-wal-data 2>/dev/null | cut -f1)
+            echo "  Groesse: ${S1:-?} -> ${S2:-?} Bytes in 10s"
+
+            echo ""
+            echo "--- 5. Wuerde der naechste Deploy sie wieder entfernen? ---"
+            for f in /root/deploy.sh /root/deploy_safe_c2.sh; do
+              [ -f "$f" ] || continue
+              if grep -q 'aequitas-wal-data' "$f"; then
+                echo "  $f: WAL-Mount vorhanden"
+              else
+                echo "  $f: ⚠ KEIN WAL-Mount — ein Deploy hiermit entfernt sie still"
+              fi
+            done
+
+            echo ""
+            echo "--- 6. was der Knoten selbst meldet ---"
+            curl -s --max-time 15 http://127.0.0.1:8080/api/health/combined \
+              | grep -oE '"(records|sync_avg_us|exclusive_busy_pct|exclusive_max_ms|exclusive_avg_ms|fast_path_pct|fallback_to_batch)":[^,}]*' \
+              | sed 's/^/  /' | head -12
+
+            echo ""
+            echo "--- 7. sagt das Log etwas zur WAL beim Start? ---"
+            docker logs aequitas-node 2>&1 | grep -ai '\[WAL\]' | head -6
+            echo "  (leer = die WAL hat sich beim Start nicht gemeldet)"
