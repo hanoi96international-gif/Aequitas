@@ -234,10 +234,16 @@ header::before{content:'';position:absolute;top:0;left:0;right:0;height:2px;back
 .right-col{display:flex;flex-direction:column;gap:12px;position:relative;z-index:1}
 .ic{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:18px;box-shadow:0 2px 12px rgba(0,0,0,0.06)}
 .ic-title{font-size:0.77rem;color:var(--purple);letter-spacing:1.5px;text-transform:uppercase;margin-bottom:14px;font-weight:600}
-.ic-row{display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid rgba(139,92,246,0.08)}
+.ic-row{display:flex;justify-content:space-between;align-items:flex-start;gap:14px;padding:8px 0;border-bottom:1px solid rgba(139,92,246,0.08)}
 .ic-row:last-child{border-bottom:none}
 .ic-key{font-size:0.79rem;color:var(--muted)}
-.ic-val{font-size:0.79rem;color:var(--text);text-align:right;max-width:58%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:500}
+/* Werte umbrechen statt abschneiden. Vorher stand hier white-space:nowrap
+   mit text-overflow:ellipsis -- was bei kurzen Werten wie "0x78c1...d2bA"
+   unauffaellig ist und bei einem Satz dazu fuehrt, dass er mitten im Wort
+   endet. Genau das ist der Zeile "Sybil-Schutz" passiert: der Teil, der
+   die Einschraenkung benennt, war der Teil, der wegfiel. Eine Aussage, die
+   nur zur Haelfte ankommt, ist schlimmer als eine kurze. */
+.ic-val{font-size:0.79rem;color:var(--text);text-align:right;max-width:62%;white-space:normal;overflow-wrap:anywhere;line-height:1.45;font-weight:500}
 .ic-val.g{color:var(--neon)}.ic-val.b{color:var(--teal)}.ic-val.go{color:var(--gold)}.ic-val.p{color:var(--purple)}
 .mm-card{background:rgba(8,145,178,0.04);border:1px solid rgba(8,145,178,0.18);border-radius:var(--radius);padding:16px;box-shadow:0 2px 12px rgba(8,145,178,0.08)}
 .mm-title{font-size:0.77rem;color:var(--teal);letter-spacing:1.5px;margin-bottom:12px;font-weight:700;text-transform:uppercase}
