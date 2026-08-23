@@ -79,13 +79,29 @@ func (pr *PeerRegistry) Register(url string) {
 // An empty address records the heartbeat but leaves the peer ineligible for MPC
 // committee membership — correct, because without a verified address there is
 // nothing to check its contributions against.
+//
+// It says NOTHING about MPC, and that distinction is the whole point of the
+// split below. This used to call RegisterWithMPC(url, addr, false), which meant
+// every ordinary heartbeat asserted "this peer does not serve MPC" — and
+// Register() runs on every sync cycle. Any peer that had advertised readiness
+// was demoted again within seconds, so the candidate list could never hold more
+// than the node itself and no committee could ever be formed. Measured
+// 2026-08-23 on both boxes: 503 "1 validators advertise an MPC endpoint, need
+// 2". Silence is not the same as "no", and only the authenticated registration
+// that actually carries the field gets to answer the question.
 func (pr *PeerRegistry) RegisterWithAddress(url, signingAddress string) {
-	pr.RegisterWithMPC(url, signingAddress, false)
+	pr.register(url, signingAddress, nil)
 }
 
 // RegisterWithMPC additionally records whether the peer offers to serve the
 // private duplicate check.
 func (pr *PeerRegistry) RegisterWithMPC(url, signingAddress string, mpcReady bool) {
+	pr.register(url, signingAddress, &mpcReady)
+}
+
+// register is the one writer. mpcReady == nil means "this caller does not know",
+// which leaves any previously recorded answer untouched.
+func (pr *PeerRegistry) register(url, signingAddress string, mpcReady *bool) {
 	if url == "" {
 		return
 	}
@@ -98,10 +114,12 @@ func (pr *PeerRegistry) RegisterWithMPC(url, signingAddress string, mpcReady boo
 		}
 		pr.signingAddr[url] = strings.ToLower(signingAddress)
 	}
-	if pr.mpcReady == nil {
-		pr.mpcReady = map[string]bool{}
+	if mpcReady != nil {
+		if pr.mpcReady == nil {
+			pr.mpcReady = map[string]bool{}
+		}
+		pr.mpcReady[url] = *mpcReady
 	}
-	pr.mpcReady[url] = mpcReady
 	pr.mu.Unlock()
 }
 
@@ -2483,13 +2501,26 @@ func (dag *BlockDAG) registerAndDiscover(selfURL, primaryURL string) bool {
 		}
 	}
 
-	body, _ := json.Marshal(map[string]string{
+	// mpc_ready was a dead field for its whole existence. handlePeerRegister has
+	// always read it into PeerRegistry.mpcReady, and committee selection has
+	// always required it — but nothing anywhere ever SENT it, so every node's
+	// candidate list contained itself and nobody else. Measured 2026-08-23 on
+	// both boxes:
+	//
+	//   503 "mpc: 1 validators advertise an MPC endpoint, need 2 for a
+	//        committee of that size"
+	//
+	// map[string]any rather than map[string]string because of it: a bool cannot
+	// go into the old map, and encoding it as "true" would have arrived as
+	// false, which is the same dead field with more steps.
+	body, _ := json.Marshal(map[string]any{
 		"url":                        selfURL,
 		"signing_address":            signerAddr,
 		"signature":                  signature,
 		"peer_secret":                os.Getenv("PEER_SECRET"),
 		"node_operator_wallet":       strings.ToLower(os.Getenv("NODE_OPERATOR_WALLET")),
 		"operator_binding_signature": operatorBindingSig,
+		"mpc_ready":                  MPCServing(),
 	})
 	resp, err := httpSyncClient.Post(
 		primaryURL+"/api/peers/register", "application/json", bytes.NewReader(body))
