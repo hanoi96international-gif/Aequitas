@@ -728,7 +728,10 @@ func (cs *ChainState) syncBalanceLocked(contractAddr string, addrs ...string) {
 // has no per-row business constraint beyond the (address,slot) upsert key
 // this batching still honors), so no real-world retry behavior changes,
 // only 4×N-1 unnecessary round trips are removed on the common path.
-func (cs *ChainState) doSyncBalanceLocked(contractAddr string, addrs ...string) {
+// Read-lock safe: mutates nothing in cs.accounts, so cs.mu.RLock() is enough.
+// Renamed from doSyncBalanceLocked so a future caller cannot assume the write
+// lock it no longer needs.
+func (cs *ChainState) doSyncBalanceRLocked(contractAddr string, addrs ...string) {
 	contractAddr = strings.ToLower(contractAddr)
 
 	type slotValue struct {
@@ -749,21 +752,36 @@ func (cs *ChainState) doSyncBalanceLocked(contractAddr string, addrs ...string) 
 		// next warm call self-corrects the slot), but wrong regardless for
 		// anything reading balanceOf via eth_call/MetaMask/a dApp in the
 		// meantime.
-		cs.ensureAccountLoaded(addr)
+		// FIX (2026-08-23): ensureAccountLoaded used to sit here, and it was the
+		// ONLY reason this function needed the exclusive lock -- paging in a
+		// cold account mutates cs.accounts. That single call made a
+		// display-only mirror a writer on the node's global lock.
+		//
+		// Measured: instrumenting the flush put exclusive_busy_pct at 50.26%
+		// with an 8,221ms worst hold. Chunking the holds took that to 3.00%
+		// and 366ms -- and transfers got SLOWER, from 45.88ms to 68.62ms
+		// waiting on cs.mu.RLock(). Go's RWMutex blocks new readers the moment
+		// a writer ARRIVES, so 1,135 short holds convoy readers more often than
+		// 90 long ones did. The cost was never the holding; it was being a
+		// writer at all.
+		//
+		// A cold account is now skipped outright rather than paged in. That
+		// keeps what the 2026-07-12 fix was actually for -- it existed because
+		// a cold address wrote balanceOf as 0, which was wrong for anything
+		// reading via eth_call -- while writing NOTHING is strictly better than
+		// writing a wrong zero, and leaves the previous value standing. The
+		// address is marked dirty again the next time it is touched, which is
+		// exactly when it becomes warm.
 		acc, ok := cs.accounts.Get(addr)
-		var bal float64
-		if ok {
-			// P1-4: use effectiveBalance (demurrage-adjusted) so the EVM slot
-			// matches the user's real spendable amount, not the stored pre-decay value.
-			bal = effectiveBalance(acc).Float()
-		}
-		balBig := aeqToWei(bal)
-		addrBytes := common.HexToAddress(addr).Bytes()
-		// slot 4: balanceOf
-		writes = append(writes, slotValue{mappingSlot(addrBytes, 4).Hex(), common.BigToHash(balBig).Hex()})
 		if !ok {
 			continue
 		}
+		// P1-4: use effectiveBalance (demurrage-adjusted) so the EVM slot
+		// matches the user's real spendable amount, not the stored pre-decay value.
+		balBig := aeqToWei(effectiveBalance(acc).Float())
+		addrBytes := common.HexToAddress(addr).Bytes()
+		// slot 4: balanceOf
+		writes = append(writes, slotValue{mappingSlot(addrBytes, 4).Hex(), common.BigToHash(balBig).Hex()})
 		// slot 6: isHuman
 		isHumanVal := common.HexToHash("0x00")
 		if acc.IsHuman {
