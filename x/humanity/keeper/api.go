@@ -948,9 +948,9 @@ func (a *APIServer) buildMux() *http.ServeMux {
 
 	mux.HandleFunc("/mpc/enroll", a.handleMPCEnroll)
 	mux.HandleFunc("/mpc/check", a.handleMPCCheck)
-	// Lets the parties keep their triple counters in step; see
-	// mpc_triple_sync.go for what went wrong without it.
-	mux.HandleFunc(mpcTripleOffsetPath, a.handleMPCTripleOffset)
+	// Party 0 allocates the triple range for a session and both parties use
+	// it; see mpc_triple_sync.go for why per-party counters could not work.
+	mux.HandleFunc(mpcTripleRangePath, a.handleMPCTripleRange)
 
 	mux.HandleFunc("/api/status", a.handleStatus)
 	mux.HandleFunc("/api/events", a.handleBlockEvents)

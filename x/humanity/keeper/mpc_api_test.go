@@ -174,7 +174,7 @@ func TestTriplesAreNeverGeneratedLocally(t *testing.T) {
 	t.Setenv("MPC_TRIPLE_FILE", "")
 	a := &APIServer{mpc: &mpcNode{size: 2}}
 
-	store, err := a.mpcTriples(100)
+	store, err := a.mpcTriples("test-session", 100)
 	if err == nil {
 		t.Fatalf("triples were supplied with no dealer file configured (%d available) — a party "+
 			"that makes its own gets an uncorrelated set", store.Remaining())
