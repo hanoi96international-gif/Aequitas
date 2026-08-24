@@ -362,13 +362,14 @@ func (a *APIServer) mpcTriples(need int) (*mpc.TripleStore, error) {
 	// the other half was not forged (mpc/sacrifice.go).
 	want := mpc.TriplesForVerifiedWork(need)
 
-	const offsetKey = "mpc_triple_offset"
-	offset := 0
-	if raw := a.blockchain.state.getConfigValueDB(offsetKey); raw != "" {
-		if v, err := strconv.Atoi(raw); err == nil {
-			offset = v
-		}
-	}
+	// The peers' counters decide, not just ours. Party 0's triple at index k is
+	// only correct against party 1's triple at index k, and nothing kept the two
+	// in step: measured 2026-08-24, party 0 stood at 10240 and party 1 at 4096,
+	// so every comparison used non-corresponding triples and produced a value
+	// that was neither 0 nor 1. See mpc_triple_sync.go for how they drifted and
+	// why taking the maximum is the safe direction (never backward, so a triple
+	// is never reused).
+	offset := a.syncedTripleOffset()
 	if offset+want > len(all) {
 		return nil, fmt.Errorf("mpc: %d triples left in %s, this comparison needs %d — refusing "+
 			"to reuse, because a reused triple stops blinding and leaks the difference of the "+
@@ -378,7 +379,7 @@ func (a *APIServer) mpcTriples(need int) (*mpc.TripleStore, error) {
 
 	// Advance BEFORE handing them out, so a crash mid-comparison loses triples
 	// rather than replaying them.
-	if err := a.blockchain.state.setConfigValueDB(offsetKey, strconv.Itoa(offset+want)); err != nil {
+	if err := a.blockchain.state.setConfigValueDB(mpcTripleOffsetKey, strconv.Itoa(offset+want)); err != nil {
 		return nil, fmt.Errorf("mpc: could not record triple consumption, refusing to proceed "+
 			"rather than risk reusing them: %w", err)
 	}
