@@ -199,6 +199,71 @@ func (cs *ChainState) MPCCandidateShares(committeeID string, keys []mpc.BucketKe
 	return ids, rows, cur.Err()
 }
 
+// MPCAllShares returns every share this committee holds.
+//
+// # WHY THE BUCKET FILTER IS NOT USED FOR A DUPLICATE CHECK
+//
+// MPCCandidateShares narrows the field with an LSH pre-filter: 20 tables of 27
+// bits each, and a candidate is only surfaced when one whole 27-bit key matches
+// exactly. The probability of that for a genuine returning person at sketch
+// distance d is
+//
+//	1 - (1 - (1 - d/512)^27)^20
+//
+// which is 100% for an identical capture, 62% at d = 55 -- and, measured on
+// 2026-08-24 against the two real captures this project has:
+//
+//	d = 135 (same person, with glasses)   ->  0.5%
+//	d = 165 (the match threshold itself)  ->  0.05%
+//
+// So the filter removes almost exactly the candidates the comparison exists to
+// find. It is not a tuning problem: the threshold accepts a 32% bit difference,
+// and any exact-match key of length k survives that only with probability
+// 0.68^k. Short enough keys to keep the true match also match nearly everyone,
+// which costs triples instead.
+//
+// A duplicate check therefore compares against everything. The cost is linear
+// in the number of enrolments -- 2048 triples each -- which is affordable at
+// the scale this runs at (100 enrolments need about 243 MB of triples per
+// party in total) and is the honest price of a check that actually finds
+// duplicates.
+//
+// The buckets stay written on enrolment. They cost almost nothing, and a
+// filter that works at this threshold could use them later. What must not come
+// back is filtering a CHECK through them.
+func (cs *ChainState) MPCAllShares(committeeID string, limit int) (
+	ids []string, rows []mpc.PartyTemplate, err error) {
+
+	if cs.db == nil {
+		return nil, nil, fmt.Errorf("mpc: no database configured")
+	}
+	if limit <= 0 {
+		limit = 5000
+	}
+	cur, err := cs.db.Query(
+		`SELECT enrollment_id, row_data FROM mpc_shares WHERE committee_id = $1 LIMIT $2`,
+		committeeID, limit)
+	if err != nil {
+		return nil, nil, fmt.Errorf("mpc: share lookup: %w", err)
+	}
+	defer cur.Close()
+
+	for cur.Next() {
+		var id string
+		var blob []byte
+		if err := cur.Scan(&id, &blob); err != nil {
+			return nil, nil, fmt.Errorf("mpc: reading share: %w", err)
+		}
+		row, err := decodeRow(blob)
+		if err != nil {
+			return nil, nil, fmt.Errorf("mpc: enrolment %s: %w", id, err)
+		}
+		ids = append(ids, id)
+		rows = append(rows, row)
+	}
+	return ids, rows, cur.Err()
+}
+
 // DeleteMPCShare removes an enrolment from this party's store.
 //
 // Not optional. Biometric data that cannot be deleted is data a person can
