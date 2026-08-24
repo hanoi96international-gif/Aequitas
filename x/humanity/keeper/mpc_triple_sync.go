@@ -1,6 +1,7 @@
 package keeper
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -11,158 +12,195 @@ import (
 	"time"
 )
 
-// Keeping the parties' triple counters in step.
+// One allocator decides which triples a comparison uses.
 //
-// WHY THIS EXISTS
+// # WHY A COUNTER PER PARTY COULD NOT WORK
 //
-// Each party stores how many multiplication triples it has consumed in its own
-// chain_config row (mpcTripleOffsetKey). Party 0's triple at index k is only
-// meaningful against party 1's triple at index k — the pair is what makes the
-// multiplication correct. Nothing kept the two counters equal.
+// Each party used to keep its own consumed-triples counter. Party 0's triple at
+// index k is only correct against party 1's triple at index k, so the counters
+// had to stay equal -- and nothing made them. Measured on 2026-08-24: party 0
+// stood at 10240, party 1 at 4096. Every comparison after that used
+// non-corresponding triples and produced a value that was neither 0 nor 1.
+// DistributedMatcher refuses to read such a value as a statement about a
+// person, correctly, so the symptom was a permanent 503.
 //
-// They came apart, and it was measured: on 2026-08-24 party 0 stood at 10240
-// and party 1 at 4096. Every comparison after that point used non-corresponding
-// triples, and the result was neither 0 nor 1. DistributedMatcher refuses to
-// interpret such a value — correctly — so the symptom was a 503 telling the
-// person to try again, forever.
+// They came apart because mpc_client.py asked the parties one after another
+// while /mpc/check runs an interactive protocol: party 0 blocked on a peer the
+// client had not asked yet, and mpcTriples advances BEFORE handing triples out
+// (deliberately -- losing triples to a crash is safe, replaying them is not).
+// So every deadlocked attempt burned party 0's supply and none of party 1's.
 //
-// HOW THEY CAME APART. mpc_client.py's _submit posted to the parties one after
-// another and waited for each answer. /mpc/check runs an interactive protocol,
-// so party 0 blocked waiting for a peer the client had not asked yet. But
-// mpcTriples advances the counter BEFORE handing the triples out (deliberately:
-// losing triples to a crash is safe, replaying them is not). So every
-// deadlocked attempt burned party 0's triples and none of party 1's. The client
-// is fixed to ask both at once — but a fix that only removes today's cause
-// leaves the invariant unguarded, and any partial failure would drift again.
+// WHY "ASK THE PEERS AND TAKE THE MAXIMUM" ALSO DID NOT WORK. That was the
+// first attempt here, and it is a race, not a synchronisation: read and advance
+// are not atomic. Measured, with the two parties 2048 apart -- party 1 read
+// party 0's 18432 and wrote 20480; party 0 then read that 20480 and wrote
+// 22528. Both had faithfully taken the maximum, and the gap survived intact,
+// because each read the other AFTER it had already moved.
 //
-// WHAT THIS DOES. Before allocating, a party asks its peers for their counters
-// and moves to the highest. Consequences, in order of importance:
+// WHAT THIS DOES INSTEAD. The party at index 0 is the allocator. Every party,
+// including the allocator itself, asks it which range this session gets, and
+// the answer is recorded per session:
 //
-//   - It never moves BACKWARD, so a triple is never reused. Reuse is the one
-//     truly dangerous outcome: a reused triple stops blinding and leaks the
-//     difference of the secrets it was used on.
-//   - It self-heals existing drift on the next comparison. No manual database
-//     surgery, which is what the alternative would have been.
-//   - It costs one small HTTP round trip per comparison, not per candidate.
+//   - both parties therefore use the SAME range, by construction rather than by
+//     agreement. There is nothing left to drift.
+//   - a repeat of the same session returns the same range. That is correct, not
+//     a leak: retrying one comparison re-blinds the same secrets with the same
+//     triples, which reveals nothing a completed run would not have. Reuse is
+//     only dangerous across DIFFERENT secrets, and a new session always gets a
+//     new range.
+//   - the allocator's counter is the single source of truth, so the historical
+//     gap disappears on the next comparison without touching either database.
 //
-// A peer that cannot be reached is skipped rather than fatal: the comparison
-// then either works (counters happened to agree) or fails loudly the way it
-// does today. Refusing to compare because a peer is briefly unreachable would
-// turn a transient blip into a refused registration.
+// If the allocator is unreachable, no comparison runs. That is the safe
+// direction: a duplicate check that could not happen must never be reported as
+// "not a duplicate", which is the irreversible mistake.
+const (
+	mpcTripleOffsetKey  = "mpc_triple_offset"
+	mpcTripleRangePath  = "/mpc/triple-range"
+	mpcTripleSessionKey = "mpc_triple_session:"
+)
 
-const mpcTripleOffsetKey = "mpc_triple_offset"
+var (
+	tripleAllocMu     sync.Mutex
+	tripleHTTPTimeout = 10 * time.Second
+	tripleHTTPClient  = &http.Client{Timeout: tripleHTTPTimeout}
+)
 
-// mpcTripleOffsetPath is served by every party for its peers.
-const mpcTripleOffsetPath = "/mpc/triple-offset"
+type tripleRangeRequest struct {
+	Session string `json:"session"`
+	Want    int    `json:"want"`
+}
 
-// peerOffsetTimeout is short on purpose. This is a single row read on the
-// peer; if it cannot answer quickly the comparison that follows would not have
-// worked anyway.
-var peerOffsetTimeout = 5 * time.Second
+type tripleRangeResponse struct {
+	Offset int `json:"offset"`
+}
 
-var peerOffsetClient = &http.Client{Timeout: peerOffsetTimeout}
-
-// handleMPCTripleOffset reports this party's triple counter.
+// handleMPCTripleRange allocates (or recalls) the triple range for one session.
 //
-// Authorized with the same client token as /mpc/enroll and /mpc/check. The
-// number says how much of a shared, finite resource has been spent; it is not
-// secret in the way a share is, but it is not public information either, and
-// an unauthenticated counter would let anyone probe how much MPC activity a
-// validator has seen.
-func (a *APIServer) handleMPCTripleOffset(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
-		mpcJSONError(w, http.StatusMethodNotAllowed, "GET only")
+// Only meaningful on the allocator; a non-allocator still answers, which keeps
+// the endpoint uniform and makes a misconfigured peers list fail loudly at the
+// comparison rather than silently handing out two different ranges.
+func (a *APIServer) handleMPCTripleRange(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		mpcJSONError(w, http.StatusMethodNotAllowed, "POST only")
 		return
 	}
 	if !mpcClientAuthorized(r) {
 		mpcJSONError(w, http.StatusUnauthorized, "unauthorized")
 		return
 	}
+	var req tripleRangeRequest
+	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<16)).Decode(&req); err != nil {
+		mpcJSONError(w, http.StatusBadRequest, "invalid JSON")
+		return
+	}
+	if strings.TrimSpace(req.Session) == "" {
+		mpcJSONError(w, http.StatusBadRequest, "session is required")
+		return
+	}
+	if req.Want <= 0 {
+		mpcJSONError(w, http.StatusBadRequest, "want must be positive")
+		return
+	}
+	offset, err := a.allocateTripleRange(req.Session, req.Want)
+	if err != nil {
+		mpcJSONError(w, http.StatusServiceUnavailable, err.Error())
+		return
+	}
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]int{"offset": a.localTripleOffset()})
+	json.NewEncoder(w).Encode(tripleRangeResponse{Offset: offset})
 }
 
-func (a *APIServer) localTripleOffset() int {
-	raw := a.blockchain.state.getConfigValueDB(mpcTripleOffsetKey)
-	if raw == "" {
-		return 0
+// allocateTripleRange hands out this session's range, allocating it once.
+func (a *APIServer) allocateTripleRange(session string, want int) (int, error) {
+	// Serialised in-process: two registrations arriving together must not read
+	// the same counter and both advance from it.
+	tripleAllocMu.Lock()
+	defer tripleAllocMu.Unlock()
+
+	sessionKey := mpcTripleSessionKey + session
+	if raw := a.blockchain.state.getConfigValueDB(sessionKey); raw != "" {
+		if v, err := strconv.Atoi(strings.TrimSpace(raw)); err == nil && v >= 0 {
+			return v, nil
+		}
 	}
-	v, err := strconv.Atoi(strings.TrimSpace(raw))
-	if err != nil || v < 0 {
-		return 0
+
+	offset := 0
+	if raw := a.blockchain.state.getConfigValueDB(mpcTripleOffsetKey); raw != "" {
+		if v, err := strconv.Atoi(strings.TrimSpace(raw)); err == nil && v > 0 {
+			offset = v
+		}
 	}
-	return v
+
+	// Record the session BEFORE advancing the counter. A crash between the two
+	// then costs a repeat of one comparison, not a silently reused range.
+	if err := a.blockchain.state.setConfigValueDB(sessionKey, strconv.Itoa(offset)); err != nil {
+		return 0, fmt.Errorf("mpc: could not record this session's triple range: %w", err)
+	}
+	if err := a.blockchain.state.setConfigValueDB(mpcTripleOffsetKey, strconv.Itoa(offset+want)); err != nil {
+		return 0, fmt.Errorf("mpc: could not record triple consumption, refusing to proceed "+
+			"rather than risk reusing them: %w", err)
+	}
+	return offset, nil
 }
 
-// syncedTripleOffset returns the highest counter across this party and its
-// peers, so every party allocates from the same place.
-func (a *APIServer) syncedTripleOffset() int {
-	best := a.localTripleOffset()
+// tripleRangeFor returns the range every party must use for this session.
+func (a *APIServer) tripleRangeFor(session string, want int) (int, error) {
 	if a.mpc == nil {
-		return best
+		return 0, fmt.Errorf("mpc: this node is not an MPC party")
 	}
-	token := os.Getenv("MPC_CLIENT_TOKEN")
-	if token == "" {
-		return best
+	allocator, err := a.tripleAllocatorURL()
+	if err != nil {
+		return 0, err
 	}
-
-	var (
-		mu sync.Mutex
-		wg sync.WaitGroup
-	)
-	for _, peer := range a.mpc.peers {
-		peer = strings.TrimSpace(peer)
-		if peer == "" || isLoopbackURL(peer) {
-			continue
-		}
-		// Skip this node's own URL: asking ourselves adds a round trip and
-		// can only return what we already read.
-		if a.mpc.selfAddr != "" && strings.EqualFold(peer, a.mpc.selfAddr) {
-			continue
-		}
-		wg.Add(1)
-		go func(url string) {
-			defer wg.Done()
-			n, err := fetchPeerTripleOffset(url, token)
-			if err != nil {
-				fmt.Printf("[MPC] could not read %s's triple counter (%v) — continuing with the "+
-					"counters that did answer; a comparison against a party that is out of step "+
-					"fails loudly rather than deciding wrongly\n", url, err)
-				return
-			}
-			mu.Lock()
-			if n > best {
-				best = n
-			}
-			mu.Unlock()
-		}(peer)
+	if allocator == "" {
+		// This node IS the allocator.
+		return a.allocateTripleRange(session, want)
 	}
-	wg.Wait()
-	return best
+	return fetchTripleRange(allocator, os.Getenv("MPC_CLIENT_TOKEN"), session, want)
 }
 
-func fetchPeerTripleOffset(baseURL, token string) (int, error) {
-	req, err := http.NewRequest(http.MethodGet, strings.TrimRight(baseURL, "/")+mpcTripleOffsetPath, nil)
+// tripleAllocatorURL returns the allocator's URL, or "" when this node is it.
+func (a *APIServer) tripleAllocatorURL() (string, error) {
+	if len(a.mpc.peers) == 0 {
+		return "", fmt.Errorf("mpc: no peers configured, so no allocator can be chosen")
+	}
+	if a.mpc.index == 0 {
+		return "", nil
+	}
+	url := strings.TrimSpace(a.mpc.peers[0])
+	if url == "" {
+		return "", fmt.Errorf("mpc: party 0 has no URL, so no allocator can be reached")
+	}
+	return url, nil
+}
+
+func fetchTripleRange(baseURL, token, session string, want int) (int, error) {
+	body, err := json.Marshal(tripleRangeRequest{Session: session, Want: want})
 	if err != nil {
 		return 0, err
 	}
-	req.Header.Set("Authorization", "Bearer "+token)
-	resp, err := peerOffsetClient.Do(req)
+	req, err := http.NewRequest(http.MethodPost,
+		strings.TrimRight(baseURL, "/")+mpcTripleRangePath, bytes.NewReader(body))
 	if err != nil {
 		return 0, err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+token)
+	resp, err := tripleHTTPClient.Do(req)
+	if err != nil {
+		return 0, fmt.Errorf("mpc: the triple allocator (%s) is unreachable: %w", baseURL, err)
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-		return 0, fmt.Errorf("HTTP %d", resp.StatusCode)
+		return 0, fmt.Errorf("mpc: the triple allocator (%s) answered HTTP %d", baseURL, resp.StatusCode)
 	}
-	var body struct {
-		Offset int `json:"offset"`
-	}
-	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+	var out tripleRangeResponse
+	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
 		return 0, err
 	}
-	if body.Offset < 0 {
-		return 0, fmt.Errorf("negative offset %d", body.Offset)
+	if out.Offset < 0 {
+		return 0, fmt.Errorf("mpc: the triple allocator returned a negative offset %d", out.Offset)
 	}
-	return body.Offset, nil
+	return out.Offset, nil
 }

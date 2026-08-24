@@ -9,7 +9,6 @@ import (
 	"io"
 	"net/http"
 	"os"
-	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -247,7 +246,7 @@ func (a *APIServer) handleMPCCheck(w http.ResponseWriter, r *http.Request) {
 			mpcJSONError(w, http.StatusServiceUnavailable, err.Error())
 			return
 		}
-		triples, err := a.mpcTriples(mpc.TriplesForManyComparison(len(row), len(rows)))
+		triples, err := a.mpcTriples(sub.Session, mpc.TriplesForManyComparison(len(row), len(rows)))
 		if err != nil {
 			mpcJSONError(w, http.StatusServiceUnavailable, err.Error())
 			return
@@ -338,7 +337,7 @@ func (a *APIServer) mpcCommittee() (*mpc.Committee, int, error) {
 // start after a restart would do exactly that, silently, so the consumed offset
 // is written to the config table before the triples are handed out — losing
 // unused triples on a crash is the acceptable direction, reusing them is not.
-func (a *APIServer) mpcTriples(need int) (*mpc.TripleStore, error) {
+func (a *APIServer) mpcTriples(session string, need int) (*mpc.TripleStore, error) {
 	if need <= 0 {
 		return mpc.NewTripleStore(nil), nil
 	}
@@ -362,14 +361,14 @@ func (a *APIServer) mpcTriples(need int) (*mpc.TripleStore, error) {
 	// the other half was not forged (mpc/sacrifice.go).
 	want := mpc.TriplesForVerifiedWork(need)
 
-	// The peers' counters decide, not just ours. Party 0's triple at index k is
-	// only correct against party 1's triple at index k, and nothing kept the two
-	// in step: measured 2026-08-24, party 0 stood at 10240 and party 1 at 4096,
-	// so every comparison used non-corresponding triples and produced a value
-	// that was neither 0 nor 1. See mpc_triple_sync.go for how they drifted and
-	// why taking the maximum is the safe direction (never backward, so a triple
-	// is never reused).
-	offset := a.syncedTripleOffset()
+	// One allocator decides the range, and both parties use it -- see
+	// mpc_triple_sync.go. Per-party counters cannot stay equal (measured
+	// 2026-08-24: 10240 against 4096) and a max-of-the-peers read is a race,
+	// not a fix (measured: a 2048 gap survived it intact).
+	offset, err := a.tripleRangeFor(session, want)
+	if err != nil {
+		return nil, err
+	}
 	if offset+want > len(all) {
 		return nil, fmt.Errorf("mpc: %d triples left in %s, this comparison needs %d — refusing "+
 			"to reuse, because a reused triple stops blinding and leaks the difference of the "+
@@ -379,10 +378,9 @@ func (a *APIServer) mpcTriples(need int) (*mpc.TripleStore, error) {
 
 	// Advance BEFORE handing them out, so a crash mid-comparison loses triples
 	// rather than replaying them.
-	if err := a.blockchain.state.setConfigValueDB(mpcTripleOffsetKey, strconv.Itoa(offset+want)); err != nil {
-		return nil, fmt.Errorf("mpc: could not record triple consumption, refusing to proceed "+
-			"rather than risk reusing them: %w", err)
-	}
+	// The counter was already advanced by the allocator, inside
+	// allocateTripleRange, under its lock. Advancing again here would double
+	// count and burn through a finite supply twice as fast.
 	return mpc.NewTripleStore(all[offset : offset+want]), nil
 }
 
