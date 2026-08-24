@@ -85,7 +85,7 @@ Das zentrale Problem eines auf menschlicher Existenz basierenden Währungssystem
 Aequitas löst dies mit biometrischer Verifikation und Zero-Knowledge-Proofs:
 
 **Registrierungsablauf:**
-1. Die Android-App ermittelt eine Identitätsquelle. Seit dem 23.08.2026 ist das im Normalfall eine Kamera-Aufnahme **des Gesichts** (nur des Gesichts), die von mehreren unabhängigen Vergleichsdiensten per Quorum gegen alle bestehenden Anmeldungen geprüft wird. Nur wenn kein Koordinator konfiguriert ist, tritt der alte Weg an seine Stelle: ein zufälliges, gerätegebundenes Geheimnis, das an ein Gerät bindet und nicht an einen Menschen. Siehe §3.2.
+1. Die Android-App ermittelt eine Identitätsquelle. Seit dem 23.08.2026 ist das im Normalfall eine Kamera-Aufnahme **des Gesichts** (nur des Gesichts), die von den Vergleichsdiensten des Koordinators gegen alle bestehenden Anmeldungen geprüft wird. Das Protokoll ist auf ein Quorum aus M von N unabhängigen Diensten ausgelegt; **die Beta läuft heute mit einem einzigen** (`quorum_size: 1`, live gemessen am 24.08.2026), das Quorum ist also vorerst nominell und dieser Dienst ein Einzelpunkt-Ausfall. Nur wenn kein Koordinator konfiguriert ist, tritt der alte Weg an seine Stelle: ein zufälliges, gerätegebundenes Geheimnis, das an ein Gerät bindet und nicht an einen Menschen. Siehe §3.2.
 2. Daraus wird ein deterministischer Hash abgeleitet — die Rohdaten verlassen das Gerät **niemals**
 3. Der Hash wird an den Proof-Server gesendet
 4. Der Proof-Server generiert einen **Groth16 Zero-Knowledge-Proof** (Groth16/BN128-Kurve)
@@ -105,7 +105,7 @@ The central problem of a monetary system based on human existence is verificatio
 Aequitas solves this with biometric verification and Zero-Knowledge Proofs:
 
 **Registration Flow:**
-1. The Android app establishes an identity source. Since 2026-08-23 this is normally a camera capture of **the face** (the face only), checked by quorum across several independent matching services against every existing enrolment. Only where no coordinator is configured does the older path apply: a random, device-bound secret, which binds to a device rather than to a person. See §3.2.
+1. The Android app establishes an identity source. Since 2026-08-23 this is normally a camera capture of **the face** (the face only), checked by the coordinator's matching services against every existing enrolment. The protocol is built for an M-of-N quorum of independent services; **the beta runs exactly one today** (`quorum_size: 1`, measured live on 2026-08-24), so the quorum is nominal for now and that service is a single point of failure. Only where no coordinator is configured does the older path apply: a random, device-bound secret, which binds to a device rather than to a person. See §3.2.
 2. A deterministic hash is derived from it — raw data **never** leaves the device
 3. The hash is sent to the Proof Server
 4. The Proof Server generates a **Groth16 Zero-Knowledge Proof** (Groth16/BN128 curve)
@@ -230,13 +230,21 @@ There is **no special hardware**. Registration runs through the Android app and 
 
 **Biometrics is the normal case since 2026-08-23**, no longer the exception: the shipped app (`app-v1.5.2`) has face matching active and a reachable coordinator compiled in. The former default — identity from a random, device-bound secret — bound to a **device**, not to a person; the same human could register again on a second phone. It now applies only when no coordinator is configured.
 
-The flow: the app captures the face, independent matching services compare it against existing enrolments and must agree by quorum (M of N) before a `bio_hash` is issued. That hash goes into the ZK proof's nullifier, and the chain rejects any nullifier it has already seen.
+The flow: the app captures the face, the matching services compare it against existing enrolments, and a quorum (M of N) must agree before a `bio_hash` is issued. **N is 1 in the current beta** — the aggregation, the fan-out and the per-validator vote reporting are all real and exercised, but with a single service there is nothing to outvote it. Adding independent services is deployment, not development. That hash goes into the ZK proof's nullifier, and the chain rejects any nullifier it has already seen.
 
 **First measurement on a real device (2026-08-23):** the same person was detected as a duplicate on the second attempt, with and without glasses — similarity 0.846 and 0.677 against a threshold of 0.40. That is one data point, not a false-accept rate; the threshold still comes from the model literature, not from our own measurements.
 
 **Where templates live — and what is still open.** On the matching service's disk they are AES-256-GCM encrypted, bound to the row they belong to. Alongside that, an MPC path has run since 2026-08-23: every capture is split additively, one row per party, across two separately controlled machines — neither can reconstruct anything from its half.
 
 But while the plaintext comparison decides, the matching service **must** hold every enrolled template to compare against. Encryption there protects the file, not the service holding the key. The mode in which the committee decides and nothing whole is stored locally is built and tested, but **switched off**: its threshold has never been calibrated against real captures, and guessing it means deciding who may exist on a guessed number. That needs roughly 1,000 impostor pairs.
+
+**Withdrawal of consent, and why it cannot mean total erasure.** Since 2026-08-24 the app carries the erasure path itself (GDPR Art. 17): it keeps the registrant's `bio_hash` in hardware-backed storage and hands it to `DELETE /enrollment`, which fans out to every matching service. The wallet link, the consent record and every descriptor except one are cleared, and the row is stamped `withdrawn_at`.
+
+One field survives on purpose: the encrypted face embedding. **Erasing a biometric and still recognising its owner are mutually exclusive** — a token that can answer "is this the same person" *is* the template. Removing it outright, which is what the code did until that date, would have opened an unbounded money printer: the chain pays a 1,000 AEQ registration grant per unseen nullifier, the nullifier derives from the `bio_hash`, and the `bio_hash` is `secrets.randbelow` — a fresh random value, not a function of the face. So *register → spend → delete → register again* would have minted a new identity and paid the grant a second time, repeatably, at no cost. Neither the chain nor any wallet-side rule can catch that: the chain only ever sees an unused nullifier and does exactly what it should, and a fresh wallet defeats wallet-side checks.
+
+What is retained is therefore the minimum that closes the loop, and nothing more: an AES-256-GCM sealed vector bound to no wallet and no identity, whose only answerable question is "has this person enrolled before". The app says this in plain words before asking for confirmation, in all twelve languages, rather than promising an erasure it cannot perform. Withdrawing returns a person's data; it does not return their eligibility for a second grant, and their on-chain registration stands either way — the ledger is immutable.
+
+If the MPC path ever becomes authoritative this gets strictly better: in that mode no whole embedding is stored anywhere, uniqueness rides on shares no single party can reconstruct, and the local row could be dropped outright. That is the reason the MPC path exists. It is off today only because its threshold has never been calibrated.
 
 **What actually carries uniqueness today:** the on-chain nullifier. It is cryptographic and airtight — the same nullifier is refused the second time, whatever path submits it. But it only proves that *the same identity source* cannot count twice. That the source is a human is carried by the face match — with a threshold that is not yet calibrated.
 

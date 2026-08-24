@@ -3450,6 +3450,18 @@ func (a *APIServer) handleDappJS(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprint(w, dappJS)
 }
 
+// defaultAPKReleaseURL is where /download/app.apk redirects when the mounted
+// APK is absent. It stood at app-v1.4.1 while the shipped release was already
+// app-v1.5.2 -- three releases back, and the older builds are exactly the ones
+// whose personhood check was not yet enforced. It was written out twice in the
+// handler below, so the two copies could drift apart; one constant now.
+//
+// This is the LAST resort: the boxes bind-mount the real APK at
+// downloads/aequitas-app.apk and serve that (verified live 2026-08-24 --
+// /download/app.apk returned 215,114,899 bytes, byte-for-byte app-v1.5.2).
+// Operators override it per-box with AEQUITAS_APK_URL without a chain deploy.
+const defaultAPKReleaseURL = "https://github.com/hanoi96international-gif/Aequitas-App/releases/download/app-v1.5.2/app-release.apk"
+
 func (a *APIServer) handleAppDownload(w http.ResponseWriter, r *http.Request) {
 	const apkPath = "downloads/aequitas-app.apk"
 	// FIX (N1, Audit 2026-08-18): this "fallback" is in practice the ONLY path.
@@ -3465,14 +3477,14 @@ func (a *APIServer) handleAppDownload(w http.ResponseWriter, r *http.Request) {
 	// restart, not a chain deploy.
 	fallbackURL := os.Getenv("AEQUITAS_APK_URL")
 	if fallbackURL == "" {
-		fallbackURL = "https://github.com/hanoi96international-gif/Aequitas-App/releases/download/app-v1.4.1/app-release.apk"
+		fallbackURL = defaultAPKReleaseURL
 	}
 	// Only ever redirect to an absolute http(s) URL: an operator typo that left
 	// a relative path here would otherwise turn this endpoint into an
 	// open-redirect-shaped surprise on the node's own origin.
 	if !strings.HasPrefix(fallbackURL, "https://") && !strings.HasPrefix(fallbackURL, "http://") {
 		fmt.Printf("[APK] ⚠ AEQUITAS_APK_URL=%q is not an absolute http(s) URL — ignoring it\n", fallbackURL)
-		fallbackURL = "https://github.com/hanoi96international-gif/Aequitas-App/releases/download/app-v1.4.1/app-release.apk"
+		fallbackURL = defaultAPKReleaseURL
 	}
 	f, err := os.Open(apkPath)
 	if err != nil {
