@@ -28,11 +28,16 @@ name: Align Contabo2 with Contabo1 (2 perf flags, manual)
 # explicitly and C1 sets nothing, but rpcRateLimitMaxDefault IS 200, so the
 # two are already identical and "fixing" it would change nothing.
 #
-# Merging was measured healthy at the time this was written (200 blocks: an
-# exact 100/100 proposer split, longest single-proposer run of 2, 145 merge
-# blocks; 40 samples over 10 minutes never more than 1 block apart; byte-
-# identical hash and state root at height 4611400). These flags matter under
-# LOAD, which is where the dropouts happen -- not on an idle chain.
+# Merging was measured healthy before this ran (200 blocks: an exact 100/100
+# proposer split, longest single-proposer run of 2, 145 merge blocks; 40
+# samples over 10 minutes never more than 1 block apart; byte-identical hash
+# and state root at height 4611400). These flags matter under LOAD, which is
+# where the dropouts happen -- not on an idle chain.
+#
+# RAN 2026-08-24. C2 was ~2 minutes away (the start reads ~24 million WAL
+# records, all below the recovery floor, which is read-only but not free) and
+# came back byte-identical with C1 at height 4668150 -- no resync needed. Both
+# flags confirmed in the container's own environment afterwards.
 #
 # Manual-only, same reasoning as enable-wal-contabo2.yml: this restarts a live
 # validator. C1 keeps producing throughout, so the chain does not stop.
@@ -58,8 +63,10 @@ jobs:
           port: 22
           fingerprint: "SHA256:VIwj7Faxiga2n45HVHZEQFPxcbRKHgSgHoxAFsf2wto"
           script_stop: true
-          timeout: 600s
-          command_timeout: 600s
+          # 15 min: Deploy (Rebuild, meist gecacht) + bis zu 6 min Warten auf
+          # den Start. 600s waeren zu knapp, sobald das WAL wieder waechst.
+          timeout: 900s
+          command_timeout: 900s
           script: |
             set -euo pipefail
             ENV_FILE=/root/.aequitas.env
@@ -86,10 +93,30 @@ jobs:
             /root/deploy_safe_c2.sh
 
             echo "=== Warten, bis der Knoten wieder antwortet ==="
-            for i in $(seq 1 30); do
+            # `if`, NICHT `curl ... && break`. Unter `set -e` ist die linke
+            # Seite eines && zwar ausgenommen, der GESAMTE Ausdruck aber nicht
+            # -- schlaegt curl fehl, liefert `curl && break` non-zero, und als
+            # letzter Befehl im Schleifenrumpf beendet das die ganze Sitzung.
+            # Beim ersten Lauf (24.08.) genau so passiert: Status 56 nach fuenf
+            # Sekunden, obwohl der Deploy sauber durchgelaufen war.
+            #
+            # 6 Minuten statt 2,5: der Start liest das WAL, und das sind auf C2
+            # rund 24 Millionen Datensaetze. Sie liegen alle unter dem
+            # recovery floor und werden nur gelesen, aber das dauert ~2 Minuten.
+            ready=0
+            for i in $(seq 1 72); do
               sleep 5
-              curl -sf --max-time 5 http://localhost:8080/api/status >/dev/null 2>&1 && break
+              if curl -sf --max-time 5 http://localhost:8080/api/status >/dev/null 2>&1; then
+                ready=1
+                echo "Knoten antwortet nach etwa $((i * 5)) s."
+                break
+              fi
             done
+            if [ "$ready" -ne 1 ]; then
+              echo "FEHLER: Knoten antwortet nach 6 Minuten nicht. Log:"
+              docker logs --tail 60 aequitas-node || true
+              exit 1
+            fi
 
             echo "=== Sind die Flags wirklich im Container angekommen? ==="
             # Am Prozess pruefen, nicht an der Datei -- eine Datei, die der
