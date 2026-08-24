@@ -3461,9 +3461,15 @@ func (a *APIServer) handleDappJS(w http.ResponseWriter, r *http.Request) {
 //
 // This is the LAST resort: the boxes bind-mount the real APK at
 // downloads/aequitas-app.apk and serve that (verified live 2026-08-24 --
-// /download/app.apk returned 215,114,899 bytes, byte-for-byte app-v1.5.2).
-// Operators override it per-box with AEQUITAS_APK_URL without a chain deploy.
-const defaultAPKReleaseURL = "https://github.com/hanoi96international-gif/Aequitas-App/releases/download/app-v1.5.2/app-release.apk"
+// /download/app.apk returned 214,986,378 bytes, byte-for-byte app-v1.6.0).
+// Operators override it per-box with AEQUITAS_APK_URL without a chain deploy,
+// which is the normal path; keeping this constant current is belt-and-braces
+// for a box where the variable was never set.
+//
+// Replacing the mounted file must WRITE INTO it (cat new > dest), never mv:
+// a file bind-mount follows the inode, so a rename leaves the container
+// serving the old file while the host shows the new one.
+const defaultAPKReleaseURL = "https://github.com/hanoi96international-gif/Aequitas-App/releases/download/app-v1.6.0/app-release.apk"
 
 func (a *APIServer) handleAppDownload(w http.ResponseWriter, r *http.Request) {
 	const apkPath = "downloads/aequitas-app.apk"
