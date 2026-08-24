@@ -233,7 +233,11 @@ func (a *APIServer) handleMPCCheck(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	ids, rows, err := a.blockchain.state.MPCCandidateShares(committee.ID, sub.bucketKeys(), 0)
+	// Gegen ALLE vergleichen, nicht gegen die Bucket-Vorauswahl: die filtert
+	// bei dieser Schwelle den echten Treffer mit weg (0,05 % Trefferquote bei
+	// d=165, gemessen am 24.08.2026). Begruendung und Zahlen in
+	// MPCAllShares' eigenem Kommentar.
+	ids, rows, err := a.blockchain.state.MPCAllShares(committee.ID, 0)
 	if err != nil {
 		mpcJSONError(w, http.StatusInternalServerError, err.Error())
 		return
