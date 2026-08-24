@@ -1,0 +1,97 @@
+name: Set the APK download fallback on both boxes (manual)
+
+# /download/app.apk serves the APK bind-mounted at downloads/aequitas-app.apk
+# and only redirects to a URL when that file is absent. AEQUITAS_APK_URL is
+# that fallback, and it decouples shipping a new app from redeploying the
+# chain (api.go's handleAppDownload).
+#
+# WHY THIS EXISTS. It was left at app-v1.4.1 while the shipped release was
+# already app-v1.5.2 -- three releases back, and the older builds are exactly
+# the ones whose personhood check was not yet enforced. Nobody noticed because
+# the mount was present on both boxes, so the fallback never fired: measured
+# live on 2026-08-24, /download/app.apk returned 215,114,899 bytes,
+# byte-for-byte app-v1.5.2. A latent wrong answer, not a visible one -- which
+# is why it needed a tool rather than a one-off fix.
+#
+# The compiled-in default (defaultAPKReleaseURL) now also points at
+# app-v1.5.2, so a box with NO variable set is correct too. Setting it here
+# is how you move ahead of the chain's own release cadence.
+#
+# Run this right after publishing a new app release.
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release-Tag im App-Repo, z. B. app-v1.5.2"
+        required: true
+        default: "app-v1.5.2"
+
+jobs:
+  set:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Pruefen, dass es das Release ueberhaupt gibt
+        # Zuerst, und als eigener Schritt: eine Fallback-URL auf ein nicht
+        # existierendes Release ist schlimmer als eine veraltete -- die
+        # veraltete liefert wenigstens eine App aus.
+        run: |
+          set -euo pipefail
+          URL="https://github.com/hanoi96international-gif/Aequitas-App/releases/download/${{ inputs.tag }}/app-release.apk"
+          echo "Pruefe: $URL"
+          CODE="$(curl -sIL -o /dev/null -w '%{http_code}' "$URL")"
+          SIZE="$(curl -sIL -o /dev/null -w '%{size_download}' "$URL")"
+          echo "HTTP $CODE"
+          [ "$CODE" = "200" ] || { echo "FEHLER: ${{ inputs.tag }} liefert kein abrufbares app-release.apk."; exit 1; }
+          echo "APK_URL=$URL" >> "$GITHUB_ENV"
+
+      - name: Contabo1
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: 173.249.37.118
+          username: root
+          key: ${{ secrets.CONTABO_SSH_KEY }}
+          port: 22
+          # Wie in deploy-contabo.yml: der SSH-SHA256-Fingerabdruck, nicht der
+          # rohe base64-Schluesselblob. Ohne ihn akzeptiert die Action jeden
+          # Host-Schluessel.
+          fingerprint: "SHA256:noMtjHV8c+2iEFZu3TRUP6WRwGjkrvFke71KgU6Eyt4"
+          envs: APK_URL
+          script_stop: true
+          timeout: 120s
+          script: |
+            set -euo pipefail
+            ENV_FILE=/root/.aequitas.env
+            cp "$ENV_FILE" "${ENV_FILE}.bak.$(date +%s)"
+            # Ersetzen falls vorhanden, sonst anhaengen -- ein blindes Anhaengen
+            # wuerde eine zweite Zeile erzeugen, und welche davon gewinnt,
+            # haengt an der Lesereihenfolge.
+            if grep -q '^AEQUITAS_APK_URL=' "$ENV_FILE"; then
+              sed -i "s#^AEQUITAS_APK_URL=.*#AEQUITAS_APK_URL=${APK_URL}#" "$ENV_FILE"
+            else
+              echo "AEQUITAS_APK_URL=${APK_URL}" >> "$ENV_FILE"
+            fi
+            grep '^AEQUITAS_APK_URL=' "$ENV_FILE"
+            echo "Hinweis: wirksam wird das erst beim naechsten Container-Neustart."
+
+      - name: Contabo2
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: 194.163.188.71
+          username: root
+          key: ${{ secrets.CONTABO2_SSH_KEY }}
+          port: 22
+          fingerprint: "SHA256:VIwj7Faxiga2n45HVHZEQFPxcbRKHgSgHoxAFsf2wto"
+          envs: APK_URL
+          script_stop: true
+          timeout: 120s
+          script: |
+            set -euo pipefail
+            ENV_FILE=/root/.aequitas.env
+            cp "$ENV_FILE" "${ENV_FILE}.bak.$(date +%s)"
+            if grep -q '^AEQUITAS_APK_URL=' "$ENV_FILE"; then
+              sed -i "s#^AEQUITAS_APK_URL=.*#AEQUITAS_APK_URL=${APK_URL}#" "$ENV_FILE"
+            else
+              echo "AEQUITAS_APK_URL=${APK_URL}" >> "$ENV_FILE"
+            fi
+            grep '^AEQUITAS_APK_URL=' "$ENV_FILE"
+            echo "Hinweis: wirksam wird das erst beim naechsten Container-Neustart."
