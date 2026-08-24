@@ -258,6 +258,32 @@ Verified on the running service after migrating the existing rows: 2 enrolments,
 
 This is not anonymisation, and the app does not claim it is. A sketch remains biometric data under GDPR Art. 9 and still recognises people — that is its purpose. It is simply no longer the template.
 
+### Uniqueness at the scale this project is for
+
+A universal basic income is not a system for five hundred people, and the design has to be judged at 10⁸–10⁹. At that size the arithmetic decides more than any implementation choice, so it is written out here rather than discovered later.
+
+**Exhaustive comparison is impossible — and not because of cryptography.** Checking every new enrolment against every existing one is n(n−1)/2 comparisons. At one nanosecond each, which is optimistic for a 512-bit XOR and popcount and assumes no encryption at all:
+
+| enrolments | pairs | time at 1 ns each |
+|---|---|---|
+| 1 million | 5·10¹¹ | minutes |
+| 100 million | 5·10¹⁵ | 0.2 years |
+| 1 billion | 5·10¹⁷ | **15.9 years** |
+
+So an index is not an optimisation, it is a requirement — and this is true of the plaintext path as much as of any secure one.
+
+**Every index is approximate, and that is survivable.** Sign-LSH separates the two populations by ρ = ln(p₁)/ln(p₂) = 0.484, computed from this system's own measured distances (a genuine returning person at d ≈ 135 bits, a stranger at d ≈ 240). That predicts n^0.484 candidates per query — 22,653 instead of a billion. But the constants are unkind in this regime: reaching 99.9% recall costs hundreds to thousands of hash tables, and even then 12–61% of strangers survive as candidates. The limit is the *biometric* separation, not the index; better embeddings would improve everything downstream at once. A graph index (HNSW) is the practical answer, reaching ~99% recall at a few hundred distance computations regardless of n.
+
+**What makes approximation safe is not perfect recall.** Any recall below 1 is grindable, because the attacker chooses how many times to try: at 99.9%, roughly a thousand attempts buy a second identity. The defence is in the same number — **999 of those attempts are detected duplicates.** An attack that leaves 999 traces is not stealthy; it is only invisible while nobody counts.
+
+So the system counts, per matched enrolment — the one thing an attacker cannot change, since wallets, addresses and devices are all replaceable and a face is not — and it **delays rather than blocks**. The first few attempts cost nothing, because someone who forgot they had registered is not an attacker. After that the wait doubles, capped at two minutes. The cap is not decoration: an uncapped delay is a ban wearing a different name, and a ban is the irreversible error this project's own first principle forbids. Measured against that policy, a thousand attempts cost over twenty-four hours and leave a thousand recorded hits; an honest person waits at most two minutes.
+
+**Storage is not the constraint.** A sketch is 64 bytes, so the whole world fits in 64 GB. What has to be engineered is retrieval, not capacity.
+
+**And this is why MPC cannot be the mandatory path.** Even granting a perfect index, 22,653 candidates per registration times a billion registrations exceeds any constant a secure comparison could reach; the correlated randomness alone would be measured in exabytes. That is not a failure of the MPC work — the property it was built for, that no party holds a whole template, is delivered by the sketch instead, and delivered today. MPC keeps its value as a cross-check on a sample of registrations, where its cost is a matter of choice rather than of population.
+
+
+
 But while the plaintext comparison decides, the matching service **must** hold every enrolled template to compare against. Encryption there protects the file, not the service holding the key. The mode in which the committee decides and nothing whole is stored locally is built and tested, but **switched off** — for the recall reason above, and because its threshold has never been calibrated against real captures. The geometry behind that threshold was checked on 2026-08-24 and holds: sign-LSH turns a cosine `s` into `512·acos(s)/π` bits, and measured against this implementation's own projections over 1,500 constructed pairs per point, the agreement is within 0.5 bits across the whole range. What remains unmeasured is the other half — what cosine two *different* people actually produce. That still needs roughly 1,000 impostor pairs, and no synthetic test substitutes for it.
 
 **Withdrawal of consent, and why it cannot mean total erasure.** Since 2026-08-24 the app carries the erasure path itself (GDPR Art. 17): it keeps the registrant's `bio_hash` in hardware-backed storage and hands it to `DELETE /enrollment`, which fans out to every matching service. The wallet link, the consent record and every descriptor except one are cleared, and the row is stamped `withdrawn_at`.
