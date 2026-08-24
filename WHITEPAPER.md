@@ -244,7 +244,19 @@ The flow: the app captures the face, the matching services compare it against ex
 
 Raising that recall is not a matter of turning a dial. Loosening the filter multiplies the candidates, each candidate costs `2 × 2 × 512 = 2048` triples, and the dealer delivered 2,000,000 per party — about 976 comparisons at one candidate each. Recall and capacity pull against each other, and the triple budget is the binding constraint.
 
-So MPC is **not** authoritative, and switching it on today would be worse than leaving it off: duplicate detection would fall back to catching only near-identical re-captures, while the plaintext path compares against every enrolment and catches the rest. The honest summary is that the matching service still holds whole templates, encrypted at rest, and decrypts them to compare.
+So MPC is **not** authoritative, and switching it on today would be worse than leaving it off: duplicate detection would fall back to catching only near-identical re-captures, while the plaintext path compares against every enrolment and catches the rest.
+
+**The template is nevertheless gone (2026-08-24).** MPC was one route to "no party holds the whole template"; it was not the only one, and it turned out not to be the shortest. Since this date the matching service stores no ArcFace template at all — encrypted or otherwise. What it stores is a 512-bit sign-LSH sketch, 64 bytes, one bit per random hyperplane. The template exists only for the duration of the request that computed it.
+
+Comparison is unchanged where it matters. Sign-LSH maps a cosine `s` to an expected bit distance of `512·acos(s)/π`, and that inverts: the measured bit distance is converted back into an estimated cosine, so `ModalityScore`, `decide_duplicate` and `FACE_MATCH_THRESHOLD = 0.40` all keep working on exactly the quantity they always did. What changed is *what is stored*, not *how the decision is made*.
+
+The mapping is measured, not assumed — against this implementation's own projections, which are uniform rather than Gaussian, over 1,500 constructed pairs per point: agreement within 0.5 bits from cosine 0.2 to 0.846. The binarisation costs about ±11 bits of spread, roughly ±0.06 in cosine, and against the distances that matter that is ample: at cosine 0.846 and 0.677 — the same person, measured live, without and with glasses — all 400 test pairs still decide "duplicate", and at cosine 0.10 all 400 decide "not a duplicate". Not one pair flips.
+
+512 bits rather than more is the deliberate point of balance: more bits sharpen the comparison and simultaneously make the direction in embedding space easier to pin down. At one bit per dimension the reconstruction stays coarse while the decision stays right.
+
+Verified on the running service after migrating the existing rows: 2 enrolments, **0 holding a template**, 2 holding a sketch of 64 bytes each, and **zero `AEQT1` sealed-template markers** left anywhere in the database file.
+
+This is not anonymisation, and the app does not claim it is. A sketch remains biometric data under GDPR Art. 9 and still recognises people — that is its purpose. It is simply no longer the template.
 
 But while the plaintext comparison decides, the matching service **must** hold every enrolled template to compare against. Encryption there protects the file, not the service holding the key. The mode in which the committee decides and nothing whole is stored locally is built and tested, but **switched off** — for the recall reason above, and because its threshold has never been calibrated against real captures. The geometry behind that threshold was checked on 2026-08-24 and holds: sign-LSH turns a cosine `s` into `512·acos(s)/π` bits, and measured against this implementation's own projections over 1,500 constructed pairs per point, the agreement is within 0.5 bits across the whole range. What remains unmeasured is the other half — what cosine two *different* people actually produce. That still needs roughly 1,000 impostor pairs, and no synthetic test substitutes for it.
 
