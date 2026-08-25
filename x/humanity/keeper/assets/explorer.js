@@ -13,6 +13,41 @@ function activeProvider() { return wcProvider || window.ethereum; }
 
 const T = {
 en:{
+  'bv-bind':'🔗 Generate Node Binding Signature',
+  'bv-check-d':'The second call lists every verifier and compares them: whether all hold the same number of enrollments, whether anyone is missing a seed, and whether the keys agree. If your entry shows a divergence, it is better to find out here than during someone’s registration.',
+  'bv-check-t':'Checking That It Works',
+  'bv-desc':'A block-producing node secures the <strong style="color:var(--text)">ledger</strong>. A bio verifier secures something else: the promise that <strong style="color:var(--neon)">each human registers only once</strong>. These are separate roles — you can run either, or both on the same machine.',
+  'bv-guide-sub':'Step by step &middot; No cryptography knowledge required &middot; About 30 minutes, most of it downloading',
+  'bv-honest-d':'This part is in beta and the limits are real. The joint comparison consumes one-time cryptographic material, and one delivery currently covers a few dozen registrations before more is needed — so the confidential path proves itself at small scale first, not at millions. The work also grows with the number of people enrolled. We publish these numbers rather than round them off: a system that asks for your face has no business being vague about what it can and cannot do yet.',
+  'bv-honest-t':'Where this stands today — plainly',
+  'bv-need-1':'<strong style="color:var(--text)">A registered Aequitas human account.</strong> Same rule as for block production, and for the same reason: one human, one key. Without it, a single person could quietly become a whole committee.',
+  'bv-need-2':'<strong style="color:var(--text)">A small Linux server with Docker.</strong> 2 GB RAM is enough. No GPU — the comparison is arithmetic on 64-byte values. The machine already running your node is fine.',
+  'bv-need-3':'<strong style="color:var(--text)">A domain name with HTTPS.</strong> Other committee members must reach you. A subdomain of something you already own is enough.',
+  'bv-need-4':'<strong style="color:var(--text)">To stay online.</strong> Every member of a committee must answer for a registration to finish. A verifier that is often away slows people down instead of protecting them.',
+  'bv-need-t':'Before You Start — What You Need',
+  'bv-s1-note':'Keep the private half on your server and nowhere else. The public half is meant to be shared — it is how others verify that you attested something. <strong style="color:var(--text)">Your own projection seed matters:</strong> because every verifier uses a different one, a stolen database from one verifier cannot be compared against another’s. Lose the seed and your stored shares become meaningless, so back it up somewhere you control.',
+  'bv-s1-t':'Step 1 — Generate Your Own Keys',
+  'bv-s1-warn-d':'Two verifiers holding the same secret count as one, and the committee would be smaller than it looks. Nobody — including us — should ever send you a key.',
+  'bv-s1-warn-t':'Generate them yourself. Never accept keys from anyone.',
+  'bv-s2-d':'Put the values from Step 1 into a file readable only by you. One value per line, no quotes.',
+  'bv-s2-note':'<strong style="color:var(--gold)">Leave ALLOW_REAL_BIOMETRIC_DATA on false</strong> until you have read the data-protection notes. With it off, your verifier joins the network and takes part in test enrollments without ever storing data from a real person. That is the right way to start, and there is no hurry to change it.',
+  'bv-s2-t':'Step 2 — Write the Configuration File',
+  'bv-s3-note':'A healthy answer reports <span style="font-family:var(--font-mono);color:var(--neon)">plaintext_templates: 0</span> and <span style="font-family:var(--font-mono);color:var(--neon)">sketch_seed_configured: true</span>. The first is the claim that no whole template is stored, in a form you can check yourself rather than take on faith. Check it now and again later — it is your own guarantee as much as anyone else’s.',
+  'bv-s3-t':'Step 3 — Start the Verifier',
+  'bv-s4-d':'Other committee members reach you over the public internet, so the port must not be exposed unencrypted. Caddy obtains a certificate on its own.',
+  'bv-s4-t':'Step 4 — Put HTTPS in Front',
+  'bv-s5-d':'This is the step that makes one human one verifier. You sign twice: once with your registered human wallet, and once with your node key. The chain accepts the pair only if both signatures check out, so nobody can register a key in your name and you cannot register two. Use the button below.',
+  'bv-s5-t':'Step 5 — Link Your Key to Your Human Wallet',
+  'bv-s6-d':'Send the <strong style="color:var(--text)">public</strong> half from Step 1, together with your HTTPS address, to the group. It is added to the list every proof server checks against, and from then on your attestations count toward the quorum. Nothing secret leaves your machine in this step — that is the point of the split: the private half stays with you forever, and the public half is useless without it.',
+  'bv-s6-t':'Step 6 — Publish Your Public Key',
+  'bv-status-d':'The verifier source is <strong style="color:var(--text)">not public yet</strong>, so the steps below cannot be completed by everyone today. They are published now because the design should be checkable before it is deployed, not after. If you want to run one, ask in the Telegram group linked on the front page. Opening this repository is what turns the guide below from a plan into an invitation, and it is the next thing we owe you.',
+  'bv-status-t':'Status: closed beta — read this before you start',
+  'bv-title':'Or Become a Bio Verifier — the Role That Makes Uniqueness Decentralized',
+  'bv-what-d':'A face is never sent to you. Your machine stores one <strong style="color:var(--text)">additive share</strong> of a 64-byte sketch: on its own it is indistinguishable from random noise, and no computation you can run recovers a face from it. Comparisons happen jointly with the other members of your committee, and none of you learns anything but the answer — <em>duplicate: yes or no</em>. That is not a promise about our good intentions; it is a property of the arithmetic.',
+  'bv-what-t':'What you would hold — and what you would never see',
+  'bv-why-d':'A registration is accepted only once <strong style="color:var(--text)">several different verifiers</strong> have attested it. One stolen key is not enough — an attacker needs a whole committee. And because <strong style="color:var(--neon)">one human may hold exactly one validator key</strong>, buying a committee means being that many people. With 100 verifiers, an attacker controlling 10 of them has under a 1-in-1,000 chance of owning a full committee of three. Every person who joins makes that number smaller. This is the one place where the count of participants <em>is</em> the security.',
+  'bv-why-t':'Why every additional verifier makes the network harder to corrupt',
+  'swap-price-flat':'No trades in this period — the price has not moved. The chart is working; the market is quiet.',
   'mpc-optin-title':'Optional — help check for duplicate registrations (prepared, not yet in service)',
   'mpc-optin-desc':'Prepared, but not yet in service. Later your node will be able to help verify that nobody registers twice without ever seeing anyone\'s biometric data: each participating party holds only a mathematical share of every enrolled template — noise on its own — and they compare a new capture together, so no single machine can reconstruct anything. Today this path decides nothing. The duplicate check does not run over it, and the committee is a fixed list rather than drawn automatically, so setting the three variables below changes nothing about registrations for now.',
   'mpc-optin-note':'The share file contains one-time randomness that only your node may hold — never copy it to another machine and never commit it anywhere. It currently has to come from the operator, which is the remaining central dependency. You do not need a new key: your node identifies itself to the other members with the same signing key it already uses for blocks.',
@@ -162,6 +197,41 @@ en:{
   'expl-heading':'Block Explorer',
 },
 de:{
+  'bv-bind':'🔗 Bindungs-Signatur erzeugen',
+  'bv-check-d':'Der zweite Aufruf listet jeden Verifier auf und vergleicht sie: ob alle gleich viele Einschreibungen halten, ob irgendwo ein Seed fehlt und ob die Schlüssel übereinstimmen. Zeigt dein Eintrag eine Abweichung, ist es besser, das hier zu erfahren als mitten in der Registrierung eines Menschen.',
+  'bv-check-t':'Nachprüfen, dass es läuft',
+  'bv-desc':'Ein blockproduzierender Node sichert das <strong style="color:var(--text)">Kassenbuch</strong>. Ein Bio-Verifier sichert etwas anderes: die Zusage, dass sich <strong style="color:var(--neon)">jeder Mensch nur einmal anmeldet</strong>. Das sind getrennte Rollen — du kannst eine davon betreiben oder beide auf derselben Maschine.',
+  'bv-guide-sub':'Schritt für Schritt &middot; Keine Kryptografie-Kenntnisse nötig &middot; Etwa 30 Minuten, das meiste davon Herunterladen',
+  'bv-honest-d':'Dieser Teil ist Beta, und die Grenzen sind echt. Der gemeinsame Vergleich verbraucht kryptografisches Einwegmaterial, und eine Lieferung reicht derzeit für einige Dutzend Registrierungen, bevor Nachschub nötig ist — der vertrauliche Weg bewährt sich also zuerst im Kleinen, nicht bei Millionen. Der Aufwand wächst außerdem mit der Zahl der Eingeschriebenen. Wir veröffentlichen diese Zahlen, statt sie zu runden: ein System, das nach deinem Gesicht fragt, hat kein Recht darauf, unklar zu bleiben, was es kann und was noch nicht.',
+  'bv-honest-t':'Wo das heute steht — unverblümt',
+  'bv-need-1':'<strong style="color:var(--text)">Ein registriertes Aequitas-Konto.</strong> Dieselbe Regel wie beim Blockbauen, und aus demselben Grund: ein Mensch, ein Schlüssel. Ohne sie könnte eine einzelne Person unbemerkt ein ganzes Komitee werden.',
+  'bv-need-2':'<strong style="color:var(--text)">Ein kleiner Linux-Server mit Docker.</strong> 2 GB Arbeitsspeicher genügen. Keine Grafikkarte — verglichen wird mit Arithmetik auf 64 Byte. Die Maschine, auf der schon dein Node läuft, reicht aus.',
+  'bv-need-3':'<strong style="color:var(--text)">Ein Domainname mit HTTPS.</strong> Die anderen Komiteemitglieder müssen dich erreichen. Eine Unterdomain von etwas, das dir ohnehin gehört, genügt.',
+  'bv-need-4':'<strong style="color:var(--text)">Erreichbar bleiben.</strong> Für eine Registrierung muss jedes Mitglied eines Komitees antworten. Ein Verifier, der oft weg ist, bremst Menschen, statt sie zu schützen.',
+  'bv-need-t':'Bevor du anfängst — was du brauchst',
+  'bv-s1-note':'Die private Hälfte bleibt auf deinem Server und sonst nirgends. Die öffentliche ist zum Weitergeben gedacht — mit ihr prüfen andere, dass du etwas bezeugt hast. <strong style="color:var(--text)">Dein eigener Projektions-Seed zählt:</strong> weil jeder Verifier einen anderen benutzt, lässt sich eine gestohlene Datenbank des einen nicht gegen die eines anderen halten. Geht der Seed verloren, werden deine gespeicherten Anteile bedeutungslos — sichere ihn also an einem Ort, den du kontrollierst.',
+  'bv-s1-t':'Schritt 1 — Eigene Schlüssel erzeugen',
+  'bv-s1-warn-d':'Zwei Verifier mit demselben Geheimnis zählen als einer, und das Komitee wäre kleiner, als es aussieht. Niemand — auch wir nicht — sollte dir je einen Schlüssel schicken.',
+  'bv-s1-warn-t':'Erzeuge sie selbst. Nimm niemals Schlüssel von jemandem an.',
+  'bv-s2-d':'Trage die Werte aus Schritt 1 in eine Datei ein, die nur du lesen kannst. Ein Wert je Zeile, ohne Anführungszeichen.',
+  'bv-s2-note':'<strong style="color:var(--gold)">Lass ALLOW_REAL_BIOMETRIC_DATA auf false</strong>, bis du die Datenschutzhinweise gelesen hast. So nimmt dein Verifier am Netz und an Test-Einschreibungen teil, ohne je Daten eines echten Menschen zu speichern. Das ist der richtige Anfang, und es eilt nicht, daran etwas zu ändern.',
+  'bv-s2-t':'Schritt 2 — Die Konfigurationsdatei schreiben',
+  'bv-s3-note':'Eine gesunde Antwort meldet <span style="font-family:var(--font-mono);color:var(--neon)">plaintext_templates: 0</span> und <span style="font-family:var(--font-mono);color:var(--neon)">sketch_seed_configured: true</span>. Das Erste ist die Zusage, dass keine vollständige Vorlage gespeichert wird — in einer Form, die du selbst nachprüfen kannst, statt sie zu glauben. Prüfe es jetzt und später wieder; es ist deine eigene Absicherung so gut wie die aller anderen.',
+  'bv-s3-t':'Schritt 3 — Den Verifier starten',
+  'bv-s4-d':'Die anderen Komiteemitglieder erreichen dich über das offene Internet, der Port darf also nicht unverschlüsselt offenliegen. Caddy holt sich das Zertifikat von selbst.',
+  'bv-s4-t':'Schritt 4 — HTTPS davorsetzen',
+  'bv-s5-d':'Das ist der Schritt, der aus einem Menschen einen Verifier macht. Du unterschreibst zweimal: einmal mit deiner registrierten Wallet, einmal mit deinem Knotenschlüssel. Die Kette nimmt das Paar nur an, wenn beide Signaturen stimmen — so kann niemand einen Schlüssel in deinem Namen anmelden, und du keine zwei. Nimm dafür den Knopf unten.',
+  'bv-s5-t':'Schritt 5 — Deinen Schlüssel an deine Wallet binden',
+  'bv-s6-d':'Schicke die <strong style="color:var(--text)">öffentliche</strong> Hälfte aus Schritt 1 zusammen mit deiner HTTPS-Adresse an die Gruppe. Sie kommt in die Liste, gegen die jeder Proof-Server prüft, und von da an zählen deine Bezeugungen zum Quorum. In diesem Schritt verlässt nichts Geheimes deine Maschine — genau dafür gibt es die Teilung: die private Hälfte bleibt für immer bei dir, und die öffentliche ist ohne sie nutzlos.',
+  'bv-s6-t':'Schritt 6 — Deinen öffentlichen Schlüssel bekanntgeben',
+  'bv-status-d':'Der Quelltext des Verifiers ist <strong style="color:var(--text)">noch nicht öffentlich</strong>, die Schritte unten kann heute also nicht jeder gehen. Sie stehen trotzdem schon hier, weil ein Entwurf prüfbar sein sollte, bevor er läuft, nicht danach. Wer einen betreiben möchte, meldet sich in der Telegram-Gruppe von der Startseite. Dieses Repository zu öffnen ist das, was den Leitfaden von einem Plan zu einer Einladung macht — und es ist das Nächste, was wir euch schulden.',
+  'bv-status-t':'Stand: geschlossene Beta — bitte vor dem Anfangen lesen',
+  'bv-title':'Oder Bio-Verifier werden — die Rolle, die Einmaligkeit dezentral macht',
+  'bv-what-d':'Ein Gesicht wird dir nie geschickt. Deine Maschine speichert einen <strong style="color:var(--text)">additiven Anteil</strong> eines 64-Byte-Auszugs: für sich allein ist er von Zufallsrauschen nicht zu unterscheiden, und keine Rechnung, die du darauf anwenden kannst, holt daraus ein Gesicht zurück. Verglichen wird gemeinsam mit den anderen Mitgliedern deines Komitees, und keiner von euch erfährt etwas außer der Antwort — <em>Duplikat: ja oder nein</em>. Das ist keine Zusage über unsere guten Absichten, sondern eine Eigenschaft der Rechnung.',
+  'bv-what-t':'Was du halten würdest — und was du nie zu sehen bekommst',
+  'bv-why-d':'Eine Registrierung wird erst angenommen, wenn <strong style="color:var(--text)">mehrere verschiedene Verifier</strong> sie bezeugt haben. Ein gestohlener Schlüssel genügt also nicht — ein Angreifer braucht ein ganzes Komitee. Und weil <strong style="color:var(--neon)">ein Mensch genau einen Validator-Schlüssel halten darf</strong>, heißt ein Komitee zu kaufen: so viele Menschen zu sein. Bei 100 Verifiern hat jemand, der 10 davon kontrolliert, weniger als eine Chance von 1 zu 1.000, ein ganzes Dreier-Komitee zu besitzen. Jede Person, die dazukommt, verkleinert diese Zahl. Das ist die eine Stelle, an der die Zahl der Teilnehmer die Sicherheit <em>ist</em>.',
+  'bv-why-t':'Warum jeder weitere Verifier das Netz schwerer zu unterwandern macht',
+  'swap-price-flat':'Keine Geschäfte in diesem Zeitraum — der Preis hat sich nicht bewegt. Der Chart funktioniert; der Markt ist ruhig.',
   'mpc-optin-title':'Optional — Duplikatspruefung unterstuetzen (vorbereitet, noch nicht aktiv)',
   'mpc-optin-desc':'Vorbereitet, aber noch nicht im Einsatz. Dein Node kann spaeter mithelfen zu pruefen, dass sich niemand zweimal registriert, ohne je biometrische Daten zu sehen: jede beteiligte Partei haelt nur einen mathematischen Anteil jeder Vorlage — fuer sich genommen Rauschen — und sie vergleichen eine neue Aufnahme gemeinsam, sodass keine einzelne Maschine etwas rekonstruieren kann. Heute entscheidet dieser Weg nichts. Die Duplikatspruefung laeuft nicht darueber, und das Komitee ist eine feste Liste statt automatisch gezogen; wer die drei Variablen unten setzt, aendert an Registrierungen vorerst nichts.',
   'mpc-optin-note':'Die Anteilsdatei enthaelt Einmal-Zufall, den nur dein Node halten darf — niemals auf eine andere Maschine kopieren und nirgends einchecken. Sie muss derzeit vom Betreiber kommen; das ist die verbleibende zentrale Abhaengigkeit. Einen neuen Schluessel brauchst du nicht: dein Node weist sich den anderen mit demselben Signierschluessel aus, den er ohnehin fuer Bloecke benutzt.',
@@ -325,6 +395,41 @@ de:{
   'expl-heading':'Block-Explorer',
 },
 es:{
+  'bv-bind':'🔗 Generar firma de vinculación',
+  'bv-check-d':'La segunda llamada enumera cada verificador y los compara: si todos tienen el mismo número de registros, si a alguno le falta una semilla y si las claves coinciden. Si tu entrada muestra una divergencia, es mejor enterarse aquí que en mitad del registro de alguien.',
+  'bv-check-t':'Comprobar que funciona',
+  'bv-desc':'Un nodo que produce bloques asegura el <strong style="color:var(--text)">libro contable</strong>. Un verificador biométrico asegura otra cosa: la promesa de que <strong style="color:var(--neon)">cada persona se registra una sola vez</strong>. Son papeles distintos: puedes ejercer uno, o ambos en la misma máquina.',
+  'bv-guide-sub':'Paso a paso &middot; No hace falta saber criptografía &middot; Unos 30 minutos, la mayoría descargando',
+  'bv-honest-d':'Esta parte está en beta y los límites son reales. La comparación conjunta consume material criptográfico de un solo uso, y una entrega cubre por ahora unas pocas decenas de registros antes de necesitar más: la vía confidencial se demuestra primero a pequeña escala, no en millones. El trabajo crece además con el número de personas inscritas. Publicamos estas cifras en lugar de redondearlas: un sistema que pide tu rostro no tiene derecho a ser vago sobre lo que puede y lo que todavía no.',
+  'bv-honest-t':'Dónde está esto hoy — sin rodeos',
+  'bv-need-1':'<strong style="color:var(--text)">Una cuenta de Aequitas registrada.</strong> La misma regla que para producir bloques, y por el mismo motivo: una persona, una clave. Sin ella, una sola persona podría convertirse sin ruido en un comité entero.',
+  'bv-need-2':'<strong style="color:var(--text)">Un servidor Linux pequeño con Docker.</strong> Bastan 2 GB de memoria. Sin tarjeta gráfica: la comparación es aritmética sobre 64 bytes. La máquina donde ya corre tu nodo sirve.',
+  'bv-need-3':'<strong style="color:var(--text)">Un dominio con HTTPS.</strong> Los demás miembros del comité deben poder alcanzarte. Un subdominio de algo que ya tengas es suficiente.',
+  'bv-need-4':'<strong style="color:var(--text)">Mantenerte en línea.</strong> Cada miembro de un comité debe responder para que un registro termine. Un verificador ausente a menudo frena a la gente en vez de protegerla.',
+  'bv-need-t':'Antes de empezar — lo que necesitas',
+  'bv-s1-note':'Guarda la mitad privada en tu servidor y en ningún otro sitio. La mitad pública está pensada para compartirse: es como los demás comprueban que has atestiguado algo. <strong style="color:var(--text)">Tu propia semilla de proyección importa:</strong> como cada verificador usa una distinta, una base de datos robada a uno no puede contrastarse con la de otro. Si pierdes la semilla, tus partes almacenadas dejan de significar nada; guárdala en un lugar que controles.',
+  'bv-s1-t':'Paso 1 — Genera tus propias claves',
+  'bv-s1-warn-d':'Dos verificadores con el mismo secreto cuentan como uno, y el comité sería más pequeño de lo que parece. Nadie —tampoco nosotros— debería enviarte jamás una clave.',
+  'bv-s1-warn-t':'Genéralas tú mismo. No aceptes nunca claves de nadie.',
+  'bv-s2-d':'Pon los valores del paso 1 en un archivo que solo tú puedas leer. Un valor por línea, sin comillas.',
+  'bv-s2-note':'<strong style="color:var(--gold)">Deja ALLOW_REAL_BIOMETRIC_DATA en false</strong> hasta que hayas leído las notas de protección de datos. Con eso desactivado, tu verificador se une a la red y participa en registros de prueba sin almacenar jamás datos de una persona real. Es la forma correcta de empezar, y no hay prisa por cambiarlo.',
+  'bv-s2-t':'Paso 2 — Escribe el archivo de configuración',
+  'bv-s3-note':'Una respuesta sana indica <span style="font-family:var(--font-mono);color:var(--neon)">plaintext_templates: 0</span> y <span style="font-family:var(--font-mono);color:var(--neon)">sketch_seed_configured: true</span>. Lo primero es la afirmación de que no se guarda ninguna plantilla completa, en una forma que puedes comprobar tú mismo en lugar de creerla. Compruébalo ahora y también más adelante: es tu propia garantía tanto como la de los demás.',
+  'bv-s3-t':'Paso 3 — Arranca el verificador',
+  'bv-s4-d':'Los demás miembros del comité te alcanzan por la internet pública, así que el puerto no debe quedar expuesto sin cifrar. Caddy obtiene el certificado por su cuenta.',
+  'bv-s4-t':'Paso 4 — Pon HTTPS delante',
+  'bv-s5-d':'Este es el paso que convierte a una persona en un verificador. Firmas dos veces: una con tu monedero registrado y otra con la clave de tu nodo. La cadena acepta el par solo si ambas firmas son válidas, de modo que nadie puede registrar una clave en tu nombre y tú no puedes registrar dos. Usa el botón de abajo.',
+  'bv-s5-t':'Paso 5 — Vincula tu clave a tu monedero',
+  'bv-s6-d':'Envía al grupo la mitad <strong style="color:var(--text)">pública</strong> del paso 1 junto con tu dirección HTTPS. Se añade a la lista que consulta cada servidor de pruebas, y desde entonces tus atestaciones cuentan para el quórum. En este paso no sale nada secreto de tu máquina: ese es el sentido de la separación: la mitad privada se queda contigo para siempre, y la pública no vale nada sin ella.',
+  'bv-s6-t':'Paso 6 — Publica tu clave pública',
+  'bv-status-d':'El código del verificador <strong style="color:var(--text)">aún no es público</strong>, así que hoy no todo el mundo puede completar los pasos de abajo. Se publican ahora porque un diseño debe poder revisarse antes de desplegarse, no después. Si quieres poner uno en marcha, pregunta en el grupo de Telegram enlazado en la portada. Abrir este repositorio es lo que convertirá esta guía de un plan en una invitación, y es lo siguiente que os debemos.',
+  'bv-status-t':'Estado: beta cerrada — léelo antes de empezar',
+  'bv-title':'O conviértete en verificador biométrico — el papel que descentraliza la unicidad',
+  'bv-what-d':'Nunca se te envía un rostro. Tu máquina guarda una <strong style="color:var(--text)">parte aditiva</strong> de un extracto de 64 bytes: por sí sola es indistinguible del ruido aleatorio, y ningún cálculo a tu alcance recupera un rostro a partir de ella. Las comparaciones se hacen conjuntamente con los demás miembros de tu comité, y ninguno aprende nada salvo la respuesta — <em>duplicado: sí o no</em>. No es una promesa sobre nuestras buenas intenciones; es una propiedad de la aritmética.',
+  'bv-what-t':'Qué tendrías — y qué no verías nunca',
+  'bv-why-d':'Un registro solo se acepta cuando <strong style="color:var(--text)">varios verificadores distintos</strong> lo han atestiguado. Una clave robada no basta: un atacante necesita un comité entero. Y como <strong style="color:var(--neon)">una persona solo puede tener una clave de validador</strong>, comprar un comité significa ser esas tantas personas. Con 100 verificadores, quien controle 10 tiene menos de una posibilidad entre 1.000 de poseer un comité completo de tres. Cada persona que se suma reduce ese número. Este es el único lugar donde el número de participantes <em>es</em> la seguridad.',
+  'bv-why-t':'Por qué cada verificador adicional hace la red más difícil de corromper',
+  'swap-price-flat':'Sin operaciones en este periodo — el precio no se ha movido. El gráfico funciona; el mercado está tranquilo.',
   'mpc-optin-title':'Opcional — ayudar a detectar registros duplicados (preparado, aun no en servicio)',
   'mpc-optin-desc':'Preparado, pero aún no en servicio. Más adelante tu nodo podrá ayudar a comprobar que nadie se registra dos veces sin ver jamás datos biométricos: cada parte participante guarda solo una porción matemática de cada plantilla — ruido por sí sola — y comparan juntas una captura nueva, de modo que ninguna máquina puede reconstruir nada. Hoy este camino no decide nada. La comprobación de duplicados no pasa por él, y el comité es una lista fija en lugar de sortearse automáticamente, así que fijar las tres variables no cambia nada por ahora.',
   'mpc-optin-note':'El archivo de porciones contiene aleatoriedad de un solo uso que solo tu nodo puede guardar — nunca lo copies a otra máquina ni lo subas a ningún repositorio. Por ahora debe proporcionarlo el operador, y esa es la dependencia central que queda. No necesitas una clave nueva: tu nodo se identifica con la misma clave de firma que ya usa para los bloques.',
@@ -476,6 +581,41 @@ es:{
   'expl-heading':'Explorador de Bloques',
 },
 ru:{
+  'bv-bind':'🔗 Создать подпись привязки',
+  'bv-check-d':'Второй вызов перечисляет всех верификаторов и сравнивает их: у всех ли одинаковое число записей, не потерялось ли где-то зерно и совпадают ли ключи. Если ваша запись показывает расхождение, лучше узнать об этом здесь, чем посреди чьей-то регистрации.',
+  'bv-check-t':'Проверка, что всё работает',
+  'bv-desc':'Узел, производящий блоки, защищает <strong style="color:var(--text)">реестр</strong>. Биометрический верификатор защищает другое: обещание, что <strong style="color:var(--neon)">каждый человек регистрируется лишь один раз</strong>. Это разные роли — можно взять одну или обе на одной машине.',
+  'bv-guide-sub':'Шаг за шагом &middot; Знание криптографии не требуется &middot; Около 30 минут, большей частью загрузка',
+  'bv-honest-d':'Эта часть в бете, и ограничения настоящие. Совместное сравнение расходует одноразовый криптографический материал, и одной поставки пока хватает на несколько десятков регистраций — то есть конфиденциальный путь сперва доказывает себя в малом, а не на миллионах. Работа растёт и с числом зарегистрированных. Мы публикуем эти цифры, а не округляем их: система, которая просит ваше лицо, не вправе быть расплывчатой в том, что она умеет и чего пока нет.',
+  'bv-honest-t':'Как обстоит дело сегодня — без прикрас',
+  'bv-need-1':'<strong style="color:var(--text)">Зарегистрированный аккаунт Aequitas.</strong> То же правило, что и для производства блоков, и по той же причине: один человек — один ключ. Без этого один человек мог бы незаметно стать целым комитетом.',
+  'bv-need-2':'<strong style="color:var(--text)">Небольшой сервер Linux с Docker.</strong> Хватит 2 ГБ памяти. Видеокарта не нужна — сравнение это арифметика над 64 байтами. Подойдёт та же машина, где уже работает ваш узел.',
+  'bv-need-3':'<strong style="color:var(--text)">Доменное имя с HTTPS.</strong> Другие члены комитета должны до вас достучаться. Достаточно поддомена того, чем вы уже владеете.',
+  'bv-need-4':'<strong style="color:var(--text)">Оставаться на связи.</strong> Чтобы регистрация завершилась, ответить должен каждый член комитета. Верификатор, которого часто нет, тормозит людей вместо того, чтобы их защищать.',
+  'bv-need-t':'Прежде чем начать — что понадобится',
+  'bv-s1-note':'Приватную половину держите на своём сервере и больше нигде. Открытая предназначена для передачи — по ней другие проверяют, что вы что-то засвидетельствовали. <strong style="color:var(--text)">Ваше собственное зерно проекции важно:</strong> поскольку у каждого верификатора оно своё, украденная у одного база не сопоставима с базой другого. Потеряете зерно — сохранённые доли утратят смысл, поэтому держите резервную копию там, где распоряжаетесь вы.',
+  'bv-s1-t':'Шаг 1 — Создайте собственные ключи',
+  'bv-s1-warn-d':'Два верификатора с одним и тем же секретом считаются одним, и комитет окажется меньше, чем выглядит. Никто — включая нас — не должен присылать вам ключ.',
+  'bv-s1-warn-t':'Создайте их сами. Никогда не принимайте ключи ни от кого.',
+  'bv-s2-d':'Поместите значения из шага 1 в файл, читаемый только вами. По одному значению в строке, без кавычек.',
+  'bv-s2-note':'<strong style="color:var(--gold)">Оставьте ALLOW_REAL_BIOMETRIC_DATA в false</strong>, пока не прочтёте заметки о защите данных. При выключенном значении ваш верификатор входит в сеть и участвует в тестовых регистрациях, ни разу не сохраняя данные настоящего человека. Это правильный старт, и спешить с изменением незачем.',
+  'bv-s2-t':'Шаг 2 — Напишите файл настроек',
+  'bv-s3-note':'Здоровый ответ сообщает <span style="font-family:var(--font-mono);color:var(--neon)">plaintext_templates: 0</span> и <span style="font-family:var(--font-mono);color:var(--neon)">sketch_seed_configured: true</span>. Первое — это утверждение, что целый шаблон нигде не хранится, в форме, которую вы можете проверить сами, а не принять на веру. Проверьте сейчас и потом ещё раз: это ваша гарантия не меньше, чем чужая.',
+  'bv-s3-t':'Шаг 3 — Запустите верификатор',
+  'bv-s4-d':'Другие члены комитета достигают вас через открытый интернет, поэтому порт не должен быть доступен без шифрования. Caddy получает сертификат самостоятельно.',
+  'bv-s4-t':'Шаг 4 — Поставьте впереди HTTPS',
+  'bv-s5-d':'Это шаг, который делает из человека верификатора. Вы подписываете дважды: своим зарегистрированным кошельком и ключом узла. Цепочка принимает пару, только если обе подписи верны, — поэтому никто не зарегистрирует ключ от вашего имени, а вы не зарегистрируете два. Воспользуйтесь кнопкой ниже.',
+  'bv-s5-t':'Шаг 5 — Свяжите ключ со своим кошельком',
+  'bv-s6-d':'Отправьте в группу <strong style="color:var(--text)">открытую</strong> половину из шага 1 вместе со своим HTTPS-адресом. Её добавят в список, по которому сверяется каждый сервер доказательств, и с этого момента ваши свидетельства идут в кворум. На этом шаге с вашей машины не уходит ничего секретного — в этом и смысл разделения: приватная половина остаётся у вас навсегда, а открытая без неё бесполезна.',
+  'bv-s6-t':'Шаг 6 — Опубликуйте открытый ключ',
+  'bv-status-d':'Исходный код верификатора <strong style="color:var(--text)">пока не открыт</strong>, поэтому сегодня выполнить шаги ниже может не каждый. Мы публикуем их всё равно: замысел должен поддаваться проверке до запуска, а не после. Если хотите поднять свой — спросите в группе Telegram со стартовой страницы. Именно открытие этого репозитория превратит руководство из плана в приглашение, и это следующее, что мы вам должны.',
+  'bv-status-t':'Статус: закрытая бета — прочтите перед началом',
+  'bv-title':'Или станьте биометрическим верификатором — роль, которая делает уникальность децентрализованной',
+  'bv-what-d':'Лицо вам никогда не отправляют. Ваша машина хранит одну <strong style="color:var(--text)">аддитивную долю</strong> 64-байтовой выжимки: сама по себе она неотличима от случайного шума, и никакое доступное вам вычисление не восстановит из неё лицо. Сравнение идёт совместно с другими членами вашего комитета, и никто из вас не узнаёт ничего, кроме ответа — <em>дубликат: да или нет</em>. Это не обещание о наших добрых намерениях, а свойство арифметики.',
+  'bv-what-t':'Что бы вы хранили — и чего никогда не увидели бы',
+  'bv-why-d':'Регистрация принимается лишь после того, как её засвидетельствовали <strong style="color:var(--text)">несколько разных верификаторов</strong>. Одного украденного ключа недостаточно — нападающему нужен целый комитет. А поскольку <strong style="color:var(--neon)">один человек может держать ровно один ключ валидатора</strong>, купить комитет — значит быть столькими людьми. При 100 верификаторах у того, кто контролирует 10, шанс владеть полным комитетом из трёх — меньше одного к 1000. Каждый присоединившийся уменьшает это число. Это единственное место, где количество участников <em>и есть</em> безопасность.',
+  'bv-why-t':'Почему каждый новый верификатор делает сеть труднее для подрыва',
+  'swap-price-flat':'За этот период сделок не было — цена не менялась. График работает, просто рынок спокоен.',
   'mpc-optin-title':'Дополнительно — помощь в проверке повторных регистраций (подготовлено, ещё не работает)',
   'mpc-optin-desc':'Подготовлено, но пока не работает. Позже ваш узел сможет помогать проверять, что никто не регистрируется дважды, ни разу не видя биометрических данных: каждая сторона хранит лишь математическую долю каждого шаблона — сама по себе шум — и они сравнивают новый снимок вместе, так что ни одна машина не может ничего восстановить. Сегодня этот путь ничего не решает. Проверка на дубликаты через него не идёт, а комитет задан фиксированным списком, а не выбирается автоматически, поэтому три переменные пока ничего не меняют.',
   'mpc-optin-note':'Файл долей содержит одноразовую случайность, которую может хранить только ваш узел — никогда не копируйте его на другую машину и не помещайте в репозиторий. Пока его должен выдать оператор — это оставшаяся централизованная зависимость. Новый ключ не нужен: узел представляется остальным тем же ключом подписи, которым уже подписывает блоки.',
@@ -625,6 +765,41 @@ ru:{
   'expl-heading':'Обозреватель блоков',
 },
 zh:{
+  'bv-bind':'🔗 生成绑定签名',
+  'bv-check-d':'第二个调用会列出每一位验证者并加以比较：是否都持有相同数量的登记、是否有谁缺少种子、密钥是否一致。如果你的条目显示出偏差，在这里发现总好过在别人注册到一半时发现。',
+  'bv-check-t':'确认它确实在工作',
+  'bv-desc':'出块节点保护的是<strong style="color:var(--text)">账本</strong>。生物验证者保护的是另一件事：<strong style="color:var(--neon)">每个人只注册一次</strong>这个承诺。二者是不同的角色 —— 你可以只做其一，也可以在同一台机器上兼任。',
+  'bv-guide-sub':'逐步说明 &middot; 无需密码学知识 &middot; 约 30 分钟，大部分时间在下载',
+  'bv-honest-d':'这一部分仍在测试阶段，限制是真实存在的。联合比对会消耗一次性的密码学材料，目前一次供给大约只够几十次注册，之后就需要补充 —— 也就是说，这条保密路径先在小规模上自证，而不是在数百万人上。工作量还会随登记人数增长。我们如实公布这些数字而不去取整：一个要求你交出面容的系统，没有资格在"能做什么、还不能做什么"上含糊其辞。',
+  'bv-honest-t':'今天的实际情况 —— 直说',
+  'bv-need-1':'<strong style="color:var(--text)">一个已注册的 Aequitas 账户。</strong>与出块的规则相同，理由也相同：一人一钥。若无此限制，一个人便可悄悄成为整个委员会。',
+  'bv-need-2':'<strong style="color:var(--text)">一台装有 Docker 的小型 Linux 服务器。</strong>2 GB 内存即可。无需显卡 —— 比对只是 64 字节上的算术。你已在运行节点的那台机器就够用。',
+  'bv-need-3':'<strong style="color:var(--text)">一个带 HTTPS 的域名。</strong>其他委员会成员必须能连上你。用你已有域名的一个子域即可。',
+  'bv-need-4':'<strong style="color:var(--text)">保持在线。</strong>一次注册要完成，委员会的每位成员都必须应答。经常离线的验证者是在拖慢别人，而不是保护别人。',
+  'bv-need-t':'开始之前 —— 你需要什么',
+  'bv-s1-note':'私钥那一半只留在你的服务器上，别处都不要。公钥那一半本就是用来分享的 —— 别人凭它验证你确实作了证。<strong style="color:var(--text)">你自己的投影种子很重要：</strong>因为每个验证者用的都不同，从一个验证者那里窃得的数据库无法与另一个的相互比对。种子一旦丢失，你保存的份额便失去意义，所以请备份到你自己掌控的地方。',
+  'bv-s1-t':'第 1 步 —— 生成你自己的密钥',
+  'bv-s1-warn-d':'两个持有同一份秘密的验证者只算一个，委员会会比看上去更小。任何人 —— 包括我们 —— 都不应该给你发送密钥。',
+  'bv-s1-warn-t':'自己生成。绝不要接受任何人给的密钥。',
+  'bv-s2-d':'把第 1 步的值放进一个只有你能读的文件。每行一个值，不加引号。',
+  'bv-s2-note':'<strong style="color:var(--gold)">在读完数据保护说明之前，请让 ALLOW_REAL_BIOMETRIC_DATA 保持 false</strong>。关闭时，你的验证者照样加入网络并参与测试注册，却从不保存任何真实个人的数据。这是正确的起步方式，也不必急着改。',
+  'bv-s2-t':'第 2 步 —— 写好配置文件',
+  'bv-s3-note':'健康的回应会报告 <span style="font-family:var(--font-mono);color:var(--neon)">plaintext_templates: 0</span> 和 <span style="font-family:var(--font-mono);color:var(--neon)">sketch_seed_configured: true</span>。前者是"不保存任何完整模板"这一说法的凭据，而且是你能亲自核对的形式，不必靠相信。现在查一次，过些时候再查一次 —— 这既是别人的保障，也是你自己的。',
+  'bv-s3-t':'第 3 步 —— 启动验证者',
+  'bv-s4-d':'其他委员会成员通过公共网络连上你，因此端口不能未加密暴露。Caddy 会自行申请证书。',
+  'bv-s4-t':'第 4 步 —— 在前面加上 HTTPS',
+  'bv-s5-d':'正是这一步让一个人成为一个验证者。你签名两次：一次用已注册的钱包，一次用节点密钥。只有两个签名都通过，链才接受这一配对 —— 因此没人能以你的名义注册密钥，你也无法注册两个。请使用下方按钮。',
+  'bv-s5-t':'第 5 步 —— 把密钥绑定到你的钱包',
+  'bv-s6-d':'把第 1 步中<strong style="color:var(--text)">公开</strong>的那一半连同你的 HTTPS 地址发到群里。它会被加入每台证明服务器核对的名单，从此你的作证便计入法定人数。这一步没有任何秘密离开你的机器 —— 这正是拆分的意义：私钥永远留在你手里，公钥离了它便毫无用处。',
+  'bv-s6-t':'第 6 步 —— 公布你的公钥',
+  'bv-status-d':'验证者的源码<strong style="color:var(--text)">尚未公开</strong>，因此今天并非人人都能走完下面的步骤。我们仍然先行发布，因为一个设计应当在上线之前就可被检验，而不是之后。若你想运行一个，请到首页链接的 Telegram 群里询问。开放这个代码库，才能把下面的指南从一份计划变成一份邀请 —— 这是我们接下来欠你们的。',
+  'bv-status-t':'状态：封闭测试 —— 开始前请先读这一段',
+  'bv-title':'或成为生物验证者 —— 让唯一性去中心化的角色',
+  'bv-what-d':'人脸永远不会发送给你。你的机器保存的是 64 字节摘要的一份<strong style="color:var(--text)">加法份额</strong>：单独来看它与随机噪声无从分辨，你能运行的任何计算都无法从中还原出一张脸。比对由你所在委员会的成员共同完成，你们中没有任何人知道答案以外的信息 —— <em>是否重复：是或否</em>。这不是关于我们善意的承诺，而是算术本身的性质。',
+  'bv-what-t':'你会持有什么 —— 以及你永远看不到什么',
+  'bv-why-d':'一次注册只有在<strong style="color:var(--text)">多位不同验证者</strong>共同作证后才被接受。因此一把被盗的密钥并不够 —— 攻击者需要整个委员会。而由于<strong style="color:var(--neon)">一个人只能持有一把验证者密钥</strong>，买下一个委员会就意味着要成为那么多个人。在 100 位验证者中，控制其中 10 位的人拥有一个完整三人委员会的概率低于千分之一。每多一个人加入，这个数字就更小。这是参与者数量<em>本身即是</em>安全性的唯一之处。',
+  'bv-why-t':'为什么每多一位验证者，网络就更难被腐蚀',
+  'swap-price-flat':'此时间段内没有成交 —— 价格没有变动。图表是正常的，只是市场很安静。',
   'mpc-optin-title':'可选 — 协助检查重复注册（已准备，尚未启用）',
   'mpc-optin-desc':'已准备，但尚未启用。今后你的节点可以协助核验没有人重复注册，且从不接触任何生物特征数据：每个参与方只保存每份模板的一个数学份额（单独看只是噪声），共同比对新采集，因此没有任何一台机器能还原出内容。目前这条路径不做任何决定：重复检查并不经过它，委员会也是固定名单而非自动抽取，所以设置下面三个变量暂时不会改变注册流程。',
   'mpc-optin-note':'份额文件包含仅你的节点可持有的一次性随机数——切勿复制到其他机器，也不要提交到任何仓库。目前它必须由运营方提供，这是尚存的中心化依赖。你不需要新密钥：节点用它签名区块时已在使用的同一把密钥向其他成员表明身份。',
@@ -776,6 +951,41 @@ zh:{
   'expl-heading':'区块浏览器',
 },
 id:{
+  'bv-bind':'🔗 Buat tanda tangan pengikatan',
+  'bv-check-d':'Panggilan kedua mendaftar setiap verifier dan membandingkannya: apakah semuanya memegang jumlah pendaftaran yang sama, apakah ada yang kehilangan benih, dan apakah kuncinya cocok. Bila entrimu menunjukkan selisih, lebih baik mengetahuinya di sini daripada di tengah pendaftaran seseorang.',
+  'bv-check-t':'Memastikan semuanya berjalan',
+  'bv-desc':'Node penghasil blok mengamankan <strong style="color:var(--text)">buku besar</strong>. Verifier biometrik mengamankan hal lain: janji bahwa <strong style="color:var(--neon)">setiap orang mendaftar hanya sekali</strong>. Ini peran terpisah — kamu bisa menjalankan salah satu, atau keduanya di mesin yang sama.',
+  'bv-guide-sub':'Langkah demi langkah &middot; Tak perlu paham kriptografi &middot; Sekitar 30 menit, sebagian besar mengunduh',
+  'bv-honest-d':'Bagian ini masih beta dan batasannya nyata. Perbandingan bersama memakai bahan kriptografis sekali pakai, dan satu pasokan saat ini menutup beberapa puluh pendaftaran sebelum perlu tambahan — jadi jalur rahasia ini membuktikan diri dulu dalam skala kecil, bukan jutaan. Bebannya juga tumbuh seiring jumlah orang yang terdaftar. Kami menerbitkan angka-angka ini alih-alih membulatkannya: sistem yang meminta wajahmu tak berhak bersikap kabur tentang apa yang bisa dan belum bisa dilakukannya.',
+  'bv-honest-t':'Di mana posisinya hari ini — terus terang',
+  'bv-need-1':'<strong style="color:var(--text)">Akun Aequitas yang terdaftar.</strong> Aturan yang sama seperti produksi blok, dengan alasan yang sama: satu orang, satu kunci. Tanpa itu, satu orang bisa diam-diam menjadi satu komite utuh.',
+  'bv-need-2':'<strong style="color:var(--text)">Server Linux kecil dengan Docker.</strong> Memori 2 GB sudah cukup. Tanpa kartu grafis — perbandingannya aritmetika atas 64 byte. Mesin yang sudah menjalankan node-mu sudah memadai.',
+  'bv-need-3':'<strong style="color:var(--text)">Nama domain dengan HTTPS.</strong> Anggota komite lain harus bisa menghubungimu. Subdomain dari sesuatu yang sudah kamu miliki sudah cukup.',
+  'bv-need-4':'<strong style="color:var(--text)">Tetap daring.</strong> Setiap anggota komite harus menjawab agar sebuah pendaftaran selesai. Verifier yang sering absen memperlambat orang, bukan melindungi mereka.',
+  'bv-need-t':'Sebelum mulai — apa yang kamu perlukan',
+  'bv-s1-note':'Simpan bagian privat di servermu dan tidak di tempat lain. Bagian publik memang untuk dibagikan — begitulah orang lain memastikan kamu menyaksikan sesuatu. <strong style="color:var(--text)">Benih proyeksimu sendiri penting:</strong> karena tiap verifier memakai yang berbeda, basis data curian dari satu verifier tak bisa diadu dengan milik yang lain. Kehilangan benih membuat bagian yang kamu simpan kehilangan makna, jadi cadangkan di tempat yang kamu kendalikan.',
+  'bv-s1-t':'Langkah 1 — Buat kuncimu sendiri',
+  'bv-s1-warn-d':'Dua verifier yang memegang rahasia yang sama dihitung satu, dan komitenya jadi lebih kecil daripada tampaknya. Tak seorang pun — termasuk kami — boleh mengirimimu kunci.',
+  'bv-s1-warn-t':'Buat sendiri. Jangan pernah menerima kunci dari siapa pun.',
+  'bv-s2-d':'Masukkan nilai dari Langkah 1 ke berkas yang hanya bisa kamu baca. Satu nilai per baris, tanpa tanda kutip.',
+  'bv-s2-note':'<strong style="color:var(--gold)">Biarkan ALLOW_REAL_BIOMETRIC_DATA bernilai false</strong> sampai kamu membaca catatan perlindungan data. Dengan itu nonaktif, verifier-mu bergabung ke jaringan dan ikut dalam pendaftaran uji tanpa pernah menyimpan data orang sungguhan. Itu cara memulai yang benar, dan tak perlu buru-buru mengubahnya.',
+  'bv-s2-t':'Langkah 2 — Tulis berkas konfigurasi',
+  'bv-s3-note':'Jawaban yang sehat melaporkan <span style="font-family:var(--font-mono);color:var(--neon)">plaintext_templates: 0</span> dan <span style="font-family:var(--font-mono);color:var(--neon)">sketch_seed_configured: true</span>. Yang pertama adalah klaim bahwa tak ada templat utuh yang disimpan, dalam bentuk yang bisa kamu periksa sendiri alih-alih dipercaya begitu saja. Periksa sekarang dan periksa lagi nanti — itu jaminanmu sendiri sebanyak jaminan orang lain.',
+  'bv-s3-t':'Langkah 3 — Jalankan verifier',
+  'bv-s4-d':'Anggota komite lain menghubungimu lewat internet publik, jadi porta tidak boleh terbuka tanpa enkripsi. Caddy mengambil sertifikat sendiri.',
+  'bv-s4-t':'Langkah 4 — Pasang HTTPS di depan',
+  'bv-s5-d':'Inilah langkah yang menjadikan satu orang satu verifier. Kamu menandatangani dua kali: sekali dengan dompet terdaftarmu, sekali dengan kunci node-mu. Rantai hanya menerima pasangan itu bila kedua tanda tangan cocok, sehingga tak ada yang bisa mendaftarkan kunci atas namamu dan kamu tak bisa mendaftarkan dua. Gunakan tombol di bawah.',
+  'bv-s5-t':'Langkah 5 — Kaitkan kuncimu ke dompetmu',
+  'bv-s6-d':'Kirimkan bagian <strong style="color:var(--text)">publik</strong> dari Langkah 1 beserta alamat HTTPS-mu ke grup. Ia ditambahkan ke daftar yang diperiksa setiap server bukti, dan sejak itu kesaksianmu dihitung untuk kuorum. Pada langkah ini tak ada rahasia yang meninggalkan mesinmu — itulah inti pemisahannya: bagian privat tetap padamu selamanya, dan bagian publik tak berguna tanpanya.',
+  'bv-s6-t':'Langkah 6 — Umumkan kunci publikmu',
+  'bv-status-d':'Kode sumber verifier <strong style="color:var(--text)">belum publik</strong>, jadi langkah-langkah di bawah belum bisa dijalankan semua orang hari ini. Kami tetap menerbitkannya karena sebuah rancangan seharusnya bisa diperiksa sebelum dijalankan, bukan sesudahnya. Kalau kamu ingin menjalankan satu, tanyakan di grup Telegram yang tertaut di halaman depan. Membuka repositori inilah yang akan mengubah panduan ini dari rencana menjadi undangan, dan itu hal berikutnya yang kami utang kepada kalian.',
+  'bv-status-t':'Status: beta tertutup — baca sebelum mulai',
+  'bv-title':'Atau jadilah verifier biometrik — peran yang membuat keunikan terdesentralisasi',
+  'bv-what-d':'Wajah tidak pernah dikirim kepadamu. Mesinmu menyimpan satu <strong style="color:var(--text)">bagian aditif</strong> dari ringkasan 64 byte: sendirian ia tak bisa dibedakan dari derau acak, dan tak ada perhitungan yang bisa kamu jalankan untuk memulihkan wajah darinya. Perbandingan dilakukan bersama anggota komite lainnya, dan tak satu pun dari kalian mengetahui apa pun selain jawabannya — <em>duplikat: ya atau tidak</em>. Ini bukan janji tentang niat baik kami; ini sifat dari aritmetikanya.',
+  'bv-what-t':'Apa yang akan kamu simpan — dan apa yang tak pernah kamu lihat',
+  'bv-why-d':'Sebuah pendaftaran hanya diterima setelah <strong style="color:var(--text)">beberapa verifier yang berbeda</strong> menyaksikannya. Satu kunci curian tidak cukup — penyerang butuh satu komite penuh. Dan karena <strong style="color:var(--neon)">satu orang hanya boleh memegang satu kunci validator</strong>, membeli sebuah komite berarti menjadi sebanyak itu orang. Dengan 100 verifier, seseorang yang menguasai 10 punya peluang kurang dari 1 banding 1.000 untuk memiliki komite bertiga secara penuh. Setiap orang yang bergabung memperkecil angka itu. Inilah satu-satunya tempat di mana jumlah peserta <em>adalah</em> keamanannya.',
+  'bv-why-t':'Mengapa setiap verifier tambahan membuat jaringan lebih sulit dirusak',
+  'swap-price-flat':'Tidak ada transaksi pada periode ini — harga tidak bergerak. Grafiknya berfungsi; pasarnya yang sepi.',
   'mpc-optin-title':'Opsional — membantu memeriksa pendaftaran ganda (disiapkan, belum aktif)',
   'mpc-optin-desc':'Sudah disiapkan, tetapi belum aktif. Nanti node-mu dapat membantu memverifikasi bahwa tidak ada yang mendaftar dua kali tanpa pernah melihat data biometrik siapa pun: setiap pihak hanya memegang satu bagian matematis dari tiap templat — sekadar derau bila berdiri sendiri — dan mereka membandingkan tangkapan baru bersama-sama, sehingga tidak ada satu mesin pun yang bisa merekonstruksi apa pun. Saat ini jalur ini tidak memutuskan apa pun: pemeriksaan duplikat tidak melewatinya, dan komitenya adalah daftar tetap, bukan diundi otomatis.',
   'mpc-optin-note':'Berkas bagian berisi keacakan sekali pakai yang hanya boleh dipegang node-mu — jangan pernah menyalinnya ke mesin lain atau memasukkannya ke repositori. Saat ini berkas itu harus berasal dari operator, dan itulah ketergantungan terpusat yang tersisa. Kamu tidak perlu kunci baru: node-mu mengenalkan diri dengan kunci penanda tangan yang sudah dipakai untuk blok.',
@@ -919,6 +1129,41 @@ id:{
   'expl-heading':'Penjelajah Blok',
 },
 it:{
+  'bv-bind':'🔗 Genera la firma di collegamento',
+  'bv-check-d':'La seconda chiamata elenca ogni verificatore e li confronta: se tutti hanno lo stesso numero di registrazioni, se a qualcuno manca un seme e se le chiavi coincidono. Se la tua voce mostra uno scarto, è meglio scoprirlo qui che durante la registrazione di qualcuno.',
+  'bv-check-t':'Verificare che funzioni',
+  'bv-desc':'Un nodo che produce blocchi mette al sicuro il <strong style="color:var(--text)">registro</strong>. Un verificatore biometrico mette al sicuro altro: la promessa che <strong style="color:var(--neon)">ogni persona si registri una sola volta</strong>. Sono ruoli distinti: puoi svolgerne uno, o entrambi sulla stessa macchina.',
+  'bv-guide-sub':'Passo dopo passo &middot; Nessuna conoscenza di crittografia richiesta &middot; Circa 30 minuti, per lo più di download',
+  'bv-honest-d':'Questa parte è in beta e i limiti sono reali. Il confronto congiunto consuma materiale crittografico monouso, e una fornitura copre per ora poche decine di registrazioni prima che ne serva altro: la via riservata si dimostra prima su piccola scala, non su milioni. Il lavoro cresce inoltre con il numero di persone iscritte. Pubblichiamo queste cifre invece di arrotondarle: un sistema che chiede il tuo volto non ha alcun diritto di restare vago su ciò che sa fare e ciò che ancora non sa.',
+  'bv-honest-t':'A che punto siamo oggi — senza giri di parole',
+  'bv-need-1':'<strong style="color:var(--text)">Un account Aequitas registrato.</strong> Stessa regola della produzione di blocchi, e per lo stesso motivo: una persona, una chiave. Senza, una sola persona potrebbe diventare in silenzio un comitato intero.',
+  'bv-need-2':'<strong style="color:var(--text)">Un piccolo server Linux con Docker.</strong> Bastano 2 GB di memoria. Nessuna scheda grafica: il confronto è aritmetica su 64 byte. La macchina che già ospita il tuo nodo va bene.',
+  'bv-need-3':'<strong style="color:var(--text)">Un dominio con HTTPS.</strong> Gli altri membri del comitato devono poterti raggiungere. Basta un sottodominio di qualcosa che possiedi già.',
+  'bv-need-4':'<strong style="color:var(--text)">Restare raggiungibile.</strong> Ogni membro di un comitato deve rispondere perché una registrazione si concluda. Un verificatore spesso assente rallenta le persone invece di proteggerle.',
+  'bv-need-t':'Prima di iniziare — che cosa serve',
+  'bv-s1-note':'Tieni la metà privata sul tuo server e da nessun’altra parte. La metà pubblica è fatta per essere condivisa: è così che gli altri verificano che hai attestato qualcosa. <strong style="color:var(--text)">Il tuo seme di proiezione conta:</strong> poiché ogni verificatore ne usa uno diverso, un database rubato a uno non può essere confrontato con quello di un altro. Se perdi il seme, le tue quote memorizzate perdono senso: conservane una copia in un luogo che controlli.',
+  'bv-s1-t':'Passo 1 — Genera le tue chiavi',
+  'bv-s1-warn-d':'Due verificatori con lo stesso segreto contano come uno, e il comitato sarebbe più piccolo di quanto sembri. Nessuno — noi compresi — dovrebbe mai inviarti una chiave.',
+  'bv-s1-warn-t':'Generale tu stesso. Non accettare mai chiavi da nessuno.',
+  'bv-s2-d':'Metti i valori del passo 1 in un file leggibile solo da te. Un valore per riga, senza virgolette.',
+  'bv-s2-note':'<strong style="color:var(--gold)">Lascia ALLOW_REAL_BIOMETRIC_DATA su false</strong> finché non hai letto le note sulla protezione dei dati. Così il tuo verificatore entra in rete e partecipa alle registrazioni di prova senza mai conservare dati di una persona reale. È il modo giusto di cominciare, e non c’è fretta di cambiarlo.',
+  'bv-s2-t':'Passo 2 — Scrivi il file di configurazione',
+  'bv-s3-note':'Una risposta sana riporta <span style="font-family:var(--font-mono);color:var(--neon)">plaintext_templates: 0</span> e <span style="font-family:var(--font-mono);color:var(--neon)">sketch_seed_configured: true</span>. La prima è l’affermazione che nessun modello completo viene conservato, in una forma che puoi verificare tu stesso invece di crederci. Controllala ora e di nuovo più avanti: è una garanzia tua quanto degli altri.',
+  'bv-s3-t':'Passo 3 — Avvia il verificatore',
+  'bv-s4-d':'Gli altri membri del comitato ti raggiungono dalla rete pubblica, quindi la porta non deve restare esposta in chiaro. Caddy ottiene il certificato da solo.',
+  'bv-s4-t':'Passo 4 — Metti HTTPS davanti',
+  'bv-s5-d':'È il passo che fa di una persona un verificatore. Firmi due volte: una con il portafoglio registrato e una con la chiave del nodo. La catena accetta la coppia solo se entrambe le firme sono valide, così nessuno può registrare una chiave a tuo nome e tu non puoi registrarne due. Usa il pulsante qui sotto.',
+  'bv-s5-t':'Passo 5 — Collega la tua chiave al tuo portafoglio',
+  'bv-s6-d':'Invia al gruppo la metà <strong style="color:var(--text)">pubblica</strong> del passo 1 insieme al tuo indirizzo HTTPS. Viene aggiunta all’elenco che ogni server di prova consulta, e da quel momento le tue attestazioni contano per il quorum. In questo passo nulla di segreto lascia la tua macchina: è il senso della separazione — la metà privata resta con te per sempre, e quella pubblica senza di essa non vale nulla.',
+  'bv-s6-t':'Passo 6 — Pubblica la tua chiave pubblica',
+  'bv-status-d':'Il codice del verificatore <strong style="color:var(--text)">non è ancora pubblico</strong>, quindi oggi non tutti possono completare i passi qui sotto. Li pubblichiamo comunque perché un progetto dovrebbe poter essere verificato prima di essere messo in funzione, non dopo. Se vuoi gestirne uno, chiedi nel gruppo Telegram indicato in home page. Aprire questo repository è ciò che trasformerà questa guida da progetto a invito, ed è la prossima cosa che vi dobbiamo.',
+  'bv-status-t':'Stato: beta chiusa — da leggere prima di iniziare',
+  'bv-title':'Oppure diventa verificatore biometrico — il ruolo che decentralizza l’unicità',
+  'bv-what-d':'Nessun volto ti viene inviato. La tua macchina conserva una <strong style="color:var(--text)">quota additiva</strong> di un estratto di 64 byte: da sola è indistinguibile dal rumore casuale, e nessun calcolo alla tua portata ne ricava un volto. I confronti avvengono insieme agli altri membri del tuo comitato, e nessuno di voi apprende nulla oltre alla risposta — <em>duplicato: sì o no</em>. Non è una promessa sulle nostre buone intenzioni; è una proprietà dell’aritmetica.',
+  'bv-what-t':'Che cosa avresti — e che cosa non vedresti mai',
+  'bv-why-d':'Una registrazione viene accettata solo quando <strong style="color:var(--text)">più verificatori diversi</strong> l’hanno attestata. Una chiave rubata non basta: serve un intero comitato. E poiché <strong style="color:var(--neon)">una persona può detenere esattamente una chiave di validatore</strong>, comprare un comitato significa essere altrettante persone. Con 100 verificatori, chi ne controlla 10 ha meno di una possibilità su 1.000 di possedere un comitato completo di tre. Ogni persona che si unisce riduce quel numero. È l’unico punto in cui il numero dei partecipanti <em>è</em> la sicurezza.',
+  'bv-why-t':'Perché ogni verificatore in più rende la rete più difficile da corrompere',
+  'swap-price-flat':'Nessuno scambio in questo periodo — il prezzo non si è mosso. Il grafico funziona; è il mercato a essere fermo.',
   'mpc-optin-title':'Opzionale — aiutare a rilevare registrazioni doppie (predisposto, non ancora attivo)',
   'mpc-optin-desc':'Predisposto, ma non ancora in servizio. In futuro il tuo nodo potrà aiutare a verificare che nessuno si registri due volte senza mai vedere dati biometrici: ogni parte conserva solo una quota matematica di ciascun modello — da sola è rumore — e confrontano insieme una nuova acquisizione, così nessuna singola macchina può ricostruire alcunché. Oggi questo percorso non decide nulla: il controllo dei duplicati non passa di qui e il comitato è un elenco fisso anziché estratto automaticamente.',
   'mpc-optin-note':'Il file delle quote contiene casualità monouso che solo il tuo nodo può custodire — non copiarlo mai su un\'altra macchina né inserirlo in un repository. Al momento deve arrivare dall\'operatore, ed è la dipendenza centrale che resta. Non serve una chiave nuova: il nodo si identifica con la stessa chiave di firma che usa già per i blocchi.',
@@ -1063,6 +1308,41 @@ it:{
   'expl-heading':'Esplora blocchi',
 },
 tr:{
+  'bv-bind':'🔗 Bağlama imzası oluştur',
+  'bv-check-d':'İkinci çağrı her doğrulayıcıyı listeler ve karşılaştırır: hepsinde aynı sayıda kayıt var mı, birinde tohum eksik mi, anahtarlar uyuşuyor mu. Girdinde bir sapma görünüyorsa, bunu birinin kaydı sırasında değil burada öğrenmek daha iyidir.',
+  'bv-check-t':'Çalıştığını doğrulamak',
+  'bv-desc':'Blok üreten bir düğüm <strong style="color:var(--text)">defteri</strong> güvence altına alır. Biyometrik doğrulayıcı başka bir şeyi: <strong style="color:var(--neon)">her insanın yalnızca bir kez kaydolduğu</strong> sözünü. Bunlar ayrı roller — birini ya da ikisini aynı makinede yürütebilirsin.',
+  'bv-guide-sub':'Adım adım &middot; Kriptografi bilgisi gerekmez &middot; Yaklaşık 30 dakika, çoğu indirme',
+  'bv-honest-d':'Bu bölüm beta aşamasında ve sınırlar gerçek. Ortak karşılaştırma tek kullanımlık kriptografik malzeme tüketir ve bir teslimat şu an daha fazlası gerekmeden birkaç düzine kaydı karşılar — yani gizli yol önce küçük ölçekte kendini kanıtlar, milyonlarda değil. İş yükü ayrıca kayıtlı kişi sayısıyla birlikte büyür. Bu sayıları yuvarlamak yerine yayımlıyoruz: yüzünü isteyen bir sistemin, neyi yapıp neyi henüz yapamadığı konusunda belirsiz kalmaya hakkı yoktur.',
+  'bv-honest-t':'Bugün durum ne — açıkça',
+  'bv-need-1':'<strong style="color:var(--text)">Kayıtlı bir Aequitas hesabı.</strong> Blok üretimiyle aynı kural, aynı nedenle: bir insan, bir anahtar. Bu olmadan tek bir kişi sessizce bütün bir komite olabilirdi.',
+  'bv-need-2':'<strong style="color:var(--text)">Docker kurulu küçük bir Linux sunucusu.</strong> 2 GB bellek yeter. Ekran kartı gerekmez — karşılaştırma 64 bayt üzerinde aritmetiktir. Düğümünün zaten çalıştığı makine uygundur.',
+  'bv-need-3':'<strong style="color:var(--text)">HTTPS’li bir alan adı.</strong> Diğer komite üyeleri sana ulaşabilmeli. Zaten sahip olduğun bir şeyin alt alan adı yeterlidir.',
+  'bv-need-4':'<strong style="color:var(--text)">Çevrimiçi kalmak.</strong> Bir kaydın tamamlanması için komitenin her üyesi yanıt vermeli. Sık sık kapalı olan bir doğrulayıcı insanları korumak yerine yavaşlatır.',
+  'bv-need-t':'Başlamadan önce — neye ihtiyacın var',
+  'bv-s1-note':'Özel yarıyı sunucunda tut, başka hiçbir yerde. Açık yarı paylaşılmak içindir — başkaları bir şeyi onayladığını böyle doğrular. <strong style="color:var(--text)">Kendi izdüşüm tohumun önemlidir:</strong> her doğrulayıcı farklı birini kullandığından, birinden çalınan veritabanı bir başkasınınkiyle karşılaştırılamaz. Tohumu kaybedersen sakladığın paylar anlamını yitirir; onu denetlediğin bir yerde yedekle.',
+  'bv-s1-t':'Adım 1 — Kendi anahtarlarını üret',
+  'bv-s1-warn-d':'Aynı sırrı taşıyan iki doğrulayıcı tek sayılır ve komite göründüğünden küçük olur. Hiç kimse — biz dahil — sana asla bir anahtar göndermemeli.',
+  'bv-s1-warn-t':'Onları kendin üret. Kimseden asla anahtar kabul etme.',
+  'bv-s2-d':'Adım 1’deki değerleri yalnızca senin okuyabileceğin bir dosyaya koy. Satır başına bir değer, tırnaksız.',
+  'bv-s2-note':'<strong style="color:var(--gold)">Veri koruma notlarını okuyana kadar ALLOW_REAL_BIOMETRIC_DATA değerini false bırak</strong>. Kapalıyken doğrulayıcın ağa katılır ve gerçek bir kişinin verisini hiç saklamadan test kayıtlarına katılır. Başlamanın doğru yolu budur ve bunu değiştirmek için acele yok.',
+  'bv-s2-t':'Adım 2 — Yapılandırma dosyasını yaz',
+  'bv-s3-note':'Sağlıklı bir yanıt <span style="font-family:var(--font-mono);color:var(--neon)">plaintext_templates: 0</span> ve <span style="font-family:var(--font-mono);color:var(--neon)">sketch_seed_configured: true</span> bildirir. Birincisi, hiçbir tam şablonun saklanmadığı iddiasıdır — inanmak yerine kendin doğrulayabileceğin bir biçimde. Şimdi bak, sonra tekrar bak: bu, başkalarınınki kadar senin de güvencendir.',
+  'bv-s3-t':'Adım 3 — Doğrulayıcıyı başlat',
+  'bv-s4-d':'Diğer komite üyeleri sana açık internet üzerinden ulaşır, bu yüzden bağlantı noktası şifresiz açıkta kalmamalı. Caddy sertifikayı kendisi alır.',
+  'bv-s4-t':'Adım 4 — Önüne HTTPS koy',
+  'bv-s5-d':'Bir insanı bir doğrulayıcı yapan adım budur. İki kez imzalarsın: bir kez kayıtlı cüzdanınla, bir kez düğüm anahtarınla. Zincir çifti yalnızca iki imza da doğrulanırsa kabul eder; böylece kimse senin adına anahtar kaydedemez, sen de iki tane kaydedemezsin. Aşağıdaki düğmeyi kullan.',
+  'bv-s5-t':'Adım 5 — Anahtarını cüzdanına bağla',
+  'bv-s6-d':'Adım 1’deki <strong style="color:var(--text)">açık</strong> yarıyı HTTPS adresinle birlikte gruba gönder. Her kanıt sunucusunun baktığı listeye eklenir ve o andan itibaren onayların yeter sayıya katılır. Bu adımda makinenden gizli hiçbir şey çıkmaz — ayrımın anlamı budur: özel yarı sonsuza dek sende kalır, açık yarı onsuz işe yaramaz.',
+  'bv-s6-t':'Adım 6 — Açık anahtarını duyur',
+  'bv-status-d':'Doğrulayıcının kaynak kodu <strong style="color:var(--text)">henüz açık değil</strong>, bu yüzden aşağıdaki adımları bugün herkes tamamlayamaz. Yine de yayımlıyoruz, çünkü bir tasarım devreye alınmadan önce denetlenebilmeli, sonrasında değil. Bir tane çalıştırmak istersen ana sayfadaki Telegram grubunda sor. Bu depoyu açmak, bu kılavuzu bir plandan bir davete dönüştürecek şeydir ve size borçlu olduğumuz bir sonraki adımdır.',
+  'bv-status-t':'Durum: kapalı beta — başlamadan önce oku',
+  'bv-title':'Ya da biyometrik doğrulayıcı ol — tekliği merkezsizleştiren rol',
+  'bv-what-d':'Sana hiçbir zaman bir yüz gönderilmez. Makinen, 64 baytlık bir özetin <strong style="color:var(--text)">toplamsal payını</strong> saklar: tek başına rastgele gürültüden ayırt edilemez ve elindeki hiçbir hesap ondan bir yüz geri getirmez. Karşılaştırmalar komitenin diğer üyeleriyle birlikte yapılır ve hiçbiriniz cevaptan başka bir şey öğrenmez — <em>kopya: evet ya da hayır</em>. Bu, iyi niyetimize dair bir söz değil; aritmetiğin bir özelliğidir.',
+  'bv-what-t':'Neyi tutardın — ve neyi asla görmezdin',
+  'bv-why-d':'Bir kayıt ancak <strong style="color:var(--text)">birden fazla farklı doğrulayıcı</strong> onayladığında kabul edilir. Çalınan tek bir anahtar yetmez — saldırganın tüm bir komiteye ihtiyacı vardır. Ve <strong style="color:var(--neon)">bir insan tam olarak bir doğrulayıcı anahtarı tutabildiği</strong> için, bir komite satın almak o kadar insan olmak demektir. 100 doğrulayıcı varken 10’unu elinde tutan birinin üç kişilik bir komitenin tamamına sahip olma şansı 1.000’de 1’in altındadır. Katılan her kişi bu sayıyı küçültür. Katılımcı sayısının doğrudan güvenlik <em>olduğu</em> tek yer burasıdır.',
+  'bv-why-t':'Her yeni doğrulayıcı ağı neden bozmayı zorlaştırır',
+  'swap-price-flat':'Bu dönemde işlem yok — fiyat hiç hareket etmedi. Grafik çalışıyor; piyasa sakin.',
   'mpc-optin-title':'İsteğe bağlı — mükerrer kayıt denetimine yardım (hazır, henüz devrede değil)',
   'mpc-optin-desc':'Hazırlandı, ancak henüz devrede değil. İleride düğümün, kimsenin biyometrik verisini hiç görmeden mükerrer kayıt olmadığını doğrulamaya yardım edebilecek: her taraf yalnızca her şablonun matematiksel bir payını tutar — tek başına gürültüdür — ve yeni bir kaydı birlikte karşılaştırırlar, böylece tek bir makine hiçbir şeyi geri oluşturamaz. Bugün bu yol hiçbir şeye karar vermiyor: mükerrer denetimi buradan geçmiyor ve komite otomatik çekilmek yerine sabit bir liste.',
   'mpc-optin-note':'Pay dosyası yalnızca senin düğümünün tutabileceği tek kullanımlık rastgelelik içerir — başka bir makineye asla kopyalama ve hiçbir yere ekleme. Şu anda operatörden gelmesi gerekiyor; kalan merkezi bağımlılık budur. Yeni bir anahtara ihtiyacın yok: düğümün, blokları imzalarken kullandığı anahtarla kendini tanıtır.',
@@ -1213,6 +1493,41 @@ tr:{
   'expl-heading':'Blok Gezgini',
 },
 fr:{
+  'bv-bind':'🔗 Générer la signature de liaison',
+  'bv-check-d':'Le second appel énumère tous les vérificateurs et les compare : s’ils détiennent le même nombre d’inscriptions, s’il manque une graine quelque part, et si les clés concordent. Si votre entrée montre un écart, mieux vaut l’apprendre ici qu’au milieu de l’inscription de quelqu’un.',
+  'bv-check-t':'Vérifier que cela fonctionne',
+  'bv-desc':'Un nœud qui produit des blocs sécurise le <strong style="color:var(--text)">registre</strong>. Un vérificateur biométrique sécurise autre chose : la promesse que <strong style="color:var(--neon)">chaque personne ne s’inscrit qu’une seule fois</strong>. Ce sont deux rôles distincts — vous pouvez tenir l’un, ou les deux sur la même machine.',
+  'bv-guide-sub':'Pas à pas &middot; Aucune connaissance en cryptographie requise &middot; Environ 30 minutes, surtout du téléchargement',
+  'bv-honest-d':'Cette partie est en bêta et les limites sont réelles. La comparaison conjointe consomme du matériel cryptographique à usage unique, et une livraison couvre pour l’instant quelques dizaines d’inscriptions avant qu’il n’en faille davantage — la voie confidentielle fait donc ses preuves à petite échelle d’abord, pas sur des millions. Le travail croît aussi avec le nombre de personnes inscrites. Nous publions ces chiffres plutôt que de les arrondir : un système qui réclame votre visage n’a pas le droit de rester vague sur ce qu’il sait faire et ce qu’il ne sait pas encore.',
+  'bv-honest-t':'Où en est-on aujourd’hui — sans détour',
+  'bv-need-1':'<strong style="color:var(--text)">Un compte Aequitas enregistré.</strong> Même règle que pour la production de blocs, et pour la même raison : une personne, une clé. Sans cela, une seule personne pourrait devenir discrètement un comité entier.',
+  'bv-need-2':'<strong style="color:var(--text)">Un petit serveur Linux avec Docker.</strong> 2 Go de mémoire suffisent. Pas de carte graphique — la comparaison est de l’arithmétique sur 64 octets. La machine qui fait déjà tourner votre nœud convient.',
+  'bv-need-3':'<strong style="color:var(--text)">Un nom de domaine avec HTTPS.</strong> Les autres membres du comité doivent pouvoir vous joindre. Un sous-domaine de quelque chose que vous possédez déjà suffit.',
+  'bv-need-4':'<strong style="color:var(--text)">Rester joignable.</strong> Chaque membre d’un comité doit répondre pour qu’une inscription aboutisse. Un vérificateur souvent absent ralentit les gens au lieu de les protéger.',
+  'bv-need-t':'Avant de commencer — ce qu’il vous faut',
+  'bv-s1-note':'Gardez la moitié privée sur votre serveur et nulle part ailleurs. La moitié publique est faite pour être partagée — c’est ainsi que d’autres vérifient que vous avez attesté quelque chose. <strong style="color:var(--text)">Votre propre graine de projection compte :</strong> comme chaque vérificateur en utilise une différente, une base volée chez l’un ne peut pas être confrontée à celle d’un autre. Perdez la graine et vos parts stockées perdent tout sens : sauvegardez-la dans un endroit que vous maîtrisez.',
+  'bv-s1-t':'Étape 1 — Générez vos propres clés',
+  'bv-s1-warn-d':'Deux vérificateurs partageant le même secret comptent pour un seul, et le comité serait plus petit qu’il n’y paraît. Personne — nous y compris — ne devrait jamais vous envoyer une clé.',
+  'bv-s1-warn-t':'Générez-les vous-même. N’acceptez jamais de clés de qui que ce soit.',
+  'bv-s2-d':'Placez les valeurs de l’étape 1 dans un fichier que vous seul pouvez lire. Une valeur par ligne, sans guillemets.',
+  'bv-s2-note':'<strong style="color:var(--gold)">Laissez ALLOW_REAL_BIOMETRIC_DATA sur false</strong> tant que vous n’avez pas lu les notes de protection des données. Ainsi, votre vérificateur rejoint le réseau et participe aux inscriptions de test sans jamais conserver les données d’une personne réelle. C’est la bonne façon de commencer, et rien ne presse pour changer cela.',
+  'bv-s2-t':'Étape 2 — Écrivez le fichier de configuration',
+  'bv-s3-note':'Une réponse saine indique <span style="font-family:var(--font-mono);color:var(--neon)">plaintext_templates: 0</span> et <span style="font-family:var(--font-mono);color:var(--neon)">sketch_seed_configured: true</span>. La première est l’affirmation qu’aucun gabarit complet n’est conservé, sous une forme que vous pouvez vérifier vous-même plutôt que croire sur parole. Vérifiez-la maintenant, puis de nouveau plus tard — c’est votre garantie autant que celle des autres.',
+  'bv-s3-t':'Étape 3 — Démarrez le vérificateur',
+  'bv-s4-d':'Les autres membres du comité vous joignent par l’internet public : le port ne doit donc pas être exposé en clair. Caddy obtient un certificat tout seul.',
+  'bv-s4-t':'Étape 4 — Placez HTTPS devant',
+  'bv-s5-d':'C’est l’étape qui fait d’une personne un vérificateur. Vous signez deux fois : une fois avec votre portefeuille enregistré, une fois avec la clé de votre nœud. La chaîne n’accepte la paire que si les deux signatures sont valides — personne ne peut donc enregistrer une clé en votre nom, et vous ne pouvez pas en enregistrer deux. Utilisez le bouton ci-dessous.',
+  'bv-s5-t':'Étape 5 — Liez votre clé à votre portefeuille',
+  'bv-s6-d':'Envoyez au groupe la moitié <strong style="color:var(--text)">publique</strong> de l’étape 1, avec votre adresse HTTPS. Elle est ajoutée à la liste que chaque serveur de preuve consulte, et dès lors vos attestations comptent pour le quorum. Rien de secret ne quitte votre machine à cette étape — c’est tout l’intérêt de la séparation : la moitié privée reste chez vous pour toujours, et la moitié publique ne vaut rien sans elle.',
+  'bv-s6-t':'Étape 6 — Publiez votre clé publique',
+  'bv-status-d':'Le code du vérificateur <strong style="color:var(--text)">n’est pas encore public</strong>, les étapes ci-dessous ne sont donc pas réalisables par tout le monde aujourd’hui. Elles sont publiées maintenant parce qu’une conception doit pouvoir être vérifiée avant d’être déployée, pas après. Si vous souhaitez en faire tourner un, demandez dans le groupe Telegram indiqué en page d’accueil. Ouvrir ce dépôt est ce qui transformera ce guide d’un projet en une invitation, et c’est la prochaine chose que nous vous devons.',
+  'bv-status-t':'État : bêta fermée — à lire avant de commencer',
+  'bv-title':'Ou devenez vérificateur biométrique — le rôle qui décentralise l’unicité',
+  'bv-what-d':'Aucun visage ne vous est envoyé. Votre machine conserve une <strong style="color:var(--text)">part additive</strong> d’une empreinte de 64 octets : seule, elle est indiscernable d’un bruit aléatoire, et aucun calcul à votre portée n’en fait ressortir un visage. Les comparaisons se font conjointement avec les autres membres de votre comité, et aucun de vous n’apprend rien d’autre que la réponse — <em>doublon : oui ou non</em>. Ce n’est pas une promesse sur nos bonnes intentions ; c’est une propriété du calcul.',
+  'bv-what-t':'Ce que vous détiendriez — et ce que vous ne verriez jamais',
+  'bv-why-d':'Une inscription n’est acceptée qu’une fois attestée par <strong style="color:var(--text)">plusieurs vérificateurs différents</strong>. Une clé volée ne suffit donc pas — il faut tout un comité. Et comme <strong style="color:var(--neon)">une personne ne peut détenir qu’une seule clé de validateur</strong>, acheter un comité revient à être autant de personnes. Avec 100 vérificateurs, quelqu’un qui en contrôle 10 a moins d’une chance sur 1 000 de posséder un comité entier de trois. Chaque personne qui rejoint réduit ce nombre. C’est le seul endroit où le nombre de participants <em>est</em> la sécurité.',
+  'bv-why-t':'Pourquoi chaque vérificateur supplémentaire rend le réseau plus difficile à corrompre',
+  'swap-price-flat':'Aucune transaction sur cette période — le prix n’a pas bougé. Le graphique fonctionne ; c’est le marché qui est calme.',
   'mpc-optin-title':'Optionnel — aider à détecter les inscriptions en double (prêt, pas encore en service)',
   'mpc-optin-desc':'Préparé, mais pas encore en service. Plus tard, votre nœud pourra aider à vérifier que personne ne s\'inscrit deux fois sans jamais voir de données biométriques : chaque partie ne détient qu\'une part mathématique de chaque gabarit — du bruit à elle seule — et elles comparent ensemble une nouvelle capture, si bien qu\'aucune machine ne peut rien reconstruire. Aujourd\'hui ce chemin ne décide rien : la vérification des doublons n\'y passe pas, et le comité est une liste fixe plutôt qu\'un tirage automatique.',
   'mpc-optin-note':'Le fichier de parts contient un aléa à usage unique que seul votre nœud peut détenir — ne le copiez jamais sur une autre machine et ne le versionnez nulle part. Il doit actuellement venir de l\'opérateur, ce qui reste la dépendance centrale. Vous n\'avez pas besoin d\'une nouvelle clé : votre nœud s\'identifie avec la clé de signature qu\'il utilise déjà pour les blocs.',
@@ -1362,6 +1677,41 @@ fr:{
   'expl-heading':'Explorateur de blocs',
 },
 pt:{
+  'bv-bind':'🔗 Gerar assinatura de ligação',
+  'bv-check-d':'A segunda chamada lista todos os verificadores e compara-os: se todos têm o mesmo número de registos, se falta uma semente a algum e se as chaves coincidem. Se a tua entrada mostrar divergência, é melhor saber aqui do que a meio do registo de alguém.',
+  'bv-check-t':'Confirmar que funciona',
+  'bv-desc':'Um nó que produz blocos protege o <strong style="color:var(--text)">livro de registos</strong>. Um verificador biométrico protege outra coisa: a promessa de que <strong style="color:var(--neon)">cada pessoa se regista apenas uma vez</strong>. São papéis distintos — podes ter um, ou ambos na mesma máquina.',
+  'bv-guide-sub':'Passo a passo &middot; Não é preciso saber criptografia &middot; Cerca de 30 minutos, a maioria a descarregar',
+  'bv-honest-d':'Esta parte está em beta e os limites são reais. A comparação conjunta consome material criptográfico de uso único, e uma entrega cobre por agora algumas dezenas de registos antes de ser preciso mais — a via confidencial prova-se primeiro em pequena escala, não em milhões. O trabalho cresce também com o número de pessoas inscritas. Publicamos estes números em vez de os arredondar: um sistema que pede o teu rosto não tem o direito de ser vago sobre o que consegue e o que ainda não.',
+  'bv-honest-t':'Onde isto está hoje — sem rodeios',
+  'bv-need-1':'<strong style="color:var(--text)">Uma conta Aequitas registada.</strong> A mesma regra da produção de blocos, e pelo mesmo motivo: uma pessoa, uma chave. Sem ela, uma só pessoa poderia tornar-se em silêncio num comité inteiro.',
+  'bv-need-2':'<strong style="color:var(--text)">Um pequeno servidor Linux com Docker.</strong> Bastam 2 GB de memória. Sem placa gráfica: a comparação é aritmética sobre 64 bytes. A máquina onde já corre o teu nó serve.',
+  'bv-need-3':'<strong style="color:var(--text)">Um domínio com HTTPS.</strong> Os outros membros do comité têm de te alcançar. Basta um subdomínio de algo que já tenhas.',
+  'bv-need-4':'<strong style="color:var(--text)">Manteres-te acessível.</strong> Cada membro de um comité tem de responder para que um registo termine. Um verificador muitas vezes ausente atrasa as pessoas em vez de as proteger.',
+  'bv-need-t':'Antes de começar — o que precisas',
+  'bv-s1-note':'Guarda a metade privada no teu servidor e em mais lado nenhum. A metade pública é para partilhar: é assim que outros confirmam que atestaste algo. <strong style="color:var(--text)">A tua própria semente de projeção conta:</strong> como cada verificador usa uma diferente, uma base roubada a um não pode ser cruzada com a de outro. Se perderes a semente, as tuas parcelas guardadas deixam de significar algo — guarda-a num sítio que controles.',
+  'bv-s1-t':'Passo 1 — Gera as tuas próprias chaves',
+  'bv-s1-warn-d':'Dois verificadores com o mesmo segredo contam como um, e o comité seria menor do que parece. Ninguém — nós incluídos — deveria alguma vez enviar-te uma chave.',
+  'bv-s1-warn-t':'Gera-as tu. Nunca aceites chaves de ninguém.',
+  'bv-s2-d':'Coloca os valores do passo 1 num ficheiro que só tu possas ler. Um valor por linha, sem aspas.',
+  'bv-s2-note':'<strong style="color:var(--gold)">Deixa ALLOW_REAL_BIOMETRIC_DATA em false</strong> até teres lido as notas de proteção de dados. Assim, o teu verificador entra na rede e participa em registos de teste sem nunca guardar dados de uma pessoa real. É a forma certa de começar, e não há pressa para mudar.',
+  'bv-s2-t':'Passo 2 — Escreve o ficheiro de configuração',
+  'bv-s3-note':'Uma resposta saudável indica <span style="font-family:var(--font-mono);color:var(--neon)">plaintext_templates: 0</span> e <span style="font-family:var(--font-mono);color:var(--neon)">sketch_seed_configured: true</span>. A primeira é a afirmação de que nenhum modelo completo é guardado, numa forma que podes verificar tu mesmo em vez de acreditar. Confirma agora e outra vez mais tarde — é a tua garantia tanto como a dos outros.',
+  'bv-s3-t':'Passo 3 — Arranca o verificador',
+  'bv-s4-d':'Os outros membros do comité alcançam-te pela internet pública, por isso a porta não pode ficar exposta sem cifra. O Caddy obtém o certificado sozinho.',
+  'bv-s4-t':'Passo 4 — Põe HTTPS à frente',
+  'bv-s5-d':'É o passo que faz de uma pessoa um verificador. Assinas duas vezes: uma com a tua carteira registada e outra com a chave do teu nó. A cadeia aceita o par apenas se ambas as assinaturas conferirem, por isso ninguém pode registar uma chave em teu nome e tu não podes registar duas. Usa o botão abaixo.',
+  'bv-s5-t':'Passo 5 — Liga a tua chave à tua carteira',
+  'bv-s6-d':'Envia ao grupo a metade <strong style="color:var(--text)">pública</strong> do passo 1 juntamente com o teu endereço HTTPS. É acrescentada à lista que cada servidor de provas consulta e, a partir daí, as tuas atestações contam para o quórum. Neste passo nada de secreto sai da tua máquina — é esse o sentido da separação: a metade privada fica contigo para sempre, e a pública sem ela não vale nada.',
+  'bv-s6-t':'Passo 6 — Publica a tua chave pública',
+  'bv-status-d':'O código do verificador <strong style="color:var(--text)">ainda não é público</strong>, por isso nem todos conseguem hoje cumprir os passos abaixo. São publicados na mesma porque um desenho deve poder ser verificado antes de entrar em funcionamento, não depois. Se quiseres manter um, pergunta no grupo de Telegram ligado na página inicial. Abrir este repositório é o que transformará este guia de um plano numa convite, e é a próxima coisa que vos devemos.',
+  'bv-status-t':'Estado: beta fechada — lê antes de começar',
+  'bv-title':'Ou torna-te verificador biométrico — o papel que descentraliza a unicidade',
+  'bv-what-d':'Nenhum rosto te é enviado. A tua máquina guarda uma <strong style="color:var(--text)">parcela aditiva</strong> de um extrato de 64 bytes: sozinha é indistinguível de ruído aleatório, e nenhum cálculo ao teu alcance recupera dela um rosto. As comparações fazem-se em conjunto com os outros membros do teu comité, e nenhum de vocês fica a saber mais do que a resposta — <em>duplicado: sim ou não</em>. Não é uma promessa sobre as nossas boas intenções; é uma propriedade da aritmética.',
+  'bv-what-t':'O que terias — e o que nunca verias',
+  'bv-why-d':'Um registo só é aceite quando <strong style="color:var(--text)">vários verificadores diferentes</strong> o atestaram. Uma chave roubada não chega — é preciso um comité inteiro. E como <strong style="color:var(--neon)">uma pessoa só pode ter uma chave de validador</strong>, comprar um comité significa ser essas tantas pessoas. Com 100 verificadores, quem controlar 10 tem menos de uma hipótese em 1.000 de possuir um comité completo de três. Cada pessoa que adere reduz esse número. É o único ponto em que o número de participantes <em>é</em> a segurança.',
+  'bv-why-t':'Porque cada verificador adicional torna a rede mais difícil de corromper',
+  'swap-price-flat':'Sem negócios neste período — o preço não se moveu. O gráfico funciona; o mercado é que está parado.',
   'mpc-optin-title':'Opcional — ajudar a verificar registos duplicados (preparado, ainda não ativo)',
   'mpc-optin-desc':'Preparado, mas ainda não em serviço. Mais tarde o teu nó poderá ajudar a verificar que ninguém se regista duas vezes sem nunca ver dados biométricos: cada parte guarda apenas uma parcela matemática de cada modelo — ruído por si só — e comparam em conjunto uma nova captura, pelo que nenhuma máquina consegue reconstruir nada. Hoje este caminho não decide nada: a verificação de duplicados não passa por aqui e o comité é uma lista fixa em vez de sorteado automaticamente.',
   'mpc-optin-note':'O ficheiro de parcelas contém aleatoriedade de uso único que só o teu nó pode guardar — nunca o copies para outra máquina nem o submetas a um repositório. De momento tem de vir do operador, e essa é a dependência central que resta. Não precisas de uma chave nova: o teu nó identifica-se com a mesma chave de assinatura que já usa para os blocos.',
@@ -1511,6 +1861,41 @@ pt:{
   'expl-heading':'Explorador de Blocos',
 },
 ar:{
+  'bv-bind':'🔗 إنشاء توقيع الربط',
+  'bv-check-d':'الاستدعاء الثاني يسرد كل مُحقِّق ويقارن بينهم: هل يحملون العدد نفسه من التسجيلات، هل ينقص أحدهم بذرة، وهل تتوافق المفاتيح. فإن أظهر مدخلك تبايناً، فمعرفة ذلك هنا خير من معرفته في منتصف تسجيل أحدهم.',
+  'bv-check-t':'التأكد من أنه يعمل',
+  'bv-desc':'العُقدة التي تُنتج الكتل تحمي <strong style="color:var(--text)">السجل</strong>. أما المُحقِّق الحيوي فيحمي شيئاً آخر: الوعد بأن <strong style="color:var(--neon)">كل إنسان يسجّل مرة واحدة فقط</strong>. هذان دوران منفصلان — يمكنك القيام بأحدهما أو بكليهما على الجهاز نفسه.',
+  'bv-guide-sub':'خطوة بخطوة &middot; لا تلزم معرفة بالتعمية &middot; نحو 30 دقيقة، معظمها تنزيل',
+  'bv-honest-d':'هذا الجزء في طور التجربة وحدوده حقيقية. المقارنة المشتركة تستهلك مادة تعمية تُستعمل مرة واحدة، ودفعة واحدة تكفي حالياً لبضع عشرات من التسجيلات قبل أن يلزم المزيد — أي أن المسار السرّي يثبت نفسه أولاً على نطاق صغير لا على الملايين. كما يزداد العمل بازدياد عدد المسجَّلين. ننشر هذه الأرقام بدل تدويرها: نظام يطلب وجهك لا يحق له أن يكون غامضاً بشأن ما يقدر عليه وما لا يقدر عليه بعد.',
+  'bv-honest-t':'أين نقف اليوم — بصراحة',
+  'bv-need-1':'<strong style="color:var(--text)">حساب Aequitas مسجَّل.</strong> القاعدة نفسها كما في إنتاج الكتل، وللسبب نفسه: إنسان واحد، مفتاح واحد. من دونها يستطيع شخص واحد أن يصير لجنة كاملة في صمت.',
+  'bv-need-2':'<strong style="color:var(--text)">خادم لينكس صغير عليه Docker.</strong> تكفي ذاكرة 2 غيغابايت. لا حاجة لبطاقة رسوميات — المقارنة حساب على 64 بايت. الجهاز الذي يشغّل عقدتك أصلاً يفي بالغرض.',
+  'bv-need-3':'<strong style="color:var(--text)">اسم نطاق مع HTTPS.</strong> يجب أن يصل إليك بقية أعضاء اللجنة. يكفي نطاق فرعي لشيء تملكه بالفعل.',
+  'bv-need-4':'<strong style="color:var(--text)">أن تبقى متصلاً.</strong> لكي يكتمل تسجيل ما، على كل عضو في اللجنة أن يجيب. المُحقِّق كثير الغياب يُبطئ الناس بدل أن يحميهم.',
+  'bv-need-t':'قبل أن تبدأ — ما تحتاج إليه',
+  'bv-s1-note':'احتفظ بالنصف الخاص على خادمك ولا مكان سواه. أما النصف العام فمُعدٌّ للمشاركة — به يتحقق الآخرون من أنك شهدت بشيء. <strong style="color:var(--text)">بذرة الإسقاط الخاصة بك مهمة:</strong> لأن كل مُحقِّق يستعمل بذرة مختلفة، فقاعدة بيانات مسروقة من أحدهم لا تُقارَن بقاعدة آخر. وإن ضاعت البذرة فقدت حصصك المخزَّنة معناها، فاحفظ نسخة في مكان تتحكم به.',
+  'bv-s1-t':'الخطوة 1 — أنشئ مفاتيحك بنفسك',
+  'bv-s1-warn-d':'مُحقِّقان يحملان السرّ نفسه يُحسبان واحداً، وتصبح اللجنة أصغر مما تبدو. لا أحد — ونحن منهم — ينبغي أن يرسل إليك مفتاحاً.',
+  'bv-s1-warn-t':'أنشئها بنفسك. ولا تقبل مفاتيح من أحد أبداً.',
+  'bv-s2-d':'ضع قيم الخطوة 1 في ملف لا يقرؤه سواك. قيمة واحدة في كل سطر، بلا علامات اقتباس.',
+  'bv-s2-note':'<strong style="color:var(--gold)">اترك ALLOW_REAL_BIOMETRIC_DATA على false</strong> حتى تقرأ ملاحظات حماية البيانات. وهي مُعطَّلة، ينضم مُحقِّقك إلى الشبكة ويشارك في تسجيلات اختبارية دون أن يخزّن يوماً بيانات شخص حقيقي. هذه هي البداية الصحيحة، ولا عجلة في تغييرها.',
+  'bv-s2-t':'الخطوة 2 — اكتب ملف الإعدادات',
+  'bv-s3-note':'الإجابة السليمة تُبلغ عن <span style="font-family:var(--font-mono);color:var(--neon)">plaintext_templates: 0</span> و<span style="font-family:var(--font-mono);color:var(--neon)">sketch_seed_configured: true</span>. الأولى هي الادعاء بأن لا قالب كامل يُخزَّن، في صيغة تستطيع فحصها بنفسك بدل تصديقها. افحصها الآن ثم افحصها لاحقاً — فهي ضمانك أنت بقدر ما هي ضمان غيرك.',
+  'bv-s3-t':'الخطوة 3 — شغِّل المُحقِّق',
+  'bv-s4-d':'يصل إليك بقية أعضاء اللجنة عبر الإنترنت العام، فلا يجوز أن يبقى المنفذ مكشوفاً بلا تعمية. وCaddy يحصل على الشهادة من تلقاء نفسه.',
+  'bv-s4-t':'الخطوة 4 — ضع HTTPS في المقدمة',
+  'bv-s5-d':'هذه هي الخطوة التي تجعل من إنسان واحد مُحقِّقاً واحداً. توقّع مرتين: مرة بمحفظتك المسجَّلة، ومرة بمفتاح عقدتك. لا تقبل السلسلة الزوج إلا إذا صحّ التوقيعان، فلا يستطيع أحد تسجيل مفتاح باسمك، ولا تستطيع أنت تسجيل اثنين. استخدم الزر أدناه.',
+  'bv-s5-t':'الخطوة 5 — اربط مفتاحك بمحفظتك',
+  'bv-s6-d':'أرسل إلى المجموعة النصف <strong style="color:var(--text)">العام</strong> من الخطوة 1 مع عنوانك على HTTPS. يُضاف إلى القائمة التي يراجعها كل خادم برهان، ومن ثمّ تُحتسب شهاداتك ضمن النصاب. لا يغادر جهازك في هذه الخطوة أي سرّ — وهذا هو مغزى الفصل: النصف الخاص يبقى معك إلى الأبد، والنصف العام لا قيمة له بدونه.',
+  'bv-s6-t':'الخطوة 6 — انشر مفتاحك العام',
+  'bv-status-d':'شِفرة المُحقِّق <strong style="color:var(--text)">ليست علنية بعد</strong>، لذا لا يستطيع الجميع اليوم إتمام الخطوات أدناه. ننشرها مع ذلك لأن التصميم ينبغي أن يكون قابلاً للفحص قبل التشغيل لا بعده. إن أردت تشغيل واحد، اسأل في مجموعة تيليجرام المرتبطة في الصفحة الرئيسية. فتحُ هذا المستودع هو ما سيحوّل هذا الدليل من خطة إلى دعوة، وهو ما ندين لكم به تالياً.',
+  'bv-status-t':'الحالة: نسخة تجريبية مغلقة — اقرأ هذا قبل أن تبدأ',
+  'bv-title':'أو كن مُحقِّقاً حيوياً — الدور الذي يجعل التفرّد لامركزياً',
+  'bv-what-d':'لا يُرسَل إليك وجه قط. جهازك يخزّن <strong style="color:var(--text)">حصة جمعية</strong> من خلاصة بحجم 64 بايت: وحدها لا تُميَّز عن ضجيج عشوائي، ولا حساب في متناولك يستعيد منها وجهاً. تجري المقارنات بالاشتراك مع بقية أعضاء لجنتك، ولا يعرف أحدكم شيئاً سوى الجواب — <em>مكرَّر: نعم أم لا</em>. هذا ليس وعداً بحسن نوايانا، بل خاصية في الحساب نفسه.',
+  'bv-what-t':'ما الذي ستحتفظ به — وما الذي لن تراه أبداً',
+  'bv-why-d':'لا يُقبل التسجيل إلا بعد أن يشهد به <strong style="color:var(--text)">عدة مُحقِّقين مختلفين</strong>. فمفتاح واحد مسروق لا يكفي — يحتاج المهاجم إلى لجنة كاملة. ولأن <strong style="color:var(--neon)">الإنسان الواحد لا يملك إلا مفتاح مُحقِّق واحداً</strong>، فشراء لجنة يعني أن تكون ذلك العدد من البشر. مع 100 مُحقِّق، من يسيطر على 10 منهم فرصته أقل من واحد في الألف لامتلاك لجنة ثلاثية كاملة. كل شخص ينضم يُصغِّر هذا الرقم. هذا هو الموضع الوحيد الذي يكون فيه عدد المشاركين <em>هو</em> الأمان.',
+  'bv-why-t':'لماذا يجعل كل مُحقِّق إضافي إفسادَ الشبكة أصعب',
+  'swap-price-flat':'لا صفقات في هذه الفترة — لم يتحرك السعر. الرسم البياني يعمل، لكن السوق هادئ.',
   'mpc-optin-title':'اختياري — المساعدة في كشف التسجيلات المكررة (جاهز، لم يُفعّل بعد)',
   'mpc-optin-desc':'جاهز، لكنه لم يُفعّل بعد. لاحقاً سيتمكن نظيرك من المساعدة في التحقق من عدم تسجيل أي شخص مرتين دون أن يرى أي بيانات حيوية: كل طرف مشارك يحتفظ بحصة رياضية واحدة فقط من كل قالب — وهي بمفردها مجرد ضجيج — ويقارنون لقطة جديدة معاً، فلا تستطيع أي آلة منفردة إعادة بناء شيء. أما اليوم فهذا المسار لا يقرر شيئاً: فحص التكرار لا يمر عبره، واللجنة قائمة ثابتة وليست مسحوبة تلقائياً.',
   'mpc-optin-note':'يحتوي ملف الحصص على عشوائية تُستخدم مرة واحدة ولا يجوز أن يحتفظ بها سوى نظيرك — لا تنسخه أبداً إلى جهاز آخر ولا تودعه في أي مستودع. يجب حالياً أن يأتي من المشغّل، وهذه هي التبعية المركزية المتبقية. ولا تحتاج إلى مفتاح جديد: يعرّف نظيرك نفسه بالمفتاح ذاته الذي يوقّع به الكتل أصلاً.',
@@ -1658,6 +2043,41 @@ ar:{
   'expl-heading':'مستكشف الكتل',
 },
 hi:{
+  'bv-bind':'🔗 बाइंडिंग हस्ताक्षर बनाएँ',
+  'bv-check-d':'दूसरा आह्वान हर सत्यापक को सूचीबद्ध कर उनकी तुलना करता है: क्या सभी के पास पंजीकरणों की समान संख्या है, क्या किसी के पास बीज नहीं है, और क्या कुंजियाँ मेल खाती हैं। यदि आपकी प्रविष्टि में अंतर दिखे, तो उसे यहाँ जान लेना किसी के पंजीकरण के बीच जानने से बेहतर है।',
+  'bv-check-t':'जाँचना कि यह काम कर रहा है',
+  'bv-desc':'ब्लॉक बनाने वाला नोड <strong style="color:var(--text)">बहीखाते</strong> की रक्षा करता है। बायो-सत्यापक कुछ और सुरक्षित करता है: यह वादा कि <strong style="color:var(--neon)">हर व्यक्ति केवल एक बार पंजीकरण करे</strong>। ये अलग भूमिकाएँ हैं — आप एक चला सकते हैं, या दोनों एक ही मशीन पर।',
+  'bv-guide-sub':'चरण-दर-चरण &middot; क्रिप्टोग्राफी का ज्ञान आवश्यक नहीं &middot; लगभग 30 मिनट, अधिकांश डाउनलोड में',
+  'bv-honest-d':'यह हिस्सा बीटा में है और सीमाएँ वास्तविक हैं। संयुक्त तुलना एक बार उपयोग होने वाली क्रिप्टोग्राफ़िक सामग्री खर्च करती है, और एक आपूर्ति अभी कुछ दर्जन पंजीकरणों तक ही चलती है — यानी गोपनीय मार्ग पहले छोटे पैमाने पर स्वयं को सिद्ध करता है, लाखों पर नहीं। काम पंजीकृत लोगों की संख्या के साथ भी बढ़ता है। हम ये आँकड़े गोल करने के बजाय प्रकाशित करते हैं: जो व्यवस्था आपका चेहरा माँगती है, उसे यह बताने में अस्पष्ट रहने का अधिकार नहीं कि वह क्या कर सकती है और क्या अभी नहीं।',
+  'bv-honest-t':'आज स्थिति क्या है — साफ़-साफ़',
+  'bv-need-1':'<strong style="color:var(--text)">एक पंजीकृत Aequitas खाता।</strong> वही नियम जो ब्लॉक बनाने के लिए है, और उसी कारण से: एक व्यक्ति, एक कुंजी। इसके बिना एक ही व्यक्ति चुपचाप पूरी समिति बन सकता था।',
+  'bv-need-2':'<strong style="color:var(--text)">Docker वाला एक छोटा लिनक्स सर्वर।</strong> 2 GB मेमोरी पर्याप्त है। ग्राफ़िक्स कार्ड की ज़रूरत नहीं — तुलना 64 बाइट पर अंकगणित भर है। जिस मशीन पर आपका नोड पहले से चल रहा है, वही चलेगी।',
+  'bv-need-3':'<strong style="color:var(--text)">HTTPS वाला एक डोमेन नाम।</strong> समिति के अन्य सदस्यों को आप तक पहुँचना होगा। किसी ऐसी चीज़ का उपडोमेन जो पहले से आपकी है, काफी है।',
+  'bv-need-4':'<strong style="color:var(--text)">ऑनलाइन बने रहना।</strong> किसी पंजीकरण के पूरा होने के लिए समिति के हर सदस्य को उत्तर देना होता है। बार-बार अनुपलब्ध रहने वाला सत्यापक लोगों की रक्षा करने के बजाय उन्हें धीमा करता है।',
+  'bv-need-t':'शुरू करने से पहले — आपको क्या चाहिए',
+  'bv-s1-note':'निजी आधा हिस्सा अपने सर्वर पर रखें और कहीं नहीं। सार्वजनिक आधा साझा करने के लिए ही है — इसी से दूसरे जाँचते हैं कि आपने कुछ प्रमाणित किया। <strong style="color:var(--text)">आपका अपना प्रक्षेपण बीज मायने रखता है:</strong> चूँकि हर सत्यापक अलग बीज उपयोग करता है, एक से चुराया गया डेटाबेस दूसरे के विरुद्ध नहीं मिलाया जा सकता। बीज खो जाए तो आपके संचित हिस्से अर्थहीन हो जाते हैं, इसलिए उसका बैकअप वहीं रखें जिस पर आपका नियंत्रण हो।',
+  'bv-s1-t':'चरण 1 — अपनी कुंजियाँ स्वयं बनाएँ',
+  'bv-s1-warn-d':'एक ही रहस्य रखने वाले दो सत्यापक एक ही गिने जाते हैं, और समिति दिखने से छोटी हो जाती है। कोई भी — हम भी नहीं — आपको कभी कुंजी न भेजे।',
+  'bv-s1-warn-t':'इन्हें स्वयं बनाएँ। किसी से भी कभी कुंजी स्वीकार न करें।',
+  'bv-s2-d':'चरण 1 के मान ऐसी फ़ाइल में डालें जिसे केवल आप पढ़ सकें। प्रति पंक्ति एक मान, बिना उद्धरण चिह्नों के।',
+  'bv-s2-note':'<strong style="color:var(--gold)">जब तक आप डेटा-सुरक्षा टिप्पणियाँ न पढ़ लें, ALLOW_REAL_BIOMETRIC_DATA को false ही रहने दें</strong>। बंद रहने पर आपका सत्यापक नेटवर्क से जुड़ता है और परीक्षण पंजीकरणों में भाग लेता है, बिना किसी वास्तविक व्यक्ति का डेटा कभी संचित किए। शुरुआत का यही सही तरीका है, और इसे बदलने की कोई जल्दी नहीं।',
+  'bv-s2-t':'चरण 2 — कॉन्फ़िगरेशन फ़ाइल लिखें',
+  'bv-s3-note':'स्वस्थ उत्तर <span style="font-family:var(--font-mono);color:var(--neon)">plaintext_templates: 0</span> और <span style="font-family:var(--font-mono);color:var(--neon)">sketch_seed_configured: true</span> बताता है। पहला यह दावा है कि कोई पूरा टेम्पलेट संचित नहीं होता — ऐसे रूप में जिसे आप मान लेने के बजाय स्वयं जाँच सकते हैं। अभी जाँचें और बाद में फिर जाँचें — यह जितनी दूसरों की गारंटी है, उतनी ही आपकी अपनी।',
+  'bv-s3-t':'चरण 3 — सत्यापक चालू करें',
+  'bv-s4-d':'समिति के अन्य सदस्य आप तक सार्वजनिक इंटरनेट से पहुँचते हैं, इसलिए पोर्ट बिना एन्क्रिप्शन खुला नहीं रहना चाहिए। Caddy प्रमाणपत्र स्वयं ले लेता है।',
+  'bv-s4-t':'चरण 4 — आगे HTTPS लगाएँ',
+  'bv-s5-d':'यही वह चरण है जो एक व्यक्ति को एक सत्यापक बनाता है। आप दो बार हस्ताक्षर करते हैं: एक बार अपने पंजीकृत बटुए से, एक बार अपनी नोड कुंजी से। श्रृंखला इस जोड़ी को तभी स्वीकार करती है जब दोनों हस्ताक्षर सही हों — इसलिए कोई आपके नाम पर कुंजी पंजीकृत नहीं कर सकता, और आप दो पंजीकृत नहीं कर सकते। नीचे दिए बटन का उपयोग करें।',
+  'bv-s5-t':'चरण 5 — अपनी कुंजी को अपने बटुए से जोड़ें',
+  'bv-s6-d':'चरण 1 का <strong style="color:var(--text)">सार्वजनिक</strong> आधा हिस्सा अपने HTTPS पते के साथ समूह को भेजें। वह उस सूची में जुड़ जाता है जिसे हर प्रमाण सर्वर जाँचता है, और उसके बाद आपकी गवाहियाँ कोरम में गिनी जाती हैं। इस चरण में आपकी मशीन से कुछ भी गुप्त बाहर नहीं जाता — विभाजन का यही अर्थ है: निजी आधा सदा आपके पास रहता है, और सार्वजनिक आधा उसके बिना बेकार है।',
+  'bv-s6-t':'चरण 6 — अपनी सार्वजनिक कुंजी प्रकाशित करें',
+  'bv-status-d':'सत्यापक का स्रोत कोड <strong style="color:var(--text)">अभी सार्वजनिक नहीं है</strong>, इसलिए नीचे दिए चरण आज हर कोई पूरा नहीं कर सकता। फिर भी हम इन्हें प्रकाशित कर रहे हैं, क्योंकि किसी रचना की जाँच तैनाती से पहले होनी चाहिए, बाद में नहीं। यदि आप एक चलाना चाहते हैं, तो मुखपृष्ठ पर दिए टेलीग्राम समूह में पूछें। इस भंडार को खोलना ही इस मार्गदर्शिका को योजना से निमंत्रण में बदलेगा, और यही अगली चीज़ है जो हम आप पर उधार हैं।',
+  'bv-status-t':'स्थिति: बंद बीटा — शुरू करने से पहले पढ़ें',
+  'bv-title':'या बायो-सत्यापक बनें — वह भूमिका जो विशिष्टता को विकेंद्रित करती है',
+  'bv-what-d':'आपको कभी कोई चेहरा नहीं भेजा जाता। आपकी मशीन 64 बाइट के सारांश का एक <strong style="color:var(--text)">योगात्मक हिस्सा</strong> रखती है: अकेले में वह यादृच्छिक शोर से अलग नहीं पहचाना जा सकता, और आपके पास उपलब्ध कोई गणना उससे चेहरा वापस नहीं ला सकती। तुलना आपकी समिति के अन्य सदस्यों के साथ मिलकर होती है, और आप में से कोई भी उत्तर के सिवा कुछ नहीं जानता — <em>प्रतिलिपि: हाँ या नहीं</em>। यह हमारी नीयत का वादा नहीं, यह गणित का गुण है।',
+  'bv-what-t':'आप क्या रखेंगे — और क्या कभी नहीं देखेंगे',
+  'bv-why-d':'कोई पंजीकरण तभी स्वीकार होता है जब <strong style="color:var(--text)">कई अलग-अलग सत्यापक</strong> उसकी गवाही दे चुके हों। इसलिए एक चोरी हुई कुंजी काफी नहीं — हमलावर को पूरी समिति चाहिए। और चूँकि <strong style="color:var(--neon)">एक व्यक्ति ठीक एक ही सत्यापक कुंजी रख सकता है</strong>, समिति खरीदने का अर्थ है उतने लोग होना। 100 सत्यापकों में से 10 पर नियंत्रण रखने वाले के पास तीन की पूरी समिति पाने का अवसर 1000 में 1 से भी कम है। हर जुड़ने वाला व्यक्ति इस संख्या को घटाता है। यही एकमात्र जगह है जहाँ भागीदारों की संख्या <em>ही</em> सुरक्षा है।',
+  'bv-why-t':'हर अतिरिक्त सत्यापक नेटवर्क को भ्रष्ट करना कठिन क्यों बनाता है',
+  'swap-price-flat':'इस अवधि में कोई सौदा नहीं — कीमत हिली ही नहीं। चार्ट ठीक काम कर रहा है; बाज़ार शांत है।',
   'mpc-optin-title':'वैकल्पिक — दोहरे पंजीकरण की जाँच में सहायता (तैयार, अभी सक्रिय नहीं)',
   'mpc-optin-desc':'तैयार है, पर अभी सेवा में नहीं। आगे चलकर आपका नोड यह जाँचने में मदद कर सकेगा कि कोई दो बार पंजीकरण न करे, बिना किसी का बायोमेट्रिक डेटा देखे: हर भागीदार केवल प्रत्येक टेम्पलेट का एक गणितीय हिस्सा रखता है — अकेले में वह मात्र शोर है — और वे मिलकर नई कैप्चर की तुलना करते हैं, इसलिए कोई एक मशीन कुछ भी पुनर्निर्मित नहीं कर सकती। आज यह रास्ता कुछ तय नहीं करता: दोहराव की जाँच इससे होकर नहीं जाती, और समिति स्वतः चुनी जाने के बजाय एक निश्चित सूची है।',
   'mpc-optin-note':'हिस्सा-फ़ाइल में एक-बार-प्रयोग की यादृच्छिकता होती है जिसे केवल आपका नोड रख सकता है — इसे कभी किसी दूसरी मशीन पर न कॉपी करें और कहीं कमिट न करें। फ़िलहाल यह संचालक से ही आनी चाहिए, और यही शेष केंद्रीकृत निर्भरता है। आपको नई कुंजी की ज़रूरत नहीं: आपका नोड उसी हस्ताक्षर-कुंजी से पहचान देता है जो वह ब्लॉकों के लिए पहले से उपयोग करता है।',
@@ -2983,10 +3403,35 @@ function buildOHLC(pts, tfMs) {
   var data = pts.filter(function(p){return p.p>0;});
   if (!data.length) return [];
   var buckets = {};
+  var vorige = null;
   data.forEach(function(pt) {
     var b = Math.floor(pt.t/tfMs)*tfMs;
-    if (!buckets[b]) { buckets[b]={time:Math.floor(b/1000),open:pt.p,high:pt.p,low:pt.p,close:pt.p,vol:1}; }
-    else { buckets[b].high=Math.max(buckets[b].high,pt.p); buckets[b].low=Math.min(buckets[b].low,pt.p); buckets[b].close=pt.p; buckets[b].vol++; }
+    // ECHTES VOLUMEN, nicht die Zahl der Abfragen.
+    //
+    // Hier stand frueher vol:1 und vol++ -- gezaehlt wurden also die
+    // Preis-Schnappschuesse. Ein Balken, der "Volumen" heisst und in
+    // Wahrheit sagt, wie oft der Browser gepollt hat, ist keine
+    // Ungenauigkeit, sondern eine falsche Auskunft: er waechst, wenn
+    // NICHTS passiert, und ein Chart, der wie DexScreener aussieht, wird
+    // auch so gelesen.
+    //
+    // In einem x*y=k-Pool aendert nur ein Tausch die Reserven. Der Betrag
+    // der Aenderung der tUSD-Reserve zwischen zwei Schnappschuessen ist
+    // also der gehandelte Wert. Ohne Handel ist er null -- und ein leerer
+    // Volumenbereich ist die richtige Auskunft, wenn nicht gehandelt wurde.
+    var gehandelt = 0;
+    if (vorige && typeof pt.u === 'number' && typeof vorige.u === 'number') {
+      gehandelt = Math.abs(pt.u - vorige.u);
+    }
+    if (!buckets[b]) {
+      buckets[b] = {time:Math.floor(b/1000), open:pt.p, high:pt.p, low:pt.p, close:pt.p, vol:gehandelt};
+    } else {
+      buckets[b].high = Math.max(buckets[b].high, pt.p);
+      buckets[b].low  = Math.min(buckets[b].low,  pt.p);
+      buckets[b].close = pt.p;
+      buckets[b].vol += gehandelt;
+    }
+    vorige = pt;
   });
   return Object.values(buckets).sort(function(a,b){return a.time-b.time;});
 }
@@ -3041,6 +3486,31 @@ function drawPriceChart() {
     if (lwVolSeries) lwVolSeries.setData([]);
     return;
   }
+  // FLACHER MARKT: ehrlich aussehen statt kaputt.
+  //
+  // Hat sich der Preis nie bewegt -- am 26.08.2026 gemessen: 5.022 Punkte
+  // ueber 42 Stunden, min = max, 100 % Doji --, dann skaliert die
+  // Bibliothek die Achse auf die verbleibende Fliesskomma-Streuung. Das
+  // ergibt eine Beschriftung wie 25,901354 bis 25,901366: sechs
+  // Nachkommastellen Nichts, die aussehen, als sei der Chart defekt.
+  //
+  // Er ist es nicht -- es wurde schlicht nicht gehandelt. Also wird die
+  // Achse aufgespannt (+/- 2 %) und der Zustand benannt, statt Rauschen zu
+  // vergroessern. Ein Chart, der Stillstand als Bewegung zeichnet, luegt in
+  // die andere Richtung.
+  var alleGleich = candles.every(function(c){ return c.high === c.low && c.open === c.close; });
+  var hinweis = document.getElementById('price-chart-flat');
+  if (alleGleich && candles.length) {
+    var kurs = candles[candles.length-1].close;
+    lwCandleSeries.applyOptions({ autoscaleInfoProvider: function() {
+      return { priceRange: { minValue: kurs * 0.98, maxValue: kurs * 1.02 } };
+    }});
+    if (hinweis) hinweis.style.display = 'block';
+  } else {
+    lwCandleSeries.applyOptions({ autoscaleInfoProvider: null });
+    if (hinweis) hinweis.style.display = 'none';
+  }
+
   lwCandleSeries.setData(candles.map(function(c){return {time:c.time,open:c.open,high:c.high,low:c.low,close:c.close};}));
   lwVolSeries.setData(candles.map(function(c){return {time:c.time,value:c.vol,color:c.close>=c.open?'rgba(52,211,153,0.22)':'rgba(248,113,113,0.22)'};}));
   // DexScreener behaviour: on a timeframe switch (or first draw) snap to the
@@ -3982,7 +4452,7 @@ async function preloadPriceHistory() {
       // Merge DB history with any in-memory points, de-duplicate by timestamp
       var existing = new Set(priceHistory.map(function(p){ return p.t; }));
       hist.forEach(function(pt) {
-        if (!existing.has(pt.t)) priceHistory.push({t: pt.t, p: pt.p});
+        if (!existing.has(pt.t)) priceHistory.push({t: pt.t, p: pt.p, u: pt.u});
       });
       priceHistory.sort(function(a,b){ return a.t - b.t; });
       priceHistoryLoaded = true;
@@ -4001,7 +4471,7 @@ async function loadPriceRange(minutesBack) {
     var hist = d.history || [];
     var existing = new Set(priceHistory.map(function(p){ return p.t; }));
     hist.forEach(function(pt) {
-      if (!existing.has(pt.t)) priceHistory.push({t: pt.t, p: pt.p});
+      if (!existing.has(pt.t)) priceHistory.push({t: pt.t, p: pt.p, u: pt.u});
     });
     priceHistory.sort(function(a,b){ return a.t - b.t; });
     chartRangeMinutesLoaded = minutesBack;
@@ -4087,7 +4557,7 @@ async function loadPoolStatus() {
         : 'Be the first to deposit — your ratio sets the starting price.';
     }
     if (d.reserve_aeq > 0 && d.price_aeq_in_tusd > 0) {
-      priceHistory.push({ t: Date.now(), p: d.price_aeq_in_tusd });
+      priceHistory.push({ t: Date.now(), p: d.price_aeq_in_tusd, u: d.reserve_tusd });
       if (priceHistory.length > priceHistoryMaxPoints) priceHistory.shift();
       drawPriceChart();
     }
