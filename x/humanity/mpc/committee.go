@@ -80,6 +80,36 @@ type Committee struct {
 	Parties []Party
 }
 
+// WELCHE GROESSE MAN WAEHLEN SOLLTE -- nachgerechnet am 25.08.2026
+//
+// Ein Angreifer sieht eine Vorlage erst, wenn ihm ein Komitee VOLLSTAENDIG
+// gehoert. Bei 100 Validatoren und deterministischer Auswahl:
+//
+//	m | Verkehr | verfuegbar | Angreifer haelt 10 % | 30 %  | 50 %
+//	--+---------+------------+----------------------+-------+-------
+//	2 |       2 |      98,0% |              0,909 % | 8,79% | 24,75%
+//	3 |       6 |      97,0% |              0,074 % | 2,51% | 12,12%
+//	4 |      12 |      96,1% |              0,005 % | 0,70% |  5,87%
+//	5 |      20 |      95,1% |              0,000 % | 0,19% |  2,81%
+//	7 |      42 |      93,2% |              0,000 % | 0,01% |  0,62%
+//
+// Verkehr ist m(m-1) Kanaele; verfuegbar heisst, dass alle m online sind, bei
+// je 99 % Betriebszeit.
+//
+// Der Sprung von 2 auf 3 ist der mit Abstand lohnendste: er senkt die Aussicht
+// des Angreifers um eine Zehnerpotenz und kostet dreifachen Verkehr und einen
+// Prozentpunkt Verfuegbarkeit. Danach werden die Zugewinne klein und der
+// Verkehr waechst quadratisch.
+//
+// Dazu kommt, was ausserhalb dieser Tabelle liegt: ein Mensch darf nur EINEN
+// Validator stellen (siehe handleRegisterValidatorKey, UNIQUE(human_wallet)).
+// Fuer 30 % von 100 Validatoren muss ein Angreifer also dreissig Menschen
+// sein. Die Prozentspalten sind damit sehr viel teurer, als sie aussehen.
+//
+// EMPFEHLUNG: 3. Der Wechsel erzeugt ein neues Komitee, und die vorhandenen
+// Einschreibungen muessen dabei neu geteilt werden (reshare.go) -- sonst
+// nimmt das alte Komitee sie mit.
+
 // MinCommitteeSize is two, because one party holds every share.
 const MinCommitteeSize = 2
 
