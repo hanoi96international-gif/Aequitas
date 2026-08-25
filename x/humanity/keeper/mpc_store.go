@@ -259,3 +259,81 @@ func (cs *ChainState) CountMPCShares() (map[string]int, error) {
 	}
 	return out, cur.Err()
 }
+
+// ReshareMPCShare schreibt den neuen Anteil einer Einschreibung und bindet sie
+// zugleich an das neue Komitee.
+//
+// # WARUM BEIDES IN EINEM SCHRITT
+//
+// Die beiden Angaben gehoeren zusammen: ein neuer Anteil unter alter
+// Komitee-Kennung wird von Parteien verglichen, die dazu keinen Gegenpart
+// haben, und ein alter Anteil unter neuer Kennung ebenso. Beides ergibt
+// Rauschen, und Rauschen beantwortet jede Frage mit "kein Duplikat" -- der
+// Mensch waere geloescht, ohne dass es jemand bemerkt.
+//
+// Deshalb eine Transaktion und eine Bedingung: geschrieben wird nur, wenn die
+// Zeile noch dem ALTEN Komitee gehoert. Ein zweiter Lauf derselben
+// Neuteilung trifft dann null Zeilen und meldet das, statt einen bereits
+// umgezogenen Anteil ein zweites Mal zu ueberschreiben.
+func (cs *ChainState) ReshareMPCShare(enrollmentID, altesKomitee, neuesKomitee string,
+	partyIndex int, row mpc.PartyTemplate) error {
+
+	if cs.db == nil {
+		return fmt.Errorf("mpc: keine Datenbank konfiguriert")
+	}
+	if enrollmentID == "" || altesKomitee == "" || neuesKomitee == "" {
+		return fmt.Errorf("mpc: Einschreibung sowie altes und neues Komitee sind alle noetig")
+	}
+	if altesKomitee == neuesKomitee {
+		return fmt.Errorf("mpc: altes und neues Komitee sind dasselbe (%q) -- eine Neuteilung "+
+			"waere sinnlos und wuerde nur frische Zufaelligkeit verbrauchen", altesKomitee)
+	}
+	if len(row) == 0 {
+		return fmt.Errorf("mpc: leerer Anteil fuer Einschreibung %q", enrollmentID)
+	}
+
+	res, err := cs.db.Exec(
+		`UPDATE mpc_shares
+		    SET committee_id = $1, party_index = $2, feature_count = $3, row_data = $4
+		  WHERE enrollment_id = $5 AND committee_id = $6`,
+		neuesKomitee, partyIndex, len(row), encodeRow(row), enrollmentID, altesKomitee)
+	if err != nil {
+		return fmt.Errorf("mpc: Neuteilung von %q: %w", enrollmentID, err)
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("mpc: Neuteilung von %q, betroffene Zeilen unbekannt: %w", enrollmentID, err)
+	}
+	if n == 0 {
+		return fmt.Errorf("mpc: Einschreibung %q gehoert nicht (mehr) dem Komitee %q -- "+
+			"nichts geaendert. Entweder wurde sie bereits umgezogen, oder diese Partei "+
+			"rechnet mit einem veralteten Komitee",
+			enrollmentID, altesKomitee)
+	}
+	return nil
+}
+
+// MPCEnrollmentsOfCommittee nennt die Einschreibungen, die noch am alten
+// Komitee haengen -- die Arbeitsliste einer Neuteilung.
+func (cs *ChainState) MPCEnrollmentsOfCommittee(committeeID string) ([]string, error) {
+	if cs.db == nil {
+		return nil, fmt.Errorf("mpc: keine Datenbank konfiguriert")
+	}
+	rows, err := cs.db.Query(
+		`SELECT enrollment_id FROM mpc_shares WHERE committee_id = $1 ORDER BY enrollment_id`,
+		committeeID)
+	if err != nil {
+		return nil, fmt.Errorf("mpc: Einschreibungen von %q: %w", committeeID, err)
+	}
+	defer rows.Close()
+
+	var out []string
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		out = append(out, id)
+	}
+	return out, rows.Err()
+}
