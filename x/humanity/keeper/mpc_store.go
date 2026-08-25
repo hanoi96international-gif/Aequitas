@@ -171,9 +171,12 @@ func (cs *ChainState) SaveMPCShare(enrollmentID, committeeID string, partyIndex 
 // party in total) and is the honest price of a check that actually finds
 // duplicates.
 //
-// The buckets stay written on enrolment. They cost almost nothing, and a
-// filter that works at this threshold could use them later. What must not come
-// back is filtering a CHECK through them.
+// Die Eimer werden seit dem 25.08.2026 GAR NICHT MEHR geschrieben. Der Satz,
+// der hier stand -- sie kosteten fast nichts und ein spaeter passender Filter
+// koenne sie nutzen -- war falsch: ein Eimerschluessel besteht aus k Bits des
+// Sketches im Klartext, und 20 Tabellen à 27 Bit deckten 338 der 512 Bits ab.
+// Sie kosteten also zwei Drittel der Vertraulichkeit, fuer die es diese
+// Bauart ueberhaupt gibt. Siehe mpcSchema.
 func (cs *ChainState) MPCAllShares(committeeID string, limit int) (
 	ids []string, rows []mpc.PartyTemplate, err error) {
 
