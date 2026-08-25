@@ -7,7 +7,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <meta name="google" content="notranslate">
 <meta name="translation" content="notranslate">
-<title>Aequitas — Proof of Humanity Chain</title>
+<title data-i18n="x-aequitas-proof-of-humanity-chain">Aequitas — Proof of Humanity Chain</title>
 <meta name="description" content="Aequitas Chain — a Proof of Humanity blockchain with built-in Universal Basic Income, demurrage, and wealth cap. Chain ID 1926.">
 <meta name="theme-color" content="#0C0E16">
 <link rel="canonical" href="https://aequitas.digital/explorer">
@@ -92,7 +92,7 @@
       <span style="width:22px;height:22px;border-radius:6px;background:var(--grad);display:inline-flex;align-items:center;justify-content:center;font-size:13px;flex-shrink:0">⚖</span>
       <span data-i18n="btn-download-app">DOWNLOAD AEQUITAS APP</span>
     </a>
-    <div style="font-size:0.74rem;color:rgba(255,255,255,0.35);margin-top:8px">Android APK · direct download</div>
+    <div style="font-size:0.74rem;color:rgba(255,255,255,0.35);margin-top:8px" data-i18n="x-android-apk-direct-download">Android APK · direct download</div>
   </div>
   <!-- USP / EQUAL START SECTION -->
   <div style="background:linear-gradient(135deg,rgba(0,255,209,0.06),rgba(139,92,246,0.04));border:1px solid rgba(0,255,209,0.2);border-radius:var(--radius);padding:22px;margin-bottom:16px;position:relative;overflow:hidden">
@@ -122,7 +122,7 @@
   <div class="aonly">
     <div class="aonly-icon">📱</div>
     <div class="aonly-title" data-i18n="app-title">REGISTRATION VIA ANDROID APP</div>
-    <div class="aonly-text" data-i18n="app-text">Registration captures your face and a short liveness sequence with the phone camera. Independent matching services check that a living person is present and that this face is not already registered; they must agree by quorum. A Groth16 Zero-Knowledge Proof then carries the result to the chain without revealing anything about you. Your <strong style="color:var(--gold)">1,000 AEQ will be credited automatically</strong> upon successful verification. <strong style="color:var(--gold)">Note:</strong> the matching threshold has not yet been calibrated against real captures — see the FAQ below.</div>
+    <div class="aonly-text" data-i18n="app-text">Registration captures your face and a short liveness sequence with the phone camera. Independent matching services check that a living person is present and that this face is not already registered; they must agree by quorum. A Groth16 Zero-Knowledge Proof then carries the result to the chain without revealing anything about you. Your <strong style="color:var(--gold)" data-i18n="x-1-000-aeq-will-be">1,000 AEQ will be credited automatically</strong> upon successful verification. <strong style="color:var(--gold)">Note:</strong> the matching threshold has not yet been calibrated against real captures — see the FAQ below.</div>
   </div>
   <div class="rsteps">
     <div class="rstep"><div class="snum">1</div><div class="stitle" data-i18n="s1t">Face capture</div><div class="sdesc" data-i18n="s1d">The app records your face and a short liveness sequence and sends them to independent matching services. They check that a living person is present and compare the face against everyone already registered. The images are discarded after processing.</div></div>
@@ -131,14 +131,14 @@
     <div class="rstep"><div class="snum">4</div><div class="stitle" data-i18n="s4t">1,000 AEQ Granted</div><div class="sdesc" data-i18n="s4d">Your registration is confirmed on the Aequitas BlockDAG within 1 second. 1,000 AEQ is credited to your wallet instantly, gasless. Your identity is permanently recorded as verified human.</div></div>
   </div>
   <div class="pbar" data-i18n="priv-bar">🔒 Device-bound cryptographic key · Groth16 ZKP · Data never leaves device · One registration per device</div>
-  <div class="pbar" style="background:rgba(245,166,35,0.06);border:1px solid rgba(245,166,35,0.2);color:var(--gold)">📱 MetaMask Mobile: if AEQ balance shows 0 after registration, go to Settings → Networks → delete Aequitas Chain → re-add via this website</div>
+  <div class="pbar" style="background:rgba(245,166,35,0.06);border:1px solid rgba(245,166,35,0.2);color:var(--gold)" data-i18n="x-metamask-mobile-if-aeq-balance">📱 MetaMask Mobile: if AEQ balance shows 0 after registration, go to Settings → Networks → delete Aequitas Chain → re-add via this website</div>
   <div class="rcard">
     <div class="wbox" id="wbox"><div class="wlbl" data-i18n="conn-wallet">CONNECTED WALLET</div><div class="wadr" id="wadr" title="">—</div><button data-act="copyAddr" data-args='["wadr"]' style="margin-top:4px;padding:3px 10px;font-size:0.74rem;background:rgba(0,255,209,0.08);border:1px solid rgba(0,255,209,0.2);color:var(--neon);border-radius:4px;cursor:pointer">📋 Copy</button></div>
     <div id="demurrage-notice" style="display:none"></div>
     <div class="pbox" id="pbox"><div class="plbl" data-i18n="proof-recv">⚡ ZK PROOF RECEIVED</div><div class="pval" id="pval" data-i18n="proof-hint">Connect wallet to register</div></div>
     <button class="rbtn bc" id="btn-conn" data-act="connectWallet" data-i18n="btn-conn" style="display:none">🦊 CONNECT METAMASK</button>
     <button class="rbtn bc" id="btn-wc" data-act="connectWalletConnect" style="background:linear-gradient(135deg,#3b99fc,#1e5fd6);color:#fff" data-i18n="btn-wc">🔗 CONNECT WALLETCONNECT</button>
-    <button id="btn-disconnect" data-act="disconnectWallet" style="display:none;margin-top:6px;padding:8px 16px;font-size:0.77rem;letter-spacing:1px;border:1px solid rgba(248,113,113,0.4);background:rgba(248,113,113,0.08);color:var(--red);border-radius:6px;cursor:pointer;width:100%">⊘ DISCONNECT WALLET</button>
+    <button id="btn-disconnect" data-act="disconnectWallet" style="display:none;margin-top:6px;padding:8px 16px;font-size:0.77rem;letter-spacing:1px;border:1px solid rgba(248,113,113,0.4);background:rgba(248,113,113,0.08);color:var(--red);border-radius:6px;cursor:pointer;width:100%" data-i18n="x-disconnect-wallet">⊘ DISCONNECT WALLET</button>
     <button class="rbtn br" id="btn-reg" data-act="doRegister" disabled data-i18n="btn-reg">🔐 REGISTER ON-CHAIN</button>
     <div class="rlog" id="rlog"><span class="info" data-i18n="reg-log-hint">// Open Aequitas Android App to generate your proof, then return here...</span></div>
 
@@ -161,7 +161,7 @@
       <div class="guardian-input-row">
         <div class="guardian-lbl" data-i18n="guard-set-lbl">Set / Change Guardian</div>
         <input type="text" id="guardian-input" placeholder="Guardian wallet address (0x...)">
-        <button class="guardian-btn guardian-btn-set" data-act="doSetGuardian">🛡 SET GUARDIAN</button>
+        <button class="guardian-btn guardian-btn-set" data-act="doSetGuardian" data-i18n="x-set-guardian">🛡 SET GUARDIAN</button>
         <div class="guardian-hint" data-i18n="guard-set-hint">Must be a registered Aequitas human · 7-day timelock · Guardian can only confirm your liveness, not access funds · Max 3 wards per guardian</div>
       </div>
 
@@ -170,7 +170,7 @@
         <div class="guardian-lbl" data-i18n="guard-confirm-lbl">Confirm Alive (As Guardian)</div>
         <div class="guardian-input-row">
           <input type="text" id="ward-input" placeholder="Ward wallet address (0x...)">
-          <button class="guardian-btn guardian-btn-confirm" data-act="doGuardianConfirmAlive">✓ CONFIRM WARD IS ALIVE</button>
+          <button class="guardian-btn guardian-btn-confirm" data-act="doGuardianConfirmAlive" data-i18n="x-confirm-ward-is-alive">✓ CONFIRM WARD IS ALIVE</button>
           <div class="guardian-hint" data-i18n="guard-confirm-hint">If your ward cannot access their wallet, confirm their liveness to prevent their funds moving to escrow after 910 days of inactivity.</div>
         </div>
       </div>
@@ -180,13 +180,13 @@
   </div>
   <div class="ic">
     <div class="ic-title" data-i18n="reg-details">Registration Details</div>
-    <div class="ic-row"><span class="ic-key" data-i18n="k-network">Network</span><span class="ic-val p">Aequitas Chain (BlockDAG)</span></div>
+    <div class="ic-row"><span class="ic-key" data-i18n="k-network">Network</span><span class="ic-val p" data-i18n="x-aequitas-chain-blockdag">Aequitas Chain (BlockDAG)</span></div>
     <div class="ic-row"><span class="ic-key" data-i18n="k-chainid">Chain ID</span><span class="ic-val b">1926 (0x786)</span></div>
-    <div class="ic-row"><span class="ic-key" data-i18n="k-grant">UBI Grant</span><span class="ic-val go">1,000 AEQ per human</span></div>
+    <div class="ic-row"><span class="ic-key" data-i18n="k-grant">UBI Grant</span><span class="ic-val go" data-i18n="x-1-000-aeq-per-human">1,000 AEQ per human</span></div>
     <div class="ic-row"><span class="ic-key" data-i18n="k-fee">Gas Fee</span><span class="ic-val g" data-i18n="free">FREE — completely gasless</span></div>
     <div class="ic-row"><span class="ic-key" data-i18n="k-limit">Registrations</span><span class="ic-val" data-i18n="k-limit-v">Once per device · permanent · immutable</span></div>
     <div class="ic-row"><span class="ic-key" data-i18n="k-bio">Face</span><span class="ic-val g" data-i18n="never-stored">Images discarded after checking — no validator holds a whole template</span></div>
-    <div class="ic-row"><span class="ic-key" data-i18n="k-proof">Proof System</span><span class="ic-val p">Groth16 ZKP (Zero-Knowledge)</span></div>
+    <div class="ic-row"><span class="ic-key" data-i18n="k-proof">Proof System</span><span class="ic-val p" data-i18n="x-groth16-zkp-zero-knowledge">Groth16 ZKP (Zero-Knowledge)</span></div>
     <div class="ic-row"><span class="ic-key" data-i18n="k-conf">Confirmation</span><span class="ic-val" data-i18n="k-conf-v">Within 1 second (1 block)</span></div>
     <div class="ic-row"><span class="ic-key" data-i18n="k-sybil">Sybil Protection</span><span class="ic-val g" data-i18n="k-sybil-v">One identity per device · permanent lock (device-bound, not yet body-bound)</span></div>
   </div>
@@ -213,12 +213,12 @@
   <div class="exp-stat">
     <div class="exp-stat-lbl" data-i18n="s-height">Latest Block</div>
     <div class="exp-stat-val" id="s-height">—</div>
-    <div class="exp-stat-sub" id="s-height-sub">BlockDAG · Parallel production</div>
+    <div class="exp-stat-sub" id="s-height-sub" data-i18n="x-blockdag-parallel-production">BlockDAG · Parallel production</div>
   </div>
   <div class="exp-stat">
     <div class="exp-stat-lbl" data-i18n="s-humans">Verified Humans</div>
     <div class="exp-stat-val" id="s-humans">—</div>
-    <div class="exp-stat-sub">Device-bound ZK proof · one registration per device</div>
+    <div class="exp-stat-sub" data-i18n="x-device-bound-zk-proof-one">Device-bound ZK proof · one registration per device</div>
   </div>
   <div class="exp-stat">
     <div class="exp-stat-lbl" data-i18n="s-supply">Total Supply</div>
@@ -228,18 +228,18 @@
   <div class="exp-stat">
     <div class="exp-stat-lbl" data-i18n="s-uptime">Uptime</div>
     <div class="exp-stat-val" id="s-uptime" style="font-size:0.88rem">—</div>
-    <div class="exp-stat-sub">Multi-validator network</div>
+    <div class="exp-stat-sub" data-i18n="x-multi-validator-network">Multi-validator network</div>
   </div>
   <div class="exp-stat">
     <div class="exp-stat-lbl" data-i18n="s-validators">Active Validators</div>
     <div class="exp-stat-val" id="s-validators">—</div>
-    <div class="exp-stat-sub" id="s-validators-sub">Distinct proposers, recent blocks</div>
+    <div class="exp-stat-sub" id="s-validators-sub" data-i18n="x-distinct-proposers-recent-blocks">Distinct proposers, recent blocks</div>
   </div>
 </div>
 <!-- GHOSTDAG DAG view: actual parent/merge structure, not just a linear list -->
 <div class="dag-panel">
   <div class="exp-panel-hdr">
-    <div class="exp-panel-title"><span class="sec-dot"></span>GHOSTDAG DAG View <span id="dag-knight-status" style="color:var(--gold);font-weight:600">· KnightDAG-secured</span></div>
+    <div class="exp-panel-title"><span class="sec-dot"></span>GHOSTDAG DAG View <span id="dag-knight-status" style="color:var(--gold);font-weight:600" data-i18n="x-knightdag-secured">· KnightDAG-secured</span></div>
     <div style="display:flex;align-items:center;gap:12px">
       <div class="sec-count" id="dag-verdict-stat" title="Share of visible merged blocks GHOSTDAG classified blue (counted toward blue_score) vs red (excluded)"></div>
       <div class="sec-count" id="dag-node-count">—</div>
@@ -254,7 +254,7 @@
     <span><i style="background:var(--dag-red)"></i>GHOSTDAG red — excluded, still merged</span>
     <span><i class="ring"></i>not yet classified</span>
     <span><i class="knight"></i>KnightDAG-secured — block infers its own K</span>
-    <span>Fill = GHOSTDAG verdict · thin ring = proposer · one column per height. Hover any block for details.</span>
+    <span data-i18n="x-fill-ghostdag-verdict-thin-ring">Fill = GHOSTDAG verdict · thin ring = proposer · one column per height. Hover any block for details.</span>
   </div>
 </div>
 <div class="dag-tip" id="dag-tip"></div>
@@ -266,11 +266,11 @@
       <div class="exp-panel-title"><span class="sec-dot"></span>Latest Blocks</div>
       <div class="sec-count" id="block-count">—</div>
     </div>
-    <div style="padding:8px 16px;font-size:0.74rem;color:var(--muted);border-bottom:1px solid var(--border)">One row per height — the <b>canonical winner</b> GHOSTDAG selected, not every validator that produced at that height. A run of the same proposer here doesn't mean the others are idle: check <b>⟁N</b> next to a block # (parallel blocks merged at that height) or <b>Active Validators</b> above for the real count.</div>
+    <div style="padding:8px 16px;font-size:0.74rem;color:var(--muted);border-bottom:1px solid var(--border)">One row per height — the <b data-i18n="x-canonical-winner">canonical winner</b> GHOSTDAG selected, not every validator that produced at that height. A run of the same proposer here doesn't mean the others are idle: check <b>⟁N</b> next to a block # (parallel blocks merged at that height) or <b data-i18n="x-active-validators">Active Validators</b> above for the real count.</div>
     <div class="exp-table-wrap">
       <table class="exp-table">
         <thead><tr><th>Block #</th><th>Age</th><th>Txns</th><th title="The canonical (highest blue_score) proposer at this height — see the note above for why other validators may not appear here">Proposer</th><th>Type</th><th title="GHOSTDAG blue score — canonical ordering key">★ Score</th></tr></thead>
-        <tbody id="blocks-list"><tr><td colspan="6" class="exp-empty">Loading blocks...</td></tr></tbody>
+        <tbody id="blocks-list"><tr><td colspan="6" class="exp-empty" data-i18n="x-loading-blocks">Loading blocks...</td></tr></tbody>
       </table>
     </div>
   </div>
@@ -282,8 +282,8 @@
     </div>
     <div class="exp-table-wrap">
       <table class="exp-table">
-        <thead><tr><th>Hash / Wallet</th><th>Block</th><th>Type</th><th>Amount</th></tr></thead>
-        <tbody id="txns-list"><tr><td colspan="4" class="exp-empty">Loading transactions...</td></tr></tbody>
+        <thead><tr><th data-i18n="x-hash-wallet">Hash / Wallet</th><th>Block</th><th>Type</th><th>Amount</th></tr></thead>
+        <tbody id="txns-list"><tr><td colspan="4" class="exp-empty" data-i18n="x-loading-transactions">Loading transactions...</td></tr></tbody>
       </table>
     </div>
   </div>
@@ -306,12 +306,12 @@
     <div>
       <div class="ib-icon">🔒</div>
       <div class="ib-title" data-i18n="h-what">What is a Verified Human?</div>
-      <div class="ib-text" data-i18n="h-what-t">A Verified Human is currently a wallet address cryptographically proven to control one specific device's secure hardware key. Verification generates that key inside the phone's Secure Enclave/StrongBox, gated behind the device's own screen-unlock — no separate sensor kit. Only a Groth16 Zero-Knowledge Proof is transmitted; no biometric data ever leaves the device. <strong style="color:var(--gold)">Today this verifies one device, not yet one unique person</strong> — see the FAQ for what that means in practice.</div>
+      <div class="ib-text" data-i18n="h-what-t">A Verified Human is currently a wallet address cryptographically proven to control one specific device's secure hardware key. Verification generates that key inside the phone's Secure Enclave/StrongBox, gated behind the device's own screen-unlock — no separate sensor kit. Only a Groth16 Zero-Knowledge Proof is transmitted; no biometric data ever leaves the device. <strong style="color:var(--gold)" data-i18n="x-today-this-verifies-one-device">Today this verifies one device, not yet one unique person</strong> — see the FAQ for what that means in practice.</div>
     </div>
     <div>
       <div class="ib-icon">🧮</div>
       <div class="ib-title" data-i18n="h-zkp">Zero-Knowledge Proof System</div>
-      <div class="ib-text" data-i18n="h-zkp-t">Aequitas uses Groth16 proofs on the BN128 elliptic curve — the same curve used by Ethereum and Zcash. Proof size: ~200 bytes. Verification: ~10ms. <code>commitment = keccak256(deviceKey ‖ wallet)</code>. The nullifier is bound to this device: losing your phone does not let you create a second identity on it, but a different device can still register separately. No key material is ever revealed or stored server-side.</div>
+      <div class="ib-text" data-i18n="h-zkp-t">Aequitas uses Groth16 proofs on the BN128 elliptic curve — the same curve used by Ethereum and Zcash. Proof size: ~200 bytes. Verification: ~10ms. <code data-i18n="x-commitment-keccak256-devicekey-wallet">commitment = keccak256(deviceKey ‖ wallet)</code>. The nullifier is bound to this device: losing your phone does not let you create a second identity on it, but a different device can still register separately. No key material is ever revealed or stored server-side.</div>
     </div>
     <div>
       <div class="ib-icon">🛡</div>
@@ -327,8 +327,8 @@
       <div class="ib-icon">🫁</div>
       <div class="ib-title" data-i18n="h-bio-hw">Identity Verification Roadmap</div>
       <div class="ib-text" data-i18n="h-bio-hw-t">
-        <strong style="color:var(--neon)">Today (beta)</strong> — a per-device hardware-backed cryptographic key, honestly labeled as device-bound rather than body-bound.<br><br>
-        <strong style="color:var(--gold)">Planned (post-beta)</strong> — a real cross-device biological uniqueness check, to be specified, built, and independently audited before any stronger Sybil-resistance claim is made.
+        <strong style="color:var(--neon)" data-i18n="x-today-beta">Today (beta)</strong> — a per-device hardware-backed cryptographic key, honestly labeled as device-bound rather than body-bound.<br><br>
+        <strong style="color:var(--gold)" data-i18n="x-planned-post-beta">Planned (post-beta)</strong> — a real cross-device biological uniqueness check, to be specified, built, and independently audited before any stronger Sybil-resistance claim is made.
       </div>
     </div>
   </div>
@@ -346,10 +346,10 @@
       <div class="ic-row"><span class="ic-key" data-i18n="s-supply">Total Supply</span><span class="ic-val go" id="stat-supply">0 AEQ</span></div>
       <div class="ic-row"><span class="ic-key" data-i18n="k-grant">Grant per Human</span><span class="ic-val go">1,000 AEQ</span></div>
       <div class="ic-row"><span class="ic-key" data-i18n="k-fee">Registration Fee</span><span class="ic-val g" data-i18n="free">FREE — gasless</span></div>
-      <div class="ic-row"><span class="ic-key" data-i18n="k-zkp">ZKP System</span><span class="ic-val p">Groth16 / BN128</span></div>
+      <div class="ic-row"><span class="ic-key" data-i18n="k-zkp">ZKP System</span><span class="ic-val p" data-i18n="x-groth16-bn128">Groth16 / BN128</span></div>
       <div class="ic-row"><span class="ic-key" data-i18n="k-hash">Hash System</span><span class="ic-val p">keccak256</span></div>
       <div class="ic-row"><span class="ic-key" data-i18n="k-bio">Face</span><span class="ic-val g" data-i18n="never-stored">Images discarded after checking — no validator holds a whole template</span></div>
-      <div class="ic-row"><span class="ic-key" data-i18n="k-sybil-prot">Sybil Protection</span><span class="ic-val g">Permanent · On-chain</span></div>
+      <div class="ic-row"><span class="ic-key" data-i18n="k-sybil-prot">Sybil Protection</span><span class="ic-val g" data-i18n="x-permanent-on-chain">Permanent · On-chain</span></div>
     </div>
     <div class="ic" style="margin-top:12px">
       <div class="ic-title" data-i18n="faq-title">❓ FAQ</div>
@@ -470,7 +470,7 @@
 
     <button class="rbtn bc" id="swap-btn-conn" data-act="connectSwapWallet" data-i18n="btn-conn" style="display:none">🦊 CONNECT METAMASK</button>
     <button class="rbtn bc" id="swap-btn-wc" data-act="connectWalletConnect" style="background:linear-gradient(135deg,#3b99fc,#1e5fd6);color:#fff" data-i18n="btn-wc">🔗 CONNECT WALLETCONNECT</button>
-    <button id="swap-btn-disconnect" data-act="disconnectWallet" style="display:none;margin-top:6px;padding:8px 16px;font-size:0.77rem;letter-spacing:1px;border:1px solid rgba(248,113,113,0.4);background:rgba(248,113,113,0.08);color:var(--red);border-radius:6px;cursor:pointer;width:100%">⊘ DISCONNECT WALLET</button>
+    <button id="swap-btn-disconnect" data-act="disconnectWallet" style="display:none;margin-top:6px;padding:8px 16px;font-size:0.77rem;letter-spacing:1px;border:1px solid rgba(248,113,113,0.4);background:rgba(248,113,113,0.08);color:var(--red);border-radius:6px;cursor:pointer;width:100%" data-i18n="x-disconnect-wallet">⊘ DISCONNECT WALLET</button>
     <button class="rbtn br" id="swap-btn-go" data-act="doSwap" disabled data-i18n="swap-btn-go">🔄 SWAP</button>
     <div class="rlog" id="swap-log"><span class="info" data-i18n="swap-log-hint">// Connect your wallet to swap...</span></div>
 
@@ -486,7 +486,7 @@
 <div class="rs">
   <div class="rhero">
     <h2 class="rhero-title">💧 Liquidity</h2>
-    <div class="rhero-sub">Provide AEQ / tUSD liquidity to earn 30% of all swap fees, distributed daily.</div>
+    <div class="rhero-sub" data-i18n="x-provide-aeq-tusd-liquidity-to">Provide AEQ / tUSD liquidity to earn 30% of all swap fees, distributed daily.</div>
   </div>
 
 <div class="ic">
@@ -505,10 +505,10 @@
         <span style="color:var(--teal)"><span id="depth-tusd-pct">50%</span> tUSD</span>
       </div>
     </div>
-    <div class="ic-row" style="padding-top:4px"><span class="ic-key" data-i18n="swap-fee-bps">Swap Fee</span><span class="ic-val g">0.1% · split 40/30/20/10</span></div>
+    <div class="ic-row" style="padding-top:4px"><span class="ic-key" data-i18n="swap-fee-bps">Swap Fee</span><span class="ic-val g" data-i18n="x-0-1-split-40-30">0.1% · split 40/30/20/10</span></div>
     <div class="amm-box">
       <div style="font-size:0.73rem;color:var(--purple);font-weight:700;letter-spacing:1.2px;text-transform:uppercase;margin-bottom:6px" data-i18n="amm-title">x × y = k — Constant Product AMM</div>
-      <div class="amm-formula">AEQ_reserve × tUSD_reserve = k (constant)</div>
+      <div class="amm-formula" data-i18n="x-aeq-reserve-tusd-reserve-k">AEQ_reserve × tUSD_reserve = k (constant)</div>
       <div class="amm-text" data-i18n="amm-text">When you swap AEQ for tUSD, AEQ reserve grows and tUSD reserve shrinks — their product always stays equal to k. Every swap moves the price. Larger swaps relative to pool size cause greater price impact. The 0.1% fee is taken from the input before the formula is applied, ensuring the pool earns on every trade.</div>
     </div>
   </div>
@@ -566,7 +566,7 @@
 <div id="tab-index" class="tab-content">
 <nav class="stabs">
   <div class="stab active" data-act="showStab" data-args='["tab-index","eqi-score"]' role="button" tabindex="0">📊 Score</div>
-  <div class="stab" data-act="showStabAndLorenzChart" data-args='["tab-index","eqi-lorenz"]' role="button" tabindex="0">📈 Distribution</div>
+  <div class="stab" data-act="showStabAndLorenzChart" data-args='["tab-index","eqi-lorenz"]' role="button" tabindex="0" data-i18n="x-distribution">📈 Distribution</div>
   <div class="stab" data-act="showStab" data-args='["tab-index","eqi-economy"]' role="button" tabindex="0">💸 Economy</div>
   <div class="stab" data-act="showStab" data-args='["tab-index","eqi-story"]' role="button" tabindex="0">📖 Story</div>
 </nav>
@@ -574,7 +574,7 @@
 <div class="is">
   <div class="idx" style="grid-column:1/-1">
     <h1 class="idx-title" data-i18n="idx-title">Aequitas Index — Real-Time Economic Equality Score</h1>
-    <div class="idx-desc" data-i18n="idx-desc">The Aequitas Index is derived from the <strong style="color:var(--teal)">Gini coefficient</strong> — the international standard for measuring wealth inequality, adopted by the World Bank, OECD, and UN. Unlike a simple richest-vs-poorest ratio, the Gini coefficient captures the <em style="color:var(--text)">entire distribution</em> across every verified human simultaneously, in a single number. <strong style="color:var(--neon)">0 = perfect equality</strong> (every wallet holds the same AEQ). <strong style="color:var(--red)">100 = maximum concentration</strong> (one wallet holds all AEQ in existence). For context: Bitcoin Gini ≈ 0.85 (Index 85) · most unequal country on Earth (South Africa) ≈ 0.63 · Scandinavia ≈ 0.27. Aequitas targets Gini below 0.30 at scale — comparable to the most equal developed economies — enforced automatically by the wealth cap and redistribution pools, no governance vote required.</div>
+    <div class="idx-desc" data-i18n="idx-desc">The Aequitas Index is derived from the <strong style="color:var(--teal)" data-i18n="x-gini-coefficient">Gini coefficient</strong> — the international standard for measuring wealth inequality, adopted by the World Bank, OECD, and UN. Unlike a simple richest-vs-poorest ratio, the Gini coefficient captures the <em style="color:var(--text)" data-i18n="x-entire-distribution">entire distribution</em> across every verified human simultaneously, in a single number. <strong style="color:var(--neon)" data-i18n="x-0-perfect-equality">0 = perfect equality</strong> (every wallet holds the same AEQ). <strong style="color:var(--red)" data-i18n="x-100-maximum-concentration">100 = maximum concentration</strong> (one wallet holds all AEQ in existence). For context: Bitcoin Gini ≈ 0.85 (Index 85) · most unequal country on Earth (South Africa) ≈ 0.63 · Scandinavia ≈ 0.27. Aequitas targets Gini below 0.30 at scale — comparable to the most equal developed economies — enforced automatically by the wealth cap and redistribution pools, no governance vote required.</div>
     <div style="display:grid;grid-template-columns:auto 1fr;gap:20px;align-items:center;margin-top:12px">
       <div><div class="idx-big" id="idx-score">—</div><div class="idx-lbl" data-i18n="curr-idx">Current Index</div></div>
       <div>
@@ -588,7 +588,7 @@
         <div class="mval" id="idx-gini">—</div>
         <div class="mlbl" data-i18n="gini">Gini Coefficient</div>
         <div style="font-size:0.74rem;color:var(--muted);margin-top:4px" data-i18n="gini-desc">0 = equal · 1 = unequal</div>
-        <div id="gini-n-warn" style="display:none;font-size:0.7rem;color:var(--gold);margin-top:2px">⚠ N&lt;10: not yet significant</div>
+        <div id="gini-n-warn" style="display:none;font-size:0.7rem;color:var(--gold);margin-top:2px" data-i18n="x-n-lt-10-not-yet">⚠ N&lt;10: not yet significant</div>
       </div>
       <div class="mbox">
         <div class="mval" id="idx-supply2">—</div>
@@ -613,7 +613,7 @@
       </div>
       <div style="background:var(--card2);border:1px solid rgba(139,92,246,0.2);border-radius:var(--radius-sm);padding:16px">
         <div style="font-size:0.77rem;color:var(--purple);letter-spacing:1.5px;text-transform:uppercase;margin-bottom:10px;font-weight:600" data-i18n="gini-calc-title">How is the Aequitas Index calculated?</div>
-        <div style="font-size:0.79rem;color:var(--purple);font-family:var(--font-mono);text-align:center;margin:8px 0;padding:10px;background:rgba(139,92,246,0.08);border-radius:6px;border:1px solid rgba(139,92,246,0.15)">G = Σ|xi − xj| / (2 × n² × x̄)<br><span style="color:var(--muted);font-size:0.76rem">Aequitas Index = G × 100</span></div>
+        <div style="font-size:0.79rem;color:var(--purple);font-family:var(--font-mono);text-align:center;margin:8px 0;padding:10px;background:rgba(139,92,246,0.08);border-radius:6px;border:1px solid rgba(139,92,246,0.15)">G = Σ|xi − xj| / (2 × n² × x̄)<br><span style="color:var(--muted);font-size:0.76rem" data-i18n="x-aequitas-index-g-100">Aequitas Index = G × 100</span></div>
         <div style="font-size:0.8rem;color:var(--muted);line-height:1.9;margin-top:8px" data-i18n="gini-calc-text">All AEQ balances of verified humans are collected (x₁ through xₙ). The formula computes the mean absolute difference between every possible pair of balances, normalized by the number of people squared (n²) and the mean balance (x̄). The result ranges 0–1 and is multiplied by 100 to produce the Aequitas Index. Updated on-chain after every registration, every monthly demurrage run, every pool payout, and every wealth cap enforcement event — via the keeper calling updateGini().</div>
       </div>
     </div>
@@ -621,22 +621,22 @@
       <div style="background:rgba(0,255,209,0.06);border:1px solid rgba(0,255,209,0.25);border-radius:var(--radius-sm);padding:14px;text-align:center">
         <div style="font-size:1.1rem;font-weight:700;color:var(--neon);font-family:var(--font-display)">0 – 35</div>
         <div style="font-size:0.77rem;color:var(--neon);margin-top:5px;font-weight:700;letter-spacing:0.5px">IDEAL</div>
-        <div style="font-size:0.74rem;color:var(--muted);margin-top:5px;line-height:1.7">Healthier than most nations on Earth. Comparable to Scandinavia (0.27) and Germany (0.31). Wealth cap and demurrage successfully maintaining fair distribution.</div>
+        <div style="font-size:0.74rem;color:var(--muted);margin-top:5px;line-height:1.7" data-i18n="x-healthier-than-most-nations-on">Healthier than most nations on Earth. Comparable to Scandinavia (0.27) and Germany (0.31). Wealth cap and demurrage successfully maintaining fair distribution.</div>
       </div>
       <div style="background:rgba(96,165,250,0.06);border:1px solid rgba(96,165,250,0.25);border-radius:var(--radius-sm);padding:14px;text-align:center">
         <div style="font-size:1.1rem;font-weight:700;color:var(--blue);font-family:var(--font-display)">35 – 50</div>
         <div style="font-size:0.77rem;color:var(--blue);margin-top:5px;font-weight:700;letter-spacing:0.5px">GOOD</div>
-        <div style="font-size:0.74rem;color:var(--muted);margin-top:5px;line-height:1.7">Comparable to the USA (0.41) or France (0.32). Within the range of most developed economies. Redistribution mechanisms actively flattening the curve.</div>
+        <div style="font-size:0.74rem;color:var(--muted);margin-top:5px;line-height:1.7" data-i18n="x-comparable-to-the-usa-0">Comparable to the USA (0.41) or France (0.32). Within the range of most developed economies. Redistribution mechanisms actively flattening the curve.</div>
       </div>
       <div style="background:rgba(245,166,35,0.06);border:1px solid rgba(245,166,35,0.25);border-radius:var(--radius-sm);padding:14px;text-align:center">
         <div style="font-size:1.1rem;font-weight:700;color:var(--gold);font-family:var(--font-display)">50 – 70</div>
         <div style="font-size:0.77rem;color:var(--gold);margin-top:5px;font-weight:700;letter-spacing:0.5px">WARNING</div>
-        <div style="font-size:0.74rem;color:var(--muted);margin-top:5px;line-height:1.7">Higher than most European nations — comparable to Brazil (0.53) or Russia. Protocol redistribution at elevated intensity.</div>
+        <div style="font-size:0.74rem;color:var(--muted);margin-top:5px;line-height:1.7" data-i18n="x-higher-than-most-european-nations">Higher than most European nations — comparable to Brazil (0.53) or Russia. Protocol redistribution at elevated intensity.</div>
       </div>
       <div style="background:rgba(248,113,113,0.06);border:1px solid rgba(248,113,113,0.25);border-radius:var(--radius-sm);padding:14px;text-align:center">
         <div style="font-size:1.1rem;font-weight:700;color:var(--red);font-family:var(--font-display)">70 – 100</div>
         <div style="font-size:0.77rem;color:var(--red);margin-top:5px;font-weight:700;letter-spacing:0.5px">CRITICAL</div>
-        <div style="font-size:0.74rem;color:var(--muted);margin-top:5px;line-height:1.7">Worse than any country on Earth (South Africa record: 0.63). Approaching Bitcoin (0.85). Protocol at maximum intervention — wealth cap and redistribution at full force.</div>
+        <div style="font-size:0.74rem;color:var(--muted);margin-top:5px;line-height:1.7" data-i18n="x-worse-than-any-country-on">Worse than any country on Earth (South Africa record: 0.63). Approaching Bitcoin (0.85). Protocol at maximum intervention — wealth cap and redistribution at full force.</div>
       </div>
     </div>
     <div id="wealth-cap-info" style="margin-top:10px;background:var(--card2);border:1px solid rgba(0,255,209,0.2);border-radius:var(--radius-sm);padding:12px 16px;font-size:0.79rem;color:var(--muted);line-height:1.8">
@@ -655,20 +655,20 @@
     </div>
   </div>
   <div class="idx" style="grid-column:1/-1">
-    <div class="idx-title">Gini Index History</div>
-    <div style="font-size:0.79rem;color:var(--muted);margin-bottom:12px">Recorded after each UBI distribution. Shows how equality evolves as the network grows. Lower is better — target is Gini below 0.30.</div>
+    <div class="idx-title" data-i18n="x-gini-index-history">Gini Index History</div>
+    <div style="font-size:0.79rem;color:var(--muted);margin-bottom:12px" data-i18n="x-recorded-after-each-ubi-distribution">Recorded after each UBI distribution. Shows how equality evolves as the network grows. Lower is better — target is Gini below 0.30.</div>
     <canvas id="gini-history-chart" height="160" style="width:100%;border-radius:6px;background:var(--card2)"></canvas>
-    <div id="gini-history-empty" style="display:none;text-align:center;padding:24px;color:var(--muted);font-size:0.79rem">No snapshots yet — first one saved after the next UBI distribution.</div>
+    <div id="gini-history-empty" style="display:none;text-align:center;padding:24px;color:var(--muted);font-size:0.79rem" data-i18n="x-no-snapshots-yet-first-one">No snapshots yet — first one saved after the next UBI distribution.</div>
   </div>
 </div>
 </div>
 <div id="eqi-lorenz" class="stab-panel">
 <div style="padding:24px 20px;max-width:1100px;margin:0 auto">
   <div style="margin-bottom:20px">
-    <div style="font-size:0.76rem;color:var(--purple);letter-spacing:2.5px;text-transform:uppercase;font-weight:700;margin-bottom:6px">Wealth Distribution Analysis</div>
-    <div style="font-size:1.3rem;font-weight:800;color:var(--text);letter-spacing:-0.5px;margin-bottom:10px">Lorenz Curve — AEQ Distribution Across Humans</div>
+    <div style="font-size:0.76rem;color:var(--purple);letter-spacing:2.5px;text-transform:uppercase;font-weight:700;margin-bottom:6px" data-i18n="x-wealth-distribution-analysis">Wealth Distribution Analysis</div>
+    <div style="font-size:1.3rem;font-weight:800;color:var(--text);letter-spacing:-0.5px;margin-bottom:10px" data-i18n="x-lorenz-curve-aeq-distribution-across">Lorenz Curve — AEQ Distribution Across Humans</div>
     <div style="font-size:0.83rem;color:var(--muted);line-height:1.9;max-width:780px">
-      The <strong style="color:var(--text)">Lorenz Curve</strong> visualizes how AEQ wealth is distributed among registered humans. The <span style="color:var(--purple)">diagonal line = perfect equality</span> — every human holds the same share. The further the gold curve bows <em>below</em> the diagonal, the more unequal the distribution. Reference curves show inequality in real countries. Aequitas targets a Gini coefficient <span style="color:var(--neon)">below 0.30</span> — comparable to Scandinavia.
+      The <strong style="color:var(--text)" data-i18n="x-lorenz-curve">Lorenz Curve</strong> visualizes how AEQ wealth is distributed among registered humans. The <span style="color:var(--purple)" data-i18n="x-diagonal-line-perfect-equality">diagonal line = perfect equality</span> — every human holds the same share. The further the gold curve bows <em>below</em> the diagonal, the more unequal the distribution. Reference curves show inequality in real countries. Aequitas targets a Gini coefficient <span style="color:var(--neon)">below 0.30</span> — comparable to Scandinavia.
     </div>
   </div>
   <div style="background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:20px;margin-bottom:16px">
@@ -676,23 +676,23 @@
   </div>
   <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:16px">
     <div style="background:var(--card2);border:1px solid var(--border);border-radius:var(--radius-sm);padding:14px;text-align:center">
-      <div style="font-size:0.75rem;color:var(--muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:6px">Aequitas Now</div>
+      <div style="font-size:0.75rem;color:var(--muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:6px" data-i18n="x-aequitas-now">Aequitas Now</div>
       <div id="lorenz-gini-val" style="font-size:1.4rem;font-weight:800;color:var(--neon);font-family:var(--font-mono)">—</div>
-      <div style="font-size:0.76rem;color:var(--muted);margin-top:4px">Gini coefficient (0–1)</div>
+      <div style="font-size:0.76rem;color:var(--muted);margin-top:4px" data-i18n="x-gini-coefficient-0-1">Gini coefficient (0–1)</div>
     </div>
     <div style="background:var(--card2);border:1px solid var(--border);border-radius:var(--radius-sm);padding:14px;text-align:center">
       <div style="font-size:0.75rem;color:var(--muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:6px">Target</div>
       <div style="font-size:1.4rem;font-weight:800;color:var(--purple);font-family:var(--font-mono)">&lt; 0.30</div>
-      <div style="font-size:0.76rem;color:var(--muted);margin-top:4px">Like Scandinavia (~0.27)</div>
+      <div style="font-size:0.76rem;color:var(--muted);margin-top:4px" data-i18n="x-like-scandinavia-0-27">Like Scandinavia (~0.27)</div>
     </div>
     <div style="background:var(--card2);border:1px solid var(--border);border-radius:var(--radius-sm);padding:14px;text-align:center">
-      <div style="font-size:0.75rem;color:var(--muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:6px">Bitcoin Gini</div>
+      <div style="font-size:0.75rem;color:var(--muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:6px" data-i18n="x-bitcoin-gini">Bitcoin Gini</div>
       <div style="font-size:1.4rem;font-weight:800;color:var(--red);font-family:var(--font-mono)">~0.85</div>
-      <div style="font-size:0.76rem;color:var(--muted);margin-top:4px">Most unequal currency ever</div>
+      <div style="font-size:0.76rem;color:var(--muted);margin-top:4px" data-i18n="x-most-unequal-currency-ever">Most unequal currency ever</div>
     </div>
   </div>
   <div style="background:var(--card2);border:1px solid rgba(155,114,246,0.2);border-radius:var(--radius-sm);padding:14px;font-size:0.79rem;color:var(--muted);line-height:1.85">
-    <strong style="color:var(--purple)">How to read this chart:</strong> The X-axis shows the population from poorest (left) to richest (right). The Y-axis shows cumulative AEQ wealth. A point at (50%, 50%) = the poorest half of humans hold exactly half the AEQ. In perfect equality, the curve IS the diagonal. Aequitas enforces equality through automatic wealth cap, demurrage (0.5%/month decay), and daily UBI redistribution — keeping the curve close to the diagonal as the network grows.
+    <strong style="color:var(--purple)" data-i18n="x-how-to-read-this-chart">How to read this chart:</strong> The X-axis shows the population from poorest (left) to richest (right). The Y-axis shows cumulative AEQ wealth. A point at (50%, 50%) = the poorest half of humans hold exactly half the AEQ. In perfect equality, the curve IS the diagonal. Aequitas enforces equality through automatic wealth cap, demurrage (0.5%/month decay), and daily UBI redistribution — keeping the curve close to the diagonal as the network grows.
   </div>
 </div>
 </div>
@@ -783,7 +783,7 @@
       <tr><td><strong style="color:var(--gold)">Phase 2</strong></td><td style="color:var(--gold)" data-i18n="p2">Stability · 10,000–1M humans · Wealth Cap: 25× average balance</td></tr>
       <tr><td><strong style="color:var(--purple)">Phase 3</strong></td><td style="color:var(--purple)" data-i18n="p3">Maturity · 1M+ humans · Wealth Cap: 25× average balance</td></tr>
     </table>
-    <div class="hlbox" data-i18n="wealth-cap-explain">The <strong>Wealth Cap</strong> during Phase 0 (Bootstrap) uses the formula <strong>max(5, min(N, 25))× average AEQ balance</strong>, where N = registered humans. With 1–4 humans: cap = 5× average. Each new human adds 1×. At 25+ humans: the multiplier locks permanently at 25×. The cap always scales with the live average balance — automatically adjusting as the network grows.</div>
+    <div class="hlbox" data-i18n="wealth-cap-explain">The <strong>Wealth Cap</strong> during Phase 0 (Bootstrap) uses the formula <strong data-i18n="x-max-5-min-n-25">max(5, min(N, 25))× average AEQ balance</strong>, where N = registered humans. With 1–4 humans: cap = 5× average. Each new human adds 1×. At 25+ humans: the multiplier locks permanently at 25×. The cap always scales with the live average balance — automatically adjusting as the network grows.</div>
   </div>
   <div class="idx">
     <div class="idx-title" data-i18n="demurrage-title">Demurrage — Incentive to Circulate</div>
@@ -797,7 +797,7 @@
     </table>
   </div>
   <div class="idx" style="grid-column:1/-1">
-    <div class="idx-title">Wealth Cap Multiplier — Bootstrap Slider</div>
+    <div class="idx-title" data-i18n="x-wealth-cap-multiplier-bootstrap-slider">Wealth Cap Multiplier — Bootstrap Slider</div>
     <div style="font-size:0.79rem;color:var(--muted);margin-bottom:12px">Formula: <code style="color:var(--teal)">max(5, min(N, 25))×</code> average AEQ balance. Each new human slides the cap up by 1×, until the 25th human locks it at 25× permanently.</div>
     <canvas id="wcap-slide-chart" height="120" style="width:100%;border-radius:6px;background:var(--card2)"></canvas>
   </div>
@@ -811,81 +811,81 @@
   <div class="idx" style="margin-bottom:16px;background:linear-gradient(135deg,rgba(107,70,193,0.06),rgba(8,145,178,0.03));border-color:rgba(107,70,193,0.2)">
     <div class="idx-title" data-i18n="story-title">The Story of Aequitas &#8212; Why This Exists</div>
     <div class="story" style="font-size:0.84rem;line-height:2;color:var(--muted)">
-      <p>The year is 2009. Satoshi Nakamoto releases Bitcoin. For the first time, value can transfer between any two people without a bank. A genuine revolution. But something goes wrong almost immediately.</p>
+      <p data-i18n="x-the-year-is-2009-satoshi">The year is 2009. Satoshi Nakamoto releases Bitcoin. For the first time, value can transfer between any two people without a bank. A genuine revolution. But something goes wrong almost immediately.</p>
       <p>Early miners accumulate millions of coins at near-zero cost. By 2021, the top 1% of Bitcoin addresses control over 90% of all Bitcoin. Bitcoin&#8217;s Gini coefficient exceeds <strong style="color:var(--red)">0.85</strong> &#8212; higher than any country on Earth. The technology meant to democratize finance created the most extreme wealth concentration in history.</p>
       <div class="hlbox" style="margin:16px 0">
         <strong style="color:var(--purple)">Aequitas</strong> &#8212; Latin for <em>fairness</em> and <em>equity</em> &#8212; was built to answer one question:<br>
-        <em style="color:var(--gold);font-size:0.95rem">"What would a cryptocurrency look like if designed from first principles to be fair to every human being?"</em>
+        <em style="color:var(--gold);font-size:0.95rem" data-i18n="x-what-would-a-cryptocurrency-look">"What would a cryptocurrency look like if designed from first principles to be fair to every human being?"</em>
       </div>
-      <p>The answer: <strong style="color:var(--text)">Money exists because people exist. Therefore every person should have an equal share of money simply by virtue of being human.</strong></p>
-      <p>Aequitas implements this mathematically. Every verified human receives exactly 1,000 AEQ &#8212; billionaire or subsistence farmer, no exceptions. Four redistribution mechanisms ensure inequality cannot accumulate indefinitely. The Gini coefficient is tracked on-chain in real time.</p>
-      <p><em style="color:var(--gold)">"Money exists because people exist. Nothing more, nothing less."</em></p>
+      <p>The answer: <strong style="color:var(--text)" data-i18n="x-money-exists-because-people-exist">Money exists because people exist. Therefore every person should have an equal share of money simply by virtue of being human.</strong></p>
+      <p data-i18n="x-aequitas-implements-this-mathematically-ever">Aequitas implements this mathematically. Every verified human receives exactly 1,000 AEQ &#8212; billionaire or subsistence farmer, no exceptions. Four redistribution mechanisms ensure inequality cannot accumulate indefinitely. The Gini coefficient is tracked on-chain in real time.</p>
+      <p><em style="color:var(--gold)" data-i18n="x-money-exists-because-people-exist-2">"Money exists because people exist. Nothing more, nothing less."</em></p>
     </div>
   </div>
 
   <!-- HOW IT WORKS -->
   <div class="rwd-1col" style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px">
     <div class="idx">
-      <div class="idx-title">The Core Innovation</div>
+      <div class="idx-title" data-i18n="x-the-core-innovation">The Core Innovation</div>
       <div style="font-size:0.81rem;color:var(--muted);line-height:1.9">
-        <div style="margin-bottom:10px"><span style="color:var(--purple);font-weight:700">ZK Device-Key Proof</span><br>A cryptographic key is generated in your phone&#8217;s Hardware Secure Element, gated behind your existing screen-unlock. A Groth16 Zero-Knowledge Proof proves you hold that key &#8212; without it ever leaving your device or touching any server. This proves control of one device today, not yet biological uniqueness across devices.</div>
-        <div style="margin-bottom:10px"><span style="color:var(--teal);font-weight:700">No-Stake Blockchain</span><br>No mining. No staking. No proof-of-work. Block production is open to any node operator. Validators earn from the 40% fee pool &#8212; incentivized by fairness, not capital.</div>
-        <div><span style="color:var(--neon);font-weight:700">One Human = One Wallet = 1,000 AEQ</span><br>Supply formula: Total AEQ = Verified Humans x 1,000. No pre-mine. No admin keys. No governance vote can change this.</div>
+        <div style="margin-bottom:10px"><span style="color:var(--purple);font-weight:700" data-i18n="x-zk-device-key-proof">ZK Device-Key Proof</span><br>A cryptographic key is generated in your phone&#8217;s Hardware Secure Element, gated behind your existing screen-unlock. A Groth16 Zero-Knowledge Proof proves you hold that key &#8212; without it ever leaving your device or touching any server. This proves control of one device today, not yet biological uniqueness across devices.</div>
+        <div style="margin-bottom:10px"><span style="color:var(--teal);font-weight:700" data-i18n="x-no-stake-blockchain">No-Stake Blockchain</span><br>No mining. No staking. No proof-of-work. Block production is open to any node operator. Validators earn from the 40% fee pool &#8212; incentivized by fairness, not capital.</div>
+        <div><span style="color:var(--neon);font-weight:700" data-i18n="x-one-human-one-wallet-1">One Human = One Wallet = 1,000 AEQ</span><br>Supply formula: Total AEQ = Verified Humans x 1,000. No pre-mine. No admin keys. No governance vote can change this.</div>
       </div>
     </div>
     <div class="idx">
-      <div class="idx-title">The 4 Redistribution Mechanisms</div>
+      <div class="idx-title" data-i18n="x-the-4-redistribution-mechanisms">The 4 Redistribution Mechanisms</div>
       <div style="font-size:0.81rem;color:var(--muted);line-height:1.9">
-        <div style="padding:8px;background:rgba(4,120,87,0.06);border-radius:6px;border-left:3px solid var(--neon);margin-bottom:8px"><strong style="color:var(--neon)">UBI Pool (20%)</strong><br>Every 24 hours, the pool divides equally among all verified humans. Funded by swap fees + demurrage + wealth cap overflows.</div>
-        <div style="padding:8px;background:rgba(107,70,193,0.06);border-radius:6px;border-left:3px solid var(--purple);margin-bottom:8px"><strong style="color:var(--purple)">Validators Pool (40%)</strong><br>Node operators earn from all protocol fees. More nodes = more decentralization.</div>
-        <div style="padding:8px;background:rgba(8,145,178,0.06);border-radius:6px;border-left:3px solid var(--teal);margin-bottom:8px"><strong style="color:var(--teal)">Liquidity Pool (30%)</strong><br>Liquidity providers earn proportionally from all swap activity.</div>
-        <div style="padding:8px;background:rgba(146,64,14,0.06);border-radius:6px;border-left:3px solid var(--gold)"><strong style="color:var(--gold)">Treasury (10%)</strong><br>Protocol development. No VC allocation. No founder bonus.</div>
+        <div style="padding:8px;background:rgba(4,120,87,0.06);border-radius:6px;border-left:3px solid var(--neon);margin-bottom:8px"><strong style="color:var(--neon)" data-i18n="x-ubi-pool-20">UBI Pool (20%)</strong><br>Every 24 hours, the pool divides equally among all verified humans. Funded by swap fees + demurrage + wealth cap overflows.</div>
+        <div style="padding:8px;background:rgba(107,70,193,0.06);border-radius:6px;border-left:3px solid var(--purple);margin-bottom:8px"><strong style="color:var(--purple)" data-i18n="x-validators-pool-40">Validators Pool (40%)</strong><br>Node operators earn from all protocol fees. More nodes = more decentralization.</div>
+        <div style="padding:8px;background:rgba(8,145,178,0.06);border-radius:6px;border-left:3px solid var(--teal);margin-bottom:8px"><strong style="color:var(--teal)" data-i18n="x-liquidity-pool-30">Liquidity Pool (30%)</strong><br>Liquidity providers earn proportionally from all swap activity.</div>
+        <div style="padding:8px;background:rgba(146,64,14,0.06);border-radius:6px;border-left:3px solid var(--gold)"><strong style="color:var(--gold)" data-i18n="x-treasury-10">Treasury (10%)</strong><br>Protocol development. No VC allocation. No founder bonus.</div>
       </div>
     </div>
   </div>
 
   <!-- PHASE ROADMAP -->
   <div class="idx" style="margin-bottom:16px">
-    <div class="idx-title">Phase Roadmap &#8212; The Path to Global Scale</div>
+    <div class="idx-title" data-i18n="x-phase-roadmap-8212-the-path">Phase Roadmap &#8212; The Path to Global Scale</div>
     <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-top:12px">
       <div style="background:rgba(107,70,193,0.08);border:2px solid var(--purple);border-radius:10px;padding:14px;position:relative">
         <div style="position:absolute;top:-1px;left:50%;transform:translateX(-50%);background:var(--purple);color:#fff;font-size:0.74rem;font-weight:700;padding:2px 8px;border-radius:0 0 6px 6px">ACTIVE NOW</div>
         <div style="font-size:0.86rem;font-weight:700;color:var(--purple);margin:10px 0 6px">Phase 0</div>
         <div style="font-size:0.79rem;font-weight:600;color:var(--text);margin-bottom:6px">Bootstrap</div>
-        <div style="font-size:0.77rem;color:var(--muted);line-height:1.75">0 &#8211; 100 humans. Sliding wealth cap 5x &#8594; 25x. Foundation building.</div>
+        <div style="font-size:0.77rem;color:var(--muted);line-height:1.75" data-i18n="x-0-8211-100-humans-sliding">0 &#8211; 100 humans. Sliding wealth cap 5x &#8594; 25x. Foundation building.</div>
       </div>
       <div style="background:var(--card2);border:1px solid var(--border);border-radius:10px;padding:14px">
         <div style="font-size:0.86rem;font-weight:700;color:var(--teal);margin-bottom:6px">Phase 1</div>
         <div style="font-size:0.79rem;font-weight:600;color:var(--text);margin-bottom:6px">Growth</div>
-        <div style="font-size:0.77rem;color:var(--muted);line-height:1.75">100 &#8211; 10,000 humans. Fixed cap 25x. Open node joining.</div>
+        <div style="font-size:0.77rem;color:var(--muted);line-height:1.75" data-i18n="x-100-8211-10-000-humans">100 &#8211; 10,000 humans. Fixed cap 25x. Open node joining.</div>
       </div>
       <div style="background:var(--card2);border:1px solid var(--border);border-radius:10px;padding:14px">
         <div style="font-size:0.86rem;font-weight:700;color:var(--gold);margin-bottom:6px">Phase 2</div>
         <div style="font-size:0.79rem;font-weight:600;color:var(--text);margin-bottom:6px">Stability</div>
-        <div style="font-size:0.77rem;color:var(--muted);line-height:1.75">10,000 &#8211; 1M humans. Min 10 nodes. Fully decentralized.</div>
+        <div style="font-size:0.77rem;color:var(--muted);line-height:1.75" data-i18n="x-10-000-8211-1m-humans">10,000 &#8211; 1M humans. Min 10 nodes. Fully decentralized.</div>
       </div>
       <div style="background:var(--card2);border:1px solid var(--border);border-radius:10px;padding:14px">
         <div style="font-size:0.86rem;font-weight:700;color:var(--neon);margin-bottom:6px">Phase 3</div>
         <div style="font-size:0.79rem;font-weight:600;color:var(--text);margin-bottom:6px">Maturity</div>
-        <div style="font-size:0.77rem;color:var(--muted);line-height:1.75">1M+ humans. Global UBI at scale. Gini target &lt;0.30.</div>
+        <div style="font-size:0.77rem;color:var(--muted);line-height:1.75" data-i18n="x-1m-humans-global-ubi-at">1M+ humans. Global UBI at scale. Gini target &lt;0.30.</div>
       </div>
     </div>
-    <div style="margin-top:14px;padding:12px 16px;background:rgba(107,70,193,0.05);border-radius:8px;font-size:0.79rem;color:var(--muted);line-height:1.75;border:1px solid rgba(107,70,193,0.12)">Phase transitions are automatic &#8212; triggered by human count thresholds, enforced by the smart contract. No governance vote, no admin key.</div>
+    <div style="margin-top:14px;padding:12px 16px;background:rgba(107,70,193,0.05);border-radius:8px;font-size:0.79rem;color:var(--muted);line-height:1.75;border:1px solid rgba(107,70,193,0.12)" data-i18n="x-phase-transitions-are-automatic-8212">Phase transitions are automatic &#8212; triggered by human count thresholds, enforced by the smart contract. No governance vote, no admin key.</div>
   </div>
 
   <!-- GUARDIAN SYSTEM -->
   <div class="idx" style="margin-bottom:16px;background:linear-gradient(135deg,rgba(8,145,178,0.05),rgba(107,70,193,0.03));border-color:rgba(8,145,178,0.2)">
-    <div class="idx-title" style="color:var(--teal)">Guardian System &#8212; Human Failsafe for Lost Wallets</div>
-    <div style="font-size:0.81rem;color:var(--muted);line-height:1.9;margin-bottom:14px">What happens when someone is hospitalized, incarcerated, or dies? In most crypto systems, lost wallets mean lost coins forever. Aequitas has a three-layer inactivity recovery system.</div>
+    <div class="idx-title" style="color:var(--teal)" data-i18n="x-guardian-system-8212-human-failsafe">Guardian System &#8212; Human Failsafe for Lost Wallets</div>
+    <div style="font-size:0.81rem;color:var(--muted);line-height:1.9;margin-bottom:14px" data-i18n="x-what-happens-when-someone-is">What happens when someone is hospitalized, incarcerated, or dies? In most crypto systems, lost wallets mean lost coins forever. Aequitas has a three-layer inactivity recovery system.</div>
     <div class="rwd-1col" style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px">
       <div>
-        <div style="font-size:0.77rem;color:var(--teal);font-weight:700;letter-spacing:1px;text-transform:uppercase;margin-bottom:8px">What is a Guardian?</div>
-        <div style="font-size:0.79rem;color:var(--muted);line-height:1.85">A Guardian is a <strong style="color:var(--text)">trusted verified human</strong> you designate. They have exactly one power: confirming you are still alive. They cannot move funds, transfer AEQ, or access your wallet under any circumstances. Maximum 3 wards per Guardian prevents centralization of trust.</div>
+        <div style="font-size:0.77rem;color:var(--teal);font-weight:700;letter-spacing:1px;text-transform:uppercase;margin-bottom:8px" data-i18n="x-what-is-a-guardian">What is a Guardian?</div>
+        <div style="font-size:0.79rem;color:var(--muted);line-height:1.85">A Guardian is a <strong style="color:var(--text)" data-i18n="x-trusted-verified-human">trusted verified human</strong> you designate. They have exactly one power: confirming you are still alive. They cannot move funds, transfer AEQ, or access your wallet under any circumstances. Maximum 3 wards per Guardian prevents centralization of trust.</div>
       </div>
       <div>
-        <div style="font-size:0.77rem;color:var(--purple);font-weight:700;letter-spacing:1px;text-transform:uppercase;margin-bottom:8px">Inactivity Timeline</div>
+        <div style="font-size:0.77rem;color:var(--purple);font-weight:700;letter-spacing:1px;text-transform:uppercase;margin-bottom:8px" data-i18n="x-inactivity-timeline">Inactivity Timeline</div>
         <div style="font-size:0.79rem;color:var(--muted);line-height:2">
-          <div style="display:flex;gap:8px;align-items:center;margin-bottom:4px"><span style="min-width:80px;color:var(--text);font-weight:600">0 &#8211; 2 years</span>Normal usage, no restrictions</div>
+          <div style="display:flex;gap:8px;align-items:center;margin-bottom:4px"><span style="min-width:80px;color:var(--text);font-weight:600" data-i18n="x-0-8211-2-years">0 &#8211; 2 years</span>Normal usage, no restrictions</div>
           <div style="display:flex;gap:8px;align-items:center;margin-bottom:4px"><span style="min-width:80px;color:var(--gold);font-weight:600">Year 2</span>Warning 1 &#8212; Guardian can respond</div>
           <div style="display:flex;gap:8px;align-items:center;margin-bottom:4px"><span style="min-width:80px;color:var(--gold);font-weight:600">Year 2 +60d</span>Warning 2 &#8212; escalating urgency</div>
           <!-- FIX (P3-14, beta-launch audit 2026-07-05): "+60 days" then
@@ -896,46 +896,46 @@
                2 years + 180 days total, guardian.go). Spelling out "Year 2
                +180d" and the absolute day count removes the ambiguity
                without depending on how the reader parsed the line above. -->
-          <div style="display:flex;gap:8px;align-items:center;margin-bottom:4px"><span style="min-width:80px;color:var(--red);font-weight:600">Year 2 +180d</span>AEQ moved to escrow (2.5 years total, day 910 — recoverable)</div>
+          <div style="display:flex;gap:8px;align-items:center;margin-bottom:4px"><span style="min-width:80px;color:var(--red);font-weight:600" data-i18n="x-year-2-180d">Year 2 +180d</span>AEQ moved to escrow (2.5 years total, day 910 — recoverable)</div>
           <div style="display:flex;gap:8px;align-items:center"><span style="min-width:80px;color:var(--red);font-weight:600">Year 4</span>Escrow released to UBI Pool (day ~1460)</div>
         </div>
       </div>
     </div>
-    <div style="padding:12px 16px;background:rgba(8,145,178,0.06);border-radius:8px;border:1px solid rgba(8,145,178,0.15);font-size:0.79rem;color:var(--muted);line-height:1.8"><strong style="color:var(--teal)">Key protections:</strong> 7-day timelock on Guardian assignment. No circular Guardian relationships. Guardian assignment is public and on-chain.</div>
+    <div style="padding:12px 16px;background:rgba(8,145,178,0.06);border-radius:8px;border:1px solid rgba(8,145,178,0.15);font-size:0.79rem;color:var(--muted);line-height:1.8"><strong style="color:var(--teal)" data-i18n="x-key-protections">Key protections:</strong> 7-day timelock on Guardian assignment. No circular Guardian relationships. Guardian assignment is public and on-chain.</div>
   </div>
 
   <!-- PROOF OF ALIVE -->
   <div class="idx" style="margin-bottom:16px">
-    <div class="idx-title">Sybil Resistance &#8212; Current State, Honestly</div>
+    <div class="idx-title" data-i18n="x-sybil-resistance-8212-current-state">Sybil Resistance &#8212; Current State, Honestly</div>
     <div class="rwd-1col" style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:12px">
       <div>
         <div style="font-size:0.77rem;color:var(--purple);font-weight:700;letter-spacing:1px;text-transform:uppercase;margin-bottom:8px">Why a face?</div>
-        <div style="font-size:0.79rem;color:var(--muted);line-height:1.85">Sybil resistance &#8212; preventing one person from registering multiple wallets &#8212; is the core unsolved problem of fair money distribution. A device key could only ever prove control of a device: the same person on a second phone was a second identity. Since 2026-08-23 the check is the face itself, compared by independent services that must agree. <strong style="color:var(--text)">The matching threshold has not yet been calibrated against real captures</strong> &#8212; see below.</div>
+        <div style="font-size:0.79rem;color:var(--muted);line-height:1.85">Sybil resistance &#8212; preventing one person from registering multiple wallets &#8212; is the core unsolved problem of fair money distribution. A device key could only ever prove control of a device: the same person on a second phone was a second identity. Since 2026-08-23 the check is the face itself, compared by independent services that must agree. <strong style="color:var(--text)" data-i18n="x-the-matching-threshold-has-not">The matching threshold has not yet been calibrated against real captures</strong> &#8212; see below.</div>
       </div>
       <div>
-        <div style="font-size:0.77rem;color:var(--teal);font-weight:700;letter-spacing:1px;text-transform:uppercase;margin-bottom:8px">How It Works</div>
+        <div style="font-size:0.77rem;color:var(--teal);font-weight:700;letter-spacing:1px;text-transform:uppercase;margin-bottom:8px" data-i18n="x-how-it-works">How It Works</div>
         <div style="font-size:0.79rem;color:var(--muted);line-height:1.85">1. The app captures your face and a short liveness sequence<br>2. Independent matching services check for a living person and compare against everyone already registered; they must agree by quorum<br>3. The images are discarded; an encrypted template is kept, additionally split into shares so no validator holds a whole one<br>4. A Groth16 ZK proof carries the resulting bio_hash to the chain, and its nullifier can be spent only once</div>
       </div>
     </div>
-    <div style="margin-top:12px;padding:12px 16px;background:rgba(4,120,87,0.06);border-radius:8px;border:1px solid rgba(4,120,87,0.15);font-size:0.79rem;color:var(--muted);line-height:1.8"><strong style="color:var(--neon)">What is and is not private:</strong> Your face IS captured and sent to independent matching services &#8212; that is the only way one-person-one-account can be checked. The images are discarded after processing. No validator ever holds a whole template; the service that runs the comparison still does, because comparing needs it. The proof server receives only the ZK proof (200 bytes). The chain stores only a nullifier hash. <strong style="color:var(--gold)">Honest limitation:</strong> this proves device possession, not yet cross-device biological uniqueness — the same person with two devices could register twice today. A real biological uniqueness check is planned post-beta work, not shipped yet.</div>
+    <div style="margin-top:12px;padding:12px 16px;background:rgba(4,120,87,0.06);border-radius:8px;border:1px solid rgba(4,120,87,0.15);font-size:0.79rem;color:var(--muted);line-height:1.8"><strong style="color:var(--neon)" data-i18n="x-what-is-and-is-not">What is and is not private:</strong> Your face IS captured and sent to independent matching services &#8212; that is the only way one-person-one-account can be checked. The images are discarded after processing. No validator ever holds a whole template; the service that runs the comparison still does, because comparing needs it. The proof server receives only the ZK proof (200 bytes). The chain stores only a nullifier hash. <strong style="color:var(--gold)" data-i18n="x-honest-limitation">Honest limitation:</strong> this proves device possession, not yet cross-device biological uniqueness — the same person with two devices could register twice today. A real biological uniqueness check is planned post-beta work, not shipped yet.</div>
   </div>
 
   <!-- THE VISION -->
   <div class="idx" style="background:linear-gradient(135deg,rgba(146,64,14,0.06),rgba(107,70,193,0.04));border-color:rgba(146,64,14,0.2)">
-    <div class="idx-title" style="color:var(--gold)">The Vision &#8212; A Global Basic Income Protocol</div>
-    <div style="font-size:0.86rem;color:var(--muted);line-height:2;font-style:italic;text-align:center;padding:10px 0;font-family:var(--font-display)">"Imagine a world where every person on Earth &#8212; regardless of where they were born, what language they speak, or how much money their parents had &#8212; receives a guaranteed daily income simply for being human. Not as charity. As a mathematical right, enforced by code that no government or corporation can override."</div>
+    <div class="idx-title" style="color:var(--gold)" data-i18n="x-the-vision-8212-a-global">The Vision &#8212; A Global Basic Income Protocol</div>
+    <div style="font-size:0.86rem;color:var(--muted);line-height:2;font-style:italic;text-align:center;padding:10px 0;font-family:var(--font-display)" data-i18n="x-imagine-a-world-where-every">"Imagine a world where every person on Earth &#8212; regardless of where they were born, what language they speak, or how much money their parents had &#8212; receives a guaranteed daily income simply for being human. Not as charity. As a mathematical right, enforced by code that no government or corporation can override."</div>
     <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:12px">
       <div style="text-align:center;padding:14px;background:rgba(107,70,193,0.06);border-radius:8px;border:1px solid rgba(107,70,193,0.12)">
         <div style="font-size:1.4rem;font-weight:900;color:var(--purple);font-family:var(--font-display)">8B</div>
-        <div style="font-size:0.76rem;color:var(--muted);margin-top:4px">humans could register</div>
+        <div style="font-size:0.76rem;color:var(--muted);margin-top:4px" data-i18n="x-humans-could-register">humans could register</div>
       </div>
       <div style="text-align:center;padding:14px;background:rgba(4,120,87,0.06);border-radius:8px;border:1px solid rgba(4,120,87,0.12)">
         <div style="font-size:1.4rem;font-weight:900;color:var(--neon);font-family:var(--font-display)">&lt;0.30</div>
-        <div style="font-size:0.76rem;color:var(--muted);margin-top:4px">Gini target (Scandinavian level)</div>
+        <div style="font-size:0.76rem;color:var(--muted);margin-top:4px" data-i18n="x-gini-target-scandinavian-level">Gini target (Scandinavian level)</div>
       </div>
       <div style="text-align:center;padding:14px;background:rgba(146,64,14,0.06);border-radius:8px;border:1px solid rgba(146,64,14,0.12)">
         <div style="font-size:1.4rem;font-weight:900;color:var(--gold);font-family:var(--font-display)">0</div>
-        <div style="font-size:0.76rem;color:var(--muted);margin-top:4px">admin keys or governance votes</div>
+        <div style="font-size:0.76rem;color:var(--muted);margin-top:4px" data-i18n="x-admin-keys-or-governance-votes">admin keys or governance votes</div>
       </div>
     </div>
   </div>
@@ -952,8 +952,8 @@
   <div class="stab active" data-act="showStab" data-args='["tab-network","net-overview"]' role="button" tabindex="0">🌐 Overview</div>
   <div class="stab" data-act="showStab" data-args='["tab-network","net-consensus"]' role="button" tabindex="0">🔗 Consensus</div>
   <div class="stab" data-act="showStab" data-args='["tab-network","net-story"]' role="button" tabindex="0">📖 Story</div>
-  <div class="stab" data-act="showStab" data-args='["tab-network","net-runnode"]' role="button" tabindex="0">⚙️ Run a Node</div>
-  <div class="stab" data-act="showStab" data-args='["tab-network","net-protocol"]' role="button" tabindex="0">📜 Protocol V7</div>
+  <div class="stab" data-act="showStab" data-args='["tab-network","net-runnode"]' role="button" tabindex="0" data-i18n="x-run-a-node">⚙️ Run a Node</div>
+  <div class="stab" data-act="showStab" data-args='["tab-network","net-protocol"]' role="button" tabindex="0" data-i18n="x-protocol-v7">📜 Protocol V7</div>
 </nav>
 <div id="net-overview" class="stab-panel active">
 <div class="ns">
@@ -972,41 +972,41 @@
   <div class="nc">
     <div class="nc-title" data-i18n="bootstrap-title">Connect a New Node</div>
     <div style="font-size:0.79rem;color:var(--muted);line-height:1.8;margin-bottom:10px" data-i18n="bootstrap-desc">A new node needs no configuration to find the network — the validator addresses below are built in. Your node registers itself, syncs the full chain state, and starts participating in block production. Set PRIMARY_NODE_URL only if you deliberately want to pin a specific entry point.</div>
-    <div style="font-size:0.77rem;color:var(--muted);margin-bottom:6px;letter-spacing:1px">LIBP2P BOOTSTRAP ADDRESSES</div>
-    <div class="bsbox">/ip4/173.249.37.118/tcp/4001/p2p/12D3KooWHfPy6g3jvyC1mvqzCHvy5QBsDmHHsvfwvwXQGrtQ2pVm</div>
-    <div class="bsbox" style="margin-top:6px">/ip4/194.163.188.71/tcp/4001/p2p/12D3KooWBv34kuVcmNDxZT4kCZFvNVGhy4zgkBZDGMtp7YSx2UUN</div>
+    <div style="font-size:0.77rem;color:var(--muted);margin-bottom:6px;letter-spacing:1px" data-i18n="x-libp2p-bootstrap-addresses">LIBP2P BOOTSTRAP ADDRESSES</div>
+    <div class="bsbox" data-i18n="x-ip4-173-249-37-118">/ip4/173.249.37.118/tcp/4001/p2p/12D3KooWHfPy6g3jvyC1mvqzCHvy5QBsDmHHsvfwvwXQGrtQ2pVm</div>
+    <div class="bsbox" style="margin-top:6px" data-i18n="x-ip4-194-163-188-71">/ip4/194.163.188.71/tcp/4001/p2p/12D3KooWBv34kuVcmNDxZT4kCZFvNVGhy4zgkBZDGMtp7YSx2UUN</div>
     <div style="font-size:0.77rem;color:var(--muted);margin-top:10px;line-height:1.7">Both are compiled in as defaults, so a node with no <span style="color:var(--purple);font-family:var(--font-mono)">BOOTSTRAP_P2P_ADDR</span> still finds the network. Two are listed so one validator being down never strands a newcomer.</div>
   </div>
   <div class="nc">
     <div class="nc-title" data-i18n="tech-title">Technical Specifications</div>
     <table class="spect">
       <tr><td data-i18n="k-chainid">Chain ID</td><td>1926 (0x786)</td></tr>
-      <tr><td>Architecture</td><td style="color:var(--purple)">BlockDAG (Directed Acyclic Graph)</td></tr>
-      <tr><td>EVM Compatible</td><td style="color:var(--green)" data-i18n="evm-yes">Yes — JSON-RPC /rpc · MetaMask</td></tr>
+      <tr><td data-i18n="x-architecture">Architecture</td><td style="color:var(--purple)" data-i18n="x-blockdag-directed-acyclic-graph">BlockDAG (Directed Acyclic Graph)</td></tr>
+      <tr><td data-i18n="x-evm-compatible">EVM Compatible</td><td style="color:var(--green)" data-i18n="evm-yes">Yes — JSON-RPC /rpc · MetaMask</td></tr>
       <tr><td data-i18n="k-btime">Block Time</td><td id="k-btime-val">—</td></tr>
-      <tr><td data-i18n="k-cons">Consensus</td><td style="color:var(--purple)">BlockDAG + Proof of Humanity</td></tr>
-      <tr><td>P2P Protocol</td><td>libp2p (Go implementation)</td></tr>
-      <tr><td>ZKP System</td><td>Groth16 / snarkjs / circom</td></tr>
-      <tr><td>Elliptic Curve</td><td>BN128 (alt-bn128)</td></tr>
-      <tr><td>Bio Hash</td><td style="color:var(--teal)">keccak256 (post-quantum safe)</td></tr>
-      <tr><td data-i18n="k-storage">Storage</td><td style="color:var(--green)">PostgreSQL (persistent)</td></tr>
-      <tr><td data-i18n="k-lang">Language</td><td>Go 1.24 (chain) · Node.js (proof server)</td></tr>
-      <tr><td data-i18n="k-src">Source Code</td><td><a href="https://github.com/hanoi96international-gif/Aequitas" target="_blank" style="color:var(--blue)">GitHub — Open Source</a></td></tr>
+      <tr><td data-i18n="k-cons">Consensus</td><td style="color:var(--purple)" data-i18n="x-blockdag-proof-of-humanity">BlockDAG + Proof of Humanity</td></tr>
+      <tr><td data-i18n="x-p2p-protocol">P2P Protocol</td><td data-i18n="x-libp2p-go-implementation">libp2p (Go implementation)</td></tr>
+      <tr><td>ZKP System</td><td data-i18n="x-groth16-snarkjs-circom">Groth16 / snarkjs / circom</td></tr>
+      <tr><td data-i18n="x-elliptic-curve">Elliptic Curve</td><td>BN128 (alt-bn128)</td></tr>
+      <tr><td>Bio Hash</td><td style="color:var(--teal)" data-i18n="x-keccak256-post-quantum-safe">keccak256 (post-quantum safe)</td></tr>
+      <tr><td data-i18n="k-storage">Storage</td><td style="color:var(--green)" data-i18n="x-postgresql-persistent">PostgreSQL (persistent)</td></tr>
+      <tr><td data-i18n="k-lang">Language</td><td data-i18n="x-go-1-24-chain-node">Go 1.24 (chain) · Node.js (proof server)</td></tr>
+      <tr><td data-i18n="k-src">Source Code</td><td><a href="https://github.com/hanoi96international-gif/Aequitas" target="_blank" style="color:var(--blue)" data-i18n="x-github-open-source">GitHub — Open Source</a></td></tr>
       <tr><td>Community</td><td><a href="https://x.com/AequitasMoney" target="_blank" rel="noopener noreferrer" style="color:var(--blue)"><svg viewBox="0 0 24 24" width="12" height="12" fill="currentColor" style="vertical-align:-1px;margin-right:5px" aria-hidden="true"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/></svg>@AequitasMoney</a> &middot; <a href="https://t.me/aequitasmoney" target="_blank" rel="noopener noreferrer" style="color:var(--blue)"><svg viewBox="0 0 24 24" width="12" height="12" fill="currentColor" style="vertical-align:-1px;margin-right:5px" aria-hidden="true"><path d="M11.944 0A12 12 0 0 0 0 12a12 12 0 0 0 12 12 12 12 0 0 0 12-12A12 12 0 0 0 12 0a12 12 0 0 0-.056 0zm4.962 7.224c.1-.002.321.023.465.14a.506.506 0 0 1 .171.325c.016.093.036.306.02.472-.18 1.898-.962 6.502-1.36 8.627-.168.9-.499 1.201-.82 1.23-.696.065-1.225-.46-1.9-.902-1.056-.693-1.653-1.124-2.678-1.8-1.185-.78-.417-1.21.258-1.91.177-.184 3.247-2.977 3.307-3.23.007-.032.014-.15-.056-.212s-.174-.041-.249-.024c-.106.024-1.793 1.14-5.061 3.345-.48.33-.913.49-1.302.48-.428-.008-1.252-.241-1.865-.44-.752-.245-1.349-.374-1.297-.789.027-.216.325-.437.893-.663 3.498-1.524 5.83-2.529 6.998-3.014 3.332-1.386 4.025-1.627 4.476-1.635z"/></svg>Telegram</a></td></tr>
     </table>
   </div>
   <div class="nc">
     <div class="nc-title" data-i18n="mm-config">MetaMask Configuration</div>
-    <div style="font-size:0.79rem;color:var(--muted);line-height:1.7;margin-bottom:12px">Add Aequitas Chain to MetaMask to view your AEQ balance, send transactions, and interact with the V7 contract directly from your browser or mobile wallet.</div>
+    <div style="font-size:0.79rem;color:var(--muted);line-height:1.7;margin-bottom:12px" data-i18n="x-add-aequitas-chain-to-metamask">Add Aequitas Chain to MetaMask to view your AEQ balance, send transactions, and interact with the V7 contract directly from your browser or mobile wallet.</div>
     <table class="spect">
-      <tr><td data-i18n="k-chain">Network Name</td><td style="color:var(--gold)">Aequitas Chain</td></tr>
-      <tr><td>RPC URL</td><td style="color:var(--blue);font-size:0.71rem">https://aequitas.digital/rpc</td></tr>
+      <tr><td data-i18n="k-chain">Network Name</td><td style="color:var(--gold)" data-i18n="x-aequitas-chain">Aequitas Chain</td></tr>
+      <tr><td>RPC URL</td><td style="color:var(--blue);font-size:0.71rem" data-i18n="x-https-aequitas-digital-rpc">https://aequitas.digital/rpc</td></tr>
       <tr><td data-i18n="k-chainid">Chain ID</td><td style="color:var(--gold)">1926</td></tr>
       <tr><td data-i18n="k-symbol">Currency Symbol</td><td style="color:var(--gold)">AEQ</td></tr>
       <tr><td data-i18n="k-dec">Decimals</td><td>18</td></tr>
     </table>
     <button class="mm-btn" data-act="addToMetaMask" style="margin-top:12px" data-i18n="btn-add-mm">+ ADD TO METAMASK</button>
-    <div style="font-size:0.76rem;color:var(--muted);margin-top:8px;line-height:1.6">📱 MetaMask Mobile: if AEQ shows 0 after adding, delete the network and re-add it using the button above.</div>
+    <div style="font-size:0.76rem;color:var(--muted);margin-top:8px;line-height:1.6" data-i18n="x-metamask-mobile-if-aeq-shows">📱 MetaMask Mobile: if AEQ shows 0 after adding, delete the network and re-add it using the button above.</div>
 </div>
 </div>
 </div>
@@ -1016,19 +1016,19 @@
 <div style="padding:24px;max-width:900px;margin:0 auto">
   <div class="rhero" style="text-align:left;background:linear-gradient(135deg,rgba(155,114,246,0.14),rgba(34,211,238,0.06));border-color:rgba(155,114,246,0.35)">
     <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;flex-wrap:wrap">
-      <span style="font-size:0.74rem;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:var(--purple);background:rgba(155,114,246,0.12);border:1px solid rgba(155,114,246,0.3);border-radius:20px;padding:4px 10px">Core Technology</span>
+      <span style="font-size:0.74rem;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:var(--purple);background:rgba(155,114,246,0.12);border:1px solid rgba(155,114,246,0.3);border-radius:20px;padding:4px 10px" data-i18n="x-core-technology">Core Technology</span>
       <span style="font-size:0.74rem;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:var(--gold);background:rgba(240,180,41,0.1);border:1px solid rgba(240,180,41,0.3);border-radius:20px;padding:4px 10px">◆ New in 2026</span>
     </div>
-    <h2 class="rhero-title" style="font-size:1.3rem;text-align:left;background:var(--grad);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text">GHOSTDAG + KnightDAG</h2>
-    <div class="rhero-sub" style="text-align:left">This is not a 0815 blockchain with one block at a time. Aequitas runs a real BlockDAG, ordered by GHOSTDAG — and since 2026, secured by KnightDAG, Aequitas's own adaptive evolution of it. This is the mechanism every balance, every UBI payout, and every wealth-cap enforcement ultimately depends on for a single, agreed-upon history.</div>
+    <h2 class="rhero-title" style="font-size:1.3rem;text-align:left;background:var(--grad);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text" data-i18n="x-ghostdag-knightdag">GHOSTDAG + KnightDAG</h2>
+    <div class="rhero-sub" style="text-align:left" data-i18n="x-this-is-not-a-0815">This is not a 0815 blockchain with one block at a time. Aequitas runs a real BlockDAG, ordered by GHOSTDAG — and since 2026, secured by KnightDAG, Aequitas's own adaptive evolution of it. This is the mechanism every balance, every UBI payout, and every wealth-cap enforcement ultimately depends on for a single, agreed-upon history.</div>
   </div>
 
   <div class="idx" style="margin-bottom:12px">
-    <div class="idx-title">Why a normal blockchain isn't enough</div>
+    <div class="idx-title" data-i18n="x-why-a-normal-blockchain-isn">Why a normal blockchain isn't enough</div>
     <div style="font-size:0.81rem;color:var(--muted);line-height:1.9">A classic blockchain is a single chain: one block at a time, one winner per round, everyone else's work thrown away as an "orphan." That caps how fast a network can safely produce blocks — go too fast and honest validators keep accidentally competing with each other, wasting most of their work.<br><br>Aequitas runs on a <b>BlockDAG</b> instead of a single chain: validators can produce blocks concurrently, and instead of discarding the "losing" ones, the protocol <b>merges</b> them into a shared structure — every honest block counts toward the network's history. The hard problem this creates: if blocks can arrive in a different order at every node, how does everyone end up agreeing on the exact same final history and account balances? That's what the algorithms below solve.</div>
 
     <div class="chain-diagram chain-diagram-bad">
-      <div class="chain-diagram-lbl" style="color:var(--dag-red)">Traditional blockchain — wasted work</div>
+      <div class="chain-diagram-lbl" style="color:var(--dag-red)" data-i18n="x-traditional-blockchain-wasted-work">Traditional blockchain — wasted work</div>
       <svg viewBox="0 0 300 60" role="img" aria-label="Traditional blockchain: a competing block is discarded as an orphan">
         <line x1="20" y1="30" x2="280" y2="30" stroke="var(--border)" stroke-width="2"/>
         <circle class="chain-pulse" cx="20" cy="30" r="4" fill="var(--gold)"/>
@@ -1041,10 +1041,10 @@
         <circle cx="197" cy="53" r="7" fill="var(--dag-red)" opacity="0.55"/>
         <text x="197" y="53" text-anchor="middle" dy="2.8" font-size="8" fill="#fff">✕</text>
       </svg>
-      <div class="chain-diagram-note">Two validators produce at once → one wins, one is discarded — wasted work, and it caps how fast the network can safely go.</div>
+      <div class="chain-diagram-note" data-i18n="x-two-validators-produce-at-once">Two validators produce at once → one wins, one is discarded — wasted work, and it caps how fast the network can safely go.</div>
     </div>
     <div class="chain-diagram chain-diagram-good">
-      <div class="chain-diagram-lbl" style="color:var(--dag-blue)">Aequitas BlockDAG — nothing wasted</div>
+      <div class="chain-diagram-lbl" style="color:var(--dag-blue)" data-i18n="x-aequitas-blockdag-nothing-wasted">Aequitas BlockDAG — nothing wasted</div>
       <svg viewBox="0 0 300 60" role="img" aria-label="Aequitas BlockDAG: a concurrent block is merged in, not discarded">
         <line x1="20" y1="30" x2="280" y2="30" stroke="var(--border)" stroke-width="2"/>
         <circle class="chain-pulse" cx="20" cy="30" r="4" fill="var(--gold)"/>
@@ -1057,17 +1057,17 @@
         <circle cx="230" cy="30" r="9" fill="var(--purple)"/>
         <circle cx="280" cy="30" r="9" fill="var(--purple)"/>
       </svg>
-      <div class="chain-diagram-note">Both blocks are kept — GHOSTDAG merges the concurrent one in and still counts it toward the canonical order.</div>
+      <div class="chain-diagram-note" data-i18n="x-both-blocks-are-kept-ghostdag">Both blocks are kept — GHOSTDAG merges the concurrent one in and still counts it toward the canonical order.</div>
     </div>
   </div>
 
   <div class="idx" style="margin-bottom:12px">
-    <div class="idx-title">GHOSTDAG (2018) — one true order out of a tangled graph</div>
-    <div style="font-size:0.81rem;color:var(--muted);line-height:1.9">GHOSTDAG (Sompolinsky &amp; Zohar) is the algorithm that turns Aequitas's BlockDAG into one canonical, agreed-upon order. Every node walks the same graph and computes, for every block, a deterministic <b>"blue score"</b>: it picks the strongest parent chain (the "selected parent"), then classifies every other concurrently-produced block it merges as "blue" (counted, honest) or "red" (excluded — too many other concurrent blocks around it to trust), bounded by a parameter K, the maximum concurrency the network tolerates as honest.<br><br>Because every node runs the exact same deterministic rule over the exact same block graph, they all arrive at the identical final order — height, then blue score, then hash — no matter which order blocks actually arrived over the network. You can see this live in the DAG View in the Explorer tab above: the purple line is the selected-parent chain, the fainter dots are merged (not discarded) concurrent blocks.</div>
+    <div class="idx-title" data-i18n="x-ghostdag-2018-one-true-order">GHOSTDAG (2018) — one true order out of a tangled graph</div>
+    <div style="font-size:0.81rem;color:var(--muted);line-height:1.9">GHOSTDAG (Sompolinsky &amp; Zohar) is the algorithm that turns Aequitas's BlockDAG into one canonical, agreed-upon order. Every node walks the same graph and computes, for every block, a deterministic <b data-i18n="x-blue-score">"blue score"</b>: it picks the strongest parent chain (the "selected parent"), then classifies every other concurrently-produced block it merges as "blue" (counted, honest) or "red" (excluded — too many other concurrent blocks around it to trust), bounded by a parameter K, the maximum concurrency the network tolerates as honest.<br><br>Because every node runs the exact same deterministic rule over the exact same block graph, they all arrive at the identical final order — height, then blue score, then hash — no matter which order blocks actually arrived over the network. You can see this live in the DAG View in the Explorer tab above: the purple line is the selected-parent chain, the fainter dots are merged (not discarded) concurrent blocks.</div>
   </div>
 
   <div class="idx" style="margin-bottom:12px;background:linear-gradient(135deg,rgba(139,92,246,0.08),rgba(6,182,212,0.04));border-color:rgba(139,92,246,0.25)">
-    <div class="idx-title" style="color:var(--purple)">◆ KNIGHTDAG (2026) — Aequitas's own upgrade beyond fixed-K GHOSTDAG</div>
+    <div class="idx-title" style="color:var(--purple)" data-i18n="x-knightdag-2026-aequitas-s-own">◆ KNIGHTDAG (2026) — Aequitas's own upgrade beyond fixed-K GHOSTDAG</div>
     <div style="font-size:0.81rem;color:var(--muted);line-height:1.9;margin-bottom:14px">Classic GHOSTDAG fixes K to a single worst-case value for an entire validator epoch — big enough to stay safe even during the busiest conceivable burst of concurrent block production, whether the network actually needs that much slack most of the time or not. That's the one piece of the algorithm that was still a fixed, hand-picked assumption rather than something the network figures out for itself.<br><br><b>KnightDAG</b> closes that gap, inspired by <b>DAGKNIGHT</b> (Sompolinsky &amp; Sutton, 2022) — Kaspa's own parameterless successor to GHOSTDAG. Instead of trusting one fixed epoch-wide K, every node deterministically searches, for every single new block, for the <i>smallest</i> K whose blue set still covers a strict majority of that block's own merge set — the actual concurrency happening right around it, not a hypothetical worst case. When the network is converging cleanly, K drops automatically and confirmation gets tighter and faster; under a genuine burst, classification gracefully falls back to exactly the classic fixed-K result — never less safe than before, only ever more precise. Every honest node runs the identical inference over the identical graph, so the network-wide agreement GHOSTDAG guarantees is fully preserved — KnightDAG is a strict upgrade, not a different set of rules.</div>
     <div class="hlbox">GHOSTDAG (2018): one fixed K per validator epoch — a single worst-case value for the whole network<br>KnightDAG (2026): K inferred fresh for every block, from the DAG structure actually around it<br>Active from block 1,520,000 onward · falls back to classic GHOSTDAG whenever no smaller K reaches a majority<br>Fully backward-compatible: blocks below the activation height replay exactly as every node already agreed — nothing about the settled past changes</div>
   </div>
@@ -1111,25 +1111,25 @@
       <rect x="20" y="90" width="110" height="60" rx="8" fill="rgba(107,70,193,0.1)" stroke="#6B46C1" stroke-width="1.5"/>
       <text x="75" y="115" text-anchor="middle" font-size="11" font-weight="700" fill="rgba(155,114,246,0.9)">HUMAN</text>
       <text x="75" y="130" text-anchor="middle" font-size="9" fill="rgba(136,146,164,0.9)">registers</text>
-      <text x="75" y="143" text-anchor="middle" font-size="9" fill="rgba(136,146,164,0.9)">+1,000 AEQ minted</text>
+      <text x="75" y="143" text-anchor="middle" font-size="9" fill="rgba(136,146,164,0.9)" data-i18n="x-1-000-aeq-minted">+1,000 AEQ minted</text>
       <line x1="130" y1="120" x2="190" y2="120" stroke="#6B46C1" stroke-width="1.5" marker-end="url(#arr)"/>
       <rect x="190" y="70" width="130" height="100" rx="8" fill="rgba(8,145,178,0.08)" stroke="#0891B2" stroke-width="1.5"/>
-      <text x="255" y="95" text-anchor="middle" font-size="11" font-weight="700" fill="rgba(34,211,238,0.9)">AEQ ACTIVITY</text>
-      <text x="255" y="112" text-anchor="middle" font-size="9" fill="rgba(136,146,164,0.9)">Swap fees (0.1%)</text>
-      <text x="255" y="126" text-anchor="middle" font-size="9" fill="rgba(136,146,164,0.9)">Demurrage (0.5%/mo)</text>
-      <text x="255" y="140" text-anchor="middle" font-size="9" fill="rgba(136,146,164,0.9)">Wealth cap overflow</text>
-      <text x="255" y="154" text-anchor="middle" font-size="9" fill="rgba(136,146,164,0.9)">Inactive escrow</text>
+      <text x="255" y="95" text-anchor="middle" font-size="11" font-weight="700" fill="rgba(34,211,238,0.9)" data-i18n="x-aeq-activity">AEQ ACTIVITY</text>
+      <text x="255" y="112" text-anchor="middle" font-size="9" fill="rgba(136,146,164,0.9)" data-i18n="x-swap-fees-0-1">Swap fees (0.1%)</text>
+      <text x="255" y="126" text-anchor="middle" font-size="9" fill="rgba(136,146,164,0.9)" data-i18n="x-demurrage-0-5-mo">Demurrage (0.5%/mo)</text>
+      <text x="255" y="140" text-anchor="middle" font-size="9" fill="rgba(136,146,164,0.9)" data-i18n="x-wealth-cap-overflow">Wealth cap overflow</text>
+      <text x="255" y="154" text-anchor="middle" font-size="9" fill="rgba(136,146,164,0.9)" data-i18n="x-inactive-escrow">Inactive escrow</text>
       <line x1="320" y1="120" x2="380" y2="120" stroke="#0891B2" stroke-width="1.5" marker-end="url(#arr2)"/>
       <rect x="380" y="50" width="120" height="140" rx="8" fill="rgba(146,64,14,0.06)" stroke="#92400E" stroke-width="1.5"/>
-      <text x="440" y="75" text-anchor="middle" font-size="10" font-weight="700" fill="rgba(240,180,41,0.9)">REDISTRIBUTION</text>
-      <text x="440" y="95" text-anchor="middle" font-size="9" fill="rgba(52,211,153,0.9)">&#9679; UBI Pool 20%</text>
-      <text x="440" y="112" text-anchor="middle" font-size="9" fill="rgba(155,114,246,0.9)">&#9679; Validators 40%</text>
-      <text x="440" y="129" text-anchor="middle" font-size="9" fill="rgba(34,211,238,0.9)">&#9679; Liquidity LP 30%</text>
-      <text x="440" y="146" text-anchor="middle" font-size="9" fill="rgba(240,180,41,0.9)">&#9679; Treasury 10%</text>
-      <text x="440" y="165" text-anchor="middle" font-size="8" fill="rgba(136,146,164,0.9)">paid out daily</text>
-      <text x="440" y="178" text-anchor="middle" font-size="8" fill="rgba(136,146,164,0.9)">automatic on-chain</text>
+      <text x="440" y="75" text-anchor="middle" font-size="10" font-weight="700" fill="rgba(240,180,41,0.9)" data-i18n="x-redistribution">REDISTRIBUTION</text>
+      <text x="440" y="95" text-anchor="middle" font-size="9" fill="rgba(52,211,153,0.9)" data-i18n="x-9679-ubi-pool-20">&#9679; UBI Pool 20%</text>
+      <text x="440" y="112" text-anchor="middle" font-size="9" fill="rgba(155,114,246,0.9)" data-i18n="x-9679-validators-40">&#9679; Validators 40%</text>
+      <text x="440" y="129" text-anchor="middle" font-size="9" fill="rgba(34,211,238,0.9)" data-i18n="x-9679-liquidity-lp-30">&#9679; Liquidity LP 30%</text>
+      <text x="440" y="146" text-anchor="middle" font-size="9" fill="rgba(240,180,41,0.9)" data-i18n="x-9679-treasury-10">&#9679; Treasury 10%</text>
+      <text x="440" y="165" text-anchor="middle" font-size="8" fill="rgba(136,146,164,0.9)" data-i18n="x-paid-out-daily">paid out daily</text>
+      <text x="440" y="178" text-anchor="middle" font-size="8" fill="rgba(136,146,164,0.9)" data-i18n="x-automatic-on-chain">automatic on-chain</text>
       <path d="M500 120 Q580 120 580 200 Q580 220 320 220 Q75 220 75 155" fill="none" stroke="#047857" stroke-width="1.5" stroke-dasharray="5,3" marker-end="url(#arr3)"/>
-      <text x="340" y="215" text-anchor="middle" font-size="8" fill="rgba(52,211,153,0.9)">daily UBI returns to all verified humans</text>
+      <text x="340" y="215" text-anchor="middle" font-size="8" fill="rgba(52,211,153,0.9)" data-i18n="x-daily-ubi-returns-to-all">daily UBI returns to all verified humans</text>
       <defs>
         <marker id="arr" markerWidth="8" markerHeight="6" refX="6" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="rgba(155,114,246,0.9)"/></marker>
         <marker id="arr2" markerWidth="8" markerHeight="6" refX="6" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="rgba(34,211,238,0.9)"/></marker>
@@ -1144,7 +1144,7 @@
     <div class="idx-title" data-i18n="story-topo-title">Network Topology &#8212; Current State</div>
     <div style="overflow-x:auto;padding:8px 0">
     <svg id="topology-svg" viewBox="0 0 500 230" xmlns="http://www.w3.org/2000/svg" style="width:100%;max-width:500px;display:block;margin:0 auto;font-family:Inter,sans-serif">
-      <text x="250" y="115" text-anchor="middle" font-size="9" fill="rgba(136,146,164,0.6)">Loading topology…</text>
+      <text x="250" y="115" text-anchor="middle" font-size="9" fill="rgba(136,146,164,0.6)" data-i18n="x-loading-topology">Loading topology…</text>
     </svg>
     </div>
   </div>
@@ -1156,15 +1156,15 @@
 <div class="ns" style="grid-template-columns:1fr">
 <div class="nc" style="grid-column:1/-1;background:linear-gradient(135deg,rgba(245,166,35,0.06),rgba(13,8,32,0.9));border-color:rgba(245,166,35,0.2)">
     <div class="nc-title" style="color:var(--gold)" data-i18n="run-node-title">Run Your Own Node — Help Secure the Network</div>
-    <div style="font-size:0.82rem;color:var(--muted);line-height:1.9;margin-bottom:16px" data-i18n="run-node-desc">Registered humans can run an Aequitas validator node — no stake, no application required, but <strong style="color:var(--gold)">NODE_OPERATOR_WALLET must be a registered Aequitas human</strong> (this is a protocol security requirement). Nodes participate in block production, validate the human registry, and synchronize the BlockDAG. Node operators earn a share of protocol fees via the Validators Pool (40% of all protocol fees, distributed daily). The more nodes that run, the more decentralized and resilient the network becomes.</div>
+    <div style="font-size:0.82rem;color:var(--muted);line-height:1.9;margin-bottom:16px" data-i18n="run-node-desc">Registered humans can run an Aequitas validator node — no stake, no application required, but <strong style="color:var(--gold)" data-i18n="x-node-operator-wallet-must-be">NODE_OPERATOR_WALLET must be a registered Aequitas human</strong> (this is a protocol security requirement). Nodes participate in block production, validate the human registry, and synchronize the BlockDAG. Node operators earn a share of protocol fees via the Validators Pool (40% of all protocol fees, distributed daily). The more nodes that run, the more decentralized and resilient the network becomes.</div>
     <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:16px">
-      <a id="node-guide-pdf-btn" class="hover-fade" href="/download/node-guide-en.pdf" download style="display:inline-flex;align-items:center;gap:8px;background:var(--gold);color:#06091A;padding:12px 20px;border-radius:8px;font-size:0.84rem;font-weight:700;text-decoration:none">
+      <a id="node-guide-pdf-btn" class="hover-fade" href="/download/node-guide-en.pdf" download style="display:inline-flex;align-items:center;gap:8px;background:var(--gold);color:#06091A;padding:12px 20px;border-radius:8px;font-size:0.84rem;font-weight:700;text-decoration:none" data-i18n="x-node-operator-guide-pdf">
         📄 Node Operator Guide (PDF)
       </a>
-      <a class="hover-fade" href="https://github.com/hanoi96international-gif/Aequitas" target="_blank" rel="noopener noreferrer" style="display:inline-flex;align-items:center;gap:8px;background:rgba(139,92,246,0.15);color:var(--purple);border:1px solid rgba(139,92,246,0.3);padding:12px 20px;border-radius:8px;font-size:0.84rem;font-weight:700;text-decoration:none">
+      <a class="hover-fade" href="https://github.com/hanoi96international-gif/Aequitas" target="_blank" rel="noopener noreferrer" style="display:inline-flex;align-items:center;gap:8px;background:rgba(139,92,246,0.15);color:var(--purple);border:1px solid rgba(139,92,246,0.3);padding:12px 20px;border-radius:8px;font-size:0.84rem;font-weight:700;text-decoration:none" data-i18n="x-view-source-on-github">
         🐙 View Source on GitHub
       </a>
-      <a class="hover-fade" href="/node-binding" target="_blank" rel="noopener noreferrer" style="display:inline-flex;align-items:center;gap:8px;background:rgba(0,230,118,0.12);color:var(--neon);border:1px solid rgba(0,230,118,0.3);padding:12px 20px;border-radius:8px;font-size:0.84rem;font-weight:700;text-decoration:none">
+      <a class="hover-fade" href="/node-binding" target="_blank" rel="noopener noreferrer" style="display:inline-flex;align-items:center;gap:8px;background:rgba(0,230,118,0.12);color:var(--neon);border:1px solid rgba(0,230,118,0.3);padding:12px 20px;border-radius:8px;font-size:0.84rem;font-weight:700;text-decoration:none" data-i18n="x-generate-node-binding-signature">
         🔗 Generate Node Binding Signature
       </a>
     </div>
