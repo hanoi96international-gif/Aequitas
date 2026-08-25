@@ -30,6 +30,23 @@ var tablesCreatedElsewhere = map[string]string{
 	// SavePreUpgradeRelationshipSlots — via fmt.Sprintf with the table name as
 	// a constant, so the CREATE is real but not a literal this test can see.
 	"evm_upgrade_relationship_slots": "created in SavePreUpgradeRelationshipSlots via fmt.Sprintf",
+
+	// Altlast, absichtlich nur noch geloescht und nie wieder angelegt.
+	//
+	// Bis zum 25.08.2026 hielt sie die LSH-Eimerschluessel der MPC-Anteile.
+	// Ein Eimerschluessel besteht aus k Bits des Sketches IM KLARTEXT; 20
+	// Tabellen a 27 Bit deckten 338 der 512 Bits ab. Damit lagen zwei Drittel
+	// jedes Gesichtsmerkmals neben dem Anteil, der fuer sich genommen nur
+	// Rauschen sein soll -- die Zusicherung, fuer die es MPC hier ueberhaupt
+	// gibt, war aufgehoben.
+	//
+	// Die DELETEs bleiben, damit vorhandene Zeilen auf laufenden Knoten
+	// verschwinden. Ein DROP waere gegenueber einer aelteren Node-Fassung, die
+	// noch schreibt, nicht vertraeglich; leer ist die Tabelle harmlos.
+	//
+	// Kommt je wieder eine Vorauswahl, dann mit Eimerschluesseln, die selbst
+	// geheim sind -- nicht mit dieser.
+	"mpc_share_buckets": "Altlast vor dem 25.08.2026: wird nur noch geleert, nie angelegt",
 }
 
 func TestEverySQLTableUsedIsAlsoCreated(t *testing.T) {
