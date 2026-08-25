@@ -1743,7 +1743,7 @@
     <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px">
       <div style="background:var(--card);border:1px solid var(--border);border-radius:6px;padding:10px;text-align:center">
         <div style="font-size:0.95rem;font-weight:700;color:var(--purple);font-family:var(--font-display)">6</div>
-        <div style="font-size:0.74rem;color:var(--muted);margin-top:3px">Protocol Mechanisms</div>
+        <div style="font-size:0.74rem;color:var(--muted);margin-top:3px" data-i18n="x-protocol-mechanisms">Protocol Mechanisms</div>
       </div>
       <div style="background:var(--card);border:1px solid var(--border);border-radius:6px;padding:10px;text-align:center">
         <div style="font-size:0.95rem;font-weight:700;color:var(--neon);font-family:var(--font-display)">0</div>
@@ -1751,7 +1751,7 @@
       </div>
       <div style="background:var(--card);border:1px solid var(--border);border-radius:6px;padding:10px;text-align:center">
         <div style="font-size:0.84rem;font-weight:700;color:var(--gold);font-family:var(--font-display)">immutable</div>
-        <div style="font-size:0.74rem;color:var(--muted);margin-top:3px">Contract Code</div>
+        <div style="font-size:0.74rem;color:var(--muted);margin-top:3px" data-i18n="x-contract-code">Contract Code</div>
       </div>
     </div>
   </div>
@@ -1763,17 +1763,17 @@
   </div>
   <div class="idx" style="margin-bottom:12px">
     <div class="idx-title" data-i18n="poa-title">1. PROOF OF ALIVE — Inactive Balance Recovery</div>
-    <div class="story" data-i18n="poa-text"><p>What happens to AEQ when people die or become permanently incapacitated? In Bitcoin and most cryptocurrencies, lost wallets mean permanently lost supply — millions of BTC are estimated to be inaccessible forever. Aequitas solves this through a multi-stage inactivity recovery system: if a wallet shows no activity for an extended period, its balance is gradually returned to the community through the UBI pool, ensuring the total effective supply remains meaningful.</p></div>
+    <div class="story" data-i18n="poa-text"><p data-i18n="x-what-happens-to-aeq-when">What happens to AEQ when people die or become permanently incapacitated? In Bitcoin and most cryptocurrencies, lost wallets mean permanently lost supply — millions of BTC are estimated to be inaccessible forever. Aequitas solves this through a multi-stage inactivity recovery system: if a wallet shows no activity for an extended period, its balance is gradually returned to the community through the UBI pool, ensuring the total effective supply remains meaningful.</p></div>
     <div class="hlbox" data-i18n="poa-box">Year 0–2: Normal usage — no restrictions<br>Year 2: Warning 1 sent — Guardian can respond on behalf<br>Year 2+60d: Warning 2 — escalating urgency<br>Year 2+120d: Warning 3 — final notice<br>Year 2+180d: AEQ moved to personal ESCROW (still recoverable)<br>Year 4: If still inactive — ESCROW released to UBI Pool</div>
   </div>
   <div class="idx" style="margin-bottom:12px">
     <div class="idx-title" data-i18n="guard-title">2. GUARDIAN SYSTEM — Human Failsafe</div>
-    <div class="story" data-i18n="guard-text"><p>What if someone is hospitalized, incarcerated, or otherwise unable to access their device for months? The Guardian system allows a trusted person — another verified human — to confirm that the wallet owner is still alive, preventing their AEQ from being moved to escrow. The Guardian has strictly zero financial access: they can only call a single function that resets the inactivity clock. They cannot move, spend, or access any funds under any circumstances.</p></div>
+    <div class="story" data-i18n="guard-text"><p data-i18n="x-what-if-someone-is-hospitalized">What if someone is hospitalized, incarcerated, or otherwise unable to access their device for months? The Guardian system allows a trusted person — another verified human — to confirm that the wallet owner is still alive, preventing their AEQ from being moved to escrow. The Guardian has strictly zero financial access: they can only call a single function that resets the inactivity clock. They cannot move, spend, or access any funds under any circumstances.</p></div>
     <div class="hlbox" data-i18n="guard-box">1 Guardian per human · must be a verified human on Aequitas<br>Guardian can ONLY call confirmAlive() — zero transaction rights<br>Guardian CANNOT move funds, transfer AEQ, or access the wallet<br>Maximum 3 wards per Guardian (prevents centralization of trust)<br>7-day timelock on Guardian assignment (prevents forced assignment)<br>No circular guardian relationships allowed</div>
   </div>
   <div class="idx" style="margin-bottom:12px">
     <div class="idx-title" data-i18n="dem-title">3. DEMURRAGE — Anti-Hoarding Mechanism</div>
-    <div class="story" data-i18n="dem-text"><p>Demurrage is a holding cost on money — a negative interest rate that makes hoarding expensive and circulation attractive. It has historical precedent: the Wörgl experiment (Austria, 1932) used a demurrage currency and reduced local unemployment by 25% within one year. The Central Bank of Austria shut it down precisely because it worked too well and threatened the banking monopoly. The Chiemgauer (Germany, 2003) operates on the same principle and has circulated successfully for over 20 years. Aequitas implements continuous demurrage at 0.5% per month, applied only after a 3-month grace period of inactivity.</p></div>
+    <div class="story" data-i18n="dem-text"><p data-i18n="x-demurrage-is-a-holding-cost">Demurrage is a holding cost on money — a negative interest rate that makes hoarding expensive and circulation attractive. It has historical precedent: the Wörgl experiment (Austria, 1932) used a demurrage currency and reduced local unemployment by 25% within one year. The Central Bank of Austria shut it down precisely because it worked too well and threatened the banking monopoly. The Chiemgauer (Germany, 2003) operates on the same principle and has circulated successfully for over 20 years. Aequitas implements continuous demurrage at 0.5% per month, applied only after a 3-month grace period of inactivity.</p></div>
     <div class="hlbox" data-i18n="dem-box">Rate: 0.5% per month after 3 months of inactivity (continuous, not stepped)<br>Clock resets automatically on any transfer, swap, or liquidity action<br>Decayed AEQ is redistributed to the four pools — never burned<br>14-day warning shown once · 7-day warning repeated on each active session</div>
   </div>
   <div class="idx" style="margin-bottom:12px">
@@ -1789,7 +1789,7 @@
     <div class="hlbox" data-i18n="inf-box">The ONLY event that creates new AEQ: a new verified human registers.<br><br>Total Supply = Verified Humans × 1,000 AEQ<br><br>This is not a policy — it is enforced by the protocol. No admin can mint additional AEQ, no governance vote can change the issuance, no founder allocation was pre-mined. AEQ is the only cryptocurrency where the total supply is determined solely by the number of verified living humans.</div>
   </div>
   <div class="idx" style="margin-bottom:12px;background:linear-gradient(135deg,rgba(6,182,212,0.06),rgba(13,8,32,0.9));border-color:rgba(6,182,212,0.2)">
-    <div class="idx-title" style="color:var(--teal)">Open Source Chain Logic</div>
+    <div class="idx-title" style="color:var(--teal)" data-i18n="x-open-source-chain-logic">Open Source Chain Logic</div>
     <div style="font-size:0.79rem;color:var(--muted);line-height:1.9">The Aequitas chain core — consensus engine, state machine, redistribution logic, wealth cap formula, and ZK proof verification — is written in Go. The redistribution algorithms (CalcGini, enforceWealthCap, DistributeUBIPool, settleDemurrage) are open for review.<br><br>Smart contract source code for AequitasV7 and BioVerifier is embedded in the chain binary and verifiable via the contract addresses above. Chain ID 1926, RPC: <span style="color:var(--teal);font-family:var(--font-mono)">https://aequitas.digital/rpc</span></div>
     <div style="margin-top:12px;padding:10px 14px;background:rgba(6,182,212,0.06);border:1px solid rgba(6,182,212,0.15);border-radius:6px;font-size:0.77rem;color:var(--teal);font-family:var(--font-mono)">
       /metrics — Prometheus endpoint (gini, humans, pools, block height)<br>
@@ -1799,16 +1799,16 @@
     </div>
   </div>
   <div class="idx" style="margin-bottom:12px;background:linear-gradient(135deg,rgba(139,92,246,0.08),rgba(6,182,212,0.04));border-color:rgba(139,92,246,0.25)">
-    <div class="idx-title" style="color:var(--purple)">◆ Consensus: GHOSTDAG + KNIGHTDAG</div>
-    <div style="font-size:0.81rem;color:var(--muted);line-height:1.9">How every node agrees on one shared order for concurrently-produced blocks — including the 2026 KnightDAG upgrade that lets each block infer its own optimal security margin instead of trusting one fixed network-wide worst case — now has its own dedicated tab: <b data-act="goTab" data-args='["network","net-consensus"]' style="color:var(--teal);cursor:pointer;text-decoration:underline" role="button" tabindex="0">→ Network / Consensus</b>.</div>
+    <div class="idx-title" style="color:var(--purple)" data-i18n="x-consensus-ghostdag-knightdag">◆ Consensus: GHOSTDAG + KNIGHTDAG</div>
+    <div style="font-size:0.81rem;color:var(--muted);line-height:1.9">How every node agrees on one shared order for concurrently-produced blocks — including the 2026 KnightDAG upgrade that lets each block infer its own optimal security margin instead of trusting one fixed network-wide worst case — now has its own dedicated tab: <b data-act="goTab" data-args='["network","net-consensus"]' style="color:var(--teal);cursor:pointer;text-decoration:underline" role="button" tabindex="0" data-i18n="x-network-consensus">→ Network / Consensus</b>.</div>
   </div>
   <div class="idx" style="margin-bottom:12px;background:linear-gradient(135deg,rgba(139,92,246,0.06),rgba(13,8,32,0.9));border-color:rgba(139,92,246,0.2)">
-    <div class="idx-title" style="color:var(--purple)">Node Decentralization Roadmap</div>
+    <div class="idx-title" style="color:var(--purple)" data-i18n="x-node-decentralization-roadmap">Node Decentralization Roadmap</div>
     <div style="font-size:0.79rem;color:var(--muted);line-height:1.9">Currently the network runs on 2 active validators, each on its own server with its own database, with MERGE events from both. Only registered humans can run validator nodes — this is a security requirement. Decentralization is a staged process:<br><br>
-    <span style="color:var(--neon)">Phase 0 (now):</span> 2-node bootstrapping — two independent Contabo servers, each with its own database and its own proof server. Trust established through code transparency. Any registered human can join as a validator — no application, no stake.<br>
-    <span style="color:var(--blue)">Phase 1 (100+ humans):</span> Open node join — any registered human can run a full node and earn validator rewards from the 40% pool.<br>
-    <span style="color:var(--gold)">Phase 2 (1,000+ humans):</span> Minimum 10 independent node operators required. Node diversity enforced by smart contract.<br>
-    <span style="color:var(--purple)">Phase 3 (10,000+ humans):</span> Fully decentralized BlockDAG. No single operator can censor or halt the chain.<br><br>
+    <span style="color:var(--neon)" data-i18n="x-phase-0-now">Phase 0 (now):</span> 2-node bootstrapping — two independent Contabo servers, each with its own database and its own proof server. Trust established through code transparency. Any registered human can join as a validator — no application, no stake.<br>
+    <span style="color:var(--blue)" data-i18n="x-phase-1-100-humans">Phase 1 (100+ humans):</span> Open node join — any registered human can run a full node and earn validator rewards from the 40% pool.<br>
+    <span style="color:var(--gold)" data-i18n="x-phase-2-1-000-humans">Phase 2 (1,000+ humans):</span> Minimum 10 independent node operators required. Node diversity enforced by smart contract.<br>
+    <span style="color:var(--purple)" data-i18n="x-phase-3-10-000-humans">Phase 3 (10,000+ humans):</span> Fully decentralized BlockDAG. No single operator can censor or halt the chain.<br><br>
     The node operator guide (PDF) is available on the Network tab. Each new node operator earns from the 40% validator pool — the more nodes, the more resilient the network.</div>
   </div>
 </div>
