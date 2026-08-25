@@ -1,0 +1,148 @@
+<!--
+  Datenschutzerklärung nach Art. 13 DSGVO.
+
+  DIESE SEITE WIRD NICHT AUSGELIEFERT, solange die Markierung PLATZHALTER
+  unten im Text steht -- siehe handleDatenschutz in api_legal.go. Ohne die
+  Identität des Verantwortlichen ist eine Datenschutzerklärung wertlos: die
+  Betroffenen erfahren nicht, gegen wen sie ihre Rechte richten können.
+
+  Der Text beschreibt den am 25.08.2026 gemessenen Ist-Zustand. Ausführliche
+  Fassung mit Begründungen:
+  aequitas-biometric-beta/docs/dsgvo/07_DATENSCHUTZERKLAERUNG.md
+-->
+<h1>Datenschutzerklärung</h1>
+
+<h2>1. Wer verantwortlich ist</h2>
+<address>
+  [PLATZHALTER — Name, Anschrift]<br>
+  E-Mail: [PLATZHALTER — Kontakt für Datenschutzanliegen]
+</address>
+
+<h2>2. Worum es geht</h2>
+<p>
+  Aequitas zahlt ein Grundeinkommen aus. Damit das funktioniert, muss
+  sichergestellt sein, dass jeder Mensch sich nur <strong>einmal</strong>
+  anmeldet — sonst könnte eine einzelne Person beliebig viele Konten anlegen
+  und das Geld mehrfach beziehen. Dafür vergleichen wir Gesichter. Wir tun
+  das so sparsam, wie es technisch möglich ist, und sagen Ihnen hier genau,
+  was dabei passiert.
+</p>
+<p>
+  <strong>Wir verlangen keinen Ausweis und kein Dokument.</strong> Das ist
+  eine bewusste Entscheidung: Wer keinen Pass besitzt, ist nicht weniger
+  Mensch und soll nicht ausgeschlossen werden.
+</p>
+
+<h2>3. Was bei der Anmeldung geschieht</h2>
+<p>
+  Sie nehmen mit Ihrem Gerät ein Foto Ihres Gesichts und eine kurze Bildfolge
+  auf, bei der Sie blinzeln (damit ein Foto vom Foto nicht genügt).
+</p>
+<p>
+  Daraus berechnet unser Dienst kurzzeitig eine mathematische Beschreibung
+  Ihres Gesichts und vergleicht sie mit allen bereits angemeldeten Menschen.
+</p>
+<p>
+  <strong>Gespeichert wird davon nur ein 64 Byte großer Auszug</strong> — 512
+  Ja/Nein-Werte. Die Aufnahme selbst und die vollständige Gesichtsbeschreibung
+  werden nach wenigen Sekunden verworfen und <strong>nicht gespeichert</strong>.
+</p>
+<p>
+  Aus diesen 64 Byte lässt sich Ihr Gesicht nicht rekonstruieren. Sie genügen
+  aber, um Sie wiederzuerkennen — dafür sind sie da. Deshalb behandeln wir sie
+  als biometrische Daten im Sinne von Art. 9 DSGVO.
+</p>
+
+<h3>Was gespeichert wird</h3>
+<table>
+  <tr><th>Was</th><th>Wie lange</th></tr>
+  <tr><td>Der 64-Byte-Auszug Ihres Gesichts</td><td>bis zu Ihrem Widerruf — danach eingeschränkt, siehe Abschnitt 5</td></tr>
+  <tr><td>Eine Zufallszahl als Ihre Kennung</td><td>dauerhaft</td></tr>
+  <tr><td>Ein verschlüsselter Verweis auf Ihre Wallet-Adresse</td><td>bis zu Ihrem Widerruf</td></tr>
+  <tr><td>Version und Zeitpunkt Ihrer Einwilligung</td><td>bis zu Ihrem Widerruf</td></tr>
+</table>
+
+<h3>Was nicht gespeichert wird</h3>
+<p>
+  Name, Geburtsdatum, Ausweisdaten, Anschrift, E-Mail-Adresse, Telefonnummer.
+  Es gibt kein Nutzerkonto.
+</p>
+
+<h3>Kurzzeitig, nur im Arbeitsspeicher</h3>
+<p>
+  Ihre IP-Adresse und eine Gerätekennung werden für <strong>eine Stunde</strong>
+  im Arbeitsspeicher gehalten, um zu erkennen, ob dasselbe Gerät auffällig
+  viele Anmeldungen versucht. Sie werden <strong>nicht in eine Datenbank
+  geschrieben</strong>. Das Ergebnis ist ein Hinweis, keine Sperre.
+</p>
+
+<h2>4. Der Eintrag in der Blockchain ist öffentlich und dauerhaft</h2>
+<p class="warnung">
+  Wenn Sie sich anmelden, entsteht ein Eintrag in einer öffentlichen
+  Blockchain: Ihre Wallet-Adresse, Ihr Guthaben, alle Ihre Zahlungen und Ihre
+  Kennung. <strong>Dieser Eintrag ist für jeden einsehbar und kann technisch
+  nicht gelöscht werden — auch von uns nicht.</strong> Das ist keine
+  Nachlässigkeit, sondern die Funktionsweise einer Blockchain.
+</p>
+<p>
+  Der Eintrag enthält Ihren Namen nicht. Wer aber Ihre Wallet-Adresse kennt,
+  sieht Ihr Vermögen und Ihre Zahlungen.
+</p>
+
+<h2>5. Ihr Recht auf Löschung — und wo es an eine Grenze stößt</h2>
+<p>
+  Sie können Ihre Anmeldung jederzeit selbst löschen, in der App, ohne uns um
+  Erlaubnis zu fragen. Dabei werden gelöscht: der Verweis auf Ihre Wallet, Ihr
+  Einwilligungsdatensatz und alle Merkmale bis auf eines.
+</p>
+<p>
+  <strong>Ein Merkmal bleibt, und wir sagen Ihnen offen, warum.</strong>
+  Zurück bleibt der 64-Byte-Auszug, ohne jede Verbindung zu Ihrer Wallet oder
+  Ihrer Kennung. Damit lässt sich nur noch eine einzige Frage beantworten:
+  „Hat dieser Mensch sich schon einmal angemeldet?"
+</p>
+<p>
+  Ohne diese Marke könnte jemand sich anmelden, das Geld beziehen, sich
+  löschen und von vorn beginnen — beliebig oft. Das würde das Grundeinkommen
+  für alle anderen entwerten. <strong>Wir versprechen Ihnen deshalb
+  ausdrücklich keine vollständige Löschung.</strong>
+</p>
+
+<h2>6. Ihre Rechte</h2>
+<ul>
+  <li><strong>Auskunft (Art. 15):</strong> Sie können jederzeit abfragen, was über Sie gespeichert ist — über Ihre Kennung, die nur Sie besitzen.</li>
+  <li><strong>Berichtigung (Art. 16):</strong> Wir speichern keine Angaben, die falsch sein könnten.</li>
+  <li><strong>Einschränkung (Art. 18), Übertragbarkeit (Art. 20), Widerspruch (Art. 21).</strong></li>
+  <li><strong>Widerruf der Einwilligung (Art. 7 Abs. 3)</strong> jederzeit, mit Wirkung für die Zukunft.</li>
+  <li><strong>Beschwerde (Art. 77)</strong> bei einer Aufsichtsbehörde: [PLATZHALTER — zuständige Behörde].</li>
+</ul>
+<p>Wie Sie diese Rechte ausüben: [PLATZHALTER — Kontaktweg].</p>
+
+<h2>7. Automatisierte Entscheidung</h2>
+<p>
+  Ob Sie sich anmelden dürfen, entscheidet eine automatische Prüfung. Wird
+  Ihre Aufnahme als Duplikat eingestuft, können Sie sich nicht anmelden.
+</p>
+<p>
+  Damit diese Entscheidung nicht an einem einzelnen System hängt, urteilen
+  <strong>drei voneinander unabhängige Dienste</strong>, von denen zwei
+  übereinstimmen müssen. Sie laufen auf verschiedenen Maschinen, zwei davon
+  gehören verschiedenen Personen. Wiederholte Versuche werden
+  <strong>verzögert, nicht gesperrt</strong> — höchstens zwei Minuten.
+</p>
+
+<h2>8. Wo die Daten verarbeitet werden</h2>
+<p>
+  Auf drei Diensten: zwei Servern bei Contabo in Lauterbourg (Frankreich) und
+  einem Dienst bei Railway in der Region EU West. Alle drei innerhalb der EU.
+  Eine Weitergabe an Dritte darüber hinaus findet nicht statt. Wir verkaufen
+  keine Daten.
+</p>
+
+<h2>9. Rechtsgrundlagen</h2>
+<ul>
+  <li>Gesichtsauszug und Einmaligkeitsprüfung: <strong>Ihre ausdrückliche Einwilligung</strong>, Art. 9 Abs. 2 lit. a i.V.m. Art. 6 Abs. 1 lit. a</li>
+  <li>Missbrauchserkennung und Server-Protokolle: <strong>berechtigtes Interesse</strong>, Art. 6 Abs. 1 lit. f</li>
+</ul>
+
+<p class="fuss"><a href="/impressum">Impressum</a> · <a href="/">Startseite</a></p>

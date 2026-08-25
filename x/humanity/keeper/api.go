@@ -894,6 +894,12 @@ func (a *APIServer) buildMux() *http.ServeMux {
 	mux.HandleFunc("/vendor/ethers.min.js", a.handleVendorEthersJS)
 	mux.HandleFunc("/vendor/lightweight-charts.min.js", a.handleVendorLightweightChartsJS)
 	mux.HandleFunc("/vendor/walletconnect-ethereum-provider.min.js", a.handleVendorWalletConnectJS)
+	// Pflichtseiten. Sie MUESSEN vor dem Catch-all stehen, sonst
+	// beantwortet dieser sie mit der SPA-Seite und Status 200 -- genau der
+	// Zustand, der am 25.08.2026 dazu fuehrte, dass /impressum und
+	// /datenschutz zu existieren SCHIENEN, ohne es zu tun.
+	mux.HandleFunc("/impressum", a.handleImpressum)
+	mux.HandleFunc("/datenschutz", a.handleDatenschutz)
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		// Root path: serve landing page; anything else falls to handleUI
 		if r.URL.Path == "/" {
