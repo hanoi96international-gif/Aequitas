@@ -75,3 +75,8 @@ id_ed25519*
 # blinding and leaks the difference of the secrets it was used on.
 mpc-triples/
 *.bin
+
+# Python-Bytecode aus scripts/ -- taucht sonst bei jedem Lauf als
+# unversionierte Aenderung auf und verdeckt echte.
+__pycache__/
+*.pyc
