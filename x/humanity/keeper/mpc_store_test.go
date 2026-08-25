@@ -47,7 +47,7 @@ func TestCorruptStoredRowIsRejected(t *testing.T) {
 // looks exactly like a working system while duplicates walk through.
 func TestSaveMPCShareRefusesUnusableInput(t *testing.T) {
 	cs := &ChainState{} // no db: the first guard should fire before anything else
-	if err := cs.SaveMPCShare("e1", "c1", 0, mpc.PartyTemplate{1, 2}, []mpc.BucketKey{7}); err == nil {
+	if err := cs.SaveMPCShare("e1", "c1", 0, mpc.PartyTemplate{1, 2}); err == nil {
 		t.Error("a share was accepted with no database — the index would vanish on restart")
 	}
 }
@@ -82,14 +82,15 @@ func TestSharesSurviveAndAreFoundByBucket(t *testing.T) {
 	t.Cleanup(func() { _ = cs.DeleteMPCShare(id) })
 
 	row := mpc.PartyTemplate{11, 22, 33, 44}
-	keys := []mpc.BucketKey{101, 202, 303}
-	if err := cs.SaveMPCShare(id, committee, 0, row, keys); err != nil {
+	if err := cs.SaveMPCShare(id, committee, 0, row); err != nil {
 		t.Fatal(err)
 	}
 
-	// A candidate matching in ONE table must be found: that is what multi-table
-	// LSH buys, and a lookup requiring all tables would defeat it.
-	ids, rows, err := cs.MPCCandidateShares(committee, []mpc.BucketKey{999, 202, 999}, 0)
+	// Verglichen wird gegen JEDE Einschreibung des Komitees. Der frühere
+	// Eimer-Vorfilter ist am 25.08.2026 entfallen: seine Schlüssel waren
+	// Klartextstücke des Sketches (66 % davon), und gelesen wurden sie seit
+	// dem 24.08. ohnehin nicht mehr.
+	ids, rows, err := cs.MPCAllShares(committee, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -121,15 +122,14 @@ func TestCandidatesAreScopedToTheirCommittee(t *testing.T) {
 	mine, theirs := prefix+"-mine", prefix+"-theirs"
 	t.Cleanup(func() { _ = cs.DeleteMPCShare(mine); _ = cs.DeleteMPCShare(theirs) })
 
-	key := []mpc.BucketKey{4242}
-	if err := cs.SaveMPCShare(mine, prefix+"-A", 0, mpc.PartyTemplate{1, 2}, key); err != nil {
+	if err := cs.SaveMPCShare(mine, prefix+"-A", 0, mpc.PartyTemplate{1, 2}); err != nil {
 		t.Fatal(err)
 	}
-	if err := cs.SaveMPCShare(theirs, prefix+"-B", 0, mpc.PartyTemplate{3, 4}, key); err != nil {
+	if err := cs.SaveMPCShare(theirs, prefix+"-B", 0, mpc.PartyTemplate{3, 4}); err != nil {
 		t.Fatal(err)
 	}
 
-	ids, _, err := cs.MPCCandidateShares(prefix+"-A", key, 0)
+	ids, _, err := cs.MPCAllShares(prefix+"-A", 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -148,15 +148,14 @@ func TestDeletionIsHonoured(t *testing.T) {
 
 	prefix := fmt.Sprintf("test-%d-delete", os.Getpid())
 	id := prefix + "-enrolment"
-	key := []mpc.BucketKey{7777}
-	if err := cs.SaveMPCShare(id, prefix+"-c", 0, mpc.PartyTemplate{5, 6}, key); err != nil {
+	if err := cs.SaveMPCShare(id, prefix+"-c", 0, mpc.PartyTemplate{5, 6}); err != nil {
 		t.Fatal(err)
 	}
 	if err := cs.DeleteMPCShare(id); err != nil {
 		t.Fatal(err)
 	}
 
-	ids, _, err := cs.MPCCandidateShares(prefix+"-c", key, 0)
+	ids, _, err := cs.MPCAllShares(prefix+"-c", 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -189,22 +188,21 @@ func TestRewritingAnEnrolmentDoesNotDuplicateItsBuckets(t *testing.T) {
 	id := prefix + "-enrolment"
 	t.Cleanup(func() { _ = cs.DeleteMPCShare(id) })
 
-	keys := []mpc.BucketKey{1, 2, 3}
 	for i := 0; i < 3; i++ {
-		if err := cs.SaveMPCShare(id, prefix+"-c", 0, mpc.PartyTemplate{9, 9}, keys); err != nil {
+		if err := cs.SaveMPCShare(id, prefix+"-c", 0, mpc.PartyTemplate{9, 9}); err != nil {
 			t.Fatal(err)
 		}
 	}
 	var n int
 	if err := cs.db.QueryRow(
-		`SELECT COUNT(*) FROM mpc_share_buckets WHERE enrollment_id = $1`, id).Scan(&n); err != nil {
+		`SELECT COUNT(*) FROM mpc_shares WHERE enrollment_id = $1`, id).Scan(&n); err != nil {
 		t.Fatal(err)
 	}
-	if n != len(keys) {
-		t.Errorf("after three writes the enrolment has %d bucket rows, want %d", n, len(keys))
+	if n != 1 {
+		t.Errorf("nach drei Schreibvorgaengen hat die Einschreibung %d Zeilen, erwartet 1", n)
 	}
 
-	ids, _, err := cs.MPCCandidateShares(prefix+"-c", keys, 0)
+	ids, _, err := cs.MPCAllShares(prefix+"-c", 0)
 	if err != nil {
 		t.Fatal(err)
 	}

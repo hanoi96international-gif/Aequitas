@@ -130,14 +130,6 @@ func (s *mpcSubmission) decodeRow() (mpc.PartyTemplate, error) {
 	return decodeRow(raw)
 }
 
-func (s *mpcSubmission) bucketKeys() []mpc.BucketKey {
-	keys := make([]mpc.BucketKey, len(s.Keys))
-	for i, k := range s.Keys {
-		keys[i] = mpc.BucketKey(k)
-	}
-	return keys
-}
-
 func mpcJSONError(w http.ResponseWriter, code int, msg string) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(code)
@@ -196,7 +188,7 @@ func (a *APIServer) handleMPCEnroll(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := a.blockchain.state.SaveMPCShare(
-		sub.EnrollmentID, committee.ID, index, row, sub.bucketKeys()); err != nil {
+		sub.EnrollmentID, committee.ID, index, row); err != nil {
 		mpcJSONError(w, http.StatusInternalServerError, err.Error())
 		return
 	}

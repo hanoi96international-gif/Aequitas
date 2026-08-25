@@ -3,7 +3,6 @@ package keeper
 import (
 	"encoding/binary"
 	"fmt"
-	"strings"
 
 	"github.com/hanoi96international-gif/aequitas-chain/x/humanity/mpc"
 )
@@ -50,17 +49,32 @@ created_at    TIMESTAMP DEFAULT NOW()
 )`)
 	dbExec(`CREATE INDEX IF NOT EXISTS idx_mpc_shares_committee ON mpc_shares (committee_id)`)
 
-	// The multi-table LSH index, one row per (enrolment, table). Separate from
-	// the share so a candidate lookup is an index scan rather than a full scan
-	// of every enrolment — at population scale the difference is the whole
-	// design (see mpc/bucket.go).
-	dbExec(`CREATE TABLE IF NOT EXISTS mpc_share_buckets (
-enrollment_id TEXT NOT NULL,
-table_index   INTEGER NOT NULL,
-bucket_key    BIGINT NOT NULL
-)`)
-	dbExec(`CREATE INDEX IF NOT EXISTS idx_mpc_buckets_lookup ON mpc_share_buckets (table_index, bucket_key)`)
-	dbExec(`CREATE INDEX IF NOT EXISTS idx_mpc_buckets_enrollment ON mpc_share_buckets (enrollment_id)`)
+	// KEIN LSH-Eimerindex mehr. Entfernt am 25.08.2026, und der Grund ist der
+	// Zweck dieser ganzen Datei.
+	//
+	// Ein Eimerschluessel IST ein Stueck des Sketches: er besteht aus k Bits
+	// davon, im Klartext. Bei 20 Tabellen à 27 Bit deckten die Schluessel
+	// zusammen 338 der 512 Bits ab -- nachgerechnet, 66 %. Sie lagen in
+	// derselben Datenbank wie der Anteil, der "allein nur Rauschen" sein soll.
+	//
+	// Damit war die Zusicherung dieser Bauart aufgehoben: eine einzelne Partei
+	// konnte aus ihren eigenen zwei Tabellen zwei Drittel jedes eingeschriebenen
+	// Sketches lesen. Wer ein Foto einer Person hat, haette damit pruefen
+	// koennen, ob sie registriert ist -- genau die Preisgabe, die additive
+	// Anteile verhindern sollen.
+	//
+	// Der Index war ausserdem NUTZLOS: die Kandidatensuche wurde am 24.08.2026
+	// durch MPCAllShares ersetzt, weil ihre Trefferquote an der Schwelle bei
+	// 0,008 % lag (20 Tabellen à 27 Bit, cos 0,40). Seitdem las ihn niemand
+	// mehr -- geschrieben wurde er weiter.
+	//
+	// Zwei Drittel jedes Gesichtsmerkmals im Klartext, fuer einen Index, den
+	// nichts benutzt.
+	//
+	// Vorhandene Zeilen werden geleert statt die Tabelle zu loeschen: ein DROP
+	// waere gegenueber einer aelteren Node-Fassung, die noch schreibt, nicht
+	// vertraeglich. Leer ist sie harmlos.
+	dbExec(`DELETE FROM mpc_share_buckets`)
 }
 
 // encodeRow packs one party's row as big-endian uint64 per feature.
@@ -94,7 +108,7 @@ func decodeRow(buf []byte) (mpc.PartyTemplate, error) {
 // nothing. Either half alone is a duplicate that will never be caught, so a
 // partial write must not survive.
 func (cs *ChainState) SaveMPCShare(enrollmentID, committeeID string, partyIndex int,
-	row mpc.PartyTemplate, keys []mpc.BucketKey) error {
+	row mpc.PartyTemplate) error {
 
 	if cs.db == nil {
 		return fmt.Errorf("mpc: no database configured; the enrolment index would be lost on restart")
@@ -105,12 +119,6 @@ func (cs *ChainState) SaveMPCShare(enrollmentID, committeeID string, partyIndex 
 	if len(row) == 0 {
 		return fmt.Errorf("mpc: refusing to store an empty row for enrolment %q", enrollmentID)
 	}
-	if len(keys) == 0 {
-		return fmt.Errorf("mpc: enrolment %q has no bucket keys — it would be stored and then "+
-			"never compared against anyone, which is indistinguishable from not storing it",
-			enrollmentID)
-	}
-
 	tx, err := cs.db.Begin()
 	if err != nil {
 		return fmt.Errorf("mpc: begin: %w", err)
@@ -125,78 +133,13 @@ func (cs *ChainState) SaveMPCShare(enrollmentID, committeeID string, partyIndex 
 		return fmt.Errorf("mpc: storing share: %w", err)
 	}
 
-	// Replace this enrolment's keys rather than appending, so a retried write
-	// cannot leave an enrolment listed in a bucket twice and compared twice.
+	// Alte Eimerschluessel dieser Einschreibung entfernen, falls die Tabelle
+	// aus der Zeit vor dem 25.08.2026 noch existiert -- siehe mpcSchema.
 	if _, err := tx.Exec(`DELETE FROM mpc_share_buckets WHERE enrollment_id = $1`, enrollmentID); err != nil {
-		return fmt.Errorf("mpc: clearing old bucket keys: %w", err)
-	}
-	for tbl, key := range keys {
-		if _, err := tx.Exec(
-			`INSERT INTO mpc_share_buckets (enrollment_id, table_index, bucket_key) VALUES ($1,$2,$3)`,
-			enrollmentID, tbl, int64(key)); err != nil {
-			return fmt.Errorf("mpc: storing bucket key for table %d: %w", tbl, err)
-		}
+		// Kein Abbruch: fehlt die Tabelle, ist nichts zu loeschen.
+		_ = err
 	}
 	return tx.Commit()
-}
-
-// MPCCandidateShares returns the rows of every enrolment sharing a bucket with
-// these keys in at least one table, restricted to one committee.
-//
-// The committee restriction is not an optimisation. Rows from another committee
-// have no counterpart on the peers convened here, so including them would
-// produce arithmetic noise and call it a verdict about a person.
-func (cs *ChainState) MPCCandidateShares(committeeID string, keys []mpc.BucketKey, limit int) (
-	ids []string, rows []mpc.PartyTemplate, err error) {
-
-	if cs.db == nil {
-		return nil, nil, fmt.Errorf("mpc: no database configured")
-	}
-	if len(keys) == 0 {
-		return nil, nil, nil
-	}
-	if limit <= 0 {
-		limit = 5000
-	}
-
-	// One query over the union of the searched buckets. DISTINCT because an
-	// enrolment matching in several tables is still one candidate, and
-	// comparing it twice would waste triples and leak its multiplicity.
-	var conds []string
-	args := []interface{}{committeeID}
-	for tbl, key := range keys {
-		args = append(args, tbl, int64(key))
-		conds = append(conds, fmt.Sprintf("(b.table_index = $%d AND b.bucket_key = $%d)",
-			len(args)-1, len(args)))
-	}
-	args = append(args, limit)
-
-	q := fmt.Sprintf(`SELECT DISTINCT s.enrollment_id, s.row_data
-	                  FROM mpc_shares s
-	                  JOIN mpc_share_buckets b ON b.enrollment_id = s.enrollment_id
-	                  WHERE s.committee_id = $1 AND (%s)
-	                  LIMIT $%d`, strings.Join(conds, " OR "), len(args))
-
-	cur, err := cs.db.Query(q, args...)
-	if err != nil {
-		return nil, nil, fmt.Errorf("mpc: candidate lookup: %w", err)
-	}
-	defer cur.Close()
-
-	for cur.Next() {
-		var id string
-		var blob []byte
-		if err := cur.Scan(&id, &blob); err != nil {
-			return nil, nil, fmt.Errorf("mpc: reading candidate: %w", err)
-		}
-		row, err := decodeRow(blob)
-		if err != nil {
-			return nil, nil, fmt.Errorf("mpc: enrolment %s: %w", id, err)
-		}
-		ids = append(ids, id)
-		rows = append(rows, row)
-	}
-	return ids, rows, cur.Err()
 }
 
 // MPCAllShares returns every share this committee holds.
