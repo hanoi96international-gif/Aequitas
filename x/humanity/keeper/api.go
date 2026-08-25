@@ -954,6 +954,7 @@ func (a *APIServer) buildMux() *http.ServeMux {
 
 	mux.HandleFunc("/mpc/enroll", a.handleMPCEnroll)
 	mux.HandleFunc("/mpc/check", a.handleMPCCheck)
+	mux.HandleFunc("/mpc/budget", a.handleMPCBudget)
 	// Party 0 allocates the triple range for a session and both parties use
 	// it; see mpc_triple_sync.go for why per-party counters could not work.
 	mux.HandleFunc(mpcTripleRangePath, a.handleMPCTripleRange)
