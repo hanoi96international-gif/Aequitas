@@ -105,8 +105,7 @@ jobs:
             # --network container:<name> teilt den Namensraum. localhost ist
             # dann wirklich der Knoten, und die Gegenstelle wirklich 127.0.0.1.
             ANTWORT=$(docker run --rm --network "container:$(docker ps --format '{{.Names}}' | grep -i aequitas-node | head -1)" \
-              curlimages/curl:latest -s -w '
-HTTP:%{http_code}' \
+              curlimages/curl:latest -s -w '\nHTTP:%{http_code}' \
               -X POST http://localhost:8080/api/admin/pool-correction \
               ${TOKEN:+-H "Authorization: Bearer ${TOKEN}"} \
               -H 'Content-Type: application/json' \
