@@ -985,6 +985,9 @@ func (a *APIServer) buildMux() *http.ServeMux {
 	mux.HandleFunc("/api/lp-position", a.handleLPPosition)
 	mux.HandleFunc("/api/faucet", a.handleFaucet)
 	mux.HandleFunc("/api/pool", a.handlePoolStatus)
+	// Rein lesend, aber geschuetzt: er haengt einen Verdacht an
+	// identifizierbare Konten. Siehe handleSybilReport.
+	mux.HandleFunc("/api/sybil-report", a.handleSybilReport)
 	// Vernichtet Geld. Dreifach verriegelt -- siehe handlePoolCorrection.
 	mux.HandleFunc("/api/admin/pool-correction", a.handlePoolCorrection)
 	mux.HandleFunc("/api/snapshot", a.handleSnapshot)
