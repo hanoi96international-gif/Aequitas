@@ -65,10 +65,15 @@ jobs:
             set -uo pipefail
             # Aus der Env-Datei der Box gelesen und NIE ausgegeben.
             DATABASE_URL="$(grep -E '^DATABASE_URL=' /root/.aequitas.env | head -1 | cut -d= -f2-)"
-            TOKEN="$(grep -E '^SNAPSHOT_TOKEN=' /root/.aequitas.env | head -1 | cut -d= -f2-)"
-            if [ -z "$TOKEN" ]; then
-              echo "SNAPSHOT_TOKEN steht nicht in /root/.aequitas.env -- ohne das gibt es keinen Weg."
-              exit 1
+            # Token, falls es eines gibt -- sonst traegt der Weg ueber die
+            # Schleife. Dieser Aufruf laeuft auf der Box selbst gegen
+            # localhost; von aussen bliebe der Endpunkt ohne Token zu.
+            TOKEN="$(grep -E '^SNAPSHOT_TOKEN=' /root/.aequitas.env 2>/dev/null | head -1 | cut -d= -f2-)"
+            if [ -z "${TOKEN:-}" ]; then
+              TOKEN="$(docker inspect -f '{{range .Config.Env}}{{println .}}{{end}}' aequitas-node 2>/dev/null | grep -E '^SNAPSHOT_TOKEN=' | head -1 | cut -d= -f2-)"
+            fi
+            if [ -z "${TOKEN:-}" ]; then
+              echo "Kein SNAPSHOT_TOKEN gefunden -- der Aufruf geht ueber die Schleife."
             fi
             NET="$(docker inspect aequitas-node --format '{{range $n,$v := .NetworkSettings.Networks}}{{$n}}{{end}}')"
             psql_() { docker run --rm --network "$NET" postgres:16-alpine psql "$DATABASE_URL" -t -A -c "$1"; }
@@ -90,7 +95,7 @@ jobs:
             echo "=== korrigieren: -${BURN_AEQ} AEQ, -${BURN_TUSD} tUSD ==="
             HTTP=$(curl -s -o /tmp/antwort.json -w '%{http_code}' \
               -X POST http://localhost:8080/api/admin/pool-correction \
-              -H "Authorization: Bearer ${TOKEN}" \
+              ${TOKEN:+-H "Authorization: Bearer ${TOKEN}"} \
               -H 'Content-Type: application/json' \
               -d "{\"burn_aeq\":${BURN_AEQ},\"burn_tusd\":${BURN_TUSD},\"confirm\":\"reserve-korrigieren\"}")
             echo "HTTP $HTTP"
