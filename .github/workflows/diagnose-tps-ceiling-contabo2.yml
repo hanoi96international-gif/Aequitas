@@ -377,6 +377,40 @@ jobs:
               echo "(profile empty — is the pprof server reachable inside the container?)"
             fi
 
+            # A CPU PROFILE, because goroutine dumps only show who is WAITING.
+            #
+            # Every bottleneck found so far was found by looking at what blocks:
+            # the nonce mutex, the RPC server mutex, the exclusive state lock.
+            # Those are now measured and small — the exclusive lock holds just
+            # 2.8% of wall time, 13 ms average. Yet throughput sits near 1,000/s
+            # with no lock contention, no CPU saturation and no memory pressure,
+            # which means nothing that has been looked at so far explains it.
+            #
+            # A goroutine dump cannot answer that. It shows where goroutines are
+            # parked, not where the time is actually spent. This captures 30
+            # seconds of CPU profile in the middle of the load window and emits
+            # it base64 so it can be analysed with go tool pprof off-box — the
+            # node has no Go toolchain, and installing one on a live validator
+            # is not worth it for a read.
+            echo "=== CPU profile, 30s under load ==="
+            docker exec aequitas-node wget -qO- 'http://127.0.0.1:6061/debug/pprof/profile?seconds=30' > /tmp/cpu.pprof 2>/dev/null
+            if [ -s /tmp/cpu.pprof ]; then
+              echo "profile bytes: $(wc -c < /tmp/cpu.pprof)"
+              # Wrapped, not one line: base64 -w0 produces a single ~136 KB
+              # line and the Actions log silently drops it — the first attempt
+              # emitted nothing at all past the BEGIN marker.
+              # Left on disk instead of printed. Emitting ~163 KB of base64 through
+              # the Actions log truncated it silently twice: the decoded file came
+              # back 90 bytes short and pprof rejected it with "gzip: invalid
+              # checksum", which reads like a corrupt profile rather than a lost
+              # log line - exactly the kind of failure that costs a whole run
+              # before anyone suspects the transport. Fetch it with scp/pscp.
+              mv -f /tmp/cpu.pprof /tmp/cpu-latest.pprof
+              echo "profile saved to /tmp/cpu-latest.pprof ($(wc -c < /tmp/cpu-latest.pprof) bytes)"
+            else
+              echo "(profile empty — is the pprof server reachable inside the container?)"
+            fi
+
             # Three samples: one dump could catch an unlucky instant.
             for n in 1 2 3; do
               echo "=== dump $n (under load) ==="
