@@ -52,8 +52,23 @@ type tripleBudget struct {
 	NochRegistrier int    `json:"registrierungen_moeglich"`
 	NaechsteKostet int    `json:"naechste_registrierung_kostet"`
 	ReichtFuerNoch bool   `json:"naechste_registrierung_gedeckt"`
-	Fehler         string `json:"fehler,omitempty"`
+	// Warnung steht hier, weil "44 Registrierungen moeglich" fuer sich
+	// genommen beruhigend aussieht. Der Vorrat ist Verbrauchsgut, die Kosten
+	// wachsen quadratisch, und beides zusammen heisst: die letzten
+	// Registrierungen kosten am meisten und die Zahl faellt am Ende schnell.
+	// Wer erst nachsieht, wenn sie klein ist, sieht zu spaet nach.
+	Warnung   string `json:"warnung,omitempty"`
+	Nachschub string `json:"nachschub,omitempty"`
+	Fehler    string `json:"fehler,omitempty"`
 }
+
+// tripelWarnschwelle ist die Zahl verbleibender Registrierungen, ab der die
+// Antwort warnt.
+//
+// 20 und nicht "10 Prozent": bei quadratischen Kosten ist ein Prozentsatz des
+// VORRATS irrefuehrend -- 10 % Rest koennen eine einzige Registrierung sein.
+// Gezaehlt wird deshalb, was noch geht, nicht was noch da ist.
+const tripelWarnschwelle = 20
 
 // tripleKosten ist der Preis einer Registrierung, die gegen n Einschreibungen
 // vergleicht — einschließlich der Verdopplung durch die Verifikation.
@@ -138,7 +153,41 @@ func (a *APIServer) mpcTripleBudget(templateLen int) tripleBudget {
 	b.NaechsteKostet = tripleKosten(b.Eingeschrieben, templateLen)
 	b.ReichtFuerNoch = b.NaechsteKostet <= b.Verbleibend
 	b.NochRegistrier = registrierungenAusVorrat(b.Verbleibend, b.Eingeschrieben, templateLen)
+
+	// Laeuft der Vorrat leer, verweigert der Zuteiler zu Recht die
+	// Wiederverwendung -- ein zweimal benutztes Tripel hoert auf zu verblenden
+	// und verraet die Differenz der Geheimnisse, auf die es angewandt wurde.
+	// Die Registrierung scheitert dann, und zwar fuer ALLE gleichzeitig.
+	//
+	// Dieselbe Lehre wie bei der Bestandsdrift und den fehlenden Schluesseln:
+	// ein Zustand, den man erst bemerkt, wenn er bricht, ist kein ueberwachter
+	// Zustand.
+	if b.Fehler == "" {
+		b.Warnung, b.Nachschub = tripelWarnung(b.NochRegistrier)
+	}
 	return b
+}
+
+// tripelWarnung formuliert die Warnung zu einem Restvorrat.
+//
+// Ausgelagert, damit die Entscheidung "ab wann warnen" pruefbar ist, ohne
+// einen ganzen APIServer samt Kette aufzubauen.
+func tripelWarnung(nochRegistrier int) (warnung, nachschub string) {
+	if nochRegistrier > tripelWarnschwelle {
+		return "", ""
+	}
+	if nochRegistrier <= 0 {
+		warnung = "Vorrat erschoepft: die naechste Registrierung scheitert, " +
+			"und zwar fuer alle gleichzeitig"
+	} else {
+		warnung = fmt.Sprintf(
+			"nur noch %d Registrierungen gedeckt -- die Kosten wachsen "+
+				"quadratisch, die letzten sind die teuersten", nochRegistrier)
+	}
+	nachschub = "cmd/mpc-dealer -count <n> -parties <k> -out <dir>; je Partei " +
+		"GENAU EINE Datei ausliefern. Fuer R Registrierungen ab leerem Bestand " +
+		"werden rund 1024*R^2 Tripel gebraucht (R=200 sind ~41 Mio., ~1,9 GB je Partei)"
+	return warnung, nachschub
 }
 
 // handleMPCBudget beantwortet GET /mpc/budget.

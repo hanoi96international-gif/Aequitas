@@ -1,6 +1,9 @@
 package keeper
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 // Die Zahlen hier sind der Grund, warum es diese Datei gibt: sie machen die
 // quadratische Grenze sichtbar, bevor sie eine Registrierung scheitern laesst.
@@ -56,5 +59,45 @@ func TestErsteRegistrierungIstGratis(t *testing.T) {
 	// nicht als "Vorrat erschoepft" durchgehen.
 	if tripleKosten(0, 512) != 0 {
 		t.Error("die erste Registrierung darf nichts kosten")
+	}
+}
+
+func TestVorratWarntBevorErBricht(t *testing.T) {
+	// Der Vorrat ist Verbrauchsgut und die Kosten wachsen quadratisch: die
+	// letzten Registrierungen kosten am meisten, die Zahl faellt am Ende
+	// schnell. Wer erst nachsieht, wenn sie klein ist, sieht zu spaet nach.
+	if w, _ := tripelWarnung(100); w != "" {
+		t.Fatalf("bei 100 verbleibenden Registrierungen ist Ruhe richtig: %q", w)
+	}
+	if w, _ := tripelWarnung(tripelWarnschwelle + 1); w != "" {
+		t.Fatalf("eine ueber der Schwelle darf noch nicht warnen: %q", w)
+	}
+	w, n := tripelWarnung(tripelWarnschwelle)
+	if w == "" {
+		t.Fatal("genau auf der Schwelle muss gewarnt werden")
+	}
+	if !strings.Contains(n, "mpc-dealer") {
+		t.Fatalf("die Warnung muss sagen, was zu tun ist: %q", n)
+	}
+}
+
+func TestErschoepfterVorratNenntDieFolgeFuerALLE(t *testing.T) {
+	// Nicht "diese Registrierung scheitert": ein zweimal benutztes Tripel
+	// hoert auf zu verblenden, deshalb verweigert der Zuteiler zu Recht die
+	// Wiederverwendung -- und dann geht fuer JEDEN nichts mehr.
+	w, _ := tripelWarnung(0)
+	if !strings.Contains(w, "alle") {
+		t.Fatalf("die Folge betrifft alle gleichzeitig, das muss dastehen: %q", w)
+	}
+}
+
+func TestDieSchwelleZaehltRegistrierungenNichtProzent(t *testing.T) {
+	// Bei quadratischen Kosten koennen 10 %% Restvorrat eine EINZIGE
+	// Registrierung sein. Ein Prozentsatz waere hier beruhigend und falsch.
+	if tripelWarnschwelle <= 0 {
+		t.Fatal("die Schwelle muss zaehlen, was noch GEHT, nicht was noch DA ist")
+	}
+	if w, _ := tripelWarnung(1); w == "" {
+		t.Fatal("eine einzige verbleibende Registrierung ist der lauteste Fall")
 	}
 }
