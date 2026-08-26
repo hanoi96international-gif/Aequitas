@@ -60,32 +60,26 @@ func TestJederSichtbareTextHatEinenUebersetzungsschluessel(t *testing.T) {
 	}
 	s := string(roh)
 
-	// Der Leitfaden-Bereich: vom Bio-Verifier-Block bis zum Ende des Panels
-	// net-runnode, per Klammerzählung. Eine Textsuche nach dem nächsten
-	// </div> ergäbe ein zu kleines Fenster — genau dieser Fehler führte am
-	// 26.08.2026 dazu, dass Shell-Befehle zum Übersetzen vorgeschlagen wurden.
-	g0 := strings.Index(s, "<!-- ZWEITE ROLLE: Bio-Verifier")
-	p := strings.Index(s, `<div id="net-runnode"`)
-	g1 := len(s)
-	if p >= 0 {
-		tiefe := 0
-		for _, m := range regexp.MustCompile(`<div\b|</div>`).FindAllStringIndex(s[p:], -1) {
-			if strings.HasPrefix(s[p+m[0]:p+m[1]], "<div") {
-				tiefe++
-			} else {
-				tiefe--
-			}
-			if tiefe == 0 {
-				g1 = p + m[1]
-				break
-			}
-		}
-	}
+	// Die Leitfaden-Bereiche, per Panel-ID und Klammerzählung.
+	//
+	// Beide Leitfäden sind per Entwurf englisch (Sprachhinweis + übersetzte
+	// PDFs), ihr Inhalt wird hier also nicht gezählt.
+	//
+	// FRÜHER hing das an der Kommentarzeile "<!-- ZWEITE ROLLE" als Anfang und
+	// am Ende von net-runnode als Ende. Am 26.08.2026 sind die beiden
+	// Leitfäden in getrennte Rubriken gewandert — damit lag der Anfang HINTER
+	// dem Ende, das Fenster war leer, und der englische Node-Guide schlug mit
+	// 118 Fundstellen auf. Der Test hatte recht zu melden; er meldete nur
+	// etwas, das absichtlich so ist.
+	//
+	// Deshalb jetzt an den Panel-IDs statt an einem Kommentar: die sind das,
+	// was die Bereiche ausmacht, und sie überleben ein Verschieben.
+	guideBereiche := panelBereiche(s, "net-runnode", "net-verifier")
 
 	var ohne []string
 	for _, m := range i18nElementRe.FindAllStringSubmatchIndex(s, -1) {
 		start := m[0]
-		if g0 >= 0 && start >= g0 && start <= g1 {
+		if inBereich(start, guideBereiche) {
 			continue
 		}
 		attrs := s[m[4]:m[5]]
@@ -120,4 +114,46 @@ func TestJederSichtbareTextHatEinenUebersetzungsschluessel(t *testing.T) {
 			"englisch, und keiner der anderen i18n-Tests bemerkt das:\n  %s",
 			len(ohne), len(i18nLocales), strings.Join(ohne, "\n  "))
 	}
+}
+
+// panelBereiche liefert zu jeder Panel-ID den Bereich [Anfang, Ende) im
+// Dokument, per Klammerzählung über <div>/</div>.
+//
+// Klammerzählung und nicht "bis zum nächsten </div>": ein Panel enthält
+// Dutzende verschachtelter Divs, und die Textsuche liefert das erste innerste.
+// Genau dieser Fehler führte dazu, dass Shell-Befehle zur Übersetzung
+// vorgeschlagen wurden.
+func panelBereiche(s string, ids ...string) [][2]int {
+	divRe := regexp.MustCompile(`<div\b|</div>`)
+	var out [][2]int
+	for _, id := range ids {
+		p := strings.Index(s, `<div id="`+id+`"`)
+		if p < 0 {
+			continue
+		}
+		tiefe := 0
+		ende := len(s)
+		for _, m := range divRe.FindAllStringIndex(s[p:], -1) {
+			if strings.HasPrefix(s[p+m[0]:p+m[1]], "<div") {
+				tiefe++
+			} else {
+				tiefe--
+			}
+			if tiefe == 0 {
+				ende = p + m[1]
+				break
+			}
+		}
+		out = append(out, [2]int{p, ende})
+	}
+	return out
+}
+
+func inBereich(pos int, bereiche [][2]int) bool {
+	for _, b := range bereiche {
+		if pos >= b[0] && pos < b[1] {
+			return true
+		}
+	}
+	return false
 }
