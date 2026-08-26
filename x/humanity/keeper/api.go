@@ -985,6 +985,8 @@ func (a *APIServer) buildMux() *http.ServeMux {
 	mux.HandleFunc("/api/lp-position", a.handleLPPosition)
 	mux.HandleFunc("/api/faucet", a.handleFaucet)
 	mux.HandleFunc("/api/pool", a.handlePoolStatus)
+	// Vernichtet Geld. Dreifach verriegelt -- siehe handlePoolCorrection.
+	mux.HandleFunc("/api/admin/pool-correction", a.handlePoolCorrection)
 	mux.HandleFunc("/api/snapshot", a.handleSnapshot)
 	mux.HandleFunc("/api/gini/history", a.handleGiniHistory)
 	mux.HandleFunc("/api/price-history", a.handlePriceHistory)

@@ -4710,7 +4710,7 @@ func (dag *BlockDAG) AddPeerBlock(block *Block) bool {
 		switch tx.Type {
 		case "", "register_human", "transfer", "swap_aeq_tusd", "swap_tusd_aeq", "add_liquidity", "remove_liquidity", "faucet", "ubi_distribution", "ubi_distribution_finalize",
 			"validator_distribution", "validator_distribution_pool_zero", "lp_distribution", "lp_distribution_pool_zero", "escrow_move", "escrow_release", "escrow_recover",
-			"slash_equivocation", "distribution_round_marker":
+			"slash_equivocation", "distribution_round_marker", "pool_correction":
 		// known / empty — OK
 		default:
 			fmt.Printf("[DAG] ✗ Rejected peer block #%d: unknown tx type %q\n", block.Height, tx.Type)
@@ -6612,6 +6612,25 @@ func (dag *BlockDAG) replayTransactions(block *Block, force bool) (ok bool) {
 				continue
 			}
 			fmt.Printf("[REPLAY] ✓ Finalized UBI round, last_ubi_at=%d (block #%d)\n", tx.DistributionAt, block.Height)
+
+		case "pool_correction":
+			// Die Korrektur eines Ueberschusses, der vor dem 20.08.2026
+			// entstanden ist -- siehe pool_correction.go fuer das Warum.
+			//
+			// DIESELBE Funktion, die der erzeugende Knoten aufgerufen hat.
+			// Zwei Fassungen derselben Rechnung sind in diesem Projekt die
+			// haeufigste Quelle von StateRoot-Abweichungen gewesen.
+			//
+			// Amount = AEQ, AmountOut = tUSD. Beide Betraege stehen in der
+			// Transaktion und werden NICHT neu bestimmt: ein Knoten, der
+			// selbst ausrechnet, wieviel zuviel da ist, kaeme je nach eigenem
+			// Zustand auf eine andere Zahl.
+			if err := dag.state.applyPoolCorrectionLocked(context.Background(), tx.Amount, tx.AmountOut); err != nil {
+				fmt.Printf("[REPLAY] ✗ pool_correction: %v (block #%d) — rolling back whole block\n", err, block.Height)
+				hardFailure = true
+				continue
+			}
+			fmt.Printf("[REPLAY] ✓ Reserve korrigiert: -%.6f AEQ, -%.6f tUSD (block #%d)\n", tx.Amount, tx.AmountOut, block.Height)
 
 		case "distribution_round_marker":
 			// See RunDailyDistributionAtomic's comment (state.go) and this
