@@ -11,6 +11,17 @@ name: Supply drift watch (read-only)
 #
 #   2026-08-15 (audit)         +305.278004
 #   2026-08-19 (this workflow) +305.278008
+#   2026-08-26 abgetragen -> 0
+#
+# Der Ueberschuss wurde am 26.08.2026 durch eine replizierte
+# pool_correction-Transaktion entfernt (x/humanity/keeper/pool_correction.go),
+# zusammen mit 7.907,114977 tUSD verhaeltnisgleich, damit der Preis stehen
+# bleibt. Beide Knoten meldeten danach reconciled=true bei measured=17000.
+#
+# Die Baseline ist deshalb 0. Sie stand vorher auf 305,278008, waehrend live
+# 305,277988 gemessen wurde -- eine Abweichung von 0,00002, wegen der dieser
+# Waechter dauerhaft rot lief und damit aufhoerte, irgendetwas zu melden. Ein
+# Alarm, der immer schrillt, ist keiner.
 #
 # Four micro-AEQ in four days — about one per day, which is the size of a
 # rounding remainder in a daily distribution, not of float64 noise. The floor6
@@ -32,7 +43,7 @@ on:
       baseline:
         description: "Difference in AEQ that is expected and tolerated. Raise ONLY with a reason, and record it."
         required: true
-        default: "305.278008"
+        default: "0"
 
 permissions:
   contents: read
@@ -47,7 +58,7 @@ jobs:
           # The value the difference is currently pinned at. Raising this is
           # accepting that AEQ was created; it is not a way to make the job
           # green. Whoever raises it should be able to say what created it.
-          BASELINE: ${{ inputs.baseline || '305.278008' }}
+          BASELINE: ${{ inputs.baseline || '0' }}
         run: |
           set -uo pipefail
 
