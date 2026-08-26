@@ -9,6 +9,10 @@ import (
 	"strings"
 )
 
+// Der Konfigurationsschluessel, mit dem sich die Korrektur ohne Neustart
+// freigeben laesst. Ihn zu setzen verlangt Zugriff auf die Datenbank der Box.
+const poolCorrectionAllowKey = "allow_pool_correction"
+
 // handlePoolCorrection loest die einmalige Korrektur eines Ueberschusses aus,
 // der vor den Reihenfolge-Korrekturen vom 20.08.2026 entstanden ist.
 //
@@ -31,8 +35,21 @@ func (a *APIServer) handlePoolCorrection(w http.ResponseWriter, r *http.Request)
 		http.Error(w, `{"error":"POST erforderlich"}`, http.StatusMethodNotAllowed)
 		return
 	}
-	if os.Getenv("ALLOW_POOL_CORRECTION") != "true" {
-		http.Error(w, `{"error":"pool-correction ist abgeschaltet; ALLOW_POOL_CORRECTION=true auf diesem Knoten setzen"}`, http.StatusForbidden)
+	// Freigabe ueber Umgebungsvariable ODER einen Schluessel in der Datenbank.
+	//
+	// Die Variable ist die Hausform, wirkt aber erst nach einem Neustart --
+	// und einen Validator neu zu starten, nur um eine einmalige Korrektur zu
+	// erlauben, ist ein groesserer Eingriff als die Korrektur selbst. Eine
+	// Markierungsdatei auf der Box waere kein Ersatz: der Knoten laeuft im
+	// Container und saehe sie nicht.
+	//
+	// Der Datenbankschluessel verlangt Zugriff auf die Box, ist also kein
+	// schwaecheres Tor, und laesst sich vorher setzen und hinterher wieder
+	// entfernen, ohne die Kette anzuhalten.
+	freigabe := os.Getenv("ALLOW_POOL_CORRECTION") == "true" ||
+		a.state.getConfigValueDB(poolCorrectionAllowKey) == "1"
+	if !freigabe {
+		http.Error(w, `{"error":"pool-correction ist abgeschaltet; ALLOW_POOL_CORRECTION=true setzen oder `+poolCorrectionAllowKey+`=1 in chain_config schreiben"}`, http.StatusForbidden)
 		return
 	}
 	token := os.Getenv("SNAPSHOT_TOKEN")
