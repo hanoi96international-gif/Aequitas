@@ -2,6 +2,9 @@ package keeper
 
 import (
 	"fmt"
+	"os"
+	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -118,10 +121,39 @@ func (cs *ChainState) SupplyReconciliation() map[string]interface{} {
 		return out
 	}
 	out["measured"] = fmt.Sprintf("%.6f", measured)
-	out["difference"] = fmt.Sprintf("%+.6f", measured-claimed)
+	difference := measured - claimed
+	out["difference"] = fmt.Sprintf("%+.6f", difference)
 	// Anything past a micro-AEQ is structural, not arithmetic: balances are
 	// stored as micro-integers, so a correct implementation is exact.
-	out["reconciled"] = measured-claimed < 1e-6 && claimed-measured < 1e-6
+	out["reconciled"] = difference < 1e-6 && -difference < 1e-6
+
+	// Tell the KNOWN gap apart from a NEW one.
+	//
+	// Without this the field above reads "+305.278" for as long as the old
+	// excess sits in the AMM reserve, and it would go on reading roughly that
+	// if a fresh bug minted another five AEQ tomorrow. A number that is always
+	// wrong stops being read -- and this is the one number that says whether
+	// the currency's central promise still holds.
+	//
+	// The baseline is the excess measured on 2026-08-20, created before the
+	// save-ordering fixes of that day (see applySwapDeltaLocked,
+	// AddLiquidityDelta and RemoveLiquidityAtomic, which now all persist the
+	// debit before the credit so a failure between the two writes destroys
+	// supply rather than creating it). It is deliberately a floor to compare
+	// against, never an excuse: burning it is still open.
+	//
+	// Set SUPPLY_GAP_BASELINE_AEQ after the old excess is actually removed --
+	// lowering it is what turns the alarm back on at the new level, and it
+	// takes no rebuild.
+	baseline := knownSupplyGapAEQ()
+	beyond := difference - baseline
+	out["known_gap_baseline"] = fmt.Sprintf("%.6f", baseline)
+	out["beyond_known_gap"] = fmt.Sprintf("%+.6f", beyond)
+	alarm, reason := supplyAlarm(difference, baseline)
+	out["supply_alarm"] = alarm
+	if alarm {
+		out["supply_alarm_reason"] = reason
+	}
 
 	// The breakdown that tells the two explanations apart.
 	//
@@ -197,4 +229,38 @@ func (cs *ChainState) supplyBreakdown() (map[string]string, error) {
 		"tokenomics_pools":   fmt.Sprintf("%.6f", pools),
 		"amm_reserve":        fmt.Sprintf("%.6f", reserve),
 	}, nil
+}
+
+// knownSupplyGapAEQ is the excess that already existed when the supply audit
+// of 2026-08-20 measured it, in AEQ.
+//
+// It is NOT a tolerance. Every path that could create money was made
+// debit-before-credit on that day, so nothing should ever be added to this
+// figure; it exists only so that a NEW gap is visible next to an old one that
+// has not been cleaned up yet. Removing the old excess means moving AEQ on a
+// live chain, which is a decision about real balances and not a code change.
+func knownSupplyGapAEQ() float64 {
+	if raw := strings.TrimSpace(os.Getenv("SUPPLY_GAP_BASELINE_AEQ")); raw != "" {
+		if v, err := strconv.ParseFloat(raw, 64); err == nil && v >= 0 {
+			return v
+		}
+		// A malformed override must not silently widen the alarm's blind spot.
+		fmt.Printf("[SUPPLY] SUPPLY_GAP_BASELINE_AEQ=%q is not a number, using the built-in baseline\n", raw)
+	}
+	return 305.277988
+}
+
+// supplyAlarm decides whether the gap grew past what was already known.
+//
+// One-sided on purpose. A gap that SHRANK is the old excess being cleaned up,
+// which is the outcome we want and not something to wake anyone for. Only
+// growth means money appeared that no human's registration accounts for.
+func supplyAlarm(difference, baseline float64) (bool, string) {
+	beyond := difference - baseline
+	if beyond <= 1e-6 {
+		return false, ""
+	}
+	return true, fmt.Sprintf(
+		"%.6f AEQ beyond the gap known on 2026-08-20 -- this is newly created "+
+			"money, not the old excess", beyond)
 }
