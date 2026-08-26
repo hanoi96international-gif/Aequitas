@@ -118,6 +118,9 @@ jobs:
             NET="$(docker inspect aequitas-node --format '{{range $n,$v := .NetworkSettings.Networks}}{{$n}}{{end}}')"
             STAMP="$(date -u +%Y%m%dT%H%M%SZ)"
             OUT="/root/backups"
+            # Eine Kopie aus einem frueheren Lauf darf nicht als die heutige
+            # ausgeliefert werden, wenn pg_dump gleich scheitert.
+            rm -f /root/backup-latest.dump
             mkdir -p "$OUT"
             DUMP="$OUT/aequitas-${STAMP}.dump"
 
@@ -135,10 +138,34 @@ jobs:
               exit 1
             fi
 
+            # Die Kopie fuer die Auslagerung entsteht HIER, vor der Pruefung.
+            #
+            # Vorher stand sie ganz am Ende. Jeder Fehlschlag der Pruefung sprang
+            # per exit 1 daran vorbei, und damit liefen auch die beiden
+            # Auslagerungsschritte nicht -- die Sicherung blieb ausschliesslich
+            # auf derselben Box, die sie schuetzen soll. Genau so ist es sieben
+            # von sieben Laeufen ergangen.
+            #
+            # Eine ungepruefte Kopie ist weniger wert als eine gepruefte, aber
+            # unendlich viel mehr wert als keine. Der Lauf endet trotzdem rot,
+            # wenn die Pruefung scheitert: "wir haben eine Kopie" und "wir haben
+            # bewiesen, dass sie sich zurueckspielen laesst" sind zwei getrennte
+            # Aussagen, und die zweite darf die erste nicht loeschen.
+            cp "$DUMP" /root/backup-latest.dump
+
             echo "=== restore verification (throwaway database, dropped afterwards) ==="
             # A dump nobody has restored is a file, not a backup.
             ADMIN="$(echo "$DATABASE_URL" | sed 's#/[^/?]*\(?\|$\)#/postgres\1#')"
-            VERIFY="aequitas_restore_check_${STAMP}"
+            # KLEINGESCHRIEBEN, und das ist der ganze Fehler gewesen.
+            #
+            # STAMP enthaelt ein T und ein Z (20260826T040230Z). CREATE DATABASE
+            # faltet unquotierte Bezeichner auf Kleinschreibung, also entstand
+            # ...t040230z -- waehrend der Verbindungs-String den Namen
+            # buchstabengetreu uebernimmt. pg_restore suchte damit eine Datenbank,
+            # die es unter diesem Namen nie gab:
+            #   FATAL: database "aequitas_restore_check_20260826T040230Z" does not exist
+            # Die Pruefung ist daran seit ihrer Einfuehrung JEDES Mal gescheitert.
+            VERIFY="$(echo "aequitas_restore_check_${STAMP}" | tr '[:upper:]' '[:lower:]')"
             docker run --rm --network "$NET" postgres:16-alpine \
               psql "$ADMIN" -c "DROP DATABASE IF EXISTS ${VERIFY};" >/dev/null
             docker run --rm --network "$NET" postgres:16-alpine \
@@ -176,11 +203,12 @@ jobs:
             ls -1t "$OUT"/aequitas-*.dump 2>/dev/null | tail -n +8 | xargs -r rm -f
             ls -lh "$OUT"
 
-            # Hand the newest dump to the upload step under a fixed name.
-            cp "$DUMP" /root/backup-latest.dump
-
       - name: Fetch the dump off the box
-        if: steps.gate.outputs.run == 'true'
+        # always(), damit eine gescheiterte Pruefung die Auslagerung nicht mehr
+        # verhindert. Schlaegt schon pg_dump fehl, existiert
+        # /root/backup-latest.dump nicht -- es wird zu Beginn geloescht -- und
+        # dieser Schritt scheitert. Richtig so: dann gibt es wirklich nichts.
+        if: always() && steps.gate.outputs.run == 'true'
         uses: nicklasfrahm/scp-action@main
         with:
           direction: download
@@ -192,7 +220,7 @@ jobs:
           target: ${{ matrix.box }}-ledger.dump
 
       - name: Upload as an artifact (the second location)
-        if: steps.gate.outputs.run == 'true'
+        if: always() && steps.gate.outputs.run == 'true'
         uses: actions/upload-artifact@v4
         with:
           name: ledger-${{ matrix.box }}-${{ github.run_id }}
