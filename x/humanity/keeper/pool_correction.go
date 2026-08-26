@@ -77,7 +77,23 @@ func (cs *ChainState) applyPoolCorrectionLocked(ctx context.Context, aeqBurn, tu
 	// Absichtlich mit Versionsnummer. Eine spaetere, ANDERE Korrektur waere
 	// ein neuer Schluessel -- sie soll nicht deshalb ausbleiben, weil vor
 	// Monaten schon einmal korrigiert wurde.
-	if cs.getConfigValueDB(poolCorrectionFlagV1) == "1" {
+	// getConfigValueCtx, NICHT getConfigValueDB.
+	//
+	// getConfigValueDB liest immer cs.db direkt und nie die offene
+	// Transaktion. replayTransactions oeffnet aber EINE Transaktion fuer den
+	// GANZEN Block. Enthielte ein Block zwei pool_correction-Transaktionen,
+	// haette die erste die Sperre nur INNERHALB dieser Transaktion gesetzt --
+	// die zweite haette daran vorbeigelesen, sie nicht gesehen und erneut
+	// gebrannt. Und die dritte, und die vierte.
+	//
+	// Uebrig geblieben waere als einzige Schranke "die Reserve muss den Betrag
+	// decken", und die schrumpft mit jedem Schritt: ein einziger Block haette
+	// den Pool asymptotisch leergeraeumt. Der Typ ist unsigniert und entsteht
+	// auf einem Knoten -- jeder Validator kann ihn ausstellen.
+	//
+	// "Genau einmal ueber die Lebenszeit der Kette" war damit in Wahrheit
+	// "einmal je committeter Transaktionsgrenze".
+	if cs.getConfigValueCtx(ctx, poolCorrectionFlagV1) == "1" {
 		fmt.Printf("[SUPPLY] pool_correction bereits angewendet (%s) -- uebersprungen\n", poolCorrectionFlagV1)
 		return nil
 	}

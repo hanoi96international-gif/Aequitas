@@ -4,6 +4,8 @@ import (
 	"context"
 	"math"
 	"net/http/httptest"
+	"os"
+	"strings"
 	"testing"
 )
 
@@ -143,5 +145,37 @@ func TestNurDieEchteGegenstelleZaehlt(t *testing.T) {
 		if got := vonDerSchleife(r); got != f.erwartet {
 			t.Fatalf("RemoteAddr=%q XFF=%q -> %v, erwartet %v", f.remote, f.header, got, f.erwartet)
 		}
+	}
+}
+
+// Die Sperre muss die OFFENE Transaktion sehen.
+//
+// replayTransactions oeffnet EINE Transaktion fuer den GANZEN Block.
+// getConfigValueDB liest immer cs.db direkt und nie diese Transaktion --
+// enthielte ein Block zwei pool_correction-Transaktionen, haette die zweite
+// an der Sperre der ersten vorbeigelesen und erneut gebrannt. Und die dritte.
+//
+// Uebrig geblieben waere als einzige Schranke "die Reserve muss den Betrag
+// decken", und die schrumpft mit jedem Schritt: ein einziger Block haette den
+// Pool asymptotisch leergeraeumt.
+//
+// Der Test prueft die QUELLE, nicht das Verhalten -- das Verhalten braeuchte
+// eine echte Datenbank samt Transaktion, und genau daran ist der bestehende
+// Test gescheitert: er besteht ueber die Reserve-Pruefung, ohne die Sperre je
+// zu beruehren. Ein Test, der die Ursache nicht erreicht, haelt sie nicht.
+func TestDieSperreLiestDieOffeneTransaktion(t *testing.T) {
+	roh, err := os.ReadFile("pool_correction.go")
+	if err != nil {
+		t.Fatalf("pool_correction.go nicht lesbar: %v", err)
+	}
+	s := string(roh)
+	if strings.Contains(s, "getConfigValueDB(") {
+		t.Error("pool_correction.go benutzt getConfigValueDB -- das liest an der " +
+			"offenen Transaktion vorbei. Innerhalb eines Blocks saehe die zweite " +
+			"Korrektur die Sperre der ersten nicht und wuerde erneut brennen. " +
+			"getConfigValueCtx(ctx, ...) benutzen.")
+	}
+	if !strings.Contains(s, "getConfigValueCtx(ctx, poolCorrectionFlagV1)") {
+		t.Error("die Sperre wird nicht ueber die Transaktion gelesen")
 	}
 }

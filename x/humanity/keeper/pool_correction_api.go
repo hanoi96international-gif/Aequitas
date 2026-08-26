@@ -91,6 +91,14 @@ func (a *APIServer) handlePoolCorrection(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
+	// Vorher lesen, um hinterher sagen zu koennen, ob wirklich etwas
+	// verschwunden ist. Bei bereits gesetzter Sperre kehrt die Korrektur mit
+	// stillem Erfolg zurueck -- die Antwort meldete daraufhin
+	// "ok, burned_aeq: <angefordert>", obwohl nichts gebrannt wurde. Eine
+	// Bestaetigung fuer eine Handlung, die nicht stattgefunden hat, ist
+	// schlimmer als eine Fehlermeldung.
+	vorherAEQ, vorherTUSD := a.state.GetPoolReserves()
+
 	if err := a.state.CorrectPhantomSupplyAtomic(req.BurnAEQ, req.BurnTUSD); err != nil {
 		http.Error(w, fmt.Sprintf(`{"error":%q}`, err.Error()), http.StatusConflict)
 		return
@@ -99,11 +107,14 @@ func (a *APIServer) handlePoolCorrection(w http.ResponseWriter, r *http.Request)
 	reserveAEQ, reserveTUSD := a.state.GetPoolReserves()
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{
-		"ok":           true,
-		"burned_aeq":   req.BurnAEQ,
-		"burned_tusd":  req.BurnTUSD,
-		"reserve_aeq":  reserveAEQ,
-		"reserve_tusd": reserveTUSD,
+		"ok": true,
+		// Was TATSAECHLICH verschwunden ist, nicht was angefordert wurde.
+		"burned_aeq":       round6(vorherAEQ - reserveAEQ),
+		"burned_tusd":      round6(vorherTUSD - reserveTUSD),
+		"angefordert_aeq":  req.BurnAEQ,
+		"angefordert_tusd": req.BurnTUSD,
+		"reserve_aeq":      reserveAEQ,
+		"reserve_tusd":     reserveTUSD,
 		// Zum sofortigen Nachsehen, ob die Regel den Bestand jetzt erklaert.
 		"hinweis": "supply_reconciliation unter /api/health/combined pruefen; " +
 			"nach erfolgreicher Korrektur SUPPLY_GAP_BASELINE_AEQ=0 setzen, " +
