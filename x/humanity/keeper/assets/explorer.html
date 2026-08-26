@@ -953,6 +953,7 @@
   <div class="stab" data-act="showStab" data-args='["tab-network","net-consensus"]' role="button" tabindex="0">🔗 Consensus</div>
   <div class="stab" data-act="showStab" data-args='["tab-network","net-story"]' role="button" tabindex="0">📖 Story</div>
   <div class="stab" data-act="showStab" data-args='["tab-network","net-runnode"]' role="button" tabindex="0" data-i18n="x-run-a-node">⚙️ Run a Node</div>
+  <div class="stab" data-act="showStab" data-args='["tab-network","net-verifier"]' role="button" tabindex="0" data-i18n="x-run-a-verifier">🧬 Run a Verifier</div>
   <div class="stab" data-act="showStab" data-args='["tab-network","net-protocol"]' role="button" tabindex="0" data-i18n="x-protocol-v7">📜 Protocol V7</div>
 </nav>
 <div id="net-overview" class="stab-panel active">
@@ -1153,14 +1154,6 @@
 </div>
 
 <div id="net-runnode" class="stab-panel">
-  <!-- Sprungleiste. Der Bereich ist ueber 11.000 px lang und enthaelt ZWEI
-       gleichrangige Leitfaeden hintereinander; ohne sie war der zweite
-       praktisch nicht auffindbar -- er stand da, nur sah ihn niemand. -->
-  <div style="display:flex;flex-wrap:wrap;align-items:center;gap:10px;margin-bottom:14px;font-size:0.78rem">
-    <span style="color:var(--muted)" data-i18n="nav-jump-t">Jump to</span>
-    <a href="#guide-node" style="color:var(--gold);text-decoration:none;border:1px solid var(--border);border-radius:6px;padding:6px 12px" data-i18n="nav-jump-node">Run a Node</a>
-    <a href="#guide-bv" style="color:var(--neon);text-decoration:none;border:1px solid var(--border);border-radius:6px;padding:6px 12px" data-i18n="nav-jump-bv">Bio Verifier</a>
-  </div>
 <div class="ns" style="grid-template-columns:1fr">
 <div class="nc" style="grid-column:1/-1;background:linear-gradient(135deg,rgba(245,166,35,0.06),rgba(13,8,32,0.9));border-color:rgba(245,166,35,0.2)">
     <div id="guide-node" class="nc-title" style="color:var(--gold);scroll-margin-top:80px" data-i18n="run-node-title">Run Your Own Node — Help Secure the Network</div>
@@ -1175,157 +1168,6 @@
       <a class="hover-fade" href="/node-binding" target="_blank" rel="noopener noreferrer" style="display:inline-flex;align-items:center;gap:8px;background:rgba(0,230,118,0.12);color:var(--neon);border:1px solid rgba(0,230,118,0.3);padding:12px 20px;border-radius:8px;font-size:0.84rem;font-weight:700;text-decoration:none" data-i18n="x-generate-node-binding-signature">
         🔗 Generate Node Binding Signature
       </a>
-    </div>
-    <!-- ZWEITE ROLLE: Bio-Verifier, als vollstaendiger Leitfaden.
-         Seit dem 25.08.2026 ist die Zahl der Teilnehmer hier keine Zierde
-         mehr, sondern die Sicherheitsgroesse: BIO_ATTESTATION_QUORUM verlangt
-         t VERSCHIEDENE Bezeugende, und ein einzelner geleakter Schluessel
-         genuegt nicht mehr. -->
-    <div class="nc" style="grid-column:1/-1;margin-top:18px;background:linear-gradient(135deg,rgba(0,230,118,0.06),rgba(13,8,32,0.9));border-color:rgba(0,230,118,0.22)">
-      <div id="guide-bv" class="nc-title" style="color:var(--neon);scroll-margin-top:80px" data-i18n="bv-title">Or Become a Bio Verifier — the Role That Makes Uniqueness Decentralized</div>
-      <div style="font-size:0.82rem;color:var(--muted);line-height:1.9;margin-bottom:16px" data-i18n="bv-desc">
-        A block-producing node secures the <strong style="color:var(--text)">ledger</strong>. A bio verifier secures something else: the promise that <strong style="color:var(--neon)">each human registers only once</strong>. These are separate roles — you can run either, or both on the same machine.
-      </div>
-
-      <div style="background:rgba(139,92,246,0.08);border:1px solid rgba(139,92,246,0.3);border-radius:8px;padding:14px;margin-bottom:18px">
-        <div style="font-size:0.77rem;color:var(--purple);font-weight:700;margin-bottom:6px" data-i18n="bv-status-t">Status: closed beta — read this before you start</div>
-        <div style="font-size:0.79rem;color:var(--muted);line-height:1.9" data-i18n="bv-status-d">
-          The verifier source is <strong style="color:var(--text)">not public yet</strong>, so the steps below cannot be completed by everyone today. They are published now because the design should be checkable before it is deployed, not after. If you want to run one, ask in the Telegram group linked on the front page. Opening this repository is what turns the guide below from a plan into an invitation, and it is the next thing we owe you.
-        </div>
-      </div>
-
-      <div style="background:rgba(0,230,118,0.05);border:1px solid rgba(0,230,118,0.18);border-radius:8px;padding:14px;margin-bottom:14px">
-        <div style="font-size:0.77rem;color:var(--neon);font-weight:700;margin-bottom:6px" data-i18n="bv-what-t">What you would hold — and what you would never see</div>
-        <div style="font-size:0.79rem;color:var(--muted);line-height:1.9" data-i18n="bv-what-d">
-          A face is never sent to you. Your machine stores one <strong style="color:var(--text)">additive share</strong> of a 64-byte sketch: on its own it is indistinguishable from random noise, and no computation you can run recovers a face from it. Comparisons happen jointly with the other members of your committee, and none of you learns anything but the answer — <em>duplicate: yes or no</em>. That is not a promise about our good intentions; it is a property of the arithmetic.
-        </div>
-      </div>
-
-      <div style="background:rgba(245,166,35,0.05);border:1px solid rgba(245,166,35,0.2);border-radius:8px;padding:14px;margin-bottom:18px">
-        <div style="font-size:0.77rem;color:var(--gold);font-weight:700;margin-bottom:6px" data-i18n="bv-why-t">Why every additional verifier makes the network harder to corrupt</div>
-        <div style="font-size:0.79rem;color:var(--muted);line-height:1.9" data-i18n="bv-why-d">
-          A registration is accepted only once <strong style="color:var(--text)">several different verifiers</strong> have attested it. One stolen key is not enough — an attacker needs a whole committee. And because <strong style="color:var(--neon)">one human may hold exactly one validator key</strong>, buying a committee means being that many people. With 100 verifiers, an attacker controlling 10 of them has under a 1-in-1,000 chance of owning a full committee of three. Every person who joins makes that number smaller. This is the one place where the count of participants <em>is</em> the security.
-        </div>
-      </div>
-
-      <!-- ===================== DER LEITFADEN ===================== -->
-      <div style="background:var(--card);border:1px solid rgba(0,230,118,0.2);border-radius:var(--radius);padding:24px;margin-top:4px">
-
-        <div style="font-size:0.76rem;color:var(--neon);letter-spacing:2.5px;text-transform:uppercase;font-weight:700;margin-bottom:4px">
-          AEQUITAS BIO VERIFIER GUIDE
-          <span style="font-size:0.71rem;background:rgba(0,230,118,0.12);border:1px solid rgba(0,230,118,0.3);color:var(--neon);padding:2px 8px;border-radius:10px;margin-left:6px">v1.0 &middot; August 2026</span>
-        </div>
-        <div style="font-size:0.77rem;color:var(--muted);margin-bottom:20px" data-i18n="bv-guide-sub">Step by step &middot; No cryptography knowledge required &middot; About 30 minutes, most of it downloading</div>
-
-        <!-- Voraussetzungen -->
-        <div style="font-size:0.76rem;color:var(--purple);font-weight:700;letter-spacing:1px;text-transform:uppercase;margin-bottom:10px;border-bottom:1px solid var(--border);padding-bottom:6px" data-i18n="bv-need-t">Before You Start — What You Need</div>
-        <div style="font-size:0.79rem;color:var(--muted);line-height:2.1;margin-bottom:18px">
-          <div style="display:flex;align-items:flex-start;gap:10px;margin-bottom:6px"><span style="color:var(--neon);font-weight:700;min-width:16px">1.</span><span data-i18n="bv-need-1"><strong style="color:var(--text)">A registered Aequitas human account.</strong> Same rule as for block production, and for the same reason: one human, one key. Without it, a single person could quietly become a whole committee.</span></div>
-          <div style="display:flex;align-items:flex-start;gap:10px;margin-bottom:6px"><span style="color:var(--neon);font-weight:700;min-width:16px">2.</span><span data-i18n="bv-need-2"><strong style="color:var(--text)">A small Linux server with Docker.</strong> 2 GB RAM is enough. No GPU — the comparison is arithmetic on 64-byte values. The machine already running your node is fine.</span></div>
-          <div style="display:flex;align-items:flex-start;gap:10px;margin-bottom:6px"><span style="color:var(--neon);font-weight:700;min-width:16px">3.</span><span data-i18n="bv-need-3"><strong style="color:var(--text)">A domain name with HTTPS.</strong> Other committee members must reach you. A subdomain of something you already own is enough.</span></div>
-          <div style="display:flex;align-items:flex-start;gap:10px"><span style="color:var(--neon);font-weight:700;min-width:16px">4.</span><span data-i18n="bv-need-4"><strong style="color:var(--text)">To stay online.</strong> Every member of a committee must answer for a registration to finish. A verifier that is often away slows people down instead of protecting them.</span></div>
-        </div>
-
-        <!-- Schritt 1 -->
-        <div style="font-size:0.76rem;color:var(--purple);font-weight:700;letter-spacing:1px;text-transform:uppercase;margin-bottom:10px;border-bottom:1px solid var(--border);padding-bottom:6px" data-i18n="bv-s1-t">Step 1 — Generate Your Own Keys</div>
-        <div style="background:rgba(245,166,35,0.05);border:1px solid rgba(245,166,35,0.2);border-radius:6px;padding:10px 14px;margin-bottom:10px;font-size:0.77rem"><span style="color:var(--gold);font-weight:700" data-i18n="bv-s1-warn-t">Generate them yourself. Never accept keys from anyone.</span> <span style="color:var(--muted)" data-i18n="bv-s1-warn-d">Two verifiers holding the same secret count as one, and the committee would be smaller than it looks. Nobody — including us — should ever send you a key.</span></div>
-        <div style="font-family:var(--font-mono);background:rgba(0,0,0,0.3);border:1px solid rgba(139,92,246,0.15);border-radius:6px;padding:14px;margin-bottom:6px;font-size:0.78rem;line-height:2.3;overflow-x:auto">
-          <span style="color:var(--muted)"># Encrypts what little is stored on disk</span><br>
-          openssl rand -base64 32<br><br>
-          <span style="color:var(--muted)"># Defines your own projection — see the note below</span><br>
-          openssl rand -hex 32<br><br>
-          <span style="color:var(--muted)"># Your Ed25519 attestation key pair</span><br>
-          docker run --rm python:3.12-slim sh -c "pip -q install cryptography &amp;&amp; python -c '<br>
-          &nbsp;&nbsp;from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey<br>
-          &nbsp;&nbsp;from cryptography.hazmat.primitives import serialization as s<br>
-          &nbsp;&nbsp;k = Ed25519PrivateKey.generate()<br>
-          &nbsp;&nbsp;print(\"PRIVATE\", k.private_bytes(s.Encoding.Raw, s.PrivateFormat.Raw, s.NoEncryption()).hex())<br>
-          &nbsp;&nbsp;print(\"PUBLIC \", k.public_key().public_bytes(s.Encoding.Raw, s.PublicFormat.Raw).hex())'"
-        </div>
-        <div style="font-size:0.77rem;color:var(--muted);line-height:1.9;margin-bottom:18px" data-i18n="bv-s1-note">
-          Keep the private half on your server and nowhere else. The public half is meant to be shared — it is how others verify that you attested something. <strong style="color:var(--text)">Your own projection seed matters:</strong> because every verifier uses a different one, a stolen database from one verifier cannot be compared against another's. Lose the seed and your stored shares become meaningless, so back it up somewhere you control.
-        </div>
-
-        <!-- Schritt 2 -->
-        <div style="font-size:0.76rem;color:var(--purple);font-weight:700;letter-spacing:1px;text-transform:uppercase;margin-bottom:10px;border-bottom:1px solid var(--border);padding-bottom:6px" data-i18n="bv-s2-t">Step 2 — Write the Configuration File</div>
-        <div style="font-size:0.79rem;color:var(--muted);line-height:1.9;margin-bottom:8px" data-i18n="bv-s2-d">Put the values from Step 1 into a file readable only by you. One value per line, no quotes.</div>
-        <div style="font-family:var(--font-mono);background:rgba(0,0,0,0.3);border:1px solid rgba(139,92,246,0.15);border-radius:6px;padding:14px;margin-bottom:6px;font-size:0.78rem;line-height:2.3;overflow-x:auto">
-          nano /root/.aequitas-verifier.env<br><br>
-          <span style="color:var(--muted)"># --- paste, with your own values ---</span><br>
-          TEMPLATE_ENCRYPTION_KEY=&lt;openssl rand -base64 32&gt;<br>
-          FACE_SKETCH_SEED=&lt;openssl rand -hex 32&gt;<br>
-          VALIDATOR_SIGNING_KEY=&lt;the PRIVATE hex from step 1&gt;<br>
-          ALLOW_REAL_BIOMETRIC_DATA=false<br>
-          POH_DB_PATH=/data/poh.db<br>
-          PORT=8098<br><br>
-          chmod 600 /root/.aequitas-verifier.env
-        </div>
-        <div style="font-size:0.77rem;color:var(--muted);line-height:1.9;margin-bottom:18px" data-i18n="bv-s2-note">
-          <strong style="color:var(--gold)">Leave ALLOW_REAL_BIOMETRIC_DATA on false</strong> until you have read the data-protection notes. With it off, your verifier joins the network and takes part in test enrollments without ever storing data from a real person. That is the right way to start, and there is no hurry to change it.
-        </div>
-
-        <!-- Schritt 3 -->
-        <div style="font-size:0.76rem;color:var(--purple);font-weight:700;letter-spacing:1px;text-transform:uppercase;margin-bottom:10px;border-bottom:1px solid var(--border);padding-bottom:6px" data-i18n="bv-s3-t">Step 3 — Start the Verifier</div>
-        <div style="font-family:var(--font-mono);background:rgba(0,0,0,0.3);border:1px solid rgba(139,92,246,0.15);border-radius:6px;padding:14px;margin-bottom:6px;font-size:0.78rem;line-height:2.3;overflow-x:auto">
-          docker network create aequitas-net 2&gt;/dev/null || true<br>
-          mkdir -p /root/aequitas-verifier-data<br><br>
-          docker run -d --name aequitas-verifier \<br>
-          &nbsp;&nbsp;--network aequitas-net --restart unless-stopped \<br>
-          &nbsp;&nbsp;--env-file /root/.aequitas-verifier.env \<br>
-          &nbsp;&nbsp;-v /root/aequitas-verifier-data:/data \<br>
-          &nbsp;&nbsp;&lt;image&gt;<br><br>
-          <span style="color:var(--muted)"># Did it come up?</span><br>
-          curl -s localhost:8098/health
-        </div>
-        <div style="font-size:0.77rem;color:var(--muted);line-height:1.9;margin-bottom:18px" data-i18n="bv-s3-note">
-          A healthy answer reports <span style="font-family:var(--font-mono);color:var(--neon)">plaintext_templates: 0</span> and <span style="font-family:var(--font-mono);color:var(--neon)">sketch_seed_configured: true</span>. The first is the claim that no whole template is stored, in a form you can check yourself rather than take on faith. Check it now and again later — it is your own guarantee as much as anyone else's.
-        </div>
-
-        <!-- Schritt 4 -->
-        <div style="font-size:0.76rem;color:var(--purple);font-weight:700;letter-spacing:1px;text-transform:uppercase;margin-bottom:10px;border-bottom:1px solid var(--border);padding-bottom:6px" data-i18n="bv-s4-t">Step 4 — Put HTTPS in Front</div>
-        <div style="font-size:0.79rem;color:var(--muted);line-height:1.9;margin-bottom:8px" data-i18n="bv-s4-d">Other committee members reach you over the public internet, so the port must not be exposed unencrypted. Caddy obtains a certificate on its own.</div>
-        <div style="font-family:var(--font-mono);background:rgba(0,0,0,0.3);border:1px solid rgba(139,92,246,0.15);border-radius:6px;padding:14px;margin-bottom:18px;font-size:0.78rem;line-height:2.3;overflow-x:auto">
-          <span style="color:var(--muted)"># /root/Caddyfile</span><br>
-          verifier.example.org {<br>
-          &nbsp;&nbsp;reverse_proxy aequitas-verifier:8098<br>
-          }
-        </div>
-
-        <!-- Schritt 5 -->
-        <div style="font-size:0.76rem;color:var(--purple);font-weight:700;letter-spacing:1px;text-transform:uppercase;margin-bottom:10px;border-bottom:1px solid var(--border);padding-bottom:6px" data-i18n="bv-s5-t">Step 5 — Link Your Key to Your Human Wallet</div>
-        <div style="font-size:0.79rem;color:var(--muted);line-height:1.9;margin-bottom:10px" data-i18n="bv-s5-d">
-          This is the step that makes one human one verifier. You sign twice: once with your registered human wallet, and once with your node key. The chain accepts the pair only if both signatures check out, so nobody can register a key in your name and you cannot register two. Use the button below.
-        </div>
-        <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:18px">
-          <a class="hover-fade" href="/node-binding" target="_blank" rel="noopener noreferrer" style="display:inline-flex;align-items:center;gap:8px;background:rgba(139,92,246,0.15);color:var(--purple);border:1px solid rgba(139,92,246,0.3);padding:12px 20px;border-radius:8px;font-size:0.84rem;font-weight:700;text-decoration:none" data-i18n="bv-bind">🔗 Generate Node Binding Signature</a>
-        </div>
-
-        <!-- Schritt 6 -->
-        <div style="font-size:0.76rem;color:var(--purple);font-weight:700;letter-spacing:1px;text-transform:uppercase;margin-bottom:10px;border-bottom:1px solid var(--border);padding-bottom:6px" data-i18n="bv-s6-t">Step 6 — Publish Your Public Key</div>
-        <div style="font-size:0.79rem;color:var(--muted);line-height:1.9;margin-bottom:18px" data-i18n="bv-s6-d">
-          Send the <strong style="color:var(--text)">public</strong> half from Step 1, together with your HTTPS address, to the group. It is added to the list every proof server checks against, and from then on your attestations count toward the quorum. Nothing secret leaves your machine in this step — that is the point of the split: the private half stays with you forever, and the public half is useless without it.
-        </div>
-
-        <!-- Nachpruefen -->
-        <div style="font-size:0.76rem;color:var(--purple);font-weight:700;letter-spacing:1px;text-transform:uppercase;margin-bottom:10px;border-bottom:1px solid var(--border);padding-bottom:6px" data-i18n="bv-check-t">Checking That It Works</div>
-        <div style="font-family:var(--font-mono);background:rgba(0,0,0,0.3);border:1px solid rgba(139,92,246,0.15);border-radius:6px;padding:14px;margin-bottom:8px;font-size:0.78rem;line-height:2.3;overflow-x:auto">
-          <span style="color:var(--muted)"># Reachable from outside, with a valid certificate?</span><br>
-          curl -s https://verifier.example.org/health<br><br>
-          <span style="color:var(--muted)"># Does the network see you and agree with the others?</span><br>
-          curl -s https://aequitas.digital/inventory
-        </div>
-        <div style="font-size:0.77rem;color:var(--muted);line-height:1.9;margin-bottom:18px" data-i18n="bv-check-d">
-          The second call lists every verifier and compares them: whether all hold the same number of enrollments, whether anyone is missing a seed, and whether the keys agree. If your entry shows a divergence, it is better to find out here than during someone's registration.
-        </div>
-
-        <!-- Ehrlichkeit -->
-        <div style="background:rgba(139,92,246,0.06);border:1px solid rgba(139,92,246,0.22);border-radius:8px;padding:14px">
-          <div style="font-size:0.77rem;color:var(--purple);font-weight:700;margin-bottom:6px" data-i18n="bv-honest-t">Where this stands today — plainly</div>
-          <div style="font-size:0.79rem;color:var(--muted);line-height:1.9" data-i18n="bv-honest-d">
-            This part is in beta and the limits are real. The joint comparison consumes one-time cryptographic material, and one delivery currently covers a few dozen registrations before more is needed — so the confidential path proves itself at small scale first, not at millions. The work also grows with the number of people enrolled. We publish these numbers rather than round them off: a system that asks for your face has no business being vague about what it can and cannot do yet.
-          </div>
-        </div>
-      </div>
     </div>
 
     <div id="node-guide-lang-banner" style="display:none;font-size:0.79rem;color:var(--muted);padding:8px 12px;background:rgba(139,92,246,0.08);border:1px solid rgba(139,92,246,0.2);border-radius:6px;margin-top:8px" data-i18n="node-guide-lang-note">This inline guide is in English. A translated PDF is available in your language using the button above.</div>
@@ -1746,6 +1588,167 @@
   </div>
 </div>
 </div>
+<div id="net-verifier" class="stab-panel">
+  <!-- Eigene Rubrik seit dem 26.08.2026.
+       Vorher stand dieser Leitfaden ZWISCHEN dem Titel des Node-Guides und
+       dessen Inhalt -- in einem Bereich von ueber 11.000 px. Er war damit
+       vollstaendig gerendert und trotzdem praktisch unauffindbar. Zwei
+       gleichrangige Rollen gehoeren nebeneinander, nicht ineinander. -->
+<div class="ns" style="grid-template-columns:1fr">
+    <!-- ZWEITE ROLLE: Bio-Verifier, als vollstaendiger Leitfaden.
+         Seit dem 25.08.2026 ist die Zahl der Teilnehmer hier keine Zierde
+         mehr, sondern die Sicherheitsgroesse: BIO_ATTESTATION_QUORUM verlangt
+         t VERSCHIEDENE Bezeugende, und ein einzelner geleakter Schluessel
+         genuegt nicht mehr. -->
+    <div class="nc" style="grid-column:1/-1;margin-top:18px;background:linear-gradient(135deg,rgba(0,230,118,0.06),rgba(13,8,32,0.9));border-color:rgba(0,230,118,0.22)">
+      <div id="guide-bv" class="nc-title" style="color:var(--neon);scroll-margin-top:80px" data-i18n="bv-title">Or Become a Bio Verifier — the Role That Makes Uniqueness Decentralized</div>
+      <div style="font-size:0.82rem;color:var(--muted);line-height:1.9;margin-bottom:16px" data-i18n="bv-desc">
+        A block-producing node secures the <strong style="color:var(--text)">ledger</strong>. A bio verifier secures something else: the promise that <strong style="color:var(--neon)">each human registers only once</strong>. These are separate roles — you can run either, or both on the same machine.
+      </div>
+
+      <div style="background:rgba(139,92,246,0.08);border:1px solid rgba(139,92,246,0.3);border-radius:8px;padding:14px;margin-bottom:18px">
+        <div style="font-size:0.77rem;color:var(--purple);font-weight:700;margin-bottom:6px" data-i18n="bv-status-t">Status: closed beta — read this before you start</div>
+        <div style="font-size:0.79rem;color:var(--muted);line-height:1.9" data-i18n="bv-status-d">
+          The verifier source is <strong style="color:var(--text)">not public yet</strong>, so the steps below cannot be completed by everyone today. They are published now because the design should be checkable before it is deployed, not after. If you want to run one, ask in the Telegram group linked on the front page. Opening this repository is what turns the guide below from a plan into an invitation, and it is the next thing we owe you.
+        </div>
+      </div>
+
+      <div style="background:rgba(0,230,118,0.05);border:1px solid rgba(0,230,118,0.18);border-radius:8px;padding:14px;margin-bottom:14px">
+        <div style="font-size:0.77rem;color:var(--neon);font-weight:700;margin-bottom:6px" data-i18n="bv-what-t">What you would hold — and what you would never see</div>
+        <div style="font-size:0.79rem;color:var(--muted);line-height:1.9" data-i18n="bv-what-d">
+          A face is never sent to you. Your machine stores one <strong style="color:var(--text)">additive share</strong> of a 64-byte sketch: on its own it is indistinguishable from random noise, and no computation you can run recovers a face from it. Comparisons happen jointly with the other members of your committee, and none of you learns anything but the answer — <em>duplicate: yes or no</em>. That is not a promise about our good intentions; it is a property of the arithmetic.
+        </div>
+      </div>
+
+      <div style="background:rgba(245,166,35,0.05);border:1px solid rgba(245,166,35,0.2);border-radius:8px;padding:14px;margin-bottom:18px">
+        <div style="font-size:0.77rem;color:var(--gold);font-weight:700;margin-bottom:6px" data-i18n="bv-why-t">Why every additional verifier makes the network harder to corrupt</div>
+        <div style="font-size:0.79rem;color:var(--muted);line-height:1.9" data-i18n="bv-why-d">
+          A registration is accepted only once <strong style="color:var(--text)">several different verifiers</strong> have attested it. One stolen key is not enough — an attacker needs a whole committee. And because <strong style="color:var(--neon)">one human may hold exactly one validator key</strong>, buying a committee means being that many people. With 100 verifiers, an attacker controlling 10 of them has under a 1-in-1,000 chance of owning a full committee of three. Every person who joins makes that number smaller. This is the one place where the count of participants <em>is</em> the security.
+        </div>
+      </div>
+
+      <!-- ===================== DER LEITFADEN ===================== -->
+      <div style="background:var(--card);border:1px solid rgba(0,230,118,0.2);border-radius:var(--radius);padding:24px;margin-top:4px">
+
+        <div style="font-size:0.76rem;color:var(--neon);letter-spacing:2.5px;text-transform:uppercase;font-weight:700;margin-bottom:4px">
+          AEQUITAS BIO VERIFIER GUIDE
+          <span style="font-size:0.71rem;background:rgba(0,230,118,0.12);border:1px solid rgba(0,230,118,0.3);color:var(--neon);padding:2px 8px;border-radius:10px;margin-left:6px">v1.0 &middot; August 2026</span>
+        </div>
+        <div style="font-size:0.77rem;color:var(--muted);margin-bottom:20px" data-i18n="bv-guide-sub">Step by step &middot; No cryptography knowledge required &middot; About 30 minutes, most of it downloading</div>
+
+        <!-- Voraussetzungen -->
+        <div style="font-size:0.76rem;color:var(--purple);font-weight:700;letter-spacing:1px;text-transform:uppercase;margin-bottom:10px;border-bottom:1px solid var(--border);padding-bottom:6px" data-i18n="bv-need-t">Before You Start — What You Need</div>
+        <div style="font-size:0.79rem;color:var(--muted);line-height:2.1;margin-bottom:18px">
+          <div style="display:flex;align-items:flex-start;gap:10px;margin-bottom:6px"><span style="color:var(--neon);font-weight:700;min-width:16px">1.</span><span data-i18n="bv-need-1"><strong style="color:var(--text)">A registered Aequitas human account.</strong> Same rule as for block production, and for the same reason: one human, one key. Without it, a single person could quietly become a whole committee.</span></div>
+          <div style="display:flex;align-items:flex-start;gap:10px;margin-bottom:6px"><span style="color:var(--neon);font-weight:700;min-width:16px">2.</span><span data-i18n="bv-need-2"><strong style="color:var(--text)">A small Linux server with Docker.</strong> 2 GB RAM is enough. No GPU — the comparison is arithmetic on 64-byte values. The machine already running your node is fine.</span></div>
+          <div style="display:flex;align-items:flex-start;gap:10px;margin-bottom:6px"><span style="color:var(--neon);font-weight:700;min-width:16px">3.</span><span data-i18n="bv-need-3"><strong style="color:var(--text)">A domain name with HTTPS.</strong> Other committee members must reach you. A subdomain of something you already own is enough.</span></div>
+          <div style="display:flex;align-items:flex-start;gap:10px"><span style="color:var(--neon);font-weight:700;min-width:16px">4.</span><span data-i18n="bv-need-4"><strong style="color:var(--text)">To stay online.</strong> Every member of a committee must answer for a registration to finish. A verifier that is often away slows people down instead of protecting them.</span></div>
+        </div>
+
+        <!-- Schritt 1 -->
+        <div style="font-size:0.76rem;color:var(--purple);font-weight:700;letter-spacing:1px;text-transform:uppercase;margin-bottom:10px;border-bottom:1px solid var(--border);padding-bottom:6px" data-i18n="bv-s1-t">Step 1 — Generate Your Own Keys</div>
+        <div style="background:rgba(245,166,35,0.05);border:1px solid rgba(245,166,35,0.2);border-radius:6px;padding:10px 14px;margin-bottom:10px;font-size:0.77rem"><span style="color:var(--gold);font-weight:700" data-i18n="bv-s1-warn-t">Generate them yourself. Never accept keys from anyone.</span> <span style="color:var(--muted)" data-i18n="bv-s1-warn-d">Two verifiers holding the same secret count as one, and the committee would be smaller than it looks. Nobody — including us — should ever send you a key.</span></div>
+        <div style="font-family:var(--font-mono);background:rgba(0,0,0,0.3);border:1px solid rgba(139,92,246,0.15);border-radius:6px;padding:14px;margin-bottom:6px;font-size:0.78rem;line-height:2.3;overflow-x:auto">
+          <span style="color:var(--muted)"># Encrypts what little is stored on disk</span><br>
+          openssl rand -base64 32<br><br>
+          <span style="color:var(--muted)"># Defines your own projection — see the note below</span><br>
+          openssl rand -hex 32<br><br>
+          <span style="color:var(--muted)"># Your Ed25519 attestation key pair</span><br>
+          docker run --rm python:3.12-slim sh -c "pip -q install cryptography &amp;&amp; python -c '<br>
+          &nbsp;&nbsp;from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey<br>
+          &nbsp;&nbsp;from cryptography.hazmat.primitives import serialization as s<br>
+          &nbsp;&nbsp;k = Ed25519PrivateKey.generate()<br>
+          &nbsp;&nbsp;print(\"PRIVATE\", k.private_bytes(s.Encoding.Raw, s.PrivateFormat.Raw, s.NoEncryption()).hex())<br>
+          &nbsp;&nbsp;print(\"PUBLIC \", k.public_key().public_bytes(s.Encoding.Raw, s.PublicFormat.Raw).hex())'"
+        </div>
+        <div style="font-size:0.77rem;color:var(--muted);line-height:1.9;margin-bottom:18px" data-i18n="bv-s1-note">
+          Keep the private half on your server and nowhere else. The public half is meant to be shared — it is how others verify that you attested something. <strong style="color:var(--text)">Your own projection seed matters:</strong> because every verifier uses a different one, a stolen database from one verifier cannot be compared against another's. Lose the seed and your stored shares become meaningless, so back it up somewhere you control.
+        </div>
+
+        <!-- Schritt 2 -->
+        <div style="font-size:0.76rem;color:var(--purple);font-weight:700;letter-spacing:1px;text-transform:uppercase;margin-bottom:10px;border-bottom:1px solid var(--border);padding-bottom:6px" data-i18n="bv-s2-t">Step 2 — Write the Configuration File</div>
+        <div style="font-size:0.79rem;color:var(--muted);line-height:1.9;margin-bottom:8px" data-i18n="bv-s2-d">Put the values from Step 1 into a file readable only by you. One value per line, no quotes.</div>
+        <div style="font-family:var(--font-mono);background:rgba(0,0,0,0.3);border:1px solid rgba(139,92,246,0.15);border-radius:6px;padding:14px;margin-bottom:6px;font-size:0.78rem;line-height:2.3;overflow-x:auto">
+          nano /root/.aequitas-verifier.env<br><br>
+          <span style="color:var(--muted)"># --- paste, with your own values ---</span><br>
+          TEMPLATE_ENCRYPTION_KEY=&lt;openssl rand -base64 32&gt;<br>
+          FACE_SKETCH_SEED=&lt;openssl rand -hex 32&gt;<br>
+          VALIDATOR_SIGNING_KEY=&lt;the PRIVATE hex from step 1&gt;<br>
+          ALLOW_REAL_BIOMETRIC_DATA=false<br>
+          POH_DB_PATH=/data/poh.db<br>
+          PORT=8098<br><br>
+          chmod 600 /root/.aequitas-verifier.env
+        </div>
+        <div style="font-size:0.77rem;color:var(--muted);line-height:1.9;margin-bottom:18px" data-i18n="bv-s2-note">
+          <strong style="color:var(--gold)">Leave ALLOW_REAL_BIOMETRIC_DATA on false</strong> until you have read the data-protection notes. With it off, your verifier joins the network and takes part in test enrollments without ever storing data from a real person. That is the right way to start, and there is no hurry to change it.
+        </div>
+
+        <!-- Schritt 3 -->
+        <div style="font-size:0.76rem;color:var(--purple);font-weight:700;letter-spacing:1px;text-transform:uppercase;margin-bottom:10px;border-bottom:1px solid var(--border);padding-bottom:6px" data-i18n="bv-s3-t">Step 3 — Start the Verifier</div>
+        <div style="font-family:var(--font-mono);background:rgba(0,0,0,0.3);border:1px solid rgba(139,92,246,0.15);border-radius:6px;padding:14px;margin-bottom:6px;font-size:0.78rem;line-height:2.3;overflow-x:auto">
+          docker network create aequitas-net 2&gt;/dev/null || true<br>
+          mkdir -p /root/aequitas-verifier-data<br><br>
+          docker run -d --name aequitas-verifier \<br>
+          &nbsp;&nbsp;--network aequitas-net --restart unless-stopped \<br>
+          &nbsp;&nbsp;--env-file /root/.aequitas-verifier.env \<br>
+          &nbsp;&nbsp;-v /root/aequitas-verifier-data:/data \<br>
+          &nbsp;&nbsp;&lt;image&gt;<br><br>
+          <span style="color:var(--muted)"># Did it come up?</span><br>
+          curl -s localhost:8098/health
+        </div>
+        <div style="font-size:0.77rem;color:var(--muted);line-height:1.9;margin-bottom:18px" data-i18n="bv-s3-note">
+          A healthy answer reports <span style="font-family:var(--font-mono);color:var(--neon)">plaintext_templates: 0</span> and <span style="font-family:var(--font-mono);color:var(--neon)">sketch_seed_configured: true</span>. The first is the claim that no whole template is stored, in a form you can check yourself rather than take on faith. Check it now and again later — it is your own guarantee as much as anyone else's.
+        </div>
+
+        <!-- Schritt 4 -->
+        <div style="font-size:0.76rem;color:var(--purple);font-weight:700;letter-spacing:1px;text-transform:uppercase;margin-bottom:10px;border-bottom:1px solid var(--border);padding-bottom:6px" data-i18n="bv-s4-t">Step 4 — Put HTTPS in Front</div>
+        <div style="font-size:0.79rem;color:var(--muted);line-height:1.9;margin-bottom:8px" data-i18n="bv-s4-d">Other committee members reach you over the public internet, so the port must not be exposed unencrypted. Caddy obtains a certificate on its own.</div>
+        <div style="font-family:var(--font-mono);background:rgba(0,0,0,0.3);border:1px solid rgba(139,92,246,0.15);border-radius:6px;padding:14px;margin-bottom:18px;font-size:0.78rem;line-height:2.3;overflow-x:auto">
+          <span style="color:var(--muted)"># /root/Caddyfile</span><br>
+          verifier.example.org {<br>
+          &nbsp;&nbsp;reverse_proxy aequitas-verifier:8098<br>
+          }
+        </div>
+
+        <!-- Schritt 5 -->
+        <div style="font-size:0.76rem;color:var(--purple);font-weight:700;letter-spacing:1px;text-transform:uppercase;margin-bottom:10px;border-bottom:1px solid var(--border);padding-bottom:6px" data-i18n="bv-s5-t">Step 5 — Link Your Key to Your Human Wallet</div>
+        <div style="font-size:0.79rem;color:var(--muted);line-height:1.9;margin-bottom:10px" data-i18n="bv-s5-d">
+          This is the step that makes one human one verifier. You sign twice: once with your registered human wallet, and once with your node key. The chain accepts the pair only if both signatures check out, so nobody can register a key in your name and you cannot register two. Use the button below.
+        </div>
+        <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:18px">
+          <a class="hover-fade" href="/node-binding" target="_blank" rel="noopener noreferrer" style="display:inline-flex;align-items:center;gap:8px;background:rgba(139,92,246,0.15);color:var(--purple);border:1px solid rgba(139,92,246,0.3);padding:12px 20px;border-radius:8px;font-size:0.84rem;font-weight:700;text-decoration:none" data-i18n="bv-bind">🔗 Generate Node Binding Signature</a>
+        </div>
+
+        <!-- Schritt 6 -->
+        <div style="font-size:0.76rem;color:var(--purple);font-weight:700;letter-spacing:1px;text-transform:uppercase;margin-bottom:10px;border-bottom:1px solid var(--border);padding-bottom:6px" data-i18n="bv-s6-t">Step 6 — Publish Your Public Key</div>
+        <div style="font-size:0.79rem;color:var(--muted);line-height:1.9;margin-bottom:18px" data-i18n="bv-s6-d">
+          Send the <strong style="color:var(--text)">public</strong> half from Step 1, together with your HTTPS address, to the group. It is added to the list every proof server checks against, and from then on your attestations count toward the quorum. Nothing secret leaves your machine in this step — that is the point of the split: the private half stays with you forever, and the public half is useless without it.
+        </div>
+
+        <!-- Nachpruefen -->
+        <div style="font-size:0.76rem;color:var(--purple);font-weight:700;letter-spacing:1px;text-transform:uppercase;margin-bottom:10px;border-bottom:1px solid var(--border);padding-bottom:6px" data-i18n="bv-check-t">Checking That It Works</div>
+        <div style="font-family:var(--font-mono);background:rgba(0,0,0,0.3);border:1px solid rgba(139,92,246,0.15);border-radius:6px;padding:14px;margin-bottom:8px;font-size:0.78rem;line-height:2.3;overflow-x:auto">
+          <span style="color:var(--muted)"># Reachable from outside, with a valid certificate?</span><br>
+          curl -s https://verifier.example.org/health<br><br>
+          <span style="color:var(--muted)"># Does the network see you and agree with the others?</span><br>
+          curl -s https://aequitas.digital/inventory
+        </div>
+        <div style="font-size:0.77rem;color:var(--muted);line-height:1.9;margin-bottom:18px" data-i18n="bv-check-d">
+          The second call lists every verifier and compares them: whether all hold the same number of enrollments, whether anyone is missing a seed, and whether the keys agree. If your entry shows a divergence, it is better to find out here than during someone's registration.
+        </div>
+
+        <!-- Ehrlichkeit -->
+        <div style="background:rgba(139,92,246,0.06);border:1px solid rgba(139,92,246,0.22);border-radius:8px;padding:14px">
+          <div style="font-size:0.77rem;color:var(--purple);font-weight:700;margin-bottom:6px" data-i18n="bv-honest-t">Where this stands today — plainly</div>
+          <div style="font-size:0.79rem;color:var(--muted);line-height:1.9" data-i18n="bv-honest-d">
+            This part is in beta and the limits are real. The joint comparison consumes one-time cryptographic material, and one delivery currently covers a few dozen registrations before more is needed — so the confidential path proves itself at small scale first, not at millions. The work also grows with the number of people enrolled. We publish these numbers rather than round them off: a system that asks for your face has no business being vague about what it can and cannot do yet.
+          </div>
+        </div>
+      </div>
+    </div>
+</div>
+</div>
+
 <div id="net-protocol" class="stab-panel">
 <div class="ps">
   <div class="section-label" data-i18n="proto-label">Aequitas V7 Protocol — Technical Documentation</div>
