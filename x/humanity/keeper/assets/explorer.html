@@ -1153,9 +1153,17 @@
 </div>
 
 <div id="net-runnode" class="stab-panel">
+  <!-- Sprungleiste. Der Bereich ist ueber 11.000 px lang und enthaelt ZWEI
+       gleichrangige Leitfaeden hintereinander; ohne sie war der zweite
+       praktisch nicht auffindbar -- er stand da, nur sah ihn niemand. -->
+  <div style="display:flex;flex-wrap:wrap;align-items:center;gap:10px;margin-bottom:14px;font-size:0.78rem">
+    <span style="color:var(--muted)" data-i18n="nav-jump-t">Jump to</span>
+    <a href="#guide-node" style="color:var(--gold);text-decoration:none;border:1px solid var(--border);border-radius:6px;padding:6px 12px" data-i18n="nav-jump-node">Run a Node</a>
+    <a href="#guide-bv" style="color:var(--neon);text-decoration:none;border:1px solid var(--border);border-radius:6px;padding:6px 12px" data-i18n="nav-jump-bv">Bio Verifier</a>
+  </div>
 <div class="ns" style="grid-template-columns:1fr">
 <div class="nc" style="grid-column:1/-1;background:linear-gradient(135deg,rgba(245,166,35,0.06),rgba(13,8,32,0.9));border-color:rgba(245,166,35,0.2)">
-    <div class="nc-title" style="color:var(--gold)" data-i18n="run-node-title">Run Your Own Node — Help Secure the Network</div>
+    <div id="guide-node" class="nc-title" style="color:var(--gold);scroll-margin-top:80px" data-i18n="run-node-title">Run Your Own Node — Help Secure the Network</div>
     <div style="font-size:0.82rem;color:var(--muted);line-height:1.9;margin-bottom:16px" data-i18n="run-node-desc">Registered humans can run an Aequitas validator node — no stake, no application required, but <strong style="color:var(--gold)" data-i18n="x-node-operator-wallet-must-be">NODE_OPERATOR_WALLET must be a registered Aequitas human</strong> (this is a protocol security requirement). Nodes participate in block production, validate the human registry, and synchronize the BlockDAG. Node operators earn a share of protocol fees via the Validators Pool (40% of all protocol fees, distributed daily). The more nodes that run, the more decentralized and resilient the network becomes.</div>
     <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:16px">
       <a id="node-guide-pdf-btn" class="hover-fade" href="/download/node-guide-en.pdf" download style="display:inline-flex;align-items:center;gap:8px;background:var(--gold);color:#06091A;padding:12px 20px;border-radius:8px;font-size:0.84rem;font-weight:700;text-decoration:none" data-i18n="x-node-operator-guide-pdf">
@@ -1174,7 +1182,7 @@
          t VERSCHIEDENE Bezeugende, und ein einzelner geleakter Schluessel
          genuegt nicht mehr. -->
     <div class="nc" style="grid-column:1/-1;margin-top:18px;background:linear-gradient(135deg,rgba(0,230,118,0.06),rgba(13,8,32,0.9));border-color:rgba(0,230,118,0.22)">
-      <div class="nc-title" style="color:var(--neon)" data-i18n="bv-title">Or Become a Bio Verifier — the Role That Makes Uniqueness Decentralized</div>
+      <div id="guide-bv" class="nc-title" style="color:var(--neon);scroll-margin-top:80px" data-i18n="bv-title">Or Become a Bio Verifier — the Role That Makes Uniqueness Decentralized</div>
       <div style="font-size:0.82rem;color:var(--muted);line-height:1.9;margin-bottom:16px" data-i18n="bv-desc">
         A block-producing node secures the <strong style="color:var(--text)">ledger</strong>. A bio verifier secures something else: the promise that <strong style="color:var(--neon)">each human registers only once</strong>. These are separate roles — you can run either, or both on the same machine.
       </div>
