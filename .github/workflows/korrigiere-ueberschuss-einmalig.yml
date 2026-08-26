@@ -93,14 +93,26 @@ jobs:
             echo "frei."
 
             echo "=== korrigieren: -${BURN_AEQ} AEQ, -${BURN_TUSD} tUSD ==="
-            HTTP=$(curl -s -o /tmp/antwort.json -w '%{http_code}' \
+            # AUS DEM NETZWERK-NAMENSRAUM DES KNOTENS heraus aufrufen.
+            #
+            # Ein curl auf localhost:8080 der BOX geht durch Dockers
+            # Portweiterleitung; der Container sieht dann das Gateway des
+            # Bridge-Netzes als Gegenstelle, nicht die Schleife -- und der
+            # Endpunkt weist ab. Private Adressen einfach zuzulassen waere
+            # keine Loesung, sondern ein Loch: Anfragen aus dem Internet
+            # kommen ueber dieselbe Weiterleitung und saehen genauso aus.
+            #
+            # --network container:<name> teilt den Namensraum. localhost ist
+            # dann wirklich der Knoten, und die Gegenstelle wirklich 127.0.0.1.
+            ANTWORT=$(docker run --rm --network "container:$(docker ps --format '{{.Names}}' | grep -i aequitas-node | head -1)" \
+              curlimages/curl:latest -s -w '
+HTTP:%{http_code}' \
               -X POST http://localhost:8080/api/admin/pool-correction \
               ${TOKEN:+-H "Authorization: Bearer ${TOKEN}"} \
               -H 'Content-Type: application/json' \
               -d "{\"burn_aeq\":${BURN_AEQ},\"burn_tusd\":${BURN_TUSD},\"confirm\":\"reserve-korrigieren\"}")
-            echo "HTTP $HTTP"
-            cat /tmp/antwort.json; echo
-            rm -f /tmp/antwort.json
+            echo "$ANTWORT"
+            HTTP="$(printf '%s' "$ANTWORT" | tail -1 | cut -d: -f2)"
             if [ "$HTTP" != "200" ]; then
               echo "Korrektur NICHT angewendet."
               exit 1
