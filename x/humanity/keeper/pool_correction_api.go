@@ -4,6 +4,7 @@ import (
 	"crypto/subtle"
 	"encoding/json"
 	"fmt"
+	"net"
 	"net/http"
 	"os"
 	"strings"
@@ -52,14 +53,27 @@ func (a *APIServer) handlePoolCorrection(w http.ResponseWriter, r *http.Request)
 		http.Error(w, `{"error":"pool-correction ist abgeschaltet; ALLOW_POOL_CORRECTION=true setzen oder `+poolCorrectionAllowKey+`=1 in chain_config schreiben"}`, http.StatusForbidden)
 		return
 	}
+	// Zweiter Riegel: entweder ein gueltiges Token, ODER die Anfrage kommt von
+	// der Box selbst.
+	//
+	// Der Weg ueber die Schleife ist hier nicht die Notloesung, sondern der
+	// natuerliche: diese Korrektur ist eine Betreiberhandlung AUF der Maschine.
+	// Wer dort etwas ausfuehren kann, haette ohnehin Zugriff auf Datenbank und
+	// Prozess -- ein zusaetzliches Token schuetzt gegen niemanden, der schon
+	// so weit ist.
+	//
+	// Gegen aussen schuetzt es sehr wohl: Port 8080 ist oeffentlich
+	// erreichbar, und von dort ist RemoteAddr nie die Schleife. Ohne Token
+	// bleibt der Endpunkt fuer das Internet also zu.
+	//
+	// (Auf diesem Knoten war SNAPSHOT_TOKEN am 26.08.2026 gar nicht gesetzt --
+	// der Endpunkt waere ohne diesen Weg unbenutzbar gewesen, und die Absage
+	// haette wie eine Fehlkonfiguration ausgesehen statt wie eine Absicht.)
 	token := os.Getenv("SNAPSHOT_TOKEN")
-	if token == "" {
-		http.Error(w, `{"error":"SNAPSHOT_TOKEN auf diesem Knoten nicht gesetzt"}`, http.StatusForbidden)
-		return
-	}
 	auth := strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer ")
-	if subtle.ConstantTimeCompare([]byte(auth), []byte(token)) != 1 {
-		http.Error(w, `{"error":"unauthorized — Authorization: Bearer <SNAPSHOT_TOKEN>"}`, http.StatusUnauthorized)
+	tokenOK := token != "" && subtle.ConstantTimeCompare([]byte(auth), []byte(token)) == 1
+	if !tokenOK && !vonDerSchleife(r) {
+		http.Error(w, `{"error":"unauthorized — Authorization: Bearer <SNAPSHOT_TOKEN>, oder von der Box selbst aufrufen"}`, http.StatusUnauthorized)
 		return
 	}
 
@@ -95,4 +109,19 @@ func (a *APIServer) handlePoolCorrection(w http.ResponseWriter, r *http.Request)
 			"nach erfolgreicher Korrektur SUPPLY_GAP_BASELINE_AEQ=0 setzen, " +
 			"damit der Alarm auf dem neuen Stand scharf wird",
 	})
+}
+
+// vonDerSchleife sagt, ob die Anfrage von der Maschine selbst kommt.
+//
+// Bewusst OHNE Beruecksichtigung von X-Forwarded-For: dieser Kopfzeile darf
+// hier nichts glauben, wer sie nicht selbst gesetzt hat, und ein Angreifer
+// setzt sie frei. Gefragt wird ausschliesslich die tatsaechliche Gegenstelle
+// der Verbindung.
+func vonDerSchleife(r *http.Request) bool {
+	host, _, err := net.SplitHostPort(r.RemoteAddr)
+	if err != nil {
+		host = r.RemoteAddr
+	}
+	ip := net.ParseIP(strings.TrimSpace(host))
+	return ip != nil && ip.IsLoopback()
 }

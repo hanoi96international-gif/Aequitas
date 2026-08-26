@@ -3,6 +3,7 @@ package keeper
 import (
 	"context"
 	"math"
+	"net/http/httptest"
 	"testing"
 )
 
@@ -116,5 +117,31 @@ func TestOhnePoolKeineKorrektur(t *testing.T) {
 	cs.pool = nil
 	if err := cs.applyPoolCorrectionLocked(context.Background(), 1, 1); err == nil {
 		t.Fatal("ein Knoten ohne Pool darf nicht so tun, als haette er korrigiert")
+	}
+}
+
+func TestNurDieEchteGegenstelleZaehlt(t *testing.T) {
+	// X-Forwarded-For darf hier NICHTS bewirken: die Kopfzeile setzt jeder
+	// frei, und wer sie glaubt, macht aus einem Schleifen-Tor ein offenes.
+	faelle := []struct {
+		remote   string
+		header   string
+		erwartet bool
+	}{
+		{"127.0.0.1:5555", "", true},
+		{"[::1]:5555", "", true},
+		{"173.249.37.118:5555", "", false},
+		{"173.249.37.118:5555", "127.0.0.1", false},
+		{"8.8.8.8:1", "127.0.0.1, 10.0.0.1", false},
+	}
+	for _, f := range faelle {
+		r := httptest.NewRequest("POST", "/api/admin/pool-correction", nil)
+		r.RemoteAddr = f.remote
+		if f.header != "" {
+			r.Header.Set("X-Forwarded-For", f.header)
+		}
+		if got := vonDerSchleife(r); got != f.erwartet {
+			t.Fatalf("RemoteAddr=%q XFF=%q -> %v, erwartet %v", f.remote, f.header, got, f.erwartet)
+		}
 	}
 }
