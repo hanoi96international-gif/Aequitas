@@ -1560,7 +1560,10 @@
         &nbsp;&nbsp;-e <span style="color:var(--neon)">SELF_URL</span>="<span style="color:var(--gold)">http://YOUR-SERVER-IP:8080</span>" \<br>
         &nbsp;&nbsp;-e <span style="color:var(--neon)">PRIMARY_NODE_URL</span>="https://aequitas.digital" \<br>
         &nbsp;&nbsp;-e <span style="color:var(--neon)">BOOTSTRAP_SNAPSHOT_URL</span>="https://aequitas.digital/api/snapshot" \<br>
-        &nbsp;&nbsp;-e <span style="color:var(--neon)">BOOTSTRAP_SIGNER</span>="0x92cbedec9d348b4762cb9af99500ee6139c5b671" \<br>
+        <span style="color:var(--muted)"># must be the signing address of the node serving BOOTSTRAP_SNAPSHOT_URL above.</span><br>
+        <span style="color:var(--muted)"># Point the URL somewhere else and this value has to change with it, or the</span><br>
+        <span style="color:var(--muted)"># snapshot fails signature verification and the node never bootstraps.</span><br>
+        &nbsp;&nbsp;-e <span style="color:var(--neon)">BOOTSTRAP_SIGNER</span>="0x0be8b961cbf6564bd1931b0803d35c0659e0d016" \<br>
         &nbsp;&nbsp;-e <span style="color:var(--neon)">AUTO_HEAL_ON_DIVERGENCE</span>="true" <span style="color:var(--muted)"># strongly recommended</span> \<br>
         &nbsp;&nbsp;-p 8080:8080 -p 4001:4001 aequitas-node<br><br>
         <span style="color:var(--muted)"># 4. Copy NODE_KEY from logs (do this once — gives your node a stable P2P identity)</span><br>
@@ -1577,7 +1580,10 @@
         &nbsp;&nbsp;-e <span style="color:var(--neon)">SELF_URL</span>="<span style="color:var(--gold)">http://YOUR-SERVER-IP:8080</span>" \<br>
         &nbsp;&nbsp;-e <span style="color:var(--neon)">PRIMARY_NODE_URL</span>="https://aequitas.digital" \<br>
         &nbsp;&nbsp;-e <span style="color:var(--neon)">BOOTSTRAP_SNAPSHOT_URL</span>="https://aequitas.digital/api/snapshot" \<br>
-        &nbsp;&nbsp;-e <span style="color:var(--neon)">BOOTSTRAP_SIGNER</span>="0x92cbedec9d348b4762cb9af99500ee6139c5b671" \<br>
+        <span style="color:var(--muted)"># must be the signing address of the node serving BOOTSTRAP_SNAPSHOT_URL above.</span><br>
+        <span style="color:var(--muted)"># Point the URL somewhere else and this value has to change with it, or the</span><br>
+        <span style="color:var(--muted)"># snapshot fails signature verification and the node never bootstraps.</span><br>
+        &nbsp;&nbsp;-e <span style="color:var(--neon)">BOOTSTRAP_SIGNER</span>="0x0be8b961cbf6564bd1931b0803d35c0659e0d016" \<br>
         &nbsp;&nbsp;-e <span style="color:var(--neon)">AUTO_HEAL_ON_DIVERGENCE</span>="true" <span style="color:var(--muted)"># strongly recommended</span> \<br>
         &nbsp;&nbsp;-p 8080:8080 -p 4001:4001 aequitas-node
       </div>
@@ -1706,7 +1712,7 @@
         <tr style="border-bottom:1px solid rgba(139,92,246,0.08);background:rgba(0,0,0,0.1)">
           <td style="font-size:0.78rem;color:var(--muted);padding:8px">Bootstrap snapshot failed / StateRoot mismatch</td>
           <td style="font-size:0.78rem;color:var(--muted);padding:8px">SNAPSHOT_TOKEN not set on primary, or BOOTSTRAP_SIGNER wrong</td>
-          <td style="font-size:0.78rem;color:var(--muted);padding:8px">Set BOOTSTRAP_SNAPSHOT_URL=https://aequitas.digital/api/snapshot, BOOTSTRAP_SIGNER=0x92cbedec9d348b4762cb9af99500ee6139c5b671, and SNAPSHOT_TOKEN (from network operator). Restart — node imports state automatically if DB is empty.</td>
+          <td style="font-size:0.78rem;color:var(--muted);padding:8px">Set BOOTSTRAP_SNAPSHOT_URL=https://aequitas.digital/api/snapshot, BOOTSTRAP_SIGNER=0x0be8b961cbf6564bd1931b0803d35c0659e0d016, and SNAPSHOT_TOKEN (from network operator). Restart — node imports state automatically if DB is empty.</td>
         </tr>
         <tr style="border-bottom:1px solid rgba(139,92,246,0.08)">
           <td style="font-size:0.78rem;color:var(--muted);padding:8px">Node not in block explorer / no MERGE blocks</td>

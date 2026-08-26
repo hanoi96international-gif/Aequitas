@@ -81,13 +81,24 @@ func TestVorratWarntBevorErBricht(t *testing.T) {
 	}
 }
 
-func TestErschoepfterVorratNenntDieFolgeFuerALLE(t *testing.T) {
-	// Nicht "diese Registrierung scheitert": ein zweimal benutztes Tripel
-	// hoert auf zu verblenden, deshalb verweigert der Zuteiler zu Recht die
-	// Wiederverwendung -- und dann geht fuer JEDEN nichts mehr.
-	w, _ := tripelWarnung(0)
-	if !strings.Contains(w, "alle") {
-		t.Fatalf("die Folge betrifft alle gleichzeitig, das muss dastehen: %q", w)
+func TestDieWarnungBehauptetNichtMehrAlsSieWeiss(t *testing.T) {
+	// Die erste Fassung dieser Warnung behauptete "die naechste Registrierung
+	// scheitert, und zwar fuer alle gleichzeitig". Das gilt NUR bei
+	// MPC_AUTHORITATIVE=true im Vergleichsdienst -- und das ist die Ausnahme.
+	// Im Schattenbetrieb haelt ein leerer Vorrat nur den Schattenvergleich an;
+	// entschieden wird auf dem Klartextpfad.
+	//
+	// Eine Warnung, die dramatischer ist als die Lage, kostet dasselbe wie
+	// eine, die sie verharmlost: beim naechsten Mal glaubt sie niemand.
+	w, n := tripelWarnung(0)
+	if strings.Contains(w, "Registrierung scheitert") {
+		t.Fatalf("das gilt nur im scharfgeschalteten Modus: %q", w)
+	}
+	if !strings.Contains(n, "MPC_AUTHORITATIVE") {
+		t.Fatalf("wovon die Wirkung abhaengt, muss dastehen: %q", n)
+	}
+	if !strings.Contains(n, "Klartextpfad") {
+		t.Fatalf("dass sonst der Klartextpfad entscheidet, gehoert dazu: %q", n)
 	}
 }
 

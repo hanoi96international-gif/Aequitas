@@ -34,8 +34,19 @@ import (
 //
 // Läuft der Vorrat leer, verweigert mpcTriples zu Recht die Wiederverwendung
 // — ein zweimal benutztes Tripel hört auf zu verblenden und verrät die
-// Differenz der Geheimnisse, auf die es angewandt wurde. Nur erfährt das
-// bisher niemand, bevor die erste Registrierung daran scheitert.
+// Differenz der Geheimnisse, auf die es angewandt wurde.
+//
+// WAS DAS DANN BEDEUTET, HÄNGT AN EINEM SCHALTER IM VERGLEICHSDIENST.
+//
+// MPC entscheidet nur bei MPC_AUTHORITATIVE=true, und das ist die Ausnahme,
+// nicht die Voreinstellung. Im Schattenbetrieb läuft MPC mit, sein Verdikt
+// wird aber verworfen — entschieden wird auf dem Klartextpfad, der gegen
+// 64-Byte-Sketches vergleicht und bei 8 Mrd. Menschen 512 GB braucht, also
+// eine Festplatte. Ein leerer Tripelvorrat hält dort GAR NICHTS an.
+//
+// Die quadratische Grenze unten ist deshalb keine Grenze für die
+// Registrierung, sondern für den Schattenvergleich. Wer sie als Beta-Blocker
+// liest, verwechselt die beiden Pfade.
 //
 // Dieselbe Lehre wie bei der Bestandsdrift und den fehlenden Schlüsseln: ein
 // Zustand, den man erst bemerkt, wenn er bricht, ist kein überwachter
@@ -177,16 +188,33 @@ func tripelWarnung(nochRegistrier int) (warnung, nachschub string) {
 		return "", ""
 	}
 	if nochRegistrier <= 0 {
-		warnung = "Vorrat erschoepft: die naechste Registrierung scheitert, " +
-			"und zwar fuer alle gleichzeitig"
+		warnung = "Vorrat erschoepft: der MPC-Pfad kann nichts mehr vergleichen"
 	} else {
 		warnung = fmt.Sprintf(
-			"nur noch %d Registrierungen gedeckt -- die Kosten wachsen "+
+			"nur noch %d MPC-Vergleiche gedeckt -- die Kosten wachsen "+
 				"quadratisch, die letzten sind die teuersten", nochRegistrier)
 	}
-	nachschub = "cmd/mpc-dealer -count <n> -parties <k> -out <dir>; je Partei " +
-		"GENAU EINE Datei ausliefern. Fuer R Registrierungen ab leerem Bestand " +
-		"werden rund 1024*R^2 Tripel gebraucht (R=200 sind ~41 Mio., ~1,9 GB je Partei)"
+	// WAS DAS HEISST, HAENGT AN EINEM SCHALTER, DER WOANDERS STEHT.
+	//
+	// Der Vergleichsdienst entscheidet ueber MPC nur, wenn dort
+	// MPC_AUTHORITATIVE=true gesetzt ist -- und das ist es nicht. Im
+	// Schattenbetrieb laeuft MPC MIT, entscheidet aber nichts: der Verdikt
+	// wird verworfen, entschieden wird auf dem Klartextpfad.
+	//
+	// Ein leerer Vorrat haelt dann NICHT die Registrierung an, sondern nur
+	// den Schattenvergleich. Das ist ein wichtiger Unterschied, und die
+	// vorige Fassung dieser Warnung hat ihn verschwiegen: sie behauptete
+	// "die naechste Registrierung scheitert, und zwar fuer alle
+	// gleichzeitig". Das gilt ausschliesslich im scharfgeschalteten Modus.
+	//
+	// Eine Warnung, die dramatischer ist als die Lage, kostet dasselbe wie
+	// eine, die sie verharmlost: beim naechsten Mal glaubt sie niemand.
+	nachschub = "Wirkung haengt an MPC_AUTHORITATIVE im Vergleichsdienst: ist es " +
+		"aus (Voreinstellung), stoppt ein leerer Vorrat nur den Schattenvergleich, " +
+		"nicht die Registrierung -- entschieden wird auf dem Klartextpfad. Ist es " +
+		"an, scheitert jede Registrierung. Nachschub: cmd/mpc-dealer -count <n> " +
+		"-parties <k> -out <dir>, je Partei GENAU EINE Datei; rund 1024*R^2 Tripel " +
+		"fuer R Vergleiche ab leerem Bestand"
 	return warnung, nachschub
 }
 
