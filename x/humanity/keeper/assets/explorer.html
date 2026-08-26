@@ -1315,7 +1315,7 @@
         <tr style="border-bottom:1px solid rgba(139,92,246,0.08);background:rgba(0,0,0,0.1)">
           <td style="font-size:0.78rem;font-family:var(--font-mono);color:var(--neon);padding:8px">BOOTSTRAP_SIGNER</td>
           <td style="font-size:0.77rem;color:var(--muted);padding:8px">Multi-node</td>
-          <td style="font-size:0.78rem;color:var(--muted);padding:8px">Ethereum signing address of the primary node. Required when BOOTSTRAP_SNAPSHOT_URL is set. Get it from <code style="color:var(--gold)">https://aequitas.digital/api/status</code> → <code>signing_address</code> field. Prevents importing a tampered snapshot.</td>
+          <td style="font-size:0.78rem;color:var(--muted);padding:8px">Signing address of the node behind BOOTSTRAP_SNAPSHOT_URL &mdash; the snapshot is verified against it, so the two belong together and must be changed together. For https://aequitas.digital that is <span style="color:var(--purple);font-family:var(--font-mono)">0x0be8b961cbf6564bd1931b0803d35c0659e0d016</span>, the value already filled in above. It is deliberately NOT published in /api/status &mdash; validator addresses are not exposed there. Point the URL at a different node and you have to ask that node&rsquo;s operator for its address. Prevents importing a tampered snapshot.</td>
         </tr>
         <tr style="border-bottom:1px solid rgba(139,92,246,0.08)">
           <td style="font-size:0.78rem;font-family:var(--font-mono);color:var(--neon);padding:8px">SNAPSHOT_TOKEN</td>
@@ -1365,7 +1365,7 @@
         <tr style="background:rgba(0,0,0,0.1)">
           <td style="font-size:0.78rem;font-family:var(--font-mono);color:var(--neon);padding:8px">BOOTSTRAP_P2P_ADDR</td>
           <td style="font-size:0.77rem;color:var(--muted);padding:8px">No</td>
-          <td style="font-size:0.78rem;color:var(--muted);padding:8px">Overrides the built-in libp2p bootstrap multiaddress (see Step 7 below). Only needed if you want to pin a specific entry point; the two validator addresses are compiled in as defaults again in the future &mdash; set this instead of waiting for a code deploy.</td>
+          <td style="font-size:0.78rem;color:var(--muted);padding:8px">Overrides the built-in libp2p bootstrap multiaddress (see Step 7 below). Only needed if you want to pin a specific entry point &mdash; both validator addresses are compiled in as defaults, so a node with no value here still finds the network. If those addresses ever change, set this instead of waiting for a code deploy.</td>
         </tr>
       </table></div>
 

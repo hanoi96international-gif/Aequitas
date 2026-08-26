@@ -7065,12 +7065,40 @@ document.addEventListener('DOMContentLoaded', function() {
   if (removePctInput) removePctInput.addEventListener('input', function() { setRemovePctManual(this.value); });
   const langSel = document.getElementById('lang-sel');
   if (langSel) langSel.addEventListener('change', function() { setLang(this.value); });
-  // Restore the stored choice. Nothing called setLang() on load before this,
-  // so a visitor who had picked a language got English back on every
-  // navigation and every reload.
+  // IMMER anwenden, auch fuer Englisch -- und das ist der Kern.
+  //
+  // Vorher lief setLang() nur, wenn schon eine Sprache gespeichert war. Ein
+  // Erstbesucher bekam also nie das Woerterbuch zu sehen, sondern den rohen
+  // Text aus dem HTML. Der ist eine ZWEITE Kopie jeder Zeichenkette, und
+  // Kopien driften: am 26.08.2026 gemessen wichen 138 von 462 Stellen vom
+  // gepflegten englischen Woerterbuch ab.
+  //
+  // Das war nicht kosmetisch. Die Abweichungen stammten fast alle aus der
+  // alten, geraetegebundenen Beschreibung und sagten dem Besucher das
+  // Gegenteil dessen, was geschieht:
+  //
+  //   "One identity per device, not yet body-bound"  -> tatsaechlich
+  //                                                     gesichtsgebunden
+  //   "Once per device"                              -> einmal pro MENSCH
+  //   "Data never leaves device"                     -> Gesichtspruefung per
+  //                                                     Quorum, Bilder danach
+  //                                                     verworfen
+  //
+  // Jemandem zu sagen, sein Koerper werde nicht geprueft, waehrend eine
+  // Gesichtspruefung zwingend ist (BIO_ATTESTATION_MODE=required auf beiden
+  // Proof-Servern), ist keine veraltete Marketingzeile, sondern eine falsche
+  // Grundlage fuer seine Einwilligung.
+  //
+  // Das Woerterbuch ist die gepflegte Quelle -- dort landet jede Uebersetzung
+  // und jede Korrektur. Es unbedingt anzuwenden macht die Drift wirkungslos,
+  // statt sie einmalig hinterherzuraeumen.
+  //
+  // Gefahrlos: genau dieser Pfad laeuft heute schon bei jedem wiederkehrenden
+  // Besucher, und setLang() zieht dynamische Werte danach selbst wieder nach
+  // (applyBlockTime, applyRpcUrl).
   var storedLang = null;
   try { storedLang = localStorage.getItem(LANG_KEY); } catch (e) { /* private mode */ }
-  if (storedLang && T[storedLang]) setLang(storedLang);
+  setLang(storedLang && T[storedLang] ? storedLang : 'en');
   // Mirror whatever the markup shipped as active before anyone clicks.
   syncActiveAria();
   const expSearchInput = document.getElementById('exp-search-input');
