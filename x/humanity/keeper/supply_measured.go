@@ -135,16 +135,11 @@ func (cs *ChainState) SupplyReconciliation() map[string]interface{} {
 	// wrong stops being read -- and this is the one number that says whether
 	// the currency's central promise still holds.
 	//
-	// The baseline is the excess measured on 2026-08-20, created before the
-	// save-ordering fixes of that day (see applySwapDeltaLocked,
-	// AddLiquidityDelta and RemoveLiquidityAtomic, which now all persist the
-	// debit before the credit so a failure between the two writes destroys
-	// supply rather than creating it). It is deliberately a floor to compare
-	// against, never an excuse: burning it is still open.
-	//
-	// Set SUPPLY_GAP_BASELINE_AEQ after the old excess is actually removed --
-	// lowering it is what turns the alarm back on at the new level, and it
-	// takes no rebuild.
+	// Seit dem 26.08.2026 ist die Baseline 0: der Ueberschuss von damals wurde
+	// abgetragen (pool_correction.go), und beide Knoten melden seither
+	// reconciled=true. Jede Abweichung nach oben ist ab jetzt frisch
+	// geschoepftes Geld -- es gibt nichts mehr, an dem sie sich verstecken
+	// koennte.
 	baseline := knownSupplyGapAEQ()
 	beyond := difference - baseline
 	out["known_gap_baseline"] = fmt.Sprintf("%.6f", baseline)
@@ -231,14 +226,27 @@ func (cs *ChainState) supplyBreakdown() (map[string]string, error) {
 	}, nil
 }
 
-// knownSupplyGapAEQ is the excess that already existed when the supply audit
-// of 2026-08-20 measured it, in AEQ.
+// knownSupplyGapAEQ is the gap that is NOT treated as new creation, in AEQ.
 //
-// It is NOT a tolerance. Every path that could create money was made
-// debit-before-credit on that day, so nothing should ever be added to this
-// figure; it exists only so that a NEW gap is visible next to an old one that
-// has not been cleaned up yet. Removing the old excess means moving AEQ on a
-// live chain, which is a decision about real balances and not a code change.
+// It is 0, and that is the whole point.
+//
+// From 2026-08-15 the chain held 305.277988 AEQ more than the rule allows.
+// The cause was fixed on 2026-08-20 (five paths persisted the credit before
+// the debit), but the excess itself sat in the AMM reserve until 2026-08-26,
+// when a replicated pool_correction transaction removed it along with the
+// proportional tUSD, leaving the price untouched. Both nodes reported
+// reconciled=true with measured=17000.000000 immediately afterwards.
+//
+// While the excess still sat there, this figure was that number, so that a
+// NEW gap stayed visible next to the old one instead of hiding inside it. It
+// is 0 now because there is nothing left to look past: every AEQ the ledger
+// holds is explained by a registered human.
+//
+// It is NOT a tolerance, and it should never be raised. Raising it is the one
+// change that would make this alarm quietly stop reporting the thing it
+// exists to report. SUPPLY_GAP_BASELINE_AEQ can override it, but only for the
+// same reason it was non-zero before: a known excess that is waiting to be
+// removed, never one that is being accepted.
 func knownSupplyGapAEQ() float64 {
 	if raw := strings.TrimSpace(os.Getenv("SUPPLY_GAP_BASELINE_AEQ")); raw != "" {
 		if v, err := strconv.ParseFloat(raw, 64); err == nil && v >= 0 {
@@ -247,7 +255,7 @@ func knownSupplyGapAEQ() float64 {
 		// A malformed override must not silently widen the alarm's blind spot.
 		fmt.Printf("[SUPPLY] SUPPLY_GAP_BASELINE_AEQ=%q is not a number, using the built-in baseline\n", raw)
 	}
-	return 305.277988
+	return 0
 }
 
 // supplyAlarm decides whether the gap grew past what was already known.

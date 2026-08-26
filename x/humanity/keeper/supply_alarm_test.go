@@ -6,9 +6,10 @@ import (
 	"testing"
 )
 
-// The gap measured on 2026-08-20. Anything at or below it is the old excess
-// that predates the save-ordering fixes of that day; anything above it is new.
-const bekannteLuecke = 305.277988
+// Seit dem 26.08.2026 ist die Baseline 0: der Ueberschuss wurde abgetragen
+// (pool_correction.go), beide Knoten melden reconciled=true. Ab jetzt ist
+// JEDE Abweichung nach oben frisch geschoepftes Geld.
+const bekannteLuecke = 0.0
 
 func TestSupplyAlarmSchweigtBeiDerBekanntenLuecke(t *testing.T) {
 	if alarm, _ := supplyAlarm(bekannteLuecke, bekannteLuecke); alarm {
@@ -70,9 +71,23 @@ func TestUnbrauchbareBaselineFaelltAufDenEingebautenWertZurueck(t *testing.T) {
 	}
 }
 
-func TestOhneUmgebungsvariableGiltDerGemesseneWert(t *testing.T) {
+func TestOhneUmgebungsvariableGiltNullToleranz(t *testing.T) {
 	os.Unsetenv("SUPPLY_GAP_BASELINE_AEQ")
-	if got := knownSupplyGapAEQ(); got != bekannteLuecke {
-		t.Fatalf("erwartet %v, bekommen %v", bekannteLuecke, got)
+	if got := knownSupplyGapAEQ(); got != 0 {
+		t.Fatalf("die Baseline muss 0 sein, ist aber %v -- ein Wert darueber "+
+			"waere ein blinder Fleck genau in der Groesse", got)
+	}
+}
+
+// Der Zustand, der bis zum 26.08.2026 galt -- als Beleg, dass die Umgehung
+// weiterhin traegt, falls je wieder ein bekannter Ueberschuss auf seine
+// Abtragung wartet.
+func TestEineBekannteAltlastLaesstSichWeiterhinAusnehmen(t *testing.T) {
+	t.Setenv("SUPPLY_GAP_BASELINE_AEQ", "305.277988")
+	if alarm, _ := supplyAlarm(305.277988, knownSupplyGapAEQ()); alarm {
+		t.Fatal("eine ausdruecklich benannte Altlast darf nicht dauerhaft laermen")
+	}
+	if alarm, _ := supplyAlarm(305.777988, knownSupplyGapAEQ()); !alarm {
+		t.Fatal("ein halbes AEQ darueber ist neu und muss melden")
 	}
 }
