@@ -954,7 +954,6 @@
   <div class="stab" data-act="showStab" data-args='["tab-network","net-story"]' role="button" tabindex="0">📖 Story</div>
   <div class="stab" data-act="showStab" data-args='["tab-network","net-runnode"]' role="button" tabindex="0" data-i18n="x-run-a-node">⚙️ Run a Node</div>
   <div class="stab" data-act="showStab" data-args='["tab-network","net-verifier"]' role="button" tabindex="0" data-i18n="x-run-a-verifier">🧬 Run a Verifier</div>
-  <div class="stab" data-act="showStab" data-args='["tab-network","net-coordinator"]' role="button" tabindex="0" data-i18n="x-run-a-coordinator">🚪 Run a Coordinator</div>
   <div class="stab" data-act="showStab" data-args='["tab-network","net-protocol"]' role="button" tabindex="0" data-i18n="x-protocol-v7">📜 Protocol V7</div>
 </nav>
 <div id="net-overview" class="stab-panel active">
@@ -1168,9 +1167,6 @@
       </a>
       <a class="hover-fade" href="/node-binding" target="_blank" rel="noopener noreferrer" style="display:inline-flex;align-items:center;gap:8px;background:rgba(0,230,118,0.12);color:var(--neon);border:1px solid rgba(0,230,118,0.3);padding:12px 20px;border-radius:8px;font-size:0.84rem;font-weight:700;text-decoration:none" data-i18n="x-generate-node-binding-signature">
         🔗 Generate Node Binding Signature
-      </a>
-      <a class="hover-fade" href="/coordinator-binding" target="_blank" rel="noopener noreferrer" style="display:inline-flex;align-items:center;gap:8px;background:rgba(139,92,246,0.12);color:#a78bfa;border:1px solid rgba(139,92,246,0.3);padding:12px 18px;border-radius:8px;font-size:0.82rem;font-weight:600;text-decoration:none" data-i18n="x-authorize-coordinator-key">
-        🔑 Authorize a Coordinator Key
       </a>
     </div>
 
@@ -1750,17 +1746,13 @@
         </div>
       </div>
     </div>
-</div>
-</div>
 
-<div id="net-coordinator" class="stab-panel">
-  <!-- Dritte Rolle, eigene Rubrik seit dem 27.08.2026.
-       Der Weg existierte vollstaendig im Code -- Kettenregister,
-       Besitznachweis, Signatur-Auth statt geteiltem Token -- war aber auf der
-       Website nirgends beschrieben. Ein Mechanismus, den niemand findet,
-       dezentralisiert nichts. -->
-<div class="ns" style="grid-template-columns:1fr">
-    <div class="nc" style="grid-column:1/-1;margin-top:18px;background:linear-gradient(135deg,rgba(139,92,246,0.06),rgba(13,8,32,0.9));border-color:rgba(139,92,246,0.22)">
+    <!-- DRITTE ROLLE: Coordinator. Am 27.08.2026 aus einer eigenen Rubrik
+         hierher geholt: beide Rollen laufen auf derselben Maschine, liegen im
+         selben Repository und stehen unter demselben Beta-Vorbehalt. Getrennt
+         bleiben muss die BEFUGNIS, nicht der Reiter -- und die benennt der
+         Abschnitt "Was ein Coordinator kann" ausdruecklich. -->
+<div class="nc" style="grid-column:1/-1;margin-top:18px;background:linear-gradient(135deg,rgba(139,92,246,0.06),rgba(13,8,32,0.9));border-color:rgba(139,92,246,0.22)">
 
       <div id="guide-co" class="nc-title" style="color:var(--purple);scroll-margin-top:80px" data-i18n="co-title">Or Run a Coordinator — the Door Every Human Walks Through</div>
 
@@ -1806,6 +1798,17 @@
         Until your key is authorized, verifiers refuse everything it signs. Authorizing it takes two proofs and no approval from anyone: your wallet signs that a registered human stands behind this key, and your coordinator proves on its own host that the key is really its own. Use the button above to produce the first; your coordinator produces the second by itself. Until August 2026 you also needed a shared secret from us — which meant that secret <em>was</em> the permission. It is gone.
       </div>
 
+      <div style="font-size:0.77rem;color:var(--gold);font-weight:700;margin:20px 0 6px" data-i18n="co-how-t">Setting one up — three steps</div>
+      <ol style="font-size:0.79rem;color:var(--muted);line-height:1.9;margin:0 0 14px;padding-left:20px">
+        <li style="margin-bottom:8px" data-i18n="co-how-1"><strong style="color:var(--text)">Start it.</strong> <code style="color:var(--teal)">./eigenen-coordinator-starten.sh &lt;your-hostname&gt;</code> generates both keys on that machine with permissions 600, starts the container, and prints your public key. Nothing to copy in beforehand, nothing to send anywhere.</li>
+        <li style="margin-bottom:8px" data-i18n="co-how-2"><strong style="color:var(--text)">Sign the authorization.</strong> Paste that public key into the button below and sign with a wallet that is a registered human. Nothing is spent and nothing is transferred — it signs a sentence.</li>
+        <li data-i18n="co-how-3"><strong style="color:var(--text)">Send it to the nodes.</strong> The page hands you a line ending in <code style="color:var(--teal)">./coordinator-eintragen.sh 0x&lt;signature&gt;</code>. Run it on your coordinator's host. <strong style="color:var(--text)">Signing alone changes nothing</strong> — this command is what writes the authorization, and it goes to every node at once.</li>
+      </ol>
+
+      <a class="hover-fade" href="/coordinator-binding" target="_blank" rel="noopener noreferrer" style="display:inline-flex;align-items:center;gap:8px;background:rgba(139,92,246,0.12);color:#a78bfa;border:1px solid rgba(139,92,246,0.3);padding:12px 18px;border-radius:8px;font-size:0.82rem;font-weight:600;text-decoration:none;margin-bottom:16px" data-i18n="x-authorize-coordinator-key">
+        🔑 Authorize a Coordinator Key
+      </a>
+
       <div style="background:rgba(139,92,246,0.08);border:1px solid rgba(139,92,246,0.3);border-radius:8px;padding:14px;margin-bottom:14px">
         <div style="font-size:0.77rem;color:var(--purple);font-weight:700;margin-bottom:6px" data-i18n="co-pernode-t">The registry is per-node, and that is deliberate</div>
         <div style="font-size:0.79rem;color:var(--muted);line-height:1.9" data-i18n="co-pernode-d">
@@ -1828,6 +1831,8 @@
     </div>
 </div>
 </div>
+
+
 <div id="net-protocol" class="stab-panel">
 <div class="ps">
   <div class="section-label" data-i18n="proto-label">Aequitas V7 Protocol — Technical Documentation</div>
