@@ -1808,14 +1808,14 @@
         <div style="font-size:0.77rem;color:var(--muted);line-height:1.9;margin-bottom:16px">It goes to every node at once, because the registry is kept per node and is not replicated. A node you skip will simply keep refusing your attestations.</div>
 
         <!-- Nachpruefen -->
-        <div style="font-size:0.76rem;color:var(--purple);font-weight:700;letter-spacing:1px;text-transform:uppercase;margin:22px 0 10px;border-bottom:1px solid var(--border);padding-bottom:6px" data-i18n="bv-check-t">Checking That It Works</div>
+        <div style="font-size:0.76rem;color:var(--purple);font-weight:700;letter-spacing:1px;text-transform:uppercase;margin:22px 0 10px;border-bottom:1px solid var(--border);padding-bottom:6px">Checking That It Works</div>
         <div style="font-family:var(--font-mono);background:rgba(0,0,0,0.3);border:1px solid rgba(139,92,246,0.15);border-radius:6px;padding:14px;margin-bottom:10px;font-size:0.78rem;line-height:2.0;overflow-x:auto">
           <span style="color:var(--muted)"># Reachable from outside, with a valid certificate?</span><br>
           curl -s https://verifier.example.org/health<br><br>
           <span style="color:var(--muted)"># Does the network see you and agree with the others?</span><br>
           curl -s https://aequitas.digital/inventory
         </div>
-        <div style="font-size:0.77rem;color:var(--muted);line-height:1.9;margin-bottom:16px" data-i18n="bv-check-d">The second call lists every verifier and compares them: whether all hold the same number of enrollments, whether anyone is missing a seed, and whether the keys agree. If your entry shows a divergence, it is better to find out here than during someone&rsquo;s registration.</div>
+        <div style="font-size:0.77rem;color:var(--muted);line-height:1.9;margin-bottom:16px">The second call lists every verifier and compares them: whether all hold the same number of enrollments, whether anyone is missing a seed, and whether the keys agree. If your entry shows a divergence, it is better to find out here than during someone&rsquo;s registration.</div>
 
         <!-- Fehlersuche -->
         <div style="font-size:0.76rem;color:var(--purple);font-weight:700;letter-spacing:1px;text-transform:uppercase;margin:22px 0 10px;border-bottom:1px solid var(--border);padding-bottom:6px">If Something Goes Wrong</div>
