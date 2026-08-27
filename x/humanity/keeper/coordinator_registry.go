@@ -26,6 +26,25 @@ import (
 // Hier haengt der Schluessel an derselben Bindung wie ueberall sonst -- ein
 // Mensch, ein Schluessel, mit Besitznachweis, oeffentlich nachpruefbar.
 //
+// DAS REGISTER IST KNOTENLOKAL, NICHT REPLIZIERT
+//
+// RegisterCoordinatorKey schreibt direkt in die Datenbank DIESES Knotens. Es
+// gibt dafuer weder einen Transaktionstyp noch Gossip: eine Eintragung auf C1
+// erreicht C2 nicht. Beim Validatorenregister ist es genauso -- dass dort auf
+// beiden Boxen ein Eintrag steht, kommt daher, dass er auf beiden einzeln
+// gesetzt wurde.
+//
+// Das ist Absicht und die richtige Richtung: kein Knoten bekommt eine
+// Vertrauensliste von aussen aufgezwungen. Wer betreibt, entscheidet selbst,
+// wessen Bescheinigungen er annimmt -- eine replizierte Liste waere genau die
+// zentrale Instanz, die es hier nicht geben soll.
+//
+// Der Preis: eine Eintragung muss an JEDEN Knoten gehen, der sie gelten lassen
+// soll. Die Unterschrift ist dabei uebertragbar, sie haengt am Schluessel und
+// nicht am Empfaenger -- einmal unterschreiben, an alle senden. Wer das
+// vergisst, hat einen Coordinator, den die eine Haelfte des Netzes annimmt und
+// die andere abweist; siehe scripts/coordinator-eintragen.sh.
+//
 // WAS EIN EINTRAG BEDEUTET, UND WAS NICHT
 //
 // Er sagt: dieser Schluessel gehoert einem registrierten Menschen, und der hat

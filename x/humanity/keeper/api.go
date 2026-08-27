@@ -892,6 +892,7 @@ func (a *APIServer) buildMux() *http.ServeMux {
 	mux.HandleFunc("/explorer.css", a.handleExplorerCSS)
 	mux.HandleFunc("/explorer.js", a.handleExplorerJS)
 	mux.HandleFunc("/node-binding.js", a.handleNodeBindingJS)
+	mux.HandleFunc("/coordinator-binding.js", a.handleCoordinatorBindingJS)
 	mux.HandleFunc("/vendor/ethers.min.js", a.handleVendorEthersJS)
 	mux.HandleFunc("/vendor/lightweight-charts.min.js", a.handleVendorLightweightChartsJS)
 	mux.HandleFunc("/vendor/walletconnect-ethereum-provider.min.js", a.handleVendorWalletConnectJS)
@@ -1014,6 +1015,7 @@ func (a *APIServer) buildMux() *http.ServeMux {
 	mux.HandleFunc("/api/peers/challenge", a.handlePeerChallenge)
 	mux.HandleFunc("/api/peers/register", a.handlePeerRegister)
 	mux.HandleFunc("/node-binding", a.handleNodeBinding)
+	mux.HandleFunc("/coordinator-binding", a.handleCoordinatorBinding)
 	mux.HandleFunc("/api/register-validator-key", a.handleRegisterValidatorKey)
 	// Das Coordinator-Register: derselbe Gedanke wie beim Bezeugungs-
 	// schluessel, an der wichtigsten Stelle -- der Coordinator ist der
@@ -3674,6 +3676,78 @@ func (a *APIServer) handleNodeBindingJS(w http.ResponseWriter, r *http.Request) 
 	w.Header().Set("Content-Type", "application/javascript; charset=utf-8")
 	w.Header().Set("Cache-Control", "public, max-age=3600")
 	fmt.Fprint(w, nodeBindingJS)
+}
+
+// handleCoordinatorBinding is the coordinator's counterpart to
+// handleNodeBinding.
+//
+// WHY THIS PAGE EXISTS
+//
+// A coordinator issues the attestation this chain mints on, so its Ed25519
+// key has to be tied to a registered human before any matching service
+// accepts what it signs. That tie needs a secp256k1 signature from the
+// human's own wallet -- and wallets have no built-in UI for signing a plain
+// string, which left every prospective operator to improvise one.
+//
+// The Ed25519 half is deliberately NOT here: that key lives on the
+// coordinator's own host, and a page that asked for it would be teaching
+// operators to paste their signing key into a web form.
+func (a *APIServer) handleCoordinatorBinding(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "text/html")
+	w.Header().Set("Content-Security-Policy", "default-src 'self' 'unsafe-inline'; script-src 'self'; style-src 'self' 'unsafe-inline'")
+	w.Header().Set("X-Frame-Options", "DENY")
+	setHSTS(w, r)
+	w.Header().Set("X-Content-Type-Options", "nosniff")
+	w.Header().Set("Referrer-Policy", "strict-origin-when-cross-origin")
+	fmt.Fprint(w, `<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Coordinator Authorization &mdash; Aequitas</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:#0A0E1A;color:#C9A84C;font-family:'Courier New',monospace;display:flex;align-items:center;justify-content:center;min-height:100vh;padding:20px}
+.box{background:#111827;border:1px solid #1E2D45;border-radius:12px;padding:32px;max-width:560px;width:100%}
+.logo{font-size:1.6rem;font-weight:900;letter-spacing:6px;color:#C9A84C;margin-bottom:18px;text-align:center}
+.sub{color:#6B7A99;font-size:0.78rem;line-height:1.8;margin-bottom:18px}
+label{display:block;color:#C9A84C;font-size:0.72rem;margin-bottom:6px;margin-top:14px}
+input{width:100%;background:#0A0E1A;border:1px solid #1E2D45;border-radius:6px;color:#fff;padding:10px;font-family:'Courier New',monospace;font-size:0.8rem}
+.btn{display:block;width:100%;margin-top:18px;padding:12px;background:#C9A84C;color:#0A0E1A;border:none;border-radius:8px;font-weight:bold;cursor:pointer;font-family:'Courier New',monospace}
+.btn:disabled{opacity:0.5;cursor:not-allowed}
+.out{margin-top:18px;padding:14px;background:#0A0E1A;border:1px solid #22C55E;border-radius:8px;word-break:break-all;font-size:0.72rem;color:#9CA3AF;line-height:1.9;display:none}
+.err{margin-top:18px;padding:14px;background:#0A0E1A;border:1px solid #f87171;border-radius:8px;font-size:0.75rem;color:#f87171;display:none}
+.hl{color:#C9A84C;font-weight:bold}
+.note{margin-top:16px;font-size:0.7rem;color:#6B7A99;line-height:1.8;border-left:2px solid #1E2D45;padding-left:12px}
+</style>
+</head>
+<body>
+<div class="box">
+<div class="logo">AEQUITAS</div>
+<div class="sub">
+This authorizes your coordinator&rsquo;s signing key with your <span class="hl">human wallet</span>.
+Until it is authorized, matching services refuse every attestation it issues &mdash; they report it as an unknown key.
+Signing here costs nothing and moves nothing: it is <span class="hl">personal_sign</span> over a plain sentence, not a transaction.
+</div>
+<label>Your coordinator&rsquo;s public key (<code>attestation_public_key</code> from <code>GET /inventory</code> on your own coordinator)</label>
+<input id="pubKey" placeholder="64 hex characters">
+<button class="btn" id="connectBtn">Connect Wallet &amp; Sign</button>
+<div class="out" id="out"></div>
+<div class="err" id="err"></div>
+<div class="note">
+Any wallet works as long as it is a <span class="hl">registered human</span> &mdash; it does not have to be the one that operates a node.
+Never paste your coordinator&rsquo;s signing key into this or any other page: it stays on your own host, and your coordinator proves possession of it there.
+</div>
+</div>
+<script src="/coordinator-binding.js"></script>
+</body>
+</html>`)
+}
+
+func (a *APIServer) handleCoordinatorBindingJS(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/javascript; charset=utf-8")
+	w.Header().Set("Cache-Control", "public, max-age=3600")
+	fmt.Fprint(w, coordinatorBindingJS)
 }
 
 // ─── GUARDIAN ENDPOINTS ────────────────────────────────────────────────────────

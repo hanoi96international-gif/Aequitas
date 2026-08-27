@@ -75,11 +75,17 @@ func TestJederSichtbareTextHatEinenUebersetzungsschluessel(t *testing.T) {
 	// Deshalb jetzt an den Panel-IDs statt an einem Kommentar: die sind das,
 	// was die Bereiche ausmacht, und sie überleben ein Verschieben.
 	guideBereiche := panelBereiche(s, "net-runnode", "net-verifier")
+	i18nEltern := i18nBereiche(s)
 
 	var ohne []string
 	for _, m := range i18nElementRe.FindAllStringSubmatchIndex(s, -1) {
 		start := m[0]
 		if inBereich(start, guideBereiche) {
+			continue
+		}
+		// Nachfahre eines Elements, das SELBST einen Schluessel traegt:
+		// sein Text steht mit im Uebersetzungsstring des Elternteils.
+		if inBereich(start, i18nEltern) {
 			continue
 		}
 		attrs := s[m[4]:m[5]]
@@ -145,6 +151,73 @@ func panelBereiche(s string, ids ...string) [][2]int {
 			}
 		}
 		out = append(out, [2]int{p, ende})
+	}
+	return out
+}
+
+// i18nBereiche liefert die Spannweiten aller Elemente, die SELBST ein
+// data-i18n tragen.
+//
+// # WARUM ES DAS BRAUCHT
+//
+// Ein uebersetzter Block enthaelt fast immer Auszeichnung -- <strong>, <em>.
+// Deren Text steht MIT im Uebersetzungsstring des Elternelements: setLang
+// schreibt el.innerHTML = t[key] und ersetzt damit den ganzen Teilbaum. Diese
+// Stellen sind also in allen zwoelf Sprachen uebersetzt.
+//
+// Der Test sah aber nur das <strong> selbst, fand dort kein data-i18n und
+// meldete es. Aufgefallen ist das erst am 27.08.2026: bis dahin kam solche
+// Auszeichnung nur in den beiden Leitfaeden vor, und die sind ohnehin
+// ausgenommen, weil sie absichtlich englisch sind. Die Coordinator-Rubrik war
+// der erste WIRKLICH uebersetzte Bereich mit Auszeichnung darin -- und die
+// fuenf Meldungen waren samt und sonders falsch.
+//
+// Die Ausnahmeliste zu erweitern waere die falsche Antwort gewesen: sie sagt
+// "dieser Bereich ist absichtlich englisch", und das stimmt hier nicht.
+func i18nBereiche(s string) [][2]int {
+	zwischenspeicher := map[string]*regexp.Regexp{}
+	var out [][2]int
+	for i := 0; ; {
+		p := strings.Index(s[i:], "data-i18n=")
+		if p < 0 {
+			break
+		}
+		p += i
+		i = p + len("data-i18n=")
+
+		// Zurueck zum Anfang des Tags, um seinen Namen zu bekommen.
+		auf := strings.LastIndex(s[:p], "<")
+		if auf < 0 {
+			continue
+		}
+		rest := s[auf+1:]
+		n := strings.IndexAny(rest, " \t\r\n>")
+		if n <= 0 {
+			continue
+		}
+		name := rest[:n]
+
+		re := zwischenspeicher[name]
+		if re == nil {
+			re = regexp.MustCompile(`<` + regexp.QuoteMeta(name) + `\b|</` + regexp.QuoteMeta(name) + `>`)
+			zwischenspeicher[name] = re
+		}
+
+		// Spannweite per Tiefenzaehlung fuer genau diesen Tagnamen.
+		tiefe := 0
+		ende := len(s)
+		for _, m := range re.FindAllStringIndex(s[auf:], -1) {
+			if strings.HasPrefix(s[auf+m[0]:auf+m[1]], "</") {
+				tiefe--
+			} else {
+				tiefe++
+			}
+			if tiefe == 0 {
+				ende = auf + m[1]
+				break
+			}
+		}
+		out = append(out, [2]int{auf, ende})
 	}
 	return out
 }

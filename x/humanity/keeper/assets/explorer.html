@@ -954,6 +954,7 @@
   <div class="stab" data-act="showStab" data-args='["tab-network","net-story"]' role="button" tabindex="0">📖 Story</div>
   <div class="stab" data-act="showStab" data-args='["tab-network","net-runnode"]' role="button" tabindex="0" data-i18n="x-run-a-node">⚙️ Run a Node</div>
   <div class="stab" data-act="showStab" data-args='["tab-network","net-verifier"]' role="button" tabindex="0" data-i18n="x-run-a-verifier">🧬 Run a Verifier</div>
+  <div class="stab" data-act="showStab" data-args='["tab-network","net-coordinator"]' role="button" tabindex="0" data-i18n="x-run-a-coordinator">🚪 Run a Coordinator</div>
   <div class="stab" data-act="showStab" data-args='["tab-network","net-protocol"]' role="button" tabindex="0" data-i18n="x-protocol-v7">📜 Protocol V7</div>
 </nav>
 <div id="net-overview" class="stab-panel active">
@@ -1167,6 +1168,9 @@
       </a>
       <a class="hover-fade" href="/node-binding" target="_blank" rel="noopener noreferrer" style="display:inline-flex;align-items:center;gap:8px;background:rgba(0,230,118,0.12);color:var(--neon);border:1px solid rgba(0,230,118,0.3);padding:12px 20px;border-radius:8px;font-size:0.84rem;font-weight:700;text-decoration:none" data-i18n="x-generate-node-binding-signature">
         🔗 Generate Node Binding Signature
+      </a>
+      <a class="hover-fade" href="/coordinator-binding" target="_blank" rel="noopener noreferrer" style="display:inline-flex;align-items:center;gap:8px;background:rgba(139,92,246,0.12);color:#a78bfa;border:1px solid rgba(139,92,246,0.3);padding:12px 18px;border-radius:8px;font-size:0.82rem;font-weight:600;text-decoration:none" data-i18n="x-authorize-coordinator-key">
+        🔑 Authorize a Coordinator Key
       </a>
     </div>
 
@@ -1749,6 +1753,81 @@
 </div>
 </div>
 
+<div id="net-coordinator" class="stab-panel">
+  <!-- Dritte Rolle, eigene Rubrik seit dem 27.08.2026.
+       Der Weg existierte vollstaendig im Code -- Kettenregister,
+       Besitznachweis, Signatur-Auth statt geteiltem Token -- war aber auf der
+       Website nirgends beschrieben. Ein Mechanismus, den niemand findet,
+       dezentralisiert nichts. -->
+<div class="ns" style="grid-template-columns:1fr">
+    <div class="nc" style="grid-column:1/-1;margin-top:18px;background:linear-gradient(135deg,rgba(139,92,246,0.06),rgba(13,8,32,0.9));border-color:rgba(139,92,246,0.22)">
+
+      <div id="guide-co" class="nc-title" style="color:var(--purple);scroll-margin-top:80px" data-i18n="co-title">Or Run a Coordinator — the Door Every Human Walks Through</div>
+
+      <div style="font-size:0.82rem;color:var(--muted);line-height:1.9;margin-bottom:16px" data-i18n="co-desc">
+        The coordinator is where a person arrives: it issues the challenge, fans the capture out to the verifiers, counts their votes, and issues the attestation the chain mints on. For a long time exactly one of them existed — which meant every registration in the network passed through a single machine. Not because anything was missing, but because nobody had run a second one.
+      </div>
+
+      <div style="background:rgba(139,92,246,0.08);border:1px solid rgba(139,92,246,0.3);border-radius:8px;padding:14px;margin-bottom:18px">
+        <div style="font-size:0.77rem;color:var(--purple);font-weight:700;margin-bottom:6px" data-i18n="co-status-t">Status: closed beta — the same caveat as the verifier</div>
+        <div style="font-size:0.79rem;color:var(--muted);line-height:1.9" data-i18n="co-status-d">
+          The coordinator lives in the same repository as the verifier, and that repository is <strong style="color:var(--text)">not public yet</strong>. So the steps below cannot be completed by everyone today. They are published anyway, for the same reason: a design should be checkable before it is deployed, not after.
+        </div>
+      </div>
+
+      <div style="background:rgba(245,166,35,0.06);border:1px solid rgba(245,166,35,0.22);border-radius:8px;padding:14px;margin-bottom:14px">
+        <div style="font-size:0.77rem;color:var(--gold);font-weight:700;margin-bottom:6px" data-i18n="co-power-t">What a coordinator can do — and what it cannot</div>
+        <div style="font-size:0.79rem;color:var(--muted);line-height:1.9" data-i18n="co-power-d">
+          It <strong style="color:var(--text)">cannot invent a human</strong>. No bio_hash exists until several different verifiers have attested it, and a coordinator holds none of their keys. What it can do is bind an <strong style="color:var(--text)">existing</strong> bio_hash to a wallet — so a dishonest one could redirect an allocation to an address of its choosing. That is a real power, it grows with every coordinator added, and anyone weighing whether to trust one should know the difference.
+        </div>
+      </div>
+
+      <div style="background:rgba(0,230,118,0.05);border:1px solid rgba(0,230,118,0.18);border-radius:8px;padding:14px;margin-bottom:14px">
+        <div style="font-size:0.77rem;color:var(--neon);font-weight:700;margin-bottom:6px" data-i18n="co-safe-t">Why a second coordinator is safe at all</div>
+        <div style="font-size:0.79rem;color:var(--muted);line-height:1.9" data-i18n="co-safe-d">
+          It was not always. Until August 2026 the promise <strong style="color:var(--text)">one human, one registration</strong> hung on a Redis lock inside the coordinator — and two independent coordinators share no Redis, so two simultaneous registrations of the same person would both have gone through. Now <strong style="color:var(--text)">every verifier checks for itself</strong>, before its own write, whether that face is already enrolled. The guarantee no longer depends on any shared service or shared secret, so a coordinator can join or fall away without changing it.
+        </div>
+      </div>
+
+      <div style="font-size:0.77rem;color:var(--gold);font-weight:700;margin:20px 0 6px" data-i18n="co-need-t">What you need</div>
+      <div style="font-size:0.79rem;color:var(--muted);line-height:1.9;margin-bottom:14px" data-i18n="co-need-d">
+        A registered Aequitas account — the same rule as for producing blocks and for verifying: one human, one key. A server with Docker and a public HTTPS address, because browsers hand no camera to an insecure page. And two keys of your own, which you generate yourself and which never leave your machine: one that signs your attestations, one that maps wallet addresses to markers.
+      </div>
+
+      <div style="background:rgba(255,82,82,0.06);border:1px solid rgba(255,82,82,0.25);border-radius:8px;padding:14px;margin-bottom:14px">
+        <div style="font-size:0.77rem;color:#ff8a80;font-weight:700;margin-bottom:6px" data-i18n="co-keys-t">Never accept a key from anyone — including us</div>
+        <div style="font-size:0.79rem;color:var(--muted);line-height:1.9" data-i18n="co-keys-d">
+          Two coordinators sharing one signing key are not two coordinators; they are one with two addresses, and the quorum that is supposed to protect people would look satisfied without being so. Generate both keys on your own machine, with your own randomness, and let neither of them off it.
+        </div>
+      </div>
+
+      <div style="font-size:0.77rem;color:var(--gold);font-weight:700;margin:20px 0 6px" data-i18n="co-auth-t">Authorizing your key — no permission required</div>
+      <div style="font-size:0.79rem;color:var(--muted);line-height:1.9;margin-bottom:14px" data-i18n="co-auth-d">
+        Until your key is authorized, verifiers refuse everything it signs. Authorizing it takes two proofs and no approval from anyone: your wallet signs that a registered human stands behind this key, and your coordinator proves on its own host that the key is really its own. Use the button above to produce the first; your coordinator produces the second by itself. Until August 2026 you also needed a shared secret from us — which meant that secret <em>was</em> the permission. It is gone.
+      </div>
+
+      <div style="background:rgba(139,92,246,0.08);border:1px solid rgba(139,92,246,0.3);border-radius:8px;padding:14px;margin-bottom:14px">
+        <div style="font-size:0.77rem;color:var(--purple);font-weight:700;margin-bottom:6px" data-i18n="co-pernode-t">The registry is per-node, and that is deliberate</div>
+        <div style="font-size:0.79rem;color:var(--muted);line-height:1.9" data-i18n="co-pernode-d">
+          An authorization written to one node does not travel to the others — there is no transaction for it and no gossip. A replicated trust list would be exactly the central authority this system is built without: every operator decides for themselves whose attestations their node accepts. The cost is that your authorization has to be sent to each node that should honour it. The signature itself is portable, so you sign once and send it everywhere; a node you skip will simply keep refusing you.
+        </div>
+      </div>
+
+      <div style="background:rgba(0,176,255,0.05);border:1px solid rgba(0,176,255,0.2);border-radius:8px;padding:14px;margin-bottom:14px">
+        <div style="font-size:0.77rem;color:var(--teal);font-weight:700;margin-bottom:6px" data-i18n="co-law-t">What you learn about other people — and what follows from it</div>
+        <div style="font-size:0.79rem;color:var(--muted);line-height:1.9" data-i18n="co-law-d">
+          The capture passes through you; you hand it on and keep nothing. But you alone hold the mapping between wallet address and marker for the people who register through you — which is why your marker key must stay yours: shared, any operator could compute the marker for any public address and look up whose face belongs to it. It also means you become the <strong style="color:var(--text)">data controller</strong> for those people under GDPR. Not us. Access, erasure and objection requests reach you, and that is not a formality.
+        </div>
+      </div>
+
+      <div style="font-size:0.77rem;color:var(--gold);font-weight:700;margin:20px 0 6px" data-i18n="co-limit-t">The one limitation this creates</div>
+      <div style="font-size:0.79rem;color:var(--muted);line-height:1.9;margin-bottom:8px" data-i18n="co-limit-d">
+        Erasure by wallet address only works at the coordinator where the enrolment was made: your marker hangs on your key, and another coordinator derives a different one for the same address. A "not found" from elsewhere therefore means "not registered here", not "not registered" — and the answer says so. The route through a person's own bio_hash, the one that belongs to them and needs no operator at all, works at every coordinator, because that identifier stays the same.
+      </div>
+
+    </div>
+</div>
+</div>
 <div id="net-protocol" class="stab-panel">
 <div class="ps">
   <div class="section-label" data-i18n="proto-label">Aequitas V7 Protocol — Technical Documentation</div>

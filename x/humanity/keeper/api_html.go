@@ -98,6 +98,13 @@ var vendorWalletConnectJS string
 //go:embed assets/node-binding.js
 var nodeBindingJS string
 
+// The coordinator's counterpart to nodeBindingJS. Externalized for the same
+// reason: it lets handleCoordinatorBinding set script-src 'self' with no
+// inline exception on a page an operator is about to sign with.
+//
+//go:embed assets/coordinator-binding.js
+var coordinatorBindingJS string
+
 //go:embed assets/landing.js
 var landingJS string
 
