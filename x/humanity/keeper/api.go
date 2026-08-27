@@ -1015,6 +1015,11 @@ func (a *APIServer) buildMux() *http.ServeMux {
 	mux.HandleFunc("/api/peers/register", a.handlePeerRegister)
 	mux.HandleFunc("/node-binding", a.handleNodeBinding)
 	mux.HandleFunc("/api/register-validator-key", a.handleRegisterValidatorKey)
+	// Das Coordinator-Register: derselbe Gedanke wie beim Bezeugungs-
+	// schluessel, an der wichtigsten Stelle -- der Coordinator ist der
+	// Eingang, an dem ein Mensch ankommt.
+	mux.HandleFunc("/api/register-coordinator-key", a.handleRegisterCoordinatorKey)
+	mux.HandleFunc("/api/coordinators", a.handleCoordinatorList)
 	mux.HandleFunc("/api/set-guardian", a.handleSetGuardian)
 	mux.HandleFunc("/api/confirm-alive", a.handleConfirmAlive)
 	mux.HandleFunc("/api/guardian", a.handleGetGuardian)
