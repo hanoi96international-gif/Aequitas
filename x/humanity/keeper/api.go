@@ -3729,7 +3729,10 @@ This authorizes your coordinator&rsquo;s signing key with your <span class="hl">
 Until it is authorized, matching services refuse every attestation it issues &mdash; they report it as an unknown key.
 Signing here costs nothing and moves nothing: it is <span class="hl">personal_sign</span> over a plain sentence, not a transaction.
 </div>
-<label>Your coordinator&rsquo;s public key (<code>attestation_public_key</code> from <code>GET /inventory</code> on your own coordinator)</label>
+<label>Your coordinator&rsquo;s public key</label>
+<div class="sub" style="margin:0 0 8px;font-size:0.72rem">
+This is <span class="hl">not in your wallet</span> &mdash; MetaMask only ever shows addresses. The key belongs to your coordinator and is created on its own host. Your setup script prints it when it starts the container; you can also read it any time as <code>attestation_public_key</code> from <code>GET /inventory</code> on your own coordinator. If you do not run one, you do not need this page.
+</div>
 <input id="pubKey" placeholder="64 hex characters">
 <button class="btn" id="connectBtn">Connect Wallet &amp; Sign</button>
 <div class="out" id="out"></div>

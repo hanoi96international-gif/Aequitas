@@ -30,8 +30,12 @@ async function signCoordinator() {
 
   const pub = document.getElementById('pubKey').value.trim().toLowerCase().replace(/^0x/, '');
   if (!/^[0-9a-f]{64}$/.test(pub)) {
+    // Diese Meldung sah frueher jemand, der den Wert in seiner Wallet suchte.
+    // Sie sagt deshalb zuerst, wo er NICHT ist.
     errEl.textContent = "Enter your coordinator's public key: 64 hex characters. " +
-      'It is reported as attestation_public_key by GET /inventory on your own coordinator.';
+      'It is not in your wallet -- it belongs to your coordinator and is created on its ' +
+      'own host. The setup script prints it on startup, and GET /inventory on your own ' +
+      'coordinator reports it as attestation_public_key at any time.';
     errEl.style.display = 'block';
     return;
   }
