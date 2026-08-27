@@ -2622,6 +2622,8 @@ func (a *APIServer) handleRegisterValidatorKey(w http.ResponseWriter, r *http.Re
 		// muss, IST eine Genehmigung.
 		PersonhoodKey       string `json:"personhood_key"`
 		PersonhoodSignature string `json:"personhood_signature"`
+		// Wo der Vergleichsdienst dieses Betreibers erreichbar ist.
+		MatchingURL string `json:"matching_url"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, `{"error":"invalid request"}`, 400)
@@ -2669,7 +2671,16 @@ func (a *APIServer) handleRegisterValidatorKey(w http.ResponseWriter, r *http.Re
 			return
 		}
 	}
-	if err := a.state.RegisterValidatorKeyWithPersonhood(signingAddr, humanWallet, personhood); err != nil {
+	// Nur HTTPS, und keine privaten Adressen: diese URL wird spaeter von
+	// FREMDEN Coordinatoren aufgerufen. Eine http:// oder 127.0.0.1-Adresse im
+	// Register waere entweder unbrauchbar oder ein Weg, andere auf das eigene
+	// Netz zeigen zu lassen.
+	matchingURL := strings.TrimRight(strings.TrimSpace(req.MatchingURL), "/")
+	if matchingURL != "" && !isAllowedPeerURL(matchingURL) {
+		jsonError(w, "matching_url must be a public https:// address", 400)
+		return
+	}
+	if err := a.state.RegisterValidatorFull(signingAddr, humanWallet, personhood, matchingURL); err != nil {
 		jsonStateError(w, "register-validator-key", signingAddr, err)
 		return
 	}
@@ -2680,6 +2691,7 @@ func (a *APIServer) handleRegisterValidatorKey(w http.ResponseWriter, r *http.Re
 		"signing_address": signingAddr,
 		"human_wallet":    humanWallet,
 		"personhood_key":  personhood,
+		"matching_url":    matchingURL,
 	})
 }
 

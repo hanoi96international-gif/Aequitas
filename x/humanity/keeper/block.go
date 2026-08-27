@@ -1101,6 +1101,11 @@ type ValidatorKeyPair struct {
 	// eine Genehmigung; ein on-chain-Register, an dem eine Doppelsignatur
 	// haengt, ist keine.
 	PersonhoodKey string `json:"personhood_key,omitempty"`
+	// Die Adresse, unter der der Vergleichsdienst dieses Betreibers erreichbar
+	// ist. Damit findet ein Coordinator seine Validatoren aus der Kette, statt
+	// sie in VALIDATOR_URLS eingetragen zu bekommen -- sonst waere die Aufnahme
+	// eines neuen Verifiers wieder eine Genehmigung, nur eine Ebene hoeher.
+	MatchingURL string `json:"matching_url,omitempty"`
 }
 
 // ValidatorKeyPairs returns signing/human-wallet pairs for all registered

@@ -2011,6 +2011,16 @@ func (cs *ChainState) InitValidatorKeysTable() {
 	// Mensch, ein Schluessel, on-chain nachpruefbar. Ein Proof-Server kann die
 	// Liste daraus lesen, statt sie gereicht zu bekommen.
 	cs.db.Exec(`ALTER TABLE validator_keys ADD COLUMN IF NOT EXISTS personhood_key TEXT`)
+	// Die Adresse des Vergleichsdienstes gehoert ebenfalls hierher.
+	//
+	// Der Coordinator hatte seine Validatoren in VALIDATOR_URLS fest
+	// eingetragen. Ein neuer Verifier, der sich hier registriert, wurde also
+	// nicht benutzt, bis jemand eine Konfiguration aendert -- und damit war
+	// die Aufnahme wieder eine Genehmigung, nur eine Ebene hoeher.
+	//
+	// Steht sie im Register, findet jeder Coordinator seine Validatoren
+	// selbst. Wer sich eintraegt, wird benutzt.
+	cs.db.Exec(`ALTER TABLE validator_keys ADD COLUMN IF NOT EXISTS matching_url TEXT`)
 	// Add UNIQUE on human_wallet if the table already existed without it.
 	// Remove any existing duplicates first so the index creation succeeds.
 	cs.db.Exec(`DELETE FROM validator_keys vk1
@@ -2041,6 +2051,12 @@ func (cs *ChainState) RegisterValidatorKey(signingAddress, humanWallet string) e
 // ein, mit dem dieser Validator Menschen bezeugt. Leer laesst ihn unberuehrt --
 // ein Betreiber, der nur seine Signieradresse erneuert, verliert ihn nicht.
 func (cs *ChainState) RegisterValidatorKeyWithPersonhood(signingAddress, humanWallet, personhoodKey string) error {
+	return cs.RegisterValidatorFull(signingAddress, humanWallet, personhoodKey, "")
+}
+
+// RegisterValidatorFull traegt zusaetzlich die Adresse des Vergleichsdienstes
+// ein. Leere Werte lassen das Vorhandene stehen.
+func (cs *ChainState) RegisterValidatorFull(signingAddress, humanWallet, personhoodKey, matchingURL string) error {
 	if cs.db == nil {
 		return fmt.Errorf("no database")
 	}
@@ -2053,14 +2069,16 @@ func (cs *ChainState) RegisterValidatorKeyWithPersonhood(signingAddress, humanWa
 	// COALESCE mit NULLIF: ein leerer Wert laesst den vorhandenen Schluessel
 	// stehen, statt ihn zu loeschen. Wer nur seine Signieradresse erneuert,
 	// soll nicht unbemerkt aufhoeren zu bezeugen.
+	matchingURL = strings.TrimRight(strings.TrimSpace(matchingURL), "/")
 	_, err := cs.db.Exec(
-		`INSERT INTO validator_keys (signing_address, human_wallet, personhood_key)
-		 VALUES ($1, $2, NULLIF($3, ''))
+		`INSERT INTO validator_keys (signing_address, human_wallet, personhood_key, matching_url)
+		 VALUES ($1, $2, NULLIF($3, ''), NULLIF($4, ''))
 		 ON CONFLICT (signing_address) DO UPDATE SET
 		   human_wallet = $2,
 		   personhood_key = COALESCE(NULLIF($3, ''), validator_keys.personhood_key),
+		   matching_url = COALESCE(NULLIF($4, ''), validator_keys.matching_url),
 		   registered_at = NOW()`,
-		signingAddress, humanWallet, personhoodKey)
+		signingAddress, humanWallet, personhoodKey, matchingURL)
 	return err
 }
 
@@ -2158,21 +2176,22 @@ func (cs *ChainState) GetValidatorKeyPairsForSync() []ValidatorKeyPair {
 	var pairs []ValidatorKeyPair
 
 	// P2-08: log DB errors instead of silently returning a partial result.
-	rows, err := cs.db.Query(`SELECT signing_address, human_wallet, COALESCE(personhood_key, '')
-		FROM validator_keys ORDER BY registered_at`)
+	rows, err := cs.db.Query(`SELECT signing_address, human_wallet, COALESCE(personhood_key, ''),
+		COALESCE(matching_url, '') FROM validator_keys ORDER BY registered_at`)
 	if err != nil {
 		fmt.Printf("[VALIDATORS] ⚠ GetValidatorKeyPairsForSync: validator_keys query failed: %v\n", err)
 	} else {
 		for rows.Next() {
-			var addr, wallet, personhood string
-			rows.Scan(&addr, &wallet, &personhood)
+			var addr, wallet, personhood, matching string
+			rows.Scan(&addr, &wallet, &personhood, &matching)
 			addr = strings.ToLower(strings.TrimSpace(addr))
 			wallet = strings.ToLower(strings.TrimSpace(wallet))
 			personhood = strings.ToLower(strings.TrimSpace(personhood))
 			if addr != "" && !seen[addr] {
 				seen[addr] = true
 				pairs = append(pairs, ValidatorKeyPair{
-					SigningAddress: addr, HumanWallet: wallet, PersonhoodKey: personhood})
+					SigningAddress: addr, HumanWallet: wallet, PersonhoodKey: personhood,
+					MatchingURL: strings.TrimRight(strings.TrimSpace(matching), "/")})
 			}
 		}
 		rows.Close()
