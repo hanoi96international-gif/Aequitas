@@ -400,6 +400,26 @@ func (a *APIServer) registerOnV7(evmRPC *EVMRPCServer, wallet string, req Regist
 		return "", fmt.Errorf("only circuit version 3 is accepted: upgrade your app — v3 Poseidon nullifier is required")
 	}
 
+	// KAM DIESER BEWEIS AUS EINER GEPRUEFTEN REGISTRIERUNG?
+	//
+	// Bis zum 26.08.2026 fragte das hier niemand. Der Vertrag prueft, dass der
+	// Beweis gueltig IST -- nicht, woher er kommt. Groth16-Proving-Keys sind
+	// konstruktionsbedingt oeffentlich, dieser liegt im Repo: wer sich eine
+	// bio_hash wuerfelt, lokal einen Beweis erzeugt und direkt hierher geht,
+	// praegte 1.000 AEQ. Und nochmal.
+	//
+	// Die gesamte biometrische Kette haengt an /api/prove. Geld entsteht hier.
+	// Ohne diese Pruefung war alles davor beratend -- BIO_ATTESTATION_MODE=
+	// required haertete einen Pfad, den niemand benutzen muss.
+	//
+	// Siehe prove_provenance.go.
+	if proveHerkunftVerlangt() && !hatProveHerkunft(req.ZKNullifier) {
+		fmt.Printf("[REGISTER] ✗ Abgewiesen: Nullifier %s… stammt aus keinem /prove dieses Knotens\n",
+			nullifierSchluessel(req.ZKNullifier)[:min(16, len(nullifierSchluessel(req.ZKNullifier)))])
+		return "", fmt.Errorf("this proof did not come from a verified registration on this node: " +
+			"run the biometric check via /api/prove first, and register on the same node")
+	}
+
 	// Prefer ZK-circuit-derived nullifier (v2 circuit, pubSignals[1]) over
 	// client-SHA256 nullifier. When the v2 circuit is used, the nullifier is
 	// cryptographically attested by the Groth16 proof itself.

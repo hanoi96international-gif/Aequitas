@@ -3068,6 +3068,16 @@ func (a *APIServer) handleProveProxy(w http.ResponseWriter, r *http.Request) {
 	}
 	defer resp.Body.Close()
 	respBody, _ := io.ReadAll(io.LimitReader(resp.Body, 64<<10))
+	// Herkunft festhalten, BEVOR die Antwort rausgeht.
+	//
+	// Ein Status 200 vom Proof-Server heisst: die Bescheinigung wurde geprueft.
+	// Dort steht BIO_ATTESTATION_MODE=required, ohne gueltige Bescheinigung
+	// antwortet er 403. Dieser Knoten merkt sich also, dass DIESER Nullifier
+	// durch die Pruefung gekommen ist -- /api/register nimmt nur solche.
+	// Siehe prove_provenance.go fuer die Luecke, die das schliesst.
+	if resp.StatusCode == http.StatusOK {
+		merkeProveHerkunft(respBody)
+	}
 	w.WriteHeader(resp.StatusCode)
 	w.Write(respBody)
 }
