@@ -1601,59 +1601,105 @@
          t VERSCHIEDENE Bezeugende, und ein einzelner geleakter Schluessel
          genuegt nicht mehr. -->
     <div class="nc" style="grid-column:1/-1;margin-top:18px;background:linear-gradient(135deg,rgba(0,230,118,0.06),rgba(13,8,32,0.9));border-color:rgba(0,230,118,0.22)">
-      <div id="guide-bv" class="nc-title" style="color:var(--neon);scroll-margin-top:80px" data-i18n="bv-title">Or Become a Bio Verifier — the Role That Makes Uniqueness Decentralized</div>
-      <div style="font-size:0.82rem;color:var(--muted);line-height:1.9;margin-bottom:16px" data-i18n="bv-desc">
-        A block-producing node secures the <strong style="color:var(--text)">ledger</strong>. A bio verifier secures something else: the promise that <strong style="color:var(--neon)">each human registers only once</strong>. These are separate roles — you can run either, or both on the same machine.
-      </div>
-
-      <div style="background:rgba(139,92,246,0.08);border:1px solid rgba(139,92,246,0.3);border-radius:8px;padding:14px;margin-bottom:18px">
+            <div id="guide-bv" class="nc-title" style="color:var(--neon);scroll-margin-top:80px" data-i18n="bv-title">Running a Validator Is Not Enough &mdash; and Here Is Why</div>
+      <div style="font-size:0.82rem;color:var(--muted);line-height:1.9;margin-bottom:16px" data-i18n="bv-desc">A validator secures that the <strong style="color:var(--text)">numbers add up</strong>. It does not secure the one thing everything else rests on: that <strong style="color:var(--text)">nobody registers twice</strong>. Without that, &ldquo;one human, one income&rdquo; is only a slogan &mdash; the ledger would be perfectly correct and completely worthless. Today that promise rests on very few machines, and every one you add makes it harder to break. The two roles that carry it &mdash; the <strong style="color:var(--text)">verifier</strong> that decides whether a face is already enrolled, and the <strong style="color:var(--text)">coordinator</strong> that collects those decisions &mdash; run on the same server. This guide sets up both.</div>
+<div style="background:rgba(139,92,246,0.08);border:1px solid rgba(139,92,246,0.3);border-radius:8px;padding:14px;margin-bottom:18px">
         <div style="font-size:0.77rem;color:var(--purple);font-weight:700;margin-bottom:6px" data-i18n="bv-status-t">Status: closed beta — read this before you start</div>
         <div style="font-size:0.79rem;color:var(--muted);line-height:1.9" data-i18n="bv-status-d">
           The verifier source is <strong style="color:var(--text)">not public yet</strong>, so the steps below cannot be completed by everyone today. They are published now because the design should be checkable before it is deployed, not after. If you want to run one, ask in the Telegram group linked on the front page. Opening this repository is what turns the guide below from a plan into an invitation, and it is the next thing we owe you.
         </div>
       </div>
-
-      <div style="background:rgba(0,230,118,0.05);border:1px solid rgba(0,230,118,0.18);border-radius:8px;padding:14px;margin-bottom:14px">
+<div style="background:rgba(0,230,118,0.05);border:1px solid rgba(0,230,118,0.18);border-radius:8px;padding:14px;margin-bottom:14px">
         <div style="font-size:0.77rem;color:var(--neon);font-weight:700;margin-bottom:6px" data-i18n="bv-what-t">What you would hold — and what you would never see</div>
         <div style="font-size:0.79rem;color:var(--muted);line-height:1.9" data-i18n="bv-what-d">
           A face is never sent to you. Your machine stores one <strong style="color:var(--text)">additive share</strong> of a 64-byte sketch: on its own it is indistinguishable from random noise, and no computation you can run recovers a face from it. Comparisons happen jointly with the other members of your committee, and none of you learns anything but the answer — <em>duplicate: yes or no</em>. That is not a promise about our good intentions; it is a property of the arithmetic.
         </div>
       </div>
-
-      <div style="background:rgba(245,166,35,0.05);border:1px solid rgba(245,166,35,0.2);border-radius:8px;padding:14px;margin-bottom:18px">
+<div style="background:rgba(245,166,35,0.05);border:1px solid rgba(245,166,35,0.2);border-radius:8px;padding:14px;margin-bottom:18px">
         <div style="font-size:0.77rem;color:var(--gold);font-weight:700;margin-bottom:6px" data-i18n="bv-why-t">Why every additional verifier makes the network harder to corrupt</div>
         <div style="font-size:0.79rem;color:var(--muted);line-height:1.9" data-i18n="bv-why-d">
           A registration is accepted only once <strong style="color:var(--text)">several different verifiers</strong> have attested it. One stolen key is not enough — an attacker needs a whole committee. And because <strong style="color:var(--neon)">one human may hold exactly one validator key</strong>, buying a committee means being that many people. With 100 verifiers, an attacker controlling 10 of them has under a 1-in-1,000 chance of owning a full committee of three. Every person who joins makes that number smaller. This is the one place where the count of participants <em>is</em> the security.
         </div>
       </div>
-
-      <!-- ===================== DER LEITFADEN ===================== -->
-      <div style="background:var(--card);border:1px solid rgba(0,230,118,0.2);border-radius:var(--radius);padding:24px;margin-top:4px">
-
-        <div style="font-size:0.76rem;color:var(--neon);letter-spacing:2.5px;text-transform:uppercase;font-weight:700;margin-bottom:4px">
-          AEQUITAS BIO VERIFIER GUIDE
-          <span style="font-size:0.71rem;background:rgba(0,230,118,0.12);border:1px solid rgba(0,230,118,0.3);color:var(--neon);padding:2px 8px;border-radius:10px;margin-left:6px">v1.0 &middot; August 2026</span>
+<div style="background:rgba(245,166,35,0.06);border:1px solid rgba(245,166,35,0.22);border-radius:8px;padding:14px;margin-bottom:14px">
+        <div style="font-size:0.77rem;color:var(--gold);font-weight:700;margin-bottom:6px" data-i18n="co-power-t">What a coordinator can do — and what it cannot</div>
+        <div style="font-size:0.79rem;color:var(--muted);line-height:1.9" data-i18n="co-power-d">
+          It <strong style="color:var(--text)">cannot invent a human</strong>. No bio_hash exists until several different verifiers have attested it, and a coordinator holds none of their keys. What it can do is bind an <strong style="color:var(--text)">existing</strong> bio_hash to a wallet — so a dishonest one could redirect an allocation to an address of its choosing. That is a real power, it grows with every coordinator added, and anyone weighing whether to trust one should know the difference.
         </div>
-        <div style="font-size:0.77rem;color:var(--muted);margin-bottom:20px" data-i18n="bv-guide-sub">Step by step &middot; No cryptography knowledge required &middot; About 30 minutes, most of it downloading</div>
+      </div>
+      <!-- ===================== DER LEITFADEN =====================
+           Auf dem Niveau des Node-Guides: Erklaerkasten fuer jeden Begriff,
+           jeder Befehl vollstaendig, und die drei Anfaengerschritte (Server,
+           Docker, DNS), die vorher stillschweigend vorausgesetzt wurden.
+
+           Englisch wie der Node-Guide, mit Sprachhinweis. Uebersetzt bleibt
+           der Rahmen darueber -- warum ueberhaupt, was es schuetzt, wofuer man
+           haftet. Befehle zwoelfmal zu pflegen hiesse, dass elf Fassungen
+           veralten, waehrend eine stimmt. -->
+      <div style="background:var(--card);border:1px solid rgba(0,230,118,0.2);border-radius:var(--radius);padding:24px;margin-top:18px">
+
+        <div style="font-size:0.76rem;color:var(--neon);letter-spacing:2.5px;text-transform:uppercase;font-weight:700;margin-bottom:6px">Aequitas Bio Verifier Guide <span style="background:rgba(0,230,118,0.15);color:var(--neon);padding:2px 8px;border-radius:4px;letter-spacing:1px">v2.0 &middot; August 2026</span></div>
+        <div style="font-size:0.78rem;color:var(--muted);margin-bottom:12px" data-i18n="bv-guide-sub">Step by step &middot; No cryptography knowledge required &middot; About 45 minutes, most of it waiting</div>
+        <div style="font-size:0.76rem;color:var(--purple);background:rgba(139,92,246,0.08);border:1px solid rgba(139,92,246,0.2);border-radius:6px;padding:8px 12px;margin-bottom:18px" data-i18n="bv-guide-lang-note">The steps below are in English. The sections above &mdash; what this is, what it protects, and what you take on &mdash; are in your language.</div>
+
+        <div style="background:rgba(0,220,170,0.05);border:1px solid rgba(0,220,170,0.15);border-radius:6px;padding:10px 14px;margin-bottom:10px;font-size:0.77rem"><span style="color:var(--teal);font-weight:700">What is a bio verifier?</span> <span style="color:var(--muted)">When somebody registers as a human, their face has to be checked against everyone already registered &mdash; otherwise one person could register twice and draw two incomes. A bio verifier is a machine that performs that check. It never sees a face: it holds one scrambled fragment, and several verifiers compare their fragments jointly without any of them learning more than the answer &mdash; duplicate, yes or no.</span></div>
+
+        <div style="background:rgba(0,220,170,0.05);border:1px solid rgba(0,220,170,0.15);border-radius:6px;padding:10px 14px;margin-bottom:10px;font-size:0.77rem"><span style="color:var(--teal);font-weight:700">What is a coordinator?</span> <span style="color:var(--muted)">The verifier answers questions; the coordinator asks them. It is the door a person arrives at: it hands out the challenge, passes the capture to the verifiers, counts their answers, and issues the certificate the chain pays out on. You will run both on one server &mdash; two programs, not two machines.</span></div>
+
+        <div style="background:rgba(0,220,170,0.05);border:1px solid rgba(0,220,170,0.15);border-radius:6px;padding:10px 14px;margin-bottom:18px;font-size:0.77rem"><span style="color:var(--teal);font-weight:700">What is a committee?</span> <span style="color:var(--muted)">The group of verifiers asked about one registration. It only counts once several of them agree. That is the entire point: one broken or dishonest machine cannot wave anybody through.</span></div>
 
         <!-- Voraussetzungen -->
-        <div style="font-size:0.76rem;color:var(--purple);font-weight:700;letter-spacing:1px;text-transform:uppercase;margin-bottom:10px;border-bottom:1px solid var(--border);padding-bottom:6px" data-i18n="bv-need-t">Before You Start — What You Need</div>
-        <div style="font-size:0.79rem;color:var(--muted);line-height:2.1;margin-bottom:18px">
-          <div style="display:flex;align-items:flex-start;gap:10px;margin-bottom:6px"><span style="color:var(--neon);font-weight:700;min-width:16px">1.</span><span data-i18n="bv-need-1"><strong style="color:var(--text)">A registered Aequitas human account.</strong> Same rule as for block production, and for the same reason: one human, one key. Without it, a single person could quietly become a whole committee.</span></div>
-          <div style="display:flex;align-items:flex-start;gap:10px;margin-bottom:6px"><span style="color:var(--neon);font-weight:700;min-width:16px">2.</span><span data-i18n="bv-need-2"><strong style="color:var(--text)">A small Linux server with Docker.</strong> 2 GB RAM is enough. No GPU — the comparison is arithmetic on 64-byte values. The machine already running your node is fine.</span></div>
-          <div style="display:flex;align-items:flex-start;gap:10px;margin-bottom:6px"><span style="color:var(--neon);font-weight:700;min-width:16px">3.</span><span data-i18n="bv-need-3"><strong style="color:var(--text)">A domain name with HTTPS.</strong> Other committee members must reach you. A subdomain of something you already own is enough.</span></div>
-          <div style="display:flex;align-items:flex-start;gap:10px"><span style="color:var(--neon);font-weight:700;min-width:16px">4.</span><span data-i18n="bv-need-4"><strong style="color:var(--text)">To stay online.</strong> Every member of a committee must answer for a registration to finish. A verifier that is often away slows people down instead of protecting them.</span></div>
+        <div style="font-size:0.76rem;color:var(--purple);font-weight:700;letter-spacing:1px;text-transform:uppercase;margin:22px 0 10px;border-bottom:1px solid var(--border);padding-bottom:6px">Before You Start &mdash; What You Need</div>
+        <div style="font-size:0.79rem;color:var(--muted);line-height:2.2;margin-bottom:16px">
+          <div><span style="color:var(--gold);font-weight:700">1.</span> <strong style="color:var(--text)">A registered Aequitas human account.</strong> Same rule as for block production, and for the same reason: one human, one key. Without it, one person could quietly become a whole committee.</div>
+          <div><span style="color:var(--gold);font-weight:700">2.</span> <strong style="color:var(--text)">A small Linux server.</strong> 2&nbsp;GB of RAM is enough. Any provider works &mdash; Contabo, Hetzner, DigitalOcean &mdash; for roughly 5&ndash;10&nbsp;&euro; a month. A machine at home is a poor choice: it has to stay reachable.</div>
+          <div><span style="color:var(--gold);font-weight:700">3.</span> <strong style="color:var(--text)">A domain name you control.</strong> Something like <span style="font-family:var(--font-mono);color:var(--neon)">verifier.example.org</span>. A subdomain of one you already own is fine. Browsers hand out no camera to a page without HTTPS, and HTTPS needs a name.</div>
+          <div><span style="color:var(--gold);font-weight:700">4.</span> <strong style="color:var(--text)">About 45 minutes.</strong> Most of it waiting for downloads. Nothing here needs any knowledge of cryptography &mdash; every command is given in full.</div>
+          <div><span style="color:var(--gold);font-weight:700">5.</span> <strong style="color:var(--text)">The intention to stay online.</strong> Every member of a committee must answer for a registration to finish. A verifier that is often away slows people down instead of protecting them.</div>
         </div>
 
         <!-- Schritt 1 -->
-        <div style="font-size:0.76rem;color:var(--purple);font-weight:700;letter-spacing:1px;text-transform:uppercase;margin-bottom:10px;border-bottom:1px solid var(--border);padding-bottom:6px" data-i18n="bv-s1-t">Step 1 — Generate Your Own Keys</div>
-        <div style="background:rgba(245,166,35,0.05);border:1px solid rgba(245,166,35,0.2);border-radius:6px;padding:10px 14px;margin-bottom:10px;font-size:0.77rem"><span style="color:var(--gold);font-weight:700" data-i18n="bv-s1-warn-t">Generate them yourself. Never accept keys from anyone.</span> <span style="color:var(--muted)" data-i18n="bv-s1-warn-d">Two verifiers holding the same secret count as one, and the committee would be smaller than it looks. Nobody — including us — should ever send you a key.</span></div>
-        <div style="font-family:var(--font-mono);background:rgba(0,0,0,0.3);border:1px solid rgba(139,92,246,0.15);border-radius:6px;padding:14px;margin-bottom:6px;font-size:0.78rem;line-height:2.3;overflow-x:auto">
-          <span style="color:var(--muted)"># Encrypts what little is stored on disk</span><br>
+        <div style="font-size:0.76rem;color:var(--purple);font-weight:700;letter-spacing:1px;text-transform:uppercase;margin:22px 0 10px;border-bottom:1px solid var(--border);padding-bottom:6px">Step 1 &mdash; Rent a Server</div>
+        <div style="background:rgba(0,220,170,0.05);border:1px solid rgba(0,220,170,0.15);border-radius:6px;padding:10px 14px;margin-bottom:10px;font-size:0.77rem"><span style="color:var(--teal);font-weight:700">What is a VPS?</span> <span style="color:var(--muted)">A computer in a data centre that you rent and control remotely, as if it stood under your desk. It stays on when your laptop does not.</span></div>
+        <div style="font-size:0.79rem;color:var(--muted);line-height:2.2;margin-bottom:16px">
+          <div><span style="color:var(--gold);font-weight:700">a)</span> Open any provider &mdash; <span style="font-family:var(--font-mono);color:var(--neon)">contabo.com</span>, <span style="font-family:var(--font-mono);color:var(--neon)">hetzner.com</span> and <span style="font-family:var(--font-mono);color:var(--neon)">digitalocean.com</span> all work</div>
+          <div><span style="color:var(--gold);font-weight:700">b)</span> Choose the smallest plan with at least <strong style="color:var(--text)">2 GB RAM</strong></div>
+          <div><span style="color:var(--gold);font-weight:700">c)</span> Choose <strong style="color:var(--text)">Ubuntu 24.04</strong> (or 22.04) as the operating system</div>
+          <div><span style="color:var(--gold);font-weight:700">d)</span> Note the <strong style="color:var(--text)">IP address</strong> and root password they send you</div>
+        </div>
+
+        <!-- Schritt 2 -->
+        <div style="font-size:0.76rem;color:var(--purple);font-weight:700;letter-spacing:1px;text-transform:uppercase;margin:22px 0 10px;border-bottom:1px solid var(--border);padding-bottom:6px">Step 2 &mdash; Log In and Install Docker</div>
+        <div style="background:rgba(0,220,170,0.05);border:1px solid rgba(0,220,170,0.15);border-radius:6px;padding:10px 14px;margin-bottom:10px;font-size:0.77rem"><span style="color:var(--teal);font-weight:700">What is Docker?</span> <span style="color:var(--muted)">A way to run a program together with everything it needs, in one sealed package. You never install databases or libraries by hand, and what runs on your machine is exactly what runs on everyone else&rsquo;s.</span></div>
+        <div style="font-size:0.79rem;color:var(--muted);line-height:1.9;margin-bottom:12px">On Windows open PowerShell; on macOS or Linux open Terminal. Then:</div>
+        <div style="font-family:var(--font-mono);background:rgba(0,0,0,0.3);border:1px solid rgba(139,92,246,0.15);border-radius:6px;padding:14px;margin-bottom:10px;font-size:0.78rem;line-height:2.0;overflow-x:auto">
+          <span style="color:var(--muted)"># Use the IP address from Step 1</span><br>
+          ssh root@YOUR-SERVER-IP<br><br>
+          <span style="color:var(--muted)"># Installs Docker. Takes a couple of minutes.</span><br>
+          curl -fsSL https://get.docker.com | sh<br><br>
+          <span style="color:var(--muted)"># Should print a version number</span><br>
+          docker --version
+        </div>
+
+        <!-- Schritt 3 -->
+        <div style="font-size:0.76rem;color:var(--purple);font-weight:700;letter-spacing:1px;text-transform:uppercase;margin:22px 0 10px;border-bottom:1px solid var(--border);padding-bottom:6px">Step 3 &mdash; Point Your Domain at the Server</div>
+        <div style="background:rgba(0,220,170,0.05);border:1px solid rgba(0,220,170,0.15);border-radius:6px;padding:10px 14px;margin-bottom:10px;font-size:0.77rem"><span style="color:var(--teal);font-weight:700">What is an A record?</span> <span style="color:var(--muted)">The entry in your domain&rsquo;s settings that says which IP address a name points to. Without it nobody can reach your server by name, however well it is running.</span></div>
+        <div style="font-size:0.79rem;color:var(--muted);line-height:2.2;margin-bottom:16px">
+          <div><span style="color:var(--gold);font-weight:700">a)</span> Open the DNS settings wherever your domain is managed</div>
+          <div><span style="color:var(--gold);font-weight:700">b)</span> Add an <strong style="color:var(--text)">A record</strong>: name <span style="font-family:var(--font-mono);color:var(--neon)">verifier</span>, value = your server&rsquo;s IP address</div>
+          <div><span style="color:var(--gold);font-weight:700">c)</span> Save, wait a few minutes, then check with <span style="font-family:var(--font-mono);color:var(--neon)">ping verifier.example.org</span></div>
+        </div>
+
+        <!-- Schritt 4 -->
+        <div style="font-size:0.76rem;color:var(--purple);font-weight:700;letter-spacing:1px;text-transform:uppercase;margin:22px 0 10px;border-bottom:1px solid var(--border);padding-bottom:6px">Step 4 &mdash; Generate Your Own Keys</div>
+        <div style="background:rgba(0,220,170,0.05);border:1px solid rgba(0,220,170,0.15);border-radius:6px;padding:10px 14px;margin-bottom:10px;font-size:0.77rem"><span style="color:var(--teal);font-weight:700">What is a key pair?</span> <span style="color:var(--muted)">Two matching halves. The private half signs; the public half lets anyone check a signature without being able to forge one. You publish the public half and show the private one to nobody.</span></div>
+        <div style="background:rgba(255,82,82,0.06);border:1px solid rgba(255,82,82,0.25);border-radius:6px;padding:10px 14px;margin-bottom:10px;font-size:0.77rem"><span style="color:#ff8a80;font-weight:700">Generate them yourself. Never accept keys from anybody, including us.</span> <span style="color:var(--muted)">Two verifiers holding the same secret count as one, and the quorum that is meant to protect people would look satisfied without being so.</span></div>
+        <div style="font-family:var(--font-mono);background:rgba(0,0,0,0.3);border:1px solid rgba(139,92,246,0.15);border-radius:6px;padding:14px;margin-bottom:10px;font-size:0.78rem;line-height:2.0;overflow-x:auto">
+          <span style="color:var(--muted)"># 1 &mdash; encrypts what little is stored on disk</span><br>
           openssl rand -base64 32<br><br>
-          <span style="color:var(--muted)"># Defines your own projection — see the note below</span><br>
+          <span style="color:var(--muted)"># 2 &mdash; defines your own projection, see the note below</span><br>
           openssl rand -hex 32<br><br>
-          <span style="color:var(--muted)"># Your Ed25519 attestation key pair</span><br>
+          <span style="color:var(--muted)"># 3 &mdash; your Ed25519 attestation key pair</span><br>
           docker run --rm python:3.12-slim sh -c "pip -q install cryptography &amp;&amp; python -c '<br>
           &nbsp;&nbsp;from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey<br>
           &nbsp;&nbsp;from cryptography.hazmat.primitives import serialization as s<br>
@@ -1661,80 +1707,124 @@
           &nbsp;&nbsp;print(\"PRIVATE\", k.private_bytes(s.Encoding.Raw, s.PrivateFormat.Raw, s.NoEncryption()).hex())<br>
           &nbsp;&nbsp;print(\"PUBLIC \", k.public_key().public_bytes(s.Encoding.Raw, s.PublicFormat.Raw).hex())'"
         </div>
-        <div style="font-size:0.77rem;color:var(--muted);line-height:1.9;margin-bottom:18px" data-i18n="bv-s1-note">
-          Keep the private half on your server and nowhere else. The public half is meant to be shared — it is how others verify that you attested something. <strong style="color:var(--text)">Your own projection seed matters:</strong> because every verifier uses a different one, a stolen database from one verifier cannot be compared against another's. Lose the seed and your stored shares become meaningless, so back it up somewhere you control.
-        </div>
+        <div style="font-size:0.77rem;color:var(--muted);line-height:1.9;margin-bottom:16px">Copy all four values into a text file for the next step, and keep the private half on your server and nowhere else. <strong style="color:var(--text)">Your own projection seed matters:</strong> every verifier must project faces the same way to compare them, but a public projection would let a stolen fragment be reversed. Yours being yours is what prevents that.</div>
 
-        <!-- Schritt 2 -->
-        <div style="font-size:0.76rem;color:var(--purple);font-weight:700;letter-spacing:1px;text-transform:uppercase;margin-bottom:10px;border-bottom:1px solid var(--border);padding-bottom:6px" data-i18n="bv-s2-t">Step 2 — Write the Configuration File</div>
-        <div style="font-size:0.79rem;color:var(--muted);line-height:1.9;margin-bottom:8px" data-i18n="bv-s2-d">Put the values from Step 1 into a file readable only by you. One value per line, no quotes.</div>
-        <div style="font-family:var(--font-mono);background:rgba(0,0,0,0.3);border:1px solid rgba(139,92,246,0.15);border-radius:6px;padding:14px;margin-bottom:6px;font-size:0.78rem;line-height:2.3;overflow-x:auto">
+        <!-- Schritt 5 -->
+        <div style="font-size:0.76rem;color:var(--purple);font-weight:700;letter-spacing:1px;text-transform:uppercase;margin:22px 0 10px;border-bottom:1px solid var(--border);padding-bottom:6px">Step 5 &mdash; Write the Configuration File</div>
+        <div style="font-size:0.79rem;color:var(--muted);line-height:1.9;margin-bottom:12px">Put the values from Step 4 into a file only you can read.</div>
+        <div style="font-family:var(--font-mono);background:rgba(0,0,0,0.3);border:1px solid rgba(139,92,246,0.15);border-radius:6px;padding:14px;margin-bottom:10px;font-size:0.78rem;line-height:2.0;overflow-x:auto">
           nano /root/.aequitas-verifier.env<br><br>
           <span style="color:var(--muted)"># --- paste, with your own values ---</span><br>
-          TEMPLATE_ENCRYPTION_KEY=&lt;openssl rand -base64 32&gt;<br>
-          FACE_SKETCH_SEED=&lt;openssl rand -hex 32&gt;<br>
-          VALIDATOR_SIGNING_KEY=&lt;the PRIVATE hex from step 1&gt;<br>
+          TEMPLATE_ENCRYPTION_KEY=&lt;the base64 value&gt;<br>
+          FACE_SKETCH_SEED=&lt;the hex value&gt;<br>
+          VALIDATOR_SIGNING_KEY=&lt;the PRIVATE hex from Step 4&gt;<br>
           ALLOW_REAL_BIOMETRIC_DATA=false<br>
           POH_DB_PATH=/data/poh.db<br>
           PORT=8098<br><br>
+          <span style="color:var(--muted)"># Ctrl+O, Enter, Ctrl+X leaves nano</span><br>
           chmod 600 /root/.aequitas-verifier.env
         </div>
-        <div style="font-size:0.77rem;color:var(--muted);line-height:1.9;margin-bottom:18px" data-i18n="bv-s2-note">
-          <strong style="color:var(--gold)">Leave ALLOW_REAL_BIOMETRIC_DATA on false</strong> until you have read the data-protection notes. With it off, your verifier joins the network and takes part in test enrollments without ever storing data from a real person. That is the right way to start, and there is no hurry to change it.
-        </div>
+        <div style="font-size:0.77rem;color:var(--muted);line-height:1.9;margin-bottom:16px"><strong style="color:var(--text)">Leave ALLOW_REAL_BIOMETRIC_DATA on false</strong> until you have read the data-protection sections above and know what you are taking on. With it false your verifier works fully &mdash; on test data.</div>
 
-        <!-- Schritt 3 -->
-        <div style="font-size:0.76rem;color:var(--purple);font-weight:700;letter-spacing:1px;text-transform:uppercase;margin-bottom:10px;border-bottom:1px solid var(--border);padding-bottom:6px" data-i18n="bv-s3-t">Step 3 — Start the Verifier</div>
-        <div style="font-family:var(--font-mono);background:rgba(0,0,0,0.3);border:1px solid rgba(139,92,246,0.15);border-radius:6px;padding:14px;margin-bottom:6px;font-size:0.78rem;line-height:2.3;overflow-x:auto">
+        <!-- Schritt 6 -->
+        <div style="font-size:0.76rem;color:var(--purple);font-weight:700;letter-spacing:1px;text-transform:uppercase;margin:22px 0 10px;border-bottom:1px solid var(--border);padding-bottom:6px">Step 6 &mdash; Start the Verifier</div>
+        <div style="font-family:var(--font-mono);background:rgba(0,0,0,0.3);border:1px solid rgba(139,92,246,0.15);border-radius:6px;padding:14px;margin-bottom:10px;font-size:0.78rem;line-height:2.0;overflow-x:auto">
           docker network create aequitas-net 2&gt;/dev/null || true<br>
           mkdir -p /root/aequitas-verifier-data<br><br>
-          docker run -d --name aequitas-verifier \<br>
-          &nbsp;&nbsp;--network aequitas-net --restart unless-stopped \<br>
-          &nbsp;&nbsp;--env-file /root/.aequitas-verifier.env \<br>
-          &nbsp;&nbsp;-v /root/aequitas-verifier-data:/data \<br>
+          docker run -d --name aequitas-verifier <br>
+          &nbsp;&nbsp;--network aequitas-net --restart unless-stopped <br>
+          &nbsp;&nbsp;--env-file /root/.aequitas-verifier.env <br>
+          &nbsp;&nbsp;-v /root/aequitas-verifier-data:/data <br>
+          &nbsp;&nbsp;--log-opt max-size=20m --log-opt max-file=3 <br>
           &nbsp;&nbsp;&lt;image&gt;<br><br>
           <span style="color:var(--muted)"># Did it come up?</span><br>
           curl -s localhost:8098/health
         </div>
-        <div style="font-size:0.77rem;color:var(--muted);line-height:1.9;margin-bottom:18px" data-i18n="bv-s3-note">
-          A healthy answer reports <span style="font-family:var(--font-mono);color:var(--neon)">plaintext_templates: 0</span> and <span style="font-family:var(--font-mono);color:var(--neon)">sketch_seed_configured: true</span>. The first is the claim that no whole template is stored, in a form you can check yourself rather than take on faith. Check it now and again later — it is your own guarantee as much as anyone else's.
-        </div>
+        <div style="font-size:0.77rem;color:var(--muted);line-height:1.9;margin-bottom:16px">A healthy answer reports <span style="font-family:var(--font-mono);color:var(--neon)">plaintext_templates: 0</span> and <span style="font-family:var(--font-mono);color:var(--neon)">sketch_seed_configured: true</span>. The first is the plaintext-template counter and must stay at zero; the second confirms your own projection from Step 4 is in use rather than the built-in default.</div>
 
-        <!-- Schritt 4 -->
-        <div style="font-size:0.76rem;color:var(--purple);font-weight:700;letter-spacing:1px;text-transform:uppercase;margin-bottom:10px;border-bottom:1px solid var(--border);padding-bottom:6px" data-i18n="bv-s4-t">Step 4 — Put HTTPS in Front</div>
-        <div style="font-size:0.79rem;color:var(--muted);line-height:1.9;margin-bottom:8px" data-i18n="bv-s4-d">Other committee members reach you over the public internet, so the port must not be exposed unencrypted. Caddy obtains a certificate on its own.</div>
-        <div style="font-family:var(--font-mono);background:rgba(0,0,0,0.3);border:1px solid rgba(139,92,246,0.15);border-radius:6px;padding:14px;margin-bottom:18px;font-size:0.78rem;line-height:2.3;overflow-x:auto">
-          <span style="color:var(--muted)"># /root/Caddyfile</span><br>
+        <!-- Schritt 7 -->
+        <div style="font-size:0.76rem;color:var(--purple);font-weight:700;letter-spacing:1px;text-transform:uppercase;margin:22px 0 10px;border-bottom:1px solid var(--border);padding-bottom:6px">Step 7 &mdash; Put HTTPS in Front</div>
+        <div style="background:rgba(0,220,170,0.05);border:1px solid rgba(0,220,170,0.15);border-radius:6px;padding:10px 14px;margin-bottom:10px;font-size:0.77rem"><span style="color:var(--teal);font-weight:700">What is a reverse proxy?</span> <span style="color:var(--muted)">A small program that receives requests from the internet and passes them to your verifier, handling the encryption certificate for you. Caddy obtains and renews that certificate automatically and free of charge.</span></div>
+        <div style="font-family:var(--font-mono);background:rgba(0,0,0,0.3);border:1px solid rgba(139,92,246,0.15);border-radius:6px;padding:14px;margin-bottom:10px;font-size:0.78rem;line-height:2.0;overflow-x:auto">
+          <span style="color:var(--muted)"># nano /root/Caddyfile &mdash; use your own domain</span><br>
           verifier.example.org {<br>
           &nbsp;&nbsp;reverse_proxy aequitas-verifier:8098<br>
-          }
+          }<br><br>
+          docker run -d --name caddy --network aequitas-net --restart unless-stopped <br>
+          &nbsp;&nbsp;-p 80:80 -p 443:443 <br>
+          &nbsp;&nbsp;-v /root/Caddyfile:/etc/caddy/Caddyfile <br>
+          &nbsp;&nbsp;-v /root/caddy-data:/data <br>
+          &nbsp;&nbsp;caddy:latest<br><br>
+          <span style="color:var(--muted)"># From your own computer, not the server:</span><br>
+          curl -s https://verifier.example.org/health
         </div>
 
-        <!-- Schritt 5 -->
-        <div style="font-size:0.76rem;color:var(--purple);font-weight:700;letter-spacing:1px;text-transform:uppercase;margin-bottom:10px;border-bottom:1px solid var(--border);padding-bottom:6px" data-i18n="bv-s5-t">Step 5 — Link Your Key to Your Human Wallet</div>
-        <div style="font-size:0.79rem;color:var(--muted);line-height:1.9;margin-bottom:10px" data-i18n="bv-s5-d">
-          This is the step that makes one human one verifier. You sign twice: once with your registered human wallet, and once with your node key. The chain accepts the pair only if both signatures check out, so nobody can register a key in your name and you cannot register two. Use the button below.
-        </div>
-        <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:18px">
-          <a class="hover-fade" href="/node-binding" target="_blank" rel="noopener noreferrer" style="display:inline-flex;align-items:center;gap:8px;background:rgba(139,92,246,0.15);color:var(--purple);border:1px solid rgba(139,92,246,0.3);padding:12px 20px;border-radius:8px;font-size:0.84rem;font-weight:700;text-decoration:none" data-i18n="bv-bind">🔗 Generate Node Binding Signature</a>
-        </div>
+        <!-- Schritt 8 -->
+        <div style="font-size:0.76rem;color:var(--purple);font-weight:700;letter-spacing:1px;text-transform:uppercase;margin:22px 0 10px;border-bottom:1px solid var(--border);padding-bottom:6px">Step 8 &mdash; Bind Your Verifier Key to Your Wallet</div>
+        <div style="background:rgba(0,220,170,0.05);border:1px solid rgba(0,220,170,0.15);border-radius:6px;padding:10px 14px;margin-bottom:10px;font-size:0.77rem"><span style="color:var(--teal);font-weight:700">Why does this exist?</span> <span style="color:var(--muted)">This is what makes one human one verifier. Your wallet signs a sentence naming your key. Without it, anybody could enter a key that is not theirs, or one person could quietly be several verifiers &mdash; and a committee of one person pretending to be five protects nobody.</span></div>
+        <div style="font-size:0.79rem;color:var(--muted);line-height:1.9;margin-bottom:12px">Signing costs nothing and moves nothing: it signs a sentence, not a transaction. Open the button below, paste the <strong style="color:var(--text)">PUBLIC</strong> half from Step 4, and sign with the wallet of your registered account.</div>
+        <div style="margin:4px 0 16px"><a class="hover-fade" href="/node-binding" target="_blank" rel="noopener noreferrer" style="display:inline-flex;align-items:center;gap:8px;background:rgba(139,92,246,0.15);color:var(--purple);border:1px solid rgba(139,92,246,0.3);padding:12px 20px;border-radius:8px;font-size:0.84rem;font-weight:700;text-decoration:none" data-i18n="bv-bind">🔗 Generate Node Binding Signature</a></div>
 
-        <!-- Schritt 6 -->
-        <div style="font-size:0.76rem;color:var(--purple);font-weight:700;letter-spacing:1px;text-transform:uppercase;margin-bottom:10px;border-bottom:1px solid var(--border);padding-bottom:6px" data-i18n="bv-s6-t">Step 6 — Publish Your Public Key</div>
-        <div style="font-size:0.79rem;color:var(--muted);line-height:1.9;margin-bottom:18px" data-i18n="bv-s6-d">
-          Send the <strong style="color:var(--text)">public</strong> half from Step 1, together with your HTTPS address, to the group. It is added to the list every proof server checks against, and from then on your attestations count toward the quorum. Nothing secret leaves your machine in this step — that is the point of the split: the private half stays with you forever, and the public half is useless without it.
+        <!-- Schritt 9 -->
+        <div style="font-size:0.76rem;color:var(--purple);font-weight:700;letter-spacing:1px;text-transform:uppercase;margin:22px 0 10px;border-bottom:1px solid var(--border);padding-bottom:6px">Step 9 &mdash; Register It on the Chain</div>
+        <div style="font-size:0.79rem;color:var(--muted);line-height:1.9;margin-bottom:12px">Your public key and your HTTPS address go into the <strong style="color:var(--text)">validator registry on the chain</strong>, together with the signature from Step 8. From then on your attestations count toward the quorum.</div>
+        <div style="font-family:var(--font-mono);background:rgba(0,0,0,0.3);border:1px solid rgba(139,92,246,0.15);border-radius:6px;padding:14px;margin-bottom:10px;font-size:0.78rem;line-height:2.0;overflow-x:auto">
+          <span style="color:var(--muted)"># On your server. Every value here is public.</span><br>
+          curl -s -X POST https://aequitas.digital/api/register-validator-key <br>
+          &nbsp;&nbsp;-H "Content-Type: application/json" <br>
+          &nbsp;&nbsp;-d '{"signing_address":"0xYOUR-WALLET",<br>
+          &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;"human_wallet":"0xYOUR-WALLET",<br>
+          &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;"signature":"0xSIGNATURE-FROM-STEP-8",<br>
+          &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;"personhood_key":"YOUR-PUBLIC-HEX",<br>
+          &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;"matching_url":"https://verifier.example.org"}'
         </div>
+        <div style="font-size:0.77rem;color:var(--muted);line-height:1.9;margin-bottom:16px"><strong style="color:var(--text)">Nobody approves this.</strong> Until August 2026 you had to send your key to us and wait for somebody to add it to a file on every machine &mdash; which made that person a gatekeeper. Nothing secret leaves your server here: the private half stays where it was made.</div>
+
+        <!-- Schritt 10 -->
+        <div style="font-size:0.76rem;color:var(--purple);font-weight:700;letter-spacing:1px;text-transform:uppercase;margin:22px 0 10px;border-bottom:1px solid var(--border);padding-bottom:6px">Step 10 &mdash; Start Your Coordinator</div>
+        <div style="font-size:0.79rem;color:var(--muted);line-height:1.9;margin-bottom:12px">The second program, on the same server. It generates its own two keys with permissions only root can read, starts the container, and prints its public key. Nothing to copy in beforehand, nothing to send anywhere.</div>
+        <div style="font-family:var(--font-mono);background:rgba(0,0,0,0.3);border:1px solid rgba(139,92,246,0.15);border-radius:6px;padding:14px;margin-bottom:10px;font-size:0.78rem;line-height:2.0;overflow-x:auto">
+          ./eigenen-coordinator-starten.sh verifier.example.org<br><br>
+          <span style="color:var(--muted)"># It ends by printing your coordinator public key.</span><br>
+          <span style="color:var(--muted)"># Write it down &mdash; Step 11 needs it.</span>
+        </div>
+        <div style="font-size:0.77rem;color:var(--muted);line-height:1.9;margin-bottom:16px">That key is <strong style="color:var(--text)">not in your wallet</strong>. MetaMask only ever shows addresses; this one belongs to the coordinator, not to you. Never paste its private half into any page, including ours.</div>
+
+        <!-- Schritt 11 -->
+        <div style="font-size:0.76rem;color:var(--purple);font-weight:700;letter-spacing:1px;text-transform:uppercase;margin:22px 0 10px;border-bottom:1px solid var(--border);padding-bottom:6px">Step 11 &mdash; Authorize Your Coordinator Key</div>
+        <div style="font-size:0.79rem;color:var(--muted);line-height:1.9;margin-bottom:12px">The same idea as Step 8, for the second key: your wallet signs that a registered human stands behind it. Paste the public key that Step 10 printed, and sign.</div>
+        <div style="margin:4px 0 16px"><a class="hover-fade" href="/coordinator-binding" target="_blank" rel="noopener noreferrer" style="display:inline-flex;align-items:center;gap:8px;background:rgba(139,92,246,0.12);color:#a78bfa;border:1px solid rgba(139,92,246,0.3);padding:12px 18px;border-radius:8px;font-size:0.82rem;font-weight:600;text-decoration:none;margin-bottom:16px" data-i18n="x-authorize-coordinator-key">
+        🔑 Authorize a Coordinator Key
+      </a></div>
+
+        <!-- Schritt 12 -->
+        <div style="font-size:0.76rem;color:var(--purple);font-weight:700;letter-spacing:1px;text-transform:uppercase;margin:22px 0 10px;border-bottom:1px solid var(--border);padding-bottom:6px">Step 12 &mdash; Send the Authorization to Every Node</div>
+        <div style="background:rgba(255,82,82,0.06);border:1px solid rgba(255,82,82,0.25);border-radius:6px;padding:10px 14px;margin-bottom:10px;font-size:0.77rem"><span style="color:#ff8a80;font-weight:700">Signing alone changes nothing.</span> <span style="color:var(--muted)">The page hands you a command. Until you run it, nothing has been written anywhere and your coordinator stays unrecognized.</span></div>
+        <div style="font-family:var(--font-mono);background:rgba(0,0,0,0.3);border:1px solid rgba(139,92,246,0.15);border-radius:6px;padding:14px;margin-bottom:10px;font-size:0.78rem;line-height:2.0;overflow-x:auto">
+          <span style="color:var(--muted)"># On your server. The page gives you this line complete.</span><br>
+          ./coordinator-eintragen.sh 0xTHE-SIGNATURE<br><br>
+          <span style="color:var(--muted)"># It prints each node's answer, then both registries.</span>
+        </div>
+        <div style="font-size:0.77rem;color:var(--muted);line-height:1.9;margin-bottom:16px">It goes to every node at once, because the registry is kept per node and is not replicated. A node you skip will simply keep refusing your attestations.</div>
 
         <!-- Nachpruefen -->
-        <div style="font-size:0.76rem;color:var(--purple);font-weight:700;letter-spacing:1px;text-transform:uppercase;margin-bottom:10px;border-bottom:1px solid var(--border);padding-bottom:6px" data-i18n="bv-check-t">Checking That It Works</div>
-        <div style="font-family:var(--font-mono);background:rgba(0,0,0,0.3);border:1px solid rgba(139,92,246,0.15);border-radius:6px;padding:14px;margin-bottom:8px;font-size:0.78rem;line-height:2.3;overflow-x:auto">
+        <div style="font-size:0.76rem;color:var(--purple);font-weight:700;letter-spacing:1px;text-transform:uppercase;margin:22px 0 10px;border-bottom:1px solid var(--border);padding-bottom:6px" data-i18n="bv-check-t">Checking That It Works</div>
+        <div style="font-family:var(--font-mono);background:rgba(0,0,0,0.3);border:1px solid rgba(139,92,246,0.15);border-radius:6px;padding:14px;margin-bottom:10px;font-size:0.78rem;line-height:2.0;overflow-x:auto">
           <span style="color:var(--muted)"># Reachable from outside, with a valid certificate?</span><br>
           curl -s https://verifier.example.org/health<br><br>
           <span style="color:var(--muted)"># Does the network see you and agree with the others?</span><br>
           curl -s https://aequitas.digital/inventory
         </div>
-        <div style="font-size:0.77rem;color:var(--muted);line-height:1.9;margin-bottom:18px" data-i18n="bv-check-d">
-          The second call lists every verifier and compares them: whether all hold the same number of enrollments, whether anyone is missing a seed, and whether the keys agree. If your entry shows a divergence, it is better to find out here than during someone's registration.
+        <div style="font-size:0.77rem;color:var(--muted);line-height:1.9;margin-bottom:16px" data-i18n="bv-check-d">The second call lists every verifier and compares them: whether all hold the same number of enrollments, whether anyone is missing a seed, and whether the keys agree. If your entry shows a divergence, it is better to find out here than during someone&rsquo;s registration.</div>
+
+        <!-- Fehlersuche -->
+        <div style="font-size:0.76rem;color:var(--purple);font-weight:700;letter-spacing:1px;text-transform:uppercase;margin:22px 0 10px;border-bottom:1px solid var(--border);padding-bottom:6px">If Something Goes Wrong</div>
+        <div style="font-size:0.79rem;color:var(--muted);line-height:2.2;margin-bottom:16px">
+          <div><span style="color:var(--gold);font-weight:700">a)</span> <span style="font-family:var(--font-mono);color:var(--neon)">connection refused</span> &mdash; the container is not running. <span style="font-family:var(--font-mono);color:var(--neon)">docker logs aequitas-verifier</span> says why; a missing value in the env file is the usual cause.</div>
+          <div><span style="color:var(--gold);font-weight:700">b)</span> <strong style="color:var(--text)">No certificate appears</strong> &mdash; your A record from Step 3 has not propagated yet, or port 80 is blocked. Caddy needs port 80 reachable to obtain one.</div>
+          <div><span style="color:var(--gold);font-weight:700">c)</span> <span style="font-family:var(--font-mono);color:var(--neon)">sketch_seed_configured: false</span> &mdash; FACE_SKETCH_SEED did not reach the container. Check the env file for stray quotes, then <span style="font-family:var(--font-mono);color:var(--neon)">docker restart aequitas-verifier</span>.</div>
+          <div><span style="color:var(--gold);font-weight:700">d)</span> <strong style="color:var(--text)">Your coordinator is reported as an unknown key</strong> &mdash; Step 12 did not run, or it reached only one node. Run it again; the signature stays valid.</div>
+          <div><span style="color:var(--gold);font-weight:700">e)</span> <strong style="color:var(--text)">Still stuck</strong> &mdash; ask in the Telegram group linked on the front page. Include the output of the two checks above, and never paste any private key.</div>
         </div>
 
         <!-- Ehrlichkeit -->
@@ -1745,94 +1835,26 @@
           </div>
         </div>
       </div>
-    </div>
 
-    <!-- DRITTE ROLLE: Coordinator. Am 27.08.2026 aus einer eigenen Rubrik
-         hierher geholt: beide Rollen laufen auf derselben Maschine, liegen im
-         selben Repository und stehen unter demselben Beta-Vorbehalt. Getrennt
-         bleiben muss die BEFUGNIS, nicht der Reiter -- und die benennt der
-         Abschnitt "Was ein Coordinator kann" ausdruecklich. -->
-<div class="nc" style="grid-column:1/-1;margin-top:18px;background:linear-gradient(135deg,rgba(139,92,246,0.06),rgba(13,8,32,0.9));border-color:rgba(139,92,246,0.22)">
-
-      <div id="guide-co" class="nc-title" style="color:var(--purple);scroll-margin-top:80px" data-i18n="co-title">Or Run a Coordinator — the Door Every Human Walks Through</div>
-
-      <div style="font-size:0.82rem;color:var(--muted);line-height:1.9;margin-bottom:16px" data-i18n="co-desc">
-        The coordinator is where a person arrives: it issues the challenge, fans the capture out to the verifiers, counts their votes, and issues the attestation the chain mints on. For a long time exactly one of them existed — which meant every registration in the network passed through a single machine. Not because anything was missing, but because nobody had run a second one.
-      </div>
-
-      <div style="background:rgba(139,92,246,0.08);border:1px solid rgba(139,92,246,0.3);border-radius:8px;padding:14px;margin-bottom:18px">
-        <div style="font-size:0.77rem;color:var(--purple);font-weight:700;margin-bottom:6px" data-i18n="co-status-t">Status: closed beta — the same caveat as the verifier</div>
-        <div style="font-size:0.79rem;color:var(--muted);line-height:1.9" data-i18n="co-status-d">
-          The coordinator lives in the same repository as the verifier, and that repository is <strong style="color:var(--text)">not public yet</strong>. So the steps below cannot be completed by everyone today. They are published anyway, for the same reason: a design should be checkable before it is deployed, not after.
-        </div>
-      </div>
-
-      <div style="background:rgba(245,166,35,0.06);border:1px solid rgba(245,166,35,0.22);border-radius:8px;padding:14px;margin-bottom:14px">
-        <div style="font-size:0.77rem;color:var(--gold);font-weight:700;margin-bottom:6px" data-i18n="co-power-t">What a coordinator can do — and what it cannot</div>
-        <div style="font-size:0.79rem;color:var(--muted);line-height:1.9" data-i18n="co-power-d">
-          It <strong style="color:var(--text)">cannot invent a human</strong>. No bio_hash exists until several different verifiers have attested it, and a coordinator holds none of their keys. What it can do is bind an <strong style="color:var(--text)">existing</strong> bio_hash to a wallet — so a dishonest one could redirect an allocation to an address of its choosing. That is a real power, it grows with every coordinator added, and anyone weighing whether to trust one should know the difference.
-        </div>
-      </div>
-
-      <div style="background:rgba(0,230,118,0.05);border:1px solid rgba(0,230,118,0.18);border-radius:8px;padding:14px;margin-bottom:14px">
-        <div style="font-size:0.77rem;color:var(--neon);font-weight:700;margin-bottom:6px" data-i18n="co-safe-t">Why a second coordinator is safe at all</div>
-        <div style="font-size:0.79rem;color:var(--muted);line-height:1.9" data-i18n="co-safe-d">
-          It was not always. Until August 2026 the promise <strong style="color:var(--text)">one human, one registration</strong> hung on a Redis lock inside the coordinator — and two independent coordinators share no Redis, so two simultaneous registrations of the same person would both have gone through. Now <strong style="color:var(--text)">every verifier checks for itself</strong>, before its own write, whether that face is already enrolled. The guarantee no longer depends on any shared service or shared secret, so a coordinator can join or fall away without changing it.
-        </div>
-      </div>
-
-      <div style="font-size:0.77rem;color:var(--gold);font-weight:700;margin:20px 0 6px" data-i18n="co-need-t">What you need</div>
-      <div style="font-size:0.79rem;color:var(--muted);line-height:1.9;margin-bottom:14px" data-i18n="co-need-d">
-        A registered Aequitas account — the same rule as for producing blocks and for verifying: one human, one key. A server with Docker and a public HTTPS address, because browsers hand no camera to an insecure page. And two keys of your own, which you generate yourself and which never leave your machine: one that signs your attestations, one that maps wallet addresses to markers.
-      </div>
-
-      <div style="background:rgba(255,82,82,0.06);border:1px solid rgba(255,82,82,0.25);border-radius:8px;padding:14px;margin-bottom:14px">
-        <div style="font-size:0.77rem;color:#ff8a80;font-weight:700;margin-bottom:6px" data-i18n="co-keys-t">Never accept a key from anyone — including us</div>
-        <div style="font-size:0.79rem;color:var(--muted);line-height:1.9" data-i18n="co-keys-d">
-          Two coordinators sharing one signing key are not two coordinators; they are one with two addresses, and the quorum that is supposed to protect people would look satisfied without being so. Generate both keys on your own machine, with your own randomness, and let neither of them off it.
-        </div>
-      </div>
-
-      <div style="font-size:0.77rem;color:var(--gold);font-weight:700;margin:20px 0 6px" data-i18n="co-auth-t">Authorizing your key — no permission required</div>
-      <div style="font-size:0.79rem;color:var(--muted);line-height:1.9;margin-bottom:14px" data-i18n="co-auth-d">
-        Until your key is authorized, verifiers refuse everything it signs. Authorizing it takes two proofs and no approval from anyone: your wallet signs that a registered human stands behind this key, and your coordinator proves on its own host that the key is really its own. Use the button above to produce the first; your coordinator produces the second by itself. Until August 2026 you also needed a shared secret from us — which meant that secret <em>was</em> the permission. It is gone.
-      </div>
-
-      <div style="font-size:0.77rem;color:var(--gold);font-weight:700;margin:20px 0 6px" data-i18n="co-how-t">Setting one up — three steps</div>
-      <ol style="font-size:0.79rem;color:var(--muted);line-height:1.9;margin:0 0 14px;padding-left:20px">
-        <li style="margin-bottom:8px" data-i18n="co-how-1"><strong style="color:var(--text)">Start it.</strong> <code style="color:var(--teal)">./eigenen-coordinator-starten.sh &lt;your-hostname&gt;</code> generates both keys on that machine with permissions 600, starts the container, and prints your public key. Nothing to copy in beforehand, nothing to send anywhere.</li>
-        <li style="margin-bottom:8px" data-i18n="co-how-2"><strong style="color:var(--text)">Sign the authorization.</strong> Paste that public key into the button below and sign with a wallet that is a registered human. Nothing is spent and nothing is transferred — it signs a sentence.</li>
-        <li data-i18n="co-how-3"><strong style="color:var(--text)">Send it to the nodes.</strong> The page hands you a line ending in <code style="color:var(--teal)">./coordinator-eintragen.sh 0x&lt;signature&gt;</code>. Run it on your coordinator's host. <strong style="color:var(--text)">Signing alone changes nothing</strong> — this command is what writes the authorization, and it goes to every node at once.</li>
-      </ol>
-
-      <a class="hover-fade" href="/coordinator-binding" target="_blank" rel="noopener noreferrer" style="display:inline-flex;align-items:center;gap:8px;background:rgba(139,92,246,0.12);color:#a78bfa;border:1px solid rgba(139,92,246,0.3);padding:12px 18px;border-radius:8px;font-size:0.82rem;font-weight:600;text-decoration:none;margin-bottom:16px" data-i18n="x-authorize-coordinator-key">
-        🔑 Authorize a Coordinator Key
-      </a>
-
-      <div style="background:rgba(139,92,246,0.08);border:1px solid rgba(139,92,246,0.3);border-radius:8px;padding:14px;margin-bottom:14px">
+<div style="background:rgba(139,92,246,0.08);border:1px solid rgba(139,92,246,0.3);border-radius:8px;padding:14px;margin-bottom:14px">
         <div style="font-size:0.77rem;color:var(--purple);font-weight:700;margin-bottom:6px" data-i18n="co-pernode-t">The registry is per-node, and that is deliberate</div>
         <div style="font-size:0.79rem;color:var(--muted);line-height:1.9" data-i18n="co-pernode-d">
           An authorization written to one node does not travel to the others — there is no transaction for it and no gossip. A replicated trust list would be exactly the central authority this system is built without: every operator decides for themselves whose attestations their node accepts. The cost is that your authorization has to be sent to each node that should honour it. The signature itself is portable, so you sign once and send it everywhere; a node you skip will simply keep refusing you.
         </div>
       </div>
-
-      <div style="background:rgba(0,176,255,0.05);border:1px solid rgba(0,176,255,0.2);border-radius:8px;padding:14px;margin-bottom:14px">
+<div style="background:rgba(0,176,255,0.05);border:1px solid rgba(0,176,255,0.2);border-radius:8px;padding:14px;margin-bottom:14px">
         <div style="font-size:0.77rem;color:var(--teal);font-weight:700;margin-bottom:6px" data-i18n="co-law-t">What you learn about other people — and what follows from it</div>
         <div style="font-size:0.79rem;color:var(--muted);line-height:1.9" data-i18n="co-law-d">
           The capture passes through you; you hand it on and keep nothing. But you alone hold the mapping between wallet address and marker for the people who register through you — which is why your marker key must stay yours: shared, any operator could compute the marker for any public address and look up whose face belongs to it. It also means you become the <strong style="color:var(--text)">data controller</strong> for those people under GDPR. Not us. Access, erasure and objection requests reach you, and that is not a formality.
         </div>
       </div>
-
-      <div style="font-size:0.77rem;color:var(--gold);font-weight:700;margin:20px 0 6px" data-i18n="co-limit-t">The one limitation this creates</div>
+<div style="font-size:0.77rem;color:var(--gold);font-weight:700;margin:20px 0 6px" data-i18n="co-limit-t">The one limitation this creates</div>
       <div style="font-size:0.79rem;color:var(--muted);line-height:1.9;margin-bottom:8px" data-i18n="co-limit-d">
         Erasure by wallet address only works at the coordinator where the enrolment was made: your marker hangs on your key, and another coordinator derives a different one for the same address. A "not found" from elsewhere therefore means "not registered here", not "not registered" — and the answer says so. The route through a person's own bio_hash, the one that belongs to them and needs no operator at all, works at every coordinator, because that identifier stays the same.
       </div>
-
     </div>
 </div>
 </div>
-
-
 <div id="net-protocol" class="stab-panel">
 <div class="ps">
   <div class="section-label" data-i18n="proto-label">Aequitas V7 Protocol — Technical Documentation</div>
