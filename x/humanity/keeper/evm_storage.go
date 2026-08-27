@@ -1999,6 +1999,18 @@ func (cs *ChainState) InitValidatorKeysTable() {
 		human_wallet    TEXT NOT NULL UNIQUE,
 		registered_at   TIMESTAMP DEFAULT NOW()
 	)`)
+	// Der Bezeugungsschluessel (Ed25519, 64 Hex) gehoert in DIESES Register
+	// und nicht in eine handgepflegte Umgebungsvariable.
+	//
+	// COORDINATOR_PUBLIC_KEYS und PERSONHOOD_PUBLIC_KEYS waren Listen, die
+	// jemand auf jeder Box eintragen musste. Wer dazukommen wollte, brauchte
+	// also jemanden, der ihn eintraegt -- das ist eine Genehmigung, und damit
+	// war "keine Genehmigung noetig" nicht wahr.
+	//
+	// Hier haengt er an derselben Doppelsignatur wie die Signieradresse: ein
+	// Mensch, ein Schluessel, on-chain nachpruefbar. Ein Proof-Server kann die
+	// Liste daraus lesen, statt sie gereicht zu bekommen.
+	cs.db.Exec(`ALTER TABLE validator_keys ADD COLUMN IF NOT EXISTS personhood_key TEXT`)
 	// Add UNIQUE on human_wallet if the table already existed without it.
 	// Remove any existing duplicates first so the index creation succeeds.
 	cs.db.Exec(`DELETE FROM validator_keys vk1
@@ -2022,6 +2034,13 @@ func (cs *ChainState) InitValidatorKeysTable() {
 // must be a registered human; the signature must be a valid personal_sign
 // of "Aequitas: authorize validator key {signing_address}".
 func (cs *ChainState) RegisterValidatorKey(signingAddress, humanWallet string) error {
+	return cs.RegisterValidatorKeyWithPersonhood(signingAddress, humanWallet, "")
+}
+
+// RegisterValidatorKeyWithPersonhood traegt zusaetzlich den Ed25519-Schluessel
+// ein, mit dem dieser Validator Menschen bezeugt. Leer laesst ihn unberuehrt --
+// ein Betreiber, der nur seine Signieradresse erneuert, verliert ihn nicht.
+func (cs *ChainState) RegisterValidatorKeyWithPersonhood(signingAddress, humanWallet, personhoodKey string) error {
 	if cs.db == nil {
 		return fmt.Errorf("no database")
 	}
@@ -2030,10 +2049,18 @@ func (cs *ChainState) RegisterValidatorKey(signingAddress, humanWallet string) e
 	if !cs.IsHuman(humanWallet) {
 		return fmt.Errorf("human_wallet %s is not a registered human", humanWallet)
 	}
+	personhoodKey = strings.ToLower(strings.TrimSpace(personhoodKey))
+	// COALESCE mit NULLIF: ein leerer Wert laesst den vorhandenen Schluessel
+	// stehen, statt ihn zu loeschen. Wer nur seine Signieradresse erneuert,
+	// soll nicht unbemerkt aufhoeren zu bezeugen.
 	_, err := cs.db.Exec(
-		`INSERT INTO validator_keys (signing_address, human_wallet) VALUES ($1, $2)
-		 ON CONFLICT (signing_address) DO UPDATE SET human_wallet = $2, registered_at = NOW()`,
-		signingAddress, humanWallet)
+		`INSERT INTO validator_keys (signing_address, human_wallet, personhood_key)
+		 VALUES ($1, $2, NULLIF($3, ''))
+		 ON CONFLICT (signing_address) DO UPDATE SET
+		   human_wallet = $2,
+		   personhood_key = COALESCE(NULLIF($3, ''), validator_keys.personhood_key),
+		   registered_at = NOW()`,
+		signingAddress, humanWallet, personhoodKey)
 	return err
 }
 
@@ -2131,18 +2158,21 @@ func (cs *ChainState) GetValidatorKeyPairsForSync() []ValidatorKeyPair {
 	var pairs []ValidatorKeyPair
 
 	// P2-08: log DB errors instead of silently returning a partial result.
-	rows, err := cs.db.Query(`SELECT signing_address, human_wallet FROM validator_keys ORDER BY registered_at`)
+	rows, err := cs.db.Query(`SELECT signing_address, human_wallet, COALESCE(personhood_key, '')
+		FROM validator_keys ORDER BY registered_at`)
 	if err != nil {
 		fmt.Printf("[VALIDATORS] ⚠ GetValidatorKeyPairsForSync: validator_keys query failed: %v\n", err)
 	} else {
 		for rows.Next() {
-			var addr, wallet string
-			rows.Scan(&addr, &wallet)
+			var addr, wallet, personhood string
+			rows.Scan(&addr, &wallet, &personhood)
 			addr = strings.ToLower(strings.TrimSpace(addr))
 			wallet = strings.ToLower(strings.TrimSpace(wallet))
+			personhood = strings.ToLower(strings.TrimSpace(personhood))
 			if addr != "" && !seen[addr] {
 				seen[addr] = true
-				pairs = append(pairs, ValidatorKeyPair{SigningAddress: addr, HumanWallet: wallet})
+				pairs = append(pairs, ValidatorKeyPair{
+					SigningAddress: addr, HumanWallet: wallet, PersonhoodKey: personhood})
 			}
 		}
 		rows.Close()

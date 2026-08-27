@@ -1093,6 +1093,14 @@ type ValidatorKeyPair struct {
 	SigningAddress           string `json:"signing_address"`
 	HumanWallet              string `json:"human_wallet"`
 	OperatorBindingSignature string `json:"operator_binding_signature,omitempty"`
+	// Der Ed25519-Schluessel, mit dem dieser Validator Menschen bezeugt.
+	//
+	// Er steht hier, damit ein Proof-Server die Liste der anerkannten
+	// Bezeuger AUS DER KETTE lesen kann, statt sie in einer
+	// Umgebungsvariablen gereicht zu bekommen. Eine handgepflegte Liste ist
+	// eine Genehmigung; ein on-chain-Register, an dem eine Doppelsignatur
+	// haengt, ist keine.
+	PersonhoodKey string `json:"personhood_key,omitempty"`
 }
 
 // ValidatorKeyPairs returns signing/human-wallet pairs for all registered

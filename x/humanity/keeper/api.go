@@ -3,6 +3,7 @@ package keeper
 import (
 	"bytes"
 	"context"
+	"crypto/ed25519"
 	"crypto/subtle"
 	"database/sql"
 	"database/sql/driver"
@@ -2613,6 +2614,14 @@ func (a *APIServer) handleRegisterValidatorKey(w http.ResponseWriter, r *http.Re
 		HumanWallet         string `json:"human_wallet"`
 		HumanSignature      string `json:"human_signature"`
 		SigningKeySignature string `json:"signing_key_signature"`
+		// Optional: der Ed25519-Schluessel, mit dem dieser Validator Menschen
+		// bezeugt, plus ein Besitznachweis darueber.
+		//
+		// Er gehoert ins Register und nicht in eine handgepflegte
+		// Umgebungsvariable: eine Liste, die jemand auf jeder Box eintragen
+		// muss, IST eine Genehmigung.
+		PersonhoodKey       string `json:"personhood_key"`
+		PersonhoodSignature string `json:"personhood_signature"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, `{"error":"invalid request"}`, 400)
@@ -2642,7 +2651,25 @@ func (a *APIServer) handleRegisterValidatorKey(w http.ResponseWriter, r *http.Re
 		jsonError(w, "invalid signing_key_signature — sign with RELAYER_PRIVATE_KEY: "+err.Error(), 400)
 		return
 	}
-	if err := a.state.RegisterValidatorKey(signingAddr, humanWallet); err != nil {
+	// 3. Der Bezeugungsschluessel beweist, dass er zu DIESEM Menschen gehoert.
+	//
+	// Ohne diesen Nachweis koennte jemand einen fremden oeffentlichen
+	// Schluessel eintragen -- und dessen Unterschriften wuerden fortan unter
+	// seiner Registrierung zaehlen. Der Beweis ist derselbe Gedanke wie bei der
+	// Signieradresse eine Zeile darueber: wer eintraegt, muss besitzen.
+	personhood := strings.ToLower(strings.TrimSpace(req.PersonhoodKey))
+	if personhood != "" {
+		if len(personhood) != 64 || strings.Trim(personhood, "0123456789abcdef") != "" {
+			jsonError(w, "personhood_key must be 64 hex characters (Ed25519 public key)", 400)
+			return
+		}
+		if !verifyPersonhoodPossession(personhood, req.PersonhoodSignature, humanWallet) {
+			jsonError(w, "invalid personhood_signature — sign \"Aequitas: personhood key for human <wallet>\" "+
+				"with the Ed25519 key itself", 400)
+			return
+		}
+	}
+	if err := a.state.RegisterValidatorKeyWithPersonhood(signingAddr, humanWallet, personhood); err != nil {
 		jsonStateError(w, "register-validator-key", signingAddr, err)
 		return
 	}
@@ -2652,7 +2679,27 @@ func (a *APIServer) handleRegisterValidatorKey(w http.ResponseWriter, r *http.Re
 		"success":         true,
 		"signing_address": signingAddr,
 		"human_wallet":    humanWallet,
+		"personhood_key":  personhood,
 	})
+}
+
+// verifyPersonhoodPossession prueft, dass der Eintragende den privaten Teil des
+// Ed25519-Schluessels wirklich besitzt.
+//
+// Unterschrieben wird eine Nachricht, die den MENSCHEN nennt. Damit laesst sich
+// eine abgefangene Signatur nicht unter einer anderen Registrierung
+// wiederverwenden.
+func verifyPersonhoodPossession(publicHex, signatureHex, humanWallet string) bool {
+	roh, err := hex.DecodeString(strings.TrimPrefix(strings.TrimSpace(signatureHex), "0x"))
+	if err != nil || len(roh) != ed25519.SignatureSize {
+		return false
+	}
+	pub, err := hex.DecodeString(publicHex)
+	if err != nil || len(pub) != ed25519.PublicKeySize {
+		return false
+	}
+	msg := []byte("Aequitas: personhood key for human " + strings.ToLower(strings.TrimSpace(humanWallet)))
+	return ed25519.Verify(ed25519.PublicKey(pub), msg, roh)
 }
 
 // handleValidatorList returns registered validator key pairs (signing_address +
