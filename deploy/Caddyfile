@@ -86,3 +86,48 @@ aequitas.digital, www.aequitas.digital {
 # not HTTP, and has to stay directly reachable on 4001/tcp — that is what the
 # bootstrap multiaddrs in x/humanity/keeper/p2p.go point at.
 # Verify with:  nc -vz <ip> 4001
+
+# ACHTUNG -- die folgenden vier Bloecke duerfen nicht verschwinden.
+#
+# Sie standen bis zum 28.08.2026 NUR auf der Box und nicht in dieser Datei.
+# Der Workflow contabo1-serve-domain schreibt diese Datei vollstaendig ueber
+# das laufende Caddyfile; ein Lauf haette damit den Vergleichsdienst und den
+# Coordinator von aussen unerreichbar gemacht. `caddy validate` haette das
+# nicht bemerkt -- eine Konfiguration ohne diese Routen ist syntaktisch
+# einwandfrei, sie beantwortet nur zwei Dienste weniger.
+#
+# Die Folge waere nicht bloss ein toter Pfad: der Proof-Server verlangt
+# Bezeugung (mode=required, quorum=2). Faellt ein Vergleichsdienst von aussen
+# weg, sinkt die Zahl erreichbarer Bezeugen unter das Quorum und JEDE
+# Registrierung bleibt stehen.
+#
+# Der Workflow prueft nach dem Neuladen, ob beide Routen noch antworten.
+
+proof1.aequitas.digital/matching {
+  # Ohne diesen Block fiel die nackte Adresse auf den Standardblock durch --
+  # also auf den Proof-Server, der mit "Cannot GET /matching" antwortete. Ein
+  # Fehler des falschen Dienstes ist schlimmer als gar keiner.
+  redir /matching/health permanent
+}
+
+proof1.aequitas.digital/matching/* {
+  uri strip_prefix /matching
+  reverse_proxy aequitas-matching:8098
+}
+
+# Der Coordinator dieser Box. Er laeuft mit einem Signierschluessel, den die
+# Box selbst erzeugt hat und der sie nie verlaesst -- kein geteiltes Geheimnis
+# mit irgendeiner anderen Instanz. Erreichbar nur ueber diesen Proxy; der
+# Container veroeffentlicht selbst keinen Port.
+proof1.aequitas.digital/coordinator {
+  # Ohne diesen Block fiel die nackte Adresse auf den Standardblock durch --
+  # also auf den Proof-Server, der mit 404 antwortete. Dieselbe Ursache wie
+  # bei /matching, nur eine Route weiter: auf `/coordinator/*` passt
+  # `/coordinator` ohne Schraegstrich nicht.
+  redir /coordinator/ permanent
+}
+
+proof1.aequitas.digital/coordinator/* {
+  uri strip_prefix /coordinator
+  reverse_proxy aequitas-coordinator:8200
+}

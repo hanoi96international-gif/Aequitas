@@ -196,5 +196,22 @@ jobs:
             [ "$p1" = "200" ] \
               || { echo "REGRESSION: proof1 is no longer healthy. Restore /etc/caddy/Caddyfile.bak-* inside proof-caddy and reload — see docs/LAUNCH_2026-08-18.md"; exit 1; }
 
+            echo "=== the two services behind proof1 must still answer ==="
+            # These routes lived only on the box until 2026-08-28 and were
+            # missing from deploy/Caddyfile. Installing that file would have
+            # removed them, and nothing here would have noticed: the config
+            # was still valid and /health still answered 200. The check below
+            # is what makes that impossible to do silently.
+            for pfad in /matching/health /coordinator/; do
+              code=$(curl -s -o /dev/null -w '%{http_code}' -m 10 -L "https://proof1.aequitas.digital$pfad" || true)
+              echo "proof1$pfad -> $code"
+              [ "$code" = "200" ] \
+                || { echo "REGRESSION: proof1$pfad no longer answers. The installed config is missing"; \
+                     echo "that route. This is not just a dead path: the proof server requires witnessing"; \
+                     echo "(mode=required, quorum=2), so an unreachable matching service drops the count"; \
+                     echo "of reachable witnesses below quorum and EVERY registration stops."; \
+                     echo "Restore /etc/caddy/Caddyfile.bak-* inside proof-caddy and reload."; exit 1; }
+            done
+
             echo ""
             echo "aequitas.digital serves the real chain over TLS, and proof1 is untouched."
