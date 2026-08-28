@@ -1978,7 +1978,12 @@ func (a *APIServer) handleBalance(w http.ResponseWriter, r *http.Request) {
 	writeJSONCORS(w)
 	wallet := strings.ToLower(r.URL.Query().Get("wallet"))
 	if wallet == "" {
-		json.NewEncoder(w).Encode(map[string]interface{}{"balance": 0, "tusd_balance": 0, "is_human": false})
+		// Frueher: HTTP 200 mit {"balance": 0, "is_human": false}. Ein
+		// Tippfehler im Parameternamen (address= statt wallet=) sagte damit
+		// einem registrierten Menschen, er sei nicht registriert und habe
+		// nichts -- eine plausible falsche Antwort ist schlimmer als eine
+		// Fehlermeldung.
+		jsonError(w, "wallet parameter required, e.g. /api/balance?wallet=0x...", http.StatusBadRequest)
 		return
 	}
 
@@ -2040,7 +2045,10 @@ func (a *APIServer) handleCheckRegistration(w http.ResponseWriter, r *http.Reque
 
 	commitment := r.URL.Query().Get("commitment")
 	if commitment == "" {
-		json.NewEncoder(w).Encode(map[string]interface{}{"registered": false})
+		// Kein "registered": false auf eine ungestellte Frage. Das hiesse
+		// "noch frei" -- die gefaehrliche Richtung fuer eine Abfrage, die
+		// gerade pruefen soll, ob etwas schon vergeben ist.
+		jsonError(w, "commitment parameter required", http.StatusBadRequest)
 		return
 	}
 
@@ -2169,7 +2177,10 @@ func (a *APIServer) handleCheckNullifier(w http.ResponseWriter, r *http.Request)
 	writeJSONCORS(w)
 	nullifier := r.URL.Query().Get("n")
 	if nullifier == "" {
-		json.NewEncoder(w).Encode(map[string]interface{}{"used": false})
+		// Siehe handleCheckRegistration: "used": false auf eine leere Anfrage
+		// behauptet, ein Nullifier sei unverbraucht. Ohne Parameter ist die
+		// einzig richtige Antwort, gar nichts zu behaupten.
+		jsonError(w, "n parameter required (the nullifier to check)", http.StatusBadRequest)
 		return
 	}
 	wallet := a.state.GetWalletByNullifier(nullifier)
