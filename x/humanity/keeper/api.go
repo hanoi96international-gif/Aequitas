@@ -747,6 +747,7 @@ func (a *APIServer) handleCombinedHealth(w http.ResponseWriter, r *http.Request)
 			"distribution":     a.state.DistributionHealth(),
 			"chain_nullifiers": a.state.CountChainNullifiers(),
 			"chain_bio_hashes": a.state.CountChainBioHashes(),
+			"bio_index":        a.state.BioIndexZustand(),
 			"proof_server_sync_queue": map[string]interface{}{
 				"pending":         proofQueueCount,
 				"dead":            proofQueueDeadCount,

@@ -632,6 +632,9 @@ func (a *APIServer) registerOnV7(evmRPC *EVMRPCServer, wallet string, req Regist
 		if mirrorBioHashKey == "" {
 			mirrorBioHashKey = req.BioHash
 		}
+		if mirrorBioHashKey == "" {
+			bioIndexKeinSchluessel(wallet)
+		}
 		if mirrorBioHashKey != "" {
 			if err := a.state.SaveBioHash(mirrorBioHashKey, wallet); err != nil {
 				fmt.Printf("[REGISTER] Warning: local bio_hashes sync failed for %s: %v\n", wallet, err)
@@ -797,9 +800,18 @@ func (a *APIServer) registerOnV7(evmRPC *EVMRPCServer, wallet string, req Regist
 	if bioHashKey == "" {
 		bioHashKey = req.BioHash
 	}
+	if bioHashKey == "" {
+		// Frueher der stille Zweig eines if: nichts passierte, nichts stand im
+		// Log. Ein Weg, auf dem nichts geschieht und nichts protokolliert
+		// wird, ist von einem funktionierenden nicht zu unterscheiden -- und
+		// war es drei Untersuchungen lang auch nicht. Siehe bio_index_sicht.go.
+		bioIndexKeinSchluessel(wallet)
+	}
 	if bioHashKey != "" {
 		if err := a.state.SaveBioHash(bioHashKey, wallet); err != nil {
-			fmt.Printf("[REGISTER] Warning: local bio_hashes sync failed for %s: %v\n", wallet, err)
+			bioIndexFehler(wallet, err)
+		} else {
+			bioIndexErfolg()
 		}
 		// Non-blocking — a slow proof server must not delay the
 		// registration response. No longer pure fire-and-forget: a
