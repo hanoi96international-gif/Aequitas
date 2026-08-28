@@ -221,7 +221,7 @@ func TestSupplyConservation_UBIDistribution(t *testing.T) {
 
 	before := totalAEQ(cs)
 	cs.mu.Lock()
-	shares, err := cs.distributeUBIPoolLocked(t.Context())
+	shares, err := cs.distributeUBIPoolLocked(t.Context(), 0)
 	cs.mu.Unlock()
 	if err != nil {
 		t.Fatalf("distribute UBI: %v", err)
@@ -290,7 +290,7 @@ func TestSupplyConservation_UBIDistribution_RemaindersThatUsedToMint(t *testing.
 
 		before := totalAEQ(cs)
 		cs.mu.Lock()
-		_, err := cs.distributeUBIPoolLocked(t.Context())
+		_, err := cs.distributeUBIPoolLocked(t.Context(), 0)
 		cs.mu.Unlock()
 		if err != nil {
 			t.Fatalf("pool %.6f over %d: %v", tc.poolAEQ, tc.humans, err)
@@ -318,7 +318,7 @@ func TestSupplyConservation_LPDistribution_RemaindersThatUsedToMint(t *testing.T
 
 		before := totalAEQ(cs)
 		cs.mu.Lock()
-		_, err := cs.distributeLPPoolLocked(t.Context())
+		_, err := cs.distributeLPPoolLocked(t.Context(), 0)
 		cs.mu.Unlock()
 		if err != nil {
 			t.Fatalf("LP pool %.6f: %v", poolAEQ, err)
@@ -346,14 +346,14 @@ func TestSupplyConservation_ValidatorAndLPDistribution(t *testing.T) {
 	assertConserved(t, cs, "validator pool distribution", func() {
 		cs.mu.Lock()
 		defer cs.mu.Unlock()
-		if _, err := cs.distributeValidatorsPoolLocked(t.Context()); err != nil {
+		if _, err := cs.distributeValidatorsPoolLocked(t.Context(), 0); err != nil {
 			t.Fatalf("distribute validators: %v", err)
 		}
 	})
 	assertConserved(t, cs, "LP pool distribution", func() {
 		cs.mu.Lock()
 		defer cs.mu.Unlock()
-		if _, err := cs.distributeLPPoolLocked(t.Context()); err != nil {
+		if _, err := cs.distributeLPPoolLocked(t.Context(), 0); err != nil {
 			t.Fatalf("distribute LP: %v", err)
 		}
 	})

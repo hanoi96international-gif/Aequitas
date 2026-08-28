@@ -28,7 +28,7 @@ func TestUBICreditDoesNotResetTheDemurrageClock(t *testing.T) {
 
 	before := rich.LastActivityAt
 	cs.mu.Lock()
-	_, err := cs.distributeUBIPoolLocked(t.Context())
+	_, err := cs.distributeUBIPoolLocked(t.Context(), 0)
 	cs.mu.Unlock()
 	if err != nil {
 		t.Fatal(err)

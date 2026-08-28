@@ -3282,7 +3282,7 @@ func (cs *ChainState) DistributeValidatorsPool() []DistributionShare {
 	defer cs.mu.Unlock()
 	// cs.mu-only path, never runs inside runAtomicWithOutbox/
 	// runAtomicDistributionWithOutbox — see RegisterHuman's comment.
-	shares, err := cs.distributeValidatorsPoolLocked(context.Background())
+	shares, err := cs.distributeValidatorsPoolLocked(context.Background(), 0)
 	if err != nil {
 		fmt.Printf("[VALIDATORS] Error: %v\n", err)
 		return nil
@@ -3290,7 +3290,7 @@ func (cs *ChainState) DistributeValidatorsPool() []DistributionShare {
 	return shares
 }
 
-func (cs *ChainState) distributeValidatorsPoolLocked(ctx context.Context) ([]DistributionShare, error) {
+func (cs *ChainState) distributeValidatorsPoolLocked(ctx context.Context, verteiltAm int64) ([]DistributionShare, error) {
 	// GetRegisteredNodes/the blocks_produced query only read PostgreSQL, not
 	// cs.accounts — safe to run while cs.mu is held (no deadlock risk; the
 	// original "before acquiring cs.mu" ordering predates this function being
@@ -3407,7 +3407,11 @@ func (cs *ChainState) distributeValidatorsPoolLocked(ctx context.Context) ([]Dis
 	// and only if something was actually distributed (prevents destroying
 	// pool balance when all shares rounded to zero).
 	if totalDistributed > 0 {
-		poolAcc.Balance = NewDecimal(0)
+		// Rest im Topf lassen statt vernichten -- siehe pool_remainder.go.
+		// Vor der Schwelle gibt neuerTopfstand 0 zurueck, verhaelt sich also
+		// wie zuvor; die Umschaltung haengt am geteilten Zeitstempel der
+		// Runde, nicht am Zeitpunkt des Deploys.
+		poolAcc.Balance = NewDecimal(neuerTopfstand(total, totalDistributed, verteiltAm))
 		if err := cs.saveAccountToDBCtx(ctx, poolAcc); err != nil {
 			return nil, fmt.Errorf("could not zero validators pool: %w", err)
 		}
@@ -3435,7 +3439,7 @@ func (cs *ChainState) DistributeLPPool() []DistributionShare {
 	defer cs.mu.Unlock()
 	// cs.mu-only path, never runs inside runAtomicWithOutbox/
 	// runAtomicDistributionWithOutbox — see RegisterHuman's comment.
-	shares, err := cs.distributeLPPoolLocked(context.Background())
+	shares, err := cs.distributeLPPoolLocked(context.Background(), 0)
 	if err != nil {
 		fmt.Printf("[LP] Error: %v\n", err)
 		return nil
@@ -3443,7 +3447,7 @@ func (cs *ChainState) DistributeLPPool() []DistributionShare {
 	return shares
 }
 
-func (cs *ChainState) distributeLPPoolLocked(ctx context.Context) ([]DistributionShare, error) {
+func (cs *ChainState) distributeLPPoolLocked(ctx context.Context, verteiltAm int64) ([]DistributionShare, error) {
 	// Collect all LP holders and their share counts BEFORE settling demurrage,
 	// so we know who participates.
 	//
@@ -3575,7 +3579,11 @@ func (cs *ChainState) distributeLPPoolLocked(ctx context.Context) ([]Distributio
 		shares = append(shares, DistributionShare{Wallet: h.addr, Amount: share, DemurrageLost: demurrageLost[h.addr]})
 	}
 	if totalDistributed > 0 {
-		poolAcc.Balance = NewDecimal(0)
+		// Rest im Topf lassen statt vernichten -- siehe pool_remainder.go.
+		// Vor der Schwelle gibt neuerTopfstand 0 zurueck, verhaelt sich also
+		// wie zuvor; die Umschaltung haengt am geteilten Zeitstempel der
+		// Runde, nicht am Zeitpunkt des Deploys.
+		poolAcc.Balance = NewDecimal(neuerTopfstand(total, totalDistributed, verteiltAm))
 		if err := cs.saveAccountToDBCtx(ctx, poolAcc); err != nil {
 			return nil, fmt.Errorf("could not zero LP pool: %w", err)
 		}
@@ -3625,7 +3633,7 @@ func (cs *ChainState) DistributeUBIPool() []DistributionShare {
 	defer cs.mu.Unlock()
 	// cs.mu-only path, never runs inside runAtomicWithOutbox/
 	// runAtomicDistributionWithOutbox — see RegisterHuman's comment.
-	shares, err := cs.distributeUBIPoolLocked(context.Background())
+	shares, err := cs.distributeUBIPoolLocked(context.Background(), 0)
 	if err != nil {
 		fmt.Printf("[UBI] Error: %v\n", err)
 		return nil
@@ -3633,7 +3641,7 @@ func (cs *ChainState) DistributeUBIPool() []DistributionShare {
 	return shares
 }
 
-func (cs *ChainState) distributeUBIPoolLocked(ctx context.Context) ([]DistributionShare, error) {
+func (cs *ChainState) distributeUBIPoolLocked(ctx context.Context, verteiltAm int64) ([]DistributionShare, error) {
 	// FIX (Monster Audit 2026-07-12, P1): see DistributeValidatorsPool's
 	// comment — a cold pool address must not read as "empty". Loaded once
 	// here; the second read below (after the demurrage loop) reuses the same
@@ -3747,9 +3755,11 @@ func (cs *ChainState) distributeUBIPoolLocked(ctx context.Context) ([]Distributi
 	if err := cs.saveAccountsToDBBatchCtx(ctx, batch); err != nil {
 		return nil, fmt.Errorf("could not save UBI rewards batch: %w", err)
 	}
-	poolAcc.Balance = NewDecimal(0)
+	// Rest im Topf lassen statt vernichten -- siehe pool_remainder.go. Jeder
+	// Mensch in humanAddrs bekommt genau share, ausgezahlt ist also share*n.
+	poolAcc.Balance = NewDecimal(neuerTopfstand(total, share*float64(len(humanAddrs)), verteiltAm))
 	if err := cs.saveAccountToDBCtx(ctx, poolAcc); err != nil {
-		return nil, fmt.Errorf("could not zero UBI pool: %w", err)
+		return nil, fmt.Errorf("could not settle UBI pool: %w", err)
 	}
 	cs.save()
 	// FIX (audit recheck 2, P0 #4): last_ubi_at used to be set HERE via
@@ -4464,7 +4474,7 @@ func (cs *ChainState) RunDailyDistributionAtomic(ubiAt int64) error {
 	return cs.runAtomicDistributionWithOutbox(func(ctx context.Context) ([]Transaction, error) {
 		var txs []Transaction
 
-		ubiShares, err := cs.distributeUBIPoolLocked(ctx)
+		ubiShares, err := cs.distributeUBIPoolLocked(ctx, ubiAt)
 		if err != nil {
 			return nil, fmt.Errorf("UBI distribution failed: %w", err)
 		}
@@ -4480,7 +4490,7 @@ func (cs *ChainState) RunDailyDistributionAtomic(ubiAt int64) error {
 			txs = append(txs, Transaction{Type: "ubi_distribution_finalize", DistributionAt: ubiAt})
 		}
 
-		validatorShares, err := cs.distributeValidatorsPoolLocked(ctx)
+		validatorShares, err := cs.distributeValidatorsPoolLocked(ctx, ubiAt)
 		if err != nil {
 			return nil, fmt.Errorf("validator distribution failed: %w", err)
 		}
@@ -4493,7 +4503,7 @@ func (cs *ChainState) RunDailyDistributionAtomic(ubiAt int64) error {
 			txs = append(txs, Transaction{Type: "validator_distribution_pool_zero"})
 		}
 
-		lpShares, err := cs.distributeLPPoolLocked(ctx)
+		lpShares, err := cs.distributeLPPoolLocked(ctx, ubiAt)
 		if err != nil {
 			return nil, fmt.Errorf("LP distribution failed: %w", err)
 		}
