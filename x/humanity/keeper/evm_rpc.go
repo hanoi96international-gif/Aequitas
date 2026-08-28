@@ -244,14 +244,16 @@ func (s *EVMRPCServer) nonceShardFor(addr string) *nonceShard {
 // it too is keyed by txHash (txHash -> contract address), and the receipt path
 // reads it in the same critical section as txStatus.
 type txMetaShard struct {
-	mu       sync.Mutex
-	status   map[string]bool   // txHash -> true if execution succeeded
-	errMsg   map[string]string // txHash -> error message if failed
-	senders  map[string]string // txHash -> sender address (lowercase)
-	tos      map[string]string // txHash -> to address (lowercase, "" for contract creation)
-	deployed map[string]string // txHash -> deployed contract address (lowercase)
-	nonces   map[string]uint64 // txHash -> die ECHTE Nonce des Absenders
-	values   map[string]string // txHash -> uebertragener Betrag als Hex-Wei
+	mu        sync.Mutex
+	status    map[string]bool   // txHash -> true if execution succeeded
+	errMsg    map[string]string // txHash -> error message if failed
+	senders   map[string]string // txHash -> sender address (lowercase)
+	tos       map[string]string // txHash -> to address (lowercase, "" for contract creation)
+	deployed  map[string]string // txHash -> deployed contract address (lowercase)
+	nonces    map[string]uint64 // txHash -> die ECHTE Nonce des Absenders
+	values    map[string]string // txHash -> uebertragener Betrag als Hex-Wei
+	gasLimits map[string]uint64 // txHash -> angefordertes Gaslimit
+	inputs    map[string]string // txHash -> Aufrufdaten als Hex, "" wenn zu gross
 
 	// Insertion order, for bounded eviction — a ring buffer, not a slice that
 	// gets re-created. Allocated once at its final size and then only written
@@ -277,6 +279,13 @@ const txMetaShardCount = 64
 // every transaction added roughly four permanent entries. That was a leak, and
 // it also made the lock progressively more expensive, because Go rehashes a
 // growing map while the caller holds it.
+// txInputMaxBytes begrenzt, wie grosse Aufrufdaten mitgehalten werden. Die
+// Karten sind auf txMetaMax Eintraege gedeckelt, aber ein Eintrag mit
+// unbegrenzter Groesse macht diesen Deckel wertlos: 100.000 Aufrufe zu je
+// einem Megabyte waeren 100 GB. Vier Kilobyte decken jeden Aufruf ab, den
+// diese Kette kennt (Swaps liegen bei rund hundert Byte).
+const txInputMaxBytes = 4096
+
 const txMetaMax = 100000
 
 // txMetaMaxPerShard divides that budget evenly. Hashes distribute uniformly, so
@@ -332,6 +341,8 @@ func (sh *txMetaShard) note(txHash string) {
 		delete(sh.deployed, old)
 		delete(sh.nonces, old)
 		delete(sh.values, old)
+		delete(sh.gasLimits, old)
+		delete(sh.inputs, old)
 	} else {
 		sh.orderLen++
 	}
@@ -392,6 +403,8 @@ func (s *EVMRPCServer) initTxMetaShards() {
 		sh.deployed = make(map[string]string)
 		sh.nonces = make(map[string]uint64)
 		sh.values = make(map[string]string)
+		sh.gasLimits = make(map[string]uint64)
+		sh.inputs = make(map[string]string)
 	}
 }
 
@@ -1064,6 +1077,14 @@ func (s *EVMRPCServer) sendRawTransaction(params []json.RawMessage, pre *precomp
 	// festgehalten -- siehe den Kommentar an der Ausgabestelle.
 	sh.nonces[txHash] = tx.Nonce()
 	sh.values[txHash] = "0x" + tx.Value().Text(16)
+	sh.gasLimits[txHash] = tx.Gas()
+	// Aufrufdaten nur bis zu einer Grenze. Gekuerzt aufzubewahren waere
+	// schlimmer als gar nicht: abgeschnittene Aufrufdaten decodieren zu einem
+	// ANDEREN Aufruf, und eine Wallet zeigte dann etwas an, das nie passiert
+	// ist. Ueber der Grenze bleibt es bei "0x", also bei "unbekannt".
+	if d := tx.Data(); len(d) > 0 && len(d) <= txInputMaxBytes {
+		sh.inputs[txHash] = "0x" + hex.EncodeToString(d)
+	}
 	sh.mu.Unlock()
 
 	// ── SIMPLE AEQ TRANSFER (native value transfer, no calldata) ─────────────
@@ -1403,6 +1424,8 @@ func (s *EVMRPCServer) getTransactionByHash(params []json.RawMessage) (interface
 	// dann verdraengt, liesse den Zugriff auf eine veraenderte Karte treffen.
 	nonceRoh, nonceBekannt := sh.nonces[txHash]
 	valueRoh := sh.values[txHash]
+	gasRoh, gasBekannt := sh.gasLimits[txHash]
+	inputRoh := sh.inputs[txHash]
 	sh.mu.Unlock()
 	// FIX: unlike getTransactionReceipt, this never fell back to the DB-persisted
 	// receipt when the in-memory txSenders map didn't have the hash (i.e. after
@@ -1476,6 +1499,14 @@ func (s *EVMRPCServer) getTransactionByHash(params []json.RawMessage) (interface
 	if valueRoh != "" {
 		valueField = valueRoh
 	}
+	gasField := "0x5B8D80"
+	if gasBekannt {
+		gasField = fmt.Sprintf("0x%x", gasRoh)
+	}
+	inputField := "0x"
+	if inputRoh != "" {
+		inputField = inputRoh
+	}
 
 	return map[string]interface{}{
 		"hash":             txHash,
@@ -1486,9 +1517,11 @@ func (s *EVMRPCServer) getTransactionByHash(params []json.RawMessage) (interface
 		"from":             fromAddr,
 		"to":               toField,
 		"value":            valueField,
-		"gas":              "0x5B8D80",
-		"gasPrice":         "0x0",
-		"input":            "0x",
+		"gas":              gasField,
+		// gasPrice bleibt 0: diese Kette erhebt keine Gebuehren, das ist keine
+		// Platzhalterangabe, sondern die Wahrheit.
+		"gasPrice": "0x0",
+		"input":    inputField,
 	}, nil
 }
 
