@@ -184,8 +184,8 @@
     <div class="ic-row"><span class="ic-key" data-i18n="k-chainid">Chain ID</span><span class="ic-val b">1926 (0x786)</span></div>
     <div class="ic-row"><span class="ic-key" data-i18n="k-grant">UBI Grant</span><span class="ic-val go" data-i18n="x-1-000-aeq-per-human">1,000 AEQ per human</span></div>
     <div class="ic-row"><span class="ic-key" data-i18n="k-fee">Gas Fee</span><span class="ic-val g" data-i18n="free">FREE — completely gasless</span></div>
-    <div class="ic-row"><span class="ic-key" data-i18n="k-limit">Registrations</span><span class="ic-val" data-i18n="k-limit-v">Once per device · permanent · immutable</span></div>
-    <div class="ic-row"><span class="ic-key" data-i18n="k-bio">Face</span><span class="ic-val g" data-i18n="never-stored">Images discarded after checking — no validator holds a whole template</span></div>
+    <div class="ic-row"><span class="ic-key" data-i18n="k-limit">Registrations</span><span class="ic-val" data-i18n="k-limit-v">Once per person · permanent · immutable</span></div>
+    <div class="ic-row"><span class="ic-key" data-i18n="k-bio">Face</span><span class="ic-val g" data-i18n="never-stored">Images discarded after checking &mdash; an encrypted template is kept</span></div>
     <div class="ic-row"><span class="ic-key" data-i18n="k-proof">Proof System</span><span class="ic-val p" data-i18n="x-groth16-zkp-zero-knowledge">Groth16 ZKP (Zero-Knowledge)</span></div>
     <div class="ic-row"><span class="ic-key" data-i18n="k-conf">Confirmation</span><span class="ic-val" data-i18n="k-conf-v">Within 1 second (1 block)</span></div>
     <div class="ic-row"><span class="ic-key" data-i18n="k-sybil">Sybil Protection</span><span class="ic-val g" data-i18n="k-sybil-v">One identity per device · permanent lock (device-bound, not yet body-bound)</span></div>
@@ -348,7 +348,7 @@
       <div class="ic-row"><span class="ic-key" data-i18n="k-fee">Registration Fee</span><span class="ic-val g" data-i18n="free">FREE — gasless</span></div>
       <div class="ic-row"><span class="ic-key" data-i18n="k-zkp">ZKP System</span><span class="ic-val p" data-i18n="x-groth16-bn128">Groth16 / BN128</span></div>
       <div class="ic-row"><span class="ic-key" data-i18n="k-hash">Hash System</span><span class="ic-val p">keccak256</span></div>
-      <div class="ic-row"><span class="ic-key" data-i18n="k-bio">Face</span><span class="ic-val g" data-i18n="never-stored">Images discarded after checking — no validator holds a whole template</span></div>
+      <div class="ic-row"><span class="ic-key" data-i18n="k-bio">Face</span><span class="ic-val g" data-i18n="never-stored">Images discarded after checking &mdash; an encrypted template is kept</span></div>
       <div class="ic-row"><span class="ic-key" data-i18n="k-sybil-prot">Sybil Protection</span><span class="ic-val g" data-i18n="x-permanent-on-chain">Permanent · On-chain</span></div>
     </div>
     <div class="ic" style="margin-top:12px">
@@ -914,7 +914,7 @@
       </div>
       <div>
         <div style="font-size:0.77rem;color:var(--teal);font-weight:700;letter-spacing:1px;text-transform:uppercase;margin-bottom:8px" data-i18n="x-how-it-works">How It Works</div>
-        <div style="font-size:0.79rem;color:var(--muted);line-height:1.85">1. The app captures your face and a short liveness sequence<br>2. Independent matching services check for a living person and compare against everyone already registered; they must agree by quorum<br>3. The images are discarded; an encrypted template is kept, additionally split into shares so no validator holds a whole one<br>4. A Groth16 ZK proof carries the resulting bio_hash to the chain, and its nullifier can be spent only once</div>
+        <div style="font-size:0.79rem;color:var(--muted);line-height:1.85">1. The app captures your face and a short liveness sequence<br>2. Independent matching services check for a living person and compare against everyone already registered; they must agree by quorum<br>3. The images are discarded; each matching service keeps an encrypted template. A split-share mode exists in which no single service holds a whole one &mdash; it is built and tested but NOT active yet, because its threshold has never been calibrated<br>4. A Groth16 ZK proof carries the resulting bio_hash to the chain, and its nullifier can be spent only once</div>
       </div>
     </div>
     <div style="margin-top:12px;padding:12px 16px;background:rgba(4,120,87,0.06);border-radius:8px;border:1px solid rgba(4,120,87,0.15);font-size:0.79rem;color:var(--muted);line-height:1.8"><strong style="color:var(--neon)" data-i18n="x-what-is-and-is-not">What is and is not private:</strong> Your face IS captured and sent to independent matching services &#8212; that is the only way one-person-one-account can be checked. The images are discarded after processing. No validator ever holds a whole template; the service that runs the comparison still does, because comparing needs it. The proof server receives only the ZK proof (200 bytes). The chain stores only a nullifier hash. <strong style="color:var(--gold)" data-i18n="x-honest-limitation">Honest limitation:</strong> this proves device possession, not yet cross-device biological uniqueness — the same person with two devices could register twice today. A real biological uniqueness check is planned post-beta work, not shipped yet.</div>
@@ -1562,7 +1562,7 @@
         <tr style="border-bottom:1px solid rgba(139,92,246,0.08);background:rgba(0,0,0,0.1)">
           <td style="font-size:0.78rem;color:var(--muted);padding:8px">Bootstrap snapshot failed / StateRoot mismatch</td>
           <td style="font-size:0.78rem;color:var(--muted);padding:8px">SNAPSHOT_TOKEN not set on primary, or BOOTSTRAP_SIGNER wrong</td>
-          <td style="font-size:0.78rem;color:var(--muted);padding:8px">Set BOOTSTRAP_SNAPSHOT_URL=https://aequitas.digital/api/snapshot, BOOTSTRAP_SIGNER=0x0be8b961cbf6564bd1931b0803d35c0659e0d016, and SNAPSHOT_TOKEN (from network operator). Restart — node imports state automatically if DB is empty.</td>
+          <td style="font-size:0.78rem;color:var(--muted);padding:8px">Set BOOTSTRAP_SNAPSHOT_URL=https://aequitas.digital/api/snapshot, BOOTSTRAP_SIGNER=0x0be8b961cbf6564bd1931b0803d35c0659e0d016, and restart. No token is needed: /api/snapshot serves a public tier that carries everything a node needs to run. A SNAPSHOT_TOKEN only unlocks the full export, which you do not need in order to join. Restart — node imports state automatically if DB is empty.</td>
         </tr>
         <tr style="border-bottom:1px solid rgba(139,92,246,0.08)">
           <td style="font-size:0.78rem;color:var(--muted);padding:8px">Node not in block explorer / no MERGE blocks</td>
