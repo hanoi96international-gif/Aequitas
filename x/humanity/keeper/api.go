@@ -3676,7 +3676,8 @@ func (a *APIServer) handleOGImage(w http.ResponseWriter, r *http.Request) {
 
 func (a *APIServer) handleNodeBindingJS(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/javascript; charset=utf-8")
-	w.Header().Set("Cache-Control", "public, max-age=3600")
+	// Siehe handleCoordinatorBindingJS: dieselbe Falle, dieselbe Datei-Art.
+	w.Header().Set("Cache-Control", "no-cache")
 	fmt.Fprint(w, nodeBindingJS)
 }
 
@@ -3751,7 +3752,17 @@ Your coordinator&rsquo;s signing key never leaves its own host and is never aske
 
 func (a *APIServer) handleCoordinatorBindingJS(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/javascript; charset=utf-8")
-	w.Header().Set("Cache-Control", "public, max-age=3600")
+	// KEINE Stunde blind. Am 28.08.2026 hat genau das eine Eintragung
+	// gekostet: der Server lieferte laengst die Fassung, die selbst eintraegt,
+	// der Browser hatte aber noch die alte im Speicher, die nur eine
+	// Befehlszeile druckte. Es wurde unterschrieben, gesendet wurde nichts --
+	// und weder Seite noch Server hatten Anlass, etwas zu melden.
+	//
+	// Diese Datei hat keine Fassungsnummer im Pfad (anders als explorer.js),
+	// eine lange Frist ist hier also nicht abgesichert. no-cache heisst nicht
+	// "nie speichern", sondern "vor jeder Benutzung nachfragen" -- bei ein paar
+	// Kilobyte kostet das nichts und kann nicht mehr veralten.
+	w.Header().Set("Cache-Control", "no-cache")
 	fmt.Fprint(w, coordinatorBindingJS)
 }
 
