@@ -250,6 +250,8 @@ type txMetaShard struct {
 	senders  map[string]string // txHash -> sender address (lowercase)
 	tos      map[string]string // txHash -> to address (lowercase, "" for contract creation)
 	deployed map[string]string // txHash -> deployed contract address (lowercase)
+	nonces   map[string]uint64 // txHash -> die ECHTE Nonce des Absenders
+	values   map[string]string // txHash -> uebertragener Betrag als Hex-Wei
 
 	// Insertion order, for bounded eviction — a ring buffer, not a slice that
 	// gets re-created. Allocated once at its final size and then only written
@@ -328,6 +330,8 @@ func (sh *txMetaShard) note(txHash string) {
 		delete(sh.senders, old)
 		delete(sh.tos, old)
 		delete(sh.deployed, old)
+		delete(sh.nonces, old)
+		delete(sh.values, old)
 	} else {
 		sh.orderLen++
 	}
@@ -386,6 +390,8 @@ func (s *EVMRPCServer) initTxMetaShards() {
 		sh.senders = make(map[string]string)
 		sh.tos = make(map[string]string)
 		sh.deployed = make(map[string]string)
+		sh.nonces = make(map[string]uint64)
+		sh.values = make(map[string]string)
 	}
 }
 
@@ -1054,6 +1060,10 @@ func (s *EVMRPCServer) sendRawTransaction(params []json.RawMessage, pre *precomp
 	sh.mu.Lock()
 	sh.senders[txHash] = senderAddr
 	sh.tos[txHash] = toAddrForReceipt
+	// Nonce und Betrag mitschreiben. Beide lagen hier immer vor und wurden nie
+	// festgehalten -- siehe den Kommentar an der Ausgabestelle.
+	sh.nonces[txHash] = tx.Nonce()
+	sh.values[txHash] = "0x" + tx.Value().Text(16)
 	sh.mu.Unlock()
 
 	// ── SIMPLE AEQ TRANSFER (native value transfer, no calldata) ─────────────
@@ -1388,6 +1398,11 @@ func (s *EVMRPCServer) getTransactionByHash(params []json.RawMessage) (interface
 	sh.mu.Lock()
 	fromAddr, known := sh.senders[txHash]
 	toAddr := sh.tos[txHash]
+	// Unter DERSELBEN Sperre lesen wie Absender und Empfaenger. Weiter unten
+	// waere die Sperre laengst freigegeben -- und ein Nebenlaeufer, der genau
+	// dann verdraengt, liesse den Zugriff auf eine veraenderte Karte treffen.
+	nonceRoh, nonceBekannt := sh.nonces[txHash]
+	valueRoh := sh.values[txHash]
 	sh.mu.Unlock()
 	// FIX: unlike getTransactionReceipt, this never fell back to the DB-persisted
 	// receipt when the in-memory txSenders map didn't have the hash (i.e. after
@@ -1441,15 +1456,36 @@ func (s *EVMRPCServer) getTransactionByHash(params []json.RawMessage) (interface
 		txIndexField = fmt.Sprintf("0x%x", idx)
 	}
 
+	// FIX (2026-08-28): nonce und value waren fest auf "0x0" verdrahtet.
+	//
+	// Vier Transfers derselben Wallet, in vier verschiedenen Bloecken, meldeten
+	// damit alle Nonce 0 -- waehrend eth_getTransactionCount korrekt 0x4
+	// zurueckgab. Eine Wallet schliesst daraus, dass drei davon ersetzt wurden,
+	// und zeigt sie als FEHLGESCHLAGEN, obwohl die Kette alle vier ausgefuehrt
+	// hat. Genau dieselbe Wirkung wie die oben beschriebene Blocknummer, nur
+	// ueber ein anderes Feld -- und deshalb nach deren Fix stehen geblieben.
+	//
+	// Fehlt der Eintrag (Neustart, Verdraengung), bleibt es beim alten
+	// Platzhalter: eine falsche Nonce ist schlecht, eine erfundene waere
+	// schlechter.
+	nonceField := "0x0"
+	valueField := "0x0"
+	if nonceBekannt {
+		nonceField = fmt.Sprintf("0x%x", nonceRoh)
+	}
+	if valueRoh != "" {
+		valueField = valueRoh
+	}
+
 	return map[string]interface{}{
 		"hash":             txHash,
-		"nonce":            "0x0",
+		"nonce":            nonceField,
 		"blockHash":        blockHashField,
 		"blockNumber":      blockNumberField,
 		"transactionIndex": txIndexField,
 		"from":             fromAddr,
 		"to":               toField,
-		"value":            "0x0",
+		"value":            valueField,
 		"gas":              "0x5B8D80",
 		"gasPrice":         "0x0",
 		"input":            "0x",
