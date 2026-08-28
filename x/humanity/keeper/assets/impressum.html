@@ -1,14 +1,18 @@
 <!--
   Impressum nach § 5 DDG.
 
-  DIESE SEITE WIRD NICHT AUSGELIEFERT, solange die Markierung PLATZHALTER
-  unten im Text steht -- siehe handleImpressum in api_legal.go. Ein
-  unvollstaendiges Impressum unter eigener Domain ist schlechter als gar
-  keines: es benennt jemanden, der vielleicht gar nicht verantwortlich ist,
-  und erweckt den Anschein, die Pflicht sei erfuellt.
+  DIESE SEITE WIRD NICHT AUSGELIEFERT, solange eine Pflichtangabe fehlt --
+  siehe legal_felder.go. Ein unvollstaendiges Impressum unter eigener Domain
+  ist schlechter als gar keines: es benennt jemanden, der vielleicht gar nicht
+  verantwortlich ist, und erweckt den Anschein, die Pflicht sei erfuellt.
 
-  Zum Freischalten: die eckigen Klammern ersetzen und das Wort PLATZHALTER
-  aus dieser Datei entfernen. Danach erscheint die Seite von selbst.
+  Zum Freischalten wird an dieser Datei NICHTS mehr geaendert. Die Angaben
+  kommen aus Umgebungsvariablen (LEGAL_NAME, LEGAL_STRASSE, ...); welche
+  fehlen, sagt GET /api/legal-status. Nach einem Neustart erscheint die Seite
+  von selbst.
+
+  Optionale Felder, die leer bleiben, verschwinden samt ihrer Zeile -- eine
+  Zeile "Telefon:" ohne Nummer sieht aus wie ein Fehler.
 -->
 <h1>Impressum</h1>
 
@@ -17,30 +21,30 @@
 </p>
 
 <address>
-  [PLATZHALTER — Name oder Firma]<br>
-  [Straße und Hausnummer]<br>
-  [PLZ und Ort]<br>
-  [Land]
+  {{NAME}}<br>
+  {{STRASSE}}<br>
+  {{ORT}}<br>
+  {{LAND}}
 </address>
 
 <h2>Kontakt</h2>
 <p>
-  E-Mail: [PLATZHALTER — E-Mail-Adresse]<br>
-  Telefon: [optional, sofern kein zweiter schneller Kontaktweg besteht]
+  E-Mail: {{EMAIL}}<br>
+  Telefon: {{TELEFON}}
 </p>
 
 <h2>Verantwortlich für den Inhalt nach § 18 Abs. 2 MStV</h2>
 <p>
-  [PLATZHALTER — Name]<br>
-  [Anschrift]
+  {{VERANTWORTLICH}}<br>
+  {{STRASSE}}, {{ORT}}
 </p>
 
-<h2>Bei einer Gesellschaft zusätzlich</h2>
+<h2>Bei einer Gesellschaft</h2>
 <p>
-  Vertreten durch: [Name]<br>
-  Registergericht: [Gericht]<br>
-  Registernummer: [Nummer]<br>
-  Umsatzsteuer-Identifikationsnummer gemäß § 27a UStG: [Nummer]
+  Vertreten durch: {{VERTRETEN_DURCH}}<br>
+  Registergericht: {{REGISTERGERICHT}}<br>
+  Registernummer: {{REGISTERNUMMER}}<br>
+  Umsatzsteuer-Identifikationsnummer gemäß § 27a UStG: {{USTID}}
 </p>
 
 <h2>Streitbeilegung</h2>

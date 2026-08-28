@@ -1,8 +1,8 @@
 <!--
   Datenschutzerklärung nach Art. 13 DSGVO.
 
-  DIESE SEITE WIRD NICHT AUSGELIEFERT, solange die Markierung PLATZHALTER
-  unten im Text steht -- siehe handleDatenschutz in api_legal.go. Ohne die
+  DIESE SEITE WIRD NICHT AUSGELIEFERT, solange eine Pflichtangabe
+  fehlt (siehe legal_felder.go) -- siehe handleDatenschutz in api_legal.go. Ohne die
   Identität des Verantwortlichen ist eine Datenschutzerklärung wertlos: die
   Betroffenen erfahren nicht, gegen wen sie ihre Rechte richten können.
 
@@ -14,8 +14,9 @@
 
 <h2>1. Wer verantwortlich ist</h2>
 <address>
-  [PLATZHALTER — Name, Anschrift]<br>
-  E-Mail: [PLATZHALTER — Kontakt für Datenschutzanliegen]
+  {{NAME}}<br>
+  {{STRASSE}}, {{ORT}}, {{LAND}}<br>
+  E-Mail: {{EMAIL}}
 </address>
 
 <h2>2. Worum es geht</h2>
@@ -114,9 +115,9 @@
   <li><strong>Berichtigung (Art. 16):</strong> Wir speichern keine Angaben, die falsch sein könnten.</li>
   <li><strong>Einschränkung (Art. 18), Übertragbarkeit (Art. 20), Widerspruch (Art. 21).</strong></li>
   <li><strong>Widerruf der Einwilligung (Art. 7 Abs. 3)</strong> jederzeit, mit Wirkung für die Zukunft.</li>
-  <li><strong>Beschwerde (Art. 77)</strong> bei einer Aufsichtsbehörde: [PLATZHALTER — zuständige Behörde].</li>
+  <li><strong>Beschwerde (Art. 77)</strong> bei einer Aufsichtsbehörde: {{AUFSICHTSBEHOERDE}}.</li>
 </ul>
-<p>Wie Sie diese Rechte ausüben: [PLATZHALTER — Kontaktweg].</p>
+<p>Wie Sie diese Rechte ausüben: per E-Mail an {{EMAIL}}.</p>
 
 <h2>7. Automatisierte Entscheidung</h2>
 <p>

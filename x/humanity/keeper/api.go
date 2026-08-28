@@ -902,6 +902,7 @@ func (a *APIServer) buildMux() *http.ServeMux {
 	// /datenschutz zu existieren SCHIENEN, ohne es zu tun.
 	mux.HandleFunc("/impressum", a.handleImpressum)
 	mux.HandleFunc("/datenschutz", a.handleDatenschutz)
+	mux.HandleFunc("/api/legal-status", a.handleLegalStatus)
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		// Root path: serve landing page; anything else falls to handleUI
 		if r.URL.Path == "/" {

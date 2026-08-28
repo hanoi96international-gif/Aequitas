@@ -47,8 +47,20 @@ var datenschutzHTML string
 const platzhalterMarke = "PLATZHALTER"
 
 // istVollstaendig meldet, ob eine Vorlage ausgeliefert werden darf.
+// istVollstaendig prueft, ob die Rechtstexte ausgeliefert werden duerfen.
+//
+// Frueher hing das an der Markierung PLATZHALTER IM HTML -- Freischalten hiess
+// also, die Datei zu bearbeiten und neu auszuliefern. Etwas, das man nur mit
+// dem Werkzeugkasten machen kann, schiebt man auf; die Seiten standen deshalb
+// monatelang auf 404.
+//
+// Jetzt entscheiden Umgebungsvariablen (siehe legal_felder.go): einmal setzen,
+// neu starten, fertig. Der Text selbst bleibt unberuehrt.
 func istVollstaendig(inhalt string) bool {
-	return !strings.Contains(inhalt, platzhalterMarke)
+	if strings.Contains(inhalt, platzhalterMarke) {
+		return false
+	}
+	return len(fehlendeLegalFelder()) == 0
 }
 
 // legalCSS hält die beiden Seiten lesbar, ohne von explorer.css abzuhängen —
@@ -76,6 +88,7 @@ th{color:#c8cde0;font-weight:600}
 `
 
 func (a *APIServer) serveLegal(w http.ResponseWriter, titel, inhalt string) {
+	inhalt = legalEingesetzt(inhalt)
 	if !istVollstaendig(inhalt) {
 		// Absichtlich 404 und nicht 503: die Seite existiert in dem Sinne,
 		// auf den es ankommt, tatsächlich noch nicht.
