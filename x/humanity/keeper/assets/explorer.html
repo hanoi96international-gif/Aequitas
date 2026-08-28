@@ -1727,6 +1727,7 @@
         <div style="font-size:0.77rem;color:var(--muted);line-height:1.9;margin-bottom:16px"><strong style="color:var(--text)">Leave ALLOW_REAL_BIOMETRIC_DATA on false</strong> until you have read the data-protection sections above and know what you are taking on. With it false your verifier works fully &mdash; on test data.</div>
 
         <!-- Schritt 6 -->
+        <div style="background:rgba(255,82,82,0.06);border:1px solid rgba(255,82,82,0.25);border-radius:6px;padding:10px 14px;margin-bottom:10px;font-size:0.77rem"><span style="color:#ff8a80;font-weight:700">This is where the guide stops today.</span> <span style="color:var(--muted)">The image below is real and its name is final, but the package is still private &mdash; the pull will be refused with <span style="font-family:var(--font-mono)">denied</span> unless you were given access. Everything before this step works right now, and everything after it will work the day the package is opened, with no change to these instructions. We would rather show you the wall than hide it.</span></div>
         <div style="font-size:0.76rem;color:var(--purple);font-weight:700;letter-spacing:1px;text-transform:uppercase;margin:22px 0 10px;border-bottom:1px solid var(--border);padding-bottom:6px">Step 6 &mdash; Start the Verifier</div>
         <div style="font-family:var(--font-mono);background:rgba(0,0,0,0.3);border:1px solid rgba(139,92,246,0.15);border-radius:6px;padding:14px;margin-bottom:10px;font-size:0.78rem;line-height:2.0;overflow-x:auto">
           docker network create aequitas-net 2&gt;/dev/null || true<br>
@@ -1736,7 +1737,7 @@
           &nbsp;&nbsp;--env-file /root/.aequitas-verifier.env <br>
           &nbsp;&nbsp;-v /root/aequitas-verifier-data:/data <br>
           &nbsp;&nbsp;--log-opt max-size=20m --log-opt max-file=3 <br>
-          &nbsp;&nbsp;&lt;image&gt;<br><br>
+          &nbsp;&nbsp;ghcr.io/hanoi96international-gif/aequitas-biometric-beta/matching:latest<br><br>
           <span style="color:var(--muted)"># Did it come up?</span><br>
           curl -s localhost:8098/health
         </div>
@@ -1791,21 +1792,13 @@
         <div style="font-size:0.77rem;color:var(--muted);line-height:1.9;margin-bottom:16px">That key is <strong style="color:var(--text)">not in your wallet</strong>. MetaMask only ever shows addresses; this one belongs to the coordinator, not to you. Never paste its private half into any page, including ours.</div>
 
         <!-- Schritt 11 -->
-        <div style="font-size:0.76rem;color:var(--purple);font-weight:700;letter-spacing:1px;text-transform:uppercase;margin:22px 0 10px;border-bottom:1px solid var(--border);padding-bottom:6px">Step 11 &mdash; Authorize Your Coordinator Key</div>
-        <div style="font-size:0.79rem;color:var(--muted);line-height:1.9;margin-bottom:12px">The same idea as Step 8, for the second key: your wallet signs that a registered human stands behind it. Paste the public key that Step 10 printed, and sign.</div>
+        <div style="font-size:0.76rem;color:var(--purple);font-weight:700;letter-spacing:1px;text-transform:uppercase;margin:22px 0 10px;border-bottom:1px solid var(--border);padding-bottom:6px">Step 11 &mdash; Authorize It, and You Are Done</div>
+        <div style="background:rgba(0,220,170,0.05);border:1px solid rgba(0,220,170,0.15);border-radius:6px;padding:10px 14px;margin-bottom:10px;font-size:0.77rem"><span style="color:var(--teal);font-weight:700">What happens here?</span> <span style="color:var(--muted)">The page asks your coordinator for its own key, your wallet signs one sentence naming it, and the page registers that on every node. Three parties, one click, no terminal.</span></div>
+        <div style="font-size:0.79rem;color:var(--muted);line-height:1.9;margin-bottom:12px">Open the button below and enter your coordinator&rsquo;s address &mdash; the same <span style="font-family:var(--font-mono);color:var(--neon)">https://</span> address from Step 7. There is no key to look up and nothing to copy back: your coordinator proves possession of its key where that key lies, and it never leaves that machine.</div>
         <div style="margin:4px 0 16px"><a class="hover-fade" href="/coordinator-binding" target="_blank" rel="noopener noreferrer" style="display:inline-flex;align-items:center;gap:8px;background:rgba(139,92,246,0.12);color:#a78bfa;border:1px solid rgba(139,92,246,0.3);padding:12px 18px;border-radius:8px;font-size:0.82rem;font-weight:600;text-decoration:none;margin-bottom:16px" data-i18n="x-authorize-coordinator-key">
         🔑 Authorize a Coordinator Key
       </a></div>
-
-        <!-- Schritt 12 -->
-        <div style="font-size:0.76rem;color:var(--purple);font-weight:700;letter-spacing:1px;text-transform:uppercase;margin:22px 0 10px;border-bottom:1px solid var(--border);padding-bottom:6px">Step 12 &mdash; Send the Authorization to Every Node</div>
-        <div style="background:rgba(255,82,82,0.06);border:1px solid rgba(255,82,82,0.25);border-radius:6px;padding:10px 14px;margin-bottom:10px;font-size:0.77rem"><span style="color:#ff8a80;font-weight:700">Signing alone changes nothing.</span> <span style="color:var(--muted)">The page hands you a command. Until you run it, nothing has been written anywhere and your coordinator stays unrecognized.</span></div>
-        <div style="font-family:var(--font-mono);background:rgba(0,0,0,0.3);border:1px solid rgba(139,92,246,0.15);border-radius:6px;padding:14px;margin-bottom:10px;font-size:0.78rem;line-height:2.0;overflow-x:auto">
-          <span style="color:var(--muted)"># On your server. The page gives you this line complete.</span><br>
-          ./coordinator-eintragen.sh 0xTHE-SIGNATURE<br><br>
-          <span style="color:var(--muted)"># It prints each node's answer, then both registries.</span>
-        </div>
-        <div style="font-size:0.77rem;color:var(--muted);line-height:1.9;margin-bottom:16px">It goes to every node at once, because the registry is kept per node and is not replicated. A node you skip will simply keep refusing your attestations.</div>
+        <div style="font-size:0.77rem;color:var(--muted);line-height:1.9;margin-bottom:16px">Until August 2026 this step printed a command for you to run over SSH &mdash; and it was missed three times in a row, silently: signed but never registered, with nothing on screen saying so. A step that needs a terminal is, for most people, not a step at all.</div>
 
         <!-- Nachpruefen -->
         <div style="font-size:0.76rem;color:var(--purple);font-weight:700;letter-spacing:1px;text-transform:uppercase;margin:22px 0 10px;border-bottom:1px solid var(--border);padding-bottom:6px">Checking That It Works</div>
@@ -1823,7 +1816,7 @@
           <div><span style="color:var(--gold);font-weight:700">a)</span> <span style="font-family:var(--font-mono);color:var(--neon)">connection refused</span> &mdash; the container is not running. <span style="font-family:var(--font-mono);color:var(--neon)">docker logs aequitas-verifier</span> says why; a missing value in the env file is the usual cause.</div>
           <div><span style="color:var(--gold);font-weight:700">b)</span> <strong style="color:var(--text)">No certificate appears</strong> &mdash; your A record from Step 3 has not propagated yet, or port 80 is blocked. Caddy needs port 80 reachable to obtain one.</div>
           <div><span style="color:var(--gold);font-weight:700">c)</span> <span style="font-family:var(--font-mono);color:var(--neon)">sketch_seed_configured: false</span> &mdash; FACE_SKETCH_SEED did not reach the container. Check the env file for stray quotes, then <span style="font-family:var(--font-mono);color:var(--neon)">docker restart aequitas-verifier</span>.</div>
-          <div><span style="color:var(--gold);font-weight:700">d)</span> <strong style="color:var(--text)">Your coordinator is reported as an unknown key</strong> &mdash; Step 12 did not run, or it reached only one node. Run it again; the signature stays valid.</div>
+          <div><span style="color:var(--gold);font-weight:700">d)</span> <strong style="color:var(--text)">Your coordinator is reported as an unknown key</strong> &mdash; Step 11 did not finish. Open it again: the page lists each node it reached, and a node that was unreachable at the time is named there rather than passed over in silence.</div>
           <div><span style="color:var(--gold);font-weight:700">e)</span> <strong style="color:var(--text)">Still stuck</strong> &mdash; ask in the Telegram group linked on the front page. Include the output of the two checks above, and never paste any private key.</div>
         </div>
 

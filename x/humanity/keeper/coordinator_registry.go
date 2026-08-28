@@ -138,7 +138,16 @@ func (cs *ChainState) Coordinators() []CoordinatorEntry {
 // seinem Namen eintragen -- und dessen Bescheinigungen wuerden fortan als
 // seine gelten.
 func (a *APIServer) handleRegisterCoordinatorKey(w http.ResponseWriter, r *http.Request) {
-	writeJSON(w)
+	// CORS: diese Nutzlast weist sich mit zwei Signaturen aus, nicht mit ihrer
+	// Herkunft. Wer sie absendet, ist deshalb gleichgueltig -- geprueft wird,
+	// was drinsteht.
+	writeJSONCORS(w)
+	w.Header().Set("Access-Control-Allow-Methods", "POST, OPTIONS")
+	w.Header().Set("Access-Control-Allow-Headers", "Content-Type, X-Aequitas-Forwarded")
+	if r.Method == http.MethodOptions {
+		w.WriteHeader(http.StatusOK)
+		return
+	}
 	if r.Method != http.MethodPost {
 		jsonError(w, "POST required", http.StatusMethodNotAllowed)
 		return
@@ -149,14 +158,36 @@ func (a *APIServer) handleRegisterCoordinatorKey(w http.ResponseWriter, r *http.
 		HumanSignature string `json:"human_signature"`
 		KeySignature   string `json:"key_signature"`
 		URL            string `json:"url"`
+		// Alternative zu public_key + key_signature: die Adresse des eigenen
+		// Coordinators. Der Knoten holt den Besitznachweis dann selbst dort ab
+		// -- siehe coordinator_selfservice.go. Ohne das braucht der letzte
+		// Schritt einen Zugang zur Maschine, und daran ist er wiederholt
+		// gescheitert, ohne dass es jemandem auffiel.
+		CoordinatorURL string `json:"coordinator_url"`
 	}
 	r.Body = http.MaxBytesReader(w, r.Body, 8<<10)
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		jsonError(w, "invalid request", http.StatusBadRequest)
 		return
 	}
-	pub := strings.ToLower(strings.TrimSpace(req.PublicKey))
 	human := strings.ToLower(strings.TrimSpace(req.HumanWallet))
+
+	// Kam nur die Adresse, den zweiten Nachweis dort abholen. Beide Werte sind
+	// oeffentlich, und geprueft werden sie unveraendert weiter unten -- der
+	// Knoten glaubt dem Coordinator nichts, er rechnet nach.
+	if strings.TrimSpace(req.CoordinatorURL) != "" && req.PublicKey == "" {
+		p, sig, err := holeBesitznachweis(req.CoordinatorURL, human)
+		if err != nil {
+			jsonError(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		req.PublicKey, req.KeySignature = p, sig
+		if req.URL == "" {
+			req.URL = strings.TrimRight(strings.TrimSpace(req.CoordinatorURL), "/")
+		}
+	}
+
+	pub := strings.ToLower(strings.TrimSpace(req.PublicKey))
 	if len(pub) != 64 || strings.Trim(pub, "0123456789abcdef") != "" {
 		jsonError(w, "public_key must be 64 hex characters (Ed25519)", http.StatusBadRequest)
 		return
@@ -184,9 +215,32 @@ func (a *APIServer) handleRegisterCoordinatorKey(w http.ResponseWriter, r *http.
 		return
 	}
 	fmt.Printf("[COORDINATOR] Registered %s for human %s\n", pub[:16], human)
-	json.NewEncoder(w).Encode(map[string]interface{}{
+
+	antwort := map[string]interface{}{
 		"success": true, "public_key": pub, "human_wallet": human, "url": url,
-	})
+	}
+	// Das Register ist knotenlokal. Aus einem Browser sind die anderen Knoten
+	// nicht erreichbar -- sie sprechen http://, die Seite laeuft unter
+	// https://, und der Browser verweigert die Mischung. Also reicht dieser
+	// Knoten weiter; die Nutzlast traegt ihre beiden Nachweise mit, und jeder
+	// prueft sie selbst, bevor er schreibt. Weiterreichen verschiebt damit
+	// kein Vertrauen -- es erspart nur Arbeit.
+	//
+	// Ein weitergereichter Aufruf reicht nicht noch einmal weiter, sonst
+	// liefen zwei Knoten im Kreis.
+	if r.Header.Get("X-Aequitas-Forwarded") == "" {
+		nutzlast, _ := json.Marshal(map[string]string{
+			"public_key":      pub,
+			"human_wallet":    human,
+			"human_signature": req.HumanSignature,
+			"key_signature":   req.KeySignature,
+			"url":             url,
+		})
+		if weiter := a.reicheEintragungWeiter(nutzlast); len(weiter) > 0 {
+			antwort["forwarded_to"] = weiter
+		}
+	}
+	json.NewEncoder(w).Encode(antwort)
 }
 
 // handleCoordinatorList gibt die anerkannten Coordinatoren aus.

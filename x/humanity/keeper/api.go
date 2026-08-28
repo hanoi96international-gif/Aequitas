@@ -1022,6 +1022,7 @@ func (a *APIServer) buildMux() *http.ServeMux {
 	// Eingang, an dem ein Mensch ankommt.
 	mux.HandleFunc("/api/register-coordinator-key", a.handleRegisterCoordinatorKey)
 	mux.HandleFunc("/api/coordinators", a.handleCoordinatorList)
+	mux.HandleFunc("/api/coordinator-proof", a.handleCoordinatorProof)
 	mux.HandleFunc("/api/set-guardian", a.handleSetGuardian)
 	mux.HandleFunc("/api/confirm-alive", a.handleConfirmAlive)
 	mux.HandleFunc("/api/guardian", a.handleGetGuardian)
@@ -3681,7 +3682,7 @@ func (a *APIServer) handleNodeBindingJS(w http.ResponseWriter, r *http.Request) 
 // handleCoordinatorBinding is the coordinator's counterpart to
 // handleNodeBinding.
 //
-// WHY THIS PAGE EXISTS
+// # WHY THIS PAGE EXISTS
 //
 // A coordinator issues the attestation this chain mints on, so its Ed25519
 // key has to be tied to a registered human before any matching service
@@ -3727,19 +3728,19 @@ input{width:100%;background:#0A0E1A;border:1px solid #1E2D45;border-radius:6px;c
 <div class="sub">
 This authorizes your coordinator&rsquo;s signing key with your <span class="hl">human wallet</span>.
 Until it is authorized, matching services refuse every attestation it issues &mdash; they report it as an unknown key.
-Signing here costs nothing and moves nothing: it is <span class="hl">personal_sign</span> over a plain sentence, not a transaction.
+Everything happens on this page: no terminal, no commands to copy. Signing costs nothing and moves nothing &mdash; it is <span class="hl">personal_sign</span> over a plain sentence, not a transaction.
 </div>
-<label>Your coordinator&rsquo;s public key</label>
+<label>Your coordinator&rsquo;s address</label>
 <div class="sub" style="margin:0 0 8px;font-size:0.72rem">
-This is <span class="hl">not in your wallet</span> &mdash; MetaMask only ever shows addresses. The key belongs to your coordinator and is created on its own host. Your setup script prints it when it starts the container; you can also read it any time as <code>attestation_public_key</code> from <code>GET /inventory</code> on your own coordinator. If you do not run one, you do not need this page.
+The public https:// address your coordinator answers on &mdash; for example <code>https://verifier.example.org</code>. <span class="hl">There is no key to look up.</span> This page asks your coordinator for its own key, has your wallet sign the authorization, and registers it on every node. If you do not run a coordinator, you do not need this page.
 </div>
-<input id="pubKey" placeholder="64 hex characters">
-<button class="btn" id="connectBtn">Connect Wallet &amp; Sign</button>
+<input id="pubKey" placeholder="https://verifier.example.org">
+<button class="btn" id="connectBtn">Connect Wallet &amp; Register</button>
 <div class="out" id="out"></div>
 <div class="err" id="err"></div>
 <div class="note">
 Any wallet works as long as it is a <span class="hl">registered human</span> &mdash; it does not have to be the one that operates a node.
-Never paste your coordinator&rsquo;s signing key into this or any other page: it stays on your own host, and your coordinator proves possession of it there.
+Your coordinator&rsquo;s signing key never leaves its own host and is never asked for here: it proves possession where it lies. Signing costs nothing and moves nothing &mdash; it signs one sentence, not a transaction.
 </div>
 </div>
 <script src="/coordinator-binding.js"></script>
