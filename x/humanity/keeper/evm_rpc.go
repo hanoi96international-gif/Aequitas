@@ -253,6 +253,7 @@ type txMetaShard struct {
 	nonces    map[string]uint64 // txHash -> die ECHTE Nonce des Absenders
 	values    map[string]string // txHash -> uebertragener Betrag als Hex-Wei
 	gasLimits map[string]uint64 // txHash -> angefordertes Gaslimit
+	types     map[string]uint8  // txHash -> echter Typ (0 alt, 2 EIP-1559)
 	inputs    map[string]string // txHash -> Aufrufdaten als Hex, "" wenn zu gross
 
 	// Insertion order, for bounded eviction — a ring buffer, not a slice that
@@ -284,6 +285,15 @@ const txMetaShardCount = 64
 // unbegrenzter Groesse macht diesen Deckel wertlos: 100.000 Aufrufe zu je
 // einem Megabyte waeren 100 GB. Vier Kilobyte decken jeden Aufruf ab, den
 // diese Kette kennt (Swaps liegen bei rund hundert Byte).
+// gasProTx ist der Verbrauch einer einfachen Ueberweisung. Er ist nicht
+// gemessen (die EVM gibt keinen zurueck), aber fuer den Normalfall exakt --
+// und er steht an EINER Stelle, damit gasUsed und cumulativeGasUsed nicht
+// wieder auseinanderlaufen koennen.
+const gasProTx uint64 = 21000
+
+// chainIDHex ist dieselbe Kennung, die eth_chainId meldet.
+const chainIDHex = "0x786" // 1926
+
 const txInputMaxBytes = 4096
 
 const txMetaMax = 100000
@@ -342,6 +352,7 @@ func (sh *txMetaShard) note(txHash string) {
 		delete(sh.nonces, old)
 		delete(sh.values, old)
 		delete(sh.gasLimits, old)
+		delete(sh.types, old)
 		delete(sh.inputs, old)
 	} else {
 		sh.orderLen++
@@ -404,6 +415,7 @@ func (s *EVMRPCServer) initTxMetaShards() {
 		sh.nonces = make(map[string]uint64)
 		sh.values = make(map[string]string)
 		sh.gasLimits = make(map[string]uint64)
+		sh.types = make(map[string]uint8)
 		sh.inputs = make(map[string]string)
 	}
 }
@@ -1078,6 +1090,7 @@ func (s *EVMRPCServer) sendRawTransaction(params []json.RawMessage, pre *precomp
 	sh.nonces[txHash] = tx.Nonce()
 	sh.values[txHash] = "0x" + tx.Value().Text(16)
 	sh.gasLimits[txHash] = tx.Gas()
+	sh.types[txHash] = tx.Type()
 	// Aufrufdaten nur bis zu einer Grenze. Gekuerzt aufzubewahren waere
 	// schlimmer als gar nicht: abgeschnittene Aufrufdaten decodieren zu einem
 	// ANDEREN Aufruf, und eine Wallet zeigte dann etwas an, das nie passiert
@@ -1332,6 +1345,7 @@ func (s *EVMRPCServer) getTransactionReceipt(params []json.RawMessage) (interfac
 	}
 	fromAddr := sh.senders[txHash]
 	toAddrMem := sh.tos[txHash]
+	typRoh, typBekannt := sh.types[txHash]
 	sh.mu.Unlock()
 
 	// If not in memory (node restarted), fall back to DB-persisted receipt.
@@ -1357,6 +1371,13 @@ func (s *EVMRPCServer) getTransactionReceipt(params []json.RawMessage) (interfac
 	toField := interface{}(nil)
 	if toAddrMem != "" && contractAddr == nil {
 		toField = toAddrMem
+	}
+	// Fehlt der Eintrag (Neustart, Verdraengung), bleibt es beim alten
+	// Platzhalter -- dieselbe Linie wie bei nonce: ein alter Wert ist
+	// schlecht, ein erfundener waere schlechter.
+	typField := "0x2"
+	if typBekannt {
+		typField = fmt.Sprintf("0x%x", typRoh)
 	}
 
 	// The block this transaction was ACTUALLY included in.
@@ -1386,19 +1407,34 @@ func (s *EVMRPCServer) getTransactionReceipt(params []json.RawMessage) (interfac
 	}
 
 	return map[string]interface{}{
-		"transactionHash":   txHash,
-		"transactionIndex":  fmt.Sprintf("0x%x", logIndex),
-		"blockHash":         blockHash,
-		"blockNumber":       fmt.Sprintf("0x%x", height),
-		"from":              fromAddr,
-		"to":                toField,
-		"cumulativeGasUsed": "0x5B8D80",
-		"gasUsed":           "0x5208", // realistic: 21000 for simple ops
-		"contractAddress":   contractAddr,
-		"logs":              []interface{}{},
-		"logsBloom":         "0x" + strings.Repeat("0", 512),
-		"status":            status,
-		"type":              "0x2",
+		"transactionHash":  txHash,
+		"transactionIndex": fmt.Sprintf("0x%x", logIndex),
+		"blockHash":        blockHash,
+		"blockNumber":      fmt.Sprintf("0x%x", height),
+		"from":             fromAddr,
+		"to":               toField,
+		// cumulativeGasUsed ist per Definition die laufende Summe im Block,
+		// fuer die erste Transaktion also gleich gasUsed. Vorher stand hier
+		// fest 0x5B8D80 (6.000.000) neben einem gasUsed von 21.000 -- zwei
+		// Angaben desselben Objekts, die sich widersprachen.
+		"cumulativeGasUsed": fmt.Sprintf("0x%x", uint64(logIndex+1)*gasProTx),
+		// gasUsed ist NICHT gemessen: die EVM gibt kein verbrauchtes Gas
+		// zurueck. Fuer eine einfache Ueberweisung sind 21.000 exakt richtig,
+		// fuer einen Vertragsaufruf zu wenig. Da die Kette gebuehrenfrei ist,
+		// bleibt das Produkt aus Gas und Preis in jedem Fall null, es wird
+		// also niemandem ein falscher Betrag angezeigt.
+		"gasUsed":         fmt.Sprintf("0x%x", gasProTx),
+		"contractAddress": contractAddr,
+		// Die EVM sammelt keine Events ein, eth_getLogs gibt ebenfalls immer
+		// leer zurueck. Eine konsistente Luecke, keine Falschangabe.
+		"logs":      []interface{}{},
+		"logsBloom": "0x" + strings.Repeat("0", 512),
+		"status":    status,
+		// effectiveGasPrice FEHLTE, obwohl type 0x2 behauptet wurde. Eine
+		// Wallet rechnet die Gebuehr als gasUsed * effectiveGasPrice; ohne den
+		// Faktor steht dort undefined statt "0". Null ist hier die Wahrheit.
+		"effectiveGasPrice": "0x0",
+		"type":              typField,
 	}, nil
 }
 
@@ -1425,6 +1461,7 @@ func (s *EVMRPCServer) getTransactionByHash(params []json.RawMessage) (interface
 	nonceRoh, nonceBekannt := sh.nonces[txHash]
 	valueRoh := sh.values[txHash]
 	gasRoh, gasBekannt := sh.gasLimits[txHash]
+	typRoh, typBekannt := sh.types[txHash]
 	inputRoh := sh.inputs[txHash]
 	sh.mu.Unlock()
 	// FIX: unlike getTransactionReceipt, this never fell back to the DB-persisted
@@ -1508,7 +1545,16 @@ func (s *EVMRPCServer) getTransactionByHash(params []json.RawMessage) (interface
 		inputField = inputRoh
 	}
 
-	return map[string]interface{}{
+	// Das Objekt hatte gar kein type-Feld, waehrend die Quittung 0x2
+	// behauptete -- zwei Auskuenfte ueber dieselbe Transaktion, die sich
+	// widersprachen. Wer type 0x2 sagt, schuldet auch maxFeePerGas und
+	// maxPriorityFeePerGas; auf einer gebuehrenfreien Kette sind beide
+	// ehrlich null.
+	typFeld := "0x2"
+	if typBekannt {
+		typFeld = fmt.Sprintf("0x%x", typRoh)
+	}
+	ergebnis := map[string]interface{}{
 		"hash":             txHash,
 		"nonce":            nonceField,
 		"blockHash":        blockHashField,
@@ -1522,7 +1568,14 @@ func (s *EVMRPCServer) getTransactionByHash(params []json.RawMessage) (interface
 		// Platzhalterangabe, sondern die Wahrheit.
 		"gasPrice": "0x0",
 		"input":    inputField,
-	}, nil
+		"type":     typFeld,
+		"chainId":  chainIDHex,
+	}
+	if typFeld == "0x2" {
+		ergebnis["maxFeePerGas"] = "0x0"
+		ergebnis["maxPriorityFeePerGas"] = "0x0"
+	}
+	return ergebnis, nil
 }
 
 func (s *EVMRPCServer) getBlockByNumber(params []json.RawMessage) (interface{}, *RPCError) {
