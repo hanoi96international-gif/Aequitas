@@ -1025,6 +1025,7 @@ func (a *APIServer) buildMux() *http.ServeMux {
 	mux.HandleFunc("/api/register-coordinator-key", a.handleRegisterCoordinatorKey)
 	mux.HandleFunc("/api/coordinators", a.handleCoordinatorList)
 	mux.HandleFunc("/api/coordinator-proof", a.handleCoordinatorProof)
+	mux.HandleFunc("/api/validator-selfproof", a.handleValidatorSelfProof)
 	mux.HandleFunc("/api/set-guardian", a.handleSetGuardian)
 	mux.HandleFunc("/api/confirm-alive", a.handleConfirmAlive)
 	mux.HandleFunc("/api/guardian", a.handleGetGuardian)
@@ -2320,11 +2321,14 @@ input{width:100%;background:#0A0E1A;border:1px solid #1E2D45;border-radius:6px;c
 <div class="box">
 <div class="logo">AEQUITAS</div>
 <div class="sub">
-This page proves your <span class="hl">NODE_OPERATOR_WALLET</span> owns the signature your node needs to register as a validator. It signs a message locally in your wallet — nothing is sent anywhere by this page.
+This registers your node in the chain&rsquo;s <span class="hl">validator registry</span> &mdash; on this page, with no terminal and no commands to copy. The node proves its own signing key, fetches the witness proof from your matching service, and your wallet signs the one sentence that ties them to a registered human. Signing costs nothing and moves nothing: it is <span class="hl">personal_sign</span> over a plain sentence, not a transaction.
 </div>
-<label>Your node's signing address (find it via <code>/api/signing-address</code> on your own node, or in its startup logs)</label>
-<input id="signingAddr" placeholder="0x...">
-<button class="btn" id="connectBtn">Connect Wallet &amp; Sign</button>
+<label>Your matching service&rsquo;s address (optional)</label>
+<div class="sub" style="margin:0 0 8px;font-size:0.72rem">
+The public https:// address your own matching service answers on. <span class="hl">You do not need your node&rsquo;s signing address</span> &mdash; this node proves that itself. Leave the field empty if you do not run a matching service: your node still registers, it just does not count as a witness.
+</div>
+<input id="signingAddr" placeholder="https://verifier.example.org">
+<button class="btn" id="connectBtn">Connect Wallet &amp; Register</button>
 <div class="out" id="out"></div>
 <div class="err" id="err"></div>
 </div>
