@@ -94,6 +94,14 @@ func TestInflight_576SenderWerdenAbgelehntStattAngenommen(t *testing.T) {
 	if angenommen != 80 {
 		t.Fatalf("angenommen %d, erwartet 80 (8.000 / 100) -- die Schranke haelt nicht genau", angenommen)
 	}
+	// Zurueckgeben. Ein vergessener Austritt laesst die Schranke zulaufen --
+	// beim ersten Schreiben dieses Tests fehlte genau das, und der naechste
+	// Test lief in eine volle Schranke statt in den Ratenbegrenzer. Im Betrieb
+	// waere das ein Knoten, der ab da alles ablehnt.
+	inflightAustritt(int64(angenommen) * 100)
+	if rest := inflightAktuell.Load(); rest != 0 {
+		t.Fatalf("nach dem Aufraeumen stehen noch %d Posten offen", rest)
+	}
 }
 
 // inflightZuruecksetzen macht die Zaehler zwischen Tests unabhaengig. Nur

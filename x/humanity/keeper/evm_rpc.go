@@ -62,14 +62,35 @@ const rpcRateLimitWindow = 10 * time.Second
 //
 // Made overridable via AEQUITAS_RPC_RATE_LIMIT_MAX (2026-07-24) because it —
 // not the chain — became the binding constraint on throughput measurement.
-// The limiter is checked once per HTTP request, before the body is parsed, so
-// a JSON-RPC batch of maxBatchSize=100 transfers costs exactly one tick. That
-// puts a single source at 20 × 100 = 2,000 transfers/s, which is below the
-// 10,000 a block now carries (maxTxsPerBlock=10000 at BLOCK_TIME=1s -- lowered
-// from 50,000 on 2026-08-21, which together with the multi-block tick and the
-// new admission check measured 2,117 -> 3,264 TPS). No amount of
-// load-generator work can get past it, since the
-// rejection happens before the request is even read.
+// KORREKTUR (2026-08-29): dieser Absatz stand hier ein Jahr lang falsch und
+// hat eine ganze Messreihe verdorben. Er sagte, der Begrenzer werde EINMAL JE
+// HTTP-ANFRAGE geprueft, ein Buendel aus 100 Ueberweisungen koste also einen
+// Tick, und eine einzelne Quelle komme damit auf 20 x 100 = 2.000
+// Ueberweisungen/s.
+//
+// Das gilt seit dem P1-Fix vom 2026-07-21 (nach main portiert am 2026-08-14)
+// nicht mehr. Abgebucht wird JE POSTEN -- siehe die Schleife
+// `overBudget[i] = rpcRateLimited(ip)` in handleRPC, mitsamt ihrer eigenen
+// Begruendung: genau dieses Schlupfloch (rpcRateLimitMax x maxBatchSize =
+// 20.000 statt der dokumentierten 200) sollte sie schliessen.
+//
+// Die richtige Rechnung lautet also:
+//
+//	200 Posten je 10-s-Fenster  =  20 Ueberweisungen/s je IP
+//
+// nicht 2.000. Faktor 100 -- und in dieser Groessenordnung irrt sich niemand
+// zu seinem Vorteil: wer aus dem alten Absatz den Wert fuer einen Lastlauf
+// ableitet, setzt ihn hundertfach zu niedrig, misst ein Hundertstel und haelt
+// den Knoten fuer langsam. Am 29.08.2026 hat genau das eine Messreihe auf
+// 13-15 TPS gedeckelt, waehrend die Ursache im Begrenzer sass und nicht in
+// der Kette.
+//
+// FUER EINEN LASTLAUF heisst das: die Zielrate in Ueberweisungen/s mal 10
+// (Fensterlaenge) ist der Mindestwert, plus Reserve. 10.000 TPS brauchen also
+// >= 100.000, nicht 10.000.
+//
+// Fuer echte Nutzung sind die 200 weiterhin reichlich: eine Wallet sendet
+// einzelne Ueberweisungen, kein Buendel aus hundert.
 //
 // This is deliberately an ENV OVERRIDE rather than a raised default: the
 // limiter is real protection for a publicly-reachable /rpc endpoint, and

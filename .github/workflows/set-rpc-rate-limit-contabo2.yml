@@ -2,16 +2,29 @@ name: Set AEQUITAS_RPC_RATE_LIMIT_MAX on Contabo2 (manual, load-test only)
 
 # Raises (or clears) the per-IP RPC rate limit on Contabo2 ONLY.
 #
-# Why this exists: rpcRateLimitMax defaults to 200 requests per 10s window per
-# IP, i.e. 20 requests/s. evm_rpc.go checks that limiter once per HTTP request,
-# BEFORE parsing the body, so a JSON-RPC batch of maxBatchSize=100 transfers
-# costs exactly one tick. That puts a single load source at 20 x 100 = 2,000
-# transfers/s -- 25x short of the 50,000 the chain is tuned for
-# (maxTxsPerBlock=50000 at BLOCK_TIME=1s). No amount of load-generator work
-# gets past it, because the rejection happens before the request is read.
+# Why this exists: rpcRateLimitMax defaults to 200 per 10s window per IP.
 #
-# For a 50,000/s run you need 500 requests/s, i.e. >= 5000 per 10s window.
-# The default of 10000 here gives 2x headroom over that.
+# CORRECTED 2026-08-29 -- THE OLD MATH HERE WAS WRONG BY A FACTOR OF 100.
+# This header used to say the limiter is charged once per HTTP REQUEST, so a
+# batch of maxBatchSize=100 transfers cost one tick and a single source reached
+# 20 x 100 = 2,000 transfers/s. That stopped being true with the P1 fix of
+# 2026-07-21 (ported to main 2026-08-14): handleRPC charges the limiter per
+# batch ITEM, precisely to close that rpcRateLimitMax x maxBatchSize loophole.
+#
+# The real numbers:
+#
+#   200 items per 10s window  =  20 transfers/s per IP   (the shipped default)
+#
+# So the value you need is TARGET TRANSFERS PER SECOND x 10, plus headroom:
+#
+#   1,000 TPS  ->  >= 10,000     (not 1,000)
+#  10,000 TPS  ->  >= 100,000    (not 10,000)
+#
+# The old default of 10000 therefore capped a run at 1,000 TPS while looking
+# like a generous setting -- and any throughput measured under it was the
+# limiter's number, not the chain's. On 2026-08-29 exactly that held a
+# measurement series at 13-15 TPS. keeper.TestRatenbegrenzer_BuchtJePosten...
+# now pins the per-item semantics so this cannot drift again silently.
 #
 # WHAT THIS WEAKENS, stated plainly: /rpc is publicly reachable on port 8080.
 # The limiter bounds worst-case per-IP request spam (including newStateDB()
@@ -32,9 +45,9 @@ on:
   workflow_dispatch:
     inputs:
       value:
-        description: "Requests per 10s window per IP. 200 = shipped default (restore). 10000 = load-test setting."
+        description: "ITEMS per 10s window per IP (a 100-transfer batch costs 100). 200 = shipped default (restore). Target TPS x 10 for a load run: 100000 = 10k TPS."
         required: false
-        default: "10000"
+        default: "100000"
       dry_run:
         description: "true = only report the current value, change nothing"
         required: false

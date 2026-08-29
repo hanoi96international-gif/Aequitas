@@ -385,17 +385,29 @@ func (c *rpcClient) sendValue(from *account, toAddr string, amountWei *big.Int) 
 // generator, not the node, was the binding constraint, and no chain-side fix
 // could ever have shown up in the number.
 //
-// Two independent limits collapse at once by batching, because the node
-// supports JSON-RPC batches (evm_rpc.go's handleRPC: `body[0] == '['`, up to
-// maxBatchSize=100 per request) AND checks its per-IP rate limiter exactly
-// ONCE per HTTP request, before parsing the body:
+// Batching collapses ONE of the two limits, not both. The node supports
+// JSON-RPC batches (evm_rpc.go's handleRPC: `body[0] == '['`, up to
+// maxBatchSize=100 per request), so 100 transfers per request means 100x
+// fewer round trips. That part still holds and is why batchSize exists.
 //
-//	if rpcRateLimited(clientIP(r)) { ... }   // one tick, whatever the batch holds
+// KORREKTUR (2026-08-29): der zweite Teil stimmte nicht mehr. Hier stand,
+// der Begrenzer werde EINMAL JE ANFRAGE geprueft ("one tick, whatever the
+// batch holds"), ein Buendel koste also 100x weniger Budget, und eine Quelle
+// komme auf 2.000/s statt 20/s.
 //
-// So 100 transfers per request means 100x fewer round trips AND 100x less
-// rate-limit consumption. rpcRateLimitMax=200 per rpcRateLimitWindow=10s is
-// 20 requests/s per IP; at 100 transfers each that is a 2,000/s ceiling from
-// a single source instead of ~20/s worth of accepted singles.
+// Der P1-Fix vom 2026-07-21 (nach main am 2026-08-14) bucht JE POSTEN ab --
+// genau um dieses Schlupfloch zu schliessen. Buendeln spart seither KEIN
+// Budget mehr:
+//
+//	200 Posten je 10-s-Fenster = 20 Ueberweisungen/s je IP, egal wie gebuendelt
+//
+// Wer den Begrenzer nicht hochsetzt, misst also 20/s und nicht 2.000/s. Am
+// 29.08.2026 kostete genau dieser Absatz einen Nachmittag: die Laeufe kamen
+// auf 13-15 TPS, und die Zahl sah nach einem Knotenproblem aus.
+//
+// Vor einem Lastlauf gilt: Zielrate x 10 (Fensterlaenge) ist der Mindestwert
+// fuer AEQUITAS_RPC_RATE_LIMIT_MAX. 10.000 TPS brauchen >= 100.000.
+// Dafuer gibt es .github/workflows/set-rpc-rate-limit-contabo2.yml.
 //
 // Deliberately exactly maxBatchSize: the node rejects a larger batch outright
 // ("batch too large"), and a smaller one would leave measured throughput on
