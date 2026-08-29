@@ -26,8 +26,11 @@ und ohne dritten Betreiber gibt es keinen echten Ausfallschutz.
 Quelltext stecken keine Zugangsdaten. **Es reicht also, das *Paket* öffentlich
 zu stellen — das Repo muss nicht öffentlich werden.**
 
-GitHub bietet dafür keine Programmierschnittstelle; es geht nur über die
-Oberfläche:
+**Ich habe versucht, es selbst zu tun, und es geht nicht** — nicht wegen
+fehlender Rechte, sondern weil GitHub dafür keine Schnittstelle hat. Die
+Packages-REST-API kennt ausschließlich `GET`, `DELETE` und `restore`; kein
+einziger Endpunkt ändert die Sichtbarkeit. Das gilt für jeden Token. Es geht
+nur über die Oberfläche:
 
 1. https://github.com/orgs/hanoi96international-gif/packages
 2. Paket `aequitas-biometric-beta/matching` öffnen
@@ -38,6 +41,9 @@ Danach zur Kontrolle:
 ```bash
 docker pull ghcr.io/hanoi96international-gif/aequitas-biometric-beta/matching:latest
 ```
+
+Bis dahin sagt der Leitfaden jetzt wenigstens, was ein `denied` bedeutet —
+vorher stand der Leser vor einer Fehlermeldung ohne Erklärung.
 
 ---
 
@@ -84,24 +90,31 @@ keine Konfiguration, sondern eine Behauptung über eine stattgefundene Prüfung.
 
 ---
 
-## 3 · C1 als Validator eintragen — 2 Minuten
+## 3 · C1 als Validator eintragen — 1 Klick
 
-Im Register steht heute nur C2 (`0x1a37DcDaa…`). C1s Betreiberadresse ist
-`0x0BE8b961CBf6564bd1931B0803D35C0659E0D016`.
+**Zwei der drei Nachweise sind fertig**, ich habe sie vom Knoten geholt:
+Schlüsselbesitz und Bezeugungsschlüssel (`222ad549…`, samt Signatur, aus
+`https://proof1.aequitas.digital/matching`).
 
-Beide Knoten **produzieren** bereits Blöcke (in den letzten 20 genau 10 zu 10),
-es fehlt nur der Registereintrag. Seite öffnen, mit **genau dieser** Wallet
-verbinden, auf **Connect Wallet & Register** klicken:
+Es fehlt genau einer: die Unterschrift deiner Wallet unter
+
+```
+Aequitas: authorize validator 0x0be8b961cbf6564bd1931b0803d35c0659e0d016
+```
+
+**Den kann ich nicht erbringen, und ich habe bewusst keinen Weg dafür gebaut.**
+Der Knoten hält den Schlüssel zwar — aber ein Endpunkt, der ihn sich selbst
+autorisieren lässt, würde aus drei Nachweisen einen machen. Das ist die
+Grenze, auf der das Register beruht.
+
+Seite öffnen, mit `0x0BE8b961…` verbinden, **Connect Wallet & Register**:
 
 ```
 https://aequitas.digital/node-binding
 ```
 
-Der Knoten weist seinen eigenen Signierschlüssel selbst nach; du unterschreibst
-nur den einen Satz. Das kostet nichts und bewegt nichts — es ist
-`personal_sign`, keine Transaktion.
-
-Falls die Seite alt aussieht: **Strg + Umschalt + R**.
+Kostet nichts, bewegt nichts — `personal_sign`, keine Transaktion. Falls die
+Seite alt aussieht: **Strg + Umschalt + R**.
 
 ---
 
@@ -170,3 +183,29 @@ Grundlinie der Überwachung eingefroren werden.
 - **Quorum 2 bei zwei laufenden Vergleichsdiensten.** `/health` sagt das jetzt
   selbst (`bezeuger_bedeutung`) und warnt beim Gleichstand. Echter Ausfallschutz
   braucht einen dritten Betreiber — und der braucht Punkt 1.
+
+---
+
+## Aufgefallen: beide Boxen tragen den Wallet-Schlüssel ihres Betreibers
+
+Auf C1 **und** C2 ist die Signieradresse des Knotens identisch mit
+`NODE_OPERATOR_WALLET`:
+
+| Box | Signieradresse = Betreiber-Wallet |
+|-----|-----------------------------------|
+| C1  | `0x0be8b961…` |
+| C2  | `0x1a37DcDa…` |
+
+Der private Schlüssel deiner personengebundenen Wallet liegt damit auf einem
+Server am offenen Netz. Wer eine Box übernimmt, übernimmt die Identität
+mitsamt Guthaben — und die dreifache Validator-Prüfung schrumpft dort auf
+eine, weil „Mensch autorisiert" und „Schlüsselbesitz" derselbe Schlüssel sind.
+
+**Kein Beta-Blocker, aber vor echtem Betrieb zu trennen:**
+`RELAYER_PRIVATE_KEY` sollte ein eigener, nur für den Knoten erzeugter
+Schlüssel sein; `NODE_OPERATOR_WALLET` bleibt einfach die Adresse, an die
+Belohnungen gehen — dafür braucht der Server keinen Schlüssel.
+
+Das ist bewusst nicht heute geändert: ein neuer Signierschlüssel ändert die
+Blockproduktions-Identität und macht C2s Registereintrag ungültig. Das gehört
+in ein ruhiges Fenster, nicht in die Nacht vor dem Start.
