@@ -69,14 +69,31 @@ var rueckfallHerkunftAnzahl atomic.Int64
 // migrieren ist.
 func notiereActiveTxRueckfall() {
 	activeTxRueckfaelle.Add(1)
-	_, datei, zeile, ok := runtime.Caller(2)
-	if !ok {
+	// MEHRERE Ebenen, nicht nur eine. Der erste Anlauf zeichnete nur den
+	// unmittelbaren Aufrufer von dbExecCtx auf -- und der war beide Male
+	// saveAccountToDBInnerCtx bzw. saveAccountsToDBBatchCtx, also die Stelle,
+	// an der es AUFFAELLT, nicht die, aus der es KOMMT. Beide sind bereits
+	// ctx-gefuehrt; wer ihnen einen ctx ohne Transaktion gibt, steht weiter
+	// oben. Drei Ebenen benennen den Pfad.
+	var pcs [4]uintptr
+	n := runtime.Callers(3, pcs[:])
+	if n == 0 {
 		return
 	}
-	if i := strings.LastIndexByte(datei, '/'); i >= 0 {
-		datei = datei[i+1:]
+	rahmen := runtime.CallersFrames(pcs[:n])
+	var teile []string
+	for i := 0; i < 3; i++ {
+		f, weiter := rahmen.Next()
+		datei := f.File
+		if j := strings.LastIndexByte(datei, '/'); j >= 0 {
+			datei = datei[j+1:]
+		}
+		teile = append(teile, datei+":"+strconv.Itoa(f.Line))
+		if !weiter {
+			break
+		}
 	}
-	schluessel := datei + ":" + strconv.Itoa(zeile)
+	schluessel := strings.Join(teile, " < ")
 	if v, da := rueckfallHerkunft.Load(schluessel); da {
 		v.(*atomic.Int64).Add(1)
 		return
