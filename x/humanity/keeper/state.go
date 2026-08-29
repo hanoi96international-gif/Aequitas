@@ -4905,9 +4905,11 @@ func (cs *ChainState) ensureTransferBatcherStarted() {
 func (cs *ChainState) runTransferBatcher() {
 	for first := range cs.transferBatchCh {
 		batch := []*transferBatchRequest{first}
-		timer := time.NewTimer(transferBatchMaxWait)
+		// Ueber die Umgebung einstellbar, Vorgabe unveraendert -- siehe
+		// transfer_batch_tuning.go fuer die Messung, die das noetig macht.
+		timer := time.NewTimer(transferBatchWait())
 	collect:
-		for len(batch) < transferBatchMaxSize {
+		for len(batch) < transferBatchSize() {
 			select {
 			case req := <-cs.transferBatchCh:
 				batch = append(batch, req)
