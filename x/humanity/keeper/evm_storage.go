@@ -732,6 +732,15 @@ func (cs *ChainState) syncBalanceLocked(contractAddr string, addrs ...string) {
 // Renamed from doSyncBalanceLocked so a future caller cannot assume the write
 // lock it no longer needs.
 func (cs *ChainState) doSyncBalanceRLocked(contractAddr string, addrs ...string) {
+	cs.doSyncBalanceRLockedCtx(context.Background(), contractAddr, addrs...)
+}
+
+// doSyncBalanceRLockedCtx ist die ctx-gefuehrte Fassung. Der Spiegel-Schreibvorgang
+// und die Warteschlangen-Eintraege daneben gehoeren in dieselbe Transaktion wie
+// die Aenderung, die sie ausgeloest hat: sonst kann die Aenderung
+// zurueckgerollt werden, waehrend der Spiegel und seine Warteschlange den
+// Zustand danach behaupten.
+func (cs *ChainState) doSyncBalanceRLockedCtx(ctx context.Context, contractAddr string, addrs ...string) {
 	contractAddr = strings.ToLower(contractAddr)
 
 	type slotValue struct {
@@ -816,11 +825,11 @@ func (cs *ChainState) doSyncBalanceRLocked(contractAddr string, addrs ...string)
 	query := `INSERT INTO evm_storage (address, slot, value)
 SELECT $1, s, v FROM unnest($2::text[], $3::text[]) AS t(s, v)
 ON CONFLICT (address, slot) DO UPDATE SET value = EXCLUDED.value`
-	_, err := cs.dbExec().Exec(query, contractAddr, pq.Array(slots), pq.Array(values))
+	_, err := cs.dbExecCtx(ctx).Exec(query, contractAddr, pq.Array(slots), pq.Array(values))
 	if err != nil {
 		fmt.Printf("[EVM] Warning: could not batch-sync EVM mirror slots for %d address(es): %v\n", len(lowerAddrs), err)
 		for _, addr := range lowerAddrs {
-			cs.QueueEVMMirrorSync(addr, contractAddr, err.Error())
+			cs.QueueEVMMirrorSyncCtx(ctx, addr, contractAddr, err.Error())
 		}
 		return
 	}
@@ -830,7 +839,7 @@ ON CONFLICT (address, slot) DO UPDATE SET value = EXCLUDED.value`
 	// above, succeeded and nothing has ever failed before) has nothing to
 	// clean up here.
 	if cs.evmMirrorQueueMaybeNonEmpty.Load() {
-		cs.RemoveBatchFromEVMMirrorSyncQueue(lowerAddrs, contractAddr)
+		cs.RemoveBatchFromEVMMirrorSyncQueueCtx(ctx, lowerAddrs, contractAddr)
 	}
 }
 
@@ -932,13 +941,22 @@ const retryQueueMaxAttempts = 20
 // and marks dead=TRUE after retryQueueMaxAttempts failures so the queue does
 // not grow unbounded and dead entries are visible in the health endpoint.
 func (cs *ChainState) QueueEVMMirrorSync(addr, contractAddr, lastErr string) {
+	cs.QueueEVMMirrorSyncCtx(context.Background(), addr, contractAddr, lastErr)
+}
+
+// QueueEVMMirrorSyncCtx ist QueueEVMMirrorSync ueber ctx gefuehrt, damit der
+// Eintrag in dieselbe Transaktion faellt wie die Aenderung, deren Scheitern ihn
+// ausgeloest hat. Sonst kann die Aenderung zurueckgerollt werden und der
+// Warteschlangeneintrag stehen bleiben -- ein Wiederholungsauftrag fuer etwas,
+// das nie geschehen ist.
+func (cs *ChainState) QueueEVMMirrorSyncCtx(ctx context.Context, addr, contractAddr, lastErr string) {
 	if cs.db == nil {
 		return
 	}
 	initialNextRetry := time.Now().Unix() + 60 // 2^1 * 30 = first retry after 60s
 	// FIX (P1-02): use dbExec() so this write participates in any active
 	// transaction rather than bypassing it via the raw cs.db handle.
-	if _, err := cs.dbExec().Exec(
+	if _, err := cs.dbExecCtx(ctx).Exec(
 		`INSERT INTO evm_mirror_sync_queue (address, contract_addr, last_error, next_retry_at, dead)
 		 VALUES ($1, $2, $3, $4, FALSE)
 		 ON CONFLICT (address, contract_addr) DO UPDATE SET
@@ -1017,6 +1035,15 @@ func (cs *ChainState) LoadEVMMirrorSyncQueue() []evmMirrorSyncQueueEntry {
 
 // RemoveFromEVMMirrorSyncQueue deletes a row once its retry succeeds.
 func (cs *ChainState) RemoveFromEVMMirrorSyncQueue(addr, contractAddr string) {
+	cs.RemoveFromEVMMirrorSyncQueueCtx(context.Background(), addr, contractAddr)
+}
+
+// RemoveFromEVMMirrorSyncQueueCtx ist die ctx-gefuehrte Fassung.
+//
+// HINWEIS: diese Einzelfassung hat derzeit KEINEN Aufrufer -- der laufende Code
+// benutzt ausschliesslich die Stapelfassung darunter. Sie bleibt erhalten, weil
+// sie exportiert ist, aber wer hier etwas aendert, aendert nichts Laufendes.
+func (cs *ChainState) RemoveFromEVMMirrorSyncQueueCtx(ctx context.Context, addr, contractAddr string) {
 	if cs.db == nil {
 		return
 	}
@@ -1031,7 +1058,7 @@ func (cs *ChainState) RemoveFromEVMMirrorSyncQueue(addr, contractAddr string) {
 	// cs.dbExec() falls back to cs.db when called standalone (e.g. from
 	// RetryEVMMirrorSyncQueue's periodic background pass, outside any
 	// active transaction).
-	if _, err := cs.dbExec().Exec(`DELETE FROM evm_mirror_sync_queue WHERE address = $1 AND contract_addr = $2`, addr, contractAddr); err != nil {
+	if _, err := cs.dbExecCtx(ctx).Exec(`DELETE FROM evm_mirror_sync_queue WHERE address = $1 AND contract_addr = $2`, addr, contractAddr); err != nil {
 		fmt.Printf("[EVM] Warning: could not remove mirror sync queue entry: %v\n", err)
 	}
 }
@@ -1050,10 +1077,17 @@ func (cs *ChainState) RemoveFromEVMMirrorSyncQueue(addr, contractAddr string) {
 // after group-commit batching (see TransferAtomic's own comment) reduced
 // commit/fsync count but left this loop untouched.
 func (cs *ChainState) RemoveBatchFromEVMMirrorSyncQueue(addrs []string, contractAddr string) {
+	cs.RemoveBatchFromEVMMirrorSyncQueueCtx(context.Background(), addrs, contractAddr)
+}
+
+// RemoveBatchFromEVMMirrorSyncQueueCtx ist die ctx-gefuehrte Fassung: das
+// Loeschen gehoert in dieselbe Transaktion wie der geglueckte Abgleich, sonst
+// kann der Abgleich zurueckgerollt werden und der Eintrag ist trotzdem weg.
+func (cs *ChainState) RemoveBatchFromEVMMirrorSyncQueueCtx(ctx context.Context, addrs []string, contractAddr string) {
 	if cs.db == nil || len(addrs) == 0 {
 		return
 	}
-	if _, err := cs.dbExec().Exec(`DELETE FROM evm_mirror_sync_queue WHERE contract_addr = $1 AND address = ANY($2)`, contractAddr, pq.Array(addrs)); err != nil {
+	if _, err := cs.dbExecCtx(ctx).Exec(`DELETE FROM evm_mirror_sync_queue WHERE contract_addr = $1 AND address = ANY($2)`, contractAddr, pq.Array(addrs)); err != nil {
 		fmt.Printf("[EVM] Warning: could not batch-remove mirror sync queue entries: %v\n", err)
 	}
 }
