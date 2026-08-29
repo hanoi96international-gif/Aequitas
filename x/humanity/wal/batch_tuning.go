@@ -98,3 +98,40 @@ func BatchTuning() map[string]interface{} {
 			"Die Vorgabe von 1 ms stammt aus einer Sandbox mit deutlich schnellerem fsync",
 	}
 }
+
+// GEMESSEN AM 29.08.2026 AUF DER ECHTEN PLATTE -- ZWEI ERGEBNISSE
+//
+// Der Prueflauf ist TestWALThroughput (opt-in, AEQUITAS_WAL_BENCH=1), gefahren
+// auf Contabo2 gegen dessen eigene Platte. Er beruehrt keine Kette: ein
+// Testbinary, eine temporaere Datei, kein Konsens, kein Neustart von irgendwas.
+//
+// 1. DAS WAL IST NICHT DER ENGPASS. Mit der Vorgabe (500 / 1 ms):
+//
+//	gleichzeitig      1 ->     128 appends/s
+//	gleichzeitig     10 ->   1.481
+//	gleichzeitig     50 ->   3.263
+//	gleichzeitig    200 ->  14.933
+//	gleichzeitig  1.000 ->  46.342
+//
+//    46.342 Anhaenge je Sekunde. Fuer 10.000 TPS braucht es rund ein Fuenftel
+//    davon. In der Produktion misst der Schnellpfad aber 68,7 ms je Anhang --
+//    das entspraeche etwa 2.000/s. Die Luecke ist keine Platteneigenschaft,
+//    sondern fehlende GLEICHZEITIGKEIT: die Ueberweisungen stehen vorher in
+//    cs.mu.RLock() Schlange (156,3 ms), erreichen den Gruppen-Commit einzeln
+//    und finden dort niemanden zum Buendeln. Der langsame Anhang ist die
+//    FOLGE der Serialisierung, nicht ihre Ursache.
+//
+// 2. DAS FENSTER LAESST SICH HIER NICHT ENTSCHEIDEN. Ein erster Lauf sah nach
+//    einem klaren Vorteil fuer 300 us aus (7.257 gegen 3.263 bei 50
+//    Gleichzeitigen). Zwei Wiederholungen widerlegten das: dieselbe
+//    Einstellung ergab 2.954, 3.263 und 9.607 -- Faktor 3,3 zwischen Laeufen.
+//    Der Vorteil war Rauschen.
+//
+//    Das ist genau der Fehler, vor dem der Kommentar zu MaxBatchWait warnt
+//    ("within run-to-run noise"), nur auf anderer Hardware. Wer das Fenster
+//    entscheiden will, braucht verschraenkte Wiederholungen (ABABAB statt
+//    AABB) und genug davon, um die Streuung zu schlagen -- nicht einen Lauf
+//    je Wert.
+//
+// FOLGE: die Vorgabe bleibt, weil nichts sie widerlegt hat. Der Hebel liegt
+// woanders -- siehe transfer_wal.go, wo die Lesesperre 68 % der Zeit frisst.
