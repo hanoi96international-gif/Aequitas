@@ -879,7 +879,7 @@ func (cs *ChainState) ResyncFromSnapshotURL(peerURL, expectedSignerHex string) e
 		// just relocated from the DB layer to the cache layer that didn't exist
 		// when this code was first written. ResetFinalizedCheckpoint resets both
 		// atomically; use it instead of reimplementing half of it here.
-		if err := cs.ResetFinalizedCheckpoint(); err != nil {
+		if err := cs.ResetFinalizedCheckpointCtx(withTx(context.Background(), tx)); err != nil {
 			return fail(fmt.Errorf("resync: could not reset finalized checkpoint: %w", err))
 		}
 	}

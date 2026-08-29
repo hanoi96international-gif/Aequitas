@@ -6289,7 +6289,11 @@ func (dag *BlockDAG) replayTransactions(block *Block, force bool) (ok bool) {
 		// through to the serial switch below, unchanged.
 		if tx.Type == "transfer" && skipDistributionRound == 0 {
 			if batch, _ := collectDisjointTransferBatch(block.Transactions, txIdx); len(batch) >= parallelReplayMinBatch {
-				ok, batchErr := dag.state.applyTransferBatchParallel(context.Background(), batch, block.Timestamp)
+				// withTx statt des leeren ctx: JEDE Kontoaenderung dieses
+				// Replays gehoert in dbTx, sonst ueberlebt sie einen Ruecklauf.
+				// Vorher kam sie ueber den stillen Rueckfall auf cs.activeTx
+				// dorthin -- richtig, solange es das Feld gibt.
+				ok, batchErr := dag.state.applyTransferBatchParallel(withTx(context.Background(), dbTx), batch, block.Timestamp)
 				if batchErr != nil {
 					// Memory already mutated, persistence failed — must NOT
 					// fall back to the serial path (that would apply every
@@ -6491,7 +6495,7 @@ func (dag *BlockDAG) replayTransactions(block *Block, force bool) (ok bool) {
 			// context.Background() is correct — see registerHumanLocked's
 			// comment: dag.state.activeTx was already set directly above
 			// this loop, and dbExecCtx falls back to it.
-			if err := dag.state.applyTransferDeltaLocked(context.Background(), wallet, to, tx.Amount, tx.FromDemurrageLost, tx.ToDemurrageLost, block.Timestamp); err != nil {
+			if err := dag.state.applyTransferDeltaLocked(withTx(context.Background(), dbTx), wallet, to, tx.Amount, tx.FromDemurrageLost, tx.ToDemurrageLost, block.Timestamp); err != nil {
 				fmt.Printf("[REPLAY] ✗ Transfer %s->%s %.6f: %v (block #%d) — rolling back whole block\n", wallet, to, tx.Amount, err, block.Height)
 				hardFailure = true
 				continue
@@ -6827,7 +6831,7 @@ func (dag *BlockDAG) replayTransactions(block *Block, force bool) (ok bool) {
 				// context.Background() is correct — see registerHumanLocked's
 				// comment: dag.state.activeTx was already set directly above
 				// this loop, and dbExecCtx falls back to it.
-				if err := dag.state.applyTransferDeltaLocked(context.Background(), opWallet, ubiPoolAddr, penaltyAmt, 0, 0, block.Timestamp); err != nil {
+				if err := dag.state.applyTransferDeltaLocked(withTx(context.Background(), dbTx), opWallet, ubiPoolAddr, penaltyAmt, 0, 0, block.Timestamp); err != nil {
 					fmt.Printf("[REPLAY] ✗ slash_equivocation transfer %s→UBI %.4f: %v (block #%d) — rolling back whole block\n",
 						opWallet, penaltyAmt, err, block.Height)
 					hardFailure = true
