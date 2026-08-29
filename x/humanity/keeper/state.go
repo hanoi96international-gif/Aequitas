@@ -4359,17 +4359,28 @@ func (cs *ChainState) runAtomicWithOutbox(touchedAddrs []string, fullSnapshot bo
 	// decision — restoreFromRollbackLocked (not the public, self-locking
 	// restoreFromRollback) is used so the lock is never released and
 	// re-acquired in between.
+	// Messpunkte, siehe atomic_phasen.go: erst wenn bekannt ist, WOFUER die
+	// globale Sperre gehalten wird, laesst sich sagen, was ihr Verengen bringt.
+	phWarten := time.Now()
 	cs.mu.Lock()
+	atomicPhasenStand.notiere(&atomicPhasenStand.wartenNs, phWarten)
+	phHalt := time.Now()
 	cs.setActiveTx(tx)
+	phSnap := time.Now()
 	snap := cs.snapshotForRollbackLocked(touchedAddrs, fullSnapshot, chainConfig)
+	atomicPhasenStand.notiere(&atomicPhasenStand.snapshotNs, phSnap)
 	// See processTransferBatch's own (now-historical) comment for why
 	// building ctx from cs.activeTx here, with cs.mu held throughout, is
 	// safe — fn now receives it directly instead of every caller
 	// reconstructing the same value from cs.activeTx itself.
+	phFn := time.Now()
 	pendingTx, fnErr := fn(withTx(context.Background(), tx))
+	atomicPhasenStand.notiere(&atomicPhasenStand.fnNs, phFn)
 	var outboxErr error
 	if fnErr == nil {
+		phOutbox := time.Now()
 		outboxErr = savePendingTxExec(tx, pendingTx)
+		atomicPhasenStand.notiere(&atomicPhasenStand.outboxNs, phOutbox)
 	}
 
 	if fnErr != nil || outboxErr != nil {
@@ -4385,7 +4396,10 @@ func (cs *ChainState) runAtomicWithOutbox(touchedAddrs []string, fullSnapshot bo
 		return fmt.Errorf("outbox insert failed inside atomic transaction (state mutation rolled back): %w", outboxErr)
 	}
 
-	if err := tx.Commit(); err != nil {
+	phCommit := time.Now()
+	commitFehler := tx.Commit()
+	atomicPhasenStand.notiere(&atomicPhasenStand.commitNs, phCommit)
+	if err := commitFehler; err != nil {
 		cs.setActiveTx(nil)
 		if rbErr := cs.restoreFromRollbackLocked(snap); rbErr != nil {
 			fmt.Printf("[ATOMIC] CRITICAL: rollback persistence failed after commit failure — memory/DB may now disagree: %v\n", rbErr)
@@ -4394,6 +4408,8 @@ func (cs *ChainState) runAtomicWithOutbox(touchedAddrs []string, fullSnapshot bo
 		return fmt.Errorf("commit failed (state mutation rolled back): %w", err)
 	}
 	cs.setActiveTx(nil)
+	atomicPhasenStand.notiere(&atomicPhasenStand.haltNs, phHalt)
+	atomicPhasenStand.laeufe.Add(1)
 	cs.mu.Unlock()
 	return nil
 }

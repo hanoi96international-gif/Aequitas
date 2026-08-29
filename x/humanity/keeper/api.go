@@ -668,6 +668,8 @@ func (a *APIServer) handleCombinedHealth(w http.ResponseWriter, r *http.Request)
 		// Entscheidet, ob cs.activeTx entfernt und echte Nebenlaeufigkeit
 		// eingeschaltet werden kann -- siehe activetx_rueckfall.go.
 		"activetx_rueckfall": ActiveTxRueckfallStand(),
+		// Wofuer die globale Sperre gehalten wird -- siehe atomic_phasen.go.
+		"atomic_phasen": AtomicPhasenStand(),
 		// Whether the database connection pool is the constraint — wait_count
 		// and wait_total_ms answer that directly, instead of inferring it from
 		// a throughput number that swings by 2x between runs. See DBPoolStats.
