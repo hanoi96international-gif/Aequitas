@@ -9,6 +9,8 @@ on:
     paths-ignore:
       - '.github/**'
       - '**.md'
+      # Siehe deploy-contabo.yml: tools/** landet nicht im Knoten-Abbild.
+      - 'tools/**'
 
 jobs:
   # Mirrors deploy-contabo.yml's test gate (Monster Audit 2026-07-12, P1) —

@@ -16,6 +16,15 @@ on:
     paths-ignore:
       - '.github/**'
       - '**.md'
+      # 2026-08-29 dazu: tools/** kann das Knoten-Abbild nicht veraendern.
+      # Das Dockerfile kopiert den ganzen Baum in die Builder-Stufe,
+      # uebernimmt ins Abbild aber nur /app/aequitasd -- und weder
+      # tools/contabo-loadtest noch tools/snapshot-signer werden von
+      # cmd/aequitasd importiert (beide eigenstaendige package main). Ein
+      # Fix am Lastgenerator hat an dem Abend beide Validatoren neu starten
+      # wollen; einer dieser Neustarts fiel mitten in einen Lasttest und hat
+      # C1 fuer Minuten aus der Kette genommen.
+      - 'tools/**'
 
 jobs:
   # FIX (Monster Audit 2026-07-12, P1): deploy used to run straight off a

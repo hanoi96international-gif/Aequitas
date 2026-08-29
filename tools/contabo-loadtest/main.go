@@ -409,10 +409,39 @@ func (c *rpcClient) sendValue(from *account, toAddr string, amountWei *big.Int) 
 // fuer AEQUITAS_RPC_RATE_LIMIT_MAX. 10.000 TPS brauchen >= 100.000.
 // Dafuer gibt es .github/workflows/set-rpc-rate-limit-contabo2.yml.
 //
-// Deliberately exactly maxBatchSize: the node rejects a larger batch outright
-// ("batch too large"), and a smaller one would leave measured throughput on
-// the table for no benefit.
-const batchSize = 100
+// # GEMESSEN AM 29.08.2026 -- UND DAS GEGENTEIL VON DEM, WAS HIER STAND
+//
+// Hier stand: "Deliberately exactly maxBatchSize ... a smaller one would leave
+// measured throughput on the table for no benefit." Beide Haelften sind
+// widerlegt.
+//
+// Gemessen gegen Contabo2, Ratenbegrenzer aus dem Weg:
+//
+//	Buendel 100, 169 Absender  ->   427 TPS
+//	Buendel  10, 161 Absender  ->   591 TPS   (+38 % bei WENIGER Absendern)
+//	Buendel  10, 320 Absender  -> 1.148 TPS
+//
+// Der Grund: der Knoten arbeitet die Posten EINES Buendels nacheinander ab
+// (handleRPC: `for i, raw := range batch { s.handleSingle(...) }`), und das
+// ist richtig so -- ein Buendel traegt fortlaufende Nonces eines Absenders,
+// die muessen in Reihenfolge laufen. Ein Buendel aus 100 Stueck ist damit
+// eine Kette aus 100 seriellen Schritten hinter EINEM Absender. Je groesser
+// das Buendel, desto weniger Gleichzeitigkeit hat der Knoten zu tun.
+//
+// Der frueher entscheidende Gegengrund ist zudem entfallen: Buendeln sparte
+// Begrenzer-Budget, weil einmal je ANFRAGE abgebucht wurde. Seit dem P1-Fix
+// vom 21.07.2026 wird je POSTEN abgebucht -- ein Buendel kostet genau so
+// viel Budget wie die Einzelanfragen darin.
+//
+// Uebrig bleibt allein der Netzumlauf: 10 Stueck je Anfrage sparen 90 % der
+// Umlaeufe gegenueber Einzelversand, ohne die Gleichzeitigkeit nennenswert zu
+// opfern. Noch kleiner ist messbar schlechter: Buendel 3 mit 320 Absendern
+// hat die Verbindungsebene ueberfahren (massenhaft "connection reset by
+// peer"), weil die Zahl offener Verbindungen mit 1/Buendelgroesse waechst.
+//
+// Ueber -batch-size weiterhin einstellbar; 100 bleibt erlaubt, ist aber nach
+// dieser Messung die schlechtere Wahl.
+const batchSize = 10
 
 // sendValueBatch signs batchSize sequential transfers from `from` and submits
 // them as ONE JSON-RPC batch. Returns how many the node accepted.
@@ -536,6 +565,14 @@ func normalizeErrForTally(s string) string {
 			// zerfiel EINE Ursache in 23 scheinbar verschiedene, jede mit
 			// kleiner Zahl -- und die haeufigste war nicht mehr erkennbar.
 			f = "<i>/<n>"
+		case istNetzAdresse(f):
+			// "127.0.0.1:58900->127.0.0.1:8080" -- der Quellport ist bei
+			// jeder Verbindung anders. Ohne diesen Fall zerfiel im Lauf vom
+			// 29.08.2026 EINE Ursache (connection reset by peer) in 11.158
+			// scheinbar verschiedene, und die Ausgabe endete mit
+			// "... and 11158 more distinct cause(s)" -- genau in dem Moment,
+			// in dem die Fehlerursache gebraucht wurde.
+			f = "<addr>"
 		}
 		f = links + f + rechts
 		if b.Len() > 0 {
@@ -548,6 +585,35 @@ func normalizeErrForTally(s string) string {
 		out = out[:200] + "..."
 	}
 	return out
+}
+
+// istNetzAdresse erkennt "host:port" und "host:port->host:port".
+//
+// Gedacht fuer die Fehlerzusammenfassung: der Quellport einer ausgehenden
+// Verbindung ist bei jedem Versuch ein anderer, taugt also nie zur
+// Unterscheidung von URSACHEN -- er macht nur jede Zeile einzigartig und
+// sprengt damit die Zaehlung, die den haeufigsten Fehler zeigen soll.
+func istNetzAdresse(f string) bool {
+	teile := strings.Split(f, "->")
+	if len(teile) > 2 {
+		return false
+	}
+	for _, t := range teile {
+		i := strings.LastIndex(t, ":")
+		if i <= 0 || i == len(t)-1 {
+			return false
+		}
+		wirt, port := t[:i], t[i+1:]
+		if !isAllDigits(port) {
+			return false
+		}
+		// Ein Wirt ohne Punkt und ohne "localhost" ist eher ein Doppelpunkt
+		// aus Prosa ("Transfer failed: ...") als eine Adresse.
+		if !strings.Contains(wirt, ".") && wirt != "localhost" {
+			return false
+		}
+	}
+	return true
 }
 
 // isFraction erkennt Positionsangaben wie "9/26".
