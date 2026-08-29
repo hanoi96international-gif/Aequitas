@@ -223,3 +223,50 @@ Der Code warnt ausdrücklich davor, das in einem Zug zu tun: es quert Transfer,
 Swap, Liquidität, Registrierung, Verteilung, Guardian, Slashing, Snapshot-Import
 **und Block-Replay**. „one call chain at a time, EACH one verified by the full
 test suite."
+
+---
+
+## activeTx-Migration abgeschlossen und gemessen, 29.08.2026
+
+Der Weg zu 10k führt über `cs.activeTx` — ein einziges ChainState-weites Feld,
+das echte Nebenläufigkeit unmöglich macht und deshalb `runAtomicWithOutbox`
+zwingt, die globale Sperre über die ganze DB-Transaktion zu halten (74,7 % der
+gemessenen Wartezeit).
+
+**Fünf Ketten, jede einzeln mit voller Testreihe**, wie der Code es vorschreibt:
+
+| Kette | Was |
+|---|---|
+| 1 | Konfigurations-Blätter (`getConfigValue`, `…Exists`, `deleteConfigValue`) |
+| 2 | Rücknahmepfad (`restoreFromRollbackLocked`) |
+| 3 | EVM-Spiegelwarteschlange (4 Stellen) |
+| 4 | Blockkopf löschen, GHOSTDAG-Zustand |
+| 5 | Straf-Zwischenspeicher (`loadPenaltyCacheLocked`) |
+
+Danach: **null `cs.dbExec()`-Aufrufstellen** im ganzen Repo, ein Wächtertest
+verhindert die Rückkehr.
+
+### Das reichte nicht — und das war messbar
+
+`dbExecCtx` fiel weiter auf `cs.activeTx` zurück, wenn der ctx keine
+Transaktion trug. Ein Zähler zeigte live **466 Rückfälle im Leerlauf**: es gab
+Pfade, die den ctx nicht durchreichten. Hätte man das Feld an dieser Stelle
+entfernt, wären diese Schreibvorgänge still außerhalb ihrer Transaktion
+gelandet.
+
+Die Herkunftsliste nannte **genau zwei Zeilen**, beide im Block-Replay, beide
+gleich oft — einmal je Block. Beide *wollten* in der Transaktion sein; ihre
+eigenen Kommentare sagten es. Sie kamen nur über den stillen Rückfall dorthin.
+
+**Jetzt auf beiden Boxen: `rueckfaelle: 0`, `activetx_entfernbar: true`.**
+
+### Was noch fehlt, bevor `activeTx` wirklich weg kann
+
+Die Null gilt für den **Leerlaufbetrieb**. Pfade, die nur unter Last laufen —
+Überweisungen, Verteilung, Registrierung — sind dabei nicht durchlaufen worden.
+Vor dem Entfernen gehört ein Lastlauf gemacht, mit dem Zähler als Tor: bleibt
+er bei 0, kann das Feld weg; springt er an, nennt die Herkunftsliste die
+fehlenden Pfade beim Namen.
+
+Erst danach folgt der eigentliche Gewinn: die Sperre auf die vorhandenen
+Konten-Shards verengen (`shardedAccounts.LockAddrs`).
