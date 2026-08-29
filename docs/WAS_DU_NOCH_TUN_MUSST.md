@@ -41,33 +41,46 @@ docker pull ghcr.io/hanoi96international-gif/aequitas-biometric-beta/matching:la
 
 ---
 
-## 2 · Die Entscheidung über den Registrierungsmodus — **Beta-Blocker**
+## 2 · Der Testmodus ist entschieden — und jetzt abgesichert
 
-Beide Coordinatoren laufen mit `SERVICE_MODE=test`. Das ist der Vorgabewert.
-Praktisch heißt das:
+Du hast entschieden: die Beta startet bewusst mit `SERVICE_MODE=test`.
 
-- Jede Anmeldung landet über `save_test_enrollment` in der **Test**-Galerie.
-- Die Tabelle `real_enrollments` wird **nie** geschrieben.
-- Die Doppelprüfung vergleicht damit gegen die Test-Tabelle.
+**Dabei ist ein Geldschöpfungspfad aufgefallen, der jetzt verschlossen ist.**
+Die Galerien sind strikt nach Modus getrennt — `sketch_gallery.py` sagt es
+selbst, *„eine echte Einschreibung wäre im Testmodus unsichtbar"*. Umgekehrt
+gilt dasselbe:
 
-Auf `real` umstellen geht nicht durch Umschalten allein. Der Code verlangt
-zusätzlich **beides**:
+1. Jede Beta-Anmeldung landet nur in der **Test**-Galerie. Die Kette zahlt
+   dafür den Registrierungszuschuss.
+2. Beim späteren Umstellen auf `real` ist die **echte** Galerie leer.
+3. Dieselbe Person meldet sich erneut an → kein Kandidat → `new_enrollment` →
+   frisch gewürfelter `bio_hash` (`secrets.randbelow`) → **neuer Nullifier** →
+   **zweiter Zuschuss**. Einer je Beta-Teilnehmer.
+
+Der Nullifier-Schutz der Kette greift nicht: er hängt genau an dem Hash, der
+neu gewürfelt wurde. Dieselbe Klasse wie die Löschfunktion am 24.08.
+
+**Jetzt live auf beiden Boxen:** ein Tor weist den Realmodus ab, solange die
+Realgalerie leer ist *und* Testeinschreibungen bestehen. `/matching/health`
+zeigt den Zustand — aktuell `test_galerie: 1`, `real_galerie: 0`,
+`wuerde_realmodus_abweisen: true`.
+
+### Wenn du später auf real umstellst
+
+Entscheide **zuerst**, was mit den Testeinschreibungen geschieht — übernehmen
+oder verwerfen. Ich kopiere sie bewusst nicht automatisch: sie wurden unter
+einer anderen Einwilligungsfassung und bei geschlossener Rechtsschranke
+erhoben. Danach auf beiden Boxen:
 
 ```
-ALLOW_REAL_BIOMETRIC_DATA=true
-LEGAL_SIGNOFF_DATE=<Datum>
+REAL_MODE_START_ACCEPTED="<warum, mit Datum>"
 ```
 
-und `gate.py` sagt selbst, wofür dieses Datum steht: *erst nachdem die
-Phase-2-Rechtsprüfung (DSGVO Art. 9, Einwilligungsablauf, Aufbewahrungs- und
-Löschkonzept) **tatsächlich abgeschlossen** ist.* `LEGAL_SIGNOFF_DATE` ist
-keine Konfiguration, sondern eine Behauptung — dass diese Prüfung stattgefunden
-hat. Deshalb setze ich sie nicht.
-
-**Das ist die eine Entscheidung, die niemand außer dir treffen kann:** entweder
-die Rechtsprüfung vor der Beta, oder die Beta bewusst im Testmodus starten.
-Beides ist vertretbar, aber es muss bewusst geschehen — nicht dadurch, dass
-niemand hinsieht.
+Ein leerer Wert genügt nicht. Zusätzlich verlangt der Realmodus weiterhin
+`ALLOW_REAL_BIOMETRIC_DATA=true` **und** `LEGAL_SIGNOFF_DATE` — und `gate.py`
+sagt selbst, dass dieses Datum erst nach abgeschlossener Phase-2-Rechtsprüfung
+(DSGVO Art. 9, Einwilligungsablauf, Löschkonzept) gesetzt werden darf. Das ist
+keine Konfiguration, sondern eine Behauptung über eine stattgefundene Prüfung.
 
 ---
 
