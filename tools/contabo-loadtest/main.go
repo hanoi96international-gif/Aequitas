@@ -841,11 +841,18 @@ func main() {
 		numPairs = *maxPairs
 	}
 	var senders, recipients []*account
+	// Im Ring zusaetzlich der VORGAENGER jedes Kontos -- das zweite Ziel fuer
+	// die Richtungsumkehr weiter unten. Siehe dort, warum das im Ring sicher
+	// ist und die Konten davor gerettet haette.
+	var ringVorgaenger []*account
 	if ring {
 		senders = testAccs[:numPairs]
 		recipients = make([]*account, numPairs)
+		ringVorgaenger = make([]*account, numPairs)
 		for i := range recipients {
-			recipients[i] = testAccs[(i+1)%numPairs]
+			nach, vor := ringNachbarn(numPairs, i)
+			recipients[i] = testAccs[nach]
+			ringVorgaenger[i] = testAccs[vor]
 		}
 	} else {
 		senders = testAccs[:numPairs]
@@ -1077,16 +1084,46 @@ func main() {
 				for i := range reverseTargets {
 					reverseTargets[i] = from.address
 				}
-				// Direction alternation is a PAIRS-only device, and it would
-				// be a correctness bug in a ring: goroutine i sending from
-				// acc[i+1] would use the very account goroutine i+1 is already
-				// sending from, and two goroutines assigning one account's
-				// nonces desynchronise both for the rest of the run.
+				// Im Ring die Gegenrichtung: dasselbe Konto sendet, aber an
+				// seinen VORGAENGER statt an seinen Nachfolger.
+				var rueckTargets []string
+				if ring {
+					vorher := ringVorgaenger[pairIdx].address
+					rueckTargets = make([]string, effBatchSize)
+					for i := range rueckTargets {
+						rueckTargets[i] = vorher
+					}
+				}
+				// KORRIGIERT AM 29.08.2026 -- DER RING BRAUCHT DIE UMKEHR DOCH.
 				//
-				// It is also unnecessary there. Alternation exists because a
-				// fixed direction walks every sender's balance to zero; in a
-				// ring each account sends one batch and receives one batch per
-				// round, so balances stay level on their own.
+				// Hier stand, Alternation sei im Ring unnoetig, "each account
+				// sends one batch and receives one batch per round, so balances
+				// stay level on their own". Gemessen stimmt das nicht: nach den
+				// Ringlaeufen dieses Tages standen 418 von 618 Konten auf EXAKT
+				// null, waehrend das oberste Viertel 0,0153 AEQ hielt -- aus
+				// 0,002 AEQ Startguthaben je Konto. Das Geld hat sich verschoben,
+				// nicht ausgeglichen.
+				//
+				// Der Grund ist eine Kaskade: sobald ein Konto leer ist, hoert
+				// es auf zu senden, empfaengt aber weiter. Sein Nachfolger
+				// bekommt nichts mehr, sendet aber weiter und laeuft leer -- und
+				// so weiter im Kreis. Die Annahme "eins rein, eins raus" haelt
+				// nur, solange ALLE Goroutinen gleich schnell sind und keine je
+				// scheitert.
+				//
+				// Der alte Einwand bleibt richtig, trifft aber nur EINE Art der
+				// Umkehr: Absender und Empfaenger zu tauschen hiesse, aus
+				// acc[i+1] zu senden -- dem Konto, aus dem Goroutine i+1 bereits
+				// sendet -- und zwei Goroutinen, die die Nonces desselben Kontos
+				// vergeben, zerlegen beide.
+				//
+				// Es gibt eine sichere Umkehr: NUR DAS ZIEL drehen. Goroutine i
+				// sendet weiterhin ausschliesslich aus acc[i] -- kein fremdes
+				// Konto, kein Nonce-Konflikt -- aber abwechselnd an acc[i+1] und
+				// acc[i-1]. Die Schieflage laeuft damit wieder zurueck, und der
+				// Kontenvorrat traegt beliebig viele Laeufe statt sich zu
+				// verbrauchen. Genau das leistet die Alternation im
+				// Paar-Betrieb auch, nur ueber den anderen Freiheitsgrad.
 				forward := true
 				for {
 					select {
@@ -1103,7 +1140,12 @@ func main() {
 					// with every earlier run.
 					sender, targets := from, batchTargets
 					if !forward {
-						sender, targets = to, reverseTargets
+						if ring {
+							// Absender bleibt from -- nur das Ziel dreht.
+							targets = rueckTargets
+						} else {
+							sender, targets = to, reverseTargets
+						}
 					}
 					accepted, err := client.sendValueBatch(sender, targets, transferWei)
 					atomic.AddInt64(&succeeded, int64(accepted))
@@ -1114,9 +1156,7 @@ func main() {
 					// empty one, and the other side is then holding everything
 					// this side ever sent it -- so the very next batch is the one
 					// that can succeed.
-					if !ring {
-						forward = !forward
-					}
+					forward = !forward
 					if err != nil {
 						atomic.AddInt64(&failed, int64(effBatchSize-accepted))
 						recordErr(err)
@@ -1205,4 +1245,20 @@ func main() {
 		fmt.Printf("TPS (succeeded/elapsed): %.1f\n", float64(succeeded)/elapsed.Seconds())
 		printErrTally(errTally)
 	}
+}
+
+// ringNachbarn liefert die beiden Ziele fuer Goroutine i in einem Ring aus n
+// Konten: Nachfolger und Vorgaenger.
+//
+// Der ABSENDER ist immer i selbst -- das ist die tragende Eigenschaft und der
+// Grund, warum die Richtungsumkehr im Ring ueberhaupt zulaessig ist. Wer sie
+// stattdessen ueber einen Tausch von Absender und Empfaenger baut, laesst
+// Goroutine i aus acc[i+1] senden, also aus dem Konto, aus dem Goroutine i+1
+// bereits sendet. Zwei Goroutinen, die die Nonces desselben Kontos vergeben,
+// zerlegen beide fuer den Rest des Laufs.
+func ringNachbarn(n, i int) (nachfolger, vorgaenger int) {
+	if n <= 0 {
+		return 0, 0
+	}
+	return (i + 1) % n, (i - 1 + n) % n
 }

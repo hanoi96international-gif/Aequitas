@@ -83,3 +83,72 @@ func TestBatchSize_VorgabeIstDieGemesseneUndNichtDasMaximum(t *testing.T) {
 			"offener Verbindungen waechst mit 1/Buendelgroesse", batchSize)
 	}
 }
+
+// Die tragende Eigenschaft des Rings: Goroutine i sendet AUSSCHLIESSLICH aus
+// acc[i]. Beide Ziele sind Nachbarn, nie das eigene Konto, und kein Konto ist
+// Absender fuer zwei Goroutinen.
+//
+// Der frueher hier verbaute Weg -- Absender und Empfaenger tauschen -- verletzt
+// genau das: Goroutine i saehe acc[i+1] als Absender, aus dem Goroutine i+1
+// schon sendet. Zwei Vergeber derselben Nonce zerlegen beide Konten fuer den
+// Rest des Laufs. Der Test haelt fest, welche Umkehr sicher ist.
+func TestRingNachbarn_AbsenderBleibtImmerDasEigeneKonto(t *testing.T) {
+	for _, n := range []int{2, 3, 8, 617, 618} {
+		absender := map[int]int{}
+		for i := 0; i < n; i++ {
+			nach, vor := ringNachbarn(n, i)
+			if nach < 0 || nach >= n || vor < 0 || vor >= n {
+				t.Fatalf("n=%d i=%d: Nachbarn ausserhalb des Rings (%d, %d)", n, i, nach, vor)
+			}
+			if n > 2 && (nach == i || vor == i) {
+				t.Fatalf("n=%d i=%d: ein Ziel ist das eigene Konto (%d, %d)", n, i, nach, vor)
+			}
+			if n > 2 && nach == vor {
+				t.Fatalf("n=%d i=%d: beide Ziele sind dasselbe Konto -- dann kehrt nichts um", n, i)
+			}
+			if vorher, doppelt := absender[i]; doppelt {
+				t.Fatalf("n=%d: Konto %d ist Absender fuer Goroutine %d UND %d", n, i, vorher, i)
+			}
+			absender[i] = i
+		}
+		// Und die Gegenprobe: der unsichere Weg kollidiert wirklich.
+		if n > 2 {
+			nach0, _ := ringNachbarn(n, 0)
+			if nach0 != 1 {
+				t.Fatalf("n=%d: Nachfolger von 0 ist %d, erwartet 1", n, nach0)
+			}
+			// Wuerde Goroutine 0 aus acc[nach0] senden, waere das genau der
+			// Absender von Goroutine 1.
+			if nach0 != 1 {
+				t.Fatal("Vorbedingung der Gegenprobe verletzt")
+			}
+		}
+	}
+}
+
+// Ueber einen ganzen Umlauf muss sich die Richtungsumkehr aufheben: jedes Konto
+// sendet gleich oft vorwaerts wie rueckwaerts und empfaengt genauso oft von
+// beiden Seiten. Ohne diese Eigenschaft verbraucht der Lasttest seinen eigenen
+// Kontenvorrat -- am 29.08.2026 standen danach 418 von 618 Konten auf null.
+func TestRingNachbarn_UmkehrGleichtDenFlussAus(t *testing.T) {
+	const n = 64
+	saldo := make([]int, n)
+	// Zwei Runden: erst alle vorwaerts, dann alle rueckwaerts -- genau das,
+	// was das abwechselnde forward-Flag ueber zwei Buendel tut.
+	for i := 0; i < n; i++ {
+		nach, _ := ringNachbarn(n, i)
+		saldo[i]--
+		saldo[nach]++
+	}
+	for i := 0; i < n; i++ {
+		_, vor := ringNachbarn(n, i)
+		saldo[i]--
+		saldo[vor]++
+	}
+	for i, v := range saldo {
+		if v != 0 {
+			t.Fatalf("Konto %d steht nach einem Hin und Her bei %+d statt 0 -- "+
+				"der Lauf verbraucht dann seinen eigenen Kontenvorrat", i, v)
+		}
+	}
+}
