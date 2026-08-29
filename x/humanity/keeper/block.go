@@ -6892,7 +6892,12 @@ func (dag *BlockDAG) replayTransactions(block *Block, force bool) (ok bool) {
 	if block.StateRoot != "" {
 		// Computed BEFORE commit/rollback while dbTx is still open, so it
 		// reflects exactly what this replay just wrote within dbTx.
-		localRoot := dag.state.stateRootLocked(dag.state.getConfigValue("last_ubi_at"))
+		// withTx statt des Mantels: der Wert MUSS aus dbTx gelesen werden,
+		// damit er widerspiegelt, was dieser Replay gerade geschrieben hat.
+		// Vorher kam er ueber den stillen Rueckfall auf cs.activeTx dorthin --
+		// dieselbe Transaktion, aber nur, solange es das Feld gibt.
+		localRoot := dag.state.stateRootLocked(
+			dag.state.getConfigValueCtx(withTx(context.Background(), dbTx), "last_ubi_at"))
 		if block.StateRoot != localRoot {
 			// StateRoot mismatch is a WARNING, not a hard rejection.
 			//
@@ -6964,7 +6969,7 @@ func (dag *BlockDAG) replayTransactions(block *Block, force bool) (ok bool) {
 	// back commit also rolls this flag back — see ensureReplayedColumn's
 	// comment for why "header saved" must never silently imply "effects
 	// applied" on a later restart.
-	if err := dag.state.MarkBlockReplayed(context.Background(), block.Hash); err != nil {
+	if err := dag.state.MarkBlockReplayed(withTx(context.Background(), dbTx), block.Hash); err != nil {
 		fmt.Printf("[REPLAY] Warning: could not mark block #%d replayed: %v\n", block.Height, err)
 	}
 
