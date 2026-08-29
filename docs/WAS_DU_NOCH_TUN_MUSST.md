@@ -260,13 +260,43 @@ eigenen Kommentare sagten es. Sie kamen nur über den stillen Rückfall dorthin.
 
 **Jetzt auf beiden Boxen: `rueckfaelle: 0`, `activetx_entfernbar: true`.**
 
+### Unter Last gemessen — und die Pfade nachgezogen
+
+Drei Lastläufe gegen C1 (Generator auf C2), der Zähler als Messgröße:
+
+| Lauf | C1 (nimmt an) | C2 (spielt nach) |
+|---|---|---|
+| 1 | 0 | 3.295 aus 2 Stellen |
+| 2 | 0 | 2.745 aus 4 Pfaden |
+| 3 · nach dem Fix | **0** | **0** |
+
+**Der Transferpfad war von Anfang an vollständig** — C1 hatte unter 64.100,
+69.100 und 91.600 Überweisungen keinen einzigen Rückfall. Alles Fehlende lag im
+**Nachspielen**, und die dreistufige Herkunftsliste hat es beim Namen genannt:
+
+- `applyTransferDeltaLocked` ← `block.go`, zweimal (1.980)
+- `applyTransferBatchParallel` ← `block.go` (762)
+- `ResetFinalizedCheckpoint` ← `snapshot.go`, Resync (3)
+
+Alle vier gaben ausdrücklich `context.Background()`, während im selben
+Sichtbereich eine offene Transaktion lag — und landeten trotzdem darin, über
+den stillen Rückfall. Beim Resync stand die Anforderung sogar im Kommentar
+daneben: *„resets both atomically"*. Atomar war es nur durch das gemeinsame
+Feld.
+
+**Ergebnis: beide Zähler bei 0, `activetx_entfernbar: true` auf beiden Boxen.**
+
 ### Was noch fehlt, bevor `activeTx` wirklich weg kann
 
-Die Null gilt für den **Leerlaufbetrieb**. Pfade, die nur unter Last laufen —
-Überweisungen, Verteilung, Registrierung — sind dabei nicht durchlaufen worden.
-Vor dem Entfernen gehört ein Lastlauf gemacht, mit dem Zähler als Tor: bleibt
-er bei 0, kann das Feld weg; springt er an, nennt die Herkunftsliste die
-fehlenden Pfade beim Namen.
+Die Null gilt für **Überweisungen**. Nicht durchlaufen sind: die tägliche
+Verteilung (läuft um 20:00 Berlin), eine Registrierung (braucht ein Gesicht),
+ein Swap, der Guardian-Pfad.
 
-Erst danach folgt der eigentliche Gewinn: die Sperre auf die vorhandenen
-Konten-Shards verengen (`shardedAccounts.LockAddrs`).
+Der Zähler läuft dauerhaft mit und kostet nichts. **Bleibt er über eine
+Verteilungsrunde und eine Registrierung hinweg bei 0, kann `cs.activeTx`
+entfernt werden** — und erst dann lässt sich die globale Sperre auf die
+vorhandenen Konten-Shards verengen (`shardedAccounts.LockAddrs`). Das ist der
+Schritt, der die gemessenen 74,7 % Wartezeit auflöst.
+
+Springt er an, nennt die Herkunftsliste den Pfad, wie sie es dreimal getan hat.
+
