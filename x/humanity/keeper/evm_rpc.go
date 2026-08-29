@@ -640,15 +640,10 @@ func (s *EVMRPCServer) dispatch(method string, params []json.RawMessage, pre *pr
 		return "0x0", nil
 
 	case "eth_feeHistory":
-		return map[string]interface{}{
-			"oldestBlock":   "0x0",
-			"baseFeePerGas": []string{"0x0"},
-			"gasUsedRatio":  []float64{0},
-			"reward":        [][]string{{"0x0"}},
-		}, nil
+		return s.feeHistory(params)
 
 	case "eth_estimateGas":
-		return "0x5B8D80", nil // 6M gas
+		return s.estimateGas(params)
 
 	case "eth_getTransactionCount":
 		return s.getTransactionCount(params)
@@ -1435,6 +1430,103 @@ func (s *EVMRPCServer) getTransactionReceipt(params []json.RawMessage) (interfac
 		// Faktor steht dort undefined statt "0". Null ist hier die Wahrheit.
 		"effectiveGasPrice": "0x0",
 		"type":              typField,
+	}, nil
+}
+
+// estimateGas beantwortet, was eine Ueberweisung wirklich kostet.
+//
+// Vorher stand hier die Konstante 0x5B8D80 (6.000.000) -- fuer jede Anfrage,
+// auch fuer eine einfache Ueberweisung. Deren Verbrauch ist exakt gasProTx und
+// muss gar nicht geschaetzt werden. Eine Wallet uebernimmt die Antwort als
+// Gaslimit; 6 Millionen fuer 21.000 ist das 286-fache.
+//
+// Fuer einen Vertragsaufruf bleibt es beim alten Wert. Die EVM gibt kein
+// verbrauchtes Gas zurueck (DeployContract und CallContract liefern nur
+// (ret, err)), eine echte Schaetzung ist ohne sie nicht moeglich -- und eine
+// erfundene waere schlechter als eine grosszuegige: zu niedrig geschaetzt
+// scheitert der Aufruf mitten in der Ausfuehrung.
+func (s *EVMRPCServer) estimateGas(params []json.RawMessage) (interface{}, *RPCError) {
+	const grosszuegig = "0x5B8D80" // 6.000.000, der alte Wert
+	if len(params) == 0 {
+		return grosszuegig, nil
+	}
+	var aufruf struct {
+		To    string `json:"to"`
+		Data  string `json:"data"`
+		Input string `json:"input"`
+	}
+	if err := json.Unmarshal(params[0], &aufruf); err != nil {
+		return grosszuegig, nil
+	}
+	daten := aufruf.Data
+	if daten == "" {
+		daten = aufruf.Input
+	}
+	daten = strings.TrimPrefix(strings.TrimSpace(daten), "0x")
+	// Ohne Aufrufdaten und mit einem Empfaenger ist es eine reine
+	// Ueberweisung, und deren Verbrauch ist keine Schaetzung, sondern eine
+	// Festgroesse.
+	if daten == "" && strings.TrimSpace(aufruf.To) != "" {
+		return fmt.Sprintf("0x%x", gasProTx), nil
+	}
+	return grosszuegig, nil
+}
+
+// feeHistory nennt den Bereich, auf den sich die Zahlen beziehen.
+//
+// oldestBlock stand fest auf "0x0" -- egal welcher Bereich angefragt wurde.
+// Wer daraus eine Gebuehrenkurve baut, bezieht sie auf Block 0 statt auf die
+// Gegenwart. Die Gebuehren selbst bleiben null: diese Kette erhebt keine, das
+// ist keine Platzhalterangabe. Aber die Blocknummer ist eine Tatsache, und
+// eine falsche Tatsache neben richtigen Nullen faellt niemandem auf.
+func (s *EVMRPCServer) feeHistory(params []json.RawMessage) (interface{}, *RPCError) {
+	anzahl := uint64(1)
+	if len(params) > 0 {
+		var roh string
+		if err := json.Unmarshal(params[0], &roh); err == nil {
+			// Ohne hexutil: die Zahl kommt als "0x..." oder als blanke
+			// Dezimalzahl, beides kommt in freier Wildbahn vor.
+			if n, err := strconv.ParseUint(strings.TrimPrefix(roh, "0x"), 16, 64); err == nil && n > 0 {
+				anzahl = n
+			}
+		} else {
+			var n uint64
+			if err := json.Unmarshal(params[0], &n); err == nil && n > 0 {
+				anzahl = n
+			}
+		}
+	}
+	if anzahl > 1024 {
+		anzahl = 1024 // dieselbe Obergrenze, die go-ethereum zieht
+	}
+
+	hoechste := uint64(0)
+	if s.dag != nil {
+		if b := s.dag.LatestBlock(); b != nil && b.Height > 0 {
+			hoechste = uint64(b.Height)
+		}
+	}
+	aeltester := uint64(0)
+	if hoechste+1 > anzahl {
+		aeltester = hoechste + 1 - anzahl
+	}
+	// baseFeePerGas traegt laut Spezifikation EINEN Eintrag mehr als die
+	// anderen Reihen: den Wert fuer den naechsten, noch nicht erzeugten Block.
+	basis := make([]string, 0, anzahl+1)
+	for i := uint64(0); i <= anzahl; i++ {
+		basis = append(basis, "0x0")
+	}
+	anteil := make([]float64, 0, anzahl)
+	lohn := make([][]string, 0, anzahl)
+	for i := uint64(0); i < anzahl; i++ {
+		anteil = append(anteil, 0)
+		lohn = append(lohn, []string{"0x0"})
+	}
+	return map[string]interface{}{
+		"oldestBlock":   fmt.Sprintf("0x%x", aeltester),
+		"baseFeePerGas": basis,
+		"gasUsedRatio":  anteil,
+		"reward":        lohn,
 	}, nil
 }
 
