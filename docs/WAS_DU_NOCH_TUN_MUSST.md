@@ -402,3 +402,73 @@ schon dreimal falsch. Wer es angeht, misst es an einem Zweig.
 Das Werkzeug dafür steht: Phasenmessung, Herkunftszähler, reparierter
 Lastgenerator, und zwei Stellschrauben, die sich ohne Deploy verändern lassen.
 
+---
+
+## Warum 10k heute nicht erreichbar ist — die geschlossene Rechnung
+
+Nach acht Messungen steht die Arithmetik. Sie ist keine Einschätzung.
+
+### Die Grundgleichung
+
+**Durchsatz = gleichzeitige Sender ÷ Latenz je Überweisung.**
+
+Der Generator bündelt 100 Überweisungen **desselben Absenders** pro Anfrage,
+und der Knoten arbeitet ein Bündel seriell ab (`for i, raw := range batch`).
+Beides ist richtig so: gleicher Absender heißt fortlaufende Nonces, die
+*müssen* in Reihenfolge laufen. Also zählt nur, wie viele **verschiedene**
+Absender gleichzeitig senden.
+
+Nachgerechnet: 150 Sender ÷ 0,23 s = 652. Gemessen: 650.
+
+### Was daraus folgt
+
+Für 10.000 TPS bei 230 ms Latenz bräuchte es **2.300 gleichzeitige Sender**.
+
+| Sender | Ergebnis |
+|---|---|
+| 150 | 650 TPS |
+| 288 (alle Paare) | ~1.250 TPS |
+| **576 (ring)** | **0 TPS** — jede Anfrage läuft in die 30-s-Grenze |
+
+Der Knoten bricht weit vor 2.300 zusammen. **Mehr Last hilft nicht, sie kippt.**
+
+### Also muss die Latenz fallen
+
+Von 230 ms auf ~29 ms — Faktor 8. Die Aufteilung sagt, wo sie liegt:
+
+```
+pre_rlock   156,3 ms   ← Warten auf cs.mu.RLock()
+wal_append   68,7 ms   ← langsam, weil zu wenige gleichzeitig anhängen
+apply         0,06 ms  ← die Arbeit
+```
+
+Der langsame Anhang ist die **Folge** der Serialisierung: die Überweisungen
+erreichen den Gruppen-Commit einzeln und finden niemanden zum Bündeln. Die
+Platte selbst schafft 46.342 Anhänge/s.
+
+**Beide Posten verschwinden, wenn die Lesesperre fällt. Sonst keiner.**
+
+### Was ausgeschlossen ist — gemessen, nicht vermutet
+
+| Hebel | Ergebnis |
+|---|---|
+| WAL-Adressdeckel | 868 → 299 TPS, deutlich schlechter |
+| Bündelgröße 4000/8000 | kein Effekt |
+| WAL-Gruppencommit-Fenster | Streuung Faktor 3,3 — nicht entscheidbar |
+| Mehr Sender | Zusammenbruch bei 576 |
+| Ring-Topologie | 0 Erfolge |
+
+### Was bleibt
+
+Die Lesesperre zu entfernen verlangt, dass **jeder** Änderer Shard-Sperren
+nimmt. Der Versuch scheiterte an einer Zahl: **247 Funktionen** lösen transitiv
+Shard-Zugriffe aus, und die erste umgestellte verklemmte sich zwei Ebenen tief.
+
+Der richtige Weg ist kein `LockAddrs` an 22 Stellen, sondern
+`accounts.Update(addr, func(*AccountState))` — eine API, die keinen Zeiger
+herausgibt, sodass der **Compiler** jede Stelle findet. Das ist ein Umbau der
+Datenstruktur.
+
+**Aufwand ehrlich geschätzt:** mehrere Tage, mit einem Lastgenerator, der erst
+stabil sättigen muss. Nicht vor dem Beta-Start.
+
