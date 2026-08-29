@@ -52,6 +52,22 @@ import (
 // Wird der Knoten schneller, sinkt die Wartezeit bei gleicher Schranke
 // automatisch mit.
 //
+// LIVE BESTAETIGT (29.08.2026, C2, 450 gleichzeitige Sender): der
+// Hoechststand lag bei 3.500 gleichzeitigen Posten, die Schranke lehnte
+// NICHTS ab. Das ist das gewuenschte Verhalten und zugleich der Beleg, dass
+// die 8.000 richtig liegen -- deutlich ueber dem, was echter Betrieb mit
+// aktivem Ratenbegrenzer erzeugt, und weit unter den 57.600, die
+// nachweislich zusammenbrechen.
+//
+// WAS DAMIT NICHT GEZEIGT IST: dass die Schranke im Ernstfall greift. Dafuer
+// muesste der Ratenbegrenzer abgeschaltet sein -- genau die Konfiguration, in
+// der der Zusammenbruch auftrat (AEQUITAS_RPC_RATE_LIMIT_MAX=1000000). Live
+// vorfuehren liess sich das nicht, weil es einen Neustart eines
+// Produktionsknotens braucht. Belegt ist es nur durch
+// TestInflight_576SenderWerdenAbgelehntStattAngenommen. Wer den Begrenzer je
+// hochsetzt oder abschaltet, faehrt ab jetzt nicht mehr ohne Netz -- aber wer
+// sich darauf verlaesst, sollte es einmal unter Last gesehen haben.
+//
 //	AEQUITAS_RPC_MAX_INFLIGHT   gleichzeitig angenommene Buendel-Posten
 //	                            (Vorgabe 8000; ausdrueckliche 0 schaltet ab)
 //
