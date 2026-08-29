@@ -122,6 +122,12 @@ func ActiveTxRueckfallStand() map[string]interface{} {
 	})
 	return map[string]interface{}{
 		"rueckfaelle": n,
+		// Ob der strikte Modus laeuft, MUSS ohne Logsuche sichtbar sein. Die
+		// Startmeldung allein genuegt nicht: sie haengt an einem sync.Once, das
+		// erst beim ersten Rueckfall ausloest -- und wenn es keinen gibt, sagt
+		// nichts, dass der Schalter an ist. Genau die Klasse Fehler, gegen die
+		// dieser Zaehler ueberhaupt gebaut wurde.
+		"strikt": activeTxStrikt(),
 		// Welche Aufrufer den ctx noch nicht durchreichen. Ohne diese Liste
 		// waere die Zahl darueber eine Feststellung ohne Handlungsanweisung.
 		"herkunft": herkunft,
