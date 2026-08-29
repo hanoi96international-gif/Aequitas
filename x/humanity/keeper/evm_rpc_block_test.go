@@ -168,22 +168,9 @@ func TestSyncing_OhneDAGKeinFalschesVersprechen(t *testing.T) {
 	}
 }
 
-func TestSyncing_FormDerAntwort(t *testing.T) {
-	// Die Ethereum-Schnittstelle verlangt entweder false oder ein Objekt mit
-	// startingBlock/currentBlock/highestBlock. Ein Werkzeug, das nur auf
-	// "!= false" prueft, verlaesst sich darauf.
-	m := map[string]interface{}{
-		"startingBlock": "0x0",
-		"currentBlock":  "0x1",
-		"highestBlock":  "0x2",
-	}
-	for _, k := range []string{"startingBlock", "currentBlock", "highestBlock"} {
-		v, da := m[k]
-		if !da {
-			t.Fatalf("%s fehlt", k)
-		}
-		if !strings.HasPrefix(v.(string), "0x") {
-			t.Fatalf("%s = %v, erwartet Hex mit 0x", k, v)
-		}
-	}
-}
+// ANMERKUNG: hier stand ein zweiter Test, der sich seine eigene Map baute und
+// dann DIESE prueft -- er sagte ueber syncing() nichts aus und sah nur wie
+// Abdeckung aus. Entfernt. Der interessante Fall (ein Knoten, der wirklich
+// hinterherhinkt) braucht einen DAG mit Hoehe und Ziel; solange es dafuer
+// keine Vorrichtung gibt, ist der nil-Fall oben das, was ehrlich geprueft
+// werden kann.
