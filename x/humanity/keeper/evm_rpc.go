@@ -483,6 +483,29 @@ func (s *EVMRPCServer) handleRPC(w http.ResponseWriter, r *http.Request) {
 			writeError(w, -32600, fmt.Sprintf("batch too large: max %d requests, got %d", maxBatchSize, len(batch)), nil)
 			return
 		}
+		// Warteschlange beschraenken -- BEVOR die teure Signaturpruefung laeuft.
+		// Abgelehnte Arbeit soll einen Zaehler kosten, nicht eine secp256k1-
+		// Wiederherstellung je Posten; das ist dieselbe Begruendung, mit der
+		// der Ratenbegrenzer oben vor dem Dekodieren geprueft wird.
+		//
+		// Ohne diese Schranke nimmt der Knoten unbegrenzt an und liefert nach
+		// der Zeitgrenze des Clients aus: am 29.08.2026 ergaben 576
+		// gleichzeitige Sender 0 Erfolge und 138.000 Zeitueberschreitungen,
+		// waehrend der Knoten durchgehend fehlerfrei arbeitete. Siehe
+		// inflight_grenze.go.
+		if !inflightEintritt(int64(len(batch))) {
+			results := make([]interface{}, 0, len(batch))
+			for range batch {
+				results = append(results, errorResponse(nil, -32005,
+					"server busy: too much work in flight, try again shortly"))
+			}
+			handlerItems = len(batch)
+			encodeStart := time.Now()
+			json.NewEncoder(w).Encode(results)
+			noteRPCEncode(time.Since(encodeStart))
+			return
+		}
+		defer inflightAustritt(int64(len(batch)))
 		// FIX (2026-07-25, 50k-TPS deep-dive): decode + ecrecover every
 		// eth_sendRawTransaction item in the batch up front, in parallel,
 		// before the serial dispatch loop below. types.Sender (secp256k1
@@ -587,6 +610,13 @@ func (s *EVMRPCServer) handleRPC(w http.ResponseWriter, r *http.Request) {
 		writeError(w, -32005, "rate limited: too many requests, try again shortly", nil)
 		return
 	}
+	// Auch der Einzelpfad zaehlt mit: eine Flut einzelner Anfragen fuellt
+	// dieselbe Warteschlange wie ein Buendel.
+	if !inflightEintritt(1) {
+		writeError(w, -32005, "server busy: too much work in flight, try again shortly", nil)
+		return
+	}
+	defer inflightAustritt(1)
 	result := s.handleSingle(body, nil)
 	handlerItems = 1
 	encodeStart := time.Now()

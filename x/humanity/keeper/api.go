@@ -674,6 +674,8 @@ func (a *APIServer) handleCombinedHealth(w http.ResponseWriter, r *http.Request)
 		"transfer_batch": TransferBatchAbstimmung(),
 		// Warum Ueberweisungen den Schnellpfad verlassen -- siehe fallback_gruende.go.
 		"fallback_gruende": FallbackGruende(),
+		// Obergrenze gleichzeitig angenommener Arbeit -- siehe inflight_grenze.go.
+		"inflight": InflightStand(),
 		// Whether the database connection pool is the constraint — wait_count
 		// and wait_total_ms answer that directly, instead of inferring it from
 		// a throughput number that swings by 2x between runs. See DBPoolStats.
