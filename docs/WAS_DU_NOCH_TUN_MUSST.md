@@ -402,3 +402,58 @@ schon dreimal falsch. Wer es angeht, misst es an einem Zweig.
 Das Werkzeug dafür steht: Phasenmessung, Herkunftszähler, reparierter
 Lastgenerator, und zwei Stellschrauben, die sich ohne Deploy verändern lassen.
 
+---
+
+## Der 10k-Umbau wurde versucht — und ist an einer Zahl gescheitert
+
+Am 29.08.2026 abends umgesetzt, sofort zurückgenommen, mit einem Ergebnis, das
+den nächsten Versuch spart.
+
+### Der Plan war richtig
+
+Der Engpass ist belegt: 93 % der Überweisungen laufen über den
+shard-gesperrten Schnellpfad und warten dort **156,3 ms auf `cs.mu.RLock()`** —
+68 % ihrer Gesamtzeit — weil die 7 %, die über die globale Schreibsperre gehen,
+alle Leser aussperren. Die eigentliche Änderung dauert 0,06 ms.
+
+Der Plan: die langsamen Pfade auf Shard-Sperren umstellen, dann kann der
+Schnellpfad seine Lesesperre verlieren.
+
+### Die erste Funktion hat es widerlegt
+
+`applyTransferDeltaLocked` umgestellt, Testreihe gestartet — **Verklemmung nach
+303 Sekunden**:
+
+```
+applyTransferDeltaLocked        ← hält die Shard-Sperren
+  → enforceWealthCapLockedCtx
+    → getAverageBalanceLocked
+      → humanCountLocked        ← nimmt sie erneut
+```
+
+`humanCountLocked` macht ohne Datenbank ein `accounts.Range(...)`. Go's Mutex
+ist nicht wiedereintrittsfähig. Meine Vorprüfung hatte nur die aufgerufene
+Funktion selbst durchsucht, nicht ihre Kette.
+
+### Warum das kein Einzelfall ist
+
+| | |
+|---|---|
+| Funktionen mit **direktem** Shard-Zugriff | 64 |
+| Funktionen, die ihn **transitiv** auslösen | **247** |
+
+Wer eine Shard-Sperre hält, darf keine dieser 247 aufrufen. Das ist keine
+Umstellung von 22 Stellen, sondern eine Hülle von 247 Funktionen — und die
+Hälfte davon läuft auf Pfaden, die sich hier gar nicht ausführen lassen
+(Verteilung bei leeren Töpfen, Registrierung ohne Gesicht, Swap ohne Nutzer).
+
+### Was stattdessen nötig wäre
+
+Nicht `LockAddrs` an 22 Stellen, sondern eine **API, die den Fehler unmöglich
+macht** — etwa `accounts.Update(addr, func(*AccountState))`, das die Sperre
+selbst hält und außerhalb keinen Zeiger herausgibt. Dann findet der Compiler
+jede Stelle, statt dass ein Test nach fünf Minuten hängt.
+
+Das ist ein Umbau der Datenstruktur, kein Refactoring — und er gehört nicht in
+die Woche vor einem Start.
+
