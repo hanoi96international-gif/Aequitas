@@ -1566,12 +1566,7 @@ ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value`, key, value); err != nil
 // getConfigValueDB instead, which always reads cs.db directly and never
 // touches cs.activeTx.
 func (cs *ChainState) getConfigValue(key string) string {
-	if cs.db == nil {
-		return ""
-	}
-	var v string
-	cs.dbExec().QueryRow(`SELECT value FROM chain_config WHERE key = $1`, key).Scan(&v)
-	return v
+	return cs.getConfigValueCtx(context.Background(), key)
 }
 
 // getConfigValueCtx is getConfigValue routed through ctx, so a read inside an
@@ -1594,11 +1589,19 @@ func (cs *ChainState) getConfigValueCtx(ctx context.Context, key string) string 
 // tell a rollback "delete this key" instead of "nothing to restore". See
 // configValueSnapshot. Same cs.mu-held precondition as getConfigValue.
 func (cs *ChainState) getConfigValueExists(key string) (string, bool) {
+	return cs.getConfigValueExistsCtx(context.Background(), key)
+}
+
+// getConfigValueExistsCtx ist getConfigValueExists ueber ctx gefuehrt, damit
+// ein Lesen INNERHALB einer atomaren Operation deren eigene, noch nicht
+// festgeschriebene Schreibvorgaenge sieht statt des zuletzt festgeschriebenen
+// Werts. Dieselbe cs.mu-Vorbedingung wie getConfigValue.
+func (cs *ChainState) getConfigValueExistsCtx(ctx context.Context, key string) (string, bool) {
 	if cs.db == nil {
 		return "", false
 	}
 	var v string
-	err := cs.dbExec().QueryRow(`SELECT value FROM chain_config WHERE key = $1`, key).Scan(&v)
+	err := cs.dbExecCtx(ctx).QueryRow(`SELECT value FROM chain_config WHERE key = $1`, key).Scan(&v)
 	if err != nil {
 		return "", false
 	}
@@ -1612,10 +1615,18 @@ func (cs *ChainState) getConfigValueExists(key string) (string, bool) {
 // Routes through cs.dbExec() for the same reason as setConfigValue. Same
 // cs.mu-held precondition as getConfigValue.
 func (cs *ChainState) deleteConfigValue(key string) error {
+	return cs.deleteConfigValueCtx(context.Background(), key)
+}
+
+// deleteConfigValueCtx ist deleteConfigValue ueber ctx gefuehrt. Der Loeschung
+// muss dieselbe Transaktion tragen wie den Aenderungen daneben: sonst kann ein
+// Ruecklauf die Konten zuruecknehmen und den Konfigurationsschluessel stehen
+// lassen -- und genau dieser Schluessel geht in den StateRoot ein.
+func (cs *ChainState) deleteConfigValueCtx(ctx context.Context, key string) error {
 	if cs.db == nil {
 		return nil
 	}
-	if _, err := cs.dbExec().Exec(`DELETE FROM chain_config WHERE key = $1`, key); err != nil {
+	if _, err := cs.dbExecCtx(ctx).Exec(`DELETE FROM chain_config WHERE key = $1`, key); err != nil {
 		fmt.Printf("[DB] Warning: deleteConfigValue(%q) failed: %v\n", key, err)
 		return fmt.Errorf("could not delete config %q: %w", key, err)
 	}
