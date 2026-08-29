@@ -519,3 +519,65 @@ schnell; die 230 ms entstehen erst unter Sättigung. Für eine ehrliche
 10k-Messung braucht es einen deutlich größeren Kontenvorrat, und **den zu
 befüllen ist eine Überweisung, die der Betreiber selbst auslöst.**
 
+---
+
+## Nachtrag 29.08. abends: das Skalierungsgesetz ist gemessen
+
+### Der Ratenbegrenzer hat den ganzen Tag verdorben
+
+Drei Stellen im Code behaupteten, er werde einmal je HTTP-Anfrage geprüft, ein
+Bündel aus 100 Überweisungen koste also einen Tick. Seit dem P1-Fix vom
+21.07.2026 wird **je Posten** abgebucht:
+
+```
+200 Posten je 10-s-Fenster = 20 Überweisungen/s je IP     (nicht 2.000)
+```
+
+Faktor 100. Alle Läufe des Tages kamen deshalb auf 13–15 TPS und sahen nach
+einem Knotenproblem aus. Der zugehörige Workflow hatte den Vorgabewert 10000 —
+der hätte einen 10k-Lauf bei **1.000 TPS** gedeckelt und dabei großzügig
+ausgesehen. Korrigiert auf 100000, und zwei Tests halten die Semantik jetzt
+fest.
+
+**Regel für jeden Lastlauf: Zielrate × 10 = Mindestwert.**
+
+### Mit korrektem Begrenzer skaliert der Knoten linear
+
+| Sender | Bündelgröße | TPS | Fehlschläge |
+|---|---|---|---|
+| 169 | 100 | 427 | 6.778 (meine Warteschlangen-Schranke) |
+| 161 | 10 | 591 | **0** |
+| 320 | 10 | **1.148** | 111 (leere Konten) |
+
+1,99× Sender ⇒ 1,94× Durchsatz. **Kein Sättigungszeichen bei 1.148 TPS.**
+
+Zwei Folgerungen:
+
+1. **Große Bündel schaden.** 100 Überweisungen eines Absenders laufen im Knoten
+   nacheinander. Seit der Je-Posten-Abrechnung sparen sie auch kein
+   Begrenzer-Budget mehr — der einzige verbleibende Vorteil sind weniger
+   Netzumläufe. Gemessen: Bündel 10 schlägt Bündel 100 um Faktor 1,4.
+2. **Der Engpass sind Absender, nicht der Knoten.** Bei 279 ms je Überweisung
+   braucht 10.000 TPS rund **2.800 gleichzeitige Absender**. Vorhanden sind
+   618 Konten, davon halten nur noch ~320 genug Guthaben — und jeder Lauf
+   zehrt weiter daran.
+
+### Was das WAL dabei sagt
+
+`sync_avg_us` 28,8 ms je fsync, aber nur **17 Sätze je fsync** bei einem Deckel
+von 500. Der Gruppen-Commit arbeitet korrekt — er greift nach jedem fsync sofort
+ab, was aufgelaufen ist. 17 heißt schlicht: es kommen nur 570 Überweisungen/s
+an. **Das WAL ist unterversorgt, nicht überlastet.** Bei vollen Bündeln von 500
+läge es bei 17.000/s.
+
+### Was der Abend gekostet hat
+
+Ein Deploy fiel mitten in einen Lasttest. C1 verlor die Verbindung zu C2
+(`connection refused`), fiel zurück, wies dann Block 5176975 endlos wegen
+Zustands-Inkonsistenz ab und hing ~215 Blöcke zurück.
+
+**Er hat sich selbst geheilt.** Nach einigen Minuten war er wieder bei Abstand 0,
+`healthy: True`, 0 Abweichungen, byte-identisch über 2.000 Blöcke. Ein Resync
+wäre ein schwerer Eingriff in einen Knoten gewesen, der gerade dabei war,
+sich selbst zu reparieren. **Merke: bei dieser Fehlerform erst warten.**
+
