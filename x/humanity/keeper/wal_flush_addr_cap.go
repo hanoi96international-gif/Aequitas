@@ -39,6 +39,37 @@ import (
 // item is still taken. Otherwise a low cap would stall the queue forever, which
 // is a far worse failure than a long hold.
 
+// GEMESSEN AM 29.08.2026 -- UND ES HILFT NICHT, ES SCHADET.
+//
+// Der Sweep, den dieser Kommentar verlangt, ist nachgeholt worden: mit
+// gehobenem Ratendeckel (AEQUITAS_RPC_RATE_LIMIT_MAX=20000), also erstmals in
+// dem Lastbereich, fuer den der Deckel gedacht war. 60 s, 150 Paare, gleiche
+// Konten, gleiche Betraege:
+//
+//	MAX_ADDRS   TPS     Fehlschlaege
+//	aus         868,3    3.000
+//	128         319,6   19.400
+//	64          298,8   25.900
+//
+// Der Grund steht in den Zaehlern: mit 128 lief der Schreiber 1.005 Mal fuer
+// 68.351 Eintraege -- rund 68 je Vorgang statt der erlaubten 4.000 -- und
+// hold_max_ms stieg auf 927. Weniger Adressraum je Vorgang heisst mehr
+// Vorgaenge, und jeder davon ist erneut ein Schreiber.
+//
+// Das ist dieselbe Lehre, die evm_storage.go's doSyncBalanceRLocked schon
+// traegt: "1,135 short holds convoy readers more often than 90 long ones did.
+// The cost was never the holding; it was being a writer at all." Go's RWMutex
+// sperrt ankommende Leser aus, sobald ein Schreiber ANSTEHT -- viele kurze
+// Halte sind deshalb schlechter als wenige lange.
+//
+// FOLGE FUER DEN GEPLANTEN UMBAU: die Sperre in runAtomicWithOutbox in viele
+// kleine Konten-Sperren zu zerlegen, koennte aus demselben Grund ebenfalls
+// schaden. Wer das angeht, misst es zuerst an einem Zweig -- diese Zahlen hier
+// sind der Beleg, dass die plausible Richtung die falsche sein kann.
+//
+// Der Deckel bleibt als Werkzeug erhalten (Vorgabe 0 = aus). Er ist nicht
+// kaputt; er beantwortet die Frage, und die Antwort ist nein.
+
 const walFlushMaxAddrsEnv = "AEQUITAS_WAL_FLUSH_MAX_ADDRS"
 
 // walFlushMaxAddrs reports the per-flush distinct-address cap, or 0 for none.
