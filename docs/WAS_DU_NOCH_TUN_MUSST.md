@@ -300,3 +300,47 @@ Schritt, der die gemessenen 74,7 % Wartezeit auflöst.
 
 Springt er an, nennt die Herkunftsliste den Pfad, wie sie es dreimal getan hat.
 
+---
+
+## Wofür die globale Sperre gehalten wird — gemessen 29.08.2026
+
+Das Mutex-Profil sagte „74,7 % der Wartezeit in `runAtomicWithOutbox`". Es
+sagte nicht, wie sich das aufteilt. Jetzt schon, unter Last (50.000
+Überweisungen, 83 s):
+
+| | |
+|---|---|
+| Läufe von `runAtomicWithOutbox` | **44** |
+| **Warten auf die Sperre** | **468,8 ms** |
+| Halten der Sperre | 50,3 ms |
+| — davon Arbeit (`fn`) | 28,3 ms (56 %) |
+| — davon Commit | 15,6 ms (31 %) |
+| — davon Outbox | 6,2 ms (12 %) |
+| — davon Snapshot | 0,15 ms |
+
+### Was das heißt
+
+**Nur 44 Läufe für 50.000 Überweisungen** — der Transferpfad bündelt, rund
+1.100 Stück je Vorgang. Pro Überweisung sind das ~45 µs Arbeit unter der
+Sperre. Das ist nicht das Problem.
+
+**Das Problem ist das Warten: 469 ms gegen 50 ms Halten — Faktor 9.** Wenn ein
+Transferbündel die Sperre will, wartet es eine halbe Sekunde. Nicht auf ein
+anderes Bündel (davon gibt es nur 44), sondern auf **alles andere, was `cs.mu`
+nimmt**: Blockproduktion und Nachspielen.
+
+Das erklärt die alte Widersprüchlichkeit — Durchsatz gedeckelt, CPU frei,
+Replay parallel. Die Überweisungen warten nicht aufeinander. Sie warten auf den
+Konsens.
+
+### Was daraus für 10k folgt
+
+Nicht „schneller machen", sondern **entkoppeln**. Ein Transferbündel braucht
+die Konten, die es anfasst — nicht die globale Sperre. `runAtomicWithOutbox`
+bekommt `touchedAddrs` bereits als Parameter, und `shardedAccounts.LockAddrs`
+existiert und wird vom WAL-Schreiber schon benutzt.
+
+Voraussetzung bleibt `cs.activeTx`: zwei gleichzeitige Vorgänge würden sich das
+Feld überschreiben. Der strikte Modus läuft dafür seit heute auf beiden Boxen
+und hat drei Lastläufe mit **0 Rückfällen** überstanden.
+
