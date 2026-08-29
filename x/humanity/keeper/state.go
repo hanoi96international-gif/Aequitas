@@ -592,6 +592,21 @@ func (cs *ChainState) activeTxCtx(ctx context.Context) *sql.Tx {
 	if tx := txFromContext(ctx); tx != nil {
 		return tx
 	}
+	// Der letzte implizite Leser von cs.activeTx -- und der gefaehrlichste.
+	//
+	// dbExecCtx faellt auf cs.db zurueck: der Schreibvorgang geschieht dann
+	// eigenstaendig, was falsch, aber harmlos aussieht. Hier ist es anders.
+	// savePoolToDBCtx, der einzige Aufrufer, oeffnet ohne Transaktion eine
+	// EIGENE mit SELECT FOR UPDATE -- also nicht "ausserhalb", sondern
+	// "daneben", mit der Selbstverklemmung, vor der sein eigener Kommentar
+	// warnt.
+	//
+	// Deshalb wird auch dieser Fall gezaehlt. Solange die Zahl unter Last
+	// nicht null ist, darf cs.activeTx nicht entfernt werden -- und wenn sie
+	// null ist, ist es der letzte Grund, der noch dagegen stand.
+	if cs.activeTx != nil {
+		notiereActiveTxRueckfall()
+	}
 	return cs.activeTx
 }
 
