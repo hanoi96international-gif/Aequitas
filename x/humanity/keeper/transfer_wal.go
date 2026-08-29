@@ -304,6 +304,7 @@ func (cs *ChainState) initWALIfEnabled() {
 // transferConcurrent — see that function's doc comment.
 func (cs *ChainState) transferConcurrentWAL(from, to string, amount float64, pendingTxTemplate Transaction) (fromLost, toLost float64, applied bool, err error) {
 	if cs.wal == nil {
+		fbKeinWAL.Add(1)
 		return 0, 0, false, nil
 	}
 	// Phase clock. Recorded only when this path actually applies the transfer,
@@ -315,6 +316,7 @@ func (cs *ChainState) transferConcurrentWAL(from, to string, amount float64, pen
 	// the batcher, same shape as any other ineligibility below -- nothing
 	// has been mutated or appended to the WAL yet at this point.
 	if cs.WALFlushQueueDepth() >= walFlushMaxQueueDepth {
+		fbWarteschlange.Add(1)
 		return 0, 0, false, nil
 	}
 	ph.queue = time.Since(phMark)
@@ -400,6 +402,7 @@ func (cs *ChainState) transferConcurrentWAL(from, to string, amount float64, pen
 	unlock, ok := cs.accounts.TryLockAddrs(from, to)
 	ph.lock = time.Since(phMark)
 	if !ok {
+		fbShardBelegt.Add(1)
 		return 0, 0, false, nil
 	}
 	defer unlock()
@@ -407,19 +410,23 @@ func (cs *ChainState) transferConcurrentWAL(from, to string, amount float64, pen
 
 	fromAcc, ok := cs.accounts.GetLocked(from)
 	if !ok {
+		fbKontoFehlt.Add(1)
 		return 0, 0, false, nil
 	}
 	toAcc, ok := cs.accounts.GetLocked(to)
 	if !ok {
+		fbKontoFehlt.Add(1)
 		return 0, 0, false, nil
 	}
 	if effectiveBalance(fromAcc) != fromAcc.Balance || effectiveBalance(toAcc) != toAcc.Balance {
+		fbDemurrage.Add(1)
 		return 0, 0, false, nil
 	}
 	if fromAcc.Balance.Float() < amount {
 		return 0, 0, true, fmt.Errorf("insufficient balance")
 	}
 	if hasCapAmt && toAcc.Balance.Float()+amount > capAmt {
+		fbWohlstandsCap.Add(1)
 		return 0, 0, false, nil
 	}
 
@@ -429,6 +436,7 @@ func (cs *ChainState) transferConcurrentWAL(from, to string, amount float64, pen
 	at := nowUnix()
 	payload, err := json.Marshal(walTransferRecord{From: from, To: to, Amount: amount, TxHash: pendingTxTemplate.TxHash, At: at})
 	if err != nil {
+		fbKodierung.Add(1)
 		return 0, 0, false, nil // encode failure -- nothing mutated, safe to fall back
 	}
 	ph.apply = time.Since(phMark)
@@ -440,6 +448,7 @@ func (cs *ChainState) transferConcurrentWAL(from, to string, amount float64, pen
 		// Nothing mutated yet -- a WAL append failure (disk full, closed WAL,
 		// etc.) is a clean bail to the existing, proven paths, same as any
 		// other ineligibility. Not a hard error surfaced to the end user.
+		fbAnhangFehler.Add(1)
 		return 0, 0, false, nil
 	}
 
