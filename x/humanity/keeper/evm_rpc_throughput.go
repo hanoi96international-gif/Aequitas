@@ -78,9 +78,10 @@ func startThroughputReporter() {
 // the "✓ Transfer ..." line on success.
 //
 // Those are two unbuffered fmt.Printf calls per transaction, each a write
-// syscall that Docker's log driver then serialises to disk. At the 50,000 TPS
-// this chain is tuned for (maxTxsPerBlock=50000 at BLOCK_TIME=1s) that is
-// 100,000 log lines per second, which no log driver will absorb — the writes
+// syscall that Docker's log driver then serialises to disk. At the 10,000 a
+// block now carries (maxTxsPerBlock=10000 at BLOCK_TIME=1s, lowered from
+// 50,000 on 2026-08-21) that is 20,000 log lines per second, which no log
+// driver will absorb — the writes
 // become the throughput ceiling regardless of how fast consensus and storage
 // are. They are genuinely useful at ordinary volume and unaffordable at target
 // volume, which is exactly what a per-box switch is for.

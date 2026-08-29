@@ -64,9 +64,11 @@ const rpcRateLimitWindow = 10 * time.Second
 // not the chain — became the binding constraint on throughput measurement.
 // The limiter is checked once per HTTP request, before the body is parsed, so
 // a JSON-RPC batch of maxBatchSize=100 transfers costs exactly one tick. That
-// puts a single source at 20 × 100 = 2,000 transfers/s, which is 25× short of
-// the 50,000 the chain is being tuned for (maxTxsPerBlock=50000 at
-// BLOCK_TIME=1s). No amount of load-generator work can get past it, since the
+// puts a single source at 20 × 100 = 2,000 transfers/s, which is below the
+// 10,000 a block now carries (maxTxsPerBlock=10000 at BLOCK_TIME=1s -- lowered
+// from 50,000 on 2026-08-21, which together with the multi-block tick and the
+// new admission check measured 2,117 -> 3,264 TPS). No amount of
+// load-generator work can get past it, since the
 // rejection happens before the request is even read.
 //
 // This is deliberately an ENV OVERRIDE rather than a raised default: the

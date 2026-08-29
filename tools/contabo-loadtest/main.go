@@ -301,8 +301,10 @@ func (c *rpcClient) sendValue(from *account, toAddr string, amountWei *big.Int) 
 // target, regardless of how well the chain performed): sendValue does ONE
 // HTTP round trip per transfer and waits for the reply. That caps a pair at
 // 1/latency transfers per second — at the ~40ms observed against Contabo2
-// that is ~25/s, so even 72 pairs top out around 1,800/s. Filling a
-// maxTxsPerBlock=50000 block in one BLOCK_TIME needs 50,000/s arriving. The
+// that is ~25/s, so even 72 pairs top out around 1,800/s. Filling a block in
+// one BLOCK_TIME needed 50,000/s arriving back then; maxTxsPerBlock steht seit
+// dem 21.08.2026 auf 10.000, die Rechnung hier bleibt aber als Beleg stehen,
+// warum der Generator und nicht der Knoten die Grenze war. The
 // generator, not the node, was the binding constraint, and no chain-side fix
 // could ever have shown up in the number.
 //
