@@ -75,7 +75,16 @@ func loadAccounts(path string) []*account {
 	rows, err := r.ReadAll()
 	must(err)
 	var accs []*account
-	for _, row := range rows[1:] { // skip header
+	// Die erste Zeile nur ueberspringen, wenn sie WIRKLICH eine Kopfzeile ist.
+	// Vorher stand hier rows[1:] ohne Pruefung -- und accounts-funded.csv hat
+	// keine Kopfzeile, das erste Konto verschwand also bei jedem Lauf still.
+	datenAb := 0
+	if len(rows) > 0 && len(rows[0]) > 2 {
+		if _, err := hex.DecodeString(rows[0][2]); err != nil {
+			datenAb = 1 // dritte Spalte ist kein Schluessel -> Kopfzeile
+		}
+	}
+	for _, row := range rows[datenAb:] {
 		privBytes, err := hex.DecodeString(row[2])
 		must(err)
 		priv, err := crypto.ToECDSA(privBytes)
@@ -185,6 +194,74 @@ const (
 // retry loop reports "giving up after 8 attempts" and nothing about the cause,
 // so a rate limit, a transport timeout and a malformed reply all look alike.
 var lastNonceErr error
+
+// balanceWei liest den Kontostand eines Kontos.
+func (c *rpcClient) balanceWei(addr string) (*big.Int, bool) {
+	res, err := c.call("eth_getBalance", []string{addr, "latest"})
+	if err != nil {
+		return nil, false
+	}
+	var hexStr string
+	if err := json.Unmarshal(res, &hexStr); err != nil {
+		return nil, false
+	}
+	n, ok := new(big.Int).SetString(strings.TrimPrefix(hexStr, "0x"), 16)
+	return n, ok
+}
+
+// aussortieren entfernt Konten, die die geplanten Ueberweisungen nicht
+// bezahlen koennen.
+//
+// WARUM. Ein leerer Absender laesst nicht nur seine eigene Ueberweisung
+// scheitern, sondern das ganze JSON-RPC-Buendel, in dem er sitzt. Am
+// 29.08.2026 waren 118 von 623 Konten leer; der Lauf meldete 20.400
+// Fehlschlaege neben 28.500 Erfolgen, und die daraus errechneten 299 TPS
+// sagten ueber die Kette nichts aus. Das Werkzeug beschreibt diese Falle in
+// seinem eigenen Kommentar zur ring-Topologie ("this measured the CSV\'s
+// wealth distribution, not the topology") und zog daraus keine Folgerung.
+//
+// Eine fehlgeschlagene Abfrage sortiert NICHT aus: sonst wuerde ein
+// Netzwackler den Lauf schrumpfen lassen, und das saehe aus wie ein Ergebnis.
+func aussortieren(c *rpcClient, accs []*account, mindest *big.Int) []*account {
+	if mindest == nil || mindest.Sign() <= 0 {
+		return accs
+	}
+	type ergebnis struct {
+		a  *account
+		ok bool
+	}
+	aus := make(chan ergebnis, len(accs))
+	sem := make(chan struct{}, 16)
+	var wg sync.WaitGroup
+	for _, a := range accs {
+		wg.Add(1)
+		go func(a *account) {
+			defer wg.Done()
+			sem <- struct{}{}
+			defer func() { <-sem }()
+			b, ok := c.balanceWei(a.address)
+			aus <- ergebnis{a, !ok || b.Cmp(mindest) >= 0}
+		}(a)
+	}
+	wg.Wait()
+	close(aus)
+	behalten := make([]*account, 0, len(accs))
+	verworfen := 0
+	for e := range aus {
+		if e.ok {
+			behalten = append(behalten, e.a)
+		} else {
+			verworfen++
+		}
+	}
+	sort.Slice(behalten, func(i, j int) bool { return behalten[i].index < behalten[j].index })
+	if verworfen > 0 {
+		fmt.Printf("aussortiert: %d von %d Konten koennen die geplanten Ueberweisungen nicht "+
+			"bezahlen (unter %s wei) -- sie haetten die Buendel mitgerissen, in denen sie sitzen\n",
+			verworfen, len(accs), mindest.String())
+	}
+	return behalten
+}
 
 func (c *rpcClient) tryNonce(addr string) (uint64, bool) {
 	res, err := c.call("eth_getTransactionCount", []string{addr, "latest"})
@@ -428,12 +505,27 @@ const sendRetryBackoff = 50 * time.Millisecond
 func normalizeErrForTally(s string) string {
 	var b strings.Builder
 	for _, f := range strings.Fields(s) {
+		// Satzzeichen abtrennen und danach wieder anfuegen. Ohne das griff die
+		// Adresspruefung bei "(0xabc..." nicht -- im Lauf vom 29.08.2026 blieb
+		// deshalb die erste Adresse eines Paares im Klartext stehen und die
+		// zweite wurde ersetzt, also zaehlte jede Adresse als eigene Ursache.
+		vorn := strings.TrimLeft(f, "(\"'")
+		links := f[:len(f)-len(vorn)]
+		kern := strings.TrimRight(vorn, ".,;:)\"'")
+		rechts := vorn[len(kern):]
+		f = kern
 		switch {
 		case strings.HasPrefix(f, "0x") && len(f) > 6:
 			f = "0x<hex>"
-		case isAllDigits(strings.Trim(f, ".,;:()")):
+		case isAllDigits(f):
 			f = "<n>"
+		case isFraction(f):
+			// "batch member 9/26" ist keine eigene Ursache. Ohne diesen Fall
+			// zerfiel EINE Ursache in 23 scheinbar verschiedene, jede mit
+			// kleiner Zahl -- und die haeufigste war nicht mehr erkennbar.
+			f = "<i>/<n>"
 		}
+		f = links + f + rechts
 		if b.Len() > 0 {
 			b.WriteByte(' ')
 		}
@@ -444,6 +536,15 @@ func normalizeErrForTally(s string) string {
 		out = out[:200] + "..."
 	}
 	return out
+}
+
+// isFraction erkennt Positionsangaben wie "9/26".
+func isFraction(s string) bool {
+	i := strings.IndexByte(s, '/')
+	if i <= 0 || i == len(s)-1 {
+		return false
+	}
+	return isAllDigits(s[:i]) && isAllDigits(s[i+1:])
 }
 
 func isAllDigits(s string) bool {
@@ -557,6 +658,10 @@ func main() {
 	fundAmount := flag.String("fund-amount-wei", "1000000000000000", "wei sent from a seed to each test account (default 0.001 AEQ)")
 	transferAmount := flag.String("transfer-amount-wei", "10000000000000", "wei per load-test transfer (default 0.00001 AEQ)")
 	runDuration := flag.Duration("duration", 20*time.Second, "timed load phase duration")
+	// Vorgabe: das Hundertfache einer Ueberweisung. Wer weniger haelt, haelt
+	// den Lauf nicht durch und reisst nur Buendel mit. "0" schaltet es ab.
+	minBalanceWei := flag.String("min-balance-wei", "1000000000000000",
+		"Konten unter diesem Stand vor dem Lauf aussortieren (0 = nicht aussortieren)")
 	rampSeconds := flag.Int("ramp", 5, "seconds to ramp concurrency up over")
 	// Both of these were fixed constants until the 2026-07-25 run showed the
 	// working point has to be FOUND, not assumed: 288 requests exceeded the
@@ -589,6 +694,21 @@ func main() {
 	}
 	seeds := accs[:*numSeeds]
 	testAccs := accs[*numSeeds:]
+	// Zahlungsunfaehige Konten VOR der Paarbildung entfernen -- siehe
+	// aussortieren(). Eigener kleiner Client, damit hier nichts an der
+	// bestehenden Reihenfolge verschoben werden muss.
+	if *minBalanceWei != "" && *minBalanceWei != "0" {
+		if mindest, ok := new(big.Int).SetString(*minBalanceWei, 10); !ok {
+			fmt.Printf("-min-balance-wei %q ist keine Zahl -- es wird nicht aussortiert\n", *minBalanceWei)
+		} else {
+			vorpruefer := &rpcClient{url: *rpcURL, hc: &http.Client{Timeout: 30 * time.Second}}
+			testAccs = aussortieren(vorpruefer, testAccs, mindest)
+			if len(testAccs) < 2 {
+				fmt.Println("nach dem Aussortieren bleiben weniger als zwei Konten -- nichts zu messen")
+				return
+			}
+		}
+	}
 	// TOPOLOGY. Throughput here is senders divided by per-transfer latency,
 	// because one JSON-RPC batch carries transfers from a single sender and the
 	// node applies a batch in order. So the sender count IS the concurrency the

@@ -186,3 +186,40 @@ Belohnungen gehen — dafür braucht der Server keinen Schlüssel.
 Das ist bewusst nicht heute geändert: ein neuer Signierschlüssel ändert die
 Blockproduktions-Identität und macht C2s Registereintrag ungültig. Das gehört
 in ein ruhiges Fenster, nicht in die Nacht vor dem Start.
+
+---
+
+## Erste echte Sperren-Messung, 29.08.2026
+
+Bis heute war der Engpass geraten — dreimal, dreimal falsch. Jetzt gemessen
+(Go-Mutex-Profil auf C1, unter Last von C2):
+
+| Anteil an der Wartezeit | Ort |
+|---|---|
+| **74,7 %** | `processTransferBatch` → `runAtomicWithOutbox` |
+| 19,1 % | `flushWALBatch` → `shardedAccounts.LockAddrs` |
+
+`runAtomicWithOutbox` hält die **globale** Zustandssperre `cs.mu` über eine
+komplette Datenbank-Transaktion, `tx.Commit()` eingeschlossen. Das ist
+Absicht — der Kommentar daneben erklärt, dass Speicherzustand und DB-Transaktion
+sonst auseinanderlaufen. Der Preis ist die Serialisierung: jede Überweisung
+wartet auf jede andere, chainweit.
+
+Das erklärt alles, was vorher widersprüchlich aussah: nur ein Kern von sechs
+ausgelastet, mehr Sender ohne Wirkung, einbrechende Blockproduktion.
+
+**Der Weg zu 10k steht im Code selbst** (`dbExecCtx`, state.go): `cs.activeTx`
+ist ein einziges ChainState-weites Feld, das echte Nebenläufigkeit unmöglich
+macht. Die Migration auf per-Operation-`ctx` läuft seit Juli, **48 Aufrufstellen
+sind noch offen** (state.go 22, evm_storage.go 12, block.go 5, guardian.go 4,
+snapshot.go 2, slashing.go 2, register.go 1). Der Transferpfad selbst ist
+bereits migriert.
+
+Danach — und erst danach — lässt sich die Sperre auf die bereits vorhandenen
+Konten-Shards verengen (`shardedAccounts.LockAddrs`, die der WAL-Schreiber
+schon benutzt).
+
+Der Code warnt ausdrücklich davor, das in einem Zug zu tun: es quert Transfer,
+Swap, Liquidität, Registrierung, Verteilung, Guardian, Slashing, Snapshot-Import
+**und Block-Replay**. „one call chain at a time, EACH one verified by the full
+test suite."
