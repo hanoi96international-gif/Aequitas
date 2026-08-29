@@ -125,6 +125,34 @@ Grundlinie der Überwachung eingefroren werden.
 
 ---
 
+## Am 29.08. nachmittags noch geschlossen
+
+**Die letzte handgepflegte Liste ist weg.** Die MPC-Mitgliedschaft lief über ein
+statisches `MPC_PEERS` auf beiden Boxen — ein dritter Betreiber hätte dort von
+Hand eingetragen werden müssen. Beide laufen jetzt im Entdeckungsmodus und
+melden es selbst:
+
+> `[MPC] serving /mpc/exchange as 0x…; committee of 2 drawn from the chain,
+> membership resolved per registration`
+
+Vorher geprüft, dass das nicht MPC still abschaltet: der damalige Grund für die
+feste Liste war, dass `mpc_ready` nie **gesendet** wurde. Das ist behoben
+(`sync_blocks.go` sendet es, die Gegenseite speichert es über
+`RegisterWithMPC`). `MPC_PEERS` und `MPC_PARTY_INDEX` sind aus dem Prozess
+**und** aus `.aequitas.env` verschwunden.
+
+**SSH: Passwort-Login ist auf beiden Boxen zu.** Vorher nahmen beide
+Root-Login per Passwort aus dem offenen Netz an — bei 69.026 bzw. 62.135
+Rateversuchen von je rund tausend IPs, laufend, ohne fail2ban. Das war der
+einzige reale Weg an den Wallet-Schlüssel; über die Anwendung ist er nicht
+erreichbar (kein Endpunkt gibt die Umgebung aus, nie geloggt, nicht im Git,
+env-Datei `600 root`, kein Container mit Docker-Socket).
+
+Die Falle dabei: `/etc/ssh/sshd_config.d/50-cloud-init.conf` machte das
+Passwort wieder auf. Nur die Hauptdatei zu ändern hätte **nichts** bewirkt.
+
+---
+
 ## Was bewusst offen bleibt
 
 - **MPC-Schwelle nicht kalibriert.** Braucht eine zweite Person vor der Kamera;
