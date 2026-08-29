@@ -325,6 +325,39 @@ func (cs *ChainState) transferConcurrentWAL(from, to string, amount float64, pen
 		return 0, 0, true, fmt.Errorf("invalid transfer amount: %v", amount)
 	}
 
+	// GEMESSEN AM 29.08.2026 -- DIESE ZEILE IST JETZT DER ENGPASS.
+	//
+	// Der Fix darunter hat die zwei blockierenden Gets entfernt und precheck
+	// von 46ms auf ~0 gebracht. Die Zeit ist nicht verschwunden, sie ist eine
+	// Zeile hoeher gewandert: die AUFNAHME dieser Lesesperre kostet jetzt
+	// 156,3ms je Ueberweisung -- 68 % der gesamten 229,9ms.
+	//
+	//	fast_path_pct   92,63     <- dieser Pfad macht die Arbeit
+	//	pre_rlock       156,3ms   <- Warten auf RLock
+	//	wal_append       68,7ms
+	//	cap               0,01ms  <- wofuer die Sperre gehalten wird
+	//	lock              0,02ms  <- TryLockAddrs, unbestritten
+	//	apply             0,06ms  <- die eigentliche Aenderung
+	//
+	// 156ms Warten fuer eine Lesung von 0,01ms. Go's RWMutex sperrt ankommende
+	// Leser aus, sobald ein Schreiber ANSTEHT -- und Schreiber sind die 7,4 %,
+	// die ueber runAtomicWithOutbox laufen (52 Vorgaenge, je 64ms Halt).
+	// Sieben Prozent des Verkehrs halten damit dreiundneunzig auf.
+	//
+	// WARUM DIESE SPERRE TROTZDEM NOETIG IST. Der langsame Pfad mutiert Konten
+	// unter cs.mu OHNE Shard-Sperren: applyTransferDeltaLocked ruft
+	// cs.accounts.Get(), nicht GetLocked(). Diese RLock ist das Einzige, was
+	// diesen Pfad davor schuetzt. Sie zu entfernen, ohne den langsamen Pfad
+	// vorher auf Shard-Sperren umzustellen, waere ein Datenrennen auf dem
+	// Geldpfad.
+	//
+	// DER WEG ZU 10k FUEHRT ALSO HIER DURCH -- aber mit einer Warnung: der
+	// WAL-Adressdeckel-Sweep desselben Tages hat gezeigt, dass mehr und
+	// kleinere Sperren schaden koennen (868 -> 319 TPS). Hier ist die Lage
+	// anders (es geht nicht darum, einen Halt zu zerlegen, sondern darum, 93 %
+	// des Verkehrs gar nicht mehr warten zu lassen) -- aber das ist eine
+	// Vermutung, und Vermutungen ueber diesen Engpass waren schon dreimal
+	// falsch. Wer es angeht, misst es an einem Zweig.
 	rlockMark := time.Now()
 	cs.mu.RLock()
 	ph.rlock = time.Since(rlockMark)

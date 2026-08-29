@@ -344,3 +344,61 @@ Voraussetzung bleibt `cs.activeTx`: zwei gleichzeitige Vorgänge würden sich da
 Feld überschreiben. Der strikte Modus läuft dafür seit heute auf beiden Boxen
 und hat drei Lastläufe mit **0 Rückfällen** überstanden.
 
+---
+
+## Der Engpass für 10k ist gefunden — 29.08.2026 abends
+
+Vier Messungen, zwei davon negativ, und am Ende eine präzise Stelle.
+
+### Was **nicht** hilft (gemessen, nicht vermutet)
+
+| Hebel | Ergebnis |
+|---|---|
+| WAL-Adressdeckel (`MAX_ADDRS` 64/128) | **868 → 299/320 TPS** — deutlich schlechter |
+| Größere Bündel (4000/8000 statt 1000) | 860 → 703/807 — kein Gewinn, in der Streuung |
+
+Beide Richtungen — kleiner *und* größer — bringen nichts. Die Bündelgröße ist
+nicht der Hebel.
+
+### Wo die Zeit wirklich hingeht
+
+Der shard-gesperrte **Schnellpfad macht 92,6 %** aller Überweisungen. Seine
+Phasen, je Überweisung:
+
+```
+pre_rlock   156,3 ms   ← 68 %: Warten auf cs.mu.RLock()
+wal_append   68,7 ms   ← 30 %
+cap           0,01 ms  ← wofür die Sperre gehalten wird
+lock          0,02 ms  ← TryLockAddrs, unbestritten
+apply         0,06 ms  ← die eigentliche Änderung
+```
+
+**156 ms Warten für eine Lesung von 0,01 ms.** Go's `RWMutex` sperrt ankommende
+Leser aus, sobald ein Schreiber *ansteht*. Die Schreiber sind die **7,4 %**, die
+über `runAtomicWithOutbox` laufen — 52 Vorgänge, je 64 ms Halt.
+
+**Sieben Prozent des Verkehrs halten dreiundneunzig auf.**
+
+### Warum die Sperre trotzdem nötig ist
+
+Der langsame Pfad ändert Konten unter `cs.mu` **ohne** Shard-Sperren:
+`applyTransferDeltaLocked` ruft `cs.accounts.Get()`, nicht `GetLocked()`. Die
+Lesesperre des Schnellpfads ist das Einzige, was ihn davor schützt. Sie zu
+entfernen, ohne den langsamen Pfad vorher umzustellen, wäre ein Datenrennen auf
+dem Geldpfad.
+
+### Der Schritt, der 10k freimacht
+
+Den langsamen Pfad auf Shard-Sperren umstellen (`GetLocked` statt `Get`, plus
+`LockAddrs` um die Änderung) — dann kann der Schnellpfad seine Lesesperre
+verlieren und 93 % des Verkehrs warten gar nicht mehr.
+
+**Mit einer Warnung:** derselbe Abend hat gezeigt, dass mehr und kleinere
+Sperren schaden können. Hier ist die Lage anders — es geht nicht darum, einen
+Halt zu zerlegen, sondern darum, den Großteil des Verkehrs gar nicht warten zu
+lassen. Aber das ist eine Vermutung, und Vermutungen über diesen Engpass waren
+schon dreimal falsch. Wer es angeht, misst es an einem Zweig.
+
+Das Werkzeug dafür steht: Phasenmessung, Herkunftszähler, reparierter
+Lastgenerator, und zwei Stellschrauben, die sich ohne Deploy verändern lassen.
+
