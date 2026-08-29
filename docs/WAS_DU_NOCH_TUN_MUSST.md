@@ -472,3 +472,50 @@ Datenstruktur.
 **Aufwand ehrlich geschätzt:** mehrere Tage, mit einem Lastgenerator, der erst
 stabil sättigen muss. Nicht vor dem Beta-Start.
 
+---
+
+## Nachtrag 29.08.: zwei Befunde, die das Bild korrigieren
+
+### 1. Der Zusammenbruch bei 576 Sendern war kein Kapazitätsende
+
+Er ist Warteschlangentheorie. Der Knoten arbeitete durchgehend korrekt:
+
+```
+150 Sender x 100 je Bündel = 15.000 gleichzeitig -> 23 s je Bündel  (Client wartet 30 s: knapp)
+576 Sender x 100 je Bündel = 57.600 gleichzeitig -> 88 s je Bündel  (Client wartet 30 s: nie)
+```
+
+Er nahm unbegrenzt an und lieferte nach Ablauf der Client-Frist aus. **Behoben**
+(`inflight_grenze.go`): eine Obergrenze auf gleichzeitig angenommene Arbeit,
+Vorgabe 8.000, Ablehnung mit dem wiederholbaren `-32005`. Nach Little's Gesetz
+kostet das keinen Durchsatz — es beschränkt die Latenz statt sie explodieren zu
+lassen.
+
+### 2. Alle Rückfälle sind Shard-Kollisionen — zu einem Teil ein Prüfstands-Artefakt
+
+Gemessen, nicht vermutet: `shard_belegt` = **134 von 134 = 100 %**. Nicht
+Demurrage, nicht Rückstau, nicht fehlende Konten.
+
+Nachgerechnet für die 300 heißesten Testkonten bei 16.384 Shards:
+
+| Anteil | Ursache | im echten Betrieb? |
+|---|---|---|
+| ~4 % | 12 Konten teilen sich 6 Shards — **dauerhaft**, weil immer dieselben Konten | verschwindet |
+| ~3,6 % | flüchtige Kollision bei 300 gesperrten Shards | **bleibt**, hängt an der Gleichzeitigkeit |
+
+Zusammen ~7,6 % gegen 10,4 % gemessen — dieselbe Größenordnung.
+
+**Folge für den geplanten Umbau:** die gemessenen 10,4 % Rückfall überzeichnen
+den echten Betrieb um rund das Dreifache. Der Umbau der 247 Funktionen wird
+dadurch nicht unnötig, aber sein erwarteter Gewinn ist kleiner als die
+Rohmessung nahelegt. Wer ihn angeht, sollte **zuerst** mit einem großen,
+wechselnden Kontenvorrat neu messen — sonst optimiert er ein Artefakt.
+
+### Was unverändert bleibt
+
+Die 10k sind mit 623 Konten nicht messbar. Bei niedriger Last braucht eine
+Überweisung 11,3 ms (`pre_rlock` 1 ms, WAL 10,1 ms) — der Knoten ist also
+schnell; die 230 ms entstehen erst unter Sättigung. Für eine ehrliche
+10k-Messung braucht es einen deutlich größeren Kontenvorrat, und **den zu
+befüllen ist eine Überweisung, die der Betreiber selbst auslöst.**
+
