@@ -5809,7 +5809,12 @@ func (cs *ChainState) distributeSwapFeeCtx(ctx context.Context, fee float64, fee
 		// ubiContrib comment above — a cold pool address must be loaded from
 		// the DB before it's touched, or a fresh Version==0 AccountState here
 		// blindly overwrites its real, previously-accumulated DB balance.
-		cs.ensureAccountLoaded(s.addr)
+		//
+		// Ctx-Fassung, nicht der Mantel: das Laden muss die Transaktion dieses
+		// Swaps sehen. Ausserhalb gelesen kaeme der Stand von VOR dem Swap --
+		// also genau der veraltete Wert, gegen den der Absatz darueber schuetzt.
+		// Heute faellt es nicht auf, weil dbExecCtx auf cs.activeTx zurueckfaellt.
+		cs.ensureAccountLoadedCtx(ctx, s.addr)
 		sAcc, ok := cs.accounts.Get(s.addr)
 		if !ok {
 			sAcc = &AccountState{Address: s.addr}
