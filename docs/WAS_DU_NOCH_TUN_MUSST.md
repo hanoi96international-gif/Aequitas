@@ -8,42 +8,17 @@ Die Reihenfolge ist nach Dringlichkeit für die Beta sortiert.
 
 ---
 
-## 1 · Das Verifier-Image öffentlich stellen — **Beta-Blocker**
+## 1 · Verifier-Image — **erledigt am 29.08.**
 
-Der Leitfaden „Run a Verifier" sagt jedem Leser als ersten Schritt:
+Das Paket `aequitas-biometric-beta/matching` ist öffentlich. Nachgeprüft: das
+Manifest lässt sich **ohne jede Anmeldung** abrufen (`200`). Damit ist der
+Leitfaden „Run a Verifier" zum ersten Mal für Fremde ausführbar — und der Weg
+zu einem dritten Betreiber offen.
 
-```
-docker pull ghcr.io/hanoi96international-gif/aequitas-biometric-beta/matching:latest
-```
-
-Das Paket ist privat. Der Befehl scheitert bei **jedem**, der die Anleitung
-befolgt. Damit kann heute niemand außer dir einen Vergleichsdienst betreiben —
-und ohne dritten Betreiber gibt es keinen echten Ausfallschutz.
-
-**Geprüft, was dabei veröffentlicht würde:** das Dockerfile kopiert nur
-`requirements.txt`, `app/` und `scripts/`. Weder `poh_beta.db` noch
-`sample_test_images` noch `models/` landen im Image, und im ausgelieferten
-Quelltext stecken keine Zugangsdaten. **Es reicht also, das *Paket* öffentlich
-zu stellen — das Repo muss nicht öffentlich werden.**
-
-**Ich habe versucht, es selbst zu tun, und es geht nicht** — nicht wegen
-fehlender Rechte, sondern weil GitHub dafür keine Schnittstelle hat. Die
-Packages-REST-API kennt ausschließlich `GET`, `DELETE` und `restore`; kein
-einziger Endpunkt ändert die Sichtbarkeit. Das gilt für jeden Token. Es geht
-nur über die Oberfläche:
-
-1. https://github.com/orgs/hanoi96international-gif/packages
-2. Paket `aequitas-biometric-beta/matching` öffnen
-3. **Package settings** → ganz unten **Change visibility** → **Public**
-
-Danach zur Kontrolle:
-
-```bash
-docker pull ghcr.io/hanoi96international-gif/aequitas-biometric-beta/matching:latest
-```
-
-Bis dahin sagt der Leitfaden jetzt wenigstens, was ein `denied` bedeutet —
-vorher stand der Leser vor einer Fehlermeldung ohne Erklärung.
+Geprüft war vorher, dass dabei nichts mitgeht: das Dockerfile kopiert nur
+`requirements.txt`, `app/` und `scripts/`; `poh_beta.db`, `sample_test_images`
+und `models/` bleiben draußen, und im ausgelieferten Quelltext stecken keine
+Zugangsdaten.
 
 ---
 
@@ -90,31 +65,15 @@ keine Konfiguration, sondern eine Behauptung über eine stattgefundene Prüfung.
 
 ---
 
-## 3 · C1 als Validator eintragen — 1 Klick
+## 3 · C1 als Validator — **erledigt am 29.08.**
 
-**Zwei der drei Nachweise sind fertig**, ich habe sie vom Knoten geholt:
-Schlüsselbesitz und Bezeugungsschlüssel (`222ad549…`, samt Signatur, aus
-`https://proof1.aequitas.digital/matching`).
+Das Register trägt jetzt **beide** Knoten, jeweils mit Bezeugungsschlüssel und
+Vergleichsdienst-Adresse:
 
-Es fehlt genau einer: die Unterschrift deiner Wallet unter
-
-```
-Aequitas: authorize validator 0x0be8b961cbf6564bd1931b0803d35c0659e0d016
-```
-
-**Den kann ich nicht erbringen, und ich habe bewusst keinen Weg dafür gebaut.**
-Der Knoten hält den Schlüssel zwar — aber ein Endpunkt, der ihn sich selbst
-autorisieren lässt, würde aus drei Nachweisen einen machen. Das ist die
-Grenze, auf der das Register beruht.
-
-Seite öffnen, mit `0x0BE8b961…` verbinden, **Connect Wallet & Register**:
-
-```
-https://aequitas.digital/node-binding
-```
-
-Kostet nichts, bewegt nichts — `personal_sign`, keine Transaktion. Falls die
-Seite alt aussieht: **Strg + Umschalt + R**.
+| Betreiber-Wallet | Bezeuger | Vergleichsdienst |
+|---|---|---|
+| `0x0be8b961…` (C1) | `222ad549…` | `https://proof1.aequitas.digital/matching` |
+| `0x1a37dcda…` (C2) | `207b2894…` | `https://proof2.aequitas.digital/matching` |
 
 ---
 
