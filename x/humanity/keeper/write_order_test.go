@@ -153,6 +153,18 @@ func TestEveryPoolWritingPathIsAccountedFor(t *testing.T) {
 		"removeLiquidityDeltaLocked": "declared: the pool loses AEQ",
 		"swapLocked":                 "direction-aware, see TestSwapWriteOrderIsDirectionAware",
 		"applySwapDeltaLocked":       "direction-aware, see TestSwapWriteOrderIsDirectionAware",
+		// Sichtbar geworden, als der Scanner unten auch die Mantel-Namen
+		// erfasste. Die Reihenfolge ist korrekt: der Topf gibt AEQ ab, also
+		// wird er zuerst geschrieben, und ein Fehlschlag dazwischen setzt die
+		// Reserven ausdruecklich zurueck.
+		"MigrateStrandedPoolTUsdFeesV1": "declared: the pool loses AEQ, and it restores the reserves on a failed pool write",
+		// Kein Uebertrag zwischen Konto und Topf, sondern das Zurueckschreiben
+		// zuvor gesicherter Werte -- eine Seite, die AEQ verliert, gibt es hier
+		// nicht. Ein Fehlschlag dazwischen wird vom Aufrufer bereits als
+		// CRITICAL gemeldet ("rollback persistence failed"), weil dann Speicher
+		// und Datenbank auseinanderlaufen; das ist der bekannte, gemeldete
+		// Zustand und keine stille Fehlbuchung.
+		"restoreFromRollbackLockedCtx": "restore of snapshot values, not a transfer; a partial failure is already reported as CRITICAL",
 	}
 
 	fnRe := regexp.MustCompile(`(?m)^func (?:\([^)]*\) )?(\w+)`)
@@ -166,8 +178,16 @@ func TestEveryPoolWritingPathIsAccountedFor(t *testing.T) {
 		}
 		body := content[loc[0]:end]
 
-		if !strings.Contains(body, "saveAccountToDBCtx(ctx, acc)") ||
-			!strings.Contains(body, "savePoolToDBCtx(ctx)") {
+		// Auch die Mantel-Namen erfassen. Vorher sah der Scanner NUR die
+		// Ctx-Fassungen -- MigrateStrandedPoolTUsdFeesV1 schreibt beides ueber
+		// saveAccountToDB/savePoolToDB und war dadurch unsichtbar. Waehrend die
+		// activeTx-Migration laeuft, existieren beide Schreibweisen
+		// nebeneinander; ein Pruefer, der nur eine kennt, meldet zu wenig.
+		schreibtKonto := strings.Contains(body, "saveAccountToDBCtx(ctx, acc)") ||
+			strings.Contains(body, "saveAccountToDB(acc)")
+		schreibtTopf := strings.Contains(body, "savePoolToDBCtx(ctx)") ||
+			strings.Contains(body, "savePoolToDB()")
+		if !schreibtKonto || !schreibtTopf {
 			continue
 		}
 		if _, ok := accounted[name]; ok {

@@ -7393,6 +7393,26 @@ func (cs *ChainState) restoreFromRollback(snap *blockRollbackSnapshot) error {
 // duplication is intentional, not copy-paste: the two functions hold the
 // lock for genuinely different durations on purpose).
 func (cs *ChainState) restoreFromRollbackLocked(snap *blockRollbackSnapshot) error {
+	// context.Background() ist hier die RICHTIGE Wahl, kein Platzhalter: siehe
+	// restoreFromRollbackLockedCtx.
+	return cs.restoreFromRollbackLockedCtx(context.Background(), snap)
+}
+
+// restoreFromRollbackLockedCtx ist die eigentliche Umsetzung.
+//
+// WARUM ctx HIER KEINE TRANSAKTION TRAGEN DARF. Die Aufrufer raeumen vor der
+// Ruecknahme in dieser Reihenfolge auf: setActiveTx(nil), dann tx.Rollback(),
+// dann diese Funktion. Dadurch faellt dbExecCtx auf cs.db zurueck -- eine
+// frische Verbindung aus dem Vorrat -- und die Schreibvorgaenge hier werden
+// eigenstaendig festgeschrieben. Wuerde stattdessen die Transaktion der
+// gescheiterten Operation durchgereicht, liefen sie in eine ZURUECKGEROLLTE
+// Transaktion und verschwaenden spurlos: der Speicher waere wiederhergestellt,
+// die Datenbank nicht.
+//
+// Die Bedingung stand vorher nur in der Reihenfolge der Aufrufe. Jetzt steht
+// sie im Aufruf selbst -- wer hier eine Transaktion hineingibt, tut es
+// sichtbar und nicht aus Versehen.
+func (cs *ChainState) restoreFromRollbackLockedCtx(ctx context.Context, snap *blockRollbackSnapshot) error {
 	var toDelete []string
 	for _, s := range snap.accounts {
 		if s.existed {
@@ -7420,12 +7440,12 @@ func (cs *ChainState) restoreFromRollbackLocked(snap *blockRollbackSnapshot) err
 
 	var firstErr error
 	for _, acc := range toSave {
-		if err := cs.saveAccountToDB(acc); err != nil && firstErr == nil {
+		if err := cs.saveAccountToDBCtx(ctx, acc); err != nil && firstErr == nil {
 			firstErr = fmt.Errorf("rollback: could not persist restored account %s: %w", acc.Address, err)
 		}
 	}
 	if poolToSave != nil {
-		if err := cs.savePoolToDB(); err != nil && firstErr == nil {
+		if err := cs.savePoolToDBCtx(ctx); err != nil && firstErr == nil {
 			firstErr = fmt.Errorf("rollback: could not persist restored pool: %w", err)
 		}
 	}
@@ -7436,7 +7456,7 @@ func (cs *ChainState) restoreFromRollbackLocked(snap *blockRollbackSnapshot) err
 		// function's own doc comment on why the lock stays held through
 		// these DB writes).
 		for _, addr := range toDelete {
-			if _, err := cs.dbExec().Exec(`DELETE FROM chain_accounts WHERE lower(address) = $1`, addr); err != nil {
+			if _, err := cs.dbExecCtx(ctx).Exec(`DELETE FROM chain_accounts WHERE lower(address) = $1`, addr); err != nil {
 				fmt.Printf("[ROLLBACK] Warning: could not delete rolled-back account %s: %v\n", addr, err)
 				if firstErr == nil {
 					firstErr = fmt.Errorf("rollback: could not delete rolled-back account %s: %w", addr, err)
@@ -7456,12 +7476,12 @@ func (cs *ChainState) restoreFromRollbackLocked(snap *blockRollbackSnapshot) err
 	// as "nothing to restore", indistinguishable from "key never existed").
 	for key, cv := range snap.chainConfig {
 		if !cv.existed {
-			if err := cs.deleteConfigValue(key); err != nil && firstErr == nil {
+			if err := cs.deleteConfigValueCtx(ctx, key); err != nil && firstErr == nil {
 				firstErr = fmt.Errorf("rollback: could not delete config %q: %w", key, err)
 			}
 			continue
 		}
-		if err := cs.setConfigValue(key, cv.value); err != nil && firstErr == nil {
+		if err := cs.setConfigValueCtx(ctx, key, cv.value); err != nil && firstErr == nil {
 			firstErr = fmt.Errorf("rollback: could not restore config %q: %w", key, err)
 		}
 	}
