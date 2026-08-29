@@ -252,9 +252,11 @@ func (w *WAL) runWriter() {
 	defer close(w.writerDone)
 	for first := range w.appendCh {
 		batch := []*appendRequest{first}
-		timer := time.NewTimer(MaxBatchWait)
+		// Ueber die Umgebung einstellbar, Vorgabe unveraendert -- siehe
+		// batch_tuning.go fuer die Messung, die das noetig macht.
+		timer := time.NewTimer(batchWait())
 	collect:
-		for len(batch) < MaxBatchSize {
+		for len(batch) < batchSize() {
 			select {
 			case req, ok := <-w.appendCh:
 				if !ok {
