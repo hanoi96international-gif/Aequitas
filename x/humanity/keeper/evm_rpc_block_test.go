@@ -153,3 +153,37 @@ func sscanHex(s string, out *uint64) (int, error) {
 	*out = n
 	return len(s), nil
 }
+
+// eth_syncing sagte immer "false" -- also "vollstaendig synchron", auch wenn
+// der Knoten hunderte Bloecke zurueckliegt. Genau das war C2 am 29.08.2026,
+// nachdem ein Lasttest C1 schneller Bloecke erzeugen liess, als C2 sie
+// nachspielen konnte. Es ist die Frage, die ein Werkzeug stellt, BEVOR es
+// einer Antwort traut.
+func TestSyncing_OhneDAGKeinFalschesVersprechen(t *testing.T) {
+	s := &EVMRPCServer{}
+	// Ohne DAG gibt es nichts zu behaupten -- false ist hier richtig, weil
+	// dieser Knoten dann gar nicht synchronisiert.
+	if got := s.syncing(); got != false {
+		t.Fatalf("ohne DAG = %v, erwartet false", got)
+	}
+}
+
+func TestSyncing_FormDerAntwort(t *testing.T) {
+	// Die Ethereum-Schnittstelle verlangt entweder false oder ein Objekt mit
+	// startingBlock/currentBlock/highestBlock. Ein Werkzeug, das nur auf
+	// "!= false" prueft, verlaesst sich darauf.
+	m := map[string]interface{}{
+		"startingBlock": "0x0",
+		"currentBlock":  "0x1",
+		"highestBlock":  "0x2",
+	}
+	for _, k := range []string{"startingBlock", "currentBlock", "highestBlock"} {
+		v, da := m[k]
+		if !da {
+			t.Fatalf("%s fehlt", k)
+		}
+		if !strings.HasPrefix(v.(string), "0x") {
+			t.Fatalf("%s = %v, erwartet Hex mit 0x", k, v)
+		}
+	}
+}

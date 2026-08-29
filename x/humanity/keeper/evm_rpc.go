@@ -692,12 +692,20 @@ func (s *EVMRPCServer) dispatch(method string, params []json.RawMessage, pre *pr
 		return "AequitasChain/v0.3.0/go", nil
 
 	case "eth_syncing":
-		return false, nil
+		return s.syncing(), nil
 
 	case "eth_mining":
 		return false, nil
 
 	case "eth_coinbase":
+		// Die Signieradresse dieses Knotens. Sie ist oeffentlich -- sie steht
+		// im Validator-Register und unter jedem Block, den er erzeugt. Die
+		// Nulladresse, die hier stand, verschweigt nichts, sie stimmt nur nicht.
+		if s.dag != nil {
+			if a := s.dag.SelfSigningAddress(); a != "" {
+				return a, nil
+			}
+		}
 		return "0x0000000000000000000000000000000000000000", nil
 
 	case "net_listening":
@@ -1678,6 +1686,39 @@ func (s *EVMRPCServer) getTransactionByHash(params []json.RawMessage) (interface
 		ergebnis["maxPriorityFeePerGas"] = "0x0"
 	}
 	return ergebnis, nil
+}
+
+// syncing beantwortet eth_syncing wahrheitsgemaess.
+//
+// Vorher stand hier fest "false" -- also "vollstaendig synchron", auch wenn
+// der Knoten hunderte Bloecke zurueckliegt. Genau das war C2 heute nachmittag,
+// nachdem ein Lasttest C1 schneller Bloecke erzeugen liess, als C2 sie
+// nachspielen konnte.
+//
+// eth_syncing ist die Frage, die ein Werkzeug stellt, BEVOR es einer Antwort
+// traut. Mit "false" beantwortet, waehrend der Knoten hinterherhinkt, laesst
+// sie jeden Guthabenstand und jede Nonce als aktuell erscheinen, die es nicht
+// sind.
+//
+// Rueckgabe nach der Ethereum-Schnittstelle: false, wenn synchron -- sonst ein
+// Objekt mit den drei Hoehen.
+func (s *EVMRPCServer) syncing() interface{} {
+	if s.dag == nil || !s.dag.isCatchingUp() {
+		return false
+	}
+	aktuell := uint64(s.dag.Height())
+	ziel := uint64(s.dag.syncTargetHeight.Load())
+	if ziel < aktuell {
+		// Das Tor kennt sein Ziel nicht immer (siehe armInitialSyncGate).
+		// Dann ist die eigene Hoehe die ehrlichste obere Schranke -- eine
+		// erfundene Zielhoehe waere schlechter als eine vorsichtige.
+		ziel = aktuell
+	}
+	return map[string]interface{}{
+		"startingBlock": "0x0",
+		"currentBlock":  fmt.Sprintf("0x%x", aktuell),
+		"highestBlock":  fmt.Sprintf("0x%x", ziel),
+	}
 }
 
 func (s *EVMRPCServer) getBlockByNumber(params []json.RawMessage) (interface{}, *RPCError) {
