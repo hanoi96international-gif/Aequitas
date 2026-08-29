@@ -1,0 +1,192 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Coordinator eintragen</title>
+<style>
+  :root{
+    --bg:#faf9f7; --fg:#1c1a17; --matt:#6b665e; --linie:#e2ded7;
+    --feld:#fff; --akzent:#2f6f4e; --akzent-fg:#fff; --code:#f2efea;
+    --warn:#8a5a12; --warn-bg:#fdf6e8;
+  }
+  @media (prefers-color-scheme:dark){
+    :root:not([data-theme="light"]){
+      --bg:#171614; --fg:#eceae6; --matt:#9b958b; --linie:#2e2c28;
+      --feld:#201f1c; --akzent:#4c9b71; --akzent-fg:#0d1310; --code:#232220;
+      --warn:#d9b063; --warn-bg:#241f14;
+    }
+  }
+  :root[data-theme="dark"]{
+    --bg:#171614; --fg:#eceae6; --matt:#9b958b; --linie:#2e2c28;
+    --feld:#201f1c; --akzent:#4c9b71; --akzent-fg:#0d1310; --code:#232220;
+    --warn:#d9b063; --warn-bg:#241f14;
+  }
+  *{box-sizing:border-box}
+  body{
+    margin:0; padding:2.5rem 1.25rem 4rem; background:var(--bg); color:var(--fg);
+    font:16px/1.6 ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  }
+  main{max-width:46rem; margin:0 auto}
+  h1{font-size:1.5rem; margin:0 0 .35rem; letter-spacing:-.01em}
+  .unter{color:var(--matt); margin:0 0 2rem}
+  .karte{
+    border:1px solid var(--linie); border-radius:10px; background:var(--feld);
+    padding:1.25rem 1.35rem; margin:0 0 1.1rem;
+  }
+  .kopf{display:flex; align-items:baseline; justify-content:space-between; gap:1rem; margin-bottom:.5rem}
+  .kopf h2{font-size:1.05rem; margin:0}
+  .ort{color:var(--matt); font-size:.85rem; font-variant-numeric:tabular-nums}
+  code,pre{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
+  pre{
+    background:var(--code); border:1px solid var(--linie); border-radius:6px;
+    padding:.7rem .8rem; margin:.5rem 0 0; overflow-x:auto; font-size:.8rem;
+    white-space:pre; -webkit-user-select:all; user-select:all;
+  }
+  .schluessel{color:var(--matt); font-size:.78rem; word-break:break-all; margin:.15rem 0 0}
+  button{
+    font:inherit; font-weight:500; cursor:pointer; border-radius:7px;
+    border:1px solid transparent; padding:.5rem 1rem;
+    background:var(--akzent); color:var(--akzent-fg);
+  }
+  button.leise{background:transparent; color:var(--fg); border-color:var(--linie)}
+  button[disabled]{opacity:.45; cursor:default}
+  .reihe{display:flex; gap:.6rem; align-items:center; flex-wrap:wrap; margin-top:.9rem}
+  .status{font-size:.88rem; color:var(--matt)}
+  .fehler{color:var(--warn)}
+  .hinweis{
+    background:var(--warn-bg); border:1px solid var(--linie); border-left:3px solid var(--warn);
+    border-radius:6px; padding:.8rem 1rem; margin:0 0 1.6rem; font-size:.9rem;
+  }
+  .hinweis p{margin:0}
+  .hinweis p + p{margin-top:.5rem}
+  footer{margin-top:2rem; color:var(--matt); font-size:.85rem}
+  footer p{margin:.4rem 0}
+</style>
+</head>
+<body>
+<main>
+  <h1>Coordinator eintragen</h1>
+  <p class="unter">Unterschreibt die Autorisierung für die beiden eigenen Coordinatoren und
+     baut daraus den fertigen Befehl.</p>
+
+  <div class="hinweis">
+    <p><strong>Unterschrieben wird nur Text.</strong> Diese Seite ruft ausschließlich
+       <code>personal_sign</code> auf — keine Transaktion, keine Freigabe, keine Kosten.
+       Sie sendet auch nichts: die Signatur bleibt hier, du kopierst den Befehl selbst.</p>
+    <p>Das Konto muss auf der Kette als <strong>Mensch registriert</strong> sein. Welches,
+       ist gleich — es muss nicht die Operator-Wallet des Knotens sein.</p>
+  </div>
+
+  <div class="reihe" style="margin:0 0 1.6rem">
+    <button id="verbinden">Wallet verbinden</button>
+    <span class="status" id="konto">nicht verbunden</span>
+  </div>
+
+  <section id="karten"></section>
+
+  <footer>
+    <p>Beide Eintragungen gehen an <em>beide</em> Knoten — das Register ist knotenlokal
+       und wird nicht repliziert. Das erledigt das Skript.</p>
+    <p>Danach sollte <code>/api/coordinators</code> auf jedem Knoten zwei Einträge zeigen.</p>
+  </footer>
+</main>
+
+<script>
+const BOXEN = [
+  { name:"Coordinator C1", ort:"173.249.37.118",
+    pub:"ac9c50522cfb59ac4da5d24780e6a87f68874e49d299a762832251836a3ae4ae" },
+  { name:"Coordinator C2", ort:"194.163.188.71",
+    pub:"1f14063c514b8dbf6917da57b268dc7c3be44cd577835e23a42b42f405fc67c6" },
+];
+
+let konto = null;
+
+const el = (t, k, txt) => {
+  const n = document.createElement(t);
+  if (k) n.className = k;
+  if (txt !== undefined) n.textContent = txt;
+  return n;
+};
+
+function karten() {
+  const ziel = document.getElementById("karten");
+  ziel.textContent = "";
+  BOXEN.forEach((b, i) => {
+    const k = el("div", "karte");
+    const kopf = el("div", "kopf");
+    kopf.append(el("h2", null, b.name), el("span", "ort", b.ort));
+    k.append(kopf);
+    k.append(el("p", "schluessel", b.pub));
+
+    const reihe = el("div", "reihe");
+    const knopf = el("button", null, "Unterschreiben");
+    knopf.disabled = !konto;
+    const status = el("span", "status", konto ? "" : "erst Wallet verbinden");
+    reihe.append(knopf, status);
+    k.append(reihe);
+
+    const aus = el("pre");
+    aus.hidden = true;
+    k.append(aus);
+
+    knopf.addEventListener("click", async () => {
+      knopf.disabled = true;
+      status.className = "status";
+      status.textContent = "warte auf die Wallet …";
+      try {
+        const nachricht = "Aequitas: authorize coordinator " + b.pub;
+        const sig = await window.ethereum.request({
+          method: "personal_sign",
+          params: [nachricht, konto],
+        });
+        status.textContent = "unterschrieben von " + konto;
+        aus.hidden = false;
+        aus.textContent =
+          "ssh root@" + b.ort + " \"WALLET=" + konto +
+          " /root/coordinator-eintragen.sh " + sig + "\"";
+      } catch (e) {
+        status.className = "status fehler";
+        // Ablehnen in der Wallet ist kein Fehler, nur ein Nein.
+        status.textContent = (e && e.code === 4001)
+          ? "in der Wallet abgelehnt"
+          : "fehlgeschlagen: " + ((e && (e.message || e.shortMessage)) || e);
+      } finally {
+        knopf.disabled = false;
+      }
+    });
+    ziel.append(k);
+  });
+}
+
+document.getElementById("verbinden").addEventListener("click", async () => {
+  const anzeige = document.getElementById("konto");
+  if (!window.ethereum) {
+    anzeige.className = "status fehler";
+    anzeige.textContent = "keine Wallet gefunden — diese Seite in dem Browser öffnen, in dem MetaMask installiert ist";
+    return;
+  }
+  try {
+    const kk = await window.ethereum.request({ method: "eth_requestAccounts" });
+    konto = (kk[0] || "").toLowerCase();
+    anzeige.className = "status";
+    anzeige.textContent = konto;
+    karten();
+  } catch (e) {
+    anzeige.className = "status fehler";
+    anzeige.textContent = (e && e.code === 4001) ? "Verbindung abgelehnt" : String((e && e.message) || e);
+  }
+});
+
+if (window.ethereum && window.ethereum.on) {
+  window.ethereum.on("accountsChanged", (kk) => {
+    konto = kk && kk[0] ? kk[0].toLowerCase() : null;
+    document.getElementById("konto").textContent = konto || "nicht verbunden";
+    karten();
+  });
+}
+
+karten();
+</script>
+</body>
+</html>
