@@ -63,6 +63,19 @@ async function eintragen() {
   document.getElementById('out').textContent = '';
 
   const matching = document.getElementById('signingAddr').value.trim().replace(/\/+$/, '');
+  // Eine 0x-Adresse hier ist der haeufigste Fehlgriff, und die allgemeine
+  // https://-Meldung half dabei nicht: sie sagt, was falsch ist, aber nicht,
+  // warum jemand gerade DAS eingetragen hat. Wer eine Wallet-Adresse
+  // hineinschreibt, sucht das Feld, in das seine Identitaet gehoert -- und
+  // dieses Feld gibt es nicht, die Wallet kommt ueber den Knopf.
+  if (/^0x[0-9a-fA-F]{40}$/.test(matching)) {
+    fehler('That is a wallet address, and this field does not want one. Your wallet is ' +
+      'connected by the button below — you never type an address on this page. This field ' +
+      'wants the web address your own matching service answers on, for example ' +
+      'https://verifier.example.org. If you do not run a matching service, leave it empty: ' +
+      'your node still registers, it just does not count as a witness.');
+    return;
+  }
   if (matching && !/^https:\/\/[^\s/]+/.test(matching)) {
     fehler('The matching service address must start with https:// — or leave the field empty if this ' +
       'node does not run one. Without it the node registers, but does not count as a witness.');
