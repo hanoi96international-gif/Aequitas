@@ -1,11 +1,15 @@
 package keeper
 
 import (
+	"fmt"
+	"os"
 	"runtime"
+	"runtime/debug"
 	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
+	"time"
 )
 
 // Zaehlt, wie oft dbExecCtx noch auf cs.activeTx zurueckfaellt.
@@ -126,4 +130,45 @@ func ActiveTxRueckfallStand() map[string]interface{} {
 			"cs.activeTx kann entfernt und echte Nebenlaeufigkeit eingeschaltet werden",
 		"activetx_entfernbar": n == 0,
 	}
+}
+
+// activeTxStrikt sagt, ob dbExecCtx sich schon so verhalten soll, wie es sich
+// nach dem Entfernen von cs.activeTx verhalten wird: kein Rueckfall.
+//
+// Ein Schalter und keine sofortige Entfernung, weil das Entfernen der einzige
+// Schritt dieser Migration ist, der sich nicht zurueckdrehen laesst. Ein
+// uebersehener Pfad schriebe danach ausserhalb seiner Transaktion, ueberlebte
+// jeden Ruecklauf, und nichts sagte es. Mit dem Schalter geschieht dasselbe,
+// aber laut -- und er laesst sich in Sekunden wieder ausschalten.
+//
+// Einmal gelesen und gemerkt: der Wert aendert sich zur Laufzeit nicht, und
+// diese Frage steht auf dem Zahlungspfad.
+var activeTxStriktEinmal sync.Once
+var activeTxStriktWert bool
+
+func activeTxStrikt() bool {
+	activeTxStriktEinmal.Do(func() {
+		activeTxStriktWert = strings.TrimSpace(os.Getenv("AEQUITAS_ACTIVETX_STRICT")) == "1"
+		if activeTxStriktWert {
+			fmt.Println("[ACTIVETX] strikt: dbExecCtx faellt NICHT mehr auf cs.activeTx zurueck. " +
+				"Ein Pfad ohne ctx-Transaktion schreibt ab jetzt eigenstaendig -- und wird gemeldet. " +
+				"AEQUITAS_ACTIVETX_STRICT entfernen, um das rueckgaengig zu machen.")
+		}
+	})
+	return activeTxStriktWert
+}
+
+// meldeStriktenRueckfall gibt den Stapelauszug aus, hoechstens einmal alle
+// fuenf Sekunden. Ohne Deckel wuerde ein haeufiger Pfad das Log fluten und
+// waere dadurch schwerer zu finden, nicht leichter.
+var striktLetzteMeldung atomic.Int64
+
+func meldeStriktenRueckfall() {
+	jetzt := time.Now().UnixNano()
+	letzte := striktLetzteMeldung.Load()
+	if jetzt-letzte < int64(5*time.Second) || !striktLetzteMeldung.CompareAndSwap(letzte, jetzt) {
+		return
+	}
+	fmt.Printf("[ACTIVETX] ✗ STRIKT: ein Schreibvorgang hatte keine Transaktion im ctx und "+
+		"schreibt jetzt eigenstaendig -- er ueberlebt einen Ruecklauf. Pfad:\n%s\n", debug.Stack())
 }

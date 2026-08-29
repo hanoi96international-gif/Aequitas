@@ -532,9 +532,17 @@ func (cs *ChainState) dbExecCtx(ctx context.Context) sqlExecutor {
 		if owner := cs.activeTxOwnerGID.Load(); owner == 0 || owner == gid {
 			// Mitzaehlen: dieser Aufruf haette die Transaktion aus dem ctx
 			// bekommen sollen und bekam sie aus dem gemeinsamen Feld. Siehe
-			// activetx_rueckfall.go -- solange diese Zahl unter Last nicht null
-			// ist, kann cs.activeTx nicht entfernt werden.
+			// activetx_rueckfall.go.
 			notiereActiveTxRueckfall()
+			if activeTxStrikt() {
+				// Verhalten wie NACH dem Entfernen von cs.activeTx: kein
+				// Rueckfall. Der Unterschied zum Entfernen selbst ist, dass es
+				// hier laut passiert -- Zaehler, Herkunft und der Stapelauszug
+				// unten benennen den Pfad, statt ihn still falsch schreiben zu
+				// lassen. Siehe activetx_rueckfall.go.
+				meldeStriktenRueckfall()
+				return cs.db
+			}
 			return cs.activeTx
 		}
 		nowNano := time.Now().UnixNano()
