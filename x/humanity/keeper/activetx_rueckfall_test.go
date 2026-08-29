@@ -92,3 +92,37 @@ func TestRueckfallzaehlerBeginntBeiNull(t *testing.T) {
 	}
 	activeTxRueckfaelle.Store(vorher)
 }
+
+// rueckfallWieDbExecCtx steht im Test fuer dbExecCtx: eine Ebene zwischen dem
+// eigentlichen Aufrufer und notiereActiveTxRueckfall. runtime.Caller(2) muss
+// darueber hinweg auf den AUFRUFER zeigen -- sonst benennt die Herkunftsliste
+// dbExecCtx selbst und ist damit wertlos.
+func rueckfallWieDbExecCtx() { notiereActiveTxRueckfall() }
+
+func TestHerkunftNenntDenAufruferNichtDieZwischenebene(t *testing.T) {
+	vorher := activeTxRueckfaelle.Load()
+	rueckfallWieDbExecCtx() // <- DIESE Zeile soll in der Herkunft stehen
+	erwartet := "activetx_rueckfall_test.go"
+
+	gefunden := false
+	fuer := ""
+	rueckfallHerkunft.Range(func(k, v interface{}) bool {
+		if s, _ := k.(string); strings.HasPrefix(s, erwartet) {
+			gefunden, fuer = true, s
+			return false
+		}
+		return true
+	})
+	if !gefunden {
+		var alle []string
+		rueckfallHerkunft.Range(func(k, v interface{}) bool {
+			alle = append(alle, k.(string))
+			return true
+		})
+		t.Fatalf("Herkunft nennt nicht den Aufrufer. Erwartet etwas aus %s, gefunden: %v\n"+
+			"  Stimmt die Tiefe in runtime.Caller nicht, zeigt die Liste auf dbExecCtx "+
+			"statt auf den Pfad, der noch zu migrieren ist.", erwartet, alle)
+	}
+	t.Logf("Herkunft korrekt zugeordnet: %s", fuer)
+	activeTxRueckfaelle.Store(vorher)
+}
