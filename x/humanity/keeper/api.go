@@ -665,6 +665,9 @@ func (a *APIServer) handleCombinedHealth(w http.ResponseWriter, r *http.Request)
 		// the time this node can accept transfers at all, regardless of how
 		// well the transfer path itself performs.
 		"exclusive_lock": ExclusiveLockStats(),
+		// Entscheidet, ob cs.activeTx entfernt und echte Nebenlaeufigkeit
+		// eingeschaltet werden kann -- siehe activetx_rueckfall.go.
+		"activetx_rueckfall": ActiveTxRueckfallStand(),
 		// Whether the database connection pool is the constraint — wait_count
 		// and wait_total_ms answer that directly, instead of inferring it from
 		// a throughput number that swings by 2x between runs. See DBPoolStats.
