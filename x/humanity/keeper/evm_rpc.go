@@ -296,6 +296,14 @@ const gasProTx uint64 = 21000
 // chainIDHex ist dieselbe Kennung, die eth_chainId meldet.
 const chainIDHex = "0x786" // 1926
 
+// mussJSON verpackt einen String als JSON-Rohwert. Nur fuer den
+// fullTx-Zweig von blockToMap, der getTransactionByHash mit demselben
+// Parameterformat aufruft, das die Schnittstelle ohnehin liefert.
+func mussJSON(v string) json.RawMessage {
+	b, _ := json.Marshal(v)
+	return b
+}
+
 const txInputMaxBytes = 4096
 
 const txMetaMax = 100000
@@ -1673,6 +1681,13 @@ func (s *EVMRPCServer) getTransactionByHash(params []json.RawMessage) (interface
 }
 
 func (s *EVMRPCServer) getBlockByNumber(params []json.RawMessage) (interface{}, *RPCError) {
+	// Der ZWEITE Parameter der Methode entscheidet, ob die Transaktionen als
+	// Hashes oder vollstaendig zurueckkommen. Er wurde bisher gar nicht
+	// gelesen -- die Liste war ohnehin immer leer.
+	volleTx := false
+	if len(params) > 1 {
+		json.Unmarshal(params[1], &volleTx) //nolint:errcheck -- fehlt/ungueltig => Hashes
+	}
 	// FIX (audit 2026-06-29): this used to ignore params entirely and always
 	// return the latest block, even when a caller asked for a specific
 	// historical height — silently wrong for any client that fetches a
@@ -1690,7 +1705,7 @@ func (s *EVMRPCServer) getBlockByNumber(params []json.RawMessage) (interface{}, 
 		var height int64
 		if _, err := fmt.Sscanf(strings.TrimPrefix(tag, "0x"), "%x", &height); err == nil {
 			if block := s.dag.GetBlockByHeight(height); block != nil {
-				return s.blockToMap(block), nil
+				return s.blockToMap(block, volleTx), nil
 			}
 			return nil, nil
 		}
@@ -1699,10 +1714,14 @@ func (s *EVMRPCServer) getBlockByNumber(params []json.RawMessage) (interface{}, 
 	if block == nil {
 		return nil, nil
 	}
-	return s.blockToMap(block), nil
+	return s.blockToMap(block, volleTx), nil
 }
 
 func (s *EVMRPCServer) getBlockByHash(params []json.RawMessage) (interface{}, *RPCError) {
+	volleTx := false
+	if len(params) > 1 {
+		json.Unmarshal(params[1], &volleTx) //nolint:errcheck -- fehlt/ungueltig => Hashes
+	}
 	// FIX (audit 2026-06-29): same gap as getBlockByNumber above — a
 	// specific requested hash was always ignored in favor of the latest
 	// block. dag.GetBlockByHash already existed; wire it up.
@@ -1713,7 +1732,7 @@ func (s *EVMRPCServer) getBlockByHash(params []json.RawMessage) (interface{}, *R
 	hash = strings.TrimPrefix(strings.ToLower(hash), "0x")
 	if hash != "" {
 		if block := s.dag.GetBlockByHash(hash); block != nil {
-			return s.blockToMap(block), nil
+			return s.blockToMap(block, volleTx), nil
 		}
 		return nil, nil
 	}
@@ -1721,31 +1740,103 @@ func (s *EVMRPCServer) getBlockByHash(params []json.RawMessage) (interface{}, *R
 	if block == nil {
 		return nil, nil
 	}
-	return s.blockToMap(block), nil
+	return s.blockToMap(block, volleTx), nil
 }
 
-func (s *EVMRPCServer) blockToMap(block *Block) map[string]interface{} {
+// blockToMap baut die Antwort fuer eth_getBlockByNumber/ByHash.
+//
+// volleTx entspricht dem zweiten Parameter der Methode: false liefert die
+// Hashes der Transaktionen, true die vollstaendigen Objekte. Vorher lieferte
+// beides eine leere Liste.
+func (s *EVMRPCServer) blockToMap(block *Block, volleTx bool) map[string]interface{} {
+	// Die Transaktionen liegen am Block. Sie NICHT auszugeben hiess, jedem
+	// Block-Explorer und jeder Wallet zu sagen, dieser Block sei leer -- auch
+	// bei 269 Stueck darin.
+	txs := make([]interface{}, 0, len(block.Transactions))
+	for i := range block.Transactions {
+		h := block.Transactions[i].TxHash
+		if h == "" {
+			continue
+		}
+		if !strings.HasPrefix(h, "0x") {
+			h = "0x" + h
+		}
+		if !volleTx {
+			txs = append(txs, h)
+			continue
+		}
+		// Nur nachschlagen, wenn es etwas zum Nachschlagen gibt.
+		// getTransactionByHash liest den Blockindex ueber s.state; ohne den
+		// ist der Hash die vollstaendigste ehrliche Antwort. Vorher fuehrte
+		// blockToMap diesen Weg nie, also gab es die Absicherung auch nicht.
+		if s.state != nil {
+			if voll, _ := s.getTransactionByHash([]json.RawMessage{mussJSON(h)}); voll != nil {
+				txs = append(txs, voll)
+				continue
+			}
+		}
+		txs = append(txs, h)
+	}
+
+	// Der Block traegt seine Eltern. 64 Nullen hiessen "kein Vorgaenger" --
+	// wer die Kette rueckwaerts laeuft, war sofort am Ende. Dies ist ein DAG,
+	// ein Block kann mehrere Eltern haben; das Feld der Ethereum-Schnittstelle
+	// kennt nur einen, also steht dort der erste. Alle stehen in
+	// /api/block?hash=.
+	elternHash := "0x" + strings.Repeat("0", 64)
+	if len(block.ParentHashes) > 0 && block.ParentHashes[0] != "" {
+		elternHash = "0x" + strings.TrimPrefix(block.ParentHashes[0], "0x")
+	}
+
+	// Die Kette fuehrt einen echten StateRoot und prueft damit beim
+	// Nachspielen ihren Konsens (siehe block.go). Hier stand stattdessen der
+	// Blockhash -- also eine Zahl, die zufaellig existiert, statt der, die
+	// etwas bezeugt.
+	stateRoot := "0x" + strings.TrimPrefix(block.Hash, "0x")
+	if block.StateRoot != "" {
+		stateRoot = "0x" + strings.TrimPrefix(block.StateRoot, "0x")
+	}
+
+	// transactionsRoot: die echte Festlegung dieser Kette ist block.TxRoot,
+	// sha256 ueber die Liste -- kein Ethereum-Trie. Wer ihn auf Ethereum-Art
+	// nachrechnet, scheitert. Das ist trotzdem besser als die
+	// Leerbaum-Konstante, die fuer einen vollen Block aktiv behauptet, er sei
+	// leer.
+	const leererTrie = "0x56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421"
+	txRoot := leererTrie
+	if block.TxRoot != "" {
+		txRoot = "0x" + strings.TrimPrefix(block.TxRoot, "0x")
+	}
+
+	roh, _ := json.Marshal(block)
+
 	return map[string]interface{}{
-		"number":           fmt.Sprintf("0x%x", block.Height),
-		"hash":             "0x" + block.Hash,
-		"parentHash":       "0x" + strings.Repeat("0", 64),
-		"timestamp":        fmt.Sprintf("0x%x", block.Timestamp),
-		"transactions":     []interface{}{},
-		"gasLimit":         "0x1000000",
-		"gasUsed":          "0x0",
-		"difficulty":       "0x0",
-		"totalDifficulty":  "0x0",
-		"miner":            "0x0000000000000000000000000000000000000000",
-		"extraData":        "0x",
-		"logsBloom":        "0x" + strings.Repeat("0", 512),
-		"sha3Uncles":       "0x1dcc4de8dec75d7aab85b567b6ccd41ad312451b948a7413f0a142fd40d49347",
-		"stateRoot":        "0x" + block.Hash,
-		"receiptsRoot":     "0x56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421",
-		"transactionsRoot": "0x56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421",
-		"size":             "0x1",
-		"uncles":           []interface{}{},
-		"nonce":            "0x0000000000000000",
-		"baseFeePerGas":    "0x0",
+		"number":       fmt.Sprintf("0x%x", block.Height),
+		"hash":         "0x" + block.Hash,
+		"parentHash":   elternHash,
+		"timestamp":    fmt.Sprintf("0x%x", block.Timestamp),
+		"transactions": txs,
+		"gasLimit":     "0x1000000",
+		// Stimmt mit den Quittungen desselben Blocks ueberein -- vorher stand
+		// hier 0, auch fuer volle Bloecke.
+		"gasUsed":         fmt.Sprintf("0x%x", uint64(len(txs))*gasProTx),
+		"difficulty":      "0x0",
+		"totalDifficulty": "0x0",
+		"miner":           "0x0000000000000000000000000000000000000000",
+		"extraData":       "0x",
+		"logsBloom":       "0x" + strings.Repeat("0", 512),
+		"sha3Uncles":      "0x1dcc4de8dec75d7aab85b567b6ccd41ad312451b948a7413f0a142fd40d49347",
+		"stateRoot":       stateRoot,
+		// Diese Kette fuehrt keinen Quittungsbaum. Der Wert bleibt die
+		// Leerbaum-Konstante und bezeugt nichts -- das ist die ehrlichste
+		// verfuegbare Angabe, solange es nichts zu bezeugen gibt.
+		"receiptsRoot":     leererTrie,
+		"transactionsRoot": txRoot,
+		// Die tatsaechliche Groesse der Blockdarstellung. "0x1" hiess ein Byte.
+		"size":          fmt.Sprintf("0x%x", len(roh)),
+		"uncles":        []interface{}{},
+		"nonce":         "0x0000000000000000",
+		"baseFeePerGas": "0x0",
 	}
 }
 
