@@ -3393,16 +3393,33 @@ func (cs *ChainState) SaveBlockToDB(block *Block, replayed bool) error {
 // Called when AddPeerBlock's replay fails after the header was pre-saved,
 // so a restart never marks an unapplied block as replayed (P0-02).
 func (cs *ChainState) DeleteBlockFromDB(hash string) error {
+	return cs.DeleteBlockFromDBCtx(context.Background(), hash)
+}
+
+// DeleteBlockFromDBCtx ist die ctx-gefuehrte Fassung. Das Loeschen gehoert in
+// dieselbe Transaktion wie das gescheiterte Nachspielen: sonst kann der Kopf
+// verschwinden, waehrend die Zustandsaenderungen bestehen bleiben -- oder
+// umgekehrt.
+func (cs *ChainState) DeleteBlockFromDBCtx(ctx context.Context, hash string) error {
 	if cs.db == nil {
 		return nil
 	}
-	_, err := cs.dbExec().Exec(`DELETE FROM chain_blocks WHERE hash=$1`, hash)
+	_, err := cs.dbExecCtx(ctx).Exec(`DELETE FROM chain_blocks WHERE hash=$1`, hash)
 	return err
 }
 
 // SaveGHOSTDAGState updates only the GHOSTDAG columns for an existing block.
 // Used by the startup migration and after local GHOSTDAG compute in AddPeerBlock (P1-03).
 func (cs *ChainState) SaveGHOSTDAGState(block *Block) error {
+	return cs.SaveGHOSTDAGStateCtx(context.Background(), block)
+}
+
+// SaveGHOSTDAGStateCtx ist die ctx-gefuehrte Fassung.
+//
+// HINWEIS: die Einzelfassung hat derzeit KEINEN Aufrufer -- der laufende Code
+// benutzt ausschliesslich SaveGHOSTDAGStateBatch. Sie bleibt (sie ist
+// exportiert), aber wer hier etwas aendert, aendert nichts Laufendes.
+func (cs *ChainState) SaveGHOSTDAGStateCtx(ctx context.Context, block *Block) error {
 	if cs.db == nil {
 		return nil
 	}
@@ -3411,7 +3428,7 @@ func (cs *ChainState) SaveGHOSTDAGState(block *Block) error {
 	if err != nil {
 		bluesJSON = []byte("[]")
 	}
-	_, err = cs.dbExec().Exec(
+	_, err = cs.dbExecCtx(ctx).Exec(
 		`UPDATE chain_blocks SET selected_parent=$1, blue_score=$2, blues=$3 WHERE hash=$4`,
 		block.SelectedParent, block.BlueScore, string(bluesJSON), block.Hash,
 	)
