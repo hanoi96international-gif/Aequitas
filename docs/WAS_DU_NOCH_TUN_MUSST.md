@@ -118,32 +118,22 @@ Seite alt aussieht: **Strg + Umschalt + R**.
 
 ---
 
-## 4 · Zwei Secrets für den Proof-Server — 3 Minuten
+## 4 · Proof-Server-Auslieferung — **erledigt am 29.08.**
 
-Der Auslieferungsweg des Proof-Servers hat **nie** funktioniert: das Repo
-`aequitas-proof-server` hat gar keine Secrets, also auch keinen SSH-Schlüssel,
-und der Lauf bricht mit *„can't connect without a private SSH key or password"*
-ab. Ich habe gestern von Hand ausgeliefert und das fehlende Skript
-(`deploy/proof-deploy.sh`, mit automatischer Rücknahme) ergänzt — aber ohne die
-Schlüssel bleibt es Handbetrieb.
+Du hast `CONTABO_SSH_KEY` und `CONTABO2_SSH_KEY` gesetzt. Der erste Lauf ist
+durchgelaufen: **success**. Damit funktioniert der Auslieferungsweg des
+Proof-Servers zum ersten Mal überhaupt — vorher fehlten sowohl die Secrets als
+auch das aufgerufene Skript.
 
-Es sind dieselben Schlüssel, die im Ketten-Repo bereits funktionieren. **Ich
-fasse private Schlüssel nicht an**; führe das selbst aus:
-
-```bash
-gh secret set CONTABO_SSH_KEY --repo hanoi96international-gif/aequitas-proof-server < ~/.ssh/contabo1
-```
-
-```bash
-gh secret set CONTABO2_SSH_KEY --repo hanoi96international-gif/aequitas-proof-server < ~/.ssh/contabo2
-```
-
-(Dateinamen anpassen, falls deine Schlüssel anders heißen.) Danach zur Probe
-einen Lauf auslösen:
+Ab jetzt genügt:
 
 ```bash
 gh workflow run deploy.yml --repo hanoi96international-gif/aequitas-proof-server
 ```
+
+Das Skript (`deploy/proof-deploy.sh`) sichert vorher die Konfiguration des
+laufenden Containers, baut unter einem neuen Tag und nimmt automatisch zurück,
+wenn `/health` danach nicht antwortet.
 
 ---
 
