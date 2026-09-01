@@ -399,7 +399,9 @@ func (cs *ChainState) transferConcurrentWAL(from, to string, amount float64, pen
 	ph.precheck = time.Since(phMark)
 
 	phMark = time.Now()
-	unlock, ok := cs.accounts.TryLockAddrs(from, to)
+	// Kurz wiederholen statt sofort aufzugeben -- siehe shard_wiederholung.go:
+	// ein Rueckfall kostet gemessen rund 800 ms, das Warten hoechstens 1 ms.
+	unlock, ok := cs.sperreMitKurzerWiederholung(from, to)
 	ph.lock = time.Since(phMark)
 	if !ok {
 		fbShardBelegt.Add(1)

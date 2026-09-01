@@ -124,6 +124,13 @@ func (cs *ChainState) transferConcurrent(from, to string, amount float64, pendin
 	// sends contended traffic straight to the batcher, where it belongs;
 	// only genuinely uncontended (typically disjoint) transfers pay for
 	// and benefit from this path at all.
+	// HIER BEWUSST NICHT wiederholen, anders als im WAL-Schnellpfad
+	// (shard_wiederholung.go). Der Unterschied steht direkt darueber: DIESER
+	// Pfad haelt seine Shards ueber einen echten DB-Umlauf, der Blockierer ist
+	// also selbst langsam und unbeschraenkt -- Warten wurde hier direkt
+	// gemessen und war rund 2x schlechter als der Buendler. Im WAL-Pfad haelt
+	// der Blockierer dagegen einen bekannten, beschraenkten Halt
+	// (flushWALBatch, 47 ms), und dort lohnt das Warten.
 	unlock, ok := cs.accounts.TryLockAddrs(from, to)
 	if !ok {
 		return 0, 0, false, nil // one or both shards contended -- let the batcher have it
