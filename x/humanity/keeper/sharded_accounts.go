@@ -74,8 +74,13 @@ import (
 // GEMESSEN (TestShardZahl_WasSieKostet, 01.09.2026), nicht geschaetzt -- die
 // erste Schaetzung lag beim Speicher um Faktor 1,7 daneben:
 //
-//	Shards    16.384:  1,6 MB,  Range   522 us,  Bau   2 ms
-//	Shards   262.144: 26,0 MB,  Range  6,24 ms,  Bau  35 ms
+//	Shards    16.384:  1,6 MB,  Range   307 us,  Bau   2 ms
+//	Shards   262.144: 26,0 MB,  Range  5,13 ms,  Bau  30 ms
+//
+// Range waechst also mit Faktor 16,7 bei 16-facher Shard-Zahl -- linear, wie
+// es soll. Der Test prueft genau diesen Faktor und nicht die Wanduhr: eine
+// absolute Grenze stand dort zuerst und ist im Race-Detektor sofort gerissen,
+// der jeden Sperrvorgang um eine Groessenordnung verlangsamt.
 //
 // 26 MB gegen die 1,28 GB, die der Knoten unter Last ohnehin haelt. Der eine
 // reale Preis ist Range: es sperrt JEDEN Shard einzeln, auch die leeren. Auf
