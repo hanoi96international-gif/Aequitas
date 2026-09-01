@@ -683,3 +683,79 @@ C1 fiel bei jedem schweren Lauf einige hundert Blöcke zurück und holte
 **jedes Mal von selbst auf** — viermal an diesem Tag beobachtet, zuletzt 985
 Blöcke in einem Sprung. Wachsender Abstand ist bei dieser Kette kein Alarm.
 
+---
+
+# Der Umbau, ausgeführt: was er gebracht hat und was nicht
+
+Der Auftrag war, den Schnellpfad-Umbau vollständig umzusetzen. Die erste
+Erkenntnis war, dass die Zahl „247 Funktionen" falsch war.
+
+## Der Umfang war nie 247
+
+247 zählte alles, was transitiv Shards *berührt*. Entscheidend ist aber nur,
+was die **selbstsperrenden** Zugriffe (`Get`/`Set`/`Delete`/`Range`) innerhalb
+des `runAtomicWithOutbox`-Bereichs benutzt. Gezählt:
+
+```
+Wurzeln (rufen runAtomicWithOutbox):  9
+transitiv erreichbar:               141
+davon mit selbstsperrendem Zugriff:  19
+```
+
+Und die vier Dinge, die der Schnellpfad außer Konten anfasst
+(`updateAccountLeafLocked`, `enqueueWALFlushLocked`,
+`markEVMMirrorDirtyForAddrsLocked`, `wealthCapAmountLocked`), sind **bereits
+alle eigenständig gesichert** — über `accountSetXORMu`, `walFlushMu`,
+`evmMirrorDirtyMu` und `humanCountMu`. Ihr `Locked`-Suffix ist historisch.
+
+## Was tatsächlich gewirkt hat: die Shard-Zahl
+
+Sie war seit 2026-07-23 verboten, weil `Range` damals je Überweisung lief
+(57 % CPU). Das ist behoben und seit 2026-08-29 durch einen Wächter gesichert
+— **erst dadurch wurde diese Zahl überhaupt änderbar.**
+
+16.384 → 262.144:
+
+| | vorher | nachher |
+|---|---|---|
+| `pre_rlock` | 19,7 ms | **2,2 ms** |
+| `total` je Überweisung | 40,0 ms | **24,2 ms** |
+| globale Sperrvorgänge | 726 | **58** |
+| TPS (Mittel) | 2.750 | **3.274** |
+| Streuung | 2.120–3.668 | 3.118–3.482 |
+
+Preis, gemessen: 26 MB statt 1,6 MB, `Range` 5,13 ms statt 307 µs (Faktor 16,7,
+also linear).
+
+**Damit ist der geplante 19-Funktionen-Umbau hinfällig geworden**: `pre_rlock`
+macht nur noch 9 % der Zeit aus. Die Lesesperre zu entfernen wäre jetzt
+höchstens 9 % wert — für einen Eingriff dieser Größe kein sinnvoller Tausch.
+
+## Was nicht gewirkt hat
+
+Die Rückfälle stammen nicht von Kollisionen zwischen Überweisungen (die Quote
+ist bei 50 Sendern mit 12,3 % **höher** als bei 400 mit 9,0 %), sondern von
+`flushWALBatch`, das `LockAddrs` über seinen ganzen Postgres-Schreibvorgang
+hält — 47 ms bei 65 Adressen und 32 Arbeitern. Diesen Halt zu verkürzen ist
+zweimal versucht worden und erzeugte beide Male Postgres-Deadlocks (40P01).
+
+Der Versuch, stattdessen im Schnellpfad kurz zu warten (60-ms-Fenster):
+
+```
+Rückfallquote   8,6 % -> 5,8 %      (ein Drittel weniger)
+Rettungsquote          31-35 %
+Durchsatz       3.274 -> 2.905 TPS
+```
+
+Weniger Rückfälle, kein Durchsatzgewinn. **Vorgabe daher aus**, Mechanismus
+bleibt env-schaltbar.
+
+## Wo die Decke jetzt liegt
+
+`wal_append` ist mit **21,6 von 24,2 ms = 89 %** der verbleibende Posten: der
+fsync, 5,96 ms, auf einer Platte, die sich WAL und Postgres teilen. Das ist
+keine Code-Grenze mehr, sondern eine Hardware-Grenze.
+
+**Der nächste echte Schritt wäre eine eigene Platte für das WAL** — nicht noch
+ein Umbau im Sperrmodell.
+
