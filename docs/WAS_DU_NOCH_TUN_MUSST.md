@@ -1,14 +1,67 @@
 # Was du noch tun musst
 
-**Stand 29.08.2026, 09:00 UTC.** Alles, was ohne dich geht, ist erledigt und
-live geprüft. Hier steht nur, was an einem Zugang, einer Unterschrift oder
-einer Entscheidung von dir hängt.
+**Stand 01.09.2026.** Diese Datei ist über mehrere Tage gewachsen und enthält
+unten ein vollständiges Messprotokoll. **Wer nur wissen will, was zu tun ist,
+liest diesen Abschnitt — der Rest ist Geschichte und teils überholt.**
 
-Die Reihenfolge ist nach Dringlichkeit für die Beta sortiert.
+## Offen — hängt an dir
+
+1. **MPC-Schwelle kalibrieren.** Braucht eine zweite Person vor der Kamera;
+   ohne echten Doppelversuch lässt sich keine Schwelle belegen.
+2. **Dritter Betreiber.** Quorum 2 bei zwei Vergleichsdiensten ist kein echter
+   Ausfallschutz. Braucht Punkt 1 zuerst.
+3. **Wallet-Schlüssel von der Signieridentität trennen.** Auf beiden Boxen ist
+   `RELAYER_PRIVATE_KEY` derselbe Schlüssel wie deine persönliche Wallet. Kein
+   Beta-Blocker, aber vor echtem Betrieb zu trennen — und nicht in der Nacht
+   vor einem Start, weil es die Blockproduktions-Identität ändert.
+4. **Phase-2-Rechtsprüfung**, falls du je auf echten Modus umstellst.
+
+## Offen — technisch, aber nicht dringend
+
+5. **`cs.activeTx` entfernen.** Bedingung: der Rückfallzähler muss über eine
+   **echte Verteilungsrunde** (eine, die auch verteilt — nicht `ran_elsewhere`)
+   und eine **Registrierung** hinweg bei 0 bleiben. Am 01.09. geprüft: Zähler
+   0, aber beide Bedingungen ungetestet. **Nicht entfernen, bevor das belegt
+   ist.**
+6. **Eigene Platte für das WAL.** Das ist der einzige verbliebene
+   Durchsatz-Hebel (siehe Endstand unten) und keine Code-Änderung.
+
+## Erledigt und verifiziert
+
+- Verifier-Image, C1 als Validator, Proof-Server-Auslieferung, Testmodus-Tor,
+  Impressum/Datenschutz — alle am 29.08. geschlossen.
+- **Übertrag-Prüfung (war Punkt 6):** am 01.09. durchgeführt, drei Tage nach
+  dem Tor. Ergebnis `-0.000014 / -0.000014 / False` — unverändert und
+  **nicht** auf 0 zurückgesprungen. Die Grundlinie wird bewusst **nicht**
+  eingefroren: die 0 ist es, was Neuschöpfung sichtbar macht, und eine
+  negative Abweichung (vernichteter Staub) kann Schöpfung nicht verdecken.
+
+## Der Durchsatz-Endstand
+
+**~3.300 TPS gemessen, produktionsähnlicher Verkehr, null Fehlschläge.**
+
+Der Weg dahin und die drei Zwischenstände (2.650 → 3.700 → nach dem
+Shard-Umbau) stehen unten. **Gültig ist nur der letzte Abschnitt der Datei**
+(„Der Umbau, ausgeführt"). Kurzfassung:
+
+| Hebel | Wirkung |
+|---|---|
+| Shard-Zahl 16.384 → 262.144 | `pre_rlock` 19,7 → 2,2 ms, +19 % Durchsatz |
+| Ratenbegrenzer-Doku berichtigt | machte jede Messung überhaupt erst möglich |
+| Bündelgröße 100 → 10 | +38 % |
+| Kurzes Warten bei belegtem Shard | **nichts** — Vorgabe aus |
+
+Verbleibender Engpass: `wal_append` mit 89 % der Zeit — der fsync auf einer
+Platte, die sich WAL und Postgres teilen. **Hardware, nicht Code.**
 
 ---
 
-## 1 · Verifier-Image — **erledigt am 29.08.**
+# Geschichte und Messprotokoll
+
+Ab hier chronologisch. Enthält überholte Zwischenstände — sie stehen bewusst
+drin, weil die Begründungen zeigen, welche Wege schon ausgeschlossen sind.
+
+## (Liste vom 29.08.) 1 · Verifier-Image — **erledigt am 29.08.**
 
 Das Paket `aequitas-biometric-beta/matching` ist öffentlich. Nachgeprüft: das
 Manifest lässt sich **ohne jede Anmeldung** abrufen (`200`). Damit ist der
@@ -22,7 +75,7 @@ Zugangsdaten.
 
 ---
 
-## 2 · Der Testmodus ist entschieden — und jetzt abgesichert
+## (Liste vom 29.08.) 2 · Der Testmodus ist entschieden — und jetzt abgesichert
 
 Du hast entschieden: die Beta startet bewusst mit `SERVICE_MODE=test`.
 
@@ -65,7 +118,7 @@ keine Konfiguration, sondern eine Behauptung über eine stattgefundene Prüfung.
 
 ---
 
-## 3 · C1 als Validator — **erledigt am 29.08.**
+## (Liste vom 29.08.) 3 · C1 als Validator — **erledigt am 29.08.**
 
 Das Register trägt jetzt **beide** Knoten, jeweils mit Bezeugungsschlüssel und
 Vergleichsdienst-Adresse:
@@ -77,7 +130,7 @@ Vergleichsdienst-Adresse:
 
 ---
 
-## 4 · Proof-Server-Auslieferung — **erledigt am 29.08.**
+## (Liste vom 29.08.) 4 · Proof-Server-Auslieferung — **erledigt am 29.08.**
 
 Du hast `CONTABO_SSH_KEY` und `CONTABO2_SSH_KEY` gesetzt. Der erste Lauf ist
 durchgelaufen: **success**. Damit funktioniert der Auslieferungsweg des
@@ -96,7 +149,7 @@ wenn `/health` danach nicht antwortet.
 
 ---
 
-## 5 · Impressum und Datenschutz — deine Entscheidung, bereits umgesetzt
+## (Liste vom 29.08.) 5 · Impressum und Datenschutz — deine Entscheidung, bereits umgesetzt
 
 Du hast entschieden, dass es kein Impressum gibt. Das ist sauber umgesetzt:
 `/impressum` und `/datenschutz` antworten mit 404, und **keine Seite der
@@ -108,7 +161,7 @@ genau, welche Felder fehlen und was sie bedeuten.
 
 ---
 
-## 6 · Heute 12:09 UTC — Übertrag prüfen (2 Minuten)
+## (Liste vom 29.08.) 6 · Heute 12:09 UTC — Übertrag prüfen (2 Minuten)
 
 Das Tor `POOL_REMAINDER_CARRY_FROM_UNIX` öffnet um **12:09 UTC**. Danach:
 
@@ -346,7 +399,7 @@ und hat drei Lastläufe mit **0 Rückfällen** überstanden.
 
 ---
 
-## Der Engpass für 10k ist gefunden — 29.08.2026 abends
+## ~~Der Engpass für 10k~~ — TEILWEISE ÜBERHOLT: die Lesesperre war es, ist es nach dem Shard-Umbau aber nicht mehr
 
 Vier Messungen, zwei davon negativ, und am Ende eine präzise Stelle.
 
@@ -404,7 +457,7 @@ Lastgenerator, und zwei Stellschrauben, die sich ohne Deploy verändern lassen.
 
 ---
 
-## Warum 10k heute nicht erreichbar ist — die geschlossene Rechnung
+## ~~Warum 10k nicht erreichbar ist~~ — ÜBERHOLT: die Rechnung stimmte, die Eingangswerte nicht (Ratenbegrenzer)
 
 Nach acht Messungen steht die Arithmetik. Sie ist keine Einschätzung.
 
@@ -583,7 +636,7 @@ sich selbst zu reparieren. **Merke: bei dieser Fehlerform erst warten.**
 
 ---
 
-# ENDERGEBNIS 10k TPS: die Decke liegt bei ~2.650, nicht bei 10.000
+# ~~ENDERGEBNIS: Decke ~2.650~~ — ÜBERHOLT (Ring-Topologie, siehe Korrektur darunter)
 
 Am 01.09.2026 mit 1.635 aufgefüllten Konten, korrigiertem Ratenbegrenzer und
 angehobener Warteschlangen-Schranke gemessen. Damit ist erstmals die **Kette**
@@ -642,7 +695,7 @@ mit 18 Menschen ist die gemessene Decke um Größenordnungen ausreichend.
 
 ---
 
-## KORREKTUR desselben Tages: die Decke liegt bei ~3.700, nicht bei 2.650
+## KORREKTUR: ~3.700 statt 2.650 — seinerseits überholt durch den Shard-Umbau am Ende
 
 Die Kurve oben wurde durchgehend im **Ring** gefahren, und der Ring erzeugt
 seine Kollisionen selbst: Konto i+1 wird gleichzeitig von Goroutine i (als
