@@ -23,8 +23,38 @@ liest diesen Abschnitt — der Rest ist Geschichte und teils überholt.**
    und eine **Registrierung** hinweg bei 0 bleiben. Am 01.09. geprüft: Zähler
    0, aber beide Bedingungen ungetestet. **Nicht entfernen, bevor das belegt
    ist.**
-6. **Eigene Platte für das WAL.** Das ist der einzige verbliebene
-   Durchsatz-Hebel (siehe Endstand unten) und keine Code-Änderung.
+6. **Eine ZWEITE Platte für das WAL** — nicht eine schnellere. Das ist der
+   einzige verbliebene Durchsatz-Hebel und keine Code-Änderung.
+
+   Am 01.09. bis auf den Grund gemessen. Die Platte ist **nicht** langsam und
+   **nicht** ausgelastet:
+
+   | | |
+   |---|---|
+   | roher fsync, unbelastet | **573 µs** (≈1.745/s) |
+   | roher fsync, unter Last | 1.166 µs Median, **5.430 µs p95** |
+   | `f_await` laut iostat | **5,74–8,20 ms** |
+   | Warteschlangentiefe | 5–6 Anfragen |
+   | `%util` | **61–69 %**, also Luft nach oben |
+
+   Das WAL erlebt 5,96 ms je fsync — exakt das `f_await`. Der Grund ist nicht
+   Geschwindigkeit, sondern **Reihenfolge**: jeder fsync muss die 5–6
+   Postgres-Schreibvorgänge vor ihm mit auf die Platte zwingen. Deshalb hilft
+   eine *schnellere* Platte kaum, eine *getrennte* dagegen unmittelbar — dann
+   steht in der Warteschlange nur noch das WAL selbst.
+
+   Praktisch: ein zweites Volume an C2 hängen und `/root/aequitas-wal-data`
+   dorthin mounten.
+
+   **Was schon getan ist und nicht nochmal versucht werden muss:** Postgres
+   läuft bereits mit `synchronous_commit = off`; die Commits fsyncen also gar
+   nicht mehr. Die Konkurrenz kommt aus dem Schreibvolumen (Checkpoints,
+   Rückschreiben), nicht aus den Commits. `fsync = on` und
+   `full_page_writes = on` bleiben — die schützen gegen Korruption.
+
+   **Und der Unterschied NVMe/SSD zwischen den Boxen wirkt hier nicht:** von
+   innen melden beide `QEMU HARDDISK`, und C1 misst mit 550 µs sogar minimal
+   schneller als C2 mit 573 µs.
 
 ## Erledigt und verifiziert
 
