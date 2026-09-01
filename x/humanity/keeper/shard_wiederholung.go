@@ -62,13 +62,36 @@ import (
 // eine schlafende Goroutine. Bei 3.000 TPS und 9 % Kollisionen sind das
 // groessenordnungsmaessig 16 gleichzeitig schlafende Goroutinen.
 //
-//	AEQUITAS_SHARD_RETRY_VERSUCHE   zusaetzliche Versuche (Vorgabe 15, 0 = aus)
+// # GEMESSEN AM 01.09.2026 -- UND ES HAT NICHT GEHOLFEN
+//
+// Live auf Contabo2, 400 disjunkte Paare, Fenster 15 x 4 ms:
+//
+//	Rueckfallquote   8,6 %  ->  5,8 %    (ein Drittel weniger)
+//	Rettungsquote            31-35 %
+//	Durchsatz        3.274  ->  2.905 TPS (Mittel aus je drei Laeufen)
+//
+// Die Rueckfaelle sinken messbar, der Durchsatz nicht. Zwei Annahmen waren
+// falsch: die Rettungsquote liegt bei einem Drittel statt bei nahezu allen,
+// die Haltezeiten streuen also deutlich ueber die 47 ms Mittelwert hinaus --
+// und die daraus abgeleiteten "rund 800 ms je Rueckfall" waren zu hoch
+// gegriffen. Was das Warten spart, kostet es an anderer Stelle wieder.
+//
+// DESHALB IST DIE VORGABE 0, also AUS. Der Mechanismus bleibt samt Messung
+// stehen, weil die Zahl (ein Drittel weniger Rueckfaelle) echt ist und unter
+// anderen Bedingungen -- kuerzere Flush-Halte, andere Platte -- tragen
+// koennte. Eingeschaltet wird er ueber die Umgebung, nicht durch Hoffnung.
+//
+// Das ist dieselbe Konsequenz, die dieses Projekt schon dreimal gezogen hat:
+// eine plausible Optimierung, die sich nicht messen laesst, wird nicht
+// Vorgabe (siehe wal_flush_addr_cap.go und batch_tuning.go).
+//
+//	AEQUITAS_SHARD_RETRY_VERSUCHE   Versuche (Vorgabe 0 = aus)
 //	AEQUITAS_SHARD_RETRY_PAUSE_US   Pause dazwischen (Vorgabe 4000 us)
 //
 // Ein unbrauchbarer Wert ergibt die Vorgabe. rettungsquote in
-// /api/health/combined sagt, ob das Fenster passt: nahe 0 heisst zu kurz.
+// /api/health/combined sagt, ob ein gesetztes Fenster passt.
 const (
-	shardRetryVersucheVorgabe = 15
+	shardRetryVersucheVorgabe = 0
 	shardRetryPauseVorgabeUs  = 4000
 
 	shardRetryVersucheEnv = "AEQUITAS_SHARD_RETRY_VERSUCHE"
