@@ -581,3 +581,62 @@ Zustands-Inkonsistenz ab und hing ~215 Blöcke zurück.
 wäre ein schwerer Eingriff in einen Knoten gewesen, der gerade dabei war,
 sich selbst zu reparieren. **Merke: bei dieser Fehlerform erst warten.**
 
+---
+
+# ENDERGEBNIS 10k TPS: die Decke liegt bei ~2.650, nicht bei 10.000
+
+Am 01.09.2026 mit 1.635 aufgefüllten Konten, korrigiertem Ratenbegrenzer und
+angehobener Warteschlangen-Schranke gemessen. Damit ist erstmals die **Kette**
+vermessen worden und nicht der Prüfstand.
+
+## Die Kurve
+
+| Sender | 150 | 250 | **400** | 800 | 1.200 | 1.546 |
+|---|---|---|---|---|---|---|
+| TPS | 1.452 | 2.018 | **2.643** | 2.474 | 2.206 | 2.056 |
+| Fehlschläge | 1.043 | 4.319 | 1.503 | 12.861 | 24.497 | 31.760 |
+
+**Der Scheitel liegt bei ~400 Sendern.** Danach fällt der Durchsatz monoton:
+mehr Last macht es nicht schneller, sondern langsamer. Das ist dieselbe Form
+wie am 28.07. („höherer Durchsatz lässt die Blockproduktion einbrechen"), jetzt
+sauber ausgemessen.
+
+## Woher die Decke kommt
+
+Am Scheitel, je Überweisung:
+
+```
+pre_rlock    50,9 ms   69 %   <- Warten auf cs.mu.RLock()
+wal_append   22,5 ms   30 %
+apply         0,02 ms
+```
+
+Und die Ursache dahinter, gemessen: **`shard_belegt` = 216.119 von 535.662
+Überweisungen = 40 % Rückfallquote.** Jeder Rückfall geht über die globale
+Schreibsperre, und Go's RWMutex sperrt ankommende Leser aus, sobald ein
+Schreiber ansteht. 40 % Schreiber sperren 60 % Leser aus — das sind die 69 %.
+
+Das WAL ist dabei **entlastet** worden und nicht mehr der Engpass: fsync 7,1 ms
+statt 28,8 ms, Bündel 31 statt 17, Maximum 500 erreicht. Die frühere
+WAL-Langsamkeit war Unterversorgung, wie vermutet.
+
+## Was die 40 % zum Teil erklärt
+
+Die Ring-Topologie erzeugt die Kollisionen mit: Konto i+1 wird gleichzeitig von
+Goroutine i (als Empfänger) und von Goroutine i+1 (als Absender) angefasst. Der
+`WarmSteadyState`-Prüfstand warnt davor seit Langem („a ring where every account
+has two concurrent writers manufactures contention"). Mit disjunkten Paaren wäre
+die Quote niedriger — dafür halbiert sich die Senderzahl.
+
+## Was 10k bräuchte
+
+Nicht mehr Absender — die schaden ab 400. Sondern **die Lesesperre aus dem
+Schnellpfad entfernen**, damit ein Rückfall nicht mehr alle anderen aussperrt.
+Das ist der Umbau, der weiter oben steht: 64 Funktionen mit direktem
+Shard-Zugriff, 247 transitiv, und die erste umgestellte verklemmte sich zwei
+Ebenen tief. Der Weg dahin ist `accounts.Update(addr, func(*AccountState))` —
+eine API ohne Zeiger nach draußen, damit der Compiler jede Stelle findet.
+
+**Ehrlich geschätzt: mehrere Tage. Nicht vor dem Beta-Start.** Für den Betrieb
+mit 18 Menschen ist die gemessene Decke um Größenordnungen ausreichend.
+
