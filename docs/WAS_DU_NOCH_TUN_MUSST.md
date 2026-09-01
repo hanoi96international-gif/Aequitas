@@ -640,3 +640,46 @@ eine API ohne Zeiger nach draußen, damit der Compiler jede Stelle findet.
 **Ehrlich geschätzt: mehrere Tage. Nicht vor dem Beta-Start.** Für den Betrieb
 mit 18 Menschen ist die gemessene Decke um Größenordnungen ausreichend.
 
+---
+
+## KORREKTUR desselben Tages: die Decke liegt bei ~3.700, nicht bei 2.650
+
+Die Kurve oben wurde durchgehend im **Ring** gefahren, und der Ring erzeugt
+seine Kollisionen selbst: Konto i+1 wird gleichzeitig von Goroutine i (als
+Empfänger) und von Goroutine i+1 (als Absender) angefasst. Derselbe Knoten,
+dieselben 400 Absender, nur disjunkte Paare statt Ring:
+
+| Topologie, 400 Sender | TPS | Fehlschläge | Rückfallquote |
+|---|---|---|---|
+| **Paare** | **3.668** | **0** | 7,5 % |
+| Ring | 2.299 | 5.300 | 14,6 % |
+
+**Der Ring kostet 40 % Durchsatz und verdoppelt die Rückfallquote.** Echter
+Verkehr sieht aus wie Paare, nicht wie ein Ring — die 2.650 waren auf der
+pathologischen Konfiguration gemessen.
+
+### Was die Streuung erklärt
+
+Wiederholungen bei Paaren/400 ergaben 3.668, dann 2.792, 2.420, 2.120 — fallend.
+Ursache ist nicht der Knoten, sondern die Läufe zurück auf zurück: C1 fällt
+dabei jedes Mal einige hundert Blöcke zurück, und C2 bedient dann Last **und**
+Nachlieferung gleichzeitig. **Belastbar ist der erste Lauf auf einem gesetzten
+Knoten**, nicht der vierte.
+
+### Der Stand, ehrlich
+
+**~3.700 TPS bei produktionsähnlichem Verkehr, ohne einen einzigen Fehlschlag** —
+der Knoten war an diesem Punkt nicht einmal am Anschlag. Mehr Absender halfen
+trotzdem nicht (600 und 694 lagen darunter), es bindet also weiterhin die
+globale Schreibsperre: `warten_auf_sperre` 186 ms bei 726 Vorgängen.
+
+**10.000 sind damit nicht erreicht**, und der verbleibende Hebel ist unverändert
+der Umbau des Schnellpfads. Aber die Lücke ist kleiner als gedacht: Faktor 2,7
+statt 3,8.
+
+### Nachtrag zum Betrieb
+
+C1 fiel bei jedem schweren Lauf einige hundert Blöcke zurück und holte
+**jedes Mal von selbst auf** — viermal an diesem Tag beobachtet, zuletzt 985
+Blöcke in einem Sprung. Wachsender Abstand ist bei dieser Kette kein Alarm.
+
