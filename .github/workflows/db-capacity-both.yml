@@ -1,0 +1,78 @@
+name: Read DB pool and Postgres capacity on both boxes (read-only)
+
+# AEQUITAS_DB_MAX_CONNS defaults to 20 (state.go). Contabo2 has it set;
+# Contabo1 does not, so Contabo1 is running on the default while Contabo2 runs
+# on a raised pool. Throughput is bounded by the slowest REPLAYING node, so an
+# asymmetry here caps the whole network at Contabo1's number regardless of what
+# Contabo2 can do.
+#
+# The pool size cannot be raised on its own. A pool larger than Postgres's
+# max_connections produces connection errors under load instead of throughput,
+# and the failure appears as request errors rather than as a tuning problem.
+# Contabo2's Postgres was raised to 250 during earlier work; Contabo1's is
+# unknown, and Contabo1 now also hosts the coordinator, matching service and
+# redis against the same database.
+#
+# So this reads, per box: the pool setting the node actually got, Postgres's
+# own max_connections, how many connections are currently in use, and how many
+# distinct clients are connected. Changes nothing.
+on:
+  workflow_dispatch: {}
+
+jobs:
+  c1:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Contabo1
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: 173.249.37.118
+          username: root
+          key: ${{ secrets.CONTABO_SSH_KEY }}
+          port: 22
+          fingerprint: "SHA256:noMtjHV8c+2iEFZu3TRUP6WRwGjkrvFke71KgU6Eyt4"
+          script_stop: false
+          timeout: 300s
+          command_timeout: 300s
+          script: |
+            echo "### CONTABO1 ###"
+            echo "--- throughput settings the NODE actually has ---"
+            docker inspect aequitas-node --format '{{range .Config.Env}}{{println .}}{{end}}' | grep -E '^(AEQUITAS_DB_MAX_CONNS|ENABLE_MULTI_BLOCK_TICK|AEQUITAS_COMPRESS_BLOCK_PAYLOAD|AEQUITAS_PRODUCE_WHEN_BACKLOG_SHRINKING|BLOCK_TIME)=' || echo "(none of them set -- node is on the defaults, AEQUITAS_DB_MAX_CONNS=20)"
+            echo "--- containers sharing this box ---"
+            docker ps --format '{{.Names}}' | tr '\n' ' '; echo
+            echo "--- postgres max_connections ---"
+            docker exec aequitas-postgres psql -U postgres -tAc "SHOW max_connections;" 2>/dev/null || echo "(could not query)"
+            echo "--- connections in use right now ---"
+            docker exec aequitas-postgres psql -U postgres -tAc "SELECT count(*) FROM pg_stat_activity;" 2>/dev/null || echo "(could not query)"
+            echo "--- by client application ---"
+            docker exec aequitas-postgres psql -U postgres -tAc "SELECT coalesce(application_name,'(none)'), count(*) FROM pg_stat_activity GROUP BY 1 ORDER BY 2 DESC;" 2>/dev/null || echo "(could not query)"
+            echo "--- cores and memory ---"
+            nproc; free -m | head -2
+
+  c2:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Contabo2
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: 194.163.188.71
+          username: root
+          key: ${{ secrets.CONTABO2_SSH_KEY }}
+          port: 22
+          script_stop: false
+          timeout: 300s
+          command_timeout: 300s
+          script: |
+            echo "### CONTABO2 ###"
+            echo "--- throughput settings the NODE actually has ---"
+            docker inspect aequitas-node --format '{{range .Config.Env}}{{println .}}{{end}}' | grep -E '^(AEQUITAS_DB_MAX_CONNS|ENABLE_MULTI_BLOCK_TICK|AEQUITAS_COMPRESS_BLOCK_PAYLOAD|AEQUITAS_PRODUCE_WHEN_BACKLOG_SHRINKING|BLOCK_TIME)=' || echo "(none set)"
+            echo "--- containers sharing this box ---"
+            docker ps --format '{{.Names}}' | tr '\n' ' '; echo
+            echo "--- postgres max_connections ---"
+            docker exec aequitas-postgres psql -U postgres -tAc "SHOW max_connections;" 2>/dev/null || echo "(could not query)"
+            echo "--- connections in use right now ---"
+            docker exec aequitas-postgres psql -U postgres -tAc "SELECT count(*) FROM pg_stat_activity;" 2>/dev/null || echo "(could not query)"
+            echo "--- by client application ---"
+            docker exec aequitas-postgres psql -U postgres -tAc "SELECT coalesce(application_name,'(none)'), count(*) FROM pg_stat_activity GROUP BY 1 ORDER BY 2 DESC;" 2>/dev/null || echo "(could not query)"
+            echo "--- cores and memory ---"
+            nproc; free -m | head -2

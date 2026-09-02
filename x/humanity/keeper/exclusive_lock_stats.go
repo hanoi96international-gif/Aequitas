@@ -2,6 +2,7 @@ package keeper
 
 import (
 	"fmt"
+	"sync"
 	"sync/atomic"
 	"time"
 )
@@ -38,7 +39,25 @@ var (
 	exclusiveHoldCount atomic.Int64 // how many exclusive holds
 	exclusiveHoldMax   atomic.Int64 // longest single hold
 	exclusiveStatsFrom atomic.Int64 // when measurement started, for the fraction
+
+	// Per-caller breakdown. The totals alone cannot answer the question that
+	// now matters: after the EVM mirror stopped taking this lock,
+	// exclusive_busy_pct fell to 0.65% -- yet transfers still wait 18.05ms
+	// acquiring cs.mu.RLock() across 1,851 holds. Go blocks new readers the
+	// moment a writer ARRIVES, so with holds this short the count matters more
+	// than the duration, and "who arrives 1,851 times" is not something the
+	// aggregate can say.
+	//
+	// sync.Map because the label set is tiny, fixed at compile time, and read
+	// far less often than written.
+	exclusiveByLabel sync.Map // label -> *labelStat
 )
+
+type labelStat struct {
+	nanos atomic.Int64
+	count atomic.Int64
+	max   atomic.Int64
+}
 
 // exclusiveHoldWarnThreshold is when a single hold is worth a log line. At
 // BLOCK_TIME=1s, a hold of a quarter second means a quarter of that second had
@@ -60,6 +79,17 @@ func trackExclusiveHold(acquired time.Time, what string) {
 	exclusiveStatsFrom.CompareAndSwap(0, acquired.UnixNano())
 	exclusiveHoldNanos.Add(int64(held))
 	exclusiveHoldCount.Add(1)
+
+	v, _ := exclusiveByLabel.LoadOrStore(what, &labelStat{})
+	st := v.(*labelStat)
+	st.nanos.Add(int64(held))
+	st.count.Add(1)
+	for {
+		prev := st.max.Load()
+		if int64(held) <= prev || st.max.CompareAndSwap(prev, int64(held)) {
+			break
+		}
+	}
 	for {
 		prev := exclusiveHoldMax.Load()
 		if int64(held) <= prev || exclusiveHoldMax.CompareAndSwap(prev, int64(held)) {
@@ -100,5 +130,25 @@ func ExclusiveLockStats() map[string]interface{} {
 			out["exclusive_busy_pct"] = float64(total) / float64(window) * 100
 		}
 	}
+
+	// Per caller. Read the COUNT column first: a writer that arrives often
+	// convoys readers often, however briefly it holds.
+	by := map[string]interface{}{}
+	exclusiveByLabel.Range(func(k, v interface{}) bool {
+		st := v.(*labelStat)
+		c := st.count.Load()
+		e := map[string]interface{}{
+			"holds":    c,
+			"total_ms": st.nanos.Load() / int64(time.Millisecond),
+			"max_ms":   st.max.Load() / int64(time.Millisecond),
+			"avg_ms":   int64(0),
+		}
+		if c > 0 {
+			e["avg_ms"] = st.nanos.Load() / c / int64(time.Millisecond)
+		}
+		by[k.(string)] = e
+		return true
+	})
+	out["by_caller"] = by
 	return out
 }

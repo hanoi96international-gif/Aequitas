@@ -1,0 +1,134 @@
+name: Raise DB capacity on Contabo1 (inspect first, then apply)
+
+# MEASURED 2026-08-20, not assumed:
+#
+#   Contabo1  pool 20 (the default -- AEQUITAS_DB_MAX_CONNS is unset)
+#             postgres max_connections 100
+#             18 connections in use WHILE THE CHAIN IS IDLE
+#             8 containers on the box
+#
+#   Contabo2  pool 100, max_connections 250, 10 in use, 6 containers
+#
+# Eighteen of twenty at idle means Contabo1's pool is effectively full before
+# any load arrives. Throughput is bounded by the slowest REPLAYING node, so
+# this caps the whole network at Contabo1's number no matter what Contabo2 can
+# do -- and it matches the 87,534 pool waits measured earlier in this project.
+#
+# ORDER MATTERS
+#
+# Postgres first, then the pool. A pool larger than max_connections does not
+# produce throughput, it produces connection errors under load, and those look
+# like application failures rather than like a tuning mistake. So
+# max_connections goes to 250 (matching Contabo2) before AEQUITAS_DB_MAX_CONNS
+# goes to 100, leaving room for the coordinator, matching service and anything
+# else sharing this database.
+#
+# WHAT THIS DELIBERATELY DOES NOT DO
+#
+# It does not set ENABLE_MULTI_BLOCK_TICK, AEQUITAS_COMPRESS_BLOCK_PAYLOAD or
+# AEQUITAS_PRODUCE_WHEN_BACKLOG_SHRINKING, which Contabo2 also has. Those change
+# consensus timing and wire format; the pool change is a measured fix for a
+# measured saturation, and mixing the two would make the next throughput
+# measurement uninterpretable. One change, then measure.
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "inspect (read-only) or apply"
+        required: true
+        default: inspect
+        type: choice
+        options: [inspect, apply]
+
+jobs:
+  raise:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Contabo1
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: 173.249.37.118
+          username: root
+          key: ${{ secrets.CONTABO_SSH_KEY }}
+          port: 22
+          fingerprint: "SHA256:noMtjHV8c+2iEFZu3TRUP6WRwGjkrvFke71KgU6Eyt4"
+          script_stop: false
+          timeout: 600s
+          command_timeout: 600s
+          script: |
+            MODE="${{ inputs.mode }}"
+
+            echo "=== BEFORE ==="
+            echo -n "postgres max_connections: "
+            docker exec aequitas-postgres psql -U postgres -tAc "SHOW max_connections;" 2>/dev/null || echo "?"
+            echo -n "connections in use      : "
+            docker exec aequitas-postgres psql -U postgres -tAc "SELECT count(*) FROM pg_stat_activity;" 2>/dev/null || echo "?"
+            echo -n "node pool setting       : "
+            docker inspect aequitas-node --format '{{range .Config.Env}}{{println .}}{{end}}' | grep '^AEQUITAS_DB_MAX_CONNS=' || echo "unset (default 20)"
+            echo -n "memory available (MB)   : "
+            free -m | awk '/^Mem:/{print $7}'
+
+            if [ "$MODE" != "apply" ]; then
+              echo ""
+              echo "apply would:"
+              echo "  1. ALTER SYSTEM SET max_connections = 250;  and restart aequitas-postgres"
+              echo "  2. add AEQUITAS_DB_MAX_CONNS=100 to /root/.aequitas.env"
+              echo "  3. recreate aequitas-node with that value, keeping its mounts and other env"
+              echo "mode=inspect -- nothing changed."
+              exit 0
+            fi
+
+            echo ""
+            echo "=== 1. postgres max_connections -> 250 ==="
+            docker exec aequitas-postgres psql -U postgres -c "ALTER SYSTEM SET max_connections = 250;"
+            echo "--- restarting postgres (the node will lose its connections briefly and reconnect) ---"
+            docker restart aequitas-postgres
+            sleep 20
+            for i in 1 2 3 4 5 6 7 8 9 10; do
+              V=$(docker exec aequitas-postgres psql -U postgres -tAc "SHOW max_connections;" 2>/dev/null)
+              if [ -n "$V" ]; then echo "postgres is back, max_connections=$V"; break; fi
+              echo "  waiting for postgres ($i/10)"; sleep 6
+            done
+            V=$(docker exec aequitas-postgres psql -U postgres -tAc "SHOW max_connections;" 2>/dev/null)
+            if [ "$V" != "250" ]; then
+              echo "REFUSING to raise the pool: max_connections is '$V', not 250. A pool of 100"
+              echo "against a smaller server limit produces connection errors under load instead"
+              echo "of throughput. Postgres left as it is; the node was not touched."
+              exit 1
+            fi
+
+            echo ""
+            echo "=== 2. pool setting ==="
+            cp /root/.aequitas.env "/root/.aequitas.env.bak.$(date +%Y%m%d-%H%M%S)"
+            sed -i '/^AEQUITAS_DB_MAX_CONNS=/d' /root/.aequitas.env
+            echo 'AEQUITAS_DB_MAX_CONNS=100' >> /root/.aequitas.env
+            grep '^AEQUITAS_DB_MAX_CONNS=' /root/.aequitas.env
+
+            echo ""
+            echo "=== 3. recreate the node with its existing mounts and env ==="
+            IMAGE="$(docker inspect aequitas-node --format '{{.Config.Image}}')"
+            NET="$(docker inspect aequitas-node --format '{{range $k, $v := .NetworkSettings.Networks}}{{$k}} {{end}}' | awk '{print $1}')"
+            PORTS="$(docker inspect aequitas-node --format '{{range $p, $c := .HostConfig.PortBindings}}-p {{(index $c 0).HostPort}}:{{$p}} {{end}}' | sed 's|/tcp||g')"
+            MOUNTS="$(docker inspect aequitas-node --format '{{range .Mounts}}-v {{.Source}}:{{.Destination}} {{end}}')"
+            mkdir -p /root/dbcap-migration
+            ENVOUT=/root/dbcap-migration/inherited.env
+            docker inspect aequitas-node --format '{{range .Config.Env}}{{println .}}{{end}}' | grep -vE '^(RESYNC_FROM_SNAPSHOT|HOSTNAME|PATH|HOME)=' | grep -E '^[A-Za-z_][A-Za-z0-9_]*=' > /tmp/proc.env
+            grep -E '^[A-Za-z_][A-Za-z0-9_]*=' /root/.aequitas.env 2>/dev/null | grep -vE '^(RESYNC_FROM_SNAPSHOT|HOSTNAME|PATH|HOME)=' > /tmp/file.env || true
+            awk -F= '!seen[$1]++' /tmp/file.env /tmp/proc.env > "$ENVOUT"
+            echo "mounts kept : $MOUNTS"
+            echo "pool in set : $(grep '^AEQUITAS_DB_MAX_CONNS=' "$ENVOUT" || echo MISSING)"
+            echo "MPC kept    : $(grep -c '^MPC_' "$ENVOUT") keys"
+            echo "WAL kept    : $(grep -c '^AEQUITAS_WAL' "$ENVOUT") keys"
+
+            docker stop aequitas-node && docker rm aequitas-node
+            docker run -d --name aequitas-node --network "$NET" $PORTS $MOUNTS --env-file "$ENVOUT" --restart unless-stopped "$IMAGE"
+            sleep 45
+
+            echo ""
+            echo "=== AFTER ==="
+            docker inspect aequitas-node --format '{{range .Config.Env}}{{println .}}{{end}}' | grep -E '^(AEQUITAS_DB_MAX_CONNS|AEQUITAS_WAL_ENABLED)=' || echo "(missing)"
+            echo -n "MPC serving : "; docker logs aequitas-node --since 3m 2>&1 | grep -cF '[MPC] serving'
+            echo -n "panics      : "; docker logs aequitas-node --since 3m 2>&1 | grep -ciE 'panic|fatal'
+            echo -n "max_conns   : "; docker exec aequitas-postgres psql -U postgres -tAc "SHOW max_connections;"
+            echo -n "in use      : "; docker exec aequitas-postgres psql -U postgres -tAc "SELECT count(*) FROM pg_stat_activity;"
+            echo -n "height      : "; curl -s --max-time 15 http://127.0.0.1:8080/api/status | grep -o '"height":[0-9]*'

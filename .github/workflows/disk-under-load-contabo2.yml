@@ -1,0 +1,130 @@
+name: Is the disk slow, or is the node making it slow? (probe DURING load)
+
+# THE QUESTION THIS SETTLES.
+#
+# Measured separately on 2026-08-21:
+#
+#   filesystem alone, no chain running : 426 fsyncs/s, p50 1976us, p99 6507us
+#   chain's WAL writer under load      : sync_avg 14605-15989us, max 1708300us
+#
+# A seven-fold gap. Five hypotheses have been measured and rejected in getting
+# here -- parallel replay, WAL flush batch size, flush interval in both
+# directions, and Postgres checkpoint tuning (max_wal_size 1GB -> 8GB plus
+# wal_compression moved sync_avg only 15989 -> 14605).
+#
+# Two explanations remain and they need opposite fixes:
+#
+#   A. DEVICE CONTENTION. The node's own I/O -- WAL records, Postgres outbox
+#      rows and account upserts, block storage -- saturates one shared QEMU
+#      virtual disk, so every fsync queues behind it. Then the fix is less I/O
+#      per transfer or faster storage, and no amount of lock work will help.
+#
+#   B. SOMETHING IN THE NODE. The device is fine and the latency is added
+#      inside the process. Then the fix is in the code and the hardware is
+#      innocent.
+#
+# A scratch-file fsync loop running WHILE the chain is under load separates
+# them: it shares the device but shares nothing else. If its latency degrades
+# the same way, it is A. If it stays near 2ms while the node sees 15ms, it is B.
+#
+# Writes only to a scratch file it creates and deletes.
+on:
+  workflow_dispatch:
+    inputs:
+      duration:
+        description: "Load duration"
+        required: false
+        default: "70s"
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Contabo2
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: 194.163.188.71
+          username: root
+          key: ${{ secrets.CONTABO2_SSH_KEY }}
+          port: 22
+          script_stop: false
+          timeout: 900s
+          command_timeout: 900s
+          envs: DUR
+          script: |
+            set +e
+            cd /root/contabo-loadtest || { echo "no loadtest dir"; exit 1; }
+
+            echo "=== baseline: fsync with the chain idle ==="
+            python3 /dev/stdin /root/aequitas-wal-data 6 <<'PY'
+            import os, sys, time
+            d, secs = sys.argv[1], float(sys.argv[2])
+            p = os.path.join(d, ".probe.tmp")
+            f = os.open(p, os.O_CREAT | os.O_WRONLY | os.O_TRUNC)
+            rec = b"x" * 220; lat = []
+            end = time.time() + secs
+            try:
+                while time.time() < end:
+                    os.write(f, rec)
+                    t0 = time.perf_counter(); os.fsync(f)
+                    lat.append((time.perf_counter() - t0) * 1e6)
+            finally:
+                os.close(f); os.unlink(p)
+            lat.sort(); n = len(lat)
+            print("  %.0f fsyncs/s | p50 %.0fus p90 %.0fus p99 %.0fus max %.0fus"
+                  % (n/secs, lat[n//2], lat[int(n*.9)], lat[int(n*.99)], lat[-1]))
+            PY
+
+            echo ""
+            echo "=== starting load in the background ==="
+            nohup docker run --rm --network host -v "$(pwd)":/w -w /w \
+              -v /root/go-mod-cache:/go/pkg/mod golang:1.24-alpine \
+              ./loadtest -accounts accounts-funded.csv \
+                -rpc http://localhost:8080/rpc -status http://localhost:8080/api/status \
+                -phase warmup,run -seeds 5 -duration "$DUR" -ramp 5 \
+                > /tmp/probe-load.log 2>&1 &
+            # Wait for the run phase, then let it reach steady state.
+            for i in $(seq 1 60); do
+              grep -q '=== PHASE run' /tmp/probe-load.log 2>/dev/null && break
+              sleep 2
+            done
+            sleep 12
+
+            echo "=== the SAME fsync probe, now while the chain is under load ==="
+            python3 /dev/stdin /root/aequitas-wal-data 20 <<'PY'
+            import os, sys, time
+            d, secs = sys.argv[1], float(sys.argv[2])
+            p = os.path.join(d, ".probe.tmp")
+            f = os.open(p, os.O_CREAT | os.O_WRONLY | os.O_TRUNC)
+            rec = b"x" * 220; lat = []
+            end = time.time() + secs
+            try:
+                while time.time() < end:
+                    os.write(f, rec)
+                    t0 = time.perf_counter(); os.fsync(f)
+                    lat.append((time.perf_counter() - t0) * 1e6)
+            finally:
+                os.close(f); os.unlink(p)
+            lat.sort(); n = len(lat)
+            print("  %.0f fsyncs/s | p50 %.0fus p90 %.0fus p99 %.0fus max %.0fus"
+                  % (n/secs, lat[n//2], lat[int(n*.9)], lat[int(n*.99)], lat[-1]))
+            PY
+
+            echo ""
+            echo "=== what the node's own writer saw in the same window ==="
+            curl -s --max-time 15 http://127.0.0.1:8080/api/health/combined \
+              | tr ',' '\n' | grep -oE '"(avg_batch|sync_avg_us|sync_max_us|write_avg_us)":[0-9.]+' | sed 's/"//g'
+
+            echo ""
+            echo "=== generator result ==="
+            wait
+            grep -E 'elapsed:|TPS \(' /tmp/probe-load.log | head -2
+
+            echo ""
+            echo "READ IT LIKE THIS:"
+            echo "  probe degrades under load  -> device contention. Fix is less I/O per"
+            echo "     transfer or faster storage; lock work will not help."
+            echo "  probe stays near baseline  -> the latency is added inside the node,"
+            echo "     and the hardware is innocent."
+        env:
+          DUR: ${{ inputs.duration }}

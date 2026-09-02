@@ -1,0 +1,112 @@
+name: Bring Contabo1's throughput settings level with Contabo2
+
+# Contabo1 was missing every throughput setting Contabo2 has. The pool was
+# fixed separately (db-capacity-contabo1.yml); these are the remaining three.
+#
+# AEQUITAS_COMPRESS_BLOCK_PAYLOAD is the one that matters most here, and its
+# own header describes exactly the failure this project has been chasing:
+#
+#   SaveBlockWithPendingTxsAtomic runs while dag.mu is held, and under load it
+#   is the binding constraint on the whole chain: block production fell to 9
+#   blocks in 85 seconds where 85 were due, and AddPeerBlock cannot take the
+#   lock during that window either, which is what piles up orphans and
+#   collapses the DAG to a single tip.
+#
+# Measured on the target hardware: 3.5x at full-block size with compression
+# time already counted, and the win grows with the block.
+#
+# WHY ENABLING IT ON CONTABO1 IS SAFE
+#
+# The header warns that this is a one-way, network-wide decision: a block
+# written compressed leaves the plain column empty, and a node WITHOUT this
+# code reads that as a block with no transactions, silently. That warning is
+# about nodes lacking the code -- decodeBlockPayload is not gated by the env
+# var at all; it decompresses whenever the compressed column holds bytes. Both
+# boxes run the same commit, and Contabo2 has been writing compressed blocks
+# already, which Contabo1 has been reading correctly the whole time. Turning on
+# Contabo1's writer changes nothing about what either node can read.
+#
+# The other two are per-node operator decisions that Contabo2 already carries:
+# ENABLE_MULTI_BLOCK_TICK (production cadence) and
+# AEQUITAS_PRODUCE_WHEN_BACKLOG_SHRINKING, which keeps a node producing while
+# it works off a backlog instead of mistaking one for a fork -- precisely the
+# state a node is in under load.
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "inspect (read-only) or apply"
+        required: true
+        default: inspect
+        type: choice
+        options: [inspect, apply]
+
+jobs:
+  align:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Contabo1
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: 173.249.37.118
+          username: root
+          key: ${{ secrets.CONTABO_SSH_KEY }}
+          port: 22
+          fingerprint: "SHA256:noMtjHV8c+2iEFZu3TRUP6WRwGjkrvFke71KgU6Eyt4"
+          script_stop: false
+          timeout: 600s
+          command_timeout: 600s
+          script: |
+            MODE="${{ inputs.mode }}"
+
+            echo "=== BEFORE ==="
+            docker inspect aequitas-node --format '{{range .Config.Env}}{{println .}}{{end}}' | grep -E '^(ENABLE_MULTI_BLOCK_TICK|AEQUITAS_COMPRESS_BLOCK_PAYLOAD|AEQUITAS_PRODUCE_WHEN_BACKLOG_SHRINKING|AEQUITAS_DB_MAX_CONNS|AEQUITAS_WAL_ENABLED)=' || echo "(none)"
+
+            if [ "$MODE" != "apply" ]; then
+              echo ""
+              echo "apply would add to /root/.aequitas.env and recreate the node:"
+              echo "  ENABLE_MULTI_BLOCK_TICK=1"
+              echo "  AEQUITAS_COMPRESS_BLOCK_PAYLOAD=1"
+              echo "  AEQUITAS_PRODUCE_WHEN_BACKLOG_SHRINKING=1"
+              echo "mode=inspect -- nothing changed."
+              exit 0
+            fi
+
+            echo ""
+            echo "=== writing settings ==="
+            cp /root/.aequitas.env "/root/.aequitas.env.bak.$(date +%Y%m%d-%H%M%S)"
+            for kv in ENABLE_MULTI_BLOCK_TICK=1 AEQUITAS_COMPRESS_BLOCK_PAYLOAD=1 AEQUITAS_PRODUCE_WHEN_BACKLOG_SHRINKING=1; do
+              k="${kv%%=*}"
+              grep -q "^$k=" /root/.aequitas.env || echo "$kv" >> /root/.aequitas.env
+            done
+            grep -E '^(ENABLE_MULTI_BLOCK_TICK|AEQUITAS_COMPRESS_BLOCK_PAYLOAD|AEQUITAS_PRODUCE_WHEN_BACKLOG_SHRINKING)=' /root/.aequitas.env
+
+            echo ""
+            echo "=== recreating with existing mounts and env ==="
+            IMAGE="$(docker inspect aequitas-node --format '{{.Config.Image}}')"
+            NET="$(docker inspect aequitas-node --format '{{range $k, $v := .NetworkSettings.Networks}}{{$k}} {{end}}' | awk '{print $1}')"
+            PORTS="$(docker inspect aequitas-node --format '{{range $p, $c := .HostConfig.PortBindings}}-p {{(index $c 0).HostPort}}:{{$p}} {{end}}' | sed 's|/tcp||g')"
+            MOUNTS="$(docker inspect aequitas-node --format '{{range .Mounts}}-v {{.Source}}:{{.Destination}} {{end}}')"
+            mkdir -p /root/align-migration
+            ENVOUT=/root/align-migration/inherited.env
+            docker inspect aequitas-node --format '{{range .Config.Env}}{{println .}}{{end}}' | grep -vE '^(RESYNC_FROM_SNAPSHOT|HOSTNAME|PATH|HOME)=' | grep -E '^[A-Za-z_][A-Za-z0-9_]*=' > /tmp/proc.env
+            grep -E '^[A-Za-z_][A-Za-z0-9_]*=' /root/.aequitas.env 2>/dev/null | grep -vE '^(RESYNC_FROM_SNAPSHOT|HOSTNAME|PATH|HOME)=' > /tmp/file.env || true
+            awk -F= '!seen[$1]++' /tmp/file.env /tmp/proc.env > "$ENVOUT"
+            echo "mounts kept: $MOUNTS"
+            echo "MPC keys   : $(grep -c '^MPC_' "$ENVOUT")"
+            echo "WAL keys   : $(grep -c '^AEQUITAS_WAL' "$ENVOUT")"
+
+            docker stop aequitas-node && docker rm aequitas-node
+            docker run -d --name aequitas-node --network "$NET" $PORTS $MOUNTS --env-file "$ENVOUT" --restart unless-stopped "$IMAGE"
+            sleep 45
+
+            echo ""
+            echo "=== AFTER ==="
+            docker inspect aequitas-node --format '{{range .Config.Env}}{{println .}}{{end}}' | grep -E '^(ENABLE_MULTI_BLOCK_TICK|AEQUITAS_COMPRESS_BLOCK_PAYLOAD|AEQUITAS_PRODUCE_WHEN_BACKLOG_SHRINKING|AEQUITAS_DB_MAX_CONNS|AEQUITAS_WAL_ENABLED)='
+            echo -n "MPC serving: "; docker logs aequitas-node --since 3m 2>&1 | grep -cF '[MPC] serving'
+            echo -n "WAL active : "; docker logs aequitas-node --since 3m 2>&1 | grep -cF '[WAL]'
+            echo -n "panics     : "; docker logs aequitas-node --since 3m 2>&1 | grep -ciE 'panic|fatal'
+            echo -n "height     : "; curl -s --max-time 15 http://127.0.0.1:8080/api/status | grep -o '"height":[0-9]*'
+            echo "--- 20s later, is it still advancing? ---"
+            sleep 20
+            echo -n "height     : "; curl -s --max-time 15 http://127.0.0.1:8080/api/status | grep -o '"height":[0-9]*'

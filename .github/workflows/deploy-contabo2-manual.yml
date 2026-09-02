@@ -1,0 +1,63 @@
+name: Deploy Contabo2 manually (bypasses the Contabo1 health gate)
+
+# deploy-contabo2.yml waits for Contabo1's deploy to succeed, and Contabo1's
+# deploy fails if that node's height does not move for 10 minutes. That gate is
+# right: deploying Contabo2 on top of a stuck Contabo1 would leave the network
+# with no advancing validator.
+#
+# It also creates a deadlock the gate cannot resolve on its own. On 2026-08-21
+# Contabo1 was stuck precisely BECAUSE Contabo2 was serving oversized
+# /api/blocks/by-hash responses -- Contabo1 had the client-side fix and was
+# splitting 500 -> 250 -> ..., paying a discarded 20 MB download per step, and
+# could not catch up. The server-side byte budget that ends that lives in the
+# code Contabo2 has not deployed, and cannot deploy, until Contabo1 recovers.
+#
+# So this exists to break exactly that cycle: get the fix onto the node that
+# has to SERVE it, so the stuck node can fetch efficiently again.
+#
+# Use it only when the gate is the thing standing in the way, and say why in
+# the reason input. Contabo2 restarting while Contabo1 is stuck does mean a
+# short window with nothing producing -- which is acceptable when the
+# alternative is Contabo1 staying stuck indefinitely, and not otherwise.
+on:
+  workflow_dispatch:
+    inputs:
+      reason:
+        description: "Why the normal gated deploy cannot be used"
+        required: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deploy Contabo2
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: 194.163.188.71
+          username: root
+          key: ${{ secrets.CONTABO2_SSH_KEY }}
+          port: 22
+          script_stop: false
+          timeout: 900s
+          command_timeout: 900s
+          script: |
+            echo "reason: ${{ inputs.reason }}"
+            echo "=== before ==="
+            curl -s --max-time 15 http://127.0.0.1:8080/api/status | tr ',' '\n' | grep -E '"height"|git_commit' || echo "(unreachable)"
+            echo "=== running deploy_safe_c2.sh ==="
+            bash /root/deploy_safe_c2.sh 2>&1 | tail -25
+            echo "=== waiting for the node to come back ==="
+            for i in $(seq 1 20); do
+              sleep 15
+              H=$(curl -s --max-time 10 http://127.0.0.1:8080/api/status | grep -o '"height":[0-9]*' | cut -d: -f2)
+              if [ -n "$H" ]; then echo "back after ~$((i*15))s at height $H"; break; fi
+              echo "  waiting ($i/20)"
+            done
+            echo "=== after ==="
+            curl -s --max-time 15 http://127.0.0.1:8080/api/status | tr ',' '\n' | grep -E '"height"|git_commit' || echo "(unreachable)"
+            echo "=== the settings that must have survived ==="
+            docker inspect aequitas-node --format '{{range .Config.Env}}{{println .}}{{end}}' | grep -E '^(AEQUITAS_WAL_ENABLED|AEQUITAS_DB_MAX_CONNS|ENABLE_MULTI_BLOCK_TICK|AEQUITAS_COMPRESS_BLOCK_PAYLOAD|AEQUITAS_RPC_RATE_LIMIT_MAX)=' || echo "(MISSING -- investigate before load-testing again)"
+            echo "=== MPC ==="
+            docker logs aequitas-node --since 3m 2>&1 | grep -cF '[MPC] serving' || true
+            echo "=== panics ==="
+            docker logs aequitas-node --since 3m 2>&1 | grep -ciE 'panic|fatal' || true

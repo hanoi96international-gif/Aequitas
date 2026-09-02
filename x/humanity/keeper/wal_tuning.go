@@ -95,6 +95,33 @@ func applyWALTuningFromEnv() {
 		fmt.Printf("[WAL] flush queue depth overridden: %d -> %d\n", walFlushMaxQueueDepth, v)
 		walFlushMaxQueueDepth = v
 	}
+
+	// The interval, not the batch cap, decides how much of the address space one
+	// flush freezes.
+	//
+	// Measured under load on 2026-08-21: items_per_flush was 402 against a
+	// cfg_batch of 4,000 -- the cap was never reached, so it bound nothing, which
+	// is why sweeping it moved almost nothing. What did move is addrs_per_flush:
+	// 404 of a ~716-account working set, held 43ms on average and up to 712ms. A
+	// flush takes whatever arrived during the interval, so at 3,000 transfers/s a
+	// 100ms interval collects ~300 of them and, after deduplication, most of the
+	// addresses the fast path wants.
+	//
+	// Shorter means fewer addresses frozen for less time, which is the only lever
+	// left on the hold a mutex profile put at 45.90% of this node's entire lock
+	// contention. The hold itself must not be narrowed -- flushWALBatch's comment
+	// records two attempts that reopened Postgres deadlocks.
+	//
+	// Env rather than a constant, like the others here: the right value depends on
+	// arrival rate and working-set size, both properties of the traffic.
+	// walFlushInterval's own comment asks for TestSustainedWAL_QueueConvergence
+	// (AEQUITAS_WAL_SUSTAINED_BENCH=1) to be re-run after any change near this
+	// code, because round 1 of that investigation found short intervals trading
+	// throughput for boundedness.
+	if v := envPositiveInt("AEQUITAS_WAL_FLUSH_INTERVAL_MS"); v > 0 {
+		fmt.Printf("[WAL] flush interval overridden: %s -> %dms\n", walFlushInterval, v)
+		walFlushInterval = time.Duration(v) * time.Millisecond
+	}
 }
 
 // envPositiveInt reads a positive integer, or 0 when unset or unusable. A
@@ -146,6 +173,10 @@ func WALFlushStats() map[string]interface{} {
 		"max_batch_items": walFlushStats.maxBatchNo.Load(),
 		"hold_max_ms":     walFlushStats.maxHoldMs.Load(),
 		"cfg_batch":       walFlushMaxBatch,
+		// 0 = no address cap (the shipped behaviour). Read together with
+		// addrs_per_flush and hold_avg_ms: the cap exists to bound exactly those.
+		"cfg_max_addrs":   walFlushMaxAddrs(),
+		"cfg_interval_ms": walFlushInterval.Milliseconds(),
 		"cfg_concurrency": walFlushConcurrency,
 		"cfg_queue_depth": walFlushMaxQueueDepth,
 	}

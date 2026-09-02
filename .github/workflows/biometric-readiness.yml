@@ -1,0 +1,84 @@
+name: Was fehlt, um die Gesichtspruefung scharf zu schalten? (read-only)
+
+# DER ZUSTAND, live geprueft 23.08.: die App auf der Website prueft KEINEN
+# Menschen. EXPO_PUBLIC_BIOMETRIC_ENABLED ist als Repo-Variable auf false
+# gesetzt und wird damit in jeden Build eingebacken, also ist
+# app/biometric-capture.tsx unerreichbar. Der Registrierungspfad besteht dann
+# aus:
+#
+#   1. Zufallsgeheimnis aus dem Geraete-Schluesselspeicher (Fingerabdruck nur,
+#      WENN das Geraet einen hat -- requireAuthentication: canBiometric)
+#   2. Nachfrage bei der Kette, ob dieser Geraete-Hash schon registriert ist
+#   3. ZK-Beweis + Registrierung
+#
+# Play Integrity laeuft nicht mit: lib/attestation.ts wird ausschliesslich aus
+# biometric-capture.tsx aufgerufen. Ein zweites Telefon ist damit ein zweiter
+# Mensch mit 1 000 AEQ.
+#
+# DIESER LAUF AENDERT NICHTS. Er beantwortet nur, ob die Gegenstellen
+# ueberhaupt bereitstehen -- Coordinator, Matching, deren Erreichbarkeit und
+# ob sie eine Registrierung ohne Handflaeche annehmen. Das scharf zu schalten
+# ist eine Entscheidung ueber biometrische Daten, und die trifft nicht ein
+# Werkzeug.
+on:
+  workflow_dispatch: {}
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Contabo1 (dort laufen Coordinator und Matching)
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: 173.249.37.118
+          username: root
+          key: ${{ secrets.CONTABO_SSH_KEY }}
+          port: 22
+          fingerprint: "SHA256:noMtjHV8c+2iEFZu3TRUP6WRwGjkrvFke71KgU6Eyt4"
+          script_stop: false
+          timeout: 300s
+          command_timeout: 300s
+          script: |
+            set +e
+            echo "=== 1. Laufen die Gegenstellen ueberhaupt? ==="
+            docker ps --format '  {{.Names}}  {{.Status}}' | grep -iE 'coordinator|matching|redis|proof' \
+              || echo "  keiner der Dienste laeuft"
+
+            echo ""
+            echo "=== 2. Antworten sie? (aus dem Netz des Coordinators heraus) ==="
+            for c in aequitas-coordinator aequitas-matching-1; do
+              docker inspect "$c" >/dev/null 2>&1 || { echo "  $c: existiert nicht"; continue; }
+              P=$(docker inspect "$c" --format '{{range $p, $v := .Config.ExposedPorts}}{{$p}} {{end}}' | tr -d '/tcp' | awk '{print $1}')
+              echo "  $c: exponiert Port ${P:-?}"
+              docker run --rm --network "container:$c" curlimages/curl:latest \
+                -s --max-time 20 -o /dev/null -w "    /health -> HTTP %{http_code}\n" \
+                "http://127.0.0.1:${P:-8000}/health" 2>/dev/null || echo "    (nicht erreichbar)"
+            done
+
+            echo ""
+            echo "=== 3. Von aussen erreichbar? Die App braucht eine oeffentliche Adresse ==="
+            # EXPO_PUBLIC_COORDINATOR_BASE ist derzeit leer. Ohne oeffentlich
+            # erreichbaren Endpunkt kann eine App auf einem Telefon nichts
+            # hinschicken, egal wie das Flag steht.
+            for u in https://aequitas.digital/coordinator/health https://aequitas.digital/api/coordinator/health; do
+              curl -s --max-time 20 -o /dev/null -w "  $u -> HTTP %{http_code}\n" "$u"
+            done
+            echo "  Caddy-Routen:"
+            docker exec proof-caddy cat /etc/caddy/Caddyfile 2>/dev/null | grep -iE 'reverse_proxy|handle|:[0-9]{4}' | head -12 \
+              || echo "  (Caddyfile nicht lesbar)"
+
+            echo ""
+            echo "=== 4. Nimmt der Matching-Dienst eine Registrierung OHNE Handflaeche an? ==="
+            # Das ist die Bedingung aus dem 19.08.-Commit: die App schickt seit
+            # v1.4.1 keine Handflaeche mehr.
+            docker exec aequitas-matching-1 grep -c "palm capture is optional" /app/app/main.py 2>/dev/null \
+              | sed 's/^/  Treffer im laufenden Container: /' || echo "  (nicht pruefbar)"
+
+            echo ""
+            echo "=== 5. Wieviele Matching-Instanzen? (ein Quorum von 1 ist keins) ==="
+            echo "  laufende Matching-Container: $(docker ps --format '{{.Names}}' | grep -c matching)"
+
+            echo ""
+            echo "=== 6. Wo liegen die biometrischen Daten? ==="
+            docker inspect aequitas-matching-1 --format '{{range .Mounts}}  {{.Source}} -> {{.Destination}}{{println}}{{end}}' 2>/dev/null
+            echo "  (dieselbe Maschine wie der Primary-Validator -- Ausfallradius und DSGVO)"

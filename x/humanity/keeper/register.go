@@ -195,6 +195,10 @@ type RegisterRequest struct {
 	// Nullifier is SHA256(bioHash + ":aequitas-ubi-v1") for v1 circuit, or
 	// the hex representation of pubSignals[1] for v2 circuit (ZK-bound).
 	Nullifier string `json:"nullifier"`
+	// MPCSession names the fuzzy duplicate check performed before this call
+	// (see mpc_api.go). The verdict is held server-side and consumed here; the
+	// client cannot assert its own result. Ignored unless MPC_REQUIRED=true.
+	MPCSession string `json:"mpc_session"`
 	// ZKNullifier is pubSignals[1] from the v2 circuit — the nullifier
 	// derived INSIDE the ZK proof, making it cryptographically binding.
 	// When present, it overrides the client-SHA256 nullifier.
@@ -260,6 +264,21 @@ func (a *APIServer) handleRegister(w http.ResponseWriter, r *http.Request) {
 	// we must reject here so bad inputs never reach consensus state.
 	if !isValidWalletAddr(wallet) {
 		json.NewEncoder(w).Encode(RegisterResponse{Success: false, Message: "invalid wallet address format"})
+		return
+	}
+
+	// The fuzzy duplicate check (mpc_api.go), if this deployment requires it.
+	//
+	// Placed alongside the other admission checks and before any state is
+	// touched. The nullifier below catches a repeat of the SAME proof and
+	// bio_hashes catches a byte-identical capture; neither catches the same
+	// person photographed twice, which is the whole point of this one.
+	//
+	// Every refusal here is retryable by design: a check that could not run
+	// refuses the attempt rather than approving it, and says so in words that
+	// do not accuse the person of anything.
+	if ok, msg := mpcGateAllows(req.MPCSession); !ok {
+		json.NewEncoder(w).Encode(RegisterResponse{Success: false, Message: msg})
 		return
 	}
 
@@ -379,6 +398,26 @@ func (a *APIServer) registerOnV7(evmRPC *EVMRPCServer, wallet string, req Regist
 	// which has a weaker nullifier construction than the Poseidon-based v3.
 	if req.CircuitVersion != 3 || req.ZKNullifier == "" {
 		return "", fmt.Errorf("only circuit version 3 is accepted: upgrade your app — v3 Poseidon nullifier is required")
+	}
+
+	// KAM DIESER BEWEIS AUS EINER GEPRUEFTEN REGISTRIERUNG?
+	//
+	// Bis zum 26.08.2026 fragte das hier niemand. Der Vertrag prueft, dass der
+	// Beweis gueltig IST -- nicht, woher er kommt. Groth16-Proving-Keys sind
+	// konstruktionsbedingt oeffentlich, dieser liegt im Repo: wer sich eine
+	// bio_hash wuerfelt, lokal einen Beweis erzeugt und direkt hierher geht,
+	// praegte 1.000 AEQ. Und nochmal.
+	//
+	// Die gesamte biometrische Kette haengt an /api/prove. Geld entsteht hier.
+	// Ohne diese Pruefung war alles davor beratend -- BIO_ATTESTATION_MODE=
+	// required haertete einen Pfad, den niemand benutzen muss.
+	//
+	// Siehe prove_provenance.go.
+	if proveHerkunftVerlangt() && !hatProveHerkunft(req.ZKNullifier) {
+		fmt.Printf("[REGISTER] ✗ Abgewiesen: Nullifier %s… stammt aus keinem /prove dieses Knotens\n",
+			nullifierSchluessel(req.ZKNullifier)[:min(16, len(nullifierSchluessel(req.ZKNullifier)))])
+		return "", fmt.Errorf("this proof did not come from a verified registration on this node: " +
+			"run the biometric check via /api/prove first, and register on the same node")
 	}
 
 	// Prefer ZK-circuit-derived nullifier (v2 circuit, pubSignals[1]) over
@@ -593,6 +632,9 @@ func (a *APIServer) registerOnV7(evmRPC *EVMRPCServer, wallet string, req Regist
 		if mirrorBioHashKey == "" {
 			mirrorBioHashKey = req.BioHash
 		}
+		if mirrorBioHashKey == "" {
+			bioIndexKeinSchluessel(wallet)
+		}
 		if mirrorBioHashKey != "" {
 			if err := a.state.SaveBioHash(mirrorBioHashKey, wallet); err != nil {
 				fmt.Printf("[REGISTER] Warning: local bio_hashes sync failed for %s: %v\n", wallet, err)
@@ -758,9 +800,18 @@ func (a *APIServer) registerOnV7(evmRPC *EVMRPCServer, wallet string, req Regist
 	if bioHashKey == "" {
 		bioHashKey = req.BioHash
 	}
+	if bioHashKey == "" {
+		// Frueher der stille Zweig eines if: nichts passierte, nichts stand im
+		// Log. Ein Weg, auf dem nichts geschieht und nichts protokolliert
+		// wird, ist von einem funktionierenden nicht zu unterscheiden -- und
+		// war es drei Untersuchungen lang auch nicht. Siehe bio_index_sicht.go.
+		bioIndexKeinSchluessel(wallet)
+	}
 	if bioHashKey != "" {
 		if err := a.state.SaveBioHash(bioHashKey, wallet); err != nil {
-			fmt.Printf("[REGISTER] Warning: local bio_hashes sync failed for %s: %v\n", wallet, err)
+			bioIndexFehler(wallet, err)
+		} else {
+			bioIndexErfolg()
 		}
 		// Non-blocking — a slow proof server must not delay the
 		// registration response. No longer pure fire-and-forget: a

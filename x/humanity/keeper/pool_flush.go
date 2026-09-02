@@ -72,7 +72,15 @@ func (cs *ChainState) flushPoolAccountsIfDirty() {
 	if !cs.poolFlushDirty.CompareAndSwap(true, false) {
 		return
 	}
+	// Same reasoning as the EVM mirror flush: a periodic worker holding the
+	// global write lock, previously invisible to exclusive_lock_stats.
 	cs.mu.Lock()
+	// AFTER the Lock, not before: trackExclusiveHold measures how long other
+	// goroutines are shut out, not how long this worker queued. Timing from
+	// the attempt would inflate busy_pct and make it incomparable with the
+	// block-replay figure it sits next to.
+	exclusiveAcquired := time.Now()
+	defer trackExclusiveHold(exclusiveAcquired, "pool flush")
 	defer cs.mu.Unlock()
 	accs := make([]*AccountState, 0, 4)
 	for _, addr := range []string{validatorsPoolAddr, lpPoolAddr, ubiPoolAddr, treasuryPoolAddr} {

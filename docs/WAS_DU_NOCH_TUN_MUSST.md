@@ -1,0 +1,896 @@
+# Was du noch tun musst
+
+**Stand 01.09.2026.** Diese Datei ist über mehrere Tage gewachsen und enthält
+unten ein vollständiges Messprotokoll. **Wer nur wissen will, was zu tun ist,
+liest diesen Abschnitt — der Rest ist Geschichte und teils überholt.**
+
+## Offen — hängt an dir
+
+1. **MPC-Schwelle kalibrieren.** Braucht eine zweite Person vor der Kamera;
+   ohne echten Doppelversuch lässt sich keine Schwelle belegen.
+2. **Dritter Betreiber.** Quorum 2 bei zwei Vergleichsdiensten ist kein echter
+   Ausfallschutz. Braucht Punkt 1 zuerst.
+3. **Wallet-Schlüssel von der Signieridentität trennen.** Auf beiden Boxen ist
+   `RELAYER_PRIVATE_KEY` derselbe Schlüssel wie deine persönliche Wallet. Kein
+   Beta-Blocker, aber vor echtem Betrieb zu trennen — und nicht in der Nacht
+   vor einem Start, weil es die Blockproduktions-Identität ändert.
+4. **Phase-2-Rechtsprüfung**, falls du je auf echten Modus umstellst.
+
+## Offen — der Primary friert unter Last ein
+
+**Das Bild:** unter Last gegen C2 steht C1s Höhe minutenlang, dann hängt alles
+in einem Sprung an (am 02.09.2026 sechsmal beobachtet, zuletzt 513 Blöcke).
+C1 trägt Website und Explorer — er ist der, der es am wenigsten darf.
+
+**Behoben ist die Sichtbarkeit:** der Knoten verstummt dabei nicht mehr
+(`status_ohne_sperre.go`), gemessen an 16 von 16 beantworteten Abfragen
+während eines Laufs, bei dem vorher gar nichts kam.
+
+**Die Ursache ist offen.** Fünf Hypothesen sind gemessen und widerlegt — das
+ist der eigentliche Ertrag, denn es spart dem Nächsten diese Wege:
+
+| Hypothese | Messung | Ergebnis |
+|---|---|---|
+| Absturz / OOM | `RestartCount 0`, `ExitCode 0`, `OOMKilled false`, Speicher 34 % | **nein** |
+| Sperren-Gedränge | Mutex-Profil unter Last: schwerster Stack **1,3 s** blockiert | **nein** |
+| Deadlock | Goroutine-Dump: niemand hält lange, 3 von ~35 lauffähig | **nein** |
+| Quadratischer Ahnenlauf | 51 µs bei 200 Blöcken, 506 µs bei 2.000 — linear | **nein** |
+| CPU-Sättigung | im Stillstand `load average 0.00` bis 5.30, nie am Anschlag | **nein** |
+
+### Es liegt NICHT an C1 — es liegt an der Rolle
+
+Am 02.09.2026 durch Umkehr bewiesen. Dieselbe Last, einmal auf jede Box:
+
+| Last auf | belasteter Knoten | anderer Knoten | TPS |
+|---|---|---|---|
+| C2 | läuft weiter | **C1 friert ein**, Rückstand wächst | 3.513 |
+| C1 | läuft weiter | **C2 friert ein**, Rückstand wächst | 3.577 |
+
+Die Rollen tauschen exakt mit der Last. Wer sie empfängt, wendet die
+Überweisungen über den WAL-Schnellpfad an und packt sie in **seine** Blöcke;
+der andere muss dieselbe Menge über **Block-Replay** nachvollziehen — und
+genau der fällt zurück.
+
+Die Hardware sagt dasselbe: C1s roher fsync misst **550 µs**, C2s **573 µs** —
+C1 ist marginal *schneller*, beide haben 11.960 MB und dieselbe virtualisierte
+Platte. Und der Durchsatz ist mit 3.513 gegen 3.577 TPS praktisch identisch.
+
+**Der Schnellpfad und der Replay-Pfad sind nicht gleich schnell.** Das ist die
+Asymmetrie, und sie ist der Kern sowohl der Instabilität als auch der
+TPS-Decke.
+
+**Was das übrig lässt:** der zurückfallende Knoten ist weder blockiert noch ausgelastet
+— er *versucht* nicht aufzuholen. Das deutet auf die Taktung oder ein Tor im
+Sync-Pfad selbst, nicht auf eine Ressource. Die häufigste Logzeile in dem
+Zustand ist `Not yet 3 consecutive clean sync cycles` (34× in 5 Minuten), aber
+das ist das *Produktions*-Tor und erklärt nicht, warum das Nachziehen stockt.
+
+**Werkzeug dafür liegt bereit:** `contention-profile-c1-primary.yml` misst C1,
+während C2 unter Last steht — genau die Konstellation.
+
+## Offen — technisch, aber nicht dringend
+
+5. **`cs.activeTx` entfernen.** Bedingung: der Rückfallzähler muss über eine
+   **echte Verteilungsrunde** (eine, die auch verteilt — nicht `ran_elsewhere`)
+   und eine **Registrierung** hinweg bei 0 bleiben. Am 01.09. geprüft: Zähler
+   0, aber beide Bedingungen ungetestet. **Nicht entfernen, bevor das belegt
+   ist.**
+6. **Eine ZWEITE Platte für das WAL** — nicht eine schnellere. Das ist der
+   einzige verbliebene Durchsatz-Hebel und keine Code-Änderung.
+
+   Am 01.09. bis auf den Grund gemessen. Die Platte ist **nicht** langsam und
+   **nicht** ausgelastet:
+
+   | | |
+   |---|---|
+   | roher fsync, unbelastet | **573 µs** (≈1.745/s) |
+   | roher fsync, unter Last | 1.166 µs Median, **5.430 µs p95** |
+   | `f_await` laut iostat | **5,74–8,20 ms** |
+   | Warteschlangentiefe | 5–6 Anfragen |
+   | `%util` | **61–69 %**, also Luft nach oben |
+
+   Das WAL erlebt 5,96 ms je fsync — exakt das `f_await`. Der Grund ist nicht
+   Geschwindigkeit, sondern **Reihenfolge**: jeder fsync muss die 5–6
+   Postgres-Schreibvorgänge vor ihm mit auf die Platte zwingen. Deshalb hilft
+   eine *schnellere* Platte kaum, eine *getrennte* dagegen unmittelbar — dann
+   steht in der Warteschlange nur noch das WAL selbst.
+
+   Praktisch: ein zweites Volume an C2 hängen und `/root/aequitas-wal-data`
+   dorthin mounten.
+
+   **Was schon getan ist und nicht nochmal versucht werden muss:** Postgres
+   läuft bereits mit `synchronous_commit = off`; die Commits fsyncen also gar
+   nicht mehr. Die Konkurrenz kommt aus dem Schreibvolumen (Checkpoints,
+   Rückschreiben), nicht aus den Commits. `fsync = on` und
+   `full_page_writes = on` bleiben — die schützen gegen Korruption.
+
+   **Und der Unterschied NVMe/SSD zwischen den Boxen wirkt hier nicht:** von
+   innen melden beide `QEMU HARDDISK`, und C1 misst mit 550 µs sogar minimal
+   schneller als C2 mit 573 µs.
+
+## Erledigt und verifiziert
+
+- Verifier-Image, C1 als Validator, Proof-Server-Auslieferung, Testmodus-Tor,
+  Impressum/Datenschutz — alle am 29.08. geschlossen.
+- **Übertrag-Prüfung (war Punkt 6):** am 01.09. durchgeführt, drei Tage nach
+  dem Tor. Ergebnis `-0.000014 / -0.000014 / False` — unverändert und
+  **nicht** auf 0 zurückgesprungen. Die Grundlinie wird bewusst **nicht**
+  eingefroren: die 0 ist es, was Neuschöpfung sichtbar macht, und eine
+  negative Abweichung (vernichteter Staub) kann Schöpfung nicht verdecken.
+
+## Der Durchsatz-Endstand
+
+**~3.300 TPS gemessen, produktionsähnlicher Verkehr, null Fehlschläge.**
+
+Der Weg dahin und die drei Zwischenstände (2.650 → 3.700 → nach dem
+Shard-Umbau) stehen unten. **Gültig ist nur der letzte Abschnitt der Datei**
+(„Der Umbau, ausgeführt"). Kurzfassung:
+
+| Hebel | Wirkung |
+|---|---|
+| Shard-Zahl 16.384 → 262.144 | `pre_rlock` 19,7 → 2,2 ms, +19 % Durchsatz |
+| Ratenbegrenzer-Doku berichtigt | machte jede Messung überhaupt erst möglich |
+| Bündelgröße 100 → 10 | +38 % |
+| Kurzes Warten bei belegtem Shard | **nichts** — Vorgabe aus |
+
+Verbleibender Engpass: `wal_append` mit 89 % der Zeit — der fsync auf einer
+Platte, die sich WAL und Postgres teilen. **Hardware, nicht Code.**
+
+---
+
+# Geschichte und Messprotokoll
+
+Ab hier chronologisch. Enthält überholte Zwischenstände — sie stehen bewusst
+drin, weil die Begründungen zeigen, welche Wege schon ausgeschlossen sind.
+
+## (Liste vom 29.08.) 1 · Verifier-Image — **erledigt am 29.08.**
+
+Das Paket `aequitas-biometric-beta/matching` ist öffentlich. Nachgeprüft: das
+Manifest lässt sich **ohne jede Anmeldung** abrufen (`200`). Damit ist der
+Leitfaden „Run a Verifier" zum ersten Mal für Fremde ausführbar — und der Weg
+zu einem dritten Betreiber offen.
+
+Geprüft war vorher, dass dabei nichts mitgeht: das Dockerfile kopiert nur
+`requirements.txt`, `app/` und `scripts/`; `poh_beta.db`, `sample_test_images`
+und `models/` bleiben draußen, und im ausgelieferten Quelltext stecken keine
+Zugangsdaten.
+
+---
+
+## (Liste vom 29.08.) 2 · Der Testmodus ist entschieden — und jetzt abgesichert
+
+Du hast entschieden: die Beta startet bewusst mit `SERVICE_MODE=test`.
+
+**Dabei ist ein Geldschöpfungspfad aufgefallen, der jetzt verschlossen ist.**
+Die Galerien sind strikt nach Modus getrennt — `sketch_gallery.py` sagt es
+selbst, *„eine echte Einschreibung wäre im Testmodus unsichtbar"*. Umgekehrt
+gilt dasselbe:
+
+1. Jede Beta-Anmeldung landet nur in der **Test**-Galerie. Die Kette zahlt
+   dafür den Registrierungszuschuss.
+2. Beim späteren Umstellen auf `real` ist die **echte** Galerie leer.
+3. Dieselbe Person meldet sich erneut an → kein Kandidat → `new_enrollment` →
+   frisch gewürfelter `bio_hash` (`secrets.randbelow`) → **neuer Nullifier** →
+   **zweiter Zuschuss**. Einer je Beta-Teilnehmer.
+
+Der Nullifier-Schutz der Kette greift nicht: er hängt genau an dem Hash, der
+neu gewürfelt wurde. Dieselbe Klasse wie die Löschfunktion am 24.08.
+
+**Jetzt live auf beiden Boxen:** ein Tor weist den Realmodus ab, solange die
+Realgalerie leer ist *und* Testeinschreibungen bestehen. `/matching/health`
+zeigt den Zustand — aktuell `test_galerie: 1`, `real_galerie: 0`,
+`wuerde_realmodus_abweisen: true`.
+
+### Wenn du später auf real umstellst
+
+Entscheide **zuerst**, was mit den Testeinschreibungen geschieht — übernehmen
+oder verwerfen. Ich kopiere sie bewusst nicht automatisch: sie wurden unter
+einer anderen Einwilligungsfassung und bei geschlossener Rechtsschranke
+erhoben. Danach auf beiden Boxen:
+
+```
+REAL_MODE_START_ACCEPTED="<warum, mit Datum>"
+```
+
+Ein leerer Wert genügt nicht. Zusätzlich verlangt der Realmodus weiterhin
+`ALLOW_REAL_BIOMETRIC_DATA=true` **und** `LEGAL_SIGNOFF_DATE` — und `gate.py`
+sagt selbst, dass dieses Datum erst nach abgeschlossener Phase-2-Rechtsprüfung
+(DSGVO Art. 9, Einwilligungsablauf, Löschkonzept) gesetzt werden darf. Das ist
+keine Konfiguration, sondern eine Behauptung über eine stattgefundene Prüfung.
+
+---
+
+## (Liste vom 29.08.) 3 · C1 als Validator — **erledigt am 29.08.**
+
+Das Register trägt jetzt **beide** Knoten, jeweils mit Bezeugungsschlüssel und
+Vergleichsdienst-Adresse:
+
+| Betreiber-Wallet | Bezeuger | Vergleichsdienst |
+|---|---|---|
+| `0x0be8b961…` (C1) | `222ad549…` | `https://proof1.aequitas.digital/matching` |
+| `0x1a37dcda…` (C2) | `207b2894…` | `https://proof2.aequitas.digital/matching` |
+
+---
+
+## (Liste vom 29.08.) 4 · Proof-Server-Auslieferung — **erledigt am 29.08.**
+
+Du hast `CONTABO_SSH_KEY` und `CONTABO2_SSH_KEY` gesetzt. Der erste Lauf ist
+durchgelaufen: **success**. Damit funktioniert der Auslieferungsweg des
+Proof-Servers zum ersten Mal überhaupt — vorher fehlten sowohl die Secrets als
+auch das aufgerufene Skript.
+
+Ab jetzt genügt:
+
+```bash
+gh workflow run deploy.yml --repo hanoi96international-gif/aequitas-proof-server
+```
+
+Das Skript (`deploy/proof-deploy.sh`) sichert vorher die Konfiguration des
+laufenden Containers, baut unter einem neuen Tag und nimmt automatisch zurück,
+wenn `/health` danach nicht antwortet.
+
+---
+
+## (Liste vom 29.08.) 5 · Impressum und Datenschutz — deine Entscheidung, bereits umgesetzt
+
+Du hast entschieden, dass es kein Impressum gibt. Das ist sauber umgesetzt:
+`/impressum` und `/datenschutz` antworten mit 404, und **keine Seite der
+Website verlinkt sie** — es gibt also keinen toten Verweis. Die sieben
+`LEGAL_*`-Felder bleiben leer.
+
+Falls du es später doch willst, sagt `https://aequitas.digital/api/legal-status`
+genau, welche Felder fehlen und was sie bedeuten.
+
+---
+
+## (Liste vom 29.08.) 6 · Heute 12:09 UTC — Übertrag prüfen (2 Minuten)
+
+Das Tor `POOL_REMAINDER_CARRY_FROM_UNIX` öffnet um **12:09 UTC**. Danach:
+
+```bash
+curl -s https://aequitas.digital/api/health/combined | python -c "import sys,json;r=json.load(sys.stdin)['chain']['supply_reconciliation'];print(r['difference'],r['beyond_known_gap'],r['supply_alarm'])"
+```
+
+**Erwartet:** `-0.000014 -0.000014 False` — unverändert.
+
+Wichtig: die Differenz darf **nicht** auf 0 zurückgehen. Die 0,000014 AEQ sind
+vernichtet, nicht verlegt; eine Rückkehr auf 0 hieße, dass irgendwo neu
+geschöpft wurde. Erst wenn der Wert nach dem Tor stabil bleibt, darf die
+Grundlinie der Überwachung eingefroren werden.
+
+---
+
+## Am 29.08. nachmittags noch geschlossen
+
+**Die letzte handgepflegte Liste ist weg.** Die MPC-Mitgliedschaft lief über ein
+statisches `MPC_PEERS` auf beiden Boxen — ein dritter Betreiber hätte dort von
+Hand eingetragen werden müssen. Beide laufen jetzt im Entdeckungsmodus und
+melden es selbst:
+
+> `[MPC] serving /mpc/exchange as 0x…; committee of 2 drawn from the chain,
+> membership resolved per registration`
+
+Vorher geprüft, dass das nicht MPC still abschaltet: der damalige Grund für die
+feste Liste war, dass `mpc_ready` nie **gesendet** wurde. Das ist behoben
+(`sync_blocks.go` sendet es, die Gegenseite speichert es über
+`RegisterWithMPC`). `MPC_PEERS` und `MPC_PARTY_INDEX` sind aus dem Prozess
+**und** aus `.aequitas.env` verschwunden.
+
+**SSH: Passwort-Login ist auf beiden Boxen zu.** Vorher nahmen beide
+Root-Login per Passwort aus dem offenen Netz an — bei 69.026 bzw. 62.135
+Rateversuchen von je rund tausend IPs, laufend, ohne fail2ban. Das war der
+einzige reale Weg an den Wallet-Schlüssel; über die Anwendung ist er nicht
+erreichbar (kein Endpunkt gibt die Umgebung aus, nie geloggt, nicht im Git,
+env-Datei `600 root`, kein Container mit Docker-Socket).
+
+Die Falle dabei: `/etc/ssh/sshd_config.d/50-cloud-init.conf` machte das
+Passwort wieder auf. Nur die Hauptdatei zu ändern hätte **nichts** bewirkt.
+
+---
+
+## Was bewusst offen bleibt
+
+- **MPC-Schwelle nicht kalibriert.** Braucht eine zweite Person vor der Kamera;
+  ohne echten Doppelversuch lässt sich keine Schwelle belegen.
+- **Quorum 2 bei zwei laufenden Vergleichsdiensten.** `/health` sagt das jetzt
+  selbst (`bezeuger_bedeutung`) und warnt beim Gleichstand. Echter Ausfallschutz
+  braucht einen dritten Betreiber — und der braucht Punkt 1.
+
+---
+
+## Aufgefallen: beide Boxen tragen den Wallet-Schlüssel ihres Betreibers
+
+Auf C1 **und** C2 ist die Signieradresse des Knotens identisch mit
+`NODE_OPERATOR_WALLET`:
+
+| Box | Signieradresse = Betreiber-Wallet |
+|-----|-----------------------------------|
+| C1  | `0x0be8b961…` |
+| C2  | `0x1a37DcDa…` |
+
+Der private Schlüssel deiner personengebundenen Wallet liegt damit auf einem
+Server am offenen Netz. Wer eine Box übernimmt, übernimmt die Identität
+mitsamt Guthaben — und die dreifache Validator-Prüfung schrumpft dort auf
+eine, weil „Mensch autorisiert" und „Schlüsselbesitz" derselbe Schlüssel sind.
+
+**Kein Beta-Blocker, aber vor echtem Betrieb zu trennen:**
+`RELAYER_PRIVATE_KEY` sollte ein eigener, nur für den Knoten erzeugter
+Schlüssel sein; `NODE_OPERATOR_WALLET` bleibt einfach die Adresse, an die
+Belohnungen gehen — dafür braucht der Server keinen Schlüssel.
+
+Das ist bewusst nicht heute geändert: ein neuer Signierschlüssel ändert die
+Blockproduktions-Identität und macht C2s Registereintrag ungültig. Das gehört
+in ein ruhiges Fenster, nicht in die Nacht vor dem Start.
+
+---
+
+## Erste echte Sperren-Messung, 29.08.2026
+
+Bis heute war der Engpass geraten — dreimal, dreimal falsch. Jetzt gemessen
+(Go-Mutex-Profil auf C1, unter Last von C2):
+
+| Anteil an der Wartezeit | Ort |
+|---|---|
+| **74,7 %** | `processTransferBatch` → `runAtomicWithOutbox` |
+| 19,1 % | `flushWALBatch` → `shardedAccounts.LockAddrs` |
+
+`runAtomicWithOutbox` hält die **globale** Zustandssperre `cs.mu` über eine
+komplette Datenbank-Transaktion, `tx.Commit()` eingeschlossen. Das ist
+Absicht — der Kommentar daneben erklärt, dass Speicherzustand und DB-Transaktion
+sonst auseinanderlaufen. Der Preis ist die Serialisierung: jede Überweisung
+wartet auf jede andere, chainweit.
+
+Das erklärt alles, was vorher widersprüchlich aussah: nur ein Kern von sechs
+ausgelastet, mehr Sender ohne Wirkung, einbrechende Blockproduktion.
+
+**Der Weg zu 10k steht im Code selbst** (`dbExecCtx`, state.go): `cs.activeTx`
+ist ein einziges ChainState-weites Feld, das echte Nebenläufigkeit unmöglich
+macht. Die Migration auf per-Operation-`ctx` läuft seit Juli, **48 Aufrufstellen
+sind noch offen** (state.go 22, evm_storage.go 12, block.go 5, guardian.go 4,
+snapshot.go 2, slashing.go 2, register.go 1). Der Transferpfad selbst ist
+bereits migriert.
+
+Danach — und erst danach — lässt sich die Sperre auf die bereits vorhandenen
+Konten-Shards verengen (`shardedAccounts.LockAddrs`, die der WAL-Schreiber
+schon benutzt).
+
+Der Code warnt ausdrücklich davor, das in einem Zug zu tun: es quert Transfer,
+Swap, Liquidität, Registrierung, Verteilung, Guardian, Slashing, Snapshot-Import
+**und Block-Replay**. „one call chain at a time, EACH one verified by the full
+test suite."
+
+---
+
+## activeTx-Migration abgeschlossen und gemessen, 29.08.2026
+
+Der Weg zu 10k führt über `cs.activeTx` — ein einziges ChainState-weites Feld,
+das echte Nebenläufigkeit unmöglich macht und deshalb `runAtomicWithOutbox`
+zwingt, die globale Sperre über die ganze DB-Transaktion zu halten (74,7 % der
+gemessenen Wartezeit).
+
+**Fünf Ketten, jede einzeln mit voller Testreihe**, wie der Code es vorschreibt:
+
+| Kette | Was |
+|---|---|
+| 1 | Konfigurations-Blätter (`getConfigValue`, `…Exists`, `deleteConfigValue`) |
+| 2 | Rücknahmepfad (`restoreFromRollbackLocked`) |
+| 3 | EVM-Spiegelwarteschlange (4 Stellen) |
+| 4 | Blockkopf löschen, GHOSTDAG-Zustand |
+| 5 | Straf-Zwischenspeicher (`loadPenaltyCacheLocked`) |
+
+Danach: **null `cs.dbExec()`-Aufrufstellen** im ganzen Repo, ein Wächtertest
+verhindert die Rückkehr.
+
+### Das reichte nicht — und das war messbar
+
+`dbExecCtx` fiel weiter auf `cs.activeTx` zurück, wenn der ctx keine
+Transaktion trug. Ein Zähler zeigte live **466 Rückfälle im Leerlauf**: es gab
+Pfade, die den ctx nicht durchreichten. Hätte man das Feld an dieser Stelle
+entfernt, wären diese Schreibvorgänge still außerhalb ihrer Transaktion
+gelandet.
+
+Die Herkunftsliste nannte **genau zwei Zeilen**, beide im Block-Replay, beide
+gleich oft — einmal je Block. Beide *wollten* in der Transaktion sein; ihre
+eigenen Kommentare sagten es. Sie kamen nur über den stillen Rückfall dorthin.
+
+**Jetzt auf beiden Boxen: `rueckfaelle: 0`, `activetx_entfernbar: true`.**
+
+### Unter Last gemessen — und die Pfade nachgezogen
+
+Drei Lastläufe gegen C1 (Generator auf C2), der Zähler als Messgröße:
+
+| Lauf | C1 (nimmt an) | C2 (spielt nach) |
+|---|---|---|
+| 1 | 0 | 3.295 aus 2 Stellen |
+| 2 | 0 | 2.745 aus 4 Pfaden |
+| 3 · nach dem Fix | **0** | **0** |
+
+**Der Transferpfad war von Anfang an vollständig** — C1 hatte unter 64.100,
+69.100 und 91.600 Überweisungen keinen einzigen Rückfall. Alles Fehlende lag im
+**Nachspielen**, und die dreistufige Herkunftsliste hat es beim Namen genannt:
+
+- `applyTransferDeltaLocked` ← `block.go`, zweimal (1.980)
+- `applyTransferBatchParallel` ← `block.go` (762)
+- `ResetFinalizedCheckpoint` ← `snapshot.go`, Resync (3)
+
+Alle vier gaben ausdrücklich `context.Background()`, während im selben
+Sichtbereich eine offene Transaktion lag — und landeten trotzdem darin, über
+den stillen Rückfall. Beim Resync stand die Anforderung sogar im Kommentar
+daneben: *„resets both atomically"*. Atomar war es nur durch das gemeinsame
+Feld.
+
+**Ergebnis: beide Zähler bei 0, `activetx_entfernbar: true` auf beiden Boxen.**
+
+### Was noch fehlt, bevor `activeTx` wirklich weg kann
+
+Die Null gilt für **Überweisungen**. Nicht durchlaufen sind: die tägliche
+Verteilung (läuft um 20:00 Berlin), eine Registrierung (braucht ein Gesicht),
+ein Swap, der Guardian-Pfad.
+
+Der Zähler läuft dauerhaft mit und kostet nichts. **Bleibt er über eine
+Verteilungsrunde und eine Registrierung hinweg bei 0, kann `cs.activeTx`
+entfernt werden** — und erst dann lässt sich die globale Sperre auf die
+vorhandenen Konten-Shards verengen (`shardedAccounts.LockAddrs`). Das ist der
+Schritt, der die gemessenen 74,7 % Wartezeit auflöst.
+
+Springt er an, nennt die Herkunftsliste den Pfad, wie sie es dreimal getan hat.
+
+---
+
+## Wofür die globale Sperre gehalten wird — gemessen 29.08.2026
+
+Das Mutex-Profil sagte „74,7 % der Wartezeit in `runAtomicWithOutbox`". Es
+sagte nicht, wie sich das aufteilt. Jetzt schon, unter Last (50.000
+Überweisungen, 83 s):
+
+| | |
+|---|---|
+| Läufe von `runAtomicWithOutbox` | **44** |
+| **Warten auf die Sperre** | **468,8 ms** |
+| Halten der Sperre | 50,3 ms |
+| — davon Arbeit (`fn`) | 28,3 ms (56 %) |
+| — davon Commit | 15,6 ms (31 %) |
+| — davon Outbox | 6,2 ms (12 %) |
+| — davon Snapshot | 0,15 ms |
+
+### Was das heißt
+
+**Nur 44 Läufe für 50.000 Überweisungen** — der Transferpfad bündelt, rund
+1.100 Stück je Vorgang. Pro Überweisung sind das ~45 µs Arbeit unter der
+Sperre. Das ist nicht das Problem.
+
+**Das Problem ist das Warten: 469 ms gegen 50 ms Halten — Faktor 9.** Wenn ein
+Transferbündel die Sperre will, wartet es eine halbe Sekunde. Nicht auf ein
+anderes Bündel (davon gibt es nur 44), sondern auf **alles andere, was `cs.mu`
+nimmt**: Blockproduktion und Nachspielen.
+
+Das erklärt die alte Widersprüchlichkeit — Durchsatz gedeckelt, CPU frei,
+Replay parallel. Die Überweisungen warten nicht aufeinander. Sie warten auf den
+Konsens.
+
+### Was daraus für 10k folgt
+
+Nicht „schneller machen", sondern **entkoppeln**. Ein Transferbündel braucht
+die Konten, die es anfasst — nicht die globale Sperre. `runAtomicWithOutbox`
+bekommt `touchedAddrs` bereits als Parameter, und `shardedAccounts.LockAddrs`
+existiert und wird vom WAL-Schreiber schon benutzt.
+
+Voraussetzung bleibt `cs.activeTx`: zwei gleichzeitige Vorgänge würden sich das
+Feld überschreiben. Der strikte Modus läuft dafür seit heute auf beiden Boxen
+und hat drei Lastläufe mit **0 Rückfällen** überstanden.
+
+---
+
+## ~~Der Engpass für 10k~~ — TEILWEISE ÜBERHOLT: die Lesesperre war es, ist es nach dem Shard-Umbau aber nicht mehr
+
+Vier Messungen, zwei davon negativ, und am Ende eine präzise Stelle.
+
+### Was **nicht** hilft (gemessen, nicht vermutet)
+
+| Hebel | Ergebnis |
+|---|---|
+| WAL-Adressdeckel (`MAX_ADDRS` 64/128) | **868 → 299/320 TPS** — deutlich schlechter |
+| Größere Bündel (4000/8000 statt 1000) | 860 → 703/807 — kein Gewinn, in der Streuung |
+
+Beide Richtungen — kleiner *und* größer — bringen nichts. Die Bündelgröße ist
+nicht der Hebel.
+
+### Wo die Zeit wirklich hingeht
+
+Der shard-gesperrte **Schnellpfad macht 92,6 %** aller Überweisungen. Seine
+Phasen, je Überweisung:
+
+```
+pre_rlock   156,3 ms   ← 68 %: Warten auf cs.mu.RLock()
+wal_append   68,7 ms   ← 30 %
+cap           0,01 ms  ← wofür die Sperre gehalten wird
+lock          0,02 ms  ← TryLockAddrs, unbestritten
+apply         0,06 ms  ← die eigentliche Änderung
+```
+
+**156 ms Warten für eine Lesung von 0,01 ms.** Go's `RWMutex` sperrt ankommende
+Leser aus, sobald ein Schreiber *ansteht*. Die Schreiber sind die **7,4 %**, die
+über `runAtomicWithOutbox` laufen — 52 Vorgänge, je 64 ms Halt.
+
+**Sieben Prozent des Verkehrs halten dreiundneunzig auf.**
+
+### Warum die Sperre trotzdem nötig ist
+
+Der langsame Pfad ändert Konten unter `cs.mu` **ohne** Shard-Sperren:
+`applyTransferDeltaLocked` ruft `cs.accounts.Get()`, nicht `GetLocked()`. Die
+Lesesperre des Schnellpfads ist das Einzige, was ihn davor schützt. Sie zu
+entfernen, ohne den langsamen Pfad vorher umzustellen, wäre ein Datenrennen auf
+dem Geldpfad.
+
+### Der Schritt, der 10k freimacht
+
+Den langsamen Pfad auf Shard-Sperren umstellen (`GetLocked` statt `Get`, plus
+`LockAddrs` um die Änderung) — dann kann der Schnellpfad seine Lesesperre
+verlieren und 93 % des Verkehrs warten gar nicht mehr.
+
+**Mit einer Warnung:** derselbe Abend hat gezeigt, dass mehr und kleinere
+Sperren schaden können. Hier ist die Lage anders — es geht nicht darum, einen
+Halt zu zerlegen, sondern darum, den Großteil des Verkehrs gar nicht warten zu
+lassen. Aber das ist eine Vermutung, und Vermutungen über diesen Engpass waren
+schon dreimal falsch. Wer es angeht, misst es an einem Zweig.
+
+Das Werkzeug dafür steht: Phasenmessung, Herkunftszähler, reparierter
+Lastgenerator, und zwei Stellschrauben, die sich ohne Deploy verändern lassen.
+
+---
+
+## ~~Warum 10k nicht erreichbar ist~~ — ÜBERHOLT: die Rechnung stimmte, die Eingangswerte nicht (Ratenbegrenzer)
+
+Nach acht Messungen steht die Arithmetik. Sie ist keine Einschätzung.
+
+### Die Grundgleichung
+
+**Durchsatz = gleichzeitige Sender ÷ Latenz je Überweisung.**
+
+Der Generator bündelt 100 Überweisungen **desselben Absenders** pro Anfrage,
+und der Knoten arbeitet ein Bündel seriell ab (`for i, raw := range batch`).
+Beides ist richtig so: gleicher Absender heißt fortlaufende Nonces, die
+*müssen* in Reihenfolge laufen. Also zählt nur, wie viele **verschiedene**
+Absender gleichzeitig senden.
+
+Nachgerechnet: 150 Sender ÷ 0,23 s = 652. Gemessen: 650.
+
+### Was daraus folgt
+
+Für 10.000 TPS bei 230 ms Latenz bräuchte es **2.300 gleichzeitige Sender**.
+
+| Sender | Ergebnis |
+|---|---|
+| 150 | 650 TPS |
+| 288 (alle Paare) | ~1.250 TPS |
+| **576 (ring)** | **0 TPS** — jede Anfrage läuft in die 30-s-Grenze |
+
+Der Knoten bricht weit vor 2.300 zusammen. **Mehr Last hilft nicht, sie kippt.**
+
+### Also muss die Latenz fallen
+
+Von 230 ms auf ~29 ms — Faktor 8. Die Aufteilung sagt, wo sie liegt:
+
+```
+pre_rlock   156,3 ms   ← Warten auf cs.mu.RLock()
+wal_append   68,7 ms   ← langsam, weil zu wenige gleichzeitig anhängen
+apply         0,06 ms  ← die Arbeit
+```
+
+Der langsame Anhang ist die **Folge** der Serialisierung: die Überweisungen
+erreichen den Gruppen-Commit einzeln und finden niemanden zum Bündeln. Die
+Platte selbst schafft 46.342 Anhänge/s.
+
+**Beide Posten verschwinden, wenn die Lesesperre fällt. Sonst keiner.**
+
+### Was ausgeschlossen ist — gemessen, nicht vermutet
+
+| Hebel | Ergebnis |
+|---|---|
+| WAL-Adressdeckel | 868 → 299 TPS, deutlich schlechter |
+| Bündelgröße 4000/8000 | kein Effekt |
+| WAL-Gruppencommit-Fenster | Streuung Faktor 3,3 — nicht entscheidbar |
+| Mehr Sender | Zusammenbruch bei 576 |
+| Ring-Topologie | 0 Erfolge |
+
+### Was bleibt
+
+Die Lesesperre zu entfernen verlangt, dass **jeder** Änderer Shard-Sperren
+nimmt. Der Versuch scheiterte an einer Zahl: **247 Funktionen** lösen transitiv
+Shard-Zugriffe aus, und die erste umgestellte verklemmte sich zwei Ebenen tief.
+
+Der richtige Weg ist kein `LockAddrs` an 22 Stellen, sondern
+`accounts.Update(addr, func(*AccountState))` — eine API, die keinen Zeiger
+herausgibt, sodass der **Compiler** jede Stelle findet. Das ist ein Umbau der
+Datenstruktur.
+
+**Aufwand ehrlich geschätzt:** mehrere Tage, mit einem Lastgenerator, der erst
+stabil sättigen muss. Nicht vor dem Beta-Start.
+
+---
+
+## Nachtrag 29.08.: zwei Befunde, die das Bild korrigieren
+
+### 1. Der Zusammenbruch bei 576 Sendern war kein Kapazitätsende
+
+Er ist Warteschlangentheorie. Der Knoten arbeitete durchgehend korrekt:
+
+```
+150 Sender x 100 je Bündel = 15.000 gleichzeitig -> 23 s je Bündel  (Client wartet 30 s: knapp)
+576 Sender x 100 je Bündel = 57.600 gleichzeitig -> 88 s je Bündel  (Client wartet 30 s: nie)
+```
+
+Er nahm unbegrenzt an und lieferte nach Ablauf der Client-Frist aus. **Behoben**
+(`inflight_grenze.go`): eine Obergrenze auf gleichzeitig angenommene Arbeit,
+Vorgabe 8.000, Ablehnung mit dem wiederholbaren `-32005`. Nach Little's Gesetz
+kostet das keinen Durchsatz — es beschränkt die Latenz statt sie explodieren zu
+lassen.
+
+### 2. Alle Rückfälle sind Shard-Kollisionen — zu einem Teil ein Prüfstands-Artefakt
+
+Gemessen, nicht vermutet: `shard_belegt` = **134 von 134 = 100 %**. Nicht
+Demurrage, nicht Rückstau, nicht fehlende Konten.
+
+Nachgerechnet für die 300 heißesten Testkonten bei 16.384 Shards:
+
+| Anteil | Ursache | im echten Betrieb? |
+|---|---|---|
+| ~4 % | 12 Konten teilen sich 6 Shards — **dauerhaft**, weil immer dieselben Konten | verschwindet |
+| ~3,6 % | flüchtige Kollision bei 300 gesperrten Shards | **bleibt**, hängt an der Gleichzeitigkeit |
+
+Zusammen ~7,6 % gegen 10,4 % gemessen — dieselbe Größenordnung.
+
+**Folge für den geplanten Umbau:** die gemessenen 10,4 % Rückfall überzeichnen
+den echten Betrieb um rund das Dreifache. Der Umbau der 247 Funktionen wird
+dadurch nicht unnötig, aber sein erwarteter Gewinn ist kleiner als die
+Rohmessung nahelegt. Wer ihn angeht, sollte **zuerst** mit einem großen,
+wechselnden Kontenvorrat neu messen — sonst optimiert er ein Artefakt.
+
+### Was unverändert bleibt
+
+Die 10k sind mit 623 Konten nicht messbar. Bei niedriger Last braucht eine
+Überweisung 11,3 ms (`pre_rlock` 1 ms, WAL 10,1 ms) — der Knoten ist also
+schnell; die 230 ms entstehen erst unter Sättigung. Für eine ehrliche
+10k-Messung braucht es einen deutlich größeren Kontenvorrat, und **den zu
+befüllen ist eine Überweisung, die der Betreiber selbst auslöst.**
+
+---
+
+## Nachtrag 29.08. abends: das Skalierungsgesetz ist gemessen
+
+### Der Ratenbegrenzer hat den ganzen Tag verdorben
+
+Drei Stellen im Code behaupteten, er werde einmal je HTTP-Anfrage geprüft, ein
+Bündel aus 100 Überweisungen koste also einen Tick. Seit dem P1-Fix vom
+21.07.2026 wird **je Posten** abgebucht:
+
+```
+200 Posten je 10-s-Fenster = 20 Überweisungen/s je IP     (nicht 2.000)
+```
+
+Faktor 100. Alle Läufe des Tages kamen deshalb auf 13–15 TPS und sahen nach
+einem Knotenproblem aus. Der zugehörige Workflow hatte den Vorgabewert 10000 —
+der hätte einen 10k-Lauf bei **1.000 TPS** gedeckelt und dabei großzügig
+ausgesehen. Korrigiert auf 100000, und zwei Tests halten die Semantik jetzt
+fest.
+
+**Regel für jeden Lastlauf: Zielrate × 10 = Mindestwert.**
+
+### Mit korrektem Begrenzer skaliert der Knoten linear
+
+| Sender | Bündelgröße | TPS | Fehlschläge |
+|---|---|---|---|
+| 169 | 100 | 427 | 6.778 (meine Warteschlangen-Schranke) |
+| 161 | 10 | 591 | **0** |
+| 320 | 10 | **1.148** | 111 (leere Konten) |
+
+1,99× Sender ⇒ 1,94× Durchsatz. **Kein Sättigungszeichen bei 1.148 TPS.**
+
+Zwei Folgerungen:
+
+1. **Große Bündel schaden.** 100 Überweisungen eines Absenders laufen im Knoten
+   nacheinander. Seit der Je-Posten-Abrechnung sparen sie auch kein
+   Begrenzer-Budget mehr — der einzige verbleibende Vorteil sind weniger
+   Netzumläufe. Gemessen: Bündel 10 schlägt Bündel 100 um Faktor 1,4.
+2. **Der Engpass sind Absender, nicht der Knoten.** Bei 279 ms je Überweisung
+   braucht 10.000 TPS rund **2.800 gleichzeitige Absender**. Vorhanden sind
+   618 Konten, davon halten nur noch ~320 genug Guthaben — und jeder Lauf
+   zehrt weiter daran.
+
+### Was das WAL dabei sagt
+
+`sync_avg_us` 28,8 ms je fsync, aber nur **17 Sätze je fsync** bei einem Deckel
+von 500. Der Gruppen-Commit arbeitet korrekt — er greift nach jedem fsync sofort
+ab, was aufgelaufen ist. 17 heißt schlicht: es kommen nur 570 Überweisungen/s
+an. **Das WAL ist unterversorgt, nicht überlastet.** Bei vollen Bündeln von 500
+läge es bei 17.000/s.
+
+### Was der Abend gekostet hat
+
+Ein Deploy fiel mitten in einen Lasttest. C1 verlor die Verbindung zu C2
+(`connection refused`), fiel zurück, wies dann Block 5176975 endlos wegen
+Zustands-Inkonsistenz ab und hing ~215 Blöcke zurück.
+
+**Er hat sich selbst geheilt.** Nach einigen Minuten war er wieder bei Abstand 0,
+`healthy: True`, 0 Abweichungen, byte-identisch über 2.000 Blöcke. Ein Resync
+wäre ein schwerer Eingriff in einen Knoten gewesen, der gerade dabei war,
+sich selbst zu reparieren. **Merke: bei dieser Fehlerform erst warten.**
+
+---
+
+# ~~ENDERGEBNIS: Decke ~2.650~~ — ÜBERHOLT (Ring-Topologie, siehe Korrektur darunter)
+
+Am 01.09.2026 mit 1.635 aufgefüllten Konten, korrigiertem Ratenbegrenzer und
+angehobener Warteschlangen-Schranke gemessen. Damit ist erstmals die **Kette**
+vermessen worden und nicht der Prüfstand.
+
+## Die Kurve
+
+| Sender | 150 | 250 | **400** | 800 | 1.200 | 1.546 |
+|---|---|---|---|---|---|---|
+| TPS | 1.452 | 2.018 | **2.643** | 2.474 | 2.206 | 2.056 |
+| Fehlschläge | 1.043 | 4.319 | 1.503 | 12.861 | 24.497 | 31.760 |
+
+**Der Scheitel liegt bei ~400 Sendern.** Danach fällt der Durchsatz monoton:
+mehr Last macht es nicht schneller, sondern langsamer. Das ist dieselbe Form
+wie am 28.07. („höherer Durchsatz lässt die Blockproduktion einbrechen"), jetzt
+sauber ausgemessen.
+
+## Woher die Decke kommt
+
+Am Scheitel, je Überweisung:
+
+```
+pre_rlock    50,9 ms   69 %   <- Warten auf cs.mu.RLock()
+wal_append   22,5 ms   30 %
+apply         0,02 ms
+```
+
+Und die Ursache dahinter, gemessen: **`shard_belegt` = 216.119 von 535.662
+Überweisungen = 40 % Rückfallquote.** Jeder Rückfall geht über die globale
+Schreibsperre, und Go's RWMutex sperrt ankommende Leser aus, sobald ein
+Schreiber ansteht. 40 % Schreiber sperren 60 % Leser aus — das sind die 69 %.
+
+Das WAL ist dabei **entlastet** worden und nicht mehr der Engpass: fsync 7,1 ms
+statt 28,8 ms, Bündel 31 statt 17, Maximum 500 erreicht. Die frühere
+WAL-Langsamkeit war Unterversorgung, wie vermutet.
+
+## Was die 40 % zum Teil erklärt
+
+Die Ring-Topologie erzeugt die Kollisionen mit: Konto i+1 wird gleichzeitig von
+Goroutine i (als Empfänger) und von Goroutine i+1 (als Absender) angefasst. Der
+`WarmSteadyState`-Prüfstand warnt davor seit Langem („a ring where every account
+has two concurrent writers manufactures contention"). Mit disjunkten Paaren wäre
+die Quote niedriger — dafür halbiert sich die Senderzahl.
+
+## Was 10k bräuchte
+
+Nicht mehr Absender — die schaden ab 400. Sondern **die Lesesperre aus dem
+Schnellpfad entfernen**, damit ein Rückfall nicht mehr alle anderen aussperrt.
+Das ist der Umbau, der weiter oben steht: 64 Funktionen mit direktem
+Shard-Zugriff, 247 transitiv, und die erste umgestellte verklemmte sich zwei
+Ebenen tief. Der Weg dahin ist `accounts.Update(addr, func(*AccountState))` —
+eine API ohne Zeiger nach draußen, damit der Compiler jede Stelle findet.
+
+**Ehrlich geschätzt: mehrere Tage. Nicht vor dem Beta-Start.** Für den Betrieb
+mit 18 Menschen ist die gemessene Decke um Größenordnungen ausreichend.
+
+---
+
+## KORREKTUR: ~3.700 statt 2.650 — seinerseits überholt durch den Shard-Umbau am Ende
+
+Die Kurve oben wurde durchgehend im **Ring** gefahren, und der Ring erzeugt
+seine Kollisionen selbst: Konto i+1 wird gleichzeitig von Goroutine i (als
+Empfänger) und von Goroutine i+1 (als Absender) angefasst. Derselbe Knoten,
+dieselben 400 Absender, nur disjunkte Paare statt Ring:
+
+| Topologie, 400 Sender | TPS | Fehlschläge | Rückfallquote |
+|---|---|---|---|
+| **Paare** | **3.668** | **0** | 7,5 % |
+| Ring | 2.299 | 5.300 | 14,6 % |
+
+**Der Ring kostet 40 % Durchsatz und verdoppelt die Rückfallquote.** Echter
+Verkehr sieht aus wie Paare, nicht wie ein Ring — die 2.650 waren auf der
+pathologischen Konfiguration gemessen.
+
+### Was die Streuung erklärt
+
+Wiederholungen bei Paaren/400 ergaben 3.668, dann 2.792, 2.420, 2.120 — fallend.
+Ursache ist nicht der Knoten, sondern die Läufe zurück auf zurück: C1 fällt
+dabei jedes Mal einige hundert Blöcke zurück, und C2 bedient dann Last **und**
+Nachlieferung gleichzeitig. **Belastbar ist der erste Lauf auf einem gesetzten
+Knoten**, nicht der vierte.
+
+### Der Stand, ehrlich
+
+**~3.700 TPS bei produktionsähnlichem Verkehr, ohne einen einzigen Fehlschlag** —
+der Knoten war an diesem Punkt nicht einmal am Anschlag. Mehr Absender halfen
+trotzdem nicht (600 und 694 lagen darunter), es bindet also weiterhin die
+globale Schreibsperre: `warten_auf_sperre` 186 ms bei 726 Vorgängen.
+
+**10.000 sind damit nicht erreicht**, und der verbleibende Hebel ist unverändert
+der Umbau des Schnellpfads. Aber die Lücke ist kleiner als gedacht: Faktor 2,7
+statt 3,8.
+
+### Nachtrag zum Betrieb
+
+C1 fiel bei jedem schweren Lauf einige hundert Blöcke zurück und holte
+**jedes Mal von selbst auf** — viermal an diesem Tag beobachtet, zuletzt 985
+Blöcke in einem Sprung. Wachsender Abstand ist bei dieser Kette kein Alarm.
+
+---
+
+# Der Umbau, ausgeführt: was er gebracht hat und was nicht
+
+Der Auftrag war, den Schnellpfad-Umbau vollständig umzusetzen. Die erste
+Erkenntnis war, dass die Zahl „247 Funktionen" falsch war.
+
+## Der Umfang war nie 247
+
+247 zählte alles, was transitiv Shards *berührt*. Entscheidend ist aber nur,
+was die **selbstsperrenden** Zugriffe (`Get`/`Set`/`Delete`/`Range`) innerhalb
+des `runAtomicWithOutbox`-Bereichs benutzt. Gezählt:
+
+```
+Wurzeln (rufen runAtomicWithOutbox):  9
+transitiv erreichbar:               141
+davon mit selbstsperrendem Zugriff:  19
+```
+
+Und die vier Dinge, die der Schnellpfad außer Konten anfasst
+(`updateAccountLeafLocked`, `enqueueWALFlushLocked`,
+`markEVMMirrorDirtyForAddrsLocked`, `wealthCapAmountLocked`), sind **bereits
+alle eigenständig gesichert** — über `accountSetXORMu`, `walFlushMu`,
+`evmMirrorDirtyMu` und `humanCountMu`. Ihr `Locked`-Suffix ist historisch.
+
+## Was tatsächlich gewirkt hat: die Shard-Zahl
+
+Sie war seit 2026-07-23 verboten, weil `Range` damals je Überweisung lief
+(57 % CPU). Das ist behoben und seit 2026-08-29 durch einen Wächter gesichert
+— **erst dadurch wurde diese Zahl überhaupt änderbar.**
+
+16.384 → 262.144:
+
+| | vorher | nachher |
+|---|---|---|
+| `pre_rlock` | 19,7 ms | **2,2 ms** |
+| `total` je Überweisung | 40,0 ms | **24,2 ms** |
+| globale Sperrvorgänge | 726 | **58** |
+| TPS (Mittel) | 2.750 | **3.274** |
+| Streuung | 2.120–3.668 | 3.118–3.482 |
+
+Preis, gemessen: 26 MB statt 1,6 MB, `Range` 5,13 ms statt 307 µs (Faktor 16,7,
+also linear).
+
+**Damit ist der geplante 19-Funktionen-Umbau hinfällig geworden**: `pre_rlock`
+macht nur noch 9 % der Zeit aus. Die Lesesperre zu entfernen wäre jetzt
+höchstens 9 % wert — für einen Eingriff dieser Größe kein sinnvoller Tausch.
+
+## Was nicht gewirkt hat
+
+Die Rückfälle stammen nicht von Kollisionen zwischen Überweisungen (die Quote
+ist bei 50 Sendern mit 12,3 % **höher** als bei 400 mit 9,0 %), sondern von
+`flushWALBatch`, das `LockAddrs` über seinen ganzen Postgres-Schreibvorgang
+hält — 47 ms bei 65 Adressen und 32 Arbeitern. Diesen Halt zu verkürzen ist
+zweimal versucht worden und erzeugte beide Male Postgres-Deadlocks (40P01).
+
+Der Versuch, stattdessen im Schnellpfad kurz zu warten (60-ms-Fenster):
+
+```
+Rückfallquote   8,6 % -> 5,8 %      (ein Drittel weniger)
+Rettungsquote          31-35 %
+Durchsatz       3.274 -> 2.905 TPS
+```
+
+Weniger Rückfälle, kein Durchsatzgewinn. **Vorgabe daher aus**, Mechanismus
+bleibt env-schaltbar.
+
+## Wo die Decke jetzt liegt
+
+`wal_append` ist mit **21,6 von 24,2 ms = 89 %** der verbleibende Posten: der
+fsync, 5,96 ms, auf einer Platte, die sich WAL und Postgres teilen. Das ist
+keine Code-Grenze mehr, sondern eine Hardware-Grenze.
+
+**Der nächste echte Schritt wäre eine eigene Platte für das WAL** — nicht noch
+ein Umbau im Sperrmodell.
+

@@ -304,14 +304,22 @@ func (cs *ChainState) initWALIfEnabled() {
 // transferConcurrent — see that function's doc comment.
 func (cs *ChainState) transferConcurrentWAL(from, to string, amount float64, pendingTxTemplate Transaction) (fromLost, toLost float64, applied bool, err error) {
 	if cs.wal == nil {
+		fbKeinWAL.Add(1)
 		return 0, 0, false, nil
 	}
+	// Phase clock. Recorded only when this path actually applies the transfer,
+	// so a bail to the batcher does not dilute the averages with work it never
+	// did. See transfer_phase_stats.go for what is unexplained and why.
+	ph := beginTransferPhases()
+	phMark := time.Now()
 	// Backpressure: see walFlushMaxQueueDepth's own comment. A clean bail to
 	// the batcher, same shape as any other ineligibility below -- nothing
 	// has been mutated or appended to the WAL yet at this point.
 	if cs.WALFlushQueueDepth() >= walFlushMaxQueueDepth {
+		fbWarteschlange.Add(1)
 		return 0, 0, false, nil
 	}
+	ph.queue = time.Since(phMark)
 	if from == to {
 		return 0, 0, true, fmt.Errorf("self-transfer not allowed")
 	}
@@ -319,38 +327,108 @@ func (cs *ChainState) transferConcurrentWAL(from, to string, amount float64, pen
 		return 0, 0, true, fmt.Errorf("invalid transfer amount: %v", amount)
 	}
 
+	// GEMESSEN AM 29.08.2026 -- DIESE ZEILE IST JETZT DER ENGPASS.
+	//
+	// Der Fix darunter hat die zwei blockierenden Gets entfernt und precheck
+	// von 46ms auf ~0 gebracht. Die Zeit ist nicht verschwunden, sie ist eine
+	// Zeile hoeher gewandert: die AUFNAHME dieser Lesesperre kostet jetzt
+	// 156,3ms je Ueberweisung -- 68 % der gesamten 229,9ms.
+	//
+	//	fast_path_pct   92,63     <- dieser Pfad macht die Arbeit
+	//	pre_rlock       156,3ms   <- Warten auf RLock
+	//	wal_append       68,7ms
+	//	cap               0,01ms  <- wofuer die Sperre gehalten wird
+	//	lock              0,02ms  <- TryLockAddrs, unbestritten
+	//	apply             0,06ms  <- die eigentliche Aenderung
+	//
+	// 156ms Warten fuer eine Lesung von 0,01ms. Go's RWMutex sperrt ankommende
+	// Leser aus, sobald ein Schreiber ANSTEHT -- und Schreiber sind die 7,4 %,
+	// die ueber runAtomicWithOutbox laufen (52 Vorgaenge, je 64ms Halt).
+	// Sieben Prozent des Verkehrs halten damit dreiundneunzig auf.
+	//
+	// WARUM DIESE SPERRE TROTZDEM NOETIG IST. Der langsame Pfad mutiert Konten
+	// unter cs.mu OHNE Shard-Sperren: applyTransferDeltaLocked ruft
+	// cs.accounts.Get(), nicht GetLocked(). Diese RLock ist das Einzige, was
+	// diesen Pfad davor schuetzt. Sie zu entfernen, ohne den langsamen Pfad
+	// vorher auf Shard-Sperren umzustellen, waere ein Datenrennen auf dem
+	// Geldpfad.
+	//
+	// DER WEG ZU 10k FUEHRT ALSO HIER DURCH -- aber mit einer Warnung: der
+	// WAL-Adressdeckel-Sweep desselben Tages hat gezeigt, dass mehr und
+	// kleinere Sperren schaden koennen (868 -> 319 TPS). Hier ist die Lage
+	// anders (es geht nicht darum, einen Halt zu zerlegen, sondern darum, 93 %
+	// des Verkehrs gar nicht mehr warten zu lassen) -- aber das ist eine
+	// Vermutung, und Vermutungen ueber diesen Engpass waren schon dreimal
+	// falsch. Wer es angeht, misst es an einem Zweig.
+	rlockMark := time.Now()
 	cs.mu.RLock()
+	ph.rlock = time.Since(rlockMark)
 	defer cs.mu.RUnlock()
 
-	if _, ok := cs.accounts.Get(from); !ok {
-		return 0, 0, false, nil
-	}
-	if _, ok := cs.accounts.Get(to); !ok {
-		return 0, 0, false, nil
-	}
+	// FIX (2026-08-22, measured): two shardedAccounts.Get calls used to sit
+	// here, checking that both accounts exist before bothering with the lock.
+	//
+	// Get takes the shard mutex with a BLOCKING s.mu.Lock(). Those are the very
+	// mutexes flushWALBatch holds, via LockAddrs, for its entire Postgres
+	// transaction -- measured at a 37ms average hold across 371 addresses. So
+	// every transfer waited on the flush right here, and the phase split showed
+	// exactly that:
+	//
+	//	precheck    46.41ms   <- these two Gets
+	//	wal_append  20.62ms
+	//	lock         0.003ms  <- TryLockAddrs, by then uncontended
+	//	apply        0.014ms
+	//	enqueue      0.46ms
+	//
+	// 69% of a transfer, spent waiting for a lock the next line is specifically
+	// designed NOT to wait for. TryLockAddrs exists to bail instantly to the
+	// batcher on a contended shard rather than serialize behind a solo commit
+	// (see its own comment for the 2x slowdown that motivated it) -- and these
+	// two lines defeated it, because by the time the blocking Get returned the
+	// shard was free and TryLockAddrs always succeeded. The 99.82% fast-path
+	// rate was not evidence of low contention; it was evidence that transfers
+	// waited instead of bailing.
+	//
+	// Deleting them changes no behaviour. GetLocked repeats both existence
+	// checks under the lock a few lines below and returns the identical
+	// (0, 0, false, nil) bail, so this was duplicated work whose only effect
+	// was the wait.
+	capMark := time.Now()
 	capAmt, hasCapAmt := cs.wealthCapAmountLocked()
+	ph.cap = time.Since(capMark)
+	ph.precheck = time.Since(phMark)
 
-	unlock, ok := cs.accounts.TryLockAddrs(from, to)
+	phMark = time.Now()
+	// Kurz wiederholen statt sofort aufzugeben -- siehe shard_wiederholung.go:
+	// ein Rueckfall kostet gemessen rund 800 ms, das Warten hoechstens 1 ms.
+	unlock, ok := cs.sperreMitKurzerWiederholung(from, to)
+	ph.lock = time.Since(phMark)
 	if !ok {
+		fbShardBelegt.Add(1)
 		return 0, 0, false, nil
 	}
 	defer unlock()
+	phMark = time.Now()
 
 	fromAcc, ok := cs.accounts.GetLocked(from)
 	if !ok {
+		fbKontoFehlt.Add(1)
 		return 0, 0, false, nil
 	}
 	toAcc, ok := cs.accounts.GetLocked(to)
 	if !ok {
+		fbKontoFehlt.Add(1)
 		return 0, 0, false, nil
 	}
 	if effectiveBalance(fromAcc) != fromAcc.Balance || effectiveBalance(toAcc) != toAcc.Balance {
+		fbDemurrage.Add(1)
 		return 0, 0, false, nil
 	}
 	if fromAcc.Balance.Float() < amount {
 		return 0, 0, true, fmt.Errorf("insufficient balance")
 	}
 	if hasCapAmt && toAcc.Balance.Float()+amount > capAmt {
+		fbWohlstandsCap.Add(1)
 		return 0, 0, false, nil
 	}
 
@@ -360,13 +438,19 @@ func (cs *ChainState) transferConcurrentWAL(from, to string, amount float64, pen
 	at := nowUnix()
 	payload, err := json.Marshal(walTransferRecord{From: from, To: to, Amount: amount, TxHash: pendingTxTemplate.TxHash, At: at})
 	if err != nil {
+		fbKodierung.Add(1)
 		return 0, 0, false, nil // encode failure -- nothing mutated, safe to fall back
 	}
+	ph.apply = time.Since(phMark)
+	phMark = time.Now()
 	seq, err := cs.wal.Append(payload)
+	ph.append_ = time.Since(phMark)
+	phMark = time.Now()
 	if err != nil {
 		// Nothing mutated yet -- a WAL append failure (disk full, closed WAL,
 		// etc.) is a clean bail to the existing, proven paths, same as any
 		// other ineligibility. Not a hard error surfaced to the end user.
+		fbAnhangFehler.Add(1)
 		return 0, 0, false, nil
 	}
 
@@ -389,6 +473,8 @@ func (cs *ChainState) transferConcurrentWAL(from, to string, amount float64, pen
 	pendingTxTemplate.FromDemurrageLost = 0
 	pendingTxTemplate.ToDemurrageLost = 0
 	cs.enqueueWALFlushLocked(from, to, pendingTxTemplate)
+	ph.enqueue = time.Since(phMark)
+	ph.record()
 	cs.markEVMMirrorDirtyForAddrsLocked(from, to)
 
 	return 0, 0, true, nil
@@ -626,6 +712,12 @@ func (cs *ChainState) flushWALQueue() {
 	if n > walFlushMaxBatch {
 		n = walFlushMaxBatch
 	}
+	// Then bound the batch by how much of the ADDRESS SPACE it will freeze.
+	// walFlushMaxBatch caps items, which is not the thing that costs: measured
+	// under load, 393 items locked 371 distinct addresses for 37ms, and that
+	// hold is what every transfer collides with. Off by default -- see
+	// wal_flush_addr_cap.go.
+	n = limitBatchByAddrs(cs.walFlushQueue, n, walFlushMaxAddrs())
 	batch := cs.walFlushQueue[:n]
 	rest := cs.walFlushQueue[n:]
 	if cap(rest) < walFlushMaxBatch {

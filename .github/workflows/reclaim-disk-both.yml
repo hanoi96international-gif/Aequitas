@@ -1,0 +1,124 @@
+name: Reclaim disk on both boxes (docker build cache)
+
+# WHY THIS IS A THROUGHPUT FIX, NOT HOUSEKEEPING.
+#
+# Contabo2 measured 2026-08-21:
+#
+#   /dev/sda1  96G  81G used  84% full
+#   docker build cache: 444 entries, 68.36 GB
+#
+# 68 of the 81 GB in use is build cache. Both boxes run `docker build` on every
+# deploy (deploy.sh and deploy_safe_c2.sh), so layers have accumulated for
+# months and nothing ever removed them.
+#
+# It matters because of where the WAL lives. The same filesystem measured on
+# its own does 426 fsyncs/s at a p50 of 1976us, while the WAL writer under load
+# sees sync_avg_us 9864 -- five times slower, with outliers at 466ms. ext4
+# allocation degrades as a volume fills, and this one is 84% full. At the idle
+# fsync rate, the writer's measured batch of 48 would give ~20,000 records/s,
+# twice the 10,000 target: the storage is not the ceiling, it is being made to
+# behave like one.
+#
+# It is also a stability risk on its own terms. A validator that fills its disk
+# stops writing its WAL and its database, and this one has 16 GB left while
+# growing a 2.6 GB WAL that shows no compaction in 24 hours.
+#
+# WHAT IS AND IS NOT REMOVED. `docker builder prune -af` removes BUILD CACHE
+# only: intermediate layers kept to speed up future builds. Images, containers
+# and volumes are untouched, so the running node keeps running and the next
+# deploy still works -- it just rebuilds from scratch, which costs one slower
+# build and is exactly what CI does anyway.
+#
+# Sequenced, never parallel: pruning is I/O-heavy, and doing it on both
+# validators at once would slow both at the same moment.
+on:
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: "Type true to actually prune"
+        required: true
+        default: "false"
+
+jobs:
+  c1:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Contabo1
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: 173.249.37.118
+          username: root
+          key: ${{ secrets.CONTABO_SSH_KEY }}
+          port: 22
+          fingerprint: "SHA256:noMtjHV8c+2iEFZu3TRUP6WRwGjkrvFke71KgU6Eyt4"
+          script_stop: false
+          timeout: 900s
+          command_timeout: 900s
+          envs: CONFIRM
+          script: |
+            set +e
+            echo "### CONTABO1 ###"
+            df -hT / | tail -1
+            docker system df
+            if [ "${CONFIRM:-false}" != "true" ]; then echo "confirm != true — nothing pruned."; exit 0; fi
+            echo "--- pruning build cache ---"
+            docker builder prune -af 2>&1 | tail -3
+            echo "--- after ---"
+            df -hT / | tail -1
+            docker system df
+            echo "--- node still up? ---"
+            curl -s --max-time 15 http://127.0.0.1:8080/api/status | grep -o '"height":[0-9]*' || echo "(unreachable)"
+        env:
+          CONFIRM: ${{ inputs.confirm }}
+
+  c2:
+    needs: c1
+    runs-on: ubuntu-latest
+    steps:
+      - name: Contabo2
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: 194.163.188.71
+          username: root
+          key: ${{ secrets.CONTABO2_SSH_KEY }}
+          port: 22
+          script_stop: false
+          timeout: 900s
+          command_timeout: 900s
+          envs: CONFIRM
+          script: |
+            set +e
+            echo "### CONTABO2 ###"
+            df -hT / | tail -1
+            docker system df
+            if [ "${CONFIRM:-false}" != "true" ]; then echo "confirm != true — nothing pruned."; exit 0; fi
+            echo "--- pruning build cache ---"
+            docker builder prune -af 2>&1 | tail -3
+            echo "--- after ---"
+            df -hT / | tail -1
+            docker system df
+            echo "--- node still up? ---"
+            curl -s --max-time 15 http://127.0.0.1:8080/api/status | grep -o '"height":[0-9]*' || echo "(unreachable)"
+            echo "--- fsync on the freed filesystem, same probe as before ---"
+            python3 - /root/aequitas-wal-data <<'PY'
+            import os, sys, time
+            d = sys.argv[1]
+            path = os.path.join(d, ".fsync-probe.tmp")
+            f = os.open(path, os.O_CREAT | os.O_WRONLY | os.O_TRUNC)
+            rec = b"x" * 220
+            lat = []
+            end = time.time() + 8
+            try:
+                while time.time() < end:
+                    os.write(f, rec)
+                    t0 = time.perf_counter()
+                    os.fsync(f)
+                    lat.append((time.perf_counter() - t0) * 1e6)
+            finally:
+                os.close(f); os.unlink(path)
+            lat.sort(); n = len(lat)
+            print("  %d fsyncs in 8s = %.0f/s | p50 %.0fus p90 %.0fus p99 %.0fus max %.0fus"
+                  % (n, n/8.0, lat[n//2], lat[int(n*.9)], lat[int(n*.99)], lat[-1]))
+            PY
+        env:
+          CONFIRM: ${{ inputs.confirm }}

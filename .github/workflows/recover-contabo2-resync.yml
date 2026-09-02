@@ -1,0 +1,129 @@
+name: Recover Contabo2 by resyncing from Contabo1 (manual, wipes local state)
+
+# WHY CONTABO2 CANNOT RECOVER ON ITS OWN — measured 2026-08-22, not assumed.
+#
+# It sits pinned at height 4425913 while Contabo1 advances past 4426900. Six
+# things were checked before reaching for a resync, and five came back clean:
+#
+#   1. Is the data reachable?      YES. From the box itself,
+#      /api/blocks?min_height=4425913 on Contabo1 answers HTTP 200 in 13ms
+#      with 5 blocks in 2,986 bytes.
+#   2. Is the chain linked?        YES. Block 4425914's parent IS Contabo2's
+#      own tip, 36cdb704..., and Contabo1 holds exactly one block per height.
+#   3. Are the blocks too big?     NO. 717 bytes each.
+#   4. Does Contabo2 reject them?  NO. Zero rejection marks in 10 minutes.
+#   5. Is a proposer banned?       NO. No equivocation or slashing lines.
+#   6. Is it far-ahead capped?     NO. 470 blocks behind against a cap of 5000.
+#
+# What it actually does, once a second:
+#
+#   [DAG] Block #4425914 queued as orphan — missing parent b99fa340d0a7c721...
+#
+# But Contabo1's block 4425914 has parent 36cdb704... . So the block Contabo2
+# holds at that height is a DIFFERENT one, and the parent it waits for,
+# b99fa340..., exists nowhere on Contabo1. These are orphans left over from the
+# load run, reloaded from its own Postgres at boot, waiting on a branch that no
+# longer exists. Nothing can ever resolve them, and while they sit there they
+# count as unresolved deferrals, which pins clean_sync_streak at 0, which keeps
+# the production gate shut. backlog_vs_fork.go's phrase for it: the state is a
+# trap.
+#
+# The deepScan makes it worse rather than better. Its sweep starts at 4425913 —
+# the right place — cannot merge, and concludes the common ancestor must lie
+# further BACK, so it walks its floor down (4425913 -> 4425755 -> 4425600...).
+# Each step spends the bounded sweep budget re-walking history the box already
+# has, while the real gap ahead grows by a block a second.
+#
+# THE TRUST DECISION, STATED PLAINLY
+#
+# This makes Contabo1's state authoritative for Contabo2. The two boxes have
+# separate owners, so that is a real decision and not a config detail. It is
+# the right call here: Contabo1 is the only advancing validator, its chain is
+# the one both boxes agreed on up to 4425913, and Contabo2 cannot recover
+# otherwise.
+#
+# BOOTSTRAP_SIGNER below was RECOVERED from Contabo1's live snapshot, not
+# assumed — `go run ./tools/snapshot-signer http://173.249.37.118:8080` returns
+# 0x0be8b961cbf6564bd1931b0803d35c0659e0d016, which matches the address
+# proposing its blocks. Getting this wrong makes the resync fail closed and
+# look exactly like it never ran.
+#
+# Wipes Contabo2's local chain state. Requires confirm=true.
+on:
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: "Type true to actually resync (wipes Contabo2's local state)"
+        required: true
+        default: "false"
+
+jobs:
+  recover:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Resync Contabo2 from Contabo1
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: 194.163.188.71
+          username: root
+          key: ${{ secrets.CONTABO2_SSH_KEY }}
+          port: 22
+          script_stop: false
+          timeout: 1800s
+          command_timeout: 1800s
+          envs: CONFIRM
+          script: |
+            set +e
+            if [ "${CONFIRM:-false}" != "true" ]; then
+              echo "confirm != true -- nothing done."
+              exit 0
+            fi
+            STAMP=$(date +%Y%m%d-%H%M%S)
+            cp /root/.aequitas.env "/root/.aequitas.env.bak.$STAMP"
+            echo "backup: /root/.aequitas.env.bak.$STAMP"
+
+            echo "=== before ==="
+            grep -E '^(BOOTSTRAP_SIGNER|BOOTSTRAP_SNAPSHOT_URL|RESYNC_FROM_SNAPSHOT)=' /root/.aequitas.env || echo "(none present)"
+            curl -s --max-time 15 http://127.0.0.1:8080/api/status | tr ',' '\n' | grep '"height"' || echo "(unreachable)"
+
+            echo "=== pointing Contabo2 at Contabo1 as its snapshot source ==="
+            sed -i '/^BOOTSTRAP_SNAPSHOT_URL=/d;/^BOOTSTRAP_SIGNER=/d' /root/.aequitas.env
+            echo 'BOOTSTRAP_SNAPSHOT_URL=http://173.249.37.118:8080/api/snapshot' >> /root/.aequitas.env
+            echo 'BOOTSTRAP_SIGNER=0x0be8b961cbf6564bd1931b0803d35c0659e0d016' >> /root/.aequitas.env
+            sed -i 's/^RESYNC_FROM_SNAPSHOT=.*/RESYNC_FROM_SNAPSHOT=true/' /root/.aequitas.env
+            grep -q '^RESYNC_FROM_SNAPSHOT=' /root/.aequitas.env || echo 'RESYNC_FROM_SNAPSHOT=true' >> /root/.aequitas.env
+            grep -E '^(BOOTSTRAP_SIGNER|BOOTSTRAP_SNAPSHOT_URL|RESYNC_FROM_SNAPSHOT)=' /root/.aequitas.env
+
+            # deploy_safe_c2.sh, never deploy.sh: this box's deploy.sh wipes the
+            # database on its own, and the resync must be the ONE thing wiping
+            # state here so a failure stays attributable.
+            echo "=== rebuild + restart (boot performs the resync) ==="
+            if [ -x /root/deploy_safe_c2.sh ]; then
+              /root/deploy_safe_c2.sh 2>&1 | tail -15
+            else
+              echo "deploy_safe_c2.sh missing — refusing to fall back to deploy.sh, which wipes the DB by itself"
+              exit 1
+            fi
+
+            echo "=== reverting RESYNC_FROM_SNAPSHOT so ordinary deploys do not wipe state every time ==="
+            sed -i 's/^RESYNC_FROM_SNAPSHOT=.*/RESYNC_FROM_SNAPSHOT=false/' /root/.aequitas.env
+            grep '^RESYNC_FROM_SNAPSHOT=' /root/.aequitas.env
+
+            echo "=== what the boot said about the resync ==="
+            sleep 30
+            docker logs aequitas-node 2>&1 | grep -iE '\[RESYNC\]|\[BOOTSTRAP\]|\[SNAPSHOT\]|snapshot' | tail -25 || echo "(no resync lines)"
+
+            echo "=== settings that must have survived ==="
+            docker inspect aequitas-node --format '{{range .Config.Env}}{{println .}}{{end}}' \
+              | grep -E '^(AEQUITAS_WAL_ENABLED|AEQUITAS_WAL_FLUSH_CONCURRENCY|AEQUITAS_DB_MAX_CONNS|ENABLE_MULTI_BLOCK_TICK|MPC_ENABLED)=' \
+              || echo "(MISSING -- investigate)"
+            echo "=== mounts ==="
+            docker inspect aequitas-node --format '{{range .Mounts}}{{.Source}} -> {{.Destination}}{{println}}{{end}}'
+
+            echo "=== is it advancing now? ==="
+            for i in 1 2 3 4 5 6 7 8; do
+              sleep 20
+              curl -s --max-time 10 http://127.0.0.1:8080/api/status | tr ',' '\n' | grep '"height"' || echo "  (unreachable)"
+            done
+        env:
+          CONFIRM: ${{ inputs.confirm }}

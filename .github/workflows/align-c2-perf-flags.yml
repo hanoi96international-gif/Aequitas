@@ -1,0 +1,153 @@
+name: Align Contabo2 with Contabo1 (2 perf flags, manual)
+
+# Contabo1 and Contabo2 run the SAME commit and identical WAL, multi-block-tick
+# and auto-heal settings -- verified 2026-08-24 by diffing both containers'
+# environments. Two flags are set on C1 and NOT on C2, and neither is
+# box-specific:
+#
+#   AEQUITAS_COMPRESS_BLOCK_PAYLOAD=1
+#     Shortens how long SaveBlockWithPendingTxsAtomic holds dag.mu -- measured
+#     3.5x at full-block size in block_payload_codec.go's own table. That lock
+#     is what block production and AddPeerBlock both queue behind, and its
+#     overrun is described there as exactly what "piles up orphans and
+#     collapses the DAG to a single tip". It only changes what this node
+#     writes to its OWN database, not the wire format, and both boxes already
+#     carry the decoder (same commit), which is the precondition the codec's
+#     docstring sets before any node writes compressed.
+#
+#   AEQUITAS_PRODUCE_WHEN_BACKLOG_SHRINKING=1
+#     The escape from the backlog trap. backlog_vs_fork.go names Contabo2
+#     specifically as the motivation -- "sat 780 blocks back and climbing, and
+#     the escape declined every time" -- and it is off on exactly that box. C1
+#     only ever worked without it because it "happened to be six blocks
+#     behind".
+#
+# NOT included here, deliberately: ENABLE_MULTI_BLOCK_TICK stays 0 on both.
+# Turning it off is part of what took throughput from 2,117 to 3,264 TPS.
+# AEQUITAS_RPC_RATE_LIMIT_MAX is also left alone -- C2 sets it to 200
+# explicitly and C1 sets nothing, but rpcRateLimitMaxDefault IS 200, so the
+# two are already identical and "fixing" it would change nothing.
+#
+# Merging was measured healthy before this ran (200 blocks: an exact 100/100
+# proposer split, longest single-proposer run of 2, 145 merge blocks; 40
+# samples over 10 minutes never more than 1 block apart; byte-identical hash
+# and state root at height 4611400). These flags matter under LOAD, which is
+# where the dropouts happen -- not on an idle chain.
+#
+# RAN 2026-08-24. C2 was ~2 minutes away (the start reads ~24 million WAL
+# records, all below the recovery floor, which is read-only but not free) and
+# came back byte-identical with C1 at height 4668150 -- no resync needed. Both
+# flags confirmed in the container's own environment afterwards.
+#
+# Manual-only, same reasoning as enable-wal-contabo2.yml: this restarts a live
+# validator. C1 keeps producing throughout, so the chain does not stop.
+#
+# ROLLBACK: the .aequitas.env.bak.<timestamp> written below is a complete undo.
+# Restore it and re-run /root/deploy_safe_c2.sh. Note that compressed blocks
+# already written stay compressed -- readable by this commit, but a node rolled
+# back to a build older than the codec would read them as empty. That is the
+# codec's documented one-way property and applies to C1 already.
+on:
+  workflow_dispatch: {}
+
+jobs:
+  align:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Set the two flags on Contabo2 and restart
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: 194.163.188.71
+          username: root
+          key: ${{ secrets.CONTABO2_SSH_KEY }}
+          port: 22
+          fingerprint: "SHA256:VIwj7Faxiga2n45HVHZEQFPxcbRKHgSgHoxAFsf2wto"
+          script_stop: true
+          # 15 min: Deploy (Rebuild, meist gecacht) + bis zu 6 min Warten auf
+          # den Start. 600s waeren zu knapp, sobald das WAL wieder waechst.
+          timeout: 900s
+          command_timeout: 900s
+          script: |
+            set -euo pipefail
+            ENV_FILE=/root/.aequitas.env
+            BACKUP="${ENV_FILE}.bak.$(date +%s)"
+            cp "$ENV_FILE" "$BACKUP"
+            echo "Backup (vollstaendiger Rueckweg): $BACKUP"
+
+            # Idempotent -- beliebig oft wiederholbar. deploy_safe_c2.sh laesst
+            # .aequitas.env ueber die geerbte Container-Umgebung gewinnen, die
+            # Flags ueberleben damit auch den naechsten regulaeren Deploy.
+            grep -q '^AEQUITAS_COMPRESS_BLOCK_PAYLOAD=' "$ENV_FILE" \
+              || echo "AEQUITAS_COMPRESS_BLOCK_PAYLOAD=1" >> "$ENV_FILE"
+            grep -q '^AEQUITAS_PRODUCE_WHEN_BACKLOG_SHRINKING=' "$ENV_FILE" \
+              || echo "AEQUITAS_PRODUCE_WHEN_BACKLOG_SHRINKING=1" >> "$ENV_FILE"
+
+            echo "=== Flags in .aequitas.env ==="
+            grep -E '^(AEQUITAS_COMPRESS_BLOCK_PAYLOAD|AEQUITAS_PRODUCE_WHEN_BACKLOG_SHRINKING)=' "$ENV_FILE"
+
+            echo "=== Hoehe VOR dem Neustart ==="
+            BEFORE="$(curl -s --max-time 10 http://localhost:8080/api/status | sed -n 's/.*"height":\([0-9]*\).*/\1/p')"
+            echo "C2 vorher: ${BEFORE:-unbekannt}"
+
+            echo "=== Neustart ueber das boxeigene, erprobte Skript ==="
+            /root/deploy_safe_c2.sh
+
+            echo "=== Warten, bis der Knoten wieder antwortet ==="
+            # `if`, NICHT `curl ... && break`. Unter `set -e` ist die linke
+            # Seite eines && zwar ausgenommen, der GESAMTE Ausdruck aber nicht
+            # -- schlaegt curl fehl, liefert `curl && break` non-zero, und als
+            # letzter Befehl im Schleifenrumpf beendet das die ganze Sitzung.
+            # Beim ersten Lauf (24.08.) genau so passiert: Status 56 nach fuenf
+            # Sekunden, obwohl der Deploy sauber durchgelaufen war.
+            #
+            # 6 Minuten statt 2,5: der Start liest das WAL, und das sind auf C2
+            # rund 24 Millionen Datensaetze. Sie liegen alle unter dem
+            # recovery floor und werden nur gelesen, aber das dauert ~2 Minuten.
+            ready=0
+            for i in $(seq 1 72); do
+              sleep 5
+              if curl -sf --max-time 5 http://localhost:8080/api/status >/dev/null 2>&1; then
+                ready=1
+                echo "Knoten antwortet nach etwa $((i * 5)) s."
+                break
+              fi
+            done
+            if [ "$ready" -ne 1 ]; then
+              echo "FEHLER: Knoten antwortet nach 6 Minuten nicht. Log:"
+              docker logs --tail 60 aequitas-node || true
+              exit 1
+            fi
+
+            echo "=== Sind die Flags wirklich im Container angekommen? ==="
+            # Am Prozess pruefen, nicht an der Datei -- eine Datei, die der
+            # Container nie gelesen hat, sieht genauso richtig aus.
+            docker inspect aequitas-node --format '{{range .Config.Env}}{{println .}}{{end}}' \
+              | grep -E '^(AEQUITAS_COMPRESS_BLOCK_PAYLOAD|AEQUITAS_PRODUCE_WHEN_BACKLOG_SHRINKING)=' \
+              || { echo "FEHLER: Flags sind NICHT in der Container-Umgebung."; exit 1; }
+
+            echo "=== Kommt der Knoten wieder hoch und waechst er? ==="
+            AFTER1="$(curl -s --max-time 10 http://localhost:8080/api/status | sed -n 's/.*"height":\([0-9]*\).*/\1/p')"
+            sleep 20
+            AFTER2="$(curl -s --max-time 10 http://localhost:8080/api/status | sed -n 's/.*"height":\([0-9]*\).*/\1/p')"
+            echo "C2 nach Neustart: ${AFTER1:-?} -> ${AFTER2:-?}"
+            if [ -n "${AFTER1:-}" ] && [ -n "${AFTER2:-}" ] && [ "$AFTER2" -gt "$AFTER1" ]; then
+              echo "OK: C2 waechst wieder."
+            else
+              echo "WARNUNG: C2 waechst (noch) nicht. Container-Log pruefen:"
+              docker logs --tail 60 aequitas-node || true
+              exit 1
+            fi
+
+            echo "=== Stimmt C2 mit C1 ueberein? ==="
+            # Der eigentliche Beweis: gleicher Block auf gleicher Hoehe. Reine
+            # Hoehenvergleiche taeuschen, siehe die Finality-Slack-Havarie.
+            H=$(( AFTER1 - 20 ))
+            C1="$(curl -s --max-time 15 "http://173.249.37.118:8080/api/block?height=$H" | sed -n 's/.*"hash":"\([0-9a-fx]*\)".*/\1/p' | head -1)"
+            C2="$(curl -s --max-time 15 "http://localhost:8080/api/block?height=$H" | sed -n 's/.*"hash":"\([0-9a-fx]*\)".*/\1/p' | head -1)"
+            echo "Hoehe $H  C1=$C1"
+            echo "Hoehe $H  C2=$C2"
+            if [ -n "$C1" ] && [ "$C1" = "$C2" ]; then
+              echo "OK: byte-identisch."
+            else
+              echo "WARNUNG: Hashes weichen ab oder konnten nicht gelesen werden."
+            fi

@@ -233,23 +233,59 @@ func TestSyncStarvationTickConfirms(t *testing.T) {
 		rawDelta         int64
 		attachDelta      int64
 		primaryHeight    int64
+		prevGap          int64
 		primaryReachable bool
 		want             bool
 	}{
-		{"incident state: flood arriving, zero attach, 400+ behind", 1600, 0, local + 415, true, true},
-		{"exactly at the minimum arrivals and gap", syncStarvationMinArrivals, 0, local + syncStarvationMinGap, true, true},
-		{"primary unreachable is never evidence", 1600, 0, 0, false, false},
-		{"one single attach clears the state", 1600, 1, local + 415, true, false},
-		{"too few arrivals is isolation, not starvation", syncStarvationMinArrivals - 1, 0, local + 415, true, false},
-		{"gap below the minimum is just a quiet tip", 1600, 0, local + syncStarvationMinGap - 1, true, false},
-		{"healthy catch-up: arrivals AND attaches flowing", 1600, 900, local + 415, true, false},
-		{"nothing arriving at all (fully isolated)", 0, 0, local + 415, true, false},
+		{"incident state: flood arriving, zero attach, 400+ behind", 1600, 0, local + 415, -1, true, true},
+		{"exactly at the minimum arrivals and gap", syncStarvationMinArrivals, 0, local + syncStarvationMinGap, -1, true, true},
+		{"primary unreachable is never evidence", 1600, 0, 0, -1, false, false},
+		{"too few arrivals is isolation, not starvation", syncStarvationMinArrivals - 1, 0, local + 415, -1, true, false},
+		{"gap below the minimum is just a quiet tip", 1600, 0, local + syncStarvationMinGap - 1, -1, true, false},
+		{"nothing arriving at all (fully isolated)", 0, 0, local + 415, -1, true, false},
+
+		// Without a previous gap there is no growth to compare against, so a
+		// tick that attached something can never confirm on its first pass.
+		{"one attach, no baseline yet", 1600, 1, local + 415, -1, true, false},
+		{"healthy catch-up: arrivals AND attaches flowing", 1600, 900, local + 415, -1, true, false},
+
+		// THE CASE THAT MADE THIS FIX NECESSARY. Contabo1 forked mid-load on
+		// 2026-08-22, froze, and fell 600+ blocks behind while still attaching
+		// the occasional block. Under the old rule a single attachment reset the
+		// watch every tick, so this check -- whose description fits that failure
+		// exactly -- never confirmed once in fifteen minutes.
+		{"attaching a trickle while the gap GROWS is starvation", 1600, 3, local + 415, 350, true, true},
+		{"attaching a trickle while the gap SHRINKS is recovery", 1600, 3, local + 415, 480, true, false},
+		{"a steady gap is neither", 1600, 3, local + 415, 415, true, false},
+		// Growth still needs the node to be genuinely far behind: a gap that
+		// grows from 1 to 2 blocks is ordinary block-time jitter.
+		{"growing but well within normal lag", 1600, 3, local + 2, 1, true, false},
 	}
 	for _, tc := range cases {
-		if got := syncStarvationTickConfirms(tc.rawDelta, tc.attachDelta, local, tc.primaryHeight, tc.primaryReachable); got != tc.want {
-			t.Errorf("%s: syncStarvationTickConfirms(raw=%d, attach=%d, local=%d, primary=%d, reachable=%v) = %v, want %v",
-				tc.name, tc.rawDelta, tc.attachDelta, local, tc.primaryHeight, tc.primaryReachable, got, tc.want)
+		got, _ := syncStarvationTickConfirms(tc.rawDelta, tc.attachDelta, local, tc.primaryHeight, tc.prevGap, tc.primaryReachable)
+		if got != tc.want {
+			t.Errorf("%s: syncStarvationTickConfirms(raw=%d, attach=%d, local=%d, primary=%d, prevGap=%d, reachable=%v) = %v, want %v",
+				tc.name, tc.rawDelta, tc.attachDelta, local, tc.primaryHeight, tc.prevGap, tc.primaryReachable, got, tc.want)
 		}
+	}
+}
+
+// The returned gap is what the caller carries into the next tick, so a tick
+// that cannot measure one must say so rather than reporting a stale or zero
+// gap that the growth comparison would then treat as real.
+func TestStarvationTickReportsAnUnmeasurableGapAsNegative(t *testing.T) {
+	const local = int64(1_000_000)
+
+	if _, gap := syncStarvationTickConfirms(1600, 0, local, 0, 400, false); gap >= 0 {
+		t.Errorf("an unreachable primary reported gap %d; it must be negative so the next tick "+
+			"has no baseline to compare growth against", gap)
+	}
+	if _, gap := syncStarvationTickConfirms(1, 0, local, local+415, 400, true); gap >= 0 {
+		t.Errorf("a tick with too few arrivals reported gap %d; it measured nothing about sync "+
+			"health and must not seed the growth comparison", gap)
+	}
+	if _, gap := syncStarvationTickConfirms(1600, 0, local, local+415, -1, true); gap != 415 {
+		t.Errorf("gap reported as %d, want 415 — the caller needs the real distance to carry forward", gap)
 	}
 }
 

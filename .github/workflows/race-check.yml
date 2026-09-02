@@ -1,0 +1,33 @@
+name: Race detector on the WAL and keeper packages
+
+# The dev machine has no gcc, so `go test -race` cannot run there -- the same
+# limitation that once blocked measuring cgo signature verification locally.
+# The runners do have it, so concurrency changes get checked here.
+#
+# Worth its own workflow rather than folding into the deploy's test job: -race
+# makes tests several times slower, and a deploy should not pay that on every
+# push. This runs when the WAL or the transfer path changes, and on demand.
+on:
+  push:
+    branches: [main]
+    paths:
+      - "x/humanity/wal/**"
+      - "x/humanity/keeper/transfer_wal.go"
+      - "x/humanity/keeper/transfer_batch_concurrent.go"
+      - "x/humanity/keeper/sharded_accounts.go"
+      - ".github/workflows/race-check.yml"
+  workflow_dispatch: {}
+
+jobs:
+  race:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: go test -race
+        run: |
+          set -euo pipefail
+          CGO_ENABLED=1 go test -race -count=1 ./x/humanity/wal/ ./x/humanity/keeper/

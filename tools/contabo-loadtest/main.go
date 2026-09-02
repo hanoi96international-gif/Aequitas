@@ -75,7 +75,16 @@ func loadAccounts(path string) []*account {
 	rows, err := r.ReadAll()
 	must(err)
 	var accs []*account
-	for _, row := range rows[1:] { // skip header
+	// Die erste Zeile nur ueberspringen, wenn sie WIRKLICH eine Kopfzeile ist.
+	// Vorher stand hier rows[1:] ohne Pruefung -- und accounts-funded.csv hat
+	// keine Kopfzeile, das erste Konto verschwand also bei jedem Lauf still.
+	datenAb := 0
+	if len(rows) > 0 && len(rows[0]) > 2 {
+		if _, err := hex.DecodeString(rows[0][2]); err != nil {
+			datenAb = 1 // dritte Spalte ist kein Schluessel -> Kopfzeile
+		}
+	}
+	for _, row := range rows[datenAb:] {
 		privBytes, err := hex.DecodeString(row[2])
 		must(err)
 		priv, err := crypto.ToECDSA(privBytes)
@@ -181,9 +190,83 @@ const (
 // counter sendRawTransaction compares against (evm_rpc.go: storedNonce). So
 // this reads exactly what the node will expect next, with no pending-vs-latest
 // discrepancy to reason about, which is what makes a mid-run resync sound.
+// lastNonceErr carries WHY the most recent tryNonce failed. Without it the
+// retry loop reports "giving up after 8 attempts" and nothing about the cause,
+// so a rate limit, a transport timeout and a malformed reply all look alike.
+var lastNonceErr error
+
+// balanceWei liest den Kontostand eines Kontos.
+func (c *rpcClient) balanceWei(addr string) (*big.Int, bool) {
+	res, err := c.call("eth_getBalance", []string{addr, "latest"})
+	if err != nil {
+		return nil, false
+	}
+	var hexStr string
+	if err := json.Unmarshal(res, &hexStr); err != nil {
+		return nil, false
+	}
+	n, ok := new(big.Int).SetString(strings.TrimPrefix(hexStr, "0x"), 16)
+	return n, ok
+}
+
+// aussortieren entfernt Konten, die die geplanten Ueberweisungen nicht
+// bezahlen koennen.
+//
+// WARUM. Ein leerer Absender laesst nicht nur seine eigene Ueberweisung
+// scheitern, sondern das ganze JSON-RPC-Buendel, in dem er sitzt. Am
+// 29.08.2026 waren 118 von 623 Konten leer; der Lauf meldete 20.400
+// Fehlschlaege neben 28.500 Erfolgen, und die daraus errechneten 299 TPS
+// sagten ueber die Kette nichts aus. Das Werkzeug beschreibt diese Falle in
+// seinem eigenen Kommentar zur ring-Topologie ("this measured the CSV\'s
+// wealth distribution, not the topology") und zog daraus keine Folgerung.
+//
+// Eine fehlgeschlagene Abfrage sortiert NICHT aus: sonst wuerde ein
+// Netzwackler den Lauf schrumpfen lassen, und das saehe aus wie ein Ergebnis.
+func aussortieren(c *rpcClient, accs []*account, mindest *big.Int) []*account {
+	if mindest == nil || mindest.Sign() <= 0 {
+		return accs
+	}
+	type ergebnis struct {
+		a  *account
+		ok bool
+	}
+	aus := make(chan ergebnis, len(accs))
+	sem := make(chan struct{}, 16)
+	var wg sync.WaitGroup
+	for _, a := range accs {
+		wg.Add(1)
+		go func(a *account) {
+			defer wg.Done()
+			sem <- struct{}{}
+			defer func() { <-sem }()
+			b, ok := c.balanceWei(a.address)
+			aus <- ergebnis{a, !ok || b.Cmp(mindest) >= 0}
+		}(a)
+	}
+	wg.Wait()
+	close(aus)
+	behalten := make([]*account, 0, len(accs))
+	verworfen := 0
+	for e := range aus {
+		if e.ok {
+			behalten = append(behalten, e.a)
+		} else {
+			verworfen++
+		}
+	}
+	sort.Slice(behalten, func(i, j int) bool { return behalten[i].index < behalten[j].index })
+	if verworfen > 0 {
+		fmt.Printf("aussortiert: %d von %d Konten koennen die geplanten Ueberweisungen nicht "+
+			"bezahlen (unter %s wei) -- sie haetten die Buendel mitgerissen, in denen sie sitzen\n",
+			verworfen, len(accs), mindest.String())
+	}
+	return behalten
+}
+
 func (c *rpcClient) tryNonce(addr string) (uint64, bool) {
 	res, err := c.call("eth_getTransactionCount", []string{addr, "latest"})
 	if err != nil {
+		lastNonceErr = err
 		return 0, false
 	}
 	var hexStr string
@@ -197,20 +280,69 @@ func (c *rpcClient) tryNonce(addr string) (uint64, bool) {
 	return n, true
 }
 
-func (c *rpcClient) nonce(addr string) uint64 {
-	var n uint64
-	var ok bool
+// tryNonceRetrying is nonce() without the panic: it reports failure instead of
+// ending the process.
+//
+// WHY THAT MATTERS. On 2026-08-22 three separate runs produced no measurement
+// at all. The generator was aborting in warmup, on ONE account out of 617,
+// before a single transfer had been sent:
+//
+//	nonce(0x621d...): giving up after 8 attempts
+//	panic: could not read nonce for 0x621d... after 8 attempts
+//
+// One unreadable account is not a reason to throw away a run across the other
+// 616. It is a reason to drop that account and say so.
+func (c *rpcClient) tryNonceRetrying(addr string) (uint64, bool) {
 	for attempt := 1; attempt <= nonceMaxAttempts; attempt++ {
-		if n, ok = c.tryNonce(addr); ok {
-			return n
+		if n, ok := c.tryNonce(addr); ok {
+			return n, true
 		}
 		if attempt == nonceMaxAttempts {
-			fmt.Printf("nonce(%s): giving up after %d attempts\n", addr, nonceMaxAttempts)
-			must(fmt.Errorf("could not read nonce for %s after %d attempts", addr, nonceMaxAttempts))
+			fmt.Printf("nonce(%s): giving up after %d attempts (last error: %v)\n",
+				addr, nonceMaxAttempts, lastNonceErr)
+			return 0, false
 		}
 		time.Sleep(time.Duration(attempt) * nonceRetryBackoff)
 	}
+	return 0, false
+}
+
+// nonce keeps the hard-failure behaviour for the one caller where a single
+// account genuinely IS the run: the fund phase seeds, which pay for the rest.
+func (c *rpcClient) nonce(addr string) uint64 {
+	n, ok := c.tryNonceRetrying(addr)
+	if !ok {
+		must(fmt.Errorf("could not read nonce for %s after %d attempts (last error: %v)",
+			addr, nonceMaxAttempts, lastNonceErr))
+	}
 	return n
+}
+
+// prefetchNonces reads every pair's two nonces and keeps only the pairs where
+// BOTH sides answered. A pair with one unreadable side cannot transact in
+// either direction, so keeping it would only add failures to the throughput
+// number it is supposed to contribute to.
+func prefetchNonces(c *rpcClient, senders, recipients []*account) ([]*account, []*account) {
+	keptS := make([]*account, 0, len(senders))
+	keptR := make([]*account, 0, len(recipients))
+	dropped := 0
+	for i := range senders {
+		sn, sok := c.tryNonceRetrying(senders[i].address)
+		rn, rok := c.tryNonceRetrying(recipients[i].address)
+		if !sok || !rok {
+			dropped++
+			continue
+		}
+		senders[i].nonce = sn
+		recipients[i].nonce = rn
+		keptS = append(keptS, senders[i])
+		keptR = append(keptR, recipients[i])
+	}
+	if dropped > 0 {
+		fmt.Printf("dropped %d of %d pair(s) whose nonce could not be read; running with %d\n",
+			dropped, len(senders), len(keptS))
+	}
+	return keptS, keptR
 }
 
 func (c *rpcClient) sendValue(from *account, toAddr string, amountWei *big.Int) (string, error) {
@@ -246,27 +378,70 @@ func (c *rpcClient) sendValue(from *account, toAddr string, amountWei *big.Int) 
 // target, regardless of how well the chain performed): sendValue does ONE
 // HTTP round trip per transfer and waits for the reply. That caps a pair at
 // 1/latency transfers per second — at the ~40ms observed against Contabo2
-// that is ~25/s, so even 72 pairs top out around 1,800/s. Filling a
-// maxTxsPerBlock=50000 block in one BLOCK_TIME needs 50,000/s arriving. The
+// that is ~25/s, so even 72 pairs top out around 1,800/s. Filling a block in
+// one BLOCK_TIME needed 50,000/s arriving back then; maxTxsPerBlock steht seit
+// dem 21.08.2026 auf 10.000, die Rechnung hier bleibt aber als Beleg stehen,
+// warum der Generator und nicht der Knoten die Grenze war. The
 // generator, not the node, was the binding constraint, and no chain-side fix
 // could ever have shown up in the number.
 //
-// Two independent limits collapse at once by batching, because the node
-// supports JSON-RPC batches (evm_rpc.go's handleRPC: `body[0] == '['`, up to
-// maxBatchSize=100 per request) AND checks its per-IP rate limiter exactly
-// ONCE per HTTP request, before parsing the body:
+// Batching collapses ONE of the two limits, not both. The node supports
+// JSON-RPC batches (evm_rpc.go's handleRPC: `body[0] == '['`, up to
+// maxBatchSize=100 per request), so 100 transfers per request means 100x
+// fewer round trips. That part still holds and is why batchSize exists.
 //
-//	if rpcRateLimited(clientIP(r)) { ... }   // one tick, whatever the batch holds
+// KORREKTUR (2026-08-29): der zweite Teil stimmte nicht mehr. Hier stand,
+// der Begrenzer werde EINMAL JE ANFRAGE geprueft ("one tick, whatever the
+// batch holds"), ein Buendel koste also 100x weniger Budget, und eine Quelle
+// komme auf 2.000/s statt 20/s.
 //
-// So 100 transfers per request means 100x fewer round trips AND 100x less
-// rate-limit consumption. rpcRateLimitMax=200 per rpcRateLimitWindow=10s is
-// 20 requests/s per IP; at 100 transfers each that is a 2,000/s ceiling from
-// a single source instead of ~20/s worth of accepted singles.
+// Der P1-Fix vom 2026-07-21 (nach main am 2026-08-14) bucht JE POSTEN ab --
+// genau um dieses Schlupfloch zu schliessen. Buendeln spart seither KEIN
+// Budget mehr:
 //
-// Deliberately exactly maxBatchSize: the node rejects a larger batch outright
-// ("batch too large"), and a smaller one would leave measured throughput on
-// the table for no benefit.
-const batchSize = 100
+//	200 Posten je 10-s-Fenster = 20 Ueberweisungen/s je IP, egal wie gebuendelt
+//
+// Wer den Begrenzer nicht hochsetzt, misst also 20/s und nicht 2.000/s. Am
+// 29.08.2026 kostete genau dieser Absatz einen Nachmittag: die Laeufe kamen
+// auf 13-15 TPS, und die Zahl sah nach einem Knotenproblem aus.
+//
+// Vor einem Lastlauf gilt: Zielrate x 10 (Fensterlaenge) ist der Mindestwert
+// fuer AEQUITAS_RPC_RATE_LIMIT_MAX. 10.000 TPS brauchen >= 100.000.
+// Dafuer gibt es .github/workflows/set-rpc-rate-limit-contabo2.yml.
+//
+// # GEMESSEN AM 29.08.2026 -- UND DAS GEGENTEIL VON DEM, WAS HIER STAND
+//
+// Hier stand: "Deliberately exactly maxBatchSize ... a smaller one would leave
+// measured throughput on the table for no benefit." Beide Haelften sind
+// widerlegt.
+//
+// Gemessen gegen Contabo2, Ratenbegrenzer aus dem Weg:
+//
+//	Buendel 100, 169 Absender  ->   427 TPS
+//	Buendel  10, 161 Absender  ->   591 TPS   (+38 % bei WENIGER Absendern)
+//	Buendel  10, 320 Absender  -> 1.148 TPS
+//
+// Der Grund: der Knoten arbeitet die Posten EINES Buendels nacheinander ab
+// (handleRPC: `for i, raw := range batch { s.handleSingle(...) }`), und das
+// ist richtig so -- ein Buendel traegt fortlaufende Nonces eines Absenders,
+// die muessen in Reihenfolge laufen. Ein Buendel aus 100 Stueck ist damit
+// eine Kette aus 100 seriellen Schritten hinter EINEM Absender. Je groesser
+// das Buendel, desto weniger Gleichzeitigkeit hat der Knoten zu tun.
+//
+// Der frueher entscheidende Gegengrund ist zudem entfallen: Buendeln sparte
+// Begrenzer-Budget, weil einmal je ANFRAGE abgebucht wurde. Seit dem P1-Fix
+// vom 21.07.2026 wird je POSTEN abgebucht -- ein Buendel kostet genau so
+// viel Budget wie die Einzelanfragen darin.
+//
+// Uebrig bleibt allein der Netzumlauf: 10 Stueck je Anfrage sparen 90 % der
+// Umlaeufe gegenueber Einzelversand, ohne die Gleichzeitigkeit nennenswert zu
+// opfern. Noch kleiner ist messbar schlechter: Buendel 3 mit 320 Absendern
+// hat die Verbindungsebene ueberfahren (massenhaft "connection reset by
+// peer"), weil die Zahl offener Verbindungen mit 1/Buendelgroesse waechst.
+//
+// Ueber -batch-size weiterhin einstellbar; 100 bleibt erlaubt, ist aber nach
+// dieser Messung die schlechtere Wahl.
+const batchSize = 10
 
 // sendValueBatch signs batchSize sequential transfers from `from` and submits
 // them as ONE JSON-RPC batch. Returns how many the node accepted.
@@ -371,12 +546,35 @@ const sendRetryBackoff = 50 * time.Millisecond
 func normalizeErrForTally(s string) string {
 	var b strings.Builder
 	for _, f := range strings.Fields(s) {
+		// Satzzeichen abtrennen und danach wieder anfuegen. Ohne das griff die
+		// Adresspruefung bei "(0xabc..." nicht -- im Lauf vom 29.08.2026 blieb
+		// deshalb die erste Adresse eines Paares im Klartext stehen und die
+		// zweite wurde ersetzt, also zaehlte jede Adresse als eigene Ursache.
+		vorn := strings.TrimLeft(f, "(\"'")
+		links := f[:len(f)-len(vorn)]
+		kern := strings.TrimRight(vorn, ".,;:)\"'")
+		rechts := vorn[len(kern):]
+		f = kern
 		switch {
 		case strings.HasPrefix(f, "0x") && len(f) > 6:
 			f = "0x<hex>"
-		case isAllDigits(strings.Trim(f, ".,;:()")):
+		case isAllDigits(f):
 			f = "<n>"
+		case isFraction(f):
+			// "batch member 9/26" ist keine eigene Ursache. Ohne diesen Fall
+			// zerfiel EINE Ursache in 23 scheinbar verschiedene, jede mit
+			// kleiner Zahl -- und die haeufigste war nicht mehr erkennbar.
+			f = "<i>/<n>"
+		case istNetzAdresse(f):
+			// "127.0.0.1:58900->127.0.0.1:8080" -- der Quellport ist bei
+			// jeder Verbindung anders. Ohne diesen Fall zerfiel im Lauf vom
+			// 29.08.2026 EINE Ursache (connection reset by peer) in 11.158
+			// scheinbar verschiedene, und die Ausgabe endete mit
+			// "... and 11158 more distinct cause(s)" -- genau in dem Moment,
+			// in dem die Fehlerursache gebraucht wurde.
+			f = "<addr>"
 		}
+		f = links + f + rechts
 		if b.Len() > 0 {
 			b.WriteByte(' ')
 		}
@@ -387,6 +585,44 @@ func normalizeErrForTally(s string) string {
 		out = out[:200] + "..."
 	}
 	return out
+}
+
+// istNetzAdresse erkennt "host:port" und "host:port->host:port".
+//
+// Gedacht fuer die Fehlerzusammenfassung: der Quellport einer ausgehenden
+// Verbindung ist bei jedem Versuch ein anderer, taugt also nie zur
+// Unterscheidung von URSACHEN -- er macht nur jede Zeile einzigartig und
+// sprengt damit die Zaehlung, die den haeufigsten Fehler zeigen soll.
+func istNetzAdresse(f string) bool {
+	teile := strings.Split(f, "->")
+	if len(teile) > 2 {
+		return false
+	}
+	for _, t := range teile {
+		i := strings.LastIndex(t, ":")
+		if i <= 0 || i == len(t)-1 {
+			return false
+		}
+		wirt, port := t[:i], t[i+1:]
+		if !isAllDigits(port) {
+			return false
+		}
+		// Ein Wirt ohne Punkt und ohne "localhost" ist eher ein Doppelpunkt
+		// aus Prosa ("Transfer failed: ...") als eine Adresse.
+		if !strings.Contains(wirt, ".") && wirt != "localhost" {
+			return false
+		}
+	}
+	return true
+}
+
+// isFraction erkennt Positionsangaben wie "9/26".
+func isFraction(s string) bool {
+	i := strings.IndexByte(s, '/')
+	if i <= 0 || i == len(s)-1 {
+		return false
+	}
+	return isAllDigits(s[:i]) && isAllDigits(s[i+1:])
 }
 
 func isAllDigits(s string) bool {
@@ -496,9 +732,14 @@ func main() {
 	phase := flag.String("phase", "fund,warmup,run", "comma-separated phases to run")
 	numSeeds := flag.Int("seeds", 5, "number of seed accounts (first N rows)")
 	maxPairs := flag.Int("pairs", 0, "cap on concurrent sender pairs (0 = every pair in the CSV). Lower values find the rate the network SUSTAINS, as opposed to the peak it briefly reaches.")
+	topology := flag.String("topology", "pairs", "pairs = disjoint A<->B couples, half as many senders as accounts; ring = every account sends to the next, twice the concurrency but neighbouring senders share an account")
 	fundAmount := flag.String("fund-amount-wei", "1000000000000000", "wei sent from a seed to each test account (default 0.001 AEQ)")
 	transferAmount := flag.String("transfer-amount-wei", "10000000000000", "wei per load-test transfer (default 0.00001 AEQ)")
 	runDuration := flag.Duration("duration", 20*time.Second, "timed load phase duration")
+	// Vorgabe: das Hundertfache einer Ueberweisung. Wer weniger haelt, haelt
+	// den Lauf nicht durch und reisst nur Buendel mit. "0" schaltet es ab.
+	minBalanceWei := flag.String("min-balance-wei", "1000000000000000",
+		"Konten unter diesem Stand vor dem Lauf aussortieren (0 = nicht aussortieren)")
 	rampSeconds := flag.Int("ramp", 5, "seconds to ramp concurrency up over")
 	// Both of these were fixed constants until the 2026-07-25 run showed the
 	// working point has to be FOUND, not assumed: 288 requests exceeded the
@@ -531,7 +772,66 @@ func main() {
 	}
 	seeds := accs[:*numSeeds]
 	testAccs := accs[*numSeeds:]
+	// Zahlungsunfaehige Konten VOR der Paarbildung entfernen -- siehe
+	// aussortieren(). Eigener kleiner Client, damit hier nichts an der
+	// bestehenden Reihenfolge verschoben werden muss.
+	if *minBalanceWei != "" && *minBalanceWei != "0" {
+		if mindest, ok := new(big.Int).SetString(*minBalanceWei, 10); !ok {
+			fmt.Printf("-min-balance-wei %q ist keine Zahl -- es wird nicht aussortiert\n", *minBalanceWei)
+		} else {
+			vorpruefer := &rpcClient{url: *rpcURL, hc: &http.Client{Timeout: 30 * time.Second}}
+			testAccs = aussortieren(vorpruefer, testAccs, mindest)
+			if len(testAccs) < 2 {
+				fmt.Println("nach dem Aussortieren bleiben weniger als zwei Konten -- nichts zu messen")
+				return
+			}
+		}
+	}
+	// TOPOLOGY. Throughput here is senders divided by per-transfer latency,
+	// because one JSON-RPC batch carries transfers from a single sender and the
+	// node applies a batch in order. So the sender count IS the concurrency the
+	// node ever sees, and with "pairs" it is only half the accounts:
+	//
+	//	623 funded accounts -> 311 pairs -> ~3,400-3,800 TPS measured
+	//
+	// "ring" makes every account a sender (i sends to i+1), doubling that for
+	// free. The cost is that neighbouring senders share an account: goroutine i
+	// touches accounts i and i+1, goroutine i+1 touches i+1 and i+2.
+	//
+	// That overlap is exactly what the run loop's own comment below warns a
+	// ring would break, and the warning was right WHEN IT WAS WRITTEN: a
+	// contended shard used to make a transfer BLOCK, because
+	// transferConcurrentWAL's eligibility checks called shardedAccounts.Get,
+	// which locks. That was removed on 2026-08-22 after it measured 46ms of a
+	// 67ms transfer, and a contended shard now bails cleanly to the batcher
+	// instead -- which amortises commits across many transfers and is the
+	// path TryLockAddrs was always designed to fall through to.
+	//
+	// So the trade changed and is worth measuring rather than assuming. Default
+	// stays "pairs": this flag exists to produce a number, not to be believed
+	// in advance.
+	//
+	// MEASURED 2026-08-22, and the result does NOT settle the question:
+	//
+	//	pairs  308 senders   2,616 TPS    1,631 failures
+	//	ring   617 senders   1,965 TPS  216,306 failures
+	//
+	// Every one of those 216,306 was "insufficient balance", not contention.
+	// accounts-funded.csv is written richest-first, so in the pairs topology
+	// the senders are the RICH half and the recipients the poor half. The ring
+	// makes the poor half send too, and they run dry within the first minute.
+	//
+	// So this measured the CSV's wealth distribution, not the topology. A fair
+	// comparison needs evenly funded accounts (loadtest-widen-senders.yml),
+	// and until that exists the ring number should not be quoted as evidence
+	// against the ring.
 	numPairs := len(testAccs) / 2
+	ring := *topology == "ring"
+	if ring {
+		numPairs = len(testAccs)
+	} else if *topology != "pairs" {
+		fmt.Printf("unknown -topology %q, using pairs\n", *topology)
+	}
 	// Capped deliberately. Peak throughput turned out to be the less useful
 	// number: every run at ~7-8k/s drove the node into an orphan backlog it
 	// needed half an hour to clear, because blocks were produced faster than
@@ -540,8 +840,26 @@ func main() {
 	if *maxPairs > 0 && *maxPairs < numPairs {
 		numPairs = *maxPairs
 	}
-	senders := testAccs[:numPairs]
-	recipients := testAccs[numPairs : 2*numPairs]
+	var senders, recipients []*account
+	// Im Ring zusaetzlich der VORGAENGER jedes Kontos -- das zweite Ziel fuer
+	// die Richtungsumkehr weiter unten. Siehe dort, warum das im Ring sicher
+	// ist und die Konten davor gerettet haette.
+	var ringVorgaenger []*account
+	if ring {
+		senders = testAccs[:numPairs]
+		recipients = make([]*account, numPairs)
+		ringVorgaenger = make([]*account, numPairs)
+		for i := range recipients {
+			nach, vor := ringNachbarn(numPairs, i)
+			recipients[i] = testAccs[nach]
+			ringVorgaenger[i] = testAccs[vor]
+		}
+	} else {
+		senders = testAccs[:numPairs]
+		recipients = testAccs[numPairs : 2*numPairs]
+	}
+	fmt.Printf("topology %s: %d concurrent senders over %d accounts\n",
+		*topology, numPairs, len(testAccs))
 
 	// The connection pool is load-bearing here, and leaving it at the default
 	// made this tool measure ITSELF rather than the node.
@@ -654,11 +972,13 @@ func main() {
 
 	if runPhase("warmup") {
 		fmt.Printf("=== PHASE warmup: %d pairs, one transfer each ===\n", numPairs)
-		for _, s := range senders {
-			s.nonce = client.nonce(s.address)
-		}
-		for _, r := range recipients {
-			r.nonce = client.nonce(r.address)
+		// Tolerant: one account whose nonce cannot be read drops its pair
+		// rather than aborting the whole run. See tryNonceRetrying.
+		senders, recipients = prefetchNonces(client, senders, recipients)
+		numPairs = len(senders)
+		if numPairs == 0 {
+			fmt.Println("no pair had both nonces readable — nothing to measure")
+			return
 		}
 		var failed int
 		for i := 0; i < numPairs; i++ {
@@ -690,13 +1010,14 @@ func main() {
 
 	if runPhase("run") {
 		fmt.Printf("=== PHASE run: %d pairs, ramping over %ds, then %s timed ===\n", numPairs, *rampSeconds, *runDuration)
-		for _, s := range senders {
-			s.nonce = client.nonce(s.address)
-		}
-		// Recipients send too now (see the direction-alternating loop below), so
-		// their nonces have to be current for the same reason the senders' are.
-		for _, r := range recipients {
-			r.nonce = client.nonce(r.address)
+		// Recipients send too in the pairs topology (the direction-alternating
+		// loop below), so their nonces have to be current for the same reason
+		// the senders' are. Tolerant for the same reason as warmup.
+		senders, recipients = prefetchNonces(client, senders, recipients)
+		numPairs = len(senders)
+		if numPairs == 0 {
+			fmt.Println("no pair had both nonces readable — nothing to measure")
+			return
 		}
 
 		var succeeded, failed int64
@@ -763,6 +1084,46 @@ func main() {
 				for i := range reverseTargets {
 					reverseTargets[i] = from.address
 				}
+				// Im Ring die Gegenrichtung: dasselbe Konto sendet, aber an
+				// seinen VORGAENGER statt an seinen Nachfolger.
+				var rueckTargets []string
+				if ring {
+					vorher := ringVorgaenger[pairIdx].address
+					rueckTargets = make([]string, effBatchSize)
+					for i := range rueckTargets {
+						rueckTargets[i] = vorher
+					}
+				}
+				// KORRIGIERT AM 29.08.2026 -- DER RING BRAUCHT DIE UMKEHR DOCH.
+				//
+				// Hier stand, Alternation sei im Ring unnoetig, "each account
+				// sends one batch and receives one batch per round, so balances
+				// stay level on their own". Gemessen stimmt das nicht: nach den
+				// Ringlaeufen dieses Tages standen 418 von 618 Konten auf EXAKT
+				// null, waehrend das oberste Viertel 0,0153 AEQ hielt -- aus
+				// 0,002 AEQ Startguthaben je Konto. Das Geld hat sich verschoben,
+				// nicht ausgeglichen.
+				//
+				// Der Grund ist eine Kaskade: sobald ein Konto leer ist, hoert
+				// es auf zu senden, empfaengt aber weiter. Sein Nachfolger
+				// bekommt nichts mehr, sendet aber weiter und laeuft leer -- und
+				// so weiter im Kreis. Die Annahme "eins rein, eins raus" haelt
+				// nur, solange ALLE Goroutinen gleich schnell sind und keine je
+				// scheitert.
+				//
+				// Der alte Einwand bleibt richtig, trifft aber nur EINE Art der
+				// Umkehr: Absender und Empfaenger zu tauschen hiesse, aus
+				// acc[i+1] zu senden -- dem Konto, aus dem Goroutine i+1 bereits
+				// sendet -- und zwei Goroutinen, die die Nonces desselben Kontos
+				// vergeben, zerlegen beide.
+				//
+				// Es gibt eine sichere Umkehr: NUR DAS ZIEL drehen. Goroutine i
+				// sendet weiterhin ausschliesslich aus acc[i] -- kein fremdes
+				// Konto, kein Nonce-Konflikt -- aber abwechselnd an acc[i+1] und
+				// acc[i-1]. Die Schieflage laeuft damit wieder zurueck, und der
+				// Kontenvorrat traegt beliebig viele Laeufe statt sich zu
+				// verbrauchen. Genau das leistet die Alternation im
+				// Paar-Betrieb auch, nur ueber den anderen Freiheitsgrad.
 				forward := true
 				for {
 					select {
@@ -779,7 +1140,12 @@ func main() {
 					// with every earlier run.
 					sender, targets := from, batchTargets
 					if !forward {
-						sender, targets = to, reverseTargets
+						if ring {
+							// Absender bleibt from -- nur das Ziel dreht.
+							targets = rueckTargets
+						} else {
+							sender, targets = to, reverseTargets
+						}
 					}
 					accepted, err := client.sendValueBatch(sender, targets, transferWei)
 					atomic.AddInt64(&succeeded, int64(accepted))
@@ -879,4 +1245,20 @@ func main() {
 		fmt.Printf("TPS (succeeded/elapsed): %.1f\n", float64(succeeded)/elapsed.Seconds())
 		printErrTally(errTally)
 	}
+}
+
+// ringNachbarn liefert die beiden Ziele fuer Goroutine i in einem Ring aus n
+// Konten: Nachfolger und Vorgaenger.
+//
+// Der ABSENDER ist immer i selbst -- das ist die tragende Eigenschaft und der
+// Grund, warum die Richtungsumkehr im Ring ueberhaupt zulaessig ist. Wer sie
+// stattdessen ueber einen Tausch von Absender und Empfaenger baut, laesst
+// Goroutine i aus acc[i+1] senden, also aus dem Konto, aus dem Goroutine i+1
+// bereits sendet. Zwei Goroutinen, die die Nonces desselben Kontos vergeben,
+// zerlegen beide fuer den Rest des Laufs.
+func ringNachbarn(n, i int) (nachfolger, vorgaenger int) {
+	if n <= 0 {
+		return 0, 0
+	}
+	return (i + 1) % n, (i - 1 + n) % n
 }

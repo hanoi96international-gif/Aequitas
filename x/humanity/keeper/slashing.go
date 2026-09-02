@@ -1,6 +1,7 @@
 package keeper
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"sort"
@@ -254,6 +255,18 @@ func trustedBootstrapSigner() string {
 // manually again, a restart is not optional — it's the only way the change
 // takes effect.
 func (cs *ChainState) loadPenaltyCacheLocked() {
+	// context.Background() ist hier richtig und kein Platzhalter: dieser
+	// Zwischenspeicher wird waehrend der Blockpruefung geladen, ausserhalb
+	// jeder atomaren Operation. Es gibt keine Transaktion, an der er
+	// teilnehmen koennte.
+	cs.loadPenaltyCacheLockedCtx(context.Background())
+}
+
+// loadPenaltyCacheLockedCtx ist die ctx-gefuehrte Fassung. Sie existiert, damit
+// nach Abschluss der Migration keine cs.dbExec()-Aufrufstelle mehr uebrig ist
+// -- solange auch nur eine bleibt, kann cs.activeTx nicht entfernt und echte
+// Nebenlaeufigkeit nicht eingeschaltet werden.
+func (cs *ChainState) loadPenaltyCacheLockedCtx(ctx context.Context) {
 	cs.penaltyCache = make(map[string]validatorPenalty)
 	cs.penaltyCacheLoaded = true // set even on query error: fail open, like the old per-call path did
 	if cs.db == nil {
@@ -264,7 +277,7 @@ func (cs *ChainState) loadPenaltyCacheLocked() {
 	// unconditionally (falls back to cs.db when no transaction is active);
 	// this closes the same hazard class for any call path that reaches
 	// this cache load while cs.mu+cs.activeTx are already held.
-	rows, err := cs.dbExec().Query(`SELECT signing_address, banned, suspended_until, last_offense_at FROM validator_penalties`)
+	rows, err := cs.dbExecCtx(ctx).Query(`SELECT signing_address, banned, suspended_until, last_offense_at FROM validator_penalties`)
 	if err != nil {
 		return
 	}

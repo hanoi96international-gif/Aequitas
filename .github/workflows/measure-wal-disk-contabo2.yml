@@ -1,0 +1,118 @@
+name: What can the WAL's disk actually do? (read-only measurement)
+
+# THE NUMBER THE WHOLE THROUGHPUT QUESTION NOW RESTS ON.
+#
+# Instrumenting the single WAL writer under real load on 2026-08-21 gave:
+#
+#   avg_batch 48.1   max_batch 333   cfg_max_batch 500
+#   sync_avg_us 9864   sync_max_us 466551   write_avg_us 266
+#
+# The writer does one buffer, one Write, one Sync per batch, so its ceiling is
+# records-per-batch divided by sync time: 48.1 / 9.86ms = ~4,900/s, which
+# brackets the 3,014 TPS measured in the same run. Writing the bytes costs
+# 266us; the fsync costs 9,864us. Nothing else in the writer is close.
+#
+# Four other hypotheses were measured and rejected before arriving here:
+# parallel replay (already 99.8% parallel), WAL flush batch size (default beat
+# every smaller value), and flush interval in BOTH directions (5-40ms and
+# 250-600ms both lost to the 100ms default, even though the shorter ones moved
+# addrs_per_flush and hold_ms exactly as predicted).
+#
+# So the question is now specific and answerable: is 9.9ms what this disk does,
+# or is the node making it slow? This measures the disk on its own, with no
+# chain involved -- the same fio-style single-threaded fsync loop the project
+# used on 2026-07-26 to establish 133-462 fsyncs/s.
+#
+# Reads and writes only inside a scratch file it creates and deletes. It does
+# not touch the WAL, the database, or the node.
+on:
+  workflow_dispatch:
+    inputs:
+      seconds:
+        description: "How long to run each measurement"
+        required: false
+        default: "10"
+
+jobs:
+  measure:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Contabo2
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: 194.163.188.71
+          username: root
+          key: ${{ secrets.CONTABO2_SSH_KEY }}
+          port: 22
+          script_stop: false
+          timeout: 600s
+          command_timeout: 600s
+          envs: SECS
+          script: |
+            set +e
+            echo "=== where the WAL actually lives ==="
+            docker inspect aequitas-node --format '{{range .Mounts}}{{.Source}} -> {{.Destination}}{{println}}{{end}}' | grep /data/wal
+            WALDIR=/root/aequitas-wal-data
+            ls -la "$WALDIR" 2>/dev/null | head -5
+            echo ""
+            echo "=== what that path is backed by ==="
+            df -hT "$WALDIR" | tail -2
+            DEV=$(df --output=source "$WALDIR" | tail -1)
+            echo "device: $DEV"
+            lsblk -o NAME,ROTA,TYPE,SIZE,MODEL 2>/dev/null | head -12
+            echo "(ROTA=1 means the kernel thinks it is rotational)"
+            echo ""
+            echo "=== fsync latency on that filesystem, single-threaded ==="
+            # Same shape as the WAL writer: append a small record, fsync, repeat.
+            # No chain, no database -- just the syscall pair the writer's ceiling
+            # is made of.
+            python3 - "$WALDIR" "${SECS:-10}" <<'PY'
+            import os, sys, time
+            d, secs = sys.argv[1], float(sys.argv[2])
+            path = os.path.join(d, ".fsync-probe.tmp")
+            f = os.open(path, os.O_CREAT | os.O_WRONLY | os.O_TRUNC)
+            rec = b"x" * 220   # a WAL record is a couple of hundred bytes
+            lat = []
+            end = time.time() + secs
+            try:
+                while time.time() < end:
+                    os.write(f, rec)
+                    t0 = time.perf_counter()
+                    os.fsync(f)
+                    lat.append((time.perf_counter() - t0) * 1e6)
+            finally:
+                os.close(f)
+                os.unlink(path)
+            lat.sort()
+            n = len(lat)
+            def p(q): return lat[min(n - 1, int(n * q))]
+            print("  fsyncs      : %d in %.1fs = %.0f/s" % (n, secs, n / secs))
+            print("  latency us  : min %.0f  p50 %.0f  p90 %.0f  p99 %.0f  max %.0f"
+                  % (lat[0], p(.50), p(.90), p(.99), lat[-1]))
+            print("")
+            print("  At this rate the WAL writer's ceiling is fsyncs/s x records-per-batch.")
+            print("  Measured avg_batch under load was 48, so: %.0f x 48 = %.0f records/s"
+                  % (n / secs, (n / secs) * 48))
+            print("  For 10,000/s at this fsync rate a batch would need to average %.0f."
+                  % (10000.0 / (n / secs)))
+            PY
+            echo ""
+            echo "=== for comparison: the same loop WITHOUT fsync ==="
+            python3 - "$WALDIR" <<'PY'
+            import os, sys, time
+            d = sys.argv[1]
+            path = os.path.join(d, ".nosync-probe.tmp")
+            f = os.open(path, os.O_CREAT | os.O_WRONLY | os.O_TRUNC)
+            rec = b"x" * 220
+            n = 0
+            end = time.time() + 3
+            try:
+                while time.time() < end:
+                    os.write(f, rec); n += 1
+            finally:
+                os.close(f); os.unlink(path)
+            print("  writes without fsync: %.0f/s" % (n / 3.0))
+            print("  The gap between this and the line above is what durability costs here.")
+            PY
+        env:
+          SECS: ${{ inputs.seconds }}

@@ -1,0 +1,271 @@
+name: Do the nodes stay stable under load? (load on C2, both boxes watched)
+
+# The question this answers is NOT "how fast can it go" -- loadtest-run does
+# that. It is "does the network survive the load and come back", which is a
+# different property and the one that has actually bitten this project:
+#
+#   - 2026-08-21: a throughput run left Contabo2 permanently stuck. It had
+#     fallen ~500 blocks behind during a restart and could not fetch the
+#     missing ancestors, because a 20 MB client read cap sized against 2 KB
+#     blocks truncates when blocks are full. Fixed in fb2176f.
+#   - tools/contabo-loadtest/main.go's own note: every run at ~7-8k/s "drove
+#     the node into an orphan backlog it needed half an hour to clear, because
+#     blocks were produced faster than the network could merge them".
+#
+# Both failures look identical while they are happening: /api/status answers,
+# peers are connected, nothing errors. Only the HEIGHT tells you, and only if
+# you are watching BOTH boxes -- the load lands on Contabo2 while Contabo1 has
+# to replay every transfer, so the node that falls over is not necessarily the
+# one under load.
+#
+# So this starts the generator on Contabo2 and then polls both boxes from the
+# runner for the whole run AND for a recovery window afterwards. The verdict is
+# about convergence, not throughput: both boxes advancing, and both back at the
+# same height within the recovery window.
+#
+# The RPC rate limiter must be raised for the load to reach the node at all
+# (set-rpc-rate-limit-contabo2.yml) -- and put back to 200 afterwards. This
+# workflow does not touch it, deliberately: weakening a protection on a public
+# endpoint should be its own explicit action, not a side effect of a test.
+on:
+  workflow_dispatch:
+    inputs:
+      duration:
+        description: "Timed load duration (Go duration, e.g. 90s, 3m)"
+        required: false
+        default: "3m"
+      pairs:
+        description: "Concurrent sender pairs (0 = all). Raise this to push harder."
+        required: false
+        default: "0"
+      transfer_wei:
+        description: "Wei per load-test transfer. The default 10000000000000 (0.00001 AEQ) drained accounts mid-run: 137,439 of 683,500 transfers failed on insufficient balance. 1000000000000 gives every account ten times the runway."
+        required: false
+        default: "1000000000000"
+      topology:
+        description: "pairs (disjoint couples, senders = accounts/2) or ring (every account sends, twice the concurrency)"
+        required: false
+        default: "pairs"
+      recovery_minutes:
+        description: "How long to keep watching after the load stops"
+        required: false
+        default: "5"
+
+jobs:
+  stability:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Record the starting state of both boxes
+        run: |
+          set -uo pipefail
+          for h in 173.249.37.118 194.163.188.71; do
+            S=$(curl -s --max-time 20 "http://$h:8080/api/status" || echo '{}')
+            echo "$h  $(echo "$S" | tr ',' '\n' | grep -E '"height"|uptime' | tr '\n' ' ')"
+          done
+
+      # Rebuild from current source. This workflow used to run whatever binary
+      # happened to be sitting on the box, so a change to the generator measured
+      # nothing until someone remembered to dispatch loadtest-run-contabo2.yml
+      # first -- and a stale binary is invisible in the output.
+      - uses: actions/checkout@v4
+      - name: Copy the current generator source to Contabo2
+        uses: appleboy/scp-action@v1.0.0
+        with:
+          host: 194.163.188.71
+          username: root
+          key: ${{ secrets.CONTABO2_SSH_KEY }}
+          port: 22
+          source: "tools/contabo-loadtest/main.go,tools/contabo-loadtest/gen_accounts.go,go.mod,go.sum"
+          target: "/root/contabo-loadtest"
+
+      - name: Rebuild the generator
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: 194.163.188.71
+          username: root
+          key: ${{ secrets.CONTABO2_SSH_KEY }}
+          port: 22
+          script_stop: false
+          timeout: 600s
+          command_timeout: 600s
+          script: |
+            set +e
+            cd /root/contabo-loadtest || exit 1
+            # scp-action may or may not keep the tools/contabo-loadtest/ prefix.
+            # Resolve by PRECEDENCE, never by `find | head -1`: a nested copy is
+            # always the fresher one. loadtest-run-contabo2.yml records the run
+            # that ambiguity silently invalidated.
+            if [ -f tools/contabo-loadtest/main.go ]; then
+              cp -f tools/contabo-loadtest/main.go ./main.go
+              cp -f tools/contabo-loadtest/gen_accounts.go ./gen_accounts.go
+            fi
+            docker run --rm --network host -v "$(pwd)":/w -w /w \
+              -v /root/go-mod-cache:/go/pkg/mod golang:1.24-alpine \
+              go build -o loadtest . 2>&1 | tail -20
+            [ -x ./loadtest ] || { echo "build produced no binary"; exit 1; }
+            echo "generator rebuilt: $(stat -c %y ./loadtest)"
+
+      - name: Start the load on Contabo2 (returns immediately)
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: 194.163.188.71
+          username: root
+          key: ${{ secrets.CONTABO2_SSH_KEY }}
+          port: 22
+          script_stop: false
+          timeout: 300s
+          command_timeout: 300s
+          envs: DURATION,PAIRS,TOPOLOGY,TRANSFERWEI
+          script: |
+            cd /root/contabo-loadtest || { echo "no loadtest directory"; exit 1; }
+            [ -f accounts-funded.csv ] || { echo "accounts-funded.csv missing -- run loadtest-find-funded.yml"; exit 1; }
+            [ -x ./loadtest ] || { echo "no built loadtest binary -- run loadtest-run-contabo2.yml once"; exit 1; }
+            # WAIT UNTIL THE NODE ACTUALLY PRODUCES BLOCKS.
+            #
+            # Measured 2026-08-22: a 100-pair run started 60s after a restart
+            # produced 140 transfers and a peak of 41/s, then stopped. The node
+            # was not broken -- it was correctly REFUSING, because admission
+            # control refuses a node that has not produced a block, and this
+            # one took 533 seconds from process start to its first block while
+            # the initial-sync gate cleared.
+            #
+            # A refusing node answers every request with a retryable -32005, so
+            # the run looks like a throughput collapse rather than a node that
+            # was never asked to do anything. Two earlier comparisons in that
+            # session are untrustworthy for exactly this reason.
+            #
+            # never_produced AND refusing both have to be clear: the first says
+            # it has entered production at all, the second that it is not
+            # stalled right now.
+            echo "waiting for the node to be producing before generating load..."
+            READY=no
+            for i in $(seq 1 60); do
+              H=$(curl -s --max-time 10 http://localhost:8080/api/health/combined)
+              case "$H" in
+                *'"never_produced":false'*)
+                  case "$H" in
+                    *'"refusing":false'*) READY=yes ;;
+                  esac
+                  ;;
+              esac
+              [ "$READY" = yes ] && break
+              sleep 10
+            done
+            if [ "$READY" != yes ]; then
+              echo "node still not producing after 10 minutes -- refusing to generate load against it."
+              echo "A run here would measure admission refusals, not throughput."
+              curl -s --max-time 10 http://localhost:8080/api/health/combined | grep -oE '"(never_produced|refusing)":[a-z]+|"stalled_seconds":[0-9]+' || true
+              exit 1
+            fi
+            echo "node is producing; starting the generator."
+
+            rm -f /tmp/stability.log
+            nohup docker run --rm --network host -v "$(pwd)":/w -w /w \
+              -v /root/go-mod-cache:/go/pkg/mod golang:1.24-alpine \
+              ./loadtest -accounts accounts-funded.csv \
+                -rpc http://localhost:8080/rpc \
+                -status http://localhost:8080/api/status \
+                -phase warmup,run -seeds 5 \
+                -topology "$TOPOLOGY" \
+                -transfer-amount-wei "$TRANSFERWEI" \
+                -duration "$DURATION" -ramp 5 -pairs "$PAIRS" \
+                > /tmp/stability.log 2>&1 &
+            echo "generator started; log at /tmp/stability.log"
+        env:
+          DURATION: ${{ inputs.duration }}
+          PAIRS: ${{ inputs.pairs }}
+          TOPOLOGY: ${{ inputs.topology }}
+          TRANSFERWEI: ${{ inputs.transfer_wei }}
+
+      - name: Watch both boxes through the load and the recovery window
+        run: |
+          # GitHub runs `run:` under `bash -e`, so a plain `[ cond ] && act`
+          # ends the STEP the moment cond is false. The watch loop below is
+          # built out of exactly those, and on 2026-08-21 that killed the run
+          # at t=150s -- mid-measurement, while it was recording the very
+          # divergence it exists to catch. Turned off explicitly here; the
+          # verdict at the end decides the exit code.
+          set +e
+          set -uo pipefail
+          RECOVERY=$(( ${{ inputs.recovery_minutes }} * 60 ))
+          # Poll for the load plus the recovery window. Duration is a Go
+          # string; parse the common forms rather than requiring seconds.
+          D="${{ inputs.duration }}"
+          case "$D" in
+            *m) LOAD=$(( ${D%m} * 60 )) ;;
+            *s) LOAD=${D%s} ;;
+            *)  LOAD=180 ;;
+          esac
+          TOTAL=$(( LOAD + 60 + RECOVERY ))
+          echo "watching for ${TOTAL}s (load ~${LOAD}s + ramp/warmup + ${RECOVERY}s recovery)"
+          echo ""
+          printf '%-9s %-11s %-11s %-8s %s\n' "t(s)" "C1" "C2" "diff" "note"
+
+          PREV1=0; PREV2=0; STALL1=0; STALL2=0; WORST=0
+          t=0
+          while [ "$t" -lt "$TOTAL" ]; do
+            H1=$(curl -s --max-time 10 "http://173.249.37.118:8080/api/status" 2>/dev/null | grep -o '"height":[0-9]*' | cut -d: -f2)
+            H2=$(curl -s --max-time 10 "http://194.163.188.71:8080/api/status" 2>/dev/null | grep -o '"height":[0-9]*' | cut -d: -f2)
+            N=""
+            [ -z "$H1" ] && { N="C1 UNREACHABLE"; H1=0; }
+            [ -z "$H2" ] && { N="$N C2 UNREACHABLE"; H2=0; }
+            DIFF=$(( H1 - H2 ))
+            [ "${DIFF#-}" -gt "$WORST" ] && WORST=${DIFF#-}
+            [ "$H1" = "$PREV1" ] && [ "$H1" != "0" ] && STALL1=$((STALL1+1)) || STALL1=0
+            [ "$H2" = "$PREV2" ] && [ "$H2" != "0" ] && STALL2=$((STALL2+1)) || STALL2=0
+            [ "$STALL1" -ge 3 ] && N="$N C1 not advancing"
+            [ "$STALL2" -ge 3 ] && N="$N C2 not advancing"
+            printf '%-9s %-11s %-11s %-8s %s\n' "$t" "$H1" "$H2" "$DIFF" "$N"
+            PREV1=$H1; PREV2=$H2
+            sleep 10
+            t=$(( t + 10 ))
+          done
+
+          echo ""
+          echo "worst divergence seen: $WORST blocks"
+          H1=$(curl -s --max-time 15 "http://173.249.37.118:8080/api/status" | grep -o '"height":[0-9]*' | cut -d: -f2)
+          H2=$(curl -s --max-time 15 "http://194.163.188.71:8080/api/status" | grep -o '"height":[0-9]*' | cut -d: -f2)
+          K1=$(curl -s --max-time 15 "http://173.249.37.118:8080/api/status" | grep -o '"latest_hash":"[^"]*"')
+          K2=$(curl -s --max-time 15 "http://194.163.188.71:8080/api/status" | grep -o '"latest_hash":"[^"]*"')
+          echo "final: C1=$H1  C2=$H2  diff=$(( H1 - H2 ))"
+          echo "C1 $K1"
+          echo "C2 $K2"
+          if [ "$(( H1 - H2 ))" -le 5 ] && [ "$(( H1 - H2 ))" -ge -5 ]; then
+            echo "VERDICT: converged after the load — the network absorbed it and came back."
+          else
+            echo "VERDICT: STILL DIVERGED by $(( H1 - H2 )) blocks after the recovery window."
+            echo "  That is the failure this workflow exists to catch. Read the lagging node's"
+            echo "  log for 'batch-fetch' and 'queued as orphan' before assuming it is slow"
+            echo "  rather than stuck."
+            exit 1
+          fi
+
+      - name: What the generator and the boxes reported
+        if: always()
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: 194.163.188.71
+          username: root
+          key: ${{ secrets.CONTABO2_SSH_KEY }}
+          port: 22
+          script_stop: false
+          script: |
+            echo "=== generator ==="
+            # The RAW tail first. A narrower grep is how three separate stalls
+            # this session reported nothing at all: the run hung in warmup, and
+            # every line explaining why was filtered out by the report itself.
+            echo "--- last 30 lines of the generator log, unfiltered ---"
+            tail -30 /tmp/stability.log 2>/dev/null || echo "(no log)"
+            echo "--- summary lines ---"
+            grep -E 'PHASE|elapsed|TPS|failure causes' /tmp/stability.log 2>/dev/null | head -20 || echo "(no log)"
+            echo "=== top failure causes ==="
+            sed -n '/failure causes/,$p' /tmp/stability.log 2>/dev/null | head -8 || true
+            echo "=== did the node restart? ==="
+            docker inspect aequitas-node --format 'RestartCount={{.RestartCount}} OOMKilled={{.State.OOMKilled}} Status={{.State.Status}} StartedAt={{.State.StartedAt}}'
+            echo "=== the node's own applied-transfer peak ==="
+            docker logs aequitas-node --since 15m 2>&1 | grep 'transfers applied' | tail -3 || echo "(none logged)"
+            echo "=== orphans / ancestor trouble in the last 15m ==="
+            docker logs aequitas-node --since 15m 2>&1 | grep -cE 'queued as orphan' || true
+            docker logs aequitas-node --since 15m 2>&1 | grep -E 'batch-fetch|exceeded the read cap' | tail -5 || echo "(no ancestor-fetch trouble)"
+            echo "=== memory ==="
+            free -m | head -2

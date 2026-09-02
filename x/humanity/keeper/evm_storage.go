@@ -728,7 +728,19 @@ func (cs *ChainState) syncBalanceLocked(contractAddr string, addrs ...string) {
 // has no per-row business constraint beyond the (address,slot) upsert key
 // this batching still honors), so no real-world retry behavior changes,
 // only 4×N-1 unnecessary round trips are removed on the common path.
-func (cs *ChainState) doSyncBalanceLocked(contractAddr string, addrs ...string) {
+// Read-lock safe: mutates nothing in cs.accounts, so cs.mu.RLock() is enough.
+// Renamed from doSyncBalanceLocked so a future caller cannot assume the write
+// lock it no longer needs.
+func (cs *ChainState) doSyncBalanceRLocked(contractAddr string, addrs ...string) {
+	cs.doSyncBalanceRLockedCtx(context.Background(), contractAddr, addrs...)
+}
+
+// doSyncBalanceRLockedCtx ist die ctx-gefuehrte Fassung. Der Spiegel-Schreibvorgang
+// und die Warteschlangen-Eintraege daneben gehoeren in dieselbe Transaktion wie
+// die Aenderung, die sie ausgeloest hat: sonst kann die Aenderung
+// zurueckgerollt werden, waehrend der Spiegel und seine Warteschlange den
+// Zustand danach behaupten.
+func (cs *ChainState) doSyncBalanceRLockedCtx(ctx context.Context, contractAddr string, addrs ...string) {
 	contractAddr = strings.ToLower(contractAddr)
 
 	type slotValue struct {
@@ -749,21 +761,36 @@ func (cs *ChainState) doSyncBalanceLocked(contractAddr string, addrs ...string) 
 		// next warm call self-corrects the slot), but wrong regardless for
 		// anything reading balanceOf via eth_call/MetaMask/a dApp in the
 		// meantime.
-		cs.ensureAccountLoaded(addr)
+		// FIX (2026-08-23): ensureAccountLoaded used to sit here, and it was the
+		// ONLY reason this function needed the exclusive lock -- paging in a
+		// cold account mutates cs.accounts. That single call made a
+		// display-only mirror a writer on the node's global lock.
+		//
+		// Measured: instrumenting the flush put exclusive_busy_pct at 50.26%
+		// with an 8,221ms worst hold. Chunking the holds took that to 3.00%
+		// and 366ms -- and transfers got SLOWER, from 45.88ms to 68.62ms
+		// waiting on cs.mu.RLock(). Go's RWMutex blocks new readers the moment
+		// a writer ARRIVES, so 1,135 short holds convoy readers more often than
+		// 90 long ones did. The cost was never the holding; it was being a
+		// writer at all.
+		//
+		// A cold account is now skipped outright rather than paged in. That
+		// keeps what the 2026-07-12 fix was actually for -- it existed because
+		// a cold address wrote balanceOf as 0, which was wrong for anything
+		// reading via eth_call -- while writing NOTHING is strictly better than
+		// writing a wrong zero, and leaves the previous value standing. The
+		// address is marked dirty again the next time it is touched, which is
+		// exactly when it becomes warm.
 		acc, ok := cs.accounts.Get(addr)
-		var bal float64
-		if ok {
-			// P1-4: use effectiveBalance (demurrage-adjusted) so the EVM slot
-			// matches the user's real spendable amount, not the stored pre-decay value.
-			bal = effectiveBalance(acc).Float()
-		}
-		balBig := aeqToWei(bal)
-		addrBytes := common.HexToAddress(addr).Bytes()
-		// slot 4: balanceOf
-		writes = append(writes, slotValue{mappingSlot(addrBytes, 4).Hex(), common.BigToHash(balBig).Hex()})
 		if !ok {
 			continue
 		}
+		// P1-4: use effectiveBalance (demurrage-adjusted) so the EVM slot
+		// matches the user's real spendable amount, not the stored pre-decay value.
+		balBig := aeqToWei(effectiveBalance(acc).Float())
+		addrBytes := common.HexToAddress(addr).Bytes()
+		// slot 4: balanceOf
+		writes = append(writes, slotValue{mappingSlot(addrBytes, 4).Hex(), common.BigToHash(balBig).Hex()})
 		// slot 6: isHuman
 		isHumanVal := common.HexToHash("0x00")
 		if acc.IsHuman {
@@ -798,11 +825,11 @@ func (cs *ChainState) doSyncBalanceLocked(contractAddr string, addrs ...string) 
 	query := `INSERT INTO evm_storage (address, slot, value)
 SELECT $1, s, v FROM unnest($2::text[], $3::text[]) AS t(s, v)
 ON CONFLICT (address, slot) DO UPDATE SET value = EXCLUDED.value`
-	_, err := cs.dbExec().Exec(query, contractAddr, pq.Array(slots), pq.Array(values))
+	_, err := cs.dbExecCtx(ctx).Exec(query, contractAddr, pq.Array(slots), pq.Array(values))
 	if err != nil {
 		fmt.Printf("[EVM] Warning: could not batch-sync EVM mirror slots for %d address(es): %v\n", len(lowerAddrs), err)
 		for _, addr := range lowerAddrs {
-			cs.QueueEVMMirrorSync(addr, contractAddr, err.Error())
+			cs.QueueEVMMirrorSyncCtx(ctx, addr, contractAddr, err.Error())
 		}
 		return
 	}
@@ -812,7 +839,7 @@ ON CONFLICT (address, slot) DO UPDATE SET value = EXCLUDED.value`
 	// above, succeeded and nothing has ever failed before) has nothing to
 	// clean up here.
 	if cs.evmMirrorQueueMaybeNonEmpty.Load() {
-		cs.RemoveBatchFromEVMMirrorSyncQueue(lowerAddrs, contractAddr)
+		cs.RemoveBatchFromEVMMirrorSyncQueueCtx(ctx, lowerAddrs, contractAddr)
 	}
 }
 
@@ -914,13 +941,22 @@ const retryQueueMaxAttempts = 20
 // and marks dead=TRUE after retryQueueMaxAttempts failures so the queue does
 // not grow unbounded and dead entries are visible in the health endpoint.
 func (cs *ChainState) QueueEVMMirrorSync(addr, contractAddr, lastErr string) {
+	cs.QueueEVMMirrorSyncCtx(context.Background(), addr, contractAddr, lastErr)
+}
+
+// QueueEVMMirrorSyncCtx ist QueueEVMMirrorSync ueber ctx gefuehrt, damit der
+// Eintrag in dieselbe Transaktion faellt wie die Aenderung, deren Scheitern ihn
+// ausgeloest hat. Sonst kann die Aenderung zurueckgerollt werden und der
+// Warteschlangeneintrag stehen bleiben -- ein Wiederholungsauftrag fuer etwas,
+// das nie geschehen ist.
+func (cs *ChainState) QueueEVMMirrorSyncCtx(ctx context.Context, addr, contractAddr, lastErr string) {
 	if cs.db == nil {
 		return
 	}
 	initialNextRetry := time.Now().Unix() + 60 // 2^1 * 30 = first retry after 60s
 	// FIX (P1-02): use dbExec() so this write participates in any active
 	// transaction rather than bypassing it via the raw cs.db handle.
-	if _, err := cs.dbExec().Exec(
+	if _, err := cs.dbExecCtx(ctx).Exec(
 		`INSERT INTO evm_mirror_sync_queue (address, contract_addr, last_error, next_retry_at, dead)
 		 VALUES ($1, $2, $3, $4, FALSE)
 		 ON CONFLICT (address, contract_addr) DO UPDATE SET
@@ -999,6 +1035,15 @@ func (cs *ChainState) LoadEVMMirrorSyncQueue() []evmMirrorSyncQueueEntry {
 
 // RemoveFromEVMMirrorSyncQueue deletes a row once its retry succeeds.
 func (cs *ChainState) RemoveFromEVMMirrorSyncQueue(addr, contractAddr string) {
+	cs.RemoveFromEVMMirrorSyncQueueCtx(context.Background(), addr, contractAddr)
+}
+
+// RemoveFromEVMMirrorSyncQueueCtx ist die ctx-gefuehrte Fassung.
+//
+// HINWEIS: diese Einzelfassung hat derzeit KEINEN Aufrufer -- der laufende Code
+// benutzt ausschliesslich die Stapelfassung darunter. Sie bleibt erhalten, weil
+// sie exportiert ist, aber wer hier etwas aendert, aendert nichts Laufendes.
+func (cs *ChainState) RemoveFromEVMMirrorSyncQueueCtx(ctx context.Context, addr, contractAddr string) {
 	if cs.db == nil {
 		return
 	}
@@ -1013,7 +1058,7 @@ func (cs *ChainState) RemoveFromEVMMirrorSyncQueue(addr, contractAddr string) {
 	// cs.dbExec() falls back to cs.db when called standalone (e.g. from
 	// RetryEVMMirrorSyncQueue's periodic background pass, outside any
 	// active transaction).
-	if _, err := cs.dbExec().Exec(`DELETE FROM evm_mirror_sync_queue WHERE address = $1 AND contract_addr = $2`, addr, contractAddr); err != nil {
+	if _, err := cs.dbExecCtx(ctx).Exec(`DELETE FROM evm_mirror_sync_queue WHERE address = $1 AND contract_addr = $2`, addr, contractAddr); err != nil {
 		fmt.Printf("[EVM] Warning: could not remove mirror sync queue entry: %v\n", err)
 	}
 }
@@ -1032,10 +1077,17 @@ func (cs *ChainState) RemoveFromEVMMirrorSyncQueue(addr, contractAddr string) {
 // after group-commit batching (see TransferAtomic's own comment) reduced
 // commit/fsync count but left this loop untouched.
 func (cs *ChainState) RemoveBatchFromEVMMirrorSyncQueue(addrs []string, contractAddr string) {
+	cs.RemoveBatchFromEVMMirrorSyncQueueCtx(context.Background(), addrs, contractAddr)
+}
+
+// RemoveBatchFromEVMMirrorSyncQueueCtx ist die ctx-gefuehrte Fassung: das
+// Loeschen gehoert in dieselbe Transaktion wie der geglueckte Abgleich, sonst
+// kann der Abgleich zurueckgerollt werden und der Eintrag ist trotzdem weg.
+func (cs *ChainState) RemoveBatchFromEVMMirrorSyncQueueCtx(ctx context.Context, addrs []string, contractAddr string) {
 	if cs.db == nil || len(addrs) == 0 {
 		return
 	}
-	if _, err := cs.dbExec().Exec(`DELETE FROM evm_mirror_sync_queue WHERE contract_addr = $1 AND address = ANY($2)`, contractAddr, pq.Array(addrs)); err != nil {
+	if _, err := cs.dbExecCtx(ctx).Exec(`DELETE FROM evm_mirror_sync_queue WHERE contract_addr = $1 AND address = ANY($2)`, contractAddr, pq.Array(addrs)); err != nil {
 		fmt.Printf("[EVM] Warning: could not batch-remove mirror sync queue entries: %v\n", err)
 	}
 }
@@ -1981,6 +2033,28 @@ func (cs *ChainState) InitValidatorKeysTable() {
 		human_wallet    TEXT NOT NULL UNIQUE,
 		registered_at   TIMESTAMP DEFAULT NOW()
 	)`)
+	// Der Bezeugungsschluessel (Ed25519, 64 Hex) gehoert in DIESES Register
+	// und nicht in eine handgepflegte Umgebungsvariable.
+	//
+	// COORDINATOR_PUBLIC_KEYS und PERSONHOOD_PUBLIC_KEYS waren Listen, die
+	// jemand auf jeder Box eintragen musste. Wer dazukommen wollte, brauchte
+	// also jemanden, der ihn eintraegt -- das ist eine Genehmigung, und damit
+	// war "keine Genehmigung noetig" nicht wahr.
+	//
+	// Hier haengt er an derselben Doppelsignatur wie die Signieradresse: ein
+	// Mensch, ein Schluessel, on-chain nachpruefbar. Ein Proof-Server kann die
+	// Liste daraus lesen, statt sie gereicht zu bekommen.
+	cs.db.Exec(`ALTER TABLE validator_keys ADD COLUMN IF NOT EXISTS personhood_key TEXT`)
+	// Die Adresse des Vergleichsdienstes gehoert ebenfalls hierher.
+	//
+	// Der Coordinator hatte seine Validatoren in VALIDATOR_URLS fest
+	// eingetragen. Ein neuer Verifier, der sich hier registriert, wurde also
+	// nicht benutzt, bis jemand eine Konfiguration aendert -- und damit war
+	// die Aufnahme wieder eine Genehmigung, nur eine Ebene hoeher.
+	//
+	// Steht sie im Register, findet jeder Coordinator seine Validatoren
+	// selbst. Wer sich eintraegt, wird benutzt.
+	cs.db.Exec(`ALTER TABLE validator_keys ADD COLUMN IF NOT EXISTS matching_url TEXT`)
 	// Add UNIQUE on human_wallet if the table already existed without it.
 	// Remove any existing duplicates first so the index creation succeeds.
 	cs.db.Exec(`DELETE FROM validator_keys vk1
@@ -2004,6 +2078,19 @@ func (cs *ChainState) InitValidatorKeysTable() {
 // must be a registered human; the signature must be a valid personal_sign
 // of "Aequitas: authorize validator key {signing_address}".
 func (cs *ChainState) RegisterValidatorKey(signingAddress, humanWallet string) error {
+	return cs.RegisterValidatorKeyWithPersonhood(signingAddress, humanWallet, "")
+}
+
+// RegisterValidatorKeyWithPersonhood traegt zusaetzlich den Ed25519-Schluessel
+// ein, mit dem dieser Validator Menschen bezeugt. Leer laesst ihn unberuehrt --
+// ein Betreiber, der nur seine Signieradresse erneuert, verliert ihn nicht.
+func (cs *ChainState) RegisterValidatorKeyWithPersonhood(signingAddress, humanWallet, personhoodKey string) error {
+	return cs.RegisterValidatorFull(signingAddress, humanWallet, personhoodKey, "")
+}
+
+// RegisterValidatorFull traegt zusaetzlich die Adresse des Vergleichsdienstes
+// ein. Leere Werte lassen das Vorhandene stehen.
+func (cs *ChainState) RegisterValidatorFull(signingAddress, humanWallet, personhoodKey, matchingURL string) error {
 	if cs.db == nil {
 		return fmt.Errorf("no database")
 	}
@@ -2012,10 +2099,20 @@ func (cs *ChainState) RegisterValidatorKey(signingAddress, humanWallet string) e
 	if !cs.IsHuman(humanWallet) {
 		return fmt.Errorf("human_wallet %s is not a registered human", humanWallet)
 	}
+	personhoodKey = strings.ToLower(strings.TrimSpace(personhoodKey))
+	// COALESCE mit NULLIF: ein leerer Wert laesst den vorhandenen Schluessel
+	// stehen, statt ihn zu loeschen. Wer nur seine Signieradresse erneuert,
+	// soll nicht unbemerkt aufhoeren zu bezeugen.
+	matchingURL = strings.TrimRight(strings.TrimSpace(matchingURL), "/")
 	_, err := cs.db.Exec(
-		`INSERT INTO validator_keys (signing_address, human_wallet) VALUES ($1, $2)
-		 ON CONFLICT (signing_address) DO UPDATE SET human_wallet = $2, registered_at = NOW()`,
-		signingAddress, humanWallet)
+		`INSERT INTO validator_keys (signing_address, human_wallet, personhood_key, matching_url)
+		 VALUES ($1, $2, NULLIF($3, ''), NULLIF($4, ''))
+		 ON CONFLICT (signing_address) DO UPDATE SET
+		   human_wallet = $2,
+		   personhood_key = COALESCE(NULLIF($3, ''), validator_keys.personhood_key),
+		   matching_url = COALESCE(NULLIF($4, ''), validator_keys.matching_url),
+		   registered_at = NOW()`,
+		signingAddress, humanWallet, personhoodKey, matchingURL)
 	return err
 }
 
@@ -2113,18 +2210,22 @@ func (cs *ChainState) GetValidatorKeyPairsForSync() []ValidatorKeyPair {
 	var pairs []ValidatorKeyPair
 
 	// P2-08: log DB errors instead of silently returning a partial result.
-	rows, err := cs.db.Query(`SELECT signing_address, human_wallet FROM validator_keys ORDER BY registered_at`)
+	rows, err := cs.db.Query(`SELECT signing_address, human_wallet, COALESCE(personhood_key, ''),
+		COALESCE(matching_url, '') FROM validator_keys ORDER BY registered_at`)
 	if err != nil {
 		fmt.Printf("[VALIDATORS] ⚠ GetValidatorKeyPairsForSync: validator_keys query failed: %v\n", err)
 	} else {
 		for rows.Next() {
-			var addr, wallet string
-			rows.Scan(&addr, &wallet)
+			var addr, wallet, personhood, matching string
+			rows.Scan(&addr, &wallet, &personhood, &matching)
 			addr = strings.ToLower(strings.TrimSpace(addr))
 			wallet = strings.ToLower(strings.TrimSpace(wallet))
+			personhood = strings.ToLower(strings.TrimSpace(personhood))
 			if addr != "" && !seen[addr] {
 				seen[addr] = true
-				pairs = append(pairs, ValidatorKeyPair{SigningAddress: addr, HumanWallet: wallet})
+				pairs = append(pairs, ValidatorKeyPair{
+					SigningAddress: addr, HumanWallet: wallet, PersonhoodKey: personhood,
+					MatchingURL: strings.TrimRight(strings.TrimSpace(matching), "/")})
 			}
 		}
 		rows.Close()
@@ -2556,9 +2657,57 @@ func savePendingTxsBatchExec(ex sqlExecutor, txs []Transaction) error {
 // WHERE clause) and is picked up by the NEXT LoadPendingTxs call — no TX is
 // ever dropped, only deferred, exactly the same FIFO backlog-draining
 // property a real bounded queue needs.
-const maxTxsPerBlock = 50000
+// LOWERED 50,000 -> 10,000 on 2026-08-21, from a measurement rather than a
+// preference.
+//
+// Contabo2 produced block #4391949 carrying exactly 50,000 transfers -- this
+// cap, at the ceiling. Contabo1 needed ~4.7s to replay it while holding the
+// exclusive state lock, against a BLOCK_TIME of 1s. It therefore fell behind
+// by a factor of ~4.7 for every such block, and once behind it stopped
+// merging, orphaned everything arriving, and could not recover on its own.
+//
+// The asymmetry is the whole story. The PRODUCER applies transfers
+// incrementally and concurrently as they arrive (transferConcurrentWAL,
+// measured at ~2,900/s). The REPLAYER receives the same work as one lump and
+// applies it under one exclusive lock. Nothing about a 50,000-transfer block
+// says the network can do 50,000 TPS -- it says a backlog of 50,000 had
+// accumulated because block production had already collapsed to 0.43
+// blocks/s, and that backlog then went out in a single block, which is what
+// made the next node fall further behind. A circle, and it only turns one way.
+//
+// 10,000 is C1's MEASURED replay capacity for one block time: 50,000 in 4.7s
+// is ~10,600/s, and at BLOCK_TIME=1s a block of 10,000 replays in ~0.94s. The
+// number is deliberately tied to that measurement rather than to a target,
+// because the binding constraint here is the slowest REPLAYING node, never the
+// producer.
+//
+// Parallel replay was NOT the problem and is not the lever. Measured on that
+// same block: 297 disjoint batches covered 49,886 of the 50,000 transfers, so
+// 99.8% already replayed in parallel. The remaining cost is the work itself.
+//
+// Nothing is lost by lowering it. Any pending TX beyond the cap keeps
+// included_at=0 and is picked up by the next LoadPendingTxs call, so this
+// defers rather than drops -- the FIFO backlog property described below,
+// which is exactly what makes a lower cap safe backpressure instead of a
+// throughput ceiling.
+//
+// NOTE ON maxExtraBlocksPerTick: multi-block tick produces further blocks
+// while each comes back full, so it can still emit 5 x this cap in one tick.
+// That drains a backlog faster than any replayer can absorb it, which is the
+// same overshoot in a different place -- see block_cadence.go.
+const maxTxsPerBlock = 10000
 
 func (cs *ChainState) LoadPendingTxs() ([]Transaction, []int64) {
+	return cs.LoadPendingTxsWithLimit(maxTxsPerBlock)
+}
+
+// LoadPendingTxsWithLimit ist dasselbe mit einer aufrufseitig gesetzten
+// Obergrenze. Die Blockproduktion setzt sie kleiner, wenn ein Peer
+// zurueckfaellt -- siehe peer_lag_bremse.go fuer das Warum.
+func (cs *ChainState) LoadPendingTxsWithLimit(limit int) ([]Transaction, []int64) {
+	if limit <= 0 || limit > maxTxsPerBlock {
+		limit = maxTxsPerBlock
+	}
 	if cs.db == nil {
 		return nil, nil
 	}
@@ -2566,7 +2715,7 @@ func (cs *ChainState) LoadPendingTxs() ([]Transaction, []int64) {
 		`UPDATE pending_txs SET included_at = $1
 		 WHERE id IN (SELECT id FROM pending_txs WHERE included_at = 0 ORDER BY id LIMIT $2)
 		 RETURNING id, tx_json`,
-		time.Now().Unix(), maxTxsPerBlock,
+		time.Now().Unix(), limit,
 	)
 	if err != nil {
 		fmt.Printf("[TX] LoadPendingTxs error: %v\n", err)
@@ -3254,16 +3403,33 @@ func (cs *ChainState) SaveBlockToDB(block *Block, replayed bool) error {
 // Called when AddPeerBlock's replay fails after the header was pre-saved,
 // so a restart never marks an unapplied block as replayed (P0-02).
 func (cs *ChainState) DeleteBlockFromDB(hash string) error {
+	return cs.DeleteBlockFromDBCtx(context.Background(), hash)
+}
+
+// DeleteBlockFromDBCtx ist die ctx-gefuehrte Fassung. Das Loeschen gehoert in
+// dieselbe Transaktion wie das gescheiterte Nachspielen: sonst kann der Kopf
+// verschwinden, waehrend die Zustandsaenderungen bestehen bleiben -- oder
+// umgekehrt.
+func (cs *ChainState) DeleteBlockFromDBCtx(ctx context.Context, hash string) error {
 	if cs.db == nil {
 		return nil
 	}
-	_, err := cs.dbExec().Exec(`DELETE FROM chain_blocks WHERE hash=$1`, hash)
+	_, err := cs.dbExecCtx(ctx).Exec(`DELETE FROM chain_blocks WHERE hash=$1`, hash)
 	return err
 }
 
 // SaveGHOSTDAGState updates only the GHOSTDAG columns for an existing block.
 // Used by the startup migration and after local GHOSTDAG compute in AddPeerBlock (P1-03).
 func (cs *ChainState) SaveGHOSTDAGState(block *Block) error {
+	return cs.SaveGHOSTDAGStateCtx(context.Background(), block)
+}
+
+// SaveGHOSTDAGStateCtx ist die ctx-gefuehrte Fassung.
+//
+// HINWEIS: die Einzelfassung hat derzeit KEINEN Aufrufer -- der laufende Code
+// benutzt ausschliesslich SaveGHOSTDAGStateBatch. Sie bleibt (sie ist
+// exportiert), aber wer hier etwas aendert, aendert nichts Laufendes.
+func (cs *ChainState) SaveGHOSTDAGStateCtx(ctx context.Context, block *Block) error {
 	if cs.db == nil {
 		return nil
 	}
@@ -3272,7 +3438,7 @@ func (cs *ChainState) SaveGHOSTDAGState(block *Block) error {
 	if err != nil {
 		bluesJSON = []byte("[]")
 	}
-	_, err = cs.dbExec().Exec(
+	_, err = cs.dbExecCtx(ctx).Exec(
 		`UPDATE chain_blocks SET selected_parent=$1, blue_score=$2, blues=$3 WHERE hash=$4`,
 		block.SelectedParent, block.BlueScore, string(bluesJSON), block.Hash,
 	)

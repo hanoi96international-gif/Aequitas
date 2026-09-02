@@ -3,6 +3,7 @@ package keeper
 import (
 	"bytes"
 	"context"
+	"crypto/ed25519"
 	"crypto/subtle"
 	"database/sql"
 	"database/sql/driver"
@@ -32,6 +33,9 @@ import (
 	"github.com/ethereum/go-ethereum/accounts"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/crypto"
+
+	"github.com/hanoi96international-gif/aequitas-chain/x/humanity/mpc"
+	"github.com/hanoi96international-gif/aequitas-chain/x/humanity/wal"
 )
 
 type APIServer struct {
@@ -45,6 +49,11 @@ type APIServer struct {
 	// the same nonce map and mutex, preventing parallel registrations from
 	// reading the same DB nonce and writing the same follower value.
 	evmRPC *EVMRPCServer
+
+	// This node's participation in secure duplicate matching, or nil when it
+	// is not one of the parties. Nil is the safe value: no MPC at all, rather
+	// than one machine performing a two-party protocol by itself.
+	mpc *mpcNode
 }
 
 // FIX (P2-7, beta-launch audit 2026-07-05): NewAPIServer used to also take a
@@ -656,6 +665,27 @@ func (a *APIServer) handleCombinedHealth(w http.ResponseWriter, r *http.Request)
 		// the time this node can accept transfers at all, regardless of how
 		// well the transfer path itself performs.
 		"exclusive_lock": ExclusiveLockStats(),
+		// Entscheidet, ob cs.activeTx entfernt und echte Nebenlaeufigkeit
+		// eingeschaltet werden kann -- siehe activetx_rueckfall.go.
+		"activetx_rueckfall": ActiveTxRueckfallStand(),
+		// Wofuer die globale Sperre gehalten wird -- siehe atomic_phasen.go.
+		"atomic_phasen": AtomicPhasenStand(),
+		// Groesse und Sammelfenster des Buendlers -- siehe transfer_batch_tuning.go.
+		"transfer_batch": TransferBatchAbstimmung(),
+		// Warum Ueberweisungen den Schnellpfad verlassen -- siehe fallback_gruende.go.
+		"fallback_gruende": FallbackGruende(),
+		// Obergrenze gleichzeitig angenommener Arbeit -- siehe inflight_grenze.go.
+		"inflight": InflightStand(),
+		// Wirkung des kurzen Wiederholens bei belegtem Shard.
+		"shard_retry": ShardRetryStand(),
+		// Drosselung der Blockgroesse bei zurueckfallenden Peers.
+		"peer_lag_bremse": PeerLagBremseStand(),
+		// Wie das Nachspielen die Ueberweisungen anwendet -- parallel oder seriell.
+		"replay_pfad": ReplayPfadStand(),
+		// Steckt der Knoten an einem Block fest, den er nicht nachspielen kann?
+		"replay_mauer": ReplayMauerStand(),
+		// Liefert der Peer die fehlenden Elternbloecke ueberhaupt noch?
+		"ahnen_leerlauf": AhnenLeerlaufStand(),
 		// Whether the database connection pool is the constraint — wait_count
 		// and wait_total_ms answer that directly, instead of inferring it from
 		// a throughput number that swings by 2x between runs. See DBPoolStats.
@@ -666,7 +696,22 @@ func (a *APIServer) handleCombinedHealth(w http.ResponseWriter, r *http.Request)
 		// The WAL flush loop, which a mutex profile identified as the single
 		// largest source of lock contention in the node (45.21%). addrs_per_flush
 		// and hold_avg_ms are the two numbers that explain it; see wal_tuning.go.
-		"wal_flush": WALFlushStats(),
+		"wal_flush":  WALFlushStats(),
+		"admission":  AdmissionStats(),
+		"wal_writer": wal.WriterStats(),
+		"tx_index":   TxIndexStats(),
+		// The request split, so the ~50ms per transfer that TransferAtomic does
+		// not account for can be subtracted out instead of guessed at. Read
+		// unaccounted_in_send_ms first; see rpc_phase_stats.go.
+		"rpc_phases": RPCPhaseStats(),
+		// How much of the nonce cost the range reservation removed. Read
+		// covered_pct first -- it only applies to consecutive runs from one
+		// sender, so a differently-batching client correctly gets none of it.
+		"batch_nonce": BatchNonceStats(),
+		// The fast path split. Read other_ms first: it is the time no named
+		// phase covers, and the named ones only add up to ~7ms of a measured
+		// 78ms. See transfer_phase_stats.go.
+		"transfer_phases": TransferPhaseStats(),
 		// chain_tx_batches hatte keine Obergrenze und keinen DELETE-Pfad;
 		// siehe tx_batch_prune.go.
 		"tx_batch_prune": TxBatchPruneStats(),
@@ -723,6 +768,7 @@ func (a *APIServer) handleCombinedHealth(w http.ResponseWriter, r *http.Request)
 			"distribution":     a.state.DistributionHealth(),
 			"chain_nullifiers": a.state.CountChainNullifiers(),
 			"chain_bio_hashes": a.state.CountChainBioHashes(),
+			"bio_index":        a.state.BioIndexZustand(),
 			"proof_server_sync_queue": map[string]interface{}{
 				"pending":         proofQueueCount,
 				"dead":            proofQueueDeadCount,
@@ -868,9 +914,17 @@ func (a *APIServer) buildMux() *http.ServeMux {
 	mux.HandleFunc("/explorer.css", a.handleExplorerCSS)
 	mux.HandleFunc("/explorer.js", a.handleExplorerJS)
 	mux.HandleFunc("/node-binding.js", a.handleNodeBindingJS)
+	mux.HandleFunc("/coordinator-binding.js", a.handleCoordinatorBindingJS)
 	mux.HandleFunc("/vendor/ethers.min.js", a.handleVendorEthersJS)
 	mux.HandleFunc("/vendor/lightweight-charts.min.js", a.handleVendorLightweightChartsJS)
 	mux.HandleFunc("/vendor/walletconnect-ethereum-provider.min.js", a.handleVendorWalletConnectJS)
+	// Pflichtseiten. Sie MUESSEN vor dem Catch-all stehen, sonst
+	// beantwortet dieser sie mit der SPA-Seite und Status 200 -- genau der
+	// Zustand, der am 25.08.2026 dazu fuehrte, dass /impressum und
+	// /datenschutz zu existieren SCHIENEN, ohne es zu tun.
+	mux.HandleFunc("/impressum", a.handleImpressum)
+	mux.HandleFunc("/datenschutz", a.handleDatenschutz)
+	mux.HandleFunc("/api/legal-status", a.handleLegalStatus)
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		// Root path: serve landing page; anything else falls to handleUI
 		if r.URL.Path == "/" {
@@ -908,6 +962,28 @@ func (a *APIServer) buildMux() *http.ServeMux {
 		}
 		a.handleUI(w, r)
 	})
+	// Secure duplicate matching, if this node is one of the parties. The exact
+	// pattern beats the "/" SPA fallback on specificity, so peers reach the
+	// endpoint rather than a copy of the explorer page.
+	a.mpc = registerMPCRoutes(mux, func() []mpc.Party {
+		// Offer THIS node as a candidate only once it is actually serving.
+		// a.mpc is nil until registerMPCRoutes succeeds, and it stays nil for
+		// any node that has not configured MPC — so an empty address keeps a
+		// non-participant out of its own candidate list.
+		self := ""
+		if a.mpc != nil {
+			self = a.blockchain.SelfSigningAddress()
+		}
+		return GlobalPeerRegistry.MPCCandidates(os.Getenv("SELF_URL"), self)
+	})
+
+	mux.HandleFunc("/mpc/enroll", a.handleMPCEnroll)
+	mux.HandleFunc("/mpc/check", a.handleMPCCheck)
+	mux.HandleFunc("/mpc/budget", a.handleMPCBudget)
+	// Party 0 allocates the triple range for a session and both parties use
+	// it; see mpc_triple_sync.go for why per-party counters could not work.
+	mux.HandleFunc(mpcTripleRangePath, a.handleMPCTripleRange)
+
 	mux.HandleFunc("/api/status", a.handleStatus)
 	mux.HandleFunc("/api/events", a.handleBlockEvents)
 	mux.HandleFunc("/api/health/combined", a.handleCombinedHealth)
@@ -934,6 +1010,11 @@ func (a *APIServer) buildMux() *http.ServeMux {
 	mux.HandleFunc("/api/lp-position", a.handleLPPosition)
 	mux.HandleFunc("/api/faucet", a.handleFaucet)
 	mux.HandleFunc("/api/pool", a.handlePoolStatus)
+	// Rein lesend, aber geschuetzt: er haengt einen Verdacht an
+	// identifizierbare Konten. Siehe handleSybilReport.
+	mux.HandleFunc("/api/sybil-report", a.handleSybilReport)
+	// Vernichtet Geld. Dreifach verriegelt -- siehe handlePoolCorrection.
+	mux.HandleFunc("/api/admin/pool-correction", a.handlePoolCorrection)
 	mux.HandleFunc("/api/snapshot", a.handleSnapshot)
 	mux.HandleFunc("/api/gini/history", a.handleGiniHistory)
 	mux.HandleFunc("/api/price-history", a.handlePriceHistory)
@@ -957,7 +1038,15 @@ func (a *APIServer) buildMux() *http.ServeMux {
 	mux.HandleFunc("/api/peers/challenge", a.handlePeerChallenge)
 	mux.HandleFunc("/api/peers/register", a.handlePeerRegister)
 	mux.HandleFunc("/node-binding", a.handleNodeBinding)
+	mux.HandleFunc("/coordinator-binding", a.handleCoordinatorBinding)
 	mux.HandleFunc("/api/register-validator-key", a.handleRegisterValidatorKey)
+	// Das Coordinator-Register: derselbe Gedanke wie beim Bezeugungs-
+	// schluessel, an der wichtigsten Stelle -- der Coordinator ist der
+	// Eingang, an dem ein Mensch ankommt.
+	mux.HandleFunc("/api/register-coordinator-key", a.handleRegisterCoordinatorKey)
+	mux.HandleFunc("/api/coordinators", a.handleCoordinatorList)
+	mux.HandleFunc("/api/coordinator-proof", a.handleCoordinatorProof)
+	mux.HandleFunc("/api/validator-selfproof", a.handleValidatorSelfProof)
 	mux.HandleFunc("/api/set-guardian", a.handleSetGuardian)
 	mux.HandleFunc("/api/confirm-alive", a.handleConfirmAlive)
 	mux.HandleFunc("/api/guardian", a.handleGetGuardian)
@@ -1071,7 +1160,25 @@ func startPprofServer() {
 
 func (a *APIServer) handleStatus(w http.ResponseWriter, r *http.Request) {
 	writeJSONCORS(w)
-	latest := a.blockchain.LatestBlock()
+	// Nicht anstellen. Ist die DAG-Sperre gerade von einem Block-Burst
+	// gehalten, liefern wir den letzten guten Stand mit aktueller Hoehe statt
+	// gar nichts -- siehe status_ohne_sperre.go fuer den Vorfall, der das
+	// noetig gemacht hat.
+	latest, frei := a.blockchain.TryLatestBlock()
+	if !frei || latest == nil {
+		if alt, da := statusZwischenspeicher.holen(a.blockchain.HeightSchnell()); da {
+			json.NewEncoder(w).Encode(alt)
+			return
+		}
+		// Noch nie einen vollstaendigen Stand gehabt (frisch gestartet):
+		// wenigstens die Hoehe, damit die Ueberwachung etwas sieht.
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"height":         a.blockchain.HeightSchnell(),
+			"stand_veraltet": true,
+			"stand_hinweis":  "Knoten beschaeftigt, noch kein vollstaendiger Stand seit dem Start",
+		})
+		return
+	}
 	uptime := int64(time.Since(a.startTime).Seconds())
 	// Use a.state (PostgreSQL-backed ChainState) as the single source of
 	// truth for human count — see NewAPIServer's own comment for why there's
@@ -1101,7 +1208,7 @@ func (a *APIServer) handleStatus(w http.ResponseWriter, r *http.Request) {
 	// P3-3: compute next UBI based on last_ubi_at, not server uptime.
 	nextUBISecs := a.state.SecondsUntilNextUBI()
 
-	json.NewEncoder(w).Encode(map[string]interface{}{
+	stand := map[string]interface{}{
 		"chain_id":     "aequitas-1",
 		"version":      "v0.3.0",
 		"git_commit":   buildGitCommit,
@@ -1165,7 +1272,11 @@ func (a *APIServer) handleStatus(w http.ResponseWriter, r *http.Request) {
 		// in log lines. Empty/zero until the first foreignAttachLatencyLogInterval
 		// window closes after startup.
 		"latency": a.blockchain.GetLatencyTelemetry(),
-	})
+	}
+	// Als letzten guten Stand merken -- er wird ausgeliefert, wenn die
+	// Sperre beim naechsten Mal belegt ist (status_ohne_sperre.go).
+	statusZwischenspeicher.merken(stand)
+	json.NewEncoder(w).Encode(stand)
 }
 
 // sseConnections bounds concurrent /api/events streams — a long-lived
@@ -1502,7 +1613,57 @@ func (a *APIServer) handleBlocksByHash(w http.ResponseWriter, r *http.Request) {
 		valid = append(valid, h)
 	}
 	found := a.blockchain.GetBlocksByHashesForPeer(valid)
+
+	// Cap the RESPONSE BY BYTES, not only by hash count.
+	//
+	// maxBlocksByHashPerRequest is 500 because this was sized against blocks
+	// of "~2 KB each ... at 500 hashes is ~1 MB". A block carrying a few
+	// thousand transfers is closer to 1 MB by itself, so under real load the
+	// same 500 hashes produce hundreds of MB, the client stops reading at its
+	// 20 MB cap, and the truncated body fails to parse. The client now halves
+	// and retries, but every failed attempt still transfers ~20 MB first --
+	// on 2026-08-21 Contabo1 spent its whole bandwidth on discarded responses
+	// (327 -> 163 -> 81 -> 40 -> 21 -> 10) and could not catch up at all.
+	//
+	// Serving what fits is strictly better: the caller re-asks for whatever is
+	// still missing on its next cycle, so progress is the same and nothing is
+	// transferred twice.
+	found, truncated := capBlocksByResponseBytes(found)
+	if truncated {
+		// The client must NOT read the omitted hashes as "this peer does not
+		// have them" -- it counts those toward orphanAbandonAfter, and
+		// abandoning a block the peer actually holds is how a node ends up
+		// permanently unable to bridge to the chain.
+		w.Header().Set("X-Blocks-Truncated", "1")
+	}
 	json.NewEncoder(w).Encode(found)
+}
+
+// blocksByHashResponseBudget is the byte budget for one /api/blocks/by-hash
+// response. Below the client's 20 MB read cap with room for JSON overhead, so
+// a response that fits this budget always fits the client.
+const blocksByHashResponseBudget = 12 << 20
+
+// capBlocksByResponseBytes keeps blocks while they fit the budget and reports
+// whether anything was left out.
+//
+// Always keeps the FIRST block even when it alone exceeds the budget: an empty
+// response would tell the caller the peer has nothing, and it would make no
+// progress on that hash ever again. One oversized block is the client's
+// problem to report, not a reason to stall the whole catch-up.
+func capBlocksByResponseBytes(blocks []*Block) ([]*Block, bool) {
+	total := 2 // the enclosing [ ]
+	for i, b := range blocks {
+		enc, err := json.Marshal(b)
+		if err != nil {
+			continue
+		}
+		total += len(enc) + 1 // + comma
+		if total > blocksByHashResponseBudget && i > 0 {
+			return blocks[:i], true
+		}
+	}
+	return blocks, false
 }
 
 // --- /api/blocks/push flood shield (P0, 2026-07-02 fork-flood recurrence) ---
@@ -1860,7 +2021,12 @@ func (a *APIServer) handleBalance(w http.ResponseWriter, r *http.Request) {
 	writeJSONCORS(w)
 	wallet := strings.ToLower(r.URL.Query().Get("wallet"))
 	if wallet == "" {
-		json.NewEncoder(w).Encode(map[string]interface{}{"balance": 0, "tusd_balance": 0, "is_human": false})
+		// Frueher: HTTP 200 mit {"balance": 0, "is_human": false}. Ein
+		// Tippfehler im Parameternamen (address= statt wallet=) sagte damit
+		// einem registrierten Menschen, er sei nicht registriert und habe
+		// nichts -- eine plausible falsche Antwort ist schlimmer als eine
+		// Fehlermeldung.
+		jsonError(w, "wallet parameter required, e.g. /api/balance?wallet=0x...", http.StatusBadRequest)
 		return
 	}
 
@@ -1922,7 +2088,10 @@ func (a *APIServer) handleCheckRegistration(w http.ResponseWriter, r *http.Reque
 
 	commitment := r.URL.Query().Get("commitment")
 	if commitment == "" {
-		json.NewEncoder(w).Encode(map[string]interface{}{"registered": false})
+		// Kein "registered": false auf eine ungestellte Frage. Das hiesse
+		// "noch frei" -- die gefaehrliche Richtung fuer eine Abfrage, die
+		// gerade pruefen soll, ob etwas schon vergeben ist.
+		jsonError(w, "commitment parameter required", http.StatusBadRequest)
 		return
 	}
 
@@ -2051,7 +2220,10 @@ func (a *APIServer) handleCheckNullifier(w http.ResponseWriter, r *http.Request)
 	writeJSONCORS(w)
 	nullifier := r.URL.Query().Get("n")
 	if nullifier == "" {
-		json.NewEncoder(w).Encode(map[string]interface{}{"used": false})
+		// Siehe handleCheckRegistration: "used": false auf eine leere Anfrage
+		// behauptet, ein Nullifier sei unverbraucht. Ohne Parameter ist die
+		// einzig richtige Antwort, gar nichts zu behaupten.
+		jsonError(w, "n parameter required (the nullifier to check)", http.StatusBadRequest)
 		return
 	}
 	wallet := a.state.GetWalletByNullifier(nullifier)
@@ -2203,11 +2375,14 @@ input{width:100%;background:#0A0E1A;border:1px solid #1E2D45;border-radius:6px;c
 <div class="box">
 <div class="logo">AEQUITAS</div>
 <div class="sub">
-This page proves your <span class="hl">NODE_OPERATOR_WALLET</span> owns the signature your node needs to register as a validator. It signs a message locally in your wallet — nothing is sent anywhere by this page.
+This registers your node in the chain&rsquo;s <span class="hl">validator registry</span> &mdash; on this page, with no terminal and no commands to copy. The node proves its own signing key, fetches the witness proof from your matching service, and your wallet signs the one sentence that ties them to a registered human. Signing costs nothing and moves nothing: it is <span class="hl">personal_sign</span> over a plain sentence, not a transaction.
 </div>
-<label>Your node's signing address (find it via <code>/api/signing-address</code> on your own node, or in its startup logs)</label>
-<input id="signingAddr" placeholder="0x...">
-<button class="btn" id="connectBtn">Connect Wallet &amp; Sign</button>
+<label>Your matching service&rsquo;s address (optional)</label>
+<div class="sub" style="margin:0 0 8px;font-size:0.72rem">
+The public https:// address your own matching service answers on. <span class="hl">You do not need your node&rsquo;s signing address</span> &mdash; this node proves that itself. Leave the field empty if you do not run a matching service: your node still registers, it just does not count as a witness.
+</div>
+<input id="signingAddr" placeholder="https://verifier.example.org">
+<button class="btn" id="connectBtn">Connect Wallet &amp; Register</button>
 <div class="out" id="out"></div>
 <div class="err" id="err"></div>
 </div>
@@ -2507,6 +2682,16 @@ func (a *APIServer) handleRegisterValidatorKey(w http.ResponseWriter, r *http.Re
 		HumanWallet         string `json:"human_wallet"`
 		HumanSignature      string `json:"human_signature"`
 		SigningKeySignature string `json:"signing_key_signature"`
+		// Optional: der Ed25519-Schluessel, mit dem dieser Validator Menschen
+		// bezeugt, plus ein Besitznachweis darueber.
+		//
+		// Er gehoert ins Register und nicht in eine handgepflegte
+		// Umgebungsvariable: eine Liste, die jemand auf jeder Box eintragen
+		// muss, IST eine Genehmigung.
+		PersonhoodKey       string `json:"personhood_key"`
+		PersonhoodSignature string `json:"personhood_signature"`
+		// Wo der Vergleichsdienst dieses Betreibers erreichbar ist.
+		MatchingURL string `json:"matching_url"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, `{"error":"invalid request"}`, 400)
@@ -2536,7 +2721,34 @@ func (a *APIServer) handleRegisterValidatorKey(w http.ResponseWriter, r *http.Re
 		jsonError(w, "invalid signing_key_signature — sign with RELAYER_PRIVATE_KEY: "+err.Error(), 400)
 		return
 	}
-	if err := a.state.RegisterValidatorKey(signingAddr, humanWallet); err != nil {
+	// 3. Der Bezeugungsschluessel beweist, dass er zu DIESEM Menschen gehoert.
+	//
+	// Ohne diesen Nachweis koennte jemand einen fremden oeffentlichen
+	// Schluessel eintragen -- und dessen Unterschriften wuerden fortan unter
+	// seiner Registrierung zaehlen. Der Beweis ist derselbe Gedanke wie bei der
+	// Signieradresse eine Zeile darueber: wer eintraegt, muss besitzen.
+	personhood := strings.ToLower(strings.TrimSpace(req.PersonhoodKey))
+	if personhood != "" {
+		if len(personhood) != 64 || strings.Trim(personhood, "0123456789abcdef") != "" {
+			jsonError(w, "personhood_key must be 64 hex characters (Ed25519 public key)", 400)
+			return
+		}
+		if !verifyPersonhoodPossession(personhood, req.PersonhoodSignature, humanWallet) {
+			jsonError(w, "invalid personhood_signature — sign \"Aequitas: personhood key for human <wallet>\" "+
+				"with the Ed25519 key itself", 400)
+			return
+		}
+	}
+	// Nur HTTPS, und keine privaten Adressen: diese URL wird spaeter von
+	// FREMDEN Coordinatoren aufgerufen. Eine http:// oder 127.0.0.1-Adresse im
+	// Register waere entweder unbrauchbar oder ein Weg, andere auf das eigene
+	// Netz zeigen zu lassen.
+	matchingURL := strings.TrimRight(strings.TrimSpace(req.MatchingURL), "/")
+	if matchingURL != "" && !isAllowedPeerURL(matchingURL) {
+		jsonError(w, "matching_url must be a public https:// address", 400)
+		return
+	}
+	if err := a.state.RegisterValidatorFull(signingAddr, humanWallet, personhood, matchingURL); err != nil {
 		jsonStateError(w, "register-validator-key", signingAddr, err)
 		return
 	}
@@ -2546,7 +2758,28 @@ func (a *APIServer) handleRegisterValidatorKey(w http.ResponseWriter, r *http.Re
 		"success":         true,
 		"signing_address": signingAddr,
 		"human_wallet":    humanWallet,
+		"personhood_key":  personhood,
+		"matching_url":    matchingURL,
 	})
+}
+
+// verifyPersonhoodPossession prueft, dass der Eintragende den privaten Teil des
+// Ed25519-Schluessels wirklich besitzt.
+//
+// Unterschrieben wird eine Nachricht, die den MENSCHEN nennt. Damit laesst sich
+// eine abgefangene Signatur nicht unter einer anderen Registrierung
+// wiederverwenden.
+func verifyPersonhoodPossession(publicHex, signatureHex, humanWallet string) bool {
+	roh, err := hex.DecodeString(strings.TrimPrefix(strings.TrimSpace(signatureHex), "0x"))
+	if err != nil || len(roh) != ed25519.SignatureSize {
+		return false
+	}
+	pub, err := hex.DecodeString(publicHex)
+	if err != nil || len(pub) != ed25519.PublicKeySize {
+		return false
+	}
+	msg := []byte("Aequitas: personhood key for human " + strings.ToLower(strings.TrimSpace(humanWallet)))
+	return ed25519.Verify(ed25519.PublicKey(pub), msg, roh)
 }
 
 // handleValidatorList returns registered validator key pairs (signing_address +
@@ -2627,8 +2860,13 @@ func (a *APIServer) handlePeerRegister(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var req struct {
-		URL                string `json:"url"`
-		SigningAddress     string `json:"signing_address"`
+		URL            string `json:"url"`
+		SigningAddress string `json:"signing_address"`
+		// MPCReady: this peer offers to serve the private duplicate check.
+		// Absent (older nodes, or nodes not offering it) means false, which
+		// keeps them out of committee selection — a drawn member that cannot
+		// take part stalls every comparison the committee is asked for.
+		MPCReady           bool   `json:"mpc_ready"`
 		PeerSecret         string `json:"peer_secret"`
 		Signature          string `json:"signature"` // P1-3 challenge-response
 		NodeOperatorWallet string `json:"node_operator_wallet"`
@@ -2768,7 +3006,10 @@ func (a *APIServer) handlePeerRegister(w http.ResponseWriter, r *http.Request) {
 	registerURLIfAuthorized := func() {
 		if req.URL != "" && isAllowedPeerURL(req.URL) {
 			if urlAuthorized {
-				GlobalPeerRegistry.Register(req.URL)
+				// Record the signing address alongside the URL: this
+				// registration has just proved ownership of that key, and it
+				// is the only moment the two halves are known together.
+				GlobalPeerRegistry.RegisterWithMPC(req.URL, req.SigningAddress, req.MPCReady)
 				fmt.Printf("[PEERS] Registered: %s\n", req.URL)
 				a.blockchain.startSyncForPeer(req.URL)
 			} else {
@@ -2954,6 +3195,16 @@ func (a *APIServer) handleProveProxy(w http.ResponseWriter, r *http.Request) {
 	}
 	defer resp.Body.Close()
 	respBody, _ := io.ReadAll(io.LimitReader(resp.Body, 64<<10))
+	// Herkunft festhalten, BEVOR die Antwort rausgeht.
+	//
+	// Ein Status 200 vom Proof-Server heisst: die Bescheinigung wurde geprueft.
+	// Dort steht BIO_ATTESTATION_MODE=required, ohne gueltige Bescheinigung
+	// antwortet er 403. Dieser Knoten merkt sich also, dass DIESER Nullifier
+	// durch die Pruefung gekommen ist -- /api/register nimmt nur solche.
+	// Siehe prove_provenance.go fuer die Luecke, die das schliesst.
+	if resp.StatusCode == http.StatusOK {
+		merkeProveHerkunft(respBody)
+	}
 	w.WriteHeader(resp.StatusCode)
 	w.Write(respBody)
 }
@@ -3351,6 +3602,24 @@ func (a *APIServer) handleDappJS(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprint(w, dappJS)
 }
 
+// defaultAPKReleaseURL is where /download/app.apk redirects when the mounted
+// APK is absent. It stood at app-v1.4.1 while the shipped release was already
+// app-v1.5.2 -- three releases back, and the older builds are exactly the ones
+// whose personhood check was not yet enforced. It was written out twice in the
+// handler below, so the two copies could drift apart; one constant now.
+//
+// This is the LAST resort: the boxes bind-mount the real APK at
+// downloads/aequitas-app.apk and serve that (verified live 2026-08-24 --
+// /download/app.apk returned 214,986,378 bytes, byte-for-byte app-v1.6.0).
+// Operators override it per-box with AEQUITAS_APK_URL without a chain deploy,
+// which is the normal path; keeping this constant current is belt-and-braces
+// for a box where the variable was never set.
+//
+// Replacing the mounted file must WRITE INTO it (cat new > dest), never mv:
+// a file bind-mount follows the inode, so a rename leaves the container
+// serving the old file while the host shows the new one.
+const defaultAPKReleaseURL = "https://github.com/hanoi96international-gif/Aequitas-App/releases/download/app-v1.6.0/app-release.apk"
+
 func (a *APIServer) handleAppDownload(w http.ResponseWriter, r *http.Request) {
 	const apkPath = "downloads/aequitas-app.apk"
 	// FIX (N1, Audit 2026-08-18): this "fallback" is in practice the ONLY path.
@@ -3366,14 +3635,14 @@ func (a *APIServer) handleAppDownload(w http.ResponseWriter, r *http.Request) {
 	// restart, not a chain deploy.
 	fallbackURL := os.Getenv("AEQUITAS_APK_URL")
 	if fallbackURL == "" {
-		fallbackURL = "https://github.com/hanoi96international-gif/Aequitas/releases/download/app-v1.3.3/app-release.apk"
+		fallbackURL = defaultAPKReleaseURL
 	}
 	// Only ever redirect to an absolute http(s) URL: an operator typo that left
 	// a relative path here would otherwise turn this endpoint into an
 	// open-redirect-shaped surprise on the node's own origin.
 	if !strings.HasPrefix(fallbackURL, "https://") && !strings.HasPrefix(fallbackURL, "http://") {
 		fmt.Printf("[APK] ⚠ AEQUITAS_APK_URL=%q is not an absolute http(s) URL — ignoring it\n", fallbackURL)
-		fallbackURL = "https://github.com/hanoi96international-gif/Aequitas/releases/download/app-v1.3.3/app-release.apk"
+		fallbackURL = defaultAPKReleaseURL
 	}
 	f, err := os.Open(apkPath)
 	if err != nil {
@@ -3466,8 +3735,94 @@ func (a *APIServer) handleOGImage(w http.ResponseWriter, r *http.Request) {
 
 func (a *APIServer) handleNodeBindingJS(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/javascript; charset=utf-8")
-	w.Header().Set("Cache-Control", "public, max-age=3600")
+	// Siehe handleCoordinatorBindingJS: dieselbe Falle, dieselbe Datei-Art.
+	w.Header().Set("Cache-Control", "no-cache")
 	fmt.Fprint(w, nodeBindingJS)
+}
+
+// handleCoordinatorBinding is the coordinator's counterpart to
+// handleNodeBinding.
+//
+// # WHY THIS PAGE EXISTS
+//
+// A coordinator issues the attestation this chain mints on, so its Ed25519
+// key has to be tied to a registered human before any matching service
+// accepts what it signs. That tie needs a secp256k1 signature from the
+// human's own wallet -- and wallets have no built-in UI for signing a plain
+// string, which left every prospective operator to improvise one.
+//
+// The Ed25519 half is deliberately NOT here: that key lives on the
+// coordinator's own host, and a page that asked for it would be teaching
+// operators to paste their signing key into a web form.
+func (a *APIServer) handleCoordinatorBinding(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "text/html")
+	w.Header().Set("Content-Security-Policy", "default-src 'self' 'unsafe-inline'; script-src 'self'; style-src 'self' 'unsafe-inline'")
+	w.Header().Set("X-Frame-Options", "DENY")
+	setHSTS(w, r)
+	w.Header().Set("X-Content-Type-Options", "nosniff")
+	w.Header().Set("Referrer-Policy", "strict-origin-when-cross-origin")
+	fmt.Fprint(w, `<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Coordinator Authorization &mdash; Aequitas</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:#0A0E1A;color:#C9A84C;font-family:'Courier New',monospace;display:flex;align-items:center;justify-content:center;min-height:100vh;padding:20px}
+.box{background:#111827;border:1px solid #1E2D45;border-radius:12px;padding:32px;max-width:560px;width:100%}
+.logo{font-size:1.6rem;font-weight:900;letter-spacing:6px;color:#C9A84C;margin-bottom:18px;text-align:center}
+.sub{color:#6B7A99;font-size:0.78rem;line-height:1.8;margin-bottom:18px}
+label{display:block;color:#C9A84C;font-size:0.72rem;margin-bottom:6px;margin-top:14px}
+input{width:100%;background:#0A0E1A;border:1px solid #1E2D45;border-radius:6px;color:#fff;padding:10px;font-family:'Courier New',monospace;font-size:0.8rem}
+.btn{display:block;width:100%;margin-top:18px;padding:12px;background:#C9A84C;color:#0A0E1A;border:none;border-radius:8px;font-weight:bold;cursor:pointer;font-family:'Courier New',monospace}
+.btn:disabled{opacity:0.5;cursor:not-allowed}
+.out{margin-top:18px;padding:14px;background:#0A0E1A;border:1px solid #22C55E;border-radius:8px;word-break:break-all;font-size:0.72rem;color:#9CA3AF;line-height:1.9;display:none}
+.err{margin-top:18px;padding:14px;background:#0A0E1A;border:1px solid #f87171;border-radius:8px;font-size:0.75rem;color:#f87171;display:none}
+.hl{color:#C9A84C;font-weight:bold}
+.note{margin-top:16px;font-size:0.7rem;color:#6B7A99;line-height:1.8;border-left:2px solid #1E2D45;padding-left:12px}
+</style>
+</head>
+<body>
+<div class="box">
+<div class="logo">AEQUITAS</div>
+<div class="sub">
+This authorizes your coordinator&rsquo;s signing key with your <span class="hl">human wallet</span>.
+Until it is authorized, matching services refuse every attestation it issues &mdash; they report it as an unknown key.
+Everything happens on this page: no terminal, no commands to copy. Signing costs nothing and moves nothing &mdash; it is <span class="hl">personal_sign</span> over a plain sentence, not a transaction.
+</div>
+<label>Your coordinator&rsquo;s address</label>
+<div class="sub" style="margin:0 0 8px;font-size:0.72rem">
+The public https:// address your coordinator answers on &mdash; for example <code>https://verifier.example.org</code>. <span class="hl">There is no key to look up.</span> This page asks your coordinator for its own key, has your wallet sign the authorization, and registers it on every node. If you do not run a coordinator, you do not need this page.
+</div>
+<input id="pubKey" placeholder="https://verifier.example.org">
+<button class="btn" id="connectBtn">Connect Wallet &amp; Register</button>
+<div class="out" id="out"></div>
+<div class="err" id="err"></div>
+<div class="note">
+Any wallet works as long as it is a <span class="hl">registered human</span> &mdash; it does not have to be the one that operates a node.
+Your coordinator&rsquo;s signing key never leaves its own host and is never asked for here: it proves possession where it lies. Signing costs nothing and moves nothing &mdash; it signs one sentence, not a transaction.
+</div>
+</div>
+<script src="/coordinator-binding.js"></script>
+</body>
+</html>`)
+}
+
+func (a *APIServer) handleCoordinatorBindingJS(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/javascript; charset=utf-8")
+	// KEINE Stunde blind. Am 28.08.2026 hat genau das eine Eintragung
+	// gekostet: der Server lieferte laengst die Fassung, die selbst eintraegt,
+	// der Browser hatte aber noch die alte im Speicher, die nur eine
+	// Befehlszeile druckte. Es wurde unterschrieben, gesendet wurde nichts --
+	// und weder Seite noch Server hatten Anlass, etwas zu melden.
+	//
+	// Diese Datei hat keine Fassungsnummer im Pfad (anders als explorer.js),
+	// eine lange Frist ist hier also nicht abgesichert. no-cache heisst nicht
+	// "nie speichern", sondern "vor jeder Benutzung nachfragen" -- bei ein paar
+	// Kilobyte kostet das nichts und kann nicht mehr veralten.
+	w.Header().Set("Cache-Control", "no-cache")
+	fmt.Fprint(w, coordinatorBindingJS)
 }
 
 // ─── GUARDIAN ENDPOINTS ────────────────────────────────────────────────────────

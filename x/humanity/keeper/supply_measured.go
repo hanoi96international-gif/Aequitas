@@ -2,8 +2,13 @@ package keeper
 
 import (
 	"fmt"
+	"os"
+	"strconv"
+	"strings"
 	"sync"
 	"time"
+
+	"github.com/lib/pq"
 )
 
 // MeasuredTotalAEQ sums what the ledger actually holds: every account's balance
@@ -116,9 +121,154 @@ func (cs *ChainState) SupplyReconciliation() map[string]interface{} {
 		return out
 	}
 	out["measured"] = fmt.Sprintf("%.6f", measured)
-	out["difference"] = fmt.Sprintf("%+.6f", measured-claimed)
+	difference := measured - claimed
+	out["difference"] = fmt.Sprintf("%+.6f", difference)
 	// Anything past a micro-AEQ is structural, not arithmetic: balances are
 	// stored as micro-integers, so a correct implementation is exact.
-	out["reconciled"] = measured-claimed < 1e-6 && claimed-measured < 1e-6
+	out["reconciled"] = difference < 1e-6 && -difference < 1e-6
+
+	// Tell the KNOWN gap apart from a NEW one.
+	//
+	// Without this the field above reads "+305.278" for as long as the old
+	// excess sits in the AMM reserve, and it would go on reading roughly that
+	// if a fresh bug minted another five AEQ tomorrow. A number that is always
+	// wrong stops being read -- and this is the one number that says whether
+	// the currency's central promise still holds.
+	//
+	// Seit dem 26.08.2026 ist die Baseline 0: der Ueberschuss von damals wurde
+	// abgetragen (pool_correction.go), und beide Knoten melden seither
+	// reconciled=true. Jede Abweichung nach oben ist ab jetzt frisch
+	// geschoepftes Geld -- es gibt nichts mehr, an dem sie sich verstecken
+	// koennte.
+	baseline := knownSupplyGapAEQ()
+	beyond := difference - baseline
+	out["known_gap_baseline"] = fmt.Sprintf("%.6f", baseline)
+	out["beyond_known_gap"] = fmt.Sprintf("%+.6f", beyond)
+	alarm, reason := supplyAlarm(difference, baseline)
+	out["supply_alarm"] = alarm
+	if alarm {
+		out["supply_alarm_reason"] = reason
+	}
+
+	// The breakdown that tells the two explanations apart.
+	//
+	// A positive difference means either AEQ was created, or fewer humans are
+	// counted than were granted 1,000. Those need opposite responses, and the
+	// numbers below separate them without anyone needing shell access to the
+	// database — which is what has kept the live +305.278 unexplained since
+	// 2026-08-15.
+	//
+	//   humans ~= claimed        the humans hold what they were granted, so a
+	//                            gap lives somewhere else
+	//   non_humans ~= difference the AEQ sits in accounts no longer counted as
+	//                            people: deregistered, or never marked human
+	//   pools carry it           it is fee revenue in the tokenomics pools,
+	//                            which is granted money that merely moved
+	//   none of the above        something created it
+	if parts, err := cs.supplyBreakdown(); err == nil {
+		out["breakdown"] = parts
+	} else {
+		out["breakdown_error"] = err.Error()
+	}
 	return out
+}
+
+// supplyBreakdown splits the measured total by where the AEQ actually sits.
+func (cs *ChainState) supplyBreakdown() (map[string]string, error) {
+	if cs.db == nil {
+		return nil, fmt.Errorf("no database configured")
+	}
+	var humans, nonHumans, pools, reserve float64
+	var nonHumanAccounts, humanAccounts int
+
+	// The human COUNT straight from the ledger, next to the counter the rule is
+	// computed from.
+	//
+	// TotalSupply is humanCountLocked x 1,000, and that counter is seeded by a
+	// full scan once and then maintained incrementally. An incremental counter
+	// that drifts low makes the claimed supply too small, and the gap looks
+	// exactly like minted money while nothing was minted at all. Comparing it
+	// against COUNT(*) is one query and rules that out — or finds it.
+	if err := cs.db.QueryRow(
+		`SELECT COALESCE(sum(balance),0), count(*) FROM chain_accounts WHERE is_human = true`,
+	).Scan(&humans, &humanAccounts); err != nil {
+		return nil, err
+	}
+	if err := cs.db.QueryRow(
+		`SELECT COALESCE(sum(balance),0), count(*) FROM chain_accounts
+		 WHERE is_human = false AND balance > 0`).Scan(&nonHumans, &nonHumanAccounts); err != nil {
+		return nil, err
+	}
+	if err := cs.db.QueryRow(
+		`SELECT COALESCE(sum(balance),0) FROM chain_accounts WHERE lower(address) = ANY($1)`,
+		pq.Array([]string{ubiPoolAddr, lpPoolAddr, validatorsPoolAddr, treasuryPoolAddr}),
+	).Scan(&pools); err != nil {
+		return nil, err
+	}
+	if err := cs.db.QueryRow(
+		`SELECT COALESCE(reserve_aeq,0) FROM liquidity_pool WHERE id = 1`).Scan(&reserve); err != nil {
+		reserve = 0
+	}
+
+	// What the rule would claim if it counted the ledger instead of the
+	// incremental counter. If this differs from claimed_humans_x_1000, the
+	// counter has drifted and the "excess" is arithmetic, not creation.
+	claimedFromLedger := float64(humanAccounts) * 1000
+
+	return map[string]string{
+		"human_accounts":     fmt.Sprintf("%d", humanAccounts),
+		"claimed_if_counted": fmt.Sprintf("%.6f", claimedFromLedger),
+		"humans":             fmt.Sprintf("%.6f", humans),
+		"non_humans":         fmt.Sprintf("%.6f", nonHumans),
+		"non_human_accounts": fmt.Sprintf("%d", nonHumanAccounts),
+		"tokenomics_pools":   fmt.Sprintf("%.6f", pools),
+		"amm_reserve":        fmt.Sprintf("%.6f", reserve),
+	}, nil
+}
+
+// knownSupplyGapAEQ is the gap that is NOT treated as new creation, in AEQ.
+//
+// It is 0, and that is the whole point.
+//
+// From 2026-08-15 the chain held 305.277988 AEQ more than the rule allows.
+// The cause was fixed on 2026-08-20 (five paths persisted the credit before
+// the debit), but the excess itself sat in the AMM reserve until 2026-08-26,
+// when a replicated pool_correction transaction removed it along with the
+// proportional tUSD, leaving the price untouched. Both nodes reported
+// reconciled=true with measured=17000.000000 immediately afterwards.
+//
+// While the excess still sat there, this figure was that number, so that a
+// NEW gap stayed visible next to the old one instead of hiding inside it. It
+// is 0 now because there is nothing left to look past: every AEQ the ledger
+// holds is explained by a registered human.
+//
+// It is NOT a tolerance, and it should never be raised. Raising it is the one
+// change that would make this alarm quietly stop reporting the thing it
+// exists to report. SUPPLY_GAP_BASELINE_AEQ can override it, but only for the
+// same reason it was non-zero before: a known excess that is waiting to be
+// removed, never one that is being accepted.
+func knownSupplyGapAEQ() float64 {
+	if raw := strings.TrimSpace(os.Getenv("SUPPLY_GAP_BASELINE_AEQ")); raw != "" {
+		if v, err := strconv.ParseFloat(raw, 64); err == nil && v >= 0 {
+			return v
+		}
+		// A malformed override must not silently widen the alarm's blind spot.
+		fmt.Printf("[SUPPLY] SUPPLY_GAP_BASELINE_AEQ=%q is not a number, using the built-in baseline\n", raw)
+	}
+	return 0
+}
+
+// supplyAlarm decides whether the gap grew past what was already known.
+//
+// One-sided on purpose. A gap that SHRANK is the old excess being cleaned up,
+// which is the outcome we want and not something to wake anyone for. Only
+// growth means money appeared that no human's registration accounts for.
+func supplyAlarm(difference, baseline float64) (bool, string) {
+	beyond := difference - baseline
+	if beyond <= 1e-6 {
+		return false, ""
+	}
+	return true, fmt.Sprintf(
+		"%.6f AEQ beyond the gap known on 2026-08-20 -- this is newly created "+
+			"money, not the old excess", beyond)
 }

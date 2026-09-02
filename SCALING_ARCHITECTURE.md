@@ -125,6 +125,29 @@ Drei Konsequenzen, die die ursprüngliche Formulierung ("kein Hinweis, dass fsyn
 
 **`MaxBatchWait = 1 ms` bleibt vorerst unangetastet.** Der Kommentar an der Konstanten fordert ausdrücklich eine Nachmessung, falls die echte fsync-Latenz abweicht — sie weicht ab (p50 1,8–6,0 ms statt Sandbox-schnell). Aber die Wartezeit greift nur bei leerer Queue: während ein fsync 4–6 ms läuft, sammeln sich ankommende Appends ohnehin an, der nächste Batch ist also bereits voll, wenn der Writer wieder dran ist. Eine Änderung ohne Messung unter echter Last wäre genau das Raten, das dieses Dokument vermeiden soll.
 
+### Signaturprüfung auf echter Contabo2-Hardware (2026-07-26) — die harte Obergrenze
+
+Gemessen auf Contabo2 (6 Kerne), Binary in der CI gebaut und nur dort ausgeführt — auf der Produktionsbox wurde nichts kompiliert (`bench-signature-cgo-contabo2.yml`).
+
+| | pro Recovery | 1 Kern | 6 Kerne | Kerne für 50k TPS |
+|---|---:|---:|---:|---:|
+| Pure Go (`CGO_ENABLED=0`) | 274,1 µs | 3.648/s | 18.829/s | **~15,9** |
+| **libsecp256k1 (`CGO_ENABLED=1`, = Produktion)** | **101,1 µs** | **9.895/s** | **40.970/s** | **~7,3** |
+
+cgo bringt real **2,7×** — dieser Gewinn ist bereits produktiv (Dockerfile, PR #49). Trotzdem:
+
+**Die Box hat 6 Kerne. Die Signaturprüfung allein deckelt sie bei ~40.970 TPS** — und zwar bevor irgendein Zustand angefasst, ein WAL-Record geschrieben, ein Block gehasht oder ein Byte über das Netz geschickt wurde. 50.000 TPS auf einem einzelnen 6-Kern-Knoten sind mit einer ECDSA-Recovery pro Transaktion **nicht erreichbar**. Die Lücke ist klein (41k statt 50k), aber sie ist keine Feinabstimmungsfrage: sie ist ein CPU-Budget, das schlicht nicht da ist.
+
+Bemerkenswert: die Parallelskalierung fällt mit cgo auf 4,1× (Pure Go: 5,2×) — je billiger die Einzeloperation, desto stärker wirken Speicherbandbreite und die Last des mitlaufenden Validators. Mehr Kerne helfen also unterproportional.
+
+**Damit ist die 50k-Frage keine Speicher- oder Konsensfrage mehr, sondern eine Kryptografiefrage.** Die drei Wege, die die Messlage offenlässt:
+
+1. **Nicht pro Transaktion recovern.** Die Absenderadresse ist nach der ersten Prüfung bekannt; alles, was eine Transaktion mehr als einmal durch `Ecrecover` schickt (Annahme, Replay, Resync), zahlt den vollen Preis erneut. Das ist der billigste Hebel und braucht keine Konsensänderung.
+2. **Billigere Kurve für einen nativen, nicht-EVM-Transfertyp.** Ed25519-Verifikation ist einzeln ähnlich teuer, aber **batch-verifizierbar** — bei Batches in der Größenordnung eines Blocks sinkt der effektive Preis um ein Vielfaches. Konsensänderung, braucht Aktivierungshöhe.
+3. **Mehr Hardware.** Ehrlichste Variante: 50k TPS sind ein Mehr-Knoten- oder Mehr-Kern-Ziel, kein 6-Kern-Ziel.
+
+Was diese Messung ausdrücklich **nicht** sagt: dass die bisherige Arbeit umsonst war. WAL, Sharding und parallele Ausführung heben die Decke überall sonst — sie legen nur frei, dass danach die Signaturprüfung die nächste Wand ist. Ohne diese Messung wäre sie erst nach dem Ausbau von Schritt 3, 5 und 7 sichtbar geworden.
+
 **Update (2026-07-23) — Live-Aktivierungsversuch auf Contabo2: Tooling-Bug gefunden UND gefixt, WAL kurz echt aktiv, dann wegen eines neuen Befunds bewusst wieder zurückgerollt.** Entgegen der Warnung oben wurde `AEQUITAS_WAL_ENABLED`/`ENABLE_MULTI_BLOCK_TICK` bereits einmal live auf Contabo2 gesetzt (`enable-wal-contabo2.yml`), vor der eigentlich vorgeschriebenen Staging-Kampagne. Root Cause bestätigt: `deploy_safe_c2.sh` übernahm Env-Variablen für einen neuen Container ausschließlich aus `docker inspect` des vorherigen Containers, nie aus `/root/.aequitas.env` — die Flags erreichten den laufenden Prozess deshalb nie. Auf explizite Nutzerfreigabe hin wurde der Fix tatsächlich live angewendet (`deploy_safe_c2.sh` gepatcht, per Backup+Syntaxcheck+atomarem Install, siehe STAGING_RUNBOOK.md für den genauen Ablauf) — danach zeigte der Boot-Log zum ersten Mal echte `[WAL] ✓ WAL fast path active`-Zeilen.
 
 Direkt danach zwei neue, ernste Befunde: **(1) Der `docker run` in `deploy_safe_c2.sh` hat keinen Volume-Mount — die WAL-Datei lebt nur im Container-eigenen, schreibbaren Layer.** Da `deploy-contabo2.yml` bei jedem Push auf `main` automatisch redeployt (frischer Container, `docker rm` löscht den alten vollständig), hätte jede WAL-durable, aber noch nicht nach Postgres geflushte Transaktion beim nächsten Redeploy ersatzlos verloren gehen können — ohne Fehler, ohne Replay-Möglichkeit. Ein Risiko, das dieses Dokument vorher nicht kannte (bisherige Sorgen waren Fsync-Durchsatz/GC-Pausen, nicht "die Datei überlebt die eigene Redeploy-Pipeline nicht"). **(2) Der erste Fix-Versuch (v1) hatte selbst einen Bug:** er merged `.aequitas.env` nur ÜBER den geerbten Container-Env, wodurch ein anschließender Rollback-Versuch (Zeilen aus der Datei entfernen) wirkungslos blieb — der alte Container hatte die Flags noch, also wurden sie weitervererbt. Live bestätigt (Rollback gelaufen, WAL laut Boot-Log immer noch aktiv), dann mit v2 behoben (die drei Flags jetzt komplett vom Vererbungs-Pfad ausgeschlossen, kommen nur noch aus der Datei).

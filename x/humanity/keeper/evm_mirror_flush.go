@@ -13,6 +13,14 @@ import (
 // one round trip instead of one per transfer.
 const evmMirrorFlushInterval = 2 * time.Second
 
+// evmMirrorFlushChunk is how many addresses one exclusive hold covers.
+//
+// Sized against what was measured rather than picked round: a flush under load
+// carried ~371 addresses in a single hold. At 64 that becomes six short holds,
+// each leaving a gap for waiting transfers, without turning one stall into
+// hundreds of lock acquisitions with their own overhead.
+const evmMirrorFlushChunk = 64
+
 // evmMirrorDirtyKey identifies one (address, contract) pair awaiting an
 // async EVM-mirror-sync flush.
 type evmMirrorDirtyKey struct {
@@ -83,16 +91,65 @@ func (cs *ChainState) flushEVMMirrorDirty() {
 	cs.evmMirrorDirty = nil
 	cs.evmMirrorDirtyMu.Unlock()
 
-	// doSyncBalanceLocked needs cs.mu (write lock — it can page in a cold
-	// account via ensureAccountLoaded), and does its own DB write outside
-	// any caller's transaction (the whole point of deferring this past the
-	// original operation's own commit/rollback — see syncBalanceLocked's
-	// comment). One lock acquisition per contract group, not per address.
-	cs.mu.Lock()
-	defer cs.mu.Unlock()
+	// MEASURED 2026-08-22, and it is the reason this is chunked.
+	//
+	// Instrumenting this call site (exclusive_lock_stats covered two of the
+	// package's 85 exclusive sites) moved exclusive_busy_pct from 0.21% to
+	// 50.26% on Contabo1, with a single hold of 8,221 ms. Half the wall clock,
+	// the node could not run a transfer or replay a block at all.
+	//
+	// It ran as ONE cs.mu.Lock() over every dirty address. Under load each
+	// transfer marks two addresses dirty, so a 2-second cycle covers the whole
+	// working set, and doSyncBalanceLocked writes to Postgres per address --
+	// all of it under the node's global write lock. Go's RWMutex blocks every
+	// new reader the moment a writer waits, so transfers measured 45.88 ms of
+	// an 87.80 ms transfer just acquiring cs.mu.RLock().
+	//
+	// This is a DISPLAY-ONLY mirror. It backs eth_call and MetaMask, feeds no
+	// StateRoot and no consensus. A cosmetic subsystem was holding the lock the
+	// payment path runs on.
+	//
+	// WHY CHUNKING IS SAFE HERE, where it would not be everywhere: the flush is
+	// already eventually consistent by construction. It reads cs.accounts fresh
+	// at flush time, after whatever marked an address dirty has committed or
+	// rolled back, and anything modified between chunks is re-marked and picked
+	// up next cycle -- see syncBalanceLocked's own comment. So splitting the
+	// work changes when the mirror catches up, never what it converges to. The
+	// lock is still taken; it is just no longer held across the entire set.
+	//
+	// Chunking now matters far less than it did: with a READ lock this worker
+	// no longer blocks anyone, so the size mostly bounds how long one Postgres
+	// statement runs. It is kept because a per-address acquisition would still
+	// trade one batched write for hundreds of tiny ones.
 	for contractAddr, addrs := range byContract {
-		cs.doSyncBalanceLocked(contractAddr, addrs...)
+		for start := 0; start < len(addrs); start += evmMirrorFlushChunk {
+			stop := start + evmMirrorFlushChunk
+			if stop > len(addrs) {
+				stop = len(addrs)
+			}
+			cs.flushEVMMirrorChunk(contractAddr, addrs[start:stop])
+		}
 	}
+}
+
+// flushEVMMirrorChunk holds the exclusive lock for one bounded slice and
+// releases it before the next, so a transfer arriving mid-flush waits for one
+// chunk rather than for the entire dirty set.
+//
+// Separated into its own function so the unlock is a defer rather than a
+// hand-placed call inside a loop: an early return added later would otherwise
+// leave the node's global write lock held forever.
+func (cs *ChainState) flushEVMMirrorChunk(contractAddr string, addrs []string) {
+	// RLock, not Lock. doSyncBalanceRLocked no longer pages in cold accounts, so
+	// it mutates nothing and a read lock suffices -- and readers do not block
+	// readers, so this worker stops convoying the transfer path entirely.
+	//
+	// No trackExclusiveHold here any more: there is no exclusive hold to track.
+	// Leaving the call would report a reader as if it shut everyone else out and
+	// put busy_pct back where the instrumentation was supposed to remove it from.
+	cs.mu.RLock()
+	defer cs.mu.RUnlock()
+	cs.doSyncBalanceRLocked(contractAddr, addrs...)
 }
 
 // FlushEVMMirrorNow forces an immediate flush of any pending EVM-mirror

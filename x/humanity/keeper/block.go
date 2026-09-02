@@ -240,6 +240,27 @@ type BlockDAG struct {
 	evm    *EVMEngine // set by EVMRPCServer after construction; used by replayTransactions for ZK proof verification
 	nodeID string
 	height int64
+	// heightSchnell spiegelt height, ist aber OHNE dag.mu lesbar.
+	//
+	// dag.Height() nimmt dag.mu.RLock(). Waehrend ein Block-Burst angewendet
+	// wird, haelt die DAG die SCHREIBsperre -- und Go's RWMutex sperrt jeden
+	// neuen Leser aus, sobald ein Schreiber ansteht. /api/status blockiert
+	// dann mit, und der Knoten wirkt von aussen tot.
+	//
+	// Am 02.09.2026 genau so beobachtet: Container "Up 20 minutes", Logs
+	// voller erfolgreich angehaengter Bloecke, Tips 1 -- und trotzdem keine
+	// Antwort auf /api/status, weder von aussen noch aus dem Container
+	// heraus. Die Deploy-Pruefung meldete "the node answers but its height
+	// never moved in 10 minutes", der Betreiber sah einen Absturz. Es war
+	// keiner: der Knoten arbeitete die ganze Zeit.
+	//
+	// Nur ueber setHeight zu schreiben, nie direkt -- dafuer gibt es einen
+	// Waechter-Test (dag_height_spiegel_test.go).
+	heightSchnell atomic.Int64
+	// lastHeightAdvanceAt: wann die Hoehe zuletzt wirklich gestiegen ist.
+	// Siehe setHeight fuer den Unterschied zu "zuletzt einen Block
+	// angehaengt" -- der zweite Wert luegt bei einem abgehaengten Knoten.
+	lastHeightAdvanceAt atomic.Int64
 	// bootHeight is dag.height's value at construction time (after restoring
 	// it from the persisted "max_block_height" — see createGenesisBlock's
 	// caller), captured ONCE and never updated again. Used by
@@ -317,6 +338,30 @@ type BlockDAG struct {
 	// ever created to trigger recovery. Guarded by syncPeerMu, same as
 	// activeSyncPeers.
 	peerSyncHeight map[string]int64
+	// peerSyncSeenAt haelt fest, WANN zuletzt etwas von diesem Peer kam --
+	// unabhaengig davon, ob seine Hoehe dabei gestiegen ist.
+	//
+	// peerSyncHeight allein genuegt der Bremse in peer_lag_bremse.go nicht:
+	// die Karte ist MONOTON, ein verschwundener Peer behaelt also seine letzte
+	// Hoehe fuer immer, und der daraus berechnete Rueckstand waechst mit
+	// jedem eigenen Block weiter. Ohne Zeitstempel wuerde ein einmal
+	// abgeschalteter Peer die Blockgroesse dauerhaft druecken.
+	//
+	// Bewusst bei JEDEM Kontakt gesetzt, nicht nur wenn die Hoehe steigt: ein
+	// Peer, der feststeckt, meldet weiter seine unveraenderte Hoehe -- und
+	// genau der soll die Bremse ausloesen, nicht von ihr ausgenommen werden.
+	// Guarded by syncPeerMu, wie peerSyncHeight.
+	peerSyncSeenAt map[string]time.Time
+	// peerSyncEigeneHoehe haelt fest, wie hoch DIESER Knoten stand, als er
+	// zuletzt etwas von dem Peer erfuhr.
+	//
+	// Ohne das ist der berechnete Rueckstand unbrauchbar: peerSyncHeight
+	// waechst nur bei einem Abruf MIT Inhalt, die eigene Hoehe dagegen bei
+	// jedem selbst produzierten Block. Ein Knoten, der produziert waehrend
+	// vom Peer nichts Neues kommt, sieht dann einen Rueckstand, den es nicht
+	// gibt -- am 02.09.2026 live: beide Knoten exakt auf derselben Hoehe, und
+	// C1 meldete trotzdem lag=78 und drosselte auf den Boden.
+	peerSyncEigeneHoehe map[string]int64
 	// cleanSyncStreak tracks, per peer URL, how many CONSECUTIVE doSyncOnce
 	// calls in a row found nothing this node failed to merge — see
 	// recordCleanSyncCycle's own comment for the exact definition and the
@@ -1093,6 +1138,19 @@ type ValidatorKeyPair struct {
 	SigningAddress           string `json:"signing_address"`
 	HumanWallet              string `json:"human_wallet"`
 	OperatorBindingSignature string `json:"operator_binding_signature,omitempty"`
+	// Der Ed25519-Schluessel, mit dem dieser Validator Menschen bezeugt.
+	//
+	// Er steht hier, damit ein Proof-Server die Liste der anerkannten
+	// Bezeuger AUS DER KETTE lesen kann, statt sie in einer
+	// Umgebungsvariablen gereicht zu bekommen. Eine handgepflegte Liste ist
+	// eine Genehmigung; ein on-chain-Register, an dem eine Doppelsignatur
+	// haengt, ist keine.
+	PersonhoodKey string `json:"personhood_key,omitempty"`
+	// Die Adresse, unter der der Vergleichsdienst dieses Betreibers erreichbar
+	// ist. Damit findet ein Coordinator seine Validatoren aus der Kette, statt
+	// sie in VALIDATOR_URLS eingetragen zu bekommen -- sonst waere die Aufnahme
+	// eines neuen Verifiers wieder eine Genehmigung, nur eine Ebene hoeher.
+	MatchingURL string `json:"matching_url,omitempty"`
 }
 
 // ValidatorKeyPairs returns signing/human-wallet pairs for all registered
@@ -1103,6 +1161,24 @@ func (dag *BlockDAG) ValidatorKeyPairs() []ValidatorKeyPair {
 		return nil
 	}
 	return dag.state.GetValidatorKeyPairsForSync()
+}
+
+// SelfSigningAddress is the address this node signs blocks with, derived from
+// RELAYER_PRIVATE_KEY. Empty when no key is configured.
+//
+// Used by MPC committee selection: a node has to know its own address to work
+// out whether the committee drew it, and the peer registry has to publish that
+// same address so others can verify its contributions.
+func (dag *BlockDAG) SelfSigningAddress() string {
+	pk := strings.TrimPrefix(strings.TrimSpace(os.Getenv("RELAYER_PRIVATE_KEY")), "0x")
+	if pk == "" {
+		return ""
+	}
+	priv, err := crypto.HexToECDSA(pk)
+	if err != nil {
+		return ""
+	}
+	return strings.ToLower(crypto.PubkeyToAddress(priv.PublicKey).Hex())
 }
 
 // AuthorizedValidatorList returns a snapshot of all currently-authorized
@@ -1140,6 +1216,8 @@ func NewBlockchain(nodeID string, state *ChainState) *BlockDAG {
 		authorizedValidators:        loadAuthorizedValidators(),
 		activeSyncPeers:             make(map[string]bool),
 		peerSyncHeight:              make(map[string]int64),
+		peerSyncSeenAt:              make(map[string]time.Time),
+		peerSyncEigeneHoehe:         make(map[string]int64),
 		cleanSyncStreak:             make(map[string]int),
 		warnedUnknownProposers:      make(map[string]bool),
 		unknownProposerLastRecovery: make(map[string]time.Time),
@@ -1247,7 +1325,7 @@ func NewBlockchain(nodeID string, state *ChainState) *BlockDAG {
 				referenced[ph] = true
 			}
 			if b.Height > dag.height {
-				dag.height = b.Height
+				dag.setHeight(b.Height)
 			}
 		}
 		for hash := range dag.tips {
@@ -1384,7 +1462,7 @@ func NewBlockchain(nodeID string, state *ChainState) *BlockDAG {
 		var h int64
 		fmt.Sscanf(persisted, "%d", &h)
 		if h > dag.height {
-			dag.height = h
+			dag.setHeight(h)
 		}
 	}
 
@@ -1638,7 +1716,7 @@ func (dag *BlockDAG) RefreshBootHeightAfterSnapshotImport(resyncHappened bool) {
 				if cp := dag.state.LoadBlockFromDBByHeight(checkpointHeight); cp != nil {
 					dag.blocks[cp.Hash] = cp
 					dag.tips = map[string]bool{cp.Hash: true}
-					dag.height = cp.Height
+					dag.setHeight(cp.Height)
 					dag.bootHeight = cp.Height
 					seededFromCheckpoint = true
 					checkpointBacked = true
@@ -1748,7 +1826,7 @@ func (dag *BlockDAG) RefreshBootHeightAfterSnapshotImport(resyncHappened bool) {
 		fmt.Sscanf(persisted, "%d", &maxH)
 	}
 	if maxH > dag.height {
-		dag.height = maxH
+		dag.setHeight(maxH)
 	}
 }
 
@@ -1992,7 +2070,7 @@ func (dag *BlockDAG) createGenesisBlock() {
 	genesis.Blues = nil
 	dag.blocks[genesis.Hash] = genesis
 	dag.tips[genesis.Hash] = true
-	dag.height = 0
+	dag.setHeight(0)
 	fmt.Printf("✓ Genesis Block (DAG): %s\n", genesis.Hash[:16]+"...")
 }
 
@@ -2448,7 +2526,14 @@ func (dag *BlockDAG) ProduceBlock() *Block {
 		}()
 		t0 := time.Now()
 		if dag.state != nil {
-			dbTxs, pendingTxIDs = dag.state.LoadPendingTxs()
+			// Kleinere Bloecke, wenn ein Peer nicht mehr hinterherkommt --
+			// siehe peer_lag_bremse.go. Ohne das produziert dieser Knoten
+			// dauerhaft mehr, als der andere nachvollziehen kann, und der
+			// faellt zurueck, bis er minutenlang steht.
+			dbTxs, pendingTxIDs = dag.state.LoadPendingTxsWithLimit(dag.blockTxCap())
+			// Die tatsaechliche Groesse merken -- sie ist der Ankerpunkt, von
+			// dem aus die Bremse beim naechsten Block drosselt.
+			MerkeBlockGroesse(len(dbTxs))
 		}
 		pendingDur = time.Since(t0)
 	})
@@ -2727,9 +2812,11 @@ func (dag *BlockDAG) ProduceBlock() *Block {
 	// path does for peer blocks — a transaction must resolve to its real block
 	// no matter which node produced it or which node the wallet asks. See
 	// tx_block_index.go. Non-fatal: the block is already durably saved.
-	if err := dag.state.IndexBlockTransactions(block.Height, block.Hash, block.Transactions); err != nil {
-		fmt.Printf("[BLOCK] ⚠ Could not index transactions of block #%d for wallet lookups: %v\n", block.Height, err)
-	}
+	// Asynchronous: one row per transaction, up to maxTxsPerBlock of them,
+	// and this is not consensus -- see tx_block_index_async.go. This call
+	// site already treated a failure here as non-fatal, so deferring it is
+	// weaker than what the code already tolerated.
+	dag.state.IndexBlockTransactionsAsync(block.Height, block.Hash, block.Transactions)
 	// Keep the body retrievable by digest so this node can serve it to a peer
 	// that received the block stripped of its transactions (roadmap step 4,
 	// tx_batch.go). Must happen before the broadcast below, or a peer could ask
@@ -2774,8 +2861,7 @@ func (dag *BlockDAG) ProduceBlock() *Block {
 		delete(dag.tips, ph)
 	}
 	dag.tips[block.Hash] = true
-	dag.height = block.Height
-
+	dag.setHeight(block.Height)
 	// FIX (P0, merge-reliability audit 2026-07-03): AddPeerBlock advances the
 	// hard finality checkpoint after accepting a block, but ProduceBlock never
 	// did — this is the ONLY other place a block's GHOSTDAG state (BlueScore/
@@ -2831,6 +2917,10 @@ func (dag *BlockDAG) ProduceBlock() *Block {
 	}
 
 	dag.notifyNewBlock(block)
+	// Admission control's one input: this node can turn work into blocks right
+	// now. See admission_control.go for why time-since-a-block is the signal
+	// rather than queue depth.
+	noteBlockProduced()
 	return block
 }
 
@@ -4686,7 +4776,7 @@ func (dag *BlockDAG) AddPeerBlock(block *Block) bool {
 		switch tx.Type {
 		case "", "register_human", "transfer", "swap_aeq_tusd", "swap_tusd_aeq", "add_liquidity", "remove_liquidity", "faucet", "ubi_distribution", "ubi_distribution_finalize",
 			"validator_distribution", "validator_distribution_pool_zero", "lp_distribution", "lp_distribution_pool_zero", "escrow_move", "escrow_release", "escrow_recover",
-			"slash_equivocation", "distribution_round_marker":
+			"slash_equivocation", "distribution_round_marker", "pool_correction":
 		// known / empty — OK
 		default:
 			fmt.Printf("[DAG] ✗ Rejected peer block #%d: unknown tx type %q\n", block.Height, tx.Type)
@@ -4895,7 +4985,7 @@ func (dag *BlockDAG) AddPeerBlock(block *Block) bool {
 	dag.tips[block.Hash] = true
 
 	if block.Height > dag.height {
-		dag.height = block.Height
+		dag.setHeight(block.Height)
 		// setConfigValueDB: this runs under dag.mu only, not cs.mu, so
 		// setConfigValue's cs.dbExec()/cs.activeTx precondition isn't met here
 		// (same reasoning as the ProduceBlock post-commit goroutine above).
@@ -5303,6 +5393,40 @@ func (dag *BlockDAG) Height() int64 {
 	dag.mu.RLock()
 	defer dag.mu.RUnlock()
 	return dag.height
+}
+
+// setHeight ist der EINZIGE Weg, dag.height zu setzen -- er haelt den
+// sperrfreien Spiegel mit. Aufrufer muessen dag.mu wie bisher halten.
+func (dag *BlockDAG) setHeight(h int64) {
+	if h > dag.height {
+		// Zeitpunkt des letzten echten FORTSCHRITTS.
+		//
+		// Nicht "zuletzt einen Block angehaengt": ein zurueckgefallener Knoten
+		// haengt laufend Bloecke an, die als Waisen liegenbleiben, und meldet
+		// dabei "Added 37 new blocks ... height unveraendert". Genau darauf
+		// ist die Selbstheilung am 02.09.2026 hereingefallen -- ihr Beleg
+		// aktualisierte sich weiter, waehrend der Primary 1.400 Bloecke
+		// zurueckfiel und seine Hoehe stillstand.
+		//
+		// Die Hoehe steigt dagegen nur, wenn wirklich etwas vorangeht. Sie ist
+		// der ehrliche Beleg. setHeight ist der einzige Schreibweg (dafuer
+		// gibt es einen Waechter-Test), also ist dies die einzige Stelle, an
+		// der der Zeitstempel gesetzt werden muss.
+		dag.lastHeightAdvanceAt.Store(time.Now().Unix())
+	}
+	dag.height = h
+	dag.heightSchnell.Store(h)
+}
+
+// HeightSchnell liefert die Hoehe OHNE dag.mu.
+//
+// Fuer Auskuenfte, die immer antworten muessen -- /api/status, /health --
+// auch dann, wenn gerade ein Block-Burst die Schreibsperre haelt. Der Wert
+// kann um Sekundenbruchteile aelter sein als Height(); fuer eine
+// Statusanzeige ist das richtig, fuer eine Konsensentscheidung nicht. Wer
+// entscheidet, nimmt weiter Height().
+func (dag *BlockDAG) HeightSchnell() int64 {
+	return dag.heightSchnell.Load()
 }
 
 func (dag *BlockDAG) GetBlocks() []*Block {
@@ -6252,7 +6376,11 @@ func (dag *BlockDAG) replayTransactions(block *Block, force bool) (ok bool) {
 		// through to the serial switch below, unchanged.
 		if tx.Type == "transfer" && skipDistributionRound == 0 {
 			if batch, _ := collectDisjointTransferBatch(block.Transactions, txIdx); len(batch) >= parallelReplayMinBatch {
-				ok, batchErr := dag.state.applyTransferBatchParallel(context.Background(), batch, block.Timestamp)
+				// withTx statt des leeren ctx: JEDE Kontoaenderung dieses
+				// Replays gehoert in dbTx, sonst ueberlebt sie einen Ruecklauf.
+				// Vorher kam sie ueber den stillen Rueckfall auf cs.activeTx
+				// dorthin -- richtig, solange es das Feld gibt.
+				ok, batchErr := dag.state.applyTransferBatchParallel(withTx(context.Background(), dbTx), batch, block.Timestamp)
 				if batchErr != nil {
 					// Memory already mutated, persistence failed — must NOT
 					// fall back to the serial path (that would apply every
@@ -6264,6 +6392,7 @@ func (dag *BlockDAG) replayTransactions(block *Block, force bool) (ok bool) {
 				}
 				if ok {
 					transfersApplied += len(batch)
+					merkeReplayParallel(len(batch))
 					txIdx += len(batch) - 1 // the loop's ++ moves past the last batched tx
 					continue
 				}
@@ -6454,7 +6583,7 @@ func (dag *BlockDAG) replayTransactions(block *Block, force bool) (ok bool) {
 			// context.Background() is correct — see registerHumanLocked's
 			// comment: dag.state.activeTx was already set directly above
 			// this loop, and dbExecCtx falls back to it.
-			if err := dag.state.applyTransferDeltaLocked(context.Background(), wallet, to, tx.Amount, tx.FromDemurrageLost, tx.ToDemurrageLost, block.Timestamp); err != nil {
+			if err := dag.state.applyTransferDeltaLocked(withTx(context.Background(), dbTx), wallet, to, tx.Amount, tx.FromDemurrageLost, tx.ToDemurrageLost, block.Timestamp); err != nil {
 				fmt.Printf("[REPLAY] ✗ Transfer %s->%s %.6f: %v (block #%d) — rolling back whole block\n", wallet, to, tx.Amount, err, block.Height)
 				hardFailure = true
 				continue
@@ -6462,6 +6591,7 @@ func (dag *BlockDAG) replayTransactions(block *Block, force bool) (ok bool) {
 			// Aggregated into one line per block after the loop — see
 			// transfersApplied's declaration for the incident this closes.
 			transfersApplied++
+			merkeReplaySeriell()
 
 		case "swap_aeq_tusd":
 			if wallet == "" || tx.Amount <= 0 || tx.AmountOut <= 0 {
@@ -6588,6 +6718,25 @@ func (dag *BlockDAG) replayTransactions(block *Block, force bool) (ok bool) {
 				continue
 			}
 			fmt.Printf("[REPLAY] ✓ Finalized UBI round, last_ubi_at=%d (block #%d)\n", tx.DistributionAt, block.Height)
+
+		case "pool_correction":
+			// Die Korrektur eines Ueberschusses, der vor dem 20.08.2026
+			// entstanden ist -- siehe pool_correction.go fuer das Warum.
+			//
+			// DIESELBE Funktion, die der erzeugende Knoten aufgerufen hat.
+			// Zwei Fassungen derselben Rechnung sind in diesem Projekt die
+			// haeufigste Quelle von StateRoot-Abweichungen gewesen.
+			//
+			// Amount = AEQ, AmountOut = tUSD. Beide Betraege stehen in der
+			// Transaktion und werden NICHT neu bestimmt: ein Knoten, der
+			// selbst ausrechnet, wieviel zuviel da ist, kaeme je nach eigenem
+			// Zustand auf eine andere Zahl.
+			if err := dag.state.applyPoolCorrectionLocked(context.Background(), tx.Amount, tx.AmountOut); err != nil {
+				fmt.Printf("[REPLAY] ✗ pool_correction: %v (block #%d) — rolling back whole block\n", err, block.Height)
+				hardFailure = true
+				continue
+			}
+			fmt.Printf("[REPLAY] ✓ Reserve korrigiert: -%.6f AEQ, -%.6f tUSD (block #%d)\n", tx.Amount, tx.AmountOut, block.Height)
 
 		case "distribution_round_marker":
 			// See RunDailyDistributionAtomic's comment (state.go) and this
@@ -6771,7 +6920,7 @@ func (dag *BlockDAG) replayTransactions(block *Block, force bool) (ok bool) {
 				// context.Background() is correct — see registerHumanLocked's
 				// comment: dag.state.activeTx was already set directly above
 				// this loop, and dbExecCtx falls back to it.
-				if err := dag.state.applyTransferDeltaLocked(context.Background(), opWallet, ubiPoolAddr, penaltyAmt, 0, 0, block.Timestamp); err != nil {
+				if err := dag.state.applyTransferDeltaLocked(withTx(context.Background(), dbTx), opWallet, ubiPoolAddr, penaltyAmt, 0, 0, block.Timestamp); err != nil {
 					fmt.Printf("[REPLAY] ✗ slash_equivocation transfer %s→UBI %.4f: %v (block #%d) — rolling back whole block\n",
 						opWallet, penaltyAmt, err, block.Height)
 					hardFailure = true
@@ -6814,6 +6963,13 @@ func (dag *BlockDAG) replayTransactions(block *Block, force bool) (ok bool) {
 			dag.state.releaseNullifierLocked(context.Background(), n)
 		}
 		fmt.Printf("[REPLAY] ✗ Block #%d rolled back due to a genuine state-inconsistency failure — block rejected\n", block.Height)
+		// Zaehlen, ob DERSELBE Block wieder und wieder scheitert. Dann ist
+		// dieser Knoten zugemauert und kommt ohne Resync nicht weiter --
+		// siehe replay_mauer.go. Die Heilung laeuft in einer eigenen
+		// Goroutine, weil hier die globale Zustandssperre gehalten wird.
+		if mauer, folgen := merkeBlockAbweisung(block.Height); mauer {
+			dag.loeseHeilungAus(block.Height, folgen)
+		}
 		return false
 	}
 
@@ -6836,7 +6992,12 @@ func (dag *BlockDAG) replayTransactions(block *Block, force bool) (ok bool) {
 	if block.StateRoot != "" {
 		// Computed BEFORE commit/rollback while dbTx is still open, so it
 		// reflects exactly what this replay just wrote within dbTx.
-		localRoot := dag.state.stateRootLocked(dag.state.getConfigValue("last_ubi_at"))
+		// withTx statt des Mantels: der Wert MUSS aus dbTx gelesen werden,
+		// damit er widerspiegelt, was dieser Replay gerade geschrieben hat.
+		// Vorher kam er ueber den stillen Rueckfall auf cs.activeTx dorthin --
+		// dieselbe Transaktion, aber nur, solange es das Feld gibt.
+		localRoot := dag.state.stateRootLocked(
+			dag.state.getConfigValueCtx(withTx(context.Background(), dbTx), "last_ubi_at"))
 		if block.StateRoot != localRoot {
 			// StateRoot mismatch is a WARNING, not a hard rejection.
 			//
@@ -6908,7 +7069,7 @@ func (dag *BlockDAG) replayTransactions(block *Block, force bool) (ok bool) {
 	// back commit also rolls this flag back — see ensureReplayedColumn's
 	// comment for why "header saved" must never silently imply "effects
 	// applied" on a later restart.
-	if err := dag.state.MarkBlockReplayed(context.Background(), block.Hash); err != nil {
+	if err := dag.state.MarkBlockReplayed(withTx(context.Background(), dbTx), block.Hash); err != nil {
 		fmt.Printf("[REPLAY] Warning: could not mark block #%d replayed: %v\n", block.Height, err)
 	}
 
@@ -6951,9 +7112,12 @@ func (dag *BlockDAG) replayTransactions(block *Block, force bool) (ok bool) {
 	// A failure here is logged, not fatal — the block itself is valid and
 	// committed, and a missing index entry degrades to the pre-existing
 	// fallback behaviour rather than rejecting anything.
-	if err := dag.state.IndexBlockTransactions(block.Height, block.Hash, block.Transactions); err != nil {
-		fmt.Printf("[REPLAY] ⚠ Could not index transactions of block #%d for wallet lookups: %v\n", block.Height, err)
-	}
+	// Asynchronous, and this is the call site that matters most: replay holds
+	// the EXCLUSIVE state lock -- measured at 4.697s for one full block, with
+	// every concurrent transfer blocked for that entire time. Writing up to
+	// 10,000 index rows inside that window bought nothing consensus depends
+	// on. See tx_block_index_async.go.
+	dag.state.IndexBlockTransactionsAsync(block.Height, block.Hash, block.Transactions)
 
 	dag.replayedMu.Lock()
 	// FIX 1: Cap the cache to prevent unbounded growth (memory leak).
@@ -6961,6 +7125,8 @@ func (dag *BlockDAG) replayTransactions(block *Block, force bool) (ok bool) {
 	if len(dag.replayedBlocks) > 50000 {
 		dag.replayedBlocks = make(map[string]bool, 1000)
 	}
+	// Der Knoten kommt voran -- die Mauer-Zaehlung zuruecksetzen.
+	merkeBlockErfolg()
 	dag.replayedBlocks[block.Hash] = true
 	dag.replayedMu.Unlock()
 	return true
@@ -8420,6 +8586,26 @@ func (dag *BlockDAG) pruneOldDAGBlocks() {
 func (dag *BlockDAG) collectUnreplayedAncestors(target *Block) []*Block {
 	visited := make(map[string]bool)
 	var result []*Block
+
+	// replayedMu EINMAL fuer den ganzen Lauf, nicht je Vorfahre.
+	//
+	// Vorher stand Lock/Unlock INNERHALB der Schleife: bei N unabgespielten
+	// Vorfahren waren das 2N Sperroperationen -- und diese Funktion laeuft
+	// fuer JEDEN ankommenden Block, unter dag.mu.RLock().
+	//
+	// Damit waechst die Haltezeit der Lesesperre mit dem Rueckstand, und weil
+	// Go's RWMutex ankommende Leser aussperrt, sobald ein Schreiber ansteht,
+	// staut sich der ganze Sync-Pfad dahinter. Je weiter der Knoten
+	// zurueckfaellt, desto teurer wird jeder einzelne Block -- eine
+	// Rueckkopplung, die genau das Bild erzeugt, das am 02.09.2026 sechsmal
+	// zu sehen war: Hoehe steht minutenlang, dann haengt alles auf einmal an
+	// (zuletzt 513 Bloecke in einem Sprung).
+	//
+	// Der Inhalt der Schleife ist reine Map-Arithmetik ohne I/O; die Sperre
+	// laenger zu halten kostet Mikrosekunden und spart 2N Erwerbe. Die
+	// Reihenfolge bleibt unveraendert (dag.mu -> replayedMu), es entsteht
+	// also keine neue Verschraenkung.
+	dag.replayedMu.Lock()
 	var dfs func(b *Block)
 	dfs = func(b *Block) {
 		for _, ph := range b.ParentHashes {
@@ -8431,16 +8617,14 @@ func (dag *BlockDAG) collectUnreplayedAncestors(target *Block) []*Block {
 			if !ok {
 				continue
 			}
-			dag.replayedMu.Lock()
-			replayed := dag.replayedBlocks[ph]
-			dag.replayedMu.Unlock()
-			if !replayed {
+			if !dag.replayedBlocks[ph] {
 				result = append(result, parent)
 				dfs(parent)
 			}
 		}
 	}
 	dfs(target)
+	dag.replayedMu.Unlock()
 	sort.Slice(result, func(i, j int) bool {
 		if result[i].Height != result[j].Height {
 			return result[i].Height < result[j].Height

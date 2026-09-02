@@ -1,0 +1,170 @@
+name: APK-Download-Ziel auf beiden Boxen setzen
+
+# AEQUITAS_APK_URL entscheidet, wohin /download/app.apk umleitet -- und damit,
+# welche App jeder bekommt, der auf der Website auf Herunterladen drueckt.
+#
+# WARUM ALS UMGEBUNGSVARIABLE UND NICHT NUR IM CODE. handleAppDownload hat einen
+# fest verdrahteten Standardwert. Den zu aendern heisst: Image neu bauen, Knoten
+# neu starten, beide Validatoren durchreichen. Fuer einen Link ist das zu viel,
+# und genau deshalb stand dort einen Monat lang eine veraltete Version.
+#
+# Der Codestandard wird trotzdem mitgepflegt, damit ein frisch aufgesetzter
+# Knoten ohne diese Variable nicht auf eine alte Version zeigt.
+#
+# NACHEINANDER, nicht parallel: bei zwei Validatoren duerfen nie beide
+# gleichzeitig neu starten, sonst produziert kurzzeitig niemand.
+on:
+  workflow_dispatch:
+    inputs:
+      url:
+        description: "Vollstaendige URL der APK (leer = zurueck auf den Codestandard)"
+        required: false
+        default: "https://github.com/hanoi96international-gif/Aequitas-App/releases/download/app-v1.4.1/app-release.apk"
+
+jobs:
+  c1:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Contabo1
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: 173.249.37.118
+          username: root
+          key: ${{ secrets.CONTABO_SSH_KEY }}
+          port: 22
+          fingerprint: "SHA256:noMtjHV8c+2iEFZu3TRUP6WRwGjkrvFke71KgU6Eyt4"
+          script_stop: false
+          timeout: 600s
+          command_timeout: 600s
+          envs: APKURL
+          script: |
+            set +e
+            echo "### CONTABO1 -> AEQUITAS_APK_URL ###"
+            echo "Ziel: ${APKURL:-(leer, Codestandard)}"
+
+            # Nur absolute http(s)-URLs. handleAppDownload prueft das auch, aber
+            # eine hier abgefangene Fehleingabe kostet keinen Neustart.
+            if [ -n "$APKURL" ]; then
+              case "$APKURL" in
+                https://*|http://*) ;;
+                *) echo "keine absolute URL -- abgebrochen"; exit 1 ;;
+              esac
+              # Existiert das Ziel ueberhaupt? Ein 404 hier waere ein toter
+              # Download-Knopf auf der oeffentlichen Seite.
+              CODE=$(curl -sIL --max-time 30 -o /dev/null -w '%{http_code}' "$APKURL")
+              if [ "$CODE" != "200" ]; then
+                echo "Ziel antwortet mit HTTP $CODE -- abgebrochen, damit der Knopf nicht ins Leere zeigt"
+                exit 1
+              fi
+              echo "Ziel erreichbar (HTTP 200)"
+            fi
+
+            cp /root/.aequitas.env "/root/.aequitas.env.bak.$(date +%Y%m%d-%H%M%S)"
+            sed -i '/^AEQUITAS_APK_URL=/d' /root/.aequitas.env
+            [ -n "$APKURL" ] && echo "AEQUITAS_APK_URL=$APKURL" >> /root/.aequitas.env
+            grep '^AEQUITAS_APK_URL=' /root/.aequitas.env || echo "(nicht gesetzt -- Codestandard gilt)"
+
+            IMAGE="$(docker inspect aequitas-node --format '{{.Config.Image}}')"
+            NET="$(docker inspect aequitas-node --format '{{range $k, $v := .NetworkSettings.Networks}}{{$k}} {{end}}' | awk '{print $1}')"
+            PORTS="$(docker inspect aequitas-node --format '{{range $p, $c := .HostConfig.PortBindings}}-p {{(index $c 0).HostPort}}:{{$p}} {{end}}' | sed 's|/tcp||g')"
+            MOUNTS="$(docker inspect aequitas-node --format '{{range .Mounts}}-v {{.Source}}:{{.Destination}} {{end}}')"
+            mkdir -p /root/apkurl
+            docker inspect aequitas-node --format '{{range .Config.Env}}{{println .}}{{end}}' \
+              | grep -vE '^(RESYNC_FROM_SNAPSHOT|HOSTNAME|PATH|HOME|AEQUITAS_APK_URL)=' \
+              | grep -E '^[A-Za-z_][A-Za-z0-9_]*=' > /tmp/proc.env
+            grep -E '^[A-Za-z_][A-Za-z0-9_]*=' /root/.aequitas.env \
+              | grep -vE '^(RESYNC_FROM_SNAPSHOT|HOSTNAME|PATH|HOME)=' > /tmp/file.env
+            awk -F= '!seen[$1]++' /tmp/file.env /tmp/proc.env > /root/apkurl/env
+
+            docker stop aequitas-node && docker rm aequitas-node
+            docker run -d --name aequitas-node --network "$NET" $PORTS $MOUNTS \
+              --env-file /root/apkurl/env --restart unless-stopped "$IMAGE"
+            # Warten statt einmal nachsehen. Ein fester sleep meldete auf
+            # Contabo2 HTTP 000 und liess den Job scheitern, obwohl die
+            # Umstellung sauber gegriffen hatte -- der Knoten war schlicht noch
+            # nicht so weit. Ein Fehlschlag, der keiner ist, kostet mehr als die
+            # paar Sekunden, die er spart.
+            echo "=== was der Knoten jetzt ausliefert ==="
+            OUT=""
+            for i in $(seq 1 20); do
+              OUT=$(curl -s --max-time 15 -o /dev/null -w "%{http_code} %{redirect_url}" http://127.0.0.1:8080/download/app.apk)
+              case "$OUT" in
+                302*) echo "  /download/app.apk -> $OUT"; break ;;
+              esac
+              sleep 15
+            done
+            case "$OUT" in
+              302*) ;;
+              *) echo "  Knoten antwortet nach 5 Minuten nicht mit einer Umleitung: $OUT"; exit 1 ;;
+            esac
+        env:
+          APKURL: ${{ inputs.url }}
+
+  c2:
+    needs: c1
+    runs-on: ubuntu-latest
+    steps:
+      - name: Contabo2
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: 194.163.188.71
+          username: root
+          key: ${{ secrets.CONTABO2_SSH_KEY }}
+          port: 22
+          script_stop: false
+          timeout: 600s
+          command_timeout: 600s
+          envs: APKURL
+          script: |
+            set +e
+            echo "### CONTABO2 -> AEQUITAS_APK_URL ###"
+            if [ -n "$APKURL" ]; then
+              case "$APKURL" in
+                https://*|http://*) ;;
+                *) echo "keine absolute URL -- abgebrochen"; exit 1 ;;
+              esac
+              CODE=$(curl -sIL --max-time 30 -o /dev/null -w '%{http_code}' "$APKURL")
+              if [ "$CODE" != "200" ]; then
+                echo "Ziel antwortet mit HTTP $CODE -- abgebrochen"; exit 1
+              fi
+            fi
+            cp /root/.aequitas.env "/root/.aequitas.env.bak.$(date +%Y%m%d-%H%M%S)"
+            sed -i '/^AEQUITAS_APK_URL=/d' /root/.aequitas.env
+            [ -n "$APKURL" ] && echo "AEQUITAS_APK_URL=$APKURL" >> /root/.aequitas.env
+            grep '^AEQUITAS_APK_URL=' /root/.aequitas.env || echo "(nicht gesetzt)"
+
+            IMAGE="$(docker inspect aequitas-node --format '{{.Config.Image}}')"
+            NET="$(docker inspect aequitas-node --format '{{range $k, $v := .NetworkSettings.Networks}}{{$k}} {{end}}' | awk '{print $1}')"
+            PORTS="$(docker inspect aequitas-node --format '{{range $p, $c := .HostConfig.PortBindings}}-p {{(index $c 0).HostPort}}:{{$p}} {{end}}' | sed 's|/tcp||g')"
+            MOUNTS="$(docker inspect aequitas-node --format '{{range .Mounts}}-v {{.Source}}:{{.Destination}} {{end}}')"
+            mkdir -p /root/apkurl
+            docker inspect aequitas-node --format '{{range .Config.Env}}{{println .}}{{end}}' \
+              | grep -vE '^(RESYNC_FROM_SNAPSHOT|HOSTNAME|PATH|HOME|AEQUITAS_APK_URL)=' \
+              | grep -E '^[A-Za-z_][A-Za-z0-9_]*=' > /tmp/proc.env
+            grep -E '^[A-Za-z_][A-Za-z0-9_]*=' /root/.aequitas.env \
+              | grep -vE '^(RESYNC_FROM_SNAPSHOT|HOSTNAME|PATH|HOME)=' > /tmp/file.env
+            awk -F= '!seen[$1]++' /tmp/file.env /tmp/proc.env > /root/apkurl/env
+
+            docker stop aequitas-node && docker rm aequitas-node
+            docker run -d --name aequitas-node --network "$NET" $PORTS $MOUNTS \
+              --env-file /root/apkurl/env --restart unless-stopped "$IMAGE"
+            # Warten statt einmal nachsehen. Ein fester sleep meldete auf
+            # Contabo2 HTTP 000 und liess den Job scheitern, obwohl die
+            # Umstellung sauber gegriffen hatte -- der Knoten war schlicht noch
+            # nicht so weit. Ein Fehlschlag, der keiner ist, kostet mehr als die
+            # paar Sekunden, die er spart.
+            echo "=== was der Knoten jetzt ausliefert ==="
+            OUT=""
+            for i in $(seq 1 20); do
+              OUT=$(curl -s --max-time 15 -o /dev/null -w "%{http_code} %{redirect_url}" http://127.0.0.1:8080/download/app.apk)
+              case "$OUT" in
+                302*) echo "  /download/app.apk -> $OUT"; break ;;
+              esac
+              sleep 15
+            done
+            case "$OUT" in
+              302*) ;;
+              *) echo "  Knoten antwortet nach 5 Minuten nicht mit einer Umleitung: $OUT"; exit 1 ;;
+            esac
+        env:
+          APKURL: ${{ inputs.url }}

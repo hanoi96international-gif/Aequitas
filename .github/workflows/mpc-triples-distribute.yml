@@ -1,0 +1,196 @@
+name: Generate and distribute MPC triples (one row per box)
+
+# The chain refuses to start MPC without triples, and says why:
+#
+#   "They must be generated ONCE by a dealer that is not a computing party,
+#    and each party's row delivered to it — a party that makes its own gets an
+#    uncorrelated set and every comparison becomes noise"
+#
+# So one run generates both rows and sends exactly one to each box. Generating
+# them separately per box would produce two unrelated sets, and the failure
+# would not look like a failure: comparisons would simply return garbage
+# distances, which reads as "no duplicates found".
+#
+# WHY THE RUNNER IS AN ACCEPTABLE DEALER
+#
+# A dealer sees both rows by definition — that is what "trusted dealer" means,
+# and it is the trust element sacrifice.go exists to shrink: SacrificeVerify
+# spends half the triples checking the other half, so a dealer that forges is
+# detected rather than believed. Removing the dealer entirely costs about 1 GB
+# per registration, which the bandwidth budget does not currently allow. This
+# runner is ephemeral and is discarded with its filesystem, which is a weaker
+# position than a permanent machine holding both rows, not a stronger one --
+# the point is that no VALIDATOR ends up with both.
+#
+# THE RULE THIS WORKFLOW ENFORCES
+#
+# Contabo1 gets party 0, Contabo2 gets party 1, and each box is checked
+# afterwards for the absence of the other row. SelectCommittee numbers parties
+# by ascending lowercase address:
+#
+#   Contabo1  0x0be8b961cbf6564bd1931b0803d35c0659e0d016  -> party 0
+#   Contabo2  0x1a37dcdaa42cf3f7e1f6e41379961f40df44a4e3  -> party 1
+#
+# If those addresses ever change, this mapping is wrong and the comparisons
+# become noise, so the addresses are re-read and asserted before anything is
+# copied rather than trusted from this comment.
+on:
+  workflow_dispatch:
+    inputs:
+      count:
+        description: "triples per party (24 bytes each; 2000000 = 48 MB)"
+        required: true
+        default: "2000000"
+        type: string
+
+jobs:
+  generate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Generate both rows with ONE dealer
+        run: |
+          set -euo pipefail
+          mkdir -p out
+          go run ./cmd/mpc-dealer -count ${{ inputs.count }} -parties 2 -out out
+          echo "--- produced ---"
+          ls -la out/
+          echo "--- sha256 ---"
+          sha256sum out/*.bin
+
+      - name: Make the rows readable to the copy step
+        run: |
+          set -euo pipefail
+          # The dealer writes 0600 on purpose -- these are secret shares. The
+          # scp action tars them as a different user and gets "Permission
+          # denied", so they have to be readable for the copy itself. This is
+          # an ephemeral runner that is destroyed with its filesystem, and the
+          # dealer's own instruction is to delete its copies once delivered.
+          chmod a+r out/*.bin
+          ls -la out/
+
+      - name: Refuse to continue if the two rows are identical
+        run: |
+          set -euo pipefail
+          A=$(sha256sum out/triples-party-0.bin | cut -d' ' -f1)
+          B=$(sha256sum out/triples-party-1.bin | cut -d' ' -f1)
+          if [ "$A" = "$B" ]; then
+            echo "FAIL: both rows are byte-identical. Additive shares that match are not shares:"
+            echo "each party would hold the same values and the split would protect nothing."
+            exit 1
+          fi
+          echo "OK: the two rows differ"
+          echo "PARTY0_SHA=$A" >> "$GITHUB_ENV"
+          echo "PARTY1_SHA=$B" >> "$GITHUB_ENV"
+
+      - name: Assert Contabo1 is still the lower address (party 0)
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: 173.249.37.118
+          username: root
+          key: ${{ secrets.CONTABO_SSH_KEY }}
+          port: 22
+          fingerprint: "SHA256:noMtjHV8c+2iEFZu3TRUP6WRwGjkrvFke71KgU6Eyt4"
+          script_stop: true
+          script: |
+            ADDR=$(docker logs aequitas-node 2>&1 | grep -i "proposer addr" | tail -1 | grep -oE '0x[0-9a-fA-F]{40}' | tr 'A-F' 'a-f')
+            echo "Contabo1 signs as: $ADDR"
+            if [ "$ADDR" != "0x0be8b961cbf6564bd1931b0803d35c0659e0d016" ]; then
+              echo "FAIL: Contabo1's signing address changed. Party numbering follows ascending"
+              echo "address, so the row mapping in this workflow would now be wrong and every"
+              echo "comparison would return noise. Re-derive the mapping before copying anything."
+              exit 1
+            fi
+            mkdir -p /root/aequitas-mpc
+
+      - name: Assert Contabo2 is still the higher address (party 1)
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: 194.163.188.71
+          username: root
+          key: ${{ secrets.CONTABO2_SSH_KEY }}
+          port: 22
+          script_stop: true
+          script: |
+            ADDR=$(docker logs aequitas-node 2>&1 | grep -i "proposer addr" | tail -1 | grep -oE '0x[0-9a-fA-F]{40}' | tr 'A-F' 'a-f')
+            echo "Contabo2 signs as: $ADDR"
+            if [ "$ADDR" != "0x1a37dcdaa42cf3f7e1f6e41379961f40df44a4e3" ]; then
+              echo "FAIL: Contabo2's signing address changed. See the Contabo1 step for why this"
+              echo "matters."
+              exit 1
+            fi
+            mkdir -p /root/aequitas-mpc
+
+      - name: Send party 0 to Contabo1 ONLY
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: 173.249.37.118
+          username: root
+          key: ${{ secrets.CONTABO_SSH_KEY }}
+          port: 22
+          source: "out/triples-party-0.bin"
+          target: "/root/aequitas-mpc"
+          strip_components: 1
+
+      - name: Send party 1 to Contabo2 ONLY
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: 194.163.188.71
+          username: root
+          key: ${{ secrets.CONTABO2_SSH_KEY }}
+          port: 22
+          source: "out/triples-party-1.bin"
+          target: "/root/aequitas-mpc"
+          strip_components: 1
+
+      - name: Verify Contabo1 has party 0 and NOT party 1
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: 173.249.37.118
+          username: root
+          key: ${{ secrets.CONTABO_SSH_KEY }}
+          port: 22
+          fingerprint: "SHA256:noMtjHV8c+2iEFZu3TRUP6WRwGjkrvFke71KgU6Eyt4"
+          script_stop: true
+          envs: PARTY0_SHA
+          script: |
+            cd /root/aequitas-mpc
+            ls -la
+            if [ -f triples-party-1.bin ]; then
+              echo "FAIL: the other party's row is on this box. One machine holding both rows can"
+              echo "reconstruct every template, which is exactly what the split exists to prevent."
+              exit 1
+            fi
+            mv -f triples-party-0.bin triples.bin
+            echo "sha256 here: $(sha256sum triples.bin | cut -d' ' -f1)"
+            echo "sha256 sent: $PARTY0_SHA"
+            [ "$(sha256sum triples.bin | cut -d' ' -f1)" = "$PARTY0_SHA" ] || { echo "FAIL: checksum mismatch"; exit 1; }
+            echo "OK"
+
+      - name: Verify Contabo2 has party 1 and NOT party 0
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: 194.163.188.71
+          username: root
+          key: ${{ secrets.CONTABO2_SSH_KEY }}
+          port: 22
+          script_stop: true
+          envs: PARTY1_SHA
+          script: |
+            cd /root/aequitas-mpc
+            ls -la
+            if [ -f triples-party-0.bin ]; then
+              echo "FAIL: the other party's row is on this box. See the Contabo1 step."
+              exit 1
+            fi
+            mv -f triples-party-1.bin triples.bin
+            echo "sha256 here: $(sha256sum triples.bin | cut -d' ' -f1)"
+            echo "sha256 sent: $PARTY1_SHA"
+            [ "$(sha256sum triples.bin | cut -d' ' -f1)" = "$PARTY1_SHA" ] || { echo "FAIL: checksum mismatch"; exit 1; }
+            echo "OK"

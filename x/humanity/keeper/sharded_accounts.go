@@ -2,7 +2,11 @@ package keeper
 
 import (
 	"encoding/json"
+	"fmt"
+	"os"
 	"sort"
+	"strconv"
+	"strings"
 	"sync"
 )
 
@@ -32,7 +36,85 @@ import (
 // contended single hot address (e.g. the same recipient) is unaffected by
 // this at any shard count, by construction -- more shards only helps
 // address sets that are ACTUALLY unrelated stop colliding by accident.
-const numAccountShards = 16384
+// 2026-09-01: aus der Konstanten wurde eine Variable, und die Vorgabe stieg
+// von 16.384 auf 262.144.
+//
+// # WARUM JETZT UND NICHT FRUEHER
+//
+// Die Erhoehung war seit Langem der rechnerisch staerkste Hebel gegen
+// Shard-Kollisionen und trotzdem verboten, weil sie am 23.07.2026 einmal
+// katastrophal war: bootstrapMultiplierLocked zaehlte damals Menschen ueber
+// cs.accounts.Range(), also ueber ALLE Shards, JE UEBERWEISUNG -- gemessene
+// 57 % der gesamten Rechenzeit, nachdem die Zahl auf 16.384 gestiegen war.
+// Mehr Shards machten den Knoten damals linear langsamer.
+//
+// Diese Ursache ist behoben (humanCountLocked ist in cs.useDB-Betrieb ein
+// gepflegter Zaehler, O(1)) und seit dem 29.08.2026 durch einen Waechter
+// gesichert: range_auf_heissem_pfad_test.go verfolgt den Aufrufgraphen von
+// acht Einstiegspunkten und schlaegt an, wenn accounts.Range je wieder auf
+// den Ueberweisungspfad geraet. Erst damit ist diese Zahl ueberhaupt
+// diskutierbar.
+//
+// # DIE RECHNUNG
+//
+// Eine Ueberweisung sperrt zwei Shards. Bei C gleichzeitigen Ueberweisungen
+// sind 2C Shards belegt, und die Wahrscheinlichkeit, dass eine neue kollidiert,
+// ist 1-(1-2C/N)^2. Gemessen am 01.09.2026 mit 400 disjunkten Paaren:
+//
+//	N =  16.384, 2C = 800  ->  9,3 % erwartet, 7,5 % gemessen
+//	N = 262.144, 2C = 800  ->  0,61 %
+//
+// Jede Kollision faellt auf den Buendler zurueck, und der haelt die GLOBALE
+// Schreibsperre -- Go's RWMutex sperrt ankommende Leser aus, sobald ein
+// Schreiber ansteht. Ein Zwoelftel der Rueckfaelle heisst ein Zwoelftel der
+// Aussperrung.
+//
+// # WAS ES KOSTET
+//
+// GEMESSEN (TestShardZahl_WasSieKostet, 01.09.2026), nicht geschaetzt -- die
+// erste Schaetzung lag beim Speicher um Faktor 1,7 daneben:
+//
+//	Shards    16.384:  1,6 MB,  Range   307 us,  Bau   2 ms
+//	Shards   262.144: 26,0 MB,  Range  5,13 ms,  Bau  30 ms
+//
+// Range waechst also mit Faktor 16,7 bei 16-facher Shard-Zahl -- linear, wie
+// es soll. Der Test prueft genau diesen Faktor und nicht die Wanduhr: eine
+// absolute Grenze stand dort zuerst und ist im Race-Detektor sofort gerissen,
+// der jeden Sperrvorgang um eine Groessenordnung verlangsamt.
+//
+// 26 MB gegen die 1,28 GB, die der Knoten unter Last ohnehin haelt. Der eine
+// reale Preis ist Range: es sperrt JEDEN Shard einzeln, auch die leeren. Auf
+// dem Ueberweisungspfad liegt es nicht (siehe range_auf_heissem_pfad_test.go),
+// auf dem Blockpfad hoechstens einmal je Block -- 6,24 ms gegen eine Blockzeit
+// von 1 s. Der Test haelt 100 ms als Schmerzgrenze fest.
+//
+//	AEQUITAS_ACCOUNT_SHARDS   Zahl der Shards (Vorgabe 262144)
+//
+// Nur beim Start gelesen; ein unbrauchbarer Wert ergibt die Vorgabe. Ein
+// Rueckweg auf 16384 ist damit eine Umgebungsvariable und kein Deploy.
+const numAccountShardsVorgabe = 262144
+
+const numAccountShardsEnv = "AEQUITAS_ACCOUNT_SHARDS"
+
+var numAccountShards = shardZahlAusUmgebung()
+
+func shardZahlAusUmgebung() int {
+	roh := strings.TrimSpace(os.Getenv(numAccountShardsEnv))
+	if roh == "" {
+		return numAccountShardsVorgabe
+	}
+	n, err := strconv.Atoi(roh)
+	if err != nil || n < 1 {
+		fmt.Printf("[SHARDS] %s=%q ist keine positive Zahl -- bleibe bei %d\n",
+			numAccountShardsEnv, roh, numAccountShardsVorgabe)
+		return numAccountShardsVorgabe
+	}
+	if n != numAccountShardsVorgabe {
+		fmt.Printf("[SHARDS] Kontenpartitionen auf %d gesetzt (Vorgabe %d) via %s\n",
+			n, numAccountShardsVorgabe, numAccountShardsEnv)
+	}
+	return n
+}
 
 // accountShard is one partition: its own map, its own mutex. Concurrent
 // access to DIFFERENT shards never contends on the same lock -- the
@@ -62,11 +144,11 @@ type accountShard struct {
 // mechanical, low-risk transformation -- see SCALING_ARCHITECTURE.md's
 // Phase 2 for that migration, NOT done by this file.
 type shardedAccounts struct {
-	shards [numAccountShards]*accountShard
+	shards []*accountShard
 }
 
 func newShardedAccounts() *shardedAccounts {
-	sa := &shardedAccounts{}
+	sa := &shardedAccounts{shards: make([]*accountShard, numAccountShards)}
 	for i := range sa.shards {
 		sa.shards[i] = &accountShard{data: make(map[string]*AccountState)}
 	}

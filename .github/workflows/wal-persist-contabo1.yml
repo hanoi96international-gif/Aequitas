@@ -1,0 +1,100 @@
+name: Make WAL survive a deploy on Contabo1
+
+# wal-contabo1.yml turned WAL on by recreating the CONTAINER. That is not
+# durable: deploy-contabo.yml runs on every push to main, and the deploy.sh it
+# calls does
+#
+#   docker run ... --env-file /root/.aequitas.env ... aequitas-node:new
+#
+# with no -v at all. So the next push would recreate the container with no
+# mount and no WAL keys, and WAL would be off again -- silently, because a node
+# with WAL disabled looks completely healthy. Two pushes during the session
+# that enabled it had already triggered that deploy path.
+#
+# This closes the gap at the source, the same way patch-deploy-safe-c2.yml did
+# for Contabo2:
+#
+#   1. Append the WAL keys to /root/.aequitas.env, so --env-file carries them.
+#   2. Insert -v /root/aequitas-wal-data:/data/wal into deploy.sh's docker run,
+#      so the WAL file lives on the host and survives `docker rm`. Without this
+#      the flag alone is actively harmful: the node reports durability while
+#      writing to a layer the next deploy discards.
+#   3. mkdir the host directory in deploy.sh, so a fresh box does not fail.
+#
+# Both edits are idempotent and back deploy.sh up first. Nothing is restarted:
+# the running container already has WAL from wal-contabo1.yml, and this only
+# makes the NEXT deploy reproduce that state instead of undoing it.
+on:
+  workflow_dispatch: {}
+
+jobs:
+  persist:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Persist WAL config on Contabo1
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: 173.249.37.118
+          username: root
+          key: ${{ secrets.CONTABO_SSH_KEY }}
+          port: 22
+          fingerprint: "SHA256:noMtjHV8c+2iEFZu3TRUP6WRwGjkrvFke71KgU6Eyt4"
+          script_stop: false
+          timeout: 300s
+          command_timeout: 300s
+          script: |
+            set -uo pipefail
+            STAMP="$(date +%Y%m%d-%H%M%S)"
+
+            echo "=== BEFORE: deploy.sh ==="
+            cat /root/deploy.sh
+            cp /root/deploy.sh "/root/deploy.sh.bak.$STAMP"
+            cp /root/.aequitas.env "/root/.aequitas.env.bak.$STAMP"
+            echo "backups: /root/deploy.sh.bak.$STAMP and /root/.aequitas.env.bak.$STAMP"
+
+            echo ""
+            echo "=== 1. WAL keys in .aequitas.env ==="
+            grep -q '^AEQUITAS_WAL_ENABLED=' /root/.aequitas.env || echo 'AEQUITAS_WAL_ENABLED=1' >> /root/.aequitas.env
+            grep -q '^AEQUITAS_WAL_PATH=' /root/.aequitas.env || echo 'AEQUITAS_WAL_PATH=/data/wal/aequitas_transfers.wal' >> /root/.aequitas.env
+            grep -E '^(AEQUITAS_WAL_ENABLED|AEQUITAS_WAL_PATH)=' /root/.aequitas.env
+
+            echo ""
+            echo "=== 2. host mount in deploy.sh ==="
+            if grep -q -- '-v /root/aequitas-wal-data:/data/wal' /root/deploy.sh; then
+              echo "already present, nothing to do"
+            else
+              sed -i 's|--env-file /root/.aequitas.env|-v /root/aequitas-wal-data:/data/wal --env-file /root/.aequitas.env|' /root/deploy.sh
+              echo "inserted"
+            fi
+
+            echo ""
+            echo "=== 3. mkdir the host dir in deploy.sh ==="
+            if grep -q 'mkdir -p /root/aequitas-wal-data' /root/deploy.sh; then
+              echo "already present, nothing to do"
+            else
+              sed -i 's|^docker run -d --name aequitas-node|mkdir -p /root/aequitas-wal-data\ndocker run -d --name aequitas-node|' /root/deploy.sh
+              echo "inserted"
+            fi
+
+            echo ""
+            echo "=== AFTER: deploy.sh ==="
+            cat /root/deploy.sh
+
+            echo ""
+            echo "=== sanity: does the docker run line now carry BOTH the mount and the env-file? ==="
+            if grep 'docker run -d --name aequitas-node' /root/deploy.sh | grep -q -- '-v /root/aequitas-wal-data:/data/wal'; then
+              echo "OK: mount present on the docker run line"
+            else
+              echo "FAIL: the mount is NOT on the docker run line -- restore /root/deploy.sh.bak.$STAMP and investigate"
+            fi
+            if grep 'docker run -d --name aequitas-node' /root/deploy.sh | grep -q -- '--env-file /root/.aequitas.env'; then
+              echo "OK: env-file still present"
+            else
+              echo "FAIL: env-file lost -- restore /root/deploy.sh.bak.$STAMP"
+            fi
+
+            echo ""
+            echo "=== the running container is untouched; confirming it still has WAL ==="
+            docker inspect aequitas-node --format '{{range .Config.Env}}{{println .}}{{end}}' | grep -E '^(AEQUITAS_WAL_ENABLED|AEQUITAS_WAL_PATH)=' || echo "(none -- unexpected)"
+            docker inspect aequitas-node --format '{{range .Mounts}}{{.Source}} -> {{.Destination}}{{println}}{{end}}'
+            curl -s --max-time 15 http://127.0.0.1:8080/api/status | tr ',' '\n' | grep -E '"height"' || echo "(unreachable)"

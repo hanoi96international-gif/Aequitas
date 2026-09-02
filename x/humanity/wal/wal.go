@@ -70,11 +70,49 @@ type appendResult struct {
 // batches concurrent Append calls into shared fsyncs. Safe for concurrent
 // use from multiple goroutines.
 type WAL struct {
-	mu      sync.Mutex // guards file/nextSeq/closed against Append's own writer goroutine and TruncateBefore
+	// mu guards the WRITER's state: file, nextSeq, writeOff, allocEnd. It is
+	// held by writeBatch for the whole write+sync, and by TruncateBefore for
+	// the whole compaction.
+	mu      sync.Mutex
 	path    string
 	file    *os.File
 	nextSeq uint64
+
+	// closeMu guards `closed` AND the send on appendCh. Deliberately NOT mu.
+	//
+	// Append used to take mu just to read `closed` -- the same mutex writeBatch
+	// holds across its write and fsync. So while the writer was syncing, no
+	// arriving Append could even ENQUEUE: they piled up on the mutex instead of
+	// joining the batch being formed. That makes batch size equal to
+	// arrival-rate times hold-time, and therefore
+	//
+	//	throughput = batch / hold = arrival rate
+	//
+	// self-consistent at ANY sync speed. It is why avg_batch sat at ~48 no
+	// matter what was tuned, and why halving the fsync (preallocation plus
+	// fdatasync, measured 14.4ms -> 7.1ms) moved throughput by 13% instead of
+	// doubling it. Everything upstream was measured and innocent: CPU at one
+	// core of six, GC at 0.15% of wall time, and seven other hypotheses
+	// rejected.
+	//
+	// A read lock also makes Close correct rather than merely lucky: the send
+	// happens under RLock and Close takes the write lock before closing the
+	// channel, so a sender can no longer be mid-send when the channel closes --
+	// which was a live panic window, not a new one.
+	closeMu sync.RWMutex
 	closed  bool
+
+	// writeOff is where the next record goes; allocEnd is how far the file is
+	// preallocated. Records are written AT AN OFFSET inside an already-sized
+	// file rather than appended, so the file size does not change per batch and
+	// fdatasync has no metadata to persist. See datasync_linux.go for the
+	// measurement that made this worth doing (4x the sync rate, a seventh of
+	// the p99) and why neither half of it works alone.
+	//
+	// Both are guarded by mu, like file and nextSeq, and only the single writer
+	// goroutine advances writeOff.
+	writeOff int64
+	allocEnd int64
 
 	appendCh   chan *appendRequest
 	writerDone chan struct{}
@@ -167,9 +205,14 @@ func Open(path string) (*WAL, error) {
 	}
 
 	w := &WAL{
-		path:       path,
-		file:       f,
-		nextSeq:    nextSeq,
+		path:    path,
+		file:    f,
+		nextSeq: nextSeq,
+		// Both start at the end of the valid data Open just truncated to.
+		// Preallocation happens lazily on the first write, so opening a WAL
+		// costs nothing extra and a node that never writes never grows a file.
+		writeOff:   validEnd,
+		allocEnd:   validEnd,
 		appendCh:   make(chan *appendRequest, MaxBatchSize*8),
 		writerDone: make(chan struct{}),
 	}
@@ -184,13 +227,19 @@ func Open(path string) (*WAL, error) {
 // is nil.
 func (w *WAL) Append(payload []byte) (uint64, error) {
 	req := &appendRequest{payload: payload, result: make(chan appendResult, 1)}
-	w.mu.Lock()
+	// Send while holding the READ lock, so many callers enqueue concurrently
+	// and Close cannot close the channel underneath one of them. Crucially
+	// this does not touch mu, so a batch being written no longer blocks the
+	// next batch from forming -- see closeMu's comment for why that was the
+	// throughput ceiling.
+	w.closeMu.RLock()
 	if w.closed {
-		w.mu.Unlock()
+		w.closeMu.RUnlock()
 		return 0, errors.New("wal: append on closed WAL")
 	}
-	w.mu.Unlock()
 	w.appendCh <- req
+	w.closeMu.RUnlock()
+
 	res := <-req.result
 	return res.seq, res.err
 }
@@ -203,9 +252,11 @@ func (w *WAL) runWriter() {
 	defer close(w.writerDone)
 	for first := range w.appendCh {
 		batch := []*appendRequest{first}
-		timer := time.NewTimer(MaxBatchWait)
+		// Ueber die Umgebung einstellbar, Vorgabe unveraendert -- siehe
+		// batch_tuning.go fuer die Messung, die das noetig macht.
+		timer := time.NewTimer(batchWait())
 	collect:
-		for len(batch) < MaxBatchSize {
+		for len(batch) < batchSize() {
 			select {
 			case req, ok := <-w.appendCh:
 				if !ok {
@@ -245,11 +296,28 @@ func (w *WAL) writeBatch(batch []*appendRequest) {
 		buf = appendRecord(buf, seq, req.payload)
 	}
 
-	_, writeErr := w.file.Write(buf)
-	var syncErr error
+	// WriteAt into an already-sized file, then fdatasync. Appending would grow
+	// the file on every batch, and a size change forces the kernel to journal
+	// the inode -- which measured four times more expensive than this on the
+	// production filesystem. See datasync_linux.go.
+	writeStart := time.Now()
+	writeErr := w.ensureCapacity(int64(len(buf)))
 	if writeErr == nil {
-		syncErr = w.file.Sync()
+		_, writeErr = w.file.WriteAt(buf, w.writeOff)
 	}
+	writeDur := time.Since(writeStart)
+	var syncErr error
+	var syncDur time.Duration
+	if writeErr == nil {
+		syncStart := time.Now()
+		syncErr = datasync(w.file)
+		syncDur = time.Since(syncStart)
+	}
+	// Recorded for every batch, successful or not: a batch that failed still
+	// cost the time, and hiding failures would make the average look better
+	// than the disk is. See writer_stats.go for why avg_batch is the number
+	// that decides where the ceiling is.
+	noteWriterBatch(len(batch), writeDur, syncDur)
 	err := writeErr
 	if err == nil {
 		err = syncErr
@@ -269,9 +337,56 @@ func (w *WAL) writeBatch(batch []*appendRequest) {
 		}
 		return
 	}
+	// Only now, and only on success. A batch that failed leaves writeOff where
+	// it was, so the next one overwrites whatever partial bytes reached the
+	// file -- which is right: those records are not durable, scan stops at the
+	// first one that does not parse, and their sequence numbers stay burned
+	// exactly as the failure path above describes.
+	w.writeOff += int64(len(buf))
+
 	for i, req := range batch {
 		req.result <- appendResult{seq: assigned[i]}
 	}
+}
+
+// preallocChunk is how much space one extension reserves.
+//
+// 64 MB is roughly 260,000 records at the ~250 bytes a transfer record takes,
+// so the one full fsync an extension costs is amortised to nothing. Smaller
+// would reintroduce the metadata write this exists to avoid; larger would make
+// a fresh WAL claim more disk than a quiet node ever uses.
+const preallocChunk = 64 << 20
+
+// ensureCapacity grows the preallocated region so that n more bytes fit
+// without the file's size changing.
+//
+// Caller holds w.mu.
+func (w *WAL) ensureCapacity(n int64) error {
+	if w.writeOff+n <= w.allocEnd {
+		return nil
+	}
+	end := w.allocEnd
+	if end < w.writeOff {
+		// Defensive: a WAL opened on a file shorter than its own write offset
+		// should extend from the offset, never leave a hole.
+		end = w.writeOff
+	}
+	grow := int64(preallocChunk)
+	if need := w.writeOff + n - end; need > grow {
+		grow = need
+	}
+	if err := preallocate(w.file, end, grow); err != nil {
+		return fmt.Errorf("wal: preallocate %d bytes at offset %d: %w", grow, end, err)
+	}
+	// A FULL fsync here, once per chunk rather than once per batch: this is
+	// the only moment the file's size changes, so it is the only moment the
+	// metadata has to be made durable. Every write until the next extension
+	// then needs data only.
+	if err := w.file.Sync(); err != nil {
+		return fmt.Errorf("wal: sync after preallocating to %d: %w", end+grow, err)
+	}
+	w.allocEnd = end + grow
+	return nil
 }
 
 // HeadSeq returns the highest sequence number this WAL has assigned so far
@@ -292,16 +407,33 @@ func (w *WAL) HeadSeq() uint64 {
 // finish, and closes the underlying file. Safe to call once; a second call
 // returns an error rather than panicking on a double-close.
 func (w *WAL) Close() error {
-	w.mu.Lock()
+	// Taking the WRITE lock waits for every in-flight Append to finish its
+	// send, and once closed is set no new one can start. Only then is closing
+	// the channel safe -- the previous shape released the lock before the
+	// senders had sent, leaving a real window where close() raced a send and
+	// panicked.
+	w.closeMu.Lock()
 	if w.closed {
-		w.mu.Unlock()
+		w.closeMu.Unlock()
 		return errors.New("wal: already closed")
 	}
 	w.closed = true
-	w.mu.Unlock()
+	w.closeMu.Unlock()
 
 	close(w.appendCh)
 	<-w.writerDone
+
+	// Trim the preallocated tail so a cleanly closed WAL is exactly its data.
+	// Open would truncate it anyway on the next start, but leaving 64 MB of
+	// zeros behind makes every external reader -- ls, du, a backup, a human --
+	// see a file that is mostly padding, and makes ReplayFile depend on the
+	// seq-0 guard rather than simply not encountering one.
+	//
+	// Failure here is not worth failing Close over: the padding is harmless
+	// and self-correcting, so the close still proceeds.
+	if err := w.file.Truncate(w.writeOff); err != nil {
+		fmt.Printf("[WAL] could not trim the preallocated tail on close: %v (harmless, the next Open truncates it)\n", err)
+	}
 	return w.file.Close()
 }
 
@@ -322,7 +454,13 @@ func (w *WAL) Close() error {
 func (w *WAL) TruncateBefore(before uint64) error {
 	w.mu.Lock()
 	defer w.mu.Unlock()
-	if w.closed {
+	// closed lives under closeMu now, not mu. Read it there, briefly: mu is
+	// already held for the compaction itself, and nothing else takes these two
+	// in the opposite order, so there is no cycle to worry about.
+	w.closeMu.RLock()
+	closed := w.closed
+	w.closeMu.RUnlock()
+	if closed {
 		return errors.New("wal: TruncateBefore on closed WAL")
 	}
 
@@ -343,6 +481,15 @@ func (w *WAL) TruncateBefore(before uint64) error {
 			return fmt.Errorf("wal: could not read record during compaction: %w", err)
 		}
 		if !ok {
+			break
+		}
+		// Stop at the preallocated tail. Zero bytes parse as a valid record
+		// with seq 0 and an empty payload -- crc32 of an empty payload is
+		// zero, so the checksum matches -- and copying those into the
+		// compacted file would write megabytes of empty records and, worse,
+		// carry a seq of 0 forward. Sequence numbers start at 1, so seq 0 is
+		// only ever padding.
+		if entry.Seq == 0 {
 			break
 		}
 		if entry.Seq < before {
@@ -384,11 +531,18 @@ func (w *WAL) TruncateBefore(before uint64) error {
 	if err != nil {
 		return fmt.Errorf("wal: could not reopen compacted file: %w", err)
 	}
-	if _, err := f.Seek(0, io.SeekEnd); err != nil {
+	end, err := f.Seek(0, io.SeekEnd)
+	if err != nil {
 		f.Close()
 		return fmt.Errorf("wal: could not seek reopened file to end: %w", err)
 	}
 	w.file = f
+	// The compacted file is exactly its data, with no preallocated tail, so
+	// both offsets restart there. Missing this would leave writeOff pointing
+	// into the OLD file's coordinates and the next batch would write past the
+	// end of the new one -- or worse, over data it had just kept.
+	w.writeOff = end
+	w.allocEnd = end
 	return nil
 }
 
@@ -532,6 +686,26 @@ func scan(f *os.File) (lastSeq uint64, validEnd int64, count int, err error) {
 		if !ok {
 			break
 		}
+
+		// A sequence number that does not advance ends the log.
+		//
+		// Sequence numbers are assigned strictly increasing and are never
+		// reused (writeBatch burns them rather than rolling back on a failed
+		// write), so a record whose seq does not move forward is not data.
+		//
+		// It is specifically what PREALLOCATED PADDING looks like: zero bytes
+		// read as seq=0, length=0, and crc32 of an empty payload is 0, so the
+		// checksum MATCHES. Without this the scan would walk the entire
+		// preallocated tail as an endless run of valid empty records and
+		// return lastSeq=0 -- reporting the high-water mark of a live log as
+		// zero, which is the worst possible answer.
+		//
+		// It also guards the failure class that already hit production once:
+		// commit 8a49c38, "compacting the write-ahead log handed out sequence
+		// numbers it had already used".
+		if entry.Seq == 0 || (count > 0 && entry.Seq <= lastSeq) {
+			break
+		}
 		offset += int64(headerSize) + int64(len(entry.Payload)) + int64(checksumSize)
 		lastSeq = entry.Seq
 		count++
@@ -564,6 +738,7 @@ func ReplayFile(path string, fn func(Entry) error) (count int, truncated bool, e
 	defer f.Close()
 
 	r := bufio.NewReader(f)
+	var lastSeq uint64
 	for {
 		entry, ok, recErr := readRecord(r)
 		if recErr != nil {
@@ -572,6 +747,22 @@ func ReplayFile(path string, fn func(Entry) error) (count int, truncated bool, e
 		if !ok {
 			return count, false, nil
 		}
+		// Preallocated padding is the normal tail of a WAL whose process died
+		// before Close could trim it: zero bytes parse as a valid record with
+		// seq 0 and an empty payload, and crc32 of an empty payload IS zero,
+		// so the checksum matches. Sequence numbers start at 1, so seq 0 can
+		// only be padding -- and it is the clean end of the log, not damage.
+		if entry.Seq == 0 {
+			return count, false, nil
+		}
+		// A non-zero sequence that does not advance is something else, and
+		// worth reporting: sequence numbers are strictly increasing and never
+		// reused. Commit 8a49c38 records what it looked like when compaction
+		// broke that.
+		if count > 0 && entry.Seq <= lastSeq {
+			return count, true, nil
+		}
+		lastSeq = entry.Seq
 		if err := fn(entry); err != nil {
 			return count, false, fmt.Errorf("wal: replay callback failed at seq %d: %w", entry.Seq, err)
 		}

@@ -7,6 +7,7 @@ import (
 	"database/sql"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -86,7 +87,41 @@ type SnapshotBioRegistration struct {
 // needed (see handleSnapshot). includeSensitive=true (token required)
 // keeps the original full export for authoritative resync/recovery.
 func (cs *ChainState) ExportSnapshot(signingKey *ecdsa.PrivateKey, height int64, includeSensitive bool) *StateSnapshot {
-	cs.mu.RLock()
+	// cs.mu.Lock(), NICHT RLock -- der Snapshot muss ein Zustand zu EINEM
+	// Zeitpunkt sein.
+	//
+	// # DER FEHLER, DEN DAS BEHEBT
+	//
+	// Hier stand RLock. Der WAL-Schnellpfad (transfer_wal.go) haelt fuer seine
+	// Dauer aber EBENFALLS nur cs.mu.RLock() und verlaesst sich zur
+	// Ausschliessung auf die Konten-Shards. Zwei Lesesperren schliessen
+	// einander nicht aus: der Snapshot las also, waehrend Ueberweisungen
+	// mitten hineinliefen, und lieferte einen ZERRISSENEN Zustand -- manche
+	// Konten vor, manche nach derselben Ueberweisung.
+	//
+	// Live nachgewiesen am 02.09.2026. Ein Knoten resynct, meldet Erfolg, und
+	// scheitert unmittelbar am naechsten Block:
+	//
+	//	[RESYNC] ✓ Replaced local state with 2037 accounts from snapshot
+	//	[RESYNC] ✓ Seeded trusted checkpoint at height 5529871
+	//	[AUTO-HEAL] ✓ In-process resync succeeded — no restart needed.
+	//	[REPLAY] ✗ Transfer 0x86e1…: insufficient balance
+	//	         (have 0.000000, need 0.000010) (block #5529872)
+	//	         — rolling back whole block
+	//
+	// Das Konto hatte im Snapshot 0, obwohl der Block direkt danach daraus
+	// ueberweist. Der Knoten weist den Block ab, kommt nie darueber hinaus,
+	// sammelt Waisen und resynct erneut -- in denselben kaputten Zustand.
+	// Das ist die Endlosschleife, die den Primary tagelang instabil gemacht
+	// hat: nicht Langsamkeit, sondern ein Snapshot, der nie konsistent war.
+	//
+	// # WARUM DIE EXKLUSIVE SPERRE VERTRETBAR IST
+	//
+	// Ein Snapshot wird nur auf Anfrage erzeugt, nicht im Betrieb. Der
+	// gesperrte Abschnitt ist ein Durchlauf ueber die Konten im Speicher --
+	// bei den gemessenen 2.037 Konten Mikrosekunden. Dafuer ist er dann das,
+	// was sein Name behauptet.
+	cs.mu.Lock()
 	accounts := make([]*AccountState, 0, cs.accounts.Len())
 	cs.accounts.Range(func(_ string, acc *AccountState) bool {
 		cp := *acc
@@ -112,7 +147,7 @@ func (cs *ChainState) ExportSnapshot(signingKey *ecdsa.PrivateKey, height int64,
 			nullifiers[k] = "0x0000000000000000000000000000000000000001"
 		}
 	}
-	cs.mu.RUnlock()
+	cs.mu.Unlock()
 
 	snap := &StateSnapshot{
 		Version:            SnapshotVersion,
@@ -180,6 +215,60 @@ func (cs *ChainState) ExportSnapshot(signingKey *ecdsa.PrivateKey, height int64,
 // client, age window, signature verification) must apply identically to
 // both, so it lives in exactly one place instead of two copies that could
 // drift apart.
+// errSnapshotRateLimited marks the one failure that is worth waiting out
+// rather than giving up on: the peer's own anti-bulk-download throttle.
+var errSnapshotRateLimited = errors.New("snapshot server is rate limiting this node (HTTP 429)")
+
+// fetchSnapshotWaitingOutRateLimit retries fetchAndValidateSnapshot when, and
+// only when, the peer answers 429.
+//
+// The peer's window is 30 seconds per IP, so the wait is deliberately just past
+// it. Everything else -- a bad signature, an unreachable host, a stale
+// snapshot -- still fails on the first attempt, because those do not get better
+// by asking again and a recovering node must not sit in a retry loop against a
+// peer that is genuinely wrong.
+func fetchSnapshotWaitingOutRateLimit(peerURL, expectedSignerHex string) (*StateSnapshot, error) {
+	return retryWhileRateLimited(snapshotRetryAttempts, snapshotRetryWait, func() (*StateSnapshot, error) {
+		return fetchAndValidateSnapshot(peerURL, expectedSignerHex)
+	})
+}
+
+// snapshotRetryWait is deliberately just past handleSnapshot's 30-second
+// public-tier window, so one wait is enough rather than merely likely.
+const (
+	snapshotRetryAttempts = 4
+	snapshotRetryWait     = 35 * time.Second
+)
+
+// retryWhileRateLimited is the decision this fix turns on, separated from the
+// network so it can be tested without one: the snapshot fetcher refuses
+// loopback addresses (SSRF guard), which makes an httptest server unusable
+// against the real fetch path.
+//
+// Retries ONLY errSnapshotRateLimited. Everything else -- a bad signature, an
+// unreachable host, a stale snapshot -- returns immediately, because those do
+// not improve by asking again and a recovering node must not sit in a retry
+// loop against a peer that is genuinely wrong.
+func retryWhileRateLimited(attempts int, wait time.Duration, fetch func() (*StateSnapshot, error)) (*StateSnapshot, error) {
+	var err error
+	for i := 1; i <= attempts; i++ {
+		var snap *StateSnapshot
+		snap, err = fetch()
+		if err == nil {
+			return snap, nil
+		}
+		if !errors.Is(err, errSnapshotRateLimited) {
+			return nil, err
+		}
+		if i < attempts {
+			fmt.Printf("[SNAPSHOT] peer is rate limiting this node; waiting %s before attempt %d of %d\n",
+				wait, i+1, attempts)
+			time.Sleep(wait)
+		}
+	}
+	return nil, fmt.Errorf("peer kept rate limiting the snapshot fetch across %d attempts: %w", attempts, err)
+}
+
 func fetchAndValidateSnapshot(peerURL, expectedSignerHex string) (*StateSnapshot, error) {
 	// F18-FIX: use redirect-blocking client with IP validation to prevent
 	// SSRF if BOOTSTRAP_SNAPSHOT_URL is set to a private/cloud-metadata IP.
@@ -204,6 +293,28 @@ func fetchAndValidateSnapshot(peerURL, expectedSignerHex string) (*StateSnapshot
 		return nil, fmt.Errorf("download failed: %w", err)
 	}
 	defer resp.Body.Close()
+	if resp.StatusCode == http.StatusTooManyRequests {
+		// FIX (2026-08-22, observed on the primary): a 429 here was treated as
+		// a terminal failure, and it is the opposite -- the server is saying
+		// "try again shortly" and means it.
+		//
+		// handleSnapshot throttles its public tier to one request per 30
+		// seconds per IP, as an anti-bulk-download measure. A recovering
+		// validator is polling that same peer for blocks continuously, so a
+		// 429 on the snapshot fetch is ordinary, not exceptional. Treating it
+		// as fatal turned a clean in-process self-heal into the restart-based
+		// fallback, and the restart then hit the same window again at boot.
+		//
+		// Measured live: the primary sat 1,866 blocks behind for 33 minutes
+		// with all four self-heal monitors armed and correctly firing, and
+		// recovered only when an operator intervened -- because every attempt
+		// died on this line.
+		//
+		// Reported as its own error so a caller can retry sensibly rather than
+		// having to string-match. The endpoint's protection is untouched: this
+		// is a client that now waits its turn.
+		return nil, errSnapshotRateLimited
+	}
 	if resp.StatusCode != 200 {
 		return nil, fmt.Errorf("snapshot server returned HTTP %d", resp.StatusCode)
 	}
@@ -283,7 +394,10 @@ func (cs *ChainState) ImportSnapshotFromURL(peerURL, expectedSignerHex string) e
 	if local > 0 {
 		fmt.Printf("[SNAPSHOT] Merging into existing state (%d humans local) — adding missing entries\n", local)
 	}
-	snapPtr, err := fetchAndValidateSnapshot(peerURL, expectedSignerHex)
+	// Waits out the peer's 30s public-tier throttle instead of failing on it.
+	// A recovering node polls that same peer for blocks continuously, so a 429
+	// here is ordinary; see fetchSnapshotWaitingOutRateLimit.
+	snapPtr, err := fetchSnapshotWaitingOutRateLimit(peerURL, expectedSignerHex)
 	if err != nil {
 		return err
 	}
@@ -539,7 +653,10 @@ func (cs *ChainState) ResyncFromSnapshotURL(peerURL, expectedSignerHex string) e
 	if expectedSignerHex == "" {
 		return fmt.Errorf("RESYNC_FROM_SNAPSHOT requires BOOTSTRAP_SIGNER set — refusing to replace local state from an unverified source")
 	}
-	snapPtr, err := fetchAndValidateSnapshot(peerURL, expectedSignerHex)
+	// Waits out the peer's 30s public-tier throttle instead of failing on it.
+	// A recovering node polls that same peer for blocks continuously, so a 429
+	// here is ordinary; see fetchSnapshotWaitingOutRateLimit.
+	snapPtr, err := fetchSnapshotWaitingOutRateLimit(peerURL, expectedSignerHex)
 	if err != nil {
 		return err
 	}
@@ -647,17 +764,85 @@ func (cs *ChainState) ResyncFromSnapshotURL(peerURL, expectedSignerHex string) e
 	// previous run) would set dag.height to the old max, and doSyncOnce
 	// would start from there — leaving a gap whose parent hashes don't
 	// exist in dag.blocks, causing every subsequent block to orphan.
-	if _, err := tx.Exec(`DELETE FROM chain_blocks`); err != nil {
+	// TRUNCATE, not DELETE, and with the statement timeout lifted for this
+	// transaction only.
+	//
+	// WHY: on 2026-08-21 Contabo1 diverged and could not resync. Every attempt
+	// -- boot-time and in-process auto-heal alike -- died at this exact step:
+	//
+	//   resync failed: resync: could not clear chain_blocks:
+	//   pq: canceling statement due to statement timeout (57014)
+	//
+	// The node held 4.38 million blocks. `DELETE FROM chain_blocks` walks every
+	// row and writes an equal volume of WAL, so it cannot finish inside
+	// statement_timeout. TRUNCATE unlinks the file instead: constant time, no
+	// per-row work.
+	//
+	// This is a trap that GROWS WITH UPTIME. A young node resyncs fine; the
+	// same node months later cannot, and the failure is quiet -- it keeps
+	// answering /api/status and looks healthy while being permanently unable to
+	// rejoin the chain it diverged from. The only place the reason surfaced was
+	// degraded_reason in /api/health/combined.
+	//
+	// One statement for all four: TRUNCATE takes an ACCESS EXCLUSIVE lock and
+	// refuses a table that another references by foreign key unless they go
+	// together. That is fine here -- this transaction replaces all of them.
+	//
+	// SET LOCAL reverts when the transaction ends, so the timeout protecting
+	// every other query on this connection is untouched.
+	if _, err := tx.Exec(`SET LOCAL statement_timeout = 0`); err != nil {
+		return fail(fmt.Errorf("resync: could not lift the statement timeout: %w", err))
+	}
+	if _, err := tx.Exec(`TRUNCATE chain_accounts, nullifiers, bio_registrations`); err != nil {
+		return fail(fmt.Errorf("resync: could not clear chain_accounts/nullifiers/bio_registrations: %w", err))
+	}
+	// chain_blocks wird NICHT mehr mitgeleert -- nur der abweichende Teil
+	// oberhalb der Snapshot-Hoehe.
+	//
+	// # WARUM DAS GEAENDERT WURDE
+	//
+	// Am 02.09.2026 bis zur Datenbank verfolgt. Nach mehreren Resyncs hielten
+	// die beiden Knoten noch:
+	//
+	//	C1: 580 Bloecke  (5521232 - 5521811)
+	//	C2:  21 Bloecke  (5521216 - 5521232)
+	//
+	// Fragte ein zurueckgefallener Knoten nach einem Elternblock, antwortete
+	// der Peer {"error":"block not found"} -- live geprueft fuer Hoehe
+	// 5521000 und 5000000. Die Waise war damit NIE aufloesbar: der Knoten
+	// sammelte 425 Waisen in 90 Sekunden, fiel weiter zurueck und kam nur
+	// durch einen eigenen Resync zurueck -- der ihm dann selbst die Historie
+	// nahm. Ein Kreislauf, der sich selbst traegt, und die Ursache der
+	// Instabilitaet, die uns einen ganzen Tag gekostet hat.
+	//
+	// # WARUM DAS BEWAHREN SICHER IST
+	//
+	// Bloecke werden per HASH abgefragt (/api/block?hash=, /api/blocks/by-hash),
+	// und ein Hash ist eine Inhaltsadresse: der Anfragende bekommt genau den
+	// Block zu diesem Hash oder gar keinen. Er prueft Signatur und
+	// Hash-Uebereinstimmung selbst. Einen falschen Block unterzuschieben ist
+	// damit nicht moeglich, unabhaengig davon, auf welchem Zweig er einmal lag.
+	//
+	// Oberhalb der Snapshot-Hoehe wird trotzdem geloescht: dort liegt der
+	// abweichende Schwanz, den dieser Resync gerade verwirft, und der koennte
+	// ueber die HOEHENBASIERTE Auslieferung (/api/blocks?min_height=) als
+	// "der Block an Hoehe N" herausgehen. Das waere eine echte
+	// Fehlinformation.
+	//
+	// # WARUM DAS NICHT IN DIE ZEITUEBERSCHREITUNG LAEUFT
+	//
+	// Der Grund fuer das urspruengliche TRUNCATE war ein DELETE ueber 4,38
+	// Millionen Zeilen, das statement_timeout riss (siehe oben). Hier wird nur
+	// der Schwanz OBERHALB der Snapshot-Hoehe geloescht -- bei einer
+	// Divergenz sind das Hunderte bis Tausende Zeilen, nicht Millionen. Das
+	// statement_timeout ist in dieser Transaktion ohnehin aufgehoben.
+	if snap.Height > 0 {
+		if _, err := tx.Exec(`DELETE FROM chain_blocks WHERE height > $1`, snap.Height); err != nil {
+			return fail(fmt.Errorf("resync: could not clear diverged blocks above %d: %w", snap.Height, err))
+		}
+	} else if _, err := tx.Exec(`TRUNCATE chain_blocks`); err != nil {
+		// Ohne Snapshot-Hoehe gibt es keinen sicheren Schnitt -- dann wie bisher.
 		return fail(fmt.Errorf("resync: could not clear chain_blocks: %w", err))
-	}
-	if _, err := tx.Exec(`DELETE FROM chain_accounts`); err != nil {
-		return fail(fmt.Errorf("resync: could not clear chain_accounts: %w", err))
-	}
-	if _, err := tx.Exec(`DELETE FROM nullifiers`); err != nil {
-		return fail(fmt.Errorf("resync: could not clear nullifiers: %w", err))
-	}
-	if _, err := tx.Exec(`DELETE FROM bio_registrations`); err != nil {
-		return fail(fmt.Errorf("resync: could not clear bio_registrations: %w", err))
 	}
 	// FIX (audit recheck3, P1 — "Snapshot/Resync verliert Chain-seitige
 	// bio_hashes"): this used to DELETE FROM bio_hashes here and then only
@@ -776,7 +961,7 @@ func (cs *ChainState) ResyncFromSnapshotURL(peerURL, expectedSignerHex string) e
 		// just relocated from the DB layer to the cache layer that didn't exist
 		// when this code was first written. ResetFinalizedCheckpoint resets both
 		// atomically; use it instead of reimplementing half of it here.
-		if err := cs.ResetFinalizedCheckpoint(); err != nil {
+		if err := cs.ResetFinalizedCheckpointCtx(withTx(context.Background(), tx)); err != nil {
 			return fail(fmt.Errorf("resync: could not reset finalized checkpoint: %w", err))
 		}
 	}

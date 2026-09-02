@@ -105,6 +105,18 @@ jobs:
           FORCE: ${{ inputs.force_clear }}
 
   contabo2:
+    # NACH Contabo1, nicht daneben.
+    #
+    # Ohne needs fuehrt GitHub beide Jobs parallel aus, und beide rufen das
+    # jeweilige deploy-Skript -- Vollrebuild samt Containerersatz. Bei zwei
+    # Validatoren heisst das: fuer die Dauer zweier paralleler Builds
+    # produziert NIEMAND. Genau die netzwerkweite Unterbrechung, gegen die
+    # deploy-contabo2.yml seine ganze Staffelung aufgebaut hat.
+    #
+    # Besonders hier: dieser Workflow wird im STOERFALL benutzt. Ein
+    # Werkzeug, das beim Aufraeumen die Kette anhaelt, macht den Stoerfall
+    # groesser statt kleiner.
+    needs: contabo1
     runs-on: ubuntu-latest
     steps:
       - name: Check + conditionally clear on Contabo2

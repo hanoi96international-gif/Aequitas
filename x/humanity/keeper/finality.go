@@ -1,6 +1,7 @@
 package keeper
 
 import (
+	"context"
 	"fmt"
 	"strings"
 	"time"
@@ -475,6 +476,15 @@ func (cs *ChainState) SetFinalizedCheckpoint(hash string, height, blueScore int6
 // than shaving a few round trips. Caller must hold cs.mu (same precondition
 // as the setConfigValue calls inside).
 func (cs *ChainState) ResetFinalizedCheckpoint() error {
+	return cs.ResetFinalizedCheckpointCtx(context.Background())
+}
+
+// ResetFinalizedCheckpointCtx ist die ctx-gefuehrte Fassung. Der Resync ruft
+// sie mitten in seiner Transaktion; ihr eigener Kommentar dort sagt, dass beide
+// Seiten -- Zwischenspeicher und Datenbank -- ATOMAR zuruecckgesetzt werden
+// muessen. Ueber den stillen Rueckfall auf cs.activeTx war das bisher der Fall;
+// jetzt steht es im Aufruf.
+func (cs *ChainState) ResetFinalizedCheckpointCtx(ctx context.Context) error {
 	cs.finalizedMu.Lock()
 	cs.finalizedHeightCache = 0
 	cs.finalizedBlueScoreCache = 0
@@ -483,7 +493,7 @@ func (cs *ChainState) ResetFinalizedCheckpoint() error {
 	cs.finalizedMu.Unlock()
 
 	for _, fk := range []string{"finalized_height", "finalized_blue_score", "finalized_hash"} {
-		if err := cs.setConfigValue(fk, "0"); err != nil {
+		if err := cs.setConfigValueCtx(ctx, fk, "0"); err != nil {
 			return fmt.Errorf("could not reset %s: %w", fk, err)
 		}
 	}

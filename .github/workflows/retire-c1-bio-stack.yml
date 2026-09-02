@@ -1,0 +1,110 @@
+name: Ungenutzten Bio-Stack auf C1 stilllegen
+
+# WARUM. Der Coordinator, den die App wirklich benutzt, laeuft auf Railway
+# (Projekt aequitas-matching) und antwortet dort mit echtem JSON: /challenge
+# liefert eine Liveness-Aufgabe mit Nonce, /register nennt seine Pflichtfelder.
+#
+# Auf C1 laufen daneben aequitas-coordinator, aequitas-matching-1 und
+# aequitas-redis. Sie sind von aussen nicht als Coordinator erreichbar -- der
+# Pfad /coordinator auf aequitas.digital liefert die Landing-Page des Knotens,
+# nicht den Dienst. Sie halten damit Kopien biometrischer Daten und Ressourcen
+# auf genau der Maschine, die ohnehin der Engpass ist: C1 traegt 1,14 Last pro
+# Kern gegen 0,28 auf C2 und braucht 30 ms je Block-Replay gegen 8 ms.
+#
+# STOPPEN, NICHT LOESCHEN. `docker stop` plus `--restart no` laesst sich mit
+# einem `docker start` zurueckdrehen; Volumes und Daten bleiben unangetastet.
+# Ein Container, der sich als ungenutzt herausstellt, ist eine Vermutung -- ein
+# geloeschtes Volume ist endgueltig.
+#
+# Ohne confirm wird NUR geprueft.
+on:
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: "true = wirklich stoppen"
+        required: true
+        default: "false"
+
+jobs:
+  retire:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Contabo1
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: 173.249.37.118
+          username: root
+          key: ${{ secrets.CONTABO_SSH_KEY }}
+          port: 22
+          fingerprint: "SHA256:noMtjHV8c+2iEFZu3TRUP6WRwGjkrvFke71KgU6Eyt4"
+          script_stop: false
+          timeout: 900s
+          command_timeout: 900s
+          envs: CONFIRM
+          script: |
+            set +e
+            TARGETS="aequitas-coordinator aequitas-matching-1 aequitas-redis"
+
+            echo "=== 1. Benutzt sie ueberhaupt jemand? ==="
+            # Ein Dienst ohne Zugriffe in den letzten Stunden ist der Kandidat.
+            # Zugriffe waeren hier sichtbar, weil beide FastAPI-Dienste jede
+            # Anfrage protokollieren.
+            for c in $TARGETS; do
+              docker inspect "$c" >/dev/null 2>&1 || { echo "  $c: existiert nicht"; continue; }
+              N=$(docker logs --since 6h "$c" 2>&1 | grep -acE '"(GET|POST) /' )
+              UP=$(docker inspect "$c" --format '{{.State.StartedAt}}')
+              echo "  $c: $N HTTP-Zeilen in 6h, laeuft seit $UP"
+            done
+
+            echo ""
+            echo "=== 2. Haengt etwas anderes auf dieser Box daran? ==="
+            # Wenn der Knoten oder Caddy dorthin weiterleitet, ist Stilllegen
+            # nicht harmlos -- dann faellt ein Pfad aus, statt nur Last zu
+            # sparen.
+            docker exec proof-caddy cat /etc/caddy/Caddyfile 2>/dev/null \
+              | grep -inE 'coordinator|matching|8200|8098' | head -6
+            echo "  (leer = Caddy leitet nichts dorthin)"
+            grep -rlE 'aequitas-coordinator|aequitas-matching|:8200|:8098' /root/*.env /root/*.sh 2>/dev/null | head -5
+            echo "  (oben: Dateien, die sie erwaehnen)"
+
+            echo ""
+            echo "=== 3. Belegte Ressourcen ==="
+            docker stats --no-stream --format '  {{.Name}}  CPU {{.CPUPerc}}  MEM {{.MemUsage}}' $TARGETS 2>/dev/null
+
+            if [ "${CONFIRM:-false}" != "true" ]; then
+              echo ""
+              echo "confirm != true -- nur geprueft, nichts gestoppt."
+              exit 0
+            fi
+
+            echo ""
+            echo "=== 4. Stoppen (umkehrbar) ==="
+            for c in $TARGETS; do
+              docker inspect "$c" >/dev/null 2>&1 || continue
+              # Erst die Neustart-Politik entschaerfen, sonst holt Docker den
+              # Container beim naechsten Daemon-Start wieder hoch und die
+              # Stilllegung haelt genau bis zum naechsten Reboot.
+              docker update --restart=no "$c" >/dev/null 2>&1
+              docker stop "$c" >/dev/null 2>&1 && echo "  $c gestoppt (restart=no)"
+            done
+
+            echo ""
+            echo "=== 5. Laeuft der Validator unveraendert weiter? ==="
+            curl -s --max-time 20 http://127.0.0.1:8080/api/status | grep -o '"height":[0-9]*' || echo "  ⚠ Knoten antwortet nicht"
+            echo "  Last nach dem Stilllegen: $(cut -d' ' -f1-3 /proc/loadavg)"
+
+            echo ""
+            echo "=== 6. Und der Coordinator, den die App wirklich nutzt? ==="
+            curl -s --max-time 25 -o /dev/null -w "  Railway /health -> HTTP %{http_code}\n" \
+              https://coordinator-production-e067.up.railway.app/health
+            echo "  (muss 200 sein -- sonst haette das Stilllegen doch etwas getroffen)"
+            echo ""
+            echo "Rueckgaengig: docker update --restart=unless-stopped <name> && docker start <name>"
+        env:
+          # envs: CONFIRM sagt der ssh-action nur, WELCHE Variable sie
+          # weiterreichen soll -- gesetzt wird sie erst hier. Ohne diesen
+          # Block ist CONFIRM im Skript leer, der Lauf meldet brav
+          # "confirm != true" und tut nichts, waehrend er nach Erfolg
+          # aussieht. Genau dieser Fehler stand schon einmal in
+          # recover-contabo1-resync.yml.
+          CONFIRM: ${{ inputs.confirm }}

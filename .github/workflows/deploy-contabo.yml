@@ -11,15 +11,24 @@ on:
     branches: [main]
     # A deploy rebuilds the image and restarts the node. Nothing under
     # .github/ or in a Markdown file can change the binary, so a push that
-    # touches only those must not take the chain down for a rebuild â€” which
+    # touches only those must not take the chain down for a rebuild — which
     # it did, every time a diagnostic workflow was added during an incident.
     paths-ignore:
       - '.github/**'
       - '**.md'
+      # 2026-08-29 dazu: tools/** kann das Knoten-Abbild nicht veraendern.
+      # Das Dockerfile kopiert den ganzen Baum in die Builder-Stufe,
+      # uebernimmt ins Abbild aber nur /app/aequitasd -- und weder
+      # tools/contabo-loadtest noch tools/snapshot-signer werden von
+      # cmd/aequitasd importiert (beide eigenstaendige package main). Ein
+      # Fix am Lastgenerator hat an dem Abend beide Validatoren neu starten
+      # wollen; einer dieser Neustarts fiel mitten in einen Lasttest und hat
+      # C1 fuer Minuten aus der Kette genommen.
+      - 'tools/**'
 
 jobs:
   # FIX (Monster Audit 2026-07-12, P1): deploy used to run straight off a
-  # push with zero test/build gate â€” a red `go test`/`go vet` or a broken
+  # push with zero test/build gate — a red `go test`/`go vet` or a broken
   # Solidity/Hardhat build could still reach production. `deploy` now
   # `needs: test`, so a failing build blocks the SSH deploy step entirely.
   test:
@@ -42,12 +51,12 @@ jobs:
     needs: test
     runs-on: ubuntu-latest
     steps:
-      # FIX (2026-07-25 night â€” the second network-wide fork in one evening):
+      # FIX (2026-07-25 night — the second network-wide fork in one evening):
       # a push to main restarts ALL THREE nodes at once (Railway redeploys the
       # primary on the same push this workflow and deploy-contabo2.yml react
       # to). At 1s block time, three simultaneous restarts are a network-wide
       # partition: each node boots into dead/booting peers, the stall escape
-      # valves open, each produces its own branch, and the network forks â€”
+      # valves open, each produces its own branch, and the network forks —
       # observed live twice today (18:37 and 20:00 UTC), each time requiring
       # an authoritative resync of both secondaries to recover. Staggering the
       # restarts keeps a quorum of already-converged nodes up at every moment:
@@ -62,14 +71,14 @@ jobs:
       # URL now answers 404 forever, so the loop burned its full 15 minutes on
       # every single deploy before failing open. Combined with the missing
       # .dockerignore (1.22 GB of build context) that pushed the deploy past
-      # its command timeout â€” killing it AFTER the old container had already
+      # its command timeout — killing it AFTER the old container had already
       # been stopped, which is how Contabo1 ended up down.
       #
       # The staggering it provided is still worth keeping: at 1s block time,
       # restarting every validator at once is a network-wide partition (twice
       # observed live on 2026-07-25). With only two boxes left, the quorum to
       # protect is simply "the other one". Contabo1 therefore waits for
-      # Contabo2, and deploy-contabo2.yml continues to wait for THIS workflow â€”
+      # Contabo2, and deploy-contabo2.yml continues to wait for THIS workflow —
       # so the two never restart simultaneously. Still fail-open: a down peer
       # must never permanently block shipping a fix.
       - name: Wait for Contabo2 to be healthy (never restart both validators at once)
@@ -77,13 +86,13 @@ jobs:
           for i in $(seq 1 40); do
             code=$(curl -s -o /dev/null -w "%{http_code}" -m 10 http://194.163.188.71:8080/api/status || true)
             if [ "$code" = "200" ]; then
-              echo "Contabo2 healthy (HTTP 200) â€” proceeding with the Contabo1 deploy"
+              echo "Contabo2 healthy (HTTP 200) — proceeding with the Contabo1 deploy"
               exit 0
             fi
-            echo "Contabo2 not ready yet (HTTP $code) â€” waiting ($i/40)"
+            echo "Contabo2 not ready yet (HTTP $code) — waiting ($i/40)"
             sleep 15
           done
-          echo "Contabo2 still unreachable after 10 min â€” proceeding anyway (fail-open)"
+          echo "Contabo2 still unreachable after 10 min — proceeding anyway (fail-open)"
       - name: Deploy to Contabo
         uses: appleboy/ssh-action@v1.0.3
         with:
@@ -94,7 +103,7 @@ jobs:
           # FIX (fresh Monster Audit 2026-07-12): appleboy/ssh-action's
           # `fingerprint` input expects the SSH SHA256 fingerprint string
           # (ssh-keygen -lf output, "SHA256:...") of whichever host key type
-          # the SSH client actually negotiates â€” not the raw base64
+          # the SSH client actually negotiates — not the raw base64
           # public-key blob (what this used to hold). Contabo1 offers
           # ecdsa/rsa/ed25519; RSA and ed25519 were each tried and failed
           # handshake ("fingerprint mismatch"), so this is the remaining
@@ -209,18 +218,77 @@ jobs:
             echo "The container may have exited, or the build produced a binary that cannot start."
             exit 1
           fi
-          h1=$(curl -s -m 25 "$BASE/api/status" | jq -r '.height // empty')
-          sleep 60
-          h2=$(curl -s -m 25 "$BASE/api/status" | jq -r '.height // empty')
-          if [ -z "$h1" ] || [ -z "$h2" ]; then
-            echo "FAILED: could not read .height from /api/status (h1='$h1' h2='$h2')."
-            exit 1
-          fi
-          echo "height $h1 -> $h2 over 60s"
-          if [ "$h2" -le "$h1" ]; then
-            echo "FAILED: the node answers but its height did not move in 60 seconds."
-            echo "At BLOCK_TIME=1s that is a stall, not slow progress. Deploying Contabo2"
-            echo "on top of this would leave the network with no advancing validator."
+          # A restarted node answers /api/health/combined BEFORE it is following
+          # the chain: it has to rebuild the DAG from chain_blocks and finish
+          # replay first, and on the box that stores its payloads gzipped that
+          # means gunzipping millions of rows. Sampling height exactly twice, 60
+          # seconds apart, therefore measures whichever moment the deploy
+          # happens to land in.
+          #
+          # THE INCIDENT THIS PINS (2026-08-19, the second one that day). The
+          # hotfix that got Contabo2 off height 0 deployed cleanly and the node
+          # came back correctly - and this step failed it anyway, on
+          # "height 4166335 -> 4166335 over 60s", because it read the two
+          # samples during the window between "answers HTTP" and "starts
+          # merging". Half an hour later the box was at 4168501 and in sync with
+          # Contabo1 the whole time. A red deploy on a healthy validator is not
+          # a harmless false alarm: it is the same signal as a real stall, so
+          # the next real one gets read as noise, and it fires the
+          # non-success branch of Contabo2's wait step, which by design refuses
+          # to deploy at all.
+          #
+          # So: keep sampling until the height MOVES, and fail only when it has
+          # not moved for the whole budget. A healthy node still passes on the
+          # first sample; a genuinely stuck one still fails, just later. The
+          # budget is bounded by Contabo2's "wait for Contabo1's deploy" step -
+          # if this can outlast that wait, Contabo2 stops being staggered behind
+          # Contabo1. Change one, check the other.
+          #
+          # read_height echoes a non-negative integer, or nothing at all. Every
+          # non-numeric answer - empty body, null, an HTML error page from a
+          # proxy, a JSON error object - has to land in the same bucket as "no
+          # answer". The previous version let one through: `[ "$h2" -le "$h1" ]`
+          # on a non-numeric value is a bash *error*, and an erroring `if`
+          # condition is simply false, so the step fell through to "OK: node is
+          # alive and advancing" and reported a PASS for a node whose height it
+          # had never actually read.
+          read_height() {
+            local h
+            h=$(curl -s -m 25 "$BASE/api/status" | jq -r '.height // empty' 2>/dev/null || true)
+            case "$h" in
+              ''|*[!0-9]*) return 1 ;;
+            esac
+            echo "$h"
+          }
+          h0=""
+          advanced=""
+          for i in $(seq 1 21); do
+            h=$(read_height) || h=""
+            if [ -z "$h" ]; then
+              echo "sample $i/21: /api/status returned no numeric .height"
+            elif [ -z "$h0" ]; then
+              h0=$h
+              echo "sample $i/21: baseline height $h0"
+            elif [ "$h" -gt "$h0" ]; then
+              echo "sample $i/21: height $h0 -> $h"
+              advanced=yes
+              break
+            else
+              echo "sample $i/21: height still $h (baseline $h0)"
+            fi
+            sleep 30
+          done
+          if [ -z "$advanced" ]; then
+            if [ -z "$h0" ]; then
+              echo "FAILED: /api/status never returned a numeric .height in 10 minutes,"
+              echo "even though /api/health/combined answers 200."
+            else
+              echo "FAILED: the node answers but its height never moved in 10 minutes"
+              echo "(baseline $h0). It is up without following the chain - merging or"
+              echo "replay is stuck."
+            fi
+            echo "Deploying Contabo2 on top of this would leave the network with no"
+            echo "advancing validator."
             exit 1
           fi
           echo "OK: node is alive and advancing."

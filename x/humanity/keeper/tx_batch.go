@@ -19,7 +19,8 @@ import (
 //
 // At 50,000 transactions a receiver spends ~275 ms on hash verification and
 // decoding alone, before any network transfer of an 11.6 MB payload and
-// before replay. That is why maxTxsPerBlock = 20,000 exists, and why the
+// before replay. That is why maxTxsPerBlock exists -- it stands at 10,000
+// since 2026-08-21, not the 20,000 this comment used to name -- and why the
 // document states plainly that block relay caps throughput at 10,000-20,000
 // TPS no matter how fast the storage layer becomes.
 //

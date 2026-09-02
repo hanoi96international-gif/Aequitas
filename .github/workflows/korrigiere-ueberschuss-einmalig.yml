@@ -1,0 +1,146 @@
+name: Ueberschuss einmalig korrigieren (manuell)
+
+# Traegt den Ueberschuss ab, der vor den Reihenfolge-Korrekturen vom
+# 20.08.2026 entstanden ist -- siehe x/humanity/keeper/pool_correction.go.
+#
+# VOR DEM AUSFUEHREN MUESSEN BEIDE BOXEN DEN TYP KENNEN.
+#
+# Die Korrektur reist als Transaktion "pool_correction" im Block. Ein Knoten,
+# der diesen Typ nicht kennt, verwirft den ganzen Block -- und dann steht die
+# Kette. Der Schritt-1-Commit muss also auf BEIDEN Boxen ausgerollt und
+# bestaetigt sein, bevor dieser Workflow laeuft.
+#
+# Der Workflow prueft das nicht fuer dich: er kann nicht wissen, welcher
+# Commit gerade auf welcher Box laeuft. Er zeigt aber vorher beide Hoehen und
+# Reserven an, und danach beide erneut.
+on:
+  workflow_dispatch:
+    inputs:
+      burn_aeq:
+        description: "AEQ, die aus der Reserve verschwinden"
+        required: true
+        default: "305.277988"
+      burn_tusd:
+        description: "tUSD verhaeltnisgleich (0 = Preis springt!)"
+        required: true
+        default: "7907.114977"
+
+jobs:
+  korrigieren:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Vorher-Zustand beider Boxen
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: 173.249.37.118
+          username: root
+          key: ${{ secrets.CONTABO_SSH_KEY }}
+          port: 22
+          fingerprint: "SHA256:noMtjHV8c+2iEFZu3TRUP6WRwGjkrvFke71KgU6Eyt4"
+          script_stop: false
+          timeout: 120s
+          command_timeout: 120s
+          script: |
+            set -uo pipefail
+            echo "=== C1 Pool vorher ==="
+            curl -s http://localhost:8080/api/pool; echo
+            echo "=== C1 Vorratsabgleich vorher ==="
+            curl -s http://localhost:8080/api/health/combined | tr ',' '\n' | grep -iE "measured|claimed|difference|reconciled|beyond_known|supply_alarm" || true
+            echo "=== C2 Pool vorher ==="
+            curl -s --max-time 15 http://194.163.188.71:8080/api/pool; echo
+
+      - name: Freigeben, korrigieren, wieder verriegeln
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: 173.249.37.118
+          username: root
+          key: ${{ secrets.CONTABO_SSH_KEY }}
+          port: 22
+          fingerprint: "SHA256:noMtjHV8c+2iEFZu3TRUP6WRwGjkrvFke71KgU6Eyt4"
+          script_stop: false
+          timeout: 300s
+          command_timeout: 300s
+          envs: BURN_AEQ,BURN_TUSD
+          script: |
+            set -uo pipefail
+            # Aus der Env-Datei der Box gelesen und NIE ausgegeben.
+            DATABASE_URL="$(grep -E '^DATABASE_URL=' /root/.aequitas.env | head -1 | cut -d= -f2-)"
+            # Token, falls es eines gibt -- sonst traegt der Weg ueber die
+            # Schleife. Dieser Aufruf laeuft auf der Box selbst gegen
+            # localhost; von aussen bliebe der Endpunkt ohne Token zu.
+            TOKEN="$(grep -E '^SNAPSHOT_TOKEN=' /root/.aequitas.env 2>/dev/null | head -1 | cut -d= -f2-)"
+            if [ -z "${TOKEN:-}" ]; then
+              TOKEN="$(docker inspect -f '{{range .Config.Env}}{{println .}}{{end}}' aequitas-node 2>/dev/null | grep -E '^SNAPSHOT_TOKEN=' | head -1 | cut -d= -f2-)"
+            fi
+            if [ -z "${TOKEN:-}" ]; then
+              echo "Kein SNAPSHOT_TOKEN gefunden -- der Aufruf geht ueber die Schleife."
+            fi
+            NET="$(docker inspect aequitas-node --format '{{range $n,$v := .NetworkSettings.Networks}}{{$n}}{{end}}')"
+            psql_() { docker run --rm --network "$NET" postgres:16-alpine psql "$DATABASE_URL" -t -A -c "$1"; }
+
+            # Der Riegel wird IMMER wieder gesetzt, auch wenn es mittendrin
+            # schiefgeht. Ein offen gelassenes Tor, das Geld vernichten kann,
+            # waere schlimmer als der Ueberschuss, um den es hier geht.
+            verriegeln() {
+              psql_ "DELETE FROM chain_config WHERE key = 'allow_pool_correction';" >/dev/null 2>&1 || true
+              echo "Riegel wieder zu."
+            }
+            trap verriegeln EXIT
+
+            echo "=== freigeben ==="
+            psql_ "INSERT INTO chain_config (key, value) VALUES ('allow_pool_correction','1')
+                   ON CONFLICT (key) DO UPDATE SET value = '1';" >/dev/null
+            echo "frei."
+
+            echo "=== korrigieren: -${BURN_AEQ} AEQ, -${BURN_TUSD} tUSD ==="
+            # AUS DEM NETZWERK-NAMENSRAUM DES KNOTENS heraus aufrufen.
+            #
+            # Ein curl auf localhost:8080 der BOX geht durch Dockers
+            # Portweiterleitung; der Container sieht dann das Gateway des
+            # Bridge-Netzes als Gegenstelle, nicht die Schleife -- und der
+            # Endpunkt weist ab. Private Adressen einfach zuzulassen waere
+            # keine Loesung, sondern ein Loch: Anfragen aus dem Internet
+            # kommen ueber dieselbe Weiterleitung und saehen genauso aus.
+            #
+            # --network container:<name> teilt den Namensraum. localhost ist
+            # dann wirklich der Knoten, und die Gegenstelle wirklich 127.0.0.1.
+            ANTWORT=$(docker run --rm --network "container:$(docker ps --format '{{.Names}}' | grep -i aequitas-node | head -1)" \
+              curlimages/curl:latest -s -w '\nHTTP:%{http_code}' \
+              -X POST http://localhost:8080/api/admin/pool-correction \
+              ${TOKEN:+-H "Authorization: Bearer ${TOKEN}"} \
+              -H 'Content-Type: application/json' \
+              -d "{\"burn_aeq\":${BURN_AEQ},\"burn_tusd\":${BURN_TUSD},\"confirm\":\"reserve-korrigieren\"}")
+            echo "$ANTWORT"
+            HTTP="$(printf '%s' "$ANTWORT" | tail -1 | cut -d: -f2)"
+            if [ "$HTTP" != "200" ]; then
+              echo "Korrektur NICHT angewendet."
+              exit 1
+            fi
+        env:
+          BURN_AEQ: ${{ github.event.inputs.burn_aeq }}
+          BURN_TUSD: ${{ github.event.inputs.burn_tusd }}
+
+      - name: Nachher -- und ob beide Boxen sich einig sind
+        if: always()
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: 173.249.37.118
+          username: root
+          key: ${{ secrets.CONTABO_SSH_KEY }}
+          port: 22
+          fingerprint: "SHA256:noMtjHV8c+2iEFZu3TRUP6WRwGjkrvFke71KgU6Eyt4"
+          script_stop: false
+          timeout: 180s
+          command_timeout: 180s
+          script: |
+            set -uo pipefail
+            sleep 20   # der Block muss erst zum anderen Knoten
+            echo "=== C1 Pool nachher ==="
+            curl -s http://localhost:8080/api/pool; echo
+            echo "=== C2 Pool nachher (muss gleich sein) ==="
+            curl -s --max-time 15 http://194.163.188.71:8080/api/pool; echo
+            echo "=== C1 Vorratsabgleich nachher ==="
+            curl -s http://localhost:8080/api/health/combined | tr ',' '\n' | grep -iE "measured|claimed|difference|reconciled|beyond_known|supply_alarm" || true
+            echo ""
+            echo "Steht reconciled jetzt auf true, gehoert SUPPLY_GAP_BASELINE_AEQ=0"
+            echo "gesetzt -- sonst bleibt der Alarm bei 305,278 blind."

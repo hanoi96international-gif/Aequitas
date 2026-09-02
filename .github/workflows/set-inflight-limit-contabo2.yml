@@ -1,0 +1,137 @@
+name: Set AEQUITAS_RPC_MAX_INFLIGHT on Contabo2 (manual, load-test only)
+
+# Raises (or clears) the per-IP RPC rate limit on Contabo2 ONLY.
+#
+# Why this exists: rpcRateLimitMax defaults to 200 per 10s window per IP.
+#
+# CORRECTED 2026-08-29 -- THE OLD MATH HERE WAS WRONG BY A FACTOR OF 100.
+# This header used to say the limiter is charged once per HTTP REQUEST, so a
+# batch of maxBatchSize=100 transfers cost one tick and a single source reached
+# 20 x 100 = 2,000 transfers/s. That stopped being true with the P1 fix of
+# 2026-07-21 (ported to main 2026-08-14): handleRPC charges the limiter per
+# batch ITEM, precisely to close that rpcRateLimitMax x maxBatchSize loophole.
+#
+# The real numbers:
+#
+#   200 items per 10s window  =  20 transfers/s per IP   (the shipped default)
+#
+# So the value you need is TARGET TRANSFERS PER SECOND x 10, plus headroom:
+#
+#   1,000 TPS  ->  >= 10,000     (not 1,000)
+#  10,000 TPS  ->  >= 100,000    (not 10,000)
+#
+# The old default of 10000 therefore capped a run at 1,000 TPS while looking
+# like a generous setting -- and any throughput measured under it was the
+# limiter's number, not the chain's. On 2026-08-29 exactly that held a
+# measurement series at 13-15 TPS. keeper.TestRatenbegrenzer_BuchtJePosten...
+# now pins the per-item semantics so this cannot drift again silently.
+#
+# WHAT THIS WEAKENS, stated plainly: /rpc is publicly reachable on port 8080.
+# The limiter bounds worst-case per-IP request spam (including newStateDB()
+# reload cost). Raising it raises that ceiling for every source, not just the
+# load generator. This is why it is scoped to Contabo2 -- the box already
+# designated as the one-at-a-time canary (STAGING_RUNBOOK.md) -- and why
+# `value: 200` restores the shipped default in one dispatch when the run is
+# over. Contabo1 and the primary are never touched by this workflow.
+#
+# The node itself logs the change at startup, naming what it weakens, so the
+# state is visible in the container log and not only in an env file.
+#
+# Uses deploy_safe_c2.sh, which merges /root/.aequitas.env over the inherited
+# container env, so an appended/edited key here actually reaches the process.
+# Backs the env file up with a timestamp first. Idempotent: a box already
+# reading the requested value is reported and left untouched.
+on:
+  workflow_dispatch:
+    inputs:
+      value:
+        description: "Gleichzeitig angenommene RPC-Posten. 8000 = ausgelieferte Vorgabe (wiederherstellen). Fuer einen Lastlauf: Zielrate x 3 Sekunden."
+        required: false
+        default: "8000"
+      dry_run:
+        description: "true = only report the current value, change nothing"
+        required: false
+        default: "true"
+
+jobs:
+  set:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Set the RPC rate limit on Contabo2
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: 194.163.188.71
+          username: root
+          key: ${{ secrets.CONTABO2_SSH_KEY }}
+          port: 22
+          fingerprint: "SHA256:VIwj7Faxiga2n45HVHZEQFPxcbRKHgSgHoxAFsf2wto"
+          script_stop: false
+          timeout: 600s
+          command_timeout: 600s
+          envs: VALUE,DRY
+          script: |
+            set -uo pipefail
+            ENVFILE=/root/.aequitas.env
+            KEY=AEQUITAS_RPC_MAX_INFLIGHT
+
+            case "${VALUE:-}" in
+              ''|*[!0-9]*) echo "✗ value must be a positive integer, got '${VALUE:-}' — aborting"; exit 1 ;;
+            esac
+            if [ "$VALUE" -le 0 ]; then echo "✗ value must be > 0 — aborting"; exit 1; fi
+
+            echo "=== Contabo2: current $KEY ==="
+            grep -E "^${KEY}=" "$ENVFILE" || echo "(nicht gesetzt — der Knoten benutzt seine Vorgabe 8000)"
+
+            # Gegen den PROZESS pruefen, nicht gegen die Datei.
+            #
+            # Hier stand der Vergleich mit $ENVFILE, und genau das hat am 02.09.2026
+            # den Fehler verlaengert: die Datei sagte laengst 100000, der Prozess lief
+            # mit 200, weil der Neustart stillschweigend gescheitert war. Ein erneuter
+            # Dispatch haette hier "nichts zu aendern" gemeldet und waere ausgestiegen,
+            # ohne den Prozess je zu korrigieren -- die Datei ist eine Absicht, der
+            # Prozess ist der Zustand.
+            CUR="$(docker inspect aequitas-node --format '{{range .Config.Env}}{{println .}}{{end}}' 2>/dev/null | grep -E "^${KEY}=" | cut -d= -f2-)"
+            echo "=== Im laufenden Prozess: ${KEY}=${CUR:-<nicht gesetzt>} ==="
+            if [ "$CUR" = "$VALUE" ]; then
+              echo "=== Prozess liest bereits '$VALUE' -- nichts zu tun ==="
+              exit 0
+            fi
+
+            if [ "${DRY:-true}" = "true" ]; then
+              echo "=== DRY RUN: would set $KEY=$VALUE on Contabo2 (currently '${CUR:-unset}') ==="
+              exit 0
+            fi
+
+            # env-setzen.sh macht die Aenderung UND den Neustart. Frueher stand hier
+            # deploy_safe_c2.sh -- das beginnt mit `git fetch origin` unter `set -e`,
+            # und auf der Box gibt es keine GitHub-Zugangsdaten. Ergebnis am
+            # 02.09.2026: "fatal: could not read Username for https://github.com",
+            # Skriptabbruch, KEIN Neustart -- und der Workflow meldete trotzdem
+            # Erfolg, weil der alte Container ja weiter antwortete. Die Datei sagte
+            # 100000, der Prozess lief mit 200, und eine ganze Messreihe war
+            # wertlos, ohne dass irgendwo ein Fehler stand.
+            # Der Rueckgabewert von env-setzen.sh wird bewusst NICHT als Urteil
+            # genommen. Am 02.09.2026 meldete es einen Fehler (seine eigene
+            # Warteschleife auf /api/status lief ab, waehrend der Knoten noch
+            # startete), obwohl die Aenderung vollstaendig gegriffen hatte --
+            # Datei UND Prozess standen danach auf dem gewuenschten Wert. Ein
+            # abgebrochener Workflow haette hier eine erfolgreiche Aenderung
+            # als Fehlschlag gemeldet.
+            #
+            # Die Pflichtpruefung unten liest den laufenden Prozess und ist
+            # damit die verlaesslichere Instanz. Sie entscheidet.
+            bash /root/env-setzen.sh AEQUITAS_RPC_MAX_INFLIGHT=$VALUE || echo "(env-setzen.sh meldete einen Fehlercode -- die Pruefung unten entscheidet)"
+
+            # PFLICHTPRUEFUNG: was der PROZESS traegt, nicht was die Datei sagt.
+            # Genau diese Luecke hat den stillen Fehlschlag oben ermoeglicht.
+            IST="$(docker inspect aequitas-node --format '{{range .Config.Env}}{{println .}}{{end}}' 2>/dev/null | grep -E "^AEQUITAS_RPC_MAX_INFLIGHT=" | cut -d= -f2-)"
+            echo "=== Im laufenden Prozess: AEQUITAS_RPC_MAX_INFLIGHT=${IST:-<nicht gesetzt>} ==="
+            if [ "${IST:-8000}" != "$VALUE" ]; then
+              echo "FEHLER: gewuenscht $VALUE, im Prozess ${IST:-<nicht gesetzt>} -- der Neustart hat den Wert nicht uebernommen"
+              exit 1
+            fi
+            echo "=== Contabo2: /api/status ==="
+            curl -s --max-time 5 http://localhost:8080/api/status || echo "(unreachable)"
+        env:
+          VALUE: ${{ inputs.value }}
+          DRY: ${{ inputs.dry_run }}

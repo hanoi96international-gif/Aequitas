@@ -1,0 +1,349 @@
+name: Activate MPC on both boxes (inspect first, then apply)
+
+# MPC is fully built and its tests pass, and no validator ran any of it: a live
+# read on 2026-08-20 found none of the eight MPC_* settings set on either box.
+# mpc-triples-distribute.yml has since delivered one dealer row to each
+# (Contabo1 party 0, Contabo2 party 1, checksums verified, neither box holding
+# the other's row). This turns the subsystem on.
+#
+# WHICH MODE, AND WHY
+#
+# newMPCNodeFromEnv has two paths. With MPC_PEERS set, every peer is written
+# out by hand as URL|0xAddress and every node needs its own MPC_PARTY_INDEX --
+# so adding a validator means editing every existing box, an O(n) manual step
+# across machines that are not all owned by one person. That was rejected as
+# not future-proof.
+#
+# With MPC_PEERS EMPTY, newDiscoveringMPCNode draws the committee from the
+# chain's own peer registry: a new validator advertises mpc_ready and becomes
+# eligible with no edit anywhere else. That is the mode used here, so only
+# MPC_ENABLED, MPC_COMMITTEE_SIZE and MPC_TRIPLE_FILE are set.
+# RELAYER_PRIVATE_KEY is already on both boxes and is what a node signs its
+# contributions with.
+#
+# MPC_REQUIRED IS DELIBERATELY NOT SET
+#
+# It stays unset, so the gate is advisory. The matching threshold has never
+# been calibrated against real captures (MinPairsForCalibration is 1000 pairs
+# and none have been collected), so enforcing it would reject or accept on a
+# guessed number, and the cost of that lands on applicants who cannot appeal.
+# See docs/OPEN_TASKS.md item 2.
+#
+# WHAT APPLY RECREATES, AND WHAT IT PRESERVES
+#
+# Ports, network and existing mounts are read off the RUNNING container rather
+# than written out per box: Contabo2 already carries the WAL mount added on
+# 2026-08-20, and hard-coding a docker run here would silently drop it. The
+# same reasoning applies to the env, which is inherited from the process with
+# RESYNC_FROM_SNAPSHOT stripped -- deploy_safe_c2.sh records that using the
+# env FILE directly wipes the database on that box.
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "inspect (read-only) or apply (recreates both containers)"
+        required: true
+        default: inspect
+        type: choice
+        options: [inspect, apply]
+      committee:
+        description: "static (MPC_PEERS — works today) or discovery (needs the advertise fix first)"
+        required: true
+        default: static
+        type: choice
+        options: [static, discovery]
+      peers:
+        description: "static committee: URL|0xSigningAddress, comma-separated. ORDER DEFINES THE PARTY INDEX."
+        required: false
+        default: "http://173.249.37.118:8080|0x0be8b961cbf6564bd1931b0803d35c0659e0d016,http://194.163.188.71:8080|0x1a37dcdaa42cf3f7e1f6e41379961f40df44a4e3"
+
+jobs:
+  c1:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Contabo1
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: 173.249.37.118
+          username: root
+          key: ${{ secrets.CONTABO_SSH_KEY }}
+          port: 22
+          fingerprint: "SHA256:noMtjHV8c+2iEFZu3TRUP6WRwGjkrvFke71KgU6Eyt4"
+          script_stop: false
+          timeout: 600s
+          command_timeout: 600s
+          script: |
+            set -uo pipefail
+            MODE="${{ inputs.mode }}"
+            BOX=Contabo1
+            # The order in MPC_PEERS decides the party index, and the index
+            # decides which dealer row fits. mpc-triples-distribute.yml gave
+            # Contabo1 the row for party 0. Swapping them produces no error at
+            # all -- just noise, which reads as "no duplicate" on a system that
+            # looks perfectly healthy.
+            PARTY_INDEX=0
+            COMMITTEE="${{ inputs.committee }}"
+            PEERS="${{ inputs.peers }}"
+            TRIPLE_HOST_DIR=/root/aequitas-mpc
+            echo "### $BOX ###"
+
+            echo "--- signing address ---"
+            docker logs aequitas-node 2>&1 | grep -i "proposer addr" | tail -1 || echo "(not in retained log)"
+            echo "--- triple row present? ---"
+            ls -la "$TRIPLE_HOST_DIR" 2>/dev/null || echo "(MISSING -- run mpc-triples-distribute.yml first)"
+            echo "--- MPC settings in the running process ---"
+            docker inspect aequitas-node --format '{{range .Config.Env}}{{println .}}{{end}}' | grep -E '^MPC_' | sed 's/=.*/=<set>/' || echo "(none)"
+            echo "--- [MPC] log lines ---"
+            docker logs aequitas-node --since 30m 2>&1 | grep -F '[MPC]' | tail -10 || echo "(none)"
+
+            IMAGE="$(docker inspect aequitas-node --format '{{.Config.Image}}')"
+            NET="$(docker inspect aequitas-node --format '{{range $k, $v := .NetworkSettings.Networks}}{{$k}} {{end}}' | awk '{print $1}')"
+            PORTS="$(docker inspect aequitas-node --format '{{range $p, $c := .HostConfig.PortBindings}}-p {{(index $c 0).HostPort}}:{{$p}} {{end}}' | sed 's|/tcp||g')"
+            MOUNTS="$(docker inspect aequitas-node --format '{{range .Mounts}}-v {{.Source}}:{{.Destination}} {{end}}')"
+            case "$MOUNTS" in
+              *":/data/mpc"*) : ;;
+              *) MOUNTS="$MOUNTS -v $TRIPLE_HOST_DIR:/data/mpc" ;;
+            esac
+            echo "image  : $IMAGE"
+            echo "network: $NET"
+            echo "ports  : $PORTS"
+            echo "mounts : $MOUNTS"
+
+            mkdir -p /root/mpc-migration
+            ENVOUT=/root/mpc-migration/inherited.env
+            docker inspect aequitas-node --format '{{range .Config.Env}}{{println .}}{{end}}' | grep -vE '^(RESYNC_FROM_SNAPSHOT|HOSTNAME|PATH|HOME)=' | grep -E '^[A-Za-z_][A-Za-z0-9_]*=' > /tmp/proc.env
+            # Operator-set values in .aequitas.env must WIN over whatever the
+            # old process happened to carry. MPC_CLIENT_TOKEN is the case that
+            # forced this: it is written to the file, so a container rebuilt
+            # only from the previous process's env would never pick it up and
+            # the parties would go on answering "unauthorized" after a restart
+            # that looked completely successful. RESYNC_FROM_SNAPSHOT is
+            # dropped from both sides -- deploy_safe_c2.sh records that
+            # honouring it from the file wipes the database.
+            grep -E '^[A-Za-z_][A-Za-z0-9_]*=' /root/.aequitas.env 2>/dev/null | grep -vE '^(RESYNC_FROM_SNAPSHOT|HOSTNAME|PATH|HOME)=' > /tmp/file.env || true
+            awk -F= '!seen[$1]++' /tmp/file.env /tmp/proc.env > "$ENVOUT"
+            grep -q '^MPC_ENABLED=' "$ENVOUT" || echo 'MPC_ENABLED=true' >> "$ENVOUT"
+            grep -q '^MPC_COMMITTEE_SIZE=' "$ENVOUT" || echo 'MPC_COMMITTEE_SIZE=2' >> "$ENVOUT"
+            grep -q '^MPC_TRIPLE_FILE=' "$ENVOUT" || echo 'MPC_TRIPLE_FILE=/data/mpc/triples.bin' >> "$ENVOUT"
+            # Discovery cannot form a committee, measured 2026-08-23: both boxes
+            # answered 503 "1 validators advertise an MPC endpoint, need 2".
+            # mpc_ready appears exactly ONCE in the whole Go tree -- as an
+            # incoming field on /api/peers/register -- so nothing ever sends it,
+            # and every ordinary heartbeat resets it to false anyway
+            # (Register -> RegisterWithAddress -> RegisterWithMPC(..., false)).
+            # Each node therefore counted only itself. With a static list the
+            # peer list IS the committee (mpc_api.go), so no advertisement is
+            # involved. Two parties need nothing more; a third validator is what
+            # makes discovery worth fixing.
+            sed -i '/^MPC_PEERS=/d;/^MPC_PARTY_INDEX=/d' "$ENVOUT"
+            if [ "$COMMITTEE" = "static" ]; then
+              echo "MPC_PEERS=$PEERS" >> "$ENVOUT"
+              echo "MPC_PARTY_INDEX=$PARTY_INDEX" >> "$ENVOUT"
+              echo "--- static committee: this node is index $PARTY_INDEX ---"
+              echo "  $PEERS" | tr ',' '\n' | sed 's/^/    /'
+            else
+              echo "--- discovery committee (no MPC_PEERS written) ---"
+            fi
+            echo "--- MPC_CLIENT_TOKEN in the set about to be applied? ---"
+            grep -q '^MPC_CLIENT_TOKEN=' "$ENVOUT" && echo "yes" || echo "NO -- the client endpoints will keep answering unauthorized"
+            echo "--- keys that will be passed (names only) ---"
+            cut -d= -f1 "$ENVOUT" | sort | tr '\n' ' '; echo
+
+            if [ "$MODE" != "apply" ]; then
+              echo ""
+              echo "would run:"
+              echo "  docker run -d --name aequitas-node --network $NET $PORTS $MOUNTS --env-file $ENVOUT --restart unless-stopped $IMAGE"
+              echo "mode=inspect -- nothing changed."
+              exit 0
+            fi
+
+            if [ ! -f "$TRIPLE_HOST_DIR/triples.bin" ]; then
+              echo "REFUSING to apply: $TRIPLE_HOST_DIR/triples.bin is missing. Starting MPC without"
+              echo "this party's dealer row would fail at the first registration, and the node would"
+              echo "have restarted for nothing."
+              exit 1
+            fi
+
+            echo ""
+            echo "=== persisting MPC settings for future deploys ==="
+            cp /root/.aequitas.env "/root/.aequitas.env.bak.$(date +%Y%m%d-%H%M%S)"
+            grep -q '^MPC_ENABLED=' /root/.aequitas.env || echo 'MPC_ENABLED=true' >> /root/.aequitas.env
+            grep -q '^MPC_COMMITTEE_SIZE=' /root/.aequitas.env || echo 'MPC_COMMITTEE_SIZE=2' >> /root/.aequitas.env
+            grep -q '^MPC_TRIPLE_FILE=' /root/.aequitas.env || echo 'MPC_TRIPLE_FILE=/data/mpc/triples.bin' >> /root/.aequitas.env
+            # Into the file as well, or the next deploy silently drops the
+            # committee configuration -- exactly how the WAL disappeared here
+            # once before.
+            sed -i '/^MPC_PEERS=/d;/^MPC_PARTY_INDEX=/d' /root/.aequitas.env
+            if [ "$COMMITTEE" = "static" ]; then
+              echo "MPC_PEERS=$PEERS" >> /root/.aequitas.env
+              echo "MPC_PARTY_INDEX=$PARTY_INDEX" >> /root/.aequitas.env
+            fi
+            # Names and <set>, never values: MPC_CLIENT_TOKEN starts with MPC_,
+            # so an unmasked grep here printed a live credential straight into a
+            # workflow log readable by anyone with repository access.
+            grep -E '^MPC_' /root/.aequitas.env | sed 's/=.*/=<set>/'
+            if grep -q 'docker run -d --name aequitas-node' /root/deploy.sh; then
+              cp /root/deploy.sh "/root/deploy.sh.bak.$(date +%Y%m%d-%H%M%S)"
+              grep -q -- "-v $TRIPLE_HOST_DIR:/data/mpc" /root/deploy.sh || sed -i "s|--env-file /root/.aequitas.env|-v $TRIPLE_HOST_DIR:/data/mpc --env-file /root/.aequitas.env|" /root/deploy.sh
+              echo "--- deploy.sh docker run line now: ---"
+              grep 'docker run -d --name aequitas-node' /root/deploy.sh
+            fi
+
+            echo ""
+            echo "=== recreating ==="
+            docker stop aequitas-node && docker rm aequitas-node
+            docker run -d --name aequitas-node --network "$NET" $PORTS $MOUNTS --env-file "$ENVOUT" --restart unless-stopped "$IMAGE"
+            sleep 45
+            echo "--- [MPC] lines after restart ---"
+            docker logs aequitas-node --since 3m 2>&1 | grep -F '[MPC]' | tail -10 || echo "(NONE -- MPC did not start; look for '[MPC] NOT running')"
+            echo "--- panics ---"
+            docker logs aequitas-node --since 3m 2>&1 | grep -iE 'panic|fatal' | tail -5 || echo "(none)"
+            echo "--- mounts now ---"
+            docker inspect aequitas-node --format '{{range .Mounts}}{{.Source}} -> {{.Destination}}{{println}}{{end}}'
+            echo "--- status ---"
+            curl -s --max-time 15 http://127.0.0.1:8080/api/status | tr ',' '\n' | grep -E '"height"|git_commit' || echo "(unreachable)"
+
+  c2:
+    # Sequenced after c1 on purpose: with only two validators, restarting both
+    # at once takes every producing node down together. needs: c1 also means a
+    # failure on the first box stops the second from restarting at all.
+    needs: c1
+    runs-on: ubuntu-latest
+    steps:
+      - name: Contabo2
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: 194.163.188.71
+          username: root
+          key: ${{ secrets.CONTABO2_SSH_KEY }}
+          port: 22
+          script_stop: false
+          timeout: 600s
+          command_timeout: 600s
+          script: |
+            set -uo pipefail
+            MODE="${{ inputs.mode }}"
+            BOX=Contabo2
+            PARTY_INDEX=1
+            COMMITTEE="${{ inputs.committee }}"
+            PEERS="${{ inputs.peers }}"
+            TRIPLE_HOST_DIR=/root/aequitas-mpc
+            echo "### $BOX ###"
+
+            echo "--- signing address ---"
+            docker logs aequitas-node 2>&1 | grep -i "proposer addr" | tail -1 || echo "(not in retained log)"
+            echo "--- triple row present? ---"
+            ls -la "$TRIPLE_HOST_DIR" 2>/dev/null || echo "(MISSING -- run mpc-triples-distribute.yml first)"
+            echo "--- MPC settings in the running process ---"
+            docker inspect aequitas-node --format '{{range .Config.Env}}{{println .}}{{end}}' | grep -E '^MPC_' | sed 's/=.*/=<set>/' || echo "(none)"
+            echo "--- [MPC] log lines ---"
+            docker logs aequitas-node --since 30m 2>&1 | grep -F '[MPC]' | tail -10 || echo "(none)"
+
+            IMAGE="$(docker inspect aequitas-node --format '{{.Config.Image}}')"
+            NET="$(docker inspect aequitas-node --format '{{range $k, $v := .NetworkSettings.Networks}}{{$k}} {{end}}' | awk '{print $1}')"
+            PORTS="$(docker inspect aequitas-node --format '{{range $p, $c := .HostConfig.PortBindings}}-p {{(index $c 0).HostPort}}:{{$p}} {{end}}' | sed 's|/tcp||g')"
+            MOUNTS="$(docker inspect aequitas-node --format '{{range .Mounts}}-v {{.Source}}:{{.Destination}} {{end}}')"
+            case "$MOUNTS" in
+              *":/data/mpc"*) : ;;
+              *) MOUNTS="$MOUNTS -v $TRIPLE_HOST_DIR:/data/mpc" ;;
+            esac
+            echo "image  : $IMAGE"
+            echo "network: $NET"
+            echo "ports  : $PORTS"
+            echo "mounts : $MOUNTS   <-- the WAL mount must still be in here"
+
+            mkdir -p /root/mpc-migration
+            ENVOUT=/root/mpc-migration/inherited.env
+            docker inspect aequitas-node --format '{{range .Config.Env}}{{println .}}{{end}}' | grep -vE '^(RESYNC_FROM_SNAPSHOT|HOSTNAME|PATH|HOME)=' | grep -E '^[A-Za-z_][A-Za-z0-9_]*=' > /tmp/proc.env
+            # Operator-set values in .aequitas.env must WIN over whatever the
+            # old process happened to carry. MPC_CLIENT_TOKEN is the case that
+            # forced this: it is written to the file, so a container rebuilt
+            # only from the previous process's env would never pick it up and
+            # the parties would go on answering "unauthorized" after a restart
+            # that looked completely successful. RESYNC_FROM_SNAPSHOT is
+            # dropped from both sides -- deploy_safe_c2.sh records that
+            # honouring it from the file wipes the database.
+            grep -E '^[A-Za-z_][A-Za-z0-9_]*=' /root/.aequitas.env 2>/dev/null | grep -vE '^(RESYNC_FROM_SNAPSHOT|HOSTNAME|PATH|HOME)=' > /tmp/file.env || true
+            awk -F= '!seen[$1]++' /tmp/file.env /tmp/proc.env > "$ENVOUT"
+            grep -q '^MPC_ENABLED=' "$ENVOUT" || echo 'MPC_ENABLED=true' >> "$ENVOUT"
+            grep -q '^MPC_COMMITTEE_SIZE=' "$ENVOUT" || echo 'MPC_COMMITTEE_SIZE=2' >> "$ENVOUT"
+            grep -q '^MPC_TRIPLE_FILE=' "$ENVOUT" || echo 'MPC_TRIPLE_FILE=/data/mpc/triples.bin' >> "$ENVOUT"
+            # Discovery cannot form a committee, measured 2026-08-23: both boxes
+            # answered 503 "1 validators advertise an MPC endpoint, need 2".
+            # mpc_ready appears exactly ONCE in the whole Go tree -- as an
+            # incoming field on /api/peers/register -- so nothing ever sends it,
+            # and every ordinary heartbeat resets it to false anyway
+            # (Register -> RegisterWithAddress -> RegisterWithMPC(..., false)).
+            # Each node therefore counted only itself. With a static list the
+            # peer list IS the committee (mpc_api.go), so no advertisement is
+            # involved. Two parties need nothing more; a third validator is what
+            # makes discovery worth fixing.
+            sed -i '/^MPC_PEERS=/d;/^MPC_PARTY_INDEX=/d' "$ENVOUT"
+            if [ "$COMMITTEE" = "static" ]; then
+              echo "MPC_PEERS=$PEERS" >> "$ENVOUT"
+              echo "MPC_PARTY_INDEX=$PARTY_INDEX" >> "$ENVOUT"
+              echo "--- static committee: this node is index $PARTY_INDEX ---"
+              echo "  $PEERS" | tr ',' '\n' | sed 's/^/    /'
+            else
+              echo "--- discovery committee (no MPC_PEERS written) ---"
+            fi
+            echo "--- MPC_CLIENT_TOKEN in the set about to be applied? ---"
+            grep -q '^MPC_CLIENT_TOKEN=' "$ENVOUT" && echo "yes" || echo "NO -- the client endpoints will keep answering unauthorized"
+            echo "--- keys that will be passed (names only) ---"
+            cut -d= -f1 "$ENVOUT" | sort | tr '\n' ' '; echo
+            echo "--- WAL keys still present in that set? ---"
+            grep -E '^AEQUITAS_WAL' "$ENVOUT" || echo "(MISSING -- would turn WAL off on this box)"
+
+            if [ "$MODE" != "apply" ]; then
+              echo ""
+              echo "would run:"
+              echo "  docker run -d --name aequitas-node --network $NET $PORTS $MOUNTS --env-file $ENVOUT --restart unless-stopped $IMAGE"
+              echo "mode=inspect -- nothing changed."
+              exit 0
+            fi
+
+            if [ ! -f "$TRIPLE_HOST_DIR/triples.bin" ]; then
+              echo "REFUSING to apply: $TRIPLE_HOST_DIR/triples.bin is missing."
+              exit 1
+            fi
+
+            echo ""
+            echo "=== persisting MPC settings for future deploys ==="
+            cp /root/.aequitas.env "/root/.aequitas.env.bak.$(date +%Y%m%d-%H%M%S)"
+            grep -q '^MPC_ENABLED=' /root/.aequitas.env || echo 'MPC_ENABLED=true' >> /root/.aequitas.env
+            grep -q '^MPC_COMMITTEE_SIZE=' /root/.aequitas.env || echo 'MPC_COMMITTEE_SIZE=2' >> /root/.aequitas.env
+            grep -q '^MPC_TRIPLE_FILE=' /root/.aequitas.env || echo 'MPC_TRIPLE_FILE=/data/mpc/triples.bin' >> /root/.aequitas.env
+            # Into the file as well, or the next deploy silently drops the
+            # committee configuration -- exactly how the WAL disappeared here
+            # once before.
+            sed -i '/^MPC_PEERS=/d;/^MPC_PARTY_INDEX=/d' /root/.aequitas.env
+            if [ "$COMMITTEE" = "static" ]; then
+              echo "MPC_PEERS=$PEERS" >> /root/.aequitas.env
+              echo "MPC_PARTY_INDEX=$PARTY_INDEX" >> /root/.aequitas.env
+            fi
+            # Names and <set>, never values: MPC_CLIENT_TOKEN starts with MPC_,
+            # so an unmasked grep here printed a live credential straight into a
+            # workflow log readable by anyone with repository access.
+            grep -E '^MPC_' /root/.aequitas.env | sed 's/=.*/=<set>/'
+            if [ -f /root/deploy_safe_c2.sh ] && grep -q 'docker run' /root/deploy_safe_c2.sh; then
+              cp /root/deploy_safe_c2.sh "/root/deploy_safe_c2.sh.bak.$(date +%Y%m%d-%H%M%S)"
+              grep -q -- "-v $TRIPLE_HOST_DIR:/data/mpc" /root/deploy_safe_c2.sh || sed -i "s|-v /root/aequitas-wal-data:/data/wal|-v /root/aequitas-wal-data:/data/wal -v $TRIPLE_HOST_DIR:/data/mpc|" /root/deploy_safe_c2.sh
+              echo "--- deploy_safe_c2.sh docker run line now: ---"
+              grep 'docker run' /root/deploy_safe_c2.sh
+            fi
+
+            echo ""
+            echo "=== recreating ==="
+            docker stop aequitas-node && docker rm aequitas-node
+            docker run -d --name aequitas-node --network "$NET" $PORTS $MOUNTS --env-file "$ENVOUT" --restart unless-stopped "$IMAGE"
+            sleep 45
+            echo "--- [MPC] lines after restart ---"
+            docker logs aequitas-node --since 3m 2>&1 | grep -F '[MPC]' | tail -10 || echo "(NONE -- MPC did not start; look for '[MPC] NOT running')"
+            echo "--- WAL still on? ---"
+            docker inspect aequitas-node --format '{{range .Config.Env}}{{println .}}{{end}}' | grep -E '^AEQUITAS_WAL' || echo "(MISSING -- WAL was lost in this restart)"
+            echo "--- panics ---"
+            docker logs aequitas-node --since 3m 2>&1 | grep -iE 'panic|fatal' | tail -5 || echo "(none)"
+            echo "--- mounts now ---"
+            docker inspect aequitas-node --format '{{range .Mounts}}{{.Source}} -> {{.Destination}}{{println}}{{end}}'
+            echo "--- status ---"
+            curl -s --max-time 15 http://127.0.0.1:8080/api/status | tr ',' '\n' | grep -E '"height"|git_commit' || echo "(unreachable)"

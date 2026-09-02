@@ -1,0 +1,94 @@
+name: Knoten neu starten (ohne Neubau, ohne Zustandsverlust)
+
+# Ein reiner Neustart: derselbe Container, dieselben Mounts, dieselbe
+# Umgebung. Kein Image-Neubau, kein Resync, keine Datenbank angefasst.
+#
+# WARUM NICHT deploy.sh. Das baut das Image neu und startet den Container
+# frisch -- viel mehr als ein Neustart, und auf Contabo2 loescht sein
+# deploy.sh ausserdem die Datenbank. Fuer "einmal aus und wieder an" ist das
+# die falsche Wahl.
+#
+# NACHEINANDER, wenn beide gewaehlt sind: bei zwei Validatoren duerfen nie
+# beide gleichzeitig unten sein, sonst produziert niemand.
+on:
+  workflow_dispatch:
+    inputs:
+      box:
+        description: "Welche Box"
+        required: true
+        default: both
+        type: choice
+        options: [contabo1, contabo2, both]
+
+jobs:
+  c1:
+    if: ${{ inputs.box == 'contabo1' || inputs.box == 'both' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Contabo1 neu starten
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: 173.249.37.118
+          username: root
+          key: ${{ secrets.CONTABO_SSH_KEY }}
+          port: 22
+          fingerprint: "SHA256:noMtjHV8c+2iEFZu3TRUP6WRwGjkrvFke71KgU6Eyt4"
+          script_stop: false
+          timeout: 900s
+          command_timeout: 900s
+          script: |
+            set +e
+            echo "### CONTABO1 ###"
+            echo "vorher: $(curl -s --max-time 15 http://127.0.0.1:8080/api/status | grep -o '\"height\":[0-9]*')"
+            docker restart aequitas-node
+            echo "=== warten, bis er wieder antwortet ==="
+            for i in $(seq 1 40); do
+              H=$(curl -s --max-time 10 http://127.0.0.1:8080/api/status | grep -o '"height":[0-9]*')
+              if [ -n "$H" ]; then echo "  oben: $H"; break; fi
+              sleep 15
+            done
+            [ -n "$H" ] || { echo "antwortet nach 10 Minuten nicht"; exit 1; }
+            echo "=== produziert er wieder? (nicht nur erreichbar) ==="
+            for i in $(seq 1 40); do
+              A=$(curl -s --max-time 10 http://127.0.0.1:8080/api/health/combined | grep -o '"never_produced":[a-z]*')
+              echo "  $A"
+              [ "$A" = '"never_produced":false' ] && break
+              sleep 15
+            done
+            docker inspect aequitas-node --format 'Mounts: {{range .Mounts}}{{.Source}} {{end}}'
+
+  c2:
+    # needs sorgt fuer die Reihenfolge, auch wenn c1 uebersprungen wurde --
+    # daher das always() zusammen mit der eigenen Bedingung.
+    needs: c1
+    if: ${{ always() && (inputs.box == 'contabo2' || inputs.box == 'both') }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Contabo2 neu starten
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: 194.163.188.71
+          username: root
+          key: ${{ secrets.CONTABO2_SSH_KEY }}
+          port: 22
+          script_stop: false
+          timeout: 900s
+          command_timeout: 900s
+          script: |
+            set +e
+            echo "### CONTABO2 ###"
+            echo "vorher: $(curl -s --max-time 15 http://127.0.0.1:8080/api/status | grep -o '\"height\":[0-9]*')"
+            docker restart aequitas-node
+            for i in $(seq 1 40); do
+              H=$(curl -s --max-time 10 http://127.0.0.1:8080/api/status | grep -o '"height":[0-9]*')
+              if [ -n "$H" ]; then echo "  oben: $H"; break; fi
+              sleep 15
+            done
+            [ -n "$H" ] || { echo "antwortet nach 10 Minuten nicht"; exit 1; }
+            for i in $(seq 1 40); do
+              A=$(curl -s --max-time 10 http://127.0.0.1:8080/api/health/combined | grep -o '"never_produced":[a-z]*')
+              echo "  $A"
+              [ "$A" = '"never_produced":false' ] && break
+              sleep 15
+            done
+            docker inspect aequitas-node --format 'Mounts: {{range .Mounts}}{{.Source}} {{end}}'

@@ -1,0 +1,145 @@
+name: Widen the load test -- fund the unfunded generated accounts
+
+# WHY. Throughput here is concurrency divided by latency, and the concurrency
+# is the number of funded SENDER PAIRS -- one JSON-RPC batch carries transfers
+# from a single sender, so the node never sees more parallelism than there are
+# pairs.
+#
+# Measured 2026-08-22, rate limiter out of the way:
+#
+#   funded rows        623   -> 311 pairs
+#   per-transfer time  93 ms
+#   311 / 0.093 s      = 3,344/s expected, 3,779/s measured
+#
+# The generator is therefore already saturating: it is not leaving throughput
+# on the table, it simply has nothing left to send with. At this latency,
+# 10,000 TPS needs roughly 930 pairs.
+#
+# 1,201 accounts were generated for this test and 623 of them hold AEQ, so 578
+# usable senders are sitting there with nothing in them. This funds those from
+# the richest existing rows, using the load tool's OWN fund phase -- the same
+# transfer path the run phase uses, on the same disposable accounts.
+#
+# WHAT IT MOVES. 0.002 AEQ per account, ~1.16 AEQ in total, from ~40 seed rows
+# that hold ~0.078 AEQ each. These are throwaway load-test accounts whose keys
+# live only on this box; nothing here touches a real wallet. A load-test
+# transfer is 0.00001 AEQ, so 0.002 covers ~200 sends, and the generator
+# alternates direction so balances oscillate rather than drain.
+#
+# AFTERWARDS, rerun loadtest-find-funded.yml to rebuild accounts-funded.csv --
+# this workflow deliberately does not overwrite it, so a failed funding run
+# cannot destroy the working account list.
+on:
+  workflow_dispatch:
+    inputs:
+      seeds:
+        description: "How many of the richest rows to spend from"
+        required: false
+        default: "40"
+      fund_amount_wei:
+        description: "Wei sent to each unfunded account (2000000000000000 = 0.002 AEQ)"
+        required: false
+        default: "2000000000000000"
+      confirm:
+        description: "Type true to actually send the funding transfers"
+        required: true
+        default: "false"
+
+jobs:
+  widen:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Fund the unfunded accounts on Contabo2
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: 194.163.188.71
+          username: root
+          key: ${{ secrets.CONTABO2_SSH_KEY }}
+          port: 22
+          script_stop: false
+          timeout: 1800s
+          command_timeout: 1800s
+          envs: SEEDS,FUNDWEI,CONFIRM
+          script: |
+            set +e
+            cd /root/contabo-loadtest || { echo "no loadtest directory"; exit 1; }
+            [ -f accounts.csv ] || { echo "accounts.csv missing"; exit 1; }
+            [ -f accounts-funded.csv ] || { echo "accounts-funded.csv missing -- run loadtest-find-funded.yml"; exit 1; }
+            [ -x ./loadtest ] || { echo "no built loadtest binary"; exit 1; }
+
+            echo "=== inputs ==="
+            echo "seeds=$SEEDS  fund_amount_wei=$FUNDWEI  confirm=$CONFIRM"
+            echo "accounts.csv rows:        $(wc -l < accounts.csv)"
+            echo "accounts-funded.csv rows: $(wc -l < accounts-funded.csv)"
+
+            # Build: the richest SEEDS rows first (they are the spenders), then
+            # every account NOT among them. The tool takes its seeds as the
+            # first N ROWS, so ordering is the whole mechanism -- see
+            # loadtest-find-funded.yml's own note that being a seed is a
+            # question of which row you occupy, not of being funded separately.
+            head -n "$SEEDS" accounts-funded.csv > /tmp/seeds.csv
+            cut -d, -f2 /tmp/seeds.csv | tr 'A-Z' 'a-z' | sort -u > /tmp/seedaddrs.txt
+            # The 0x guard is load-bearing: gen_accounts.go writes a header row,
+            # and without it the fund phase would be handed an "account" whose
+            # address is the literal string "address".
+            awk -F, 'NR==FNR{seen[$1];next} $2 ~ /^0[xX][0-9a-fA-F]{40}$/ {a=tolower($2); if(!(a in seen)) print}' \
+              /tmp/seedaddrs.txt accounts.csv > /tmp/targets.csv
+
+            # Renumber the index column so it stays consistent, seeds first.
+            cat /tmp/seeds.csv /tmp/targets.csv | awk -F, -v OFS=, '{$1=NR-1; print}' > /tmp/widen.csv
+
+            echo "=== built /tmp/widen.csv ==="
+            echo "seed rows:   $(wc -l < /tmp/seeds.csv)"
+            echo "target rows: $(wc -l < /tmp/targets.csv)"
+            echo "total rows:  $(wc -l < /tmp/widen.csv)"
+            echo "(first 3 addresses, no keys)"
+            cut -d, -f2 /tmp/widen.csv | head -3
+
+            # BUDGET, printed so a run cannot be started that the seeds cannot
+            # finish. The whole load-test float was 4.49 AEQ across 623 rows, so
+            # this is a real constraint rather than a formality. A run that
+            # empties the seeds halfway is the worst outcome: the finder then
+            # rebuilds a list whose tail is unusable, and the next measurement
+            # silently uses fewer pairs than it reports.
+            TARGETS=$(wc -l < /tmp/targets.csv)
+            echo ""
+            echo "=== budget ==="
+            awk -v t="$TARGETS" -v w="$FUNDWEI" 'BEGIN{
+              print "targets:              " t
+              print "per account (AEQ):    " w/1e18
+              print "total required (AEQ): " t*w/1e18
+            }'
+            echo "Compare that with the 'combined balance' loadtest-find-funded.yml"
+            echo "last reported for accounts-funded.csv. If required exceeds it,"
+            echo "lower fund_amount_wei -- the seeds are part of that same float." 
+
+            if [ "${CONFIRM:-false}" != "true" ]; then
+              echo ""
+              echo "confirm != true -- built the CSV and sent nothing."
+              exit 0
+            fi
+
+            # The fund phase needs headroom the shipped 200/10s limiter does not
+            # give. Raised only for the duration of this run and put straight
+            # back, whatever happens.
+            ORIG=$(grep '^AEQUITAS_RPC_RATE_LIMIT_MAX=' /root/.aequitas.env | cut -d= -f2)
+            ORIG=${ORIG:-200}
+            echo "=== rate limit is $ORIG; the fund phase runs against the node as-is ==="
+
+            echo "=== PHASE fund ==="
+            docker run --rm --network host -v "$(pwd)":/w -w /w \
+              -v /tmp:/tmp golang:1.24-alpine \
+              ./loadtest -accounts /tmp/widen.csv \
+                -rpc http://localhost:8080/rpc \
+                -status http://localhost:8080/api/status \
+                -phase fund -seeds "$SEEDS" \
+                -fund-amount-wei "$FUNDWEI" 2>&1 | tail -40
+
+            echo ""
+            echo "=== now rerun loadtest-find-funded.yml to rebuild accounts-funded.csv ==="
+            echo "(deliberately not overwritten here: a failed funding run must not"
+            echo " be able to destroy the working account list)"
+        env:
+          SEEDS: ${{ inputs.seeds }}
+          FUNDWEI: ${{ inputs.fund_amount_wei }}
+          CONFIRM: ${{ inputs.confirm }}

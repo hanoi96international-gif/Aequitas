@@ -1,0 +1,109 @@
+name: Recover Contabo1 by resyncing from Contabo2 (manual, wipes local state)
+
+# WHY CONTABO1 CANNOT RECOVER ON ITS OWN
+#
+# It is stuck replaying one block, forever:
+#
+#   [REPLAY] x Transfer 0x2ab3...->0x7f26... 0.000010: insufficient balance
+#            (have 0.000000 after demurrage) (block #4386221) - rolling back whole block
+#   [REPLAY] x Block #4386221 rolled back due to a genuine state-inconsistency
+#            failure - block rejected
+#
+# Contabo2 produced and accepted that block; Contabo1's replay disagrees about
+# an account balance and rejects it. It can never advance past 4386220, so no
+# amount of waiting, orphan resolution or ancestor fetching helps -- those were
+# consequences, not the cause. The divergence dates from the load run during
+# which Contabo1 froze and missed every block carrying transfers.
+#
+# TWO PRECONDITIONS THAT WERE NOT MET, AND ARE FIXED HERE
+#
+# 1. main.go only resyncs inside `if bootstrapURL := os.Getenv(
+#    "BOOTSTRAP_SNAPSHOT_URL"); bootstrapURL != "" && ...`. Contabo1 has no
+#    such variable, so resync-contabo1-only.yml would have restarted a stuck
+#    node and done nothing at all.
+#
+# 2. BOOTSTRAP_SIGNER on Contabo1 reads 0x92cbedec9d348b4762cb9af99500ee6139c5b671
+#    -- the decommissioned Railway primary. Contabo2's snapshot is signed by
+#    0x1a37dcdaa42cf3f7e1f6e41379961f40df44a4e3, which was RECOVERED from the
+#    live snapshot's own signature rather than assumed. With the old value the
+#    snapshot is refused and the resync fails closed.
+#
+# THE TRUST DECISION, STATED PLAINLY
+#
+# Pointing BOOTSTRAP_SIGNER at Contabo2 means Contabo1 will accept Contabo2's
+# state as authoritative. That is a real change: the two boxes have separate
+# owners, and this makes one of them the source of truth for the other during
+# a resync. It is the right call here -- Contabo2 is the only advancing
+# validator and Contabo1 cannot recover otherwise -- and it should be a
+# deliberate, visible act rather than a quiet config edit.
+#
+# This wipes Contabo1's local chain state and replaces it with Contabo2's
+# signature-verified snapshot. Requires confirm=true.
+on:
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: "Type true to actually resync (wipes Contabo1's local state)"
+        required: true
+        default: "false"
+
+jobs:
+  recover:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Resync Contabo1 from Contabo2
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: 173.249.37.118
+          username: root
+          key: ${{ secrets.CONTABO_SSH_KEY }}
+          port: 22
+          fingerprint: "SHA256:noMtjHV8c+2iEFZu3TRUP6WRwGjkrvFke71KgU6Eyt4"
+          script_stop: false
+          timeout: 1800s
+          command_timeout: 1800s
+          envs: CONFIRM
+          script: |
+            if [ "${CONFIRM:-false}" != "true" ]; then
+              echo "confirm != true -- nothing done."
+              exit 0
+            fi
+            STAMP=$(date +%Y%m%d-%H%M%S)
+            cp /root/.aequitas.env "/root/.aequitas.env.bak.$STAMP"
+            echo "backup: /root/.aequitas.env.bak.$STAMP"
+
+            echo "=== before ==="
+            grep -E '^(BOOTSTRAP_SIGNER|BOOTSTRAP_SNAPSHOT_URL|RESYNC_FROM_SNAPSHOT)=' /root/.aequitas.env || echo "(none of them present)"
+            curl -s --max-time 15 http://127.0.0.1:8080/api/status | tr ',' '\n' | grep '"height"' || true
+
+            echo "=== pointing Contabo1 at Contabo2 as its snapshot source ==="
+            sed -i '/^BOOTSTRAP_SNAPSHOT_URL=/d;/^BOOTSTRAP_SIGNER=/d' /root/.aequitas.env
+            echo 'BOOTSTRAP_SNAPSHOT_URL=http://194.163.188.71:8080/api/snapshot' >> /root/.aequitas.env
+            echo 'BOOTSTRAP_SIGNER=0x1a37dcdaa42cf3f7e1f6e41379961f40df44a4e3' >> /root/.aequitas.env
+            sed -i 's/^RESYNC_FROM_SNAPSHOT=.*/RESYNC_FROM_SNAPSHOT=true/' /root/.aequitas.env
+            grep -q '^RESYNC_FROM_SNAPSHOT=' /root/.aequitas.env || echo 'RESYNC_FROM_SNAPSHOT=true' >> /root/.aequitas.env
+            grep -E '^(BOOTSTRAP_SIGNER|BOOTSTRAP_SNAPSHOT_URL|RESYNC_FROM_SNAPSHOT)=' /root/.aequitas.env
+
+            echo "=== running deploy.sh (rebuild + restart; boot performs the resync) ==="
+            /root/deploy.sh 2>&1 | tail -15
+
+            echo "=== reverting RESYNC_FROM_SNAPSHOT so ordinary deploys do not wipe state every time ==="
+            sed -i 's/^RESYNC_FROM_SNAPSHOT=.*/RESYNC_FROM_SNAPSHOT=false/' /root/.aequitas.env
+            grep '^RESYNC_FROM_SNAPSHOT=' /root/.aequitas.env
+
+            echo "=== what the boot said about the resync ==="
+            sleep 30
+            docker logs aequitas-node 2>&1 | grep -iE '\[RESYNC\]|\[BOOTSTRAP\]|snapshot' | tail -25 || echo "(no resync lines)"
+
+            echo "=== settings that must have survived ==="
+            docker inspect aequitas-node --format '{{range .Config.Env}}{{println .}}{{end}}' | grep -E '^(AEQUITAS_WAL_ENABLED|AEQUITAS_DB_MAX_CONNS|ENABLE_MULTI_BLOCK_TICK|AEQUITAS_COMPRESS_BLOCK_PAYLOAD|MPC_ENABLED)=' || echo "(MISSING -- investigate)"
+            echo "=== mounts ==="
+            docker inspect aequitas-node --format '{{range .Mounts}}{{.Source}} -> {{.Destination}}{{println}}{{end}}'
+
+            echo "=== is it advancing now? ==="
+            for i in 1 2 3 4 5 6; do
+              sleep 20
+              curl -s --max-time 10 http://127.0.0.1:8080/api/status | tr ',' '\n' | grep '"height"' || echo "  (unreachable)"
+            done
+        env:
+          CONFIRM: ${{ inputs.confirm }}

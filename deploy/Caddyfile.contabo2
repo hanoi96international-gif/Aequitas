@@ -1,0 +1,63 @@
+# Aequitas — TLS for Contabo2, the second MPC party.
+#
+# WHY THIS EXISTS
+# ---------------
+# The private duplicate check splits every biometric template into one row per
+# validator, and the parties exchange blinded values to compare them. That
+# exchange decides whether a person counts as already registered.
+#
+# NewHTTPTransport (x/humanity/mpc/httptransport.go) refuses plaintext peers on
+# purpose. Nothing on that wire reveals a template — only Beaver-blinded
+# differences travel — but anyone able to INJECT on it can force a "no match"
+# and mint a second account for someone who already exists. Integrity, not
+# confidentiality, is what protects one-human-one-account there.
+#
+# STATE AS FOUND (2026-08-19, measured)
+# -------------------------------------
+#     https://173.249.37.118  -> no TLS
+#     https://194.163.188.71  -> no TLS
+#     https://aequitas.digital -> 200   (Caddy on Contabo1)
+#
+# So Contabo1 can be reached over TLS through its domain and Contabo2 cannot be
+# reached over TLS at all. No committee can form until that changes, and the
+# right fix is a certificate for Contabo2 — not relaxing the check that refuses
+# plaintext.
+#
+# WHAT IS SERVED, AND WHAT DELIBERATELY IS NOT
+# --------------------------------------------
+# Only the MPC exchange endpoint and the health path. Contabo2 is a validator,
+# not a public front end: the app talks to aequitas.digital. Exposing the whole
+# API here would put a second, differently-configured public surface on the
+# network for no benefit, and every endpoint that exists is one that has to be
+# kept correct.
+#
+# /mpc/exchange authenticates every request by signature (auth.go) and rejects
+# anything unsigned with 401, so a bare probe returning 401 is the healthy
+# answer rather than a sign of a problem.
+
+{$MPC_PARTY_HOSTNAME} {
+	# Peers reach this party here. Every contribution carries a signature over
+	# a digest binding payload, session, round and party, verified against the
+	# sender's validator signing address before the body is even decoded.
+	handle /mpc/* {
+		reverse_proxy aequitas-node:8080
+	}
+
+	# Enough to answer "is this node alive", and nothing more.
+	handle /api/status {
+		reverse_proxy aequitas-node:8080
+	}
+
+	# Everything else is refused rather than proxied. A validator does not need
+	# to be a public API, and an endpoint that does not exist cannot be wrong.
+	handle {
+		respond "not served here" 404
+	}
+
+	encode gzip
+
+	log {
+		output stdout
+		format console
+	}
+}

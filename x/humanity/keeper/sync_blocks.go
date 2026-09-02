@@ -6,6 +6,7 @@ import (
 	"crypto/ecdsa"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -19,6 +20,8 @@ import (
 	"time"
 
 	"github.com/ethereum/go-ethereum/crypto"
+
+	"github.com/hanoi96international-gif/aequitas-chain/x/humanity/mpc"
 )
 
 // ─── PEER REGISTRY ───────────────────────────────────────────────────────────
@@ -42,16 +45,120 @@ var GlobalPeerRegistry = &PeerRegistry{peers: make(map[string]time.Time)}
 type PeerRegistry struct {
 	mu    sync.RWMutex
 	peers map[string]time.Time // URL → last heartbeat
+
+	// mpcReady records which peers advertised that they can actually serve the
+	// duplicate check.
+	//
+	// Committee selection draws from candidates by hash. Without this it would
+	// draw from EVERY registered peer, including ones that never enabled MPC —
+	// and a drawn member that cannot take part stalls every comparison the
+	// committee is asked for, halting registration for everybody. The default is
+	// false, so a peer running older code, or one that simply does not offer the
+	// service, is never drawn.
+	mpcReady map[string]bool
+
+	// signingAddr maps URL → the peer's validator signing address, recorded
+	// when a peer registers and proves ownership of that key.
+	//
+	// The registration endpoint has always received both halves and kept only
+	// the URL, which left nothing able to answer "which address is reachable
+	// where". MPC committee selection needs exactly that join: a validator can
+	// only be a committee member if its endpoint is known AND its signing
+	// address is known, because peers authenticate its contributions against
+	// that address.
+	signingAddr map[string]string
 }
 
 func (pr *PeerRegistry) Register(url string) {
+	pr.RegisterWithAddress(url, "")
+}
+
+// RegisterWithAddress records a peer's URL together with the signing address it
+// authenticated as.
+//
+// An empty address records the heartbeat but leaves the peer ineligible for MPC
+// committee membership — correct, because without a verified address there is
+// nothing to check its contributions against.
+//
+// It says NOTHING about MPC, and that distinction is the whole point of the
+// split below. This used to call RegisterWithMPC(url, addr, false), which meant
+// every ordinary heartbeat asserted "this peer does not serve MPC" — and
+// Register() runs on every sync cycle. Any peer that had advertised readiness
+// was demoted again within seconds, so the candidate list could never hold more
+// than the node itself and no committee could ever be formed. Measured
+// 2026-08-23 on both boxes: 503 "1 validators advertise an MPC endpoint, need
+// 2". Silence is not the same as "no", and only the authenticated registration
+// that actually carries the field gets to answer the question.
+func (pr *PeerRegistry) RegisterWithAddress(url, signingAddress string) {
+	pr.register(url, signingAddress, nil)
+}
+
+// RegisterWithMPC additionally records whether the peer offers to serve the
+// private duplicate check.
+func (pr *PeerRegistry) RegisterWithMPC(url, signingAddress string, mpcReady bool) {
+	pr.register(url, signingAddress, &mpcReady)
+}
+
+// register is the one writer. mpcReady == nil means "this caller does not know",
+// which leaves any previously recorded answer untouched.
+func (pr *PeerRegistry) register(url, signingAddress string, mpcReady *bool) {
 	if url == "" {
 		return
 	}
 	url = strings.TrimRight(url, "/")
 	pr.mu.Lock()
 	pr.peers[url] = time.Now()
+	if signingAddress != "" {
+		if pr.signingAddr == nil {
+			pr.signingAddr = map[string]string{}
+		}
+		pr.signingAddr[url] = strings.ToLower(signingAddress)
+	}
+	if mpcReady != nil {
+		if pr.mpcReady == nil {
+			pr.mpcReady = map[string]bool{}
+		}
+		pr.mpcReady[url] = *mpcReady
+	}
 	pr.mu.Unlock()
+}
+
+// MPCCandidates returns peers that advertise both an endpoint and a verified
+// signing address, plus this node itself.
+//
+// Only recently-seen peers: a committee member that is not reachable cannot
+// take part, and additive sharing means one absent member stalls every
+// comparison the committee is asked for.
+// MPCCandidates returns peers eligible for committee membership: recently seen,
+// with a verified signing address, AND advertising that they serve the check.
+//
+// selfAddress is empty when THIS node is not an MPC party, which keeps it out of
+// its own candidate list for the same reason.
+func (pr *PeerRegistry) MPCCandidates(selfURL, selfAddress string) []mpc.Party {
+	pr.mu.RLock()
+	defer pr.mu.RUnlock()
+
+	var out []mpc.Party
+	self := strings.TrimRight(selfURL, "/")
+	if self != "" && selfAddress != "" {
+		out = append(out, mpc.Party{URL: self, Address: strings.ToLower(selfAddress)})
+	}
+	for url, lastSeen := range pr.peers {
+		if url == self || time.Since(lastSeen) >= 5*time.Minute {
+			continue
+		}
+		addr := pr.signingAddr[url]
+		if addr == "" {
+			continue
+		}
+		if !pr.mpcReady[url] {
+			// Eligible only if the peer said it can serve. A committee member
+			// that cannot take part stalls every comparison it is asked for.
+			continue
+		}
+		out = append(out, mpc.Party{URL: url, Address: addr})
+	}
+	return out
 }
 
 // ActivePeers returns peers that sent a heartbeat in the last 5 minutes,
@@ -501,23 +608,113 @@ func fetchWithSmallerPageFallback(nodeURL string, minHeight int64, pageSize, sma
 // still missing afterward). See fetchMissingAncestors' comment for why this
 // batching, not a longer timeout, is the real fix for the orphan-abandon
 // storm seen during a large catch-up.
-func (dag *BlockDAG) fetchBlocksByHashes(nodeURL string, hashes []string) ([]*Block, error) {
+func (dag *BlockDAG) fetchBlocksByHashes(nodeURL string, hashes []string) ([]*Block, bool, error) {
 	body, _ := json.Marshal(map[string][]string{"hashes": hashes})
 	resp, err := httpSyncClient.Post(nodeURL+"/api/blocks/by-hash", "application/json", bytes.NewReader(body))
 	if err != nil {
-		return nil, err
+		return nil, false, err
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
 		respBody, _ := io.ReadAll(io.LimitReader(resp.Body, 4<<10))
-		return nil, fmt.Errorf("peer returned HTTP %d: %s", resp.StatusCode, strings.TrimSpace(string(respBody)))
+		return nil, false, fmt.Errorf("peer returned HTTP %d: %s", resp.StatusCode, strings.TrimSpace(string(respBody)))
 	}
-	respBody, _ := io.ReadAll(io.LimitReader(resp.Body, 20<<20))
+	// The peer says it stopped early because the response hit its byte budget.
+	// The hashes it left out were never looked up, so they must NOT be counted
+	// as ones it does not have -- that count drives orphanAbandonAfter, and
+	// abandoning a block the peer actually holds is how a node ends up unable
+	// to bridge back to the chain at all.
+	truncated := resp.Header.Get("X-Blocks-Truncated") == "1"
+	blocks, err := decodeBlocksByHashResponse(resp.Body)
+	return blocks, truncated, err
+}
+
+// blocksByHashReadCap bounds how much of a peer's answer is read. An unbounded
+// read from a peer is a memory DoS, so the cap stays; what adapts is the batch.
+const blocksByHashReadCap = 20 << 20
+
+// decodeBlocksByHashResponse applies the read cap and decodes.
+//
+// Kept separate from the HTTP call so the size policy is testable without a
+// network: httpSyncClient refuses loopback addresses (pinningDialer's
+// DNS-rebinding guard), which is correct and not worth weakening for a test.
+//
+// Reads ONE BYTE past the cap so a response that fills it can be told apart
+// from one that merely came close. Without that distinction the truncated body
+// reaches json.Unmarshal and surfaces as "unexpected end of JSON input" - a
+// parse error that says nothing about size, and that is exactly how this
+// failure presented on 2026-08-21.
+func decodeBlocksByHashResponse(r io.Reader) ([]*Block, error) {
+	body, err := io.ReadAll(io.LimitReader(r, blocksByHashReadCap+1))
+	if err != nil {
+		return nil, err
+	}
+	if len(body) > blocksByHashReadCap {
+		return nil, errResponseTooLarge
+	}
 	var blocks []*Block
-	if err := json.Unmarshal(respBody, &blocks); err != nil {
+	if err := json.Unmarshal(body, &blocks); err != nil {
 		return nil, err
 	}
 	return blocks, nil
+}
+
+// errResponseTooLarge reports that a peer's answer exceeded the client read
+// cap, so the batch has to be split rather than retried unchanged.
+//
+// maxBlocksByHashPerRequest is 500, and api.go sized it against blocks of
+// "~2 KB each ... at 500 hashes is ~1 MB — still comfortably under the 20 MB
+// client read cap". That holds for near-empty blocks. A block carrying a few
+// thousand transfers is closer to 1 MB on its own, so the same 500 hashes ask
+// for several hundred MB — and the cap silently truncates rather than
+// refusing. A node that fell behind during a throughput run therefore could
+// not fetch the ancestors it needed to catch up, every later block queued as
+// an orphan, and the node stopped advancing entirely while looking healthy.
+//
+// Splitting on this error rather than raising the cap keeps the cap doing its
+// job (an unbounded read from a peer is a memory DoS) while making the batch
+// size adapt to what blocks actually weigh, which no fixed constant can know.
+var errResponseTooLarge = errors.New("peer response exceeded the client read cap")
+
+// fetchBlocksByHashesAdaptive fetches a chunk, halving it on each
+// errResponseTooLarge until it fits or a single hash is left. A lone hash that
+// still does not fit is a genuine error: no split can make it smaller.
+func (dag *BlockDAG) fetchBlocksByHashesAdaptive(nodeURL string, hashes []string) ([]*Block, bool, error) {
+	return splitOnOversize(hashes, nodeURL, func(chunk []string) ([]*Block, bool, error) {
+		return dag.fetchBlocksByHashes(nodeURL, chunk)
+	})
+}
+
+// splitOnOversize runs fetch, halving the batch on each errResponseTooLarge
+// until it fits or one hash is left. A lone hash that still does not fit is a
+// genuine error: no split makes it smaller.
+//
+// The full batch is tried first, so an ordinary catch-up still costs one round
+// trip and only a genuinely heavy one pays for extra requests.
+//
+// Takes fetch as a parameter so the splitting can be tested without a network:
+// httpSyncClient refuses loopback addresses (pinningDialer's DNS-rebinding
+// guard), which is correct and not worth weakening for a test.
+func splitOnOversize(hashes []string, label string, fetch func([]string) ([]*Block, bool, error)) ([]*Block, bool, error) {
+	blocks, truncated, err := fetch(hashes)
+	if !errors.Is(err, errResponseTooLarge) {
+		return blocks, truncated, err
+	}
+	if len(hashes) <= 1 {
+		return nil, false, fmt.Errorf("a single block from %s exceeds the %d MB read cap", label, blocksByHashReadCap>>20)
+	}
+	mid := len(hashes) / 2
+	fmt.Printf("[HTTP-SYNC] response for %d blocks from %s exceeded the read cap - splitting into %d + %d\n",
+		len(hashes), label, mid, len(hashes)-mid)
+	first, t1, err := splitOnOversize(hashes[:mid], label, fetch)
+	if err != nil {
+		return nil, false, err
+	}
+	second, t2, err := splitOnOversize(hashes[mid:], label, fetch)
+	if err != nil {
+		return nil, false, err
+	}
+	return append(first, second...), t1 || t2, nil
 }
 
 // fetchMissingAncestors resolves orphaned blocks by walking backward one
@@ -719,7 +916,7 @@ func (dag *BlockDAG) fetchMissingAncestors(nodeURL string) {
 		fetchedThisRound := 0
 		for i := 0; i < len(pending); i += maxBatchSize {
 			chunk := pending[i:min(i+maxBatchSize, len(pending))]
-			blocks, err := dag.fetchBlocksByHashes(nodeURL, chunk)
+			blocks, truncated, err := dag.fetchBlocksByHashesAdaptive(nodeURL, chunk)
 			if err != nil {
 				fmt.Printf("[HTTP-SYNC] ✗ Could not batch-fetch %d missing ancestor(s) from %s: %v\n", len(chunk), nodeURL, err)
 				continue // network failure — don't count as genuine peer confirmation
@@ -729,13 +926,22 @@ func (dag *BlockDAG) fetchMissingAncestors(nodeURL string) {
 			// A network error never counts — it says nothing about whether the peer
 			// has the block, and we must not burn through orphanAbandonAfter budget
 			// on transient connectivity issues.
-			returned := make(map[string]bool, len(blocks))
-			for _, block := range blocks {
-				returned[block.Hash] = true
-			}
-			for _, h := range chunk {
-				if !returned[h] {
-					dag.RecordOrphanAttempt(h)
+			// A TRUNCATED answer says nothing about the hashes it left out --
+			// the peer stopped at its response byte budget before looking them
+			// up. Counting those as "the peer does not have it" spends
+			// orphanAbandonAfter budget on blocks the peer is holding, and a
+			// node that abandons the ancestors bridging it to the chain never
+			// reconnects to it. Under load, when blocks are full, truncation is
+			// the NORMAL case rather than the exception.
+			if !truncated {
+				returned := make(map[string]bool, len(blocks))
+				for _, block := range blocks {
+					returned[block.Hash] = true
+				}
+				for _, h := range chunk {
+					if !returned[h] {
+						dag.RecordOrphanAttempt(h)
+					}
 				}
 			}
 			for _, block := range blocks {
@@ -768,8 +974,18 @@ func (dag *BlockDAG) fetchMissingAncestors(nodeURL string) {
 		}
 		totalFetched += fetchedThisRound
 		if fetchedThisRound == 0 {
+			// Der Peer hatte keinen der angefragten Eltern. Einmal ist das
+			// harmlos -- er kennt den Block vielleicht noch nicht. Mehrere
+			// Runden hintereinander heissen, dass er ihn nicht HAT: seit dem
+			// letzten Resync haelt er nur noch die juengsten Bloecke
+			// (TRUNCATE chain_blocks in snapshot.go), und dann ist Aufholen
+			// von ihm aus unmoeglich. Siehe ahnen_unerreichbar.go.
+			if aussichtslos, folgen := merkeAhnenLeerlauf(); aussichtslos {
+				dag.loeseHeilungWegenUnerreichbarerAhnenAus(nodeURL, folgen)
+			}
 			return // peer had none of the currently-pending hashes (yet) — stop for this cycle
 		}
+		merkeAhnenErfolg()
 	}
 }
 
@@ -866,6 +1082,20 @@ func (dag *BlockDAG) advancePeerSyncHeight(nodeURL string, height int64) {
 	if height > dag.peerSyncHeight[nodeURL] {
 		dag.peerSyncHeight[nodeURL] = height
 	}
+	// Zeitstempel IMMER setzen, auch wenn die Hoehe gleich blieb -- siehe
+	// peerSyncSeenAt's eigenen Kommentar: ein feststeckender Peer ist genau
+	// der Fall, den die Bremse braucht.
+	if dag.peerSyncSeenAt == nil {
+		dag.peerSyncSeenAt = make(map[string]time.Time)
+		dag.peerSyncEigeneHoehe = make(map[string]int64)
+	}
+	dag.peerSyncSeenAt[nodeURL] = time.Now()
+	// Die eigene Hoehe im selben Moment festhalten -- nur ihre Differenz zur
+	// Peer-Hoehe ist ein echter Rueckstand. Siehe peerSyncEigeneHoehe.
+	if dag.peerSyncEigeneHoehe == nil {
+		dag.peerSyncEigeneHoehe = make(map[string]int64)
+	}
+	dag.peerSyncEigeneHoehe[nodeURL] = dag.heightSchnell.Load()
 }
 
 // cleanSyncStreakThreshold is how many CONSECUTIVE doSyncOnce cycles in a
@@ -2180,7 +2410,7 @@ func (dag *BlockDAG) healSyntheticCheckpoints() {
 	for _, peerURL := range peers {
 		for i := 0; i < len(hashes); i += maxBlocksByHashPerRequest {
 			chunk := hashes[i:min(i+maxBlocksByHashPerRequest, len(hashes))]
-			blocks, err := dag.fetchBlocksByHashes(peerURL, chunk)
+			blocks, _, err := dag.fetchBlocksByHashes(peerURL, chunk)
 			if err != nil || len(blocks) == 0 {
 				continue
 			}
@@ -2295,13 +2525,26 @@ func (dag *BlockDAG) registerAndDiscover(selfURL, primaryURL string) bool {
 		}
 	}
 
-	body, _ := json.Marshal(map[string]string{
+	// mpc_ready was a dead field for its whole existence. handlePeerRegister has
+	// always read it into PeerRegistry.mpcReady, and committee selection has
+	// always required it — but nothing anywhere ever SENT it, so every node's
+	// candidate list contained itself and nobody else. Measured 2026-08-23 on
+	// both boxes:
+	//
+	//   503 "mpc: 1 validators advertise an MPC endpoint, need 2 for a
+	//        committee of that size"
+	//
+	// map[string]any rather than map[string]string because of it: a bool cannot
+	// go into the old map, and encoding it as "true" would have arrived as
+	// false, which is the same dead field with more steps.
+	body, _ := json.Marshal(map[string]any{
 		"url":                        selfURL,
 		"signing_address":            signerAddr,
 		"signature":                  signature,
 		"peer_secret":                os.Getenv("PEER_SECRET"),
 		"node_operator_wallet":       strings.ToLower(os.Getenv("NODE_OPERATOR_WALLET")),
 		"operator_binding_signature": operatorBindingSig,
+		"mpc_ready":                  MPCServing(),
 	})
 	resp, err := httpSyncClient.Post(
 		primaryURL+"/api/peers/register", "application/json", bytes.NewReader(body))
@@ -2701,6 +2944,7 @@ func (dag *BlockDAG) armInitialSyncGate(syncFirst bool) {
 func (dag *BlockDAG) resetPeerSyncProgress() {
 	dag.syncPeerMu.Lock()
 	dag.peerSyncHeight = make(map[string]int64)
+	dag.peerSyncSeenAt = make(map[string]time.Time)
 	dag.cleanSyncStreak = make(map[string]int)
 	dag.syncPeerMu.Unlock()
 

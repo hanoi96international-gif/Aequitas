@@ -221,7 +221,7 @@ func TestSupplyConservation_UBIDistribution(t *testing.T) {
 
 	before := totalAEQ(cs)
 	cs.mu.Lock()
-	shares, err := cs.distributeUBIPoolLocked(t.Context())
+	shares, err := cs.distributeUBIPoolLocked(t.Context(), 0)
 	cs.mu.Unlock()
 	if err != nil {
 		t.Fatalf("distribute UBI: %v", err)
@@ -290,7 +290,7 @@ func TestSupplyConservation_UBIDistribution_RemaindersThatUsedToMint(t *testing.
 
 		before := totalAEQ(cs)
 		cs.mu.Lock()
-		_, err := cs.distributeUBIPoolLocked(t.Context())
+		_, err := cs.distributeUBIPoolLocked(t.Context(), 0)
 		cs.mu.Unlock()
 		if err != nil {
 			t.Fatalf("pool %.6f over %d: %v", tc.poolAEQ, tc.humans, err)
@@ -318,7 +318,7 @@ func TestSupplyConservation_LPDistribution_RemaindersThatUsedToMint(t *testing.T
 
 		before := totalAEQ(cs)
 		cs.mu.Lock()
-		_, err := cs.distributeLPPoolLocked(t.Context())
+		_, err := cs.distributeLPPoolLocked(t.Context(), 0)
 		cs.mu.Unlock()
 		if err != nil {
 			t.Fatalf("LP pool %.6f: %v", poolAEQ, err)
@@ -346,14 +346,14 @@ func TestSupplyConservation_ValidatorAndLPDistribution(t *testing.T) {
 	assertConserved(t, cs, "validator pool distribution", func() {
 		cs.mu.Lock()
 		defer cs.mu.Unlock()
-		if _, err := cs.distributeValidatorsPoolLocked(t.Context()); err != nil {
+		if _, err := cs.distributeValidatorsPoolLocked(t.Context(), 0); err != nil {
 			t.Fatalf("distribute validators: %v", err)
 		}
 	})
 	assertConserved(t, cs, "LP pool distribution", func() {
 		cs.mu.Lock()
 		defer cs.mu.Unlock()
-		if _, err := cs.distributeLPPoolLocked(t.Context()); err != nil {
+		if _, err := cs.distributeLPPoolLocked(t.Context(), 0); err != nil {
 			t.Fatalf("distribute LP: %v", err)
 		}
 	})
@@ -397,5 +397,276 @@ func TestSupplyConservation_ConcurrentTransferFastPath(t *testing.T) {
 		if !applied {
 			t.Skip("fast path declined (needs a DB); nothing to assert")
 		}
+	})
+}
+
+// The paths a survey on 2026-08-19 found had no conservation test of their own.
+//
+// The existing tests cover transfer, registration, swap, liquidity, demurrage,
+// the wealth cap and the three daily distributions. Mapping every site in
+// state.go that increases an AEQ balance turned up four more that no test held
+// to the invariant: the two escrow helpers, the swap-fee distribution, and the
+// one-time stranded-fee migration. A path with no test is exactly where the
+// last two minting bugs were found.
+
+// TestSupplyConservation_TUsdFeeConversion covers the conversion the stranded-
+// fee migration and every ongoing swap fee run through.
+//
+// Written while chasing a suspected rounding asymmetry: the function debits the
+// reserve by aeqOut and returns round6(aeqOut), which looks like it could
+// credit more than the pool gave up. It cannot. aeqOut comes from AMMSwapOut,
+// which returns a Decimal — an int64 of micro-units — so the value is always
+// exactly on the micro-grid and round6 is a no-op there.
+//
+// Kept anyway, because the reasoning only holds while that stays true. If
+// anyone ever makes AMMSwapOut return a raw float, or routes an off-grid amount
+// through here, the two sides stop matching and this test says so.
+func TestSupplyConservation_TUsdFeeConversion(t *testing.T) {
+	// Values chosen so the AMM output lands off a micro-AEQ boundary, which is
+	// where the asymmetry showed.
+	for _, fee := range []float64{0.1, 0.333333, 1.0, 0.000007, 2.5} {
+		cs := newTestState()
+		cs.pool = &PoolState{
+			ReserveAEQ:  NewDecimal(10000),
+			ReserveTUSD: NewDecimal(3000),
+		}
+		acc := &AccountState{Address: "0xfee", Balance: NewDecimal(0)}
+		cs.accounts.Set(acc.Address, acc)
+
+		before := totalAEQ(cs)
+		cs.mu.Lock()
+		out, ok := cs.convertTUsdFeeToAEQLocked(fee)
+		cs.mu.Unlock()
+		if !ok {
+			continue
+		}
+		acc.Balance = acc.Balance.Add(NewDecimal(out))
+
+		if delta := totalAEQ(cs) - before; math.Abs(delta) > 1e-9 {
+			t.Errorf("converting %.6f tUSD moved the AEQ supply by %+.9f — the pool must give up "+
+				"exactly what the account is credited", fee, delta)
+		}
+	}
+}
+
+// TestSupplyConservation_EscrowLiquidation: the inactivity sweep burns LP
+// shares into a balance. It moves value out of the pool, so it must not create
+// any on the way.
+func TestSupplyConservation_EscrowLiquidation(t *testing.T) {
+	cs := newTestState()
+	cs.pool = &PoolState{
+		ReserveAEQ:    NewDecimal(5000),
+		ReserveTUSD:   NewDecimal(5000),
+		TotalLPShares: NewDecimal(1000),
+	}
+	acc := &AccountState{
+		Address:  "0xescrow",
+		Balance:  NewDecimal(100),
+		IsHuman:  true,
+		LPShares: NewDecimal(400),
+	}
+	cs.accounts.Set(acc.Address, acc)
+	cs.humanCount++
+
+	assertConserved(t, cs, "escrow LP liquidation", func() {
+		cs.mu.Lock()
+		defer cs.mu.Unlock()
+		if _, _, _, err := cs.liquidateLPSharesForEscrowLocked(t.Context(), acc, 400); err != nil {
+			t.Fatalf("liquidate: %v", err)
+		}
+	})
+}
+
+// TestSupplyConservation_SwapFeeDistribution: the fee is split four ways. Every
+// share must come out of the fee, not out of nowhere — the daily distributions
+// got exactly this wrong by rounding each share up and zeroing the pool anyway.
+func TestSupplyConservation_SwapFeeDistribution(t *testing.T) {
+	for _, fee := range []float64{0.000003, 0.000007, 0.1, 1.0} {
+		cs := newTestState()
+		cs.pool = &PoolState{ReserveAEQ: NewDecimal(10000), ReserveTUSD: NewDecimal(10000)}
+
+		payer := &AccountState{Address: "0xpayer", Balance: NewDecimal(1000), IsHuman: true}
+		cs.accounts.Set(payer.Address, payer)
+		cs.humanCount++
+
+		before := totalAEQ(cs)
+		// The fee has already been taken from the payer by the caller; model
+		// that, then distribute it.
+		payer.Balance = payer.Balance.Sub(NewDecimal(fee))
+		cs.mu.Lock()
+		err := cs.distributeSwapFeeCtx(t.Context(), fee, true)
+		cs.mu.Unlock()
+		if err != nil {
+			t.Fatalf("fee %.6f: %v", fee, err)
+		}
+		if delta := totalAEQ(cs) - before; delta > 1e-9 {
+			t.Errorf("distributing a %.6f AEQ fee CREATED %+.9f AEQ — the four shares summed "+
+				"above the fee", fee, delta)
+		}
+	}
+}
+
+// TestSupplyBreakdownIsRefusedWithoutADatabase: the breakdown reads the ledger,
+// so with no database it must say so rather than report zeros.
+//
+// Zeros would be actively misleading here — "non_humans: 0.000000" reads like a
+// measurement that rules out an explanation, when nothing was measured at all.
+func TestSupplyBreakdownIsRefusedWithoutADatabase(t *testing.T) {
+	cs := &ChainState{}
+	if _, err := cs.supplyBreakdown(); err == nil {
+		t.Error("a breakdown was produced with no database — zeros would read as evidence")
+	}
+
+	out := cs.SupplyReconciliation()
+	if _, hasBreakdown := out["breakdown"]; hasBreakdown {
+		t.Error("SupplyReconciliation published a breakdown it could not measure")
+	}
+}
+
+// Who may hold AEQ — see docs/WHO_MAY_HOLD_AEQ.md.
+//
+// The rule is a property, not a quota: anyone may hold AEQ, and every holding
+// decays and is capped whether or not a registered human is behind it. That is
+// what makes the NUMBER of non-human accounts uninteresting, and it is only
+// true while nobody adds an IsHuman check to either mechanism.
+//
+// Both of these pass today. They exist so that adding such a check fails a test
+// instead of quietly turning non-human wallets into an escape hatch.
+
+func TestNonHumanAccountsAreNotAnEscapeHatch(t *testing.T) {
+	t.Run("demurrage applies to a non-human balance", func(t *testing.T) {
+		cs := newTestState()
+		cs.pool = &PoolState{}
+		idle := nowUnix() - 400*24*3600
+
+		human := &AccountState{Address: "0xperson", Balance: NewDecimal(9000), IsHuman: true, LastActivityAt: idle}
+		other := &AccountState{Address: "0xwallet", Balance: NewDecimal(9000), IsHuman: false, LastActivityAt: idle}
+		cs.accounts.Set(human.Address, human)
+		cs.accounts.Set(other.Address, other)
+		cs.humanCount = 1
+
+		cs.mu.Lock()
+		humanLost, err1 := cs.settleDemurrageLockedCtx(t.Context(), human)
+		otherLost, err2 := cs.settleDemurrageLockedCtx(t.Context(), other)
+		cs.mu.Unlock()
+		if err1 != nil || err2 != nil {
+			t.Fatalf("settle: %v / %v", err1, err2)
+		}
+
+		if otherLost <= 0 {
+			t.Error("a non-human balance did not decay. Demurrage would then be avoidable by " +
+				"holding AEQ in an unregistered wallet, and the count of such wallets would " +
+				"suddenly matter very much")
+		}
+		if humanLost != otherLost {
+			t.Errorf("identical idle balances decayed differently: human %v, non-human %v — "+
+				"whichever decays less is the address everyone would use", humanLost, otherLost)
+		}
+	})
+
+	t.Run("the wealth cap applies to a non-human balance", func(t *testing.T) {
+		cs := newTestState()
+		cs.pool = &PoolState{}
+		// Several humans, so an average exists for the cap to be a multiple of.
+		for i := 0; i < 4; i++ {
+			addr := fmt.Sprintf("0xh%d", i)
+			cs.accounts.Set(addr, &AccountState{Address: addr, Balance: NewDecimal(1000), IsHuman: true})
+			cs.humanCount++
+		}
+		rich := &AccountState{Address: "0xhoard", Balance: NewDecimal(500000), IsHuman: false}
+		cs.accounts.Set(rich.Address, rich)
+
+		before := rich.Balance.Float()
+		cs.mu.Lock()
+		err := cs.enforceWealthCapLockedCtx(t.Context(), rich)
+		cs.mu.Unlock()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if rich.Balance.Float() >= before {
+			t.Errorf("a non-human account kept %.2f AEQ, far above any cap on a %d-human "+
+				"average. The cap would be evaded by moving funds to an unregistered address",
+				rich.Balance.Float(), cs.humanCount)
+		}
+	})
+}
+
+// TestLiquidityIsNoLongerAShelter is the closed version of a gap this file
+// used to record.
+//
+// Demurrage was levied on acc.Balance, and the wealth cap read acc.Balance.
+// LP shares are not balance and the AMM reserve is not an account, so AEQ
+// parked as liquidity escaped both: deposit, wait, withdraw, and the decay for
+// that period was simply avoided. Measured 2026-08-20 the reserve held 3.9% of
+// the entire supply that way.
+//
+// It was not defensible on the argument that pooled liquidity "is not idle".
+// Providers are already paid for that service out of swap fees
+// (distributeLPPoolLocked); the exemption was a second, unvoted payment that
+// scaled with wealth — and it bound only the people who did not know the trick.
+func TestLiquidityIsNoLongerAShelter(t *testing.T) {
+	t.Run("demurrage reaches AEQ held as LP shares", func(t *testing.T) {
+		cs := newTestState()
+		cs.pool = &PoolState{
+			ReserveAEQ:    NewDecimal(5000),
+			ReserveTUSD:   NewDecimal(5000),
+			TotalLPShares: NewDecimal(1000),
+		}
+		idle := nowUnix() - 400*24*3600
+		lp := &AccountState{
+			Address: "0xlp", Balance: NewDecimal(0), IsHuman: true,
+			LPShares: NewDecimal(1000), LastActivityAt: idle,
+		}
+		cs.accounts.Set(lp.Address, lp)
+		cs.humanCount = 1
+
+		cs.mu.Lock()
+		lost, err := cs.settleDemurrageLockedCtx(t.Context(), lp)
+		cs.mu.Unlock()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if lost.Float() <= 0 {
+			t.Fatal("an idle holding of 5,000 AEQ worth of LP shares did not decay at all — " +
+				"liquidity is a shelter again, and the rule binds only those who do not use it")
+		}
+		t.Logf("decayed %.6f AEQ of LP-held wealth", lost.Float())
+	})
+
+	t.Run("the wealth cap counts LP shares", func(t *testing.T) {
+		cs := newTestState()
+		for i := 0; i < 4; i++ {
+			addr := fmt.Sprintf("0xh%d", i)
+			cs.accounts.Set(addr, &AccountState{Address: addr, Balance: NewDecimal(1000), IsHuman: true})
+			cs.humanCount++
+		}
+		cs.pool = &PoolState{
+			ReserveAEQ:    NewDecimal(400000),
+			ReserveTUSD:   NewDecimal(400000),
+			TotalLPShares: NewDecimal(1000),
+		}
+		// Balance well under any cap, wealth far above it — the exact shape the
+		// old implementation waved through.
+		hoard := &AccountState{
+			Address: "0xhoard", Balance: NewDecimal(10), IsHuman: true,
+			LPShares: NewDecimal(1000),
+		}
+		cs.accounts.Set(hoard.Address, hoard)
+		cs.humanCount++
+
+		cs.mu.Lock()
+		before := cs.lpValueLockedAEQ(hoard) + hoard.Balance.Float()
+		err := cs.enforceWealthCapLockedCtx(t.Context(), hoard)
+		after := cs.lpValueLockedAEQ(hoard) + hoard.Balance.Float()
+		cs.mu.Unlock()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if after >= before {
+			t.Fatalf("wealth of %.2f AEQ held almost entirely as LP shares was not capped "+
+				"(still %.2f). The cap would be evaded in one click by anyone who knew to "+
+				"deposit into the pool", before, after)
+		}
+		t.Logf("capped total wealth from %.2f to %.2f AEQ", before, after)
 	})
 }

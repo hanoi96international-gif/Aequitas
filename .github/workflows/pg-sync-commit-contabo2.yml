@@ -1,0 +1,110 @@
+name: Postgres synchronous_commit on Contabo2 (measure, then keep or revert)
+
+# WHY THIS IS SAFE HERE, AND ONLY HERE.
+#
+# transfer_wal.go states the contract: "the WAL append -- not a Postgres commit
+# -- becomes the durability point for eligible transfers". Postgres is the
+# reconciliation mirror, not the thing that makes a transfer durable. On
+# 2026-08-21 that was observed working on a live node: after a restart the WAL
+# replayed 8,206,534 records and fenced every one correctly.
+#
+# synchronous_commit=off lets Postgres acknowledge a commit before its own WAL
+# fsync completes. The exposure is the last fraction of a second of Postgres
+# writes on a Postgres crash -- which is exactly what the chain's WAL exists to
+# replay. It would NOT be safe on a database that was the durability point;
+# here it is not.
+#
+# WHY IT IS WORTH MEASURING. The flush phase breakdown under load, per flush:
+#
+#   p1_snapshot 724us   p2_acct_sql 556us    p3_acct_exec 26109us
+#   p4_outbox_sql 2517us   p5_outbox_exec 9092us   p6_commit 12042us
+#
+# 93% of that window is database work, and all of it is held under
+# cs.accounts.LockAddrs -- which a mutex profile put at 45.90% of the node's
+# entire lock contention. p6_commit alone is 12ms of fsync wait per flush.
+#
+# The batch-size sweep already ruled out the other lever: 4000 (the default)
+# beat 1000, 400 and 150, and addrs_per_flush barely moved because a ~716
+# account working set produces the same addresses regardless of batch size.
+#
+# Reloaded, not restarted: synchronous_commit is a reloadable setting, so this
+# costs no node downtime.
+on:
+  workflow_dispatch:
+    inputs:
+      value:
+        description: "off = do not wait for Postgres fsync. on = shipped default (revert)."
+        required: true
+        default: "off"
+        type: choice
+        options: ["off", "on"]
+      measure:
+        description: "Run a load test afterwards and report throughput"
+        required: false
+        default: "true"
+        type: choice
+        options: ["true", "false"]
+      duration:
+        description: "Load duration when measuring"
+        required: false
+        default: "60s"
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Set and measure
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: 194.163.188.71
+          username: root
+          key: ${{ secrets.CONTABO2_SSH_KEY }}
+          port: 22
+          script_stop: false
+          timeout: 1800s
+          command_timeout: 1800s
+          envs: VALUE,MEASURE,DUR
+          script: |
+            set +e
+            echo "=== before ==="
+            docker exec aequitas-postgres psql -U postgres -tAc "SHOW synchronous_commit;"
+
+            docker exec aequitas-postgres psql -U postgres -c "ALTER SYSTEM SET synchronous_commit = '$VALUE';"
+            docker exec aequitas-postgres psql -U postgres -c "SELECT pg_reload_conf();" >/dev/null
+            sleep 3
+            echo "=== after ==="
+            NOW=$(docker exec aequitas-postgres psql -U postgres -tAc "SHOW synchronous_commit;" | tr -d ' \r')
+            echo "synchronous_commit = $NOW"
+            if [ "$NOW" != "$VALUE" ]; then
+              echo "FAILED to apply -- leaving as is."
+              exit 1
+            fi
+
+            if [ "$MEASURE" != "true" ]; then
+              echo "measure=false -- done."
+              exit 0
+            fi
+
+            cd /root/contabo-loadtest || { echo "no loadtest dir"; exit 1; }
+            echo ""
+            echo "=== load ==="
+            OUT=$(docker run --rm --network host -v "$(pwd)":/w -w /w \
+              -v /root/go-mod-cache:/go/pkg/mod golang:1.24-alpine \
+              ./loadtest -accounts accounts-funded.csv \
+                -rpc http://localhost:8080/rpc \
+                -status http://localhost:8080/api/status \
+                -phase warmup,run -seeds 5 -duration "$DUR" -ramp 5 2>&1)
+            echo "$OUT" | grep -E 'PHASE run|elapsed:|TPS \('
+            echo "$OUT" | sed -n '/failure causes/,$p' | head -5
+
+            echo ""
+            echo "=== flush phases after the run (microseconds) ==="
+            curl -s --max-time 15 http://127.0.0.1:8080/api/health/combined \
+              | tr ',' '\n' | grep -oE '"(p[1-6]_[a-z_]+|addrs_per_flush|hold_avg_ms|hold_max_ms|items_per_flush|db_avg_ms|flushes)":[0-9]+' | sed 's/"//g'
+            echo ""
+            echo "Compare p6_commit and db_avg_ms against the run before this change."
+            echo "A throughput gain with an unchanged p6_commit is noise, not this setting."
+        env:
+          VALUE: ${{ inputs.value }}
+          MEASURE: ${{ inputs.measure }}
+          DUR: ${{ inputs.duration }}

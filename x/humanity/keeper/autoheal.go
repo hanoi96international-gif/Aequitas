@@ -260,14 +260,90 @@ func (cs *ChainState) ClearAutoResyncRequest() {
 //
 // lastAt == 0 (never resynced) needs neither: the caller's own guard skips the
 // cooldown entirely.
+// hatSeitLangemNichtsAngehaengt sagt, ob dieser Knoten nachweislich
+// abgeschnitten ist statt nur langsam.
+//
+// # WARUM DIE ZEITSCHRANKE ALLEIN NICHT REICHT
+//
+// Der Selbstheilungs-Vergleich uebersprang sich bisher, solange der Knoten
+// "unsettled" war -- mehrere DAG-Tips oder Aufholen -- und ueberbrueckte das
+// erst nach chainDivergenceStallOverride, also 45 Minuten.
+//
+// Das ist genau verkehrt herum: Tip-Fragmentierung ist kein Grund, NICHT zu
+// pruefen, sondern das Symptom. Am 02.09.2026 sammelte C1 -- der PRIMARY --
+// unter Last Tips (9, 10, 11, 12 ...), und die Selbstheilung meldete
+// waehrenddessen im Minutentakt "skipped this round: ... 12 tips
+// (fragmentation) -- not a settled state". Sie haette 45 Minuten lang
+// zugesehen, wie der Primary weiter zurueckfaellt, waehrend Website und
+// Explorer an ihm haengen.
+//
+// # DER BELEG, DER STATTDESSEN ZAEHLT
+//
+// lastSuccessfulPeerSyncAt ist der Zeitpunkt des zuletzt tatsaechlich
+// ANGEHAENGTEN Peer-Blocks -- nicht der letzten Ankunft. Kommen Bloecke an,
+// wird aber seit laengerem keiner angehaengt, ist der Knoten abgeschnitten
+// und nicht langsam. Dieselbe Schwelle, ab der die Aushunger-Erkennung
+// ohnehin ausloest.
+//
+// Ein frisch gestarteter Knoten (Zeitstempel 0) faellt bewusst NICHT darunter:
+// er hat noch nie gemergt, und das ist kein Beleg fuer Abgeschnittensein.
+func (dag *BlockDAG) hatSeitLangemNichtsAngehaengt() bool {
+	// dag.lastHeightAdvanceAt, NICHT lastSuccessfulPeerSyncAt.
+	//
+	// Der zweite Wert war der erste Versuch und er hat nicht funktioniert:
+	// ein abgehaengter Knoten haengt laufend Bloecke an, die als Waisen
+	// liegenbleiben ("Added 37 new blocks ... height unveraendert"), also
+	// aktualisiert er sich weiter. Am 02.09.2026 stand C1 damit 1.400 Bloecke
+	// zurueck, seine Hoehe seit zwanzig Minuten unveraendert -- und die
+	// Selbstheilung meldete weiter "skipped this round ... not a settled
+	// state", weil ihr Beleg frisch aussah.
+	//
+	// Die HOEHE steigt nur, wenn wirklich etwas vorangeht.
+	letzter := dag.lastHeightAdvanceAt.Load()
+	if letzter <= 0 {
+		return false
+	}
+	return time.Now().Unix()-letzter > int64(syncStarvationThreshold.Seconds())
+}
+
 func (dag *BlockDAG) effectiveAutoHealCooldown(lastAt int64) (time.Duration, bool) {
 	if lastAt <= 0 {
 		return autoHealCooldown, false
 	}
-	if dag.lastSuccessfulPeerSyncAt.Load() > lastAt {
-		return autoHealCooldown, false
+	letzterMerge := dag.lastSuccessfulPeerSyncAt.Load()
+	if letzterMerge <= lastAt {
+		// Der letzte Resync hat nichts angehaengt -- ihn zu wiederholen ist
+		// der einzige verbleibende Zug, und die vollen 30 Minuten waeren
+		// reine Ausfallzeit.
+		return autoHealFailedResyncRetry, true
 	}
-	return autoHealFailedResyncRetry, true
+	// ERGAENZT 02.09.2026: der letzte Resync hat gewirkt -- aber das heisst
+	// nicht, dass der Knoten JETZT in Ordnung ist.
+	//
+	// Genau dieser Fall ist an dem Tag am Primary aufgetreten. C1 wurde
+	// resynct, lief danach sauber und mergte, und wurde SPAETER erneut
+	// zugemauert: eine einzelne Ueberweisung scheiterte beim Nachspielen
+	// ("insufficient balance (have 0.000000, need 0.000010)"), woraufhin der
+	// GANZE Block verworfen wurde -- einmal beobachtet mit 3.525
+	// Transaktionen wegen einer. Ab da fehlen die Gutschriften dieses Blocks
+	// dauerhaft, jeder Folgeblock mit denselben Konten scheitert ebenso, und
+	// nur ein Resync bringt den Knoten zurueck.
+	//
+	// Die Pruefung oben sah nur "der letzte Resync hat gemergt" und verhaengte
+	// die vollen 30 Minuten. Der Knoten meldete waehrenddessen selbst
+	// "structurally cut off from the canonical chain" und stand 671 Bloecke
+	// zurueck -- als Primary, der Website und Explorer traegt.
+	//
+	// Deshalb zusaetzlich: hat der Knoten seit LAENGEREM nichts mehr
+	// angehaengt, obwohl Bloecke ankommen, zaehlt er als erneut abgehaengt --
+	// unabhaengig davon, wie erfolgreich der letzte Resync war. Die Schwelle
+	// ist bewusst dieselbe, ab der die Aushunger-Erkennung ueberhaupt
+	// ausloest: wer sie erreicht, ist nach dem Urteil dieses Knotens bereits
+	// abgeschnitten.
+	if time.Now().Unix()-letzterMerge > int64(syncStarvationThreshold.Seconds()) {
+		return autoHealFailedResyncRetry, true
+	}
+	return autoHealCooldown, false
 }
 
 func (dag *BlockDAG) triggerAutoResync(reason string) {
@@ -423,17 +499,46 @@ func (dag *BlockDAG) StartDivergenceAutoHeal(bootstrapURL, signer, primaryURL st
 // without tickers, network calls, or a live DAG. Inputs are the deltas since
 // the previous tick plus the height comparison; returns whether this tick
 // CONFIRMS the starvation state (all three conditions hold simultaneously).
-func syncStarvationTickConfirms(rawDelta, attachDelta, localHeight, primaryHeight int64, primaryReachable bool) bool {
+// FIX (2026-08-22, after a fork this check watched and never reported):
+// Contabo1 forked mid-load, froze at height 4467699 and fell 600+ blocks behind
+// while receiving Contabo2's blocks the whole time. Every monitor was armed and
+// correctly configured. This one, whose description fits that failure exactly,
+// never confirmed a single tick.
+//
+// The reason was `attachDelta > 0`. A stuck node is rarely attaching NOTHING:
+// it still bridges the odd orphan, still lands the occasional block on its own
+// branch. One attachment anywhere in a 60-second tick reset the watch, so a
+// node attaching one block a minute while losing sixty read as "normal
+// (possibly slow) operation" indefinitely.
+//
+// Falling behind is the signal, not stillness. A node whose gap to the primary
+// GROWS across a tick is losing ground however much it attached, and cannot
+// recover by continuing — that is starvation whether the trickle is zero or
+// not. Shrinking and steady gaps still return false, so an ordinary catch-up
+// after a restart (large gap, closing fast) is untouched.
+//
+// prevGap is the previous tick's gap, negative when there is none yet (first
+// tick, or the primary was unreachable). The returned gap is what the caller
+// remembers for next time, and is negative when this tick could not measure one.
+func syncStarvationTickConfirms(rawDelta, attachDelta, localHeight, primaryHeight, prevGap int64, primaryReachable bool) (confirmed bool, gap int64) {
 	if !primaryReachable {
-		return false // no height comparison possible — not evidence either way
+		return false, -1 // no height comparison possible — not evidence either way
 	}
 	if rawDelta < syncStarvationMinArrivals {
-		return false // not actually receiving — isolation, heightStall's case
+		return false, -1 // not actually receiving — isolation, heightStall's case
 	}
-	if attachDelta > 0 {
-		return false // something attached — normal (possibly slow) operation
+	gap = primaryHeight - localHeight
+	if gap < syncStarvationMinGap {
+		return false, gap // close enough to be ordinary lag
 	}
-	return primaryHeight >= localHeight+syncStarvationMinGap
+	if attachDelta == 0 {
+		return true, gap // attached nothing at all while far behind
+	}
+	// Attached something, but still losing ground: a trickle is not recovery.
+	if prevGap >= 0 && gap > prevGap {
+		return true, gap
+	}
+	return false, gap
 }
 
 // startSyncStarvationCheck is the fourth, independent detection path — see
@@ -455,6 +560,9 @@ func (dag *BlockDAG) startSyncStarvationCheck(primaryURL string) {
 		prevRaw := dag.totalRawArrivalCount.Load()
 		prevAttach := dag.totalForeignAttachCount.Load()
 		var starvingSince time.Time
+		// Negative means "no previous gap measured", so the first tick can never
+		// confirm on a growth comparison it has no baseline for.
+		prevGap := int64(-1)
 		for range ticker.C {
 			SafeCall("syncStarvation-tick", func() {
 				curRaw := dag.totalRawArrivalCount.Load()
@@ -464,20 +572,27 @@ func (dag *BlockDAG) startSyncStarvationCheck(primaryURL string) {
 				prevRaw, prevAttach = curRaw, curAttach
 
 				primaryHeight, ok := fetchPrimaryHeight(primaryURL)
-				if !syncStarvationTickConfirms(rawDelta, attachDelta, dag.Height(), primaryHeight, ok) {
+				confirmed, gap := syncStarvationTickConfirms(rawDelta, attachDelta, dag.Height(), primaryHeight, prevGap, ok)
+				prevGap = gap
+				if !confirmed {
 					starvingSince = time.Time{}
 					return
 				}
 				if starvingSince.IsZero() {
 					starvingSince = time.Now()
-					fmt.Printf("[AUTO-HEAL] Sync-starvation watch: received %d block(s) this interval but attached 0 while %d+ behind the primary — watching (threshold %s).\n",
-						rawDelta, syncStarvationMinGap, syncStarvationThreshold)
+					// Reports what actually confirmed the tick. The old wording said
+					// "attached 0" unconditionally, which became wrong the moment a
+					// GROWING GAP could confirm too: an operator would read zero
+					// attachments and go looking for an isolated node, when the real
+					// state was a node attaching a trickle and still losing ground.
+					fmt.Printf("[AUTO-HEAL] Sync-starvation watch: received %d block(s) this interval, attached %d, now %d behind the primary — watching (threshold %s).\n",
+						rawDelta, attachDelta, gap, syncStarvationThreshold)
 					return
 				}
 				if starving := time.Since(starvingSince); starving >= syncStarvationThreshold {
 					dag.triggerAutoResync(fmt.Sprintf(
-						"receiving peer blocks continuously but attaching none for %s straight while %d+ blocks behind the primary — every arrival is orphaning against diverged ancestry; this node is structurally cut off from the canonical chain",
-						starving.Round(time.Second), syncStarvationMinGap))
+						"receiving peer blocks continuously for %s straight while falling further behind the primary (now %d blocks) — arrivals are orphaning against diverged ancestry faster than this node can attach them; it is structurally cut off from the canonical chain",
+						starving.Round(time.Second), gap))
 				}
 			})
 		}
@@ -686,7 +801,7 @@ func (dag *BlockDAG) runChainDivergenceCheckOnce(primaryURL string, unsettledSin
 		dag.setPersistedUnsettledSince(strconv.FormatInt(unsettledSince.Unix(), 10))
 		fmt.Printf("[AUTO-HEAL] Chain-divergence self-check skipped this round: node is still catching up or has %d tips (fragmentation) — not a settled state to compare against the primary.\n", tipsNow)
 		return
-	} else if stalled := time.Since(*unsettledSince); stalled < chainDivergenceStallOverride {
+	} else if stalled := time.Since(*unsettledSince); stalled < chainDivergenceStallOverride && !dag.hatSeitLangemNichtsAngehaengt() {
 		fmt.Printf("[AUTO-HEAL] Chain-divergence self-check skipped this round: node is still catching up or has %d tips (fragmentation) — not a settled state to compare against the primary (unsettled for %s so far).\n", tipsNow, stalled.Round(time.Second))
 		return
 	} else {

@@ -1,0 +1,93 @@
+name: WAL status on BOTH boxes (read-only)
+
+# Written 2026-08-20 because two existing read-only checks disagreed about
+# whether WAL is live on Contabo2, and the disagreement was the tooling's
+# fault, not the box's:
+#
+#   contabo-inspect.yml   inspects `aequitas-node` by name  -> WAL vars present
+#   verify-wal-contabo2.yml picks `docker ps | grep -i aequitas | head -1`
+#                         -> whichever aequitas container sorts first, which
+#                            is not necessarily the node -> WAL vars absent
+#
+# A flag that "is set" in .aequitas.env but never reached the process is the
+# failure mode that already happened twice here (deploy_safe_c2.sh v1/v2), so
+# guessing from either reading was not acceptable. This names the container
+# explicitly on BOTH boxes and, more importantly, checks the one thing an env
+# var cannot tell you: whether a WAL file exists on the host and is GROWING.
+# An enabled flag whose file lives in the container's writable layer looks
+# identical to a working WAL until the next `docker rm` throws it away.
+#
+# Touches nothing.
+on:
+  workflow_dispatch: {}
+
+jobs:
+  c1:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Contabo1
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: 173.249.37.118
+          username: root
+          key: ${{ secrets.CONTABO_SSH_KEY }}
+          port: 22
+          fingerprint: "SHA256:noMtjHV8c+2iEFZu3TRUP6WRwGjkrvFke71KgU6Eyt4"
+          script_stop: false
+          timeout: 120s
+          command_timeout: 120s
+          script: |
+            echo "### BOX: CONTABO1 ###"
+            echo "--- aequitas containers ---"
+            docker ps --format '{{.Names}}' | grep -i aequitas || echo "(none)"
+            echo "--- WAL env INSIDE aequitas-node (named explicitly) ---"
+            docker inspect -f '{{range .Config.Env}}{{println .}}{{end}}' aequitas-node 2>/dev/null \
+              | grep -E '^(AEQUITAS_WAL_ENABLED|AEQUITAS_WAL_PATH|ENABLE_MULTI_BLOCK_TICK)=' || echo "(no WAL flags in the running node)"
+            echo "--- WAL lines in .aequitas.env (file, not process) ---"
+            grep -E '^(AEQUITAS_WAL_ENABLED|AEQUITAS_WAL_PATH|ENABLE_MULTI_BLOCK_TICK)=' /root/.aequitas.env || echo "(none in file)"
+            echo "--- mounts ---"
+            docker inspect -f '{{range .Mounts}}{{.Type}} {{.Source}} -> {{.Destination}}{{println}}{{end}}' aequitas-node 2>/dev/null || echo "(none)"
+            echo "--- WAL file on the HOST, at the mount SOURCE (not the container path) ---"
+            SRC="$(docker inspect aequitas-node --format '{{range .Mounts}}{{.Source}}:{{.Destination}}{{println}}{{end}}' 2>/dev/null | grep ':/data/wal$' | cut -d: -f1)"
+            echo "mount source: ${SRC:-<none>}"
+            [ -n "$SRC" ] && ls -la "$SRC" 2>/dev/null || echo "(nothing at the mount source)"
+            echo "--- the node's own [WAL] log lines (the real proof it is writing) ---"
+            docker logs aequitas-node --since 60m 2>&1 | grep -iE 'WAL|write-ahead' | tail -15 || echo "(no WAL log lines in the last hour)"
+            echo "--- running commit ---"
+            curl -s --max-time 10 http://127.0.0.1:8080/api/status | tr ',' '\n' | grep -E 'git_commit|height' || echo "(status unreachable)"
+
+  c2:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Contabo2
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: 194.163.188.71
+          username: root
+          key: ${{ secrets.CONTABO2_SSH_KEY }}
+          port: 22
+          script_stop: false
+          timeout: 120s
+          command_timeout: 120s
+          script: |
+            echo "### BOX: CONTABO2 ###"
+            echo "--- aequitas containers ---"
+            docker ps --format '{{.Names}}' | grep -i aequitas || echo "(none)"
+            echo "--- WAL env INSIDE aequitas-node (named explicitly) ---"
+            docker inspect -f '{{range .Config.Env}}{{println .}}{{end}}' aequitas-node 2>/dev/null \
+              | grep -E '^(AEQUITAS_WAL_ENABLED|AEQUITAS_WAL_PATH|ENABLE_MULTI_BLOCK_TICK)=' || echo "(no WAL flags in the running node)"
+            echo "--- WAL lines in .aequitas.env (file, not process) ---"
+            grep -E '^(AEQUITAS_WAL_ENABLED|AEQUITAS_WAL_PATH|ENABLE_MULTI_BLOCK_TICK)=' /root/.aequitas.env || echo "(none in file)"
+            echo "--- mounts ---"
+            docker inspect -f '{{range .Mounts}}{{.Type}} {{.Source}} -> {{.Destination}}{{println}}{{end}}' aequitas-node 2>/dev/null || echo "(none)"
+            echo "--- WAL file on the HOST, at the mount SOURCE (not the container path) ---"
+            SRC="$(docker inspect aequitas-node --format '{{range .Mounts}}{{.Source}}:{{.Destination}}{{println}}{{end}}' 2>/dev/null | grep ':/data/wal$' | cut -d: -f1)"
+            echo "mount source: ${SRC:-<none>}"
+            [ -n "$SRC" ] && ls -la "$SRC" 2>/dev/null || echo "(nothing at the mount source)"
+            sleep 5
+            echo "--- same listing 5s later (size should move if WAL is live) ---"
+            [ -n "$SRC" ] && ls -la "$SRC" 2>/dev/null || echo "(nothing at the mount source)"
+            echo "--- the node's own [WAL] log lines (the real proof it is writing) ---"
+            docker logs aequitas-node --since 60m 2>&1 | grep -iE 'WAL|write-ahead' | tail -15 || echo "(no WAL log lines in the last hour)"
+            echo "--- running commit ---"
+            curl -s --max-time 10 http://127.0.0.1:8080/api/status | tr ',' '\n' | grep -E 'git_commit|height' || echo "(status unreachable)"

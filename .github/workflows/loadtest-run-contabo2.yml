@@ -59,6 +59,14 @@ on:
         description: "Per-request HTTP timeout. Must exceed how long the node needs for one batch, but stay well under duration."
         required: false
         default: "30s"
+      accounts_csv:
+        description: "Account CSV to drive the run from. accounts-funded.csv (written by loadtest-find-funded.yml) contains only rows that still hold AEQ, so unfunded senders cannot fail their way into the throughput number."
+        required: false
+        default: "accounts.csv"
+      pairs:
+        description: "Cap on concurrent sender pairs (0 = every pair in the CSV). Lower values measure the rate the network SUSTAINS rather than the peak it briefly touches."
+        required: false
+        default: "0"
 
 jobs:
   run:
@@ -89,7 +97,7 @@ jobs:
           script_stop: true
           timeout: 900s
           command_timeout: 900s
-          envs: PHASE,NUM_SEEDS,DURATION,RAMP,FUND_WEI,TRANSFER_WEI,BATCH_SIZE,HTTP_TIMEOUT
+          envs: PHASE,NUM_SEEDS,DURATION,RAMP,FUND_WEI,TRANSFER_WEI,BATCH_SIZE,HTTP_TIMEOUT,ACCOUNTS_CSV,PAIRS
           script: |
             set -euo pipefail
             cd /root/contabo-loadtest
@@ -167,7 +175,7 @@ jobs:
               -v /root/go-mod-cache:/go/pkg/mod \
               golang:1.24-alpine \
               ./loadtest \
-                -accounts accounts.csv \
+                -accounts "$ACCOUNTS_CSV" \
                 -rpc http://localhost:8080/rpc \
                 -status http://localhost:8080/api/status \
                 -phase "$PHASE" \
@@ -177,7 +185,8 @@ jobs:
                 -fund-amount-wei "$FUND_WEI" \
                 -transfer-amount-wei "$TRANSFER_WEI" \
                 -batch-size "$BATCH_SIZE" \
-                -http-timeout "$HTTP_TIMEOUT"
+                -http-timeout "$HTTP_TIMEOUT" \
+                -pairs "$PAIRS"
 
             # WHAT THE NODE ITSELF SAW, bounded to this run's window.
             #
@@ -250,3 +259,5 @@ jobs:
           TRANSFER_WEI: ${{ inputs.transfer_amount_wei }}
           BATCH_SIZE: ${{ inputs.batch_size }}
           HTTP_TIMEOUT: ${{ inputs.http_timeout }}
+          ACCOUNTS_CSV: ${{ inputs.accounts_csv }}
+          PAIRS: ${{ inputs.pairs }}

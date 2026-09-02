@@ -1,0 +1,86 @@
+name: Supply drift watch (read-only)
+
+# Does the money supply stop growing?
+#
+# /api/status publishes two numbers side by side: total_supply, which is the
+# PROTOCOL RULE (humans x 1,000 AEQ), and supply_measured, which is the actual
+# sum of the ledger. Their difference is AEQ that exists without a person behind
+# it.
+#
+# That difference has been moving:
+#
+#   2026-08-15 (audit)         +305.278004
+#   2026-08-19 (this workflow) +305.278008
+#   2026-08-26 abgetragen -> 0
+#
+# Der Ueberschuss wurde am 26.08.2026 durch eine replizierte
+# pool_correction-Transaktion entfernt (x/humanity/keeper/pool_correction.go),
+# zusammen mit 7.907,114977 tUSD verhaeltnisgleich, damit der Preis stehen
+# bleibt. Beide Knoten meldeten danach reconciled=true bei measured=17000.
+#
+# Die Baseline ist deshalb 0. Sie stand vorher auf 305,278008, waehrend live
+# 305,277988 gemessen wurde -- eine Abweichung von 0,00002, wegen der dieser
+# Waechter dauerhaft rot lief und damit aufhoerte, irgendetwas zu melden. Ein
+# Alarm, der immer schrillt, ist keiner.
+#
+# Four micro-AEQ in four days — about one per day, which is the size of a
+# rounding remainder in a daily distribution, not of float64 noise. The floor6
+# fix for exactly that went live on 2026-08-19, so the prediction this workflow
+# exists to test is: THE DIFFERENCE MUST NOT GROW AGAIN. If it does, a second
+# minting path is still open and the fix addressed only one of them.
+#
+# The base 305.278004 is a separate, still-unexplained question. This does not
+# answer it; it only makes sure the number stops moving, without anyone having to
+# remember to look.
+#
+# Read-only: one HTTP GET per node. Nothing is written, nothing restarted.
+
+on:
+  schedule:
+    - cron: "17 6 * * *" # daily, shortly after the usual distribution window
+  workflow_dispatch:
+    inputs:
+      baseline:
+        description: "Difference in AEQ that is expected and tolerated. Raise ONLY with a reason, and record it."
+        required: true
+        default: "0"
+
+permissions:
+  contents: read
+
+jobs:
+  watch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Compare the rule against the ledger on every node
+        env:
+          # The value the difference is currently pinned at. Raising this is
+          # accepting that AEQ was created; it is not a way to make the job
+          # green. Whoever raises it should be able to say what created it.
+          BASELINE: ${{ inputs.baseline || '0' }}
+        run: |
+          set -uo pipefail
+
+          fail=0
+          for url in https://aequitas.digital http://173.249.37.118:8080 http://194.163.188.71:8080; do
+            echo "=== $url ==="
+            body="$(curl -sS -m 20 "$url/api/status" 2>/dev/null || true)"
+            if [ -z "$body" ]; then
+              echo "  unreachable — not treated as a supply failure, but worth noticing"
+              continue
+            fi
+            if ! printf '%s' "$body" | python3 .github/scripts/check_supply_drift.py "$BASELINE"; then
+              fail=1
+            fi
+          done
+
+          if [ "$fail" -ne 0 ]; then
+            echo
+            echo "The supply no longer matches the baseline on at least one node."
+            echo "For a currency whose premise is 'money exists because people exist',"
+            echo "this is the measurement that says whether that is still true."
+            exit 1
+          fi
+          echo
+          echo "All reachable nodes agree with the baseline."

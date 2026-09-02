@@ -1,0 +1,184 @@
+name: Mutex profile on Contabo1 (PRIMARY) while Contabo2 is loaded
+
+# THE MEASUREMENT THIS ANSWERS. Splitting a transfer into phases put 45.88 of
+# its 87.80 ms in a single line: acquiring cs.mu.RLock().
+#
+#   precheck      46.14 ms
+#     pre_queue    0.25
+#     pre_rlock   45.88   <- 99.4% of the precheck, 52% of the transfer
+#     pre_cap      0.005
+#   wal_append    40.39 ms
+#
+# A read lock only blocks when a writer holds or is waiting for it. The obvious
+# suspect is block production, and exclusive_lock_stats reports it as trivial:
+# 0.21% busy, 140 holds averaging 9ms. That number cannot be trusted for this
+# question -- it instruments TWO of the 85 exclusive cs.mu.Lock() sites in the
+# package, so it is measuring about 3% of the lock and has already been misread
+# once as "the exclusive lock is not the problem" (contention_profile.go
+# records that exact episode).
+#
+# Hand-instrumenting the other 83 would be a large change to the consensus path
+# for a diagnostic. Go's mutex profile attributes blocked time to the exact
+# stack responsible, with no change at any lock site -- but it is governed by a
+# sampling rate that defaults to zero, so /debug/pprof/mutex has been returning
+# empty profiles all along.
+#
+# This switches sampling on, generates load, captures both profiles, prints the
+# top contenders, and switches it back off.
+#
+# IT COSTS THROUGHPUT while enabled -- that is why it is off by default. Do not
+# read the TPS from a profiled run as a throughput measurement.
+on:
+  workflow_dispatch:
+    inputs:
+      duration:
+        description: "Load duration while profiling"
+        required: false
+        default: "90s"
+
+jobs:
+  profile:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Profile Contabo2 under load
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: 173.249.37.118
+          username: root
+          key: ${{ secrets.CONTABO_SSH_KEY }}
+          port: 22
+          script_stop: false
+          timeout: 1800s
+          command_timeout: 1800s
+          envs: DURATION
+          script: |
+            set +e
+            cd /root/lasttest || { echo "no loadtest directory on C1"; exit 1; }
+
+            restore() {
+              echo "=== switching contention profiling back OFF ==="
+              sed -i '/^AEQUITAS_CONTENTION_PROFILE=/d' /root/.aequitas.env
+              docker inspect aequitas-node --format '{{range .Config.Env}}{{println .}}{{end}}' \
+                | grep -vE '^(RESYNC_FROM_SNAPSHOT|HOSTNAME|PATH|HOME|AEQUITAS_CONTENTION_PROFILE)=' \
+                | grep -E '^[A-Za-z_][A-Za-z0-9_]*=' > /tmp/proc.env
+              grep -E '^[A-Za-z_][A-Za-z0-9_]*=' /root/.aequitas.env \
+                | grep -vE '^(RESYNC_FROM_SNAPSHOT|HOSTNAME|PATH|HOME)=' > /tmp/file.env
+              awk -F= '!seen[$1]++' /tmp/file.env /tmp/proc.env > /root/prof.env
+              IMAGE="$(docker inspect aequitas-node --format '{{.Config.Image}}')"
+              NET="$(docker inspect aequitas-node --format '{{range $k, $v := .NetworkSettings.Networks}}{{$k}} {{end}}' | awk '{print $1}')"
+              PORTS="$(docker inspect aequitas-node --format '{{range $p, $c := .HostConfig.PortBindings}}-p {{(index $c 0).HostPort}}:{{$p}} {{end}}' | sed 's|/tcp||g')"
+              MOUNTS="$(docker inspect aequitas-node --format '{{range .Mounts}}-v {{.Source}}:{{.Destination}} {{end}}')"
+              docker stop aequitas-node && docker rm aequitas-node
+              docker run -d --name aequitas-node --network "$NET" $PORTS $MOUNTS \
+                --env-file /root/prof.env --restart unless-stopped "$IMAGE"
+              sleep 30
+              curl -s --max-time 15 http://127.0.0.1:8080/api/status | grep -o '"height":[0-9]*' || echo "(unreachable)"
+            }
+
+            echo "=== switching contention profiling ON ==="
+            sed -i '/^AEQUITAS_CONTENTION_PROFILE=/d' /root/.aequitas.env
+            echo 'AEQUITAS_CONTENTION_PROFILE=1' >> /root/.aequitas.env
+            IMAGE="$(docker inspect aequitas-node --format '{{.Config.Image}}')"
+            NET="$(docker inspect aequitas-node --format '{{range $k, $v := .NetworkSettings.Networks}}{{$k}} {{end}}' | awk '{print $1}')"
+            PORTS="$(docker inspect aequitas-node --format '{{range $p, $c := .HostConfig.PortBindings}}-p {{(index $c 0).HostPort}}:{{$p}} {{end}}' | sed 's|/tcp||g')"
+            MOUNTS="$(docker inspect aequitas-node --format '{{range .Mounts}}-v {{.Source}}:{{.Destination}} {{end}}')"
+            docker inspect aequitas-node --format '{{range .Config.Env}}{{println .}}{{end}}' \
+              | grep -vE '^(RESYNC_FROM_SNAPSHOT|HOSTNAME|PATH|HOME|AEQUITAS_CONTENTION_PROFILE)=' \
+              | grep -E '^[A-Za-z_][A-Za-z0-9_]*=' > /tmp/proc.env
+            grep -E '^[A-Za-z_][A-Za-z0-9_]*=' /root/.aequitas.env \
+              | grep -vE '^(RESYNC_FROM_SNAPSHOT|HOSTNAME|PATH|HOME)=' > /tmp/file.env
+            awk -F= '!seen[$1]++' /tmp/file.env /tmp/proc.env > /root/prof.env
+            docker stop aequitas-node && docker rm aequitas-node
+            docker run -d --name aequitas-node --network "$NET" $PORTS $MOUNTS \
+              --env-file /root/prof.env --restart unless-stopped "$IMAGE"
+
+            echo "=== waiting for the node to produce before loading it ==="
+            READY=no
+            for i in $(seq 1 40); do
+              H=$(curl -s --max-time 10 http://127.0.0.1:8080/api/health/combined)
+              case "$H" in
+                *'"never_produced":false'*)
+                  case "$H" in *'"refusing":false'*) READY=yes ;; esac ;;
+              esac
+              [ "$READY" = yes ] && break
+              sleep 15
+            done
+            if [ "$READY" != yes ]; then
+              echo "node never started producing — profiling an idle node says nothing"
+              restore
+              exit 1
+            fi
+            docker logs aequitas-node 2>&1 | grep -a '\[PROF\]' | tail -3
+
+            echo "=== generating load for $DURATION ==="
+            rm -f /tmp/prof.log
+            # Direkt die bereits uebersetzte Binaerdatei, nicht in einem
+            # Go-Container: sie liegt auf dieser Box und traegt dieselben
+            # Parameter wie jede andere Messung dieser Reihe (Buendel 10,
+            # disjunkte Paare, Mindestguthaben), damit die Zahlen
+            # vergleichbar bleiben.
+            nohup ./loadtest.ring -accounts accounts-funded.csv               -rpc http://194.163.188.71:8080/rpc               -status http://194.163.188.71:8080/api/status               -phase run -pairs 400 -topology pairs -batch-size 10               -min-balance-wei 100000000000000               -duration "$DURATION" -ramp 5               > /tmp/prof.log 2>&1 &
+
+            # Capture mid-run: a profile taken after the load stops shows an
+            # idle node. Both are cumulative since the process started, so the
+            # window includes the ramp -- fine, the ratios are what matter.
+            sleep 75
+            # startPprofServer binds 127.0.0.1:6061 INSIDE the container, not the
+            # published 8080. From the host that address belongs to the host, so
+            # the first version of this workflow fetched
+            # http://127.0.0.1:8080/debug/pprof/mutex and got
+            # {"error":"no such endpoint"} -- which reads like pprof is missing
+            # rather than like the request went to the wrong place.
+            #
+            # Sharing the node's network namespace reaches its loopback without
+            # publishing a debug port or needing curl inside the node image.
+            fetch_prof() {
+              docker run --rm --network "container:aequitas-node" curlimages/curl:latest                 -s --max-time 60 "http://127.0.0.1:6061/debug/pprof/$1?debug=1"
+            }
+
+            echo "=== MUTEX profile (who holds locks others wait on) ==="
+            fetch_prof mutex > /tmp/mutex.txt
+            head -45 /tmp/mutex.txt
+
+            echo ""
+            echo "=== BLOCK profile (where goroutines wait) ==="
+            fetch_prof block > /tmp/block.txt
+            head -45 /tmp/block.txt
+
+            # Resolve the heaviest stacks HERE, not in a follow-up workflow.
+            # The restore step below restarts the node with profiling off,
+            # which throws the samples away -- a separate resolve run found an
+            # empty profile and printed only the header, which reads like the
+            # profile is broken rather than like it was already gone.
+            #
+            # debug=1 prints raw program counters when the binary has no inline
+            # symbol table. /debug/pprof/symbol turns them into names.
+            post_symbols() {
+              docker run --rm -i --network "container:aequitas-node" curlimages/curl:latest -s --max-time 60 --data-binary @- "http://127.0.0.1:6061/debug/pprof/symbol"
+            }
+            HZ=$(grep -o 'cycles/second=[0-9]*' /tmp/mutex.txt | cut -d= -f2)
+            echo ""
+            echo "=== the three heaviest MUTEX stacks, resolved ==="
+            grep -E '^[0-9]+ [0-9]+ @' /tmp/mutex.txt | sort -rn | head -3 > /tmp/top.txt
+            n=0
+            while read -r line; do
+              n=$((n+1))
+              CYC=$(echo "$line" | awk '{print $1}')
+              CNT=$(echo "$line" | awk '{print $2}')
+              awk -v c="$CYC" -v hz="$HZ" -v n="$n" -v cnt="$CNT" 'BEGIN{
+                printf "----- STACK %d: %.1f seconds blocked, %d samples -----", n, c/hz, cnt
+              }'
+              echo ""
+              echo "$line" | sed 's/^.*@ //' | tr ' ' '\n' | grep -v '^$' > /tmp/addrs.txt
+              post_symbols < /tmp/addrs.txt
+              echo ""
+            done < /tmp/top.txt
+
+            echo ""
+            echo "=== what the load did (throughput here is NOT representative) ==="
+            sleep 40
+            grep -E 'elapsed|TPS' /tmp/prof.log | tail -3
+
+            restore
+        env:
+          DURATION: ${{ inputs.duration }}

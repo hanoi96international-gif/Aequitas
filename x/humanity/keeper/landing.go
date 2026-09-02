@@ -341,12 +341,12 @@ section{padding:60px 20px}
   <div class="section-inner">
     <div class="section-label" data-i18n="how-label">How it works</div>
     <h2 data-i18n="how-h2">Three steps, about a minute</h2>
-    <p class="section-sub" data-i18n="how-sub">No bank account, no crypto background, no investment. A smartphone with a fingerprint sensor is the whole requirement.</p>
+    <p class="section-sub" data-i18n="how-sub">No bank account, no crypto background, no investment. An Android smartphone with a camera is the whole requirement.</p>
     <div class="steps">
       <div class="step">
         <div class="step-num">1</div>
         <h3 data-i18n="step1-h">Scan</h3>
-        <p data-i18n="step1-p">Your phone reduces your biometrics to a one-way hash. The raw images never leave the device and are never stored.</p>
+        <p data-i18n="step1-p">Your face is captured and checked by independent matching services against everyone already registered. The images are discarded after processing; what each service keeps is an encrypted template.</p>
       </div>
       <div class="step">
         <div class="step-num">2</div>

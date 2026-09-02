@@ -1,0 +1,66 @@
+name: Why does Contabo2 not merge the gap? (read-only)
+
+# Contabo2 sits pinned at height 4425913 while Contabo1 advances. The data it
+# needs is provably fine: /api/blocks?min_height=4425913 on Contabo1 returns
+# block 4425914 whose parent IS Contabo2's own tip, 5 blocks for 2,986 bytes.
+#
+# So the question is not "is the data there" but "why does this box not take
+# it". Gossip is PUSH (Contabo1 -> Contabo2) and the ordered sync is PULL
+# (Contabo2 -> Contabo1). The logs show pushed tip blocks arriving and being
+# queued as orphans, which proves the push direction works and says nothing
+# about the pull direction. If the pull is broken, this is exactly what it
+# would look like: tip orphans forever, gap never fetched.
+#
+# Read-only. Changes nothing.
+on:
+  workflow_dispatch: {}
+
+jobs:
+  diag:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Diagnose Contabo2
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: 194.163.188.71
+          username: root
+          key: ${{ secrets.CONTABO2_SSH_KEY }}
+          port: 22
+          script_stop: false
+          timeout: 300s
+          command_timeout: 300s
+          script: |
+            set +e
+            echo "### 1. Can this box PULL the gap from Contabo1 at all? ###"
+            # The exact request the ordered sync makes. If this fails or is
+            # slow, the ordered sync cannot work no matter what else is right.
+            time curl -s --max-time 30 -o /tmp/gap.json -w "HTTP %{http_code}  %{size_download} bytes  %{time_total}s\n" \
+              "http://173.249.37.118:8080/api/blocks?min_height=4425913&limit=5"
+            echo "--- first heights returned ---"
+            head -c 400 /tmp/gap.json; echo
+
+            echo ""
+            echo "### 2. What does this node REJECT? (rejection marks by reason) ###"
+            docker logs aequitas-node --since 10m 2>&1 | grep -oE '\[(DAG|BLOCK|SYNC|HTTP-SYNC)\] ✗[^—]*' \
+              | sed 's/#[0-9]\+/#N/g; s/0x[0-9a-fA-F]\{8,\}/0xADDR/g' | sort | uniq -c | sort -rn | head -20
+            echo "(empty above means it rejects nothing — the blocks never arrive on the pull path)"
+
+            echo ""
+            echo "### 3. Anything at all about the first gap block 4425914? ###"
+            docker logs aequitas-node --since 15m 2>&1 | grep -E '4425914|4425915|4425916' | head -10
+            echo "(empty = the ordered sync never even saw it)"
+
+            echo ""
+            echo "### 4. Is a proposer banned here? (equivocation has false-banned before) ###"
+            docker logs aequitas-node --since 15m 2>&1 | grep -iE 'equivocat|slash|banned|unauthorized|not authorized' | head -10
+            echo "(empty = no ban in the recent window)"
+
+            echo ""
+            echo "### 5. What the sweep itself reports ###"
+            docker logs aequitas-node --since 10m 2>&1 | grep -E 'deepScan|deep scan|caught up|clean sync' \
+              | sed 's/[0-9]\{7,\}/N/g' | sort | uniq -c | sort -rn | head -12
+
+            echo ""
+            echo "### 6. Ordered-sync page requests actually made (outbound) ###"
+            docker logs aequitas-node --since 10m 2>&1 | grep -cE 'min_height' \
+              && echo "(count of log lines mentioning min_height)"

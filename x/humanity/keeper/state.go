@@ -149,6 +149,9 @@ type ChainState struct {
 	// without its transactions (roadmap step 4 — see tx_batch.go).
 	txBatchTableOnce sync.Once
 	txBatches        *txBatchCache
+	// ubiEpoch holds an in-flight chunked UBI distribution; see ubi_chunked.go.
+	// Guarded by cs.mu like every other field here.
+	ubiEpoch ubiEpochHolder
 	// txBlockIndexOnce guards the tx -> including-block index, without which
 	// eth_getTransactionByHash and eth_getTransactionReceipt answer with
 	// placeholders and wallets mark landed transactions as failed — see
@@ -527,6 +530,19 @@ func (cs *ChainState) dbExecCtx(ctx context.Context) sqlExecutor {
 	if cs.activeTx != nil {
 		gid := curGoroutineID()
 		if owner := cs.activeTxOwnerGID.Load(); owner == 0 || owner == gid {
+			// Mitzaehlen: dieser Aufruf haette die Transaktion aus dem ctx
+			// bekommen sollen und bekam sie aus dem gemeinsamen Feld. Siehe
+			// activetx_rueckfall.go.
+			notiereActiveTxRueckfall()
+			if activeTxStrikt() {
+				// Verhalten wie NACH dem Entfernen von cs.activeTx: kein
+				// Rueckfall. Der Unterschied zum Entfernen selbst ist, dass es
+				// hier laut passiert -- Zaehler, Herkunft und der Stapelauszug
+				// unten benennen den Pfad, statt ihn still falsch schreiben zu
+				// lassen. Siehe activetx_rueckfall.go.
+				meldeStriktenRueckfall()
+				return cs.db
+			}
 			return cs.activeTx
 		}
 		nowNano := time.Now().UnixNano()
@@ -575,6 +591,21 @@ func curGoroutineID() int64 {
 func (cs *ChainState) activeTxCtx(ctx context.Context) *sql.Tx {
 	if tx := txFromContext(ctx); tx != nil {
 		return tx
+	}
+	// Der letzte implizite Leser von cs.activeTx -- und der gefaehrlichste.
+	//
+	// dbExecCtx faellt auf cs.db zurueck: der Schreibvorgang geschieht dann
+	// eigenstaendig, was falsch, aber harmlos aussieht. Hier ist es anders.
+	// savePoolToDBCtx, der einzige Aufrufer, oeffnet ohne Transaktion eine
+	// EIGENE mit SELECT FOR UPDATE -- also nicht "ausserhalb", sondern
+	// "daneben", mit der Selbstverklemmung, vor der sein eigener Kommentar
+	// warnt.
+	//
+	// Deshalb wird auch dieser Fall gezaehlt. Solange die Zahl unter Last
+	// nicht null ist, darf cs.activeTx nicht entfernt werden -- und wenn sie
+	// null ist, ist es der letzte Grund, der noch dagegen stand.
+	if cs.activeTx != nil {
+		notiereActiveTxRueckfall()
 	}
 	return cs.activeTx
 }
@@ -884,6 +915,17 @@ created_at     TIMESTAMP DEFAULT NOW()
 )`)
 	// GetHumanRegistrationInfo looks this table up by wallet, not by hash.
 	dbExec(`CREATE INDEX IF NOT EXISTS idx_bio_hashes_wallet ON bio_hashes (lower(wallet_address))`)
+
+	// This validator's rows of the shared biometric templates, and the LSH
+	// index that finds candidates without scanning everyone. See mpc_store.go
+	// for what may and may not be stored here — in particular that a row is
+	// only ever THIS party's, because two parties' rows in one place is a
+	// reconstructable template.
+	//
+	// Without these tables the enrolment index lives in memory and a restart
+	// empties it: the duplicate check then compares against nothing, approves
+	// everybody, and looks entirely healthy from the outside.
+	cs.mpcSchema(dbExec)
 
 	// Links a ZK proof commitment to the wallet that successfully registered
 	// with it, so the app can ask "did MY proof get registered, and to which
@@ -1552,11 +1594,20 @@ ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value`, key, value); err != nil
 // getConfigValueDB instead, which always reads cs.db directly and never
 // touches cs.activeTx.
 func (cs *ChainState) getConfigValue(key string) string {
+	return cs.getConfigValueCtx(context.Background(), key)
+}
+
+// getConfigValueCtx is getConfigValue routed through ctx, so a read inside an
+// atomic operation sees that operation's own uncommitted writes rather than
+// the last committed value. The chunked UBI epoch needs exactly that: it
+// writes the cursor and reads it back within one distribution round.
+// Same cs.mu-held precondition as getConfigValue.
+func (cs *ChainState) getConfigValueCtx(ctx context.Context, key string) string {
 	if cs.db == nil {
 		return ""
 	}
 	var v string
-	cs.dbExec().QueryRow(`SELECT value FROM chain_config WHERE key = $1`, key).Scan(&v)
+	cs.dbExecCtx(ctx).QueryRow(`SELECT value FROM chain_config WHERE key = $1`, key).Scan(&v)
 	return v
 }
 
@@ -1566,11 +1617,19 @@ func (cs *ChainState) getConfigValue(key string) string {
 // tell a rollback "delete this key" instead of "nothing to restore". See
 // configValueSnapshot. Same cs.mu-held precondition as getConfigValue.
 func (cs *ChainState) getConfigValueExists(key string) (string, bool) {
+	return cs.getConfigValueExistsCtx(context.Background(), key)
+}
+
+// getConfigValueExistsCtx ist getConfigValueExists ueber ctx gefuehrt, damit
+// ein Lesen INNERHALB einer atomaren Operation deren eigene, noch nicht
+// festgeschriebene Schreibvorgaenge sieht statt des zuletzt festgeschriebenen
+// Werts. Dieselbe cs.mu-Vorbedingung wie getConfigValue.
+func (cs *ChainState) getConfigValueExistsCtx(ctx context.Context, key string) (string, bool) {
 	if cs.db == nil {
 		return "", false
 	}
 	var v string
-	err := cs.dbExec().QueryRow(`SELECT value FROM chain_config WHERE key = $1`, key).Scan(&v)
+	err := cs.dbExecCtx(ctx).QueryRow(`SELECT value FROM chain_config WHERE key = $1`, key).Scan(&v)
 	if err != nil {
 		return "", false
 	}
@@ -1584,10 +1643,18 @@ func (cs *ChainState) getConfigValueExists(key string) (string, bool) {
 // Routes through cs.dbExec() for the same reason as setConfigValue. Same
 // cs.mu-held precondition as getConfigValue.
 func (cs *ChainState) deleteConfigValue(key string) error {
+	return cs.deleteConfigValueCtx(context.Background(), key)
+}
+
+// deleteConfigValueCtx ist deleteConfigValue ueber ctx gefuehrt. Der Loeschung
+// muss dieselbe Transaktion tragen wie den Aenderungen daneben: sonst kann ein
+// Ruecklauf die Konten zuruecknehmen und den Konfigurationsschluessel stehen
+// lassen -- und genau dieser Schluessel geht in den StateRoot ein.
+func (cs *ChainState) deleteConfigValueCtx(ctx context.Context, key string) error {
 	if cs.db == nil {
 		return nil
 	}
-	if _, err := cs.dbExec().Exec(`DELETE FROM chain_config WHERE key = $1`, key); err != nil {
+	if _, err := cs.dbExecCtx(ctx).Exec(`DELETE FROM chain_config WHERE key = $1`, key); err != nil {
 		fmt.Printf("[DB] Warning: deleteConfigValue(%q) failed: %v\n", key, err)
 		return fmt.Errorf("could not delete config %q: %w", key, err)
 	}
@@ -2669,6 +2736,40 @@ const secondsPerMonth = 30 * 24 * 60 * 60 // approximation, consistent with the 
 // AddLiquidity/RemoveLiquidity, registration) — NOT by pure balance
 // reads, since merely checking a balance isn't "using" the money. Caller
 // must hold cs.mu (write lock).
+// touchActivity restarts an account's demurrage clock.
+//
+// THE RULE: it records what the HOLDER did with their money, never what
+// happened to them.
+//
+// Sending, swapping, depositing and withdrawing all count — the holder used the
+// money. Receiving does not, and neither does the protocol crediting them: UBI,
+// LP yield and validator rewards arrive whether or not anyone is there.
+//
+// The distinction is the difference between demurrage working and demurrage
+// being decorative. Every human is credited UBI daily and touched by it, and
+// the grace period is 90 days, so resetting on credit meant the clock never
+// elapsed for anybody — the mechanism WHITEPAPER.md describes had never once
+// fired. Resetting on receipt was separately gameable for nothing: a micro-AEQ
+// from a second wallet every 89 days reset the clock on an entire balance.
+//
+// What this does NOT do is decay people who are merely poor. effectiveBalance
+// only decays the amount ABOVE the fair share, so a holding at or below an
+// equal share never loses anything however long it sits.
+// startClockIfUnset begins an account's demurrage clock the first time it holds
+// money, without restarting it afterwards.
+//
+// Receiving must not reset the clock — that was gameable for nothing, a
+// micro-AEQ from a second wallet every 89 days. But it must still START it,
+// because effectiveBalance treats LastActivityAt == 0 as "never active" and
+// exempts the account entirely. Without this, an address that is only ever paid
+// into and never spends from would be the very shelter closing the reset was
+// meant to remove.
+func startClockIfUnset(acc *AccountState) {
+	if acc != nil && acc.LastActivityAt == 0 {
+		acc.LastActivityAt = nowUnix()
+	}
+}
+
 func touchActivity(acc *AccountState) {
 	acc.LastActivityAt = nowUnix()
 	acc.Demurrage14DayWarningShown = false // new grace period — the 14-day notice can fire again when this one nears its end
@@ -2709,6 +2810,18 @@ func touchActivity(acc *AccountState) {
 // is deliberately not part of accountLeaf and therefore not consensus-hashed.
 // (The missing future-drift validation on blocks themselves is a separate,
 // pre-existing gap — it is not created or worsened here.)
+// startClockIfUnsetAt is startClockIfUnset for the replay paths, stamping the
+// block's time rather than this node's clock.
+//
+// A receiving account must have its clock STARTED (effectiveBalance exempts
+// LastActivityAt == 0 entirely) without having it RESET. The primary uses
+// nowUnix(); replay must not, or every node would stamp a different moment.
+func startClockIfUnsetAt(acc *AccountState, at int64) {
+	if acc != nil && acc.LastActivityAt == 0 {
+		touchActivityAt(acc, at)
+	}
+}
+
 func touchActivityAt(acc *AccountState, at int64) {
 	if at <= 0 {
 		at = nowUnix()
@@ -2807,12 +2920,38 @@ func (cs *ChainState) settleDemurrageLockedCtx(ctx context.Context, acc *Account
 	if isTokenomicsPoolAddress(acc.Address) {
 		return 0, nil
 	}
-	current := effectiveBalance(acc)
-	lost := acc.Balance.Sub(current)
+	// Demurrage is levied on WEALTH, so LP shares count.
+	//
+	// FIX (2026-08-20): this decayed acc.Balance alone. LP shares are not
+	// balance and the AMM reserve is not an account, so AEQ parked as liquidity
+	// simply stopped decaying — deposit, wait, withdraw, and the decay for that
+	// period was avoided. Liquidity providers are already paid for the service
+	// out of swap fees (distributeLPPoolLocked); exempting them from demurrage
+	// on top was a second, unvoted payment that scaled with wealth.
+	//
+	// The decay formula is not duplicated here. The same effectiveBalance runs
+	// against a copy whose balance is the account's whole holding, so the
+	// grace period, the fair-share floor and the rate stay in exactly one place.
+	lpValue := cs.lpValueLockedAEQ(acc)
+	basis := *acc
+	basis.Balance = NewDecimal(acc.Balance.Float() + lpValue)
+	lost := basis.Balance.Sub(effectiveBalance(&basis))
 	if lost <= 0 {
 		return 0, nil
 	}
-	acc.Balance = current
+	// Take it from balance first, reaching into liquidity only for the rest.
+	if acc.Balance.Float() < lost.Float() {
+		need := lost.Float() - acc.Balance.Float()
+		if _, err := cs.releaseLPForAEQ(ctx, acc, need); err != nil {
+			return 0, fmt.Errorf("demurrage: could not release LP value for %s: %w", acc.Address, err)
+		}
+	}
+	if lost.Float() > acc.Balance.Float() {
+		// Shallow reserve or share rounding left less than the decay owed.
+		// Take what is there; the remainder is caught on the next settlement.
+		lost = acc.Balance
+	}
+	acc.Balance = acc.Balance.Sub(lost).AtLeastZero()
 	if err := cs.distributeSwapFeeCtx(ctx, lost.Float(), true); err != nil {
 		return 0, fmt.Errorf("demurrage: could not persist pool credits for %s: %w", acc.Address, err)
 	}
@@ -3182,7 +3321,7 @@ func (cs *ChainState) DistributeValidatorsPool() []DistributionShare {
 	defer cs.mu.Unlock()
 	// cs.mu-only path, never runs inside runAtomicWithOutbox/
 	// runAtomicDistributionWithOutbox — see RegisterHuman's comment.
-	shares, err := cs.distributeValidatorsPoolLocked(context.Background())
+	shares, err := cs.distributeValidatorsPoolLocked(context.Background(), 0)
 	if err != nil {
 		fmt.Printf("[VALIDATORS] Error: %v\n", err)
 		return nil
@@ -3190,7 +3329,7 @@ func (cs *ChainState) DistributeValidatorsPool() []DistributionShare {
 	return shares
 }
 
-func (cs *ChainState) distributeValidatorsPoolLocked(ctx context.Context) ([]DistributionShare, error) {
+func (cs *ChainState) distributeValidatorsPoolLocked(ctx context.Context, verteiltAm int64) ([]DistributionShare, error) {
 	// GetRegisteredNodes/the blocks_produced query only read PostgreSQL, not
 	// cs.accounts — safe to run while cs.mu is held (no deadlock risk; the
 	// original "before acquiring cs.mu" ordering predates this function being
@@ -3291,7 +3430,9 @@ func (cs *ChainState) distributeValidatorsPoolLocked(ctx context.Context) ([]Dis
 			return nil, fmt.Errorf("could not settle demurrage for %s: %w", wallet, err)
 		}
 		acc.Balance = acc.Balance.Add(NewDecimal(share))
-		touchActivity(acc)
+		// No touchActivity: the protocol credited them, they did not act.
+		// See touchActivity's comment — resetting here is what kept demurrage
+		// from ever firing for anyone.
 		if err := cs.enforceWealthCapLockedCtx(ctx, acc); err != nil {
 			return nil, fmt.Errorf("could not enforce wealth cap for %s: %w", wallet, err)
 		}
@@ -3305,7 +3446,11 @@ func (cs *ChainState) distributeValidatorsPoolLocked(ctx context.Context) ([]Dis
 	// and only if something was actually distributed (prevents destroying
 	// pool balance when all shares rounded to zero).
 	if totalDistributed > 0 {
-		poolAcc.Balance = NewDecimal(0)
+		// Rest im Topf lassen statt vernichten -- siehe pool_remainder.go.
+		// Vor der Schwelle gibt neuerTopfstand 0 zurueck, verhaelt sich also
+		// wie zuvor; die Umschaltung haengt am geteilten Zeitstempel der
+		// Runde, nicht am Zeitpunkt des Deploys.
+		poolAcc.Balance = NewDecimal(neuerTopfstand(total, totalDistributed, verteiltAm))
 		if err := cs.saveAccountToDBCtx(ctx, poolAcc); err != nil {
 			return nil, fmt.Errorf("could not zero validators pool: %w", err)
 		}
@@ -3333,7 +3478,7 @@ func (cs *ChainState) DistributeLPPool() []DistributionShare {
 	defer cs.mu.Unlock()
 	// cs.mu-only path, never runs inside runAtomicWithOutbox/
 	// runAtomicDistributionWithOutbox — see RegisterHuman's comment.
-	shares, err := cs.distributeLPPoolLocked(context.Background())
+	shares, err := cs.distributeLPPoolLocked(context.Background(), 0)
 	if err != nil {
 		fmt.Printf("[LP] Error: %v\n", err)
 		return nil
@@ -3341,7 +3486,7 @@ func (cs *ChainState) DistributeLPPool() []DistributionShare {
 	return shares
 }
 
-func (cs *ChainState) distributeLPPoolLocked(ctx context.Context) ([]DistributionShare, error) {
+func (cs *ChainState) distributeLPPoolLocked(ctx context.Context, verteiltAm int64) ([]DistributionShare, error) {
 	// Collect all LP holders and their share counts BEFORE settling demurrage,
 	// so we know who participates.
 	//
@@ -3461,7 +3606,9 @@ func (cs *ChainState) distributeLPPoolLocked(ctx context.Context) ([]Distributio
 		totalDistributed += share
 		acc, _ := cs.accounts.Get(h.addr)
 		acc.Balance = acc.Balance.Add(NewDecimal(share))
-		touchActivity(acc)
+		// No touchActivity: the protocol credited them, they did not act.
+		// See touchActivity's comment — resetting here is what kept demurrage
+		// from ever firing for anyone.
 		if err := cs.enforceWealthCapLockedCtx(ctx, acc); err != nil {
 			return nil, fmt.Errorf("could not enforce wealth cap for %s: %w", h.addr, err)
 		}
@@ -3471,7 +3618,11 @@ func (cs *ChainState) distributeLPPoolLocked(ctx context.Context) ([]Distributio
 		shares = append(shares, DistributionShare{Wallet: h.addr, Amount: share, DemurrageLost: demurrageLost[h.addr]})
 	}
 	if totalDistributed > 0 {
-		poolAcc.Balance = NewDecimal(0)
+		// Rest im Topf lassen statt vernichten -- siehe pool_remainder.go.
+		// Vor der Schwelle gibt neuerTopfstand 0 zurueck, verhaelt sich also
+		// wie zuvor; die Umschaltung haengt am geteilten Zeitstempel der
+		// Runde, nicht am Zeitpunkt des Deploys.
+		poolAcc.Balance = NewDecimal(neuerTopfstand(total, totalDistributed, verteiltAm))
 		if err := cs.saveAccountToDBCtx(ctx, poolAcc); err != nil {
 			return nil, fmt.Errorf("could not zero LP pool: %w", err)
 		}
@@ -3521,7 +3672,7 @@ func (cs *ChainState) DistributeUBIPool() []DistributionShare {
 	defer cs.mu.Unlock()
 	// cs.mu-only path, never runs inside runAtomicWithOutbox/
 	// runAtomicDistributionWithOutbox — see RegisterHuman's comment.
-	shares, err := cs.distributeUBIPoolLocked(context.Background())
+	shares, err := cs.distributeUBIPoolLocked(context.Background(), 0)
 	if err != nil {
 		fmt.Printf("[UBI] Error: %v\n", err)
 		return nil
@@ -3529,7 +3680,7 @@ func (cs *ChainState) DistributeUBIPool() []DistributionShare {
 	return shares
 }
 
-func (cs *ChainState) distributeUBIPoolLocked(ctx context.Context) ([]DistributionShare, error) {
+func (cs *ChainState) distributeUBIPoolLocked(ctx context.Context, verteiltAm int64) ([]DistributionShare, error) {
 	// FIX (Monster Audit 2026-07-12, P1): see DistributeValidatorsPool's
 	// comment — a cold pool address must not read as "empty". Loaded once
 	// here; the second read below (after the demurrage loop) reuses the same
@@ -3631,7 +3782,9 @@ func (cs *ChainState) distributeUBIPoolLocked(ctx context.Context) ([]Distributi
 	for _, addr := range humanAddrs {
 		acc, _ := cs.accounts.Get(addr)
 		acc.Balance = acc.Balance.Add(NewDecimal(share))
-		touchActivity(acc)
+		// No touchActivity: the protocol credited them, they did not act.
+		// See touchActivity's comment — resetting here is what kept demurrage
+		// from ever firing for anyone.
 		if err := cs.enforceWealthCapLockedCtx(ctx, acc); err != nil {
 			return nil, fmt.Errorf("could not enforce wealth cap for %s: %w", addr, err)
 		}
@@ -3641,9 +3794,11 @@ func (cs *ChainState) distributeUBIPoolLocked(ctx context.Context) ([]Distributi
 	if err := cs.saveAccountsToDBBatchCtx(ctx, batch); err != nil {
 		return nil, fmt.Errorf("could not save UBI rewards batch: %w", err)
 	}
-	poolAcc.Balance = NewDecimal(0)
+	// Rest im Topf lassen statt vernichten -- siehe pool_remainder.go. Jeder
+	// Mensch in humanAddrs bekommt genau share, ausgezahlt ist also share*n.
+	poolAcc.Balance = NewDecimal(neuerTopfstand(total, share*float64(len(humanAddrs)), verteiltAm))
 	if err := cs.saveAccountToDBCtx(ctx, poolAcc); err != nil {
-		return nil, fmt.Errorf("could not zero UBI pool: %w", err)
+		return nil, fmt.Errorf("could not settle UBI pool: %w", err)
 	}
 	cs.save()
 	// FIX (audit recheck 2, P0 #4): last_ubi_at used to be set HERE via
@@ -3758,6 +3913,60 @@ func (cs *ChainState) bootstrapMultiplierLocked() float64 {
 // error here lets it reach that transaction's fn() and trigger a real
 // rollback — the same fix class already applied to ApplyUBIDelta,
 // transferLocked, etc. (see their "audit recheck2, P0 #3" comments).
+// lpValueLockedAEQ is the AEQ an account's LP shares are a claim on.
+//
+// LP shares are wealth. They were bought with AEQ, they can be turned back into
+// AEQ at will, and their value moves with the reserve. Any rule about how much
+// AEQ someone holds that reads only acc.Balance is therefore reading half the
+// number — which is how liquidity became a shelter from both the wealth cap and
+// demurrage (see docs/WHO_MAY_HOLD_AEQ.md).
+//
+// Caller holds cs.mu.
+func (cs *ChainState) lpValueLockedAEQ(acc *AccountState) float64 {
+	if cs.pool == nil || acc == nil {
+		return 0
+	}
+	total := cs.pool.TotalLPShares.Float()
+	mine := acc.LPShares.Float()
+	if total <= 0 || mine <= 0 {
+		return 0
+	}
+	if mine > total {
+		mine = total // corrupted share accounting must not inflate the claim
+	}
+	return cs.pool.ReserveAEQ.Float() * (mine / total)
+}
+
+// releaseLPForAEQ burns just enough of acc's LP shares to free `need` AEQ into
+// its balance, and reports what was actually freed.
+//
+// Used when a rule has to act on wealth the account holds as liquidity rather
+// than as balance. Reuses the escrow liquidation helper so there is one
+// implementation of turning shares back into reserves, not two that can drift.
+func (cs *ChainState) releaseLPForAEQ(ctx context.Context, acc *AccountState, need float64) (float64, error) {
+	if need <= 0 || cs.pool == nil {
+		return 0, nil
+	}
+	reserve := cs.pool.ReserveAEQ.Float()
+	totalShares := cs.pool.TotalLPShares.Float()
+	if reserve <= 0 || totalShares <= 0 || acc.LPShares.Float() <= 0 {
+		return 0, nil
+	}
+	shares := need * totalShares / reserve
+	if shares > acc.LPShares.Float() {
+		shares = acc.LPShares.Float()
+	}
+	// liquidateLPSharesForEscrowLocked already burns the shares, credits both
+	// balances and debits the reserves. Repeating any of that here credits the
+	// account twice — which is what the first version of this helper did, and
+	// what TestRemoveLiquidityDeltaLocked_MirrorsPrimaryWealthCap caught.
+	_, outAEQ, _, err := cs.liquidateLPSharesForEscrowLocked(ctx, acc, shares)
+	if err != nil {
+		return 0, err
+	}
+	return outAEQ, nil
+}
+
 func (cs *ChainState) enforceWealthCapLocked(acc *AccountState) error {
 	return cs.enforceWealthCapLockedCtx(context.Background(), acc)
 }
@@ -3781,11 +3990,37 @@ func (cs *ChainState) enforceWealthCapLockedCtx(ctx context.Context, acc *Accoun
 	}
 	multiplier := cs.bootstrapMultiplierLocked()
 	wealthCapAmt := avg * multiplier
-	if acc.Balance.Float() <= wealthCapAmt {
+	// The cap is on WEALTH, so it counts LP shares too.
+	//
+	// FIX (2026-08-20): this read acc.Balance alone, so the entire mechanism was
+	// avoidable in one step — deposit into the pool and hold the same value as
+	// LP shares, which no cap ever looked at. A cap that is evaded by one click
+	// is not a cap, and the people it still bound were the ones who did not know
+	// the trick. That is unfairness by sophistication, which is the opposite of
+	// what this protocol is for.
+	lpValue := cs.lpValueLockedAEQ(acc)
+	totalWealth := acc.Balance.Float() + lpValue
+	if totalWealth <= wealthCapAmt {
 		return nil
 	}
-	excess := acc.Balance.Float() - wealthCapAmt
-	acc.Balance = NewDecimal(wealthCapAmt)
+	excess := totalWealth - wealthCapAmt
+
+	// Take it from balance first, and only reach into liquidity for what is
+	// left — the gentler order, and it leaves a provider's position alone
+	// whenever their balance already covers the excess.
+	if acc.Balance.Float() < excess {
+		need := excess - acc.Balance.Float()
+		if _, err := cs.releaseLPForAEQ(ctx, acc, need); err != nil {
+			return fmt.Errorf("wealth cap: could not release LP value for %s: %w", acc.Address, err)
+		}
+	}
+	if excess > acc.Balance.Float() {
+		// The pool could not free the whole amount (shallow reserve, share
+		// rounding). Take what is there rather than driving the balance
+		// negative; the rest is caught on the next enforcement.
+		excess = acc.Balance.Float()
+	}
+	acc.Balance = acc.Balance.Sub(NewDecimal(excess)).AtLeastZero()
 	if err := cs.distributeSwapFeeCtx(ctx, excess, true); err != nil {
 		return fmt.Errorf("wealth cap: could not persist pool credits for %s excess: %w", acc.Address, err)
 	}
@@ -4124,17 +4359,28 @@ func (cs *ChainState) runAtomicWithOutbox(touchedAddrs []string, fullSnapshot bo
 	// decision — restoreFromRollbackLocked (not the public, self-locking
 	// restoreFromRollback) is used so the lock is never released and
 	// re-acquired in between.
+	// Messpunkte, siehe atomic_phasen.go: erst wenn bekannt ist, WOFUER die
+	// globale Sperre gehalten wird, laesst sich sagen, was ihr Verengen bringt.
+	phWarten := time.Now()
 	cs.mu.Lock()
+	atomicPhasenStand.notiere(&atomicPhasenStand.wartenNs, phWarten)
+	phHalt := time.Now()
 	cs.setActiveTx(tx)
+	phSnap := time.Now()
 	snap := cs.snapshotForRollbackLocked(touchedAddrs, fullSnapshot, chainConfig)
+	atomicPhasenStand.notiere(&atomicPhasenStand.snapshotNs, phSnap)
 	// See processTransferBatch's own (now-historical) comment for why
 	// building ctx from cs.activeTx here, with cs.mu held throughout, is
 	// safe — fn now receives it directly instead of every caller
 	// reconstructing the same value from cs.activeTx itself.
+	phFn := time.Now()
 	pendingTx, fnErr := fn(withTx(context.Background(), tx))
+	atomicPhasenStand.notiere(&atomicPhasenStand.fnNs, phFn)
 	var outboxErr error
 	if fnErr == nil {
+		phOutbox := time.Now()
 		outboxErr = savePendingTxExec(tx, pendingTx)
+		atomicPhasenStand.notiere(&atomicPhasenStand.outboxNs, phOutbox)
 	}
 
 	if fnErr != nil || outboxErr != nil {
@@ -4150,7 +4396,10 @@ func (cs *ChainState) runAtomicWithOutbox(touchedAddrs []string, fullSnapshot bo
 		return fmt.Errorf("outbox insert failed inside atomic transaction (state mutation rolled back): %w", outboxErr)
 	}
 
-	if err := tx.Commit(); err != nil {
+	phCommit := time.Now()
+	commitFehler := tx.Commit()
+	atomicPhasenStand.notiere(&atomicPhasenStand.commitNs, phCommit)
+	if err := commitFehler; err != nil {
 		cs.setActiveTx(nil)
 		if rbErr := cs.restoreFromRollbackLocked(snap); rbErr != nil {
 			fmt.Printf("[ATOMIC] CRITICAL: rollback persistence failed after commit failure — memory/DB may now disagree: %v\n", rbErr)
@@ -4159,6 +4408,8 @@ func (cs *ChainState) runAtomicWithOutbox(touchedAddrs []string, fullSnapshot bo
 		return fmt.Errorf("commit failed (state mutation rolled back): %w", err)
 	}
 	cs.setActiveTx(nil)
+	atomicPhasenStand.notiere(&atomicPhasenStand.haltNs, phHalt)
+	atomicPhasenStand.laeufe.Add(1)
 	cs.mu.Unlock()
 	return nil
 }
@@ -4278,7 +4529,7 @@ func (cs *ChainState) RunDailyDistributionAtomic(ubiAt int64) error {
 	return cs.runAtomicDistributionWithOutbox(func(ctx context.Context) ([]Transaction, error) {
 		var txs []Transaction
 
-		ubiShares, err := cs.distributeUBIPoolLocked(ctx)
+		ubiShares, err := cs.distributeUBIPoolLocked(ctx, ubiAt)
 		if err != nil {
 			return nil, fmt.Errorf("UBI distribution failed: %w", err)
 		}
@@ -4294,7 +4545,7 @@ func (cs *ChainState) RunDailyDistributionAtomic(ubiAt int64) error {
 			txs = append(txs, Transaction{Type: "ubi_distribution_finalize", DistributionAt: ubiAt})
 		}
 
-		validatorShares, err := cs.distributeValidatorsPoolLocked(ctx)
+		validatorShares, err := cs.distributeValidatorsPoolLocked(ctx, ubiAt)
 		if err != nil {
 			return nil, fmt.Errorf("validator distribution failed: %w", err)
 		}
@@ -4307,7 +4558,7 @@ func (cs *ChainState) RunDailyDistributionAtomic(ubiAt int64) error {
 			txs = append(txs, Transaction{Type: "validator_distribution_pool_zero"})
 		}
 
-		lpShares, err := cs.distributeLPPoolLocked(ctx)
+		lpShares, err := cs.distributeLPPoolLocked(ctx, ubiAt)
 		if err != nil {
 			return nil, fmt.Errorf("LP distribution failed: %w", err)
 		}
@@ -4654,9 +4905,11 @@ func (cs *ChainState) ensureTransferBatcherStarted() {
 func (cs *ChainState) runTransferBatcher() {
 	for first := range cs.transferBatchCh {
 		batch := []*transferBatchRequest{first}
-		timer := time.NewTimer(transferBatchMaxWait)
+		// Ueber die Umgebung einstellbar, Vorgabe unveraendert -- siehe
+		// transfer_batch_tuning.go fuer die Messung, die das noetig macht.
+		timer := time.NewTimer(transferBatchWait())
 	collect:
-		for len(batch) < transferBatchMaxSize {
+		for len(batch) < transferBatchSize() {
 			select {
 			case req := <-cs.transferBatchCh:
 				batch = append(batch, req)
@@ -4912,7 +5165,9 @@ func (cs *ChainState) transferMutateLocked(ctx context.Context, from, to string,
 		return 0, 0, nil, nil, fmt.Errorf("could not settle demurrage for recipient: %w", err)
 	}
 	toAcc.Balance = toAcc.Balance.Add(NewDecimal(amount))
-	touchActivity(toAcc) // receiving also resets the clock on the recipient's whole balance
+	// Receiving is not the holder acting, so it does not reset the clock —
+	// only starts it if this is the first money the account has held.
+	startClockIfUnset(toAcc)
 	if err := cs.enforceWealthCapLockedCtx(ctx, toAcc); err != nil {
 		return 0, 0, nil, nil, fmt.Errorf("could not enforce wealth cap for recipient: %w", err)
 	}
@@ -5050,7 +5305,9 @@ func (cs *ChainState) transferWithV7FeeLocked(ctx context.Context, from, to stri
 		return 0, 0, 0, fmt.Errorf("could not settle demurrage for recipient: %w", err)
 	}
 	toAcc.Balance = toAcc.Balance.Add(NewDecimal(netToRecipient))
-	touchActivity(toAcc)
+	// Receiving is not the holder acting, so it does not reset the clock —
+	// only starts it if this is the first money the account has held.
+	startClockIfUnset(toAcc)
 	if err := cs.enforceWealthCapLockedCtx(ctx, toAcc); err != nil {
 		return 0, 0, 0, fmt.Errorf("could not enforce wealth cap for recipient: %w", err)
 	}
@@ -5262,11 +5519,43 @@ func (cs *ChainState) swapLocked(ctx context.Context, address string, amountIn f
 		}
 	}
 
-	if err := cs.saveAccountToDBCtx(ctx, acc); err != nil {
-		return 0, 0, fmt.Errorf("could not save account: %w", err)
-	}
-	if err := cs.savePoolToDBCtx(ctx); err != nil {
-		return 0, 0, fmt.Errorf("could not save pool: %w", err)
+	// PERSIST THE AEQ DEBIT BEFORE THE AEQ CREDIT.
+	//
+	// FIX (supply audit 2026-08-20): the account and the pool are two separate
+	// writes, and if the second fails the first still stands. Which way that
+	// falls depends on which side gave the AEQ up.
+	//
+	// Unlike a withdrawal, a swap moves value in BOTH directions, so no fixed
+	// order is safe for both. Saving the account first is right for aeqToTusd
+	// (the account loses the AEQ); saving the pool first is right for the other
+	// direction (the reserve loses it). The wrong order creates money: the side
+	// that received AEQ keeps it durably while the side that owed it never
+	// records the loss.
+	//
+	// The rule, stated once: whichever side is LOSING AEQ is persisted first.
+	// Then a failure between the writes destroys supply rather than creating
+	// it, which is the only acceptable direction to fail in.
+	//
+	// This is still not atomic. Two writes that must both land want one
+	// transaction; ordering only chooses which way the crack falls until they
+	// get one.
+	saveAccountFirst := aeqToTusd
+	if saveAccountFirst {
+		if err := cs.saveAccountToDBCtx(ctx, acc); err != nil {
+			return 0, 0, fmt.Errorf("could not save account: %w", err)
+		}
+		if err := cs.savePoolToDBCtx(ctx); err != nil {
+			fmt.Printf("[SWAP] %s was debited but the pool credit did not persist: %v (destroyed, not duplicated)\n", address, err)
+			return 0, 0, fmt.Errorf("could not save pool: %w", err)
+		}
+	} else {
+		if err := cs.savePoolToDBCtx(ctx); err != nil {
+			return 0, 0, fmt.Errorf("could not save pool, swap not applied: %w", err)
+		}
+		if err := cs.saveAccountToDBCtx(ctx, acc); err != nil {
+			fmt.Printf("[SWAP] pool debited but the credit to %s did not persist: %v (destroyed, not duplicated)\n", address, err)
+			return 0, 0, fmt.Errorf("could not save account: %w", err)
+		}
 	}
 	if err := cs.distributeSwapFeeCtx(ctx, fee, aeqToTusd); err != nil {
 		return 0, 0, fmt.Errorf("could not persist swap fee distribution: %w", err)
@@ -5561,7 +5850,12 @@ func (cs *ChainState) distributeSwapFeeCtx(ctx context.Context, fee float64, fee
 		// ubiContrib comment above — a cold pool address must be loaded from
 		// the DB before it's touched, or a fresh Version==0 AccountState here
 		// blindly overwrites its real, previously-accumulated DB balance.
-		cs.ensureAccountLoaded(s.addr)
+		//
+		// Ctx-Fassung, nicht der Mantel: das Laden muss die Transaktion dieses
+		// Swaps sehen. Ausserhalb gelesen kaeme der Stand von VOR dem Swap --
+		// also genau der veraltete Wert, gegen den der Absatz darueber schuetzt.
+		// Heute faellt es nicht auf, weil dbExecCtx auf cs.activeTx zurueckfaellt.
+		cs.ensureAccountLoadedCtx(ctx, s.addr)
 		sAcc, ok := cs.accounts.Get(s.addr)
 		if !ok {
 			sAcc = &AccountState{Address: s.addr}
@@ -5648,23 +5942,48 @@ func (cs *ChainState) MigrateStrandedPoolTUsdFeesV1() {
 		if stranded <= 0 {
 			continue
 		}
+		// Captured BEFORE the conversion, which mutates cs.pool in place —
+		// reading them afterwards would snapshot the already-debited values
+		// and make the rollback below a no-op.
+		aeqBefore, tusdBefore := cs.pool.ReserveAEQ, cs.pool.ReserveTUSD
+
 		aeqOut, ok := cs.convertTUsdFeeToAEQLocked(stranded)
 		if !ok {
 			fmt.Printf("[MIGRATE] ✗ Could not convert %.6f stranded tUSD for %s (pool too shallow to price it) — left as-is, will retry next restart\n", stranded, addr)
 			continue
 		}
+		// Persist the RESERVE DEBIT before the account credit.
+		//
+		// FIX (supply audit 2026-08-19): these are two separate writes, and
+		// the order decides which way a failure between them falls.
+		// Credit-then-debit was the CREATING order: the account keeps its
+		// new AEQ, the reserve never gives it up, and the retry this
+		// function advertises does nothing, because the account's stranded
+		// tUSD is already zero. The AEQ is then permanent, and exactly the
+		// size of the conversion.
+		//
+		// Debit-first fails the other way: the pool gives up AEQ nobody
+		// receives. That destroys money instead of creating it, which for a
+		// currency whose premise is "money exists because people exist" is
+		// the only acceptable direction to fail in.
+		if err := cs.savePoolToDB(); err != nil {
+			// Nothing credited yet, so undoing the in-memory debit leaves no
+			// trace and the advertised retry is real.
+			cs.pool.ReserveAEQ, cs.pool.ReserveTUSD = aeqBefore, tusdBefore
+			fmt.Printf("[MIGRATE] ✗ Could not persist pool debit for %s: %v — nothing credited, will retry next restart\n", addr, err)
+			continue
+		}
+
 		acc.TUsdBalance = acc.TUsdBalance.Sub(NewDecimal(stranded))
 		acc.Balance = acc.Balance.Add(NewDecimal(aeqOut))
 		if err := cs.saveAccountToDB(acc); err != nil {
-			fmt.Printf("[MIGRATE] ✗ Could not persist converted balance for %s: %v\n", addr, err)
+			// The reserve already gave the AEQ up and nobody received it.
+			// Loud, because this line is the only record that it happened.
+			fmt.Printf("[MIGRATE] ✗ Reserve debited %.6f AEQ for %s but the credit did not persist: %v — that AEQ is gone, not duplicated\n", aeqOut, addr, err)
 			continue
 		}
 		converted++
 		fmt.Printf("[MIGRATE] ✓ Converted %.6f stranded tUSD -> %.6f AEQ for %s\n", stranded, aeqOut, addr)
-	}
-	if err := cs.savePoolToDB(); err != nil {
-		fmt.Printf("[MIGRATE] ✗ Could not persist pool after stranded-tUSD conversion: %v — will retry next restart\n", err)
-		return
 	}
 	if converted > 0 {
 		cs.save()
@@ -5878,6 +6197,15 @@ func (cs *ChainState) removeLiquidityLocked(ctx context.Context, address string,
 	// wealthy account could dodge decay indefinitely by periodically
 	// removing/re-adding trivial liquidity amounts (touchActivity() below
 	// resets the decay clock without the decay ever having been applied).
+	// The position as the caller saw it, BEFORE settlement.
+	//
+	// Demurrage now reaches LP shares, so settling can burn some of the very
+	// shares this call is about. Comparing the request against what is left
+	// afterwards told an idle provider asking to withdraw everything that they
+	// had "insufficient LP shares" - blaming them for asking about the position
+	// they actually held when they clicked.
+	sharesBeforeSettlement := acc.LPShares.Float()
+
 	lost, err := cs.settleDemurrageLockedCtx(ctx, acc)
 	if err != nil {
 		return 0, 0, 0, fmt.Errorf("could not settle demurrage: %w", err)
@@ -5900,11 +6228,30 @@ func (cs *ChainState) removeLiquidityLocked(ctx context.Context, address string,
 			cs.pool.ReserveAEQ = NewDecimal(0)
 			cs.pool.ReserveTUSD = NewDecimal(0)
 			cs.pool.TotalLPShares = NewDecimal(0)
-			if err := cs.saveAccountToDBCtx(ctx, acc); err != nil {
-				return 0, 0, 0, fmt.Errorf("could not save account: %w", err)
-			}
+			// Persist the POOL DEBIT before the account credit.
+			//
+			// FIX (supply audit 2026-08-20): these are two separate writes and the
+			// order decides which way a failure between them falls. Crediting the
+			// account first and debiting the reserve second is the CREATING order:
+			// the withdrawal is durable, the pool never gives the AEQ up, and the
+			// difference is new money. The same mistake was found in
+			// MigrateStrandedPoolTUsdFeesV1, and this is the path where the live
+			// excess actually sits - the AMM reserve holds the bulk of it.
+			//
+			// Debit-first fails the other way: the pool gives up AEQ that nobody
+			// receives. That destroys supply rather than creating it, which for a
+			// currency whose premise is "money exists because people exist" is the
+			// only acceptable direction to fail in.
 			if err := cs.savePoolToDBCtx(ctx); err != nil {
-				return 0, 0, 0, fmt.Errorf("could not save pool: %w", err)
+				// Nothing was credited durably, so the withdrawal simply did not
+				// happen; the in-memory account mutation is discarded with the error.
+				return 0, 0, 0, fmt.Errorf("could not save pool, withdrawal not applied: %w", err)
+			}
+			if err := cs.saveAccountToDBCtx(ctx, acc); err != nil {
+				// The pool already gave the AEQ up and nobody received it. Loud,
+				// because this line is the only record that it happened.
+				fmt.Printf("[POOL] pool debited but the credit to %s did not persist: %v (destroyed, not duplicated)\n", address, err)
+				return 0, 0, 0, fmt.Errorf("could not save account: %w", err)
 			}
 			cs.save()
 			cs.syncBalanceLocked(V7_CONTRACT_ADDR, address)
@@ -5915,8 +6262,19 @@ func (cs *ChainState) removeLiquidityLocked(ctx context.Context, address string,
 		return 0, 0, 0, fmt.Errorf("liquidity pool is empty")
 	}
 
-	if acc.LPShares.Float() < sharesToBurn {
-		return 0, 0, 0, fmt.Errorf("insufficient LP shares (have %.6f, requested %.6f)", acc.LPShares.Float(), sharesToBurn)
+	if sharesToBurn > sharesBeforeSettlement {
+		// More than they ever had: a real error, still reported as one.
+		return 0, 0, 0, fmt.Errorf("insufficient LP shares (have %.6f, requested %.6f)",
+			sharesBeforeSettlement, sharesToBurn)
+	}
+	if sharesToBurn > acc.LPShares.Float() {
+		// The request was valid when made; demurrage consumed part of it in
+		// between. Withdraw what remains rather than refusing - the shortfall
+		// is the decay they owed, not a mistake on their part.
+		sharesToBurn = acc.LPShares.Float()
+	}
+	if sharesToBurn <= 0 {
+		return 0, 0, 0, fmt.Errorf("no LP shares remain after settling demurrage")
 	}
 	// F17-FIX: guard against TotalLPShares corruption (< actual shares).
 	// Capping fraction to 1.0 above prevents over-withdrawal from reserves,
@@ -5961,11 +6319,30 @@ func (cs *ChainState) removeLiquidityLocked(ctx context.Context, address string,
 		cs.pool.ReserveAEQ = NewDecimal(newResAEQ17)
 		cs.pool.ReserveTUSD = NewDecimal(newResTUSD17)
 		cs.pool.TotalLPShares = cs.pool.TotalLPShares.Sub(NewDecimal(sharesToBurn))
-		if err := cs.saveAccountToDBCtx(ctx, acc); err != nil {
-			return 0, 0, 0, fmt.Errorf("could not save account: %w", err)
-		}
+		// Persist the POOL DEBIT before the account credit.
+		//
+		// FIX (supply audit 2026-08-20): these are two separate writes and the
+		// order decides which way a failure between them falls. Crediting the
+		// account first and debiting the reserve second is the CREATING order:
+		// the withdrawal is durable, the pool never gives the AEQ up, and the
+		// difference is new money. The same mistake was found in
+		// MigrateStrandedPoolTUsdFeesV1, and this is the path where the live
+		// excess actually sits - the AMM reserve holds the bulk of it.
+		//
+		// Debit-first fails the other way: the pool gives up AEQ that nobody
+		// receives. That destroys supply rather than creating it, which for a
+		// currency whose premise is "money exists because people exist" is the
+		// only acceptable direction to fail in.
 		if err := cs.savePoolToDBCtx(ctx); err != nil {
-			return 0, 0, 0, fmt.Errorf("could not save pool: %w", err)
+			// Nothing was credited durably, so the withdrawal simply did not
+			// happen; the in-memory account mutation is discarded with the error.
+			return 0, 0, 0, fmt.Errorf("could not save pool, withdrawal not applied: %w", err)
+		}
+		if err := cs.saveAccountToDBCtx(ctx, acc); err != nil {
+			// The pool already gave the AEQ up and nobody received it. Loud,
+			// because this line is the only record that it happened.
+			fmt.Printf("[POOL] pool debited but the credit to %s did not persist: %v (destroyed, not duplicated)\n", address, err)
+			return 0, 0, 0, fmt.Errorf("could not save account: %w", err)
 		}
 		cs.save()
 		cs.syncBalanceLocked(V7_CONTRACT_ADDR, address)
@@ -6006,11 +6383,30 @@ func (cs *ChainState) removeLiquidityLocked(ctx context.Context, address string,
 	cs.pool.ReserveTUSD = NewDecimal(newReserveTUSD)
 	cs.pool.TotalLPShares = cs.pool.TotalLPShares.Sub(NewDecimal(sharesToBurn))
 
-	if err := cs.saveAccountToDBCtx(ctx, acc); err != nil {
-		return 0, 0, 0, fmt.Errorf("could not save account: %w", err)
-	}
+	// Persist the POOL DEBIT before the account credit.
+	//
+	// FIX (supply audit 2026-08-20): these are two separate writes and the
+	// order decides which way a failure between them falls. Crediting the
+	// account first and debiting the reserve second is the CREATING order:
+	// the withdrawal is durable, the pool never gives the AEQ up, and the
+	// difference is new money. The same mistake was found in
+	// MigrateStrandedPoolTUsdFeesV1, and this is the path where the live
+	// excess actually sits - the AMM reserve holds the bulk of it.
+	//
+	// Debit-first fails the other way: the pool gives up AEQ that nobody
+	// receives. That destroys supply rather than creating it, which for a
+	// currency whose premise is "money exists because people exist" is the
+	// only acceptable direction to fail in.
 	if err := cs.savePoolToDBCtx(ctx); err != nil {
-		return 0, 0, 0, fmt.Errorf("could not save pool: %w", err)
+		// Nothing was credited durably, so the withdrawal simply did not
+		// happen; the in-memory account mutation is discarded with the error.
+		return 0, 0, 0, fmt.Errorf("could not save pool, withdrawal not applied: %w", err)
+	}
+	if err := cs.saveAccountToDBCtx(ctx, acc); err != nil {
+		// The pool already gave the AEQ up and nobody received it. Loud,
+		// because this line is the only record that it happened.
+		fmt.Printf("[POOL] pool debited but the credit to %s did not persist: %v (destroyed, not duplicated)\n", address, err)
+		return 0, 0, 0, fmt.Errorf("could not save account: %w", err)
 	}
 	cs.save()
 
@@ -7048,6 +7444,26 @@ func (cs *ChainState) restoreFromRollback(snap *blockRollbackSnapshot) error {
 // duplication is intentional, not copy-paste: the two functions hold the
 // lock for genuinely different durations on purpose).
 func (cs *ChainState) restoreFromRollbackLocked(snap *blockRollbackSnapshot) error {
+	// context.Background() ist hier die RICHTIGE Wahl, kein Platzhalter: siehe
+	// restoreFromRollbackLockedCtx.
+	return cs.restoreFromRollbackLockedCtx(context.Background(), snap)
+}
+
+// restoreFromRollbackLockedCtx ist die eigentliche Umsetzung.
+//
+// WARUM ctx HIER KEINE TRANSAKTION TRAGEN DARF. Die Aufrufer raeumen vor der
+// Ruecknahme in dieser Reihenfolge auf: setActiveTx(nil), dann tx.Rollback(),
+// dann diese Funktion. Dadurch faellt dbExecCtx auf cs.db zurueck -- eine
+// frische Verbindung aus dem Vorrat -- und die Schreibvorgaenge hier werden
+// eigenstaendig festgeschrieben. Wuerde stattdessen die Transaktion der
+// gescheiterten Operation durchgereicht, liefen sie in eine ZURUECKGEROLLTE
+// Transaktion und verschwaenden spurlos: der Speicher waere wiederhergestellt,
+// die Datenbank nicht.
+//
+// Die Bedingung stand vorher nur in der Reihenfolge der Aufrufe. Jetzt steht
+// sie im Aufruf selbst -- wer hier eine Transaktion hineingibt, tut es
+// sichtbar und nicht aus Versehen.
+func (cs *ChainState) restoreFromRollbackLockedCtx(ctx context.Context, snap *blockRollbackSnapshot) error {
 	var toDelete []string
 	for _, s := range snap.accounts {
 		if s.existed {
@@ -7075,12 +7491,12 @@ func (cs *ChainState) restoreFromRollbackLocked(snap *blockRollbackSnapshot) err
 
 	var firstErr error
 	for _, acc := range toSave {
-		if err := cs.saveAccountToDB(acc); err != nil && firstErr == nil {
+		if err := cs.saveAccountToDBCtx(ctx, acc); err != nil && firstErr == nil {
 			firstErr = fmt.Errorf("rollback: could not persist restored account %s: %w", acc.Address, err)
 		}
 	}
 	if poolToSave != nil {
-		if err := cs.savePoolToDB(); err != nil && firstErr == nil {
+		if err := cs.savePoolToDBCtx(ctx); err != nil && firstErr == nil {
 			firstErr = fmt.Errorf("rollback: could not persist restored pool: %w", err)
 		}
 	}
@@ -7091,7 +7507,7 @@ func (cs *ChainState) restoreFromRollbackLocked(snap *blockRollbackSnapshot) err
 		// function's own doc comment on why the lock stays held through
 		// these DB writes).
 		for _, addr := range toDelete {
-			if _, err := cs.dbExec().Exec(`DELETE FROM chain_accounts WHERE lower(address) = $1`, addr); err != nil {
+			if _, err := cs.dbExecCtx(ctx).Exec(`DELETE FROM chain_accounts WHERE lower(address) = $1`, addr); err != nil {
 				fmt.Printf("[ROLLBACK] Warning: could not delete rolled-back account %s: %v\n", addr, err)
 				if firstErr == nil {
 					firstErr = fmt.Errorf("rollback: could not delete rolled-back account %s: %w", addr, err)
@@ -7111,12 +7527,12 @@ func (cs *ChainState) restoreFromRollbackLocked(snap *blockRollbackSnapshot) err
 	// as "nothing to restore", indistinguishable from "key never existed").
 	for key, cv := range snap.chainConfig {
 		if !cv.existed {
-			if err := cs.deleteConfigValue(key); err != nil && firstErr == nil {
+			if err := cs.deleteConfigValueCtx(ctx, key); err != nil && firstErr == nil {
 				firstErr = fmt.Errorf("rollback: could not delete config %q: %w", key, err)
 			}
 			continue
 		}
-		if err := cs.setConfigValue(key, cv.value); err != nil && firstErr == nil {
+		if err := cs.setConfigValueCtx(ctx, key, cv.value); err != nil && firstErr == nil {
 			firstErr = fmt.Errorf("rollback: could not restore config %q: %w", key, err)
 		}
 	}
@@ -7241,7 +7657,9 @@ func (cs *ChainState) applyTransferDeltaLocked(ctx context.Context, from, to str
 		return fmt.Errorf("transfer: could not settle recipient %s demurrage: %w", to, err)
 	}
 	toAcc.Balance = toAcc.Balance.Add(NewDecimal(netAmount))
-	touchActivityAt(toAcc, activityAt) // see the sender's own call above; transferLocked touches both sides
+	// Receiving is not the holder acting: start the clock, never reset it.
+	// Mirrors transferMutateLocked/transferWithV7FeeLocked on the primary.
+	startClockIfUnsetAt(toAcc, activityAt)
 	if err := cs.enforceWealthCapLockedCtx(ctx, toAcc); err != nil {
 		return fmt.Errorf("transfer: could not enforce wealth cap for recipient %s: %w", to, err)
 	}
@@ -7323,12 +7741,32 @@ func (cs *ChainState) applySwapDeltaLocked(ctx context.Context, wallet string, a
 	// FIX (audit recheck2, P0 #3): see ApplyTransferDelta's comment — every
 	// saveAccountToDB/savePoolToDB call in this function used to discard its
 	// returned error.
-	if err := cs.saveAccountToDBCtx(ctx, acc); err != nil {
-		return fmt.Errorf("swap: could not save account %s: %w", wallet, err)
-	}
-
 	// Update pool reserves to match what swapLocked() did on primary.
 	// fee is swapFeeBps (0.1%); amountInAfterFee is what enters the pool.
+	//
+	// PERSIST THE AEQ DEBIT BEFORE THE CREDIT, exactly as swapLocked does.
+	//
+	// FIX (supply audit 2026-08-20): this always saved the account first,
+	// whatever the direction. That is right for aeqToTusd, where the account
+	// gives the AEQ up — and wrong for the other direction, where the account
+	// RECEIVES AEQ: the credit was durable while the reserve debit was lost,
+	// and the difference is new money. The primary was made direction-aware and
+	// this path was not, so the same swap failed safely on a producing node and
+	// unsafely on a replaying one.
+	saveAccountFirst := aeqToTusd
+	saveAcct := func() error {
+		if err := cs.saveAccountToDBCtx(ctx, acc); err != nil {
+			return fmt.Errorf("swap: could not save account %s: %w", wallet, err)
+		}
+		return nil
+	}
+	savePool := func() error {
+		if err := cs.savePoolToDBCtx(ctx); err != nil {
+			return fmt.Errorf("swap: could not save pool: %w", err)
+		}
+		return nil
+	}
+
 	if cs.pool != nil {
 		fee := amountIn * float64(swapFeeBps) / 10000.0
 		amountInAfterFee := amountIn - fee
@@ -7341,8 +7779,20 @@ func (cs *ChainState) applySwapDeltaLocked(ctx context.Context, wallet string, a
 			cs.pool.ReserveTUSD = cs.pool.ReserveTUSD.Add(NewDecimal(amountInAfterFee))
 			cs.pool.ReserveAEQ = cs.pool.ReserveAEQ.Sub(NewDecimal(amountOut)).AtLeastZero()
 		}
-		if err := cs.savePoolToDBCtx(ctx); err != nil {
-			return fmt.Errorf("swap: could not save pool: %w", err)
+		if saveAccountFirst {
+			if err := saveAcct(); err != nil {
+				return err
+			}
+			if err := savePool(); err != nil {
+				return err
+			}
+		} else {
+			if err := savePool(); err != nil {
+				return err
+			}
+			if err := saveAcct(); err != nil {
+				return err
+			}
 		}
 		// Distribute swap fee to the 4 tokenomics pools (40% validators /
 		// 30% LP / 20% UBI / 10% treasury) — mirrors swapLocked() on primary.
@@ -7351,6 +7801,12 @@ func (cs *ChainState) applySwapDeltaLocked(ctx context.Context, wallet string, a
 		if err := cs.distributeSwapFeeCtx(ctx, fee, aeqToTusd); err != nil {
 			return fmt.Errorf("could not persist swap fee distribution: %w", err)
 		}
+	} else if err := saveAcct(); err != nil {
+		// No pool on this node: there is no ordering question, but the account
+		// must still be written. Moving the save into the pool branch above
+		// would otherwise drop it entirely here — the balance would change in
+		// memory and never be persisted.
+		return err
 	}
 	return nil
 }
@@ -7422,16 +7878,29 @@ func (cs *ChainState) addLiquidityDeltaLocked(ctx context.Context, wallet string
 	// every node except the one that produced the block.
 	touchActivityAt(acc, activityAt)
 	// FIX (audit recheck2, P0 #3): see ApplyTransferDelta's comment.
+	// PERSIST THE AEQ DEBIT BEFORE THE CREDIT — the account is the side losing
+	// AEQ in a deposit, so it is saved first.
+	//
+	// FIX (supply audit 2026-08-20): this saved the pool first, which is the
+	// CREATING order here. The pool credit would be durable while the account
+	// debit was lost, and the difference is new money. It also disagreed with
+	// addLiquidityLocked on the primary, which already saved the account first
+	// — so the same deposit failed safely on a producing node and unsafely on a
+	// replaying one, which is invisible until a write actually fails.
+	if err := cs.saveAccountToDBCtx(ctx, acc); err != nil {
+		return fmt.Errorf("add_liquidity: could not save account %s: %w", wallet, err)
+	}
 	if cs.pool != nil {
 		cs.pool.ReserveAEQ = cs.pool.ReserveAEQ.Add(NewDecimal(aeqAmount))
 		cs.pool.ReserveTUSD = cs.pool.ReserveTUSD.Add(NewDecimal(tusdAmount))
 		cs.pool.TotalLPShares = cs.pool.TotalLPShares.Add(NewDecimal(mintedShares))
 		if err := cs.savePoolToDBCtx(ctx); err != nil {
+			// The account gave the AEQ up and the pool never received it.
+			// Loud, because this line is the only record that it happened.
+			fmt.Printf("[POOL] %s was debited but the pool credit did not persist: %v "+
+				"(destroyed, not duplicated)\n", wallet, err)
 			return fmt.Errorf("add_liquidity: could not save pool: %w", err)
 		}
-	}
-	if err := cs.saveAccountToDBCtx(ctx, acc); err != nil {
-		return fmt.Errorf("add_liquidity: could not save account %s: %w", wallet, err)
 	}
 	return nil
 }
@@ -7601,7 +8070,10 @@ func (cs *ChainState) applyUBIDeltaLocked(ctx context.Context, amountPerHuman fl
 	})
 	for _, acc := range humans {
 		acc.Balance = acc.Balance.Add(NewDecimal(amountPerHuman))
-		touchActivityAt(acc, ubiAt)
+		// No activity stamp: the protocol credited them, they did not act.
+		// Mirrors the primary path — see touchActivity's comment. Leaving it
+		// here would undo the fix on every node that is not producing, and
+		// silently restore it the moment one of them became primary.
 		if err := cs.enforceWealthCapLockedCtx(ctx, acc); err != nil {
 			return fmt.Errorf("ubi (legacy flat): could not enforce wealth cap for %s: %w", acc.Address, err)
 		}
@@ -7667,7 +8139,10 @@ func (cs *ChainState) applyUBIRewardDeltaLocked(ctx context.Context, wallet stri
 		return fmt.Errorf("ubi reward: could not settle %s demurrage: %w", wallet, err)
 	}
 	acc.Balance = acc.Balance.Add(NewDecimal(amount))
-	touchActivityAt(acc, activityAt)
+	// No activity stamp: the protocol credited them, they did not act.
+	// Mirrors the primary path — see touchActivity's comment. Leaving it
+	// here would undo the fix on every node that is not producing, and
+	// silently restore it the moment one of them became primary.
 	if err := cs.enforceWealthCapLockedCtx(ctx, acc); err != nil {
 		return fmt.Errorf("ubi reward: could not enforce wealth cap for %s: %w", wallet, err)
 	}
@@ -7759,7 +8234,10 @@ func (cs *ChainState) applyValidatorRewardDeltaLocked(ctx context.Context, walle
 		return fmt.Errorf("validator reward: could not settle %s demurrage: %w", wallet, err)
 	}
 	acc.Balance = acc.Balance.Add(NewDecimal(amount))
-	touchActivityAt(acc, activityAt)
+	// No activity stamp: the protocol credited them, they did not act.
+	// Mirrors the primary path — see touchActivity's comment. Leaving it
+	// here would undo the fix on every node that is not producing, and
+	// silently restore it the moment one of them became primary.
 	if err := cs.enforceWealthCapLockedCtx(ctx, acc); err != nil {
 		return fmt.Errorf("validator reward: could not enforce wealth cap for %s: %w", wallet, err)
 	}
@@ -7842,7 +8320,10 @@ func (cs *ChainState) applyLPRewardDeltaLocked(ctx context.Context, wallet strin
 		return fmt.Errorf("lp reward: could not settle %s demurrage: %w", wallet, err)
 	}
 	acc.Balance = acc.Balance.Add(NewDecimal(amount))
-	touchActivityAt(acc, activityAt)
+	// No activity stamp: the protocol credited them, they did not act.
+	// Mirrors the primary path — see touchActivity's comment. Leaving it
+	// here would undo the fix on every node that is not producing, and
+	// silently restore it the moment one of them became primary.
 	if err := cs.enforceWealthCapLockedCtx(ctx, acc); err != nil {
 		return fmt.Errorf("lp reward: could not enforce wealth cap for %s: %w", wallet, err)
 	}

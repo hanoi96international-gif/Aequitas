@@ -1,0 +1,56 @@
+<!--
+  Impressum nach § 5 DDG.
+
+  DIESE SEITE WIRD NICHT AUSGELIEFERT, solange eine Pflichtangabe fehlt --
+  siehe legal_felder.go. Ein unvollstaendiges Impressum unter eigener Domain
+  ist schlechter als gar keines: es benennt jemanden, der vielleicht gar nicht
+  verantwortlich ist, und erweckt den Anschein, die Pflicht sei erfuellt.
+
+  Zum Freischalten wird an dieser Datei NICHTS mehr geaendert. Die Angaben
+  kommen aus Umgebungsvariablen (LEGAL_NAME, LEGAL_STRASSE, ...); welche
+  fehlen, sagt GET /api/legal-status. Nach einem Neustart erscheint die Seite
+  von selbst.
+
+  Optionale Felder, die leer bleiben, verschwinden samt ihrer Zeile -- eine
+  Zeile "Telefon:" ohne Nummer sieht aus wie ein Fehler.
+-->
+<h1>Impressum</h1>
+
+<p class="hinweis">
+  Angaben gemäß § 5 DDG
+</p>
+
+<address>
+  {{NAME}}<br>
+  {{STRASSE}}<br>
+  {{ORT}}<br>
+  {{LAND}}
+</address>
+
+<h2>Kontakt</h2>
+<p>
+  E-Mail: {{EMAIL}}<br>
+  Telefon: {{TELEFON}}
+</p>
+
+<h2>Verantwortlich für den Inhalt nach § 18 Abs. 2 MStV</h2>
+<p>
+  {{VERANTWORTLICH}}<br>
+  {{STRASSE}}, {{ORT}}
+</p>
+
+<h2>Bei einer Gesellschaft</h2>
+<p>
+  Vertreten durch: {{VERTRETEN_DURCH}}<br>
+  Registergericht: {{REGISTERGERICHT}}<br>
+  Registernummer: {{REGISTERNUMMER}}<br>
+  Umsatzsteuer-Identifikationsnummer gemäß § 27a UStG: {{USTID}}
+</p>
+
+<h2>Streitbeilegung</h2>
+<p>
+  Wir sind nicht bereit und nicht verpflichtet, an Streitbeilegungsverfahren
+  vor einer Verbraucherschlichtungsstelle teilzunehmen.
+</p>
+
+<p class="fuss"><a href="/datenschutz">Datenschutzerklärung</a> · <a href="/">Startseite</a></p>

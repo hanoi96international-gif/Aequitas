@@ -1,0 +1,120 @@
+name: Persist AEQUITAS_WAL_FLUSH_CONCURRENCY on both boxes
+
+# MEASURED 2026-08-22, interval fixed at the 100ms default, one run each:
+#
+#   concurrency  4   1578 TPS   hold_avg 45ms   hold_max 557ms   db 41ms
+#   concurrency 16   2789 TPS   hold_avg 34ms   hold_max 209ms   db 31ms
+#   concurrency 32   3129 TPS   hold_avg 35ms   hold_max 162ms   db 31ms
+#
+# The throughput column sits inside a +-40% noise band and proves little on its
+# own. The mechanism columns do not: hold_max fell from 557ms to 162ms, which
+# is the number that matters, because flushWALBatch holds
+# cs.accounts.LockAddrs for that whole time and every transfer touching one of
+# those addresses waits behind it.
+#
+# WHY IT HELPS. The flush queue is split across more workers, so each one
+# covers fewer addresses and holds them for less time. Total database work is
+# unchanged -- this trades one long freeze of a large address set for several
+# short freezes of small ones, which is what a transfer waiting on a single
+# account actually cares about.
+#
+# Measured context: transfers average 55-80ms end to end, of which the WAL sync
+# is ~8ms. The rest is dominated by waiting on account shard locks, and this is
+# the only lever found that shortens that wait without trading it away
+# somewhere else -- the flush INTERVAL was swept from 5ms to 600ms and the
+# 100ms default won in both directions, and the batch SIZE never bound at all
+# (items_per_flush 402 against a 4,000 cap).
+#
+# 32 against a database pool of 100 leaves ample room for everything else on
+# the connection.
+#
+# Sequenced: with two validators, restarting both at once leaves nothing
+# producing.
+on:
+  workflow_dispatch:
+    inputs:
+      value:
+        description: "AEQUITAS_WAL_FLUSH_CONCURRENCY (4 = shipped default)"
+        required: true
+        default: "32"
+
+jobs:
+  c1:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Contabo1
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: 173.249.37.118
+          username: root
+          key: ${{ secrets.CONTABO_SSH_KEY }}
+          port: 22
+          fingerprint: "SHA256:noMtjHV8c+2iEFZu3TRUP6WRwGjkrvFke71KgU6Eyt4"
+          script_stop: false
+          timeout: 600s
+          command_timeout: 600s
+          envs: CONC
+          script: |
+            set +e
+            echo "### CONTABO1 -> AEQUITAS_WAL_FLUSH_CONCURRENCY=$CONC ###"
+            cp /root/.aequitas.env "/root/.aequitas.env.bak.$(date +%Y%m%d-%H%M%S)"
+            sed -i '/^AEQUITAS_WAL_FLUSH_CONCURRENCY=/d;/^AEQUITAS_WAL_FLUSH_INTERVAL_MS=/d;/^AEQUITAS_WAL_FLUSH_BATCH=/d' /root/.aequitas.env
+            echo "AEQUITAS_WAL_FLUSH_CONCURRENCY=$CONC" >> /root/.aequitas.env
+            grep -E '^AEQUITAS_WAL_FLUSH' /root/.aequitas.env || echo "(only concurrency set; interval and batch keep their defaults)"
+            IMAGE="$(docker inspect aequitas-node --format '{{.Config.Image}}')"
+            NET="$(docker inspect aequitas-node --format '{{range $k, $v := .NetworkSettings.Networks}}{{$k}} {{end}}' | awk '{print $1}')"
+            PORTS="$(docker inspect aequitas-node --format '{{range $p, $c := .HostConfig.PortBindings}}-p {{(index $c 0).HostPort}}:{{$p}} {{end}}' | sed 's|/tcp||g')"
+            MOUNTS="$(docker inspect aequitas-node --format '{{range .Mounts}}-v {{.Source}}:{{.Destination}} {{end}}')"
+            mkdir -p /root/flushconc
+            ENVOUT=/root/flushconc/env
+            docker inspect aequitas-node --format '{{range .Config.Env}}{{println .}}{{end}}' | grep -vE '^(RESYNC_FROM_SNAPSHOT|HOSTNAME|PATH|HOME)=' | grep -E '^[A-Za-z_][A-Za-z0-9_]*=' > /tmp/proc.env
+            grep -E '^[A-Za-z_][A-Za-z0-9_]*=' /root/.aequitas.env | grep -vE '^(RESYNC_FROM_SNAPSHOT|HOSTNAME|PATH|HOME)=' > /tmp/file.env || true
+            awk -F= '!seen[$1]++' /tmp/file.env /tmp/proc.env > "$ENVOUT"
+            docker stop aequitas-node && docker rm aequitas-node
+            docker run -d --name aequitas-node --network "$NET" $PORTS $MOUNTS --env-file "$ENVOUT" --restart unless-stopped "$IMAGE"
+            sleep 40
+            docker inspect aequitas-node --format '{{range .Config.Env}}{{println .}}{{end}}' | grep -E '^AEQUITAS_WAL_FLUSH' || echo "(not set — investigate)"
+            curl -s --max-time 15 http://127.0.0.1:8080/api/status | grep -o '"height":[0-9]*' || echo "(unreachable)"
+        env:
+          CONC: ${{ inputs.value }}
+
+  c2:
+    needs: c1
+    runs-on: ubuntu-latest
+    steps:
+      - name: Contabo2
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: 194.163.188.71
+          username: root
+          key: ${{ secrets.CONTABO2_SSH_KEY }}
+          port: 22
+          script_stop: false
+          timeout: 600s
+          command_timeout: 600s
+          envs: CONC
+          script: |
+            set +e
+            echo "### CONTABO2 -> AEQUITAS_WAL_FLUSH_CONCURRENCY=$CONC ###"
+            cp /root/.aequitas.env "/root/.aequitas.env.bak.$(date +%Y%m%d-%H%M%S)"
+            # The sweep left an interval override behind; clearing it puts the
+            # 100ms default back, which won that sweep in both directions.
+            sed -i '/^AEQUITAS_WAL_FLUSH_CONCURRENCY=/d;/^AEQUITAS_WAL_FLUSH_INTERVAL_MS=/d;/^AEQUITAS_WAL_FLUSH_BATCH=/d' /root/.aequitas.env
+            echo "AEQUITAS_WAL_FLUSH_CONCURRENCY=$CONC" >> /root/.aequitas.env
+            grep -E '^AEQUITAS_WAL_FLUSH' /root/.aequitas.env || echo "(only concurrency set)"
+            IMAGE="$(docker inspect aequitas-node --format '{{.Config.Image}}')"
+            NET="$(docker inspect aequitas-node --format '{{range $k, $v := .NetworkSettings.Networks}}{{$k}} {{end}}' | awk '{print $1}')"
+            PORTS="$(docker inspect aequitas-node --format '{{range $p, $c := .HostConfig.PortBindings}}-p {{(index $c 0).HostPort}}:{{$p}} {{end}}' | sed 's|/tcp||g')"
+            MOUNTS="$(docker inspect aequitas-node --format '{{range .Mounts}}-v {{.Source}}:{{.Destination}} {{end}}')"
+            mkdir -p /root/flushconc
+            ENVOUT=/root/flushconc/env
+            docker inspect aequitas-node --format '{{range .Config.Env}}{{println .}}{{end}}' | grep -vE '^(RESYNC_FROM_SNAPSHOT|HOSTNAME|PATH|HOME|AEQUITAS_WAL_FLUSH_INTERVAL_MS|AEQUITAS_WAL_FLUSH_BATCH|AEQUITAS_WAL_FLUSH_CONCURRENCY)=' | grep -E '^[A-Za-z_][A-Za-z0-9_]*=' > /tmp/proc.env
+            grep -E '^[A-Za-z_][A-Za-z0-9_]*=' /root/.aequitas.env | grep -vE '^(RESYNC_FROM_SNAPSHOT|HOSTNAME|PATH|HOME)=' > /tmp/file.env || true
+            awk -F= '!seen[$1]++' /tmp/file.env /tmp/proc.env > "$ENVOUT"
+            docker stop aequitas-node && docker rm aequitas-node
+            docker run -d --name aequitas-node --network "$NET" $PORTS $MOUNTS --env-file "$ENVOUT" --restart unless-stopped "$IMAGE"
+            sleep 40
+            docker inspect aequitas-node --format '{{range .Config.Env}}{{println .}}{{end}}' | grep -E '^AEQUITAS_WAL_FLUSH' || echo "(not set — investigate)"
+            curl -s --max-time 15 http://127.0.0.1:8080/api/status | grep -o '"height":[0-9]*' || echo "(unreachable)"
+        env:
+          CONC: ${{ inputs.value }}

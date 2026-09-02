@@ -1,0 +1,57 @@
+name: Is block-payload compression actually being written? (read-only)
+
+# AEQUITAS_COMPRESS_BLOCK_PAYLOAD being set proves the flag reached the
+# process, not that blocks are stored compressed. The two are different claims,
+# and the difference is exactly the kind that hides: a node writing plain
+# payloads while the flag is on looks identical from the outside.
+#
+# A block written by this path leaves the plain `transactions` column empty and
+# fills the compressed column instead, so the storage itself answers the
+# question. Reads the most recent rows on each box and reports which form they
+# are in.
+on:
+  workflow_dispatch: {}
+
+jobs:
+  c1:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Contabo1
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: 173.249.37.118
+          username: root
+          key: ${{ secrets.CONTABO_SSH_KEY }}
+          port: 22
+          fingerprint: "SHA256:noMtjHV8c+2iEFZu3TRUP6WRwGjkrvFke71KgU6Eyt4"
+          script_stop: false
+          timeout: 300s
+          command_timeout: 300s
+          script: |
+            echo "### CONTABO1 ###"
+            # Database name only, taken from DATABASE_URL's path segment. The
+            # URL itself carries credentials and is never printed.
+            DB=$(docker inspect aequitas-node --format '{{range .Config.Env}}{{println .}}{{end}}' | grep '^DATABASE_URL=' | sed 's|.*/||; s|?.*||')
+            echo "database: ${DB:-<could not derive>}"
+            echo "--- last 10 blocks: plain payload vs compressed (chain_blocks.transactions_z) ---"
+            docker exec aequitas-postgres psql -U postgres -d "$DB" -tAc "SELECT height, length(coalesce(transactions,'')) AS plain_len, coalesce(octet_length(transactions_z),0) AS z_len FROM chain_blocks ORDER BY height DESC LIMIT 10;" 2>&1 | head -15
+
+  c2:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Contabo2
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: 194.163.188.71
+          username: root
+          key: ${{ secrets.CONTABO2_SSH_KEY }}
+          port: 22
+          script_stop: false
+          timeout: 300s
+          command_timeout: 300s
+          script: |
+            echo "### CONTABO2 ###"
+            DB=$(docker inspect aequitas-node --format '{{range .Config.Env}}{{println .}}{{end}}' | grep '^DATABASE_URL=' | sed 's|.*/||; s|?.*||')
+            echo "database: ${DB:-<could not derive>}"
+            echo "--- last 10 blocks: plain payload vs compressed (chain_blocks.transactions_z) ---"
+            docker exec aequitas-postgres psql -U postgres -d "$DB" -tAc "SELECT height, length(coalesce(transactions,'')) AS plain_len, coalesce(octet_length(transactions_z),0) AS z_len FROM chain_blocks ORDER BY height DESC LIMIT 10;" 2>&1 | head -15

@@ -62,12 +62,35 @@ const rpcRateLimitWindow = 10 * time.Second
 //
 // Made overridable via AEQUITAS_RPC_RATE_LIMIT_MAX (2026-07-24) because it —
 // not the chain — became the binding constraint on throughput measurement.
-// The limiter is checked once per HTTP request, before the body is parsed, so
-// a JSON-RPC batch of maxBatchSize=100 transfers costs exactly one tick. That
-// puts a single source at 20 × 100 = 2,000 transfers/s, which is 25× short of
-// the 50,000 the chain is being tuned for (maxTxsPerBlock=50000 at
-// BLOCK_TIME=1s). No amount of load-generator work can get past it, since the
-// rejection happens before the request is even read.
+// KORREKTUR (2026-08-29): dieser Absatz stand hier ein Jahr lang falsch und
+// hat eine ganze Messreihe verdorben. Er sagte, der Begrenzer werde EINMAL JE
+// HTTP-ANFRAGE geprueft, ein Buendel aus 100 Ueberweisungen koste also einen
+// Tick, und eine einzelne Quelle komme damit auf 20 x 100 = 2.000
+// Ueberweisungen/s.
+//
+// Das gilt seit dem P1-Fix vom 2026-07-21 (nach main portiert am 2026-08-14)
+// nicht mehr. Abgebucht wird JE POSTEN -- siehe die Schleife
+// `overBudget[i] = rpcRateLimited(ip)` in handleRPC, mitsamt ihrer eigenen
+// Begruendung: genau dieses Schlupfloch (rpcRateLimitMax x maxBatchSize =
+// 20.000 statt der dokumentierten 200) sollte sie schliessen.
+//
+// Die richtige Rechnung lautet also:
+//
+//	200 Posten je 10-s-Fenster  =  20 Ueberweisungen/s je IP
+//
+// nicht 2.000. Faktor 100 -- und in dieser Groessenordnung irrt sich niemand
+// zu seinem Vorteil: wer aus dem alten Absatz den Wert fuer einen Lastlauf
+// ableitet, setzt ihn hundertfach zu niedrig, misst ein Hundertstel und haelt
+// den Knoten fuer langsam. Am 29.08.2026 hat genau das eine Messreihe auf
+// 13-15 TPS gedeckelt, waehrend die Ursache im Begrenzer sass und nicht in
+// der Kette.
+//
+// FUER EINEN LASTLAUF heisst das: die Zielrate in Ueberweisungen/s mal 10
+// (Fensterlaenge) ist der Mindestwert, plus Reserve. 10.000 TPS brauchen also
+// >= 100.000, nicht 10.000.
+//
+// Fuer echte Nutzung sind die 200 weiterhin reichlich: eine Wallet sendet
+// einzelne Ueberweisungen, kein Buendel aus hundert.
 //
 // This is deliberately an ENV OVERRIDE rather than a raised default: the
 // limiter is real protection for a publicly-reachable /rpc endpoint, and
@@ -244,12 +267,17 @@ func (s *EVMRPCServer) nonceShardFor(addr string) *nonceShard {
 // it too is keyed by txHash (txHash -> contract address), and the receipt path
 // reads it in the same critical section as txStatus.
 type txMetaShard struct {
-	mu       sync.Mutex
-	status   map[string]bool   // txHash -> true if execution succeeded
-	errMsg   map[string]string // txHash -> error message if failed
-	senders  map[string]string // txHash -> sender address (lowercase)
-	tos      map[string]string // txHash -> to address (lowercase, "" for contract creation)
-	deployed map[string]string // txHash -> deployed contract address (lowercase)
+	mu        sync.Mutex
+	status    map[string]bool   // txHash -> true if execution succeeded
+	errMsg    map[string]string // txHash -> error message if failed
+	senders   map[string]string // txHash -> sender address (lowercase)
+	tos       map[string]string // txHash -> to address (lowercase, "" for contract creation)
+	deployed  map[string]string // txHash -> deployed contract address (lowercase)
+	nonces    map[string]uint64 // txHash -> die ECHTE Nonce des Absenders
+	values    map[string]string // txHash -> uebertragener Betrag als Hex-Wei
+	gasLimits map[string]uint64 // txHash -> angefordertes Gaslimit
+	types     map[string]uint8  // txHash -> echter Typ (0 alt, 2 EIP-1559)
+	inputs    map[string]string // txHash -> Aufrufdaten als Hex, "" wenn zu gross
 
 	// Insertion order, for bounded eviction — a ring buffer, not a slice that
 	// gets re-created. Allocated once at its final size and then only written
@@ -275,6 +303,30 @@ const txMetaShardCount = 64
 // every transaction added roughly four permanent entries. That was a leak, and
 // it also made the lock progressively more expensive, because Go rehashes a
 // growing map while the caller holds it.
+// txInputMaxBytes begrenzt, wie grosse Aufrufdaten mitgehalten werden. Die
+// Karten sind auf txMetaMax Eintraege gedeckelt, aber ein Eintrag mit
+// unbegrenzter Groesse macht diesen Deckel wertlos: 100.000 Aufrufe zu je
+// einem Megabyte waeren 100 GB. Vier Kilobyte decken jeden Aufruf ab, den
+// diese Kette kennt (Swaps liegen bei rund hundert Byte).
+// gasProTx ist der Verbrauch einer einfachen Ueberweisung. Er ist nicht
+// gemessen (die EVM gibt keinen zurueck), aber fuer den Normalfall exakt --
+// und er steht an EINER Stelle, damit gasUsed und cumulativeGasUsed nicht
+// wieder auseinanderlaufen koennen.
+const gasProTx uint64 = 21000
+
+// chainIDHex ist dieselbe Kennung, die eth_chainId meldet.
+const chainIDHex = "0x786" // 1926
+
+// mussJSON verpackt einen String als JSON-Rohwert. Nur fuer den
+// fullTx-Zweig von blockToMap, der getTransactionByHash mit demselben
+// Parameterformat aufruft, das die Schnittstelle ohnehin liefert.
+func mussJSON(v string) json.RawMessage {
+	b, _ := json.Marshal(v)
+	return b
+}
+
+const txInputMaxBytes = 4096
+
 const txMetaMax = 100000
 
 // txMetaMaxPerShard divides that budget evenly. Hashes distribute uniformly, so
@@ -328,6 +380,11 @@ func (sh *txMetaShard) note(txHash string) {
 		delete(sh.senders, old)
 		delete(sh.tos, old)
 		delete(sh.deployed, old)
+		delete(sh.nonces, old)
+		delete(sh.values, old)
+		delete(sh.gasLimits, old)
+		delete(sh.types, old)
+		delete(sh.inputs, old)
 	} else {
 		sh.orderLen++
 	}
@@ -386,6 +443,11 @@ func (s *EVMRPCServer) initTxMetaShards() {
 		sh.senders = make(map[string]string)
 		sh.tos = make(map[string]string)
 		sh.deployed = make(map[string]string)
+		sh.nonces = make(map[string]uint64)
+		sh.values = make(map[string]string)
+		sh.gasLimits = make(map[string]uint64)
+		sh.types = make(map[string]uint8)
+		sh.inputs = make(map[string]string)
 	}
 }
 
@@ -401,6 +463,14 @@ func (s *EVMRPCServer) initNonceShards() {
 // ─── HTTP HANDLER ─────────────────────────────────────────────────────────────
 
 func (s *EVMRPCServer) handleRPC(w http.ResponseWriter, r *http.Request) {
+	// Timed from the first line of the handler to the encoded response, so the
+	// figure is directly comparable with TransferAtomic's own average. The
+	// subtraction between the two is the whole point -- see rpc_phase_stats.go
+	// for the arithmetic that made this necessary.
+	handlerStart := time.Now()
+	handlerItems := 0
+	defer func() { noteRPCHandler(time.Since(handlerStart), handlerItems) }()
+
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	w.Header().Set("Access-Control-Allow-Methods", "POST, OPTIONS")
@@ -434,6 +504,29 @@ func (s *EVMRPCServer) handleRPC(w http.ResponseWriter, r *http.Request) {
 			writeError(w, -32600, fmt.Sprintf("batch too large: max %d requests, got %d", maxBatchSize, len(batch)), nil)
 			return
 		}
+		// Warteschlange beschraenken -- BEVOR die teure Signaturpruefung laeuft.
+		// Abgelehnte Arbeit soll einen Zaehler kosten, nicht eine secp256k1-
+		// Wiederherstellung je Posten; das ist dieselbe Begruendung, mit der
+		// der Ratenbegrenzer oben vor dem Dekodieren geprueft wird.
+		//
+		// Ohne diese Schranke nimmt der Knoten unbegrenzt an und liefert nach
+		// der Zeitgrenze des Clients aus: am 29.08.2026 ergaben 576
+		// gleichzeitige Sender 0 Erfolge und 138.000 Zeitueberschreitungen,
+		// waehrend der Knoten durchgehend fehlerfrei arbeitete. Siehe
+		// inflight_grenze.go.
+		if !inflightEintritt(int64(len(batch))) {
+			results := make([]interface{}, 0, len(batch))
+			for range batch {
+				results = append(results, errorResponse(nil, -32005,
+					"server busy: too much work in flight, try again shortly"))
+			}
+			handlerItems = len(batch)
+			encodeStart := time.Now()
+			json.NewEncoder(w).Encode(results)
+			noteRPCEncode(time.Since(encodeStart))
+			return
+		}
+		defer inflightAustritt(int64(len(batch)))
 		// FIX (2026-07-25, 50k-TPS deep-dive): decode + ecrecover every
 		// eth_sendRawTransaction item in the batch up front, in parallel,
 		// before the serial dispatch loop below. types.Sender (secp256k1
@@ -487,6 +580,7 @@ func (s *EVMRPCServer) handleRPC(w http.ResponseWriter, r *http.Request) {
 			precomputed[i] = &precomputedSendTx{rawHex: rawHex}
 		}
 		if len(pending) > 0 {
+			decodeStart := time.Now()
 			workers := runtime.NumCPU()
 			if workers > len(pending) {
 				workers = len(pending)
@@ -508,6 +602,12 @@ func (s *EVMRPCServer) handleRPC(w http.ResponseWriter, r *http.Request) {
 			}
 			close(jobs)
 			wg.Wait()
+			noteRPCDecode(time.Since(decodeStart))
+
+			// Every sender and nonce is known now, so a batch's consecutive run
+			// can be reserved in ONE database round trip instead of one per
+			// transaction. Deliberately after the decode -- it needs tx.Nonce().
+			s.preReserveBatchNonces(precomputed, pending)
 		}
 		var results []interface{}
 		for i, raw := range batch {
@@ -520,7 +620,10 @@ func (s *EVMRPCServer) handleRPC(w http.ResponseWriter, r *http.Request) {
 			result := s.handleSingle(raw, precomputed[i])
 			results = append(results, result)
 		}
+		handlerItems = len(batch)
+		encodeStart := time.Now()
 		json.NewEncoder(w).Encode(results)
+		noteRPCEncode(time.Since(encodeStart))
 		return
 	}
 
@@ -528,8 +631,18 @@ func (s *EVMRPCServer) handleRPC(w http.ResponseWriter, r *http.Request) {
 		writeError(w, -32005, "rate limited: too many requests, try again shortly", nil)
 		return
 	}
+	// Auch der Einzelpfad zaehlt mit: eine Flut einzelner Anfragen fuellt
+	// dieselbe Warteschlange wie ein Buendel.
+	if !inflightEintritt(1) {
+		writeError(w, -32005, "server busy: too much work in flight, try again shortly", nil)
+		return
+	}
+	defer inflightAustritt(1)
 	result := s.handleSingle(body, nil)
+	handlerItems = 1
+	encodeStart := time.Now()
 	json.NewEncoder(w).Encode(result)
+	noteRPCEncode(time.Since(encodeStart))
 }
 
 func (s *EVMRPCServer) handleSingle(body []byte, pre *precomputedSendTx) map[string]interface{} {
@@ -588,15 +701,10 @@ func (s *EVMRPCServer) dispatch(method string, params []json.RawMessage, pre *pr
 		return "0x0", nil
 
 	case "eth_feeHistory":
-		return map[string]interface{}{
-			"oldestBlock":   "0x0",
-			"baseFeePerGas": []string{"0x0"},
-			"gasUsedRatio":  []float64{0},
-			"reward":        [][]string{{"0x0"}},
-		}, nil
+		return s.feeHistory(params)
 
 	case "eth_estimateGas":
-		return "0x5B8D80", nil // 6M gas
+		return s.estimateGas(params)
 
 	case "eth_getTransactionCount":
 		return s.getTransactionCount(params)
@@ -635,12 +743,20 @@ func (s *EVMRPCServer) dispatch(method string, params []json.RawMessage, pre *pr
 		return "AequitasChain/v0.3.0/go", nil
 
 	case "eth_syncing":
-		return false, nil
+		return s.syncing(), nil
 
 	case "eth_mining":
 		return false, nil
 
 	case "eth_coinbase":
+		// Die Signieradresse dieses Knotens. Sie ist oeffentlich -- sie steht
+		// im Validator-Register und unter jedem Block, den er erzeugt. Die
+		// Nulladresse, die hier stand, verschweigt nichts, sie stimmt nur nicht.
+		if s.dag != nil {
+			if a := s.dag.SelfSigningAddress(); a != "" {
+				return a, nil
+			}
+		}
 		return "0x0000000000000000000000000000000000000000", nil
 
 	case "net_listening":
@@ -837,6 +953,62 @@ type precomputedSendTx struct {
 	sender    string
 	senderErr bool // true if err came from sender recovery (-32603), not decode (-32602)
 	err       error
+
+	// nonceReserved is set by handleRPC's batch pre-pass when this
+	// transaction's nonce was already reserved as part of a consecutive run
+	// (see nonce_batch_reserve.go). sendRawTransaction then skips its own
+	// reservation, which is 26% of a transfer's time.
+	nonceReserved bool
+}
+
+// reserveNoncePerItem is the original one-transaction-at-a-time nonce check
+// and reservation, unchanged in behaviour and still the path for anything the
+// batch pre-pass did not cover: single-transaction requests, non-consecutive
+// nonces, a second sender's remainder, or a range reservation that failed.
+//
+// The shard lock is held across the DB load, the comparison and the swap.
+// P0-AUDIT: an earlier two-lock version had a TOCTOU race where two goroutines
+// for the same sender could both read nonce=0, both load 0 from the database
+// outside the lock, and both reserve it.
+func (s *EVMRPCServer) reserveNoncePerItem(tx *types.Transaction, senderAddr string) *RPCError {
+	nonceStart := time.Now()
+	nonceLock := s.nonceShardFor(senderAddr)
+	nonceLock.mu.Lock()
+	defer func() { noteRPCNonce(time.Since(nonceStart)) }()
+
+	// Populate from DB on first sight to recover correct nonce after restart.
+	if nonceLock.nonces[senderAddr] == 0 {
+		if dbNonce := s.state.LoadNonce(senderAddr); dbNonce > 0 {
+			nonceLock.nonces[senderAddr] = dbNonce
+		}
+	}
+	storedNonce := nonceLock.nonces[senderAddr]
+	txNonce := tx.Nonce()
+	if txNonce < storedNonce {
+		nonceLock.mu.Unlock()
+		return &RPCError{Code: -32603, Message: fmt.Sprintf("nonce too low: tx=%d expected=%d", txNonce, storedNonce)}
+	}
+	if txNonce > storedNonce {
+		nonceLock.mu.Unlock()
+		return &RPCError{Code: -32603, Message: fmt.Sprintf("nonce too high: tx=%d expected=%d", txNonce, storedNonce)}
+	}
+	// Reserve nonce immediately — prevents replay even if two identical
+	// requests arrive concurrently.
+	nextNonce := storedNonce + 1
+	reserved, err := s.state.ReserveNonce(senderAddr, storedNonce, nextNonce)
+	if err != nil {
+		nonceLock.mu.Unlock()
+		return &RPCError{Code: -32603, Message: "nonce reservation failed: " + err.Error()}
+	}
+	if !reserved {
+		dbNonce := s.state.LoadNonce(senderAddr)
+		nonceLock.nonces[senderAddr] = dbNonce
+		nonceLock.mu.Unlock()
+		return &RPCError{Code: -32603, Message: fmt.Sprintf("nonce already reserved: tx=%d expected=%d", txNonce, dbNonce)}
+	}
+	nonceLock.nonces[senderAddr] = nextNonce
+	nonceLock.mu.Unlock()
+	return nil
 }
 
 // decodeAndRecoverSender does the pure, side-effect-free half of
@@ -876,6 +1048,20 @@ func decodeAndRecoverSender(rawHex string) (tx *types.Transaction, senderAddr st
 }
 
 func (s *EVMRPCServer) sendRawTransaction(params []json.RawMessage, pre *precomputedSendTx) (interface{}, *RPCError) {
+	sendStart := time.Now()
+	defer func() { noteRPCSend(time.Since(sendStart)) }()
+
+	// Refuse before doing any work if this node cannot currently turn
+	// transactions into blocks. Accepting them anyway is what turns a node
+	// that is briefly behind into one that is permanently stuck: every
+	// accepted transfer grows the backlog that keeps the production gate
+	// shut, which stops the backlog draining. See admission_control.go.
+	//
+	// -32005 is the same retryable code the rate limiter uses, so existing
+	// clients already back off and retry on it.
+	if reason := admissionRefusalReason(); reason != "" {
+		return nil, &RPCError{Code: -32005, Message: reason}
+	}
 	if len(params) == 0 {
 		return nil, &RPCError{Code: -32602, Message: "Missing params"}
 	}
@@ -935,45 +1121,27 @@ func (s *EVMRPCServer) sendRawTransaction(params []json.RawMessage, pre *precomp
 	// both load nonce=0 from DB (DB read outside lock), and then both pass the
 	// second lock's check — both reserving nonce 0 and executing the same tx.
 	// Fix: hold the mutex for the entire DB-load + check + reserve sequence.
-	nonceLock := s.nonceShardFor(senderAddr)
-	nonceLock.mu.Lock()
-	// Populate from DB on first sight to recover correct nonce after restart.
-	if nonceLock.nonces[senderAddr] == 0 {
-		if dbNonce := s.state.LoadNonce(senderAddr); dbNonce > 0 {
-			nonceLock.nonces[senderAddr] = dbNonce
-		}
-	}
-	storedNonce := nonceLock.nonces[senderAddr]
-	txNonce := tx.Nonce()
-	if txNonce < storedNonce {
-		nonceLock.mu.Unlock()
-		return nil, &RPCError{Code: -32603, Message: fmt.Sprintf("nonce too low: tx=%d expected=%d", txNonce, storedNonce)}
-	}
-	if txNonce > storedNonce {
-		nonceLock.mu.Unlock()
-		return nil, &RPCError{Code: -32603, Message: fmt.Sprintf("nonce too high: tx=%d expected=%d", txNonce, storedNonce)}
-	}
-	// Reserve nonce immediately — prevents replay even if two identical
-	// requests arrive concurrently.
-	nextNonce := storedNonce + 1
-	reserved, err := s.state.ReserveNonce(senderAddr, storedNonce, nextNonce)
-	if err != nil {
-		nonceLock.mu.Unlock()
-		return nil, &RPCError{Code: -32603, Message: "nonce reservation failed: " + err.Error()}
-	}
-	if !reserved {
-		dbNonce := s.state.LoadNonce(senderAddr)
-		nonceLock.nonces[senderAddr] = dbNonce
-		nonceLock.mu.Unlock()
-		return nil, &RPCError{Code: -32603, Message: fmt.Sprintf("nonce already reserved: tx=%d expected=%d", txNonce, dbNonce)}
-	}
-	nonceLock.nonces[senderAddr] = nextNonce
-	// Derived here, but recorded below under mu rather than this lock.
+	// Derived outside the nonce section because it is needed either way, and
+	// the whole section is skipped when the batch pre-pass already reserved
+	// this transaction's nonce.
 	toAddrForReceipt := ""
 	if tx.To() != nil {
 		toAddrForReceipt = strings.ToLower(tx.To().Hex())
 	}
-	nonceLock.mu.Unlock()
+
+	if pre != nil && pre.nonceReserved {
+		// Reserved as part of a consecutive run under the same shard lock and
+		// against the same stored value this block would have checked -- see
+		// nonce_batch_reserve.go. Repeating it here would be a second round
+		// trip that could only fail.
+		noteRPCNonce(0)
+	} else {
+		noteBatchNonceFallback()
+		if rpcErr := s.reserveNoncePerItem(tx, senderAddr); rpcErr != nil {
+			return nil, rpcErr
+		}
+	}
+
 	// Receipt metadata is keyed by txHash and shared across senders, so it
 	// belongs under mu rather than a per-sender lock. Taken separately and
 	// briefly, after the nonce lock is released, so the two never nest.
@@ -981,6 +1149,19 @@ func (s *EVMRPCServer) sendRawTransaction(params []json.RawMessage, pre *precomp
 	sh.mu.Lock()
 	sh.senders[txHash] = senderAddr
 	sh.tos[txHash] = toAddrForReceipt
+	// Nonce und Betrag mitschreiben. Beide lagen hier immer vor und wurden nie
+	// festgehalten -- siehe den Kommentar an der Ausgabestelle.
+	sh.nonces[txHash] = tx.Nonce()
+	sh.values[txHash] = "0x" + tx.Value().Text(16)
+	sh.gasLimits[txHash] = tx.Gas()
+	sh.types[txHash] = tx.Type()
+	// Aufrufdaten nur bis zu einer Grenze. Gekuerzt aufzubewahren waere
+	// schlimmer als gar nicht: abgeschnittene Aufrufdaten decodieren zu einem
+	// ANDEREN Aufruf, und eine Wallet zeigte dann etwas an, das nie passiert
+	// ist. Ueber der Grenze bleibt es bei "0x", also bei "unbekannt".
+	if d := tx.Data(); len(d) > 0 && len(d) <= txInputMaxBytes {
+		sh.inputs[txHash] = "0x" + hex.EncodeToString(d)
+	}
 	sh.mu.Unlock()
 
 	// ── SIMPLE AEQ TRANSFER (native value transfer, no calldata) ─────────────
@@ -1228,6 +1409,7 @@ func (s *EVMRPCServer) getTransactionReceipt(params []json.RawMessage) (interfac
 	}
 	fromAddr := sh.senders[txHash]
 	toAddrMem := sh.tos[txHash]
+	typRoh, typBekannt := sh.types[txHash]
 	sh.mu.Unlock()
 
 	// If not in memory (node restarted), fall back to DB-persisted receipt.
@@ -1253,6 +1435,13 @@ func (s *EVMRPCServer) getTransactionReceipt(params []json.RawMessage) (interfac
 	toField := interface{}(nil)
 	if toAddrMem != "" && contractAddr == nil {
 		toField = toAddrMem
+	}
+	// Fehlt der Eintrag (Neustart, Verdraengung), bleibt es beim alten
+	// Platzhalter -- dieselbe Linie wie bei nonce: ein alter Wert ist
+	// schlecht, ein erfundener waere schlechter.
+	typField := "0x2"
+	if typBekannt {
+		typField = fmt.Sprintf("0x%x", typRoh)
 	}
 
 	// The block this transaction was ACTUALLY included in.
@@ -1282,19 +1471,131 @@ func (s *EVMRPCServer) getTransactionReceipt(params []json.RawMessage) (interfac
 	}
 
 	return map[string]interface{}{
-		"transactionHash":   txHash,
-		"transactionIndex":  fmt.Sprintf("0x%x", logIndex),
-		"blockHash":         blockHash,
-		"blockNumber":       fmt.Sprintf("0x%x", height),
-		"from":              fromAddr,
-		"to":                toField,
-		"cumulativeGasUsed": "0x5B8D80",
-		"gasUsed":           "0x5208", // realistic: 21000 for simple ops
-		"contractAddress":   contractAddr,
-		"logs":              []interface{}{},
-		"logsBloom":         "0x" + strings.Repeat("0", 512),
-		"status":            status,
-		"type":              "0x2",
+		"transactionHash":  txHash,
+		"transactionIndex": fmt.Sprintf("0x%x", logIndex),
+		"blockHash":        blockHash,
+		"blockNumber":      fmt.Sprintf("0x%x", height),
+		"from":             fromAddr,
+		"to":               toField,
+		// cumulativeGasUsed ist per Definition die laufende Summe im Block,
+		// fuer die erste Transaktion also gleich gasUsed. Vorher stand hier
+		// fest 0x5B8D80 (6.000.000) neben einem gasUsed von 21.000 -- zwei
+		// Angaben desselben Objekts, die sich widersprachen.
+		"cumulativeGasUsed": fmt.Sprintf("0x%x", uint64(logIndex+1)*gasProTx),
+		// gasUsed ist NICHT gemessen: die EVM gibt kein verbrauchtes Gas
+		// zurueck. Fuer eine einfache Ueberweisung sind 21.000 exakt richtig,
+		// fuer einen Vertragsaufruf zu wenig. Da die Kette gebuehrenfrei ist,
+		// bleibt das Produkt aus Gas und Preis in jedem Fall null, es wird
+		// also niemandem ein falscher Betrag angezeigt.
+		"gasUsed":         fmt.Sprintf("0x%x", gasProTx),
+		"contractAddress": contractAddr,
+		// Die EVM sammelt keine Events ein, eth_getLogs gibt ebenfalls immer
+		// leer zurueck. Eine konsistente Luecke, keine Falschangabe.
+		"logs":      []interface{}{},
+		"logsBloom": "0x" + strings.Repeat("0", 512),
+		"status":    status,
+		// effectiveGasPrice FEHLTE, obwohl type 0x2 behauptet wurde. Eine
+		// Wallet rechnet die Gebuehr als gasUsed * effectiveGasPrice; ohne den
+		// Faktor steht dort undefined statt "0". Null ist hier die Wahrheit.
+		"effectiveGasPrice": "0x0",
+		"type":              typField,
+	}, nil
+}
+
+// estimateGas beantwortet, was eine Ueberweisung wirklich kostet.
+//
+// Vorher stand hier die Konstante 0x5B8D80 (6.000.000) -- fuer jede Anfrage,
+// auch fuer eine einfache Ueberweisung. Deren Verbrauch ist exakt gasProTx und
+// muss gar nicht geschaetzt werden. Eine Wallet uebernimmt die Antwort als
+// Gaslimit; 6 Millionen fuer 21.000 ist das 286-fache.
+//
+// Fuer einen Vertragsaufruf bleibt es beim alten Wert. Die EVM gibt kein
+// verbrauchtes Gas zurueck (DeployContract und CallContract liefern nur
+// (ret, err)), eine echte Schaetzung ist ohne sie nicht moeglich -- und eine
+// erfundene waere schlechter als eine grosszuegige: zu niedrig geschaetzt
+// scheitert der Aufruf mitten in der Ausfuehrung.
+func (s *EVMRPCServer) estimateGas(params []json.RawMessage) (interface{}, *RPCError) {
+	const grosszuegig = "0x5B8D80" // 6.000.000, der alte Wert
+	if len(params) == 0 {
+		return grosszuegig, nil
+	}
+	var aufruf struct {
+		To    string `json:"to"`
+		Data  string `json:"data"`
+		Input string `json:"input"`
+	}
+	if err := json.Unmarshal(params[0], &aufruf); err != nil {
+		return grosszuegig, nil
+	}
+	daten := aufruf.Data
+	if daten == "" {
+		daten = aufruf.Input
+	}
+	daten = strings.TrimPrefix(strings.TrimSpace(daten), "0x")
+	// Ohne Aufrufdaten und mit einem Empfaenger ist es eine reine
+	// Ueberweisung, und deren Verbrauch ist keine Schaetzung, sondern eine
+	// Festgroesse.
+	if daten == "" && strings.TrimSpace(aufruf.To) != "" {
+		return fmt.Sprintf("0x%x", gasProTx), nil
+	}
+	return grosszuegig, nil
+}
+
+// feeHistory nennt den Bereich, auf den sich die Zahlen beziehen.
+//
+// oldestBlock stand fest auf "0x0" -- egal welcher Bereich angefragt wurde.
+// Wer daraus eine Gebuehrenkurve baut, bezieht sie auf Block 0 statt auf die
+// Gegenwart. Die Gebuehren selbst bleiben null: diese Kette erhebt keine, das
+// ist keine Platzhalterangabe. Aber die Blocknummer ist eine Tatsache, und
+// eine falsche Tatsache neben richtigen Nullen faellt niemandem auf.
+func (s *EVMRPCServer) feeHistory(params []json.RawMessage) (interface{}, *RPCError) {
+	anzahl := uint64(1)
+	if len(params) > 0 {
+		var roh string
+		if err := json.Unmarshal(params[0], &roh); err == nil {
+			// Ohne hexutil: die Zahl kommt als "0x..." oder als blanke
+			// Dezimalzahl, beides kommt in freier Wildbahn vor.
+			if n, err := strconv.ParseUint(strings.TrimPrefix(roh, "0x"), 16, 64); err == nil && n > 0 {
+				anzahl = n
+			}
+		} else {
+			var n uint64
+			if err := json.Unmarshal(params[0], &n); err == nil && n > 0 {
+				anzahl = n
+			}
+		}
+	}
+	if anzahl > 1024 {
+		anzahl = 1024 // dieselbe Obergrenze, die go-ethereum zieht
+	}
+
+	hoechste := uint64(0)
+	if s.dag != nil {
+		if b := s.dag.LatestBlock(); b != nil && b.Height > 0 {
+			hoechste = uint64(b.Height)
+		}
+	}
+	aeltester := uint64(0)
+	if hoechste+1 > anzahl {
+		aeltester = hoechste + 1 - anzahl
+	}
+	// baseFeePerGas traegt laut Spezifikation EINEN Eintrag mehr als die
+	// anderen Reihen: den Wert fuer den naechsten, noch nicht erzeugten Block.
+	basis := make([]string, 0, anzahl+1)
+	for i := uint64(0); i <= anzahl; i++ {
+		basis = append(basis, "0x0")
+	}
+	anteil := make([]float64, 0, anzahl)
+	lohn := make([][]string, 0, anzahl)
+	for i := uint64(0); i < anzahl; i++ {
+		anteil = append(anteil, 0)
+		lohn = append(lohn, []string{"0x0"})
+	}
+	return map[string]interface{}{
+		"oldestBlock":   fmt.Sprintf("0x%x", aeltester),
+		"baseFeePerGas": basis,
+		"gasUsedRatio":  anteil,
+		"reward":        lohn,
 	}, nil
 }
 
@@ -1315,6 +1616,14 @@ func (s *EVMRPCServer) getTransactionByHash(params []json.RawMessage) (interface
 	sh.mu.Lock()
 	fromAddr, known := sh.senders[txHash]
 	toAddr := sh.tos[txHash]
+	// Unter DERSELBEN Sperre lesen wie Absender und Empfaenger. Weiter unten
+	// waere die Sperre laengst freigegeben -- und ein Nebenlaeufer, der genau
+	// dann verdraengt, liesse den Zugriff auf eine veraenderte Karte treffen.
+	nonceRoh, nonceBekannt := sh.nonces[txHash]
+	valueRoh := sh.values[txHash]
+	gasRoh, gasBekannt := sh.gasLimits[txHash]
+	typRoh, typBekannt := sh.types[txHash]
+	inputRoh := sh.inputs[txHash]
 	sh.mu.Unlock()
 	// FIX: unlike getTransactionReceipt, this never fell back to the DB-persisted
 	// receipt when the in-memory txSenders map didn't have the hash (i.e. after
@@ -1368,22 +1677,109 @@ func (s *EVMRPCServer) getTransactionByHash(params []json.RawMessage) (interface
 		txIndexField = fmt.Sprintf("0x%x", idx)
 	}
 
-	return map[string]interface{}{
+	// FIX (2026-08-28): nonce und value waren fest auf "0x0" verdrahtet.
+	//
+	// Vier Transfers derselben Wallet, in vier verschiedenen Bloecken, meldeten
+	// damit alle Nonce 0 -- waehrend eth_getTransactionCount korrekt 0x4
+	// zurueckgab. Eine Wallet schliesst daraus, dass drei davon ersetzt wurden,
+	// und zeigt sie als FEHLGESCHLAGEN, obwohl die Kette alle vier ausgefuehrt
+	// hat. Genau dieselbe Wirkung wie die oben beschriebene Blocknummer, nur
+	// ueber ein anderes Feld -- und deshalb nach deren Fix stehen geblieben.
+	//
+	// Fehlt der Eintrag (Neustart, Verdraengung), bleibt es beim alten
+	// Platzhalter: eine falsche Nonce ist schlecht, eine erfundene waere
+	// schlechter.
+	nonceField := "0x0"
+	valueField := "0x0"
+	if nonceBekannt {
+		nonceField = fmt.Sprintf("0x%x", nonceRoh)
+	}
+	if valueRoh != "" {
+		valueField = valueRoh
+	}
+	gasField := "0x5B8D80"
+	if gasBekannt {
+		gasField = fmt.Sprintf("0x%x", gasRoh)
+	}
+	inputField := "0x"
+	if inputRoh != "" {
+		inputField = inputRoh
+	}
+
+	// Das Objekt hatte gar kein type-Feld, waehrend die Quittung 0x2
+	// behauptete -- zwei Auskuenfte ueber dieselbe Transaktion, die sich
+	// widersprachen. Wer type 0x2 sagt, schuldet auch maxFeePerGas und
+	// maxPriorityFeePerGas; auf einer gebuehrenfreien Kette sind beide
+	// ehrlich null.
+	typFeld := "0x2"
+	if typBekannt {
+		typFeld = fmt.Sprintf("0x%x", typRoh)
+	}
+	ergebnis := map[string]interface{}{
 		"hash":             txHash,
-		"nonce":            "0x0",
+		"nonce":            nonceField,
 		"blockHash":        blockHashField,
 		"blockNumber":      blockNumberField,
 		"transactionIndex": txIndexField,
 		"from":             fromAddr,
 		"to":               toField,
-		"value":            "0x0",
-		"gas":              "0x5B8D80",
-		"gasPrice":         "0x0",
-		"input":            "0x",
-	}, nil
+		"value":            valueField,
+		"gas":              gasField,
+		// gasPrice bleibt 0: diese Kette erhebt keine Gebuehren, das ist keine
+		// Platzhalterangabe, sondern die Wahrheit.
+		"gasPrice": "0x0",
+		"input":    inputField,
+		"type":     typFeld,
+		"chainId":  chainIDHex,
+	}
+	if typFeld == "0x2" {
+		ergebnis["maxFeePerGas"] = "0x0"
+		ergebnis["maxPriorityFeePerGas"] = "0x0"
+	}
+	return ergebnis, nil
+}
+
+// syncing beantwortet eth_syncing wahrheitsgemaess.
+//
+// Vorher stand hier fest "false" -- also "vollstaendig synchron", auch wenn
+// der Knoten hunderte Bloecke zurueckliegt. Genau das war C2 heute nachmittag,
+// nachdem ein Lasttest C1 schneller Bloecke erzeugen liess, als C2 sie
+// nachspielen konnte.
+//
+// eth_syncing ist die Frage, die ein Werkzeug stellt, BEVOR es einer Antwort
+// traut. Mit "false" beantwortet, waehrend der Knoten hinterherhinkt, laesst
+// sie jeden Guthabenstand und jede Nonce als aktuell erscheinen, die es nicht
+// sind.
+//
+// Rueckgabe nach der Ethereum-Schnittstelle: false, wenn synchron -- sonst ein
+// Objekt mit den drei Hoehen.
+func (s *EVMRPCServer) syncing() interface{} {
+	if s.dag == nil || !s.dag.isCatchingUp() {
+		return false
+	}
+	aktuell := uint64(s.dag.Height())
+	ziel := uint64(s.dag.syncTargetHeight.Load())
+	if ziel < aktuell {
+		// Das Tor kennt sein Ziel nicht immer (siehe armInitialSyncGate).
+		// Dann ist die eigene Hoehe die ehrlichste obere Schranke -- eine
+		// erfundene Zielhoehe waere schlechter als eine vorsichtige.
+		ziel = aktuell
+	}
+	return map[string]interface{}{
+		"startingBlock": "0x0",
+		"currentBlock":  fmt.Sprintf("0x%x", aktuell),
+		"highestBlock":  fmt.Sprintf("0x%x", ziel),
+	}
 }
 
 func (s *EVMRPCServer) getBlockByNumber(params []json.RawMessage) (interface{}, *RPCError) {
+	// Der ZWEITE Parameter der Methode entscheidet, ob die Transaktionen als
+	// Hashes oder vollstaendig zurueckkommen. Er wurde bisher gar nicht
+	// gelesen -- die Liste war ohnehin immer leer.
+	volleTx := false
+	if len(params) > 1 {
+		json.Unmarshal(params[1], &volleTx) //nolint:errcheck -- fehlt/ungueltig => Hashes
+	}
 	// FIX (audit 2026-06-29): this used to ignore params entirely and always
 	// return the latest block, even when a caller asked for a specific
 	// historical height — silently wrong for any client that fetches a
@@ -1401,7 +1797,7 @@ func (s *EVMRPCServer) getBlockByNumber(params []json.RawMessage) (interface{}, 
 		var height int64
 		if _, err := fmt.Sscanf(strings.TrimPrefix(tag, "0x"), "%x", &height); err == nil {
 			if block := s.dag.GetBlockByHeight(height); block != nil {
-				return s.blockToMap(block), nil
+				return s.blockToMap(block, volleTx), nil
 			}
 			return nil, nil
 		}
@@ -1410,10 +1806,14 @@ func (s *EVMRPCServer) getBlockByNumber(params []json.RawMessage) (interface{}, 
 	if block == nil {
 		return nil, nil
 	}
-	return s.blockToMap(block), nil
+	return s.blockToMap(block, volleTx), nil
 }
 
 func (s *EVMRPCServer) getBlockByHash(params []json.RawMessage) (interface{}, *RPCError) {
+	volleTx := false
+	if len(params) > 1 {
+		json.Unmarshal(params[1], &volleTx) //nolint:errcheck -- fehlt/ungueltig => Hashes
+	}
 	// FIX (audit 2026-06-29): same gap as getBlockByNumber above — a
 	// specific requested hash was always ignored in favor of the latest
 	// block. dag.GetBlockByHash already existed; wire it up.
@@ -1424,7 +1824,7 @@ func (s *EVMRPCServer) getBlockByHash(params []json.RawMessage) (interface{}, *R
 	hash = strings.TrimPrefix(strings.ToLower(hash), "0x")
 	if hash != "" {
 		if block := s.dag.GetBlockByHash(hash); block != nil {
-			return s.blockToMap(block), nil
+			return s.blockToMap(block, volleTx), nil
 		}
 		return nil, nil
 	}
@@ -1432,31 +1832,103 @@ func (s *EVMRPCServer) getBlockByHash(params []json.RawMessage) (interface{}, *R
 	if block == nil {
 		return nil, nil
 	}
-	return s.blockToMap(block), nil
+	return s.blockToMap(block, volleTx), nil
 }
 
-func (s *EVMRPCServer) blockToMap(block *Block) map[string]interface{} {
+// blockToMap baut die Antwort fuer eth_getBlockByNumber/ByHash.
+//
+// volleTx entspricht dem zweiten Parameter der Methode: false liefert die
+// Hashes der Transaktionen, true die vollstaendigen Objekte. Vorher lieferte
+// beides eine leere Liste.
+func (s *EVMRPCServer) blockToMap(block *Block, volleTx bool) map[string]interface{} {
+	// Die Transaktionen liegen am Block. Sie NICHT auszugeben hiess, jedem
+	// Block-Explorer und jeder Wallet zu sagen, dieser Block sei leer -- auch
+	// bei 269 Stueck darin.
+	txs := make([]interface{}, 0, len(block.Transactions))
+	for i := range block.Transactions {
+		h := block.Transactions[i].TxHash
+		if h == "" {
+			continue
+		}
+		if !strings.HasPrefix(h, "0x") {
+			h = "0x" + h
+		}
+		if !volleTx {
+			txs = append(txs, h)
+			continue
+		}
+		// Nur nachschlagen, wenn es etwas zum Nachschlagen gibt.
+		// getTransactionByHash liest den Blockindex ueber s.state; ohne den
+		// ist der Hash die vollstaendigste ehrliche Antwort. Vorher fuehrte
+		// blockToMap diesen Weg nie, also gab es die Absicherung auch nicht.
+		if s.state != nil {
+			if voll, _ := s.getTransactionByHash([]json.RawMessage{mussJSON(h)}); voll != nil {
+				txs = append(txs, voll)
+				continue
+			}
+		}
+		txs = append(txs, h)
+	}
+
+	// Der Block traegt seine Eltern. 64 Nullen hiessen "kein Vorgaenger" --
+	// wer die Kette rueckwaerts laeuft, war sofort am Ende. Dies ist ein DAG,
+	// ein Block kann mehrere Eltern haben; das Feld der Ethereum-Schnittstelle
+	// kennt nur einen, also steht dort der erste. Alle stehen in
+	// /api/block?hash=.
+	elternHash := "0x" + strings.Repeat("0", 64)
+	if len(block.ParentHashes) > 0 && block.ParentHashes[0] != "" {
+		elternHash = "0x" + strings.TrimPrefix(block.ParentHashes[0], "0x")
+	}
+
+	// Die Kette fuehrt einen echten StateRoot und prueft damit beim
+	// Nachspielen ihren Konsens (siehe block.go). Hier stand stattdessen der
+	// Blockhash -- also eine Zahl, die zufaellig existiert, statt der, die
+	// etwas bezeugt.
+	stateRoot := "0x" + strings.TrimPrefix(block.Hash, "0x")
+	if block.StateRoot != "" {
+		stateRoot = "0x" + strings.TrimPrefix(block.StateRoot, "0x")
+	}
+
+	// transactionsRoot: die echte Festlegung dieser Kette ist block.TxRoot,
+	// sha256 ueber die Liste -- kein Ethereum-Trie. Wer ihn auf Ethereum-Art
+	// nachrechnet, scheitert. Das ist trotzdem besser als die
+	// Leerbaum-Konstante, die fuer einen vollen Block aktiv behauptet, er sei
+	// leer.
+	const leererTrie = "0x56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421"
+	txRoot := leererTrie
+	if block.TxRoot != "" {
+		txRoot = "0x" + strings.TrimPrefix(block.TxRoot, "0x")
+	}
+
+	roh, _ := json.Marshal(block)
+
 	return map[string]interface{}{
-		"number":           fmt.Sprintf("0x%x", block.Height),
-		"hash":             "0x" + block.Hash,
-		"parentHash":       "0x" + strings.Repeat("0", 64),
-		"timestamp":        fmt.Sprintf("0x%x", block.Timestamp),
-		"transactions":     []interface{}{},
-		"gasLimit":         "0x1000000",
-		"gasUsed":          "0x0",
-		"difficulty":       "0x0",
-		"totalDifficulty":  "0x0",
-		"miner":            "0x0000000000000000000000000000000000000000",
-		"extraData":        "0x",
-		"logsBloom":        "0x" + strings.Repeat("0", 512),
-		"sha3Uncles":       "0x1dcc4de8dec75d7aab85b567b6ccd41ad312451b948a7413f0a142fd40d49347",
-		"stateRoot":        "0x" + block.Hash,
-		"receiptsRoot":     "0x56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421",
-		"transactionsRoot": "0x56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421",
-		"size":             "0x1",
-		"uncles":           []interface{}{},
-		"nonce":            "0x0000000000000000",
-		"baseFeePerGas":    "0x0",
+		"number":       fmt.Sprintf("0x%x", block.Height),
+		"hash":         "0x" + block.Hash,
+		"parentHash":   elternHash,
+		"timestamp":    fmt.Sprintf("0x%x", block.Timestamp),
+		"transactions": txs,
+		"gasLimit":     "0x1000000",
+		// Stimmt mit den Quittungen desselben Blocks ueberein -- vorher stand
+		// hier 0, auch fuer volle Bloecke.
+		"gasUsed":         fmt.Sprintf("0x%x", uint64(len(txs))*gasProTx),
+		"difficulty":      "0x0",
+		"totalDifficulty": "0x0",
+		"miner":           "0x0000000000000000000000000000000000000000",
+		"extraData":       "0x",
+		"logsBloom":       "0x" + strings.Repeat("0", 512),
+		"sha3Uncles":      "0x1dcc4de8dec75d7aab85b567b6ccd41ad312451b948a7413f0a142fd40d49347",
+		"stateRoot":       stateRoot,
+		// Diese Kette fuehrt keinen Quittungsbaum. Der Wert bleibt die
+		// Leerbaum-Konstante und bezeugt nichts -- das ist die ehrlichste
+		// verfuegbare Angabe, solange es nichts zu bezeugen gibt.
+		"receiptsRoot":     leererTrie,
+		"transactionsRoot": txRoot,
+		// Die tatsaechliche Groesse der Blockdarstellung. "0x1" hiess ein Byte.
+		"size":          fmt.Sprintf("0x%x", len(roh)),
+		"uncles":        []interface{}{},
+		"nonce":         "0x0000000000000000",
+		"baseFeePerGas": "0x0",
 	}
 }
 
