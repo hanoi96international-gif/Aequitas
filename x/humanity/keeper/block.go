@@ -6372,6 +6372,7 @@ func (dag *BlockDAG) replayTransactions(block *Block, force bool) (ok bool) {
 				}
 				if ok {
 					transfersApplied += len(batch)
+					merkeReplayParallel(len(batch))
 					txIdx += len(batch) - 1 // the loop's ++ moves past the last batched tx
 					continue
 				}
@@ -6570,6 +6571,7 @@ func (dag *BlockDAG) replayTransactions(block *Block, force bool) (ok bool) {
 			// Aggregated into one line per block after the loop — see
 			// transfersApplied's declaration for the incident this closes.
 			transfersApplied++
+			merkeReplaySeriell()
 
 		case "swap_aeq_tusd":
 			if wallet == "" || tx.Amount <= 0 || tx.AmountOut <= 0 {

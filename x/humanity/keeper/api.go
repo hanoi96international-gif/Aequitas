@@ -680,6 +680,8 @@ func (a *APIServer) handleCombinedHealth(w http.ResponseWriter, r *http.Request)
 		"shard_retry": ShardRetryStand(),
 		// Drosselung der Blockgroesse bei zurueckfallenden Peers.
 		"peer_lag_bremse": PeerLagBremseStand(),
+		// Wie das Nachspielen die Ueberweisungen anwendet -- parallel oder seriell.
+		"replay_pfad": ReplayPfadStand(),
 		// Whether the database connection pool is the constraint — wait_count
 		// and wait_total_ms answer that directly, instead of inferring it from
 		// a throughput number that swings by 2x between runs. See DBPoolStats.
