@@ -264,10 +264,40 @@ func (dag *BlockDAG) effectiveAutoHealCooldown(lastAt int64) (time.Duration, boo
 	if lastAt <= 0 {
 		return autoHealCooldown, false
 	}
-	if dag.lastSuccessfulPeerSyncAt.Load() > lastAt {
-		return autoHealCooldown, false
+	letzterMerge := dag.lastSuccessfulPeerSyncAt.Load()
+	if letzterMerge <= lastAt {
+		// Der letzte Resync hat nichts angehaengt -- ihn zu wiederholen ist
+		// der einzige verbleibende Zug, und die vollen 30 Minuten waeren
+		// reine Ausfallzeit.
+		return autoHealFailedResyncRetry, true
 	}
-	return autoHealFailedResyncRetry, true
+	// ERGAENZT 02.09.2026: der letzte Resync hat gewirkt -- aber das heisst
+	// nicht, dass der Knoten JETZT in Ordnung ist.
+	//
+	// Genau dieser Fall ist an dem Tag am Primary aufgetreten. C1 wurde
+	// resynct, lief danach sauber und mergte, und wurde SPAETER erneut
+	// zugemauert: eine einzelne Ueberweisung scheiterte beim Nachspielen
+	// ("insufficient balance (have 0.000000, need 0.000010)"), woraufhin der
+	// GANZE Block verworfen wurde -- einmal beobachtet mit 3.525
+	// Transaktionen wegen einer. Ab da fehlen die Gutschriften dieses Blocks
+	// dauerhaft, jeder Folgeblock mit denselben Konten scheitert ebenso, und
+	// nur ein Resync bringt den Knoten zurueck.
+	//
+	// Die Pruefung oben sah nur "der letzte Resync hat gemergt" und verhaengte
+	// die vollen 30 Minuten. Der Knoten meldete waehrenddessen selbst
+	// "structurally cut off from the canonical chain" und stand 671 Bloecke
+	// zurueck -- als Primary, der Website und Explorer traegt.
+	//
+	// Deshalb zusaetzlich: hat der Knoten seit LAENGEREM nichts mehr
+	// angehaengt, obwohl Bloecke ankommen, zaehlt er als erneut abgehaengt --
+	// unabhaengig davon, wie erfolgreich der letzte Resync war. Die Schwelle
+	// ist bewusst dieselbe, ab der die Aushunger-Erkennung ueberhaupt
+	// ausloest: wer sie erreicht, ist nach dem Urteil dieses Knotens bereits
+	// abgeschnitten.
+	if time.Now().Unix()-letzterMerge > int64(syncStarvationThreshold.Seconds()) {
+		return autoHealFailedResyncRetry, true
+	}
+	return autoHealCooldown, false
 }
 
 func (dag *BlockDAG) triggerAutoResync(reason string) {
