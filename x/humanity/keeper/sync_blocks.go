@@ -1077,8 +1077,15 @@ func (dag *BlockDAG) advancePeerSyncHeight(nodeURL string, height int64) {
 	// der Fall, den die Bremse braucht.
 	if dag.peerSyncSeenAt == nil {
 		dag.peerSyncSeenAt = make(map[string]time.Time)
+		dag.peerSyncEigeneHoehe = make(map[string]int64)
 	}
 	dag.peerSyncSeenAt[nodeURL] = time.Now()
+	// Die eigene Hoehe im selben Moment festhalten -- nur ihre Differenz zur
+	// Peer-Hoehe ist ein echter Rueckstand. Siehe peerSyncEigeneHoehe.
+	if dag.peerSyncEigeneHoehe == nil {
+		dag.peerSyncEigeneHoehe = make(map[string]int64)
+	}
+	dag.peerSyncEigeneHoehe[nodeURL] = dag.heightSchnell.Load()
 }
 
 // cleanSyncStreakThreshold is how many CONSECUTIVE doSyncOnce cycles in a

@@ -348,6 +348,16 @@ type BlockDAG struct {
 	// genau der soll die Bremse ausloesen, nicht von ihr ausgenommen werden.
 	// Guarded by syncPeerMu, wie peerSyncHeight.
 	peerSyncSeenAt map[string]time.Time
+	// peerSyncEigeneHoehe haelt fest, wie hoch DIESER Knoten stand, als er
+	// zuletzt etwas von dem Peer erfuhr.
+	//
+	// Ohne das ist der berechnete Rueckstand unbrauchbar: peerSyncHeight
+	// waechst nur bei einem Abruf MIT Inhalt, die eigene Hoehe dagegen bei
+	// jedem selbst produzierten Block. Ein Knoten, der produziert waehrend
+	// vom Peer nichts Neues kommt, sieht dann einen Rueckstand, den es nicht
+	// gibt -- am 02.09.2026 live: beide Knoten exakt auf derselben Hoehe, und
+	// C1 meldete trotzdem lag=78 und drosselte auf den Boden.
+	peerSyncEigeneHoehe map[string]int64
 	// cleanSyncStreak tracks, per peer URL, how many CONSECUTIVE doSyncOnce
 	// calls in a row found nothing this node failed to merge — see
 	// recordCleanSyncCycle's own comment for the exact definition and the
@@ -1203,6 +1213,7 @@ func NewBlockchain(nodeID string, state *ChainState) *BlockDAG {
 		activeSyncPeers:             make(map[string]bool),
 		peerSyncHeight:              make(map[string]int64),
 		peerSyncSeenAt:              make(map[string]time.Time),
+		peerSyncEigeneHoehe:         make(map[string]int64),
 		cleanSyncStreak:             make(map[string]int),
 		warnedUnknownProposers:      make(map[string]bool),
 		unknownProposerLastRecovery: make(map[string]time.Time),

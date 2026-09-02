@@ -59,7 +59,7 @@ import (
 //
 //	AEQUITAS_PEER_LAG_SLACK    Rueckstand ohne Wirkung (Vorgabe 50)
 //	AEQUITAS_PEER_LAG_VOLL     ab hier nur noch der Boden (Vorgabe 500)
-//	AEQUITAS_PEER_LAG_BODEN    kleinste Blockgroesse (Vorgabe 500, 0 = Bremse aus)
+//	AEQUITAS_PEER_LAG_BODEN    kleinste Blockgroesse (Vorgabe 0 = AUS; 500 zum Einschalten)
 //
 // Ein unbrauchbarer Wert ergibt die Vorgabe.
 // # DIE SCHWELLEN STAMMEN AUS EINER MESSUNG, NICHT AUS EINER SCHAETZUNG
@@ -84,7 +84,31 @@ import (
 const (
 	peerLagSlackVorgabe = 50
 	peerLagVollVorgabe  = 500
-	peerLagBodenVorgabe = 500
+	// 0 = AUS. Das ist eine bewusste Entscheidung nach drei Fehlversuchen an
+	// einem Tag, alle drei live in der Produktion sichtbar geworden:
+	//
+	//  1. Die erste Fassung rief dag.Height() und nahm damit eine Sperre, die
+	//     die Blockproduktion bereits haelt -- Selbstblock. C1 hing sich auf,
+	//     sobald er Produzent wurde (Load 0.00, keine HTTP-Antwort).
+	//  2. Die zweite drosselte von maxTxsPerBlock herunter, waehrend echte
+	//     Bloecke nur ein Drittel davon trugen. Die Anzeige meldete
+	//     "gebremst", die Wirkung war null.
+	//  3. Die dritte rechnete den Rueckstand gegen die AKTUELLE eigene Hoehe
+	//     statt gegen die zum Zeitpunkt der Peer-Meldung. Ergebnis: beide
+	//     Knoten exakt auf derselben Hoehe, gemeldeter Rueckstand 78, und
+	//     Drosselung auf den Boden ohne jeden Anlass -- ein Zehntel des
+	//     Durchsatzes, verschenkt.
+	//
+	// Alle drei sind behoben und durch Tests abgedeckt. Trotzdem: ein
+	// Mechanismus, der dreimal danebenlag, gehoert nicht per Vorgabe in einen
+	// laufenden Betrieb. Er bleibt vollstaendig erhalten und wird ueber
+	// AEQUITAS_PEER_LAG_BODEN eingeschaltet, sobald jemand ihn unter Last
+	// beobachtet hat -- 500 ist der Wert, mit dem er gedacht war.
+	//
+	// Die Stabilitaet, die an dem Tag WIRKLICH gewonnen wurde, haengt nicht an
+	// ihm: sie kommt aus status_ohne_sperre.go, wo der Knoten unter Last nicht
+	// mehr verstummt. Das ist gemessen und wirkt ohne diese Bremse.
+	peerLagBodenVorgabe = 0
 	peerLagFrische      = 90 * time.Second
 
 	peerLagSlackEnv = "AEQUITAS_PEER_LAG_SLACK"
@@ -137,7 +161,7 @@ func peerLagBoden() int {
 
 // groesstenFrischenRueckstand liefert den groessten Rueckstand unter den
 // Peers, von denen kuerzlich etwas kam. 0 heisst: niemand haengt.
-func (dag *BlockDAG) groesstenFrischenRueckstand(eigeneHoehe int64) int64 {
+func (dag *BlockDAG) groesstenFrischenRueckstand(_ int64) int64 {
 	// TryLock, nicht Lock. Diese Funktion laeuft unter dag.mu; eine zweite
 	// Sperre dort zu erwerben waere eine Reihenfolge-Annahme, die niemand
 	// aufgeschrieben hat. Ist syncPeerMu gerade belegt, wird eben nicht
@@ -154,7 +178,17 @@ func (dag *BlockDAG) groesstenFrischenRueckstand(eigeneHoehe int64) int64 {
 		if !da || jetzt.Sub(gesehen) > peerLagFrische {
 			continue // stumm -- siehe Kommentar oben, sonst bremst er ewig
 		}
-		if r := eigeneHoehe - hoehe; r > groesster {
+		// Gegen die eigene Hoehe VON DAMALS rechnen, nicht gegen die von
+		// jetzt. Sonst waechst der "Rueckstand" mit jedem selbst
+		// produzierten Block, ohne dass der Peer zurueckliegt -- am
+		// 02.09.2026 live beobachtet: beide Knoten auf derselben Hoehe,
+		// gemeldeter Rueckstand 78 und stetig steigend, Drosselung auf den
+		// Boden ohne jeden Anlass.
+		damals, ok := dag.peerSyncEigeneHoehe[url]
+		if !ok {
+			continue
+		}
+		if r := damals - hoehe; r > groesster {
 			groesster = r
 		}
 	}
