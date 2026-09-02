@@ -240,6 +240,23 @@ type BlockDAG struct {
 	evm    *EVMEngine // set by EVMRPCServer after construction; used by replayTransactions for ZK proof verification
 	nodeID string
 	height int64
+	// heightSchnell spiegelt height, ist aber OHNE dag.mu lesbar.
+	//
+	// dag.Height() nimmt dag.mu.RLock(). Waehrend ein Block-Burst angewendet
+	// wird, haelt die DAG die SCHREIBsperre -- und Go's RWMutex sperrt jeden
+	// neuen Leser aus, sobald ein Schreiber ansteht. /api/status blockiert
+	// dann mit, und der Knoten wirkt von aussen tot.
+	//
+	// Am 02.09.2026 genau so beobachtet: Container "Up 20 minutes", Logs
+	// voller erfolgreich angehaengter Bloecke, Tips 1 -- und trotzdem keine
+	// Antwort auf /api/status, weder von aussen noch aus dem Container
+	// heraus. Die Deploy-Pruefung meldete "the node answers but its height
+	// never moved in 10 minutes", der Betreiber sah einen Absturz. Es war
+	// keiner: der Knoten arbeitete die ganze Zeit.
+	//
+	// Nur ueber setHeight zu schreiben, nie direkt -- dafuer gibt es einen
+	// Waechter-Test (dag_height_spiegel_test.go).
+	heightSchnell atomic.Int64
 	// bootHeight is dag.height's value at construction time (after restoring
 	// it from the persisted "max_block_height" — see createGenesisBlock's
 	// caller), captured ONCE and never updated again. Used by
@@ -1293,7 +1310,7 @@ func NewBlockchain(nodeID string, state *ChainState) *BlockDAG {
 				referenced[ph] = true
 			}
 			if b.Height > dag.height {
-				dag.height = b.Height
+				dag.setHeight(b.Height)
 			}
 		}
 		for hash := range dag.tips {
@@ -1430,7 +1447,7 @@ func NewBlockchain(nodeID string, state *ChainState) *BlockDAG {
 		var h int64
 		fmt.Sscanf(persisted, "%d", &h)
 		if h > dag.height {
-			dag.height = h
+			dag.setHeight(h)
 		}
 	}
 
@@ -1684,7 +1701,7 @@ func (dag *BlockDAG) RefreshBootHeightAfterSnapshotImport(resyncHappened bool) {
 				if cp := dag.state.LoadBlockFromDBByHeight(checkpointHeight); cp != nil {
 					dag.blocks[cp.Hash] = cp
 					dag.tips = map[string]bool{cp.Hash: true}
-					dag.height = cp.Height
+					dag.setHeight(cp.Height)
 					dag.bootHeight = cp.Height
 					seededFromCheckpoint = true
 					checkpointBacked = true
@@ -1794,7 +1811,7 @@ func (dag *BlockDAG) RefreshBootHeightAfterSnapshotImport(resyncHappened bool) {
 		fmt.Sscanf(persisted, "%d", &maxH)
 	}
 	if maxH > dag.height {
-		dag.height = maxH
+		dag.setHeight(maxH)
 	}
 }
 
@@ -2038,7 +2055,7 @@ func (dag *BlockDAG) createGenesisBlock() {
 	genesis.Blues = nil
 	dag.blocks[genesis.Hash] = genesis
 	dag.tips[genesis.Hash] = true
-	dag.height = 0
+	dag.setHeight(0)
 	fmt.Printf("✓ Genesis Block (DAG): %s\n", genesis.Hash[:16]+"...")
 }
 
@@ -2826,8 +2843,7 @@ func (dag *BlockDAG) ProduceBlock() *Block {
 		delete(dag.tips, ph)
 	}
 	dag.tips[block.Hash] = true
-	dag.height = block.Height
-
+	dag.setHeight(block.Height)
 	// FIX (P0, merge-reliability audit 2026-07-03): AddPeerBlock advances the
 	// hard finality checkpoint after accepting a block, but ProduceBlock never
 	// did — this is the ONLY other place a block's GHOSTDAG state (BlueScore/
@@ -4951,7 +4967,7 @@ func (dag *BlockDAG) AddPeerBlock(block *Block) bool {
 	dag.tips[block.Hash] = true
 
 	if block.Height > dag.height {
-		dag.height = block.Height
+		dag.setHeight(block.Height)
 		// setConfigValueDB: this runs under dag.mu only, not cs.mu, so
 		// setConfigValue's cs.dbExec()/cs.activeTx precondition isn't met here
 		// (same reasoning as the ProduceBlock post-commit goroutine above).
@@ -5359,6 +5375,24 @@ func (dag *BlockDAG) Height() int64 {
 	dag.mu.RLock()
 	defer dag.mu.RUnlock()
 	return dag.height
+}
+
+// setHeight ist der EINZIGE Weg, dag.height zu setzen -- er haelt den
+// sperrfreien Spiegel mit. Aufrufer muessen dag.mu wie bisher halten.
+func (dag *BlockDAG) setHeight(h int64) {
+	dag.height = h
+	dag.heightSchnell.Store(h)
+}
+
+// HeightSchnell liefert die Hoehe OHNE dag.mu.
+//
+// Fuer Auskuenfte, die immer antworten muessen -- /api/status, /health --
+// auch dann, wenn gerade ein Block-Burst die Schreibsperre haelt. Der Wert
+// kann um Sekundenbruchteile aelter sein als Height(); fuer eine
+// Statusanzeige ist das richtig, fuer eine Konsensentscheidung nicht. Wer
+// entscheidet, nimmt weiter Height().
+func (dag *BlockDAG) HeightSchnell() int64 {
+	return dag.heightSchnell.Load()
 }
 
 func (dag *BlockDAG) GetBlocks() []*Block {

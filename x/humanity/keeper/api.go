@@ -1154,7 +1154,25 @@ func startPprofServer() {
 
 func (a *APIServer) handleStatus(w http.ResponseWriter, r *http.Request) {
 	writeJSONCORS(w)
-	latest := a.blockchain.LatestBlock()
+	// Nicht anstellen. Ist die DAG-Sperre gerade von einem Block-Burst
+	// gehalten, liefern wir den letzten guten Stand mit aktueller Hoehe statt
+	// gar nichts -- siehe status_ohne_sperre.go fuer den Vorfall, der das
+	// noetig gemacht hat.
+	latest, frei := a.blockchain.TryLatestBlock()
+	if !frei || latest == nil {
+		if alt, da := statusZwischenspeicher.holen(a.blockchain.HeightSchnell()); da {
+			json.NewEncoder(w).Encode(alt)
+			return
+		}
+		// Noch nie einen vollstaendigen Stand gehabt (frisch gestartet):
+		// wenigstens die Hoehe, damit die Ueberwachung etwas sieht.
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"height":         a.blockchain.HeightSchnell(),
+			"stand_veraltet": true,
+			"stand_hinweis":  "Knoten beschaeftigt, noch kein vollstaendiger Stand seit dem Start",
+		})
+		return
+	}
 	uptime := int64(time.Since(a.startTime).Seconds())
 	// Use a.state (PostgreSQL-backed ChainState) as the single source of
 	// truth for human count — see NewAPIServer's own comment for why there's
@@ -1184,7 +1202,7 @@ func (a *APIServer) handleStatus(w http.ResponseWriter, r *http.Request) {
 	// P3-3: compute next UBI based on last_ubi_at, not server uptime.
 	nextUBISecs := a.state.SecondsUntilNextUBI()
 
-	json.NewEncoder(w).Encode(map[string]interface{}{
+	stand := map[string]interface{}{
 		"chain_id":     "aequitas-1",
 		"version":      "v0.3.0",
 		"git_commit":   buildGitCommit,
@@ -1248,7 +1266,11 @@ func (a *APIServer) handleStatus(w http.ResponseWriter, r *http.Request) {
 		// in log lines. Empty/zero until the first foreignAttachLatencyLogInterval
 		// window closes after startup.
 		"latency": a.blockchain.GetLatencyTelemetry(),
-	})
+	}
+	// Als letzten guten Stand merken -- er wird ausgeliefert, wenn die
+	// Sperre beim naechsten Mal belegt ist (status_ohne_sperre.go).
+	statusZwischenspeicher.merken(stand)
+	json.NewEncoder(w).Encode(stand)
 }
 
 // sseConnections bounds concurrent /api/events streams — a long-lived
