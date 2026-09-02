@@ -37,7 +37,29 @@ ist der eigentliche Ertrag, denn es spart dem Nächsten diese Wege:
 | Quadratischer Ahnenlauf | 51 µs bei 200 Blöcken, 506 µs bei 2.000 — linear | **nein** |
 | CPU-Sättigung | im Stillstand `load average 0.00` bis 5.30, nie am Anschlag | **nein** |
 
-**Was das übrig lässt:** C1 ist im Stillstand weder blockiert noch ausgelastet
+### Es liegt NICHT an C1 — es liegt an der Rolle
+
+Am 02.09.2026 durch Umkehr bewiesen. Dieselbe Last, einmal auf jede Box:
+
+| Last auf | belasteter Knoten | anderer Knoten | TPS |
+|---|---|---|---|
+| C2 | läuft weiter | **C1 friert ein**, Rückstand wächst | 3.513 |
+| C1 | läuft weiter | **C2 friert ein**, Rückstand wächst | 3.577 |
+
+Die Rollen tauschen exakt mit der Last. Wer sie empfängt, wendet die
+Überweisungen über den WAL-Schnellpfad an und packt sie in **seine** Blöcke;
+der andere muss dieselbe Menge über **Block-Replay** nachvollziehen — und
+genau der fällt zurück.
+
+Die Hardware sagt dasselbe: C1s roher fsync misst **550 µs**, C2s **573 µs** —
+C1 ist marginal *schneller*, beide haben 11.960 MB und dieselbe virtualisierte
+Platte. Und der Durchsatz ist mit 3.513 gegen 3.577 TPS praktisch identisch.
+
+**Der Schnellpfad und der Replay-Pfad sind nicht gleich schnell.** Das ist die
+Asymmetrie, und sie ist der Kern sowohl der Instabilität als auch der
+TPS-Decke.
+
+**Was das übrig lässt:** der zurückfallende Knoten ist weder blockiert noch ausgelastet
 — er *versucht* nicht aufzuholen. Das deutet auf die Taktung oder ein Tor im
 Sync-Pfad selbst, nicht auf eine Ressource. Die häufigste Logzeile in dem
 Zustand ist `Not yet 3 consecutive clean sync cycles` (34× in 5 Minuten), aber
