@@ -83,16 +83,48 @@ jobs:
       # must never permanently block shipping a fix.
       - name: Wait for Contabo2 to be healthy (never restart both validators at once)
         run: |
-          for i in $(seq 1 40); do
-            code=$(curl -s -o /dev/null -w "%{http_code}" -m 10 http://194.163.188.71:8080/api/status || true)
-            if [ "$code" = "200" ]; then
-              echo "Contabo2 healthy (HTTP 200) — proceeding with the Contabo1 deploy"
-              exit 0
+          # "Healthy" has to mean ADVANCING, not ANSWERING.
+          #
+          # FIX (2026-08-19): this step used to accept any HTTP 200 from
+          # /api/status. A node that is up but not following the chain still
+          # returns 200 - and on 2026-08-19 that is exactly what happened: this
+          # step passed in ZERO seconds while Contabo2 sat at height 0 after a
+          # bad deploy, so the guard whose entire purpose is "never restart both
+          # validators at once" waved through a rollout of the only working one.
+          # The verify step at the end of this same workflow already knew the
+          # difference (it compares two height readings); this guard did not.
+          # See docs/LAUNCH_2026-08-18.md for the incident.
+          #
+          # Fail-open is kept deliberately: if Contabo2 is genuinely stuck, this
+          # box must still be deployable, or a broken secondary would freeze the
+          # primary's upgrade path too. What changes is that the log now states
+          # which of the two situations it is, instead of claiming health.
+          #
+          # Iteration count is 20, not 40: each pass now costs 35s (a 20s gap
+          # between the two height readings, then the 15s poll sleep) instead of
+          # 15s, so 20 passes keeps the worst case at roughly the ~11 minutes
+          # this step always had. Waiting twice as long before a fail-open would
+          # be a real cost paid on every deploy where the secondary is unwell.
+          BASE=http://194.163.188.71:8080
+          num() { case "$1" in ''|*[!0-9]*) return 1;; *) return 0;; esac; }
+          for i in $(seq 1 20); do
+            h1=$(curl -s -m 10 "$BASE/api/status" | jq -r '.height // empty' 2>/dev/null || true)
+            if num "$h1"; then
+              sleep 20
+              h2=$(curl -s -m 10 "$BASE/api/status" | jq -r '.height // empty' 2>/dev/null || true)
+              if num "$h2" && [ "$h2" -gt "$h1" ]; then
+                echo "Contabo2 is healthy AND advancing ($h1 -> $h2) - proceeding with the Contabo1 deploy"
+                exit 0
+              fi
+              echo "Contabo2 answers but its height did not move ($h1 -> ${h2:-?}) - it is up WITHOUT following the chain, waiting ($i/20)"
+            else
+              echo "Contabo2 is not answering /api/status with a height - waiting ($i/20)"
             fi
-            echo "Contabo2 not ready yet (HTTP $code) — waiting ($i/40)"
             sleep 15
           done
-          echo "Contabo2 still unreachable after 10 min — proceeding anyway (fail-open)"
+          echo "Contabo2 never reported an advancing height within ~11 min."
+          echo "Proceeding anyway (fail-open), but be aware: this deploy is about to"
+          echo "restart Contabo1 while Contabo2 is NOT known to be following the chain."
       - name: Deploy to Contabo
         uses: appleboy/ssh-action@v1.0.3
         with:
