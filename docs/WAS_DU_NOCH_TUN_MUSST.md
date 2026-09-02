@@ -16,6 +16,36 @@ liest diesen Abschnitt — der Rest ist Geschichte und teils überholt.**
    vor einem Start, weil es die Blockproduktions-Identität ändert.
 4. **Phase-2-Rechtsprüfung**, falls du je auf echten Modus umstellst.
 
+## Offen — der Primary friert unter Last ein
+
+**Das Bild:** unter Last gegen C2 steht C1s Höhe minutenlang, dann hängt alles
+in einem Sprung an (am 02.09.2026 sechsmal beobachtet, zuletzt 513 Blöcke).
+C1 trägt Website und Explorer — er ist der, der es am wenigsten darf.
+
+**Behoben ist die Sichtbarkeit:** der Knoten verstummt dabei nicht mehr
+(`status_ohne_sperre.go`), gemessen an 16 von 16 beantworteten Abfragen
+während eines Laufs, bei dem vorher gar nichts kam.
+
+**Die Ursache ist offen.** Fünf Hypothesen sind gemessen und widerlegt — das
+ist der eigentliche Ertrag, denn es spart dem Nächsten diese Wege:
+
+| Hypothese | Messung | Ergebnis |
+|---|---|---|
+| Absturz / OOM | `RestartCount 0`, `ExitCode 0`, `OOMKilled false`, Speicher 34 % | **nein** |
+| Sperren-Gedränge | Mutex-Profil unter Last: schwerster Stack **1,3 s** blockiert | **nein** |
+| Deadlock | Goroutine-Dump: niemand hält lange, 3 von ~35 lauffähig | **nein** |
+| Quadratischer Ahnenlauf | 51 µs bei 200 Blöcken, 506 µs bei 2.000 — linear | **nein** |
+| CPU-Sättigung | im Stillstand `load average 0.00` bis 5.30, nie am Anschlag | **nein** |
+
+**Was das übrig lässt:** C1 ist im Stillstand weder blockiert noch ausgelastet
+— er *versucht* nicht aufzuholen. Das deutet auf die Taktung oder ein Tor im
+Sync-Pfad selbst, nicht auf eine Ressource. Die häufigste Logzeile in dem
+Zustand ist `Not yet 3 consecutive clean sync cycles` (34× in 5 Minuten), aber
+das ist das *Produktions*-Tor und erklärt nicht, warum das Nachziehen stockt.
+
+**Werkzeug dafür liegt bereit:** `contention-profile-c1-primary.yml` misst C1,
+während C2 unter Last steht — genau die Konstellation.
+
 ## Offen — technisch, aber nicht dringend
 
 5. **`cs.activeTx` entfernen.** Bedingung: der Rückfallzähler muss über eine
