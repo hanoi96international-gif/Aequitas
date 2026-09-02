@@ -82,9 +82,18 @@ jobs:
             echo "=== Contabo2: current $KEY ==="
             grep -E "^${KEY}=" "$ENVFILE" || echo "(nicht gesetzt — der Knoten benutzt seine Vorgabe 8000)"
 
-            CUR="$(grep -E "^${KEY}=" "$ENVFILE" 2>/dev/null | head -1 | cut -d= -f2- || true)"
+            # Gegen den PROZESS pruefen, nicht gegen die Datei.
+            #
+            # Hier stand der Vergleich mit $ENVFILE, und genau das hat am 02.09.2026
+            # den Fehler verlaengert: die Datei sagte laengst 100000, der Prozess lief
+            # mit 200, weil der Neustart stillschweigend gescheitert war. Ein erneuter
+            # Dispatch haette hier "nichts zu aendern" gemeldet und waere ausgestiegen,
+            # ohne den Prozess je zu korrigieren -- die Datei ist eine Absicht, der
+            # Prozess ist der Zustand.
+            CUR="$(docker inspect aequitas-node --format '{{range .Config.Env}}{{println .}}{{end}}' 2>/dev/null | grep -E "^${KEY}=" | cut -d= -f2-)"
+            echo "=== Im laufenden Prozess: ${KEY}=${CUR:-<nicht gesetzt>} ==="
             if [ "$CUR" = "$VALUE" ]; then
-              echo "=== Contabo2: already reads '$VALUE' — nothing to change ==="
+              echo "=== Prozess liest bereits '$VALUE' -- nichts zu tun ==="
               exit 0
             fi
 
@@ -93,25 +102,24 @@ jobs:
               exit 0
             fi
 
-            cp -a "$ENVFILE" "${ENVFILE}.bak.$(date +%s)" && echo "(backup written)"
-            if grep -qE "^${KEY}=" "$ENVFILE"; then
-              sed -i "s/^${KEY}=.*/${KEY}=${VALUE}/" "$ENVFILE"
-            else
-              printf '%s=%s\n' "$KEY" "$VALUE" >> "$ENVFILE"
+            # env-setzen.sh macht die Aenderung UND den Neustart. Frueher stand hier
+            # deploy_safe_c2.sh -- das beginnt mit `git fetch origin` unter `set -e`,
+            # und auf der Box gibt es keine GitHub-Zugangsdaten. Ergebnis am
+            # 02.09.2026: "fatal: could not read Username for https://github.com",
+            # Skriptabbruch, KEIN Neustart -- und der Workflow meldete trotzdem
+            # Erfolg, weil der alte Container ja weiter antwortete. Die Datei sagte
+            # 100000, der Prozess lief mit 200, und eine ganze Messreihe war
+            # wertlos, ohne dass irgendwo ein Fehler stand.
+            bash /root/env-setzen.sh AEQUITAS_RPC_MAX_INFLIGHT=$VALUE || { echo "env-setzen.sh fehlgeschlagen"; exit 1; }
+
+            # PFLICHTPRUEFUNG: was der PROZESS traegt, nicht was die Datei sagt.
+            # Genau diese Luecke hat den stillen Fehlschlag oben ermoeglicht.
+            IST="$(docker inspect aequitas-node --format '{{range .Config.Env}}{{println .}}{{end}}' 2>/dev/null | grep -E "^AEQUITAS_RPC_MAX_INFLIGHT=" | cut -d= -f2-)"
+            echo "=== Im laufenden Prozess: AEQUITAS_RPC_MAX_INFLIGHT=${IST:-<nicht gesetzt>} ==="
+            if [ "${IST:-8000}" != "$VALUE" ]; then
+              echo "FEHLER: gewuenscht $VALUE, im Prozess ${IST:-<nicht gesetzt>} -- der Neustart hat den Wert nicht uebernommen"
+              exit 1
             fi
-            echo "=== Contabo2: value after the edit ==="
-            grep -E "^${KEY}=" "$ENVFILE" || echo "(missing after edit — investigate)"
-
-            echo "=== Contabo2: restarting so the new env reaches the process ==="
-            /root/deploy_safe_c2.sh
-
-            echo "=== Contabo2: waiting for the node to come back ==="
-            sleep 20
-            echo "=== Der Wert, den der Knoten wirklich benutzt (aus /api/health/combined) ==="
-            # Nicht aus dem Log geraten: inflight_grenze.go schreibt beim Start
-            # nichts: die Schranke meldet ihren geltenden Wert selbst unter
-            # "inflight". Genau dafuer steht er dort.
-            curl -s --max-time 8 http://localhost:8080/api/health/combined               | python3 -c "import sys,json; d=json.load(sys.stdin).get('inflight',{}); print('  grenze =', d.get('grenze'), ' abgeschaltet =', d.get('abgeschaltet'))"               || echo "(konnte die Gesundheitsauskunft nicht lesen)"
             echo "=== Contabo2: /api/status ==="
             curl -s --max-time 5 http://localhost:8080/api/status || echo "(unreachable)"
         env:
