@@ -216,10 +216,17 @@ func (dag *BlockDAG) blockTxCap() int {
 // Hoehe -- damit der Test die Rechnung pruefen kann, ohne eine ganze DAG
 // aufzubauen.
 func (dag *BlockDAG) blockTxCapFuerHoehe(eigeneHoehe int64) int {
+	// Der harte Deckel gilt IMMER, auch bei abgeschalteter Bremse: er regelt
+	// nicht den Rueckstand des Partners, sondern die Haltezeit der eigenen
+	// globalen Schreibsperre. Siehe block_tx_deckel.go.
+	hart := blockTxHartDeckel()
 	boden := peerLagBoden()
 	if boden <= 0 {
 		peerLagUngebremst.Add(1)
-		return maxTxsPerBlock // ausdruecklich abgeschaltet
+		if hart < maxTxsPerBlock {
+			blockTxDeckelGriff.Add(1)
+		}
+		return hart // Bremse aus -- es bleibt der harte Deckel
 	}
 	rueckstand := dag.groesstenFrischenRueckstand(eigeneHoehe)
 	peerLagLetzterLag.Store(rueckstand)
@@ -262,8 +269,9 @@ func (dag *BlockDAG) blockTxCapFuerHoehe(eigeneHoehe int64) int {
 	if neu < int64(boden) {
 		neu = int64(boden)
 	}
-	if neu > maxTxsPerBlock {
-		neu = maxTxsPerBlock
+	if neu > int64(hart) {
+		neu = int64(hart)
+		blockTxDeckelGriff.Add(1)
 	}
 	if neu < maxTxsPerBlock {
 		peerLagGebremst.Add(1)

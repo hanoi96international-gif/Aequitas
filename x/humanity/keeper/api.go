@@ -680,6 +680,7 @@ func (a *APIServer) handleCombinedHealth(w http.ResponseWriter, r *http.Request)
 		"shard_retry": ShardRetryStand(),
 		// Drosselung der Blockgroesse bei zurueckfallenden Peers.
 		"peer_lag_bremse": PeerLagBremseStand(),
+		"block_tx_deckel": BlockTxDeckelStand(),
 		// Wie das Nachspielen die Ueberweisungen anwendet -- parallel oder seriell.
 		"replay_pfad": ReplayPfadStand(),
 		// Steckt der Knoten an einem Block fest, den er nicht nachspielen kann?
