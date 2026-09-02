@@ -317,6 +317,20 @@ type BlockDAG struct {
 	// ever created to trigger recovery. Guarded by syncPeerMu, same as
 	// activeSyncPeers.
 	peerSyncHeight map[string]int64
+	// peerSyncSeenAt haelt fest, WANN zuletzt etwas von diesem Peer kam --
+	// unabhaengig davon, ob seine Hoehe dabei gestiegen ist.
+	//
+	// peerSyncHeight allein genuegt der Bremse in peer_lag_bremse.go nicht:
+	// die Karte ist MONOTON, ein verschwundener Peer behaelt also seine letzte
+	// Hoehe fuer immer, und der daraus berechnete Rueckstand waechst mit
+	// jedem eigenen Block weiter. Ohne Zeitstempel wuerde ein einmal
+	// abgeschalteter Peer die Blockgroesse dauerhaft druecken.
+	//
+	// Bewusst bei JEDEM Kontakt gesetzt, nicht nur wenn die Hoehe steigt: ein
+	// Peer, der feststeckt, meldet weiter seine unveraenderte Hoehe -- und
+	// genau der soll die Bremse ausloesen, nicht von ihr ausgenommen werden.
+	// Guarded by syncPeerMu, wie peerSyncHeight.
+	peerSyncSeenAt map[string]time.Time
 	// cleanSyncStreak tracks, per peer URL, how many CONSECUTIVE doSyncOnce
 	// calls in a row found nothing this node failed to merge — see
 	// recordCleanSyncCycle's own comment for the exact definition and the
@@ -1171,6 +1185,7 @@ func NewBlockchain(nodeID string, state *ChainState) *BlockDAG {
 		authorizedValidators:        loadAuthorizedValidators(),
 		activeSyncPeers:             make(map[string]bool),
 		peerSyncHeight:              make(map[string]int64),
+		peerSyncSeenAt:              make(map[string]time.Time),
 		cleanSyncStreak:             make(map[string]int),
 		warnedUnknownProposers:      make(map[string]bool),
 		unknownProposerLastRecovery: make(map[string]time.Time),
@@ -2479,7 +2494,11 @@ func (dag *BlockDAG) ProduceBlock() *Block {
 		}()
 		t0 := time.Now()
 		if dag.state != nil {
-			dbTxs, pendingTxIDs = dag.state.LoadPendingTxs()
+			// Kleinere Bloecke, wenn ein Peer nicht mehr hinterherkommt --
+			// siehe peer_lag_bremse.go. Ohne das produziert dieser Knoten
+			// dauerhaft mehr, als der andere nachvollziehen kann, und der
+			// faellt zurueck, bis er minutenlang steht.
+			dbTxs, pendingTxIDs = dag.state.LoadPendingTxsWithLimit(dag.blockTxCap())
 		}
 		pendingDur = time.Since(t0)
 	})

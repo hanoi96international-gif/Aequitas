@@ -2698,6 +2698,16 @@ func savePendingTxsBatchExec(ex sqlExecutor, txs []Transaction) error {
 const maxTxsPerBlock = 10000
 
 func (cs *ChainState) LoadPendingTxs() ([]Transaction, []int64) {
+	return cs.LoadPendingTxsWithLimit(maxTxsPerBlock)
+}
+
+// LoadPendingTxsWithLimit ist dasselbe mit einer aufrufseitig gesetzten
+// Obergrenze. Die Blockproduktion setzt sie kleiner, wenn ein Peer
+// zurueckfaellt -- siehe peer_lag_bremse.go fuer das Warum.
+func (cs *ChainState) LoadPendingTxsWithLimit(limit int) ([]Transaction, []int64) {
+	if limit <= 0 || limit > maxTxsPerBlock {
+		limit = maxTxsPerBlock
+	}
 	if cs.db == nil {
 		return nil, nil
 	}
@@ -2705,7 +2715,7 @@ func (cs *ChainState) LoadPendingTxs() ([]Transaction, []int64) {
 		`UPDATE pending_txs SET included_at = $1
 		 WHERE id IN (SELECT id FROM pending_txs WHERE included_at = 0 ORDER BY id LIMIT $2)
 		 RETURNING id, tx_json`,
-		time.Now().Unix(), maxTxsPerBlock,
+		time.Now().Unix(), limit,
 	)
 	if err != nil {
 		fmt.Printf("[TX] LoadPendingTxs error: %v\n", err)

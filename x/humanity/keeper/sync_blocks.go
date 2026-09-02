@@ -1072,6 +1072,13 @@ func (dag *BlockDAG) advancePeerSyncHeight(nodeURL string, height int64) {
 	if height > dag.peerSyncHeight[nodeURL] {
 		dag.peerSyncHeight[nodeURL] = height
 	}
+	// Zeitstempel IMMER setzen, auch wenn die Hoehe gleich blieb -- siehe
+	// peerSyncSeenAt's eigenen Kommentar: ein feststeckender Peer ist genau
+	// der Fall, den die Bremse braucht.
+	if dag.peerSyncSeenAt == nil {
+		dag.peerSyncSeenAt = make(map[string]time.Time)
+	}
+	dag.peerSyncSeenAt[nodeURL] = time.Now()
 }
 
 // cleanSyncStreakThreshold is how many CONSECUTIVE doSyncOnce cycles in a
@@ -2920,6 +2927,7 @@ func (dag *BlockDAG) armInitialSyncGate(syncFirst bool) {
 func (dag *BlockDAG) resetPeerSyncProgress() {
 	dag.syncPeerMu.Lock()
 	dag.peerSyncHeight = make(map[string]int64)
+	dag.peerSyncSeenAt = make(map[string]time.Time)
 	dag.cleanSyncStreak = make(map[string]int)
 	dag.syncPeerMu.Unlock()
 

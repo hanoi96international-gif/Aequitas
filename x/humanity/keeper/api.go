@@ -678,6 +678,8 @@ func (a *APIServer) handleCombinedHealth(w http.ResponseWriter, r *http.Request)
 		"inflight": InflightStand(),
 		// Wirkung des kurzen Wiederholens bei belegtem Shard.
 		"shard_retry": ShardRetryStand(),
+		// Drosselung der Blockgroesse bei zurueckfallenden Peers.
+		"peer_lag_bremse": PeerLagBremseStand(),
 		// Whether the database connection pool is the constraint — wait_count
 		// and wait_total_ms answer that directly, instead of inferring it from
 		// a throughput number that swings by 2x between runs. See DBPoolStats.
