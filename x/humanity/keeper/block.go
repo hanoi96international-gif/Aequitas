@@ -8555,6 +8555,26 @@ func (dag *BlockDAG) pruneOldDAGBlocks() {
 func (dag *BlockDAG) collectUnreplayedAncestors(target *Block) []*Block {
 	visited := make(map[string]bool)
 	var result []*Block
+
+	// replayedMu EINMAL fuer den ganzen Lauf, nicht je Vorfahre.
+	//
+	// Vorher stand Lock/Unlock INNERHALB der Schleife: bei N unabgespielten
+	// Vorfahren waren das 2N Sperroperationen -- und diese Funktion laeuft
+	// fuer JEDEN ankommenden Block, unter dag.mu.RLock().
+	//
+	// Damit waechst die Haltezeit der Lesesperre mit dem Rueckstand, und weil
+	// Go's RWMutex ankommende Leser aussperrt, sobald ein Schreiber ansteht,
+	// staut sich der ganze Sync-Pfad dahinter. Je weiter der Knoten
+	// zurueckfaellt, desto teurer wird jeder einzelne Block -- eine
+	// Rueckkopplung, die genau das Bild erzeugt, das am 02.09.2026 sechsmal
+	// zu sehen war: Hoehe steht minutenlang, dann haengt alles auf einmal an
+	// (zuletzt 513 Bloecke in einem Sprung).
+	//
+	// Der Inhalt der Schleife ist reine Map-Arithmetik ohne I/O; die Sperre
+	// laenger zu halten kostet Mikrosekunden und spart 2N Erwerbe. Die
+	// Reihenfolge bleibt unveraendert (dag.mu -> replayedMu), es entsteht
+	// also keine neue Verschraenkung.
+	dag.replayedMu.Lock()
 	var dfs func(b *Block)
 	dfs = func(b *Block) {
 		for _, ph := range b.ParentHashes {
@@ -8566,16 +8586,14 @@ func (dag *BlockDAG) collectUnreplayedAncestors(target *Block) []*Block {
 			if !ok {
 				continue
 			}
-			dag.replayedMu.Lock()
-			replayed := dag.replayedBlocks[ph]
-			dag.replayedMu.Unlock()
-			if !replayed {
+			if !dag.replayedBlocks[ph] {
 				result = append(result, parent)
 				dfs(parent)
 			}
 		}
 	}
 	dfs(target)
+	dag.replayedMu.Unlock()
 	sort.Slice(result, func(i, j int) bool {
 		if result[i].Height != result[j].Height {
 			return result[i].Height < result[j].Height
