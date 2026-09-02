@@ -39,24 +39,60 @@ func TestResyncClearsBlocksInConstantTime(t *testing.T) {
 	}
 	body := content[start:]
 
-	for _, table := range []string{"chain_blocks", "chain_accounts", "nullifiers", "bio_registrations"} {
-		// Match the EXECUTED statement, not the word. This file and
-		// snapshot.go both explain the old DELETE in prose, and an earlier
-		// version of this check flagged its own explanation.
+	// VERSCHAERFT 02.09.2026: die geschuetzte Eigenschaft ist nicht "TRUNCATE
+	// steht da", sondern "das Leeren kostet gleich viel, ob der Knoten einen
+	// Tag oder ein Jahr alt ist". Ein UNBEGRENZTES DELETE verletzt das. Ein
+	// DELETE mit WHERE auf den abweichenden Schwanz oberhalb der
+	// Snapshot-Hoehe nicht: dessen Groesse haengt an der Divergenztiefe,
+	// nicht am Alter des Knotens.
+	//
+	// Warum diese Unterscheidung noetig wurde: chain_blocks mitzuleeren hat am
+	// 02.09.2026 die eigentliche Instabilitaet verursacht. Nach mehreren
+	// Resyncs hielten die Knoten noch 580 beziehungsweise 21 Bloecke; ein
+	// zurueckgefallener Peer bekam auf jede Anfrage nach einem Elternblock
+	// {"error":"block not found"} und konnte nie wieder aufholen. Die
+	// Historie MUSS also erhalten bleiben -- aber weiterhin in konstanter
+	// Zeit geleert werden, wo geleert wird.
+	for _, table := range []string{"chain_accounts", "nullifiers", "bio_registrations"} {
 		if strings.Contains(body, "Exec(`DELETE FROM "+table) {
-			t.Errorf("the resync path still clears %s with DELETE.\n"+
+			t.Errorf("the resync path clears %s with DELETE.\n"+
 				"  That is O(rows) and cannot finish inside statement_timeout on a node with "+
-				"millions of blocks -- the transaction rolls back, the node stays diverged, and "+
+				"millions of rows -- the transaction rolls back, the node stays diverged, and "+
 				"it keeps reporting healthy while being unable to rejoin the chain.\n"+
 				"  Use TRUNCATE, which unlinks the file in constant time.", table)
 		}
 	}
 
-	if !strings.Contains(body, "TRUNCATE chain_blocks") {
-		t.Error("the resync no longer TRUNCATEs chain_blocks. If this moved somewhere else, " +
-			"re-point this test rather than deleting it: the failure it guards against is " +
-			"invisible until a long-running validator has to resync, which is exactly when " +
-			"nobody has time to diagnose it.")
+	// chain_blocks darf geloescht werden -- aber nur BEGRENZT.
+	if strings.Contains(body, "Exec(`DELETE FROM chain_blocks`") ||
+		strings.Contains(body, "Exec(`DELETE FROM chain_blocks `") {
+		t.Error("the resync clears chain_blocks with an UNBOUNDED DELETE. That is O(rows) " +
+			"and dies in statement_timeout on an old node. Delete only the diverged tail " +
+			"(WHERE height > the snapshot height) or TRUNCATE.")
+	}
+	if strings.Contains(body, "Exec(`DELETE FROM chain_blocks WHERE height >") {
+		// Der gewollte Fall. Er muss an die Snapshot-Hoehe gebunden sein --
+		// ohne sie gaebe es keinen sicheren Schnitt, und ein Platzhalter
+		// waere ein unbegrenztes DELETE in Verkleidung.
+		if !strings.Contains(body, "snap.Height > 0") {
+			t.Error("chain_blocks wird begrenzt geloescht, aber ohne Pruefung auf eine " +
+				"gueltige Snapshot-Hoehe. Ohne sie gibt es keinen sicheren Schnitt.")
+		}
+	} else if !strings.Contains(body, "TRUNCATE chain_blocks") {
+		t.Error("der Resync raeumt chain_blocks weder begrenzt noch per TRUNCATE. Wenn das " +
+			"woanders hin gewandert ist, diesen Test umhaengen statt loeschen: der Fehler, " +
+			"den er abfaengt, zeigt sich erst, wenn ein lang laufender Validator resyncen " +
+			"muss -- also genau dann, wenn niemand Zeit zum Diagnostizieren hat.")
+	}
+
+	// Und die Historie muss erhalten bleiben: ein TRUNCATE von chain_blocks
+	// zusammen mit den Zustandstabellen nimmt dem Knoten die Faehigkeit,
+	// einem zurueckgefallenen Peer zu helfen.
+	if strings.Contains(body, "TRUNCATE chain_blocks, chain_accounts") {
+		t.Error("chain_blocks wird wieder zusammen mit den Zustandstabellen geleert. " +
+			"Genau das hat am 02.09.2026 die Instabilitaet verursacht: die Knoten hielten " +
+			"danach 580 bzw. 21 Bloecke, ein zurueckgefallener Peer bekam auf jede Anfrage " +
+			"nach einem Elternblock \"block not found\" und konnte nie wieder aufholen.")
 	}
 
 	if !strings.Contains(body, "SET LOCAL statement_timeout = 0") {
