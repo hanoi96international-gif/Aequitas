@@ -31,9 +31,12 @@ func TestPeerLagBremse_DrosseltBeiRueckstand(t *testing.T) {
 
 	dag := frischeDAG(t, map[string]int64{"a": 1000}, nil)
 
-	// 30 zurueck: unter dem Slack von 50 -- keine Drosselung.
-	if g := dag.blockTxCapFuerHoehe(1030); g != 3800 {
-		t.Fatalf("bei 30 Rueckstand ist die Grenze %d, erwartet den vollen Anker 3800", g)
+	// 30 zurueck: unter dem Slack von 50 -- keine Drosselung, also der volle
+	// Deckel. Bewusst maxTxsPerBlock und NICHT die letzte Blockgroesse: sonst
+	// kaeme die Grenze nach einer Drosselung nie wieder hoch (siehe
+	// TestPeerLagBremse_KommtNachDerDrosselungWiederHoch).
+	if g := dag.blockTxCapFuerHoehe(1030); g != maxTxsPerBlock {
+		t.Fatalf("bei 30 Rueckstand ist die Grenze %d, erwartet den vollen Deckel %d", g, maxTxsPerBlock)
 	}
 
 	// Jetzt waechst der Rueckstand ueber die Schwelle. Der Regelkreis muss
@@ -219,4 +222,43 @@ func TestPeerLagBremse_ErholtSichWiederWennDerPeerAufholt(t *testing.T) {
 			"additiv sein, sonst schwingt die Regelung")
 	}
 	t.Logf("Erholung: %d -> %d (Anker 3800)", vorher, g)
+}
+
+// DIE SPERRKLINKE: einmal gedrosselt, muss die Grenze wieder bis ganz nach
+// oben zurueckkommen koennen.
+//
+// Die erste Regelkreis-Fassung nahm die letzte Blockgroesse auch als
+// OBERGRENZE. Live am 02.09.2026: einmal auf 500 gedrosselt, trugen die
+// Bloecke 500, damit wurde der Anker 500, und die Grenze kam nie wieder hoch.
+// Der Regelkreis sperrte sich selbst ein -- Rueckstand 0, perfekte
+// Synchronitaet, und dauerhaft ein Zehntel des Durchsatzes. Eine Bremse, die
+// nicht mehr loslaesst, ist keine Regelung.
+func TestPeerLagBremse_KommtNachDerDrosselungWiederHoch(t *testing.T) {
+	reglerZuruecksetzen(0)
+	defer reglerZuruecksetzen(0)
+
+	dag := frischeDAG(t, map[string]int64{"a": 1000}, nil)
+
+	// Erst drosseln, bis der Boden erreicht ist.
+	for i := int64(1); i <= 40; i++ {
+		dag.blockTxCapFuerHoehe(1000 + peerLagSlackVorgabe + i*20)
+	}
+	unten := peerLagLetzterCap.Load()
+	if unten != int64(peerLagBodenVorgabe) {
+		t.Fatalf("nach dem Drosseln steht die Grenze auf %d, erwartet den Boden %d", unten, peerLagBodenVorgabe)
+	}
+	// Genau die Lage, die sich selbst einsperrte: die Bloecke tragen jetzt
+	// nur noch so viel, wie die Grenze erlaubt.
+	letzteBlockGroesse.Store(unten)
+
+	// Der Peer holt auf. Die Grenze MUSS wieder bis zum Deckel steigen.
+	var g int
+	for i := 0; i < 300; i++ {
+		g = dag.blockTxCapFuerHoehe(1000) // Rueckstand 0
+		letzteBlockGroesse.Store(int64(g))
+	}
+	if g != maxTxsPerBlock {
+		t.Fatalf("nach 300 Bloecken ohne Rueckstand steht die Grenze auf %d statt %d -- "+
+			"die Bremse laesst nicht mehr los und kostet dauerhaft Durchsatz", g, maxTxsPerBlock)
+	}
 }

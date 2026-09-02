@@ -191,49 +191,47 @@ func (dag *BlockDAG) blockTxCapFuerHoehe(eigeneHoehe int64) int {
 	peerLagLetzterLag.Store(rueckstand)
 	slack := peerLagSlack()
 
-	// Ankerpunkt ist die TATSAECHLICHE Blockgroesse, nicht maxTxsPerBlock.
-	//
-	// Mit 10.000 als Anker war die Bremse wirkungslos: echte Bloecke trugen
-	// bei ~3.800 TPS rund 3.800 Ueberweisungen, eine Obergrenze von 9.683
-	// bindet darueber nicht. Die Anzeige meldete "gebremst", C1 fiel trotzdem
-	// weiter zurueck (02.09.2026).
-	anker := letzteBlockGroesse.Load()
-	if anker <= 0 || anker > maxTxsPerBlock {
-		anker = maxTxsPerBlock
-	}
-	if anker < int64(boden) {
-		anker = int64(boden)
-	}
-
 	vorher := peerLagLetzterCap.Load()
-	if vorher <= 0 || vorher > anker {
-		vorher = anker
+	if vorher <= 0 {
+		vorher = maxTxsPerBlock
 	}
 	waechst := rueckstand > vorherigerRueckstand.Load()
 	vorherigerRueckstand.Store(rueckstand)
 
 	var neu int64
-	switch {
-	case rueckstand > slack && waechst:
-		// Ueber der Schwelle UND waechst -- kraeftig herunter. Faktor 0,7
-		// halbiert in zwei Bloecken.
-		neu = vorher * 7 / 10
-	case rueckstand > slack:
-		// Ueber der Schwelle, haelt sich: leicht weiter herunter.
-		neu = vorher * 9 / 10
-	default:
-		// Unter der Schwelle: langsam erholen, ein Zwanzigstel je Block.
-		// Additiv und nicht sprunghaft, damit die Drosselung nicht sofort
-		// wieder wegfaellt und der Rueckstand erneut waechst.
-		neu = vorher + anker/20
+	if rueckstand > slack {
+		// DROSSELN. Vom tatsaechlich Erreichten ausgehen, nicht vom Deckel:
+		// liegt die Grenze bei 10.000 und der Block traegt 3.800, schneidet
+		// der erste Schritt sonst in die Luft (gemessen 02.09.2026:
+		// 9.831 -> 9.683 bei Bloecken von 3.800, also wirkungslos).
+		basis := vorher
+		if b := letzteBlockGroesse.Load(); b > 0 && b < basis {
+			basis = b
+		}
+		if waechst {
+			neu = basis * 7 / 10 // halbiert in zwei Bloecken
+		} else {
+			neu = basis * 9 / 10
+		}
+	} else {
+		// ERHOLEN, und zwar bis maxTxsPerBlock -- NICHT bis zur letzten
+		// Blockgroesse.
+		//
+		// Genau daran ist die erste Fassung gescheitert: sie nahm die letzte
+		// Blockgroesse auch als Obergrenze. Einmal auf 500 gedrosselt, trugen
+		// die Bloecke 500, damit wurde der Anker 500, und die Grenze kam nie
+		// wieder hoch. Der Regelkreis sperrte sich selbst ein: Rueckstand 0,
+		// perfekte Synchronitaet -- und dauerhaft ein Zehntel des Durchsatzes.
+		// Eine Bremse, die nicht mehr loslaesst, ist keine Regelung.
+		neu = vorher + maxTxsPerBlock/20
 	}
 	if neu < int64(boden) {
 		neu = int64(boden)
 	}
-	if neu > anker {
-		neu = anker
+	if neu > maxTxsPerBlock {
+		neu = maxTxsPerBlock
 	}
-	if neu < anker {
+	if neu < maxTxsPerBlock {
 		peerLagGebremst.Add(1)
 	} else {
 		peerLagUngebremst.Add(1)
