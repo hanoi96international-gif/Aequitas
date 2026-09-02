@@ -104,7 +104,14 @@ func peerLagBoden() int {
 // groesstenFrischenRueckstand liefert den groessten Rueckstand unter den
 // Peers, von denen kuerzlich etwas kam. 0 heisst: niemand haengt.
 func (dag *BlockDAG) groesstenFrischenRueckstand(eigeneHoehe int64) int64 {
-	dag.syncPeerMu.Lock()
+	// TryLock, nicht Lock. Diese Funktion laeuft unter dag.mu; eine zweite
+	// Sperre dort zu erwerben waere eine Reihenfolge-Annahme, die niemand
+	// aufgeschrieben hat. Ist syncPeerMu gerade belegt, wird eben nicht
+	// gebremst -- ein voller Block ist die harmlosere Antwort als ein
+	// Knoten, der steht.
+	if !dag.syncPeerMu.TryLock() {
+		return 0
+	}
 	defer dag.syncPeerMu.Unlock()
 	jetzt := time.Now()
 	var groesster int64
@@ -123,7 +130,18 @@ func (dag *BlockDAG) groesstenFrischenRueckstand(eigeneHoehe int64) int64 {
 // blockTxCap liefert, wie viele Ueberweisungen der naechste Block hoechstens
 // tragen darf.
 func (dag *BlockDAG) blockTxCap() int {
-	return dag.blockTxCapFuerHoehe(dag.Height())
+	// heightSchnell, NICHT Height().
+	//
+	// Diese Funktion laeuft in der Blockproduktion, und die haelt dag.mu
+	// EXKLUSIV (block.go, dag.mu.Lock() mit defer Unlock). Height() nimmt
+	// dag.mu.RLock() -- und eine Goroutine, die die Schreibsperre haelt, kann
+	// die Lesesperre nicht bekommen. Go's RWMutex ist nicht reentrant.
+	//
+	// Die erste Fassung machte genau das und hat C1 am 02.09.2026 sofort
+	// aufgehaengt: Container oben, Logs stehen nach "[EPOCH] ... (producer)",
+	// keine HTTP-Antwort, Load 0.00. Kein Burst, kein Absturz -- ein
+	// Selbstblock in der Sekunde, in der der Knoten Produzent wurde.
+	return dag.blockTxCapFuerHoehe(dag.heightSchnell.Load())
 }
 
 // blockTxCapFuerHoehe ist blockTxCap mit ausdruecklich uebergebener eigener

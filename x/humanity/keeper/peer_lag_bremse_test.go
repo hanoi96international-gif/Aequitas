@@ -95,3 +95,62 @@ func TestPeerLagBremse_NieNull(t *testing.T) {
 		}
 	}
 }
+
+// blockTxCap laeuft in der Blockproduktion, und die haelt dag.mu EXKLUSIV.
+// Es darf deshalb keine Sperre nehmen, die dabei blockieren kann.
+//
+// Die erste Fassung tat genau das -- sie rief dag.Height(), das dag.mu.RLock()
+// nimmt. Go's RWMutex ist nicht reentrant: eine Goroutine mit der
+// Schreibsperre bekommt die Lesesperre nie. C1 hing damit am 02.09.2026 in der
+// Sekunde fest, in der er Produzent wurde: Container oben, Logs stehen nach
+// "[EPOCH] ... (producer)", keine HTTP-Antwort, Load 0.00.
+func TestPeerLagBremse_BlockiertNichtUnterGehaltenerDagSperre(t *testing.T) {
+	dag := &BlockDAG{
+		peerSyncHeight: map[string]int64{"a": 1000},
+		peerSyncSeenAt: map[string]time.Time{"a": time.Now()},
+		blocks:         map[string]*Block{},
+		tips:           map[string]bool{},
+	}
+	dag.setHeight(5000)
+
+	// Genau die Lage der Blockproduktion: dag.mu exklusiv gehalten.
+	dag.mu.Lock()
+	defer dag.mu.Unlock()
+
+	fertig := make(chan int, 1)
+	go func() { fertig <- dag.blockTxCap() }()
+
+	select {
+	case g := <-fertig:
+		if g <= 0 {
+			t.Fatalf("Grenze %d -- die Kette wuerde anhalten", g)
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("blockTxCap blockiert, waehrend dag.mu gehalten wird. In der " +
+			"Blockproduktion ist das ein Selbstblock: der Knoten haengt sich auf, " +
+			"sobald er Produzent wird")
+	}
+}
+
+// Dasselbe fuer syncPeerMu: auch die darf die Produktion nicht anhalten.
+func TestPeerLagBremse_BlockiertNichtBeiBelegtemSyncPeerMu(t *testing.T) {
+	dag := &BlockDAG{
+		peerSyncHeight: map[string]int64{"a": 1000},
+		peerSyncSeenAt: map[string]time.Time{"a": time.Now()},
+	}
+	dag.setHeight(5000)
+	dag.syncPeerMu.Lock()
+	defer dag.syncPeerMu.Unlock()
+
+	fertig := make(chan int, 1)
+	go func() { fertig <- dag.blockTxCap() }()
+	select {
+	case g := <-fertig:
+		if g != maxTxsPerBlock {
+			t.Fatalf("bei belegtem syncPeerMu ist die Grenze %d, erwartet die volle %d -- "+
+				"ohne Peer-Daten wird nicht gebremst", g, maxTxsPerBlock)
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("blockTxCap stellt sich an syncPeerMu an")
+	}
+}
