@@ -974,8 +974,18 @@ func (dag *BlockDAG) fetchMissingAncestors(nodeURL string) {
 		}
 		totalFetched += fetchedThisRound
 		if fetchedThisRound == 0 {
+			// Der Peer hatte keinen der angefragten Eltern. Einmal ist das
+			// harmlos -- er kennt den Block vielleicht noch nicht. Mehrere
+			// Runden hintereinander heissen, dass er ihn nicht HAT: seit dem
+			// letzten Resync haelt er nur noch die juengsten Bloecke
+			// (TRUNCATE chain_blocks in snapshot.go), und dann ist Aufholen
+			// von ihm aus unmoeglich. Siehe ahnen_unerreichbar.go.
+			if aussichtslos, folgen := merkeAhnenLeerlauf(); aussichtslos {
+				dag.loeseHeilungWegenUnerreichbarerAhnenAus(nodeURL, folgen)
+			}
 			return // peer had none of the currently-pending hashes (yet) — stop for this cycle
 		}
+		merkeAhnenErfolg()
 	}
 }
 
