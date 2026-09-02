@@ -505,7 +505,11 @@ func (a *APIServer) handleStateRootComponents(w http.ResponseWriter, r *http.Req
 
 func (a *APIServer) handleCombinedHealth(w http.ResponseWriter, r *http.Request) {
 	writeJSONCORS(w)
-	latest := a.blockchain.LatestBlock()
+	// KEIN LatestBlock() mehr. Der Aufruf nimmt dag.mu.RLock() BLOCKIEREND und
+	// wurde hier nur fuer die Hoehe geholt -- damit hing die Gesundheitsauskunft
+	// an genau der Sperre, von der /api/status schon befreit war. Ein
+	// Gesundheitsendpunkt, der waehrend eines Block-Bursts nicht antwortet,
+	// meldet "tot" ueber einen Knoten, der bloss beschaeftigt ist.
 	a.proofStatusMu.RLock()
 	proofStatus := a.proofServerStatus
 	a.proofStatusMu.RUnlock()
@@ -680,6 +684,7 @@ func (a *APIServer) handleCombinedHealth(w http.ResponseWriter, r *http.Request)
 		"shard_retry": ShardRetryStand(),
 		// Drosselung der Blockgroesse bei zurueckfallenden Peers.
 		"peer_lag_bremse": PeerLagBremseStand(),
+		"hoehen_quellen":  HoehenQuellenStand(),
 		"block_tx_deckel": BlockTxDeckelStand(),
 		// Wie das Nachspielen die Ueberweisungen anwendet -- parallel oder seriell.
 		"replay_pfad": ReplayPfadStand(),
@@ -738,8 +743,11 @@ func (a *APIServer) handleCombinedHealth(w http.ResponseWriter, r *http.Request)
 			"dag_degraded_reason":        dagDegradedReason,
 			"checkpoint_trust_mode":      checkpointTrustMode,
 			"synthetic_checkpoint_count": syntheticCheckpointCount,
-			"height":                     latest.Height,
-			"dag_tips_count":             a.blockchain.TipsCount(),
+			// Dieselbe Quelle wie /api/status. Zwei Endpunkte desselben Knotens,
+			// die verschiedene Hoehen melden, lassen jeden Vergleich zwischen
+			// zwei Boxen falsch aussehen -- siehe status_hoehe.go.
+			"height":         a.blockchain.HeightSchnell(),
+			"dag_tips_count": a.blockchain.TipsCount(),
 			// FIX (Monster Audit 2026-07-12, P2): documenting the trust model
 			// this counter represents, for anyone building against this API —
 			// StateRoot is a diagnostic drift signal, not a consensus
@@ -1180,6 +1188,10 @@ func (a *APIServer) handleStatus(w http.ResponseWriter, r *http.Request) {
 		})
 		return
 	}
+	// Beide Wege dieser Funktion melden dieselbe Zahl. Der Vergleich daneben
+	// beantwortet, ob die Quellen ueberhaupt je auseinanderlaufen.
+	schnelleHoehe := a.blockchain.HeightSchnell()
+	merkeHoehenAbweichung(latest.Height, schnelleHoehe)
 	uptime := int64(time.Since(a.startTime).Seconds())
 	// Use a.state (PostgreSQL-backed ChainState) as the single source of
 	// truth for human count — see NewAPIServer's own comment for why there's
@@ -1210,10 +1222,14 @@ func (a *APIServer) handleStatus(w http.ResponseWriter, r *http.Request) {
 	nextUBISecs := a.state.SecondsUntilNextUBI()
 
 	stand := map[string]interface{}{
-		"chain_id":     "aequitas-1",
-		"version":      "v0.3.0",
-		"git_commit":   buildGitCommit,
-		"height":       latest.Height,
+		"chain_id":   "aequitas-1",
+		"version":    "v0.3.0",
+		"git_commit": buildGitCommit,
+		// EINE Quelle, nicht zwei: der Zwischenspeicher-Weg unten meldet
+		// HeightSchnell(), also muss dieser Weg es auch tun. Sonst springt die
+		// gemeldete Hoehe, je nachdem welchen Weg die Anfrage gerade nimmt --
+		// siehe status_hoehe.go fuer die live gemessenen 41 Bloecke rueckwaerts.
+		"height":       schnelleHoehe,
 		"latest_hash":  latest.Hash,
 		"total_humans": m.Humans,
 		"total_supply": fmt.Sprintf("%.2f AEQ", m.Supply),
