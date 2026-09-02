@@ -27,12 +27,17 @@ func frischeDAG(t *testing.T, hoehen map[string]int64, alter map[string]time.Dur
 // die jener nicht nachvollziehen kann, und der steht dann minutenlang.
 func TestPeerLagBremse_DrosseltBeiRueckstand(t *testing.T) {
 	dag := frischeDAG(t, map[string]int64{"a": 1000}, nil)
-	voll := dag.groesstenFrischenRueckstand(1100) // 100 zurueck, im Slack
-	if voll != 100 {
-		t.Fatalf("Rueckstand %d, erwartet 100", voll)
+	// 30 zurueck: unter dem Slack von 50, also volle Bloecke.
+	if r := dag.groesstenFrischenRueckstand(1030); r != 30 {
+		t.Fatalf("Rueckstand %d, erwartet 30", r)
 	}
-	if g := dag.blockTxCapFuerHoehe(1100); g != maxTxsPerBlock {
-		t.Fatalf("bei 100 Rueckstand ist die Grenze %d, erwartet voll (%d)", g, maxTxsPerBlock)
+	if g := dag.blockTxCapFuerHoehe(1030); g != maxTxsPerBlock {
+		t.Fatalf("bei 30 Rueckstand ist die Grenze %d, erwartet voll (%d)", g, maxTxsPerBlock)
+	}
+	// 84 zurueck -- genau der Wert, bei dem C1 am 02.09. aushungerte. MUSS bremsen.
+	if g := dag.blockTxCapFuerHoehe(1084); g >= maxTxsPerBlock {
+		t.Fatalf("bei 84 Rueckstand wird nicht gebremst (Grenze %d) -- genau dieser Wert "+
+			"hat C1 aus der Kette genommen", g)
 	}
 	// Weit zurueck: auf den Boden.
 	if g := dag.blockTxCapFuerHoehe(1000 + peerLagVollVorgabe + 500); g != peerLagBodenVorgabe {

@@ -57,14 +57,33 @@ import (
 // immer druecken. Deshalb zaehlen nur Peers, von denen innerhalb von
 // peerLagFrische etwas kam (siehe peerSyncSeenAt).
 //
-//	AEQUITAS_PEER_LAG_SLACK    Rueckstand ohne Wirkung (Vorgabe 200)
-//	AEQUITAS_PEER_LAG_VOLL     ab hier nur noch der Boden (Vorgabe 2000)
+//	AEQUITAS_PEER_LAG_SLACK    Rueckstand ohne Wirkung (Vorgabe 50)
+//	AEQUITAS_PEER_LAG_VOLL     ab hier nur noch der Boden (Vorgabe 500)
 //	AEQUITAS_PEER_LAG_BODEN    kleinste Blockgroesse (Vorgabe 500, 0 = Bremse aus)
 //
 // Ein unbrauchbarer Wert ergibt die Vorgabe.
+// # DIE SCHWELLEN STAMMEN AUS EINER MESSUNG, NICHT AUS EINER SCHAETZUNG
+//
+// Erste Fassung: Slack 200, voll 2000. Beides zu locker. Im Lastlauf vom
+// 02.09.2026 blieb der Rueckstand die ganze Zeit bei 60-90 -- die Bremse
+// griff also nie (gebremst=0) -- und trotzdem hungerte C1 aus: nach dem Lauf
+// konnte er fuenf Minuten lang keinen Block mehr anhaengen, woraufhin die
+// Selbstheilung einen vollstaendigen Resync ausloeste. Ein Rueckstand, der
+// nach dieser Skala "unauffaellig" war, hat den Knoten aus der Kette
+// genommen.
+//
+// Die neuen Werte sind auf genau diesen Fall gesetzt: bei 50 beginnt die
+// Drosselung, bei 500 ist sie voll. Der beobachtete Bereich 60-90 liegt damit
+// deutlich IN der Drosselung statt darunter.
+//
+// Dass kleinere Bloecke die Gesamtarbeit nicht verringern, ist richtig und
+// trotzdem kein Einwand: sie sind einzeln leichter anzuhaengen, stauen sich
+// weniger zu Waisen auf, und der Rueckstau landet dort, wo er hingehoert --
+// im Warteschlangen-Topf des Produzenten, wo die Annahmekontrolle ihn sieht
+// und an den Aufrufer weitergibt.
 const (
-	peerLagSlackVorgabe = 200
-	peerLagVollVorgabe  = 2000
+	peerLagSlackVorgabe = 50
+	peerLagVollVorgabe  = 500
 	peerLagBodenVorgabe = 500
 	peerLagFrische      = 90 * time.Second
 
