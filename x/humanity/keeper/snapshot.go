@@ -759,8 +759,56 @@ func (cs *ChainState) ResyncFromSnapshotURL(peerURL, expectedSignerHex string) e
 	if _, err := tx.Exec(`SET LOCAL statement_timeout = 0`); err != nil {
 		return fail(fmt.Errorf("resync: could not lift the statement timeout: %w", err))
 	}
-	if _, err := tx.Exec(`TRUNCATE chain_blocks, chain_accounts, nullifiers, bio_registrations`); err != nil {
-		return fail(fmt.Errorf("resync: could not clear chain_blocks/chain_accounts/nullifiers/bio_registrations: %w", err))
+	if _, err := tx.Exec(`TRUNCATE chain_accounts, nullifiers, bio_registrations`); err != nil {
+		return fail(fmt.Errorf("resync: could not clear chain_accounts/nullifiers/bio_registrations: %w", err))
+	}
+	// chain_blocks wird NICHT mehr mitgeleert -- nur der abweichende Teil
+	// oberhalb der Snapshot-Hoehe.
+	//
+	// # WARUM DAS GEAENDERT WURDE
+	//
+	// Am 02.09.2026 bis zur Datenbank verfolgt. Nach mehreren Resyncs hielten
+	// die beiden Knoten noch:
+	//
+	//	C1: 580 Bloecke  (5521232 - 5521811)
+	//	C2:  21 Bloecke  (5521216 - 5521232)
+	//
+	// Fragte ein zurueckgefallener Knoten nach einem Elternblock, antwortete
+	// der Peer {"error":"block not found"} -- live geprueft fuer Hoehe
+	// 5521000 und 5000000. Die Waise war damit NIE aufloesbar: der Knoten
+	// sammelte 425 Waisen in 90 Sekunden, fiel weiter zurueck und kam nur
+	// durch einen eigenen Resync zurueck -- der ihm dann selbst die Historie
+	// nahm. Ein Kreislauf, der sich selbst traegt, und die Ursache der
+	// Instabilitaet, die uns einen ganzen Tag gekostet hat.
+	//
+	// # WARUM DAS BEWAHREN SICHER IST
+	//
+	// Bloecke werden per HASH abgefragt (/api/block?hash=, /api/blocks/by-hash),
+	// und ein Hash ist eine Inhaltsadresse: der Anfragende bekommt genau den
+	// Block zu diesem Hash oder gar keinen. Er prueft Signatur und
+	// Hash-Uebereinstimmung selbst. Einen falschen Block unterzuschieben ist
+	// damit nicht moeglich, unabhaengig davon, auf welchem Zweig er einmal lag.
+	//
+	// Oberhalb der Snapshot-Hoehe wird trotzdem geloescht: dort liegt der
+	// abweichende Schwanz, den dieser Resync gerade verwirft, und der koennte
+	// ueber die HOEHENBASIERTE Auslieferung (/api/blocks?min_height=) als
+	// "der Block an Hoehe N" herausgehen. Das waere eine echte
+	// Fehlinformation.
+	//
+	// # WARUM DAS NICHT IN DIE ZEITUEBERSCHREITUNG LAEUFT
+	//
+	// Der Grund fuer das urspruengliche TRUNCATE war ein DELETE ueber 4,38
+	// Millionen Zeilen, das statement_timeout riss (siehe oben). Hier wird nur
+	// der Schwanz OBERHALB der Snapshot-Hoehe geloescht -- bei einer
+	// Divergenz sind das Hunderte bis Tausende Zeilen, nicht Millionen. Das
+	// statement_timeout ist in dieser Transaktion ohnehin aufgehoben.
+	if snap.Height > 0 {
+		if _, err := tx.Exec(`DELETE FROM chain_blocks WHERE height > $1`, snap.Height); err != nil {
+			return fail(fmt.Errorf("resync: could not clear diverged blocks above %d: %w", snap.Height, err))
+		}
+	} else if _, err := tx.Exec(`TRUNCATE chain_blocks`); err != nil {
+		// Ohne Snapshot-Hoehe gibt es keinen sicheren Schnitt -- dann wie bisher.
+		return fail(fmt.Errorf("resync: could not clear chain_blocks: %w", err))
 	}
 	// FIX (audit recheck3, P1 — "Snapshot/Resync verliert Chain-seitige
 	// bio_hashes"): this used to DELETE FROM bio_hashes here and then only
