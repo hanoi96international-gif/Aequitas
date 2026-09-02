@@ -92,6 +92,21 @@ const (
 	peerLagBodenEnv = "AEQUITAS_PEER_LAG_BODEN"
 )
 
+// letzteBlockGroesse ist die Zahl der Ueberweisungen im zuletzt produzierten
+// Block -- der Ankerpunkt, von dem aus gedrosselt wird. Siehe blockTxCap.
+var letzteBlockGroesse atomic.Int64
+
+// vorherigerRueckstand haelt den Rueckstand des letzten Blocks -- der
+// Regelkreis braucht die RICHTUNG, nicht nur den Wert.
+var vorherigerRueckstand atomic.Int64
+
+// MerkeBlockGroesse wird nach jeder Blockproduktion aufgerufen.
+func MerkeBlockGroesse(n int) {
+	if n > 0 {
+		letzteBlockGroesse.Store(int64(n))
+	}
+}
+
 var (
 	peerLagGebremst   atomic.Int64 // wie oft ein Block verkleinert wurde
 	peerLagUngebremst atomic.Int64
@@ -174,27 +189,57 @@ func (dag *BlockDAG) blockTxCapFuerHoehe(eigeneHoehe int64) int {
 	}
 	rueckstand := dag.groesstenFrischenRueckstand(eigeneHoehe)
 	peerLagLetzterLag.Store(rueckstand)
+	slack := peerLagSlack()
 
-	slack, voll := peerLagSlack(), peerLagVoll()
-	if rueckstand <= slack || voll <= slack {
-		peerLagUngebremst.Add(1)
-		peerLagLetzterCap.Store(maxTxsPerBlock)
-		return maxTxsPerBlock
+	// Ankerpunkt ist die TATSAECHLICHE Blockgroesse, nicht maxTxsPerBlock.
+	//
+	// Mit 10.000 als Anker war die Bremse wirkungslos: echte Bloecke trugen
+	// bei ~3.800 TPS rund 3.800 Ueberweisungen, eine Obergrenze von 9.683
+	// bindet darueber nicht. Die Anzeige meldete "gebremst", C1 fiel trotzdem
+	// weiter zurueck (02.09.2026).
+	anker := letzteBlockGroesse.Load()
+	if anker <= 0 || anker > maxTxsPerBlock {
+		anker = maxTxsPerBlock
 	}
-	if rueckstand >= voll {
+	if anker < int64(boden) {
+		anker = int64(boden)
+	}
+
+	vorher := peerLagLetzterCap.Load()
+	if vorher <= 0 || vorher > anker {
+		vorher = anker
+	}
+	waechst := rueckstand > vorherigerRueckstand.Load()
+	vorherigerRueckstand.Store(rueckstand)
+
+	var neu int64
+	switch {
+	case rueckstand > slack && waechst:
+		// Ueber der Schwelle UND waechst -- kraeftig herunter. Faktor 0,7
+		// halbiert in zwei Bloecken.
+		neu = vorher * 7 / 10
+	case rueckstand > slack:
+		// Ueber der Schwelle, haelt sich: leicht weiter herunter.
+		neu = vorher * 9 / 10
+	default:
+		// Unter der Schwelle: langsam erholen, ein Zwanzigstel je Block.
+		// Additiv und nicht sprunghaft, damit die Drosselung nicht sofort
+		// wieder wegfaellt und der Rueckstand erneut waechst.
+		neu = vorher + anker/20
+	}
+	if neu < int64(boden) {
+		neu = int64(boden)
+	}
+	if neu > anker {
+		neu = anker
+	}
+	if neu < anker {
 		peerLagGebremst.Add(1)
-		peerLagLetzterCap.Store(int64(boden))
-		return boden
+	} else {
+		peerLagUngebremst.Add(1)
 	}
-	// Linear zwischen slack und voll herunterfahren.
-	anteil := float64(voll-rueckstand) / float64(voll-slack)
-	grenze := boden + int(float64(maxTxsPerBlock-boden)*anteil)
-	if grenze < boden {
-		grenze = boden
-	}
-	peerLagGebremst.Add(1)
-	peerLagLetzterCap.Store(int64(grenze))
-	return grenze
+	peerLagLetzterCap.Store(neu)
+	return int(neu)
 }
 
 // PeerLagBremseStand zeigt die Wirkung in /api/health/combined.
@@ -206,14 +251,15 @@ func PeerLagBremseStand() map[string]interface{} {
 		anteil = float64(g) / float64(gesamt) * 100
 	}
 	return map[string]interface{}{
-		"gebremst":           g,
-		"ungebremst":         u,
-		"gebremst_pct":       anteil,
-		"letzter_cap":        peerLagLetzterCap.Load(),
-		"letzter_rueckstand": peerLagLetzterLag.Load(),
-		"slack":              peerLagSlack(),
-		"voll":               peerLagVoll(),
-		"boden":              peerLagBoden(),
+		"gebremst":            g,
+		"ungebremst":          u,
+		"gebremst_pct":        anteil,
+		"letzter_cap":         peerLagLetzterCap.Load(),
+		"letzte_blockgroesse": letzteBlockGroesse.Load(),
+		"letzter_rueckstand":  peerLagLetzterLag.Load(),
+		"slack":               peerLagSlack(),
+		"voll":                peerLagVoll(),
+		"boden":               peerLagBoden(),
 		"bedeutung": "Verkleinert Bloecke, wenn ein Peer zurueckfaellt. Der Produzent wendet " +
 			"Ueberweisungen ueber den WAL-Schnellpfad an, der Nachvollziehende ueber " +
 			"Block-Replay -- ohne Bremse produziert er dauerhaft mehr, als jener aufnehmen " +

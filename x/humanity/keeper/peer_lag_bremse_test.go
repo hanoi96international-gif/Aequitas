@@ -26,28 +26,29 @@ func frischeDAG(t *testing.T, hoehen map[string]int64, alter map[string]time.Dur
 // der ganze Zweck. Ohne die Bremse produziert dieser Knoten weiter Bloecke,
 // die jener nicht nachvollziehen kann, und der steht dann minutenlang.
 func TestPeerLagBremse_DrosseltBeiRueckstand(t *testing.T) {
+	reglerZuruecksetzen(3800)
+	defer reglerZuruecksetzen(0)
+
 	dag := frischeDAG(t, map[string]int64{"a": 1000}, nil)
-	// 30 zurueck: unter dem Slack von 50, also volle Bloecke.
-	if r := dag.groesstenFrischenRueckstand(1030); r != 30 {
-		t.Fatalf("Rueckstand %d, erwartet 30", r)
+
+	// 30 zurueck: unter dem Slack von 50 -- keine Drosselung.
+	if g := dag.blockTxCapFuerHoehe(1030); g != 3800 {
+		t.Fatalf("bei 30 Rueckstand ist die Grenze %d, erwartet den vollen Anker 3800", g)
 	}
-	if g := dag.blockTxCapFuerHoehe(1030); g != maxTxsPerBlock {
-		t.Fatalf("bei 30 Rueckstand ist die Grenze %d, erwartet voll (%d)", g, maxTxsPerBlock)
+
+	// Jetzt waechst der Rueckstand ueber die Schwelle. Der Regelkreis muss
+	// SPUERBAR drosseln, nicht um drei Prozent -- genau daran ist die lineare
+	// Rampe gescheitert.
+	g1 := dag.blockTxCapFuerHoehe(1065)
+	g2 := dag.blockTxCapFuerHoehe(1070)
+	g3 := dag.blockTxCapFuerHoehe(1080)
+	t.Logf("wachsender Rueckstand 65 -> 70 -> 80 ergibt Grenzen %d -> %d -> %d", g1, g2, g3)
+	if g3 >= g2 || g2 >= g1 {
+		t.Fatalf("die Grenze faellt nicht monoton: %d, %d, %d", g1, g2, g3)
 	}
-	// 84 zurueck -- genau der Wert, bei dem C1 am 02.09. aushungerte. MUSS bremsen.
-	if g := dag.blockTxCapFuerHoehe(1084); g >= maxTxsPerBlock {
-		t.Fatalf("bei 84 Rueckstand wird nicht gebremst (Grenze %d) -- genau dieser Wert "+
-			"hat C1 aus der Kette genommen", g)
-	}
-	// Weit zurueck: auf den Boden.
-	if g := dag.blockTxCapFuerHoehe(1000 + peerLagVollVorgabe + 500); g != peerLagBodenVorgabe {
-		t.Fatalf("weit zurueck: Grenze %d, erwartet Boden %d", g, peerLagBodenVorgabe)
-	}
-	// Dazwischen: kleiner als voll, groesser als der Boden.
-	mitte := dag.blockTxCapFuerHoehe(1000 + (peerLagSlackVorgabe+peerLagVollVorgabe)/2)
-	if mitte >= maxTxsPerBlock || mitte <= peerLagBodenVorgabe {
-		t.Fatalf("in der Mitte: Grenze %d, erwartet zwischen %d und %d",
-			mitte, peerLagBodenVorgabe, maxTxsPerBlock)
+	if g3 > 3800*6/10 {
+		t.Fatalf("nach drei wachsenden Bloecken ist die Grenze noch %d von 3800 -- "+
+			"das ist zu zaghaft, genau daran ist die Rampe gescheitert", g3)
 	}
 }
 
@@ -71,12 +72,24 @@ func TestPeerLagBremse_StummerPeerBremstNicht(t *testing.T) {
 // die Bremse ausloesen, nicht von ihr ausgenommen werden. Genau deshalb setzt
 // advancePeerSyncHeight den Zeitstempel auch ohne Fortschritt.
 func TestPeerLagBremse_FeststeckenderPeerBremstSehrWohl(t *testing.T) {
+	reglerZuruecksetzen(3800)
+	defer reglerZuruecksetzen(0)
+
 	dag := frischeDAG(t,
 		map[string]int64{"steht": 1000},
 		map[string]time.Duration{"steht": 5 * time.Second})
-	if g := dag.blockTxCapFuerHoehe(1000 + peerLagVollVorgabe + 100); g != peerLagBodenVorgabe {
-		t.Fatalf("feststeckender Peer: Grenze %d, erwartet Boden %d -- genau dieser Fall "+
-			"soll gebremst werden", g, peerLagBodenVorgabe)
+
+	// Der Peer steht, der Rueckstand waechst mit jedem eigenen Block. Der
+	// Regelkreis muss ihn bis auf den Boden herunterfahren -- nicht in einem
+	// Sprung, aber verlaesslich.
+	var g int
+	for i := int64(1); i <= 40; i++ {
+		g = dag.blockTxCapFuerHoehe(1000 + peerLagSlackVorgabe + i*20)
+	}
+	if g != peerLagBodenVorgabe {
+		t.Fatalf("nach 40 Bloecken mit wachsendem Rueckstand ist die Grenze %d, "+
+			"erwartet der Boden %d -- ein feststeckender Peer muss verlaesslich "+
+			"bis ganz herunter drosseln", g, peerLagBodenVorgabe)
 	}
 }
 
@@ -139,6 +152,9 @@ func TestPeerLagBremse_BlockiertNichtUnterGehaltenerDagSperre(t *testing.T) {
 
 // Dasselbe fuer syncPeerMu: auch die darf die Produktion nicht anhalten.
 func TestPeerLagBremse_BlockiertNichtBeiBelegtemSyncPeerMu(t *testing.T) {
+	reglerZuruecksetzen(0)
+	defer reglerZuruecksetzen(0)
+
 	dag := &BlockDAG{
 		peerSyncHeight: map[string]int64{"a": 1000},
 		peerSyncSeenAt: map[string]time.Time{"a": time.Now()},
@@ -151,6 +167,8 @@ func TestPeerLagBremse_BlockiertNichtBeiBelegtemSyncPeerMu(t *testing.T) {
 	go func() { fertig <- dag.blockTxCap() }()
 	select {
 	case g := <-fertig:
+		// Ohne Peer-Daten gilt Rueckstand 0, also keine Drosselung -- die
+		// Grenze muss dem vollen Anker entsprechen.
 		if g != maxTxsPerBlock {
 			t.Fatalf("bei belegtem syncPeerMu ist die Grenze %d, erwartet die volle %d -- "+
 				"ohne Peer-Daten wird nicht gebremst", g, maxTxsPerBlock)
@@ -158,4 +176,47 @@ func TestPeerLagBremse_BlockiertNichtBeiBelegtemSyncPeerMu(t *testing.T) {
 	case <-time.After(3 * time.Second):
 		t.Fatal("blockTxCap stellt sich an syncPeerMu an")
 	}
+}
+
+// reglerZuruecksetzen stellt den Zustand des Regelkreises her, damit Tests
+// unabhaengig voneinander sind -- er ist bewusst zustandsbehaftet, und ohne
+// das traegt ein Test die Drosselung des vorigen mit.
+func reglerZuruecksetzen(blockgroesse int64) {
+	letzteBlockGroesse.Store(blockgroesse)
+	peerLagLetzterCap.Store(0)
+	vorherigerRueckstand.Store(0)
+	peerLagGebremst.Store(0)
+	peerLagUngebremst.Store(0)
+}
+
+// Die Bremse muss von der TATSAECHLICHEN Blockgroesse herunterfahren, nicht
+// von maxTxsPerBlock.
+//
+// Erste Fassung nahm 10.000 als Anker. Am 02.09.2026 gemessen: die Bremse
+// griff sichtbar (gebremst stieg, cap fiel 9.831 -> 9.683), aber echte
+// Bloecke trugen nur ~3.800 Ueberweisungen. Eine Obergrenze ueber der echten
+// Groesse bindet nicht -- C1 fiel weiter zurueck, waehrend die Anzeige
+// "gebremst" meldete. Eine Bremse, die anzeigt statt zu wirken, ist schlimmer
+// als keine.
+func TestPeerLagBremse_ErholtSichWiederWennDerPeerAufholt(t *testing.T) {
+	reglerZuruecksetzen(3800)
+	peerLagLetzterCap.Store(800) // gedrosselt aus einer vorherigen Phase
+	vorherigerRueckstand.Store(200)
+	defer reglerZuruecksetzen(0)
+
+	dag := frischeDAG(t, map[string]int64{"a": 1000}, nil)
+
+	// Der Peer holt auf -- Rueckstand unter dem Slack. Die Grenze muss
+	// steigen, aber NICHT sofort auf den vollen Anker springen: sonst
+	// waechst der Rueckstand im naechsten Block gleich wieder.
+	vorher := peerLagLetzterCap.Load()
+	g := dag.blockTxCapFuerHoehe(1010)
+	if int64(g) <= vorher {
+		t.Fatalf("Grenze %d erholt sich nicht von %d", g, vorher)
+	}
+	if g == 3800 {
+		t.Fatalf("Grenze springt sofort auf den vollen Anker -- die Erholung muss " +
+			"additiv sein, sonst schwingt die Regelung")
+	}
+	t.Logf("Erholung: %d -> %d (Anker 3800)", vorher, g)
 }

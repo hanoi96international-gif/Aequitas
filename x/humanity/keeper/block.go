@@ -2516,6 +2516,9 @@ func (dag *BlockDAG) ProduceBlock() *Block {
 			// dauerhaft mehr, als der andere nachvollziehen kann, und der
 			// faellt zurueck, bis er minutenlang steht.
 			dbTxs, pendingTxIDs = dag.state.LoadPendingTxsWithLimit(dag.blockTxCap())
+			// Die tatsaechliche Groesse merken -- sie ist der Ankerpunkt, von
+			// dem aus die Bremse beim naechsten Block drosselt.
+			MerkeBlockGroesse(len(dbTxs))
 		}
 		pendingDur = time.Since(t0)
 	})
