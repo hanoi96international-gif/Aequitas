@@ -75,7 +75,7 @@ func TestAutoHeal_AbgeschnittenSchlaegtUnsettled(t *testing.T) {
 
 	t.Run("nichts angehaengt seit ueber der Schwelle: abgeschnitten", func(t *testing.T) {
 		dag := &BlockDAG{}
-		dag.lastSuccessfulPeerSyncAt.Store(jetzt - int64(syncStarvationThreshold.Seconds()) - 30)
+		dag.lastHeightAdvanceAt.Store(jetzt - int64(syncStarvationThreshold.Seconds()) - 30)
 		if !dag.hatSeitLangemNichtsAngehaengt() {
 			t.Fatalf("ein Knoten, der seit ueber %s nichts angehaengt hat, muss als "+
 				"abgeschnitten gelten -- sonst sieht die Heilung 45 Minuten lang zu",
@@ -85,7 +85,7 @@ func TestAutoHeal_AbgeschnittenSchlaegtUnsettled(t *testing.T) {
 
 	t.Run("gerade eben angehaengt: nicht abgeschnitten", func(t *testing.T) {
 		dag := &BlockDAG{}
-		dag.lastSuccessfulPeerSyncAt.Store(jetzt - 5)
+		dag.lastHeightAdvanceAt.Store(jetzt - 5)
 		if dag.hatSeitLangemNichtsAngehaengt() {
 			t.Fatal("wer gerade merged, holt auf und darf nicht als abgeschnitten " +
 				"gelten -- sonst wird ein gesunder Knoten aus der Kette gerissen")
@@ -101,4 +101,48 @@ func TestAutoHeal_AbgeschnittenSchlaegtUnsettled(t *testing.T) {
 			t.Fatal("ein frisch gestarteter Knoten darf nicht als abgeschnitten gelten")
 		}
 	})
+}
+
+// DER FEHLER, DEN DER ERSTE VERSUCH HATTE: ein abgehaengter Knoten haengt
+// laufend Bloecke an, die als Waisen liegenbleiben. "Zuletzt einen Block
+// angehaengt" sieht dabei dauerhaft frisch aus, waehrend die Hoehe stillsteht.
+// Am 02.09.2026 stand C1 so 1.400 Bloecke zurueck, Hoehe seit zwanzig Minuten
+// unveraendert -- und die Selbstheilung meldete weiter "not a settled state".
+func TestAutoHeal_HoeheIstDerBelegNichtDasAnhaengen(t *testing.T) {
+	jetzt := time.Now().Unix()
+	dag := &BlockDAG{}
+
+	// Bloecke kommen an und werden angehaengt -- aber die Hoehe steht.
+	dag.lastSuccessfulPeerSyncAt.Store(jetzt - 1) // gerade eben "gemergt"
+	dag.lastHeightAdvanceAt.Store(jetzt - int64(syncStarvationThreshold.Seconds()) - 60)
+
+	if !dag.hatSeitLangemNichtsAngehaengt() {
+		t.Fatal("der Knoten haengt zwar Bloecke an, kommt aber seit ueber der Schwelle " +
+			"nicht voran -- genau das ist ein abgehaengter Knoten, und genau das hat " +
+			"der erste Versuch uebersehen")
+	}
+}
+
+// setHeight muss den Fortschritts-Zeitstempel setzen, und NUR bei echtem
+// Fortschritt.
+func TestSetHeight_StempeltNurEchtenFortschritt(t *testing.T) {
+	dag := &BlockDAG{}
+	dag.setHeight(100)
+	ersterStempel := dag.lastHeightAdvanceAt.Load()
+	if ersterStempel == 0 {
+		t.Fatal("setHeight hat den Fortschritts-Zeitstempel nicht gesetzt")
+	}
+	// Rueckwaerts oder gleich: kein Fortschritt, kein neuer Stempel.
+	dag.lastHeightAdvanceAt.Store(1)
+	dag.setHeight(100)
+	dag.setHeight(50)
+	if dag.lastHeightAdvanceAt.Load() != 1 {
+		t.Fatal("setHeight stempelt auch ohne Fortschritt -- dann sieht ein " +
+			"stillstehender Knoten dauerhaft gesund aus")
+	}
+	// Vorwaerts: neuer Stempel.
+	dag.setHeight(101)
+	if dag.lastHeightAdvanceAt.Load() == 1 {
+		t.Fatal("setHeight stempelt echten Fortschritt nicht")
+	}
 }

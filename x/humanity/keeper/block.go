@@ -257,6 +257,10 @@ type BlockDAG struct {
 	// Nur ueber setHeight zu schreiben, nie direkt -- dafuer gibt es einen
 	// Waechter-Test (dag_height_spiegel_test.go).
 	heightSchnell atomic.Int64
+	// lastHeightAdvanceAt: wann die Hoehe zuletzt wirklich gestiegen ist.
+	// Siehe setHeight fuer den Unterschied zu "zuletzt einen Block
+	// angehaengt" -- der zweite Wert luegt bei einem abgehaengten Knoten.
+	lastHeightAdvanceAt atomic.Int64
 	// bootHeight is dag.height's value at construction time (after restoring
 	// it from the persisted "max_block_height" — see createGenesisBlock's
 	// caller), captured ONCE and never updated again. Used by
@@ -5394,6 +5398,22 @@ func (dag *BlockDAG) Height() int64 {
 // setHeight ist der EINZIGE Weg, dag.height zu setzen -- er haelt den
 // sperrfreien Spiegel mit. Aufrufer muessen dag.mu wie bisher halten.
 func (dag *BlockDAG) setHeight(h int64) {
+	if h > dag.height {
+		// Zeitpunkt des letzten echten FORTSCHRITTS.
+		//
+		// Nicht "zuletzt einen Block angehaengt": ein zurueckgefallener Knoten
+		// haengt laufend Bloecke an, die als Waisen liegenbleiben, und meldet
+		// dabei "Added 37 new blocks ... height unveraendert". Genau darauf
+		// ist die Selbstheilung am 02.09.2026 hereingefallen -- ihr Beleg
+		// aktualisierte sich weiter, waehrend der Primary 1.400 Bloecke
+		// zurueckfiel und seine Hoehe stillstand.
+		//
+		// Die Hoehe steigt dagegen nur, wenn wirklich etwas vorangeht. Sie ist
+		// der ehrliche Beleg. setHeight ist der einzige Schreibweg (dafuer
+		// gibt es einen Waechter-Test), also ist dies die einzige Stelle, an
+		// der der Zeitstempel gesetzt werden muss.
+		dag.lastHeightAdvanceAt.Store(time.Now().Unix())
+	}
 	dag.height = h
 	dag.heightSchnell.Store(h)
 }

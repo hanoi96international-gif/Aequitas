@@ -288,7 +288,18 @@ func (cs *ChainState) ClearAutoResyncRequest() {
 // Ein frisch gestarteter Knoten (Zeitstempel 0) faellt bewusst NICHT darunter:
 // er hat noch nie gemergt, und das ist kein Beleg fuer Abgeschnittensein.
 func (dag *BlockDAG) hatSeitLangemNichtsAngehaengt() bool {
-	letzter := dag.lastSuccessfulPeerSyncAt.Load()
+	// dag.lastHeightAdvanceAt, NICHT lastSuccessfulPeerSyncAt.
+	//
+	// Der zweite Wert war der erste Versuch und er hat nicht funktioniert:
+	// ein abgehaengter Knoten haengt laufend Bloecke an, die als Waisen
+	// liegenbleiben ("Added 37 new blocks ... height unveraendert"), also
+	// aktualisiert er sich weiter. Am 02.09.2026 stand C1 damit 1.400 Bloecke
+	// zurueck, seine Hoehe seit zwanzig Minuten unveraendert -- und die
+	// Selbstheilung meldete weiter "skipped this round ... not a settled
+	// state", weil ihr Beleg frisch aussah.
+	//
+	// Die HOEHE steigt nur, wenn wirklich etwas vorangeht.
+	letzter := dag.lastHeightAdvanceAt.Load()
 	if letzter <= 0 {
 		return false
 	}
