@@ -60,3 +60,45 @@ func TestAutoHealCooldown_DreiFaelle(t *testing.T) {
 		}
 	})
 }
+
+// Der Selbstheilungs-Vergleich darf sich nicht ausgerechnet dann abschalten,
+// wenn der Knoten am kaputtesten ist.
+//
+// Bisher uebersprang er sich, solange der Knoten "unsettled" war (mehrere
+// DAG-Tips), und ueberbrueckte das erst nach 45 Minuten. Am 02.09.2026
+// sammelte C1 -- der PRIMARY -- unter Last Tips (9, 10, 11, 12 ...) und die
+// Heilung meldete im Minutentakt "skipped this round ... not a settled
+// state", waehrend er weiter zurueckfiel. Tip-Fragmentierung ist nicht der
+// Grund, NICHT zu pruefen -- sie ist das Symptom.
+func TestAutoHeal_AbgeschnittenSchlaegtUnsettled(t *testing.T) {
+	jetzt := time.Now().Unix()
+
+	t.Run("nichts angehaengt seit ueber der Schwelle: abgeschnitten", func(t *testing.T) {
+		dag := &BlockDAG{}
+		dag.lastSuccessfulPeerSyncAt.Store(jetzt - int64(syncStarvationThreshold.Seconds()) - 30)
+		if !dag.hatSeitLangemNichtsAngehaengt() {
+			t.Fatalf("ein Knoten, der seit ueber %s nichts angehaengt hat, muss als "+
+				"abgeschnitten gelten -- sonst sieht die Heilung 45 Minuten lang zu",
+				syncStarvationThreshold)
+		}
+	})
+
+	t.Run("gerade eben angehaengt: nicht abgeschnitten", func(t *testing.T) {
+		dag := &BlockDAG{}
+		dag.lastSuccessfulPeerSyncAt.Store(jetzt - 5)
+		if dag.hatSeitLangemNichtsAngehaengt() {
+			t.Fatal("wer gerade merged, holt auf und darf nicht als abgeschnitten " +
+				"gelten -- sonst wird ein gesunder Knoten aus der Kette gerissen")
+		}
+	})
+
+	t.Run("frisch gestartet, nie gemergt: NICHT abgeschnitten", func(t *testing.T) {
+		// Wichtig: ein Knoten, der gerade hochgekommen ist, hat noch nie
+		// angehaengt. Das ist kein Beleg fuer Abgeschnittensein, und ihn
+		// deswegen sofort zu resyncen waere falsch.
+		dag := &BlockDAG{}
+		if dag.hatSeitLangemNichtsAngehaengt() {
+			t.Fatal("ein frisch gestarteter Knoten darf nicht als abgeschnitten gelten")
+		}
+	})
+}

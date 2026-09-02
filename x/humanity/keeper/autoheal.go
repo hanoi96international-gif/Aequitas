@@ -260,6 +260,41 @@ func (cs *ChainState) ClearAutoResyncRequest() {
 //
 // lastAt == 0 (never resynced) needs neither: the caller's own guard skips the
 // cooldown entirely.
+// hatSeitLangemNichtsAngehaengt sagt, ob dieser Knoten nachweislich
+// abgeschnitten ist statt nur langsam.
+//
+// # WARUM DIE ZEITSCHRANKE ALLEIN NICHT REICHT
+//
+// Der Selbstheilungs-Vergleich uebersprang sich bisher, solange der Knoten
+// "unsettled" war -- mehrere DAG-Tips oder Aufholen -- und ueberbrueckte das
+// erst nach chainDivergenceStallOverride, also 45 Minuten.
+//
+// Das ist genau verkehrt herum: Tip-Fragmentierung ist kein Grund, NICHT zu
+// pruefen, sondern das Symptom. Am 02.09.2026 sammelte C1 -- der PRIMARY --
+// unter Last Tips (9, 10, 11, 12 ...), und die Selbstheilung meldete
+// waehrenddessen im Minutentakt "skipped this round: ... 12 tips
+// (fragmentation) -- not a settled state". Sie haette 45 Minuten lang
+// zugesehen, wie der Primary weiter zurueckfaellt, waehrend Website und
+// Explorer an ihm haengen.
+//
+// # DER BELEG, DER STATTDESSEN ZAEHLT
+//
+// lastSuccessfulPeerSyncAt ist der Zeitpunkt des zuletzt tatsaechlich
+// ANGEHAENGTEN Peer-Blocks -- nicht der letzten Ankunft. Kommen Bloecke an,
+// wird aber seit laengerem keiner angehaengt, ist der Knoten abgeschnitten
+// und nicht langsam. Dieselbe Schwelle, ab der die Aushunger-Erkennung
+// ohnehin ausloest.
+//
+// Ein frisch gestarteter Knoten (Zeitstempel 0) faellt bewusst NICHT darunter:
+// er hat noch nie gemergt, und das ist kein Beleg fuer Abgeschnittensein.
+func (dag *BlockDAG) hatSeitLangemNichtsAngehaengt() bool {
+	letzter := dag.lastSuccessfulPeerSyncAt.Load()
+	if letzter <= 0 {
+		return false
+	}
+	return time.Now().Unix()-letzter > int64(syncStarvationThreshold.Seconds())
+}
+
 func (dag *BlockDAG) effectiveAutoHealCooldown(lastAt int64) (time.Duration, bool) {
 	if lastAt <= 0 {
 		return autoHealCooldown, false
@@ -755,7 +790,7 @@ func (dag *BlockDAG) runChainDivergenceCheckOnce(primaryURL string, unsettledSin
 		dag.setPersistedUnsettledSince(strconv.FormatInt(unsettledSince.Unix(), 10))
 		fmt.Printf("[AUTO-HEAL] Chain-divergence self-check skipped this round: node is still catching up or has %d tips (fragmentation) — not a settled state to compare against the primary.\n", tipsNow)
 		return
-	} else if stalled := time.Since(*unsettledSince); stalled < chainDivergenceStallOverride {
+	} else if stalled := time.Since(*unsettledSince); stalled < chainDivergenceStallOverride && !dag.hatSeitLangemNichtsAngehaengt() {
 		fmt.Printf("[AUTO-HEAL] Chain-divergence self-check skipped this round: node is still catching up or has %d tips (fragmentation) — not a settled state to compare against the primary (unsettled for %s so far).\n", tipsNow, stalled.Round(time.Second))
 		return
 	} else {
