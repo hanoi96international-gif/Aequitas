@@ -110,7 +110,17 @@ jobs:
             # Erfolg, weil der alte Container ja weiter antwortete. Die Datei sagte
             # 100000, der Prozess lief mit 200, und eine ganze Messreihe war
             # wertlos, ohne dass irgendwo ein Fehler stand.
-            bash /root/env-setzen.sh AEQUITAS_RPC_MAX_INFLIGHT=$VALUE || { echo "env-setzen.sh fehlgeschlagen"; exit 1; }
+            # Der Rueckgabewert von env-setzen.sh wird bewusst NICHT als Urteil
+            # genommen. Am 02.09.2026 meldete es einen Fehler (seine eigene
+            # Warteschleife auf /api/status lief ab, waehrend der Knoten noch
+            # startete), obwohl die Aenderung vollstaendig gegriffen hatte --
+            # Datei UND Prozess standen danach auf dem gewuenschten Wert. Ein
+            # abgebrochener Workflow haette hier eine erfolgreiche Aenderung
+            # als Fehlschlag gemeldet.
+            #
+            # Die Pflichtpruefung unten liest den laufenden Prozess und ist
+            # damit die verlaesslichere Instanz. Sie entscheidet.
+            bash /root/env-setzen.sh AEQUITAS_RPC_MAX_INFLIGHT=$VALUE || echo "(env-setzen.sh meldete einen Fehlercode -- die Pruefung unten entscheidet)"
 
             # PFLICHTPRUEFUNG: was der PROZESS traegt, nicht was die Datei sagt.
             # Genau diese Luecke hat den stillen Fehlschlag oben ermoeglicht.
