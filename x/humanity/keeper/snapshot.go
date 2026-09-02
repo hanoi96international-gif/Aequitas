@@ -87,7 +87,41 @@ type SnapshotBioRegistration struct {
 // needed (see handleSnapshot). includeSensitive=true (token required)
 // keeps the original full export for authoritative resync/recovery.
 func (cs *ChainState) ExportSnapshot(signingKey *ecdsa.PrivateKey, height int64, includeSensitive bool) *StateSnapshot {
-	cs.mu.RLock()
+	// cs.mu.Lock(), NICHT RLock -- der Snapshot muss ein Zustand zu EINEM
+	// Zeitpunkt sein.
+	//
+	// # DER FEHLER, DEN DAS BEHEBT
+	//
+	// Hier stand RLock. Der WAL-Schnellpfad (transfer_wal.go) haelt fuer seine
+	// Dauer aber EBENFALLS nur cs.mu.RLock() und verlaesst sich zur
+	// Ausschliessung auf die Konten-Shards. Zwei Lesesperren schliessen
+	// einander nicht aus: der Snapshot las also, waehrend Ueberweisungen
+	// mitten hineinliefen, und lieferte einen ZERRISSENEN Zustand -- manche
+	// Konten vor, manche nach derselben Ueberweisung.
+	//
+	// Live nachgewiesen am 02.09.2026. Ein Knoten resynct, meldet Erfolg, und
+	// scheitert unmittelbar am naechsten Block:
+	//
+	//	[RESYNC] ✓ Replaced local state with 2037 accounts from snapshot
+	//	[RESYNC] ✓ Seeded trusted checkpoint at height 5529871
+	//	[AUTO-HEAL] ✓ In-process resync succeeded — no restart needed.
+	//	[REPLAY] ✗ Transfer 0x86e1…: insufficient balance
+	//	         (have 0.000000, need 0.000010) (block #5529872)
+	//	         — rolling back whole block
+	//
+	// Das Konto hatte im Snapshot 0, obwohl der Block direkt danach daraus
+	// ueberweist. Der Knoten weist den Block ab, kommt nie darueber hinaus,
+	// sammelt Waisen und resynct erneut -- in denselben kaputten Zustand.
+	// Das ist die Endlosschleife, die den Primary tagelang instabil gemacht
+	// hat: nicht Langsamkeit, sondern ein Snapshot, der nie konsistent war.
+	//
+	// # WARUM DIE EXKLUSIVE SPERRE VERTRETBAR IST
+	//
+	// Ein Snapshot wird nur auf Anfrage erzeugt, nicht im Betrieb. Der
+	// gesperrte Abschnitt ist ein Durchlauf ueber die Konten im Speicher --
+	// bei den gemessenen 2.037 Konten Mikrosekunden. Dafuer ist er dann das,
+	// was sein Name behauptet.
+	cs.mu.Lock()
 	accounts := make([]*AccountState, 0, cs.accounts.Len())
 	cs.accounts.Range(func(_ string, acc *AccountState) bool {
 		cp := *acc
@@ -113,7 +147,7 @@ func (cs *ChainState) ExportSnapshot(signingKey *ecdsa.PrivateKey, height int64,
 			nullifiers[k] = "0x0000000000000000000000000000000000000001"
 		}
 	}
-	cs.mu.RUnlock()
+	cs.mu.Unlock()
 
 	snap := &StateSnapshot{
 		Version:            SnapshotVersion,
