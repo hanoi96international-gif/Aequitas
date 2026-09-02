@@ -6963,6 +6963,13 @@ func (dag *BlockDAG) replayTransactions(block *Block, force bool) (ok bool) {
 			dag.state.releaseNullifierLocked(context.Background(), n)
 		}
 		fmt.Printf("[REPLAY] ✗ Block #%d rolled back due to a genuine state-inconsistency failure — block rejected\n", block.Height)
+		// Zaehlen, ob DERSELBE Block wieder und wieder scheitert. Dann ist
+		// dieser Knoten zugemauert und kommt ohne Resync nicht weiter --
+		// siehe replay_mauer.go. Die Heilung laeuft in einer eigenen
+		// Goroutine, weil hier die globale Zustandssperre gehalten wird.
+		if mauer, folgen := merkeBlockAbweisung(block.Height); mauer {
+			dag.loeseHeilungAus(block.Height, folgen)
+		}
 		return false
 	}
 
@@ -7118,6 +7125,8 @@ func (dag *BlockDAG) replayTransactions(block *Block, force bool) (ok bool) {
 	if len(dag.replayedBlocks) > 50000 {
 		dag.replayedBlocks = make(map[string]bool, 1000)
 	}
+	// Der Knoten kommt voran -- die Mauer-Zaehlung zuruecksetzen.
+	merkeBlockErfolg()
 	dag.replayedBlocks[block.Hash] = true
 	dag.replayedMu.Unlock()
 	return true
