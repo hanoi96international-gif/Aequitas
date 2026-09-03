@@ -46,6 +46,10 @@ on:
         description: "pairs (disjoint couples, senders = accounts/2) or ring (every account sends, twice the concurrency)"
         required: false
         default: "pairs"
+      min_balance_wei:
+        description: "Minimum balance a row needs to be usable as a sender. The tool's own default is 1000000000000000 (0.001 AEQ) -- measured 2026-09-03, that admitted only 608 of the 1,538 rows that actually hold AEQ, capping every run at 304 pairs no matter how many accounts were funded. Throughput here is pairs divided by latency, so this is a throughput knob."
+        required: false
+        default: "100000000000000"
       recovery_minutes:
         description: "How long to keep watching after the load stops"
         required: false
@@ -169,6 +173,7 @@ jobs:
                 -topology "$TOPOLOGY" \
                 -transfer-amount-wei "$TRANSFERWEI" \
                 -duration "$DURATION" -ramp 5 -pairs "$PAIRS" \
+                -min-balance-wei "$MINBAL" \
                 > /tmp/stability.log 2>&1 &
             echo "generator started; log at /tmp/stability.log"
         env:
@@ -176,6 +181,7 @@ jobs:
           PAIRS: ${{ inputs.pairs }}
           TOPOLOGY: ${{ inputs.topology }}
           TRANSFERWEI: ${{ inputs.transfer_wei }}
+          MINBAL: ${{ inputs.min_balance_wei }}
 
       - name: Watch both boxes through the load and the recovery window
         run: |
