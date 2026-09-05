@@ -6264,13 +6264,20 @@ func (dag *BlockDAG) replayTransactions(block *Block, force bool) (ok bool) {
 	// deliberately-atomic scope below is worth reworking.
 	exclusiveAcquired := time.Now()
 	defer trackExclusiveHold(exclusiveAcquired, "block replay")
+	// Phasenuhr fuer genau diesen Halt -- siehe replay_phasen_stats.go. Vor
+	// dem Unlock registriert, damit sie NACH ihm laeuft (defers sind LIFO)
+	// und die gemessene Haltezeit die ganze Sperre umfasst, exakt wie
+	// trackExclusiveHold darueber.
+	defer func() { merkeReplayBlock(time.Since(exclusiveAcquired)) }()
 	defer dag.state.mu.Unlock()
 	configBackup := make(map[string]configValueSnapshot, len(stateRootRelevantConfigKeys))
 	for _, key := range stateRootRelevantConfigKeys {
 		value, existed := dag.state.getConfigValueExists(key)
 		configBackup[key] = configValueSnapshot{value: value, existed: existed}
 	}
+	phMarkReplay := time.Now()
 	rollbackSnap := dag.state.snapshotForRollbackLocked(touchedAddrs, needsFullSnapshot, configBackup)
+	merkeReplayPhase(&rpSnapshotNanos, phMarkReplay)
 
 	// FIX (audit 2026-06-28 full recheck, P0-4 — "Replay-Rollback ist nicht
 	// als DB-Transaktion isoliert"): every DB write this replay makes (via
@@ -6380,7 +6387,9 @@ func (dag *BlockDAG) replayTransactions(block *Block, force bool) (ok bool) {
 				// Replays gehoert in dbTx, sonst ueberlebt sie einen Ruecklauf.
 				// Vorher kam sie ueber den stillen Rueckfall auf cs.activeTx
 				// dorthin -- richtig, solange es das Feld gibt.
+				phMarkPar := time.Now()
 				ok, batchErr := dag.state.applyTransferBatchParallel(withTx(context.Background(), dbTx), batch, block.Timestamp)
+				merkeReplayPhase(&rpParallelNanos, phMarkPar)
 				if batchErr != nil {
 					// Memory already mutated, persistence failed — must NOT
 					// fall back to the serial path (that would apply every
@@ -6583,7 +6592,10 @@ func (dag *BlockDAG) replayTransactions(block *Block, force bool) (ok bool) {
 			// context.Background() is correct — see registerHumanLocked's
 			// comment: dag.state.activeTx was already set directly above
 			// this loop, and dbExecCtx falls back to it.
-			if err := dag.state.applyTransferDeltaLocked(withTx(context.Background(), dbTx), wallet, to, tx.Amount, tx.FromDemurrageLost, tx.ToDemurrageLost, block.Timestamp); err != nil {
+			phMarkSer := time.Now()
+			errSeriell := dag.state.applyTransferDeltaLocked(withTx(context.Background(), dbTx), wallet, to, tx.Amount, tx.FromDemurrageLost, tx.ToDemurrageLost, block.Timestamp)
+			merkeReplaySeriellZeit(phMarkSer)
+			if err := errSeriell; err != nil {
 				// Eine deterministische Ablehnung toetet den Block NICHT. Ein
 				// abgewiesener Block wird nie wieder angenommen, und dieser
 				// Fehler faellt bei jedem Versuch gleich aus -- die Abweisung
@@ -7010,8 +7022,10 @@ func (dag *BlockDAG) replayTransactions(block *Block, force bool) (ok bool) {
 		// damit er widerspiegelt, was dieser Replay gerade geschrieben hat.
 		// Vorher kam er ueber den stillen Rueckfall auf cs.activeTx dorthin --
 		// dieselbe Transaktion, aber nur, solange es das Feld gibt.
+		phMarkRoot := time.Now()
 		localRoot := dag.state.stateRootLocked(
 			dag.state.getConfigValueCtx(withTx(context.Background(), dbTx), "last_ubi_at"))
+		merkeReplayPhase(&rpStateRootNanos, phMarkRoot)
 		if block.StateRoot != localRoot {
 			// StateRoot mismatch is a WARNING, not a hard rejection.
 			//
@@ -7096,7 +7110,10 @@ func (dag *BlockDAG) replayTransactions(block *Block, force bool) (ok bool) {
 	// rollback path: restore in-memory state and reject the block, so
 	// memory and DB can't end up disagreeing about whether this block
 	// applied.
-	if commitErr := commitOrRollback(true); commitErr != nil {
+	phMarkCommit := time.Now()
+	commitErrReplay := commitOrRollback(true)
+	merkeReplayPhase(&rpCommitNanos, phMarkCommit)
+	if commitErr := commitErrReplay; commitErr != nil {
 		if rbErr := dag.state.restoreFromRollbackLocked(rollbackSnap); rbErr != nil {
 			fmt.Printf("[REPLAY] CRITICAL: rollback persistence failed for block #%d — memory/DB may now disagree: %v\n", block.Height, rbErr)
 		}
