@@ -239,3 +239,36 @@ func TestTransferBatch_HighConcurrencyNoDeadlock(t *testing.T) {
 		t.Fatal("timed out — likely a connection-pool deadlock regression")
 	}
 }
+
+// Das adaptive Sammelfenster: kurz im Normalfall, lang unter Druck.
+//
+// Beide Werte sind gemessen und widersprechen sich, deshalb entscheidet der
+// Zustand statt einer Konstante. Diese Tests halten fest, dass die Vorgaben
+// die sind, auf die sich die Messungen beziehen -- eine stille Verschiebung
+// wuerde entweder die Einzelueberweisung verlangsamen (zu langes Fenster im
+// Normalfall) oder die Kapazitaet des Rueckfallpfads zerstoeren (zu kurzes
+// Fenster unter Druck: gemessen 28 statt 1.253 Posten/s).
+func TestTransferBatchWait_VorgabenSindDieGemessenen(t *testing.T) {
+	if got := transferBatchWait(); got != transferBatchMaxWait {
+		t.Errorf("Normalfenster = %v, erwartet %v (gemessen bester Wert bei 100 %% Rueckfaellen)", got, transferBatchMaxWait)
+	}
+	if got := transferBatchWaitUnterDruck(); got != 200*time.Millisecond {
+		t.Errorf("Druckfenster = %v, erwartet 200ms (gemessen: 136 statt 3 Posten je Charge)", got)
+	}
+	if transferBatchWaitUnterDruck() <= transferBatchWait() {
+		t.Error("das Druckfenster muss laenger sein als das Normalfenster -- sonst hat die Unterscheidung keinen Zweck")
+	}
+}
+
+func TestTransferBatchWait_UmgebungKannBeideVerstellen(t *testing.T) {
+	t.Setenv(transferBatchWaitUnterDruckEnv, "50000")
+	if got := transferBatchWaitUnterDruck(); got != 50*time.Millisecond {
+		t.Errorf("Druckfenster aus der Umgebung = %v, erwartet 50ms", got)
+	}
+	// Ein unsinniger Wert darf die Vorgabe nicht zerstoeren -- ein Sweep mit
+	// Tippfehler wuerde sonst still die Kapazitaet halbieren.
+	t.Setenv(transferBatchWaitUnterDruckEnv, "keine-zahl")
+	if got := transferBatchWaitUnterDruck(); got != 200*time.Millisecond {
+		t.Errorf("unsinniger Umgebungswert ergab %v, erwartet die Vorgabe 200ms", got)
+	}
+}

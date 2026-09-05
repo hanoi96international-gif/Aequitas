@@ -105,3 +105,23 @@ func TransferBatchAbstimmung() map[string]interface{} {
 			"nahelegt (kleinere Halte waren dort messbar schlechter)",
 	}
 }
+
+// Das Sammelfenster, das unter Druck gilt.
+//
+// Siehe runTransferBatcher: sind alle Verarbeitungsplaetze belegt, muss die
+// Charge ohnehin warten, und laenger Sammeln kostet dann nichts. 200 ms sind
+// gemessen: sie ergaben 136 Posten je Charge (gegen 3 ohne) und senkten die
+// Wartezeit im Kanal von 2.326 auf 594 ms je zurueckgefallener Ueberweisung.
+//
+// Ueber die Umgebung einstellbar, damit auch dieser Wert vermessen werden
+// kann, ohne ein neues Abbild zu bauen.
+const transferBatchWaitUnterDruckEnv = "AEQUITAS_TRANSFER_BATCH_WAIT_DRUCK_US"
+
+const transferBatchWaitUnterDruckVorgabeUs = 200000
+
+func transferBatchWaitUnterDruck() time.Duration {
+	if n, ok := ganzzahlAusUmgebung(transferBatchWaitUnterDruckEnv); ok && n > 0 {
+		return time.Duration(n) * time.Microsecond
+	}
+	return transferBatchWaitUnterDruckVorgabeUs * time.Microsecond
+}

@@ -4918,9 +4918,42 @@ func (cs *ChainState) runTransferBatcher() {
 	for first := range cs.transferBatchCh {
 		sammelStart := time.Now()
 		batch := []*transferBatchRequest{first}
-		// Ueber die Umgebung einstellbar, Vorgabe unveraendert -- siehe
-		// transfer_batch_tuning.go fuer die Messung, die das noetig macht.
-		timer := time.NewTimer(transferBatchWait())
+		// Laenger sammeln, WENN die Verarbeitung ohnehin ausgelastet ist.
+		//
+		// Die Kapazitaet dieses Pfades ist Plaetze / Chargenzeit x Posten je
+		// Charge. Die Chargenzeit liegt bei 434 ms und haengt kaum an der
+		// Groesse (fast alles darin ist ein Datenbankumlauf), also entscheidet
+		// allein die Postenzahl:
+		//
+		//	  3 Posten/Charge  ->   28 Posten/s
+		//	136 Posten/Charge  -> 1.253 Posten/s
+		//
+		// Beide gemessen, bei einem Bedarf von rund 250 Posten/s. Im ersten
+		// Fall wartet eine Ueberweisung 2.326 ms im Kanal, im zweiten 594 ms.
+		//
+		// Grosse Chargen entstanden hier frueher als NEBENEFFEKT: der Sammler
+		// blockierte selbst auf dem Semaphor, und waehrenddessen lief der
+		// Kanal voll. Diese Blockade ist zu Recht entfernt (sie hielt die
+		// Annahme an), aber damit fiel auch das Sammeln weg.
+		//
+		// Ein fester langer Wert waere die falsche Antwort. Die Vorgabe von
+		// 1 ms wurde gemessen (transfer_batch_tuning.go: 3ms/1ms/500us/200us/
+		// 100us ergaben 858/889/858/838/815 TPS) -- allerdings an einem
+		// Lastbild mit EINEM heissen Empfaenger, also 100 % Rueckfaellen. Dort
+		// bestimmt dieses Fenster die Ankunftsrate selbst, und laenger ist
+		// schlechter. Heute laufen 88 % ueber den Schnellpfad; die
+		// Ankunftsrate haengt an ihm, nicht an diesem Fenster.
+		//
+		// Beide Faelle sind echt und widersprechen sich, also entscheidet der
+		// Zustand statt einer Konstante: sind alle Plaetze belegt, muss diese
+		// Charge ohnehin warten -- dann kostet laenger Sammeln nichts und
+		// macht sie groesser. Ist ein Platz frei, gilt die kurze Vorgabe und
+		// die Einzelueberweisung bleibt schnell.
+		warten := transferBatchWait()
+		if len(cs.parallelBatchSem) >= cap(cs.parallelBatchSem) {
+			warten = transferBatchWaitUnterDruck()
+		}
+		timer := time.NewTimer(warten)
 	collect:
 		for len(batch) < transferBatchSize() {
 			select {
