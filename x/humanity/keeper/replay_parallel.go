@@ -90,11 +90,18 @@ import (
 // Ueberweisung ueber den teuren Pfad. Die Schwelle hat sich also selbst
 // gefuettert.
 //
-// Zwei ist das Minimum, ab dem Buendeln ueberhaupt etwas spart (bei einer
-// einzelnen Ueberweisung schreibt auch der Buendelpfad zwei Konten). Der
-// Goroutinen-Overhead bleibt bestehen, ist aber gegen einen eingesparten
-// Datenbank-Umlauf um drei Groessenordnungen kleiner: Mikrosekunden gegen
-// Millisekunden.
+// NACHTRAG, sobald der Blocksammler steht (replay_konten_sammler.go): die
+// Schwelle faellt auf EINS. Ihre einzige verbliebene Begruendung war, dass
+// ein Buendel selbst einen Datenbank-Umlauf kostet und sich bei einer
+// einzelnen Ueberweisung deshalb nicht lohnt. Mit dem Sammler schreibt der
+// Buendelpfad ueberhaupt nicht mehr -- er reicht die beruehrten Konten
+// weiter, und geschrieben wird einmal je Block. Damit kostet ein Buendel der
+// Groesse eins nichts ausser ein wenig Go-Arbeit, waehrend derselbe Transfer
+// auf dem seriellen Pfad zwei Datenbank-Umlaeufe kostet.
+//
+// Das ist auch der Grund, warum nach dem Schritt auf 2 noch rund zehn
+// Ueberweisungen je Block seriell liefen: zwei aufeinanderfolgende Transfers,
+// die sich eine Adresse teilen, ergeben ein Buendel der Laenge eins.
 //
 // Die Semantik aendert sich nicht. Dieser Pfad lehnt weiterhin bei jedem
 // Zweifel ab (unbekanntes Konto, unzureichendes Guthaben, Wohlstandsgrenze)
@@ -102,7 +109,7 @@ import (
 // Protokollzeilen unveraendert erzeugt. Die volle keeper-Testsuite --
 // einschliesslich TestParallelReplay_MatchesSerialExactly und der
 // Determinismus-Fuzz -- ist mit diesem Wert gruen.
-const parallelReplayMinBatch = 2
+const parallelReplayMinBatch = 1
 
 // replayBatchItem is one transfer accepted into a parallel batch, resolved to
 // its two account pointers during the serial warm-up phase so the parallel
