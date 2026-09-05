@@ -1,0 +1,107 @@
+name: Set the fallback batcher's collection window on Contabo2
+
+# WAS DAS VERSTELLT, UND WARUM.
+#
+# Der Rueckfallpfad verarbeitet Chargen mit vier Plaetzen. Seine Kapazitaet
+# ist deshalb
+#
+#   Plaetze / Chargenzeit x Posten je Charge
+#
+# Die Chargenzeit liegt gemessen bei 434 ms und haengt kaum an der
+# Chargengroesse -- fast alles darin ist ein Datenbankumlauf. Also entscheidet
+# allein die POSTENZAHL je Charge, wie viel durchgeht:
+#
+#   48 Posten/Charge  ->  4/0,434 x 48 = 442 Posten/s
+#    3 Posten/Charge  ->  4/0,434 x  3 =  28 Posten/s
+#
+# Beide Zahlen sind gemessen. Die Rueckfallrate liegt bei rund 234 Posten/s --
+# der erste Fall traegt sie, der zweite ist achtfach ueberlastet, und dann
+# wartet eine Ueberweisung 2.326 ms im Kanal, bevor sie ueberhaupt beginnt
+# (batcher_kanal). Genau das war am 05.09.2026 der groesste Einzelposten der
+# mittleren Latenz.
+#
+# Bis dahin entstanden grosse Chargen nur als NEBENEFFEKT: der Sammler
+# blockierte auf dem Semaphor, und waehrenddessen lief der Kanal voll. Als
+# diese Blockade entfernt wurde (richtig, denn sie hielt die Annahme an),
+# fiel die Chargengroesse von 48 auf 3. Das Sammeln muss also gewollt
+# geschehen, nicht zufaellig -- und dafuer ist dieses Fenster da.
+#
+# WAS ZU LESEN IST (/api/health/combined):
+#
+#   batcher_phasen.posten_je_charge   muss STEIGEN -- das ist der Zweck
+#   batcher_kanal.kanal_je_stueck_ms  muss FALLEN -- das ist die Wirkung
+#   transfer_path.avg_latency_ms      entscheidet zusammen mit den TPS
+#
+# Ein groesseres Fenster kostet jedem Rueckfall bis zu einer Fensterlaenge
+# zusaetzlich. Das lohnt nur, solange die Wartezeit im Kanal deutlich groesser
+# ist als das Fenster -- bei 2.326 ms gegen 1 ms ist der Abstand riesig, aber
+# er schrumpft mit jedem Schritt. Sobald posten_je_charge nicht mehr steigt,
+# ist Schluss.
+#
+# 0 stellt die Vorgabe wieder her (1000 us). NICHT leer lassen: GitHub
+# Actions setzt bei leerem Wert die deklarierte DEFAULT ein.
+#
+# Nur Contabo2: der Primary bleibt auf bekannt guter Konfiguration.
+on:
+  workflow_dispatch:
+    inputs:
+      wait_us:
+        description: "Sammelfenster des Rueckfall-Buendlers in Mikrosekunden (Vorgabe 1000 = 1 ms). 0 = Vorgabe wiederherstellen."
+        required: false
+        default: "0"
+      max_size:
+        description: "Posten je Charge, Obergrenze (Vorgabe 1000). 0 = Vorgabe. Nur erhoehen, wenn posten_je_charge die Grenze wirklich erreicht."
+        required: false
+        default: ""
+jobs:
+  set:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Set the batcher collection window on Contabo2
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: 194.163.188.71
+          username: root
+          key: ${{ secrets.CONTABO2_SSH_KEY }}
+          port: 22
+          script_stop: false
+          timeout: 600s
+          command_timeout: 600s
+          envs: WAITUS,MAXSIZE
+          script: |
+            set +e
+            echo "### CONTABO2 -> Sammelfenster: ${WAITUS:-Vorgabe} us, max_size ${MAXSIZE:-Vorgabe} ###"
+            cp /root/.aequitas.env "/root/.aequitas.env.bak.$(date +%Y%m%d-%H%M%S)"
+            sed -i '/^AEQUITAS_TRANSFER_BATCH_MAX_WAIT_US=/d;/^AEQUITAS_TRANSFER_BATCH_MAX_SIZE=/d' /root/.aequitas.env
+            [ -n "$WAITUS" ] && [ "$WAITUS" != "0" ] && echo "AEQUITAS_TRANSFER_BATCH_MAX_WAIT_US=$WAITUS" >> /root/.aequitas.env
+            [ -n "$MAXSIZE" ] && [ "$MAXSIZE" != "0" ] && echo "AEQUITAS_TRANSFER_BATCH_MAX_SIZE=$MAXSIZE" >> /root/.aequitas.env
+            grep -E '^AEQUITAS_TRANSFER_BATCH' /root/.aequitas.env || echo "(keine Ueberschreibung — Vorgabe gilt)"
+
+            IMAGE="$(docker inspect aequitas-node --format '{{.Config.Image}}')"
+            NET="$(docker inspect aequitas-node --format '{{range $k, $v := .NetworkSettings.Networks}}{{$k}} {{end}}' | awk '{print $1}')"
+            PORTS="$(docker inspect aequitas-node --format '{{range $p, $c := .HostConfig.PortBindings}}-p {{(index $c 0).HostPort}}:{{$p}} {{end}}' | sed 's|/tcp||g')"
+            MOUNTS="$(docker inspect aequitas-node --format '{{range .Mounts}}-v {{.Source}}:{{.Destination}} {{end}}')"
+            mkdir -p /root/batchwin
+            ENVOUT=/root/batchwin/env
+            # Die Umgebung des laufenden Prozesses ist die Grundlage, MINUS
+            # dieses Schluessels -- sonst ueberlebt ein alter Sweep-Wert.
+            docker inspect aequitas-node --format '{{range .Config.Env}}{{println .}}{{end}}' \
+              | grep -vE '^(RESYNC_FROM_SNAPSHOT|HOSTNAME|PATH|HOME|AEQUITAS_TRANSFER_BATCH_MAX_WAIT_US|AEQUITAS_TRANSFER_BATCH_MAX_SIZE)=' \
+              | grep -E '^[A-Za-z_][A-Za-z0-9_]*=' > /tmp/proc.env
+            grep -E '^[A-Za-z_][A-Za-z0-9_]*=' /root/.aequitas.env \
+              | grep -vE '^(RESYNC_FROM_SNAPSHOT|HOSTNAME|PATH|HOME)=' > /tmp/file.env || true
+            awk -F= '!seen[$1]++' /tmp/file.env /tmp/proc.env > "$ENVOUT"
+
+            docker stop aequitas-node && docker rm aequitas-node
+            docker run -d --name aequitas-node --network "$NET" $PORTS $MOUNTS \
+              --env-file "$ENVOUT" --restart unless-stopped "$IMAGE"
+            sleep 40
+            echo "=== was der PROZESS jetzt hat (die Datei ist kein Beleg) ==="
+            docker inspect aequitas-node --format '{{range .Config.Env}}{{println .}}{{end}}' \
+              | grep -E '^AEQUITAS_TRANSFER_BATCH' || echo "(Vorgabe)"
+            curl -s --max-time 15 http://127.0.0.1:8080/api/health/combined \
+              | grep -oE '"max_wait_us":[0-9]+|"posten_je_charge":[0-9.]+' || echo "(nicht erreichbar)"
+            curl -s --max-time 15 http://127.0.0.1:8080/api/status | grep -o '"height":[0-9]*' || echo "(unerreichbar)"
+        env:
+          WAITUS: ${{ inputs.wait_us }}
+          MAXSIZE: ${{ inputs.max_size }}
