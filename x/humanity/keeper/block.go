@@ -6303,7 +6303,15 @@ func (dag *BlockDAG) replayTransactions(block *Block, force bool) (ok bool) {
 	var dbTx *sql.Tx
 	if dag.state.db != nil {
 		var err error
+		// Eigene Phase, weil dieser Aufruf eine Verbindung AUS DEM POOL holt --
+		// und zwar bereits unter der globalen Sperre. db_pool.wait_avg_ms stand
+		// am 05.09.2026 unter Last auf 85 ms bei 443 Wartevorgaengen. Faellt
+		// davon etwas hierhin, wartet das Nachspielen auf eine Verbindung,
+		// waehrend es die ganze Kette blockiert -- das waere ein Engpass ohne
+		// jede Rechenarbeit, und ohne diese Uhr laege er unsichtbar in `rest`.
+		phMarkBegin := time.Now()
 		dbTx, err = dag.state.db.Begin()
+		merkeReplayPhase(&rpBeginNanos, phMarkBegin)
 		if err != nil {
 			fmt.Printf("[REPLAY] ✗ Block #%d: could not begin replay transaction: %v — block rejected\n", block.Height, err)
 			return false

@@ -62,11 +62,47 @@ import (
 // fuzz variant already pin, written before any parallel implementation
 // existed precisely so this step could rely on it.
 
-// parallelReplayMinBatch is the smallest batch worth spawning goroutines for.
-// Below it the scheduling overhead exceeds the arithmetic, and the ordinary
-// serial path is faster. Blocks in normal operation carry zero or a handful
-// of transactions and never reach this.
-const parallelReplayMinBatch = 16
+// parallelReplayMinBatch is the smallest batch this path is used for.
+//
+// KORREKTUR (05.09.2026, gemessen): der Wert stand auf 16, begruendet mit
+// "smallest batch worth spawning goroutines for -- below it the scheduling
+// overhead exceeds the arithmetic". Diese Begruendung war falsch, weil sie
+// die falsche Ersparnis betrachtet. Der Gewinn dieses Pfades ist NICHT die
+// parallele Arithmetik in Phase 2 -- die ist ein paar Nanosekunden je
+// Ueberweisung. Er ist Phase 3: EIN gebuendelter Multi-Row-Write fuer alle
+// beruehrten Konten, statt zwei einzelner Datenbank-Umlaeufe je Ueberweisung
+// im seriellen Pfad (saveAccountToDBCtx fuer Sender und Empfaenger).
+//
+// Und diese Ersparnis faellt schon ab zwei Ueberweisungen an, nicht ab
+// sechzehn. Gemessen auf dem Primary unter Last (replay_phasen, 376 Bloecke):
+//
+//	seriell    4,724 ms je Ueberweisung   2.365 Stueck   48,2 % der Sperre
+//	parallel   0,281 ms je Ueberweisung  27.565 Stueck   32,7 % der Sperre
+//
+// Sieben Komma neun Prozent der Ueberweisungen kosteten also fast die Haelfte
+// der Zeit, in der das Nachspielen die globale Sperre haelt -- und in der
+// nach Go's RWMutex-Semantik jede ankommende Ueberweisung ausgesperrt ist.
+//
+// Warum ueberhaupt so viele seriell liefen: collectDisjointTransferBatch
+// beendet einen Lauf, sobald sich eine Adresse wiederholt. Bei wenigen
+// hundert Konten und hunderten Ueberweisungen je Block passiert das staendig,
+// und jeder Lauf, der unter dieser Schwelle blieb, ging Ueberweisung fuer
+// Ueberweisung ueber den teuren Pfad. Die Schwelle hat sich also selbst
+// gefuettert.
+//
+// Zwei ist das Minimum, ab dem Buendeln ueberhaupt etwas spart (bei einer
+// einzelnen Ueberweisung schreibt auch der Buendelpfad zwei Konten). Der
+// Goroutinen-Overhead bleibt bestehen, ist aber gegen einen eingesparten
+// Datenbank-Umlauf um drei Groessenordnungen kleiner: Mikrosekunden gegen
+// Millisekunden.
+//
+// Die Semantik aendert sich nicht. Dieser Pfad lehnt weiterhin bei jedem
+// Zweifel ab (unbekanntes Konto, unzureichendes Guthaben, Wohlstandsgrenze)
+// und ueberlaesst die Ueberweisung dann dem seriellen Pfad, der Fehler und
+// Protokollzeilen unveraendert erzeugt. Die volle keeper-Testsuite --
+// einschliesslich TestParallelReplay_MatchesSerialExactly und der
+// Determinismus-Fuzz -- ist mit diesem Wert gruen.
+const parallelReplayMinBatch = 2
 
 // replayBatchItem is one transfer accepted into a parallel batch, resolved to
 // its two account pointers during the serial warm-up phase so the parallel

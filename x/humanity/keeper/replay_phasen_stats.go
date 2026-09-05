@@ -50,6 +50,7 @@ import (
 // Kosten: sechs atomare Additionen je Block, keine je Ueberweisung.
 var (
 	rpSnapshotNanos  atomic.Int64 // snapshotForRollbackLocked
+	rpBeginNanos     atomic.Int64 // db.Begin() -- holt eine Poolverbindung unter der Sperre
 	rpParallelNanos  atomic.Int64 // applyTransferBatchParallel
 	rpSeriellNanos   atomic.Int64 // applyTransferDeltaLocked, eine Ueberweisung
 	rpStateRootNanos atomic.Int64 // stateRootLocked + Vergleich
@@ -86,7 +87,7 @@ func ReplayPhasenStand() map[string]interface{} {
 		return float64(z.Load()) / float64(n) / 1e6
 	}
 	halt := msJe(&rpHaltNanos)
-	benannt := msJe(&rpSnapshotNanos) + msJe(&rpParallelNanos) + msJe(&rpSeriellNanos) +
+	benannt := msJe(&rpSnapshotNanos) + msJe(&rpBeginNanos) + msJe(&rpParallelNanos) + msJe(&rpSeriellNanos) +
 		msJe(&rpStateRootNanos) + msJe(&rpCommitNanos)
 	seriellJeAufruf := float64(0)
 	if a := rpSeriellAufrufe.Load(); a > 0 {
@@ -102,6 +103,8 @@ func ReplayPhasenStand() map[string]interface{} {
 		"bloecke":              n,
 		"halt_ms":              halt,
 		"snapshot_ms":          msJe(&rpSnapshotNanos),
+		"begin_ms":             msJe(&rpBeginNanos),
+		"begin_anteil_pct":     anteil(msJe(&rpBeginNanos)),
 		"parallel_ms":          msJe(&rpParallelNanos),
 		"seriell_ms":           msJe(&rpSeriellNanos),
 		"seriell_je_aufruf_ms": seriellJeAufruf,
@@ -123,7 +126,7 @@ func ReplayPhasenStand() map[string]interface{} {
 // vergleichbar. Nur fuer Tests und den Betriebs-Endpunkt.
 func ReplayPhasenZuruecksetzen() {
 	for _, z := range []*atomic.Int64{
-		&rpSnapshotNanos, &rpParallelNanos, &rpSeriellNanos,
+		&rpSnapshotNanos, &rpBeginNanos, &rpParallelNanos, &rpSeriellNanos,
 		&rpStateRootNanos, &rpCommitNanos, &rpHaltNanos,
 		&rpBloecke, &rpSeriellAufrufe,
 	} {
