@@ -55,6 +55,7 @@ var (
 	rpSeriellNanos   atomic.Int64 // applyTransferDeltaLocked, eine Ueberweisung
 	rpStateRootNanos atomic.Int64 // stateRootLocked + Vergleich
 	rpCommitNanos    atomic.Int64 // commitOrRollback -- die DB-Transaktion
+	rpSammlerNanos   atomic.Int64 // der EINE gebuendelte Kontenschreibvorgang je Block
 	rpHaltNanos      atomic.Int64 // die ganze Haltezeit, als Bezugsgroesse
 	rpBloecke        atomic.Int64
 	rpSeriellAufrufe atomic.Int64
@@ -88,7 +89,7 @@ func ReplayPhasenStand() map[string]interface{} {
 	}
 	halt := msJe(&rpHaltNanos)
 	benannt := msJe(&rpSnapshotNanos) + msJe(&rpBeginNanos) + msJe(&rpParallelNanos) + msJe(&rpSeriellNanos) +
-		msJe(&rpStateRootNanos) + msJe(&rpCommitNanos)
+		msJe(&rpStateRootNanos) + msJe(&rpCommitNanos) + msJe(&rpSammlerNanos)
 	seriellJeAufruf := float64(0)
 	if a := rpSeriellAufrufe.Load(); a > 0 {
 		seriellJeAufruf = float64(rpSeriellNanos.Load()) / float64(a) / 1e6
@@ -111,6 +112,8 @@ func ReplayPhasenStand() map[string]interface{} {
 		"seriell_aufrufe":      rpSeriellAufrufe.Load(),
 		"stateroot_ms":         msJe(&rpStateRootNanos),
 		"commit_ms":            msJe(&rpCommitNanos),
+		"sammler_ms":           msJe(&rpSammlerNanos),
+		"sammler_anteil_pct":   anteil(msJe(&rpSammlerNanos)),
 		"rest_ms":              halt - benannt,
 		"rest_anteil_pct":      anteil(halt - benannt),
 		"seriell_anteil_pct":   anteil(msJe(&rpSeriellNanos)),
@@ -127,9 +130,53 @@ func ReplayPhasenStand() map[string]interface{} {
 func ReplayPhasenZuruecksetzen() {
 	for _, z := range []*atomic.Int64{
 		&rpSnapshotNanos, &rpBeginNanos, &rpParallelNanos, &rpSeriellNanos,
-		&rpStateRootNanos, &rpCommitNanos, &rpHaltNanos,
+		&rpStateRootNanos, &rpCommitNanos, &rpSammlerNanos, &rpHaltNanos,
 		&rpBloecke, &rpSeriellAufrufe,
 	} {
 		z.Store(0)
+	}
+}
+
+// Was die Zusammenlegung der Kontenschreibvorgaenge tatsaechlich einspart.
+//
+// Ohne diese Zaehler waere "ein Statement je Block statt eines je Buendel"
+// eine Behauptung. buendel_je_block sagt, wie viele Statements
+// zusammengelegt wurden; konten_je_block, wie viele Zeilen dabei
+// herauskommen; und dedupiert, wie viele Kontenberuehrungen mehrfach
+// vorkamen -- letzteres ist die Zahl, die belegt, dass die Kosten mit den
+// KONTEN und nicht mit den UEBERWEISUNGEN wachsen. Steigt die Last und
+// bleibt konten_je_block flach, ist genau das eingetreten.
+var (
+	rsAufrufe   atomic.Int64
+	rsKonten    atomic.Int64
+	rsDedupiert atomic.Int64
+	rsSchreiben atomic.Int64
+)
+
+func merkeSammlerSchreiben(aufrufe, konten, dedupiert int) {
+	rsAufrufe.Add(int64(aufrufe))
+	rsKonten.Add(int64(konten))
+	rsDedupiert.Add(int64(dedupiert))
+	rsSchreiben.Add(1)
+}
+
+// SammlerStand zeigt die Zusammenlegung in /api/health/combined.
+func SammlerStand() map[string]interface{} {
+	n := rsSchreiben.Load()
+	je := func(z *atomic.Int64) float64 {
+		if n == 0 {
+			return 0
+		}
+		return float64(z.Load()) / float64(n)
+	}
+	return map[string]interface{}{
+		"schreibvorgaenge":   n,
+		"buendel_je_block":   je(&rsAufrufe),
+		"konten_je_block":    je(&rsKonten),
+		"dedupiert_je_block": je(&rsDedupiert),
+		"bedeutung": "Zusammengelegte Kontenschreibvorgaenge des Nachspielens. buendel_je_block ist die Zahl der Statements, " +
+			"die zu EINEM wurden. Entscheidend ist konten_je_block: bleibt die Zahl flach, waehrend die Last steigt, " +
+			"wachsen die Datenbankkosten mit den Konten statt mit den Ueberweisungen -- und genau das ist die Bedingung dafuer, " +
+			"dass der nachspielende Knoten bei hohem Durchsatz mithaelt.",
 	}
 }

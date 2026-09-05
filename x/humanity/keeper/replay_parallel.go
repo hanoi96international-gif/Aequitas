@@ -178,7 +178,13 @@ func collectDisjointTransferBatch(txs []Transaction, start int) (batch []Transac
 // touchActivityAt for why this must not be the replaying node's wall clock.
 //
 // Caller must hold cs.mu (write), exactly as the serial path does.
-func (cs *ChainState) applyTransferBatchParallel(ctx context.Context, batch []Transaction, activityAt int64) (applied bool, err error) {
+//
+// sammler darf nil sein -- dann schreibt Phase 3 sofort, wie bisher. Ist er
+// gesetzt, werden die beruehrten Konten stattdessen gesammelt und vom
+// Aufrufer EINMAL je Block geschrieben; siehe replay_konten_sammler.go fuer
+// die Messung, die das noetig macht, und dafuer, warum das an Atomizitaet
+// und StateRoot nichts aendert.
+func (cs *ChainState) applyTransferBatchParallel(ctx context.Context, batch []Transaction, activityAt int64, sammler *kontenSammler) (applied bool, err error) {
 	if len(batch) < parallelReplayMinBatch {
 		return false, nil
 	}
@@ -293,6 +299,16 @@ func (cs *ChainState) applyTransferBatchParallel(ctx context.Context, batch []Tr
 			seen[it.toKey] = true
 			accs = append(accs, it.to)
 		}
+	}
+	// Sammeln statt schreiben, wenn der Aufrufer die Statements eines ganzen
+	// Blocks zusammenlegt. Der Speicher ist an dieser Stelle bereits mutiert
+	// und der StateRoot-Akkumulator bereits fortgeschrieben (Phase 2) -- was
+	// noch aussteht, ist allein die Zeile in der Datenbank, und die schreibt
+	// der Aufrufer vor seinem StateRoot-Vergleich und innerhalb derselben
+	// dbTx. Die Rollback-Einheit bleibt damit unveraendert.
+	if sammler != nil {
+		sammler.hinzufuegen(accs...)
+		return true, nil
 	}
 	if err := cs.saveAccountsToDBBatchCtx(ctx, accs); err != nil {
 		// Memory is already mutated at this point. Returning (false, nil)

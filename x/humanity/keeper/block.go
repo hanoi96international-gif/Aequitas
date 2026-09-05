@@ -6278,6 +6278,12 @@ func (dag *BlockDAG) replayTransactions(block *Block, force bool) (ok bool) {
 	phMarkReplay := time.Now()
 	rollbackSnap := dag.state.snapshotForRollbackLocked(touchedAddrs, needsFullSnapshot, configBackup)
 	merkeReplayPhase(&rpSnapshotNanos, phMarkReplay)
+	// Sammelt die Konten aller Buendel dieses Blocks, damit sie in EINEM
+	// Statement geschrieben werden statt in einem je Buendel. Siehe
+	// replay_konten_sammler.go -- das ist der Schritt, der die
+	// Datenbankkosten des Nachspielens von der Zahl der Ueberweisungen auf
+	// die Zahl der beruehrten Konten umstellt.
+	kontenSammlung := neuerKontenSammler()
 
 	// FIX (audit 2026-06-28 full recheck, P0-4 — "Replay-Rollback ist nicht
 	// als DB-Transaktion isoliert"): every DB write this replay makes (via
@@ -6396,7 +6402,7 @@ func (dag *BlockDAG) replayTransactions(block *Block, force bool) (ok bool) {
 				// Vorher kam sie ueber den stillen Rueckfall auf cs.activeTx
 				// dorthin -- richtig, solange es das Feld gibt.
 				phMarkPar := time.Now()
-				ok, batchErr := dag.state.applyTransferBatchParallel(withTx(context.Background(), dbTx), batch, block.Timestamp)
+				ok, batchErr := dag.state.applyTransferBatchParallel(withTx(context.Background(), dbTx), batch, block.Timestamp, kontenSammlung)
 				merkeReplayPhase(&rpParallelNanos, phMarkPar)
 				if batchErr != nil {
 					// Memory already mutated, persistence failed — must NOT
@@ -7005,6 +7011,39 @@ func (dag *BlockDAG) replayTransactions(block *Block, force bool) (ok bool) {
 			dag.loeseHeilungAus(block.Height, folgen)
 		}
 		return false
+	}
+
+	// Die gesammelten Kontenzeilen dieses Blocks in EINEM Statement absetzen.
+	//
+	// Hier und nicht frueher, weil erst jetzt feststeht, dass der Block nicht
+	// ohnehin zurueckgerollt wird -- und nicht spaeter, weil der Schreibvorgang
+	// in dbTx gehoeren muss und vor dem Commit stattfinden soll. Der
+	// StateRoot-Vergleich darunter bleibt unberuehrt: er liest
+	// cs.accountSetXOR, den Phase 2 je Konto bereits fortgeschrieben hat.
+	//
+	// Ein Fehlschlag hier ist genau derselbe Fall wie ein fehlgeschlagener
+	// Buendelschreibvorgang zuvor: der Speicher ist bereits mutiert, also
+	// muss der Block als Ganzes zurueck -- dieselbe Behandlung wie jeder
+	// andere hardFailure, ueber denselben rollbackSnap.
+	if kontenSammlung.anzahl() > 0 {
+		phMarkSammler := time.Now()
+		sammlerErr := dag.state.sammlerSchreiben(withTx(context.Background(), dbTx), kontenSammlung)
+		merkeReplayPhase(&rpSammlerNanos, phMarkSammler)
+		if sammlerErr != nil {
+			fmt.Printf("[REPLAY] ✗ Block #%d: konnte %d gesammelte Konten nicht schreiben: %v — Block wird zurueckgerollt\n",
+				block.Height, kontenSammlung.anzahl(), sammlerErr)
+			commitOrRollback(false)
+			if rbErr := dag.state.restoreFromRollbackLocked(rollbackSnap); rbErr != nil {
+				fmt.Printf("[REPLAY] CRITICAL: rollback persistence failed for block #%d — memory/DB may now disagree: %v\n", block.Height, rbErr)
+			}
+			for _, n := range claimedNullifiers {
+				dag.state.releaseNullifierLocked(context.Background(), n)
+			}
+			if mauer, folgen := merkeBlockAbweisung(block.Height); mauer {
+				dag.loeseHeilungAus(block.Height, folgen)
+			}
+			return false
+		}
 	}
 
 	// FIX (audit recheck 2, P0 #1): StateRoot comparison moved here (from
