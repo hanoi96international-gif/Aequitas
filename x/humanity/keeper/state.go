@@ -4875,7 +4875,7 @@ const transferBatchMaxWait = 1 * time.Millisecond
 func (cs *ChainState) ensureTransferBatcherStarted() {
 	cs.transferBatchOnce.Do(func() {
 		cs.transferBatchCh = make(chan *transferBatchRequest, transferBatchChSize)
-		cs.parallelBatchSem = make(chan struct{}, parallelBatchPoolSize)
+		cs.parallelBatchSem = make(chan struct{}, batcherPlaetze())
 		SafeGoroutine("transferBatcher", cs.runTransferBatcher)
 	})
 }
@@ -4904,6 +4904,7 @@ func (cs *ChainState) ensureTransferBatcherStarted() {
 // it doesn't repeat an earlier (reverted) attempt's mistake.
 func (cs *ChainState) runTransferBatcher() {
 	for first := range cs.transferBatchCh {
+		sammelStart := time.Now()
 		batch := []*transferBatchRequest{first}
 		// Ueber die Umgebung einstellbar, Vorgabe unveraendert -- siehe
 		// transfer_batch_tuning.go fuer die Messung, die das noetig macht.
@@ -4923,13 +4924,23 @@ func (cs *ChainState) runTransferBatcher() {
 			default:
 			}
 		}
+		// Phasenuhren des Rueckfallpfads -- siehe batcher_phasen_stats.go fuer
+		// die Rechnung, die sie noetig macht. Das Sammelfenster ist bereits
+		// vorbei; als naechstes wartet die Charge auf einen freien Platz.
+		merkeBatcherSammeln(time.Since(sammelStart), len(batch))
+		wartenStart := time.Now()
 		cs.parallelBatchSem <- struct{}{}
+		merkeBatcherWarten(time.Since(wartenStart))
 		go func(b []*transferBatchRequest) {
 			defer func() { <-cs.parallelBatchSem }()
 			SafeCall("transferBatchParallelDispatch", func() {
+				arbeitStart := time.Now()
+				zurueckgefallen := false
 				if !cs.processTransferBatchConcurrent(b) {
+					zurueckgefallen = true
 					cs.processTransferBatch(b)
 				}
+				merkeBatcherArbeit(time.Since(arbeitStart), zurueckgefallen)
 			})
 		}(batch)
 	}

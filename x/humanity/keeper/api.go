@@ -688,8 +688,10 @@ func (a *APIServer) handleCombinedHealth(w http.ResponseWriter, r *http.Request)
 		"block_tx_deckel":    BlockTxDeckelStand(),
 		"zustands_ablehnung": ZustandsAblehnungStand(),
 		// Wie das Nachspielen die Ueberweisungen anwendet -- parallel oder seriell.
-		"replay_pfad":   ReplayPfadStand(),
-		"replay_phasen": ReplayPhasenStand(),
+		"replay_pfad":    ReplayPfadStand(),
+		"replay_phasen":  ReplayPhasenStand(),
+		"replay_sammler": SammlerStand(),
+		"batcher_phasen": BatcherPhasenStand(),
 		// Steckt der Knoten an einem Block fest, den er nicht nachspielen kann?
 		"replay_mauer": ReplayMauerStand(),
 		// Liefert der Peer die fehlenden Elternbloecke ueberhaupt noch?

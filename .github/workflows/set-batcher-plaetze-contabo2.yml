@@ -1,0 +1,103 @@
+name: Set the fallback batcher's slots on Contabo2 (measure whether the cap binds)
+
+# WAS DAS VERSTELLT, UND WARUM ES UEBERHAUPT GEMESSEN WIRD.
+#
+# Auf der annehmenden Box, unter Last am 05.09.2026:
+#
+#   transfer_path.avg_latency_ms   158,1   <- ueber ALLE Ueberweisungen
+#   transfer_phases.total_ms        44,5   <- nur der Schnellpfad
+#   fast_path_pct                   89,9
+#
+# Daraus folgt fuer die restlichen 10,1 %: 158,1 = 0,899 x 44,5 + 0,101 x X,
+# also X = 1.169 ms. Ein Rueckfall kostet rund eine Sekunde und macht damit
+# drei Viertel der mittleren Latenz aus, obwohl er nur jede zehnte
+# Ueberweisung betrifft. Und Durchsatz = Gleichzeitigkeit / Latenz.
+#
+# Der Verdacht: parallelBatchPoolSize = 4. Bei ~340 Rueckfaellen je Sekunde
+# muss jeder der vier Plaetze alle 12 ms frei werden. Die Vier stammt aus
+# einer Zeit, in der MaxOpenConns auf 20 stand und gleichzeitige Chargen
+# "sorry, too many clients" (53300) ausloesten; der Pool steht heute auf 100.
+# Die Begruendung ist hinfaellig -- ob die Zahl HEUTE bindet, ist damit aber
+# nicht gezeigt.
+#
+# WAS ZU LESEN IST, IN DIESER REIHENFOLGE (/api/health/combined):
+#
+#   batcher_phasen.warten_ms   Zeit VOR einem freien Platz
+#   batcher_phasen.arbeit_ms   Zeit IN der Charge
+#
+#   warten >> arbeit  -> der Deckel bindet. Erhoehen ist der Hebel.
+#   arbeit >> warten  -> der Deckel ist unschuldig. Erhoehen schadet eher.
+#
+#   TPS aus stability-under-load  entscheidet allein
+#   db_pool.wait_count / in_use   muss beim Erhoehen beobachtet werden --
+#                                 mehr Plaetze heisst mehr offene Verbindungen
+#
+# WARUM NICHT EINFACH ERHOEHEN: in diesem Projekt sind zehn plausible
+# Optimierungen an Messungen gescheitert. Zuletzt das kurze Wiederholen bei
+# belegtem Shard -- es senkte die Rueckfallquote wie vorhergesagt von 8,6 auf
+# 5,8 % und den Durchsatz von 3.274 auf 2.905 TPS. Eine Zahl zu aendern, weil
+# ihre Begruendung veraltet ist, ist kein Beleg fuer die neue.
+#
+# 0 stellt die Vorgabe wieder her (4). NICHT leer lassen: GitHub Actions
+# setzt bei leerem Wert die deklarierte DEFAULT ein -- am 05.09.2026 hat
+# genau das einen Sweep-Wert seinen eigenen Revert ueberleben lassen.
+#
+# Nur Contabo2: der Primary bleibt auf bekannt guter Konfiguration.
+on:
+  workflow_dispatch:
+    inputs:
+      plaetze:
+        description: "Gleichzeitig verarbeitete Chargen im Rueckfallpfad (Vorgabe 4). 0 = Vorgabe wiederherstellen."
+        required: false
+        default: "0"
+
+jobs:
+  set:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Set the batcher slots on Contabo2
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: 194.163.188.71
+          username: root
+          key: ${{ secrets.CONTABO2_SSH_KEY }}
+          port: 22
+          script_stop: false
+          timeout: 600s
+          command_timeout: 600s
+          envs: PLAETZE
+          script: |
+            set +e
+            echo "### CONTABO2 -> Batcher-Plaetze: ${PLAETZE:-Vorgabe} ###"
+            cp /root/.aequitas.env "/root/.aequitas.env.bak.$(date +%Y%m%d-%H%M%S)"
+            sed -i '/^AEQUITAS_BATCHER_PLAETZE=/d' /root/.aequitas.env
+            [ -n "$PLAETZE" ] && [ "$PLAETZE" != "0" ] && echo "AEQUITAS_BATCHER_PLAETZE=$PLAETZE" >> /root/.aequitas.env
+            grep -E '^AEQUITAS_BATCHER_PLAETZE' /root/.aequitas.env || echo "(keine Ueberschreibung — Vorgabe gilt)"
+
+            IMAGE="$(docker inspect aequitas-node --format '{{.Config.Image}}')"
+            NET="$(docker inspect aequitas-node --format '{{range $k, $v := .NetworkSettings.Networks}}{{$k}} {{end}}' | awk '{print $1}')"
+            PORTS="$(docker inspect aequitas-node --format '{{range $p, $c := .HostConfig.PortBindings}}-p {{(index $c 0).HostPort}}:{{$p}} {{end}}' | sed 's|/tcp||g')"
+            MOUNTS="$(docker inspect aequitas-node --format '{{range .Mounts}}-v {{.Source}}:{{.Destination}} {{end}}')"
+            mkdir -p /root/batcher
+            ENVOUT=/root/batcher/env
+            # Die Umgebung des laufenden Prozesses ist die Grundlage, MINUS
+            # dieses Schluessels -- sonst ueberlebt ein alter Sweep-Wert.
+            docker inspect aequitas-node --format '{{range .Config.Env}}{{println .}}{{end}}' \
+              | grep -vE '^(RESYNC_FROM_SNAPSHOT|HOSTNAME|PATH|HOME|AEQUITAS_BATCHER_PLAETZE)=' \
+              | grep -E '^[A-Za-z_][A-Za-z0-9_]*=' > /tmp/proc.env
+            grep -E '^[A-Za-z_][A-Za-z0-9_]*=' /root/.aequitas.env \
+              | grep -vE '^(RESYNC_FROM_SNAPSHOT|HOSTNAME|PATH|HOME)=' > /tmp/file.env || true
+            awk -F= '!seen[$1]++' /tmp/file.env /tmp/proc.env > "$ENVOUT"
+
+            docker stop aequitas-node && docker rm aequitas-node
+            docker run -d --name aequitas-node --network "$NET" $PORTS $MOUNTS \
+              --env-file "$ENVOUT" --restart unless-stopped "$IMAGE"
+            sleep 40
+            echo "=== was der PROZESS jetzt hat (die Datei ist kein Beleg) ==="
+            docker inspect aequitas-node --format '{{range .Config.Env}}{{println .}}{{end}}' \
+              | grep -E '^AEQUITAS_BATCHER_PLAETZE' || echo "(Vorgabe)"
+            curl -s --max-time 15 http://127.0.0.1:8080/api/health/combined \
+              | grep -oE '"plaetze":[0-9]+' || echo "(nicht erreichbar)"
+            curl -s --max-time 15 http://127.0.0.1:8080/api/status | grep -o '"height":[0-9]*' || echo "(unerreichbar)"
+        env:
+          PLAETZE: ${{ inputs.plaetze }}
