@@ -866,6 +866,76 @@ func (cs *ChainState) flushWALBatch(batch []walFlushItem) error {
 	defer cs.mu.RUnlock()
 
 	snapshots := make(map[string]walSnapshot, len(addrList))
+
+	var dbStart time.Time
+	var phSnapshot, phAcctSQL, phAcctExec, phOutboxSQL, phOutboxExec, phCommit time.Duration
+	phMark := time.Now()
+
+	// Die Outbox VOR den Kontensperren schreiben.
+	//
+	// Genau das, was der Kommentar an den Phasenuhren seit ihrer Einfuehrung
+	// nahelegt: "that window also holds pure Go work ... which needs no lock
+	// and could move out of the critical section entirely." Dieser INSERT
+	// geht nach pending_txs, nicht nach chain_accounts -- er braucht keine
+	// einzige der Sperren, die gleich genommen werden. Gemessen kostete er
+	// 10,0 ms von 42 ms Haltezeit, also fast ein Viertel, in dem 512
+	// Adressen eingefroren waren, ohne dass es dafuer einen Grund gab.
+	//
+	// Warum das die Ueberweisungen betrifft: die Rueckfallquote des
+	// Schnellpfads haengt direkt an dieser Haltezeit. Gemessen am
+	// 05.09.2026 sind 1.631 Flushes x 42 ms rund 6,8 % der Laufzeit, in
+	// denen die aktiven Konten gesperrt sind; bei zwei Konten je
+	// Ueberweisung ergibt das etwa 13 % Kollisionen -- beobachtet wurden
+	// 10,6 %. Jeder Rueckfall kostet danach rund 600 ms und stellt damit
+	// den groessten Einzelposten der mittleren Latenz.
+	//
+	// Das ist ausdruecklich NICHT das zweimal gescheiterte Verkuerzen des
+	// Haltes (siehe der Block ueber dieser Funktion): die Sperren werden
+	// weiterhin ueber den GANZEN Konten-UPSERT gehalten, und genau das ist
+	// die Invariante, die den Postgres-Deadlock strukturell ausschliesst.
+	// Verschoben wird nur Arbeit, die mit Konten nichts zu tun hat, und sie
+	// bleibt in derselben Transaktion -- ein Ruecklauf macht sie mit
+	// rueckgaengig.
+	tx, err := cs.db.Begin()
+	if err != nil {
+		return fmt.Errorf("could not begin WAL flush transaction: %w", err)
+	}
+	dbStart = time.Now()
+	phMark = dbStart
+	ctx := withTx(context.Background(), tx)
+
+	var txValuesSQL strings.Builder
+	txValuesSQL.Grow(len(batch) * 12) // "($NNNN,$NNNN)," aufgerundet
+	txArgs := make([]interface{}, 0, len(batch)*2)
+	now := time.Now().Unix()
+	for j, item := range batch {
+		data, err := json.Marshal(item.tx)
+		if err != nil {
+			tx.Rollback()
+			return fmt.Errorf("could not marshal outbox tx for %s->%s during WAL flush: %w", item.from, item.to, err)
+		}
+		if j > 0 {
+			txValuesSQL.WriteByte(',')
+		}
+		n := j * 2
+		txValuesSQL.WriteByte('(')
+		writeDollarParam(&txValuesSQL, n+1, ",")
+		writeDollarParam(&txValuesSQL, n+2, "")
+		txValuesSQL.WriteByte(')')
+		txArgs = append(txArgs, string(data), now)
+	}
+	txQuery := `INSERT INTO pending_txs (tx_json, created_at) VALUES ` + txValuesSQL.String()
+	phOutboxSQL = time.Since(phMark)
+	phMark = time.Now()
+	if _, err := cs.dbExecCtx(ctx).Exec(txQuery, txArgs...); err != nil {
+		tx.Rollback()
+		return fmt.Errorf("could not queue %d outbox tx(s) during WAL flush: %w", len(batch), err)
+	}
+	phOutboxExec = time.Since(phMark)
+	phMark = time.Now()
+
+	// Ab hier der eigentliche Halt.
+	//
 	// Held for this whole function via defer, NOT released after the
 	// snapshot loop -- see this function's own doc comment (layer 2) for
 	// why that's the actual fix, not an optional hardening.
@@ -876,14 +946,7 @@ func (cs *ChainState) flushWALBatch(batch []walFlushItem) error {
 	// not recorded anywhere. Registered BEFORE the unlock defer so it runs
 	// after it (defers are LIFO) and the interval covers the whole hold.
 	lockAcquired := time.Now()
-	var dbStart time.Time
-	// Phase timers. Split because "27 of the 30ms is the database window" is
-	// not yet an answer: that window also holds pure Go work (two multi-row
-	// statements built by hand, one json.Marshal per item) which needs no lock
-	// and could move out of the critical section entirely. Which fix is right
-	// depends on which phase actually costs.
-	var phSnapshot, phAcctSQL, phAcctExec, phOutboxSQL, phOutboxExec, phCommit time.Duration
-	phMark := time.Now()
+	phMark = time.Now()
 	defer func() {
 		var dbDur time.Duration
 		if !dbStart.IsZero() {
@@ -902,14 +965,6 @@ func (cs *ChainState) flushWALBatch(batch []walFlushItem) error {
 	}
 
 	phSnapshot = time.Since(phMark)
-
-	tx, err := cs.db.Begin()
-	if err != nil {
-		return fmt.Errorf("could not begin WAL flush transaction: %w", err)
-	}
-	dbStart = time.Now()
-	phMark = dbStart
-	ctx := withTx(context.Background(), tx)
 
 	// Single multi-row UPSERT for every touched account. is_human/
 	// tusd_balance/lp_shares are intentionally not in the VALUES list, same
@@ -951,37 +1006,6 @@ WHERE chain_accounts.wal_seq < EXCLUDED.wal_seq`
 	}
 
 	phAcctExec = time.Since(phMark)
-	phMark = time.Now()
-
-	// Single multi-row outbox INSERT for every item in the batch.
-	var txValuesSQL strings.Builder
-	txValuesSQL.Grow(len(batch) * 12) // "($NNNN,$NNNN)," rounded up
-	txArgs := make([]interface{}, 0, len(batch)*2)
-	now := time.Now().Unix()
-	for j, item := range batch {
-		data, err := json.Marshal(item.tx)
-		if err != nil {
-			tx.Rollback()
-			return fmt.Errorf("could not marshal outbox tx for %s->%s during WAL flush: %w", item.from, item.to, err)
-		}
-		if j > 0 {
-			txValuesSQL.WriteByte(',')
-		}
-		n := j * 2
-		txValuesSQL.WriteByte('(')
-		writeDollarParam(&txValuesSQL, n+1, ",")
-		writeDollarParam(&txValuesSQL, n+2, "")
-		txValuesSQL.WriteByte(')')
-		txArgs = append(txArgs, string(data), now)
-	}
-	txQuery := `INSERT INTO pending_txs (tx_json, created_at) VALUES ` + txValuesSQL.String()
-	phOutboxSQL = time.Since(phMark)
-	phMark = time.Now()
-	if _, err := cs.dbExecCtx(ctx).Exec(txQuery, txArgs...); err != nil {
-		tx.Rollback()
-		return fmt.Errorf("could not queue %d outbox tx(s) during WAL flush: %w", len(batch), err)
-	}
-	phOutboxExec = time.Since(phMark)
 	phMark = time.Now()
 
 	if err := tx.Commit(); err != nil {
