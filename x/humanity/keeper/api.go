@@ -1450,6 +1450,40 @@ func (a *APIServer) handleBlocks(w http.ResponseWriter, r *http.Request) {
 		// actual write is a single call the runtime can complete or fail
 		// atomically rather than a JSON encoder streaming piecemeal into a
 		// slow/interrupted connection.
+		// Die Antwort NACH BYTES deckeln, nicht nur nach Blockzahl.
+		//
+		// Genau derselbe Fix, den /api/blocks/by-hash am 21.08.2026 bekam --
+		// und der hier fehlte. Die Folge, live auf dem Primary gemessen am
+		// 05.09.2026:
+		//
+		//	[HTTP-SYNC] Page fetch (min_height=5780364, pageSize=500) from
+		//	<peer> failed (decoding response body (67108864 bytes):
+		//	unexpected end of JSON input) -- retrying at a smaller page size
+		//
+		// 500 Bloecke sind sinnvoll bei ~2 KB je Block. Unter Last traegt ein
+		// Block Tausende Ueberweisungen und ist allein rund 1 MB gross, also
+		// sprengen dieselben 500 jeden Lesedeckel des Clients. Der Client
+		// laedt dann 64 MB, verwirft sie und halbiert.
+		//
+		// UND DAS IST DER GRUND, WARUM DER PRIMARY NIE PRODUZIERT HAT.
+		// doSyncOnce kehrt bei einem Fehlschlag auf der ERSTEN Seite frueh
+		// zurueck und ruft noteStreakOutcome dann nicht auf -- der Zyklus
+		// zaehlt also weder als sauber noch als Ruecksetzung. Live gemessen:
+		// clean_cycles 0, alle resets 0, gate_skips 293, never_produced true.
+		// Der Notausstieg des Tors griff nicht, weil er nur bei voelligem
+		// Stillstand feuert -- und Bloecke kamen ja an. Ein Knoten, der
+		// Bloecke EMPFAENGT, aber keine Seite LESEN kann, faellt genau durch
+		// dieses Raster.
+		//
+		// Weniger zu liefern ist strikt besser: der Aufrufer holt den Rest im
+		// naechsten Zyklus, der Fortschritt ist derselbe, und nichts wird
+		// zweimal uebertragen.
+		result, gekuerzt := capBlocksByResponseBytes(result)
+		if gekuerzt {
+			// Der Client darf die fehlenden Bloecke NICHT als "hat der Peer
+			// nicht" lesen -- gleiche Begruendung wie bei /api/blocks/by-hash.
+			w.Header().Set("X-Blocks-Truncated", "1")
+		}
 		body, err := json.Marshal(result)
 		if err != nil {
 			fmt.Printf("[API] ✗ /api/blocks marshal error for min_height=%d limit=%d (%d blocks): %v\n", minHeight, limit, len(result), err)

@@ -71,5 +71,18 @@ func SyncStreakStats() map[string]interface{} {
 		"resets_both":      syncStreakStats.resetsBoth.Load(),
 		"backlog_escapes":  syncStreakStats.backlogEscapes.Load(),
 		"gate_skips":       syncStreakStats.gateSkips.Load(),
+		"seitenfehler":     syncSeitenfehler.Load(),
 	}
 }
+
+// Wie oft ein Sync-Zyklus schon an der ERSTEN Seite scheiterte.
+//
+// Diese Zahl fehlte am 05.09.2026 und hat die Ursachensuche Stunden gekostet:
+// der Primary zeigte clean_cycles 0, alle resets 0 und gate_skips 293 -- ein
+// Bild, das sich wie "es laeuft gar kein Sync" liest, waehrend in Wahrheit
+// jeder Zyklus an einer zu grossen Antwortseite scheiterte
+// (67108864 Bytes, unexpected end of JSON input). Der Zaehler benennt genau
+// diesen Fall, statt ihn als Abwesenheit aller anderen erscheinen zu lassen.
+var syncSeitenfehler atomic.Int64
+
+func merkeSyncSeitenfehler() { syncSeitenfehler.Add(1) }

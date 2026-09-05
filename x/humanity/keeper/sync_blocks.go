@@ -1657,6 +1657,24 @@ func (dag *BlockDAG) doSyncOnce(nodeURL string) (ok bool) {
 		if err != nil {
 			fmt.Printf("[HTTP-SYNC] ✗ Could not fetch page (min_height=%d) from %s: %v\n", minHeight, nodeURL, err)
 			if page == 0 {
+				// Sichtbar machen, dass dieser Zyklus gescheitert ist.
+				//
+				// Vorher kehrte dieser Zweig zurueck, OHNE noteStreakOutcome zu
+				// rufen -- der Zyklus zaehlte also weder als sauber noch als
+				// Ruecksetzung. Auf dem Primary am 05.09.2026 sah das so aus:
+				//
+				//	clean_cycles 0, resets_* 0, gate_skips 293, never_produced true
+				//
+				// Alle Zaehler auf null liest sich wie "es passiert nichts",
+				// waehrend in Wahrheit JEDER Zyklus an einer zu grossen Seite
+				// scheiterte. Die Ursache lag Stunden im Dunkeln, weil genau
+				// die Zahl fehlte, die sie benannt haette. Ein Zaehler, der den
+				// haeufigsten Fehlerfall nicht abbilden kann, ist keiner.
+				//
+				// Als Ruecksetzung gezaehlt, weil ein Zyklus, der nicht einmal
+				// eine Seite lesen konnte, kein Beleg fuer "aufgeholt" ist.
+				merkeSyncSeitenfehler()
+				noteStreakOutcome(true, 0, false, 0)
 				return false // never even got a first page — treat as a failed sync attempt
 			}
 			break // got at least one page this call; report what we added

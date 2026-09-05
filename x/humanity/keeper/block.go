@@ -6607,7 +6607,7 @@ func (dag *BlockDAG) replayTransactions(block *Block, force bool) (ok bool) {
 			// comment: dag.state.activeTx was already set directly above
 			// this loop, and dbExecCtx falls back to it.
 			phMarkSer := time.Now()
-			errSeriell := dag.state.applyTransferDeltaLocked(withTx(context.Background(), dbTx), wallet, to, tx.Amount, tx.FromDemurrageLost, tx.ToDemurrageLost, block.Timestamp)
+			errSeriell := dag.state.applyTransferDeltaLockedSammelnd(withTx(context.Background(), dbTx), wallet, to, tx.Amount, tx.FromDemurrageLost, tx.ToDemurrageLost, block.Timestamp, kontenSammlung)
 			merkeReplaySeriellZeit(phMarkSer)
 			if err := errSeriell; err != nil {
 				// Eine deterministische Ablehnung toetet den Block NICHT. Ein

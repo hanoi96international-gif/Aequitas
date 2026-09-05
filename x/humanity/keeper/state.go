@@ -7595,7 +7595,33 @@ func (cs *ChainState) ApplyTransferDelta(from, to string, netAmount, fromLost, t
 // activityAt is the instant to stamp on both parties' demurrage clock — the
 // replayed block's own Timestamp. See touchActivityAt for why replay must not
 // read its own wall clock, and why this used to reset no clock at all.
+// sammler darf nil sein -- dann schreibt diese Funktion die beiden Konten
+// sofort, wie bisher. Ist er gesetzt, werden sie stattdessen gesammelt und
+// vom Aufrufer EINMAL je Block geschrieben.
+//
+// GEMESSEN AM 05.09.2026, und der Grund fuer diesen Parameter: auf dem
+// Primary unter Last kostete der serielle Nachspielpfad 196,96 ms je Block
+// -- 77,1 % der gesamten globalen Sperre -- bei nur 7,5 % der
+// Ueberweisungen. Je Aufruf sind das 6,479 ms, und der groesste Posten
+// darin sind die beiden saveAccountToDBCtx unten: zwei Datenbank-Umlaeufe
+// je Ueberweisung, waehrend der Buendelpfad daneben alle Konten eines
+// ganzen Blocks in EIN Statement schreibt.
+//
+// Warum ueberhaupt so viele Ueberweisungen seriell nachgespielt werden:
+// collectDisjointTransferBatch bricht bei jeder Demurrage ab, und
+// Demurrage traegt genau die Ueberweisung, die auf der annehmenden Box
+// ueber den Buendler statt den Schnellpfad lief. Die 7,5 % hier sind also
+// die ~10 % Shard-Rueckfaelle dort, eine Box weiter.
+//
+// Das Aufschieben aendert nichts an der Atomizitaet: geschrieben wird in
+// derselben dbTx, nur spaeter, und geschrieben wird ohnehin der Endstand
+// aus dem Speicher. Die Pool-Schreibvorgaenge der Demurrage bleiben
+// unberuehrt an Ort und Stelle.
 func (cs *ChainState) applyTransferDeltaLocked(ctx context.Context, from, to string, netAmount, fromLost, toLost float64, activityAt int64) error {
+	return cs.applyTransferDeltaLockedSammelnd(ctx, from, to, netAmount, fromLost, toLost, activityAt, nil)
+}
+
+func (cs *ChainState) applyTransferDeltaLockedSammelnd(ctx context.Context, from, to string, netAmount, fromLost, toLost float64, activityAt int64, sammler *kontenSammler) error {
 	from = strings.ToLower(from)
 	to = strings.ToLower(to)
 	// FIX (Monster Audit follow-up, 2026-07-12, P0): same cold-cache pattern
@@ -7679,6 +7705,10 @@ func (cs *ChainState) applyTransferDeltaLocked(ctx context.Context, from, to str
 	startClockIfUnsetAt(toAcc, activityAt)
 	if err := cs.enforceWealthCapLockedCtx(ctx, toAcc); err != nil {
 		return fmt.Errorf("transfer: could not enforce wealth cap for recipient %s: %w", to, err)
+	}
+	if sammler != nil {
+		sammler.hinzufuegen(toAcc)
+		return nil
 	}
 	if err := cs.saveAccountToDBCtx(ctx, toAcc); err != nil {
 		return fmt.Errorf("transfer: could not save recipient %s: %w", to, err)
