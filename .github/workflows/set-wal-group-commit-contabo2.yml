@@ -1,0 +1,112 @@
+name: Set the WAL group commit on Contabo2 (sweep the fsync amortisation)
+
+# WHAT THIS TUNES, AND WHY IT IS THE REMAINING CEILING.
+#
+# Measured on Contabo2 under real load, 2026-09-03:
+#
+#   wal_writer.avg_batch     30.8   <- records per fsync
+#   wal_writer.cfg_max_batch  500   <- the cap, never approached
+#   wal_writer.sync_avg_us   5601   <- 5.6 ms per fsync
+#
+# Throughput through the write-ahead log is batch size divided by fsync time:
+# 30.8 / 5.6 ms is about 5,500 records per second, and the chain measured
+# 3,914 TPS at its best. The disk is not the limit -- TestWALThroughput on this
+# same box reached 46,342 appends/s at concurrency 1000. The limit is that the
+# batches are nearly empty.
+#
+# They are nearly empty because of WHEN they close. The writer syncs, and
+# whatever arrived during that sync becomes the next batch. At ~3,500 arrivals
+# per second and a 5.6 ms sync, that is about 20 records, plus whatever the
+# 1 ms collection window adds. The measured 30.8 matches. The cap of 500 is
+# never reached because nothing waits long enough to fill it.
+#
+# So the knob is the WINDOW, not the cap. A longer window collects more per
+# fsync, and since each fsync costs the same 5.6 ms regardless of how much it
+# carries, every extra record in a batch is free throughput. If a 5 ms window
+# yields batches of 150, that is 150 / 5.6 ms = ~26,000 records/s of headroom.
+#
+# THE COST IS LATENCY, AND IT IS REAL. Every caller waits out the window before
+# its record is durable. At 5 ms that is 5 ms added to each transfer's tail.
+# This is the classic group-commit trade, and it is only worth taking while
+# throughput actually rises -- past the point where batches stop growing, the
+# window is pure added latency.
+#
+# WHAT TO WATCH, in this order:
+#
+#   wal_writer.avg_batch    must RISE -- this is the entire point
+#   wal_writer.batches      must FALL (fewer, fuller syncs)
+#   TPS from the load run   the only number that decides
+#   transfer_phases.wal_append_ms   will rise; that is expected, not a fault
+#   fallback_gruende.warteschlange  must stay 0 -- if the queue backs up, the
+#                                   window is too long and records are piling
+#                                   up faster than they drain
+#
+# A window that grows the batches but stalls the queue is a regression. Read
+# those two together before keeping any value.
+#
+# Empty restores the shipped defaults (500 records / 1000 us).
+#
+# Contabo2 only: this is a measurement setting, and sweeping it on the box that
+# takes the load keeps the primary on known-good configuration.
+on:
+  workflow_dispatch:
+    inputs:
+      wait_us:
+        description: "Collection window in microseconds before an fsync closes its batch (shipped default 1000 = 1 ms). Empty = restore the default."
+        required: false
+        default: "5000"
+      max_batch:
+        description: "Records per fsync (shipped default 500). Empty = restore the default. Raise only if avg_batch actually approaches the cap."
+        required: false
+        default: ""
+
+jobs:
+  set:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Set the WAL group commit on Contabo2
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: 194.163.188.71
+          username: root
+          key: ${{ secrets.CONTABO2_SSH_KEY }}
+          port: 22
+          script_stop: false
+          timeout: 600s
+          command_timeout: 600s
+          envs: WAITUS,MAXBATCH
+          script: |
+            set +e
+            echo "### CONTABO2 -> WAL group commit: wait=${WAITUS:-default} batch=${MAXBATCH:-default} ###"
+            cp /root/.aequitas.env "/root/.aequitas.env.bak.$(date +%Y%m%d-%H%M%S)"
+            sed -i '/^AEQUITAS_WAL_MAX_BATCH_WAIT_US=/d;/^AEQUITAS_WAL_MAX_BATCH_SIZE=/d' /root/.aequitas.env
+            [ -n "$WAITUS" ]   && echo "AEQUITAS_WAL_MAX_BATCH_WAIT_US=$WAITUS" >> /root/.aequitas.env
+            [ -n "$MAXBATCH" ] && echo "AEQUITAS_WAL_MAX_BATCH_SIZE=$MAXBATCH" >> /root/.aequitas.env
+            grep -E '^AEQUITAS_WAL_MAX_BATCH' /root/.aequitas.env || echo "(no overrides — shipped defaults apply)"
+
+            IMAGE="$(docker inspect aequitas-node --format '{{.Config.Image}}')"
+            NET="$(docker inspect aequitas-node --format '{{range $k, $v := .NetworkSettings.Networks}}{{$k}} {{end}}' | awk '{print $1}')"
+            PORTS="$(docker inspect aequitas-node --format '{{range $p, $c := .HostConfig.PortBindings}}-p {{(index $c 0).HostPort}}:{{$p}} {{end}}' | sed 's|/tcp||g')"
+            MOUNTS="$(docker inspect aequitas-node --format '{{range .Mounts}}-v {{.Source}}:{{.Destination}} {{end}}')"
+            mkdir -p /root/walgroup
+            ENVOUT=/root/walgroup/env
+            # The running process's env is the base, MINUS these two keys, so a
+            # previous sweep value cannot survive into the next run.
+            docker inspect aequitas-node --format '{{range .Config.Env}}{{println .}}{{end}}' \
+              | grep -vE '^(RESYNC_FROM_SNAPSHOT|HOSTNAME|PATH|HOME|AEQUITAS_WAL_MAX_BATCH_WAIT_US|AEQUITAS_WAL_MAX_BATCH_SIZE)=' \
+              | grep -E '^[A-Za-z_][A-Za-z0-9_]*=' > /tmp/proc.env
+            grep -E '^[A-Za-z_][A-Za-z0-9_]*=' /root/.aequitas.env \
+              | grep -vE '^(RESYNC_FROM_SNAPSHOT|HOSTNAME|PATH|HOME)=' > /tmp/file.env || true
+            awk -F= '!seen[$1]++' /tmp/file.env /tmp/proc.env > "$ENVOUT"
+
+            docker stop aequitas-node && docker rm aequitas-node
+            docker run -d --name aequitas-node --network "$NET" $PORTS $MOUNTS \
+              --env-file "$ENVOUT" --restart unless-stopped "$IMAGE"
+            sleep 40
+            echo "=== what the PROCESS now has (the file is not proof) ==="
+            docker inspect aequitas-node --format '{{range .Config.Env}}{{println .}}{{end}}' \
+              | grep -E '^AEQUITAS_WAL_MAX_BATCH' || echo "(shipped defaults)"
+            curl -s --max-time 15 http://127.0.0.1:8080/api/status | grep -o '"height":[0-9]*' || echo "(unreachable)"
+        env:
+          WAITUS: ${{ inputs.wait_us }}
+          MAXBATCH: ${{ inputs.max_batch }}
