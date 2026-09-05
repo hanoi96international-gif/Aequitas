@@ -7603,7 +7603,9 @@ func (cs *ChainState) applyTransferDeltaLocked(ctx context.Context, from, to str
 	cs.ensureAccountLoadedCtx(ctx, to)
 	fromAcc, ok := cs.accounts.Get(from)
 	if !ok {
-		return fmt.Errorf("from account not found: %s", from)
+		// Deterministisch: das Konto existiert nicht, und ein spaeterer
+		// Versuch aendert daran nichts. Siehe zustand_ablehnung.go.
+		return fmt.Errorf("from account not found: %s: %w", from, ErrZustandLehntAb)
 	}
 	// FIX: applyDemurrageLossLocked mutates fromAcc.Balance AND credits the
 	// tokenomics pools (via distributeSwapFee, persisted to DB immediately)
@@ -7615,7 +7617,11 @@ func (cs *ChainState) applyTransferDeltaLocked(ctx context.Context, from, to str
 	// post-decay balance FIRST, without mutating anything, so a failing
 	// transfer truly changes nothing.
 	if fromAcc.Balance.Float()-fromLost < netAmount {
-		return fmt.Errorf("insufficient balance (have %.6f after demurrage, need %.6f)", fromAcc.Balance.Float()-fromLost, netAmount)
+		// Deterministisch: derselbe Block scheitert beim tausendsten Versuch
+		// aus demselben Grund. Beim Nachspielen darf das den Block nicht
+		// toeten -- siehe zustand_ablehnung.go fuer die sechs Minuten
+		// Stillstand, die genau das am 05.09.2026 gekostet hat.
+		return fmt.Errorf("insufficient balance (have %.6f after demurrage, need %.6f): %w", fromAcc.Balance.Float()-fromLost, netAmount, ErrZustandLehntAb)
 	}
 	if err := cs.applyDemurrageLossLockedCtx(ctx, fromAcc, fromLost); err != nil {
 		return fmt.Errorf("transfer: could not settle sender %s demurrage: %w", from, err)

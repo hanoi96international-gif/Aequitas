@@ -6584,6 +6584,20 @@ func (dag *BlockDAG) replayTransactions(block *Block, force bool) (ok bool) {
 			// comment: dag.state.activeTx was already set directly above
 			// this loop, and dbExecCtx falls back to it.
 			if err := dag.state.applyTransferDeltaLocked(withTx(context.Background(), dbTx), wallet, to, tx.Amount, tx.FromDemurrageLost, tx.ToDemurrageLost, block.Timestamp); err != nil {
+				// Eine deterministische Ablehnung toetet den Block NICHT. Ein
+				// abgewiesener Block wird nie wieder angenommen, und dieser
+				// Fehler faellt bei jedem Versuch gleich aus -- die Abweisung
+				// heilt also nichts, sie haelt den Knoten endgueltig an.
+				// Gemessen am 05.09.2026 auf dem Primary: 18 Abweisungen
+				// derselben Hoehe, 31 Waisen-Tips, sechs Minuten Stillstand.
+				// Die Abweichung selbst meldet der StateRoot-Vergleich am Ende
+				// dieses Replays -- der meldet UND laesst die Kette weiterlaufen.
+				// Siehe zustand_ablehnung.go.
+				if istZustandsAblehnung(err) {
+					fmt.Printf("[REPLAY] ⚠ Transfer %s->%s %.6f uebersprungen: %v (block #%d) — Block laeuft weiter\n", wallet, to, tx.Amount, err, block.Height)
+					merkeUebersprungeneUeberweisung()
+					continue
+				}
 				fmt.Printf("[REPLAY] ✗ Transfer %s->%s %.6f: %v (block #%d) — rolling back whole block\n", wallet, to, tx.Amount, err, block.Height)
 				hardFailure = true
 				continue
