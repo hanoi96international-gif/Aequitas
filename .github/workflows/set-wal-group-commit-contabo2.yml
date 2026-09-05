@@ -44,7 +44,10 @@ name: Set the WAL group commit on Contabo2 (sweep the fsync amortisation)
 # A window that grows the batches but stalls the queue is a regression. Read
 # those two together before keeping any value.
 #
-# Empty restores the shipped defaults (500 records / 1000 us).
+# 0 restores the shipped defaults (500 records / 1000 us). NOT an empty value:
+# GitHub Actions substitutes an input's declared DEFAULT when the value is
+# empty, so "-f wait_us=" re-applied 5000 instead of clearing it -- confirmed
+# live on 05.09.2026, the sweep value survived its own revert.
 #
 # Contabo2 only: this is a measurement setting, and sweeping it on the box that
 # takes the load keeps the primary on known-good configuration.
@@ -52,11 +55,11 @@ on:
   workflow_dispatch:
     inputs:
       wait_us:
-        description: "Collection window in microseconds before an fsync closes its batch (shipped default 1000 = 1 ms). Empty = restore the default."
+        description: "Collection window in microseconds before an fsync closes its batch (shipped default 1000 = 1 ms). 0 = restore the default."
         required: false
-        default: "5000"
+        default: "0"
       max_batch:
-        description: "Records per fsync (shipped default 500). Empty = restore the default. Raise only if avg_batch actually approaches the cap."
+        description: "Records per fsync (shipped default 500). 0 = restore the default. Raise only if avg_batch actually approaches the cap."
         required: false
         default: ""
 
@@ -80,8 +83,8 @@ jobs:
             echo "### CONTABO2 -> WAL group commit: wait=${WAITUS:-default} batch=${MAXBATCH:-default} ###"
             cp /root/.aequitas.env "/root/.aequitas.env.bak.$(date +%Y%m%d-%H%M%S)"
             sed -i '/^AEQUITAS_WAL_MAX_BATCH_WAIT_US=/d;/^AEQUITAS_WAL_MAX_BATCH_SIZE=/d' /root/.aequitas.env
-            [ -n "$WAITUS" ]   && echo "AEQUITAS_WAL_MAX_BATCH_WAIT_US=$WAITUS" >> /root/.aequitas.env
-            [ -n "$MAXBATCH" ] && echo "AEQUITAS_WAL_MAX_BATCH_SIZE=$MAXBATCH" >> /root/.aequitas.env
+            [ -n "$WAITUS" ]   && [ "$WAITUS" != "0" ]   && echo "AEQUITAS_WAL_MAX_BATCH_WAIT_US=$WAITUS" >> /root/.aequitas.env
+            [ -n "$MAXBATCH" ] && [ "$MAXBATCH" != "0" ] && echo "AEQUITAS_WAL_MAX_BATCH_SIZE=$MAXBATCH" >> /root/.aequitas.env
             grep -E '^AEQUITAS_WAL_MAX_BATCH' /root/.aequitas.env || echo "(no overrides — shipped defaults apply)"
 
             IMAGE="$(docker inspect aequitas-node --format '{{.Config.Image}}')"
