@@ -96,5 +96,8 @@ func (dag *BlockDAG) loeseHeilungAus(hoehe int64, folgen int) {
 	grund := fmt.Sprintf("block #%d rejected %d times in a row on replay — this node cannot "+
 		"get past it and will not recover on its own", hoehe, folgen)
 	fmt.Printf("[REPLAY] ⛑ %s — triggering self-heal\n", grund)
-	SafeGoroutine("replayMauerHeilung", func() { dag.triggerAutoResync(grund) })
+	// Endgueltig: dieselbe Hoehe scheitert deterministisch, kein Zuwarten
+	// aendert daran etwas. Die lange Sperre haette hier nur den Stillstand
+	// verlaengert -- am 02.09.2026 live um 17 Minuten.
+	SafeGoroutine("replayMauerHeilung", func() { dag.triggerAutoResyncEndgueltig(grund) })
 }

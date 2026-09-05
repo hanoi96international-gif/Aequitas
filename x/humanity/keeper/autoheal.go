@@ -347,9 +347,43 @@ func (dag *BlockDAG) effectiveAutoHealCooldown(lastAt int64) (time.Duration, boo
 }
 
 func (dag *BlockDAG) triggerAutoResync(reason string) {
+	dag.triggerAutoResyncMitBeweis(reason, false)
+}
+
+// triggerAutoResyncEndgueltig ist triggerAutoResync fuer Faelle, in denen das
+// Feststecken BEWIESEN ist statt vermutet.
+//
+// # WARUM DIESE UNTERSCHEIDUNG NOETIG IST
+//
+// Die 30-Minuten-Sperre schuetzt davor, dass ein Knoten, der langsam aber
+// erfolgreich aufholt, alle paar Minuten aus der Kette gerissen wird. Das ist
+// richtig -- solange unklar ist, ob er noch vorankommt.
+//
+// Bei einer wiederholt abgewiesenen, IDENTISCHEN Blockhoehe ist nichts unklar:
+// derselbe Block scheitert deterministisch, und kein Zuwarten aendert daran
+// etwas. Am 02.09.2026 live: der Detektor meldete korrekt "block #5530822
+// rejected 3 times in a row -- this node cannot get past it", und die Antwort
+// war "SUPPRESSED by the 30m0s cooldown for another 17m48s". Der Primary stand
+// derweil still.
+//
+// Auch die Kuerzung ueber lastHeightAdvanceAt griff nicht: der Knoten ruckte
+// zwischendurch ein paar Bloecke weiter, das setzte den Beleg zurueck -- und
+// er stand trotzdem an derselben Wand.
+//
+// Eine eigene, kurze Sperre statt gar keiner: auch ein bewiesenes Feststecken
+// darf keine Resync-Schleife im Sekundentakt ausloesen, falls der Resync das
+// Problem nicht behebt.
+func (dag *BlockDAG) triggerAutoResyncEndgueltig(reason string) {
+	dag.triggerAutoResyncMitBeweis(reason, true)
+}
+
+func (dag *BlockDAG) triggerAutoResyncMitBeweis(reason string, endgueltig bool) {
 	var lastAt int64
 	fmt.Sscan(dag.state.getConfigValueDB(autoResyncLastAtKey), &lastAt)
 	cooldown, lastResyncFailed := dag.effectiveAutoHealCooldown(lastAt)
+	if endgueltig && cooldown > autoHealFailedResyncRetry {
+		cooldown, lastResyncFailed = autoHealFailedResyncRetry, true
+	}
 	if lastAt > 0 && time.Now().Unix()-lastAt < int64(cooldown.Seconds()) {
 		// FIX (observability, 2026-07-24 — cost a full diagnosis round on
 		// Contabo1 tonight): this used to be a bare `return`. A node in a
