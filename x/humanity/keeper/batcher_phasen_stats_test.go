@@ -85,3 +85,37 @@ func TestBatcherPhasen_LeerIstNullUndMeldetDenDeckel(t *testing.T) {
 		t.Errorf("plaetze = %v, erwartet %d", got, batcherPlaetze())
 	}
 }
+
+func TestBatcherKanal_MisstJeStueckNichtJeCharge(t *testing.T) {
+	BatcherKanalZuruecksetzen()
+	t.Cleanup(BatcherKanalZuruecksetzen)
+
+	// Vier zurueckgefallene Ueberweisungen, zusammen 400 ms Wartezeit. Die
+	// Auskunft muss 100 ms je Stueck sein -- nur so ist sie gegen
+	// transfer_phases.total_ms des Schnellpfads zu halten, und genau dieser
+	// Vergleich ist der Zweck der Uhr.
+	merkeBatcherKanal(50 * time.Millisecond)
+	merkeBatcherKanal(100 * time.Millisecond)
+	merkeBatcherKanal(150 * time.Millisecond)
+	merkeBatcherKanal(100 * time.Millisecond)
+
+	s := BatcherKanalStand()
+	if got := s["rueckfaelle"].(int64); got != 4 {
+		t.Errorf("rueckfaelle = %v, erwartet 4", got)
+	}
+	if got := s["kanal_je_stueck_ms"].(float64); got != 100 {
+		t.Errorf("kanal_je_stueck_ms = %v, erwartet 100", got)
+	}
+	if got := s["kanal_max_ms"].(float64); got != 150 {
+		t.Errorf("kanal_max_ms = %v, erwartet 150", got)
+	}
+}
+
+func TestBatcherKanal_LeerTeiltNichtDurchNull(t *testing.T) {
+	BatcherKanalZuruecksetzen()
+	t.Cleanup(BatcherKanalZuruecksetzen)
+	s := BatcherKanalStand()
+	if got := s["kanal_je_stueck_ms"].(float64); got != 0 {
+		t.Errorf("kanal_je_stueck_ms = %v auf leeren Zaehlern, erwartet 0", got)
+	}
+}

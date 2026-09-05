@@ -692,6 +692,7 @@ func (a *APIServer) handleCombinedHealth(w http.ResponseWriter, r *http.Request)
 		"replay_phasen":  ReplayPhasenStand(),
 		"replay_sammler": SammlerStand(),
 		"batcher_phasen": BatcherPhasenStand(),
+		"batcher_kanal":  BatcherKanalStand(),
 		// Steckt der Knoten an einem Block fest, den er nicht nachspielen kann?
 		"replay_mauer": ReplayMauerStand(),
 		// Liefert der Peer die fehlenden Elternbloecke ueberhaupt noch?

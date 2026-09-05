@@ -4730,8 +4730,20 @@ func (cs *ChainState) TransferAtomic(from, to string, amount float64, pendingTxT
 		pendingTxTemplate: pendingTxTemplate,
 		result:            make(chan transferBatchResult, 1),
 	}
+	// Die Zeit vom Einreihen bis zum Ergebnis -- die einzige Spanne des
+	// Rueckfallpfads, die bisher NIEMAND gemessen hat.
+	//
+	// transfer_phases zeichnet nur ERFOLGREICHE Schnellpfade auf, und
+	// batcher_phasen misst die Charge ab dem Moment, in dem der Sammler ihre
+	// erste Anfrage entgegennimmt. Was eine Anfrage davor im Kanal wartet,
+	// fiel durch beide Raster. Genau dort steckt die Luecke: aus
+	// avg_latency 142,5 ms, Schnellpfad 51,8 ms und 10,6 % Rueckfaellen folgt
+	// fuer einen Rueckfall rund 855 ms -- waehrend batcher_phasen je
+	// Ueberweisung nur 10,84 ms ausweist.
+	einreihung := time.Now()
 	cs.transferBatchCh <- req
 	res := <-req.result
+	merkeBatcherKanal(time.Since(einreihung))
 	return res.fromLost, res.toLost, res.err
 }
 
@@ -4928,10 +4940,31 @@ func (cs *ChainState) runTransferBatcher() {
 		// die Rechnung, die sie noetig macht. Das Sammelfenster ist bereits
 		// vorbei; als naechstes wartet die Charge auf einen freien Platz.
 		merkeBatcherSammeln(time.Since(sammelStart), len(batch))
-		wartenStart := time.Now()
-		cs.parallelBatchSem <- struct{}{}
-		merkeBatcherWarten(time.Since(wartenStart))
+		// Auf den Platz wartet die CHARGE, nicht der Sammler.
+		//
+		// Vorher stand dieses Warten hier, also in der einzigen
+		// Sammel-Goroutine: solange kein Platz frei war (gemessen 88 ms im
+		// Mittel), nahm niemand neue Anfragen aus transferBatchCh entgegen,
+		// und die Warteschlange davor wuchs -- eine Zeit, die weder
+		// batcher_phasen noch transfer_phases je gesehen haben.
+		//
+		// Der Beleg kam aus dem Gegenversuch: mit 16 statt 4 Plaetzen sank
+		// das Warten des Sammlers von 88 auf 18 ms, und prompt schrumpften
+		// die Chargen von 48 auf 15 Posten -- die Chargengroesse hing also
+		// direkt an seiner Blockade, nicht am Verkehr. Der Durchsatz fiel
+		// dabei von 3.972 auf 3.483 TPS, weil viele kleine Chargen teurer
+		// sind als wenige grosse.
+		//
+		// Jetzt sammelt der Sammler ununterbrochen weiter, waehrend die
+		// fertige Charge auf ihren Platz wartet. Die Zahl gleichzeitig
+		// ARBEITENDER Chargen bleibt exakt gedeckelt (dasselbe Semaphor,
+		// dieselbe Vorgabe 4); nur das Anstehen kostet keine Sammelzeit mehr.
+		// Wartende Goroutinen halten dabei keine Datenbankverbindung -- die
+		// wird erst in processTransferBatch geoeffnet, also nach dem Platz.
 		go func(b []*transferBatchRequest) {
+			wartenStart := time.Now()
+			cs.parallelBatchSem <- struct{}{}
+			merkeBatcherWarten(time.Since(wartenStart))
 			defer func() { <-cs.parallelBatchSem }()
 			SafeCall("transferBatchParallelDispatch", func() {
 				arbeitStart := time.Now()

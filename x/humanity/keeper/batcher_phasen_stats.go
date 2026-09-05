@@ -147,3 +147,47 @@ func BatcherPhasenZuruecksetzen() {
 		z.Store(0)
 	}
 }
+
+// Die Zeit vom Einreihen einer Anfrage bis zu ihrem Ergebnis.
+//
+// Die einzige Spanne des Rueckfallpfads, die vorher durch jedes Raster fiel:
+// transfer_phases zeichnet nur erfolgreiche Schnellpfade auf, und die
+// Chargenuhren oben beginnen erst, wenn der Sammler die erste Anfrage einer
+// Charge entgegennimmt. Aus avg_latency 142,5 ms, Schnellpfad 51,8 ms und
+// 10,6 % Rueckfaellen folgt fuer einen Rueckfall rund 855 ms -- waehrend die
+// Chargenuhren je Ueberweisung nur 10,84 ms ausweisen. Diese Uhr schliesst
+// die Rechnung.
+var (
+	btKanalNanos atomic.Int64
+	btKanalCount atomic.Int64
+	btKanalMaxNs atomic.Int64
+)
+
+func merkeBatcherKanal(d time.Duration) {
+	btKanalNanos.Add(int64(d))
+	btKanalCount.Add(1)
+	merkeBatcherHoechstwert(&btKanalMaxNs, int64(d))
+}
+
+// BatcherKanalStand ergaenzt BatcherPhasenStand um die Wartezeit im Kanal.
+func BatcherKanalStand() map[string]interface{} {
+	n := btKanalCount.Load()
+	je := float64(0)
+	if n > 0 {
+		je = float64(btKanalNanos.Load()) / float64(n) / 1e6
+	}
+	return map[string]interface{}{
+		"rueckfaelle":        n,
+		"kanal_je_stueck_ms": je,
+		"kanal_max_ms":       float64(btKanalMaxNs.Load()) / 1e6,
+		"bedeutung": "Vom Einreihen bis zum Ergebnis, je zurueckgefallener Ueberweisung. Gegen " +
+			"batcher_phasen.je_ueberweisung_ms zu lesen: die Differenz ist reine Warteschlange vor dem Sammler.",
+	}
+}
+
+// BatcherKanalZuruecksetzen macht zwei Messlaeufe vergleichbar.
+func BatcherKanalZuruecksetzen() {
+	btKanalNanos.Store(0)
+	btKanalCount.Store(0)
+	btKanalMaxNs.Store(0)
+}
