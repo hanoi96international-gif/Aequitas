@@ -751,6 +751,25 @@ func main() {
 	batchSizeFlag := flag.Int("batch-size", batchSize, "transfers per JSON-RPC batch (clamped to 1..100; the node rejects anything above its own maxBatchSize=100)")
 	flag.Parse()
 
+	// -rpc darf mehrere Ziele tragen. ALLES, was vor der Lastschleife einen
+	// Client baut -- Vorpruefer, Warmup, Nonce-Abfragen -- nimmt aber *rpcURL
+	// unveraendert. Ohne die folgende Zeile waere das die ganze Liste als eine
+	// URL: Go liest daraus Host localhost:8080 mit dem Pfad
+	// "/rpc,http://173.249...", der Knoten liefert auf unbekannte Pfade seine
+	// Website aus, und der Generator meldet 664 mal "bad response <!DOCTYPE
+	// html>" statt eines Nonce. Genau so hing der Lauf vom 06.09. 25 Minuten
+	// im Warmup. rpcZiele haelt die volle Liste, *rpcURL nur noch das erste.
+	rpcZiele := []string{}
+	for _, u := range strings.Split(*rpcURL, ",") {
+		if u = strings.TrimSpace(u); u != "" {
+			rpcZiele = append(rpcZiele, u)
+		}
+	}
+	if len(rpcZiele) == 0 {
+		panic("-rpc ist leer")
+	}
+	*rpcURL = rpcZiele[0]
+
 	// Clamp rather than reject: the node refuses a batch above maxBatchSize=100
 	// outright, and a run that dies on argument validation after the operator
 	// waited for a deploy window is a worse outcome than one that quietly uses
@@ -900,13 +919,9 @@ func main() {
 	// Last sich gleichmaessig auf die Validatoren verteilt statt einen leer
 	// laufen zu lassen. client (oben) bleibt der Vorlauf-/Warmup-Client.
 	clients := []*rpcClient{client}
-	if extra := strings.Split(*rpcURL, ","); len(extra) > 1 {
+	if len(rpcZiele) > 1 {
 		clients = clients[:0]
-		for _, u := range extra {
-			u = strings.TrimSpace(u)
-			if u == "" {
-				continue
-			}
+		for _, u := range rpcZiele {
 			clients = append(clients, &rpcClient{url: u, hc: &http.Client{
 				Timeout: *httpTimeout,
 				Transport: &http.Transport{
