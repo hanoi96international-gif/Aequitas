@@ -1,0 +1,70 @@
+name: Warum keine Bloecke (read-only)
+
+# Der Lasttest bricht ab, wenn die Blockhoehe 15 s stillsteht. Der Replay
+# erklaert das nicht (schlimmster gemessener Halt: 937 ms), also muss die
+# Produktion selbst aussetzen. Jeder Grund dafuer wird geloggt -- dieser
+# Workflow zaehlt sie auf BEIDEN Boxen im gewaehlten Zeitfenster.
+#
+# Read-only: liest nur docker logs, startet nichts neu, schreibt nichts.
+
+on:
+  workflow_dispatch:
+    inputs:
+      minuten:
+        description: Wie weit zurueck (Minuten)
+        required: false
+        default: "20"
+
+jobs:
+  c1:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: 173.249.37.118
+          username: root
+          key: ${{ secrets.CONTABO_SSH_KEY }}
+          port: 22
+          fingerprint: "SHA256:noMtjHV8c+2iEFZu3TRUP6WRwGjkrvFke71KgU6Eyt4"
+          script_stop: false
+          timeout: 400s
+          command_timeout: 400s
+          script: |
+            M=${{ inputs.minuten }}
+            echo "########## C1 (PRIMARY) -- letzte ${M}m ##########"
+            docker logs --since ${M}m aequitas-node > /tmp/nl.txt 2>&1
+            echo "Logzeilen im Fenster: $(wc -l < /tmp/nl.txt)"
+            echo "===== Produktions-Aussetzer, nach Grund gezaehlt ====="
+            grep -oE '\[BLOCK\] (⏳|⏸|⚠)[^0-9]{0,70}' /tmp/nl.txt | sort | uniq -c | sort -rn | head -20
+            echo "(keine Zeile oben = die Produktion hat nie ausgesetzt)"
+            echo "===== die letzten 12 Aussetzer im Wortlaut ====="
+            grep -E '\[BLOCK\] (⏳|⏸|⚠)' /tmp/nl.txt | tail -12 | cut -c1-230
+            echo "===== Fehler/Panik ====="
+            grep -ciE 'panic|fatal|out of memory|deadlock' /tmp/nl.txt
+            grep -iE 'panic|fatal|out of memory|deadlock' /tmp/nl.txt | tail -5 | cut -c1-200
+  c2:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: 194.163.188.71
+          username: root
+          key: ${{ secrets.CONTABO_SSH_KEY }}
+          port: 22
+          fingerprint: "SHA256:pLmYlnhVN0FGGCLzCiqDoJqL0dCUOoZ7L6iVTHRFdxM"
+          script_stop: false
+          timeout: 400s
+          command_timeout: 400s
+          script: |
+            M=${{ inputs.minuten }}
+            echo "########## C2 (Lastziel) -- letzte ${M}m ##########"
+            docker logs --since ${M}m aequitas-node > /tmp/nl.txt 2>&1
+            echo "Logzeilen im Fenster: $(wc -l < /tmp/nl.txt)"
+            echo "===== Produktions-Aussetzer, nach Grund gezaehlt ====="
+            grep -oE '\[BLOCK\] (⏳|⏸|⚠)[^0-9]{0,70}' /tmp/nl.txt | sort | uniq -c | sort -rn | head -20
+            echo "(keine Zeile oben = die Produktion hat nie ausgesetzt)"
+            echo "===== die letzten 12 Aussetzer im Wortlaut ====="
+            grep -E '\[BLOCK\] (⏳|⏸|⚠)' /tmp/nl.txt | tail -12 | cut -c1-230
+            echo "===== Fehler/Panik ====="
+            grep -ciE 'panic|fatal|out of memory|deadlock' /tmp/nl.txt
+            grep -iE 'panic|fatal|out of memory|deadlock' /tmp/nl.txt | tail -5 | cut -c1-200
