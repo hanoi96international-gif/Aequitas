@@ -107,3 +107,59 @@ func TestReplayPhasen_MerkeAddiertUndZaehlt(t *testing.T) {
 		t.Errorf("halt = %v, erwartet 70ms", time.Duration(got))
 	}
 }
+
+// Der teuerste Halt muss vollstaendig erhalten bleiben -- Hoehe, Groesse und
+// alle Phasen. Ein Mittelwert verschluckt genau den Ausreisser, der die
+// Blockproduktion anhaelt (gemessen 06.09.2026: Mittel 89 ms, schlimmster
+// 35.991 ms), und ohne diese Aufschluesselung bliebe die Ursache Vermutung.
+func TestReplaySchlimmster_HaeltDenTeuerstenHaltVollstaendig(t *testing.T) {
+	for _, z := range []*atomic.Int64{&rpMaxHaltNanos, &rpMaxHoehe, &rpMaxTxAnzahl,
+		&rpMaxSnapshotNs, &rpMaxBeginNs, &rpMaxParallelNs, &rpMaxSeriellNs,
+		&rpMaxSammlerNs, &rpMaxStateRootNs, &rpMaxCommitNs} {
+		z.Store(0)
+	}
+	ms := time.Millisecond
+
+	// Ein billiger Block, dann ein teurer, dann wieder ein billiger.
+	merkeReplayBlockDetail(50*ms, 100, 10, ms, ms, 10*ms, 5*ms, ms, ms, ms)
+	merkeReplayBlockDetail(9000*ms, 4242, 8888, 2*ms, 3*ms, 1000*ms, 7000*ms, 20*ms, 5*ms, 10*ms)
+	merkeReplayBlockDetail(60*ms, 300, 12, ms, ms, 12*ms, 6*ms, ms, ms, ms)
+
+	s := ReplaySchlimmsterStand()
+	if got := s["halt_ms"].(float64); got != 9000 {
+		t.Fatalf("halt_ms = %v, erwartet 9000 (der teuerste, nicht der letzte)", got)
+	}
+	if got := s["hoehe"].(int64); got != 4242 {
+		t.Errorf("hoehe = %v, erwartet 4242 -- ohne sie ist der Block nicht auffindbar", got)
+	}
+	if got := s["transaktionen"].(int64); got != 8888 {
+		t.Errorf("transaktionen = %v, erwartet 8888 -- die Zahl entscheidet, ob der Block ungewoehnlich gross war", got)
+	}
+	if got := s["seriell_ms"].(float64); got != 7000 {
+		t.Errorf("seriell_ms = %v, erwartet 7000 -- die Phase, die die Sekunden verbraucht hat", got)
+	}
+	if got := s["parallel_ms"].(float64); got != 1000 {
+		t.Errorf("parallel_ms = %v, erwartet 1000", got)
+	}
+	// 9000 - (2+3+1000+7000+20+5+10) = 960
+	if got := s["rest_ms"].(float64); got < 959 || got > 961 {
+		t.Errorf("rest_ms = %v, erwartet 960", got)
+	}
+}
+
+func TestReplaySchlimmster_EinBilligerBlockUeberschreibtNicht(t *testing.T) {
+	for _, z := range []*atomic.Int64{&rpMaxHaltNanos, &rpMaxHoehe, &rpMaxTxAnzahl, &rpMaxSeriellNs} {
+		z.Store(0)
+	}
+	ms := time.Millisecond
+	merkeReplayBlockDetail(5000*ms, 77, 999, ms, ms, ms, 4000*ms, ms, ms, ms)
+	merkeReplayBlockDetail(10*ms, 78, 1, ms, ms, ms, ms, ms, ms, ms)
+
+	s := ReplaySchlimmsterStand()
+	if got := s["hoehe"].(int64); got != 77 {
+		t.Errorf("hoehe = %v, erwartet 77 -- ein billiger Block hat den teuersten ueberschrieben", got)
+	}
+	if got := s["seriell_ms"].(float64); got != 4000 {
+		t.Errorf("seriell_ms = %v, erwartet 4000", got)
+	}
+}

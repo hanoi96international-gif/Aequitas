@@ -180,3 +180,90 @@ func SammlerStand() map[string]interface{} {
 			"dass der nachspielende Knoten bei hohem Durchsatz mithaelt.",
 	}
 }
+
+// Der TEUERSTE Block, mit seinen Phasen -- nicht der Mittelwert.
+//
+// Am 06.09.2026 lag der mittlere Halt bei 89 ms und der schlimmste bei
+// 35.991 ms. Vierhundertfach. In diesem Fenster produziert der Knoten
+// nichts, und die Annahmekontrolle lehnt danach zu Recht ab ("has not
+// produced a block for 111s") -- gemessen 685.203 abgelehnte Ueberweisungen
+// in einem einzigen Lauf, waehrend die Ingestion selbst 6.000/s schaffte.
+//
+// Ein Mittelwert kann so einen Ausreisser nicht erklaeren: er verschwindet
+// darin. Deshalb haelt dieser Satz Zaehler den bisher teuersten Halt
+// vollstaendig fest -- Hoehe, Transaktionszahl und jede Phase. Damit ist die
+// naechste Frage keine Vermutung mehr, sondern eine Ablesung: welcher Block
+// war es, wie gross war er, und welche Phase hat die Sekunden verbraucht.
+//
+// Nur ein Vergleich und im seltenen Fall ein paar Speicherungen je Block.
+var (
+	rpMaxHaltNanos   atomic.Int64
+	rpMaxHoehe       atomic.Int64
+	rpMaxTxAnzahl    atomic.Int64
+	rpMaxSnapshotNs  atomic.Int64
+	rpMaxBeginNs     atomic.Int64
+	rpMaxParallelNs  atomic.Int64
+	rpMaxSeriellNs   atomic.Int64
+	rpMaxSammlerNs   atomic.Int64
+	rpMaxStateRootNs atomic.Int64
+	rpMaxCommitNs    atomic.Int64
+)
+
+// merkeReplayBlockDetail haelt den teuersten Halt fest. Die Phasenwerte
+// kommen als Momentaufnahme DIESES Blocks, nicht als laufende Summen.
+func merkeReplayBlockDetail(halt time.Duration, hoehe int64, txAnzahl int,
+	snapshot, begin, parallel, seriell, sammler, stateroot, commit time.Duration) {
+	for {
+		alt := rpMaxHaltNanos.Load()
+		if int64(halt) <= alt {
+			return
+		}
+		if rpMaxHaltNanos.CompareAndSwap(alt, int64(halt)) {
+			break
+		}
+	}
+	// Nach dem Gewinn des Vergleichs geschrieben. Ein gleichzeitiger, noch
+	// teurerer Block koennte diese Felder ueberschreiben -- das ist gewollt:
+	// dann gehoeren sie ohnehin ihm.
+	rpMaxHoehe.Store(hoehe)
+	rpMaxTxAnzahl.Store(int64(txAnzahl))
+	rpMaxSnapshotNs.Store(int64(snapshot))
+	rpMaxBeginNs.Store(int64(begin))
+	rpMaxParallelNs.Store(int64(parallel))
+	rpMaxSeriellNs.Store(int64(seriell))
+	rpMaxSammlerNs.Store(int64(sammler))
+	rpMaxStateRootNs.Store(int64(stateroot))
+	rpMaxCommitNs.Store(int64(commit))
+}
+
+// ReplaySchlimmsterStand zeigt den teuersten Halt in /api/health/combined.
+func ReplaySchlimmsterStand() map[string]interface{} {
+	ms := func(z *atomic.Int64) float64 { return float64(z.Load()) / 1e6 }
+	halt := ms(&rpMaxHaltNanos)
+	benannt := ms(&rpMaxSnapshotNs) + ms(&rpMaxBeginNs) + ms(&rpMaxParallelNs) +
+		ms(&rpMaxSeriellNs) + ms(&rpMaxSammlerNs) + ms(&rpMaxStateRootNs) + ms(&rpMaxCommitNs)
+	return map[string]interface{}{
+		"halt_ms":       halt,
+		"hoehe":         rpMaxHoehe.Load(),
+		"transaktionen": rpMaxTxAnzahl.Load(),
+		"snapshot_ms":   ms(&rpMaxSnapshotNs),
+		"begin_ms":      ms(&rpMaxBeginNs),
+		"parallel_ms":   ms(&rpMaxParallelNs),
+		"seriell_ms":    ms(&rpMaxSeriellNs),
+		"sammler_ms":    ms(&rpMaxSammlerNs),
+		"stateroot_ms":  ms(&rpMaxStateRootNs),
+		"commit_ms":     ms(&rpMaxCommitNs),
+		"rest_ms":       halt - benannt,
+		"bedeutung": "Der teuerste Halt der globalen Sperre, vollstaendig aufgeschluesselt -- nicht der Mittelwert. " +
+			"Am 06.09.2026 lag der Mittelwert bei 89 ms und der schlimmste bei 35.991 ms; in so einem Fenster produziert " +
+			"der Knoten nichts und lehnt danach zu Recht ab. Ein Mittelwert kann das nicht erklaeren, dieser Satz schon: " +
+			"transaktionen sagt, ob der Block ungewoehnlich gross war, und die Phasen sagen, welche die Sekunden verbraucht hat.",
+	}
+}
+
+// replayBlockPhasen haelt die Phasenwerte EINES Blocks, waehrend er laeuft.
+// Die laufenden Summen daneben beantworten "wie teuer im Mittel"; diese
+// Struktur beantwortet "was war im schlimmsten Fall los".
+type replayBlockPhasen struct {
+	snapshot, begin, parallel, seriell, sammler, stateroot, commit time.Duration
+}

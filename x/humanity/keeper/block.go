@@ -6268,7 +6268,18 @@ func (dag *BlockDAG) replayTransactions(block *Block, force bool) (ok bool) {
 	// dem Unlock registriert, damit sie NACH ihm laeuft (defers sind LIFO)
 	// und die gemessene Haltezeit die ganze Sperre umfasst, exakt wie
 	// trackExclusiveHold darueber.
-	defer func() { merkeReplayBlock(time.Since(exclusiveAcquired)) }()
+	// Phasenwerte DIESES Blocks, zusaetzlich zu den laufenden Summen -- nur so
+	// laesst sich der teuerste Halt aufschluesseln (siehe
+	// ReplaySchlimmsterStand). Ein Mittelwert verschluckt genau den Ausreisser,
+	// der die Blockproduktion anhaelt.
+	var phBlock replayBlockPhasen
+	defer func() {
+		halt := time.Since(exclusiveAcquired)
+		merkeReplayBlock(halt)
+		merkeReplayBlockDetail(halt, block.Height, len(block.Transactions),
+			phBlock.snapshot, phBlock.begin, phBlock.parallel, phBlock.seriell,
+			phBlock.sammler, phBlock.stateroot, phBlock.commit)
+	}()
 	defer dag.state.mu.Unlock()
 	configBackup := make(map[string]configValueSnapshot, len(stateRootRelevantConfigKeys))
 	for _, key := range stateRootRelevantConfigKeys {
@@ -6278,6 +6289,7 @@ func (dag *BlockDAG) replayTransactions(block *Block, force bool) (ok bool) {
 	phMarkReplay := time.Now()
 	rollbackSnap := dag.state.snapshotForRollbackLocked(touchedAddrs, needsFullSnapshot, configBackup)
 	merkeReplayPhase(&rpSnapshotNanos, phMarkReplay)
+	phBlock.snapshot = time.Since(phMarkReplay)
 	// Sammelt die Konten aller Buendel dieses Blocks, damit sie in EINEM
 	// Statement geschrieben werden statt in einem je Buendel. Siehe
 	// replay_konten_sammler.go -- das ist der Schritt, der die
@@ -6318,6 +6330,7 @@ func (dag *BlockDAG) replayTransactions(block *Block, force bool) (ok bool) {
 		phMarkBegin := time.Now()
 		dbTx, err = dag.state.db.Begin()
 		merkeReplayPhase(&rpBeginNanos, phMarkBegin)
+		phBlock.begin = time.Since(phMarkBegin)
 		if err != nil {
 			fmt.Printf("[REPLAY] ✗ Block #%d: could not begin replay transaction: %v — block rejected\n", block.Height, err)
 			return false
@@ -6404,6 +6417,7 @@ func (dag *BlockDAG) replayTransactions(block *Block, force bool) (ok bool) {
 				phMarkPar := time.Now()
 				ok, batchErr := dag.state.applyTransferBatchParallel(withTx(context.Background(), dbTx), batch, block.Timestamp, kontenSammlung)
 				merkeReplayPhase(&rpParallelNanos, phMarkPar)
+				phBlock.parallel += time.Since(phMarkPar)
 				if batchErr != nil {
 					// Memory already mutated, persistence failed — must NOT
 					// fall back to the serial path (that would apply every
@@ -6609,6 +6623,7 @@ func (dag *BlockDAG) replayTransactions(block *Block, force bool) (ok bool) {
 			phMarkSer := time.Now()
 			errSeriell := dag.state.applyTransferDeltaLockedSammelnd(withTx(context.Background(), dbTx), wallet, to, tx.Amount, tx.FromDemurrageLost, tx.ToDemurrageLost, block.Timestamp, kontenSammlung)
 			merkeReplaySeriellZeit(phMarkSer)
+			phBlock.seriell += time.Since(phMarkSer)
 			if err := errSeriell; err != nil {
 				// Eine deterministische Ablehnung toetet den Block NICHT. Ein
 				// abgewiesener Block wird nie wieder angenommen, und dieser
@@ -7029,6 +7044,7 @@ func (dag *BlockDAG) replayTransactions(block *Block, force bool) (ok bool) {
 		phMarkSammler := time.Now()
 		sammlerErr := dag.state.sammlerSchreiben(withTx(context.Background(), dbTx), kontenSammlung)
 		merkeReplayPhase(&rpSammlerNanos, phMarkSammler)
+		phBlock.sammler = time.Since(phMarkSammler)
 		if sammlerErr != nil {
 			fmt.Printf("[REPLAY] ✗ Block #%d: konnte %d gesammelte Konten nicht schreiben: %v — Block wird zurueckgerollt\n",
 				block.Height, kontenSammlung.anzahl(), sammlerErr)
@@ -7073,6 +7089,7 @@ func (dag *BlockDAG) replayTransactions(block *Block, force bool) (ok bool) {
 		localRoot := dag.state.stateRootLocked(
 			dag.state.getConfigValueCtx(withTx(context.Background(), dbTx), "last_ubi_at"))
 		merkeReplayPhase(&rpStateRootNanos, phMarkRoot)
+		phBlock.stateroot = time.Since(phMarkRoot)
 		if block.StateRoot != localRoot {
 			// StateRoot mismatch is a WARNING, not a hard rejection.
 			//
@@ -7160,6 +7177,7 @@ func (dag *BlockDAG) replayTransactions(block *Block, force bool) (ok bool) {
 	phMarkCommit := time.Now()
 	commitErrReplay := commitOrRollback(true)
 	merkeReplayPhase(&rpCommitNanos, phMarkCommit)
+	phBlock.commit = time.Since(phMarkCommit)
 	if commitErr := commitErrReplay; commitErr != nil {
 		if rbErr := dag.state.restoreFromRollbackLocked(rollbackSnap); rbErr != nil {
 			fmt.Printf("[REPLAY] CRITICAL: rollback persistence failed for block #%d — memory/DB may now disagree: %v\n", block.Height, rbErr)
