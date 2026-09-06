@@ -43,6 +43,14 @@ jobs:
             grep -a "dbpair detail" /tmp/nl.txt | tail -8 | cut -c1-200
             echo "  Treffer insgesamt (ProduceBlock ueber 1,2 s fuer seine zwei DB-Abfragen):"
             grep -ac "dbpair detail" /tmp/nl.txt
+            echo "===== wie lange dauert ProduceBlock insgesamt? ====="
+            grep -a "ProduceBlock itself took" /tmp/nl.txt | tail -10 | cut -c1-140
+            echo "  Treffer ueber 500 ms:"
+            grep -ac "ProduceBlock itself took" /tmp/nl.txt
+            echo "===== davon: den Block speichern (haelt dag.mu) ====="
+            grep -a "SaveBlockWithPendingTxsAtomic took" /tmp/nl.txt | tail -8 | cut -c1-170
+            echo "  Treffer ueber 500 ms:"
+            grep -ac "SaveBlockWithPendingTxsAtomic took" /tmp/nl.txt
             echo "===== welche Seeds/Peers kennt dieser Knoten? (Startzeilen) ====="
             docker logs aequitas-node 2>&1 | grep -a "\[PEERS\]" | head -14 | cut -c1-180
             echo "  -- das Tor verlangt 3 saubere Zyklen mit JEDEM dieser Seeds --"
