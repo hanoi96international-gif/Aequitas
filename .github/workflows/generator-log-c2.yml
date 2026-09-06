@@ -19,7 +19,7 @@ jobs:
         with:
           host: 194.163.188.71
           username: root
-          key: ${{ secrets.CONTABO_SSH_KEY }}
+          key: ${{ secrets.CONTABO2_SSH_KEY }}
           port: 22
           fingerprint: "SHA256:VIwj7Faxiga2n45HVHZEQFPxcbRKHgSgHoxAFsf2wto"
           script_stop: false
