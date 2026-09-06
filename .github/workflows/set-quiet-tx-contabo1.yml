@@ -1,0 +1,133 @@
+name: Set AEQUITAS_RPC_QUIET_TX on Contabo1 / PRIMARY (manual, load-test only)
+
+# Dieselbe Schaltung wie fuer C2, jetzt fuer die PRIMARY. Der Anlass ist
+# gemessen: waehrend eines Lastlaufs am 06.09.2026 schrieb C1 in 20 Minuten
+# 424.081 Logzeilen, C2 im selben Fenster 11.890 -- Faktor 36, weil C2 diesen
+# Schalter hat und C1 nicht. Im selben Fenster setzte C1 die Blockproduktion
+# 52 mal aus ("Not yet 3 consecutive clean sync cycles") und produzierte nur
+# 0,19 Bloecke/s gegen 0,81 auf C2, waehrend die Hoehe zwoelf Sekunden am
+# Stueck stand. C2, mit demselben Code unter groesserer Last, setzte kein
+# einziges Mal aus.
+#
+# Suppresses (or restores) the two per-transaction log lines in
+# sendRawTransaction on Contabo1 ONLY.
+#
+# WHY THIS EXISTS, with the measurement that motivated it. The 2026-07-25 07:11
+# run was the first to report throughput from the NODE's own counter rather
+# than from a generator that could only see its own socket:
+#
+#   [RPC] ⚡ 185 transfers applied in the last second (peak 211/s, total 6021)
+#   [RPC] ⚡ 142 transfers applied in the last second (peak 211/s, total 9441)
+#
+# ~150/s sustained, 211/s peak. The 50,000 target is 240x away, and every
+# ceiling removed before this -- generator round trips, the per-IP rate limit,
+# one-block-per-tick, account balances -- sat ABOVE that figure, so none of
+# them was ever the binding constraint.
+#
+# That run had per-transaction logging ON: sendRawTransaction does one
+# unbuffered fmt.Printf on entry and another on success, each a write syscall
+# Docker's log driver then serialises to disk. At 150/s that is 300 lines/s,
+# already meaningful; at the 50,000 TPS target it would be 100,000 lines/s,
+# which no log driver absorbs -- the writes would BE the ceiling regardless of
+# how fast consensus and storage are.
+#
+# How much of the 150/s is the logging is not a question worth guessing at when
+# it can be measured: same run, same box, this one variable flipped.
+#
+# WHAT THIS COSTS, stated plainly: per-transaction detail disappears from the
+# node log -- no tx hash, no sender/recipient pair per transfer. That is real
+# diagnostic loss and the reason this is a per-box switch rather than a new
+# default. It does NOT blind the node: recordAppliedTransfer
+# (evm_rpc_throughput.go) still counts every applied transfer and still reports
+# the rate once per second, independently of this flag. Everything else --
+# errors, warnings, block production, finality -- is untouched.
+#
+# Scoped to Contabo1, the designated one-at-a-time canary
+# (STAGING_RUNBOOK.md). value=0 restores the shipped behaviour in one dispatch.
+# Contabo1 and the primary are never touched by this workflow.
+#
+# Uses deploy_safe_c2.sh, which merges /root/.aequitas.env over the inherited
+# container env, so an edited key here actually reaches the process. Backs the
+# env file up with a timestamp. Idempotent -- and on the idempotent path it
+# still greps the node's own startup line, because an env file records intent
+# while only the process records effect (a key set after the last restart is
+# inert until the next one).
+on:
+  workflow_dispatch:
+    inputs:
+      value:
+        description: "1 = suppress per-transaction log lines (load test). 0 = shipped default (restore)."
+        required: false
+        default: "1"
+      dry_run:
+        description: "true = only report the current value, change nothing"
+        required: false
+        default: "true"
+
+jobs:
+  set:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Set AEQUITAS_RPC_QUIET_TX on Contabo1
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: 173.249.37.118
+          username: root
+          key: ${{ secrets.CONTABO_SSH_KEY }}
+          port: 22
+          fingerprint: "SHA256:noMtjHV8c+2iEFZu3TRUP6WRwGjkrvFke71KgU6Eyt4"
+          script_stop: false
+          timeout: 600s
+          command_timeout: 600s
+          envs: VALUE,DRY
+          script: |
+            set -uo pipefail
+            ENVFILE=/root/.aequitas.env
+            KEY=AEQUITAS_RPC_QUIET_TX
+
+            # rpcQuietTxFromEnv tests == "1" exactly, so anything else would
+            # silently mean "off" while reading as an intentional setting.
+            case "${VALUE:-}" in
+              0|1) ;;
+              *) echo "✗ value must be exactly 0 or 1, got '${VALUE:-}' — aborting"; exit 1 ;;
+            esac
+
+            echo "=== Contabo1: current $KEY ==="
+            grep -E "^${KEY}=" "$ENVFILE" || echo "(not set — node logs every transaction, the shipped default)"
+
+            CUR="$(grep -E "^${KEY}=" "$ENVFILE" 2>/dev/null | head -1 | cut -d= -f2- || true)"
+            if [ "$CUR" = "$VALUE" ]; then
+              echo "=== Contabo1: env file already reads '$VALUE' — nothing to change ==="
+              echo "=== What the RUNNING process says (the actual answer) ==="
+              docker logs aequitas-node 2>&1 | grep -F 'AEQUITAS_RPC_QUIET_TX' | tail -3 \
+                || echo "(no startup line — the process is still logging every transaction; it has not restarted since the file was set)"
+              exit 0
+            fi
+
+            if [ "${DRY:-true}" = "true" ]; then
+              echo "=== DRY RUN: would set $KEY=$VALUE on Contabo1 (currently '${CUR:-unset}') ==="
+              exit 0
+            fi
+
+            cp -a "$ENVFILE" "${ENVFILE}.bak.$(date +%s)" && echo "(backup written)"
+            if grep -qE "^${KEY}=" "$ENVFILE"; then
+              sed -i "s/^${KEY}=.*/${KEY}=${VALUE}/" "$ENVFILE"
+            else
+              printf '%s=%s\n' "$KEY" "$VALUE" >> "$ENVFILE"
+            fi
+            echo "=== Contabo1: value after the edit ==="
+            grep -E "^${KEY}=" "$ENVFILE" || echo "(missing after edit — investigate)"
+
+            echo "=== Contabo1: restarting so the new env reaches the process ==="
+            /root/deploy_safe_c2.sh
+
+            echo "=== Contabo1: waiting for the node to come back ==="
+            sleep 25
+            echo "=== The node's own startup line (empty means it kept the default) ==="
+            docker logs aequitas-node 2>&1 | grep -F 'AEQUITAS_RPC_QUIET_TX' | tail -3 \
+              || echo "(no line — running the shipped default: every transaction logged)"
+            echo "=== Contabo1: /api/status ==="
+            curl -s --max-time 5 http://localhost:8080/api/status || echo "(unreachable)"
+        env:
+          VALUE: ${{ inputs.value }}
+          DRY: ${{ inputs.dry_run }}
