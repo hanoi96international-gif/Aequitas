@@ -6415,7 +6415,7 @@ func (dag *BlockDAG) replayTransactions(block *Block, force bool) (ok bool) {
 				// Vorher kam sie ueber den stillen Rueckfall auf cs.activeTx
 				// dorthin -- richtig, solange es das Feld gibt.
 				phMarkPar := time.Now()
-				ok, batchErr := dag.state.applyTransferBatchParallel(withTx(context.Background(), dbTx), batch, block.Timestamp, kontenSammlung)
+				angewandt, batchErr := dag.state.applyTransferBatchParallel(withTx(context.Background(), dbTx), batch, block.Timestamp, kontenSammlung)
 				merkeReplayPhase(&rpParallelNanos, phMarkPar)
 				phBlock.parallel += time.Since(phMarkPar)
 				if batchErr != nil {
@@ -6427,10 +6427,18 @@ func (dag *BlockDAG) replayTransactions(block *Block, force bool) (ok bool) {
 					hardFailure = true
 					continue
 				}
-				if ok {
-					transfersApplied += len(batch)
-					merkeReplayParallel(len(batch))
-					txIdx += len(batch) - 1 // the loop's ++ moves past the last batched tx
+				if angewandt > 0 {
+					// angewandt kann KLEINER als len(batch) sein: der
+					// Buendelpfad kuerzt auf sein gesundes Praefix, wenn eine
+					// Ueberweisung darin unbezahlbar ist oder die
+					// Wohlstandsgrenze reisst. Der Rest -- beginnend mit genau
+					// dieser -- laeuft ueber den seriellen Pfad, der Fehler und
+					// Protokollzeilen unveraendert erzeugt. Die Reihenfolge
+					// bleibt exakt erhalten, weil das Praefix zusammenhaengend
+					// ist und txIdx danach genau dort fortsetzt.
+					transfersApplied += angewandt
+					merkeReplayParallel(angewandt)
+					txIdx += angewandt - 1 // the loop's ++ moves past the last batched tx
 					continue
 				}
 				// Declined before mutating anything — fall through so the

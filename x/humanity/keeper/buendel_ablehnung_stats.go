@@ -69,6 +69,8 @@ func BuendelAblehnungStand() map[string]interface{} {
 		"lauf_demurrage":     de,
 		"lauf_kollision":     ko,
 		"lauf_summe":         nt + fe + de + ko,
+		"gekuerzt":           bgGekuerzt.Load(),
+		"gekuerzt_abgegeben": bgAbgegeben.Load(),
 		"zu_klein":           k,
 		"konto_fehlt":        f,
 		"guthaben":           g,
@@ -80,4 +82,19 @@ func BuendelAblehnungStand() map[string]interface{} {
 			"Konten im Verhaeltnis zur Blockgroesse, also ein Lasttest-Artefakt. Die uebrigen Zahlen sagen, warum ein " +
 			"begonnener Lauf abgelehnt wird.",
 	}
+}
+
+// Wie oft ein Lauf auf sein gesundes Praefix gekuerzt wurde, statt ganz
+// abgelehnt zu werden -- und wie viele Ueberweisungen dabei an den seriellen
+// Pfad gingen. Die Differenz zwischen beiden Zahlen ist der Gewinn: bei
+// gemessenen 143 Ueberweisungen je Lauf nahm frueher EINE unbezahlbare bis zu
+// 142 gesunde mit.
+var (
+	bgGekuerzt  atomic.Int64
+	bgAbgegeben atomic.Int64
+)
+
+func merkeBuendelGekuerzt(abgegeben int) {
+	bgGekuerzt.Add(1)
+	bgAbgegeben.Add(int64(abgegeben))
 }

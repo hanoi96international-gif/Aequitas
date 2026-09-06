@@ -128,11 +128,38 @@ func TestParallelReplay_DeclinesUnaffordableBatchWithoutMutating(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected hard error: %v", err)
 	}
-	if applied {
-		t.Fatal("batch containing an unaffordable transfer must be declined, not applied")
+	// GEAENDERT 06.09.2026: der Pfad lehnt nicht mehr alles ab, sondern kuerzt
+	// auf sein gesundes Praefix. Vorher nahm EINE unbezahlbare Ueberweisung bis
+	// zu 142 gesunde mit auf den seriellen Pfad -- und "guthaben" war gemessen
+	// der einzige Ablehnungsgrund, der ueberhaupt auftrat (14.444 Faelle).
+	//
+	// Die Eigenschaft, auf die es ankommt, ist damit schaerfer als vorher:
+	// GENAU das Praefix wird angewandt, und alles ab der problematischen
+	// Ueberweisung bleibt unberuehrt, damit der serielle Pfad es unveraendert
+	// behandeln kann.
+	if applied != 17 {
+		t.Fatalf("angewandt = %d, erwartet 17 (das Praefix vor der unbezahlbaren bei Index 17)", applied)
 	}
 	cs.mu.Lock()
-	for _, a := range addrs {
+	for i := 17; i < 40; i++ {
+		for _, a := range []string{addrs[2*i], addrs[2*i+1]} {
+			acc, _ := cs.accounts.Get(a)
+			if got := acc.Balance.Float(); got != before[a] {
+				cs.mu.Unlock()
+				t.Fatalf("Ueberweisung %d liegt hinter der unbezahlbaren, wurde aber angewandt: %s hat %v statt %v", i, a, got, before[a])
+			}
+		}
+	}
+	for i := 0; i < 17; i++ {
+		acc, _ := cs.accounts.Get(addrs[2*i])
+		if got := acc.Balance.Float(); got != before[addrs[2*i]]-1 {
+			cs.mu.Unlock()
+			t.Fatalf("Ueberweisung %d gehoert zum gesunden Praefix, wurde aber nicht angewandt: Sender hat %v statt %v", i, got, before[addrs[2*i]]-1)
+		}
+	}
+	cs.mu.Unlock()
+	cs.mu.Lock()
+	for _, a := range addrs[34:] {
 		acc, _ := cs.accounts.Get(a)
 		if got := acc.Balance.Float(); got != before[a] {
 			cs.mu.Unlock()

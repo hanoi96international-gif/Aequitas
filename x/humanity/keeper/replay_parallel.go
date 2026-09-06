@@ -207,10 +207,26 @@ func collectDisjointTransferBatch(txs []Transaction, start int) (batch []Transac
 // Aufrufer EINMAL je Block geschrieben; siehe replay_konten_sammler.go fuer
 // die Messung, die das noetig macht, und dafuer, warum das an Atomizitaet
 // und StateRoot nichts aendert.
-func (cs *ChainState) applyTransferBatchParallel(ctx context.Context, batch []Transaction, activityAt int64, sammler *kontenSammler) (applied bool, err error) {
+// RUECKGABE seit 06.09.2026: die Zahl der ANGEWANDTEN Ueberweisungen statt
+// eines Ja/Nein.
+//
+// Vorher lehnte eine einzige unbezahlbare Ueberweisung den GANZEN Lauf ab --
+// bei gemessenen 143 Ueberweisungen je Lauf gingen also bis zu 142 gesunde
+// mit ihr auf den teuren seriellen Pfad. Und genau dieser Fall ist der
+// haeufigste: von allen Ablehnungsgruenden war "guthaben" mit 14.444 der
+// einzige, der ueberhaupt auftrat (lauf_demurrage, lauf_kollision,
+// lauf_kein_transfer alle null), weil die Wegwerfkonten des Lasttests
+// leerlaufen.
+//
+// Die Ueberweisungen VOR der problematischen sind ein gueltiges, disjunktes
+// Praefix -- sie duerfen angewandt werden, und der Aufrufer setzt danach bei
+// der problematischen fort. Die Reihenfolge bleibt damit exakt erhalten.
+//
+// 0 heisst wie bisher: nichts angewandt, der serielle Pfad macht alles.
+func (cs *ChainState) applyTransferBatchParallel(ctx context.Context, batch []Transaction, activityAt int64, sammler *kontenSammler) (angewandt int, err error) {
 	if len(batch) < parallelReplayMinBatch {
 		merkeBuendelAblehnung(&baZuKlein)
-		return false, nil
+		return 0, nil
 	}
 
 	// ---- Phase 1 (serial): warm every account. The ONLY DB access. ----
@@ -224,7 +240,7 @@ func (cs *ChainState) applyTransferBatchParallel(ctx context.Context, batch []Tr
 		toAcc, okTo := cs.accounts.Get(to)
 		if !okFrom || !okTo {
 			merkeBuendelAblehnung(&baKontoFehlt)
-			return false, nil // unknown account — let the serial path report it
+			return 0, nil // unknown account — let the serial path report it
 		}
 		items = append(items, replayBatchItem{
 			from: fromAcc, to: toAcc, amount: tx.Amount, fromKey: from, toKey: to,
@@ -265,15 +281,27 @@ func (cs *ChainState) applyTransferBatchParallel(ctx context.Context, batch []Tr
 	// arithmetic enforceWealthCapLockedCtx itself would see, and tokenomics
 	// pool addresses are exempt there, so they must not trigger a decline here.
 	capAmt, hasCap := cs.wealthCapAmountLocked()
-	for _, it := range items {
+	// Auf das gesunde Praefix kuerzen statt alles abzulehnen. Die
+	// Ueberweisungen davor sind disjunkt und bezahlbar; die problematische und
+	// alles danach uebernimmt der serielle Pfad, der Fehler, Wohlstandsgrenze
+	// und Protokollzeilen unveraendert erzeugt.
+	for i, it := range items {
+		schlecht := false
 		if it.from.Balance.Float() < it.amount {
 			merkeBuendelAblehnung(&baGuthaben)
-			return false, nil
-		}
-		if hasCap && !isTokenomicsPoolAddress(it.toKey) &&
+			schlecht = true
+		} else if hasCap && !isTokenomicsPoolAddress(it.toKey) &&
 			it.to.Balance.Add(NewDecimal(it.amount)).Float() > capAmt {
 			merkeBuendelAblehnung(&baWohlstandsCap)
-			return false, nil
+			schlecht = true
+		}
+		if schlecht {
+			if i < parallelReplayMinBatch {
+				return 0, nil // kein brauchbares Praefix uebrig
+			}
+			items = items[:i]
+			merkeBuendelGekuerzt(len(batch) - i)
+			break
 		}
 	}
 
@@ -335,7 +363,7 @@ func (cs *ChainState) applyTransferBatchParallel(ctx context.Context, batch []Tr
 	// dbTx. Die Rollback-Einheit bleibt damit unveraendert.
 	if sammler != nil {
 		sammler.hinzufuegen(accs...)
-		return true, nil
+		return len(items), nil
 	}
 	if err := cs.saveAccountsToDBBatchCtx(ctx, accs); err != nil {
 		// Memory is already mutated at this point. Returning (false, nil)
@@ -343,7 +371,7 @@ func (cs *ChainState) applyTransferBatchParallel(ctx context.Context, batch []Tr
 		// transfer in this batch a SECOND time. Surface it as a hard error
 		// so the block is rolled back through the caller's existing
 		// rollback snapshot instead — see this function's doc comment.
-		return false, fmt.Errorf("parallel transfer batch: could not persist %d account(s): %w", len(accs), err)
+		return 0, fmt.Errorf("parallel transfer batch: could not persist %d account(s): %w", len(accs), err)
 	}
-	return true, nil
+	return len(items), nil
 }
