@@ -111,20 +111,39 @@ jobs:
               --log-opt max-size=10m --log-opt max-file=3 \
               "$IMAGE"
 
+            # 20 Minuten statt 5.
+            #
+            # Am 06.09.2026 scheiterte der Resync zweimal an dieser Schleife,
+            # und die Meldung ("WIPE DID NOT COMPLETE") liess offen, ob der
+            # Wipe haengt oder nur laenger braucht -- weil der Container
+            # danach entfernt wurde, war die Antwort nicht mehr zu holen.
+            # C2s Postgres-Volume hielt zu dem Zeitpunkt rund 25 GB; ein
+            # TRUNCATE darueber ist in 300 s nicht sicher fertig.
+            #
+            # Der Fortschritt wird jetzt alle zwei Minuten protokolliert und
+            # die letzten Zeilen des Wipe-Containers werden IMMER ausgegeben,
+            # auch im Erfolgsfall -- ein Lauf, der nur "hat nicht geklappt"
+            # sagt, ist keine Diagnose.
             wiped=0
-            for i in $(seq 1 60); do
+            for i in $(seq 1 240); do
               st=$(docker inspect "${NODE}-wipe" --format '{{.State.Status}}' 2>/dev/null || echo gone)
               if [ "$st" = "exited" ]; then
                 if docker logs "${NODE}-wipe" 2>&1 | grep -q '\[DB-RESET\] Done'; then
-                  echo "database truncated after ${i}s"; wiped=1
+                  echo "database truncated after $((i*5))s"; wiped=1
                 else
                   echo "container exited WITHOUT completing the reset:"
                   docker logs --tail 40 "${NODE}-wipe" 2>&1 | tail -40
                 fi
                 break
               fi
+              if [ $((i % 24)) = 0 ]; then
+                echo "--- still wiping after $((i*5))s (status=$st), last lines: ---"
+                docker logs --tail 5 "${NODE}-wipe" 2>&1 | tail -5
+              fi
               sleep 5
             done
+            echo "=== last 40 lines of the wipe container (always shown) ==="
+            docker logs --tail 40 "${NODE}-wipe" 2>&1 | tail -40 || true
             docker rm -f "${NODE}-wipe" >/dev/null 2>&1 || true
 
             if [ "$wiped" != "1" ]; then
