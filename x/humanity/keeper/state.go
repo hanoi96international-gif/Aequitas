@@ -1112,6 +1112,32 @@ included_at BIGINT NOT NULL DEFAULT 0
 	// FIX (AQT-NEW-P2-02): rows with corrupt tx_json loop forever if they stay
 	// in pending_txs — LoadPendingTxs unmarshal fails, ResetStaleIncludedPendingTxs
 	// requeues them, next cycle same error. Preserve them here for diagnosis.
+	// LoadPendingTxsWithLimit fragt bei JEDEM Blockbau
+	//
+	//	SELECT id FROM pending_txs WHERE included_at = 0 ORDER BY id LIMIT n
+	//
+	// ab. Ohne diesen Index gibt es dafuer nur den Primaerschluessel, und der
+	// steht genau falsch herum: erledigte Zeilen (included_at != 0) tragen die
+	// NIEDRIGEN ids, also laeuft Postgres den Index von vorne durch und
+	// ueberspringt jede laengst eingebundene Zeile, bevor es die erste offene
+	// findet. Die Kosten wachsen mit der Tabelle, nicht mit der Antwort.
+	//
+	// GEMESSEN am 06.09.2026 unter Last, aus dem Log beider Boxen:
+	//
+	//	[BLOCK] ⏱ dbpair detail: LoadPendingTxs=2.132547363s StateRoot=6.351081ms
+	//	[BLOCK] ⏱ dbpair detail: LoadPendingTxs=2.068514210s StateRoot=11.321058ms
+	//
+	// Bei BLOCK_TIME=1s heisst das: der Blockbau dauert laenger als der Takt,
+	// in dem er laufen soll. Beide Validatoren kamen dadurch nur auf 0,62 bis
+	// 0,75 Bloecke/s statt der moeglichen 1,0 -- ein Drittel des Durchsatzes
+	// ging allein hier verloren, ohne dass Sperre, Replay oder Tor beteiligt
+	// waren (alle drei wurden gemessen und ausgeschlossen).
+	//
+	// Der partielle Index enthaelt NUR die offenen Zeilen. Er bleibt damit
+	// klein, egal wie gross die Tabelle wird, und der Unterausdruck wird zum
+	// Index-Scan ueber genau die Menge, die er sucht.
+	dbExec(`CREATE INDEX IF NOT EXISTS idx_pending_txs_offen ON pending_txs (id) WHERE included_at = 0`)
+
 	dbExec(`CREATE TABLE IF NOT EXISTS pending_txs_dead_letter (
 id         BIGINT PRIMARY KEY,
 tx_json    TEXT NOT NULL,
