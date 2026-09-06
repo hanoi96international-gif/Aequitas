@@ -1651,8 +1651,38 @@ func (dag *BlockDAG) doSyncOnce(nodeURL string) (ok bool) {
 	if deepScan {
 		pagesBudget = deepScanPageBudgetPerCall
 	}
+	// ZEITBUDGET FUER DEN GANZEN ZYKLUS. pagesBudget allein begrenzt nur die
+	// ANZAHL der Seiten (2000), nicht ihre Dauer. Jede Seite darf 30 s
+	// brauchen (httpSyncClient), also ist ein Aufruf praktisch unbegrenzt --
+	// und der Aufrufer holt erst die naechste Runde, wenn diese zurueckkehrt.
+	//
+	// GEMESSEN am 06.09.2026 auf C1 unter Last: clean_cycles 0, saemtliche
+	// resets_* 0, seitenfehler 0, bei 149 gate_skips und stalled=206s. Alle
+	// Zaehler auf null heisst, dass noteStreakOutcome am Ende NIE erreicht
+	// wurde -- der Zyklus lief noch. Die Hoehe stieg dabei weiter, weil Bloecke
+	// ueber /api/blocks/push ankommen und diesen Pfad gar nicht brauchen. Der
+	// Knoten sah damit von aussen gesund aus und produzierte trotzdem nichts:
+	// ohne abgeschlossenen Zyklus waechst der Streak nicht, und ohne Streak
+	// bleibt das Tor zu.
+	//
+	// Ein abgelaufenes Budget ist KEIN Fehler: es wird wie das Seitenbudget
+	// behandelt (Schleife verlassen, melden was angehaengt wurde), damit ein
+	// Knoten, der ehrlich aufholt, weiter saubere Zyklen sammelt statt sie zu
+	// verlieren. Das Aufholen dauert dadurch nicht laenger -- es zerfaellt nur
+	// in mehrere Zyklen, von denen jeder einzelne gewertet wird.
+	zyklusBudget := 20 * time.Second
+	if deepScan {
+		zyklusBudget = 45 * time.Second
+	}
+	zyklusStart := time.Now()
+	budgetAbgelaufen := false
 	reachedPeerTip := false
 	for page := 0; page < pagesBudget; page++ {
+		if time.Since(zyklusStart) > zyklusBudget {
+			budgetAbgelaufen = true
+			fmt.Printf("[HTTP-SYNC] ⏱ %s: Zeitbudget von %s nach %d Seite(n) aufgebraucht — dieser Zyklus wird gewertet, der naechste macht weiter%c", nodeURL, zyklusBudget, page, 10)
+			break
+		}
 		blocks, usedFallback, err := dag.fetchBlocksSinceWithFallback(nodeURL, minHeight, afterHash, pageSize)
 		if err != nil {
 			fmt.Printf("[HTTP-SYNC] ✗ Could not fetch page (min_height=%d) from %s: %v\n", minHeight, nodeURL, err)
@@ -1961,6 +1991,18 @@ func (dag *BlockDAG) doSyncOnce(nodeURL string) (ok bool) {
 	// counts as unmerged, and holds the streak at 0 on the very first cycle
 	// rather than after a grace window that never expires.
 	unresolvedDeferrals := dag.reconcileDeferrals(nodeURL, deferredHashes)
+	// Ein Zyklus, der am Zeitbudget endete, hat seine Seiten nicht zu Ende
+	// gelesen. Was dabei aufgeschoben blieb, ist deshalb kein Beleg fuer eine
+	// Abspaltung, sondern schlicht noch nicht an der Reihe: der Elternblock
+	// steht mit hoher Wahrscheinlichkeit auf einer Seite, die dieser Aufruf
+	// gar nicht mehr geholt hat. Wuerde das als Ruecksetzung zaehlen, braeche
+	// genau der Abbruch den Streak, den das Budget retten soll -- und ein
+	// Knoten unter Last erreichte das Tor nie.
+	if budgetAbgelaufen && unresolvedDeferrals > 0 {
+		fmt.Printf("[HTTP-SYNC] ⏱ %s: %d aufgeschobene(r) Block/Bloecke beim Budgetende noch offen — nicht als Ruecksetzung gewertet, der naechste Zyklus liest weiter%c",
+			nodeURL, unresolvedDeferrals, 10)
+		unresolvedDeferrals = 0
+	}
 	if unresolvedDeferrals > 0 {
 		fmt.Printf("[HTTP-SYNC] ⚠ %s: %d deferred block(s) have now gone unresolved for longer than %s — treating as NOT caught up (a fork looks exactly like this; see doSyncOnce's own comment)\n",
 			nodeURL, unresolvedDeferrals, proposerBreakerOrphanGrace)
