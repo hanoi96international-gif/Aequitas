@@ -1,0 +1,41 @@
+name: Generatorlog C2 (read-only)
+
+# Der Bericht des Stabilitaetslaufs lief in einen 10-Minuten-Timeout, weil er
+# nach dem Generatorlog noch "docker logs --since 15m" aufruft -- auf einem
+# Container, der unter Last riesige Logs schreibt. Dieser Workflow holt NUR
+# das Generatorlog und den Buildstand, ohne docker logs anzufassen.
+
+on:
+  workflow_dispatch:
+    inputs:
+      zeilen:
+        default: "60"
+
+jobs:
+  log:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: 194.163.188.71
+          username: root
+          key: ${{ secrets.CONTABO_SSH_KEY }}
+          port: 22
+          fingerprint: "SHA256:pLmYlnhVN0FGGCLzCiqDoJqL0dCUOoZ7L6iVTHRFdxM"
+          script_stop: false
+          timeout: 180s
+          command_timeout: 180s
+          script: |
+            echo "===== /tmp/stability.log (letzte ${{ inputs.zeilen }}) ====="
+            tail -${{ inputs.zeilen }} /tmp/stability.log 2>&1 || echo "(kein Log)"
+            echo
+            echo "===== hat der Generator die Mehrziel-Fassung? ====="
+            grep -c "Last verteilt auf" /root/contabo-loadtest/main.go 2>/dev/null || echo "0 (alte Fassung!)"
+            ls -la /root/contabo-loadtest/loadtest 2>/dev/null || echo "(keine Binary)"
+            echo
+            echo "===== erreicht C2 den RPC von C1 ueberhaupt? ====="
+            curl -s -m 8 -o /dev/null -w "  C1 /api/status -> HTTP %{http_code} in %{time_total}s\n" http://173.249.37.118:8080/api/status
+            curl -s -m 8 -X POST http://173.249.37.118:8080/rpc \
+              -H 'Content-Type: application/json' \
+              -d '{"jsonrpc":"2.0","id":1,"method":"eth_blockNumber","params":[]}' \
+              -w "\n  C1 /rpc -> HTTP %{http_code}\n" | tail -3
