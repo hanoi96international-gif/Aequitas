@@ -98,5 +98,25 @@ jobs:
             curl -s --max-time 15 http://127.0.0.1:8080/api/health/combined \
               | grep -oE '"deckel":[0-9]+' || echo "(nicht erreichbar)"
             curl -s --max-time 15 http://127.0.0.1:8080/api/status | grep -o '"height":[0-9]*' || echo "(unerreichbar)"
+
+            # WARTEN, BIS DIESE BOX WIEDER PRODUZIERT, bevor die naechste
+            # drankommt. max-parallel:1 allein genuegt nicht: es wartet nur
+            # auf das Ende des Schritts, nicht darauf, dass der Knoten das
+            # Sync-Tor wieder passiert hat. Am 06.09.2026 stand die Kette
+            # dadurch zweimal ueber zwei Minuten -- die erste Box war noch
+            # nicht zurueck, als die zweite gestoppt wurde, und damit gab es
+            # keinen Produzenten mehr. Ein Validator darf erst angefasst
+            # werden, wenn der andere traegt.
+            echo "=== warte, bis diese Box wieder produziert (max 5 min) ==="
+            for i in $(seq 1 60); do
+              ST=$(curl -s --max-time 8 http://127.0.0.1:8080/api/health/combined 2>/dev/null | grep -oE '"stalled_seconds":[0-9]+' | head -1 | cut -d: -f2)
+              CC=$(curl -s --max-time 8 http://127.0.0.1:8080/api/health/combined 2>/dev/null | grep -oE '"clean_cycles":[0-9]+' | head -1 | cut -d: -f2)
+              if [ -n "$ST" ] && [ "$ST" -le 15 ] 2>/dev/null; then
+                echo "  produziert wieder (stalled=${ST}s, clean_cycles=${CC}) nach $((i*5))s"
+                break
+              fi
+              [ $((i % 6)) -eq 0 ] && echo "  ... noch nicht (stalled=${ST:-?}s, clean_cycles=${CC:-?}) nach $((i*5))s"
+              sleep 5
+            done
         env:
           CAP: ${{ inputs.cap }}
