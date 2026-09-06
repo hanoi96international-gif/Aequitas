@@ -726,7 +726,7 @@ func pollStatus(c *rpcClient, statusURL string, stopCh <-chan struct{}, abort ch
 // ---- main ---------------------------------------------------------------
 
 func main() {
-	rpcURL := flag.String("rpc", "http://localhost:8080/rpc", "EVM RPC endpoint")
+	rpcURL := flag.String("rpc", "http://localhost:8080/rpc", "EVM RPC endpoint(s), comma-separated. Mit mehreren Zielen verteilen sich die Paare rundlaufend darauf -- ohne das produziert der NICHT beschickte Validator nur leere Bloecke (gemessen 06.09.2026: C1 21 leere Bloecke, C2 19 volle, halbe Kettenkapazitaet verschenkt).")
 	statusURL := flag.String("status", "http://localhost:8080/api/status", "status endpoint")
 	csvPath := flag.String("accounts", "accounts.csv", "account CSV path")
 	phase := flag.String("phase", "fund,warmup,run", "comma-separated phases to run")
@@ -896,6 +896,36 @@ func main() {
 			IdleConnTimeout:     90 * time.Second,
 		},
 	}}
+	// Ein Client je Ziel. Paar i spricht clients[i%len(clients)] an, damit die
+	// Last sich gleichmaessig auf die Validatoren verteilt statt einen leer
+	// laufen zu lassen. client (oben) bleibt der Vorlauf-/Warmup-Client.
+	clients := []*rpcClient{client}
+	if extra := strings.Split(*rpcURL, ","); len(extra) > 1 {
+		clients = clients[:0]
+		for _, u := range extra {
+			u = strings.TrimSpace(u)
+			if u == "" {
+				continue
+			}
+			clients = append(clients, &rpcClient{url: u, hc: &http.Client{
+				Timeout: *httpTimeout,
+				Transport: &http.Transport{
+					MaxIdleConns:        1024,
+					MaxIdleConnsPerHost: 1024,
+					MaxConnsPerHost:     0,
+					IdleConnTimeout:     90 * time.Second,
+				},
+			}})
+		}
+		if len(clients) == 0 {
+			clients = []*rpcClient{client}
+		}
+		fmt.Printf("=== Last verteilt auf %d Ziele ===\n", len(clients))
+		for _, c := range clients {
+			fmt.Printf("      %s\n", c.url)
+		}
+	}
+
 	fundWei, ok := new(big.Int).SetString(*fundAmount, 10)
 	if !ok {
 		panic("bad fund-amount-wei")
@@ -1059,6 +1089,9 @@ func main() {
 					return
 				}
 				from, to := senders[pairIdx], recipients[pairIdx]
+				// Das Ziel dieses Paares -- rundlaufend, damit beide Validatoren
+				// Transaktionen im eigenen Mempool haben und volle Bloecke bauen.
+				client := clients[pairIdx%len(clients)]
 				// Built once per pair, not per batch: every transfer in this
 				// pair's batches goes to the same recipient, and reallocating
 				// a batchSize slice inside the hot loop would add allocation
@@ -1244,6 +1277,12 @@ func main() {
 		fmt.Printf("elapsed: %s  succeeded: %d  failed: %d\n", elapsed, succeeded, failed)
 		fmt.Printf("TPS (succeeded/elapsed): %.1f\n", float64(succeeded)/elapsed.Seconds())
 		printErrTally(errTally)
+		// Die Zahl darueber ist die ANNAHMERATE: was der Knoten quittiert hat.
+		// Sie ist nicht der Durchsatz der Kette. Am 06.09.2026 quittierte C2
+		// 5.991/s, waehrend die Bloecke nur 974/s trugen -- der Rest stand in
+		// der Warteschlange. Ohne die folgende Zahl optimiert man diese Luecke
+		// statt der Kette.
+		kettenDurchsatz(*statusURL, start, time.Now())
 	}
 }
 
@@ -1261,4 +1300,108 @@ func ringNachbarn(n, i int) (nachfolger, vorgaenger int) {
 		return 0, 0
 	}
 	return (i + 1) % n, (i - 1 + n) % n
+}
+
+// kettenDurchsatz liest die im Lastfenster erzeugten Bloecke und meldet, wie
+// viele Transaktionen tatsaechlich in die Kette gelangt sind -- aufgeschluesselt
+// nach Produzent, weil ein Validator ohne eigene Last nur leere Bloecke baut
+// und damit die halbe Kapazitaet verschenkt (gemessen 06.09.2026: 21 leere
+// Bloecke von C1 gegen 19 volle von C2).
+func kettenDurchsatz(statusURL string, von, bis time.Time) {
+	basis := strings.TrimSuffix(statusURL, "/api/status")
+	hc := &http.Client{Timeout: 15 * time.Second}
+	resp, err := hc.Get(statusURL)
+	if err != nil {
+		fmt.Printf("=== Kettendurchsatz: Status nicht lesbar: %v ===\n", err)
+		return
+	}
+	var st struct {
+		Height int64 `json:"height"`
+	}
+	derr := json.NewDecoder(resp.Body).Decode(&st)
+	resp.Body.Close()
+	if derr != nil || st.Height == 0 {
+		fmt.Printf("=== Kettendurchsatz: Hoehe nicht lesbar ===\n")
+		return
+	}
+	vonMs, bisMs := von.UnixMilli(), bis.UnixMilli()
+	type zaehler struct{ bloecke, txs int }
+	je := map[string]*zaehler{}
+	var txGesamt, bloecke, leere int
+	var fruehest, spaetest int64
+	// Rueckwaerts bis vor das Lastfenster. Der Deckel haelt einen langen Lauf
+	// davon ab, hier minutenlang Bloecke nachzuladen.
+	for i := int64(0); i < 4000; i++ {
+		h := st.Height - i
+		if h < 1 {
+			break
+		}
+		r, e := hc.Get(fmt.Sprintf("%s/api/block?height=%d", basis, h))
+		if e != nil {
+			break
+		}
+		var blk struct {
+			Proposer     string            `json:"proposer"`
+			ProducedAtMs int64             `json:"produced_at_ms"`
+			Transactions []json.RawMessage `json:"transactions"`
+		}
+		be := json.NewDecoder(r.Body).Decode(&blk)
+		r.Body.Close()
+		if be != nil {
+			continue
+		}
+		if blk.ProducedAtMs != 0 {
+			if blk.ProducedAtMs < vonMs {
+				break
+			}
+			if blk.ProducedAtMs > bisMs {
+				continue
+			}
+			if fruehest == 0 || blk.ProducedAtMs < fruehest {
+				fruehest = blk.ProducedAtMs
+			}
+			if blk.ProducedAtMs > spaetest {
+				spaetest = blk.ProducedAtMs
+			}
+		}
+		p := blk.Proposer
+		if p == "" {
+			p = "(unbekannt)"
+		}
+		if je[p] == nil {
+			je[p] = &zaehler{}
+		}
+		je[p].bloecke++
+		je[p].txs += len(blk.Transactions)
+		bloecke++
+		txGesamt += len(blk.Transactions)
+		if len(blk.Transactions) == 0 {
+			leere++
+		}
+	}
+	spanne := float64(spaetest-fruehest) / 1000.0
+	if spanne <= 0 {
+		spanne = bis.Sub(von).Seconds()
+	}
+	nenner := float64(bloecke)
+	if nenner < 1 {
+		nenner = 1
+	}
+	fmt.Printf("=== KETTENDURCHSATZ (was wirklich in Bloecken landete) ===\n")
+	fmt.Printf("  %d Bloecke ueber %.1f s, davon %d leer (%.0f%%)\n",
+		bloecke, spanne, leere, 100*float64(leere)/nenner)
+	for p, z := range je {
+		kurz := p
+		if len(kurz) > 12 {
+			kurz = kurz[:12]
+		}
+		bn := float64(z.bloecke)
+		if bn < 1 {
+			bn = 1
+		}
+		fmt.Printf("     %s  %3d Bloecke (%.2f/s)  %8d tx  Mittel %5.0f tx/Block\n",
+			kurz, z.bloecke, float64(z.bloecke)/spanne, z.txs, float64(z.txs)/bn)
+	}
+	fmt.Printf("  KETTEN-TPS: %.0f  (die Annahmerate oben zaehlt Quittungen, nicht Bloecke)\n",
+		float64(txGesamt)/spanne)
 }
