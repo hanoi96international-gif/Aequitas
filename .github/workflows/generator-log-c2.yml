@@ -26,16 +26,27 @@ jobs:
           timeout: 180s
           command_timeout: 180s
           script: |
-            echo "===== /tmp/stability.log (letzte ${{ inputs.zeilen }}) ====="
-            tail -${{ inputs.zeilen }} /tmp/stability.log 2>&1 || echo "(kein Log)"
+            # Jeder Befehl mit hartem Zeitlimit: am 06.09. hing ein blosses
+            # "tail" 180 s und riss die gesamte Diagnose mit, obwohl die Box
+            # im Leerlauf war und 24 GB frei hatte. Ein Aufruf darf die
+            # anderen nicht mehr verschlucken.
+            echo "===== Groesse des Generatorlogs ====="
+            timeout 15 ls -la /tmp/stability.log 2>&1 || echo "(ls lief in sein Zeitlimit oder die Datei fehlt)"
+            timeout 15 stat -c '%s Bytes, zuletzt geaendert %y' /tmp/stability.log 2>&1 || echo "(stat fehlgeschlagen)"
+            echo
+            echo "===== laeuft noch ein Generator? ====="
+            timeout 15 docker ps --format '{{.Names}} {{.Image}} {{.Status}}' 2>&1 | head -8 || echo "(docker ps haengt)"
+            echo
+            echo "===== erste 40 Zeilen (head statt tail -- head muss nicht ans Dateiende springen) ====="
+            timeout 30 head -40 /tmp/stability.log 2>&1 || echo "(head lief in sein Zeitlimit)"
+            echo
+            echo "===== die Zusammenfassungszeilen ====="
+            timeout 45 grep -aE 'PHASE|elapsed|TPS|KETTEN|Bloecke ueber|Last verteilt|Mittel' /tmp/stability.log 2>&1 | head -25 || echo "(grep lief in sein Zeitlimit)"
             echo
             echo "===== hat der Generator die Mehrziel-Fassung? ====="
-            grep -c "Last verteilt auf" /root/contabo-loadtest/main.go 2>/dev/null || echo "0 (alte Fassung!)"
-            ls -la /root/contabo-loadtest/loadtest 2>/dev/null || echo "(keine Binary)"
+            timeout 15 grep -c "Last verteilt auf" /root/contabo-loadtest/main.go 2>&1 || echo "0 = alte Fassung"
+            timeout 15 ls -la /root/contabo-loadtest/loadtest 2>&1 || echo "(keine Binary)"
             echo
-            echo "===== erreicht C2 den RPC von C1 ueberhaupt? ====="
-            curl -s -m 8 -o /dev/null -w "  C1 /api/status -> HTTP %{http_code} in %{time_total}s\n" http://173.249.37.118:8080/api/status
-            curl -s -m 8 -X POST http://173.249.37.118:8080/rpc \
-              -H 'Content-Type: application/json' \
-              -d '{"jsonrpc":"2.0","id":1,"method":"eth_blockNumber","params":[]}' \
-              -w "\n  C1 /rpc -> HTTP %{http_code}\n" | tail -3
+            echo "===== erreicht C2 den RPC von C1? ====="
+            timeout 20 curl -s -m 8 -o /dev/null -w "  C1 /api/status -> HTTP %{http_code} in %{time_total}s
+" http://173.249.37.118:8080/api/status || echo "  (C1 nicht erreichbar von C2)"
