@@ -25,7 +25,7 @@ jobs:
           username: root
           key: ${{ secrets.CONTABO_SSH_KEY }}
           port: 22
-          fingerprint: "SHA256:pLmYlnhVN0FGGCLzCiqDoJqL0dCUOoZ7L6iVTHRFdxM"
+          fingerprint: "SHA256:VIwj7Faxiga2n45HVHZEQFPxcbRKHgSgHoxAFsf2wto"
           script_stop: false
           timeout: 600s
           command_timeout: 600s
