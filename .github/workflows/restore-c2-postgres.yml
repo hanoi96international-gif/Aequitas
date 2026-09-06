@@ -1,0 +1,119 @@
+name: Restore Contabo2's chain Postgres container
+
+# WARUM ES DIESEN WORKFLOW GIBT.
+#
+# Am 06.09.2026 hinterliess ein abgebrochener Resync Contabo2 ohne seinen
+# Ketten-Postgres: der Wipe-Container hatte die Datenbank geleert, der
+# Workflow erkannte das nicht ("WIPE DID NOT COMPLETE") und stellte nur den
+# NODE wieder her -- nicht die Datenbank. Danach lief C2 mit Hoehe 0 und ohne
+# jede Speicherung:
+#
+#   docker ps -a  ->  aequitas-node, proof-server, aequitas-matching,
+#                     aequitas-coordinator, proof-caddy, proof-postgres
+#   (proof-postgres gehoert dem Proof-Server, NICHT der Kette)
+#
+# Die Daten selbst sind nicht verloren: sie liegen im Docker-Volume, das der
+# Container nur eingehaengt hatte. Es fehlt allein der Container.
+#
+# WAS DIESER WORKFLOW TUT. Ohne confirm zeigt er nur, was da ist -- Volumes,
+# Netzwerke, vorhandene Container. Erst mit confirm=RESTORE-PG startet er
+# einen postgres:16-Container namens aequitas-postgres, haengt das
+# angegebene Volume ein und haengt ihn ans Ketten-Netzwerk.
+#
+# ER LOESCHT NICHTS und ueberschreibt nichts: laeuft bereits ein Container
+# dieses Namens, bricht er ab. Das Volume wird eingehaengt, nie angelegt --
+# ein Tippfehler im Volumennamen wuerde sonst still eine leere Datenbank
+# erzeugen, die aussieht, als waeren die Daten weg.
+on:
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: 'Type RESTORE-PG to actually start the container (empty = diagnosis only)'
+        required: false
+        default: ""
+      volume:
+        description: "Volume name to mount at /var/lib/postgresql/data (leave empty to only list candidates)"
+        required: false
+        default: ""
+
+jobs:
+  restore:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Restore Contabo2 chain Postgres
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: 194.163.188.71
+          username: root
+          key: ${{ secrets.CONTABO2_SSH_KEY }}
+          port: 22
+          script_stop: false
+          timeout: 600s
+          command_timeout: 600s
+          envs: CONFIRM,VOLUME
+          script: |
+            set +e
+            echo "===== VOLUMES (size where docker knows it) ====="
+            docker volume ls
+            echo
+            echo "===== volume details ====="
+            for v in $(docker volume ls -q); do
+              mp=$(docker volume inspect "$v" --format '{{.Mountpoint}}' 2>/dev/null)
+              sz=$(du -sh "$mp" 2>/dev/null | cut -f1)
+              echo "$v  ->  $mp  ($sz)"
+            done
+            echo
+            echo "===== NETWORKS ====="
+            docker network ls
+            echo
+            echo "===== CONTAINERS (all) ====="
+            docker ps -a --format '{{.Names}}\t{{.Status}}\t{{.Image}}'
+            echo
+            echo "===== what the node expects ====="
+            docker inspect aequitas-node --format '{{range .Config.Env}}{{println .}}{{end}}' 2>/dev/null \
+              | grep -E '^DATABASE_URL=' | sed 's|//[^:]*:[^@]*@|//USER:PASS@|'
+            NET="$(docker inspect aequitas-node --format '{{range $k, $v := .NetworkSettings.Networks}}{{$k}} {{end}}' 2>/dev/null | awk '{print $1}')"
+            echo "node network: ${NET:-<none>}"
+
+            if [ "$CONFIRM" != "RESTORE-PG" ]; then
+              echo
+              echo "confirm != RESTORE-PG -- diagnosis only, nothing started."
+              exit 0
+            fi
+            if [ -z "$VOLUME" ]; then
+              echo "confirm given but no volume named -- refusing to guess."; exit 1
+            fi
+            if ! docker volume inspect "$VOLUME" >/dev/null 2>&1; then
+              echo "volume '$VOLUME' does not exist -- refusing (mounting a missing volume would create an EMPTY database)"; exit 1
+            fi
+            if docker ps -a --format '{{.Names}}' | grep -qx 'aequitas-postgres'; then
+              echo "a container named aequitas-postgres already exists -- refusing to touch it"; exit 1
+            fi
+
+            PW="$(docker inspect aequitas-node --format '{{range .Config.Env}}{{println .}}{{end}}' \
+                  | grep '^DATABASE_URL=' | sed -E 's|.*://[^:]+:([^@]+)@.*|\1|')"
+            if [ -z "$PW" ]; then echo "could not read the password out of DATABASE_URL -- refusing"; exit 1; fi
+
+            echo "=== starting aequitas-postgres on network ${NET:-aequitas-net} with volume $VOLUME ==="
+            docker run -d --name aequitas-postgres \
+              --network "${NET:-aequitas-net}" \
+              --restart unless-stopped \
+              -e POSTGRES_PASSWORD="$PW" \
+              -e POSTGRES_DB=aequitas \
+              -v "$VOLUME":/var/lib/postgresql/data \
+              postgres:16
+            sleep 20
+            echo "=== is it up? ==="
+            docker ps --format '{{.Names}}\t{{.Status}}' | grep aequitas-postgres || echo "(not running)"
+            docker logs --tail 15 aequitas-postgres 2>&1 | tail -15
+            echo "=== does the chain schema exist? ==="
+            docker exec aequitas-postgres psql -U postgres -d aequitas -tAc \
+              "select count(*) from information_schema.tables where table_schema='public'" 2>&1 | tail -3
+            docker exec aequitas-postgres psql -U postgres -d aequitas -tAc \
+              "select coalesce(max(height),-1) from chain_blocks" 2>&1 | tail -3
+            echo "=== restarting the node so it reconnects ==="
+            docker restart aequitas-node >/dev/null && sleep 25
+            curl -s --max-time 15 http://127.0.0.1:8080/api/status | grep -o '"height":[0-9]*' || echo "(node unreachable)"
+        env:
+          CONFIRM: ${{ inputs.confirm }}
+          VOLUME: ${{ inputs.volume }}
