@@ -39,6 +39,16 @@ jobs:
             echo "(keine Zeile oben = die Produktion hat nie ausgesetzt)"
             echo "===== die letzten 12 Aussetzer im Wortlaut ====="
             grep -E '\[BLOCK\] (⏳|⏸|⚠)' /tmp/nl.txt | tail -12 | cut -c1-230
+            echo "===== wie lange dauert die Blockproduktion selbst? ====="
+            grep -aoE 'dbpair detail: LoadPendingTxs=[^ ]+ StateRoot=[^ ]+' /tmp/nl.txt | tail -8
+            echo "(Zeilen oben = ProduceBlock brauchte laenger als 1,2 s fuer seine zwei DB-Abfragen)"
+            grep -ac 'dbpair detail' /tmp/nl.txt
+            echo "===== Blockproduktion: Groesse und Takt ====="
+            grep -aoE '\[BLOCK\] [^ ]* (Produced|produced)[^0-9]*[0-9]+[^0-9]*[0-9]*' /tmp/nl.txt | tail -6
+            echo "===== langsame Ticks / Warnungen ====="
+            grep -aoE '\[BLOCK\][^
+]{0,120}(slow|langsam|took|dauerte|behind|zurueck)[^
+]{0,60}' /tmp/nl.txt | tail -6
             echo "===== Fehler/Panik ====="
             grep -ciE 'panic|fatal|out of memory|deadlock' /tmp/nl.txt
             grep -iE 'panic|fatal|out of memory|deadlock' /tmp/nl.txt | tail -5 | cut -c1-200
@@ -65,6 +75,16 @@ jobs:
             echo "(keine Zeile oben = die Produktion hat nie ausgesetzt)"
             echo "===== die letzten 12 Aussetzer im Wortlaut ====="
             grep -E '\[BLOCK\] (⏳|⏸|⚠)' /tmp/nl.txt | tail -12 | cut -c1-230
+            echo "===== wie lange dauert die Blockproduktion selbst? ====="
+            grep -aoE 'dbpair detail: LoadPendingTxs=[^ ]+ StateRoot=[^ ]+' /tmp/nl.txt | tail -8
+            echo "(Zeilen oben = ProduceBlock brauchte laenger als 1,2 s fuer seine zwei DB-Abfragen)"
+            grep -ac 'dbpair detail' /tmp/nl.txt
+            echo "===== Blockproduktion: Groesse und Takt ====="
+            grep -aoE '\[BLOCK\] [^ ]* (Produced|produced)[^0-9]*[0-9]+[^0-9]*[0-9]*' /tmp/nl.txt | tail -6
+            echo "===== langsame Ticks / Warnungen ====="
+            grep -aoE '\[BLOCK\][^
+]{0,120}(slow|langsam|took|dauerte|behind|zurueck)[^
+]{0,60}' /tmp/nl.txt | tail -6
             echo "===== Fehler/Panik ====="
             grep -ciE 'panic|fatal|out of memory|deadlock' /tmp/nl.txt
             grep -iE 'panic|fatal|out of memory|deadlock' /tmp/nl.txt | tail -5 | cut -c1-200
