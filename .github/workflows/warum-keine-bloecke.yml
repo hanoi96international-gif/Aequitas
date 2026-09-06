@@ -43,6 +43,11 @@ jobs:
             grep -a "dbpair detail" /tmp/nl.txt | tail -8 | cut -c1-200
             echo "  Treffer insgesamt (ProduceBlock ueber 1,2 s fuer seine zwei DB-Abfragen):"
             grep -ac "dbpair detail" /tmp/nl.txt
+            echo "===== welche Seeds/Peers kennt dieser Knoten? (Startzeilen) ====="
+            docker logs aequitas-node 2>&1 | grep -a "\[PEERS\]" | head -14 | cut -c1-180
+            echo "  -- das Tor verlangt 3 saubere Zyklen mit JEDEM dieser Seeds --"
+            echo "===== relevante Umgebung ====="
+            docker inspect aequitas-node --format "{{range .Config.Env}}{{println .}}{{end}}" 2>/dev/null | grep -aE "PRIMARY_NODE|PEER_NODES|SELF_URL|SEED" | cut -c1-180
             echo "===== warum wurden Bloecke NICHT gemergt? (bricht den Streak) ====="
             grep -aoiE "rejected[^0-9]{0,90}|unauthorized[^0-9]{0,60}|bad signature|finality[^0-9]{0,60}|far.ahead[^0-9]{0,60}|equivocat[^0-9]{0,60}|invalid[^0-9]{0,60}" /tmp/nl.txt | sort | uniq -c | sort -rn | head -12
             echo "  (leer = kein Block wurde aus diesen Gruenden abgelehnt)"
