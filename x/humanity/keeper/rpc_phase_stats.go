@@ -111,7 +111,8 @@ func RPCPhaseStats() map[string]interface{} {
 
 	metaMs := msPer(rpcMetaNanos.Load(), rpcMetaCount.Load())
 	quittungMs := msPer(rpcQuittungNanos.Load(), rpcQuittungCount.Load())
-	unaccounted := sendMs - nonceMs - transferMs - metaMs - quittungMs
+	spiegelMs := msPer(rpcSpiegelNanos.Load(), rpcSpiegelCount.Load())
+	unaccounted := sendMs - nonceMs - transferMs - metaMs - quittungMs - spiegelMs
 	if unaccounted < 0 {
 		// Not all sends are transfers, so the averages are over different
 		// populations and a small negative is expected rather than a bug.
@@ -128,6 +129,7 @@ func RPCPhaseStats() map[string]interface{} {
 		"send_tx_ms":             sendMs,
 		"meta_shard_ms":          msPer(rpcMetaNanos.Load(), rpcMetaCount.Load()),
 		"quittung_ms":            msPer(rpcQuittungNanos.Load(), rpcQuittungCount.Load()),
+		"spiegel_ms":             msPer(rpcSpiegelNanos.Load(), rpcSpiegelCount.Load()),
 		"nonce_ms":               nonceMs,
 		"transfer_ms":            transferMs,
 		"unaccounted_in_send_ms": unaccounted,
@@ -161,6 +163,8 @@ var (
 	rpcMetaCount     atomic.Int64
 	rpcQuittungNanos atomic.Int64
 	rpcQuittungCount atomic.Int64
+	rpcSpiegelNanos  atomic.Int64
+	rpcSpiegelCount  atomic.Int64
 )
 
 func merkeRPCMeta(d time.Duration) {
@@ -171,4 +175,9 @@ func merkeRPCMeta(d time.Duration) {
 func merkeRPCQuittung(d time.Duration) {
 	rpcQuittungNanos.Add(int64(d))
 	rpcQuittungCount.Add(1)
+}
+
+func merkeRPCSpiegel(d time.Duration) {
+	rpcSpiegelNanos.Add(int64(d))
+	rpcSpiegelCount.Add(1)
 }

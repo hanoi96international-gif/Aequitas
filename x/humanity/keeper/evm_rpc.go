@@ -1211,7 +1211,15 @@ func (s *EVMRPCServer) sendRawTransaction(params []json.RawMessage, pre *precomp
 			s.state.SaveTxReceipt(txHash, senderAddr, toAddr, "0x0", "")
 			return nil, &RPCError{Code: -32603, Message: "Transfer failed: " + err.Error()}
 		}
+		// Letzter unvermessener Aufruf dieser Funktion. Er gilt als billig
+		// ("markiert nur den Spiegel, ein Arbeiter leert ihn"), und genau
+		// diese Annahme hat rpc_phase_stats.go von Anfang an ungeprueft
+		// uebernommen. Nach META (0,05 ms) und Quittung (0,29 ms) blieben
+		// 59 ms unerklaert -- liegen sie nicht hier, liegen sie ausserhalb
+		// dieser Funktion, und auch das waere eine Antwort.
+		phSpiegelStart := time.Now()
 		s.state.SyncBalancesToEVM(V7_CONTRACT_ADDR, senderAddr, toAddr)
+		merkeRPCSpiegel(time.Since(phSpiegelStart))
 		// Counted before it is (optionally) printed: the count is what the
 		// throughput report is built from, and it must stay accurate whether
 		// or not the per-transaction line is suppressed.
