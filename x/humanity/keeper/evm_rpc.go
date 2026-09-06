@@ -1145,6 +1145,14 @@ func (s *EVMRPCServer) sendRawTransaction(params []json.RawMessage, pre *precomp
 	// Receipt metadata is keyed by txHash and shared across senders, so it
 	// belongs under mu rather than a per-sender lock. Taken separately and
 	// briefly, after the nonce lock is released, so the two never nest.
+	// Phasenuhr fuer die Metadaten-Shards -- siehe rpc_phase_stats.go:
+	// unaccounted_in_send_ms stand am 06.09.2026 bei 55,55 ms, also 30 % der
+	// Zeit in dieser Funktion, und keiner der benannten Posten erklaerte sie
+	// (Nonce 0,016 ms, Dekodieren 0,8 ms je Ueberweisung, Signaturpruefung
+	// vorberechnet). Diese Sperrabschnitte und die Quittung sind die einzigen
+	// Kandidaten, die unter 1.600 gleichzeitigen Goroutinen so teuer werden
+	// koennen, ohne dass sich am Code etwas aendert.
+	phMetaStart := time.Now()
 	sh := s.txMetaShardFor(txHash)
 	sh.mu.Lock()
 	sh.senders[txHash] = senderAddr
@@ -1163,6 +1171,7 @@ func (s *EVMRPCServer) sendRawTransaction(params []json.RawMessage, pre *precomp
 		sh.inputs[txHash] = "0x" + hex.EncodeToString(d)
 	}
 	sh.mu.Unlock()
+	merkeRPCMeta(time.Since(phMetaStart))
 
 	// ── SIMPLE AEQ TRANSFER (native value transfer, no calldata) ─────────────
 	if tx.To() != nil && len(tx.Data()) == 0 && tx.Value().Sign() > 0 {
@@ -1180,7 +1189,9 @@ func (s *EVMRPCServer) sendRawTransaction(params []json.RawMessage, pre *precomp
 		sh.status[txHash] = true
 		sh.note(txHash)
 		sh.mu.Unlock()
+		phQuittungStart := time.Now()
 		s.state.SaveTxReceipt(txHash, senderAddr, toAddr, "0x1", "")
+		merkeRPCQuittung(time.Since(phQuittungStart))
 
 		// FIX (atomic outbox): TransferAtomic commits the state mutation and
 		// the pending_tx outbox insert as a single DB transaction — either

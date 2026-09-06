@@ -109,7 +109,9 @@ func RPCPhaseStats() map[string]interface{} {
 	// against. Read from the same counters TransferPathStats reports.
 	transferMs := msPer(transferLatencyNanos.Load(), transferLatencyCount.Load())
 
-	unaccounted := sendMs - nonceMs - transferMs
+	metaMs := msPer(rpcMetaNanos.Load(), rpcMetaCount.Load())
+	quittungMs := msPer(rpcQuittungNanos.Load(), rpcQuittungCount.Load())
+	unaccounted := sendMs - nonceMs - transferMs - metaMs - quittungMs
 	if unaccounted < 0 {
 		// Not all sends are transfers, so the averages are over different
 		// populations and a small negative is expected rather than a bug.
@@ -124,6 +126,8 @@ func RPCPhaseStats() map[string]interface{} {
 		"decode_per_request_ms":  msPer(rpcDecodeNanos.Load(), reqs),
 		"encode_per_request_ms":  msPer(rpcEncodeNanos.Load(), reqs),
 		"send_tx_ms":             sendMs,
+		"meta_shard_ms":          msPer(rpcMetaNanos.Load(), rpcMetaCount.Load()),
+		"quittung_ms":            msPer(rpcQuittungNanos.Load(), rpcQuittungCount.Load()),
 		"nonce_ms":               nonceMs,
 		"transfer_ms":            transferMs,
 		"unaccounted_in_send_ms": unaccounted,
@@ -135,4 +139,36 @@ func msPerItems(items, reqs int64) float64 {
 		return 0
 	}
 	return float64(items) / float64(reqs)
+}
+
+// Die zwei letzten unvermessenen Posten in sendRawTransaction.
+//
+// unaccounted_in_send_ms stand am 06.09.2026 bei 55,55 ms -- 30 % der Zeit
+// in dieser Funktion -- und keiner der benannten Posten erklaerte sie: die
+// Nonce kostet 0,016 ms, das Dekodieren 0,8 ms je Ueberweisung, die
+// Signaturpruefung ist vorberechnet. Uebrig bleiben die Schreibvorgaenge auf
+// den Metadaten-Shards und die Quittung. Beide sind fuer sich billig -- aber
+// beide nehmen eine Sperre, und unter 1.600 gleichzeitigen Goroutinen ist
+// genau das die Groesse, die von "billig" zu "teuer" kippen kann, ohne dass
+// sich am Code etwas aendert.
+//
+// Dieselbe Trennung wie ueberall sonst hier: die Phasen summieren sich zum
+// Ganzen, also ist die Antwort eine Subtraktion. Bleibt unaccounted auch
+// nach diesen beiden gross, liegt die Zeit im HTTP- oder JSON-Mantel und
+// nicht mehr in dieser Funktion.
+var (
+	rpcMetaNanos     atomic.Int64
+	rpcMetaCount     atomic.Int64
+	rpcQuittungNanos atomic.Int64
+	rpcQuittungCount atomic.Int64
+)
+
+func merkeRPCMeta(d time.Duration) {
+	rpcMetaNanos.Add(int64(d))
+	rpcMetaCount.Add(1)
+}
+
+func merkeRPCQuittung(d time.Duration) {
+	rpcQuittungNanos.Add(int64(d))
+	rpcQuittungCount.Add(1)
 }
