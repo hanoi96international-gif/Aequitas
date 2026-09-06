@@ -112,7 +112,9 @@ func RPCPhaseStats() map[string]interface{} {
 	metaMs := msPer(rpcMetaNanos.Load(), rpcMetaCount.Load())
 	quittungMs := msPer(rpcQuittungNanos.Load(), rpcQuittungCount.Load())
 	spiegelMs := msPer(rpcSpiegelNanos.Load(), rpcSpiegelCount.Load())
-	unaccounted := sendMs - nonceMs - transferMs - metaMs - quittungMs - spiegelMs
+	vorlaufMs := msPer(rpcVorlaufNanos.Load(), rpcVorlaufCount.Load())
+	// Der Vorlauf enthaelt die Nonce bereits -- sonst zoege man sie zweimal ab.
+	unaccounted := sendMs - transferMs - metaMs - quittungMs - spiegelMs - vorlaufMs
 	if unaccounted < 0 {
 		// Not all sends are transfers, so the averages are over different
 		// populations and a small negative is expected rather than a bug.
@@ -130,6 +132,7 @@ func RPCPhaseStats() map[string]interface{} {
 		"meta_shard_ms":          msPer(rpcMetaNanos.Load(), rpcMetaCount.Load()),
 		"quittung_ms":            msPer(rpcQuittungNanos.Load(), rpcQuittungCount.Load()),
 		"spiegel_ms":             msPer(rpcSpiegelNanos.Load(), rpcSpiegelCount.Load()),
+		"vorlauf_ms":             msPer(rpcVorlaufNanos.Load(), rpcVorlaufCount.Load()),
 		"nonce_ms":               nonceMs,
 		"transfer_ms":            transferMs,
 		"unaccounted_in_send_ms": unaccounted,
@@ -180,4 +183,28 @@ func merkeRPCQuittung(d time.Duration) {
 func merkeRPCSpiegel(d time.Duration) {
 	rpcSpiegelNanos.Add(int64(d))
 	rpcSpiegelCount.Add(1)
+}
+
+// Der Vorlauf: vom Eintritt in sendRawTransaction bis zu den Metadaten.
+//
+// Nach META (0,05 ms), Quittung (0,29 ms) und Spiegel (0,28 ms) waren die
+// 59 ms unaccounted unveraendert -- alle drei Verdaechtigen INNERHALB der
+// Funktion sind damit ausgeschlossen. Uebrig bleibt genau ein Abschnitt, den
+// noch keine Uhr beruehrt: der Anfang. Dort liegen die Zulassungspruefung,
+// das Auspacken des JSON-Parameters, die Auswertung der vorberechneten
+// Signatur (oder deren Nachholen), der Transaktionshash und die
+// Nonce-Reservierung.
+//
+// Ist der Vorlauf klein, liegt die Zeit ausserhalb dieser Funktion -- im
+// HTTP- oder JSON-Mantel, im Batch-Dispatch oder beim Client. Auch das waere
+// eine Antwort, und danach ist diese Funktion vollstaendig zerlegt: die
+// Phasen summieren sich dann zum Ganzen und unaccounted geht gegen null.
+var (
+	rpcVorlaufNanos atomic.Int64
+	rpcVorlaufCount atomic.Int64
+)
+
+func merkeRPCVorlauf(d time.Duration) {
+	rpcVorlaufNanos.Add(int64(d))
+	rpcVorlaufCount.Add(1)
 }

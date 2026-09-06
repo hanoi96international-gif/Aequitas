@@ -1152,6 +1152,7 @@ func (s *EVMRPCServer) sendRawTransaction(params []json.RawMessage, pre *precomp
 	// vorberechnet). Diese Sperrabschnitte und die Quittung sind die einzigen
 	// Kandidaten, die unter 1.600 gleichzeitigen Goroutinen so teuer werden
 	// koennen, ohne dass sich am Code etwas aendert.
+	merkeRPCVorlauf(time.Since(sendStart))
 	phMetaStart := time.Now()
 	sh := s.txMetaShardFor(txHash)
 	sh.mu.Lock()

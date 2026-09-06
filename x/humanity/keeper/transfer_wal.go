@@ -9,6 +9,8 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+
+	"github.com/lib/pq"
 	"time"
 
 	"github.com/hanoi96international-gif/aequitas-chain/x/humanity/wal"
@@ -972,29 +974,38 @@ func (cs *ChainState) flushWALBatch(batch []walFlushItem) error {
 	// defaults for a brand-new row, correct here because
 	// transferConcurrentWAL's own eligibility check already guarantees this
 	// address is warm with no demurrage/pool interaction pending.
-	// See saveAccountsToDBBatchCtx's FIX comment (state.go) for the
-	// Sprintf+Join -> strings.Builder+writeDollarParam technique applied
-	// here and to the outbox INSERT below.
-	var acctValuesSQL strings.Builder
-	acctValuesSQL.Grow(len(snapshots) * 40) // "($NNN::text,$NNN::double precision,$NNN::bigint)," rounded up
-	acctArgs := make([]interface{}, 0, len(snapshots)*3)
-	i := 0
+	// Drei Array-Parameter statt dreier je Zeile.
+	//
+	// Dieselbe Umstellung, die saveAccountsToDBBatchCtx (state.go) schon
+	// hinter sich hat -- hier fehlte sie. Deren Kommentar nennt den Grund und
+	// die Messung: ein CPU-Profil zeigte lib/pq's conn.prepareTo bei 18 % der
+	// kumulativen Zeit, weil die LAENGE des SQL-Textes mit der Chargengroesse
+	// waechst und Postgres ihn jedes Mal neu parsen muss. Der dortige
+	// Kommentar bezeichnet die VALUES-Liste ausdruecklich als abgeloest --
+	// nur stand sie hier noch.
+	//
+	// Bei den gemessenen 461 Adressen je Flush sind das 1.383 einzelne
+	// Platzhalter gegen drei. Aus O(N) Parse-Aufwand wird O(1).
+	//
+	// Warum das mehr ist als Sparsamkeit: dieser Schreibvorgang laeuft unter
+	// den Kontensperren, und seine Dauer ist gemessen der groesste Posten
+	// darin (p3_acct_exec 35 ms von 40 ms Haltezeit). Die Haltezeit wiederum
+	// bestimmt, wie oft eine ankommende Ueberweisung auf einen belegten Shard
+	// trifft und auf den teuren Rueckfallpfad muss -- rund 10 % sind es
+	// aktuell, und jeder Rueckfall kostet ein Vielfaches des Schnellpfads.
+	acctAddrs := make([]string, 0, len(snapshots))
+	acctBalances := make([]float64, 0, len(snapshots))
+	acctSeqs := make([]int64, 0, len(snapshots))
 	for _, addr := range addrList {
 		snap := snapshots[addr]
-		if i > 0 {
-			acctValuesSQL.WriteByte(',')
-		}
-		n := i * 3
-		acctValuesSQL.WriteByte('(')
-		writeDollarParam(&acctValuesSQL, n+1, "::text,")
-		writeDollarParam(&acctValuesSQL, n+2, "::double precision,")
-		writeDollarParam(&acctValuesSQL, n+3, "::bigint")
-		acctValuesSQL.WriteByte(')')
-		acctArgs = append(acctArgs, addr, snap.balance, snap.walSeq)
-		i++
+		acctAddrs = append(acctAddrs, addr)
+		acctBalances = append(acctBalances, snap.balance)
+		acctSeqs = append(acctSeqs, int64(snap.walSeq))
 	}
+	acctArgs := []interface{}{pq.Array(acctAddrs), pq.Array(acctBalances), pq.Array(acctSeqs)}
 	acctQuery := `INSERT INTO chain_accounts (address, balance, wal_seq, version)
-SELECT address, balance, wal_seq, 1 FROM (VALUES ` + acctValuesSQL.String() + `) AS v(address, balance, wal_seq)
+SELECT address, balance, wal_seq, 1
+FROM unnest($1::text[], $2::double precision[], $3::bigint[]) AS v(address, balance, wal_seq)
 ON CONFLICT (address) DO UPDATE
 SET balance = EXCLUDED.balance, wal_seq = EXCLUDED.wal_seq
 WHERE chain_accounts.wal_seq < EXCLUDED.wal_seq`
