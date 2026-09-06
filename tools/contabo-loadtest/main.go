@@ -49,6 +49,7 @@ import (
 	"net/http"
 	"os"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -726,6 +727,7 @@ func pollStatus(c *rpcClient, statusURL string, stopCh <-chan struct{}, abort ch
 // ---- main ---------------------------------------------------------------
 
 func main() {
+	zielGewichte := flag.String("gewichte", "", "Gewichte je -rpc-Ziel, z.B. 1,2: das zweite Ziel bekommt doppelt so viele Paare. Leer = gleichmaessig.")
 	rpcURL := flag.String("rpc", "http://localhost:8080/rpc", "EVM RPC endpoint(s), comma-separated. Mit mehreren Zielen verteilen sich die Paare rundlaufend darauf -- ohne das produziert der NICHT beschickte Validator nur leere Bloecke (gemessen 06.09.2026: C1 21 leere Bloecke, C2 19 volle, halbe Kettenkapazitaet verschenkt).")
 	statusURL := flag.String("status", "http://localhost:8080/api/status", "status endpoint")
 	csvPath := flag.String("accounts", "accounts.csv", "account CSV path")
@@ -934,6 +936,37 @@ func main() {
 		}
 		if len(clients) == 0 {
 			clients = []*rpcClient{client}
+		}
+		// GEWICHTUNG. Die Ziele sind nicht gleich schnell erreichbar: der
+		// Generator laeuft auf einer der Boxen, deren localhost-Weg kuerzer ist
+		// als der Netzweg zur anderen. Bei gleichmaessiger Verteilung bekommt
+		// die nahe Box daher mehr Last, als sie verblocken kann, waehrend die
+		// ferne Kapazitaet frei laesst. Live gemessen am 06.09.2026:
+		//
+		//	C1 (fern): 537.605 angenommen, 530.300 verblockt -> Rueckstand   7.305
+		//	C2 (nah):  683.917 angenommen, 481.613 verblockt -> Rueckstand 202.304
+		//
+		// C2 stand also mit 202.304 Ueberweisungen im Rueckstand, waehrend C1
+		// praktisch alles verblockte, was bei ihm ankam. Der Durchsatz der
+		// Kette ist aber die SUMME, und die faellt, wenn eine Box staut,
+		// waehrend die andere Luft hat.
+		if gew := strings.TrimSpace(*zielGewichte); gew != "" {
+			teile := strings.Split(gew, ",")
+			gewichtet := []*rpcClient{}
+			for i, c := range clients {
+				n := 1
+				if i < len(teile) {
+					if v, err := strconv.Atoi(strings.TrimSpace(teile[i])); err == nil && v > 0 {
+						n = v
+					}
+				}
+				for k := 0; k < n; k++ {
+					gewichtet = append(gewichtet, c)
+				}
+			}
+			if len(gewichtet) > 0 {
+				clients = gewichtet
+			}
 		}
 		fmt.Printf("=== Last verteilt auf %d Ziele ===\n", len(clients))
 		for _, c := range clients {
