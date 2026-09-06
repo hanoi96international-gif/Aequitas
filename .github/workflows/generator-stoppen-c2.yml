@@ -1,0 +1,47 @@
+name: Haengenden Generator stoppen + Ursache lesen (C2)
+
+# Der Lasttest startet den Generator mit nohup im Hintergrund. Bricht der
+# Workflow ab, laeuft der Container weiter -- am 06.09. 25 Minuten lang in
+# der Warmup-Phase, mit einem auf 124 MB angewachsenen Fehlerlog. Dieser
+# Workflow beendet ihn und liest die Ursache aus der MITTE des Logs
+# (billig), statt tail auf eine 124-MB-Datei zu setzen.
+
+on:
+  workflow_dispatch:
+    inputs:
+      stoppen:
+        description: "true = haengende Generatorcontainer beenden"
+        default: "true"
+
+jobs:
+  stoppen:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: 194.163.188.71
+          username: root
+          key: ${{ secrets.CONTABO2_SSH_KEY }}
+          port: 22
+          fingerprint: "SHA256:VIwj7Faxiga2n45HVHZEQFPxcbRKHgSgHoxAFsf2wto"
+          script_stop: false
+          timeout: 300s
+          command_timeout: 300s
+          script: |
+            echo "===== Zeilen 41-120 des Generatorlogs (die Warmup-Fehler) ====="
+            timeout 60 sed -n '41,120p' /tmp/stability.log 2>&1 | cut -c1-200 || echo "(sed lief in sein Zeitlimit)"
+            echo
+            echo "===== welche Fehlerarten? (erste 200000 Zeilen) ====="
+            timeout 90 head -200000 /tmp/stability.log 2>/dev/null | grep -aoE 'rpc error [^"]{0,80}|error: [^"]{0,80}|Post [^ ]{0,60}' | sort | uniq -c | sort -rn | head -12 || echo "(Auswertung im Zeitlimit)"
+            echo
+            if [ "${{ inputs.stoppen }}" = "true" ]; then
+              echo "===== haengende Generatorcontainer beenden ====="
+              for C in $(timeout 20 docker ps --filter ancestor=golang:1.24-alpine --format '{{.Names}}'); do
+                echo "  stoppe $C"
+                timeout 40 docker stop "$C" >/dev/null 2>&1 && echo "  $C beendet"
+              done
+              echo "(der Chainknoten bleibt unangetastet)"
+            fi
+            echo
+            echo "===== laeuft noch etwas? ====="
+            timeout 20 docker ps --format '{{.Names}} {{.Image}}' | head -8
