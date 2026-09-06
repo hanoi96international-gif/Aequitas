@@ -8,8 +8,10 @@ import (
 	"fmt"
 	"math"
 	"math/big"
+	"runtime"
 	"sort"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -2739,21 +2741,106 @@ func (cs *ChainState) LoadPendingTxsWithLimit(limit int) ([]Transaction, []int64
 	}
 	var loaded []idTx
 	var corrupt []badRow
+
+	// ZWEI SCHRITTE STATT EINEM. Frueher wurde hier je Zeile sofort
+	// json.Unmarshal aufgerufen, waehrend der Cursor der UPDATE...RETURNING
+	// noch offen war. Beides ist teuer und beides skaliert mit der
+	// Blockgroesse: bei einem Deckel von 10.000 sind das 10.000
+	// JSON-Dekodierungen nacheinander auf einem Kern, und solange sie laufen,
+	// haelt die Abfrage ihre Zeilensperren.
+	//
+	// GEMESSEN am 06.09.2026 unter Last, aus dem Log:
+	//
+	//	[BLOCK] ⏱ dbpair detail: LoadPendingTxs=1.467534346s StateRoot=23.104524ms
+	//
+	// Bei BLOCK_TIME=1s ueberschreitet der Blockbau damit seinen eigenen Takt.
+	// Die Box, die die groesseren Bloecke baute, kam dadurch nur auf 0,60
+	// Bloecke/s, die andere mit halb so grossen Bloecken auf 0,90 -- der
+	// Unterschied lag allein in dieser Schleife.
+	//
+	// Jetzt: erst alle Rohzeilen einlesen (billig, nur ein Speicherkopieren),
+	// Cursor schliessen, dann die Dekodierung ueber alle Kerne verteilen. Die
+	// Reihenfolge stellt der sort.Slice weiter unten ohnehin wieder her, sie
+	// haengt also nicht daran, in welcher Reihenfolge die Arbeiter fertig
+	// werden.
+	type rohZeile struct {
+		id  int64
+		raw string
+	}
+	var rohe []rohZeile
 	for rows.Next() {
 		var id int64
 		var raw string
 		if err := rows.Scan(&id, &raw); err != nil {
 			continue
 		}
-		var tx Transaction
-		if err := json.Unmarshal([]byte(raw), &tx); err != nil {
-			corrupt = append(corrupt, badRow{id: id, errMsg: err.Error()})
-			continue
-		}
-		loaded = append(loaded, idTx{id: id, tx: tx})
+		rohe = append(rohe, rohZeile{id: id, raw: raw})
 	}
 	// Close the cursor before any DML so we no longer hold locks on the rows.
 	rows.Close()
+
+	if len(rohe) > 0 {
+		arbeiter := runtime.NumCPU()
+		if arbeiter > len(rohe) {
+			arbeiter = len(rohe)
+		}
+		// Unter diesem Umfang kostet das Verteilen mehr als es spart.
+		if arbeiter < 2 || len(rohe) < 256 {
+			for _, r := range rohe {
+				var tx Transaction
+				if err := json.Unmarshal([]byte(r.raw), &tx); err != nil {
+					corrupt = append(corrupt, badRow{id: r.id, errMsg: err.Error()})
+					continue
+				}
+				loaded = append(loaded, idTx{id: r.id, tx: tx})
+			}
+		} else {
+			ergebnis := make([]idTx, len(rohe))
+			fehler := make([]*badRow, len(rohe))
+			var wg sync.WaitGroup
+			teil := (len(rohe) + arbeiter - 1) / arbeiter
+			for a := 0; a < arbeiter; a++ {
+				von := a * teil
+				bis := von + teil
+				if von >= len(rohe) {
+					break
+				}
+				if bis > len(rohe) {
+					bis = len(rohe)
+				}
+				wg.Add(1)
+				go func(von, bis int) {
+					defer wg.Done()
+					// Ein Panic in einem Arbeiter darf nicht den ganzen
+					// Knoten mitnehmen -- siehe panic_recovery.go.
+					defer func() {
+						if r := recover(); r != nil {
+							fmt.Printf("[PANIC RECOVERED] LoadPendingTxs Dekodierung: %v\n", r)
+						}
+					}()
+					for i := von; i < bis; i++ {
+						var tx Transaction
+						if err := json.Unmarshal([]byte(rohe[i].raw), &tx); err != nil {
+							e := badRow{id: rohe[i].id, errMsg: err.Error()}
+							fehler[i] = &e
+							continue
+						}
+						ergebnis[i] = idTx{id: rohe[i].id, tx: tx}
+					}
+				}(von, bis)
+			}
+			wg.Wait()
+			for i := range rohe {
+				if fehler[i] != nil {
+					corrupt = append(corrupt, *fehler[i])
+					continue
+				}
+				if ergebnis[i].id != 0 {
+					loaded = append(loaded, ergebnis[i])
+				}
+			}
+		}
+	}
 	for _, br := range corrupt {
 		fmt.Printf("[TX] LoadPendingTxs unmarshal error for id=%d — moving to dead-letter queue: %v\n", br.id, br.errMsg)
 		// FIX (Brutal Audit 2026-06-28, P3-06; confirmed still present
