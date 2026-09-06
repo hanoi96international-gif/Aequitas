@@ -48,5 +48,5 @@ jobs:
             timeout 15 ls -la /root/contabo-loadtest/loadtest 2>&1 || echo "(keine Binary)"
             echo
             echo "===== erreicht C2 den RPC von C1? ====="
-            timeout 20 curl -s -m 8 -o /dev/null -w "  C1 /api/status -> HTTP %{http_code} in %{time_total}s
-" http://173.249.37.118:8080/api/status || echo "  (C1 nicht erreichbar von C2)"
+            timeout 20 curl -s -m 8 -o /dev/null -w "  C1 /api/status -> HTTP %{http_code} in %{time_total}s" http://173.249.37.118:8080/api/status || echo "  (C1 nicht erreichbar von C2)"
+            echo
