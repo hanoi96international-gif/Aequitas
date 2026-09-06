@@ -58,6 +58,11 @@ on:
       gewichte:
         description: "Lastverteilung auf die -rpc-Ziele, Reihenfolge C2,C1. Leer = gleichmaessig. 1,2 gibt C1 doppelt so viele Paare -- noetig, weil der Generator auf C2 laeuft und dessen localhost-Weg kuerzer ist: gemessen stand C2 mit 202.304 Ueberweisungen im Rueckstand, waehrend C1 praktisch alles verblockte."
         default: ""
+      beide_generatoren:
+        description: "ja = zusaetzlich einen Generator auf C1 starten (zweite Kontenhaelfte). Der localhost-Weg ist kuerzer als der Netzweg, deshalb fuellt nur die Box mit eigenem Generator ihre Bloecke aus."
+        default: "nein"
+        type: choice
+        options: [nein, ja]
       recovery_minutes:
         description: "How long to keep watching after the load stops"
         required: false
@@ -117,6 +122,69 @@ jobs:
             [ -x ./loadtest ] || { echo "build produced no binary"; exit 1; }
             echo "generator rebuilt: $(stat -c %y ./loadtest)"
 
+      # EIN GENERATOR JE BOX. Der Generator lief bisher nur auf C2 und sprach C1
+      # ueber das Netz an. Der localhost-Weg ist kuerzer, also bekam C2 mehr
+      # Last, als es verblocken konnte, waehrend C1 Kapazitaet frei liess:
+      # gemessen am 07.09.2026 baute C2 6.735 Transaktionen je Block, C1 nur
+      # 3.741 bei fast gleicher Blockrate. Die Gewichtung ueber -gewichte hat das
+      # NICHT geloest (4.688/s statt 8.194) -- mehr Paare auf den langen Weg zu
+      # legen senkt die Gesamtlast, statt sie zu verschieben.
+      - name: Konten und Generator auch auf C1 bereitstellen
+        if: ${{ inputs.beide_generatoren == 'ja' }}
+        env:
+          KEY_C1: ${{ secrets.CONTABO_SSH_KEY }}
+          KEY_C2: ${{ secrets.CONTABO2_SSH_KEY }}
+        run: |
+          set -e
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          printf '%s' "$KEY_C1" > ~/.ssh/c1 && chmod 600 ~/.ssh/c1
+          printf '%s' "$KEY_C2" > ~/.ssh/c2 && chmod 600 ~/.ssh/c2
+          SSHOPT="-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR"
+          scp $SSHOPT -i ~/.ssh/c2 root@194.163.188.71:/root/contabo-loadtest/accounts-funded.csv /tmp/accounts-funded.csv
+          echo "Kontenliste geholt: $(wc -l < /tmp/accounts-funded.csv) Zeilen"
+          ssh $SSHOPT -i ~/.ssh/c1 root@173.249.37.118 'mkdir -p /root/contabo-loadtest'
+          scp $SSHOPT -i ~/.ssh/c1 /tmp/accounts-funded.csv root@173.249.37.118:/root/contabo-loadtest/accounts-funded.csv
+          scp $SSHOPT -i ~/.ssh/c1 tools/contabo-loadtest/main.go tools/contabo-loadtest/gen_accounts.go go.mod go.sum root@173.249.37.118:/root/contabo-loadtest/
+          ssh $SSHOPT -i ~/.ssh/c1 root@173.249.37.118 'cd /root/contabo-loadtest && docker run --rm --network host -v "$(pwd)":/w -w /w -v /root/go-mod-cache:/go/pkg/mod golang:1.24-alpine go build -o loadtest . 2>&1 | tail -10 && ls -la loadtest'
+          rm -f ~/.ssh/c1 ~/.ssh/c2
+
+      - name: Start the load on Contabo1 (returns immediately)
+        if: ${{ inputs.beide_generatoren == 'ja' }}
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: 173.249.37.118
+          username: root
+          key: ${{ secrets.CONTABO_SSH_KEY }}
+          port: 22
+          script_stop: false
+          timeout: 300s
+          command_timeout: 300s
+          envs: DURATION,PAIRS,TOPOLOGY,TRANSFERWEI,MINBAL
+          script: |
+            cd /root/contabo-loadtest || { echo "kein Verzeichnis"; exit 1; }
+            [ -f accounts-funded.csv ] || { echo "Kontenliste fehlt"; exit 1; }
+            [ -x ./loadtest ] || { echo "keine Binary"; exit 1; }
+            rm -f /tmp/stability_c1.log
+            nohup docker run --rm --network host -v "$(pwd)":/w -w /w \
+              -v /root/go-mod-cache:/go/pkg/mod golang:1.24-alpine \
+              ./loadtest -accounts accounts-funded.csv \
+                -rpc http://localhost:8080/rpc \
+                -status http://localhost:8080/api/status \
+                -teil 2/2 \
+                -phase warmup,run -seeds 5 \
+                -topology "$TOPOLOGY" \
+                -transfer-amount-wei "$TRANSFERWEI" \
+                -duration "$DURATION" -ramp 5 -pairs "$PAIRS" \
+                -min-balance-wei "$MINBAL" \
+                > /tmp/stability_c1.log 2>&1 &
+            echo "Generator auf C1 gestartet (zweite Kontenhaelfte)"
+        env:
+          DURATION: ${{ inputs.duration }}
+          PAIRS: ${{ inputs.pairs }}
+          TOPOLOGY: ${{ inputs.topology }}
+          TRANSFERWEI: ${{ inputs.transfer_wei }}
+          MINBAL: ${{ inputs.min_balance_wei }}
+
       - name: Start the load on Contabo2 (returns immediately)
         uses: appleboy/ssh-action@v1.0.3
         with:
@@ -175,7 +243,15 @@ jobs:
             # 06.09.2026 kamen 21 von 40 Bloecken leer von C1, waehrend C2
             # jeden Block am Deckel fuellte. Verteilt man die Paare auf beide,
             # tragen beide Bloecke Transaktionen.
-            if [ "${{ inputs.ziele }}" = "beide" ]; then
+            # Laeuft auf C1 ein eigener Generator, spricht dieser hier nur noch
+            # den eigenen Knoten an und nimmt die ERSTE Kontenhaelfte. Zwei
+            # Prozesse, die unabhaengig Nonces fuer dasselbe Konto vergeben,
+            # ueberholen einander und erzeugen nonce-too-high-Fehler.
+            TEIL=""
+            if [ "${{ inputs.beide_generatoren }}" = "ja" ]; then
+              RPC_ZIELE="http://localhost:8080/rpc"
+              TEIL="1/2"
+            elif [ "${{ inputs.ziele }}" = "beide" ]; then
               RPC_ZIELE="http://localhost:8080/rpc,http://173.249.37.118:8080/rpc"
             else
               RPC_ZIELE="http://localhost:8080/rpc"
@@ -188,6 +264,7 @@ jobs:
               ./loadtest -accounts accounts-funded.csv \
                 -rpc "$RPC_ZIELE" \
                 -gewichte "${{ inputs.gewichte }}" \
+                -teil "$TEIL" \
                 -status http://localhost:8080/api/status \
                 -phase warmup,run -seeds 5 \
                 -topology "$TOPOLOGY" \

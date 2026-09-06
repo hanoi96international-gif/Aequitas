@@ -730,6 +730,7 @@ func main() {
 	zielGewichte := flag.String("gewichte", "", "Gewichte je -rpc-Ziel, z.B. 1,2: das zweite Ziel bekommt doppelt so viele Paare. Leer = gleichmaessig.")
 	rpcURL := flag.String("rpc", "http://localhost:8080/rpc", "EVM RPC endpoint(s), comma-separated. Mit mehreren Zielen verteilen sich die Paare rundlaufend darauf -- ohne das produziert der NICHT beschickte Validator nur leere Bloecke (gemessen 06.09.2026: C1 21 leere Bloecke, C2 19 volle, halbe Kettenkapazitaet verschenkt).")
 	statusURL := flag.String("status", "http://localhost:8080/api/status", "status endpoint")
+	kontenTeil := flag.String("teil", "", "Nur einen Teil der Konten benutzen, Form N/M (z.B. 1/2 = erste Haelfte). Fuer je einen Generator PRO Box: beide duerfen nicht dieselben Absender benutzen, sonst kollidieren ihre Nonces.")
 	csvPath := flag.String("accounts", "accounts.csv", "account CSV path")
 	phase := flag.String("phase", "fund,warmup,run", "comma-separated phases to run")
 	numSeeds := flag.Int("seeds", 5, "number of seed accounts (first N rows)")
@@ -788,6 +789,46 @@ func main() {
 	}
 
 	accs := loadAccounts(*csvPath)
+
+	// EIN GENERATOR JE BOX. Der Lastgenerator lief bisher nur auf einer Box und
+	// sprach die andere ueber das Netz an. Der localhost-Weg ist kuerzer, also
+	// bekam die nahe Box mehr Last, als sie verblocken konnte, waehrend die
+	// ferne Kapazitaet frei liess: gemessen am 07.09.2026 baute C2 6.735
+	// Transaktionen je Block, C1 nur 3.741 -- bei fast gleicher Blockrate.
+	// Haette C1 dieselbe Fuellung, laege die Kette rechnerisch bei ueber
+	// 10.000 statt 8.194 Ueberweisungen je Sekunde.
+	//
+	// Die Gewichtung ueber -gewichte hat das NICHT geloest (gemessen 4.688/s):
+	// mehr Paare auf den langen Weg zu legen senkt die Gesamtlast, statt sie zu
+	// verschieben. Zwei Generatoren, je einer auf einer Box, geben beiden den
+	// kurzen Weg -- und entsprechen dem, was echte Nutzung ohnehin tut.
+	//
+	// Beide duerfen dabei nicht dieselben Absender benutzen: zwei Prozesse, die
+	// unabhaengig Nonces fuer dasselbe Konto vergeben, ueberholen einander und
+	// erzeugen genau die nonce-too-high-Fehler, die einen Lauf wertlos machen.
+	if t := strings.TrimSpace(*kontenTeil); t != "" {
+		stuecke := strings.SplitN(t, "/", 2)
+		if len(stuecke) == 2 {
+			n, err1 := strconv.Atoi(strings.TrimSpace(stuecke[0]))
+			m, err2 := strconv.Atoi(strings.TrimSpace(stuecke[1]))
+			if err1 == nil && err2 == nil && m > 0 && n >= 1 && n <= m {
+				je := len(accs) / m
+				von := (n - 1) * je
+				bis := von + je
+				if n == m {
+					bis = len(accs)
+				}
+				if von < len(accs) && bis <= len(accs) && bis > von {
+					fmt.Printf("=== Kontenteil %d von %d: %d der %d Konten (Index %d bis %d) ===%c", n, m, bis-von, len(accs), von, bis-1, 10)
+					accs = accs[von:bis]
+				} else {
+					fmt.Printf("-teil %q ergibt keinen gueltigen Bereich -- es werden alle Konten benutzt%c", t, 10)
+				}
+			} else {
+				fmt.Printf("-teil %q ist nicht in der Form N/M -- es werden alle Konten benutzt%c", t, 10)
+			}
+		}
+	}
 	if len(accs) <= *numSeeds {
 		panic("not enough accounts for the requested seed count")
 	}
