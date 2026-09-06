@@ -115,7 +115,8 @@ func RPCPhaseStats() map[string]interface{} {
 	vorlaufMs := msPer(rpcVorlaufNanos.Load(), rpcVorlaufCount.Load())
 	// Der Vorlauf enthaelt die Nonce bereits -- sonst zoege man sie zweimal ab.
 	statusMs := msPer(rpcStatusNanos.Load(), rpcStatusCount.Load())
-	unaccounted := sendMs - transferMs - metaMs - quittungMs - spiegelMs - vorlaufMs - statusMs
+	betragMs := msPer(rpcBetragNanos.Load(), rpcBetragCount.Load())
+	unaccounted := sendMs - transferMs - metaMs - quittungMs - spiegelMs - vorlaufMs - statusMs - betragMs
 	if unaccounted < 0 {
 		// Not all sends are transfers, so the averages are over different
 		// populations and a small negative is expected rather than a bug.
@@ -123,18 +124,28 @@ func RPCPhaseStats() map[string]interface{} {
 	}
 
 	return map[string]interface{}{
-		"requests":               reqs,
-		"batch_items":            items,
-		"avg_items_per_request":  msPerItems(items, reqs),
-		"rpc_total_per_item_ms":  msPer(rpcHandlerNanos.Load(), items),
-		"decode_per_request_ms":  msPer(rpcDecodeNanos.Load(), reqs),
-		"encode_per_request_ms":  msPer(rpcEncodeNanos.Load(), reqs),
-		"send_tx_ms":             sendMs,
-		"meta_shard_ms":          msPer(rpcMetaNanos.Load(), rpcMetaCount.Load()),
-		"quittung_ms":            msPer(rpcQuittungNanos.Load(), rpcQuittungCount.Load()),
-		"spiegel_ms":             msPer(rpcSpiegelNanos.Load(), rpcSpiegelCount.Load()),
-		"vorlauf_ms":             msPer(rpcVorlaufNanos.Load(), rpcVorlaufCount.Load()),
-		"status_lock_ms":         msPer(rpcStatusNanos.Load(), rpcStatusCount.Load()),
+		"requests":              reqs,
+		"batch_items":           items,
+		"avg_items_per_request": msPerItems(items, reqs),
+		"rpc_total_per_item_ms": msPer(rpcHandlerNanos.Load(), items),
+		"decode_per_request_ms": msPer(rpcDecodeNanos.Load(), reqs),
+		"encode_per_request_ms": msPer(rpcEncodeNanos.Load(), reqs),
+		"send_tx_ms":            sendMs,
+		"meta_shard_ms":         msPer(rpcMetaNanos.Load(), rpcMetaCount.Load()),
+		"quittung_ms":           msPer(rpcQuittungNanos.Load(), rpcQuittungCount.Load()),
+		"spiegel_ms":            msPer(rpcSpiegelNanos.Load(), rpcSpiegelCount.Load()),
+		"vorlauf_ms":            msPer(rpcVorlaufNanos.Load(), rpcVorlaufCount.Load()),
+		"status_lock_ms":        msPer(rpcStatusNanos.Load(), rpcStatusCount.Load()),
+		"betrag_ms":             msPer(rpcBetragNanos.Load(), rpcBetragCount.Load()),
+		// Die Nenner offenlegen. unaccounted ist eine Subtraktion von
+		// MITTELWERTEN, und die ist nur gueltig, wenn sie ueber dieselbe
+		// Menge laufen. Ohne diese Zahlen laesst sich eine echte Luecke
+		// nicht von einem Normierungsfehler unterscheiden -- am 06.09.2026
+		// kostete genau das eine Runde Suchen an der falschen Stelle.
+		"n_sends":                sends,
+		"n_transfers":            transferLatencyCount.Load(),
+		"n_vorlauf":              rpcVorlaufCount.Load(),
+		"n_status":               rpcStatusCount.Load(),
 		"nonce_ms":               nonceMs,
 		"transfer_ms":            transferMs,
 		"unaccounted_in_send_ms": unaccounted,
@@ -231,4 +242,20 @@ var (
 func merkeRPCStatus(d time.Duration) {
 	rpcStatusNanos.Add(int64(d))
 	rpcStatusCount.Add(1)
+}
+
+// Die Betragsumrechnung: drei big.Float-Operationen je Ueberweisung.
+//
+// Der letzte Block dieser Funktion ohne eigene Uhr. Er sieht harmlos aus --
+// zwei SetInt, eine Quo, ein Float64 -- aber er allokiert vier Mal je
+// Ueberweisung, und bei mehreren tausend je Sekunde ist die Frage nicht die
+// Rechenzeit, sondern der Druck, den das erzeugt.
+var (
+	rpcBetragNanos atomic.Int64
+	rpcBetragCount atomic.Int64
+)
+
+func merkeRPCBetrag(d time.Duration) {
+	rpcBetragNanos.Add(int64(d))
+	rpcBetragCount.Add(1)
 }

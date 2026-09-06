@@ -1176,9 +1176,11 @@ func (s *EVMRPCServer) sendRawTransaction(params []json.RawMessage, pre *precomp
 
 	// ── SIMPLE AEQ TRANSFER (native value transfer, no calldata) ─────────────
 	if tx.To() != nil && len(tx.Data()) == 0 && tx.Value().Sign() > 0 {
+		phBetragStart := time.Now()
 		toAddr := strings.ToLower(tx.To().Hex())
 		decimals := new(big.Float).SetInt(weiPerAEQ)
 		valueFloat, _ := new(big.Float).Quo(new(big.Float).SetInt(tx.Value()), decimals).Float64()
+		merkeRPCBetrag(time.Since(phBetragStart))
 
 		// FIX P0-RACE: Set txStatus=true and persist receipt BEFORE calling
 		// Transfer(). MetaMask polls getTransactionReceipt immediately after
