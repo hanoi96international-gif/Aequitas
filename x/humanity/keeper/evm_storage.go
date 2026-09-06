@@ -2713,13 +2713,57 @@ func (cs *ChainState) LoadPendingTxsWithLimit(limit int) ([]Transaction, []int64
 	if cs.db == nil {
 		return nil, nil
 	}
-	rows, err := cs.db.Query(
-		`UPDATE pending_txs SET included_at = $1
-		 WHERE id IN (SELECT id FROM pending_txs WHERE included_at = 0 ORDER BY id LIMIT $2)
-		 RETURNING id, tx_json`,
-		time.Now().Unix(), limit,
+	// LESEN UND MARKIEREN GETRENNT. Vorher tat das eine einzige Anweisung:
+	//
+	//	UPDATE pending_txs SET included_at = $1
+	//	WHERE id IN (SELECT id FROM pending_txs WHERE included_at = 0 ORDER BY id LIMIT $2)
+	//	RETURNING id, tx_json
+	//
+	// Sie zahlt zweimal fuer dieselbe Menge: einmal den Unterausdruck, der die
+	// Kandidaten sucht, und dann den Abgleich jeder gefundenen id gegen dessen
+	// Ergebnis, bevor geschrieben wird. Bei 7.000 Zeilen je Block ist das
+	// messbar -- am 06.09.2026 unter Last auf C1:
+	//
+	//	[BLOCK] ⏱ dbpair detail: LoadPendingTxs=1.502983422s StateRoot=8.408115ms
+	//	[BLOCK] ⏱ ProduceBlock itself took 2.234996846s
+	//
+	// Bei BLOCK_TIME=1s kam die Box dadurch auf 0,52 Bloecke/s, waehrend die
+	// andere mit kleineren Bloecken 0,88 schaffte und keinen einzigen Treffer
+	// ueber der Meldeschwelle hatte.
+	//
+	// Jetzt liest der SELECT ueber den partiellen Index (idx_pending_txs_offen,
+	// siehe state.go) genau die offenen Zeilen, und der UPDATE trifft sie
+	// direkt ueber ihre Primaerschluessel als Array, ohne den Kandidatensatz
+	// ein zweites Mal zu bestimmen.
+	//
+	// Beides laeuft in EINER Transaktion mit FOR UPDATE SKIP LOCKED, damit die
+	// Zusicherung der alten Anweisung erhalten bleibt: eine Zeile wird genau
+	// einmal beansprucht. Ohne sie koennte ein zweiter Aufruf dieselben Zeilen
+	// lesen und in einen zweiten Block packen -- der Fehler, gegen den
+	// included_at am 28.06.2026 eingefuehrt wurde.
+	dbTx, err := cs.db.Begin()
+	if err != nil {
+		fmt.Printf("[TX] LoadPendingTxs konnte keine Transaktion oeffnen: %v\n", err)
+		return nil, nil
+	}
+	// Sicherheitsnetz: kehrt die Funktion zwischen hier und dem Commit aus
+	// einem unerwarteten Grund zurueck, bliebe die Transaktion sonst offen und
+	// haette eine Verbindung samt Zeilensperren gebunden. Nach einem
+	// erfolgreichen Commit ist dieser Rollback wirkungslos.
+	abgeschlossen := false
+	defer func() {
+		if !abgeschlossen {
+			dbTx.Rollback()
+		}
+	}()
+	rows, err := dbTx.Query(
+		`SELECT id, tx_json FROM pending_txs
+		 WHERE included_at = 0 ORDER BY id LIMIT $1
+		 FOR UPDATE SKIP LOCKED`,
+		limit,
 	)
 	if err != nil {
+		dbTx.Rollback()
 		fmt.Printf("[TX] LoadPendingTxs error: %v\n", err)
 		return nil, nil
 	}
@@ -2841,6 +2885,38 @@ func (cs *ChainState) LoadPendingTxsWithLimit(limit int) ([]Transaction, []int64
 			}
 		}
 	}
+	// JETZT MARKIEREN, in derselben Transaktion, die die Zeilen gesperrt haelt.
+	// Der UPDATE trifft sie ueber ihre Primaerschluessel als Array -- er muss
+	// den Kandidatensatz nicht noch einmal bestimmen, anders als der fruehere
+	// Unterausdruck. Beansprucht werden auch die korrupten Zeilen: sie wandern
+	// gleich darunter in die Dead-Letter-Tabelle und duerfen bis dahin von
+	// keinem zweiten Aufruf erneut gelesen werden.
+	zuMarkieren := make([]int64, 0, len(loaded)+len(corrupt))
+	for _, lt := range loaded {
+		zuMarkieren = append(zuMarkieren, lt.id)
+	}
+	for _, br := range corrupt {
+		zuMarkieren = append(zuMarkieren, br.id)
+	}
+	if len(zuMarkieren) > 0 {
+		if _, err := dbTx.Exec(
+			`UPDATE pending_txs SET included_at = $1 WHERE id = ANY($2)`,
+			time.Now().Unix(), pq.Array(zuMarkieren),
+		); err != nil {
+			dbTx.Rollback()
+			fmt.Printf("[TX] LoadPendingTxs konnte die Zeilen nicht beanspruchen: %v — dieser Block bleibt leer, die Ueberweisungen bleiben in der Warteschlange%c", err, 10)
+			return nil, nil
+		}
+	}
+	if err := dbTx.Commit(); err != nil {
+		fmt.Printf("[TX] LoadPendingTxs konnte nicht festschreiben: %v — dieser Block bleibt leer%c", err, 10)
+		return nil, nil
+	}
+	abgeschlossen = true
+
+	// Ab hier ist die Transaktion zu. Die Dead-Letter-Behandlung unten schreibt
+	// ueber cs.db und darf deshalb erst jetzt laufen: waehrend die Transaktion
+	// oben ihre Zeilensperren hielt, waere sie auf sich selbst gelaufen.
 	for _, br := range corrupt {
 		fmt.Printf("[TX] LoadPendingTxs unmarshal error for id=%d — moving to dead-letter queue: %v\n", br.id, br.errMsg)
 		// FIX (Brutal Audit 2026-06-28, P3-06; confirmed still present
