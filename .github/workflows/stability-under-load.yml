@@ -50,6 +50,11 @@ on:
         description: "Minimum balance a row needs to be usable as a sender. The tool's own default is 1000000000000000 (0.001 AEQ) -- measured 2026-09-03, that admitted only 608 of the 1,538 rows that actually hold AEQ, capping every run at 304 pairs no matter how many accounts were funded. Throughput here is pairs divided by latency, so this is a throughput knob."
         required: false
         default: "100000000000000"
+      ziele:
+        description: "Wohin die Last geht. c2 = nur C2 (bisheriges Verhalten). beide = C2 und C1 rundlaufend -- ohne das produziert C1 nur LEERE Bloecke und die halbe Kettenkapazitaet verfaellt (gemessen 06.09.2026: C1 21 leere, C2 19 volle Bloecke, 974 tx/s statt des Doppelten)."
+        default: "c2"
+        type: choice
+        options: [c2, beide]
       recovery_minutes:
         description: "How long to keep watching after the load stops"
         required: false
@@ -163,11 +168,22 @@ jobs:
             fi
             echo "node is producing; starting the generator."
 
+            # Ein Validator ohne eigene Last baut nur leere Bloecke: am
+            # 06.09.2026 kamen 21 von 40 Bloecken leer von C1, waehrend C2
+            # jeden Block am Deckel fuellte. Verteilt man die Paare auf beide,
+            # tragen beide Bloecke Transaktionen.
+            if [ "${{ inputs.ziele }}" = "beide" ]; then
+              RPC_ZIELE="http://localhost:8080/rpc,http://173.249.37.118:8080/rpc"
+            else
+              RPC_ZIELE="http://localhost:8080/rpc"
+            fi
+            echo "Lastziele: $RPC_ZIELE"
+
             rm -f /tmp/stability.log
             nohup docker run --rm --network host -v "$(pwd)":/w -w /w \
               -v /root/go-mod-cache:/go/pkg/mod golang:1.24-alpine \
               ./loadtest -accounts accounts-funded.csv \
-                -rpc http://localhost:8080/rpc \
+                -rpc "$RPC_ZIELE" \
                 -status http://localhost:8080/api/status \
                 -phase warmup,run -seeds 5 \
                 -topology "$TOPOLOGY" \
