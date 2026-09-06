@@ -193,6 +193,7 @@ func collectDisjointTransferBatch(txs []Transaction, start int) (batch []Transac
 // und StateRoot nichts aendert.
 func (cs *ChainState) applyTransferBatchParallel(ctx context.Context, batch []Transaction, activityAt int64, sammler *kontenSammler) (applied bool, err error) {
 	if len(batch) < parallelReplayMinBatch {
+		merkeBuendelAblehnung(&baZuKlein)
 		return false, nil
 	}
 
@@ -206,6 +207,7 @@ func (cs *ChainState) applyTransferBatchParallel(ctx context.Context, batch []Tr
 		fromAcc, okFrom := cs.accounts.Get(from)
 		toAcc, okTo := cs.accounts.Get(to)
 		if !okFrom || !okTo {
+			merkeBuendelAblehnung(&baKontoFehlt)
 			return false, nil // unknown account — let the serial path report it
 		}
 		items = append(items, replayBatchItem{
@@ -249,10 +251,12 @@ func (cs *ChainState) applyTransferBatchParallel(ctx context.Context, batch []Tr
 	capAmt, hasCap := cs.wealthCapAmountLocked()
 	for _, it := range items {
 		if it.from.Balance.Float() < it.amount {
+			merkeBuendelAblehnung(&baGuthaben)
 			return false, nil
 		}
 		if hasCap && !isTokenomicsPoolAddress(it.toKey) &&
 			it.to.Balance.Add(NewDecimal(it.amount)).Float() > capAmt {
+			merkeBuendelAblehnung(&baWohlstandsCap)
 			return false, nil
 		}
 	}
