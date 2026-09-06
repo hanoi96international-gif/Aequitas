@@ -691,6 +691,7 @@ func (a *APIServer) handleCombinedHealth(w http.ResponseWriter, r *http.Request)
 		"replay_pfad":    ReplayPfadStand(),
 		"replay_phasen":  ReplayPhasenStand(),
 		"replay_sammler": SammlerStand(),
+		"plattenplatz":   PlattenplatzStand(),
 		"batcher_phasen": BatcherPhasenStand(),
 		"batcher_kanal":  BatcherKanalStand(),
 		// Steckt der Knoten an einem Block fest, den er nicht nachspielen kann?

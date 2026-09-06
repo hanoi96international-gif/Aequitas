@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"math"
 	"os"
+	"path/filepath"
 	"runtime"
 	"runtime/debug"
 	"sort"
@@ -646,6 +647,17 @@ func validatePoolAddresses() {
 
 func NewChainState(dataFile string) *ChainState {
 	validatePoolAddresses()
+	// Den Plattenplatz ab dem ersten Moment beobachten -- siehe
+	// plattenplatz.go fuer den Ausfall, der das ausloest. Gemessen wird das
+	// Dateisystem, in dem die Kette schreibt; ohne eigenen Datenpfad das
+	// Arbeitsverzeichnis, in dem WAL und Zustandsdatei ohnehin liegen.
+	pfad := dataFile
+	if pfad == "" {
+		pfad = "."
+	} else if d := filepath.Dir(pfad); d != "" {
+		pfad = d
+	}
+	plattenplatzUeberwachen(pfad)
 	cs := &ChainState{
 		txBatches:  newTxBatchCache(),
 		accounts:   newShardedAccounts(),

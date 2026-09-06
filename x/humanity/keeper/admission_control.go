@@ -122,6 +122,18 @@ func productionStalledFor() time.Duration {
 // admissionRefusalReason returns a non-empty, client-facing reason when this
 // node should not accept new transfers, and "" when it should.
 func admissionRefusalReason() string {
+	// Kein Schreibplatz ist der haertere Grund und kommt zuerst.
+	//
+	// Am 06.09.2026 stand ein Validator zweieinhalb Stunden mit voller Platte:
+	// er lief weiter, antwortete weiter und schrieb nichts mehr -- weder
+	// Bloecke noch WAL noch Datenbank. Arbeit anzunehmen, die man nicht
+	// schreiben kann, ist der schlechteste aller Zustaende; ein retrybarer
+	// Fehler ist strikt besser. Siehe plattenplatz.go.
+	if plattenplatzKritisch() {
+		return fmt.Sprintf(
+			"this validator has only %d MB of disk left and cannot durably record new "+
+				"transactions; retry shortly or send to another validator", plattenFreiMB.Load())
+	}
 	limit := admissionStallLimit()
 	stalled := productionStalledFor()
 	if stalled < time.Duration(limit)*time.Second {
