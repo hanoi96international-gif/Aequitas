@@ -128,6 +128,10 @@ var vorherigerRueckstand atomic.Int64
 func MerkeBlockGroesse(n int) {
 	if n > 0 {
 		letzteBlockGroesse.Store(int64(n))
+		// Dieselbe Stelle traegt den Summenzaehler -- siehe produktion_stats.go
+		// dazu, warum weder die Annahmerate noch das Nachzaehlen der Bloecke
+		// den Durchsatz der Kette richtig wiedergeben.
+		merkeProduktion(n)
 	}
 }
 
