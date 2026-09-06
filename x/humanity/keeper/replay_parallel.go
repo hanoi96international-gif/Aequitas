@@ -142,17 +142,33 @@ func collectDisjointTransferBatch(txs []Transaction, start int) (batch []Transac
 	for i := start; i < len(txs); i++ {
 		tx := txs[i]
 		if tx.Type != "transfer" {
+			if i == start {
+				merkeBuendelAblehnung(&baKeinTransfer)
+			}
 			break
 		}
 		from := strings.ToLower(strings.TrimSpace(tx.Wallet))
 		to := strings.ToLower(strings.TrimSpace(tx.To))
 		if from == "" || to == "" || tx.Amount <= 0 || from == to {
+			if i == start {
+				merkeBuendelAblehnung(&baFelder)
+			}
 			break
 		}
 		if tx.FromDemurrageLost != 0 || tx.ToDemurrageLost != 0 {
+			// Nur zaehlen, wenn es die ERSTE ist: dann bleibt der Lauf leer und
+			// die Ueberweisung geht seriell. Bricht die Demurrage einen bereits
+			// laufenden Buendel ab, ist das kein Verlust -- das Buendel wird
+			// angewendet und die naechste Runde beginnt bei ihr.
+			if i == start {
+				merkeBuendelAblehnung(&baDemurrage)
+			}
 			break
 		}
 		if touched[from] || touched[to] {
+			if i == start {
+				merkeBuendelAblehnung(&baKollision)
+			}
 			break
 		}
 		touched[from] = true

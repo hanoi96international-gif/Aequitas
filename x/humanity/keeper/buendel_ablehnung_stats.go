@@ -36,7 +36,22 @@ import "sync/atomic"
 //
 // Kosten: eine atomare Addition, nur im Ablehnungsfall.
 var (
-	baZuKlein       atomic.Int64
+	baZuKlein atomic.Int64
+	// Die vier Gruende, aus denen collectDisjointTransferBatch einen Lauf gar
+	// nicht erst beginnt. Nur gezaehlt, wenn es die ERSTE Transaktion trifft:
+	// dann bleibt der Lauf leer, applyTransferBatchParallel wird nie gerufen
+	// (der Aufrufer prueft die Laenge vorher), und die Ueberweisung geht
+	// seriell. Bricht eine spaetere ab, ist das kein Verlust -- das Buendel
+	// wird angewendet und die naechste Runde beginnt bei ihr.
+	//
+	// Genau diese Unterscheidung fehlte im ersten Anlauf: die Zaehler sassen
+	// IN applyTransferBatchParallel und blieben deshalb auf null, obwohl 62 %
+	// der Sperrzeit seriell verging. Ein Zaehler an der falschen Stelle misst
+	// zuverlaessig nichts.
+	baKeinTransfer  atomic.Int64
+	baFelder        atomic.Int64
+	baDemurrage     atomic.Int64
+	baKollision     atomic.Int64
 	baKontoFehlt    atomic.Int64
 	baGuthaben      atomic.Int64
 	baWohlstandsCap atomic.Int64
@@ -47,14 +62,22 @@ func merkeBuendelAblehnung(z *atomic.Int64) { z.Add(1) }
 // BuendelAblehnungStand zeigt die Gruende in /api/health/combined.
 func BuendelAblehnungStand() map[string]interface{} {
 	k, f, g, w := baZuKlein.Load(), baKontoFehlt.Load(), baGuthaben.Load(), baWohlstandsCap.Load()
+	nt, fe, de, ko := baKeinTransfer.Load(), baFelder.Load(), baDemurrage.Load(), baKollision.Load()
 	return map[string]interface{}{
-		"zu_klein":       k,
-		"konto_fehlt":    f,
-		"guthaben":       g,
-		"wohlstands_cap": w,
-		"summe":          k + f + g + w,
+		"lauf_kein_transfer": nt,
+		"lauf_felder":        fe,
+		"lauf_demurrage":     de,
+		"lauf_kollision":     ko,
+		"lauf_summe":         nt + fe + de + ko,
+		"zu_klein":           k,
+		"konto_fehlt":        f,
+		"guthaben":           g,
+		"wohlstands_cap":     w,
+		"summe":              k + f + g + w,
 		"bedeutung": "Warum das Nachspielen auf den seriellen Pfad ausweicht -- gemessen 62 % der Sperrzeit im teuersten Block. " +
-			"guthaben ueberwiegt = Artefakt leerlaufender Testkonten, die Kette ist gesund. zu_klein ueberwiegt = Demurrage " +
-			"bricht die Laeufe ab, und sie gehoerte in den Buendelpfad. konto_fehlt ueberwiegt = es fehlt eine Vorwaermung.",
+			"Die lauf_*-Zahlen sagen, warum ein Lauf GAR NICHT beginnt (dann geht die Ueberweisung seriell): " +
+			"lauf_demurrage ueberwiegt = die Demurrage gehoerte in den Buendelpfad. lauf_kollision ueberwiegt = zu wenige " +
+			"Konten im Verhaeltnis zur Blockgroesse, also ein Lasttest-Artefakt. Die uebrigen Zahlen sagen, warum ein " +
+			"begonnener Lauf abgelehnt wird.",
 	}
 }
