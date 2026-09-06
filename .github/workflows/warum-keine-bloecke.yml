@@ -43,6 +43,11 @@ jobs:
             grep -a "dbpair detail" /tmp/nl.txt | tail -8 | cut -c1-200
             echo "  Treffer insgesamt (ProduceBlock ueber 1,2 s fuer seine zwei DB-Abfragen):"
             grep -ac "dbpair detail" /tmp/nl.txt
+            echo "===== warum wurden Bloecke NICHT gemergt? (bricht den Streak) ====="
+            grep -aoiE "rejected[^0-9]{0,90}|unauthorized[^0-9]{0,60}|bad signature|finality[^0-9]{0,60}|far.ahead[^0-9]{0,60}|equivocat[^0-9]{0,60}|invalid[^0-9]{0,60}" /tmp/nl.txt | sort | uniq -c | sort -rn | head -12
+            echo "  (leer = kein Block wurde aus diesen Gruenden abgelehnt)"
+            echo "===== HTTP-SYNC Zyklen im Wortlaut (letzte 8) ====="
+            grep -a "HTTP-SYNC" /tmp/nl.txt | tail -8 | cut -c1-220
             echo "===== langsame Ticks, Rueckstand, Bremse ====="
             grep -aiE "slow tick|langsam|behind|bremse|throttl|lag" /tmp/nl.txt | tail -6 | cut -c1-200
             echo "===== Fehler/Panik ====="
