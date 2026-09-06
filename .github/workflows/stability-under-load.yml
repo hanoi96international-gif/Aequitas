@@ -55,6 +55,9 @@ on:
         default: "c2"
         type: choice
         options: [c2, beide]
+      gewichte:
+        description: "Lastverteilung auf die -rpc-Ziele, Reihenfolge C2,C1. Leer = gleichmaessig. 1,2 gibt C1 doppelt so viele Paare -- noetig, weil der Generator auf C2 laeuft und dessen localhost-Weg kuerzer ist: gemessen stand C2 mit 202.304 Ueberweisungen im Rueckstand, waehrend C1 praktisch alles verblockte."
+        default: ""
       recovery_minutes:
         description: "How long to keep watching after the load stops"
         required: false
@@ -184,6 +187,7 @@ jobs:
               -v /root/go-mod-cache:/go/pkg/mod golang:1.24-alpine \
               ./loadtest -accounts accounts-funded.csv \
                 -rpc "$RPC_ZIELE" \
+                -gewichte "${{ inputs.gewichte }}" \
                 -status http://localhost:8080/api/status \
                 -phase warmup,run -seeds 5 \
                 -topology "$TOPOLOGY" \
