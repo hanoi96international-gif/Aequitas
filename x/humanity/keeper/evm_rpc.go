@@ -1185,11 +1185,22 @@ func (s *EVMRPCServer) sendRawTransaction(params []json.RawMessage, pre *precomp
 		// receiving txHash. Without this, the window while Transfer() executes
 		// (DB write, ~10-100ms) returned null receipts → MetaMask showed
 		// "Senden fehlgeschlagen" even for successful transfers.
+		// Der zweite Sperrabschnitt auf demselben Shard -- und der letzte
+		// unvermessene Posten dieser Funktion.
+		//
+		// Nach Vorlauf (6,5 ms), META (0,05), Quittung (0,17) und Spiegel
+		// (0,28) blieben 46,1 von 192,7 ms unerklaert. Uebrig ist genau
+		// dieser Block: ein zweites Lock auf dem Metadaten-Shard plus
+		// sh.note(), das bei vollem Ring zehn Map-Eintraege loescht -- alles
+		// unter der Sperre, und unter 1.600 gleichzeitigen Goroutinen ist
+		// gerade das die Groesse, die kippen kann.
+		phStatusStart := time.Now()
 		sh := s.txMetaShardFor(txHash)
 		sh.mu.Lock()
 		sh.status[txHash] = true
 		sh.note(txHash)
 		sh.mu.Unlock()
+		merkeRPCStatus(time.Since(phStatusStart))
 		phQuittungStart := time.Now()
 		s.state.SaveTxReceipt(txHash, senderAddr, toAddr, "0x1", "")
 		merkeRPCQuittung(time.Since(phQuittungStart))

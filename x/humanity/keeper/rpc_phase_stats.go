@@ -114,7 +114,8 @@ func RPCPhaseStats() map[string]interface{} {
 	spiegelMs := msPer(rpcSpiegelNanos.Load(), rpcSpiegelCount.Load())
 	vorlaufMs := msPer(rpcVorlaufNanos.Load(), rpcVorlaufCount.Load())
 	// Der Vorlauf enthaelt die Nonce bereits -- sonst zoege man sie zweimal ab.
-	unaccounted := sendMs - transferMs - metaMs - quittungMs - spiegelMs - vorlaufMs
+	statusMs := msPer(rpcStatusNanos.Load(), rpcStatusCount.Load())
+	unaccounted := sendMs - transferMs - metaMs - quittungMs - spiegelMs - vorlaufMs - statusMs
 	if unaccounted < 0 {
 		// Not all sends are transfers, so the averages are over different
 		// populations and a small negative is expected rather than a bug.
@@ -133,6 +134,7 @@ func RPCPhaseStats() map[string]interface{} {
 		"quittung_ms":            msPer(rpcQuittungNanos.Load(), rpcQuittungCount.Load()),
 		"spiegel_ms":             msPer(rpcSpiegelNanos.Load(), rpcSpiegelCount.Load()),
 		"vorlauf_ms":             msPer(rpcVorlaufNanos.Load(), rpcVorlaufCount.Load()),
+		"status_lock_ms":         msPer(rpcStatusNanos.Load(), rpcStatusCount.Load()),
 		"nonce_ms":               nonceMs,
 		"transfer_ms":            transferMs,
 		"unaccounted_in_send_ms": unaccounted,
@@ -207,4 +209,26 @@ var (
 func merkeRPCVorlauf(d time.Duration) {
 	rpcVorlaufNanos.Add(int64(d))
 	rpcVorlaufCount.Add(1)
+}
+
+// Der zweite Sperrabschnitt auf dem Metadaten-Shard.
+//
+// Nach Vorlauf, META, Quittung und Spiegel blieben 46,1 von 192,7 ms
+// unerklaert, und uebrig ist genau dieser Block: ein zweites Lock auf
+// demselben Shard plus sh.note(), das bei vollem Ring zehn Map-Eintraege
+// loescht -- alles unter der Sperre. Zehn Deletes sind fuer sich nichts;
+// unter 1.600 gleichzeitigen Goroutinen auf wenigen Shards ist die Frage
+// aber nicht die Arbeit, sondern das Warten davor.
+//
+// Ist auch dieser Posten klein, ist sendRawTransaction vollstaendig
+// zerlegt und die Zeit liegt ausserhalb -- im HTTP-/JSON-Mantel oder im
+// Batch-Dispatch davor.
+var (
+	rpcStatusNanos atomic.Int64
+	rpcStatusCount atomic.Int64
+)
+
+func merkeRPCStatus(d time.Duration) {
+	rpcStatusNanos.Add(int64(d))
+	rpcStatusCount.Add(1)
 }
