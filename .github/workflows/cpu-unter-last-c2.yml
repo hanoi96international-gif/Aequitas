@@ -1,0 +1,58 @@
+name: CPU unter Last (C2, read-only)
+
+# Die Sperre ist zu 0.72% belegt und trotzdem wartet jede Ueberweisung 32 ms
+# auf sie -- das kann sie nicht sein. Bleiben zwei Erklaerungen: die Kerne
+# sind voll (dann ist Warten = Scheduling), oder der Prozess haengt an I/O.
+# Dieser Workflow entscheidet das, indem er BEIDES gleichzeitig misst.
+#
+# Read-only: kein Neustart, kein Schreiben. Waehrend eines Lastlaufs starten.
+
+on:
+  workflow_dispatch:
+    inputs:
+      sekunden:
+        description: Messdauer
+        required: false
+        default: "60"
+
+jobs:
+  messen:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: 194.163.188.71
+          username: root
+          key: ${{ secrets.CONTABO_SSH_KEY }}
+          port: 22
+          fingerprint: "SHA256:pLmYlnhVN0FGGCLzCiqDoJqL0dCUOoZ7L6iVTHRFdxM"
+          script_stop: false
+          timeout: 600s
+          command_timeout: 600s
+          script: |
+            S=${{ inputs.sekunden }}
+            echo "===== Kerne ====="; nproc
+            echo
+            echo "===== docker stats, ${S}s (CPU% ist ueber ALLE Kerne: 600% = voll) ====="
+            for i in $(seq 1 $((S/10))); do
+              docker stats --no-stream --format '{{.Name}} CPU={{.CPUPerc}} MEM={{.MemUsage}}' aequitas-node aequitas-postgres 2>/dev/null | tr '\n' ' '
+              echo
+              sleep 9
+            done
+            echo
+            echo "===== vmstat: r=laufbereit (>Kerne = CPU-Stau), wa=I/O-Warten ====="
+            vmstat 3 8 | awk 'NR<3 || NR>2'
+            echo
+            echo "===== Platten-I/O des Knotens ====="
+            (iostat -x 3 3 2>/dev/null || echo "iostat fehlt") | grep -E "Device|vda|sda|nvme" | tail -8
+            echo
+            echo "===== wartet der Prozess auf Platte oder CPU? (D=Platte, R=laufend) ====="
+            for i in 1 2 3 4 5; do
+              ps -L -o state= -p $(docker inspect -f '{{.State.Pid}}' aequitas-node) 2>/dev/null | sort | uniq -c | tr '\n' ' '
+              echo
+              sleep 2
+            done
+            echo
+            echo "===== CPU-Profil, 25 s ====="
+            docker exec aequitas-node sh -c 'wget -q -O /tmp/p.gz "http://127.0.0.1:8080/debug/pprof/profile?seconds=25" && echo ok' 2>/dev/null || echo "pprof nicht erreichbar"
+            docker exec aequitas-node sh -c 'go tool pprof -top -nodecount=22 /tmp/p.gz 2>/dev/null' 2>/dev/null | head -30 || echo "(go tool fehlt im Image -- CPU% oben reicht zur Entscheidung)"
