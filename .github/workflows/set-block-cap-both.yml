@@ -1,0 +1,102 @@
+name: Set the per-block transaction cap on BOTH boxes
+
+# WAS DAS VERSTELLT, UND WARUM ES DIE STABILITAET ENTSCHEIDET.
+#
+# Am 06.09.2026 wurde erstmals der TEUERSTE Replay-Halt aufgeschluesselt
+# statt nur der Mittelwert (replay_schlimmster). Das Ergebnis:
+#
+#   Hoehe 5850990, 10.000 Transaktionen, Halt 47.394 ms
+#     seriell   29.512 ms   62,3 %
+#     parallel  10.084 ms   21,3 %
+#     rest       7.712 ms   16,3 %
+#
+# Zehntausend ist genau der Deckel. Und die Kosten sind SUPERLINEAR:
+#
+#   ~500 Transaktionen je Block  ->     91 ms  =>  5.500/s Nachspielkapazitaet
+#   10.000 Transaktionen         -> 47.394 ms  =>    211/s
+#
+# Mehr Ueberweisungen je Block heissen mehr Adresskollisionen, damit brechen
+# die disjunkten Buendel oefter ab und mehr Ueberweisungen laufen ueber den
+# teuren seriellen Pfad. Der Deckel ist damit selbst die Ursache der langen
+# Halte -- und in so einem Fenster produziert der Knoten nichts, weshalb die
+# Annahmekontrolle danach zu Recht ablehnt ("has not produced a block for
+# 111s", gemessen 685.203 Ablehnungen in einem Lauf).
+#
+# WAS ZU LESEN IST (/api/health/combined):
+#
+#   replay_schlimmster.halt_ms     muss FALLEN -- das ist der Zweck
+#   replay_schlimmster.transaktionen  sollte am neuen Deckel liegen
+#   replay_phasen.halt_ms          der Mittelwert, sollte mitfallen
+#   admission.refusing             muss false bleiben
+#   TPS aus stability-under-load   entscheidet zusammen mit der Stabilitaet
+#
+# Ein zu kleiner Deckel staut die Warteschlange, weil bei BLOCK_TIME=1s nur
+# ein Block je Sekunde entsteht: Deckel x 1/s ist die Obergrenze dessen, was
+# ueberhaupt in Bloecke passt. Beides zusammen lesen, nie nur eines.
+#
+# BEIDE BOXEN, anders als die Messschalter davor: der Deckel wirkt beim
+# PRODUZIEREN, und seit dem 06.09.2026 produzieren wieder beide.
+#
+# 0 stellt die Vorgabe wieder her (10.000). NICHT leer lassen: GitHub Actions
+# setzt bei leerem Wert die deklarierte DEFAULT ein.
+on:
+  workflow_dispatch:
+    inputs:
+      cap:
+        description: "Obergrenze der Transaktionen je Block (Vorgabe 10000). 0 = Vorgabe wiederherstellen."
+        required: false
+        default: "0"
+jobs:
+  set:
+    strategy:
+      max-parallel: 1
+      matrix:
+        box: [{name: Contabo1, host: "173.249.37.118", secret: C1}, {name: Contabo2, host: "194.163.188.71", secret: C2}]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Set the block cap on ${{ matrix.box.name }}
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ matrix.box.host }}
+          username: root
+          key: ${{ matrix.box.secret == 'C1' && secrets.CONTABO_SSH_KEY || secrets.CONTABO2_SSH_KEY }}
+          port: 22
+          script_stop: false
+          timeout: 600s
+          command_timeout: 600s
+          envs: CAP
+          script: |
+            set +e
+            echo "### ${{ matrix.box.name }} -> Blockdeckel: ${CAP:-Vorgabe} ###"
+            cp /root/.aequitas.env "/root/.aequitas.env.bak.$(date +%Y%m%d-%H%M%S)"
+            sed -i '/^AEQUITAS_MAX_TXS_PER_BLOCK=/d' /root/.aequitas.env
+            [ -n "$CAP" ] && [ "$CAP" != "0" ] && echo "AEQUITAS_MAX_TXS_PER_BLOCK=$CAP" >> /root/.aequitas.env
+            grep -E '^AEQUITAS_MAX_TXS_PER_BLOCK' /root/.aequitas.env || echo "(keine Ueberschreibung — Vorgabe gilt)"
+
+            IMAGE="$(docker inspect aequitas-node --format '{{.Config.Image}}')"
+            NET="$(docker inspect aequitas-node --format '{{range $k, $v := .NetworkSettings.Networks}}{{$k}} {{end}}' | awk '{print $1}')"
+            PORTS="$(docker inspect aequitas-node --format '{{range $p, $c := .HostConfig.PortBindings}}-p {{(index $c 0).HostPort}}:{{$p}} {{end}}' | sed 's|/tcp||g')"
+            MOUNTS="$(docker inspect aequitas-node --format '{{range .Mounts}}-v {{.Source}}:{{.Destination}} {{end}}')"
+            mkdir -p /root/blockcap
+            ENVOUT=/root/blockcap/env
+            # Die Umgebung des laufenden Prozesses ist die Grundlage, MINUS
+            # dieses Schluessels -- sonst ueberlebt ein alter Sweep-Wert.
+            docker inspect aequitas-node --format '{{range .Config.Env}}{{println .}}{{end}}' \
+              | grep -vE '^(RESYNC_FROM_SNAPSHOT|HOSTNAME|PATH|HOME|AEQUITAS_MAX_TXS_PER_BLOCK)=' \
+              | grep -E '^[A-Za-z_][A-Za-z0-9_]*=' > /tmp/proc.env
+            grep -E '^[A-Za-z_][A-Za-z0-9_]*=' /root/.aequitas.env \
+              | grep -vE '^(RESYNC_FROM_SNAPSHOT|HOSTNAME|PATH|HOME)=' > /tmp/file.env || true
+            awk -F= '!seen[$1]++' /tmp/file.env /tmp/proc.env > "$ENVOUT"
+
+            docker stop aequitas-node && docker rm aequitas-node
+            docker run -d --name aequitas-node --network "$NET" $PORTS $MOUNTS \
+              --env-file "$ENVOUT" --restart unless-stopped "$IMAGE"
+            sleep 40
+            echo "=== was der PROZESS jetzt hat (die Datei ist kein Beleg) ==="
+            docker inspect aequitas-node --format '{{range .Config.Env}}{{println .}}{{end}}' \
+              | grep -E '^AEQUITAS_MAX_TXS_PER_BLOCK' || echo "(Vorgabe)"
+            curl -s --max-time 15 http://127.0.0.1:8080/api/health/combined \
+              | grep -oE '"deckel":[0-9]+' || echo "(nicht erreichbar)"
+            curl -s --max-time 15 http://127.0.0.1:8080/api/status | grep -o '"height":[0-9]*' || echo "(unerreichbar)"
+        env:
+          CAP: ${{ inputs.cap }}
