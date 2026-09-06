@@ -137,8 +137,10 @@ jobs:
         run: |
           set -e
           mkdir -p ~/.ssh && chmod 700 ~/.ssh
-          printf '%s' "$KEY_C1" > ~/.ssh/c1 && chmod 600 ~/.ssh/c1
-          printf '%s' "$KEY_C2" > ~/.ssh/c2 && chmod 600 ~/.ssh/c2
+          # printf '%s' ohne Zeilenumbruch am Ende reicht OpenSSH nicht:
+          # es meldet dann nur "error in libcrypto" und Permission denied.
+          printf '%s\n' "$KEY_C1" > ~/.ssh/c1 && chmod 600 ~/.ssh/c1
+          printf '%s\n' "$KEY_C2" > ~/.ssh/c2 && chmod 600 ~/.ssh/c2
           SSHOPT="-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR"
           scp $SSHOPT -i ~/.ssh/c2 root@194.163.188.71:/root/contabo-loadtest/accounts-funded.csv /tmp/accounts-funded.csv
           echo "Kontenliste geholt: $(wc -l < /tmp/accounts-funded.csv) Zeilen"
