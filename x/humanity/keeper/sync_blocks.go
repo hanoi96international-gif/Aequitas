@@ -1715,6 +1715,22 @@ func (dag *BlockDAG) doSyncOnce(nodeURL string) (ok bool) {
 		}
 		addedThisPage := 0
 		for _, block := range blocks {
+			// Das Zeitbudget auch HIER pruefen, nicht nur je Seite. Die teure
+			// Arbeit steckt in dieser Schleife: eine Seite kann acht Bloecke mit
+			// je 7.000 Ueberweisungen tragen, also 56.000 Stueck, die einzeln
+			// geprueft und angehaengt werden. Wird das Budget nur am
+			// Seitenanfang geprueft, laeuft ein Zyklus trotzdem minutenlang --
+			// und ein Zyklus, der nicht endet, wird nie gewertet.
+			//
+			// GEMESSEN am 07.09.2026, nachdem das Seiten-Budget schon eingebaut
+			// war: C2 stand mit clean_cycles 0, saemtlichen resets_* 0,
+			// seitenfehler 0 und 185 gate_skips bei stalled=420s. Dieselbe
+			// Signatur wie zuvor auf C1 -- alle Zaehler null, weil das Ende der
+			// Funktion nie erreicht wurde.
+			if time.Since(zyklusStart) > zyklusBudget {
+				budgetAbgelaufen = true
+				break
+			}
 			// FIX: genesis is always created locally and AddPeerBlock always
 			// rejects a peer-supplied genesis (by design — see its own
 			// comment). Without this skip, every single sync cycle forever
