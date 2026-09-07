@@ -1702,7 +1702,24 @@ func (a *APIServer) handleBlocksByHash(w http.ResponseWriter, r *http.Request) {
 // blocksByHashResponseBudget is the byte budget for one /api/blocks/by-hash
 // response. Below the client's 20 MB read cap with room for JSON overhead, so
 // a response that fits this budget always fits the client.
-const blocksByHashResponseBudget = 12 << 20
+//
+// 4 statt 12 MB seit dem 07.09.2026. Das Budget begrenzt nicht die
+// Datenmenge, die ein Knoten insgesamt holen muss, sondern nur ihre
+// Stueckelung -- und die entscheidet, wie lange eine EINZELNE Antwort den
+// Absender beschaeftigt. Unter Last traegt ein Block bis zu 7.000
+// Ueberweisungen, also rund 1,4 MB; bei 12 MB serialisiert der ausgelastete
+// Absender acht solcher Bloecke in einem Zug, waehrend der Empfaenger wartet.
+//
+// Gemessen: C1 brauchte so 34 Sekunden je Sync-Zyklus, C2 nur 2,4. Das Tor
+// verlangt drei saubere Zyklen mit jedem Seed, also entschied diese eine Zahl
+// darueber, wie schnell die Primary nach einem Neustart ueberhaupt wieder
+// produzieren durfte -- und mehrfach heute produzierte sie waehrend eines
+// ganzen Lastlaufs gar nicht.
+//
+// Kleinere Stuecke kosten mehr Anfragen fuer dieselbe Datenmenge, aber jede
+// einzelne ist kurz. Der Sync holt weiterhin bis zu pageSize Bloecke je
+// Anfrage und paginiert bis zum Zeitbudget von doSyncOnce.
+const blocksByHashResponseBudget = 4 << 20
 
 // capBlocksByResponseBytes keeps blocks while they fit the budget and reports
 // whether anything was left out.
