@@ -1,0 +1,45 @@
+name: Greift GOMEMLIMIT wirklich? (read-only)
+
+# Zwei Kernel-OOMs am 07.09.2026, beide bei rund 8,5 GB residentem Speicher
+# -- der zweite NACH dem Setzen von GOMEMLIMIT=6GiB. Entweder kam der Wert
+# nicht im Prozess an, oder der Speicher liegt ausserhalb des Go-Heaps, den
+# GOMEMLIMIT begrenzt (es ist ein SOFT-Limit auf den Heap, nicht auf RSS).
+
+on:
+  workflow_dispatch:
+    inputs:
+      box:
+        required: true
+        default: contabo2
+        type: choice
+        options: [contabo1, contabo2]
+
+jobs:
+  pruefen:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ inputs.box == 'contabo1' && '173.249.37.118' || '194.163.188.71' }}
+          username: root
+          key: ${{ inputs.box == 'contabo1' && secrets.CONTABO_SSH_KEY || secrets.CONTABO2_SSH_KEY }}
+          port: 22
+          script_stop: false
+          timeout: 200s
+          command_timeout: 200s
+          script: |
+            echo "===== steht GOMEMLIMIT im laufenden Prozess? ====="
+            docker inspect aequitas-node --format '{{range .Config.Env}}{{println .}}{{end}}' | grep -E "^GOMEMLIMIT=" || echo "  NICHT GESETZT -- der Prozess nimmt die 75-Prozent-Vorgabe"
+            echo
+            echo "===== was der Knoten beim Start dazu meldete ====="
+            docker logs aequitas-node 2>&1 | grep -a "\[MEM\]" | head -3
+            echo
+            echo "===== Heap gegen RSS (GOMEMLIMIT begrenzt nur den Heap) ====="
+            curl -s --max-time 10 http://127.0.0.1:8080/api/health/combined \
+              | grep -oE '"(heap_alloc_mb|heap_sys_mb|heap_retained_mb|heap_released_mb|total_sys_mb|num_goroutine)":[0-9]+' | head -8
+            echo "  RSS des Containers laut docker:"
+            docker stats --no-stream --format '{{.Name}} {{.MemUsage}}' aequitas-node
+            echo
+            echo "===== was im Speicher liegt: DAG-Groesse ====="
+            curl -s --max-time 10 http://127.0.0.1:8080/api/health/combined \
+              | grep -oE '"(blocks_in_memory|dag_blocks|orphans|pending_transactions|tips)":[0-9]+' | head -6
