@@ -45,11 +45,15 @@ jobs:
             ENVFILE=/root/.aequitas.env
             KEY=GOMEMLIMIT
 
-            # rpcQuietTxFromEnv tests == "1" exactly, so anything else would
-            # silently mean "off" while reading as an intentional setting.
+            # Die Go-Laufzeit nimmt Werte wie 6GiB, 6144MiB oder eine reine
+            # Bytezahl. Diese Pruefung stand urspruenglich auf "genau 0 oder 1"
+            # -- uebernommen von der Vorlage -- und liess damit JEDEN gueltigen
+            # Speicherwert abbrechen. Der Lauf vom 07.09.2026 meldete deshalb
+            # einen Fehlschlag, der Wert kam nie an, und der Prozess lief
+            # weiter mit der 75-Prozent-Vorgabe von 8.970 MiB in genau den
+            # Kernel-OOM, den er verhindern sollte.
             case "${VALUE:-}" in
-              0|1) ;;
-              *) echo "✗ value must be exactly 0 or 1, got '${VALUE:-}' — aborting"; exit 1 ;;
+              *[!0-9KMGTiB]*|"") echo "✗ ungueltiger Wert '${VALUE:-}' -- erwartet z.B. 6GiB, 6144MiB oder eine Bytezahl"; exit 1 ;;
             esac
 
             echo "=== Contabo1: current $KEY ==="
