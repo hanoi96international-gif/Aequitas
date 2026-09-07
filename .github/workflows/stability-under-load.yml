@@ -271,6 +271,7 @@ jobs:
                 -rpc "$RPC_ZIELE" \
                 -gewichte "${{ inputs.gewichte }}" \
                 -teil "$TEIL" \
+                -batch-size "${{ inputs.batch_size }}" \
                 -status http://localhost:8080/api/status \
                 -phase warmup,run -seeds 5 \
                 -topology "$TOPOLOGY" \
