@@ -1726,7 +1726,21 @@ func (a *APIServer) handleBlocksByHash(w http.ResponseWriter, r *http.Request) {
 // der Kettendurchsatz fiel von 8.194 auf 4.414 Ueberweisungen je Sekunde.
 // 8 MB behaelt den groesseren Teil des Erholungsgewinns, ohne den
 // Absender doppelt zu belasten.
-const blocksByHashResponseBudget = 8 << 20
+// ENDSTAND DER MESSREIHE: 12 MB. Beide Verkleinerungen wurden live gegen
+// denselben Lasttest gemessen und beide kosteten Durchsatz:
+//
+//	12 MB -> 8.194 Ueberweisungen/s in der Kette
+//	 8 MB -> 5.052
+//	 4 MB -> 4.414
+//
+// Die Stueckelung wurde kleiner zwar gleichmaessiger (Sync-Zyklen 1,0 s
+// auf beiden Boxen statt 34 gegen 2,4), aber dieselbe Datenmenge in
+// Dritteln zu holen kostet dreimal so viele Anfragen, und die muss der
+// ohnehin ausgelastete Absender zusaetzlich bedienen. Der Erholungsgewinn
+// nach einem Neustart wiegt diesen Verlust nicht auf -- dafuer sorgt seit
+// dem 07.09.2026 das Zeitbudget in doSyncOnce, das die Zyklen unabhaengig
+// von der Antwortgroesse abschliesst.
+const blocksByHashResponseBudget = 12 << 20
 
 // capBlocksByResponseBytes keeps blocks while they fit the budget and reports
 // whether anything was left out.
