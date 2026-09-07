@@ -1,0 +1,107 @@
+name: Peer-Lag-Bremse einschalten
+
+# Die Bremse existiert seit dem 02.09.2026 und war nie aktiv: peerLagBoden()
+# liefert ohne AEQUITAS_PEER_LAG_BODEN eine 0, und bei 0 kehrt
+# blockTxCapFuerHoehe sofort zum harten Deckel zurueck. Live abgelesen:
+# gebremst=0, ungebremst=777.
+#
+# Gebraucht wird sie, weil die beiden Boxen nicht gleich schnell sind: C2
+# traegt zusaetzlich den Lastgenerator und kommt mit dem Nachvollziehen nicht
+# nach. Am 07.09.2026 im Dauerlauf gemessen:
+#
+#   C1  0,92 Bloecke/s bei 4.016 Transaktionen  -> 3.709/s produziert
+#   C2  0,14 Bloecke/s, stalled 295 s, 121 Bloecke Rueckstand
+#   [HTTP-SYNC] Zeitbudget von 45s nach EINER Seite aufgebraucht
+#
+# Ein Produzent, der schneller baut, als der Partner nachvollziehen kann,
+# haelt die Kette nicht am Laufen -- er reisst sie auseinander. Die Bremse
+# verkleinert seine Bloecke, solange der andere hinterherhaengt.
+#
+# boden = kleinste Blockgroesse, auf die gedrosselt wird (0 = Bremse aus).
+
+on:
+  workflow_dispatch:
+    inputs:
+      wert:
+        description: "Kleinste Blockgroesse beim Drosseln, z.B. 500. Leer oder 0 = Bremse aus."
+        required: false
+        default: "500"
+      box:
+        required: true
+        default: contabo2
+        type: choice
+        options: [contabo1, contabo2, beide]
+jobs:
+  set:
+    strategy:
+      max-parallel: 1
+      matrix:
+        box: ${{ inputs.box == 'contabo1' && fromJSON('[{"name":"Contabo1","host":"173.249.37.118","secret":"C1"}]') || inputs.box == 'contabo2' && fromJSON('[{"name":"Contabo2","host":"194.163.188.71","secret":"C2"}]') || fromJSON('[{"name":"Contabo1","host":"173.249.37.118","secret":"C1"},{"name":"Contabo2","host":"194.163.188.71","secret":"C2"}]') }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Set the block cap on ${{ matrix.box.name }}
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ matrix.box.host }}
+          username: root
+          key: ${{ matrix.box.secret == 'C1' && secrets.CONTABO_SSH_KEY || secrets.CONTABO2_SSH_KEY }}
+          port: 22
+          script_stop: false
+          timeout: 600s
+          command_timeout: 600s
+          envs: WERT
+          script: |
+            set +e
+            echo "### ${{ matrix.box.name }} -> Blockdeckel: ${WERT:-Vorgabe} ###"
+            cp /root/.aequitas.env "/root/.aequitas.env.bak.$(date +%Y%m%d-%H%M%S)"
+            sed -i '/^AEQUITAS_PEER_LAG_BODEN=/d' /root/.aequitas.env
+            [ -n "$WERT" ] && echo "AEQUITAS_PEER_LAG_BODEN=$WERT" >> /root/.aequitas.env
+            grep -E '^AEQUITAS_PEER_LAG_BODEN' /root/.aequitas.env || echo "(keine Ueberschreibung — 75-Prozent-Vorgabe gilt)"
+
+            IMAGE="$(docker inspect aequitas-node --format '{{.Config.Image}}')"
+            NET="$(docker inspect aequitas-node --format '{{range $k, $v := .NetworkSettings.Networks}}{{$k}} {{end}}' | awk '{print $1}')"
+            PORTS="$(docker inspect aequitas-node --format '{{range $p, $c := .HostConfig.PortBindings}}-p {{(index $c 0).HostPort}}:{{$p}} {{end}}' | sed 's|/tcp||g')"
+            MOUNTS="$(docker inspect aequitas-node --format '{{range .Mounts}}-v {{.Source}}:{{.Destination}} {{end}}')"
+            mkdir -p /root/blockcap
+            ENVOUT=/root/blockcap/env
+            # Die Umgebung des laufenden Prozesses ist die Grundlage, MINUS
+            # dieses Schluessels -- sonst ueberlebt ein alter Sweep-Wert.
+            docker inspect aequitas-node --format '{{range .Config.Env}}{{println .}}{{end}}' \
+              | grep -vE '^(RESYNC_FROM_SNAPSHOT|HOSTNAME|PATH|HOME|AEQUITAS_PEER_LAG_BODEN)=' \
+              | grep -E '^[A-Za-z_][A-Za-z0-9_]*=' > /tmp/proc.env
+            grep -E '^[A-Za-z_][A-Za-z0-9_]*=' /root/.aequitas.env \
+              | grep -vE '^(RESYNC_FROM_SNAPSHOT|HOSTNAME|PATH|HOME)=' > /tmp/file.env || true
+            awk -F= '!seen[$1]++' /tmp/file.env /tmp/proc.env > "$ENVOUT"
+
+            docker stop aequitas-node && docker rm aequitas-node
+            docker run -d --name aequitas-node --network "$NET" $PORTS $MOUNTS \
+              --env-file "$ENVOUT" --restart unless-stopped "$IMAGE"
+            sleep 40
+            echo "=== was der PROZESS jetzt hat (die Datei ist kein Beleg) ==="
+            docker inspect aequitas-node --format '{{range .Config.Env}}{{println .}}{{end}}' \
+              | grep -E '^AEQUITAS_PEER_LAG_BODEN' || echo "(Vorgabe)"
+            curl -s --max-time 15 http://127.0.0.1:8080/api/health/combined \
+              | grep -oE '"(boden|gebremst|ungebremst|letzter_cap)":[0-9]+' | head -4 || echo "(nicht erreichbar)"
+            curl -s --max-time 15 http://127.0.0.1:8080/api/status | grep -o '"height":[0-9]*' || echo "(unerreichbar)"
+
+            # WARTEN, BIS DIESE BOX WIEDER PRODUZIERT, bevor die naechste
+            # drankommt. max-parallel:1 allein genuegt nicht: es wartet nur
+            # auf das Ende des Schritts, nicht darauf, dass der Knoten das
+            # Sync-Tor wieder passiert hat. Am 06.09.2026 stand die Kette
+            # dadurch zweimal ueber zwei Minuten -- die erste Box war noch
+            # nicht zurueck, als die zweite gestoppt wurde, und damit gab es
+            # keinen Produzenten mehr. Ein Validator darf erst angefasst
+            # werden, wenn der andere traegt.
+            echo "=== warte, bis diese Box wieder produziert (max 5 min) ==="
+            for i in $(seq 1 60); do
+              ST=$(curl -s --max-time 8 http://127.0.0.1:8080/api/health/combined 2>/dev/null | grep -oE '"stalled_seconds":[0-9]+' | head -1 | cut -d: -f2)
+              CC=$(curl -s --max-time 8 http://127.0.0.1:8080/api/health/combined 2>/dev/null | grep -oE '"clean_cycles":[0-9]+' | head -1 | cut -d: -f2)
+              if [ -n "$ST" ] && [ "$ST" -le 15 ] 2>/dev/null; then
+                echo "  produziert wieder (stalled=${ST}s, clean_cycles=${CC}) nach $((i*5))s"
+                break
+              fi
+              [ $((i % 6)) -eq 0 ] && echo "  ... noch nicht (stalled=${ST:-?}s, clean_cycles=${CC:-?}) nach $((i*5))s"
+              sleep 5
+            done
+        env:
+          WERT: ${{ inputs.wert }}
