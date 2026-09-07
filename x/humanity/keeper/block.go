@@ -2181,10 +2181,15 @@ func (dag *BlockDAG) ProduceBlock() *Block {
 	// Bloecken sofort weiter und die Produktion wartet durch eine ganze Seite
 	// hindurch (gemessen: 4.241 ms von 5.903 ms Gesamtdauer).
 	fertig := produktionMeldetWarten()
+	// Wachhund: dauert das Warten zu lange, schreibt er auf, WER die Sperre
+	// haelt -- siehe sperren_wachhund.go. Ohne ihn bleibt nur die Dauer
+	// bekannt (gemessen bis 19.262 ms), nicht die Ursache.
+	wachhundFertig := sperrWachhundStarten("ProduceBlock")
 	dag.replayMu.Lock()
 	defer dag.replayMu.Unlock()
 	dag.mu.Lock()
 	defer dag.mu.Unlock()
+	wachhundFertig()
 	fertig()
 	pbSperren = time.Since(pbSperrenStart)
 
