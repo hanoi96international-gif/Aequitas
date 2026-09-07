@@ -1,0 +1,62 @@
+name: Knoten neu starten (eine Box)
+
+# Es gibt Zustaende, aus denen sich ein Knoten nicht selbst befreit. Der
+# haeufigste ist "degraded": schlaegt ein Schreibvorgang auf Postgres fehl,
+# waehrend der Speicher der Platte schon voraus ist, haelt der Knoten die
+# Produktion bewusst an und sagt "restart to recover" -- ein Schutz, kein
+# Fehler (P1-05 der Pruefung).
+#
+# Am 07.09.2026 trat er ein, weil ein Postgres-Neustart (Tuning) eine
+# laufende Schreiboperation traf:
+#
+#   [DAG] ✗ Rejected peer block: node is degraded (DeleteBlockFromDB failed
+#         for block #5932441: dial tcp 172.18.0.2:5432: connection refused)
+#
+# Startet NUR den Chainknoten neu, keine Datenbank, keine Volumes.
+
+on:
+  workflow_dispatch:
+    inputs:
+      box:
+        required: true
+        default: contabo1
+        type: choice
+        options: [contabo1, contabo2]
+
+jobs:
+  neustart:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ inputs.box == 'contabo1' && '173.249.37.118' || '194.163.188.71' }}
+          username: root
+          key: ${{ inputs.box == 'contabo1' && secrets.CONTABO_SSH_KEY || secrets.CONTABO2_SSH_KEY }}
+          port: 22
+          script_stop: false
+          timeout: 500s
+          command_timeout: 500s
+          script: |
+            set +e
+            echo "===== VORHER ====="
+            curl -s --max-time 8 http://127.0.0.1:8080/api/status | grep -oE '"height":[0-9]+'
+            docker logs --tail 3 aequitas-node 2>&1 | cut -c1-160
+            echo
+            echo "===== Datenbank erreichbar? (sonst bringt der Neustart nichts) ====="
+            docker exec aequitas-postgres pg_isready -U postgres || echo "  ACHTUNG: Datenbank antwortet nicht"
+            echo
+            echo "===== Knoten neu starten ====="
+            docker restart aequitas-node
+            for i in $(seq 1 60); do
+              ST=$(curl -s --max-time 8 http://127.0.0.1:8080/api/health/combined 2>/dev/null | grep -oE '"stalled_seconds":[0-9]+' | head -1 | cut -d: -f2)
+              H=$(curl -s --max-time 8 http://127.0.0.1:8080/api/status 2>/dev/null | grep -oE '"height":[0-9]+' | cut -d: -f2)
+              if [ -n "$ST" ] && [ "$ST" -le 20 ] 2>/dev/null; then
+                echo "   wieder im Takt nach $((i*5))s: Hoehe $H, stalled ${ST}s"
+                break
+              fi
+              [ $((i % 6)) -eq 0 ] && echo "   ... stalled=${ST:-?}s Hoehe=${H:-?} nach $((i*5))s"
+              sleep 5
+            done
+            echo
+            echo "===== degraded weg? ====="
+            docker logs --since 2m aequitas-node 2>&1 | grep -ac "degraded" || echo 0
