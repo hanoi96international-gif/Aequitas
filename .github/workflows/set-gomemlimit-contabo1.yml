@@ -1,0 +1,93 @@
+name: GOMEMLIMIT setzen (eine Box)
+
+# Der Go-Prozess begrenzt seinen Speicher per Vorgabe auf 75 % des erkannten
+# RAM. Auf einer Box mit 12 GB sind das 9 GB -- solange Postgres nur 128 MB
+# nahm, ging das auf. Nach der Anhebung von shared_buffers auf 2 GB nicht
+# mehr: am 07.09.2026 um 16:36 toetete der Kernel den Knoten mit 8,5 GB
+# residentem Speicher.
+#
+#   Out of memory: Killed process (aequitasd) anon-rss:8511396kB
+#
+# Docker meldete auch das nicht (OOMKilled=false, ExitCode=0) -- der Beleg
+# steht nur im Ring-Buffer. Ein expliziter Wert laesst Platz fuer Postgres
+# und die uebrigen Container.
+
+on:
+  workflow_dispatch:
+    inputs:
+      value:
+        description: "z.B. 6GiB. Leer wuerde 75 % des RAM bedeuten (Vorgabe des Prozesses)."
+        required: false
+        default: "6GiB"
+      dry_run:
+        description: "true = only report the current value, change nothing"
+        required: false
+        default: "true"
+
+jobs:
+  set:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Set GOMEMLIMIT on Contabo1
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: 173.249.37.118
+          username: root
+          key: ${{ secrets.CONTABO_SSH_KEY }}
+          port: 22
+          fingerprint: "SHA256:noMtjHV8c+2iEFZu3TRUP6WRwGjkrvFke71KgU6Eyt4"
+          script_stop: false
+          timeout: 600s
+          command_timeout: 600s
+          envs: VALUE,DRY
+          script: |
+            set -uo pipefail
+            ENVFILE=/root/.aequitas.env
+            KEY=GOMEMLIMIT
+
+            # rpcQuietTxFromEnv tests == "1" exactly, so anything else would
+            # silently mean "off" while reading as an intentional setting.
+            case "${VALUE:-}" in
+              0|1) ;;
+              *) echo "✗ value must be exactly 0 or 1, got '${VALUE:-}' — aborting"; exit 1 ;;
+            esac
+
+            echo "=== Contabo1: current $KEY ==="
+            grep -E "^${KEY}=" "$ENVFILE" || echo "(not set — node logs every transaction, the shipped default)"
+
+            CUR="$(grep -E "^${KEY}=" "$ENVFILE" 2>/dev/null | head -1 | cut -d= -f2- || true)"
+            if [ "$CUR" = "$VALUE" ]; then
+              echo "=== Contabo1: env file already reads '$VALUE' — nothing to change ==="
+              echo "=== What the RUNNING process says (the actual answer) ==="
+              docker logs aequitas-node 2>&1 | grep -F 'GOMEMLIMIT' | tail -3 \
+                || echo "(no startup line — the process is still logging every transaction; it has not restarted since the file was set)"
+              exit 0
+            fi
+
+            if [ "${DRY:-true}" = "true" ]; then
+              echo "=== DRY RUN: would set $KEY=$VALUE on Contabo1 (currently '${CUR:-unset}') ==="
+              exit 0
+            fi
+
+            cp -a "$ENVFILE" "${ENVFILE}.bak.$(date +%s)" && echo "(backup written)"
+            if grep -qE "^${KEY}=" "$ENVFILE"; then
+              sed -i "s/^${KEY}=.*/${KEY}=${VALUE}/" "$ENVFILE"
+            else
+              printf '%s=%s\n' "$KEY" "$VALUE" >> "$ENVFILE"
+            fi
+            echo "=== Contabo1: value after the edit ==="
+            grep -E "^${KEY}=" "$ENVFILE" || echo "(missing after edit — investigate)"
+
+            echo "=== Contabo1: restarting so the new env reaches the process ==="
+            /root/deploy_safe_c2.sh
+
+            echo "=== Contabo1: waiting for the node to come back ==="
+            sleep 25
+            echo "=== The node's own startup line (empty means it kept the default) ==="
+            docker logs aequitas-node 2>&1 | grep -F 'GOMEMLIMIT' | tail -3 \
+              || echo "(no line — running the shipped default: every transaction logged)"
+            echo "=== Contabo1: /api/status ==="
+            curl -s --max-time 5 http://localhost:8080/api/status || echo "(unreachable)"
+        env:
+          VALUE: ${{ inputs.value }}
+          DRY: ${{ inputs.dry_run }}
