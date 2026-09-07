@@ -26,6 +26,10 @@ on:
         description: "Kleinste Blockgroesse beim Drosseln, z.B. 500. Leer oder 0 = Bremse aus."
         required: false
         default: "500"
+      slack:
+        description: "Rueckstand in Bloecken, der noch toleriert wird, bevor gedrosselt wird (Vorgabe 50)."
+        required: false
+        default: "200"
       box:
         required: true
         default: contabo2
@@ -49,13 +53,15 @@ jobs:
           script_stop: false
           timeout: 600s
           command_timeout: 600s
-          envs: WERT
+          envs: WERT,SLACK
           script: |
             set +e
             echo "### ${{ matrix.box.name }} -> Blockdeckel: ${WERT:-Vorgabe} ###"
             cp /root/.aequitas.env "/root/.aequitas.env.bak.$(date +%Y%m%d-%H%M%S)"
             sed -i '/^AEQUITAS_PEER_LAG_BODEN=/d' /root/.aequitas.env
             [ -n "$WERT" ] && echo "AEQUITAS_PEER_LAG_BODEN=$WERT" >> /root/.aequitas.env
+            sed -i '/^AEQUITAS_PEER_LAG_SLACK=/d' /root/.aequitas.env
+            [ -n "$SLACK" ] && echo "AEQUITAS_PEER_LAG_SLACK=$SLACK" >> /root/.aequitas.env
             grep -E '^AEQUITAS_PEER_LAG_BODEN' /root/.aequitas.env || echo "(keine Ueberschreibung — 75-Prozent-Vorgabe gilt)"
 
             IMAGE="$(docker inspect aequitas-node --format '{{.Config.Image}}')"
@@ -67,7 +73,7 @@ jobs:
             # Die Umgebung des laufenden Prozesses ist die Grundlage, MINUS
             # dieses Schluessels -- sonst ueberlebt ein alter Sweep-Wert.
             docker inspect aequitas-node --format '{{range .Config.Env}}{{println .}}{{end}}' \
-              | grep -vE '^(RESYNC_FROM_SNAPSHOT|HOSTNAME|PATH|HOME|AEQUITAS_PEER_LAG_BODEN)=' \
+              | grep -vE '^(RESYNC_FROM_SNAPSHOT|HOSTNAME|PATH|HOME|AEQUITAS_PEER_LAG_BODEN|AEQUITAS_PEER_LAG_SLACK)=' \
               | grep -E '^[A-Za-z_][A-Za-z0-9_]*=' > /tmp/proc.env
             grep -E '^[A-Za-z_][A-Za-z0-9_]*=' /root/.aequitas.env \
               | grep -vE '^(RESYNC_FROM_SNAPSHOT|HOSTNAME|PATH|HOME)=' > /tmp/file.env || true
@@ -105,3 +111,4 @@ jobs:
             done
         env:
           WERT: ${{ inputs.wert }}
+          SLACK: ${{ inputs.slack }}
