@@ -1,0 +1,47 @@
+name: C1 Synclog (read-only)
+
+# C1 hing am 07.09.2026 bei einer Hoehe fest, waehrend C2 weiterlief: 420
+# Bloecke Rueckstand, danach null Fortschritt bei nur 25 % CPU und ohne
+# Speicherdruck. Kein Produktionsaussetzer, kein langsamer Blockbau -- der
+# Knoten holt schlicht nicht auf. Was der Sync dabei meldet, stand nur im Log.
+
+on:
+  workflow_dispatch:
+    inputs:
+      minuten:
+        default: "10"
+
+jobs:
+  log:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: 173.249.37.118
+          username: root
+          key: ${{ secrets.CONTABO_SSH_KEY }}
+          port: 22
+          fingerprint: "SHA256:noMtjHV8c+2iEFZu3TRUP6WRwGjkrvFke71KgU6Eyt4"
+          script_stop: false
+          timeout: 300s
+          command_timeout: 300s
+          script: |
+            M=${{ inputs.minuten }}
+            docker logs --since ${M}m aequitas-node > /tmp/c1.txt 2>&1
+            echo "Logzeilen: $(wc -l < /tmp/c1.txt)"
+            echo "===== HTTP-SYNC, die letzten 20 ====="
+            grep -a "HTTP-SYNC" /tmp/c1.txt | tail -20 | cut -c1-230
+            echo
+            echo "===== Zeitbudget-Abbrueche ====="
+            grep -ac "Zeitbudget" /tmp/c1.txt
+            grep -a "Zeitbudget" /tmp/c1.txt | tail -4 | cut -c1-200
+            echo
+            echo "===== Waisen und fehlende Eltern ====="
+            grep -acE "orphan|Missing parent|ancestor" /tmp/c1.txt
+            grep -aE "orphan|Missing parent|ancestor" /tmp/c1.txt | tail -8 | cut -c1-200
+            echo
+            echo "===== haeufigste Zeilenarten ====="
+            grep -aoE '^\[[A-Z-]+\] .' /tmp/c1.txt | sort | uniq -c | sort -rn | head -10
+            echo
+            echo "===== Fehler ====="
+            grep -aiE "error|fehler|failed|refus|reject" /tmp/c1.txt | tail -8 | cut -c1-200
