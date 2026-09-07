@@ -777,12 +777,19 @@ func main() {
 	// outright, and a run that dies on argument validation after the operator
 	// waited for a deploy window is a worse outcome than one that quietly uses
 	// the largest legal value and says so.
+	// FEHLER, gefunden am 07.09.2026: hier stand `> batchSize`, also der
+	// VORGABEWERT 10 statt der Knotengrenze. Damit war -batch-size nach oben
+	// wirkungslos -- jeder Wert ueber 10 wurde stillschweigend auf 10
+	// zurueckgesetzt, waehrend Flagbeschreibung und Kommentar beide "1..100"
+	// versprachen. Die Messreihe vom 29.08., die 100 gegen 10 verglich, kann
+	// den Wert 100 also gar nicht gemessen haben.
+	const knotenGrenze = 100 // maxBatchSize in evm_rpc.go
 	effBatchSize := *batchSizeFlag
 	if effBatchSize < 1 {
 		effBatchSize = 1
 	}
-	if effBatchSize > batchSize {
-		effBatchSize = batchSize
+	if effBatchSize > knotenGrenze {
+		effBatchSize = knotenGrenze
 	}
 	if effBatchSize != *batchSizeFlag {
 		fmt.Printf("batch-size %d out of range — using %d\n", *batchSizeFlag, effBatchSize)

@@ -63,6 +63,9 @@ on:
         default: "nein"
         type: choice
         options: [nein, ja]
+      batch_size:
+        description: "Ueberweisungen je JSON-RPC-Buendel (1..100). Vorgabe 10. Der Durchsatz ist Paare mal Buendelgroesse geteilt durch Latenz -- bei 664 Paaren traegt Buendel 10 genau 6.640 Stueck gleichzeitig, was der gemessenen Kettenleistung entspricht."
+        default: "10"
       recovery_minutes:
         description: "How long to keep watching after the load stops"
         required: false
@@ -173,6 +176,7 @@ jobs:
                 -rpc http://localhost:8080/rpc \
                 -status http://localhost:8080/api/status \
                 -teil 2/2 \
+                -batch-size "${{ inputs.batch_size }}" \
                 -phase warmup,run -seeds 5 \
                 -topology "$TOPOLOGY" \
                 -transfer-amount-wei "$TRANSFERWEI" \
