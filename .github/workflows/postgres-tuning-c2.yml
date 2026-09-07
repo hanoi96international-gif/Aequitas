@@ -1,0 +1,52 @@
+name: Postgres auf C2 anschauen (read-only)
+
+# Unter Last frisst aequitas-postgres bis zu 2,3 von 6 Kernen, waehrend der
+# Knoten selbst 2,2-3,0 braucht und die Laufwarteschlange auf 8-22 steht --
+# die Box ist CPU-gesaettigt, nicht I/O-gebunden (wa 1-6 %).
+#
+# Read-only: liest nur Einstellungen und Statistiken.
+
+on:
+  workflow_dispatch: {}
+
+jobs:
+  schauen:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: 194.163.188.71
+          username: root
+          key: ${{ secrets.CONTABO2_SSH_KEY }}
+          port: 22
+          fingerprint: "SHA256:VIwj7Faxiga2n45HVHZEQFPxcbRKHgSgHoxAFsf2wto"
+          script_stop: false
+          timeout: 240s
+          command_timeout: 240s
+          script: |
+            echo "===== Einstellungen, die unter Schreiblast zaehlen ====="
+            docker exec aequitas-postgres psql -U postgres -t -c "
+              SELECT name || ' = ' || setting || COALESCE(' ' || unit, '')
+              FROM pg_settings
+              WHERE name IN ('synchronous_commit','fsync','wal_level','commit_delay',
+                             'commit_siblings','max_wal_size','checkpoint_timeout',
+                             'shared_buffers','work_mem','max_connections',
+                             'wal_compression','full_page_writes','wal_buffers',
+                             'effective_io_concurrency','random_page_cost')
+              ORDER BY name;" 2>&1 | sed 's/^ *//' | grep -v '^$'
+            echo
+            echo "===== teuerste Anweisungen (falls pg_stat_statements da ist) ====="
+            docker exec aequitas-postgres psql -U postgres -t -c "
+              SELECT round(total_exec_time)::text || ' ms  ' || calls::text || 'x  ' ||
+                     left(regexp_replace(query, '\s+', ' ', 'g'), 90)
+              FROM pg_stat_statements ORDER BY total_exec_time DESC LIMIT 8;" 2>&1 | sed 's/^ *//' | grep -v '^$' | head -10
+            echo
+            echo "===== Schreibvorgaenge je Tabelle ====="
+            docker exec aequitas-postgres psql -U postgres -d aequitas -t -c "
+              SELECT relname || ': ins=' || n_tup_ins || ' upd=' || n_tup_upd || ' del=' || n_tup_del
+              FROM pg_stat_user_tables ORDER BY (n_tup_ins + n_tup_upd + n_tup_del) DESC LIMIT 8;" 2>&1 | sed 's/^ *//' | grep -v '^$'
+            echo
+            echo "===== Groesse der Tabellen ====="
+            docker exec aequitas-postgres psql -U postgres -d aequitas -t -c "
+              SELECT relname || ': ' || pg_size_pretty(pg_total_relation_size(relid))
+              FROM pg_stat_user_tables ORDER BY pg_total_relation_size(relid) DESC LIMIT 6;" 2>&1 | sed 's/^ *//' | grep -v '^$'
