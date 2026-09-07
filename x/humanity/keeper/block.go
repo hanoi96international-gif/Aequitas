@@ -2158,8 +2158,16 @@ func (dag *BlockDAG) ProduceBlock() *Block {
 	// commit 8c9321f); this simple total-time check is what's still worth
 	// keeping permanently.
 	produceStart := time.Now()
+	// Phasenuhr -- siehe produktion_phasen.go dazu, warum die Meldung unten
+	// allein nicht reicht: sie nennt die Gesamtdauer, aber nicht, wo sie
+	// bleibt, und alle naheliegenden Erklaerungen wurden einzeln gemessen und
+	// ausgeschlossen.
+	var pbSperren, pbDbPaar, pbBauen, pbSpeichern, pbVerteilen time.Duration
+	var pbTxAnzahl int
 	defer func() {
-		if d := time.Since(produceStart); d > 500*time.Millisecond {
+		d := time.Since(produceStart)
+		merkeProduktionsBlock(d, pbSperren, pbDbPaar, pbBauen, pbSpeichern, pbVerteilen, pbTxAnzahl)
+		if d > 500*time.Millisecond {
 			fmt.Printf("[BLOCK] ⏱ ProduceBlock itself took %s\n", d)
 		}
 	}()
@@ -2167,10 +2175,12 @@ func (dag *BlockDAG) ProduceBlock() *Block {
 	// interleave with an in-progress AddPeerBlock replay. AddPeerBlock holds
 	// replayMu from after its replay until after dag.mu.Unlock() on the success
 	// path — both functions take locks in (replayMu, dag.mu) order, no deadlock.
+	pbSperrenStart := time.Now()
 	dag.replayMu.Lock()
 	defer dag.replayMu.Unlock()
 	dag.mu.Lock()
 	defer dag.mu.Unlock()
+	pbSperren = time.Since(pbSperrenStart)
 
 	// P1-05 (audit): halt production when a prior peer-block persistence failure
 	// left memory state ahead of durable DB state.
@@ -2549,6 +2559,8 @@ func (dag *BlockDAG) ProduceBlock() *Block {
 		rootDur = time.Since(t0)
 	})
 	cadenceWG.Wait()
+	pbDbPaar = time.Since(dbPairStart)
+	pbBauenStart := time.Now()
 	// Ongoing health check: these two DB round trips run concurrently
 	// specifically to shorten how long ProduceBlock holds dag.mu (see the
 	// comment above this block) — worth knowing which one is slow if the pair
@@ -2803,6 +2815,8 @@ func (dag *BlockDAG) ProduceBlock() *Block {
 	// broadcast entirely. TXs stay in pending_txs (atomic rollback) for the next
 	// ProduceBlock tick to re-include.
 	saveStart := time.Now()
+	pbBauen = time.Since(pbBauenStart)
+	pbTxAnzahl = len(block.Transactions)
 	if err := dag.state.SaveBlockWithPendingTxsAtomic(block, pendingTxIDs); err != nil {
 		fmt.Printf("[BLOCK] ⚠ Could not persist block #%d (%s...): %v — skipping broadcast, TXs stay queued\n",
 			block.Height, block.Hash[:16], err)
@@ -2828,6 +2842,8 @@ func (dag *BlockDAG) ProduceBlock() *Block {
 	// Ongoing health check: this call runs synchronously while dag.mu is held
 	// write-locked, so if it's slow, EVERY other dag.mu consumer (API reads,
 	// AddPeerBlock) stalls for the same duration.
+	pbSpeichern = time.Since(saveStart)
+	pbVerteilenStart := time.Now()
 	if saveDur := time.Since(saveStart); saveDur > 500*time.Millisecond {
 		fmt.Printf("[BLOCK] ⏱ SaveBlockWithPendingTxsAtomic took %s for block #%d (dag.mu held throughout)\n", saveDur, block.Height)
 	}
@@ -2921,6 +2937,8 @@ func (dag *BlockDAG) ProduceBlock() *Block {
 	// now. See admission_control.go for why time-since-a-block is the signal
 	// rather than queue depth.
 	noteBlockProduced()
+	// Alles nach dem Speichern -- Verteilen an die Peers und Nachlauf.
+	pbVerteilen = time.Since(pbVerteilenStart)
 	return block
 }
 
