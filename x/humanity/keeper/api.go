@@ -1952,6 +1952,19 @@ func (a *APIServer) handleBlockPush(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	block.FromSync = false
+	// Der Blockproduktion Platz machen, falls sie gerade auf die DAG-Sperre
+	// wartet -- siehe produktion_vorrang.go. Bisher stand das nur im
+	// Sync-Loop, und Bloecke kommen ueber ZWEI Wege: doSyncOnce holt sie, und
+	// der Partner schiebt sie hierher. Der zweite Weg traegt unter Last den
+	// Grossteil, also blieb der Vorrang genau dort wirkungslos, wo er
+	// gebraucht wird.
+	//
+	// Der Wachhund fand am 07.09.2026 bei drei Sekunden Wartezeit KEINEN
+	// einzelnen Langhalter mehr (nach dem SaveTxBatch-Fix): nur schlafende
+	// Zeitgeber und den Wachhund selbst. Genau so sieht eine Warteschlange
+	// aus vielen kurzen Haltern aus -- Go's Mutex ist nach einer Millisekunde
+	// fair, der Wartende kommt also erst dran, wenn alle vor ihm fertig sind.
+	syncLaesstProduktionVor()
 	accepted := a.blockchain.AddPeerBlock(&block)
 	// FIX (durable fix, 2026-07-04 — closes the same mutual-lockout risk for
 	// this breaker too, see proposerBreakerOrphanGrace's own comment in
