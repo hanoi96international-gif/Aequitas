@@ -1719,7 +1719,14 @@ func (a *APIServer) handleBlocksByHash(w http.ResponseWriter, r *http.Request) {
 // Kleinere Stuecke kosten mehr Anfragen fuer dieselbe Datenmenge, aber jede
 // einzelne ist kurz. Der Sync holt weiterhin bis zu pageSize Bloecke je
 // Anfrage und paginiert bis zum Zeitbudget von doSyncOnce.
-const blocksByHashResponseBudget = 4 << 20
+// NACHGEMESSEN: 4 MB war zu klein. Die Stueckelung wurde damit zwar sehr
+// gleichmaessig (Sync-Zyklen 1,0 s auf BEIDEN Boxen statt 34 zu 2,4), aber
+// dieselbe Datenmenge in Dritteln zu holen kostet dreimal so viele
+// Anfragen, und die muss der ausgelastete Absender zusaetzlich bedienen:
+// der Kettendurchsatz fiel von 8.194 auf 4.414 Ueberweisungen je Sekunde.
+// 8 MB behaelt den groesseren Teil des Erholungsgewinns, ohne den
+// Absender doppelt zu belasten.
+const blocksByHashResponseBudget = 8 << 20
 
 // capBlocksByResponseBytes keeps blocks while they fit the budget and reports
 // whether anything was left out.
