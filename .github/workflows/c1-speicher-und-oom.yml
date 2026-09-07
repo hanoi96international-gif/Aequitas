@@ -1,0 +1,40 @@
+name: C1 Speicher und OOM (read-only)
+
+# C1 startete am 07.09.2026 mitten in einem Lastlauf neu (Prozessalter 2,4
+# Minuten, Zaehler auf null) bei 5,3 GB Systemspeicher. Docker meldet einen
+# Kernel-OOM NICHT als OOMKilled -- der Beleg steht nur im Ring-Buffer.
+
+on:
+  workflow_dispatch: {}
+
+jobs:
+  pruefen:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: 173.249.37.118
+          username: root
+          key: ${{ secrets.CONTABO_SSH_KEY }}
+          port: 22
+          fingerprint: "SHA256:noMtjHV8c+2iEFZu3TRUP6WRwGjkrvFke71KgU6Eyt4"
+          script_stop: false
+          timeout: 240s
+          command_timeout: 240s
+          script: |
+            echo "===== RAM insgesamt ====="
+            free -m
+            echo
+            echo "===== was verbraucht ihn? ====="
+            timeout 30 docker stats --no-stream --format '{{.Name}} CPU={{.CPUPerc}} MEM={{.MemUsage}} ({{.MemPerc}})' 2>/dev/null | head -10
+            echo
+            echo "===== KERNEL-OOM? (Docker meldet das nicht) ====="
+            dmesg -T 2>/dev/null | grep -iE "out of memory|oom-kill|killed process" | tail -8 || echo "(dmesg nicht lesbar)"
+            echo "  Treffer insgesamt:"
+            dmesg -T 2>/dev/null | grep -ciE "out of memory|oom-kill|killed process" || echo 0
+            echo
+            echo "===== Neustarts des Knotens ====="
+            docker inspect aequitas-node --format 'RestartCount={{.RestartCount}} OOMKilled={{.State.OOMKilled}} ExitCode={{.State.ExitCode}} StartedAt={{.State.StartedAt}} FinishedAt={{.State.FinishedAt}}'
+            echo
+            echo "===== Platte ====="
+            df -h / | tail -2
