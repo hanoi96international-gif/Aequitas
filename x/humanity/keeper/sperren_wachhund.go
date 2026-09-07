@@ -93,10 +93,25 @@ func interessanteGoroutinen() []string {
 		if !strings.Contains(block, "humanity/keeper") {
 			continue
 		}
-		// Nur Goroutinen, die tatsaechlich in einer Sperre oder im Replay
-		// stecken -- die uebrigen warten auf Kanaele und halten nichts.
-		if !strings.Contains(block, "Lock") && !strings.Contains(block, "eplay") &&
-			!strings.Contains(block, "AddPeerBlock") && !strings.Contains(block, "Sync") {
+		// NUR MOEGLICHE HALTER. Eine Goroutine, deren Zustand "sync.Mutex.Lock"
+		// oder "semacquire" ist, WARTET auf genau dieselbe Sperre -- sie kann
+		// sie nicht halten. Der erste Abzug am 07.09.2026 bestand fast nur aus
+		// solchen Zeilen und nannte den Halter damit gerade nicht.
+		//
+		// Wer die Sperre haelt, ist stattdessen laufend, im Syscall oder wartet
+		// auf Platte bzw. Netz -- runnable, running, IO wait, syscall. Genau
+		// diese bleiben uebrig.
+		kopf := block
+		if j := strings.IndexByte(kopf, 10); j > 0 {
+			kopf = kopf[:j]
+		}
+		wartend := strings.Contains(kopf, "sync.Mutex.Lock") ||
+			strings.Contains(kopf, "semacquire") ||
+			strings.Contains(kopf, "sync.RWMutex") ||
+			strings.Contains(kopf, "chan receive") ||
+			strings.Contains(kopf, "chan send") ||
+			strings.Contains(kopf, "select")
+		if wartend {
 			continue
 		}
 		zeilen := strings.Split(block, "\n")
