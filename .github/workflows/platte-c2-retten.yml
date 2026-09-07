@@ -12,6 +12,10 @@ name: Platte C2 retten (zeigen, dann nur Unkritisches entfernen)
 on:
   workflow_dispatch:
     inputs:
+      alte_backups:
+        description: "ja = die alten Dumps in /root/backups entfernen, die NEUESTE dort und backup-latest.dump bleiben"
+        required: false
+        default: "nein"
       nur_zeigen:
         description: "true = nur berichten, nichts entfernen"
         required: false
@@ -60,6 +64,22 @@ jobs:
             echo "-- Generator-Logs und alte Kontenlisten --"
             rm -f /tmp/stability*.log /tmp/loadtest*.log /root/contabo-loadtest/*.bak 2>/dev/null
             ls -la /tmp/*.log 2>/dev/null | head -3 || echo "   (keine Logs mehr in /tmp)"
+
+            if [ "${{ inputs.alte_backups }}" = "ja" ]; then
+              echo "-- alte Dumps in /root/backups (das AKTUELLE backup-latest.dump bleibt) --"
+              # Nur Dateien in /root/backups, nur *.dump, und nur solche, die
+              # AELTER sind als die neueste. backup-latest.dump liegt in /root
+              # und wird von diesem Pfad gar nicht erfasst.
+              ls -la /root/backups/*.dump 2>/dev/null | awk '{print "   vorhanden:", $5, $9}'
+              NEUESTE="$(ls -t /root/backups/*.dump 2>/dev/null | head -1)"
+              echo "   behalte die neueste: ${NEUESTE:-keine}"
+              for f in $(ls -t /root/backups/*.dump 2>/dev/null | tail -n +2); do
+                SZ=$(du -h "$f" | cut -f1)
+                rm -f "$f" && echo "   entfernt: $SZ  $f"
+              done
+              echo "   backup-latest.dump unangetastet:"
+              ls -lh /root/backup-latest.dump 2>/dev/null | awk '{print "     ", $5, $9}'
+            fi
             echo
             echo "===== NACHHER ====="
             df -h / | tail -1
