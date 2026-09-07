@@ -89,6 +89,13 @@ func TestDecodeAndRecoverSender_MatchesOriginalInlineLogic(t *testing.T) {
 // the pre-existing serial code did -- run under -race to catch any data race
 // introduced by the new worker-pool pre-pass.
 func TestHandleRPC_BatchParallelSendRawTransaction(t *testing.T) {
+	// Die Annahmekontrolle lehnt einen Validator ab, der seit 30 s keinen Block
+	// produziert hat. In diesem Test produziert nie jemand einen, was unter dem
+	// Race-Detector (deutlich langsamer) nach genau 30 s zuschlaegt: der Lauf vom
+	// 06.09.2026 scheiterte mit -32005 "has not produced a block since starting
+	// 32s ago". Geprueft wird hier das Buendelverhalten, nicht die
+	// Annahmekontrolle -- die hat ihre eigenen Tests in admission_control_test.go.
+	noteBlockProduced()
 	cs := newTestState()
 	dag := &BlockDAG{state: cs}
 	srv := NewEVMRPCServer(dag, cs)
