@@ -1,0 +1,66 @@
+name: Platte C2 retten (zeigen, dann nur Unkritisches entfernen)
+
+# C2 stand am 07.09.2026 bei 666 MB frei (99 % belegt) und lehnte deshalb
+# bereits Ueberweisungen ab -- der Plattenwaechter greift unter 3 GB. Voll
+# gelaufen ist sie durch die Lasttests dieser Sitzung, nicht durch echten
+# Betrieb.
+#
+# ANFASSEN: Docker-Logs, Build-Cache, verwaiste Images/Container, /tmp.
+# NICHT ANFASSEN: Postgres-Daten, Volumes, WAL, irgendetwas der Kette.
+# Deshalb kein "docker system prune --volumes" und kein DELETE auf Tabellen.
+
+on:
+  workflow_dispatch:
+    inputs:
+      nur_zeigen:
+        description: "true = nur berichten, nichts entfernen"
+        required: false
+        default: "true"
+
+jobs:
+  retten:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: 194.163.188.71
+          username: root
+          key: ${{ secrets.CONTABO2_SSH_KEY }}
+          port: 22
+          fingerprint: "SHA256:VIwj7Faxiga2n45HVHZEQFPxcbRKHgSgHoxAFsf2wto"
+          script_stop: false
+          timeout: 600s
+          command_timeout: 600s
+          script: |
+            echo "===== VORHER ====="
+            df -h / | tail -1
+            echo
+            echo "===== was ist gross? ====="
+            timeout 90 du -sh /var/lib/docker/containers /var/lib/docker/overlay2 /var/lib/docker/volumes /tmp /root 2>/dev/null | sort -h | tail -8
+            echo
+            echo "===== groesste Container-Logdateien ====="
+            timeout 60 find /var/lib/docker/containers -name '*-json.log' -size +100M -exec ls -lh {} + 2>/dev/null | awk '{print $5, $9}' | head -8
+            echo
+            echo "===== groesste Dateien in /tmp und /root ====="
+            timeout 60 find /tmp /root -type f -size +200M -exec ls -lh {} + 2>/dev/null | awk '{print $5, $9}' | head -8
+            echo
+            if [ "${{ inputs.nur_zeigen }}" = "true" ]; then
+              echo "(nur_zeigen=true -- es wurde nichts entfernt)"
+              exit 0
+            fi
+            echo "===== AUFRAEUMEN (nur Unkritisches) ====="
+            echo "-- Container-Logs leeren (die Kette schreibt sie neu, kein Datenverlust) --"
+            for f in $(find /var/lib/docker/containers -name '*-json.log' -size +50M 2>/dev/null); do
+              SZ=$(du -h "$f" | cut -f1); : > "$f"; echo "   geleert: $SZ  $f"
+            done
+            echo "-- Build-Cache --"
+            timeout 120 docker builder prune -af 2>&1 | tail -2
+            echo "-- verwaiste Images (KEINE Volumes) --"
+            timeout 180 docker image prune -af 2>&1 | tail -2
+            echo "-- Generator-Logs und alte Kontenlisten --"
+            rm -f /tmp/stability*.log /tmp/loadtest*.log /root/contabo-loadtest/*.bak 2>/dev/null
+            ls -la /tmp/*.log 2>/dev/null | head -3 || echo "   (keine Logs mehr in /tmp)"
+            echo
+            echo "===== NACHHER ====="
+            df -h / | tail -1
+            curl -s --max-time 10 http://127.0.0.1:8080/api/health/combined | grep -oE '"frei_mb":[0-9]+|"kritisch":[a-z]+' | head -2
