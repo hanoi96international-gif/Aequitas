@@ -29,6 +29,9 @@ jobs:
             M=${{ inputs.minuten }}
             docker logs --since ${M}m aequitas-node > /tmp/c1.txt 2>&1
             echo "Logzeilen: $(wc -l < /tmp/c1.txt)"
+            echo "===== WER HAELT DIE SPERRE? (Wachhund) ====="
+            grep -a "\[SPERRE\]" /tmp/c1.txt | tail -20 | cut -c1-260
+            echo "  (leer = der Wachhund hat nie ausgeloest)"
             echo "===== HTTP-SYNC, die letzten 20 ====="
             grep -a "HTTP-SYNC" /tmp/c1.txt | tail -20 | cut -c1-230
             echo
