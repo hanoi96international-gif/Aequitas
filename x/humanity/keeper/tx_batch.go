@@ -135,25 +135,62 @@ func (cs *ChainState) SaveTxBatch(root string, txs []Transaction) error {
 	if root == "" || len(txs) == 0 {
 		return nil
 	}
+	// DER SPEICHER SYNCHRON, DIE PLATTE NICHT.
+	//
+	// Diese Funktion wird aus ProduceBlock gerufen, und die haelt dag.mu
+	// EXKLUSIV -- der Kommentar an der Aufrufstelle sagt es selbst: "if it's
+	// slow, EVERY other dag.mu consumer stalls for the same duration". Genau
+	// das ist eingetreten. Der Wachhund (sperren_wachhund.go) zog am
+	// 07.09.2026 einen Abzug, waehrend ProduceBlock 3 Sekunden auf die Sperre
+	// wartete, und fand als EINZIGE laufende Goroutine des Pakets:
+	//
+	//	goroutine 176 [runnable]: SaveTxBatch(..., {..., 0x168f, 0x1698})
+	//	  /app/x/humanity/keeper/tx_batch.go:143
+	//
+	// 0x168f sind 5.775 Ueberweisungen. Bei dieser Groesse kostet allein das
+	// json.Marshal ein Vielfaches der Blockzeit, der Insert derselben gut
+	// 1,2 MB noch einmal -- und beides lief unter der exklusiven Sperre.
+	// Gemessen wurden dadurch Wartezeiten von 3.846 ms (C1) und 19.262 ms
+	// (C2) auf einen Block, der selbst keine einzige Transaktion trug.
+	//
+	// Der Zwischenspeicher bleibt synchron: er ist eine Map-Zuweisung, und
+	// LoadTxBatch schaut zuerst dort nach. Ein Peer, der den Rumpf sofort
+	// anfragt, wird also weiterhin bedient, ohne dass die Platte fertig sein
+	// muss. Nur Serialisierung und Insert wandern hinaus.
+	//
+	// Der Aufrufer behandelt einen Fehler hier ohnehin als nicht toedlich
+	// ("peers get the block with its body inline, as they always did"), also
+	// verliert der Weg nach draussen keine Zusicherung, die vorher galt.
 	cs.txBatches.put(root, txs)
 	if cs.db == nil {
 		return nil
 	}
+	SafeGoroutine("saveTxBatch", func() {
+		cs.speichereTxBuendelDauerhaft(root, txs)
+	})
+	return nil
+}
+
+// speichereTxBuendelDauerhaft ist der teure Teil von SaveTxBatch, ausgelagert,
+// damit er nicht unter dag.mu laeuft. Siehe dort.
+func (cs *ChainState) speichereTxBuendelDauerhaft(root string, txs []Transaction) {
 	cs.ensureTxBatchTable()
 	data, err := json.Marshal(txs)
 	if err != nil {
-		return fmt.Errorf("marshal tx batch %s: %w", root, err)
+		fmt.Printf("[TX] ⚠ Konnte das Transaktionsbuendel %s nicht kodieren: %v — der Rumpf bleibt im Zwischenspeicher\n", root, err)
+		return
 	}
 	// cs.db directly, never dbExec(): this is a standalone write that must not
 	// join whatever transaction some other goroutine happens to have open —
 	// see SaveBlockToDB's own comment for the wire-protocol corruption that
 	// caused in production on 2026-07-25.
-	_, err = cs.db.Exec(
+	if _, err := cs.db.Exec(
 		`INSERT INTO chain_tx_batches (root, txs, created_at) VALUES ($1,$2,$3)
 		 ON CONFLICT (root) DO NOTHING`,
 		root, string(data), nowUnix(),
-	)
-	return err
+	); err != nil {
+		fmt.Printf("[TX] ⚠ Konnte das Transaktionsbuendel %s nicht speichern: %v — der Rumpf bleibt im Zwischenspeicher\n", root, err)
+	}
 }
 
 // LoadTxBatch returns a body by digest, from memory or the database.
