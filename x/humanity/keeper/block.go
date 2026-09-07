@@ -2176,10 +2176,16 @@ func (dag *BlockDAG) ProduceBlock() *Block {
 	// replayMu from after its replay until after dag.mu.Unlock() on the success
 	// path — both functions take locks in (replayMu, dag.mu) order, no deadlock.
 	pbSperrenStart := time.Now()
+	// Dem Sync mitteilen, dass hier jemand auf die Sperre wartet -- siehe
+	// produktion_vorrang.go. Ohne das laeuft der Sync zwischen zwei fremden
+	// Bloecken sofort weiter und die Produktion wartet durch eine ganze Seite
+	// hindurch (gemessen: 4.241 ms von 5.903 ms Gesamtdauer).
+	fertig := produktionMeldetWarten()
 	dag.replayMu.Lock()
 	defer dag.replayMu.Unlock()
 	dag.mu.Lock()
 	defer dag.mu.Unlock()
+	fertig()
 	pbSperren = time.Since(pbSperrenStart)
 
 	// P1-05 (audit): halt production when a prior peer-block persistence failure

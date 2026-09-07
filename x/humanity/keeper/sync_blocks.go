@@ -1731,6 +1731,11 @@ func (dag *BlockDAG) doSyncOnce(nodeURL string) (ok bool) {
 				budgetAbgelaufen = true
 				break
 			}
+			// Der Blockproduktion Platz machen, falls sie wartet. Hier wird KEINE
+			// Sperre gehalten -- AddPeerBlock nimmt sie je Block selbst und gibt
+			// sie wieder frei -- also ist dies genau der Moment, in dem ein
+			// Wartender zum Zug kommen kann. Siehe produktion_vorrang.go.
+			syncLaesstProduktionVor()
 			// FIX: genesis is always created locally and AddPeerBlock always
 			// rejects a peer-supplied genesis (by design — see its own
 			// comment). Without this skip, every single sync cycle forever
