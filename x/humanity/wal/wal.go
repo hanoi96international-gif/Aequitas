@@ -769,3 +769,8 @@ func ReplayFile(path string, fn func(Entry) error) (count int, truncated bool, e
 		count++
 	}
 }
+
+// Path meldet den Dateipfad dieses WAL. Die Kompaktierung braucht ihn, um zu
+// entscheiden, ob sich das Neuschreiben ueberhaupt lohnt -- siehe
+// keeper/wal_kompaktierung.go.
+func (w *WAL) Path() string { return w.path }

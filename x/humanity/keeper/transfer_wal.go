@@ -284,6 +284,10 @@ func (cs *ChainState) initWALIfEnabled() {
 		return
 	}
 	cs.wal = w
+	// Ohne das waechst die Datei unbegrenzt -- siehe wal_kompaktierung.go und
+	// den Vorfall vom 07.09.2026 (17 GB WAL, Platte zu 99 % voll, Knoten
+	// lehnte Ueberweisungen ab).
+	cs.starteWALKompaktierung()
 	fmt.Println("[WAL] ✓ WAL fast path active for eligible transfers")
 }
 
