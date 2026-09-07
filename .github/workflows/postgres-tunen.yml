@@ -74,6 +74,24 @@ jobs:
                 sleep 3
               done
             fi
+            # DEN KNOTEN MIT NEU STARTEN. Ein Postgres-Neustart trifft laufende
+            # Schreibvorgaenge; schlaegt einer fehl, waehrend der Speicher der
+            # Platte voraus ist, geht der Knoten in den degraded-Zustand und
+            # haelt die Produktion an, bis er neu startet -- ein Schutz, kein
+            # Fehler, aber er endet nicht von selbst. Am 07.09.2026 passierte
+            # genau das: C1 verwarf danach 13.051 Bloecke in zwoelf Minuten,
+            # fiel 420 zurueck und produzierte eine Viertelstunde nichts.
+            if [ -n "$SB" ]; then
+              echo "-- Knoten mit neu starten (sonst bleibt er im degraded-Zustand) --"
+              docker restart aequitas-node >/dev/null
+              for i in $(seq 1 60); do
+                ST=$(curl -s --max-time 8 http://127.0.0.1:8080/api/health/combined 2>/dev/null | grep -oE '"stalled_seconds":[0-9]+' | head -1 | cut -d: -f2)
+                if [ -n "$ST" ] && [ "$ST" -le 20 ] 2>/dev/null; then echo "   Knoten wieder im Takt nach $((i*5))s"; break; fi
+                sleep 5
+              done
+              echo "   degraded-Meldungen der letzten 2 Minuten:"
+              docker logs --since 2m aequitas-node 2>&1 | grep -ac "degraded" || echo 0
+            fi
             echo "===== NACHHER ====="
             docker exec aequitas-postgres psql -U postgres -t -c "
               SELECT name || ' = ' || setting || COALESCE(' ' || unit,'') FROM pg_settings
