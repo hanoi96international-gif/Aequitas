@@ -28,10 +28,10 @@ import (
 // geschrieben und DANN eingereiht -- zwischen beidem liegt ein Fenster, in
 // dem er in keiner Warteschlange steht und trotzdem noch gebraucht wird.
 //
-// Deshalb zwei Runden: In Runde N wird die Kopfnummer gemerkt, wenn die
-// Warteschlange leer ist. Erst wenn sie in Runde N+1 immer noch leer ist,
-// wird bis zu dieser Nummer gekuerzt. Alles davor war dann durch eine
-// vollstaendige, leere Runde gedeckt.
+// Deshalb wird gerechnet: Stehen N Elemente in der Warteschlange und ist der
+// Kopf bei S, koennen hoechstens die Records S-N+1 .. S noch offen sein --
+// alles davor ist in Postgres. Ein grosszuegiger Sicherheitsabstand deckt das
+// Fenster zwischen Schreiben und Einreihen.
 //
 // Zusaetzlich wird der Wiederanlauf-Boden beruecksichtigt: unterhalb von
 // walRecoveryFloor darf ohnehin nie wieder abgespielt werden (siehe
@@ -82,32 +82,40 @@ func (cs *ChainState) starteWALKompaktierung() {
 }
 
 // walKompaktierungsRunde fuehrt eine Runde aus und gibt die Kopfnummer
-// zurueck, die in der naechsten Runde gekuerzt werden darf (0 = keine).
-// Ausgelagert, damit die Zwei-Runden-Regel testbar ist, ohne fuenf Minuten
-// zu warten.
-func (cs *ChainState) walKompaktierungsRunde(kandidat uint64) uint64 {
+// zurueck, die in der naechsten Runde als Untergrenze dient (0 = keine).
+// Ausgelagert, damit die Regel testbar ist, ohne fuenf Minuten zu warten.
+//
+// WARUM NICHT "WARTESCHLANGE LEER". Der erste Anlauf am 07.09.2026 kuerzte
+// nur, wenn die Flush-Warteschlange zwei Runden in Folge leer war. Live
+// gemessen lief er NIE: unter Dauerlast ist die Warteschlange nie leer, also
+// blieb laeufe=0 und die Datei bei 17 GB -- die Bedingung war zwar sicher,
+// aber genau dann wirkungslos, wenn sie gebraucht wird.
+//
+// Jetzt wird gerechnet statt gewartet. Jedes Element der Warteschlange gehoert
+// zu genau einem Record, und eingereiht wird in derselben Reihenfolge, in der
+// geschrieben wird. Stehen also N Elemente aus und ist der Kopf bei S, dann
+// koennen hoechstens die Records S-N+1 .. S noch offen sein; alles davor ist
+// nachweislich in Postgres. Ein grosszuegiger Sicherheitsabstand kommt hinzu,
+// weil zwischen dem Schreiben eines Records und seinem Einreihen ein kurzes
+// Fenster liegt, in dem er in keiner Warteschlange steht.
+func (cs *ChainState) walKompaktierungsRunde(_ uint64) uint64 {
 	if cs.wal == nil {
 		return 0
 	}
-	// Eine nicht leere Warteschlange heisst: es steht noch Ungeschriebenes
-	// aus. Dann ist weder Kuerzen erlaubt noch ein neuer Kandidat gueltig --
-	// der alte verfaellt, die Regel beginnt von vorn.
-	if cs.WALFlushQueueDepth() > 0 {
-		return 0
-	}
 	kopf := cs.wal.HeadSeq()
-	if kandidat == 0 {
-		// Erste leere Runde: nur merken, noch nicht kuerzen.
-		return kopf
+	offen := uint64(cs.WALFlushQueueDepth())
+	// Der Abstand deckt das Schreib-/Einreih-Fenster und jede Unschaerfe in
+	// der Tiefenmessung. Bei rund 5.000 Ueberweisungen je Sekunde entspricht
+	// er gut einer Minute Vorlauf -- weit mehr, als ein Flush je braucht.
+	const abstand = uint64(300000)
+	if kopf <= offen+abstand {
+		return kopf // noch zu jung zum Kuerzen
 	}
-	// Zweite leere Runde in Folge -- alles vor `kandidat` ist gedeckt.
-	bis := kandidat
+	bis := kopf - offen - abstand
 	if boden := cs.walRecoveryFloor(); boden > bis {
-		// Unterhalb des Bodens darf ohnehin nie wieder abgespielt werden.
+		// Unterhalb des Wiederanlauf-Bodens darf ohnehin nie wieder abgespielt
+		// werden, dort ist Kuerzen immer erlaubt.
 		bis = boden
-	}
-	if bis == 0 {
-		return kopf
 	}
 	vorher := walDateiGroesse(cs.wal.Path())
 	if vorher < walKompaktAbBytes {
@@ -127,8 +135,8 @@ func (cs *ChainState) walKompaktierungsRunde(kandidat uint64) uint64 {
 	if vorher > nachher {
 		walKompaktBytesFrei.Add(vorher - nachher)
 	}
-	fmt.Printf("[WAL] ✓ Kompaktiert bis Seq %d in %s: %d MB → %d MB\n",
-		bis, dauer.Round(time.Millisecond), vorher>>20, nachher>>20)
+	fmt.Printf("[WAL] ✓ Kompaktiert bis Seq %d in %s: %d MB → %d MB (Kopf %d, %d offen)\n",
+		bis, dauer.Round(time.Millisecond), vorher>>20, nachher>>20, kopf, offen)
 	return kopf
 }
 
