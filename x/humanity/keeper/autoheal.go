@@ -526,6 +526,9 @@ func (dag *BlockDAG) StartDivergenceAutoHeal(bootstrapURL, signer, primaryURL st
 	dag.startChainDivergenceCheck(primaryURL)
 	dag.startHeightStallCheck()
 	dag.startSyncStarvationCheck(primaryURL)
+	// Der einzige Waechter, der ein EINGEFRORENES Verfahren erkennt: alle
+	// anderen haengen an Code, der dabei selbst steht. Siehe totmann.go.
+	dag.StarteTotmannSchalter(primaryURL)
 }
 
 // syncStarvationTickResult is startSyncStarvationCheck's per-tick decision,
