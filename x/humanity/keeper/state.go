@@ -719,7 +719,27 @@ func NewChainState(dataFile string) *ChainState {
 			}
 			return url + sep + param + "=" + value
 		}
-		dbURL = appendParam(dbURL, "statement_timeout", "30000")
+		// FUENF SEKUNDEN, NICHT DREISSIG (geaendert 08.09.2026).
+		//
+		// Der Wert begrenzt, wie lange eine EINZELNE Abfrage laufen darf --
+		// und die teuersten laufen unter dag.mu, also steht der ganze Knoten
+		// genau so lange. Dreissig Sekunden waren dafuer zu grosszuegig: C1
+		// fror am 07.09.2026 zehn Minuten ein (keine Logzeile, keine Hoehe,
+		// kein Absturz, HTTP antwortete weiter) -- das Bild, das der Kommentar
+		// oben aus dem Vorfall vom 30.06. beschreibt, nur eben in Vielfachen
+		// von dreissig Sekunden statt unbegrenzt.
+		//
+		// Fuenf Sekunden sind immer noch das Zehnfache dessen, was die
+		// gemessenen Abfragen im Sperrbereich brauchen (LoadPendingTxs unter
+		// Last 1,2-1,5 s, SaveBlockWithPendingTxsAtomic bis 0,9 s), aber kurz
+		// genug, dass ein Haenger als Fehler zurueckkommt statt die Kette
+		// anzuhalten. Ein abgebrochener Block ist ein Block; ein stehender
+		// Knoten ist keiner.
+		//
+		// Die wenigen Stellen, die laenger brauchen duerfen -- Snapshot-Import,
+		// Migrationen -- heben die Grenze ohnehin lokal auf
+		// (SET LOCAL statement_timeout = 0, siehe snapshot.go).
+		dbURL = appendParam(dbURL, "statement_timeout", "5000")
 		dbURL = appendParam(dbURL, "connect_timeout", "10")
 		db, err := sql.Open("postgres", dbURL)
 		if err == nil {

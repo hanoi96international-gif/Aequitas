@@ -697,6 +697,7 @@ func (a *APIServer) handleCombinedHealth(w http.ResponseWriter, r *http.Request)
 		"wal_kompaktierung":   WALKompaktierungsStand(),
 		"produktions_vorrang": ProduktionsVorrangStand(),
 		"sperr_wachhund":      SperrWachhundStand(),
+		"totmann":             TotmannStand(),
 		"buendel_ablehnung":   BuendelAblehnungStand(),
 		"plattenplatz":        PlattenplatzStand(),
 		"batcher_phasen":      BatcherPhasenStand(),
