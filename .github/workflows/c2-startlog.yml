@@ -1,0 +1,36 @@
+name: C2 Startlog (read-only)
+
+# C2 meldet nach einem Neustart minutenlang Hoehe 0 und schreibt dabei keine
+# einzige Logzeile in ein --since-Fenster. Die Startmeldungen liegen dann
+# ausserhalb davon: dieser Workflow holt den Anfang und das Ende des Logs
+# ohne Zeitfilter.
+
+on:
+  workflow_dispatch: {}
+
+jobs:
+  log:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: 194.163.188.71
+          username: root
+          key: ${{ secrets.CONTABO2_SSH_KEY }}
+          port: 22
+          fingerprint: "SHA256:VIwj7Faxiga2n45HVHZEQFPxcbRKHgSgHoxAFsf2wto"
+          script_stop: false
+          timeout: 240s
+          command_timeout: 240s
+          script: |
+            echo "===== Containerzustand ====="
+            timeout 20 docker inspect aequitas-node --format 'Status={{.State.Status}} Restarts={{.RestartCount}} Start={{.State.StartedAt}}'
+            echo
+            echo "===== die letzten 30 Logzeilen (ohne Zeitfilter) ====="
+            timeout 60 docker logs --tail 30 aequitas-node 2>&1 | cut -c1-220
+            echo
+            echo "===== Datenbank erreichbar? ====="
+            timeout 20 docker exec aequitas-postgres pg_isready -U postgres || echo "  DATENBANK ANTWORTET NICHT"
+            echo
+            echo "===== Platte ====="
+            df -h / | tail -1
