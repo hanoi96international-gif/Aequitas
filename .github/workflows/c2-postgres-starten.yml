@@ -1,0 +1,55 @@
+name: Postgres auf C2 starten
+
+# Nach der vollen Platte am 09.09.2026 lief der Container aequitas-postgres
+# nicht mehr ("is not running"). Der Chainknoten meldete daraufhin Hoehe 0
+# und lehnte jeden Block als far-ahead ab -- die Daten selbst sind intakt:
+# beim Start lud er 3.919 Bloecke bis Hoehe 5970769 und 2.037 Konten.
+#
+# Startet NUR den vorhandenen Container neu. Kein Wipe, kein Resync, keine
+# Volumes angefasst.
+
+on:
+  workflow_dispatch: {}
+
+jobs:
+  starten:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: 194.163.188.71
+          username: root
+          key: ${{ secrets.CONTABO2_SSH_KEY }}
+          port: 22
+          fingerprint: "SHA256:VIwj7Faxiga2n45HVHZEQFPxcbRKHgSgHoxAFsf2wto"
+          script_stop: false
+          timeout: 500s
+          command_timeout: 500s
+          script: |
+            set +e
+            echo "===== Platte (muss Platz haben, sonst stirbt sie wieder) ====="
+            df -h / | tail -1
+            echo
+            echo "===== warum ist sie gestorben? ====="
+            docker inspect aequitas-postgres --format 'Status={{.State.Status}} ExitCode={{.State.ExitCode}} OOMKilled={{.State.OOMKilled}} FinishedAt={{.State.FinishedAt}}'
+            docker logs --tail 15 aequitas-postgres 2>&1 | cut -c1-200
+            echo
+            echo "===== starten ====="
+            docker start aequitas-postgres
+            for i in $(seq 1 40); do
+              docker exec aequitas-postgres pg_isready -U postgres >/dev/null 2>&1 && { echo "   Datenbank da nach $((i*3))s"; break; }
+              sleep 3
+            done
+            echo
+            echo "===== Daten noch da? ====="
+            docker exec aequitas-postgres psql -U postgres -d aequitas -t -c "
+              SELECT 'chain_blocks: ' || count(*)::text || ' Zeilen, hoechste Hoehe ' || COALESCE(max(height),0)::text FROM chain_blocks;" 2>&1 | sed 's/^ *//' | grep -v '^$'
+            echo
+            echo "===== Knoten neu starten, damit er die Datenbank wiederfindet ====="
+            docker restart aequitas-node >/dev/null
+            for i in $(seq 1 60); do
+              H=$(curl -s --max-time 8 http://127.0.0.1:8080/api/status 2>/dev/null | grep -oE '"height":[0-9]+' | cut -d: -f2)
+              if [ -n "$H" ] && [ "$H" -gt 0 ] 2>/dev/null; then echo "   Knoten bei Hoehe $H nach $((i*5))s"; break; fi
+              [ $((i % 6)) -eq 0 ] && echo "   ... Hoehe ${H:-?} nach $((i*5))s"
+              sleep 5
+            done
