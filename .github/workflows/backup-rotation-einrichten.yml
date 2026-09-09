@@ -1,0 +1,96 @@
+name: Backup-Rotation einrichten (beide Boxen)
+
+# WAS AM 09.09.2026 PASSIERT IST, und warum es vor der Beta weg muss:
+#
+#   /root/backups/  20260909  12 GB
+#                   20260908  12 GB
+#                   20260907  7,6 GB
+#   /root/backup-latest.dump   3,1 GB      = 34,7 GB
+#
+# Ein taeglicher Dump ohne Rotation. Die Platte lief auf 100 %, Postgres starb
+# mitten in seiner eigenen Wiederherstellung ("could not extend file: No space
+# left on device") und startete nicht wieder, der Chainknoten meldete daraufhin
+# Hoehe 0 und lehnte jeden Block als far-ahead ab. Drei Stufen Folgeschaden aus
+# einer einzigen unbeaufsichtigten Datei.
+#
+# Ein Betreiber ohne Vorkenntnisse haette an keiner dieser Stufen eine Chance:
+# der Knoten "laeuft" (HTTP antwortet), die Platte ist unsichtbar, und der
+# Zusammenhang zwischen Dump, Datenbank und Hoehe 0 ist nicht zu erraten.
+#
+# Diese Rotation laeuft als eigener taeglicher Auftrag NACH dem Backup und
+# behaelt die juengsten N Dumps. Sie loescht nur in /root/backups und nur
+# *.dump.
+
+on:
+  workflow_dispatch:
+    inputs:
+      behalten:
+        description: "Wie viele Dumps behalten werden (die juengsten)"
+        required: false
+        default: "2"
+      box:
+        required: true
+        default: beide
+        type: choice
+        options: [contabo1, contabo2, beide]
+
+jobs:
+  einrichten:
+    strategy:
+      max-parallel: 1
+      matrix:
+        box: ${{ inputs.box == 'contabo1' && fromJSON('[{"name":"Contabo1","host":"173.249.37.118","secret":"C1"}]') || inputs.box == 'contabo2' && fromJSON('[{"name":"Contabo2","host":"194.163.188.71","secret":"C2"}]') || fromJSON('[{"name":"Contabo1","host":"173.249.37.118","secret":"C1"},{"name":"Contabo2","host":"194.163.188.71","secret":"C2"}]') }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Rotation auf ${{ matrix.box.name }}
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ matrix.box.host }}
+          username: root
+          key: ${{ matrix.box.secret == 'C1' && secrets.CONTABO_SSH_KEY || secrets.CONTABO2_SSH_KEY }}
+          port: 22
+          script_stop: false
+          timeout: 300s
+          command_timeout: 300s
+          envs: BEHALTEN
+          script: |
+            set +e
+            echo "### ${{ matrix.box.name }} ###"
+            echo "===== vorher ====="
+            df -h / | tail -1
+            ls -la /root/backups/*.dump 2>/dev/null | awk '{print "   ", $5, $9}' || echo "   (keine Dumps)"
+
+            cat > /root/backup-rotation.sh <<'SKRIPT'
+            #!/bin/bash
+            # Behaelt die juengsten N Dumps in /root/backups und entfernt den Rest.
+            # Laeuft taeglich per cron NACH dem Backup. Fasst nichts ausserhalb
+            # von /root/backups an und loescht nur *.dump.
+            #
+            # Es gibt ihn, weil am 09.09.2026 drei ungedrehte Dumps (34,7 GB) die
+            # Platte auf 100 % brachten: Postgres starb mitten in der eigenen
+            # Wiederherstellung und kam nicht wieder, der Chainknoten fiel auf
+            # Hoehe 0 und lehnte jeden Block ab.
+            BEHALTEN="${1:-2}"
+            cd /root/backups 2>/dev/null || exit 0
+            ANZAHL=$(ls -1 *.dump 2>/dev/null | wc -l)
+            [ "$ANZAHL" -le "$BEHALTEN" ] && exit 0
+            ls -t *.dump | tail -n +$((BEHALTEN+1)) | while read -r f; do
+              logger -t backup-rotation "entferne $f ($(du -h "$f" | cut -f1))"
+              rm -f "$f"
+            done
+            SKRIPT
+            chmod +x /root/backup-rotation.sh
+            echo "===== Rotation jetzt einmal ausfuehren ====="
+            /root/backup-rotation.sh "${BEHALTEN:-2}"
+
+            echo "===== taeglich einplanen (nach dem Backup) ====="
+            # Bestehenden Eintrag ersetzen, nicht doppeln.
+            (crontab -l 2>/dev/null | grep -v 'backup-rotation.sh'; \
+             echo "30 9 * * * /root/backup-rotation.sh ${BEHALTEN:-2} >/dev/null 2>&1") | crontab -
+            crontab -l | grep backup-rotation || echo "   (cron-Eintrag fehlt!)"
+            echo
+            echo "===== nachher ====="
+            df -h / | tail -1
+            ls -la /root/backups/*.dump 2>/dev/null | awk '{print "   ", $5, $9}' || echo "   (keine Dumps mehr)"
+        env:
+          BEHALTEN: ${{ inputs.behalten }}
