@@ -1,0 +1,40 @@
+name: Starten die Container nach einem Ausfall von selbst? (read-only)
+
+# Am 09.09.2026 starb aequitas-postgres an der vollen Platte -- und blieb
+# unten. Der Chainknoten lief weiter, fand keine Datenbank, meldete Hoehe 0
+# und lehnte jeden Block ab. Ein Betreiber ohne Vorkenntnisse haette hier
+# einen "laufenden" Knoten gesehen, der nichts tut.
+#
+# Docker kann das allein: --restart unless-stopped startet einen abgestuerzten
+# Container wieder. Ob das gesetzt ist, sagt nur die Container-Konfiguration.
+
+on:
+  workflow_dispatch: {}
+
+jobs:
+  pruefen:
+    strategy:
+      max-parallel: 1
+      matrix:
+        box: [{name: Contabo1, host: "173.249.37.118", secret: C1}, {name: Contabo2, host: "194.163.188.71", secret: C2}]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ matrix.box.host }}
+          username: root
+          key: ${{ matrix.box.secret == 'C1' && secrets.CONTABO_SSH_KEY || secrets.CONTABO2_SSH_KEY }}
+          port: 22
+          script_stop: false
+          timeout: 200s
+          command_timeout: 200s
+          script: |
+            echo "### ${{ matrix.box.name }} ###"
+            for C in aequitas-node aequitas-postgres proof-server aequitas-matching aequitas-coordinator; do
+              R=$(docker inspect "$C" --format '{{.HostConfig.RestartPolicy.Name}}' 2>/dev/null)
+              S=$(docker inspect "$C" --format '{{.State.Status}}' 2>/dev/null)
+              [ -z "$R" ] && continue
+              MARK=""
+              [ "$R" = "no" ] && MARK="   <-- startet NICHT von selbst neu"
+              printf "  %-24s Regel=%-18s Status=%-10s%s\n" "$C" "$R" "$S" "$MARK"
+            done
