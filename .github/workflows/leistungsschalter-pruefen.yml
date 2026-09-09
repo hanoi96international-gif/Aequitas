@@ -1,0 +1,45 @@
+name: Welche Leistungsschalter stehen wirklich? (read-only)
+
+# Das Launch-Gate-Audit vom 09.09.2026 liest "wal_writer.records = 0 auf
+# beiden" und schliesst daraus auf einen abgeschalteten WAL. Nach einem
+# Neustart sind diese Zaehler aber schlicht frisch -- ohne Last bleiben sie
+# null, ob der Pfad nun aktiv ist oder nicht. Was gilt, steht allein in der
+# Prozessumgebung.
+#
+# Listet alle Schalter, die den Durchsatz betreffen, samt Vorgabe.
+
+on:
+  workflow_dispatch: {}
+
+jobs:
+  pruefen:
+    strategy:
+      max-parallel: 1
+      matrix:
+        box: [{name: Contabo1, host: "173.249.37.118", secret: C1}, {name: Contabo2, host: "194.163.188.71", secret: C2}]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ matrix.box.host }}
+          username: root
+          key: ${{ matrix.box.secret == 'C1' && secrets.CONTABO_SSH_KEY || secrets.CONTABO2_SSH_KEY }}
+          port: 22
+          script_stop: false
+          timeout: 200s
+          command_timeout: 200s
+          script: |
+            echo "### ${{ matrix.box.name }} ###"
+            ENV=$(docker inspect aequitas-node --format '{{range .Config.Env}}{{println .}}{{end}}')
+            for K in AEQUITAS_WAL_ENABLED AEQUITAS_RPC_QUIET_TX ENABLE_MULTI_BLOCK_TICK \
+                     AEQUITAS_MAX_TXS_PER_BLOCK AEQUITAS_PEER_LAG_BODEN AEQUITAS_PEER_LAG_SLACK \
+                     GOMEMLIMIT AEQUITAS_RPC_MAX_INFLIGHT AEQUITAS_RPC_RATE_LIMIT_MAX \
+                     AEQUITAS_COMPRESS_BLOCK_PAYLOAD AEQUITAS_SHARD_RETRY_VERSUCHE \
+                     AEQUITAS_WAL_FLUSH_CONCURRENCY AEQUITAS_ACCOUNT_SHARDS PRODUCE_WHEN_BACKLOG_SHRINKING; do
+              V=$(printf '%s\n' "$ENV" | grep -E "^${K}=" | cut -d= -f2-)
+              printf "  %-38s %s\n" "$K" "${V:-<nicht gesetzt, Vorgabe gilt>}"
+            done
+            echo
+            echo "  Startmeldung des Knotens zum WAL:"
+            docker logs aequitas-node 2>&1 | grep -a "\[WAL\]" | head -3 | cut -c1-180 || echo "    (keine WAL-Zeile -- Pfad ist aus)"
+            echo "  Kerne: $(nproc)"
