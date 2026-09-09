@@ -1,0 +1,40 @@
+name: Was liegt in C2s Datenbank? (read-only)
+
+# C2 startete nach der vollen Platte mit Hoehe 0 und lehnt seither jeden
+# Block als "far-ahead" ab. Ob das ein Ladeproblem oder ein Datenverlust ist,
+# entscheidet allein der Inhalt der Datenbank -- ein Resync waere sonst ein
+# vermeidbarer Grosseingriff.
+
+on:
+  workflow_dispatch: {}
+
+jobs:
+  schauen:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: 194.163.188.71
+          username: root
+          key: ${{ secrets.CONTABO2_SSH_KEY }}
+          port: 22
+          fingerprint: "SHA256:VIwj7Faxiga2n45HVHZEQFPxcbRKHgSgHoxAFsf2wto"
+          script_stop: false
+          timeout: 240s
+          command_timeout: 240s
+          script: |
+            echo "===== Bloecke in der Datenbank ====="
+            docker exec aequitas-postgres psql -U postgres -d aequitas -t -c "
+              SELECT 'chain_blocks: ' || count(*)::text || ' Zeilen, hoechste Hoehe ' || COALESCE(max(height),0)::text
+              FROM chain_blocks;" 2>&1 | sed 's/^ *//' | grep -v '^$'
+            docker exec aequitas-postgres psql -U postgres -d aequitas -t -c "
+              SELECT 'chain_accounts: ' || count(*)::text || ' Konten' FROM chain_accounts;" 2>&1 | sed 's/^ *//' | grep -v '^$'
+            echo
+            echo "===== was der Knoten beim Laden gemeldet hat ====="
+            docker logs aequitas-node 2>&1 | grep -aiE "loaded|laden|restored|recovery|genesis|bootHeight|resync" | head -12 | cut -c1-200
+            echo
+            echo "===== steht RESYNC_FROM_SNAPSHOT in der Umgebung? ====="
+            docker inspect aequitas-node --format '{{range .Config.Env}}{{println .}}{{end}}' | grep -E "^RESYNC" || echo "  (nicht gesetzt)"
+            echo
+            echo "===== Postgres gesund? ====="
+            docker exec aequitas-postgres psql -U postgres -t -c "SELECT 'ok: ' || version();" 2>&1 | head -1 | cut -c1-80
