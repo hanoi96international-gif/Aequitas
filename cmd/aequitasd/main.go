@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net"
+	"net/http"
 	"net/url"
 	"os"
 	"os/signal"
@@ -439,6 +440,44 @@ func main() {
 		fmt.Println("[BOOTSTRAP] ⚠ chain_accounts failed to load at startup — skipping fresh-node bootstrap check this run (this node's real history, if any, is presumed intact; a future successful restart will re-evaluate)")
 	}
 	stateImportSucceeded := false
+	// EIN FRISCHER KNOTEN MUSS OHNE HANDARBEIT HOCHKOMMEN.
+	//
+	// Bis hierher brauchte ein neuer Validator zwei von Hand gesetzte
+	// Variablen (BOOTSTRAP_SNAPSHOT_URL und BOOTSTRAP_SIGNER), sonst versuchte
+	// er den vollstaendigen historischen Replay -- bei ueber sechs Millionen
+	// Bloecken aussichtslos. Er startet dann bei Hoehe 0, jeder ankommende
+	// Block liegt jenseits der far-ahead-Grenze und wird abgelehnt, und der
+	// Knoten steht fuer immer. Von aussen sieht das aus wie ein laufender
+	// Knoten, der nichts tut -- am 09.09.2026 genau so beobachtet.
+	//
+	// Fuer eine Beta, die Laien ansprechen soll, ist das die entscheidende
+	// Huerde: wer PRIMARY_NODE_URL setzt, hat alles Noetige bereits gesagt.
+	// Die Snapshot-Adresse folgt daraus, und die Signieradresse steht in der
+	// Antwort desselben Knotens.
+	//
+	// ZUR VERTRAUENSFRAGE: beides vom selben Peer zu holen klingt danach, die
+	// Signaturpruefung zu entwerten -- sie prueft dann ja gegen eine Adresse,
+	// die derselbe Peer genannt hat. Das ist hier vertretbar, weil dieser
+	// Knoten ohnehin JEDEN Block von genau diesem Peer bezieht: wer ihm einen
+	// falschen Snapshot unterschieben kann, kann ihm auch falsche Bloecke
+	// schicken. Die Ableitung schafft keine neue Angriffsflaeche, sie macht
+	// nur sichtbar, worauf das Vertrauen ohnehin beruht. Wer es enger will,
+	// setzt BOOTSTRAP_SIGNER weiterhin selbst -- ein gesetzter Wert wird
+	// niemals ueberschrieben.
+	if os.Getenv("BOOTSTRAP_SNAPSHOT_URL") == "" && freshNodeBootstrap && !resyncMode {
+		if abgeleitet := schnappschussAdresseAusPeer(); abgeleitet != "" {
+			os.Setenv("BOOTSTRAP_SNAPSHOT_URL", abgeleitet)
+			fmt.Printf("[BOOTSTRAP] Kein BOOTSTRAP_SNAPSHOT_URL gesetzt und dieser Knoten ist leer — abgeleitet aus dem konfigurierten Peer: %s\n", abgeleitet)
+			if os.Getenv("BOOTSTRAP_SIGNER") == "" {
+				if signer := signieradresseVomPeer(); signer != "" {
+					os.Setenv("BOOTSTRAP_SIGNER", signer)
+					fmt.Printf("[BOOTSTRAP] BOOTSTRAP_SIGNER ebenfalls von dort bezogen: %s (dieser Knoten bezieht von diesem Peer ohnehin jeden Block)\n", signer)
+				} else {
+					fmt.Println("[BOOTSTRAP] ⚠ Signieradresse liess sich beim Peer nicht abfragen — BOOTSTRAP_SIGNER bitte von Hand setzen")
+				}
+			}
+		}
+	}
 	if bootstrapURL := os.Getenv("BOOTSTRAP_SNAPSHOT_URL"); bootstrapURL != "" && (freshNodeBootstrap || resyncMode) {
 		// FIX 15: Validate URL scheme and host before fetching to prevent SSRF.
 		parsedBootstrap, urlErr := url.Parse(bootstrapURL)
@@ -999,4 +1038,56 @@ func isRFC1918OrLoopback(host string) bool {
 		}
 	}
 	return false
+}
+
+// schnappschussAdresseAusPeer bildet die Snapshot-Adresse aus dem bereits
+// konfigurierten Peer. Siehe den Aufrufer dazu, warum ein frischer Knoten
+// sonst gar nicht hochkommt.
+func schnappschussAdresseAusPeer() string {
+	roh := strings.TrimSpace(os.Getenv("PRIMARY_NODE_URL"))
+	if roh == "" {
+		// PRIMARY_NODE_URLS darf mehrere tragen -- der erste genuegt.
+		if mehrere := strings.TrimSpace(os.Getenv("PRIMARY_NODE_URLS")); mehrere != "" {
+			roh = strings.TrimSpace(strings.Split(mehrere, ",")[0])
+		}
+	}
+	if roh == "" {
+		return ""
+	}
+	u, err := url.Parse(strings.TrimSuffix(roh, "/"))
+	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
+		return ""
+	}
+	return u.Scheme + "://" + u.Host + "/api/snapshot"
+}
+
+// signieradresseVomPeer fragt beim konfigurierten Peer nach, mit welcher
+// Adresse er Bloecke signiert. Nur fuer den Erststart eines leeren Knotens;
+// ein gesetztes BOOTSTRAP_SIGNER wird davon nie angefasst.
+func signieradresseVomPeer() string {
+	basis := schnappschussAdresseAusPeer()
+	if basis == "" {
+		return ""
+	}
+	statusURL := strings.TrimSuffix(basis, "/api/snapshot") + "/api/status"
+	hc := &http.Client{Timeout: 15 * time.Second}
+	resp, err := hc.Get(statusURL)
+	if err != nil {
+		return ""
+	}
+	defer resp.Body.Close()
+	var st struct {
+		Proposer  string `json:"proposer"`
+		Validator string `json:"validator_address"`
+		NodeAddr  string `json:"node_address"`
+	}
+	if json.NewDecoder(resp.Body).Decode(&st) != nil {
+		return ""
+	}
+	for _, k := range []string{st.Proposer, st.Validator, st.NodeAddr} {
+		if strings.HasPrefix(strings.ToLower(k), "0x") && len(k) == 42 {
+			return k
+		}
+	}
+	return ""
 }
