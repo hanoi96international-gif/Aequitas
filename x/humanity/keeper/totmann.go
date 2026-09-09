@@ -49,6 +49,13 @@ const (
 	totmannMindestAbstand = 60
 
 	totmannPruefIntervall = 20 * time.Second
+
+	// Wie lange ein degraded-Zustand bestehen darf, bevor der vorgesehene
+	// Neustart ausgefuehrt wird. Kurz genug, dass die Kette nicht minutenlang
+	// auf einen Validator wartet, der sich selbst stillgelegt hat -- lang
+	// genug, dass eine kurze Datenbankstoerung nicht sofort einen Neustart
+	// ausloest.
+	totmannDegradedFrist = 90 * time.Second
 )
 
 var (
@@ -70,7 +77,32 @@ func (dag *BlockDAG) StarteTotmannSchalter(peerURL string) {
 		letzteHoehe := int64(-1)
 		letzteAnkuenfte := int64(-1)
 		var stehtSeit time.Time
+		var degradedSeit time.Time
 		for range ticker.C {
+			// DEGRADED HEILT NICHT VON SELBST. Schlaegt ein Schreibvorgang
+			// fehl, waehrend der Speicher der Platte voraus ist, haelt der
+			// Knoten die Produktion an und meldet woertlich "restart to
+			// recover" -- fuehrt den Neustart aber nicht aus. Am 07.09.2026
+			// verwarf C1 dadurch 13.051 Bloecke in zwoelf Minuten und
+			// produzierte eine Viertelstunde nichts; von aussen waren CPU,
+			// Speicher und Platte unauffaellig, nur das Log nannte den Grund.
+			// Ein Betreiber ohne Vorkenntnisse haette hier nichts gesehen.
+			if grund := dag.DegradedReason(); grund != "" {
+				if degradedSeit.IsZero() {
+					degradedSeit = time.Now()
+					fmt.Printf("[TOTMANN] ⚠ Knoten ist degraded (%s) — das heilt nicht von selbst; Neustart nach %s\n",
+						grund, totmannDegradedFrist)
+				} else if time.Since(degradedSeit) >= totmannDegradedFrist &&
+					totmannAusgeloest.CompareAndSwap(false, true) {
+					fmt.Printf("[TOTMANN] ✗ seit %s degraded (%s). Der Zustand sieht den Neustart selbst vor — er wird jetzt ausgefuehrt.\n",
+						time.Since(degradedSeit).Round(time.Second), grund)
+					os.Stdout.Sync()
+					time.Sleep(500 * time.Millisecond)
+					os.Exit(9)
+				}
+				continue
+			}
+			degradedSeit = time.Time{}
 			eigene := dag.Height()
 			ankuenfte := dag.totalRawArrivalCount.Load()
 			if eigene != letzteHoehe {
