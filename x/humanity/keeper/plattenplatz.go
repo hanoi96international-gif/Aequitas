@@ -1,7 +1,11 @@
 package keeper
 
 import (
+	"context"
 	"fmt"
+	"os"
+	"os/exec"
+	"strings"
 	"sync/atomic"
 	"time"
 )
@@ -96,9 +100,11 @@ func plattenplatzUeberwachen(pfad string) {
 		switch {
 		case freiGB < plattenKritischGB:
 			plattenWarnungen.Add(1)
+			plattenSelbsthilfe(freiGB)
 			fmt.Printf("[PLATTE] ✗ KRITISCH: nur %.2f GB frei auf %s — neue Ueberweisungen werden abgelehnt, bis Platz da ist. Ein Validator ohne Schreibplatz schreibt weder Bloecke noch WAL noch Datenbank.\n", freiGB, pfad)
 		case freiGB < plattenWarnungGB:
 			plattenWarnungen.Add(1)
+			plattenSelbsthilfe(freiGB)
 			fmt.Printf("[PLATTE] ⚠ nur %.2f GB frei auf %s — aufraeumen, bevor es eng wird (Docker-Build-Cache und alte Abbilder sind meist der groesste Posten).\n", freiGB, pfad)
 		}
 	}
@@ -136,19 +142,79 @@ func PlattenplatzStand() map[string]interface{} {
 		belegtPct = float64(gesamt-frei) / float64(gesamt) * 100
 	}
 	return map[string]interface{}{
-		"pfad":           pfad,
-		"frei_mb":        frei,
-		"gesamt_mb":      gesamt,
-		"belegt_pct":     belegtPct,
-		"kritisch":       plattenplatzKritisch(),
-		"warnungen":      plattenWarnungen.Load(),
-		"pruefungen":     plattenPruefungen.Load(),
-		"messfehler":     fehler,
-		"grenze_warn_gb": plattenWarnungGB,
-		"grenze_krit_gb": plattenKritischGB,
+		"pfad":               pfad,
+		"frei_mb":            frei,
+		"gesamt_mb":          gesamt,
+		"belegt_pct":         belegtPct,
+		"kritisch":           plattenplatzKritisch(),
+		"warnungen":          plattenWarnungen.Load(),
+		"pruefungen":         plattenPruefungen.Load(),
+		"messfehler":         fehler,
+		"grenze_warn_gb":     plattenWarnungGB,
+		"selbsthilfe_laeufe": plattenSelbsthilfeLaeufe.Load(),
+		"grenze_krit_gb":     plattenKritischGB,
 		"bedeutung": "Freier Plattenplatz. Am 06.09.2026 stand ein Validator zweieinhalb Stunden still, weil die Platte " +
 			"zu 100 % voll war -- er lief weiter, antwortete weiter und schrieb nichts mehr, und kein Waechter nannte den Grund. " +
 			"Unter grenze_krit_gb werden neue Ueberweisungen retrybar abgelehnt, statt sie anzunehmen und nicht schreiben zu koennen. " +
 			"Geloescht wird nichts: Aufraeumen gehoert in die Hand eines Menschen.",
 	}
 }
+
+// SELBSTHILFE, BEVOR ES ZU SPAET IST.
+//
+// Bis zum 09.09.2026 hat der Waechter nur ins Log geschrieben. Was daraus
+// wurde, als niemand hinsah: drei ungedrehte Datenbankabzuege (34,7 GB)
+// fuellten die Platte auf 100 %, Postgres starb mitten in seiner eigenen
+// Wiederherstellung ("could not extend file: No space left on device") und
+// kam nicht wieder, der Chainknoten fiel auf Hoehe 0 und lehnte jeden Block
+// als far-ahead ab. Drei Stufen Folgeschaden aus einer Datei, die niemand
+// angesehen hat.
+//
+// Genau dieser Ablauf ist fuer die Beta nicht tragbar. Ein Betreiber ohne
+// Vorkenntnisse sieht einen Knoten, der laeuft und HTTP beantwortet -- die
+// Platte ist unsichtbar, und der Zusammenhang zwischen einem Abzug, einer
+// gestorbenen Datenbank und Hoehe 0 ist nicht zu erraten.
+//
+// WAS HIER PASSIERT UND WAS NICHT. Aufgerufen wird ausschliesslich
+// /root/backup-rotation.sh, und das fasst nur /root/backups an und loescht
+// dort nur *.dump ausser den juengsten. Der Knoten loescht selbst nichts:
+// keine Kettendaten, keine Volumes, kein WAL, keine Abbilder. Fehlt das
+// Skript, bleibt es bei der Warnung -- eine Box ohne eingerichtete Rotation
+// wird nicht heimlich aufgeraeumt.
+//
+// Hoechstens alle 30 Minuten, damit ein dauerhaft enger Datentraeger nicht
+// im Minutentakt einen Prozess startet.
+var plattenSelbsthilfeLetzte atomic.Int64
+
+const plattenSelbsthilfeSkript = "/root/backup-rotation.sh"
+
+func plattenSelbsthilfe(freiGB float64) {
+	jetzt := time.Now().Unix()
+	letzte := plattenSelbsthilfeLetzte.Load()
+	if jetzt-letzte < 1800 {
+		return
+	}
+	if !plattenSelbsthilfeLetzte.CompareAndSwap(letzte, jetzt) {
+		return
+	}
+	if _, err := os.Stat(plattenSelbsthilfeSkript); err != nil {
+		fmt.Printf("[PLATTE] (keine Selbsthilfe moeglich: %s fehlt — Rotation ist auf dieser Box nicht eingerichtet)\n",
+			plattenSelbsthilfeSkript)
+		return
+	}
+	fmt.Printf("[PLATTE] → Selbsthilfe: %s wird aufgerufen (nur alte Datenbankabzuege, nichts von der Kette)\n",
+		plattenSelbsthilfeSkript)
+	SafeGoroutine("plattenSelbsthilfe", func() {
+		ctx, abbrechen := context.WithTimeout(context.Background(), 5*time.Minute)
+		defer abbrechen()
+		aus, err := exec.CommandContext(ctx, "/bin/sh", plattenSelbsthilfeSkript, "2").CombinedOutput()
+		if err != nil {
+			fmt.Printf("[PLATTE] ⚠ Selbsthilfe fehlgeschlagen: %v — %s\n", err, strings.TrimSpace(string(aus)))
+			return
+		}
+		plattenSelbsthilfeLaeufe.Add(1)
+		fmt.Printf("[PLATTE] ✓ Selbsthilfe durch (vorher %.2f GB frei). %s\n", freiGB, strings.TrimSpace(string(aus)))
+	})
+}
+
+var plattenSelbsthilfeLaeufe atomic.Int64
