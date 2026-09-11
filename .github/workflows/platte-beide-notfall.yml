@@ -1,0 +1,43 @@
+name: Platte beide Boxen - Bestandsaufnahme (read-only)
+
+# Am 11.09.2026 standen BEIDE Boxen mit 0 MB freiem Platz und seit Stunden
+# stillgelegter Produktion. Die Backup-Rotation vom 09.09. hat das nicht
+# verhindert -- also fuellt etwas anderes die Platte schneller, als sie
+# freigibt. Was genau, sagt nur eine Aufstellung.
+
+on:
+  workflow_dispatch: {}
+
+jobs:
+  schauen:
+    strategy:
+      max-parallel: 2
+      matrix:
+        box: [{name: Contabo1, host: "173.249.37.118", secret: C1}, {name: Contabo2, host: "194.163.188.71", secret: C2}]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ matrix.box.host }}
+          username: root
+          key: ${{ matrix.box.secret == 'C1' && secrets.CONTABO_SSH_KEY || secrets.CONTABO2_SSH_KEY }}
+          port: 22
+          script_stop: false
+          timeout: 300s
+          command_timeout: 300s
+          script: |
+            echo "### ${{ matrix.box.name }} ###"
+            df -h / | tail -1
+            echo "--- grosse Verzeichnisse ---"
+            timeout 90 du -sh /var/lib/docker/volumes /var/lib/docker/overlay2 /var/lib/docker/containers /root /var/log 2>/dev/null | sort -h | tail -6
+            echo "--- Dateien ueber 500 MB ---"
+            timeout 60 find /root /var/log /tmp -type f -size +500M -exec ls -lh {} + 2>/dev/null | awk '{print "   ", $5, $9}' | head -8
+            echo "--- Datenbankgroesse je Tabelle ---"
+            timeout 60 docker exec aequitas-postgres psql -U postgres -d aequitas -t -c "
+              SELECT relname || ': ' || pg_size_pretty(pg_total_relation_size(relid))
+              FROM pg_stat_user_tables ORDER BY pg_total_relation_size(relid) DESC LIMIT 6;" 2>&1 | sed 's/^ *//' | grep -v '^$'
+            echo "--- WAL-Datei ---"
+            ls -lh /root/aequitas-wal-data/*.wal 2>/dev/null | awk '{print "   ", $5, $9}' || echo "   (keine)"
+            echo "--- Rotation eingerichtet? ---"
+            crontab -l 2>/dev/null | grep backup-rotation || echo "   (kein cron-Eintrag!)"
+            ls -la /root/backups/*.dump 2>/dev/null | awk '{print "   ", $5, $9}' | head -4 || echo "   (keine Dumps)"
