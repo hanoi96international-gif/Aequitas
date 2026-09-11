@@ -1431,6 +1431,14 @@ func kettenDurchsatz(statusURL string, von, bis time.Time) {
 	// Eine Summe ueber die Bloecke wuerde ihn doppelt zaehlen und den
 	// Durchsatz zu hoch ausweisen.
 	gesehen := map[string]struct{}{}
+	// Und die Bloecke ebenso. Die Seiten ueberlappen: min_height wird auf die
+	// hoechste Hoehe der Seite gesetzt, und an dieser Hoehe liegen mehrere
+	// Geschwister, von denen die naechste Seite wieder welche mitbringt.
+	// Ohne Entdopplung meldete der erste Lauf am 11.09.2026 2.109 Bloecke bei
+	// 405 Hoehen -- 5,2 je Hoehe, wo es nur zwei Validatoren gibt. Die
+	// Transaktionszahl war davon nicht betroffen (die wird ueber den Hash
+	// entdoppelt), wohl aber "davon leer" und "tx je Block".
+	blockGesehen := map[string]struct{}{}
 
 	// UEBER /api/blocks, NICHT /api/block?height=N.
 	//
@@ -1486,6 +1494,12 @@ func kettenDurchsatz(statusURL string, von, bis time.Time) {
 				if blk.ProducedAtMs > spaetest {
 					spaetest = blk.ProducedAtMs
 				}
+			}
+			if blk.Hash != "" {
+				if _, doppelt := blockGesehen[blk.Hash]; doppelt {
+					continue
+				}
+				blockGesehen[blk.Hash] = struct{}{}
 			}
 			p := blk.Proposer
 			if p == "" {
