@@ -1,0 +1,40 @@
+name: Warum ist der Durchsatz eingebrochen
+on: {workflow_dispatch: {}}
+jobs:
+  schauen:
+    strategy:
+      max-parallel: 2
+      matrix:
+        box: [{name: "C1", host: "173.249.37.118", secret: "C1"}, {name: "C2", host: "194.163.188.71", secret: "C2"}]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ matrix.box.host }}
+          username: root
+          key: ${{ matrix.box.secret == 'C1' && secrets.CONTABO_SSH_KEY || secrets.CONTABO2_SSH_KEY }}
+          port: 22
+          script_stop: false
+          timeout: 400s
+          command_timeout: 400s
+          script: |
+            set +e
+            echo "##### ${{ matrix.box.name }} #####"
+            echo "=== Laufzeit und Neustarts ==="
+            docker inspect aequitas-node --format 'Start: {{.State.StartedAt}}  Neustarts: {{.RestartCount}}  ExitCode: {{.State.ExitCode}} OOM: {{.State.OOMKilled}}'
+            echo "=== Last ==="
+            uptime; free -m | head -2
+            echo "=== Postgres: was laeuft gerade ==="
+            docker exec aequitas-postgres psql -U postgres -d aequitas -t -A -c \
+              "SELECT now()-query_start||' | '||state||' | '||left(regexp_replace(query,'\s+',' ','g'),110)
+               FROM pg_stat_activity WHERE state<>'idle' AND pid<>pg_backend_pid() ORDER BY query_start LIMIT 12;"
+            echo "=== Autovacuum ==="
+            docker exec aequitas-postgres psql -U postgres -d aequitas -t -A -c \
+              "SELECT relname||' | tot:'||n_dead_tup||' dead | letztes autovac: '||COALESCE(last_autovacuum::text,'nie')
+               FROM pg_stat_user_tables WHERE n_dead_tup>10000 ORDER BY n_dead_tup DESC LIMIT 6;"
+            echo "=== TX-INDEX Log ==="
+            docker logs --since 30m aequitas-node 2>&1 | grep -E 'TX-INDEX|PLATTE' | tail -12
+            echo "=== Sperren/Produktion ==="
+            docker logs --since 15m aequitas-node 2>&1 | grep -iE 'SPERRE|WACHHUND|stall|degraded|TOTMANN|circuit|breaker' | tail -10
+            echo "=== Gesundheit ==="
+            curl -s --max-time 10 http://127.0.0.1:8080/api/health/combined | tr ',' '\n' | grep -E 'stalled_seconds|clean_cycles|degraded|exclusive_avg|heap_alloc' | head -8
