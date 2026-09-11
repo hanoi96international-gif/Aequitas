@@ -1079,7 +1079,8 @@ func (dag *BlockDAG) getPeerSyncHeight(nodeURL string) int64 {
 func (dag *BlockDAG) advancePeerSyncHeight(nodeURL string, height int64) {
 	dag.syncPeerMu.Lock()
 	defer dag.syncPeerMu.Unlock()
-	if height > dag.peerSyncHeight[nodeURL] {
+	fortgeschritten := height > dag.peerSyncHeight[nodeURL]
+	if fortgeschritten {
 		dag.peerSyncHeight[nodeURL] = height
 	}
 	// Zeitstempel IMMER setzen, auch wenn die Hoehe gleich blieb -- siehe
@@ -1090,12 +1091,22 @@ func (dag *BlockDAG) advancePeerSyncHeight(nodeURL string, height int64) {
 		dag.peerSyncEigeneHoehe = make(map[string]int64)
 	}
 	dag.peerSyncSeenAt[nodeURL] = time.Now()
-	// Die eigene Hoehe im selben Moment festhalten -- nur ihre Differenz zur
-	// Peer-Hoehe ist ein echter Rueckstand. Siehe peerSyncEigeneHoehe.
+	// Die eigene Hoehe im selben Moment festhalten -- aber NUR, wenn oben auch
+	// die Peer-Hoehe fortgeschrieben wurde.
+	//
+	// peerSyncHeight ist ein Hoechststand ("if height > ..."), diese hier war
+	// es nicht: sie wurde bei jedem Aufruf gesetzt. Uebergeben wird highestSeen
+	// -- die hoechste Hoehe, die DIESE Sync-Runde gesehen hat, nicht die Hoehe
+	// des Peers. Holt eine Runde nichts Neues, bleibt der eine Wert stehen und
+	// der andere laeuft weiter; die Differenz waechst dann mit jedem selbst
+	// produzierten Block. Am 11.09.2026 standen dadurch 5.160 Bloecke
+	// "Rueckstand" zwischen zwei byte-identischen Knoten.
 	if dag.peerSyncEigeneHoehe == nil {
 		dag.peerSyncEigeneHoehe = make(map[string]int64)
 	}
-	dag.peerSyncEigeneHoehe[nodeURL] = dag.heightSchnell.Load()
+	if fortgeschritten {
+		dag.peerSyncEigeneHoehe[nodeURL] = dag.heightSchnell.Load()
+	}
 }
 
 // cleanSyncStreakThreshold is how many CONSECUTIVE doSyncOnce cycles in a

@@ -182,12 +182,26 @@ func (dag *BlockDAG) groesstenFrischenRueckstand(_ int64) int64 {
 		if !da || jetzt.Sub(gesehen) > peerLagFrische {
 			continue // stumm -- siehe Kommentar oben, sonst bremst er ewig
 		}
-		// Gegen die eigene Hoehe VON DAMALS rechnen, nicht gegen die von
-		// jetzt. Sonst waechst der "Rueckstand" mit jedem selbst
-		// produzierten Block, ohne dass der Peer zurueckliegt -- am
-		// 02.09.2026 live beobachtet: beide Knoten auf derselben Hoehe,
-		// gemeldeter Rueckstand 78 und stetig steigend, Drosselung auf den
-		// Boden ohne jeden Anlass.
+		// ZUERST DIE DIREKT GEFRAGTE HOEHE. Sie ist der einzige Wert, der
+		// wirklich sagt, wo der Partner steht -- siehe peer_hoehe_echt.go
+		// und den Vorfall vom 11.09.2026, bei dem beide Boxen gegenseitig
+		// 5.160 Bloecke Rueckstand meldeten, obwohl sie byte-identisch auf
+		// derselben Hoehe standen, und die Bremse daraufhin 100 % aller
+		// Bloecke auf ihren Boden drosselte.
+		if echt, ok := echteHoeheVonPeer(url); ok {
+			if r := dag.heightSchnell.Load() - echt; r > groesster {
+				groesster = r
+			}
+			continue
+		}
+
+		// Ersatzweg, solange noch keine frische Antwort vorliegt (die ersten
+		// Sekunden nach dem Start, oder wenn der Peer auf /api/status nicht
+		// antwortet). Gegen die eigene Hoehe VON DAMALS rechnen, nicht gegen
+		// die von jetzt -- am 02.09.2026 live beobachtet: beide Knoten auf
+		// derselben Hoehe, gemeldeter Rueckstand 78 und stetig steigend.
+		// Dass auch das nicht genuegte, zeigte der 11.09.: peerSyncHeight
+		// wird nur fortgeschrieben, wenn HOEHER, peerSyncEigeneHoehe immer.
 		damals, ok := dag.peerSyncEigeneHoehe[url]
 		if !ok {
 			continue

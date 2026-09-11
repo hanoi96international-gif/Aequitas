@@ -742,6 +742,7 @@ func (a *APIServer) handleCombinedHealth(w http.ResponseWriter, r *http.Request)
 		"sync_streak":            SyncStreakStats(),
 		"produktions_ausfaelle":  ProduktionsAusfaelle(),
 		"stateroot_abweichungen": a.blockchain.StateRootAufschluesselung(),
+		"peer_hoehen":            PeerHoehenStand(),
 		// Who is actually driving the block-serving endpoints, which a CPU
 		// profile put at a quarter of the node's CPU with no identifiable
 		// caller. See endpoint_stats.go.

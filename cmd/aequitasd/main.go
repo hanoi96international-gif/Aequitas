@@ -688,6 +688,12 @@ func main() {
 	// snapshot is also exposed on /api/health/combined.
 	keeper.StartHeapWatcher()
 	bc.StartHTTPBlockSync(selfURL)
+	// Die echte Hoehe jedes Peers regelmaessig fragen. Hier und nicht in
+	// StartDivergenceAutoHeal: die Bremse arbeitet auch auf einem Knoten ohne
+	// eingeschaltete Selbstheilung, und ohne diese Abfrage rechnet sie mit
+	// einer Zahl aus dem Sync-Zyklus, die keine Peer-Hoehe ist. Siehe
+	// peer_hoehe_echt.go.
+	bc.StartePeerHoehenAbfrage()
 	// Recover automatically from sustained divergence (opt-in, secondary-only)
 	// — see StartDivergenceAutoHeal. Started after sync so a healthy node has a
 	// chance to converge first and never trips the monitor.
