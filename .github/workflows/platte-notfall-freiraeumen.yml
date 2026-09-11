@@ -1,0 +1,90 @@
+name: Platte freiraeumen (Notfall, beide Boxen)
+
+# Am 11.09.2026 standen BEIDE Boxen mit 0 MB frei. Ursachen:
+#   C1: 3 Dumps a 12 GB + backup-latest 12 GB = 48 GB in /root
+#       /var/lib/docker/volumes 125 GB (Postgres, aufgeblaeht durch Lasttests)
+#   C2: dasselbe Muster, 96 GB Platte
+#
+# Die Rotation vom 09.09. behaelt zwei Dumps -- bei 12 GB je Stueck ist das
+# auf einer vollen Platte zu viel. Dieser Lauf raeumt sofort frei und stellt
+# die Rotation auf EINEN Dump um.
+#
+# ANGEFASST: alte Dumps in /root/backups, Docker-Build-Cache, verwaiste
+# Images, Container-Logs. NICHT ANGEFASST: Volumes, Postgres-Daten, WAL,
+# Kettendaten, der juengste Dump.
+
+on:
+  workflow_dispatch:
+    inputs:
+      behalten:
+        description: "Wie viele Dumps behalten (1 auf einer vollen Platte)"
+        default: "1"
+
+jobs:
+  freiraeumen:
+    strategy:
+      max-parallel: 2
+      matrix:
+        box: [{name: Contabo1, host: "173.249.37.118", secret: C1}, {name: Contabo2, host: "194.163.188.71", secret: C2}]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ matrix.box.host }}
+          username: root
+          key: ${{ matrix.box.secret == 'C1' && secrets.CONTABO_SSH_KEY || secrets.CONTABO2_SSH_KEY }}
+          port: 22
+          script_stop: false
+          timeout: 500s
+          command_timeout: 500s
+          envs: BEHALTEN
+          script: |
+            set +e
+            echo "### ${{ matrix.box.name }} -- vorher ###"
+            df -h / | tail -1
+            N="${BEHALTEN:-1}"
+
+            echo "--- alte Dumps (behalte $N) ---"
+            cd /root/backups 2>/dev/null && ls -t *.dump 2>/dev/null | tail -n +$((N+1)) | while read -r f; do
+              echo "   entferne $(du -h "$f" | cut -f1)  $f"; rm -f "$f"
+            done
+            cd /
+
+            # backup-latest.dump ist eine Kopie des juengsten Dumps. Solange
+            # einer in /root/backups liegt, ist sie entbehrlich -- und auf
+            # einer vollen Platte kostet sie genauso viel wie das Original.
+            NEUESTER=$(ls -t /root/backups/*.dump 2>/dev/null | head -1)
+            if [ -n "$NEUESTER" ] && [ -f /root/backup-latest.dump ]; then
+              echo "   entferne backup-latest.dump ($(du -h /root/backup-latest.dump | cut -f1)) -- $NEUESTER bleibt"
+              rm -f /root/backup-latest.dump
+            fi
+
+            echo "--- Container-Logs leeren ---"
+            for f in $(find /var/lib/docker/containers -name '*-json.log' -size +50M 2>/dev/null); do
+              : > "$f"
+            done
+            echo "--- Build-Cache und verwaiste Images ---"
+            timeout 120 docker builder prune -af 2>&1 | tail -1
+            timeout 180 docker image prune -af 2>&1 | tail -1
+
+            echo "--- Rotation auf $N umstellen ---"
+            (crontab -l 2>/dev/null | grep -v 'backup-rotation.sh'; \
+             echo "30 9 * * * /root/backup-rotation.sh $N >/dev/null 2>&1") | crontab -
+            crontab -l | grep backup-rotation
+
+            echo "### nachher ###"
+            df -h / | tail -1
+            echo "--- laeuft Postgres? ---"
+            docker inspect aequitas-postgres --format 'Status={{.State.Status}}' 2>/dev/null
+            docker start aequitas-postgres >/dev/null 2>&1
+            for i in $(seq 1 40); do
+              docker exec aequitas-postgres pg_isready -U postgres >/dev/null 2>&1 && { echo "   Datenbank da nach $((i*3))s"; break; }
+              sleep 3
+            done
+            echo "--- Knoten neu starten ---"
+            docker restart aequitas-node >/dev/null 2>&1
+            for i in $(seq 1 48); do
+              H=$(curl -s --max-time 8 http://127.0.0.1:8080/api/status 2>/dev/null | grep -oE '"height":[0-9]+' | cut -d: -f2)
+              if [ -n "$H" ] && [ "$H" -gt 0 ] 2>/dev/null; then echo "   Knoten bei Hoehe $H nach $((i*5))s"; break; fi
+              sleep 5
+            done
