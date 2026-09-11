@@ -739,7 +739,8 @@ func (a *APIServer) handleCombinedHealth(w http.ResponseWriter, r *http.Request)
 		// Was das Produktionstor zuhaelt: welcher der beiden Reset-Gruende
 		// feuert, und ob der Rueckstau-Ausweg ueberhaupt greift.
 		// Siehe sync_streak_stats.go.
-		"sync_streak": SyncStreakStats(),
+		"sync_streak":           SyncStreakStats(),
+		"produktions_ausfaelle": ProduktionsAusfaelle(),
 		// Who is actually driving the block-serving endpoints, which a CPU
 		// profile put at a quarter of the node's CPU with no identifiable
 		// caller. See endpoint_stats.go.

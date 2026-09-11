@@ -2146,7 +2146,11 @@ func calculateBlockHash(b *Block) string {
 }
 
 func (dag *BlockDAG) ProduceBlock() *Block {
+	// Jeder Eintritt ist ein Versuch; zusammen mit den Ausfallgruenden ergibt
+	// das den Anteil der Ticks, die tatsaechlich einen Block ergaben.
+	merkeProduktionsVersuch()
 	if dag.resyncInProgress.Load() {
+		merkeProduktionsAusfall("resync_laeuft")
 		return nil // an in-process self-heal resync is atomically swapping account/DAG state right now — see resyncInProgress's field comment
 	}
 	// Ongoing health check, not tied to any specific past incident: warn if a
@@ -2200,6 +2204,7 @@ func (dag *BlockDAG) ProduceBlock() *Block {
 	dag.degradedMu.Unlock()
 	if dr != "" {
 		fmt.Printf("[BLOCK] ✗ Node is degraded (%s) — block production halted. Restart to recover.\n", dr)
+		merkeProduktionsAusfall("knoten_degraded")
 		return nil
 	}
 
@@ -2248,6 +2253,7 @@ func (dag *BlockDAG) ProduceBlock() *Block {
 	dag.releaseFinalitySealedStubs()
 	if syntheticCount := dag.UnverifiedSyntheticCheckpointCount(); syntheticCount > 0 {
 		fmt.Printf("[BLOCK] ✗ Node is bridging %d unverified synthetic checkpoint(s) above the snapshot boundary — block production halted until real history syncs in behind them.\n", syntheticCount)
+		merkeProduktionsAusfall("synthetische_checkpoints")
 		return nil
 	}
 
@@ -2283,6 +2289,7 @@ func (dag *BlockDAG) ProduceBlock() *Block {
 		if time.Now().Unix()-referenceTime < syncStallTimeout {
 			fmt.Printf("[BLOCK] ⏳ Catch-up in progress (dag.height=%d, bootHeight=%d) — skipping block production\n",
 				dag.height, dag.bootHeight)
+			merkeProduktionsAusfall("aufholen_laeuft")
 			return nil
 		}
 		// else: no sync progress at all for syncStallTimeout — peers may be
@@ -2352,6 +2359,7 @@ func (dag *BlockDAG) ProduceBlock() *Block {
 				noteGateSkip()
 				fmt.Printf("[BLOCK] ⏳ Not yet %d consecutive clean sync cycles with every trusted seed — skipping block production regardless of height-based gates\n",
 					cleanSyncStreakThreshold)
+				merkeProduktionsAusfall("sync_tor_saubere_zyklen")
 				return nil
 			}
 			// else: no sync progress at all for syncStallTimeout — fall through,
@@ -2395,6 +2403,7 @@ func (dag *BlockDAG) ProduceBlock() *Block {
 				referenceTime = dag.startupTime // no progress yet — measure from boot
 			}
 			if time.Now().Unix()-referenceTime < syncStallTimeout {
+				merkeProduktionsAusfall("sync_schreitet_voran")
 				return nil // sync is actively progressing (or just started) — keep waiting
 			}
 			// else: no sync progress for syncStallTimeout — primary may be down → produce independently
@@ -2412,6 +2421,7 @@ func (dag *BlockDAG) ProduceBlock() *Block {
 		nextHeight := dag.height + 1
 		ec := dag.getEpochCommittee(nextHeight)
 		if ec != nil && !ec.Members[dag.selfProposer] {
+			merkeProduktionsAusfall("nicht_im_epochenkomitee")
 			return nil
 		}
 	}
@@ -2700,6 +2710,7 @@ func (dag *BlockDAG) ProduceBlock() *Block {
 	if dag.state != nil && !dag.ownsProducedHeight(maxParentHeight+1) &&
 		dag.state.HasBlockFromProposerAtHeight(proposer, maxParentHeight+1) {
 		fmt.Printf("[BLOCK] ⏸ Skipping production at height %d — the durable store already holds a block from this validator there, and this process did not write it. That means a second instance of this validator is running (a redeploy overlap, %s into this process's life). Waiting for ordinary peer sync to pull it in instead of minting a conflicting duplicate every other node would correctly read as equivocation.\n", maxParentHeight+1, time.Since(dag.bootTime).Round(time.Second))
+		merkeProduktionsAusfall("zweite_instanz_gleiche_hoehe")
 		return nil
 	}
 
@@ -2777,6 +2788,7 @@ func (dag *BlockDAG) ProduceBlock() *Block {
 		if !dag.produceStuckGapReady(missing) {
 			fmt.Printf("[BLOCK] ⏳ Skipping production this tick — merge-set ancestor %s... not yet resolvable, actively fetching from peers\n",
 				missing[:min(16, len(missing))])
+			merkeProduktionsAusfall("ahne_wird_geholt")
 			return nil
 		}
 		// FIX (P0, 2026-07-10 — found live via the explorer UI within minutes of
@@ -2816,6 +2828,7 @@ func (dag *BlockDAG) ProduceBlock() *Block {
 			// same patient bridge on its own schedule.
 			dag.registerProduceStuckGap(missing)
 			fmt.Printf("[BLOCK] ⏳ Skipping production this tick — merge-set ancestor %s... not yet resolvable\n", missing[:min(16, len(missing))])
+			merkeProduktionsAusfall("ahne_unaufloesbar")
 			return nil
 		}
 	}
@@ -2831,6 +2844,7 @@ func (dag *BlockDAG) ProduceBlock() *Block {
 	if err := dag.state.SaveBlockWithPendingTxsAtomic(block, pendingTxIDs); err != nil {
 		fmt.Printf("[BLOCK] ⚠ Could not persist block #%d (%s...): %v — skipping broadcast, TXs stay queued\n",
 			block.Height, block.Hash[:16], err)
+		merkeProduktionsAusfall("block_nicht_speicherbar")
 		return nil
 	}
 	// Index this block's transactions for wallet lookups, exactly as the replay
@@ -2950,6 +2964,7 @@ func (dag *BlockDAG) ProduceBlock() *Block {
 	noteBlockProduced()
 	// Alles nach dem Speichern -- Verteilen an die Peers und Nachlauf.
 	pbVerteilen = time.Since(pbVerteilenStart)
+	merkeProduktionsErfolg()
 	return block
 }
 
