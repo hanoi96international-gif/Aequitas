@@ -79,8 +79,17 @@ jobs:
             echo "Hoehe vor dem Aufraeumen: ${HOEHE_VOR:-?}"
 
             echo "=== VACUUM FULL chain_tx_block_index ==="
+            # EIN Befehl je -c. Mehrere durch Semikolon getrennte Anweisungen
+            # in einem -c schickt psql als eine Transaktion, und VACUUM laeuft
+            # nicht in einer ("VACUUM cannot run inside a transaction block" --
+            # erster Anlauf am 11.09.2026, beide Boxen). Das statement_timeout
+            # aus dem Go-Code ist ein Parameter der Verbindung des Knotens;
+            # psql verbindet selbst und hat es nicht.
             time docker exec aequitas-postgres psql -U postgres -d aequitas \
-              -c "SET statement_timeout=0; VACUUM (FULL, ANALYZE, VERBOSE) chain_tx_block_index;" 2>&1 | tail -8
+              -c "VACUUM (FULL, ANALYZE, VERBOSE) chain_tx_block_index;" 2>&1 | tail -8
+            echo "=== und chain_tx_batches, gleiche Lage ==="
+            time docker exec aequitas-postgres psql -U postgres -d aequitas \
+              -c "VACUUM (FULL, ANALYZE) chain_tx_batches;" 2>&1 | tail -3
 
             echo "=== nachher ==="
             $P "SELECT relname||': '||pg_size_pretty(pg_total_relation_size(relid))||' fuer '||n_live_tup||' lebende Zeilen'
