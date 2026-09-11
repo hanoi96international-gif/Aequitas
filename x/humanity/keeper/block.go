@@ -475,7 +475,15 @@ type BlockDAG struct {
 	// report only mismatches from proposers that have mismatched recently
 	// (see its own comment), not every proposer's lifetime peak.
 	stateRootMismatchLastAt map[string]int64
-	stateRootMismatchesMu   sync.Mutex // protects stateRootMismatches/stateRootMismatchLastAt (written under replayMu+cs.mu, read independently by TotalStateRootMismatches)
+	// stateRootEcht zaehlt nur die Abweichungen, die NICHT dadurch erklaert
+	// sind, dass dieser Knoten an derselben Hoehe selbst produziert hat.
+	// stateRootMismatches zaehlt weiter alle -- die Zahl bleibt als Diagnose
+	// wertvoll, sie taugt nur nicht als Ausloeser. Siehe die Begruendung an
+	// der Zaehlstelle in replayBlockTransactions.
+	stateRootEcht         map[string]int
+	stateRootEchtLastAt   map[string]int64
+	stateRootGeschwister  map[string]int
+	stateRootMismatchesMu sync.Mutex // protects stateRootMismatches/stateRootMismatchLastAt (written under replayMu+cs.mu, read independently by TotalStateRootMismatches)
 	// lastSuccessfulPeerSyncAt is the Unix timestamp of the last time this
 	// node successfully accepted a peer block via AddPeerBlock. Read/written
 	// with atomic.Int64 (not dag.mu) since it's set from AddPeerBlock's
@@ -1232,6 +1240,9 @@ func NewBlockchain(nodeID string, state *ChainState) *BlockDAG {
 		unverifiedStubHeights:       make(map[string]int64),
 		stateRootMismatches:         make(map[string]int),
 		stateRootMismatchLastAt:     make(map[string]int64),
+		stateRootEcht:               make(map[string]int),
+		stateRootEchtLastAt:         make(map[string]int64),
+		stateRootGeschwister:        make(map[string]int),
 		orphans:                     make(map[string][]*Block),
 		orphanFirstSeen:             make(map[string]time.Time),
 		orphanLastAttempt:           make(map[string]time.Time),
@@ -5359,6 +5370,49 @@ func (dag *BlockDAG) TotalStateRootMismatches() int {
 	return total
 }
 
+// EchteStateRootAbweichungen meldet nur die Abweichungen, die NICHT damit
+// erklaert sind, dass dieser Knoten an derselben Hoehe selbst produziert hat.
+//
+// Das ist die Zahl, auf die sich eine Entscheidung stuetzen darf.
+// TotalStateRootMismatches zaehlt weiterhin alle und bleibt als Diagnose
+// richtig -- aber unter Last besteht sie fast vollstaendig aus dem
+// Normalfall eines DAG mit zwei Produzenten (gemessen 11.09.2026: 917 in
+// zehn Minuten, waehrend beide Knoten byte-identisch waren). Wer darauf einen
+// Resync ausloest, haelt die Blockproduktion aus einem Fehlalarm an.
+func (dag *BlockDAG) EchteStateRootAbweichungen() int {
+	dag.stateRootMismatchesMu.Lock()
+	defer dag.stateRootMismatchesMu.Unlock()
+	cutoff := time.Now().Add(-stateRootMismatchActiveWindow).Unix()
+	total := 0
+	for proposer, n := range dag.stateRootEcht {
+		if dag.stateRootEchtLastAt[proposer] < cutoff {
+			continue
+		}
+		total += n
+	}
+	return total
+}
+
+// StateRootAufschluesselung trennt die beiden Faelle fuer die Anzeige.
+func (dag *BlockDAG) StateRootAufschluesselung() map[string]interface{} {
+	dag.stateRootMismatchesMu.Lock()
+	defer dag.stateRootMismatchesMu.Unlock()
+	var echt, geschwister int
+	for _, n := range dag.stateRootEcht {
+		echt += n
+	}
+	for _, n := range dag.stateRootGeschwister {
+		geschwister += n
+	}
+	return map[string]interface{}{
+		"bedeutung": "Zwei Validatoren, die an derselben Hoehe produzieren, ergeben IMMER " +
+			"verschiedene StateRoots -- das ist der Normalfall eines DAG, kein Auseinanderlaufen. " +
+			"Nur 'echt' taugt als Divergenzsignal; 'geschwisterbedingt' ist unter Last erwartbar.",
+		"echt":               echt,
+		"geschwisterbedingt": geschwister,
+	}
+}
+
 func (dag *BlockDAG) LastSuccessfulPeerSyncAt() int64 {
 	return dag.lastSuccessfulPeerSyncAt.Load()
 }
@@ -7170,10 +7224,66 @@ func (dag *BlockDAG) replayTransactions(block *Block, force bool) (ok bool) {
 			// from a healthy peer — not silently skipping blocks.
 			fmt.Printf("[REPLAY] ⚠ StateRoot mismatch on block #%d from %s (claimed=%s..., local=%s...) — accepted (TXs individually verified)\n",
 				block.Height, block.Proposer, block.StateRoot[:min(16, len(block.StateRoot))], localRoot[:min(16, len(localRoot))])
+			// GESCHWISTER ZAEHLEN NICHT ALS ABWEICHUNG.
+			//
+			// Der Kommentar direkt darueber sagt es selbst: zwei Validatoren,
+			// die an derselben Hoehe produzieren, ergeben IMMER verschiedene
+			// StateRoots, weil collectUnreplayedAncestors nur den eigenen
+			// Elternpfad laeuft und die Transaktionen des Geschwisterblocks im
+			// angesammelten Zustand des pruefenden Knotens stehen bleiben. Das
+			// ist kein Auseinanderlaufen, das ist der Normalfall eines DAG mit
+			// mehr als einem Produzenten.
+			//
+			// Der Zaehler wurde trotzdem als Divergenzbeweis benutzt: autoheal.go
+			// loest ueber ihm einen Resync aus. Was daraus wurde, gemessen am
+			// 11.09.2026 unter Last: 917 Abweichungen in zehn Minuten, ein
+			// ausgeloester Resync, und der Validator produzierte danach 41
+			// Sekunden lang keinen Block -- waehrend beide Knoten nachweislich
+			// GLEICH waren (identische Hoehe, identische Geldmenge, an Hoehe
+			// 6273700 byte-identischer Blockhash UND StateRoot). Im Leerlauf
+			// faellt es nicht auf, weil leere Bloecke denselben Root ergeben:
+			// der Fehlalarm entsteht genau dann, wenn Last anliegt.
+			//
+			// Unterschieden wird ueber die einzige Frage, die zaehlt: hat
+			// dieser Knoten an derselben Hoehe selbst produziert? Wenn ja,
+			// stecken die eigenen Transaktionen im lokalen Zustand und der
+			// Vergleich kann gar nicht aufgehen. Wenn nein, ist er
+			// aussagekraeftig -- und nur dann zaehlt er fuer die Selbstheilung.
+			geschwisterbedingt := dag.ownsProducedHeight(block.Height)
+
 			dag.stateRootMismatchesMu.Lock()
+			// Faul anlegen statt sich auf den Konstruktor zu verlassen. Ein
+			// BlockDAG entsteht nicht nur ueber NewBlockDAG -- Tests bauen es
+			// direkt --, und ein Schreibzugriff auf eine nil-Map ist eine
+			// Panik. Hier laege sie im Replay-Pfad, also an der Stelle, die
+			// unter keinen Umstaenden den Prozess beenden darf.
+			if dag.stateRootEcht == nil {
+				dag.stateRootEcht = make(map[string]int)
+			}
+			if dag.stateRootEchtLastAt == nil {
+				dag.stateRootEchtLastAt = make(map[string]int64)
+			}
+			if dag.stateRootGeschwister == nil {
+				dag.stateRootGeschwister = make(map[string]int)
+			}
+			if dag.stateRootMismatches == nil {
+				dag.stateRootMismatches = make(map[string]int)
+			}
+			if dag.stateRootMismatchLastAt == nil {
+				dag.stateRootMismatchLastAt = make(map[string]int64)
+			}
 			dag.stateRootMismatches[block.Proposer]++
 			dag.stateRootMismatchLastAt[block.Proposer] = time.Now().Unix()
-			alert := dag.stateRootMismatches[block.Proposer] >= 5
+			if geschwisterbedingt {
+				dag.stateRootGeschwister[block.Proposer]++
+			} else {
+				// Nur diese bewegen die Selbstheilung, und nur sie bekommen
+				// die eigene Zeitmarke -- sonst haelt ein Strom harmloser
+				// Geschwister-Abweichungen das Zeitfenster der echten offen.
+				dag.stateRootEchtLastAt[block.Proposer] = time.Now().Unix()
+				dag.stateRootEcht[block.Proposer]++
+			}
+			alert := !geschwisterbedingt && dag.stateRootEcht[block.Proposer] >= 5
 			dag.stateRootMismatchesMu.Unlock()
 			if alert {
 				fmt.Printf("[ALERT] 5+ StateRoot mismatches from %s — nodes may have diverged; investigate or resync from primary snapshot\n", block.Proposer)
@@ -7201,7 +7311,16 @@ func (dag *BlockDAG) replayTransactions(block *Block, force bool) (ok bool) {
 			// Fall through: commit the individually-verified transactions.
 		} else {
 			dag.stateRootMismatchesMu.Lock()
-			dag.stateRootMismatches[block.Proposer] = 0 // reset on match
+			if dag.stateRootMismatches != nil {
+				dag.stateRootMismatches[block.Proposer] = 0 // reset on match
+			}
+			if dag.stateRootEcht != nil {
+				dag.stateRootEcht[block.Proposer] = 0
+			}
+			if dag.stateRootGeschwister != nil {
+				dag.stateRootGeschwister[block.Proposer] = 0
+			}
+			delete(dag.stateRootEchtLastAt, block.Proposer)
 			dag.stateRootMismatchesMu.Unlock()
 		}
 	}

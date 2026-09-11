@@ -1,0 +1,90 @@
+package keeper
+
+import (
+	"os"
+	"strings"
+	"testing"
+)
+
+// DER FEHLALARM, DER DIE PRODUKTION ANHIELT.
+//
+// Zwei Validatoren, die an derselben Hoehe produzieren, ergeben IMMER
+// verschiedene StateRoots: collectUnreplayedAncestors laeuft nur den eigenen
+// Elternpfad, die Transaktionen des Geschwisterblocks bleiben im angesammelten
+// Zustand des pruefenden Knotens stehen. Der Code weiss das -- der Kommentar an
+// der Zaehlstelle sagt "will ALWAYS produce different StateRoots" -- und
+// behandelt es korrekt als Warnung statt als Ablehnung.
+//
+// Trotzdem benutzte autoheal.go genau diesen Zaehler als Divergenzbeweis. Am
+// 11.09.2026 unter Last: 917 Abweichungen in zehn Minuten, ein ausgeloester
+// Resync, 41 Sekunden ohne Blockproduktion -- waehrend beide Knoten
+// nachweislich gleich waren (identische Hoehe, identische Geldmenge, an Hoehe
+// 6273700 byte-identischer Blockhash UND StateRoot). Im Leerlauf faellt es
+// nicht auf: leere Bloecke ergeben denselben Root. Der Fehlalarm entsteht
+// genau dann, wenn Last anliegt.
+
+func quelleLesen(t *testing.T, datei string) string {
+	t.Helper()
+	b, err := os.ReadFile(datei)
+	if err != nil {
+		t.Fatalf("%s nicht lesbar: %v", datei, err)
+	}
+	return string(b)
+}
+
+func TestStateRoot_SelbstheilungNimmtNurEchteAbweichungen(t *testing.T) {
+	body := quelleLesen(t, "autoheal.go")
+
+	if strings.Contains(body, "TotalStateRootMismatches() < autoHealMismatchThreshold") {
+		t.Error("die Selbstheilung loest wieder ueber TotalStateRootMismatches aus. Diese Zahl " +
+			"besteht unter Last fast vollstaendig aus dem Normalfall eines DAG mit zwei " +
+			"Produzenten -- gemessen 917 in zehn Minuten, waehrend beide Knoten byte-identisch " +
+			"waren. Ein Signal, das unter Last zwangslaeufig anschlaegt, darf keine " +
+			"Produktionsunterbrechung ausloesen. EchteStateRootAbweichungen() verwenden.")
+	}
+	if !strings.Contains(body, "EchteStateRootAbweichungen()") {
+		t.Error("EchteStateRootAbweichungen wird nicht mehr benutzt -- dann stuetzt sich der " +
+			"Resync wieder auf ein Signal, das den Normalfall mitzaehlt.")
+	}
+}
+
+func TestStateRoot_GeschwisterWerdenGetrenntGezaehlt(t *testing.T) {
+	body := quelleLesen(t, "block.go")
+
+	if !strings.Contains(body, "geschwisterbedingt := dag.ownsProducedHeight(block.Height)") {
+		t.Fatal("die Unterscheidung ist weg. Ohne sie landet jede Abweichung im selben Topf, " +
+			"und der Topf wird unter Last vom Normalfall geflutet. Die Frage, die zaehlt: hat " +
+			"dieser Knoten an derselben Hoehe selbst produziert? Dann stecken die eigenen " +
+			"Transaktionen im lokalen Zustand und der Vergleich kann gar nicht aufgehen.")
+	}
+	// Der Alarm darf nicht mehr an der Gesamtzahl haengen.
+	if strings.Contains(body, "alert := dag.stateRootMismatches[block.Proposer] >= 5") {
+		t.Error("die Alarmschwelle haengt wieder an der Gesamtzahl statt an den echten " +
+			"Abweichungen -- damit meldet das Log unter Last dauerhaft Divergenz, wo keine ist.")
+	}
+	// Und die Diagnose muss erhalten bleiben: die Gesamtzahl ist weiterhin
+	// interessant, sie taugt nur nicht als Ausloeser.
+	if !strings.Contains(body, "dag.stateRootMismatches[block.Proposer]++") {
+		t.Error("die Gesamtzahl wird nicht mehr gefuehrt. Sie ist als Diagnose wertvoll -- " +
+			"nur eben nicht als Entscheidungsgrundlage.")
+	}
+}
+
+// Ein Zaehler, der nie zurueckgesetzt wird, meldet irgendwann Divergenz aus
+// reiner Ansammlung. Der Ruecksetzer auf Uebereinstimmung muss beide Toepfe
+// treffen, sonst bleibt der echte stehen.
+func TestStateRoot_UebereinstimmungSetztBeideZaehlerZurueck(t *testing.T) {
+	body := quelleLesen(t, "block.go")
+
+	i := strings.Index(body, "dag.stateRootMismatches[block.Proposer] = 0")
+	if i < 0 {
+		t.Fatal("der Ruecksetzer auf Uebereinstimmung ist weg")
+	}
+	rest := body[i : i+400]
+	for _, feld := range []string{"dag.stateRootEcht[block.Proposer] = 0", "dag.stateRootGeschwister[block.Proposer] = 0"} {
+		if !strings.Contains(rest, feld) {
+			t.Errorf("%s fehlt beim Ruecksetzen. Ein Zaehler, der nur waechst, meldet "+
+				"irgendwann Divergenz aus reiner Ansammlung.", feld)
+		}
+	}
+}

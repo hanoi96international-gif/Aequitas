@@ -516,10 +516,23 @@ func (dag *BlockDAG) StartDivergenceAutoHeal(bootstrapURL, signer, primaryURL st
 			// exactly the kind of "worked fine in testing, quietly stopped
 			// protecting production" failure this whole file exists to avoid.
 			SafeCall("autoHeal-mismatch-tick", func() {
-				if dag.TotalStateRootMismatches() < autoHealMismatchThreshold {
+				// ECHTE Abweichungen, nicht alle.
+				//
+				// TotalStateRootMismatches enthaelt unter Last fast nur den
+				// Normalfall: zwei Validatoren an derselben Hoehe ergeben
+				// immer verschiedene StateRoots (siehe die Zaehlstelle in
+				// block.go). Gemessen am 11.09.2026 waren es 917 in zehn
+				// Minuten -- und die beiden Knoten waren dabei nachweislich
+				// gleich: identische Hoehe, identische Geldmenge, an Hoehe
+				// 6273700 byte-identischer Blockhash und StateRoot. Der daraus
+				// ausgeloeste Resync kostete den Validator 41 Sekunden
+				// Blockproduktion. Ein Signal, das unter Last zwangslaeufig
+				// anschlaegt, darf keine Produktionsunterbrechung ausloesen.
+				echt := dag.EchteStateRootAbweichungen()
+				if echt < autoHealMismatchThreshold {
 					return
 				}
-				dag.triggerAutoResync(fmt.Sprintf("%d StateRoot mismatches in the last 10 minutes — this node has diverged from its peers", dag.TotalStateRootMismatches()))
+				dag.triggerAutoResync(fmt.Sprintf("%d echte StateRoot-Abweichungen in den letzten 10 Minuten (geschwisterbedingte ausgenommen) — dieser Knoten ist von seinen Peers abgewichen", echt))
 			})
 		}
 	})
