@@ -3,6 +3,7 @@ package keeper
 import (
 	"os"
 	"strconv"
+	"strings"
 	"sync/atomic"
 )
 
@@ -90,12 +91,12 @@ var (
 func inflightGrenze() int64 {
 	raw := os.Getenv(inflightGrenzeEnv)
 	if raw == "" {
-		return inflightVorgabe
+		return vorgabeNachSpeicher()
 	}
 	n, err := strconv.ParseInt(raw, 10, 64)
 	if err != nil || n < 0 {
 		// Unbrauchbar -> Vorgabe. Ein Tippfehler darf nicht entschaerfen.
-		return inflightVorgabe
+		return vorgabeNachSpeicher()
 	}
 	return n
 }
@@ -164,4 +165,88 @@ func InflightStand() map[string]interface{} {
 			"am 29.08.2026 gemessen: 576 Sender ergaben 0 Erfolge und 138.000 " +
 			"Zeitueberschreitungen. abgelehnt_pct > 0 heisst Rueckstau, nicht Defekt",
 	}
+}
+
+// DIE VORGABE HAENGT AM SPEICHER, NICHT AN EINER ZAHL AUS EINER MESSUNG.
+//
+// Am 11.09.2026 gemessen, beide Boxen, Last auf beiden Validatoren:
+//
+//	 8.000 gleichzeitig -> 3.454 Ketten-TPS, 79,5 % aller Anfragen abgelehnt
+//	20.000 gleichzeitig -> 4.653 Ketten-TPS, 0,0 % abgelehnt
+//
+// Also plus 35 Prozent, ohne einen einzigen ausgefallenen Produktionstick und
+// bei zwei Zeitueberschreitungen auf rund zwei Millionen Anfragen. Der
+// Hoechststand lag bei 15.900 -- die Schranke war der Deckel, nicht die Kette.
+//
+// Das widerspricht der frueheren Messung (29.08.2026: 15.000 gleichzeitig
+// ergaben 23 s je Buendel) nicht, es bestaetigt ihren eigenen Satz: "Wird der
+// Knoten schneller, sinkt die Wartezeit bei gleicher Schranke automatisch
+// mit." Dazwischen liegen der SaveTxBatch-Fix (schlimmster Blockbau 20.368 ms
+// -> 425 ms) und der StateRoot-Fehlalarm, der die Produktion anhielt.
+//
+// WARUM DIE 20.000 TROTZDEM NICHT FEST VERDRAHTET WERDEN. Was die Schranke
+// wirklich begrenzt, ist Speicher: bei 15.900 gleichzeitigen Posten standen
+// 3,6 GB im Knoten. Auf diesen Boxen (12 GB) ist das reichlich; auf der
+// kleinen VM, auf der jemand seinen ersten Validator startet, waere es der
+// Kernel-OOM -- und genau der hat hier am 05.09. und 07.09. zugeschlagen,
+// jedes Mal mit OOMKilled=false, also unsichtbar fuer Docker.
+//
+// Darum leitet sich die Vorgabe aus dem ab, was der Prozess ueberhaupt haben
+// darf. GOMEMLIMIT ist die verlaesslichere Quelle als der Systemspeicher: es
+// ist die Grenze, die Go tatsaechlich einhaelt, und auf einer geteilten Box
+// sagt der Systemspeicher wenig darueber, was diesem Prozess zusteht.
+const (
+	inflightJeGiB        int64 = 4000  // 20.000 bei den 5 GiB dieser Boxen
+	inflightUntergrenze  int64 = 2000  // auch auf einer sehr kleinen VM brauchbar
+	inflightObergrenze   int64 = 40000 // darueber wurde nie gemessen
+	inflightVorgabeOhneL int64 = 8000  // ohne GOMEMLIMIT: der alte, belegte Wert
+)
+
+func vorgabeNachSpeicher() int64 {
+	gib := gomemlimitGiB()
+	if gib <= 0 {
+		// Ohne GOMEMLIMIT bleibt es beim alten Wert. Wer kein Limit setzt,
+		// bekommt keine groessere Schranke geschenkt -- dann ist der Kernel
+		// die einzige Bremse, und der bremst durch Beenden.
+		return inflightVorgabeOhneL
+	}
+	n := int64(gib * float64(inflightJeGiB))
+	if n < inflightUntergrenze {
+		return inflightUntergrenze
+	}
+	if n > inflightObergrenze {
+		return inflightObergrenze
+	}
+	return n
+}
+
+// gomemlimitGiB liest GOMEMLIMIT in GiB; 0 heisst "nicht gesetzt oder
+// unlesbar". Go selbst akzeptiert Endungen von B bis GiB.
+func gomemlimitGiB() float64 {
+	roh := strings.TrimSpace(os.Getenv("GOMEMLIMIT"))
+	if roh == "" {
+		return 0
+	}
+	faktoren := []struct {
+		endung string
+		bytes  float64
+	}{
+		{"GiB", 1 << 30}, {"MiB", 1 << 20}, {"KiB", 1 << 10},
+		{"GB", 1e9}, {"MB", 1e6}, {"KB", 1e3}, {"B", 1},
+	}
+	for _, f := range faktoren {
+		if strings.HasSuffix(roh, f.endung) {
+			zahl, err := strconv.ParseFloat(strings.TrimSpace(strings.TrimSuffix(roh, f.endung)), 64)
+			if err != nil || zahl <= 0 {
+				return 0
+			}
+			return zahl * f.bytes / (1 << 30)
+		}
+	}
+	// Ohne Endung: Go liest das als Bytes.
+	zahl, err := strconv.ParseFloat(roh, 64)
+	if err != nil || zahl <= 0 {
+		return 0
+	}
+	return zahl / (1 << 30)
 }
