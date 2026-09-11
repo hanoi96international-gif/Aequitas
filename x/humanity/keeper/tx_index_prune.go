@@ -55,7 +55,12 @@ var (
 	txIndexGeloescht atomic.Int64
 	txIndexLaeufe    atomic.Int64
 	txIndexLetzteMB  atomic.Int64
+	txIndexZeilen    atomic.Int64
 )
+
+// txIndexBytesJeZeile ist die gemessene Groesse einer Zeile einschliesslich
+// ihres Indexanteils: 15 GB auf 51.155.972 Zeilen am 11.09.2026 auf C1.
+const txIndexBytesJeZeile int64 = 293
 
 func txIndexBudget() int64 {
 	if roh := os.Getenv(txIndexBudgetEnv); roh != "" {
@@ -94,14 +99,41 @@ func (cs *ChainState) pruneTxIndex() {
 	// Gedeckelt, damit ein entgleister Zustand hier nicht endlos dreht; was
 	// uebrig bleibt, holt der naechste Durchgang.
 	for i := 0; i < 200; i++ {
-		var lebend int64
+		// ZEILEN ZAEHLEN, NICHT BYTES SUMMIEREN.
+		//
+		// Der erste Entwurf summierte pg_column_size ueber alle Zeilen -- die
+		// Abfrage, die chain_tx_batches benutzt. Dort sind es ein paar tausend
+		// Zeilen; hier waren es am 11.09.2026 51.155.972. Der Scan lief damit
+		// in das statement_timeout von fuenf Sekunden, der Fehler wurde still
+		// verschluckt, und die Begrenzung meldete 0 MB bei 15 GB Tabelle. Ein
+		// Zaehler, der bei einem Fehler eine Null meldet, ist schlimmer als
+		// keiner: er sagt "alles in Ordnung".
+		//
+		// Zeilen zaehlen ist hier auch sachlich richtiger. Der Kommentar in
+		// tx_batch_prune.go verwirft eine Zeilengrenze, weil DORT die
+		// Zeilengroesse um drei Groessenordnungen schwankt (ein Rumpf kann
+		// 620 KB haben). Diese Tabelle hat feste Spalten -- zwei Hashes, eine
+		// Hoehe, ein Index -- und damit eine nahezu konstante Zeilengroesse:
+		// gemessen 15 GB auf 51.155.972 Zeilen, also rund 293 Byte
+		// einschliesslich Indexanteil. Aus Bytes wird so eine verlaessliche
+		// Zeilenzahl.
+		// reltuples, NICHT count(*). Auch ein count(*) ist in Postgres ein
+		// vollstaendiger Tabellenscan und liefe bei 51 Millionen Zeilen in
+		// dasselbe Zeitlimit wie die Byte-Summe davor. reltuples ist die
+		// Schaetzung aus den Tabellenstatistiken und antwortet sofort; sie
+		// weicht zwischen zwei ANALYZE-Laeufen ab, was fuer eine Obergrenze
+		// mit Gigabyte-Budget bedeutungslos ist. Ein DELETE loest ohnehin ein
+		// Autovacuum aus, das die Zahl nachfuehrt.
+		var zeilen int64
 		if err := cs.db.QueryRow(
-			`SELECT COALESCE(sum(pg_column_size(tx_hash) + pg_column_size(block_hash) + 16),0) FROM chain_tx_block_index`,
-		).Scan(&lebend); err != nil {
-			// Fehlt die Tabelle, gibt es nichts zu begrenzen.
+			`SELECT GREATEST(reltuples::bigint, 0) FROM pg_class WHERE relname = 'chain_tx_block_index'`,
+		).Scan(&zeilen); err != nil {
+			fmt.Printf("[TX-INDEX] ⚠ Groesse nicht messbar, Begrenzung greift diesen Durchgang nicht: %v\n", err)
 			return
 		}
+		lebend := zeilen * txIndexBytesJeZeile
 		txIndexLetzteMB.Store(lebend >> 20)
+		txIndexZeilen.Store(zeilen)
 		if lebend <= budget {
 			return
 		}
@@ -131,6 +163,7 @@ func TxIndexPruneStand() map[string]interface{} {
 			"gemessen, am 11.09. standen beide Boxen mit voller Platte.",
 		"budget_mb":       txIndexBudget() >> 20,
 		"lebend_mb":       txIndexLetzteMB.Load(),
+		"zeilen":          txIndexZeilen.Load(),
 		"zeilen_entfernt": txIndexGeloescht.Load(),
 		"laeufe":          txIndexLaeufe.Load(),
 	}
