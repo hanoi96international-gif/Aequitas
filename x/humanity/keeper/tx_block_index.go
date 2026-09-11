@@ -46,6 +46,12 @@ func (cs *ChainState) ensureTxBlockIndexTable() {
 			block_hash   TEXT NOT NULL,
 			tx_index     INT NOT NULL DEFAULT 0
 		)`)
+		// Der Index auf block_height wird hier NICHT angelegt -- er entsteht
+		// im Hintergrund, siehe legeHoehenIndexAn() in tx_index_prune.go.
+		// Auf einer leeren Tabelle waere er kostenlos; auf einer gewachsenen
+		// dauert er Minuten, und beides an dieser Stelle heisst: in einer
+		// Anweisung mit fuenf Sekunden Zeitlimit, die zudem die Tabelle
+		// sperrt -- also die Blockannahme.
 	})
 }
 

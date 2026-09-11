@@ -1,6 +1,8 @@
 package keeper
 
 import (
+	"context"
+	sql2 "database/sql"
 	"fmt"
 	"os"
 	"strconv"
@@ -46,8 +48,12 @@ const txIndexMaxBytesVorgabe int64 = 2 << 30 // 2 GiB
 
 const (
 	txIndexPruneIntervall = 10 * time.Minute
-	txIndexLoeschStueck   = 50000
-	txIndexBudgetEnv      = "AEQUITAS_TX_INDEX_MAX_BYTES"
+	// Wie viele Hoehen je Durchgang fallen. Bei rund acht Eintraegen je Block
+	// im Mittel sind das groessenordnungsmaessig eine halbe Million Zeilen --
+	// gross genug, um einen Rueckstand von 40 Millionen in wenigen Durchgaengen
+	// abzubauen, klein genug fuer eine Anweisung innerhalb des Zeitlimits.
+	txIndexHoehenSchritt = 60000
+	txIndexBudgetEnv     = "AEQUITAS_TX_INDEX_MAX_BYTES"
 )
 
 var (
@@ -96,6 +102,16 @@ func (cs *ChainState) pruneTxIndex() {
 	}
 	budget := txIndexBudget()
 	txIndexLaeufe.Add(1)
+	// Ohne den Hoehenindex ist jedes Loeschen ein Scan ueber die ganze
+	// Tabelle. Lieber gar nicht kuerzen als in ein Zeitlimit laufen und
+	// dabei "0 entfernt" melden -- genau diese stille Null hat den Fehler
+	// am 11.09.2026 einen Durchgang lang verdeckt.
+	if !cs.hoehenIndexDa() {
+		if err := cs.legeHoehenIndexAn(); err != nil {
+			fmt.Printf("[TX-INDEX] ⚠ Hoehenindex fehlt und liess sich nicht anlegen, Begrenzung greift nicht: %v\n", err)
+			return
+		}
+	}
 	// Gedeckelt, damit ein entgleister Zustand hier nicht endlos dreht; was
 	// uebrig bleibt, holt der naechste Durchgang.
 	for i := 0; i < 200; i++ {
@@ -137,10 +153,27 @@ func (cs *ChainState) pruneTxIndex() {
 		if lebend <= budget {
 			return
 		}
-		res, err := cs.db.Exec(
-			`DELETE FROM chain_tx_block_index WHERE ctid IN (
-			   SELECT ctid FROM chain_tx_block_index ORDER BY block_height ASC LIMIT $1
-			 )`, txIndexLoeschStueck)
+		// UEBER DIE HOEHE LOESCHEN, nicht ueber eine sortierte Auswahl.
+		//
+		// Der erste Entwurf holte die aeltesten ctids per ORDER BY. Ohne Index
+		// auf block_height ist das ein Scan ueber die ganze Tabelle -- bei 49
+		// Millionen Zeilen lief er ins statement_timeout, entfernte nichts,
+		// und die Begrenzung meldete brav "0 entfernt", waehrend die Tabelle
+		// bei 13,8 GB stand. Der Index kommt jetzt aus tx_block_index.go; die
+		// Bedingung unten kann ihn nutzen, eine ctid-Auswahl koennte es nicht.
+		var grenze int64
+		if err := cs.db.QueryRow(
+			`SELECT COALESCE(min(block_height),0) + $1 FROM chain_tx_block_index`, txIndexHoehenSchritt,
+		).Scan(&grenze); err != nil {
+			fmt.Printf("[TX-INDEX] ⚠ untere Hoehe nicht lesbar: %v\n", err)
+			return
+		}
+		// Auf eigener Verbindung ohne Zeitlimit: eine halbe Million Zeilen
+		// brauchen laenger als fuenf Sekunden. Gesperrt werden dabei nur die
+		// alten Zeilen selbst -- niemand schreibt dorthin, neue Eintraege
+		// entstehen am oberen Ende. Die Blockannahme merkt davon nichts.
+		res, err := cs.langeAnweisung(
+			`DELETE FROM chain_tx_block_index WHERE block_height < $1`, grenze)
 		if err != nil {
 			fmt.Printf("[TX-INDEX] ⚠ konnte nicht kuerzen (bleibt uebergross bis zum naechsten Durchgang): %v\n", err)
 			return
@@ -150,6 +183,12 @@ func (cs *ChainState) pruneTxIndex() {
 			return
 		}
 		txIndexGeloescht.Add(n)
+		// Luft holen. Der Rueckstand vom 11.09.2026 sind ueber 40 Millionen
+		// Zeilen; ohne Pause laufen Loeschvorgaenge dieser Groesse dicht an
+		// dicht, und Postgres bedient dann vor allem Autovacuum statt der
+		// Kette. Die Begrenzung hat es nicht eilig -- sie muss nur schneller
+		// sein als das Wachstum.
+		time.Sleep(3 * time.Second)
 		fmt.Printf("[TX-INDEX] %d Zeilen entfernt (%d MB lebend, Budget %d MB)\n", n, lebend>>20, budget>>20)
 	}
 }
@@ -167,4 +206,62 @@ func TxIndexPruneStand() map[string]interface{} {
 		"zeilen_entfernt": txIndexGeloescht.Load(),
 		"laeufe":          txIndexLaeufe.Load(),
 	}
+}
+
+// hoehenIndexDa sagt, ob der Index auf block_height existiert.
+func (cs *ChainState) hoehenIndexDa() bool {
+	var da bool
+	if err := cs.db.QueryRow(
+		`SELECT EXISTS (SELECT 1 FROM pg_indexes WHERE indexname = 'idx_tx_block_index_hoehe')`,
+	).Scan(&da); err != nil {
+		return false
+	}
+	return da
+}
+
+// legeHoehenIndexAn baut den Index, ohne die Blockannahme anzuhalten.
+//
+// CONCURRENTLY, weil ein gewoehnliches CREATE INDEX die Tabelle fuer die
+// Dauer des Aufbaus gegen Schreibzugriffe sperrt. Diese Tabelle wird bei
+// JEDEM angenommenen Block beschrieben -- eine Sperre von Minuten waere ein
+// Stillstand der Hoehe von Minuten. CONCURRENTLY laeuft dafuer nicht in einer
+// Transaktion, weshalb hier eine eigene Verbindung noetig ist statt des
+// bewaehrten SET LOCAL aus snapshot.go.
+//
+// Schlaegt der Aufbau fehl, bleibt in Postgres ein ungueltiger Index zurueck,
+// den ein zweiter Versuch nicht ueberschreiben wuerde; darum vorher raeumen.
+func (cs *ChainState) legeHoehenIndexAn() error {
+	fmt.Println("[TX-INDEX] lege Hoehenindex an (im Hintergrund, ohne Schreibsperre) ...")
+	start := time.Now()
+	if _, err := cs.langeAnweisung(`DROP INDEX IF EXISTS idx_tx_block_index_hoehe`); err != nil {
+		return err
+	}
+	if _, err := cs.langeAnweisung(
+		`CREATE INDEX CONCURRENTLY idx_tx_block_index_hoehe ON chain_tx_block_index (block_height)`,
+	); err != nil {
+		return err
+	}
+	fmt.Printf("[TX-INDEX] Hoehenindex steht nach %s\n", time.Since(start).Round(time.Second))
+	return nil
+}
+
+// langeAnweisung fuehrt eine Anweisung aus, die laenger als das globale
+// statement_timeout von fuenf Sekunden braucht.
+//
+// Auf einer EIGENEN Verbindung: ein SET auf cs.db traefe irgendeine
+// Verbindung aus dem Vorrat, und die naechste Anweisung liefe wieder mit
+// Zeitlimit. Die harte Obergrenze kommt stattdessen vom Kontext -- ohne sie
+// koennte eine entgleiste Anweisung hier ewig laufen.
+func (cs *ChainState) langeAnweisung(sql string, args ...interface{}) (sql2.Result, error) {
+	ctx, abbruch := context.WithTimeout(context.Background(), 20*time.Minute)
+	defer abbruch()
+	conn, err := cs.db.Conn(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer conn.Close()
+	if _, err := conn.ExecContext(ctx, `SET statement_timeout = 0`); err != nil {
+		return nil, err
+	}
+	return conn.ExecContext(ctx, sql, args...)
 }
