@@ -1423,58 +1423,106 @@ func kettenDurchsatz(statusURL string, von, bis time.Time) {
 	vonMs, bisMs := von.UnixMilli(), bis.UnixMilli()
 	type zaehler struct{ bloecke, txs int }
 	je := map[string]*zaehler{}
-	var txGesamt, bloecke, leere int
+	var bloecke, leere int
 	var fruehest, spaetest int64
-	// Rueckwaerts bis vor das Lastfenster. Der Deckel haelt einen langen Lauf
-	// davon ab, hier minutenlang Bloecke nachzuladen.
-	for i := int64(0); i < 4000; i++ {
-		h := st.Height - i
-		if h < 1 {
-			break
-		}
-		r, e := hc.Get(fmt.Sprintf("%s/api/block?height=%d", basis, h))
+	// EINDEUTIGE Transaktionen. Derselbe Hash kann im DAG in mehr als einem
+	// Block derselben Hoehe liegen (siehe tx_block_index.go: "the same
+	// transaction can legitimately appear in more than one block of a DAG").
+	// Eine Summe ueber die Bloecke wuerde ihn doppelt zaehlen und den
+	// Durchsatz zu hoch ausweisen.
+	gesehen := map[string]struct{}{}
+
+	// UEBER /api/blocks, NICHT /api/block?height=N.
+	//
+	// Der erste Entwurf lief Hoehe fuer Hoehe ueber /api/block?height=N. Das
+	// liefert EINEN Block je Hoehe -- den kanonischen. Bei zwei Validatoren
+	// entstehen aber zwei Bloecke je Hoehe, jeder mit eigenen Transaktionen
+	// aus dem eigenen Mempool (es gibt keine Weitergabe zwischen Knoten). Die
+	// Zaehlung sah damit systematisch die Haelfte.
+	//
+	// Aufgefallen am 11.09.2026 durch einen Widerspruch zwischen zwei
+	// Instrumenten: die Produktionszaehler auf beiden Boxen meldeten 831
+	// erzeugte Bloecke in 416 s, diese Zaehlung 316 in 314 s -- hochgerechnet
+	// 627 erwartet, also exakt der Faktor zwei. Zu sauber fuer Zufall.
+	// Bestaetigt durch die Aufschluesselung selbst: 171 + 145 = 316 ergab
+	// genau die Zahl der HOEHEN, nicht die der Bloecke.
+	//
+	// /api/blocks?min_height=N&limit=500 liefert beide Geschwister.
+	min := st.Height - 4000
+	if min < 0 {
+		min = 0
+	}
+	for runde := 0; runde < 40; runde++ {
+		r, e := hc.Get(fmt.Sprintf("%s/api/blocks?min_height=%d&limit=500", basis, min))
 		if e != nil {
 			break
 		}
-		var blk struct {
-			Proposer     string            `json:"proposer"`
-			ProducedAtMs int64             `json:"produced_at_ms"`
-			Transactions []json.RawMessage `json:"transactions"`
+		var seite []struct {
+			Height       int64  `json:"height"`
+			Hash         string `json:"hash"`
+			Proposer     string `json:"proposer"`
+			ProducedAtMs int64  `json:"produced_at_ms"`
+			Transactions []struct {
+				TxHash string `json:"tx_hash"`
+				ID     string `json:"id"`
+			} `json:"transactions"`
 		}
-		be := json.NewDecoder(r.Body).Decode(&blk)
+		be := json.NewDecoder(r.Body).Decode(&seite)
 		r.Body.Close()
-		if be != nil {
-			continue
+		if be != nil || len(seite) == 0 {
+			break
 		}
-		if blk.ProducedAtMs != 0 {
-			if blk.ProducedAtMs < vonMs {
-				break
+		for _, blk := range seite {
+			if blk.Height > min {
+				min = blk.Height
 			}
-			if blk.ProducedAtMs > bisMs {
+			if blk.ProducedAtMs != 0 && (blk.ProducedAtMs < vonMs || blk.ProducedAtMs > bisMs) {
 				continue
 			}
-			if fruehest == 0 || blk.ProducedAtMs < fruehest {
-				fruehest = blk.ProducedAtMs
+			if blk.ProducedAtMs != 0 {
+				if fruehest == 0 || blk.ProducedAtMs < fruehest {
+					fruehest = blk.ProducedAtMs
+				}
+				if blk.ProducedAtMs > spaetest {
+					spaetest = blk.ProducedAtMs
+				}
 			}
-			if blk.ProducedAtMs > spaetest {
-				spaetest = blk.ProducedAtMs
+			p := blk.Proposer
+			if p == "" {
+				p = "(unbekannt)"
+			}
+			if je[p] == nil {
+				je[p] = &zaehler{}
+			}
+			neueHier := 0
+			for _, tx := range blk.Transactions {
+				schluessel := tx.TxHash
+				if schluessel == "" {
+					schluessel = tx.ID
+				}
+				if schluessel == "" {
+					neueHier++ // ohne Kennung nicht entdoppelbar; lieber zaehlen als verlieren
+					continue
+				}
+				if _, doppelt := gesehen[schluessel]; doppelt {
+					continue
+				}
+				gesehen[schluessel] = struct{}{}
+				neueHier++
+			}
+			je[p].bloecke++
+			je[p].txs += neueHier
+			bloecke++
+			if len(blk.Transactions) == 0 {
+				leere++
 			}
 		}
-		p := blk.Proposer
-		if p == "" {
-			p = "(unbekannt)"
-		}
-		if je[p] == nil {
-			je[p] = &zaehler{}
-		}
-		je[p].bloecke++
-		je[p].txs += len(blk.Transactions)
-		bloecke++
-		txGesamt += len(blk.Transactions)
-		if len(blk.Transactions) == 0 {
-			leere++
+		if min >= st.Height {
+			break
 		}
 	}
+	txGesamt := len(gesehen)
+
 	spanne := float64(spaetest-fruehest) / 1000.0
 	if spanne <= 0 {
 		spanne = bis.Sub(von).Seconds()
