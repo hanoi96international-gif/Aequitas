@@ -1167,6 +1167,14 @@ func main() {
 		abortCh := make(chan string, 1)
 		go pollStatus(client, *statusURL, stopCh, abortCh)
 
+		// Die Hoehe VOR dem Lauf merken. Sie grenzt hinterher das Fenster ab --
+		// der Zeitstempel taugt dafuer nicht, weil aus der Datenbank geladene
+		// Bloecke ihn nicht tragen (siehe kettenDurchsatz).
+		hoeheVorLauf := leseHoehe(*statusURL)
+		if hoeheVorLauf == 0 {
+			fmt.Println("⚠ Hoehe vor dem Lauf nicht lesbar — der Kettendurchsatz wird das Fenster nicht sauber abgrenzen koennen")
+		}
+
 		var wg sync.WaitGroup
 		start := time.Now()
 		rampDur := time.Duration(*rampSeconds) * time.Second
@@ -1378,7 +1386,7 @@ func main() {
 		// 5.991/s, waehrend die Bloecke nur 974/s trugen -- der Rest stand in
 		// der Warteschlange. Ohne die folgende Zahl optimiert man diese Luecke
 		// statt der Kette.
-		kettenDurchsatz(*statusURL, start, time.Now())
+		kettenDurchsatz(*statusURL, start, time.Now(), hoeheVorLauf)
 	}
 }
 
@@ -1403,7 +1411,40 @@ func ringNachbarn(n, i int) (nachfolger, vorgaenger int) {
 // nach Produzent, weil ein Validator ohne eigene Last nur leere Bloecke baut
 // und damit die halbe Kapazitaet verschenkt (gemessen 06.09.2026: 21 leere
 // Bloecke von C1 gegen 19 volle von C2).
-func kettenDurchsatz(statusURL string, von, bis time.Time) {
+// UEBER DIE HOEHE ABGRENZEN, NICHT UEBER DEN ZEITSTEMPEL.
+//
+// Der Entwurf davor filterte auf produced_at_ms. Dieses Feld tragen nur die
+// juengsten Bloecke -- die, die noch im Speicher-DAG liegen. Alles, was aus
+// der Datenbank nachgeladen wird, kommt mit produced_at_ms = 0 zurueck, und
+// die Bedingung "ungleich 0 UND ausserhalb des Fensters" liess dann jeden
+// dieser Bloecke durch. Gemessen am 11.09.2026: von 29 abgefragten Bloecken
+// hatten 29 keinen Zeitstempel.
+//
+// Die Folge war doppelt falsch: gezaehlt wurden Bloecke weit vor dem
+// Lastfenster, und die Spanne kam aus der Handvoll Bloecke, die einen
+// Zeitstempel hatten -- ein kurzer Nenner ueber einem zu grossen Zaehler. Die
+// Zahlen dieser Sitzung (5.111 und 5.884) waren dadurch zu hoch.
+//
+// Die Hoehe steht in jedem Block. Vor dem Lauf gemerkt, grenzt sie das
+// Fenster exakt ab, und die Spanne ist schlicht die Laufzeit.
+// leseHoehe holt die aktuelle Kettenhoehe; 0 heisst "nicht lesbar".
+func leseHoehe(statusURL string) int64 {
+	hc := &http.Client{Timeout: 10 * time.Second}
+	resp, err := hc.Get(statusURL)
+	if err != nil {
+		return 0
+	}
+	defer resp.Body.Close()
+	var st struct {
+		Height int64 `json:"height"`
+	}
+	if json.NewDecoder(resp.Body).Decode(&st) != nil {
+		return 0
+	}
+	return st.Height
+}
+
+func kettenDurchsatz(statusURL string, von, bis time.Time, vonHoehe int64) {
 	basis := strings.TrimSuffix(statusURL, "/api/status")
 	hc := &http.Client{Timeout: 15 * time.Second}
 	resp, err := hc.Get(statusURL)
@@ -1456,10 +1497,18 @@ func kettenDurchsatz(statusURL string, von, bis time.Time) {
 	// genau die Zahl der HOEHEN, nicht die der Bloecke.
 	//
 	// /api/blocks?min_height=N&limit=500 liefert beide Geschwister.
-	min := st.Height - 4000
-	if min < 0 {
-		min = 0
+	// Ist die Starthoehe nicht lesbar, NICHT bei 0 anfangen: das waere ein
+	// Nachladen der ganzen Kette. Dann lieber ein grosszuegiges Fenster
+	// zurueck und die Abgrenzung dem Zeitstempel ueberlassen, soweit er da
+	// ist -- ungenau, aber begrenzt.
+	if vonHoehe <= 0 {
+		vonHoehe = st.Height - 4000
+		if vonHoehe < 0 {
+			vonHoehe = 0
+		}
+		fmt.Println("  (Starthoehe unbekannt — Fenster nur grob abgegrenzt, die Zahl ist eine Obergrenze)")
 	}
+	min := vonHoehe
 	for runde := 0; runde < 40; runde++ {
 		r, e := hc.Get(fmt.Sprintf("%s/api/blocks?min_height=%d&limit=500", basis, min))
 		if e != nil {
@@ -1484,10 +1533,13 @@ func kettenDurchsatz(statusURL string, von, bis time.Time) {
 			if blk.Height > min {
 				min = blk.Height
 			}
-			if blk.ProducedAtMs != 0 && (blk.ProducedAtMs < vonMs || blk.ProducedAtMs > bisMs) {
-				continue
+			if blk.Height <= vonHoehe {
+				continue // vor dem Lastfenster
 			}
 			if blk.ProducedAtMs != 0 {
+				if blk.ProducedAtMs < vonMs || blk.ProducedAtMs > bisMs {
+					continue
+				}
 				if fruehest == 0 || blk.ProducedAtMs < fruehest {
 					fruehest = blk.ProducedAtMs
 				}
@@ -1537,10 +1589,15 @@ func kettenDurchsatz(statusURL string, von, bis time.Time) {
 	}
 	txGesamt := len(gesehen)
 
-	spanne := float64(spaetest-fruehest) / 1000.0
+	// Die Laufzeit ist der richtige Nenner. Die Spanne aus den Zeitstempeln
+	// waere es nur, wenn ALLE Bloecke einen haetten -- haben sie nicht (siehe
+	// oben), und ein zu kleiner Nenner macht aus einer ehrlichen Zahl eine
+	// schmeichelhafte.
+	spanne := bis.Sub(von).Seconds()
 	if spanne <= 0 {
-		spanne = bis.Sub(von).Seconds()
+		spanne = 1
 	}
+	_, _ = fruehest, spaetest
 	nenner := float64(bloecke)
 	if nenner < 1 {
 		nenner = 1
