@@ -1,0 +1,25 @@
+name: Speicher unter Ruhe pruefen
+on: {workflow_dispatch: {}}
+jobs:
+  m:
+    strategy: {matrix: {box: [{name: "C1", host: "173.249.37.118", secret: "C1"}, {name: "C2", host: "194.163.188.71", secret: "C2"}]}}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ matrix.box.host }}
+          username: root
+          key: ${{ matrix.box.secret == 'C1' && secrets.CONTABO_SSH_KEY || secrets.CONTABO2_SSH_KEY }}
+          port: 22
+          script_stop: false
+          timeout: 200s
+          command_timeout: 200s
+          script: |
+            set +e
+            echo "##### ${{ matrix.box.name }} #####"
+            docker inspect aequitas-node --format '{{range .Config.Env}}{{println .}}{{end}}' | grep -E '^(GOMEMLIMIT|GOGC|AEQUITAS_RPC_MAX_INFLIGHT)=' || echo "(keine)"
+            free -m | head -2
+            docker stats --no-stream --format '{{.Name}} {{.MemUsage}} {{.MemPerc}}' | head -4
+            echo "--- Kernel-OOM in dmesg? ---"
+            dmesg -T 2>/dev/null | grep -iE 'out of memory|oom-kill' | tail -4 || echo "(keine)"
+            docker inspect aequitas-node --format 'Neustarts: {{.RestartCount}}  OOMKilled: {{.State.OOMKilled}}  ExitCode: {{.State.ExitCode}}'
