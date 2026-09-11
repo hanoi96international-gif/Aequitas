@@ -63,6 +63,10 @@ on:
         description: "Account CSV to drive the run from. accounts-funded.csv (written by loadtest-find-funded.yml) contains only rows that still hold AEQ, so unfunded senders cannot fail their way into the throughput number."
         required: false
         default: "accounts.csv"
+      rpc_ziele:
+        description: "RPC-Ziele, mit Komma getrennt. Ein einzelnes Ziel laesst den ANDEREN Validator nur leere Bloecke bauen -- gemessen 11.09.2026: C1 2004 Bloecke mit 0 tx, C2 1996 mit 303.315 tx. Es gibt keine Weitergabe von Transaktionen zwischen Knoten; jeder kann nur verpacken, was er selbst angenommen hat."
+        required: false
+        default: "http://localhost:8080/rpc"
       pairs:
         description: "Cap on concurrent sender pairs (0 = every pair in the CSV). Lower values measure the rate the network SUSTAINS rather than the peak it briefly touches."
         required: false
@@ -97,7 +101,7 @@ jobs:
           script_stop: true
           timeout: 900s
           command_timeout: 900s
-          envs: PHASE,NUM_SEEDS,DURATION,RAMP,FUND_WEI,TRANSFER_WEI,BATCH_SIZE,HTTP_TIMEOUT,ACCOUNTS_CSV,PAIRS
+          envs: PHASE,NUM_SEEDS,DURATION,RAMP,FUND_WEI,TRANSFER_WEI,BATCH_SIZE,HTTP_TIMEOUT,ACCOUNTS_CSV,PAIRS,RPC_ZIELE
           script: |
             set -euo pipefail
             cd /root/contabo-loadtest
@@ -176,7 +180,7 @@ jobs:
               golang:1.24-alpine \
               ./loadtest \
                 -accounts "$ACCOUNTS_CSV" \
-                -rpc http://localhost:8080/rpc \
+                -rpc "$RPC_ZIELE" \
                 -status http://localhost:8080/api/status \
                 -phase "$PHASE" \
                 -seeds "$NUM_SEEDS" \
@@ -261,3 +265,4 @@ jobs:
           HTTP_TIMEOUT: ${{ inputs.http_timeout }}
           ACCOUNTS_CSV: ${{ inputs.accounts_csv }}
           PAIRS: ${{ inputs.pairs }}
+          RPC_ZIELE: ${{ inputs.rpc_ziele }}
