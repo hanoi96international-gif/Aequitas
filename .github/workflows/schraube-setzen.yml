@@ -1,0 +1,104 @@
+name: Schraube setzen (beliebige Umgebungsvariable)
+
+# Fuer jede Messung einen eigenen Workflow zu bauen hat diese Sitzung mehrfach
+# Zeit gekostet -- und zweimal einen Fehler eingeschleppt, den der jeweils
+# andere schon behoben hatte (die GOMEMLIMIT-Vorlage pruefte "genau 0 oder 1"
+# und verwarf 6GiB stillschweigend; eine andere schrieb nur in die Datei, ohne
+# dass der Prozess sie je sah).
+#
+# ZWEI DINGE, DIE HIER NICHT VERHANDELBAR SIND:
+#
+# 1. Die Umgebung des LAUFENDEN Prozesses ist die Grundlage, nicht die Datei.
+#    /root/.aequitas.env zu schreiben genuegt nicht -- das Deploy-Skript
+#    reicht nicht jeden Schluessel durch, und der Prozess laeuft dann weiter
+#    mit seiner Vorgabe, waehrend die Datei etwas anderes behauptet.
+#
+# 2. Ein Validator wird erst angefasst, wenn der andere wieder traegt.
+#    max-parallel:1 wartet nur auf das Ende des Schritts, nicht darauf, dass
+#    der Knoten das Sync-Tor passiert hat. Am 06.09.2026 stand die Kette
+#    dadurch zweimal ueber zwei Minuten: die erste Box war noch nicht zurueck,
+#    als die zweite gestoppt wurde -- und damit gab es keinen Produzenten.
+
+on:
+  workflow_dispatch:
+    inputs:
+      name:
+        description: "Name der Variablen, z.B. AEQUITAS_RPC_MAX_INFLIGHT"
+        required: true
+      wert:
+        description: "Wert. LEER = Ueberschreibung entfernen (die Vorgabe im Code gilt wieder)."
+        required: false
+      box:
+        required: true
+        default: beide
+        type: choice
+        options: [contabo1, contabo2, beide]
+jobs:
+  setzen:
+    strategy:
+      max-parallel: 1
+      matrix:
+        box: ${{ inputs.box == 'contabo1' && fromJSON('[{"name":"Contabo1","host":"173.249.37.118","secret":"C1"}]') || inputs.box == 'contabo2' && fromJSON('[{"name":"Contabo2","host":"194.163.188.71","secret":"C2"}]') || fromJSON('[{"name":"Contabo2","host":"194.163.188.71","secret":"C2"},{"name":"Contabo1","host":"173.249.37.118","secret":"C1"}]') }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: ${{ inputs.name }} auf ${{ matrix.box.name }}
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ matrix.box.host }}
+          username: root
+          key: ${{ matrix.box.secret == 'C1' && secrets.CONTABO_SSH_KEY || secrets.CONTABO2_SSH_KEY }}
+          port: 22
+          script_stop: false
+          timeout: 900s
+          command_timeout: 900s
+          envs: SNAME,SWERT
+          script: |
+            set +e
+            # KEINE Wertpruefung hier. Was gueltig ist, entscheidet der Code,
+            # der die Variable liest -- und jeder dieser Leser faellt bei
+            # Unsinn auf seine Vorgabe zurueck und sagt es im Log. Eine
+            # zweite, gut gemeinte Pruefung an dieser Stelle hat schon einmal
+            # einen voellig gueltigen Wert verworfen.
+            case "$SNAME" in
+              [A-Za-z_]*) : ;;
+              *) echo "ABBRUCH: %SNAME% ist kein Variablenname"; exit 1 ;;
+            esac
+            echo "### ${{ matrix.box.name }}: $SNAME=${SWERT:-<entfernt>} ###"
+            cp /root/.aequitas.env "/root/.aequitas.env.bak.$(date +%Y%m%d-%H%M%S)"
+            sed -i "/^${SNAME}=/d" /root/.aequitas.env
+            [ -n "$SWERT" ] && echo "${SNAME}=${SWERT}" >> /root/.aequitas.env
+
+            IMAGE="$(docker inspect aequitas-node --format '{{.Config.Image}}')"
+            NET="$(docker inspect aequitas-node --format '{{range $k, $v := .NetworkSettings.Networks}}{{$k}} {{end}}' | awk '{print $1}')"
+            PORTS="$(docker inspect aequitas-node --format '{{range $p, $c := .HostConfig.PortBindings}}-p {{(index $c 0).HostPort}}:{{$p}} {{end}}' | sed 's|/tcp||g')"
+            MOUNTS="$(docker inspect aequitas-node --format '{{range .Mounts}}-v {{.Source}}:{{.Destination}} {{end}}')"
+            mkdir -p /root/schraube
+            ENVOUT=/root/schraube/env
+            docker inspect aequitas-node --format '{{range .Config.Env}}{{println .}}{{end}}' \
+              | grep -vE "^(RESYNC_FROM_SNAPSHOT|HOSTNAME|PATH|HOME|${SNAME})=" \
+              | grep -E '^[A-Za-z_][A-Za-z0-9_]*=' > /tmp/proc.env
+            grep -E '^[A-Za-z_][A-Za-z0-9_]*=' /root/.aequitas.env \
+              | grep -vE '^(RESYNC_FROM_SNAPSHOT|HOSTNAME|PATH|HOME)=' > /tmp/file.env || true
+            awk -F= '!seen[$1]++' /tmp/file.env /tmp/proc.env > "$ENVOUT"
+
+            docker stop aequitas-node && docker rm aequitas-node
+            docker run -d --name aequitas-node --network "$NET" $PORTS $MOUNTS \
+              --env-file "$ENVOUT" --restart unless-stopped "$IMAGE"
+            sleep 40
+
+            echo "=== was der PROZESS jetzt hat (die Datei ist kein Beleg) ==="
+            docker inspect aequitas-node --format '{{range .Config.Env}}{{println .}}{{end}}' \
+              | grep -E "^${SNAME}=" || echo "(nicht gesetzt — die Vorgabe im Code gilt)"
+
+            echo "=== warte, bis diese Box wieder produziert (max 8 min) ==="
+            for i in $(seq 1 96); do
+              ST=$(curl -s --max-time 8 http://127.0.0.1:8080/api/health/combined 2>/dev/null | grep -oE '"stalled_seconds":[0-9]+' | head -1 | cut -d: -f2)
+              if [ -n "$ST" ] && [ "$ST" -le 15 ] 2>/dev/null; then
+                echo "  produziert wieder (stalled=${ST}s) nach $((i*5))s"; break
+              fi
+              [ $((i % 12)) -eq 0 ] && echo "  ... noch nicht (stalled=${ST:-?}s) nach $((i*5))s"
+              sleep 5
+            done
+        env:
+          SNAME: ${{ inputs.name }}
+          SWERT: ${{ inputs.wert }}
