@@ -143,3 +143,25 @@ func TestTxIndexPrune_SchreibtDieSchaetzungFortStattSieNeuZuLesen(t *testing.T) 
 			"ueber Durchgaenge hinweg braucht der naechste Lauf den echten Wert.")
 	}
 }
+
+// Am 11.09.2026 standen beide Boxen bei 0 MB, obwohl die Abzugsrotation lief.
+// Die Abzuege waren nur ein Teil; der groessere Verbraucher war eine Tabelle
+// ohne Obergrenze. Die Selbsthilfe darf darum nicht bei Dateien aufhoeren --
+// und sie darf die Kuerzung nicht davon abhaengig machen, ob auf dieser Box
+// zufaellig ein Rotationsskript eingerichtet ist.
+func TestPlattenSelbsthilfe_StoesstAuchDieTabellenbegrenzungAn(t *testing.T) {
+	body := quelle(t, "plattenplatz.go")
+
+	anstoss := strings.Index(body, "notfallKuerzungAnstossen()")
+	if anstoss < 0 {
+		t.Fatal("die Selbsthilfe stoesst die Tabellenbegrenzungen nicht mehr an. Dann bleibt " +
+			"sie beim Loeschen alter Abzuege stehen -- genau das hat am 11.09.2026 nicht " +
+			"gereicht, weil 15 GB in einer Tabelle lagen und nicht in einer Datei.")
+	}
+	skript := strings.Index(body, "os.Stat(plattenSelbsthilfeSkript)")
+	if skript >= 0 && anstoss > skript {
+		t.Error("die Tabellenbegrenzung wird erst nach der Pruefung auf das Rotationsskript " +
+			"angestossen. Auf einer Box ohne eingerichtete Rotation -- also bei jedem neuen " +
+			"Validator -- liefe sie damit nie, obwohl gerade sie dort gebraucht wird.")
+	}
+}

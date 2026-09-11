@@ -197,8 +197,18 @@ func plattenSelbsthilfe(freiGB float64) {
 	if !plattenSelbsthilfeLetzte.CompareAndSwap(letzte, jetzt) {
 		return
 	}
+	// Zuerst die Tabellenbegrenzung, und zwar UNABHAENGIG vom Rotationsskript.
+	//
+	// Am 11.09.2026 standen beide Boxen bei 0 MB, obwohl die Rotation lief:
+	// die Abzuege waren nur ein Teil, der groessere war chain_tx_block_index
+	// mit 15 GB fuer eine Tabelle, die gar keine Obergrenze hatte. Die
+	// Begrenzung dafuer gibt es jetzt, aber sie laeuft im Zehnminutentakt --
+	// und wenn der Platz knapp ist, sind zehn Minuten zu lang. Ein Aufruf
+	// hier verbindet das Symptom (Platte voll) mit seiner Ursache.
+	notfallKuerzungAnstossen()
+
 	if _, err := os.Stat(plattenSelbsthilfeSkript); err != nil {
-		fmt.Printf("[PLATTE] (keine Selbsthilfe moeglich: %s fehlt — Rotation ist auf dieser Box nicht eingerichtet)\n",
+		fmt.Printf("[PLATTE] (keine Selbsthilfe moeglich: %s fehlt — die Tabellenbegrenzung wurde trotzdem angestossen)\n",
 			plattenSelbsthilfeSkript)
 		return
 	}
@@ -218,3 +228,27 @@ func plattenSelbsthilfe(freiGB float64) {
 }
 
 var plattenSelbsthilfeLaeufe atomic.Int64
+
+// notfallKuerzungAnstossen laeuft die Tabellenbegrenzungen ausser der Reihe.
+//
+// Ein Zeiger statt eines direkten Aufrufs, weil der Waechter eine freie
+// Funktion ist und keinen ChainState kennt -- und weil ein Knoten ohne
+// Datenbank hier nichts zu tun haben darf.
+var plattenNotfallKuerzer atomic.Value // func()
+
+// RegistriereNotfallKuerzung verbindet den Plattenwaechter mit den
+// Tabellenbegrenzungen. Wird vom ChainState beim Start gesetzt.
+func RegistriereNotfallKuerzung(f func()) {
+	if f != nil {
+		plattenNotfallKuerzer.Store(f)
+	}
+}
+
+func notfallKuerzungAnstossen() {
+	f, ok := plattenNotfallKuerzer.Load().(func())
+	if !ok || f == nil {
+		return
+	}
+	fmt.Println("[PLATTE] → Tabellenbegrenzungen laufen ausser der Reihe (nicht erst im Zehnminutentakt)")
+	SafeGoroutine("plattenNotfallKuerzung", f)
+}

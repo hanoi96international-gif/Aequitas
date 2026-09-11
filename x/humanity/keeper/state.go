@@ -854,6 +854,15 @@ func NewChainState(dataFile string) *ChainState {
 				// Obergrenze -- siehe tx_index_prune.go und den Vorfall vom
 				// 11.09.2026, bei dem beide Boxen mit voller Platte standen.
 				cs.starteTxIndexPrune()
+				// Und den Plattenwaechter mit beiden Begrenzungen verbinden.
+				// Am 11.09.2026 half die Abzugsrotation allein nicht: der
+				// groessere Verbraucher war eine Tabelle, nicht eine Datei.
+				// Wird der Platz knapp, sind zehn Minuten bis zum naechsten
+				// planmaessigen Durchgang zu lang.
+				RegistriereNotfallKuerzung(func() {
+					cs.pruneTxIndex()
+					cs.pruneTxBatches()
+				})
 				return cs
 			}
 		}
