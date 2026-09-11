@@ -99,8 +99,8 @@ jobs:
           port: 22
           fingerprint: "SHA256:VIwj7Faxiga2n45HVHZEQFPxcbRKHgSgHoxAFsf2wto"
           script_stop: true
-          timeout: 900s
-          command_timeout: 900s
+          timeout: 2400s
+          command_timeout: 2400s
           envs: PHASE,NUM_SEEDS,DURATION,RAMP,FUND_WEI,TRANSFER_WEI,BATCH_SIZE,HTTP_TIMEOUT,ACCOUNTS_CSV,PAIRS,RPC_ZIELE
           script: |
             set -euo pipefail
