@@ -1,0 +1,31 @@
+name: Warum loest unter Last ein Resync aus
+on: {workflow_dispatch: {}}
+jobs:
+  schauen:
+    strategy:
+      max-parallel: 2
+      matrix:
+        box: [{name: "C1", host: "173.249.37.118", secret: "C1"}, {name: "C2", host: "194.163.188.71", secret: "C2"}]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ matrix.box.host }}
+          username: root
+          key: ${{ matrix.box.secret == 'C1' && secrets.CONTABO_SSH_KEY || secrets.CONTABO2_SSH_KEY }}
+          port: 22
+          script_stop: false
+          timeout: 300s
+          command_timeout: 300s
+          script: |
+            set +e
+            echo "##### ${{ matrix.box.name }} #####"
+            echo "=== Resync-Ausloeser der letzten Stunde ==="
+            docker logs --since 60m aequitas-node 2>&1 \
+              | grep -iE 'RESYNC|AUTO-HEAL|divergen|self-heal|rollback|reorg' | tail -25
+            echo "=== und was direkt davor stand ==="
+            docker logs --since 60m aequitas-node 2>&1 \
+              | grep -B 4 -iE 'starting resync|RESYNC_FROM|auto-heal.*trigger|resyncInProgress' | tail -20
+            echo "=== Stillstandsmeldungen ==="
+            docker logs --since 60m aequitas-node 2>&1 \
+              | grep -iE 'has not produced|stalled|Hoehe steht|TOTMANN' | tail -8
