@@ -850,6 +850,10 @@ func NewChainState(dataFile string) *ChainState {
 				// never run, which is exactly when an oversized table sits
 				// untouched.
 				cs.StartTxBatchPruner()
+				// chain_tx_block_index hatte als einzige grosse Tabelle keine
+				// Obergrenze -- siehe tx_index_prune.go und den Vorfall vom
+				// 11.09.2026, bei dem beide Boxen mit voller Platte standen.
+				cs.starteTxIndexPrune()
 				return cs
 			}
 		}

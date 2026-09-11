@@ -735,6 +735,7 @@ func (a *APIServer) handleCombinedHealth(w http.ResponseWriter, r *http.Request)
 		// chain_tx_batches hatte keine Obergrenze und keinen DELETE-Pfad;
 		// siehe tx_batch_prune.go.
 		"tx_batch_prune": TxBatchPruneStats(),
+		"tx_index_prune": TxIndexPruneStand(),
 		// Was das Produktionstor zuhaelt: welcher der beiden Reset-Gruende
 		// feuert, und ob der Rueckstau-Ausweg ueberhaupt greift.
 		// Siehe sync_streak_stats.go.
