@@ -112,41 +112,25 @@ func (cs *ChainState) pruneTxIndex() {
 			return
 		}
 	}
+	// DIE SCHAETZUNG EINMAL LESEN UND DANN FORTSCHREIBEN.
+	//
+	// Der erste Anlauf las reltuples in jedem Schleifendurchgang neu -- und
+	// reltuples aendert sich durch ein DELETE nicht, sondern erst, wenn
+	// ANALYZE oder Autovacuum die Statistik nachfuehren. Die Schleife sah
+	// darum nach jedem Loeschen weiterhin den alten Stand und loeschte weiter.
+	// Ergebnis am 11.09.2026: aus 49.366.584 Zeilen wurden 95.357 statt der
+	// rund sieben Millionen, die ins Budget gepasst haetten. Nicht gefaehrlich
+	// -- der Index ist kein Konsens --, aber eben auch nicht das, was hier
+	// steht. Die tatsaechlich geloeschte Zeilenzahl kennt der DELETE selbst;
+	// damit laesst sich die Schaetzung waehrend des Durchgangs fortschreiben.
+	zeilen, err := cs.zeilenSchaetzung()
+	if err != nil {
+		fmt.Printf("[TX-INDEX] ⚠ Groesse nicht messbar, Begrenzung greift diesen Durchgang nicht: %v\n", err)
+		return
+	}
 	// Gedeckelt, damit ein entgleister Zustand hier nicht endlos dreht; was
 	// uebrig bleibt, holt der naechste Durchgang.
 	for i := 0; i < 200; i++ {
-		// ZEILEN ZAEHLEN, NICHT BYTES SUMMIEREN.
-		//
-		// Der erste Entwurf summierte pg_column_size ueber alle Zeilen -- die
-		// Abfrage, die chain_tx_batches benutzt. Dort sind es ein paar tausend
-		// Zeilen; hier waren es am 11.09.2026 51.155.972. Der Scan lief damit
-		// in das statement_timeout von fuenf Sekunden, der Fehler wurde still
-		// verschluckt, und die Begrenzung meldete 0 MB bei 15 GB Tabelle. Ein
-		// Zaehler, der bei einem Fehler eine Null meldet, ist schlimmer als
-		// keiner: er sagt "alles in Ordnung".
-		//
-		// Zeilen zaehlen ist hier auch sachlich richtiger. Der Kommentar in
-		// tx_batch_prune.go verwirft eine Zeilengrenze, weil DORT die
-		// Zeilengroesse um drei Groessenordnungen schwankt (ein Rumpf kann
-		// 620 KB haben). Diese Tabelle hat feste Spalten -- zwei Hashes, eine
-		// Hoehe, ein Index -- und damit eine nahezu konstante Zeilengroesse:
-		// gemessen 15 GB auf 51.155.972 Zeilen, also rund 293 Byte
-		// einschliesslich Indexanteil. Aus Bytes wird so eine verlaessliche
-		// Zeilenzahl.
-		// reltuples, NICHT count(*). Auch ein count(*) ist in Postgres ein
-		// vollstaendiger Tabellenscan und liefe bei 51 Millionen Zeilen in
-		// dasselbe Zeitlimit wie die Byte-Summe davor. reltuples ist die
-		// Schaetzung aus den Tabellenstatistiken und antwortet sofort; sie
-		// weicht zwischen zwei ANALYZE-Laeufen ab, was fuer eine Obergrenze
-		// mit Gigabyte-Budget bedeutungslos ist. Ein DELETE loest ohnehin ein
-		// Autovacuum aus, das die Zahl nachfuehrt.
-		var zeilen int64
-		if err := cs.db.QueryRow(
-			`SELECT GREATEST(reltuples::bigint, 0) FROM pg_class WHERE relname = 'chain_tx_block_index'`,
-		).Scan(&zeilen); err != nil {
-			fmt.Printf("[TX-INDEX] ⚠ Groesse nicht messbar, Begrenzung greift diesen Durchgang nicht: %v\n", err)
-			return
-		}
 		lebend := zeilen * txIndexBytesJeZeile
 		txIndexLetzteMB.Store(lebend >> 20)
 		txIndexZeilen.Store(zeilen)
@@ -183,6 +167,17 @@ func (cs *ChainState) pruneTxIndex() {
 			return
 		}
 		txIndexGeloescht.Add(n)
+		zeilen -= n
+		if zeilen < 0 {
+			zeilen = 0
+		}
+		// Die Statistik nachfuehren, damit der NAECHSTE Durchgang nicht wieder
+		// mit einem veralteten reltuples anfaengt. Innerhalb dieses Durchgangs
+		// traegt die Fortschreibung oben; ueber Durchgaenge hinweg braucht es
+		// den echten Wert.
+		if _, err := cs.langeAnweisung(`ANALYZE chain_tx_block_index`); err != nil {
+			fmt.Printf("[TX-INDEX] ⚠ ANALYZE fehlgeschlagen, naechster Durchgang misst evtl. veraltet: %v\n", err)
+		}
 		// Luft holen. Der Rueckstand vom 11.09.2026 sind ueber 40 Millionen
 		// Zeilen; ohne Pause laufen Loeschvorgaenge dieser Groesse dicht an
 		// dicht, und Postgres bedient dann vor allem Autovacuum statt der
@@ -264,4 +259,33 @@ func (cs *ChainState) langeAnweisung(sql string, args ...interface{}) (sql2.Resu
 		return nil, err
 	}
 	return conn.ExecContext(ctx, sql, args...)
+}
+
+// zeilenSchaetzung liefert die Zeilenzahl von chain_tx_block_index.
+//
+// ZEILEN ZAEHLEN, NICHT BYTES SUMMIEREN. Der erste Entwurf summierte
+// pg_column_size ueber alle Zeilen -- die Abfrage, die chain_tx_batches
+// benutzt. Dort sind es ein paar tausend Zeilen; hier waren es am 11.09.2026
+// 51.155.972. Der Scan lief in das statement_timeout von fuenf Sekunden, der
+// Fehler wurde still verschluckt, und die Begrenzung meldete 0 MB bei 15 GB
+// Tabelle. Ein Zaehler, der bei einem Fehler eine Null meldet, ist schlimmer
+// als keiner: er sagt "alles in Ordnung".
+//
+// Zeilen zaehlen ist hier auch sachlich richtiger. Der Kommentar in
+// tx_batch_prune.go verwirft eine Zeilengrenze, weil DORT die Zeilengroesse um
+// drei Groessenordnungen schwankt (ein Rumpf kann 620 KB haben). Diese Tabelle
+// hat feste Spalten -- zwei Hashes, eine Hoehe, ein Index -- und damit eine
+// nahezu konstante Zeilengroesse: gemessen 15 GB auf 51.155.972 Zeilen, also
+// rund 293 Byte einschliesslich Indexanteil.
+//
+// reltuples, NICHT count(*). Auch count(*) ist in Postgres ein vollstaendiger
+// Tabellenscan und liefe bei 51 Millionen Zeilen in dasselbe Zeitlimit. Der
+// Preis dafuer steht im Aufrufer: reltuples folgt einem DELETE nicht, sondern
+// erst dem naechsten ANALYZE.
+func (cs *ChainState) zeilenSchaetzung() (int64, error) {
+	var zeilen int64
+	err := cs.db.QueryRow(
+		`SELECT GREATEST(reltuples::bigint, 0) FROM pg_class WHERE relname = 'chain_tx_block_index'`,
+	).Scan(&zeilen)
+	return zeilen, err
 }

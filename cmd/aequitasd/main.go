@@ -129,7 +129,7 @@ const (
 	// with all of that in place — investigating the remaining root cause
 	// (see block.go/sync_blocks.go for the active investigation) rather than
 	// settling for 2s. Explicit operator decision to keep pushing at 1s.
-	BLOCK_TIME = 1 * time.Second
+	BLOCK_TIME_VORGABE = 1 * time.Second
 	// API_PORT is the default HTTP API port. apiPort() below reads an
 	// optional API_PORT env var override — exists for the same reason
 	// keeper's P2P_LISTEN_PORT does (see that constant's own comment): running
@@ -149,6 +149,55 @@ func apiPort() int {
 		fmt.Printf("⚠ API_PORT=%q is not a valid port — using default %d\n", v, API_PORT)
 	}
 	return API_PORT
+}
+
+// BLOCK_TIME ist der Takt der Blockproduktion. Eine Variable, keine
+// Konstante mehr -- siehe blockZeit() direkt darunter.
+var BLOCK_TIME = BLOCK_TIME_VORGABE
+
+// blockZeit liest BLOCK_TIME aus der Umgebung.
+//
+// WARUM UEBERHAUPT. Der Takt war seit dem 04.07.2026 eine Konstante, und das
+// war damals richtig: er wurde in einer Nacht 1s -> 2s -> 6s gedreht, waehrend
+// die echten Konvergenzfehler noch offen waren. Die sind laengst gefunden.
+// Inzwischen ist der Takt die letzte unerprobte Software-Schraube am Durchsatz:
+// ein Block wird in rund 20 ms gebaut, der Takt wartet danach 1000 ms. Ob ein
+// kuerzerer Takt mehr traegt oder die Zusammenfuehrung ueberlastet, laesst sich
+// nur messen -- und messen kann man es nur, wenn es sich einstellen laesst,
+// ohne jedesmal ein neues Abbild zu bauen.
+//
+// DIE GRENZEN SIND NICHT KOSMETISCH. Nach unten 200 ms: darunter liegt der
+// Takt in der Groessenordnung der Laufzeit zwischen den Boxen, und dann
+// entstehen Bloecke schneller, als der jeweils andere sie sehen kann -- das
+// Ergebnis waeren Waisen, keine Transaktionen. Nach oben 30 s, weil die
+// Ueberwachung (Totmannschalter, Annahmekontrolle) laengere Luecken als Ausfall
+// liest.
+//
+// ALLE KNOTEN GLEICH EINSTELLEN. Der Takt geht in die Ausrichtung auf die
+// Wanduhr ein (time.Truncate weiter unten) und skaliert ueber
+// TuneProposerBreakerForBlockTime und TuneFinalitySlackForBlockTime auch
+// Schutzschalter und Finalitaetsspielraum. Zwei Boxen mit verschiedenen Werten
+// haetten verschiedene Schwellen fuer dieselben Vorgaenge.
+func blockZeit() time.Duration {
+	roh := os.Getenv("BLOCK_TIME_MS")
+	if roh == "" {
+		return BLOCK_TIME_VORGABE
+	}
+	ms, err := strconv.Atoi(roh)
+	if err != nil {
+		fmt.Printf("⚠ BLOCK_TIME_MS=%q ist keine Zahl — bleibe bei %s\n", roh, BLOCK_TIME_VORGABE)
+		return BLOCK_TIME_VORGABE
+	}
+	if ms < 200 || ms > 30000 {
+		fmt.Printf("⚠ BLOCK_TIME_MS=%d liegt ausserhalb von 200..30000 — bleibe bei %s\n", ms, BLOCK_TIME_VORGABE)
+		return BLOCK_TIME_VORGABE
+	}
+	d := time.Duration(ms) * time.Millisecond
+	if d != BLOCK_TIME_VORGABE {
+		fmt.Printf("[TAKT] BLOCK_TIME=%s (Vorgabe %s). ALLE Validatoren muessen denselben Wert haben.\n",
+			d, BLOCK_TIME_VORGABE)
+	}
+	return d
 }
 
 // distributionHealthRetryInterval is how soon the daily-distribution
@@ -275,6 +324,12 @@ func detectMemoryLimitBytes() int64 {
 }
 
 func main() {
+	// Vor dem Banner, damit die ausgegebene Blockzeit die tatsaechliche ist
+	// und nicht die Vorgabe -- und vor TuneProposerBreakerForBlockTime und
+	// TuneFinalitySlackForBlockTime weiter unten, die daraus ihre Schwellen
+	// ableiten.
+	BLOCK_TIME = blockZeit()
+
 	fmt.Println("╔════════════════════════════════════════╗")
 	fmt.Println("║         AEQUITAS CHAIN NODE            ║")
 	fmt.Println("║      Proof of Humanity Consensus       ║")

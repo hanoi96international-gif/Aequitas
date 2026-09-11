@@ -1,0 +1,128 @@
+name: Takt (BLOCK_TIME) setzen und messen
+
+# Der Takt war seit dem 04.07.2026 eine Konstante, und das war richtig: in der
+# Nacht davor wurde er 1s -> 2s -> 6s gedreht, waehrend die echten
+# Konvergenzfehler noch offen waren, und jede Drehung sah kurz nach Besserung
+# aus. Die Ursachen sind laengst gefunden. Inzwischen ist der Takt die letzte
+# unerprobte Software-Schraube am Durchsatz: ein Block wird in rund 20 ms
+# gebaut, danach wartet der Takt 1000 ms.
+#
+# BEIDE BOXEN ODER KEINE. Der Takt geht in die Ausrichtung auf die Wanduhr ein
+# und skaliert Schutzschalter und Finalitaetsspielraum mit. Zwei Boxen mit
+# verschiedenen Werten haetten verschiedene Schwellen fuer dieselben Vorgaenge.
+# Darum gibt es hier keine Einzelbox-Auswahl.
+
+on:
+  workflow_dispatch:
+    inputs:
+      ms:
+        description: "Takt in Millisekunden (200..30000). Leer = zurueck auf die Vorgabe 1000."
+        required: false
+        default: "500"
+jobs:
+  set:
+    strategy:
+      max-parallel: 1
+      matrix:
+        box:
+          - {name: "Contabo1", host: "173.249.37.118", secret: "C1"}
+          - {name: "Contabo2", host: "194.163.188.71", secret: "C2"}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Takt auf ${{ matrix.box.name }}
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ matrix.box.host }}
+          username: root
+          key: ${{ matrix.box.secret == 'C1' && secrets.CONTABO_SSH_KEY || secrets.CONTABO2_SSH_KEY }}
+          port: 22
+          script_stop: false
+          timeout: 900s
+          command_timeout: 900s
+          envs: MS
+          script: |
+            set +e
+            echo "### ${{ matrix.box.name }} -> Takt: ${MS:-Vorgabe 1000} ms ###"
+            cp /root/.aequitas.env "/root/.aequitas.env.bak.$(date +%Y%m%d-%H%M%S)"
+            sed -i '/^BLOCK_TIME_MS=/d' /root/.aequitas.env
+            [ -n "$MS" ] && echo "BLOCK_TIME_MS=$MS" >> /root/.aequitas.env
+            grep -E '^BLOCK_TIME_MS' /root/.aequitas.env || echo "(keine Ueberschreibung — Vorgabe 1000 ms gilt)"
+
+            IMAGE="$(docker inspect aequitas-node --format '{{.Config.Image}}')"
+            NET="$(docker inspect aequitas-node --format '{{range $k, $v := .NetworkSettings.Networks}}{{$k}} {{end}}' | awk '{print $1}')"
+            PORTS="$(docker inspect aequitas-node --format '{{range $p, $c := .HostConfig.PortBindings}}-p {{(index $c 0).HostPort}}:{{$p}} {{end}}' | sed 's|/tcp||g')"
+            MOUNTS="$(docker inspect aequitas-node --format '{{range .Mounts}}-v {{.Source}}:{{.Destination}} {{end}}')"
+            mkdir -p /root/takt
+            ENVOUT=/root/takt/env
+            # Die Umgebung des LAUFENDEN Prozesses ist die Grundlage, minus
+            # dieses Schluessels -- die Datei allein erreicht den Prozess
+            # nicht, das hat GOMEMLIMIT am 07.09.2026 gezeigt.
+            docker inspect aequitas-node --format '{{range .Config.Env}}{{println .}}{{end}}' \
+              | grep -vE '^(RESYNC_FROM_SNAPSHOT|HOSTNAME|PATH|HOME|BLOCK_TIME_MS)=' \
+              | grep -E '^[A-Za-z_][A-Za-z0-9_]*=' > /tmp/proc.env
+            grep -E '^[A-Za-z_][A-Za-z0-9_]*=' /root/.aequitas.env \
+              | grep -vE '^(RESYNC_FROM_SNAPSHOT|HOSTNAME|PATH|HOME)=' > /tmp/file.env || true
+            awk -F= '!seen[$1]++' /tmp/file.env /tmp/proc.env > "$ENVOUT"
+
+            docker stop aequitas-node && docker rm aequitas-node
+            docker run -d --name aequitas-node --network "$NET" $PORTS $MOUNTS \
+              --env-file "$ENVOUT" --restart unless-stopped "$IMAGE"
+            sleep 40
+
+            echo "=== was der PROZESS jetzt hat (die Datei ist kein Beleg) ==="
+            docker inspect aequitas-node --format '{{range .Config.Env}}{{println .}}{{end}}' \
+              | grep -E '^BLOCK_TIME_MS' || echo "(Vorgabe 1000)"
+            docker logs aequitas-node 2>&1 | grep -E '^\[TAKT\]|Block Time:' | tail -3
+
+            # WARTEN, BIS DIESE BOX WIEDER PRODUZIERT, bevor die naechste
+            # drankommt: max-parallel:1 wartet nur auf das Ende des Schritts,
+            # nicht darauf, dass der Knoten das Sync-Tor passiert hat. Wird
+            # die zweite Box gestoppt, waehrend die erste noch nicht traegt,
+            # gibt es keinen Produzenten mehr.
+            echo "=== warte, bis diese Box wieder produziert (max 8 min) ==="
+            for i in $(seq 1 96); do
+              H=$(curl -s --max-time 8 http://127.0.0.1:8080/api/health/combined 2>/dev/null)
+              ST=$(echo "$H" | grep -oE '"stalled_seconds":[0-9]+' | head -1 | cut -d: -f2)
+              CC=$(echo "$H" | grep -oE '"clean_cycles":[0-9]+' | head -1 | cut -d: -f2)
+              if [ -n "$ST" ] && [ "$ST" -le 15 ] 2>/dev/null; then
+                echo "  produziert wieder (stalled=${ST}s, clean_cycles=${CC}) nach $((i*5))s"
+                break
+              fi
+              [ $((i % 12)) -eq 0 ] && echo "  ... noch nicht (stalled=${ST:-?}s, clean_cycles=${CC:-?}) nach $((i*5))s"
+              sleep 5
+            done
+        env:
+          MS: ${{ inputs.ms }}
+
+  messen:
+    needs: set
+    runs-on: ubuntu-latest
+    steps:
+      - name: Wie viele Bloecke entstehen jetzt wirklich
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: "173.249.37.118"
+          username: root
+          key: ${{ secrets.CONTABO_SSH_KEY }}
+          port: 22
+          script_stop: false
+          timeout: 300s
+          command_timeout: 300s
+          script: |
+            set +e
+            # Der eingestellte Takt ist eine Absicht, kein Ergebnis. Gemessen
+            # wird, was die Hoehe tatsaechlich tut -- bei zwei Validatoren
+            # entstehen zwei Bloecke je Hoehe, die Hoehe waechst also mit dem
+            # Takt, nicht mit dem Doppelten.
+            A=$(curl -s --max-time 10 http://127.0.0.1:8080/api/status | grep -oE '"height":[0-9]+' | head -1 | cut -d: -f2)
+            echo "Hoehe jetzt:  $A"
+            sleep 120
+            B=$(curl -s --max-time 10 http://127.0.0.1:8080/api/status | grep -oE '"height":[0-9]+' | head -1 | cut -d: -f2)
+            echo "Hoehe +120s:  $B"
+            if [ -n "$A" ] && [ -n "$B" ]; then
+              D=$((B - A))
+              echo "=== $D Hoehen in 120 s = $(echo "scale=2; $D / 120" | bc) je Sekunde ==="
+              echo "    (Vorgabe 1000 ms entspraeche 1,00/s; 500 ms entspraeche 2,00/s)"
+            fi
+            curl -s --max-time 10 http://127.0.0.1:8080/api/health/combined \
+              | tr ',' '\n' | grep -E 'stalled_seconds|clean_cycles|degraded' | head -6

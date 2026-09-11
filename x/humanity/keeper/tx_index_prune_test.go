@@ -111,3 +111,35 @@ func TestTxIndexPrune_MisstUeberReltuplesUndMeldetFehler(t *testing.T) {
 			"die Begrenzung wie funktionierend aussehen lassen: 0 MB bei 15 GB Tabelle.")
 	}
 }
+
+// Der zweite Fehler war das Gegenteil des ersten: die Begrenzung loeschte
+// nicht zu wenig, sondern zu viel. Aus 49.366.584 Zeilen wurden 95.357 statt
+// der rund sieben Millionen, die ins Budget gepasst haetten. Grund: reltuples
+// aendert sich durch ein DELETE nicht, sondern erst durch ANALYZE -- die
+// Schleife sah nach jedem Loeschen weiterhin den alten Stand.
+func TestTxIndexPrune_SchreibtDieSchaetzungFortStattSieNeuZuLesen(t *testing.T) {
+	body := quelle(t, "tx_index_prune.go")
+
+	schleife := strings.Index(body, "for i := 0; i < 200; i++ {")
+	if schleife < 0 {
+		t.Fatal("die Loeschschleife ist nicht mehr auffindbar")
+	}
+	messung := strings.Index(body, "cs.zeilenSchaetzung()")
+	if messung < 0 {
+		t.Fatal("die Zeilenschaetzung ist weg")
+	}
+	if messung > schleife {
+		t.Error("die Schaetzung wird wieder INNERHALB der Schleife gelesen. reltuples folgt " +
+			"einem DELETE nicht, also sieht jeder Durchgang den alten Stand und loescht " +
+			"weiter -- am 11.09.2026 bis auf 0,2 Prozent des Budgets herunter.")
+	}
+	if !strings.Contains(body, "zeilen -= n") {
+		t.Error("die geloeschte Zeilenzahl wird nicht mehr von der Schaetzung abgezogen. " +
+			"Ohne sie kann die Schleife nicht erkennen, dass sie das Budget bereits " +
+			"erreicht hat.")
+	}
+	if !strings.Contains(body, "ANALYZE chain_tx_block_index") {
+		t.Error("ANALYZE ist weg. Die Fortschreibung traegt nur innerhalb eines Durchgangs; " +
+			"ueber Durchgaenge hinweg braucht der naechste Lauf den echten Wert.")
+	}
+}

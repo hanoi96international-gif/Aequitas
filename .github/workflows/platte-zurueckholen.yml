@@ -1,0 +1,104 @@
+name: Platte zurueckholen (VACUUM FULL auf den gekuerzten Tabellen)
+
+# WARUM DAS NOETIG IST. Die Begrenzung in tx_index_prune.go hat
+# chain_tx_block_index am 11.09.2026 von 49.366.584 auf 95.357 Zeilen
+# gekuerzt -- 99,8 Prozent weg. Die Datei ist trotzdem weiter 15 GB gross:
+# ein DELETE markiert Zeilen als tot, gibt die Seiten aber nicht ans
+# Dateisystem zurueck. Ein gewoehnliches VACUUM kuerzt nur LEERE Seiten am
+# Ende; die toten Zeilen liegen hier aber vorn (es sind die aeltesten), also
+# bringt es nichts.
+#
+# WARUM DAS JETZT UNGEFAEHRLICH IST -- UND VORHER NICHT WAR. VACUUM FULL
+# schreibt die Tabelle neu und haelt dabei eine ausschliessende Sperre. Auf
+# 49 Millionen lebenden Zeilen waeren das Minuten Sperre und 15 GB
+# zusaetzlicher Platzbedarf. Auf 95.357 Zeilen sind es Sekunden und rund
+# 30 MB. Die Kuerzung musste also zuerst laufen.
+#
+# WARUM DIE KETTE DABEI WEITERLAEUFT. In chain_tx_block_index schreibt nicht
+# der Blockpfad selbst, sondern ein Hintergrundschreiber
+# (tx_block_index_async.go). Dessen Warteschlange blockiert nicht, sondern
+# verwirft bei Ueberlauf und sagt es -- ein fehlender Eintrag faellt auf
+# denselben Ersatzweg zurueck, den eine gekuerzte Zeile ohnehin nimmt.
+#
+# EINMALIG, NICHT WIEDERKEHREND. Ein neuer Validator braucht das nie: dort
+# greift die Begrenzung von Anfang an und die Tabelle wird nie gross. Die
+# 15 GB sind Altlast dieser beiden Boxen aus den Lasttests dieser Woche.
+
+on:
+  workflow_dispatch:
+    inputs:
+      box:
+        required: true
+        default: contabo2
+        type: choice
+        options: [contabo1, contabo2, beide]
+jobs:
+  aufraeumen:
+    strategy:
+      max-parallel: 1
+      matrix:
+        box: ${{ inputs.box == 'contabo1' && fromJSON('[{"name":"Contabo1","host":"173.249.37.118","secret":"C1"}]') || inputs.box == 'contabo2' && fromJSON('[{"name":"Contabo2","host":"194.163.188.71","secret":"C2"}]') || fromJSON('[{"name":"Contabo2","host":"194.163.188.71","secret":"C2"},{"name":"Contabo1","host":"173.249.37.118","secret":"C1"}]') }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Platte zurueckholen auf ${{ matrix.box.name }}
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ matrix.box.host }}
+          username: root
+          key: ${{ matrix.box.secret == 'C1' && secrets.CONTABO_SSH_KEY || secrets.CONTABO2_SSH_KEY }}
+          port: 22
+          script_stop: false
+          timeout: 1800s
+          command_timeout: 1800s
+          script: |
+            set +e
+            P="docker exec aequitas-postgres psql -U postgres -d aequitas -t -A -c"
+
+            echo "### ${{ matrix.box.name }} ###"
+            echo "=== vorher ==="
+            df -h / | tail -1
+            $P "SELECT relname||': '||pg_size_pretty(pg_total_relation_size(relid))||' fuer '||n_live_tup||' lebende Zeilen'
+                FROM pg_stat_user_tables WHERE relname IN ('chain_tx_block_index','chain_tx_batches')
+                ORDER BY pg_total_relation_size(relid) DESC;"
+
+            # SICHERHEITSSCHWELLE. VACUUM FULL braucht so viel freien Platz
+            # wie die LEBENDEN Daten -- bei 95.357 Zeilen sind das Megabyte.
+            # Sollte die Kuerzung wider Erwarten nicht gelaufen sein, darf
+            # hier nichts passieren: eine Neuschrift von 49 Millionen Zeilen
+            # waere genau die Sperre von Minuten, die es zu vermeiden gilt.
+            LEBEND=$($P "SELECT COALESCE(n_live_tup,0) FROM pg_stat_user_tables WHERE relname='chain_tx_block_index';" | tr -d ' ')
+            echo "lebende Zeilen: ${LEBEND:-?}"
+            if [ -z "$LEBEND" ] || [ "$LEBEND" -gt 2000000 ] 2>/dev/null; then
+              echo "ABBRUCH: $LEBEND lebende Zeilen. Ueber zwei Millionen dauert die"
+              echo "ausschliessende Sperre zu lange. Erst die Begrenzung laufen lassen"
+              echo "(Log: docker logs aequitas-node | grep TX-INDEX)."
+              exit 0
+            fi
+
+            HOEHE_VOR=$(curl -s --max-time 10 http://127.0.0.1:8080/api/status | grep -oE '"height":[0-9]+' | head -1 | cut -d: -f2)
+            echo "Hoehe vor dem Aufraeumen: ${HOEHE_VOR:-?}"
+
+            echo "=== VACUUM FULL chain_tx_block_index ==="
+            time docker exec aequitas-postgres psql -U postgres -d aequitas \
+              -c "SET statement_timeout=0; VACUUM (FULL, ANALYZE, VERBOSE) chain_tx_block_index;" 2>&1 | tail -8
+
+            echo "=== nachher ==="
+            $P "SELECT relname||': '||pg_size_pretty(pg_total_relation_size(relid))||' fuer '||n_live_tup||' lebende Zeilen'
+                FROM pg_stat_user_tables WHERE relname='chain_tx_block_index';"
+            df -h / | tail -1
+
+            HOEHE_NACH=$(curl -s --max-time 10 http://127.0.0.1:8080/api/status | grep -oE '"height":[0-9]+' | head -1 | cut -d: -f2)
+            echo "Hoehe nach dem Aufraeumen: ${HOEHE_NACH:-?}"
+            if [ -n "$HOEHE_VOR" ] && [ -n "$HOEHE_NACH" ]; then
+              echo "  Kette ist um $((HOEHE_NACH - HOEHE_VOR)) Hoehen gewachsen -- sie stand also nicht."
+            fi
+            docker logs --since 10m aequitas-node 2>&1 | grep -E 'TX-INDEX' | tail -5
+
+            echo "=== warte, bis diese Box wieder sauber produziert, bevor die naechste drankommt ==="
+            for i in $(seq 1 36); do
+              ST=$(curl -s --max-time 8 http://127.0.0.1:8080/api/health/combined 2>/dev/null | grep -oE '"stalled_seconds":[0-9]+' | head -1 | cut -d: -f2)
+              if [ -n "$ST" ] && [ "$ST" -le 15 ] 2>/dev/null; then
+                echo "  in Ordnung (stalled=${ST}s) nach $((i*5))s"; break
+              fi
+              sleep 5
+            done
