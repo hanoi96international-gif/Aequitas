@@ -100,28 +100,40 @@ func interessanteGoroutinen() []string {
 		if !strings.Contains(block, "humanity/keeper") {
 			continue
 		}
-		// NUR MOEGLICHE HALTER. Eine Goroutine, deren Zustand "sync.Mutex.Lock"
-		// oder "semacquire" ist, WARTET auf genau dieselbe Sperre -- sie kann
-		// sie nicht halten. Der erste Abzug am 07.09.2026 bestand fast nur aus
-		// solchen Zeilen und nannte den Halter damit gerade nicht.
+		// NUR MOEGLICHE HALTER -- aber richtig bestimmt.
 		//
-		// Wer die Sperre haelt, ist stattdessen laufend, im Syscall oder wartet
-		// auf Platte bzw. Netz -- runnable, running, IO wait, syscall. Genau
-		// diese bleiben uebrig.
-		kopf := block
-		if j := strings.IndexByte(kopf, 10); j > 0 {
-			kopf = kopf[:j]
+		// Die erste Fassung warf alles weg, dessen Zustand nach Warten aussah:
+		// semacquire, chan receive, select. Der Abzug vom 12.09.2026 bestand
+		// danach aus fuenf schlafenden Hintergrund-Goroutines und nannte den
+		// Halter wieder nicht. Denn wer die DAG-Sperre 3,3 s haelt, tut das
+		// nicht rechnend -- er WARTET dabei auf etwas: auf Postgres (im
+		// Netz-Poller: "IO wait" oder "select"), auf ein WaitGroup
+		// (semacquire), auf einen Kanal. Genau diese Zustaende hatte der
+		// Filter ausgeschlossen. Der Halter ist ein Wartender, nur nicht auf
+		// die Sperre.
+		//
+		// Ausgeschlossen wird deshalb nur noch, wer NACHWEISLICH auf eine
+		// Mutex wartet: oberster Rahmen sync.runtime_Semacquire(RW)Mutex.
+		// Alles andere mit Rahmen aus diesem Paket bleibt -- und wer eine der
+		// bekannten haltenden Funktionen im Pfad hat, kommt zuerst.
+		zeilen := strings.Split(block, "\n")
+		oberster := ""
+		if len(zeilen) > 1 {
+			oberster = zeilen[1]
 		}
-		wartend := strings.Contains(kopf, "sync.Mutex.Lock") ||
-			strings.Contains(kopf, "semacquire") ||
-			strings.Contains(kopf, "sync.RWMutex") ||
-			strings.Contains(kopf, "chan receive") ||
-			strings.Contains(kopf, "chan send") ||
-			strings.Contains(kopf, "select")
-		if wartend {
+		if strings.Contains(oberster, "sync.runtime_SemacquireMutex") ||
+			strings.Contains(oberster, "sync.runtime_SemacquireRWMutex") {
 			continue
 		}
-		zeilen := strings.Split(block, "\n")
+		halterVerdacht := false
+		for _, f := range []string{"replayTransactions", "replayInCanonicalOrder", "AddPeerBlock",
+			"ProduceBlock", "doSyncOnce", "pruneOldDAGBlocks", "SaveBlockWithPendingTxsAtomic",
+			"runAtomicWithOutbox", "flushWALBatch", "triggerAutoResync", "resyncFromSnapshot"} {
+			if strings.Contains(block, f+"(") {
+				halterVerdacht = true
+				break
+			}
+		}
 		kurz := zeilen[0]
 		for _, z := range zeilen[1:] {
 			if strings.Contains(z, "humanity/keeper") {
@@ -131,8 +143,12 @@ func interessanteGoroutinen() []string {
 				}
 			}
 		}
-		raus = append(raus, kurz)
-		if len(raus) >= 6 {
+		if halterVerdacht {
+			raus = append([]string{"HALTER? " + kurz}, raus...)
+		} else {
+			raus = append(raus, kurz)
+		}
+		if len(raus) >= 12 {
 			break
 		}
 	}
