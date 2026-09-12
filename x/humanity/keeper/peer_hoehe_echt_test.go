@@ -80,7 +80,7 @@ func TestPeerHoehe_BremseFragtZuerstDenEchtenWert(t *testing.T) {
 	}
 	body := string(b)
 
-	echt := strings.Index(body, "echteHoeheVonPeer(url)")
+	echt := strings.Index(body, "echteHoeheVonPeerMitEigener(url)")
 	ersatz := strings.Index(body, "dag.peerSyncEigeneHoehe[url]")
 	if echt < 0 {
 		t.Fatal("die Bremse fragt die direkt gemessene Peer-Hoehe nicht mehr ab -- dann " +
@@ -88,5 +88,29 @@ func TestPeerHoehe_BremseFragtZuerstDenEchtenWert(t *testing.T) {
 	}
 	if ersatz > 0 && echt > ersatz {
 		t.Error("der Ersatzweg steht vor der direkten Messung und gewinnt damit immer.")
+	}
+}
+
+// Der Rueckstand ist die Differenz zweier Hoehen ZUM SELBEN ZEITPUNKT. Eine
+// Antwort von vor 4 s gegen die eigene Hoehe von jetzt gerechnet ergibt bei
+// einer Hoehe je Sekunde 4 Hoehen Rueckstand, die es nie gab -- gemessen
+// 12.09.2026 (lag 6 bei Slack 5, beide Knoten produzierten jeden Takt, C1
+// blieb auf 3.600 statt 7.000 gedrosselt).
+func TestPeerHoehe_RueckstandGegenEigeneHoeheVonDamals(t *testing.T) {
+	dag := frischeDAG(t, map[string]int64{"http://c:8080": 100}, nil)
+	dag.heightSchnell.Store(104) // seit der Abfrage vier Hoehen weiter
+	peerEchteHoeheMu.Lock()
+	peerEchteHoehe = map[string]int64{"http://c:8080": 100}
+	peerEchteHoeheAt = map[string]time.Time{"http://c:8080": time.Now().Add(-4 * time.Second)}
+	peerEchteHoeheEigene = map[string]int64{"http://c:8080": 100} // wir standen bei der Abfrage auch auf 100
+	peerEchteHoeheMu.Unlock()
+	if r := dag.groesstenFrischenRueckstand(104); r != 0 {
+		t.Fatalf("beide standen bei der Abfrage auf 100 -- Rueckstand 0 erwartet, %d berechnet", r)
+	}
+	peerEchteHoeheMu.Lock()
+	peerEchteHoeheEigene["http://c:8080"] = 107 // wir waren bei der Abfrage schon 7 weiter
+	peerEchteHoeheMu.Unlock()
+	if r := dag.groesstenFrischenRueckstand(104); r != 7 {
+		t.Fatalf("echter Rueckstand 7 erwartet, %d berechnet", r)
 	}
 }

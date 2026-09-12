@@ -48,9 +48,16 @@ const (
 )
 
 var (
-	peerEchteHoeheMu                   sync.RWMutex
-	peerEchteHoehe                     = map[string]int64{}
-	peerEchteHoeheAt                   = map[string]time.Time{}
+	peerEchteHoeheMu sync.RWMutex
+	peerEchteHoehe   = map[string]int64{}
+	peerEchteHoeheAt = map[string]time.Time{}
+	// peerEchteHoeheEigene: die EIGENE Hoehe im Moment der Abfrage. Der
+	// Rueckstand ist die Differenz zweier Hoehen ZUM SELBEN ZEITPUNKT; wer
+	// die Antwort von vor 4 s gegen die eigene Hoehe von jetzt rechnet, sieht
+	// bei einer Hoehe je Sekunde 4 Hoehen Rueckstand, die es nicht gibt.
+	// Gemessen 12.09.2026, Lauf 12:02 UTC: lag 6 bei Slack 5, obwohl beide
+	// jeden Takt produzierten -- die Bremse hielt C1 auf 3.600 statt 7.000.
+	peerEchteHoeheEigene               = map[string]int64{}
 	peerHoeheAbfragen, peerHoeheFehler int64
 )
 
@@ -76,12 +83,14 @@ func (dag *BlockDAG) peerHoehenEinmalHolen() {
 	dag.syncPeerMu.Unlock()
 
 	for _, u := range urls {
+		eigene := dag.heightSchnell.Load()
 		h, ok := holePeerHoehe(u)
 		peerEchteHoeheMu.Lock()
 		peerHoeheAbfragen++
 		if ok {
 			peerEchteHoehe[u] = h
 			peerEchteHoeheAt[u] = time.Now()
+			peerEchteHoeheEigene[u] = eigene
 		} else {
 			peerHoeheFehler++
 		}
@@ -111,16 +120,23 @@ func holePeerHoehe(url string) (int64, bool) {
 // echteHoeheVonPeer liefert die zuletzt gemessene Hoehe, wenn sie frisch
 // genug ist. false heisst: der alte Weg muss ran.
 func echteHoeheVonPeer(url string) (int64, bool) {
+	h, _, ok := echteHoeheVonPeerMitEigener(url)
+	return h, ok
+}
+
+// echteHoeheVonPeerMitEigener liefert dazu die eigene Hoehe im Moment der
+// Abfrage -- gegen DIE ist der Rueckstand zu rechnen.
+func echteHoeheVonPeerMitEigener(url string) (peer, eigene int64, ok bool) {
 	peerEchteHoeheMu.RLock()
 	defer peerEchteHoeheMu.RUnlock()
 	h, da := peerEchteHoehe[url]
 	if !da {
-		return 0, false
+		return 0, 0, false
 	}
 	if time.Since(peerEchteHoeheAt[url]) > peerHoeheFrische {
-		return 0, false
+		return 0, 0, false
 	}
-	return h, true
+	return h, peerEchteHoeheEigene[url], true
 }
 
 // PeerHoehenStand zeigt, worauf sich die Bremse gerade stuetzt.

@@ -188,8 +188,10 @@ func (dag *BlockDAG) groesstenFrischenRueckstand(_ int64) int64 {
 		// 5.160 Bloecke Rueckstand meldeten, obwohl sie byte-identisch auf
 		// derselben Hoehe standen, und die Bremse daraufhin 100 % aller
 		// Bloecke auf ihren Boden drosselte.
-		if echt, ok := echteHoeheVonPeer(url); ok {
-			if r := dag.heightSchnell.Load() - echt; r > groesster {
+		// Gegen die eigene Hoehe ZUM ZEITPUNKT DER ABFRAGE, nicht gegen die
+		// von jetzt -- siehe peerEchteHoeheEigene in peer_hoehe_echt.go.
+		if echt, eigeneDamals, ok := echteHoeheVonPeerMitEigener(url); ok {
+			if r := eigeneDamals - echt; r > groesster {
 				groesster = r
 			}
 			continue
