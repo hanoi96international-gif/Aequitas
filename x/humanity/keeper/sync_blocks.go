@@ -3096,6 +3096,10 @@ func (dag *BlockDAG) HTTPBroadcastBlock(block *Block) {
 	// txBatchPeerSupports); everyone else keeps getting the complete block
 	// exactly as before.
 	strippedData, canStrip := strippedBlockPayload(block)
+	// Gepackt und vollstaendig -- siehe push_gzip.go: kein zweiter Umlauf fuer
+	// den Rumpf beim Empfaenger. Geht vor dem Strippen, wenn der Partner es
+	// versteht.
+	gzipData, canGzip := gzipPushPayload(data)
 
 	for _, peerURL := range peers {
 		peerURL := peerURL
@@ -3107,6 +3111,10 @@ func (dag *BlockDAG) HTTPBroadcastBlock(block *Block) {
 				}
 			}()
 			stripped := canStrip && txBatchPeerSupports(peerURL)
+			gepackt := canGzip && gzipPushPeerSupports(peerURL)
+			if gepackt {
+				stripped = false
+			}
 			// At most two attempts, and only ever a stripped one followed by
 			// the complete block. This is the fail-soft half of bodies by
 			// reference: if the receiver cannot obtain the body it answers
@@ -3114,12 +3122,36 @@ func (dag *BlockDAG) HTTPBroadcastBlock(block *Block) {
 			// never a lost transaction.
 			for attempt := 0; ; attempt++ {
 				payload := data
-				if stripped {
+				if gepackt {
+					payload = gzipData
+				} else if stripped {
 					payload = strippedData
 				}
-				pushResp, ok := dag.pushBlockOnce(block, peerURL, payload, stripped)
+				pushResp, ok := dag.pushBlockOnce(block, peerURL, payload, stripped, gepackt)
 				if !ok {
+					if gepackt {
+						// Gepackt nicht angekommen: Faehigkeit vergessen und den
+						// Block sofort auf dem alten Weg nachschieben.
+						gzipPushFehlgeschl.Add(1)
+						recordGzipPushCapability(peerURL, false)
+						gepackt = false
+						stripped = canStrip && txBatchPeerSupports(peerURL)
+						continue
+					}
 					return
+				}
+				if gepackt && !pushResp.OK && attempt == 0 && resp0AblehnungWegenRumpf(pushResp) {
+					// Der Partner hat den gepackten Rumpf nicht verstanden
+					// (Redeploy auf aelteren Code zwischen zwei Pushes):
+					// einmal ungepackt nachschieben.
+					gzipPushFehlgeschl.Add(1)
+					recordGzipPushCapability(peerURL, false)
+					gepackt = false
+					stripped = canStrip && txBatchPeerSupports(peerURL)
+					continue
+				}
+				if gepackt {
+					gzipPushGesendet.Add(1)
 				}
 				if pushResp.Action == "resend_full" && stripped && attempt == 0 {
 					// This peer understands the scheme but could not reach the
@@ -3161,13 +3193,16 @@ type blockPushResponse struct {
 // pushBlockOnce POSTs one payload to one peer and parses the reply. ok=false
 // means there is nothing further to act on (transport failure or unparseable
 // response) — both are already reported where they happen.
-func (dag *BlockDAG) pushBlockOnce(block *Block, peerURL string, payload []byte, stripped bool) (blockPushResponse, bool) {
+func (dag *BlockDAG) pushBlockOnce(block *Block, peerURL string, payload []byte, stripped, gepackt bool) (blockPushResponse, bool) {
 	var pushResp blockPushResponse
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, peerURL+"/api/blocks/push", bytes.NewReader(payload))
 	if err != nil {
 		return pushResp, false
+	}
+	if gepackt {
+		req.Header.Set("Content-Encoding", "gzip")
 	}
 	// Names this node so the receiver knows which peer to ask for the body.
 	// Only a hint — resolveTxBatchSources accepts it solely to reorder peers
@@ -3213,6 +3248,9 @@ func (dag *BlockDAG) pushBlockOnce(block *Block, peerURL string, payload []byte,
 	// peer genuinely running older code stays at the default (unsupported)
 	// either way, so declining to demote here cannot cause a block to be
 	// stripped toward someone who would not understand it.
+	// Gepackte Pushes: der Header steht auf jeder Antwort des neuen Handlers,
+	// auch auf einer Ablehnung -- fehlt er, spricht der Partner das nicht.
+	recordGzipPushCapability(peerURL, resp.Header.Get(gzipPushHeader) == gzipPushToken)
 	if resp.StatusCode >= 200 && resp.StatusCode < 300 {
 		recordTxBatchCapability(peerURL, pushResp.TxBatch == txBatchCapabilityToken)
 	} else if pushResp.TxBatch == txBatchCapabilityToken {
