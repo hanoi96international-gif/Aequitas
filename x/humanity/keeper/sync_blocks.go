@@ -2722,6 +2722,9 @@ func (dag *BlockDAG) registerAndDiscover(selfURL, primaryURL string) bool {
 			dag.authorizedValidators[addr] = true
 			fmt.Printf("[PEERS] Auto-authorized validator: %s\n", addr)
 		}
+		if addr != "" && addr == signerAddr && !dag.validatorBestaetigt.Swap(true) {
+			fmt.Printf("[PEERS] ✓ %s nennt diesen Knoten als Validator — Produktion freigegeben\n", primaryURL)
+		}
 	}
 	dag.mu.Unlock()
 

@@ -4092,6 +4092,15 @@ func (cs *ChainState) HasBlockFromProposerAtHeight(proposer string, height int64
 // function's own guarantee — is still durably retained here. Returns nil
 // (not an error) if the hash genuinely doesn't exist, matching
 // GetBlockByHash's contract.
+// BlockExistsInDB: liegt der Block in chain_blocks? Eine Zeile, kein Rumpf.
+func (cs *ChainState) BlockExistsInDB(hash string) bool {
+	if cs.db == nil || hash == "" {
+		return false
+	}
+	var eins int
+	return cs.db.QueryRow(`SELECT 1 FROM chain_blocks WHERE hash = $1`, hash).Scan(&eins) == nil
+}
+
 func (cs *ChainState) LoadBlockFromDBByHash(hash string) *Block {
 	if cs.db == nil {
 		return nil

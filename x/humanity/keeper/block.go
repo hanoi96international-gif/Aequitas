@@ -255,6 +255,13 @@ type BlockDAG struct {
 	// Produktionssperre fuer frische Knoten in ProduceBlock.
 	jemalsAufgeholt       atomic.Bool
 	frischWartetMeldungen atomic.Int64
+	// validatorBestaetigt: ein Seed hat unsere Signieradresse als Validator
+	// genannt (registerAndDiscover). Ohne das keine Produktion -- siehe die
+	// Sperre in ProduceBlock.
+	validatorBestaetigt   atomic.Bool
+	unbestaetigtMeldungen atomic.Int64
+	eigeneBloeckeGeprueft atomic.Bool
+	eigeneBloeckeDa       atomic.Bool
 	// heightSchnell spiegelt height, ist aber OHNE dag.mu lesbar.
 	//
 	// dag.Height() nimmt dag.mu.RLock(). Waehrend ein Block-Burst angewendet
@@ -1875,6 +1882,25 @@ func (dag *BlockDAG) ownsProducedHeight(height int64) bool {
 // uebernimmEigeneBloeckeDesVorgaengers markiert einmal je Prozess alle
 // eigenen Bloecke bis zur aktuellen Hoehe als selbst produziert. Siehe den
 // Kommentar an der Zweite-Instanz-Pruefung in ProduceBlock.
+// eigeneBloeckeInDB: hat dieser Knoten (dieser Schluessel) je Bloecke in
+// chain_blocks? Einmal geprueft, dann gemerkt. Geschichte gilt als
+// Bestaetigung durch das Netz -- siehe die Produktionssperre.
+func (dag *BlockDAG) eigeneBloeckeInDB() bool {
+	if dag.eigeneBloeckeGeprueft.Load() {
+		return dag.eigeneBloeckeDa.Load()
+	}
+	if dag.state == nil || dag.state.db == nil || dag.signingKey == nil {
+		dag.eigeneBloeckeGeprueft.Store(true)
+		return false
+	}
+	addr := strings.ToLower(crypto.PubkeyToAddress(dag.signingKey.PublicKey).Hex())
+	var eins int
+	da := dag.state.db.QueryRow(`SELECT 1 FROM chain_blocks WHERE lower(proposer) = $1 LIMIT 1`, addr).Scan(&eins) == nil
+	dag.eigeneBloeckeDa.Store(da)
+	dag.eigeneBloeckeGeprueft.Store(true)
+	return da
+}
+
 func (dag *BlockDAG) uebernimmEigeneBloeckeDesVorgaengers(proposer string) {
 	if dag.state == nil || dag.state.db == nil || !dag.vorgaengerUebernommen.CompareAndSwap(false, true) {
 		return
@@ -2527,6 +2553,25 @@ func (dag *BlockDAG) ProduceBlock() *Block {
 	// Netz darf nicht stehen, weil ein Partner tot ist. Fuer einen Knoten,
 	// der noch nie an der Spitze war, ist er falsch: der kennt das Netz nicht
 	// und darf nichts erfinden. Er wartet, und das Log sagt, worauf.
+	// EIN KNOTEN, DEN DAS NETZ NICHT ALS VALIDATOR KENNT, PRODUZIERT NICHT.
+	//
+	// Probe 12.09.2026 (Beobachter ohne SELF_URL, Snapshot geladen, an der
+	// Spitze): 1.136 eigene Bloecke in 20 Minuten, alle mit einem frisch
+	// erzeugten Schluessel signiert, alle per P2P an beide Validatoren
+	// geschoben, alle dort als "unauthorized proposer" verworfen. Fuer das
+	// Netz nur Last, fuer den Knoten selbst nur Tips, die nie jemand mergt.
+	// Wer Seeds hat, produziert erst, wenn einer davon seine Adresse als
+	// Validator genannt hat (Antwort auf /api/peers/register) -- oder wenn
+	// er selbst schon Bloecke in seiner Datenbank hat (Geschichte zaehlt
+	// als Bestaetigung: das Netz hat sie angenommen).
+	if len(dag.trustedSeeds) > 0 && !dag.validatorBestaetigt.Load() && !dag.eigeneBloeckeInDB() {
+		noteGateSkip()
+		if dag.unbestaetigtMeldungen.Add(1)%60 == 1 {
+			fmt.Printf("[BLOCK] ⏸ Dieser Knoten ist bei keinem Seed als Validator bestaetigt (SELF_URL und ein registriertes NODE_OPERATOR_WALLET noetig) — er folgt der Kette, produziert aber nichts.\n")
+		}
+		merkeProduktionsAusfall("nicht_als_validator_bestaetigt")
+		return nil
+	}
 	frischUndNieAufgeholt := dag.bootHeight == 0 && !dag.jemalsAufgeholt.Load()
 	if (dag.bootHeight > 0 || frischUndNieAufgeholt) && len(dag.trustedSeeds) > 0 {
 		seeds := make([]string, 0, len(dag.trustedSeeds))
@@ -3835,6 +3880,22 @@ func (dag *BlockDAG) hasAwaitingOrphan(hash string) bool {
 // still recognize it; that's fine, this is an optimization for the common
 // case (a block from within the last few seconds), not a correctness
 // boundary — AddPeerBlock remains the real, authoritative check.
+// altBekannt zaehlt Bloecke, die unter dem Speicherfenster lagen und die
+// Datenbank schon kannte -- siehe AddPeerBlock.
+var altBekannt atomic.Int64
+
+// unterSpeicherfenster: liegt die Hoehe unter dem, was der Speicher-DAG noch
+// haelt? Dann ist die Datenbank die einzige Stelle, an der der Block sein
+// kann -- und die einzige, an der er sein muss.
+func (dag *BlockDAG) unterSpeicherfenster(height int64) bool {
+	if dag.state == nil {
+		return false
+	}
+	finalized, _ := dag.state.GetFinalizedCheckpoint()
+	cutoff := finalized - dag.pruneBuffer()
+	return cutoff > 0 && height < cutoff
+}
+
 func (dag *BlockDAG) hasBlockInMemory(hash string) bool {
 	dag.mu.RLock()
 	defer dag.mu.RUnlock()
@@ -4588,6 +4649,22 @@ func (dag *BlockDAG) AddPeerBlock(block *Block) bool {
 			}
 			return false
 		}
+	}
+	// EIN BLOCK UNTER DEM SPEICHERFENSTER, DER SCHON IN DER DATENBANK LIEGT,
+	// IST BEKANNT -- er wird nicht noch einmal angenommen und schon gar nicht
+	// verwaist.
+	//
+	// Probe 12.09.2026 (frischer Knoten vom Snapshot): nachdem die
+	// Ausduennung des Speicher-DAG den Checkpoint und den Stub seines Vaters
+	// hinter sich gelassen hatte, lieferte ein Aufholer die Bloecke ab dem
+	// Checkpoint NOCH EINMAL (Seite ab 6360392). Jeder davon lag laengst in
+	// chain_blocks, keiner mehr im Speicher -- also "unbekannt", Vater
+	// "fehlt" (der Stub ist nur im Speicher), und alle landeten als Waisen
+	// auf einem Vater, der nie kommt: 4.664 Waisen-Eintraege, 3.796 vergebliche
+	// Finalitaetslaeufe, Heap 92 MB -> 3,4 GB in 20 Minuten.
+	if dag.state != nil && dag.state.db != nil && dag.unterSpeicherfenster(block.Height) && dag.state.BlockExistsInDB(block.Hash) {
+		altBekannt.Add(1)
+		return true
 	}
 	dag.prefetchParentsFromDB(block)
 	dag.prefetchMergeSetFromDB(block)
