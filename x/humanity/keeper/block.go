@@ -303,6 +303,9 @@ type BlockDAG struct {
 	// pruneOldDAGBlocks, so it tracks the live window, not all history.
 	producedHeights   map[int64]bool
 	producedHeightsMu sync.Mutex
+	// vorgaengerUebernommen: die eigenen Bloecke des vorigen Prozesses sind
+	// einmal aus der Datenbank in producedHeights uebernommen worden.
+	vorgaengerUebernommen atomic.Bool
 	// bootHeightCheckpointBacked is true only when bootHeight was set by
 	// actually seeding dag.blocks/dag.tips with a real, stored block at that
 	// exact height (RefreshBootHeightAfterSnapshotImport's checkpoint branch,
@@ -1858,6 +1861,43 @@ func (dag *BlockDAG) ownsProducedHeight(height int64) bool {
 	return dag.producedHeights[height]
 }
 
+// uebernimmEigeneBloeckeDesVorgaengers markiert einmal je Prozess alle
+// eigenen Bloecke bis zur aktuellen Hoehe als selbst produziert. Siehe den
+// Kommentar an der Zweite-Instanz-Pruefung in ProduceBlock.
+func (dag *BlockDAG) uebernimmEigeneBloeckeDesVorgaengers(proposer string) {
+	if dag.state == nil || dag.state.db == nil || !dag.vorgaengerUebernommen.CompareAndSwap(false, true) {
+		return
+	}
+	bis := dag.heightSchnell.Load()
+	rows, err := dag.state.db.Query(
+		`SELECT height FROM chain_blocks WHERE lower(proposer) = lower($1) AND height <= $2 AND height > $2 - 100000`,
+		proposer, bis)
+	if err != nil {
+		// Ohne die Uebernahme greift die Pruefung wie bisher -- lieber einmal
+		// zu vorsichtig als eine Vermutung. Aber laut, damit es auffaellt.
+		fmt.Printf("[BLOCK] ⚠ eigene Bloecke des Vorgaengers nicht lesbar (%v) -- die Zweite-Instanz-Pruefung kann sie fuer fremd halten\n", err)
+		dag.vorgaengerUebernommen.Store(false)
+		return
+	}
+	defer rows.Close()
+	n := 0
+	dag.producedHeightsMu.Lock()
+	if dag.producedHeights == nil {
+		dag.producedHeights = make(map[int64]bool)
+	}
+	for rows.Next() {
+		var h int64
+		if rows.Scan(&h) == nil {
+			dag.producedHeights[h] = true
+			n++
+		}
+	}
+	dag.producedHeightsMu.Unlock()
+	if n > 0 {
+		fmt.Printf("[BLOCK] %d eigene Bloecke bis Hoehe %d vom Vorgaenger uebernommen -- sie zaehlen nicht als zweite Instanz\n", n, bis)
+	}
+}
+
 // noteProducedHeight records that this process durably produced height.
 func (dag *BlockDAG) noteProducedHeight(height int64) {
 	dag.producedHeightsMu.Lock()
@@ -2736,6 +2776,27 @@ func (dag *BlockDAG) ProduceBlock() *Block {
 	// every other node for doing nothing wrong. This project's premise is that
 	// any registered human can run a validator, so a guard that only covers the
 	// operator's own two boxes is not the guard it needs.
+	// DIE EIGENEN BLOECKE DES VORGAENGERS SIND KEINE ZWEITE INSTANZ.
+	//
+	// producedHeights ist beim Start leer. Jeder eigene Block, den der
+	// vorige Prozess dieses Validators geschrieben hat, sieht fuer die
+	// Pruefung darunter wie das Werk einer fremden Instanz aus -- und die
+	// Produktion steht, fuer die ganze Lebensdauer des Prozesses. Am
+	// 12.09.2026 wurden beide Validatoren in derselben Sekunde neu
+	// gestartet (ein Aufraeum-Workflow); danach verweigerten BEIDE die
+	// Produktion (zweite_instanz_gleiche_hoehe, 343 und 361 Ticks), die
+	// Hoehe stand, und der Totmannschalter feuerte nicht, weil kein Peer
+	// voraus war: ein gleichzeitiger Neustart hat das ganze Netz
+	// eingefroren. Fuer eine Beta, in der Laien Validatoren betreiben, ist
+	// ein Neustart kein Sonderfall.
+	//
+	// Beim ersten Versuch dieses Prozesses werden darum alle eigenen
+	// Bloecke BIS ZUR JETZIGEN HOEHE aus der Datenbank als eigene
+	// uebernommen: sie stammen von einem Vorgaenger, der nicht mehr laeuft.
+	// Was danach an hoeherer Stelle mit dieser Adresse auftaucht, hat
+	// dieser Prozess nicht geschrieben -- genau der Fall, den die Pruefung
+	// meint, und den sie weiter faengt.
+	dag.uebernimmEigeneBloeckeDesVorgaengers(proposer)
 	if dag.state != nil && !dag.ownsProducedHeight(maxParentHeight+1) &&
 		dag.state.HasBlockFromProposerAtHeight(proposer, maxParentHeight+1) {
 		fmt.Printf("[BLOCK] ⏸ Skipping production at height %d — the durable store already holds a block from this validator there, and this process did not write it. That means a second instance of this validator is running (a redeploy overlap, %s into this process's life). Waiting for ordinary peer sync to pull it in instead of minting a conflicting duplicate every other node would correctly read as equivocation.\n", maxParentHeight+1, time.Since(dag.bootTime).Round(time.Second))

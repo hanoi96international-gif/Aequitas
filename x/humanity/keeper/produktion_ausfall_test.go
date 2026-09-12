@@ -117,3 +117,37 @@ func TestProduktionsAusfall_JedesNilInProduceBlockWirdGezaehlt(t *testing.T) {
 			"  direkt ueber dem return nil genuegt.", len(ungezaehlt), ungezaehlt)
 	}
 }
+
+// EIN GLEICHZEITIGER NEUSTART DARF DAS NETZ NICHT EINFRIEREN.
+//
+// Am 12.09.2026 wurden beide Validatoren in derselben Sekunde neu gestartet.
+// producedHeights war danach in beiden Prozessen leer, jeder eigene Block des
+// Vorgaengers sah wie das Werk einer fremden Instanz aus, und BEIDE
+// verweigerten die Produktion -- fuer immer, denn der Totmannschalter feuert
+// nur, wenn ein Peer voraus ist. Die Uebernahme der eigenen Bloecke bis zur
+// aktuellen Hoehe muss VOR der Zweite-Instanz-Pruefung stehen.
+func TestProduceBlock_UebernimmtEigeneBloeckeDesVorgaengersVorDerPruefung(t *testing.T) {
+	b, err := os.ReadFile("block.go")
+	if err != nil {
+		t.Fatal(err)
+	}
+	body := string(b)
+	start := strings.Index(body, "func (dag *BlockDAG) ProduceBlock() *Block {")
+	rumpf := body[start:]
+	uebernahme := strings.Index(rumpf, "dag.uebernimmEigeneBloeckeDesVorgaengers(proposer)")
+	pruefung := strings.Index(rumpf, "dag.state.HasBlockFromProposerAtHeight(proposer, maxParentHeight+1)")
+	if uebernahme < 0 {
+		t.Fatal("die Uebernahme der eigenen Bloecke des Vorgaengers ist weg -- ein gleichzeitiger " +
+			"Neustart beider Validatoren friert dann das Netz ein (12.09.2026: 343 und 361 Ticks " +
+			"'zweite_instanz_gleiche_hoehe' auf beiden Knoten, Hoehe stand)")
+	}
+	if pruefung < 0 || uebernahme > pruefung {
+		t.Error("die Uebernahme steht hinter der Zweite-Instanz-Pruefung und kann sie nicht mehr entschaerfen")
+	}
+	// Und sie darf nur bis zur JETZIGEN Hoehe uebernehmen: was darueber
+	// auftaucht, hat dieser Prozess nicht geschrieben.
+	if !strings.Contains(body, "AND height <= $2") {
+		t.Error("die Uebernahme ist nicht mehr auf die aktuelle Hoehe begrenzt -- damit wuerde auch " +
+			"der Block einer wirklich zweiten Instanz als eigener gelten")
+	}
+}
