@@ -725,6 +725,7 @@ func (a *APIServer) handleCombinedHealth(w http.ResponseWriter, r *http.Request)
 		"tx_batch_cache":   a.blockchain.state.TxBatchCacheStand(),
 		"push_gzip":        GzipPushStand(),
 		"eigenlast_bremse": EigenlastBremseStand(),
+		"divergenz":        DivergenzStand(),
 		// The request split, so the ~50ms per transfer that TransferAtomic does
 		// not account for can be subtracted out instead of guessed at. Read
 		// unaccounted_in_send_ms first; see rpc_phase_stats.go.

@@ -698,6 +698,7 @@ func main() {
 	// dag_ausduennen.go. Ohne das stand der Heap bei 7.000er-Bloecken am
 	// GOMEMLIMIT, und der Garbage Collector bremste beide Knoten.
 	bc.StarteAusduennen()
+	bc.StarteDivergenzWaechter()
 	// Recover automatically from sustained divergence (opt-in, secondary-only)
 	// — see StartDivergenceAutoHeal. Started after sync so a healthy node has a
 	// chance to converge first and never trips the monitor.
