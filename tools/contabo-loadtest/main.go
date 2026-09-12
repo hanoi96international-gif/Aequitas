@@ -829,15 +829,19 @@ func main() {
 			n, err1 := strconv.Atoi(strings.TrimSpace(stuecke[0]))
 			m, err2 := strconv.Atoi(strings.TrimSpace(stuecke[1]))
 			if err1 == nil && err2 == nil && m > 0 && n >= 1 && n <= m {
-				je := len(accs) / m
-				von := (n - 1) * je
-				bis := von + je
-				if n == m {
-					bis = len(accs)
+				// VERZAHNT, nicht in Bloecken: Teil n bekommt jedes m-te Konto.
+				// Gemessen am 12.09.2026: die Konten der Datei sind ungleich
+				// bezahlt (in der ersten Haelfte konnten 594 von 661 die
+				// Ueberweisungen nicht mehr bezahlen, in der zweiten 375 von
+				// 662) -- mit Haelften hatte der eine Generator 33 Paare, der
+				// andere 143. Verzahnt bekommt jede Box denselben Schnitt.
+				teil := make([]*account, 0, len(accs)/m+1)
+				for i := n - 1; i < len(accs); i += m {
+					teil = append(teil, accs[i])
 				}
-				if von < len(accs) && bis <= len(accs) && bis > von {
-					fmt.Printf("=== Kontenteil %d von %d: %d der %d Konten (Index %d bis %d) ===%c", n, m, bis-von, len(accs), von, bis-1, 10)
-					accs = accs[von:bis]
+				if len(teil) > 0 {
+					fmt.Printf("=== Kontenteil %d von %d: %d der %d Konten (jedes %d. ab Index %d) ===%c", n, m, len(teil), len(accs), m, n-1, 10)
+					accs = teil
 				} else {
 					fmt.Printf("-teil %q ergibt keinen gueltigen Bereich -- es werden alle Konten benutzt%c", t, 10)
 				}
