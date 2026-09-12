@@ -1,0 +1,79 @@
+name: Postgres-Checkpoints entzerren (ohne Neustart)
+
+# GEMESSEN AM 12.09.2026 UNTER LAST, C1: die Platte selbst flusht in rund
+# einer Millisekunde (iostat f_await 0,7-1,2 ms) -- aber Postgres schreibt
+# 60 MB/s mit Spitzen bis 98 MB/s, und der fdatasync des Aequitas-WAL wartet
+# hinter dieser Schlange: 13,7 ms im Mittel statt der 0,56 ms, die am 26.07.
+# auf derselben Platte gemessen wurden. Da jede Ueberweisung auf den fsync
+# ihres Buendels wartet, ist das die Durchsatzdecke: rund 73 Buendel je
+# Sekunde zu je 57 Datensaetzen.
+#
+# Woher die Schreibflut kommt: checkpoints_req=222 gegen checkpoints_timed=118.
+# max_wal_size stand auf 1024 MB; unter Last reisst Postgres das in Minuten,
+# erzwingt einen Checkpoint, flutet die Platte mit schmutzigen Seiten -- und
+# nach jedem Checkpoint schreibt der naechste Zugriff auf jede Seite sie als
+# Ganzes ins WAL (full_page_writes), was das naechste max_wal_size umso
+# schneller reisst. Ein Kreislauf.
+#
+# Beide Werte sind SIGHUP-Ebene: pg_reload_conf genuegt, kein Neustart, kein
+# Eingriff in den Knoten. Der Rueckweg ist derselbe Aufruf mit den alten
+# Werten.
+
+on:
+  workflow_dispatch:
+    inputs:
+      max_wal_size:
+        description: "z.B. 8GB (vorher 1024MB). Platz: C1 50 GB frei, C2 34 GB."
+        required: false
+        default: "8GB"
+      checkpoint_timeout:
+        description: "z.B. 15min (vorher 5min)"
+        required: false
+        default: "15min"
+      wal_compression:
+        description: "on/off -- komprimiert full_page_writes, weniger WAL-Volumen"
+        required: false
+        default: "on"
+      box:
+        required: true
+        default: beide
+        type: choice
+        options: [contabo1, contabo2, beide]
+jobs:
+  setzen:
+    strategy:
+      max-parallel: 1
+      matrix:
+        box: ${{ inputs.box == 'contabo1' && fromJSON('[{"name":"Contabo1","host":"173.249.37.118","secret":"C1"}]') || inputs.box == 'contabo2' && fromJSON('[{"name":"Contabo2","host":"194.163.188.71","secret":"C2"}]') || fromJSON('[{"name":"Contabo2","host":"194.163.188.71","secret":"C2"},{"name":"Contabo1","host":"173.249.37.118","secret":"C1"}]') }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ matrix.box.host }}
+          username: root
+          key: ${{ matrix.box.secret == 'C1' && secrets.CONTABO_SSH_KEY || secrets.CONTABO2_SSH_KEY }}
+          port: 22
+          script_stop: false
+          timeout: 300s
+          command_timeout: 300s
+          envs: MWS,CT,WC
+          script: |
+            set +e
+            P="docker exec aequitas-postgres psql -U postgres -t -A -c"
+            echo "### ${{ matrix.box.name }} ###"
+            echo "=== vorher ==="
+            $P "SELECT name||'='||setting||COALESCE(unit,'') FROM pg_settings WHERE name IN ('max_wal_size','checkpoint_timeout','wal_compression','checkpoint_completion_target');"
+            $P "SELECT 'checkpoints_timed='||checkpoints_timed||' checkpoints_req='||checkpoints_req FROM pg_stat_bgwriter;"
+            [ -n "$MWS" ] && $P "ALTER SYSTEM SET max_wal_size = '$MWS';"
+            [ -n "$CT" ]  && $P "ALTER SYSTEM SET checkpoint_timeout = '$CT';"
+            [ -n "$WC" ]  && $P "ALTER SYSTEM SET wal_compression = '$WC';"
+            $P "SELECT pg_reload_conf();"
+            sleep 2
+            echo "=== nachher (gilt sofort, kein Neustart) ==="
+            $P "SELECT name||'='||setting||COALESCE(unit,'')||' (pending_restart='||pending_restart||')' FROM pg_settings WHERE name IN ('max_wal_size','checkpoint_timeout','wal_compression');"
+            echo "=== Knoten unberuehrt? ==="
+            curl -s --max-time 10 http://127.0.0.1:8080/api/health/combined | grep -oE '"stalled_seconds":[0-9]+' | head -1
+        env:
+          MWS: ${{ inputs.max_wal_size }}
+          CT: ${{ inputs.checkpoint_timeout }}
+          WC: ${{ inputs.wal_compression }}
