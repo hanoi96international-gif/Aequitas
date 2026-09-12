@@ -1509,7 +1509,18 @@ func kettenDurchsatz(statusURL string, von, bis time.Time, vonHoehe int64) {
 		fmt.Println("  (Starthoehe unbekannt — Fenster nur grob abgegrenzt, die Zahl ist eine Obergrenze)")
 	}
 	min := vonHoehe
-	for runde := 0; runde < 40; runde++ {
+	// KEIN FESTER SEITENDECKEL. Die erste Fassung brach nach 40 Seiten ab --
+	// bei 500 Bloecken je Seite grosszuegig gedacht. Aber /api/blocks hat ein
+	// Antwortbudget von 12 MB, und bei Bloecken mit 4.000 Transaktionen sind
+	// das 15 Bloecke je Seite, nicht 500. 40 Seiten waren dann 600 Bloecke,
+	// gezaehlt wurden 570 von echten 758, und der Kettendurchsatz stand mit
+	// 5.804 da, wo die Kette 7.600 trug -- ausgerechnet dann zu niedrig, wenn
+	// die Bloecke voll sind, also genau im interessanten Fall.
+	//
+	// Die Schleife endet ueber die Hoehe: jede Seite ruecken min vor, und bei
+	// st.Height ist Schluss. Der Deckel darunter faengt nur noch eine API ab,
+	// die nicht vorrueckt.
+	for runde := 0; runde < 100000; runde++ {
 		r, e := hc.Get(fmt.Sprintf("%s/api/blocks?min_height=%d&limit=500", basis, min))
 		if e != nil {
 			break
@@ -1529,6 +1540,7 @@ func kettenDurchsatz(statusURL string, von, bis time.Time, vonHoehe int64) {
 		if be != nil || len(seite) == 0 {
 			break
 		}
+		minVorher := min
 		for _, blk := range seite {
 			if blk.Height > min {
 				min = blk.Height
@@ -1583,7 +1595,7 @@ func kettenDurchsatz(statusURL string, von, bis time.Time, vonHoehe int64) {
 				leere++
 			}
 		}
-		if min >= st.Height {
+		if min >= st.Height || min == minVorher {
 			break
 		}
 	}
