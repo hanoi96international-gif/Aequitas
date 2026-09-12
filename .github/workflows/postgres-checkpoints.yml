@@ -34,6 +34,10 @@ on:
         description: "on/off -- komprimiert full_page_writes, weniger WAL-Volumen"
         required: false
         default: "on"
+      synchronous_commit:
+        description: "off = Postgres quittiert vor seinem fsync. Sicher NUR, weil das Aequitas-WAL der Haltbarkeitspunkt ist (transfer_wal.go; am 21.08. so gesetzt und mit 8,2 Mio. nachgespielten Datensaetzen verifiziert). Stand seit dem Postgres-Neustart am 11.09. wieder auf on. Leer = unveraendert."
+        required: false
+        default: "off"
       box:
         required: true
         default: beide
@@ -56,7 +60,7 @@ jobs:
           script_stop: false
           timeout: 300s
           command_timeout: 300s
-          envs: MWS,CT,WC
+          envs: MWS,CT,WC,SC
           script: |
             set +e
             P="docker exec aequitas-postgres psql -U postgres -t -A -c"
@@ -67,13 +71,15 @@ jobs:
             [ -n "$MWS" ] && $P "ALTER SYSTEM SET max_wal_size = '$MWS';"
             [ -n "$CT" ]  && $P "ALTER SYSTEM SET checkpoint_timeout = '$CT';"
             [ -n "$WC" ]  && $P "ALTER SYSTEM SET wal_compression = '$WC';"
+            [ -n "$SC" ]  && $P "ALTER SYSTEM SET synchronous_commit = '$SC';"
             $P "SELECT pg_reload_conf();"
             sleep 2
             echo "=== nachher (gilt sofort, kein Neustart) ==="
-            $P "SELECT name||'='||setting||COALESCE(unit,'')||' (pending_restart='||pending_restart||')' FROM pg_settings WHERE name IN ('max_wal_size','checkpoint_timeout','wal_compression');"
+            $P "SELECT name||'='||setting||COALESCE(unit,'')||' (pending_restart='||pending_restart||')' FROM pg_settings WHERE name IN ('max_wal_size','checkpoint_timeout','wal_compression','synchronous_commit');"
             echo "=== Knoten unberuehrt? ==="
             curl -s --max-time 10 http://127.0.0.1:8080/api/health/combined | grep -oE '"stalled_seconds":[0-9]+' | head -1
         env:
           MWS: ${{ inputs.max_wal_size }}
           CT: ${{ inputs.checkpoint_timeout }}
           WC: ${{ inputs.wal_compression }}
+          SC: ${{ inputs.synchronous_commit }}
