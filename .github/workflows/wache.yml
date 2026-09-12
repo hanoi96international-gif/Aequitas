@@ -27,7 +27,7 @@ on:
     - cron: "*/10 * * * *"
   workflow_dispatch:
 permissions:
-  actions: write
+  actions: read
   contents: read
 jobs:
   wache:
@@ -41,13 +41,13 @@ jobs:
           REPO: ${{ github.repository }}
         run: |
           # Alarm nur beim UMSCHLAGEN auf rot und danach alle 6 Stunden -- nicht
-          # alle 10 Minuten. Der Zustand liegt in der Repo-Variablen WACHE_ROT_SEIT.
-          rotSeit() { gh api "repos/$REPO/actions/variables/WACHE_ROT_SEIT" --jq .value 2>/dev/null || true; }
-          rotSetzen() {
-            if [ -n "$(rotSeit)" ]; then gh api -X PATCH "repos/$REPO/actions/variables/WACHE_ROT_SEIT" -f name=WACHE_ROT_SEIT -f value="$1" >/dev/null 2>&1
-            else gh api -X POST "repos/$REPO/actions/variables" -f name=WACHE_ROT_SEIT -f value="$1" >/dev/null 2>&1; fi
+          # alle 10 Minuten. Massstab ist der letzte ROTE Lauf dieser Wache:
+          # liegt er weniger als 6 h zurueck, bleibt dieser Lauf still (gruen).
+          letzterAlarm() {
+            v=$(gh api "repos/$REPO/actions/workflows/wache.yml/runs?status=failure&per_page=1" --jq '.workflow_runs[0].updated_at' 2>/dev/null) || v=""
+            [ "$v" = "null" ] && v=""
+            echo "$v"
           }
-          rotLoeschen() { gh api -X DELETE "repos/$REPO/actions/variables/WACHE_ROT_SEIT" >/dev/null 2>&1 || true; }
           set -u
           ROT=0
           rot() { echo "✗ $1"; ROT=1; }
@@ -84,9 +84,10 @@ jobs:
           fi
           echo "====="
           if [ "$ROT" = 1 ]; then
-            SEIT=$(rotSeit); JETZT=$(date +%s)
-            if [ -z "$SEIT" ]; then rotSetzen "$JETZT"; echo "ROT -- neu, Alarm"; exit 1; fi
-            if [ $(( JETZT - SEIT )) -ge 21600 ]; then rotSetzen "$JETZT"; echo "ROT -- seit $(date -u -d @$SEIT +%H:%M) UTC, Erinnerung"; exit 1; fi
-            echo "ROT -- schon gemeldet um $(date -u -d @$SEIT +%H:%M) UTC, naechste Erinnerung nach 6 h"; exit 0
+            LA=$(letzterAlarm)
+            if [ -n "$LA" ] && [ $(( $(date +%s) - $(date -d "$LA" +%s) )) -lt 21600 ]; then
+              echo "ROT -- schon gemeldet ($LA), naechste Erinnerung nach 6 h"; exit 0
+            fi
+            echo "ROT -- Alarm"; exit 1
           fi
-          if [ -n "$(rotSeit)" ]; then rotLoeschen; echo "GRUEN -- wieder gut"; else echo "GRUEN"; fi
+          echo "GRUEN"
