@@ -174,8 +174,11 @@ jobs:
             echo "=== source being built ==="
             sha256sum main.go gen_accounts.go 2>/dev/null || true
 
-            if [ ! -f accounts.csv ]; then
-              echo "No accounts.csv found in /root/contabo-loadtest -- run loadtest-prepare-contabo2.yml first, fund its printed seed addresses, then retry."
+            # Die CSV kam als konten.csv mit (von C2 geholt); unter dem
+            # erwarteten Namen ablegen, damit Pruefung und Werkzeug sie finden.
+            if [ -f konten.csv ]; then cp -f konten.csv "$ACCOUNTS_CSV"; cp -f konten.csv accounts.csv; fi
+            if [ ! -f "$ACCOUNTS_CSV" ]; then
+              echo "Keine $ACCOUNTS_CSV in /root/contabo-loadtest -- die Kopie von C2 hat nicht geklappt."
               exit 1
             fi
 
