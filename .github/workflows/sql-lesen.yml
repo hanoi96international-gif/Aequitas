@@ -1,0 +1,37 @@
+name: SQL nur lesen (beide Boxen)
+# Eine Leseabfrage gegen die Ledger-Datenbank beider Boxen. NUR LESEN: die
+# Sitzung ist eine einzige READ-ONLY-Transaktion (Postgres lehnt jedes
+# INSERT/UPDATE/DELETE/DDL darin ab), Zeitdeckel 120 s je Abfrage.
+# Gedacht fuer Messfragen wie "wie voll waren die Bloecke nach dem Lauf",
+# nicht fuer Eingriffe -- dafuer gibt es je Schraube einen eigenen Workflow.
+on:
+  workflow_dispatch:
+    inputs:
+      sql: {description: "Leseabfrage (SQL)", required: true}
+      box: {description: "beide | C1 | C2", required: false, default: "beide"}
+jobs:
+  q:
+    strategy:
+      fail-fast: false
+      matrix: {box: [{name: "C1", host: "173.249.37.118", secret: "C1"}, {name: "C2", host: "194.163.188.71", secret: "C2"}]}
+    if: ${{ inputs.box == 'beide' || inputs.box == matrix.box.name }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ matrix.box.host }}
+          username: root
+          key: ${{ matrix.box.secret == 'C1' && secrets.CONTABO_SSH_KEY || secrets.CONTABO2_SSH_KEY }}
+          port: 22
+          script_stop: false
+          timeout: 200s
+          command_timeout: 200s
+          envs: SQL
+          script: |
+            echo "##### ${{ matrix.box.name }} #####"
+            printf '%s\n' "$SQL" > /tmp/sql-lesen.sql
+            docker exec -i aequitas-postgres psql -U postgres -d aequitas -A -v ON_ERROR_STOP=1 --single-transaction \
+              -c "SET TRANSACTION READ ONLY" -c "SET statement_timeout='120s'" -f - < /tmp/sql-lesen.sql 2>&1 | head -200
+            rm -f /tmp/sql-lesen.sql
+        env:
+          SQL: ${{ inputs.sql }}
