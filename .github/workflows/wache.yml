@@ -1,0 +1,96 @@
+name: Wache (alle 10 Minuten)
+# DER WAECHTER, DEN ES NIE GAB.
+#
+# 12.09.2026: der Proof-Server war auf C2 seit fuenf Tagen tot und auf C1 seit
+# 34 Stunden in einer Neustart-Schleife. Niemand konnte sich registrieren.
+# Niemand hat es gemerkt -- die Kette lief ja. Und C1 und C2 hatten seit Tagen
+# verschiedene Kontostaende, ohne dass es irgendwo rot wurde.
+#
+# Diese Wache prueft alle zehn Minuten, was ein Launch braucht, und faellt
+# ROT um, wenn etwas fehlt. GitHub schickt bei einem fehlgeschlagenen
+# Zeitplan-Lauf eine E-Mail an den, der die Datei zuletzt geaendert hat --
+# das ist der ganze Alarmweg, und er kostet nichts. Ein gruener Lauf ist
+# still.
+#
+# Was geprueft wird, je Box:
+#   - Hoehe waechst (zwei Messungen im Abstand von 25 s)
+#   - beide Boxen gleichauf (Abstand <= 20)
+#   - Proof-Server erreichbar (sonst keine Registrierung)
+#   - keine Divergenz im Kontostand (divergenz.abweichend)
+#   - keine Ueberweisung beim Nachspielen uebersprungen (zustands_ablehnung)
+#   - Platte nicht kritisch, Knoten nicht degraded
+#   - Vergleichsdienst (/matching/health) antwortet
+# Und einmal: der Coordinator antwortet mit Quorum >= 2, und das letzte
+# Backup ist juenger als 36 Stunden.
+on:
+  schedule:
+    - cron: "*/10 * * * *"
+  workflow_dispatch:
+jobs:
+  wache:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - name: Pruefen
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -u
+          ROT=0
+          rot() { echo "✗ $1"; ROT=1; }
+          ok()  { echo "✓ $1"; }
+          h() { curl -s --max-time 15 "http://$1:8080/api/health/combined"; }
+          st() { curl -s --max-time 10 "http://$1:8080/api/status" | grep -oE '"height":[0-9]+' | cut -d: -f2; }
+          declare -A H1 H2
+          for B in 173.249.37.118 194.163.188.71; do H1[$B]=$(st $B); done
+          sleep 25
+          for B in 173.249.37.118 194.163.188.71; do H2[$B]=$(st $B); done
+          for B in 173.249.37.118 194.163.188.71; do
+            echo "===== $B ====="
+            if [ -z "${H2[$B]}" ]; then rot "$B antwortet nicht auf /api/status"; continue; fi
+            if [ "${H2[$B]}" -gt "${H1[$B]:-0}" ]; then ok "Hoehe waechst (${H1[$B]} -> ${H2[$B]})"; else rot "Hoehe steht (${H1[$B]} -> ${H2[$B]})"; fi
+            J=$(h $B)
+            if [ -z "$J" ]; then rot "$B antwortet nicht auf /api/health/combined"; continue; fi
+            echo "$J" | python3 -c '
+import sys, json
+d = json.load(sys.stdin)
+rot = []
+def g(*ks, default=None):
+    o = d
+    for k in ks:
+        if not isinstance(o, dict) or k not in o: return default
+        o = o[k]
+    return o
+if not g("proof_server", "reachable"): rot.append("Proof-Server nicht erreichbar -- keine Registrierung moeglich")
+if g("divergenz", "abweichend"): rot.append("Kontenstand weicht vom Partner ab (divergenz.abweichend) -- Resync noetig")
+if (g("zustands_ablehnung", "uebersprungene_ueberweisungen") or 0) > 0: rot.append("Ueberweisungen beim Nachspielen uebersprungen: %s -- Knoten weichen ab" % g("zustands_ablehnung", "uebersprungene_ueberweisungen"))
+if g("plattenplatz", "kritisch"): rot.append("Platte kritisch (%s MB frei)" % g("plattenplatz", "frei_mb"))
+if (g("plattenplatz", "belegt_pct") or 0) > 85: rot.append("Platte zu %.0f %% belegt" % g("plattenplatz", "belegt_pct"))
+if g("chain", "dag_degraded"): rot.append("Knoten degraded: %s" % g("chain", "dag_degraded_reason"))
+if g("totmann", "ausgeloest"): rot.append("Totmann ausgeloest")
+if g("receipt_flush", "fehler", default=0) and (g("receipt_flush", "puffer") or 0) > 500000: rot.append("Quittungs-Puffer staut: %s" % g("receipt_flush", "puffer"))
+for r in rot: print("✗ " + r)
+if not rot: print("✓ Proof-Server erreichbar, keine Divergenz, nichts uebersprungen, Platte %.0f %%, nicht degraded" % (g("plattenplatz", "belegt_pct") or 0))
+sys.exit(1 if rot else 0)
+' || ROT=1
+            M=$(curl -s --max-time 15 "https://$( [ "$B" = 173.249.37.118 ] && echo proof1 || echo proof2 ).aequitas.digital/matching/health" | grep -o '"status":"ok"')
+            if [ -n "$M" ]; then ok "Vergleichsdienst antwortet"; else rot "Vergleichsdienst (/matching/health) antwortet nicht"; fi
+          done
+          echo "===== Netz ====="
+          A=${H2[173.249.37.118]:-0}; C=${H2[194.163.188.71]:-0}
+          D=$(( A > C ? A - C : C - A ))
+          if [ "$D" -le 20 ]; then ok "Boxen gleichauf (Abstand $D)"; else rot "Boxen nicht gleichauf (Abstand $D)"; fi
+          CO=$(curl -s --max-time 15 https://coordinator-production-e067.up.railway.app/health)
+          Q=$(echo "$CO" | grep -oE '"quorum_size":[0-9]+' | cut -d: -f2)
+          if echo "$CO" | grep -q '"status":"ok"' && [ "${Q:-0}" -ge 2 ]; then ok "Coordinator ok, Quorum $Q"; else rot "Coordinator: ${CO:-keine Antwort}"; fi
+          LAST=$(gh api "repos/$REPO/actions/workflows/backup-ledger.yml/runs?per_page=5&status=success" --jq '.workflow_runs[0].updated_at' 2>/dev/null)
+          if [ -n "$LAST" ] && [ "$LAST" != "null" ]; then
+            AGE=$(( ( $(date +%s) - $(date -d "$LAST" +%s) ) / 3600 ))
+            if [ "$AGE" -le 36 ]; then ok "letztes erfolgreiches Backup vor ${AGE} h"; else rot "letztes erfolgreiches Backup vor ${AGE} h (> 36)"; fi
+          else
+            rot "kein erfolgreiches Backup gefunden"
+          fi
+          echo "====="
+          if [ "$ROT" = 1 ]; then echo "ROT -- siehe oben"; exit 1; fi
+          echo "GRUEN"
