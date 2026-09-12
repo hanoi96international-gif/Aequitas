@@ -1,0 +1,47 @@
+name: Platte unter Last (wer verbraucht die fsyncs)
+on:
+  workflow_dispatch: {}
+jobs:
+  io:
+    strategy: {max-parallel: 2, matrix: {box: [{name: "C1", host: "173.249.37.118", secret: "C1"}, {name: "C2", host: "194.163.188.71", secret: "C2"}]}}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ matrix.box.host }}
+          username: root
+          key: ${{ matrix.box.secret == 'C1' && secrets.CONTABO_SSH_KEY || secrets.CONTABO2_SSH_KEY }}
+          port: 22
+          script_stop: false
+          timeout: 400s
+          command_timeout: 400s
+          script: |
+            set +e
+            echo "##### ${{ matrix.box.name }} #####"
+            echo "=== wo liegt was ==="
+            docker inspect aequitas-node --format '{{range .Mounts}}{{.Source}} -> {{.Destination}}{{println}}{{end}}' | head -6
+            docker inspect aequitas-postgres --format '{{range .Mounts}}{{.Source}} -> {{.Destination}}{{println}}{{end}}' 2>/dev/null | head -3
+            df -h / /var/lib/docker 2>/dev/null | tail -2
+            lsblk -o NAME,ROTA,SIZE,MOUNTPOINT 2>/dev/null | head -6
+            echo "=== iostat 8 s (Geraet, w/s = Schreibvorgaenge, w_await = ms je Schreiben, %util) ==="
+            (command -v iostat >/dev/null || apt-get install -y -qq sysstat >/dev/null 2>&1)
+            iostat -dx 2 4 2>/dev/null | grep -E "Device|sda|vda|nvme" | tail -6
+            echo "=== wer schreibt (pidstat 5 s) ==="
+            pidstat -d 5 1 2>/dev/null | grep -vE "^$|Linux" | sort -k5 -n -r | head -8
+            echo "=== Postgres: Checkpoints und Autovacuum ==="
+            docker exec aequitas-postgres psql -U postgres -d aequitas -t -A -c \
+              "SELECT 'checkpoints_timed='||checkpoints_timed||' checkpoints_req='||checkpoints_req||' write_ms='||checkpoint_write_time||' sync_ms='||checkpoint_sync_time FROM pg_stat_bgwriter;" 2>/dev/null
+            docker exec aequitas-postgres psql -U postgres -d aequitas -t -A -c \
+              "SELECT name||'='||setting FROM pg_settings WHERE name IN ('synchronous_commit','fsync','wal_sync_method','checkpoint_timeout','max_wal_size','checkpoint_completion_target','wal_buffers','commit_delay');" 2>/dev/null
+            docker exec aequitas-postgres psql -U postgres -d aequitas -t -A -c \
+              "SELECT relname||' | autovac: '||COALESCE(last_autovacuum::text,'nie')||' | analyze: '||COALESCE(last_autoanalyze::text,'nie')||' | dead='||n_dead_tup FROM pg_stat_user_tables ORDER BY n_dead_tup DESC LIMIT 5;" 2>/dev/null
+            echo "=== laufende Postgres-Arbeit ==="
+            docker exec aequitas-postgres psql -U postgres -d aequitas -t -A -c \
+              "SELECT backend_type||' | '||COALESCE(state,'')||' | '||left(COALESCE(query,''),70) FROM pg_stat_activity WHERE backend_type<>'client backend' OR state<>'idle' LIMIT 10;" 2>/dev/null
+            echo "=== fsync-Latenz JETZT auf dem WAL-Pfad (fio 5 s) ==="
+            WALDIR=$(docker inspect aequitas-node --format '{{range .Mounts}}{{if eq .Destination "/wal"}}{{.Source}}{{end}}{{end}}')
+            [ -z "$WALDIR" ] && WALDIR=/root
+            (command -v fio >/dev/null || apt-get install -y -qq fio >/dev/null 2>&1)
+            fio --name=fsynctest --directory="$WALDIR" --rw=write --bs=4k --size=64m --fdatasync=1 --runtime=5 --time_based --ioengine=sync --output-format=terse 2>/dev/null \
+              | awk -F';' '{printf "  fdatasync-Schreiben: %s IOPS, Latenz mittel %.0f us\n", $8, $40}'
+            rm -f "$WALDIR"/fsynctest*
