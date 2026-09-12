@@ -26,6 +26,8 @@ jobs:
             echo "=== iostat 8 s (Geraet, w/s = Schreibvorgaenge, w_await = ms je Schreiben, %util) ==="
             (command -v iostat >/dev/null || apt-get install -y -qq sysstat >/dev/null 2>&1)
             iostat -dx 2 4 2>/dev/null | grep -E "Device|sda|vda|nvme" | tail -6
+            echo "=== wer nimmt die CPU (top, 5 s Mittel; 600 = alle sechs Kerne) ==="
+            top -b -d 5 -n 2 | awk '/^top -/{n++} n==2' | grep -E "aequitasd|loadtest|postgres|python|node|proof" | awk '{printf "  %-22s %6s%% CPU  %6s%% MEM\n", $12, $9, $10}' | sort -k2 -n -r | head -8
             echo "=== wer schreibt (pidstat 5 s) ==="
             pidstat -d 5 1 2>/dev/null | grep -vE "^$|Linux" | sort -k5 -n -r | head -8
             echo "=== Postgres: Checkpoints und Autovacuum ==="
