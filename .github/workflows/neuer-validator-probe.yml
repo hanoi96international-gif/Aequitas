@@ -66,6 +66,7 @@ jobs:
           echo "Spitze des Netzes beim Start: $SPITZE_START"
           ENDE=$((START + MINUTEN*60))
           LETZTE=0
+          LETZTE_SPITZE=0
           printf "%-9s %-10s %-10s %-9s %-8s\n" "t(s)" "hoehe" "spitze" "abstand" "rss_mb"
           while [ "$(date +%s)" -lt "$ENDE" ]; do
             if ! kill -0 $NODEPID 2>/dev/null; then echo "!! Knoten ist gestorben"; break; fi
@@ -74,6 +75,7 @@ jobs:
             RSS=$(ps -o rss= -p $NODEPID 2>/dev/null | awk '{printf "%d", $1/1024}')
             printf "%-9s %-10s %-10s %-9s %-8s\n" "$(( $(date +%s) - START ))" "${H:-?}" "${S:-?}" "$(( ${S:-0} - ${H:-0} ))" "${RSS:-?}"
             LETZTE=${H:-0}
+            LETZTE_SPITZE=${S:-0}
             sleep 30
           done
           echo "=== Ende: Knoten-Hoehe $LETZTE, Netz $(curl -s --max-time 10 http://173.249.37.118:8080/api/status | grep -oE '"height":[0-9]+' | cut -d: -f2) ==="
@@ -88,7 +90,9 @@ jobs:
           echo "=== Log-Ende (60 Zeilen) ==="
           tail -60 node.log
           echo "=== Urteil ==="
-          SPITZE_ENDE=$(curl -s --max-time 10 http://173.249.37.118:8080/api/status | grep -oE '"height":[0-9]+' | cut -d: -f2)
+          # Abstand aus der LETZTEN Stichprobe (Knoten und Netz zum selben Zeitpunkt),
+          # nicht gegen die Netzhoehe von jetzt -- 30 s spaeter sind das 30 Hoehen Luft.
+          SPITZE_ENDE=${LETZTE_SPITZE:-0}
           ABSTAND=$(( ${SPITZE_ENDE:-0} - LETZTE ))
           DAUER=$(( $(date +%s) - START ))
           echo "Laufzeit ${DAUER}s, Knoten bei $LETZTE, Netz bei ${SPITZE_ENDE:-?}, Abstand $ABSTAND, Hoehen/min: $(( LETZTE * 60 / (DAUER>0?DAUER:1) ))"
