@@ -1,0 +1,28 @@
+name: Postgres-Datenverzeichnis -- was belegt 100 GB
+on: {workflow_dispatch: {}}
+jobs:
+  p:
+    strategy: {matrix: {box: [{name: "C1", host: "173.249.37.118", secret: "C1"}, {name: "C2", host: "194.163.188.71", secret: "C2"}]}}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ matrix.box.host }}
+          username: root
+          key: ${{ matrix.box.secret == 'C1' && secrets.CONTABO_SSH_KEY || secrets.CONTABO2_SSH_KEY }}
+          port: 22
+          script_stop: false
+          timeout: 300s
+          command_timeout: 300s
+          script: |
+            echo "##### ${{ matrix.box.name }} #####"
+            docker volume ls -q | while read v; do echo -n "$v: "; du -sh "$(docker volume inspect "$v" --format '{{.Mountpoint}}')" 2>/dev/null | cut -f1; done
+            PG=$(docker volume inspect aequitas-pgdata --format '{{.Mountpoint}}' 2>/dev/null)
+            echo "=== $PG ==="
+            du -sh "$PG"/* 2>/dev/null | sort -h | tail -6
+            du -sh "$PG"/pg_wal 2>/dev/null
+            echo "=== Replikations-Slots (ein Slot ohne Abnehmer haelt pg_wal endlos) ==="
+            docker exec aequitas-postgres psql -U postgres -d aequitas -t -A -c "SELECT slot_name||' | active='||active||' | zurueckgehalten='||pg_size_pretty(pg_wal_lsn_diff(pg_current_wal_lsn(), restart_lsn)) FROM pg_replication_slots;" 2>/dev/null || echo "(keine)"
+            docker exec aequitas-postgres psql -U postgres -d aequitas -t -A -c "SELECT 'wal_keep_size='||setting||unit FROM pg_settings WHERE name='wal_keep_size';" 2>/dev/null
+            echo "=== Basisverzeichnis: groesste Relationen physisch ==="
+            docker exec aequitas-postgres psql -U postgres -d aequitas -t -A -c "SELECT relname||': '||pg_size_pretty(pg_total_relation_size(oid)) FROM pg_class WHERE relkind IN ('r','i','t') ORDER BY pg_total_relation_size(oid) DESC LIMIT 8;" 2>/dev/null
