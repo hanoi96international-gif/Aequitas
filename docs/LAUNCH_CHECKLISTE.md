@@ -1,6 +1,6 @@
 # Launch-Checkliste
 
-**Stand 12.09.2026, abends.** Jeder Punkt hat ein „fertig heißt" — etwas, das man
+**Stand 13.09.2026, 01:45.** Jeder Punkt hat ein „fertig heißt" — etwas, das man
 nachmessen kann. Was nicht messbar ist, steht nicht drin. Wer hier „✅" setzt,
 hat gemessen, nicht geglaubt.
 
@@ -25,7 +25,7 @@ Anleitung; die Betreiber erfahren, wenn etwas kaputtgeht.
 |---|---|---|---|---|
 | 7 | Neuer Validator nach Anleitung | Fremde Box folgt der Kette und produziert nach Bestätigung | ✅ Weg dreimal auf einem Runner geprüft (Snapshot 21 s, an der Spitze, 0 Fremdblöcke, 145 MB). Echter Beitritt mit registriertem Wallet fehlt | **du:** ein VPS, `docs/VALIDATOR_EINRICHTEN.md` |
 | 8 | Backup | täglich grün, Restore geprüft | ✅ seit 12.09. (Zustand ohne Blöcke, 31–61 MB) | — |
-| 9 | Coordinator hängt an Railway (USA) | Coordinator auf einer Contabo-Box, App zeigt dorthin | ❌ App v1.6.0 nutzt `coordinator-production-e067.up.railway.app`; Contabo-Coordinatoren laufen, aber ohne öffentliche URL und ohne App-Release | ich (Caddy-Route) + **du** (App-Release, Widerspruchsspeicher umziehen) |
+| 9 | Coordinator hängt an Railway (USA) | App zeigt auf einen Contabo-Coordinator | ⚠ Beide Contabo-Coordinatoren laufen öffentlich und bereit (`https://proof1.aequitas.digital/coordinator/health`, Quorum 2, alle Schlüssel anerkannt). Fehlt nur die App: Repo-Variable `EXPO_PUBLIC_COORDINATOR_BASE=https://proof1.aequitas.digital/coordinator` und `release-apk.yml` | **du** (App-Release; Widerspruchsspeicher der Railway-Instanz ist leer, solange niemand widerrufen hat) |
 | 10 | Node-Guide in allen 12 Sprachen | keine Railway-Anleitung mehr erreichbar | ✅ alle zwölf am 12.09. neu erzeugt (Docker Compose), 0× „Railway" | — |
 | 11 | Lasttest-Konten | ≥ 300 Paare je Box zahlungsfähig | ❌ 594/661 bzw. 375/662 Konten unter 0,001 AEQ | **du:** `loadtest-widen-senders.yml confirm=true` |
 | 12 | App im Play Store | — | ⏸ bewusst offen bis Punkt 5 | du |
