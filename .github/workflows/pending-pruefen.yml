@@ -1,0 +1,28 @@
+name: pending_txs pruefen -- warum sind die Bloecke leer
+on: {workflow_dispatch: {}}
+jobs:
+  p:
+    strategy: {matrix: {box: [{name: "C1", host: "173.249.37.118", secret: "C1"}, {name: "C2", host: "194.163.188.71", secret: "C2"}]}}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ matrix.box.host }}
+          username: root
+          key: ${{ matrix.box.secret == 'C1' && secrets.CONTABO_SSH_KEY || secrets.CONTABO2_SSH_KEY }}
+          port: 22
+          script_stop: false
+          timeout: 200s
+          command_timeout: 200s
+          script: |
+            echo "##### ${{ matrix.box.name }} #####"
+            P="docker exec aequitas-postgres psql -U postgres -d aequitas -t -A -c"
+            echo "=== pending_txs: offen / eingeschlossen (letzte 30 min) ==="
+            $P "SELECT 'offen='||count(*) FROM pending_txs WHERE included_at=0;"
+            $P "SELECT 'eingeschlossen_30min='||count(*) FROM pending_txs WHERE included_at>0 AND created_at > extract(epoch from now())::bigint-1800;"
+            $P "SELECT 'erstellt_30min='||count(*)||' aeltester_offener='||COALESCE(min(created_at)::text,'-') FROM pending_txs WHERE created_at > extract(epoch from now())::bigint-1800;"
+            echo "=== was der Blockbauer loggt (letzte 20 min) ==="
+            docker logs --since 20m aequitas-node 2>&1 | grep -E "Including .* TX|dbpair detail|LoadPendingTxs|pending" | sort | uniq -c | sort -rn | head -8
+            echo "=== Bloecke mit/ohne tx (letzte 20 min, aus dem Log) ==="
+            docker logs --since 20m aequitas-node 2>&1 | grep -cE "^\[Block #" 
+            docker logs --since 20m aequitas-node 2>&1 | grep -E "Including [0-9]+ " | grep -oE "Including [0-9]+" | awk '{s+=$2; n++} END {printf "  %d Bloecke mit tx, %d tx gesamt\n", n, s}'
