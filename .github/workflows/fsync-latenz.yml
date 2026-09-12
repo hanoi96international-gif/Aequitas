@@ -22,17 +22,31 @@ jobs:
             # Dieselbe Form wie das Aequitas-WAL: vorbelegte Datei, kleine
             # Schreibvorgaenge an wachsendem Offset, fdatasync nach jedem.
             python3 - <<'PY'
-            import os, time, statistics
-            d='/root/aequitas-wal-data'; p=os.path.join(d,'.fsync-messung')
-            fd=os.open(p, os.O_WRONLY|os.O_CREAT|os.O_TRUNC, 0o600)
-            os.ftruncate(fd, 64<<20)            # vorbelegt wie das WAL
-            lat=[]; off=0; t_end=time.time()+8
-            while time.time()<t_end:
-                os.pwrite(fd, b'x'*256, off); off+=256
-                t=time.perf_counter(); os.fdatasync(fd); lat.append((time.perf_counter()-t)*1e6)
-            os.close(fd); os.unlink(p)
-            lat.sort(); n=len(lat)
-            print('  fdatasync: %d/s | p50 %.0f us | p90 %.0f us | p99 %.0f us | max %.0f us' % (n/8, lat[n//2], lat[int(n*.9)], lat[int(n*.99)], lat[-1]))
+            import os, time, ctypes, ctypes.util
+            libc=ctypes.CDLL(ctypes.util.find_library('c'), use_errno=True)
+            d='/root/aequitas-wal-data'
+            def messen(name, vorbereiten):
+                p=os.path.join(d,'.fsync-'+name)
+                fd=os.open(p, os.O_WRONLY|os.O_CREAT|os.O_TRUNC, 0o600)
+                vorbereiten(fd)
+                os.fsync(fd)
+                lat=[]; off=0; t_end=time.time()+6
+                while time.time()<t_end:
+                    os.pwrite(fd, b'x'*300, off); off+=300
+                    t=time.perf_counter(); os.fdatasync(fd); lat.append((time.perf_counter()-t)*1e6)
+                os.close(fd); os.unlink(p); lat.sort(); n=len(lat)
+                print('  %-34s %5d/s | p50 %6.0f us | p90 %6.0f | p99 %6.0f | mittel %6.0f' % (name, n/6, lat[n//2], lat[int(n*.9)], lat[int(n*.99)], sum(lat)/n))
+            SZ=64<<20
+            # A: wie das WAL heute -- fallocate(0), unbeschriebene Extents
+            messen('A fallocate(0), unbeschrieben', lambda fd: libc.fallocate(fd, 0, 0, SZ))
+            # B: vorher mit Nullen BESCHRIEBEN -- Extents sind dann "written"
+            def vornullen(fd):
+                libc.fallocate(fd, 0, 0, SZ)
+                z=bytes(1<<20)
+                for i in range(64): os.pwrite(fd, z, i<<20)
+            messen('B vorgenullt (Extents beschrieben)', vornullen)
+            # C: nur ftruncate (duenn), wie die erste Sonde
+            messen('C ftruncate, duenn', lambda fd: os.ftruncate(fd, SZ))
             PY
             echo "--- was die Platte gerade sonst tut (iostat 3 s) ---"
             iostat -dx 3 2 2>/dev/null | grep -E "^sda" | tail -1 | awk '{printf "  w/s=%s wkB/s=%s w_await=%sms f/s=%s f_await=%sms util=%s%%\n",$8,$9,$12,$21,$22,$23}'
