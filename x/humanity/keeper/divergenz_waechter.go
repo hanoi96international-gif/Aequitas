@@ -75,8 +75,10 @@ func (dag *BlockDAG) divergenzEinmalPruefen() {
 	eigeneHoehe := dag.heightSchnell.Load()
 	hc := &http.Client{Timeout: 10 * time.Second}
 	for _, seed := range seeds {
-		peerHoehe, ok := echteHoeheVonPeer(seed)
-		if !ok || peerHoehe < eigeneHoehe-2 || peerHoehe > eigeneHoehe+2 {
+		// Gleichauf heisst: zum Zeitpunkt der Abfrage -- gegen die eigene
+		// Hoehe von damals, nicht von jetzt (siehe peer_hoehe_echt.go).
+		peerHoehe, eigeneDamals, ok := echteHoeheVonPeerMitEigener(seed)
+		if !ok || peerHoehe < eigeneDamals-2 || peerHoehe > eigeneDamals+2 {
 			continue // nicht gleichauf -- kein Vergleich
 		}
 		resp, err := hc.Get(seed + "/api/debug/stateroot-components")
