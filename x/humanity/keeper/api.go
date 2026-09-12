@@ -744,6 +744,7 @@ func (a *APIServer) handleCombinedHealth(w http.ResponseWriter, r *http.Request)
 		"produktions_ausfaelle":  ProduktionsAusfaelle(),
 		"stateroot_abweichungen": a.blockchain.StateRootAufschluesselung(),
 		"peer_hoehen":            PeerHoehenStand(),
+		"dag_ausduennung":        AusduennStand(),
 		"fork_pruefung":          map[string]interface{}{"bedeutung": "Divergenzpruefung gegen den Primary. geschwister = anderer kanonischer Block, aber unserer ist dem Primary bekannt (harmlos); unbekannt_in_folge = der Primary kennt unseren Block nicht, Resync ab 3.", "geschwister": chainDivergenceGeschwister.Load(), "unbekannt_in_folge": chainDivergenceFolge.Load()},
 		// Who is actually driving the block-serving endpoints, which a CPU
 		// profile put at a quarter of the node's CPU with no identifiable
@@ -1534,7 +1535,9 @@ func (a *APIServer) handleBlocks(w http.ResponseWriter, r *http.Request) {
 	if offset >= len(blocks) {
 		offset = len(blocks)
 	}
-	json.NewEncoder(w).Encode(blocks[offset:end])
+	// Ausgeduennte Bloecke bekommen ihren Rumpf zurueck -- nur die Seite,
+	// die wirklich rausgeht, nicht der ganze Speicher-DAG.
+	json.NewEncoder(w).Encode(a.blockchain.HydratisiertAlle(blocks[offset:end]))
 }
 
 // handleCanonicalBlocks serves GET /api/blocks/canonical?limit=N — one block

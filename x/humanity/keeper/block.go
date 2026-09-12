@@ -116,8 +116,12 @@ type Block struct {
 	// separately leaves block hashes byte-identical — no fork, no activation
 	// height. Empty on blocks produced before this field existed, which
 	// calculateBlockHash handles by computing the root the old way.
-	TxRoot    string `json:"tx_root,omitempty"`
-	Signature string `json:"signature,omitempty"`
+	TxRoot string `json:"tx_root,omitempty"`
+	// ausgeduennt: der Rumpf wurde aus dem Speicher genommen, TxRoot bleibt,
+	// die Datenbank hat die Transaktionen. Nicht serialisiert. Siehe
+	// dag_ausduennen.go -- und hydratisiert(), das jeder Getter durchlaeuft.
+	ausgeduennt bool   `json:"-"`
+	Signature   string `json:"signature,omitempty"`
 	// ProducedAtMs is a millisecond-precision production wall-clock
 	// timestamp, set once by ProduceBlock and transmitted to peers —
 	// deliberately NOT covered by calculateBlockHash (an explicit field list,
@@ -5656,7 +5660,7 @@ func (dag *BlockDAG) GetBlocksSince(minHeight int64, afterHash string, limit int
 			fmt.Printf("[BLOCK] GetBlocksSince: DB fallback failed for min_height=%d: %v — serving in-memory window instead (likely incomplete for this range)\n", minHeight, err)
 		}
 	}
-	return selectBlocksSince(dag.GetBlocks(), minHeight, afterHash, limit)
+	return dag.hydratisiertAlle(selectBlocksSince(dag.GetBlocks(), minHeight, afterHash, limit))
 }
 
 // GetBlockByHash returns the block with the given hash, or nil if unknown.
@@ -5678,7 +5682,7 @@ func (dag *BlockDAG) GetBlockByHash(hash string) *Block {
 	b := dag.blocks[hash]
 	dag.mu.RUnlock()
 	if b != nil || dag.state == nil {
-		return b
+		return dag.hydratisiert(b)
 	}
 	return dag.state.LoadBlockFromDBByHash(hash)
 }
@@ -5719,7 +5723,7 @@ func (dag *BlockDAG) GetBlocksByHashesForPeer(hashes []string) []*Block {
 			out = append(out, dbBlocks...)
 		}
 	}
-	return out
+	return dag.hydratisiertAlle(out)
 }
 
 // GetBlockByHeight returns the CANONICAL block at the given height, or nil
@@ -5750,7 +5754,7 @@ func (dag *BlockDAG) GetBlockByHeight(height int64) *Block {
 	best := dag.canonicalBlockAtHeightLocked(height)
 	dag.mu.Unlock()
 	if best != nil || dag.state == nil {
-		return best
+		return dag.hydratisiert(best)
 	}
 	// FIX (P0, merge-reliability audit 2026-07-03): pruneOldDAGBlocks evicts
 	// blocks below (finalizedHeight - pruneBuffer()) from dag.blocks, so a
