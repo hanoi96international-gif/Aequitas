@@ -2195,6 +2195,48 @@ func (dag *BlockDAG) ProduceBlock() *Block {
 	// produktion_vorrang.go. Ohne das laeuft der Sync zwischen zwei fremden
 	// Bloecken sofort weiter und die Produktion wartet durch eine ganze Seite
 	// hindurch (gemessen: 4.241 ms von 5.903 ms Gesamtdauer).
+	// DIE PENDING-TRANSAKTIONEN VOR DER SPERRE LADEN.
+	//
+	// Gemessen am 12.09.2026 unter Last: LoadPendingTxsWithLimit brauchte fuer
+	// 5.635 Transaktionen 826 ms -- und lief unter dag.mu. Solange stand der
+	// Replay des Partners, dessen ProduceBlock wartete dann bis zu 1,7 s auf
+	// dieselbe Sperre, und der Takt fiel auf 0,76 Bloecke je Sekunde. Mit
+	// dem Blockdeckel von 7.000 waechst diese Zeit linear mit der Blockgroesse.
+	//
+	// Das Laden braucht die Sperre nicht: pending_txs liest nur dieser
+	// Knoten, und wer nach dem Schnitt ankommt, landet im naechsten Block --
+	// dieselbe Unschaerfe wie bisher, nur eben ohne dass jemand darauf
+	// wartet. Der StateRoot dagegen bleibt unter der Sperre, weil er den
+	// Zustand hasht, den ein Replay gerade aendern koennte.
+	//
+	// Schliesst ein Tor unten die Produktion, wird das Geladene verworfen;
+	// die Transaktionen bleiben pending, weil nichts markiert wurde. Das
+	// Warten auf den Lader ist als ERSTES eingetragen, laeuft also als
+	// LETZTES -- nach der Freigabe der Sperren, nicht davor.
+	var dbTxs []Transaction
+	var pendingTxIDs []int64
+	var pendingDur time.Duration
+	var pendingWG sync.WaitGroup
+	pendingWG.Add(1)
+	ladeStart := time.Now()
+	produceBlockPool.submit(func() {
+		defer pendingWG.Done()
+		defer func() {
+			if r := recover(); r != nil {
+				fmt.Printf("[PANIC RECOVERED] ProduceBlock LoadPendingTxs goroutine: %v\n%s\n", r, debug.Stack())
+			}
+		}()
+		if dag.state != nil {
+			// Kleinere Bloecke, wenn ein Peer nicht mehr hinterherkommt --
+			// siehe peer_lag_bremse.go. Ohne das produziert dieser Knoten
+			// dauerhaft mehr, als der andere nachvollziehen kann, und der
+			// faellt zurueck, bis er minutenlang steht.
+			dbTxs, pendingTxIDs = dag.state.LoadPendingTxsWithLimit(dag.blockTxCap())
+		}
+		pendingDur = time.Since(ladeStart)
+	})
+	defer pendingWG.Wait()
+
 	fertig := produktionMeldetWarten()
 	// Wachhund: dauert das Warten zu lange, schreibt er auf, WER die Sperre
 	// haelt -- siehe sperren_wachhund.go. Ohne ihn bleibt nur die Dauer
@@ -2538,47 +2580,14 @@ func (dag *BlockDAG) ProduceBlock() *Block {
 	// technically merging each other's blocks correctly. Narrowing the
 	// primary's own per-block DB cost is what keeps both sides' cadence close
 	// enough for that wall-clock alignment to do its job.
-	var dbTxs []Transaction
-	var pendingTxIDs []int64
 	var stateRoot string
-	var pendingDur, rootDur time.Duration
+	var rootDur time.Duration
 	dbPairStart := time.Now()
+	// Der StateRoot laeuft weiter im Pool-Arbeiter (wie bisher), der Lader
+	// ist laengst unterwegs -- gestartet vor der Sperre, siehe oben. Hier
+	// wird nur noch beides eingesammelt.
 	var cadenceWG sync.WaitGroup
-	cadenceWG.Add(2)
-	// FIX (performance audit 2026-07-06): dispatched through produceBlockPool
-	// (workerpool.go) — 2 persistent workers reused every block (BLOCK_TIME
-	// cadence, i.e. continuously for the node's whole lifetime) instead of
-	// spawning 2 fresh goroutines per tick. Exactly 2 workers because exactly
-	// 2 jobs are submitted per tick and both are always awaited before the
-	// next tick's ProduceBlock call, so the pool is idle again before it's
-	// needed next — same concurrency shape as before, just without the
-	// per-tick goroutine spinup. Audit flagged this as low-effect (Go
-	// goroutine creation is already cheap), kept for consistency with the
-	// same class of fix applied elsewhere.
-	produceBlockPool.submit(func() {
-		defer cadenceWG.Done()
-		// FIX (P0-3, beta-launch audit 2026-07-05): see panic_recovery.go. Also
-		// prevents cadenceWG.Wait() below from deadlocking forever on a panic —
-		// Done() (deferred above, so it still runs during this unwind) must fire
-		// either way.
-		defer func() {
-			if r := recover(); r != nil {
-				fmt.Printf("[PANIC RECOVERED] ProduceBlock LoadPendingTxs goroutine: %v\n%s\n", r, debug.Stack())
-			}
-		}()
-		t0 := time.Now()
-		if dag.state != nil {
-			// Kleinere Bloecke, wenn ein Peer nicht mehr hinterherkommt --
-			// siehe peer_lag_bremse.go. Ohne das produziert dieser Knoten
-			// dauerhaft mehr, als der andere nachvollziehen kann, und der
-			// faellt zurueck, bis er minutenlang steht.
-			dbTxs, pendingTxIDs = dag.state.LoadPendingTxsWithLimit(dag.blockTxCap())
-			// Die tatsaechliche Groesse merken -- sie ist der Ankerpunkt, von
-			// dem aus die Bremse beim naechsten Block drosselt.
-			MerkeBlockGroesse(len(dbTxs))
-		}
-		pendingDur = time.Since(t0)
-	})
+	cadenceWG.Add(1)
 	produceBlockPool.submit(func() {
 		defer cadenceWG.Done()
 		defer func() {
@@ -2591,6 +2600,11 @@ func (dag *BlockDAG) ProduceBlock() *Block {
 		rootDur = time.Since(t0)
 	})
 	cadenceWG.Wait()
+	pendingWG.Wait()
+	// Die tatsaechliche Groesse merken -- sie ist der Ankerpunkt, von dem aus
+	// die Bremse beim naechsten Block drosselt. Erst hier, nicht im Lader:
+	// ein Tor kann das Geladene noch verwerfen.
+	MerkeBlockGroesse(len(dbTxs))
 	pbDbPaar = time.Since(dbPairStart)
 	pbBauenStart := time.Now()
 	// Ongoing health check: these two DB round trips run concurrently
