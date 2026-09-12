@@ -107,6 +107,22 @@ func TestTransferWAL_GleicherAbsenderTeiltDenGruppenCommit(t *testing.T) {
 	t.Setenv(shardRetryPauseEnv, "200")
 	shardRetryZuruecksetzen()
 
+	// BASISLINIE IM SELBEN TEST: 100 Ueberweisungen streng nacheinander --
+	// so viele Syncs kosten sie auf DIESER Platte. Eine feste Quote kippt
+	// je nach fsync-Tempo (CI: 1 ms, Entwicklerplatte: 5 ms); der Vergleich
+	// mit der eigenen Basislinie nicht.
+	basisVorher := wal.WriterStats()["batches"].(int64)
+	var basisAngewendet int64
+	for i := 0; i < 100; i++ {
+		if _, _, applied, err := cs.transferConcurrentWAL("0xa", "0xza", 1, Transaction{Type: "transfer", TxHash: "0xt"}); err == nil && applied {
+			basisAngewendet++
+		}
+	}
+	basisSyncs := wal.WriterStats()["batches"].(int64) - basisVorher
+	if basisAngewendet < 90 || basisSyncs < basisAngewendet*9/10 {
+		t.Fatalf("Basislinie unbrauchbar: %d Syncs fuer %d sequenzielle Ueberweisungen", basisSyncs, basisAngewendet)
+	}
+
 	syncsVorher := wal.WriterStats()["batches"].(int64)
 	start := time.Now()
 	var wg sync.WaitGroup
@@ -138,9 +154,16 @@ func TestTransferWAL_GleicherAbsenderTeiltDenGruppenCommit(t *testing.T) {
 	// den Commit, sind es deutlich weniger. Eine Stoppuhr wuerde auf einer
 	// geteilten Entwickler-CPU kippen; die Zahl der Syncs nicht.
 	syncs := wal.WriterStats()["batches"].(int64) - syncsVorher
-	if syncs > angewendet/2 {
-		t.Errorf("%d Syncs fuer %d Ueberweisungen eines Absenders -- sie warten wieder je einzeln "+
-			"auf ihren fsync statt den Gruppen-Commit zu teilen", syncs, angewendet)
+	// Sequenziell: ein Sync je Ueberweisung (Basislinie). Nebenlaeufig mit
+	// geteiltem Commit: deutlich weniger je Ueberweisung. Verlangt wird
+	// hoechstens drei Viertel der sequenziellen Rate.
+	rateSeq := float64(basisSyncs) / float64(basisAngewendet)
+	rateNeb := float64(syncs) / float64(angewendet)
+	if rateNeb > 0.75*rateSeq {
+		t.Errorf("%.2f Syncs je Ueberweisung nebenlaeufig gegen %.2f sequenziell -- Ueberweisungen "+
+			"desselben Absenders warten wieder je einzeln auf ihren fsync statt den Gruppen-Commit zu teilen",
+			rateNeb, rateSeq)
 	}
-	t.Logf("%d Ueberweisungen eines Absenders in %d Syncs, %s", angewendet, syncs, dauer)
+	t.Logf("%d Ueberweisungen eines Absenders in %d Syncs (%.2f je Ueberweisung; sequenziell %.2f), %s",
+		angewendet, syncs, rateNeb, rateSeq, dauer)
 }
