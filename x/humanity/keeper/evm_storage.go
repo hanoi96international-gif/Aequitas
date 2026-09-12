@@ -3503,7 +3503,7 @@ func (cs *ChainState) SaveBlockToDB(block *Block, replayed bool) error {
 	if err != nil {
 		return fmt.Errorf("marshal parent_hashes: %w", err)
 	}
-	txsJSON, err := json.Marshal(block.Transactions)
+	txsJSON, err := block.transaktionenJSONFuerDB()
 	if err != nil {
 		return fmt.Errorf("marshal transactions: %w", err)
 	}
@@ -3658,7 +3658,7 @@ func (cs *ChainState) SaveBlockWithPendingTxsAtomic(block *Block, ids []int64) e
 	if err != nil {
 		return fmt.Errorf("marshal parent_hashes: %w", err)
 	}
-	txsJSON, err := json.Marshal(block.Transactions)
+	txsJSON, err := block.transaktionenJSONFuerDB()
 	if err != nil {
 		return fmt.Errorf("marshal transactions: %w", err)
 	}

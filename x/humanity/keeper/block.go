@@ -120,7 +120,13 @@ type Block struct {
 	// ausgeduennt: der Rumpf wurde aus dem Speicher genommen, TxRoot bleibt,
 	// die Datenbank hat die Transaktionen. Nicht serialisiert. Siehe
 	// dag_ausduennen.go -- und hydratisiert(), das jeder Getter durchlaeuft.
-	ausgeduennt bool   `json:"-"`
+	ausgeduennt bool `json:"-"`
+	// txsJSON: json.Marshal(Transactions), EINMAL berechnet -- siehe
+	// transaktionenJSON(). Nicht serialisiert. Nur gueltig, solange
+	// txsJSONFuer == len(Transactions); wer Transactions ersetzt, setzt es
+	// auf nil (Ausduennung, hydratisiert).
+	txsJSON     []byte `json:"-"`
+	txsJSONFuer int    `json:"-"`
 	Signature   string `json:"signature,omitempty"`
 	// ProducedAtMs is a millisecond-precision production wall-clock
 	// timestamp, set once by ProduceBlock and transmitted to peers —
@@ -2143,6 +2149,53 @@ func (dag *BlockDAG) calculateHash(b *Block) string {
 	return calculateBlockHash(b)
 }
 
+// transaktionenJSON liefert json.Marshal(Transactions) -- aus dem Memo, wenn
+// merkeTransaktionenJSON es fuer genau diese Liste gefuellt hat, sonst frisch
+// (ohne es zu speichern: Bloecke im DAG werden nebenlaeufig gelesen, ein
+// spaetes Schreiben waere ein Wettlauf). nil wird wie eine leere Liste
+// kodiert ("[]"), so wie calculateBlockHash es immer getan hat.
+//
+// GEMESSEN AM 12.09.2026: auf dem Produktionsweg wurde dieselbe Liste von
+// 7.000 Ueberweisungen DREIMAL kodiert (Hash, TxRoot, Speichern), alle drei
+// unter der exklusiven DAG-Sperre, je 30-40 ms; auf dem Empfangsweg zweimal.
+func (b *Block) transaktionenJSON() []byte {
+	if b.txsJSON != nil && b.txsJSONFuer == len(b.Transactions) && len(b.Transactions) > 0 {
+		return b.txsJSON
+	}
+	txs := b.Transactions
+	if txs == nil {
+		txs = []Transaction{}
+	}
+	data, _ := json.Marshal(txs)
+	return data
+}
+
+// transaktionenJSONFuerDB ist die Kodierung fuer chain_blocks.transactions:
+// dieselben Bytes wie json.Marshal(block.Transactions) -- also "null" fuer
+// eine nil-Liste, wie die Spalte es seit jeher enthaelt -- aus dem Memo,
+// wenn es gefuellt ist.
+func (b *Block) transaktionenJSONFuerDB() ([]byte, error) {
+	if len(b.Transactions) == 0 {
+		return json.Marshal(b.Transactions)
+	}
+	return b.transaktionenJSON(), nil
+}
+
+// merkeTransaktionenJSON fuellt das Memo. Nur von dem einen Goroutine rufen,
+// dem der Block noch allein gehoert (ProduceBlock vor dem Einhaengen,
+// AddPeerBlock am Eingang).
+func (b *Block) merkeTransaktionenJSON() {
+	if len(b.Transactions) == 0 {
+		b.txsJSON, b.txsJSONFuer = nil, 0
+		return
+	}
+	data, err := json.Marshal(b.Transactions)
+	if err != nil {
+		return
+	}
+	b.txsJSON, b.txsJSONFuer = data, len(b.Transactions)
+}
+
 // calculateBlockHash is calculateHash's body, extracted as a free function so
 // it can be called from contexts with no BlockDAG in scope (e.g.
 // fetchAndVerifyBlockFromPeer in snapshot.go, verifying a fetched checkpoint
@@ -2184,12 +2237,7 @@ func calculateBlockHash(b *Block) string {
 	if len(b.Transactions) == 0 && b.TxRoot != "" {
 		txRoot = b.TxRoot
 	} else {
-		txs := b.Transactions
-		if txs == nil {
-			txs = []Transaction{}
-		}
-		txData, _ := json.Marshal(txs)
-		txRootBytes := sha256.Sum256(txData)
+		txRootBytes := sha256.Sum256(b.transaktionenJSON())
 		txRoot = hex.EncodeToString(txRootBytes[:])
 	}
 	// Use parent hashes in the order stored on the block — do NOT sort here.
@@ -2237,6 +2285,7 @@ func (dag *BlockDAG) ProduceBlock() *Block {
 	defer func() {
 		d := time.Since(produceStart)
 		merkeProduktionsBlock(d, pbSperren, pbDbPaar, pbBauen, pbSpeichern, pbVerteilen, pbTxAnzahl)
+		merkeEigenlast(d)
 		// Zeitreihe je Versuch -- siehe produktion_protokoll.go.
 		e := produktionsEintrag{
 			At: produceStart.UnixMilli(), Hoehe: dag.heightSchnell.Load(), Txs: pbTxAnzahl,
@@ -2842,7 +2891,8 @@ func (dag *BlockDAG) ProduceBlock() *Block {
 	// always did. What it buys is that the block can later be stripped of its
 	// transactions for transport and still hash to this same value, and that the
 	// digest travels with the header so a receiver knows what body to ask for.
-	block.TxRoot = txBatchRoot(txs)
+	block.merkeTransaktionenJSON()
+	block.TxRoot = txBatchRootJSON(block.transaktionenJSON(), len(block.Transactions))
 	block.Hash = dag.calculateHash(block)
 	if dag.signingKey != nil {
 		hashBytes := common.HexToHash(block.Hash)
@@ -4330,6 +4380,8 @@ func (dag *BlockDAG) prefetchMergeSetFromDB(block *Block) {
 }
 
 func (dag *BlockDAG) AddPeerBlock(block *Block) bool {
+	// Einmal kodieren, dreimal brauchen (Hash pruefen, TxRoot, Speichern).
+	block.merkeTransaktionenJSON()
 	// FIX (2026-07-05 — permanent operational diagnostic, not a temp one):
 	// recordForeignAttachLatency further down only fires once a block clears
 	// EVERY gate (circuit breaker, far-ahead cap, replay, etc.) — exactly the

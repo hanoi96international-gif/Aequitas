@@ -114,6 +114,7 @@ func (dag *BlockDAG) ausduennenEinmal() {
 		}
 		txs += int64(len(b.Transactions))
 		b.Transactions = nil
+		b.txsJSON, b.txsJSONFuer = nil, 0
 		b.ausgeduennt = true
 		bloecke++
 	}
@@ -163,6 +164,7 @@ func (dag *BlockDAG) hydratisiert(b *Block) *Block {
 	if txs, ok := dag.state.LoadTxBatchOhneCache(b.TxRoot); ok && txs != nil {
 		kopie := *b
 		kopie.Transactions = txs
+		kopie.txsJSON, kopie.txsJSONFuer = nil, 0
 		kopie.ausgeduennt = false
 		return &kopie
 	}

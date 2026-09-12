@@ -58,6 +58,16 @@ func txBatchRoot(txs []Transaction) string {
 		txs = []Transaction{}
 	}
 	data, _ := json.Marshal(txs)
+	return txBatchRootJSON(data, len(txs))
+}
+
+// txBatchRootJSON ist txBatchRoot ueber die bereits kodierte Liste -- fuer
+// Aufrufer, die das Memo des Blocks haben (transaktionenJSON). n ist nur
+// eine Plausibilitaetspruefung: eine leere Liste kodiert als "[]".
+func txBatchRootJSON(data []byte, n int) string {
+	if n == 0 {
+		data = []byte("[]")
+	}
 	sum := sha256.Sum256(data)
 	return hex.EncodeToString(sum[:])
 }
