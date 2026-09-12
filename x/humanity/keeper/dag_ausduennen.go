@@ -160,7 +160,7 @@ func (dag *BlockDAG) hydratisiert(b *Block) *Block {
 	ausduennNachgeladen.Add(1)
 	// Zuerst der Batch (billig, schon dekodiert im Cache oder eine Zeile),
 	// dann der ganze Block aus chain_blocks.
-	if txs, ok := dag.state.LoadTxBatch(b.TxRoot); ok && txs != nil {
+	if txs, ok := dag.state.LoadTxBatchOhneCache(b.TxRoot); ok && txs != nil {
 		kopie := *b
 		kopie.Transactions = txs
 		kopie.ausgeduennt = false

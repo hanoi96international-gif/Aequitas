@@ -69,9 +69,25 @@ type txBatchCache struct {
 	mu    sync.RWMutex
 	items map[string][]Transaction
 	order []string
+	txs   int // Transaktionen ueber alle Eintraege -- das ist, was Speicher kostet
 }
 
-const txBatchCacheMax = 512
+// txBatchCacheMax deckelt die Eintraege, txBatchCacheMaxTxs die
+// Transaktionen darin. Erst der zweite Deckel begrenzt den Speicher.
+//
+// GEMESSEN AM 12.09.2026 (Heap-Profil C2 nach dem Lasttest, 2,4 GB lebend):
+// rund 0,9 GB davon waren dekodierte Ruempfe in diesem Cache -- 512 Eintraege
+// zu je 7.000 Transaktionen sind 3,6 Millionen Transaktionen im Speicher,
+// obwohl die DAG-Ausduennung die Ruempfe aus den Bloecken selbst laengst
+// entfernt hatte. Der Cache fuellte sich sogar weiter, waehrend nur der
+// Lasttest alte Seiten ueber /api/blocks las: jeder nachgeladene Rumpf landete
+// hier. Gebraucht wird der Cache fuer Sekunden -- bis der Partner den Rumpf
+// des eben produzierten Blocks geholt hat. 100.000 Transaktionen sind rund 14
+// volle Bloecke; mehr haelt er nicht.
+const (
+	txBatchCacheMax    = 512
+	txBatchCacheMaxTxs = 100_000
+)
 
 func newTxBatchCache() *txBatchCache {
 	return &txBatchCache{items: make(map[string][]Transaction, txBatchCacheMax)}
@@ -101,13 +117,38 @@ func (c *txBatchCache) put(root string, txs []Transaction) {
 	}
 	c.items[root] = txs
 	c.order = append(c.order, root)
+	c.txs += len(txs)
 	// Plain FIFO eviction: bodies are needed briefly, around the moment their
 	// block is replayed, so recency of insertion tracks usefulness closely
-	// enough and costs nothing to maintain.
-	for len(c.order) > txBatchCacheMax {
+	// enough and costs nothing to maintain. Der juengste Eintrag bleibt immer,
+	// auch wenn er allein ueber dem Transaktionsdeckel liegt.
+	for len(c.order) > 1 && (len(c.order) > txBatchCacheMax || c.txs > txBatchCacheMaxTxs) {
 		oldest := c.order[0]
 		c.order = c.order[1:]
+		c.txs -= len(c.items[oldest])
 		delete(c.items, oldest)
+	}
+}
+
+// Stand fuer die Anzeige: Eintraege und Transaktionen im Cache.
+func (c *txBatchCache) stand() (eintraege, txs int) {
+	if c == nil {
+		return 0, 0
+	}
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return len(c.items), c.txs
+}
+
+// TxBatchCacheStand fuer /api/health/combined.
+func (cs *ChainState) TxBatchCacheStand() map[string]interface{} {
+	e, n := cs.txBatches.stand()
+	return map[string]interface{}{
+		"bedeutung": "Dekodierte Block-Ruempfe im Speicher, gedeckelt auf " + fmt.Sprint(txBatchCacheMaxTxs) +
+			" Transaktionen. Vor dem 12.09.2026 hielt der Cache 512 Ruempfe ohne Ruecksicht auf ihre Groesse -- unter Last 0,9 GB.",
+		"eintraege":     e,
+		"transaktionen": n,
+		"deckel_txs":    txBatchCacheMaxTxs,
 	}
 }
 
@@ -195,6 +236,37 @@ func (cs *ChainState) speichereTxBuendelDauerhaft(root string, txs []Transaction
 
 // LoadTxBatch returns a body by digest, from memory or the database.
 func (cs *ChainState) LoadTxBatch(root string) ([]Transaction, bool) {
+	return cs.ladeTxBatch(root, true)
+}
+
+// LoadTxBatchOhneCache ist LoadTxBatch fuer Leser alter Bloecke (API-Seiten,
+// nachgeladene Ruempfe): ein Treffer im Cache wird genutzt, ein Fehltreffer
+// aber NICHT hineingelegt. Sonst verdraengt ein Explorer, der Geschichte
+// blaettert, genau die Ruempfe, die der Partner in der naechsten Sekunde
+// holen will.
+func (cs *ChainState) LoadTxBatchOhneCache(root string) ([]Transaction, bool) {
+	return cs.ladeTxBatch(root, false)
+}
+
+// HasTxBatch sagt, ob ein Rumpf ausgeliefert werden koennte -- ohne ihn zu
+// laden. Der Cache antwortet sofort, sonst eine Ein-Zeilen-Abfrage. Vorher
+// lud der Pruefer den ganzen Rumpf und dekodierte ihn, nur um ihn wegzuwerfen.
+func (cs *ChainState) HasTxBatch(root string) bool {
+	if root == "" {
+		return false
+	}
+	if _, ok := cs.txBatches.get(root); ok {
+		return true
+	}
+	if cs.db == nil {
+		return false
+	}
+	cs.ensureTxBatchTable()
+	var eins int
+	return cs.db.QueryRow(`SELECT 1 FROM chain_tx_batches WHERE root = $1`, root).Scan(&eins) == nil
+}
+
+func (cs *ChainState) ladeTxBatch(root string, merken bool) ([]Transaction, bool) {
 	if root == "" {
 		return nil, false
 	}
@@ -213,7 +285,9 @@ func (cs *ChainState) LoadTxBatch(root string) ([]Transaction, bool) {
 	if err := json.Unmarshal([]byte(data), &txs); err != nil {
 		return nil, false
 	}
-	cs.txBatches.put(root, txs)
+	if merken {
+		cs.txBatches.put(root, txs)
+	}
 	return txs, true
 }
 

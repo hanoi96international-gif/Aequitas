@@ -72,7 +72,7 @@ func (a *APIServer) stripBlocksForPeer(blocks []*Block) []*Block {
 			strippedBlocksFull.Add(1)
 			continue
 		}
-		if _, ok := a.state.LoadTxBatch(b.TxRoot); !ok {
+		if !a.state.HasTxBatch(b.TxRoot) {
 			// The body is not retrievable from here, so sending a header would
 			// leave the peer unable to complete the block. Send it whole.
 			out[i] = b
