@@ -97,14 +97,22 @@ func TestVornullen_ChunkWirdUebernommenUndNichtsGehtVerloren(t *testing.T) {
 func TestVornullen_SchreiberWartetStattInDenNullerZuSchreiben(t *testing.T) {
 	alt := nullenFn
 	t.Cleanup(func() { nullenFn = alt })
+	// Der Nuller wartet, bis der Schreiber NACHWEISLICH auf ihn wartet
+	// (rueckfaelle springt in ensureCapacity, bevor die Warteschleife
+	// beginnt) -- statt einer festen Schlafzeit, die auf einer geteilten
+	// Entwickler-CPU mal zu kurz ist und den Fall dann nicht erzwingt.
+	var w *WAL
 	nullenFn = func(f *os.File, off, n int64) error {
-		time.Sleep(1500 * time.Millisecond) // laenger, als das Auffuellen braucht
+		for i := 0; i < 30000 && (w == nil || w.nuller.rueckfaelle.Load() == 0); i++ {
+			time.Sleep(time.Millisecond)
+		}
 		return nullen(f, off, n)
 	}
 
 	dir := t.TempDir()
 	path := filepath.Join(dir, "wal.log")
-	w, err := Open(path)
+	var err error
+	w, err = Open(path)
 	if err != nil {
 		t.Fatal(err)
 	}

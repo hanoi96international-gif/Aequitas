@@ -114,15 +114,18 @@ func TransferPhaseStats() map[string]interface{} {
 		"precheck_ms": pre,
 		// The three parts of precheck. They sum to it; whichever dominates is
 		// the next thing to fix.
-		"pre_queue_ms":    msPer(txPhaseQueueNanos.Load(), n),
-		"pre_rlock_ms":    msPer(txPhaseRLockNanos.Load(), n),
-		"pre_cap_ms":      msPer(txPhaseCapNanos.Load(), n),
-		"lock_ms":         lock,
-		"apply_ms":        apply,
-		"wal_append_ms":   app,
-		"enqueue_ms":      enq,
-		"other_ms":        other,
-		"slow_appends":    txPhaseSlowAppends.Load(),
-		"slow_append_pct": float64(txPhaseSlowAppends.Load()) / float64(n) * 100,
+		"pre_queue_ms":  msPer(txPhaseQueueNanos.Load(), n),
+		"pre_rlock_ms":  msPer(txPhaseRLockNanos.Load(), n),
+		"pre_cap_ms":    msPer(txPhaseCapNanos.Load(), n),
+		"lock_ms":       lock,
+		"apply_ms":      apply,
+		"wal_append_ms": app,
+		"enqueue_ms":    enq,
+		"other_ms":      other,
+		"slow_appends":  txPhaseSlowAppends.Load(),
+		// Beide muessen 0 sein. Siehe transferConcurrentWAL und flushWALBatch.
+		"schnellpfad_defekt":     walSchnellpfadDefekt.Load(),
+		"flush_ohne_haltbarkeit": walFlushOhneHaltbarkeit.Load(),
+		"slow_append_pct":        float64(txPhaseSlowAppends.Load()) / float64(n) * 100,
 	}
 }

@@ -26,6 +26,7 @@ import (
 	"io"
 	"os"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -57,6 +58,7 @@ type Entry struct {
 // (x/humanity/keeper/state.go), one level lower: a local append-only file
 // instead of a full relational transaction.
 type appendRequest struct {
+	seq     uint64 // bei der Aufnahme vergeben, siehe AppendAsync
 	payload []byte
 	result  chan appendResult
 }
@@ -116,6 +118,23 @@ type WAL struct {
 
 	appendCh   chan *appendRequest
 	writerDone chan struct{}
+
+	// seqMu ordnet Seq-Vergabe und Kanalsendung: beides unter derselben
+	// Sperre, damit die Reihenfolge im Kanal die Seq-Reihenfolge ist. Nicht
+	// mu -- die haelt der Schreiber waehrend des fsync, und ein Aufnehmender
+	// darf darauf nicht warten (siehe closeMu). nextSeq gehoert ab jetzt
+	// hierher; der Schreiber liest sie nicht mehr, TruncateBefore und HeadSeq
+	// nehmen seqMu.
+	seqMu sync.Mutex
+
+	// durableSeq ist die hoechste Seq, deren Buendel synchronisiert ist.
+	// Wer einen Saldo persistiert, dessen WALSeq darueber liegt, schreibt
+	// etwas nach Postgres, das im WAL nach einem Absturz fehlt -- siehe
+	// WaitDurable und flushWALBatch im keeper.
+	durableSeq atomic.Uint64
+	// syncDefekt wird gesetzt, wenn ein Buendel nicht synchronisiert werden
+	// konnte. Danach darf niemand mehr auf Haltbarkeit warten, die nie kommt.
+	syncDefekt atomic.Bool
 
 	// nuller haelt den naechsten Chunk vorgenullt bereit. Siehe vornullen.go.
 	nuller vornuller
@@ -225,6 +244,10 @@ func Open(path string) (*WAL, error) {
 		appendCh:   make(chan *appendRequest, MaxBatchSize*8),
 		writerDone: make(chan struct{}),
 	}
+	// Alles, was in der Datei steht, ist per Definition haltbar -- sonst
+	// wartete ein Flush nach dem Neustart auf Seqs, die laengst auf der
+	// Platte liegen.
+	w.durableSeq.Store(nextSeq - 1)
 	go w.runWriter()
 	return w, nil
 }
@@ -235,6 +258,36 @@ func Open(path string) (*WAL, error) {
 // survive a crash immediately after this call returns) if and only if err
 // is nil.
 func (w *WAL) Append(payload []byte) (uint64, error) {
+	seq, done, err := w.AppendAsync(payload)
+	if err != nil {
+		return 0, err
+	}
+	if err := <-done; err != nil {
+		return 0, err
+	}
+	return seq, nil
+}
+
+// AppendAsync vergibt die Seq SOFORT und liefert einen Kanal, der die
+// Haltbarkeit meldet.
+//
+// WARUM. Im keeper liegt der Append innerhalb der Shard-Sperre eines Kontos,
+// weil WAL-Seq und Saldo zusammen geordnet sein muessen. Solange der Append
+// bis zum fsync blockierte, hielt jede Ueberweisung ihre Shard-Sperre fuer
+// die Dauer eines Gruppen-Commits -- gemessen am 12.09.2026: 13 bis 19 ms.
+// Ueberweisungen desselben Absenders (ein Buendel von 100 aus einer Wallet)
+// liefen damit streng nacheinander, je eine Sync-Wartezeit, drei Sekunden
+// je Buendel. Der Schreiber war dabei zu 74 Prozent ausgelastet mit
+// Buendeln von 17 Datensaetzen: es kam nicht mehr an, weil alles wartete.
+//
+// Mit der Seq in der Hand kann der Aufrufer den Saldo aendern, die Sperre
+// freigeben und DANN auf die Haltbarkeit warten. Die Ordnung bleibt: Seq und
+// Saldo werden unter derselben Shard-Sperre gesetzt, und die Seqs werden in
+// Aufnahmereihenfolge geschrieben und synchronisiert. Quittiert wird erst
+// nach dem Sync -- der Haltbarkeitspunkt bleibt derselbe.
+//
+// Der Kanal hat Platz fuer eine Antwort; wer nicht liest, blockiert niemanden.
+func (w *WAL) AppendAsync(payload []byte) (uint64, <-chan error, error) {
 	req := &appendRequest{payload: payload, result: make(chan appendResult, 1)}
 	// Send while holding the READ lock, so many callers enqueue concurrently
 	// and Close cannot close the channel underneath one of them. Crucially
@@ -244,20 +297,49 @@ func (w *WAL) Append(payload []byte) (uint64, error) {
 	w.closeMu.RLock()
 	if w.closed {
 		w.closeMu.RUnlock()
-		return 0, errors.New("wal: append on closed WAL")
+		return 0, nil, errors.New("wal: append on closed WAL")
 	}
-	// ZWEI WARTEZEITEN, GETRENNT GEMESSEN: im Senden (nur wenn der Puffer
-	// voll ist) und auf das Ergebnis (bis der Schreiber das Buendel geschrieben
-	// und gesynct hat). Am 12.09.2026 kostete ein Append 13-19 ms bei einem
-	// Sync-Median von 1,5-2,2 ms; wo die Differenz steckt, entscheidet die
-	// naechste Massnahme.
+	// Seq vergeben und senden unter EINER Sperre, damit die Reihenfolge im
+	// Kanal die Seq-Reihenfolge ist -- der Schreiber schreibt in Kanalordnung.
 	t0 := time.Now()
+	w.seqMu.Lock()
+	req.seq = w.nextSeq
+	w.nextSeq++
 	w.appendCh <- req
+	w.seqMu.Unlock()
 	w.closeMu.RUnlock()
 	t1 := time.Now()
-	res := <-req.result
-	merkeAppendWarten(t1.Sub(t0), time.Since(t1))
-	return res.seq, res.err
+
+	done := make(chan error, 1)
+	go func() {
+		res := <-req.result
+		merkeAppendWarten(t1.Sub(t0), time.Since(t1))
+		done <- res.err
+	}()
+	return req.seq, done, nil
+}
+
+// DurableSeq ist die hoechste Seq, deren Buendel synchronisiert ist.
+func (w *WAL) DurableSeq() uint64 { return w.durableSeq.Load() }
+
+// WaitDurable wartet, bis seq synchronisiert ist -- hoechstens bis timeout.
+// Liefert false, wenn die Haltbarkeit nicht kam: Zeit abgelaufen, oder der
+// Schreiber hat einen Sync-Fehler gemeldet und wird sie nie liefern.
+func (w *WAL) WaitDurable(seq uint64, timeout time.Duration) bool {
+	if w.durableSeq.Load() >= seq {
+		return true
+	}
+	frist := time.Now().Add(timeout)
+	for time.Now().Before(frist) {
+		if w.syncDefekt.Load() {
+			return false
+		}
+		time.Sleep(200 * time.Microsecond)
+		if w.durableSeq.Load() >= seq {
+			return true
+		}
+	}
+	return w.durableSeq.Load() >= seq
 }
 
 // runWriter is the group-commit loop: block for the first pending Append,
@@ -344,10 +426,10 @@ func (w *WAL) writeBatch(batch []*appendRequest) {
 	assigned := make([]uint64, len(batch))
 	buf := make([]byte, 0, 256*len(batch))
 	for i, req := range batch {
-		seq := w.nextSeq
-		w.nextSeq++
-		assigned[i] = seq
-		buf = appendRecord(buf, seq, req.payload)
+		// Die Seq wurde bei der Aufnahme vergeben (AppendAsync); die
+		// Kanalordnung ist die Seq-Ordnung, also steigt sie hier monoton.
+		assigned[i] = req.seq
+		buf = appendRecord(buf, req.seq, req.payload)
 	}
 
 	// WriteAt into an already-sized file, then fdatasync. Appending would grow
@@ -386,6 +468,9 @@ func (w *WAL) writeBatch(batch []*appendRequest) {
 		// than risk a future successful Append silently colliding with one
 		// of THIS batch's un-persisted, already-assigned numbers.
 		err = fmt.Errorf("wal: batch write/sync failed: %w", err)
+		// Wer auf Haltbarkeit dieser Seqs wartet (WaitDurable), wuerde ewig
+		// warten: sie kommt nicht. Merken, damit das Warten endet.
+		w.syncDefekt.Store(true)
 		for _, req := range batch {
 			req.result <- appendResult{err: err}
 		}
@@ -397,6 +482,10 @@ func (w *WAL) writeBatch(batch []*appendRequest) {
 	// first one that does not parse, and their sequence numbers stay burned
 	// exactly as the failure path above describes.
 	w.writeOff += int64(len(buf))
+
+	// Haltbar bis zur letzten Seq dieses Buendels -- VOR den Antworten, damit
+	// niemand eine Quittung sieht, die DurableSeq noch nicht bestaetigt.
+	w.durableSeq.Store(assigned[len(assigned)-1])
 
 	for i, req := range batch {
 		req.result <- appendResult{seq: assigned[i]}
@@ -479,8 +568,8 @@ func (w *WAL) ensureCapacity(n int64) error {
 // from a trusted snapshot — see ChainState.markWALSupersededByStateReplacement
 // for the live corruption incident that made this necessary.
 func (w *WAL) HeadSeq() uint64 {
-	w.mu.Lock()
-	defer w.mu.Unlock()
+	w.seqMu.Lock()
+	defer w.seqMu.Unlock()
 	if w.nextSeq == 0 {
 		return 0
 	}
@@ -650,7 +739,13 @@ func (w *WAL) TruncateBefore(before uint64) error {
 		os.Remove(tmpPath)
 		return fmt.Errorf("wal: could not close compacted file: %w", err)
 	}
-	if err := writeSeqHighWaterMark(w.path, w.nextSeq-1); err != nil {
+	// Die Hochwassermarke ist die letzte VERGEBENE Seq, nicht die letzte
+	// geschriebene: eine vergebene, noch nicht geschriebene darf nach einem
+	// Neustart nie wieder vergeben werden. nextSeq gehoert seqMu.
+	w.seqMu.Lock()
+	hwm := w.nextSeq - 1
+	w.seqMu.Unlock()
+	if err := writeSeqHighWaterMark(w.path, hwm); err != nil {
 		os.Remove(tmpPath)
 		return fmt.Errorf("wal: could not persist sequence high-water mark: %w", err)
 	}

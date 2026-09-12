@@ -9,6 +9,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync/atomic"
 
 	"github.com/lib/pq"
 	"time"
@@ -102,6 +103,7 @@ type walTransferRecord struct {
 type walFlushItem struct {
 	from, to string
 	tx       Transaction
+	seq      uint64 // WAL-Seq der Ueberweisung; der Flush wartet auf ihre Haltbarkeit
 }
 
 // walFlushInterval originally mirrored evmMirrorFlushInterval/
@@ -309,9 +311,52 @@ func (cs *ChainState) initWALIfEnabled() {
 // Returns (fromLost, toLost, applied, err) with the exact same contract as
 // transferConcurrent — see that function's doc comment.
 func (cs *ChainState) transferConcurrentWAL(from, to string, amount float64, pendingTxTemplate Transaction) (fromLost, toLost float64, applied bool, err error) {
-	if cs.wal == nil {
+	fromLost, toLost, applied, err, haltbar := cs.transferConcurrentWALGesperrt(from, to, amount, pendingTxTemplate)
+	if haltbar == nil {
+		return fromLost, toLost, applied, err
+	}
+	// AUF DIE HALTBARKEIT WARTEN -- JETZT, AUSSERHALB ALLER SPERREN.
+	//
+	// Bis hierher ist der Saldo im Speicher geaendert und der WAL-Datensatz
+	// aufgenommen, aber noch nicht zwingend auf der Platte. Quittiert wird
+	// erst, wenn er es ist: der Haltbarkeitspunkt ist derselbe wie vorher.
+	// Nur wartet die Shard-Sperre nicht mehr mit -- Ueberweisungen desselben
+	// Kontos koennen ihre Datensaetze im selben Gruppen-Commit unterbringen,
+	// statt je einen abzuwarten. Siehe wal.AppendAsync.
+	if werr := <-haltbar; werr != nil {
+		// Der Saldo ist geaendert, der Datensatz nicht auf der Platte. Das
+		// ist ein Plattenfehler des WAL -- derselbe, der vorher den Rueckfall
+		// auf den langsamen Pfad ausloeste, nur dass jetzt schon mutiert
+		// wurde. Zuruecknehmen geht nicht sauber (das Konto kann inzwischen
+		// weiterbewegt worden sein); der Speicherstand traegt die
+		// Ueberweisung, der Flush bringt sie nach Postgres (er wartet bei
+		// defektem Sync nicht ewig, siehe flushWALBatch). Dem Aufrufer wird
+		// ein Fehler gemeldet -- wie bei einem abgebrochenen HTTP-Aufruf
+		// prueft eine Wallet dann den Beleg. Und der schnelle Pfad wird fuer
+		// alle Weiteren geschlossen, bis jemand hinsieht.
+		walSchnellpfadDefekt.Store(true)
+		fbAnhangFehler.Add(1)
+		fmt.Printf("[WAL] ✗ Haltbarkeit fuer %s->%s nicht erreicht, schneller Pfad geschlossen: %v\n", from, to, werr)
+		return 0, 0, true, fmt.Errorf("transfer applied but not durable: %w", werr)
+	}
+	return fromLost, toLost, applied, err
+}
+
+// walSchnellpfadDefekt schliesst den schnellen Pfad, sobald ein Buendel nicht
+// synchronisiert werden konnte. Ab dann geht alles den langsamen Weg ueber
+// Postgres -- so, wie es ohne WAL immer ging.
+var walSchnellpfadDefekt atomic.Bool
+
+// walFlushOhneHaltbarkeit zaehlt Flushes, die nicht auf die Haltbarkeit
+// warten konnten. Jeder einzelne ist ein Grund hinzusehen.
+var walFlushOhneHaltbarkeit atomic.Int64
+
+// transferConcurrentWALGesperrt ist der Teil unter den Sperren. haltbar ist
+// nil, wenn nichts aufgenommen wurde (Rueckfall oder Ablehnung).
+func (cs *ChainState) transferConcurrentWALGesperrt(from, to string, amount float64, pendingTxTemplate Transaction) (fromLost, toLost float64, applied bool, err error, haltbar <-chan error) {
+	if cs.wal == nil || walSchnellpfadDefekt.Load() {
 		fbKeinWAL.Add(1)
-		return 0, 0, false, nil
+		return 0, 0, false, nil, nil
 	}
 	// Phase clock. Recorded only when this path actually applies the transfer,
 	// so a bail to the batcher does not dilute the averages with work it never
@@ -323,14 +368,14 @@ func (cs *ChainState) transferConcurrentWAL(from, to string, amount float64, pen
 	// has been mutated or appended to the WAL yet at this point.
 	if cs.WALFlushQueueDepth() >= walFlushMaxQueueDepth {
 		fbWarteschlange.Add(1)
-		return 0, 0, false, nil
+		return 0, 0, false, nil, nil
 	}
 	ph.queue = time.Since(phMark)
 	if from == to {
-		return 0, 0, true, fmt.Errorf("self-transfer not allowed")
+		return 0, 0, true, fmt.Errorf("self-transfer not allowed"), nil
 	}
 	if amount <= 0 || math.IsNaN(amount) || math.IsInf(amount, 0) {
-		return 0, 0, true, fmt.Errorf("invalid transfer amount: %v", amount)
+		return 0, 0, true, fmt.Errorf("invalid transfer amount: %v", amount), nil
 	}
 
 	// GEMESSEN AM 29.08.2026 -- DIESE ZEILE IST JETZT DER ENGPASS.
@@ -411,7 +456,7 @@ func (cs *ChainState) transferConcurrentWAL(from, to string, amount float64, pen
 	ph.lock = time.Since(phMark)
 	if !ok {
 		fbShardBelegt.Add(1)
-		return 0, 0, false, nil
+		return 0, 0, false, nil, nil
 	}
 	defer unlock()
 	phMark = time.Now()
@@ -419,23 +464,23 @@ func (cs *ChainState) transferConcurrentWAL(from, to string, amount float64, pen
 	fromAcc, ok := cs.accounts.GetLocked(from)
 	if !ok {
 		fbKontoFehlt.Add(1)
-		return 0, 0, false, nil
+		return 0, 0, false, nil, nil
 	}
 	toAcc, ok := cs.accounts.GetLocked(to)
 	if !ok {
 		fbKontoFehlt.Add(1)
-		return 0, 0, false, nil
+		return 0, 0, false, nil, nil
 	}
 	if effectiveBalance(fromAcc) != fromAcc.Balance || effectiveBalance(toAcc) != toAcc.Balance {
 		fbDemurrage.Add(1)
-		return 0, 0, false, nil
+		return 0, 0, false, nil, nil
 	}
 	if fromAcc.Balance.Float() < amount {
-		return 0, 0, true, fmt.Errorf("insufficient balance")
+		return 0, 0, true, fmt.Errorf("insufficient balance"), nil
 	}
 	if hasCapAmt && toAcc.Balance.Float()+amount > capAmt {
 		fbWohlstandsCap.Add(1)
-		return 0, 0, false, nil
+		return 0, 0, false, nil, nil
 	}
 
 	// One instant, recorded in the WAL and used for the live stamp below, so a
@@ -445,11 +490,12 @@ func (cs *ChainState) transferConcurrentWAL(from, to string, amount float64, pen
 	payload, err := json.Marshal(walTransferRecord{From: from, To: to, Amount: amount, TxHash: pendingTxTemplate.TxHash, At: at})
 	if err != nil {
 		fbKodierung.Add(1)
-		return 0, 0, false, nil // encode failure -- nothing mutated, safe to fall back
+		return 0, 0, false, nil, nil // encode failure -- nothing mutated, safe to fall back
 	}
 	ph.apply = time.Since(phMark)
 	phMark = time.Now()
-	seq, err := cs.wal.Append(payload)
+	// Seq sofort, Haltbarkeit spaeter -- siehe transferConcurrentWAL oben.
+	seq, haltbarKanal, err := cs.wal.AppendAsync(payload)
 	ph.append_ = time.Since(phMark)
 	phMark = time.Now()
 	if err != nil {
@@ -457,7 +503,7 @@ func (cs *ChainState) transferConcurrentWAL(from, to string, amount float64, pen
 		// etc.) is a clean bail to the existing, proven paths, same as any
 		// other ineligibility. Not a hard error surfaced to the end user.
 		fbAnhangFehler.Add(1)
-		return 0, 0, false, nil
+		return 0, 0, false, nil, nil
 	}
 
 	// From here on the transfer IS durable regardless of anything below --
@@ -478,12 +524,12 @@ func (cs *ChainState) transferConcurrentWAL(from, to string, amount float64, pen
 	pendingTxTemplate.Amount = amount
 	pendingTxTemplate.FromDemurrageLost = 0
 	pendingTxTemplate.ToDemurrageLost = 0
-	cs.enqueueWALFlushLocked(from, to, pendingTxTemplate)
+	cs.enqueueWALFlushLocked(from, to, pendingTxTemplate, seq)
 	ph.enqueue = time.Since(phMark)
 	ph.record()
 	cs.markEVMMirrorDirtyForAddrsLocked(from, to)
 
-	return 0, 0, true, nil
+	return 0, 0, true, nil, haltbarKanal
 }
 
 // enqueueWALFlushLocked records one WAL-durable transfer as needing async
@@ -491,9 +537,9 @@ func (cs *ChainState) transferConcurrentWAL(from, to string, amount float64, pen
 // uses its own small mutex (not cs.mu, already held by the caller as
 // RLock) so this never contends with anything else — same shape as
 // markEVMMirrorDirtyLocked.
-func (cs *ChainState) enqueueWALFlushLocked(from, to string, tx Transaction) {
+func (cs *ChainState) enqueueWALFlushLocked(from, to string, tx Transaction, seq uint64) {
 	cs.walFlushMu.Lock()
-	cs.walFlushQueue = append(cs.walFlushQueue, walFlushItem{from: from, to: to, tx: tx})
+	cs.walFlushQueue = append(cs.walFlushQueue, walFlushItem{from: from, to: to, tx: tx, seq: seq})
 	cs.walFlushMu.Unlock()
 	cs.ensureWALFlushWorkerStarted()
 }
@@ -972,6 +1018,32 @@ func (cs *ChainState) flushWALBatch(batch []walFlushItem) error {
 
 	phSnapshot = time.Since(phMark)
 
+	// NICHTS NACH POSTGRES, WAS IM WAL NOCH NICHT AUF DER PLATTE IST.
+	//
+	// Seit AppendAsync wird der Saldo geaendert, BEVOR der WAL-Datensatz
+	// synchronisiert ist (quittiert wird trotzdem erst danach). Die
+	// Momentaufnahme hier kann also einen Saldo tragen, dessen Datensatz noch
+	// im Schreiber steckt. Landet der in Postgres und der Prozess stirbt vor
+	// dem Sync, hat Postgres eine Wirkung, die das WAL nie gesehen hat -- und
+	// das Gegenkonto, in einem anderen Flush, womoeglich nicht. Genau die
+	// Klasse, aus der die Geldmengenluecke vom 20.08.2026 stammte.
+	//
+	// Deshalb: bis zur hoechsten WALSeq der Momentaufnahme warten. Das ist
+	// im Normalfall ein Gruppen-Commit, Millisekunden. Kommt die Haltbarkeit
+	// nicht (Sync-Fehler), wird trotzdem geschrieben: der schnelle Pfad ist
+	// dann geschlossen (walSchnellpfadDefekt), und Postgres ist die einzige
+	// Wahrheit, die noch bleibt -- so, wie es ohne WAL immer war.
+	var hoechsteSeq uint64
+	for _, snap := range snapshots {
+		if snap.walSeq > hoechsteSeq {
+			hoechsteSeq = snap.walSeq
+		}
+	}
+	if cs.wal != nil && hoechsteSeq > 0 && !cs.wal.WaitDurable(hoechsteSeq, 2*time.Second) {
+		walFlushOhneHaltbarkeit.Add(1)
+		fmt.Printf("[WAL] ⚠ Flush schreibt Salden bis Seq %d nach Postgres, obwohl das WAL sie nicht als haltbar bestaetigt hat (Sync defekt oder zu langsam)\n", hoechsteSeq)
+	}
+
 	// Single multi-row UPSERT for every touched account. is_human/
 	// tusd_balance/lp_shares are intentionally not in the VALUES list, same
 	// as the old per-row statement -- they default to the schema's own
@@ -1236,7 +1308,9 @@ func (cs *ChainState) recoverFromWAL(path string) error {
 				// mismatch other nodes replaying only the transactions they
 				// actually received could not reproduce, i.e. a real, permanent
 				// fork risk for this validator, not just eventual-consistency lag.
-				cs.enqueueWALFlushLocked(rec.From, rec.To, Transaction{Type: "transfer", Wallet: rec.From, To: rec.To, Amount: rec.Amount, TxHash: rec.TxHash})
+				// Beim Wiederanlauf ist der Datensatz per Definition haltbar --
+				// er kommt aus der Datei. Seine Seq ist die aus der Datei.
+				cs.enqueueWALFlushLocked(rec.From, rec.To, Transaction{Type: "transfer", Wallet: rec.From, To: rec.To, Amount: rec.Amount, TxHash: rec.TxHash}, entry.Seq)
 			}
 		}
 		return nil
