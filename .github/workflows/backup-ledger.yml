@@ -28,11 +28,33 @@ name: Backup the ledger (scheduled + manual)
 # A dump that has never been restored is not a backup, it is a file. The
 # restore check is not optional here and the job fails if it does not pass.
 #
+# WAS GESICHERT WIRD -- UND WAS NICHT (Entscheidung vom 12.09.2026)
+#
+# Gesichert wird der ZUSTAND: Konten, Menschen, Nullifier, Konfiguration,
+# EVM-Speicher, Nonces, Validatoren, MPC-Anteile -- alles, was nur in dieser
+# Datenbank steht. Zusammen unter 200 MB, in Sekunden gedumpt.
+#
+# NICHT gesichert werden die Bloecke (chain_blocks, 14 GB am 12.09.2026 und
+# unter Last um mehrere GB je Tag wachsend) und was sich daraus ableitet
+# (chain_tx_batches, chain_tx_block_index, evm_tx_receipts, pending_txs).
+# Gruende, gemessen: der volle Dump brauchte 29,5 Minuten auf C1 und lief
+# auf C2 in das 30-Minuten-Zeitlimit -- jeden Tag rot, seit dem 11.09.; er
+# lief 20+ Minuten auf dem lebenden Validator, waehrend GitHub den 03:17-Cron
+# um Stunden verschob und er so mitten in Lasttests fiel; und 13 GB je Tag
+# und Box passen in kein Artefakt-Kontingent (die "Kopie" vom 12.09. war ein
+# nach 2,4 GB abgebrochener cp). Die Bloecke liegen auf JEDEM Validator;
+# ein Knoten holt sie sich vom Netz zurueck. Verliert das Netz ALLE
+# Validatoren zugleich, verliert es die Blockgeschichte, nicht den Kontostand
+# -- ein Neustart aus dem Zustand ist dann moeglich, ein Beweis der
+# Geschichte nicht. Wer die Geschichte zusaetzlich sichern will, braucht
+# Objektspeicher und einen inkrementellen Block-Export; das ist ein eigenes
+# Vorhaben, nicht dieser Cron.
+#
 # LIMITS, STATED PLAINLY
 #
-# - Artifact storage is bounded by the GitHub plan. At today's chain size the
-#   compressed dump is small; if it outgrows that, move the upload to object
-#   storage and keep the restore verification exactly as it is.
+# - Artifact storage is bounded by the GitHub plan. Der Zustands-Dump ist
+#   klein; waechst er ueber das Kontingent, gehoert der Upload in einen
+#   Objektspeicher -- die Pruefung bleibt, wie sie ist.
 # - This is a nightly point-in-time copy, not continuous archiving. Losing up
 #   to a day of blocks is survivable for a chain that can re-sync from its
 #   peers; losing BOTH databases is not, and that is the case this covers.
@@ -124,12 +146,22 @@ jobs:
             mkdir -p "$OUT"
             DUMP="$OUT/aequitas-${STAMP}.dump"
 
-            echo "=== pg_dump (custom format, compressed) ==="
+            echo "=== pg_dump (custom format, compressed; Zustand ohne Bloecke) ==="
             # -Fc so the restore check can use pg_restore and so the file is
             # compressed without a second pass. --no-owner/--no-acl so it can be
             # restored into a fresh database that has different role names.
+            # --exclude-table-data: die Tabellen bleiben im Schema, nur ihre
+            # Zeilen fehlen -- ein Restore ergibt eine Datenbank, an die sich
+            # ein Knoten anschliessen und die Bloecke vom Netz holen kann.
+            # Siehe Kopf der Datei, warum die Bloecke nicht mit hinein gehoeren.
             docker run --rm --network "$NET" -v "$OUT:/out" postgres:16-alpine \
-              pg_dump "$DATABASE_URL" -Fc --no-owner --no-acl -f "/out/$(basename "$DUMP")"
+              pg_dump "$DATABASE_URL" -Fc --no-owner --no-acl \
+                --exclude-table-data=chain_blocks \
+                --exclude-table-data=chain_tx_batches \
+                --exclude-table-data=chain_tx_block_index \
+                --exclude-table-data=evm_tx_receipts \
+                --exclude-table-data=pending_txs \
+                -f "/out/$(basename "$DUMP")"
 
             ls -lh "$DUMP"
             SIZE=$(stat -c %s "$DUMP")
@@ -191,10 +223,10 @@ jobs:
             echo "=== does the restored copy actually hold the ledger? ==="
             q() { docker run --rm --network "$NET" postgres:16-alpine psql "$VERIFY_URL" -t -A -c "$1"; }
             HUMANS="$(q "SELECT count(*) FROM chain_accounts WHERE is_human = true" || echo 0)"
-            BLOCKS="$(q "SELECT count(*) FROM chain_blocks" || echo 0)"
+            ACCOUNTS="$(q "SELECT count(*) FROM chain_accounts" || echo 0)"
             NULLS="$(q "SELECT count(*) FROM nullifiers" || echo 0)"
             SUPPLY="$(q "SELECT COALESCE(sum(balance),0) FROM chain_accounts" || echo 0)"
-            echo "restored: humans=${HUMANS} blocks=${BLOCKS} nullifiers=${NULLS} sum_balance=${SUPPLY}"
+            echo "restored: humans=${HUMANS} accounts=${ACCOUNTS} nullifiers=${NULLS} sum_balance=${SUPPLY} (Bloecke absichtlich nicht enthalten)"
 
             docker run --rm --network "$NET" postgres:16-alpine \
               psql "$ADMIN" -c "DROP DATABASE IF EXISTS ${VERIFY} WITH (FORCE);" >/dev/null || true
@@ -203,8 +235,8 @@ jobs:
               echo "pg_restore exited ${RESTORE_RC} — this dump is not restorable. Failing."
               exit 1
             fi
-            if [ "${HUMANS:-0}" -lt 1 ] || [ "${BLOCKS:-0}" -lt 1 ]; then
-              echo "The restored copy has humans=${HUMANS} blocks=${BLOCKS} — it restored, but it is empty. Failing."
+            if [ "${HUMANS:-0}" -lt 1 ] || [ "${ACCOUNTS:-0}" -lt 1 ]; then
+              echo "The restored copy has humans=${HUMANS} accounts=${ACCOUNTS} — it restored, but it is empty. Failing."
               exit 1
             fi
             echo "✓ dump restores cleanly and contains a real ledger"
