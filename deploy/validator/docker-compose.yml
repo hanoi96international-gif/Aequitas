@@ -1,0 +1,73 @@
+# Ein Aequitas-Validator in einem Befehl: `docker compose up -d --build`
+#
+# Zwei Container: Postgres (die Datenbank dieses Knotens, nur intern
+# erreichbar) und der Knoten (gebaut aus dem Quelltext dieses Repos, wie auf
+# den beiden Gruenderboxen). Konfiguration in .env -- siehe .env.example.
+#
+# Was hier steht, entspricht dem, was /root/deploy.sh auf Contabo 1 und 2
+# tut (Stand 12.09.2026): dasselbe Image, dieselben Volumes, dieselbe
+# Env-Datei, Neustart bei Absturz. Nur eben als Datei statt als Skript.
+#
+# Postgres-Einstellungen: dieselben wie auf den Gruenderboxen (gemessen,
+# siehe postgres-checkpoints.yml). synchronous_commit=off ist Absicht --
+# die Haltbarkeit der Ueberweisungen liegt im WAL des Knotens, nicht in
+# Postgres-Commits; fsync und full_page_writes bleiben an.
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: aequitas-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD in .env setzen}
+      POSTGRES_DB: aequitas
+    command: >
+      postgres
+      -c max_connections=250
+      -c shared_buffers=${POSTGRES_SHARED_BUFFERS:-1GB}
+      -c synchronous_commit=off
+      -c max_wal_size=8GB
+      -c checkpoint_timeout=15min
+      -c wal_compression=on
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d aequitas"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+    networks: [aequitas-net]
+
+  node:
+    build:
+      context: ../..
+      args:
+        GIT_COMMIT: ${GIT_COMMIT:-unknown}
+    image: aequitas-node:local
+    container_name: aequitas-node
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    env_file: .env
+    environment:
+      DATABASE_URL: postgres://postgres:${POSTGRES_PASSWORD}@postgres:5432/aequitas?sslmode=disable
+      AEQUITAS_WAL_ENABLED: "1"
+      AEQUITAS_WAL_PATH: /data/wal/aequitas_transfers.wal
+      GOMEMLIMIT: ${GOMEMLIMIT:-5GiB}
+      AUTO_HEAL_ON_DIVERGENCE: "true"
+    ports:
+      - "8080:8080"   # HTTP-API und Explorer
+      - "4001:4001"   # P2P
+    volumes:
+      - waldata:/data/wal
+    networks: [aequitas-net]
+
+volumes:
+  pgdata:
+  waldata:
+
+networks:
+  aequitas-net:
+    name: aequitas-net
