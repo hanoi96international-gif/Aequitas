@@ -1261,10 +1261,16 @@ func (a *APIServer) handleStatus(w http.ResponseWriter, r *http.Request) {
 		"total_humans": m.Humans,
 		"total_supply": fmt.Sprintf("%.2f AEQ", m.Supply),
 		"node_id":      a.p2pNode.GetNodeID(),
-		"uptime":       uptime,
-		"is_primary":   os.Getenv("IS_PRIMARY_NODE") == "true",
-		"block_time":   ConfiguredBlockTimeSeconds(), // read from the real constant (see its own comment) — never hand-typed again
-		"contract_v7":  V7_CONTRACT_ADDR,
+		// Die Signieradresse dieses Knotens -- oeffentlich (steht in jedem
+		// seiner Bloecke). Ein frischer Knoten holt sich hierueber den
+		// BOOTSTRAP_SIGNER fuer den Snapshot; ohne das Feld scheiterte die
+		// Ableitung immer (Probe 12.09.2026) und jeder neue Knoten fing bei
+		// Genesis an.
+		"validator_address": a.blockchain.SelfSigningAddress(),
+		"uptime":            uptime,
+		"is_primary":        os.Getenv("IS_PRIMARY_NODE") == "true",
+		"block_time":        ConfiguredBlockTimeSeconds(), // read from the real constant (see its own comment) — never hand-typed again
+		"contract_v7":       V7_CONTRACT_ADDR,
 		// P3-8: V5/V6 legacy addresses removed from status — minimise attack surface.
 		"bio_verifier": BIO_VERIFIER_ADDR,
 		"chain_evm_id": 1926,

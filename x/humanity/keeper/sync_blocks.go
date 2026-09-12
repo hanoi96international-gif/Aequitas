@@ -2335,11 +2335,27 @@ func (dag *BlockDAG) StartPeerDiscovery(selfURL string) {
 	selfURL = strings.TrimRight(NormalizeNodeURL(selfURL), "/")
 
 	fmt.Println("── Starting Peer Discovery ──────────────")
-	if selfURL == "" {
-		fmt.Println("[PEERS] SELF_URL not set — no peer sync (isolated node)")
-		return
+	// OHNE SELF_URL: nur ziehen, nicht anmelden.
+	//
+	// PROBE VOM 12.09.2026 (leerer Knoten auf einem Runner hinter NAT, drei
+	// Umgebungsvariablen): diese Funktion kehrte hier zurueck, also gab es
+	// keine Seeds, keinen Sync-Zyklus -- und damit auch kein Sync-Tor. Der
+	// Knoten produzierte ab Sekunde eins Block #1, #2, #3 ... auf einer
+	// eigenen Kette ab Genesis, schob sie per P2P an beide Validatoren und
+	// hatte nach 20 Minuten 1.200 eigene Bloecke bei "Hoehe 1.048" -- die
+	// Anzeige sah aus wie Fortschritt. Das ist der Fork-Flood-Vorfall vom
+	// 02.07.2026, diesmal aus der eigenen Anleitung heraus.
+	//
+	// Ziehen braucht keine eigene Adresse; nur die Anmeldung beim Seed (die
+	// dem Netz sagt, wo DIESER Knoten erreichbar ist). Ein Knoten hinter
+	// einem Router holt sich so die Kette und folgt ihr -- Validator wird er
+	// erst mit SELF_URL, und das sagt das Log ihm.
+	nurZiehen := selfURL == ""
+	if nurZiehen {
+		fmt.Println("[PEERS] SELF_URL not set — Bloecke werden von den Seeds gezogen, aber dieser Knoten meldet sich nirgends an (Beobachter, kein Validator). SELF_URL setzen, um mitzuproduzieren.")
+	} else {
+		fmt.Printf("[PEERS] Self: %s\n", selfURL)
 	}
-	fmt.Printf("[PEERS] Self: %s\n", selfURL)
 
 	// Seed from explicit PEER_NODES (backwards compat + manual override)
 	staticP := staticPeers(selfURL)
@@ -2366,6 +2382,10 @@ func (dag *BlockDAG) StartPeerDiscovery(selfURL string) {
 	if len(seeds) > 0 {
 		for _, seed := range seeds {
 			fmt.Printf("[PEERS] Seed: %s\n", seed)
+			if nurZiehen {
+				dag.startSyncForPeer(seed)
+				continue
+			}
 			ok := dag.registerAndDiscover(selfURL, seed)
 			// A seed never includes itself in its own peer list (/api/peers
 			// only contains registered secondary nodes). Start syncing from

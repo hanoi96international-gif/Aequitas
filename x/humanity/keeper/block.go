@@ -250,6 +250,11 @@ type BlockDAG struct {
 	evm    *EVMEngine // set by EVMRPCServer after construction; used by replayTransactions for ZK proof verification
 	nodeID string
 	height int64
+	// jemalsAufgeholt: hat dieser Prozess je alle Seeds sauber eingeholt?
+	// Entscheidet, ob der Notausstieg des Sync-Tors gelten darf -- siehe die
+	// Produktionssperre fuer frische Knoten in ProduceBlock.
+	jemalsAufgeholt       atomic.Bool
+	frischWartetMeldungen atomic.Int64
 	// heightSchnell spiegelt height, ist aber OHNE dag.mu lesbar.
 	//
 	// dag.Height() nimmt dag.mu.RLock(). Waehrend ein Block-Burst angewendet
@@ -2511,12 +2516,34 @@ func (dag *BlockDAG) ProduceBlock() *Block {
 	// never triggered — that only fires on NO progress) while permanently
 	// unable to produce (nothing it could ever be "caught up with"). Only
 	// require this gate when there is genuinely something to catch up with.
-	if dag.bootHeight > 0 && len(dag.trustedSeeds) > 0 {
+	// DER FRISCHE KNOTEN (bootHeight == 0) GEHOERT MIT HINEIN -- ohne den
+	// Notausstieg unten, bis er EINMAL aufgeholt hat.
+	//
+	// Probe vom 12.09.2026: ein leerer Knoten hat bootHeight 0, fiel damit
+	// an dieser Bedingung vorbei und produzierte ab Sekunde eins eine eigene
+	// Kette ab Genesis (1.200 Bloecke in 20 Minuten, alle an die echten
+	// Validatoren geschoben und dort verworfen). Der Notausstieg nach
+	// syncStallTimeout ist fuer einen Knoten MIT Geschichte richtig -- das
+	// Netz darf nicht stehen, weil ein Partner tot ist. Fuer einen Knoten,
+	// der noch nie an der Spitze war, ist er falsch: der kennt das Netz nicht
+	// und darf nichts erfinden. Er wartet, und das Log sagt, worauf.
+	frischUndNieAufgeholt := dag.bootHeight == 0 && !dag.jemalsAufgeholt.Load()
+	if (dag.bootHeight > 0 || frischUndNieAufgeholt) && len(dag.trustedSeeds) > 0 {
 		seeds := make([]string, 0, len(dag.trustedSeeds))
 		for s := range dag.trustedSeeds {
 			seeds = append(seeds, s)
 		}
-		if !dag.hasCaughtUpWithAllPeers(seeds) {
+		if dag.hasCaughtUpWithAllPeers(seeds) {
+			dag.jemalsAufgeholt.Store(true)
+		} else {
+			if frischUndNieAufgeholt {
+				noteGateSkip()
+				if dag.frischWartetMeldungen.Add(1)%30 == 1 {
+					fmt.Printf("[BLOCK] ⏳ Frischer Knoten: noch nie mit den Seeds gleichauf (Hoehe %d) — produziert nichts, bis er aufgeholt hat. Kein Notausstieg: ohne Geschichte gibt es nichts, worauf sich eine eigene Kette stuetzen koennte.\n", dag.heightSchnell.Load())
+				}
+				merkeProduktionsAusfall("frisch_noch_nie_aufgeholt")
+				return nil
+			}
 			// Same safety valve as the syncTargetHeight gate below, and for the
 			// same reason: unlike that gate, hasCaughtUpWithAllPeers has no
 			// timeout of its own, so a genuinely-unreachable seed (not just a

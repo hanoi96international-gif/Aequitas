@@ -81,8 +81,10 @@ jobs:
           grep -E "HTTP-SYNC|SYNC\]|BOOTSTRAP|RESYNC|Checkpoint|FINALITY" node.log | tail -40 || true
           echo "=== Fehler/Warnungen (letzte 40) ==="
           grep -E "✗|⚠|ERROR|panic|PANIC|degraded|DEGRADED" node.log | tail -40 || true
-          echo "=== Produktion? ==="
-          grep -cE "^\[Block #" node.log || true
+          echo "=== Eigene Bloecke (muessen 0 sein, solange er nicht aufgeholt hat) ==="
+          EIGENE=$(grep -cE "^\[Block #" node.log || true)
+          echo "eigene Bloecke: ${EIGENE:-0}"
+          grep -E "Frischer Knoten|frisch_noch|Beobachter" node.log | head -5 || true
           echo "=== Log-Ende (60 Zeilen) ==="
           tail -60 node.log
           echo "=== Urteil ==="
@@ -91,6 +93,7 @@ jobs:
           DAUER=$(( $(date +%s) - START ))
           echo "Laufzeit ${DAUER}s, Knoten bei $LETZTE, Netz bei ${SPITZE_ENDE:-?}, Abstand $ABSTAND, Hoehen/min: $(( LETZTE * 60 / (DAUER>0?DAUER:1) ))"
           if [ "$ABSTAND" -le 5 ] && [ "$LETZTE" -gt 0 ]; then echo "✓ SPITZE ERREICHT"; else echo "✗ NICHT AN DER SPITZE"; fi
+          if [ "${EIGENE:-0}" -gt 0 ] && [ "$LETZTE" -lt $(( ${SPITZE_START:-0} - 1000 )) ]; then echo "✗ EIGENE KETTE: der Knoten hat produziert, ohne an der Spitze zu sein"; fi
           kill $NODEPID 2>/dev/null || true
       - name: Log als Artefakt
         if: always()
