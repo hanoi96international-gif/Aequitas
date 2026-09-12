@@ -333,6 +333,11 @@ func (w *WAL) runWriter() {
 // commit's fundamental tradeoff (shared fate for a shared fsync) applies
 // here exactly as it does for the DB-transaction group commit this mirrors.
 func (w *WAL) writeBatch(batch []*appendRequest) {
+	// Auslastung des Schreibers: Zeit in writeBatch gegen Wandzeit. Bei
+	// nahe 100 % ist er die Decke, und nur schnellere Syncs oder ein zweiter
+	// Schreiber helfen; deutlich darunter steckt die Wartezeit woanders.
+	bStart := time.Now()
+	defer func() { writerBusy.Add(int64(time.Since(bStart))) }()
 	w.mu.Lock()
 	defer w.mu.Unlock()
 

@@ -49,6 +49,12 @@ func merkeAppendWarten(senden, ergebnis time.Duration) {
 	appendWarten.anzahl.Add(1)
 }
 
+// writerBusy summiert die Zeit in writeBatch; writerSeit ist der Start.
+var (
+	writerBusy atomic.Int64
+	writerSeit = time.Now()
+)
+
 var writerStats struct {
 	batches    atomic.Int64
 	records    atomic.Int64
@@ -108,6 +114,7 @@ func WriterStats() map[string]interface{} {
 		"write_avg_us":    avgWriteUs,
 		"sync_verteilung": SyncVerteilung(),
 		"append_warten":   appendWartenStand(),
+		"busy_pct":        float64(writerBusy.Load()) / float64(time.Since(writerSeit)) * 100,
 	}
 }
 
