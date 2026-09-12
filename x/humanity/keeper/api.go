@@ -1093,7 +1093,7 @@ func (a *APIServer) buildMux() *http.ServeMux {
 	mux.HandleFunc("/dapp", a.handleDapp)
 	mux.HandleFunc("/dapp.js", a.handleDappJS)
 	mux.HandleFunc("/download/app.apk", a.handleAppDownload)
-	for _, lg := range []string{"en", "de", "es", "fr", "id", "it", "pt", "tr"} {
+	for _, lg := range []string{"en", "de", "es", "fr", "id", "it", "pt", "tr", "ru", "zh", "ar", "hi"} {
 		lg := lg
 		up := strings.ToUpper(lg)
 		mux.HandleFunc("/download/node-guide-"+lg+".pdf", func(w http.ResponseWriter, r *http.Request) {
