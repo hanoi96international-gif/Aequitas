@@ -12,7 +12,7 @@ on:
   workflow_dispatch:
     inputs:
       art:
-        description: "heap (inuse: was gerade gehalten wird) oder allocs (alles je allokierte)"
+        description: "heap (was gehalten wird), allocs (alles je allokierte) oder profile (CPU, 30 Sekunden -- waehrend Last starten)"
         required: false
         default: "heap"
 jobs:
@@ -37,8 +37,10 @@ jobs:
             set +e
             mkdir -p /root/profil
             # 6061 ist NUR im Container gebunden -- deshalb ueber dessen Netz.
+            # profile = CPU ueber 30 s; die anderen sind Momentaufnahmen.
+            Q=""; [ "$ART" = "profile" ] && Q="?seconds=30"
             docker run --rm --network "container:aequitas-node" curlimages/curl:latest \
-              -s --max-time 120 "http://127.0.0.1:6061/debug/pprof/${ART}" > /root/profil/${ART}.pb.gz
+              -s --max-time 120 "http://127.0.0.1:6061/debug/pprof/${ART}${Q}" > /root/profil/${ART}.pb.gz
             ls -la /root/profil/${ART}.pb.gz
             # Das Binary dazu, sonst sind die Symbole nicht aufloesbar.
             docker cp aequitas-node:/app/aequitasd /root/profil/aequitasd 2>/dev/null || \
