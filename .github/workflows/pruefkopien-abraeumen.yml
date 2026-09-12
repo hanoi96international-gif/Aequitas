@@ -1,0 +1,32 @@
+name: Liegengebliebene Backup-Pruefkopien abraeumen (aequitas_restore_check_*)
+# Einmalig fuer den Bestand vom 12.09.2026; backup-ledger.yml raeumt ab jetzt
+# selbst zu Beginn jedes Laufs ab. Loescht NUR Datenbanken, deren Name mit
+# aequitas_restore_check_ beginnt -- Pruefkopien von Dumps, nie die Kette.
+on: {workflow_dispatch: {}}
+jobs:
+  d:
+    strategy: {max-parallel: 1, matrix: {box: [{name: "C2", host: "194.163.188.71", secret: "C2"}, {name: "C1", host: "173.249.37.118", secret: "C1"}]}}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ matrix.box.host }}
+          username: root
+          key: ${{ matrix.box.secret == 'C1' && secrets.CONTABO_SSH_KEY || secrets.CONTABO2_SSH_KEY }}
+          port: 22
+          script_stop: false
+          timeout: 900s
+          command_timeout: 900s
+          script: |
+            echo "##### ${{ matrix.box.name }} #####"
+            df -h / | tail -1
+            P="docker exec aequitas-postgres psql -U postgres -t -A -c"
+            for ALT in $($P "SELECT datname FROM pg_database WHERE datname LIKE 'aequitas_restore_check_%';"); do
+              G=$($P "SELECT pg_size_pretty(pg_database_size('$ALT'));")
+              echo "   entferne $ALT ($G)"
+              docker exec aequitas-postgres psql -U postgres -c "DROP DATABASE IF EXISTS \"$ALT\" WITH (FORCE);" >/dev/null || echo "   (fehlgeschlagen)"
+            done
+            echo "=== uebrig ==="
+            $P "SELECT datname||': '||pg_size_pretty(pg_database_size(datname)) FROM pg_database WHERE datname NOT IN ('template0','template1') ORDER BY pg_database_size(datname) DESC;"
+            df -h / | tail -1
+            curl -s --max-time 10 http://127.0.0.1:8080/api/health/combined | grep -oE '"stalled_seconds":[0-9]+' | head -1
