@@ -24,5 +24,10 @@ jobs:
             echo "=== Replikations-Slots (ein Slot ohne Abnehmer haelt pg_wal endlos) ==="
             docker exec aequitas-postgres psql -U postgres -d aequitas -t -A -c "SELECT slot_name||' | active='||active||' | zurueckgehalten='||pg_size_pretty(pg_wal_lsn_diff(pg_current_wal_lsn(), restart_lsn)) FROM pg_replication_slots;" 2>/dev/null || echo "(keine)"
             docker exec aequitas-postgres psql -U postgres -d aequitas -t -A -c "SELECT 'wal_keep_size='||setting||unit FROM pg_settings WHERE name='wal_keep_size';" 2>/dev/null
+            echo "=== ALLE Datenbanken im Cluster ==="
+            docker exec aequitas-postgres psql -U postgres -t -A -c "SELECT datname||': '||pg_size_pretty(pg_database_size(datname)) FROM pg_database ORDER BY pg_database_size(datname) DESC;" 2>/dev/null
+            echo "=== base/<oid> physisch gegen pg_database ==="
+            du -sh "$PG"/base/* 2>/dev/null | sort -h | tail -5
+            docker exec aequitas-postgres psql -U postgres -t -A -c "SELECT oid||' = '||datname FROM pg_database;" 2>/dev/null
             echo "=== Basisverzeichnis: groesste Relationen physisch ==="
             docker exec aequitas-postgres psql -U postgres -d aequitas -t -A -c "SELECT relname||': '||pg_size_pretty(pg_total_relation_size(oid)) FROM pg_class WHERE relkind IN ('r','i','t') ORDER BY pg_total_relation_size(oid) DESC LIMIT 8;" 2>/dev/null
