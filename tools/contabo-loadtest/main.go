@@ -460,11 +460,17 @@ const batchSize = 10
 // this, funding was a sequential loop with a 20ms pace ("gentle pace, this is
 // not the stress test") — fine for 150 accounts, but 40+ seconds for the
 // thousands of senders a 50,000/s run actually needs.
+// Generator-Phasen: Vorbereiten (Signieren, Kodieren) gegen Warten auf den
+// Knoten, je Buendel. 350 Paare liefen, aber nur 150 standen je im Knoten --
+// ob der Generator oder der Knoten die Decke ist, entscheidet diese Trennung.
+var genVorbereitet, genWarten, genAufrufe atomic.Int64
+
 func (c *rpcClient) sendValueBatch(from *account, toAddrs []string, amountWei *big.Int) (int, error) {
 	n := len(toAddrs)
 	if n == 0 {
 		return 0, nil
 	}
+	genStart := time.Now()
 	signer := types.NewEIP155Signer(big.NewInt(chainID))
 	reqs := make([]rpcReq, 0, n)
 	for i := 0; i < n; i++ {
@@ -493,7 +499,11 @@ func (c *rpcClient) sendValueBatch(from *account, toAddrs []string, amountWei *b
 		return 0, err
 	}
 	req.Header.Set("Content-Type", "application/json")
+	genVorbereitet.Add(int64(time.Since(genStart)))
+	httpStart := time.Now()
 	resp, err := c.hc.Do(req)
+	genWarten.Add(int64(time.Since(httpStart)))
+	genAufrufe.Add(1)
 	if err != nil {
 		return 0, err
 	}
@@ -1380,6 +1390,12 @@ func main() {
 		fmt.Printf("=== run phase done ===\n")
 		fmt.Printf("elapsed: %s  succeeded: %d  failed: %d\n", elapsed, succeeded, failed)
 		fmt.Printf("TPS (succeeded/elapsed): %.1f\n", float64(succeeded)/elapsed.Seconds())
+		if k := genAufrufe.Load(); k > 0 {
+			v := time.Duration(genVorbereitet.Load() / k)
+			w := time.Duration(genWarten.Load() / k)
+			fmt.Printf("=== GENERATOR je Buendel: vorbereiten (signieren+kodieren) %s | warten auf den Knoten %s | Anteil Generator %.0f%% ===\n",
+				v.Round(time.Millisecond), w.Round(time.Millisecond), 100*float64(v)/float64(v+w))
+		}
 		printErrTally(errTally)
 		// Die Zahl darueber ist die ANNAHMERATE: was der Knoten quittiert hat.
 		// Sie ist nicht der Durchsatz der Kette. Am 06.09.2026 quittierte C2
