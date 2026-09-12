@@ -148,7 +148,13 @@ const MaxBatchSize = 500
 // specific noise down to the microsecond. Re-measure if real staging
 // hardware's fsync latency turns out meaningfully different from this
 // sandbox's.
-const MaxBatchWait = 1 * time.Millisecond
+//
+// 2026-09-12: auf 0 gesetzt -- kein Fenster, nur die Warteschlange leeren.
+// Siehe runWriter: unter Last buendelt der fdatasync selbst, und ein Fenster
+// obendrauf verlaengert nur jeden Zyklus. Die Messreihe oben zeigt bereits
+// "kleiner ist besser" bis an die Grenze des Messbaren; Null ist die Grenze.
+// Rueckweg ohne Deploy: AEQUITAS_WAL_MAX_BATCH_WAIT_US=1000.
+const MaxBatchWait = 0
 
 // Open opens path for appending, creating it if it does not exist, and
 // scans any existing content to determine the next sequence number —
@@ -264,7 +270,40 @@ func (w *WAL) runWriter() {
 		batch := []*appendRequest{first}
 		// Ueber die Umgebung einstellbar, Vorgabe unveraendert -- siehe
 		// batch_tuning.go fuer die Messung, die das noetig macht.
-		timer := time.NewTimer(batchWait())
+		warte := batchWait()
+		if warte <= 0 {
+			// NUR LEEREN, NICHT WARTEN.
+			//
+			// Unter Last buendelt der Sync selbst: alles, was waehrend eines
+			// fdatasync ankommt, steht danach im Kanal und bildet den naechsten
+			// Batch. Ein Sammelfenster OBENDRAUF -- seriell, nach jedem Sync --
+			// verlaengert nur jeden Zyklus, ohne den Batch zu vergroessern.
+			// Gemessen am 12.09.2026: ein Append wartete 12,4 ms bei einem
+			// Zyklus aus 1 ms Fenster + 0,5 ms Schreiben + 4,1 ms Sync, also
+			// gut zwei Zyklen. Bei sparsamem Verkehr (Abstaende ueber dem
+			// Fenster) hat das Fenster ohnehin nie etwas gebuendelt, nur
+			// verzoegert. Die Messreihe, die zu 1 ms fuehrte (3 ms schlechter,
+			// 300-500 us gleich), zeigt in dieselbe Richtung: kleiner ist
+			// besser, und Null ist die Grenze.
+			//
+			// Was im Kanal liegt, wird ohne zu blockieren abgeholt -- bis zum
+			// Deckel; der Rest bildet den uebernaechsten Batch.
+		leeren:
+			for len(batch) < batchSize() {
+				select {
+				case req, ok := <-w.appendCh:
+					if !ok {
+						break leeren
+					}
+					batch = append(batch, req)
+				default:
+					break leeren
+				}
+			}
+			w.writeBatch(batch)
+			continue
+		}
+		timer := time.NewTimer(warte)
 	collect:
 		for len(batch) < batchSize() {
 			select {

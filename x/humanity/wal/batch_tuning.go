@@ -65,7 +65,9 @@ func batchSize() int {
 
 // batchWait liefert das geltende Sammelfenster.
 func batchWait() time.Duration {
-	if n, ok := zahlAusUmgebung(maxBatchWaitEnv); ok && n > 0 {
+	// Eine ausdrueckliche 0 heisst: kein Fenster, nur die Warteschlange
+	// leeren (siehe runWriter). Ein unbrauchbarer Wert ergibt die Vorgabe.
+	if n, ok := zahlAusUmgebung(maxBatchWaitEnv); ok && n >= 0 {
 		return time.Duration(n) * time.Microsecond
 	}
 	return MaxBatchWait
