@@ -95,7 +95,7 @@ func sperrWachhundStarten(wer string) func() {
 func interessanteGoroutinen() []string {
 	puffer := make([]byte, 1<<20)
 	n := runtime.Stack(puffer, true)
-	var raus []string
+	var halter, andere []string
 	for _, block := range strings.Split(string(puffer[:n]), "\n\n") {
 		if !strings.Contains(block, "humanity/keeper") {
 			continue
@@ -143,16 +143,20 @@ func interessanteGoroutinen() []string {
 				}
 			}
 		}
+		// NICHT WAEHREND DES SAMMELNS DECKELN. Der Abzug vom 12.09.2026 (zweiter
+		// Anlauf) war voll mit schlafenden Hintergrund-Goroutines, bevor die
+		// Iteration den Halter erreichte -- ein Deckel, der frueh greift, sieht
+		// ihn nie. Erst alles sichten, dann Verdaechtige zuerst, dann der Rest.
 		if halterVerdacht {
-			raus = append([]string{"HALTER? " + kurz}, raus...)
+			halter = append(halter, "HALTER? "+kurz)
 		} else {
-			raus = append(raus, kurz)
-		}
-		if len(raus) >= 12 {
-			break
+			andere = append(andere, kurz)
 		}
 	}
-	return raus
+	if len(andere) > 6 {
+		andere = andere[:6]
+	}
+	return append(halter, andere...)
 }
 
 // SperrWachhundStand meldet, wie oft und wie lange gewartet wurde.
