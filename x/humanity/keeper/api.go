@@ -716,11 +716,14 @@ func (a *APIServer) handleCombinedHealth(w http.ResponseWriter, r *http.Request)
 		// The WAL flush loop, which a mutex profile identified as the single
 		// largest source of lock contention in the node (45.21%). addrs_per_flush
 		// and hold_avg_ms are the two numbers that explain it; see wal_tuning.go.
-		"wal_flush":     WALFlushStats(),
-		"admission":     AdmissionStats(),
-		"wal_writer":    wal.WriterStats(),
-		"wal_vornuller": a.state.WALVornullerStand(),
-		"tx_index":      TxIndexStats(),
+		"wal_flush":      WALFlushStats(),
+		"admission":      AdmissionStats(),
+		"wal_writer":     wal.WriterStats(),
+		"wal_vornuller":  a.state.WALVornullerStand(),
+		"tx_index":       TxIndexStats(),
+		"receipt_flush":  a.blockchain.state.ReceiptFlushStand(),
+		"tx_batch_cache": a.blockchain.state.TxBatchCacheStand(),
+		"push_gzip":      GzipPushStand(),
 		// The request split, so the ~50ms per transfer that TransferAtomic does
 		// not account for can be subtracted out instead of guessed at. Read
 		// unaccounted_in_send_ms first; see rpc_phase_stats.go.
@@ -1017,6 +1020,7 @@ func (a *APIServer) buildMux() *http.ServeMux {
 	mux.HandleFunc("/api/status", a.handleStatus)
 	mux.HandleFunc("/api/events", a.handleBlockEvents)
 	mux.HandleFunc("/api/health/combined", a.handleCombinedHealth)
+	mux.HandleFunc("/api/produktion", a.handleProduktionsProtokoll)
 	mux.HandleFunc("/api/debug/stateroot-components", a.handleStateRootComponents)
 	mux.HandleFunc("/api/debug/dag-gates", a.handleDAGGates)
 	mux.HandleFunc("/api/blocks", countEndpoint(&statBlocks, a.handleBlocks))
@@ -1906,7 +1910,11 @@ func (a *APIServer) handleBlockPush(w http.ResponseWriter, r *http.Request) {
 	// Unlike the libp2p path's old bug, this one fails LOUDLY (413, via
 	// tooLarge below) rather than silently truncating — still a real
 	// functional ceiling, just a visible one instead of a silent one.
-	body, tooLarge, err := readBodyLimited(w, r, maxBlockStreamBytes)
+	// Faehigkeit auf JEDER Antwort dieses Handlers, auch auf Fehlern -- der
+	// Sender lernt daraus, dass er den Rumpf gepackt mitschicken darf.
+	// Siehe push_gzip.go.
+	w.Header().Set(gzipPushHeader, gzipPushToken)
+	body, tooLarge, err := readPushBody(w, r, maxBlockStreamBytes)
 	if tooLarge {
 		jsonError(w, "request body too large", http.StatusRequestEntityTooLarge)
 		return

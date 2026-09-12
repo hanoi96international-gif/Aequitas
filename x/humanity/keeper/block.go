@@ -2233,9 +2233,21 @@ func (dag *BlockDAG) ProduceBlock() *Block {
 	// ausgeschlossen.
 	var pbSperren, pbDbPaar, pbBauen, pbSpeichern, pbVerteilen time.Duration
 	var pbTxAnzahl int
+	ausfaelleVorher := produktionAusfallGesamt()
 	defer func() {
 		d := time.Since(produceStart)
 		merkeProduktionsBlock(d, pbSperren, pbDbPaar, pbBauen, pbSpeichern, pbVerteilen, pbTxAnzahl)
+		// Zeitreihe je Versuch -- siehe produktion_protokoll.go.
+		e := produktionsEintrag{
+			At: produceStart.UnixMilli(), Hoehe: dag.heightSchnell.Load(), Txs: pbTxAnzahl,
+			Deckel: peerLagLetzterCap.Load(), Rueckstand: peerLagLetzterLag.Load(),
+			GesamtMs: float64(d) / 1e6, SperrenMs: float64(pbSperren) / 1e6,
+			DbPaarMs: float64(pbDbPaar) / 1e6, SpeichernMs: float64(pbSpeichern) / 1e6,
+		}
+		if produktionAusfallGesamt() > ausfaelleVorher {
+			e.Grund, _ = produktionLetzterGrnd.Load().(string)
+		}
+		merkeProduktionsProtokoll(e)
 		if d > 500*time.Millisecond {
 			fmt.Printf("[BLOCK] ⏱ ProduceBlock itself took %s\n", d)
 		}
