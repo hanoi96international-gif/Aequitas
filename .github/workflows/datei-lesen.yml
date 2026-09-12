@@ -1,0 +1,33 @@
+name: Datei von einer Box lesen (nur lesen)
+# Zeigt eine Datei der Box, Geheimnisse ausgeblendet (Zeilen mit KEY, TOKEN,
+# SECRET, PASSWORD, DATABASE_URL werden maskiert). Fuer Runbooks: wie sieht
+# deploy.sh wirklich aus, was steht in .aequitas.env (Namen, nicht Werte).
+on:
+  workflow_dispatch:
+    inputs:
+      pfad: {description: "Dateipfad auf der Box", required: true}
+      box: {description: "C1 | C2", required: false, default: "C1"}
+jobs:
+  l:
+    strategy:
+      fail-fast: false
+      matrix: {box: [{name: "C1", host: "173.249.37.118", secret: "C1"}, {name: "C2", host: "194.163.188.71", secret: "C2"}]}
+    runs-on: ubuntu-latest
+    steps:
+      - if: ${{ inputs.box == matrix.box.name }}
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ matrix.box.host }}
+          username: root
+          key: ${{ matrix.box.secret == 'C1' && secrets.CONTABO_SSH_KEY || secrets.CONTABO2_SSH_KEY }}
+          port: 22
+          script_stop: false
+          timeout: 120s
+          command_timeout: 120s
+          envs: PFAD
+          script: |
+            echo "##### ${{ matrix.box.name }}: $PFAD #####"
+            ls -la "$PFAD"
+            sed -E 's/^([A-Za-z_]*(KEY|TOKEN|SECRET|PASSWORD|DATABASE_URL|PRIVATE)[A-Za-z_]*)=.*/\1=<ausgeblendet>/' "$PFAD" | head -400
+        env:
+          PFAD: ${{ inputs.pfad }}
