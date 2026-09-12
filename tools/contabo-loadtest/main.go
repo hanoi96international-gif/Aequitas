@@ -1633,6 +1633,16 @@ func kettenDurchsatz(statusURL string, von, bis time.Time, vonHoehe int64) {
 	fmt.Printf("=== KETTENDURCHSATZ (was wirklich in Bloecken landete) ===\n")
 	fmt.Printf("  %d Bloecke ueber %.1f s, davon %d leer (%.0f%%)\n",
 		bloecke, spanne, leere, 100*float64(leere)/nenner)
+	// Das Zaehlfenster offenlegen: ohne diese Zeile war am 12.09.2026 nicht
+	// zu klaeren, ob 1.224 Bloecke in 385 s eine echte Produktionsrate oder
+	// ein Zaehlfehler waren -- die Hoehe waechst unter Last schneller als
+	// ein Takt je Sekunde, weil die Validatoren einander ueberspringen.
+	hoehen := st.Height - vonHoehe
+	if hoehen < 1 {
+		hoehen = 1
+	}
+	fmt.Printf("  Zaehlfenster: Hoehe %d -> %d (%d Hoehen, %.2f Bloecke je Hoehe)\n",
+		vonHoehe, st.Height, st.Height-vonHoehe, float64(bloecke)/float64(hoehen))
 	for p, z := range je {
 		kurz := p
 		if len(kurz) > 12 {
