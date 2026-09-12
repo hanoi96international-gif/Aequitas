@@ -88,3 +88,27 @@ func TestStateRoot_UebereinstimmungSetztBeideZaehlerZurueck(t *testing.T) {
 		}
 	}
 }
+
+// Der zweite Fehlalarm derselben Klasse, einen Tag spaeter: unter Last
+// ueberspringen sich die Validatoren, ich produziere nicht an der Hoehe des
+// fremden Blocks, und der Geschwister-Filter greift nicht. Mein Zustand
+// enthaelt aber Tausende angenommene, noch nicht verblockte Ueberweisungen --
+// der Root des fremden Blocks kann sie nicht kennen. Die Selbstheilung loeste
+// einen Resync aus, und die Hoehe stand 15 Sekunden.
+func TestStateRoot_LokaleUeberweisungenMachenDenVergleichUnscharf(t *testing.T) {
+	body := quelleLesen(t, "block.go")
+	if !strings.Contains(body, "letzteEigeneUeberweisungNs.Load()") {
+		t.Fatal("die Zaehlstelle prueft nicht mehr, ob dieser Knoten gerade Ueberweisungen " +
+			"annimmt. Unter Last liegt dann jede fremde Abweichung im Topf der echten, und " +
+			"die Selbstheilung haelt die Kette an -- am 12.09.2026 fuer 15 Sekunden bei " +
+			"11.000 angenommenen Ueberweisungen je Sekunde.")
+	}
+	i := strings.Index(body, "geschwisterbedingt := dag.ownsProducedHeight(block.Height)")
+	if i < 0 || !strings.Contains(body[i:i+120], "lokaleUnschaerfe") {
+		t.Error("die lokale Unschaerfe fliesst nicht in geschwisterbedingt ein")
+	}
+	st := quelleLesen(t, "state.go")
+	if !strings.Contains(st, "letzteEigeneUeberweisungNs.Store(time.Now().UnixNano())") {
+		t.Error("TransferAtomic setzt den Zeitstempel nicht mehr -- die Unschaerfe waere dann nie erkennbar")
+	}
+}

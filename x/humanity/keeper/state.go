@@ -4771,7 +4771,15 @@ func (cs *ChainState) Transfer(from, to string, amount float64) (float64, float6
 // both would just repeat the same checks twice for nothing. cs.wal is nil
 // by default, so this branch does not change behavior for any node that
 // hasn't explicitly opted in.
+// letzteEigeneUeberweisungNs ist der Zeitpunkt der letzten hier angenommenen
+// Ueberweisung. Solange der juenger als ein paar Sekunden ist, traegt der
+// lokale Zustand Ueberweisungen, die noch in keinem Block sind -- und ein
+// StateRoot-Vergleich mit einem fremden Block kann nicht aufgehen. Siehe
+// die Zaehlstelle in replayTransactions.
+var letzteEigeneUeberweisungNs atomic.Int64
+
 func (cs *ChainState) TransferAtomic(from, to string, amount float64, pendingTxTemplate Transaction) (fromLost, toLost float64, err error) {
+	letzteEigeneUeberweisungNs.Store(time.Now().UnixNano())
 	// Time the whole call. Throughput has sat near 1,264/s while the node used
 	// 244% of 600% available CPU with no lock contention, no connection waits
 	// and only 6% of samples in database syscalls — so transfers are spending

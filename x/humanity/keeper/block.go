@@ -6131,6 +6131,19 @@ func replayBackoffFor(failCount int) time.Duration {
 // nodes that fired 2 seconds apart on the same calendar round — see the
 // call site's own historical comment for the derivation ("20:00:01 vs
 // 20:00:03").
+// blockTraegtAusschuettung sagt, ob distributionRoundToSkip fuer diesen Block
+// ueberhaupt etwas zu entscheiden haette -- genau die beiden Typen, die es
+// ansieht. Fuer alle anderen Bloecke ersparen sich zwei Datenbanklesungen
+// unter der DAG-Sperre.
+func blockTraegtAusschuettung(txs []Transaction) bool {
+	for i := range txs {
+		if txs[i].Type == "distribution_round_marker" || txs[i].Type == "ubi_distribution_finalize" {
+			return true
+		}
+	}
+	return false
+}
+
 func distributionRoundToSkip(txs []Transaction, lastDistributionRoundAt, lastUBIAt int64) int64 {
 	skip := int64(0)
 	for _, tx := range txs {
@@ -6345,10 +6358,21 @@ func (dag *BlockDAG) replayTransactions(block *Block, force bool) (ok bool) {
 	// own comment for why conflating them would be wrong. The finalize-based
 	// check is kept alongside it rather than replaced, so a block from a node
 	// on either side of this exact deploy is still handled correctly.
+	// NUR LESEN, WENN DER BLOCK EINE AUSSCHUETTUNG TRAEGT. Das sind zwei
+	// Postgres-Roundtrips unter der DAG-Sperre, und sie entscheiden nur
+	// ueber die Tagesausschuettung -- die ein Block am Tag traegt. Fuer
+	// jeden anderen Block sind sie umsonst, und unter Last nicht billig:
+	// der Sperren-Wachhund fand am 12.09.2026 den Replay in genau dieser
+	// Lesung (getConfigValueDB, "IO wait"), waehrend ProduceBlock 1,7 s auf
+	// die Sperre wartete und die Hoehe stand. Postgres war derweil mit dem
+	// Flush von 11.000 Ueberweisungen je Sekunde beschaeftigt.
 	var lastRoundAt, lastUBIAt int64
-	fmt.Sscan(dag.state.getConfigValueDB("last_distribution_round_at"), &lastRoundAt)
-	fmt.Sscan(dag.state.getConfigValueDB("last_ubi_at"), &lastUBIAt)
-	skipDistributionRound := distributionRoundToSkip(block.Transactions, lastRoundAt, lastUBIAt)
+	var skipDistributionRound int64
+	if blockTraegtAusschuettung(block.Transactions) {
+		fmt.Sscan(dag.state.getConfigValueDB("last_distribution_round_at"), &lastRoundAt)
+		fmt.Sscan(dag.state.getConfigValueDB("last_ubi_at"), &lastUBIAt)
+		skipDistributionRound = distributionRoundToSkip(block.Transactions, lastRoundAt, lastUBIAt)
+	}
 
 	touchedAddrs, needsFullSnapshot := blockTouchedAddresses(block)
 	// FIX (audit recheck3, P0/P1 — "Block-Replay-Rollback ist nicht gegen
@@ -7263,7 +7287,25 @@ func (dag *BlockDAG) replayTransactions(block *Block, force bool) (ok bool) {
 			// stecken die eigenen Transaktionen im lokalen Zustand und der
 			// Vergleich kann gar nicht aufgehen. Wenn nein, ist er
 			// aussagekraeftig -- und nur dann zaehlt er fuer die Selbstheilung.
-			geschwisterbedingt := dag.ownsProducedHeight(block.Height)
+			// ZWEI QUELLEN DER UNSCHAERFE, beide harmlos:
+			//
+			// 1. Ich habe an derselben Hoehe selbst produziert (Geschwister).
+			//
+			// 2. Ich habe in den letzten Sekunden Ueberweisungen angenommen,
+			//    die in noch keinem Block sind. Mein Zustand enthaelt sie, der
+			//    Root des fremden Blocks nicht -- egal an welcher Hoehe. Das
+			//    fehlte am 12.09.2026: unter Last ueberspringen sich die
+			//    Validatoren (Leapfrog), ich produziere NICHT an der Hoehe des
+			//    fremden Blocks, Punkt 1 griff nicht, jede Abweichung zaehlte
+			//    als echt, die Selbstheilung loeste einen Resync aus, und die
+			//    Hoehe stand 15 Sekunden -- bei 11.000 angenommenen
+			//    Ueberweisungen je Sekunde, die alle in meinem Zustand lagen.
+			//
+			// Ein StateRoot-Vergleich sagt nur dann etwas, wenn dieser Knoten
+			// ruht. Unter Last sagt er nichts, und die Selbstheilung darf
+			// sich dann nicht auf ihn stuetzen.
+			lokaleUnschaerfe := time.Since(time.Unix(0, letzteEigeneUeberweisungNs.Load())) < 5*time.Second
+			geschwisterbedingt := dag.ownsProducedHeight(block.Height) || lokaleUnschaerfe
 
 			dag.stateRootMismatchesMu.Lock()
 			// Faul anlegen statt sich auf den Konstruktor zu verlassen. Ein
