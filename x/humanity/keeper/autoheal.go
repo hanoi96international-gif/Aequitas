@@ -533,6 +533,37 @@ func (dag *BlockDAG) StartDivergenceAutoHeal(bootstrapURL, signer, primaryURL st
 				if echt < autoHealMismatchThreshold {
 					return
 				}
+				// KEIN RESYNC MEHR AUS DIESEM SIGNAL -- nur noch eine Meldung.
+				//
+				// Drei Anlaeufe in zwei Tagen, das Signal zu entschaerfen:
+				// Geschwister an derselben Hoehe (11.09.), lokale Ueberweisungen
+				// der letzten fuenf Sekunden (12.09. frueh), und trotzdem am
+				// 12.09. mittags wieder ein Resync: C2s Annahme stockte durch
+				// einen Datenbankabzug, fuenf Sekunden vergingen ohne eigene
+				// Ueberweisung, und die tausenden noch unverblockten Transfers
+				// im lokalen Zustand liessen jeden fremden Block "abweichen".
+				// Der Resync truncierte chain_accounts unter Last -- und der
+				// Knoten stand.
+				//
+				// Der Grund ist strukturell, nicht ein fehlender Filter: der
+				// StateRoot hasht den NACHzustand einschliesslich aller lokal
+				// angenommenen, noch nicht verblockten Ueberweisungen. Zwei
+				// Knoten mit verschiedenen Mempools haben verschiedene Roots,
+				// und ein Knoten, der gerade nicht produziert, behaelt seine.
+				// Das Launch-Gate-Audit vom 09.09. sagte es: "StateRoot is
+				// warning-only, not consensus." Als Warnung bleibt er; als
+				// Ausloeser einer Zustandsersetzung ist er gefaehrlicher als
+				// jede Divergenz, die er je gefunden hat. Echte Forks faengt
+				// die Hash-Pruefung gegen den Primary (drei Treffer, per
+				// Hash), echte Stillstaende der Hoehenwaechter.
+				//
+				// Wer ihn bewusst wieder scharf schalten will:
+				// AEQUITAS_AUTOHEAL_STATEROOT=1.
+				if os.Getenv("AEQUITAS_AUTOHEAL_STATEROOT") != "1" {
+					stateRootResyncUnterdrueckt.Add(1)
+					fmt.Printf("[AUTO-HEAL] %d echte StateRoot-Abweichungen in 10 Minuten — als Ausloeser abgeschaltet (siehe autoheal.go), nur Meldung\n", echt)
+					return
+				}
 				dag.triggerAutoResync(fmt.Sprintf("%d echte StateRoot-Abweichungen in den letzten 10 Minuten (geschwisterbedingte ausgenommen) — dieser Knoten ist von seinen Peers abgewichen", echt))
 			})
 		}
@@ -921,6 +952,11 @@ func (dag *BlockDAG) runChainDivergenceCheckOnce(primaryURL string, unsettledSin
 // Primary unseren Block nicht kannte; chainDivergenceGeschwister zaehlt die
 // harmlosen Faelle (anderer kanonischer Block, aber unserer ist bekannt).
 var chainDivergenceFolge, chainDivergenceGeschwister atomic.Int64
+
+// stateRootResyncUnterdrueckt zaehlt, wie oft das StateRoot-Signal einen
+// Resync ausgeloest HAETTE. Jeder Zaehlerstand ueber 0 ist ein Stillstand,
+// den es nicht gab.
+var stateRootResyncUnterdrueckt atomic.Int64
 
 // fetchPrimaryHasBlock fragt den Primary nach einem Block per Hash. bekannt
 // ist nur bei ok aussagekraeftig: ein Netzfehler ist kein "unbekannt".

@@ -139,3 +139,23 @@ func TestForkPruefung_FragtDenPrimaryNachDemHashUndBrauchtDreiTreffer(t *testing
 			"Netz- oder Ordnungsmoment darf keinen Resync ausloesen")
 	}
 }
+
+// Nach drei Anlaeufen in zwei Tagen: der StateRoot loest keinen Resync mehr
+// aus. Er hasht den Nachzustand einschliesslich aller lokal angenommenen,
+// noch nicht verblockten Ueberweisungen -- zwei Knoten mit verschiedenen
+// Mempools haben verschiedene Roots, und jeder Filter dagegen hatte eine
+// Luecke, die unter Last zu einem Resync fuehrte.
+func TestStateRoot_LoestKeinenResyncMehrAus(t *testing.T) {
+	body := quelleLesen(t, "autoheal.go")
+	i := strings.Index(body, "echt := dag.EchteStateRootAbweichungen()")
+	if i < 0 {
+		t.Fatal("die Zaehlstelle ist weg")
+	}
+	rest := body[i : i+2500]
+	schalter := strings.Index(rest, `os.Getenv("AEQUITAS_AUTOHEAL_STATEROOT") != "1"`)
+	ausloeser := strings.Index(rest, "dag.triggerAutoResync(")
+	if schalter < 0 || ausloeser < 0 || schalter > ausloeser {
+		t.Error("der StateRoot-Resync ist wieder scharf, ohne ausdruecklichen Schalter davor. " +
+			"Das hat am 12.09.2026 chain_accounts unter Last truncated und den Knoten angehalten.")
+	}
+}
