@@ -240,10 +240,17 @@ func (w *WAL) Append(payload []byte) (uint64, error) {
 		w.closeMu.RUnlock()
 		return 0, errors.New("wal: append on closed WAL")
 	}
+	// ZWEI WARTEZEITEN, GETRENNT GEMESSEN: im Senden (nur wenn der Puffer
+	// voll ist) und auf das Ergebnis (bis der Schreiber das Buendel geschrieben
+	// und gesynct hat). Am 12.09.2026 kostete ein Append 13-19 ms bei einem
+	// Sync-Median von 1,5-2,2 ms; wo die Differenz steckt, entscheidet die
+	// naechste Massnahme.
+	t0 := time.Now()
 	w.appendCh <- req
 	w.closeMu.RUnlock()
-
+	t1 := time.Now()
 	res := <-req.result
+	merkeAppendWarten(t1.Sub(t0), time.Since(t1))
 	return res.seq, res.err
 }
 

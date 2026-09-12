@@ -35,6 +35,20 @@ import (
 //
 // Cost: four atomic adds per batch, not per record.
 
+// Append-Wartezeiten aus Sicht des Aufrufers: im Senden (Puffer voll) und auf
+// das Ergebnis (das eigene Buendel wird geschrieben und gesynct).
+var appendWarten struct {
+	sendenNanos   atomic.Int64
+	ergebnisNanos atomic.Int64
+	anzahl        atomic.Int64
+}
+
+func merkeAppendWarten(senden, ergebnis time.Duration) {
+	appendWarten.sendenNanos.Add(int64(senden))
+	appendWarten.ergebnisNanos.Add(int64(ergebnis))
+	appendWarten.anzahl.Add(1)
+}
+
 var writerStats struct {
 	batches    atomic.Int64
 	records    atomic.Int64
@@ -93,5 +107,21 @@ func WriterStats() map[string]interface{} {
 		"sync_max_us":     writerStats.syncMaxNs.Load() / 1000,
 		"write_avg_us":    avgWriteUs,
 		"sync_verteilung": SyncVerteilung(),
+		"append_warten":   appendWartenStand(),
+	}
+}
+
+func appendWartenStand() map[string]interface{} {
+	n := appendWarten.anzahl.Load()
+	if n == 0 {
+		return map[string]interface{}{"anzahl": 0}
+	}
+	return map[string]interface{}{
+		"bedeutung": "Je Append: im Senden (Puffer voll) gegen Warten auf das Ergebnis des eigenen " +
+			"Buendels. Der Vergleich mit sync_avg_us zeigt, wie viel der Wartezeit NICHT der " +
+			"fdatasync selbst ist -- Schreiberschleife, Sammelfenster, Aufwecken der Wartenden.",
+		"anzahl":          n,
+		"senden_avg_us":   appendWarten.sendenNanos.Load() / n / 1000,
+		"ergebnis_avg_us": appendWarten.ergebnisNanos.Load() / n / 1000,
 	}
 }
