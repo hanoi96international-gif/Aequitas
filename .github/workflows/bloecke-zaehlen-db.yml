@@ -22,7 +22,7 @@ jobs:
           script: |
             echo "##### ${{ matrix.box.name }}: Hoehen $VON..$BIS #####"
             docker exec aequitas-postgres psql -U postgres -d aequitas -t -A -c \
-              "SELECT left(proposer,12)||' | bloecke='||count(*)||' | hoehen='||count(DISTINCT height)||' | tx='||COALESCE(sum(jsonb_array_length(COALESCE(transactions::jsonb,'[]'::jsonb))),0) FROM chain_blocks WHERE height > $VON AND height <= $BIS GROUP BY proposer;" 2>&1 | head -5
+              "SELECT left(proposer,12)||' | bloecke='||count(*)||' | hoehen='||count(DISTINCT height)||' | tx='||COALESCE(sum(CASE WHEN transactions IS NULL OR transactions::text IN ('','null') THEN 0 ELSE jsonb_array_length(transactions::text::jsonb) END),0) FROM chain_blocks WHERE height > $VON AND height <= $BIS GROUP BY proposer;" 2>&1 | head -5
             docker exec aequitas-postgres psql -U postgres -d aequitas -t -A -c \
               "SELECT 'gesamt: bloecke='||count(*)||' hoehen='||count(DISTINCT height)||' => '||round(count(*)::numeric/GREATEST(count(DISTINCT height),1),2)||' je Hoehe' FROM chain_blocks WHERE height > $VON AND height <= $BIS;" 2>&1 | head -2
         env:
