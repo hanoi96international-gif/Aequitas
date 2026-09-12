@@ -1,0 +1,23 @@
+name: Sperren-Wachhund -- was hielt die DAG-Sperre laenger als 3 s
+on: {workflow_dispatch: {}}
+jobs:
+  d:
+    strategy: {max-parallel: 2, matrix: {box: [{name: "C1", host: "173.249.37.118", secret: "C1"}, {name: "C2", host: "194.163.188.71", secret: "C2"}]}}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ matrix.box.host }}
+          username: root
+          key: ${{ matrix.box.secret == 'C1' && secrets.CONTABO_SSH_KEY || secrets.CONTABO2_SSH_KEY }}
+          port: 22
+          script_stop: false
+          timeout: 200s
+          command_timeout: 200s
+          script: |
+            set +e
+            echo "##### ${{ matrix.box.name }} #####"
+            echo "=== wie oft, wann ==="
+            docker logs --since 24h aequitas-node 2>&1 | grep -E 'WACHHUND|SPERRE.*wartet|schlimmster_sperren|held.*for [0-9.]+s' | grep -vE 'aktiv:|enabled' | tail -8
+            echo "=== der letzte Dump: wer HAELT (nicht wer wartet) ==="
+            docker logs --since 24h aequitas-node 2>&1 | awk '/WACHHUND.*Dump|WACHHUND.*goroutine/{f=1} f' | grep -vE 'sync\.\(\*Mutex\)\.Lock|semacquire|chan receive|select|runtime\.gopark|^\s*$' | grep -E 'keeper\.|goroutine [0-9]+' | head -40
