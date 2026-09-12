@@ -1,0 +1,27 @@
+name: Tick-Dauern aus dem Log (ProduceBlock + Broadcast)
+on: {workflow_dispatch: {}}
+jobs:
+  t:
+    strategy: {matrix: {box: [{name: "C1", host: "173.249.37.118", secret: "C1"}, {name: "C2", host: "194.163.188.71", secret: "C2"}]}}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ matrix.box.host }}
+          username: root
+          key: ${{ matrix.box.secret == 'C1' && secrets.CONTABO_SSH_KEY || secrets.CONTABO2_SSH_KEY }}
+          port: 22
+          script_stop: false
+          timeout: 200s
+          command_timeout: 200s
+          script: |
+            echo "##### ${{ matrix.box.name }} #####"
+            echo "=== Ticks ueber 500 ms in den letzten 60 min: Anzahl, und die Verteilung der Dauer ==="
+            docker logs --since 60m aequitas-node 2>&1 | grep -F "Full tick (ProduceBlock+broadcast) took" \
+              | grep -oE "took [0-9.]+m?s" | awk '{v=$2; ms=0; if (v ~ /ms$/) { sub(/ms/,"",v); ms=v+0 } else if (v ~ /m[0-9]/) { ms=99999 } else { sub(/s/,"",v); ms=v*1000 }; print ms}' \
+              | sort -n | awk '{a[NR]=$1} END {if (NR==0) {print "  keine"; exit} printf "  n=%d  p50=%.0fms  p90=%.0fms  max=%.0fms  ueber 1000ms: ", NR, a[int(NR*0.5)+1], a[int(NR*0.9)+1], a[NR]; c=0; for(i=1;i<=NR;i++) if (a[i]>1000) c++; print c}'
+            echo "=== ProduceBlock selbst ueber 500 ms ==="
+            docker logs --since 60m aequitas-node 2>&1 | grep -F "ProduceBlock itself took" | grep -oE "took [0-9.]+m?s" | awk '{v=$2; if (v ~ /ms$/) { sub(/ms/,"",v); print v+0 } else { sub(/s/,"",v); print v*1000 }}' \
+              | sort -n | awk '{a[NR]=$1} END {if (NR==0) {print "  keine"; exit} printf "  n=%d  p50=%.0fms  p90=%.0fms  max=%.0fms\n", NR, a[int(NR*0.5)+1], a[int(NR*0.9)+1], a[NR]}'
+            echo "=== die 5 laengsten Ticks im Wortlaut ==="
+            docker logs --since 60m aequitas-node 2>&1 | grep -F "Full tick" | sort -t'k' -k3 | tail -5 | cut -c1-160
