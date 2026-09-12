@@ -508,1345 +508,1722 @@ def build_pdf(path, L):
 
     doc.build(fl)
 
-ES = dict(
-title    = 'GUÍA DEL OPERADOR DE NODO AEQUITAS',
-version  = 'v1.0 · Junio 2026 · aequitas.digital',
-tagline  = 'Guía completa paso a paso · No requiere experiencia previa en blockchain · ~20–30 min',
-
-prereq_title = 'Antes de empezar — Qué necesitas',
-prereqs = [
-    ('1.', '<b>Una cuenta de Aequitas:</b> Primero debes registrarte como humano en Aequitas. Instala la app de Android, completa el registro biométrico y anota tu dirección de wallet. Sin esto no puedes recibir recompensas de validador.'),
-    ('2.', '<b>Una cuenta de GitHub (gratis):</b> Ve a github.com y crea una cuenta gratuita. La necesitas para copiar (fork) el código de Aequitas para que Railway pueda desplegarlo.'),
-    ('3.', '<b>Una cuenta de Railway (gratis):</b> Ve a railway.app e inicia sesión con GitHub. Railway es una plataforma de hosting que ejecuta tu nodo en la nube — no necesitas servidor ni línea de comandos.'),
-    ('4.', '<b>Clave de firma del nodo (RELAYER_PRIVATE_KEY):</b> Tu nodo necesita una wallet de Ethereum dedicada para firmar los registros en cadena. Puede ser cualquier wallet de MetaMask. Exporta su clave privada: MetaMask → Detalles de la cuenta → Mostrar clave privada → introduce la contraseña → copia. Mantenla estrictamente privada. <b>IMPORTANTE:</b> Para recibir recompensas de validador también necesitas que NODE_OPERATOR_WALLET esté configurada con tu <b>wallet humana registrada en Aequitas</b> (la verificada con AequitasBio). Solo los humanos verificados pueden ganar recompensas de validador.'),
-    ('5.', '<b>10–30 minutos de tu tiempo.</b> Railway hace la mayor parte del trabajo automáticamente.'),
-],
-
-vars_title = 'Paso 1 — Variables de entorno',
-vars_warn  = 'Advertencia de seguridad: Tu RELAYER_PRIVATE_KEY es como una contraseña maestra. Cualquiera que la tenga controla tu wallet del nodo. Nunca la compartas públicamente, nunca la pegues en chat o correo. Usa una wallet de MetaMask separada para RELAYER_PRIVATE_KEY (firma). NODE_OPERATOR_WALLET (para recompensas) debe ser tu wallet humana registrada en Aequitas.',
-var_cols   = ['Variable', '¿Obligatoria?', 'Qué configurar'],
-vars = [
-    ('DATABASE_URL',        'SÍ',          'Tu cadena de conexión PostgreSQL. En Railway: se inyecta automáticamente si PostgreSQL está en el mismo proyecto. Formato: postgres://user:pass@host:5432/dbname'),
-    ('RELAYER_PRIVATE_KEY', 'SÍ',          'La clave privada (0x…, 66 caracteres) de tu wallet dedicada del nodo. MetaMask: Detalles de la cuenta → Mostrar clave privada → introduce la contraseña → copia.'),
-    ('RELAYER_ADDRESS',     'Recomendado', 'La dirección de wallet (0x…, 42 caracteres) que corresponde a RELAYER_PRIVATE_KEY. Cópiala de MetaMask. Existe un fallback, pero configurarla explícitamente evita errores de inicio.'),
-    ('NODE_OPERATOR_WALLET','Para recompensas', 'Tu dirección de wallet humana de Aequitas — registrada vía la app de Android. Recibe tus recompensas diarias de validador (40% de todas las comisiones del protocolo). Debe ser un humano registrado.'),
-    ('NODE_OPERATOR_BINDING_SIGNATURE', 'Para recompensas', 'Demuestra que eres propietario de NODE_OPERATOR_WALLET. Genérala en aequitas.digital/node-binding: firma el mensaje mostrado con tu wallet humana en MetaMask y pega aquí la firma resultante. Sin ella tu nodo funciona igual, pero no puede registrarse automáticamente para recompensas.'),
-    ('PEER_SECRET',         'Opcional/Legado', 'Mecanismo de respaldo heredado. Ya no es obligatorio — los nodos se autentican automáticamente mediante un desafío-respuesta criptográfico (RELAYER_PRIVATE_KEY). Solo necesario por compatibilidad con despliegues antiguos.'),
-    ('SELF_URL',            'Multi-nodo',  'La URL pública HTTPS de tu propio nodo (ej. https://mi-nodo.up.railway.app). Necesaria para excluirte a ti mismo en el descubrimiento de pares. Está en Railway: Settings → Networking → Public Networking.'),
-    ('PRIMARY_NODE_URL',    'Multi-nodo',  'Configura: https://aequitas.digital — el nodo primario con el que se registra tu nodo para el descubrimiento automático de pares. Al iniciar, tu nodo envía su URL + dirección de firma al primario, recibe la lista completa de pares y se une a la red automáticamente.'),
-    ('BOOTSTRAP_SNAPSHOT_URL', 'Recomendado', 'Configura: https://aequitas.digital/api/snapshot — permite que un nodo nuevo arranque desde el estado actual de la red en vez de reproducir todo el historial desde el génesis. Sincronización inicial mucho más rápida.'),
-    ('BOOTSTRAP_SIGNER',    'Con snapshot', 'La dirección de firma del nodo primario, usada para verificar que el snapshot es genuino antes de importarlo. Obtén el valor actual en https://aequitas.digital/api/status → "signing_address". Obligatoria siempre que se configure BOOTSTRAP_SNAPSHOT_URL.'),
-    ('SNAPSHOT_TOKEN',      'Opcional',    'No es necesaria para arrancar un nodo nuevo — sin ella igualmente obtienes todo lo necesario para funcionar correctamente (cuentas, saldos, pool, configuración). Solo desbloquea la exportación completa (vínculo nullifier/wallet + bio_registrations), usada para una resincronización autoritativa de un nodo ya divergido. Pregunta al operador de la red solo si realmente la necesitas.'),
-    ('RESYNC_FROM_SNAPSHOT', 'Solo recuperación', 'PELIGROSO, temporal: configúrala como true junto con BOOTSTRAP_SNAPSHOT_URL y BOOTSTRAP_SIGNER solo para recuperar un nodo cuyo estado ha divergido de la red. Reemplaza el estado local por completo. Reinicia una vez y luego elimina esta variable — si la dejas puesta, fuerza una resincronización completa en cada reinicio.'),
-    ('AUTO_HEAL_ON_DIVERGENCE', 'Muy recomendado', 'Importante para la seguridad y la velocidad de la red: si la cadena de tu nodo alguna vez diverge de la red (por ejemplo, tras una caída o un reinicio fallido), lo detecta por sí mismo — comparándose con PRIMARY_NODE_URL cada pocos minutos — y se resincroniza automáticamente, sin necesidad de RESYNC_FROM_SNAPSHOT manual. Un nodo que permanece divergente y sigue difundiendo sus propios bloques puede ralentizar o desestabilizar toda la red para el resto de operadores. Configúralo como true junto con PRIMARY_NODE_URL, BOOTSTRAP_SNAPSHOT_URL y BOOTSTRAP_SIGNER.'),
-    ('PORT',                'No',          'No la configures en Railway — Railway la establece automáticamente. El valor por defecto es 8080.'),
-    ('NODE_KEY',            'No',          'Clave libp2p en Base64 para una identidad P2P estable. Se autogenera si se omite, pero cambia en cada reinicio. Si no está configurada, el nodo la imprime en stderr: "SAVE THIS AS NODE_KEY ENVIRONMENT VAR: <base64>". Copia y pégala aquí.'),
-    ('IS_PRIMARY_NODE',     'No',          'Déjala sin configurar o en false. La distribución ahora usa un bloqueo a nivel de base de datos — cualquier nodo puede ejecutarla sin esta variable.'),
-    ('RESET_STATE',         'No',          'PELIGROSO: poner esto en true borra toda tu base de datos en cada reinicio. Solo para desarrollo. Nunca en producción.'),
-],
-
-railway_title = 'Paso 2 — Desplegar en Railway (Recomendado)',
-railway_intro = 'Railway es la forma más sencilla de ejecutar tu nodo — sin configurar servidores, sin línea de comandos. El plan gratuito cubre todos los requisitos. Tiempo total: unos 10–15 minutos.',
-railway_steps = [
-    'Haz fork de github.com/hanoi96international-gif/Aequitas a tu propia cuenta de GitHub (clic en <b>Fork</b> → <b>Create fork</b>)',
-    'En railway.app, inicia sesión con GitHub, luego <b>New Project</b> → <b>+ New</b> → <b>Database</b> → <b>Add PostgreSQL</b>',
-    'En ese mismo proyecto de Railway, haz clic en <b>+ New → GitHub Repo</b> y selecciona tu fork de Aequitas — Railway detecta el Dockerfile automáticamente',
-    'Haz clic en <b>Deploy Now</b> — empieza un primer build (puede fallar sin variables de entorno, eso es normal)',
-    'Haz clic en tu servicio de Aequitas → <b>Variables</b> → añade cada variable (ver tabla arriba). Mínimo requerido: RELAYER_PRIVATE_KEY, RELAYER_ADDRESS, NODE_OPERATOR_WALLET, SELF_URL, PRIMARY_NODE_URL=https://aequitas.digital (PEER_SECRET ya no es obligatoria)',
-    'Haz clic en <b>Deploy</b> (o guarda las variables para activar el auto-redeploy). El build tarda ~3 minutos mientras Go compila el binario del nodo.',
-    'Observa los <b>Deploy Logs</b>. El éxito se ve así: <font name="Courier" color="#5B21B6">Aequitas Node Running</font> y <font name="Courier" color="#0F766E">[NODE] Registered node operator wallet: 0x…</font>',
-    'Ve a <b>Settings → Networking → Generate Domain</b> para obtener tu URL pública',
-    'Abre <font name="Courier">https://TU-URL/api/status</font> — deberías ver JSON con <b>height</b> subiendo cada ~6 segundos',
-],
-railway_vars_code = (
-    '# Railway configura DATABASE_URL automáticamente si PostgreSQL está en el mismo proyecto\n'
-    'RELAYER_PRIVATE_KEY    = 0xTU_CLAVE_PRIVADA\n'
-    'RELAYER_ADDRESS        = 0xTU_DIRECCION_WALLET_NODO\n'
-    'NODE_OPERATOR_WALLET   = 0xTU_WALLET_HUMANA\n'
-    '# PEER_SECRET ya no es obligatoria — la autenticación es automática\n'
-    'SELF_URL               = https://TU-DOMINIO-RAILWAY.up.railway.app\n'
-    'PRIMARY_NODE_URL       = https://aequitas.digital'
-    'AUTO_HEAL_ON_DIVERGENCE       = true'
-),
-
-docker_title = 'Paso 2b — Alternativa: Desplegar con Docker (Avanzado)',
-docker_intro = 'Usa esto si tienes tu propio servidor (VPS, servidor doméstico, VM en la nube). Requiere Docker y una base de datos PostgreSQL.',
-docker_code  = (
-    '# 1. Descarga el código\n'
-    'git clone https://github.com/hanoi96international-gif/Aequitas && cd Aequitas\n\n'
-    '# 2. Construye la imagen del nodo (~3 min de compilación Go)\n'
-    'docker build -t aequitas-node .\n\n'
-    '# 3. Inicia el nodo\n'
-    'docker run -d --name aequitas-node --restart unless-stopped \\\n'
-    '  -e DATABASE_URL="postgres://user:pass@host:5432/aequitas" \\\n'
-    '  -e RELAYER_PRIVATE_KEY="0xTU_CLAVE_PRIVADA" \\\n'
-    '  -e RELAYER_ADDRESS="0xTU_DIRECCION_WALLET_NODO" \\\n'
-    '  -e NODE_OPERATOR_WALLET="0xTU_WALLET_HUMANA" \\\n'
-    '  # -e PEER_SECRET="..." (opcional/legado, no requerido) \\\n'
-    '  -e SELF_URL="https://TU-URL-PUBLICA" \\\n'
-    '  -e PRIMARY_NODE_URL="https://aequitas.digital" \\\n'
-    '  -e AUTO_HEAL_ON_DIVERGENCE="true" \\\n'
-    '  -p 8080:8080 aequitas-node\n\n'
-    '# 4. Observa los logs en vivo\n'
-    'docker logs -f aequitas-node'
-),
-
-verify_title = 'Paso 3 — Verifica que tu nodo está funcionando',
-verify_body  = 'Abre estas URLs en tu navegador. Sustituye TU-URL-DE-NODO por tu dominio real de Railway o dirección del servidor.',
-verify_code  = (
-    'https://TU-URL-DE-NODO/api/status\n'
-    ' → Esperado: {"height": 1234, "total_humans": N, "aequitas_index": N}\n\n'
-    'https://TU-URL-DE-NODO/rpc\n'
-    ' → Esperado: {"jsonrpc":"2.0","error":"method not specified"} — el RPC está activo'
-),
-verify_note  = 'La altura de bloque debería coincidir con el nodo primario (1–2 bloques de diferencia) en segundos tras el inicio. Si se queda en 0, comprueba que PRIMARY_NODE_URL=https://aequitas.digital esté configurado y sea accesible.',
-
-valkey_title = 'Paso 3b — Registra tu clave de validador (Autenticación descentralizada)',
-valkey_body  = 'En vez de un PEER_SECRET compartido, registra la clave de firma de tu nodo con tu wallet humana. Esto demuestra criptográficamente que controlas ambas claves. Obtén la firma de la clave de firma ejecutando esto en tu servidor (SSH/Railway shell):',
-valkey_code  = 'curl "http://localhost:8080/api/sign-validator-challenge?wallet=0xTU_WALLET_HUMANA"',
-valkey_note  = 'Luego usa la pestaña Network → Run a Node del sitio web y haz clic en "Sign with MetaMask & Register" para completar el registro.',
-
-mm_title = 'Paso 4 — Conecta MetaMask a tu nodo (Opcional)',
-mm_body  = 'En MetaMask: haz clic en el desplegable de red → Add network → Add a network manually, e introduce:',
-mm_rows  = [
-    ('Network Name',    'Aequitas Chain'),
-    ('RPC URL',         'https://TU-URL-DE-NODO/rpc'),
-    ('Chain ID',        '1926'),
-    ('Currency Symbol', 'AEQ'),
-    ('Decimals',        '18'),
-    ('Block Explorer',  'https://aequitas.digital'),
-],
-
-rewards_title = 'Paso 5 — Obtener recompensas de validador',
-rewards_box   = 'El Pool de Validadores recopila el 40% de todas las comisiones del protocolo (comisiones de swap, demurrage, excedente del límite de riqueza). Cada día a las 20:00 hora de Berlín (CEST/CET, gestiona el horario de verano automáticamente) el nodo distribuye el saldo del pool entre todos los operadores de nodo registrados de forma proporcional a los bloques producidos. Cuanto más tiempo funcione tu nodo, mayor será tu parte.',
-rewards_steps = [
-    'Asegúrate de estar registrado como humano en Aequitas. Si no: instala la app de Android y completa primero el registro biométrico. Recibirás una dirección de wallet y 1.000 AEQ.',
-    'Configura <font name="Courier">NODE_OPERATOR_WALLET</font> = tu dirección de wallet humana de Aequitas en las Variables de Railway',
-    'Guarda — Railway redespliega automáticamente. Con Docker: <font name="Courier">docker restart aequitas-node</font>',
-    'En los logs de tu nodo, confirma: <font name="Courier" color="#0F766E">[NODE] Registered node operator wallet: 0x…</font>',
-    'Las recompensas se distribuyen automáticamente cada día a las 20:00 hora de Berlín (CEST/CET). Solo mantén tu nodo funcionando — no se necesita ninguna acción más.',
-],
-
-trouble_title = 'Solución de problemas',
-trouble_cols  = ['Síntoma', 'Causa probable', 'Solución'],
-trouble_rows  = [
-    ('La altura de bloque se queda en 0', 'PRIMARY_NODE_URL no configurada o incorrecta', 'Configura PRIMARY_NODE_URL=https://aequitas.digital y redespliega. Configura también SELF_URL con la URL pública de tu nodo.'),
-    ('Error de DATABASE_URL al iniciar',  'Cadena de conexión incorrecta',               'Comprueba el formato: postgres://user:pass@host:5432/dbname — asegúrate de que PostgreSQL esté en ejecución y sea accesible.'),
-    ('"no code at address" en los logs',  'El contrato V7 aún no está desplegado',       'Normal en el primer arranque — el nodo despliega V7 automáticamente. Espera unos segundos y comprueba de nuevo.'),
-    ('"NODE_OPERATOR_WALLET not set"',    'Falta la variable de entorno',                'Añade NODE_OPERATOR_WALLET=0xTU_WALLET_HUMANA. El nodo funciona sin ella, pero no recibirás recompensas.'),
-    ('"Application error" en Railway',    'Fallo de build o de arranque',                'Revisa los Deploy Logs. Lo más común: falta DATABASE_URL o RELAYER_PRIVATE_KEY en formato incorrecto (debe empezar con 0x).'),
-    ('Puerto 8080 no accesible (Docker)', 'Configuración del firewall o del proveedor cloud', 'Abre el puerto TCP 8080 entrante en tu firewall o en los ajustes de grupo de seguridad de la nube.'),
-    ('Falla el build de Docker (error de módulo)', 'Sin internet durante el build',       'El build de Docker necesita internet de salida para descargar los módulos de Go. Railway lo gestiona automáticamente.'),
-],
-
-footer = 'Aequitas Chain · Chain ID 1926 · aequitas.digital · Recompensas de validador: diarias a las 20:00 hora de Berlín (CEST/CET)',
-)
-
-FR = dict(
-title    = 'GUIDE DE L\'OPÉRATEUR DE NŒUD AEQUITAS',
-version  = 'v1.0 · Juin 2026 · aequitas.digital',
-tagline  = 'Guide complet étape par étape · Aucune expérience blockchain requise · ~20–30 min',
-
-prereq_title = 'Avant de commencer — Ce dont vous avez besoin',
-prereqs = [
-    ('1.', '<b>Un compte Aequitas :</b> Vous devez d\'abord être enregistré comme humain sur Aequitas. Installez l\'application Android, terminez l\'enregistrement biométrique et notez votre adresse de wallet. Sans cela, vous ne pouvez pas recevoir de récompenses de validateur.'),
-    ('2.', '<b>Un compte GitHub (gratuit) :</b> Allez sur github.com et créez un compte gratuit. Vous en avez besoin pour copier (fork) le code d\'Aequitas afin que Railway puisse le déployer.'),
-    ('3.', '<b>Un compte Railway (gratuit) :</b> Allez sur railway.app et connectez-vous avec GitHub. Railway est une plateforme d\'hébergement qui exécute votre nœud dans le cloud — aucun serveur ni ligne de commande requis.'),
-    ('4.', '<b>Clé de signature du nœud (RELAYER_PRIVATE_KEY) :</b> Votre nœud a besoin d\'un wallet Ethereum dédié pour signer les enregistrements on-chain. Cela peut être n\'importe quel wallet MetaMask. Exportez sa clé privée : MetaMask → Détails du compte → Afficher la clé privée → entrez le mot de passe → copiez. Gardez-la strictement privée. <b>IMPORTANT :</b> Pour recevoir des récompenses de validateur, NODE_OPERATOR_WALLET doit aussi être votre <b>wallet humain enregistré sur Aequitas</b> (celui vérifié avec AequitasBio). Seuls les humains vérifiés peuvent gagner des récompenses de validateur.'),
-    ('5.', '<b>10–30 minutes de votre temps.</b> Railway fait la majeure partie du travail automatiquement.'),
-],
-
-vars_title = 'Étape 1 — Variables d\'environnement',
-vars_warn  = 'Avertissement de sécurité : Votre RELAYER_PRIVATE_KEY est comme un mot de passe maître. Quiconque la possède contrôle le wallet de votre nœud. Ne la partagez jamais publiquement, ne la collez jamais dans un chat ou un e-mail. Utilisez un wallet MetaMask séparé pour RELAYER_PRIVATE_KEY (signature). NODE_OPERATOR_WALLET (pour les récompenses) doit être votre wallet humain enregistré sur Aequitas.',
-var_cols   = ['Variable', 'Obligatoire ?', 'Que renseigner'],
-vars = [
-    ('DATABASE_URL',        'OUI',         'Votre chaîne de connexion PostgreSQL. Sur Railway : injectée automatiquement si PostgreSQL est dans le même projet. Format : postgres://user:pass@host:5432/dbname'),
-    ('RELAYER_PRIVATE_KEY', 'OUI',         'La clé privée (0x…, 66 caractères) de votre wallet de nœud dédié. MetaMask : Détails du compte → Afficher la clé privée → mot de passe → copier.'),
-    ('RELAYER_ADDRESS',     'Recommandé',  'L\'adresse du wallet (0x…, 42 caractères) correspondant à RELAYER_PRIVATE_KEY. Copiez-la depuis MetaMask. Un fallback existe mais la renseigner explicitement évite des erreurs de démarrage.'),
-    ('NODE_OPERATOR_WALLET','Pour récompenses', 'Votre adresse de wallet humain Aequitas — enregistrée via l\'application Android. Reçoit vos récompenses quotidiennes de validateur (40 % de tous les frais de protocole). Doit être un humain enregistré.'),
-    ('NODE_OPERATOR_BINDING_SIGNATURE', 'Pour récompenses', 'Prouve que vous possédez NODE_OPERATOR_WALLET. Générez-la sur aequitas.digital/node-binding : signez le message affiché avec votre wallet humain dans MetaMask, puis collez ici la signature obtenue. Sans elle, votre nœud fonctionne quand même, mais ne peut pas s\'enregistrer automatiquement pour les récompenses.'),
-    ('PEER_SECRET',         'Optionnel/Legacy', 'Mécanisme de secret partagé historique. Plus obligatoire — les nœuds s\'authentifient désormais automatiquement via un challenge-réponse cryptographique (RELAYER_PRIVATE_KEY). Utile seulement pour la compatibilité avec d\'anciens déploiements.'),
-    ('SELF_URL',            'Multi-nœud',  'L\'URL HTTPS publique de votre propre nœud (ex. https://mon-noeud.up.railway.app). Nécessaire pour s\'exclure soi-même lors de la découverte de pairs. À trouver dans Railway : Settings → Networking → Public Networking.'),
-    ('PRIMARY_NODE_URL',    'Multi-nœud',  'Définissez : https://aequitas.digital — le nœud principal auprès duquel votre nœud s\'enregistre pour la découverte automatique de pairs. Au démarrage, votre nœud envoie son URL + adresse de signature au nœud principal, reçoit la liste complète des pairs et rejoint le réseau automatiquement.'),
-    ('BOOTSTRAP_SNAPSHOT_URL', 'Recommandé', 'Définissez : https://aequitas.digital/api/snapshot — permet à un nouveau nœud de démarrer depuis l\'état actuel du réseau au lieu de rejouer tout l\'historique depuis la genèse. Première synchronisation bien plus rapide.'),
-    ('BOOTSTRAP_SIGNER',    'Avec snapshot', 'L\'adresse de signature du nœud principal, utilisée pour vérifier que le snapshot est authentique avant import. Récupérez la valeur actuelle sur https://aequitas.digital/api/status → "signing_address". Obligatoire dès que BOOTSTRAP_SNAPSHOT_URL est défini.'),
-    ('SNAPSHOT_TOKEN',      'Optionnel',   'Pas nécessaire pour démarrer un nouveau nœud — vous obtenez quand même tout ce qu\'il faut pour fonctionner correctement (comptes, soldes, pool, config). Ne déverrouille que l\'export complet (lien nullifier/wallet + bio_registrations), utilisé pour une resynchronisation autoritative d\'un nœud déjà divergent. Demandez à l\'opérateur du réseau seulement si vous en avez vraiment besoin.'),
-    ('RESYNC_FROM_SNAPSHOT', 'Récupération seulement', 'DANGEREUX, temporaire : à définir sur true avec BOOTSTRAP_SNAPSHOT_URL et BOOTSTRAP_SIGNER uniquement pour récupérer un nœud dont l\'état a divergé du réseau. Remplace entièrement l\'état local. Redémarrez une fois, puis retirez cette variable — la laisser force une resynchronisation complète à chaque redémarrage.'),
-    ('AUTO_HEAL_ON_DIVERGENCE', 'Fortement recommandé', 'Important pour la sécurité et la rapidité du réseau : si la chaîne de votre nœud venait à diverger du réseau (par ex. après une interruption ou un redémarrage raté), il le détecte lui-même — en se comparant à PRIMARY_NODE_URL toutes les quelques minutes — et se resynchronise automatiquement, sans RESYNC_FROM_SNAPSHOT manuel. Un nœud resté divergent qui continue de diffuser ses propres blocs peut ralentir ou déstabiliser tout le réseau pour les autres opérateurs. À définir sur true avec PRIMARY_NODE_URL, BOOTSTRAP_SNAPSHOT_URL et BOOTSTRAP_SIGNER.'),
-    ('PORT',                'Non',         'Ne pas définir sur Railway — Railway le configure automatiquement. La valeur par défaut est 8080.'),
-    ('NODE_KEY',            'Non',         'Clé libp2p en Base64 pour une identité P2P stable. Auto-générée si omise, mais change à chaque redémarrage. Si non définie, le nœud l\'imprime dans stderr : "SAVE THIS AS NODE_KEY ENVIRONMENT VAR: <base64>". Copiez-la et collez-la ici.'),
-    ('IS_PRIMARY_NODE',     'Non',         'Laissez non défini ou false. La distribution utilise désormais un verrou au niveau de la base de données — n\'importe quel nœud peut l\'exécuter sans cette variable.'),
-    ('RESET_STATE',         'Non',         'DANGEREUX : mettre ceci à true efface toute votre base de données à chaque redémarrage. Usage développement uniquement. Jamais en production.'),
-],
-
-railway_title = 'Étape 2 — Déployer sur Railway (Recommandé)',
-railway_intro = 'Railway est la façon la plus simple d\'exécuter votre nœud — aucune configuration de serveur, aucune ligne de commande. L\'offre gratuite couvre tous les besoins. Durée totale : environ 10–15 minutes.',
-railway_steps = [
-    'Forkez github.com/hanoi96international-gif/Aequitas vers votre propre compte GitHub (cliquez sur <b>Fork</b> → <b>Create fork</b>)',
-    'Sur railway.app, connectez-vous avec GitHub, puis <b>New Project</b> → <b>+ New</b> → <b>Database</b> → <b>Add PostgreSQL</b>',
-    'Dans ce même projet Railway, cliquez sur <b>+ New → GitHub Repo</b> et sélectionnez votre fork d\'Aequitas — Railway détecte automatiquement le Dockerfile',
-    'Cliquez sur <b>Deploy Now</b> — un premier build démarre (peut échouer sans variables d\'environnement, c\'est normal)',
-    'Cliquez sur votre service Aequitas → <b>Variables</b> → ajoutez chaque variable (voir tableau ci-dessus). Minimum requis : RELAYER_PRIVATE_KEY, RELAYER_ADDRESS, NODE_OPERATOR_WALLET, SELF_URL, PRIMARY_NODE_URL=https://aequitas.digital (PEER_SECRET n\'est plus obligatoire)',
-    'Cliquez sur <b>Deploy</b> (ou enregistrez les variables pour déclencher un auto-redéploiement). Le build prend ~3 minutes pendant que Go compile le binaire du nœud.',
-    'Observez les <b>Deploy Logs</b>. Le succès ressemble à : <font name="Courier" color="#5B21B6">Aequitas Node Running</font> et <font name="Courier" color="#0F766E">[NODE] Registered node operator wallet: 0x…</font>',
-    'Allez dans <b>Settings → Networking → Generate Domain</b> pour obtenir votre URL publique',
-    'Ouvrez <font name="Courier">https://VOTRE-URL/api/status</font> — vous devriez voir du JSON avec <b>height</b> qui augmente toutes les ~6 secondes',
-],
-railway_vars_code = (
-    '# Railway définit DATABASE_URL automatiquement si PostgreSQL est dans le même projet\n'
-    'RELAYER_PRIVATE_KEY    = 0xVOTRE_CLE_PRIVEE\n'
-    'RELAYER_ADDRESS        = 0xVOTRE_ADRESSE_WALLET_NOEUD\n'
-    'NODE_OPERATOR_WALLET   = 0xVOTRE_WALLET_HUMAIN\n'
-    '# PEER_SECRET n\'est plus obligatoire — l\'authentification est automatique\n'
-    'SELF_URL               = https://VOTRE-DOMAINE-RAILWAY.up.railway.app\n'
-    'PRIMARY_NODE_URL       = https://aequitas.digital'
-    'AUTO_HEAL_ON_DIVERGENCE       = true'
-),
-
-docker_title = 'Étape 2b — Alternative : déploiement avec Docker (Avancé)',
-docker_intro = 'Utilisez ceci si vous avez votre propre serveur (VPS, serveur personnel, VM cloud). Nécessite Docker et une base de données PostgreSQL.',
-docker_code  = (
-    '# 1. Téléchargez le code\n'
-    'git clone https://github.com/hanoi96international-gif/Aequitas && cd Aequitas\n\n'
-    '# 2. Construisez l\'image du nœud (~3 min de compilation Go)\n'
-    'docker build -t aequitas-node .\n\n'
-    '# 3. Démarrez le nœud\n'
-    'docker run -d --name aequitas-node --restart unless-stopped \\\n'
-    '  -e DATABASE_URL="postgres://user:pass@host:5432/aequitas" \\\n'
-    '  -e RELAYER_PRIVATE_KEY="0xVOTRE_CLE_PRIVEE" \\\n'
-    '  -e RELAYER_ADDRESS="0xVOTRE_ADRESSE_WALLET_NOEUD" \\\n'
-    '  -e NODE_OPERATOR_WALLET="0xVOTRE_WALLET_HUMAIN" \\\n'
-    '  # -e PEER_SECRET="..." (optionnel/legacy, non requis) \\\n'
-    '  -e SELF_URL="https://VOTRE-URL-PUBLIQUE" \\\n'
-    '  -e PRIMARY_NODE_URL="https://aequitas.digital" \\\n'
-    '  -e AUTO_HEAL_ON_DIVERGENCE="true" \\\n'
-    '  -p 8080:8080 aequitas-node\n\n'
-    '# 4. Observez les logs en direct\n'
-    'docker logs -f aequitas-node'
-),
-
-verify_title = 'Étape 3 — Vérifiez que votre nœud fonctionne',
-verify_body  = 'Ouvrez ces URL dans votre navigateur. Remplacez VOTRE-URL-DE-NOEUD par votre domaine Railway réel ou l\'adresse de votre serveur.',
-verify_code  = (
-    'https://VOTRE-URL-DE-NOEUD/api/status\n'
-    ' → Attendu : {"height": 1234, "total_humans": N, "aequitas_index": N}\n\n'
-    'https://VOTRE-URL-DE-NOEUD/rpc\n'
-    ' → Attendu : {"jsonrpc":"2.0","error":"method not specified"} — le RPC est actif'
-),
-verify_note  = 'La hauteur de bloc devrait correspondre au nœud principal à 1–2 blocs près, en quelques secondes après le démarrage. Si elle reste à 0, vérifiez que PRIMARY_NODE_URL=https://aequitas.digital est défini et accessible.',
-
-valkey_title = 'Étape 3b — Enregistrez votre clé de validateur (Authentification décentralisée)',
-valkey_body  = 'Au lieu d\'un PEER_SECRET partagé, enregistrez la clé de signature de votre nœud avec votre wallet humain. Cela prouve cryptographiquement que vous contrôlez les deux clés. Obtenez la signature en exécutant ceci sur votre serveur (SSH/Railway shell) :',
-valkey_code  = 'curl "http://localhost:8080/api/sign-validator-challenge?wallet=0xVOTRE_WALLET_HUMAIN"',
-valkey_note  = 'Utilisez ensuite l\'onglet Network → Run a Node du site et cliquez sur "Sign with MetaMask & Register" pour terminer l\'enregistrement.',
-
-mm_title = 'Étape 4 — Connecter MetaMask à votre nœud (Optionnel)',
-mm_body  = 'Dans MetaMask : cliquez sur le menu déroulant des réseaux → Add network → Add a network manually, puis saisissez :',
-mm_rows  = [
-    ('Network Name',    'Aequitas Chain'),
-    ('RPC URL',         'https://VOTRE-URL-DE-NOEUD/rpc'),
-    ('Chain ID',        '1926'),
-    ('Currency Symbol', 'AEQ'),
-    ('Decimals',        '18'),
-    ('Block Explorer',  'https://aequitas.digital'),
-],
-
-rewards_title = 'Étape 5 — Obtenir des récompenses de validateur',
-rewards_box   = 'Le Pool des Validateurs collecte 40 % de tous les frais de protocole (frais de swap, démurrage, excédent du plafond de richesse). Chaque jour à 20h00 heure de Berlin (CEST/CET, gère automatiquement l\'heure d\'été) le nœud distribue le solde du pool à tous les opérateurs de nœud enregistrés, proportionnellement aux blocs produits. Plus votre nœud fonctionne de façon constante, plus votre part est grande.',
-rewards_steps = [
-    'Assurez-vous d\'être enregistré comme humain sur Aequitas. Si non : installez l\'application Android et terminez d\'abord l\'enregistrement biométrique. Vous recevrez une adresse de wallet et 1 000 AEQ.',
-    'Définissez <font name="Courier">NODE_OPERATOR_WALLET</font> = votre adresse de wallet humain Aequitas dans vos Variables Railway',
-    'Enregistrez — Railway redéploie automatiquement. Avec Docker : <font name="Courier">docker restart aequitas-node</font>',
-    'Dans les logs de votre nœud, confirmez : <font name="Courier" color="#0F766E">[NODE] Registered node operator wallet: 0x…</font>',
-    'Les récompenses sont distribuées automatiquement chaque jour à 20h00 heure de Berlin (CEST/CET). Laissez simplement votre nœud fonctionner — aucune autre action n\'est nécessaire.',
-],
-
-trouble_title = 'Résolution de problèmes',
-trouble_cols  = ['Symptôme', 'Cause probable', 'Solution'],
-trouble_rows  = [
-    ('La hauteur de bloc reste à 0',      'PRIMARY_NODE_URL non défini ou incorrect', 'Définissez PRIMARY_NODE_URL=https://aequitas.digital et redéployez. Définissez aussi SELF_URL avec l\'URL publique de votre nœud.'),
-    ('Erreur DATABASE_URL au démarrage',  'Mauvaise chaîne de connexion',             'Vérifiez le format : postgres://user:pass@host:5432/dbname — assurez-vous que PostgreSQL fonctionne et est accessible.'),
-    ('"no code at address" dans les logs','Le contrat V7 n\'est pas encore déployé', 'Normal au premier démarrage — le nœud déploie V7 automatiquement. Attendez quelques secondes et vérifiez à nouveau.'),
-    ('"NODE_OPERATOR_WALLET not set"',    'Variable d\'environnement manquante',     'Ajoutez NODE_OPERATOR_WALLET=0xVOTRE_WALLET_HUMAIN. Le nœud fonctionne sans, mais vous ne recevrez pas de récompenses.'),
-    ('"Application error" sur Railway',   'Échec de build ou de démarrage',           'Vérifiez les Deploy Logs. Le plus fréquent : DATABASE_URL manquant ou RELAYER_PRIVATE_KEY au mauvais format (doit commencer par 0x).'),
-    ('Port 8080 inaccessible (Docker)',   'Configuration du firewall ou du fournisseur cloud', 'Ouvrez le port TCP 8080 entrant dans votre firewall ou les paramètres de groupe de sécurité cloud.'),
-    ('Le build Docker échoue (erreur de module)', 'Pas d\'accès internet pendant le build', 'Le build Docker nécessite un accès internet sortant pour télécharger les modules Go. Railway gère cela automatiquement.'),
-],
-
-footer = 'Aequitas Chain · Chain ID 1926 · aequitas.digital · Récompenses de validateur : quotidiennes à 20h00 heure de Berlin (CEST/CET)',
-)
-
-IT = dict(
-title    = 'GUIDA PER OPERATORI DI NODO AEQUITAS',
-version  = 'v1.0 · Giugno 2026 · aequitas.digital',
-tagline  = 'Guida completa passo dopo passo · Nessuna esperienza blockchain richiesta · ~20–30 min',
-
-prereq_title = 'Prima di iniziare — Cosa ti serve',
-prereqs = [
-    ('1.', '<b>Un account Aequitas:</b> Devi prima registrarti come essere umano su Aequitas. Installa l\'app Android, completa la registrazione biometrica e annota il tuo indirizzo wallet. Senza questo non puoi ricevere ricompense da validatore.'),
-    ('2.', '<b>Un account GitHub (gratuito):</b> Vai su github.com e crea un account gratuito. Ti serve per copiare (fork) il codice di Aequitas affinché Railway possa distribuirlo.'),
-    ('3.', '<b>Un account Railway (gratuito):</b> Vai su railway.app e accedi con GitHub. Railway è una piattaforma di hosting che esegue il tuo nodo nel cloud — nessun server o riga di comando richiesta.'),
-    ('4.', '<b>Chiave di firma del nodo (RELAYER_PRIVATE_KEY):</b> Il tuo nodo ha bisogno di un wallet Ethereum dedicato per firmare le registrazioni on-chain. Può essere qualsiasi wallet MetaMask. Esporta la chiave privata: MetaMask → Dettagli account → Mostra chiave privata → inserisci la password → copia. Mantienila strettamente privata. <b>IMPORTANTE:</b> Per ricevere ricompense da validatore, NODE_OPERATOR_WALLET deve essere il tuo <b>wallet umano registrato su Aequitas</b> (quello verificato con AequitasBio). Solo gli umani verificati possono guadagnare ricompense da validatore.'),
-    ('5.', '<b>10–30 minuti del tuo tempo.</b> Railway svolge la maggior parte del lavoro automaticamente.'),
-],
-
-vars_title = 'Passo 1 — Variabili d\'ambiente',
-vars_warn  = 'Avviso di sicurezza: La tua RELAYER_PRIVATE_KEY è come una password principale. Chiunque la possieda controlla il wallet del tuo nodo. Non condividerla mai pubblicamente, non incollarla mai in chat o e-mail. Usa un wallet MetaMask separato per RELAYER_PRIVATE_KEY (firma). NODE_OPERATOR_WALLET (per le ricompense) deve essere il tuo wallet umano registrato su Aequitas.',
-var_cols   = ['Variabile', 'Obbligatoria?', 'Cosa impostare'],
-vars = [
-    ('DATABASE_URL',        'SÌ',          'La tua stringa di connessione PostgreSQL. Su Railway: iniettata automaticamente se PostgreSQL è nello stesso progetto. Formato: postgres://user:pass@host:5432/dbname'),
-    ('RELAYER_PRIVATE_KEY', 'SÌ',          'La chiave privata (0x…, 66 caratteri) del tuo wallet di nodo dedicato. MetaMask: Dettagli account → Mostra chiave privata → inserisci password → copia.'),
-    ('RELAYER_ADDRESS',     'Consigliata',  'L\'indirizzo wallet (0x…, 42 caratteri) corrispondente a RELAYER_PRIVATE_KEY. Copialo da MetaMask. Esiste un fallback, ma impostarlo esplicitamente evita errori di avvio.'),
-    ('NODE_OPERATOR_WALLET','Per ricompense', 'Il tuo indirizzo wallet umano Aequitas — registrato tramite l\'app Android. Riceve le tue ricompense quotidiane da validatore (40% di tutte le commissioni di protocollo). Deve essere un umano registrato.'),
-    ('NODE_OPERATOR_BINDING_SIGNATURE', 'Per ricompense', 'Dimostra che possiedi NODE_OPERATOR_WALLET. Generala su aequitas.digital/node-binding: firma il messaggio mostrato con il tuo wallet umano in MetaMask, incolla qui la firma risultante. Senza di essa il nodo funziona comunque, ma non può registrarsi automaticamente per le ricompense.'),
-    ('PEER_SECRET',         'Opzionale/Legacy', 'Meccanismo di fallback ereditato. Non più obbligatorio — i nodi si autenticano automaticamente tramite una sfida-risposta crittografica (RELAYER_PRIVATE_KEY). Necessario solo per compatibilità con vecchi deployment.'),
-    ('SELF_URL',            'Multi-nodo',  'L\'URL HTTPS pubblico del tuo nodo (es. https://mio-nodo.up.railway.app). Necessario per autoescludersi nella scoperta dei peer. Si trova in Railway: Settings → Networking → Public Networking.'),
-    ('PRIMARY_NODE_URL',    'Multi-nodo',  'Impostare su: https://aequitas.digital — il nodo primario presso cui il tuo nodo si registra per la scoperta automatica dei peer. All\'avvio il tuo nodo invia il suo URL + indirizzo di firma al primario, riceve l\'intera lista di peer e si unisce automaticamente alla rete.'),
-    ('BOOTSTRAP_SNAPSHOT_URL', 'Consigliata', 'Impostare su: https://aequitas.digital/api/snapshot — permette a un nodo nuovo di partire dallo stato attuale della rete invece di rigiocare l\'intera storia dalla genesi. Prima sincronizzazione molto più rapida.'),
-    ('BOOTSTRAP_SIGNER',    'Con snapshot', 'L\'indirizzo di firma del nodo primario, usato per verificare che lo snapshot sia genuino prima dell\'importazione. Ottieni il valore attuale da https://aequitas.digital/api/status → "signing_address". Obbligatoria quando BOOTSTRAP_SNAPSHOT_URL è impostata.'),
-    ('SNAPSHOT_TOKEN',      'Opzionale',   'Non necessaria per avviare un nodo nuovo — anche senza ottieni tutto il necessario per funzionare correttamente (account, saldi, pool, config). Sblocca solo l\'esportazione completa (collegamento nullifier/wallet + bio_registrations), usata per una resincronizzazione autoritativa di un nodo già divergente. Chiedi all\'operatore di rete solo se ne hai davvero bisogno.'),
-    ('RESYNC_FROM_SNAPSHOT', 'Solo recupero', 'PERICOLOSO, temporaneo: impostare su true insieme a BOOTSTRAP_SNAPSHOT_URL e BOOTSTRAP_SIGNER solo per recuperare un nodo il cui stato è divergente dalla rete. Sostituisce completamente lo stato locale. Riavvia una volta, poi rimuovi questa variabile — lasciarla forza una resincronizzazione completa a ogni riavvio.'),
-    ('AUTO_HEAL_ON_DIVERGENCE', 'Fortemente consigliata', 'Importante per la sicurezza e la velocità della rete: se la chain del tuo nodo dovesse mai divergere dalla rete (ad es. dopo un\'interruzione o un riavvio fallito), lo rileva da solo — confrontandosi con PRIMARY_NODE_URL ogni pochi minuti — e si risincronizza automaticamente, senza bisogno di RESYNC_FROM_SNAPSHOT manuale. Un nodo che resta divergente e continua a diffondere i propri blocchi può rallentare o destabilizzare l\'intera rete per tutti gli altri operatori. Impostare su true insieme a PRIMARY_NODE_URL, BOOTSTRAP_SNAPSHOT_URL e BOOTSTRAP_SIGNER.'),
-    ('PORT',                'No',          'Non impostarla su Railway — Railway la configura automaticamente. Il valore predefinito è 8080.'),
-    ('NODE_KEY',            'No',          'Chiave libp2p in Base64 per un\'identità P2P stabile. Auto-generata se omessa, ma cambia a ogni riavvio. Se non impostata, il nodo la stampa su stderr: "SAVE THIS AS NODE_KEY ENVIRONMENT VAR: <base64>". Copiala e incollala qui.'),
-    ('IS_PRIMARY_NODE',     'No',          'Lasciare non impostata o false. La distribuzione ora usa un lock a livello di database — qualsiasi nodo può eseguirla senza questa variabile.'),
-    ('RESET_STATE',         'No',          'PERICOLOSO: impostare questo su true elimina tutto il database a ogni riavvio. Solo per sviluppo. Mai in produzione.'),
-],
-
-railway_title = 'Passo 2 — Distribuire su Railway (Consigliato)',
-railway_intro = 'Railway è il modo più semplice per eseguire il tuo nodo — nessuna configurazione server, nessuna riga di comando. Il piano gratuito copre tutti i requisiti. Tempo totale: circa 10–15 minuti.',
-railway_steps = [
-    'Fai fork di github.com/hanoi96international-gif/Aequitas sul tuo account GitHub (clicca <b>Fork</b> → <b>Create fork</b>)',
-    'Su railway.app, accedi con GitHub, poi <b>New Project</b> → <b>+ New</b> → <b>Database</b> → <b>Add PostgreSQL</b>',
-    'Nello stesso progetto Railway, clicca <b>+ New → GitHub Repo</b> e seleziona il tuo fork di Aequitas — Railway rileva automaticamente il Dockerfile',
-    'Clicca <b>Deploy Now</b> — parte una prima build (può fallire senza env var, è normale)',
-    'Clicca sul tuo servizio Aequitas → <b>Variables</b> → aggiungi ogni variabile (vedi tabella sopra). Minimo richiesto: RELAYER_PRIVATE_KEY, RELAYER_ADDRESS, NODE_OPERATOR_WALLET, SELF_URL, PRIMARY_NODE_URL=https://aequitas.digital (PEER_SECRET non è più obbligatoria)',
-    'Clicca <b>Deploy</b> (o salva le variabili per attivare l\'auto-redeploy). La build richiede ~3 minuti mentre Go compila il binario del nodo.',
-    'Osserva i <b>Deploy Logs</b>. Il successo appare così: <font name="Courier" color="#5B21B6">Aequitas Node Running</font> e <font name="Courier" color="#0F766E">[NODE] Registered node operator wallet: 0x…</font>',
-    'Vai su <b>Settings → Networking → Generate Domain</b> per ottenere il tuo URL pubblico',
-    'Apri <font name="Courier">https://TUO-URL/api/status</font> — dovresti vedere JSON con <b>height</b> che sale ogni ~6 secondi',
-],
-railway_vars_code = (
-    '# Railway imposta DATABASE_URL automaticamente se PostgreSQL è nello stesso progetto\n'
-    'RELAYER_PRIVATE_KEY    = 0xTUA_CHIAVE_PRIVATA\n'
-    'RELAYER_ADDRESS        = 0xTUO_INDIRIZZO_WALLET_NODO\n'
-    'NODE_OPERATOR_WALLET   = 0xTUO_WALLET_UMANO\n'
-    '# PEER_SECRET non è più obbligatoria — l\'autenticazione è automatica\n'
-    'SELF_URL               = https://TUO-DOMINIO-RAILWAY.up.railway.app\n'
-    'PRIMARY_NODE_URL       = https://aequitas.digital'
-    'AUTO_HEAL_ON_DIVERGENCE       = true'
-),
-
-docker_title = 'Passo 2b — Alternativa: distribuzione con Docker (Avanzato)',
-docker_intro = 'Usa questo se hai un tuo server (VPS, server domestico, VM cloud). Richiede Docker e un database PostgreSQL.',
-docker_code  = (
-    '# 1. Scarica il codice\n'
-    'git clone https://github.com/hanoi96international-gif/Aequitas && cd Aequitas\n\n'
-    '# 2. Costruisci l\'immagine del nodo (~3 min di compilazione Go)\n'
-    'docker build -t aequitas-node .\n\n'
-    '# 3. Avvia il nodo\n'
-    'docker run -d --name aequitas-node --restart unless-stopped \\\n'
-    '  -e DATABASE_URL="postgres://user:pass@host:5432/aequitas" \\\n'
-    '  -e RELAYER_PRIVATE_KEY="0xTUA_CHIAVE_PRIVATA" \\\n'
-    '  -e RELAYER_ADDRESS="0xTUO_INDIRIZZO_WALLET_NODO" \\\n'
-    '  -e NODE_OPERATOR_WALLET="0xTUO_WALLET_UMANO" \\\n'
-    '  # -e PEER_SECRET="..." (opzionale/legacy, non richiesto) \\\n'
-    '  -e SELF_URL="https://TUO-URL-PUBBLICO" \\\n'
-    '  -e PRIMARY_NODE_URL="https://aequitas.digital" \\\n'
-    '  -e AUTO_HEAL_ON_DIVERGENCE="true" \\\n'
-    '  -p 8080:8080 aequitas-node\n\n'
-    '# 4. Osserva i log in diretta\n'
-    'docker logs -f aequitas-node'
-),
-
-verify_title = 'Passo 3 — Verifica che il tuo nodo sia in funzione',
-verify_body  = 'Apri questi URL nel browser. Sostituisci TUO-URL-NODO con il tuo dominio Railway reale o l\'indirizzo del server.',
-verify_code  = (
-    'https://TUO-URL-NODO/api/status\n'
-    ' → Atteso: {"height": 1234, "total_humans": N, "aequitas_index": N}\n\n'
-    'https://TUO-URL-NODO/rpc\n'
-    ' → Atteso: {"jsonrpc":"2.0","error":"method not specified"} — l\'RPC è attivo'
-),
-verify_note  = 'L\'altezza dei blocchi dovrebbe corrispondere al nodo primario entro 1–2 blocchi nel giro di pochi secondi dall\'avvio. Se resta a 0, verifica che PRIMARY_NODE_URL=https://aequitas.digital sia impostata e raggiungibile.',
-
-valkey_title = 'Passo 3b — Registra la tua chiave di validatore (Autenticazione decentralizzata)',
-valkey_body  = 'Invece di un PEER_SECRET condiviso, registra la chiave di firma del tuo nodo con il tuo wallet umano. Questo dimostra crittograficamente che controlli entrambe le chiavi. Ottieni la firma eseguendo questo sul tuo server (SSH/Railway shell):',
-valkey_code  = 'curl "http://localhost:8080/api/sign-validator-challenge?wallet=0xTUO_WALLET_UMANO"',
-valkey_note  = 'Poi usa la scheda Network → Run a Node del sito e clicca "Sign with MetaMask & Register" per completare la registrazione.',
-
-mm_title = 'Passo 4 — Collega MetaMask al tuo nodo (Opzionale)',
-mm_body  = 'In MetaMask: clicca il menu a tendina delle reti → Add network → Add a network manually, poi inserisci:',
-mm_rows  = [
-    ('Network Name',    'Aequitas Chain'),
-    ('RPC URL',         'https://TUO-URL-NODO/rpc'),
-    ('Chain ID',        '1926'),
-    ('Currency Symbol', 'AEQ'),
-    ('Decimals',        '18'),
-    ('Block Explorer',  'https://aequitas.digital'),
-],
-
-rewards_title = 'Passo 5 — Ottenere ricompense da validatore',
-rewards_box   = 'Il Validators Pool raccoglie il 40% di tutte le commissioni di protocollo (commissioni di swap, demurrage, eccedenza del tetto di ricchezza). Ogni giorno alle 20:00 ora di Berlino (CEST/CET, gestisce automaticamente l\'ora legale) il nodo distribuisce il saldo del pool a tutti gli operatori di nodo registrati proporzionalmente ai blocchi prodotti. Più a lungo il tuo nodo resta attivo, maggiore sarà la tua quota.',
-rewards_steps = [
-    'Assicurati di essere registrato come umano su Aequitas. Se non lo sei: installa l\'app Android e completa prima la registrazione biometrica. Riceverai un indirizzo wallet e 1.000 AEQ.',
-    'Imposta <font name="Courier">NODE_OPERATOR_WALLET</font> = il tuo indirizzo wallet umano Aequitas nelle Variables di Railway',
-    'Salva — Railway redistribuisce automaticamente. Con Docker: <font name="Courier">docker restart aequitas-node</font>',
-    'Nei log del tuo nodo, conferma: <font name="Courier" color="#0F766E">[NODE] Registered node operator wallet: 0x…</font>',
-    'Le ricompense vengono distribuite automaticamente ogni giorno alle 20:00 ora di Berlino (CEST/CET). Lascia semplicemente il nodo in funzione — nessuna ulteriore azione richiesta.',
-],
-
-trouble_title = 'Risoluzione dei problemi',
-trouble_cols  = ['Sintomo', 'Causa probabile', 'Soluzione'],
-trouble_rows  = [
-    ('L\'altezza dei blocchi resta a 0',  'PRIMARY_NODE_URL non impostata o errata',  'Imposta PRIMARY_NODE_URL=https://aequitas.digital e ridistribuisci. Imposta anche SELF_URL con l\'URL pubblico del tuo nodo.'),
-    ('Errore DATABASE_URL all\'avvio',    'Stringa di connessione errata',            'Verifica il formato: postgres://user:pass@host:5432/dbname — assicurati che PostgreSQL sia in esecuzione e raggiungibile.'),
-    ('"no code at address" nei log',      'Il contratto V7 non è ancora distribuito', 'Normale al primo avvio — il nodo distribuisce V7 automaticamente. Attendi qualche secondo e verifica di nuovo.'),
-    ('"NODE_OPERATOR_WALLET not set"',    'Variabile d\'ambiente mancante',            'Aggiungi NODE_OPERATOR_WALLET=0xTUO_WALLET_UMANO. Il nodo funziona senza, ma non riceverai ricompense.'),
-    ('"Application error" su Railway',    'Errore di build o avvio',                  'Controlla i Deploy Logs. Più comune: DATABASE_URL mancante o RELAYER_PRIVATE_KEY in formato errato (deve iniziare con 0x).'),
-    ('Porta 8080 non raggiungibile (Docker)', 'Configurazione firewall o provider cloud', 'Apri la porta TCP 8080 in entrata nel tuo firewall o nelle impostazioni del security group cloud.'),
-    ('La build Docker fallisce (errore modulo)', 'Nessuna connessione internet durante la build', 'La build Docker richiede internet in uscita per scaricare i moduli Go. Railway lo gestisce automaticamente.'),
-],
-
-footer = 'Aequitas Chain · Chain ID 1926 · aequitas.digital · Ricompense da validatore: quotidiane alle 20:00 ora di Berlino (CEST/CET)',
-)
-
-PT = dict(
-title    = 'GUIA DO OPERADOR DE NÓ AEQUITAS',
-version  = 'v1.0 · Junho de 2026 · aequitas.digital',
-tagline  = 'Guia completo passo a passo · Nenhuma experiência prévia com blockchain necessária · ~20–30 min',
-
-prereq_title = 'Antes de começar — O que você precisa',
-prereqs = [
-    ('1.', '<b>Uma conta Aequitas:</b> Você precisa primeiro estar registrado como humano na Aequitas. Instale o app Android, conclua o registro biométrico e anote seu endereço de wallet. Sem isso, você não pode receber recompensas de validador.'),
-    ('2.', '<b>Uma conta GitHub (gratuita):</b> Acesse github.com e crie uma conta gratuita. Você precisa dela para copiar (fork) o código da Aequitas para que o Railway possa implantá-lo.'),
-    ('3.', '<b>Uma conta Railway (gratuita):</b> Acesse railway.app e faça login com GitHub. O Railway é uma plataforma de hospedagem que executa seu nó na nuvem — nenhum servidor ou linha de comando necessário.'),
-    ('4.', '<b>Chave de assinatura do nó (RELAYER_PRIVATE_KEY):</b> Seu nó precisa de uma wallet Ethereum dedicada para assinar os registros on-chain. Pode ser qualquer wallet MetaMask. Exporte a chave privada: MetaMask → Detalhes da conta → Mostrar chave privada → digite a senha → copie. Mantenha estritamente privada. <b>IMPORTANTE:</b> Para receber recompensas de validador, NODE_OPERATOR_WALLET também precisa ser sua <b>wallet humana registrada na Aequitas</b> (a verificada com AequitasBio). Apenas humanos verificados podem ganhar recompensas de validador.'),
-    ('5.', '<b>10–30 minutos do seu tempo.</b> O Railway faz a maior parte do trabalho automaticamente.'),
-],
-
-vars_title = 'Passo 1 — Variáveis de ambiente',
-vars_warn  = 'Aviso de segurança: Sua RELAYER_PRIVATE_KEY é como uma senha master. Quem a tiver controla a wallet do seu nó. Nunca a compartilhe publicamente, nunca a cole em chat ou e-mail. Use uma wallet MetaMask separada para RELAYER_PRIVATE_KEY (assinatura). NODE_OPERATOR_WALLET (para recompensas) deve ser sua wallet humana registrada na Aequitas.',
-var_cols   = ['Variável', 'Obrigatória?', 'O que definir'],
-vars = [
-    ('DATABASE_URL',        'SIM',         'Sua string de conexão PostgreSQL. No Railway: injetada automaticamente quando o PostgreSQL está no mesmo projeto. Formato: postgres://user:pass@host:5432/dbname'),
-    ('RELAYER_PRIVATE_KEY', 'SIM',         'A chave privada (0x…, 66 caracteres) da sua wallet de nó dedicada. MetaMask: Detalhes da conta → Mostrar chave privada → digite a senha → copie.'),
-    ('RELAYER_ADDRESS',     'Recomendado', 'O endereço da wallet (0x…, 42 caracteres) correspondente à RELAYER_PRIVATE_KEY. Copie do MetaMask. Existe um fallback, mas defini-lo explicitamente evita erros de inicialização.'),
-    ('NODE_OPERATOR_WALLET','Para recompensas', 'Seu endereço de wallet humana Aequitas — registrado via app Android. Recebe suas recompensas diárias de validador (40% de todas as taxas de protocolo). Deve ser um humano registrado.'),
-    ('NODE_OPERATOR_BINDING_SIGNATURE', 'Para recompensas', 'Comprova que você é proprietário de NODE_OPERATOR_WALLET. Gere em aequitas.digital/node-binding: assine a mensagem exibida com sua wallet humana no MetaMask, cole aqui a assinatura resultante. Sem ela seu nó ainda funciona, mas não pode se registrar automaticamente para recompensas.'),
-    ('PEER_SECRET',         'Opcional/Legado', 'Mecanismo de fallback herdado. Não é mais obrigatório — os nós se autenticam automaticamente via um desafio-resposta criptográfico (RELAYER_PRIVATE_KEY). Necessário apenas para compatibilidade com implantações antigas.'),
-    ('SELF_URL',            'Multi-nó',    'A URL HTTPS pública do seu próprio nó (ex. https://meu-no.up.railway.app). Necessária para autoexclusão na descoberta de pares. Encontre no Railway: Settings → Networking → Public Networking.'),
-    ('PRIMARY_NODE_URL',    'Multi-nó',    'Defina como: https://aequitas.digital — o nó primário com o qual seu nó se registra para descoberta automática de pares. Na inicialização, seu nó envia sua URL + endereço de assinatura ao primário, recebe a lista completa de pares e entra na rede automaticamente.'),
-    ('BOOTSTRAP_SNAPSHOT_URL', 'Recomendado', 'Defina como: https://aequitas.digital/api/snapshot — permite que um nó novo comece a partir do estado atual da rede em vez de reproduzir todo o histórico desde o gênesis. Sincronização inicial muito mais rápida.'),
-    ('BOOTSTRAP_SIGNER',    'Com snapshot', 'O endereço de assinatura do nó primário, usado para verificar que o snapshot é genuíno antes de importá-lo. Obtenha o valor atual em https://aequitas.digital/api/status → "signing_address". Obrigatória sempre que BOOTSTRAP_SNAPSHOT_URL estiver definida.'),
-    ('SNAPSHOT_TOKEN',      'Opcional',    'Não é necessária para inicializar um nó novo — mesmo sem ela você obtém tudo o que é necessário para funcionar corretamente (contas, saldos, pool, config). Apenas desbloqueia a exportação completa (vínculo nullifier/wallet + bio_registrations), usada para uma resincronização autoritativa de um nó já divergente. Pergunte ao operador da rede apenas se realmente precisar.'),
-    ('RESYNC_FROM_SNAPSHOT', 'Somente recuperação', 'PERIGOSO, temporário: defina como true junto com BOOTSTRAP_SNAPSHOT_URL e BOOTSTRAP_SIGNER apenas para recuperar um nó cujo estado divergiu da rede. Substitui completamente o estado local. Reinicie uma vez e depois remova esta variável — deixá-la força uma resincronização completa a cada reinicialização.'),
-    ('AUTO_HEAL_ON_DIVERGENCE', 'Altamente recomendado', 'Importante para a segurança e a velocidade da rede: se a chain do seu nó algum dia divergir da rede (por exemplo, após uma queda ou uma reinicialização malsucedida), ele detecta isso sozinho — comparando-se com PRIMARY_NODE_URL a cada poucos minutos — e ressincroniza automaticamente, sem necessidade de RESYNC_FROM_SNAPSHOT manual. Um nó que permanece divergente e continua transmitindo seus próprios blocos pode desacelerar ou desestabilizar toda a rede para os demais operadores. Defina como true junto com PRIMARY_NODE_URL, BOOTSTRAP_SNAPSHOT_URL e BOOTSTRAP_SIGNER.'),
-    ('PORT',                'Não',         'Não defina no Railway — o Railway a configura automaticamente. O padrão é 8080.'),
-    ('NODE_KEY',            'Não',         'Chave libp2p em Base64 para identidade P2P estável. Gerada automaticamente se omitida, mas muda a cada reinicialização. Se não definida, o nó a imprime em stderr: "SAVE THIS AS NODE_KEY ENVIRONMENT VAR: <base64>". Copie e cole aqui.'),
-    ('IS_PRIMARY_NODE',     'Não',         'Deixe não definida ou false. A distribuição agora usa um bloqueio em nível de banco de dados — qualquer nó pode executá-la sem esta variável.'),
-    ('RESET_STATE',         'Não',         'PERIGOSO: definir isso como true apaga todo o seu banco de dados a cada reinicialização. Uso apenas para desenvolvimento. Nunca em produção.'),
-],
-
-railway_title = 'Passo 2 — Implantar no Railway (Recomendado)',
-railway_intro = 'O Railway é a forma mais fácil de executar seu nó — sem configuração de servidor, sem linha de comando. O plano gratuito cobre todos os requisitos. Tempo total: cerca de 10–15 minutos.',
-railway_steps = [
-    'Faça fork de github.com/hanoi96international-gif/Aequitas para sua própria conta GitHub (clique em <b>Fork</b> → <b>Create fork</b>)',
-    'No railway.app, faça login com GitHub, depois <b>New Project</b> → <b>+ New</b> → <b>Database</b> → <b>Add PostgreSQL</b>',
-    'No mesmo projeto Railway, clique em <b>+ New → GitHub Repo</b> e selecione seu fork da Aequitas — o Railway detecta o Dockerfile automaticamente',
-    'Clique em <b>Deploy Now</b> — um primeiro build começa (pode falhar sem variáveis de ambiente, isso é normal)',
-    'Clique no seu serviço Aequitas → <b>Variables</b> → adicione cada variável (veja a tabela acima). Mínimo necessário: RELAYER_PRIVATE_KEY, RELAYER_ADDRESS, NODE_OPERATOR_WALLET, SELF_URL, PRIMARY_NODE_URL=https://aequitas.digital (PEER_SECRET não é mais obrigatória)',
-    'Clique em <b>Deploy</b> (ou salve as variáveis para acionar o auto-redeploy). O build leva ~3 minutos enquanto o Go compila o binário do nó.',
-    'Observe os <b>Deploy Logs</b>. O sucesso se parece com: <font name="Courier" color="#5B21B6">Aequitas Node Running</font> e <font name="Courier" color="#0F766E">[NODE] Registered node operator wallet: 0x…</font>',
-    'Vá em <b>Settings → Networking → Generate Domain</b> para obter sua URL pública',
-    'Abra <font name="Courier">https://SUA-URL/api/status</font> — você deve ver JSON com <b>height</b> subindo a cada ~6 segundos',
-],
-railway_vars_code = (
-    '# O Railway define DATABASE_URL automaticamente se o PostgreSQL estiver no mesmo projeto\n'
-    'RELAYER_PRIVATE_KEY    = 0xSUA_CHAVE_PRIVADA\n'
-    'RELAYER_ADDRESS        = 0xSEU_ENDERECO_WALLET_NO\n'
-    'NODE_OPERATOR_WALLET   = 0xSUA_WALLET_HUMANA\n'
-    '# PEER_SECRET não é mais obrigatória — a autenticação é automática\n'
-    'SELF_URL               = https://SEU-DOMINIO-RAILWAY.up.railway.app\n'
-    'PRIMARY_NODE_URL       = https://aequitas.digital'
-    'AUTO_HEAL_ON_DIVERGENCE       = true'
-),
-
-docker_title = 'Passo 2b — Alternativa: implantação com Docker (Avançado)',
-docker_intro = 'Use isso se você tem seu próprio servidor (VPS, servidor doméstico, VM em nuvem). Requer Docker e um banco de dados PostgreSQL.',
-docker_code  = (
-    '# 1. Baixe o código\n'
-    'git clone https://github.com/hanoi96international-gif/Aequitas && cd Aequitas\n\n'
-    '# 2. Construa a imagem do nó (~3 min de compilação Go)\n'
-    'docker build -t aequitas-node .\n\n'
-    '# 3. Inicie o nó\n'
-    'docker run -d --name aequitas-node --restart unless-stopped \\\n'
-    '  -e DATABASE_URL="postgres://user:pass@host:5432/aequitas" \\\n'
-    '  -e RELAYER_PRIVATE_KEY="0xSUA_CHAVE_PRIVADA" \\\n'
-    '  -e RELAYER_ADDRESS="0xSEU_ENDERECO_WALLET_NO" \\\n'
-    '  -e NODE_OPERATOR_WALLET="0xSUA_WALLET_HUMANA" \\\n'
-    '  # -e PEER_SECRET="..." (opcional/legado, não necessário) \\\n'
-    '  -e SELF_URL="https://SUA-URL-PUBLICA" \\\n'
-    '  -e PRIMARY_NODE_URL="https://aequitas.digital" \\\n'
-    '  -e AUTO_HEAL_ON_DIVERGENCE="true" \\\n'
-    '  -p 8080:8080 aequitas-node\n\n'
-    '# 4. Observe os logs em tempo real\n'
-    'docker logs -f aequitas-node'
-),
-
-verify_title = 'Passo 3 — Verifique se seu nó está funcionando',
-verify_body  = 'Abra estas URLs no navegador. Substitua SUA-URL-DO-NO pelo seu domínio Railway real ou endereço do servidor.',
-verify_code  = (
-    'https://SUA-URL-DO-NO/api/status\n'
-    ' → Esperado: {"height": 1234, "total_humans": N, "aequitas_index": N}\n\n'
-    'https://SUA-URL-DO-NO/rpc\n'
-    ' → Esperado: {"jsonrpc":"2.0","error":"method not specified"} — o RPC está ativo'
-),
-verify_note  = 'A altura do bloco deve corresponder ao nó primário em 1–2 blocos, em poucos segundos após a inicialização. Se ficar em 0, verifique se PRIMARY_NODE_URL=https://aequitas.digital está definida e acessível.',
-
-valkey_title = 'Passo 3b — Registre sua chave de validador (Autenticação descentralizada)',
-valkey_body  = 'Em vez de um PEER_SECRET compartilhado, registre a chave de assinatura do seu nó com sua wallet humana. Isso prova criptograficamente que você controla ambas as chaves. Obtenha a assinatura executando isto no seu servidor (SSH/Railway shell):',
-valkey_code  = 'curl "http://localhost:8080/api/sign-validator-challenge?wallet=0xSUA_WALLET_HUMANA"',
-valkey_note  = 'Depois use a aba Network → Run a Node do site e clique em "Sign with MetaMask & Register" para concluir o registro.',
-
-mm_title = 'Passo 4 — Conectar o MetaMask ao seu nó (Opcional)',
-mm_body  = 'No MetaMask: clique no menu suspenso de rede → Add network → Add a network manually e insira:',
-mm_rows  = [
-    ('Network Name',    'Aequitas Chain'),
-    ('RPC URL',         'https://SUA-URL-DO-NO/rpc'),
-    ('Chain ID',        '1926'),
-    ('Currency Symbol', 'AEQ'),
-    ('Decimals',        '18'),
-    ('Block Explorer',  'https://aequitas.digital'),
-],
-
-rewards_title = 'Passo 5 — Ganhar recompensas de validador',
-rewards_box   = 'O Validators Pool coleta 40% de todas as taxas de protocolo (taxas de swap, demurrage, excedente do limite de riqueza). Todos os dias às 20h00 horário de Berlim (CEST/CET, ajusta automaticamente o horário de verão) o nó distribui o saldo do pool a todos os operadores de nó registrados proporcionalmente aos blocos produzidos. Quanto mais tempo seu nó funcionar de forma consistente, maior será sua parte.',
-rewards_steps = [
-    'Certifique-se de estar registrado como humano na Aequitas. Se não estiver: instale o app Android e conclua primeiro o registro biométrico. Você receberá um endereço de wallet e 1.000 AEQ.',
-    'Defina <font name="Courier">NODE_OPERATOR_WALLET</font> = seu endereço de wallet humana Aequitas nas Variables do Railway',
-    'Salve — o Railway reimplanta automaticamente. Com Docker: <font name="Courier">docker restart aequitas-node</font>',
-    'Nos logs do seu nó, confirme: <font name="Courier" color="#0F766E">[NODE] Registered node operator wallet: 0x…</font>',
-    'As recompensas são distribuídas automaticamente todos os dias às 20h00 horário de Berlim (CEST/CET). Basta manter seu nó em execução — nenhuma ação adicional necessária.',
-],
-
-trouble_title = 'Solução de problemas',
-trouble_cols  = ['Sintoma', 'Causa provável', 'Solução'],
-trouble_rows  = [
-    ('A altura do bloco fica em 0',        'PRIMARY_NODE_URL não definida ou incorreta', 'Defina PRIMARY_NODE_URL=https://aequitas.digital e reimplante. Defina também SELF_URL com a URL pública do seu nó.'),
-    ('Erro de DATABASE_URL na inicialização', 'String de conexão incorreta',             'Verifique o formato: postgres://user:pass@host:5432/dbname — certifique-se de que o PostgreSQL esteja em execução e acessível.'),
-    ('"no code at address" nos logs',      'O contrato V7 ainda não foi implantado',     'Normal na primeira inicialização — o nó implanta V7 automaticamente. Aguarde alguns segundos e verifique novamente.'),
-    ('"NODE_OPERATOR_WALLET not set"',     'Variável de ambiente ausente',                'Adicione NODE_OPERATOR_WALLET=0xSUA_WALLET_HUMANA. O nó funciona sem ela, mas você não receberá recompensas.'),
-    ('"Application error" no Railway',     'Falha de build ou inicialização',            'Verifique os Deploy Logs. Mais comum: DATABASE_URL ausente ou RELAYER_PRIVATE_KEY em formato errado (deve começar com 0x).'),
-    ('Porta 8080 inacessível (Docker)',    'Configuração de firewall ou provedor de nuvem', 'Abra a porta TCP 8080 de entrada no seu firewall ou nas configurações de security group da nuvem.'),
-    ('Build do Docker falha (erro de módulo)', 'Sem internet durante o build',            'O build do Docker precisa de internet de saída para baixar os módulos Go. O Railway gerencia isso automaticamente.'),
-],
-
-footer = 'Aequitas Chain · Chain ID 1926 · aequitas.digital · Recompensas de validador: diárias às 20h00 horário de Berlim (CEST/CET)',
-)
-
-TR = dict(
-title    = 'AEQUITAS NODE OPERATÖRÜ KILAVUZU',
-version  = 'v1.0 · Haziran 2026 · aequitas.digital',
-tagline  = 'Tam adım adım kılavuz · Önceden blockchain deneyimi gerekmez · ~20–30 dk',
-
-prereq_title = 'Başlamadan Önce — İhtiyacınız Olanlar',
-prereqs = [
-    ('1.', '<b>Bir Aequitas hesabı:</b> Önce Aequitas\'ta insan olarak kayıtlı olmalısınız. Android uygulamasını yükleyin, biyometrik kaydı tamamlayın ve wallet adresinizi not edin. Bu olmadan validator ödülü alamazsınız.'),
-    ('2.', '<b>Bir GitHub hesabı (ücretsiz):</b> github.com adresine gidip ücretsiz bir hesap oluşturun. Railway\'in dağıtabilmesi için Aequitas kodunu kopyalamak (fork) için buna ihtiyacınız var.'),
-    ('3.', '<b>Bir Railway hesabı (ücretsiz):</b> railway.app adresine gidip GitHub ile giriş yapın. Railway, node\'unuzu bulutta çalıştıran bir hosting platformudur — sunucu veya komut satırı gerekmez.'),
-    ('4.', '<b>Node imzalama anahtarı (RELAYER_PRIVATE_KEY):</b> Node\'unuzun zincir üzerindeki kayıtları imzalamak için özel bir Ethereum wallet\'ına ihtiyacı var. Bu herhangi bir MetaMask wallet\'ı olabilir. Özel anahtarını dışa aktarın: MetaMask → Account Details → Show Private Key → şifreyi girin → kopyala. Son derece gizli tutun. <b>ÖNEMLİ:</b> Validator ödülü almak için NODE_OPERATOR_WALLET\'ın da <b>Aequitas\'ta kayıtlı insan wallet\'ınız</b> olması gerekir (AequitasBio ile doğrulanmış olan). Sadece doğrulanmış insanlar validator ödülü kazanabilir.'),
-    ('5.', '<b>10–30 dakikanız.</b> Railway işin büyük kısmını otomatik olarak yapar.'),
-],
-
-vars_title = 'Adım 1 — Ortam Değişkenleri',
-vars_warn  = 'Güvenlik Uyarısı: RELAYER_PRIVATE_KEY\'iniz bir ana şifre gibidir. Ona sahip olan herkes node wallet\'ınızı kontrol eder. Asla herkese açık paylaşmayın, asla sohbete veya e-postaya yapıştırmayın. RELAYER_PRIVATE_KEY (imzalama) için ayrı bir MetaMask wallet\'ı kullanın. NODE_OPERATOR_WALLET (ödüller için) Aequitas\'ta kayıtlı insan wallet\'ınız olmalıdır.',
-var_cols   = ['Değişken', 'Gerekli mi?', 'Ne ayarlanmalı'],
-vars = [
-    ('DATABASE_URL',        'EVET',        'PostgreSQL bağlantı dizeniz. Railway\'de: PostgreSQL aynı projedeyse otomatik olarak eklenir. Format: postgres://user:pass@host:5432/dbname'),
-    ('RELAYER_PRIVATE_KEY', 'EVET',        'Özel node wallet\'ınızın özel anahtarı (0x…, 66 karakter). MetaMask: Account Details → Show Private Key → şifreyi girin → kopyala.'),
-    ('RELAYER_ADDRESS',     'Önerilir',    'RELAYER_PRIVATE_KEY\'e karşılık gelen wallet adresi (0x…, 42 karakter). MetaMask\'tan kopyalayın. Bir yedek mekanizma var ama bunu açıkça ayarlamak başlatma hatalarını önler.'),
-    ('NODE_OPERATOR_WALLET','Ödüller için', 'Android uygulaması üzerinden kayıtlı Aequitas insan wallet adresiniz. Günlük validator ödüllerinizi (tüm protokol ücretlerinin %40\'ı) alır. Kayıtlı bir insan olmalıdır.'),
-    ('NODE_OPERATOR_BINDING_SIGNATURE', 'Ödüller için', 'NODE_OPERATOR_WALLET\'a sahip olduğunuzu kanıtlar. aequitas.digital/node-binding adresinde oluşturun: gösterilen mesajı MetaMask\'ta insan wallet\'ınızla imzalayın, ortaya çıkan imzayı buraya yapıştırın. Bu olmadan node\'unuz çalışır ama ödüller için otomatik kayıt olamaz.'),
-    ('PEER_SECRET',         'Opsiyonel/Eski', 'Eski paylaşılan-gizli yedek mekanizması. Artık gerekli değil — node\'lar artık kriptografik bir challenge-response (RELAYER_PRIVATE_KEY) ile otomatik olarak kimlik doğrular. Yalnızca eski dağıtımlarla geriye uyumluluk için gereklidir.'),
-    ('SELF_URL',            'Çoklu node',  'Kendi node\'unuzun herkese açık HTTPS URL\'si (örn. https://benim-nodum.up.railway.app). Peer keşfinde kendinizi hariç tutmak için gereklidir. Railway\'de bulunur: Settings → Networking → Public Networking.'),
-    ('PRIMARY_NODE_URL',    'Çoklu node',  'Şuna ayarlayın: https://aequitas.digital — node\'unuzun otomatik peer keşfi için kaydolduğu birincil node. Başlangıçta node\'unuz URL\'sini + imza adresini birincil node\'a gönderir, tam peer listesini geri alır ve ağa otomatik olarak katılır.'),
-    ('BOOTSTRAP_SNAPSHOT_URL', 'Önerilir',  'Şuna ayarlayın: https://aequitas.digital/api/snapshot — yeni bir node\'un tüm geçmişi genesis\'ten yeniden oynatmak yerine ağın güncel durumundan başlamasını sağlar. Çok daha hızlı ilk senkronizasyon.'),
-    ('BOOTSTRAP_SIGNER',    'Snapshot ile', 'Snapshot\'ı içe aktarmadan önce gerçek olduğunu doğrulamak için kullanılan birincil node\'un imza adresi. Güncel değeri https://aequitas.digital/api/status → "signing_address" adresinden alın. BOOTSTRAP_SNAPSHOT_URL ayarlandığında zorunludur.'),
-    ('SNAPSHOT_TOKEN',      'Opsiyonel',   'Yeni bir node başlatmak için gerekli değildir — onsuz da doğru çalışmak için gereken her şeyi alırsınız (hesaplar, bakiyeler, pool, config). Sadece zaten ayrışmış bir node\'un yetkili resync\'i için kullanılan tam dışa aktarımı (nullifier/wallet bağlantısı + bio_registrations) açar. Sadece gerçekten ihtiyacınız varsa ağ operatöründen isteyin.'),
-    ('RESYNC_FROM_SNAPSHOT', 'Yalnızca kurtarma', 'TEHLİKELİ, geçici: yalnızca ağdan ayrışmış durumdaki bir node\'u kurtarmak için BOOTSTRAP_SNAPSHOT_URL ve BOOTSTRAP_SIGNER ile birlikte true olarak ayarlayın. Yerel durumu tamamen değiştirir. Bir kez yeniden başlatın, sonra bu değişkeni kaldırın — bırakılırsa her yeniden başlatmada tam bir resync\'i zorlar.'),
-    ('AUTO_HEAL_ON_DIVERGENCE', 'Kesinlikle önerilir', 'Ağın güvenliği ve hızı için önemli: node\'unuzun zinciri ağdan ayrışırsa (örneğin çevrimdışı kaldıktan veya başarısız bir yeniden başlatmadan sonra), bunu kendisi tespit eder — PRIMARY_NODE_URL ile birkaç dakikada bir karşılaştırarak — ve elle RESYNC_FROM_SNAPSHOT gerekmeden otomatik olarak yeniden senkronize olur. Ayrışmış durumda kalıp kendi bloklarını yaymaya devam eden bir node, tüm ağı diğer tüm operatörler için yavaşlatabilir veya istikrarsızlaştırabilir. PRIMARY_NODE_URL, BOOTSTRAP_SNAPSHOT_URL ve BOOTSTRAP_SIGNER ile birlikte true olarak ayarlayın.'),
-    ('PORT',                'Hayır',       'Railway\'de ayarlamayın — Railway bunu otomatik olarak ayarlar. Varsayılan 8080\'dir.'),
-    ('NODE_KEY',            'Hayır',       'Kararlı bir P2P kimliği için Base64 libp2p anahtarı. Belirtilmezse otomatik oluşturulur ama her yeniden başlatmada değişir. Ayarlanmamışsa node bunu stderr\'e yazdırır: "SAVE THIS AS NODE_KEY ENVIRONMENT VAR: <base64>". Kopyalayıp buraya yapıştırın.'),
-    ('IS_PRIMARY_NODE',     'Hayır',       'Ayarlanmamış veya false bırakın. Dağıtım artık veritabanı seviyesinde bir kilit kullanıyor — herhangi bir node bu değişken olmadan çalıştırabilir.'),
-    ('RESET_STATE',         'Hayır',       'TEHLİKELİ: Bunu true yapmak her yeniden başlatmada tüm veritabanınızı siler. Yalnızca geliştirme amaçlı. Üretimde asla.'),
-],
-
-railway_title = 'Adım 2 — Railway\'de Dağıtım (Önerilir)',
-railway_intro = 'Railway, node\'unuzu çalıştırmanın en kolay yoludur — sunucu kurulumu, komut satırı gerekmez. Ücretsiz plan tüm gereksinimleri karşılar. Toplam süre: yaklaşık 10–15 dakika.',
-railway_steps = [
-    'github.com/hanoi96international-gif/Aequitas\'ı kendi GitHub hesabınıza fork edin (<b>Fork</b> → <b>Create fork</b>\'a tıklayın)',
-    'railway.app\'te GitHub ile giriş yapın, sonra <b>New Project</b> → <b>+ New</b> → <b>Database</b> → <b>Add PostgreSQL</b>',
-    'Aynı Railway projesinde <b>+ New → GitHub Repo</b>\'ya tıklayın ve Aequitas fork\'unuzu seçin — Railway Dockerfile\'ı otomatik olarak algılar',
-    '<b>Deploy Now</b>\'a tıklayın — ilk bir build başlar (env var olmadan başarısız olabilir, bu normaldir)',
-    'Aequitas servisinize tıklayın → <b>Variables</b> → her değişkeni ekleyin (yukarıdaki tabloya bakın). Minimum gereken: RELAYER_PRIVATE_KEY, RELAYER_ADDRESS, NODE_OPERATOR_WALLET, SELF_URL, PRIMARY_NODE_URL=https://aequitas.digital (PEER_SECRET artık gerekli değil)',
-    '<b>Deploy</b>\'a tıklayın (veya auto-redeploy\'u tetiklemek için değişkenleri kaydedin). Go node binary\'sini derlerken build ~3 dakika sürer.',
-    '<b>Deploy Logs</b>\'u izleyin. Başarı şöyle görünür: <font name="Courier" color="#5B21B6">Aequitas Node Running</font> ve <font name="Courier" color="#0F766E">[NODE] Registered node operator wallet: 0x…</font>',
-    'Herkese açık URL\'nizi almak için <b>Settings → Networking → Generate Domain</b>\'a gidin',
-    '<font name="Courier">https://URL-NIZ/api/status</font>\'u açın — <b>height</b>\'in her ~6 saniyede yükseldiği JSON görmelisiniz',
-],
-railway_vars_code = (
-    '# PostgreSQL aynı projedeyse Railway DATABASE_URL\'i otomatik ayarlar\n'
-    'RELAYER_PRIVATE_KEY    = 0xOZEL_ANAHTARINIZ\n'
-    'RELAYER_ADDRESS        = 0xNODE_WALLET_ADRESINIZ\n'
-    'NODE_OPERATOR_WALLET   = 0xINSAN_WALLET_INIZ\n'
-    '# PEER_SECRET artık gerekli değil — kimlik doğrulama otomatik\n'
-    'SELF_URL               = https://RAILWAY-ALAN-ADINIZ.up.railway.app\n'
-    'PRIMARY_NODE_URL       = https://aequitas.digital'
-    'AUTO_HEAL_ON_DIVERGENCE       = true'
-),
-
-docker_title = 'Adım 2b — Alternatif: Docker ile Dağıtım (Gelişmiş)',
-docker_intro = 'Kendi sunucunuz varsa bunu kullanın (VPS, ev sunucusu, bulut VM). Docker ve bir PostgreSQL veritabanı gerektirir.',
-docker_code  = (
-    '# 1. Kodu indirin\n'
-    'git clone https://github.com/hanoi96international-gif/Aequitas && cd Aequitas\n\n'
-    '# 2. Node imajını oluşturun (~3 dk Go derlemesi)\n'
-    'docker build -t aequitas-node .\n\n'
-    '# 3. Node\'u başlatın\n'
-    'docker run -d --name aequitas-node --restart unless-stopped \\\n'
-    '  -e DATABASE_URL="postgres://user:pass@host:5432/aequitas" \\\n'
-    '  -e RELAYER_PRIVATE_KEY="0xOZEL_ANAHTARINIZ" \\\n'
-    '  -e RELAYER_ADDRESS="0xNODE_WALLET_ADRESINIZ" \\\n'
-    '  -e NODE_OPERATOR_WALLET="0xINSAN_WALLET_INIZ" \\\n'
-    '  # -e PEER_SECRET="..." (opsiyonel/eski, gerekli değil) \\\n'
-    '  -e SELF_URL="https://HERKESE-ACIK-URL-NIZ" \\\n'
-    '  -e PRIMARY_NODE_URL="https://aequitas.digital" \\\n'
-    '  -e AUTO_HEAL_ON_DIVERGENCE="true" \\\n'
-    '  -p 8080:8080 aequitas-node\n\n'
-    '# 4. Canlı logları izleyin\n'
-    'docker logs -f aequitas-node'
-),
-
-verify_title = 'Adım 3 — Node\'unuzun Çalıştığını Doğrulayın',
-verify_body  = 'Bu URL\'leri tarayıcınızda açın. NODE-URL-NIZ\'i gerçek Railway alan adınız veya sunucu adresinizle değiştirin.',
-verify_code  = (
-    'https://NODE-URL-NIZ/api/status\n'
-    ' → Beklenen: {"height": 1234, "total_humans": N, "aequitas_index": N}\n\n'
-    'https://NODE-URL-NIZ/rpc\n'
-    ' → Beklenen: {"jsonrpc":"2.0","error":"method not specified"} — RPC çalışıyor'
-),
-verify_note  = 'Blok yüksekliği, başlangıçtan sonraki saniyeler içinde birincil node ile 1–2 blok farkla eşleşmelidir. 0\'da kalırsa, PRIMARY_NODE_URL=https://aequitas.digital\'in ayarlandığını ve erişilebilir olduğunu kontrol edin.',
-
-valkey_title = 'Adım 3b — Validator Anahtarınızı Kaydedin (Merkezi Olmayan Kimlik Doğrulama)',
-valkey_body  = 'Paylaşılan bir PEER_SECRET yerine, node imzalama anahtarınızı insan wallet\'ınızla kaydedin. Bu, her iki anahtarı da kontrol ettiğinizi kriptografik olarak kanıtlar. Sunucunuzda (SSH/Railway shell) şunu çalıştırarak imzayı alın:',
-valkey_code  = 'curl "http://localhost:8080/api/sign-validator-challenge?wallet=0xINSAN_WALLET_INIZ"',
-valkey_note  = 'Sonra sitedeki Network → Run a Node sekmesini kullanın ve kaydı tamamlamak için "Sign with MetaMask & Register"\'a tıklayın.',
-
-mm_title = 'Adım 4 — MetaMask\'ı Node\'unuza Bağlayın (Opsiyonel)',
-mm_body  = 'MetaMask\'ta: ağ açılır menüsüne tıklayın → Add network → Add a network manually, sonra girin:',
-mm_rows  = [
-    ('Network Name',    'Aequitas Chain'),
-    ('RPC URL',         'https://NODE-URL-NIZ/rpc'),
-    ('Chain ID',        '1926'),
-    ('Currency Symbol', 'AEQ'),
-    ('Decimals',        '18'),
-    ('Block Explorer',  'https://aequitas.digital'),
-],
-
-rewards_title = 'Adım 5 — Validator Ödülleri Kazanma',
-rewards_box   = 'Validators Pool tüm protokol ücretlerinin (swap ücretleri, demurrage, varlık tavanı fazlası) %40\'ını toplar. Her gün Berlin saatiyle 20:00\'de (CEST/CET, yaz saatini otomatik olarak yönetir) node, pool bakiyesini üretilen bloklara oranla tüm kayıtlı node operatörlerine dağıtır. Node\'unuz ne kadar tutarlı çalışırsa, payınız o kadar büyük olur.',
-rewards_steps = [
-    'Aequitas\'ta insan olarak kayıtlı olduğunuzdan emin olun. Değilseniz: önce Android uygulamasını yükleyip biyometrik kaydı tamamlayın. Bir wallet adresi ve 1.000 AEQ alacaksınız.',
-    'Railway Variables\'ınızda <font name="Courier">NODE_OPERATOR_WALLET</font> = Aequitas insan wallet adresinizi ayarlayın',
-    'Kaydedin — Railway otomatik olarak yeniden dağıtır. Docker ile: <font name="Courier">docker restart aequitas-node</font>',
-    'Node loglarınızda şunu onaylayın: <font name="Courier" color="#0F766E">[NODE] Registered node operator wallet: 0x…</font>',
-    'Ödüller her gün Berlin saatiyle 20:00\'de otomatik olarak dağıtılır (CEST/CET). Sadece node\'unuzu çalışır durumda tutun — başka bir işlem gerekmez.',
-],
-
-trouble_title = 'Sorun Giderme',
-trouble_cols  = ['Belirti', 'Olası Neden', 'Çözüm'],
-trouble_rows  = [
-    ('Blok yüksekliği 0\'da kalıyor',      'PRIMARY_NODE_URL ayarlanmamış veya yanlış', 'PRIMARY_NODE_URL=https://aequitas.digital ayarlayın ve yeniden dağıtın. SELF_URL\'i de node\'unuzun herkese açık URL\'siyle ayarlayın.'),
-    ('Başlangıçta DATABASE_URL hatası',    'Yanlış bağlantı dizesi',                    'Formatı kontrol edin: postgres://user:pass@host:5432/dbname — PostgreSQL\'in çalıştığından ve erişilebilir olduğundan emin olun.'),
-    ('Loglarda "no code at address"',      'V7 sözleşmesi henüz dağıtılmadı',           'İlk başlangıçta normal — node V7\'yi otomatik olarak dağıtır. Birkaç saniye bekleyip tekrar kontrol edin.'),
-    ('"NODE_OPERATOR_WALLET not set"',     'Eksik ortam değişkeni',                     'NODE_OPERATOR_WALLET=0xINSAN_WALLET_INIZ ekleyin. Node onsuz çalışır ama ödül almazsınız.'),
-    ('Railway "Application error"',       'Build veya başlatma hatası',                 'Deploy Logs\'u kontrol edin. En yaygın: DATABASE_URL eksik veya RELAYER_PRIVATE_KEY yanlış formatta (0x ile başlamalı).'),
-    ('Port 8080 erişilemiyor (Docker)',   'Firewall veya bulut sağlayıcı yapılandırması', 'Firewall\'ınızda veya bulut güvenlik grubu ayarlarınızda gelen TCP port 8080\'i açın.'),
-    ('Docker build başarısız (modül hatası)', 'Build sırasında internet yok',           'Docker build, Go modüllerini indirmek için giden internet erişimine ihtiyaç duyar. Railway bunu otomatik olarak yönetir.'),
-],
-
-footer = 'Aequitas Chain · Chain ID 1926 · aequitas.digital · Validator ödülleri: her gün Berlin saatiyle 20:00 (CEST/CET)',
-)
-
-ID = dict(
-title    = 'PANDUAN OPERATOR NODE AEQUITAS',
-version  = 'v1.0 · Juni 2026 · aequitas.digital',
-tagline  = 'Panduan lengkap langkah demi langkah · Tidak perlu pengalaman blockchain sebelumnya · ~20–30 menit',
-
-prereq_title = 'Sebelum Memulai — Yang Anda Butuhkan',
-prereqs = [
-    ('1.', '<b>Akun Aequitas:</b> Anda harus terdaftar sebagai manusia di Aequitas terlebih dahulu. Instal aplikasi Android, selesaikan registrasi biometrik, dan catat alamat wallet Anda. Tanpa ini Anda tidak dapat menerima hadiah validator.'),
-    ('2.', '<b>Akun GitHub (gratis):</b> Buka github.com dan buat akun gratis. Anda memerlukannya untuk menyalin (fork) kode Aequitas agar Railway dapat men-deploy-nya.'),
-    ('3.', '<b>Akun Railway (gratis):</b> Buka railway.app dan masuk dengan GitHub. Railway adalah platform hosting yang menjalankan node Anda di cloud — tidak perlu server atau command line.'),
-    ('4.', '<b>Kunci penandatanganan node (RELAYER_PRIVATE_KEY):</b> Node Anda membutuhkan wallet Ethereum khusus untuk menandatangani registrasi on-chain. Bisa berupa wallet MetaMask apa pun. Ekspor kunci privatnya: MetaMask → Account Details → Show Private Key → masukkan kata sandi → salin. Jaga kerahasiaannya secara ketat. <b>PENTING:</b> Untuk menerima hadiah validator, NODE_OPERATOR_WALLET juga harus berupa <b>wallet manusia terdaftar Aequitas</b> Anda (yang terverifikasi dengan AequitasBio). Hanya manusia terverifikasi yang dapat memperoleh hadiah validator.'),
-    ('5.', '<b>10–30 menit waktu Anda.</b> Railway melakukan sebagian besar pekerjaan secara otomatis.'),
-],
-
-vars_title = 'Langkah 1 — Variabel Lingkungan',
-vars_warn  = 'Peringatan Keamanan: RELAYER_PRIVATE_KEY Anda seperti kata sandi utama. Siapa pun yang memilikinya mengontrol wallet node Anda. Jangan pernah membagikannya secara publik, jangan pernah menempelkannya di chat atau email. Gunakan wallet MetaMask terpisah untuk RELAYER_PRIVATE_KEY (penandatanganan). NODE_OPERATOR_WALLET (untuk hadiah) harus berupa wallet manusia terdaftar Aequitas Anda.',
-var_cols   = ['Variabel', 'Wajib?', 'Apa yang harus diisi'],
-vars = [
-    ('DATABASE_URL',        'YA',          'String koneksi PostgreSQL Anda. Di Railway: otomatis disuntikkan jika PostgreSQL berada dalam proyek yang sama. Format: postgres://user:pass@host:5432/dbname'),
-    ('RELAYER_PRIVATE_KEY', 'YA',          'Kunci privat (0x…, 66 karakter) dari wallet node khusus Anda. MetaMask: Account Details → Show Private Key → masukkan kata sandi → salin.'),
-    ('RELAYER_ADDRESS',     'Disarankan',  'Alamat wallet (0x…, 42 karakter) yang sesuai dengan RELAYER_PRIVATE_KEY. Salin dari MetaMask. Ada fallback, tetapi mengaturnya secara eksplisit mencegah error saat startup.'),
-    ('NODE_OPERATOR_WALLET','Untuk hadiah', 'Alamat wallet manusia Aequitas Anda — terdaftar melalui aplikasi Android. Menerima hadiah validator harian Anda (40% dari semua biaya protokol). Harus berupa manusia terdaftar.'),
-    ('NODE_OPERATOR_BINDING_SIGNATURE', 'Untuk hadiah', 'Membuktikan Anda pemilik NODE_OPERATOR_WALLET. Buat di aequitas.digital/node-binding: tanda tangani pesan yang ditampilkan dengan wallet manusia Anda di MetaMask, tempel tanda tangan yang dihasilkan di sini. Tanpa ini node Anda masih berjalan, tetapi tidak dapat mendaftar otomatis untuk hadiah.'),
-    ('PEER_SECRET',         'Opsional/Legacy', 'Mekanisme cadangan lama. Tidak lagi diperlukan — node sekarang mengautentikasi secara otomatis melalui challenge-response kriptografis (RELAYER_PRIVATE_KEY). Hanya diperlukan untuk kompatibilitas mundur dengan deployment lama.'),
-    ('SELF_URL',            'Multi-node',  'URL HTTPS publik node Anda sendiri (mis. https://node-saya.up.railway.app). Diperlukan untuk pengecualian diri dalam penemuan peer. Temukan di Railway: Settings → Networking → Public Networking.'),
-    ('PRIMARY_NODE_URL',    'Multi-node',  'Atur ke: https://aequitas.digital — node utama tempat node Anda mendaftar untuk penemuan peer otomatis. Saat startup, node Anda mengirim URL + alamat penandatanganannya ke node utama, menerima daftar peer lengkap, dan bergabung ke jaringan secara otomatis.'),
-    ('BOOTSTRAP_SNAPSHOT_URL', 'Disarankan', 'Atur ke: https://aequitas.digital/api/snapshot — memungkinkan node baru mulai dari status jaringan saat ini, bukan memutar ulang seluruh riwayat dari genesis. Sinkronisasi awal jauh lebih cepat.'),
-    ('BOOTSTRAP_SIGNER',    'Dengan snapshot', 'Alamat penandatanganan node utama, digunakan untuk memverifikasi bahwa snapshot asli sebelum diimpor. Dapatkan nilai saat ini dari https://aequitas.digital/api/status → "signing_address". Wajib jika BOOTSTRAP_SNAPSHOT_URL diatur.'),
-    ('SNAPSHOT_TOKEN',      'Opsional',    'Tidak diperlukan untuk bootstrap node baru — tanpanya Anda tetap mendapatkan semua yang diperlukan untuk berjalan dengan benar (akun, saldo, pool, config). Hanya membuka ekspor lengkap (tautan nullifier/wallet + bio_registrations), digunakan untuk resync otoritatif node yang sudah divergen. Tanyakan operator jaringan hanya jika Anda benar-benar membutuhkannya.'),
-    ('RESYNC_FROM_SNAPSHOT', 'Hanya recovery', 'BERBAHAYA, sementara: atur ke true bersama BOOTSTRAP_SNAPSHOT_URL dan BOOTSTRAP_SIGNER hanya untuk memulihkan node yang statusnya telah menyimpang dari jaringan. Mengganti status lokal secara total. Restart sekali, lalu hapus kembali variabel ini — membiarkannya memaksa resync penuh setiap restart.'),
-    ('AUTO_HEAL_ON_DIVERGENCE', 'Sangat disarankan', 'Penting untuk keamanan dan kecepatan jaringan: jika rantai node Anda pernah menyimpang dari jaringan (misalnya setelah downtime atau restart yang gagal), node akan mendeteksinya sendiri — dengan membandingkan diri terhadap PRIMARY_NODE_URL setiap beberapa menit — dan melakukan resync otomatis, tanpa perlu RESYNC_FROM_SNAPSHOT manual. Node yang tetap menyimpang dan terus menyiarkan bloknya sendiri dapat memperlambat atau mengganggu stabilitas seluruh jaringan bagi operator lain. Atur ke true bersama PRIMARY_NODE_URL, BOOTSTRAP_SNAPSHOT_URL, dan BOOTSTRAP_SIGNER.'),
-    ('PORT',                'Tidak',       'Jangan atur di Railway — Railway mengaturnya secara otomatis. Default-nya adalah 8080.'),
-    ('NODE_KEY',            'Tidak',       'Kunci libp2p Base64 untuk identitas P2P yang stabil. Otomatis dibuat jika dihilangkan, tetapi berubah setiap restart. Jika tidak diatur, node mencetaknya ke stderr: "SAVE THIS AS NODE_KEY ENVIRONMENT VAR: <base64>". Salin dan tempel di sini.'),
-    ('IS_PRIMARY_NODE',     'Tidak',       'Biarkan tidak diatur atau false. Distribusi sekarang menggunakan lock tingkat database — node apa pun dapat menjalankannya tanpa variabel ini.'),
-    ('RESET_STATE',         'Tidak',       'BERBAHAYA: mengatur ini ke true menghapus seluruh database Anda setiap restart. Hanya untuk penggunaan pengembangan. Jangan pernah di produksi.'),
-],
-
-railway_title = 'Langkah 2 — Deploy di Railway (Disarankan)',
-railway_intro = 'Railway adalah cara termudah untuk menjalankan node Anda — tanpa setup server, tanpa command line. Paket gratis mencakup semua kebutuhan. Total waktu: sekitar 10–15 menit.',
-railway_steps = [
-    'Fork github.com/hanoi96international-gif/Aequitas ke akun GitHub Anda sendiri (klik <b>Fork</b> → <b>Create fork</b>)',
-    'Di railway.app, masuk dengan GitHub, lalu <b>New Project</b> → <b>+ New</b> → <b>Database</b> → <b>Add PostgreSQL</b>',
-    'Di proyek Railway yang sama, klik <b>+ New → GitHub Repo</b> dan pilih fork Aequitas Anda — Railway mendeteksi Dockerfile secara otomatis',
-    'Klik <b>Deploy Now</b> — build pertama dimulai (dapat gagal tanpa env var, itu normal)',
-    'Klik layanan Aequitas Anda → <b>Variables</b> → tambahkan setiap variabel (lihat tabel di atas). Minimum yang diperlukan: RELAYER_PRIVATE_KEY, RELAYER_ADDRESS, NODE_OPERATOR_WALLET, SELF_URL, PRIMARY_NODE_URL=https://aequitas.digital (PEER_SECRET tidak lagi diperlukan)',
-    'Klik <b>Deploy</b> (atau simpan variabel untuk memicu auto-redeploy). Build memakan waktu ~3 menit saat Go mengompilasi binary node.',
-    'Perhatikan <b>Deploy Logs</b>. Keberhasilan terlihat seperti: <font name="Courier" color="#5B21B6">Aequitas Node Running</font> dan <font name="Courier" color="#0F766E">[NODE] Registered node operator wallet: 0x…</font>',
-    'Buka <b>Settings → Networking → Generate Domain</b> untuk mendapatkan URL publik Anda',
-    'Buka <font name="Courier">https://URL-ANDA/api/status</font> — Anda akan melihat JSON dengan <b>height</b> yang naik setiap ~6 detik',
-],
-railway_vars_code = (
-    '# Railway otomatis mengatur DATABASE_URL jika PostgreSQL berada dalam proyek yang sama\n'
-    'RELAYER_PRIVATE_KEY    = 0xKUNCI_PRIVAT_ANDA\n'
-    'RELAYER_ADDRESS        = 0xALAMAT_WALLET_NODE_ANDA\n'
-    'NODE_OPERATOR_WALLET   = 0xWALLET_MANUSIA_ANDA\n'
-    '# PEER_SECRET tidak lagi diperlukan — autentikasi otomatis\n'
-    'SELF_URL               = https://DOMAIN-RAILWAY-ANDA.up.railway.app\n'
-    'PRIMARY_NODE_URL       = https://aequitas.digital'
-    'AUTO_HEAL_ON_DIVERGENCE       = true'
-),
-
-docker_title = 'Langkah 2b — Alternatif: Deploy dengan Docker (Lanjutan)',
-docker_intro = 'Gunakan ini jika Anda memiliki server sendiri (VPS, server rumah, VM cloud). Membutuhkan Docker dan database PostgreSQL.',
-docker_code  = (
-    '# 1. Unduh kode\n'
-    'git clone https://github.com/hanoi96international-gif/Aequitas && cd Aequitas\n\n'
-    '# 2. Bangun image node (~3 menit kompilasi Go)\n'
-    'docker build -t aequitas-node .\n\n'
-    '# 3. Jalankan node\n'
-    'docker run -d --name aequitas-node --restart unless-stopped \\\n'
-    '  -e DATABASE_URL="postgres://user:pass@host:5432/aequitas" \\\n'
-    '  -e RELAYER_PRIVATE_KEY="0xKUNCI_PRIVAT_ANDA" \\\n'
-    '  -e RELAYER_ADDRESS="0xALAMAT_WALLET_NODE_ANDA" \\\n'
-    '  -e NODE_OPERATOR_WALLET="0xWALLET_MANUSIA_ANDA" \\\n'
-    '  # -e PEER_SECRET="..." (opsional/legacy, tidak diperlukan) \\\n'
-    '  -e SELF_URL="https://URL-PUBLIK-ANDA" \\\n'
-    '  -e PRIMARY_NODE_URL="https://aequitas.digital" \\\n'
-    '  -e AUTO_HEAL_ON_DIVERGENCE="true" \\\n'
-    '  -p 8080:8080 aequitas-node\n\n'
-    '# 4. Perhatikan log secara langsung\n'
-    'docker logs -f aequitas-node'
-),
-
-verify_title = 'Langkah 3 — Verifikasi Node Anda Berjalan',
-verify_body  = 'Buka URL ini di browser Anda. Ganti URL-NODE-ANDA dengan domain Railway atau alamat server Anda yang sebenarnya.',
-verify_code  = (
-    'https://URL-NODE-ANDA/api/status\n'
-    ' → Diharapkan: {"height": 1234, "total_humans": N, "aequitas_index": N}\n\n'
-    'https://URL-NODE-ANDA/rpc\n'
-    ' → Diharapkan: {"jsonrpc":"2.0","error":"method not specified"} — RPC aktif'
-),
-verify_note  = 'Tinggi blok harus sesuai dengan node utama dalam 1–2 blok dalam beberapa detik setelah startup. Jika tetap di 0, periksa apakah PRIMARY_NODE_URL=https://aequitas.digital sudah diatur dan dapat dijangkau.',
-
-valkey_title = 'Langkah 3b — Daftarkan Kunci Validator Anda (Autentikasi Terdesentralisasi)',
-valkey_body  = 'Sebagai pengganti PEER_SECRET bersama, daftarkan kunci penandatanganan node Anda dengan wallet manusia Anda. Ini membuktikan secara kriptografis bahwa Anda mengontrol kedua kunci tersebut. Dapatkan tanda tangan dengan menjalankan ini di server Anda (SSH/Railway shell):',
-valkey_code  = 'curl "http://localhost:8080/api/sign-validator-challenge?wallet=0xWALLET_MANUSIA_ANDA"',
-valkey_note  = 'Kemudian gunakan tab Network → Run a Node di situs web dan klik "Sign with MetaMask & Register" untuk menyelesaikan registrasi.',
-
-mm_title = 'Langkah 4 — Hubungkan MetaMask ke Node Anda (Opsional)',
-mm_body  = 'Di MetaMask: klik dropdown jaringan → Add network → Add a network manually, lalu masukkan:',
-mm_rows  = [
-    ('Network Name',    'Aequitas Chain'),
-    ('RPC URL',         'https://URL-NODE-ANDA/rpc'),
-    ('Chain ID',        '1926'),
-    ('Currency Symbol', 'AEQ'),
-    ('Decimals',        '18'),
-    ('Block Explorer',  'https://aequitas.digital'),
-],
-
-rewards_title = 'Langkah 5 — Mendapatkan Hadiah Validator',
-rewards_box   = 'Validators Pool mengumpulkan 40% dari semua biaya protokol (biaya swap, demurrage, kelebihan batas kekayaan). Setiap hari pukul 20:00 waktu Berlin (CEST/CET, menangani DST secara otomatis) node mendistribusikan saldo pool secara proporsional ke semua operator node terdaftar berdasarkan blok yang diproduksi. Semakin konsisten node Anda berjalan, semakin besar bagian Anda.',
-rewards_steps = [
-    'Pastikan Anda terdaftar sebagai manusia di Aequitas. Jika belum: instal aplikasi Android dan selesaikan registrasi biometrik terlebih dahulu. Anda akan menerima alamat wallet dan 1.000 AEQ.',
-    'Atur <font name="Courier">NODE_OPERATOR_WALLET</font> = alamat wallet manusia Aequitas Anda di Variables Railway Anda',
-    'Simpan — Railway redeploy secara otomatis. Dengan Docker: <font name="Courier">docker restart aequitas-node</font>',
-    'Di log node Anda, konfirmasi: <font name="Courier" color="#0F766E">[NODE] Registered node operator wallet: 0x…</font>',
-    'Hadiah didistribusikan secara otomatis setiap hari pukul 20:00 waktu Berlin (CEST/CET). Cukup jaga node Anda tetap berjalan — tidak perlu tindakan lebih lanjut.',
-],
-
-trouble_title = 'Pemecahan Masalah',
-trouble_cols  = ['Gejala', 'Kemungkinan Sebab', 'Solusi'],
-trouble_rows  = [
-    ('Tinggi blok tetap di 0',          'PRIMARY_NODE_URL tidak diatur atau salah', 'Atur PRIMARY_NODE_URL=https://aequitas.digital dan deploy ulang. Atur juga SELF_URL dengan URL publik node Anda.'),
-    ('Error DATABASE_URL saat startup', 'String koneksi salah',                     'Periksa format: postgres://user:pass@host:5432/dbname — pastikan PostgreSQL berjalan dan dapat dijangkau.'),
-    ('"no code at address" di log',     'Kontrak V7 belum di-deploy',                'Normal saat startup pertama — node men-deploy V7 secara otomatis. Tunggu beberapa detik dan periksa lagi.'),
-    ('"NODE_OPERATOR_WALLET not set"',  'Variabel lingkungan hilang',                'Tambahkan NODE_OPERATOR_WALLET=0xWALLET_MANUSIA_ANDA. Node tetap berjalan tanpanya, tetapi Anda tidak akan menerima hadiah.'),
-    ('"Application error" di Railway',  'Kegagalan build atau startup',              'Periksa Deploy Logs. Paling umum: DATABASE_URL hilang atau RELAYER_PRIVATE_KEY format salah (harus dimulai dengan 0x).'),
-    ('Port 8080 tidak dapat diakses (Docker)', 'Konfigurasi firewall atau penyedia cloud', 'Buka port TCP 8080 masuk di firewall atau pengaturan security group cloud Anda.'),
-    ('Build Docker gagal (error modul)', 'Tidak ada internet saat build',            'Build Docker membutuhkan akses internet keluar untuk mengunduh modul Go. Railway menangani ini secara otomatis.'),
-],
-
-footer = 'Aequitas Chain · Chain ID 1926 · aequitas.digital · Hadiah validator: harian pukul 20:00 waktu Berlin (CEST/CET)',
-)
-
-RU = dict(
-title    = 'РУКОВОДСТВО ОПЕРАТОРА УЗЛА AEQUITAS',
-version  = 'v1.0 · Июнь 2026 · aequitas.digital',
-tagline  = 'Полное пошаговое руководство · Опыт работы с блокчейном не требуется · ~20–30 мин',
-
-prereq_title = 'Перед началом — что вам нужно',
-prereqs = [
-    ('1.', '<b>Учётная запись Aequitas:</b> Сначала вы должны зарегистрироваться как человек в Aequitas. Установите приложение Android, завершите биометрическую регистрацию и запишите адрес своего кошелька. Без этого вы не сможете получать награды валидатора.'),
-    ('2.', '<b>Учётная запись GitHub (бесплатно):</b> Перейдите на github.com и создайте бесплатную учётную запись. Она нужна для копирования (форка) кода Aequitas, чтобы Railway мог его развернуть.'),
-    ('3.', '<b>Учётная запись Railway (бесплатно):</b> Перейдите на railway.app и войдите через GitHub. Railway — это хостинг-платформа, которая запускает ваш узел в облаке — сервер или командная строка не требуются.'),
-    ('4.', '<b>Ключ подписи узла (RELAYER_PRIVATE_KEY):</b> Вашему узлу нужен отдельный кошелёк Ethereum для подписи регистраций в блокчейне. Это может быть любой кошелёк MetaMask. Экспортируйте приватный ключ: MetaMask → Account Details → Show Private Key → введите пароль → скопируйте. Храните строго конфиденциально. <b>ВАЖНО:</b> Для получения наград валидатора NODE_OPERATOR_WALLET также должен быть вашим <b>зарегистрированным человеческим кошельком Aequitas</b> (тем, что верифицирован через AequitasBio). Только верифицированные люди могут получать награды валидатора.'),
-    ('5.', '<b>10–30 минут вашего времени.</b> Railway выполняет большую часть работы автоматически.'),
-],
-
-vars_title = 'Шаг 1 — Переменные окружения',
-vars_warn  = 'Предупреждение о безопасности: ваш RELAYER_PRIVATE_KEY — это как мастер-пароль. Любой, у кого он есть, контролирует кошелёк вашего узла. Никогда не делитесь им публично, никогда не вставляйте его в чат или письмо. Используйте отдельный кошелёк MetaMask для RELAYER_PRIVATE_KEY (подпись). NODE_OPERATOR_WALLET (для наград) должен быть вашим зарегистрированным человеческим кошельком Aequitas.',
-var_cols   = ['Переменная', 'Обязательно?', 'Что указать'],
-vars = [
-    ('DATABASE_URL',        'ДА',           'Строка подключения PostgreSQL. На Railway: автоматически добавляется, если PostgreSQL в том же проекте. Формат: postgres://user:pass@host:5432/dbname'),
-    ('RELAYER_PRIVATE_KEY', 'ДА',           'Приватный ключ (0x…, 66 символов) вашего отдельного кошелька узла. MetaMask: Account Details → Show Private Key → введите пароль → скопируйте.'),
-    ('RELAYER_ADDRESS',     'Рекомендуется', 'Адрес кошелька (0x…, 42 символа), соответствующий RELAYER_PRIVATE_KEY. Скопируйте из MetaMask. Есть резервный механизм, но явное указание предотвращает ошибки запуска.'),
-    ('NODE_OPERATOR_WALLET','Для наград', 'Ваш человеческий кошелёк Aequitas — зарегистрированный через приложение Android. Получает ваши ежедневные награды валидатора (40% всех протокольных сборов). Должен быть зарегистрированным человеком.'),
-    ('NODE_OPERATOR_BINDING_SIGNATURE', 'Для наград', 'Доказывает, что вы владеете NODE_OPERATOR_WALLET. Создайте на aequitas.digital/node-binding: подпишите показанное сообщение своим человеческим кошельком в MetaMask, вставьте полученную подпись здесь. Без неё ваш узел всё равно работает, но не может автоматически зарегистрироваться для наград.'),
-    ('PEER_SECRET',         'Опционально/Устарело', 'Устаревший резервный механизм общего секрета. Больше не требуется — узлы теперь аутентифицируются автоматически через криптографический challenge-response (RELAYER_PRIVATE_KEY). Нужен только для обратной совместимости со старыми развёртываниями.'),
-    ('SELF_URL',            'Мультиузел',   'Собственный публичный HTTPS URL вашего узла (напр. https://мой-узел.up.railway.app). Требуется для самоисключения при обнаружении пиров. Найдите в Railway: Settings → Networking → Public Networking.'),
-    ('PRIMARY_NODE_URL',    'Мультиузел',   'Установите: https://aequitas.digital — основной узел, у которого регистрируется ваш узел для автоматического обнаружения пиров. При запуске ваш узел отправляет свой URL + адрес подписи основному узлу, получает полный список пиров и автоматически присоединяется к сети.'),
-    ('BOOTSTRAP_SNAPSHOT_URL', 'Рекомендуется', 'Установите: https://aequitas.digital/api/snapshot — позволяет новому узлу начать с текущего состояния сети вместо воспроизведения всей истории с генезиса. Значительно более быстрая первая синхронизация.'),
-    ('BOOTSTRAP_SIGNER',    'Со снапшотом', 'Адрес подписи основного узла, используемый для проверки подлинности снапшота перед импортом. Получите текущее значение на https://aequitas.digital/api/status → "signing_address". Обязателен, если установлен BOOTSTRAP_SNAPSHOT_URL.'),
-    ('SNAPSHOT_TOKEN',      'Опционально',  'Не требуется для загрузки нового узла — без него вы всё равно получаете всё необходимое для корректной работы (аккаунты, балансы, пул, конфигурация). Открывает только полный экспорт (связь nullifier/кошелёк + bio_registrations), используемый для авторитетной ресинхронизации уже разошедшегося узла. Спрашивайте у оператора сети только если это действительно нужно.'),
-    ('RESYNC_FROM_SNAPSHOT', 'Только восстановление', 'ОПАСНО, временно: устанавливайте в true только вместе с BOOTSTRAP_SNAPSHOT_URL и BOOTSTRAP_SIGNER для восстановления узла, состояние которого разошлось с сетью. Полностью заменяет локальное состояние. Перезапустите один раз, затем удалите эту переменную снова — если оставить, при каждом перезапуске будет принудительная полная ресинхронизация.'),
-    ('AUTO_HEAL_ON_DIVERGENCE', 'Настоятельно рекомендуется', 'Важно для безопасности и скорости сети: если цепочка вашего узла когда-либо разойдётся с сетью (например, после простоя или неудачного перезапуска), узел обнаружит это самостоятельно — сравнивая себя с PRIMARY_NODE_URL каждые несколько минут — и автоматически ресинхронизируется, без ручного RESYNC_FROM_SNAPSHOT. Узел, который остаётся разошедшимся и продолжает рассылать собственные блоки, может замедлить или дестабилизировать всю сеть для всех остальных операторов. Установите в true вместе с PRIMARY_NODE_URL, BOOTSTRAP_SNAPSHOT_URL и BOOTSTRAP_SIGNER.'),
-    ('PORT',                'Нет',          'Не устанавливайте на Railway — Railway устанавливает это автоматически. По умолчанию 8080.'),
-    ('NODE_KEY',            'Нет',          'Base64 ключ libp2p для стабильной идентичности P2P. Автоматически генерируется, если не указан, но меняется при каждом перезапуске. Если не установлен, узел выводит его в stderr: "SAVE THIS AS NODE_KEY ENVIRONMENT VAR: <base64>". Скопируйте и вставьте здесь.'),
-    ('IS_PRIMARY_NODE',     'Нет',          'Оставьте неустановленным или false. Распределение теперь использует блокировку на уровне базы данных — любой узел может его выполнять без этой переменной.'),
-    ('RESET_STATE',         'Нет',          'ОПАСНО: установка в true удаляет всю вашу базу данных при каждом перезапуске. Только для разработки. Никогда в продакшене.'),
-],
-
-railway_title = 'Шаг 2 — Развёртывание на Railway (Рекомендуется)',
-railway_intro = 'Railway — самый простой способ запустить ваш узел — без настройки сервера, без командной строки. Бесплатный тариф покрывает все требования. Общее время: около 10–15 минут.',
-railway_steps = [
-    'Сделайте форк github.com/hanoi96international-gif/Aequitas в свою учётную запись GitHub (нажмите <b>Fork</b> → <b>Create fork</b>)',
-    'На railway.app войдите через GitHub, затем <b>New Project</b> → <b>+ New</b> → <b>Database</b> → <b>Add PostgreSQL</b>',
-    'В том же проекте Railway нажмите <b>+ New → GitHub Repo</b> и выберите свой форк Aequitas — Railway автоматически обнаружит Dockerfile',
-    'Нажмите <b>Deploy Now</b> — начнётся первая сборка (может завершиться ошибкой без переменных окружения, это нормально)',
-    'Нажмите на свой сервис Aequitas → <b>Variables</b> → добавьте каждую переменную (см. таблицу выше). Минимум: RELAYER_PRIVATE_KEY, RELAYER_ADDRESS, NODE_OPERATOR_WALLET, SELF_URL, PRIMARY_NODE_URL=https://aequitas.digital (PEER_SECRET больше не требуется)',
-    'Нажмите <b>Deploy</b> (или сохраните переменные для запуска авто-redeploy). Сборка занимает ~3 минуты, пока Go компилирует бинарник узла.',
-    'Следите за <b>Deploy Logs</b>. Успех выглядит так: <font name="Courier" color="#5B21B6">Aequitas Node Running</font> и <font name="Courier" color="#0F766E">[NODE] Registered node operator wallet: 0x…</font>',
-    'Перейдите в <b>Settings → Networking → Generate Domain</b>, чтобы получить публичный URL',
-    'Откройте <font name="Courier">https://ВАШ-URL/api/status</font> — вы должны увидеть JSON с <b>height</b>, растущим каждые ~6 секунд',
-],
-railway_vars_code = (
-    '# Railway автоматически устанавливает DATABASE_URL, если PostgreSQL в том же проекте\n'
-    'RELAYER_PRIVATE_KEY    = 0xВАШ_ПРИВАТНЫЙ_КЛЮЧ\n'
-    'RELAYER_ADDRESS        = 0xВАШ_АДРЕС_КОШЕЛЬКА_УЗЛА\n'
-    'NODE_OPERATOR_WALLET   = 0xВАШ_ЧЕЛОВЕЧЕСКИЙ_КОШЕЛЁК\n'
-    '# PEER_SECRET больше не требуется — аутентификация автоматическая\n'
-    'SELF_URL               = https://ВАШ-ДОМЕН-RAILWAY.up.railway.app\n'
-    'PRIMARY_NODE_URL       = https://aequitas.digital'
-    'AUTO_HEAL_ON_DIVERGENCE       = true'
-),
-
-docker_title = 'Шаг 2b — Альтернатива: развёртывание с Docker (Расширенный)',
-docker_intro = 'Используйте это, если у вас есть свой сервер (VPS, домашний сервер, облачная ВМ). Требуется Docker и база данных PostgreSQL.',
-docker_code  = (
-    '# 1. Скачайте код\n'
-    'git clone https://github.com/hanoi96international-gif/Aequitas && cd Aequitas\n\n'
-    '# 2. Соберите образ узла (~3 мин компиляции Go)\n'
-    'docker build -t aequitas-node .\n\n'
-    '# 3. Запустите узел\n'
-    'docker run -d --name aequitas-node --restart unless-stopped \\\n'
-    '  -e DATABASE_URL="postgres://user:pass@host:5432/aequitas" \\\n'
-    '  -e RELAYER_PRIVATE_KEY="0xВАШ_ПРИВАТНЫЙ_КЛЮЧ" \\\n'
-    '  -e RELAYER_ADDRESS="0xВАШ_АДРЕС_КОШЕЛЬКА_УЗЛА" \\\n'
-    '  -e NODE_OPERATOR_WALLET="0xВАШ_ЧЕЛОВЕЧЕСКИЙ_КОШЕЛЁК" \\\n'
-    '  # -e PEER_SECRET="..." (опционально/устарело, не требуется) \\\n'
-    '  -e SELF_URL="https://ВАШ-ПУБЛИЧНЫЙ-URL" \\\n'
-    '  -e PRIMARY_NODE_URL="https://aequitas.digital" \\\n'
-    '  -e AUTO_HEAL_ON_DIVERGENCE="true" \\\n'
-    '  -p 8080:8080 aequitas-node\n\n'
-    '# 4. Следите за логами в реальном времени\n'
-    'docker logs -f aequitas-node'
-),
-
-verify_title = 'Шаг 3 — Проверьте, что ваш узел работает',
-verify_body  = 'Откройте эти URL в браузере. Замените ВАШ-URL-УЗЛА на ваш реальный домен Railway или адрес сервера.',
-verify_code  = (
-    'https://ВАШ-URL-УЗЛА/api/status\n'
-    ' → Ожидается: {"height": 1234, "total_humans": N, "aequitas_index": N}\n\n'
-    'https://ВАШ-URL-УЗЛА/rpc\n'
-    ' → Ожидается: {"jsonrpc":"2.0","error":"method not specified"} — RPC работает'
-),
-verify_note  = 'Высота блока должна совпадать с основным узлом в пределах 1–2 блоков в течение нескольких секунд после запуска. Если остаётся на 0, проверьте, что PRIMARY_NODE_URL=https://aequitas.digital установлен и доступен.',
-
-valkey_title = 'Шаг 3b — Зарегистрируйте ключ валидатора (Децентрализованная аутентификация)',
-valkey_body  = 'Вместо общего PEER_SECRET зарегистрируйте ключ подписи вашего узла с вашим человеческим кошельком. Это криптографически доказывает, что вы контролируете оба ключа. Получите подпись, выполнив это на вашем сервере (SSH/Railway shell):',
-valkey_code  = 'curl "http://localhost:8080/api/sign-validator-challenge?wallet=0xВАШ_ЧЕЛОВЕЧЕСКИЙ_КОШЕЛЁК"',
-valkey_note  = 'Затем используйте вкладку Network → Run a Node на сайте и нажмите "Sign with MetaMask & Register" для завершения регистрации.',
-
-mm_title = 'Шаг 4 — Подключите MetaMask к вашему узлу (Опционально)',
-mm_body  = 'В MetaMask: нажмите выпадающее меню сети → Add network → Add a network manually, затем введите:',
-mm_rows  = [
-    ('Network Name',    'Aequitas Chain'),
-    ('RPC URL',         'https://ВАШ-URL-УЗЛА/rpc'),
-    ('Chain ID',        '1926'),
-    ('Currency Symbol', 'AEQ'),
-    ('Decimals',        '18'),
-    ('Block Explorer',  'https://aequitas.digital'),
-],
-
-rewards_title = 'Шаг 5 — Получение наград валидатора',
-rewards_box   = 'Validators Pool собирает 40% всех протокольных сборов (комиссии за свап, демередж, избыток лимита богатства). Каждый день в 20:00 по берлинскому времени (CEST/CET, автоматически учитывает переход на летнее время) узел распределяет баланс пула пропорционально произведённым блокам между всеми зарегистрированными операторами узлов. Чем дольше стабильно работает ваш узел, тем больше ваша доля.',
-rewards_steps = [
-    'Убедитесь, что вы зарегистрированы как человек в Aequitas. Если нет: сначала установите приложение Android и завершите биометрическую регистрацию. Вы получите адрес кошелька и 1 000 AEQ.',
-    'Установите <font name="Courier">NODE_OPERATOR_WALLET</font> = ваш адрес человеческого кошелька Aequitas в Variables Railway',
-    'Сохраните — Railway переразвернёт автоматически. С Docker: <font name="Courier">docker restart aequitas-node</font>',
-    'В логах вашего узла подтвердите: <font name="Courier" color="#0F766E">[NODE] Registered node operator wallet: 0x…</font>',
-    'Награды распределяются автоматически каждый день в 20:00 по берлинскому времени (CEST/CET). Просто держите узел запущенным — дальнейших действий не требуется.',
-],
-
-trouble_title = 'Устранение неполадок',
-trouble_cols  = ['Симптом', 'Вероятная причина', 'Решение'],
-trouble_rows  = [
-    ('Высота блока остаётся на 0',         'PRIMARY_NODE_URL не установлен или неверен', 'Установите PRIMARY_NODE_URL=https://aequitas.digital и переразверните. Также установите SELF_URL с публичным URL вашего узла.'),
-    ('Ошибка DATABASE_URL при запуске',    'Неверная строка подключения',                'Проверьте формат: postgres://user:pass@host:5432/dbname — убедитесь, что PostgreSQL работает и доступен.'),
-    ('"no code at address" в логах',       'Контракт V7 ещё не развёрнут',                'Нормально при первом запуске — узел автоматически развёртывает V7. Подождите несколько секунд и проверьте снова.'),
-    ('"NODE_OPERATOR_WALLET not set"',     'Отсутствует переменная окружения',            'Добавьте NODE_OPERATOR_WALLET=0xВАШ_ЧЕЛОВЕЧЕСКИЙ_КОШЕЛЁК. Узел работает без неё, но вы не будете получать награды.'),
-    ('"Application error" на Railway',    'Ошибка сборки или запуска',                   'Проверьте Deploy Logs. Чаще всего: отсутствует DATABASE_URL или неверный формат RELAYER_PRIVATE_KEY (должен начинаться с 0x).'),
-    ('Порт 8080 недоступен (Docker)',      'Настройка файрвола или облачного провайдера', 'Откройте входящий TCP порт 8080 в настройках файрвола или группы безопасности облака.'),
-    ('Сборка Docker не удаётся (ошибка модуля)', 'Нет интернета во время сборки',          'Сборка Docker требует исходящего доступа в интернет для загрузки модулей Go. Railway обрабатывает это автоматически.'),
-],
-
-footer = 'Aequitas Chain · Chain ID 1926 · aequitas.digital · Награды валидатора: ежедневно в 20:00 по берлинскому времени (CEST/CET)',
-)
-
-ZH = dict(
-title    = 'AEQUITAS 节点运营者指南',
-version  = 'v1.0 · 2026年6月 · aequitas.digital',
-tagline  = '完整的分步指南 · 无需事先的区块链经验 · 约20–30分钟',
-
-prereq_title = '开始之前——您需要的东西',
-prereqs = [
-    ('1.', '<b>Aequitas 账户：</b>您必须先在 Aequitas 上注册为人类。安装 Android 应用，完成生物识别注册，并记下您的钱包地址。没有这个您无法获得验证者奖励。'),
-    ('2.', '<b>GitHub 账户（免费）：</b>访问 github.com 并创建一个免费账户。您需要它来复制（fork）Aequitas 代码，以便 Railway 可以部署它。'),
-    ('3.', '<b>Railway 账户（免费）：</b>访问 railway.app 并使用 GitHub 登录。Railway 是一个在云端运行您节点的托管平台——不需要服务器或命令行。'),
-    ('4.', '<b>节点签名密钥（RELAYER_PRIVATE_KEY）：</b>您的节点需要一个专用的以太坊钱包来签署链上注册。可以是任何 MetaMask 钱包。导出其私钥：MetaMask → Account Details → Show Private Key → 输入密码 → 复制。严格保密。<b>重要：</b>要获得验证者奖励，NODE_OPERATOR_WALLET 也必须是您<b>已注册的 Aequitas 人类钱包</b>（已通过 AequitasBio 验证的钱包）。只有经过验证的人类才能获得验证者奖励。'),
-    ('5.', '<b>10–30分钟的时间。</b>Railway 会自动完成大部分工作。'),
-],
-
-vars_title = '第1步——环境变量',
-vars_warn  = '安全警告：您的 RELAYER_PRIVATE_KEY 就像主密码。任何拥有它的人都能控制您的节点钱包。切勿公开分享，切勿粘贴到聊天或电子邮件中。为 RELAYER_PRIVATE_KEY（签名）使用单独的 MetaMask 钱包。NODE_OPERATOR_WALLET（用于奖励）必须是您已注册的 Aequitas 人类钱包。',
-var_cols   = ['变量', '是否必需？', '应设置什么'],
-vars = [
-    ('DATABASE_URL',        '是',         '您的 PostgreSQL 连接字符串。在 Railway 上：如果 PostgreSQL 在同一项目中会自动注入。格式：postgres://user:pass@host:5432/dbname'),
-    ('RELAYER_PRIVATE_KEY', '是',         '您专用节点钱包的私钥（0x…，66个字符）。MetaMask：Account Details → Show Private Key → 输入密码 → 复制。'),
-    ('RELAYER_ADDRESS',     '推荐',       '与 RELAYER_PRIVATE_KEY 对应的钱包地址（0x…，42个字符）。从 MetaMask 复制。有备用机制，但明确设置可避免启动错误。'),
-    ('NODE_OPERATOR_WALLET','用于奖励',   '您的 Aequitas 人类钱包地址——通过 Android 应用注册。接收您每日的验证者奖励（所有协议费用的40%）。必须是已注册的人类。'),
-    ('NODE_OPERATOR_BINDING_SIGNATURE', '用于奖励', '证明您拥有 NODE_OPERATOR_WALLET。在 aequitas.digital/node-binding 生成：用您的人类钱包在 MetaMask 中签署显示的消息，将得到的签名粘贴在此处。没有它您的节点仍能运行，但无法自动注册奖励。'),
-    ('PEER_SECRET',         '可选/旧版',  '旧版共享密钥备用机制。不再需要——节点现在通过加密的挑战-响应（RELAYER_PRIVATE_KEY）自动进行身份验证。仅为与旧部署的向后兼容性而需要。'),
-    ('SELF_URL',            '多节点',     '您自己节点的公共 HTTPS URL（例如 https://my-node.up.railway.app）。在节点发现中自我排除时需要。可在 Railway 中找到：Settings → Networking → Public Networking。'),
-    ('PRIMARY_NODE_URL',    '多节点',     '设置为：https://aequitas.digital——您的节点为自动节点发现而注册的主节点。启动时，您的节点将其 URL + 签名地址发送给主节点，获取完整的节点列表，并自动加入网络。'),
-    ('BOOTSTRAP_SNAPSHOT_URL', '推荐',    '设置为：https://aequitas.digital/api/snapshot——让新节点从网络当前状态开始，而不是从创世区块重放整个历史。首次同步速度大幅提升。'),
-    ('BOOTSTRAP_SIGNER',    '配合快照',   '主节点的签名地址，用于在导入前验证快照是否真实。从 https://aequitas.digital/api/status → "signing_address" 获取当前值。设置 BOOTSTRAP_SNAPSHOT_URL 时必需。'),
-    ('SNAPSHOT_TOKEN',      '可选',       '启动新节点不需要它——没有它您仍能获得正确运行所需的一切（账户、余额、池、配置）。它只解锁完整导出（nullifier/钱包关联 + bio_registrations），用于已经分歧节点的权威重新同步。仅在确实需要时向网络运营者询问。'),
-    ('RESYNC_FROM_SNAPSHOT', '仅用于恢复', '危险，临时性：仅在恢复状态已偏离网络的节点时，与 BOOTSTRAP_SNAPSHOT_URL 和 BOOTSTRAP_SIGNER 一起设置为 true。会完全替换本地状态。重启一次后再次移除此变量——如果保留，将在每次重启时强制进行完整重新同步。'),
-    ('AUTO_HEAL_ON_DIVERGENCE', '强烈推荐', '对网络的安全性和速度都很重要：如果你的节点链在某个时刻与网络产生分歧（例如宕机后或一次失败的重启后），节点会自行检测到这一点——每隔几分钟与 PRIMARY_NODE_URL 进行比对——并自动重新同步，无需手动设置 RESYNC_FROM_SNAPSHOT。一个持续分歧却仍在广播自己区块的节点，可能会拖慢甚至破坏整个网络对所有其他运营者的稳定性。请将其与 PRIMARY_NODE_URL、BOOTSTRAP_SNAPSHOT_URL 和 BOOTSTRAP_SIGNER 一起设置为 true。'),
-    ('PORT',                '否',         '不要在 Railway 上设置——Railway 会自动设置。默认值为8080。'),
-    ('NODE_KEY',            '否',         '用于稳定 P2P 身份的 Base64 libp2p 密钥。如果省略会自动生成，但每次重启都会变化。如果未设置，节点会将其打印到 stderr："SAVE THIS AS NODE_KEY ENVIRONMENT VAR: <base64>"。复制并粘贴到此处。'),
-    ('IS_PRIMARY_NODE',     '否',         '保持未设置或为 false。分发现在使用数据库级锁——任何节点都可以在没有此变量的情况下运行它。'),
-    ('RESET_STATE',         '否',         '危险：将此设置为 true 会在每次重启时清空整个数据库。仅用于开发。绝不要在生产环境中使用。'),
-],
-
-railway_title = '第2步——在 Railway 上部署（推荐）',
-railway_intro = 'Railway 是运行您节点最简单的方式——无需服务器配置，无需命令行。免费套餐涵盖所有需求。总耗时：约10–15分钟。',
-railway_steps = [
-    '将 github.com/hanoi96international-gif/Aequitas fork 到您自己的 GitHub 账户（点击<b>Fork</b> → <b>Create fork</b>）',
-    '在 railway.app 上使用 GitHub 登录，然后<b>New Project</b> → <b>+ New</b> → <b>Database</b> → <b>Add PostgreSQL</b>',
-    '在同一个 Railway 项目中，点击<b>+ New → GitHub Repo</b>并选择您的 Aequitas fork——Railway 会自动检测 Dockerfile',
-    '点击<b>Deploy Now</b>——首次构建开始（没有环境变量可能会失败，这是正常的）',
-    '点击您的 Aequitas 服务 → <b>Variables</b> → 添加每个变量（见上表）。最低要求：RELAYER_PRIVATE_KEY、RELAYER_ADDRESS、NODE_OPERATOR_WALLET、SELF_URL、PRIMARY_NODE_URL=https://aequitas.digital（PEER_SECRET 不再需要）',
-    '点击<b>Deploy</b>（或保存变量以触发自动重新部署）。构建大约需要3分钟，因为 Go 要编译节点二进制文件。',
-    '观察<b>Deploy Logs</b>。成功的样子是：<font name="Courier" color="#5B21B6">Aequitas Node Running</font> 和 <font name="Courier" color="#0F766E">[NODE] Registered node operator wallet: 0x…</font>',
-    '转到<b>Settings → Networking → Generate Domain</b>以获取您的公共 URL',
-    '打开<font name="Courier">https://YOUR-URL/api/status</font>——您应该看到 JSON，其中<b>height</b>每约6秒增长一次',
-],
-railway_vars_code = (
-    '# 如果 PostgreSQL 在同一项目中，Railway 会自动设置 DATABASE_URL\n'
-    'RELAYER_PRIVATE_KEY    = 0x你的私钥\n'
-    'RELAYER_ADDRESS        = 0x你的节点钱包地址\n'
-    'NODE_OPERATOR_WALLET   = 0x你的人类钱包\n'
-    '# PEER_SECRET 不再需要——身份验证是自动的\n'
-    'SELF_URL               = https://你的RAILWAY域名.up.railway.app\n'
-    'PRIMARY_NODE_URL       = https://aequitas.digital'
-    'AUTO_HEAL_ON_DIVERGENCE       = true'
-),
-
-docker_title = '第2b步——替代方案：使用 Docker 部署（高级）',
-docker_intro = '如果您有自己的服务器（VPS、家用服务器、云虚拟机），请使用此方法。需要 Docker 和 PostgreSQL 数据库。',
-docker_code  = (
-    '# 1. 下载代码\n'
-    'git clone https://github.com/hanoi96international-gif/Aequitas && cd Aequitas\n\n'
-    '# 2. 构建节点镜像（约3分钟 Go 编译时间）\n'
-    'docker build -t aequitas-node .\n\n'
-    '# 3. 启动节点\n'
-    'docker run -d --name aequitas-node --restart unless-stopped \\\n'
-    '  -e DATABASE_URL="postgres://user:pass@host:5432/aequitas" \\\n'
-    '  -e RELAYER_PRIVATE_KEY="0x你的私钥" \\\n'
-    '  -e RELAYER_ADDRESS="0x你的节点钱包地址" \\\n'
-    '  -e NODE_OPERATOR_WALLET="0x你的人类钱包" \\\n'
-    '  # -e PEER_SECRET="..."（可选/旧版，不需要） \\\n'
-    '  -e SELF_URL="https://你的公共URL" \\\n'
-    '  -e PRIMARY_NODE_URL="https://aequitas.digital" \\\n'
-    '  -e AUTO_HEAL_ON_DIVERGENCE="true" \\\n'
-    '  -p 8080:8080 aequitas-node\n\n'
-    '# 4. 观察实时日志\n'
-    'docker logs -f aequitas-node'
-),
-
-verify_title = '第3步——验证您的节点正在运行',
-verify_body  = '在浏览器中打开这些 URL。将 YOUR-NODE-URL 替换为您实际的 Railway 域名或服务器地址。',
-verify_code  = (
-    'https://YOUR-NODE-URL/api/status\n'
-    ' → 预期：{"height": 1234, "total_humans": N, "aequitas_index": N}\n\n'
-    'https://YOUR-NODE-URL/rpc\n'
-    ' → 预期：{"jsonrpc":"2.0","error":"method not specified"}——RPC 正常运行'
-),
-verify_note  = '启动后几秒钟内，区块高度应与主节点相差1–2个区块以内。如果一直停留在0，请检查 PRIMARY_NODE_URL=https://aequitas.digital 是否已设置且可访问。',
-
-valkey_title = '第3b步——注册您的验证者密钥（去中心化身份验证）',
-valkey_body  = '不使用共享的 PEER_SECRET，而是用您的人类钱包注册节点签名密钥。这能在密码学上证明您同时控制这两个密钥。在您的服务器上运行以下命令获取签名（SSH/Railway shell）：',
-valkey_code  = 'curl "http://localhost:8080/api/sign-validator-challenge?wallet=0x你的人类钱包"',
-valkey_note  = '然后使用网站上的 Network → Run a Node 标签，点击"Sign with MetaMask & Register"完成注册。',
-
-mm_title = '第4步——将 MetaMask 连接到您的节点（可选）',
-mm_body  = '在 MetaMask 中：点击网络下拉菜单 → Add network → Add a network manually，然后输入：',
-mm_rows  = [
-    ('Network Name',    'Aequitas Chain'),
-    ('RPC URL',         'https://YOUR-NODE-URL/rpc'),
-    ('Chain ID',        '1926'),
-    ('Currency Symbol', 'AEQ'),
-    ('Decimals',        '18'),
-    ('Block Explorer',  'https://aequitas.digital'),
-],
-
-rewards_title = '第5步——获得验证者奖励',
-rewards_box   = '验证者池收取所有协议费用的40%（兑换费用、负利息、财富上限超额部分）。每天柏林时间20:00（CEST/CET，自动处理夏令时），节点会按照生产的区块数量比例，将池余额分配给所有已注册的节点运营者。您的节点运行越持续稳定，您的份额就越大。',
-rewards_steps = [
-    '确保您已在 Aequitas 上注册为人类。如果没有：先安装 Android 应用并完成生物识别注册。您将获得一个钱包地址和1,000 AEQ。',
-    '在您的 Railway Variables 中设置<font name="Courier">NODE_OPERATOR_WALLET</font> = 您的 Aequitas 人类钱包地址',
-    '保存——Railway 会自动重新部署。使用 Docker：<font name="Courier">docker restart aequitas-node</font>',
-    '在您的节点日志中确认：<font name="Courier" color="#0F766E">[NODE] Registered node operator wallet: 0x…</font>',
-    '奖励每天柏林时间20:00（CEST/CET）自动分发。只需保持您的节点运行——无需进一步操作。',
-],
-
-trouble_title = '故障排除',
-trouble_cols  = ['症状', '可能原因', '解决方案'],
-trouble_rows  = [
-    ('区块高度停留在0',            'PRIMARY_NODE_URL 未设置或错误',  '设置 PRIMARY_NODE_URL=https://aequitas.digital 并重新部署。同时将 SELF_URL 设置为您节点的公共 URL。'),
-    ('启动时出现 DATABASE_URL 错误', '连接字符串错误',                '检查格式：postgres://user:pass@host:5432/dbname——确保 PostgreSQL 正在运行且可访问。'),
-    ('日志中出现"no code at address"', 'V7 合约尚未部署',              '首次启动时正常——节点会自动部署 V7。等待几秒钟后再检查。'),
-    ('"NODE_OPERATOR_WALLET not set"', '缺少环境变量',                '添加 NODE_OPERATOR_WALLET=0x你的人类钱包。没有它节点也能正常运行，但您不会收到奖励。'),
-    ('Railway 出现"Application error"', '构建或启动失败',              '检查 Deploy Logs。最常见的原因：缺少 DATABASE_URL 或 RELAYER_PRIVATE_KEY 格式错误（必须以0x开头）。'),
-    ('端口8080无法访问（Docker）',  '防火墙或云服务商配置',            '在您的防火墙或云安全组设置中开放入站 TCP 端口8080。'),
-    ('Docker 构建失败（模块错误）',  '构建期间没有互联网连接',          'Docker 构建需要出站互联网连接来下载 Go 模块。Railway 会自动处理这一点。'),
-],
-
-footer = 'Aequitas Chain · Chain ID 1926 · aequitas.digital · 验证者奖励：每天柏林时间20:00（CEST/CET）',
-)
-
-AR = dict(
-title    = 'دليل مشغّل عقدة AEQUITAS',
-version  = 'الإصدار 1.0 · يونيو 2026 · aequitas.digital',
-tagline  = 'دليل كامل خطوة بخطوة · لا حاجة لخبرة سابقة بالبلوكتشين · حوالي 20–30 دقيقة',
-
-prereq_title = 'قبل البدء — ما تحتاجه',
-prereqs = [
-    ('1.', '<b>حساب Aequitas:</b> يجب أن تكون مسجلاً كإنسان على Aequitas أولاً. ثبّت تطبيق Android، أكمل التسجيل البيومتري، ودوّن عنوان محفظتك. بدون ذلك لا يمكنك الحصول على مكافآت المُصادِق.'),
-    ('2.', '<b>حساب GitHub (مجاني):</b> اذهب إلى github.com وأنشئ حساباً مجانياً. تحتاجه لنسخ (فورك) كود Aequitas حتى يتمكن Railway من نشره.'),
-    ('3.', '<b>حساب Railway (مجاني):</b> اذهب إلى railway.app وسجّل الدخول باستخدام GitHub. Railway هي منصة استضافة تُشغّل عقدتك في السحابة — لا حاجة لخادم أو سطر أوامر.'),
-    ('4.', '<b>مفتاح توقيع العقدة (RELAYER_PRIVATE_KEY):</b> تحتاج عقدتك إلى محفظة Ethereum مخصصة لتوقيع التسجيلات على السلسلة. يمكن أن تكون أي محفظة MetaMask. صدّر مفتاحها الخاص: MetaMask ← Account Details ← Show Private Key ← أدخل كلمة المرور ← انسخ. احتفظ بها سرّية للغاية. <b>مهم:</b> للحصول على مكافآت المُصادِق، يجب أيضاً أن يكون NODE_OPERATOR_WALLET هو <b>محفظتك البشرية المسجّلة في Aequitas</b> (المُحقّقة عبر AequitasBio). فقط البشر المُحقّقون يمكنهم كسب مكافآت المُصادِق.'),
-    ('5.', '<b>10–30 دقيقة من وقتك.</b> يقوم Railway بمعظم العمل تلقائياً.'),
-],
-
-vars_title = 'الخطوة 1 — متغيرات البيئة',
-vars_warn  = 'تحذير أمني: RELAYER_PRIVATE_KEY هو مثل كلمة مرور رئيسية. أي شخص يحصل عليها يتحكم بمحفظة عقدتك. لا تشاركها علناً مطلقاً، ولا تلصقها في محادثة أو بريد إلكتروني. استخدم محفظة MetaMask منفصلة لـ RELAYER_PRIVATE_KEY (التوقيع). يجب أن يكون NODE_OPERATOR_WALLET (للمكافآت) محفظتك البشرية المسجّلة في Aequitas.',
-var_cols   = ['المتغير', 'مطلوب؟', 'ما الذي يجب تعيينه'],
-vars = [
-    ('DATABASE_URL',        'نعم',        'سلسلة اتصال PostgreSQL الخاصة بك. على Railway: تُحقن تلقائياً عند وجود PostgreSQL في المشروع نفسه. الصيغة: postgres://user:pass@host:5432/dbname'),
-    ('RELAYER_PRIVATE_KEY', 'نعم',        'المفتاح الخاص (0x…، 66 حرفاً) لمحفظة عقدتك المخصصة. MetaMask: Account Details ← Show Private Key ← أدخل كلمة المرور ← انسخ.'),
-    ('RELAYER_ADDRESS',     'مُوصى به',   'عنوان المحفظة (0x…، 42 حرفاً) المطابق لـ RELAYER_PRIVATE_KEY. انسخه من MetaMask. يوجد احتياط، لكن تعيينه صريحاً يمنع أخطاء بدء التشغيل.'),
-    ('NODE_OPERATOR_WALLET','للمكافآت',   'عنوان محفظتك البشرية في Aequitas — المسجّلة عبر تطبيق Android. تستلم مكافآت المُصادِق اليومية (40% من جميع رسوم البروتوكول). يجب أن تكون إنساناً مسجّلاً.'),
-    ('NODE_OPERATOR_BINDING_SIGNATURE', 'للمكافآت', 'يُثبت أنك تملك NODE_OPERATOR_WALLET. أنشئه على aequitas.digital/node-binding: وقّع الرسالة المعروضة بمحفظتك البشرية في MetaMask، ثم ألصق التوقيع الناتج هنا. بدونه تعمل عقدتك بشكل طبيعي لكنها لا تستطيع التسجيل تلقائياً للمكافآت.'),
-    ('PEER_SECRET',         'اختياري/قديم', 'آلية احتياطية قديمة بسر مشترك. لم تعد مطلوبة — تتحقق العُقد الآن تلقائياً عبر تحدٍ-استجابة تشفيري (RELAYER_PRIVATE_KEY). مطلوبة فقط للتوافق مع عمليات النشر القديمة.'),
-    ('SELF_URL',            'متعدد العُقد', 'عنوان URL العام (HTTPS) لعقدتك الخاصة (مثل https://my-node.up.railway.app). مطلوب لاستثناء النفس عند اكتشاف الأقران. يوجد في Railway: Settings ← Networking ← Public Networking.'),
-    ('PRIMARY_NODE_URL',    'متعدد العُقد', 'عيّنه إلى: https://aequitas.digital — العقدة الأساسية التي تسجّل عقدتك معها لاكتشاف الأقران تلقائياً. عند بدء التشغيل، ترسل عقدتك عنوان URL + عنوان التوقيع إلى العقدة الأساسية، وتحصل على قائمة الأقران الكاملة، وتنضم إلى الشبكة تلقائياً.'),
-    ('BOOTSTRAP_SNAPSHOT_URL', 'مُوصى به', 'عيّنه إلى: https://aequitas.digital/api/snapshot — يتيح لعقدة جديدة البدء من الحالة الحالية للشبكة بدلاً من إعادة تشغيل كل التاريخ من بداية السلسلة. مزامنة أولى أسرع بكثير.'),
-    ('BOOTSTRAP_SIGNER',    'مع لقطة الحالة', 'عنوان توقيع العقدة الأساسية، يُستخدم للتحقق من أن لقطة الحالة أصلية قبل استيرادها. احصل على القيمة الحالية من https://aequitas.digital/api/status ← "signing_address". مطلوب كلما تم تعيين BOOTSTRAP_SNAPSHOT_URL.'),
-    ('SNAPSHOT_TOKEN',      'اختياري',    'غير مطلوب لتأسيس عقدة جديدة — بدونه تحصل مع ذلك على كل ما تحتاجه للعمل بشكل صحيح (الحسابات، الأرصدة، المجمع، التهيئة). يفتح فقط التصدير الكامل (ربط nullifier/المحفظة + bio_registrations)، المستخدَم لإعادة مزامنة موثوقة لعقدة منحرفة بالفعل. اسأل مشغّل الشبكة فقط إذا كنت تحتاج ذلك فعلاً.'),
-    ('RESYNC_FROM_SNAPSHOT', 'للاستعادة فقط', 'خطير، مؤقت: عيّنه إلى true مع BOOTSTRAP_SNAPSHOT_URL و BOOTSTRAP_SIGNER فقط لاستعادة عقدة انحرفت حالتها عن الشبكة. يستبدل الحالة المحلية بالكامل. أعد التشغيل مرة واحدة، ثم أزل هذا المتغير مجدداً — تركه يفرض إعادة مزامنة كاملة في كل إعادة تشغيل.'),
-    ('AUTO_HEAL_ON_DIVERGENCE', 'يُوصى به بشدة', 'مهم لأمان الشبكة وسرعتها: إذا انحرفت سلسلة عقدتك يومًا عن الشبكة (مثلاً بعد توقف أو إعادة تشغيل فاشلة)، فإنها تكتشف ذلك بنفسها — من خلال مقارنة نفسها بـ PRIMARY_NODE_URL كل بضع دقائق — وتعيد المزامنة تلقائيًا، دون الحاجة إلى RESYNC_FROM_SNAPSHOT يدويًا. العقدة التي تبقى منحرفة وتستمر في بث كتلها الخاصة قد تُبطئ أو تزعزع استقرار الشبكة بأكملها لبقية المشغّلين. عيّنه إلى true مع PRIMARY_NODE_URL و BOOTSTRAP_SNAPSHOT_URL و BOOTSTRAP_SIGNER.'),
-    ('PORT',                'لا',         'لا تعيّنه على Railway — يضبطه Railway تلقائياً. القيمة الافتراضية هي 8080.'),
-    ('NODE_KEY',            'لا',         'مفتاح libp2p بترميز Base64 لهوية P2P مستقرة. يُنشأ تلقائياً إذا حُذف، لكنه يتغير في كل إعادة تشغيل. إذا لم يُعيَّن، تطبعه العقدة في stderr: "SAVE THIS AS NODE_KEY ENVIRONMENT VAR: <base64>". انسخه وألصقه هنا.'),
-    ('IS_PRIMARY_NODE',     'لا',         'اتركه غير معيَّن أو false. التوزيع يستخدم الآن قفلاً على مستوى قاعدة البيانات — يمكن لأي عقدة تشغيله بدون هذا المتغير.'),
-    ('RESET_STATE',         'لا',         'خطير: تعيين هذا إلى true يمحو قاعدة بياناتك بالكامل في كل إعادة تشغيل. للاستخدام في التطوير فقط. لا تستخدمه أبداً في الإنتاج.'),
-],
-
-railway_title = 'الخطوة 2 — النشر على Railway (مُوصى به)',
-railway_intro = 'Railway هي أسهل طريقة لتشغيل عقدتك — بدون إعداد خادم، بدون سطر أوامر. الباقة المجانية تغطي جميع المتطلبات. الوقت الإجمالي: حوالي 10–15 دقيقة.',
-railway_steps = [
-    'افعل فورك لـ github.com/hanoi96international-gif/Aequitas إلى حسابك الخاص على GitHub (انقر <b>Fork</b> ← <b>Create fork</b>)',
-    'في railway.app، سجّل الدخول باستخدام GitHub، ثم <b>New Project</b> ← <b>+ New</b> ← <b>Database</b> ← <b>Add PostgreSQL</b>',
-    'في نفس مشروع Railway، انقر <b>+ New ← GitHub Repo</b> واختر فورك Aequitas الخاص بك — يكتشف Railway ملف Dockerfile تلقائياً',
-    'انقر <b>Deploy Now</b> — يبدأ أول بناء (قد يفشل بدون متغيرات البيئة، هذا أمر طبيعي)',
-    'انقر على خدمة Aequitas الخاصة بك ← <b>Variables</b> ← أضف كل متغير (انظر الجدول أعلاه). الحد الأدنى المطلوب: RELAYER_PRIVATE_KEY، RELAYER_ADDRESS، NODE_OPERATOR_WALLET، SELF_URL، PRIMARY_NODE_URL=https://aequitas.digital (PEER_SECRET غير مطلوب بعد الآن)',
-    'انقر <b>Deploy</b> (أو احفظ المتغيرات لتشغيل إعادة النشر التلقائي). يستغرق البناء حوالي 3 دقائق بينما تُجمّع Go ملف العقدة الثنائي.',
-    'راقب <b>Deploy Logs</b>. يبدو النجاح كهذا: <font name="Courier" color="#5B21B6">Aequitas Node Running</font> و <font name="Courier" color="#0F766E">[NODE] Registered node operator wallet: 0x…</font>',
-    'اذهب إلى <b>Settings ← Networking ← Generate Domain</b> للحصول على عنوان URL العام',
-    'افتح <font name="Courier">https://YOUR-URL/api/status</font> — يجب أن ترى JSON مع <b>height</b> يزداد كل حوالي 6 ثوانٍ',
-],
-railway_vars_code = (
-    '# يضبط Railway تلقائياً DATABASE_URL إذا كان PostgreSQL في المشروع نفسه\n'
-    'RELAYER_PRIVATE_KEY    = 0xمفتاحك_الخاص\n'
-    'RELAYER_ADDRESS        = 0xعنوان_محفظة_عقدتك\n'
-    'NODE_OPERATOR_WALLET   = 0xمحفظتك_البشرية\n'
-    '# PEER_SECRET غير مطلوب بعد الآن — المصادقة تلقائية\n'
-    'SELF_URL               = https://YOUR-RAILWAY-DOMAIN.up.railway.app\n'
-    'PRIMARY_NODE_URL       = https://aequitas.digital'
-    'AUTO_HEAL_ON_DIVERGENCE       = true'
-),
-
-docker_title = 'الخطوة 2ب — بديل: النشر باستخدام Docker (متقدم)',
-docker_intro = 'استخدم هذا إذا كان لديك خادمك الخاص (VPS، خادم منزلي، جهاز افتراضي سحابي). يتطلب Docker وقاعدة بيانات PostgreSQL.',
-docker_code  = (
-    '# 1. نزّل الكود\n'
-    'git clone https://github.com/hanoi96international-gif/Aequitas && cd Aequitas\n\n'
-    '# 2. بناء صورة العقدة (حوالي 3 دقائق لتجميع Go)\n'
-    'docker build -t aequitas-node .\n\n'
-    '# 3. تشغيل العقدة\n'
-    'docker run -d --name aequitas-node --restart unless-stopped \\\n'
-    '  -e DATABASE_URL="postgres://user:pass@host:5432/aequitas" \\\n'
-    '  -e RELAYER_PRIVATE_KEY="0xمفتاحك_الخاص" \\\n'
-    '  -e RELAYER_ADDRESS="0xعنوان_محفظة_عقدتك" \\\n'
-    '  -e NODE_OPERATOR_WALLET="0xمحفظتك_البشرية" \\\n'
-    '  # -e PEER_SECRET="..." (اختياري/قديم، غير مطلوب) \\\n'
-    '  -e SELF_URL="https://عنوانك-العام" \\\n'
-    '  -e PRIMARY_NODE_URL="https://aequitas.digital" \\\n'
-    '  -e AUTO_HEAL_ON_DIVERGENCE="true" \\\n'
-    '  -p 8080:8080 aequitas-node\n\n'
-    '# 4. راقب السجلات المباشرة\n'
-    'docker logs -f aequitas-node'
-),
-
-verify_title = 'الخطوة 3 — تحقق من أن عقدتك تعمل',
-verify_body  = 'افتح هذه العناوين في متصفحك. استبدل YOUR-NODE-URL بنطاق Railway الفعلي أو عنوان الخادم الخاص بك.',
-verify_code  = (
-    'https://YOUR-NODE-URL/api/status\n'
-    ' ← المتوقع: {"height": 1234, "total_humans": N, "aequitas_index": N}\n\n'
-    'https://YOUR-NODE-URL/rpc\n'
-    ' ← المتوقع: {"jsonrpc":"2.0","error":"method not specified"} — RPC يعمل'
-),
-verify_note  = 'يجب أن يتطابق ارتفاع البلوك مع العقدة الأساسية ضمن 1–2 بلوك في غضون ثوانٍ من بدء التشغيل. إذا بقي عند 0، تحقق من أن PRIMARY_NODE_URL=https://aequitas.digital معيَّن وقابل للوصول.',
-
-valkey_title = 'الخطوة 3ب — سجّل مفتاح المُصادِق الخاص بك (مصادقة غير مركزية)',
-valkey_body  = 'بدلاً من PEER_SECRET المشترك، سجّل مفتاح توقيع عقدتك بمحفظتك البشرية. هذا يُثبت تشفيرياً أنك تتحكم بكلا المفتاحين. احصل على التوقيع بتشغيل هذا على خادمك (SSH/Railway shell):',
-valkey_code  = 'curl "http://localhost:8080/api/sign-validator-challenge?wallet=0xمحفظتك_البشرية"',
-valkey_note  = 'ثم استخدم علامة التبويب Network ← Run a Node في الموقع وانقر "Sign with MetaMask & Register" لإكمال التسجيل.',
-
-mm_title = 'الخطوة 4 — ربط MetaMask بعقدتك (اختياري)',
-mm_body  = 'في MetaMask: انقر القائمة المنسدلة للشبكة ← Add network ← Add a network manually، ثم أدخل:',
-mm_rows  = [
-    ('Network Name',    'Aequitas Chain'),
-    ('RPC URL',         'https://YOUR-NODE-URL/rpc'),
-    ('Chain ID',        '1926'),
-    ('Currency Symbol', 'AEQ'),
-    ('Decimals',        '18'),
-    ('Block Explorer',  'https://aequitas.digital'),
-],
-
-rewards_title = 'الخطوة 5 — الحصول على مكافآت المُصادِق',
-rewards_box   = 'يجمع مجمع المُصادِقين 40% من جميع رسوم البروتوكول (رسوم التبديل، التراجع التضخمي، فائض سقف الثروة). كل يوم في الساعة 20:00 بتوقيت برلين (CEST/CET، يتعامل مع التوقيت الصيفي تلقائياً) توزّع العقدة رصيد المجمع على جميع مشغّلي العُقد المسجّلين بالتناسب مع البلوكات المُنتَجة. كلما عمِلت عقدتك باستمرار أطول، كانت حصتك أكبر.',
-rewards_steps = [
-    'تأكد من أنك مسجّل كإنسان على Aequitas. إذا لم تكن: ثبّت تطبيق Android أولاً وأكمل التسجيل البيومتري. ستحصل على عنوان محفظة و1,000 AEQ.',
-    'عيّن <font name="Courier">NODE_OPERATOR_WALLET</font> = عنوان محفظتك البشرية في Aequitas في متغيرات Railway الخاصة بك',
-    'احفظ — يعيد Railway النشر تلقائياً. مع Docker: <font name="Courier">docker restart aequitas-node</font>',
-    'في سجلات عقدتك، تأكد من: <font name="Courier" color="#0F766E">[NODE] Registered node operator wallet: 0x…</font>',
-    'تُوزَّع المكافآت تلقائياً كل يوم في الساعة 20:00 بتوقيت برلين (CEST/CET). فقط حافظ على تشغيل عقدتك — لا حاجة لأي إجراء آخر.',
-],
-
-trouble_title = 'استكشاف الأخطاء وإصلاحها',
-trouble_cols  = ['العَرَض', 'السبب المحتمل', 'الحل'],
-trouble_rows  = [
-    ('ارتفاع البلوك يبقى عند 0',          'PRIMARY_NODE_URL غير معيَّن أو خاطئ',  'عيّن PRIMARY_NODE_URL=https://aequitas.digital وأعد النشر. عيّن أيضاً SELF_URL بعنوان URL العام لعقدتك.'),
-    ('خطأ DATABASE_URL عند بدء التشغيل',  'سلسلة اتصال خاطئة',                    'تحقق من الصيغة: postgres://user:pass@host:5432/dbname — تأكد من أن PostgreSQL يعمل ويمكن الوصول إليه.'),
-    ('"no code at address" في السجلات',   'عقد V7 لم يُنشَر بعد',                  'طبيعي عند أول بدء تشغيل — تنشر العقدة V7 تلقائياً. انتظر بضع ثوانٍ وتحقق مرة أخرى.'),
-    ('"NODE_OPERATOR_WALLET not set"',    'متغير بيئة مفقود',                      'أضف NODE_OPERATOR_WALLET=0xمحفظتك_البشرية. تعمل العقدة بدونه لكنك لن تحصل على مكافآت.'),
-    ('"Application error" على Railway',   'فشل في البناء أو بدء التشغيل',          'تحقق من Deploy Logs. الأكثر شيوعاً: DATABASE_URL مفقود أو RELAYER_PRIVATE_KEY بصيغة خاطئة (يجب أن يبدأ بـ 0x).'),
-    ('المنفذ 8080 غير قابل للوصول (Docker)', 'إعدادات جدار الحماية أو مزود السحابة', 'افتح منفذ TCP الوارد 8080 في جدار الحماية أو إعدادات مجموعة الأمان السحابية.'),
-    ('فشل بناء Docker (خطأ في الوحدة)',    'لا يوجد إنترنت أثناء البناء',           'يحتاج بناء Docker إلى اتصال إنترنت صادر لتحميل وحدات Go. يتعامل Railway مع هذا تلقائياً.'),
-],
-
-footer = 'Aequitas Chain · Chain ID 1926 · aequitas.digital · مكافآت المُصادِق: يومياً في الساعة 20:00 بتوقيت برلين (CEST/CET)',
-)
-
-HI = dict(
-title    = 'AEQUITAS नोड ऑपरेटर गाइड',
-version  = 'v1.0 · जून 2026 · aequitas.digital',
-tagline  = 'पूर्ण चरण-दर-चरण गाइड · किसी पूर्व ब्लॉकचेन अनुभव की आवश्यकता नहीं · ~20–30 मिनट',
-
-prereq_title = 'शुरू करने से पहले — आपको क्या चाहिए',
-prereqs = [
-    ('1.', '<b>एक Aequitas खाता:</b> आपको पहले Aequitas पर मानव के रूप में पंजीकृत होना होगा। Android ऐप इंस्टॉल करें, बायोमेट्रिक पंजीकरण पूरा करें, और अपना वॉलेट पता नोट करें। इसके बिना आप वैलिडेटर रिवॉर्ड प्राप्त नहीं कर सकते।'),
-    ('2.', '<b>एक GitHub खाता (मुफ्त):</b> github.com पर जाएं और एक मुफ्त खाता बनाएं। आपको Aequitas कोड को कॉपी (फोर्क) करने के लिए इसकी आवश्यकता है ताकि Railway इसे डिप्लॉय कर सके।'),
-    ('3.', '<b>एक Railway खाता (मुफ्त):</b> railway.app पर जाएं और GitHub से साइन इन करें। Railway एक होस्टिंग प्लेटफॉर्म है जो आपके नोड को क्लाउड में चलाता है — किसी सर्वर या कमांड लाइन की आवश्यकता नहीं।'),
-    ('4.', '<b>नोड साइनिंग की (RELAYER_PRIVATE_KEY):</b> आपके नोड को ऑन-चेन पंजीकरण साइन करने के लिए एक समर्पित Ethereum वॉलेट की आवश्यकता है। यह कोई भी MetaMask वॉलेट हो सकता है। इसकी प्राइवेट की एक्सपोर्ट करें: MetaMask → Account Details → Show Private Key → पासवर्ड दर्ज करें → कॉपी करें। इसे बिल्कुल गुप्त रखें। <b>महत्वपूर्ण:</b> वैलिडेटर रिवॉर्ड प्राप्त करने के लिए NODE_OPERATOR_WALLET को भी आपका <b>पंजीकृत Aequitas मानव वॉलेट</b> होना चाहिए (वह जो AequitasBio से सत्यापित है)। केवल सत्यापित मानव ही वैलिडेटर रिवॉर्ड कमा सकते हैं।'),
-    ('5.', '<b>आपके 10–30 मिनट।</b> Railway अधिकांश काम स्वचालित रूप से करता है।'),
-],
-
-vars_title = 'चरण 1 — एनवायरनमेंट वेरिएबल्स',
-vars_warn  = 'सुरक्षा चेतावनी: आपकी RELAYER_PRIVATE_KEY एक मास्टर पासवर्ड की तरह है। जिसके पास भी यह है वह आपके नोड वॉलेट को नियंत्रित करता है। इसे कभी सार्वजनिक रूप से साझा न करें, कभी चैट या ईमेल में पेस्ट न करें। RELAYER_PRIVATE_KEY (साइनिंग) के लिए एक अलग MetaMask वॉलेट का उपयोग करें। NODE_OPERATOR_WALLET (रिवॉर्ड के लिए) आपका पंजीकृत Aequitas मानव वॉलेट होना चाहिए।',
-var_cols   = ['वेरिएबल', 'आवश्यक?', 'क्या सेट करें'],
-vars = [
-    ('DATABASE_URL',        'हाँ',        'आपकी PostgreSQL कनेक्शन स्ट्रिंग। Railway पर: यदि PostgreSQL एक ही प्रोजेक्ट में है तो स्वचालित रूप से जोड़ा जाता है। फॉर्मेट: postgres://user:pass@host:5432/dbname'),
-    ('RELAYER_PRIVATE_KEY', 'हाँ',        'आपके समर्पित नोड वॉलेट की प्राइवेट की (0x…, 66 अक्षर)। MetaMask: Account Details → Show Private Key → पासवर्ड दर्ज करें → कॉपी करें।'),
-    ('RELAYER_ADDRESS',     'अनुशंसित',   'RELAYER_PRIVATE_KEY से मेल खाने वाला वॉलेट पता (0x…, 42 अक्षर)। MetaMask से कॉपी करें। एक फॉलबैक मौजूद है, लेकिन इसे स्पष्ट रूप से सेट करना स्टार्टअप त्रुटियों को रोकता है।'),
-    ('NODE_OPERATOR_WALLET','रिवॉर्ड के लिए', 'आपका Aequitas मानव वॉलेट पता — Android ऐप के माध्यम से पंजीकृत। आपके दैनिक वैलिडेटर रिवॉर्ड (सभी प्रोटोकॉल शुल्क का 40%) प्राप्त करता है। एक पंजीकृत मानव होना चाहिए।'),
-    ('NODE_OPERATOR_BINDING_SIGNATURE', 'रिवॉर्ड के लिए', 'सिद्ध करता है कि NODE_OPERATOR_WALLET आपका है। इसे aequitas.digital/node-binding पर जनरेट करें: दिखाए गए संदेश को MetaMask में अपने मानव वॉलेट से साइन करें, परिणामी हस्ताक्षर यहां पेस्ट करें। इसके बिना आपका नोड फिर भी चलता है, लेकिन रिवॉर्ड के लिए स्वचालित रूप से पंजीकृत नहीं हो सकता।'),
-    ('PEER_SECRET',         'वैकल्पिक/पुराना', 'पुरानी साझा-गुप्त फॉलबैक प्रणाली। अब आवश्यक नहीं है — नोड अब क्रिप्टोग्राफिक चैलेंज-रिस्पॉन्स (RELAYER_PRIVATE_KEY) के माध्यम से स्वचालित रूप से प्रमाणित होते हैं। केवल पुराने डिप्लॉयमेंट के साथ पिछड़ी संगतता के लिए आवश्यक है।'),
-    ('SELF_URL',            'मल्टी-नोड',  'आपके अपने नोड का सार्वजनिक HTTPS URL (जैसे https://my-node.up.railway.app)। पीयर खोज में स्वयं को बाहर रखने के लिए आवश्यक। Railway में पाएं: Settings → Networking → Public Networking।'),
-    ('PRIMARY_NODE_URL',    'मल्टी-नोड',  'इसे सेट करें: https://aequitas.digital — प्राइमरी नोड जिसके साथ आपका नोड स्वचालित पीयर खोज के लिए पंजीकृत होता है। स्टार्टअप पर, आपका नोड अपना URL + साइनिंग पता प्राइमरी को भेजता है, पूरी पीयर सूची प्राप्त करता है, और स्वचालित रूप से नेटवर्क से जुड़ जाता है।'),
-    ('BOOTSTRAP_SNAPSHOT_URL', 'अनुशंसित', 'इसे सेट करें: https://aequitas.digital/api/snapshot — एक नए नोड को जेनेसिस से पूरे इतिहास को फिर से चलाने के बजाय नेटवर्क की वर्तमान स्थिति से शुरू करने देता है। काफी तेज पहली सिंक।'),
-    ('BOOTSTRAP_SIGNER',    'स्नैपशॉट के साथ', 'प्राइमरी नोड का साइनिंग पता, इम्पोर्ट करने से पहले स्नैपशॉट के असली होने को सत्यापित करने के लिए उपयोग किया जाता है। वर्तमान मान https://aequitas.digital/api/status → "signing_address" से प्राप्त करें। जब भी BOOTSTRAP_SNAPSHOT_URL सेट हो, आवश्यक है।'),
-    ('SNAPSHOT_TOKEN',      'वैकल्पिक',   'एक नए नोड को बूटस्ट्रैप करने के लिए आवश्यक नहीं — इसके बिना भी आपको सही ढंग से चलने के लिए आवश्यक सब कुछ मिलता है (अकाउंट्स, बैलेंस, पूल, कॉन्फिग)। यह केवल पूर्ण एक्सपोर्ट (nullifier/वॉलेट लिंकेज + bio_registrations) को अनलॉक करता है, जो पहले से डायवर्ज हो चुके नोड के आधिकारिक रीसिंक के लिए उपयोग होता है। नेटवर्क ऑपरेटर से केवल तभी पूछें जब आपको वास्तव में इसकी आवश्यकता हो।'),
-    ('RESYNC_FROM_SNAPSHOT', 'केवल रिकवरी', 'खतरनाक, अस्थायी: इसे true पर सेट करें केवल BOOTSTRAP_SNAPSHOT_URL और BOOTSTRAP_SIGNER के साथ, ऐसे नोड को रिकवर करने के लिए जिसकी स्थिति नेटवर्क से भिन्न हो गई है। स्थानीय स्थिति को पूरी तरह से बदल देता है। एक बार रीस्टार्ट करें, फिर इस वेरिएबल को फिर से हटा दें — इसे छोड़ने से हर रीस्टार्ट पर पूर्ण रीसिंक होगा।'),
-    ('AUTO_HEAL_ON_DIVERGENCE', 'अत्यधिक अनुशंसित', 'नेटवर्क की सुरक्षा और गति के लिए महत्वपूर्ण: यदि आपके नोड की चेन कभी नेटवर्क से भिन्न हो जाती है (जैसे डाउनटाइम या असफल रीस्टार्ट के बाद), तो यह इसे स्वयं पहचान लेता है — हर कुछ मिनट में PRIMARY_NODE_URL से तुलना करके — और बिना किसी मैनुअल RESYNC_FROM_SNAPSHOT के अपने आप रीसिंक हो जाता है। एक नोड जो भिन्न बना रहता है और अपने खुद के ब्लॉक प्रसारित करता रहता है, वह पूरे नेटवर्क को बाकी सभी ऑपरेटरों के लिए धीमा या अस्थिर कर सकता है। इसे PRIMARY_NODE_URL, BOOTSTRAP_SNAPSHOT_URL, और BOOTSTRAP_SIGNER के साथ true पर सेट करें।'),
-    ('PORT',                'नहीं',       'Railway पर सेट न करें — Railway इसे स्वचालित रूप से सेट करता है। डिफॉल्ट 8080 है।'),
-    ('NODE_KEY',            'नहीं',       'स्थिर P2P पहचान के लिए Base64 libp2p की। यदि छोड़ दिया जाए तो स्वचालित रूप से जनरेट होती है, लेकिन हर रीस्टार्ट पर बदल जाती है। यदि सेट नहीं है, तो नोड इसे stderr में प्रिंट करता है: "SAVE THIS AS NODE_KEY ENVIRONMENT VAR: <base64>"। इसे कॉपी करके यहां पेस्ट करें।'),
-    ('IS_PRIMARY_NODE',     'नहीं',       'इसे अनसेट या false छोड़ें। डिस्ट्रीब्यूशन अब एक डेटाबेस-स्तरीय लॉक का उपयोग करता है — कोई भी नोड इस वेरिएबल के बिना इसे चला सकता है।'),
-    ('RESET_STATE',         'नहीं',       'खतरनाक: इसे true पर सेट करने से हर रीस्टार्ट पर आपका पूरा डेटाबेस मिट जाता है। केवल डेवलपमेंट उपयोग के लिए। प्रोडक्शन में कभी नहीं।'),
-],
-
-railway_title = 'चरण 2 — Railway पर डिप्लॉय करें (अनुशंसित)',
-railway_intro = 'Railway आपके नोड को चलाने का सबसे आसान तरीका है — कोई सर्वर सेटअप नहीं, कोई कमांड लाइन नहीं। मुफ्त टियर सभी आवश्यकताओं को कवर करता है। कुल समय: लगभग 10–15 मिनट।',
-railway_steps = [
-    'github.com/hanoi96international-gif/Aequitas को अपने GitHub खाते में फोर्क करें (<b>Fork</b> → <b>Create fork</b> पर क्लिक करें)',
-    'railway.app पर, GitHub से साइन इन करें, फिर <b>New Project</b> → <b>+ New</b> → <b>Database</b> → <b>Add PostgreSQL</b>',
-    'उसी Railway प्रोजेक्ट में, <b>+ New → GitHub Repo</b> पर क्लिक करें और अपना Aequitas फोर्क चुनें — Railway स्वचालित रूप से Dockerfile का पता लगाता है',
-    '<b>Deploy Now</b> पर क्लिक करें — पहला बिल्ड शुरू होता है (env vars के बिना यह फेल हो सकता है, यह सामान्य है)',
-    'अपनी Aequitas सेवा पर क्लिक करें → <b>Variables</b> → हर वेरिएबल जोड़ें (ऊपर तालिका देखें)। न्यूनतम आवश्यक: RELAYER_PRIVATE_KEY, RELAYER_ADDRESS, NODE_OPERATOR_WALLET, SELF_URL, PRIMARY_NODE_URL=https://aequitas.digital (PEER_SECRET अब आवश्यक नहीं है)',
-    '<b>Deploy</b> पर क्लिक करें (या ऑटो-रीडिप्लॉय ट्रिगर करने के लिए वेरिएबल्स सेव करें)। Go नोड बाइनरी को कंपाइल करने में बिल्ड को ~3 मिनट लगते हैं।',
-    '<b>Deploy Logs</b> देखें। सफलता इस तरह दिखती है: <font name="Courier" color="#5B21B6">Aequitas Node Running</font> और <font name="Courier" color="#0F766E">[NODE] Registered node operator wallet: 0x…</font>',
-    'अपना सार्वजनिक URL पाने के लिए <b>Settings → Networking → Generate Domain</b> पर जाएं',
-    '<font name="Courier">https://YOUR-URL/api/status</font> खोलें — आपको JSON दिखना चाहिए जिसमें <b>height</b> हर ~6 सेकंड में बढ़ रहा है',
-],
-railway_vars_code = (
-    '# यदि PostgreSQL एक ही प्रोजेक्ट में है तो Railway स्वचालित रूप से DATABASE_URL सेट करता है\n'
-    'RELAYER_PRIVATE_KEY    = 0xआपकी_प्राइवेट_की\n'
-    'RELAYER_ADDRESS        = 0xआपका_नोड_वॉलेट_पता\n'
-    'NODE_OPERATOR_WALLET   = 0xआपका_मानव_वॉलेट\n'
-    '# PEER_SECRET अब आवश्यक नहीं है — प्रमाणीकरण स्वचालित है\n'
-    'SELF_URL               = https://YOUR-RAILWAY-DOMAIN.up.railway.app\n'
-    'PRIMARY_NODE_URL       = https://aequitas.digital'
-    'AUTO_HEAL_ON_DIVERGENCE       = true'
-),
-
-docker_title = 'चरण 2b — विकल्प: Docker के साथ डिप्लॉय करें (एडवांस्ड)',
-docker_intro = 'यदि आपके पास अपना सर्वर है (VPS, होम सर्वर, क्लाउड VM) तो इसका उपयोग करें। Docker और एक PostgreSQL डेटाबेस की आवश्यकता है।',
-docker_code  = (
-    '# 1. कोड डाउनलोड करें\n'
-    'git clone https://github.com/hanoi96international-gif/Aequitas && cd Aequitas\n\n'
-    '# 2. नोड इमेज बनाएं (Go कंपाइलेशन के लिए ~3 मिनट)\n'
-    'docker build -t aequitas-node .\n\n'
-    '# 3. नोड शुरू करें\n'
-    'docker run -d --name aequitas-node --restart unless-stopped \\\n'
-    '  -e DATABASE_URL="postgres://user:pass@host:5432/aequitas" \\\n'
-    '  -e RELAYER_PRIVATE_KEY="0xआपकी_प्राइवेट_की" \\\n'
-    '  -e RELAYER_ADDRESS="0xआपका_नोड_वॉलेट_पता" \\\n'
-    '  -e NODE_OPERATOR_WALLET="0xआपका_मानव_वॉलेट" \\\n'
-    '  # -e PEER_SECRET="..." (वैकल्पिक/पुराना, आवश्यक नहीं) \\\n'
-    '  -e SELF_URL="https://आपका-सार्वजनिक-URL" \\\n'
-    '  -e PRIMARY_NODE_URL="https://aequitas.digital" \\\n'
-    '  -e AUTO_HEAL_ON_DIVERGENCE="true" \\\n'
-    '  -p 8080:8080 aequitas-node\n\n'
-    '# 4. लाइव लॉग देखें\n'
-    'docker logs -f aequitas-node'
-),
-
-verify_title = 'चरण 3 — सत्यापित करें कि आपका नोड चल रहा है',
-verify_body  = 'इन URLs को अपने ब्राउज़र में खोलें। YOUR-NODE-URL को अपने वास्तविक Railway डोमेन या सर्वर पते से बदलें।',
-verify_code  = (
-    'https://YOUR-NODE-URL/api/status\n'
-    ' → अनुमानित: {"height": 1234, "total_humans": N, "aequitas_index": N}\n\n'
-    'https://YOUR-NODE-URL/rpc\n'
-    ' → अनुमानित: {"jsonrpc":"2.0","error":"method not specified"} — RPC चल रहा है'
-),
-verify_note  = 'स्टार्टअप के कुछ सेकंड के भीतर ब्लॉक हाइट को प्राइमरी नोड से 1–2 ब्लॉक के भीतर मिलान करना चाहिए। यदि यह 0 पर रहता है, तो जांचें कि PRIMARY_NODE_URL=https://aequitas.digital सेट है और पहुंच योग्य है।',
-
-valkey_title = 'चरण 3b — अपनी वैलिडेटर की पंजीकृत करें (विकेन्द्रीकृत प्रमाणीकरण)',
-valkey_body  = 'साझा PEER_SECRET के बजाय, अपने नोड साइनिंग की को अपने मानव वॉलेट के साथ पंजीकृत करें। यह क्रिप्टोग्राफिक रूप से सिद्ध करता है कि आप दोनों कीज़ को नियंत्रित करते हैं। अपने सर्वर पर यह चलाकर हस्ताक्षर प्राप्त करें (SSH/Railway shell):',
-valkey_code  = 'curl "http://localhost:8080/api/sign-validator-challenge?wallet=0xआपका_मानव_वॉलेट"',
-valkey_note  = 'फिर वेबसाइट पर Network → Run a Node टैब का उपयोग करें और पंजीकरण पूरा करने के लिए "Sign with MetaMask & Register" पर क्लिक करें।',
-
-mm_title = 'चरण 4 — MetaMask को अपने नोड से कनेक्ट करें (वैकल्पिक)',
-mm_body  = 'MetaMask में: नेटवर्क ड्रॉपडाउन पर क्लिक करें → Add network → Add a network manually, फिर दर्ज करें:',
-mm_rows  = [
-    ('Network Name',    'Aequitas Chain'),
-    ('RPC URL',         'https://YOUR-NODE-URL/rpc'),
-    ('Chain ID',        '1926'),
-    ('Currency Symbol', 'AEQ'),
-    ('Decimals',        '18'),
-    ('Block Explorer',  'https://aequitas.digital'),
-],
-
-rewards_title = 'चरण 5 — वैलिडेटर रिवॉर्ड कमाना',
-rewards_box   = 'वैलिडेटर्स पूल सभी प्रोटोकॉल शुल्क का 40% एकत्र करता है (स्वैप शुल्क, डिमरेज, वेल्थ कैप अतिरेक)। हर दिन बर्लिन समय 20:00 बजे (CEST/CET, DST को स्वचालित रूप से हैंडल करता है) नोड पूल बैलेंस को उत्पादित ब्लॉकों के अनुपात में सभी पंजीकृत नोड ऑपरेटरों में वितरित करता है। आपका नोड जितना अधिक लगातार चलता है, आपका हिस्सा उतना ही बड़ा होता है।',
-rewards_steps = [
-    'सुनिश्चित करें कि आप Aequitas पर मानव के रूप में पंजीकृत हैं। यदि नहीं: पहले Android ऐप इंस्टॉल करें और बायोमेट्रिक पंजीकरण पूरा करें। आपको एक वॉलेट पता और 1,000 AEQ प्राप्त होगा।',
-    'अपने Railway Variables में <font name="Courier">NODE_OPERATOR_WALLET</font> = अपना Aequitas मानव वॉलेट पता सेट करें',
-    'सेव करें — Railway स्वचालित रूप से रीडिप्लॉय करता है। Docker के साथ: <font name="Courier">docker restart aequitas-node</font>',
-    'अपने नोड लॉग्स में पुष्टि करें: <font name="Courier" color="#0F766E">[NODE] Registered node operator wallet: 0x…</font>',
-    'रिवॉर्ड स्वचालित रूप से हर दिन बर्लिन समय 20:00 बजे (CEST/CET) वितरित होते हैं। केवल अपना नोड चलते रहने दें — कोई और कार्रवाई आवश्यक नहीं।',
-],
-
-trouble_title = 'समस्या निवारण',
-trouble_cols  = ['लक्षण', 'संभावित कारण', 'समाधान'],
-trouble_rows  = [
-    ('ब्लॉक हाइट 0 पर रहता है',           'PRIMARY_NODE_URL सेट नहीं है या गलत है', 'PRIMARY_NODE_URL=https://aequitas.digital सेट करें और रीडिप्लॉय करें। SELF_URL को भी अपने नोड के सार्वजनिक URL से सेट करें।'),
-    ('स्टार्टअप पर DATABASE_URL त्रुटि',   'गलत कनेक्शन स्ट्रिंग',                    'फॉर्मेट जांचें: postgres://user:pass@host:5432/dbname — सुनिश्चित करें कि PostgreSQL चल रहा है और पहुंच योग्य है।'),
-    ('लॉग्स में "no code at address"',     'V7 कॉन्ट्रैक्ट अभी डिप्लॉय नहीं हुआ',     'पहले स्टार्टअप पर सामान्य — नोड स्वचालित रूप से V7 डिप्लॉय करता है। कुछ सेकंड प्रतीक्षा करें और फिर से जांचें।'),
-    ('"NODE_OPERATOR_WALLET not set"',     'एनवायरनमेंट वेरिएबल गायब',               'NODE_OPERATOR_WALLET=0xआपका_मानव_वॉलेट जोड़ें। नोड इसके बिना ठीक चलता है लेकिन आपको रिवॉर्ड नहीं मिलेंगे।'),
-    ('Railway पर "Application error"',    'बिल्ड या स्टार्टअप विफलता',               'Deploy Logs जांचें। सबसे सामान्य: DATABASE_URL गायब या RELAYER_PRIVATE_KEY गलत फॉर्मेट में (0x से शुरू होना चाहिए)।'),
-    ('पोर्ट 8080 पहुंच योग्य नहीं (Docker)', 'फायरवॉल या क्लाउड प्रोवाइडर कॉन्फिग',   'अपने फायरवॉल या क्लाउड सिक्योरिटी ग्रुप सेटिंग्स में इनबाउंड TCP पोर्ट 8080 खोलें।'),
-    ('Docker बिल्ड विफल (मॉड्यूल त्रुटि)', 'बिल्ड के दौरान इंटरनेट नहीं',             'Docker बिल्ड को Go मॉड्यूल डाउनलोड करने के लिए आउटबाउंड इंटरनेट की आवश्यकता है। Railway इसे स्वचालित रूप से संभालता है।'),
-],
-
-footer = 'Aequitas Chain · Chain ID 1926 · aequitas.digital · वैलिडेटर रिवॉर्ड: हर दिन बर्लिन समय 20:00 बजे (CEST/CET)',
-)
+ES = {'title': 'GUÍA DEL OPERADOR DE NODO AEQUITAS',
+ 'version': 'v2.0 · 2026-09 · aequitas.digital',
+ 'tagline': 'Ejecuta un validador en tu propio servidor · Docker Compose · unos 15 minutos, 10 de ellos '
+            'compilando',
+ 'prereq_title': 'Antes de empezar — Qué necesitas',
+ 'prereqs': [('1.',
+              '<b>Eres un humano registrado:</b> instala la app de Aequitas, completa el registro biométrico '
+              'y anota tu dirección de wallet. La red rechaza un validador cuya wallet no sea un humano '
+              'registrado — un humano, un validador. Alquilar servidores no compra votos.'),
+             ('2.',
+              '<b>Un servidor (VPS) con IPv4 pública:</b> Ubuntu 22.04 o 24.04, al menos 4 vCPU, 8 GB de '
+              'RAM, 60 GB SSD (la base de datos ocupa hoy unos 18 GB y crece). Los dos nodos fundadores usan '
+              '6 vCPU / 12 GB / 100 GB. Los puertos 8080 (API) y 4001 (P2P) deben ser accesibles desde '
+              'internet.'),
+             ('3.',
+              '<b>Docker con el plugin Compose y git.</b> En Ubuntu, <font name="Courier">curl -fsSL '
+              'https://get.docker.com | sh</font> instala ambos.'),
+             ('4.',
+              '<b>Unos 15 minutos.</b> Diez son la primera compilación (el nodo se compila desde el código '
+              'fuente en tu servidor). Las actualizaciones tardan lo mismo.')],
+ 'vars_title': 'Paso 1 — Configuración (.env)',
+ 'vars_warn': 'Aviso de seguridad: RELAYER_PRIVATE_KEY y NODE_KEY son secretos. Quien los tenga ES tu nodo. '
+              'Nunca los pegues en un chat, correo o ticket. El archivo .env se queda en tu servidor.',
+ 'var_cols': ['Variable', '¿Obligatoria?', 'Qué poner'],
+ 'vars': [('POSTGRES_PASSWORD',
+           'SÍ',
+           'Una contraseña larga y aleatoria para la base de datos local. Solo la usan los dos contenedores '
+           'de tu servidor.'),
+          ('SELF_URL',
+           'SÍ',
+           'Cómo te alcanzan los demás nodos: http://TU-IP-PÚBLICA:8080 (o https://tu-dominio si pones un '
+           'proxy delante). Sin ella el nodo solo sigue la cadena como observador y nunca se registra como '
+           'validador.'),
+          ('NODE_OPERATOR_WALLET',
+           'SÍ',
+           'Tu propia dirección de wallet — DEBE ser un humano registrado (registro en la app completado). '
+           'Esto vincula el validador a una persona. Recibe las recompensas de validador.'),
+          ('RELAYER_PRIVATE_KEY',
+           'Recomendada',
+           'La clave que firma tus bloques (0x…, 66 caracteres). Lo más sencillo: la clave privada de '
+           'NODE_OPERATOR_WALLET — así no hace falta ninguna vinculación. Si la dejas vacía, el nodo genera '
+           'una en el primer arranque y la imprime UNA vez ("SAVE THIS AS …"); ponla en .env y reinicia, o '
+           'tu identidad cambiará en cada reinicio.'),
+          ('NODE_OPERATOR_BINDING_SIGNATURE',
+           'Solo si las claves difieren',
+           'Si RELAYER_PRIVATE_KEY no es la clave de NODE_OPERATOR_WALLET: firma el mensaje que muestra '
+           'aequitas.digital/node-binding con tu wallet y pega aquí la firma.'),
+          ('NODE_KEY',
+           'Recomendada',
+           'Identidad P2P. Se genera e imprime en el primer arranque si está vacía — guárdala en .env, por '
+           'la misma razón.'),
+          ('PRIMARY_NODE_URLS',
+           'Preconfigurada',
+           'Los nodos en los que el tuyo se registra y de los que obtiene la instantánea de estado en el '
+           'primer arranque. Preconfigurado a los dos nodos fundadores; déjalo así.'),
+          ('GOMEMLIMIT',
+           'Preconfigurada',
+           'Límite de memoria del proceso del nodo, preconfigurado 5GiB (para 12 GB de RAM). Con 8 GB pon '
+           '3GiB.'),
+          ('POSTGRES_SHARED_BUFFERS',
+           'Preconfigurada',
+           'Caché de Postgres, preconfigurado 1GB. Un cuarto de tu RAM es un buen valor.')],
+ 'railway_title': 'Paso 2 — Arrancar el nodo (Docker Compose)',
+ 'railway_intro': 'Todo lo que hacen los dos nodos fundadores, en un archivo. El primer comando compila el '
+                  'nodo desde el código (unos 10 minutos), arranca Postgres y el nodo, y reinicia ambos '
+                  'automáticamente tras un fallo o un reinicio del servidor.',
+ 'railway_steps': ['En tu servidor: <font name="Courier">git clone '
+                   'https://github.com/hanoi96international-gif/Aequitas.git</font>',
+                   '<font name="Courier">cd Aequitas/deploy/validator</font> y <font name="Courier">cp '
+                   '.env.example .env</font>',
+                   'Edita <font name="Courier">.env</font> (por ejemplo con <font name="Courier">nano '
+                   '.env</font>): rellena POSTGRES_PASSWORD, SELF_URL y NODE_OPERATOR_WALLET — ver la tabla '
+                   'de arriba',
+                   '<font name="Courier">docker compose up -d --build</font> — compila y arranca. La primera '
+                   'vez tarda unos 10 minutos',
+                   'Mira el registro: <font name="Courier">docker compose logs -f node</font>. En el primer '
+                   'arranque el nodo importa el estado de la red (instantánea) desde un nodo fundador, '
+                   'comprueba su firma y descarga los bloques posteriores: <font name="Courier" '
+                   'color="#5B21B6">[BOOTSTRAP] Fresh node — importing state from …</font> seguido de <font '
+                   'name="Courier" color="#0F766E">[HTTP-SYNC] Added … new blocks</font>',
+                   'Si el registro imprimió <font name="Courier">SAVE THIS AS NODE_KEY</font> o <font '
+                   'name="Courier">SET THIS AS RELAYER_PRIVATE_KEY</font>: copia esos valores en .env ahora '
+                   'y vuelve a ejecutar <font name="Courier">docker compose up -d</font> — si no, tu nodo '
+                   'tendrá una identidad nueva en cada reinicio',
+                   'Cuando esté al día verás líneas <font name="Courier">[Block #…]</font> — son bloques '
+                   'producidos por TU nodo. Hasta entonces el nodo no produce nada a propósito (<font '
+                   'name="Courier">Frischer Knoten: … produziert nichts, bis er aufgeholt hat</font>) — un '
+                   'nodo que nunca ha visto la cadena no debe inventarse una'],
+ 'railway_vars_code': 'POSTGRES_PASSWORD      = una-contraseña-larga-y-aleatoria\n'
+                      'SELF_URL               = http://TU-IP-PUBLICA:8080\n'
+                      'NODE_OPERATOR_WALLET   = 0xTU_WALLET_HUMANA\n'
+                      '# recomendado: la clave que firma tus bloques (o vacío en el primer arranque)\n'
+                      'RELAYER_PRIVATE_KEY    = 0xTU_CLAVE_PRIVADA\n'
+                      '# preconfigurado, déjalo así\n'
+                      'PRIMARY_NODE_URLS      = http://173.249.37.118:8080,http://194.163.188.71:8080',
+ 'docker_title': 'Paso 2b — Actualizar, reiniciar, parar',
+ 'docker_intro': 'El nodo guarda su estado en dos volúmenes Docker (base de datos y registro de '
+                 'transferencias). Actualizar reconstruye la imagen con el código más reciente; el estado se '
+                 'conserva. Nunca reinicies todos los validadores de la red a la vez — uno tras otro.',
+ 'docker_code': '# Actualizar al código más reciente (unos 10 minutos)\n'
+                'cd Aequitas && git pull && cd deploy/validator && docker compose up -d --build\n'
+                '\n'
+                '# Reiniciar solo el nodo\n'
+                'docker compose restart node\n'
+                '\n'
+                '# Parar todo (el estado se conserva)\n'
+                'docker compose down\n'
+                '\n'
+                '# Ver el uso de recursos\n'
+                'docker stats',
+ 'verify_title': 'Paso 3 — Comprobar que tu nodo funciona',
+ 'verify_body': 'Compara tu nodo con la red. Sustituye TU-IP-PUBLICA por la dirección de tu servidor.',
+ 'verify_code': 'curl -s http://TU-IP-PUBLICA:8080/api/status | grep -oE \'"height":[0-9]+\'\n'
+                'curl -s https://aequitas.digital/api/status  | grep -oE \'"height":[0-9]+\'\n'
+                ' → Ambos números deben coincidir salvo unos pocos bloques.\n'
+                '\n'
+                'http://TU-IP-PUBLICA:8080/           → tu propio explorador\n'
+                'http://TU-IP-PUBLICA:8080/api/health/combined → todo lo que el nodo mide sobre sí mismo',
+ 'verify_note': 'Justo después del primer arranque la altura está muy por debajo de la red mientras se '
+                'importa la instantánea y se descargan los bloques recientes. Si sigue muy atrás más de 15 '
+                'minutos, revisa el registro en busca de errores [BOOTSTRAP] y que los puertos 8080 y 4001 '
+                'estén abiertos.',
+ 'valkey_title': 'Paso 3b — Vincular tu wallet a la clave del nodo (solo si difieren)',
+ 'valkey_body': 'Si RELAYER_PRIVATE_KEY no es la clave privada de NODE_OPERATOR_WALLET, demuestra una vez '
+                'que ambas son tuyas: abre la página de abajo, firma el mensaje mostrado con tu wallet y pon '
+                'la firma en .env como NODE_OPERATOR_BINDING_SIGNATURE.',
+ 'valkey_code': 'https://aequitas.digital/node-binding',
+ 'valkey_note': 'Con la configuración sencilla de una sola clave (RELAYER_PRIVATE_KEY = clave de tu wallet) '
+                'este paso no es necesario.',
+ 'mm_title': 'Paso 4 — Conectar MetaMask a tu nodo (opcional)',
+ 'mm_body': 'En MetaMask: menú de redes → Añadir red → Añadir una red manualmente, e introduce:',
+ 'mm_rows': [('Nombre de la red', 'Aequitas Chain'),
+             ('URL RPC', 'http://TU-IP-PUBLICA:8080/rpc'),
+             ('ID de cadena', '1926'),
+             ('Símbolo', 'AEQ'),
+             ('Decimales', '18'),
+             ('Explorador de bloques', 'https://aequitas.digital')],
+ 'rewards_title': 'Paso 5 — Recompensas de validador',
+ 'rewards_box': 'El fondo de validadores recoge el 40 % de todas las comisiones del protocolo (comisiones de '
+                'swap, demurrage, exceso del tope de riqueza). Cada día a las 20:00 hora de Berlín el fondo '
+                'se reparte entre los validadores registrados en proporción a los bloques que produjeron. No '
+                'hay que hacer nada más que mantener el nodo en marcha.',
+ 'rewards_steps': ['NODE_OPERATOR_WALLET debe ser un humano registrado — si no, la red rechaza el registro '
+                   '(registro: <font name="Courier">NODE_OPERATOR_WALLET is not a registered human</font>).',
+                   'Confirma en el registro: <font name="Courier" color="#0F766E">[PEERS] Auto-authorized '
+                   'validator … (wallet: 0x…)</font> en un nodo fundador, y líneas <font '
+                   'name="Courier">[Block #…]</font> en el tuyo.',
+                   'Un nodo apagado no produce bloques y por tanto no gana nada durante ese tiempo — los '
+                   'reinicios son inofensivos, el nodo se pone al día solo.',
+                   'Lo que un validador NO hace sin software adicional: aceptar nuevos registros de humanos '
+                   '(esos endpoints responden 503). Las transferencias, los bloques y las recompensas '
+                   'funcionan sin él.'],
+ 'trouble_title': 'Solución de problemas',
+ 'trouble_cols': ['Síntoma', 'Causa probable', 'Solución'],
+ 'trouble_rows': [('NODE_OPERATOR_WALLET is not a registered human',
+                   'La wallet no ha completado el registro en la app',
+                   'Regístrate primero en la app y reinicia el nodo.'),
+                  ('operator_binding_signature missing or invalid',
+                   'La clave de firma y la wallet difieren, sin vinculación',
+                   'Paso 3b: firma en /node-binding y pon NODE_OPERATOR_BINDING_SIGNATURE.'),
+                  ('Frischer Knoten: … produziert nichts, bis er aufgeholt hat',
+                   'Normal mientras se pone al día',
+                   'Espera. La producción empieza cuando el nodo completa ciclos de sincronización limpios '
+                   'con los nodos fundadores.'),
+                  ('SELF_URL not set — … Beobachter',
+                   'Falta SELF_URL en .env',
+                   'Pon SELF_URL en http://TU-IP-PUBLICA:8080 y ejecuta docker compose up -d.'),
+                  ('La altura se queda muy por debajo de la red',
+                   'Falló la importación de la instantánea o los puertos están cerrados',
+                   'Revisa el registro en busca de líneas [BOOTSTRAP]; abre TCP 8080 y 4001 entrantes en el '
+                   'firewall / grupo de seguridad.'),
+                  ('El nodo se reinicia en bucle, "OOMKilled"',
+                   'RAM insuficiente',
+                   'Baja GOMEMLIMIT en .env (3GiB con 8 GB de RAM) o dale más memoria al servidor.'),
+                  ('docker compose: falla la compilación',
+                   'Sin internet saliente durante la compilación',
+                   'La compilación descarga módulos de Go; comprueba DNS y HTTPS saliente en el servidor.')],
+ 'footer': 'Aequitas Chain · Chain ID 1926 · aequitas.digital · Recompensas de validador: diarias a las '
+           '20:00 hora de Berlín'}
+
+FR = {'title': "GUIDE DE L'OPÉRATEUR DE NŒUD AEQUITAS",
+ 'version': 'v2.0 · 2026-09 · aequitas.digital',
+ 'tagline': 'Faites tourner un validateur sur votre propre serveur · Docker Compose · environ 15 minutes, '
+            'dont 10 de compilation',
+ 'prereq_title': "Avant de commencer — Ce qu'il vous faut",
+ 'prereqs': [('1.',
+              "<b>Vous êtes un humain enregistré :</b> installez l'application Aequitas, terminez "
+              "l'enregistrement biométrique et notez votre adresse de wallet. Le réseau refuse un validateur "
+              "dont le wallet n'est pas un humain enregistré — un humain, un validateur. Louer des serveurs "
+              "n'achète aucune voix."),
+             ('2.',
+              '<b>Un serveur (VPS) avec une IPv4 publique :</b> Ubuntu 22.04 ou 24.04, au moins 4 vCPU, 8 Go '
+              "de RAM, 60 Go SSD (la base de données fait aujourd'hui environ 18 Go et grandit). Les deux "
+              'nœuds fondateurs tournent sur 6 vCPU / 12 Go / 100 Go. Les ports 8080 (API) et 4001 (P2P) '
+              'doivent être joignables depuis internet.'),
+             ('3.',
+              '<b>Docker avec le plugin Compose, et git.</b> Sous Ubuntu, <font name="Courier">curl -fsSL '
+              'https://get.docker.com | sh</font> installe les deux.'),
+             ('4.',
+              "<b>Environ 15 minutes.</b> Dix d'entre elles sont la première compilation (le nœud est "
+              'compilé depuis les sources sur votre serveur). Les mises à jour prennent autant.')],
+ 'vars_title': 'Étape 1 — Configuration (.env)',
+ 'vars_warn': 'Avertissement de sécurité : RELAYER_PRIVATE_KEY et NODE_KEY sont des secrets. Qui les détient '
+              'EST votre nœud. Ne les collez jamais dans un chat, un e-mail ou un ticket. Le fichier .env '
+              'reste sur votre serveur.',
+ 'var_cols': ['Variable', 'Obligatoire ?', 'Que renseigner'],
+ 'vars': [('POSTGRES_PASSWORD',
+           'OUI',
+           'Un long mot de passe aléatoire pour la base de données locale. Seuls les deux conteneurs de '
+           "votre serveur l'utilisent."),
+          ('SELF_URL',
+           'OUI',
+           'Comment les autres nœuds joignent le VÔTRE : http://VOTRE-IP-PUBLIQUE:8080 (ou '
+           'https://votre-domaine si un proxy est devant). Sans elle, le nœud suit la chaîne en simple '
+           "observateur et ne s'enregistre jamais comme validateur."),
+          ('NODE_OPERATOR_WALLET',
+           'OUI',
+           "Votre propre adresse de wallet — DOIT être un humain enregistré (enregistrement dans l'app "
+           "terminé). C'est ce qui lie le validateur à une personne. Reçoit les récompenses de validateur."),
+          ('RELAYER_PRIVATE_KEY',
+           'Recommandé',
+           'La clé qui signe vos blocs (0x…, 66 caractères). Le plus simple : la clé privée de '
+           "NODE_OPERATOR_WALLET — aucune liaison supplémentaire n'est alors nécessaire. Laissée vide, le "
+           "nœud en génère une au premier démarrage et l'affiche UNE fois (« SAVE THIS AS … ») ; mettez-la "
+           'dans .env et redémarrez, sinon votre identité change à chaque redémarrage.'),
+          ('NODE_OPERATOR_BINDING_SIGNATURE',
+           'Seulement si les clés diffèrent',
+           "Si RELAYER_PRIVATE_KEY n'est pas la clé de NODE_OPERATOR_WALLET : signez le message affiché sur "
+           'aequitas.digital/node-binding avec votre wallet et collez la signature ici.'),
+          ('NODE_KEY',
+           'Recommandé',
+           'Identité P2P. Générée et affichée au premier démarrage si vide — enregistrez-la dans .env, pour '
+           'la même raison.'),
+          ('PRIMARY_NODE_URLS',
+           'Prérempli',
+           "Les nœuds auprès desquels le vôtre s'enregistre et dont il récupère l'instantané d'état au "
+           'premier démarrage. Prérempli avec les deux nœuds fondateurs ; laissez tel quel.'),
+          ('GOMEMLIMIT',
+           'Prérempli',
+           'Plafond mémoire du processus du nœud, prérempli 5GiB (pour 12 Go de RAM). Avec 8 Go, mettez '
+           '3GiB.'),
+          ('POSTGRES_SHARED_BUFFERS',
+           'Prérempli',
+           'Cache Postgres, prérempli 1GB. Un quart de votre RAM est une bonne valeur.')],
+ 'railway_title': 'Étape 2 — Démarrer le nœud (Docker Compose)',
+ 'railway_intro': 'Tout ce que font les deux nœuds fondateurs, en un fichier. La première commande compile '
+                  'le nœud depuis les sources (environ 10 minutes), démarre Postgres et le nœud, et relance '
+                  'les deux automatiquement après un plantage ou un redémarrage du serveur.',
+ 'railway_steps': ['Sur votre serveur : <font name="Courier">git clone '
+                   'https://github.com/hanoi96international-gif/Aequitas.git</font>',
+                   '<font name="Courier">cd Aequitas/deploy/validator</font> puis <font name="Courier">cp '
+                   '.env.example .env</font>',
+                   'Modifiez <font name="Courier">.env</font> (par exemple avec <font name="Courier">nano '
+                   '.env</font>) : renseignez POSTGRES_PASSWORD, SELF_URL et NODE_OPERATOR_WALLET — voir le '
+                   'tableau ci-dessus',
+                   '<font name="Courier">docker compose up -d --build</font> — compile et démarre. Environ '
+                   '10 minutes la première fois',
+                   'Suivez le journal : <font name="Courier">docker compose logs -f node</font>. Au premier '
+                   "démarrage, le nœud importe l'état du réseau (instantané) depuis un nœud fondateur, "
+                   'vérifie sa signature, puis récupère les blocs suivants : <font name="Courier" '
+                   'color="#5B21B6">[BOOTSTRAP] Fresh node — importing state from …</font> puis <font '
+                   'name="Courier" color="#0F766E">[HTTP-SYNC] Added … new blocks</font>',
+                   'Si le journal a affiché <font name="Courier">SAVE THIS AS NODE_KEY</font> ou <font '
+                   'name="Courier">SET THIS AS RELAYER_PRIVATE_KEY</font> : copiez ces valeurs dans .env '
+                   'maintenant et relancez <font name="Courier">docker compose up -d</font> — sinon votre '
+                   'nœud obtient une nouvelle identité à chaque redémarrage',
+                   'Une fois à jour, vous verrez des lignes <font name="Courier">[Block #…]</font> — ce sont '
+                   'des blocs produits par VOTRE nœud. Jusque-là, le nœud ne produit délibérément rien '
+                   '(<font name="Courier">Frischer Knoten: … produziert nichts, bis er aufgeholt hat</font>) '
+                   "— un nœud qui n'a jamais vu la chaîne ne doit pas en inventer une"],
+ 'railway_vars_code': 'POSTGRES_PASSWORD      = un-long-mot-de-passe-aleatoire\n'
+                      'SELF_URL               = http://VOTRE-IP-PUBLIQUE:8080\n'
+                      'NODE_OPERATOR_WALLET   = 0xVOTRE_WALLET_HUMAIN\n'
+                      '# recommandé : la clé qui signe vos blocs (ou vide au premier démarrage)\n'
+                      'RELAYER_PRIVATE_KEY    = 0xVOTRE_CLE_PRIVEE\n'
+                      '# prérempli, laisser tel quel\n'
+                      'PRIMARY_NODE_URLS      = http://173.249.37.118:8080,http://194.163.188.71:8080',
+ 'docker_title': 'Étape 2b — Mettre à jour, redémarrer, arrêter',
+ 'docker_intro': 'Le nœud garde son état dans deux volumes Docker (base de données et journal des '
+                 "transferts). Une mise à jour reconstruit l'image avec le code le plus récent ; l'état "
+                 "reste. Ne redémarrez jamais tous les validateurs du réseau en même temps — l'un après "
+                 "l'autre.",
+ 'docker_code': '# Mettre à jour vers le code le plus récent (environ 10 minutes)\n'
+                'cd Aequitas && git pull && cd deploy/validator && docker compose up -d --build\n'
+                '\n'
+                '# Redémarrer seulement le nœud\n'
+                'docker compose restart node\n'
+                '\n'
+                "# Tout arrêter (l'état est conservé)\n"
+                'docker compose down\n'
+                '\n'
+                '# Surveiller les ressources\n'
+                'docker stats',
+ 'verify_title': 'Étape 3 — Vérifier que votre nœud fonctionne',
+ 'verify_body': "Comparez votre nœud au réseau. Remplacez VOTRE-IP-PUBLIQUE par l'adresse de votre serveur.",
+ 'verify_code': 'curl -s http://VOTRE-IP-PUBLIQUE:8080/api/status | grep -oE \'"height":[0-9]+\'\n'
+                'curl -s https://aequitas.digital/api/status  | grep -oE \'"height":[0-9]+\'\n'
+                ' → Les deux nombres doivent être égaux à quelques blocs près.\n'
+                '\n'
+                'http://VOTRE-IP-PUBLIQUE:8080/           → votre propre explorateur\n'
+                'http://VOTRE-IP-PUBLIQUE:8080/api/health/combined → tout ce que le nœud mesure sur lui-même',
+ 'verify_note': "Juste après le premier démarrage, la hauteur est bien en dessous du réseau pendant l'import "
+                "de l'instantané et la récupération des blocs récents. Si elle reste loin derrière plus de "
+                '15 minutes, cherchez des erreurs [BOOTSTRAP] dans le journal et vérifiez que les ports 8080 '
+                'et 4001 sont ouverts.',
+ 'valkey_title': 'Étape 3b — Lier votre wallet à la clé du nœud (seulement si elles diffèrent)',
+ 'valkey_body': "Si RELAYER_PRIVATE_KEY n'est pas la clé privée de NODE_OPERATOR_WALLET, prouvez une fois "
+                'que les deux vous appartiennent : ouvrez la page ci-dessous, signez le message affiché avec '
+                'votre wallet et mettez la signature dans .env comme NODE_OPERATOR_BINDING_SIGNATURE.',
+ 'valkey_code': 'https://aequitas.digital/node-binding',
+ 'valkey_note': 'Avec la configuration simple à une seule clé (RELAYER_PRIVATE_KEY = clé de votre wallet), '
+                'cette étape est inutile.',
+ 'mm_title': 'Étape 4 — Connecter MetaMask à votre nœud (facultatif)',
+ 'mm_body': 'Dans MetaMask : menu des réseaux → Ajouter un réseau → Ajouter un réseau manuellement, puis '
+            'saisissez :',
+ 'mm_rows': [('Nom du réseau', 'Aequitas Chain'),
+             ('URL RPC', 'http://VOTRE-IP-PUBLIQUE:8080/rpc'),
+             ('ID de chaîne', '1926'),
+             ('Symbole', 'AEQ'),
+             ('Décimales', '18'),
+             ('Explorateur de blocs', 'https://aequitas.digital')],
+ 'rewards_title': 'Étape 5 — Récompenses de validateur',
+ 'rewards_box': 'Le fonds des validateurs collecte 40 % de tous les frais du protocole (frais de swap, '
+                'démurrage, dépassement du plafond de richesse). Chaque jour à 20 h heure de Berlin, le '
+                'fonds est réparti entre les validateurs enregistrés au prorata des blocs produits. Rien à '
+                'faire sinon garder le nœud en marche.',
+ 'rewards_steps': ['NODE_OPERATOR_WALLET doit être un humain enregistré — sinon le réseau refuse '
+                   'l\'enregistrement (journal : <font name="Courier">NODE_OPERATOR_WALLET is not a '
+                   'registered human</font>).',
+                   'Confirmez dans le journal : <font name="Courier" color="#0F766E">[PEERS] Auto-authorized '
+                   'validator … (wallet: 0x…)</font> sur un nœud fondateur, et des lignes <font '
+                   'name="Courier">[Block #…]</font> sur le vôtre.',
+                   'Un nœud arrêté ne produit pas de blocs et ne gagne donc rien pendant ce temps — les '
+                   'redémarrages sont sans danger, le nœud rattrape seul.',
+                   "Ce qu'un validateur NE fait PAS sans logiciel supplémentaire : accepter de nouveaux "
+                   "enregistrements d'humains (ces endpoints répondent 503). Transferts, blocs et "
+                   'récompenses fonctionnent sans.'],
+ 'trouble_title': 'Dépannage',
+ 'trouble_cols': ['Symptôme', 'Cause probable', 'Solution'],
+ 'trouble_rows': [('NODE_OPERATOR_WALLET is not a registered human',
+                   "Le wallet n'a pas terminé l'enregistrement dans l'app",
+                   "Enregistrez-vous d'abord dans l'app, puis redémarrez le nœud."),
+                  ('operator_binding_signature missing or invalid',
+                   'Clé de signature et wallet différents, sans liaison',
+                   'Étape 3b : signez sur /node-binding et renseignez NODE_OPERATOR_BINDING_SIGNATURE.'),
+                  ('Frischer Knoten: … produziert nichts, bis er aufgeholt hat',
+                   'Normal pendant le rattrapage',
+                   'Attendez. La production démarre quand le nœud a bouclé des cycles de synchronisation '
+                   'propres avec les nœuds fondateurs.'),
+                  ('SELF_URL not set — … Beobachter',
+                   'SELF_URL manque dans .env',
+                   'Mettez SELF_URL à http://VOTRE-IP-PUBLIQUE:8080 et lancez docker compose up -d.'),
+                  ('La hauteur reste loin derrière le réseau',
+                   "Import de l'instantané échoué, ou ports fermés",
+                   'Cherchez des lignes [BOOTSTRAP] dans le journal ; ouvrez TCP 8080 et 4001 en entrée dans '
+                   'le pare-feu / groupe de sécurité.'),
+                  ('Le nœud redémarre en boucle, « OOMKilled »',
+                   'Pas assez de RAM',
+                   'Baissez GOMEMLIMIT dans .env (3GiB avec 8 Go de RAM) ou donnez plus de mémoire au '
+                   'serveur.'),
+                  ('docker compose : la compilation échoue',
+                   "Pas d'internet sortant pendant la compilation",
+                   'La compilation télécharge des modules Go ; vérifiez le DNS et le HTTPS sortant sur le '
+                   'serveur.')],
+ 'footer': 'Aequitas Chain · Chain ID 1926 · aequitas.digital · Récompenses de validateur : chaque jour à 20 '
+           'h heure de Berlin'}
+
+IT = {'title': "GUIDA PER L'OPERATORE DI NODO AEQUITAS",
+ 'version': 'v2.0 · 2026-09 · aequitas.digital',
+ 'tagline': 'Esegui un validatore sul tuo server · Docker Compose · circa 15 minuti, 10 dei quali di '
+            'compilazione',
+ 'prereq_title': 'Prima di iniziare — Cosa ti serve',
+ 'prereqs': [('1.',
+              "<b>Sei un umano registrato:</b> installa l'app Aequitas, completa la registrazione biometrica "
+              'e annota il tuo indirizzo wallet. La rete rifiuta un validatore il cui wallet non è un umano '
+              'registrato — un umano, un validatore. Affittare server non compra voti.'),
+             ('2.',
+              '<b>Un server (VPS) con IPv4 pubblico:</b> Ubuntu 22.04 o 24.04, almeno 4 vCPU, 8 GB di RAM, '
+              '60 GB SSD (il database oggi occupa circa 18 GB e cresce). I due nodi fondatori girano su 6 '
+              'vCPU / 12 GB / 100 GB. Le porte 8080 (API) e 4001 (P2P) devono essere raggiungibili da '
+              'internet.'),
+             ('3.',
+              '<b>Docker con il plugin Compose e git.</b> Su Ubuntu, <font name="Courier">curl -fsSL '
+              'https://get.docker.com | sh</font> installa entrambi.'),
+             ('4.',
+              '<b>Circa 15 minuti.</b> Dieci sono la prima compilazione (il nodo viene compilato dai '
+              'sorgenti sul tuo server). Gli aggiornamenti richiedono lo stesso tempo.')],
+ 'vars_title': 'Passo 1 — Configurazione (.env)',
+ 'vars_warn': 'Avviso di sicurezza: RELAYER_PRIVATE_KEY e NODE_KEY sono segreti. Chi li possiede È il tuo '
+              "nodo. Non incollarli mai in una chat, un'e-mail o un ticket. Il file .env resta sul tuo "
+              'server.',
+ 'var_cols': ['Variabile', 'Obbligatoria?', 'Cosa inserire'],
+ 'vars': [('POSTGRES_PASSWORD',
+           'SÌ',
+           'Una password lunga e casuale per il database locale. La usano solo i due container sul tuo '
+           'server.'),
+          ('SELF_URL',
+           'SÌ',
+           'Come gli altri nodi raggiungono il TUO: http://TUO-IP-PUBBLICO:8080 (o https://tuo-dominio se '
+           "davanti c'è un proxy). Senza, il nodo segue la catena solo come osservatore e non si registra "
+           'mai come validatore.'),
+          ('NODE_OPERATOR_WALLET',
+           'SÌ',
+           "Il tuo indirizzo wallet — DEVE essere un umano registrato (registrazione nell'app completata). È "
+           'ciò che lega il validatore a una persona. Riceve le ricompense del validatore.'),
+          ('RELAYER_PRIVATE_KEY',
+           'Consigliata',
+           'La chiave che firma i tuoi blocchi (0x…, 66 caratteri). La via più semplice: la chiave privata '
+           'di NODE_OPERATOR_WALLET — così non serve alcun collegamento. Se lasciata vuota, il nodo ne '
+           'genera una al primo avvio e la stampa UNA volta ("SAVE THIS AS …"); mettila in .env e riavvia, '
+           'altrimenti la tua identità cambia a ogni riavvio.'),
+          ('NODE_OPERATOR_BINDING_SIGNATURE',
+           'Solo se le chiavi differiscono',
+           'Se RELAYER_PRIVATE_KEY non è la chiave di NODE_OPERATOR_WALLET: firma il messaggio mostrato su '
+           'aequitas.digital/node-binding con il tuo wallet e incolla qui la firma.'),
+          ('NODE_KEY',
+           'Consigliata',
+           'Identità P2P. Generata e stampata al primo avvio se vuota — salvala in .env, per lo stesso '
+           'motivo.'),
+          ('PRIMARY_NODE_URLS',
+           'Preimpostata',
+           'I nodi presso cui il tuo si registra e da cui scarica lo snapshot dello stato al primo avvio. '
+           'Preimpostato sui due nodi fondatori; lascialo così.'),
+          ('GOMEMLIMIT',
+           'Preimpostata',
+           'Limite di memoria del processo del nodo, preimpostato 5GiB (per 12 GB di RAM). Con 8 GB imposta '
+           '3GiB.'),
+          ('POSTGRES_SHARED_BUFFERS',
+           'Preimpostata',
+           'Cache di Postgres, preimpostata 1GB. Un quarto della tua RAM è un buon valore.')],
+ 'railway_title': 'Passo 2 — Avviare il nodo (Docker Compose)',
+ 'railway_intro': 'Tutto ciò che fanno i due nodi fondatori, in un file. Il primo comando compila il nodo '
+                  'dai sorgenti (circa 10 minuti), avvia Postgres e il nodo e riavvia entrambi '
+                  'automaticamente dopo un crash o un riavvio del server.',
+ 'railway_steps': ['Sul tuo server: <font name="Courier">git clone '
+                   'https://github.com/hanoi96international-gif/Aequitas.git</font>',
+                   '<font name="Courier">cd Aequitas/deploy/validator</font> e <font name="Courier">cp '
+                   '.env.example .env</font>',
+                   'Modifica <font name="Courier">.env</font> (ad esempio con <font name="Courier">nano '
+                   '.env</font>): compila POSTGRES_PASSWORD, SELF_URL e NODE_OPERATOR_WALLET — vedi la '
+                   'tabella sopra',
+                   '<font name="Courier">docker compose up -d --build</font> — compila e avvia. La prima '
+                   'volta circa 10 minuti',
+                   'Guarda il log: <font name="Courier">docker compose logs -f node</font>. Al primo avvio '
+                   'il nodo importa lo stato della rete (snapshot) da un nodo fondatore, ne verifica la '
+                   'firma e poi scarica i blocchi successivi: <font name="Courier" '
+                   'color="#5B21B6">[BOOTSTRAP] Fresh node — importing state from …</font> seguito da <font '
+                   'name="Courier" color="#0F766E">[HTTP-SYNC] Added … new blocks</font>',
+                   'Se il log ha stampato <font name="Courier">SAVE THIS AS NODE_KEY</font> o <font '
+                   'name="Courier">SET THIS AS RELAYER_PRIVATE_KEY</font>: copia ora quei valori in .env ed '
+                   'esegui di nuovo <font name="Courier">docker compose up -d</font> — altrimenti il tuo '
+                   'nodo avrà una nuova identità a ogni riavvio',
+                   'Una volta allineato vedrai righe <font name="Courier">[Block #…]</font> — sono blocchi '
+                   'prodotti dal TUO nodo. Fino ad allora il nodo non produce nulla di proposito (<font '
+                   'name="Courier">Frischer Knoten: … produziert nichts, bis er aufgeholt hat</font>) — un '
+                   'nodo che non ha mai visto la catena non deve inventarne una'],
+ 'railway_vars_code': 'POSTGRES_PASSWORD      = una-password-lunga-e-casuale\n'
+                      'SELF_URL               = http://TUO-IP-PUBBLICO:8080\n'
+                      'NODE_OPERATOR_WALLET   = 0xTUO_WALLET_UMANO\n'
+                      '# consigliato: la chiave che firma i tuoi blocchi (o vuota al primo avvio)\n'
+                      'RELAYER_PRIVATE_KEY    = 0xTUA_CHIAVE_PRIVATA\n'
+                      '# preimpostato, lascia così\n'
+                      'PRIMARY_NODE_URLS      = http://173.249.37.118:8080,http://194.163.188.71:8080',
+ 'docker_title': 'Passo 2b — Aggiornare, riavviare, fermare',
+ 'docker_intro': 'Il nodo conserva il suo stato in due volumi Docker (database e registro dei '
+                 "trasferimenti). Un aggiornamento ricostruisce l'immagine dal codice più recente; lo stato "
+                 "resta. Non riavviare mai tutti i validatori della rete insieme — uno dopo l'altro.",
+ 'docker_code': '# Aggiornare al codice più recente (circa 10 minuti)\n'
+                'cd Aequitas && git pull && cd deploy/validator && docker compose up -d --build\n'
+                '\n'
+                '# Riavviare solo il nodo\n'
+                'docker compose restart node\n'
+                '\n'
+                '# Fermare tutto (lo stato resta)\n'
+                'docker compose down\n'
+                '\n'
+                '# Osservare le risorse\n'
+                'docker stats',
+ 'verify_title': 'Passo 3 — Verificare che il nodo funzioni',
+ 'verify_body': "Confronta il tuo nodo con la rete. Sostituisci TUO-IP-PUBBLICO con l'indirizzo del tuo "
+                'server.',
+ 'verify_code': 'curl -s http://TUO-IP-PUBBLICO:8080/api/status | grep -oE \'"height":[0-9]+\'\n'
+                'curl -s https://aequitas.digital/api/status  | grep -oE \'"height":[0-9]+\'\n'
+                ' → I due numeri devono coincidere a meno di pochi blocchi.\n'
+                '\n'
+                'http://TUO-IP-PUBBLICO:8080/           → il tuo explorer\n'
+                'http://TUO-IP-PUBBLICO:8080/api/health/combined → tutto ciò che il nodo misura su di sé',
+ 'verify_note': "Subito dopo il primo avvio l'altezza è molto sotto la rete mentre lo snapshot viene "
+                'importato e i blocchi recenti scaricati. Se resta molto indietro per più di 15 minuti, '
+                'cerca errori [BOOTSTRAP] nel log e verifica che le porte 8080 e 4001 siano aperte.',
+ 'valkey_title': 'Passo 3b — Collegare il wallet alla chiave del nodo (solo se differiscono)',
+ 'valkey_body': 'Se RELAYER_PRIVATE_KEY non è la chiave privata di NODE_OPERATOR_WALLET, dimostra una volta '
+                'che entrambe sono tue: apri la pagina sotto, firma il messaggio mostrato con il tuo wallet '
+                'e metti la firma in .env come NODE_OPERATOR_BINDING_SIGNATURE.',
+ 'valkey_code': 'https://aequitas.digital/node-binding',
+ 'valkey_note': 'Con la configurazione semplice a chiave unica (RELAYER_PRIVATE_KEY = chiave del tuo wallet) '
+                'questo passo non serve.',
+ 'mm_title': 'Passo 4 — Collegare MetaMask al tuo nodo (facoltativo)',
+ 'mm_body': 'In MetaMask: menu delle reti → Aggiungi rete → Aggiungi una rete manualmente, poi inserisci:',
+ 'mm_rows': [('Nome della rete', 'Aequitas Chain'),
+             ('URL RPC', 'http://TUO-IP-PUBBLICO:8080/rpc'),
+             ('ID catena', '1926'),
+             ('Simbolo', 'AEQ'),
+             ('Decimali', '18'),
+             ('Block explorer', 'https://aequitas.digital')],
+ 'rewards_title': 'Passo 5 — Ricompense del validatore',
+ 'rewards_box': 'Il fondo dei validatori raccoglie il 40 % di tutte le commissioni del protocollo '
+                '(commissioni di swap, demurrage, eccedenza del tetto di ricchezza). Ogni giorno alle 20:00 '
+                'ora di Berlino il fondo viene distribuito ai validatori registrati in proporzione ai '
+                "blocchi prodotti. Non c'è nulla da fare se non tenere il nodo acceso.",
+ 'rewards_steps': ['NODE_OPERATOR_WALLET deve essere un umano registrato — altrimenti la rete rifiuta la '
+                   'registrazione (log: <font name="Courier">NODE_OPERATOR_WALLET is not a registered '
+                   'human</font>).',
+                   'Conferma nel log: <font name="Courier" color="#0F766E">[PEERS] Auto-authorized validator '
+                   '… (wallet: 0x…)</font> su un nodo fondatore, e righe <font name="Courier">[Block '
+                   '#…]</font> sul tuo.',
+                   'Un nodo spento non produce blocchi e quindi non guadagna nulla in quel periodo — i '
+                   'riavvii sono innocui, il nodo si riallinea da solo.',
+                   'Cosa un validatore NON fa senza software aggiuntivo: accettare nuove registrazioni di '
+                   'umani (quegli endpoint rispondono 503). Trasferimenti, blocchi e ricompense funzionano '
+                   'senza.'],
+ 'trouble_title': 'Risoluzione dei problemi',
+ 'trouble_cols': ['Sintomo', 'Causa probabile', 'Soluzione'],
+ 'trouble_rows': [('NODE_OPERATOR_WALLET is not a registered human',
+                   "Il wallet non ha completato la registrazione nell'app",
+                   "Registrati prima nell'app, poi riavvia il nodo."),
+                  ('operator_binding_signature missing or invalid',
+                   'Chiave di firma e wallet diversi, nessun collegamento',
+                   'Passo 3b: firma su /node-binding e imposta NODE_OPERATOR_BINDING_SIGNATURE.'),
+                  ('Frischer Knoten: … produziert nichts, bis er aufgeholt hat',
+                   'Normale durante il riallineamento',
+                   'Aspetta. La produzione inizia quando il nodo ha completato cicli di sincronizzazione '
+                   'puliti con i nodi fondatori.'),
+                  ('SELF_URL not set — … Beobachter',
+                   'SELF_URL manca in .env',
+                   'Imposta SELF_URL su http://TUO-IP-PUBBLICO:8080 ed esegui docker compose up -d.'),
+                  ("L'altezza resta molto sotto la rete",
+                   'Import dello snapshot fallito, o porte chiuse',
+                   'Cerca righe [BOOTSTRAP] nel log; apri TCP 8080 e 4001 in ingresso nel firewall / gruppo '
+                   'di sicurezza.'),
+                  ('Il nodo si riavvia in loop, "OOMKilled"',
+                   'RAM insufficiente',
+                   'Abbassa GOMEMLIMIT in .env (3GiB con 8 GB di RAM) o dai più memoria al server.'),
+                  ('docker compose: la compilazione fallisce',
+                   'Nessuna connessione in uscita durante la compilazione',
+                   'La compilazione scarica moduli Go; verifica DNS e HTTPS in uscita sul server.')],
+ 'footer': 'Aequitas Chain · Chain ID 1926 · aequitas.digital · Ricompense del validatore: ogni giorno alle '
+           '20:00 ora di Berlino'}
+
+PT = {'title': 'GUIA DO OPERADOR DE NÓ AEQUITAS',
+ 'version': 'v2.0 · 2026-09 · aequitas.digital',
+ 'tagline': 'Execute um validador no seu próprio servidor · Docker Compose · cerca de 15 minutos, 10 deles a '
+            'compilar',
+ 'prereq_title': 'Antes de começar — O que precisa',
+ 'prereqs': [('1.',
+              '<b>Você é um humano registado:</b> instale a app Aequitas, conclua o registo biométrico e '
+              'anote o endereço da sua wallet. A rede recusa um validador cuja wallet não seja um humano '
+              'registado — um humano, um validador. Alugar servidores não compra votos.'),
+             ('2.',
+              '<b>Um servidor (VPS) com IPv4 público:</b> Ubuntu 22.04 ou 24.04, pelo menos 4 vCPU, 8 GB de '
+              'RAM, 60 GB SSD (a base de dados tem hoje cerca de 18 GB e cresce). Os dois nós fundadores '
+              'usam 6 vCPU / 12 GB / 100 GB. As portas 8080 (API) e 4001 (P2P) têm de estar acessíveis a '
+              'partir da internet.'),
+             ('3.',
+              '<b>Docker com o plugin Compose e git.</b> No Ubuntu, <font name="Courier">curl -fsSL '
+              'https://get.docker.com | sh</font> instala ambos.'),
+             ('4.',
+              '<b>Cerca de 15 minutos.</b> Dez deles são a primeira compilação (o nó é compilado a partir do '
+              'código-fonte no seu servidor). As atualizações demoram o mesmo.')],
+ 'vars_title': 'Passo 1 — Configuração (.env)',
+ 'vars_warn': 'Aviso de segurança: RELAYER_PRIVATE_KEY e NODE_KEY são segredos. Quem os tiver É o seu nó. '
+              'Nunca os cole num chat, e-mail ou ticket. O ficheiro .env fica no seu servidor.',
+ 'var_cols': ['Variável', 'Obrigatória?', 'O que colocar'],
+ 'vars': [('POSTGRES_PASSWORD',
+           'SIM',
+           'Uma palavra-passe longa e aleatória para a base de dados local. Só os dois contentores do seu '
+           'servidor a usam.'),
+          ('SELF_URL',
+           'SIM',
+           'Como os outros nós chegam ao SEU: http://SEU-IP-PUBLICO:8080 (ou https://seu-dominio se houver '
+           'um proxy à frente). Sem ela, o nó segue a cadeia apenas como observador e nunca se regista como '
+           'validador.'),
+          ('NODE_OPERATOR_WALLET',
+           'SIM',
+           'O endereço da sua própria wallet — TEM de ser um humano registado (registo na app concluído). É '
+           'isto que liga o validador a uma pessoa. Recebe as recompensas de validador.'),
+          ('RELAYER_PRIVATE_KEY',
+           'Recomendada',
+           'A chave que assina os seus blocos (0x…, 66 caracteres). O mais simples: a chave privada de '
+           'NODE_OPERATOR_WALLET — assim não é precisa nenhuma ligação extra. Se ficar vazia, o nó gera uma '
+           'no primeiro arranque e imprime-a UMA vez ("SAVE THIS AS …"); coloque-a em .env e reinicie, senão '
+           'a sua identidade muda a cada reinício.'),
+          ('NODE_OPERATOR_BINDING_SIGNATURE',
+           'Só se as chaves forem diferentes',
+           'Se RELAYER_PRIVATE_KEY não for a chave de NODE_OPERATOR_WALLET: assine a mensagem mostrada em '
+           'aequitas.digital/node-binding com a sua wallet e cole aqui a assinatura.'),
+          ('NODE_KEY',
+           'Recomendada',
+           'Identidade P2P. Gerada e impressa no primeiro arranque se vazia — guarde-a em .env, pela mesma '
+           'razão.'),
+          ('PRIMARY_NODE_URLS',
+           'Predefinida',
+           'Os nós junto dos quais o seu se regista e de onde obtém o snapshot do estado no primeiro '
+           'arranque. Predefinido para os dois nós fundadores; deixe como está.'),
+          ('GOMEMLIMIT',
+           'Predefinida',
+           'Limite de memória do processo do nó, predefinido 5GiB (para 12 GB de RAM). Com 8 GB use 3GiB.'),
+          ('POSTGRES_SHARED_BUFFERS',
+           'Predefinida',
+           'Cache do Postgres, predefinida 1GB. Um quarto da sua RAM é um bom valor.')],
+ 'railway_title': 'Passo 2 — Arrancar o nó (Docker Compose)',
+ 'railway_intro': 'Tudo o que os dois nós fundadores fazem, num só ficheiro. O primeiro comando compila o nó '
+                  'a partir do código (cerca de 10 minutos), arranca o Postgres e o nó, e reinicia ambos '
+                  'automaticamente após uma falha ou um reinício do servidor.',
+ 'railway_steps': ['No seu servidor: <font name="Courier">git clone '
+                   'https://github.com/hanoi96international-gif/Aequitas.git</font>',
+                   '<font name="Courier">cd Aequitas/deploy/validator</font> e <font name="Courier">cp '
+                   '.env.example .env</font>',
+                   'Edite <font name="Courier">.env</font> (por exemplo com <font name="Courier">nano '
+                   '.env</font>): preencha POSTGRES_PASSWORD, SELF_URL e NODE_OPERATOR_WALLET — ver a tabela '
+                   'acima',
+                   '<font name="Courier">docker compose up -d --build</font> — compila e arranca. Da '
+                   'primeira vez demora cerca de 10 minutos',
+                   'Acompanhe o log: <font name="Courier">docker compose logs -f node</font>. No primeiro '
+                   'arranque, o nó importa o estado da rede (snapshot) a partir de um nó fundador, verifica '
+                   'a assinatura e depois descarrega os blocos seguintes: <font name="Courier" '
+                   'color="#5B21B6">[BOOTSTRAP] Fresh node — importing state from …</font> seguido de <font '
+                   'name="Courier" color="#0F766E">[HTTP-SYNC] Added … new blocks</font>',
+                   'Se o log imprimiu <font name="Courier">SAVE THIS AS NODE_KEY</font> ou <font '
+                   'name="Courier">SET THIS AS RELAYER_PRIVATE_KEY</font>: copie esses valores para .env '
+                   'agora e execute novamente <font name="Courier">docker compose up -d</font> — caso '
+                   'contrário o seu nó ganha uma identidade nova a cada reinício',
+                   'Quando estiver em dia verá linhas <font name="Courier">[Block #…]</font> — são blocos '
+                   'produzidos pelo SEU nó. Até lá, o nó deliberadamente não produz nada (<font '
+                   'name="Courier">Frischer Knoten: … produziert nichts, bis er aufgeholt hat</font>) — um '
+                   'nó que nunca viu a cadeia não deve inventar uma'],
+ 'railway_vars_code': 'POSTGRES_PASSWORD      = uma-palavra-passe-longa-e-aleatoria\n'
+                      'SELF_URL               = http://SEU-IP-PUBLICO:8080\n'
+                      'NODE_OPERATOR_WALLET   = 0xSUA_WALLET_HUMANA\n'
+                      '# recomendado: a chave que assina os seus blocos (ou vazia no primeiro arranque)\n'
+                      'RELAYER_PRIVATE_KEY    = 0xSUA_CHAVE_PRIVADA\n'
+                      '# predefinido, deixe como está\n'
+                      'PRIMARY_NODE_URLS      = http://173.249.37.118:8080,http://194.163.188.71:8080',
+ 'docker_title': 'Passo 2b — Atualizar, reiniciar, parar',
+ 'docker_intro': 'O nó guarda o seu estado em dois volumes Docker (base de dados e registo de '
+                 'transferências). Atualizar reconstrói a imagem com o código mais recente; o estado '
+                 'mantém-se. Nunca reinicie todos os validadores da rede ao mesmo tempo — um após o outro.',
+ 'docker_code': '# Atualizar para o código mais recente (cerca de 10 minutos)\n'
+                'cd Aequitas && git pull && cd deploy/validator && docker compose up -d --build\n'
+                '\n'
+                '# Reiniciar apenas o nó\n'
+                'docker compose restart node\n'
+                '\n'
+                '# Parar tudo (o estado mantém-se)\n'
+                'docker compose down\n'
+                '\n'
+                '# Observar os recursos\n'
+                'docker stats',
+ 'verify_title': 'Passo 3 — Verificar que o nó funciona',
+ 'verify_body': 'Compare o seu nó com a rede. Substitua SEU-IP-PUBLICO pelo endereço do seu servidor.',
+ 'verify_code': 'curl -s http://SEU-IP-PUBLICO:8080/api/status | grep -oE \'"height":[0-9]+\'\n'
+                'curl -s https://aequitas.digital/api/status  | grep -oE \'"height":[0-9]+\'\n'
+                ' → Os dois números têm de ser iguais a menos de alguns blocos.\n'
+                '\n'
+                'http://SEU-IP-PUBLICO:8080/           → o seu próprio explorador\n'
+                'http://SEU-IP-PUBLICO:8080/api/health/combined → tudo o que o nó mede sobre si próprio',
+ 'verify_note': 'Logo após o primeiro arranque a altura fica muito abaixo da rede enquanto o snapshot é '
+                'importado e os blocos recentes descarregados. Se ficar muito atrás por mais de 15 minutos, '
+                'procure erros [BOOTSTRAP] no log e confirme que as portas 8080 e 4001 estão abertas.',
+ 'valkey_title': 'Passo 3b — Ligar a sua wallet à chave do nó (só se forem diferentes)',
+ 'valkey_body': 'Se RELAYER_PRIVATE_KEY não for a chave privada de NODE_OPERATOR_WALLET, prove uma vez que '
+                'ambas são suas: abra a página abaixo, assine a mensagem mostrada com a sua wallet e coloque '
+                'a assinatura em .env como NODE_OPERATOR_BINDING_SIGNATURE.',
+ 'valkey_code': 'https://aequitas.digital/node-binding',
+ 'valkey_note': 'Com a configuração simples de chave única (RELAYER_PRIVATE_KEY = chave da sua wallet) este '
+                'passo não é necessário.',
+ 'mm_title': 'Passo 4 — Ligar a MetaMask ao seu nó (opcional)',
+ 'mm_body': 'Na MetaMask: menu de redes → Adicionar rede → Adicionar uma rede manualmente, depois introduza:',
+ 'mm_rows': [('Nome da rede', 'Aequitas Chain'),
+             ('URL RPC', 'http://SEU-IP-PUBLICO:8080/rpc'),
+             ('ID da cadeia', '1926'),
+             ('Símbolo', 'AEQ'),
+             ('Decimais', '18'),
+             ('Explorador de blocos', 'https://aequitas.digital')],
+ 'rewards_title': 'Passo 5 — Recompensas de validador',
+ 'rewards_box': 'O fundo dos validadores recolhe 40 % de todas as taxas do protocolo (taxas de swap, '
+                'demurrage, excedente do teto de riqueza). Todos os dias às 20:00, hora de Berlim, o fundo é '
+                'distribuído pelos validadores registados em proporção aos blocos produzidos. Não há nada a '
+                'fazer além de manter o nó a correr.',
+ 'rewards_steps': ['NODE_OPERATOR_WALLET tem de ser um humano registado — senão a rede recusa o registo '
+                   '(log: <font name="Courier">NODE_OPERATOR_WALLET is not a registered human</font>).',
+                   'Confirme no log: <font name="Courier" color="#0F766E">[PEERS] Auto-authorized validator '
+                   '… (wallet: 0x…)</font> num nó fundador, e linhas <font name="Courier">[Block #…]</font> '
+                   'no seu.',
+                   'Um nó desligado não produz blocos e por isso não ganha nada nesse período — os reinícios '
+                   'são inofensivos, o nó recupera sozinho.',
+                   'O que um validador NÃO faz sem software adicional: aceitar novos registos de humanos '
+                   '(esses endpoints respondem 503). Transferências, blocos e recompensas funcionam sem '
+                   'ele.'],
+ 'trouble_title': 'Resolução de problemas',
+ 'trouble_cols': ['Sintoma', 'Causa provável', 'Solução'],
+ 'trouble_rows': [('NODE_OPERATOR_WALLET is not a registered human',
+                   'A wallet não concluiu o registo na app',
+                   'Registe-se primeiro na app e reinicie o nó.'),
+                  ('operator_binding_signature missing or invalid',
+                   'Chave de assinatura e wallet diferentes, sem ligação',
+                   'Passo 3b: assine em /node-binding e defina NODE_OPERATOR_BINDING_SIGNATURE.'),
+                  ('Frischer Knoten: … produziert nichts, bis er aufgeholt hat',
+                   'Normal enquanto recupera',
+                   'Aguarde. A produção começa quando o nó concluir ciclos de sincronização limpos com os '
+                   'nós fundadores.'),
+                  ('SELF_URL not set — … Beobachter',
+                   'Falta SELF_URL em .env',
+                   'Defina SELF_URL como http://SEU-IP-PUBLICO:8080 e execute docker compose up -d.'),
+                  ('A altura fica muito abaixo da rede',
+                   'Importação do snapshot falhou, ou portas fechadas',
+                   'Procure linhas [BOOTSTRAP] no log; abra TCP 8080 e 4001 de entrada na firewall / grupo '
+                   'de segurança.'),
+                  ('O nó reinicia em ciclo, "OOMKilled"',
+                   'RAM insuficiente',
+                   'Baixe GOMEMLIMIT em .env (3GiB com 8 GB de RAM) ou dê mais memória ao servidor.'),
+                  ('docker compose: a compilação falha',
+                   'Sem internet de saída durante a compilação',
+                   'A compilação descarrega módulos Go; verifique o DNS e o HTTPS de saída no servidor.')],
+ 'footer': 'Aequitas Chain · Chain ID 1926 · aequitas.digital · Recompensas de validador: diariamente às '
+           '20:00, hora de Berlim'}
+
+TR = {'title': 'AEQUITAS DÜĞÜM OPERATÖRÜ KILAVUZU',
+ 'version': 'v2.0 · 2026-09 · aequitas.digital',
+ 'tagline': "Kendi sunucunuzda bir doğrulayıcı çalıştırın · Docker Compose · yaklaşık 15 dakika, 10'u "
+            'derleme',
+ 'prereq_title': 'Başlamadan önce — Neye ihtiyacınız var',
+ 'prereqs': [('1.',
+              '<b>Kayıtlı bir insansınız:</b> Aequitas uygulamasını kurun, biyometrik kaydı tamamlayın ve '
+              'cüzdan adresinizi not edin. Ağ, cüzdanı kayıtlı bir insan olmayan doğrulayıcıyı reddeder — '
+              'bir insan, bir doğrulayıcı. Sunucu kiralamak oy satın almaz.'),
+             ('2.',
+              '<b>Genel IPv4 adresli bir sunucu (VPS):</b> Ubuntu 22.04 veya 24.04, en az 4 vCPU, 8 GB RAM, '
+              '60 GB SSD (veritabanı bugün yaklaşık 18 GB ve büyüyor). İki kurucu düğüm 6 vCPU / 12 GB / 100 '
+              'GB ile çalışıyor. 8080 (API) ve 4001 (P2P) portları internetten erişilebilir olmalı.'),
+             ('3.',
+              '<b>Compose eklentili Docker ve git.</b> Ubuntu\'da <font name="Courier">curl -fsSL '
+              'https://get.docker.com | sh</font> ikisini de kurar.'),
+             ('4.',
+              '<b>Yaklaşık 15 dakika.</b> Bunun onu ilk derlemedir (düğüm sunucunuzda kaynak koddan '
+              'derlenir). Güncellemeler de aynı sürer.')],
+ 'vars_title': 'Adım 1 — Yapılandırma (.env)',
+ 'vars_warn': 'Güvenlik uyarısı: RELAYER_PRIVATE_KEY ve NODE_KEY gizlidir. Bunlara sahip olan, düğümünüz '
+              'OLUR. Asla sohbete, e-postaya veya bir bilete yapıştırmayın. .env dosyası sunucunuzda kalır.',
+ 'var_cols': ['Değişken', 'Zorunlu mu?', 'Ne yazılacak'],
+ 'vars': [('POSTGRES_PASSWORD',
+           'EVET',
+           'Yerel veritabanı için uzun, rastgele bir parola. Yalnızca sunucunuzdaki iki konteyner kullanır.'),
+          ('SELF_URL',
+           'EVET',
+           'Diğer düğümlerin SİZİN düğümünüze nasıl ulaştığı: http://GENEL-IP:8080 (önünde proxy varsa '
+           'https://alan-adiniz). Bu olmadan düğüm zinciri yalnızca gözlemci olarak izler ve asla '
+           'doğrulayıcı olarak kaydolmaz.'),
+          ('NODE_OPERATOR_WALLET',
+           'EVET',
+           'Kendi cüzdan adresiniz — kayıtlı bir insan OLMALI (uygulama kaydı tamamlanmış). Doğrulayıcıyı '
+           'bir kişiye bağlayan budur. Doğrulayıcı ödüllerini alır.'),
+          ('RELAYER_PRIVATE_KEY',
+           'Önerilir',
+           "Bloklarınızı imzalayan anahtar (0x…, 66 karakter). En basiti: NODE_OPERATOR_WALLET'ın özel "
+           'anahtarı — o zaman ek bağlama gerekmez. Boş bırakılırsa düğüm ilk başlatmada bir tane üretir ve '
+           'BİR kez yazdırır ("SAVE THIS AS …"); .env dosyasına koyup yeniden başlatın, yoksa kimliğiniz her '
+           'yeniden başlatmada değişir.'),
+          ('NODE_OPERATOR_BINDING_SIGNATURE',
+           'Yalnızca anahtarlar farklıysa',
+           "RELAYER_PRIVATE_KEY, NODE_OPERATOR_WALLET'ın anahtarı değilse: aequitas.digital/node-binding "
+           'sayfasındaki mesajı cüzdanınızla imzalayın ve imzayı buraya yapıştırın.'),
+          ('NODE_KEY',
+           'Önerilir',
+           'P2P kimliği. Boşsa ilk başlatmada üretilir ve yazdırılır — aynı nedenle .env dosyasına '
+           'kaydedin.'),
+          ('PRIMARY_NODE_URLS',
+           'Önceden ayarlı',
+           'Düğümünüzün kaydolduğu ve ilk başlatmada durum anlık görüntüsünü aldığı düğümler. İki kurucu '
+           'düğüme önceden ayarlıdır; olduğu gibi bırakın.'),
+          ('GOMEMLIMIT',
+           'Önceden ayarlı',
+           "Düğüm sürecinin bellek sınırı, önceden 5GiB (12 GB RAM için). 8 GB RAM'de 3GiB yazın."),
+          ('POSTGRES_SHARED_BUFFERS',
+           'Önceden ayarlı',
+           "Postgres önbelleği, önceden 1GB. RAM'inizin dörtte biri iyi bir değerdir.")],
+ 'railway_title': 'Adım 2 — Düğümü başlatın (Docker Compose)',
+ 'railway_intro': 'İki kurucu düğümün yaptığı her şey, tek dosyada. İlk komut düğümü kaynaktan derler '
+                  "(yaklaşık 10 dakika), Postgres'i ve düğümü başlatır ve bir çökme ya da sunucu yeniden "
+                  'başlatması sonrasında ikisini de otomatik yeniden başlatır.',
+ 'railway_steps': ['Sunucunuzda: <font name="Courier">git clone '
+                   'https://github.com/hanoi96international-gif/Aequitas.git</font>',
+                   '<font name="Courier">cd Aequitas/deploy/validator</font> ve <font name="Courier">cp '
+                   '.env.example .env</font>',
+                   '<font name="Courier">.env</font> dosyasını düzenleyin (örneğin <font name="Courier">nano '
+                   '.env</font> ile): POSTGRES_PASSWORD, SELF_URL ve NODE_OPERATOR_WALLET değerlerini girin '
+                   '— yukarıdaki tabloya bakın',
+                   '<font name="Courier">docker compose up -d --build</font> — derler ve başlatır. İlk '
+                   'seferde yaklaşık 10 dakika',
+                   'Günlüğü izleyin: <font name="Courier">docker compose logs -f node</font>. İlk başlatmada '
+                   'düğüm ağ durumunu (anlık görüntü) bir kurucu düğümden alır, imzasını doğrular ve sonraki '
+                   'blokları çeker: <font name="Courier" color="#5B21B6">[BOOTSTRAP] Fresh node — importing '
+                   'state from …</font> ardından <font name="Courier" color="#0F766E">[HTTP-SYNC] Added … '
+                   'new blocks</font>',
+                   'Günlükte <font name="Courier">SAVE THIS AS NODE_KEY</font> veya <font name="Courier">SET '
+                   'THIS AS RELAYER_PRIVATE_KEY</font> yazdıysa: bu değerleri şimdi .env dosyasına '
+                   'kopyalayın ve <font name="Courier">docker compose up -d</font> komutunu yeniden '
+                   'çalıştırın — yoksa düğümünüz her yeniden başlatmada yeni bir kimlik alır',
+                   'Yetiştiğinde <font name="Courier">[Block #…]</font> satırları görürsünüz — bunlar SİZİN '
+                   'düğümünüzün ürettiği bloklardır. O zamana kadar düğüm bilerek hiçbir şey üretmez (<font '
+                   'name="Courier">Frischer Knoten: … produziert nichts, bis er aufgeholt hat</font>) — '
+                   'zinciri hiç görmemiş bir düğüm kendi zincirini uyduramaz'],
+ 'railway_vars_code': 'POSTGRES_PASSWORD      = uzun-rastgele-bir-parola\n'
+                      'SELF_URL               = http://GENEL-IP:8080\n'
+                      'NODE_OPERATOR_WALLET   = 0xINSAN_CUZDANINIZ\n'
+                      '# önerilir: bloklarınızı imzalayan anahtar (ya da ilk başlatmada boş)\n'
+                      'RELAYER_PRIVATE_KEY    = 0xOZEL_ANAHTARINIZ\n'
+                      '# önceden ayarlı, olduğu gibi bırakın\n'
+                      'PRIMARY_NODE_URLS      = http://173.249.37.118:8080,http://194.163.188.71:8080',
+ 'docker_title': 'Adım 2b — Güncelleme, yeniden başlatma, durdurma',
+ 'docker_intro': 'Düğüm durumunu iki Docker biriminde tutar (veritabanı ve transfer günlüğü). Güncelleme '
+                 'imajı en yeni koddan yeniden oluşturur; durum korunur. Ağdaki tüm doğrulayıcıları asla '
+                 'aynı anda yeniden başlatmayın — birbiri ardına.',
+ 'docker_code': '# En yeni koda güncelleyin (yaklaşık 10 dakika)\n'
+                'cd Aequitas && git pull && cd deploy/validator && docker compose up -d --build\n'
+                '\n'
+                '# Yalnızca düğümü yeniden başlatın\n'
+                'docker compose restart node\n'
+                '\n'
+                '# Her şeyi durdurun (durum korunur)\n'
+                'docker compose down\n'
+                '\n'
+                '# Kaynak kullanımını izleyin\n'
+                'docker stats',
+ 'verify_title': 'Adım 3 — Düğümünüzün çalıştığını doğrulayın',
+ 'verify_body': 'Düğümünüzü ağla karşılaştırın. GENEL-IP yerine sunucu adresinizi yazın.',
+ 'verify_code': 'curl -s http://GENEL-IP:8080/api/status | grep -oE \'"height":[0-9]+\'\n'
+                'curl -s https://aequitas.digital/api/status  | grep -oE \'"height":[0-9]+\'\n'
+                ' → İki sayı birkaç blok farkla eşit olmalı.\n'
+                '\n'
+                'http://GENEL-IP:8080/           → kendi gezgininiz\n'
+                'http://GENEL-IP:8080/api/health/combined → düğümün kendisi hakkında ölçtüğü her şey',
+ 'verify_note': 'İlk başlatmadan hemen sonra, anlık görüntü içe aktarılır ve son bloklar çekilirken '
+                'yükseklik ağın çok altındadır. 15 dakikadan uzun süre çok geride kalırsa günlükte '
+                '[BOOTSTRAP] hatalarını arayın ve 8080 ile 4001 portlarının açık olduğunu kontrol edin.',
+ 'valkey_title': 'Adım 3b — Cüzdanınızı düğüm anahtarına bağlayın (yalnızca farklıysa)',
+ 'valkey_body': "RELAYER_PRIVATE_KEY, NODE_OPERATOR_WALLET'ın özel anahtarı değilse ikisinin de size ait "
+                'olduğunu bir kez kanıtlayın: aşağıdaki sayfayı açın, gösterilen mesajı cüzdanınızla '
+                'imzalayın ve imzayı .env dosyasına NODE_OPERATOR_BINDING_SIGNATURE olarak koyun.',
+ 'valkey_code': 'https://aequitas.digital/node-binding',
+ 'valkey_note': 'Basit tek anahtar kurulumunda (RELAYER_PRIVATE_KEY = cüzdanınızın anahtarı) bu adım '
+                'gerekmez.',
+ 'mm_title': "Adım 4 — MetaMask'ı düğümünüze bağlayın (isteğe bağlı)",
+ 'mm_body': "MetaMask'ta: ağ menüsü → Ağ ekle → Ağı elle ekle, sonra girin:",
+ 'mm_rows': [('Ağ adı', 'Aequitas Chain'),
+             ('RPC URL', 'http://GENEL-IP:8080/rpc'),
+             ('Zincir kimliği', '1926'),
+             ('Sembol', 'AEQ'),
+             ('Ondalık', '18'),
+             ('Blok gezgini', 'https://aequitas.digital')],
+ 'rewards_title': 'Adım 5 — Doğrulayıcı ödülleri',
+ 'rewards_box': "Doğrulayıcı havuzu tüm protokol ücretlerinin %40'ını toplar (takas ücretleri, demurrage, "
+                "servet tavanı fazlası). Her gün Berlin saatiyle 20:00'de havuz, ürettikleri bloklarla "
+                'orantılı olarak kayıtlı doğrulayıcılara dağıtılır. Düğümü çalışır tutmaktan başka yapacak '
+                'bir şey yok.',
+ 'rewards_steps': ['NODE_OPERATOR_WALLET kayıtlı bir insan olmalı — aksi halde ağ kaydı reddeder (günlük: '
+                   '<font name="Courier">NODE_OPERATOR_WALLET is not a registered human</font>).',
+                   'Günlükte doğrulayın: bir kurucu düğümde <font name="Courier" color="#0F766E">[PEERS] '
+                   'Auto-authorized validator … (wallet: 0x…)</font>, sizinkinde <font name="Courier">[Block '
+                   '#…]</font> satırları.',
+                   'Kapalı bir düğüm blok üretmez ve o sürede hiçbir şey kazanmaz — yeniden başlatmalar '
+                   'zararsızdır, düğüm kendi kendine yetişir.',
+                   'Bir doğrulayıcının ek yazılım olmadan YAPMADIĞI şey: yeni insan kayıtlarını kabul etmek '
+                   '(bu uç noktalar 503 döner). Transferler, bloklar ve ödüller onsuz çalışır.'],
+ 'trouble_title': 'Sorun giderme',
+ 'trouble_cols': ['Belirti', 'Olası neden', 'Çözüm'],
+ 'trouble_rows': [('NODE_OPERATOR_WALLET is not a registered human',
+                   'Cüzdan uygulama kaydını tamamlamamış',
+                   'Önce uygulamada kaydolun, sonra düğümü yeniden başlatın.'),
+                  ('operator_binding_signature missing or invalid',
+                   'İmza anahtarı ile cüzdan farklı, bağlama yok',
+                   'Adım 3b: /node-binding üzerinde imzalayın ve NODE_OPERATOR_BINDING_SIGNATURE ayarlayın.'),
+                  ('Frischer Knoten: … produziert nichts, bis er aufgeholt hat',
+                   'Yetişirken normal',
+                   'Bekleyin. Düğüm kurucu düğümlerle temiz eşitleme döngülerini tamamlayınca üretim '
+                   'başlar.'),
+                  ('SELF_URL not set — … Beobachter',
+                   '.env dosyasında SELF_URL yok',
+                   'SELF_URL değerini http://GENEL-IP:8080 yapın ve docker compose up -d çalıştırın.'),
+                  ('Yükseklik ağın çok altında kalıyor',
+                   'Anlık görüntü içe aktarma başarısız ya da portlar kapalı',
+                   'Günlükte [BOOTSTRAP] satırlarını arayın; güvenlik duvarında / güvenlik grubunda TCP 8080 '
+                   've 4001 gelen trafiğini açın.'),
+                  ('Düğüm döngü halinde yeniden başlıyor, "OOMKilled"',
+                   'Yetersiz RAM',
+                   ".env dosyasında GOMEMLIMIT değerini düşürün (8 GB RAM'de 3GiB) veya sunucuya daha çok "
+                   'bellek verin.'),
+                  ('docker compose: derleme başarısız',
+                   'Derleme sırasında giden internet yok',
+                   "Derleme Go modüllerini indirir; sunucuda DNS ve giden HTTPS'yi kontrol edin.")],
+ 'footer': 'Aequitas Chain · Chain ID 1926 · aequitas.digital · Doğrulayıcı ödülleri: her gün Berlin '
+           'saatiyle 20:00'}
+
+ID = {'title': 'PANDUAN OPERATOR NODE AEQUITAS',
+ 'version': 'v2.0 · 2026-09 · aequitas.digital',
+ 'tagline': 'Jalankan validator di server Anda sendiri · Docker Compose · sekitar 15 menit, 10 di antaranya '
+            'untuk kompilasi',
+ 'prereq_title': 'Sebelum mulai — Yang Anda butuhkan',
+ 'prereqs': [('1.',
+              '<b>Anda adalah manusia terdaftar:</b> pasang aplikasi Aequitas, selesaikan pendaftaran '
+              'biometrik, dan catat alamat wallet Anda. Jaringan menolak validator yang wallet-nya bukan '
+              'manusia terdaftar — satu manusia, satu validator. Menyewa server tidak membeli suara.'),
+             ('2.',
+              '<b>Sebuah server (VPS) dengan IPv4 publik:</b> Ubuntu 22.04 atau 24.04, minimal 4 vCPU, 8 GB '
+              'RAM, 60 GB SSD (basis data saat ini sekitar 18 GB dan terus tumbuh). Dua node pendiri memakai '
+              '6 vCPU / 12 GB / 100 GB. Port 8080 (API) dan 4001 (P2P) harus dapat diakses dari internet.'),
+             ('3.',
+              '<b>Docker dengan plugin Compose, dan git.</b> Di Ubuntu, <font name="Courier">curl -fsSL '
+              'https://get.docker.com | sh</font> memasang keduanya.'),
+             ('4.',
+              '<b>Sekitar 15 menit.</b> Sepuluh di antaranya adalah kompilasi pertama (node dikompilasi dari '
+              'kode sumber di server Anda). Pembaruan memakan waktu yang sama.')],
+ 'vars_title': 'Langkah 1 — Konfigurasi (.env)',
+ 'vars_warn': 'Peringatan keamanan: RELAYER_PRIVATE_KEY dan NODE_KEY adalah rahasia. Siapa pun yang '
+              'memilikinya ADALAH node Anda. Jangan pernah menempelkannya di chat, email, atau tiket. Berkas '
+              '.env tetap di server Anda.',
+ 'var_cols': ['Variabel', 'Wajib?', 'Yang diisi'],
+ 'vars': [('POSTGRES_PASSWORD',
+           'YA',
+           'Kata sandi panjang dan acak untuk basis data lokal. Hanya dipakai oleh dua kontainer di server '
+           'Anda.'),
+          ('SELF_URL',
+           'YA',
+           'Cara node lain menjangkau node ANDA: http://IP-PUBLIK-ANDA:8080 (atau https://domain-anda jika '
+           'ada proxy di depannya). Tanpa ini node hanya mengikuti rantai sebagai pengamat dan tidak pernah '
+           'mendaftar sebagai validator.'),
+          ('NODE_OPERATOR_WALLET',
+           'YA',
+           'Alamat wallet Anda sendiri — HARUS manusia terdaftar (pendaftaran di aplikasi selesai). Inilah '
+           'yang mengikat validator ke seseorang. Menerima imbalan validator.'),
+          ('RELAYER_PRIVATE_KEY',
+           'Disarankan',
+           'Kunci yang menandatangani blok Anda (0x…, 66 karakter). Paling sederhana: kunci privat dari '
+           'NODE_OPERATOR_WALLET — maka tidak perlu pengikatan tambahan. Jika dikosongkan, node membuatnya '
+           'saat pertama kali dijalankan dan mencetaknya SEKALI ("SAVE THIS AS …"); masukkan ke .env dan '
+           'mulai ulang, atau identitas Anda berubah setiap kali dimulai ulang.'),
+          ('NODE_OPERATOR_BINDING_SIGNATURE',
+           'Hanya jika kuncinya berbeda',
+           'Jika RELAYER_PRIVATE_KEY bukan kunci dari NODE_OPERATOR_WALLET: tanda tangani pesan yang '
+           'ditampilkan di aequitas.digital/node-binding dengan wallet Anda dan tempel tanda tangannya di '
+           'sini.'),
+          ('NODE_KEY',
+           'Disarankan',
+           'Identitas P2P. Dibuat dan dicetak saat pertama dijalankan jika kosong — simpan ke .env, dengan '
+           'alasan yang sama.'),
+          ('PRIMARY_NODE_URLS',
+           'Sudah diatur',
+           'Node tempat node Anda mendaftar dan mengambil snapshot keadaan saat pertama dijalankan. Sudah '
+           'diatur ke dua node pendiri; biarkan apa adanya.'),
+          ('GOMEMLIMIT',
+           'Sudah diatur',
+           'Batas memori proses node, sudah diatur 5GiB (untuk RAM 12 GB). Dengan RAM 8 GB isi 3GiB.'),
+          ('POSTGRES_SHARED_BUFFERS',
+           'Sudah diatur',
+           'Cache Postgres, sudah diatur 1GB. Seperempat RAM Anda adalah nilai yang baik.')],
+ 'railway_title': 'Langkah 2 — Menjalankan node (Docker Compose)',
+ 'railway_intro': 'Semua yang dilakukan dua node pendiri, dalam satu berkas. Perintah pertama mengompilasi '
+                  'node dari kode sumber (sekitar 10 menit), menjalankan Postgres dan node, dan memulai '
+                  'ulang keduanya secara otomatis setelah crash atau reboot server.',
+ 'railway_steps': ['Di server Anda: <font name="Courier">git clone '
+                   'https://github.com/hanoi96international-gif/Aequitas.git</font>',
+                   '<font name="Courier">cd Aequitas/deploy/validator</font> lalu <font name="Courier">cp '
+                   '.env.example .env</font>',
+                   'Sunting <font name="Courier">.env</font> (misalnya dengan <font name="Courier">nano '
+                   '.env</font>): isi POSTGRES_PASSWORD, SELF_URL, dan NODE_OPERATOR_WALLET — lihat tabel di '
+                   'atas',
+                   '<font name="Courier">docker compose up -d --build</font> — mengompilasi dan menjalankan. '
+                   'Pertama kali sekitar 10 menit',
+                   'Pantau log: <font name="Courier">docker compose logs -f node</font>. Saat pertama '
+                   'dijalankan, node mengimpor keadaan jaringan (snapshot) dari node pendiri, memeriksa '
+                   'tanda tangannya, lalu mengunduh blok-blok sesudahnya: <font name="Courier" '
+                   'color="#5B21B6">[BOOTSTRAP] Fresh node — importing state from …</font> diikuti <font '
+                   'name="Courier" color="#0F766E">[HTTP-SYNC] Added … new blocks</font>',
+                   'Jika log mencetak <font name="Courier">SAVE THIS AS NODE_KEY</font> atau <font '
+                   'name="Courier">SET THIS AS RELAYER_PRIVATE_KEY</font>: salin nilai tersebut ke .env '
+                   'sekarang dan jalankan lagi <font name="Courier">docker compose up -d</font> — jika '
+                   'tidak, node Anda mendapat identitas baru setiap kali dimulai ulang',
+                   'Setelah mengejar ketertinggalan Anda akan melihat baris <font name="Courier">[Block '
+                   '#…]</font> — itu blok yang diproduksi node ANDA. Sampai saat itu node sengaja tidak '
+                   'memproduksi apa pun (<font name="Courier">Frischer Knoten: … produziert nichts, bis er '
+                   'aufgeholt hat</font>) — node yang belum pernah melihat rantai tidak boleh mengarangnya'],
+ 'railway_vars_code': 'POSTGRES_PASSWORD      = kata-sandi-panjang-dan-acak\n'
+                      'SELF_URL               = http://IP-PUBLIK-ANDA:8080\n'
+                      'NODE_OPERATOR_WALLET   = 0xWALLET_MANUSIA_ANDA\n'
+                      '# disarankan: kunci yang menandatangani blok Anda (atau kosong saat pertama '
+                      'dijalankan)\n'
+                      'RELAYER_PRIVATE_KEY    = 0xKUNCI_PRIVAT_ANDA\n'
+                      '# sudah diatur, biarkan apa adanya\n'
+                      'PRIMARY_NODE_URLS      = http://173.249.37.118:8080,http://194.163.188.71:8080',
+ 'docker_title': 'Langkah 2b — Memperbarui, memulai ulang, menghentikan',
+ 'docker_intro': 'Node menyimpan keadaannya di dua volume Docker (basis data dan log transfer). Pembaruan '
+                 'membangun ulang image dari kode terbaru; keadaan tetap. Jangan pernah memulai ulang semua '
+                 'validator jaringan sekaligus — satu per satu.',
+ 'docker_code': '# Perbarui ke kode terbaru (sekitar 10 menit)\n'
+                'cd Aequitas && git pull && cd deploy/validator && docker compose up -d --build\n'
+                '\n'
+                '# Mulai ulang node saja\n'
+                'docker compose restart node\n'
+                '\n'
+                '# Hentikan semuanya (keadaan tersimpan)\n'
+                'docker compose down\n'
+                '\n'
+                '# Pantau penggunaan sumber daya\n'
+                'docker stats',
+ 'verify_title': 'Langkah 3 — Memastikan node Anda berjalan',
+ 'verify_body': 'Bandingkan node Anda dengan jaringan. Ganti IP-PUBLIK-ANDA dengan alamat server Anda.',
+ 'verify_code': 'curl -s http://IP-PUBLIK-ANDA:8080/api/status | grep -oE \'"height":[0-9]+\'\n'
+                'curl -s https://aequitas.digital/api/status  | grep -oE \'"height":[0-9]+\'\n'
+                ' → Kedua angka harus sama, selisih paling banyak beberapa blok.\n'
+                '\n'
+                'http://IP-PUBLIK-ANDA:8080/           → explorer Anda sendiri\n'
+                'http://IP-PUBLIK-ANDA:8080/api/health/combined → semua yang diukur node tentang dirinya',
+ 'verify_note': 'Tepat setelah dijalankan pertama kali, tinggi blok jauh di bawah jaringan selagi snapshot '
+                'diimpor dan blok terbaru diunduh. Jika tetap jauh tertinggal lebih dari 15 menit, periksa '
+                'log untuk kesalahan [BOOTSTRAP] dan pastikan port 8080 dan 4001 terbuka.',
+ 'valkey_title': 'Langkah 3b — Mengikat wallet ke kunci node (hanya jika berbeda)',
+ 'valkey_body': 'Jika RELAYER_PRIVATE_KEY bukan kunci privat NODE_OPERATOR_WALLET, buktikan sekali bahwa '
+                'keduanya milik Anda: buka halaman di bawah, tanda tangani pesan yang ditampilkan dengan '
+                'wallet Anda, dan masukkan tanda tangannya ke .env sebagai NODE_OPERATOR_BINDING_SIGNATURE.',
+ 'valkey_code': 'https://aequitas.digital/node-binding',
+ 'valkey_note': 'Dengan pengaturan sederhana satu kunci (RELAYER_PRIVATE_KEY = kunci wallet Anda) langkah '
+                'ini tidak diperlukan.',
+ 'mm_title': 'Langkah 4 — Menghubungkan MetaMask ke node Anda (opsional)',
+ 'mm_body': 'Di MetaMask: menu jaringan → Tambah jaringan → Tambah jaringan secara manual, lalu masukkan:',
+ 'mm_rows': [('Nama jaringan', 'Aequitas Chain'),
+             ('URL RPC', 'http://IP-PUBLIK-ANDA:8080/rpc'),
+             ('ID rantai', '1926'),
+             ('Simbol', 'AEQ'),
+             ('Desimal', '18'),
+             ('Block explorer', 'https://aequitas.digital')],
+ 'rewards_title': 'Langkah 5 — Imbalan validator',
+ 'rewards_box': 'Kolam validator mengumpulkan 40 % dari semua biaya protokol (biaya swap, demurrage, '
+                'kelebihan batas kekayaan). Setiap hari pukul 20:00 waktu Berlin kolam dibagikan ke '
+                'validator terdaftar sebanding dengan blok yang diproduksi. Tidak ada yang perlu dilakukan '
+                'selain menjaga node tetap berjalan.',
+ 'rewards_steps': ['NODE_OPERATOR_WALLET harus manusia terdaftar — jika tidak, jaringan menolak pendaftaran '
+                   '(log: <font name="Courier">NODE_OPERATOR_WALLET is not a registered human</font>).',
+                   'Pastikan di log: <font name="Courier" color="#0F766E">[PEERS] Auto-authorized validator '
+                   '… (wallet: 0x…)</font> di node pendiri, dan baris <font name="Courier">[Block #…]</font> '
+                   'di node Anda.',
+                   'Node yang mati tidak memproduksi blok sehingga tidak mendapat apa-apa selama itu — '
+                   'memulai ulang tidak berbahaya, node mengejar sendiri.',
+                   'Yang TIDAK dilakukan validator tanpa perangkat lunak tambahan: menerima pendaftaran '
+                   'manusia baru (endpoint tersebut menjawab 503). Transfer, blok, dan imbalan berjalan '
+                   'tanpanya.'],
+ 'trouble_title': 'Pemecahan masalah',
+ 'trouble_cols': ['Gejala', 'Kemungkinan penyebab', 'Solusi'],
+ 'trouble_rows': [('NODE_OPERATOR_WALLET is not a registered human',
+                   'Wallet belum menyelesaikan pendaftaran di aplikasi',
+                   'Daftar dulu di aplikasi, lalu mulai ulang node.'),
+                  ('operator_binding_signature missing or invalid',
+                   'Kunci penandatangan dan wallet berbeda, tanpa pengikatan',
+                   'Langkah 3b: tanda tangani di /node-binding dan atur NODE_OPERATOR_BINDING_SIGNATURE.'),
+                  ('Frischer Knoten: … produziert nichts, bis er aufgeholt hat',
+                   'Normal selagi mengejar',
+                   'Tunggu. Produksi dimulai setelah node menyelesaikan siklus sinkronisasi bersih dengan '
+                   'node pendiri.'),
+                  ('SELF_URL not set — … Beobachter',
+                   'SELF_URL tidak ada di .env',
+                   'Atur SELF_URL ke http://IP-PUBLIK-ANDA:8080 dan jalankan docker compose up -d.'),
+                  ('Tinggi blok tetap jauh di bawah jaringan',
+                   'Impor snapshot gagal, atau port tertutup',
+                   'Cari baris [BOOTSTRAP] di log; buka TCP 8080 dan 4001 masuk di firewall / grup '
+                   'keamanan.'),
+                  ('Node berulang kali mulai ulang, "OOMKilled"',
+                   'RAM tidak cukup',
+                   'Turunkan GOMEMLIMIT di .env (3GiB pada RAM 8 GB) atau beri server lebih banyak memori.'),
+                  ('docker compose: kompilasi gagal',
+                   'Tidak ada internet keluar selama kompilasi',
+                   'Kompilasi mengunduh modul Go; periksa DNS dan HTTPS keluar di server.')],
+ 'footer': 'Aequitas Chain · Chain ID 1926 · aequitas.digital · Imbalan validator: setiap hari pukul 20:00 '
+           'waktu Berlin'}
+
+RU = {'title': 'РУКОВОДСТВО ОПЕРАТОРА УЗЛА AEQUITAS',
+ 'version': 'v2.0 · 2026-09 · aequitas.digital',
+ 'tagline': 'Запустите валидатор на собственном сервере · Docker Compose · около 15 минут, из них 10 — '
+            'сборка',
+ 'prereq_title': 'Перед началом — что нужно',
+ 'prereqs': [('1.',
+              '<b>Вы — зарегистрированный человек:</b> установите приложение Aequitas, пройдите '
+              'биометрическую регистрацию и запишите адрес кошелька. Сеть отклоняет валидатор, чей кошелёк '
+              'не принадлежит зарегистрированному человеку — один человек, один валидатор. Аренда серверов '
+              'голосов не покупает.'),
+             ('2.',
+              '<b>Сервер (VPS) с публичным IPv4:</b> Ubuntu 22.04 или 24.04, минимум 4 vCPU, 8 ГБ ОЗУ, 60 ГБ '
+              'SSD (база данных сейчас около 18 ГБ и растёт). Два узла-основателя работают на 6 vCPU / 12 ГБ '
+              '/ 100 ГБ. Порты 8080 (API) и 4001 (P2P) должны быть доступны из интернета.'),
+             ('3.',
+              '<b>Docker с плагином Compose и git.</b> В Ubuntu <font name="Courier">curl -fsSL '
+              'https://get.docker.com | sh</font> устанавливает оба.'),
+             ('4.',
+              '<b>Около 15 минут.</b> Десять из них — первая сборка (узел компилируется из исходников на '
+              'вашем сервере). Обновления занимают столько же.')],
+ 'vars_title': 'Шаг 1 — Настройка (.env)',
+ 'vars_warn': 'Предупреждение: RELAYER_PRIVATE_KEY и NODE_KEY — секреты. Кто ими владеет, тот И ЕСТЬ ваш '
+              'узел. Никогда не вставляйте их в чат, письмо или тикет. Файл .env остаётся на вашем сервере.',
+ 'var_cols': ['Переменная', 'Обязательно?', 'Что указать'],
+ 'vars': [('POSTGRES_PASSWORD',
+           'ДА',
+           'Длинный случайный пароль локальной базы данных. Его используют только два контейнера на вашем '
+           'сервере.'),
+          ('SELF_URL',
+           'ДА',
+           'Как другие узлы находят ВАШ: http://ВАШ-ПУБЛИЧНЫЙ-IP:8080 (или https://ваш-домен, если впереди '
+           'прокси). Без этого узел лишь наблюдает за цепочкой и никогда не регистрируется как валидатор.'),
+          ('NODE_OPERATOR_WALLET',
+           'ДА',
+           'Адрес вашего кошелька — ДОЛЖЕН быть зарегистрированным человеком (регистрация в приложении '
+           'завершена). Именно это привязывает валидатор к человеку. Получает вознаграждения валидатора.'),
+          ('RELAYER_PRIVATE_KEY',
+           'Рекомендуется',
+           'Ключ, которым подписываются ваши блоки (0x…, 66 символов). Проще всего: приватный ключ '
+           'NODE_OPERATOR_WALLET — тогда дополнительная привязка не нужна. Если оставить пустым, узел '
+           'создаст ключ при первом запуске и напечатает его ОДИН раз («SAVE THIS AS …»); внесите его в .env '
+           'и перезапустите, иначе личность узла меняется при каждом перезапуске.'),
+          ('NODE_OPERATOR_BINDING_SIGNATURE',
+           'Только если ключи различаются',
+           'Если RELAYER_PRIVATE_KEY — не ключ NODE_OPERATOR_WALLET: подпишите сообщение со страницы '
+           'aequitas.digital/node-binding своим кошельком и вставьте подпись сюда.'),
+          ('NODE_KEY',
+           'Рекомендуется',
+           'P2P-идентичность. Создаётся и печатается при первом запуске, если пусто — сохраните в .env по '
+           'той же причине.'),
+          ('PRIMARY_NODE_URLS',
+           'Предустановлено',
+           'Узлы, у которых ваш регистрируется и откуда при первом запуске берёт снимок состояния. '
+           'Предустановлены два узла-основателя; оставьте как есть.'),
+          ('GOMEMLIMIT',
+           'Предустановлено',
+           'Предел памяти процесса узла, предустановлено 5GiB (для 12 ГБ ОЗУ). При 8 ГБ укажите 3GiB.'),
+          ('POSTGRES_SHARED_BUFFERS',
+           'Предустановлено',
+           'Кэш Postgres, предустановлено 1GB. Четверть вашей ОЗУ — хорошее значение.')],
+ 'railway_title': 'Шаг 2 — Запуск узла (Docker Compose)',
+ 'railway_intro': 'Всё, что делают два узла-основателя, в одном файле. Первая команда собирает узел из '
+                  'исходников (около 10 минут), запускает Postgres и узел и автоматически перезапускает оба '
+                  'после сбоя или перезагрузки сервера.',
+ 'railway_steps': ['На сервере: <font name="Courier">git clone '
+                   'https://github.com/hanoi96international-gif/Aequitas.git</font>',
+                   '<font name="Courier">cd Aequitas/deploy/validator</font> и <font name="Courier">cp '
+                   '.env.example .env</font>',
+                   'Отредактируйте <font name="Courier">.env</font> (например, <font name="Courier">nano '
+                   '.env</font>): заполните POSTGRES_PASSWORD, SELF_URL и NODE_OPERATOR_WALLET — см. таблицу '
+                   'выше',
+                   '<font name="Courier">docker compose up -d --build</font> — собирает и запускает. В '
+                   'первый раз около 10 минут',
+                   'Смотрите журнал: <font name="Courier">docker compose logs -f node</font>. При первом '
+                   'запуске узел импортирует состояние сети (снимок) с узла-основателя, проверяет его '
+                   'подпись, затем подтягивает последующие блоки: <font name="Courier" '
+                   'color="#5B21B6">[BOOTSTRAP] Fresh node — importing state from …</font>, затем <font '
+                   'name="Courier" color="#0F766E">[HTTP-SYNC] Added … new blocks</font>',
+                   'Если в журнале появилось <font name="Courier">SAVE THIS AS NODE_KEY</font> или <font '
+                   'name="Courier">SET THIS AS RELAYER_PRIVATE_KEY</font>: скопируйте эти значения в .env '
+                   'сейчас и снова выполните <font name="Courier">docker compose up -d</font> — иначе узел '
+                   'получает новую личность при каждом перезапуске',
+                   'Когда узел догонит сеть, появятся строки <font name="Courier">[Block #…]</font> — это '
+                   'блоки, произведённые ВАШИМ узлом. До этого узел намеренно ничего не производит (<font '
+                   'name="Courier">Frischer Knoten: … produziert nichts, bis er aufgeholt hat</font>) — '
+                   'узел, никогда не видевший цепочку, не должен её выдумывать'],
+ 'railway_vars_code': 'POSTGRES_PASSWORD      = длинный-случайный-пароль\n'
+                      'SELF_URL               = http://ВАШ-ПУБЛИЧНЫЙ-IP:8080\n'
+                      'NODE_OPERATOR_WALLET   = 0xВАШ_КОШЕЛЁК_ЧЕЛОВЕКА\n'
+                      '# рекомендуется: ключ, подписывающий ваши блоки (или пусто при первом запуске)\n'
+                      'RELAYER_PRIVATE_KEY    = 0xВАШ_ПРИВАТНЫЙ_КЛЮЧ\n'
+                      '# предустановлено, оставьте как есть\n'
+                      'PRIMARY_NODE_URLS      = http://173.249.37.118:8080,http://194.163.188.71:8080',
+ 'docker_title': 'Шаг 2b — Обновление, перезапуск, остановка',
+ 'docker_intro': 'Узел хранит состояние в двух томах Docker (база данных и журнал переводов). Обновление '
+                 'пересобирает образ из свежего кода; состояние сохраняется. Никогда не перезапускайте все '
+                 'валидаторы сети одновременно — по одному.',
+ 'docker_code': '# Обновить до свежего кода (около 10 минут)\n'
+                'cd Aequitas && git pull && cd deploy/validator && docker compose up -d --build\n'
+                '\n'
+                '# Перезапустить только узел\n'
+                'docker compose restart node\n'
+                '\n'
+                '# Остановить всё (состояние сохраняется)\n'
+                'docker compose down\n'
+                '\n'
+                '# Следить за ресурсами\n'
+                'docker stats',
+ 'verify_title': 'Шаг 3 — Проверка работы узла',
+ 'verify_body': 'Сравните свой узел с сетью. Замените ВАШ-ПУБЛИЧНЫЙ-IP адресом сервера.',
+ 'verify_code': 'curl -s http://ВАШ-ПУБЛИЧНЫЙ-IP:8080/api/status | grep -oE \'"height":[0-9]+\'\n'
+                'curl -s https://aequitas.digital/api/status  | grep -oE \'"height":[0-9]+\'\n'
+                ' → Оба числа должны совпадать с точностью до нескольких блоков.\n'
+                '\n'
+                'http://ВАШ-ПУБЛИЧНЫЙ-IP:8080/           → ваш собственный обозреватель\n'
+                'http://ВАШ-ПУБЛИЧНЫЙ-IP:8080/api/health/combined → всё, что узел измеряет о себе',
+ 'verify_note': 'Сразу после первого запуска высота сильно ниже сети, пока импортируется снимок и '
+                'подтягиваются свежие блоки. Если отставание держится дольше 15 минут, ищите в журнале '
+                'ошибки [BOOTSTRAP] и проверьте, открыты ли порты 8080 и 4001.',
+ 'valkey_title': 'Шаг 3b — Привязка кошелька к ключу узла (только если они различаются)',
+ 'valkey_body': 'Если RELAYER_PRIVATE_KEY — не приватный ключ NODE_OPERATOR_WALLET, один раз докажите, что '
+                'оба ваши: откройте страницу ниже, подпишите показанное сообщение кошельком и внесите '
+                'подпись в .env как NODE_OPERATOR_BINDING_SIGNATURE.',
+ 'valkey_code': 'https://aequitas.digital/node-binding',
+ 'valkey_note': 'При простой схеме с одним ключом (RELAYER_PRIVATE_KEY = ключ вашего кошелька) этот шаг не '
+                'нужен.',
+ 'mm_title': 'Шаг 4 — Подключение MetaMask к узлу (необязательно)',
+ 'mm_body': 'В MetaMask: меню сетей → Добавить сеть → Добавить сеть вручную, затем введите:',
+ 'mm_rows': [('Название сети', 'Aequitas Chain'),
+             ('URL RPC', 'http://ВАШ-ПУБЛИЧНЫЙ-IP:8080/rpc'),
+             ('ID цепочки', '1926'),
+             ('Символ', 'AEQ'),
+             ('Десятичные', '18'),
+             ('Обозреватель блоков', 'https://aequitas.digital')],
+ 'rewards_title': 'Шаг 5 — Вознаграждения валидатора',
+ 'rewards_box': 'Пул валидаторов собирает 40 % всех комиссий протокола (комиссии обмена, демерредж, '
+                'превышение потолка богатства). Ежедневно в 20:00 по берлинскому времени пул распределяется '
+                'между зарегистрированными валидаторами пропорционально произведённым блокам. Делать ничего '
+                'не нужно — только держать узел включённым.',
+ 'rewards_steps': ['NODE_OPERATOR_WALLET должен быть зарегистрированным человеком — иначе сеть отклонит '
+                   'регистрацию (журнал: <font name="Courier">NODE_OPERATOR_WALLET is not a registered '
+                   'human</font>).',
+                   'Проверьте в журнале: <font name="Courier" color="#0F766E">[PEERS] Auto-authorized '
+                   'validator … (wallet: 0x…)</font> на узле-основателе и строки <font name="Courier">[Block '
+                   '#…]</font> на вашем.',
+                   'Выключенный узел не производит блоки и ничего не зарабатывает в это время — перезапуски '
+                   'безопасны, узел догоняет сам.',
+                   'Чего валидатор НЕ делает без дополнительного ПО: не принимает новые регистрации людей '
+                   '(эти конечные точки отвечают 503). Переводы, блоки и вознаграждения работают без этого.'],
+ 'trouble_title': 'Устранение неполадок',
+ 'trouble_cols': ['Симптом', 'Вероятная причина', 'Решение'],
+ 'trouble_rows': [('NODE_OPERATOR_WALLET is not a registered human',
+                   'Кошелёк не завершил регистрацию в приложении',
+                   'Сначала зарегистрируйтесь в приложении, затем перезапустите узел.'),
+                  ('operator_binding_signature missing or invalid',
+                   'Ключ подписи и кошелёк различаются, привязки нет',
+                   'Шаг 3b: подпишите на /node-binding и задайте NODE_OPERATOR_BINDING_SIGNATURE.'),
+                  ('Frischer Knoten: … produziert nichts, bis er aufgeholt hat',
+                   'Нормально, пока узел догоняет',
+                   'Подождите. Производство начнётся после чистых циклов синхронизации с '
+                   'узлами-основателями.'),
+                  ('SELF_URL not set — … Beobachter',
+                   'В .env нет SELF_URL',
+                   'Задайте SELF_URL = http://ВАШ-ПУБЛИЧНЫЙ-IP:8080 и выполните docker compose up -d.'),
+                  ('Высота остаётся далеко ниже сети',
+                   'Импорт снимка не удался или порты закрыты',
+                   'Ищите строки [BOOTSTRAP] в журнале; откройте входящие TCP 8080 и 4001 в брандмауэре / '
+                   'группе безопасности.'),
+                  ('Узел перезапускается по кругу, «OOMKilled»',
+                   'Недостаточно ОЗУ',
+                   'Уменьшите GOMEMLIMIT в .env (3GiB при 8 ГБ ОЗУ) или дайте серверу больше памяти.'),
+                  ('docker compose: сборка не удаётся',
+                   'Нет исходящего интернета во время сборки',
+                   'Сборка загружает модули Go; проверьте DNS и исходящий HTTPS на сервере.')],
+ 'footer': 'Aequitas Chain · Chain ID 1926 · aequitas.digital · Вознаграждения валидатора: ежедневно в 20:00 '
+           'по берлинскому времени'}
+
+ZH = {'title': 'AEQUITAS 节点运营者指南',
+ 'version': 'v2.0 · 2026-09 · aequitas.digital',
+ 'tagline': '在自己的服务器上运行验证节点 · Docker Compose · 约 15 分钟，其中 10 分钟用于编译',
+ 'prereq_title': '开始之前 — 你需要什么',
+ 'prereqs': [('1.',
+              '<b>你是已注册的真人：</b>安装 Aequitas 应用，完成生物特征注册，并记下你的钱包地址。钱包不是已注册真人的验证节点会被网络拒绝 — '
+              '一个人，一个验证节点。租用服务器买不到投票权。'),
+             ('2.',
+              '<b>一台有公网 IPv4 的服务器 (VPS)：</b>Ubuntu 22.04 或 24.04，至少 4 vCPU、8 GB 内存、60 GB SSD（数据库目前约 18 GB '
+              '且持续增长）。两个创始节点使用 6 vCPU / 12 GB / 100 GB。端口 8080 (API) 和 4001 (P2P) 必须能从互联网访问。'),
+             ('3.',
+              '<b>带 Compose 插件的 Docker，以及 git。</b>在 Ubuntu 上，<font name="Courier">curl -fsSL '
+              'https://get.docker.com | sh</font> 会同时安装两者。'),
+             ('4.', '<b>约 15 分钟。</b>其中 10 分钟是首次编译（节点在你的服务器上从源码编译）。之后的更新耗时相同。')],
+ 'vars_title': '第 1 步 — 配置 (.env)',
+ 'vars_warn': '安全警告：RELAYER_PRIVATE_KEY 和 NODE_KEY 是机密。谁拥有它们，谁就是你的节点。绝不要粘贴到聊天、邮件或工单中。.env 文件只留在你的服务器上。',
+ 'var_cols': ['变量', '必填？', '填写内容'],
+ 'vars': [('POSTGRES_PASSWORD', '是', '本地数据库的长随机密码。只有你服务器上的两个容器会使用它。'),
+          ('SELF_URL',
+           '是',
+           '其他节点如何访问你的节点：http://你的公网IP:8080（若前面有代理则为 https://你的域名）。没有它，节点只会作为观察者跟随链，永远不会注册为验证节点。'),
+          ('NODE_OPERATOR_WALLET', '是', '你自己的钱包地址 — 必须是已注册的真人（已完成应用内注册）。这把验证节点绑定到一个人。接收验证节点奖励。'),
+          ('RELAYER_PRIVATE_KEY',
+           '建议',
+           '为你的区块签名的密钥（0x…，66 个字符）。最简单：使用 NODE_OPERATOR_WALLET 的私钥 — 这样无需额外绑定。留空时，节点会在首次启动时生成一个并只打印一次（"SAVE '
+           'THIS AS …"）；把它写入 .env 并重启，否则每次重启身份都会改变。'),
+          ('NODE_OPERATOR_BINDING_SIGNATURE',
+           '仅当密钥不同时',
+           '若 RELAYER_PRIVATE_KEY 不是 NODE_OPERATOR_WALLET 的密钥：用你的钱包在 aequitas.digital/node-binding '
+           '签署显示的消息，并把签名粘贴到这里。'),
+          ('NODE_KEY', '建议', 'P2P 身份。留空时在首次启动生成并打印 — 出于同样原因保存到 .env。'),
+          ('PRIMARY_NODE_URLS', '预设', '你的节点向其注册、并在首次启动时获取状态快照的节点。预设为两个创始节点；保持不变。'),
+          ('GOMEMLIMIT', '预设', '节点进程的内存上限，预设 5GiB（对应 12 GB 内存）。8 GB 内存请填 3GiB。'),
+          ('POSTGRES_SHARED_BUFFERS', '预设', 'Postgres 缓存，预设 1GB。内存的四分之一是合适的值。')],
+ 'railway_title': '第 2 步 — 启动节点 (Docker Compose)',
+ 'railway_intro': '两个创始节点所做的一切，写在一个文件里。第一条命令从源码编译节点（约 10 分钟），启动 Postgres 和节点，并在崩溃或服务器重启后自动重启两者。',
+ 'railway_steps': ['在服务器上：<font name="Courier">git clone '
+                   'https://github.com/hanoi96international-gif/Aequitas.git</font>',
+                   '<font name="Courier">cd Aequitas/deploy/validator</font> 然后 <font name="Courier">cp '
+                   '.env.example .env</font>',
+                   '编辑 <font name="Courier">.env</font>（例如用 <font name="Courier">nano .env</font>）：填写 '
+                   'POSTGRES_PASSWORD、SELF_URL 和 NODE_OPERATOR_WALLET — 见上表',
+                   '<font name="Courier">docker compose up -d --build</font> — 编译并启动。首次约 10 分钟',
+                   '查看日志：<font name="Courier">docker compose logs -f '
+                   'node</font>。首次启动时，节点从创始节点导入网络状态（快照），校验其签名，然后拉取之后的区块：<font name="Courier" '
+                   'color="#5B21B6">[BOOTSTRAP] Fresh node — importing state from …</font> 随后 <font '
+                   'name="Courier" color="#0F766E">[HTTP-SYNC] Added … new blocks</font>',
+                   '若日志打印了 <font name="Courier">SAVE THIS AS NODE_KEY</font> 或 <font name="Courier">SET THIS '
+                   'AS RELAYER_PRIVATE_KEY</font>：立即把这些值复制到 .env 并再次运行 <font name="Courier">docker compose '
+                   'up -d</font> — 否则每次重启节点都会获得新身份',
+                   '追上进度后会看到 <font name="Courier">[Block #…]</font> 行 — 这是你的节点产出的区块。在此之前节点刻意不产出任何区块（<font '
+                   'name="Courier">Frischer Knoten: … produziert nichts, bis er aufgeholt hat</font>）— '
+                   '从未见过链的节点不得凭空造链'],
+ 'railway_vars_code': 'POSTGRES_PASSWORD      = 一个长随机密码\n'
+                      'SELF_URL               = http://你的公网IP:8080\n'
+                      'NODE_OPERATOR_WALLET   = 0x你的真人钱包\n'
+                      '# 建议：为你的区块签名的密钥（首次启动也可留空）\n'
+                      'RELAYER_PRIVATE_KEY    = 0x你的私钥\n'
+                      '# 预设，保持不变\n'
+                      'PRIMARY_NODE_URLS      = http://173.249.37.118:8080,http://194.163.188.71:8080',
+ 'docker_title': '第 2b 步 — 更新、重启、停止',
+ 'docker_intro': '节点把状态保存在两个 Docker 卷中（数据库和转账日志）。更新会用最新代码重建镜像；状态保留。绝不要同时重启网络中所有验证节点 — 逐个进行。',
+ 'docker_code': '# 更新到最新代码（约 10 分钟）\n'
+                'cd Aequitas && git pull && cd deploy/validator && docker compose up -d --build\n'
+                '\n'
+                '# 仅重启节点\n'
+                'docker compose restart node\n'
+                '\n'
+                '# 停止全部（状态保留）\n'
+                'docker compose down\n'
+                '\n'
+                '# 查看资源占用\n'
+                'docker stats',
+ 'verify_title': '第 3 步 — 确认节点正在运行',
+ 'verify_body': '把你的节点与网络比较。将"你的公网IP"替换为服务器地址。',
+ 'verify_code': 'curl -s http://你的公网IP:8080/api/status | grep -oE \'"height":[0-9]+\'\n'
+                'curl -s https://aequitas.digital/api/status  | grep -oE \'"height":[0-9]+\'\n'
+                ' → 两个数字必须相等，最多相差几个区块。\n'
+                '\n'
+                'http://你的公网IP:8080/           → 你自己的浏览器\n'
+                'http://你的公网IP:8080/api/health/combined → 节点对自身测量的一切',
+ 'verify_note': '首次启动后，在导入快照和拉取最新区块期间，高度会远低于网络。若落后超过 15 分钟仍未追上，请在日志中查找 [BOOTSTRAP] 错误，并确认端口 8080 和 4001 已开放。',
+ 'valkey_title': '第 3b 步 — 将钱包绑定到节点密钥（仅当两者不同时）',
+ 'valkey_body': '若 RELAYER_PRIVATE_KEY 不是 NODE_OPERATOR_WALLET 的私钥，需一次性证明两者都属于你：打开下面页面，用钱包签署显示的消息，并把签名作为 '
+                'NODE_OPERATOR_BINDING_SIGNATURE 写入 .env。',
+ 'valkey_code': 'https://aequitas.digital/node-binding',
+ 'valkey_note': '采用简单的单密钥配置（RELAYER_PRIVATE_KEY = 钱包密钥）时无需此步骤。',
+ 'mm_title': '第 4 步 — 把 MetaMask 连接到你的节点（可选）',
+ 'mm_body': '在 MetaMask 中：网络菜单 → 添加网络 → 手动添加网络，然后填写：',
+ 'mm_rows': [('网络名称', 'Aequitas Chain'),
+             ('RPC URL', 'http://你的公网IP:8080/rpc'),
+             ('链 ID', '1926'),
+             ('货币符号', 'AEQ'),
+             ('小数位', '18'),
+             ('区块浏览器', 'https://aequitas.digital')],
+ 'rewards_title': '第 5 步 — 验证节点奖励',
+ 'rewards_box': '验证节点池收取全部协议费用的 40%（兑换费、滞留费、财富上限溢出）。每天柏林时间 20:00，池按各已注册验证节点产出的区块比例分配。除了保持节点运行，无需做任何事。',
+ 'rewards_steps': ['NODE_OPERATOR_WALLET 必须是已注册真人 — 否则网络拒绝注册（日志：<font name="Courier">NODE_OPERATOR_WALLET is '
+                   'not a registered human</font>）。',
+                   '在日志中确认：创始节点上出现 <font name="Courier" color="#0F766E">[PEERS] Auto-authorized validator … '
+                   '(wallet: 0x…)</font>，你的节点上出现 <font name="Courier">[Block #…]</font> 行。',
+                   '离线的节点不产出区块，因此那段时间没有收益 — 重启无害，节点会自行追上。',
+                   '验证节点在没有额外软件时不会做的事：接受新的真人注册（这些接口返回 503）。转账、区块和奖励不依赖它。'],
+ 'trouble_title': '故障排除',
+ 'trouble_cols': ['现象', '可能原因', '解决办法'],
+ 'trouble_rows': [('NODE_OPERATOR_WALLET is not a registered human', '钱包未完成应用内注册', '先在应用中注册，再重启节点。'),
+                  ('operator_binding_signature missing or invalid',
+                   '签名密钥与钱包不同且未绑定',
+                   '第 3b 步：在 /node-binding 签名并设置 NODE_OPERATOR_BINDING_SIGNATURE。'),
+                  ('Frischer Knoten: … produziert nichts, bis er aufgeholt hat',
+                   '追赶期间的正常现象',
+                   '等待。节点与创始节点完成干净的同步周期后才开始产出。'),
+                  ('SELF_URL not set — … Beobachter',
+                   '.env 中缺少 SELF_URL',
+                   '将 SELF_URL 设为 http://你的公网IP:8080 并运行 docker compose up -d。'),
+                  ('高度远低于网络', '快照导入失败，或端口未开放', '在日志中查找 [BOOTSTRAP] 行；在防火墙/安全组中开放入站 TCP 8080 和 4001。'),
+                  ('节点反复重启，"OOMKilled"', '内存不足', '降低 .env 中的 GOMEMLIMIT（8 GB 内存时 3GiB）或给服务器增加内存。'),
+                  ('docker compose：编译失败', '编译期间没有出站网络', '编译需要下载 Go 模块；检查服务器的 DNS 和出站 HTTPS。')],
+ 'footer': 'Aequitas Chain · Chain ID 1926 · aequitas.digital · 验证节点奖励：每天柏林时间 20:00'}
+
+AR = {'title': 'دليل مشغّل عقدة AEQUITAS',
+ 'version': 'v2.0 · 2026-09 · aequitas.digital',
+ 'tagline': 'شغّل مدقّقًا على خادمك الخاص · Docker Compose · نحو 15 دقيقة، منها 10 للبناء',
+ 'prereq_title': 'قبل أن تبدأ — ما تحتاجه',
+ 'prereqs': [('1.',
+              '<b>أنت إنسان مسجَّل:</b> ثبّت تطبيق Aequitas، وأكمل التسجيل البيومتري، ودوّن عنوان محفظتك. '
+              'ترفض الشبكة أي مدقّق ليست محفظته لإنسان مسجَّل — إنسان واحد، مدقّق واحد. استئجار الخوادم لا '
+              'يشتري أصواتًا.'),
+             ('2.',
+              '<b>خادم (VPS) بعنوان IPv4 عام:</b> Ubuntu 22.04 أو 24.04، على الأقل 4 vCPU و8 GB ذاكرة و60 GB '
+              'SSD (قاعدة البيانات اليوم نحو 18 GB وتكبر). تعمل عقدتا المؤسسين على 6 vCPU / 12 GB / 100 GB. '
+              'يجب أن يكون المنفذان 8080 (API) و4001 (P2P) متاحين من الإنترنت.'),
+             ('3.',
+              '<b>Docker مع إضافة Compose، وgit.</b> على Ubuntu يثبّت <font name="Courier">curl -fsSL '
+              'https://get.docker.com | sh</font> كليهما.'),
+             ('4.',
+              '<b>نحو 15 دقيقة.</b> عشر منها هي البناء الأول (تُبنى العقدة من الشيفرة المصدرية على خادمك). '
+              'التحديثات تستغرق المدة نفسها.')],
+ 'vars_title': 'الخطوة 1 — الإعداد (.env)',
+ 'vars_warn': 'تحذير أمني: RELAYER_PRIVATE_KEY وNODE_KEY أسرار. من يملكهما هو عقدتك. لا تلصقهما أبدًا في '
+              'محادثة أو بريد أو تذكرة. يبقى ملف .env على خادمك.',
+ 'var_cols': ['المتغيّر', 'إلزامي؟', 'ما تضعه'],
+ 'vars': [('POSTGRES_PASSWORD',
+           'نعم',
+           'كلمة مرور طويلة وعشوائية لقاعدة البيانات المحلية. لا يستخدمها سوى الحاويتين على خادمك.'),
+          ('SELF_URL',
+           'نعم',
+           'كيف تصل العقد الأخرى إلى عقدتك: http://عنوانك-العام:8080 (أو https://نطاقك إذا كان أمامها وكيل). '
+           'بدونه تتابع العقدة السلسلة كمراقب فقط ولا تسجّل نفسها مدقّقًا أبدًا.'),
+          ('NODE_OPERATOR_WALLET',
+           'نعم',
+           'عنوان محفظتك — يجب أن يكون لإنسان مسجَّل (اكتمل التسجيل في التطبيق). هذا ما يربط المدقّق بشخص. '
+           'تستقبل مكافآت المدقّق.'),
+          ('RELAYER_PRIVATE_KEY',
+           'موصى به',
+           'المفتاح الذي يوقّع كتلك (0x…، 66 حرفًا). الأبسط: المفتاح الخاص لـ NODE_OPERATOR_WALLET — عندها '
+           'لا حاجة لأي ربط إضافي. إن تُرك فارغًا تولّد العقدة مفتاحًا عند أول تشغيل وتطبعه مرة واحدة ("SAVE '
+           'THIS AS …")؛ ضعه في .env وأعد التشغيل، وإلا تتغيّر هويتك مع كل إعادة تشغيل.'),
+          ('NODE_OPERATOR_BINDING_SIGNATURE',
+           'فقط إذا اختلف المفتاحان',
+           'إذا لم يكن RELAYER_PRIVATE_KEY مفتاح NODE_OPERATOR_WALLET: وقّع الرسالة المعروضة في '
+           'aequitas.digital/node-binding بمحفظتك والصق التوقيع هنا.'),
+          ('NODE_KEY',
+           'موصى به',
+           'هوية P2P. تُولَّد وتُطبع عند أول تشغيل إن كانت فارغة — احفظها في .env للسبب نفسه.'),
+          ('PRIMARY_NODE_URLS',
+           'مُعدّ مسبقًا',
+           'العقد التي تسجّل عقدتك نفسها لديها وتجلب منها لقطة الحالة عند أول تشغيل. مُعدّة مسبقًا على عقدتي '
+           'المؤسسين؛ اتركها كما هي.'),
+          ('GOMEMLIMIT',
+           'مُعدّ مسبقًا',
+           'حد ذاكرة عملية العقدة، مُعدّ مسبقًا 5GiB (لذاكرة 12 GB). مع 8 GB ضع 3GiB.'),
+          ('POSTGRES_SHARED_BUFFERS',
+           'مُعدّ مسبقًا',
+           'ذاكرة Postgres المؤقتة، مُعدّة مسبقًا 1GB. ربع ذاكرتك قيمة جيدة.')],
+ 'railway_title': 'الخطوة 2 — تشغيل العقدة (Docker Compose)',
+ 'railway_intro': 'كل ما تفعله عقدتا المؤسسين، في ملف واحد. يبني الأمر الأول العقدة من المصدر (نحو 10 '
+                  'دقائق)، ويشغّل Postgres والعقدة، ويعيد تشغيلهما تلقائيًا بعد أي انهيار أو إعادة تشغيل '
+                  'للخادم.',
+ 'railway_steps': ['على خادمك: <font name="Courier">git clone '
+                   'https://github.com/hanoi96international-gif/Aequitas.git</font>',
+                   '<font name="Courier">cd Aequitas/deploy/validator</font> ثم <font name="Courier">cp '
+                   '.env.example .env</font>',
+                   'حرّر <font name="Courier">.env</font> (مثلًا بـ <font name="Courier">nano .env</font>): '
+                   'املأ POSTGRES_PASSWORD وSELF_URL وNODE_OPERATOR_WALLET — انظر الجدول أعلاه',
+                   '<font name="Courier">docker compose up -d --build</font> — يبني ويشغّل. نحو 10 دقائق في '
+                   'المرة الأولى',
+                   'تابع السجل: <font name="Courier">docker compose logs -f node</font>. عند أول تشغيل '
+                   'تستورد العقدة حالة الشبكة (اللقطة) من عقدة مؤسِّسة، وتتحقق من توقيعها، ثم تجلب الكتل '
+                   'اللاحقة: <font name="Courier" color="#5B21B6">[BOOTSTRAP] Fresh node — importing state '
+                   'from …</font> ثم <font name="Courier" color="#0F766E">[HTTP-SYNC] Added … new '
+                   'blocks</font>',
+                   'إذا طبع السجل <font name="Courier">SAVE THIS AS NODE_KEY</font> أو <font '
+                   'name="Courier">SET THIS AS RELAYER_PRIVATE_KEY</font>: انسخ هذه القيم إلى .env الآن '
+                   'وشغّل <font name="Courier">docker compose up -d</font> مجددًا — وإلا تحصل عقدتك على هوية '
+                   'جديدة مع كل إعادة تشغيل',
+                   'بعد اللحاق بالشبكة سترى أسطر <font name="Courier">[Block #…]</font> — هذه كتل أنتجتها '
+                   'عقدتك. حتى ذلك الحين لا تنتج العقدة شيئًا عمدًا (<font name="Courier">Frischer Knoten: … '
+                   'produziert nichts, bis er aufgeholt hat</font>) — عقدة لم ترَ السلسلة قط لا يجوز أن '
+                   'تخترع واحدة'],
+ 'railway_vars_code': 'POSTGRES_PASSWORD      = كلمة-مرور-طويلة-عشوائية\n'
+                      'SELF_URL               = http://عنوانك-العام:8080\n'
+                      'NODE_OPERATOR_WALLET   = 0xمحفظتك_البشرية\n'
+                      '# موصى به: المفتاح الذي يوقّع كتلك (أو فارغًا عند أول تشغيل)\n'
+                      'RELAYER_PRIVATE_KEY    = 0xمفتاحك_الخاص\n'
+                      '# مُعدّ مسبقًا، اتركه كما هو\n'
+                      'PRIMARY_NODE_URLS      = http://173.249.37.118:8080,http://194.163.188.71:8080',
+ 'docker_title': 'الخطوة 2b — التحديث وإعادة التشغيل والإيقاف',
+ 'docker_intro': 'تحفظ العقدة حالتها في مجلّدي Docker (قاعدة البيانات وسجل التحويلات). التحديث يعيد بناء '
+                 'الصورة من أحدث شيفرة؛ الحالة تبقى. لا تعِد أبدًا تشغيل جميع مدقّقي الشبكة في وقت واحد — '
+                 'واحدًا تلو الآخر.',
+ 'docker_code': '# التحديث إلى أحدث شيفرة (نحو 10 دقائق)\n'
+                'cd Aequitas && git pull && cd deploy/validator && docker compose up -d --build\n'
+                '\n'
+                '# إعادة تشغيل العقدة فقط\n'
+                'docker compose restart node\n'
+                '\n'
+                '# إيقاف كل شيء (تبقى الحالة)\n'
+                'docker compose down\n'
+                '\n'
+                '# مراقبة استهلاك الموارد\n'
+                'docker stats',
+ 'verify_title': 'الخطوة 3 — التحقق من عمل عقدتك',
+ 'verify_body': 'قارن عقدتك بالشبكة. استبدل "عنوانك-العام" بعنوان خادمك.',
+ 'verify_code': 'curl -s http://عنوانك-العام:8080/api/status | grep -oE \'"height":[0-9]+\'\n'
+                'curl -s https://aequitas.digital/api/status  | grep -oE \'"height":[0-9]+\'\n'
+                ' → يجب أن يتطابق الرقمان مع فارق بضع كتل على الأكثر.\n'
+                '\n'
+                'http://عنوانك-العام:8080/           → مستكشفك الخاص\n'
+                'http://عنوانك-العام:8080/api/health/combined → كل ما تقيسه العقدة عن نفسها',
+ 'verify_note': 'بعد أول تشغيل مباشرة يكون الارتفاع أدنى بكثير من الشبكة أثناء استيراد اللقطة وجلب الكتل '
+                'الحديثة. إذا بقي متأخرًا كثيرًا أكثر من 15 دقيقة فابحث في السجل عن أخطاء [BOOTSTRAP] وتأكد '
+                'من فتح المنفذين 8080 و4001.',
+ 'valkey_title': 'الخطوة 3b — ربط محفظتك بمفتاح العقدة (فقط إذا اختلفا)',
+ 'valkey_body': 'إذا لم يكن RELAYER_PRIVATE_KEY المفتاح الخاص لـ NODE_OPERATOR_WALLET فأثبت مرة واحدة أن '
+                'كليهما لك: افتح الصفحة أدناه، ووقّع الرسالة المعروضة بمحفظتك، وضع التوقيع في .env باسم '
+                'NODE_OPERATOR_BINDING_SIGNATURE.',
+ 'valkey_code': 'https://aequitas.digital/node-binding',
+ 'valkey_note': 'مع الإعداد البسيط بمفتاح واحد (RELAYER_PRIVATE_KEY = مفتاح محفظتك) لا حاجة لهذه الخطوة.',
+ 'mm_title': 'الخطوة 4 — ربط MetaMask بعقدتك (اختياري)',
+ 'mm_body': 'في MetaMask: قائمة الشبكات ← إضافة شبكة ← إضافة شبكة يدويًا، ثم أدخل:',
+ 'mm_rows': [('اسم الشبكة', 'Aequitas Chain'),
+             ('رابط RPC', 'http://عنوانك-العام:8080/rpc'),
+             ('معرّف السلسلة', '1926'),
+             ('الرمز', 'AEQ'),
+             ('الخانات العشرية', '18'),
+             ('مستكشف الكتل', 'https://aequitas.digital')],
+ 'rewards_title': 'الخطوة 5 — مكافآت المدقّق',
+ 'rewards_box': 'يجمع صندوق المدقّقين 40% من جميع رسوم البروتوكول (رسوم المبادلة، رسم الاحتفاظ، فائض سقف '
+                'الثروة). كل يوم في الساعة 20:00 بتوقيت برلين يُوزَّع الصندوق على المدقّقين المسجَّلين بنسبة '
+                'الكتل التي أنتجوها. لا شيء يلزم فعله سوى إبقاء العقدة تعمل.',
+ 'rewards_steps': ['يجب أن يكون NODE_OPERATOR_WALLET إنسانًا مسجَّلًا — وإلا ترفض الشبكة التسجيل (السجل: '
+                   '<font name="Courier">NODE_OPERATOR_WALLET is not a registered human</font>).',
+                   'تأكد في السجل: <font name="Courier" color="#0F766E">[PEERS] Auto-authorized validator … '
+                   '(wallet: 0x…)</font> على عقدة مؤسِّسة، وأسطر <font name="Courier">[Block #…]</font> على '
+                   'عقدتك.',
+                   'العقدة المتوقفة لا تنتج كتلًا ولا تكسب شيئًا في تلك المدة — إعادة التشغيل غير ضارة، '
+                   'والعقدة تلحق بنفسها.',
+                   'ما لا يفعله المدقّق دون برمجيات إضافية: قبول تسجيلات بشر جدد (تلك النقاط تجيب بـ 503). '
+                   'التحويلات والكتل والمكافآت تعمل بدونه.'],
+ 'trouble_title': 'استكشاف الأخطاء',
+ 'trouble_cols': ['العرَض', 'السبب المحتمل', 'الحل'],
+ 'trouble_rows': [('NODE_OPERATOR_WALLET is not a registered human',
+                   'المحفظة لم تُكمل التسجيل في التطبيق',
+                   'سجّل أولًا في التطبيق ثم أعد تشغيل العقدة.'),
+                  ('operator_binding_signature missing or invalid',
+                   'مفتاح التوقيع والمحفظة مختلفان دون ربط',
+                   'الخطوة 3b: وقّع في /node-binding واضبط NODE_OPERATOR_BINDING_SIGNATURE.'),
+                  ('Frischer Knoten: … produziert nichts, bis er aufgeholt hat',
+                   'طبيعي أثناء اللحاق',
+                   'انتظر. يبدأ الإنتاج بعد إكمال دورات مزامنة نظيفة مع عقد المؤسسين.'),
+                  ('SELF_URL not set — … Beobachter',
+                   'SELF_URL مفقود في .env',
+                   'اضبط SELF_URL على http://عنوانك-العام:8080 وشغّل docker compose up -d.'),
+                  ('الارتفاع يبقى أدنى بكثير من الشبكة',
+                   'فشل استيراد اللقطة أو المنافذ مغلقة',
+                   'ابحث عن أسطر [BOOTSTRAP] في السجل؛ افتح TCP 8080 و4001 للوارد في الجدار الناري / مجموعة '
+                   'الأمان.'),
+                  ('العقدة تعيد التشغيل بلا توقف، "OOMKilled"',
+                   'ذاكرة غير كافية',
+                   'خفّض GOMEMLIMIT في .env (\u200f3GiB مع 8 GB) أو أعطِ الخادم ذاكرة أكبر.'),
+                  ('docker compose: فشل البناء',
+                   'لا إنترنت صادر أثناء البناء',
+                   'يحمّل البناء وحدات Go؛ تحقق من DNS وHTTPS الصادر على الخادم.')],
+ 'footer': 'Aequitas Chain · Chain ID 1926 · aequitas.digital · مكافآت المدقّق: يوميًا في 20:00 بتوقيت برلين'}
+
+HI = {'title': 'AEQUITAS नोड ऑपरेटर गाइड',
+ 'version': 'v2.0 · 2026-09 · aequitas.digital',
+ 'tagline': 'अपने सर्वर पर वैलिडेटर चलाएँ · Docker Compose · लगभग 15 मिनट, जिनमें 10 बिल्ड के',
+ 'prereq_title': 'शुरू करने से पहले — आपको क्या चाहिए',
+ 'prereqs': [('1.',
+              '<b>आप एक पंजीकृत मानव हैं:</b> Aequitas ऐप इंस्टॉल करें, बायोमेट्रिक पंजीकरण पूरा करें और '
+              'अपना वॉलेट पता नोट करें। जिस वैलिडेटर का वॉलेट पंजीकृत मानव का नहीं है, नेटवर्क उसे अस्वीकार '
+              'करता है — एक मानव, एक वैलिडेटर। सर्वर किराए पर लेने से वोट नहीं मिलते।'),
+             ('2.',
+              '<b>सार्वजनिक IPv4 वाला एक सर्वर (VPS):</b> Ubuntu 22.04 या 24.04, कम से कम 4 vCPU, 8 GB RAM, '
+              '60 GB SSD (डेटाबेस अभी लगभग 18 GB है और बढ़ रहा है)। दोनों संस्थापक नोड 6 vCPU / 12 GB / 100 '
+              'GB पर चलते हैं। पोर्ट 8080 (API) और 4001 (P2P) इंटरनेट से पहुँच योग्य होने चाहिए।'),
+             ('3.',
+              '<b>Compose प्लगइन के साथ Docker, और git।</b> Ubuntu पर <font name="Courier">curl -fsSL '
+              'https://get.docker.com | sh</font> दोनों इंस्टॉल कर देता है।'),
+             ('4.',
+              '<b>लगभग 15 मिनट।</b> इनमें से दस पहला बिल्ड है (नोड आपके सर्वर पर स्रोत कोड से बनता है)। '
+              'अपडेट में उतना ही समय लगता है।')],
+ 'vars_title': 'चरण 1 — कॉन्फ़िगरेशन (.env)',
+ 'vars_warn': 'सुरक्षा चेतावनी: RELAYER_PRIVATE_KEY और NODE_KEY गोपनीय हैं। जिसके पास ये हैं, वही आपका नोड '
+              'है। इन्हें कभी चैट, ईमेल या टिकट में न चिपकाएँ। .env फ़ाइल आपके सर्वर पर ही रहती है।',
+ 'var_cols': ['वेरिएबल', 'अनिवार्य?', 'क्या भरें'],
+ 'vars': [('POSTGRES_PASSWORD',
+           'हाँ',
+           'स्थानीय डेटाबेस के लिए एक लंबा, यादृच्छिक पासवर्ड। इसे केवल आपके सर्वर के दो कंटेनर इस्तेमाल '
+           'करते हैं।'),
+          ('SELF_URL',
+           'हाँ',
+           'दूसरे नोड आपके नोड तक कैसे पहुँचें: http://आपका-सार्वजनिक-IP:8080 (या https://आपका-डोमेन, यदि '
+           'आगे प्रॉक्सी है)। इसके बिना नोड केवल पर्यवेक्षक के रूप में चेन का अनुसरण करता है और कभी वैलिडेटर '
+           'के रूप में पंजीकृत नहीं होता।'),
+          ('NODE_OPERATOR_WALLET',
+           'हाँ',
+           'आपका अपना वॉलेट पता — यह पंजीकृत मानव होना चाहिए (ऐप में पंजीकरण पूरा)। यही वैलिडेटर को एक '
+           'व्यक्ति से जोड़ता है। वैलिडेटर पुरस्कार प्राप्त करता है।'),
+          ('RELAYER_PRIVATE_KEY',
+           'अनुशंसित',
+           'वह कुंजी जो आपके ब्लॉकों पर हस्ताक्षर करती है (0x…, 66 अक्षर)। सबसे सरल: NODE_OPERATOR_WALLET की '
+           'निजी कुंजी — तब कोई अतिरिक्त बाइंडिंग नहीं चाहिए। खाली छोड़ने पर नोड पहली बार चलने पर एक कुंजी '
+           'बनाता है और उसे केवल एक बार प्रिंट करता है ("SAVE THIS AS …"); उसे .env में डालें और पुनः आरंभ '
+           'करें, वरना हर पुनः आरंभ पर आपकी पहचान बदल जाएगी।'),
+          ('NODE_OPERATOR_BINDING_SIGNATURE',
+           'केवल यदि कुंजियाँ अलग हों',
+           'यदि RELAYER_PRIVATE_KEY, NODE_OPERATOR_WALLET की कुंजी नहीं है: aequitas.digital/node-binding पर '
+           'दिखाए गए संदेश पर अपने वॉलेट से हस्ताक्षर करें और हस्ताक्षर यहाँ चिपकाएँ।'),
+          ('NODE_KEY',
+           'अनुशंसित',
+           'P2P पहचान। खाली हो तो पहली बार चलने पर बनती और प्रिंट होती है — उसी कारण से .env में सहेजें।'),
+          ('PRIMARY_NODE_URLS',
+           'पूर्व-निर्धारित',
+           'वे नोड जिनके पास आपका नोड पंजीकरण करता है और पहली बार चलने पर जहाँ से स्थिति का स्नैपशॉट लेता '
+           'है। दोनों संस्थापक नोड पर पूर्व-निर्धारित; वैसा ही रहने दें।'),
+          ('GOMEMLIMIT',
+           'पूर्व-निर्धारित',
+           'नोड प्रक्रिया की मेमोरी सीमा, पूर्व-निर्धारित 5GiB (12 GB RAM के लिए)। 8 GB RAM पर 3GiB रखें।'),
+          ('POSTGRES_SHARED_BUFFERS',
+           'पूर्व-निर्धारित',
+           'Postgres कैश, पूर्व-निर्धारित 1GB। आपकी RAM का एक चौथाई अच्छा मान है।')],
+ 'railway_title': 'चरण 2 — नोड शुरू करें (Docker Compose)',
+ 'railway_intro': 'दोनों संस्थापक नोड जो कुछ करते हैं, एक फ़ाइल में। पहला कमांड नोड को स्रोत से बनाता है '
+                  '(लगभग 10 मिनट), Postgres और नोड शुरू करता है, और क्रैश या सर्वर रीबूट के बाद दोनों को '
+                  'स्वतः पुनः आरंभ करता है।',
+ 'railway_steps': ['अपने सर्वर पर: <font name="Courier">git clone '
+                   'https://github.com/hanoi96international-gif/Aequitas.git</font>',
+                   '<font name="Courier">cd Aequitas/deploy/validator</font> और <font name="Courier">cp '
+                   '.env.example .env</font>',
+                   '<font name="Courier">.env</font> संपादित करें (जैसे <font name="Courier">nano '
+                   '.env</font> से): POSTGRES_PASSWORD, SELF_URL और NODE_OPERATOR_WALLET भरें — ऊपर की '
+                   'तालिका देखें',
+                   '<font name="Courier">docker compose up -d --build</font> — बनाता और शुरू करता है। पहली '
+                   'बार लगभग 10 मिनट',
+                   'लॉग देखें: <font name="Courier">docker compose logs -f node</font>। पहली बार चलने पर नोड '
+                   'एक संस्थापक नोड से नेटवर्क की स्थिति (स्नैपशॉट) आयात करता है, उसके हस्ताक्षर की जाँच '
+                   'करता है, फिर बाद के ब्लॉक खींचता है: <font name="Courier" color="#5B21B6">[BOOTSTRAP] '
+                   'Fresh node — importing state from …</font> उसके बाद <font name="Courier" '
+                   'color="#0F766E">[HTTP-SYNC] Added … new blocks</font>',
+                   'यदि लॉग में <font name="Courier">SAVE THIS AS NODE_KEY</font> या <font '
+                   'name="Courier">SET THIS AS RELAYER_PRIVATE_KEY</font> छपा हो: वे मान अभी .env में कॉपी '
+                   'करें और <font name="Courier">docker compose up -d</font> फिर चलाएँ — वरना हर पुनः आरंभ '
+                   'पर आपके नोड को नई पहचान मिलेगी',
+                   'बराबरी पर पहुँचने के बाद आपको <font name="Courier">[Block #…]</font> पंक्तियाँ दिखेंगी — '
+                   'ये आपके नोड के बनाए ब्लॉक हैं। तब तक नोड जानबूझकर कुछ नहीं बनाता (<font '
+                   'name="Courier">Frischer Knoten: … produziert nichts, bis er aufgeholt hat</font>) — जिस '
+                   'नोड ने चेन कभी देखी ही नहीं, उसे चेन गढ़नी नहीं चाहिए'],
+ 'railway_vars_code': 'POSTGRES_PASSWORD      = एक-लंबा-यादृच्छिक-पासवर्ड\n'
+                      'SELF_URL               = http://आपका-सार्वजनिक-IP:8080\n'
+                      'NODE_OPERATOR_WALLET   = 0xआपका_मानव_वॉलेट\n'
+                      '# अनुशंसित: आपके ब्लॉकों पर हस्ताक्षर करने वाली कुंजी (या पहली बार खाली)\n'
+                      'RELAYER_PRIVATE_KEY    = 0xआपकी_निजी_कुंजी\n'
+                      '# पूर्व-निर्धारित, वैसा ही रहने दें\n'
+                      'PRIMARY_NODE_URLS      = http://173.249.37.118:8080,http://194.163.188.71:8080',
+ 'docker_title': 'चरण 2b — अपडेट, पुनः आरंभ, बंद',
+ 'docker_intro': 'नोड अपनी स्थिति दो Docker वॉल्यूम में रखता है (डेटाबेस और ट्रांसफ़र लॉग)। अपडेट नवीनतम कोड '
+                 'से इमेज फिर बनाता है; स्थिति बनी रहती है। नेटवर्क के सभी वैलिडेटर कभी एक साथ पुनः आरंभ न '
+                 'करें — एक के बाद एक।',
+ 'docker_code': '# नवीनतम कोड पर अपडेट करें (लगभग 10 मिनट)\n'
+                'cd Aequitas && git pull && cd deploy/validator && docker compose up -d --build\n'
+                '\n'
+                '# केवल नोड पुनः आरंभ करें\n'
+                'docker compose restart node\n'
+                '\n'
+                '# सब बंद करें (स्थिति बनी रहती है)\n'
+                'docker compose down\n'
+                '\n'
+                '# संसाधन उपयोग देखें\n'
+                'docker stats',
+ 'verify_title': 'चरण 3 — जाँचें कि आपका नोड चल रहा है',
+ 'verify_body': 'अपने नोड की तुलना नेटवर्क से करें। "आपका-सार्वजनिक-IP" की जगह अपने सर्वर का पता लिखें।',
+ 'verify_code': 'curl -s http://आपका-सार्वजनिक-IP:8080/api/status | grep -oE \'"height":[0-9]+\'\n'
+                'curl -s https://aequitas.digital/api/status  | grep -oE \'"height":[0-9]+\'\n'
+                ' → दोनों संख्याएँ कुछ ब्लॉकों के अंतर तक बराबर होनी चाहिए।\n'
+                '\n'
+                'http://आपका-सार्वजनिक-IP:8080/           → आपका अपना एक्सप्लोरर\n'
+                'http://आपका-सार्वजनिक-IP:8080/api/health/combined → नोड अपने बारे में जो कुछ मापता है',
+ 'verify_note': 'पहली बार चलने के तुरंत बाद, स्नैपशॉट आयात और हाल के ब्लॉक खींचे जाने तक ऊँचाई नेटवर्क से '
+                'बहुत नीचे रहती है। यदि 15 मिनट से अधिक समय तक बहुत पीछे रहे, तो लॉग में [BOOTSTRAP] '
+                'त्रुटियाँ देखें और जाँचें कि पोर्ट 8080 और 4001 खुले हैं।',
+ 'valkey_title': 'चरण 3b — वॉलेट को नोड कुंजी से जोड़ें (केवल यदि अलग हों)',
+ 'valkey_body': 'यदि RELAYER_PRIVATE_KEY, NODE_OPERATOR_WALLET की निजी कुंजी नहीं है, तो एक बार सिद्ध करें '
+                'कि दोनों आपके हैं: नीचे का पेज खोलें, दिखाए गए संदेश पर अपने वॉलेट से हस्ताक्षर करें और '
+                'हस्ताक्षर को NODE_OPERATOR_BINDING_SIGNATURE के रूप में .env में रखें।',
+ 'valkey_code': 'https://aequitas.digital/node-binding',
+ 'valkey_note': 'सरल एकल-कुंजी सेटअप (RELAYER_PRIVATE_KEY = आपके वॉलेट की कुंजी) में यह चरण आवश्यक नहीं है।',
+ 'mm_title': 'चरण 4 — MetaMask को अपने नोड से जोड़ें (वैकल्पिक)',
+ 'mm_body': 'MetaMask में: नेटवर्क मेनू → नेटवर्क जोड़ें → मैन्युअल रूप से नेटवर्क जोड़ें, फिर भरें:',
+ 'mm_rows': [('नेटवर्क का नाम', 'Aequitas Chain'),
+             ('RPC URL', 'http://आपका-सार्वजनिक-IP:8080/rpc'),
+             ('चेन ID', '1926'),
+             ('प्रतीक', 'AEQ'),
+             ('दशमलव', '18'),
+             ('ब्लॉक एक्सप्लोरर', 'https://aequitas.digital')],
+ 'rewards_title': 'चरण 5 — वैलिडेटर पुरस्कार',
+ 'rewards_box': 'वैलिडेटर पूल सभी प्रोटोकॉल शुल्कों का 40% एकत्र करता है (स्वैप शुल्क, डिमरेज, धन-सीमा '
+                'अधिशेष)। हर दिन बर्लिन समय 20:00 पर पूल पंजीकृत वैलिडेटरों में उनके बनाए ब्लॉकों के अनुपात '
+                'में बाँटा जाता है। नोड चालू रखने के अलावा कुछ नहीं करना है।',
+ 'rewards_steps': ['NODE_OPERATOR_WALLET पंजीकृत मानव होना चाहिए — वरना नेटवर्क पंजीकरण अस्वीकार करता है '
+                   '(लॉग: <font name="Courier">NODE_OPERATOR_WALLET is not a registered human</font>)।',
+                   'लॉग में पुष्टि करें: किसी संस्थापक नोड पर <font name="Courier" color="#0F766E">[PEERS] '
+                   'Auto-authorized validator … (wallet: 0x…)</font>, और आपके नोड पर <font '
+                   'name="Courier">[Block #…]</font> पंक्तियाँ।',
+                   'बंद नोड ब्लॉक नहीं बनाता, इसलिए उस समय कुछ नहीं कमाता — पुनः आरंभ हानिरहित है, नोड स्वयं '
+                   'बराबरी कर लेता है।',
+                   'अतिरिक्त सॉफ़्टवेयर के बिना वैलिडेटर जो नहीं करता: नए मानव पंजीकरण स्वीकार करना (वे '
+                   'एंडपॉइंट 503 देते हैं)। ट्रांसफ़र, ब्लॉक और पुरस्कार इसके बिना काम करते हैं।'],
+ 'trouble_title': 'समस्या निवारण',
+ 'trouble_cols': ['लक्षण', 'संभावित कारण', 'समाधान'],
+ 'trouble_rows': [('NODE_OPERATOR_WALLET is not a registered human',
+                   'वॉलेट ने ऐप में पंजीकरण पूरा नहीं किया',
+                   'पहले ऐप में पंजीकरण करें, फिर नोड पुनः आरंभ करें।'),
+                  ('operator_binding_signature missing or invalid',
+                   'हस्ताक्षर कुंजी और वॉलेट अलग, कोई बाइंडिंग नहीं',
+                   'चरण 3b: /node-binding पर हस्ताक्षर करें और NODE_OPERATOR_BINDING_SIGNATURE सेट करें।'),
+                  ('Frischer Knoten: … produziert nichts, bis er aufgeholt hat',
+                   'बराबरी करते समय सामान्य',
+                   'प्रतीक्षा करें। संस्थापक नोडों के साथ स्वच्छ सिंक चक्र पूरे होने पर उत्पादन शुरू होता '
+                   'है।'),
+                  ('SELF_URL not set — … Beobachter',
+                   '.env में SELF_URL नहीं है',
+                   'SELF_URL को http://आपका-सार्वजनिक-IP:8080 पर सेट करें और docker compose up -d चलाएँ।'),
+                  ('ऊँचाई नेटवर्क से बहुत नीचे रहती है',
+                   'स्नैपशॉट आयात विफल, या पोर्ट बंद',
+                   'लॉग में [BOOTSTRAP] पंक्तियाँ देखें; फ़ायरवॉल / सुरक्षा समूह में इनबाउंड TCP 8080 और '
+                   '4001 खोलें।'),
+                  ('नोड बार-बार पुनः आरंभ होता है, "OOMKilled"',
+                   'RAM अपर्याप्त',
+                   '.env में GOMEMLIMIT घटाएँ (8 GB RAM पर 3GiB) या सर्वर को अधिक मेमोरी दें।'),
+                  ('docker compose: बिल्ड विफल',
+                   'बिल्ड के दौरान आउटबाउंड इंटरनेट नहीं',
+                   'बिल्ड Go मॉड्यूल डाउनलोड करता है; सर्वर पर DNS और आउटबाउंड HTTPS जाँचें।')],
+ 'footer': 'Aequitas Chain · Chain ID 1926 · aequitas.digital · वैलिडेटर पुरस्कार: प्रतिदिन बर्लिन समय 20:00'}
 
 # ── GENERATE ──────────────────────────────────────────────────────────────────
 
