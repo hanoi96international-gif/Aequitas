@@ -1462,7 +1462,13 @@ func leseHoehe(statusURL string) int64 {
 
 func kettenDurchsatz(statusURL string, von, bis time.Time, vonHoehe int64) {
 	basis := strings.TrimSuffix(statusURL, "/api/status")
-	hc := &http.Client{Timeout: 15 * time.Second}
+	// 120 s je Seite, nicht 15: bei Bloecken mit 7.000 Transaktionen ist eine
+	// 12-MB-Seite von einem Knoten unter Last in 15 s nicht zu haben. Am
+	// 12.09.2026 brach die Zaehlung damit nach 30 Bloecken ab und meldete
+	// 149 TPS, wo die Kette 5.200 trug -- und sagte nicht, dass sie
+	// abgebrochen hatte.
+	hc := &http.Client{Timeout: 120 * time.Second}
+	abgebrochen := ""
 	resp, err := hc.Get(statusURL)
 	if err != nil {
 		fmt.Printf("=== Kettendurchsatz: Status nicht lesbar: %v ===\n", err)
@@ -1539,6 +1545,7 @@ func kettenDurchsatz(statusURL string, von, bis time.Time, vonHoehe int64) {
 	for runde := 0; runde < 100000; runde++ {
 		r, e := hc.Get(fmt.Sprintf("%s/api/blocks?min_height=%d&limit=500", basis, min))
 		if e != nil {
+			abgebrochen = fmt.Sprintf("Seite ab Hoehe %d nicht ladbar: %v", min, e)
 			break
 		}
 		var seite []struct {
@@ -1553,7 +1560,11 @@ func kettenDurchsatz(statusURL string, von, bis time.Time, vonHoehe int64) {
 		}
 		be := json.NewDecoder(r.Body).Decode(&seite)
 		r.Body.Close()
-		if be != nil || len(seite) == 0 {
+		if be != nil {
+			abgebrochen = fmt.Sprintf("Seite ab Hoehe %d nicht lesbar: %v", min, be)
+			break
+		}
+		if len(seite) == 0 {
 			break
 		}
 		minVorher := min
@@ -1643,6 +1654,9 @@ func kettenDurchsatz(statusURL string, von, bis time.Time, vonHoehe int64) {
 	}
 	fmt.Printf("  Zaehlfenster: Hoehe %d -> %d (%d Hoehen, %.2f Bloecke je Hoehe)\n",
 		vonHoehe, st.Height, st.Height-vonHoehe, float64(bloecke)/float64(hoehen))
+	if abgebrochen != "" {
+		fmt.Printf("  ⚠ ZAEHLUNG UNVOLLSTAENDIG -- %s. Die Zahl unten ist eine Untergrenze.\n", abgebrochen)
+	}
 	for p, z := range je {
 		kurz := p
 		if len(kurz) > 12 {

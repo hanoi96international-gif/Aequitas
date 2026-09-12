@@ -609,17 +609,56 @@ func (s *EVMRPCServer) handleRPC(w http.ResponseWriter, r *http.Request) {
 			// transaction. Deliberately after the decode -- it needs tx.Nonce().
 			s.preReserveBatchNonces(precomputed, pending)
 		}
-		var results []interface{}
-		for i, raw := range batch {
-			if overBudget[i] {
-				// Fail closed, exactly like the single-request path below:
-				// the item is answered, but never dispatched.
-				results = append(results, errorResponse(nil, -32005, "rate limited: too many requests, try again shortly"))
-				continue
-			}
-			result := s.handleSingle(raw, precomputed[i])
-			results = append(results, result)
+		// DIE POSTEN EINES BUENDELS NEBENLAEUFIG, NICHT NACHEINANDER.
+		//
+		// Bis zum 12.09.2026 lief diese Schleife seriell: 100 Posten, jeder
+		// mit seiner eigenen Wartezeit auf den WAL-Gruppen-Commit, rund drei
+		// Sekunden je Buendel -- und der Generator zu 99 Prozent im Warten.
+		// Der WAL-Schreiber war dabei nur zu 74 Prozent ausgelastet, mit
+		// Buendeln von 17 Datensaetzen: es kam nicht mehr an, weil alles
+		// hintereinander stand.
+		//
+		// Nebenlaeufig ist es erst seit wal.AppendAsync sicher UND wirksam:
+		// die Shard-Sperre haelt keinen fsync mehr, Posten desselben
+		// Absenders teilen sich den Gruppen-Commit. Die Nonces eines
+		// Absender-Laufs sind vorab reserviert (nonceReserved), darum
+		// streiten sie sich nicht. Was sich aendert: laeuft einem Absender
+		// mitten im Buendel das Guthaben aus, ist nicht mehr garantiert, dass
+		// genau die hinteren Posten scheitern -- ueber mehrere Anfragen hinweg
+		// war das ohnehin nie garantiert.
+		//
+		// Die Ergebnisse stehen an ihrer Position; das Buendel antwortet in
+		// der Reihenfolge der Anfrage, wie es JSON-RPC verlangt.
+		results := make([]interface{}, len(batch))
+		parallel := rpcBatchParallel()
+		if parallel > len(batch) {
+			parallel = len(batch)
 		}
+		if parallel < 1 {
+			parallel = 1
+		}
+		var bwg sync.WaitGroup
+		bjobs := make(chan int)
+		for w := 0; w < parallel; w++ {
+			bwg.Add(1)
+			go func() {
+				defer bwg.Done()
+				for i := range bjobs {
+					if overBudget[i] {
+						// Fail closed, exactly like the single-request path below:
+						// the item is answered, but never dispatched.
+						results[i] = errorResponse(nil, -32005, "rate limited: too many requests, try again shortly")
+						continue
+					}
+					results[i] = s.handleSingle(batch[i], precomputed[i])
+				}
+			}()
+		}
+		for i := range batch {
+			bjobs <- i
+		}
+		close(bjobs)
+		bwg.Wait()
 		handlerItems = len(batch)
 		encodeStart := time.Now()
 		json.NewEncoder(w).Encode(results)
@@ -2003,4 +2042,18 @@ func min4(a, b int) int {
 		return a
 	}
 	return b
+}
+
+// rpcBatchParallel liefert, wie viele Posten eines Buendels gleichzeitig
+// bearbeitet werden. 1 ist das alte, serielle Verhalten -- der Rueckweg ohne
+// Deploy. Ein unbrauchbarer Wert ergibt die Vorgabe.
+//
+//	AEQUITAS_RPC_BATCH_PARALLEL   Posten je Buendel gleichzeitig (Vorgabe 32)
+func rpcBatchParallel() int {
+	if roh := os.Getenv("AEQUITAS_RPC_BATCH_PARALLEL"); roh != "" {
+		if n, err := strconv.Atoi(roh); err == nil && n >= 1 && n <= 1000 {
+			return n
+		}
+	}
+	return 32
 }
