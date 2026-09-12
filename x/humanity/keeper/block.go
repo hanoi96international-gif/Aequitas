@@ -2351,6 +2351,13 @@ func (dag *BlockDAG) ProduceBlock() *Block {
 		pendingDur = time.Since(ladeStart)
 	})
 	defer pendingWG.Wait()
+	// Auf das Laden VOR den Sperren warten, nicht danach. Gemessen am
+	// 12.09.2026 (Protokoll je Versuch, C1): die Sperre kam in 20-70 ms, das
+	// Laden von 7.000 Zeilen brauchte 200-340 ms -- und lief damit unter der
+	// exklusiven DAG-Sperre weiter (db_paar 200-344 ms je Block), obwohl es
+	// sie nicht braucht. Der Schnitt liegt so ein paar hundert Millisekunden
+	// frueher; wer danach ankommt, landet im naechsten Block, wie bisher.
+	pendingWG.Wait()
 
 	fertig := produktionMeldetWarten()
 	// Wachhund: dauert das Warten zu lange, schreibt er auf, WER die Sperre
