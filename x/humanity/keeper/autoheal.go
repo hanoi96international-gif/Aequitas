@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"strconv"
+	"sync/atomic"
 	"time"
 )
 
@@ -879,10 +880,63 @@ func (dag *BlockDAG) runChainDivergenceCheckOnce(primaryURL string, unsettledSin
 	if !ok {
 		return
 	}
-	if remoteHash != localBlock.Hash {
-		dag.triggerAutoResync(fmt.Sprintf(
-			"chain hash mismatch at height %d against primary %s (ours=%s… theirs=%s…) — this node is on an isolated fork",
-			compareHeight, primaryURL, localBlock.Hash[:min(16, len(localBlock.Hash))], remoteHash[:min(16, len(remoteHash))]))
+	if remoteHash == localBlock.Hash {
+		chainDivergenceFolge.Store(0)
+		return
+	}
+	// VERSCHIEDENE KANONISCHE BLOECKE SIND KEIN FORK.
+	//
+	// In einem DAG mit zwei Validatoren liegen an fast jeder Hoehe zwei
+	// Bloecke. GetBlockByHeight liefert den, den DIESER Knoten fuer kanonisch
+	// haelt; /api/block?height= beim Primary dessen Wahl. Unter Last, wenn
+	// die Validatoren einander ueberspringen und einer ein paar Bloecke
+	// zurueckliegt, faellt diese Wahl verschieden aus -- und beide Bloecke
+	// sind trotzdem in beiden DAGs. Am 12.09.2026 loeste genau das einen
+	// Resync auf C2 aus, waehrend C2 gerade aufholte: es verlor damit alles
+	// und fing von vorn an, die Hoehe stand 15 Sekunden.
+	//
+	// Ein isolierter Fork -- der Fall, fuer den diese Pruefung gebaut wurde
+	// -- heisst: der Primary KENNT meinen Block nicht. Genau das wird jetzt
+	// gefragt, nach Hash. Kennt er ihn, ist es dieselbe DAG, nur anders
+	// geordnet. Kennt er ihn dreimal in Folge nicht (drei Minuten), ist es
+	// ein Fork.
+	if bekannt, ok := fetchPrimaryHasBlock(primaryURL, localBlock.Hash); !ok || bekannt {
+		if bekannt {
+			chainDivergenceFolge.Store(0)
+			chainDivergenceGeschwister.Add(1)
+		}
+		return
+	}
+	if n := chainDivergenceFolge.Add(1); n < 3 {
+		fmt.Printf("[AUTO-HEAL] Primary kennt unseren Block %s… an Hoehe %d nicht (%d. Mal in Folge) — noch kein Resync, erst ab dem dritten Mal\n",
+			localBlock.Hash[:min(16, len(localBlock.Hash))], compareHeight, n)
+		return
+	}
+	dag.triggerAutoResync(fmt.Sprintf(
+		"chain hash mismatch at height %d against primary %s (ours=%s… theirs=%s…), and the primary does not know our block at all, three checks in a row — this node is on an isolated fork",
+		compareHeight, primaryURL, localBlock.Hash[:min(16, len(localBlock.Hash))], remoteHash[:min(16, len(remoteHash))]))
+}
+
+// chainDivergenceFolge zaehlt aufeinanderfolgende Pruefungen, in denen der
+// Primary unseren Block nicht kannte; chainDivergenceGeschwister zaehlt die
+// harmlosen Faelle (anderer kanonischer Block, aber unserer ist bekannt).
+var chainDivergenceFolge, chainDivergenceGeschwister atomic.Int64
+
+// fetchPrimaryHasBlock fragt den Primary nach einem Block per Hash. bekannt
+// ist nur bei ok aussagekraeftig: ein Netzfehler ist kein "unbekannt".
+func fetchPrimaryHasBlock(primaryURL, hash string) (bekannt bool, ok bool) {
+	resp, err := httpSyncClient.Get(primaryURL + "/api/block?hash=" + hash)
+	if err != nil {
+		return false, false
+	}
+	defer resp.Body.Close()
+	switch resp.StatusCode {
+	case 200:
+		return true, true
+	case 404:
+		return false, true
+	default:
+		return false, false
 	}
 }
 

@@ -744,6 +744,7 @@ func (a *APIServer) handleCombinedHealth(w http.ResponseWriter, r *http.Request)
 		"produktions_ausfaelle":  ProduktionsAusfaelle(),
 		"stateroot_abweichungen": a.blockchain.StateRootAufschluesselung(),
 		"peer_hoehen":            PeerHoehenStand(),
+		"fork_pruefung":          map[string]interface{}{"bedeutung": "Divergenzpruefung gegen den Primary. geschwister = anderer kanonischer Block, aber unserer ist dem Primary bekannt (harmlos); unbekannt_in_folge = der Primary kennt unseren Block nicht, Resync ab 3.", "geschwister": chainDivergenceGeschwister.Load(), "unbekannt_in_folge": chainDivergenceFolge.Load()},
 		// Who is actually driving the block-serving endpoints, which a CPU
 		// profile put at a quarter of the node's CPU with no identifiable
 		// caller. See endpoint_stats.go.

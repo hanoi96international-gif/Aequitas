@@ -112,3 +112,30 @@ func TestStateRoot_LokaleUeberweisungenMachenDenVergleichUnscharf(t *testing.T) 
 		t.Error("TransferAtomic setzt den Zeitstempel nicht mehr -- die Unschaerfe waere dann nie erkennbar")
 	}
 }
+
+// Die dritte Pruefung derselben Familie: der Vergleich EINES kanonischen
+// Block-Hashes mit dem des Primary. In einem DAG mit zwei Bloecken je Hoehe
+// waehlt jeder Knoten seinen kanonischen selbst, und unter Last faellt die
+// Wahl verschieden aus -- beide Bloecke liegen trotzdem in beiden DAGs. Ein
+// Fork heisst: der Primary kennt meinen Block NICHT. Nur das darf einen
+// Resync ausloesen, und nur wiederholt.
+func TestForkPruefung_FragtDenPrimaryNachDemHashUndBrauchtDreiTreffer(t *testing.T) {
+	body := quelleLesen(t, "autoheal.go")
+	i := strings.Index(body, "func (dag *BlockDAG) runChainDivergenceCheckOnce(")
+	if i < 0 {
+		t.Fatal("runChainDivergenceCheckOnce nicht gefunden")
+	}
+	rumpf := body[i:]
+	if j := strings.Index(rumpf[1:], "\nfunc "); j > 0 {
+		rumpf = rumpf[:j]
+	}
+	if !strings.Contains(rumpf, "fetchPrimaryHasBlock(primaryURL, localBlock.Hash)") {
+		t.Error("die Divergenzpruefung fragt den Primary nicht mehr nach unserem Block per Hash. " +
+			"Ein abweichender kanonischer Hash allein ist in einem DAG kein Fork -- am 12.09.2026 " +
+			"warf genau das C2 mitten im Aufholen per Resync ganz zurueck.")
+	}
+	if !strings.Contains(rumpf, "chainDivergenceFolge.Add(1); n < 3") {
+		t.Error("der Resync verlangt nicht mehr drei aufeinanderfolgende Treffer -- ein einzelner " +
+			"Netz- oder Ordnungsmoment darf keinen Resync ausloesen")
+	}
+}
