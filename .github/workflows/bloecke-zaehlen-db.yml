@@ -1,0 +1,30 @@
+name: Bloecke je Produzent aus der Datenbank zaehlen
+on:
+  workflow_dispatch:
+    inputs:
+      von: {description: "Hoehe ab (exklusiv)", required: true}
+      bis: {description: "Hoehe bis (inklusiv)", required: true}
+jobs:
+  z:
+    strategy: {matrix: {box: [{name: "C1", host: "173.249.37.118", secret: "C1"}, {name: "C2", host: "194.163.188.71", secret: "C2"}]}}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ matrix.box.host }}
+          username: root
+          key: ${{ matrix.box.secret == 'C1' && secrets.CONTABO_SSH_KEY || secrets.CONTABO2_SSH_KEY }}
+          port: 22
+          script_stop: false
+          timeout: 200s
+          command_timeout: 200s
+          envs: VON,BIS
+          script: |
+            echo "##### ${{ matrix.box.name }}: Hoehen $VON..$BIS #####"
+            docker exec aequitas-postgres psql -U postgres -d aequitas -t -A -c \
+              "SELECT left(proposer,12)||' | bloecke='||count(*)||' | hoehen='||count(DISTINCT height)||' | tx='||COALESCE(sum(jsonb_array_length(COALESCE(transactions::jsonb,'[]'::jsonb))),0) FROM chain_blocks WHERE height > $VON AND height <= $BIS GROUP BY proposer;" 2>&1 | head -5
+            docker exec aequitas-postgres psql -U postgres -d aequitas -t -A -c \
+              "SELECT 'gesamt: bloecke='||count(*)||' hoehen='||count(DISTINCT height)||' => '||round(count(*)::numeric/GREATEST(count(DISTINCT height),1),2)||' je Hoehe' FROM chain_blocks WHERE height > $VON AND height <= $BIS;" 2>&1 | head -2
+        env:
+          VON: ${{ inputs.von }}
+          BIS: ${{ inputs.bis }}
