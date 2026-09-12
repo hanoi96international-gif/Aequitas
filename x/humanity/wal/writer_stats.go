@@ -115,6 +115,7 @@ func WriterStats() map[string]interface{} {
 		"sync_verteilung": SyncVerteilung(),
 		"append_warten":   appendWartenStand(),
 		"busy_pct":        float64(writerBusy.Load()) / float64(time.Since(writerSeit)) * 100,
+		"busy_ns":         writerBusy.Load(), // fuer Differenzen ueber ein Lastfenster
 	}
 }
 
