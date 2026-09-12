@@ -1,0 +1,37 @@
+name: Knoten-Log durchsuchen (beide Boxen)
+# Greift auf `docker logs aequitas-node` zu und filtert nach einem Muster.
+# Nur lesen. Gedacht fuer Fragen wie "gab es 'receipt flush failed' im
+# letzten Lauf" -- ohne SSH von Hand.
+on:
+  workflow_dispatch:
+    inputs:
+      muster: {description: "grep -E Muster", required: true}
+      seit: {description: "docker logs --since (z.B. 2h, 30m)", required: false, default: "2h"}
+      zeilen: {description: "letzte N Treffer", required: false, default: "60"}
+      box: {description: "beide | C1 | C2", required: false, default: "beide"}
+jobs:
+  l:
+    strategy:
+      fail-fast: false
+      matrix: {box: [{name: "C1", host: "173.249.37.118", secret: "C1"}, {name: "C2", host: "194.163.188.71", secret: "C2"}]}
+    runs-on: ubuntu-latest
+    steps:
+      - if: ${{ inputs.box == 'beide' || inputs.box == matrix.box.name }}
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ matrix.box.host }}
+          username: root
+          key: ${{ matrix.box.secret == 'C1' && secrets.CONTABO_SSH_KEY || secrets.CONTABO2_SSH_KEY }}
+          port: 22
+          script_stop: false
+          timeout: 200s
+          command_timeout: 200s
+          envs: MUSTER,SEIT,ZEILEN
+          script: |
+            echo "##### ${{ matrix.box.name }}: '$MUSTER' seit $SEIT #####"
+            docker logs --since "$SEIT" --timestamps aequitas-node 2>&1 | grep -E "$MUSTER" | tail -n "$ZEILEN" | cut -c1-400
+            echo "treffer gesamt: $(docker logs --since "$SEIT" aequitas-node 2>&1 | grep -cE "$MUSTER")"
+        env:
+          MUSTER: ${{ inputs.muster }}
+          SEIT: ${{ inputs.seit }}
+          ZEILEN: ${{ inputs.zeilen }}
