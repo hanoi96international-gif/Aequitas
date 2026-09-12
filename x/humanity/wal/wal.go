@@ -116,6 +116,9 @@ type WAL struct {
 
 	appendCh   chan *appendRequest
 	writerDone chan struct{}
+
+	// nuller haelt den naechsten Chunk vorgenullt bereit. Siehe vornullen.go.
+	nuller vornuller
 }
 
 // MaxBatchSize caps how many pending Append calls one fsync can bundle —
@@ -363,6 +366,16 @@ const preallocChunk = 64 << 20
 // Caller holds w.mu.
 func (w *WAL) ensureCapacity(n int64) error {
 	if w.writeOff+n <= w.allocEnd {
+		// Vorausschauen: ist der aktuelle Chunk halb verbraucht und liegt
+		// hinter allocEnd noch nichts Vorgenulltes bereit, den naechsten
+		// Chunk anstossen -- er wird ausserhalb der Sperre genullt, siehe
+		// vornullen.go. Der Nuller setzt seinen Bereich exakt an allocEnd,
+		// sodass die Uebernahme unten luecken- und ueberlappungsfrei ist.
+		if w.allocEnd-w.writeOff < preallocChunk/2 {
+			if _, bereit := w.vorgenulltBereit(n); !bereit && !w.nuller.laeuft.Load() {
+				w.vornullenAnstossen(w.file, w.allocEnd)
+			}
+		}
 		return nil
 	}
 	end := w.allocEnd
@@ -370,6 +383,26 @@ func (w *WAL) ensureCapacity(n int64) error {
 		// Defensive: a WAL opened on a file shorter than its own write offset
 		// should extend from the offset, never leave a hole.
 		end = w.writeOff
+	}
+	// Liegt der naechste Chunk vorgenullt bereit, genuegt die Uebernahme:
+	// keine Reservierung, kein Sync, kein Journal -- der ganze Zweck.
+	if bis, bereit := w.vorgenulltBereit(n); bereit {
+		w.allocEnd = bis
+		return nil
+	}
+	// Laeuft der Nuller gerade fuer genau diese Datei ab allocEnd, dann auf
+	// ihn warten statt ueber seinen Bereich hinweg zu reservieren: er wuerde
+	// sonst anschliessend Nullen ueber unsere Datensaetze schreiben. Siehe
+	// vornullen.go, warum Warten hier die sichere und seltene Wahl ist.
+	if w.nuller.laeuft.Load() && w.nuller.laufendDatei.Load() == w.file && w.nuller.laufendAb.Load() == end {
+		w.nuller.rueckfaelle.Add(1)
+		for w.nuller.laeuft.Load() {
+			time.Sleep(time.Millisecond)
+		}
+		if bis, bereit := w.vorgenulltBereit(n); bereit {
+			w.allocEnd = bis
+			return nil
+		}
 	}
 	grow := int64(preallocChunk)
 	if need := w.writeOff + n - end; need > grow {
@@ -523,11 +556,10 @@ func (w *WAL) TruncateBefore(before uint64) error {
 	// vorbelegte Region hinein; datenEnde bleibt der einzige Zeiger auf das
 	// Ende der Daten, die Dateigroesse sagt ab jetzt nichts mehr darueber.
 	allocEnde := datenEnde + int64(preallocChunk)
-	if err := preallocate(tmp, datenEnde, int64(preallocChunk)); err != nil {
+	// Vorgenullt, nicht nur reserviert -- siehe vornullen.go. Hier ohne
+	// Sperre, also darf es dauern.
+	if err := nullen(tmp, datenEnde, int64(preallocChunk)); err != nil {
 		return verwerfen(fmt.Errorf("wal: could not preallocate compacted file: %w", err))
-	}
-	if err := tmp.Sync(); err != nil {
-		return verwerfen(fmt.Errorf("wal: could not sync preallocation: %w", err))
 	}
 
 	dKopie := time.Since(tKopie)

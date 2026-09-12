@@ -8838,3 +8838,11 @@ func (cs *ChainState) GetAllV6Balances() []map[string]string {
 	}
 	return balances
 }
+
+// WALVornullerStand reicht die Anzeige des Vornullers durch; nil ohne WAL.
+func (cs *ChainState) WALVornullerStand() map[string]interface{} {
+	if cs == nil || cs.wal == nil {
+		return nil
+	}
+	return cs.wal.VornullerStand()
+}
