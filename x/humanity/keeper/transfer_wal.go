@@ -286,6 +286,7 @@ func (cs *ChainState) initWALIfEnabled() {
 		return
 	}
 	cs.wal = w
+	setzePendingSeqQuelle(w.PeekSeq)
 	// Ohne das waechst die Datei unbegrenzt -- siehe wal_kompaktierung.go und
 	// den Vorfall vom 07.09.2026 (17 GB WAL, Platte zu 99 % voll, Knoten
 	// lehnte Ueberweisungen ab).
@@ -957,8 +958,8 @@ func (cs *ChainState) flushWALBatch(batch []walFlushItem) error {
 	ctx := withTx(context.Background(), tx)
 
 	var txValuesSQL strings.Builder
-	txValuesSQL.Grow(len(batch) * 12) // "($NNNN,$NNNN)," aufgerundet
-	txArgs := make([]interface{}, 0, len(batch)*2)
+	txValuesSQL.Grow(len(batch) * 18) // "($NNNN,$NNNN,$NNNN)," aufgerundet
+	txArgs := make([]interface{}, 0, len(batch)*3)
 	now := time.Now().Unix()
 	for j, item := range batch {
 		data, err := json.Marshal(item.tx)
@@ -969,14 +970,18 @@ func (cs *ChainState) flushWALBatch(batch []walFlushItem) error {
 		if j > 0 {
 			txValuesSQL.WriteByte(',')
 		}
-		n := j * 2
+		n := j * 3
 		txValuesSQL.WriteByte('(')
 		writeDollarParam(&txValuesSQL, n+1, ",")
-		writeDollarParam(&txValuesSQL, n+2, "")
+		writeDollarParam(&txValuesSQL, n+2, ",")
+		writeDollarParam(&txValuesSQL, n+3, "")
 		txValuesSQL.WriteByte(')')
-		txArgs = append(txArgs, string(data), now)
+		// wal_seq = die Reihenfolge, in der die Ueberweisung angewendet wurde
+		// -- siehe pending_reihenfolge.go. Die Zeilen-ID ist es NICHT: 32
+		// Flush-Arbeiter schreiben die Zeilen in beliebiger Reihenfolge.
+		txArgs = append(txArgs, string(data), now, int64(item.seq))
 	}
-	txQuery := `INSERT INTO pending_txs (tx_json, created_at) VALUES ` + txValuesSQL.String()
+	txQuery := `INSERT INTO pending_txs (tx_json, created_at, wal_seq) VALUES ` + txValuesSQL.String()
 	phOutboxSQL = time.Since(phMark)
 	phMark = time.Now()
 	if _, err := cs.dbExecCtx(ctx).Exec(txQuery, txArgs...); err != nil {

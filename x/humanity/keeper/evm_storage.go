@@ -2553,7 +2553,7 @@ func savePendingTxExec(ex sqlExecutor, tx Transaction) error {
 		fmt.Printf("[TX] SavePendingTx marshal error: %v\n", err)
 		return err
 	}
-	_, err = ex.Exec(`INSERT INTO pending_txs (tx_json, created_at) VALUES ($1, $2)`, string(data), time.Now().Unix())
+	_, err = ex.Exec(`INSERT INTO pending_txs (tx_json, created_at, wal_seq) VALUES ($1, $2, $3)`, string(data), time.Now().Unix(), pendingSeqJetzt())
 	return err
 }
 
@@ -2576,7 +2576,9 @@ func savePendingTxsBatchExec(ex sqlExecutor, txs []Transaction) error {
 	// grows linearly with len(txs).
 	txJSON := make([]string, len(txs))
 	createdAts := make([]int64, len(txs))
+	seqs := make([]int64, len(txs))
 	now := time.Now().Unix()
+	seq := pendingSeqJetzt()
 	for i, tx := range txs {
 		data, err := json.Marshal(tx)
 		if err != nil {
@@ -2585,8 +2587,9 @@ func savePendingTxsBatchExec(ex sqlExecutor, txs []Transaction) error {
 		}
 		txJSON[i] = string(data)
 		createdAts[i] = now
+		seqs[i] = seq
 	}
-	_, err := ex.Exec(`INSERT INTO pending_txs (tx_json, created_at) SELECT * FROM unnest($1::text[], $2::bigint[])`, pq.Array(txJSON), pq.Array(createdAts))
+	_, err := ex.Exec(`INSERT INTO pending_txs (tx_json, created_at, wal_seq) SELECT * FROM unnest($1::text[], $2::bigint[], $3::bigint[])`, pq.Array(txJSON), pq.Array(createdAts), pq.Array(seqs))
 	return err
 }
 
@@ -2758,7 +2761,7 @@ func (cs *ChainState) LoadPendingTxsWithLimit(limit int) ([]Transaction, []int64
 	}()
 	rows, err := dbTx.Query(
 		`SELECT id, tx_json FROM pending_txs
-		 WHERE included_at = 0 ORDER BY id LIMIT $1
+		 WHERE included_at = 0 ORDER BY wal_seq, id LIMIT $1
 		 FOR UPDATE SKIP LOCKED`,
 		limit,
 	)

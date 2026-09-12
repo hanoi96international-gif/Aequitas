@@ -1170,6 +1170,9 @@ included_at BIGINT NOT NULL DEFAULT 0
 	// klein, egal wie gross die Tabelle wird, und der Unterausdruck wird zum
 	// Index-Scan ueber genau die Menge, die er sucht.
 	dbExec(`CREATE INDEX IF NOT EXISTS idx_pending_txs_offen ON pending_txs (id) WHERE included_at = 0`)
+	// wal_seq: die Anwendungsreihenfolge -- siehe pending_reihenfolge.go.
+	dbExec(`ALTER TABLE pending_txs ADD COLUMN IF NOT EXISTS wal_seq BIGINT NOT NULL DEFAULT 0`)
+	dbExec(`CREATE INDEX IF NOT EXISTS idx_pending_txs_offen_seq ON pending_txs (wal_seq, id) WHERE included_at = 0`)
 
 	dbExec(`CREATE TABLE IF NOT EXISTS pending_txs_dead_letter (
 id         BIGINT PRIMARY KEY,

@@ -322,6 +322,15 @@ func (w *WAL) AppendAsync(payload []byte) (uint64, <-chan error, error) {
 // DurableSeq ist die hoechste Seq, deren Buendel synchronisiert ist.
 func (w *WAL) DurableSeq() uint64 { return w.durableSeq.Load() }
 
+// PeekSeq nennt die naechste Seq, die vergeben wird -- ohne sie zu vergeben.
+// Alles, was vor diesem Aufruf angehaengt wurde, hat eine kleinere Seq.
+// Fuer die Reihenfolge der Block-Transaktionen (siehe pending_reihenfolge.go).
+func (w *WAL) PeekSeq() uint64 {
+	w.seqMu.Lock()
+	defer w.seqMu.Unlock()
+	return w.nextSeq
+}
+
 // WaitDurable wartet, bis seq synchronisiert ist -- hoechstens bis timeout.
 // Liefert false, wenn die Haltbarkeit nicht kam: Zeit abgelaufen, oder der
 // Schreiber hat einen Sync-Fehler gemeldet und wird sie nie liefern.
