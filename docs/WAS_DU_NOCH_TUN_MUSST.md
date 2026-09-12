@@ -1,5 +1,7 @@
 # Was du noch tun musst
 
+> **Ab 12.09.2026 abends gilt `docs/LAUNCH_CHECKLISTE.md`** — jeder Punkt mit „fertig heißt", Stand und Wer. Diese Datei bleibt als Geschichte.
+
 **Stand 01.09.2026.** Diese Datei ist über mehrere Tage gewachsen und enthält
 unten ein vollständiges Messprotokoll. **Wer nur wissen will, was zu tun ist,
 liest diesen Abschnitt — der Rest ist Geschichte und teils überholt.**
