@@ -76,8 +76,16 @@ func nullen(f *os.File, off, n int64) error {
 	if err := preallocate(f, off, n); err != nil {
 		return err
 	}
+	// IN STUECKEN SYNCHRONISIERT. Ein einziger Sync ueber 64 MB Nullen
+	// haelt die Platte fuer hunderte Millisekunden -- und mit ihr jeden
+	// Gruppen-Commit des Schreibers, der derweil auf derselben Platte
+	// fdatasync ruft. Im Test (CI, 12.09.2026) wartete ein Append dadurch
+	// 279 ms, obwohl keine Sperre im Spiel war. Vier Megabyte je Sync lassen
+	// die Commits dazwischen.
 	const stueck = 1 << 20
+	const syncStueck = 4 << 20
 	z := make([]byte, stueck)
+	seitSync := int64(0)
 	for geschrieben := int64(0); geschrieben < n; {
 		l := int64(stueck)
 		if rest := n - geschrieben; rest < l {
@@ -87,7 +95,16 @@ func nullen(f *os.File, off, n int64) error {
 			return err
 		}
 		geschrieben += l
+		seitSync += l
+		if seitSync >= syncStueck {
+			if err := datasync(f); err != nil {
+				return err
+			}
+			seitSync = 0
+		}
 	}
+	// Zum Schluss ein voller Sync: preallocate hat die Dateigroesse
+	// geaendert, und die muss mit -- fdatasync allein liesse sie weg.
 	return f.Sync()
 }
 
