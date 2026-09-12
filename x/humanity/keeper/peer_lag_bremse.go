@@ -239,6 +239,10 @@ func (dag *BlockDAG) blockTxCapFuerHoehe(eigeneHoehe int64) int {
 	// globalen Schreibsperre. Siehe block_tx_deckel.go.
 	hart := blockTxHartDeckel()
 	boden := peerLagBoden()
+	// Eigenlast zuerst -- siehe eigenlast_bremse.go. Sie senkt den harten
+	// Deckel fuer diesen Knoten, wenn sein eigener Takt nicht passt; die
+	// Peer-Lag-Bremse darunter rechnet dann mit diesem niedrigeren Deckel.
+	hart = eigenlastDeckel(hart, boden)
 	if boden <= 0 {
 		peerLagUngebremst.Add(1)
 		if hart < maxTxsPerBlock {
