@@ -14,10 +14,10 @@ jobs:
     strategy:
       fail-fast: false
       matrix: {box: [{name: "C1", host: "173.249.37.118", secret: "C1"}, {name: "C2", host: "194.163.188.71", secret: "C2"}]}
-    if: ${{ inputs.box == 'beide' || inputs.box == matrix.box.name }}
     runs-on: ubuntu-latest
     steps:
-      - uses: appleboy/ssh-action@v1.0.3
+      - if: ${{ inputs.box == 'beide' || inputs.box == matrix.box.name }}
+        uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ matrix.box.host }}
           username: root
