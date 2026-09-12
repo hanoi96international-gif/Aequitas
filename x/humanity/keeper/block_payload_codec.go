@@ -85,28 +85,36 @@ func compressBlockPayload(raw []byte) ([]byte, error) {
 // — and a block with no transactions still hashes correctly via its TxRoot, so
 // nothing downstream would have objected either.
 func decodeBlockPayload(plain string, compressed []byte) ([]Transaction, error) {
+	txs, _, err := decodeBlockPayloadMitGroesse(plain, compressed)
+	return txs, err
+}
+
+// decodeBlockPayloadMitGroesse ist decodeBlockPayload und nennt dazu die
+// Groesse des JSON-Rumpfs in Bytes -- das Mass, nach dem ein Seiten-Budget
+// rechnet, ohne den Block noch einmal zu kodieren.
+func decodeBlockPayloadMitGroesse(plain string, compressed []byte) ([]Transaction, int, error) {
 	if len(compressed) > 0 {
 		zr, err := gzip.NewReader(bytes.NewReader(compressed))
 		if err != nil {
-			return nil, fmt.Errorf("open compressed block payload (%d bytes): %w", len(compressed), err)
+			return nil, 0, fmt.Errorf("open compressed block payload (%d bytes): %w", len(compressed), err)
 		}
 		defer zr.Close()
 		raw, err := io.ReadAll(zr)
 		if err != nil {
-			return nil, fmt.Errorf("read compressed block payload: %w", err)
+			return nil, 0, fmt.Errorf("read compressed block payload: %w", err)
 		}
 		var txs []Transaction
 		if err := json.Unmarshal(raw, &txs); err != nil {
-			return nil, fmt.Errorf("decode compressed block payload (%d bytes raw): %w", len(raw), err)
+			return nil, 0, fmt.Errorf("decode compressed block payload (%d bytes raw): %w", len(raw), err)
 		}
-		return txs, nil
+		return txs, len(raw), nil
 	}
 	if plain == "" {
-		return nil, nil
+		return nil, 0, nil
 	}
 	var txs []Transaction
 	if err := json.Unmarshal([]byte(plain), &txs); err != nil {
-		return nil, fmt.Errorf("decode block payload (%d bytes): %w", len(plain), err)
+		return nil, 0, fmt.Errorf("decode block payload (%d bytes): %w", len(plain), err)
 	}
-	return txs, nil
+	return txs, len(plain), nil
 }

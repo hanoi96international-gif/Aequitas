@@ -4148,10 +4148,27 @@ func (cs *ChainState) LoadBlocksSinceFromDB(minHeight int64, afterHash string, l
 		return nil, nil
 	}
 	cs.ensureGHOSTDAGColumns()
+	// ZWEI SCHRITTE: erst die Koepfe, dann die Ruempfe -- und nur die der
+	// Seite, mit Byte-Budget.
+	//
+	// GEMESSEN AM 12.09.2026. Die erste Fassung holte limit+512 Zeilen MIT
+	// Rumpf und dekodierte jeden -- fuer eine Seite, die der Byte-Deckel der
+	// API danach auf rund 16 Bloecke kuerzte. Unter Last (7.000 Ueberweisungen
+	// je Block) hiess das je Seitenabruf: gut 300 MB Nutzlast aus Postgres,
+	// sieben Millionen dekodierte Transaktionen, 2 bis 3 GB Zwischenspeicher,
+	// 15 s Antwortzeit auf C2 -- und das Heap-Profil zeigte die Reste davon
+	// (decodeBlockPayload unter handleBlocks) noch Minuten spaeter. Der
+	// Lasttest-Zaehler, der so 25 Seiten liest, brauchte sechs Minuten und
+	// brachte den schwaecheren Knoten an den Speicherdeckel.
+	//
+	// Jetzt: die Koepfe sind klein (ein paar hundert Byte je Zeile), die
+	// Seitenauswahl braucht nur Hoehe und Hash, und Ruempfe werden in
+	// Haeppchen in Seitenreihenfolge geladen, bis das Budget erreicht ist --
+	// derselbe Deckel, den capBlocksByResponseBytes spaeter anlegt, nur eben
+	// VOR dem Dekodieren statt danach.
 	fetchLimit := limit + dbSinceFetchWindow
 	rows, err := cs.db.Query(`SELECT hash, height, parent_hashes, proposer, timestamp, humans, state_root,
-	                 signature, transactions, COALESCE(transactions_z, ''::bytea),
-	                 COALESCE(selected_parent,''), COALESCE(blue_score,0), COALESCE(blues,'[]')
+	                 signature, COALESCE(selected_parent,''), COALESCE(blue_score,0), COALESCE(blues,'[]')
 	          FROM chain_blocks
 	          WHERE height >= $1 AND proposer != 'synthetic-checkpoint'
 	          ORDER BY height ASC, blue_score DESC, hash ASC
@@ -4159,45 +4176,112 @@ func (cs *ChainState) LoadBlocksSinceFromDB(minHeight int64, afterHash string, l
 	if err != nil {
 		return nil, fmt.Errorf("LoadBlocksSinceFromDB query failed: %w", err)
 	}
-	defer rows.Close()
-	var blocks []*Block
+	var koepfe []*Block
 	for rows.Next() {
 		var b Block
-		var parentHashesRaw, txsRaw, bluesRaw string
-		var txsZ []byte
+		var parentHashesRaw, bluesRaw string
 		if err := rows.Scan(
 			&b.Hash, &b.Height, &parentHashesRaw, &b.Proposer, &b.Timestamp,
-			&b.Humans, &b.StateRoot, &b.Signature, &txsRaw, &txsZ,
+			&b.Humans, &b.StateRoot, &b.Signature,
 			&b.SelectedParent, &b.BlueScore, &bluesRaw,
 		); err != nil {
 			continue
 		}
 		_ = json.Unmarshal([]byte(parentHashesRaw), &b.ParentHashes)
-		// Either form, and a failure is REPORTED. This line used to be
-		// `_ = json.Unmarshal(...)`: an unreadable payload silently became a
-		// block with no transactions, and such a block still hashes correctly
-		// through its TxRoot, so nothing downstream objected either. That is
-		// how a page of transfers disappears without a trace.
-		if txs, decErr := decodeBlockPayload(txsRaw, txsZ); decErr != nil {
-			fmt.Printf("[BLOCK] ✗ block %s at height %d has an unreadable payload, skipping it rather than serving it empty: %v\n", b.Hash, b.Height, decErr)
-			continue
-		} else {
-			b.Transactions = txs
-		}
 		if bluesRaw != "" && bluesRaw != "[]" && bluesRaw != "null" {
 			_ = json.Unmarshal([]byte(bluesRaw), &b.Blues)
 		}
-		blocks = append(blocks, &b)
+		koepfe = append(koepfe, &b)
 	}
-	return selectBlocksSince(blocks, minHeight, afterHash, limit), nil
+	rows.Close()
+	seite := selectBlocksSince(koepfe, minHeight, afterHash, limit)
+	return cs.ladeRuempfeMitBudget(seite, dbSinceDecodeBudget)
 }
 
-// LoadBlocksByHashesFromDB loads blocks by exact hash directly from
-// chain_blocks, bypassing dag.blocks. Used as a DB fallback for
-// GetBlocksByHashesForPeer once pruneOldDAGBlocks has evicted the requested
-// hashes from memory — silently omits any hash not found, matching
-// GetBlocksByHashesForPeer's own contract (the caller checks which hashes
-// are still missing afterward).
+// dbSinceDecodeBudget: so viele Bytes Rumpf (dekodiertes JSON) laedt
+// LoadBlocksSinceFromDB je Seite hoechstens -- der erste Block immer.
+// Entspricht dem Antwortdeckel der API (blocksByHashResponseBudget).
+const dbSinceDecodeBudget = 12 << 20
+
+// dbSinceRumpfHaeppchen: so viele Ruempfe je Abfrage. Bei kleinen Bloecken
+// sind das wenige Abfragen fuer die ganze Seite, bei grossen bricht die
+// Schleife nach dem ersten Haeppchen ab.
+const dbSinceRumpfHaeppchen = 32
+
+// ladeRuempfeMitBudget haengt den Koepfen ihre Ruempfe an, in
+// Seitenreihenfolge, bis das Budget erreicht ist. Die Seite wird dort
+// abgeschnitten -- der Aufrufer holt den Rest beim naechsten Abruf, wie bei
+// jedem Byte-Deckel. Ein Block mit unlesbarem Rumpf wird uebersprungen (wie
+// bisher), nicht leer ausgeliefert.
+func (cs *ChainState) ladeRuempfeMitBudget(seite []*Block, budget int) ([]*Block, error) {
+	out := make([]*Block, 0, len(seite))
+	verbraucht := 0
+	for off := 0; off < len(seite); off += dbSinceRumpfHaeppchen {
+		ende := off + dbSinceRumpfHaeppchen
+		if ende > len(seite) {
+			ende = len(seite)
+		}
+		hashes := make([]string, 0, ende-off)
+		for _, b := range seite[off:ende] {
+			hashes = append(hashes, b.Hash)
+		}
+		ruempfe, err := cs.ladeRuempfe(hashes)
+		if err != nil {
+			return nil, err
+		}
+		for _, b := range seite[off:ende] {
+			r, da := ruempfe[b.Hash]
+			if !da {
+				continue // zwischen Kopf- und Rumpfabfrage verschwunden -- lieber auslassen als leer liefern
+			}
+			txs, groesse, decErr := decodeBlockPayloadMitGroesse(r.raw, r.z)
+			if decErr != nil {
+				fmt.Printf("[BLOCK] ✗ block %s at height %d has an unreadable payload, skipping it rather than serving it empty: %v\n", b.Hash, b.Height, decErr)
+				continue
+			}
+			b.Transactions = txs
+			out = append(out, b)
+			verbraucht += groesse
+			if verbraucht > budget {
+				return out, nil
+			}
+		}
+	}
+	return out, nil
+}
+
+// blockRumpfRoh ist ein Rumpf, wie er in chain_blocks liegt: entweder als
+// Klartext-JSON (aeltere Zeilen) oder gzip-gepackt.
+type blockRumpfRoh struct {
+	raw string
+	z   []byte
+}
+
+// ladeRuempfeFn ist die Nahtstelle fuer Tests ohne Datenbank.
+var ladeRuempfeFn = (*ChainState).ladeRuempfeAusDB
+
+func (cs *ChainState) ladeRuempfe(hashes []string) (map[string]blockRumpfRoh, error) {
+	return ladeRuempfeFn(cs, hashes)
+}
+
+func (cs *ChainState) ladeRuempfeAusDB(hashes []string) (map[string]blockRumpfRoh, error) {
+	ruempfe := make(map[string]blockRumpfRoh, len(hashes))
+	rows, err := cs.db.Query(`SELECT hash, transactions, COALESCE(transactions_z, ''::bytea)
+	          FROM chain_blocks WHERE hash = ANY($1)`, pq.Array(hashes))
+	if err != nil {
+		return nil, fmt.Errorf("LoadBlocksSinceFromDB payload query failed: %w", err)
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var h, raw string
+		var z []byte
+		if rows.Scan(&h, &raw, &z) == nil {
+			ruempfe[h] = blockRumpfRoh{raw: raw, z: z}
+		}
+	}
+	return ruempfe, nil
+}
+
 func (cs *ChainState) LoadBlocksByHashesFromDB(hashes []string) ([]*Block, error) {
 	if cs.db == nil || len(hashes) == 0 {
 		return nil, nil
