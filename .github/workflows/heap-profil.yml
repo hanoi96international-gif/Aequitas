@@ -1,0 +1,79 @@
+name: Heap-Profil beider Boxen (was haelt den Speicher)
+
+# Am 12.09.2026 stand heap_sys auf beiden Boxen bei rund 5 GB -- im LEERLAUF,
+# Stunden nach der letzten Last, mit 11 bis 12,6 Millionen Objekten. Der
+# Speicher wird also gehalten, nicht verbraucht. Und er ist die naechste
+# Decke: GOMEMLIMIT steht bei 5 GiB, mehr ist auf der Box nicht frei.
+#
+# Das Profil kommt als Artefakt zurueck und wird lokal mit go tool pprof
+# gelesen -- dort laesst sich iterieren, auf der Box nicht.
+
+on:
+  workflow_dispatch:
+    inputs:
+      art:
+        description: "heap (inuse: was gerade gehalten wird) oder allocs (alles je allokierte)"
+        required: false
+        default: "heap"
+jobs:
+  profil:
+    strategy:
+      matrix:
+        box: [{name: "C1", host: "173.249.37.118", secret: "C1"}, {name: "C2", host: "194.163.188.71", secret: "C2"}]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Profil auf ${{ matrix.box.name }} ziehen
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ matrix.box.host }}
+          username: root
+          key: ${{ matrix.box.secret == 'C1' && secrets.CONTABO_SSH_KEY || secrets.CONTABO2_SSH_KEY }}
+          port: 22
+          script_stop: false
+          timeout: 300s
+          command_timeout: 300s
+          envs: ART
+          script: |
+            set +e
+            mkdir -p /root/profil
+            # 6061 ist NUR im Container gebunden -- deshalb ueber dessen Netz.
+            docker run --rm --network "container:aequitas-node" curlimages/curl:latest \
+              -s --max-time 120 "http://127.0.0.1:6061/debug/pprof/${ART}" > /root/profil/${ART}.pb.gz
+            ls -la /root/profil/${ART}.pb.gz
+            # Das Binary dazu, sonst sind die Symbole nicht aufloesbar.
+            docker cp aequitas-node:/app/aequitasd /root/profil/aequitasd 2>/dev/null || \
+              docker cp aequitas-node:/aequitasd /root/profil/aequitasd 2>/dev/null || echo "(Binary nicht kopierbar)"
+            ls -la /root/profil/aequitasd 2>/dev/null | head -1
+            curl -s --max-time 10 http://127.0.0.1:8080/api/health/combined \
+              | tr ',' '\n' | grep -E 'heap_alloc_mb|heap_sys_mb|heap_objects' > /root/profil/stand.txt
+            cat /root/profil/stand.txt
+        env:
+          ART: ${{ inputs.art }}
+      - name: Profil vom Server holen
+        uses: nicklasfrahm/scp-action@main
+        with:
+          direction: download
+          host: ${{ matrix.box.host }}
+          username: root
+          key: ${{ matrix.box.secret == 'C1' && secrets.CONTABO_SSH_KEY || secrets.CONTABO2_SSH_KEY }}
+          insecure_ignore_fingerprint: true
+          source: "/root/profil/${{ inputs.art }}.pb.gz"
+          target: "${{ matrix.box.name }}-${{ inputs.art }}.pb.gz"
+      - name: Binary vom Server holen
+        uses: nicklasfrahm/scp-action@main
+        continue-on-error: true
+        with:
+          direction: download
+          host: ${{ matrix.box.host }}
+          username: root
+          key: ${{ matrix.box.secret == 'C1' && secrets.CONTABO_SSH_KEY || secrets.CONTABO2_SSH_KEY }}
+          insecure_ignore_fingerprint: true
+          source: "/root/profil/aequitasd"
+          target: "${{ matrix.box.name }}-aequitasd"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: heap-${{ matrix.box.name }}
+          path: |
+            ${{ matrix.box.name }}-${{ inputs.art }}.pb.gz
+            ${{ matrix.box.name }}-aequitasd
+          if-no-files-found: warn
