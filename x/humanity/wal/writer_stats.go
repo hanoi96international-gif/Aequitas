@@ -49,6 +49,7 @@ func noteWriterBatch(records int, write, sync time.Duration) {
 	writerStats.records.Add(int64(records))
 	writerStats.writeNanos.Add(int64(write))
 	writerStats.syncNanos.Add(int64(sync))
+	merkeSyncDauer(sync)
 	for {
 		cur := writerStats.syncMaxNs.Load()
 		if int64(sync) <= cur || writerStats.syncMaxNs.CompareAndSwap(cur, int64(sync)) {
@@ -91,5 +92,6 @@ func WriterStats() map[string]interface{} {
 		"sync_avg_us":     avgSyncUs,
 		"sync_max_us":     writerStats.syncMaxNs.Load() / 1000,
 		"write_avg_us":    avgWriteUs,
+		"sync_verteilung": SyncVerteilung(),
 	}
 }
