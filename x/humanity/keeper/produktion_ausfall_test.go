@@ -146,8 +146,8 @@ func TestProduceBlock_UebernimmtEigeneBloeckeDesVorgaengersVorDerPruefung(t *tes
 	}
 	// Und sie darf nur bis zur JETZIGEN Hoehe uebernehmen: was darueber
 	// auftaucht, hat dieser Prozess nicht geschrieben.
-	if !strings.Contains(body, "AND height <= $2") {
-		t.Error("die Uebernahme ist nicht mehr auf die aktuelle Hoehe begrenzt -- damit wuerde auch " +
+	if !strings.Contains(body, "AND timestamp < $2") {
+		t.Error("die Uebernahme ist nicht mehr auf Bloecke von VOR dem eigenen Start begrenzt -- damit wuerde auch " +
 			"der Block einer wirklich zweiten Instanz als eigener gelten")
 	}
 }

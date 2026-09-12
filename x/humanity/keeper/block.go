@@ -1868,10 +1868,20 @@ func (dag *BlockDAG) uebernimmEigeneBloeckeDesVorgaengers(proposer string) {
 	if dag.state == nil || dag.state.db == nil || !dag.vorgaengerUebernommen.CompareAndSwap(false, true) {
 		return
 	}
+	// NACH DER ZEIT, NICHT NACH DER HOEHE. Der Block, der die Produktion
+	// nach dem Neustart vom 12.09.2026 anhielt, lag nicht unter der Spitze,
+	// sondern GENAU darueber: der Vorgaenger hatte ihn geschrieben und starb,
+	// bevor er im Speicher-DAG war. Eine Grenze bei der Spitze haette ihn
+	// verpasst -- und C1 brauchte nach dem Deploy tatsaechlich 650 Ticks, bis
+	// der Peer die Spitze darueber schob. Was einen Vorgaenger von einer
+	// zweiten Instanz unterscheidet, ist die Zeit: seine Bloecke sind aelter
+	// als dieser Prozess. Alles, was nach dem eigenen Start entsteht, hat
+	// dieser Prozess nicht geschrieben.
 	bis := dag.heightSchnell.Load()
+	boot := dag.bootTime.Unix()
 	rows, err := dag.state.db.Query(
-		`SELECT height FROM chain_blocks WHERE lower(proposer) = lower($1) AND height <= $2 AND height > $2 - 100000`,
-		proposer, bis)
+		`SELECT height FROM chain_blocks WHERE lower(proposer) = lower($1) AND timestamp < $2 AND height > $3 - 100000`,
+		proposer, boot, bis)
 	if err != nil {
 		// Ohne die Uebernahme greift die Pruefung wie bisher -- lieber einmal
 		// zu vorsichtig als eine Vermutung. Aber laut, damit es auffaellt.
