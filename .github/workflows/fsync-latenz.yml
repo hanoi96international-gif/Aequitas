@@ -1,0 +1,38 @@
+name: fdatasync-Latenz roh messen (Leerlauf oder unter Last)
+on: {workflow_dispatch: {}}
+jobs:
+  m:
+    strategy: {max-parallel: 2, matrix: {box: [{name: "C1", host: "173.249.37.118", secret: "C1"}, {name: "C2", host: "194.163.188.71", secret: "C2"}]}}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ matrix.box.host }}
+          username: root
+          key: ${{ matrix.box.secret == 'C1' && secrets.CONTABO_SSH_KEY || secrets.CONTABO2_SSH_KEY }}
+          port: 22
+          script_stop: false
+          timeout: 300s
+          command_timeout: 300s
+          script: |
+            set +e
+            echo "##### ${{ matrix.box.name }} #####"
+            A=$(curl -s --max-time 5 http://127.0.0.1:8080/api/health/combined | grep -oE '"aktuell":[0-9]+' | head -1 | cut -d: -f2)
+            echo "inflight aktuell: ${A:-?}  (0 = Leerlauf)"
+            # Dieselbe Form wie das Aequitas-WAL: vorbelegte Datei, kleine
+            # Schreibvorgaenge an wachsendem Offset, fdatasync nach jedem.
+            python3 - <<'PY'
+            import os, time, statistics
+            d='/root/aequitas-wal-data'; p=os.path.join(d,'.fsync-messung')
+            fd=os.open(p, os.O_WRONLY|os.O_CREAT|os.O_TRUNC, 0o600)
+            os.ftruncate(fd, 64<<20)            # vorbelegt wie das WAL
+            lat=[]; off=0; t_end=time.time()+8
+            while time.time()<t_end:
+                os.pwrite(fd, b'x'*256, off); off+=256
+                t=time.perf_counter(); os.fdatasync(fd); lat.append((time.perf_counter()-t)*1e6)
+            os.close(fd); os.unlink(p)
+            lat.sort(); n=len(lat)
+            print('  fdatasync: %d/s | p50 %.0f us | p90 %.0f us | p99 %.0f us | max %.0f us' % (n/8, lat[n//2], lat[int(n*.9)], lat[int(n*.99)], lat[-1]))
+            PY
+            echo "--- was die Platte gerade sonst tut (iostat 3 s) ---"
+            iostat -dx 3 2 2>/dev/null | grep -E "^sda" | tail -1 | awk '{printf "  w/s=%s wkB/s=%s w_await=%sms f/s=%s f_await=%sms util=%s%%\n",$8,$9,$12,$21,$22,$23}'
