@@ -3,6 +3,7 @@ package keeper
 import (
 	"fmt"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/lib/pq"
@@ -69,6 +70,19 @@ func (cs *ChainState) bufferTxReceipt(r pendingReceipt) {
 	}
 	// Keyed by hash: a later write for the same transaction overwrites the
 	// earlier one, which is what ON CONFLICT (tx_hash) DO UPDATE did.
+	if _, da := cs.receiptBuf[r.txHash]; !da && len(cs.receiptBuf) >= receiptBufMax {
+		// Voll: eine beliebige alte Quittung verdraengen (die Map hat keine
+		// Ordnung; jede ist gleich alt genug). Siehe flushTxReceipts.
+		for k := range cs.receiptBuf {
+			delete(cs.receiptBuf, k)
+			break
+		}
+		n := receiptVerworfen.Add(1)
+		if jetzt := time.Now().Unix(); jetzt-receiptVerworfenLogAt.Load() >= 60 {
+			receiptVerworfenLogAt.Store(jetzt)
+			fmt.Printf("[EVM] ⚠ receipt buffer full (%d) -- dropping receipts (%d so far); the database is not taking them\n", receiptBufMax, n)
+		}
+	}
 	cs.receiptBuf[r.txHash] = r
 	cs.receiptBufMu.Unlock()
 	cs.ensureReceiptFlushWorkerStarted()
@@ -99,12 +113,51 @@ func (cs *ChainState) ensureReceiptFlushWorkerStarted() {
 	})
 }
 
-// flushTxReceipts drains the buffer into ONE multi-row INSERT.
+// flushTxReceipts drains the buffer in Stuecken von receiptFlushChunk Zeilen.
 //
 // Uses unnest over five arrays rather than a VALUES list for the same reason
 // savePendingTxsBatchExec does (see its comment): the statement text stays a
 // fixed size regardless of how many rows are being written, so neither
 // Postgres' parser nor lib/pq's own escaping cost grows with batch size.
+//
+// GEMESSEN AM 12.09.2026, C2: die erste Fassung schrieb den GANZEN Puffer in
+// EINER Anweisung. Unter Last stockte die Datenbank einmal, die Anweisung lief
+// in das 5-s-Zeitlimit der Verbindung, und der Puffer wurde komplett wieder
+// eingereiht -- inzwischen 1.525.615 Quittungen. Von da an scheiterte jeder
+// Versuch am selben Limit, alle 17 s, 398-mal in 90 Minuten: ein Puffer, der
+// nur noch wachsen kann, sechs Felder mit je 1,5 Millionen Strings bei jedem
+// Anlauf neu gebaut (384 MB auf dem Heap), und Postgres 5 s je Anlauf
+// beschaeftigt -- auf dem Knoten, der ohnehin der schwaechere ist. Nach einem
+// Neustart waeren alle diese Quittungen weg gewesen.
+//
+// Darum jetzt: Stuecke, die bequem unter das Zeitlimit passen; bei einem
+// Fehler wird nur zurueckgelegt, was noch nicht geschrieben ist; und der
+// Puffer ist gedeckelt (receiptBufMax), weil ein Knoten ohne Datenbank sonst
+// mit den Quittungen im Speicher waechst, bis ihn der Kernel beendet. Eine
+// verworfene Quittung kostet einem Wallet einen Nachschlag; ein toter Knoten
+// kostet die Kette einen Validator.
+
+const (
+	// receiptFlushChunk: Zeilen je INSERT. 5.000 Zeilen brauchen im Normalfall
+	// zweistellige Millisekunden -- weit unter den 5 s der Verbindung.
+	receiptFlushChunk = 5000
+)
+
+// receiptBufMax: mehr Quittungen haelt der Puffer nicht. Bei 10.000
+// Ueberweisungen je Sekunde sind das gut drei Minuten ohne Datenbank.
+// Variable, damit ein Test den Deckel erreichen kann.
+var receiptBufMax = 2_000_000
+
+// receiptSchreibeFn ist die Nahtstelle fuer Tests ohne Datenbank.
+var receiptSchreibeFn = (*ChainState).schreibeReceipts
+
+var (
+	receiptFlushGeschrieben atomic.Int64
+	receiptFlushFehler      atomic.Int64
+	receiptVerworfen        atomic.Int64
+	receiptVerworfenLogAt   atomic.Int64
+)
+
 func (cs *ChainState) flushTxReceipts() {
 	if cs.db == nil {
 		return
@@ -121,6 +174,36 @@ func (cs *ChainState) flushTxReceipts() {
 	cs.receiptBuf = nil
 	cs.receiptBufMu.Unlock()
 
+	for off := 0; off < len(rows); off += receiptFlushChunk {
+		ende := off + receiptFlushChunk
+		if ende > len(rows) {
+			ende = len(rows)
+		}
+		if err := receiptSchreibeFn(cs, rows[off:ende]); err != nil {
+			receiptFlushFehler.Add(1)
+			// Zurueck in den Puffer -- nur das Ungeschriebene, und nichts
+			// ueberschreiben, was inzwischen neuer hereinkam.
+			rest := rows[off:]
+			fmt.Printf("[EVM] receipt flush failed for %d receipt(s) (%d written first, %d kept for the next interval): %v\n",
+				ende-off, off, len(rest), err)
+			cs.receiptBufMu.Lock()
+			if cs.receiptBuf == nil {
+				cs.receiptBuf = make(map[string]pendingReceipt, len(rest))
+			}
+			for _, r := range rest {
+				if _, newer := cs.receiptBuf[r.txHash]; !newer {
+					cs.receiptBuf[r.txHash] = r
+				}
+			}
+			cs.receiptBufMu.Unlock()
+			return
+		}
+		receiptFlushGeschrieben.Add(int64(ende - off))
+	}
+}
+
+// schreibeReceipts schreibt ein Stueck in einer Anweisung.
+func (cs *ChainState) schreibeReceipts(rows []pendingReceipt) error {
 	hashes := make([]string, len(rows))
 	froms := make([]string, len(rows))
 	tos := make([]string, len(rows))
@@ -135,29 +218,32 @@ func (cs *ChainState) flushTxReceipts() {
 		contracts[i] = r.contractAddr
 		createdAts[i] = r.createdAt
 	}
-
-	if _, err := cs.db.Exec(
+	_, err := cs.db.Exec(
 		`INSERT INTO evm_tx_receipts (tx_hash, from_addr, to_addr, status, contract_addr, created_at)
 		 SELECT * FROM unnest($1::text[], $2::text[], $3::text[], $4::text[], $5::text[], $6::bigint[])
 		 ON CONFLICT (tx_hash) DO UPDATE SET status = EXCLUDED.status`,
 		pq.Array(hashes), pq.Array(froms), pq.Array(tos),
 		pq.Array(statuses), pq.Array(contracts), pq.Array(createdAts),
-	); err != nil {
-		// Put them back rather than dropping: the next tick retries, and a
-		// transient database hiccup must not silently lose receipts that the
-		// in-memory maps will stop answering for after a restart. Entries
-		// written in the meantime win, since they are strictly newer.
-		fmt.Printf("[EVM] receipt flush failed for %d receipt(s): %v — retrying at the next interval\n", len(rows), err)
-		cs.receiptBufMu.Lock()
-		if cs.receiptBuf == nil {
-			cs.receiptBuf = make(map[string]pendingReceipt, len(rows))
-		}
-		for _, r := range rows {
-			if _, newer := cs.receiptBuf[r.txHash]; !newer {
-				cs.receiptBuf[r.txHash] = r
-			}
-		}
-		cs.receiptBufMu.Unlock()
+	)
+	return err
+}
+
+// ReceiptFlushStand fuer /api/health/combined.
+func (cs *ChainState) ReceiptFlushStand() map[string]interface{} {
+	cs.receiptBufMu.Lock()
+	puffer := len(cs.receiptBuf)
+	cs.receiptBufMu.Unlock()
+	return map[string]interface{}{
+		"bedeutung": "Quittungen (evm_tx_receipts) werden gepuffert und in Stuecken von " +
+			fmt.Sprint(receiptFlushChunk) + " geschrieben. fehler zaehlt gescheiterte Stuecke; " +
+			"verworfen zaehlt Quittungen, die der volle Puffer (" + fmt.Sprint(receiptBufMax) + ") verdraengt hat. " +
+			"puffer sollte nach Last binnen Sekunden auf 0 fallen.",
+		"puffer":      puffer,
+		"geschrieben": receiptFlushGeschrieben.Load(),
+		"fehler":      receiptFlushFehler.Load(),
+		"verworfen":   receiptVerworfen.Load(),
+		"stueck":      receiptFlushChunk,
+		"deckel":      receiptBufMax,
 	}
 }
 
