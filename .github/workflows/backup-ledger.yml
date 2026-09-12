@@ -166,8 +166,18 @@ jobs:
             #   FATAL: database "aequitas_restore_check_20260826T040230Z" does not exist
             # Die Pruefung ist daran seit ihrer Einfuehrung JEDES Mal gescheitert.
             VERIFY="$(echo "aequitas_restore_check_${STAMP}" | tr '[:upper:]' '[:lower:]')"
-            docker run --rm --network "$NET" postgres:16-alpine \
-              psql "$ADMIN" -c "DROP DATABASE IF EXISTS ${VERIFY};" >/dev/null
+            # ALLE liegengebliebenen Pruefkopien abraeumen, nicht nur die eigene.
+            # Der DROP am Ende dieses Schritts laeuft nur auf dem Glueckspfad;
+            # stirbt der Job vorher (Zeitlimit, volle Platte beim Restore --
+            # 11.09.2026), bleibt die Kopie. Am 12.09.2026 lagen so 96 GB auf
+            # C1 (fuenf Kopien zu je 10-23 GB) und 12 GB auf C2, die Platten
+            # standen bei 96 und 98 Prozent, und C2 lehnte Ueberweisungen ab.
+            for ALT in $(docker run --rm --network "$NET" postgres:16-alpine \
+                psql "$ADMIN" -t -A -c "SELECT datname FROM pg_database WHERE datname LIKE 'aequitas_restore_check_%';"); do
+              echo "   entferne liegengebliebene Pruefkopie $ALT"
+              docker run --rm --network "$NET" postgres:16-alpine \
+                psql "$ADMIN" -c "DROP DATABASE IF EXISTS ${ALT} WITH (FORCE);" >/dev/null || true
+            done
             docker run --rm --network "$NET" postgres:16-alpine \
               psql "$ADMIN" -c "CREATE DATABASE ${VERIFY};" >/dev/null
 
@@ -187,7 +197,7 @@ jobs:
             echo "restored: humans=${HUMANS} blocks=${BLOCKS} nullifiers=${NULLS} sum_balance=${SUPPLY}"
 
             docker run --rm --network "$NET" postgres:16-alpine \
-              psql "$ADMIN" -c "DROP DATABASE IF EXISTS ${VERIFY};" >/dev/null
+              psql "$ADMIN" -c "DROP DATABASE IF EXISTS ${VERIFY} WITH (FORCE);" >/dev/null || true
 
             if [ "$RESTORE_RC" -ne 0 ]; then
               echo "pg_restore exited ${RESTORE_RC} — this dump is not restorable. Failing."
