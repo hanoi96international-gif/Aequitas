@@ -32,8 +32,15 @@ import (
 // Kostet nichts im Normalfall: ein Timer, der fast immer vor dem Ablauf
 // wieder abgeraeumt wird. Der Abzug selbst haelt die Welt kurz an (Go stoppt
 // dafuer alle Goroutinen), deshalb hoechstens einer alle zwei Minuten.
+//
+// SCHWELLE 1 s, NICHT 3. Am 12.09.2026 wartete ProduceBlock auf C2 unter Last
+// 1.586 ms und 1.703 ms auf die Sperre -- bei einem Takt von 1.000 ms ist das
+// ein ausgefallener Tick, und der Wachhund schwieg, weil 3 s nicht erreicht
+// waren. Wer sie hielt, blieb damit unbekannt, und der Container-Wechsel beim
+// naechsten Deploy nahm auch die Chance auf einen Dump. Eine Sekunde Warten
+// bei einer Sekunde Takt IST der Fall, den dieses Instrument aufklaeren soll.
 const (
-	sperrWachhundSchwelle = 3 * time.Second
+	sperrWachhundSchwelle = 1 * time.Second
 	sperrWachhundAbstand  = 2 * time.Minute
 )
 
