@@ -16,7 +16,44 @@ liest diesen Abschnitt — der Rest ist Geschichte und teils überholt.**
    vor einem Start, weil es die Blockproduktions-Identität ändert.
 4. **Phase-2-Rechtsprüfung**, falls du je auf echten Modus umstellst.
 
-## Offen — der Primary friert unter Last ein
+## Stand 12.09.2026 — was für die Beta noch fehlt
+
+Gemessen, nicht vermutet. Vier Läufe à 6 Minuten, je ~13.000 Annahmen/s auf
+beiden Boxen, **Kette 7.000/s stabil, kein Absturz, Höhe stand nie**. Der
+Abschnitt „Primary friert unter Last ein" darunter ist damit erledigt — die
+Ursachen waren die Rumpf-Abholung im Push (0,5 s je Block), verworfene Ticks
+und die Peer-Lag-Bremse, alle am 12.09. behoben.
+
+**Hängt an dir:**
+
+1. **Lasttest-Konten nachfüllen.** 594 von 661 Konten der ersten Hälfte und
+   375 von 662 der zweiten liegen unter 0,001 AEQ. Ohne Nachfüllen sind
+   weitere Messungen nicht aussagekräftig. Das ist ein AEQ-Transfer —
+   `loadtest-widen-senders.yml` mit `confirm=true`, nur du.
+2. **Ein echter Probelauf als neuer Validator** mit einem registrierten
+   Wallet auf einem gemieteten VPS nach `docs/VALIDATOR_EINRICHTEN.md`. Der
+   Weg ist am 12.09. auf einem Runner ohne Wallet geprüft (Beobachter);
+   die Anmeldung als Validator braucht einen Menschen.
+3. Die Punkte 1–4 oben (MPC-Schwelle, dritter Betreiber, Wallet-Schlüssel,
+   Rechtsprüfung) — unverändert.
+
+**Erledigt am 12.09. (Beta-relevant):**
+
+- Neuer Knoten: produzierte ab Sekunde eins eine eigene Kette ab Genesis und
+  flutete die Validatoren damit (der 178.x-Vorfall, aus der eigenen Anleitung
+  heraus). Drei Ursachen behoben, Probe-Workflow `neuer-validator-probe.yml`.
+- Node-Guide (EN/DE) und `deploy/validator/docker-compose.yml`: Railway raus,
+  ein Befehl rein. Die übrigen zehn Sprachen sind noch alt und nicht verlinkt.
+- Backup war seit dem 11.09. jeden Tag rot (14-GB-Dumps, 30-Minuten-Limit) →
+  Zustands-Dump (31–61 MB), Restore-Prüfung grün, beide Boxen byte-gleich.
+- Wallet-Index unter Last dauerhaft lückenhaft → trägt nach.
+- Gleichzeitiger Neustart beider Validatoren fror das Netz ein → behoben.
+
+**Bewusst offen (kein Beta-Blocker):** 10.000/s auf zwei Boxen. Die Kette
+packt ~7.000/s; mehr braucht einen dritten Validator oder einen Umbau der
+Sperren (mehrtägig).
+
+## ~~Offen — der Primary friert unter Last ein~~ — ERLEDIGT 12.09.2026 (siehe oben)
 
 **Das Bild:** unter Last gegen C2 steht C1s Höhe minutenlang, dann hängt alles
 in einem Sprung an (am 02.09.2026 sechsmal beobachtet, zuletzt 513 Blöcke).
