@@ -1,0 +1,101 @@
+name: Neuer Validator von Null (Probe auf einem Runner)
+# DIE LAIEN-FRAGE: kommt ein leerer Knoten mit nur drei Umgebungsvariablen an
+# die Spitze des Live-Netzes -- und wie lange braucht er?
+#
+# Das hier ist kein Test der beiden Boxen, sondern ihres Gegenuebers: ein
+# frischer Rechner (GitHub-Runner, 4 Kerne, 16 GB, hinter NAT wie ein Heim-
+# Validator), leeres Postgres, das Binary aus diesem Commit, und als
+# Konfiguration nur das, was der Operator-Leitfaden verlangt. Kein SELF_URL:
+# der Runner ist von aussen nicht erreichbar, also laeuft er wie ein Knoten
+# hinter einem Router -- nur Pull-Sync, keine Pushes.
+#
+# Ausgabe: Hoehe alle 30 s, Speicher, die Bootstrap-Zeilen des Logs, und am
+# Ende ein Urteil: Spitze erreicht ja/nein, Hoehen je Minute, Abstand zur
+# Spitze. Die Probe fasst C1 und C2 nicht an -- sie liest nur von ihnen.
+on:
+  workflow_dispatch:
+    inputs:
+      minuten: {description: "Laufzeit des Knotens in Minuten", required: false, default: "20"}
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_PASSWORD: aequitas
+          POSTGRES_DB: aequitas
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Binary bauen (cgo, wie das Docker-Image)
+        run: |
+          CGO_ENABLED=1 go build -ldflags "-X github.com/hanoi96international-gif/aequitas-chain/x/humanity/keeper.buildGitCommitStamp=$(git rev-parse --short HEAD)" -o aequitasd ./cmd/aequitasd/
+          ls -la aequitasd
+      - name: Knoten starten und beobachten
+        env:
+          DATABASE_URL: postgres://postgres:aequitas@localhost:5432/aequitas?sslmode=disable
+          PRIMARY_NODE_URLS: http://173.249.37.118:8080,http://194.163.188.71:8080
+          PRIMARY_NODE_URL: http://173.249.37.118:8080
+          AEQUITAS_WAL_ENABLED: "1"
+          AEQUITAS_WAL_PATH: /tmp/aequitas-wal/aequitas_transfers.wal
+          GOMEMLIMIT: 10GiB
+          PORT: "8080"
+          MINUTEN: ${{ inputs.minuten }}
+        run: |
+          set -u
+          mkdir -p /tmp/aequitas-wal
+          START=$(date +%s)
+          nohup ./aequitasd > node.log 2>&1 &
+          NODEPID=$!
+          echo "Knoten gestartet, PID $NODEPID"
+          sleep 20
+          echo "=== Bootstrap-Zeilen ==="
+          grep -E "BOOTSTRAP|RESYNC|Snapshot|snapshot|Restored|Genesis|genesis|WARN|✗" node.log | head -40 || true
+          SPITZE_START=$(curl -s --max-time 10 http://173.249.37.118:8080/api/status | grep -oE '"height":[0-9]+' | cut -d: -f2)
+          echo "Spitze des Netzes beim Start: $SPITZE_START"
+          ENDE=$((START + MINUTEN*60))
+          LETZTE=0
+          printf "%-9s %-10s %-10s %-9s %-8s\n" "t(s)" "hoehe" "spitze" "abstand" "rss_mb"
+          while [ "$(date +%s)" -lt "$ENDE" ]; do
+            if ! kill -0 $NODEPID 2>/dev/null; then echo "!! Knoten ist gestorben"; break; fi
+            H=$(curl -s --max-time 5 http://localhost:8080/api/status | grep -oE '"height":[0-9]+' | cut -d: -f2)
+            S=$(curl -s --max-time 5 http://173.249.37.118:8080/api/status | grep -oE '"height":[0-9]+' | cut -d: -f2)
+            RSS=$(ps -o rss= -p $NODEPID 2>/dev/null | awk '{printf "%d", $1/1024}')
+            printf "%-9s %-10s %-10s %-9s %-8s\n" "$(( $(date +%s) - START ))" "${H:-?}" "${S:-?}" "$(( ${S:-0} - ${H:-0} ))" "${RSS:-?}"
+            LETZTE=${H:-0}
+            sleep 30
+          done
+          echo "=== Ende: Knoten-Hoehe $LETZTE, Netz $(curl -s --max-time 10 http://173.249.37.118:8080/api/status | grep -oE '"height":[0-9]+' | cut -d: -f2) ==="
+          echo "=== Sync-Zeilen (letzte 40) ==="
+          grep -E "HTTP-SYNC|SYNC\]|BOOTSTRAP|RESYNC|Checkpoint|FINALITY" node.log | tail -40 || true
+          echo "=== Fehler/Warnungen (letzte 40) ==="
+          grep -E "✗|⚠|ERROR|panic|PANIC|degraded|DEGRADED" node.log | tail -40 || true
+          echo "=== Produktion? ==="
+          grep -cE "^\[Block #" node.log || true
+          echo "=== Log-Ende (60 Zeilen) ==="
+          tail -60 node.log
+          echo "=== Urteil ==="
+          SPITZE_ENDE=$(curl -s --max-time 10 http://173.249.37.118:8080/api/status | grep -oE '"height":[0-9]+' | cut -d: -f2)
+          ABSTAND=$(( ${SPITZE_ENDE:-0} - LETZTE ))
+          DAUER=$(( $(date +%s) - START ))
+          echo "Laufzeit ${DAUER}s, Knoten bei $LETZTE, Netz bei ${SPITZE_ENDE:-?}, Abstand $ABSTAND, Hoehen/min: $(( LETZTE * 60 / (DAUER>0?DAUER:1) ))"
+          if [ "$ABSTAND" -le 5 ] && [ "$LETZTE" -gt 0 ]; then echo "✓ SPITZE ERREICHT"; else echo "✗ NICHT AN DER SPITZE"; fi
+          kill $NODEPID 2>/dev/null || true
+      - name: Log als Artefakt
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: neuer-validator-node-log
+          path: node.log
+          retention-days: 7
