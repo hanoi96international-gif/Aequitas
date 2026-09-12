@@ -451,72 +451,122 @@ func (w *WAL) Close() error {
 // would eventually want) — this priority (crash-safety proven first, raw
 // throughput tuned later once real integration exposes real numbers to
 // tune against) matches how every other phase in this project was built.
+// TruncateBefore verwirft alle Datensaetze mit Seq < before.
+//
+// OHNE DIE SPERRE ZU HALTEN, WAEHREND KOPIERT WIRD.
+//
+// Die erste Fassung nahm w.mu am Anfang und gab sie am Ende zurueck -- und
+// dazwischen las sie die ganze Datei, schrieb die Ueberlebenden in eine neue
+// und synchronisierte sie. Bei der Ausloeseschwelle von 512 MB sind das
+// Sekunden. w.mu ist aber dieselbe Sperre, die writeBatch braucht: solange
+// die Kompaktierung lief, kam KEIN Append durch, und jede Ueberweisung des
+// Knotens wartete -- unter Last alle paar Minuten ein Annahmestillstand von
+// Sekunden, am 12.09.2026 als sync_max von 746 ms und als Ausreisser in den
+// Append-Zeiten sichtbar. Ein Einfrieren, das nur die Hoehe nicht anhaelt.
+//
+// Jetzt in drei Schritten:
+//
+//  1. Unter w.mu nur MERKEN, wo die gueltigen Daten gerade enden (cutOff).
+//  2. Ohne w.mu alles bis cutOff kopieren. Appends laufen derweil weiter und
+//     landen bei Offsets >= cutOff; die Kopie liest nur darunter. WriteAt und
+//     ein SectionReader beruehren den gemeinsamen Dateizeiger nicht.
+//  3. Unter w.mu nachholen, was seit cutOff dazukam (Sekunden mal Schreibrate,
+//     also Megabyte, nicht Hunderte), dann tauschen.
+//
+// Die Sperre wird damit fuer das Nachholen und den Tausch gehalten -- zehn
+// Millisekunden statt Sekunden. Kompaktiert wird dieselbe Menge wie vorher.
+// KompaktierungsPhasen haelt die Dauer der drei Schritte der letzten
+// Kompaktierung fest -- der dritte ist der einzige, der Appends aufhaelt.
+var KompaktierungsPhasen struct {
+	mu                       sync.Mutex
+	Kopie, Nachholen, Tausch time.Duration
+	NachgeholtBytes          int64
+}
+
 func (w *WAL) TruncateBefore(before uint64) error {
+	// Schritt 1: Schnitt merken.
 	w.mu.Lock()
-	defer w.mu.Unlock()
-	// closed lives under closeMu now, not mu. Read it there, briefly: mu is
-	// already held for the compaction itself, and nothing else takes these two
-	// in the opposite order, so there is no cycle to worry about.
 	w.closeMu.RLock()
 	closed := w.closed
 	w.closeMu.RUnlock()
 	if closed {
+		w.mu.Unlock()
 		return errors.New("wal: TruncateBefore on closed WAL")
 	}
+	cutOff := w.writeOff
+	datei := w.file
+	w.mu.Unlock()
 
-	if _, err := w.file.Seek(0, io.SeekStart); err != nil {
-		return fmt.Errorf("wal: could not seek for compaction: %w", err)
-	}
+	// Schritt 2: kopieren, ohne jemanden aufzuhalten.
+	tKopie := time.Now()
 	tmpPath := w.path + ".compact.tmp"
 	tmp, err := os.OpenFile(tmpPath, os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0o600)
 	if err != nil {
 		return fmt.Errorf("wal: could not create compaction temp file: %w", err)
 	}
-	r := bufio.NewReader(w.file)
-	for {
-		entry, ok, err := readRecord(r)
-		if err != nil {
-			tmp.Close()
-			os.Remove(tmpPath)
-			return fmt.Errorf("wal: could not read record during compaction: %w", err)
-		}
-		if !ok {
-			break
-		}
-		// Stop at the preallocated tail. Zero bytes parse as a valid record
-		// with seq 0 and an empty payload -- crc32 of an empty payload is
-		// zero, so the checksum matches -- and copying those into the
-		// compacted file would write megabytes of empty records and, worse,
-		// carry a seq of 0 forward. Sequence numbers start at 1, so seq 0 is
-		// only ever padding.
-		if entry.Seq == 0 {
-			break
-		}
-		if entry.Seq < before {
-			continue
-		}
-		if _, err := tmp.Write(appendRecord(nil, entry.Seq, entry.Payload)); err != nil {
-			tmp.Close()
-			os.Remove(tmpPath)
-			return fmt.Errorf("wal: could not write compacted record: %w", err)
-		}
-	}
-	if err := tmp.Sync(); err != nil {
+	verwerfen := func(err error) error {
 		tmp.Close()
 		os.Remove(tmpPath)
-		return fmt.Errorf("wal: could not sync compacted file: %w", err)
+		return err
+	}
+	datenEnde, err := kopiereUeberlebende(tmp, 0, io.NewSectionReader(datei, 0, cutOff), before)
+	if err != nil {
+		return verwerfen(err)
+	}
+	if err := tmp.Sync(); err != nil {
+		return verwerfen(fmt.Errorf("wal: could not sync compacted file: %w", err))
+	}
+	// Die neue Datei HIER vorbelegen, nicht im ersten Batch nach dem Tausch:
+	// dort liefe es unter w.mu, und auf Systemen ohne fallocate ist eine
+	// Vorbelegung ein Schreiben von 64 MB Nullen -- im Test 900 ms, in denen
+	// jeder Append wartete. Das Nachholen in Schritt 3 schreibt in die
+	// vorbelegte Region hinein; datenEnde bleibt der einzige Zeiger auf das
+	// Ende der Daten, die Dateigroesse sagt ab jetzt nichts mehr darueber.
+	allocEnde := datenEnde + int64(preallocChunk)
+	if err := preallocate(tmp, datenEnde, int64(preallocChunk)); err != nil {
+		return verwerfen(fmt.Errorf("wal: could not preallocate compacted file: %w", err))
+	}
+	if err := tmp.Sync(); err != nil {
+		return verwerfen(fmt.Errorf("wal: could not sync preallocation: %w", err))
+	}
+
+	dKopie := time.Since(tKopie)
+
+	// Schritt 3: nachholen und tauschen -- jetzt unter der Sperre.
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	tNachholen := time.Now()
+	nachgeholt := int64(0)
+	defer func() {
+		KompaktierungsPhasen.mu.Lock()
+		KompaktierungsPhasen.Kopie = dKopie
+		KompaktierungsPhasen.Nachholen = time.Since(tNachholen)
+		KompaktierungsPhasen.NachgeholtBytes = nachgeholt
+		KompaktierungsPhasen.mu.Unlock()
+	}()
+	w.closeMu.RLock()
+	closed = w.closed
+	w.closeMu.RUnlock()
+	if closed {
+		return verwerfen(errors.New("wal: WAL closed during compaction"))
+	}
+	if w.writeOff > cutOff {
+		nachgeholt = w.writeOff - cutOff
+		datenEnde, err = kopiereUeberlebende(tmp, datenEnde, io.NewSectionReader(w.file, cutOff, w.writeOff-cutOff), before)
+		if err != nil {
+			return verwerfen(err)
+		}
+		if err := tmp.Sync(); err != nil {
+			return verwerfen(fmt.Errorf("wal: could not sync catch-up records: %w", err))
+		}
+	}
+	if datenEnde > allocEnde {
+		allocEnde = datenEnde // das Nachholen hat die Vorbelegung ueberschritten
 	}
 	if err := tmp.Close(); err != nil {
 		os.Remove(tmpPath)
 		return fmt.Errorf("wal: could not close compacted file: %w", err)
 	}
-	// FIX (audit 2026-08-16, finding WAL-SEQ): persist the highest sequence
-	// number ever issued BEFORE the rename makes the compacted file live.
-	// Compaction is the one operation that can remove the only record of that
-	// number from the log, so the mark has to outlive it — and it has to be
-	// durable before the truncated file becomes the file Open will scan, or a
-	// crash in between would leave a short log with no mark and restart
-	// numbering. Written first, renamed second: the ordering is the guarantee.
 	if err := writeSeqHighWaterMark(w.path, w.nextSeq-1); err != nil {
 		os.Remove(tmpPath)
 		return fmt.Errorf("wal: could not persist sequence high-water mark: %w", err)
@@ -531,26 +581,61 @@ func (w *WAL) TruncateBefore(before uint64) error {
 	if err != nil {
 		return fmt.Errorf("wal: could not reopen compacted file: %w", err)
 	}
-	end, err := f.Seek(0, io.SeekEnd)
-	if err != nil {
-		f.Close()
-		return fmt.Errorf("wal: could not seek reopened file to end: %w", err)
-	}
 	w.file = f
-	// The compacted file is exactly its data, with no preallocated tail, so
-	// both offsets restart there. Missing this would leave writeOff pointing
-	// into the OLD file's coordinates and the next batch would write past the
-	// end of the new one -- or worse, over data it had just kept.
-	w.writeOff = end
-	w.allocEnd = end
+	// NICHT Seek(End): die Datei ist hinter den Daten vorbelegt, ihr Ende
+	// sind Nullen. writeOff muss auf das Ende der DATEN zeigen -- sonst
+	// schriebe der naechste Batch hinter 64 MB Nullen, und ein Replay, das am
+	// ersten Datensatz mit Seq 0 endet, saehe nichts mehr davon. Der Fehler
+	// waere still: keine Meldung, nur ein WAL, das ab hier leer scheint.
+	w.writeOff = datenEnde
+	w.allocEnd = allocEnde
 	return nil
 }
 
-// seqHighWaterMarkPath is the sidecar holding the highest sequence number the
-// log at path has ever issued. A sidecar rather than a header record: the
-// record format is what Replay and every keeper consumer parse, and a
-// zero-payload marker inside it could not be told apart from a real empty
-// payload. Keeping the mark outside the log leaves replay semantics untouched.
+// kopiereUeberlebende schreibt alle Datensaetze aus r mit Seq >= before nach
+// tmp. Endet am Ende von r oder am ersten Datensatz mit Seq 0 (Nullfuellung
+// hinter den gueltigen Daten).
+//
+// IN STUECKEN SYNCHRONISIERT, NICHT EINMAL AM ENDE. Ein einzelner Sync ueber
+// hunderte Megabyte haelt die Platte fuer Sekunden -- und mit ihr jeden
+// anderen fsync auf demselben Datentraeger, also auch die Gruppen-Commits des
+// Schreibers, obwohl der gar keine Sperre mehr wartet. Gemessen im Test: ohne
+// dieses Stueckeln wartete der laengste Append 766 von 788 ms Kompaktierung,
+// mit Sperre oder ohne. Kleine Syncs lassen die Commits dazwischen.
+func kopiereUeberlebende(tmp *os.File, ab int64, r io.Reader, before uint64) (int64, error) {
+	const syncStueck = 4 << 20
+	br := bufio.NewReader(r)
+	seitLetztemSync := 0
+	off := ab
+	for {
+		entry, ok, err := readRecord(br)
+		if err != nil {
+			return off, fmt.Errorf("wal: could not read record during compaction: %w", err)
+		}
+		if !ok || entry.Seq == 0 {
+			return off, nil
+		}
+		if entry.Seq < before {
+			continue
+		}
+		// WriteAt an einem eigenen Offset, nicht Write am Dateizeiger: die
+		// Datei ist hinter den Daten vorbelegt (siehe TruncateBefore), und
+		// nur der Offset sagt, wo die Daten enden -- die Dateigroesse nicht.
+		n, err := tmp.WriteAt(appendRecord(nil, entry.Seq, entry.Payload), off)
+		if err != nil {
+			return off, fmt.Errorf("wal: could not write compacted record: %w", err)
+		}
+		off += int64(n)
+		seitLetztemSync += n
+		if seitLetztemSync >= syncStueck {
+			if err := datasync(tmp); err != nil {
+				return off, fmt.Errorf("wal: could not sync compacted chunk: %w", err)
+			}
+			seitLetztemSync = 0
+		}
+	}
+}
+
 func seqHighWaterMarkPath(path string) string { return path + ".seqhwm" }
 
 // readSeqHighWaterMark returns the persisted high-water mark for path, or 0 if
