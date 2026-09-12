@@ -5102,8 +5102,12 @@ func (dag *BlockDAG) AddPeerBlock(block *Block) bool {
 	// provided, without the "silently drop if busy" failure mode: this blocks
 	// instead of dropping, and replayTransactions' own dedup guard makes that
 	// safe even under concurrent delivery of the same block).
+	apbSperreStart := time.Now()
 	dag.replayMu.Lock()
+	apbSperre := time.Since(apbSperreStart)
+	apbReplayStart := time.Now()
 	replayOK := dag.replayInCanonicalOrder(block)
+	apbReplay := time.Since(apbReplayStart)
 	// P0-01 (audit): do NOT release replayMu here on success — hold it through the
 	// dag.mu section below so ProduceBlock (which also takes replayMu before dag.mu)
 	// cannot read a post-replay state while this block is still absent from
@@ -5370,6 +5374,12 @@ func (dag *BlockDAG) AddPeerBlock(block *Block) bool {
 	tipCount := len(dag.tips)
 	dag.mu.Unlock()
 	dag.replayMu.Unlock() // P0-01: released here, after block is fully visible in DAG
+	// Zeitreihe je angenommenem Block -- siehe produktion_protokoll.go.
+	merkeAnnahmeProtokoll(annahmeEintrag{
+		At: apbSperreStart.UnixMilli(), Hoehe: block.Height, Txs: len(block.Transactions),
+		SperreMs: float64(apbSperre) / 1e6, ReplayMs: float64(apbReplay) / 1e6,
+		EinhaengenMs: float64(time.Since(apbReplayStart)-apbReplay) / 1e6,
+	})
 
 	// FIX (audit recheck3, P2 — "IncrementBlockCount laeuft asynchron und
 	// ist nicht konsensual deterministisch"): this was worse than just

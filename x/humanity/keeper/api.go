@@ -1022,6 +1022,7 @@ func (a *APIServer) buildMux() *http.ServeMux {
 	mux.HandleFunc("/api/events", a.handleBlockEvents)
 	mux.HandleFunc("/api/health/combined", a.handleCombinedHealth)
 	mux.HandleFunc("/api/produktion", a.handleProduktionsProtokoll)
+	mux.HandleFunc("/api/annahme", a.handleAnnahmeProtokoll)
 	mux.HandleFunc("/api/debug/stateroot-components", a.handleStateRootComponents)
 	mux.HandleFunc("/api/debug/dag-gates", a.handleDAGGates)
 	mux.HandleFunc("/api/blocks", countEndpoint(&statBlocks, a.handleBlocks))
