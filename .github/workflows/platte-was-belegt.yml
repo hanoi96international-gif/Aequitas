@@ -1,0 +1,31 @@
+name: Platte -- was belegt sie (beide Boxen)
+on: {workflow_dispatch: {}}
+jobs:
+  p:
+    strategy: {matrix: {box: [{name: "C1", host: "173.249.37.118", secret: "C1"}, {name: "C2", host: "194.163.188.71", secret: "C2"}]}}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ matrix.box.host }}
+          username: root
+          key: ${{ matrix.box.secret == 'C1' && secrets.CONTABO_SSH_KEY || secrets.CONTABO2_SSH_KEY }}
+          port: 22
+          script_stop: false
+          timeout: 300s
+          command_timeout: 300s
+          script: |
+            echo "##### ${{ matrix.box.name }} #####"
+            df -h / | tail -1
+            echo "=== groesste Verzeichnisse unter /root und /var (GB) ==="
+            du -x -d1 -BG /root /var/lib/docker /var/lib/docker/volumes /tmp 2>/dev/null | sort -k1 -n -r | head -14
+            echo "=== Abzuege ==="
+            ls -la --block-size=M /root/backups/ 2>/dev/null | tail -6
+            find / -xdev -name "*.dump*" -size +100M 2>/dev/null | head -5 | xargs -r ls -la --block-size=M 2>/dev/null
+            echo "=== Docker: Abbilder, Container, Volumes (dangling) ==="
+            docker system df 2>/dev/null | head -6
+            echo "=== Postgres-Groesse ==="
+            docker exec aequitas-postgres psql -U postgres -d aequitas -t -A -c "SELECT pg_size_pretty(pg_database_size('aequitas'));" 2>/dev/null
+            docker exec aequitas-postgres psql -U postgres -d aequitas -t -A -c "SELECT relname||': '||pg_size_pretty(pg_total_relation_size(relid)) FROM pg_stat_user_tables ORDER BY pg_total_relation_size(relid) DESC LIMIT 5;" 2>/dev/null
+            echo "=== WAL-Verzeichnis ==="
+            du -sh /root/aequitas-wal-data 2>/dev/null; ls -la --block-size=M /root/aequitas-wal-data 2>/dev/null | tail -4
