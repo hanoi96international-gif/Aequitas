@@ -1,0 +1,39 @@
+name: Container-Stand beider Boxen (nur lesen)
+# docker ps -a, Neustart-Zaehler, Speicher, und die letzten Logzeilen eines
+# Containers. Nur lesen.
+on:
+  workflow_dispatch:
+    inputs:
+      container: {description: "Container, dessen Log gezeigt wird (leer = keiner)", required: false, default: "proof-server"}
+      zeilen: {description: "letzte N Logzeilen", required: false, default: "40"}
+jobs:
+  s:
+    strategy:
+      fail-fast: false
+      matrix: {box: [{name: "C1", host: "173.249.37.118", secret: "C1"}, {name: "C2", host: "194.163.188.71", secret: "C2"}]}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ matrix.box.host }}
+          username: root
+          key: ${{ matrix.box.secret == 'C1' && secrets.CONTABO_SSH_KEY || secrets.CONTABO2_SSH_KEY }}
+          port: 22
+          script_stop: false
+          timeout: 120s
+          command_timeout: 120s
+          envs: CONT,ZEILEN
+          script: |
+            echo "##### ${{ matrix.box.name }} #####"
+            docker ps -a --format 'table {{.Names}}\t{{.Status}}\t{{.Image}}\t{{.Ports}}' | cut -c1-160
+            echo "--- Neustarts / OOM ---"
+            for c in $(docker ps -aq); do docker inspect "$c" --format '{{.Name}} restarts={{.RestartCount}} oom={{.State.OOMKilled}} exit={{.State.ExitCode}} started={{.State.StartedAt}}'; done
+            echo "--- Speicher/Platte ---"
+            free -m | head -2; df -h / | tail -1
+            if [ -n "$CONT" ]; then
+              echo "--- Log $CONT (letzte $ZEILEN) ---"
+              docker logs --tail "$ZEILEN" "$CONT" 2>&1 | cut -c1-300 || echo "(kein Container $CONT)"
+            fi
+        env:
+          CONT: ${{ inputs.container }}
+          ZEILEN: ${{ inputs.zeilen }}
