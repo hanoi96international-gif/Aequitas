@@ -9,6 +9,10 @@ def g(*ks, default=None):
         o = o[k]
     return o
 if not g("proof_server", "reachable"): rot.append("Proof-Server nicht erreichbar -- keine Registrierung moeglich")
+# Seit 13.09.2026: das Tor muss ZU sein. "optional"/"off" heisst Registrierung ohne
+# Gesichtspruefung -- an dem Tag stand es 14 Stunden so, ohne dass jemand es sah.
+_modus = str(g("proof_server", "last_status", "durchsetzung", "mode", default="") or "").strip().lower()
+if g("proof_server", "reachable") and _modus != "required": rot.append("Proof-Server BIO_ATTESTATION_MODE=%r statt required -- Registrierung ohne Gesichtspruefung moeglich" % _modus)
 if g("divergenz", "abweichend"): rot.append("Kontenstand weicht vom Partner ab (divergenz.abweichend) -- Resync noetig")
 if (g("zustands_ablehnung", "uebersprungene_ueberweisungen") or 0) > 0: rot.append("Ueberweisungen beim Nachspielen uebersprungen: %s -- Knoten weichen ab" % g("zustands_ablehnung", "uebersprungene_ueberweisungen"))
 if g("plattenplatz", "kritisch"): rot.append("Platte kritisch (%s MB frei)" % g("plattenplatz", "frei_mb"))
@@ -17,5 +21,5 @@ if g("chain", "dag_degraded"): rot.append("Knoten degraded: %s" % g("chain", "da
 if g("totmann", "ausgeloest"): rot.append("Totmann ausgeloest")
 if g("receipt_flush", "fehler", default=0) and (g("receipt_flush", "puffer") or 0) > 500000: rot.append("Quittungs-Puffer staut: %s" % g("receipt_flush", "puffer"))
 for r in rot: print("✗ " + r)
-if not rot: print("✓ Proof-Server erreichbar, keine Divergenz, nichts uebersprungen, Platte %.0f %%, nicht degraded" % (g("plattenplatz", "belegt_pct") or 0))
+if not rot: print("✓ Proof-Server erreichbar und required, keine Divergenz, nichts uebersprungen, Platte %.0f %%, nicht degraded" % (g("plattenplatz", "belegt_pct") or 0))
 sys.exit(1 if rot else 0)
