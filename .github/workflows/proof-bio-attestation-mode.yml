@@ -4,8 +4,9 @@ name: Set proof BIO_ATTESTATION_MODE (both boxes)
 # containers without touching aequitas-node. paths under .github/ do not
 # trigger Contabo node deploys.
 #
-# Default for production is required. optional is a temporary launch window
-# only — always schedule a rollback to required.
+# Do NOT call /root/proof-deploy.sh from this workflow: that script rewrites
+# /root/proof-server.env from the RUNNING container and would undo the mode
+# change (observed 2026-09-13 — optional written, then health still required).
 
 on:
   workflow_dispatch:
@@ -71,11 +72,13 @@ jobs:
             docker inspect proof-server --format 'status={{.State.Status}}' >/dev/null
 
             ENVF=/root/proof-server.env
+            umask 077
             if [ -f "$ENVF" ]; then
               cp -a "$ENVF" "$ENVF.bak-$(date +%s)"
             else
               docker inspect proof-server --format '{{range .Config.Env}}{{println .}}{{end}}' \
-                | grep -vE '^(PATH|HOSTNAME|HOME)=' | grep -v '^$' > "$ENVF"
+                | grep -vE '^(PATH|NODE_VERSION|YARN_VERSION|HOSTNAME|HOME)=' \
+                | grep -E '^[A-Z_]+=' > "$ENVF"
               chmod 600 "$ENVF"
             fi
 
@@ -83,23 +86,23 @@ jobs:
             printf 'BIO_ATTESTATION_MODE=%s\n' "$MODE" >> "$ENVF.tmp"
             mv "$ENVF.tmp" "$ENVF"
             chmod 600 "$ENVF"
-            echo "env names now include:"; cut -d= -f1 "$ENVF" | sort | grep -E 'BIO_|CHAIN_|NODE_' || true
+            grep -q "^BIO_ATTESTATION_MODE=$MODE$" "$ENVF" || { echo "ERROR: mode not written"; exit 1; }
+            echo "env:"; grep '^BIO_ATTESTATION_MODE=' "$ENVF"
 
-            if [ -x /root/proof-deploy.sh ]; then
-              bash /root/proof-deploy.sh
-            elif [ -f /root/aequitas-proof-server/deploy.sh ]; then
-              bash /root/aequitas-proof-server/deploy.sh
-            else
-              # Fallback: recreate proof-server from current image + env file
-              IMAGE=$(docker inspect proof-server --format '{{.Config.Image}}')
-              NET=$(docker inspect proof-server --format '{{range $k,$v := .NetworkSettings.Networks}}{{$k}}{{end}}' | awk '{print $1}')
-              docker rename proof-server "proof-server-prev-$(date +%s)" || true
-              docker run -d --name proof-server --restart unless-stopped \
-                --network "$NET" --env-file "$ENVF" -p 3000:3000 "$IMAGE" \
-                || { echo "ERROR: recreate failed"; exit 1; }
-            fi
+            IMAGE=$(docker inspect proof-server --format '{{.Config.Image}}')
+            NET=$(docker inspect proof-server --format '{{range $k,$v := .NetworkSettings.Networks}}{{$k}} {{end}}' | awk '{print $1}')
+            [ -n "$NET" ] || NET=aequitas-net
+            echo "recreate image=$IMAGE net=$NET"
+            docker rm -f proof-server >/dev/null 2>&1 || true
+            docker run -d --name proof-server --restart unless-stopped \
+              --network "$NET" --env-file "$ENVF" "$IMAGE" >/dev/null
 
-            sleep 3
-            wget -qO- --timeout=10 http://127.0.0.1:3000/health | head -c 500 || true
-            echo
-            echo "=== done ${{ matrix.name }} ==="
+            ok=0
+            for _ in $(seq 1 20); do
+              body=$(docker exec proof-server sh -c 'wget -qO- --timeout=3 http://127.0.0.1:3000/health' 2>/dev/null || true)
+              echo "$body" | head -c 400; echo
+              if echo "$body" | grep -q "\"mode\":\"$MODE\""; then ok=1; break; fi
+              sleep 2
+            done
+            [ "$ok" = 1 ] || { echo "ERROR: health mode is not $MODE"; exit 1; }
+            echo "=== done ${{ matrix.name }} mode=$MODE ==="
