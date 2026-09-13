@@ -262,6 +262,7 @@ trouble_rows  = [
     ('Height stays far below the network', 'Snapshot import failed, or ports closed', 'Check the log for [BOOTSTRAP] lines; open TCP 8080 and 4001 inbound in the firewall / cloud security group.'),
     ('Node restarts in a loop, "OOMKilled"', 'Not enough RAM', 'Lower GOMEMLIMIT in .env (3GiB on 8 GB RAM) or give the server more memory.'),
     ('docker compose: build fails', 'No outbound internet during build', 'The build downloads Go modules; check DNS and outbound HTTPS on the server.'),
+    ('Log shows [AUTO-HEAL] … resync', 'The node fell behind, got stuck on one block, or its account state diverged from the founder nodes', 'Nothing to do: the node re-fetches the signed snapshot on its own and resumes producing. Only if this repeats every hour, check disk space and RAM.'),
 ],
 
 footer = 'Aequitas Chain · Chain ID 1926 · aequitas.digital · Validator rewards: daily at 20:00 Berlin time (CEST/CET)',
@@ -376,6 +377,7 @@ trouble_rows  = [
     ('Höhe bleibt weit unter dem Netz', 'Snapshot-Import gescheitert oder Ports zu', 'Log auf [BOOTSTRAP]-Zeilen prüfen; TCP 8080 und 4001 eingehend in Firewall / Cloud-Sicherheitsgruppe öffnen.'),
     ('Knoten startet in Schleife neu, „OOMKilled“', 'Zu wenig RAM', 'GOMEMLIMIT in .env senken (3GiB bei 8 GB RAM) oder dem Server mehr Speicher geben.'),
     ('docker compose: Build schlägt fehl', 'Kein ausgehendes Internet beim Bauen', 'Der Build lädt Go-Module; DNS und ausgehendes HTTPS auf dem Server prüfen.'),
+    ('Log zeigt [AUTO-HEAL] … resync', 'Der Knoten ist zurückgefallen, an einem Block hängen geblieben oder sein Kontostand weicht von den Gründerknoten ab', 'Nichts zu tun: der Knoten holt den signierten Snapshot von selbst neu und produziert danach weiter. Nur wenn sich das stündlich wiederholt, Platte und RAM prüfen.'),
 ],
 
 footer = 'Aequitas Chain · Chain-ID 1926 · aequitas.digital · Validator-Belohnungen: täglich um 20:00 Uhr Berliner Zeit (MESZ/MEZ)',
@@ -684,7 +686,8 @@ ES = {'title': 'GUÍA DEL OPERADOR DE NODO AEQUITAS',
                    'Baja GOMEMLIMIT en .env (3GiB con 8 GB de RAM) o dale más memoria al servidor.'),
                   ('docker compose: falla la compilación',
                    'Sin internet saliente durante la compilación',
-                   'La compilación descarga módulos de Go; comprueba DNS y HTTPS saliente en el servidor.')],
+                   'La compilación descarga módulos de Go; comprueba DNS y HTTPS saliente en el servidor.'),
+                  ('El log muestra [AUTO-HEAL] … resync', 'El nodo se quedó atrás, se atascó en un bloque o su estado de cuentas divergió de los nodos fundadores', 'Nada que hacer: el nodo vuelve a obtener el snapshot firmado por sí mismo y sigue produciendo. Solo si se repite cada hora, revisa disco y RAM.')],
  'footer': 'Aequitas Chain · Chain ID 1926 · aequitas.digital · Recompensas de validador: diarias a las '
            '20:00 hora de Berlín'}
 
@@ -871,7 +874,8 @@ FR = {'title': "GUIDE DE L'OPÉRATEUR DE NŒUD AEQUITAS",
                   ('docker compose : la compilation échoue',
                    "Pas d'internet sortant pendant la compilation",
                    'La compilation télécharge des modules Go ; vérifiez le DNS et le HTTPS sortant sur le '
-                   'serveur.')],
+                   'serveur.'),
+                  ('Le journal affiche [AUTO-HEAL] … resync', 'Le nœud a pris du retard, s\'est bloqué sur un bloc ou son état des comptes a divergé des nœuds fondateurs', 'Rien à faire : le nœud récupère lui-même le snapshot signé et reprend la production. Seulement si cela se répète chaque heure, vérifiez le disque et la RAM.')],
  'footer': 'Aequitas Chain · Chain ID 1926 · aequitas.digital · Récompenses de validateur : chaque jour à 20 '
            'h heure de Berlin'}
 
@@ -1053,7 +1057,8 @@ IT = {'title': "GUIDA PER L'OPERATORE DI NODO AEQUITAS",
                    'Abbassa GOMEMLIMIT in .env (3GiB con 8 GB di RAM) o dai più memoria al server.'),
                   ('docker compose: la compilazione fallisce',
                    'Nessuna connessione in uscita durante la compilazione',
-                   'La compilazione scarica moduli Go; verifica DNS e HTTPS in uscita sul server.')],
+                   'La compilazione scarica moduli Go; verifica DNS e HTTPS in uscita sul server.'),
+                  ('Il log mostra [AUTO-HEAL] … resync', 'Il nodo è rimasto indietro, si è bloccato su un blocco o il suo stato dei conti è divergente dai nodi fondatori', 'Niente da fare: il nodo riscarica da solo lo snapshot firmato e riprende a produrre. Solo se si ripete ogni ora, controlla disco e RAM.')],
  'footer': 'Aequitas Chain · Chain ID 1926 · aequitas.digital · Ricompense del validatore: ogni giorno alle '
            '20:00 ora di Berlino'}
 
@@ -1231,7 +1236,8 @@ PT = {'title': 'GUIA DO OPERADOR DE NÓ AEQUITAS',
                    'Baixe GOMEMLIMIT em .env (3GiB com 8 GB de RAM) ou dê mais memória ao servidor.'),
                   ('docker compose: a compilação falha',
                    'Sem internet de saída durante a compilação',
-                   'A compilação descarrega módulos Go; verifique o DNS e o HTTPS de saída no servidor.')],
+                   'A compilação descarrega módulos Go; verifique o DNS e o HTTPS de saída no servidor.'),
+                  ('O log mostra [AUTO-HEAL] … resync', 'O nó ficou para trás, travou num bloco ou o seu estado de contas divergiu dos nós fundadores', 'Nada a fazer: o nó volta a obter o snapshot assinado sozinho e continua a produzir. Só se isto se repetir a cada hora, verifique disco e RAM.')],
  'footer': 'Aequitas Chain · Chain ID 1926 · aequitas.digital · Recompensas de validador: diariamente às '
            '20:00, hora de Berlim'}
 
@@ -1407,7 +1413,8 @@ TR = {'title': 'AEQUITAS DÜĞÜM OPERATÖRÜ KILAVUZU',
                    'bellek verin.'),
                   ('docker compose: derleme başarısız',
                    'Derleme sırasında giden internet yok',
-                   "Derleme Go modüllerini indirir; sunucuda DNS ve giden HTTPS'yi kontrol edin.")],
+                   "Derleme Go modüllerini indirir; sunucuda DNS ve giden HTTPS'yi kontrol edin."),
+                  ('Günlükte [AUTO-HEAL] … resync', 'Düğüm geride kaldı, bir blokta takıldı veya hesap durumu kurucu düğümlerden saptı', 'Yapacak bir şey yok: düğüm imzalı anlık görüntüyü kendisi yeniden alır ve üretime devam eder. Yalnızca her saat tekrarlanıyorsa disk ve RAM\'i kontrol edin.')],
  'footer': 'Aequitas Chain · Chain ID 1926 · aequitas.digital · Doğrulayıcı ödülleri: her gün Berlin '
            'saatiyle 20:00'}
 
@@ -1587,7 +1594,8 @@ ID = {'title': 'PANDUAN OPERATOR NODE AEQUITAS',
                    'Turunkan GOMEMLIMIT di .env (3GiB pada RAM 8 GB) atau beri server lebih banyak memori.'),
                   ('docker compose: kompilasi gagal',
                    'Tidak ada internet keluar selama kompilasi',
-                   'Kompilasi mengunduh modul Go; periksa DNS dan HTTPS keluar di server.')],
+                   'Kompilasi mengunduh modul Go; periksa DNS dan HTTPS keluar di server.'),
+                  ('Log menunjukkan [AUTO-HEAL] … resync', 'Node tertinggal, macet di satu blok, atau keadaan akunnya menyimpang dari node pendiri', 'Tidak perlu apa-apa: node mengambil ulang snapshot bertanda tangan sendiri dan melanjutkan produksi. Hanya jika berulang setiap jam, periksa disk dan RAM.')],
  'footer': 'Aequitas Chain · Chain ID 1926 · aequitas.digital · Imbalan validator: setiap hari pukul 20:00 '
            'waktu Berlin'}
 
@@ -1764,7 +1772,8 @@ RU = {'title': 'РУКОВОДСТВО ОПЕРАТОРА УЗЛА AEQUITAS',
                    'Уменьшите GOMEMLIMIT в .env (3GiB при 8 ГБ ОЗУ) или дайте серверу больше памяти.'),
                   ('docker compose: сборка не удаётся',
                    'Нет исходящего интернета во время сборки',
-                   'Сборка загружает модули Go; проверьте DNS и исходящий HTTPS на сервере.')],
+                   'Сборка загружает модули Go; проверьте DNS и исходящий HTTPS на сервере.'),
+                  ('В логе [AUTO-HEAL] … resync', 'Узел отстал, застрял на одном блоке или его состояние счетов разошлось с узлами основателей', 'Ничего делать не нужно: узел сам заново получает подписанный снимок и продолжает производить блоки. Только если это повторяется каждый час, проверьте диск и RAM.')],
  'footer': 'Aequitas Chain · Chain ID 1926 · aequitas.digital · Вознаграждения валидатора: ежедневно в 20:00 '
            'по берлинскому времени'}
 
@@ -1885,7 +1894,8 @@ ZH = {'title': 'AEQUITAS 节点运营者指南',
                    '将 SELF_URL 设为 http://你的公网IP:8080 并运行 docker compose up -d。'),
                   ('高度远低于网络', '快照导入失败，或端口未开放', '在日志中查找 [BOOTSTRAP] 行；在防火墙/安全组中开放入站 TCP 8080 和 4001。'),
                   ('节点反复重启，"OOMKilled"', '内存不足', '降低 .env 中的 GOMEMLIMIT（8 GB 内存时 3GiB）或给服务器增加内存。'),
-                  ('docker compose：编译失败', '编译期间没有出站网络', '编译需要下载 Go 模块；检查服务器的 DNS 和出站 HTTPS。')],
+                  ('docker compose：编译失败', '编译期间没有出站网络', '编译需要下载 Go 模块；检查服务器的 DNS 和出站 HTTPS。'),
+                  ('日志出现 [AUTO-HEAL] … resync', '节点落后、卡在某个区块，或其账户状态与创始节点不一致', '无需操作：节点会自行重新获取签名快照并继续出块。仅当每小时重复出现时，检查磁盘和内存。')],
  'footer': 'Aequitas Chain · Chain ID 1926 · aequitas.digital · 验证节点奖励：每天柏林时间 20:00'}
 
 AR = {'title': 'دليل مشغّل عقدة AEQUITAS',
@@ -2051,7 +2061,8 @@ AR = {'title': 'دليل مشغّل عقدة AEQUITAS',
                    'خفّض GOMEMLIMIT في .env (\u200f3GiB مع 8 GB) أو أعطِ الخادم ذاكرة أكبر.'),
                   ('docker compose: فشل البناء',
                    'لا إنترنت صادر أثناء البناء',
-                   'يحمّل البناء وحدات Go؛ تحقق من DNS وHTTPS الصادر على الخادم.')],
+                   'يحمّل البناء وحدات Go؛ تحقق من DNS وHTTPS الصادر على الخادم.'),
+                  ('يظهر السجل [AUTO-HEAL] … resync', 'تأخرت العقدة، أو علقت عند كتلة، أو انحرفت حالة حساباتها عن عقد المؤسسين', 'لا شيء مطلوب: تعيد العقدة جلب اللقطة الموقّعة بنفسها وتواصل الإنتاج. فقط إذا تكرر ذلك كل ساعة، تحقق من القرص والذاكرة.')],
  'footer': 'Aequitas Chain · Chain ID 1926 · aequitas.digital · مكافآت المدقّق: يوميًا في 20:00 بتوقيت برلين'}
 
 HI = {'title': 'AEQUITAS नोड ऑपरेटर गाइड',
@@ -2222,7 +2233,8 @@ HI = {'title': 'AEQUITAS नोड ऑपरेटर गाइड',
                    '.env में GOMEMLIMIT घटाएँ (8 GB RAM पर 3GiB) या सर्वर को अधिक मेमोरी दें।'),
                   ('docker compose: बिल्ड विफल',
                    'बिल्ड के दौरान आउटबाउंड इंटरनेट नहीं',
-                   'बिल्ड Go मॉड्यूल डाउनलोड करता है; सर्वर पर DNS और आउटबाउंड HTTPS जाँचें।')],
+                   'बिल्ड Go मॉड्यूल डाउनलोड करता है; सर्वर पर DNS और आउटबाउंड HTTPS जाँचें।'),
+                  ('लॉग में [AUTO-HEAL] … resync', 'नोड पीछे रह गया, एक ब्लॉक पर अटक गया, या उसकी खाता-स्थिति संस्थापक नोड्स से भिन्न हो गई', 'कुछ करने की ज़रूरत नहीं: नोड हस्ताक्षरित स्नैपशॉट खुद दोबारा लेता है और उत्पादन जारी रखता है। केवल यदि यह हर घंटे दोहराए, तो डिस्क और RAM जाँचें।')],
  'footer': 'Aequitas Chain · Chain ID 1926 · aequitas.digital · वैलिडेटर पुरस्कार: प्रतिदिन बर्लिन समय 20:00'}
 
 # ── GENERATE ──────────────────────────────────────────────────────────────────
