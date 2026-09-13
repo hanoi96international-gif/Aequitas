@@ -125,7 +125,8 @@ func TestI18nLocaleKeysMatchEnglish(t *testing.T) {
 // is the only other reader and it goes through data-i18n, so this list stays
 // short — add to it if you introduce another T[curLang]['...'] lookup.
 var i18nDynamicKeys = map[string]bool{
-	"guard-none": true, // guardian address panel, see explorer.js
+	"guard-none":         true, // guardian address panel, see explorer.js
+	"ubi-hero-sub-empty": true, // empty UBI pool hero subtitle, set dynamically in explorer.js
 }
 
 // englishI18nKeys returns the key set of the English block, which the test

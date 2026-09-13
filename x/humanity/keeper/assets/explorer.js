@@ -296,13 +296,15 @@ en:{
   'usp-c3-title':'Accessible to all','usp-c3-desc':'No bank account, no credit card, no government ID, no extra hardware to buy — just the camera already in your Android phone.',
   'usp-c4-title':'Daily UBI forever','usp-c4-desc':'Once registered, you receive a daily share of UBI payouts automatically — every day, no action required.',
   'ubi-hero-title':'UNIVERSAL BASIC INCOME POOL','ubi-hero-sub':'Accumulating — next payout distributed equally to all verified humans in:',
+  'ubi-hero-sub-empty':'Pool empty since last 20:00 payout — fills from swap fees (20% of 0.1%), demurrage after 3 months idle, and wealth-cap overflow.',
+  'ubi-time-bar-lbl':'Time until daily payout (20:00 Berlin)',
   'ubi-hero-desc':'Split equally among all verified humans · paid every 24h · pool resets to zero after each payout · no minimum balance required',
   'ubi-bal-lbl':'current pool balance','ubi-how-fills':'HOW THE UBI POOL FILLS UP',
   'ubi-see-above':'see countdown above','ubi-timer-above':'⏰ countdown displayed above',
   'ubi-src-swap':'20% Swap Fees','ubi-src-swap-d':'Every AEQ↔tUSD swap contributes 20% of its 0.1% fee here. More trading activity = faster pool fill.',
   'ubi-src-dem':'variable Demurrage','ubi-src-dem-d':'Idle AEQ (3+ months inactive) decays at 0.5%/month. The decayed amount enters the 40/30/20/10 split — 20% goes to UBI.',
   'ubi-src-cap':'variable Wealth Cap Overflow','ubi-src-cap-d':'Wallets exceeding 25× the fair share (25,000 AEQ) have the excess confiscated instantly. 20% flows to UBI immediately.',
-  'ubi-pool-desc':'20% of swap fees + demurrage + wealth cap overflow → divided equally among all verified humans every 24 hours. Even with zero trading, demurrage and wealth cap ensure the pool always fills.',
+  'ubi-pool-desc':'20% of swap fees + demurrage (after 3-month idle grace) + wealth-cap overflow → divided equally among all verified humans every 24 hours. Daytime fill needs swap activity; demurrage only starts after 3 months idle — the pool does not always fill without trading.',
   'pool-t-timer':'Accumulates — no timer',
   'pools4-header':'ALL FOUR REDISTRIBUTION POOLS',
   'swap-title':'🔄 Swap AEQ ↔ tUSD',
@@ -647,6 +649,8 @@ de:{
   'swap-validators':'Validatoren (40%)','swap-lps':'Liquiditätsanbieter (30%)','swap-ubi':'UBI-Pool (20%)','swap-treasury':'Schatzkammer (10%)',
   'ubi-hero-title':'UNIVERSELLES GRUNDEINKOMMEN — UBI-POOL',
   'ubi-hero-sub':'Akkumuliert — nächste Ausschüttung gleichmäßig an alle verifizierten Menschen in:',
+  'ubi-hero-sub-empty':'Pool leer seit der letzten 20:00-Ausschüttung — füllt sich aus Swap-Gebühren (20% von 0,1%), Demurrage nach 3 Monaten Inaktivität und Vermögensobergrenze-Überschuss.',
+  'ubi-time-bar-lbl':'Zeit bis zur täglichen Auszahlung (20:00 Berlin)',
   'ubi-bal-lbl':'aktuelles Pool-Guthaben',
   'ubi-hero-desc':'Gleichmäßig unter allen verifizierten Menschen aufgeteilt · alle 24h ausgezahlt · Pool setzt auf null zurück · kein Mindestguthaben nötig',
   'ubi-how-fills':'Wie der UBI-Pool sich füllt',
@@ -656,7 +660,7 @@ de:{
   'pools4-header':'Alle vier Umverteilungs-Pools',
   'vel-pool-desc':'Node-Betreiber die Blöcke produzieren, ZK-Registrierungen validieren und den BlockDAG sichern. Täglich ausgezahlt proportional zur Blockproduktion.',
   'liq-pool-desc':'Anbieter von AEQ/tUSD-Liquidität erhalten 30% aller Gebühren proportional zu ihrem LP-Anteil. Tiefere Liquidität = geringere Preisauswirkung für alle Nutzer.',
-  'ubi-pool-desc':'20% der Swap-Gebühren + Demurrage + Vermögensobergrenze-Überschuss → gleichmäßig unter allen verifizierten Menschen alle 24 Stunden. Auch ohne Trading füllt sich der Pool durch Demurrage und Vermögensobergrenze.',
+  'ubi-pool-desc':'20% der Swap-Gebühren + Demurrage (nach 3 Monaten Inaktivität) + Vermögensobergrenze-Überschuss → gleichmäßig unter allen verifizierten Menschen alle 24 Stunden. Tagsüber braucht es Swap-Aktivität; Demurrage erst nach 3 Monaten Ruhe — der Pool füllt sich nicht immer ohne Trading.',
   'treasury-desc':'Protokollentwicklung, Infrastruktur, Sicherheitsprüfungen und zukünftige Upgrades. Vollständige On-Chain-Transparenz.',
   'ubi-see-above':'siehe Countdown oben','ubi-timer-above':'⏰ Countdown oben angezeigt','pool-t-timer':'Akkumuliert — kein Timer',
   'usp-headline':'Zum ersten Mal in der Geschichte — alle starten gleich',
@@ -951,6 +955,8 @@ es:{
   'swap-validators':'Validadores (40%)','swap-lps':'Proveedores de Liquidez (30%)','swap-ubi':'Pool UBI (20%)','swap-treasury':'Tesorería (10%)',
   'ubi-hero-title':'RENTA BÁSICA UNIVERSAL — POOL UBI',
   'ubi-hero-sub':'Acumulando — próximo pago distribuido por igual a todos los humanos verificados en:',
+  'ubi-hero-sub-empty':'Pool empty since last 20:00 payout — fills from swap fees (20% of 0.1%), demurrage after 3 months idle, and wealth-cap overflow.',
+  'ubi-time-bar-lbl':'Time until daily payout (20:00 Berlin)',
   'ubi-bal-lbl':'saldo actual del pool','ubi-hero-desc':'Dividido por igual entre todos · pagado cada 24h · el pool se reinicia a cero · sin saldo mínimo requerido',
   'ubi-how-fills':'Cómo se llena el Pool UBI',
   'ubi-src-swap':'Comisiones de Swap','ubi-src-swap-d':'Cada swap AEQ↔tUSD contribuye el 20% de su comisión de 0,1%. Más actividad = llenado más rápido.',
@@ -1313,6 +1319,8 @@ ru:{
   'swap-validators':'Валидаторы (40%)','swap-lps':'Провайдеры Ликвидности (30%)','swap-ubi':'Пул UBI (20%)','swap-treasury':'Казначейство (10%)',
   'ubi-hero-title':'УНИВЕРСАЛЬНЫЙ БАЗОВЫЙ ДОХОД — ПУЛ UBI',
   'ubi-hero-sub':'Накапливается — следующая выплата поровну всем верифицированным людям через:',
+  'ubi-hero-sub-empty':'Pool empty since last 20:00 payout — fills from swap fees (20% of 0.1%), demurrage after 3 months idle, and wealth-cap overflow.',
+  'ubi-time-bar-lbl':'Time until daily payout (20:00 Berlin)',
   'ubi-bal-lbl':'текущий баланс пула','ubi-hero-desc':'Делится поровну между всеми · выплачивается каждые 24ч · пул обнуляется после выплаты · минимальный баланс не требуется',
   'ubi-how-fills':'Как заполняется Пул UBI',
   'ubi-src-swap':'Комиссии Свопов','ubi-src-swap-d':'Каждый своп AEQ↔tUSD вносит 20% своей комиссии 0,1%. Больше торговли = быстрее заполнение.',
@@ -1645,6 +1653,8 @@ zh:{
   'swap-validators':'验证者 (40%)','swap-lps':'流动性提供者 (30%)','swap-ubi':'UBI 池 (20%)','swap-treasury':'国库 (10%)',
   'ubi-hero-title':'普遍基本收入 — UBI 池',
   'ubi-hero-sub':'累积中 — 下次平等分配给所有验证人类：',
+  'ubi-hero-sub-empty':'Pool empty since last 20:00 payout — fills from swap fees (20% of 0.1%), demurrage after 3 months idle, and wealth-cap overflow.',
+  'ubi-time-bar-lbl':'Time until daily payout (20:00 Berlin)',
   'ubi-bal-lbl':'当前池余额','ubi-hero-desc':'在所有验证人类中平等分配 · 每24小时支付 · 支付后池归零 · 无最低余额要求',
   'ubi-how-fills':'UBI 池如何填充',
   'ubi-src-swap':'兑换手续费','ubi-src-swap-d':'每次AEQ↔tUSD兑换贡献其0.1%手续费的20%。更多交易 = 更快填充。',
@@ -1969,6 +1979,8 @@ id:{
   'swap-validators':'Validator (40%)','swap-lps':'Penyedia Likuiditas (30%)','swap-ubi':'Pool UBI (20%)','swap-treasury':'Perbendaharaan (10%)',
   'ubi-hero-title':'PENDAPATAN DASAR UNIVERSAL — POOL UBI',
   'ubi-hero-sub':'Mengumpulkan — pembayaran berikutnya dibagikan merata ke semua manusia terverifikasi dalam:',
+  'ubi-hero-sub-empty':'Pool empty since last 20:00 payout — fills from swap fees (20% of 0.1%), demurrage after 3 months idle, and wealth-cap overflow.',
+  'ubi-time-bar-lbl':'Time until daily payout (20:00 Berlin)',
   'ubi-bal-lbl':'saldo pool saat ini','ubi-hero-desc':'Dibagi merata di antara semua · dibayar setiap 24j · pool direset ke nol · tidak perlu saldo minimum',
   'ubi-how-fills':'Bagaimana Pool UBI terisi',
   'ubi-src-swap':'Biaya Swap','ubi-src-swap-d':'Setiap swap AEQ↔tUSD berkontribusi 20% dari biaya 0,1%-nya. Lebih banyak trading = pengisian lebih cepat.',
@@ -2294,6 +2306,8 @@ it:{
   'swap-validators':'Validatori (40%)','swap-lps':'Fornitori di Liquidità (30%)','swap-ubi':'Pool UBI (20%)','swap-treasury':'Tesoreria (10%)',
   'ubi-hero-title':'REDDITO UNIVERSALE DI BASE — POOL UBI',
   'ubi-hero-sub':'Accumulando — prossimo pagamento distribuito equamente a tutti gli umani verificati in:',
+  'ubi-hero-sub-empty':'Pool empty since last 20:00 payout — fills from swap fees (20% of 0.1%), demurrage after 3 months idle, and wealth-cap overflow.',
+  'ubi-time-bar-lbl':'Time until daily payout (20:00 Berlin)',
   'ubi-bal-lbl':'saldo attuale del pool','ubi-hero-desc':'Diviso equamente tra tutti · pagato ogni 24h · il pool si azzera dopo ogni pagamento · nessun saldo minimo richiesto',
   'ubi-how-fills':'Come si riempie il Pool UBI',
   'ubi-src-swap':'Commissioni Swap','ubi-src-swap-d':'Ogni swap AEQ↔tUSD contribuisce il 20% della sua commissione dello 0,1%. Più trading = riempimento più rapido.',
@@ -2626,6 +2640,8 @@ tr:{
   'swap-validators':'Doğrulayıcılar (%40)','swap-lps':'Likidite Sağlayıcıları (%30)','swap-ubi':'UBI Havuzu (%20)','swap-treasury':'Hazine (%10)',
   'ubi-hero-title':'EVRENSEL TEMEL GELİR — UBI HAVUZU',
   'ubi-hero-sub':'Biriktirilmekte — bir sonraki ödeme tüm doğrulanmış insanlara eşit olarak dağıtılıyor:',
+  'ubi-hero-sub-empty':'Pool empty since last 20:00 payout — fills from swap fees (20% of 0.1%), demurrage after 3 months idle, and wealth-cap overflow.',
+  'ubi-time-bar-lbl':'Time until daily payout (20:00 Berlin)',
   'ubi-bal-lbl':'mevcut havuz bakiyesi','ubi-hero-desc':'Tümüne eşit bölünür · her 24 saatte ödenir · havuz sıfırlanır · minimum bakiye gerekmez',
   'ubi-how-fills':'UBI Havuzu Nasıl Dolar',
   'ubi-src-swap':'Takas Ücretleri','ubi-src-swap-d':'Her AEQ↔tUSD takası, %0,1 ücretinin %20\'sini katkıda bulunur. Daha fazla işlem = daha hızlı dolma.',
@@ -2956,6 +2972,8 @@ fr:{
   'swap-validators':'Validateurs (40%)','swap-lps':'Fournisseurs de Liquidité (30%)','swap-ubi':'Pool UBI (20%)','swap-treasury':'Trésorerie (10%)',
   'ubi-hero-title':'REVENU DE BASE UNIVERSEL — POOL UBI',
   'ubi-hero-sub':'Accumulation — prochain paiement distribué à tous les humains vérifiés dans :',
+  'ubi-hero-sub-empty':'Pool empty since last 20:00 payout — fills from swap fees (20% of 0.1%), demurrage after 3 months idle, and wealth-cap overflow.',
+  'ubi-time-bar-lbl':'Time until daily payout (20:00 Berlin)',
   'ubi-bal-lbl':'solde actuel du pool','ubi-hero-desc':'Divisé également · payé toutes les 24h · pool remis à zéro · solde minimum non requis',
   'ubi-how-fills':'Comment le Pool UBI se remplit',
   'ubi-src-swap':'Frais de Swap','ubi-src-swap-d':'Chaque swap AEQ↔tUSD contribue 20% de ses frais. Plus d\'échanges = remplissage plus rapide.',
@@ -3286,6 +3304,8 @@ pt:{
   'swap-validators':'Validadores (40%)','swap-lps':'Provedores de Liquidez (30%)','swap-ubi':'Pool UBI (20%)','swap-treasury':'Tesouro (10%)',
   'ubi-hero-title':'RENDA BÁSICA UNIVERSAL — POOL UBI',
   'ubi-hero-sub':'Acumulando — próximo pagamento distribuído a todos os humanos verificados em:',
+  'ubi-hero-sub-empty':'Pool empty since last 20:00 payout — fills from swap fees (20% of 0.1%), demurrage after 3 months idle, and wealth-cap overflow.',
+  'ubi-time-bar-lbl':'Time until daily payout (20:00 Berlin)',
   'ubi-bal-lbl':'saldo atual do pool','ubi-hero-desc':'Dividido igualmente · pago a cada 24h · pool zerado · saldo mínimo não necessário',
   'ubi-how-fills':'Como o Pool UBI se enche',
   'ubi-src-swap':'Taxas de Swap','ubi-src-swap-d':'Cada swap AEQ↔tUSD contribui 20% de suas taxas. Mais trading = enchimento mais rápido.',
@@ -3614,6 +3634,8 @@ ar:{
   'swap-validators':'المدققون (40%)','swap-lps':'مزودو السيولة (30%)','swap-ubi':'مجمع UBI (20%)','swap-treasury':'الخزينة (10%)',
   'ubi-hero-title':'الدخل الأساسي الشامل — مجمع UBI',
   'ubi-hero-sub':'يتراكم — الدفعة التالية توزَّع بالتساوي على جميع البشر الموثقين خلال:',
+  'ubi-hero-sub-empty':'Pool empty since last 20:00 payout — fills from swap fees (20% of 0.1%), demurrage after 3 months idle, and wealth-cap overflow.',
+  'ubi-time-bar-lbl':'Time until daily payout (20:00 Berlin)',
   'ubi-bal-lbl':'رصيد المجمع الحالي','ubi-hero-desc':'مقسَّم بالتساوي · يُدفع كل 24 ساعة · يُصفَّر المجمع · لا يشترط رصيد أدنى',
   'ubi-how-fills':'كيف يمتلئ مجمع UBI',
   'ubi-src-swap':'رسوم المبادلة','ubi-src-swap-d':'كل مبادلة AEQ↔tUSD تساهم بـ 20% من رسومها. المزيد من التداول = امتلاء أسرع.',
@@ -3942,6 +3964,8 @@ hi:{
   'swap-validators':'वैलिडेटर (40%)','swap-lps':'लिक्विडिटी प्रदाता (30%)','swap-ubi':'UBI पूल (20%)','swap-treasury':'ट्रेजरी (10%)',
   'ubi-hero-title':'यूनिवर्सल बेसिक इनकम — UBI पूल',
   'ubi-hero-sub':'जमा हो रहा है — अगला भुगतान सभी सत्यापित मनुष्यों को समान रूप से वितरित:',
+  'ubi-hero-sub-empty':'Pool empty since last 20:00 payout — fills from swap fees (20% of 0.1%), demurrage after 3 months idle, and wealth-cap overflow.',
+  'ubi-time-bar-lbl':'Time until daily payout (20:00 Berlin)',
   'ubi-bal-lbl':'वर्तमान पूल बैलेंस','ubi-hero-desc':'समान रूप से विभाजित · हर 24 घंटे भुगतान · पूल शून्य होता है · न्यूनतम बैलेंस की जरूरत नहीं',
   'ubi-how-fills':'UBI पूल कैसे भरता है',
   'ubi-src-swap':'स्वैप शुल्क','ubi-src-swap-d':'प्रत्येक AEQ↔tUSD स्वैप अपने 0.1% शुल्क का 20% योगदान देता है।',
@@ -4539,6 +4563,17 @@ async function loadStatus() {
     const fillPct = Math.min(100, Math.max(0, (86400 - fillSecs) / 86400 * 100));
     const fillBar = document.getElementById('ubi-fill-bar');
     if (fillBar) fillBar.style.width = fillPct.toFixed(1) + '%';
+    // Honesty: bar is time-until-20:00-Berlin, not pool fill. Empty pool after
+    // daily payout should not read as "Accumulating" under a half-full bar.
+    const heroSub = document.getElementById('ubi-hero-sub');
+    if (heroSub) {
+      const empty = parseFloat(d.pool_ubi) === 0;
+      const key = empty ? 'ubi-hero-sub-empty' : 'ubi-hero-sub';
+      heroSub.setAttribute('data-i18n', key);
+      const dict = (typeof T !== 'undefined' && T[curLang]) ? T[curLang] : (T && T.en);
+      if (dict && dict[key]) heroSub.innerHTML = dict[key];
+      else if (T && T.en && T.en[key]) heroSub.innerHTML = T.en[key];
+    }
 
     if (d.index !== undefined) {
       document.getElementById('idx-bar').style.width = Math.min(d.index, 100) + '%';
