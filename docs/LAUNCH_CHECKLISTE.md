@@ -1,6 +1,6 @@
 # Launch-Checkliste
 
-**Stand 13.09.2026, 23:00.** Wache: GRÜN — prüft seit heute auch, dass das Tor zu ist (`required`, Quorum ≥ 2) und beide Coordinatoren antworten. App v1.7.0 veröffentlicht und ausgeliefert.
+**Stand 13.09.2026, 23:50.** Wache: GRÜN — prüft seit heute auch, dass das Tor zu ist (`required`, Quorum ≥ 2) und beide Coordinatoren antworten. App v1.7.0 veröffentlicht und ausgeliefert.
 
 > **Launch-Linie seit dem 13.09. nachmittags (deine Entscheidung: „Phase 1 muss umgesetzt werden — 1 Mensch,
 > 1 Registrierung"): Phase 1 = die Gesichtsprüfung ist das Tor.** `BIO_ATTESTATION_MODE=required` wieder auf beiden
@@ -32,7 +32,7 @@ Anleitung; die Betreiber erfahren, wenn etwas kaputtgeht.
 
 | # | Punkt | Fertig heißt | Stand | Wer |
 |---|---|---|---|---|
-| 7 | Neuer Validator nach Anleitung | Fremde Box folgt der Kette und produziert nach Bestätigung | ✅ Weg dreimal auf einem Runner geprüft (Snapshot 21 s, an der Spitze, 0 Fremdblöcke, 145 MB). Echter Beitritt mit registriertem Wallet fehlt | **du:** ein VPS, `docs/VALIDATOR_EINRICHTEN.md` |
+| 7 | Neuer Validator nach Anleitung | Fremde Box folgt der Kette und produziert nach Bestätigung; heilt sich selbst | ✅ Weg viermal auf einem Runner geprüft (zuletzt 13.09. 23:15 gegen den Phase-1-Stand: Spitze erreicht, 0 eigene Blöcke). **Selbstheilung:** Rückstand, Stillstand, hängender Block, Totmann **und seit 13.09. belegte Kontostand-Abweichung** lösen beim Laien-Validator den Resync vom signierten Snapshot aus (`AEQUITAS_DIVERGENZ_AUTORESYNC=1` in der Compose-Vorlage; auf C1/C2 aus). `/api/wache` überspringt dort den fehlenden Proof-Server. Guides (12 PDFs) erklären `[AUTO-HEAL]`. Echter Beitritt mit registriertem Wallet fehlt | **du:** ein VPS, `docs/VALIDATOR_EINRICHTEN.md` |
 | 8 | Backup | täglich grün, Restore geprüft | ✅ seit 12.09. (Zustand ohne Blöcke, 31–61 MB) | — |
 | 9 | Coordinator hängt an Railway (USA) | App zeigt auf einen Contabo-Coordinator; App-Repo auf der Phase-1-Linie; v1.7.0 auf der Website | ✅ 13.09. 22:41: **app-v1.7.0 veröffentlicht** (Release, Notiz nennt den echten Signierer) und auf beiden Boxen ausgeliefert (`host-apk-locally.yml`); app-v0.3.1-phase0 als *zurückgezogen* markiert (Pre-Release + Hinweis). Railway wird nur noch von v1.6.0-Installationen genutzt — Wache meldet ihn weiter, bis die letzte davon aktualisiert hat | — |
 | 10 | Node-Guide in allen 12 Sprachen | keine Railway-Anleitung mehr erreichbar | ✅ alle zwölf am 12.09. neu erzeugt (Docker Compose), 0× „Railway" | — |
