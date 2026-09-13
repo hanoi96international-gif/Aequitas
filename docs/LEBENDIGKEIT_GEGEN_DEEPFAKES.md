@@ -99,14 +99,18 @@ DSGVO-Bewertung (weiteres Merkmal nach Art. 9).
 
 | WP | Inhalt | Repo | Aufwand |
 |---|---|---|---|
-| 1 | Lebendigkeits-Score + Klasse im Coordinator, **Schattenmodus** (rechnen, loggen, in `/inventory` zählen, nichts ändern) | biometric-beta | 1 Tag |
+| 1 | Lebendigkeits-Score + Klasse im Coordinator, **Schattenmodus** (rechnen, loggen, zählen, nichts ändern) — **✅ 13.09.2026** (`coordinator/app/lebendigkeit.py`, live auf proof1+proof2: `/health → lebendigkeit` mit Klassenzählern + letzten 50 Bewertungen ohne Kennung; `RegisterResponse.lebendigkeit` informativ, `verbindlich: false`). Erste Schwellen: grün L ≥ 0,70 ∧ R < 0,30, rot L < 0,40 | biometric-beta | erledigt |
 | 2 | Gestaffelter Zuschuss + `liveness_renewal` auf der Kette, mit Tests | aequitas-chain | 2 Tage |
 | 3 | Zweite Lebendigkeitsprüfung in der App (Tag 7), Anzeige der Staffel, 12 Sprachen | aequitas-app | 1–2 Tage |
 | 4 | Schwellen aus echten Aufnahmen setzen, dann Klassen scharf schalten | biometric-beta | nach ≥ 20 echten Registrierungen |
 
 Reihenfolge: 1 → 2 → 3 → 4. Nichts davon geht scharf, bevor der
 Zwei-Personen-Test (`DOPPELREGISTRIERUNG_TEST.md`) die ersten Messwerte für
-alle Signale geliefert hat — er ist zugleich der Messlauf für WP 1.
+alle Signale geliefert hat — er ist zugleich der Messlauf für WP 1: nach jeder
+echten Registrierung steht die Bewertung unter
+`https://proof1.aequitas.digital/coordinator/health` → `lebendigkeit.letzte`
+(L, R, Klasse, je Signal der gemittelte Wert). Erwartung für echte Menschen
+bei gutem Licht: grün. Alles andere ist ein Kalibrierpunkt, kein Ausschluss.
 
 ## Was bewusst nicht kommt
 
