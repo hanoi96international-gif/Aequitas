@@ -120,8 +120,8 @@ jobs:
           port: 22
           fingerprint: ${{ matrix.fingerprint }}
           script_stop: true
-          timeout: 1800s
-          command_timeout: 1800s
+          timeout: 600s
+          command_timeout: 600s
           script: |
             set -euo pipefail
 
@@ -167,6 +167,14 @@ jobs:
             SIZE=$(stat -c %s "$DUMP")
             if [ "$SIZE" -lt 100000 ]; then
               echo "Dump is only ${SIZE} bytes — that is not a whole ledger. Failing."
+              exit 1
+            fi
+            # Regression guard: state-only dumps are <<200MB. A multi-GB file means
+            # chain_blocks (or similar) leaked back into the dump — the failure mode
+            # that burned the 06.–12.09.2026 cron runs on the 30-minute SSH timeout.
+            MAX_BYTES=$((500 * 1024 * 1024))
+            if [ "$SIZE" -gt "$MAX_BYTES" ]; then
+              echo "Dump is ${SIZE} bytes (>500MB) — looks like a full chain dump (exclude missing?). Failing."
               exit 1
             fi
 
@@ -241,6 +249,18 @@ jobs:
             fi
             echo "✓ dump restores cleanly and contains a real ledger"
 
+            DUMP_MB=$(( (SIZE + 1024*1024 - 1) / (1024*1024) ))
+            printf '%s\n' \
+              "box=${{ matrix.box }}" \
+              "humans=${HUMANS}" \
+              "accounts=${ACCOUNTS}" \
+              "nullifiers=${NULLS}" \
+              "dump_bytes=${SIZE}" \
+              "dump_mb=${DUMP_MB}" \
+              > /root/backup-latest.summary
+            echo "=== backup summary ==="
+            cat /root/backup-latest.summary
+
             echo "=== retention on the box: keep the last 7, drop older ==="
             ls -1t "$OUT"/aequitas-*.dump 2>/dev/null | tail -n +8 | xargs -r rm -f
             ls -lh "$OUT"
@@ -260,6 +280,43 @@ jobs:
           fingerprint: ${{ matrix.fingerprint }}
           source: /root/backup-latest.dump
           target: ${{ matrix.box }}-ledger.dump
+
+      - name: Fetch backup summary
+        if: success() && steps.gate.outputs.run == 'true'
+        uses: nicklasfrahm/scp-action@main
+        with:
+          direction: download
+          host: ${{ matrix.host }}
+          username: root
+          key: ${{ secrets[matrix.secret_name] }}
+          fingerprint: ${{ matrix.fingerprint }}
+          source: /root/backup-latest.summary
+          target: ${{ matrix.box }}-backup.summary
+          timeout: 30s
+          action_timeout: 2m
+
+      - name: Job summary
+        if: success() && steps.gate.outputs.run == 'true'
+        run: |
+          set -euo pipefail
+          {
+            echo "### Ledger backup \`${{ matrix.box }}\`"
+            echo ""
+            if [ -f "${{ matrix.box }}-backup.summary" ]; then
+              . "./${{ matrix.box }}-backup.summary"
+              echo "| Field | Value |"
+              echo "| --- | --- |"
+              echo "| humans | ${humans:-?} |"
+              echo "| accounts | ${accounts:-?} |"
+              echo "| nullifiers | ${nullifiers:-?} |"
+              echo "| dump_mb | ${dump_mb:-?} |"
+              echo "| dump_bytes | ${dump_bytes:-?} |"
+            else
+              echo "_No summary file from box._"
+            fi
+            echo ""
+            echo "SSH \`command_timeout\`=600s; dump size hard-fail if >500MB."
+          } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Upload as an artifact (the second location)
         if: always() && steps.gate.outputs.run == 'true'
