@@ -602,6 +602,7 @@ func (a *APIServer) registerOnV7(evmRPC *EVMRPCServer, wallet string, req Regist
 				Type:       "register_human",
 				Wallet:     wallet,
 				TxHash:     crypto.Keccak256Hash(append(calldata, claimedHuman.Bytes()...)).Hex(),
+				GrantClass: grantKlasseAusHerkunft(effectiveNullifier),
 				Nullifier:  effectiveNullifier,
 				Commitment: mirrorCommitment,
 				ProofA:     bigIntsToDecimalStrings(mirrorPAslice),
@@ -704,6 +705,7 @@ func (a *APIServer) registerOnV7(evmRPC *EVMRPCServer, wallet string, req Regist
 	pendingRegTx := Transaction{
 		Type:       "register_human",
 		Wallet:     wallet,
+		GrantClass: grantKlasseAusHerkunft(nullifierToStore),
 		Nullifier:  nullifierToStore,
 		Commitment: commitment,
 		ProofA:     bigIntsToDecimalStrings(pAslice),

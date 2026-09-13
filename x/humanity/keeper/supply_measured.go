@@ -87,7 +87,10 @@ func (cs *ChainState) MeasuredTotalAEQ() (total float64, ok bool, reason string)
 	}
 
 	var accounts, reserve float64
-	if err := cs.db.QueryRow(`SELECT COALESCE(sum(balance), 0) FROM chain_accounts`).Scan(&accounts); err != nil {
+	// WP 2: der noch nicht freigegebene Staffelrest ist geschoepftes Geld ohne
+	// Guthaben (grant_staffel.go) -- er zaehlt zur Geldmenge, sonst saehe eine
+	// gestaffelte Registrierung wie eine Luecke aus.
+	if err := cs.db.QueryRow(`SELECT COALESCE(sum(balance), 0) + COALESCE(sum(grant_staged_rest), 0) FROM chain_accounts`).Scan(&accounts); err != nil {
 		// Field-wise, never a whole-struct assignment — see the var block above.
 		measuredSupplyCache.value = 0
 		measuredSupplyCache.ok = false
@@ -190,7 +193,7 @@ func (cs *ChainState) supplyBreakdown() (map[string]string, error) {
 	// exactly like minted money while nothing was minted at all. Comparing it
 	// against COUNT(*) is one query and rules that out — or finds it.
 	if err := cs.db.QueryRow(
-		`SELECT COALESCE(sum(balance),0), count(*) FROM chain_accounts WHERE is_human = true`,
+		`SELECT COALESCE(sum(balance),0) + COALESCE(sum(grant_staged_rest),0), count(*) FROM chain_accounts WHERE is_human = true`,
 	).Scan(&humans, &humanAccounts); err != nil {
 		return nil, err
 	}

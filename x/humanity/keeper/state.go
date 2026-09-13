@@ -73,6 +73,14 @@ type AccountState struct {
 	// tUSD test faucet. Unlike the old TUsdBalance>0 check, this flag is never
 	// reset by spending tUSD, so a wallet cannot re-claim by draining its balance.
 	FaucetClaimed bool  `json:"faucet_claimed"`
+	// Gestaffelter Zuschuss (grant_staffel.go). Alle drei Felder sind
+	// Konsenszustand: im accountLeaf (nur wenn ungleich null, damit bestehende
+	// Konten ihren Blattwert behalten), in chain_accounts, im Snapshot
+	// (omitempty aus demselben Grund). Vor stagedGrantActivationUnix bleiben
+	// sie ueberall null.
+	GrantStagedRest   Decimal `json:"grant_staged_rest,omitempty"`   // noch nicht freigegebener Teil des Zuschusses
+	GrantStagedUntil  int64   `json:"grant_staged_until,omitempty"`  // Ende des Staffelfensters (informativ)
+	LivenessRenewedAt int64   `json:"liveness_renewed_at,omitempty"` // Blockzeit der zweiten Lebendigkeitspruefung
 	Version       int64 `json:"-"` // optimistic lock version, not serialized
 	// WALSeq is the highest WAL sequence number (see transfer_wal.go /
 	// SCALING_ARCHITECTURE.md Phase 7) whose effect this account's Balance
@@ -919,6 +927,10 @@ is_human BOOLEAN NOT NULL DEFAULT false
 	dbExec(`ALTER TABLE chain_accounts ADD COLUMN IF NOT EXISTS last_activity_at BIGINT NOT NULL DEFAULT 0`)
 	dbExec(`ALTER TABLE chain_accounts ADD COLUMN IF NOT EXISTS demurrage_14_day_warning_shown BOOLEAN NOT NULL DEFAULT false`)
 	dbExec(`ALTER TABLE chain_accounts ADD COLUMN IF NOT EXISTS faucet_claimed BOOLEAN NOT NULL DEFAULT false`)
+	// WP 2 (grant_staffel.go): drei Konsensfelder, ueberall null bis zur Aktivierung.
+	dbExec(`ALTER TABLE chain_accounts ADD COLUMN IF NOT EXISTS grant_staged_rest DOUBLE PRECISION NOT NULL DEFAULT 0`)
+	dbExec(`ALTER TABLE chain_accounts ADD COLUMN IF NOT EXISTS grant_staged_until BIGINT NOT NULL DEFAULT 0`)
+	dbExec(`ALTER TABLE chain_accounts ADD COLUMN IF NOT EXISTS liveness_renewed_at BIGINT NOT NULL DEFAULT 0`)
 	dbExec(`ALTER TABLE chain_accounts ADD COLUMN IF NOT EXISTS version BIGINT NOT NULL DEFAULT 0`)
 	// wal_seq (SCALING_ARCHITECTURE.md Phase 7, transfer_wal.go): the highest
 	// WAL sequence number this row's balance reflects. Only ever written by
@@ -1511,7 +1523,7 @@ func (cs *ChainState) clearRegistrationsFromDB() {
 		// current, accurate picture of what's write-only vs. actively
 		// enforced.
 		`DELETE FROM bio_hashes`,
-		`UPDATE chain_accounts SET is_human = false, balance = 0, tusd_balance = 0, lp_shares = 0, last_activity_at = 0, faucet_claimed = false`,
+		`UPDATE chain_accounts SET is_human = false, balance = 0, tusd_balance = 0, lp_shares = 0, last_activity_at = 0, faucet_claimed = false, grant_staged_rest = 0, grant_staged_until = 0, liveness_renewed_at = 0`,
 		`DELETE FROM evm_storage WHERE lower(address) = '` + v7Addr + `'`,
 		`DELETE FROM evm_nonces`,
 		`DELETE FROM evm_tx_receipts`,
@@ -1935,7 +1947,7 @@ func (cs *ChainState) ensureAccountLoadedCtx(ctx context.Context, addr string) {
 		return
 	}
 	acc := &AccountState{Address: addr}
-	var bal, tusd, lp float64
+	var bal, tusd, lp, staffelRest float64
 	var version int64
 	// FIX (deadlock, concurrency audit 2026-07-21): this used to always
 	// query via cs.db (the shared connection pool) even when called from
@@ -1991,11 +2003,12 @@ func (cs *ChainState) ensureAccountLoadedCtx(ctx context.Context, addr string) {
 		`SELECT balance, is_human, tusd_balance, lp_shares,
 		        COALESCE(last_activity_at, 0), COALESCE(version, 1),
 		        COALESCE(faucet_claimed, false),
-		        COALESCE(demurrage_14_day_warning_shown, false)
+		        COALESCE(demurrage_14_day_warning_shown, false),
+		        COALESCE(grant_staged_rest, 0), COALESCE(grant_staged_until, 0), COALESCE(liveness_renewed_at, 0)
 		 FROM chain_accounts WHERE lower(address) = $1`,
 		addr,
 	).Scan(&bal, &acc.IsHuman, &tusd, &lp, &acc.LastActivityAt, &version,
-		&acc.FaucetClaimed, &acc.Demurrage14DayWarningShown)
+		&acc.FaucetClaimed, &acc.Demurrage14DayWarningShown, &staffelRest, &acc.GrantStagedUntil, &acc.LivenessRenewedAt)
 	if err != nil {
 		// FIX (fresh Monster Audit 2026-07-12, P2): sql.ErrNoRows (genuinely
 		// never registered) and a real transient DB error (connection drop,
@@ -2022,6 +2035,7 @@ func (cs *ChainState) ensureAccountLoadedCtx(ctx context.Context, addr string) {
 	acc.Balance = NewDecimal(bal)
 	acc.TUsdBalance = NewDecimal(tusd)
 	acc.LPShares = NewDecimal(lp)
+	acc.GrantStagedRest = NewDecimal(staffelRest)
 	if version == 0 {
 		version = 1
 	}
@@ -2078,7 +2092,8 @@ func (cs *ChainState) ensureAccountsLoadedCtx(ctx context.Context, addrs []strin
 		`SELECT address, balance, is_human, tusd_balance, lp_shares,
 		        COALESCE(last_activity_at, 0), COALESCE(version, 1),
 		        COALESCE(faucet_claimed, false),
-		        COALESCE(demurrage_14_day_warning_shown, false)
+		        COALESCE(demurrage_14_day_warning_shown, false),
+		        COALESCE(grant_staged_rest, 0), COALESCE(grant_staged_until, 0), COALESCE(liveness_renewed_at, 0)
 		 FROM chain_accounts WHERE lower(address) = ANY($1)`,
 		pq.Array(missing),
 	)
@@ -2098,10 +2113,10 @@ func (cs *ChainState) ensureAccountsLoadedCtx(ctx context.Context, addrs []strin
 	for rows.Next() {
 		var addr string
 		acc := &AccountState{}
-		var bal, tusd, lp float64
+		var bal, tusd, lp, staffelRest float64
 		var version int64
 		if err := rows.Scan(&addr, &bal, &acc.IsHuman, &tusd, &lp, &acc.LastActivityAt, &version,
-			&acc.FaucetClaimed, &acc.Demurrage14DayWarningShown); err != nil {
+			&acc.FaucetClaimed, &acc.Demurrage14DayWarningShown, &staffelRest, &acc.GrantStagedUntil, &acc.LivenessRenewedAt); err != nil {
 			fmt.Printf("[STATE] ⚠ ensureAccountsLoaded: row scan failed mid-batch — this address will be treated as cold/fresh, which is WRONG if it already has a balance: %v\n", err)
 			continue
 		}
@@ -2109,6 +2124,7 @@ func (cs *ChainState) ensureAccountsLoadedCtx(ctx context.Context, addrs []strin
 		acc.Balance = NewDecimal(bal)
 		acc.TUsdBalance = NewDecimal(tusd)
 		acc.LPShares = NewDecimal(lp)
+		acc.GrantStagedRest = NewDecimal(staffelRest)
 		if version == 0 {
 			version = 1
 		}
@@ -2138,7 +2154,7 @@ func (cs *ChainState) loadFromDB() {
 	// delay absorbs the transient case for free; if it still fails,
 	// accountsLoadFailed tells main.go this node's "fresh or not" status is
 	// UNKNOWN, not "fresh", so it can refuse to bootstrap rather than guess.
-	const baseQuery = "SELECT address, balance, is_human, tusd_balance, lp_shares, last_activity_at, demurrage_14_day_warning_shown, faucet_claimed, COALESCE(version,0) FROM chain_accounts"
+	const baseQuery = "SELECT address, balance, is_human, tusd_balance, lp_shares, last_activity_at, demurrage_14_day_warning_shown, faucet_claimed, COALESCE(version,0), COALESCE(grant_staged_rest,0), COALESCE(grant_staged_until,0), COALESCE(liveness_renewed_at,0) FROM chain_accounts"
 	var totalAccounts int64
 	cs.db.QueryRow(`SELECT COUNT(*) FROM chain_accounts`).Scan(&totalAccounts)
 	query := baseQuery
@@ -2163,14 +2179,15 @@ func (cs *ChainState) loadFromDB() {
 	mergedCount := 0
 	for rows.Next() {
 		acc := &AccountState{}
-		var bal, tusd, lp float64
-		if err := rows.Scan(&acc.Address, &bal, &acc.IsHuman, &tusd, &lp, &acc.LastActivityAt, &acc.Demurrage14DayWarningShown, &acc.FaucetClaimed, &acc.Version); err != nil {
+		var bal, tusd, lp, staffelRest float64
+		if err := rows.Scan(&acc.Address, &bal, &acc.IsHuman, &tusd, &lp, &acc.LastActivityAt, &acc.Demurrage14DayWarningShown, &acc.FaucetClaimed, &acc.Version, &staffelRest, &acc.GrantStagedUntil, &acc.LivenessRenewedAt); err != nil {
 			fmt.Printf("[DB] Scan error loading account: %v — skipping row\n", err)
 			continue
 		}
 		acc.Balance = NewDecimal(bal)
 		acc.TUsdBalance = NewDecimal(tusd)
 		acc.LPShares = NewDecimal(lp)
+		acc.GrantStagedRest = NewDecimal(staffelRest)
 		// Accounts loaded from DB must always use the conditional optimistic-lock
 		// UPDATE path in saveAccountToDB. If the version column is NULL in an old
 		// row, COALESCE returns 0, which would trigger the INSERT/unconditional
@@ -2488,10 +2505,10 @@ func (cs *ChainState) saveAccountToDBInnerCtx(ctx context.Context, acc *AccountS
 		// row). RETURNING version makes acc.Version reflect the row's ACTUAL
 		// resulting version unconditionally, so this self-corrects
 		// regardless of whether the row was new or already existed.
-		if err = cs.dbExecCtx(ctx).QueryRow(`INSERT INTO chain_accounts (address, balance, is_human, tusd_balance, lp_shares, last_activity_at, demurrage_14_day_warning_shown, faucet_claimed, version) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 1)
-ON CONFLICT (address) DO UPDATE SET balance = $2, is_human = $3, tusd_balance = $4, lp_shares = $5, last_activity_at = $6, demurrage_14_day_warning_shown = $7, faucet_claimed = $8, version = COALESCE(chain_accounts.version,0) + 1
+		if err = cs.dbExecCtx(ctx).QueryRow(`INSERT INTO chain_accounts (address, balance, is_human, tusd_balance, lp_shares, last_activity_at, demurrage_14_day_warning_shown, faucet_claimed, version, grant_staged_rest, grant_staged_until, liveness_renewed_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 1, $9, $10, $11)
+ON CONFLICT (address) DO UPDATE SET balance = $2, is_human = $3, tusd_balance = $4, lp_shares = $5, last_activity_at = $6, demurrage_14_day_warning_shown = $7, faucet_claimed = $8, version = COALESCE(chain_accounts.version,0) + 1, grant_staged_rest = $9, grant_staged_until = $10, liveness_renewed_at = $11
 RETURNING version`,
-			acc.Address, acc.Balance.Float(), acc.IsHuman, acc.TUsdBalance.Float(), acc.LPShares.Float(), acc.LastActivityAt, acc.Demurrage14DayWarningShown, acc.FaucetClaimed).Scan(&acc.Version); err != nil {
+			acc.Address, acc.Balance.Float(), acc.IsHuman, acc.TUsdBalance.Float(), acc.LPShares.Float(), acc.LastActivityAt, acc.Demurrage14DayWarningShown, acc.FaucetClaimed, acc.GrantStagedRest.Float(), acc.GrantStagedUntil, acc.LivenessRenewedAt).Scan(&acc.Version); err != nil {
 			fmt.Printf("[DB] Error saving account %s: %v\n", acc.Address, err)
 			return fmt.Errorf("could not save account %s: %w", acc.Address, err)
 		}
@@ -2503,9 +2520,9 @@ RETURNING version`,
 	} else {
 		// Optimistic locking: only update if version matches what we read.
 		// If another node updated in parallel, rows affected = 0 → conflict detected.
-		result, err = cs.dbExecCtx(ctx).Exec(`UPDATE chain_accounts SET balance = $2, is_human = $3, tusd_balance = $4, lp_shares = $5, last_activity_at = $6, demurrage_14_day_warning_shown = $7, faucet_claimed = $8, version = $9 + 1
+		result, err = cs.dbExecCtx(ctx).Exec(`UPDATE chain_accounts SET balance = $2, is_human = $3, tusd_balance = $4, lp_shares = $5, last_activity_at = $6, demurrage_14_day_warning_shown = $7, faucet_claimed = $8, version = $9 + 1, grant_staged_rest = $10, grant_staged_until = $11, liveness_renewed_at = $12
 WHERE address = $1 AND version = $9`,
-			acc.Address, acc.Balance.Float(), acc.IsHuman, acc.TUsdBalance.Float(), acc.LPShares.Float(), acc.LastActivityAt, acc.Demurrage14DayWarningShown, acc.FaucetClaimed, acc.Version)
+			acc.Address, acc.Balance.Float(), acc.IsHuman, acc.TUsdBalance.Float(), acc.LPShares.Float(), acc.LastActivityAt, acc.Demurrage14DayWarningShown, acc.FaucetClaimed, acc.Version, acc.GrantStagedRest.Float(), acc.GrantStagedUntil, acc.LivenessRenewedAt)
 		if err == nil {
 			if rows, _ := result.RowsAffected(); rows == 0 {
 				// Conflict: another node wrote a newer version. Reload DB version
@@ -2668,6 +2685,9 @@ func (cs *ChainState) saveAccountsToDBBatchCtx(ctx context.Context, accs []*Acco
 	lastActivityAts := make([]int64, len(sorted))
 	demurrageWarnings := make([]bool, len(sorted))
 	faucetClaimeds := make([]bool, len(sorted))
+	staffelRests := make([]float64, len(sorted))
+	staffelUntils := make([]int64, len(sorted))
+	renewedAts := make([]int64, len(sorted))
 	expectedVersions := make([]int64, len(sorted))
 	for i, acc := range sorted {
 		addresses[i] = acc.Address
@@ -2678,36 +2698,42 @@ func (cs *ChainState) saveAccountsToDBBatchCtx(ctx context.Context, accs []*Acco
 		lastActivityAts[i] = acc.LastActivityAt
 		demurrageWarnings[i] = acc.Demurrage14DayWarningShown
 		faucetClaimeds[i] = acc.FaucetClaimed
+		staffelRests[i] = acc.GrantStagedRest.Float()
+		staffelUntils[i] = acc.GrantStagedUntil
+		renewedAts[i] = acc.LivenessRenewedAt
 		expectedVersions[i] = acc.Version
 	}
 	args := []interface{}{
 		pq.Array(addresses), pq.Array(balances), pq.Array(isHumans),
 		pq.Array(tusdBalances), pq.Array(lpShares), pq.Array(lastActivityAts),
 		pq.Array(demurrageWarnings), pq.Array(faucetClaimeds), pq.Array(expectedVersions),
+		pq.Array(staffelRests), pq.Array(staffelUntils), pq.Array(renewedAts),
 	}
-	query := `WITH updates(address, balance, is_human, tusd_balance, lp_shares, last_activity_at, demurrage_14_day_warning_shown, faucet_claimed, expected_version) AS (
-	SELECT * FROM unnest($1::text[], $2::double precision[], $3::boolean[], $4::double precision[], $5::double precision[], $6::bigint[], $7::boolean[], $8::boolean[], $9::bigint[])
+	query := `WITH updates(address, balance, is_human, tusd_balance, lp_shares, last_activity_at, demurrage_14_day_warning_shown, faucet_claimed, expected_version, grant_staged_rest, grant_staged_until, liveness_renewed_at) AS (
+	SELECT * FROM unnest($1::text[], $2::double precision[], $3::boolean[], $4::double precision[], $5::double precision[], $6::bigint[], $7::boolean[], $8::boolean[], $9::bigint[], $10::double precision[], $11::bigint[], $12::bigint[])
 ),
 upd AS (
 	UPDATE chain_accounts ca
 	SET balance = u.balance, is_human = u.is_human, tusd_balance = u.tusd_balance,
 	    lp_shares = u.lp_shares, last_activity_at = u.last_activity_at,
 	    demurrage_14_day_warning_shown = u.demurrage_14_day_warning_shown,
-	    faucet_claimed = u.faucet_claimed, version = u.expected_version + 1
+	    faucet_claimed = u.faucet_claimed, version = u.expected_version + 1,
+	    grant_staged_rest = u.grant_staged_rest, grant_staged_until = u.grant_staged_until, liveness_renewed_at = u.liveness_renewed_at
 	FROM updates u
 	WHERE lower(ca.address) = lower(u.address) AND ca.version = u.expected_version
 	RETURNING ca.address, ca.version
 ),
 ins AS (
-	INSERT INTO chain_accounts (address, balance, is_human, tusd_balance, lp_shares, last_activity_at, demurrage_14_day_warning_shown, faucet_claimed, version)
-	SELECT address, balance, is_human, tusd_balance, lp_shares, last_activity_at, demurrage_14_day_warning_shown, faucet_claimed, 1
+	INSERT INTO chain_accounts (address, balance, is_human, tusd_balance, lp_shares, last_activity_at, demurrage_14_day_warning_shown, faucet_claimed, version, grant_staged_rest, grant_staged_until, liveness_renewed_at)
+	SELECT address, balance, is_human, tusd_balance, lp_shares, last_activity_at, demurrage_14_day_warning_shown, faucet_claimed, 1, grant_staged_rest, grant_staged_until, liveness_renewed_at
 	FROM updates
 	WHERE lower(address) NOT IN (SELECT lower(address) FROM upd) AND expected_version = 0
 	ON CONFLICT (address) DO UPDATE SET
 		balance = EXCLUDED.balance, is_human = EXCLUDED.is_human, tusd_balance = EXCLUDED.tusd_balance,
 		lp_shares = EXCLUDED.lp_shares, last_activity_at = EXCLUDED.last_activity_at,
 		demurrage_14_day_warning_shown = EXCLUDED.demurrage_14_day_warning_shown,
-		faucet_claimed = EXCLUDED.faucet_claimed, version = COALESCE(chain_accounts.version, 0) + 1
+		faucet_claimed = EXCLUDED.faucet_claimed, version = COALESCE(chain_accounts.version, 0) + 1,
+		grant_staged_rest = EXCLUDED.grant_staged_rest, grant_staged_until = EXCLUDED.grant_staged_until, liveness_renewed_at = EXCLUDED.liveness_renewed_at
 	RETURNING address, version
 )
 SELECT address, version FROM upd UNION ALL SELECT address, version FROM ins`
@@ -4251,11 +4277,15 @@ func (cs *ChainState) RegisterHuman(address string) error {
 // self-gates on cs.db == nil, so this is a no-op for no-DB nodes.
 func (cs *ChainState) RegisterHumanAtomic(address string, pendingTx Transaction) error {
 	address = strings.ToLower(address)
-	if applied, err := cs.registerHumanConcurrent(address, pendingTx); applied {
-		return err
+	// Eine gestaffelte Registrierung nimmt immer den gesperrten Pfad: der
+	// nebenlaeufige kennt nur den flachen Zuschuss (register_concurrent.go).
+	if grantKlasseNormalisiert(pendingTx.GrantClass) != grantKlasseGestaffelt {
+		if applied, err := cs.registerHumanConcurrent(address, pendingTx); applied {
+			return err
+		}
 	}
 	return cs.runAtomicWithOutbox([]string{address}, false, func(ctx context.Context) (Transaction, error) {
-		if err := cs.registerHumanLocked(ctx, address, 0); err != nil {
+		if err := cs.registerHumanMitKlasseLocked(ctx, address, time.Now().Unix(), pendingTx.GrantClass); err != nil {
 			return Transaction{}, err
 		}
 		if pendingTx.Nullifier != "" {
@@ -4282,6 +4312,13 @@ func (cs *ChainState) RegisterHumanAtomic(address string, pendingTx Transaction)
 // years-old registration would otherwise hand it a brand-new grace period).
 // Live callers pass 0, which keeps nowUnix().
 func (cs *ChainState) registerHumanLocked(ctx context.Context, address string, activityAt int64) error {
+	return cs.registerHumanMitKlasseLocked(ctx, address, activityAt, "")
+}
+
+// registerHumanMitKlasseLocked: wie registerHumanLocked, mit der Klasse aus
+// der Coordinator-Bescheinigung (grant_staffel.go). "" oder "sofort" = voller
+// Zuschuss; "gestaffelt" = 200 sofort + 800 Staffel, nur nach Aktivierung.
+func (cs *ChainState) registerHumanMitKlasseLocked(ctx context.Context, address string, activityAt int64, grantClass string) error {
 	address = strings.ToLower(address)
 	cs.ensureAccountLoadedCtx(ctx, address)
 
@@ -4295,7 +4332,12 @@ func (cs *ChainState) registerHumanLocked(ctx context.Context, address string, a
 	}
 
 	acc.IsHuman = true
-	acc.Balance = acc.Balance.Add(NewDecimal(1000))
+	sofort, staffel := grantBeiRegistrierung(grantClass, activityAt)
+	acc.Balance = acc.Balance.Add(NewDecimal(sofort))
+	if staffel > 0 {
+		acc.GrantStagedRest = acc.GrantStagedRest.Add(NewDecimal(staffel))
+		acc.GrantStagedUntil = activityAt + int64(grantStaffelTage)*86400
+	}
 	touchActivityAt(acc, activityAt) // starts this 1,000 AEQ's own grace period fresh
 	if err := cs.enforceWealthCapLockedCtx(ctx, acc); err != nil {
 		return fmt.Errorf("could not enforce wealth cap: %w", err)
@@ -4618,6 +4660,13 @@ func (cs *ChainState) RunDailyDistributionAtomic(ubiAt int64) error {
 			}
 			txs = append(txs, Transaction{Type: "ubi_distribution_finalize", DistributionAt: ubiAt})
 		}
+
+		// WP 2: Staffel-Freigaben (leer vor der Aktivierung, grant_staffel.go).
+		freigaben, err := cs.grantReleasesLocked(ctx, ubiAt)
+		if err != nil {
+			return nil, fmt.Errorf("grant releases failed: %w", err)
+		}
+		txs = append(txs, freigaben...)
 
 		validatorShares, err := cs.distributeValidatorsPoolLocked(ctx, ubiAt)
 		if err != nil {
@@ -7007,6 +7056,16 @@ func accountLeaf(acc *AccountState) [32]byte {
 	} else {
 		b = append(b, "false"...)
 	}
+	// WP 2: nur anhaengen, wenn gesetzt -- jedes Konto ohne Staffel behaelt
+	// exakt den Blattwert von vor dieser Aenderung (grant_staffel.go).
+	if acc.GrantStagedRest != 0 || acc.GrantStagedUntil != 0 || acc.LivenessRenewedAt != 0 {
+		b = append(b, ":gs="...)
+		b = strconv.AppendInt(b, int64(acc.GrantStagedRest), 10)
+		b = append(b, ":gu="...)
+		b = strconv.AppendInt(b, acc.GrantStagedUntil, 10)
+		b = append(b, ":lr="...)
+		b = strconv.AppendInt(b, acc.LivenessRenewedAt, 10)
+	}
 	return sha256.Sum256(b)
 }
 
@@ -7031,17 +7090,19 @@ func (cs *ChainState) rebuildStateAccumulators() {
 	var humans int64
 	scanned := false
 	if cs.db != nil {
-		rows, err := cs.db.Query(`SELECT address, balance, is_human, tusd_balance, lp_shares, faucet_claimed FROM chain_accounts`)
+		rows, err := cs.db.Query(`SELECT address, balance, is_human, tusd_balance, lp_shares, faucet_claimed, COALESCE(grant_staged_rest,0), COALESCE(grant_staged_until,0), COALESCE(liveness_renewed_at,0) FROM chain_accounts`)
 		if err == nil {
 			for rows.Next() {
 				var addr string
-				var bal, tusd, lp float64
+				var bal, tusd, lp, gsRest float64
 				var human, faucet bool
-				if scanErr := rows.Scan(&addr, &bal, &human, &tusd, &lp, &faucet); scanErr != nil {
+				var gsUntil, lrAt int64
+				if scanErr := rows.Scan(&addr, &bal, &human, &tusd, &lp, &faucet, &gsRest, &gsUntil, &lrAt); scanErr != nil {
 					continue
 				}
 				lower := strings.ToLower(addr)
-				tmp := &AccountState{Address: lower, Balance: NewDecimal(bal), IsHuman: human, TUsdBalance: NewDecimal(tusd), LPShares: NewDecimal(lp), FaucetClaimed: faucet}
+				tmp := &AccountState{Address: lower, Balance: NewDecimal(bal), IsHuman: human, TUsdBalance: NewDecimal(tusd), LPShares: NewDecimal(lp), FaucetClaimed: faucet,
+					GrantStagedRest: NewDecimal(gsRest), GrantStagedUntil: gsUntil, LivenessRenewedAt: lrAt}
 				leaf := accountLeaf(tmp)
 				xorInto(&acc, leaf)
 				if human {

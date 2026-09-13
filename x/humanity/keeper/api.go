@@ -1115,6 +1115,7 @@ func (a *APIServer) buildMux() *http.ServeMux {
 	// Eingang, an dem ein Mensch ankommt.
 	mux.HandleFunc("/api/register-coordinator-key", a.handleRegisterCoordinatorKey)
 	mux.HandleFunc("/api/coordinators", a.handleCoordinatorList)
+	mux.HandleFunc("/api/liveness-renewal", a.handleLivenessRenewal)
 	mux.HandleFunc("/api/coordinator-proof", a.handleCoordinatorProof)
 	mux.HandleFunc("/api/validator-selfproof", a.handleValidatorSelfProof)
 	mux.HandleFunc("/api/set-guardian", a.handleSetGuardian)
@@ -2234,7 +2235,7 @@ func (a *APIServer) handleBalance(w http.ResponseWriter, r *http.Request) {
 		lpValueTUSD = ownership * reserveTUSD
 	}
 
-	json.NewEncoder(w).Encode(map[string]interface{}{
+	antwort := map[string]interface{}{
 		"wallet":                     wallet,
 		"balance":                    balance,
 		"tusd_balance":               tusdBalance,
@@ -2247,7 +2248,12 @@ func (a *APIServer) handleBalance(w http.ResponseWriter, r *http.Request) {
 		"demurrage_days_until_start": demurrage.DaysUntilStart,
 		"show_14_day_notice":         demurrage.ShowFourteenDayNotice,
 		"show_7_day_notice":          demurrage.ShowSevenDayNotice,
-	})
+	}
+	// WP 2: offener Staffelrest, falls vorhanden (grant_staffel.go).
+	if st := a.state.StaffelStandVon(wallet); st != nil {
+		antwort["staffel"] = st
+	}
+	json.NewEncoder(w).Encode(antwort)
 }
 
 // handleCheckRegistration lets the app ask "did MY specific proof commitment
@@ -3375,6 +3381,7 @@ func (a *APIServer) handleProveProxy(w http.ResponseWriter, r *http.Request) {
 	// Siehe prove_provenance.go fuer die Luecke, die das schliesst.
 	if resp.StatusCode == http.StatusOK {
 		merkeProveHerkunft(respBody)
+		merkeProveKlasse(respBody)
 	}
 	w.WriteHeader(resp.StatusCode)
 	w.Write(respBody)

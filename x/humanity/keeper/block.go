@@ -69,6 +69,10 @@ type Transaction struct {
 	// the block — without needing a separate snapshot or state sync.
 	Nullifier  string `json:"nullifier,omitempty"`
 	Commitment string `json:"commitment,omitempty"`
+	// GrantClass: "" | "sofort" | "gestaffelt" -- aus der Coordinator-
+	// Bescheinigung ueber die Herkunftsnotiz des Produzenten (grant_staffel.go).
+	// Ohne Wirkung vor stagedGrantActivationUnix.
+	GrantClass string `json:"grant_class,omitempty"`
 	// ZK proof fields for register_human — enables secondary nodes to
 	// independently verify the proof via BioVerifier without trusting
 	// the validator signature alone. Fields are omitted for non-registration
@@ -5095,7 +5099,8 @@ func (dag *BlockDAG) AddPeerBlock(block *Block) bool {
 		switch tx.Type {
 		case "", "register_human", "transfer", "swap_aeq_tusd", "swap_tusd_aeq", "add_liquidity", "remove_liquidity", "faucet", "ubi_distribution", "ubi_distribution_finalize",
 			"validator_distribution", "validator_distribution_pool_zero", "lp_distribution", "lp_distribution_pool_zero", "escrow_move", "escrow_release", "escrow_recover",
-			"slash_equivocation", "distribution_round_marker", "pool_correction":
+			"slash_equivocation", "distribution_round_marker", "pool_correction",
+			"liveness_renewal", "grant_release":
 		// known / empty — OK
 		default:
 			fmt.Printf("[DAG] ✗ Rejected peer block #%d: unknown tx type %q\n", block.Height, tx.Type)
@@ -6993,7 +6998,7 @@ func (dag *BlockDAG) replayTransactions(block *Block, force bool) (ok bool) {
 			// this loop runs — context.Background() carries no transaction of
 			// its own, so dbExecCtx falls back to that field, exactly
 			// matching pre-migration behavior. See dbExecCtx's comment.
-			if err := dag.state.registerHumanLocked(context.Background(), wallet, block.Timestamp); err != nil {
+			if err := dag.state.registerHumanMitKlasseLocked(context.Background(), wallet, block.Timestamp, tx.GrantClass); err != nil {
 				// FIX: release the nullifier claimed two lines above on failure —
 				// it used to stay claimed forever ("nullifier recorded, balance
 				// NOT credited"), permanently burning that biometric for
@@ -7166,6 +7171,19 @@ func (dag *BlockDAG) replayTransactions(block *Block, force bool) (ok bool) {
 				continue
 			}
 
+		case "liveness_renewal":
+			// WP 2 (grant_staffel.go): vor der Aktivierung Leerlauf.
+			if err := dag.state.applyLivenessRenewalDeltaLocked(context.Background(), wallet, block.Timestamp); err != nil {
+				fmt.Printf("[REPLAY] ✗ liveness_renewal %s: %v (block #%d) — rolling back whole block\n", wallet, err, block.Height)
+				hardFailure = true
+				continue
+			}
+		case "grant_release":
+			if err := dag.state.applyGrantReleaseDeltaLocked(context.Background(), wallet, tx.Amount, block.Timestamp); err != nil {
+				fmt.Printf("[REPLAY] ✗ grant_release %s: %v (block #%d) — rolling back whole block\n", wallet, err, block.Height)
+				hardFailure = true
+				continue
+			}
 		case "ubi_distribution_finalize":
 			// dag.state.activeTx was already set directly above (before this
 			// loop runs) — context.Background() carries no transaction of its
