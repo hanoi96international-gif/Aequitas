@@ -84,7 +84,7 @@ nav::before{content:'';position:absolute;top:0;left:0;right:0;height:2px;backgro
 .hero-badge{display:inline-flex;align-items:center;gap:8px;background:rgba(245,165,36,0.12);border:1px solid rgba(245,165,36,0.35);border-radius:var(--radius-pill);padding:7px 16px;font-size:0.75rem;color:var(--warn);font-weight:700;letter-spacing:0.4px;margin-bottom:24px}
 .pulse{width:7px;height:7px;border-radius:50%;background:var(--green);animation:pulse 2s infinite}
 @keyframes pulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:0.5;transform:scale(0.85)}}
-h1{font-family:Inter,system-ui,sans-serif;font-size:clamp(2.2rem,6vw,3rem);line-height:1.1;font-weight:800;max-width:720px;margin-bottom:18px;letter-spacing:-0.02em}
+h1{font-family:Inter,system-ui,sans-serif;font-size:clamp(2.5rem,6vw,3rem);line-height:1.1;font-weight:800;max-width:720px;margin-bottom:18px;letter-spacing:-0.02em}
 h1 span{background:var(--grad);-webkit-background-clip:text;-webkit-text-fill-color:transparent}
 .hero-sub{font-size:clamp(1rem,2.5vw,1.125rem);color:var(--muted);max-width:540px;margin-bottom:28px;font-weight:400;line-height:1.55}
 .hero-btns{display:flex;flex-wrap:wrap;gap:12px;justify-content:center;margin-bottom:28px}
@@ -97,13 +97,13 @@ h1 span{background:var(--grad);-webkit-background-clip:text;-webkit-text-fill-co
 .pill strong{color:var(--text);font-weight:700;margin-right:4px}
 
 /* ── STATS BAR ───────────────────────────────────────────────── */
-.stats-bar{background:var(--card);border-top:1px solid var(--border);border-bottom:1px solid var(--border);padding:28px 20px;display:flex;justify-content:center;gap:0;box-shadow:var(--shadow)}
-.stat-item{text-align:center;padding:0 28px;border-right:1px solid var(--border);flex:1;max-width:200px}
-.stat-item:last-child{border-right:none}
-.stat-num{font-size:clamp(1.4rem,3vw,2rem);font-weight:800;font-variant-numeric:tabular-nums}
-.stat-lbl{font-size:0.7rem;color:var(--muted);text-transform:uppercase;letter-spacing:1px;margin-top:4px}
-@media(max-width:700px){.stats-bar{flex-wrap:wrap;gap:1px;background:var(--border);padding:0}.stat-item{flex:calc(50% - 1px);border-right:none;background:var(--card);padding:20px 14px;max-width:none}}
-@media(max-width:380px){.stat-item{flex:100%}}
+.stats-bar{background:transparent;border:none;padding:20px 20px 8px;display:flex;justify-content:center;gap:12px;flex-wrap:wrap}
+.stat-item{text-align:center;padding:18px 16px;border:1px solid var(--border);border-radius:var(--radius);background:var(--card);flex:1;max-width:220px;min-width:140px;box-shadow:var(--shadow)}
+.stat-item:last-child{border-right:1px solid var(--border)}
+.stat-num{font-size:clamp(1.4rem,3vw,1.85rem);font-weight:800;font-variant-numeric:tabular-nums}
+.stat-lbl{font-size:0.7rem;color:var(--muted);text-transform:uppercase;letter-spacing:1px;margin-top:6px;font-weight:600}
+@media(max-width:700px){.stats-bar{padding:12px 12px 4px;gap:8px}.stat-item{flex:calc(50% - 8px);max-width:none;min-width:calc(50% - 8px);padding:16px 12px}}
+@media(max-width:380px){.stat-item{flex:100%;min-width:100%}}
 .stats-live{padding:18px 20px 0;text-align:center;font-size:0.78rem;color:var(--muted)}
 .stats-live strong{color:var(--gold);font-weight:700}
 
@@ -177,7 +177,7 @@ a:focus-visible,button:focus-visible,select:focus-visible,
 @media(max-width:480px){
 .btn-primary,.btn-secondary{padding:16px 22px;font-size:0.95rem;width:100%;border-radius:var(--radius-pill)}
 .hero-btns{flex-direction:column;width:100%;max-width:340px}
-h1{font-size:2.15rem}
+h1{font-size:2.5rem}
 .hero{padding:140px 16px 44px}
 section{padding:56px 16px}
 .nav-cta{padding:7px 12px;font-size:0.72rem}

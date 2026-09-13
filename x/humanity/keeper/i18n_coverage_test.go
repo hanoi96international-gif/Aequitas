@@ -51,6 +51,7 @@ var (
 var i18nAusnahmen = map[string]string{
 	"@AequitasMoney":     "Handle, keine Sprache",
 	"t.me/aequitasmoney": "URL, keine Sprache",
+	"aequitas.digital":   "URL, keine Sprache",
 }
 
 func TestJederSichtbareTextHatEinenUebersetzungsschluessel(t *testing.T) {
