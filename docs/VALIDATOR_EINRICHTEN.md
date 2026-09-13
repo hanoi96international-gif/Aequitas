@@ -88,6 +88,17 @@ trotzdem richtig.
   funktionieren ohne ihn. Wer Registrierungen bedienen will, braucht die
   Coordinator/Proof-Server-Instanz aus dem App-Repo; das ist ein eigener
   Schritt und für einen Validator nicht nötig.
+- **Der Knoten heilt sich selbst.** Fällt er hinter das Netz zurück, steht die
+  Höhe, bleibt derselbe Block wiederholt hängen oder weicht sein Kontostand
+  belegt von den Seeds ab (drei Vergleiche in Folge, in der Ruhe), holt er den
+  Zustand neu vom signierten Snapshot der Seeds — von selbst, mit 30 Minuten
+  Sperre gegen Schleifen (`AUTO_HEAL_ON_DIVERGENCE`,
+  `AEQUITAS_DIVERGENZ_AUTORESYNC` in der Compose-Datei). Im Log steht dann
+  `[AUTO-HEAL]`. Du musst nichts tun; die eigene Blockproduktion setzt danach
+  wieder ein.
+- Selbstprüfung: `http://<deine-IP>:8080/api/wache` antwortet 200, wenn alles
+  da ist, sonst 503 mit den Befunden. Ein Proof-Server, den du nicht hast,
+  wird dabei übersprungen, nicht bemängelt.
 
 ## Wenn etwas nicht geht
 

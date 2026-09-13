@@ -57,6 +57,11 @@ services:
       AEQUITAS_WAL_PATH: /data/wal/aequitas_transfers.wal
       GOMEMLIMIT: ${GOMEMLIMIT:-5GiB}
       AUTO_HEAL_ON_DIVERGENCE: "true"
+      # Weicht der Kontostand dieses Knotens belegt von den Seeds ab (drei
+      # Vergleiche in Folge, in der Ruhe, gleichauf), holt er den Zustand
+      # neu vom signierten Snapshot -- ohne dass du es merken musst. Dieser
+      # Knoten ist nie die Quelle der Wahrheit; die Seeds sind es.
+      AEQUITAS_DIVERGENZ_AUTORESYNC: "1"
     ports:
       - "8080:8080"   # HTTP-API und Explorer
       - "4001:4001"   # P2P

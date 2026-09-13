@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"os"
+	"strings"
 	"sync/atomic"
 	"time"
 )
@@ -113,8 +115,32 @@ func (dag *BlockDAG) divergenzEinmalPruefen() {
 			fmt.Printf("[DIVERGENZ] ✗ Kontenstand weicht von %s ab (account_set_xor %s… gegen %s…), %d Vergleiche in Folge, beide in Ruhe und gleichauf (Hoehe %d/%d). Das ist kein Geschwister-Effekt. Abhilfe: Resync eines Knotens vom anderen (resync-contabo1-only.yml / -contabo2-only.yml) -- in der Ruhe, nie unter Last.\n",
 				seed, kurzHex(eigene.AccountSetXOR), kurzHex(fremd.AccountSetXOR), n, eigeneHoehe, peerHoehe)
 		}
+		// Selbstheilung -- nur wo sie erlaubt ist (siehe divergenzAutoResyncErlaubt).
+		if divergenzAutoResyncErlaubt(n, os.Getenv("AEQUITAS_DIVERGENZ_AUTORESYNC"), dag.resyncBootstrapURL != "" && dag.resyncSigner != "") {
+			dag.triggerAutoResync(fmt.Sprintf("Kontenstand weicht von %s ab: %d Vergleiche in Folge in der Ruhe und gleichauf (account_set_xor %s… gegen %s…) -- dieser Knoten holt den Zustand neu vom Seed", seed, n, kurzHex(eigene.AccountSetXOR), kurzHex(fremd.AccountSetXOR)))
+		}
 		return
 	}
+}
+
+// divergenzAutoResyncErlaubt: darf eine belegte Kontostand-Abweichung einen
+// Resync vom Seed ausloesen?
+//
+// NUR MIT AEQUITAS_DIVERGENZ_AUTORESYNC=1. Auf den Gruenderboxen bleibt es aus:
+// wenn C1 und C2 voneinander abweichen, sagt der Vergleich nicht, WER recht
+// hat -- das entscheidet ein Mensch (12.09.2026: per SQL-Vergleich der
+// Konten, dann Resync des falschen). Ein Validator, der den Zustand ohnehin
+// von den Seeds bezieht (deploy/validator), ist nie die Quelle der Wahrheit;
+// fuer ihn ist "weicht ab" gleichbedeutend mit "ist falsch", und der Resync
+// vom signierten Snapshot ist genau das, was ein Betreiber von Hand taete --
+// nur ohne dass er es merken muss. Das ist die Selbstheilung, die ein
+// Laien-Validator vor der Beta braucht.
+//
+// Ausserdem noetig: eine konfigurierte, signierte Quelle (BOOTSTRAP + Signer,
+// gesetzt von StartDivergenceAutoHeal). Die 30-Minuten-Sperre und die
+// Rueckfallpfade liegen in triggerAutoResync.
+func divergenzAutoResyncErlaubt(strikes int64, env string, quelleKonfiguriert bool) bool {
+	return strikes >= divergenzSchwelle && strings.TrimSpace(env) == "1" && quelleKonfiguriert
 }
 
 func kurzHex(s string) string {
@@ -135,7 +161,8 @@ func DivergenzStand() map[string]interface{} {
 	return map[string]interface{}{
 		"bedeutung": "Vergleich von account_set_xor mit den Seeds in der Ruhe (keine eigene Ueberweisung seit 30 s, Hoehe gleichauf). " +
 			"abweichend=true ab 3 Vergleichen in Folge mit Unterschied -- dann stimmen Kontostaende nicht ueberein, nicht nur Geschwister-Unschaerfe. " +
-			"Heilt nicht selbst; Resync eines Knotens vom anderen in der Ruhe.",
+			"autoresync=true (AEQUITAS_DIVERGENZ_AUTORESYNC=1, fuer Validatoren, die nicht Seed sind): dann Resync vom Seed statt nur Meldung.",
+		"autoresync":        strings.TrimSpace(os.Getenv("AEQUITAS_DIVERGENZ_AUTORESYNC")) == "1",
 		"abweichend":        strikes >= divergenzSchwelle,
 		"strikes":           strikes,
 		"seit":              seit,

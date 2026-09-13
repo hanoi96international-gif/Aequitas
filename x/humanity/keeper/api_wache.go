@@ -50,7 +50,12 @@ func (a *APIServer) handleWache(w http.ResponseWriter, r *http.Request) {
 	proofDa := len(a.proofServerStatus) > 0
 	modus := proofServerModus(a.proofServerStatus)
 	a.proofStatusMu.RUnlock()
-	if !proofDa {
+	if len(proofServerURLs()) == 0 {
+		// Ein Validator ohne eigenen Proof-Server (deploy/validator) registriert
+		// niemanden -- fuer ihn ist das kein Befund. Rot waere hier dauerhaft
+		// rot, und eine Wache, die immer rot ist, liest niemand mehr.
+		gruen = append(gruen, "kein Proof-Server konfiguriert (uebersprungen)")
+	} else if !proofDa {
 		rot = append(rot, "Proof-Server nicht erreichbar -- keine Registrierung moeglich")
 	} else if modus != "required" {
 		rot = append(rot, fmt.Sprintf("Proof-Server BIO_ATTESTATION_MODE=%q statt required -- Registrierung ohne Gesichtspruefung moeglich", modus))
