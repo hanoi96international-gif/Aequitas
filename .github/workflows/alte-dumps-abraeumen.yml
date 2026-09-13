@@ -1,0 +1,29 @@
+name: Alte Voll-Dumps abraeumen (beide Boxen)
+# Seit dem 12.09.2026 sichert backup-ledger.yml den Zustand ohne Bloecke
+# (31-61 MB). Die Voll-Dumps davor (13-14 GB, einer davon nach 30 Minuten
+# abgebrochen und damit unbrauchbar) liegen noch in /root/backups und
+# halten je Box bis zu 28 GB. Dieser Lauf entfernt NUR Dumps ueber 1 GB;
+# die Zustands-Dumps bleiben.
+on:
+  workflow_dispatch:
+jobs:
+  a:
+    strategy:
+      fail-fast: false
+      matrix: {box: [{name: "C1", host: "173.249.37.118", secret: "C1"}, {name: "C2", host: "194.163.188.71", secret: "C2"}]}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ matrix.box.host }}
+          username: root
+          key: ${{ matrix.box.secret == 'C1' && secrets.CONTABO_SSH_KEY || secrets.CONTABO2_SSH_KEY }}
+          port: 22
+          script_stop: false
+          timeout: 120s
+          command_timeout: 120s
+          script: |
+            echo "##### ${{ matrix.box.name }} #####"
+            echo "--- vorher ---"; ls -lh /root/backups/ 2>/dev/null; df -h / | tail -1
+            find /root/backups -maxdepth 1 -name 'aequitas-*.dump' -size +1G -print -delete
+            echo "--- nachher ---"; ls -lh /root/backups/ 2>/dev/null; df -h / | tail -1
