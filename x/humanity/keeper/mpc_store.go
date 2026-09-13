@@ -101,12 +101,12 @@ func decodeRow(buf []byte) (mpc.PartyTemplate, error) {
 	return row, nil
 }
 
-// SaveMPCShare stores this party's row for one enrolment, with its bucket keys.
+// SaveMPCShare stores this party's row for one enrolment.
 //
-// Both tables are written in one transaction: a share without its bucket keys
-// is invisible to every future lookup, and bucket keys without a share point at
-// nothing. Either half alone is a duplicate that will never be caught, so a
-// partial write must not survive.
+// Bucket keys are no longer written (LSH index removed 25.08.2026). Leftover
+// rows in mpc_share_buckets are cleaned best-effort AFTER the share commit:
+// a missing-table error aborts a Postgres transaction, so doing it inside
+// the same tx would roll back the enrolment itself (the CI db-tests failure).
 func (cs *ChainState) SaveMPCShare(enrollmentID, committeeID string, partyIndex int,
 	row mpc.PartyTemplate) error {
 
@@ -132,14 +132,11 @@ func (cs *ChainState) SaveMPCShare(enrollmentID, committeeID string, partyIndex 
 		enrollmentID, committeeID, partyIndex, len(row), encodeRow(row)); err != nil {
 		return fmt.Errorf("mpc: storing share: %w", err)
 	}
-
-	// Alte Eimerschluessel dieser Einschreibung entfernen, falls die Tabelle
-	// aus der Zeit vor dem 25.08.2026 noch existiert -- siehe mpcSchema.
-	if _, err := tx.Exec(`DELETE FROM mpc_share_buckets WHERE enrollment_id = $1`, enrollmentID); err != nil {
-		// Kein Abbruch: fehlt die Tabelle, ist nichts zu loeschen.
-		_ = err
+	if err := tx.Commit(); err != nil {
+		return err
 	}
-	return tx.Commit()
+	cs.deleteLeftoverMPCBuckets(enrollmentID)
+	return nil
 }
 
 // MPCAllShares returns every share this committee holds.
@@ -220,18 +217,25 @@ func (cs *ChainState) DeleteMPCShare(enrollmentID string) error {
 	if cs.db == nil {
 		return fmt.Errorf("mpc: no database configured")
 	}
-	tx, err := cs.db.Begin()
-	if err != nil {
+	if _, err := cs.db.Exec(`DELETE FROM mpc_shares WHERE enrollment_id = $1`, enrollmentID); err != nil {
 		return err
 	}
-	defer tx.Rollback()
-	if _, err := tx.Exec(`DELETE FROM mpc_share_buckets WHERE enrollment_id = $1`, enrollmentID); err != nil {
-		return err
+	// After the share is gone: leftover LSH keys, if that pre-25.08.2026
+	// table still exists. Must not share a transaction with the share
+	// delete — a missing table aborts the whole Postgres tx.
+	cs.deleteLeftoverMPCBuckets(enrollmentID)
+	return nil
+}
+
+// deleteLeftoverMPCBuckets drops leftover LSH keys for one enrolment.
+// Missing mpc_share_buckets (fresh CI / new nodes) is not an error.
+func (cs *ChainState) deleteLeftoverMPCBuckets(enrollmentID string) {
+	if cs.db == nil {
+		return
 	}
-	if _, err := tx.Exec(`DELETE FROM mpc_shares WHERE enrollment_id = $1`, enrollmentID); err != nil {
-		return err
+	if _, err := cs.db.Exec(`DELETE FROM mpc_share_buckets WHERE enrollment_id = $1`, enrollmentID); err != nil {
+		_ = err
 	}
-	return tx.Commit()
 }
 
 // CountMPCShares reports how many enrolments this party holds, per committee.
