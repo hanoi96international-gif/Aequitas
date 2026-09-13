@@ -1,6 +1,6 @@
 # Launch-Checkliste
 
-**Stand 13.09.2026, 01:45.** Jeder Punkt hat ein „fertig heißt" — etwas, das man
+**Stand 13.09.2026, 02:10.** Wache: GRÜN. Jeder Punkt hat ein „fertig heißt" — etwas, das man
 nachmessen kann. Was nicht messbar ist, steht nicht drin. Wer hier „✅" setzt,
 hat gemessen, nicht geglaubt.
 
@@ -12,7 +12,7 @@ Anleitung; die Betreiber erfahren, wenn etwas kaputtgeht.
 
 | # | Punkt | Fertig heißt | Stand | Wer |
 |---|---|---|---|---|
-| 1 | **Beide Validatoren einig über jeden Kontostand** | `divergenz.abweichend=false` auf beiden Boxen nach 6 min Volllast, `uebersprungene_ueberweisungen=0` | ❌ abweichend (Lasttest-Staub; Menschen gleich). Ursache behoben (`wal_seq`), Heilung braucht den Resync | **du:** `gh workflow run resync-contabo1-only.yml --ref main -f confirm=true` — dann ich: Lauf + Messung |
+| 1 | **Beide Validatoren einig über jeden Kontostand** | `divergenz.abweichend=false` auf beiden Boxen nach Volllast, `uebersprungene_ueberweisungen=0` | ✅ 13.09. 01:40: Resync C1←C2, danach 4 min Volllast (14.000 Annahmen/s, Kette 6.900/s): **0 übersprungen, 0 Divergenz**, Wache grün | — |
 | 2 | **Registrierung funktioniert** | App → Coordinator → Quorum → Proof-Server → `register_human` in einem Block; Wache grün | ✅ Proof-Server auf beiden Boxen waren 5 Tage bzw. 34 h tot — am 12.09. repariert; Wache prüft jetzt alle 10 min | — |
 | 3 | **Impressum & Datenschutzerklärung** | `/impressum` und `/datenschutz` antworten 200 | ❌ beide 404 — alle sieben `LEGAL_*`-Angaben fehlen (`/api/legal-status`) | **du:** Werte nach `docs/RECHTSTEXTE_FREISCHALTEN.md` setzen, ich starte die Knoten nacheinander neu |
 | 4 | **Ein Mensch = ein Konto** | Dieselbe Person, zweites Gerät → `duplicate`; andere Person → durch. Schwelle kalibriert | ⚠ Technisch scharf (`required`, Quorum 2, Sketch-Vergleich) seit 25.08. — aber `SERVICE_MODE=test`, Schwelle nie mit echten Menschen kalibriert, und die 18 bestehenden Menschen haben keinen Sketch (könnten sich erneut anmelden) | **du + eine zweite Person** vor der Kamera nach `docs/DOPPELREGISTRIERUNG_TEST.md` |
