@@ -1,0 +1,32 @@
+name: Container-Umgebung lesen (Namen und ungefaehrliche Werte)
+# Zeigt die Umgebungsvariablen eines Containers; Werte von Schluesseln,
+# Tokens, Passwoertern und Datenbank-URLs bleiben ausgeblendet. Nur lesen.
+on:
+  workflow_dispatch:
+    inputs:
+      container: {description: "Containername", required: true, default: "aequitas-matching"}
+      box: {description: "C1 | C2", required: false, default: "C1"}
+jobs:
+  e:
+    strategy:
+      fail-fast: false
+      matrix: {box: [{name: "C1", host: "173.249.37.118", secret: "C1"}, {name: "C2", host: "194.163.188.71", secret: "C2"}]}
+    runs-on: ubuntu-latest
+    steps:
+      - if: ${{ inputs.box == matrix.box.name }}
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ matrix.box.host }}
+          username: root
+          key: ${{ matrix.box.secret == 'C1' && secrets.CONTABO_SSH_KEY || secrets.CONTABO2_SSH_KEY }}
+          port: 22
+          script_stop: false
+          timeout: 60s
+          command_timeout: 60s
+          envs: CONT
+          script: |
+            echo "##### ${{ matrix.box.name }}: $CONT #####"
+            docker inspect "$CONT" --format '{{range .Config.Env}}{{println .}}{{end}}' \
+              | sed -E 's/^([A-Za-z_]*(KEY|TOKEN|SECRET|PASSWORD|DATABASE_URL|PRIVATE|SEED)[A-Za-z_]*)=.*/\1=<ausgeblendet>/' | sort
+        env:
+          CONT: ${{ inputs.container }}
