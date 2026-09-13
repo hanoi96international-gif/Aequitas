@@ -30,6 +30,7 @@ Anleitung; die Betreiber erfahren, wenn etwas kaputtgeht.
 | 11 | Lasttest-Konten | ≥ 300 Paare je Box zahlungsfähig | ❌ 594/661 bzw. 375/662 Konten unter 0,001 AEQ | **du:** `loadtest-widen-senders.yml confirm=true` |
 | 12 | App im Play Store | — | ⏸ bewusst offen bis Punkt 5 | du |
 | 13 | Dritter Betreiber | Quorum aus drei Haushalten | ⏸ nach Punkt 4 | du |
+| 14 | Lebendigkeit gegen Deepfakes | Blitz + Kopfdrehung + Puls als Score, Herkunft als Risiko, gestaffelter Zuschuss (Klassen grün/gelb/rot), Schattenmodus zuerst | ❌ heute nur Kopfdreh-Challenge scharf; Plan in `docs/LEBENDIGKEIT_GEGEN_DEEPFAKES.md` (WP 1–4). Entscheidung: **keine Stimme** | ich (WP 1, 2), du (App-Release WP 3) |
 
 ## Bewusst nicht auf der Liste
 
