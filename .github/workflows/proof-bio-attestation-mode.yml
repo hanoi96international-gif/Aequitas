@@ -1,0 +1,105 @@
+name: Set proof BIO_ATTESTATION_MODE (both boxes)
+
+# Launch / rollback helper. Sets BIO_ATTESTATION_MODE on the proof-server
+# containers without touching aequitas-node. paths under .github/ do not
+# trigger Contabo node deploys.
+#
+# Default for production is required. optional is a temporary launch window
+# only — always schedule a rollback to required.
+
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "BIO_ATTESTATION_MODE value"
+        required: true
+        type: choice
+        options: [optional, required]
+        default: required
+      box:
+        description: "Which box"
+        required: true
+        type: choice
+        options: [both, contabo1, contabo2]
+        default: both
+
+jobs:
+  set-mode:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: contabo1
+            host: 173.249.37.118
+            secret: C1
+            fingerprint: "SHA256:noMtjHV8c+2iEFZu3TRUP6WRwGjkrvFke71KgU6Eyt4"
+          - name: contabo2
+            host: 194.163.188.71
+            secret: C2
+            fingerprint: "SHA256:VIwj7Faxiga2n45HVHZEQFPxcbRKHgSgHoxAFsf2wto"
+    steps:
+      - name: Skip unwanted box
+        id: skip
+        run: |
+          want='${{ inputs.box }}'
+          me='${{ matrix.name }}'
+          if [ "$want" = "both" ] || [ "$want" = "$me" ]; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "run=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Set BIO_ATTESTATION_MODE on proof-server
+        if: steps.skip.outputs.run == 'true'
+        uses: appleboy/ssh-action@v1.0.3
+        env:
+          MODE: ${{ inputs.mode }}
+        with:
+          host: ${{ matrix.host }}
+          username: root
+          key: ${{ matrix.secret == 'C1' && secrets.CONTABO_SSH_KEY || secrets.CONTABO2_SSH_KEY }}
+          port: 22
+          fingerprint: ${{ matrix.fingerprint }}
+          script_stop: true
+          timeout: 300s
+          command_timeout: 300s
+          envs: MODE
+          script: |
+            set -euo pipefail
+            echo "=== ${{ matrix.name }}: set BIO_ATTESTATION_MODE=$MODE ==="
+            docker inspect proof-server --format 'status={{.State.Status}}' >/dev/null
+
+            ENVF=/root/proof-server.env
+            if [ -f "$ENVF" ]; then
+              cp -a "$ENVF" "$ENVF.bak-$(date +%s)"
+            else
+              docker inspect proof-server --format '{{range .Config.Env}}{{println .}}{{end}}' \
+                | grep -vE '^(PATH|HOSTNAME|HOME)=' | grep -v '^$' > "$ENVF"
+              chmod 600 "$ENVF"
+            fi
+
+            grep -vE '^BIO_ATTESTATION_MODE=' "$ENVF" > "$ENVF.tmp"
+            printf 'BIO_ATTESTATION_MODE=%s\n' "$MODE" >> "$ENVF.tmp"
+            mv "$ENVF.tmp" "$ENVF"
+            chmod 600 "$ENVF"
+            echo "env names now include:"; cut -d= -f1 "$ENVF" | sort | grep -E 'BIO_|CHAIN_|NODE_' || true
+
+            if [ -x /root/proof-deploy.sh ]; then
+              bash /root/proof-deploy.sh
+            elif [ -f /root/aequitas-proof-server/deploy.sh ]; then
+              bash /root/aequitas-proof-server/deploy.sh
+            else
+              # Fallback: recreate proof-server from current image + env file
+              IMAGE=$(docker inspect proof-server --format '{{.Config.Image}}')
+              NET=$(docker inspect proof-server --format '{{range $k,$v := .NetworkSettings.Networks}}{{$k}}{{end}}' | awk '{print $1}')
+              docker rename proof-server "proof-server-prev-$(date +%s)" || true
+              docker run -d --name proof-server --restart unless-stopped \
+                --network "$NET" --env-file "$ENVF" -p 3000:3000 "$IMAGE" \
+                || { echo "ERROR: recreate failed"; exit 1; }
+            fi
+
+            sleep 3
+            wget -qO- --timeout=10 http://127.0.0.1:3000/health | head -c 500 || true
+            echo
+            echo "=== done ${{ matrix.name }} ==="
