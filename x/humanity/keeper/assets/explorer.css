@@ -332,6 +332,8 @@ header::before{content:'';position:absolute;top:0;left:0;right:0;height:2px;back
 .snum{width:28px;height:28px;background:var(--grad);border-radius:50%;display:flex;align-items:center;justify-content:center;margin:0 auto 10px;font-weight:700;font-size:0.86rem;color:#fff;box-shadow:var(--glow-purple)}
 .stitle{font-size:0.79rem;color:var(--text);font-weight:600;margin-bottom:5px}
 .sdesc{font-size:0.77rem;color:var(--muted);line-height:1.7}
+.phase0-disc{background:rgba(245,165,36,0.07);border:1px solid rgba(245,165,36,0.38);border-radius:16px;padding:16px 18px;margin-bottom:14px;font-size:0.82rem;color:var(--muted);line-height:1.7;box-shadow:0 8px 32px rgba(0,0,0,.25);text-align:left}
+.phase0-disc strong,.phase0-disc b{color:var(--gold)}
 .pbar{background:rgba(0,255,209,0.06);border:1px solid rgba(0,255,209,0.15);border-radius:var(--radius-sm);padding:10px 14px;margin-bottom:14px;font-size:0.79rem;color:var(--neon);text-align:center;line-height:1.8}
 .rcard{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:20px;margin-bottom:14px;box-shadow:0 2px 12px rgba(0,0,0,0.06)}
 .wbox{background:rgba(0,255,209,0.05);border:1px solid rgba(0,255,209,0.15);border-radius:var(--radius-sm);padding:10px;margin-bottom:10px;display:none}
