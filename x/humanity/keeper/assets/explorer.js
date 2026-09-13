@@ -207,7 +207,6 @@ en:{
   's1t':'Connect','s1d':'Connect your wallet on your phone. Identity source today is typically device-bound (device secret). Face matching against a populated gallery is roadmap — not the binding Phase 0 path.',
   's2t':'Prove','s2d':'A zero-knowledge proof shows the chain that this bound identity source is not yet registered (nullifier). Face-derived bio matching is roadmap/calibration in Phase 0 — see the disclaimer.',
   's3t':'Receive','s3d':'Registration confirmed on Aequitas BlockDAG within 1 second · 1,000 AEQ credited instantly · your identity is permanently recorded as a verified human',
-  's4t':'1,000 AEQ Granted','s4d':'Registration confirmed on Aequitas BlockDAG within 1 second · 1,000 AEQ credited instantly · your identity is permanently recorded as a verified human',
   'priv-bar':'🔒 Phase 0 · Nullifier dedup · Proof/attest path · Face matching & mandatory MPC are roadmap',
   'conn-wallet':'CONNECTED WALLET','proof-recv':'⚡ ZK PROOF RECEIVED','proof-hint':'Connect wallet to register',
   'btn-conn':'🦊 CONNECT METAMASK','btn-reg':'🔐 REGISTER ON-CHAIN','reg-apk-note':'Phase 0: registration needs an app build with ALLOW_DEVICE_SECRET_REGISTER (APK Phase 0).',
@@ -342,8 +341,7 @@ en:{
   'soc-title':'💬 Social Media','soc-sub':'Announcements, the state of the chain, and the awkward questions &mdash; in public, on both.',
   'soc-x-desc':'Announcements, and what the chain is actually doing. Short form.','soc-tg-desc':'The open group: questions, node operators, and help getting registered.',
   's-validators':'Active Validators',
-  'expl-heading':'Block Explorer',
-},
+  'expl-heading':'Block Explorer'},
 de:{
   'x-consensus-ghostdag-knightdag':'◆ Konsens: GHOSTDAG + KNIGHTDAG',
   'x-contract-code':'Vertragscode',
@@ -539,7 +537,6 @@ de:{
   's1t':'Verbinden','s1d':'Verbinde deine Wallet am Smartphone. Identity-Quelle heute typisch gerätegebunden (Device-Secret). Face-Matching gegen eine befüllte Galerie ist Roadmap — nicht der verbindliche Phase-0-Pfad.',
   's2t':'Beweisen','s2d':'Ein Zero-Knowledge-Beweis zeigt der Chain, dass diese gebundene Identity-Quelle noch nicht registriert ist (Nullifier). Face-basiertes Bio-Matching ist in Phase 0 Roadmap/Kalibrierung — siehe Disclaimer.',
   's3t':'Erhalten','s3d':'Registrierung auf Aequitas BlockDAG innerhalb von 1 Sekunde bestätigt · 1.000 AEQ sofort gutgeschrieben · deine Identität ist dauerhaft als verifizierter Mensch gespeichert',
-  's4t':'1.000 AEQ gutgeschrieben','s4d':'Registrierung auf Aequitas BlockDAG innerhalb von 1 Sekunde bestätigt · 1.000 AEQ sofort gutgeschrieben · deine Identität ist dauerhaft als verifizierter Mensch gespeichert',
   'priv-bar':'🔒 Phase 0 · Nullifier-Dedup · Proof-/Attest-Pfad · Face-Matching & verpflichtendes MPC sind Roadmap',
   'conn-wallet':'VERBUNDENE WALLET','proof-recv':'⚡ ZK-BEWEIS EMPFANGEN','proof-hint':'Wallet verbinden um zu registrieren',
   'btn-conn':'🦊 METAMASK VERBINDEN','btn-reg':'🔐 ON-CHAIN REGISTRIEREN','reg-apk-note':'Phase 0: Registrierung braucht einen App-Build mit ALLOW_DEVICE_SECRET_REGISTER (APK Phase 0).',
@@ -688,8 +685,7 @@ de:{
   'soc-title':'💬 Soziale Medien','soc-sub':'Ankündigungen, der Zustand der Chain und die unbequemen Fragen &mdash; öffentlich, auf beiden.',
   'soc-x-desc':'Ankündigungen und was die Chain tatsächlich tut. Kurzform.','soc-tg-desc':'Die offene Gruppe: Fragen, Node-Betreiber und Hilfe bei der Registrierung.',
   's-validators':'Aktive Validatoren',
-  'expl-heading':'Block-Explorer',
-},
+  'expl-heading':'Block-Explorer'},
 es:{
   'x-consensus-ghostdag-knightdag':'◆ Consenso: GHOSTDAG + KNIGHTDAG',
   'x-contract-code':'Código del contrato',
@@ -885,7 +881,6 @@ es:{
   's1t':'Conectar','s1d':'Connect your wallet on your phone. Identity source today is typically device-bound (device secret). Face matching against a populated gallery is roadmap — not the binding Phase 0 path.',
   's2t':'Probar','s2d':'A zero-knowledge proof shows the chain that this bound identity source is not yet registered (nullifier). Face-derived bio matching is roadmap/calibration in Phase 0 — see the disclaimer.',
   's3t':'Recibir','s3d':'Registro confirmado en el BlockDAG de Aequitas en 1 segundo · 1,000 AEQ acreditados instantáneamente · tu identidad queda permanentemente registrada',
-  's4t':'1,000 AEQ Acreditados','s4d':'Registro confirmado en el BlockDAG de Aequitas en 1 segundo · 1,000 AEQ acreditados instantáneamente · tu identidad queda permanentemente registrada',
   'priv-bar':'🔒 Phase 0 · Nullifier dedup · Proof/attest path · Face matching & mandatory MPC are roadmap',
   'conn-wallet':'WALLET CONECTADA','proof-recv':'⚡ PRUEBA ZK RECIBIDA','proof-hint':'Conecta wallet para registrar',
   'btn-conn':'🦊 CONECTAR METAMASK','btn-reg':'🔐 REGISTRAR ON-CHAIN','reg-apk-note':'Fase 0: el registro requiere un build de la app con ALLOW_DEVICE_SECRET_REGISTER (APK Phase 0).',
@@ -1022,8 +1017,7 @@ es:{
   'soc-title':'💬 Redes Sociales','soc-sub':'Anuncios, el estado de la cadena y las preguntas incómodas &mdash; en público, en ambas.',
   'soc-x-desc':'Anuncios y lo que la cadena está haciendo realmente. Formato breve.','soc-tg-desc':'El grupo abierto: preguntas, operadores de nodos y ayuda para registrarse.',
   's-validators':'Validadores Activos',
-  'expl-heading':'Explorador de Bloques',
-},
+  'expl-heading':'Explorador de Bloques'},
 ru:{
   'x-consensus-ghostdag-knightdag':'◆ Консенсус: GHOSTDAG + KNIGHTDAG',
   'x-contract-code':'Код контракта',
@@ -1219,7 +1213,6 @@ ru:{
   's1t':'Подключить','s1d':'Connect your wallet on your phone. Identity source today is typically device-bound (device secret). Face matching against a populated gallery is roadmap — not the binding Phase 0 path.',
   's2t':'Доказать','s2d':'A zero-knowledge proof shows the chain that this bound identity source is not yet registered (nullifier). Face-derived bio matching is roadmap/calibration in Phase 0 — see the disclaimer.',
   's3t':'Получить','s3d':'Регистрация подтверждена на BlockDAG Aequitas за 1 секунду · 1 000 AEQ зачислены мгновенно · личность навсегда записана как верифицированный человек',
-  's4t':'1 000 AEQ Зачислены','s4d':'Регистрация подтверждена на BlockDAG Aequitas за 1 секунду · 1 000 AEQ зачислены мгновенно · личность навсегда записана как верифицированный человек',
   'priv-bar':'🔒 Phase 0 · Nullifier dedup · Proof/attest path · Face matching & mandatory MPC are roadmap',
   'conn-wallet':'ПОДКЛЮЧЁННЫЙ КОШЕЛЁК','proof-recv':'⚡ ZK-ДОКАЗАТЕЛЬСТВО ПОЛУЧЕНО','proof-hint':'Подключите кошелёк для регистрации',
   'btn-conn':'🦊 ПОДКЛЮЧИТЬ METAMASK','btn-reg':'🔐 ЗАРЕГИСТРИРОВАТЬ ОН-ЧЕЙН','reg-apk-note':'Фаза 0: для регистрации нужна сборка приложения с ALLOW_DEVICE_SECRET_REGISTER (APK Phase 0).',
@@ -1354,8 +1347,7 @@ ru:{
   'soc-title':'💬 Социальные сети','soc-sub':'Объявления, состояние сети и неудобные вопросы &mdash; публично, в обеих.',
   'soc-x-desc':'Объявления и то, чем сеть занята на самом деле. Коротко.','soc-tg-desc':'Открытая группа: вопросы, операторы узлов и помощь с регистрацией.',
   's-validators':'Активные валидаторы',
-  'expl-heading':'Обозреватель блоков',
-},
+  'expl-heading':'Обозреватель блоков'},
 zh:{
   'x-consensus-ghostdag-knightdag':'◆ 共识：GHOSTDAG + KNIGHTDAG',
   'x-contract-code':'合约代码',
@@ -1551,7 +1543,6 @@ zh:{
   's1t':'连接','s1d':'Connect your wallet on your phone. Identity source today is typically device-bound (device secret). Face matching against a populated gallery is roadmap — not the binding Phase 0 path.',
   's2t':'证明','s2d':'A zero-knowledge proof shows the chain that this bound identity source is not yet registered (nullifier). Face-derived bio matching is roadmap/calibration in Phase 0 — see the disclaimer.',
   's3t':'领取','s3d':'在 Aequitas BlockDAG 上约 1 秒内确认注册 · 立即记入 1,000 AEQ · 身份永久记录为经过验证的人类',
-  's4t':'获得1,000 AEQ','s4d':'在6秒内在Aequitas BlockDAG上确认注册 · 立即记入1,000 AEQ · 身份永久记录为经过验证的人类',
   'priv-bar':'🔒 Phase 0 · Nullifier dedup · Proof/attest path · Face matching & mandatory MPC are roadmap',
   'conn-wallet':'已连接钱包','proof-recv':'⚡ 已收到ZK证明','proof-hint':'连接钱包以注册',
   'btn-conn':'🦊 连接 METAMASK','btn-reg':'🔐 链上注册','reg-apk-note':'阶段 0：注册需要带 ALLOW_DEVICE_SECRET_REGISTER 的应用构建（APK Phase 0）。',
@@ -1688,8 +1679,7 @@ zh:{
   'soc-title':'💬 社交媒体','soc-sub':'公告、链的真实状态，以及那些不好回答的问题 &mdash; 两个平台，都公开。',
   'soc-x-desc':'公告，以及链实际在做什么。短内容。','soc-tg-desc':'公开群组：提问、节点运营者，以及注册方面的帮助。',
   's-validators':'活跃验证者',
-  'expl-heading':'区块浏览器',
-},
+  'expl-heading':'区块浏览器'},
 id:{
   'x-consensus-ghostdag-knightdag':'◆ Konsensus: GHOSTDAG + KNIGHTDAG',
   'x-contract-code':'Kode kontrak',
@@ -1885,7 +1875,6 @@ id:{
   's1t':'Hubungkan','s1d':'Connect your wallet on your phone. Identity source today is typically device-bound (device secret). Face matching against a populated gallery is roadmap — not the binding Phase 0 path.',
   's2t':'Buktikan','s2d':'A zero-knowledge proof shows the chain that this bound identity source is not yet registered (nullifier). Face-derived bio matching is roadmap/calibration in Phase 0 — see the disclaimer.',
   's3t':'Terima','s3d':'Pendaftaran dikonfirmasi di BlockDAG Aequitas dalam 1 detik · 1.000 AEQ dikreditkan seketika · identitas Anda dicatat permanen sebagai manusia terverifikasi',
-  's4t':'1.000 AEQ Dikreditkan','s4d':'Pendaftaran dikonfirmasi di BlockDAG Aequitas dalam 6 detik · 1.000 AEQ dikreditkan seketika · identitas Anda dicatat permanen sebagai manusia terverifikasi',
   'priv-bar':'🔒 Phase 0 · Nullifier dedup · Proof/attest path · Face matching & mandatory MPC are roadmap',
   'conn-wallet':'DOMPET TERHUBUNG','proof-recv':'⚡ BUKTI ZK DITERIMA','proof-hint':'Hubungkan dompet untuk mendaftar',
   'btn-conn':'🦊 HUBUNGKAN METAMASK','btn-reg':'🔐 DAFTAR ON-CHAIN','reg-apk-note':'Fase 0: pendaftaran membutuhkan build aplikasi dengan ALLOW_DEVICE_SECRET_REGISTER (APK Phase 0).',
@@ -2014,8 +2003,7 @@ id:{
   'soc-title':'💬 Media Sosial','soc-sub':'Pengumuman, keadaan rantai, dan pertanyaan yang canggung &mdash; terbuka, di keduanya.',
   'soc-x-desc':'Pengumuman, dan apa yang sebenarnya dilakukan rantai ini. Bentuk singkat.','soc-tg-desc':'Grup terbuka: pertanyaan, operator node, dan bantuan untuk mendaftar.',
   's-validators':'Validator Aktif',
-  'expl-heading':'Penjelajah Blok',
-},
+  'expl-heading':'Penjelajah Blok'},
 it:{
   'x-consensus-ghostdag-knightdag':'◆ Consenso: GHOSTDAG + KNIGHTDAG',
   'x-contract-code':'Codice del contratto',
@@ -2211,7 +2199,6 @@ it:{
   's1t':'Connetti','s1d':'Connect your wallet on your phone. Identity source today is typically device-bound (device secret). Face matching against a populated gallery is roadmap — not the binding Phase 0 path.',
   's2t':'Prova','s2d':'A zero-knowledge proof shows the chain that this bound identity source is not yet registered (nullifier). Face-derived bio matching is roadmap/calibration in Phase 0 — see the disclaimer.',
   's3t':'Ricevi','s3d':'Registrazione confermata su Aequitas BlockDAG entro 1 secondo · 1.000 AEQ accreditati istantaneamente · la tua identità è registrata permanentemente come umano verificato',
-  's4t':'1.000 AEQ Accreditati','s4d':'Registrazione confermata su Aequitas BlockDAG entro 1 secondo · 1.000 AEQ accreditati istantaneamente · la tua identità è registrata permanentemente come umano verificato',
   'priv-bar':'🔒 Phase 0 · Nullifier dedup · Proof/attest path · Face matching & mandatory MPC are roadmap',
   'conn-wallet':'WALLET CONNESSO','proof-recv':'⚡ PROVA ZK RICEVUTA','proof-hint':'Connetti wallet per registrarti',
   'btn-conn':'🦊 CONNETTI METAMASK','btn-reg':'🔐 REGISTRA ON-CHAIN','reg-apk-note':'Fase 0: la registrazione richiede un build dell\'app con ALLOW_DEVICE_SECRET_REGISTER (APK Phase 0).',
@@ -2341,8 +2328,7 @@ it:{
   'soc-title':'💬 Social Media','soc-sub':'Annunci, lo stato della catena e le domande scomode &mdash; in pubblico, su entrambi.',
   'soc-x-desc':'Annunci, e cosa sta facendo davvero la catena. Formato breve.','soc-tg-desc':'Il gruppo aperto: domande, operatori di nodi e aiuto per registrarsi.',
   's-validators':'Validatori Attivi',
-  'expl-heading':'Esplora blocchi',
-},
+  'expl-heading':'Esplora blocchi'},
 tr:{
   'x-consensus-ghostdag-knightdag':'◆ Uzlaşı: GHOSTDAG + KNIGHTDAG',
   'x-contract-code':'Sözleşme kodu',
@@ -2538,7 +2524,6 @@ tr:{
   's1t':'Bağlan','s1d':'Connect your wallet on your phone. Identity source today is typically device-bound (device secret). Face matching against a populated gallery is roadmap — not the binding Phase 0 path.',
   's2t':'Kanıtla','s2d':'A zero-knowledge proof shows the chain that this bound identity source is not yet registered (nullifier). Face-derived bio matching is roadmap/calibration in Phase 0 — see the disclaimer.',
   's3t':'Al','s3d':'Kayıt 1 saniye içinde Aequitas BlockDAG\'da onaylandı · 1.000 AEQ anında yatırıldı · kimliğin kalıcı olarak doğrulanmış insan olarak kaydedildi',
-  's4t':'1.000 AEQ Yatırıldı','s4d':'Kayıt 6 saniye içinde Aequitas BlockDAG\'da onaylandı · 1.000 AEQ anında yatırıldı · kimliğin kalıcı olarak doğrulanmış insan olarak kaydedildi',
   'priv-bar':'🔒 Phase 0 · Nullifier dedup · Proof/attest path · Face matching & mandatory MPC are roadmap',
   'conn-wallet':'BAĞLI CÜZDAN','proof-recv':'⚡ ZK KANITI ALINDI','proof-hint':'Kayıt için cüzdan bağla',
   'btn-conn':'🦊 METAMASK BAĞLA','btn-reg':'🔐 ZİNCİRE KAYIT OL','reg-apk-note':'Aşama 0: kayıt için ALLOW_DEVICE_SECRET_REGISTER içeren bir uygulama derlemesi gerekir (APK Phase 0).',
@@ -2674,8 +2659,7 @@ tr:{
   'soc-title':'💬 Sosyal Medya','soc-sub':'Duyurular, zincirin durumu ve zor sorular &mdash; herkese açık, her ikisinde de.',
   'soc-x-desc':'Duyurular ve zincirin gerçekte ne yaptığı. Kısa biçim.','soc-tg-desc':'Açık grup: sorular, node işletenler ve kayıt olma konusunda yardım.',
   's-validators':'Aktif Doğrulayıcılar',
-  'expl-heading':'Blok Gezgini',
-},
+  'expl-heading':'Blok Gezgini'},
 fr:{
   'x-consensus-ghostdag-knightdag':'◆ Consensus : GHOSTDAG + KNIGHTDAG',
   'x-contract-code':'Code du contrat',
@@ -2871,7 +2855,6 @@ fr:{
   's1t':'Connecter','s1d':'Connect your wallet on your phone. Identity source today is typically device-bound (device secret). Face matching against a populated gallery is roadmap — not the binding Phase 0 path.',
   's2t':'Prouver','s2d':'A zero-knowledge proof shows the chain that this bound identity source is not yet registered (nullifier). Face-derived bio matching is roadmap/calibration in Phase 0 — see the disclaimer.',
   's3t':'Recevoir','s3d':'Inscription confirmée sur le BlockDAG Aequitas en 1 seconde · 1 000 AEQ crédités instantanément · votre identité est enregistrée de façon permanente comme humain vérifié',
-  's4t':'1 000 AEQ Accordés','s4d':'Inscription confirmée sur le BlockDAG en 1 seconde · 1 000 AEQ crédités instantanément · identité enregistrée en permanence',
   'priv-bar':'🔒 Phase 0 · Nullifier dedup · Proof/attest path · Face matching & mandatory MPC are roadmap',
   'conn-wallet':'PORTEFEUILLE CONNECTÉ','proof-recv':'⚡ PREUVE ZK REÇUE','proof-hint':'Connecter un portefeuille pour s\'inscrire',
   'btn-conn':'🦊 CONNECTER METAMASK','btn-reg':'🔐 INSCRIPTION ON-CHAIN','reg-apk-note':'Phase 0 : l\'inscription nécessite un build d\'app avec ALLOW_DEVICE_SECRET_REGISTER (APK Phase 0).',
@@ -3006,8 +2989,7 @@ fr:{
   'soc-title':'💬 Réseaux sociaux','soc-sub':'Les annonces, l\'état de la chaîne et les questions qui dérangent &mdash; en public, sur les deux.',
   'soc-x-desc':'Les annonces, et ce que la chaîne fait vraiment. Format court.','soc-tg-desc':'Le groupe ouvert : questions, opérateurs de nœuds et aide à l\'inscription.',
   's-validators':'Validateurs actifs',
-  'expl-heading':'Explorateur de blocs',
-},
+  'expl-heading':'Explorateur de blocs'},
 pt:{
   'x-consensus-ghostdag-knightdag':'◆ Consenso: GHOSTDAG + KNIGHTDAG',
   'x-contract-code':'Código do contrato',
@@ -3203,7 +3185,6 @@ pt:{
   's1t':'Conectar','s1d':'Connect your wallet on your phone. Identity source today is typically device-bound (device secret). Face matching against a populated gallery is roadmap — not the binding Phase 0 path.',
   's2t':'Provar','s2d':'A zero-knowledge proof shows the chain that this bound identity source is not yet registered (nullifier). Face-derived bio matching is roadmap/calibration in Phase 0 — see the disclaimer.',
   's3t':'Receber','s3d':'Registo confirmado no BlockDAG Aequitas em 1 segundo · 1.000 AEQ creditados instantaneamente · a sua identidade fica permanentemente registada como humano verificado',
-  's4t':'1.000 AEQ Concedidos','s4d':'Registro confirmado no BlockDAG em 1 segundo · 1.000 AEQ creditados instantaneamente · identidade registrada permanentemente',
   'priv-bar':'🔒 Phase 0 · Nullifier dedup · Proof/attest path · Face matching & mandatory MPC are roadmap',
   'conn-wallet':'CARTEIRA CONECTADA','proof-recv':'⚡ PROVA ZK RECEBIDA','proof-hint':'Conectar carteira para registrar',
   'btn-conn':'🦊 CONECTAR METAMASK','btn-reg':'🔐 REGISTRAR ON-CHAIN','reg-apk-note':'Fase 0: o registo precisa de um build da app com ALLOW_DEVICE_SECRET_REGISTER (APK Phase 0).',
@@ -3338,8 +3319,7 @@ pt:{
   'soc-title':'💬 Redes Sociais','soc-sub':'Anúncios, o estado da cadeia e as perguntas incômodas &mdash; em público, em ambas.',
   'soc-x-desc':'Anúncios, e o que a cadeia está realmente fazendo. Formato curto.','soc-tg-desc':'O grupo aberto: perguntas, operadores de nós e ajuda para se registrar.',
   's-validators':'Validadores Ativos',
-  'expl-heading':'Explorador de Blocos',
-},
+  'expl-heading':'Explorador de Blocos'},
 ar:{
   'x-consensus-ghostdag-knightdag':'◆ التوافق: GHOSTDAG + KNIGHTDAG',
   'x-contract-code':'شِفرة العقد',
@@ -3535,7 +3515,6 @@ ar:{
   's1t':'ربط','s1d':'Connect your wallet on your phone. Identity source today is typically device-bound (device secret). Face matching against a populated gallery is roadmap — not the binding Phase 0 path.',
   's2t':'إثبات','s2d':'A zero-knowledge proof shows the chain that this bound identity source is not yet registered (nullifier). Face-derived bio matching is roadmap/calibration in Phase 0 — see the disclaimer.',
   's3t':'استلام','s3d':'تأكيد التسجيل على BlockDAG Aequitas خلال ثانية · إيداع 1,000 AEQ فوراً · هويتك مسجّلة دائماً كإنسان موثّق',
-  's4t':'تم منح 1,000 AEQ','s4d':'تم تأكيد التسجيل على BlockDAG خلال 6 ثوانٍ · اعتماد 1,000 AEQ فوراً · هويتك مسجلة بشكل دائم',
   'priv-bar':'🔒 Phase 0 · Nullifier dedup · Proof/attest path · Face matching & mandatory MPC are roadmap',
   'conn-wallet':'المحفظة المتصلة','proof-recv':'⚡ تم استلام دليل ZK','proof-hint':'ربط محفظة للتسجيل',
   'btn-conn':'🦊 ربط METAMASK','btn-reg':'🔐 التسجيل ON-CHAIN','reg-apk-note':'المرحلة 0: التسجيل يحتاج بناء تطبيق مع ALLOW_DEVICE_SECRET_REGISTER (APK Phase 0).',
@@ -3668,8 +3647,7 @@ ar:{
   'soc-title':'💬 وسائل التواصل الاجتماعي','soc-sub':'الإعلانات، وحالة السلسلة، والأسئلة المحرجة &mdash; علنًا، على كليهما.',
   'soc-x-desc':'الإعلانات، وما تفعله السلسلة فعليًا. بصيغة مختصرة.','soc-tg-desc':'المجموعة المفتوحة: الأسئلة، ومشغّلو العقد، والمساعدة في التسجيل.',
   's-validators':'المدققون النشطون',
-  'expl-heading':'مستكشف الكتل',
-},
+  'expl-heading':'مستكشف الكتل'},
 hi:{
   'x-consensus-ghostdag-knightdag':'◆ सर्वसम्मति: GHOSTDAG + KNIGHTDAG',
   'x-contract-code':'अनुबंध कोड',
@@ -3865,7 +3843,6 @@ hi:{
   's1t':'कनेक्ट','s1d':'Connect your wallet on your phone. Identity source today is typically device-bound (device secret). Face matching against a populated gallery is roadmap — not the binding Phase 0 path.',
   's2t':'सिद्ध करें','s2d':'A zero-knowledge proof shows the chain that this bound identity source is not yet registered (nullifier). Face-derived bio matching is roadmap/calibration in Phase 0 — see the disclaimer.',
   's3t':'प्राप्त करें','s3d':'Aequitas BlockDAG पर 1 सेकंड में पंजीकरण पुष्टि · तुरंत 1,000 AEQ जमा · आपकी पहचान स्थायी रूप से सत्यापित मानव के रूप में दर्ज',
-  's4t':'1,000 AEQ प्रदान','s4d':'Aequitas BlockDAG पर 6 सेकंड में रजिस्ट्रेशन की पुष्टि · 1,000 AEQ तुरंत जमा · आपकी पहचान स्थायी रूप से दर्ज',
   'priv-bar':'🔒 Phase 0 · Nullifier dedup · Proof/attest path · Face matching & mandatory MPC are roadmap',
   'conn-wallet':'कनेक्टेड वॉलेट','proof-recv':'⚡ ZK प्रमाण प्राप्त','proof-hint':'रजिस्टर करने के लिए वॉलेट कनेक्ट करें',
   'btn-conn':'🦊 METAMASK कनेक्ट करें','btn-reg':'🔐 ON-CHAIN रजिस्टर करें','reg-apk-note':'चरण 0: पंजीकरण के लिए ALLOW_DEVICE_SECRET_REGISTER वाला ऐप बिल्ड चाहिए (APK Phase 0)।',
@@ -3998,8 +3975,7 @@ hi:{
   'soc-title':'💬 सोशल मीडिया','soc-sub':'घोषणाएँ, चेन की स्थिति, और असहज सवाल &mdash; सार्वजनिक रूप से, दोनों पर।',
   'soc-x-desc':'घोषणाएँ, और चेन असल में क्या कर रही है। संक्षिप्त रूप।','soc-tg-desc':'खुला समूह: सवाल, नोड संचालक, और रजिस्टर करने में मदद।',
   's-validators':'सक्रिय वैलिडेटर',
-  'expl-heading':'ब्लॉक एक्सप्लोरर',
-}
+  'expl-heading':'ब्लॉक एक्सप्लोरर'}
 };
 
 function showStab(parentId, stabId, el) {
@@ -4129,8 +4105,7 @@ const BLOCKTIME_PHRASE = {
   id: n => '~' + n + ' detik',
   zh: n => '约' + n + '秒',
   ar: n => '~' + n + ' ثانية',
-  hi: n => '~' + n + ' सेकंड',
-};
+  hi: n => '~' + n + ' सेकंड'};
 function applyBlockTime(blockTimeSeconds) {
   if (blockTimeSeconds === undefined || blockTimeSeconds === null) return;
   lastKnownBlockTime = blockTimeSeconds;
@@ -5224,18 +5199,15 @@ function initPriceChart() {
       horzLine:{color:'rgba(155,114,246,0.55)',width:1,style:0,labelBackgroundColor:'#9B72F6'}},
     rightPriceScale:{borderColor:'rgba(255,255,255,0.07)'},
     timeScale:{borderColor:'rgba(255,255,255,0.07)',timeVisible:true,secondsVisible:false,rightOffset:4},
-    handleScroll:true, handleScale:true,
-  });
+    handleScroll:true, handleScale:true});
   lwCandleSeries = lwChart.addCandlestickSeries({
     upColor:'#34D399',downColor:'#F87171',
     borderUpColor:'#34D399',borderDownColor:'#F87171',
     wickUpColor:'#34D399',wickDownColor:'#F87171',
-    priceFormat:{type:'price',precision:6,minMove:0.000001},
-  });
+    priceFormat:{type:'price',precision:6,minMove:0.000001}});
   lwVolSeries = lwChart.addHistogramSeries({
     priceFormat:{type:'volume'},priceScaleId:'vol',
-    scaleMargins:{top:0.78,bottom:0},
-  });
+    scaleMargins:{top:0.78,bottom:0}});
   try { lwChart.priceScale('vol').applyOptions({scaleMargins:{top:0.78,bottom:0},autoScale:false}); } catch(_){}
   new ResizeObserver(function(e){ if(lwChart&&e[0]) lwChart.applyOptions({width:e[0].contentRect.width}); }).observe(el);
 }
@@ -6203,8 +6175,7 @@ var CHART_RANGES = {
   // evm_storage.go, 366 days) — there is no unbounded "since genesis" option
   // once a retention policy exists, so this asks for exactly that ceiling
   // rather than an arbitrarily large number that would just get clamped.
-  'all': { candleMs: 7 * 86400000,    minutes: 366 * 1440 },
-};
+  'all': { candleMs: 7 * 86400000,    minutes: 366 * 1440 }};
 var ALL_CHART_BTN_IDS = ['ci-1m','ci-5m','ci-15m','ci-1h','ci-4h','ci-1d',
   'ci-3d','ci-1w','ci-2w','ci-1mo','ci-3mo','ci-1y','ci-all'];
 
@@ -7032,8 +7003,7 @@ const CLICK_ACTIONS = {
   setRemovePct: setRemovePct,
   doRemoveLiquidity: doRemoveLiquidity,
   addToMetaMask: addToMetaMask,
-  registerValidatorKey: registerValidatorKey,
-};
+  registerValidatorKey: registerValidatorKey};
 
 // Activation is deliberately not click-only. 28 of the elements carrying
 // data-act are <div>s — every tab in the section bar, every sub-tab, the
