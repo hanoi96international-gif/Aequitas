@@ -9,7 +9,7 @@
 <meta name="translation" content="notranslate">
 <title data-i18n="x-aequitas-proof-of-humanity-chain">Aequitas — Proof of Humanity Chain</title>
 <meta name="description" content="Aequitas Chain — a Proof of Humanity blockchain with built-in Universal Basic Income, demurrage, and wealth cap. Chain ID 1926.">
-<meta name="theme-color" content="#0C0E16">
+<meta name="theme-color" content="#0B0D14">
 <link rel="canonical" href="https://aequitas.digital/explorer">
 <link rel="icon" href="/favicon.svg" type="image/svg+xml">
 <link rel="apple-touch-icon" href="/apple-touch-icon.png">
@@ -35,19 +35,20 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Aequitas">
 <link rel="preconnect" href="https://fonts.bunny.net" crossorigin="anonymous">
-<link href="https://fonts.bunny.net/css?family=inter:400,500,600,700,900|dm-serif-display:400|jetbrains-mono:400,600&display=swap" rel="stylesheet" referrerpolicy="no-referrer" crossorigin="anonymous">
+<link href="https://fonts.bunny.net/css?family=inter:400,500,600,700,800,900|jetbrains-mono:400,600&display=swap" rel="stylesheet" referrerpolicy="no-referrer" crossorigin="anonymous">
 <script src="/vendor/lightweight-charts.min.js"></script>
 <link rel="stylesheet" href="/explorer.css">
 <script src="/vendor/ethers.min.js"></script>
 <script src="/vendor/walletconnect-ethereum-provider.min.js"></script>
 </head>
 <body>
-<header>
-  <div class="logo-wrap">
+<header class="site-nav">
+  <div class="nav-top">
+  <a href="/" class="logo-wrap">
     <div class="logo-icon">⚖</div>
     <div><div class="logo-text">AEQUITAS</div><div class="logo-sub" data-i18n="logo-sub">PROOF OF HUMANITY</div></div>
-  </div>
-  <select class="lang-sel" id="lang-sel">
+  </a>
+  <select class="lang-sel" id="lang-sel" aria-label="Language">
     <option value="en">🌐 EN</option>
     <option value="de">🌐 DE</option>
     <option value="es">🌐 ES</option>
@@ -62,11 +63,13 @@
     <option value="tr">🌐 TR</option>
   </select>
   <div class="header-right">
+    <div class="phase0-badge" data-i18n="phase0-badge">Phase 0 · honest</div>
     <div class="badge badge-live"><span class="pulse"></span><span data-i18n="live">LIVE</span></div>
     <div class="badge badge-health badge-health-healthy" id="health-badge" title="Checking network health…">● GHOSTDAG</div>
     <div class="badge badge-dag" title="KnightDAG: each block infers its own smallest secure K instead of a fixed epoch-wide worst case — inspired by DAGKNIGHT (Sompolinsky &amp; Sutton, 2022), evolving GHOSTDAG beyond a rigid parameter.">◆ KNIGHTDAG</div>
+    <a href="/register" class="nav-cta" data-i18n="nav-register">Register</a>
   </div>
-</header>
+  </div>
 <div class="tabs">
   <!-- Not a tab switch but a real link: the landing page is a separate page,
        and until now the explorer had no way back to it at all. It sits first
@@ -80,41 +83,62 @@
   <div class="tab" data-act="showTabAndPriceChart" data-args='["exchange"]' role="button" tabindex="0">🔄 Exchange</div>
   <div class="tab" data-act="showTab" data-args='["social"]' role="button" tabindex="0">💬 Social</div>
 </div>
+</header>
+<div class="live-strip" aria-label="Live">
+  <div class="live-chip">
+    <div class="live-num c-green" id="chrome-humans">—</div>
+    <div class="live-lbl" data-i18n="s-humans">Verified Humans</div>
+  </div>
+  <div class="live-chip">
+    <div class="live-num c-accent" id="chrome-supply">—</div>
+    <div class="live-lbl" data-i18n="s-supply">Total Supply</div>
+  </div>
+  <div class="live-chip">
+    <div class="live-num c-warn" id="chrome-gini">—</div>
+    <div class="live-lbl">Gini</div>
+  </div>
+  <div class="live-chip">
+    <div class="live-num c-muted" id="chrome-height">—</div>
+    <div class="live-lbl" data-i18n="s-height">Block Height</div>
+  </div>
+</div>
 
 <main id="content">
 <!-- REGISTER -->
 <div id="tab-register" class="tab-content active">
 <div class="rs">
   <div class="rhero">
+    <div class="hero-badge"><span class="pulse"></span><span data-i18n="phase0-badge">Phase 0 · honest</span></div>
     <h1 class="rhero-title" data-i18n="reg-title">🔐 Register as a Verified Human</h1>
     <div class="rhero-sub" data-i18n="reg-sub">Join the Aequitas network and receive your 1,000 AEQ start grant. Registration is one-time and permanent. Phase 0: honest about where duplicate protection stands today.</div>
-    <a href="/download/app.apk" style="display:inline-flex;align-items:center;gap:10px;margin-top:18px;background:var(--grad);color:#fff;padding:13px 28px;border-radius:10px;font-size:0.88rem;font-weight:700;text-decoration:none;letter-spacing:0.5px;box-shadow:var(--glow-purple);transition:all 0.2s" onmouseover="this.style.opacity='0.87';this.style.transform='translateY(-2px)'" onmouseout="this.style.opacity='1';this.style.transform='translateY(0)'">
-      <span style="width:22px;height:22px;border-radius:6px;background:var(--grad);display:inline-flex;align-items:center;justify-content:center;font-size:13px;flex-shrink:0">⚖</span>
-      <span data-i18n="btn-download-app">DOWNLOAD AEQUITAS APP</span>
-    </a>
-    <div style="font-size:0.74rem;color:rgba(255,255,255,0.35);margin-top:8px" data-i18n="x-android-apk-direct-download">Android APK · direct download</div>
+    <div class="hero-btns">
+      <a href="/download/app.apk" class="btn-primary">
+        <span data-i18n="btn-download-app">DOWNLOAD AEQUITAS APP</span>
+      </a>
+      <a href="/explorer" class="btn-secondary" data-act="showTab" data-args='["explorer"]'>Explorer</a>
+    </div>
+    <div class="hero-note" data-i18n="x-android-apk-direct-download">Android APK · direct download</div>
   </div>
   <!-- USP / EQUAL START SECTION -->
-  <div style="background:linear-gradient(135deg,rgba(0,255,209,0.06),rgba(139,92,246,0.04));border:1px solid rgba(0,255,209,0.2);border-radius:var(--radius);padding:22px;margin-bottom:16px;position:relative;overflow:hidden">
-    <div style="position:absolute;top:0;left:0;right:0;height:2px;background:linear-gradient(90deg,var(--neon),var(--purple))"></div>
-    <div style="font-size:0.9rem;font-weight:700;font-family:var(--font-display);color:var(--neon);margin-bottom:4px;line-height:1.4" data-i18n="usp-headline">For the first time in history — everyone starts equal</div>
-    <div style="font-size:0.79rem;color:var(--muted);margin-bottom:16px;line-height:1.7" data-i18n="usp-sub">If you own an Android smartphone, you qualify. No bank, no crypto background, no investment needed.</div>
-    <div class="rwd-1col" style="display:grid;grid-template-columns:repeat(2,1fr);gap:8px">
-      <div style="background:var(--card);border:1px solid rgba(0,255,209,0.15);border-radius:var(--radius-sm);padding:12px">
-        <div style="font-size:0.82rem;font-weight:700;color:var(--neon);margin-bottom:4px" data-i18n="usp-c1-title">0.1% fee · no EVM gas</div>
-        <div style="font-size:0.76rem;color:var(--muted);line-height:1.75" data-i18n="usp-c1-desc">No ETH/MATIC gas to register. Transfers use a 0.1% protocol fee (live from the node) — not “zero cost forever.”</div>
+  <div class="fairness-panel">
+    <div class="fairness-headline" data-i18n="usp-headline">For the first time in history — everyone starts equal</div>
+    <div class="fairness-sub" data-i18n="usp-sub">If you own an Android smartphone, you qualify. No bank, no crypto background, no investment needed.</div>
+    <div class="fairness-grid rwd-1col">
+      <div class="fairness-card c-ok">
+        <div class="fairness-card-title" data-i18n="usp-c1-title">0.1% fee · no EVM gas</div>
+        <div class="fairness-card-desc" data-i18n="usp-c1-desc">No ETH/MATIC gas to register. Transfers use a 0.1% protocol fee (live from the node) — not “zero cost forever.”</div>
       </div>
-      <div style="background:var(--card);border:1px solid rgba(245,166,35,0.15);border-radius:var(--radius-sm);padding:12px">
-        <div style="font-size:0.82rem;font-weight:700;color:var(--gold);margin-bottom:4px" data-i18n="usp-c2-title">1,000 AEQ for every human</div>
-        <div style="font-size:0.76rem;color:var(--muted);line-height:1.75" data-i18n="usp-c2-desc">Billionaire or subsistence farmer — everyone gets exactly 1,000 AEQ. Not more, not less. Equal start, guaranteed by math.</div>
+      <div class="fairness-card c-warn">
+        <div class="fairness-card-title" data-i18n="usp-c2-title">1,000 AEQ for every human</div>
+        <div class="fairness-card-desc" data-i18n="usp-c2-desc">Billionaire or subsistence farmer — everyone gets exactly 1,000 AEQ. Not more, not less. Equal start, guaranteed by math.</div>
       </div>
-      <div style="background:var(--card);border:1px solid rgba(139,92,246,0.15);border-radius:var(--radius-sm);padding:12px">
-        <div style="font-size:0.82rem;font-weight:700;color:var(--purple);margin-bottom:4px" data-i18n="usp-c3-title">Accessible to all</div>
-        <div style="font-size:0.76rem;color:var(--muted);line-height:1.75" data-i18n="usp-c3-desc">No bank account, no credit card, no government ID, no extra hardware to buy — just the camera already in your Android phone.</div>
+      <div class="fairness-card">
+        <div class="fairness-card-title" data-i18n="usp-c3-title">Accessible to all</div>
+        <div class="fairness-card-desc" data-i18n="usp-c3-desc">No bank account, no credit card, no government ID, no extra hardware to buy — just the camera already in your Android phone.</div>
       </div>
-      <div style="background:var(--card);border:1px solid rgba(6,182,212,0.15);border-radius:var(--radius-sm);padding:12px">
-        <div style="font-size:0.82rem;font-weight:700;color:var(--teal);margin-bottom:4px" data-i18n="usp-c4-title">Daily UBI forever</div>
-        <div style="font-size:0.76rem;color:var(--muted);line-height:1.75" data-i18n="usp-c4-desc">Once registered, you receive a daily share of UBI payouts automatically — every day, no action required.</div>
+      <div class="fairness-card c-ok">
+        <div class="fairness-card-title" data-i18n="usp-c4-title">Daily UBI forever</div>
+        <div class="fairness-card-desc" data-i18n="usp-c4-desc">Once registered, you receive a daily share of UBI payouts automatically — every day, no action required.</div>
       </div>
     </div>
   </div>
@@ -132,7 +156,7 @@
   <div class="pbar" data-i18n="priv-bar">🔒 Phase 0 · Nullifier dedup · Proof/attest path · Face matching &amp; mandatory MPC are roadmap</div>
   <div class="pbar" style="background:rgba(245,166,35,0.06);border:1px solid rgba(245,166,35,0.2);color:var(--gold)" data-i18n="x-metamask-mobile-if-aeq-balance">📱 MetaMask Mobile: if AEQ balance shows 0 after registration, go to Settings → Networks → delete Aequitas Chain → re-add via this website</div>
 
-  <div class="phase0-disc" data-i18n="reg-disclaimer" style="background:rgba(245,165,36,0.07);border:1px solid rgba(245,165,36,0.38);border-radius:16px;padding:16px 18px;margin-bottom:14px;font-size:0.82rem;color:var(--muted);line-height:1.7;box-shadow:0 8px 32px rgba(0,0,0,.25)">
+  <div class="phase0-disc" data-i18n="reg-disclaimer">
     <div style="font-weight:800;color:var(--gold);margin-bottom:6px;font-size:0.88rem">Phase 0 disclaimer</div>
     Phase 0: Sybil resistance today rests mainly on nullifier dedup, device-/source-bound secrets, and the proof/attestation path. Face matching and mandatory MPC duplicate checks are roadmap/calibration — not the binding launch state. Double registration via new devices or bypassed biometric paths remains a known residual risk in Phase 0; do not claim “impossible” or “zero Sybil.”
   </div>
@@ -1953,6 +1977,22 @@
 </div>
 
 </main>
+
+<footer class="site-footer">
+  <div class="footer-links">
+    <a href="/">Overview</a>
+    <a href="/register" data-i18n="nav-register">Register</a>
+    <a href="/explorer">Explorer</a>
+    <a href="/index/score">Equality</a>
+    <a href="/network">Network</a>
+    <a href="/exchange">Exchange</a>
+    <a href="https://github.com/hanoi96international-gif/Aequitas">GitHub</a>
+    <a href="https://x.com/AequitasMoney" target="_blank" rel="noopener noreferrer">X</a>
+    <a href="https://t.me/aequitasmoney" target="_blank" rel="noopener noreferrer">Telegram</a>
+  </div>
+  <p><span data-i18n="x-aequitas-chain">Aequitas Chain</span> · <span data-i18n="k-chainid">Chain ID</span> 1926 · <span>aequitas.digital</span> · <span data-i18n="foot-launched">Launched June 2026</span> · <span data-i18n="foot-phase">Phase 0</span></p>
+  <p class="footer-quote">"<em data-i18n="foot-quote">Money exists because people exist. Nothing more, nothing less.</em>"</p>
+</footer>
 
 <script src="/explorer.js"></script>
 </body>
