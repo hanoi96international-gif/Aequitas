@@ -24,7 +24,7 @@ const landingHTML = `<!DOCTYPE html>
 <meta property="og:image" content="https://aequitas.digital/og-image.png">
 <meta property="og:image:width" content="1200">
 <meta property="og:image:height" content="630">
-<meta property="og:image:alt" content="Aequitas — money that belongs to every human equally. 1,000 AEQ per verified human, Gini measured on chain, zero gas fees.">
+<meta property="og:image:alt" content="Aequitas — money that belongs to every human equally. 1,000 AEQ per verified human, Gini measured on chain, 0.1% protocol fee on transfers.">
 <meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:site" content="@AequitasMoney">
 <meta name="twitter:title" content="Aequitas — money that belongs to every human equally">
@@ -310,7 +310,7 @@ section{padding:60px 20px}
   </div>
   <div class="hero-proof">
     <span class="ok">✓</span> <span data-i18n="proof-gini">Gini</span> <span class="ok" id="gini-inline">—</span> <span data-i18n="proof-gini-note">— measured on chain, published live</span> &nbsp;·&nbsp;
-    <span class="ok">✓</span> <span data-i18n="proof-gas">Zero gas fees</span> &nbsp;·&nbsp;
+    <span class="ok">✓</span> <span data-i18n="proof-gas">No EVM gas fees — 0.1% protocol fee on transfers (live from the node)</span> &nbsp;·&nbsp;
     <span class="ok">✓</span> <span data-i18n="proof-oss">Open source</span>
   </div>
 </section>
