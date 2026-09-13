@@ -7,7 +7,7 @@ const landingHTML = `<!DOCTYPE html>
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <meta name="google" content="notranslate">
 <title>Aequitas — Proof of Humanity Chain</title>
-<meta name="description" content="Phase 0: one human, one account, 1,000 AEQ start — honest about where duplicate protection stands today. Live Gini on chain.">
+<meta name="description" content="Phase 1: one human, one account, 1,000 AEQ start — every new registration passes a live face check by independent matching services. Live Gini on chain.">
 <meta name="theme-color" content="#0B0D14">
 <link rel="canonical" href="https://aequitas.digital/">
 <link rel="icon" href="/favicon.svg" type="image/svg+xml">
@@ -16,7 +16,7 @@ const landingHTML = `<!DOCTYPE html>
 <meta property="og:site_name" content="Aequitas">
 <meta property="og:url" content="https://aequitas.digital/">
 <meta property="og:title" content="Aequitas — money that belongs to every human equally">
-<meta property="og:description" content="Phase 0: one human, one account, 1,000 AEQ start. Live on-chain Gini. Honest about duplicate protection.">
+<meta property="og:description" content="Phase 1: one human, one account, 1,000 AEQ start. Live face check at registration. Live on-chain Gini.">
 <meta property="og:image" content="https://aequitas.digital/og-image.png">
 <meta property="og:image:width" content="1200">
 <meta property="og:image:height" content="630">
@@ -24,7 +24,7 @@ const landingHTML = `<!DOCTYPE html>
 <meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:site" content="@AequitasMoney">
 <meta name="twitter:title" content="Aequitas — money that belongs to every human equally">
-<meta name="twitter:description" content="Phase 0: one human, one account, 1,000 AEQ start. Live on-chain Gini. Honest about duplicate protection.">
+<meta name="twitter:description" content="Phase 1: one human, one account, 1,000 AEQ start. Live face check at registration. Live on-chain Gini.">
 <meta name="twitter:image" content="https://aequitas.digital/og-image.png">
 <link rel="preconnect" href="https://fonts.bunny.net" crossorigin="anonymous">
 <link href="https://fonts.bunny.net/css?family=inter:300,400,500,600,700,800,900&display=swap" rel="stylesheet" referrerpolicy="no-referrer" crossorigin="anonymous">
@@ -208,7 +208,7 @@ section{padding:56px 16px}
       <option value="tr">🌐 TR</option>
     </select>
     <div class="header-right">
-      <div class="phase0-badge" data-i18n="phase0-badge">Phase 0 · honest</div>
+      <div class="phase0-badge" data-i18n="phase0-badge">Phase 1 · face check</div>
       <div class="badge badge-live"><span class="pulse"></span><span data-i18n="live">LIVE</span></div>
       <div class="badge badge-health badge-health-healthy" id="health-badge" title="Checking network health…">● GHOSTDAG</div>
       <a href="/register" class="nav-cta" data-i18n="nav-register">Register</a>
@@ -229,10 +229,10 @@ section{padding:56px 16px}
 <section class="hero">
   <div class="hero-badge">
     <span class="pulse"></span>
-    <span data-i18n="hero-badge">Phase 0 · Chain ID 1926</span>
+    <span data-i18n="hero-badge">Phase 1 · Chain ID 1926</span>
   </div>
   <h1 data-i18n="hero-h1">Money that belongs<br>to <span>every human</span> equally</h1>
-  <p class="hero-sub" data-i18n="hero-sub">Phase 0: one human, one account, 1,000 AEQ start — honest about where duplicate protection stands today.</p>
+  <p class="hero-sub" data-i18n="hero-sub">Phase 1: one human, one account, 1,000 AEQ start — every new registration passes a live face check by two independent matching services.</p>
   <div class="hero-btns">
     <a href="/register" class="btn-primary" data-i18n="btn-register">Register now</a>
     <a href="/explorer" class="btn-secondary" data-i18n="btn-explorer">Open explorer</a>
@@ -240,7 +240,7 @@ section{padding:56px 16px}
   <div class="hero-pills">
     <span class="pill" data-i18n="pill-fee"><strong>0.1%</strong> fee</span>
     <span class="pill" data-i18n="pill-gini"><strong>Live</strong> on-chain Gini</span>
-    <span class="pill" data-i18n="pill-phase"><strong>Phase 0</strong></span>
+    <span class="pill" data-i18n="pill-phase"><strong>Phase 1</strong></span>
   </div>
 </section>
 
@@ -267,18 +267,18 @@ section{padding:56px 16px}
 <section>
   <div class="section-inner">
     <div class="section-label" data-i18n="how-label">How it works</div>
-    <h2 data-i18n="how-h2">Three honest steps (Phase 0)</h2>
-    <p class="section-sub" data-i18n="how-sub">Wallet on your phone, a bound identity source, and a one-time grant — no bank account required.</p>
+    <h2 data-i18n="how-h2">Three honest steps (Phase 1)</h2>
+    <p class="section-sub" data-i18n="how-sub">Wallet on your phone, a short live face capture, and a one-time grant — no bank account required.</p>
     <div class="steps">
       <div class="step">
         <div class="step-num">1</div>
-        <h3 data-i18n="step1-h">Connect</h3>
-        <p data-i18n="step1-p">Wallet on your phone; identity source today is typically device-bound (device secret).</p>
+        <h3 data-i18n="step1-h">Scan</h3>
+        <p data-i18n="step1-p">Wallet on your phone; the app captures your face with a random head-turn challenge, and two independent matching services compare it against everyone registered since the face check began. Images are discarded; each service keeps an encrypted template.</p>
       </div>
       <div class="step">
         <div class="step-num">2</div>
         <h3 data-i18n="step2-h">Prove</h3>
-        <p data-i18n="step2-p">Zero-knowledge proof to the chain that this bound identity source is not yet registered (nullifier).</p>
+        <p data-i18n="step2-p">Zero-knowledge proof to the chain that this face-bound identity is not yet registered (nullifier). The proof server accepts it only with the matching services' signed attestation.</p>
       </div>
       <div class="step">
         <div class="step-num">3</div>
@@ -286,7 +286,7 @@ section{padding:56px 16px}
         <p data-i18n="step3-p">1,000 AEQ once per successful registration.</p>
       </div>
     </div>
-    <div class="sybil-blurb" data-i18n="sybil-blurb"><strong>Sybil / protection:</strong> On-chain nullifiers + proof/attestation path. Face matching and mandatory MPC are roadmap — the real face gallery is not populated in Phase 0, and <code>MPC_REQUIRED</code> is off.</div>
+    <div class="sybil-blurb" data-i18n="sybil-blurb"><strong>Sybil / protection:</strong> live face check (quorum 2 of independent matching services) + signed attestation + on-chain nullifier, spent once. Named limits: accounts from before the face check (25 Aug 2026 — nearly all of today's 18) have no face template; the matching threshold is not yet calibrated on real captures; liveness is a head-turn challenge, so advanced deepfakes remain a residual risk; the split-share mode (<code>MPC</code>) runs in shadow, each service still holds a whole encrypted template.</div>
     <a class="section-link" href="/register" data-i18n="how-link">Register and claim your 1,000 AEQ →</a>
   </div>
 </section>
@@ -314,9 +314,9 @@ section{padding:56px 16px}
 
 <section style="padding-top:40px;padding-bottom:40px">
   <div class="disclaimer-card">
-    <h3 data-i18n="disc-title">Phase 0 disclaimer</h3>
-    <p data-i18n="disc-body">Phase 0: Sybil resistance today rests mainly on nullifier dedup, device-/source-bound secrets, and the proof/attestation path. Face matching and mandatory MPC duplicate checks are roadmap/calibration — not the binding launch state. Double registration via new devices or bypassed biometric paths remains a known residual risk in Phase 0; do not claim “impossible” or “zero Sybil.”</p>
-    <p class="oss-line" data-i18n="oss-line"><strong>Open source:</strong> Core chain public · identity/proof services partly private in Phase 0.</p>
+    <h3 data-i18n="disc-title">Phase 1 disclaimer</h3>
+    <p data-i18n="disc-body">Phase 1: since 25 Aug 2026 the proof server refuses any registration without a signed attestation from the matching quorum — a second phone no longer gives the same face a second account. What is not yet true: accounts registered before that date have no face template and could in principle register again on a new wallet; error rates are not calibrated (that needs ~1,000 impostor pairs); liveness is a head-turn challenge, stronger deepfake defenses are being calibrated. Read “one human, one account” as “checked, with named limits” — not as “impossible to circumvent.”</p>
+    <p class="oss-line" data-i18n="oss-line"><strong>Open source:</strong> Core chain public · identity/proof services partly private in Phase 1.</p>
   </div>
 </section>
 
@@ -397,7 +397,7 @@ section{padding:56px 16px}
     <a href="https://x.com/AequitasMoney" target="_blank" rel="noopener noreferrer" class="social"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/></svg>@AequitasMoney</a>
     <a href="https://t.me/aequitasmoney" target="_blank" rel="noopener noreferrer" class="social"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M11.944 0A12 12 0 0 0 0 12a12 12 0 0 0 12 12 12 12 0 0 0 12-12A12 12 0 0 0 12 0a12 12 0 0 0-.056 0zm4.962 7.224c.1-.002.321.023.465.14a.506.506 0 0 1 .171.325c.016.093.036.306.02.472-.18 1.898-.962 6.502-1.36 8.627-.168.9-.499 1.201-.82 1.23-.696.065-1.225-.46-1.9-.902-1.056-.693-1.653-1.124-2.678-1.8-1.185-.78-.417-1.21.258-1.91.177-.184 3.247-2.977 3.307-3.23.007-.032.014-.15-.056-.212s-.174-.041-.249-.024c-.106.024-1.793 1.14-5.061 3.345-.48.33-.913.49-1.302.48-.428-.008-1.252-.241-1.865-.44-.752-.245-1.349-.374-1.297-.789.027-.216.325-.437.893-.663 3.498-1.524 5.83-2.529 6.998-3.014 3.332-1.386 4.025-1.627 4.476-1.635z"/></svg>Telegram</a>
   </div>
-  <p>Aequitas Chain · Chain ID 1926 · <span>aequitas.digital</span> · <span data-i18n="foot-launched">Launched June 2026</span> · <span data-i18n="foot-phase">Phase 0</span></p>
+  <p>Aequitas Chain · Chain ID 1926 · <span>aequitas.digital</span> · <span data-i18n="foot-launched">Launched June 2026</span> · <span data-i18n="foot-phase">Phase 1</span></p>
   <p style="margin-top:6px">"<em data-i18n="foot-quote">Money exists because people exist. Nothing more, nothing less.</em>"</p>
 </footer>
 
