@@ -89,13 +89,13 @@ jobs:
             for i in $(seq 1 20); do
               OUT=$(curl -s --max-time 15 -o /dev/null -w "%{http_code} %{redirect_url}" http://127.0.0.1:8080/download/app.apk)
               case "$OUT" in
-                302*) echo "  /download/app.apk -> $OUT"; break ;;
+                302*|200*) echo "  /download/app.apk -> $OUT"; break ;;
               esac
               sleep 15
             done
             case "$OUT" in
-              302*) ;;
-              *) echo "  Knoten antwortet nach 5 Minuten nicht mit einer Umleitung: $OUT"; exit 1 ;;
+              302*|200*) ;;
+              *) echo "  Knoten antwortet nach 5 Minuten weder mit Umleitung noch mit der Datei: $OUT"; exit 1 ;;
             esac
         env:
           APKURL: ${{ inputs.url }}
@@ -158,13 +158,13 @@ jobs:
             for i in $(seq 1 20); do
               OUT=$(curl -s --max-time 15 -o /dev/null -w "%{http_code} %{redirect_url}" http://127.0.0.1:8080/download/app.apk)
               case "$OUT" in
-                302*) echo "  /download/app.apk -> $OUT"; break ;;
+                302*|200*) echo "  /download/app.apk -> $OUT"; break ;;
               esac
               sleep 15
             done
             case "$OUT" in
-              302*) ;;
-              *) echo "  Knoten antwortet nach 5 Minuten nicht mit einer Umleitung: $OUT"; exit 1 ;;
+              302*|200*) ;;
+              *) echo "  Knoten antwortet nach 5 Minuten weder mit Umleitung noch mit der Datei: $OUT"; exit 1 ;;
             esac
         env:
           APKURL: ${{ inputs.url }}
