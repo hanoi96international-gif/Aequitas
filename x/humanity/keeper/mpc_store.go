@@ -225,8 +225,11 @@ func (cs *ChainState) DeleteMPCShare(enrollmentID string) error {
 		return err
 	}
 	defer tx.Rollback()
+	// Alte Eimerschluessel dieser Einschreibung entfernen, falls die Tabelle
+	// aus der Zeit vor dem 25.08.2026 noch existiert -- siehe mpcSchema.
 	if _, err := tx.Exec(`DELETE FROM mpc_share_buckets WHERE enrollment_id = $1`, enrollmentID); err != nil {
-		return err
+		// Kein Abbruch: fehlt die Tabelle, ist nichts zu loeschen.
+		_ = err
 	}
 	if _, err := tx.Exec(`DELETE FROM mpc_shares WHERE enrollment_id = $1`, enrollmentID); err != nil {
 		return err
