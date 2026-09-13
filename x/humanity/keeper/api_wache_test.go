@@ -67,3 +67,12 @@ func TestCoordinatorWacheStand(t *testing.T) {
 		t.Fatalf("Verbindung verweigert muss rot sein: got %q %v", stand, ok)
 	}
 }
+
+func TestProofServerQuorum(t *testing.T) {
+	if q := proofServerQuorum(map[string]interface{}{}); q != 0 {
+		t.Fatalf("leer: %d", q)
+	}
+	if q := proofServerQuorum(map[string]interface{}{"durchsetzung": map[string]interface{}{"quorum": float64(2)}}); q != 2 {
+		t.Fatalf("json-Zahl: %d", q)
+	}
+}

@@ -982,6 +982,16 @@ func (a *APIServer) buildMux() *http.ServeMux {
 	mux.HandleFunc("/impressum", a.handleImpressum)
 	mux.HandleFunc("/datenschutz", a.handleDatenschutz)
 	mux.HandleFunc("/api/legal-status", a.handleLegalStatus)
+	// robots.txt fiel bis zum 13.09.2026 in den Catch-all und bekam die
+	// 238-KB-Explorer-Seite als text/html. Ein Crawler liest daraus keine
+	// Regel -- und wer die Datei prueft, sieht eine Seite, die so tut, als
+	// gaebe es sie. Alles darf gecrawlt werden ausser der API; die Sitemap
+	// gibt es nicht, also wird auch keine behauptet.
+	mux.HandleFunc("/robots.txt", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+		w.Header().Set("Cache-Control", "public, max-age=3600")
+		fmt.Fprint(w, "User-agent: *\nDisallow: /api/\nDisallow: /debug/\nDisallow: /rpc\nAllow: /\n")
+	})
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		// Root path: serve landing page; anything else falls to handleUI
 		if r.URL.Path == "/" {

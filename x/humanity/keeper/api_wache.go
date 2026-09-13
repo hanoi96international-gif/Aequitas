@@ -54,6 +54,10 @@ func (a *APIServer) handleWache(w http.ResponseWriter, r *http.Request) {
 		rot = append(rot, "Proof-Server nicht erreichbar -- keine Registrierung moeglich")
 	} else if modus != "required" {
 		rot = append(rot, fmt.Sprintf("Proof-Server BIO_ATTESTATION_MODE=%q statt required -- Registrierung ohne Gesichtspruefung moeglich", modus))
+	} else if q := proofServerQuorum(a.proofServerStatusKopie()); q > 0 && q < 2 {
+		// Quorum 1 hiesse: EIN geleakter Schluessel bezeugt beliebig viele
+		// Menschen, und niemand merkt es (bio_attestation.js, QUORUM).
+		rot = append(rot, fmt.Sprintf("Proof-Server BIO_ATTESTATION_QUORUM=%d -- ein einzelner Schluessel genuegt fuer eine Registrierung", q))
 	} else {
 		gruen = append(gruen, "Proof-Server erreichbar, Gesichtspruefung Pflicht")
 	}
@@ -203,4 +207,26 @@ func coordinatorWacheStand() (string, bool) {
 		return fmt.Sprintf("Quorum %d bei %d Vergleichsdiensten", body.QuorumSize, len(body.ValidatorURLs)), false
 	}
 	return fmt.Sprintf("Quorum %d von %d", body.QuorumSize, len(body.ValidatorURLs)), true
+}
+
+// proofServerQuorum liest durchsetzung.quorum (0 wenn nicht enthalten).
+func proofServerQuorum(status map[string]interface{}) int {
+	d, _ := status["durchsetzung"].(map[string]interface{})
+	if d == nil {
+		return 0
+	}
+	switch q := d["quorum"].(type) {
+	case float64:
+		return int(q)
+	case int:
+		return q
+	}
+	return 0
+}
+
+// proofServerStatusKopie liefert die letzte /health-Antwort unter der Sperre.
+func (a *APIServer) proofServerStatusKopie() map[string]interface{} {
+	a.proofStatusMu.RLock()
+	defer a.proofStatusMu.RUnlock()
+	return a.proofServerStatus
 }
