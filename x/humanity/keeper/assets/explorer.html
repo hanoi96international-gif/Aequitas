@@ -25,7 +25,7 @@
 <meta property="og:image" content="https://aequitas.digital/og-image.png">
 <meta property="og:image:width" content="1200">
 <meta property="og:image:height" content="630">
-<meta property="og:image:alt" content="Aequitas — money that belongs to every human equally. 1,000 AEQ per verified human, Gini measured on chain, zero gas fees.">
+<meta property="og:image:alt" content="Aequitas — money that belongs to every human equally. 1,000 AEQ per verified human, Gini measured on chain, 0.1% protocol fee (no EVM gas).">
 <meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:site" content="@AequitasMoney">
 <meta name="twitter:title" content="Aequitas Explorer — the chain, live">
@@ -127,8 +127,7 @@
   <div class="rsteps">
     <div class="rstep"><div class="snum">1</div><div class="stitle" data-i18n="s1t">Connect</div><div class="sdesc" data-i18n="s1d">Connect your wallet on your phone. Identity source today is typically device-bound (device secret). Face matching against a populated gallery is roadmap — not the binding Phase 0 path.</div></div>
     <div class="rstep"><div class="snum">2</div><div class="stitle" data-i18n="s2t">Prove</div><div class="sdesc" data-i18n="s2d">A zero-knowledge proof shows the chain that this bound identity source is not yet registered (nullifier). Face-derived bio matching is roadmap/calibration in Phase 0 — see the disclaimer.</div></div>
-    <div class="rstep"><div class="snum">3</div><div class="stitle" data-i18n="s3t">Connect Wallet</div><div class="sdesc" data-i18n="s3d">The app opens MetaMask on this page · connect your Ethereum wallet · the proof is cryptographically bound to your wallet address</div></div>
-    <div class="rstep"><div class="snum">4</div><div class="stitle" data-i18n="s4t">1,000 AEQ Granted</div><div class="sdesc" data-i18n="s4d">Registration confirmed on Aequitas BlockDAG within 1 second · 1,000 AEQ credited instantly · your identity is permanently recorded as a verified human</div></div>
+    <div class="rstep"><div class="snum">3</div><div class="stitle" data-i18n="s3t">Receive</div><div class="sdesc" data-i18n="s3d">Registration confirmed on Aequitas BlockDAG within 1 second · 1,000 AEQ credited instantly · your identity is permanently recorded as a verified human</div></div>
   </div>
   <div class="pbar" data-i18n="priv-bar">🔒 Phase 0 · Nullifier dedup · Proof/attest path · Face matching &amp; mandatory MPC are roadmap</div>
   <div class="pbar" style="background:rgba(245,166,35,0.06);border:1px solid rgba(245,166,35,0.2);color:var(--gold)" data-i18n="x-metamask-mobile-if-aeq-balance">📱 MetaMask Mobile: if AEQ balance shows 0 after registration, go to Settings → Networks → delete Aequitas Chain → re-add via this website</div>
@@ -145,6 +144,7 @@
     <button class="rbtn bc" id="btn-wc" data-act="connectWalletConnect" style="background:linear-gradient(135deg,#3b99fc,#1e5fd6);color:#fff" data-i18n="btn-wc">🔗 CONNECT WALLETCONNECT</button>
     <button id="btn-disconnect" data-act="disconnectWallet" style="display:none;margin-top:6px;padding:8px 16px;font-size:0.77rem;letter-spacing:1px;border:1px solid rgba(248,113,113,0.4);background:rgba(248,113,113,0.08);color:var(--red);border-radius:6px;cursor:pointer;width:100%" data-i18n="x-disconnect-wallet">⊘ DISCONNECT WALLET</button>
     <button class="rbtn br" id="btn-reg" data-act="doRegister" disabled data-i18n="btn-reg">🔐 REGISTER ON-CHAIN</button>
+    <div style="font-size:0.78rem;color:var(--gold);line-height:1.7;margin-top:8px;opacity:.95" data-i18n="reg-apk-note">Phase 0: registration needs an app build with ALLOW_DEVICE_SECRET_REGISTER (APK Phase 0).</div>
     <div class="rlog" id="rlog"><span class="info" data-i18n="reg-log-hint">// Open Aequitas Android App to generate your proof, then return here...</span></div>
 
     <!-- Guardian Panel — shown only when user is a registered human -->
@@ -188,12 +188,12 @@
     <div class="ic-row"><span class="ic-key" data-i18n="k-network">Network</span><span class="ic-val p" data-i18n="x-aequitas-chain-blockdag">Aequitas Chain (BlockDAG)</span></div>
     <div class="ic-row"><span class="ic-key" data-i18n="k-chainid">Chain ID</span><span class="ic-val b">1926 (0x786)</span></div>
     <div class="ic-row"><span class="ic-key" data-i18n="k-grant">UBI Grant</span><span class="ic-val go" data-i18n="x-1-000-aeq-per-human">1,000 AEQ per human</span></div>
-    <div class="ic-row"><span class="ic-key" data-i18n="k-fee">Gas Fee</span><span class="ic-val g" data-i18n="free">FREE — completely gasless</span></div>
+    <div class="ic-row"><span class="ic-key" data-i18n="k-fee">Gas Fee</span><span class="ic-val g" data-i18n="free">0.1% protocol fee — no EVM gas</span></div>
     <div class="ic-row"><span class="ic-key" data-i18n="k-limit">Registrations</span><span class="ic-val" data-i18n="k-limit-v">Once per person · permanent · immutable</span></div>
     <div class="ic-row"><span class="ic-key" data-i18n="k-bio">Face</span><span class="ic-val g" data-i18n="never-stored">Phase 0: device-/source-bound secrets + nullifier — not “images discarded / template only” as absolute</span></div>
     <div class="ic-row"><span class="ic-key" data-i18n="k-proof">Proof System</span><span class="ic-val p" data-i18n="x-groth16-zkp-zero-knowledge">Groth16 ZKP (Zero-Knowledge)</span></div>
     <div class="ic-row"><span class="ic-key" data-i18n="k-conf">Confirmation</span><span class="ic-val" data-i18n="k-conf-v">Within 1 second (1 block)</span></div>
-    <div class="ic-row"><span class="ic-key" data-i18n="k-sybil">Sybil Protection</span><span class="ic-val g" data-i18n="k-sybil-v">One identity per person · face-bound, threshold not yet calibrated</span></div>
+    <div class="ic-row"><span class="ic-key" data-i18n="k-sybil">Sybil Protection</span><span class="ic-val g" data-i18n="k-sybil-v">Phase 0: nullifier + device-/source-bound · face gallery = roadmap</span></div>
   </div>
 </div>
 </div>
@@ -321,7 +321,7 @@
     <div>
       <div class="ib-icon">🛡</div>
       <div class="ib-title" data-i18n="h-sybil">Sybil Resistance — Current State</div>
-      <div class="ib-text" data-i18n="h-sybil-t">The nullifier is derived from the bio_hash of your face, so the same face cannot be registered twice — across devices as well, which a device key never could. What it rests on is a matching threshold that has not yet been calibrated against real captures: the cryptography is exact, the biometrics underneath it is a measurement whose error rate has not been quantified.</div>
+      <div class="ib-text" data-i18n="h-sybil-t">The nullifier is derived from the bound identity source (typically a device secret in Phase 0), so the same source cannot register twice. That is not the same claim as “the same face cannot register twice.” Until face-gallery matching is calibrated and binding, a second device — or a bypassed biometric path — remains a known residual risk. The cryptography on the nullifier is exact; cross-device uniqueness is not yet a measured biometric fact.</div>
     </div>
     <div>
       <div class="ib-icon">🌍</div>
@@ -331,7 +331,7 @@
     <div>
       <div class="ib-icon">🫁</div>
       <div class="ib-title" data-i18n="h-bio-hw">Identity Verification Roadmap</div>
-      <div class="ib-text" data-i18n="h-bio-hw-t">Today (beta): a face check across independent matching services that must agree by quorum. Its threshold has not yet been calibrated against real captures — that needs about 1000 impostor pairs before any number is quoted. Planned: that calibration, and a duplicate check in which no service holds a whole template.</div>
+      <div class="ib-text" data-i18n="h-bio-hw-t">Today (Phase 0): device-/source-bound secret + proof/attestation path to the chain. Face matching across independent services by quorum is roadmap/calibration — not the binding Ist state. Planned: that calibration (~1000 impostor pairs before quoting rates), and a duplicate check in which no service holds a whole template.</div>
     </div>
   </div>
 </div>
@@ -347,7 +347,7 @@
       <div class="ic-row"><span class="ic-key" data-i18n="total-humans">Total Humans</span><span class="ic-val g" id="stat-humans">0</span></div>
       <div class="ic-row"><span class="ic-key" data-i18n="s-supply">Total Supply</span><span class="ic-val go" id="stat-supply">0 AEQ</span></div>
       <div class="ic-row"><span class="ic-key" data-i18n="k-grant">UBI Grant</span><span class="ic-val go">1,000 AEQ</span></div>
-      <div class="ic-row"><span class="ic-key" data-i18n="k-fee">Gas Fee</span><span class="ic-val g" data-i18n="free">FREE — completely gasless</span></div>
+      <div class="ic-row"><span class="ic-key" data-i18n="k-fee">Gas Fee</span><span class="ic-val g" data-i18n="free">0.1% protocol fee — no EVM gas</span></div>
       <div class="ic-row"><span class="ic-key" data-i18n="k-zkp">ZKP System</span><span class="ic-val p" data-i18n="x-groth16-bn128">Groth16 / BN128</span></div>
       <div class="ic-row"><span class="ic-key" data-i18n="k-hash">Hash System</span><span class="ic-val p">keccak256</span></div>
       <div class="ic-row"><span class="ic-key" data-i18n="k-bio">Face</span><span class="ic-val g" data-i18n="never-stored">Phase 0: device-/source-bound secrets + nullifier — not “images discarded / template only” as absolute</span></div>
@@ -416,7 +416,7 @@
 <div class="rs">
   <div class="rhero">
     <h1 class="rhero-title" data-i18n="swap-title">🔄 Swap AEQ ↔ tUSD</h1>
-    <div class="rhero-sub" data-i18n="swap-sub">Exchange AEQ for tUSD (a simulated test-dollar) through the native liquidity pool. A 0.1% fee applies only to swaps — ordinary AEQ transfers between people remain completely free.</div>
+    <div class="rhero-sub" data-i18n="swap-sub">Exchange AEQ for tUSD (a simulated test-dollar) through the native liquidity pool. A 0.1% fee applies to swaps; ordinary AEQ transfers also carry a 0.1% protocol fee (no EVM gas).</div>
   </div>
   <div class="pbar" data-i18n="swap-priv-bar">🔒 Non-custodial · AMM x·y=k · 0.1% fee · Instant settlement · No slippage protection needed at small sizes</div>
   <div class="rcard">
@@ -778,7 +778,7 @@
   </div>
   <div class="idx">
     <div class="idx-title" data-i18n="phases-title">Protocol Phases</div>
-    <div class="idx-desc" data-i18n="phases-desc">The wealth cap uses a bootstrap multiplier during Phase 0: max(5, min(N, 25))× the fair share (1,000 AEQ per human). With 1–4 humans: 5× the fair share. Each new human adds 1×. At 25+ humans: locks permanently at 25×. Phase 1+ maintains 25× fixed. All transitions trigger automatically by human count — no governance, no admin key.</div>
+    <div class="idx-desc" data-i18n="phases-desc">The wealth cap uses a bootstrap multiplier during Phase 0: max(5, min(N, 25))× the fair share (1,000 AEQ per human). With 1–4 humans: 5× the fair share. Each new human adds 1×. At 25+ humans: locks permanently at 25×. Phase 1+ maintains 25× fixed. All transitions trigger automatically by human count — not a manual governance flip.</div>
     <table class="spect">
       <tr><td><strong style="color:var(--neon)">Phase 0</strong></td><td style="color:var(--neon)" data-i18n="p0">Bootstrap · &lt;100 humans · Wealth Cap: max(5,min(N,25))× fair share · Slides 5×→25× until 25th human · Currently active</td></tr>
       <tr><td><strong style="color:var(--blue)">Phase 1</strong></td><td style="color:var(--blue)" data-i18n="p1">Growth · 100–10,000 humans · Wealth Cap: 25× the fair share = 25,000 AEQ</td></tr>
@@ -1614,7 +1614,7 @@
 <div style="background:rgba(0,230,118,0.05);border:1px solid rgba(0,230,118,0.18);border-radius:8px;padding:14px;margin-bottom:14px">
         <div style="font-size:0.77rem;color:var(--neon);font-weight:700;margin-bottom:6px" data-i18n="bv-what-t">What you would hold — and what you would never see</div>
         <div style="font-size:0.79rem;color:var(--muted);line-height:1.9" data-i18n="bv-what-d">
-          A face is never sent to you as a picture: the image is discarded after checking, and your machine stores an encrypted template of it. A split-share mode exists in which your machine would hold only one additive share of a 64-byte sketch — indistinguishable from noise on its own, compared jointly with your committee so that none of you learns more than the answer. It is built and tested but <strong style="color:var(--text)">not active yet</strong>, because its threshold has never been calibrated. Until it is, each verifier holds a whole encrypted template, and we would rather say so than imply a protection you are not yet giving.
+          In the face-gallery path (roadmap, not the binding Phase 0 path), a face is not meant to reach you as a picture: the image is discarded after checking, and your machine stores an encrypted template of it. A split-share mode exists in which your machine would hold only one additive share of a 64-byte sketch — indistinguishable from noise on its own, compared jointly with your committee so that none of you learns more than the answer. It is built and tested but <strong style="color:var(--text)">not active yet</strong>, because its threshold has never been calibrated. Until it is, each verifier would hold a whole encrypted template, and we would rather say so than imply a protection you are not yet giving. Phase 0 registration itself rests on device-/source-bound secrets + nullifier, not on this gallery path.
         </div>
       </div>
 <div style="background:rgba(245,166,35,0.05);border:1px solid rgba(245,166,35,0.2);border-radius:8px;padding:14px;margin-bottom:18px">
@@ -1858,7 +1858,7 @@
   <!-- V7 INTRO CARD -->
   <div class="idx" style="margin-bottom:12px;background:linear-gradient(135deg,rgba(139,92,246,0.08),rgba(6,182,212,0.04));border-color:rgba(139,92,246,0.25)">
     <div class="idx-title" data-i18n="v7-intro-title">What is AequitasV7?</div>
-    <div style="font-size:0.81rem;color:var(--muted);line-height:1.9;margin-bottom:14px" data-i18n="v7-intro-text">AequitasV7 is the central smart contract of the Aequitas protocol. It defines the economic rules — the registration grant, the wealth cap, demurrage, the UBI accounting — and holds the nullifier registry that makes "one human, one registration" enforceable. It is deployed immutably on Aequitas Chain (ID 1926). Live transfers are settled by the chain layer against that rulebook, which is what makes them sub-second and gasless.</div>
+    <div style="font-size:0.81rem;color:var(--muted);line-height:1.9;margin-bottom:14px" data-i18n="v7-intro-text">AequitasV7 is the central smart contract of the Aequitas protocol. It defines the economic rules — the registration grant, the wealth cap, demurrage, the UBI accounting — and holds the nullifier registry that makes "one human, one registration" enforceable. It is deployed immutably on Aequitas Chain (ID 1926). Live transfers are settled by the chain layer against that rulebook, which is what makes them sub-second with no EVM gas (0.1% protocol fee).</div>
     <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px">
       <div style="background:var(--card);border:1px solid var(--border);border-radius:6px;padding:10px;text-align:center">
         <div style="font-size:0.95rem;font-weight:700;color:var(--purple);font-family:var(--font-display)">6</div>
@@ -1877,7 +1877,7 @@
 
   <div class="idx" style="margin-bottom:12px">
     <div class="idx-title" data-i18n="ca-title">Contract Addresses</div>
-    <div style="font-size:0.81rem;color:var(--muted);line-height:1.9;margin-bottom:12px" data-i18n="ca-desc">AequitasV7 defines the rules of the Aequitas economy and holds the registry that makes them enforceable: every nullifier ever claimed, every registration, the wealth cap and the demurrage formula. It is immutable — no admin key, no upgrade proxy, no governance vote can change a line of it. What settles a live transfer, though, is the chain layer: the node intercepts the ERC-20 call before it reaches the EVM and applies it to its own ledger, which is what makes transfers sub-second and gasless. The contract is the rulebook and the registry; the chain is the engine that runs them, and its source is public.<br><br>The BioVerifier contract receives Groth16 zero-knowledge proofs generated entirely on the user's Android device. It verifies mathematically on-chain in ~10 ms that the submitted nullifier was correctly derived from a secret the registrant holds, and the chain refuses any nullifier it has already seen — without ever learning their name, identity, or biometric data. That is what rules out a second registration from the same identity source; whether that source is a person or a device depends on whether biometric mode is active. This is what makes gasless, investment-free registration possible: the proof is the only thing that ever leaves the device.<br><br>That combination is what is actually new: the rules and the one-human-one-registration registry sit in a contract nobody — not the operator, not a company, not a government — can rewrite, and the code that carries them out is open source and reproducible from this repository. All of it can be checked by anyone. What still requires trust is the operation of the nodes themselves, and the honest way to reduce that is more independent validators, not a stronger sentence here.</div>
+    <div style="font-size:0.81rem;color:var(--muted);line-height:1.9;margin-bottom:12px" data-i18n="ca-desc">AequitasV7 exposes the on-chain registry surface (nullifiers, registrations, wealth-cap and demurrage parameters). Balances, registration, and fees are enforced by the Go L1; the contract is the EVM interface, not the sole source of truth. Live transfers settle in the chain layer: the node intercepts the ERC-20 call before the EVM and applies it to the Go ledger — sub-second, no EVM gas, 0.1% protocol fee.<br><br>The BioVerifier contract receives Groth16 zero-knowledge proofs generated entirely on the user's Android device. It verifies mathematically on-chain in ~10 ms that the submitted nullifier was correctly derived from a secret the registrant holds, and the chain refuses any nullifier it has already seen — without ever learning their name, identity, or biometric data. That rules out a second registration from the same identity source (Phase 0: typically device-/source-bound; face gallery matching is roadmap). Registration needs no EVM gas; transfers carry a 0.1% protocol fee — the proof is what leaves the device.<br><br>What is new here: the rules and the identity-source nullifier registry sit in a contract the operator cannot casually rewrite, and the code that carries them out is open source and reproducible from this repository. All of it can be checked by anyone. What still requires trust is the operation of the nodes themselves, and the honest way to reduce that is more independent validators, not a stronger sentence here.</div>
     <div class="hlbox" data-i18n="ca-text">Chain: Aequitas Chain (Chain ID: 1926 · 0x786)<br>RPC: __RPC__<br><br>BioVerifier: 0xc369D27b49DE017d113Bbcb9A1884a9e745B6BE2<br>AequitasV7 (Main): 0x20D271028f32577FCd07b4583A8e0E4eBBdB4F78</div>
   </div>
   <div class="idx" style="margin-bottom:12px">
