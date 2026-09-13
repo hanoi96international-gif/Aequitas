@@ -87,7 +87,7 @@
 <div class="rs">
   <div class="rhero">
     <h1 class="rhero-title" data-i18n="reg-title">🔐 Register as a Verified Human</h1>
-    <div class="rhero-sub" data-i18n="reg-sub">Join the Aequitas network and receive your 1,000 AEQ Universal Basic Income grant. Registration is one-time, permanent, and completely gasless. No personal data is ever stored.</div>
+    <div class="rhero-sub" data-i18n="reg-sub">Join the Aequitas network and receive your 1,000 AEQ start grant. Registration is one-time and permanent. Phase 0: honest about where duplicate protection stands today.</div>
     <a href="/download/app.apk" style="display:inline-flex;align-items:center;gap:10px;margin-top:18px;background:var(--grad);color:#fff;padding:13px 28px;border-radius:10px;font-size:0.88rem;font-weight:700;text-decoration:none;letter-spacing:0.5px;box-shadow:var(--glow-purple);transition:all 0.2s" onmouseover="this.style.opacity='0.87';this.style.transform='translateY(-2px)'" onmouseout="this.style.opacity='1';this.style.transform='translateY(0)'">
       <span style="width:22px;height:22px;border-radius:6px;background:var(--grad);display:inline-flex;align-items:center;justify-content:center;font-size:13px;flex-shrink:0">⚖</span>
       <span data-i18n="btn-download-app">DOWNLOAD AEQUITAS APP</span>
@@ -101,8 +101,8 @@
     <div style="font-size:0.79rem;color:var(--muted);margin-bottom:16px;line-height:1.7" data-i18n="usp-sub">If you own an Android smartphone, you qualify. No bank, no crypto background, no investment needed.</div>
     <div class="rwd-1col" style="display:grid;grid-template-columns:repeat(2,1fr);gap:8px">
       <div style="background:var(--card);border:1px solid rgba(0,255,209,0.15);border-radius:var(--radius-sm);padding:12px">
-        <div style="font-size:0.82rem;font-weight:700;color:var(--neon);margin-bottom:4px" data-i18n="usp-c1-title">0.00 Start Investment</div>
-        <div style="font-size:0.76rem;color:var(--muted);line-height:1.75" data-i18n="usp-c1-desc">Registration is completely gasless. No ETH, no MATIC, no credit card. The protocol pays all fees on your behalf.</div>
+        <div style="font-size:0.82rem;font-weight:700;color:var(--neon);margin-bottom:4px" data-i18n="usp-c1-title">0.1% fee · no EVM gas</div>
+        <div style="font-size:0.76rem;color:var(--muted);line-height:1.75" data-i18n="usp-c1-desc">No ETH/MATIC gas to register. Transfers use a 0.1% protocol fee (live from the node) — not “zero cost forever.”</div>
       </div>
       <div style="background:var(--card);border:1px solid rgba(245,166,35,0.15);border-radius:var(--radius-sm);padding:12px">
         <div style="font-size:0.82rem;font-weight:700;color:var(--gold);margin-bottom:4px" data-i18n="usp-c2-title">1,000 AEQ for every human</div>
@@ -122,16 +122,21 @@
   <div class="aonly">
     <div class="aonly-icon">📱</div>
     <div class="aonly-title" data-i18n="app-title">REGISTRATION VIA ANDROID APP</div>
-    <div class="aonly-text" data-i18n="app-text">Registration captures your face and a short liveness sequence with the phone camera. Independent matching services check that a living person is present and that this face is not already registered; they must agree by quorum. A Groth16 Zero-Knowledge Proof then carries the result to the chain without revealing anything about you. Your <strong style="color:var(--gold)" data-i18n="x-1-000-aeq-will-be">1,000 AEQ will be credited automatically</strong> upon successful verification. <strong style="color:var(--gold)">Note:</strong> the matching threshold has not yet been calibrated against real captures — see the FAQ below.</div>
+    <div class="aonly-text" data-i18n="app-text">Registration today: wallet + bound identity source (typically device secret) and a proof/attestation path to the chain. Face matching against a real gallery and mandatory MPC are roadmap/calibration — not the binding Phase 0 state. Your <strong style="color:var(--gold)" data-i18n="x-1-000-aeq-will-be">1,000 AEQ will be credited automatically</strong> upon successful verification. <strong style="color:var(--gold)">Note:</strong> see the Phase 0 disclaimer below.</div>
   </div>
   <div class="rsteps">
-    <div class="rstep"><div class="snum">1</div><div class="stitle" data-i18n="s1t">Face capture</div><div class="sdesc" data-i18n="s1d">The app records your face and a short liveness sequence and sends them to independent matching services. They check that a living person is present and compare the face against everyone already registered. The images are discarded after processing.</div></div>
-    <div class="rstep"><div class="snum">2</div><div class="stitle" data-i18n="s2t">ZK Proof Generation</div><div class="sdesc" data-i18n="s2d">A Groth16 ZK proof commits your bio_hash into commitment = keccak256(bioHash‖wallet) without revealing it. The nullifier is derived from that hash, so the same face cannot count twice — see the FAQ below.</div></div>
+    <div class="rstep"><div class="snum">1</div><div class="stitle" data-i18n="s1t">Connect</div><div class="sdesc" data-i18n="s1d">Connect your wallet on your phone. Identity source today is typically device-bound (device secret). Face matching against a populated gallery is roadmap — not the binding Phase 0 path.</div></div>
+    <div class="rstep"><div class="snum">2</div><div class="stitle" data-i18n="s2t">Prove</div><div class="sdesc" data-i18n="s2d">A zero-knowledge proof shows the chain that this bound identity source is not yet registered (nullifier). Face-derived bio matching is roadmap/calibration in Phase 0 — see the disclaimer.</div></div>
     <div class="rstep"><div class="snum">3</div><div class="stitle" data-i18n="s3t">Connect Wallet</div><div class="sdesc" data-i18n="s3d">The app opens MetaMask on this page · connect your Ethereum wallet · the proof is cryptographically bound to your wallet address</div></div>
     <div class="rstep"><div class="snum">4</div><div class="stitle" data-i18n="s4t">1,000 AEQ Granted</div><div class="sdesc" data-i18n="s4d">Registration confirmed on Aequitas BlockDAG within 1 second · 1,000 AEQ credited instantly · your identity is permanently recorded as a verified human</div></div>
   </div>
-  <div class="pbar" data-i18n="priv-bar">🔒 Face check by quorum · Groth16 ZKP · Images discarded after checking · One registration per person</div>
+  <div class="pbar" data-i18n="priv-bar">🔒 Phase 0 · Nullifier dedup · Proof/attest path · Face matching &amp; mandatory MPC are roadmap</div>
   <div class="pbar" style="background:rgba(245,166,35,0.06);border:1px solid rgba(245,166,35,0.2);color:var(--gold)" data-i18n="x-metamask-mobile-if-aeq-balance">📱 MetaMask Mobile: if AEQ balance shows 0 after registration, go to Settings → Networks → delete Aequitas Chain → re-add via this website</div>
+
+  <div class="phase0-disc" data-i18n="reg-disclaimer" style="background:rgba(245,165,36,0.07);border:1px solid rgba(245,165,36,0.38);border-radius:16px;padding:16px 18px;margin-bottom:14px;font-size:0.82rem;color:var(--muted);line-height:1.7;box-shadow:0 8px 32px rgba(0,0,0,.25)">
+    <div style="font-weight:800;color:var(--gold);margin-bottom:6px;font-size:0.88rem">Phase 0 disclaimer</div>
+    Phase 0: Sybil resistance today rests mainly on nullifier dedup, device-/source-bound secrets, and the proof/attestation path. Face matching and mandatory MPC duplicate checks are roadmap/calibration — not the binding launch state. Double registration via new devices or bypassed biometric paths remains a known residual risk in Phase 0; do not claim “impossible” or “zero Sybil.”
+  </div>
   <div class="rcard">
     <div class="wbox" id="wbox"><div class="wlbl" data-i18n="conn-wallet">CONNECTED WALLET</div><div class="wadr" id="wadr" title="">—</div><button data-act="copyAddr" data-args='["wadr"]' style="margin-top:4px;padding:3px 10px;font-size:0.74rem;background:rgba(0,255,209,0.08);border:1px solid rgba(0,255,209,0.2);color:var(--neon);border-radius:4px;cursor:pointer">📋 Copy</button></div>
     <div id="demurrage-notice" style="display:none"></div>
@@ -185,7 +190,7 @@
     <div class="ic-row"><span class="ic-key" data-i18n="k-grant">UBI Grant</span><span class="ic-val go" data-i18n="x-1-000-aeq-per-human">1,000 AEQ per human</span></div>
     <div class="ic-row"><span class="ic-key" data-i18n="k-fee">Gas Fee</span><span class="ic-val g" data-i18n="free">FREE — completely gasless</span></div>
     <div class="ic-row"><span class="ic-key" data-i18n="k-limit">Registrations</span><span class="ic-val" data-i18n="k-limit-v">Once per person · permanent · immutable</span></div>
-    <div class="ic-row"><span class="ic-key" data-i18n="k-bio">Face</span><span class="ic-val g" data-i18n="never-stored">Images discarded after checking — an encrypted template is kept</span></div>
+    <div class="ic-row"><span class="ic-key" data-i18n="k-bio">Face</span><span class="ic-val g" data-i18n="never-stored">Phase 0: device-/source-bound secrets + nullifier — not “images discarded / template only” as absolute</span></div>
     <div class="ic-row"><span class="ic-key" data-i18n="k-proof">Proof System</span><span class="ic-val p" data-i18n="x-groth16-zkp-zero-knowledge">Groth16 ZKP (Zero-Knowledge)</span></div>
     <div class="ic-row"><span class="ic-key" data-i18n="k-conf">Confirmation</span><span class="ic-val" data-i18n="k-conf-v">Within 1 second (1 block)</span></div>
     <div class="ic-row"><span class="ic-key" data-i18n="k-sybil">Sybil Protection</span><span class="ic-val g" data-i18n="k-sybil-v">One identity per person · face-bound, threshold not yet calibrated</span></div>
@@ -333,7 +338,7 @@
 <div class="hs">
   <div class="section">
     <div class="sec-head"><div class="sec-title"><span class="sec-dot"></span><span data-i18n="reg-humans">Registered Humans</span></div><div class="sec-count" id="h-count">0</div></div>
-    <div class="sec-desc" data-i18n="h-desc">Every address below belongs to someone whose face was checked against every existing registration by independent services, proven with a ZK proof, and credited exactly 1,000 AEQ. The registry is permanent, immutable and on-chain. See the FAQ for what the matching threshold does and does not guarantee today.</div>
+    <div class="sec-desc" data-i18n="h-desc">Every address below is a successful Phase 0 registration credited with exactly 1,000 AEQ. Dedup today rests on nullifiers + the proof/attest path — face-gallery matching is roadmap. The registry is permanent and on-chain.</div>
     <div id="humans-list"><div class="empty" data-i18n="no-humans">No humans registered yet.\n\nDownload the Aequitas Android App and be the first human on the chain!</div></div>
   </div>
   <div class="right-col">
@@ -345,7 +350,7 @@
       <div class="ic-row"><span class="ic-key" data-i18n="k-fee">Gas Fee</span><span class="ic-val g" data-i18n="free">FREE — completely gasless</span></div>
       <div class="ic-row"><span class="ic-key" data-i18n="k-zkp">ZKP System</span><span class="ic-val p" data-i18n="x-groth16-bn128">Groth16 / BN128</span></div>
       <div class="ic-row"><span class="ic-key" data-i18n="k-hash">Hash System</span><span class="ic-val p">keccak256</span></div>
-      <div class="ic-row"><span class="ic-key" data-i18n="k-bio">Face</span><span class="ic-val g" data-i18n="never-stored">Images discarded after checking — an encrypted template is kept</span></div>
+      <div class="ic-row"><span class="ic-key" data-i18n="k-bio">Face</span><span class="ic-val g" data-i18n="never-stored">Phase 0: device-/source-bound secrets + nullifier — not “images discarded / template only” as absolute</span></div>
       <div class="ic-row"><span class="ic-key" data-i18n="k-sybil-prot">Sybil Protection</span><span class="ic-val g" data-i18n="x-permanent-on-chain">Permanent · On-chain</span></div>
     </div>
     <div class="ic" style="margin-top:12px">
