@@ -29,6 +29,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: appleboy/ssh-action@v1.0.3
+        env:
+          BEHALTEN: ${{ inputs.behalten }}
         with:
           host: ${{ matrix.box.host }}
           username: root
