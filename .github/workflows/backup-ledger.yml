@@ -250,14 +250,14 @@ jobs:
             echo "✓ dump restores cleanly and contains a real ledger"
 
             DUMP_MB=$(( (SIZE + 1024*1024 - 1) / (1024*1024) ))
-            cat > /root/backup-latest.summary <<EOF
-box=${{ matrix.box }}
-humans=${HUMANS}
-accounts=${ACCOUNTS}
-nullifiers=${NULLS}
-dump_bytes=${SIZE}
-dump_mb=${DUMP_MB}
-EOF
+            printf '%s\n' \
+              "box=${{ matrix.box }}" \
+              "humans=${HUMANS}" \
+              "accounts=${ACCOUNTS}" \
+              "nullifiers=${NULLS}" \
+              "dump_bytes=${SIZE}" \
+              "dump_mb=${DUMP_MB}" \
+              > /root/backup-latest.summary
             echo "=== backup summary ==="
             cat /root/backup-latest.summary
 
