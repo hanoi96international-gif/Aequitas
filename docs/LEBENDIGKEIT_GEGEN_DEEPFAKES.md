@@ -100,9 +100,14 @@ DSGVO-Bewertung (weiteres Merkmal nach Art. 9).
 | WP | Inhalt | Repo | Aufwand |
 |---|---|---|---|
 | 1 | Lebendigkeits-Score + Klasse im Coordinator, **Schattenmodus** (rechnen, loggen, zählen, nichts ändern) — **✅ 13.09.2026** (`coordinator/app/lebendigkeit.py`, live auf proof1+proof2: `/health → lebendigkeit` mit Klassenzählern + letzten 50 Bewertungen ohne Kennung; `RegisterResponse.lebendigkeit` informativ, `verbindlich: false`). Erste Schwellen: grün L ≥ 0,70 ∧ R < 0,30, rot L < 0,40 | biometric-beta | erledigt |
-| 2 | Gestaffelter Zuschuss + `liveness_renewal` auf der Kette, mit Tests | aequitas-chain | 2 Tage |
-| 3 | Zweite Lebendigkeitsprüfung in der App (Tag 7), Anzeige der Staffel, 12 Sprachen | aequitas-app | 1–2 Tage |
+| 2 | Gestaffelter Zuschuss + `liveness_renewal` auf der Kette, mit Tests — **✅ 14.09.2026, schlafend** (`x/humanity/keeper/grant_staffel.go`, Aktivierung `stagedGrantActivationUnix` = 2100 bis WP 4; Proof-Server reicht die signierte Klasse durch, Coordinator signiert sie nur mit `LEBENDIGKEIT_VERBINDLICH=true`, App reicht sie weiter — alle drei Schalter aus). Live geprüft: `account_set_xor` beider Boxen vor und nach dem Deploy byte-gleich | aequitas-chain, proof-server, biometric-beta, app | erledigt |
+| 3 | Zweite Lebendigkeitsprüfung in der App (Tag 7), Anzeige der Staffel (`/api/balance → staffel`), 12 Sprachen; Coordinator-Endpunkt, der die Erneuerung signiert (`aequitas-liveness-renewal-v1|wallet|issued_at`) und die App an `/api/liveness-renewal` weiterreicht | aequitas-app, biometric-beta | 1–2 Tage |
 | 4 | Schwellen aus echten Aufnahmen setzen, dann Klassen scharf schalten | biometric-beta | nach ≥ 20 echten Registrierungen |
+
+**Scharfschalten (nach WP 4), in dieser Reihenfolge:** (1) `stagedGrantActivationUnix` auf ein Datum in der
+Zukunft setzen und beide Knoten ausrollen; (2) am Tag danach `LEBENDIGKEIT_VERBINDLICH=true` an beiden
+Coordinatoren — ab da tragen gelbe Registrierungen die Klasse; (3) App mit Zweitprüfung (WP 3) muss vorher
+draußen sein, sonst kann niemand seine Staffel starten.
 
 Reihenfolge: 1 → 2 → 3 → 4. Nichts davon geht scharf, bevor der
 Zwei-Personen-Test (`DOPPELREGISTRIERUNG_TEST.md`) die ersten Messwerte für

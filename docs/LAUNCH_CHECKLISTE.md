@@ -1,6 +1,6 @@
 # Launch-Checkliste
 
-**Stand 13.09.2026, 23:50.** Wache: GRÜN — prüft seit heute auch, dass das Tor zu ist (`required`, Quorum ≥ 2) und beide Coordinatoren antworten. App v1.7.0 veröffentlicht und ausgeliefert.
+**Stand 14.09.2026, 01:30.** Wache: GRÜN — prüft seit heute auch, dass das Tor zu ist (`required`, Quorum ≥ 2) und beide Coordinatoren antworten. App v1.7.0 veröffentlicht und ausgeliefert.
 
 > **Launch-Linie seit dem 13.09. nachmittags (deine Entscheidung: „Phase 1 muss umgesetzt werden — 1 Mensch,
 > 1 Registrierung"): Phase 1 = die Gesichtsprüfung ist das Tor.** `BIO_ATTESTATION_MODE=required` wieder auf beiden
@@ -39,7 +39,7 @@ Anleitung; die Betreiber erfahren, wenn etwas kaputtgeht.
 | 11 | Lasttest-Konten | ≥ 300 Paare je Box zahlungsfähig | ❌ 594/661 bzw. 375/662 Konten unter 0,001 AEQ | **du:** `loadtest-widen-senders.yml confirm=true` |
 | 12 | App im Play Store | — | ⏸ bewusst offen bis Punkt 5 | du |
 | 13 | Dritter Betreiber | Quorum aus drei Haushalten | ⏸ nach Punkt 4 | du |
-| 14 | Lebendigkeit gegen Deepfakes | Blitz + Kopfdrehung + Puls als Score, Herkunft als Risiko, gestaffelter Zuschuss (Klassen grün/gelb/rot), Schattenmodus zuerst | ⚠ **WP 1 live im Schatten** (13.09.: Score L, Risiko R, Klasse je Registrierung; `coordinator/health → lebendigkeit`, nichts entscheidet). Scharf nur die Kopfdreh-Challenge. Plan `docs/LEBENDIGKEIT_GEGEN_DEEPFAKES.md`; Schwellen erst nach ≥ 20 echten Registrierungen (WP 4). Entscheidung: **keine Stimme** | ich (WP 2 Kette), du (Messlauf = Zwei-Personen-Test, App-Release WP 3) |
+| 14 | Lebendigkeit gegen Deepfakes | Blitz + Kopfdrehung + Puls als Score, Herkunft als Risiko, gestaffelter Zuschuss (Klassen grün/gelb/rot), Schattenmodus zuerst | ⚠ **WP 1 live im Schatten** (Score, Risiko, Klasse je Registrierung; `coordinator/health → lebendigkeit`). **WP 2 gebaut und ausgerollt, schlafend** (14.09.: Kette `grant_staffel.go` mit Aktivierung 2100, Proof-Server-Durchreichung, Coordinator-Signatur hinter `LEBENDIGKEIT_VERBINDLICH`, App-Weiterreichung; `account_set_xor` beider Boxen vor/nach Deploy byte-gleich). Scharf nur die Kopfdreh-Challenge. Schwellen erst nach ≥ 20 echten Registrierungen (WP 4) | du (Messlauf = Zwei-Personen-Test), ich (WP 3 Coordinator-Teil, WP 4 nach Daten) |
 | 15 | Signierschlüssel der Validatoren ≠ persönliche Wallet | `RELAYER_PRIVATE_KEY` auf beiden Boxen ein eigener Schlüssel | ⏸ seit 01.09. bekannt (`docs/WAS_DU_NOCH_TUN_MUSST.md` Punkt 3): auf beiden Boxen ist es derselbe Schlüssel wie deine Wallet. Kein Beta-Blocker; ändert die Blockproduktions-Identität — nicht in der Nacht vor einem Start | **du** (Entscheidung + Schlüssel), ich (Umzug als Workflow, wenn du willst) |
 
 ## Bewusst nicht auf der Liste
