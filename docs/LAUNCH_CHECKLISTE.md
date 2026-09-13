@@ -1,6 +1,6 @@
 # Launch-Checkliste
 
-**Stand 13.09.2026, 19:00.** Wache: GRÜN — prüft jetzt auch, dass das Tor zu ist (`required`) und die Coordinatoren antworten.
+**Stand 13.09.2026, 19:30.** Wache: GRÜN — prüft seit heute auch, dass das Tor zu ist (`required`) und beide Coordinatoren antworten (Lauf 34769014627: alles ✓).
 
 > **Launch-Linie seit dem 13.09. nachmittags (deine Entscheidung: „Phase 1 muss umgesetzt werden — 1 Mensch,
 > 1 Registrierung"): Phase 1 = die Gesichtsprüfung ist das Tor.** `BIO_ATTESTATION_MODE=required` wieder auf beiden
@@ -34,7 +34,7 @@ Anleitung; die Betreiber erfahren, wenn etwas kaputtgeht.
 |---|---|---|---|---|
 | 7 | Neuer Validator nach Anleitung | Fremde Box folgt der Kette und produziert nach Bestätigung | ✅ Weg dreimal auf einem Runner geprüft (Snapshot 21 s, an der Spitze, 0 Fremdblöcke, 145 MB). Echter Beitritt mit registriertem Wallet fehlt | **du:** ein VPS, `docs/VALIDATOR_EINRICHTEN.md` |
 | 8 | Backup | täglich grün, Restore geprüft | ✅ seit 12.09. (Zustand ohne Blöcke, 31–61 MB) | — |
-| 9 | Coordinator hängt an Railway (USA) — die ausgelieferte App v1.6.0 registriert darüber | App zeigt auf einen Contabo-Coordinator; App-Repo auf der Phase-1-Linie; v1.7.0 auf der Website | ⚠ App-Repo seit 13.09. 17:58 wieder Phase 1: Variablen `BIOMETRIC_ENABLED=true`, `ALLOW_DEVICE_SECRET_REGISTER=false`, `COORDINATOR_BASE=proof1`, neu `COORDINATOR_FALLBACKS=proof2` (erster erreichbarer gewinnt, bleibt pro Ablauf); Commit `7aac3ce` (Nachziehen, versionCode 5, version 1.7.0), tsc + 65 Tests grün. **Nicht gebaut, nicht veröffentlicht** | **du:** `build-apk.yml` (release) → `release-apk.yml` mit Tag `app-v1.7.0` → `set-apk-url-both.yml` auf das Release |
+| 9 | Coordinator hängt an Railway (USA) — die ausgelieferte App v1.6.0 registriert darüber | App zeigt auf einen Contabo-Coordinator; App-Repo auf der Phase-1-Linie; v1.7.0 auf der Website | ⚠ App-Repo seit 13.09. 17:58 wieder Phase 1: Variablen `BIOMETRIC_ENABLED=true`, `ALLOW_DEVICE_SECRET_REGISTER=false`, `COORDINATOR_BASE=proof1`, neu `COORDINATOR_FALLBACKS=proof2` (erster erreichbarer gewinnt, bleibt pro Ablauf); Commit `c8cf566` (Nachziehen, Ausweich-Coordinator, versionCode 5, version 1.7.0). **Release-Build fertig und mit Release-Schlüssel signiert: Run `34768999687`** (Artefakt `aequitas-release-apk`, 85 MB, gültig bis 27.09.; eingebacken: Biometrie an, Gerätegeheimnis aus, Coordinator proof1 → proof2). **Nicht veröffentlicht** | **du:** `release-apk.yml` mit `run_id=34768999687`, `tag=app-v1.7.0` → danach `set-apk-url-both.yml` auf das Release |
 | 10 | Node-Guide in allen 12 Sprachen | keine Railway-Anleitung mehr erreichbar | ✅ alle zwölf am 12.09. neu erzeugt (Docker Compose), 0× „Railway" | — |
 | 11 | Lasttest-Konten | ≥ 300 Paare je Box zahlungsfähig | ❌ 594/661 bzw. 375/662 Konten unter 0,001 AEQ | **du:** `loadtest-widen-senders.yml confirm=true` |
 | 12 | App im Play Store | — | ⏸ bewusst offen bis Punkt 5 | du |
