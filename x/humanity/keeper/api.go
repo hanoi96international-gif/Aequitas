@@ -437,6 +437,13 @@ func proofProxyClient(timeout time.Duration) *http.Client {
 	}
 }
 
+// proofServerZuletztOkUnix: wann /health des Proof-Servers zuletzt antwortete.
+var proofServerZuletztOkUnix atomic.Int64
+
+// proofServerVeraltetNach: so lange ohne Antwort gilt der Proof-Server als
+// nicht erreichbar (drei Abfragen im 30-s-Takt).
+const proofServerVeraltetNach = 100
+
 func (a *APIServer) syncProofServerStatus() {
 	for {
 		if len(proofServerURLs()) == 0 {
@@ -444,6 +451,7 @@ func (a *APIServer) syncProofServerStatus() {
 			continue
 		}
 		resp, err := doProofServerRequestFailover("GET", "/health", nil, 8*time.Second, nil)
+		gelesen := false
 		if err == nil {
 			body, _ := io.ReadAll(resp.Body)
 			resp.Body.Close()
@@ -452,7 +460,21 @@ func (a *APIServer) syncProofServerStatus() {
 				a.proofStatusMu.Lock()
 				a.proofServerStatus = data
 				a.proofStatusMu.Unlock()
+				proofServerZuletztOkUnix.Store(time.Now().Unix())
+				gelesen = true
 			}
+		}
+		if !gelesen && proofServerZuletztOkUnix.Load() > 0 && time.Now().Unix()-proofServerZuletztOkUnix.Load() > proofServerVeraltetNach {
+			// FIX 13.09.2026: der letzte gute Stand blieb fuer immer stehen --
+			// "reachable" war wahr, solange der Proof-Server IRGENDWANN seit dem
+			// Start geantwortet hatte. Am 12.09. waren beide Proof-Server tot,
+			// und nur weil die Knoten danach neu gestartet worden waren, zeigten
+			// sie es. Ein Proof-Server, der im Betrieb stirbt, haette weiter als
+			// erreichbar gegolten. Nach proofServerVeraltetNach ohne Antwort
+			// wird der Stand geleert.
+			a.proofStatusMu.Lock()
+			a.proofServerStatus = map[string]interface{}{}
+			a.proofStatusMu.Unlock()
 		}
 		time.Sleep(30 * time.Second)
 	}
@@ -1023,6 +1045,7 @@ func (a *APIServer) buildMux() *http.ServeMux {
 	mux.HandleFunc("/api/events", a.handleBlockEvents)
 	mux.HandleFunc("/api/health/combined", a.handleCombinedHealth)
 	mux.HandleFunc("/api/produktion", a.handleProduktionsProtokoll)
+	mux.HandleFunc("/api/wache", a.handleWache)
 	mux.HandleFunc("/api/annahme", a.handleAnnahmeProtokoll)
 	mux.HandleFunc("/api/debug/stateroot-components", a.handleStateRootComponents)
 	mux.HandleFunc("/api/debug/dag-gates", a.handleDAGGates)
