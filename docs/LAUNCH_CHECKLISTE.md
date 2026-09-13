@@ -1,6 +1,13 @@
 # Launch-Checkliste
 
-**Stand 13.09.2026, 02:10.** Wache: GRÜN. Jeder Punkt hat ein „fertig heißt" — etwas, das man
+**Stand 13.09.2026, 15:00.** Wache: GRÜN.
+
+> **Launch-Linie seit dem 13.09. morgens (deine PRs #162–#174, App app-v0.3.1-phase0): Phase 0 = Registrierung über
+> Gerätegeheimnis**, biometrischer Nachweis „temporarily optional" (`BIO_ATTESTATION_MODE=optional` auf beiden
+> Proof-Servern), Website-Texte ehrlich darauf umgestellt. Das heißt ausgesprochen: **in Phase 0 kann eine Person
+> so viele Konten anlegen, wie sie Geräte oder Neuinstallationen hat — je 1.000 AEQ.** Das IP-Limit des Proof-Servers
+> (eine Anfrage je 10 s) begrenzt das nur pro Adresse. Wenn das die bewusste Entscheidung ist, gilt die Liste unten;
+> die biometrischen Punkte (4, 5, 14) sind damit Phase 1. Jeder Punkt hat ein „fertig heißt" — etwas, das man
 nachmessen kann. Was nicht messbar ist, steht nicht drin. Wer hier „✅" setzt,
 hat gemessen, nicht geglaubt.
 
@@ -13,11 +20,11 @@ Anleitung; die Betreiber erfahren, wenn etwas kaputtgeht.
 | # | Punkt | Fertig heißt | Stand | Wer |
 |---|---|---|---|---|
 | 1 | **Beide Validatoren einig über jeden Kontostand** | `divergenz.abweichend=false` auf beiden Boxen nach Volllast, `uebersprungene_ueberweisungen=0` | ✅ 13.09. 01:40: Resync C1←C2, danach 4 min Volllast (14.000 Annahmen/s, Kette 6.900/s): **0 übersprungen, 0 Divergenz**, Wache grün | — |
-| 2 | **Registrierung funktioniert** | App → Coordinator → Quorum → Proof-Server → `register_human` in einem Block; Wache grün | ✅ Proof-Server auf beiden Boxen waren 5 Tage bzw. 34 h tot — am 12.09. repariert; Wache prüft jetzt alle 10 min | — |
+| 2 | **Registrierung funktioniert** | App (Phase-0-Build) → Proof-Server → `register_human` in einem Block; Wache grün | ⚠ Proof-Server repariert und `optional`; **die Website liefert noch die alte App v1.6.0** (`AEQUITAS_APK_URL` auf beiden Boxen), nicht app-v0.3.1-phase0 — Registrierung aus dem Download geht damit den alten Weg | **du:** `set-apk-url-both.yml` auf das Phase-0-Release; dazu versionCode prüfen (app.json steht auf 4 — ein Update von v1.6.0 muss eine höhere Nummer tragen, sonst lehnt Android es ab) |
 | 3 | **Impressum & Datenschutzerklärung** | `/impressum` und `/datenschutz` antworten 200 | ❌ beide 404 — alle sieben `LEGAL_*`-Angaben fehlen (`/api/legal-status`) | **du:** Werte nach `docs/RECHTSTEXTE_FREISCHALTEN.md` setzen, ich starte die Knoten nacheinander neu |
-| 4 | **Ein Mensch = ein Konto** | Dieselbe Person, zweites Gerät → `duplicate`; andere Person → durch. Schwelle kalibriert | ⚠ Technisch scharf (`required`, Quorum 2, Sketch-Vergleich) seit 25.08. — aber `SERVICE_MODE=test`, Schwelle nie mit echten Menschen kalibriert, und die 18 bestehenden Menschen haben keinen Sketch (könnten sich erneut anmelden) | **du + eine zweite Person** vor der Kamera nach `docs/DOPPELREGISTRIERUNG_TEST.md` |
-| 5 | **DSGVO Phase 2** | `ALLOW_REAL_BIOMETRIC_DATA=true` + `LEGAL_SIGNOFF_DATE` gesetzt, Drittland (Railway in `sfo`) entschieden | ❌ Unterlagen liegen in `aequitas-biometric-beta/docs/dsgvo/`; Entscheidung offen | **du / Jurist** |
-| 6 | **Betreiber merkt, wenn es brennt** | `wache.yml` rot → E-Mail | ✅ seit 12.09., alle 10 min: Höhe, Gleichauf, Proof-Server, Divergenz, Platte, Vergleichsdienst, Coordinator, Backup-Alter | — |
+| 4 | **Ein Mensch = ein Konto** (Phase 1) | Dieselbe Person, zweites Gerät → `duplicate`; andere Person → durch. Schwelle kalibriert | ⚠ Technisch scharf (`required`, Quorum 2, Sketch-Vergleich) seit 25.08. — aber `SERVICE_MODE=test`, Schwelle nie mit echten Menschen kalibriert, und die 18 bestehenden Menschen haben keinen Sketch (könnten sich erneut anmelden) | **du + eine zweite Person** vor der Kamera nach `docs/DOPPELREGISTRIERUNG_TEST.md` |
+| 5 | **DSGVO Phase 2** (Phase 1) | `ALLOW_REAL_BIOMETRIC_DATA=true` + `LEGAL_SIGNOFF_DATE` gesetzt, Drittland (Railway in `sfo`) entschieden | ❌ Unterlagen liegen in `aequitas-biometric-beta/docs/dsgvo/`; Entscheidung offen | **du / Jurist** |
+| 6 | **Betreiber merkt, wenn es brennt** | Alarm binnen Minuten | ⚠ `wache.yml` läuft bei GitHub nur alle paar Stunden (13.09.: 01:11, 06:17, 12:05). Deshalb neu: `https://aequitas.digital/api/wache` — 200/503 mit Befunden | **du:** einen freien Uptime-Monitor (z. B. UptimeRobot) auf `https://aequitas.digital/api/wache` und `http://194.163.188.71:8080/api/wache` alle 5 min, E-Mail bei 503 |
 
 ## Wichtig, aber kein Blocker
 
@@ -25,12 +32,12 @@ Anleitung; die Betreiber erfahren, wenn etwas kaputtgeht.
 |---|---|---|---|---|
 | 7 | Neuer Validator nach Anleitung | Fremde Box folgt der Kette und produziert nach Bestätigung | ✅ Weg dreimal auf einem Runner geprüft (Snapshot 21 s, an der Spitze, 0 Fremdblöcke, 145 MB). Echter Beitritt mit registriertem Wallet fehlt | **du:** ein VPS, `docs/VALIDATOR_EINRICHTEN.md` |
 | 8 | Backup | täglich grün, Restore geprüft | ✅ seit 12.09. (Zustand ohne Blöcke, 31–61 MB) | — |
-| 9 | Coordinator hängt an Railway (USA) | App zeigt auf einen Contabo-Coordinator | ⚠ Beide Contabo-Coordinatoren laufen öffentlich und bereit (`https://proof1.aequitas.digital/coordinator/health`, Quorum 2, alle Schlüssel anerkannt). Fehlt nur die App: Repo-Variable `EXPO_PUBLIC_COORDINATOR_BASE=https://proof1.aequitas.digital/coordinator` und `release-apk.yml` | **du** (App-Release; Widerspruchsspeicher der Railway-Instanz ist leer, solange niemand widerrufen hat) |
+| 9 | Coordinator hängt an Railway (USA) — in Phase 0 ohne Wirkung (Biometrie in der App aus) | App zeigt auf einen Contabo-Coordinator | ⚠ Beide Contabo-Coordinatoren laufen öffentlich und bereit (`https://proof1.aequitas.digital/coordinator/health`, Quorum 2, alle Schlüssel anerkannt). Fehlt nur die App: Repo-Variable `EXPO_PUBLIC_COORDINATOR_BASE=https://proof1.aequitas.digital/coordinator` und `release-apk.yml` | **du** (App-Release; Widerspruchsspeicher der Railway-Instanz ist leer, solange niemand widerrufen hat) |
 | 10 | Node-Guide in allen 12 Sprachen | keine Railway-Anleitung mehr erreichbar | ✅ alle zwölf am 12.09. neu erzeugt (Docker Compose), 0× „Railway" | — |
 | 11 | Lasttest-Konten | ≥ 300 Paare je Box zahlungsfähig | ❌ 594/661 bzw. 375/662 Konten unter 0,001 AEQ | **du:** `loadtest-widen-senders.yml confirm=true` |
 | 12 | App im Play Store | — | ⏸ bewusst offen bis Punkt 5 | du |
 | 13 | Dritter Betreiber | Quorum aus drei Haushalten | ⏸ nach Punkt 4 | du |
-| 14 | Lebendigkeit gegen Deepfakes | Blitz + Kopfdrehung + Puls als Score, Herkunft als Risiko, gestaffelter Zuschuss (Klassen grün/gelb/rot), Schattenmodus zuerst | ❌ heute nur Kopfdreh-Challenge scharf; Plan in `docs/LEBENDIGKEIT_GEGEN_DEEPFAKES.md` (WP 1–4). Entscheidung: **keine Stimme** | ich (WP 1, 2), du (App-Release WP 3) |
+| 14 | Lebendigkeit gegen Deepfakes (Phase 1) | Blitz + Kopfdrehung + Puls als Score, Herkunft als Risiko, gestaffelter Zuschuss (Klassen grün/gelb/rot), Schattenmodus zuerst | ❌ heute nur Kopfdreh-Challenge scharf; Plan in `docs/LEBENDIGKEIT_GEGEN_DEEPFAKES.md` (WP 1–4). Entscheidung: **keine Stimme** | ich (WP 1, 2), du (App-Release WP 3) |
 
 ## Bewusst nicht auf der Liste
 
