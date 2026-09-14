@@ -1,6 +1,15 @@
 # Launch-Checkliste
 
-**Stand 14.09.2026, 19:10.** Wache: GRÜN — prüft seit heute auch, dass das Tor zu ist (`required`, Quorum ≥ 2) und beide Coordinatoren antworten. App v1.7.0 veröffentlicht und ausgeliefert.
+**Stand 15.09.2026, 02:00.** Wache: GRÜN auf beiden Boxen. App v1.7.2 veröffentlicht und ausgeliefert.
+
+> **Nacht 14./15.09. — „C2 scheint zusammengebrochen":** kein Absturz, beide Knoten liefen durch. Zwei Ursachen,
+> beide behoben und live geprüft: (1) der Divergenz-Wächter verglich sich mit einem Partner unter Last (Fehlalarm;
+> hätte einen Laien-Validator mitten in der Last in den Resync geschickt) — jetzt zählt nur Ruhe auf **beiden** Seiten;
+> (2) C2 hielt 13,2 Mio. Quittungen und 1,1 Mio. Alt-Leichen, weil die Aufräumer als je EINE Anweisung am 5-s-Limit
+> scheiterten (selbstverstärkend, Postgres 322 %, Knoten 675 % ohne Last) — jetzt Seitenbereiche mit Zeitbudget,
+> Index-Neubau ohne Sperre, adaptives Flush-Stück; alles in `/api/health/combined` (`receipt_prune`, `pending_leichen`,
+> `receipt_flush`). Offen geblieben (kein Blocker, siehe Punkt 11): C2 ist unter Last langsamer als C1 — Platte
+> (fsync p90 81 ms vs 25 ms) und die Pull-Synchronisation, die auf beiden Boxen ~⅔ der Leerlauf-CPU frisst.
 
 > **Launch-Linie seit dem 13.09. nachmittags (deine Entscheidung: „Phase 1 muss umgesetzt werden — 1 Mensch,
 > 1 Registrierung"): Phase 1 = die Gesichtsprüfung ist das Tor.** `BIO_ATTESTATION_MODE=required` wieder auf beiden
@@ -36,7 +45,7 @@ Anleitung; die Betreiber erfahren, wenn etwas kaputtgeht.
 | 8 | Backup | täglich grün, Restore geprüft | ✅ seit 12.09. (Zustand ohne Blöcke, 31–61 MB) | — |
 | 9 | Coordinator hängt an Railway (USA) | App zeigt auf einen Contabo-Coordinator; App-Repo auf der Phase-1-Linie; v1.7.0 auf der Website | ✅ 13.09. app-v1.7.0, 14.09. app-v1.7.1 und **19:00 app-v1.7.2** veröffentlicht (Release, Notiz nennt den echten Signierer) und auf beiden Boxen ausgeliefert (`host-apk-locally.yml`); app-v0.3.1-phase0 als *zurückgezogen* markiert (Pre-Release + Hinweis). **Railway-Coordinator ist seit 14.09. 03:45 weg (404 „Application not found“)** — v1.6.0-Installationen können nicht mehr registrieren, v1.7.1 braucht ihn nicht; Wache meldet ihn nur noch als Hinweis | — |
 | 10 | Node-Guide in allen 12 Sprachen | keine Railway-Anleitung mehr erreichbar | ✅ alle zwölf am 12.09. neu erzeugt (Docker Compose), 0× „Railway" | — |
-| 11 | Lasttest-Konten | ≥ 300 Paare je Box zahlungsfähig | ❌ 594/661 bzw. 375/662 Konten unter 0,001 AEQ | **du:** `loadtest-widen-senders.yml confirm=true` |
+| 11 | Lasttest-Konten + Messung | ≥ 300 Paare je Box zahlungsfähig; Messung reproduzierbar | ⚠ 14.09. 30 AEQ nachgefüllt → 330 Konten à 0,02 AEQ, **84/81 Paare je Box** (480 von 649 je Box weiter unter 0,001 AEQ). Vier Messläufe in der Nacht (4 min, `accounts-funded.csv`): Ketten-TPS 1.762–3.375, C1 nimmt 5.100–7.400/s an, C2 nur 1.800–2.800/s. Ursache belegt: C2s Replay hält die Schreibsperre 0,3–3,5 s je Block (`[LOCK] block replay held the exclusive state lock`), weil C2s Platte langsamer ist (WAL-fsync p50 7,6 ms / p90 81 ms gegen 3,2 / 25 ms auf C1) **und** weil beide Knoten alle 2 s die letzten 20 Höhen komplett mit Rümpfen voneinander nachladen (CPU-Profil im Leerlauf: `handleBlocks` 36 %, `doSyncOnce` 28 %; der Kopf-Modus `stripped=1` greift nie, weil `tx_root` nicht in `chain_blocks` liegt). Nächster Schritt: `tx_root` speichern + Client überspringt bekannte Hashes vor dem Nachladen — dann neu messen | **du:** mehr AEQ für ≥ 300 Paare; **ich:** Sync-Umbau mit Messplan |
 | 12 | App im Play Store | — | ⏸ bewusst offen bis Punkt 5 | du |
 | 13 | Dritter Betreiber | Quorum aus drei Haushalten | ⏸ nach Punkt 4 | du |
 | 14 | Lebendigkeit gegen Deepfakes | Blitz + Kopfdrehung + Puls als Score, Herkunft als Risiko, gestaffelter Zuschuss (Klassen grün/gelb/rot), Schattenmodus zuerst | ⚠ **WP 1 live im Schatten** (Score, Risiko, Klasse je Registrierung; `coordinator/health → lebendigkeit`). **WP 2 gebaut und ausgerollt, schlafend** (14.09.: Kette `grant_staffel.go` mit Aktivierung 2100, Proof-Server-Durchreichung, Coordinator-Signatur hinter `LEBENDIGKEIT_VERBINDLICH`, App-Weiterreichung; `account_set_xor` beider Boxen vor/nach Deploy byte-gleich). Scharf nur die Kopfdreh-Challenge. Schwellen erst nach ≥ 20 echten Registrierungen (WP 4) | du (Messlauf = Zwei-Personen-Test), ich (WP 3 Coordinator-Teil, WP 4 nach Daten) |
@@ -45,9 +54,9 @@ Anleitung; die Betreiber erfahren, wenn etwas kaputtgeht.
 
 ## Bewusst nicht auf der Liste
 
-10.000 TPS. Die Kette packt ~7.000/s auf zwei Boxen; mehr braucht einen dritten
-Validator oder einen Umbau der Sperren. Für den Launch reichen 7.000/s um
-Größenordnungen.
+10.000 TPS. Die Kette packte am 12.09. ~7.000/s auf zwei Boxen; in der Nacht 14./15.09. waren es
+1.800–3.400/s, weil C2 unter Last hinterherhinkt (Punkt 11). Für den Launch reichen auch
+2.000/s um Größenordnungen — 18 Menschen erzeugen heute Bruchteile davon.
 
 ## Wie gemessen wird
 
