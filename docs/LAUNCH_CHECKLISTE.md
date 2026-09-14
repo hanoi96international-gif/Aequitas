@@ -1,6 +1,6 @@
 # Launch-Checkliste
 
-**Stand 14.09.2026, 01:30.** Wache: GRÜN — prüft seit heute auch, dass das Tor zu ist (`required`, Quorum ≥ 2) und beide Coordinatoren antworten. App v1.7.0 veröffentlicht und ausgeliefert.
+**Stand 14.09.2026, 02:30.** Wache: GRÜN — prüft seit heute auch, dass das Tor zu ist (`required`, Quorum ≥ 2) und beide Coordinatoren antworten. App v1.7.0 veröffentlicht und ausgeliefert.
 
 > **Launch-Linie seit dem 13.09. nachmittags (deine Entscheidung: „Phase 1 muss umgesetzt werden — 1 Mensch,
 > 1 Registrierung"): Phase 1 = die Gesichtsprüfung ist das Tor.** `BIO_ATTESTATION_MODE=required` wieder auf beiden
@@ -26,7 +26,7 @@ Anleitung; die Betreiber erfahren, wenn etwas kaputtgeht.
 | 3 | **Impressum & Datenschutzerklärung** | `/impressum` und `/datenschutz` antworten 200 | ❌ beide 404 — alle sieben `LEGAL_*`-Angaben fehlen (`/api/legal-status`). Seit 14.09. ein Klick: `rechtstexte-setzen.yml` (7 Felder, schreibt beide Boxen, startet die Knoten nacheinander neu, prüft 200) | **du:** die sieben Felder — Name, Anschrift, E-Mail, Verantwortliche(r), Aufsichtsbehörde |
 | 4 | **Ein Mensch = ein Konto** | Dieselbe Person, zweites Gerät → `duplicate`; andere Person → durch. Schwelle kalibriert. Altkonten mit Gesicht nachgezogen | ⚠ Tor scharf (`required` seit 13.09. 15:13, Quorum 2, Herkunftspflicht an `/api/register`). **Nachzieh-Weg gebaut und live** (`POST /nachziehen` auf proof1 + proof2, Wallet-Signatur + Ketten-Abgleich + Quorum, keine Prägung; App-Seite in v1.7.0 committed, Identity-Tab „Gesicht nachziehen"). Offen: Schwelle nie mit echten Menschen kalibriert; **die 18 bestehenden Menschen haben kein Gesichts-Template**, bis sie nachziehen (auf der Website benannt); `SERVICE_MODE=test` (Wechsel auf `real` erst mit Galerie-Übernahme, `wuerde_realmodus_abweisen`) | **du + eine zweite Person** vor der Kamera nach `docs/DOPPELREGISTRIERUNG_TEST.md` (Schritte 1–7); danach die 18 einmal durch den Nachzieh-Weg (App v1.7.0) |
 | 5 | **DSGVO Phase 2** (Phase 1) | `ALLOW_REAL_BIOMETRIC_DATA=true` + `LEGAL_SIGNOFF_DATE` gesetzt, Drittland (Railway in `sfo`) entschieden | ❌ Unterlagen liegen in `aequitas-biometric-beta/docs/dsgvo/`; Entscheidung offen | **du / Jurist** |
-| 6 | **Betreiber merkt, wenn es brennt** | Alarm binnen Minuten | ⚠ `wache.yml` läuft bei GitHub nur alle paar Stunden (13.09.: 01:11, 06:17, 12:05). Deshalb neu: `https://aequitas.digital/api/wache` — 200/503 mit Befunden | **du:** einen freien Uptime-Monitor (z. B. UptimeRobot) auf `https://aequitas.digital/api/wache` und `http://194.163.188.71:8080/api/wache` alle 5 min, E-Mail bei 503 |
+| 6 | **Betreiber merkt, wenn es brennt** | Alarm binnen Minuten | ⚠ `wache.yml` läuft bei GitHub nur alle paar Stunden. `/api/wache` (200/503) auf beiden Boxen prüft Produktion, Tor (`required`, Quorum ≥ 2), Coordinator, Divergenz, Platte, Partner. **Neu 14.09.: `wachhund-telegram-installieren.yml`** — Cron auf beiden Boxen alle 5 min, Telegram bei Rot (sofort, dann alle 6 h) und bei Grün; braucht nur Bot-Token + Chat-ID als Secrets | **du (2 min):** @BotFather → Token; Chat-ID; Secrets `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`; Workflow starten. Alternative ohne Bot: UptimeRobot auf die beiden `/api/wache` |
 
 ## Wichtig, aber kein Blocker
 
