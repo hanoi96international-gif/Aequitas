@@ -33,11 +33,28 @@ import (
 // naechsten weiter; nichts, was gescheitert ist, waechst dadurch. Und die
 // Indizes, die dafuer noetig sind, entstehen nebenlaeufig und ohne Limit --
 // einmal, im Hintergrund, ohne die Tabelle zu sperren.
+//
+// WARUM SEITENBEREICHE (ctid). Die erste Fassung loeschte "WHERE tx_hash IN
+// (SELECT ... LIMIT 10000)". Live auf C2 (21:29Z) lief auch das in den
+// Timeout: 10.000 Einzelzugriffe auf den kalten 1,6-GB-Primaerschluessel
+// sind Zufalls-I/O, rund 10 s je Stueck. Und jede Form, die "die naechsten
+// n Zeilen" sucht, muss nach Millionen Loeschungen erst die toten Zeilen
+// am Tabellenanfang ueberspringen, bis Vacuum sie wegraeumt -- wird je
+// Stueck langsamer, bis wieder das Limit reisst. Deshalb laeuft der
+// Quittungs-Aufraeumer ueber die physischen Seiten: "ctid >= '(p,0)' AND
+// ctid < '(p+n,0)'" ist in Postgres 16 ein Tid Range Scan, liest genau
+// diese n Seiten, nie etwas zweimal, ohne Index, egal wie gross die
+// Tabelle ist. Ein Durchlauf merkt sich die naechste Seite und macht nach
+// erschoepftem Budget dort weiter; ein neuer Durchlauf beginnt nur, wenn
+// die Statistik mehr als das Doppelte des Behalts meldet.
 
 const (
-	// aufraeumStueck: Zeilen je Anweisung. 10.000 Loeschungen ueber den
-	// Primaerschluessel liegen im dreistelligen Millisekundenbereich.
+	// aufraeumStueck: Zeilen je Anweisung (pending_txs-Sweep).
 	aufraeumStueck = 10000
+	// aufraeumSeiten: Heap-Seiten je Anweisung (Quittungen). 512 Seiten sind
+	// 4 MB, rund 20.000 Zeilen -- sequenziell gelesen, zweistellige
+	// Millisekunden.
+	aufraeumSeiten = 512
 	// aufraeumBudget: laenger laeuft ein Lauf nicht; der Rest wartet auf den
 	// naechsten. Auf C2 sind 13 Millionen Zeilen damit in etwa 20 Minuten weg.
 	aufraeumBudget = 20 * time.Second
@@ -56,6 +73,8 @@ var (
 	receiptPruneLetzterLauf    atomic.Int64
 	receiptPruneBudgetErsch    atomic.Int64
 	receiptIndexBereit         atomic.Bool
+	receiptPruneSeite          atomic.Int64 // naechste Heap-Seite des laufenden Durchlaufs, 0 = von vorn
+	receiptPruneDurchlaeufe    atomic.Int64
 	pendingLeichenGeloescht    atomic.Int64
 	pendingLeichenWiederOffen  atomic.Int64
 	pendingLeichenLaeufe       atomic.Int64
@@ -118,6 +137,18 @@ func (cs *ChainState) pruneTxReceiptsBegrenzt() {
 		}
 		receiptIndexBereit.Store(true)
 	}
+	// Tor: nur wenn die Statistik deutlich mehr als den Behalt meldet.
+	// n_live_tup ist eine Schaetzung, aber eine billige -- ein count(*)
+	// waere ein Lauf ueber die ganze Tabelle, und genau den sparen wir uns,
+	// wenn es nichts zu tun gibt.
+	if receiptPruneSeite.Load() == 0 {
+		var lebend int64
+		if err := cs.db.QueryRow(
+			`SELECT COALESCE(n_live_tup, 0) FROM pg_stat_user_tables WHERE relname = 'evm_tx_receipts'`,
+		).Scan(&lebend); err == nil && lebend <= 2*receiptPruneKeep {
+			return
+		}
+	}
 	// Grenze: created_at der (keep+1)-neuesten Zeile. Ueber den Index ist
 	// das ein kurzer Rueckwaertslauf; ohne ihn waere es die Sortierung der
 	// ganzen Tabelle -- genau der Fehler von vorher.
@@ -127,6 +158,7 @@ func (cs *ChainState) pruneTxReceiptsBegrenzt() {
 		receiptPruneKeep,
 	).Scan(&grenze)
 	if err == sql.ErrNoRows {
+		receiptPruneSeite.Store(0)
 		return // weniger als keep Zeilen: nichts zu tun
 	}
 	if err != nil {
@@ -134,31 +166,45 @@ func (cs *ChainState) pruneTxReceiptsBegrenzt() {
 		fmt.Printf("[EVM] receipt prune: Grenze nicht bestimmbar: %v — retrying at the next interval\n", err)
 		return
 	}
+	var seiten int64
+	if err := cs.db.QueryRow(
+		`SELECT pg_relation_size('evm_tx_receipts') / current_setting('block_size')::bigint`,
+	).Scan(&seiten); err != nil {
+		receiptPruneFehler.Add(1)
+		fmt.Printf("[EVM] receipt prune: Tabellengroesse nicht bestimmbar: %v — retrying at the next interval\n", err)
+		return
+	}
 	frist := time.Now().Add(aufraeumBudget)
 	var geloescht int64
 	for {
-		res, err := cs.db.Exec(
-			`DELETE FROM evm_tx_receipts WHERE tx_hash IN (
-			   SELECT tx_hash FROM evm_tx_receipts WHERE created_at < $1 LIMIT $2)`,
-			grenze, aufraeumStueck,
-		)
+		von := receiptPruneSeite.Load()
+		if von >= seiten {
+			receiptPruneSeite.Store(0)
+			receiptPruneDurchlaeufe.Add(1)
+			break // Durchlauf fertig
+		}
+		bis := von + aufraeumSeiten
+		// Die Seitenzahlen sind eigene Ganzzahlen, keine Eingabe -- deshalb
+		// duerfen sie in den Text: als Parameter wuerde der Planer den
+		// Tid Range Scan nicht sicher waehlen.
+		res, err := cs.db.Exec(fmt.Sprintf(
+			`DELETE FROM evm_tx_receipts WHERE ctid >= '(%d,0)'::tid AND ctid < '(%d,0)'::tid AND created_at < $1`,
+			von, bis), grenze)
 		if err != nil {
 			receiptPruneFehler.Add(1)
-			fmt.Printf("[EVM] receipt prune failed after %d row(s): %v — retrying at the next interval\n", geloescht, err)
+			fmt.Printf("[EVM] receipt prune failed at page %d after %d row(s): %v — retrying at the next interval\n", von, geloescht, err)
 			break
 		}
 		n, _ := res.RowsAffected()
 		geloescht += n
 		receiptPruneGeloescht.Add(n)
-		if n < aufraeumStueck {
-			break // fertig
-		}
+		receiptPruneSeite.Store(bis)
 		if time.Now().After(frist) {
 			receiptPruneBudgetErsch.Add(1)
 			// Sofort weitermachen duerfen: das Intervall gilt fuer den
 			// Normalfall, nicht fuer einen Berg.
 			receiptPruneLastAt.Store(0)
-			fmt.Printf("[EVM] receipt prune: %d Zeilen in diesem Lauf, Budget erschoepft -- weiter im naechsten\n", geloescht)
+			fmt.Printf("[EVM] receipt prune: %d Zeilen in diesem Lauf, Seite %d von %d, Budget erschoepft -- weiter gleich\n", geloescht, bis, seiten)
 			break
 		}
 	}
@@ -174,10 +220,12 @@ func ReceiptPruneStand() map[string]interface{} {
 		letzter = time.Unix(t, 0).UTC().Format(time.RFC3339)
 	}
 	return map[string]interface{}{
-		"bedeutung": "evm_tx_receipts wird auf die " + fmt.Sprint(receiptPruneKeep) + " neuesten Zeilen gehalten, in Stuecken von " +
-			fmt.Sprint(aufraeumStueck) + " mit " + aufraeumBudget.String() + " Budget je Lauf. budget_erschoepft > 0 heisst: es lag ein Berg, " +
-			"der ueber mehrere Laeufe abgetragen wird. index=false: der Index auf created_at ist noch nicht gebaut, bis dahin raeumt nichts.",
+		"bedeutung": "evm_tx_receipts wird auf die " + fmt.Sprint(receiptPruneKeep) + " neuesten Zeilen gehalten: Durchlauf ueber die Heap-Seiten in Bereichen von " +
+			fmt.Sprint(aufraeumSeiten) + " Seiten mit " + aufraeumBudget.String() + " Budget je Lauf, naechste_seite zeigt den Stand (0 = kein Durchlauf offen). " +
+			"budget_erschoepft > 0 heisst: es lag ein Berg, der ueber mehrere Laeufe abgetragen wird. index=false: der Index auf created_at ist noch nicht gebaut, bis dahin raeumt nichts.",
 		"geloescht":         receiptPruneGeloescht.Load(),
+		"naechste_seite":    receiptPruneSeite.Load(),
+		"durchlaeufe":       receiptPruneDurchlaeufe.Load(),
 		"laeufe":            receiptPruneLaeufe.Load(),
 		"fehler":            receiptPruneFehler.Load(),
 		"budget_erschoepft": receiptPruneBudgetErsch.Load(),
@@ -221,12 +269,12 @@ func (cs *ChainState) PendingLeichenAufraeumen(maxAge time.Duration) (fertig boo
 	for {
 		res, err := cs.db.Exec(
 			`UPDATE pending_txs SET included_at = 0, included_block_hash = NULL
-			 WHERE id IN (
-			   SELECT id FROM pending_txs
+			 WHERE ctid = ANY(ARRAY(
+			   SELECT ctid FROM pending_txs
 			    WHERE included_at > 0 AND included_at < $1 AND included_at >= $2
 			      AND (included_block_hash IS NULL
 			           OR NOT EXISTS (SELECT 1 FROM chain_blocks WHERE hash = pending_txs.included_block_hash))
-			    LIMIT $3)`,
+			    LIMIT $3))`,
 			frischGrenze, leichenGrenze, aufraeumStueck,
 		)
 		if err != nil {
@@ -253,8 +301,8 @@ func (cs *ChainState) PendingLeichenAufraeumen(maxAge time.Duration) (fertig boo
 	var geloescht int64
 	for {
 		res, err := cs.db.Exec(
-			`DELETE FROM pending_txs WHERE id IN (
-			   SELECT id FROM pending_txs WHERE included_at > 0 AND included_at < $1 LIMIT $2)`,
+			`DELETE FROM pending_txs WHERE ctid = ANY(ARRAY(
+			   SELECT ctid FROM pending_txs WHERE included_at > 0 AND included_at < $1 LIMIT $2))`,
 			leichenGrenze, aufraeumStueck,
 		)
 		if err != nil {
