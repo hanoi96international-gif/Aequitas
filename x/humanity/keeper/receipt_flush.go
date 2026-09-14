@@ -122,15 +122,14 @@ func (cs *ChainState) ensureReceiptFlushWorkerStarted() {
 		SafeGoroutine("receiptFlushWorker", func() {
 			ticker := time.NewTicker(receiptFlushInterval)
 			defer ticker.Stop()
-			ticks := 0
 			for range ticker.C {
 				cs.flushTxReceipts()
 				// Der Aufraeumer haengt sonst nur an SaveTxReceipt -- nach
 				// einem Lastlauf, wenn keine Quittung mehr kommt, raeumte
-				// niemand. Hier ist er unabhaengig vom Verkehr.
-				if ticks++; ticks%int(receiptPruneInterval/receiptFlushInterval) == 0 {
-					cs.maybePruneTxReceipts()
-				}
+				// niemand. Hier ist er unabhaengig vom Verkehr; sein
+				// Intervall-Tor sitzt in maybePruneTxReceipts, und nach
+				// einem erschoepften Budget oeffnet es sofort wieder.
+				cs.maybePruneTxReceipts()
 			}
 		})
 	})

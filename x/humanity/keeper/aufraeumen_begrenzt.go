@@ -192,21 +192,22 @@ func ReceiptPruneStand() map[string]interface{} {
 // einer gescheiterten Loeschung, siehe Kopf) -- beides in Stuecken mit
 // Budget. Einfach belegt; ein zweiter Aufruf waehrend eines Laufs kehrt
 // sofort zurueck.
-func (cs *ChainState) PendingLeichenAufraeumen(maxAge time.Duration) {
+func (cs *ChainState) PendingLeichenAufraeumen(maxAge time.Duration) (fertig bool) {
 	if cs.db == nil {
-		return
+		return true
 	}
 	if !pendingLeichenSweepLaeuft.CompareAndSwap(false, true) {
-		return
+		return true
 	}
 	defer pendingLeichenSweepLaeuft.Store(false)
+	fertig = true
 	pendingLeichenLaeufe.Add(1)
 	pendingLeichenLetzterLauf.Store(time.Now().Unix())
 	if !pendingLeichenIndexBereit.Load() {
 		if err := cs.indexNebenlaeufigSicherstellen("idx_pending_txs_markiert", "pending_txs (included_at) WHERE included_at > 0"); err != nil {
 			pendingLeichenFehler.Add(1)
 			fmt.Printf("[TX] pending_txs-Sweep: Index fehlt noch: %v -- naechster Versuch im naechsten Lauf\n", err)
-			return
+			return false
 		}
 		pendingLeichenIndexBereit.Store(true)
 	}
@@ -231,12 +232,16 @@ func (cs *ChainState) PendingLeichenAufraeumen(maxAge time.Duration) {
 		if err != nil {
 			pendingLeichenFehler.Add(1)
 			fmt.Printf("[TX] pending_txs-Sweep (wieder oeffnen) error: %v\n", err)
-			return
+			return false
 		}
 		n, _ := res.RowsAffected()
 		wiederOffen += n
 		pendingLeichenWiederOffen.Add(n)
-		if n < aufraeumStueck || time.Now().After(frist) {
+		if n < aufraeumStueck {
+			break
+		}
+		if time.Now().After(frist) {
+			fertig = false
 			break
 		}
 	}
@@ -255,7 +260,7 @@ func (cs *ChainState) PendingLeichenAufraeumen(maxAge time.Duration) {
 		if err != nil {
 			pendingLeichenFehler.Add(1)
 			fmt.Printf("[TX] pending_txs-Sweep (loeschen) error after %d row(s): %v\n", geloescht, err)
-			return
+			return false
 		}
 		n, _ := res.RowsAffected()
 		geloescht += n
@@ -265,31 +270,46 @@ func (cs *ChainState) PendingLeichenAufraeumen(maxAge time.Duration) {
 		}
 		if time.Now().After(frist) {
 			pendingLeichenBudgetErsch.Add(1)
-			fmt.Printf("[TX] pending_txs-Sweep: %d Leichen in diesem Lauf, Budget erschoepft -- weiter im naechsten\n", geloescht)
+			fertig = false
+			fmt.Printf("[TX] pending_txs-Sweep: %d Leichen in diesem Lauf, Budget erschoepft -- weiter gleich\n", geloescht)
 			break
 		}
 	}
 	if geloescht > 0 {
 		fmt.Printf("[TX] pending_txs-Sweep: %d markierte Zeile(n) aelter als %s geloescht -- nie geloeschte Reste, keine Absturzluecke\n", geloescht, pendingLeicheAlter)
 	}
+	return fertig
 }
 
 // PendingLeichenAufraeumenStart: einmal jetzt (Absturzluecke vor der ersten
-// Produktion schliessen, wie bisher), dann stuendlich im Hintergrund, damit
-// sich Reste nie wieder zu Millionen ansammeln.
+// Produktion schliessen, wie bisher), ein Berg wird gleich im Hintergrund
+// weiter abgetragen, danach stuendlich, damit sich Reste nie wieder zu
+// Millionen ansammeln. Startet ausserdem den Quittungs-Flush-Worker: an ihm
+// haengt der Quittungs-Aufraeumer, und der darf nicht auf die erste
+// Ueberweisung nach einem Neustart warten (C2 am 14.09.2026: 13 Millionen
+// Zeilen, kein Verkehr, nichts raeumte).
 func (cs *ChainState) PendingLeichenAufraeumenStart(maxAge time.Duration) {
 	if cs.db == nil {
 		return
 	}
-	cs.PendingLeichenAufraeumen(maxAge)
+	cs.ensureReceiptFlushWorkerStarted()
+	fertig := cs.PendingLeichenAufraeumen(maxAge)
 	if !pendingLeichenTickerLaeuft.CompareAndSwap(false, true) {
 		return
 	}
 	SafeGoroutine("pendingLeichenSweep", func() {
+		for !fertig {
+			time.Sleep(2 * time.Second) // der Datenbank Luft lassen
+			SafeCall("pendingLeichenSweep-berg", func() { fertig = cs.PendingLeichenAufraeumen(maxAge) })
+		}
 		t := time.NewTicker(pendingLeichenTakt)
 		defer t.Stop()
 		for range t.C {
-			SafeCall("pendingLeichenSweep-tick", func() { cs.PendingLeichenAufraeumen(maxAge) })
+			SafeCall("pendingLeichenSweep-tick", func() {
+				for !cs.PendingLeichenAufraeumen(maxAge) {
+					time.Sleep(2 * time.Second)
+				}
+			})
 		}
 	})
 }
