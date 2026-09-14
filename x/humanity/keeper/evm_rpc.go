@@ -1532,7 +1532,9 @@ func (s *EVMRPCServer) getTransactionReceipt(params []json.RawMessage) (interfac
 	logIndex := 0
 	if indexed {
 		height = uint64(txHeight)
-		blockHash = "0x" + txBlockHash
+		// Der nach aussen sichtbare Block dieser Hoehe, nicht zwingend der
+		// enthaltende Geschwisterblock -- siehe evm_rpc_hoehe.go.
+		blockHash = "0x" + s.kanonischerBlockHash(txHeight, txBlockHash)
 		logIndex = txIndex
 	} else if block := s.dag.LatestBlock(); block != nil {
 		// Not indexed (a transaction from before this index existed): fall
@@ -1744,7 +1746,8 @@ func (s *EVMRPCServer) getTransactionByHash(params []json.RawMessage) (interface
 	// of concluding anything.
 	var blockHashField, blockNumberField, txIndexField interface{} = nil, nil, nil
 	if h, bh, idx, ok := s.state.LookupTxBlock(txHash); ok {
-		blockHashField = "0x" + bh
+		// Wie in der Quittung: der sichtbare Block der Hoehe (evm_rpc_hoehe.go).
+		blockHashField = "0x" + s.kanonischerBlockHash(h, bh)
 		blockNumberField = fmt.Sprintf("0x%x", uint64(h))
 		txIndexField = fmt.Sprintf("0x%x", idx)
 	}
@@ -1916,9 +1919,16 @@ func (s *EVMRPCServer) blockToMap(block *Block, volleTx bool) map[string]interfa
 	// Die Transaktionen liegen am Block. Sie NICHT auszugeben hiess, jedem
 	// Block-Explorer und jeder Wallet zu sagen, dieser Block sei leer -- auch
 	// bei 269 Stueck darin.
-	txs := make([]interface{}, 0, len(block.Transactions))
-	for i := range block.Transactions {
-		h := block.Transactions[i].TxHash
+	// "Block H" nach aussen traegt die Transaktionen ALLER Bloecke seiner
+	// Hoehe (evm_rpc_hoehe.go) -- sonst zeigt eine Quittung auf einen Block,
+	// der die Transaktion "nach Nummer" nicht enthaelt.
+	liste := block.Transactions
+	if s.istKanonischAnSeinerHoehe(block) {
+		liste = s.transaktionenDerHoehe(block)
+	}
+	txs := make([]interface{}, 0, len(liste))
+	for i := range liste {
+		h := liste[i].TxHash
 		if h == "" {
 			continue
 		}
