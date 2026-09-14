@@ -79,8 +79,9 @@ jobs:
           if [ "$D" -le 20 ]; then ok "Boxen gleichauf (Abstand $D)"; else rot "Boxen nicht gleichauf (Abstand $D)"; fi
           CO=$(curl -s --max-time 15 https://coordinator-production-e067.up.railway.app/health)
           Q=$(echo "$CO" | grep -oE '"quorum_size":[0-9]+' | cut -d: -f2)
-          # Railway: nur solange die ausgelieferte App (v1.6.0) darueber registriert. Ab v1.7.0 gelb statt rot.
-          if echo "$CO" | grep -q '"status":"ok"' && [ "${Q:-0}" -ge 2 ]; then ok "Coordinator Railway ok, Quorum $Q (App v1.6.0)"; else rot "Coordinator Railway (App v1.6.0 registriert darueber): ${CO:-keine Antwort}"; fi
+          # Railway: seit 14.09. 03:45 "Application not found" -- die Instanz ist weg. Die ausgelieferte App
+          # (v1.7.1) registriert ueber proof1/proof2; nur alte v1.6.0-Installationen haengen daran. Hinweis, kein Rot.
+          if echo "$CO" | grep -q '"status":"ok"' && [ "${Q:-0}" -ge 2 ]; then ok "Coordinator Railway ok, Quorum $Q (nur noch fuer v1.6.0)"; else echo "ℹ Coordinator Railway nicht erreichbar -- betrifft nur v1.6.0-Installationen, die auf v1.7.1 aktualisieren muessen: $(echo "${CO:-keine Antwort}" | cut -c1-80)"; fi
           LAST=$(gh api "repos/$REPO/actions/workflows/backup-ledger.yml/runs?per_page=5&status=success" --jq '.workflow_runs[0].updated_at' 2>/dev/null)
           if [ -n "$LAST" ] && [ "$LAST" != "null" ]; then
             AGE=$(( ( $(date +%s) - $(date -d "$LAST" +%s) ) / 3600 ))
