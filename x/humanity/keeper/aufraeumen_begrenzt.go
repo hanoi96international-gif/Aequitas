@@ -75,6 +75,9 @@ var (
 	receiptIndexBereit         atomic.Bool
 	receiptPruneSeite          atomic.Int64 // naechste Heap-Seite des laufenden Durchlaufs, 0 = von vorn
 	receiptPruneDurchlaeufe    atomic.Int64
+	receiptPruneImDurchlauf    atomic.Int64 // im laufenden Durchlauf geloescht (fuer die Nachsorge)
+	receiptNachsorgen          atomic.Int64
+	receiptBlaehungGeprueft    atomic.Int64 // unix, letzte Blaehungspruefung
 	pendingLeichenGeloescht    atomic.Int64
 	pendingLeichenWiederOffen  atomic.Int64
 	pendingLeichenLaeufe       atomic.Int64
@@ -146,6 +149,10 @@ func (cs *ChainState) pruneTxReceiptsBegrenzt() {
 		if err := cs.db.QueryRow(
 			`SELECT COALESCE(n_live_tup, 0) FROM pg_stat_user_tables WHERE relname = 'evm_tx_receipts'`,
 		).Scan(&lebend); err == nil && lebend <= 2*receiptPruneKeep {
+			// Nichts zu loeschen -- aber vielleicht ein aufgeblaehter Index
+			// aus einem frueheren Durchlauf (auch aus einem frueheren
+			// Prozess: der Zaehler dafuer lebt nur im Speicher).
+			cs.receiptIndexBlaehungPruefen(lebend)
 			return
 		}
 	}
@@ -181,6 +188,10 @@ func (cs *ChainState) pruneTxReceiptsBegrenzt() {
 		if von >= seiten {
 			receiptPruneSeite.Store(0)
 			receiptPruneDurchlaeufe.Add(1)
+			imDurchlauf := receiptPruneImDurchlauf.Swap(0)
+			if imDurchlauf >= receiptNachsorgeAb {
+				cs.receiptNachsorge(imDurchlauf)
+			}
 			break // Durchlauf fertig
 		}
 		bis := von + aufraeumSeiten
@@ -198,6 +209,7 @@ func (cs *ChainState) pruneTxReceiptsBegrenzt() {
 		n, _ := res.RowsAffected()
 		geloescht += n
 		receiptPruneGeloescht.Add(n)
+		receiptPruneImDurchlauf.Add(n)
 		receiptPruneSeite.Store(bis)
 		if time.Now().After(frist) {
 			receiptPruneBudgetErsch.Add(1)
@@ -213,6 +225,70 @@ func (cs *ChainState) pruneTxReceiptsBegrenzt() {
 	}
 }
 
+// receiptNachsorgeAb: ab so vielen Loeschungen in einem Durchlauf sind die
+// Indizes danach zum groessten Teil tot -- und Vacuum verkleinert keinen
+// Index. 14.09.2026, C2: nach 13,2 Millionen Loeschungen trug der
+// Primaerschluessel 1,6 GB mit 9 Millionen toten Eintraegen, jede
+// Einfuegung war Zufalls-I/O, der Flush lief weiter in den Timeout.
+const receiptNachsorgeAb = 1_000_000
+
+// receiptIndexBlaehungPruefen: ist der Primaerschluessel viel groesser, als
+// die lebenden Zeilen rechtfertigen, wird er neu gebaut. Ein gesunder
+// Eintrag (66 Zeichen Hash) kostet um die 100 Byte; ueber 1 KB je lebender
+// Zeile bei mehr als 64 MB ist ein Index, der fast nur aus Toten besteht.
+// Einmal je Prozess und hoechstens alle 10 Minuten geprueft (eine
+// Katalogabfrage).
+func (cs *ChainState) receiptIndexBlaehungPruefen(lebend int64) {
+	jetzt := time.Now().Unix()
+	if jetzt-receiptBlaehungGeprueft.Load() < 600 {
+		return
+	}
+	receiptBlaehungGeprueft.Store(jetzt)
+	var pkeyBytes int64
+	if err := cs.db.QueryRow(`SELECT pg_relation_size('evm_tx_receipts_pkey')`).Scan(&pkeyBytes); err != nil {
+		return
+	}
+	if lebend < 1 {
+		lebend = 1
+	}
+	if pkeyBytes > 64<<20 && pkeyBytes/lebend > 1024 {
+		fmt.Printf("[AUFRAEUMEN] evm_tx_receipts_pkey ist %d MB fuer %d lebende Zeilen -- fast nur Tote, wird neu gebaut\n", pkeyBytes>>20, lebend)
+		cs.receiptNachsorge(0)
+	}
+}
+
+// receiptNachsorge baut die Indizes von evm_tx_receipts nebenlaeufig neu
+// (REINDEX CONCURRENTLY: sperrt weder Lesen noch Schreiben) und frischt die
+// Statistik auf -- auf der eigenen Verbindung ohne Zeitlimit. Laeuft im
+// Aufraeum-Goroutine, also einfach belegt.
+func (cs *ChainState) receiptNachsorge(geloescht int64) {
+	ctx := context.Background()
+	conn, err := cs.db.Conn(ctx)
+	if err != nil {
+		fmt.Printf("[AUFRAEUMEN] Nachsorge evm_tx_receipts: keine Verbindung: %v\n", err)
+		return
+	}
+	defer conn.Close()
+	if _, err := conn.ExecContext(ctx, `SET statement_timeout = 0`); err != nil {
+		fmt.Printf("[AUFRAEUMEN] Nachsorge evm_tx_receipts: %v\n", err)
+		return
+	}
+	defer conn.ExecContext(ctx, `RESET statement_timeout`)
+	fmt.Printf("[AUFRAEUMEN] Nachsorge evm_tx_receipts nach %d Loeschungen: Indizes neu bauen (nebenlaeufig)\n", geloescht)
+	for _, idx := range []string{"evm_tx_receipts_pkey", "idx_evm_tx_receipts_created_at"} {
+		begonnen := time.Now()
+		if _, err := conn.ExecContext(ctx, `REINDEX INDEX CONCURRENTLY `+idx); err != nil {
+			fmt.Printf("[AUFRAEUMEN] REINDEX %s fehlgeschlagen: %v -- beim naechsten grossen Durchlauf erneut\n", idx, err)
+			continue
+		}
+		fmt.Printf("[AUFRAEUMEN] REINDEX %s fertig (%s)\n", idx, time.Since(begonnen).Round(time.Millisecond))
+	}
+	if _, err := conn.ExecContext(ctx, `ANALYZE evm_tx_receipts`); err != nil {
+		fmt.Printf("[AUFRAEUMEN] ANALYZE evm_tx_receipts: %v\n", err)
+	}
+	receiptNachsorgen.Add(1)
+}
+
 // ReceiptPruneStand fuer /api/health/combined.
 func ReceiptPruneStand() map[string]interface{} {
 	letzter := ""
@@ -226,6 +302,7 @@ func ReceiptPruneStand() map[string]interface{} {
 		"geloescht":         receiptPruneGeloescht.Load(),
 		"naechste_seite":    receiptPruneSeite.Load(),
 		"durchlaeufe":       receiptPruneDurchlaeufe.Load(),
+		"nachsorgen":        receiptNachsorgen.Load(),
 		"laeufe":            receiptPruneLaeufe.Load(),
 		"fehler":            receiptPruneFehler.Load(),
 		"budget_erschoepft": receiptPruneBudgetErsch.Load(),

@@ -174,6 +174,9 @@ const (
 	// receiptFlushChunk: Zeilen je INSERT. 5.000 Zeilen brauchen im Normalfall
 	// zweistellige Millisekunden -- weit unter den 5 s der Verbindung.
 	receiptFlushChunk = 5000
+	// receiptFlushChunkMin: darunter wird nicht mehr halbiert. 250 Zeilen
+	// gehen selbst in einen Index, der Zufalls-I/O ist, unter dem Limit durch.
+	receiptFlushChunkMin = 250
 )
 
 // receiptBufMax: mehr Quittungen haelt der Puffer nicht. Bei 10.000
@@ -195,6 +198,42 @@ var (
 // weder in der Map noch im Rueckstand, zaehlen aber zum Puffer.
 var receiptInArbeit atomic.Int64
 
+// receiptStueckAktuell: das Stueck passt sich der Datenbank an. 14.09.2026,
+// C2 nach dem grossen Aufraeumen: der Primaerschluessel trug noch 9
+// Millionen tote Eintraege, 5.000 Zeilen je INSERT waren Zufalls-I/O ueber
+// das 5-s-Limit, 60 Fehlversuche in 6 Minuten, 442.000 Quittungen im
+// Puffer -- und kein einziger Versuch mit weniger. Jetzt: nach einem
+// Timeout halbieren (bis receiptFlushChunkMin), nach Erfolg verdoppeln
+// (bis receiptFlushChunk). Der Flush kommt so auch bei kranker Datenbank
+// voran, statt 5 s lang gar nichts zu schreiben.
+var receiptStueckAktuell atomic.Int64
+
+func receiptStueck() int {
+	n := int(receiptStueckAktuell.Load())
+	if n < receiptFlushChunkMin || n > receiptFlushChunk {
+		return receiptFlushChunk
+	}
+	return n
+}
+
+func receiptStueckNachFehler(stueck int) int {
+	n := stueck / 2
+	if n < receiptFlushChunkMin {
+		n = receiptFlushChunkMin
+	}
+	receiptStueckAktuell.Store(int64(n))
+	return n
+}
+
+func receiptStueckNachErfolg(stueck int) int {
+	n := stueck * 2
+	if n > receiptFlushChunk {
+		n = receiptFlushChunk
+	}
+	receiptStueckAktuell.Store(int64(n))
+	return n
+}
+
 func (cs *ChainState) flushTxReceipts() {
 	if cs.db == nil {
 		return
@@ -211,6 +250,9 @@ func (cs *ChainState) flushTxReceipts() {
 	cs.receiptRest = nil
 	neu := cs.receiptBuf
 	cs.receiptBuf = nil
+	// Schon hier zaehlen, nicht erst nach dem Zusammenbauen: sonst zeigt
+	// der Stand fuer einen Moment 0 bei Hunderttausenden in der Hand.
+	receiptInArbeit.Store(int64(len(rest) + len(neu)))
 	cs.receiptBufMu.Unlock()
 
 	// Reihenfolge: Rueckstand zuerst (aelter), dann die Map. Eine Quittung,
@@ -229,8 +271,9 @@ func (cs *ChainState) flushTxReceipts() {
 	receiptInArbeit.Store(int64(len(rows)))
 	defer receiptInArbeit.Store(0)
 
-	for off := 0; off < len(rows); off += receiptFlushChunk {
-		ende := off + receiptFlushChunk
+	stueck := receiptStueck()
+	for off := 0; off < len(rows); {
+		ende := off + stueck
 		if ende > len(rows) {
 			ende = len(rows)
 		}
@@ -241,12 +284,15 @@ func (cs *ChainState) flushTxReceipts() {
 			cs.receiptBufMu.Lock()
 			cs.receiptRest = rows[off:]
 			cs.receiptBufMu.Unlock()
-			fmt.Printf("[EVM] receipt flush failed for %d receipt(s) (%d written first, %d kept for the next interval): %v\n",
-				ende-off, off, len(rows)-off, err)
+			neues := receiptStueckNachFehler(stueck)
+			fmt.Printf("[EVM] receipt flush failed for %d receipt(s) (%d written first, %d kept for the next interval, next chunk %d): %v\n",
+				ende-off, off, len(rows)-off, neues, err)
 			return
 		}
 		receiptFlushGeschrieben.Add(int64(ende - off))
 		receiptInArbeit.Store(int64(len(rows) - ende))
+		off = ende
+		stueck = receiptStueckNachErfolg(stueck)
 	}
 }
 
@@ -301,7 +347,7 @@ func (cs *ChainState) ReceiptFlushStand() map[string]interface{} {
 		"geschrieben": receiptFlushGeschrieben.Load(),
 		"fehler":      receiptFlushFehler.Load(),
 		"verworfen":   receiptVerworfen.Load(),
-		"stueck":      receiptFlushChunk,
+		"stueck":      receiptStueck(),
 		"deckel":      receiptBufMax,
 	}
 }

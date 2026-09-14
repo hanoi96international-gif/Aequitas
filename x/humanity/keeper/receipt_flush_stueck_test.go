@@ -24,6 +24,8 @@ func neuerReceiptStateMitScheinDB(t *testing.T) *ChainState {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { db.Close() })
+	// Das adaptive Stueck ist Prozesszustand -- jeder Test beginnt bei 5.000.
+	receiptStueckAktuell.Store(0)
 	return &ChainState{db: db}
 }
 
@@ -178,5 +180,54 @@ func TestReceiptBuffer_DeckelVerdraengtStattZuWachsen(t *testing.T) {
 	}
 	if receiptVerworfen.Load()-vorher != 150 {
 		t.Fatalf("150 Verdraengungen erwartet, gezaehlt %d", receiptVerworfen.Load()-vorher)
+	}
+}
+
+// Nach einem Timeout wird das Stueck halbiert, nach Erfolg wieder
+// verdoppelt -- der Flush kommt auch bei kranker Datenbank voran.
+func TestReceiptFlush_StueckPasstSichAn(t *testing.T) {
+	cs := neuerReceiptStateMitScheinDB(t)
+	alt := receiptSchreibeFn
+	defer func() { receiptSchreibeFn = alt; receiptStueckAktuell.Store(0) }()
+	receiptStueckAktuell.Store(0)
+	for i := 0; i < 6_000; i++ {
+		cs.bufferTxReceipt(pendingReceipt{txHash: fmt.Sprintf("0x%05d", i), status: "0x1"})
+	}
+	var groessen []int
+	fehlschlaege := 3
+	receiptSchreibeFn = func(cs *ChainState, rows []pendingReceipt) error {
+		groessen = append(groessen, len(rows))
+		if fehlschlaege > 0 {
+			fehlschlaege--
+			return errors.New("canceling statement due to statement timeout")
+		}
+		return nil
+	}
+	for i := 0; i < 3; i++ {
+		cs.flushTxReceipts() // drei Fehlversuche: 5000 -> 2500 -> 1250 -> 625
+	}
+	if groessen[0] != 5000 || groessen[1] != 2500 || groessen[2] != 1250 {
+		t.Fatalf("nach jedem Timeout muss das Stueck halbiert werden, gesehen %v", groessen)
+	}
+	if receiptStueck() != 625 {
+		t.Fatalf("nach drei Timeouts erwartet 625, ist %d", receiptStueck())
+	}
+	groessen = nil
+	cs.flushTxReceipts() // jetzt klappt es: 625, 1250, 2500, 1625 (Rest)
+	if len(groessen) < 3 || groessen[0] != 625 || groessen[1] != 1250 || groessen[2] != 2500 {
+		t.Fatalf("nach Erfolg muss das Stueck wieder wachsen, gesehen %v", groessen)
+	}
+	if m, r, a := cs.receiptPufferStand(); m+r+a != 0 {
+		t.Fatalf("alles muss geschrieben sein, offen map=%d rueckstand=%d in_arbeit=%d", m, r, a)
+	}
+	if receiptStueck() != receiptFlushChunk {
+		t.Fatalf("nach genug Erfolgen wieder %d, ist %d", receiptFlushChunk, receiptStueck())
+	}
+	// Nie unter das Minimum.
+	for i := 0; i < 10; i++ {
+		receiptStueckNachFehler(receiptStueck())
+	}
+	if receiptStueck() != receiptFlushChunkMin {
+		t.Fatalf("Minimum ist %d, ist %d", receiptFlushChunkMin, receiptStueck())
 	}
 }
