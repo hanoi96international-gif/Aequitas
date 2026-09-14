@@ -30,6 +30,19 @@ import (
 // schreibt es ins Log und in /api/health/combined (divergenz); den Resync
 // entscheidet ein Mensch (resync-contabo1-only.yml / -contabo2-only.yml),
 // bis der Weg dorthin wieder ohne Fehlalarm ist.
+//
+// RUHE HEISST: BEIDE SEITEN. Am 14.09.2026 meldeten beide Boxen
+// "abweichend", waehrend nur EINE unter Last stand: C2 baute noch den
+// Lastgenerator, war also selbst still -- und verglich sich mit einem C1,
+// das 6.900 Ueberweisungen je Sekunde annahm. Der Zustand eines Knotens
+// traegt angenommene Ueberweisungen, bevor sie in einem Block sind; der
+// Vergleich mit einem beschaeftigten Partner sagt deshalb nichts. Drei
+// Strikes spaeter war die Wache rot, und ein Laien-Validator mit
+// AEQUITAS_DIVERGENZ_AUTORESYNC=1 haette mitten in der Last einen Resync
+// begonnen. Deshalb liefert /api/debug/stateroot-components jetzt
+// ruhe_seit_s mit, und der Waechter zaehlt nur, wenn auch der Seed seit
+// divergenzRuhe still ist. Fehlt die Auskunft (aelterer Seed), wird nicht
+// verglichen: lieber kein Urteil als ein falscher Resync.
 
 const (
 	divergenzTakt     = 60 * time.Second
@@ -44,6 +57,8 @@ var (
 	divergenzVergleiche atomic.Int64
 	divergenzGleich     atomic.Int64
 	divergenzLetzteMeld atomic.Int64
+	// einmalige Meldung je Prozess, wenn ein Seed ruhe_seit_s nicht kennt
+	divergenzOhneAuskunftGemeldet atomic.Bool
 )
 
 func (dag *BlockDAG) StarteDivergenzWaechter() {
@@ -59,9 +74,34 @@ func (dag *BlockDAG) StarteDivergenzWaechter() {
 	})
 }
 
+// DivergenzAuskunft ist die Antwort von /api/debug/stateroot-components: die
+// Zustandsbestandteile plus die eigene Ruhe, damit der Partner weiss, ob ein
+// Vergleich gerade etwas sagt.
+type DivergenzAuskunft struct {
+	StateRootComponents
+	RuheSeitS float64 `json:"ruhe_seit_s"`
+}
+
+// ruheSeit: wie lange dieser Knoten keine eigene Ueberweisung mehr
+// angenommen hat.
+func ruheSeit() time.Duration {
+	return time.Since(time.Unix(0, letzteEigeneUeberweisungNs.Load()))
+}
+
+// divergenzVergleichbar entscheidet, ob ein Vergleich zaehlt: beide Seiten
+// seit divergenzRuhe still. peerRuheS ist nil, wenn der Seed die Auskunft
+// nicht liefert -- dann zaehlt nichts.
+func divergenzVergleichbar(eigeneRuhe time.Duration, peerRuheS *float64) bool {
+	if eigeneRuhe < divergenzRuhe {
+		return false
+	}
+	return peerRuheS != nil && *peerRuheS >= divergenzRuhe.Seconds()
+}
+
 func (dag *BlockDAG) divergenzEinmalPruefen() {
 	// Nur in der Ruhe: eigene Annahme seit divergenzRuhe still.
-	if time.Since(time.Unix(0, letzteEigeneUeberweisungNs.Load())) < divergenzRuhe {
+	eigeneRuhe := ruheSeit()
+	if eigeneRuhe < divergenzRuhe {
 		return
 	}
 	dag.syncPeerMu.Lock()
@@ -88,13 +128,20 @@ func (dag *BlockDAG) divergenzEinmalPruefen() {
 			continue
 		}
 		var fremd struct {
-			AccountSetXOR string `json:"account_set_xor"`
-			LastUBIAt     string `json:"last_ubi_at"`
+			AccountSetXOR string   `json:"account_set_xor"`
+			LastUBIAt     string   `json:"last_ubi_at"`
+			RuheSeitS     *float64 `json:"ruhe_seit_s"`
 		}
 		decErr := json.NewDecoder(resp.Body).Decode(&fremd)
 		resp.Body.Close()
 		if decErr != nil || fremd.AccountSetXOR == "" {
 			continue
+		}
+		if !divergenzVergleichbar(eigeneRuhe, fremd.RuheSeitS) {
+			if fremd.RuheSeitS == nil && divergenzOhneAuskunftGemeldet.CompareAndSwap(false, true) {
+				fmt.Printf("[DIVERGENZ] %s liefert keine Ruhe-Auskunft (ruhe_seit_s) -- kein Vergleich, bis der Seed aktualisiert ist\n", seed)
+			}
+			continue // Partner nicht in Ruhe -- der Vergleich sagt nichts
 		}
 		divergenzVergleiche.Add(1)
 		if fremd.AccountSetXOR == eigene.AccountSetXOR {
@@ -159,7 +206,7 @@ func DivergenzStand() map[string]interface{} {
 	}
 	strikes := divergenzStrikes.Load()
 	return map[string]interface{}{
-		"bedeutung": "Vergleich von account_set_xor mit den Seeds in der Ruhe (keine eigene Ueberweisung seit 30 s, Hoehe gleichauf). " +
+		"bedeutung": "Vergleich von account_set_xor mit den Seeds in der Ruhe (keine eigene Ueberweisung seit 30 s auf BEIDEN Seiten, Hoehe gleichauf). " +
 			"abweichend=true ab 3 Vergleichen in Folge mit Unterschied -- dann stimmen Kontostaende nicht ueberein, nicht nur Geschwister-Unschaerfe. " +
 			"autoresync=true (AEQUITAS_DIVERGENZ_AUTORESYNC=1, fuer Validatoren, die nicht Seed sind): dann Resync vom Seed statt nur Meldung.",
 		"autoresync":        strings.TrimSpace(os.Getenv("AEQUITAS_DIVERGENZ_AUTORESYNC")) == "1",

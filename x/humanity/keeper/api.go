@@ -517,7 +517,12 @@ func (a *APIServer) handleDAGGates(w http.ResponseWriter, r *http.Request) {
 
 func (a *APIServer) handleStateRootComponents(w http.ResponseWriter, r *http.Request) {
 	writeJSONCORS(w)
-	body, err := json.Marshal(a.state.StateRootComponentBreakdown())
+	// Mit ruhe_seit_s: der Divergenz-Waechter des Partners vergleicht nur,
+	// wenn auch dieser Knoten still ist (divergenz_waechter.go).
+	body, err := json.Marshal(DivergenzAuskunft{
+		StateRootComponents: a.state.StateRootComponentBreakdown(),
+		RuheSeitS:           ruheSeit().Seconds(),
+	})
 	if err != nil {
 		jsonError(w, "internal error building response", http.StatusInternalServerError)
 		return
