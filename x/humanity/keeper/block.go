@@ -1308,7 +1308,9 @@ func NewBlockchain(nodeID string, state *ChainState) *BlockDAG {
 	// BroadcastBlock — see ResetStaleIncludedPendingTxs' own comment for why
 	// that's always safe to retry. 10 minutes comfortably exceeds how long a
 	// single ProduceBlock call could ever legitimately take.
-	state.ResetStaleIncludedPendingTxs(10 * time.Minute)
+	// Seit 14.09.2026 begrenzt und wiederkehrend (aufraeumen_begrenzt.go):
+	// Reste aelter als einen Tag werden geloescht statt wieder geoeffnet.
+	state.PendingLeichenAufraeumenStart(10 * time.Minute)
 
 	// FIX (audit 2026-06-28 full recheck, P1-3): restore every durably-saved
 	// block (see chain_blocks' own comment and SaveBlockToDB) BEFORE falling

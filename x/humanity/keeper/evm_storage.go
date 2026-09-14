@@ -2466,13 +2466,11 @@ func (cs *ChainState) maybePruneTxReceipts() {
 	if !receiptPruneRunning.CompareAndSwap(false, true) {
 		return
 	}
+	// Seit 14.09.2026 in Stuecken mit Budget (aufraeumen_begrenzt.go): die
+	// eine grosse Anweisung konnte bei 13 Millionen Zeilen nie fertig werden.
 	SafeGoroutine("pruneTxReceipts", func() {
 		defer receiptPruneRunning.Store(false)
-		if _, err := cs.db.Exec(`DELETE FROM evm_tx_receipts WHERE tx_hash NOT IN (
-			SELECT tx_hash FROM evm_tx_receipts ORDER BY created_at DESC LIMIT $1
-		)`, receiptPruneKeep); err != nil {
-			fmt.Printf("[EVM] receipt prune failed: %v — retrying at the next interval\n", err)
-		}
+		cs.pruneTxReceiptsBegrenzt()
 	})
 }
 
@@ -2985,7 +2983,13 @@ func (cs *ChainState) MarkPendingTxsIncluded(ids []int64, blockHash string) erro
 	return nil
 }
 
-// ResetStaleIncludedPendingTxs reverts included_at back to 0 for any row
+// ResetStaleIncludedPendingTxs -- ABGELOEST durch PendingLeichenAufraeumen
+// (aufraeumen_begrenzt.go): EINE Anweisung ueber alle markierten Zeilen lief
+// am 14.09.2026 auf C2 bei 1,12 Millionen Resten in das 5-s-Limit -- und
+// haette sie, waere sie durchgekommen, alle wieder in Bloecke gebracht.
+// Bleibt als Referenz fuer die Semantik stehen; kein Aufrufer mehr.
+//
+// Reverts included_at back to 0 for any row
 // that's been "included" for longer than maxAge and never cleared —
 // recovery for the crash window between LoadPendingTxs (marks included)
 // and ClearPendingTxs (deletes rows). Only resets rows whose

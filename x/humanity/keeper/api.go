@@ -749,6 +749,8 @@ func (a *APIServer) handleCombinedHealth(w http.ResponseWriter, r *http.Request)
 		"wal_vornuller":    a.state.WALVornullerStand(),
 		"tx_index":         TxIndexStats(),
 		"receipt_flush":    a.blockchain.state.ReceiptFlushStand(),
+		"receipt_prune":    ReceiptPruneStand(),
+		"pending_leichen":  PendingLeichenStand(),
 		"tx_batch_cache":   a.blockchain.state.TxBatchCacheStand(),
 		"push_gzip":        GzipPushStand(),
 		"eigenlast_bremse": EigenlastBremseStand(),

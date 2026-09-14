@@ -320,6 +320,7 @@ type ChainState struct {
 	// buffered entry, exactly as the database would have.
 	receiptBufMu     sync.Mutex
 	receiptBuf       map[string]pendingReceipt
+	receiptRest      []pendingReceipt // gescheiterte Stuecke, aelteste zuerst (receipt_flush.go)
 	receiptFlushOnce sync.Once
 
 	// poolFlushDirty/poolFlushOnce back distributeSwapFee's deferred pool

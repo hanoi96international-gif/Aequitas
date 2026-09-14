@@ -70,12 +70,17 @@ func (cs *ChainState) bufferTxReceipt(r pendingReceipt) {
 	}
 	// Keyed by hash: a later write for the same transaction overwrites the
 	// earlier one, which is what ON CONFLICT (tx_hash) DO UPDATE did.
-	if _, da := cs.receiptBuf[r.txHash]; !da && len(cs.receiptBuf) >= receiptBufMax {
-		// Voll: eine beliebige alte Quittung verdraengen (die Map hat keine
+	if _, da := cs.receiptBuf[r.txHash]; !da && len(cs.receiptBuf)+len(cs.receiptRest) >= receiptBufMax {
+		// Voll: das Aelteste verdraengen -- zuerst aus dem Rueckstand (der
+		// ist geordnet), sonst eine beliebige aus der Map (die hat keine
 		// Ordnung; jede ist gleich alt genug). Siehe flushTxReceipts.
-		for k := range cs.receiptBuf {
-			delete(cs.receiptBuf, k)
-			break
+		if len(cs.receiptRest) > 0 {
+			cs.receiptRest = cs.receiptRest[1:]
+		} else {
+			for k := range cs.receiptBuf {
+				delete(cs.receiptBuf, k)
+				break
+			}
 		}
 		n := receiptVerworfen.Add(1)
 		if jetzt := time.Now().Unix(); jetzt-receiptVerworfenLogAt.Load() >= 60 {
@@ -93,8 +98,19 @@ func (cs *ChainState) bufferTxReceipt(r pendingReceipt) {
 func (cs *ChainState) lookupBufferedReceipt(txHash string) (pendingReceipt, bool) {
 	cs.receiptBufMu.Lock()
 	defer cs.receiptBufMu.Unlock()
-	r, ok := cs.receiptBuf[strings.ToLower(txHash)]
-	return r, ok
+	h := strings.ToLower(txHash)
+	if r, ok := cs.receiptBuf[h]; ok {
+		return r, true
+	}
+	// Der Rueckstand ist normalerweise leer; nur waehrend eines
+	// Datenbank-Ausfalls liegt hier etwas, und dann ist ein linearer Lauf
+	// der Preis dafuer, dass die Annahme nicht auf ihn warten muss.
+	for i := len(cs.receiptRest) - 1; i >= 0; i-- {
+		if cs.receiptRest[i].txHash == h {
+			return cs.receiptRest[i], true
+		}
+	}
+	return pendingReceipt{}, false
 }
 
 // ensureReceiptFlushWorkerStarted starts the single flush goroutine lazily —
@@ -106,8 +122,15 @@ func (cs *ChainState) ensureReceiptFlushWorkerStarted() {
 		SafeGoroutine("receiptFlushWorker", func() {
 			ticker := time.NewTicker(receiptFlushInterval)
 			defer ticker.Stop()
+			ticks := 0
 			for range ticker.C {
 				cs.flushTxReceipts()
+				// Der Aufraeumer haengt sonst nur an SaveTxReceipt -- nach
+				// einem Lastlauf, wenn keine Quittung mehr kommt, raeumte
+				// niemand. Hier ist er unabhaengig vom Verkehr.
+				if ticks++; ticks%int(receiptPruneInterval/receiptFlushInterval) == 0 {
+					cs.maybePruneTxReceipts()
+				}
 			}
 		})
 	})
@@ -136,6 +159,17 @@ func (cs *ChainState) ensureReceiptFlushWorkerStarted() {
 // mit den Quittungen im Speicher waechst, bis ihn der Kernel beendet. Eine
 // verworfene Quittung kostet einem Wallet einen Nachschlag; ein toter Knoten
 // kostet die Kette einen Validator.
+//
+// NACHTRAG 14.09.2026, C2: die Stuecke allein reichten nicht. Als die
+// Datenbank 406.268 Quittungen nicht annahm (Index auf 13 Millionen Zeilen,
+// siehe aufraeumen_begrenzt.go), baute jeder Fehlversuch alle 5 s eine neue
+// Map mit 406.268 Eintraegen -- unter der Puffersperre, auf die jede
+// Annahme wartet: rpc_phases.quittung_ms stand bei 202 ms je Ueberweisung,
+// die Buendel des Lastgenerators brauchten 4,8 s statt 1,1 s. Gescheiterte
+// Zeilen liegen jetzt als Rueckstand (receiptRest, ein Teilstueck der
+// schon gebauten Liste, keine Kopie) neben der Map und werden beim
+// naechsten Anlauf zuerst geschrieben; die Sperre haelt der Flush nur fuer
+// das Umhaengen von Zeigern.
 
 const (
 	// receiptFlushChunk: Zeilen je INSERT. 5.000 Zeilen brauchen im Normalfall
@@ -158,21 +192,43 @@ var (
 	receiptVerworfenLogAt   atomic.Int64
 )
 
+// receiptInArbeit: Zeilen, die gerade geschrieben werden -- sie liegen
+// weder in der Map noch im Rueckstand, zaehlen aber zum Puffer.
+var receiptInArbeit atomic.Int64
+
 func (cs *ChainState) flushTxReceipts() {
 	if cs.db == nil {
 		return
 	}
 	cs.receiptBufMu.Lock()
-	if len(cs.receiptBuf) == 0 {
+	if len(cs.receiptBuf) == 0 && len(cs.receiptRest) == 0 {
 		cs.receiptBufMu.Unlock()
 		return
 	}
-	rows := make([]pendingReceipt, 0, len(cs.receiptBuf))
-	for _, r := range cs.receiptBuf {
-		rows = append(rows, r)
-	}
+	// Nur Zeiger umhaengen: der Rueckstand gehoert ab hier dieser
+	// Goroutine (nur sie schreibt ihn), die Map wird ausserhalb der Sperre
+	// gelesen.
+	rest := cs.receiptRest
+	cs.receiptRest = nil
+	neu := cs.receiptBuf
 	cs.receiptBuf = nil
 	cs.receiptBufMu.Unlock()
+
+	// Reihenfolge: Rueckstand zuerst (aelter), dann die Map. Eine Quittung,
+	// die in beiden liegt, gilt in der Map als die neuere -- und darf in
+	// EINER Anweisung nicht zweimal vorkommen (ON CONFLICT DO UPDATE kann
+	// eine Zeile nicht zweimal treffen).
+	rows := make([]pendingReceipt, 0, len(rest)+len(neu))
+	for _, r := range rest {
+		if _, neuer := neu[r.txHash]; !neuer {
+			rows = append(rows, r)
+		}
+	}
+	for _, r := range neu {
+		rows = append(rows, r)
+	}
+	receiptInArbeit.Store(int64(len(rows)))
+	defer receiptInArbeit.Store(0)
 
 	for off := 0; off < len(rows); off += receiptFlushChunk {
 		ende := off + receiptFlushChunk
@@ -181,25 +237,29 @@ func (cs *ChainState) flushTxReceipts() {
 		}
 		if err := receiptSchreibeFn(cs, rows[off:ende]); err != nil {
 			receiptFlushFehler.Add(1)
-			// Zurueck in den Puffer -- nur das Ungeschriebene, und nichts
-			// ueberschreiben, was inzwischen neuer hereinkam.
-			rest := rows[off:]
-			fmt.Printf("[EVM] receipt flush failed for %d receipt(s) (%d written first, %d kept for the next interval): %v\n",
-				ende-off, off, len(rest), err)
+			// Das Ungeschriebene bleibt als Rueckstand liegen -- ein
+			// Teilstueck dieser Liste, keine Kopie, keine neue Map.
 			cs.receiptBufMu.Lock()
-			if cs.receiptBuf == nil {
-				cs.receiptBuf = make(map[string]pendingReceipt, len(rest))
-			}
-			for _, r := range rest {
-				if _, newer := cs.receiptBuf[r.txHash]; !newer {
-					cs.receiptBuf[r.txHash] = r
-				}
-			}
+			cs.receiptRest = rows[off:]
 			cs.receiptBufMu.Unlock()
+			fmt.Printf("[EVM] receipt flush failed for %d receipt(s) (%d written first, %d kept for the next interval): %v\n",
+				ende-off, off, len(rows)-off, err)
 			return
 		}
 		receiptFlushGeschrieben.Add(int64(ende - off))
+		receiptInArbeit.Store(int64(len(rows) - ende))
 	}
+}
+
+// receiptPufferStand: alles, was noch nicht durch ist -- Map, Rueckstand und
+// das Stueck in Arbeit. Vorher zaehlte nur die Map, und die ist waehrend
+// eines 5-s-Fehlversuchs leer: /api/health/combined zeigte puffer=0 bei
+// 406.268 wartenden Quittungen.
+func (cs *ChainState) receiptPufferStand() (map_, rueckstand, inArbeit int) {
+	cs.receiptBufMu.Lock()
+	map_, rueckstand = len(cs.receiptBuf), len(cs.receiptRest)
+	cs.receiptBufMu.Unlock()
+	return map_, rueckstand, int(receiptInArbeit.Load())
 }
 
 // schreibeReceipts schreibt ein Stueck in einer Anweisung.
@@ -230,15 +290,15 @@ func (cs *ChainState) schreibeReceipts(rows []pendingReceipt) error {
 
 // ReceiptFlushStand fuer /api/health/combined.
 func (cs *ChainState) ReceiptFlushStand() map[string]interface{} {
-	cs.receiptBufMu.Lock()
-	puffer := len(cs.receiptBuf)
-	cs.receiptBufMu.Unlock()
+	inMap, rueckstand, inArbeit := cs.receiptPufferStand()
 	return map[string]interface{}{
 		"bedeutung": "Quittungen (evm_tx_receipts) werden gepuffert und in Stuecken von " +
 			fmt.Sprint(receiptFlushChunk) + " geschrieben. fehler zaehlt gescheiterte Stuecke; " +
 			"verworfen zaehlt Quittungen, die der volle Puffer (" + fmt.Sprint(receiptBufMax) + ") verdraengt hat. " +
-			"puffer sollte nach Last binnen Sekunden auf 0 fallen.",
-		"puffer":      puffer,
+			"puffer = neu + rueckstand (gescheiterte Stuecke) + in_arbeit; sollte nach Last binnen Sekunden auf 0 fallen.",
+		"puffer":      inMap + rueckstand + inArbeit,
+		"rueckstand":  rueckstand,
+		"in_arbeit":   inArbeit,
 		"geschrieben": receiptFlushGeschrieben.Load(),
 		"fehler":      receiptFlushFehler.Load(),
 		"verworfen":   receiptVerworfen.Load(),
