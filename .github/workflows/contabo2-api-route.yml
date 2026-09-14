@@ -1,0 +1,92 @@
+name: Contabo2 -- Knoten-API als Ausweichadresse der App (proof2.aequitas.digital)
+
+# Installiert deploy/Caddyfile.proof2 im proof-caddy von Contabo2: die
+# bestehenden Routen (Proof-Server, Vergleichsdienst, Coordinator) bleiben
+# wortgleich, dazu kommen /api/* und /rpc auf den Knoten.
+#
+# Sicherung, Pruefung, Reload, Nachmessen -- und bei einem Fehler zurueck auf
+# die Sicherung. Der Lauf bricht ab, bevor er etwas aendert, wenn Caddy den
+# Knoten im Docker-Netz nicht erreicht.
+
+on:
+  workflow_dispatch:
+
+jobs:
+  route:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Caddyfile auf die Box kopieren
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: 194.163.188.71
+          username: root
+          key: ${{ secrets.CONTABO2_SSH_KEY }}
+          port: 22
+          source: deploy/Caddyfile.proof2
+          target: /root/caddy-neu
+          strip_components: 1
+
+      - name: Pruefen, einsetzen, nachmessen
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: 194.163.188.71
+          username: root
+          key: ${{ secrets.CONTABO2_SSH_KEY }}
+          port: 22
+          fingerprint: "SHA256:VIwj7Faxiga2n45HVHZEQFPxcbRKHgSgHoxAFsf2wto"
+          script_stop: true
+          timeout: 600s
+          command_timeout: 600s
+          script: |
+            set -euo pipefail
+            NEU=/root/caddy-neu/Caddyfile.proof2
+            ALT=/root/caddy/Caddyfile
+            [ -f "$NEU" ] || { echo "FEHLER: $NEU fehlt"; exit 1; }
+            docker inspect proof-caddy >/dev/null 2>&1 || { echo "FEHLER: kein proof-caddy"; exit 1; }
+
+            echo "=== erreicht Caddy den Knoten im Docker-Netz? ==="
+            docker exec proof-caddy wget -qO- --timeout=5 http://aequitas-node:8080/api/status >/dev/null 2>&1 \
+              && echo "  ja: aequitas-node:8080" \
+              || { echo "FEHLER: proof-caddy erreicht aequitas-node:8080 nicht -- keine Aenderung"; exit 1; }
+
+            echo "=== Sicherung ==="
+            SICHERUNG="$ALT.bak-$(date +%s)"
+            cp -a "$ALT" "$SICHERUNG"
+            echo "  $SICHERUNG"
+
+            echo "=== Pruefung der neuen Datei ==="
+            docker cp "$NEU" proof-caddy:/tmp/Caddyfile.neu
+            docker exec proof-caddy caddy validate --config /tmp/Caddyfile.neu --adapter caddyfile 2>&1 | tail -3
+
+            echo "=== Einsetzen + Reload ==="
+            cp "$NEU" "$ALT"
+            if ! docker exec proof-caddy caddy reload --config /etc/caddy/Caddyfile --adapter caddyfile 2>&1 | tail -3; then
+              echo "Reload fehlgeschlagen -- Sicherung zurueck"
+              cp "$SICHERUNG" "$ALT"
+              docker exec proof-caddy caddy reload --config /etc/caddy/Caddyfile --adapter caddyfile || true
+              exit 1
+            fi
+            sleep 3
+
+            echo "=== Nachmessen (von aussen, ueber TLS) ==="
+            fehl=0
+            pruef() { # url erwartet
+              c=$(curl -s --max-time 20 -o /dev/null -w '%{http_code}' "$1" || echo 000)
+              if [ "$c" = "$2" ]; then echo "  ok   $1 -> $c"; else echo "  FEHL $1 -> $c (erwartet $2)"; fehl=1; fi
+            }
+            pruef https://proof2.aequitas.digital/health 200
+            pruef https://proof2.aequitas.digital/matching/health 200
+            pruef https://proof2.aequitas.digital/coordinator/health 200
+            pruef https://proof2.aequitas.digital/api/status 200
+            pruef https://proof2.aequitas.digital/api/wache 200
+            rc=$(curl -s --max-time 20 -X POST https://proof2.aequitas.digital/rpc -H 'Content-Type: application/json' -d '{"jsonrpc":"2.0","id":1,"method":"eth_chainId","params":[]}')
+            if echo "$rc" | grep -q '"0x786"'; then echo "  ok   /rpc eth_chainId -> 0x786"; else echo "  FEHL /rpc -> $rc"; fehl=1; fi
+            if [ "$fehl" = 1 ]; then
+              echo "Etwas antwortet nicht wie erwartet -- Sicherung zurueck"
+              cp "$SICHERUNG" "$ALT"
+              docker exec proof-caddy caddy reload --config /etc/caddy/Caddyfile --adapter caddyfile || true
+              exit 1
+            fi
+            echo "=== fertig: proof2.aequitas.digital/api und /rpc fuehren zum Knoten ==="

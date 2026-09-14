@@ -1,0 +1,52 @@
+# Caddy auf Contabo2 (Container proof-caddy, Datei /root/caddy/Caddyfile).
+#
+# Bis zum 14.09.2026 bediente proof2.aequitas.digital nur den Proof-Server,
+# den Vergleichsdienst und den Coordinator. Der Knoten selbst war ueber TLS
+# nur auf Contabo1 erreichbar (aequitas.digital): fiel C1 aus, war die App
+# blind -- API_BASE und RPC_URL zeigen beide dorthin --, obwohl die Kette auf
+# C2 weiterlief.
+#
+# Die zwei neuen Bloecke geben der App eine Ausweichadresse
+# (EXPO_PUBLIC_API_FALLBACKS / EXPO_PUBLIC_RPC_FALLBACKS im App-Repo):
+#   /api/*   -> Knoten-API (Status, Guthaben, Registrierung, prove-Proxy)
+#   /rpc     -> JSON-RPC fuer Ueberweisungen
+# Bewusst NICHT: die Website (/), /download, /explorer -- die Front bleibt
+# aequitas.digital. Es geht um die App, nicht um eine zweite Website.
+#
+# Reihenfolge ist egal: Caddy waehlt den spezifischsten Pfad. Genau so
+# funktionieren /matching und /coordinator hier seit August.
+
+proof2.aequitas.digital {
+	reverse_proxy proof-server:3000
+}
+
+proof2.aequitas.digital/matching {
+	# Ohne diesen Block fiel die nackte Adresse auf den Standardblock durch --
+	# also auf den Proof-Server, der mit "Cannot GET /matching" antwortete.
+	redir /matching/health permanent
+}
+
+proof2.aequitas.digital/matching/* {
+	uri strip_prefix /matching
+	reverse_proxy aequitas-matching:8098
+}
+
+# Der Coordinator dieser Box. Signierschluessel von der Box selbst erzeugt;
+# der Container veroeffentlicht keinen Port, erreichbar nur ueber diesen Proxy.
+proof2.aequitas.digital/coordinator {
+	redir /coordinator/ permanent
+}
+
+proof2.aequitas.digital/coordinator/* {
+	uri strip_prefix /coordinator
+	reverse_proxy aequitas-coordinator:8200
+}
+
+# Ausweichadresse fuer die App (seit 14.09.2026).
+proof2.aequitas.digital/api/* {
+	reverse_proxy aequitas-node:8080
+}
+
+proof2.aequitas.digital/rpc {
+	reverse_proxy aequitas-node:8080
+}
