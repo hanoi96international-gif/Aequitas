@@ -16,6 +16,12 @@ Antwortet mit den Namen der fehlenden Variablen und dem, was jede bedeutet. Öff
 
 ## Einsetzen
 
+**Der kurze Weg (seit 14.09.2026):** Actions → „Impressum und Datenschutz freischalten (beide Boxen)"
+(`rechtstexte-setzen.yml`) → die sieben Felder ausfüllen → Run. Der Workflow schreibt die Werte in
+`/root/.aequitas.env` beider Boxen und startet die Knoten nacheinander neu; am Ende steht im Log
+`/impressum -> HTTP 200`. Optionale Angaben in das achte Feld, mit `;` getrennt
+(`LEGAL_TELEFON=…;LEGAL_USTID=…`). Was unten folgt, ist derselbe Vorgang von Hand.
+
 An den HTML-Dateien wird **nichts** geändert. Die Angaben kommen aus Umgebungsvariablen; auf beiden Boxen dieselben.
 
 ```bash
