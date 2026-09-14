@@ -84,6 +84,7 @@ func init() {
 					}
 					return true
 				})
+				ipBurstAufraeumen(burstFenster)
 			})
 		}
 	})
@@ -229,14 +230,15 @@ func (a *APIServer) handleRegister(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Je IP ein Burst statt einer Anfrage je 10 s -- Menschen hinter derselben
+	// Adresse (Mobilfunk-CGNAT, ein WLAN) sind sonst gegenseitig gesperrt.
+	// Siehe ip_burst.go; die Grenze je Wallet bleibt weiter unten.
 	ip := clientIP(r)
-	now := time.Now()
-	if last, ok := registerRateLimit.Load(ip); ok && now.Sub(last.(time.Time)) < 10*time.Second {
+	if !burstErlaubt("register:"+ip, burstRegisterJeIP, burstFenster) {
 		w.WriteHeader(http.StatusTooManyRequests)
-		json.NewEncoder(w).Encode(RegisterResponse{Success: false, Message: "too many requests — please wait 10 seconds"})
+		json.NewEncoder(w).Encode(RegisterResponse{Success: false, Message: "too many requests from this address — please wait a minute"})
 		return
 	}
-	registerRateLimit.Store(ip, now)
 
 	// 256 KB — ZK proofs are large.
 	body, tooLarge, err := readBodyLimited(w, r, 256<<10)

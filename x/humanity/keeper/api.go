@@ -3349,14 +3349,12 @@ func (a *APIServer) handleProveProxy(w http.ResponseWriter, r *http.Request) {
 	// the one layer that still sees the ORIGINAL caller's IP before the
 	// request collapses into this proxy's own outbound IP at the proof
 	// server, so add that as a second, independent key.
-	ipKey := "prove-ip:" + clientIP(r)
-	if ts, loaded := registerRateLimit.Load(ipKey); loaded {
-		if time.Since(ts.(time.Time)) < 3*time.Second {
-			jsonError(w, "rate limited, try again shortly", 429)
-			return
-		}
+	// Je IP ein Burst (ip_burst.go): Gruppen hinter einer Adresse blockieren
+	// sich nicht mehr gegenseitig; die Wallet-Grenze oben bleibt.
+	if !burstErlaubt("prove:"+clientIP(r), burstProveJeIP, burstFenster) {
+		jsonError(w, "rate limited, try again shortly", 429)
+		return
 	}
-	registerRateLimit.Store(ipKey, time.Now())
 	if len(proofServerURLs()) == 0 {
 		http.Error(w, `{"error":"no PROOF_SERVER_URL/PROOF_SERVER_URLS configured on this node"}`, 503)
 		return

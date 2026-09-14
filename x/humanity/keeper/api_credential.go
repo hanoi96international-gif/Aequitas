@@ -6,7 +6,6 @@ import (
 	"math/big"
 	"net/http"
 	"strings"
-	"time"
 
 	"github.com/ethereum/go-ethereum/accounts"
 	"github.com/ethereum/go-ethereum/crypto"
@@ -72,14 +71,11 @@ func (a *APIServer) handleHumanityCredential(w http.ResponseWriter, r *http.Requ
 	// for every is_human=true lookup. Same package-level registerRateLimit
 	// map and same per-IP 5s window as the biohash check, keyed separately so
 	// it cannot be used to also throttle other endpoints.
-	ip := clientIP(r)
-	if ts, loaded := registerRateLimit.Load("credential:" + ip); loaded {
-		if time.Since(ts.(time.Time)) < 5*time.Second {
-			jsonError(w, "rate limited, try again shortly", http.StatusTooManyRequests)
-			return
-		}
+	// Je IP ein Burst (ip_burst.go) statt einer Anfrage je 5 s.
+	if !burstErlaubt("credential:"+clientIP(r), burstCredentialJeIP, burstFenster) {
+		jsonError(w, "rate limited, try again shortly", http.StatusTooManyRequests)
+		return
 	}
-	registerRateLimit.Store("credential:"+ip, time.Now())
 
 	wallet := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("wallet")))
 	if len(wallet) != 42 || wallet[:2] != "0x" {
