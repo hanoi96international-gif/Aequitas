@@ -1,0 +1,38 @@
+name: Caddy-Konfiguration einer Box lesen (nur lesen)
+# Zeigt, was der proof-caddy-Container WIRKLICH faehrt: die Datei im Container
+# und die laufende Konfiguration aus der Admin-API. Die Datei unter /root kann
+# veraltet sein -- am 14.09.2026 fehlte in /root/Caddyfile auf C2 die
+# Coordinator-Route, die der laufende Caddy laengst bediente.
+on:
+  workflow_dispatch:
+    inputs:
+      box: {description: "C1 | C2", required: false, default: "C2"}
+jobs:
+  l:
+    strategy:
+      fail-fast: false
+      matrix: {box: [{name: "C1", host: "173.249.37.118", secret: "C1"}, {name: "C2", host: "194.163.188.71", secret: "C2"}]}
+    runs-on: ubuntu-latest
+    steps:
+      - if: ${{ inputs.box == matrix.box.name }}
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ matrix.box.host }}
+          username: root
+          key: ${{ matrix.box.secret == 'C1' && secrets.CONTABO_SSH_KEY || secrets.CONTABO2_SSH_KEY }}
+          port: 22
+          script_stop: false
+          timeout: 120s
+          command_timeout: 120s
+          script: |
+            echo "##### ${{ matrix.box.name }}: proof-caddy #####"
+            docker inspect proof-caddy --format 'image={{.Config.Image}} netze={{range $k,$v := .NetworkSettings.Networks}}{{$k}} {{end}}' 2>/dev/null || echo "(kein Container proof-caddy)"
+            echo "--- Mounts ---"
+            docker inspect proof-caddy --format '{{range .Mounts}}{{.Type}} {{.Source}} -> {{.Destination}}{{println}}{{end}}' 2>/dev/null
+            echo "--- /etc/caddy/Caddyfile im Container ---"
+            docker exec proof-caddy cat /etc/caddy/Caddyfile 2>/dev/null || echo "(nicht lesbar)"
+            echo "--- laufende Konfiguration (Admin-API, Routen) ---"
+            docker exec proof-caddy wget -qO- http://localhost:2019/config/apps/http/servers 2>/dev/null | head -c 6000 || echo "(Admin-API nicht erreichbar)"
+            echo
+            echo "--- weitere Caddy-Container ---"
+            docker ps --format '{{.Names}} {{.Image}}' | grep -i caddy || true

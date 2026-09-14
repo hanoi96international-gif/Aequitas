@@ -2615,7 +2615,19 @@ func (a *APIServer) handleUI(w http.ResponseWriter, r *http.Request) {
 	// explorerHTMLVersioned (not the raw explorerHTML) — see its own comment
 	// in api_html.go for why: it points at content-hashed CSS/JS URLs so a
 	// browser that cached last deploy's assets fetches this deploy's instead.
-	fmt.Fprint(w, explorerHTMLVersioned)
+	fmt.Fprint(w, mitLegalLinks(explorerHTMLVersioned, ` · <a href="/impressum" style="color:inherit">Impressum</a> · <a href="/datenschutz" style="color:inherit">Datenschutz</a>`))
+}
+
+// mitLegalLinks setzt die Verweise auf Impressum und Datenschutz in die
+// Fusszeile -- nur, wenn beide Seiten auch antworten (alle sieben
+// Pflichtangaben gesetzt, legal_felder.go). Ein Verweis auf eine 404-Seite
+// waere schlimmer als keiner; ohne Verweis waeren die Seiten nach dem
+// Freischalten von keiner Seite aus erreichbar (§ 5 DDG: zwei Klicks).
+func mitLegalLinks(html, links string) string {
+	if len(fehlendeLegalFelder()) > 0 {
+		links = ""
+	}
+	return strings.Replace(html, "<!--LEGAL_LINKS-->", links, 1)
 }
 
 // handleExplorerCSS/handleExplorerJS serve the Explorer UI's stylesheet and
@@ -3870,7 +3882,9 @@ func (a *APIServer) handleLanding(w http.ResponseWriter, r *http.Request) {
 	setHSTS(w, r)
 	w.Header().Set("X-Content-Type-Options", "nosniff")
 	w.Header().Set("Referrer-Policy", "strict-origin-when-cross-origin")
-	fmt.Fprint(w, landingHTML)
+	fmt.Fprint(w, mitLegalLinks(landingHTML, `
+    <a href="/impressum">Impressum</a>
+    <a href="/datenschutz">Datenschutz</a>`))
 }
 
 func (a *APIServer) handleLandingJS(w http.ResponseWriter, r *http.Request) {
