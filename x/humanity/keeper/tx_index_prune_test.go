@@ -4,6 +4,7 @@ import (
 	"os"
 	"strings"
 	"testing"
+	"time"
 )
 
 // Diese Begrenzung war zweimal hintereinander scheinbar gesund und tatsaechlich
@@ -120,7 +121,7 @@ func TestTxIndexPrune_MisstUeberReltuplesUndMeldetFehler(t *testing.T) {
 func TestTxIndexPrune_SchreibtDieSchaetzungFortStattSieNeuZuLesen(t *testing.T) {
 	body := quelle(t, "tx_index_prune.go")
 
-	schleife := strings.Index(body, "for i := 0; i < 200; i++ {")
+	schleife := strings.Index(body, "for i := 0; i < schritte; i++ {")
 	if schleife < 0 {
 		t.Fatal("die Loeschschleife ist nicht mehr auffindbar")
 	}
@@ -163,5 +164,21 @@ func TestPlattenSelbsthilfe_StoesstAuchDieTabellenbegrenzungAn(t *testing.T) {
 		t.Error("die Tabellenbegrenzung wird erst nach der Pruefung auf das Rotationsskript " +
 			"angestossen. Auf einer Box ohne eingerichtete Rotation -- also bei jedem neuen " +
 			"Validator -- liefe sie damit nie, obwohl gerade sie dort gebraucht wird.")
+	}
+}
+
+// 15.09.2026: im Band zwischen 90 % und 200 % des Budgets faellt je Minute
+// EIN Schritt, nicht alles auf einmal -- ein Stoss von fuenf Millionen
+// Zeilen zog einen Autovacuum-Sturm mitten in einen Messlauf.
+func TestTxIndexPrune_LoeschtGleichmaessigStattStossweise(t *testing.T) {
+	body := quelle(t, "tx_index_prune.go")
+	if !strings.Contains(body, "schritte = 1") || !strings.Contains(body, "txIndexNotfallAb") {
+		t.Error("im Band ueber dem Budget muss je Lauf genau ein Schritt fallen; der Vollabbau bleibt dem Notfall (ueber dem Doppelten) vorbehalten")
+	}
+	if txIndexPruneIntervall != time.Minute {
+		t.Errorf("das Intervall muss eine Minute sein, damit ein Schritt je Lauf reicht: %s", txIndexPruneIntervall)
+	}
+	if txIndexSanftAb >= 1 || txIndexNotfallAb <= 1 {
+		t.Error("sanft unter 100 %, Notfall ueber 100 % des Budgets")
 	}
 }

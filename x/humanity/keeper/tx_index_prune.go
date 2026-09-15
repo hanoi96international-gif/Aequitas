@@ -47,13 +47,25 @@ import (
 const txIndexMaxBytesVorgabe int64 = 2 << 30 // 2 GiB
 
 const (
-	txIndexPruneIntervall = 10 * time.Minute
+	// Jede Minute, nicht alle zehn: siehe txIndexSanftAb.
+	txIndexPruneIntervall = time.Minute
 	// Wie viele Hoehen je Durchgang fallen. Bei rund acht Eintraegen je Block
 	// im Mittel sind das groessenordnungsmaessig eine halbe Million Zeilen --
 	// gross genug, um einen Rueckstand von 40 Millionen in wenigen Durchgaengen
 	// abzubauen, klein genug fuer eine Anweisung innerhalb des Zeitlimits.
 	txIndexHoehenSchritt = 60000
 	txIndexBudgetEnv     = "AEQUITAS_TX_INDEX_MAX_BYTES"
+	// GLEICHMAESSIG STATT STOSSWEISE (15.09.2026). Der erste Entwurf lief alle
+	// zehn Minuten und loeschte dann bis unters Budget -- am 14.09. um 22:47
+	// auf C2 5,16 Millionen Zeilen am Stueck. Ein Stoss dieser Groesse zieht
+	// einen Autovacuum-Lauf ueber den 1,2-GB-Index nach sich, und der fiel
+	// mitten in einen Messlauf: fsync 34 ms statt 9, Replay hielt die Sperre
+	// sekundenlang. Jetzt: ab 90 % des Budgets je Minute EIN Schritt (rund
+	// eine halbe Million Zeilen), so bleibt Vacuum ein Rinnsal. Erst ueber
+	// dem Doppelten des Budgets (Rueckstand wie am 11.09.) faellt alles in
+	// einem Durchgang.
+	txIndexSanftAb   = 0.9
+	txIndexNotfallAb = 2.0
 )
 
 var (
@@ -130,11 +142,15 @@ func (cs *ChainState) pruneTxIndex() {
 	}
 	// Gedeckelt, damit ein entgleister Zustand hier nicht endlos dreht; was
 	// uebrig bleibt, holt der naechste Durchgang.
-	for i := 0; i < 200; i++ {
+	schritte := 200
+	if lebend := zeilen * txIndexBytesJeZeile; float64(lebend) <= txIndexNotfallAb*float64(budget) {
+		schritte = 1 // im Band: ein Schritt je Minute
+	}
+	for i := 0; i < schritte; i++ {
 		lebend := zeilen * txIndexBytesJeZeile
 		txIndexLetzteMB.Store(lebend >> 20)
 		txIndexZeilen.Store(zeilen)
-		if lebend <= budget {
+		if float64(lebend) <= txIndexSanftAb*float64(budget) {
 			return
 		}
 		// UEBER DIE HOEHE LOESCHEN, nicht ueber eine sortierte Auswahl.
