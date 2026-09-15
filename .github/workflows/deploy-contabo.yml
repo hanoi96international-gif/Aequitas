@@ -26,6 +26,14 @@ on:
       # C1 fuer Minuten aus der Kette genommen.
       - 'tools/**'
 
+# Deploys nacheinander, nie gleichzeitig: am 15.09.2026 liefen zwei Pushes
+# drei Minuten auseinander als zwei Deploys parallel auf dieselbe Box --
+# zwei Build- und Neustart-Sequenzen, die sich gegenseitig den Container
+# unter den Fuessen wegziehen koennen. Der zweite wartet jetzt auf den ersten.
+concurrency:
+  group: deploy-contabo1
+  cancel-in-progress: false
+
 jobs:
   # FIX (Monster Audit 2026-07-12, P1): deploy used to run straight off a
   # push with zero test/build gate — a red `go test`/`go vet` or a broken
