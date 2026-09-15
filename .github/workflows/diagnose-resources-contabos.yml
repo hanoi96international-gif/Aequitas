@@ -43,8 +43,8 @@ jobs:
             echo "=== Contabo1: node logs, last 60 lines ==="
             docker logs --tail 60 aequitas-node 2>&1 | tail -60
             echo "=== Contabo1: stall indicators ==="
-            docker logs --since 10m aequitas-node 2>&1 | grep -cE "re-fetching this page"
-            docker logs --since 10m aequitas-node 2>&1 | grep -E "HTTP-SYNC|TX-BATCH|PANIC|deadlock|✗" | tail -20
+            docker logs --since 10m aequitas-node 2>&1 | grep -cE "re-fetching this page" || true
+            docker logs --since 10m aequitas-node 2>&1 | grep -E "HTTP-SYNC|TX-BATCH|PANIC|deadlock|✗" | tail -20 || true
             date -u
             echo "=== Contabo1: top -bn1 | head -20 ==="
             top -bn1 | head -20
