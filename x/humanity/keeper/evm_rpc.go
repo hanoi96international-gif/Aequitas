@@ -1242,8 +1242,12 @@ func (s *EVMRPCServer) sendRawTransaction(params []json.RawMessage, pre *precomp
 		sh.note(txHash)
 		sh.mu.Unlock()
 		merkeRPCStatus(time.Since(phStatusStart))
+		// Keine persistente Erfolgs-Quittung mehr fuer eine einfache
+		// Ueberweisung: sie steht gleich im Block, und quittungAusBlock
+		// liest sie nach einem Neustart von dort (siehe dort). Das spart
+		// zwei Postgres-Zeilenoperationen je Ueberweisung -- die Tabelle,
+		// die am 14.09.2026 mit 13 Millionen Zeilen den Knoten lahmlegte.
 		phQuittungStart := time.Now()
-		s.state.SaveTxReceipt(txHash, senderAddr, toAddr, "0x1", "")
 		merkeRPCQuittung(time.Since(phQuittungStart))
 
 		// FIX (atomic outbox): TransferAtomic commits the state mutation and
@@ -1304,7 +1308,7 @@ func (s *EVMRPCServer) sendRawTransaction(params []json.RawMessage, pre *precomp
 		sh.status[txHash] = true
 		sh.note(txHash)
 		sh.mu.Unlock()
-		s.state.SaveTxReceipt(txHash, senderAddr, toAddr, "0x1", "")
+		// Wie oben: die Erfolgs-Quittung kommt aus dem Block.
 
 		// E2-FIX: TransferWithV7Fee returns the exact net amount credited to the
 		// recipient (computed inside the lock), eliminating the TOCTOU race where
@@ -1496,6 +1500,11 @@ func (s *EVMRPCServer) getTransactionReceipt(params []json.RawMessage) (interfac
 				contractAddr = dbContract
 			}
 			inMemory = true // treat DB hit same as memory hit
+		}
+	}
+	if !inMemory {
+		if bFrom, bTo, ok := s.quittungAusBlock(txHash); ok {
+			fromAddr, toAddrMem, status, inMemory = bFrom, bTo, "0x1", true
 		}
 	}
 	if !inMemory {
@@ -1710,6 +1719,11 @@ func (s *EVMRPCServer) getTransactionByHash(params []json.RawMessage) (interface
 			fromAddr = dbFrom
 			toAddr = dbTo
 			known = true
+		}
+	}
+	if !known {
+		if bFrom, bTo, ok := s.quittungAusBlock(txHash); ok {
+			fromAddr, toAddr, known = bFrom, bTo, true
 		}
 	}
 	if !known {
@@ -2066,4 +2080,37 @@ func rpcBatchParallel() int {
 		}
 	}
 	return 32
+}
+
+
+// quittungAusBlock: Absender und Empfaenger einer verblockten Ueberweisung
+// aus Index (chain_tx_block_index) und Block -- der Weg fuer jede Quittung,
+// die nach einem Neustart nicht mehr im Speicher liegt.
+//
+// SEIT 15.09.2026 wird die Erfolgs-Quittung einer einfachen Ueberweisung
+// nicht mehr in evm_tx_receipts geschrieben: sie steht ohnehin im Block, und
+// die Tabelle kostete je Ueberweisung zwei Zeilenoperationen (einfuegen,
+// spaeter loeschen) -- bei 7.000/s ein Sechstel der Postgres-Last, und am
+// 14.09. mit 13 Millionen Zeilen der Livelock von C2. Der Index reicht
+// weiter (2-GB-Budget, Millionen Eintraege) als die Quittungstabelle je
+// reichte (10.000 Zeilen). Fehlgeschlagene Ueberweisungen kommen nie in
+// einen Block; deren Quittung bleibt persistent.
+func (s *EVMRPCServer) quittungAusBlock(txHash string) (from, to string, ok bool) {
+	if s.state == nil || s.dag == nil || txHash == "" {
+		return "", "", false
+	}
+	_, blockHash, _, found := s.state.LookupTxBlock(txHash)
+	if !found || blockHash == "" {
+		return "", "", false
+	}
+	b := s.dag.GetBlockByHash(blockHash)
+	if b == nil {
+		return "", "", false
+	}
+	for i := range b.Transactions {
+		if strings.EqualFold(b.Transactions[i].TxHash, txHash) {
+			return strings.ToLower(b.Transactions[i].Wallet), strings.ToLower(b.Transactions[i].To), true
+		}
+	}
+	return "", "", false
 }
