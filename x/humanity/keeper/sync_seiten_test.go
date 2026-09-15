@@ -40,3 +40,25 @@ func TestSchonBekannt_SpeicherDAG(t *testing.T) {
 		t.Fatal("nil oder ohne Hash: unbekannt")
 	}
 }
+
+// 15.09.2026, zweiter Mechanismus: eine Seite voller BEKANNTER Bloecke
+// (der Ueberlapp) beendete den Zyklus wie eine Seite voller Fremdlinge --
+// der Zeiger blieb 13 Zyklen an derselben Hoehe stehen und fiel 376 Hoehen
+// hinter die Spitze.
+func TestZyklusStoppenNachSeite_BekanntIstFortschritt(t *testing.T) {
+	if zyklusStoppenNachSeite(0, 37, 37, false) {
+		t.Fatal("eine Seite, die nur Bekanntes traegt, darf den Zyklus nicht beenden")
+	}
+	if !zyklusStoppenNachSeite(0, 0, 37, false) {
+		t.Fatal("eine Seite ohne Bekanntes und ohne Anfuegbares ist die Fork-Signatur: stoppen")
+	}
+	if !zyklusStoppenNachSeite(0, 20, 37, false) {
+		t.Fatal("teils bekannt, Rest nicht anfuegbar: stoppen")
+	}
+	if zyklusStoppenNachSeite(1, 0, 37, false) {
+		t.Fatal("etwas angefuegt: weiter")
+	}
+	if zyklusStoppenNachSeite(0, 0, 37, true) {
+		t.Fatal("im Tiefenlauf wird nie wegen einer leeren Seite gestoppt")
+	}
+}

@@ -448,6 +448,22 @@ func seiteWarDieLetzte(anzahl, pageSize int, deepScan, usedFallback, gekuerzt bo
 	return anzahl < pageSize && !deepScan && !usedFallback && !gekuerzt
 }
 
+// zyklusStoppenNachSeite: "diese Seite brachte nichts Neues" hiess bisher
+// "Zyklus beenden" -- gedacht als Fork-Erkennung (der Peer liefert Bloecke,
+// die dieser Knoten nicht anfuegen kann). Es feuerte aber auch, wenn die
+// Seite nur BEKANNTE Bloecke trug -- und der Ueberlapp von 20 Hoehen, mit
+// dem jeder Zyklus beginnt, besteht unter Last aus genau solchen (per Push
+// laengst da). Live 15.09.2026, C1 gegen C2: "Page above height 6629576
+// added 0 of 16 blocks -- stopping" 13 Zyklen hintereinander an derselben
+// Hoehe; der Zeiger fiel 376 Hoehen hinter die Spitze, die Anfragen landeten
+// unter dem Speicherfenster des Peers, und der lieferte 12-MB-Seiten mit
+// Ruempfen aus seiner Datenbank -- 35 % seiner CPU mitten im Lastlauf.
+// Bekannt ist Fortschritt, nicht Stillstand: nur wenn eine Seite Bloecke
+// traegt, die weder bekannt noch anfuegbar sind, endet der Zyklus.
+func zyklusStoppenNachSeite(hinzugefuegt, bekannt, gesamt int, deepScan bool) bool {
+	return !deepScan && hinzugefuegt == 0 && bekannt < gesamt
+}
+
 // schonBekannt: dieser Knoten hat den Block bereits -- im Speicher-DAG,
 // oder unterhalb des Speicherfensters in der Datenbank. Genau die zwei
 // Faelle, in denen doSyncOnce (exists) bzw. AddPeerBlock (altBekannt) ihn
@@ -1768,6 +1784,7 @@ func (dag *BlockDAG) doSyncOnce(nodeURL string) (ok bool) {
 			break // caught up — peer has nothing newer than our height
 		}
 		addedThisPage := 0
+		bekanntThisPage := 0 // schon im Speicher-DAG -- siehe zyklusStoppenNachSeite
 		for _, block := range blocks {
 			// Das Zeitbudget auch HIER pruefen, nicht nur je Seite. Die teure
 			// Arbeit steckt in dieser Schleife: eine Seite kann acht Bloecke mit
@@ -1819,6 +1836,9 @@ func (dag *BlockDAG) doSyncOnce(nodeURL string) (ok bool) {
 			// checkpoint still passes this check unchanged.
 			violatesFinality := !exists && dag.isFinalityViolation(block)
 			dag.mu.RUnlock()
+			if exists {
+				bekanntThisPage++
+			}
 			if violatesFinality {
 				// FIX (2026-07-24): skipping the block stays exactly as
 				// above — but it must not also be REPORTED as a clean sync
@@ -1949,17 +1969,11 @@ func (dag *BlockDAG) doSyncOnce(nodeURL string) (ok bool) {
 		lastBlock := blocks[len(blocks)-1]
 		minHeight = lastBlock.Height
 		afterHash = lastBlock.Hash
-		if addedThisPage == 0 {
-			if !deepScan {
-				// Normal mode: nothing new in a full page — stop.
-				// Looping again would get the same page forever.
-				fmt.Printf("[HTTP-SYNC] ⚠ Page above height %d added 0 of %d blocks — stopping sync from %s for this cycle\n", minHeight, len(blocks), nodeURL)
-				break
-			}
-			// Deep-scan mode: empty pages are expected while scanning
-			// through the historical region before the missing chain starts.
-			// Keep going — the first block of the missing validator chain
-			// is somewhere ahead.
+		if zyklusStoppenNachSeite(addedThisPage, bekanntThisPage, len(blocks), deepScan) {
+			// Normal mode: nothing new AND nothing merely known in a full
+			// page -- stop. Looping again would get the same page forever.
+			fmt.Printf("[HTTP-SYNC] ⚠ Page above height %d added 0 of %d blocks (%d known) — stopping sync from %s for this cycle\n", minHeight, len(blocks), bekanntThisPage, nodeURL)
+			break
 		}
 	}
 	if deepScan {
