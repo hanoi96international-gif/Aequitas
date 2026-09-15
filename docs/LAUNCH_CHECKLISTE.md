@@ -1,14 +1,14 @@
 # Launch-Checkliste
 
-**Stand 15.09.2026, 11:45.** Wache: ROT auf beiden Boxen — **Kontenstand C1 ≠ C2** nach den Lastläufen (nur Lasttest-Staub: alle 18 Menschen identisch, Gesamt- und Menschen-Summe bis aufs Mikro-AEQ gleich). App v1.7.2 veröffentlicht und ausgeliefert.
+**Stand 15.09.2026, 16:00.** Wache: GRÜN auf beiden Boxen. App v1.7.2 veröffentlicht und ausgeliefert.
 
-> **Sofort (du, ein Klick, in Ruhe):** `resync-contabo2-only.yml` mit `confirm=true` — C2 holt den Zustand vom Primary. Danach muss `/api/wache` auf beiden 200 sein und `divergenz.strikes` 0.
+> **Entwarnung zur „Divergenz" von 11:45:** Ohne Resync und ohne Neustart waren beide Kontenstände um 13:40 wieder identisch. Es war **Nachlauf, keine Divergenz**: C1 hatte im Lastlauf 1,7 Mio. Überweisungen angenommen (sofort im Zustand), aber erst 600.000 verblockt — der Rest ging über 20 Minuten Block für Block hinaus, solange lief C1s Zustand der Kette voraus. Der Wächter prüft seit `f4091fc` zusätzlich „Ausgangskorb leer" auf beiden Seiten. Kein Resync nötig.
 >
-> **15.09. vormittags, alles live belegt und gefixt:** die Pull-Synchronisation drehte seit Neustarts hinter Lastläufen im Kreis (149 GB in 8,8 h je Box; gekürzte Seite galt als Spitze, Seite voller bekannter Blöcke beendete den Zyklus, Push-Rümpfe waren nicht strippbar) — jetzt 7,6 MB/5 min im Leerlauf, 216 MB statt 1,92 GB je Lastlauf (`5c3301a`, `f43b2df`, `4753169`). Index-Prune gleichmäßig (`ddcfafb`), Deploys serialisiert (`4aeee6c`).
->
-> **Offen, P0 vor Launch (nächste Sitzung, eigene Untersuchung):** Unter Volllast (2 × 4 min, ~7k/s auf C1) laufen die Validatoren im Lasttest-Staub auseinander — `stateroot_abweichungen.echt` C1 74 / C2 168, 0 übersprungene Überweisungen, Summen gleich ⇒ eine Überweisung wird auf einer Seite doppelt oder in anderer Reihenfolge angewandt. Weg: ersten „echten" StateRoot-Mismatch im Log finden, dessen Block gegen die Vorgänger prüfen (Methode vom 12.09.). **Bis dahin keine Lastläufe mehr** — echter Verkehr (18 Menschen) liegt um Größenordnungen darunter und löst das nicht aus.
->
-> **TPS-Stand:** C1 nimmt 6–7,4k/s an; die Kette landet bei 2–3,4k/s, weil C2s Platte (WAL-fsync p90 81 ms vs 25 ms, Postgres-Transaktion 406 vs 229 ms) Replay und Adress-Sperren bremst. ~7 Postgres-Zeilenoperationen je Überweisung auf beiden Boxen — der nächste Hebel ist Schreibverstärkung (Outbox), ein Umbau. Für den Launch reichen 2k/s um Größenordnungen.
+> **Der Weg zu 10k TPS (Ziel), ehrlich:**
+> 1. **Heute erledigt:** Pull-Sync-Kreislauf (149 GB/8,8 h je Box) beseitigt (`5c3301a`, `f43b2df`, `4753169`); Quittungen einfacher Überweisungen kommen aus dem Block statt aus Postgres (`25348c9`, −2 Zeilenoperationen je Überweisung); Wächter ohne Fehlalarm; Index-Prune gleichmäßig; Deploys serialisiert.
+> 2. **Nächster Umbau (eine Sitzung, mit Tests):** Ausgangskorb `pending_txs` aus dem Schreibpfad — das WAL ist bereits die dauerhafte Quelle; heute kostet der Korb je Überweisung 3 Zeilenoperationen + 4 Indizes und ist der größte Posten der WAL-Flush-Latenz (`p5_outbox_exec` ~100 ms je Flush), die auf C2 die Adress-Sperren einfriert und die Annahme auf ~2k/s drückt. Erwartung: C2 nimmt wieder 6–8k/s an (wie am 12.09.), Ketten-TPS ≥ 7k.
+> 3. **Hardware:** C2s Platte ist heute ~2–4× langsamer als C1s (fsync p50 7,6 vs 3,2 ms, p90 81 vs 25 ms; geteilter Speicher beim Hoster). Ein NVMe-VPS für C2 oder ein dritter Validator auf NVMe ist der billigste Schritt zu stabilen 10k — Kosten klein gegen den Nutzen. **Deine Entscheidung.**
+> 4. **Messprotokoll:** immer ≥ 15 min nach einem Neustart (Startfenster-Tor), 4 min, `accounts-funded.csv`, beide Boxen; ≥ 300 Paare je Box brauchen mehr AEQ (heute 84/81).
 
 > **Launch-Linie seit dem 13.09. nachmittags (deine Entscheidung: „Phase 1 muss umgesetzt werden — 1 Mensch,
 > 1 Registrierung"): Phase 1 = die Gesichtsprüfung ist das Tor.** `BIO_ATTESTATION_MODE=required` wieder auf beiden
