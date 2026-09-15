@@ -519,10 +519,7 @@ func (a *APIServer) handleStateRootComponents(w http.ResponseWriter, r *http.Req
 	writeJSONCORS(w)
 	// Mit ruhe_seit_s: der Divergenz-Waechter des Partners vergleicht nur,
 	// wenn auch dieser Knoten still ist (divergenz_waechter.go).
-	body, err := json.Marshal(DivergenzAuskunft{
-		StateRootComponents: a.state.StateRootComponentBreakdown(),
-		RuheSeitS:           ruheSeit().Seconds(),
-	})
+	body, err := json.Marshal(a.blockchain.DivergenzAuskunftFuer())
 	if err != nil {
 		jsonError(w, "internal error building response", http.StatusInternalServerError)
 		return

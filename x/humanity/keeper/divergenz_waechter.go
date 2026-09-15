@@ -43,6 +43,17 @@ import (
 // ruhe_seit_s mit, und der Waechter zaehlt nur, wenn auch der Seed seit
 // divergenzRuhe still ist. Fehlt die Auskunft (aelterer Seed), wird nicht
 // verglichen: lieber kein Urteil als ein falscher Resync.
+//
+// RUHE HEISST AUCH: AUSGANGSKORB LEER. 15.09.2026, 09:12 bis 09:40: sieben
+// Strikes auf beiden Boxen, beide seit Minuten ohne Annahme, gleichauf --
+// und account_set_xor verschieden. Kein Resync, kein Neustart, und um 13:40
+// waren beide wieder gleich. Was dazwischen lag: C1 hatte im Lastlauf 1,7
+// Millionen Ueberweisungen angenommen (und sofort in seinen Zustand
+// uebernommen), aber nur 600.000 davon verblockt; der Rest ging ueber die
+// naechsten zwanzig Minuten Block fuer Block hinaus. Solange lief C1s
+// Zustand der Kette voraus, und C2 konnte ihn nur nachvollziehen, wie die
+// Bloecke kamen. Ein Vergleich sagt also erst dann etwas, wenn auf BEIDEN
+// Seiten nichts mehr angenommen und noch nicht verblockt ist: offen == 0.
 
 const (
 	divergenzTakt     = 60 * time.Second
@@ -80,6 +91,9 @@ func (dag *BlockDAG) StarteDivergenzWaechter() {
 type DivergenzAuskunft struct {
 	StateRootComponents
 	RuheSeitS float64 `json:"ruhe_seit_s"`
+	// Offen: angenommen, aber noch in keinem Block (Ausgangskorb + Speicher).
+	// -1, wenn nicht bestimmbar.
+	Offen int64 `json:"offen"`
 }
 
 // ruheSeit: wie lange dieser Knoten keine eigene Ueberweisung mehr
@@ -89,13 +103,45 @@ func ruheSeit() time.Duration {
 }
 
 // divergenzVergleichbar entscheidet, ob ein Vergleich zaehlt: beide Seiten
-// seit divergenzRuhe still. peerRuheS ist nil, wenn der Seed die Auskunft
-// nicht liefert -- dann zaehlt nichts.
-func divergenzVergleichbar(eigeneRuhe time.Duration, peerRuheS *float64) bool {
-	if eigeneRuhe < divergenzRuhe {
+// seit divergenzRuhe still UND beide ohne offene (angenommene, noch nicht
+// verblockte) Ueberweisungen. peerRuheS/peerOffen sind nil, wenn der Seed
+// die Auskunft nicht liefert -- dann zaehlt nichts.
+func divergenzVergleichbar(eigeneRuhe time.Duration, eigeneOffen int64, peerRuheS *float64, peerOffen *int64) bool {
+	if eigeneRuhe < divergenzRuhe || eigeneOffen != 0 {
 		return false
 	}
-	return peerRuheS != nil && *peerRuheS >= divergenzRuhe.Seconds()
+	if peerRuheS == nil || *peerRuheS < divergenzRuhe.Seconds() {
+		return false
+	}
+	return peerOffen != nil && *peerOffen == 0
+}
+
+// offeneUeberweisungen: was dieser Knoten angenommen, aber noch nicht
+// verblockt hat -- die offenen Zeilen des Ausgangskorbs (Teilindex, ein
+// kurzer Lauf) plus die Warteschlange im Speicher. -1, wenn die Datenbank
+// nicht antwortet: dann zaehlt kein Vergleich.
+func (dag *BlockDAG) offeneUeberweisungen() int64 {
+	var n int64 = -1
+	if dag.state != nil && dag.state.db != nil {
+		if err := dag.state.db.QueryRow(`SELECT count(*) FROM pending_txs WHERE included_at = 0`).Scan(&n); err != nil {
+			return -1
+		}
+	} else {
+		n = 0
+	}
+	dag.txMu.Lock()
+	n += int64(len(dag.pendingTxs))
+	dag.txMu.Unlock()
+	return n
+}
+
+// DivergenzAuskunftFuer baut die Antwort von /api/debug/stateroot-components.
+func (dag *BlockDAG) DivergenzAuskunftFuer() DivergenzAuskunft {
+	return DivergenzAuskunft{
+		StateRootComponents: dag.state.StateRootComponentBreakdown(),
+		RuheSeitS:           ruheSeit().Seconds(),
+		Offen:               dag.offeneUeberweisungen(),
+	}
 }
 
 func (dag *BlockDAG) divergenzEinmalPruefen() {
@@ -112,6 +158,10 @@ func (dag *BlockDAG) divergenzEinmalPruefen() {
 	dag.syncPeerMu.Unlock()
 	if len(seeds) == 0 {
 		return
+	}
+	eigeneOffen := dag.offeneUeberweisungen()
+	if eigeneOffen != 0 {
+		return // Ausgangskorb nicht leer: der eigene Zustand laeuft der Kette voraus
 	}
 	eigene := dag.state.StateRootComponentBreakdown()
 	eigeneHoehe := dag.heightSchnell.Load()
@@ -131,13 +181,14 @@ func (dag *BlockDAG) divergenzEinmalPruefen() {
 			AccountSetXOR string   `json:"account_set_xor"`
 			LastUBIAt     string   `json:"last_ubi_at"`
 			RuheSeitS     *float64 `json:"ruhe_seit_s"`
+			Offen         *int64   `json:"offen"`
 		}
 		decErr := json.NewDecoder(resp.Body).Decode(&fremd)
 		resp.Body.Close()
 		if decErr != nil || fremd.AccountSetXOR == "" {
 			continue
 		}
-		if !divergenzVergleichbar(eigeneRuhe, fremd.RuheSeitS) {
+		if !divergenzVergleichbar(eigeneRuhe, eigeneOffen, fremd.RuheSeitS, fremd.Offen) {
 			if fremd.RuheSeitS == nil && divergenzOhneAuskunftGemeldet.CompareAndSwap(false, true) {
 				fmt.Printf("[DIVERGENZ] %s liefert keine Ruhe-Auskunft (ruhe_seit_s) -- kein Vergleich, bis der Seed aktualisiert ist\n", seed)
 			}
@@ -206,7 +257,7 @@ func DivergenzStand() map[string]interface{} {
 	}
 	strikes := divergenzStrikes.Load()
 	return map[string]interface{}{
-		"bedeutung": "Vergleich von account_set_xor mit den Seeds in der Ruhe (keine eigene Ueberweisung seit 30 s auf BEIDEN Seiten, Hoehe gleichauf). " +
+		"bedeutung": "Vergleich von account_set_xor mit den Seeds in der Ruhe (keine eigene Ueberweisung seit 30 s und kein offener Ausgangskorb auf BEIDEN Seiten, Hoehe gleichauf). " +
 			"abweichend=true ab 3 Vergleichen in Folge mit Unterschied -- dann stimmen Kontostaende nicht ueberein, nicht nur Geschwister-Unschaerfe. " +
 			"autoresync=true (AEQUITAS_DIVERGENZ_AUTORESYNC=1, fuer Validatoren, die nicht Seed sind): dann Resync vom Seed statt nur Meldung.",
 		"autoresync":        strings.TrimSpace(os.Getenv("AEQUITAS_DIVERGENZ_AUTORESYNC")) == "1",

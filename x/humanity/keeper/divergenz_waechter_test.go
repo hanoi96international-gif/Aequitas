@@ -29,21 +29,37 @@ func TestDivergenzAutoResyncErlaubt(t *testing.T) {
 func TestDivergenzVergleichbarNurWennBeideRuhen(t *testing.T) {
 	still := divergenzRuhe.Seconds() + 1
 	beschaeftigt := divergenzRuhe.Seconds() - 1
-	if divergenzVergleichbar(divergenzRuhe-time.Second, &still) {
+	var leer, voll int64 = 0, 1200000
+	if divergenzVergleichbar(divergenzRuhe-time.Second, 0, &still, &leer) {
 		t.Fatal("eigene Last: kein Vergleich")
 	}
-	if divergenzVergleichbar(divergenzRuhe+time.Second, &beschaeftigt) {
+	if divergenzVergleichbar(divergenzRuhe+time.Second, 0, &beschaeftigt, &leer) {
 		t.Fatal("Partner unter Last: kein Vergleich")
 	}
-	if divergenzVergleichbar(divergenzRuhe+time.Second, nil) {
+	if divergenzVergleichbar(divergenzRuhe+time.Second, 0, nil, &leer) {
 		t.Fatal("Partner ohne Auskunft: kein Vergleich -- lieber kein Urteil als ein falscher Resync")
 	}
-	if !divergenzVergleichbar(divergenzRuhe+time.Second, &still) {
-		t.Fatal("beide still: Vergleich zaehlt")
+	if !divergenzVergleichbar(divergenzRuhe+time.Second, 0, &still, &leer) {
+		t.Fatal("beide still, beide leer: Vergleich zaehlt")
 	}
 	genau := divergenzRuhe.Seconds()
-	if !divergenzVergleichbar(divergenzRuhe, &genau) {
+	if !divergenzVergleichbar(divergenzRuhe, 0, &genau, &leer) {
 		t.Fatal("genau an der Grenze zaehlt")
+	}
+	// 15.09.2026: 1,1 Millionen angenommene, noch nicht verblockte
+	// Ueberweisungen auf einer Seite -- sieben Strikes, obwohl beide still
+	// waren; zwanzig Minuten spaeter waren die Zustaende von selbst gleich.
+	if divergenzVergleichbar(divergenzRuhe+time.Second, 0, &still, &voll) {
+		t.Fatal("Partner mit offenem Ausgangskorb: sein Zustand laeuft der Kette voraus -- kein Vergleich")
+	}
+	if divergenzVergleichbar(divergenzRuhe+time.Second, 5, &still, &leer) {
+		t.Fatal("eigener Ausgangskorb nicht leer: kein Vergleich")
+	}
+	if divergenzVergleichbar(divergenzRuhe+time.Second, 0, &still, nil) {
+		t.Fatal("Partner ohne offen-Auskunft (alter Seed): kein Vergleich")
+	}
+	if divergenzVergleichbar(divergenzRuhe+time.Second, -1, &still, &leer) {
+		t.Fatal("eigener Ausgangskorb nicht bestimmbar (-1): kein Vergleich")
 	}
 }
 
@@ -53,6 +69,7 @@ func TestDivergenzAuskunftJSON(t *testing.T) {
 	body, err := json.Marshal(DivergenzAuskunft{
 		StateRootComponents: StateRootComponents{AccountSetXOR: "ab", StateRoot: "cd"},
 		RuheSeitS:           42.5,
+		Offen:               7,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -61,7 +78,7 @@ func TestDivergenzAuskunftJSON(t *testing.T) {
 	if err := json.Unmarshal(body, &m); err != nil {
 		t.Fatal(err)
 	}
-	if m["account_set_xor"] != "ab" || m["state_root"] != "cd" || m["ruhe_seit_s"] != 42.5 {
+	if m["account_set_xor"] != "ab" || m["state_root"] != "cd" || m["ruhe_seit_s"] != 42.5 || m["offen"] != 7.0 {
 		t.Fatalf("Auskunft unvollstaendig: %s", body)
 	}
 	var alt struct {
