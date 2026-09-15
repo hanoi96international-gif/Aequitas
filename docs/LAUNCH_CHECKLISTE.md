@@ -1,15 +1,14 @@
 # Launch-Checkliste
 
-**Stand 15.09.2026, 02:00.** Wache: GRÜN auf beiden Boxen. App v1.7.2 veröffentlicht und ausgeliefert.
+**Stand 15.09.2026, 11:45.** Wache: ROT auf beiden Boxen — **Kontenstand C1 ≠ C2** nach den Lastläufen (nur Lasttest-Staub: alle 18 Menschen identisch, Gesamt- und Menschen-Summe bis aufs Mikro-AEQ gleich). App v1.7.2 veröffentlicht und ausgeliefert.
 
-> **Nacht 14./15.09. — „C2 scheint zusammengebrochen":** kein Absturz, beide Knoten liefen durch. Zwei Ursachen,
-> beide behoben und live geprüft: (1) der Divergenz-Wächter verglich sich mit einem Partner unter Last (Fehlalarm;
-> hätte einen Laien-Validator mitten in der Last in den Resync geschickt) — jetzt zählt nur Ruhe auf **beiden** Seiten;
-> (2) C2 hielt 13,2 Mio. Quittungen und 1,1 Mio. Alt-Leichen, weil die Aufräumer als je EINE Anweisung am 5-s-Limit
-> scheiterten (selbstverstärkend, Postgres 322 %, Knoten 675 % ohne Last) — jetzt Seitenbereiche mit Zeitbudget,
-> Index-Neubau ohne Sperre, adaptives Flush-Stück; alles in `/api/health/combined` (`receipt_prune`, `pending_leichen`,
-> `receipt_flush`). Offen geblieben (kein Blocker, siehe Punkt 11): C2 ist unter Last langsamer als C1 — Platte
-> (fsync p90 81 ms vs 25 ms) und die Pull-Synchronisation, die auf beiden Boxen ~⅔ der Leerlauf-CPU frisst.
+> **Sofort (du, ein Klick, in Ruhe):** `resync-contabo2-only.yml` mit `confirm=true` — C2 holt den Zustand vom Primary. Danach muss `/api/wache` auf beiden 200 sein und `divergenz.strikes` 0.
+>
+> **15.09. vormittags, alles live belegt und gefixt:** die Pull-Synchronisation drehte seit Neustarts hinter Lastläufen im Kreis (149 GB in 8,8 h je Box; gekürzte Seite galt als Spitze, Seite voller bekannter Blöcke beendete den Zyklus, Push-Rümpfe waren nicht strippbar) — jetzt 7,6 MB/5 min im Leerlauf, 216 MB statt 1,92 GB je Lastlauf (`5c3301a`, `f43b2df`, `4753169`). Index-Prune gleichmäßig (`ddcfafb`), Deploys serialisiert (`4aeee6c`).
+>
+> **Offen, P0 vor Launch (nächste Sitzung, eigene Untersuchung):** Unter Volllast (2 × 4 min, ~7k/s auf C1) laufen die Validatoren im Lasttest-Staub auseinander — `stateroot_abweichungen.echt` C1 74 / C2 168, 0 übersprungene Überweisungen, Summen gleich ⇒ eine Überweisung wird auf einer Seite doppelt oder in anderer Reihenfolge angewandt. Weg: ersten „echten" StateRoot-Mismatch im Log finden, dessen Block gegen die Vorgänger prüfen (Methode vom 12.09.). **Bis dahin keine Lastläufe mehr** — echter Verkehr (18 Menschen) liegt um Größenordnungen darunter und löst das nicht aus.
+>
+> **TPS-Stand:** C1 nimmt 6–7,4k/s an; die Kette landet bei 2–3,4k/s, weil C2s Platte (WAL-fsync p90 81 ms vs 25 ms, Postgres-Transaktion 406 vs 229 ms) Replay und Adress-Sperren bremst. ~7 Postgres-Zeilenoperationen je Überweisung auf beiden Boxen — der nächste Hebel ist Schreibverstärkung (Outbox), ein Umbau. Für den Launch reichen 2k/s um Größenordnungen.
 
 > **Launch-Linie seit dem 13.09. nachmittags (deine Entscheidung: „Phase 1 muss umgesetzt werden — 1 Mensch,
 > 1 Registrierung"): Phase 1 = die Gesichtsprüfung ist das Tor.** `BIO_ATTESTATION_MODE=required` wieder auf beiden
