@@ -3133,6 +3133,7 @@ func (dag *BlockDAG) ProduceBlock() *Block {
 	dag.txMu.Unlock()
 
 	dag.blocks[block.Hash] = block
+	dag.state.merkeTxRoot(block) // tx_root -> hash, siehe tx_batch_nach_hash.go
 	// This process now owns this height — see producedHeights' own comment.
 	// Recorded only after SaveBlockWithPendingTxsAtomic above returned without
 	// error, so the map can never claim a height whose block was not actually
@@ -5304,6 +5305,7 @@ func (dag *BlockDAG) AddPeerBlock(block *Block) bool {
 	// SelectedParent="" forever. block.SelectedParent/Blues/BlueScore are
 	// already correct on this struct by the time it reaches dag.blocks here.
 	dag.blocks[block.Hash] = block
+	dag.state.merkeTxRoot(block) // tx_root -> hash, siehe tx_batch_nach_hash.go
 	dag.notifyNewBlock(block) // wake /api/events subscribers — see notifyNewBlock's own comment
 
 	// Remove parents from tips

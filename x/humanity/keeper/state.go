@@ -158,6 +158,7 @@ type ChainState struct {
 	// without its transactions (roadmap step 4 — see tx_batch.go).
 	txBatchTableOnce sync.Once
 	txBatches        *txBatchCache
+	txRootIdx        txRootIndex // tx_root -> hash fuer Ruempfe aus chain_blocks (tx_batch_nach_hash.go)
 	// ubiEpoch holds an in-flight chunked UBI distribution; see ubi_chunked.go.
 	// Guarded by cs.mu like every other field here.
 	ubiEpoch ubiEpochHolder

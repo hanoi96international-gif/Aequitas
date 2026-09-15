@@ -273,7 +273,11 @@ func (cs *ChainState) HasTxBatch(root string) bool {
 	}
 	cs.ensureTxBatchTable()
 	var eins int
-	return cs.db.QueryRow(`SELECT 1 FROM chain_tx_batches WHERE root = $1`, root).Scan(&eins) == nil
+	if cs.db.QueryRow(`SELECT 1 FROM chain_tx_batches WHERE root = $1`, root).Scan(&eins) == nil {
+		return true
+	}
+	// Kein Batch -- aber vielleicht der Block selbst (tx_batch_nach_hash.go).
+	return cs.hatRumpfInChainBlocks(root)
 }
 
 func (cs *ChainState) ladeTxBatch(root string, merken bool) ([]Transaction, bool) {
@@ -288,12 +292,18 @@ func (cs *ChainState) ladeTxBatch(root string, merken bool) ([]Transaction, bool
 	}
 	cs.ensureTxBatchTable()
 	var data string
-	if err := cs.db.QueryRow(`SELECT txs FROM chain_tx_batches WHERE root = $1`, root).Scan(&data); err != nil {
-		return nil, false
-	}
 	var txs []Transaction
-	if err := json.Unmarshal([]byte(data), &txs); err != nil {
-		return nil, false
+	if err := cs.db.QueryRow(`SELECT txs FROM chain_tx_batches WHERE root = $1`, root).Scan(&data); err == nil {
+		if err := json.Unmarshal([]byte(data), &txs); err != nil {
+			return nil, false
+		}
+	} else {
+		// Kein Batch -- der Rumpf liegt trotzdem in chain_blocks, wenn der
+		// Block ohne Batch angekommen ist (tx_batch_nach_hash.go).
+		var ok bool
+		if txs, ok = cs.rumpfAusChainBlocks(root); !ok {
+			return nil, false
+		}
 	}
 	if merken {
 		cs.txBatches.put(root, txs)
