@@ -419,7 +419,7 @@ func (dag *BlockDAG) startSyncForPeer(peerURL string) {
 // blocks after (minHeight, afterHash) in canonical order — avoiding the
 // same-height sibling skip bug (P1-02) where advancing min_height to the
 // last-seen height could miss siblings that didn't fit on the previous page.
-func (dag *BlockDAG) fetchBlocksSince(nodeURL string, minHeight int64, afterHash string, limit int) ([]*Block, error) {
+func (dag *BlockDAG) fetchBlocksSince(nodeURL string, minHeight int64, afterHash string, limit int) ([]*Block, bool, error) {
 	// Ask for headers rather than whole blocks, then fill the bodies in below.
 	// This is the requester's own opt-in and is what makes the scheme safe: a
 	// peer on older code ignores the parameter and answers in full, which this
@@ -430,9 +430,43 @@ func (dag *BlockDAG) fetchBlocksSince(nodeURL string, minHeight int64, afterHash
 	return dag.fetchBlocksSincePage(nodeURL, minHeight, afterHash, limit, true)
 }
 
+// GEKUERZTE SEITEN, 15.09.2026. /api/blocks deckelt eine Seite nach Bytes
+// (Rumpf-Budget 12 MB, Antwortdeckel) und meldet das mit X-Blocks-Truncated
+// -- fetchBlocksByHashes las den Header, diese Funktion nicht. Eine kurze
+// Seite galt hier als "Spitze erreicht", der Zeiger sprang auf die hoechste
+// Hoehe der Seite, und der naechste Zyklus begann syncOverlap (20) Hoehen
+// darunter. Bei Bloecken aus einem Lastlauf (3.000-7.000 Ueberweisungen,
+// 300 KB und mehr) deckt eine 12-MB-Seite gerade 20 Hoehen: der Zeiger kam
+// nie vom Fleck. Gemessen nach 8,8 Stunden Leerlauf: 148,9 GB ueber
+// /api/blocks von C1 an C2 und 148,8 GB zurueck -- 12 MB alle 2,6 s, je
+// Box, seit dem Neustart hinter dem Lastlauf. Dazu Postgres-Lesen und
+// -Entpacken derselben 37 Bloecke, zwei Drittel der Leerlauf-CPU beider
+// Knoten. Jetzt: eine gekuerzte Seite ist nie die letzte -- der Zyklus
+// blaettert mit after_hash weiter, bis eine ungekuerzte kurze Seite die
+// Spitze belegt (begrenzt durch maxPagesPerCall und das Zeitbudget).
+func seiteWarDieLetzte(anzahl, pageSize int, deepScan, usedFallback, gekuerzt bool) bool {
+	return anzahl < pageSize && !deepScan && !usedFallback && !gekuerzt
+}
+
+// schonBekannt: dieser Knoten hat den Block bereits -- im Speicher-DAG,
+// oder unterhalb des Speicherfensters in der Datenbank. Genau die zwei
+// Faelle, in denen doSyncOnce (exists) bzw. AddPeerBlock (altBekannt) ihn
+// ohnehin ohne Rumpf durchwinken. Fuer so einen Block wird kein Rumpf
+// nachgeladen: der Ueberlapp von 20 Hoehen (syncOverlap) besteht fast nur
+// aus solchen Bloecken, und unter Last tragen sie Tausende Ueberweisungen.
+func (dag *BlockDAG) schonBekannt(b *Block) bool {
+	if b == nil || b.Hash == "" {
+		return false
+	}
+	if dag.hasBlockInMemory(b.Hash) {
+		return true
+	}
+	return dag.state != nil && dag.state.db != nil && dag.unterSpeicherfenster(b.Height) && dag.state.BlockExistsInDB(b.Hash)
+}
+
 // fetchBlocksSincePage is fetchBlocksSince with an explicit choice of whether
 // to request stripped blocks, so the fallback path can re-ask for full ones.
-func (dag *BlockDAG) fetchBlocksSincePage(nodeURL string, minHeight int64, afterHash string, limit int, stripped bool) ([]*Block, error) {
+func (dag *BlockDAG) fetchBlocksSincePage(nodeURL string, minHeight int64, afterHash string, limit int, stripped bool) ([]*Block, bool, error) {
 	url := fmt.Sprintf("%s/api/blocks?min_height=%d&limit=%d", nodeURL, minHeight, limit)
 	if stripped {
 		url += "&stripped=1"
@@ -442,7 +476,7 @@ func (dag *BlockDAG) fetchBlocksSincePage(nodeURL string, minHeight int64, after
 	}
 	resp, err := httpSyncClient.Get(url)
 	if err != nil {
-		return nil, err
+		return nil, false, err
 	}
 	defer resp.Body.Close()
 	// FIX: this used to decode resp.Body unconditionally regardless of HTTP
@@ -454,7 +488,7 @@ func (dag *BlockDAG) fetchBlocksSincePage(nodeURL string, minHeight int64, after
 	// where that distinction matters most.
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(io.LimitReader(resp.Body, 4<<10))
-		return nil, fmt.Errorf("peer returned HTTP %d: %s", resp.StatusCode, strings.TrimSpace(string(body)))
+		return nil, false, fmt.Errorf("peer returned HTTP %d: %s", resp.StatusCode, strings.TrimSpace(string(body)))
 	}
 	// FIX (2026-07-25, "es merged nix" incident): this used to discard
 	// io.ReadAll's own error (`body, _ := ...`) — a connection cut short
@@ -487,16 +521,18 @@ func (dag *BlockDAG) fetchBlocksSincePage(nodeURL string, minHeight int64, after
 	// (see snapshot.go's 50<<20) — generous enough for this chain's current
 	// live block sizes without removing the cap's original purpose (bounding
 	// memory use against a malicious/broken peer).
+	// Siehe seiteWarDieLetzte: eine gekuerzte Seite ist nie die letzte.
+	gekuerzt := resp.Header.Get("X-Blocks-Truncated") == "1"
 	body, readErr := io.ReadAll(io.LimitReader(resp.Body, 64<<20))
 	if readErr != nil {
-		return nil, fmt.Errorf("reading response body: %w", readErr)
+		return nil, false, fmt.Errorf("reading response body: %w", readErr)
 	}
 	var blocks []*Block
 	if err := json.Unmarshal(body, &blocks); err != nil {
-		return nil, fmt.Errorf("decoding response body (%d bytes): %w", len(body), err)
+		return nil, false, fmt.Errorf("decoding response body (%d bytes): %w", len(body), err)
 	}
 	if !stripped {
-		return blocks, nil
+		return blocks, gekuerzt, nil
 	}
 	// Fill in any body the peer left out. FetchTxBatch checks this node's own
 	// batch store first, so a block whose transactions already arrived over the
@@ -512,6 +548,10 @@ func (dag *BlockDAG) fetchBlocksSincePage(nodeURL string, minHeight int64, after
 	// one outcome this must never produce, so the fallback is unconditional.
 	for _, b := range blocks {
 		if b == nil || !dag.state.NeedsTxBatch(b) {
+			continue
+		}
+		if dag.schonBekannt(b) {
+			strippedBekanntUebersprungen.Add(1)
 			continue
 		}
 		// This peer honoured ?stripped=1, which is proof it understands bodies
@@ -543,7 +583,7 @@ func (dag *BlockDAG) fetchBlocksSincePage(nodeURL string, minHeight int64, after
 			return dag.fetchBlocksSincePage(nodeURL, minHeight, afterHash, limit, false)
 		}
 	}
-	return blocks, nil
+	return blocks, gekuerzt, nil
 }
 
 // fetchBlocksSinceWithFallback wraps fetchBlocksSince with one retry at a
@@ -564,11 +604,14 @@ func (dag *BlockDAG) fetchBlocksSincePage(nodeURL string, minHeight int64, after
 // tip" pagination logic (doSyncOnce) knows NOT to draw that conclusion from
 // this page's size alone — a fallback page is short because it was asked to
 // be, not because the peer has nothing more.
-func (dag *BlockDAG) fetchBlocksSinceWithFallback(nodeURL string, minHeight int64, afterHash string, pageSize int) (blocks []*Block, usedFallback bool, err error) {
-	return fetchWithSmallerPageFallback(nodeURL, minHeight, pageSize, fallbackPageSize,
+func (dag *BlockDAG) fetchBlocksSinceWithFallback(nodeURL string, minHeight int64, afterHash string, pageSize int) (blocks []*Block, usedFallback bool, gekuerzt bool, err error) {
+	blocks, usedFallback, err = fetchWithSmallerPageFallback(nodeURL, minHeight, pageSize, fallbackPageSize,
 		func(size int) ([]*Block, error) {
-			return dag.fetchBlocksSince(nodeURL, minHeight, afterHash, size)
+			var e error
+			blocks, gekuerzt, e = dag.fetchBlocksSince(nodeURL, minHeight, afterHash, size)
+			return blocks, e
 		})
+	return blocks, usedFallback, gekuerzt, err
 }
 
 // fallbackPageSize is how small fetchBlocksSinceWithFallback retries after a
@@ -1694,7 +1737,7 @@ func (dag *BlockDAG) doSyncOnce(nodeURL string) (ok bool) {
 			fmt.Printf("[HTTP-SYNC] ⏱ %s: Zeitbudget von %s nach %d Seite(n) aufgebraucht — dieser Zyklus wird gewertet, der naechste macht weiter%c", nodeURL, zyklusBudget, page, 10)
 			break
 		}
-		blocks, usedFallback, err := dag.fetchBlocksSinceWithFallback(nodeURL, minHeight, afterHash, pageSize)
+		blocks, usedFallback, gekuerzt, err := dag.fetchBlocksSinceWithFallback(nodeURL, minHeight, afterHash, pageSize)
 		if err != nil {
 			fmt.Printf("[HTTP-SYNC] ✗ Could not fetch page (min_height=%d) from %s: %v\n", minHeight, nodeURL, err)
 			if page == 0 {
@@ -1891,9 +1934,12 @@ func (dag *BlockDAG) doSyncOnce(nodeURL string) (ok bool) {
 		// fetched. Outside deepScan this remains a correct, cheap signal
 		// (normal forward sync only ever requests pages it expects to be
 		// at or near the tip), so only deepScan skips the early break.
-		if len(blocks) < pageSize && !deepScan && !usedFallback {
+		if seiteWarDieLetzte(len(blocks), pageSize, deepScan, usedFallback, gekuerzt) {
 			afterHash = "" // last page — reset cursor
 			break          // peer's tip is within this page
+		}
+		if gekuerzt {
+			syncSeitenGekuerzt.Add(1)
 		}
 		// Full page returned: advance the cursor to the last block so the
 		// next request picks up from that exact position in canonical order.

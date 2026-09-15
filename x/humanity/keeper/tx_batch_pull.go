@@ -56,6 +56,11 @@ import (
 var (
 	strippedBlocksServed atomic.Int64
 	strippedBlocksFull   atomic.Int64
+	// Client-Seite (sync_blocks.go): gestrippte Bloecke, die schon bekannt
+	// waren -- kein Rumpf geholt; und gekuerzte Seiten, nach denen
+	// weitergeblaettert wurde statt sie als Spitze zu lesen.
+	strippedBekanntUebersprungen atomic.Int64
+	syncSeitenGekuerzt           atomic.Int64
 )
 
 // stripBlocksForPeer returns the page with transaction bodies removed from
@@ -94,8 +99,13 @@ func (a *APIServer) stripBlocksForPeer(blocks []*Block) []*Block {
 // is not being realised — worth seeing rather than assuming.
 func StrippedPullStats() map[string]interface{} {
 	return map[string]interface{}{
-		"blocks_stripped":   strippedBlocksServed.Load(),
-		"blocks_sent_whole": strippedBlocksFull.Load(),
+		"bedeutung": "Pull-Sync: blocks_stripped/blocks_sent_whole zaehlt, was DIESER Knoten ausliefert. " +
+			"bodies_skipped_known zaehlt gestrippte Bloecke vom Partner, die schon bekannt waren -- kein Rumpf geholt. " +
+			"pages_truncated_continued zaehlt gekuerzte Seiten, nach denen weitergeblaettert wurde (vorher galten sie als Spitze: 149 GB in 8,8 h, 15.09.2026).",
+		"blocks_stripped":           strippedBlocksServed.Load(),
+		"blocks_sent_whole":         strippedBlocksFull.Load(),
+		"bodies_skipped_known":      strippedBekanntUebersprungen.Load(),
+		"pages_truncated_continued": syncSeitenGekuerzt.Load(),
 	}
 }
 

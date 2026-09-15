@@ -235,9 +235,8 @@ const receiptNachsorgeAb = 1_000_000
 // receiptIndexBlaehungPruefen: ist der Primaerschluessel viel groesser, als
 // die lebenden Zeilen rechtfertigen, wird er neu gebaut. Ein gesunder
 // Eintrag (66 Zeichen Hash) kostet um die 100 Byte; ueber 1 KB je lebender
-// Zeile bei mehr als 64 MB ist ein Index, der fast nur aus Toten besteht.
-// Einmal je Prozess und hoechstens alle 10 Minuten geprueft (eine
-// Katalogabfrage).
+// Zeile bei mehr als 256 MB ist ein Index, der fast nur aus Toten besteht.
+// Hoechstens alle 10 Minuten geprueft (eine Katalogabfrage).
 func (cs *ChainState) receiptIndexBlaehungPruefen(lebend int64) {
 	jetzt := time.Now().Unix()
 	if jetzt-receiptBlaehungGeprueft.Load() < 600 {
@@ -251,7 +250,12 @@ func (cs *ChainState) receiptIndexBlaehungPruefen(lebend int64) {
 	if lebend < 1 {
 		lebend = 1
 	}
-	if pkeyBytes > 64<<20 && pkeyBytes/lebend > 1024 {
+	// 256 MB, nicht 64: auf C1 wuchs der Index je Lastlauf um ~100 MB (1,5
+	// Millionen Eintraege), die der Aufraeumer danach toetet -- das ist
+	// normal und traegt sich; ein Neubau alle zehn Minuten unter Dauerlast
+	// waere unnoetig. Der Fall von C2 (1,6 GB fuer 10.000 Zeilen) liegt weit
+	// darueber.
+	if pkeyBytes > 256<<20 && pkeyBytes/lebend > 1024 {
 		fmt.Printf("[AUFRAEUMEN] evm_tx_receipts_pkey ist %d MB fuer %d lebende Zeilen -- fast nur Tote, wird neu gebaut\n", pkeyBytes>>20, lebend)
 		cs.receiptNachsorge(0)
 	}

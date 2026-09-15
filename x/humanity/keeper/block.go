@@ -2030,7 +2030,7 @@ func (dag *BlockDAG) BridgeHistoricalGap(peerURLs []string) {
 			continue
 		}
 		for _, ph := range probeHeights {
-			blocks, err := dag.fetchBlocksSince(u, ph, "", 50)
+			blocks, _, err := dag.fetchBlocksSince(u, ph, "", 50)
 			if err != nil || len(blocks) == 0 {
 				continue
 			}
