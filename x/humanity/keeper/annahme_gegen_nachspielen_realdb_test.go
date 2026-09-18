@@ -5,8 +5,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"path/filepath"
 	"sync"
 	"testing"
+	"time"
 )
 
 // DAS EXPERIMENT MIT ZWEI ECHTEN DATENBANKEN -- zwei Knoten, nicht zwei
@@ -81,7 +83,7 @@ import (
 // Groesser messen: die beiden Konstanten `konten` und `laeufe` in
 // experimentLauf hochdrehen (64/400 ergibt die 25.600 oben).
 func TestAnnahmeGegenNachspielen_RealDB_MikroGenau(t *testing.T) {
-	experimentLauf(t, 500.0)
+	experimentLauf(t, 500.0, false)
 }
 
 // TestAnnahmeGegenNachspielen_RealDB_KontenLaufenLeer ist derselbe Lauf unter
@@ -98,10 +100,32 @@ func TestAnnahmeGegenNachspielen_RealDB_MikroGenau(t *testing.T) {
 // folgenlos: dieselbe Ueberweisung ist in der einen Reihenfolge bezahlbar und
 // in der anderen nicht.
 func TestAnnahmeGegenNachspielen_RealDB_KontenLaufenLeer(t *testing.T) {
-	experimentLauf(t, 0.02) // die Groessenordnung der Lasttest-Konten
+	experimentLauf(t, 0.02, false) // die Groessenordnung der Lasttest-Konten
 }
 
-func experimentLauf(t *testing.T, startGuthaben float64) {
+// TestAnnahmeGegenNachspielen_RealDB_WALAsymmetrie baut die letzte Asymmetrie
+// der Boxen nach: der annehmende Knoten faehrt den WAL-Schnellpfad, der
+// nachspielende nicht.
+//
+// Das ist der Zustand seit enable-wal-contabo2.yml: AEQUITAS_WAL_ENABLED=1
+// nur auf C2 (ANALYSE_STATEROOT_DIVERGENZ.md, Abschnitt F). Der
+// WAL-Schnellpfad hat eigene Arithmetik, eine eigene Reihenfolge im
+// Ausgangskorb (wal_seq statt id -- und ORDER BY wal_seq, id sortiert jede
+// Nicht-WAL-Zeile VOR jede WAL-Zeile, unabhaengig davon, wann sie entstand)
+// und seine eigene, asynchrone Versoehnung mit Postgres. Genau diese drei
+// Unterschiede konnte bisher kein Test messen.
+func TestAnnahmeGegenNachspielen_RealDB_WALAsymmetrie(t *testing.T) {
+	experimentLauf(t, 500.0, true)
+}
+
+// TestAnnahmeGegenNachspielen_RealDB_WALUndKontenLaufenLeer ist die
+// Kombination beider Bedingungen des Lasttests: WAL auf der annehmenden Box
+// UND Konten, die leerlaufen.
+func TestAnnahmeGegenNachspielen_RealDB_WALUndKontenLaufenLeer(t *testing.T) {
+	experimentLauf(t, 0.02, true)
+}
+
+func experimentLauf(t *testing.T, startGuthaben float64, mitWAL bool) {
 	truncateDistTestTables(t) // auch das Opt-in-Tor
 	dbB := os.Getenv("AEQUITAS_DB_B")
 	if dbB == "" {
@@ -119,7 +143,17 @@ func experimentLauf(t *testing.T, startGuthaben float64) {
 	adr := func(i int) string { return fmt.Sprintf("0xe0000000000000000000000000000000000%04x", i) }
 
 	// ---- Knoten A: ANNAHME ----
+	if mitWAL {
+		t.Setenv("AEQUITAS_WAL_ENABLED", "1")
+		t.Setenv("AEQUITAS_WAL_PATH", filepath.Join(t.TempDir(), "annahme.wal"))
+	}
 	csA := NewChainState("unused-annahme-gegen-nachspielen-a.json")
+	if mitWAL {
+		if csA.wal == nil {
+			t.Fatal("Knoten A sollte den WAL-Schnellpfad fahren, tut es aber nicht -- siehe die [WAL]-Zeilen oben")
+		}
+		t.Cleanup(csA.stopWALFlushWorkerForTest)
+	}
 	if !csA.useDB {
 		t.Fatal("Knoten A hat keine Datenbank -- DATABASE_URL pruefen")
 	}
@@ -135,6 +169,12 @@ func experimentLauf(t *testing.T, startGuthaben float64) {
 		}
 	}
 	seed(csA)
+
+	// Zaehlerstand vor dem Lauf: danach muss belegt sein, dass der Pfad, den
+	// dieses Experiment messen soll, ueberhaupt Verkehr getragen hat. Ein
+	// gruener Test, dessen Pfad nie betreten wurde, ist schlimmer als kein
+	// Test -- er trainiert den Leser, gruen zu glauben.
+	walVorher := txPhaseCount.Load()
 
 	// Nebenlaeufig, damit der Buendler ueberhaupt buendelt: laeuft alles
 	// seriell, nimmt jede Ueberweisung den Shard-Schnellpfad und der
@@ -166,6 +206,31 @@ func experimentLauf(t *testing.T, startGuthaben float64) {
 	if anzFehler > 0 {
 		t.Logf("%d Ueberweisungen wurden bei der Annahme abgelehnt (erwartbar, wenn ein Konto leerlaeuft) -- "+
 			"sie stehen dann auch in keinem Block und sind fuer den Vergleich unerheblich", anzFehler)
+	}
+
+	if mitWAL {
+		walAngewandt := txPhaseCount.Load() - walVorher
+		if walAngewandt == 0 {
+			t.Fatal("der WAL-Schnellpfad hat keine einzige Ueberweisung angewandt -- " +
+				"dieser Lauf misst dann nicht, was er zu messen vorgibt")
+		}
+		t.Logf("WAL-Schnellpfad hat %d Ueberweisungen angewandt", walAngewandt)
+	}
+
+	// Der WAL-Pfad versoehnt sich asynchron mit Postgres: die
+	// Ausgangskorb-Zeile entsteht erst, wenn der Flush-Arbeiter sie
+	// geschrieben hat. Abwarten, sonst liest der Block einen halbleeren Korb.
+	if mitWAL {
+		for i := 0; i < 600; i++ {
+			if csA.WALFlushQueueDepth() == 0 {
+				break
+			}
+			time.Sleep(100 * time.Millisecond)
+		}
+		if d := csA.WALFlushQueueDepth(); d != 0 {
+			t.Fatalf("WAL-Flush kam nicht nach: %d Posten stehen noch aus", d)
+		}
+		time.Sleep(500 * time.Millisecond) // die letzte Runde noch fertig schreiben lassen
 	}
 
 	// ---- Der Block, so wie ProduceBlock ihn bildet ----
@@ -237,8 +302,8 @@ func experimentLauf(t *testing.T, startGuthaben float64) {
 			"Nachspielen ist reproduziert, mit %d Ueberweisungen und ohne eine einzige Box",
 			abweichend, konten, len(txs))
 	}
-	t.Logf("%d Konten, %d Ueberweisungen, Startguthaben %.6f: Annahme und Nachspielen stimmen auf das Mikro-AEQ ueberein",
-		konten, len(txs), startGuthaben)
+	t.Logf("%d Konten, %d Ueberweisungen, Startguthaben %.6f, WAL=%v: Annahme und Nachspielen stimmen auf das Mikro-AEQ ueberein",
+		konten, len(txs), startGuthaben, mitWAL)
 }
 
 // ausgangskorbLesen liest die noch nicht eingebauten Ausgangskorb-Zeilen in
