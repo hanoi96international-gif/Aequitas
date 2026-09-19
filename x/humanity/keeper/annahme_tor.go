@@ -33,6 +33,36 @@ import (
 // mindestens so hoch wie der, gegen den der annehmende geprueft hat. Es gibt
 // nichts zu ueberspringen.
 //
+// # WAS GESPERRT IST, UND WARUM ALLES DAVON
+//
+// "Jede Belastung" heisst jede. Der erste Anlauf sperrte nur die beiden
+// Ueberweisungspfade -- und liess Swap, Liquiditaet und Faucet offen, die
+// Konten UND die Tokenomics-Toepfe bei der Annahme genauso belasten und den
+// Mechanismus damit unveraendert reproduziert haetten. Eine Sperre, die eine
+// Bedingung "unmoeglich" nennt und dabei vier Tueren offen laesst, ist
+// schlimmer als keine: sie erzeugt Vertrauen, das sie nicht traegt.
+//
+// Gesperrt sind deshalb alle sechs annehmenden Pfade: TransferAtomic,
+// TransferWithV7FeeAtomic, SwapAtomic, AddLiquidityAtomic,
+// RemoveLiquidityAtomic, ClaimTUsdFaucetAtomic.
+//
+// Nicht gesperrt ist das NACHSPIELEN: ein nur lesender Knoten wendet die
+// Bloecke des Partners unveraendert an -- er soll ja folgen, nur nicht selbst
+// annehmen. Ebenfalls nicht gesperrt ist die Registrierung: sie praegt gegen
+// einen Nullifier, dessen Einmaligkeit eine Datenbanksperre traegt, und der
+// Herkunftszwang bindet sie ohnehin an den Knoten, der den Beweis ausstellte.
+//
+// # WO DIE SPERRE SITZT
+//
+// Fuer den RPC-Weg zusaetzlich GANZ VORN in sendRawTransaction, vor
+// ReserveNonce. Dazwischen liegt ein dauerhafter Schreibvorgang in die
+// evm_nonces dieses Knotens: eine Wallet, die an den nur lesenden Knoten
+// geraet, haette dort sonst eine Nonce verbrannt und bekaeme fortan eine
+// Nonce zurueck, die der annehmende Knoten als "nonce too high" abweist --
+// dauerhaft, denn ein ReleaseNonce gibt es nicht. Eine Sperre, die den
+// Menschen schlechter stellt als gar keine Sperre, waere die schlechteste
+// Art von Fix.
+//
 // # WARUM NICHT DIE WURZEL
 //
 // Sauber waere: Zustand aendert sich ausschliesslich beim Anwenden eines

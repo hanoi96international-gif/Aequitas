@@ -199,7 +199,7 @@ type ChainState struct {
 	// block save). See ensureReplayedColumn's own comment for what this
 	// column is for.
 	replayedColumnOnce sync.Once
-	txRootColumnOnce   sync.Once // chain_blocks.tx_root -- siehe ensureTxRootColumn
+	txRootSpalteDa     atomic.Bool // chain_blocks.tx_root angelegt -- siehe ensureTxRootColumn
 	// txBatchTableOnce/txBatches back the body store that lets a block travel
 	// without its transactions (roadmap step 4 — see tx_batch.go).
 	txBatchTableOnce sync.Once
@@ -5699,6 +5699,10 @@ func (cs *ChainState) SwapTUSDForAEQ(address string, amountIn, minAmountOut floa
 // should have Type/Wallet/Amount set; AmountOut and FromDemurrageLost are
 // filled in here from the swap's actual result.
 func (cs *ChainState) SwapAtomic(address string, amountIn float64, aeqToTusd bool, minAmountOut float64, pendingTxTemplate Transaction) (amountOut, demurrageLost float64, err error) {
+	// Auch das ist eine Belastung bei der Annahme -- siehe annahme_tor.go.
+	if err := cs.pruefeAnnahmeTor(); err != nil {
+		return 0, 0, err
+	}
 	address = strings.ToLower(address)
 	err = cs.runAtomicWithOutbox([]string{address, validatorsPoolAddr, lpPoolAddr, ubiPoolAddr, treasuryPoolAddr}, false, func(ctx context.Context) (Transaction, error) {
 		amountOut, demurrageLost, err = cs.swapLocked(ctx, address, amountIn, aeqToTusd, minAmountOut)
@@ -6301,6 +6305,9 @@ func (cs *ChainState) AddLiquidity(address string, amountAEQ, amountTUSD float64
 // have Type/Wallet/Amount(AEQ)/AmountOut(tUSD) set; LPShares and
 // FromDemurrageLost are filled in here from the operation's actual result.
 func (cs *ChainState) AddLiquidityAtomic(address string, amountAEQ, amountTUSD float64, pendingTxTemplate Transaction) (demurrageLost float64, err error) {
+	if err := cs.pruefeAnnahmeTor(); err != nil {
+		return 0, err
+	}
 	address = strings.ToLower(address)
 	err = cs.runAtomicWithOutbox([]string{address, validatorsPoolAddr, lpPoolAddr, ubiPoolAddr, treasuryPoolAddr}, false, func(ctx context.Context) (Transaction, error) {
 		sharesBefore := 0.0
@@ -6435,6 +6442,9 @@ func (cs *ChainState) RemoveLiquidity(address string, sharesToBurn float64) (flo
 // secondary's own current pool state rather than replaying exact amounts,
 // so those aren't part of the queued Transaction either today).
 func (cs *ChainState) RemoveLiquidityAtomic(address string, sharesToBurn float64, pendingTxTemplate Transaction) (outAEQ, outTUSD, demurrageLost float64, err error) {
+	if err := cs.pruefeAnnahmeTor(); err != nil {
+		return 0, 0, 0, err
+	}
 	address = strings.ToLower(address)
 	err = cs.runAtomicWithOutbox([]string{address, validatorsPoolAddr, lpPoolAddr, ubiPoolAddr, treasuryPoolAddr}, false, func(ctx context.Context) (Transaction, error) {
 		outAEQ, outTUSD, demurrageLost, err = cs.removeLiquidityLocked(ctx, address, sharesToBurn)
@@ -6896,6 +6906,9 @@ func (cs *ChainState) ClaimTUsdFaucet(address string) error {
 // mutation and the resulting outbox insert commit or roll back together as
 // one DB transaction — see TransferAtomic's comment.
 func (cs *ChainState) ClaimTUsdFaucetAtomic(address string, pendingTx Transaction) error {
+	if err := cs.pruefeAnnahmeTor(); err != nil {
+		return err
+	}
 	address = strings.ToLower(address)
 	return cs.runAtomicWithOutbox([]string{address}, false, func(ctx context.Context) (Transaction, error) {
 		if err := cs.claimTUsdFaucetLocked(ctx, address); err != nil {

@@ -82,6 +82,43 @@ func TestAnnahmeTor_AbgelehnteUeberweisungAendertNichts(t *testing.T) {
 	}
 }
 
+// DIE SPERRE DARF KEINE NONCE VERBRENNEN.
+//
+// Im ersten Anlauf sass sie in TransferAtomic. Dazwischen liegt aber
+// ReserveNonce, und das schreibt die naechste Nonce DAUERHAFT in die
+// evm_nonces dieses Knotens. Eine Wallet, die an den nur lesenden Knoten
+// geriet, haette dort eine Nonce verbrannt -- und weil derselbe Knoten weiter
+// eth_getTransactionCount beantwortet, bekaeme sie fortan eine Nonce zurueck,
+// die der annehmende Knoten als "nonce too high" abweist. Dauerhaft, denn ein
+// ReleaseNonce gibt es nicht.
+//
+// Eine Sperre, die den Menschen schlechter stellt als gar keine Sperre, waere
+// die schlechteste Art von Fix. Deshalb sitzt sie im RPC-Weg ganz vorn, und
+// dieser Test haelt fest, dass an der Nonce nichts haengen bleibt.
+func TestAnnahmeTor_VerbrenntKeineNonce_RealDB(t *testing.T) {
+	truncateDistTestTables(t) // auch das Opt-in-Tor
+	cs := NewChainState("unused-annahme-tor-nonce-test.json")
+	if !cs.useDB {
+		t.Fatal("erwartet eine echte PostgreSQL-Verbindung -- DATABASE_URL pruefen")
+	}
+	cs.SetzeNurLesend(true)
+
+	wallet := distTestAddr(950)
+	vorher := cs.LoadNonce(wallet)
+
+	_, _, err := cs.TransferAtomic(wallet, distTestAddr(951), 1,
+		Transaction{Type: "transfer", Wallet: wallet, To: distTestAddr(951), Amount: 1, TxHash: "0xnonce-tor"})
+	if err == nil {
+		t.Fatal("ein nur lesender Knoten hat angenommen")
+	}
+
+	if nachher := cs.LoadNonce(wallet); nachher != vorher {
+		t.Fatalf("die Nonce ist von %d auf %d gewandert -- die Wallet bekaeme fortan eine Nonce, "+
+			"die der annehmende Knoten als \"nonce too high\" abweist, und zwar dauerhaft",
+			vorher, nachher)
+	}
+}
+
 func contains(s, sub string) bool {
 	return len(s) >= len(sub) && (func() bool {
 		for i := 0; i+len(sub) <= len(s); i++ {

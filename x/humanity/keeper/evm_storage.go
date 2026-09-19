@@ -3450,6 +3450,15 @@ func (cs *ChainState) ensureGHOSTDAGColumns() {
 // startup loader (NewBlockchain) now checks this per-block instead of
 // blindly trusting chain_blocks membership, and re-drives replay for any
 // block still marked false — see its own comment.
+func (cs *ChainState) ensureReplayedColumn() {
+	if cs.db == nil {
+		return
+	}
+	cs.replayedColumnOnce.Do(func() {
+		cs.db.Exec(`ALTER TABLE chain_blocks ADD COLUMN IF NOT EXISTS replayed BOOLEAN NOT NULL DEFAULT true`)
+	})
+}
+
 // ensureTxRootColumn legt chain_blocks.tx_root an.
 //
 // # WARUM DAS UEBER DEN SYNC ENTSCHEIDET
@@ -3476,22 +3485,24 @@ func (cs *ChainState) ensureGHOSTDAGColumns() {
 // Zeilen den Rumpf zu lesen und zu hashen -- auf genau der Platte, die der
 // Engpass ist. Der Gewinn faellt ohnehin dort an, wo er gebraucht wird: bei
 // den letzten Hoehen, die der Sync staendig wiederholt.
+// EIN FEHLSCHLAG DARF NICHT DAUERHAFT SEIN. Die aelteren Spaltenwaechter
+// hier nehmen ein sync.Once und verwerfen den Fehler -- fuer Spalten, die
+// beim Start einmal angelegt werden, traegt das. Diese hier wird von fuenf
+// Lesepfaden gebraucht, darunter der Seitenabfrage des Syncs: ginge das
+// ALTER einmal voruebergehend daneben (Sperre auf der Tabelle, Verbindung
+// weg), waere die Spalte fuer den Rest der Prozesslaufzeit nicht da, JEDE
+// dieser Abfragen wuerde am fehlenden Feld scheitern, und /api/blocks
+// antwortete nicht mehr. Deshalb ein Riegel, der nur bei ERFOLG faellt, und
+// ein naechster Versuch beim naechsten Aufruf.
 func (cs *ChainState) ensureTxRootColumn() {
-	if cs.db == nil {
+	if cs.db == nil || cs.txRootSpalteDa.Load() {
 		return
 	}
-	cs.txRootColumnOnce.Do(func() {
-		cs.db.Exec(`ALTER TABLE chain_blocks ADD COLUMN IF NOT EXISTS tx_root TEXT`)
-	})
-}
-
-func (cs *ChainState) ensureReplayedColumn() {
-	if cs.db == nil {
+	if _, err := cs.db.Exec(`ALTER TABLE chain_blocks ADD COLUMN IF NOT EXISTS tx_root TEXT`); err != nil {
+		fmt.Printf("[BLOCK] chain_blocks.tx_root konnte nicht angelegt werden (naechster Versuch beim naechsten Aufruf): %v\n", err)
 		return
 	}
-	cs.replayedColumnOnce.Do(func() {
-		cs.db.Exec(`ALTER TABLE chain_blocks ADD COLUMN IF NOT EXISTS replayed BOOLEAN NOT NULL DEFAULT true`)
-	})
+	cs.txRootSpalteDa.Store(true)
 }
 
 // MarkBlockReplayed flips chain_blocks.replayed to true for hash. Called via
@@ -3663,6 +3674,7 @@ func (cs *ChainState) SaveGHOSTDAGStateCtx(ctx context.Context, block *Block) er
 		return nil
 	}
 	cs.ensureGHOSTDAGColumns()
+	cs.ensureTxRootColumn()
 	bluesJSON, err := json.Marshal(block.Blues)
 	if err != nil {
 		bluesJSON = []byte("[]")
@@ -3682,6 +3694,7 @@ func (cs *ChainState) SaveGHOSTDAGStateBatch(blocks []*Block) error {
 		return nil
 	}
 	cs.ensureGHOSTDAGColumns()
+	cs.ensureTxRootColumn()
 	tx, err := cs.db.Begin()
 	if err != nil {
 		return err
@@ -4075,6 +4088,7 @@ func (cs *ChainState) LoadBlockFromDBByHeight(height int64) *Block {
 		return nil
 	}
 	cs.ensureGHOSTDAGColumns()
+	cs.ensureTxRootColumn()
 	rows, err := cs.db.Query(`SELECT hash, height, parent_hashes, proposer, timestamp, humans, state_root,
 	                 signature, transactions, COALESCE(transactions_z, ''::bytea),
 	                 COALESCE(selected_parent,''), COALESCE(blue_score,0), COALESCE(blues,'[]'),
@@ -4180,6 +4194,7 @@ func (cs *ChainState) LoadBlockFromDBByHash(hash string) *Block {
 		return nil
 	}
 	cs.ensureGHOSTDAGColumns()
+	cs.ensureTxRootColumn()
 	row := cs.db.QueryRow(`SELECT hash, height, parent_hashes, proposer, timestamp, humans, state_root,
 	                 signature, transactions, COALESCE(transactions_z, ''::bytea),
 	                 COALESCE(selected_parent,''), COALESCE(blue_score,0), COALESCE(blues,'[]'),
@@ -4235,6 +4250,7 @@ func (cs *ChainState) LoadBlocksSinceFromDB(minHeight int64, afterHash string, l
 		return nil, nil
 	}
 	cs.ensureGHOSTDAGColumns()
+	cs.ensureTxRootColumn()
 	// ZWEI SCHRITTE: erst die Koepfe, dann die Ruempfe -- und nur die der
 	// Seite, mit Byte-Budget.
 	//
@@ -4378,6 +4394,7 @@ func (cs *ChainState) LoadBlocksByHashesFromDB(hashes []string) ([]*Block, error
 		return nil, nil
 	}
 	cs.ensureGHOSTDAGColumns()
+	cs.ensureTxRootColumn()
 	rows, err := cs.db.Query(`SELECT hash, height, parent_hashes, proposer, timestamp, humans, state_root,
 	                 signature, transactions, COALESCE(transactions_z, ''::bytea),
 	                 COALESCE(selected_parent,''), COALESCE(blue_score,0), COALESCE(blues,'[]'),
