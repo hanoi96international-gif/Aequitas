@@ -4,6 +4,33 @@
 
 > **Dein Klick (jetzt, Kette ist ruhig):** `resync-contabo2-only.yml` → `confirm=true`. Danach beide `/api/wache` 200. Der Sicherheits-Klassifikator lässt Claude diesen Workflow nicht starten; dauerhaft erlauben: Bash-Regel für `gh workflow run resync-*` in den Claude-Einstellungen.
 >
+> ## Blocker 1 hat jetzt einen Fix — dein Schalter
+>
+> **Setz auf der Box, auf die die App NICHT zeigt: `ANNAHME_ROLLE=nur_lesend`.** Danach nimmt nur noch eine Box Überweisungen an, und die Staub-Divergenz kann nicht mehr entstehen.
+>
+> **Warum das reicht.** Die Divergenz braucht, dass *dasselbe Konto auf zwei Knoten gleichzeitig belastet* wird. Nimmt nur einer an, geht jede Belastung durch eine einzige Sicht, und der nachspielende Knoten hat beim Anwenden des Blocks alle Vorgänger schon angewandt — sein Kontostand ist dort mindestens so hoch wie der, gegen den geprüft wurde. Es gibt nichts zu überspringen.
+>
+> **Gemessen, nicht behauptet.** Derselbe Testaufbau, dieselben Konten, dieselbe Last:
+>
+> | | Konten abweichend | übersprungen |
+> |---|---|---|
+> | ohne Sperre | 4 von 32 | 432 |
+> | **mit Sperre** | **0** | **0** |
+>
+> **Was es kostet.** Die zweite Box trägt weiter API, RPC-Lesungen und Registrierung — abgelehnt werden nur Überweisungen, Swap, Liquidität und Faucet. Fällt die annehmende Box aus, hängst **du** die Rolle um. Das ist bewusst ein Handgriff: eine automatische Übernahme kann bei einer Netztrennung zwei Annehmende erzeugen, also genau den Zustand, den die Sperre beseitigt.
+>
+> **Ohne den Schalter ändert sich nichts** — die Voreinstellung ist wie bisher. Sichtbar unter `/api/health/combined → annahme_tor`.
+>
+> **Die Wurzel bleibt offen, und das ist eine Entscheidung.** Sauber wäre: Zustand ändert sich ausschließlich beim Anwenden eines Blocks, die Annahme reiht nur ein. Das ist die übliche Bauform einer Kette und macht nebenläufige Annahme auf beliebig vielen Knoten sicher — aber es ist ein Umbau des gesamten heißen Pfades (WAL-Schnellpfad, Bündler, Shard-Sperren) und nichts für die Woche vor einem Start. Wann das drankommt, entscheidest du.
+>
+> ## Was am 19.09. sonst noch behoben wurde
+>
+> - **Eine angenommene Überweisung wartete bis zu einer Stunde.** Der Nebenbefund von unten: `ProduceBlock` markiert die Ausgangskorb-Zeilen beim Laden und commitet das *vor* den Toren — bricht eines ab, lagen sie bis zum Aufräumer. Der Kommentar im Code behauptete das Gegenteil. Jetzt sofortige Freigabe genau der geladenen IDs.
+> - **Punkt 11, erster Teil: `tx_root` steht in `chain_blocks`.** Der Kopf-Modus des Syncs griff nie, weil ein Block aus der Datenbank keinen `tx_root` mitbrachte — deshalb luden beide Boxen alle zwei Sekunden die letzten zwanzig Höhen *komplett mit Rümpfen* voneinander nach (1,92 GB in neun Minuten, Lauf 7). Alle drei Schreib- und fünf Lesepfade nachgezogen. **Offen bleibt der zweite Teil:** die Rümpfe beim Ausliefern gar nicht erst aus der Datenbank zu laden. Das ändert die Seitenlogik des Syncs, und genau dort liegen die dokumentierten Vorfälle — das gehört mit Messwerten von den Boxen gemacht, nicht blind.
+> - **Vier Befunde aus dem Selbstcheck über die eigenen Änderungen**, einer davon schwer: die Sperre saß zuerst hinter `ReserveNonce` und hätte jeder Wallet, die an die nur lesende Box geriet, **dauerhaft** eine unbrauchbare Nonce verpasst. Sie sitzt jetzt ganz vorn im RPC-Weg. Außerdem galt sie nur für Überweisungen, während Swap, Liquidität und Faucet denselben Mechanismus offen ließen — jetzt alle sechs Pfade.
+>
+> **Weiterhin offen und nicht von mir zu schließen:** WP 3 (Tag-7-Prüfung in der App, 12 Sprachen, Coordinator-Endpunkt) ist ein Feature und hängt hinter WP 4, das ≥ 20 echte Registrierungen braucht. Punkt 15 (eigener Signierschlüssel) wartet auf deine Entscheidung.
+>
 > ## Audit 19.09. — was gefunden und behoben wurde
 >
 > Alle vier Repos gebaut und getestet: Kette, App (71), Proof-Server (49), Coordinator (103), Matching (185) — **grün**. Die Kette zusätzlich **unter `-race` mit echter Datenbank**, und das erstmals: dabei fiel ein echter Fehler heraus.
@@ -53,7 +80,7 @@
 >
 > **Was die Spurensuche ergab (belegt):** beide Boxen haben dieselben Blöcke; jede angenommene Überweisung steckt in genau einem Block (1.307.700 = 1.307.700); jeder Block wird genau einmal nachgespielt; keine Rollbacks, keine übersprungenen Überweisungen, keine Flush-Fehler — und trotzdem weichen einzelne Konten um ganze Bündel (24–64 Überweisungen) ab. Es ist ein Unterschied im **Rechenweg** zwischen Annahme (Produzent) und Nachspielen (Partner), nicht ein verlorener Block. **Alle drei Kandidaten sind jetzt gemessen, zwei davon negativ.** Das Experiment läuft auch gegen **zwei echte Postgres-Datenbanken** (`annahme_gegen_nachspielen_realdb_test.go`): Knoten A nimmt über die echten Schnellpfade an, der Block wird aus dem Ausgangskorb in genau der Reihenfolge gebildet, die `ProduceBlock` liest, Knoten B spielt nach — danach wird jedes Konto in Mikro-AEQ verglichen. Ergebnis: **25.600 Überweisungen mit absichtlich unfreundlichen Beträgen (1/3, 0,0000005) → 0 Konten abweichend.** Und in dem Zustand, der den Lasttest ausmacht — Konten, die leerlaufen (Startguthaben 0,02; 17.576 schon bei der Annahme abgelehnt) — **8.024 Überweisungen → 0 abweichend, 0 übersprungen**. Damit scheiden **Rundung im Batch-Pfad** und **Reihenfolge** (Ausgangskorb-Ordnung ist nicht Annahme-Ordnung) aus. Auch die WAL-Asymmetrie von C2 wurde nachgebaut (Knoten A fährt `AEQUITAS_WAL_ENABLED=1`, belegt 21.831 Überweisungen über den WAL-Schnellpfad): **0 abweichend.** Bis dahin **keine Lastläufe** (18 Menschen erzeugen Bruchteile davon; die Kette ist für echte Nutzung konsistent — Menschen-Konten identisch).
 >
-> **Nebenbefund:** `ProduceBlock` markiert bis zu `blockTxCap()` Ausgangskorb-Zeilen *vor* den Produktionstoren; bricht ein Tor ab, bleiben sie bis zum stündlichen Sweep liegen (Nachlauf bis 60 min). Kandidat zum Aufräumen (Zeilen bei Abbruch sofort freigeben).
+> **Nebenbefund — ✅ behoben 19.09.:** `ProduceBlock` markierte bis zu `blockTxCap()` Ausgangskorb-Zeilen *vor* den Produktionstoren; bricht ein Tor ab, blieben sie bis zum stündlichen Sweep liegen (Nachlauf bis 60 min). Jetzt werden genau die geladenen IDs sofort freigegeben.
 >
 > **C2s Platte:** iostat im Leerlauf `w_await` 6–11 ms, `f_await` 5–20 ms (C1: 1–2 / 0,4–1,4 ms) auf einer NVMe. Test: `mount -o remount,nodiscard /` auf C2, dann iostat; sonst VM-Reboot, dann Contabo-Ticket mit diesen Zahlen.
 
