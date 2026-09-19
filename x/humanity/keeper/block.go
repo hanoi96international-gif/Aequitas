@@ -6771,6 +6771,11 @@ func (dag *BlockDAG) replayTransactions(block *Block, force bool) (ok bool) {
 	// block (minutes per block, both live and in the boot repair pass).
 	// Failures and every other TX type keep their individual lines.
 	transfersApplied := 0
+	// Wie viele Ueberweisungen DIESER Block uebersprungen hat. Wird unten,
+	// im selben dbTx, dauerhaft gemacht -- siehe zustand_ablehnung.go fuer
+	// den Grund (ein Zaehler, den jeder Neustart loescht, meldet eine
+	// dauerhafte Divergenz nur bis zum naechsten Neustart).
+	uebersprungenInDiesemBlock := 0
 
 	// NOTE (2026-07-25): a parallel pre-pass applying "provably disjoint"
 	// transfers concurrently used to sit here (50k-TPS roadmap item 1). It
@@ -7050,6 +7055,7 @@ func (dag *BlockDAG) replayTransactions(block *Block, force bool) (ok bool) {
 				if istZustandsAblehnung(err) {
 					fmt.Printf("[REPLAY] ⚠ Transfer %s->%s %.6f uebersprungen: %v (block #%d) — Block laeuft weiter\n", wallet, to, tx.Amount, err, block.Height)
 					merkeUebersprungeneUeberweisung()
+					uebersprungenInDiesemBlock++
 					continue
 				}
 				fmt.Printf("[REPLAY] ✗ Transfer %s->%s %.6f: %v (block #%d) — rolling back whole block\n", wallet, to, tx.Amount, err, block.Height)
@@ -7670,6 +7676,10 @@ func (dag *BlockDAG) replayTransactions(block *Block, force bool) (ok bool) {
 	// back commit also rolls this flag back — see ensureReplayedColumn's
 	// comment for why "header saved" must never silently imply "effects
 	// applied" on a later restart.
+	// Denselben dbTx wie der Block: wird er zurueckgerollt, faellt die
+	// Erhoehung mit ihm. Gezaehlt wird nur, was auch angewandt wurde.
+	dag.state.uebersprungeneSichern(withTx(context.Background(), dbTx), uebersprungenInDiesemBlock)
+
 	if err := dag.state.MarkBlockReplayed(withTx(context.Background(), dbTx), block.Hash); err != nil {
 		fmt.Printf("[REPLAY] Warning: could not mark block #%d replayed: %v\n", block.Height, err)
 	}

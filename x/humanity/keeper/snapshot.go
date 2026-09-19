@@ -697,6 +697,10 @@ func (cs *ChainState) ResyncFromSnapshotURL(peerURL, expectedSignerHex string) e
 		cs.mu.Lock()
 		cs.replaceInMemoryFromSnapshotLocked(&snap)
 		cs.mu.Unlock()
+		// Der Resync ist der Vorgang, der die Divergenz behebt, die der
+		// Uebersprungen-Zaehler meldet -- also ist er auch die einzige Stelle,
+		// an der der Zaehler abgeraeumt gehoert. Siehe zustand_ablehnung.go.
+		cs.UebersprungeneZuruecksetzen()
 		fmt.Printf("[RESYNC] ✓ Replaced local state with %d accounts, %d nullifiers, %d bio-registrations from snapshot\n",
 			len(snap.Accounts), len(snap.Nullifiers), len(snap.BioRegistrations))
 		return nil
@@ -1011,6 +1015,10 @@ func (cs *ChainState) ResyncFromSnapshotURL(peerURL, expectedSignerHex string) e
 		return fmt.Errorf("resync: Go-state committed successfully, but EVM mirror migration failed (EVM state may now be inconsistent — re-run resync to retry the mirror step): %w", err)
 	}
 
+	// Der Resync ist der Vorgang, der die Divergenz behebt, die der
+	// Uebersprungen-Zaehler meldet -- also ist er auch die einzige Stelle,
+	// an der der Zaehler abgeraeumt gehoert. Siehe zustand_ablehnung.go.
+	cs.UebersprungeneZuruecksetzen()
 	fmt.Printf("[RESYNC] ✓ Replaced local state with %d accounts, %d nullifiers, %d bio-registrations from snapshot\n",
 		len(snap.Accounts), len(snap.Nullifiers), len(snap.BioRegistrations))
 	return nil

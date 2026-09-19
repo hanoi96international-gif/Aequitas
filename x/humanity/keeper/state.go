@@ -851,6 +851,10 @@ func NewChainState(dataFile string) *ChainState {
 					cs.clearRegistrationsFromDB()
 				}
 				cs.loadFromDB()
+				// Der Uebersprungen-Zaehler muss den Neustart ueberleben --
+				// siehe zustand_ablehnung.go: ein Neustart nach rotem Alarm
+				// loeschte bisher den Alarm, nicht die Divergenz.
+				cs.uebersprungeneLaden()
 				fmt.Println("✓ ChainState using PostgreSQL")
 				cs.initWALIfEnabled()
 				// chain_tx_batches has no DELETE anywhere and grows with every
