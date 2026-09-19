@@ -102,10 +102,19 @@ func TestTransferConcurrentWAL_CrashRecovery_ActivityClockUsesRestartTimeNotOrig
 	// is measured against.
 	csA.mu.RLock()
 	fromAccLive, _ := csA.accounts.Get(from)
+	toAccLive, _ := csA.accounts.Get(to)
 	gotLive := fromAccLive.LastActivityAt
+	gotLiveTo := toAccLive.LastActivityAt
 	csA.mu.RUnlock()
 	if gotLive != tTransfer {
 		t.Fatalf("test setup: live transferConcurrentWAL stamped LastActivityAt=%d, want exactly tTransfer=%d — cannot proceed", gotLive, tTransfer)
+	}
+	// Der EMPFAENGER wird vom Live-Pfad nicht angefasst: Empfangen startet die
+	// Uhr, es setzt sie nie zurueck (annahme_gegen_nachspielen_test.go). Sein
+	// Stand hier ist der Saatwert, und genau der ist der Massstab, an dem die
+	// Wiederherstellung unten gemessen wird.
+	if gotLiveTo != tTransfer-100 {
+		t.Fatalf("test setup: live path left recipient LastActivityAt=%d, want the seeded %d — cannot proceed", gotLiveTo, tTransfer-100)
 	}
 
 	// "Crash": abandon csA without ever flushing — same pattern as this
@@ -141,9 +150,30 @@ func TestTransferConcurrentWAL_CrashRecovery_ActivityClockUsesRestartTimeNotOrig
 		t.Errorf("recovered SENDER LastActivityAt = %d, want %d (the ORIGINAL transfer's time) — got %d, the restart time. recoverFromWAL must stamp walTransferRecord.At via touchActivityAt(acc, at); stamping nowUnix() instead credits the account with the entire outage as demurrage-free time, at the tokenomics pools' expense.",
 			gotFrom, tTransfer, tRecovery)
 	}
-	if gotTo != tTransfer {
-		t.Errorf("recovered RECIPIENT LastActivityAt = %d, want %d (the ORIGINAL transfer's time) — got %d, the restart time (same defect, applyTo).",
-			gotTo, tTransfer, tRecovery)
+	// KORREKTUR (19.09.2026). Hier stand: der Empfaenger muesse nach der
+	// Wiederherstellung auf tTransfer stehen. Das war die alte Regel, und sie
+	// war falsch -- fuenf von acht Ueberweisungspfaden setzten die Uhr des
+	// EMPFAENGERS zurueck, drei nicht, und die Trennlinie lief quer durch
+	// Annahme und Nachspielen (annahme_gegen_nachspielen_test.go, 300 Tage
+	// Unterschied zwischen zwei Knoten). Massgeblich ist die Regel, die
+	// zweimal woertlich im Produktionscode steht: Empfangen startet die Uhr,
+	// es setzt sie nie zurueck.
+	//
+	// Die ABSICHT dieses Tests bleibt unveraendert und ist das, was hier
+	// wirklich geprueft wird: die Wiederherstellung darf NIE die Neustartzeit
+	// stempeln. Sie tut es auch nicht mehr -- sie fasst die Uhr eines
+	// Empfaengers, der schon eine hat, gar nicht erst an.
+	//
+	// Und die Invariante, auf die es bei einer Wiederherstellung ankommt, ist
+	// schaerfer als eine feste Zahl: der wiederhergestellte Knoten muss genau
+	// dort stehen, wo er vor dem Absturz stand. Also wird gegen den Live-Stand
+	// verglichen, nicht gegen einen Wunschwert.
+	if gotTo != gotLiveTo {
+		t.Errorf("recovered RECIPIENT LastActivityAt = %d, want %d (exactly what the live path left before the crash) — got the restart time %d? recoverFromWAL must reproduce the live path, not invent a stamp.",
+			gotTo, gotLiveTo, tRecovery)
+	}
+	if gotTo == tRecovery {
+		t.Errorf("recovered RECIPIENT LastActivityAt = %d is the RESTART time — that credits the whole outage as demurrage-free time, at the tokenomics pools' expense.", gotTo)
 	}
 }
 

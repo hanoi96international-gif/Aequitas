@@ -22,9 +22,23 @@ func TestAsyncIndexIsANoOpWithoutADatabase(t *testing.T) {
 	// Every test ChainState here has no db. The async path must return
 	// immediately rather than starting a worker that would then fail on every
 	// job -- and must not panic on the nil.
+	//
+	// KORREKTUR (19.09.2026): hier stand `if txIndexStarted.Load()`, also eine
+	// Zusicherung auf einen PROZESSWEITEN Riegel. Sobald irgendein frueherer
+	// Test im selben Lauf den Arbeiter gestartet hatte -- was mit echter
+	// DATABASE_URL regelmaessig passiert -- ging dieser Test rot, ohne dass an
+	// dem, was er prueft, etwas kaputt war. Ein Test, der aus dem falschen
+	// Grund rot wird, ist schlimmer als kein Test: er bringt dem Leser bei,
+	// Rot zu ignorieren.
+	//
+	// Gemeint war immer: DIESER Aufruf startet keinen Arbeiter. Genau das
+	// steht jetzt da, als Differenz statt als Absolutwert -- damit ist es von
+	// der Reihenfolge der Tests unabhaengig und faengt den echten Fehler
+	// weiterhin.
+	before := txIndexStarted.Load()
 	cs := &ChainState{}
 	cs.IndexBlockTransactionsAsync(1, "0xblock", []Transaction{{TxHash: "0xaa"}})
-	if txIndexStarted.Load() {
+	if txIndexStarted.Load() != before {
 		t.Error("a worker was started for a state with no database; it would only ever log errors")
 	}
 }
