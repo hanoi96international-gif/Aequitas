@@ -199,6 +199,7 @@ type ChainState struct {
 	// block save). See ensureReplayedColumn's own comment for what this
 	// column is for.
 	replayedColumnOnce sync.Once
+	txRootColumnOnce   sync.Once // chain_blocks.tx_root -- siehe ensureTxRootColumn
 	// txBatchTableOnce/txBatches back the body store that lets a block travel
 	// without its transactions (roadmap step 4 — see tx_batch.go).
 	txBatchTableOnce sync.Once
