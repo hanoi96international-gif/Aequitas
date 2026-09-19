@@ -4,6 +4,26 @@
 
 > **Dein Klick (jetzt, Kette ist ruhig):** `resync-contabo2-only.yml` → `confirm=true`. Danach beide `/api/wache` 200. Der Sicherheits-Klassifikator lässt Claude diesen Workflow nicht starten; dauerhaft erlauben: Bash-Regel für `gh workflow run resync-*` in den Claude-Einstellungen.
 >
+> ## Audit 19.09. — was gefunden und behoben wurde
+>
+> Alle vier Repos gebaut und getestet: Kette, App (71), Proof-Server (49), Coordinator (103), Matching (185) — **grün**. Die Kette zusätzlich **unter `-race` mit echter Datenbank**, und das erstmals: dabei fiel ein echter Fehler heraus.
+>
+> **Zwei Fehler, die deinen Blocker 2 direkt treffen** (Registrierung). Beide dieselbe Klasse: Zustand, der nur im Arbeitsspeicher *eines* Knotens liegt, während die App seit v1.7.2 ausweichen kann.
+>
+> 1. **Der Beweis liegt auf Knoten 1, die Registrierung ging an Knoten 2.** Die Klebrigkeit sollte das verhindern, aber ein Netzfehler in *irgendeinem* Aufruf — ein Kontostand, der im Hintergrund nachlädt — wechselt den aktiven Knoten. Schlimmer: ein Blip auf `/register` selbst ließ den Ausweichknoten die Anfrage dorthin schicken, wo der Beweis nie war — er *erzeugte* den Fehler, den er verhindern sollte. Der Mensch bekommt „this proof did not come from a verified registration on this node" und darf die Gesichtsaufnahme wiederholen. **Behoben:** `/register` geht an den Knoten, der den Beweis ausstellte, und wiederholt bei einem Blip dort statt zu wechseln.
+>
+> 2. **Der Challenge-Nonce lag bei Coordinator 2, die Aufnahme ging an Coordinator 1.** Knapp verfehlt: Nonce-Frist und App-Klebrigkeit sind beide 5 Minuten, aber die App-Uhr startet einen Netzumlauf früher und läuft zuerst ab. War Coordinator 1 beim Ausstellen krank und antwortet bei der Abgabe wieder, geht die Aufnahme an ihn — `nonce_ungueltig`, nach der vollständigen Aufnahme. **Behoben:** gebunden an den Nonce statt an eine Uhr.
+>
+> Beide stecken in **App 1.7.3 (versionCode 8)** — die muss veröffentlicht und ausgeliefert werden, sonst ändert sich für niemanden etwas. **Das ist dein Klick.**
+>
+> **Ein echtes Datenrennen auf dem Geldpfad.** Der EVM-Spiegel las Kontostand, Menschen-Flag und Aktivitätszeit ohne Shard-Sperre und konnte ein halb geschriebenes Konto in die V7-Slots schreiben, die jedes `eth_call` liest. `transferConcurrent` schreibt sich genau diese Regel selbst an die Wand; der Spiegel befolgte sie nicht. Behoben.
+>
+> **Der Übersprungen-Zähler überlebt jetzt den Neustart.** Er lag nur im Prozess — und `/api/wache` färbt bei > 0 rot, also löschte der Neustart nach rotem Alarm den Alarm statt die Divergenz. Es *sah* aus, als hätte er geholfen. Die Summe steht jetzt in `chain_config`, wird im selben `dbTx` wie der Block fortgeschrieben und **nur vom Resync** abgeräumt — dem Vorgang, der die Divergenz tatsächlich behebt.
+>
+> **Geprüft und in Ordnung** (kein Befund): pprof hängt korrekt nur auf 127.0.0.1; alle Admin-Endpunkte sind token-geschützt mit konstantzeitigem Vergleich; jeder Geld-Endpunkt (Swap, Liquidität, Faucet, Escrow, Guardian) verlangt Signatur, Zeitfenster und Nonce, und die Signatur wird an die behauptete Wallet gebunden; die Herkunftspflicht an `/api/register` ist verdrahtet; keine Geheimnisse im Quelltext, nur `.env.example`; die Marken der Rechtstexte decken sich exakt mit den Feldern, dein Impressum landet also vollständig auf der Seite; die Löschung (Art. 17) behält bewusst nur den Einmaligkeits-Anker, mit eigener Begründung und eigenem Test.
+>
+> **Nicht abschließend geprüft:** die Innereien des Matching-Service (9.600 Zeilen Bildverarbeitung) jenseits von Regelwerk, Löschpfad und Schwellen-Frage. Die Schwelle bleibt, wie Punkt 4 sagt, unkalibriert — das entscheidet kein Audit, das entscheidet der Zwei-Personen-Test vor der Kamera.
+>
 > ## Die Staub-Divergenz ist reproduziert — Ursache benannt
 >
 > **`zwei_produzenten_realdb_test.go` erzeugt sie auf Kommando**, in Sekunden, ohne Boxen. Der Fingerabdruck stimmt bis ins Detail mit dem vom 15.09. überein:
