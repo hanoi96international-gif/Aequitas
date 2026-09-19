@@ -167,6 +167,11 @@ type PoolState struct {
 }
 
 type ChainState struct {
+	// Rolle dieses Knotens bei der Annahme von Ueberweisungen -- siehe
+	// annahme_tor.go. Gesetzt beim Bau aus ANNAHME_ROLLE, umstellbar ueber
+	// SetzeNurLesend.
+	nurLesend atomic.Bool
+
 	mu sync.RWMutex
 	// accounts is a *shardedAccounts (see sharded_accounts.go /
 	// SCALING_ARCHITECTURE.md Phase 2) rather than a plain map. Every
@@ -713,6 +718,7 @@ func NewChainState(dataFile string) *ChainState {
 		accounts:   newShardedAccounts(),
 		nullifiers: make(map[string]string),
 	}
+	cs.nurLesend.Store(annahmeRolleAusUmgebung())
 
 	// Try PostgreSQL first
 	if os.Getenv("RESET_STATE") == "true" && os.Getenv("DATABASE_URL") != "" {
@@ -4877,6 +4883,14 @@ func (cs *ChainState) Transfer(from, to string, amount float64) (float64, float6
 var letzteEigeneUeberweisungNs atomic.Int64
 
 func (cs *ChainState) TransferAtomic(from, to string, amount float64, pendingTxTemplate Transaction) (fromLost, toLost float64, err error) {
+	// Nimmt dieser Knoten ueberhaupt an? Siehe annahme_tor.go: nehmen ZWEI
+	// Knoten dasselbe Konto gleichzeitig an, laufen ihre Kontenstaende
+	// auseinander, sobald es leerlaeuft. Geprueft VOR jeder Zustandsaenderung
+	// und vor dem Zeitstempel unten, damit eine abgelehnte Ueberweisung den
+	// Ruhe-Vergleich des Divergenz-Waechters nicht stoert.
+	if err := cs.pruefeAnnahmeTor(); err != nil {
+		return 0, 0, err
+	}
 	letzteEigeneUeberweisungNs.Store(time.Now().UnixNano())
 	// Time the whole call. Throughput has sat near 1,264/s while the node used
 	// 244% of 600% available CPU with no lock contention, no connection waits
@@ -5483,6 +5497,12 @@ func (cs *ChainState) TransferWithV7Fee(from, to string, amount float64) (float6
 // FromDemurrageLost/ToDemurrageLost from the transfer's result — none of
 // which are known until transferWithV7FeeLocked runs. See TransferAtomic.
 func (cs *ChainState) TransferWithV7FeeAtomic(from, to string, amount float64, pendingTxTemplate Transaction) (netAmount, fromLost, toLost float64, err error) {
+	// Dieselbe Sperre wie in TransferAtomic -- siehe annahme_tor.go. Sie
+	// gehoert in beide Funktionen und nicht an die zwei Aufrufstellen in
+	// evm_rpc.go: so gilt sie auch fuer jeden kuenftigen Aufrufer.
+	if err := cs.pruefeAnnahmeTor(); err != nil {
+		return 0, 0, 0, err
+	}
 	from = strings.ToLower(from)
 	to = strings.ToLower(to)
 	err = cs.runAtomicWithOutbox([]string{from, to, validatorsPoolAddr, lpPoolAddr, ubiPoolAddr, treasuryPoolAddr}, false, func(ctx context.Context) (Transaction, error) {

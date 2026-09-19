@@ -107,9 +107,28 @@ func TestZweiProduzenten_RealDB_VolleKonten(t *testing.T) {
 	zweiProduzentenLauf(t, 500.0)
 }
 
+// TestAnnahmeTor_BeseitigtDieDivergenz_RealDB ist der Nachweis, dass die
+// Sperre aus annahme_tor.go genau das verhindert, was die beiden Laeufe
+// darueber zeigen.
+//
+// DERSELBE Aufbau, DIESELBEN Konten, DIESELBE Last -- nur nimmt Knoten B
+// keine Ueberweisungen mehr an. Und er faellt NICHT durch: er laeuft ohne
+// AEQUITAS_REPRODUZIERE_DIVERGENZ, weil er gruen sein muss.
+//
+// Damit ist die Aussage gemessen und nicht behauptet: nimmt nur ein Knoten
+// an, gibt es nichts zu ueberspringen und nichts, worueber die beiden
+// uneins werden koennten.
+func TestAnnahmeTor_BeseitigtDieDivergenz_RealDB(t *testing.T) {
+	zweiProduzentenLaufMitRolle(t, 0.02, true)
+}
+
 func zweiProduzentenLauf(t *testing.T, startGuthaben float64) {
+	zweiProduzentenLaufMitRolle(t, startGuthaben, false)
+}
+
+func zweiProduzentenLaufMitRolle(t *testing.T, startGuthaben float64, bNurLesend bool) {
 	truncateDistTestTables(t) // auch das Opt-in-Tor
-	if os.Getenv("AEQUITAS_REPRODUZIERE_DIVERGENZ") != "1" {
+	if !bNurLesend && os.Getenv("AEQUITAS_REPRODUZIERE_DIVERGENZ") != "1" {
 		t.Skip("zeigt einen offenen Fehler und faellt deshalb durch -- " +
 			"mit AEQUITAS_REPRODUZIERE_DIVERGENZ=1 anfordern (siehe Dateikopf)")
 	}
@@ -136,6 +155,9 @@ func zweiProduzentenLauf(t *testing.T, startGuthaben float64) {
 	csB := NewChainState("unused-zwei-produzenten-b.json")
 	if !csB.useDB {
 		t.Fatal("Knoten B hat keine Datenbank -- AEQUITAS_DB_B pruefen")
+	}
+	if bNurLesend {
+		csB.SetzeNurLesend(true)
 	}
 
 	seed := func(cs *ChainState) {
@@ -281,7 +303,8 @@ func zweiProduzentenLauf(t *testing.T, startGuthaben float64) {
 			"ohne Rollback und ohne Flush-Fehler, genau wie auf den Boxen. %d uebersprungene Ueberweisungen.",
 			abweichend, konten, summeA, summeB, summeB-summeA, uebersprungen)
 	}
-	t.Logf("%d Konten: beide Knoten stimmen auf das Mikro-AEQ ueberein (Summe %d Mikro)", konten, summeA)
+	t.Logf("%d Konten, B nur_lesend=%v: beide Knoten stimmen auf das Mikro-AEQ ueberein (Summe %d Mikro)",
+		konten, bNurLesend, summeA)
 }
 
 // korbLeeren liest den Ausgangskorb in Blockreihenfolge und raeumt ihn ab --
