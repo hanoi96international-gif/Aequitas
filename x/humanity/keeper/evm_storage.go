@@ -4399,3 +4399,40 @@ func (cs *ChainState) kontowerteFuerSpiegel(addr string) (balance float64, istMe
 	}
 	return effectiveBalance(acc).Float(), acc.IsHuman, acc.LastActivityAt, true
 }
+
+// PendingTxIDsFreigeben nimmt die Einbau-Markierung von genau diesen Zeilen
+// zurueck, damit der naechste Block sie wieder sieht.
+//
+// Fuer den Fall, dass ProduceBlock sie geladen hat -- LoadPendingTxsWithLimit
+// setzt included_at und commitet sofort -- und danach an einem Tor abbricht.
+// Ohne diese Freigabe warten die Ueberweisungen auf den Aufraeumer, also bis
+// zu eine Stunde.
+//
+// Bewusst NUR nach id und nur fuer Zeilen, die noch in keinem Block stehen
+// (included_block_hash IS NULL). Wurde zwischenzeitlich doch ein Block
+// gespeichert, der sie traegt, bleibt sie in Ruhe -- eine freigegebene Zeile
+// wuerde sonst ein zweites Mal eingebaut.
+//
+// Anders als ResetStaleIncludedPendingTxs durchsucht das keine Tabelle,
+// sondern trifft eine bekannte, durch blockTxCap() begrenzte Menge. Genau
+// daran ist der Sweep gescheitert: am 14.09. lief er auf C2 bei 1,12
+// Millionen Resten in sein Zeitlimit.
+func (cs *ChainState) PendingTxIDsFreigeben(ids []int64) {
+	if cs.db == nil || len(ids) == 0 {
+		return
+	}
+	res, err := cs.db.Exec(
+		`UPDATE pending_txs SET included_at = 0
+		 WHERE id = ANY($1) AND included_at > 0 AND included_block_hash IS NULL`,
+		pq.Array(ids),
+	)
+	if err != nil {
+		// Still genug: der Aufraeumer holt sie spaeter, wie bisher. Ein
+		// Produktionsversuch darf an einer Aufraeumarbeit nicht scheitern.
+		fmt.Printf("[TX] Warnung: %d Ausgangskorb-Zeilen nicht sofort freigegeben (der Aufraeumer holt sie): %v\n", len(ids), err)
+		return
+	}
+	if n, _ := res.RowsAffected(); n > 0 {
+		fmt.Printf("[TX] %d Ausgangskorb-Zeilen sofort freigegeben -- die Blockproduktion brach nach dem Laden ab\n", n)
+	}
+}

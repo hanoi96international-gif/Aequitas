@@ -2361,10 +2361,13 @@ func (dag *BlockDAG) ProduceBlock() *Block {
 	// wartet. Der StateRoot dagegen bleibt unter der Sperre, weil er den
 	// Zustand hasht, den ein Replay gerade aendern koennte.
 	//
-	// Schliesst ein Tor unten die Produktion, wird das Geladene verworfen;
-	// die Transaktionen bleiben pending, weil nichts markiert wurde. Das
-	// Warten auf den Lader ist als ERSTES eingetragen, laeuft also als
-	// LETZTES -- nach der Freigabe der Sperren, nicht davor.
+	// KORREKTUR (19.09.2026): hier stand, ein Abbruch unten sei folgenlos,
+	// "weil nichts markiert wurde". Das war falsch --
+	// LoadPendingTxsWithLimit setzt included_at und commitet sofort. Was
+	// wirklich passiert, und wie es aufgeraeumt wird, steht bei
+	// blockGespeichert weiter unten. Das Warten auf den Lader ist als
+	// ERSTES eingetragen, laeuft also als LETZTES -- nach der Freigabe der
+	// Sperren, nicht davor.
 	var dbTxs []Transaction
 	var pendingTxIDs []int64
 	var pendingDur time.Duration
@@ -2395,6 +2398,32 @@ func (dag *BlockDAG) ProduceBlock() *Block {
 	// sie nicht braucht. Der Schnitt liegt so ein paar hundert Millisekunden
 	// frueher; wer danach ankommt, landet im naechsten Block, wie bisher.
 	pendingWG.Wait()
+
+	// DIE GELADENEN ZEILEN SOFORT FREIGEBEN, WENN KEIN BLOCK DARAUS WIRD.
+	//
+	// Der Kommentar oben behauptete, ein Abbruch unten sei folgenlos, "weil
+	// nichts markiert wurde". Das stimmt nicht: LoadPendingTxsWithLimit setzt
+	// included_at und COMMITET, bevor irgendein Tor hier unten laeuft. Bricht
+	// eines ab -- kein Vorrang, Sync noch am Aufholen, Partner zu weit
+	// zurueck, Zustandswurzel nicht bildbar -- bleiben bis zu blockTxCap()
+	// Ueberweisungen markiert liegen, ohne je in einem Block zu stehen.
+	//
+	// Eingesammelt wurden sie bisher erst vom Aufraeumer, also mit einem
+	// Nachlauf von bis zu einer Stunde. Fuer den Menschen, dessen
+	// Ueberweisung darin steckt, heisst das: sie ist angenommen, sie ist
+	// bezahlt, und sie passiert eine Stunde lang nicht.
+	//
+	// Freigegeben wird genau diese Handvoll IDs, nicht per Tabellensuche --
+	// der alte Wholesale-Sweep lief am 14.09. auf C2 bei 1,12 Millionen
+	// Resten in sein Zeitlimit und kam nie durch (siehe
+	// ResetStaleIncludedPendingTxs). Hier sind es hoechstens blockTxCap()
+	// bekannte Schluessel.
+	blockGespeichert := false
+	defer func() {
+		if !blockGespeichert && len(pendingTxIDs) > 0 && dag.state != nil {
+			dag.state.PendingTxIDsFreigeben(pendingTxIDs)
+		}
+	}()
 
 	fertig := produktionMeldetWarten()
 	// Wachhund: dauert das Warten zu lange, schreibt er auf, WER die Sperre
@@ -3094,6 +3123,11 @@ func (dag *BlockDAG) ProduceBlock() *Block {
 		merkeProduktionsAusfall("block_nicht_speicherbar")
 		return nil
 	}
+	// Ab hier gehoeren die Zeilen dem Block: SaveBlockWithPendingTxsAtomic hat
+	// sie in derselben Transaktion geloescht. Die Freigabe oben darf nicht
+	// mehr laufen -- sie wuerde Ueberweisungen freigeben, die gerade in einem
+	// Block gelandet sind, und sie ein zweites Mal in einen naechsten bringen.
+	blockGespeichert = true
 	// Index this block's transactions for wallet lookups, exactly as the replay
 	// path does for peer blocks — a transaction must resolve to its real block
 	// no matter which node produced it or which node the wallet asks. See
@@ -5306,7 +5340,7 @@ func (dag *BlockDAG) AddPeerBlock(block *Block) bool {
 	// already correct on this struct by the time it reaches dag.blocks here.
 	dag.blocks[block.Hash] = block
 	dag.state.merkeTxRoot(block) // tx_root -> hash, siehe tx_batch_nach_hash.go
-	dag.notifyNewBlock(block) // wake /api/events subscribers — see notifyNewBlock's own comment
+	dag.notifyNewBlock(block)    // wake /api/events subscribers — see notifyNewBlock's own comment
 
 	// Remove parents from tips
 	for _, ph := range block.ParentHashes {
