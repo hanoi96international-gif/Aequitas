@@ -1,0 +1,121 @@
+{
+  "_hinweis": "Nur Notizen zum Nachschlagen. Der echte Titel steht in inhalt/00-titelseite.md.",
+  "titel": "Für dich",
+  "untertitel": "Ein kleines Buch über ein großes Leben",
+  "anlass": "Zum 60. Geburtstag",
+  "geburtstag": "2026-09-04 (Freitag)",
+  "sie": {
+    "name": "Marion",
+    "geboren": "1966-09-04 (Sonntag) in Hildesheim",
+    "aufgewachsen": "Hildesheim, Hoher Weg 46",
+    "beruf": "Konditoreifachverkäuferin",
+    "wohnt_heute": "Hildesheim, Moritzberg (seit 2023, zum ersten Mal allein)"
+  },
+  "werdegang_laut_lebenslauf_09_2025": [
+    "12/1984-07/1988  Ausbildung Konditoreifachverkäuferin, Bäckerei und Konditorei Brandt, Hildesheim",
+    "08/1988-06/1991  Konditorfachverkäuferin, Brandt (Verkauf, Dekoration, Süßspeisen)",
+    "06/1991-09/2005  Elternzeit (14 Jahre, 3 Monate)",
+    "09/2005-01/2016  Servicemitarbeiterin, Joey's Pizzaservice (10 Jahre, 4 Monate)",
+    "02/2016-05/2023  Cafeteria-Mitarbeiterin, Helios Klinikum (7 Jahre, 3 Monate)",
+    "06/2023-11/2023  Bäckereifachverkäuferin, Marktcafé Potratz",
+    "12/2023-07/2024  arbeitssuchend",
+    "seit 08/2024     Rehabilitationsphase"
+  ],
+  "selbstbeschreibung_lebenslauf": {
+    "staerken": [
+      "Hilfsbereitschaft",
+      "Freundlichkeit",
+      "Empathie",
+      "Kontaktfreudig"
+    ],
+    "hobbys": [
+      "Sportveranstaltungen",
+      "Gesellschaftsspiele",
+      "Unternehmungen mit Familie und Freunden"
+    ],
+    "geklaert": "Das Marktcafé Potratz sass in einem Edeka. Sie wurde dort nicht gluecklich, jede Schicht war wegen der Knie eine Quaelerei."
+  },
+  "herkunftsfamilie": {
+    "mutter": "Rita (gestorben 22.05.2022)",
+    "vater": "Willi (gestorben 2019)",
+    "hinweis": "Beide Eltern sind gestorben. Alle Kapitel, in denen sie vorkommen, stehen im Praeteritum.",
+    "schwestern": [
+      "Monika, geboren 1961 (die aelteste), verheiratet mit Manuel, Sohn Philipp",
+      "Anette, geboren 1963 (die mittlere), verheiratet mit Wolfgang, Soehne Sascha und Sanja"
+    ],
+    "altersabstaende": "Monika zu Anette 2 Jahre, Anette zu Marion 3 Jahre",
+    "position": "Marion ist die jüngste von drei Schwestern"
+  },
+  "ehemann": {
+    "name": "Giesbert",
+    "geboren": "1964-09-03",
+    "gestorben": "2001-05-10",
+    "hinweis": "Sein Geburtstag war einen Tag vor ihrem. Er starb mit 36, sie war 34."
+  },
+  "hochzeiten_2026": [
+    "07.02.2026  Daniel und Ayu, in Daenemark",
+    "09.05.2026  Christina und David"
+  ],
+  "kinder": [
+    {
+      "name": "Daniel",
+      "geboren": "1991-06-27"
+    },
+    {
+      "name": "Steffanie",
+      "geboren": "1993-11-18"
+    },
+    {
+      "name": "Marcus",
+      "geboren": "1995-02-02"
+    },
+    {
+      "name": "Christina",
+      "geboren": "1996-11-30"
+    },
+    {
+      "name": "Julia",
+      "geboren": "1998-03-07"
+    }
+  ],
+  "heute": {
+    "katzen_frueher": [
+      "Daisy — gestorben 30.11.2008 (Algermissen)",
+      "Donald — geboren 27.06.2001 (Daniels Geburtstag), geholt September 2001 mit 12 Wochen, gestorben 11.07.2021",
+      "Fiby — 01.05.2009 bis 10.08.2023 (14 Jahre)"
+    ],
+    "katzen_heute": [
+      "Findus (seit 06.01.2024)",
+      "Luna (seit 20.10.2024)"
+    ],
+    "sonntags": "Bingo, jede Woche, bisher ohne nennenswerten Gewinn",
+    "fussball": "Hannover 96; war selbst Jugendtrainerin beim VfV Hildesheim",
+    "vereinsname": "seit der Fusion 2003 offiziell VfV Borussia 06 Hildesheim, umgangssprachlich VfV",
+    "enkelkinder": "noch keine; Daniel und Christina verheiratet, Steffanie und Julia in festen Haenden",
+    "fuehrerschein": "Oktober 2009, mit dreiundvierzig — davor achtzehn Jahre zu Fuss und mit dem Bus",
+    "itzum": "Turniersieg 2001; Donald im September 2001 in Moritzberg geholt"
+  },
+  "recherchiert_1966": {
+    "wochentag": "Sonntag",
+    "nummer_eins": "Frank Sinatra — Strangers in the Night (8 Wochen ab 6. August)",
+    "kanzler": "Ludwig Erhard (CDU), Rücktritt am 30.11.1966",
+    "preise": {
+      "benzin_liter": "0,55 DM",
+      "kinokarte": "1,20 DM",
+      "butter_kg": "7,81 DM",
+      "milch_liter": "0,34 DM",
+      "ei": "0,23 DM"
+    },
+    "hildesheim": "unter 100.000 Einwohner; Großstadt erst in den 1970ern nach Eingemeindungen; Marktplatz-Rekonstruktion erst in den 1980ern",
+    "hoher_weg": "am 05.09.1966 offiziell zur Fußgängerzone erklärt — einen Tag nach Marions Geburt"
+  },
+  "adressen": [
+    "bis etwa 1997      Bismarckstrasse",
+    "bis 2000           Stresemannstrasse",
+    "2000 bis 2006      Von-Emmich-Strasse, dann Moltkestrasse",
+    "12/2006 - 2009     Algermissen",
+    "2009 - 2015        Brauhausstrasse",
+    "2015 - 2023        Dingworthstrasse",
+    "seit 2023          Hammersteinstrasse (allein)"
+  ]
+}
