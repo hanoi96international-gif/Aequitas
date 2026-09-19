@@ -107,9 +107,8 @@ func TestAnnahmeGegenNachspielen_EmpfaengerUhr(t *testing.T) {
 	// Tagen laeuft.
 	uhrVorher := t0 - 300*tag
 
-	orig := timeNowFunc
-	t.Cleanup(func() { timeNowFunc = orig })
-	timeNowFunc = func() time.Time { return time.Unix(t0, 0) }
+	orig := setzeZeitQuelleFuerTest(func() time.Time { return time.Unix(t0, 0) })
+	t.Cleanup(func() { setzeZeitQuelleFuerTest(orig) })
 
 	// ---- Knoten A: ANNAHME ----
 	csA := newTestState()
@@ -160,9 +159,8 @@ func TestAnnahmeGegenNachspielen_UhrWirdZuGeld(t *testing.T) {
 	const tag = int64(24 * 60 * 60)
 	const t0 = int64(1_700_000_000)
 
-	orig := timeNowFunc
-	t.Cleanup(func() { timeNowFunc = orig })
-	timeNowFunc = func() time.Time { return time.Unix(t0, 0) }
+	orig := setzeZeitQuelleFuerTest(func() time.Time { return time.Unix(t0, 0) })
+	t.Cleanup(func() { setzeZeitQuelleFuerTest(orig) })
 
 	// Zwei Konten mit identischem Guthaben, aber den zwei Uhren, die die
 	// beiden Wege oben hinterlassen: die eine lief schon 300 Tage weiter, die
@@ -171,7 +169,7 @@ func TestAnnahmeGegenNachspielen_UhrWirdZuGeld(t *testing.T) {
 	uhrSetzen(cs, "0xacct-alt", 1500, t0-300*tag) // Uhr nicht zurueckgesetzt (Annahme, langsamer Pfad)
 	uhrSetzen(cs, "0xacct-neu", 1500, t0)         // Uhr zurueckgesetzt (Buendler / paralleles Nachspielen)
 
-	timeNowFunc = func() time.Time { return time.Unix(t0+100*tag, 0) }
+	setzeZeitQuelleFuerTest(func() time.Time { return time.Unix(t0+100*tag, 0) })
 	altAcc, _ := cs.accounts.Get("0xacct-alt")
 	neuAcc, _ := cs.accounts.Get("0xacct-neu")
 	alt := effectiveBalance(altAcc)
@@ -199,9 +197,8 @@ func TestNachspielen_SeriellUndParallelGleicheEmpfaengerUhr(t *testing.T) {
 	const t0 = int64(1_700_000_000)
 	const sender, empf = "0xacct-sender", "0xacct-empfaenger"
 
-	orig := timeNowFunc
-	t.Cleanup(func() { timeNowFunc = orig })
-	timeNowFunc = func() time.Time { return time.Unix(t0, 0) }
+	orig := setzeZeitQuelleFuerTest(func() time.Time { return time.Unix(t0, 0) })
+	t.Cleanup(func() { setzeZeitQuelleFuerTest(orig) })
 
 	uhrVorher := t0 - 300*tag
 	bauen := func() *ChainState {

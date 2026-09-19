@@ -783,25 +783,47 @@ func (cs *ChainState) doSyncBalanceRLockedCtx(ctx context.Context, contractAddr 
 		// writing a wrong zero, and leaves the previous value standing. The
 		// address is marked dirty again the next time it is touched, which is
 		// exactly when it becomes warm.
-		acc, ok := cs.accounts.Get(addr)
+		// UNTER DER SHARD-SPERRE LESEN, nicht durch den blossen Zeiger.
+		//
+		// FIX (Audit 19.09.2026, von -race gefunden): hier stand
+		// cs.accounts.Get(addr) -- das nimmt die Shard-Sperre, gibt sie sofort
+		// wieder her und liefert einen ZEIGER. Die vier Feldlesungen darunter
+		// liefen also ohne jede Sperre, und cs.mu.RLock() schuetzt sie nicht:
+		// die Ueberweisungs-Schnellpfade (transferConcurrent,
+		// processTransferBatchConcurrent, transferConcurrentWAL) laufen
+		// EBENFALLS unter RLock und veroeffentlichen ihr Ergebnis mit
+		// *fromAcc = fromScratch, abgesichert allein durch die Shard-Sperre.
+		// Zwei RLock-Halter schliessen sich nicht aus. Ein Leser konnte damit
+		// ein halb geschriebenes AccountState sehen -- neuer Kontostand,
+		// alte Aktivitaetszeit oder umgekehrt.
+		//
+		// transferConcurrent schreibt sich diese Regel selbst an die Wand
+		// ("Every field read now happens exclusively after LockAddrs, via
+		// GetLocked") -- dieser Spiegel war die Stelle, die sie nicht befolgte.
+		//
+		// Gesperrt wird je Adresse einzeln und nur fuer das Abschreiben der
+		// vier Werte. Das haelt keine Sperre ueber den Datenbankumlauf unten
+		// und kann mit niemandem in eine Verklemmung geraten, weil nie mehr
+		// als eine Shard-Sperre gleichzeitig gehalten wird.
+		balMikro, istMensch, aktivSeit, ok := cs.kontowerteFuerSpiegel(addr)
 		if !ok {
 			continue
 		}
 		// P1-4: use effectiveBalance (demurrage-adjusted) so the EVM slot
 		// matches the user's real spendable amount, not the stored pre-decay value.
-		balBig := aeqToWei(effectiveBalance(acc).Float())
+		balBig := aeqToWei(balMikro)
 		addrBytes := common.HexToAddress(addr).Bytes()
 		// slot 4: balanceOf
 		writes = append(writes, slotValue{mappingSlot(addrBytes, 4).Hex(), common.BigToHash(balBig).Hex()})
 		// slot 6: isHuman
 		isHumanVal := common.HexToHash("0x00")
-		if acc.IsHuman {
+		if istMensch {
 			isHumanVal = common.HexToHash("0x01")
 		}
 		writes = append(writes, slotValue{mappingSlot(addrBytes, 6).Hex(), isHumanVal.Hex()})
 		// slots 10 + 11: lastActivity / lastDemurrage
-		if acc.LastActivityAt > 0 {
-			ts := common.BigToHash(big.NewInt(acc.LastActivityAt)).Hex()
+		if aktivSeit > 0 {
+			ts := common.BigToHash(big.NewInt(aktivSeit)).Hex()
 			writes = append(writes, slotValue{mappingSlot(addrBytes, 10).Hex(), ts})
 			writes = append(writes, slotValue{mappingSlot(addrBytes, 11).Hex(), ts})
 		}
@@ -4358,4 +4380,22 @@ func (cs *ChainState) LoadBlocksByHashesFromDB(hashes []string) ([]*Block, error
 		blocks = append(blocks, &b)
 	}
 	return blocks, nil
+}
+
+// kontowerteFuerSpiegel schreibt die vier Werte ab, die der EVM-Spiegel
+// braucht -- unter der Shard-Sperre der Adresse, damit kein halb
+// veroeffentlichtes AccountState gelesen wird. Siehe die Fundstelle in
+// doSyncBalanceRLockedCtx.
+//
+// Gibt den demurrage-bereinigten Kontostand zurueck (effectiveBalance), damit
+// der Spiegel zeigt, was wirklich ausgebbar ist -- die Berechnung liest
+// LastActivityAt und gehoert deshalb mit unter die Sperre.
+func (cs *ChainState) kontowerteFuerSpiegel(addr string) (balance float64, istMensch bool, aktivSeit int64, ok bool) {
+	unlock := cs.accounts.LockAddrs(addr)
+	defer unlock()
+	acc, da := cs.accounts.GetLocked(addr)
+	if !da {
+		return 0, false, 0, false
+	}
+	return effectiveBalance(acc).Float(), acc.IsHuman, acc.LastActivityAt, true
 }

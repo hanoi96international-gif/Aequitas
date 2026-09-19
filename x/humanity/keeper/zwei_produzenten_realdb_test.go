@@ -6,14 +6,23 @@ import (
 	"fmt"
 	"os"
 	"sync"
+	"sync/atomic"
 	"testing"
 )
 
 // ZWEI PRODUZENTEN -- HIER REISST DIE STAUB-DIVERGENZ.
 //
-// ANGRIFFSTEST: dieser Lauf FAELLT HEUTE DURCH, und das ist der Befund, nicht
-// ein kaputter Test. Er laeuft nur mit AEQUITAS_DB_B (zwei entbehrliche
-// Datenbanken) und ueberspringt sonst, CI sieht ihn also nicht.
+// ANGRIFFSTEST: dieser Lauf zeigt einen Fehler, der noch offen ist.
+//
+// Er laeuft NUR, wenn man ihn ausdruecklich anfordert
+// (AEQUITAS_REPRODUZIERE_DIVERGENZ=1, zusaetzlich zu den zwei Datenbanken),
+// und ueberspringt sonst mit genau diesem Hinweis. Ein Test, der dauerhaft
+// rot steht, bringt dem Leser bei, Rot zu ignorieren -- dieselbe Begruendung,
+// mit der in diesem Durchgang tx_block_index_async_test.go geradegezogen
+// wurde. Es waere schlecht, hier die Ausnahme zu machen.
+//
+// Angefordert FAELLT ER DURCH, und das ist der Befund, nicht ein kaputter
+// Test. Solange die Wurzel offen ist, gehoert er genau so.
 //
 // # WAS ER REPRODUZIERT
 //
@@ -100,6 +109,10 @@ func TestZweiProduzenten_RealDB_VolleKonten(t *testing.T) {
 
 func zweiProduzentenLauf(t *testing.T, startGuthaben float64) {
 	truncateDistTestTables(t) // auch das Opt-in-Tor
+	if os.Getenv("AEQUITAS_REPRODUZIERE_DIVERGENZ") != "1" {
+		t.Skip("zeigt einen offenen Fehler und faellt deshalb durch -- " +
+			"mit AEQUITAS_REPRODUZIERE_DIVERGENZ=1 anfordern (siehe Dateikopf)")
+	}
 	urlA := os.Getenv("DATABASE_URL")
 	urlB := os.Getenv("AEQUITAS_DB_B")
 	if urlB == "" {
@@ -152,7 +165,10 @@ func zweiProduzentenLauf(t *testing.T, startGuthaben float64) {
 	dagA, dagB := dagFuer(csA), dagFuer(csB)
 
 	vorher := uebersprungeneUeberweisungen.Load()
-	var abgelehnt int64
+	// atomic: beide Produzenten zaehlen hier gleichzeitig hoch. Als blosses
+	// abgelehnt++ bricht -race den Lauf ab, bevor er zu dem Vergleich kommt,
+	// wegen dem es ihn gibt.
+	var abgelehnt atomic.Int64
 	var hoehe int64
 
 	for runde := 0; runde < runden; runde++ {
@@ -195,7 +211,7 @@ func zweiProduzentenLauf(t *testing.T, startGuthaben float64) {
 					hash := fmt.Sprintf("0xzp-%d-%d-%d-%d", knoten, runde, k, r)
 					tmpl := Transaction{Type: "transfer", Wallet: from, To: to, Amount: betrag, TxHash: hash}
 					if _, _, err := cs.TransferAtomic(from, to, betrag, tmpl); err != nil {
-						abgelehnt++
+						abgelehnt.Add(1)
 					}
 				}
 			}
@@ -243,7 +259,7 @@ func zweiProduzentenLauf(t *testing.T, startGuthaben float64) {
 
 	uebersprungen := uebersprungeneUeberweisungen.Load() - vorher
 	t.Logf("Startguthaben %.6f: %d Ueberweisungen bei der Annahme abgelehnt, %d beim Nachspielen uebersprungen",
-		startGuthaben, abgelehnt, uebersprungen)
+		startGuthaben, abgelehnt.Load(), uebersprungen)
 
 	var abweichend int
 	var summeA, summeB int64

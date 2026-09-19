@@ -59,29 +59,30 @@ func TestAsyncIndexIgnoresEmptyWork(t *testing.T) {
 // entry costs one wallet lookup its fallback path.
 func TestFullQueueDropsInsteadOfBlocking(t *testing.T) {
 	prevStarted := txIndexStarted.Load()
-	prevCh := txIndexCh
+	prevCh := txIndexKanal()
 	prevDropped := txIndexDropped.Load()
 	t.Cleanup(func() {
 		txIndexStarted.Store(prevStarted)
-		txIndexCh = prevCh
+		setzeTxIndexKanal(prevCh)
 		txIndexDropped.Store(prevDropped)
 	})
 
 	// A queue with no worker draining it, already full.
 	txIndexStarted.Store(true)
-	txIndexCh = make(chan txIndexJob, 1)
-	txIndexCh <- txIndexJob{height: 1, blockHash: "0xfull", txs: []Transaction{{TxHash: "0xaa"}}}
+	testCh := make(chan txIndexJob, 1)
+	setzeTxIndexKanal(testCh)
+	testCh <- txIndexJob{height: 1, blockHash: "0xfull", txs: []Transaction{{TxHash: "0xaa"}}}
 
 	cs := &ChainState{db: nil}
 	// db is nil, so go through the queue path directly rather than the guard.
 	select {
-	case txIndexCh <- txIndexJob{height: 2, blockHash: "0xb", txs: []Transaction{{TxHash: "0xbb"}}}:
+	case testCh <- txIndexJob{height: 2, blockHash: "0xb", txs: []Transaction{{TxHash: "0xbb"}}}:
 		t.Fatal("the queue accepted a second job; this test needs it full to be meaningful")
 	default:
 	}
 	_ = cs
 
-	if got := len(txIndexCh); got != 1 {
+	if got := len(testCh); got != 1 {
 		t.Fatalf("queue holds %d, want 1 — the drop path is only exercised when it is full", got)
 	}
 }

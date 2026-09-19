@@ -142,11 +142,33 @@ func (cs *ChainState) uebersprungeneLaden() {
 
 // uebersprungeneSichern schreibt den Stand in den laufenden dbTx des Blocks.
 // imBlock ist die Zahl der in DIESEM Block uebersprungenen Ueberweisungen.
+//
+// LESEN-ADDIEREN-SCHREIBEN, nicht den Zaehler aus dem Speicher abschreiben.
+// Der Unterschied ist nicht kosmetisch: uebersprungeneUeberweisungen wird
+// beim Ueberspringen erhoeht, also BEVOR feststeht, ob der Block ueberhaupt
+// commitet. Rollt er zurueck, bleibt die Erhoehung im Speicher stehen -- und
+// haette der naechste Block, der irgendetwas ueberspringt, sie mitgeschrieben.
+// Dann staende in der Datenbank eine Zahl, die Ueberspringen mitzaehlt, das
+// nie stattgefunden hat.
+//
+// Gelesen wird durch denselben ctx, also innerhalb des Block-dbTx: der Wert
+// ist der zuletzt commitete, und das Zurueckschreiben faellt mit dem Block,
+// wenn der faellt. Damit zaehlt die dauerhafte Summe genau das, was auch
+// angewandt wurde.
+//
+// Der Aufrufer haelt cs.mu (Nachspielen tut das durchgehend) -- die
+// Vorbedingung von getConfigValueCtx.
 func (cs *ChainState) uebersprungeneSichern(ctx context.Context, imBlock int) {
 	if imBlock <= 0 {
 		return
 	}
-	stand := uebersprungeneUeberweisungen.Load()
+	var bisher int64
+	if v := strings.TrimSpace(cs.getConfigValueCtx(ctx, uebersprungenConfigKey)); v != "" {
+		if n, err := strconv.ParseInt(v, 10, 64); err == nil && n >= 0 {
+			bisher = n
+		}
+	}
+	stand := bisher + int64(imBlock)
 	if err := cs.setConfigValueCtx(ctx, uebersprungenConfigKey, strconv.FormatInt(stand, 10)); err != nil {
 		// Still: der Block ist gueltig, und ihn an einer Diagnosezahl
 		// scheitern zu lassen waere die falsche Richtung. Der Zaehler im
@@ -158,9 +180,15 @@ func (cs *ChainState) uebersprungeneSichern(ctx context.Context, imBlock int) {
 // UebersprungeneZuruecksetzen raeumt den dauerhaften Stand ab. Gehoert
 // ausschliesslich an das Ende eines Resyncs -- das ist der Vorgang, der die
 // Divergenz behebt, die der Zaehler meldet.
+//
+// setConfigValueDB, nicht setConfigValue: beide Aufrufstellen im Resync
+// (snapshot.go) halten cs.mu NICHT, und setConfigValue liest cs.activeTx --
+// ein Feld, das allein von cs.mu synchronisiert wird. Ohne die Sperre koennte
+// dieser Schreibvorgang in der laufenden Transaktion eines fremden Vorgangs
+// landen. Genau davor warnt getConfigValue in seiner eigenen Vorbedingung.
 func (cs *ChainState) UebersprungeneZuruecksetzen() {
 	uebersprungeneUeberweisungen.Store(0)
-	if err := cs.setConfigValue(uebersprungenConfigKey, "0"); err != nil {
+	if err := cs.setConfigValueDB(uebersprungenConfigKey, "0"); err != nil {
 		fmt.Printf("[ZUSTAND] Warnung: uebersprungene Ueberweisungen nicht zurueckgesetzt: %v\n", err)
 	}
 }

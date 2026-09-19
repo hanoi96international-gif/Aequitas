@@ -74,8 +74,8 @@ func TestTransferConcurrentWAL_CrashRecovery_ActivityClockUsesRestartTimeNotOrig
 	tTransfer := realNow - 1000
 	tRecovery := tTransfer + transferToRecoveryGapSeconds
 
-	origTimeNowFunc := timeNowFunc
-	t.Cleanup(func() { timeNowFunc = origTimeNowFunc })
+	var origTimeNowFunc func() time.Time
+	t.Cleanup(func() { setzeZeitQuelleFuerTest(origTimeNowFunc) })
 
 	csA := newWALTestState(t, walPath)
 	from := distTestAddr(890)
@@ -86,11 +86,11 @@ func TestTransferConcurrentWAL_CrashRecovery_ActivityClockUsesRestartTimeNotOrig
 	seedConcurrentTestAccount(t, csA, from, 1000, tTransfer-100)
 	seedConcurrentTestAccount(t, csA, to, 0, tTransfer-100)
 
-	timeNowFunc = func() time.Time { return time.Unix(tTransfer, 0) }
+	origTimeNowFunc = setzeZeitQuelleFuerTest(func() time.Time { return time.Unix(tTransfer, 0) })
 	_, _, applied, err := csA.transferConcurrentWAL(from, to, 100, Transaction{
 		Type: "transfer", Wallet: from, To: to, Amount: 100, TxHash: "0xactivityclock1",
 	})
-	timeNowFunc = origTimeNowFunc
+	setzeZeitQuelleFuerTest(origTimeNowFunc)
 	if !applied || err != nil {
 		t.Fatalf("transfer: applied=%v err=%v", applied, err)
 	}
@@ -132,9 +132,9 @@ func TestTransferConcurrentWAL_CrashRecovery_ActivityClockUsesRestartTimeNotOrig
 	// returns, before any other test code (including t.Cleanup handlers for
 	// OTHER tests, since this package's tests do not run in parallel) sees
 	// the mocked value.
-	timeNowFunc = func() time.Time { return time.Unix(tRecovery, 0) }
+	setzeZeitQuelleFuerTest(func() time.Time { return time.Unix(tRecovery, 0) })
 	csB := newWALTestState(t, walPath)
-	timeNowFunc = origTimeNowFunc
+	setzeZeitQuelleFuerTest(origTimeNowFunc)
 
 	csB.mu.RLock()
 	fromAccB, _ := csB.accounts.Get(from)

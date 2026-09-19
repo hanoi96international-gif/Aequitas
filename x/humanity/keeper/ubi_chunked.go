@@ -356,7 +356,20 @@ func (cs *ChainState) distributeUBIChunkLocked(ctx context.Context) (shares []Di
 			return nil, false, fmt.Errorf("could not settle demurrage for %s: %w", addr, dErr)
 		}
 		acc.Balance = acc.Balance.Add(NewDecimal(epoch.share))
-		touchActivity(acc)
+		// Kein touchActivity: das Protokoll hat ihnen gutgeschrieben, sie
+		// haben nicht gehandelt -- dieselbe Regel wie im einmaligen
+		// UBI-Pfad (state.go), im LP-Pfad und im Validatoren-Pfad, die alle
+		// drei genau diesen Kommentar tragen.
+		//
+		// Hier stand touchActivity, und diese Zeile war die neunte
+		// empfangende Stelle mit der abweichenden Regel -- gefunden beim
+		// Durchgang zum Empfaengeruhr-Fix vom 18.09.2026, der die anderen
+		// acht gleichzog. Heute unerreichbar (UBIChunkingActive gibt immer
+		// false zurueck), und genau deshalb gehoert sie jetzt korrigiert:
+		// wer das Stueckeln spaeter einschaltet, soll keine Tretmine
+		// erwischen, die eine Ausschuettung zur Uhr-Zuruecksetzung macht --
+		// und damit jedes Vermoegen nach jeder Ausschuettung wieder
+		// verfallsfrei.
 		if wErr := cs.enforceWealthCapLockedCtx(ctx, acc); wErr != nil {
 			return nil, false, fmt.Errorf("could not enforce wealth cap for %s: %w", addr, wErr)
 		}

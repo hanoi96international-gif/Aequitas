@@ -26,7 +26,47 @@ import (
 
 // timeNowFunc is a seam for time.Now(), letting demurrage timing be
 // mocked in tests without needing to thread a clock through every call.
-var timeNowFunc = time.Now
+//
+// ATOMAR seit dem Audit vom 19.09.2026, und der Grund ist -race. Produktion
+// schreibt hier nie, aber Tests tun es, und ein Knoten, den ein Test gebaut
+// hat, laesst seine Hintergrundarbeiter (EVM-Spiegel, WAL-Flush,
+// Index-Nachtraeger) weiterlaufen, wenn der Test vorbei ist. Deren nowUnix()
+// lief damit gegen eine einfache Variablenzuweisung aus dem Cleanup des
+// naechsten Tests -- ein Datenrennen, das -race meldete und das nichts mit
+// dem gemeldeten Test zu tun hatte.
+//
+// Das ist kein Produktionsfehler, aber es macht -race unbrauchbar, und -race
+// ist in diesem Durchgang das Werkzeug gewesen, das ein ECHTES Rennen auf dem
+// Geldpfad gefunden hat (evm_storage.go, kontowerteFuerSpiegel). Ein Werkzeug,
+// das staendig falsches Rot zeigt, benutzt niemand mehr.
+//
+// Gesetzt wird nur ueber setzeZeitQuelleFuerTest, gelesen nur ueber jetzt().
+var zeitQuelle atomic.Pointer[func() time.Time]
+
+// jetzt liefert die aktuelle Zeit -- aus der Testquelle, wenn eine gesetzt
+// ist, sonst aus der Uhr.
+func jetzt() time.Time {
+	if f := zeitQuelle.Load(); f != nil {
+		return (*f)()
+	}
+	return time.Now()
+}
+
+// setzeZeitQuelleFuerTest setzt die Zeitquelle und gibt die vorherige zurueck,
+// damit der Aufrufer sie in einem t.Cleanup wiederherstellen kann. nil setzt
+// auf die echte Uhr zurueck.
+func setzeZeitQuelleFuerTest(f func() time.Time) (vorher func() time.Time) {
+	var alt func() time.Time
+	if p := zeitQuelle.Load(); p != nil {
+		alt = *p
+	}
+	if f == nil {
+		zeitQuelle.Store(nil)
+	} else {
+		zeitQuelle.Store(&f)
+	}
+	return alt
+}
 
 // processStartTime records when this process started. Used by
 // resetDBStateForBootstrap to refuse RESET_DB_STATE=true on accidental
@@ -72,7 +112,7 @@ type AccountState struct {
 	// FaucetClaimed is set permanently to true once an account has claimed the
 	// tUSD test faucet. Unlike the old TUsdBalance>0 check, this flag is never
 	// reset by spending tUSD, so a wallet cannot re-claim by draining its balance.
-	FaucetClaimed bool  `json:"faucet_claimed"`
+	FaucetClaimed bool `json:"faucet_claimed"`
 	// Gestaffelter Zuschuss (grant_staffel.go). Alle drei Felder sind
 	// Konsenszustand: im accountLeaf (nur wenn ungleich null, damit bestehende
 	// Konten ihren Blattwert behalten), in chain_accounts, im Snapshot
@@ -81,7 +121,7 @@ type AccountState struct {
 	GrantStagedRest   Decimal `json:"grant_staged_rest,omitempty"`   // noch nicht freigegebener Teil des Zuschusses
 	GrantStagedUntil  int64   `json:"grant_staged_until,omitempty"`  // Ende des Staffelfensters (informativ)
 	LivenessRenewedAt int64   `json:"liveness_renewed_at,omitempty"` // Blockzeit der zweiten Lebendigkeitspruefung
-	Version       int64 `json:"-"` // optimistic lock version, not serialized
+	Version           int64   `json:"-"`                             // optimistic lock version, not serialized
 	// WALSeq is the highest WAL sequence number (see transfer_wal.go /
 	// SCALING_ARCHITECTURE.md Phase 7) whose effect this account's Balance
 	// currently reflects. Zero for every account unless AEQUITAS_WAL_ENABLED
@@ -2945,7 +2985,7 @@ func touchActivityAt(acc *AccountState, at int64) {
 // nowUnix exists as a single seam so demurrage timing could be mocked in
 // tests later; right now it's just time.Now().Unix().
 func nowUnix() int64 {
-	return timeNowFunc().Unix()
+	return jetzt().Unix()
 }
 
 // effectiveBalance computes what address's AEQ balance is RIGHT NOW,
