@@ -4,6 +4,27 @@
 
 > **Dein Klick (jetzt, Kette ist ruhig):** `resync-contabo2-only.yml` → `confirm=true`. Danach beide `/api/wache` 200. Der Sicherheits-Klassifikator lässt Claude diesen Workflow nicht starten; dauerhaft erlauben: Bash-Regel für `gh workflow run resync-*` in den Claude-Einstellungen.
 >
+> ## 20.09.: Die „Wurzel" hätte es nicht behoben — gemessen
+>
+> Wir haben beide monatelang dasselbe angenommen: sauber wäre, wenn sich der Zustand *ausschließlich* beim Anwenden eines Blocks ändert und die Annahme nur einreiht. Dann sähen alle Knoten dieselben Blöcke und kämen auf dasselbe Ergebnis.
+>
+> **Der zweite Teil ist falsch, und das ist jetzt belegt** (`geschwister_reihenfolge_test.go`). Das Experiment baut die Welt *nach* dem Umbau nach: beide Knoten nehmen **gar nichts** an, sie wenden nur Blöcke an — dieselben zwei, bloß in anderer Reihenfolge, weil jeder seinen eigenen zuerst hat. Sender hat 10, Block X will 8, Block Y will 6:
+>
+> | | Sender | Empfänger X | Empfänger Y |
+> |---|---|---|---|
+> | Knoten A (X zuerst) | 2 | **8** | 0 |
+> | Knoten B (Y zuerst) | 4 | 0 | **6** |
+>
+> Uneins über **jedes** Konto. Ohne eine einzige Annahme.
+>
+> **Warum.** Ausgeführt wird in **Ankunftsreihenfolge**, nicht in kanonischer DAG-Reihenfolge. Bei zwei Produzenten entstehen Geschwisterblöcke — keiner ist Vorfahr des anderen — und die kommen bei den zwei Boxen verschieden an. Läuft ein Konto leer, entscheidet genau das, welche Überweisung noch bezahlbar ist; die andere wird übersprungen, auf jeder Box eine andere.
+>
+> **Was das für die Entscheidung heißt.** Der Umbau des heißen Pfades (WAL-Schnellpfad, Bündler, Shard-Sperren) wäre teuer gewesen und hätte *diese* Divergenz nicht beseitigt. Die bindende Bedingung ist nicht, **wo** mutiert wird, sondern **wer gleichzeitig annehmen darf** — oder dass in kanonischer Reihenfolge ausgeführt wird statt in Ankunftsreihenfolge, und das ist ein weit tieferer Umbau als der, den wir „die Wurzel" genannt haben.
+>
+> **Damit ist `ANNAHME_ROLLE=nur_lesend` kein Notnagel, sondern die Antwort auf die tatsächliche Bedingung.** Der Test steht grün und hält die Eigenschaft fest; wird die Ausführung eines Tages auf kanonische Reihenfolge umgestellt, geht er rot — und das ist dann die richtige Nachricht.
+>
+> **Punkt 11 ist im Code fertig.** Die zweite Hälfte („Client überspringt bekannte Hashes") existierte bereits (`schonBekannt` → kein Rumpf geholt); es fehlte nur `tx_root`, und das ist seit gestern da. Offen ist allein das Nachmessen — und das braucht einen Deploy.
+>
 > ## Blocker 1 hat jetzt einen Fix — dein Schalter
 >
 > **Setz auf der Box, auf die die App NICHT zeigt: `ANNAHME_ROLLE=nur_lesend`.** Danach nimmt nur noch eine Box Überweisungen an, und die Staub-Divergenz kann nicht mehr entstehen.
