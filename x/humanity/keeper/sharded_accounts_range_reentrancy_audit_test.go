@@ -63,12 +63,29 @@ func TestApplyUBIDelta_NoDBMode_DoesNotDeadlockOnReentrantRange(t *testing.T) {
 		done <- cs.ApplyUBIDelta(50, time.Now().Unix())
 	}()
 
+	// DIE FRIST MUSS GROSSZUEGIG SEIN, nicht knapp.
+	//
+	// Dieser Test fragt "kehrt es je zurueck", nicht "kehrt es schnell
+	// zurueck". Eine echte Verklemmung kehrt NIE zurueck -- ob die Frist fuenf
+	// Sekunden betraegt oder eine Minute, aendert daran nichts. Zu knapp
+	// gewaehlt meldet sie dagegen eine Verklemmung, wo nur die Maschine
+	// langsam war.
+	//
+	// Genau das passierte in CI: unter -race braucht der Lauf allein schon
+	// 3,5 s, und in der vollen Suite -- mit den Hintergrundarbeitern anderer
+	// Tests auf denselben Kernen -- riss er die fuenf. Gemeldet wurde eine
+	// Verklemmung, die es nicht gab, und der -race-Lauf blieb rot.
+	frist := 5 * time.Second
+	if unterRace {
+		frist = 60 * time.Second // siehe race_erkennung.go
+	}
+
 	select {
 	case err := <-done:
 		if err != nil {
 			t.Fatalf("ApplyUBIDelta returned an error: %v", err)
 		}
-	case <-time.After(5 * time.Second):
+	case <-time.After(frist):
 		t.Fatal("ApplyUBIDelta deadlocked — humanCountLocked's cs.accounts.Range call (reached via enforceWealthCapLockedCtx -> getAverageBalanceLocked/bootstrapMultiplierLocked) re-entered a shard mutex already held by an outer cs.accounts.Range. This is the exact bug fixed in applyUBIDeltaLocked (state.go, 'FIX (audit 2026-08-16)') — if this test hangs, that fix has been undone or a similar reentrant call was added elsewhere in the function.")
 	}
 
