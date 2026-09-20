@@ -4,6 +4,14 @@
 
 > **Dein Klick (jetzt, Kette ist ruhig):** `resync-contabo2-only.yml` → `confirm=true`. Danach beide `/api/wache` 200. Der Sicherheits-Klassifikator lässt Claude diesen Workflow nicht starten; dauerhaft erlauben: Bash-Regel für `gh workflow run resync-*` in den Claude-Einstellungen.
 >
+> ## 20.09.: Die App ließ sich überhaupt nicht mehr bauen
+>
+> Beim Anstoßen des Builds für 1.7.3 stellte sich heraus: der APK-Build scheitert seit Kurzem nach fünf Sekunden, **unabhängig von allem in diesem Zweig**. `android-actions/setup-android` installiert per Voreinstellung das längst zurückgezogene SDK-Paket `tools`; seit das Runner-Image auf `cmdline-tools 16.0` steht, bricht `sdkmanager` daran ab. Die Workflow-Datei war dabei Byte für Byte dieselbe, mit der 1.7.2 am 14.09. noch durchlief — geändert hat sich nur die Außenwelt, weil `@v3` ein wandernder Tag auf einem wandernden Image ist.
+>
+> Zweimal gelaufen, zweimal identisch gescheitert, also kein Zufall. Behoben mit `packages: ''` — damit überspringt die Action den `sdkmanager`-Aufruf ganz und tut genau das, was der Kommentar darüber ohnehin von ihr wollte. Der Build läuft seither durch das Setup hindurch.
+>
+> Das ist unabhängig vom Rest wichtig: **ohne diesen Fix hättest du auch keine Notfall-APK bauen können.**
+>
 > ## 20.09.: Die „Wurzel" hätte es nicht behoben — gemessen
 >
 > Wir haben beide monatelang dasselbe angenommen: sauber wäre, wenn sich der Zustand *ausschließlich* beim Anwenden eines Blocks ändert und die Annahme nur einreiht. Dann sähen alle Knoten dieselben Blöcke und kämen auf dasselbe Ergebnis.
