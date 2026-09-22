@@ -1101,6 +1101,26 @@ func (s *EVMRPCServer) sendRawTransaction(params []json.RawMessage, pre *precomp
 	if reason := admissionRefusalReason(); reason != "" {
 		return nil, &RPCError{Code: -32005, Message: reason}
 	}
+	// NIMMT DIESER KNOTEN UEBERHAUPT AN? Siehe annahme_tor.go.
+	//
+	// HIER und nicht erst in TransferAtomic. Dazwischen liegt ReserveNonce,
+	// und das schreibt die naechste Nonce DAUERHAFT in die evm_nonces dieses
+	// Knotens. Eine Wallet, die an den nur lesenden Knoten geraet, haette
+	// dort also eine Nonce verbrannt -- und weil derselbe Knoten weiter
+	// eth_getTransactionCount beantwortet, bekaeme sie fortan eine Nonce
+	// zurueck, die der annehmende Knoten als "nonce too high" abweist.
+	// Dauerhaft, denn ein ReleaseNonce gibt es nicht.
+	//
+	// Eine Sperre, die den Menschen schlechter stellt als gar keine Sperre,
+	// waere die schlechteste Art von Fix.
+	//
+	// -32005 wie oben: derselbe wiederholbare Code, auf den bestehende
+	// Klienten ohnehin zurueckfallen.
+	if s.state != nil {
+		if err := s.state.pruefeAnnahmeTor(); err != nil {
+			return nil, &RPCError{Code: -32005, Message: err.Error()}
+		}
+	}
 	if len(params) == 0 {
 		return nil, &RPCError{Code: -32602, Message: "Missing params"}
 	}
@@ -2081,7 +2101,6 @@ func rpcBatchParallel() int {
 	}
 	return 32
 }
-
 
 // quittungAusBlock: Absender und Empfaenger einer verblockten Ueberweisung
 // aus Index (chain_tx_block_index) und Block -- der Weg fuer jede Quittung,

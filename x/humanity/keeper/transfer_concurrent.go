@@ -208,7 +208,13 @@ func (cs *ChainState) transferConcurrent(from, to string, amount float64, pendin
 	fromSaved = true
 
 	toScratch.Balance = toScratch.Balance.Add(NewDecimal(amount))
-	touchActivity(&toScratch)
+	// Empfangen startet die Uhr, es setzt sie nie zurueck -- dieselbe Regel,
+	// die transferMutateLocked (der Pfad, auf den dieser hier zurueckfaellt)
+	// mit startClockIfUnset befolgt. Hier stand touchActivity: welcher
+	// Schnellpfad zustaendig war, entschied ueber die Demurrage-Uhr des
+	// Empfaengers, und der nachspielende Knoten kam auf eine andere.
+	// Siehe annahme_gegen_nachspielen_test.go.
+	startClockIfUnset(&toScratch)
 	if err := cs.saveAccountToDBCtx(ctx, &toScratch); err != nil {
 		abortWithRollback()
 		return 0, 0, true, fmt.Errorf("could not save recipient account: %w", err)

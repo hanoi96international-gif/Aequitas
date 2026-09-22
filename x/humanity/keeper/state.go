@@ -26,7 +26,47 @@ import (
 
 // timeNowFunc is a seam for time.Now(), letting demurrage timing be
 // mocked in tests without needing to thread a clock through every call.
-var timeNowFunc = time.Now
+//
+// ATOMAR seit dem Audit vom 19.09.2026, und der Grund ist -race. Produktion
+// schreibt hier nie, aber Tests tun es, und ein Knoten, den ein Test gebaut
+// hat, laesst seine Hintergrundarbeiter (EVM-Spiegel, WAL-Flush,
+// Index-Nachtraeger) weiterlaufen, wenn der Test vorbei ist. Deren nowUnix()
+// lief damit gegen eine einfache Variablenzuweisung aus dem Cleanup des
+// naechsten Tests -- ein Datenrennen, das -race meldete und das nichts mit
+// dem gemeldeten Test zu tun hatte.
+//
+// Das ist kein Produktionsfehler, aber es macht -race unbrauchbar, und -race
+// ist in diesem Durchgang das Werkzeug gewesen, das ein ECHTES Rennen auf dem
+// Geldpfad gefunden hat (evm_storage.go, kontowerteFuerSpiegel). Ein Werkzeug,
+// das staendig falsches Rot zeigt, benutzt niemand mehr.
+//
+// Gesetzt wird nur ueber setzeZeitQuelleFuerTest, gelesen nur ueber jetzt().
+var zeitQuelle atomic.Pointer[func() time.Time]
+
+// jetzt liefert die aktuelle Zeit -- aus der Testquelle, wenn eine gesetzt
+// ist, sonst aus der Uhr.
+func jetzt() time.Time {
+	if f := zeitQuelle.Load(); f != nil {
+		return (*f)()
+	}
+	return time.Now()
+}
+
+// setzeZeitQuelleFuerTest setzt die Zeitquelle und gibt die vorherige zurueck,
+// damit der Aufrufer sie in einem t.Cleanup wiederherstellen kann. nil setzt
+// auf die echte Uhr zurueck.
+func setzeZeitQuelleFuerTest(f func() time.Time) (vorher func() time.Time) {
+	var alt func() time.Time
+	if p := zeitQuelle.Load(); p != nil {
+		alt = *p
+	}
+	if f == nil {
+		zeitQuelle.Store(nil)
+	} else {
+		zeitQuelle.Store(&f)
+	}
+	return alt
+}
 
 // processStartTime records when this process started. Used by
 // resetDBStateForBootstrap to refuse RESET_DB_STATE=true on accidental
@@ -72,7 +112,7 @@ type AccountState struct {
 	// FaucetClaimed is set permanently to true once an account has claimed the
 	// tUSD test faucet. Unlike the old TUsdBalance>0 check, this flag is never
 	// reset by spending tUSD, so a wallet cannot re-claim by draining its balance.
-	FaucetClaimed bool  `json:"faucet_claimed"`
+	FaucetClaimed bool `json:"faucet_claimed"`
 	// Gestaffelter Zuschuss (grant_staffel.go). Alle drei Felder sind
 	// Konsenszustand: im accountLeaf (nur wenn ungleich null, damit bestehende
 	// Konten ihren Blattwert behalten), in chain_accounts, im Snapshot
@@ -81,7 +121,7 @@ type AccountState struct {
 	GrantStagedRest   Decimal `json:"grant_staged_rest,omitempty"`   // noch nicht freigegebener Teil des Zuschusses
 	GrantStagedUntil  int64   `json:"grant_staged_until,omitempty"`  // Ende des Staffelfensters (informativ)
 	LivenessRenewedAt int64   `json:"liveness_renewed_at,omitempty"` // Blockzeit der zweiten Lebendigkeitspruefung
-	Version       int64 `json:"-"` // optimistic lock version, not serialized
+	Version           int64   `json:"-"`                             // optimistic lock version, not serialized
 	// WALSeq is the highest WAL sequence number (see transfer_wal.go /
 	// SCALING_ARCHITECTURE.md Phase 7) whose effect this account's Balance
 	// currently reflects. Zero for every account unless AEQUITAS_WAL_ENABLED
@@ -127,6 +167,11 @@ type PoolState struct {
 }
 
 type ChainState struct {
+	// Rolle dieses Knotens bei der Annahme von Ueberweisungen -- siehe
+	// annahme_tor.go. Gesetzt beim Bau aus ANNAHME_ROLLE, umstellbar ueber
+	// SetzeNurLesend.
+	nurLesend atomic.Bool
+
 	mu sync.RWMutex
 	// accounts is a *shardedAccounts (see sharded_accounts.go /
 	// SCALING_ARCHITECTURE.md Phase 2) rather than a plain map. Every
@@ -154,6 +199,7 @@ type ChainState struct {
 	// block save). See ensureReplayedColumn's own comment for what this
 	// column is for.
 	replayedColumnOnce sync.Once
+	txRootSpalteDa     atomic.Bool // chain_blocks.tx_root angelegt -- siehe ensureTxRootColumn
 	// txBatchTableOnce/txBatches back the body store that lets a block travel
 	// without its transactions (roadmap step 4 — see tx_batch.go).
 	txBatchTableOnce sync.Once
@@ -673,6 +719,7 @@ func NewChainState(dataFile string) *ChainState {
 		accounts:   newShardedAccounts(),
 		nullifiers: make(map[string]string),
 	}
+	cs.nurLesend.Store(annahmeRolleAusUmgebung())
 
 	// Try PostgreSQL first
 	if os.Getenv("RESET_STATE") == "true" && os.Getenv("DATABASE_URL") != "" {
@@ -851,6 +898,10 @@ func NewChainState(dataFile string) *ChainState {
 					cs.clearRegistrationsFromDB()
 				}
 				cs.loadFromDB()
+				// Der Uebersprungen-Zaehler muss den Neustart ueberleben --
+				// siehe zustand_ablehnung.go: ein Neustart nach rotem Alarm
+				// loeschte bisher den Alarm, nicht die Divergenz.
+				cs.uebersprungeneLaden()
 				fmt.Println("✓ ChainState using PostgreSQL")
 				cs.initWALIfEnabled()
 				// chain_tx_batches has no DELETE anywhere and grows with every
@@ -2941,7 +2992,7 @@ func touchActivityAt(acc *AccountState, at int64) {
 // nowUnix exists as a single seam so demurrage timing could be mocked in
 // tests later; right now it's just time.Now().Unix().
 func nowUnix() int64 {
-	return timeNowFunc().Unix()
+	return jetzt().Unix()
 }
 
 // effectiveBalance computes what address's AEQ balance is RIGHT NOW,
@@ -4833,6 +4884,14 @@ func (cs *ChainState) Transfer(from, to string, amount float64) (float64, float6
 var letzteEigeneUeberweisungNs atomic.Int64
 
 func (cs *ChainState) TransferAtomic(from, to string, amount float64, pendingTxTemplate Transaction) (fromLost, toLost float64, err error) {
+	// Nimmt dieser Knoten ueberhaupt an? Siehe annahme_tor.go: nehmen ZWEI
+	// Knoten dasselbe Konto gleichzeitig an, laufen ihre Kontenstaende
+	// auseinander, sobald es leerlaeuft. Geprueft VOR jeder Zustandsaenderung
+	// und vor dem Zeitstempel unten, damit eine abgelehnte Ueberweisung den
+	// Ruhe-Vergleich des Divergenz-Waechters nicht stoert.
+	if err := cs.pruefeAnnahmeTor(); err != nil {
+		return 0, 0, err
+	}
 	letzteEigeneUeberweisungNs.Store(time.Now().UnixNano())
 	// Time the whole call. Throughput has sat near 1,264/s while the node used
 	// 244% of 600% available CPU with no lock contention, no connection waits
@@ -5439,6 +5498,12 @@ func (cs *ChainState) TransferWithV7Fee(from, to string, amount float64) (float6
 // FromDemurrageLost/ToDemurrageLost from the transfer's result — none of
 // which are known until transferWithV7FeeLocked runs. See TransferAtomic.
 func (cs *ChainState) TransferWithV7FeeAtomic(from, to string, amount float64, pendingTxTemplate Transaction) (netAmount, fromLost, toLost float64, err error) {
+	// Dieselbe Sperre wie in TransferAtomic -- siehe annahme_tor.go. Sie
+	// gehoert in beide Funktionen und nicht an die zwei Aufrufstellen in
+	// evm_rpc.go: so gilt sie auch fuer jeden kuenftigen Aufrufer.
+	if err := cs.pruefeAnnahmeTor(); err != nil {
+		return 0, 0, 0, err
+	}
 	from = strings.ToLower(from)
 	to = strings.ToLower(to)
 	err = cs.runAtomicWithOutbox([]string{from, to, validatorsPoolAddr, lpPoolAddr, ubiPoolAddr, treasuryPoolAddr}, false, func(ctx context.Context) (Transaction, error) {
@@ -5634,6 +5699,10 @@ func (cs *ChainState) SwapTUSDForAEQ(address string, amountIn, minAmountOut floa
 // should have Type/Wallet/Amount set; AmountOut and FromDemurrageLost are
 // filled in here from the swap's actual result.
 func (cs *ChainState) SwapAtomic(address string, amountIn float64, aeqToTusd bool, minAmountOut float64, pendingTxTemplate Transaction) (amountOut, demurrageLost float64, err error) {
+	// Auch das ist eine Belastung bei der Annahme -- siehe annahme_tor.go.
+	if err := cs.pruefeAnnahmeTor(); err != nil {
+		return 0, 0, err
+	}
 	address = strings.ToLower(address)
 	err = cs.runAtomicWithOutbox([]string{address, validatorsPoolAddr, lpPoolAddr, ubiPoolAddr, treasuryPoolAddr}, false, func(ctx context.Context) (Transaction, error) {
 		amountOut, demurrageLost, err = cs.swapLocked(ctx, address, amountIn, aeqToTusd, minAmountOut)
@@ -6236,6 +6305,9 @@ func (cs *ChainState) AddLiquidity(address string, amountAEQ, amountTUSD float64
 // have Type/Wallet/Amount(AEQ)/AmountOut(tUSD) set; LPShares and
 // FromDemurrageLost are filled in here from the operation's actual result.
 func (cs *ChainState) AddLiquidityAtomic(address string, amountAEQ, amountTUSD float64, pendingTxTemplate Transaction) (demurrageLost float64, err error) {
+	if err := cs.pruefeAnnahmeTor(); err != nil {
+		return 0, err
+	}
 	address = strings.ToLower(address)
 	err = cs.runAtomicWithOutbox([]string{address, validatorsPoolAddr, lpPoolAddr, ubiPoolAddr, treasuryPoolAddr}, false, func(ctx context.Context) (Transaction, error) {
 		sharesBefore := 0.0
@@ -6370,6 +6442,9 @@ func (cs *ChainState) RemoveLiquidity(address string, sharesToBurn float64) (flo
 // secondary's own current pool state rather than replaying exact amounts,
 // so those aren't part of the queued Transaction either today).
 func (cs *ChainState) RemoveLiquidityAtomic(address string, sharesToBurn float64, pendingTxTemplate Transaction) (outAEQ, outTUSD, demurrageLost float64, err error) {
+	if err := cs.pruefeAnnahmeTor(); err != nil {
+		return 0, 0, 0, err
+	}
 	address = strings.ToLower(address)
 	err = cs.runAtomicWithOutbox([]string{address, validatorsPoolAddr, lpPoolAddr, ubiPoolAddr, treasuryPoolAddr}, false, func(ctx context.Context) (Transaction, error) {
 		outAEQ, outTUSD, demurrageLost, err = cs.removeLiquidityLocked(ctx, address, sharesToBurn)
@@ -6831,6 +6906,9 @@ func (cs *ChainState) ClaimTUsdFaucet(address string) error {
 // mutation and the resulting outbox insert commit or roll back together as
 // one DB transaction — see TransferAtomic's comment.
 func (cs *ChainState) ClaimTUsdFaucetAtomic(address string, pendingTx Transaction) error {
+	if err := cs.pruefeAnnahmeTor(); err != nil {
+		return err
+	}
 	address = strings.ToLower(address)
 	return cs.runAtomicWithOutbox([]string{address}, false, func(ctx context.Context) (Transaction, error) {
 		if err := cs.claimTUsdFaucetLocked(ctx, address); err != nil {

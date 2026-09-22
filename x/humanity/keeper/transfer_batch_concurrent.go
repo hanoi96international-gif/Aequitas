@@ -227,7 +227,11 @@ func (cs *ChainState) processTransferBatchConcurrent(batch []*transferBatchReque
 		fromAcc.Balance = fromAcc.Balance.Sub(NewDecimal(req.amount))
 		touchActivity(fromAcc)
 		toAcc.Balance = toAcc.Balance.Add(NewDecimal(req.amount))
-		touchActivity(toAcc)
+		// Empfangen startet die Uhr, es setzt sie nie zurueck -- wie im
+		// langsamen Pfad (transferMutateLocked, startClockIfUnset), den
+		// dieser Buendler nur schneller machen soll. Siehe
+		// annahme_gegen_nachspielen_test.go.
+		startClockIfUnset(toAcc)
 		results[i] = transferBatchResult{}
 	}
 

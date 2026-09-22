@@ -332,7 +332,20 @@ func (cs *ChainState) applyTransferBatchParallel(ctx context.Context, batch []Tr
 				it.from.Balance = it.from.Balance.Sub(amt)
 				touchActivityAt(it.from, activityAt)
 				it.to.Balance = it.to.Balance.Add(amt)
-				touchActivityAt(it.to, activityAt)
+				// EMPFANGEN STARTET DIE UHR, ES SETZT SIE NIE ZURUECK.
+				//
+				// Hier stand touchActivityAt, also ein Zuruecksetzen -- und
+				// der serielle Pfad, den dieser hier nur beschleunigen soll,
+				// ruft an derselben Stelle startClockIfUnsetAt
+				// (applyTransferDeltaLockedSammelnd, state.go). Damit hing
+				// die Demurrage-Uhr jedes Empfaengers davon ab, ob seine
+				// Ueberweisung zufaellig in einem buendelbaren Lauf lag.
+				// Belegt von TestNachspielen_SeriellUndParallelGleicheEmpfaengerUhr
+				// (300 Tage Unterschied) -- siehe
+				// annahme_gegen_nachspielen_test.go fuer das Experiment und
+				// dafuer, warum kein Waechter das melden konnte
+				// (LastActivityAt steht nicht im accountLeaf).
+				startClockIfUnsetAt(it.to, activityAt)
 				// The one piece of genuinely shared state; guarded by
 				// accountSetXORMu inside, which exists for precisely this.
 				cs.updateAccountLeafLocked(it.from)

@@ -55,8 +55,38 @@ type txIndexJob struct {
 // while consuming memory holding transaction slices.
 const txIndexQueueDepth = 32
 
+// ATOMAR seit dem Audit vom 19.09.2026. Produktion schreibt diesen Kanal
+// genau EINMAL, in ensureTxIndexWorker hinter einem Swap -- ein einfaches
+// Feld haette dafuer gereicht. Tests tauschen ihn aber aus, um den
+// Ueberlaufpfad zu pruefen, und der Nachtraeger eines Knotens aus einem
+// FRUEHEREN Test liest ihn zur selben Zeit weiter. -race meldete das als
+// Rennen an einer Stelle, die damit nichts zu tun hatte.
+//
+// Kein Produktionsfehler, aber es macht -race unbrauchbar -- und -race hat in
+// diesem Durchgang ein echtes Rennen auf dem Geldpfad gefunden
+// (evm_storage.go, kontowerteFuerSpiegel). Ein Werkzeug, das staendig
+// falsches Rot zeigt, benutzt niemand mehr.
+var txIndexChPtr atomic.Pointer[chan txIndexJob]
+
+// txIndexKanal liefert den Kanal oder nil. Ein nil-Kanal in einem select mit
+// default waehlt den default -- also genau das Fallenlassen, das der volle
+// Kanal ohnehin ausloest.
+func txIndexKanal() chan txIndexJob {
+	if p := txIndexChPtr.Load(); p != nil {
+		return *p
+	}
+	return nil
+}
+
+func setzeTxIndexKanal(ch chan txIndexJob) {
+	if ch == nil {
+		txIndexChPtr.Store(nil)
+		return
+	}
+	txIndexChPtr.Store(&ch)
+}
+
 var (
-	txIndexCh      chan txIndexJob
 	txIndexStarted atomic.Bool
 	txIndexDropped atomic.Int64
 	txIndexQueued  atomic.Int64
@@ -106,7 +136,7 @@ func (cs *ChainState) IndexBlockTransactionsAsync(height int64, blockHash string
 	}
 	cs.ensureTxIndexWorker()
 	select {
-	case txIndexCh <- txIndexJob{height: height, blockHash: blockHash, txs: txs}:
+	case txIndexKanal() <- txIndexJob{height: height, blockHash: blockHash, txs: txs}:
 		txIndexQueued.Add(1)
 	default:
 		// Full: the writer is behind. Drop for now, and say so once per block
@@ -128,7 +158,7 @@ func (cs *ChainState) txIndexNachtraeger() {
 	defer t.Stop()
 	for range t.C {
 		for i := 0; i < 8; i++ { // hoechstens acht je Takt -- der Schreiber soll nicht wieder ueberlaufen
-			if len(txIndexCh) > 0 {
+			if len(txIndexKanal()) > 0 {
 				break
 			}
 			txIndexNachtragMu.Lock()
@@ -154,7 +184,7 @@ func (cs *ChainState) txIndexNachtraeger() {
 				continue
 			}
 			select {
-			case txIndexCh <- txIndexJob{height: b.Height, blockHash: b.Hash, txs: b.Transactions}:
+			case txIndexKanal() <- txIndexJob{height: b.Height, blockHash: b.Hash, txs: b.Transactions}:
 				txIndexNachgetragen.Add(1)
 			default:
 				// Inzwischen wieder voll: zurueck auf die Liste, naechster Takt.
@@ -171,9 +201,10 @@ func (cs *ChainState) ensureTxIndexWorker() {
 	if txIndexStarted.Swap(true) {
 		return
 	}
-	txIndexCh = make(chan txIndexJob, txIndexQueueDepth)
+	ch := make(chan txIndexJob, txIndexQueueDepth)
+	setzeTxIndexKanal(ch)
 	SafeGoroutine("txBlockIndexWriter", func() {
-		for job := range txIndexCh {
+		for job := range ch {
 			if err := cs.IndexBlockTransactions(job.height, job.blockHash, job.txs); err != nil {
 				// Auch ein gescheiterter Schreibversuch (Zeitlimit unter Last)
 				// wird nachgetragen, nicht vergessen.
@@ -201,7 +232,7 @@ func TxIndexStats() map[string]interface{} {
 		"nachgetragen":        txIndexNachgetragen.Load(),
 		"nachtrag_offen":      offen,
 		"nachtrag_aufgegeben": txIndexNachtragFehler.Load(),
-		"depth":               len(txIndexCh),
+		"depth":               len(txIndexKanal()),
 		"cap":                 txIndexQueueDepth,
 	}
 }

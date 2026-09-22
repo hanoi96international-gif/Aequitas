@@ -783,25 +783,47 @@ func (cs *ChainState) doSyncBalanceRLockedCtx(ctx context.Context, contractAddr 
 		// writing a wrong zero, and leaves the previous value standing. The
 		// address is marked dirty again the next time it is touched, which is
 		// exactly when it becomes warm.
-		acc, ok := cs.accounts.Get(addr)
+		// UNTER DER SHARD-SPERRE LESEN, nicht durch den blossen Zeiger.
+		//
+		// FIX (Audit 19.09.2026, von -race gefunden): hier stand
+		// cs.accounts.Get(addr) -- das nimmt die Shard-Sperre, gibt sie sofort
+		// wieder her und liefert einen ZEIGER. Die vier Feldlesungen darunter
+		// liefen also ohne jede Sperre, und cs.mu.RLock() schuetzt sie nicht:
+		// die Ueberweisungs-Schnellpfade (transferConcurrent,
+		// processTransferBatchConcurrent, transferConcurrentWAL) laufen
+		// EBENFALLS unter RLock und veroeffentlichen ihr Ergebnis mit
+		// *fromAcc = fromScratch, abgesichert allein durch die Shard-Sperre.
+		// Zwei RLock-Halter schliessen sich nicht aus. Ein Leser konnte damit
+		// ein halb geschriebenes AccountState sehen -- neuer Kontostand,
+		// alte Aktivitaetszeit oder umgekehrt.
+		//
+		// transferConcurrent schreibt sich diese Regel selbst an die Wand
+		// ("Every field read now happens exclusively after LockAddrs, via
+		// GetLocked") -- dieser Spiegel war die Stelle, die sie nicht befolgte.
+		//
+		// Gesperrt wird je Adresse einzeln und nur fuer das Abschreiben der
+		// vier Werte. Das haelt keine Sperre ueber den Datenbankumlauf unten
+		// und kann mit niemandem in eine Verklemmung geraten, weil nie mehr
+		// als eine Shard-Sperre gleichzeitig gehalten wird.
+		balMikro, istMensch, aktivSeit, ok := cs.kontowerteFuerSpiegel(addr)
 		if !ok {
 			continue
 		}
 		// P1-4: use effectiveBalance (demurrage-adjusted) so the EVM slot
 		// matches the user's real spendable amount, not the stored pre-decay value.
-		balBig := aeqToWei(effectiveBalance(acc).Float())
+		balBig := aeqToWei(balMikro)
 		addrBytes := common.HexToAddress(addr).Bytes()
 		// slot 4: balanceOf
 		writes = append(writes, slotValue{mappingSlot(addrBytes, 4).Hex(), common.BigToHash(balBig).Hex()})
 		// slot 6: isHuman
 		isHumanVal := common.HexToHash("0x00")
-		if acc.IsHuman {
+		if istMensch {
 			isHumanVal = common.HexToHash("0x01")
 		}
 		writes = append(writes, slotValue{mappingSlot(addrBytes, 6).Hex(), isHumanVal.Hex()})
 		// slots 10 + 11: lastActivity / lastDemurrage
-		if acc.LastActivityAt > 0 {
-			ts := common.BigToHash(big.NewInt(acc.LastActivityAt)).Hex()
+		if aktivSeit > 0 {
+			ts := common.BigToHash(big.NewInt(aktivSeit)).Hex()
 			writes = append(writes, slotValue{mappingSlot(addrBytes, 10).Hex(), ts})
 			writes = append(writes, slotValue{mappingSlot(addrBytes, 11).Hex(), ts})
 		}
@@ -3437,6 +3459,52 @@ func (cs *ChainState) ensureReplayedColumn() {
 	})
 }
 
+// ensureTxRootColumn legt chain_blocks.tx_root an.
+//
+// # WARUM DAS UEBER DEN SYNC ENTSCHEIDET
+//
+// Ein Block, der aus der Datenbank kommt, hatte bisher TxRoot == "" --
+// die Spalte gab es nicht. stripBlocksForPeer bricht bei genau dieser
+// Bedingung als Erstes ab und liefert den Block MIT Rumpf aus. Damit griff
+// der Kopf-Modus (?stripped=1) fuer alles, was nicht zufaellig noch im
+// Speicher-DAG lag, nie -- und beide Boxen luden alle zwei Sekunden die
+// letzten zwanzig Hoehen komplett mit Ruempfen voneinander nach.
+//
+// Gemessen am 15.09.2026, Lauf 7: 1,92 GB ueber /api/blocks in neun
+// Minuten. Im CPU-Profil im Leerlauf standen handleBlocks mit 36 % und
+// doSyncOnce mit 28 % -- fuer Ruempfe, die die Gegenseite laengst hat.
+//
+// Der Rumpf selbst muss dafuer nirgends zusaetzlich gespeichert werden:
+// txRootIndex haelt tx_root -> Blockhash fuer die letzten 8.192 Bloecke, und
+// LoadTxBatch liest den Rumpf bei Bedarf aus chain_blocks
+// (tx_batch_nach_hash.go). Es fehlte allein die Spalte, damit ein Kopf aus
+// der Datenbank seinen tx_root ueberhaupt mitbringt.
+//
+// KEIN NACHTRAG FUER ALTE ZEILEN. Bestehende Bloecke bleiben auf NULL und
+// werden weiter ganz ausgeliefert. Sie nachzutragen hiesse, fuer Millionen
+// Zeilen den Rumpf zu lesen und zu hashen -- auf genau der Platte, die der
+// Engpass ist. Der Gewinn faellt ohnehin dort an, wo er gebraucht wird: bei
+// den letzten Hoehen, die der Sync staendig wiederholt.
+// EIN FEHLSCHLAG DARF NICHT DAUERHAFT SEIN. Die aelteren Spaltenwaechter
+// hier nehmen ein sync.Once und verwerfen den Fehler -- fuer Spalten, die
+// beim Start einmal angelegt werden, traegt das. Diese hier wird von fuenf
+// Lesepfaden gebraucht, darunter der Seitenabfrage des Syncs: ginge das
+// ALTER einmal voruebergehend daneben (Sperre auf der Tabelle, Verbindung
+// weg), waere die Spalte fuer den Rest der Prozesslaufzeit nicht da, JEDE
+// dieser Abfragen wuerde am fehlenden Feld scheitern, und /api/blocks
+// antwortete nicht mehr. Deshalb ein Riegel, der nur bei ERFOLG faellt, und
+// ein naechster Versuch beim naechsten Aufruf.
+func (cs *ChainState) ensureTxRootColumn() {
+	if cs.db == nil || cs.txRootSpalteDa.Load() {
+		return
+	}
+	if _, err := cs.db.Exec(`ALTER TABLE chain_blocks ADD COLUMN IF NOT EXISTS tx_root TEXT`); err != nil {
+		fmt.Printf("[BLOCK] chain_blocks.tx_root konnte nicht angelegt werden (naechster Versuch beim naechsten Aufruf): %v\n", err)
+		return
+	}
+	cs.txRootSpalteDa.Store(true)
+}
+
 // MarkBlockReplayed flips chain_blocks.replayed to true for hash. Called via
 // cs.dbExecCtx(ctx) so it joins the SAME dbTx as the account mutations replay
 // just made (replayTransactions calls this right before
@@ -3452,6 +3520,7 @@ func (cs *ChainState) MarkBlockReplayed(ctx context.Context, hash string) error 
 		return nil
 	}
 	cs.ensureReplayedColumn()
+	cs.ensureTxRootColumn()
 	_, err := cs.dbExecCtx(ctx).Exec(`UPDATE chain_blocks SET replayed = true WHERE hash = $1`, hash)
 	return err
 }
@@ -3506,6 +3575,7 @@ func (cs *ChainState) SaveBlockToDB(block *Block, replayed bool) error {
 	}
 	cs.ensureGHOSTDAGColumns()
 	cs.ensureReplayedColumn()
+	cs.ensureTxRootColumn()
 	parentHashesJSON, err := json.Marshal(block.ParentHashes)
 	if err != nil {
 		return fmt.Errorf("marshal parent_hashes: %w", err)
@@ -3559,12 +3629,12 @@ func (cs *ChainState) SaveBlockToDB(block *Block, replayed bool) error {
 	_, err = cs.db.Exec(
 		`INSERT INTO chain_blocks
 		   (hash, height, parent_hashes, proposer, timestamp, humans, state_root,
-		    signature, transactions, selected_parent, blue_score, blues, replayed, transactions_z)
-		 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
+		    signature, transactions, selected_parent, blue_score, blues, replayed, transactions_z, tx_root)
+		 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
 		 ON CONFLICT (hash) DO NOTHING`,
 		block.Hash, block.Height, string(parentHashesJSON), block.Proposer, block.Timestamp,
 		block.Humans, block.StateRoot, block.Signature, string(txsJSON),
-		block.SelectedParent, block.BlueScore, string(bluesJSON), replayed, txsZ,
+		block.SelectedParent, block.BlueScore, string(bluesJSON), replayed, txsZ, block.TxRoot,
 	)
 	return err
 }
@@ -3604,6 +3674,7 @@ func (cs *ChainState) SaveGHOSTDAGStateCtx(ctx context.Context, block *Block) er
 		return nil
 	}
 	cs.ensureGHOSTDAGColumns()
+	cs.ensureTxRootColumn()
 	bluesJSON, err := json.Marshal(block.Blues)
 	if err != nil {
 		bluesJSON = []byte("[]")
@@ -3623,6 +3694,7 @@ func (cs *ChainState) SaveGHOSTDAGStateBatch(blocks []*Block) error {
 		return nil
 	}
 	cs.ensureGHOSTDAGColumns()
+	cs.ensureTxRootColumn()
 	tx, err := cs.db.Begin()
 	if err != nil {
 		return err
@@ -3716,16 +3788,17 @@ func (cs *ChainState) SaveBlockWithPendingTxsAtomic(block *Block, ids []int64) e
 	// from every self-produced block silently joining the boot-repair backlog
 	// (the exact backlog class that kept Primary unreachable for ~35 minutes).
 	cs.ensureReplayedColumn()
+	cs.ensureTxRootColumn()
 	if len(ids) == 0 {
 		if _, err := cs.db.Exec(
 			`INSERT INTO chain_blocks
 			   (hash, height, parent_hashes, proposer, timestamp, humans, state_root,
-			    signature, transactions, selected_parent, blue_score, blues, replayed, transactions_z)
-			 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,true,$13)
+			    signature, transactions, selected_parent, blue_score, blues, replayed, transactions_z, tx_root)
+			 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,true,$13,$14)
 			 ON CONFLICT (hash) DO NOTHING`,
 			block.Hash, block.Height, string(parentHashesJSON), block.Proposer, block.Timestamp,
 			block.Humans, block.StateRoot, block.Signature, string(txsJSON),
-			block.SelectedParent, block.BlueScore, string(bluesJSONFast), txsZ,
+			block.SelectedParent, block.BlueScore, string(bluesJSONFast), txsZ, block.TxRoot,
 		); err != nil {
 			return fmt.Errorf("save block (fast path): %w", err)
 		}
@@ -3783,12 +3856,12 @@ func (cs *ChainState) SaveBlockWithPendingTxsAtomic(block *Block, ids []int64) e
 	if _, err := tx.Exec(
 		`INSERT INTO chain_blocks
 		   (hash, height, parent_hashes, proposer, timestamp, humans, state_root,
-		    signature, transactions, selected_parent, blue_score, blues, replayed, transactions_z)
-		 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,true,$13)
+		    signature, transactions, selected_parent, blue_score, blues, replayed, transactions_z, tx_root)
+		 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,true,$13,$14)
 		 ON CONFLICT (hash) DO NOTHING`,
 		block.Hash, block.Height, string(parentHashesJSON), block.Proposer, block.Timestamp,
 		block.Humans, block.StateRoot, block.Signature, string(txsJSON),
-		block.SelectedParent, block.BlueScore, string(bluesJSON), txsZ,
+		block.SelectedParent, block.BlueScore, string(bluesJSON), txsZ, block.TxRoot,
 	); err != nil {
 		rollback()
 		return fmt.Errorf("save block: %w", err)
@@ -3852,10 +3925,11 @@ func (cs *ChainState) LoadBlocksFromDB(minHeight int64) (map[string]*Block, erro
 	// Ensure GHOSTDAG/replayed columns exist before reading them (idempotent migration).
 	cs.ensureGHOSTDAGColumns()
 	cs.ensureReplayedColumn()
+	cs.ensureTxRootColumn()
 	baseQuery := `SELECT hash, height, parent_hashes, proposer, timestamp, humans, state_root,
 	                 signature, transactions, COALESCE(transactions_z, ''::bytea),
 	                 COALESCE(selected_parent,''), COALESCE(blue_score,0), COALESCE(blues,'[]'),
-	                 COALESCE(replayed,true)
+	                 COALESCE(replayed,true), COALESCE(tx_root,'')
 	          FROM chain_blocks`
 	var rows *sql.Rows
 	var err error
@@ -3885,7 +3959,7 @@ func (cs *ChainState) LoadBlocksFromDB(minHeight int64) (map[string]*Block, erro
 		if err := rows.Scan(
 			&b.Hash, &b.Height, &parentHashesRaw, &b.Proposer, &b.Timestamp,
 			&b.Humans, &b.StateRoot, &b.Signature, &txsRaw, &txsZ,
-			&b.SelectedParent, &b.BlueScore, &bluesRaw, &b.Replayed,
+			&b.SelectedParent, &b.BlueScore, &bluesRaw, &b.Replayed, &b.TxRoot,
 		); err != nil {
 			fmt.Printf("[BLOCK] LoadBlocksFromDB scan error: %v\n", err)
 			continue
@@ -3919,6 +3993,12 @@ func (cs *ChainState) LoadBlocksFromDB(minHeight int64) (map[string]*Block, erro
 				b.Blues = nil // will be recomputed in migration pass
 			}
 		}
+		// tx_root -> Hash auch fuer Bloecke aus der Datenbank merken. Ohne
+		// das ist der Ring nach einem Neustart leer, HasTxBatch sagt nein,
+		// und der Kopf-Modus greift erst wieder, wenn genug neue Bloecke
+		// durchgelaufen sind -- also genau in dem Fenster, in dem ein
+		// frisch gestarteter Knoten am meisten nachlaedt.
+		cs.merkeTxRoot(&b)
 		blocks[b.Hash] = &b
 	}
 	return blocks, nil
@@ -3941,9 +4021,11 @@ func (cs *ChainState) LoadUnreplayedBlocksFromDB() ([]*Block, error) {
 	}
 	cs.ensureGHOSTDAGColumns()
 	cs.ensureReplayedColumn()
+	cs.ensureTxRootColumn()
 	rows, err := cs.db.Query(`SELECT hash, height, parent_hashes, proposer, timestamp, humans, state_root,
 	                 signature, transactions, COALESCE(transactions_z, ''::bytea),
-	                 COALESCE(selected_parent,''), COALESCE(blue_score,0), COALESCE(blues,'[]')
+	                 COALESCE(selected_parent,''), COALESCE(blue_score,0), COALESCE(blues,'[]'),
+	                 COALESCE(tx_root,'')
 	          FROM chain_blocks WHERE replayed = false`)
 	if err != nil {
 		return nil, fmt.Errorf("LoadUnreplayedBlocksFromDB query failed: %w", err)
@@ -3957,7 +4039,7 @@ func (cs *ChainState) LoadUnreplayedBlocksFromDB() ([]*Block, error) {
 		if err := rows.Scan(
 			&b.Hash, &b.Height, &parentHashesRaw, &b.Proposer, &b.Timestamp,
 			&b.Humans, &b.StateRoot, &b.Signature, &txsRaw, &txsZ,
-			&b.SelectedParent, &b.BlueScore, &bluesRaw,
+			&b.SelectedParent, &b.BlueScore, &bluesRaw, &b.TxRoot,
 		); err != nil {
 			fmt.Printf("[BLOCK] LoadUnreplayedBlocksFromDB scan error: %v\n", err)
 			continue
@@ -4006,9 +4088,11 @@ func (cs *ChainState) LoadBlockFromDBByHeight(height int64) *Block {
 		return nil
 	}
 	cs.ensureGHOSTDAGColumns()
+	cs.ensureTxRootColumn()
 	rows, err := cs.db.Query(`SELECT hash, height, parent_hashes, proposer, timestamp, humans, state_root,
 	                 signature, transactions, COALESCE(transactions_z, ''::bytea),
-	                 COALESCE(selected_parent,''), COALESCE(blue_score,0), COALESCE(blues,'[]')
+	                 COALESCE(selected_parent,''), COALESCE(blue_score,0), COALESCE(blues,'[]'),
+	                 COALESCE(tx_root,'')
 	          FROM chain_blocks WHERE height = $1`, height)
 	if err != nil {
 		return nil
@@ -4022,7 +4106,7 @@ func (cs *ChainState) LoadBlockFromDBByHeight(height int64) *Block {
 		if err := rows.Scan(
 			&b.Hash, &b.Height, &parentHashesRaw, &b.Proposer, &b.Timestamp,
 			&b.Humans, &b.StateRoot, &b.Signature, &txsRaw, &txsZ,
-			&b.SelectedParent, &b.BlueScore, &bluesRaw,
+			&b.SelectedParent, &b.BlueScore, &bluesRaw, &b.TxRoot,
 		); err != nil {
 			continue
 		}
@@ -4110,9 +4194,11 @@ func (cs *ChainState) LoadBlockFromDBByHash(hash string) *Block {
 		return nil
 	}
 	cs.ensureGHOSTDAGColumns()
+	cs.ensureTxRootColumn()
 	row := cs.db.QueryRow(`SELECT hash, height, parent_hashes, proposer, timestamp, humans, state_root,
 	                 signature, transactions, COALESCE(transactions_z, ''::bytea),
-	                 COALESCE(selected_parent,''), COALESCE(blue_score,0), COALESCE(blues,'[]')
+	                 COALESCE(selected_parent,''), COALESCE(blue_score,0), COALESCE(blues,'[]'),
+	                 COALESCE(tx_root,'')
 	          FROM chain_blocks WHERE hash = $1`, hash)
 	var b Block
 	var parentHashesRaw, txsRaw, bluesRaw string
@@ -4120,7 +4206,7 @@ func (cs *ChainState) LoadBlockFromDBByHash(hash string) *Block {
 	if err := row.Scan(
 		&b.Hash, &b.Height, &parentHashesRaw, &b.Proposer, &b.Timestamp,
 		&b.Humans, &b.StateRoot, &b.Signature, &txsRaw, &txsZ,
-		&b.SelectedParent, &b.BlueScore, &bluesRaw,
+		&b.SelectedParent, &b.BlueScore, &bluesRaw, &b.TxRoot,
 	); err != nil {
 		return nil
 	}
@@ -4164,6 +4250,7 @@ func (cs *ChainState) LoadBlocksSinceFromDB(minHeight int64, afterHash string, l
 		return nil, nil
 	}
 	cs.ensureGHOSTDAGColumns()
+	cs.ensureTxRootColumn()
 	// ZWEI SCHRITTE: erst die Koepfe, dann die Ruempfe -- und nur die der
 	// Seite, mit Byte-Budget.
 	//
@@ -4184,7 +4271,8 @@ func (cs *ChainState) LoadBlocksSinceFromDB(minHeight int64, afterHash string, l
 	// VOR dem Dekodieren statt danach.
 	fetchLimit := limit + dbSinceFetchWindow
 	rows, err := cs.db.Query(`SELECT hash, height, parent_hashes, proposer, timestamp, humans, state_root,
-	                 signature, COALESCE(selected_parent,''), COALESCE(blue_score,0), COALESCE(blues,'[]')
+	                 signature, COALESCE(selected_parent,''), COALESCE(blue_score,0), COALESCE(blues,'[]'),
+	                 COALESCE(tx_root,'')
 	          FROM chain_blocks
 	          WHERE height >= $1 AND proposer != 'synthetic-checkpoint'
 	          ORDER BY height ASC, blue_score DESC, hash ASC
@@ -4200,6 +4288,9 @@ func (cs *ChainState) LoadBlocksSinceFromDB(minHeight int64, afterHash string, l
 			&b.Hash, &b.Height, &parentHashesRaw, &b.Proposer, &b.Timestamp,
 			&b.Humans, &b.StateRoot, &b.Signature,
 			&b.SelectedParent, &b.BlueScore, &bluesRaw,
+			// Ohne tx_root am Kopf kann stripBlocksForPeer nicht strippen --
+			// siehe ensureTxRootColumn.
+			&b.TxRoot,
 		); err != nil {
 			continue
 		}
@@ -4303,9 +4394,11 @@ func (cs *ChainState) LoadBlocksByHashesFromDB(hashes []string) ([]*Block, error
 		return nil, nil
 	}
 	cs.ensureGHOSTDAGColumns()
+	cs.ensureTxRootColumn()
 	rows, err := cs.db.Query(`SELECT hash, height, parent_hashes, proposer, timestamp, humans, state_root,
 	                 signature, transactions, COALESCE(transactions_z, ''::bytea),
-	                 COALESCE(selected_parent,''), COALESCE(blue_score,0), COALESCE(blues,'[]')
+	                 COALESCE(selected_parent,''), COALESCE(blue_score,0), COALESCE(blues,'[]'),
+	                 COALESCE(tx_root,'')
 	          FROM chain_blocks
 	          WHERE hash = ANY($1) AND proposer != 'synthetic-checkpoint'`, pq.Array(hashes))
 	if err != nil {
@@ -4320,7 +4413,7 @@ func (cs *ChainState) LoadBlocksByHashesFromDB(hashes []string) ([]*Block, error
 		if err := rows.Scan(
 			&b.Hash, &b.Height, &parentHashesRaw, &b.Proposer, &b.Timestamp,
 			&b.Humans, &b.StateRoot, &b.Signature, &txsRaw, &txsZ,
-			&b.SelectedParent, &b.BlueScore, &bluesRaw,
+			&b.SelectedParent, &b.BlueScore, &bluesRaw, &b.TxRoot,
 		); err != nil {
 			continue
 		}
@@ -4358,4 +4451,59 @@ func (cs *ChainState) LoadBlocksByHashesFromDB(hashes []string) ([]*Block, error
 		blocks = append(blocks, &b)
 	}
 	return blocks, nil
+}
+
+// kontowerteFuerSpiegel schreibt die vier Werte ab, die der EVM-Spiegel
+// braucht -- unter der Shard-Sperre der Adresse, damit kein halb
+// veroeffentlichtes AccountState gelesen wird. Siehe die Fundstelle in
+// doSyncBalanceRLockedCtx.
+//
+// Gibt den demurrage-bereinigten Kontostand zurueck (effectiveBalance), damit
+// der Spiegel zeigt, was wirklich ausgebbar ist -- die Berechnung liest
+// LastActivityAt und gehoert deshalb mit unter die Sperre.
+func (cs *ChainState) kontowerteFuerSpiegel(addr string) (balance float64, istMensch bool, aktivSeit int64, ok bool) {
+	unlock := cs.accounts.LockAddrs(addr)
+	defer unlock()
+	acc, da := cs.accounts.GetLocked(addr)
+	if !da {
+		return 0, false, 0, false
+	}
+	return effectiveBalance(acc).Float(), acc.IsHuman, acc.LastActivityAt, true
+}
+
+// PendingTxIDsFreigeben nimmt die Einbau-Markierung von genau diesen Zeilen
+// zurueck, damit der naechste Block sie wieder sieht.
+//
+// Fuer den Fall, dass ProduceBlock sie geladen hat -- LoadPendingTxsWithLimit
+// setzt included_at und commitet sofort -- und danach an einem Tor abbricht.
+// Ohne diese Freigabe warten die Ueberweisungen auf den Aufraeumer, also bis
+// zu eine Stunde.
+//
+// Bewusst NUR nach id und nur fuer Zeilen, die noch in keinem Block stehen
+// (included_block_hash IS NULL). Wurde zwischenzeitlich doch ein Block
+// gespeichert, der sie traegt, bleibt sie in Ruhe -- eine freigegebene Zeile
+// wuerde sonst ein zweites Mal eingebaut.
+//
+// Anders als ResetStaleIncludedPendingTxs durchsucht das keine Tabelle,
+// sondern trifft eine bekannte, durch blockTxCap() begrenzte Menge. Genau
+// daran ist der Sweep gescheitert: am 14.09. lief er auf C2 bei 1,12
+// Millionen Resten in sein Zeitlimit.
+func (cs *ChainState) PendingTxIDsFreigeben(ids []int64) {
+	if cs.db == nil || len(ids) == 0 {
+		return
+	}
+	res, err := cs.db.Exec(
+		`UPDATE pending_txs SET included_at = 0
+		 WHERE id = ANY($1) AND included_at > 0 AND included_block_hash IS NULL`,
+		pq.Array(ids),
+	)
+	if err != nil {
+		// Still genug: der Aufraeumer holt sie spaeter, wie bisher. Ein
+		// Produktionsversuch darf an einer Aufraeumarbeit nicht scheitern.
+		fmt.Printf("[TX] Warnung: %d Ausgangskorb-Zeilen nicht sofort freigegeben (der Aufraeumer holt sie): %v\n", len(ids), err)
+		return
+	}
+	if n, _ := res.RowsAffected(); n > 0 {
+		fmt.Printf("[TX] %d Ausgangskorb-Zeilen sofort freigegeben -- die Blockproduktion brach nach dem Laden ab\n", n)
+	}
 }

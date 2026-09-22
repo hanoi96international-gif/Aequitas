@@ -517,7 +517,10 @@ func (cs *ChainState) transferConcurrentWALGesperrt(from, to string, amount floa
 
 	toAcc.Balance = toAcc.Balance.Add(NewDecimal(amount))
 	toAcc.WALSeq = seq
-	touchActivityAt(toAcc, at)
+	// Empfangen startet die Uhr, es setzt sie nie zurueck -- siehe
+	// annahme_gegen_nachspielen_test.go. `at` bleibt der aufgezeichnete
+	// Augenblick, damit die Wiederherstellung unten dasselbe ergibt.
+	startClockIfUnsetAt(toAcc, at)
 	cs.updateAccountLeafLocked(toAcc)
 
 	pendingTxTemplate.Wallet = from
@@ -1261,7 +1264,10 @@ func (cs *ChainState) recoverFromWAL(path string) error {
 			return false
 		}
 		acc.Balance = acc.Balance.Add(NewDecimal(amount))
-		touchActivityAt(acc, at)
+		// Empfangen startet die Uhr, es setzt sie nie zurueck -- muss
+		// reproduzieren, was der Live-Pfad oben getan hat, sonst weicht ein
+		// wiederhergestellter Knoten von sich selbst vor dem Absturz ab.
+		startClockIfUnsetAt(acc, at)
 		acc.WALSeq = seq
 		cs.updateAccountLeafLocked(acc)
 		return true

@@ -22,9 +22,23 @@ func TestAsyncIndexIsANoOpWithoutADatabase(t *testing.T) {
 	// Every test ChainState here has no db. The async path must return
 	// immediately rather than starting a worker that would then fail on every
 	// job -- and must not panic on the nil.
+	//
+	// KORREKTUR (19.09.2026): hier stand `if txIndexStarted.Load()`, also eine
+	// Zusicherung auf einen PROZESSWEITEN Riegel. Sobald irgendein frueherer
+	// Test im selben Lauf den Arbeiter gestartet hatte -- was mit echter
+	// DATABASE_URL regelmaessig passiert -- ging dieser Test rot, ohne dass an
+	// dem, was er prueft, etwas kaputt war. Ein Test, der aus dem falschen
+	// Grund rot wird, ist schlimmer als kein Test: er bringt dem Leser bei,
+	// Rot zu ignorieren.
+	//
+	// Gemeint war immer: DIESER Aufruf startet keinen Arbeiter. Genau das
+	// steht jetzt da, als Differenz statt als Absolutwert -- damit ist es von
+	// der Reihenfolge der Tests unabhaengig und faengt den echten Fehler
+	// weiterhin.
+	before := txIndexStarted.Load()
 	cs := &ChainState{}
 	cs.IndexBlockTransactionsAsync(1, "0xblock", []Transaction{{TxHash: "0xaa"}})
-	if txIndexStarted.Load() {
+	if txIndexStarted.Load() != before {
 		t.Error("a worker was started for a state with no database; it would only ever log errors")
 	}
 }
@@ -45,29 +59,30 @@ func TestAsyncIndexIgnoresEmptyWork(t *testing.T) {
 // entry costs one wallet lookup its fallback path.
 func TestFullQueueDropsInsteadOfBlocking(t *testing.T) {
 	prevStarted := txIndexStarted.Load()
-	prevCh := txIndexCh
+	prevCh := txIndexKanal()
 	prevDropped := txIndexDropped.Load()
 	t.Cleanup(func() {
 		txIndexStarted.Store(prevStarted)
-		txIndexCh = prevCh
+		setzeTxIndexKanal(prevCh)
 		txIndexDropped.Store(prevDropped)
 	})
 
 	// A queue with no worker draining it, already full.
 	txIndexStarted.Store(true)
-	txIndexCh = make(chan txIndexJob, 1)
-	txIndexCh <- txIndexJob{height: 1, blockHash: "0xfull", txs: []Transaction{{TxHash: "0xaa"}}}
+	testCh := make(chan txIndexJob, 1)
+	setzeTxIndexKanal(testCh)
+	testCh <- txIndexJob{height: 1, blockHash: "0xfull", txs: []Transaction{{TxHash: "0xaa"}}}
 
 	cs := &ChainState{db: nil}
 	// db is nil, so go through the queue path directly rather than the guard.
 	select {
-	case txIndexCh <- txIndexJob{height: 2, blockHash: "0xb", txs: []Transaction{{TxHash: "0xbb"}}}:
+	case testCh <- txIndexJob{height: 2, blockHash: "0xb", txs: []Transaction{{TxHash: "0xbb"}}}:
 		t.Fatal("the queue accepted a second job; this test needs it full to be meaningful")
 	default:
 	}
 	_ = cs
 
-	if got := len(txIndexCh); got != 1 {
+	if got := len(testCh); got != 1 {
 		t.Fatalf("queue holds %d, want 1 — the drop path is only exercised when it is full", got)
 	}
 }
