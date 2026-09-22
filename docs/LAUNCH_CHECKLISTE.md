@@ -1,8 +1,39 @@
 # Launch-Checkliste
 
-**Code-Stand 18.09.2026. Boxen-Stand unverändert 15.09., 17:30** (seither nichts nachgemessen — keine Lastläufe, siehe unten). Wache: ROT auf beiden Boxen — Kontenstände weichen nach dem Lastlauf 14:29 ab (nur Lasttest-Staub; alle 18 Menschen identisch, Summen bis aufs Mikro-AEQ gleich). App v1.7.2 veröffentlicht und ausgeliefert.
+**Stand 22.09.2026, 20:06. Beide Boxen laufen auf `06d4b7b`. Die Wache ist GRÜN** — zum ersten Mal seit dem 15.09.
 
-> **Dein Klick (jetzt, Kette ist ruhig):** `resync-contabo2-only.yml` → `confirm=true`. Danach beide `/api/wache` 200. Der Sicherheits-Klassifikator lässt Claude diesen Workflow nicht starten; dauerhaft erlauben: Bash-Regel für `gh workflow run resync-*` in den Claude-Einstellungen.
+> ## Was am 22.09. ausgeliefert wurde
+>
+> ```
+> ✓ Hoehe waechst (7348235 -> 7348260)          beide Boxen, Abstand 0
+> ✓ keine Divergenz, nichts uebersprungen        beide Boxen
+> ✓ Proof-Server, Vergleichsdienst, Coordinator  Quorum 2 auf proof1 und proof2
+> ✓ Platte 33 % / 65 %, nicht degraded
+> ✓ letztes erfolgreiches Backup vor 11 h
+> GRUEN
+> ```
+>
+> **Der Zweig ist auf `main`** (PR #175), Deploy-Gate grün (`go build`, `go vet`, `go test ./...`, `npx hardhat test`), beide Boxen deployt und nachweislich wieder produzierend.
+>
+> **Blocker 1 ist geschlossen.** `ANNAHME_ROLLE=nur_lesend` steht auf Contabo2 — im laufenden Prozess nachgeprüft, nicht nur in der Datei. Da `deploy.sh` den Knoten mit `--env-file /root/.aequitas.env` startet, überlebt das jeden künftigen Deploy; ein Handgriff nach jedem Deploy ist es *nicht*. Nur noch Contabo1 nimmt Überweisungen an, und damit kann die Staub-Divergenz nicht mehr entstehen. Die App trifft ohnehin Contabo1 zuerst (`priority: 1` im FallbackProvider).
+>
+> **Die bestehende Abweichung ist weg.** Resync von Contabo2 aus dem signierten Snapshot von Contabo1.
+>
+> **Die APK auf den Boxen ist jetzt 1.7.3** (vorher 1.7.2, also die Version *mit* den beiden Registrierungsfehlern). 215 031 434 Bytes, SHA-256 `ae45d64e…` — identisch mit dem Release, direkt vom Knoten ausgeliefert. `AEQUITAS_APK_URL` zeigte auf beiden Boxen noch auf **v1.6.0** und steht jetzt ebenfalls auf 1.7.3.
+>
+> **Zum Release `app-v1.7.3`:** die veröffentlichte APK ist die richtige — gebaut aus Run 35478370296, also Commit `16647fc` mit beiden Registrierungsfixes. Falsch ist allein der Git-Tag-Zeiger (`4b44c4f`); die Herkunft steht als Build-Run im Release-Text. Kein neues Release nötig. Den Tag umzuhängen bräuchte einen Force-Push, den der Klassifikator verweigert — kosmetisch, nicht dringend.
+>
+> ## Zwei Fallen, die beim Ausliefern zugeschnappt sind
+>
+> **`resync-contabo2-only.yml` hat seinen eigenen Job sabotiert.** Der Lauf meldete `failure`, obwohl der Knoten sauber hochkam: `script_stop: true` stellt dem Skript ein `set -e` voran, und das `grep` über das Bootlog gibt bei null Treffern 1 zurück — der Schritt starb vor der Statusausgabe, also vor dem einzigen Teil, der zeigt, ob der Resync etwas gebracht hat. Schwerer wog zweierlei: sein `docker run` hängt **nur die WAL** ein und hat damit MPC-Ordner und lokale APK abgeworfen, und er ließ `RESYNC_FROM_SNAPSHOT=true` im laufenden Container stehen. Mit `--restart unless-stopped` heißt das: jeder Absturz, jeder Reboot hätte den Zustand erneut verworfen — genau die Dauerschleife, die `fix-resync-from-snapshot-flag.yml` im Kopf beschreibt, diesmal von der Wiederherstellung selbst erzeugt. Beides ist jetzt im Workflow behoben; der Lauf endet mit einem zweiten Neustart ohne den Schlüssel und mit vollständigen Mounts.
+>
+> **`fix-resync-from-snapshot-flag.yml` fasst beide Boxen mit demselben Wert an.** `value=true` hätte auch Contabo1 scharf gestellt — und dessen `deploy.sh` filtert den Schlüssel *nicht* heraus. Der nächste Deploy hätte den Primärknoten seinen eigenen Zustand wegwerfen lassen. Nicht benutzt; der Weg lief über `schraube-setzen.yml` nur für Contabo2.
+>
+> ## Was jetzt noch offen ist
+>
+> - **Punkt 11 nachmessen.** Im Code fertig, jetzt auch ausgeliefert — die Messung braucht einen Lastlauf.
+> - **Die Wurzel.** Ausführung in kanonischer DAG-Reihenfolge statt in Ankunftsreihenfolge. Das Tor macht die Bedingung unmöglich, unter der der Fehler entsteht; es ersetzt den Umbau nicht. Wann das drankommt, entscheidest du.
+> - **Nur du:** Impressum/Datenschutz-Felder, ein Registrierungslauf mit echtem Gerät, der Zwei-Personen-Kameratest, Telegram-Token, DSGVO-Entscheidung.
 >
 > ## 20.09.: Die App ließ sich überhaupt nicht mehr bauen
 >

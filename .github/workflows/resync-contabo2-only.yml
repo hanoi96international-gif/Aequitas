@@ -11,6 +11,14 @@ name: Authoritative resync of Contabo2 only from the trusted primary (manual)
 # it from the running container). This bypasses that strip for one restart
 # only by passing --env-file straight through, reusing the current image
 # (no rebuild).
+#
+# "FOR ONE RESTART ONLY" musste dieser Workflow bis zum 22.09.2026 erst noch
+# einloesen: er reichte den Schluessel durch und liess ihn danach im Container
+# stehen. Mit `--restart unless-stopped` heisst das, dass jeder Absturz und
+# jeder Reboot den Zustand erneut verworfen haette. Der Lauf endet deshalb
+# jetzt mit einem zweiten Neustart ohne den Schluessel -- und haengt dabei
+# dieselben Mounts ein wie der gewoehnliche Deploy, statt MPC und APK
+# abzuwerfen.
 on:
   workflow_dispatch:
     inputs:
@@ -32,8 +40,8 @@ jobs:
           port: 22
           fingerprint: "SHA256:VIwj7Faxiga2n45HVHZEQFPxcbRKHgSgHoxAFsf2wto"
           script_stop: true
-          timeout: 300s
-          command_timeout: 300s
+          timeout: 900s
+          command_timeout: 900s
           envs: CONFIRM
           script: |
             set -uo pipefail
@@ -48,7 +56,25 @@ jobs:
               exit 1
             fi
             IMG="$(docker inspect aequitas-node --format '{{.Config.Image}}')"
+            # DIE MOUNTS GEHOEREN HIER VOLLSTAENDIG HIN. Hier stand nur die WAL.
+            # Am 22.09.2026 hat dieser Neustart damit den MPC-Ordner und die
+            # lokal ausgelieferte APK abgeworfen -- beide fehlten dem Knoten
+            # danach still, bis ein gewoehnlicher Deploy sie zurueckbrachte. Ein
+            # Wiederherstellungs-Workflow, der beim Wiederherstellen etwas
+            # wegnimmt, ist ein zweiter Vorfall.
+            # if/then, NICHT `[ -x ] && ...`: script_stop:true stellt ein
+            # `set -e` voran, und eine solche Liste liefert 1, wenn der Test
+            # falsch ist -- der Lauf waere dann ausgerechnet dort gestorben, wo
+            # eine Box den MPC-Ordner nicht hat.
+            MOUNTS="-v /root/aequitas-wal-data:/data/wal"
+            if [ -d /root/aequitas-mpc ]; then
+              MOUNTS="$MOUNTS -v /root/aequitas-mpc:/data/mpc"
+            fi
+            if [ -f /root/aequitas-downloads/aequitas-app.apk ]; then
+              MOUNTS="$MOUNTS -v /root/aequitas-downloads/aequitas-app.apk:/app/downloads/aequitas-app.apk"
+            fi
             echo "=== Contabo2: current image (reused, no rebuild): $IMG ==="
+            echo "=== Contabo2: Mounts fuer diesen Lauf: $MOUNTS ==="
             echo "=== Contabo2: one-off restart with --env-file passed straight through ==="
             docker stop aequitas-node 2>&1 || true
             docker rm aequitas-node 2>&1 || true
@@ -56,16 +82,65 @@ jobs:
             docker run -d --name aequitas-node \
               --network aequitas-net \
               --restart unless-stopped \
-              -v /root/aequitas-wal-data:/data/wal \
+              $MOUNTS \
               --env-file /root/.aequitas.env \
               -p 8080:8080 -p 4001:4001 \
               "$IMG"
             echo "=== Contabo2: waiting 15s for the node to finish booting ==="
             sleep 15
             echo "=== Contabo2: boot log lines mentioning RESYNC/BOOTSTRAP/AUTO-HEAL/DAG merge ==="
-            docker logs aequitas-node 2>&1 | grep -iE '\[RESYNC\]|\[BOOTSTRAP\]|\[AUTO-HEAL\]|Merged.*tips|orphan' | tail -60
+            # Ohne das "|| echo" beendet ein LEERES grep-Ergebnis den ganzen
+            # Schritt: script_stop:true stellt dem Skript ein `set -e` voran, und
+            # grep gibt bei null Treffern 1 zurueck. Genau so meldete sich dieser
+            # Workflow am 22.09. als "failure", obwohl der Knoten sauber hochkam
+            # -- und er starb VOR der Statusausgabe, also vor dem einzigen Teil,
+            # der zeigt, ob der Resync etwas gebracht hat.
+            docker logs aequitas-node 2>&1 | grep -iE '\[RESYNC\]|\[BOOTSTRAP\]|\[AUTO-HEAL\]|Merged.*tips|orphan' | tail -60 || echo "(keine solchen Zeilen im Bootlog)"
             echo "=== Contabo2: /api/status after resync ==="
-            curl -s http://localhost:8080/api/status
+            curl -s http://localhost:8080/api/status || true
+            echo ""
+
+            # DEN SCHARFSCHALTER WIEDER AUS DEM LAUFENDEN CONTAINER NEHMEN.
+            #
+            # Oben wird --env-file absichtlich durchgereicht, damit dieser eine
+            # Neustart RESYNC_FROM_SNAPSHOT=true sieht. Danach steckt der
+            # Schluessel aber IM CONTAINER -- und `--restart unless-stopped`
+            # heisst: jeder Absturz, jeder Reboot wirft den Zustand erneut weg
+            # und liest ihn neu ein. Das ist die Dauerschleife aus dem Kopf von
+            # fix-resync-from-snapshot-flag.yml, diesmal von der
+            # Wiederherstellung selbst erzeugt. Am 22.09. blieb der Container
+            # genau so zurueck und musste von Hand geradegezogen werden.
+            #
+            # Also: einmal ohne den Schluessel neu starten. Kein Neubau,
+            # dieselbe Abbildung, dieselben Mounts -- nur die Umgebung
+            # gefiltert. Die Datei behaelt ihr `true` und bleibt fuer den
+            # naechsten Lauf scharf.
+            echo "=== Contabo2: Scharfschalter aus dem laufenden Container nehmen ==="
+            mkdir -p /root/resync
+            docker inspect aequitas-node --format '{{range .Config.Env}}{{println .}}{{end}}' \
+              | grep -E '^[A-Za-z_][A-Za-z0-9_]*=' \
+              | grep -vE '^(RESYNC_FROM_SNAPSHOT|HOSTNAME|PATH|HOME)=' > /root/resync/env
+            docker stop aequitas-node 2>&1 || true
+            docker rm aequitas-node 2>&1 || true
+            docker run -d --name aequitas-node \
+              --network aequitas-net \
+              --restart unless-stopped \
+              $MOUNTS \
+              --env-file /root/resync/env \
+              -p 8080:8080 -p 4001:4001 \
+              "$IMG"
+            sleep 20
+            echo "--- steht der Schluessel noch im Prozess? (erwartet: nein) ---"
+            if docker inspect aequitas-node --format '{{range .Config.Env}}{{println .}}{{end}}' | grep -qE '^RESYNC_FROM_SNAPSHOT='; then
+              echo "⚠ STEHT NOCH DRIN -- jeder Neustart wuerde den Zustand verwerfen"
+            else
+              echo "✓ nicht mehr im Prozess"
+            fi
+            echo "--- und die Rolle? ---"
+            docker inspect aequitas-node --format '{{range .Config.Env}}{{println .}}{{end}}' \
+              | grep -E '^ANNAHME_ROLLE=' || echo "(nicht gesetzt -- dieser Knoten nimmt Ueberweisungen an)"
+            echo "=== Contabo2: /api/status final ==="
+            curl -s http://localhost:8080/api/status || true
             echo ""
         env:
           CONFIRM: ${{ inputs.confirm }}
