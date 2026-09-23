@@ -782,6 +782,7 @@ func main() {
 		panic("-rpc ist leer")
 	}
 	*rpcURL = rpcZiele[0]
+	pruefeAnnahme(rpcZiele)
 
 	// Clamp rather than reject: the node refuses a batch above maxBatchSize=100
 	// outright, and a run that dies on argument validation after the operator
@@ -1675,4 +1676,50 @@ func kettenDurchsatz(statusURL string, von, bis time.Time, vonHoehe int64) {
 	}
 	fmt.Printf("  KETTEN-TPS: %.0f  (die Annahmerate oben zaehlt Quittungen, nicht Bloecke)\n",
 		float64(txGesamt)/spanne)
+}
+
+// pruefeAnnahme bricht ab, wenn ein -rpc-Ziel keine Ueberweisungen annimmt.
+//
+// Seit dem 22.09.2026 nimmt nur EIN Knoten an (ANNAHME_ROLLE=nur_lesend auf dem
+// anderen, annahme_tor.go). Fast jeder Lastworkflow startete diesen Generator
+// auf Contabo2 gegen dessen localhost -- er haette dort jede Ueberweisung
+// abgelehnt bekommen und das als "Durchsatz" berichtet. Hier, an der einen
+// Stelle, die alle Workflows teilen, wird das vor dem ersten Paket
+// ausgeschlossen.
+//
+// Gelesen wird /api/health/combined -> annahme_tor.nimmt_an neben dem
+// RPC-Pfad. Antwortet der Knoten nicht oder kennt das Feld nicht (aelterer
+// Stand), laeuft der Generator weiter wie bisher: der Schutz soll einen
+// bekannten Fehlgriff verhindern, keinen Lauf gegen einen alten Knoten.
+func pruefeAnnahme(ziele []string) {
+	if basis, verweigert := annahmeVerweigert(ziele, &http.Client{Timeout: 10 * time.Second}); verweigert {
+		fmt.Printf("ABBRUCH: %s nimmt keine Ueberweisungen an (annahme_tor.nimmt_an=false).\n", basis)
+		fmt.Println("Ein Lauf dorthin misst nur Ablehnungen. -rpc auf den annehmenden Knoten richten,")
+		fmt.Println("heute Contabo1: -rpc http://173.249.37.118:8080/rpc -status http://173.249.37.118:8080/api/status")
+		os.Exit(2)
+	}
+}
+
+// annahmeVerweigert liefert das erste Ziel, das ausdruecklich nimmt_an=false
+// meldet. Unlesbar oder ohne Feld zaehlt nicht als Verweigerung.
+func annahmeVerweigert(ziele []string, hc *http.Client) (string, bool) {
+	for _, z := range ziele {
+		basis := strings.TrimSuffix(strings.TrimSuffix(z, "/"), "/rpc")
+		resp, err := hc.Get(basis + "/api/health/combined")
+		if err != nil {
+			fmt.Printf("[ANNAHME] %s: Gesundheit nicht lesbar (%v) -- ohne Pruefung weiter\n", basis, err)
+			continue
+		}
+		var h struct {
+			AnnahmeTor *struct {
+				NimmtAn *bool `json:"nimmt_an"`
+			} `json:"annahme_tor"`
+		}
+		_ = json.NewDecoder(resp.Body).Decode(&h)
+		resp.Body.Close()
+		if h.AnnahmeTor != nil && h.AnnahmeTor.NimmtAn != nil && !*h.AnnahmeTor.NimmtAn {
+			return basis, true
+		}
+	}
+	return "", false
 }

@@ -51,10 +51,10 @@ on:
         required: false
         default: "100000000000000"
       ziele:
-        description: "Wohin die Last geht. c2 = nur C2 (bisheriges Verhalten). beide = C2 und C1 rundlaufend -- ohne das produziert C1 nur LEERE Bloecke und die halbe Kettenkapazitaet verfaellt (gemessen 06.09.2026: C1 21 leere, C2 19 volle Bloecke, 974 tx/s statt des Doppelten)."
-        default: "c2"
+        description: "Wohin die Last geht. c1 (Vorgabe seit 23.09.2026) = nur C1, der einzige Knoten, der Ueberweisungen annimmt (ANNAHME_ROLLE, annahme_tor.go); der Generator laeuft auf C2 und beschickt C1 ueber das Netz. c2 / beide nur, wenn C2 wieder annimmt -- der Lauf bricht sonst vor dem Start ab, statt Ablehnungen zu messen."
+        default: "c1"
         type: choice
-        options: [c2, beide]
+        options: [c1, c2, beide]
       gewichte:
         description: "Lastverteilung auf die -rpc-Ziele, Reihenfolge C2,C1. Leer = gleichmaessig. 1,2 gibt C1 doppelt so viele Paare -- noetig, weil der Generator auf C2 laeuft und dessen localhost-Weg kuerzer ist: gemessen stand C2 mit 202.304 Ueberweisungen im Rueckstand, waehrend C1 praktisch alles verblockte."
         default: ""
@@ -201,7 +201,10 @@ jobs:
           script_stop: false
           timeout: 300s
           command_timeout: 300s
-          envs: DURATION,PAIRS,TOPOLOGY,TRANSFERWEI
+          # MINBAL fehlte hier bis zum 23.09.2026: der Schritt setzte ihn unten
+          # in env:, reichte ihn aber nie an die Box -- der Generator bekam
+          # -min-balance-wei "" statt des gewaehlten Werts.
+          envs: DURATION,PAIRS,TOPOLOGY,TRANSFERWEI,MINBAL
           script: |
             cd /root/contabo-loadtest || { echo "no loadtest directory"; exit 1; }
             [ -f accounts-funded.csv ] || { echo "accounts-funded.csv missing -- run loadtest-find-funded.yml"; exit 1; }
@@ -223,47 +226,59 @@ jobs:
             # never_produced AND refusing both have to be clear: the first says
             # it has entered production at all, the second that it is not
             # stalled right now.
-            echo "waiting for the node to be producing before generating load..."
+            # WOHIN GEHT DIE LAST? Seit dem 22.09.2026 nimmt nur ein Knoten
+            # Ueberweisungen an (annahme_tor.go). Beschickt der Generator einen
+            # nur lesenden Knoten, misst er ausschliesslich Ablehnungen -- das
+            # wird hier vor dem Start ausgeschlossen, nicht hinterher erklaert.
+            C1_BASIS="http://173.249.37.118:8080"
+            TEIL=""
+            if [ "${{ inputs.beide_generatoren }}" = "ja" ]; then
+              # Beide Generatoren beschicken C1; dieser hier ueber das Netz.
+              RPC_ZIELE="$C1_BASIS/rpc"; ZIELBASEN="$C1_BASIS"; TEIL="1/2"
+            elif [ "${{ inputs.ziele }}" = "c1" ]; then
+              RPC_ZIELE="$C1_BASIS/rpc"; ZIELBASEN="$C1_BASIS"
+            elif [ "${{ inputs.ziele }}" = "beide" ]; then
+              RPC_ZIELE="http://localhost:8080/rpc,$C1_BASIS/rpc"; ZIELBASEN="http://localhost:8080 $C1_BASIS"
+            else
+              RPC_ZIELE="http://localhost:8080/rpc"; ZIELBASEN="http://localhost:8080"
+            fi
+            echo "Lastziele: $RPC_ZIELE"
+            for B in $ZIELBASEN; do
+              NA=$(curl -s --max-time 10 "$B/api/health/combined" | grep -oE '"nimmt_an":(true|false)' | cut -d: -f2)
+              if [ "$NA" = "false" ]; then
+                echo "ABBRUCH: $B nimmt keine Ueberweisungen an (annahme_tor.nimmt_an=false)."
+                echo "Ein Lauf dorthin mass nur Ablehnungen. ziele=c1 waehlen."
+                exit 1
+              fi
+            done
+
+            echo "waiting for the target node(s) to be producing before generating load..."
             READY=no
             for i in $(seq 1 60); do
-              H=$(curl -s --max-time 10 http://localhost:8080/api/health/combined)
-              case "$H" in
-                *'"never_produced":false'*)
-                  case "$H" in
-                    *'"refusing":false'*) READY=yes ;;
-                  esac
-                  ;;
-              esac
+              READY=yes
+              for B in $ZIELBASEN; do
+                H=$(curl -s --max-time 10 "$B/api/health/combined")
+                case "$H" in
+                  *'"never_produced":false'*'"refusing":false'*|*'"refusing":false'*'"never_produced":false'*) ;;
+                  *) READY=no ;;
+                esac
+              done
               [ "$READY" = yes ] && break
               sleep 10
             done
             if [ "$READY" != yes ]; then
               echo "node still not producing after 10 minutes -- refusing to generate load against it."
               echo "A run here would measure admission refusals, not throughput."
-              curl -s --max-time 10 http://localhost:8080/api/health/combined | grep -oE '"(never_produced|refusing)":[a-z]+|"stalled_seconds":[0-9]+' || true
+              for B in $ZIELBASEN; do
+                echo "$B: $(curl -s --max-time 10 "$B/api/health/combined" | grep -oE '"(never_produced|refusing)":[a-z]+|"stalled_seconds":[0-9]+' | tr '\n' ' ')"
+              done
               exit 1
             fi
             echo "node is producing; starting the generator."
 
-            # Ein Validator ohne eigene Last baut nur leere Bloecke: am
-            # 06.09.2026 kamen 21 von 40 Bloecken leer von C1, waehrend C2
-            # jeden Block am Deckel fuellte. Verteilt man die Paare auf beide,
-            # tragen beide Bloecke Transaktionen.
-            # Laeuft auf C1 ein eigener Generator, spricht dieser hier nur noch
-            # den eigenen Knoten an und nimmt die ERSTE Kontenhaelfte. Zwei
-            # Prozesse, die unabhaengig Nonces fuer dasselbe Konto vergeben,
-            # ueberholen einander und erzeugen nonce-too-high-Fehler.
-            TEIL=""
-            if [ "${{ inputs.beide_generatoren }}" = "ja" ]; then
-              RPC_ZIELE="http://localhost:8080/rpc"
-              TEIL="1/2"
-            elif [ "${{ inputs.ziele }}" = "beide" ]; then
-              RPC_ZIELE="http://localhost:8080/rpc,http://173.249.37.118:8080/rpc"
-            else
-              RPC_ZIELE="http://localhost:8080/rpc"
-            fi
-            echo "Lastziele: $RPC_ZIELE"
-
+            # Laeuft auf C1 ein eigener Generator, nimmt dieser hier die ERSTE
+            # Kontenhaelfte. Zwei Prozesse, die unabhaengig Nonces fuer dasselbe
+            # Konto vergeben, ueberholen einander und erzeugen nonce-too-high.
             rm -f /tmp/stability.log
             nohup docker run --rm --network host -v "$(pwd)":/w -w /w \
               -v /root/go-mod-cache:/go/pkg/mod golang:1.24-alpine \
@@ -272,7 +287,7 @@ jobs:
                 -gewichte "${{ inputs.gewichte }}" \
                 -teil "$TEIL" \
                 -batch-size "${{ inputs.batch_size }}" \
-                -status http://localhost:8080/api/status \
+                -status "${ZIELBASEN%% *}/api/status" \
                 -phase warmup,run -seeds 5 \
                 -topology "$TOPOLOGY" \
                 -transfer-amount-wei "$TRANSFERWEI" \
@@ -379,3 +394,27 @@ jobs:
             docker logs aequitas-node --since 15m 2>&1 | grep -E 'batch-fetch|exceeded the read cap' | tail -5 || echo "(no ancestor-fetch trouble)"
             echo "=== memory ==="
             free -m | head -2
+
+      # Seit dem 22.09.2026 nimmt C1 an und baut die vollen Bloecke; C2 spielt
+      # nur nach. Die Zahlen, die ueber den Durchsatz entscheiden, stehen also
+      # auf C1 -- der Bericht oben las bis dahin nur C2.
+      - name: Was Contabo1 (der annehmende Knoten) meldet
+        if: always()
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: 173.249.37.118
+          username: root
+          key: ${{ secrets.CONTABO_SSH_KEY }}
+          port: 22
+          script_stop: false
+          script: |
+            echo "=== Neustart? ==="
+            docker inspect aequitas-node --format 'RestartCount={{.RestartCount}} OOMKilled={{.State.OOMKilled}} Status={{.State.Status}} StartedAt={{.State.StartedAt}}'
+            echo "=== angewandte Ueberweisungen (Spitze) ==="
+            docker logs aequitas-node --since 15m 2>&1 | grep 'transfers applied' | tail -3 || echo "(keine)"
+            echo "=== Ablehnungen der Annahme in den letzten 15 min ==="
+            docker logs aequitas-node --since 15m 2>&1 | grep -oE 'rate limited|server busy|admission refused[^"]{0,60}|nonce too (low|high)|insufficient balance' | sort | uniq -c | sort -rn | head -8 || true
+            echo "=== Divergenz, uebersprungen, Inflight ==="
+            curl -s --max-time 10 http://localhost:8080/api/health/combined | grep -oE '"abweichend":[a-z]+|"uebersprungene_ueberweisungen":[0-9]+|"inflight[a-z_]*":[0-9]+' | tr '\n' ' '; echo
+            echo "=== Speicher / Last ==="
+            free -m | head -2; uptime

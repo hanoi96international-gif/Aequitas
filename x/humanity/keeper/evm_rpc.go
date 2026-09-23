@@ -482,6 +482,8 @@ func (s *EVMRPCServer) handleRPC(w http.ResponseWriter, r *http.Request) {
 	}
 
 	ip := clientIP(r)
+	// Freigestellt nur nach TCP-Adresse, siehe rpc_frei.go.
+	frei := rpcRateLimitFrei(r)
 
 	r.Body = http.MaxBytesReader(w, r.Body, 1<<20) // 1 MB limit — prevents memory exhaustion via /rpc
 	body, err := io.ReadAll(r.Body)
@@ -556,7 +558,7 @@ func (s *EVMRPCServer) handleRPC(w http.ResponseWriter, r *http.Request) {
 		// endpoint.
 		overBudget := make([]bool, len(batch))
 		for i := range batch {
-			overBudget[i] = rpcRateLimited(ip)
+			overBudget[i] = !frei && rpcRateLimited(ip)
 		}
 
 		precomputed := make([]*precomputedSendTx, len(batch))
@@ -666,7 +668,7 @@ func (s *EVMRPCServer) handleRPC(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if rpcRateLimited(ip) {
+	if !frei && rpcRateLimited(ip) {
 		writeError(w, -32005, "rate limited: too many requests, try again shortly", nil)
 		return
 	}

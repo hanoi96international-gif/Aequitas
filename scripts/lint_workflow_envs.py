@@ -109,6 +109,25 @@ def main(paths):
                 if not isinstance(step, dict):
                     continue
                 forwarded = ((step.get("with") or {}).get("envs") or "").strip()
+                # DIE GEGENRICHTUNG: gesetzt, im entfernten Skript benutzt, aber
+                # nie weitergereicht. Die entfernte Shell sieht dann eine leere
+                # Variable. Gefunden am 23.09.2026 in stability-under-load.yml:
+                # MINBAL stand in env: und im Skript, nicht in envs: -- jeder
+                # Lastlauf gab dem Generator ein leeres Mindestguthaben.
+                if "appleboy/ssh-action" in str(step.get("uses", "")):
+                    script = (step.get("with") or {}).get("script") or ""
+                    fwd = {n.strip() for n in forwarded.split(",") if n.strip()}
+                    stumm = [
+                        n for n in (step.get("env") or {})
+                        if n not in fwd and re.search(r"\$\{?" + re.escape(n) + r"\b", script)
+                    ]
+                    if stumm:
+                        label = step.get("name") or f"step #{idx + 1}"
+                        failures.append(
+                            f"{path}: job '{job_name}', {label}: sets {', '.join(stumm)} in `env:` "
+                            f"and uses {'it' if len(stumm) == 1 else 'them'} in the remote script, "
+                            f"but `envs:` does not forward {'it' if len(stumm) == 1 else 'them'}"
+                        )
                 if not forwarded:
                     continue
                 names = [n.strip() for n in forwarded.split(",") if n.strip()]
