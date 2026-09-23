@@ -1,0 +1,146 @@
+name: Pruefstand live (alles, was App und Menschen benutzen -- nur lesen)
+
+# Die Wache prueft, ob die Boxen gesund sind. Dieser Pruefstand prueft, ob das
+# funktioniert, was ein Mensch tatsaechlich benutzt -- von aussen, ueber
+# dieselben Adressen wie die App, auf BEIDEN Knoten:
+#
+#   Kette      Status, Hoehe, Gleichstand, git-Commit, /api/wache, Divergenz
+#   App-API    die parameterlosen Endpunkte, die die App aufruft
+#   RPC        eth_chainId, eth_blockNumber
+#   Tor        Contabo2 lehnt Ueberweisungen ab, Contabo1 nicht
+#   Coordinator Gesundheit, Quorum, Widerspruchsfristen, /challenge, /widerspruch
+#   Vergleich  /matching/health
+#   Beweis     Proof-Server /health
+#   APK        was die Knoten ausliefern == das neueste Release, Byte fuer Byte
+#   Recht      /api/legal-status, /impressum, /datenschutz
+#
+# NUR LESEN. Das Tor wird mit einem wertlosen Platzhalter ("0x00") geprueft:
+# es sitzt in sendRawTransaction VOR dem Einlesen der Parameter, also lehnt
+# Contabo2 ab, bevor irgendetwas dekodiert wird, und Contabo1 scheitert am
+# Dekodieren -- ohne Nonce, ohne Transaktion, ohne Zustandsaenderung. Der
+# Widerspruch wird mit einer Kennung geprueft, die es nicht gibt ("unbekannt").
+# /challenge legt einen Nonce im Arbeitsspeicher an, der nach 5 Minuten
+# verfaellt -- dasselbe, was jedes Oeffnen der Aufnahme in der App tut.
+#
+# ROT faellt den Lauf. INFO ist, was bekannt offen ist und nur du schliessen
+# kannst (Rechtstexte) -- steht da, aber faellt nicht.
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - ".github/workflows/pruefstand-live.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  pruefen:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Pruefen
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -u
+          ROT=0
+          ok()   { printf '  \033[32mOK  \033[0m  %s\n' "$1"; }
+          rot()  { printf '  \033[31mROT \033[0m  %s\n' "$1"; ROT=1; }
+          info() { printf '  INFO  %s\n' "$1"; }
+          get()  { curl -s --max-time 20 "$@"; }
+          code() { curl -s -o /dev/null --max-time 20 -w '%{http_code}' "$@"; }
+          jq_() { jq -r "$1" 2>/dev/null; }
+
+          C1_IP=173.249.37.118; C2_IP=194.163.188.71
+          declare -A API=( [C1]=https://aequitas.digital/api [C2]=https://proof2.aequitas.digital/api )
+          declare -A RPC=( [C1]=https://aequitas.digital/rpc [C2]=https://proof2.aequitas.digital/rpc )
+          declare -A IP=( [C1]=$C1_IP [C2]=$C2_IP )
+          declare -A PH=( [C1]=proof1 [C2]=proof2 )
+          declare -A HOEHE COMMIT
+
+          echo "===== Kette ====="
+          for K in C1 C2; do
+            S=$(get "${API[$K]}/status")
+            H=$(echo "$S" | jq_ '.height // empty'); G=$(echo "$S" | jq_ '.git_commit // empty')
+            HOEHE[$K]=${H:-0}; COMMIT[$K]=${G:-?}
+            if [ -n "$H" ]; then ok "$K ${API[$K]}/status: Hoehe $H, Commit ${G:-?}"; else rot "$K ${API[$K]}/status antwortet nicht: $(echo "$S" | head -c 120)"; fi
+            W=$(code "http://${IP[$K]}:8080/api/wache")
+            [ "$W" = 200 ] && ok "$K /api/wache 200" || rot "$K /api/wache HTTP $W"
+            HC=$(get "http://${IP[$K]}:8080/api/health/combined")
+            DV=$(echo "$HC" | jq_ '.divergenz.abweichend // "fehlt"')
+            [ "$DV" = false ] && ok "$K keine Kontostand-Abweichung" || rot "$K divergenz.abweichend=$DV"
+            NA=$(echo "$HC" | jq_ '.annahme_tor.nimmt_an // "fehlt"')
+            SOLL=$([ "$K" = C1 ] && echo true || echo false)
+            [ "$NA" = "$SOLL" ] && ok "$K annahme_tor.nimmt_an=$NA (so gewollt)" || rot "$K annahme_tor.nimmt_an=$NA, erwartet $SOLL"
+          done
+          D=$(( ${HOEHE[C1]} > ${HOEHE[C2]} ? ${HOEHE[C1]} - ${HOEHE[C2]} : ${HOEHE[C2]} - ${HOEHE[C1]} ))
+          [ "$D" -le 20 ] && ok "beide gleichauf (Abstand $D)" || rot "Abstand der Hoehen $D"
+          [ "${COMMIT[C1]}" = "${COMMIT[C2]}" ] && ok "beide auf demselben Commit (${COMMIT[C1]})" || rot "verschiedene Commits: C1 ${COMMIT[C1]}, C2 ${COMMIT[C2]}"
+
+          echo "===== App-Endpunkte (beide Basen, wie App-Ausweichliste) ====="
+          for K in C1 C2; do
+            for P in status pool price-history "blocks/canonical?limit=1"; do
+              C=$(code "${API[$K]}/$P")
+              [ "$C" = 200 ] && ok "$K /api/$P" || rot "$K /api/$P HTTP $C"
+            done
+          done
+
+          echo "===== RPC ====="
+          for K in C1 C2; do
+            CI=$(get -H 'Content-Type: application/json' -d '{"jsonrpc":"2.0","id":1,"method":"eth_chainId","params":[]}' "${RPC[$K]}" | jq_ '.result // empty')
+            [ "$CI" = 0x786 ] && ok "$K eth_chainId 0x786" || rot "$K eth_chainId '$CI'"
+            BN=$(get -H 'Content-Type: application/json' -d '{"jsonrpc":"2.0","id":2,"method":"eth_blockNumber","params":[]}' "${RPC[$K]}" | jq_ '.result // empty')
+            [ -n "$BN" ] && ok "$K eth_blockNumber $BN" || rot "$K eth_blockNumber leer"
+          done
+
+          echo "===== Annahme-Tor (wertloser Platzhalter, keine Transaktion) ====="
+          T2=$(get -H 'Content-Type: application/json' -d '{"jsonrpc":"2.0","id":3,"method":"eth_sendRawTransaction","params":["0x00"]}' "${RPC[C2]}")
+          echo "$T2" | grep -q 'nimmt keine Ueberweisungen an' && ok "C2 lehnt Ueberweisungen ab (Tor)" || rot "C2 hat das Tor NICHT gezeigt: $(echo "$T2" | head -c 160)"
+          T1=$(get -H 'Content-Type: application/json' -d '{"jsonrpc":"2.0","id":4,"method":"eth_sendRawTransaction","params":["0x00"]}' "${RPC[C1]}")
+          if echo "$T1" | grep -q 'nimmt keine Ueberweisungen an'; then rot "C1 lehnt ALLES ab -- dann nimmt niemand an"; elif echo "$T1" | grep -q '"error"'; then ok "C1 laesst durch (scheitert erst am Platzhalter: $(echo "$T1" | jq_ '.error.message' | head -c 60))"; else rot "C1 unerwartete Antwort: $(echo "$T1" | head -c 160)"; fi
+
+          echo "===== Coordinator, Vergleichsdienst, Proof-Server ====="
+          for K in C1 C2; do
+            B="https://${PH[$K]}.aequitas.digital"
+            CH=$(get "$B/coordinator/health")
+            [ "$(echo "$CH" | jq_ '.status')" = ok ] && ok "${PH[$K]} Coordinator ok" || rot "${PH[$K]} Coordinator: $(echo "$CH" | head -c 120)"
+            Q=$(echo "$CH" | jq_ '.quorum_size'); VN=$(echo "$CH" | jq_ '.validator_urls | length')
+            [ "$Q" = 2 ] && [ "$VN" = 2 ] && ok "${PH[$K]} Quorum $Q aus $VN Vergleichsdiensten" || rot "${PH[$K]} Quorum $Q aus $VN"
+            FR=$(echo "$CH" | jq_ '.widersprueche.fristen_tage.ohne_widerspruch // "fehlt"')
+            [ "$FR" = 90 ] && ok "${PH[$K]} Widerspruchsfrist 90 Tage (Coordinator mit Loeschfrist laeuft)" || rot "${PH[$K]} widersprueche.fristen_tage fehlt ($FR) -- alter Coordinator?"
+            WO=$(echo "$CH" | jq_ '.widersprueche.widersprueche_offen // 0')
+            [ "$WO" = 0 ] && ok "${PH[$K]} keine offenen Widersprueche" || rot "${PH[$K]} $WO offene Widersprueche -- widersprueche-pruefen.yml"
+            WN=$(echo "$CH" | jq_ '.warnungen | length')
+            [ "$WN" = 0 ] && ok "${PH[$K]} keine Warnungen" || rot "${PH[$K]} Warnungen: $(echo "$CH" | jq_ '.warnungen | join(",")')"
+            NC=$(get -X POST "$B/coordinator/challenge" | jq_ '.nonce // empty')
+            [ -n "$NC" ] && ok "${PH[$K]} /challenge gibt einen Nonce (Einstieg der Registrierung)" || rot "${PH[$K]} /challenge ohne Nonce"
+            WS=$(get -H 'Content-Type: application/json' -d '{"kennung":"W-0000000000000000","standpunkt":""}' "$B/coordinator/widerspruch" | jq_ '.status // empty')
+            [ "$WS" = unbekannt ] && ok "${PH[$K]} /widerspruch antwortet (unbekannte Kennung -> unbekannt)" || rot "${PH[$K]} /widerspruch: '$WS'"
+            MH=$(get "$B/matching/health" | jq_ '.status // empty')
+            [ "$MH" = ok ] && ok "${PH[$K]} Vergleichsdienst ok" || rot "${PH[$K]} Vergleichsdienst '$MH'"
+            PC=$(code "$B/health")
+            [ "$PC" = 200 ] && ok "${PH[$K]} Proof-Server /health 200" || rot "${PH[$K]} Proof-Server HTTP $PC"
+          done
+
+          echo "===== APK: was ausgeliefert wird == neuestes Release ====="
+          REL=$(gh api repos/hanoi96international-gif/Aequitas-App/releases/latest 2>/dev/null)
+          TAG=$(echo "$REL" | jq_ '.tag_name'); SOLL=$(echo "$REL" | jq_ '.assets[] | select(.name=="app-release.apk") | .digest' | sed 's/^sha256://')
+          echo "  neuestes Release: $TAG, sha256 ${SOLL:0:16}..."
+          for Q in "https://aequitas.digital/download/app.apk" "http://$C2_IP:8080/download/app.apk"; do
+            IST=$(curl -sL --max-time 300 "$Q" | sha256sum | cut -d' ' -f1)
+            [ -n "$SOLL" ] && [ "$IST" = "$SOLL" ] && ok "$Q == $TAG" || rot "$Q liefert ${IST:0:16}..., neuestes Release ($TAG) ist ${SOLL:0:16}..."
+          done
+
+          echo "===== Website und Rechtstexte ====="
+          [ "$(code https://aequitas.digital/)" = 200 ] && ok "https://aequitas.digital/ 200" || rot "Startseite nicht 200"
+          LS=$(get https://aequitas.digital/api/legal-status)
+          FEHLT=$(echo "$LS" | jq_ '(.fehlende_angaben // []) | join(", ")')
+          for P in impressum datenschutz; do
+            C=$(code "https://aequitas.digital/$P")
+            if [ "$C" = 200 ]; then ok "/$P 200"; else info "/$P HTTP $C -- offen, bis die Pflichtangaben gesetzt sind (rechtstexte-setzen.yml): ${FEHLT:-?}"; fi
+          done
+
+          echo "====="
+          if [ "$ROT" = 1 ]; then echo "ROT"; exit 1; fi
+          echo "ALLES GRUEN (INFO-Zeilen sind bekannte, offene Punkte)"
