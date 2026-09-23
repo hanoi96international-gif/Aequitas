@@ -2316,18 +2316,18 @@ func (dag *BlockDAG) ProduceBlock() *Block {
 	// allein nicht reicht: sie nennt die Gesamtdauer, aber nicht, wo sie
 	// bleibt, und alle naheliegenden Erklaerungen wurden einzeln gemessen und
 	// ausgeschlossen.
-	var pbSperren, pbDbPaar, pbBauen, pbSpeichern, pbVerteilen time.Duration
+	var pbLaden, pbSperren, pbDbPaar, pbBauen, pbSpeichern, pbVerteilen time.Duration
 	var pbTxAnzahl int
 	ausfaelleVorher := produktionAusfallGesamt()
 	defer func() {
 		d := time.Since(produceStart)
-		merkeProduktionsBlock(d, pbSperren, pbDbPaar, pbBauen, pbSpeichern, pbVerteilen, pbTxAnzahl)
+		merkeProduktionsBlock(d, pbLaden, pbSperren, pbDbPaar, pbBauen, pbSpeichern, pbVerteilen, pbTxAnzahl)
 		merkeEigenlast(d)
 		// Zeitreihe je Versuch -- siehe produktion_protokoll.go.
 		e := produktionsEintrag{
 			At: produceStart.UnixMilli(), Hoehe: dag.heightSchnell.Load(), Txs: pbTxAnzahl,
 			Deckel: peerLagLetzterCap.Load(), Rueckstand: peerLagLetzterLag.Load(),
-			GesamtMs: float64(d) / 1e6, SperrenMs: float64(pbSperren) / 1e6,
+			GesamtMs: float64(d) / 1e6, LadenMs: float64(pbLaden) / 1e6, SperrenMs: float64(pbSperren) / 1e6,
 			DbPaarMs: float64(pbDbPaar) / 1e6, SpeichernMs: float64(pbSpeichern) / 1e6,
 		}
 		if produktionAusfallGesamt() > ausfaelleVorher {
@@ -2398,6 +2398,12 @@ func (dag *BlockDAG) ProduceBlock() *Block {
 	// sie nicht braucht. Der Schnitt liegt so ein paar hundert Millisekunden
 	// frueher; wer danach ankommt, landet im naechsten Block, wie bisher.
 	pendingWG.Wait()
+	// Laden und Sperrwarten GETRENNT messen. Bis zum 23.09.2026 lief die Uhr
+	// fuer "sperren" schon vor dem Laden los und schloss es ein: unter Last
+	// stand dort 300-400 ms je Block (gesamt 460-640 ms), und ob das die
+	// Datenbank oder die DAG-Sperre war, liess sich nicht sagen.
+	pbLaden = time.Since(pbSperrenStart)
+	pbSperrenStart = time.Now()
 
 	// DIE GELADENEN ZEILEN SOFORT FREIGEBEN, WENN KEIN BLOCK DARAUS WIRD.
 	//

@@ -1,0 +1,83 @@
+name: Durchsatz-Stand (Bremsen, Blockbau, WAL -- nur lesend)
+
+# Nach einem Lastlauf: WARUM landete nicht mehr in Bloecken?
+#
+# Anlass (23.09.2026): C1 nahm 7.367/s an, in Bloecken landeten waehrend der
+# Last nur 3.457/s -- 0,95 Bloecke/s zu je 3.640, bei einem Deckel von 7.000.
+# Kandidaten: die Eigenlast-Bremse (Blockbau dauert > 90 % des Takts ->
+# Deckel schrumpft), die Peer-Lag-Bremse (C2 haengt), der WAL-Abfluss in den
+# Ausgangskorb, oder der Blockbau selbst.
+#
+# Die Zaehler laufen seit dem letzten Knotenstart. Gelesen wird ausschliesslich
+# /api/health/combined -- oeffentlich, Zahlen, keine Geheimnisse -- und nur die
+# Abschnitte, die ueber den Durchsatz entscheiden.
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - ".github/workflows/durchsatz-stand.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  lesen:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Beide Knoten
+        run: |
+          set -u
+          for K in "C1 173.249.37.118" "C2 194.163.188.71"; do
+            set -- $K
+            echo "================ $1 ($2) ================"
+            curl -s --max-time 20 "http://$2:8080/api/health/combined" > h.json || { echo "keine Antwort"; continue; }
+            jq '{
+              seit_start: .chain.uptime,
+              eigenlast_bremse: (.eigenlast_bremse | del(.bedeutung)),
+              peer_lag_bremse: (.peer_lag_bremse | del(.bedeutung)),
+              block_tx_deckel: (.block_tx_deckel | if type=="object" then del(.bedeutung) else . end),
+              produktion: (.produktion | if type=="object" then del(.bedeutung) else . end),
+              produktion_phasen: (.produktion_phasen | if type=="object" then del(.bedeutung) else . end),
+              produktions_vorrang: (.produktions_vorrang | if type=="object" then del(.bedeutung) else . end),
+              wal_flush: .wal_flush,
+              admission: .admission,
+              inflight: (.inflight | if type=="object" then del(.bedeutung) else . end),
+              transfer_path: .transfer_path,
+              fallback_gruende: .fallback_gruende,
+              replay_phasen: (.replay_phasen | if type=="object" then del(.bedeutung) else . end),
+              replay_pfad: (.replay_pfad | if type=="object" then del(.bedeutung) else . end),
+              divergenz: {abweichend: .divergenz.abweichend},
+              zustands_ablehnung: .zustands_ablehnung
+            }' h.json 2>/dev/null || head -c 400 h.json
+          done
+
+      # Die Zeitreihe je Produktionsversuch (/api/produktion, Ring der letzten
+      # 1.800 Versuche ~ 30 min) -- sie trennt, was die Mittelwerte oben
+      # vermischen: leere Bloecke aus der Ruhe, volle aus der Last. Je Minute:
+      # Bloecke, Transaktionen, geltender Deckel, Dauer und die Anteile.
+      - name: C1 -- Blockbau je Minute (Zeitreihe)
+        run: |
+          curl -s --max-time 30 "http://173.249.37.118:8080/api/produktion?n=1800" > p.json
+          python3 - <<'PY'
+          import json, collections, datetime
+          d = json.load(open("p.json"))
+          e = d.get("eintraege") or d.get("versuche") or d if isinstance(d, list) else d
+          if isinstance(e, dict):
+              e = next((v for v in e.values() if isinstance(v, list)), [])
+          m = collections.OrderedDict()
+          for x in e:
+              k = datetime.datetime.utcfromtimestamp(x["at_ms"] / 1000).strftime("%H:%M")
+              m.setdefault(k, []).append(x)
+          print("Minute  Versuche Bloecke    Txs   Deckel(min/max)  gesamt_ms(mittel/max)  sperren_ms(mittel/max)  db_paar  speichern  Gruende")
+          for k, xs in m.items():
+              ok = [x for x in xs if not x.get("grund")]
+              txs = sum(x["txs"] for x in ok)
+              dk = [x["deckel"] for x in xs] or [0]
+              g = [x["gesamt_ms"] for x in xs]; s = [x["sperren_ms"] for x in xs]
+              dp = [x["db_paar_ms"] for x in xs]; sp = [x["speichern_ms"] for x in xs]
+              gr = collections.Counter(x.get("grund") for x in xs if x.get("grund"))
+              mit = lambda v: sum(v) / len(v) if v else 0
+              print(f"{k}   {len(xs):6d} {len(ok):7d} {txs:7d}   {min(dk):5d}/{max(dk):5d}      "
+                    f"{mit(g):7.0f}/{max(g):6.0f}          {mit(s):7.0f}/{max(s):6.0f}      "
+                    f"{mit(dp):5.0f}   {mit(sp):6.0f}   {dict(gr) if gr else ''}")
+          PY
