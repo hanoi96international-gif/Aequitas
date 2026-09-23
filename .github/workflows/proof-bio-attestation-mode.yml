@@ -62,7 +62,7 @@ jobs:
           key: ${{ matrix.secret == 'C1' && secrets.CONTABO_SSH_KEY || secrets.CONTABO2_SSH_KEY }}
           port: 22
           fingerprint: ${{ matrix.fingerprint }}
-          script_stop: true
+          script_stop: false  # set -e steht im Skript; script_stop:true haengt hinter JEDE Zeile eine Exit-Pruefung -- auch in Heredocs und hinter else/case (Beleg: wachhund-telegram-installieren.yml, 23.09.2026)
           timeout: 300s
           command_timeout: 300s
           envs: MODE

@@ -23,6 +23,11 @@ jobs:
           python-version: "3.x"
       - run: pip install pyyaml
       - run: python3 scripts/lint_workflow_envs.py
+      # script_stop: true haengt hinter JEDE Zeile eine Exit-Pruefung -- auch
+      # in Heredocs, hinter else und case. Am 23.09.2026 in 21 Schritten
+      # gefunden, darunter der Wachhund und der Ein-Klick-Weg fuer Impressum
+      # und Datenschutz. Kopf von scripts/lint_script_stop.py.
+      - run: python3 scripts/lint_script_stop.py
 
   test:
     runs-on: ubuntu-latest
@@ -127,7 +132,7 @@ jobs:
           run_group realdb   '_RealDB$|RealDB$'
           run_group transfer 'TestTransferConcurrent|TestTransferAtomic|TestProcessTransferBatchConcurrent'
           run_group wal      'TestWAL|TestTransferWAL'
-          run_group plumbing 'TestPoolFlush|TestPendingTxs|TestEvmMirrorFlush'
+          run_group plumbing 'TestPoolFlush|TestPendingTxs|TestEvmMirrorFlush|TestDBPoolStats'
           run_group mpcstore 'TestSharesSurvive|TestCandidatesAreScoped|TestDeletionIsHonoured|TestRewritingAnEnrolment'
         env:
           ADMIN_URL: "postgres://postgres:postgres@localhost:5432/postgres?sslmode=disable"

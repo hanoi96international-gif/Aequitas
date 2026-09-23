@@ -65,6 +65,18 @@ func (s *EVMRPCServer) preReserveBatchNonces(precomputed []*precomputedSendTx, p
 	if s.state == nil || len(pending) < 2 {
 		return
 	}
+	// Dieselben zwei Sperren, die sendRawTransaction VOR ReserveNonce prueft.
+	// Bis zum 23.09.2026 lief diese Vorab-Reservierung an beiden vorbei: der
+	// Batch-Weg ruft sie auf, bevor ein Eintrag sendRawTransaction erreicht.
+	// Auf einem nur lesenden Knoten (annahme_tor.go) wurden so die Nonces
+	// dauerhaft verbraucht, und DANACH lehnte das Tor ab -- die Wallet bekam
+	// dort fortan eine Nonce genannt, die der annehmende Knoten als "nonce too
+	// high" abweist. Genau das, wovor der Kommentar am Tor warnt. Hier wird
+	// nur NICHT reserviert; die Ablehnung selbst (mit ihrem Zaehler und ihrer
+	// Meldung) kommt weiterhin aus sendRawTransaction, fuer jeden Eintrag.
+	if !s.state.nimmtUeberweisungenAn() || admissionRefusalReason() != "" {
+		return
+	}
 
 	// Group by sender, keeping batch order. Order is what makes a run
 	// contiguous, so it must not be disturbed.

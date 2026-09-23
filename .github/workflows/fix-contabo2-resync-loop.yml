@@ -54,7 +54,7 @@ jobs:
           key: ${{ secrets.CONTABO2_SSH_KEY }}
           port: 22
           fingerprint: "SHA256:VIwj7Faxiga2n45HVHZEQFPxcbRKHgSgHoxAFsf2wto"
-          script_stop: true
+          script_stop: false  # set -e steht im Skript; script_stop:true haengt hinter JEDE Zeile eine Exit-Pruefung -- auch in Heredocs und hinter else/case (Beleg: wachhund-telegram-installieren.yml, 23.09.2026)
           timeout: 900s
           command_timeout: 900s
           script: |

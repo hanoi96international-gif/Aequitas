@@ -16,11 +16,14 @@ func TestDBPoolStats_NoDatabaseIsSafe(t *testing.T) {
 
 // The fields an operator needs must all be present, or the endpoint looks
 // healthy precisely when it cannot answer the question.
+//
+// Bis zum 23.09.2026 baute dieser Test seinen Zustand mit newTestState() --
+// der hat nie eine Datenbank -- und uebersprang sich deshalb in JEDER
+// Umgebung, auch mit DATABASE_URL. Jetzt mit dem echten Zustand der
+// Opt-in-Tests: laeuft, wo eine Datenbank da ist, und sagt sonst ehrlich,
+// dass er Opt-in ist.
 func TestDBPoolStats_ReportsWhatDecidesThePoolQuestion(t *testing.T) {
-	cs := newTestState()
-	if cs.db == nil {
-		t.Skip("no database in this environment; the no-DB path is covered above")
-	}
+	cs := newConcurrentTransferTestState(t)
 	st := cs.DBPoolStats()
 	for _, key := range []string{"max_open", "in_use", "wait_count", "wait_total_ms", "wait_avg_ms"} {
 		if _, ok := st[key]; !ok {
