@@ -1,9 +1,13 @@
 package keeper
 
 import (
+	"database/sql"
 	"fmt"
 	"math"
+	"net/url"
+	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -430,6 +434,27 @@ func TestSupplyConservation_FastPaths_RealDB(t *testing.T) {
 		nachher := totalAEQ(cs)
 		if math.Abs(nachher-vorher) > 1e-9 {
 			t.Errorf("Speicher: Gesamtmenge %+.6f (vorher %.6f, nachher %.6f)", nachher-vorher, vorher, nachher)
+			// Wo liegt die Abweichung? Ohne diese Liste bleibt ein seltener
+			// Befund (CI 853, 23.09.2026: +0.015994 in genau einem Lauf) eine
+			// Zahl ohne Ort.
+			imRing := make(map[string]bool, len(adr))
+			for _, a := range adr {
+				imRing[strings.ToLower(a)] = true
+			}
+			cs.accounts.Range(func(a string, acc *AccountState) bool {
+				var db float64
+				dbErr := cs.db.QueryRow(`SELECT balance FROM chain_accounts WHERE lower(address) = lower($1)`, a).Scan(&db)
+				switch {
+				case !imRing[strings.ToLower(a)] && acc.Balance.Float() != 0:
+					t.Logf("  ausserhalb des Rings: %s Speicher %.6f, Postgres %.6f (%v)", a, acc.Balance.Float(), db, dbErr)
+				case imRing[strings.ToLower(a)] && (dbErr != nil || math.Abs(db-acc.Balance.Float()) > 1e-9):
+					t.Logf("  Ring, Speicher != Postgres: %s Speicher %.6f, Postgres %.6f (%v)", a, acc.Balance.Float(), db, dbErr)
+				}
+				return true
+			})
+			if cs.pool != nil {
+				t.Logf("  Pool ReserveAEQ %.6f", cs.pool.ReserveAEQ.Float())
+			}
 		}
 		if mitDB {
 			if db := sumDB(t, cs, adr); math.Abs(db-float64(n)*start) > 1e-6 {
@@ -456,10 +481,24 @@ func TestSupplyConservation_FastPaths_RealDB(t *testing.T) {
 	// nicht den Pfad.
 	kreis := func(t *testing.T, cs *ChainState, name string, ueberweise func(from, to string, k int) (bool, error)) {
 		t.Helper()
+		// "Ohne Konkurrenz" heisst: ohne Konkurrenz DURCH DEN TEST. Die
+		// Hintergrundarbeit des Knotens (EVM-Spiegel, WAL-Schreiber) greift
+		// dieselben Kontosperren kurz selbst -- unter CPU-Last lehnte der
+		// WAL-Pfad deshalb 4 von 60 Laeufen beim ersten Versuch ab
+		// (applied=false, kein Fehler: genau das gewollte Ausweichen).
+		// Verlangt wird darum, dass er binnen weniger Versuche greift; ein
+		// Pfad, der nie greift, faellt weiterhin.
 		for i := 0; i < n; i++ {
-			ok, err := ueberweise(adrAktuell[i], adrAktuell[(i+1)%n], -1-i)
+			var ok bool
+			var err error
+			for versuch := 0; versuch < 50 && err == nil && !ok; versuch++ {
+				if versuch > 0 {
+					time.Sleep(2 * time.Millisecond)
+				}
+				ok, err = ueberweise(adrAktuell[i], adrAktuell[(i+1)%n], -1-i-100*versuch)
+			}
 			if err != nil || !ok {
-				t.Fatalf("%s: ohne Konkurrenz muss der schnelle Pfad greifen -- Konto %d: applied=%v, err=%v", name, i, ok, err)
+				t.Fatalf("%s: ohne Konkurrenz durch den Test muss der schnelle Pfad greifen -- Konto %d: applied=%v, err=%v", name, i, ok, err)
 			}
 		}
 		var wg sync.WaitGroup
@@ -504,6 +543,7 @@ func TestSupplyConservation_FastPaths_RealDB(t *testing.T) {
 	}
 
 	t.Run("transferConcurrent", func(t *testing.T) {
+		eigeneDatenbank(t)
 		cs := newConcurrentTransferTestState(t)
 		adrAktuell = ring(t, cs, 9100)
 		vorher := totalAEQ(cs)
@@ -516,6 +556,7 @@ func TestSupplyConservation_FastPaths_RealDB(t *testing.T) {
 	})
 
 	t.Run("processTransferBatchConcurrent", func(t *testing.T) {
+		eigeneDatenbank(t)
 		cs := newConcurrentTransferTestState(t)
 		adrAktuell = ring(t, cs, 9200)
 		vorher := totalAEQ(cs)
@@ -531,8 +572,8 @@ func TestSupplyConservation_FastPaths_RealDB(t *testing.T) {
 	})
 
 	t.Run("transferConcurrentWAL", func(t *testing.T) {
+		eigeneDatenbank(t)
 		cs := newWALTestState(t, filepath.Join(t.TempDir(), "sc.wal"))
-		truncateDistTestTables(t)
 		adrAktuell = ring(t, cs, 9300)
 		vorher := totalAEQ(cs)
 		kreis(t, cs, "transferConcurrentWAL", func(from, to string, k int) (bool, error) {
@@ -543,6 +584,57 @@ func TestSupplyConservation_FastPaths_RealDB(t *testing.T) {
 		// Der WAL-Pfad schreibt Postgres asynchron nach -- hier zaehlt der
 		// Speicher; die Haltbarkeit pruefen die Absturztests in transfer_wal_test.go.
 		pruefen(t, cs, adrAktuell, vorher, false)
+	})
+}
+
+// eigeneDatenbank gibt dem laufenden (Unter-)Test eine frische, nur ihm
+// gehoerende Postgres-Datenbank und zeigt DATABASE_URL fuer seine Dauer darauf.
+//
+// WARUM. Viele _RealDB-Tests bauen einen Knoten mit NewChainState und
+// schliessen seine Verbindung nie. Deren Hintergrundarbeiter laufen weiter --
+// der Pool-Flush schreibt seine ausstehenden Gutschriften alle paar Sekunden
+// erneut, auch NACH dem TRUNCATE des naechsten Tests. Belegt am 23.09.2026:
+// in der CI-Gruppe fiel dieser Test in 8 von 12 Laeufen mit genau +0.015994,
+// verteilt auf drei Pool-Konten im Verhaeltnis 50 / 37,5 / 12,5; im Log
+// davor und danach "[POOL-FLUSH] ... version conflict" eines FREMDEN
+// Zustands, waehrend der eigene "Loaded 0 accounts" meldete. Allein lief er
+// 160-mal gruen. Der Knoten schoepfte nichts -- der Test las fremde Zeilen.
+//
+// Eine eigene Datenbank ist fuer fremde Arbeiter unerreichbar: sie halten
+// Verbindungen zu der alten. Das Schema legt initDB an, wie im Betrieb.
+func eigeneDatenbank(t *testing.T) {
+	t.Helper()
+	basis := os.Getenv("DATABASE_URL")
+	if os.Getenv("AEQUITAS_TPS_BENCH") != "1" || basis == "" {
+		t.Skip("opt-in only: set AEQUITAS_TPS_BENCH=1 and DATABASE_URL (a disposable local Postgres) to run")
+	}
+	u, err := url.Parse(basis)
+	if err != nil {
+		t.Fatalf("DATABASE_URL: %v", err)
+	}
+	admin, err := sql.Open("postgres", basis)
+	if err != nil {
+		t.Fatalf("Postgres: %v", err)
+	}
+	name := fmt.Sprintf("aeq_sc_%d_%d", os.Getpid(), time.Now().UnixNano())
+	if _, err := admin.Exec("CREATE DATABASE " + name); err != nil {
+		admin.Close()
+		t.Fatalf("CREATE DATABASE %s: %v (der Test braucht dafuer das Recht CREATEDB)", name, err)
+	}
+	u.Path = "/" + name
+	neu, err := sql.Open("postgres", u.String())
+	if err != nil {
+		t.Fatalf("Postgres %s: %v", name, err)
+	}
+	(&ChainState{db: neu, useDB: true}).initDB()
+	neu.Close()
+	t.Setenv("DATABASE_URL", u.String())
+	// Registriert VOR dem Zustand des Tests, laeuft also NACH dessen Cleanup
+	// (LIFO): erst schliesst der Test seine Verbindungen, dann faellt die
+	// Datenbank. WITH (FORCE) raeumt, was ein Hintergrundarbeiter noch haelt.
+	t.Cleanup(func() {
+		admin.Exec("DROP DATABASE IF EXISTS " + name + " WITH (FORCE)")
+		admin.Close()
 	})
 }
 

@@ -1,7 +1,38 @@
 # Launch-Checkliste
 
-**Stand 22.09.2026, 20:06. Beide Boxen laufen auf `06d4b7b`. Die Wache ist GRÜN** — zum ersten Mal seit dem 15.09.
+**Stand 23.09.2026, abends. Alles auf dem Prüfstand — Befund und was behoben ist, zuerst. Der Stand vom 22.09. folgt darunter.**
 
+> ## 23.09.: Prüfstand
+>
+> **Live, von außen, beide Knoten: `pruefstand-live.yml` ist GRÜN** (nur lesend; läuft auf Knopfdruck). Geprüft wird, was ein Mensch tatsächlich benutzt: Kette (Höhe, Gleichstand, Commit, `/api/wache`, Divergenz), die App-Endpunkte auf **beiden** API-Basen, RPC, das Annahme-Tor (C2 lehnt ab, C1 nicht — mit einem wertlosen Platzhalter, ohne Transaktion), beide Coordinatoren (Quorum 2/2, Widerspruchsfrist, `/challenge`, `/widerspruch`), Vergleichsdienste, Proof-Server, **die ausgelieferte APK Byte für Byte gegen das neueste Release**, Website. Offen und nur als INFO: `/impressum`, `/datenschutz` (Blocker 3). Der erste Lauf war ROT — an meinem eigenen Prüfskript (jq wertet `false` in `a // b` wie „fehlt"; genau `false` ist dort der gesunde Wert). Behoben, zweiter Lauf grün.
+>
+> **Gefunden und behoben:**
+> - **Nonces verbrannt auf dem nur lesenden Knoten** (Kette). Der Batch-Weg in `handleRPC` reservierte Nonces vorab, *bevor* das Annahme-Tor ablehnte — eine Wallet bekäme danach auf C1 „nonce too high". Jetzt prüft die Vorab-Reservierung dieselben zwei Sperren. Belegt durch drei Tests, einer davon Ende zu Ende durch den HTTP-Handler mit echt signierten Transaktionen (ohne Fix rot).
+> - **Wer fälschlich als Duplikat galt, konnte nicht widersprechen** (Art. 22 Abs. 3). Der Coordinator vergab seit dem 26.08. eine Kennung, die App zeigte sie nirgends. **App 1.7.4** (Release `app-v1.7.4`, Tag auf seiner eigenen Quelle, Release-Schlüssel): Kennung, Frist 90 Tage, Knopf „Widerspruch einlegen", in 12 Sprachen. Auf beiden Boxen ausgeliefert.
+> - **Widerspruchsvorgänge ohne Löschfrist** (Art. 5 Abs. 1 lit. e). Jetzt: ohne Widerspruch 90 Tage, nach Entscheidung ein Jahr; offene nie. Auf beiden Coordinatoren live. Offene Widersprüche färben die Wache **rot**; ansehen und abschließen mit `widersprueche-pruefen.yml` (nur Metadaten — das Repo ist öffentlich).
+> - **Datenschutzerklärung beschrieb nicht den Betrieb.** Lebendigkeitsprüfung, zwei Vergleichsdienste verschiedener Betreiber, Widerspruchsvorgang mit Fristen, Serverstandort (zwei Contabo-Server in Lauterbourg, kein Drittland) — jetzt im Text und per Test an den Betrieb gebunden.
+> - **`script_stop: true` zerlegte 21 Workflow-Schritte**, darunter den Wachhund und `rechtstexte-setzen.yml` (dein Ein-Klick-Weg für Blocker 3 — er wäre mit einem Syntaxfehler gestorben). Die Aktion hängt hinter *jede* Zeile eine Exit-Prüfung, auch in Heredocs, hinter `else` und in `case`. Alle umgestellt; `scripts/lint_script_stop.py` verhindert den Rückfall in CI.
+> - **Falsch-grüne Tests**: drei App-Testdateien prüften nichts (`jest.isolateModules` wartet nicht auf `async`) — darunter die Belege für die beiden Registrierungsfixes vom 20.09. Die Fixes waren richtig, belegt sind sie erst jetzt. In der Kette übersprang sich ein Erhaltungstest der Schnellpfade immer und ein Pool-Test in jeder Umgebung; beide laufen jetzt gegen echte Postgres in CI.
+>
+> - **Ein Geldmengen-Alarm, der keiner war — und belegt, dass er keiner war.** Der neue Erhaltungstest der Schnellpfade fiel in CI einmal mit +0,015994 AEQ. Nachgestellt unter CPU-Last: in der CI-Gruppe 8 von 12 Läufen, allein 0 von 160. Die Summe lag auf drei Pool-Konten im Verhältnis 50 / 37,5 / 12,5 — geschrieben vom Pool-Flush eines **fremden** Test-Knotens, dessen Verbindung ein früherer Test nie geschlossen hatte und der nach dem TRUNCATE weiterschrieb. Jeder Untertest hat jetzt eine eigene Datenbank: 12 von 12 grün in der Gruppe unter Last. Der Knoten schöpft nichts. Offen, aber kein Beta-Punkt: viele `_RealDB`-Tests lassen ihren Knoten offen; dieselbe Klasse kann andere DB-Tests stören.
+>
+> **Alarm (Blocker 6) ist zu.** Der Wachhund läuft auf beiden Boxen alle 5 min und meldet über **ntfy** — ohne Bot, ohne Konto. Den Kanalnamen habe ich dir im Chat genannt (er steht absichtlich nirgends im öffentlichen Repo; in den Logs maskiert). **Du:** ntfy-App installieren, den Kanal abonnieren. Fertig.
+>
+> **Bekannt, kein Beta-Blocker:** `TestOneTickCannotOutrunReplay` misst nur (≈ 10.600 Überweisungen je Tick nachgespielt gegen 50.000 im Ziel) — eine Lastgrenze, die 18 Menschen nicht berühren.
+>
+> **Für den Juristen (Blocker 5), neu:** (a) Rolle des Betreibers von proof2 — gemeinsam Verantwortlicher (Art. 26) oder Auftragsverarbeiter (Art. 28)? Es braucht einen Vertrag in der einen oder anderen Form. (b) Ist die Skizzen-Kopie beim früheren Railway-Coordinator (USA) nachweislich gelöscht? Die Instanz ist seit 14.09. weg; ein Löschnachweis fehlt.
+>
+> **Was nur du tun kannst — vollständig:**
+> 1. `rechtstexte-setzen.yml` mit den sieben Feldern (Blocker 3). Der Prüfstand zeigt danach `/impressum 200`.
+> 2. Eine echte Registrierung mit frischem Wallet in App 1.7.4 (Blocker 2).
+> 3. Zwei-Personen-Test vor der Kamera (Blocker 4).
+> 4. DSGVO-Entscheidung mit Jurist, inkl. (a) und (b) oben (Blocker 5).
+> 5. ntfy-Kanal abonnieren (Blocker 6).
+>
+> ---
+>
+> **Stand 22.09.2026, 20:06. Beide Boxen laufen auf `06d4b7b`. Die Wache ist GRÜN** — zum ersten Mal seit dem 15.09.
+>
 > ## Was am 22.09. ausgeliefert wurde
 >
 > ```
@@ -163,12 +194,12 @@ Anleitung; die Betreiber erfahren, wenn etwas kaputtgeht.
 
 | # | Punkt | Fertig heißt | Stand | Wer |
 |---|---|---|---|---|
-| 1 | **Beide Validatoren einig über jeden Kontostand** | `divergenz.abweichend=false` auf beiden Boxen nach Volllast, `uebersprungene_ueberweisungen=0` | ⚠ 13.09. 01:40: Resync C1←C2, danach 4 min Volllast (14.000 Annahmen/s, Kette 6.900/s): 0 übersprungen, 0 Divergenz, Wache grün. **Seit 18.09. ist die Ursache der späteren Staub-Divergenz benannt und auf Kommando reproduzierbar** (`zwei_produzenten_realdb_test.go`, siehe oben): zwei produzierende Knoten + leerlaufende Konten. Für 18 Menschen mit echten Beträgen greift sie nicht, für Lastläufe schon. Der Punkt ist damit kein Häkchen mehr, sondern eine bekannte Grenze mit bekannter Bedingung | **du:** entscheiden, ob die Wurzel vor oder nach dem Beta-Launch angegangen wird |
+| 1 | **Beide Validatoren einig über jeden Kontostand** | `divergenz.abweichend=false` auf beiden Boxen, `uebersprungene_ueberweisungen=0` | ✅ seit 22.09.: nur Contabo1 nimmt an (`ANNAHME_ROLLE=nur_lesend` auf C2, live nachgeprüft — C2 lehnt Überweisungen ab, C1 nicht), Resync, Wache und Prüfstand grün. 23.09.: die Schnellpfade erhalten die Geldmenge gegen echte Postgres (CI), und der Batch-Weg verbraucht auf C2 keine Nonces mehr. Die Wurzel (Ausführung in kanonischer Reihenfolge) bleibt eine spätere Entscheidung | — |
 | 2 | **Registrierung funktioniert** | App (Gesichtsprüfung) → Coordinator (Quorum 2) → `/api/prove` → Proof-Server `required` → `register_human` in einem Block; Wache grün | ⚠ Kette, Proof-Server (`/api/prove` ohne Bescheinigung → 403, gemessen) und beide Coordinatoren stehen; **die Website liefert seit 14.09. 19:05 app-v1.7.2** (beide Boxen, sha256 `cba628…`, Release-Schlüssel `473e9d…`; Coordinator proof1 → proof2; 429-Wiederholung; Ausweichknoten proof2 für API/RPC). Seit dem 25.08. hat genau **eine** Person den Weg durchlaufen (`gallery_test: 1`) — mit Quorum 2 noch niemand nachweislich. 14.09.: Coordinator → beide Vergleichsdienste → Quorum live durchgespielt (Nicht-Gesicht → `capture_failed` von beiden, keine Bescheinigung); alle 14 App-Endpunkte + RPC antworten ≤ 0,2 s; **Gruppen hinter einer IP sperren sich nicht mehr gegenseitig** (`ip_burst.go`) | **du:** eine Registrierung mit einem frischen Wallet durchlaufen; Beleg: `total_humans` +1, `gallery_test` +1 auf proof1 **und** proof2 |
 | 3 | **Impressum & Datenschutzerklärung** | `/impressum` und `/datenschutz` antworten 200 | ❌ beide 404 — alle sieben `LEGAL_*`-Angaben fehlen (`/api/legal-status`). Seit 14.09. ein Klick: `rechtstexte-setzen.yml` (7 Felder, schreibt beide Boxen, startet die Knoten nacheinander neu, prüft 200). Fußzeilen beider Seiten verweisen auf Impressum/Datenschutz, sobald die Seiten antworten (§ 5 DDG, zwei Klicks) | **du:** die sieben Felder — Name, Anschrift, E-Mail, Verantwortliche(r), Aufsichtsbehörde |
 | 4 | **Ein Mensch = ein Konto** | Dieselbe Person, zweites Gerät → `duplicate`; andere Person → durch. Schwelle kalibriert. Altkonten mit Gesicht nachgezogen | ⚠ Tor scharf (`required` seit 13.09. 15:13, Quorum 2, Herkunftspflicht an `/api/register`). **Nachzieh-Weg gebaut und live** (`POST /nachziehen` auf proof1 + proof2, Wallet-Signatur + Ketten-Abgleich + Quorum, keine Prägung; App-Seite in v1.7.0 committed, Identity-Tab „Gesicht nachziehen"). Offen: Schwelle nie mit echten Menschen kalibriert; **die 18 bestehenden Menschen haben kein Gesichts-Template**, bis sie nachziehen (auf der Website benannt); `SERVICE_MODE=test` (Wechsel auf `real` erst mit Galerie-Übernahme, `wuerde_realmodus_abweisen`) | **du + eine zweite Person** vor der Kamera nach `docs/DOPPELREGISTRIERUNG_TEST.md` (Schritte 1–7); danach die 18 einmal durch den Nachzieh-Weg (App v1.7.0) |
 | 5 | **DSGVO Phase 2** (Phase 1) | `ALLOW_REAL_BIOMETRIC_DATA=true` + `LEGAL_SIGNOFF_DATE` gesetzt, Drittland (Railway in `sfo`) entschieden | ❌ Unterlagen liegen in `aequitas-biometric-beta/docs/dsgvo/`; Entscheidung offen | **du / Jurist** |
-| 6 | **Betreiber merkt, wenn es brennt** | Alarm binnen Minuten | ⚠ `wache.yml` läuft bei GitHub nur alle paar Stunden. `/api/wache` (200/503) auf beiden Boxen prüft Produktion, Tor (`required`, Quorum ≥ 2), Coordinator, Divergenz, Platte, Partner. **Neu 14.09.: `wachhund-telegram-installieren.yml`** — Cron auf beiden Boxen alle 5 min, Telegram bei Rot (sofort, dann alle 6 h) und bei Grün; braucht nur Bot-Token + Chat-ID als Secrets | **du (2 min):** @BotFather → Token; Chat-ID; Secrets `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`; Workflow starten. Alternative ohne Bot: UptimeRobot auf die beiden `/api/wache` |
+| 6 | **Betreiber merkt, wenn es brennt** | Alarm binnen Minuten | ✅ 23.09.: Wachhund auf beiden Boxen, alle 5 min gegen `/api/wache`, meldet über ntfy (sofort bei Rot, dann alle 6 h, und bei Grün). Testnachricht auf beiden Boxen zugestellt. Dazu `wache.yml` (GitHub, Mail) und `pruefstand-live.yml` auf Knopfdruck | **du:** ntfy-App, Kanal abonnieren (Name im Chat) |
 
 ## Wichtig, aber kein Blocker
 
@@ -198,3 +229,4 @@ Anleitung; die Betreiber erfahren, wenn etwas kaputtgeht.
 - Rechtstexte: `https://aequitas.digital/api/legal-status`.
 - Neuer Validator: `neuer-validator-probe.yml`.
 - Alles zusammen: `wache.yml` (Actions → Wache).
+- Alles, was ein Mensch benutzt, von außen und auf beiden Knoten: `pruefstand-live.yml` (Actions → Pruefstand live, nur lesend).
