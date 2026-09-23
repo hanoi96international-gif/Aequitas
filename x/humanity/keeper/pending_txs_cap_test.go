@@ -13,7 +13,7 @@ import (
 // measured the cost of.
 func TestLoadPendingTxs_CapsAtMaxTxsPerBlock(t *testing.T) {
 	skipUnlessRealDBBenchEnv(t)
-	cs := NewChainState("unused-pending-txs-cap-test-1.json")
+	cs := testKnoten(t, "unused-pending-txs-cap-test-1.json")
 	if !cs.useDB {
 		t.Fatal("expected a live PostgreSQL connection")
 	}
@@ -59,7 +59,7 @@ func TestLoadPendingTxs_CapsAtMaxTxsPerBlock(t *testing.T) {
 // unaffected by this change.
 func TestLoadPendingTxs_UnderCapReturnsAll(t *testing.T) {
 	skipUnlessRealDBBenchEnv(t)
-	cs := NewChainState("unused-pending-txs-cap-test-2.json")
+	cs := testKnoten(t, "unused-pending-txs-cap-test-2.json")
 	if !cs.useDB {
 		t.Fatal("expected a live PostgreSQL connection")
 	}

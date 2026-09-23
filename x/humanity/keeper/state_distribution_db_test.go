@@ -126,7 +126,7 @@ func TestRunDailyDistributionAtomic_RealDB(t *testing.T) {
 	}
 
 	truncateDistTestTables(t)
-	cs := NewChainState("unused-distribution-db-test.json")
+	cs := testKnoten(t, "unused-distribution-db-test.json")
 	if !cs.useDB {
 		t.Fatal("expected a live PostgreSQL connection (cs.useDB == false) — check DATABASE_URL")
 	}
@@ -231,7 +231,7 @@ func TestRunDailyDistributionAtomic_EscrowRealDB(t *testing.T) {
 	}
 
 	truncateDistTestTables(t)
-	cs := NewChainState("unused-distribution-escrow-db-test.json")
+	cs := testKnoten(t, "unused-distribution-escrow-db-test.json")
 	if !cs.useDB {
 		t.Fatal("expected a live PostgreSQL connection (cs.useDB == false) — check DATABASE_URL")
 	}

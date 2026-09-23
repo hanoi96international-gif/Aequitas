@@ -5,6 +5,7 @@ import (
 	"math"
 	"sort"
 	"testing"
+	"time"
 )
 
 // Regression tests for the double-demurrage bug found live on 2026-08-15.
@@ -49,7 +50,17 @@ func giniOfPayload(v []float64) float64 {
 // idleHumansState builds a state whose humans are all well past the demurrage
 // grace period — the only regime in which a second effectiveBalance() call
 // changes anything, and so the only regime that can catch this bug.
-func idleHumansState(balances []float64) (*ChainState, []string) {
+//
+// Die Uhr steht fuer die Dauer des Tests still. Der Verfall laeuft sekuendlich
+// weiter: rechnete der Handler den Kontostand in einer anderen Sekunde als der
+// Test seinen Sollwert, wichen beide um Millionstel ab. Unter -race geschah das
+// in CI (23.09.2026: 1485.186255 gegen 1485.186254) -- ein Fehlalarm, der
+// nichts mit doppeltem Verfall zu tun hatte, den dieser Test sucht.
+func idleHumansState(t *testing.T, balances []float64) (*ChainState, []string) {
+	t.Helper()
+	fest := time.Now()
+	vorher := setzeZeitQuelleFuerTest(func() time.Time { return fest })
+	t.Cleanup(func() { setzeZeitQuelleFuerTest(vorher) })
 	cs := newTestState()
 	longIdle := nowUnix() - demurrageGracePeriodSeconds - 6*secondsPerMonth
 	addrs := make([]string, 0, len(balances))
@@ -70,7 +81,7 @@ func TestHandleHumans_BalanceIsDemurragedExactlyOnce(t *testing.T) {
 	// which started at 100 AEQ, a tenth of a fair share — now decays by
 	// nothing, and the guard below correctly refuses to let this test pass
 	// while proving nothing.
-	cs, addrs := idleHumansState([]float64{1100, 1250, 1500, 2000, 6000})
+	cs, addrs := idleHumansState(t, []float64{1100, 1250, 1500, 2000, 6000})
 	a := &APIServer{state: cs}
 	out := doHumansRequest(t, a, "203.0.113.10:1", "")
 
@@ -111,7 +122,7 @@ func TestHandleHumans_BalanceIsDemurragedExactlyOnce(t *testing.T) {
 }
 
 func TestHandleHumans_PayloadGiniEqualsChainGini(t *testing.T) {
-	cs, _ := idleHumansState([]float64{100, 250, 500, 1000, 5000, 12000})
+	cs, _ := idleHumansState(t, []float64{100, 250, 500, 1000, 5000, 12000})
 	a := &APIServer{state: cs}
 	out := doHumansRequest(t, a, "203.0.113.11:1", "")
 
@@ -140,7 +151,7 @@ func TestHandleHumans_PayloadGiniEqualsChainGini(t *testing.T) {
 // to the human, so total_value_aeq must include it — and must still reproduce
 // the chain's Gini once it does.
 func TestHandleHumans_PayloadGiniEqualsChainGini_WithLiquidity(t *testing.T) {
-	cs, addrs := idleHumansState([]float64{100, 250, 500, 1000, 5000, 12000})
+	cs, addrs := idleHumansState(t, []float64{100, 250, 500, 1000, 5000, 12000})
 	cs.pool = &PoolState{
 		ReserveAEQ:    NewDecimal(9000),
 		ReserveTUSD:   NewDecimal(9000),

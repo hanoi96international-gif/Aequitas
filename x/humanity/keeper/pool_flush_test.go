@@ -30,7 +30,7 @@ func referenceAccountXORFromRange(cs *ChainState) [32]byte {
 // the credit.
 func TestDistributeSwapFee_StateRootCorrectBeforeAnyFlush(t *testing.T) {
 	skipUnlessRealDBBenchEnv(t)
-	cs := NewChainState("unused-pool-flush-test-1.json")
+	cs := testKnoten(t, "unused-pool-flush-test-1.json")
 	if !cs.useDB {
 		t.Fatal("expected a live PostgreSQL connection")
 	}
@@ -85,7 +85,7 @@ func readPoolBalanceFromDBLocked(t *testing.T, cs *ChainState, addr string) floa
 // one, and not lost entirely.
 func TestPoolFlush_PersistsAccumulatedCreditsToDB(t *testing.T) {
 	skipUnlessRealDBBenchEnv(t)
-	cs := NewChainState("unused-pool-flush-test-2.json")
+	cs := testKnoten(t, "unused-pool-flush-test-2.json")
 	if !cs.useDB {
 		t.Fatal("expected a live PostgreSQL connection")
 	}
@@ -124,7 +124,7 @@ func TestPoolFlush_PersistsAccumulatedCreditsToDB(t *testing.T) {
 // already cleared the dirty flag.
 func TestPoolFlush_NoOpWhenNotDirty(t *testing.T) {
 	skipUnlessRealDBBenchEnv(t)
-	cs := NewChainState("unused-pool-flush-test-3.json")
+	cs := testKnoten(t, "unused-pool-flush-test-3.json")
 	if !cs.useDB {
 		t.Fatal("expected a live PostgreSQL connection")
 	}
@@ -154,7 +154,7 @@ func TestPoolFlush_NoOpWhenNotDirty(t *testing.T) {
 // in-memory accumulation drops nothing under concurrency.
 func TestPoolFlush_ConcurrentCreditsNoLostUpdates(t *testing.T) {
 	skipUnlessRealDBBenchEnv(t)
-	cs := NewChainState("unused-pool-flush-test-4.json")
+	cs := testKnoten(t, "unused-pool-flush-test-4.json")
 	if !cs.useDB {
 		t.Fatal("expected a live PostgreSQL connection")
 	}
@@ -212,7 +212,7 @@ func TestPoolFlush_ConcurrentCreditsNoLostUpdates(t *testing.T) {
 // same real Postgres connection, same account set, same total work.
 func TestPoolFlush_ThroughputComparisonVsSynchronous(t *testing.T) {
 	skipUnlessRealDBBenchEnv(t)
-	cs := NewChainState("unused-pool-flush-test-5.json")
+	cs := testKnoten(t, "unused-pool-flush-test-5.json")
 	if !cs.useDB {
 		t.Fatal("expected a live PostgreSQL connection")
 	}

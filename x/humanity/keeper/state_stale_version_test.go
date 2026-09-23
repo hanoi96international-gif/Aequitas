@@ -27,7 +27,7 @@ import (
 // resulting value.
 func TestSaveAccountToDB_FreshStructForExistingRowDoesNotDesyncVersion(t *testing.T) {
 	truncateDistTestTables(t)
-	cs := NewChainState("unused-stale-version-test.json")
+	cs := testKnoten(t, "unused-stale-version-test.json")
 	if !cs.useDB {
 		t.Fatal("expected a live PostgreSQL connection (cs.useDB == false) -- check DATABASE_URL")
 	}
@@ -80,7 +80,7 @@ func TestSaveAccountToDB_FreshStructForExistingRowDoesNotDesyncVersion(t *testin
 // increment) in the same change.
 func TestSaveAccountsToDBBatch_FreshStructForExistingRowDoesNotDesyncVersion(t *testing.T) {
 	truncateDistTestTables(t)
-	cs := NewChainState("unused-stale-version-batch-test.json")
+	cs := testKnoten(t, "unused-stale-version-batch-test.json")
 	if !cs.useDB {
 		t.Fatal("expected a live PostgreSQL connection (cs.useDB == false) -- check DATABASE_URL")
 	}

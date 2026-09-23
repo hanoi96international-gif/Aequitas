@@ -1,0 +1,54 @@
+name: Knoten-Schalter lesen (Leistung, nur lesend)
+
+# Welche Leistungsschalter stehen auf welchem Knoten WIRKLICH -- im laufenden
+# Container, nicht in einer Datei oder einem alten Kommentar?
+#
+# Anlass (23.09.2026): align-c2-perf-flags.yml sagt, ENABLE_MULTI_BLOCK_TICK
+# stehe auf beiden Knoten auf 0; spaetere Notizen sagen, C2 fahre ihn mit 1.
+# Seit dem Annahme-Tor traegt nur C1 Transaktionen in Bloecke -- ein Schalter,
+# der Blockkapazitaet schafft, gehoert dann auf C1, und ob er dort steht,
+# entscheidet ueber die Obergrenze (10.000 je Block, 1 s Takt).
+#
+# NUR EINE FESTE LISTE. Das Repository ist oeffentlich, jeder Lauf ist fuer
+# jeden lesbar. Gezeigt werden ausschliesslich die unten genannten Namen, deren
+# Werte Zahlen oder Schalter sind; alles andere -- Schluessel, Tokens,
+# Datenbank-URLs -- wird nie gelesen. Ein neuer Name gehoert erst in die Liste,
+# wenn sicher ist, dass sein Wert kein Geheimnis ist.
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - ".github/workflows/knoten-schalter-lesen.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  lesen:
+    strategy:
+      fail-fast: false
+      matrix:
+        box:
+          - { name: Contabo1, host: "173.249.37.118", secret: C1 }
+          - { name: Contabo2, host: "194.163.188.71", secret: C2 }
+    runs-on: ubuntu-latest
+    steps:
+      - name: ${{ matrix.box.name }}
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ matrix.box.host }}
+          username: root
+          key: ${{ matrix.box.secret == 'C1' && secrets.CONTABO_SSH_KEY || secrets.CONTABO2_SSH_KEY }}
+          port: 22
+          script_stop: false
+          timeout: 60s
+          command_timeout: 60s
+          script: |
+            LISTE='^(BLOCK_TIME_MS|ENABLE_MULTI_BLOCK_TICK|AEQUITAS_MAX_TXS_PER_BLOCK|AEQUITAS_WAL_ENABLED|AEQUITAS_RPC_RATE_LIMIT_MAX|AEQUITAS_RPC_RATE_LIMIT_FREI|ANNAHME_ROLLE|AEQUITAS_COMPRESS_BLOCK_PAYLOAD|AEQUITAS_PRODUCE_WHEN_BACKLOG_SHRINKING|AEQUITAS_PEER_LAG_[A-Z_]+|AEQUITAS_INFLIGHT_[A-Z_]+|AEQUITAS_RPC_BATCH_PARALLEL|AEQUITAS_RPC_QUIET_TX|AEQUITAS_TRANSFER_BATCH_[A-Z_]+|AEQUITAS_PARALLEL_[A-Z_]+|AEQUITAS_DB_MAX_[A-Z_]+|GOMAXPROCS|GOMEMLIMIT|GOGC)='
+            echo "=== laufender Container: Leistungsschalter (feste Liste) ==="
+            docker inspect aequitas-node --format '{{range .Config.Env}}{{println .}}{{end}}' 2>/dev/null \
+              | grep -E "$LISTE" | sort || echo "(keiner gesetzt -- alle auf Vorgabe)"
+            echo "=== Container ==="
+            docker inspect aequitas-node --format 'Start={{.State.StartedAt}} Neustarts={{.RestartCount}} CPUs={{.HostConfig.NanoCpus}} Speicher={{.HostConfig.Memory}}'
+            echo "=== Maschine ==="
+            echo "Kerne: $(nproc)"; free -m | head -2; uptime

@@ -56,7 +56,7 @@ func MaxExtraBlocksPerTick() int { return maxExtraBlocksPerTick }
 // (see ENABLE_MULTI_BLOCK_TICK in main.go) -- enabling it on a live node
 // is an explicit operator decision, the same class as BLOCK_TIME itself.
 func (dag *BlockDAG) ProduceBlocksForTick() []*Block {
-	return produceBlocksForTick(dag.ProduceBlock)
+	return produceBlocksForTick(dag.ProduceBlock, blockVollAmDeckel)
 }
 
 // produceBlocksForTick holds ProduceBlocksForTick's actual looping logic,
@@ -69,7 +69,12 @@ func (dag *BlockDAG) ProduceBlocksForTick() []*Block {
 // untouched and separately already relied upon in production) be tested
 // directly with a fake producer instead, at real unit-test speed and
 // without inventing that missing integration harness just for this.
-func produceBlocksForTick(produce func() *Block) []*Block {
+//
+// voll entscheidet, ob ein Block den Rueckstand anzeigt. Bis zum 23.09.2026
+// stand hier len(Transactions) < maxTxsPerBlock -- die Konstante 10.000, die
+// bei AEQUITAS_MAX_TXS_PER_BLOCK=7000 nie erreicht wird. Siehe
+// blockVollAmDeckel (peer_lag_bremse.go).
+func produceBlocksForTick(produce func() *Block, voll func(*Block) bool) []*Block {
 	var produced []*Block
 	block := produce()
 	if block == nil {
@@ -78,8 +83,8 @@ func produceBlocksForTick(produce func() *Block) []*Block {
 	produced = append(produced, block)
 
 	for extra := 0; extra < maxExtraBlocksPerTick; extra++ {
-		if len(block.Transactions) < maxTxsPerBlock {
-			break // backlog drained (or was never that deep) -- done for this tick
+		if !voll(block) {
+			break // backlog drained, or a brake is holding the cap down -- done for this tick
 		}
 		block = produce()
 		if block == nil {

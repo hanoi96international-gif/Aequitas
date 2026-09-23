@@ -32,7 +32,7 @@ import (
 func zaehlerTestKette(t *testing.T) *ChainState {
 	t.Helper()
 	truncateDistTestTables(t) // auch das Opt-in-Tor
-	cs := NewChainState("unused-uebersprungen-dauerhaft-test.json")
+	cs := testKnoten(t, "unused-uebersprungen-dauerhaft-test.json")
 	if !cs.useDB {
 		t.Fatal("erwartet eine echte PostgreSQL-Verbindung -- DATABASE_URL pruefen")
 	}

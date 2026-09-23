@@ -141,7 +141,7 @@ func TestBlockPayloadLoaders_CompressedBlockRoundTripsThroughEveryLoader_RealDB(
 		t.Fatal("compression did not switch on — the rest of this test would prove nothing")
 	}
 
-	state := NewChainState("unused-payload-loader-test.json")
+	state := testKnoten(t, "unused-payload-loader-test.json")
 	if !state.useDB {
 		t.Fatal("expected a live PostgreSQL connection (check DATABASE_URL)")
 	}

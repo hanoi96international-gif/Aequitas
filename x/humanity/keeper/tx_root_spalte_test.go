@@ -19,7 +19,7 @@ import (
 
 func TestTxRootSpalte_BlockAusDerDatenbankTraegtSeinenTxRoot_RealDB(t *testing.T) {
 	truncateDistTestTables(t) // auch das Opt-in-Tor
-	cs := NewChainState("unused-txroot-spalte-test.json")
+	cs := testKnoten(t, "unused-txroot-spalte-test.json")
 	if !cs.useDB {
 		t.Fatal("erwartet eine echte PostgreSQL-Verbindung -- DATABASE_URL pruefen")
 	}
@@ -58,7 +58,7 @@ func TestTxRootSpalte_BlockAusDerDatenbankTraegtSeinenTxRoot_RealDB(t *testing.T
 // Und der Weg, den der Sync wirklich geht: die Seitenabfrage.
 func TestTxRootSpalte_SeitenabfrageLiefertDenTxRootMit_RealDB(t *testing.T) {
 	truncateDistTestTables(t)
-	cs := NewChainState("unused-txroot-seite-test.json")
+	cs := testKnoten(t, "unused-txroot-seite-test.json")
 	if !cs.useDB {
 		t.Fatal("erwartet eine echte PostgreSQL-Verbindung")
 	}

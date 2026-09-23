@@ -16,6 +16,11 @@
 >
 > - **Ein Geldmengen-Alarm, der keiner war — und belegt, dass er keiner war.** Der neue Erhaltungstest der Schnellpfade fiel in CI einmal mit +0,015994 AEQ. Nachgestellt unter CPU-Last: in der CI-Gruppe 8 von 12 Läufen, allein 0 von 160. Die Summe lag auf drei Pool-Konten im Verhältnis 50 / 37,5 / 12,5 — geschrieben vom Pool-Flush eines **fremden** Test-Knotens, dessen Verbindung ein früherer Test nie geschlossen hatte und der nach dem TRUNCATE weiterschrieb. Jeder Untertest hat jetzt eine eigene Datenbank: 12 von 12 grün in der Gruppe unter Last. Der Knoten schöpft nichts. Offen, aber kein Beta-Punkt: viele `_RealDB`-Tests lassen ihren Knoten offen; dieselbe Klasse kann andere DB-Tests stören.
 >
+> - **Warum die Kette nicht über ~7.000 TPS kam — gefunden am 23.09. abends.** Beide Knoten fahren `AEQUITAS_MAX_TXS_PER_BLOCK=7000` und `ENABLE_MULTI_BLOCK_TICK=1`. Der Zusatzblock je Takt entstand aber nur bei **10.000** Transaktionen (Konstante), die ein Block unter dem Deckel 7.000 nie erreicht. Der Schalter war tot, und seit nur C1 annimmt, war die Kette hart bei 7.000/s. Behoben (PR #178): Voll heißt jetzt „am geltenden, ungebremsten Deckel“. Bremst ein Knoten, entsteht kein Zusatzblock. Ob C2 das Nachspielen stabil trägt, zeigt der Lastlauf.
+> - **Die Lasttests hätten nur Ablehnungen gemessen.** Alle liefen gegen C2, der seit dem 22.09. nichts annimmt. Jetzt geht die Last an C1, und der Generator bricht ab, wenn ein Ziel nur liest.
+> - **Öffentliche Ratenbegrenzung stand auf beiden Knoten auf 100.000 statt 200** (übrig von früheren Lastläufen). Neu: nur die Partnerbox wird freigestellt (nach TCP-Adresse, nicht fälschbar), die öffentliche Grenze geht auf 1.000 je 10 s und IP.
+> - **Test-Isolation an der Wurzel behoben:** 21 Testdateien ließen Knoten offen, deren Hintergrundarbeiter in fremde Tests schrieben.
+>
 > **Alarm (Blocker 6) ist zu.** Der Wachhund läuft auf beiden Boxen alle 5 min und meldet über **ntfy** — ohne Bot, ohne Konto. Den Kanalnamen habe ich dir im Chat genannt (er steht absichtlich nirgends im öffentlichen Repo; in den Logs maskiert). **Du:** ntfy-App installieren, den Kanal abonnieren. Fertig.
 >
 > **Bekannt, kein Beta-Blocker:** `TestOneTickCannotOutrunReplay` misst nur (≈ 10.600 Überweisungen je Tick nachgespielt gegen 50.000 im Ziel) — eine Lastgrenze, die 18 Menschen nicht berühren.

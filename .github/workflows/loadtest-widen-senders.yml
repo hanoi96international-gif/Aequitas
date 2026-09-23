@@ -126,12 +126,17 @@ jobs:
             ORIG=${ORIG:-200}
             echo "=== rate limit is $ORIG; the fund phase runs against the node as-is ==="
 
-            echo "=== PHASE fund ==="
+            # Ueberweisungen gehen an den Knoten, der annimmt -- seit dem
+            # 22.09.2026 ist das Contabo1 (annahme_tor.go). Dieser Schritt laeuft
+            # auf Contabo2, weil dort die Schluessel liegen; localhost waere
+            # hier der nur lesende Knoten.
+            ANNAHME="http://173.249.37.118:8080"
+            echo "=== PHASE fund (an $ANNAHME) ==="
             docker run --rm --network host -v "$(pwd)":/w -w /w \
               -v /tmp:/tmp golang:1.24-alpine \
               ./loadtest -accounts /tmp/widen.csv \
-                -rpc http://localhost:8080/rpc \
-                -status http://localhost:8080/api/status \
+                -rpc "$ANNAHME/rpc" \
+                -status "$ANNAHME/api/status" \
                 -phase fund -seeds "$SEEDS" \
                 -fund-amount-wei "$FUNDWEI" 2>&1 | tail -40
 

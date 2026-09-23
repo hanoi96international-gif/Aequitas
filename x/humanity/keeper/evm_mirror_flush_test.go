@@ -47,7 +47,7 @@ func deleteBalanceOfSlotFromDB(t *testing.T, cs *ChainState, contractAddr, addr 
 // the ticker) actually runs.
 func TestSyncBalanceLocked_DefersEVMMirrorWrite(t *testing.T) {
 	skipUnlessRealDBBenchEnv(t)
-	cs := NewChainState("unused-evm-mirror-flush-test-1.json")
+	cs := testKnoten(t, "unused-evm-mirror-flush-test-1.json")
 	if !cs.useDB {
 		t.Fatal("expected a live PostgreSQL connection")
 	}
@@ -88,7 +88,7 @@ func TestSyncBalanceLocked_DefersEVMMirrorWrite(t *testing.T) {
 // one, and none silently dropped.
 func TestEVMMirrorFlush_BatchesMultipleDirtyAddresses(t *testing.T) {
 	skipUnlessRealDBBenchEnv(t)
-	cs := NewChainState("unused-evm-mirror-flush-test-2.json")
+	cs := testKnoten(t, "unused-evm-mirror-flush-test-2.json")
 	if !cs.useDB {
 		t.Fatal("expected a live PostgreSQL connection")
 	}
@@ -121,7 +121,7 @@ func TestEVMMirrorFlush_BatchesMultipleDirtyAddresses(t *testing.T) {
 // flush already drained everything.
 func TestEVMMirrorFlush_NoOpWhenNotDirty(t *testing.T) {
 	skipUnlessRealDBBenchEnv(t)
-	cs := NewChainState("unused-evm-mirror-flush-test-3.json")
+	cs := testKnoten(t, "unused-evm-mirror-flush-test-3.json")
 	if !cs.useDB {
 		t.Fatal("expected a live PostgreSQL connection")
 	}
@@ -151,7 +151,7 @@ func TestEVMMirrorFlush_NoOpWhenNotDirty(t *testing.T) {
 // end up with the correct persisted balanceOf slot, none lost.
 func TestEVMMirrorFlush_ConcurrentMarksNoLostUpdates(t *testing.T) {
 	skipUnlessRealDBBenchEnv(t)
-	cs := NewChainState("unused-evm-mirror-flush-test-4.json")
+	cs := testKnoten(t, "unused-evm-mirror-flush-test-4.json")
 	if !cs.useDB {
 		t.Fatal("expected a live PostgreSQL connection")
 	}

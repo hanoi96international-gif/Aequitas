@@ -68,13 +68,13 @@ func TestGeschwisterReihenfolge_ZweiBloeckeZweiReihenfolgen_RealDB(t *testing.T)
 		}
 	}
 
-	csA := NewChainState("unused-geschwister-a.json")
+	csA := testKnoten(t, "unused-geschwister-a.json")
 	if !csA.useDB {
 		t.Fatal("Knoten A hat keine Datenbank -- DATABASE_URL pruefen")
 	}
 	t.Setenv("DATABASE_URL", dbB)
 	schemaAnlegenUndLeeren(t, dbB)
-	csB := NewChainState("unused-geschwister-b.json")
+	csB := testKnoten(t, "unused-geschwister-b.json")
 	if !csB.useDB {
 		t.Fatal("Knoten B hat keine Datenbank -- AEQUITAS_DB_B pruefen")
 	}

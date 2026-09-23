@@ -59,7 +59,7 @@ func mpcTestState(t *testing.T) *ChainState {
 	if os.Getenv("DATABASE_URL") == "" {
 		t.Skip("needs DATABASE_URL: this exercises SQL, which no in-memory fake would test")
 	}
-	cs := NewChainState("unused-mpc-store-test.json")
+	cs := testKnoten(t, "unused-mpc-store-test.json")
 	if !cs.useDB || cs.db == nil {
 		t.Skip("no live PostgreSQL connection")
 	}

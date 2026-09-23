@@ -40,7 +40,7 @@ func TestSimulateMaxTPS_Ingestion(t *testing.T) {
 		t.Fatal("DATABASE_URL must point at a disposable local Postgres database")
 	}
 
-	state := NewChainState("unused-tps-bench-ingestion.json")
+	state := testKnoten(t, "unused-tps-bench-ingestion.json")
 	if !state.useDB {
 		t.Fatal("expected a live PostgreSQL connection (state.useDB == false) — check DATABASE_URL")
 	}
@@ -175,7 +175,7 @@ func TestSimulateMaxTPS_MultipleHotRecipients(t *testing.T) {
 		t.Fatal("DATABASE_URL must point at a disposable local Postgres database")
 	}
 
-	state := NewChainState("unused-tps-bench-ingestion-multihot.json")
+	state := testKnoten(t, "unused-tps-bench-ingestion-multihot.json")
 	if !state.useDB {
 		t.Fatal("expected a live PostgreSQL connection (state.useDB == false) — check DATABASE_URL")
 	}
@@ -290,7 +290,7 @@ func TestSimulateMaxTPS_IngestionDisjointRecipients(t *testing.T) {
 		t.Fatal("DATABASE_URL must point at a disposable local Postgres database")
 	}
 
-	state := NewChainState("unused-tps-bench-ingestion-disjoint.json")
+	state := testKnoten(t, "unused-tps-bench-ingestion-disjoint.json")
 	if !state.useDB {
 		t.Fatal("expected a live PostgreSQL connection (state.useDB == false) — check DATABASE_URL")
 	}
@@ -404,7 +404,7 @@ func TestSimulateMaxTPS_WarmSteadyState(t *testing.T) {
 		t.Fatal("DATABASE_URL must point at a disposable local Postgres database")
 	}
 
-	state := NewChainState("unused-tps-bench-warm-steady-state.json")
+	state := testKnoten(t, "unused-tps-bench-warm-steady-state.json")
 	if !state.useDB {
 		t.Fatal("expected a live PostgreSQL connection (state.useDB == false) — check DATABASE_URL")
 	}
