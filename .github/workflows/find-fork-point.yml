@@ -215,7 +215,7 @@ jobs:
                        | "    " + ((.url // .URL // .address // tostring)|tostring)
                          + "  height=" + ((.height // .Height // "?")|tostring)
                          + "  clean_streak=" + ((.clean_sync_streak // .cleanSyncStreak // "?")|tostring)
-                         + "  caught_up=" + ((.caught_up // .caughtUp // "?")|tostring)' \
+                         + "  caught_up=" + ((if has("caught_up") then .caught_up elif has("caughtUp") then .caughtUp else "?" end)|tostring)' \
               2>/dev/null || echo "    (no peers / unparseable)"
           done
           echo ""

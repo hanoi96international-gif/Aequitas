@@ -51,6 +51,9 @@ jobs:
           get()  { curl -s --max-time 20 "$@"; }
           code() { curl -s -o /dev/null --max-time 20 -w '%{http_code}' "$@"; }
           jq_() { jq -r "$1" 2>/dev/null; }
+          # Nie `.x // "fehlt"` fuer Wahrheitswerte: jq behandelt false wie null,
+          # und genau false ist hier der gesunde Wert (abweichend=false,
+          # C2 nimmt_an=false). Der erste Lauf fiel daran dreimal ROT.
 
           C1_IP=173.249.37.118; C2_IP=194.163.188.71
           declare -A API=( [C1]=https://aequitas.digital/api [C2]=https://proof2.aequitas.digital/api )
@@ -68,9 +71,9 @@ jobs:
             W=$(code "http://${IP[$K]}:8080/api/wache")
             [ "$W" = 200 ] && ok "$K /api/wache 200" || rot "$K /api/wache HTTP $W"
             HC=$(get "http://${IP[$K]}:8080/api/health/combined")
-            DV=$(echo "$HC" | jq_ '.divergenz.abweichend // "fehlt"')
+            DV=$(echo "$HC" | jq_ '.divergenz.abweichend | if . == null then "fehlt" else tostring end')
             [ "$DV" = false ] && ok "$K keine Kontostand-Abweichung" || rot "$K divergenz.abweichend=$DV"
-            NA=$(echo "$HC" | jq_ '.annahme_tor.nimmt_an // "fehlt"')
+            NA=$(echo "$HC" | jq_ '.annahme_tor.nimmt_an | if . == null then "fehlt" else tostring end')
             SOLL=$([ "$K" = C1 ] && echo true || echo false)
             [ "$NA" = "$SOLL" ] && ok "$K annahme_tor.nimmt_an=$NA (so gewollt)" || rot "$K annahme_tor.nimmt_an=$NA, erwartet $SOLL"
           done
