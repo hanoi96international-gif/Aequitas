@@ -49,6 +49,43 @@ jobs:
   widen:
     runs-on: ubuntu-latest
     steps:
+      # Aus der aktuellen Quelle bauen, wie stability-under-load.yml. Bis zum
+      # 23.09.2026 lief hier das Binary, das zuletzt irgendein anderer Lauf
+      # gebaut hatte -- eine Korrektur am Generator (hier: kein Aussortieren
+      # vor der Befuellung) kam damit nie an.
+      - uses: actions/checkout@v4
+      - name: Aktuelle Generator-Quelle nach Contabo2
+        uses: appleboy/scp-action@v1.0.0
+        with:
+          host: 194.163.188.71
+          username: root
+          key: ${{ secrets.CONTABO2_SSH_KEY }}
+          port: 22
+          source: "tools/contabo-loadtest/main.go,tools/contabo-loadtest/gen_accounts.go,go.mod,go.sum"
+          target: "/root/contabo-loadtest"
+      - name: Generator neu bauen
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: 194.163.188.71
+          username: root
+          key: ${{ secrets.CONTABO2_SSH_KEY }}
+          port: 22
+          script_stop: false
+          timeout: 600s
+          command_timeout: 600s
+          script: |
+            set +e
+            cd /root/contabo-loadtest || exit 1
+            if [ -f tools/contabo-loadtest/main.go ]; then
+              cp -f tools/contabo-loadtest/main.go ./main.go
+              cp -f tools/contabo-loadtest/gen_accounts.go ./gen_accounts.go
+            fi
+            docker run --rm --network host -v "$(pwd)":/w -w /w \
+              -v /root/go-mod-cache:/go/pkg/mod golang:1.24-alpine \
+              go build -o loadtest . 2>&1 | tail -20
+            [ -x ./loadtest ] || { echo "build produced no binary"; exit 1; }
+            echo "generator rebuilt: $(stat -c %y ./loadtest)"
+
       - name: Fund the unfunded accounts on Contabo2
         uses: appleboy/ssh-action@v1.0.3
         with:

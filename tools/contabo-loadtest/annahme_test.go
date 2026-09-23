@@ -38,3 +38,18 @@ func TestAnnahmeVerweigert(t *testing.T) {
 		t.Fatalf("der nur lesende Knoten muss erkannt werden, bekam %q %v", basis, v)
 	}
 }
+
+func TestAussortierenNichtVorDerBefuellung(t *testing.T) {
+	if aussortierenVorgesehen("fund", "1000000000000000") {
+		t.Fatal("vor der Befuellung darf nicht aussortiert werden -- es traefe genau die Konten, die befuellt werden sollen")
+	}
+	if aussortierenVorgesehen("fund,warmup,run", "1000000000000000") {
+		t.Fatal("auch nicht, wenn nach der Befuellung gleich gemessen wird")
+	}
+	if !aussortierenVorgesehen("warmup,run", "1000000000000000") {
+		t.Fatal("vor einer reinen Messung muss aussortiert werden -- leere Absender reissen ihre Buendel mit")
+	}
+	if aussortierenVorgesehen("warmup,run", "0") || aussortierenVorgesehen("warmup,run", "") {
+		t.Fatal("ohne Mindestguthaben wird nicht aussortiert")
+	}
+}

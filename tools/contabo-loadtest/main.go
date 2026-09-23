@@ -859,7 +859,7 @@ func main() {
 	// Zahlungsunfaehige Konten VOR der Paarbildung entfernen -- siehe
 	// aussortieren(). Eigener kleiner Client, damit hier nichts an der
 	// bestehenden Reihenfolge verschoben werden muss.
-	if *minBalanceWei != "" && *minBalanceWei != "0" {
+	if aussortierenVorgesehen(*phase, *minBalanceWei) {
 		if mindest, ok := new(big.Int).SetString(*minBalanceWei, 10); !ok {
 			fmt.Printf("-min-balance-wei %q ist keine Zahl -- es wird nicht aussortiert\n", *minBalanceWei)
 		} else {
@@ -1722,4 +1722,25 @@ func annahmeVerweigert(ziele []string, hc *http.Client) (string, bool) {
 		}
 	}
 	return "", false
+}
+
+// aussortierenVorgesehen entscheidet, ob Konten unter dem Mindestguthaben vor
+// dem Lauf entfernt werden.
+//
+// NICHT, wenn der Lauf befuellt. Bis zum 23.09.2026 lief das Aussortieren auch
+// vor der Befuellungsphase -- und entfernte damit genau die Konten, die
+// befuellt werden sollten: von 2.106 Zielen blieben 339, die ohnehin Guthaben
+// hatten, und 800 frisch angelegte Konten gingen leer aus. Nach der Befuellung
+// haelt jedes Ziel mindestens den Befuellungsbetrag; das Aussortieren ist dann
+// sinnlos und schaedlich.
+func aussortierenVorgesehen(phasen, mindestWei string) bool {
+	if mindestWei == "" || mindestWei == "0" {
+		return false
+	}
+	for _, p := range strings.Split(phasen, ",") {
+		if strings.TrimSpace(p) == "fund" {
+			return false
+		}
+	}
+	return true
 }
