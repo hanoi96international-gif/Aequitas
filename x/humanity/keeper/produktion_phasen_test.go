@@ -18,7 +18,7 @@ func TestProduktionsPhasen_PhasenPlusRestErgebenDieDauer(t *testing.T) {
 
 	// 1000 ms gesamt, davon 300 benannt. Der Rest MUSS als rest erscheinen --
 	// das ist die Aussage, wegen der es die Uhr gibt.
-	merkeProduktionsBlock(1000*ms, 50*ms, 100*ms, 40*ms, 90*ms, 20*ms, 7000)
+	merkeProduktionsBlock(1000*ms, 0, 50*ms, 100*ms, 40*ms, 90*ms, 20*ms, 7000)
 
 	s := ProduktionsPhasenStand()
 	if got := s["gesamt_ms"].(float64); got != 1000 {
@@ -41,7 +41,7 @@ func TestProduktionsPhasen_MittelJeBlockNichtSumme(t *testing.T) {
 	// sonst ist die Zahl nicht mit BLOCK_TIME vergleichbar, und genau dieser
 	// Vergleich ist der Zweck.
 	for i := 0; i < 4; i++ {
-		merkeProduktionsBlock(400*ms, 10*ms, 20*ms, 10*ms, 40*ms, 20*ms, 100)
+		merkeProduktionsBlock(400*ms, 0, 10*ms, 20*ms, 10*ms, 40*ms, 20*ms, 100)
 	}
 	s := ProduktionsPhasenStand()
 	if got := s["gesamt_ms"].(float64); got != 400 {
@@ -63,9 +63,9 @@ func TestProduktionsPhasen_TeuersterBauUeberlebtBillige(t *testing.T) {
 	t.Cleanup(ProduktionsPhasenZuruecksetzen)
 	ms := time.Millisecond
 
-	merkeProduktionsBlock(200*ms, 10*ms, 10*ms, 10*ms, 10*ms, 10*ms, 50)
-	merkeProduktionsBlock(4600*ms, 3000*ms, 200*ms, 100*ms, 900*ms, 50*ms, 7000)
-	merkeProduktionsBlock(180*ms, 5*ms, 5*ms, 5*ms, 5*ms, 5*ms, 40)
+	merkeProduktionsBlock(200*ms, 0, 10*ms, 10*ms, 10*ms, 10*ms, 10*ms, 50)
+	merkeProduktionsBlock(4600*ms, 0, 3000*ms, 200*ms, 100*ms, 900*ms, 50*ms, 7000)
+	merkeProduktionsBlock(180*ms, 0, 5*ms, 5*ms, 5*ms, 5*ms, 5*ms, 40)
 
 	s := ProduktionsPhasenStand()
 	if got := s["schlimmster_ms"].(float64); got != 4600 {
@@ -77,6 +77,31 @@ func TestProduktionsPhasen_TeuersterBauUeberlebtBillige(t *testing.T) {
 	// 4600 - (3000+200+100+900+50) = 350
 	if got := s["schlimmster_rest"].(float64); got < 349 || got > 351 {
 		t.Errorf("schlimmster_rest = %v, erwartet 350", got)
+	}
+}
+
+// Das Laden des Ausgangskorbs ist eine eigene Phase. Bis zum 23.09.2026 steckte
+// es in "sperren": unter Last 300-400 ms je Block, ohne dass sich sagen liess,
+// ob die Datenbank oder die DAG-Sperre die Zeit kostete.
+func TestProduktionsPhasen_LadenIstEigenePhase(t *testing.T) {
+	ProduktionsPhasenZuruecksetzen()
+	t.Cleanup(ProduktionsPhasenZuruecksetzen)
+	ms := time.Millisecond
+
+	merkeProduktionsBlock(600*ms, 350*ms, 40*ms, 30*ms, 20*ms, 100*ms, 10*ms, 7000)
+	s := ProduktionsPhasenStand()
+	if got := s["laden_ms"].(float64); got != 350 {
+		t.Fatalf("laden_ms = %v, erwartet 350", got)
+	}
+	if got := s["sperren_ms"].(float64); got != 40 {
+		t.Errorf("sperren_ms = %v, erwartet 40 -- das Laden darf nicht mehr darin stecken", got)
+	}
+	// 600 - (350+40+30+20+100+10) = 50
+	if got := s["rest_ms"].(float64); got < 49.9 || got > 50.1 {
+		t.Errorf("rest_ms = %v, erwartet 50", got)
+	}
+	if got := s["schlimmster_laden"].(float64); got != 350 {
+		t.Errorf("schlimmster_laden = %v, erwartet 350", got)
 	}
 }
 

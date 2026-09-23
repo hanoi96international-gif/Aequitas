@@ -34,6 +34,7 @@ type produktionsEintrag struct {
 	Deckel      int64   `json:"deckel"`
 	Rueckstand  int64   `json:"rueckstand"`
 	GesamtMs    float64 `json:"gesamt_ms"`
+	LadenMs     float64 `json:"laden_ms"`
 	SperrenMs   float64 `json:"sperren_ms"`
 	DbPaarMs    float64 `json:"db_paar_ms"`
 	SpeichernMs float64 `json:"speichern_ms"`

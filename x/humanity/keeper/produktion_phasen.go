@@ -27,6 +27,7 @@ import (
 var (
 	pbGesamtNanos atomic.Int64
 	pbBloecke     atomic.Int64
+	pbLadenNs     atomic.Int64 // Ausgangskorb laden (LoadPendingTxsWithLimit), vor den Sperren
 	pbSperrenNs   atomic.Int64 // auf replayMu und dag.mu warten
 	pbDbPaarNs    atomic.Int64 // LoadPendingTxs + StateRoot (nebenlaeufig)
 	pbBauenNs     atomic.Int64 // Block zusammensetzen und signieren
@@ -34,6 +35,7 @@ var (
 	pbVerteilenNs atomic.Int64 // an die Peers geben
 
 	pbMaxGesamtNs    atomic.Int64
+	pbMaxLadenNs     atomic.Int64
 	pbMaxSperrenNs   atomic.Int64
 	pbMaxDbPaarNs    atomic.Int64
 	pbMaxBauenNs     atomic.Int64
@@ -50,9 +52,10 @@ func merkeProduktionsPhase(z *atomic.Int64, start time.Time) {
 // Mittelwert und, getrennt davon, den teuersten Durchlauf. Ein Mittelwert
 // verschluckt genau den Ausreisser, der die Blockproduktion aus dem Takt
 // wirft (gemessen: Mittel unter 1 s, schlimmster 4,6 s).
-func merkeProduktionsBlock(gesamt, sperren, dbPaar, bauen, speichern, verteilen time.Duration, txAnzahl int) {
+func merkeProduktionsBlock(gesamt, laden, sperren, dbPaar, bauen, speichern, verteilen time.Duration, txAnzahl int) {
 	pbBloecke.Add(1)
 	pbGesamtNanos.Add(int64(gesamt))
+	pbLadenNs.Add(int64(laden))
 	pbSperrenNs.Add(int64(sperren))
 	pbDbPaarNs.Add(int64(dbPaar))
 	pbBauenNs.Add(int64(bauen))
@@ -64,6 +67,7 @@ func merkeProduktionsBlock(gesamt, sperren, dbPaar, bauen, speichern, verteilen 
 			break
 		}
 		if pbMaxGesamtNs.CompareAndSwap(alt, int64(gesamt)) {
+			pbMaxLadenNs.Store(int64(laden))
 			pbMaxSperrenNs.Store(int64(sperren))
 			pbMaxDbPaarNs.Store(int64(dbPaar))
 			pbMaxBauenNs.Store(int64(bauen))
@@ -86,13 +90,14 @@ func msAus(z *atomic.Int64, teiler int64) float64 {
 func ProduktionsPhasenStand() map[string]interface{} {
 	n := pbBloecke.Load()
 	gesamt := msAus(&pbGesamtNanos, n)
+	laden := msAus(&pbLadenNs, n)
 	sperren := msAus(&pbSperrenNs, n)
 	dbPaar := msAus(&pbDbPaarNs, n)
 	bauen := msAus(&pbBauenNs, n)
 	speichern := msAus(&pbSpeichernNs, n)
 	verteilen := msAus(&pbVerteilenNs, n)
 	maxGesamt := float64(pbMaxGesamtNs.Load()) / 1e6
-	maxBenannt := float64(pbMaxSperrenNs.Load()+pbMaxDbPaarNs.Load()+pbMaxBauenNs.Load()+
+	maxBenannt := float64(pbMaxLadenNs.Load()+pbMaxSperrenNs.Load()+pbMaxDbPaarNs.Load()+pbMaxBauenNs.Load()+
 		pbMaxSpeichernNs.Load()+pbMaxVerteilenNs.Load()) / 1e6
 	return map[string]interface{}{
 		"bedeutung": "Wo die Zeit beim Blockbau bleibt, je Block gemittelt. rest_ms ist die " +
@@ -102,13 +107,15 @@ func ProduktionsPhasenStand() map[string]interface{} {
 			"die Produktion aus dem Takt wirft.",
 		"bloecke":               n,
 		"gesamt_ms":             gesamt,
+		"laden_ms":              laden,
 		"sperren_ms":            sperren,
 		"db_paar_ms":            dbPaar,
 		"bauen_ms":              bauen,
 		"speichern_ms":          speichern,
 		"verteilen_ms":          verteilen,
-		"rest_ms":               gesamt - (sperren + dbPaar + bauen + speichern + verteilen),
+		"rest_ms":               gesamt - (laden + sperren + dbPaar + bauen + speichern + verteilen),
 		"schlimmster_ms":        maxGesamt,
+		"schlimmster_laden":     float64(pbMaxLadenNs.Load()) / 1e6,
 		"schlimmster_sperren":   float64(pbMaxSperrenNs.Load()) / 1e6,
 		"schlimmster_db_paar":   float64(pbMaxDbPaarNs.Load()) / 1e6,
 		"schlimmster_bauen":     float64(pbMaxBauenNs.Load()) / 1e6,
@@ -121,7 +128,7 @@ func ProduktionsPhasenStand() map[string]interface{} {
 
 // ProduktionsPhasenZuruecksetzen gibt es fuer die Tests.
 func ProduktionsPhasenZuruecksetzen() {
-	for _, z := range []*atomic.Int64{&pbGesamtNanos, &pbBloecke, &pbSperrenNs, &pbDbPaarNs,
+	for _, z := range []*atomic.Int64{&pbGesamtNanos, &pbBloecke, &pbLadenNs, &pbMaxLadenNs, &pbSperrenNs, &pbDbPaarNs,
 		&pbBauenNs, &pbSpeichernNs, &pbVerteilenNs, &pbMaxGesamtNs, &pbMaxSperrenNs,
 		&pbMaxDbPaarNs, &pbMaxBauenNs, &pbMaxSpeichernNs, &pbMaxVerteilenNs, &pbMaxTxAnzahl} {
 		z.Store(0)
