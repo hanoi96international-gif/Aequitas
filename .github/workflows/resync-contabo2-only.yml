@@ -39,12 +39,12 @@ jobs:
           key: ${{ secrets.CONTABO2_SSH_KEY }}
           port: 22
           fingerprint: "SHA256:VIwj7Faxiga2n45HVHZEQFPxcbRKHgSgHoxAFsf2wto"
-          script_stop: true
+          script_stop: false  # set -e steht im Skript; script_stop:true haengt hinter JEDE Zeile eine Exit-Pruefung -- auch in Heredocs und hinter else/case (Beleg: wachhund-telegram-installieren.yml, 23.09.2026)
           timeout: 900s
           command_timeout: 900s
           envs: CONFIRM
           script: |
-            set -uo pipefail
+            set -euo pipefail
             if [ "${CONFIRM:-false}" != "true" ]; then
               echo "confirm != true -- doing nothing. Re-run with confirm=true to actually resync Contabo2."
               exit 0
@@ -62,10 +62,9 @@ jobs:
             # danach still, bis ein gewoehnlicher Deploy sie zurueckbrachte. Ein
             # Wiederherstellungs-Workflow, der beim Wiederherstellen etwas
             # wegnimmt, ist ein zweiter Vorfall.
-            # if/then, NICHT `[ -x ] && ...`: script_stop:true stellt ein
-            # `set -e` voran, und eine solche Liste liefert 1, wenn der Test
-            # falsch ist -- der Lauf waere dann ausgerechnet dort gestorben, wo
-            # eine Box den MPC-Ordner nicht hat.
+            # if/then, NICHT `[ -x ] && ...`: unter set -e liefert eine solche
+            # Liste 1, wenn der Test falsch ist -- der Lauf waere dann
+            # ausgerechnet dort gestorben, wo eine Box den MPC-Ordner nicht hat.
             MOUNTS="-v /root/aequitas-wal-data:/data/wal"
             if [ -d /root/aequitas-mpc ]; then
               MOUNTS="$MOUNTS -v /root/aequitas-mpc:/data/mpc"
@@ -90,11 +89,14 @@ jobs:
             sleep 15
             echo "=== Contabo2: boot log lines mentioning RESYNC/BOOTSTRAP/AUTO-HEAL/DAG merge ==="
             # Ohne das "|| echo" beendet ein LEERES grep-Ergebnis den ganzen
-            # Schritt: script_stop:true stellt dem Skript ein `set -e` voran, und
-            # grep gibt bei null Treffern 1 zurueck. Genau so meldete sich dieser
-            # Workflow am 22.09. als "failure", obwohl der Knoten sauber hochkam
-            # -- und er starb VOR der Statusausgabe, also vor dem einzigen Teil,
-            # der zeigt, ob der Resync etwas gebracht hat.
+            # Schritt: grep gibt bei null Treffern 1 zurueck. Genau so meldete
+            # sich dieser Workflow am 22.09. als "failure", obwohl der Knoten
+            # sauber hochkam -- er starb VOR der Statusausgabe, also vor dem
+            # einzigen Teil, der zeigt, ob der Resync etwas gebracht hat.
+            # (Damals lief er noch mit script_stop:true, das hinter JEDE Zeile
+            # eine Exit-Pruefung haengt; seit 23.09. ist es aus, und set -e
+            # oben traegt den Abbruch -- auch das else weiter unten waere
+            # sonst im Erfolgsfall mit 1 ausgestiegen.)
             docker logs aequitas-node 2>&1 | grep -iE '\[RESYNC\]|\[BOOTSTRAP\]|\[AUTO-HEAL\]|Merged.*tips|orphan' | tail -60 || echo "(keine solchen Zeilen im Bootlog)"
             echo "=== Contabo2: /api/status after resync ==="
             curl -s http://localhost:8080/api/status || true
