@@ -40,7 +40,17 @@ func items(sender string, nonces ...uint64) []*precomputedSendTx {
 // newReserveTestServer builds a server whose ChainState has no database, so
 // ReserveNonce succeeds without one and LoadNonce reports 0. That isolates the
 // run-detection logic, which is the part that can be wrong.
-func newReserveTestServer() *EVMRPCServer {
+//
+// Die Annahme wird ausdruecklich OFFEN gestellt (gerade einen Block
+// produziert). Seit preReserveBatchNonces bei abgelehnter Annahme nichts
+// reserviert, haengt das Ergebnis sonst an der Prozesslaufzeit:
+// productionStalledFor() zaehlt ab Prozessstart, solange nie produziert wurde,
+// und nach admissionStallSeconds lehnt die Annahme ab. Ein langsamer Lauf
+// (-race, 444 s am 23.09.2026) liess diese Tests deshalb rot werden, ein
+// schneller nicht.
+func newReserveTestServer(t *testing.T) *EVMRPCServer {
+	t.Helper()
+	withProducedAt(t, time.Now().Unix())
 	s := &EVMRPCServer{state: &ChainState{}}
 	s.initNonceShards()
 	return s
@@ -55,7 +65,7 @@ func allIndexes(n int) []int {
 }
 
 func TestConsecutiveRunIsReservedOnce(t *testing.T) {
-	s := newReserveTestServer()
+	s := newReserveTestServer(t)
 	sender := "0x1111111111111111111111111111111111111111"
 	batch := items(sender, 0, 1, 2, 3, 4)
 
@@ -81,7 +91,7 @@ func TestConsecutiveRunIsReservedOnce(t *testing.T) {
 // The run must stop at the first nonce that is not the next one. Reserving
 // past a gap would consume nonces for transactions that will be refused.
 func TestRunStopsAtAGap(t *testing.T) {
-	s := newReserveTestServer()
+	s := newReserveTestServer(t)
 	sender := "0x2222222222222222222222222222222222222222"
 	// 0,1 are consecutive; 7 is not; 8 only follows 7.
 	batch := items(sender, 0, 1, 7, 8)
@@ -104,7 +114,7 @@ func TestRunStopsAtAGap(t *testing.T) {
 
 // Each sender gets its own run; one sender's gap must not affect another.
 func TestTwoSendersEachGetTheirOwnRun(t *testing.T) {
-	s := newReserveTestServer()
+	s := newReserveTestServer(t)
 	a := "0x3333333333333333333333333333333333333333"
 	b := "0x4444444444444444444444444444444444444444"
 
@@ -127,7 +137,7 @@ func TestTwoSendersEachGetTheirOwnRun(t *testing.T) {
 // Interleaved senders still form runs: grouping is by sender, and order within
 // each sender is what has to be consecutive.
 func TestInterleavedSendersStillFormRuns(t *testing.T) {
-	s := newReserveTestServer()
+	s := newReserveTestServer(t)
 	a := "0x5555555555555555555555555555555555555555"
 	b := "0x6666666666666666666666666666666666666666"
 
@@ -151,7 +161,7 @@ func TestInterleavedSendersStillFormRuns(t *testing.T) {
 // would make exactly the same one round trip, and marking it here would move
 // the reservation away from the code that reports its errors.
 func TestSingleTransactionIsLeftToThePerItemPath(t *testing.T) {
-	s := newReserveTestServer()
+	s := newReserveTestServer(t)
 	batch := items("0x7777777777777777777777777777777777777777", 0)
 
 	s.preReserveBatchNonces(batch, allIndexes(len(batch)))
@@ -164,7 +174,7 @@ func TestSingleTransactionIsLeftToThePerItemPath(t *testing.T) {
 // Items that failed to decode carry no transaction. They must be skipped
 // without disturbing the rest.
 func TestFailedDecodesAreSkipped(t *testing.T) {
-	s := newReserveTestServer()
+	s := newReserveTestServer(t)
 	sender := "0x8888888888888888888888888888888888888888"
 	batch := []*precomputedSendTx{
 		{tx: txWithNonce(0), sender: sender},
@@ -206,7 +216,7 @@ func (e errForTest) Error() string { return string(e) }
 // in sendRawTransaction vor ReserveNonce ab, und auch an ihr lief die
 // Vorab-Reservierung vorbei.
 func TestPreReserve_NurLesenderKnotenReserviertNichts(t *testing.T) {
-	s := newReserveTestServer()
+	s := newReserveTestServer(t)
 	s.state.SetzeNurLesend(true)
 	sender := "0x3333333333333333333333333333333333333333"
 	batch := items(sender, 0, 1, 2)
@@ -226,11 +236,11 @@ func TestPreReserve_NurLesenderKnotenReserviertNichts(t *testing.T) {
 }
 
 func TestPreReserve_AbgelehnteAnnahmeReserviertNichts(t *testing.T) {
+	s := newReserveTestServer(t) // oeffnet die Annahme -- also ERST danach schliessen
 	withProducedAt(t, time.Now().Unix()-(admissionStallSeconds+5))
 	if admissionRefusalReason() == "" {
 		t.Fatal("Vorbedingung: die Annahmesteuerung sollte hier ablehnen")
 	}
-	s := newReserveTestServer()
 	sender := "0x4444444444444444444444444444444444444444"
 	batch := items(sender, 0, 1, 2)
 
