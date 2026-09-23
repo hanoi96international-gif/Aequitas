@@ -1,0 +1,60 @@
+name: Blockbau-Log (Zeitfenster, feste Muster, nur lesend)
+
+# Was der Knoten waehrend eines Lastlaufs ueber seinen Blockbau geschrieben hat:
+# langsame ProduceBlock-Laeufe, die Aufschluesselung Laden/StateRoot, wer die
+# DAG-Sperre hielt (Sperren-Wachhund), Bremsschritte.
+#
+# NUR FESTE MUSTER. Das Repository ist oeffentlich. Gezeigt werden allein
+# Zeilen, die mit den unten genannten Praefixen beginnen -- Laufzeiten,
+# Hoehen, Goroutinen-Namen. Nichts anderes aus dem Log verlaesst die Box.
+on:
+  workflow_dispatch:
+    inputs:
+      box:
+        description: "contabo1 oder contabo2"
+        default: contabo1
+        type: choice
+        options: [contabo1, contabo2]
+      seit:
+        description: "Anfang des Fensters (docker logs --since), z.B. 2026-09-23T21:21:00Z oder 30m"
+        default: "30m"
+      bis:
+        description: "Ende des Fensters (docker logs --until), leer = jetzt"
+        default: ""
+
+permissions:
+  contents: read
+
+jobs:
+  lesen:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Log-Ausschnitt
+        uses: appleboy/ssh-action@v1.0.3
+        env:
+          SEIT: ${{ inputs.seit }}
+          BIS: ${{ inputs.bis }}
+        with:
+          host: ${{ inputs.box == 'contabo1' && '173.249.37.118' || '194.163.188.71' }}
+          username: root
+          key: ${{ inputs.box == 'contabo1' && secrets.CONTABO_SSH_KEY || secrets.CONTABO2_SSH_KEY }}
+          port: 22
+          script_stop: false
+          timeout: 120s
+          command_timeout: 120s
+          envs: SEIT,BIS
+          script: |
+            BIS_ARG=""
+            [ -n "$BIS" ] && BIS_ARG="--until $BIS"
+            docker logs aequitas-node --since "$SEIT" $BIS_ARG 2>&1 > /tmp/blockbau.log
+            echo "Zeilen im Fenster: $(wc -l < /tmp/blockbau.log)"
+            MUSTER='^\[(BLOCK\] ⏱|SPERRE\]|EIGENLAST|PEER-LAG|WAL-FLUSH|ATOMIC\]|LOCK\])'
+            echo "=== Treffer je Muster ==="
+            for m in 'ProduceBlock itself took' 'dbpair detail' '\[SPERRE\]' 'EIGENLAST' 'PEER-LAG' 'Full tick'; do
+              printf '%-28s %s\n' "$m" "$(grep -c -- "$m" /tmp/blockbau.log)"
+            done
+            echo "=== die ersten 60 Treffer ==="
+            grep -E "$MUSTER|Full tick" /tmp/blockbau.log | head -60
+            echo "=== die letzten 20 Treffer ==="
+            grep -E "$MUSTER|Full tick" /tmp/blockbau.log | tail -20
+            rm -f /tmp/blockbau.log
