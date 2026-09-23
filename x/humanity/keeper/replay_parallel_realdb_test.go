@@ -29,7 +29,7 @@ func TestReplayTransactions_ParallelTransfers_RealDB(t *testing.T) {
 	}
 
 	truncateDistTestTables(t)
-	cs := NewChainState("unused-replay-parallel-realdb-test.json")
+	cs := testKnoten(t, "unused-replay-parallel-realdb-test.json")
 	if !cs.useDB {
 		t.Fatal("expected a live PostgreSQL connection (cs.useDB == false) — check DATABASE_URL")
 	}

@@ -32,7 +32,7 @@ func skipUnlessRealDBBenchEnv(t *testing.T) {
 // duplicate, or reorder-corrupt any transfer).
 func TestTransferBatch_ConcurrentSuccessAllCommit(t *testing.T) {
 	skipUnlessRealDBBenchEnv(t)
-	state := NewChainState("unused-batch-test-1.json")
+	state := testKnoten(t, "unused-batch-test-1.json")
 	if !state.useDB {
 		t.Fatal("expected a live PostgreSQL connection")
 	}
@@ -111,7 +111,7 @@ func TestTransferBatch_ConcurrentSuccessAllCommit(t *testing.T) {
 // (both DB and in-memory) rather than leaving any partial state.
 func TestTransferBatch_OneBadMemberFailsWholeBatchCleanly(t *testing.T) {
 	skipUnlessRealDBBenchEnv(t)
-	state := NewChainState("unused-batch-test-2.json")
+	state := testKnoten(t, "unused-batch-test-2.json")
 	if !state.useDB {
 		t.Fatal("expected a live PostgreSQL connection")
 	}
@@ -197,7 +197,7 @@ func TestTransferBatch_OneBadMemberFailsWholeBatchCleanly(t *testing.T) {
 // opt-in suite runs, so a future regression here fails fast.
 func TestTransferBatch_HighConcurrencyNoDeadlock(t *testing.T) {
 	skipUnlessRealDBBenchEnv(t)
-	state := NewChainState("unused-batch-test-3.json")
+	state := testKnoten(t, "unused-batch-test-3.json")
 	if !state.useDB {
 		t.Fatal("expected a live PostgreSQL connection")
 	}

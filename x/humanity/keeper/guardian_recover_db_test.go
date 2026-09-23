@@ -23,7 +23,7 @@ func TestRecoverFromEscrow_RealDB(t *testing.T) {
 	}
 
 	truncateDistTestTables(t)
-	cs := NewChainState("unused-recover-escrow-db-test.json")
+	cs := testKnoten(t, "unused-recover-escrow-db-test.json")
 	if !cs.useDB {
 		t.Fatal("expected a live PostgreSQL connection (cs.useDB == false) — check DATABASE_URL")
 	}
@@ -91,7 +91,7 @@ func TestConfirmAlive_ColdAccount_RealDB(t *testing.T) {
 	}
 
 	truncateDistTestTables(t)
-	cs := NewChainState("unused-confirm-alive-db-test.json")
+	cs := testKnoten(t, "unused-confirm-alive-db-test.json")
 	if !cs.useDB {
 		t.Fatal("expected a live PostgreSQL connection (cs.useDB == false) — check DATABASE_URL")
 	}

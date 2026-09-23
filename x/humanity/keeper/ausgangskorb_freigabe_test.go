@@ -24,7 +24,7 @@ import (
 
 func TestAusgangskorb_FreigabeHoltAbgebrocheneProduktionZurueck_RealDB(t *testing.T) {
 	truncateDistTestTables(t) // auch das Opt-in-Tor
-	cs := NewChainState("unused-ausgangskorb-freigabe-test.json")
+	cs := testKnoten(t, "unused-ausgangskorb-freigabe-test.json")
 	if !cs.useDB {
 		t.Fatal("erwartet eine echte PostgreSQL-Verbindung -- DATABASE_URL pruefen")
 	}
@@ -69,7 +69,7 @@ func TestAusgangskorb_FreigabeHoltAbgebrocheneProduktionZurueck_RealDB(t *testin
 // Freigabe NICHT anfassen -- sonst wird sie ein zweites Mal eingebaut.
 func TestAusgangskorb_FreigabeLaesstEingebauteZeilenInRuhe_RealDB(t *testing.T) {
 	truncateDistTestTables(t)
-	cs := NewChainState("unused-ausgangskorb-freigabe-eingebaut-test.json")
+	cs := testKnoten(t, "unused-ausgangskorb-freigabe-eingebaut-test.json")
 	if !cs.useDB {
 		t.Fatal("erwartet eine echte PostgreSQL-Verbindung")
 	}

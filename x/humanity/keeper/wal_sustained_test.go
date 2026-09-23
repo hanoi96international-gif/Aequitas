@@ -67,7 +67,7 @@ func TestSustainedWAL_QueueConvergence(t *testing.T) {
 			t.Setenv("AEQUITAS_WAL_ENABLED", "1")
 			t.Setenv("AEQUITAS_WAL_PATH", walPath)
 
-			state := NewChainState(fmt.Sprintf("unused-sustained-%s.json", cfg.name))
+			state := testKnoten(t, fmt.Sprintf("unused-sustained-%s.json", cfg.name))
 			if !state.useDB {
 				t.Fatal("expected a live PostgreSQL connection (state.useDB == false) — check DATABASE_URL")
 			}

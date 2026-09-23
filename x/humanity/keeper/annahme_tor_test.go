@@ -97,7 +97,7 @@ func TestAnnahmeTor_AbgelehnteUeberweisungAendertNichts(t *testing.T) {
 // dieser Test haelt fest, dass an der Nonce nichts haengen bleibt.
 func TestAnnahmeTor_VerbrenntKeineNonce_RealDB(t *testing.T) {
 	truncateDistTestTables(t) // auch das Opt-in-Tor
-	cs := NewChainState("unused-annahme-tor-nonce-test.json")
+	cs := testKnoten(t, "unused-annahme-tor-nonce-test.json")
 	if !cs.useDB {
 		t.Fatal("erwartet eine echte PostgreSQL-Verbindung -- DATABASE_URL pruefen")
 	}

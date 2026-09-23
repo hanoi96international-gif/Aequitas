@@ -43,7 +43,7 @@ func TestSaveBlockCostAtScale(t *testing.T) {
 	// touches pending_txs/chain_blocks and needs the schema to exist first —
 	// NewChainState is what creates it. Clearing pending_txs per sub-test
 	// below is the only isolation this benchmark actually needs.
-	cs := NewChainState("unused-block-save-bench.json")
+	cs := testKnoten(t, "unused-block-save-bench.json")
 	if !cs.useDB {
 		t.Fatal("expected a live PostgreSQL connection (cs.useDB == false) — check DATABASE_URL")
 	}

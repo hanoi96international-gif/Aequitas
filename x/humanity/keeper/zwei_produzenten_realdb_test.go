@@ -146,13 +146,13 @@ func zweiProduzentenLaufMitRolle(t *testing.T, startGuthaben float64, bNurLesend
 	betraege := []float64{1.0 / 3.0, 0.1234565, 0.0000005, 0.0000015, 0.0071, 0.25}
 	adr := func(i int) string { return fmt.Sprintf("0xd0000000000000000000000000000000000%04x", i) }
 
-	csA := NewChainState("unused-zwei-produzenten-a.json")
+	csA := testKnoten(t, "unused-zwei-produzenten-a.json")
 	if !csA.useDB {
 		t.Fatal("Knoten A hat keine Datenbank -- DATABASE_URL pruefen")
 	}
 	t.Setenv("DATABASE_URL", urlB)
 	schemaAnlegenUndLeeren(t, urlB)
-	csB := NewChainState("unused-zwei-produzenten-b.json")
+	csB := testKnoten(t, "unused-zwei-produzenten-b.json")
 	if !csB.useDB {
 		t.Fatal("Knoten B hat keine Datenbank -- AEQUITAS_DB_B pruefen")
 	}

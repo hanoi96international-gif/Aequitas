@@ -147,7 +147,7 @@ func experimentLauf(t *testing.T, startGuthaben float64, mitWAL bool) {
 		t.Setenv("AEQUITAS_WAL_ENABLED", "1")
 		t.Setenv("AEQUITAS_WAL_PATH", filepath.Join(t.TempDir(), "annahme.wal"))
 	}
-	csA := NewChainState("unused-annahme-gegen-nachspielen-a.json")
+	csA := testKnoten(t, "unused-annahme-gegen-nachspielen-a.json")
 	if mitWAL {
 		if csA.wal == nil {
 			t.Fatal("Knoten A sollte den WAL-Schnellpfad fahren, tut es aber nicht -- siehe die [WAL]-Zeilen oben")
@@ -244,7 +244,7 @@ func experimentLauf(t *testing.T, startGuthaben float64, mitWAL bool) {
 	origURL := os.Getenv("DATABASE_URL")
 	t.Setenv("DATABASE_URL", dbB)
 	schemaAnlegenUndLeeren(t, dbB)
-	csB := NewChainState("unused-annahme-gegen-nachspielen-b.json")
+	csB := testKnoten(t, "unused-annahme-gegen-nachspielen-b.json")
 	if !csB.useDB {
 		t.Fatal("Knoten B hat keine Datenbank -- AEQUITAS_DB_B pruefen")
 	}
