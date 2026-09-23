@@ -6,8 +6,18 @@
   Identität des Verantwortlichen ist eine Datenschutzerklärung wertlos: die
   Betroffenen erfahren nicht, gegen wen sie ihre Rechte richten können.
 
-  Der Text beschreibt den am 25.08.2026 gemessenen Ist-Zustand. Ausführliche
-  Fassung mit Begründungen:
+  Der Text beschreibt den am 23.09.2026 gemessenen Ist-Zustand, abgelesen aus
+  den laufenden Containern beider Boxen (container-env.yml):
+    - Coordinator: VALIDATOR_URLS = proof1 + proof2, QUORUM_SIZE=2
+    - Vergleichsdienste: keiner der *_PARTICIPATES_IN_MATCH-Schalter gesetzt
+      (gespeichert wird nur der 64-Byte-Sketch), kein MPC_PARTY_URLS
+    - Railway: der Coordinator antwortet seit 14.09.2026 "Application not
+      found"; kein laufender Dienst verweist mehr dorthin
+  Vorher stand hier der Stand vom 25.08.: drei Dienste, einer bei Railway,
+  Quorum 2 von 3. Das war seit dem 14.09. falsch, und zwar genau in dem
+  Abschnitt über die automatisierte Entscheidung (Art. 22).
+  Wer an Quorum, Speicherung oder Standorten etwas ändert, ändert diese Seite
+  mit. Ausführliche Fassung mit Begründungen:
   aequitas-biometric-beta/docs/dsgvo/07_DATENSCHUTZERKLAERUNG.md
 -->
 <h1>Datenschutzerklärung</h1>
@@ -37,7 +47,9 @@
 <h2>3. Was bei der Anmeldung geschieht</h2>
 <p>
   Sie nehmen mit Ihrem Gerät ein Foto Ihres Gesichts und eine kurze Bildfolge
-  auf, bei der Sie blinzeln (damit ein Foto vom Foto nicht genügt).
+  auf. Dabei blinzeln Sie einmal, schauen auf Aufforderung kurz zur Seite, und
+  Ihr Bildschirm leuchtet in einer zufälligen Farbfolge — damit ein Foto vom
+  Foto oder ein abgespieltes Video nicht genügt.
 </p>
 <p>
   Daraus berechnet unser Dienst kurzzeitig eine mathematische Beschreibung
@@ -61,6 +73,7 @@
   <tr><td>Eine Zufallszahl als Ihre Kennung</td><td>dauerhaft</td></tr>
   <tr><td>Ein verschlüsselter Verweis auf Ihre Wallet-Adresse</td><td>bis zu Ihrem Widerruf</td></tr>
   <tr><td>Version und Zeitpunkt Ihrer Einwilligung</td><td>bis zu Ihrem Widerruf</td></tr>
+  <tr><td>Nur wenn Ihre Anmeldung abgewiesen wurde: ein Vorgang mit zufälliger Kennung, Zeitpunkt, Art der Entscheidung, Ähnlichkeitswert und Abstimmungsergebnis (siehe Abschnitt 7)</td><td>90 Tage, wenn Sie nicht widersprechen; sonst bis ein Mensch entschieden hat und danach noch ein Jahr</td></tr>
 </table>
 
 <h3>Was nicht gespeichert wird</h3>
@@ -126,18 +139,35 @@
 </p>
 <p>
   Damit diese Entscheidung nicht an einem einzelnen System hängt, urteilen
-  <strong>drei voneinander unabhängige Dienste</strong>, von denen zwei
-  übereinstimmen müssen. Sie laufen auf verschiedenen Maschinen, zwei davon
-  gehören verschiedenen Personen. Wiederholte Versuche werden
+  <strong>zwei voneinander unabhängige Dienste</strong>, und
+  <strong>beide</strong> müssen übereinstimmen. Sie laufen auf verschiedenen
+  Maschinen, die verschiedenen Personen gehören. Ist einer der beiden nicht
+  erreichbar, wird nicht entschieden — die Anmeldung kann dann später erneut
+  versucht werden. Wiederholte Versuche werden
   <strong>verzögert, nicht gesperrt</strong> — höchstens zwei Minuten.
+</p>
+<h3>Ihr Recht auf Überprüfung durch einen Menschen (Art. 22 Abs. 3)</h3>
+<p>
+  Wird Ihre Anmeldung abgewiesen, zeigt Ihnen die App eine
+  <strong>Kennung</strong> (sie beginnt mit „W-“). Mit dieser Kennung können Sie
+  <strong>innerhalb von 90 Tagen</strong> in der App widersprechen. Dann prüft
+  ein Mensch Ihren Fall; es wird nichts automatisch umgekehrt. Wenn Sie Ihren
+  Standpunkt darlegen möchten, schreiben Sie mit der Kennung an {{EMAIL}}.
+</p>
+<p>
+  Sie erfahren, dass und wann abgewiesen wurde, mit welcher Ähnlichkeit und
+  wie die Abstimmung ausging. Sie erfahren <strong>nicht</strong>, mit wem
+  Sie verwechselt wurden — das wäre eine Auskunft über einen anderen Menschen
+  (Art. 15 Abs. 4).
 </p>
 
 <h2>8. Wo die Daten verarbeitet werden</h2>
 <p>
-  Auf drei Diensten: zwei Servern bei Contabo in Lauterbourg (Frankreich) und
-  einem Dienst bei Railway in der Region EU West. Alle drei innerhalb der EU.
-  Eine Weitergabe an Dritte darüber hinaus findet nicht statt. Wir verkaufen
-  keine Daten.
+  Auf zwei Servern, gemietet bei der Contabo GmbH in Lauterbourg
+  (Frankreich), also innerhalb der EU. Einer der beiden Server gehört einer
+  anderen Person, die ihn für den Betrieb von Aequitas bereitstellt. Eine
+  Weitergabe an Dritte darüber hinaus findet nicht statt, eine Übermittlung
+  in Länder außerhalb der EU ebenfalls nicht. Wir verkaufen keine Daten.
 </p>
 
 <h2>9. Rechtsgrundlagen</h2>

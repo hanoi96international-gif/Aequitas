@@ -164,3 +164,63 @@ func TestAngabenWerdenEscaped(t *testing.T) {
 		t.Errorf("Ampersand wurde nicht escaped: %s", aus)
 	}
 }
+
+// Die Datenschutzerklaerung beschreibt den Betrieb. Beschreibt sie einen
+// anderen als den laufenden, ist sie in dem Punkt falsch, den sie erklaeren
+// soll. Bis zum 23.09.2026 nannte sie drei Vergleichsdienste, einen davon bei
+// Railway, Quorum 2 von 3 -- seit dem 14.09. gab es Railway nicht mehr, und
+// live liefen zwei Dienste, die beide zustimmen muessen. Ausgerechnet der
+// Abschnitt ueber die automatisierte Entscheidung (Art. 22) war damit falsch.
+//
+// Dieser Test haelt den am 23.09. gemessenen Stand fest. Aendert sich das
+// Quorum oder kommt ein Dienst hinzu, wird er rot -- und das ist dann die
+// Erinnerung, die Seite mitzuaendern.
+func TestDatenschutzerklaerungBeschreibtDenLaufendenBetrieb(t *testing.T) {
+	mitPflichtangaben(t)
+	a := &APIServer{}
+	w := httptest.NewRecorder()
+	a.serveLegal(w, "Datenschutzerklärung", datenschutzHTML)
+	if w.Code != 200 {
+		t.Fatalf("Status %d mit allen Pflichtangaben", w.Code)
+	}
+	seite := w.Body.String()
+
+	// Keine Marke darf uebrig bleiben -- auch nicht die zweite oder dritte
+	// Stelle, an der dieselbe Marke steht (EMAIL steht dreimal).
+	if strings.Contains(seite, "{{") {
+		i := strings.Index(seite, "{{")
+		t.Errorf("unersetzte Marke in der ausgelieferten Seite: %q", seite[i:i+30])
+	}
+	sichtbar := sichtbarerText(seite)
+	for _, darfNicht := range []string{"Railway", "drei voneinander unabhängige", "zwei übereinstimmen"} {
+		if strings.Contains(sichtbar, darfNicht) {
+			t.Errorf("veraltet: %q steht noch auf der Seite", darfNicht)
+		}
+	}
+	for _, muss := range []string{
+		"zwei voneinander unabhängige Dienste",
+		"beide</strong> müssen übereinstimmen",
+		"Art. 22 Abs. 3",
+		"innerhalb von 90 Tagen",
+	} {
+		if !strings.Contains(seite, muss) {
+			t.Errorf("fehlt: %q", muss)
+		}
+	}
+}
+
+// sichtbarerText wirft HTML-Kommentare weg -- der Kopfkommentar der Vorlage
+// erzaehlt die Geschichte (auch von Railway), der Mensch sieht ihn nicht.
+func sichtbarerText(s string) string {
+	for {
+		a := strings.Index(s, "<!--")
+		if a < 0 {
+			return s
+		}
+		e := strings.Index(s[a:], "-->")
+		if e < 0 {
+			return s[:a]
+		}
+		s = s[:a] + s[a+e+3:]
+	}
+}

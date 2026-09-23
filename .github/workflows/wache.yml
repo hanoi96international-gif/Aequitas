@@ -72,6 +72,14 @@ jobs:
             CB=$(curl -s --max-time 15 "https://$PH.aequitas.digital/coordinator/health")
             QB=$(echo "$CB" | grep -oE '"quorum_size":[0-9]+' | cut -d: -f2)
             if echo "$CB" | grep -q '"status":"ok"' && [ "${QB:-0}" -ge 2 ]; then ok "Coordinator $PH ok, Quorum $QB"; else rot "Coordinator $PH: ${CB:-keine Antwort}"; fi
+            # Offene Widersprueche (Art. 22 Abs. 3): ein Mensch wartet auf einen
+            # anderen Menschen. Das ist ROT, nicht Hinweis -- ein gruener Lauf
+            # ist still, und dann erfaehrt es niemand. Nur Zahlen; welche und
+            # warum zeigt widersprueche-pruefen.yml. Fehlt das Feld (Coordinator
+            # aelter als 23.09.2026), gilt 0.
+            WO=$(echo "$CB" | grep -oE '"widersprueche_offen":[0-9]+' | cut -d: -f2)
+            if [ "${WO:-0}" -gt 0 ]; then rot "$PH: ${WO} offene(r) Widerspruch/Widersprueche -- ein Mensch muss entscheiden (widersprueche-pruefen.yml, Frist ein Monat)"; fi
+            if echo "$CB" | grep -q 'widerspruch_ueber_einen_monat_offen'; then rot "$PH: ein Widerspruch liegt LAENGER ALS EINEN MONAT (Art. 12 Abs. 3)"; fi
           done
           echo "===== Netz ====="
           A=${H2[173.249.37.118]:-0}; C=${H2[194.163.188.71]:-0}

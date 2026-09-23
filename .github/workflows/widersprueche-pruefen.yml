@@ -1,0 +1,126 @@
+name: Widersprueche pruefen und entscheiden (Art. 22 Abs. 3)
+
+# Wer als Duplikat abgewiesen wird, bekommt eine Kennung (W-...) und kann in
+# der App widersprechen. Dann muss EIN MENSCH den Fall pruefen -- das ist der
+# ganze Inhalt von Art. 22 Abs. 3. Bis zum 23.09.2026 gab es dafuer kein
+# Werkzeug: GET /widersprueche braucht SERVICE_AUTH_TOKEN, der auf keiner Box
+# gesetzt ist, und kein Workflow schaute je in den Speicher. Ein Widerspruch
+# waere in einer Datenbank gelandet, in die nie jemand sieht.
+#
+# DIESES LOG IST OEFFENTLICH. Das Repository ist public, also auch jeder
+# Workflow-Lauf. Deshalb gibt "liste" NUR Metadaten aus: Kennung, Zeitpunkte,
+# Art der Entscheidung, Aehnlichkeit, Frist. NIE den Standpunkt (den schreibt
+# ein Mensch ueber sich) und NIE die getroffene Kennung (das ist ein ANDERER
+# Mensch). Der Standpunkt kommt per E-Mail -- so steht es in der App und in
+# der Datenschutzerklaerung.
+#
+# Der Vorgang liegt nur auf der Box, deren Coordinator abgewiesen hat. Beide
+# Aktionen laufen deshalb auf beiden Boxen; auf der falschen steht "unbekannt".
+#
+# Frist: Art. 12 Abs. 3 -- ein Monat ab Widerspruch.
+
+on:
+  workflow_dispatch:
+    inputs:
+      aktion:
+        description: "liste = offene Widersprueche zeigen; abschliessen = eine Entscheidung eintragen"
+        required: true
+        type: choice
+        options: [liste, abschliessen]
+        default: liste
+      kennung:
+        description: "nur bei abschliessen: die Kennung, z. B. W-1A2B3C4D5E6F7A8B"
+        required: false
+        default: ""
+      ergebnis:
+        description: "nur bei abschliessen: Entscheidung und Begruendung. ACHTUNG, oeffentlich sichtbar: keine Namen, keine Kontaktdaten"
+        required: false
+        default: ""
+
+permissions:
+  contents: read
+
+jobs:
+  pruefen:
+    strategy:
+      fail-fast: false
+      max-parallel: 1
+      matrix:
+        box:
+          - { name: Contabo1, host: 173.249.37.118, secret: C1, fingerprint: "SHA256:noMtjHV8c+2iEFZu3TRUP6WRwGjkrvFke71KgU6Eyt4" }
+          - { name: Contabo2, host: 194.163.188.71, secret: C2, fingerprint: "SHA256:VIwj7Faxiga2n45HVHZEQFPxcbRKHgSgHoxAFsf2wto" }
+    runs-on: ubuntu-latest
+    steps:
+      - name: Eingaben pruefen
+        env:
+          AKTION: ${{ inputs.aktion }}
+          KENNUNG: ${{ inputs.kennung }}
+          ERGEBNIS: ${{ inputs.ergebnis }}
+        run: |
+          if [ "$AKTION" = "abschliessen" ]; then
+            case "$KENNUNG" in
+              W-[0-9A-F]*) : ;;
+              *) echo "::error::Kennung muss mit W- beginnen (Grossbuchstaben/Ziffern)"; exit 1 ;;
+            esac
+            if [ -z "$(printf '%s' "$ERGEBNIS" | tr -d '[:space:]')" ]; then
+              echo "::error::Ohne Begruendung wird nichts abgeschlossen -- eine Entscheidung, die niemand nachvollziehen kann, ist keine."
+              exit 1
+            fi
+          fi
+
+      - name: ${{ inputs.aktion }} auf ${{ matrix.box.name }}
+        uses: appleboy/ssh-action@v1.0.3
+        env:
+          AKTION: ${{ inputs.aktion }}
+          KENNUNG: ${{ inputs.kennung }}
+          ERGEBNIS: ${{ inputs.ergebnis }}
+        with:
+          host: ${{ matrix.box.host }}
+          username: root
+          key: ${{ matrix.box.secret == 'C1' && secrets.CONTABO_SSH_KEY || secrets.CONTABO2_SSH_KEY }}
+          port: 22
+          fingerprint: ${{ matrix.box.fingerprint }}
+          script_stop: false
+          timeout: 120s
+          command_timeout: 120s
+          envs: AKTION,KENNUNG,ERGEBNIS
+          script: |
+            set -u
+            echo "##### ${{ matrix.box.name }} #####"
+            if ! docker inspect aequitas-coordinator >/dev/null 2>&1; then
+              echo "kein Coordinator-Container auf dieser Box"; exit 0
+            fi
+            if [ "$AKTION" = "liste" ]; then
+              docker exec aequitas-coordinator python -c '
+            import time
+            from app import widerspruch as w
+            def iso(t):
+                return time.strftime("%Y-%m-%d %H:%M UTC", time.gmtime(t)) if t else "-"
+            z = w.zaehlstand()
+            print("Vorgaenge gesamt: %s | offen (widersprochen, nicht entschieden): %s"
+                  % (z["vorgaenge_gesamt"], z["widersprueche_offen"]))
+            jetzt = time.time()
+            for v in w.offene_vorgaenge():
+                frist = v["widerspruch_am"] + 30 * 86400
+                rest = int((frist - jetzt) // 86400)
+                sp = v.get("standpunkt") or ""
+                # Standpunkt und getroffene Kennung werden NICHT ausgegeben.
+                print("  %s | abgewiesen %s | widersprochen %s | %s | Aehnlichkeit %s | Frist %s (%s)%s"
+                      % (v["kennung"], iso(v["abgewiesen_am"]), iso(v["widerspruch_am"]),
+                         v["entscheidung"], v["aehnlichkeit"], iso(frist),
+                         ("noch %d Tage" % rest) if rest >= 0 else ("UEBERSCHRITTEN seit %d Tagen" % -rest),
+                         (" | Standpunkt in der DB: %d Zeichen, hier nicht gezeigt" % len(sp)) if sp else ""))
+            if not z["widersprueche_offen"]:
+                print("  (keine offenen Widersprueche)")
+            '
+            else
+              docker exec -e KENNUNG -e ERGEBNIS aequitas-coordinator python -c '
+            import os
+            from app import widerspruch as w
+            k = os.environ["KENNUNG"].strip()
+            if w.vorgang_abschliessen(k, os.environ["ERGEBNIS"]):
+                print("abgeschlossen: %s -- der Mensch sieht die Entscheidung unter /coordinator/widerspruch/%s" % (k, k))
+            else:
+                print("unbekannt auf dieser Box (liegt auf der anderen, oder die Kennung stimmt nicht)")
+            '
+            fi

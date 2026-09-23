@@ -1,19 +1,37 @@
-name: Wachhund mit Telegram auf beiden Boxen einrichten
+name: Wachhund (Telegram und/oder ntfy) auf beiden Boxen einrichten
 
 # Ein Cron auf jeder Box (alle 5 Minuten) liest /api/wache lokal und beim
-# Partner und schickt eine Telegram-Nachricht, wenn es rot wird -- ohne
-# GitHub-Cron (der feuert nur alle paar Stunden) und ohne Konto bei einem
-# Monitoring-Dienst. Beim Umschlagen sofort, danach alle 6 Stunden, und
-# einmal, wenn es wieder gruen ist.
+# Partner und schickt eine Nachricht, wenn es rot wird -- ohne GitHub-Cron
+# (der feuert nur alle paar Stunden; gemessen am 22./23.09.: 22:07, 00:30,
+# 05:08, 09:58, 14:53) und ohne Konto bei einem Monitoring-Dienst. Beim
+# Umschlagen sofort, danach alle 6 Stunden, und einmal, wenn es wieder gruen
+# ist.
 #
-# WAS DU DAFUER BRAUCHST (einmalig, 2 Minuten):
+# ZWEI KANAELE, EINER GENUEGT:
+#
+# ntfy (seit 23.09.2026) -- kein Konto, kein Token, kein Bot:
+#   1. ntfy-App installieren (Android/iOS) oder https://ntfy.sh im Browser.
+#   2. Einen Kanalnamen abonnieren, den nur du kennst (lang und zufaellig).
+#   3. Diesen Workflow mit genau diesem Namen als ntfy_kanal starten.
+#   Bis dahin hing der ganze Alarm an Telegram, und niemand hatte es
+#   eingerichtet -- der Wachhund lag fertig auf dem Tisch und bellte nie.
+#
+# Telegram (wie bisher):
 #   1. In Telegram @BotFather oeffnen, /newbot, Namen vergeben -> Token.
-#   2. Dem Bot eine Nachricht schicken (oder ihn in die Gruppe holen), dann
+#   2. Dem Bot eine Nachricht schicken, dann
 #      https://api.telegram.org/bot<TOKEN>/getUpdates aufrufen -> "chat":{"id":...}.
 #   3. Beide als Repository-Secrets: TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID.
-#   4. Diesen Workflow starten. Am Ende kommt eine Testnachricht.
 #
-# Das Token liegt danach in /root/wachhund/env (Modus 600) auf beiden Boxen.
+# DER KANALNAME IST EIN KLEINES GEHEIMNIS, UND DIESES REPO IST OEFFENTLICH.
+# Wer ihn kennt, kann mitlesen (das ist harmlos: /api/wache ist ohnehin
+# oeffentlich) und falsche Alarme schicken (das ist laestig). Er wird deshalb
+# nicht als ${{ inputs.* }} in einen Schritt geschrieben -- GitHub druckt
+# Schritt-Umgebungen und ausgewertete Skripte ins Log --, sondern zur Laufzeit
+# aus der Ereignisdatei gelesen und sofort maskiert. Ob GitHub die
+# Eingabewerte auf der Seite des Laufs anzeigt, liegt nicht in unserer Hand;
+# im Zweifel: neuen Namen abonnieren und diesen Workflow erneut starten.
+#
+# Alles liegt danach in /root/wachhund/env (Modus 600) auf beiden Boxen.
 
 on:
   workflow_dispatch:
@@ -22,6 +40,10 @@ on:
         description: "true = am Ende eine Testnachricht schicken"
         required: false
         default: "true"
+      ntfy_kanal:
+        description: "ntfy-Kanalname (den du in der ntfy-App abonniert hast). Leer = nur Telegram."
+        required: false
+        default: ""
 
 jobs:
   install:
@@ -42,13 +64,29 @@ jobs:
             secret: C2
             fingerprint: "SHA256:VIwj7Faxiga2n45HVHZEQFPxcbRKHgSgHoxAFsf2wto"
     steps:
-      - name: Secrets vorhanden?
+      - name: Welche Kanaele?
         env:
           T: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           C: ${{ secrets.TELEGRAM_CHAT_ID }}
         run: |
-          if [ -z "$T" ] || [ -z "$C" ]; then
-            echo "::error title=Secrets fehlen::TELEGRAM_BOT_TOKEN und TELEGRAM_CHAT_ID muessen als Repository-Secrets gesetzt sein (siehe Kopf dieser Datei)."
+          # Aus der Ereignisdatei, nicht als Eingabe-Ausdruck -- siehe Kopf.
+          N=$(jq -r '.inputs.ntfy_kanal // ""' "$GITHUB_EVENT_PATH" | tr -d '[:space:]')
+          if [ -n "$N" ]; then
+            echo "::add-mask::$N"
+            case "$N" in
+              *[!A-Za-z0-9_-]*) echo "::error::ntfy-Kanalname nur aus Buchstaben, Ziffern, - und _"; exit 1 ;;
+            esac
+            if [ ${#N} -lt 16 ]; then
+              echo "::error::ntfy-Kanalname zu kurz (< 16 Zeichen) -- jeder koennte ihn erraten und falsche Alarme schicken"; exit 1
+            fi
+            echo "NTFY_KANAL=$N" >> "$GITHUB_ENV"
+            echo "ntfy: gesetzt (Name maskiert)"
+          else
+            echo "ntfy: nicht gesetzt"
+          fi
+          if [ -n "$T" ] && [ -n "$C" ]; then echo "Telegram: gesetzt"; else echo "Telegram: nicht gesetzt"; fi
+          if [ -z "$N" ] && { [ -z "$T" ] || [ -z "$C" ]; }; then
+            echo "::error title=Kein Kanal::Weder ntfy_kanal angegeben noch TELEGRAM_BOT_TOKEN/TELEGRAM_CHAT_ID gesetzt (siehe Kopf dieser Datei)."
             exit 1
           fi
 
@@ -69,17 +107,19 @@ jobs:
           script_stop: true
           timeout: 300s
           command_timeout: 300s
-          envs: TOKEN,CHAT,PARTNER,BOXNAME,TESTEN
+          envs: TOKEN,CHAT,PARTNER,BOXNAME,TESTEN,NTFY_KANAL
           script: |
             set -euo pipefail
+            NTFY_KANAL="${NTFY_KANAL:-}"
             mkdir -p /root/wachhund
             umask 077
-            printf 'TELEGRAM_BOT_TOKEN=%s\nTELEGRAM_CHAT_ID=%s\nPARTNER=%s\nBOXNAME=%s\n' "$TOKEN" "$CHAT" "$PARTNER" "$BOXNAME" > /root/wachhund/env
+            printf 'TELEGRAM_BOT_TOKEN=%s\nTELEGRAM_CHAT_ID=%s\nNTFY_KANAL=%s\nPARTNER=%s\nBOXNAME=%s\n' "$TOKEN" "$CHAT" "$NTFY_KANAL" "$PARTNER" "$BOXNAME" > /root/wachhund/env
             chmod 600 /root/wachhund/env
             cat > /root/wachhund/wachhund.sh <<'SKRIPT'
             #!/bin/bash
-            # Wachhund: /api/wache lokal + Partner -> Telegram bei Umschlag, alle 6 h bei Rot, einmal bei Gruen.
+            # Wachhund: /api/wache lokal + Partner -> Telegram und/oder ntfy bei Umschlag, alle 6 h bei Rot, einmal bei Gruen.
             set -u
+            TELEGRAM_BOT_TOKEN=""; TELEGRAM_CHAT_ID=""; NTFY_KANAL=""
             . /root/wachhund/env
             STATE=/root/wachhund/state
             LOG=/root/wachhund/wachhund.log
@@ -104,8 +144,14 @@ jobs:
             vorher_status=gruen; vorher_alarm=0
             if [ -f "$STATE" ]; then . "$STATE"; fi
             senden() {
-              curl -s --max-time 20 -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
-                --data-urlencode "chat_id=${TELEGRAM_CHAT_ID}" --data-urlencode "text=$1" >/dev/null 2>&1 || true
+              if [ -n "$TELEGRAM_BOT_TOKEN" ] && [ -n "$TELEGRAM_CHAT_ID" ]; then
+                curl -s --max-time 20 -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
+                  --data-urlencode "chat_id=${TELEGRAM_CHAT_ID}" --data-urlencode "text=$1" >/dev/null 2>&1 || true
+              fi
+              if [ -n "$NTFY_KANAL" ]; then
+                curl -s --max-time 20 -H "Title: Aequitas" -H "Priority: high" \
+                  --data-binary "$1" "https://ntfy.sh/${NTFY_KANAL}" >/dev/null 2>&1 || true
+              fi
             }
             if [ -n "$rot" ]; then
               if [ "$vorher_status" != "rot" ] || [ $((jetzt - vorher_alarm)) -ge 21600 ]; then
@@ -130,8 +176,16 @@ jobs:
             /root/wachhund/wachhund.sh
             echo "Zustand: $(cat /root/wachhund/state | tr '\n' ' ')"
             if [ "$TESTEN" = "true" ]; then
-              curl -s --max-time 20 -X POST "https://api.telegram.org/bot${TOKEN}/sendMessage" \
-                --data-urlencode "chat_id=${CHAT}" \
-                --data-urlencode "text=✅ Aequitas Wachhund auf ${BOXNAME} eingerichtet -- prueft alle 5 Minuten /api/wache hier und beim Partner." \
-                | grep -q '"ok":true' && echo "Testnachricht angekommen" || { echo "FEHLER: Telegram hat die Testnachricht nicht angenommen (Token/Chat-ID pruefen)"; exit 1; }
+              TEXT="✅ Aequitas Wachhund auf ${BOXNAME} eingerichtet -- prueft alle 5 Minuten /api/wache hier und beim Partner."
+              if [ -n "$TOKEN" ] && [ -n "$CHAT" ]; then
+                curl -s --max-time 20 -X POST "https://api.telegram.org/bot${TOKEN}/sendMessage" \
+                  --data-urlencode "chat_id=${CHAT}" --data-urlencode "text=${TEXT}" \
+                  | grep -q '"ok":true' && echo "Telegram: Testnachricht angekommen" || { echo "FEHLER: Telegram hat die Testnachricht nicht angenommen (Token/Chat-ID pruefen)"; exit 1; }
+              fi
+              if [ -n "$NTFY_KANAL" ]; then
+                # ntfy antwortet mit dem gespeicherten Ereignis, darin "id". Ohne
+                # "id" ist nichts angekommen -- auch wenn curl selbst 0 liefert.
+                curl -s --max-time 20 -H "Title: Aequitas" --data-binary "$TEXT" "https://ntfy.sh/${NTFY_KANAL}" \
+                  | grep -q '"id"' && echo "ntfy: Testnachricht angekommen" || { echo "FEHLER: ntfy.sh hat die Testnachricht nicht angenommen"; exit 1; }
+              fi
             fi
