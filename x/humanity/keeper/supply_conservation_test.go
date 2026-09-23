@@ -445,11 +445,23 @@ func TestSupplyConservation_FastPaths_RealDB(t *testing.T) {
 	// Konten GEWOLLT -- TryLockAddrs gibt an den Buendler ab, statt zu
 	// warten (transfer_concurrent.go). Der Test macht dann, was die
 	// Produktion macht: TransferAtomic. So prueft er beides -- den schnellen
-	// Pfad allein und die Mischung mit dem Rueckfall. Verlangt wird, dass der
-	// schnelle Pfad WESENTLICH getragen hat (mindestens die Haelfte): sonst
-	// waere der Test wieder einer, der den Pfad nur behauptet.
+	// Pfad allein und die Mischung mit dem Rueckfall.
+	//
+	// DASS der schnelle Pfad genommen wird, prueft eine Runde OHNE Konkurrenz
+	// vorweg: dort gibt es keinen Sperrkonflikt, also MUSS jede Ueberweisung
+	// ueber ihn gehen -- auf jeder Maschine. Eine Quote unter Konkurrenz
+	// ("mindestens die Haelfte") haette das nicht leisten koennen: sie haengt
+	// an der Kernzahl. Auf dem 2-Kern-Runner von GitHub nahm der WAL-Pfad 133
+	// von 400 (CI 849, 23.09.2026) -- die Schwelle hat dort Hardware gemessen,
+	// nicht den Pfad.
 	kreis := func(t *testing.T, cs *ChainState, name string, ueberweise func(from, to string, k int) (bool, error)) {
 		t.Helper()
+		for i := 0; i < n; i++ {
+			ok, err := ueberweise(adrAktuell[i], adrAktuell[(i+1)%n], -1-i)
+			if err != nil || !ok {
+				t.Fatalf("%s: ohne Konkurrenz muss der schnelle Pfad greifen -- Konto %d: applied=%v, err=%v", name, i, ok, err)
+			}
+		}
 		var wg sync.WaitGroup
 		var mu sync.Mutex
 		var schnell, rueckfall, fehler int
@@ -486,8 +498,8 @@ func TestSupplyConservation_FastPaths_RealDB(t *testing.T) {
 		if fehler > 0 {
 			t.Fatalf("%s: %d Fehler, erster: %v", name, fehler, ersterFehler)
 		}
-		if schnell*2 < n*runden {
-			t.Fatalf("%s: nur %d von %d ueber den schnellen Pfad -- zu wenig, um ihn zu pruefen", name, schnell, n*runden)
+		if schnell == 0 {
+			t.Fatalf("%s: unter Konkurrenz lief keine einzige Ueberweisung ueber den schnellen Pfad", name)
 		}
 	}
 
