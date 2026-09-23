@@ -50,3 +50,34 @@ jobs:
               zustands_ablehnung: .zustands_ablehnung
             }' h.json 2>/dev/null || head -c 400 h.json
           done
+
+      # Die Zeitreihe je Produktionsversuch (/api/produktion, Ring der letzten
+      # 1.800 Versuche ~ 30 min) -- sie trennt, was die Mittelwerte oben
+      # vermischen: leere Bloecke aus der Ruhe, volle aus der Last. Je Minute:
+      # Bloecke, Transaktionen, geltender Deckel, Dauer und die Anteile.
+      - name: C1 -- Blockbau je Minute (Zeitreihe)
+        run: |
+          curl -s --max-time 30 "http://173.249.37.118:8080/api/produktion?n=1800" > p.json
+          python3 - <<'PY'
+          import json, collections, datetime
+          d = json.load(open("p.json"))
+          e = d.get("eintraege") or d.get("versuche") or d if isinstance(d, list) else d
+          if isinstance(e, dict):
+              e = next((v for v in e.values() if isinstance(v, list)), [])
+          m = collections.OrderedDict()
+          for x in e:
+              k = datetime.datetime.utcfromtimestamp(x["at_ms"] / 1000).strftime("%H:%M")
+              m.setdefault(k, []).append(x)
+          print("Minute  Versuche Bloecke    Txs   Deckel(min/max)  gesamt_ms(mittel/max)  sperren_ms(mittel/max)  db_paar  speichern  Gruende")
+          for k, xs in m.items():
+              ok = [x for x in xs if not x.get("grund")]
+              txs = sum(x["txs"] for x in ok)
+              dk = [x["deckel"] for x in xs] or [0]
+              g = [x["gesamt_ms"] for x in xs]; s = [x["sperren_ms"] for x in xs]
+              dp = [x["db_paar_ms"] for x in xs]; sp = [x["speichern_ms"] for x in xs]
+              gr = collections.Counter(x.get("grund") for x in xs if x.get("grund"))
+              mit = lambda v: sum(v) / len(v) if v else 0
+              print(f"{k}   {len(xs):6d} {len(ok):7d} {txs:7d}   {min(dk):5d}/{max(dk):5d}      "
+                    f"{mit(g):7.0f}/{max(g):6.0f}          {mit(s):7.0f}/{max(s):6.0f}      "
+                    f"{mit(dp):5.0f}   {mit(sp):6.0f}   {dict(gr) if gr else ''}")
+          PY
