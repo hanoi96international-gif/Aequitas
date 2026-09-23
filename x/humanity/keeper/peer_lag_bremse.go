@@ -232,6 +232,47 @@ func (dag *BlockDAG) blockTxCap() int {
 	return dag.blockTxCapFuerHoehe(dag.heightSchnell.Load())
 }
 
+// Welchen Deckel bekam der zuletzt gebaute Block, und war es der volle?
+//
+// ProduceBlocksForTick baut einen Zusatzblock nur, wenn der vorige "voll" war.
+// Bis zum 23.09.2026 hiess voll: len(Transactions) == maxTxsPerBlock, die
+// KONSTANTE 10.000. Beide Knoten fahren aber AEQUITAS_MAX_TXS_PER_BLOCK=7000,
+// und die Bremsen darunter senken den Deckel weiter -- ein Block erreichte
+// 10.000 also nie, und ENABLE_MULTI_BLOCK_TICK=1 war auf beiden Knoten
+// wirkungslos. Seit nur ein Knoten annimmt (annahme_tor.go), hiess das: die
+// Kette war hart bei 7.000 Ueberweisungen/s gedeckelt, gleich wie viel Last
+// ankam.
+//
+// Voll heisst jetzt: der Block erreicht den Deckel, der fuer IHN galt -- und
+// dieser Deckel ist der konfigurierte, nicht ein gebremster. Greift die
+// Peer-Lag- oder die Eigenlast-Bremse, weil ein Knoten nicht hinterherkommt,
+// entsteht KEIN Zusatzblock: er wuerde genau den ueberfahren, den die Bremse
+// schont.
+//
+// Gesetzt nur von blockTxCapFuerHoehe, und das ruft nur die Blockproduktion
+// (block.go), die je Knoten in einer Goroutine laeuft und auf das Laden
+// wartet, bevor ProduceBlock zurueckkehrt.
+var (
+	blockDeckelZuletzt           atomic.Int64
+	blockDeckelZuletztUngebremst atomic.Bool
+)
+
+func merkeBlockDeckel(deckel, konfiguriert int) int {
+	blockDeckelZuletzt.Store(int64(deckel))
+	blockDeckelZuletztUngebremst.Store(deckel >= konfiguriert)
+	return deckel
+}
+
+// blockVollAmDeckel meldet, ob b den fuer ihn geltenden, ungebremsten Deckel
+// ausgeschoepft hat -- das Signal fuer einen Zusatzblock im selben Takt.
+func blockVollAmDeckel(b *Block) bool {
+	if b == nil || !blockDeckelZuletztUngebremst.Load() {
+		return false
+	}
+	d := blockDeckelZuletzt.Load()
+	return d > 0 && int64(len(b.Transactions)) >= d
+}
+
 // blockTxCapFuerHoehe ist blockTxCap mit ausdruecklich uebergebener eigener
 // Hoehe -- damit der Test die Rechnung pruefen kann, ohne eine ganze DAG
 // aufzubauen.
@@ -240,6 +281,7 @@ func (dag *BlockDAG) blockTxCapFuerHoehe(eigeneHoehe int64) int {
 	// nicht den Rueckstand des Partners, sondern die Haltezeit der eigenen
 	// globalen Schreibsperre. Siehe block_tx_deckel.go.
 	hart := blockTxHartDeckel()
+	konfiguriert := hart
 	boden := peerLagBoden()
 	// Eigenlast zuerst -- siehe eigenlast_bremse.go. Sie senkt den harten
 	// Deckel fuer diesen Knoten, wenn sein eigener Takt nicht passt; die
@@ -250,7 +292,7 @@ func (dag *BlockDAG) blockTxCapFuerHoehe(eigeneHoehe int64) int {
 		if hart < maxTxsPerBlock {
 			blockTxDeckelGriff.Add(1)
 		}
-		return hart // Bremse aus -- es bleibt der harte Deckel
+		return merkeBlockDeckel(hart, konfiguriert) // Bremse aus -- es bleibt der harte Deckel
 	}
 	rueckstand := dag.groesstenFrischenRueckstand(eigeneHoehe)
 	peerLagLetzterLag.Store(rueckstand)
@@ -297,13 +339,16 @@ func (dag *BlockDAG) blockTxCapFuerHoehe(eigeneHoehe int64) int {
 		neu = int64(hart)
 		blockTxDeckelGriff.Add(1)
 	}
-	if neu < maxTxsPerBlock {
+	// Gegen den KONFIGURIERTEN Deckel zaehlen, nicht gegen die Konstante: bei
+	// AEQUITAS_MAX_TXS_PER_BLOCK=7000 zaehlte bis zum 23.09.2026 jeder Block
+	// als "gebremst", und gebremst_pct stand dauerhaft auf 100.
+	if neu < int64(konfiguriert) {
 		peerLagGebremst.Add(1)
 	} else {
 		peerLagUngebremst.Add(1)
 	}
 	peerLagLetzterCap.Store(neu)
-	return int(neu)
+	return merkeBlockDeckel(int(neu), konfiguriert)
 }
 
 // PeerLagBremseStand zeigt die Wirkung in /api/health/combined.
