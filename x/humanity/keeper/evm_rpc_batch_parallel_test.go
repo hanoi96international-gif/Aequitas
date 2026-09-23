@@ -167,3 +167,59 @@ func TestHandleRPC_BatchParallelSendRawTransaction(t *testing.T) {
 		}
 	}
 }
+
+// Ende zu Ende durch den HTTP-Handler: ein Batch mit zwei aufeinanderfolgenden
+// Transaktionen desselben Absenders an einen NUR LESENDEN Knoten. Beide muessen
+// mit der Meldung des Annahme-Tors abgelehnt werden, und die Nonce muss danach
+// unberuehrt sein. Bis zum 23.09.2026 reservierte die Vorab-Reservierung des
+// Batch-Wegs die Nonces 0 und 1, bevor das Tor ablehnte (nonce_batch_reserve.go)
+// -- die Wallet haette auf diesem Knoten fortan Nonce 2 genannt bekommen und
+// waere am annehmenden Knoten mit "nonce too high" gescheitert.
+func TestHandleRPC_BatchAnNurLesendenKnotenVerbrenntKeineNonce(t *testing.T) {
+	noteBlockProduced()
+	cs := newTestState()
+	cs.SetzeNurLesend(true)
+	dag := &BlockDAG{state: cs}
+	srv := NewEVMRPCServer(dag, cs)
+
+	priv, err := crypto.GenerateKey()
+	if err != nil {
+		t.Fatalf("GenerateKey: %v", err)
+	}
+	sender := strings.ToLower(crypto.PubkeyToAddress(priv.PublicKey).Hex())
+	signer := types.NewEIP155Signer(big.NewInt(1926))
+	var eintraege []string
+	for n := uint64(0); n < 2; n++ {
+		tx := types.NewTransaction(n, addrFromHexForTest(t, testRecipientHex), big.NewInt(0), 21000, big.NewInt(0), nil)
+		signiert, err := types.SignTx(tx, signer, priv)
+		if err != nil {
+			t.Fatalf("SignTx: %v", err)
+		}
+		roh, _ := signiert.MarshalBinary()
+		eintraege = append(eintraege, fmt.Sprintf(
+			`{"jsonrpc":"2.0","id":%d,"method":"eth_sendRawTransaction","params":["0x%s"]}`, n, hex.EncodeToString(roh)))
+	}
+
+	req := httptest.NewRequest("POST", "/rpc", bytes.NewBufferString("["+strings.Join(eintraege, ",")+"]"))
+	w := httptest.NewRecorder()
+	srv.handleRPC(w, req)
+
+	var antworten []map[string]interface{}
+	if err := json.Unmarshal(w.Body.Bytes(), &antworten); err != nil {
+		t.Fatalf("Antwort ist kein JSON-Array: %v -- %s", err, w.Body.String())
+	}
+	if len(antworten) != 2 {
+		t.Fatalf("%d Antworten, erwartet 2: %s", len(antworten), w.Body.String())
+	}
+	for i, a := range antworten {
+		fehler, _ := a["error"].(map[string]interface{})
+		meldung, _ := fehler["message"].(string)
+		if !strings.Contains(meldung, "nimmt keine Ueberweisungen an") {
+			t.Errorf("Eintrag %d: erwartet die Ablehnung des Annahme-Tors, bekam %v", i, a)
+		}
+	}
+	if got := srv.nonceShardFor(sender).nonces[sender]; got != 0 {
+		t.Errorf("die Nonce des Absenders steht auf %d, erwartet 0 -- der nur lesende Knoten hat sie "+
+			"verbrannt, bevor das Tor ablehnte", got)
+	}
+}

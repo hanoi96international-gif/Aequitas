@@ -3,6 +3,7 @@ package keeper
 import (
 	"math/big"
 	"testing"
+	"time"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
@@ -187,3 +188,55 @@ var errDecodeForTest = errForTest("decode failed")
 type errForTest string
 
 func (e errForTest) Error() string { return string(e) }
+
+// DIE VORAB-RESERVIERUNG DARF NICHTS RESERVIEREN, WAS DAS TOR ABWEISEN WIRD.
+//
+// Gefunden am 23.09.2026 beim Pruefstand, nicht bei einem Ausfall. Das
+// Annahme-Tor (annahme_tor.go) sitzt ganz vorn in sendRawTransaction, VOR
+// ReserveNonce -- mit der ausdruecklichen Begruendung, dass eine dort
+// verbrannte Nonce eine Wallet dauerhaft festsetzt: der nur lesende Knoten
+// meldet fortan eine hoehere Nonce, als der annehmende akzeptiert. Der
+// Batch-Weg in handleRPC dekodiert aber vorab und ruft preReserveBatchNonces
+// auf, BEVOR irgendein Eintrag sendRawTransaction erreicht. Zwei
+// aufeinanderfolgende Transaktionen desselben Absenders in einem Batch --
+// genau das, was ethers innerhalb von 10 ms buendelt -- verbrannten auf dem
+// nur lesenden Knoten also ihre Nonces, und DANACH lehnte das Tor ab.
+//
+// Dasselbe fuer die Annahmesteuerung (admission_control.go): auch sie lehnt
+// in sendRawTransaction vor ReserveNonce ab, und auch an ihr lief die
+// Vorab-Reservierung vorbei.
+func TestPreReserve_NurLesenderKnotenReserviertNichts(t *testing.T) {
+	s := newReserveTestServer()
+	s.state.SetzeNurLesend(true)
+	sender := "0x3333333333333333333333333333333333333333"
+	batch := items(sender, 0, 1, 2)
+
+	s.preReserveBatchNonces(batch, allIndexes(len(batch)))
+
+	for i, p := range batch {
+		if p.nonceReserved {
+			t.Errorf("Eintrag %d (Nonce %d) wurde auf einem nur lesenden Knoten vorab reserviert -- "+
+				"das Tor lehnt ihn danach ab, und die Nonce ist verbrannt", i, p.tx.Nonce())
+		}
+	}
+	if got := s.nonceShardFor(sender).nonces[sender]; got != 0 {
+		t.Errorf("gespeicherte Nonce ist %d, erwartet 0 -- der nur lesende Knoten wuerde der Wallet "+
+			"fortan eine Nonce nennen, die der annehmende Knoten als 'nonce too high' abweist", got)
+	}
+}
+
+func TestPreReserve_AbgelehnteAnnahmeReserviertNichts(t *testing.T) {
+	withProducedAt(t, time.Now().Unix()-(admissionStallSeconds+5))
+	if admissionRefusalReason() == "" {
+		t.Fatal("Vorbedingung: die Annahmesteuerung sollte hier ablehnen")
+	}
+	s := newReserveTestServer()
+	sender := "0x4444444444444444444444444444444444444444"
+	batch := items(sender, 0, 1, 2)
+
+	s.preReserveBatchNonces(batch, allIndexes(len(batch)))
+
+	if got := s.nonceShardFor(sender).nonces[sender]; got != 0 {
+		t.Errorf("gespeicherte Nonce ist %d, erwartet 0 -- reserviert, obwohl die Annahme gerade ablehnt", got)
+	}
+}
