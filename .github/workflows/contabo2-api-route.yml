@@ -89,4 +89,9 @@ jobs:
               docker exec proof-caddy caddy reload --config /etc/caddy/Caddyfile --adapter caddyfile || true
               exit 1
             fi
+            echo "=== Not-Frontend apex (tls internal, Host via --resolve, kein DNS-Cutover) ==="
+            apex=$(curl -sk --max-time 20 --resolve aequitas.digital:443:127.0.0.1 https://aequitas.digital/api/status || true)
+            echo "$apex" | head -c 400; echo
+            echo "$apex" | grep -q '"height"' && echo "  ok   aequitas.digital/api/status via Host-Header (internal TLS)" || { echo "  FEHL apex Host-Header smoke"; fehl=1; }
             echo "=== fertig: proof2.aequitas.digital/api und /rpc fuehren zum Knoten ==="
+            echo "=== Apex-Standby installiert (DNS unveraendert auf C1) ==="

@@ -50,3 +50,13 @@ proof2.aequitas.digital/api/* {
 proof2.aequitas.digital/rpc {
 	reverse_proxy aequitas-node:8080
 }
+
+# P0 Not-Frontend Standby (2026-09-24, Chain-Ops):
+# aequitas.digital auf C2 VORBEREITET, A-Record bleibt auf C1.
+# `tls internal` = Host-Header/--resolve-Smoke jetzt möglich ohne Let's-Encrypt
+# zu verbrennen. Nach Boss/D-OK für DNS-Cutover: `tls internal` entfernen,
+# reload, echtes Zertifikat ausstellen. Bis dahin KEIN public Cutover.
+aequitas.digital, www.aequitas.digital {
+	tls internal
+	reverse_proxy aequitas-node:8080
+}
