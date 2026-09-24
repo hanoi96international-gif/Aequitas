@@ -338,7 +338,10 @@ jobs:
           fi
           t=0
           while [ "$t" -lt "$TOTAL" ]; do
-            H1=$(curl -s --max-time 10 "http://173.249.37.118:8080/api/status" 2>/dev/null | grep -o '"height":[0-9]*' | cut -d: -f2)
+            # Im Einzelknoten-Modus C1 gar nicht erst fragen: jeder Versuch kostete
+            # 10 s Timeout und verdoppelte die Beobachtungszeit.
+            H1=""
+            [ "$EINZELN" = 1 ] || H1=$(curl -s --max-time 10 "http://173.249.37.118:8080/api/status" 2>/dev/null | grep -o '"height":[0-9]*' | cut -d: -f2)
             H2=$(curl -s --max-time 10 "http://194.163.188.71:8080/api/status" 2>/dev/null | grep -o '"height":[0-9]*' | cut -d: -f2)
             N=""
             [ -z "$H2" ] && { N="$N C2 UNREACHABLE"; H2=0; }
