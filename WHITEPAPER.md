@@ -331,7 +331,7 @@ UBI wird täglich aus den Protokoll-Einnahmen verteilt — kein Staat, keine Ste
 UBI is distributed daily from protocol revenue — no state, no tax, no vote required.
 
 **UBI-Pool-Quellen / UBI Pool Sources:**
-- 100% der Überweisungsgebühren (0,1% + Aufschlag für große Guthaben)
+- 100% der Überweisungsgebühren (0,1 % auf jede Überweisung, vom Absender obendrauf gezahlt; Aufschlag ab dem 5-, 10- und 20-fachen des fairen Anteils von 1.000 AEQ: +0,1 %, +0,5 %, +1 %)
 - 30% der Swap-Gebühren
 - 100% der Wealth-Cap-Überläufe
 - 100% der Demurrage auf Überschussguthaben (0,5%/Monat nach 3 Monaten Inaktivität über fairShare). Bis zum 24.09.2026 gingen davon nur 20% ans Grundeinkommen und 80% an Validatoren, Liquiditätsgeber und Treasury — Geld, das Hortenden genommen wird, gehört aber allen Menschen zu gleichen Teilen.

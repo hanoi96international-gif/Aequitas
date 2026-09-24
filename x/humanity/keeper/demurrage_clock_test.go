@@ -54,7 +54,7 @@ func TestReceivingDoesNotResetTheClock(t *testing.T) {
 
 	before := hoard.LastActivityAt
 	cs.mu.Lock()
-	_, _, _, _, err := cs.transferMutateLocked(t.Context(), sender.Address, hoard.Address, 0.000001)
+	_, _, _, _, _, err := cs.transferMutateLocked(t.Context(), sender.Address, hoard.Address, 0.000001)
 	cs.mu.Unlock()
 	if err != nil {
 		t.Fatal(err)
@@ -83,7 +83,7 @@ func TestReceivingStartsTheClockOnAFreshAccount(t *testing.T) {
 	cs.humanCount = 2
 
 	cs.mu.Lock()
-	_, _, _, _, err := cs.transferMutateLocked(t.Context(), sender.Address, fresh.Address, 50)
+	_, _, _, _, _, err := cs.transferMutateLocked(t.Context(), sender.Address, fresh.Address, 50)
 	cs.mu.Unlock()
 	if err != nil {
 		t.Fatal(err)

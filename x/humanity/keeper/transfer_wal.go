@@ -74,6 +74,9 @@ type walTransferRecord struct {
 	To     string  `json:"to"`
 	Amount float64 `json:"amount"`
 	TxHash string  `json:"tx_hash"`
+	// Gebuehr: Ueberweisungsgebuehr, die der Absender zusaetzlich bezahlt hat
+	// (ueberweisungsgebuehr.go). Aeltere Datensaetze: 0.
+	Gebuehr float64 `json:"gebuehr,omitempty"`
 	// At is the instant the transfer actually happened, in unix seconds.
 	//
 	// FIX (pre-launch audit 2026-08-16): the record used to carry no timestamp
@@ -476,7 +479,10 @@ func (cs *ChainState) transferConcurrentWALGesperrt(from, to string, amount floa
 		fbDemurrage.Add(1)
 		return 0, 0, false, nil, nil
 	}
-	if fromAcc.Balance.Float() < amount {
+	// Ueberweisungsgebuehr obendrauf (ueberweisungsgebuehr.go) -- kein Topf
+	// wird hier beruehrt, gutgeschrieben wird sie mit dem Block.
+	gebuehr := ueberweisungsGebuehrFuer(amount, fromAcc.Balance.Float())
+	if fromAcc.Balance.Float() < amount+gebuehr {
 		return 0, 0, true, fmt.Errorf("insufficient balance"), nil
 	}
 	if hasCapAmt && toAcc.Balance.Float()+amount > capAmt {
@@ -488,7 +494,7 @@ func (cs *ChainState) transferConcurrentWALGesperrt(from, to string, amount floa
 	// crash-recovered replay reproduces exactly what this node did rather than
 	// stamping its own restart time (see walTransferRecord.At).
 	at := nowUnix()
-	payload, err := json.Marshal(walTransferRecord{From: from, To: to, Amount: amount, TxHash: pendingTxTemplate.TxHash, At: at})
+	payload, err := json.Marshal(walTransferRecord{From: from, To: to, Amount: amount, Gebuehr: gebuehr, TxHash: pendingTxTemplate.TxHash, At: at})
 	if err != nil {
 		fbKodierung.Add(1)
 		return 0, 0, false, nil, nil // encode failure -- nothing mutated, safe to fall back
@@ -510,7 +516,7 @@ func (cs *ChainState) transferConcurrentWALGesperrt(from, to string, amount floa
 	// From here on the transfer IS durable regardless of anything below --
 	// mutate the LIVE pointers directly (not a scratch copy: there is
 	// nothing left that can fail and need reverting).
-	fromAcc.Balance = fromAcc.Balance.Sub(NewDecimal(amount))
+	fromAcc.Balance = fromAcc.Balance.Sub(NewDecimal(amount)).Sub(NewDecimal(gebuehr))
 	fromAcc.WALSeq = seq
 	touchActivityAt(fromAcc, at)
 	cs.updateAccountLeafLocked(fromAcc)
@@ -526,6 +532,7 @@ func (cs *ChainState) transferConcurrentWALGesperrt(from, to string, amount floa
 	pendingTxTemplate.Wallet = from
 	pendingTxTemplate.To = to
 	pendingTxTemplate.Amount = amount
+	pendingTxTemplate.Gebuehr = gebuehr
 	pendingTxTemplate.FromDemurrageLost = 0
 	pendingTxTemplate.ToDemurrageLost = 0
 	cs.enqueueWALFlushLocked(from, to, pendingTxTemplate, seq)
@@ -1297,7 +1304,8 @@ func (cs *ChainState) recoverFromWAL(path string) error {
 		if !ok {
 			return fmt.Errorf("WAL record seq %d: unknown recipient %s", entry.Seq, rec.To)
 		}
-		fromApplied := applyFrom(fromAcc, entry.Seq, rec.Amount, rec.At)
+		// Der Absender zahlte Betrag + Gebuehr (Datensaetze vor dem 24.09.2026: 0).
+		fromApplied := applyFrom(fromAcc, entry.Seq, NewDecimal(rec.Amount).Add(NewDecimal(rec.Gebuehr)).Float(), rec.At)
 		toApplied := applyTo(toAcc, entry.Seq, rec.Amount, rec.At)
 		if fromApplied || toApplied {
 			reappliedCount++
@@ -1321,7 +1329,7 @@ func (cs *ChainState) recoverFromWAL(path string) error {
 				// fork risk for this validator, not just eventual-consistency lag.
 				// Beim Wiederanlauf ist der Datensatz per Definition haltbar --
 				// er kommt aus der Datei. Seine Seq ist die aus der Datei.
-				cs.enqueueWALFlushLocked(rec.From, rec.To, Transaction{Type: "transfer", Wallet: rec.From, To: rec.To, Amount: rec.Amount, TxHash: rec.TxHash}, entry.Seq)
+				cs.enqueueWALFlushLocked(rec.From, rec.To, Transaction{Type: "transfer", Wallet: rec.From, To: rec.To, Amount: rec.Amount, Gebuehr: rec.Gebuehr, TxHash: rec.TxHash}, entry.Seq)
 			}
 		}
 		return nil

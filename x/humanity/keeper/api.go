@@ -1325,7 +1325,7 @@ func (a *APIServer) handleStatus(w http.ResponseWriter, r *http.Request) {
 		"growth":       growth,
 		"velocity":     50,
 		"phase":        m.Phase,
-		"fee_bps":      10,
+		"fee_bps":      ueberweisungsGebuehrBps,
 		// FIX (H1, Audit 2026-08-18): total_supply above is the RULE
 		// (humans × 1000, see TotalSupply), and the explorer prints it as
 		// "Total Supply". Measured from both validators' own databases on

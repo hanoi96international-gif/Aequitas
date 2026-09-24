@@ -79,14 +79,26 @@ func TestTransferWAL_NachRueckkehrIstDieSeqHaltbar(t *testing.T) {
 	if verletzt > 0 {
 		t.Errorf("%d von %d Ueberweisungen kehrten zurueck, bevor ihre WAL-Seq haltbar war", verletzt, angewendet)
 	}
-	summe := 0.0
+	summe := NewDecimal(0)
 	for g := 0; g < 16; g++ {
 		acc, _ := cs.accounts.Get("0xfrom" + string(rune('a'+g)))
-		summe += acc.Balance.Float()
+		summe = summe.Add(acc.Balance)
 	}
 	to, _ := cs.accounts.Get("0xto")
-	if summe+to.Balance.Float() != 16000 {
-		t.Errorf("Geldmenge %v + %v != 16000", summe, to.Balance.Float())
+	// Die Ueberweisungsgebuehren sind unterwegs: die Absender sind belastet,
+	// gutgeschrieben wird mit dem Block (ueberweisungsgebuehr.go). Sie stehen
+	// in den Transaktionen der Warteschlange.
+	unterwegs := NewDecimal(0)
+	cs.walFlushMu.Lock()
+	for _, it := range cs.walFlushQueue {
+		unterwegs = unterwegs.Add(NewDecimal(it.tx.Gebuehr))
+	}
+	cs.walFlushMu.Unlock()
+	if unterwegs.Float() <= 0 {
+		t.Error("keine Gebuehr unterwegs -- die Ueberweisungen zahlten keine")
+	}
+	if got := summe.Add(to.Balance).Add(unterwegs).Float(); got != 16000 {
+		t.Errorf("Geldmenge %v + %v + Gebuehren %v = %v != 16000", summe.Float(), to.Balance.Float(), unterwegs.Float(), got)
 	}
 	t.Logf("%d Ueberweisungen ueber den schnellen Pfad, Geldmenge erhalten", angewendet)
 }

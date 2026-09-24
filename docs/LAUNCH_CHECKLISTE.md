@@ -1,6 +1,21 @@
 # Launch-Checkliste
 
-**Stand 24.09.2026, abends. Zuerst: das fairste Geld (Geldflüsse geprüft und geändert). Dann: rotierender Leiter und Leistungsnachweis (gebaut, aus). Dann: Contabo1 ist abgeschaltet, was das bedeutet und was jetzt gilt. Der Stand vom 23.09. folgt darunter.**
+**Stand 24.09.2026, nachts. Zuerst: eine Gebühr für jede Überweisung. Dann: das fairste Geld (Geldflüsse geprüft und geändert). Dann: rotierender Leiter und Leistungsnachweis (gebaut, aus). Dann: Contabo1 ist abgeschaltet, was das bedeutet und was jetzt gilt. Der Stand vom 23.09. folgt darunter.**
+
+> ## 24.09., nachts: Dieselbe Gebühr auf jeder Überweisung
+>
+> **Das Problem.** Die 0,1 %, die Website und Whitepaper nennen, zahlte nur, wer über den Token-Vertrag (V7) überwies. Die gewöhnliche Sendung, die die App benutzt, war frei. Wer den Umweg kannte, zahlte nichts; und das Grundeinkommen lebte fast nur von Swap-Gebühren.
+>
+> **Jetzt** (`ueberweisungsgebuehr.go`):
+> - **Jede Überweisung eines Menschen zahlt 0,1 %**, egal über welchen Weg (Annahme-Tor, WAL, Stapel, V7).
+> - **Obendrauf:** Der Empfänger bekommt genau den gesendeten Betrag, der Absender zahlt Betrag + Gebühr. Wer 10 AEQ verlangt, bekommt 10 AEQ.
+> - **Aufschlag nur für große Guthaben, gemessen am fairen Anteil (1.000 AEQ):** ab 5.000 AEQ +0,1 %, ab 10.000 +0,5 %, ab 20.000 +1 %. Vorher hing der Aufschlag am Anteil an der *gesamten* Geldmenge; in einem kleinen Netz hielt damit jeder „viel“ und zahlte bis zu 0,6 % auf jede gewöhnliche Sendung.
+> - **100 % ans Grundeinkommen.** Gutgeschrieben wird, wenn die Überweisung in einem gespeicherten Block steht, auf dem erzeugenden Knoten genau wie auf jedem nachspielenden. Die Transaktion trägt die Gebühr (`gebuehr`), damit jeder Knoten dasselbe abbucht.
+> - **Durchsatz:** lokal gemessen kein Unterschied (4 Lastprofile, je 2 Läufe, Abweichung im Rauschen von ±3 %).
+>
+> **Belegt:** Alle Wege buchen Betrag + Gebühr ab; die Geldmenge bleibt exakt erhalten, wenn man die Gebühren im Grundeinkommen dazuzählt (`TestSupplyConservation_*`, Ring- und Stapeltests). Ein Nachspiel-Test zeigt, dass ein Knoten ohne das Feld `gebuehr` auseinanderläuft (900 statt 901,10 AEQ) und mit ihm nicht.
+>
+> **Für die App noch nötig:** Beim Senden die Gebühr anzeigen und „Maximum senden“ um die Gebühr kürzen; sonst scheitert eine Sendung des ganzen Guthabens an „zu wenig Guthaben“.
 
 > ## 24.09., abends: „Das fairste Geld der Welt – auf alles bezogen“
 >
@@ -12,7 +27,7 @@
 > | **Überschuss über der Vermögensgrenze** | ebenso 20/40/30/10 | **100 % Grundeinkommen** |
 > | **Swap-Gebühr** | 40 / 30 / 20 / 10 | 40 % Validatoren / 30 % Liquiditätsgeber / **30 % Grundeinkommen / 0 % Schatzkammer** |
 > | **Validator-Topf** | nach Blöcken seit Registrierung (Leiter, starke Hardware und die Ersten verdienen mehr) | **gleich je Menschen-Validator**, nur nach Minuten online; nur an Menschen |
-> | **Überweisungsgebühr** | 100 % Grundeinkommen | unverändert (war schon fair) |
+> | **Überweisungsgebühr** | 100 % Grundeinkommen, aber nur über den Token-Vertrag | **auf jeder Überweisung**, 100 % Grundeinkommen (siehe oben) |
 > | **Grundeinkommen, Registrierungszuschuss** | gleich für jeden Menschen | unverändert |
 >
 > **Zwei echte Fehler gefunden und behoben:**

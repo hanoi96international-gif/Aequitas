@@ -2,6 +2,7 @@ package keeper
 
 import (
 	"fmt"
+	"math"
 	"sync"
 	"testing"
 	"time"
@@ -55,8 +56,8 @@ func TestProcessTransferBatchConcurrent_EligibleBatchSucceeds(t *testing.T) {
 	for i := 0; i < n; i++ {
 		fromAcc, _ := cs.accounts.Get(froms[i])
 		toAcc, _ := cs.accounts.Get(tos[i])
-		if fromAcc.Balance.Float() != 70 {
-			t.Errorf("member %d sender balance = %v, want 70", i, fromAcc.Balance.Float())
+		if fromAcc.Balance.Float() != nachGebuehr(100, 30) {
+			t.Errorf("member %d sender balance = %v, want %v (70 minus Ueberweisungsgebuehr)", i, fromAcc.Balance.Float(), nachGebuehr(100, 30))
 		}
 		if toAcc.Balance.Float() != 30 {
 			t.Errorf("member %d recipient balance = %v, want 30", i, toAcc.Balance.Float())
@@ -367,7 +368,7 @@ func TestTransferAtomic_MixedContendedAndDisjointTrafficNoDeadlockNoCorruption(t
 	}
 	for _, addr := range hotSenders {
 		acc, _ := cs.accounts.Get(addr)
-		want := 1000.0 - float64(txsPerSender)
+		want := nachGebuehr(1000, wiederholt(1, txsPerSender)...)
 		if acc.Balance.Float() != want {
 			t.Errorf("hot sender %s balance = %v, want %v", addr, acc.Balance.Float(), want)
 		}
@@ -381,8 +382,10 @@ func TestTransferAtomic_MixedContendedAndDisjointTrafficNoDeadlockNoCorruption(t
 		acc, _ := cs.accounts.Get(addr)
 		total += acc.Balance.Float()
 	}
-	wantTotal := 1000.0 * float64(numRingSenders)
-	if total != wantTotal {
+	// Minus the Ueberweisungsgebuehren the ring senders paid on top (they are
+	// on their way to the UBI pool with the block).
+	wantTotal := 1000.0*float64(numRingSenders) - float64(numRingSenders*txsPerSender)*ueberweisungsGebuehrFuer(1, 1000)
+	if math.Abs(total-wantTotal) > 1e-6 {
 		t.Errorf("ring total balance = %v, want %v (value created or destroyed)", total, wantTotal)
 	}
 
