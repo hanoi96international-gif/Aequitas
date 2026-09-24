@@ -193,6 +193,7 @@ func (cs *ChainState) leitungEntleert() bool {
 
 // StarteLeitung baut die Leitung, wenn AEQUITAS_LEITUNG=an. Liefert nil sonst.
 func StarteLeitung(dag *BlockDAG, cs *ChainState, selfURL string) *Leitung {
+	StarteLeistungsnachweis(cs)
 	if !leitungAn() || dag == nil || cs == nil {
 		return nil
 	}

@@ -256,8 +256,10 @@ func NeueLeitung(ich, url string, satz []string, startLeiter string, faehig bool
 		l.leiter = gespeichert.Leiter
 		l.warLeiter = gespeichert.WarLeiter
 	}
-	if l.leiter == l.ich && l.ichFaehig && l.imSatz(l.ich) {
-		// Wieder aufnehmen. Bei drei und mehr nimmt er trotzdem erst an,
+	if l.leiter == l.ich && l.imSatz(l.ich) {
+		// Wieder aufnehmen -- auch ohne Leistungsnachweis: dann gibt er ab,
+		// sobald ein leiterfaehiger lebt (Takt). Bei zwei Validatoren stuende
+		// das Netz sonst ganz. Bei drei und mehr nimmt er trotzdem erst an,
 		// wenn eine Mehrheit seine Lease bestaetigt hat (DarfAnnehmen);
 		// wer inzwischen einen neueren Term kennt, weist sie ab.
 		l.rolle = leitLeiter
@@ -298,7 +300,10 @@ func (l *Leitung) DarfAnnehmen(jetzt time.Time) bool {
 }
 
 func (l *Leitung) darfAnnehmen(jetzt time.Time) bool {
-	if l.rolle != leitLeiter || l.abschliessen || !l.ichFaehig || l.frischZwei {
+	// Der Leistungsnachweis entscheidet, wer Leiter WIRD, nicht, ob ein
+	// amtierender annimmt: haelt er ihn nicht mehr, uebergibt er (Takt) --
+	// bis dahin nimmt er weiter an, sonst stuende das Netz.
+	if l.rolle != leitLeiter || l.abschliessen || l.frischZwei {
 		return false
 	}
 	if len(l.satz) <= 1 {
@@ -367,12 +372,50 @@ func (l *Leitung) basis(art string, jetzt time.Time) LeitNachricht {
 		Hoehe: l.hoehe(), Faehig: l.ichFaehig, SatzHash: l.hash}
 }
 
+// faehigerLebt: hat dieser Knoten innerhalb der FolgerFrist von einem
+// ANDEREN leiterfaehigen Validator gehoert?
+func (l *Leitung) faehigerLebt(jetzt time.Time) bool {
+	for a, f := range l.faehig {
+		if a == l.ich || !f {
+			continue
+		}
+		if t, ok := l.gehoert[a]; ok && jetzt.Sub(t) < l.cfg.FolgerFrist {
+			return true
+		}
+	}
+	return false
+}
+
+// notbetrieb: weder dieser Knoten noch ein erreichbarer anderer haelt den
+// Leistungsnachweis. Dann duerfen alle -- lieber langsam als gar nicht.
+// Das beruehrt nur, WER Leiter wird; die Regeln, die zwei Annehmende
+// ausschliessen (Lease, Mehrheit), gelten unveraendert.
+func (l *Leitung) notbetrieb(jetzt time.Time) bool {
+	return !l.ichFaehig && !l.faehigerLebt(jetzt)
+}
+
+// waehlbar: Kandidat mit Leistungsnachweis -- oder ohne, wenn auch dieser
+// Knoten keinen leiterfaehigen erreicht (Notbetrieb aus SEINER Sicht; so
+// gewinnt ein leiterfaehiger, sobald ihn eine Mehrheit sieht). Angekuendigt
+// wird immer der ECHTE Nachweis: wuerden Knoten im Notbetrieb sich als
+// leiterfaehig ausgeben, hielten die anderen den Notbetrieb fuer beendet,
+// die ersten dann auch -- und es kippte hin und her.
+func (l *Leitung) waehlbar(m LeitNachricht, jetzt time.Time) bool {
+	return (m.Faehig || l.notbetrieb(jetzt)) && m.Hoehe >= l.hoehe()-l.cfg.HoeheToleranz
+}
+
+// effFaehig: darf dieser Knoten JETZT Leiter werden?
+func (l *Leitung) effFaehig(jetzt time.Time) bool {
+	return l.ichFaehig || l.notbetrieb(jetzt)
+}
+
 // nachfolger: der naechste leiterfaehige Validator nach addr, in fester
-// Reihenfolge. Leer, wenn es keinen anderen gibt.
-func (l *Leitung) nachfolger(addr string) string {
+// Reihenfolge (alle: auch die ohne Nachweis, im Notbetrieb). Leer, wenn es
+// keinen anderen gibt.
+func (l *Leitung) nachfolger(addr string, alle bool) string {
 	var kandidaten []string
 	for _, a := range l.satz {
-		if l.faehig[a] {
+		if alle || l.faehig[a] {
 			kandidaten = append(kandidaten, a)
 		}
 	}
@@ -393,10 +436,11 @@ func (l *Leitung) nachfolger(addr string) string {
 // rang: wie viele leiterfaehige Validatoren nach dem ausgefallenen Leiter
 // vor diesem Knoten an der Reihe sind. Gestaffelte Kandidatur verhindert,
 // dass alle gleichzeitig antreten und sich die Stimmen teilen.
-func (l *Leitung) rang() int {
+func (l *Leitung) rang(jetzt time.Time) int {
+	alle := l.notbetrieb(jetzt)
 	a := l.leiter
 	for r := 0; r < len(l.satz); r++ {
-		a = l.nachfolger(a)
+		a = l.nachfolger(a, alle)
 		if a == "" {
 			return len(l.satz)
 		}
@@ -465,7 +509,15 @@ func (l *Leitung) Takt(jetzt time.Time) []LeitNachricht {
 		// Planmaessiger Wechsel?
 		if !l.abschliessen && l.cfg.WechselAlle > 0 && (l.mitWahl() || l.cfg.ZweiWechseln) &&
 			jetzt.Sub(l.leiterSeit) >= l.cfg.WechselAlle {
-			if n := l.nachfolger(l.ich); n != "" && l.lebt(n, jetzt) {
+			if n := l.nachfolger(l.ich, l.notbetrieb(jetzt)); n != "" && l.lebt(n, jetzt) {
+				l.abschliessen = true
+				l.uebergabeAn = n
+			}
+		}
+		// Leistungsnachweis verloren: an einen leiterfaehigen abgeben, sobald
+		// einer lebt. Gibt es keinen, bleibt dieser Leiter (Notbetrieb).
+		if !l.abschliessen && !l.ichFaehig && (l.mitWahl() || l.cfg.ZweiWechseln) {
+			if n := l.nachfolger(l.ich, false); n != "" && l.lebt(n, jetzt) {
 				l.abschliessen = true
 				l.uebergabeAn = n
 			}
@@ -508,14 +560,14 @@ func (l *Leitung) Takt(jetzt time.Time) []LeitNachricht {
 			l.letzterTakt = jetzt
 			raus = append(raus, *l.offeneUebergabe)
 		}
-		if !l.mitWahl() || !l.ichFaehig || !l.imSatz(l.ich) {
+		if !l.mitWahl() || !l.effFaehig(jetzt) || !l.imSatz(l.ich) {
 			break
 		}
 		if l.vorStimmen != nil && len(l.vorStimmen) >= l.mehrheit() {
 			raus = append(raus, l.kandidieren(jetzt)...)
 			break
 		}
-		frist := l.cfg.FolgerFrist + time.Duration(l.rang())*l.cfg.Staffel
+		frist := l.cfg.FolgerFrist + time.Duration(l.rang(jetzt))*l.cfg.Staffel
 		if jetzt.Sub(l.letzteLease) >= frist &&
 			(l.vorStimmen == nil || jetzt.Sub(l.vorwahlSeit) >= l.cfg.FolgerFrist) {
 			raus = append(raus, l.vorwahl(jetzt))
@@ -632,7 +684,7 @@ func (l *Leitung) Empfange(m LeitNachricht, jetzt time.Time) *LeitNachricht {
 		// Nur vom Leiter des laufenden Terms, nur an mich. Der Absender hat
 		// seinen Term schon hochgezaehlt, als er schickte -- sein m.Term ist
 		// der ALTE (basis vor dem Hochzaehlen gebaut).
-		if m.An == l.ich && m.Term == l.term && m.Von == l.leiter && l.ichFaehig {
+		if m.An == l.ich && m.Term == l.term && m.Von == l.leiter && l.effFaehig(jetzt) {
 			k := m
 			l.wartet = &k
 		}
@@ -682,7 +734,7 @@ func (l *Leitung) empfangeStimmeBitte(m LeitNachricht, jetzt time.Time) *LeitNac
 		antw.Term = m.Term
 		leaseFrisch := l.rolle == leitFolger && l.leiter != "" && jetzt.Sub(l.letzteLease) < l.cfg.FolgerFrist
 		antw.Gewaehrt = m.Term > l.term && !l.darfAnnehmen(jetzt) && !leaseFrisch &&
-			m.Faehig && m.Hoehe >= l.hoehe()-l.cfg.HoeheToleranz
+			l.waehlbar(m, jetzt)
 		return &antw
 	}
 	if m.Term < l.term {
@@ -693,7 +745,7 @@ func (l *Leitung) empfangeStimmeBitte(m LeitNachricht, jetzt time.Time) *LeitNac
 	if l.rolle == leitLeiter || (l.rolle == leitFolger && l.leiter != "" && jetzt.Sub(l.letzteLease) < l.cfg.FolgerFrist) {
 		return &antw
 	}
-	if !m.Faehig || m.Hoehe < l.hoehe()-l.cfg.HoeheToleranz {
+	if !l.waehlbar(m, jetzt) {
 		return &antw
 	}
 	if m.Term > l.term {
@@ -725,6 +777,7 @@ func (l *Leitung) Stand(jetzt time.Time) map[string]interface{} {
 		"validatoren":      len(l.satz),
 		"mit_wahl":         l.mitWahl(),
 		"leiterfaehig":     l.ichFaehig,
+		"notbetrieb":       l.notbetrieb(jetzt),
 		"uebergabe_laeuft": l.abschliessen || l.offeneUebergabe != nil || l.wartet != nil,
 		"satz_hash":        l.hash,
 	}

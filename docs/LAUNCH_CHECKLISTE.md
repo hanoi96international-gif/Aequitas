@@ -1,6 +1,27 @@
 # Launch-Checkliste
 
-**Stand 24.09.2026, mittags. Contabo1 ist abgeschaltet — was das bedeutet und was jetzt gilt, zuerst. Der Stand vom 23.09. folgt darunter.**
+**Stand 24.09.2026, abends. Zuerst: rotierender Leiter und Leistungsnachweis (gebaut, aus). Dann: Contabo1 ist abgeschaltet, was das bedeutet und was jetzt gilt. Der Stand vom 23.09. folgt darunter.**
+
+> ## 24.09., später: Rotierender Leiter, Leistungsnachweis, Bremse nach Mehrheit (gebaut, standardmäßig AUS)
+>
+> **Warum.** Bis jetzt nimmt ein fest eingestellter Knoten alle Überweisungen an. Fällt er aus, steht die Annahme. Genau das ist am 24.09. mit C1 passiert. Jetzt wechselt der annehmende Knoten, ähnlich wie der Leader bei Solana.
+>
+> - **Rotierender Leiter** (`leitung.go`, `leitung_netz.go`): Es nimmt immer genau einer an, die anderen leiten weiter. Weitergeleitet werden `eth_sendRawTransaction`, `eth_getTransactionCount`, Swap, Liquidität und Faucet. Ab **drei** Validatoren wählt die Mehrheit bei einem Ausfall in etwa 12–20 s einen neuen Leiter. Ein vom Netz getrennter Leiter hört auf, bevor irgendwo ein neuer gewählt wird (Lease). Ein planmäßiger Wechsel (Standard: stündlich) übergibt erst, wenn alles Angenommene geschrieben ist, und der Neue nimmt erst an, wenn er den letzten Block des Alten hat. Bei **zwei** Validatoren gibt es keine automatische Übernahme. Tot und getrennt lassen sich von außen nicht unterscheiden, zwei Annehmende würden auseinanderlaufen.
+> - **Leistungsnachweis** (`leistungsnachweis.go`): Jeder Knoten misst selbst Signaturen je Sekunde (alle Kerne), die Dauer eines Datenbank-Commits und seine Kernzahl. Vorgabe: ≥ 20.000 Signaturen/s, ≤ 20 ms, ≥ 4 Kerne. Es zählt der beste je gemessene Wert, damit Last den Nachweis nicht kostet. Ohne Nachweis wird ein Validator nur Leiter, wenn kein leiterfähiger erreichbar ist (Notbetrieb). Ein Leiter ohne Nachweis gibt ab, sobald einer lebt. **Der Nachweis entscheidet, wer leitet, nie, ob jemand annimmt.** Ergebnis in `/api/health/combined → leistungsnachweis`. Der Nachweis wird auch gemessen, wenn die Leitung aus ist, damit man sieht, ob ein Knoten Leiter sein könnte.
+> - **Peer-Lag-Bremse nach Mehrheit:** Ein einzelner langsamer Validator bremst die Annahme nicht mehr, maßgeblich ist der Rückstand der Mehrheit.
+>
+> **Belegt:** Eine Simulation prüft in jedem 50-ms-Schritt, dass nie zwei gleichzeitig annehmen. Durchgespielt werden Ausfall, Neustart, Netztrennung, nicht transitive Trennung, Stimmengleichstand, planmäßiger Wechsel, 10–30 % Nachrichtenverlust und Uhrengang, dazu 50 Zufallsläufe mit 5 Knoten, 20 davon mit wechselndem Leistungsnachweis. Jeder absichtlich eingebaute Fehler lässt die Tests rot werden: Lease ignoriert (1.103 Verstöße), Lease-Zusage ignoriert (80), kein gestaffelter Neuanlauf, keine Abgabe ohne Nachweis, kein Notbetrieb. Ein Test über echtes HTTP mit echten Signaturen und 3 Knoten übersteht den Ausfall des Leiters. Dabei gefunden und behoben: Zwei Kandidaten im Gleichschritt teilten sich endlos die Stimmen.
+>
+> **Einschalten (auf jedem Validator gleich):**
+> ```
+> AEQUITAS_LEITUNG=an
+> AEQUITAS_LEITUNG_VALIDATOREN=0xSignieradresseA=http://IP_A:8080,0xSignieradresseB=http://IP_B:8080,...
+> AEQUITAS_LEITUNG_START=0xSignieradresseA        # leitet Term 1
+> AEQUITAS_LEITUNG_WECHSEL_MINUTEN=60             # 0 = kein planmäßiger Wechsel
+> AEQUITAS_LEITUNG_ZWEI_WECHSELN=1                # nur bei genau zwei: planmäßig wechseln
+> AEQUITAS_LEITER_FAEHIG=ja|nein                  # optional, überstimmt die Messung
+> ```
+> `ANNAHME_ROLLE` wird mit eingeschalteter Leitung nicht mehr gebraucht. **Heute nicht eingeschaltet:** Es gibt nur C2. Das kommt mit dem neuen Server, zusammen mit dem Neustart bei null. Die automatische Übernahme braucht einen **dritten** Validator. Crash-Fehler sind abgedeckt, böswillige Validatoren nicht: Validatoren sind zugelassen und signieren.
 
 > ## 24.09.: Contabo1 abgeschaltet, C2 trägt allein
 >

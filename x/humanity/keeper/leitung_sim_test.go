@@ -341,6 +341,128 @@ func TestLeitung_NichtFaehigerWirdNieLeiter(t *testing.T) {
 	}
 }
 
+// Keiner haelt den Leistungsnachweis: die Kette darf daran nicht stehen.
+func TestLeitung3_NotbetriebKeinerFaehig(t *testing.T) {
+	n := neuesSimNetz(t, 3, 11, testKonfig())
+	n.faehig = map[string]bool{}
+	for i := range n.knoten {
+		n.baue(i)
+	}
+	n.laufe(10 * time.Second)
+	if n.annehmender() != 0 {
+		t.Fatalf("Startleiter ohne Nachweis nimmt nicht an (%d)", n.annehmender())
+	}
+	n.knoten[0].an = false
+	n.laufe(60 * time.Second)
+	if i := n.annehmender(); i != 1 && i != 2 {
+		t.Fatalf("Notbetrieb: nach Ausfall kein Leiter (%d)", i)
+	}
+}
+
+// Startleiter ohne Nachweis gibt an einen leiterfaehigen ab; verliert der
+// seinen, gibt er weiter.
+func TestLeitung3_OhneNachweisGibtAb(t *testing.T) {
+	n := neuesSimNetz(t, 3, 12, testKonfig())
+	n.faehig = map[string]bool{n.knoten[2].addr: true}
+	for i := range n.knoten {
+		n.baue(i)
+	}
+	n.laufe(20 * time.Second)
+	if i := n.annehmender(); i != 2 {
+		t.Fatalf("nimmt %d an, erwartet 2 (einziger leiterfaehiger)", i)
+	}
+	n.knoten[2].l.SetzeFaehig(false)
+	n.knoten[1].l.SetzeFaehig(true)
+	n.laufe(20 * time.Second)
+	if i := n.annehmender(); i != 1 {
+		t.Fatalf("nimmt %d an, erwartet 1 nach Verlust des Nachweises", i)
+	}
+	// Einziger leiterfaehiger faellt aus: Notbetrieb statt Stillstand.
+	n.knoten[1].an = false
+	n.laufe(60 * time.Second)
+	if i := n.annehmender(); i != 0 && i != 2 {
+		t.Fatalf("kein Leiter, nachdem der einzige leiterfaehige ausfiel (%d)", i)
+	}
+	// Er kommt zurueck: die Leitung geht wieder an ihn.
+	n.knoten[1].an = true
+	n.baue(1)
+	n.knoten[1].l.SetzeFaehig(true)
+	n.laufe(60 * time.Second)
+	if i := n.annehmender(); i != 1 {
+		t.Fatalf("nimmt %d an, erwartet den zurueckgekehrten leiterfaehigen 1", i)
+	}
+	if n.zweiLeiter {
+		t.Fatal("zwei Leiter")
+	}
+}
+
+// Wie TestLeitung_Zufall, dazu wechselnder Leistungsnachweis. Am Ende,
+// alles heil: genau einer nimmt an, und er haelt den Nachweis.
+func TestLeitung_ZufallMitNachweis(t *testing.T) {
+	for seed := int64(200); seed < 220; seed++ {
+		c := testKonfig()
+		c.WechselAlle = 45 * time.Second
+		n := neuesSimNetz(t, 5, seed, c)
+		n.verlust = 0.1
+		n.faehig = map[string]bool{}
+		for i, k := range n.knoten {
+			n.faehig[k.addr] = n.r.Intn(2) == 0
+			k.gang = (n.r.Float64()*2 - 1) * 0.002
+			n.baue(i)
+		}
+		for runde := 0; runde < 40; runde++ {
+			switch n.r.Intn(6) {
+			case 0:
+				n.knoten[n.r.Intn(5)].an = false
+			case 1:
+				i := n.r.Intn(5)
+				if !n.knoten[i].an {
+					n.knoten[i].an = true
+					n.baue(i)
+				}
+			case 2:
+				n.gruppe = map[int]int{}
+				for i := range n.knoten {
+					n.gruppe[i] = n.r.Intn(2)
+				}
+			case 3:
+				n.gruppe = map[int]int{}
+				n.gekappt = map[[2]int]bool{}
+			case 4: // Nachweis wechselt
+				k := n.knoten[n.r.Intn(5)]
+				n.faehig[k.addr] = !n.faehig[k.addr]
+				k.l.SetzeFaehig(n.faehig[k.addr])
+			default:
+			}
+			n.laufe(time.Duration(5+n.r.Intn(40)) * time.Second)
+		}
+		for i, k := range n.knoten {
+			if !k.an {
+				k.an = true
+				n.baue(i)
+			}
+		}
+		n.gruppe = map[int]int{}
+		n.gekappt = map[[2]int]bool{}
+		n.laufe(2 * time.Minute)
+		i := n.annehmender()
+		if i < 0 {
+			t.Errorf("seed %d: nach Heilung kein Leiter", seed)
+			continue
+		}
+		einer := false
+		for _, f := range n.faehig {
+			einer = einer || f
+		}
+		if einer && !n.faehig[n.knoten[i].addr] {
+			t.Errorf("seed %d: Leiter %d ohne Nachweis, obwohl ein leiterfaehiger lebt", seed, i)
+		}
+		if n.zweiLeiter {
+			t.Fatalf("seed %d: zwei Leiter gleichzeitig", seed)
+		}
+	}
+}
+
 func TestLeitung2_KeineAutomatischeUebernahme(t *testing.T) {
 	n := neuesSimNetz(t, 2, 7, testKonfig())
 	n.laufe(5 * time.Second)
@@ -464,7 +586,7 @@ func TestMehrheitUndNachfolger(t *testing.T) {
 	if l.mehrheit() != 2 {
 		t.Fatalf("Mehrheit von 3 = %d", l.mehrheit())
 	}
-	got := []string{l.nachfolger("0xa"), l.nachfolger("0xb"), l.nachfolger("0xc")}
+	got := []string{l.nachfolger("0xa", false), l.nachfolger("0xb", false), l.nachfolger("0xc", false)}
 	want := []string{"0xb", "0xc", "0xa"}
 	sort.Strings(got)
 	sort.Strings(want)
