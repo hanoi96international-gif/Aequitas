@@ -60,6 +60,13 @@ jobs:
             docker ps -a --format '{{.Names}} {{.Status}}' | head -12
             for c in $(docker ps -aq); do docker inspect "$c" --format '{{.Name}} Neustartregel={{.HostConfig.RestartPolicy.Name}}'; done | head -12
             echo "Box laeuft seit: $(uptime -s)"
+            # Unter welcher Adresse sieht der Knoten einen Aufrufer AUF DERSELBEN
+            # Box (Lastgenerator gegen localhost)? Ueber den Docker-Proxy ist das
+            # das Gateway seines Netzes -- die Adresse, die fuer einen lokalen
+            # Lastlauf in AEQUITAS_RPC_RATE_LIMIT_FREI gehoert.
+            NETZ=$(docker inspect aequitas-node --format '{{range $k, $v := .NetworkSettings.Networks}}{{$k}} {{end}}' | awk '{print $1}')
+            echo "Netz des Knotens: $NETZ, Gateway: $(docker network inspect "$NETZ" --format '{{range .IPAM.Config}}{{.Gateway}} {{end}}')"
+            echo "userland-proxy: $(ps -eo args | grep -c '[d]ocker-proxy') docker-proxy-Prozesse"
             last -x reboot shutdown 2>/dev/null | head -4
             echo "=== Maschine ==="
             echo "Kerne: $(nproc)"; free -m | head -2; uptime
