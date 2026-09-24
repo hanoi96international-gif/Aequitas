@@ -55,15 +55,24 @@ jobs:
           # und genau false ist hier der gesunde Wert (abweichend=false,
           # C2 nimmt_an=false). Der erste Lauf fiel daran dreimal ROT.
 
-          C1_IP=173.249.37.118; C2_IP=194.163.188.71
-          declare -A API=( [C1]=https://aequitas.digital/api [C2]=https://proof2.aequitas.digital/api )
-          declare -A RPC=( [C1]=https://aequitas.digital/rpc [C2]=https://proof2.aequitas.digital/rpc )
-          declare -A IP=( [C1]=$C1_IP [C2]=$C2_IP )
-          declare -A PH=( [C1]=proof1 [C2]=proof2 )
-          declare -A HOEHE COMMIT
+          # DIE AKTIVEN KNOTEN: NAME=IP=PROOFHOST=NIMMT_AN. Genau einer nimmt
+          # Ueberweisungen an (annahme_tor.go). Contabo1 (173.249.37.118, proof1)
+          # ist seit dem 24.09.2026 abgeschaltet -- Abo nicht verlaengert, die
+          # Kette startet vor dem Launch bei null. Seitdem nimmt C2 an. Ein neuer
+          # zweiter Server kommt hier mit einer Zeile dazu (und in wache.yml).
+          KNOTEN="C2=194.163.188.71=proof2=true"
+          declare -A API RPC IP PH SOLLAN HOEHE COMMIT
+          NAMEN=""
+          for E in $KNOTEN; do
+            IFS== read -r N I P A <<< "$E"
+            NAMEN="$NAMEN $N"; IP[$N]=$I; PH[$N]=$P; SOLLAN[$N]=$A
+            API[$N]=https://$P.aequitas.digital/api; RPC[$N]=https://$P.aequitas.digital/rpc
+          done
+          ANNEHMER=$(for N in $NAMEN; do [ "${SOLLAN[$N]}" = true ] && echo "$N"; done | wc -l)
+          [ "$ANNEHMER" = 1 ] && ok "genau ein Knoten nimmt Ueberweisungen an" || rot "$ANNEHMER Knoten als annehmend eingetragen -- genau einer ist richtig"
 
           echo "===== Kette ====="
-          for K in C1 C2; do
+          for K in $NAMEN; do
             S=$(get "${API[$K]}/status")
             H=$(echo "$S" | jq_ '.height // empty'); G=$(echo "$S" | jq_ '.git_commit // empty')
             HOEHE[$K]=${H:-0}; COMMIT[$K]=${G:-?}
@@ -74,15 +83,20 @@ jobs:
             DV=$(echo "$HC" | jq_ '.divergenz.abweichend | if . == null then "fehlt" else tostring end')
             [ "$DV" = false ] && ok "$K keine Kontostand-Abweichung" || rot "$K divergenz.abweichend=$DV"
             NA=$(echo "$HC" | jq_ '.annahme_tor.nimmt_an | if . == null then "fehlt" else tostring end')
-            SOLL=$([ "$K" = C1 ] && echo true || echo false)
-            [ "$NA" = "$SOLL" ] && ok "$K annahme_tor.nimmt_an=$NA (so gewollt)" || rot "$K annahme_tor.nimmt_an=$NA, erwartet $SOLL"
+            [ "$NA" = "${SOLLAN[$K]}" ] && ok "$K annahme_tor.nimmt_an=$NA (so gewollt)" || rot "$K annahme_tor.nimmt_an=$NA, erwartet ${SOLLAN[$K]}"
           done
-          D=$(( ${HOEHE[C1]} > ${HOEHE[C2]} ? ${HOEHE[C1]} - ${HOEHE[C2]} : ${HOEHE[C2]} - ${HOEHE[C1]} ))
-          [ "$D" -le 20 ] && ok "beide gleichauf (Abstand $D)" || rot "Abstand der Hoehen $D"
-          [ "${COMMIT[C1]}" = "${COMMIT[C2]}" ] && ok "beide auf demselben Commit (${COMMIT[C1]})" || rot "verschiedene Commits: C1 ${COMMIT[C1]}, C2 ${COMMIT[C2]}"
+          set -- $NAMEN
+          if [ $# -lt 2 ]; then
+            info "nur EIN Validator aktiv -- der zweite Server fehlt (Launch-Blocker)"
+          else
+            MIN=""; MAX=0
+            for K in $NAMEN; do V=${HOEHE[$K]}; { [ -z "$MIN" ] || [ "$V" -lt "$MIN" ]; } && MIN=$V; [ "$V" -gt "$MAX" ] && MAX=$V; done
+            [ $((MAX - MIN)) -le 20 ] && ok "alle gleichauf (Abstand $((MAX - MIN)))" || rot "Abstand der Hoehen $((MAX - MIN))"
+            [ "$(for K in $NAMEN; do echo "${COMMIT[$K]}"; done | sort -u | wc -l)" = 1 ] && ok "alle auf demselben Commit" || rot "verschiedene Commits: $(for K in $NAMEN; do printf '%s=%s ' "$K" "${COMMIT[$K]}"; done)"
+          fi
 
-          echo "===== App-Endpunkte (beide Basen, wie App-Ausweichliste) ====="
-          for K in C1 C2; do
+          echo "===== App-Endpunkte (jede Basis, wie App-Ausweichliste) ====="
+          for K in $NAMEN; do
             for P in status pool price-history "blocks/canonical?limit=1"; do
               C=$(code "${API[$K]}/$P")
               [ "$C" = 200 ] && ok "$K /api/$P" || rot "$K /api/$P HTTP $C"
@@ -90,7 +104,7 @@ jobs:
           done
 
           echo "===== RPC ====="
-          for K in C1 C2; do
+          for K in $NAMEN; do
             CI=$(get -H 'Content-Type: application/json' -d '{"jsonrpc":"2.0","id":1,"method":"eth_chainId","params":[]}' "${RPC[$K]}" | jq_ '.result // empty')
             [ "$CI" = 0x786 ] && ok "$K eth_chainId 0x786" || rot "$K eth_chainId '$CI'"
             BN=$(get -H 'Content-Type: application/json' -d '{"jsonrpc":"2.0","id":2,"method":"eth_blockNumber","params":[]}' "${RPC[$K]}" | jq_ '.result // empty')
@@ -98,18 +112,33 @@ jobs:
           done
 
           echo "===== Annahme-Tor (wertloser Platzhalter, keine Transaktion) ====="
-          T2=$(get -H 'Content-Type: application/json' -d '{"jsonrpc":"2.0","id":3,"method":"eth_sendRawTransaction","params":["0x00"]}' "${RPC[C2]}")
-          echo "$T2" | grep -q 'nimmt keine Ueberweisungen an' && ok "C2 lehnt Ueberweisungen ab (Tor)" || rot "C2 hat das Tor NICHT gezeigt: $(echo "$T2" | head -c 160)"
-          T1=$(get -H 'Content-Type: application/json' -d '{"jsonrpc":"2.0","id":4,"method":"eth_sendRawTransaction","params":["0x00"]}' "${RPC[C1]}")
-          if echo "$T1" | grep -q 'nimmt keine Ueberweisungen an'; then rot "C1 lehnt ALLES ab -- dann nimmt niemand an"; elif echo "$T1" | grep -q '"error"'; then ok "C1 laesst durch (scheitert erst am Platzhalter: $(echo "$T1" | jq_ '.error.message' | head -c 60))"; else rot "C1 unerwartete Antwort: $(echo "$T1" | head -c 160)"; fi
+          for K in $NAMEN; do
+            T=$(get -H 'Content-Type: application/json' -d '{"jsonrpc":"2.0","id":3,"method":"eth_sendRawTransaction","params":["0x00"]}' "${RPC[$K]}")
+            if [ "${SOLLAN[$K]}" = true ]; then
+              if echo "$T" | grep -q 'nimmt keine Ueberweisungen an'; then rot "$K lehnt ALLES ab -- dann nimmt niemand an"; elif echo "$T" | grep -q '"error"'; then ok "$K laesst durch (scheitert erst am Platzhalter: $(echo "$T" | jq_ '.error.message' | head -c 60))"; else rot "$K unerwartete Antwort: $(echo "$T" | head -c 160)"; fi
+            else
+              echo "$T" | grep -q 'nimmt keine Ueberweisungen an' && ok "$K lehnt Ueberweisungen ab (Tor)" || rot "$K hat das Tor NICHT gezeigt: $(echo "$T" | head -c 160)"
+            fi
+          done
 
           echo "===== Coordinator, Vergleichsdienst, Proof-Server ====="
-          for K in C1 C2; do
+          for K in $NAMEN; do
             B="https://${PH[$K]}.aequitas.digital"
             CH=$(get "$B/coordinator/health")
             [ "$(echo "$CH" | jq_ '.status')" = ok ] && ok "${PH[$K]} Coordinator ok" || rot "${PH[$K]} Coordinator: $(echo "$CH" | head -c 120)"
+            # Das Quorum muss ERREICHBAR sein, nicht nur konfiguriert: am
+            # 24.09.2026 stand "Quorum 2 aus 2", waehrend einer der beiden
+            # Vergleichsdienste mit C1 verschwunden war. Interne Adressen
+            # (Docker-Namen) liegen auf derselben Box und gelten als erreichbar.
             Q=$(echo "$CH" | jq_ '.quorum_size'); VN=$(echo "$CH" | jq_ '.validator_urls | length')
-            [ "$Q" = 2 ] && [ "$VN" = 2 ] && ok "${PH[$K]} Quorum $Q aus $VN Vergleichsdiensten" || rot "${PH[$K]} Quorum $Q aus $VN"
+            ERR=0
+            for VU in $(echo "$CH" | jq_ '.validator_urls[]?'); do
+              case "$VU" in
+                https://*) [ "$(get "${VU%/}/health" | jq_ '.status // empty')" = ok ] && ERR=$((ERR+1)) || info "${PH[$K]}: Vergleichsdienst $VU antwortet nicht" ;;
+                *) ERR=$((ERR+1)) ;;
+              esac
+            done
+            [ "$ERR" -ge "${Q:-99}" ] 2>/dev/null && ok "${PH[$K]} Quorum $Q, erreichbar $ERR von $VN Vergleichsdiensten" || rot "${PH[$K]} Quorum $Q, aber nur $ERR von $VN Vergleichsdiensten erreichbar -- KEINE Registrierung moeglich"
             FR=$(echo "$CH" | jq_ '.widersprueche.fristen_tage.ohne_widerspruch // "fehlt"')
             [ "$FR" = 90 ] && ok "${PH[$K]} Widerspruchsfrist 90 Tage (Coordinator mit Loeschfrist laeuft)" || rot "${PH[$K]} widersprueche.fristen_tage fehlt ($FR) -- alter Coordinator?"
             WO=$(echo "$CH" | jq_ '.widersprueche.widersprueche_offen // 0')
@@ -130,7 +159,7 @@ jobs:
           REL=$(gh api repos/hanoi96international-gif/Aequitas-App/releases/latest 2>/dev/null)
           TAG=$(echo "$REL" | jq_ '.tag_name'); SOLL=$(echo "$REL" | jq_ '.assets[] | select(.name=="app-release.apk") | .digest' | sed 's/^sha256://')
           echo "  neuestes Release: $TAG, sha256 ${SOLL:0:16}..."
-          for Q in "https://aequitas.digital/download/app.apk" "http://$C2_IP:8080/download/app.apk"; do
+          for Q in "https://aequitas.digital/download/app.apk" $(for K in $NAMEN; do echo "http://${IP[$K]}:8080/download/app.apk"; done); do
             IST=$(curl -sL --max-time 300 "$Q" | sha256sum | cut -d' ' -f1)
             [ -n "$SOLL" ] && [ "$IST" = "$SOLL" ] && ok "$Q == $TAG" || rot "$Q liefert ${IST:0:16}..., neuestes Release ($TAG) ist ${SOLL:0:16}..."
           done

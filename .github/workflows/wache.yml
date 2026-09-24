@@ -54,24 +54,46 @@ jobs:
           ok()  { echo "✓ $1"; }
           h() { curl -s --max-time 15 "http://$1:8080/api/health/combined"; }
           st() { curl -s --max-time 10 "http://$1:8080/api/status" | grep -oE '"height":[0-9]+' | cut -d: -f2; }
-          declare -A H1 H2
-          for B in 173.249.37.118 194.163.188.71; do H1[$B]=$(st $B); done
+          # DIE AKTIVEN KNOTEN: IP=Proof-Host. Contabo1 (173.249.37.118, proof1)
+          # ist seit dem 24.09.2026 abgeschaltet -- Abo nicht verlaengert, die
+          # Kette startet vor dem Launch ohnehin bei null. Ein neuer zweiter
+          # Server kommt HIER dazu (und in pruefstand-live.yml); bis dahin
+          # meldete die Wache alle 6 h ROT fuer eine Box, die es nicht mehr gibt,
+          # und uebertoente damit alles, was auf C2 wirklich schiefgeht.
+          KNOTEN="194.163.188.71=proof2"
+          declare -A H1 H2 PHOST
+          for K in $KNOTEN; do PHOST[${K%%=*}]=${K#*=}; done
+          for B in "${!PHOST[@]}"; do H1[$B]=$(st $B); done
           sleep 25
-          for B in 173.249.37.118 194.163.188.71; do H2[$B]=$(st $B); done
-          for B in 173.249.37.118 194.163.188.71; do
+          for B in "${!PHOST[@]}"; do H2[$B]=$(st $B); done
+          for B in "${!PHOST[@]}"; do
             echo "===== $B ====="
             if [ -z "${H2[$B]}" ]; then rot "$B antwortet nicht auf /api/status"; continue; fi
             if [ "${H2[$B]}" -gt "${H1[$B]:-0}" ]; then ok "Hoehe waechst (${H1[$B]} -> ${H2[$B]})"; else rot "Hoehe steht (${H1[$B]} -> ${H2[$B]})"; fi
             J=$(h $B)
             if [ -z "$J" ]; then rot "$B antwortet nicht auf /api/health/combined"; continue; fi
             echo "$J" | python3 .github/wache_pruefung.py || ROT=1
-            M=$(curl -s --max-time 15 "https://$( [ "$B" = 173.249.37.118 ] && echo proof1 || echo proof2 ).aequitas.digital/matching/health" | grep -o '"status":"ok"')
+            M=$(curl -s --max-time 15 "https://${PHOST[$B]}.aequitas.digital/matching/health" | grep -o '"status":"ok"')
             if [ -n "$M" ]; then ok "Vergleichsdienst antwortet"; else rot "Vergleichsdienst (/matching/health) antwortet nicht"; fi
             # Der Coordinator auf derselben Box (seit 13.09. der, auf den die App ab v1.7.0 zeigt).
-            PH=$( [ "$B" = 173.249.37.118 ] && echo proof1 || echo proof2 )
+            PH=${PHOST[$B]}
             CB=$(curl -s --max-time 15 "https://$PH.aequitas.digital/coordinator/health")
             QB=$(echo "$CB" | grep -oE '"quorum_size":[0-9]+' | cut -d: -f2)
             if echo "$CB" | grep -q '"status":"ok"' && [ "${QB:-0}" -ge 2 ]; then ok "Coordinator $PH ok, Quorum $QB"; else rot "Coordinator $PH: ${CB:-keine Antwort}"; fi
+            # QUORUM ERREICHBAR? quorum_size ist eine Zahl aus der Konfiguration,
+            # kein Beleg. Am 24.09.2026 meldete die Wache "Quorum 2 ok", waehrend
+            # einer der beiden Vergleichsdienste mit C1 verschwunden war -- keine
+            # Registrierung konnte das Quorum erreichen. Gezaehlt wird, wer auf
+            # /health antwortet; interne Adressen (Docker-Namen) liegen auf
+            # derselben Box wie der Coordinator und gelten mit ihm als erreichbar.
+            ERR=0
+            for VU in $(echo "$CB" | grep -oE '"validator_urls":\[[^]]*\]' | grep -oE '[a-z]+://[^"]+'); do
+              case "$VU" in
+                https://*) curl -s --max-time 10 "${VU%/}/health" | grep -q '"status":"ok"' && ERR=$((ERR+1)) ;;
+                *) ERR=$((ERR+1)) ;;
+              esac
+            done
+            if [ "$ERR" -ge "${QB:-99}" ]; then ok "$PH: $ERR Vergleichsdienst(e) erreichbar, Quorum $QB erreichbar"; else rot "$PH: nur $ERR Vergleichsdienst(e) erreichbar, Quorum $QB -- KEINE Registrierung moeglich"; fi
             # Offene Widersprueche (Art. 22 Abs. 3): ein Mensch wartet auf einen
             # anderen Menschen. Das ist ROT, nicht Hinweis -- ein gruener Lauf
             # ist still, und dann erfaehrt es niemand. Nur Zahlen; welche und
@@ -82,9 +104,18 @@ jobs:
             if echo "$CB" | grep -q 'widerspruch_ueber_einen_monat_offen'; then rot "$PH: ein Widerspruch liegt LAENGER ALS EINEN MONAT (Art. 12 Abs. 3)"; fi
           done
           echo "===== Netz ====="
-          A=${H2[173.249.37.118]:-0}; C=${H2[194.163.188.71]:-0}
-          D=$(( A > C ? A - C : C - A ))
-          if [ "$D" -le 20 ]; then ok "Boxen gleichauf (Abstand $D)"; else rot "Boxen nicht gleichauf (Abstand $D)"; fi
+          if [ "${#PHOST[@]}" -lt 2 ]; then
+            # Bekannt und entschieden (24.09.2026): bis der neue zweite Server
+            # steht, gibt es einen Validator. Hinweis, kein Rot -- sonst waere
+            # die Wache dauerhaft rot und damit wertlos. Launch-Blocker in
+            # docs/LAUNCH_CHECKLISTE.md.
+            echo "ℹ nur EIN Validator aktiv -- der zweite Server fehlt (Launch-Blocker)"
+          else
+            MIN=""; MAX=0
+            for B in "${!PHOST[@]}"; do V=${H2[$B]:-0}; [ -z "$MIN" ] || [ "$V" -lt "$MIN" ] && MIN=$V; [ "$V" -gt "$MAX" ] && MAX=$V; done
+            D=$(( MAX - MIN ))
+            if [ "$D" -le 20 ]; then ok "Boxen gleichauf (Abstand $D)"; else rot "Boxen nicht gleichauf (Abstand $D)"; fi
+          fi
           CO=$(curl -s --max-time 15 https://coordinator-production-e067.up.railway.app/health)
           Q=$(echo "$CO" | grep -oE '"quorum_size":[0-9]+' | cut -d: -f2)
           # Railway: seit 14.09. 03:45 "Application not found" -- die Instanz ist weg. Die ausgelieferte App

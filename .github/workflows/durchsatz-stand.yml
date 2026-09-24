@@ -27,7 +27,7 @@ jobs:
       - name: Beide Knoten
         run: |
           set -u
-          for K in "C1 173.249.37.118" "C2 194.163.188.71"; do
+          for K in "C2 194.163.188.71"; do  # C1 seit 24.09.2026 abgeschaltet
             set -- $K
             echo "================ $1 ($2) ================"
             curl -s --max-time 20 "http://$2:8080/api/health/combined" > h.json || { echo "keine Antwort"; continue; }
@@ -56,9 +56,9 @@ jobs:
       # 1.800 Versuche ~ 30 min) -- sie trennt, was die Mittelwerte oben
       # vermischen: leere Bloecke aus der Ruhe, volle aus der Last. Je Minute:
       # Bloecke, Transaktionen, geltender Deckel, Dauer und die Anteile.
-      - name: C1 -- Blockbau je Minute (Zeitreihe)
+      - name: C2 -- Blockbau je Minute (Zeitreihe; nimmt seit 24.09.2026 an)
         run: |
-          curl -s --max-time 30 "http://173.249.37.118:8080/api/produktion?n=1800" > p.json
+          curl -s --max-time 30 "http://194.163.188.71:8080/api/produktion?n=1800" > p.json
           python3 - <<'PY'
           import json, collections, datetime
           d = json.load(open("p.json"))

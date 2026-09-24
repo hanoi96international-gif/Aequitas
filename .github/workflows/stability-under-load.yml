@@ -52,7 +52,7 @@ on:
         default: "100000000000000"
       ziele:
         description: "Wohin die Last geht. c1 (Vorgabe seit 23.09.2026) = nur C1, der einzige Knoten, der Ueberweisungen annimmt (ANNAHME_ROLLE, annahme_tor.go); der Generator laeuft auf C2 und beschickt C1 ueber das Netz. c2 / beide nur, wenn C2 wieder annimmt -- der Lauf bricht sonst vor dem Start ab, statt Ablehnungen zu messen."
-        default: "c1"
+        default: "c2"
         type: choice
         options: [c1, c2, beide]
       gewichte:
@@ -327,13 +327,22 @@ jobs:
           printf '%-9s %-11s %-11s %-8s %s\n' "t(s)" "C1" "C2" "diff" "note"
 
           PREV1=0; PREV2=0; STALL1=0; STALL2=0; WORST=0
+          # EINZELKNOTEN. Contabo1 ist seit dem 24.09.2026 abgeschaltet (Abo
+          # nicht verlaengert). Ohne C1 waere jeder Lauf hier "STILL DIVERGED"
+          # -- gemessen an einer Box, die es nicht mehr gibt. Antwortet C1 zu
+          # Beginn nicht, wird nur C2 beobachtet: waechst seine Hoehe durch Last
+          # und Erholung, ist der Lauf bestanden.
+          EINZELN=0
+          if [ -z "$(curl -s --max-time 10 http://173.249.37.118:8080/api/status 2>/dev/null | grep -o '"height":[0-9]*')" ]; then
+            EINZELN=1; echo "C1 antwortet nicht -- Einzelknoten-Modus: nur C2 wird beobachtet"
+          fi
           t=0
           while [ "$t" -lt "$TOTAL" ]; do
             H1=$(curl -s --max-time 10 "http://173.249.37.118:8080/api/status" 2>/dev/null | grep -o '"height":[0-9]*' | cut -d: -f2)
             H2=$(curl -s --max-time 10 "http://194.163.188.71:8080/api/status" 2>/dev/null | grep -o '"height":[0-9]*' | cut -d: -f2)
             N=""
-            [ -z "$H1" ] && { N="C1 UNREACHABLE"; H1=0; }
             [ -z "$H2" ] && { N="$N C2 UNREACHABLE"; H2=0; }
+            if [ "$EINZELN" = 1 ]; then H1=$H2; else [ -z "$H1" ] && { N="C1 UNREACHABLE $N"; H1=0; }; fi
             DIFF=$(( H1 - H2 ))
             [ "${DIFF#-}" -gt "$WORST" ] && WORST=${DIFF#-}
             [ "$H1" = "$PREV1" ] && [ "$H1" != "0" ] && STALL1=$((STALL1+1)) || STALL1=0
@@ -347,6 +356,16 @@ jobs:
           done
 
           echo ""
+          if [ "$EINZELN" = 1 ]; then
+            H2=$(curl -s --max-time 15 "http://194.163.188.71:8080/api/status" | grep -o '"height":[0-9]*' | cut -d: -f2)
+            echo "final: C2=$H2 (Einzelknoten)"
+            if [ -n "$H2" ] && [ "$H2" -gt "$PREV2" -o "$STALL2" -lt 3 ]; then
+              echo "VERDICT: C2 hat Last und Erholung ohne Stillstand getragen."
+              exit 0
+            fi
+            echo "VERDICT: C2 steht (zuletzt $STALL2 Messungen ohne neue Hoehe)."
+            exit 1
+          fi
           echo "worst divergence seen: $WORST blocks"
           H1=$(curl -s --max-time 15 "http://173.249.37.118:8080/api/status" | grep -o '"height":[0-9]*' | cut -d: -f2)
           H2=$(curl -s --max-time 15 "http://194.163.188.71:8080/api/status" | grep -o '"height":[0-9]*' | cut -d: -f2)
@@ -399,7 +418,7 @@ jobs:
       # nur nach. Die Zahlen, die ueber den Durchsatz entscheiden, stehen also
       # auf C1 -- der Bericht oben las bis dahin nur C2.
       - name: Was Contabo1 (der annehmende Knoten) meldet
-        if: always()
+        if: always() && inputs.ziele == 'c1'
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: 173.249.37.118
