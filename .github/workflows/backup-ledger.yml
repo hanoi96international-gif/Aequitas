@@ -73,7 +73,7 @@ on:
         required: true
         default: both
         type: choice
-        options: [both, contabo1, contabo2]
+        options: [both, contabo2]
 
 concurrency:
   group: backup-ledger
@@ -90,10 +90,8 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - box: contabo1
-            host: 173.249.37.118
-            secret_name: CONTABO_SSH_KEY
-            fingerprint: "SHA256:noMtjHV8c+2iEFZu3TRUP6WRwGjkrvFke71KgU6Eyt4"
+          # contabo1 (173.249.37.118) ist seit dem 24.09.2026 abgeschaltet;
+          # die IP vergibt der Anbieter neu -- nie mehr per SSH ansprechen.
           - box: contabo2
             host: 194.163.188.71
             secret_name: CONTABO2_SSH_KEY

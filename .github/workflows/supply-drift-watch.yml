@@ -63,7 +63,10 @@ jobs:
           set -uo pipefail
 
           fail=0
-          for url in https://aequitas.digital http://173.249.37.118:8080 http://194.163.188.71:8080; do
+          # C1 (173.249.37.118) ist seit dem 24.09.2026 abgeschaltet, seine IP
+          # wird neu vergeben -- ihre Antwort waere nicht mehr unsere Kette.
+          # aequitas.digital zeigt bis zur DNS-Umstellung noch dorthin.
+          for url in http://194.163.188.71:8080; do
             echo "=== $url ==="
             body="$(curl -sS -m 20 "$url/api/status" 2>/dev/null || true)"
             if [ -z "$body" ]; then

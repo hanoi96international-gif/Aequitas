@@ -33,7 +33,8 @@ jobs:
       fail-fast: false
       matrix:
         box:
-          - { name: Contabo1, host: "173.249.37.118", secret: C1 }
+          # C1 (173.249.37.118) ist seit dem 24.09.2026 abgeschaltet; die IP
+          # vergibt der Anbieter neu -- nie mehr per SSH ansprechen.
           - { name: Contabo2, host: "194.163.188.71", secret: C2 }
     runs-on: ubuntu-latest
     steps:
