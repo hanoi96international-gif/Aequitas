@@ -712,6 +712,8 @@ func (a *APIServer) handleCombinedHealth(w http.ResponseWriter, r *http.Request)
 		"block_tx_deckel":    BlockTxDeckelStand(),
 		"zustands_ablehnung": ZustandsAblehnungStand(),
 		"annahme_tor":        a.state.AnnahmeTorStand(),
+		"leitung":            a.state.LeitungStand(),
+		"leistungsnachweis":  LeistungsnachweisStand(),
 		// Wie das Nachspielen die Ueberweisungen anwendet -- parallel oder seriell.
 		"replay_pfad":         ReplayPfadStand(),
 		"replay_phasen":       ReplayPhasenStand(),
@@ -1080,11 +1082,11 @@ func (a *APIServer) buildMux() *http.ServeMux {
 	mux.HandleFunc("/api/check-registration", a.handleCheckRegistration)
 	mux.HandleFunc("/api/check-registration-by-biohash", a.handleCheckRegistrationByBioHash)
 	mux.HandleFunc("/api/check-nullifier", a.handleCheckNullifier)
-	mux.HandleFunc("/api/swap", a.handleSwap)
-	mux.HandleFunc("/api/add-liquidity", a.handleAddLiquidity)
-	mux.HandleFunc("/api/remove-liquidity", a.handleRemoveLiquidity)
+	mux.HandleFunc("/api/swap", a.zumLeiter(a.handleSwap))
+	mux.HandleFunc("/api/add-liquidity", a.zumLeiter(a.handleAddLiquidity))
+	mux.HandleFunc("/api/remove-liquidity", a.zumLeiter(a.handleRemoveLiquidity))
 	mux.HandleFunc("/api/lp-position", a.handleLPPosition)
-	mux.HandleFunc("/api/faucet", a.handleFaucet)
+	mux.HandleFunc("/api/faucet", a.zumLeiter(a.handleFaucet))
 	mux.HandleFunc("/api/pool", a.handlePoolStatus)
 	// Rein lesend, aber geschuetzt: er haengt einen Verdacht an
 	// identifizierbare Konten. Siehe handleSybilReport.
@@ -1113,6 +1115,9 @@ func (a *APIServer) buildMux() *http.ServeMux {
 	mux.HandleFunc("/api/validators", a.handleValidatorList)
 	mux.HandleFunc("/api/peers/challenge", a.handlePeerChallenge)
 	mux.HandleFunc("/api/peers/register", a.handlePeerRegister)
+	// Rotierender Leiter: signierte Nachrichten zwischen Validatoren
+	// (leitung_netz.go). Ohne AEQUITAS_LEITUNG=an antwortet er 404.
+	mux.HandleFunc("/api/leitung", a.handleLeitung)
 	mux.HandleFunc("/node-binding", a.handleNodeBinding)
 	mux.HandleFunc("/coordinator-binding", a.handleCoordinatorBinding)
 	mux.HandleFunc("/api/register-validator-key", a.handleRegisterValidatorKey)
@@ -2948,6 +2953,7 @@ func (a *APIServer) handleRegisterValidatorKey(w http.ResponseWriter, r *http.Re
 		return
 	}
 	a.blockchain.AddAuthorizedValidator(signingAddr)
+	a.blockchain.merkeValidatorMensch(signingAddr, humanWallet)
 	fmt.Printf("[VALIDATOR] ✓ Registered key %s for human %s\n", signingAddr, humanWallet)
 	json.NewEncoder(w).Encode(map[string]interface{}{
 		"success":         true,

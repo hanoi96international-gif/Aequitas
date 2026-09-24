@@ -43,7 +43,7 @@ func TestSwapFee_TUsdConvertedToAEQ(t *testing.T) {
 	if diff := totalAEQ - aeqRemoved; diff < -0.0001 || diff > 0.0001 {
 		t.Errorf("distributed AEQ (%v) must equal AEQ removed from reserve (%v)", totalAEQ, aeqRemoved)
 	}
-	// 40/30/20/10 split (approximate — each share is rounded to 6 decimals).
+	// 40/30/30/0 split seit dem 24.09.2026 (approximate — each share is rounded to 6 decimals).
 	checkShare := func(addr string, frac float64) {
 		got := acct(cs, addr).Balance.Float()
 		want := totalAEQ * frac
@@ -53,8 +53,8 @@ func TestSwapFee_TUsdConvertedToAEQ(t *testing.T) {
 	}
 	checkShare(validatorsPoolAddr, 0.40)
 	checkShare(lpPoolAddr, 0.30)
-	checkShare(ubiPoolAddr, 0.20)
-	checkShare(treasuryPoolAddr, 0.10)
+	checkShare(ubiPoolAddr, 0.30)
+	checkShare(treasuryPoolAddr, 0)
 }
 
 // TestSwapFee_ConversionDeterministic proves the conversion reaches bit-
@@ -124,8 +124,8 @@ func TestSwapFee_AEQFeeCreditedDirectly(t *testing.T) {
 	if cs.pool.ReserveAEQ.Float() != 1000 || cs.pool.ReserveTUSD.Float() != 1000 {
 		t.Errorf("an AEQ fee must not touch reserves, got AEQ=%v tUSD=%v", cs.pool.ReserveAEQ.Float(), cs.pool.ReserveTUSD.Float())
 	}
-	if got := acct(cs, ubiPoolAddr).Balance.Float(); got != 2 { // 20% of 10
-		t.Errorf("ubi pool: want 2 AEQ (20%% of 10), got %v", got)
+	if got := acct(cs, ubiPoolAddr).Balance.Float(); got != 3 { // 30% of 10
+		t.Errorf("ubi pool: want 3 AEQ (30%% of 10), got %v", got)
 	}
 	if got := acct(cs, ubiPoolAddr).TUsdBalance.Float(); got != 0 {
 		t.Errorf("ubi pool must hold no tUSD for an AEQ fee, got %v", got)

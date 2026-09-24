@@ -5,6 +5,7 @@ import (
 	"os"
 	"strings"
 	"sync/atomic"
+	"time"
 )
 
 // NUR EIN KNOTEN NIMMT UEBERWEISUNGEN AN.
@@ -113,9 +114,38 @@ func annahmeRolleAusUmgebung() bool {
 }
 
 // nimmtUeberweisungenAn sagt, ob dieser Knoten Ueberweisungen annehmen darf.
+//
+// Mit rotierendem Leiter (leitung.go) nur, solange er der Leiter ist und
+// seine Lease traegt. nur_lesend bleibt eine harte Sperre darueber: ein so
+// eingestellter Knoten nimmt nie an, auch nicht als gewaehlter Leiter.
 func (cs *ChainState) nimmtUeberweisungenAn() bool {
-	return !cs.nurLesend.Load()
+	if cs.nurLesend.Load() {
+		return false
+	}
+	if l := cs.leitung.Load(); l != nil {
+		return l.DarfAnnehmen(time.Now())
+	}
+	return true
 }
+
+// annahmeBeginnen ist das Tor fuer die sechs annehmenden Pfade, MIT
+// Zaehlung: erst zaehlen, dann pruefen. Schliesst die Leitung das Tor fuer
+// eine Uebergabe, sieht sie in annahmenLaufend jede Annahme, die schon
+// durch ist -- und jede spaetere prueft danach und kehrt um. Erst bei 0
+// (und leerem WAL und Ausgangskorb) wird uebergeben.
+func (cs *ChainState) annahmeBeginnen(absender string) error {
+	if err := pruefeAbsenderKeinTopf(absender); err != nil {
+		return err
+	}
+	cs.annahmenLaufend.Add(1)
+	if err := cs.pruefeAnnahmeTor(); err != nil {
+		cs.annahmenLaufend.Add(-1)
+		return err
+	}
+	return nil
+}
+
+func (cs *ChainState) annahmeEnde() { cs.annahmenLaufend.Add(-1) }
 
 // SetzeNurLesend stellt die Rolle zur Laufzeit um -- fuer den Fall, dass der
 // annehmende Knoten ausfaellt und ein Mensch die Rolle umhaengt, und fuer die
@@ -138,8 +168,18 @@ func (cs *ChainState) pruefeAnnahmeTor() error {
 		return nil
 	}
 	abgelehnteUeberweisungen.Add(1)
+	if !cs.nurLesend.Load() && cs.leitung.Load() != nil {
+		return ErrNichtLeiter
+	}
 	return ErrNurLesend
 }
+
+// ErrNichtLeiter: mit rotierendem Leiter nimmt gerade ein anderer an. Die
+// Anfrage wird normalerweise weitergeleitet; diese Antwort kommt nur, wenn
+// das nicht ging (Leiterwechsel laeuft, Leiter kurz nicht erreichbar).
+// -32005 in RPC: wiederholbar.
+var ErrNichtLeiter = fmt.Errorf("dieser Knoten ist gerade nicht der Leiter und konnte nicht weiterleiten " +
+	"(Leiterwechsel laeuft) -- bitte in wenigen Sekunden erneut versuchen")
 
 // AnnahmeTorStand zeigt die Rolle in /api/health/combined.
 func (cs *ChainState) AnnahmeTorStand() map[string]interface{} {
@@ -156,4 +196,25 @@ func (cs *ChainState) AnnahmeTorStand() map[string]interface{} {
 			"automatische Uebernahme koennte bei einer Netztrennung zwei Annehmende erzeugen, " +
 			"also genau den Zustand, den die Sperre beseitigt.",
 	}
+}
+
+// ErrProtokollTopf: aus den vier Toepfen (Grundeinkommen, Validatoren,
+// Liquiditaetsgeber, Schatzkammer) zahlt nur das Protokoll aus -- nach seinen
+// Regeln, an alle, die sie erfuellen. Nie ein Schluessel.
+var ErrProtokollTopf = fmt.Errorf("aus diesem Topf zahlt nur das Protokoll aus " +
+	"(Grundeinkommen, Validatoren, Liquiditaet, Schatzkammer) -- keine Ueberweisung, kein Tausch, von niemandem")
+
+// pruefeAbsenderKeinTopf: die Topf-Adressen sind gewoehnliche Adressen, und
+// fuer mindestens eine davon existiert ein privater Schluessel (state.go,
+// "real wallet addresses Daniel controls"). Bis zum 24.09.2026 haette dieser
+// Schluessel den Topf per signierter Ueberweisung leeren koennen -- das
+// Grundeinkommen aller Menschen in der Hand eines einzigen. Jetzt lehnt jeder
+// Weg, auf dem ein Mensch Geld bewegt, einen Topf als Absender ab: alle sechs
+// annehmenden Wege gehen durch annahmeBeginnen, und eth_sendRawTransaction
+// prueft zusaetzlich vor jeder EVM-Ausfuehrung.
+func pruefeAbsenderKeinTopf(absender string) error {
+	if isTokenomicsPoolAddress(strings.ToLower(strings.TrimSpace(absender))) {
+		return ErrProtokollTopf
+	}
+	return nil
 }

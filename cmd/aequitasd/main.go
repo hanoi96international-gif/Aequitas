@@ -688,6 +688,9 @@ func main() {
 	// snapshot is also exposed on /api/health/combined.
 	keeper.StartHeapWatcher()
 	bc.StartHTTPBlockSync(selfURL)
+	// Rotierender Leiter (leitung.go): nur mit AEQUITAS_LEITUNG=an, sonst
+	// bleibt das Annahme-Tor wie bisher bei ANNAHME_ROLLE.
+	keeper.StarteLeitung(bc, chainState, selfURL)
 	// Die echte Hoehe jedes Peers regelmaessig fragen. Hier und nicht in
 	// StartDivergenceAutoHeal: die Bremse arbeitet auch auf einem Knoten ohne
 	// eingeschaltete Selbstheilung, und ohne diese Abfrage rechnet sie mit

@@ -311,3 +311,26 @@ func TestPeerLagBremse_VorgabeIstAus(t *testing.T) {
 		t.Fatalf("mit der Vorgabe wird gedrosselt (Grenze %d) -- sie muss aus sein", g)
 	}
 }
+
+// Seit dem 24.09.2026 bremst die Mehrheit, nicht der Langsamste: ein einziger
+// langsamer oder boeswilliger Validator darf die Bloecke des ganzen Netzes
+// nicht auf den Boden druecken. Mit einem Partner bleibt alles wie bisher.
+func TestMehrheitsRueckstand(t *testing.T) {
+	cases := []struct {
+		partner []int64
+		want    int64
+	}{
+		{nil, 0},
+		{[]int64{12}, 12},            // ein Partner: sein Rueckstand, wie bisher
+		{[]int64{-3}, 0},             // Partner voraus
+		{[]int64{500, 2}, 2},         // einer haengt weit zurueck -- die Mehrheit nicht
+		{[]int64{500, 400}, 400},     // beide zurueck: die Mehrheit ist es auch
+		{[]int64{900, 1, 2, 800}, 2}, // 5 Knoten, Mehrheit 3: 0,1,2
+		{[]int64{900, 1, 700, 800}, 700},
+	}
+	for _, c := range cases {
+		if got := mehrheitsRueckstand(c.partner); got != c.want {
+			t.Errorf("mehrheitsRueckstand(%v) = %d, erwartet %d", c.partner, got, c.want)
+		}
+	}
+}

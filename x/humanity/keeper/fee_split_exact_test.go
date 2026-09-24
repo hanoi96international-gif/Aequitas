@@ -98,10 +98,10 @@ func TestFeeSplit_KeepsTheIntendedProportions(t *testing.T) {
 		addr  string
 		share float64
 	}{
+		// Seit dem 24.09.2026: 40/30/30/0 (swapGebuehrAnteile).
 		{validatorsPoolAddr, 400},
 		{lpPoolAddr, 300},
-		{ubiPoolAddr, 200},
-		{treasuryPoolAddr, 100},
+		{ubiPoolAddr, 300},
 	} {
 		acc, ok := cs.accounts.Get(want.addr)
 		if !ok {

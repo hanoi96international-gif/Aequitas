@@ -331,9 +331,10 @@ UBI wird täglich aus den Protokoll-Einnahmen verteilt — kein Staat, keine Ste
 UBI is distributed daily from protocol revenue — no state, no tax, no vote required.
 
 **UBI-Pool-Quellen / UBI Pool Sources:**
-- 20% aller Transaktionsgebühren (0,1% × 20% = 0,02% pro Transfer)
-- Wealth-Cap-Überläufe (sofortige Gleichverteilung)
-- 20% der Demurrage auf Überschussguthaben (0,5%/Monat nach 3 Monaten Inaktivität über fairShare — die übrigen 80% fließen an Validatoren/LP/Treasury, siehe unten)
+- 100% der Überweisungsgebühren (0,1% + Aufschlag für große Guthaben)
+- 30% der Swap-Gebühren
+- 100% der Wealth-Cap-Überläufe
+- 100% der Demurrage auf Überschussguthaben (0,5%/Monat nach 3 Monaten Inaktivität über fairShare). Bis zum 24.09.2026 gingen davon nur 20% ans Grundeinkommen und 80% an Validatoren, Liquiditätsgeber und Treasury — Geld, das Hortenden genommen wird, gehört aber allen Menschen zu gleichen Teilen.
 - Inaktive Wallets: nach 2,5 Jahren Inaktivität → Escrow, nach weiteren 1,5 Jahren → UBI Pool
 
 ### 4.3 Demurrage — Haltegebühr
@@ -347,8 +348,8 @@ Haltegebühr = (Guthaben − fairShare) × 0,5%/Monat × Halte-Monate (erst nach
 Demurrage   = (Balance − fairShare) × 0.5%/month × HoldingMonths (only after a 3-month inactivity grace period)
 ```
 
-Die Gebühr verteilt sich auf die vier Tokenomics-Pools (40% Validatoren / 30% LP / 20% UBI / 10% Treasury). Kein AEQ wird vernichtet.
-The fee is split across the four tokenomics pools (40% validators / 30% LPs / 20% UBI / 10% treasury). No AEQ is destroyed.
+Die Gebühr geht zu 100% in den UBI-Pool. Kein AEQ wird vernichtet.
+The fee goes 100% to the UBI pool. No AEQ is destroyed.
 
 ### 4.4 Wealth Cap — Vermögensobergrenze
 
@@ -402,10 +403,11 @@ Excess flows instantly into tokenomics pools — no AEQ is destroyed.
 
 | Empfänger / Recipient | Anteil / Share |
 |----------------------|---------------|
-| Validators | 40% |
-| Liquidity Providers | 30% |
-| UBI Pool | 20% |
-| Treasury | 10% |
+| Validators (Swap) | 40% — gleich je Menschen-Validator, gewichtet nach Minuten online / equal per human validator, weighted by minutes online |
+| Liquidity Providers (Swap) | 30% |
+| UBI Pool (Swap) | 30% |
+| UBI Pool (Überweisungen / transfers) | 100% |
+| Treasury | 0% — seit 24.09.2026; aus keinem Topf darf jemand auszahlen / since 24 Sep 2026; nobody may pay out of any pool |
 
 ---
 
@@ -628,8 +630,8 @@ Aequitas enthält einen integrierten automatischen Market Maker (AMM) für den H
 - 0,1% Swap-Gebühr wird automatisch aufgeteilt:
   - 40% → Validator-Pool (Netzwerkanreiz)
   - 30% → Liquidity Provider (LP-Rendite)
-  - 20% → UBI-Pool (Grundeinkommen)
-  - 10% → Treasury (Protokoll-Entwicklung)
+  - 30% → UBI-Pool (Grundeinkommen)
+  - 0% → Treasury (seit 24.09.2026 — ihr Anteil geht ans Grundeinkommen)
 
 **Liquiditäts-Shares:** LPs erhalten proportionale Shares und können jederzeit ihre Anteile plus akkumulierte Gebühren abheben.
 
@@ -642,8 +644,8 @@ Aequitas contains a built-in Automated Market Maker (AMM) for trading between AE
 - 0.1% swap fee automatically split:
   - 40% → Validator Pool (network incentive)
   - 30% → Liquidity Providers (LP yield)
-  - 20% → UBI Pool (basic income)
-  - 10% → Treasury (protocol development)
+  - 30% → UBI Pool (basic income)
+  - 0% → Treasury (since 24 Sep 2026 — its share goes to basic income)
 
 **Liquidity Shares:** LPs receive proportional shares and can withdraw their stakes plus accumulated fees at any time.
 

@@ -1,6 +1,7 @@
 package keeper
 
 import (
+	"bytes"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -490,6 +491,31 @@ func (s *EVMRPCServer) handleRPC(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		writeError(w, -32700, "Parse error", nil)
 		return
+	}
+
+	// ROTIERENDER LEITER: was annimmt, gehoert zum Leiter (leitung.go).
+	// Die Ratenbegrenzung gilt HIER, vor der Weiterleitung -- der Leiter
+	// stellt die Validatoren frei (sie leiten fuer viele Menschen weiter),
+	// und ohne diese Pruefung waere jeder Folger ein Umweg um jede Grenze.
+	if s.state != nil && rpcSchreibt(body) {
+		if ziel := s.state.weiterleitungsZiel(r); ziel != "" {
+			if !frei {
+				posten := bytes.Count(body, []byte(`"method"`))
+				if posten < 1 {
+					posten = 1
+				}
+				for i := 0; i < posten; i++ {
+					if rpcRateLimited(ip) {
+						writeError(w, -32005, "rate limited: too many requests, try again shortly", nil)
+						return
+					}
+				}
+			}
+			if leiteWeiter(w, r, ziel, body) {
+				handlerItems = 1
+				return
+			}
+		}
 	}
 
 	// Handle batch requests
@@ -1155,6 +1181,11 @@ func (s *EVMRPCServer) sendRawTransaction(params []json.RawMessage, pre *precomp
 		}
 		tx = t
 		senderAddr = sender
+	}
+	// Aus einem Protokoll-Topf sendet niemand -- auch nicht ueber einen
+	// Vertragsaufruf (annahme_tor.go, pruefeAbsenderKeinTopf).
+	if err := pruefeAbsenderKeinTopf(senderAddr); err != nil {
+		return nil, &RPCError{Code: -32003, Message: err.Error()}
 	}
 	// common.Address form, needed below for DeployContract/CallContract —
 	// round-tripping through the lowercased hex is exact (common.HexToAddress
