@@ -43,16 +43,13 @@ jobs:
               cp -a "$ALT" "$SICHERUNG"
               echo "Sicherung: $SICHERUNG"
               printf '\n# P0 Not-Frontend Standby (ohne DNS-Cutover). tls internal = Host-Header-Smoke ohne LE.\n# Nach Boss/D DNS-OK: tls internal entfernen, reload, echtes Zertifikat.\naequitas.digital, www.aequitas.digital {\n\ttls internal\n\treverse_proxy aequitas-node:8080\n}\n' >> "$ALT"
-              echo "=== validate ==="
+              echo "=== validate (via /tmp copy; bind-mount nicht uberschreiben) ==="
               docker cp "$ALT" proof-caddy:/tmp/Caddyfile.neu
               docker exec proof-caddy caddy validate --config /tmp/Caddyfile.neu --adapter caddyfile
-              # If Caddyfile is bind-mounted from /root/caddy, host edit is enough.
-              # Always also docker cp into container path then reload for safety.
-              docker cp "$ALT" proof-caddy:/etc/caddy/Caddyfile
+              echo "=== reload (liest Bind-Mount /root/caddy/Caddyfile) ==="
               if ! docker exec proof-caddy caddy reload --config /etc/caddy/Caddyfile --adapter caddyfile; then
                 echo "Reload fehlgeschlagen — Rollback"
                 cp "$SICHERUNG" "$ALT"
-                docker cp "$ALT" proof-caddy:/etc/caddy/Caddyfile
                 docker exec proof-caddy caddy reload --config /etc/caddy/Caddyfile --adapter caddyfile || true
                 exit 1
               fi
