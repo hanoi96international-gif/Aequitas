@@ -49,6 +49,13 @@ jobs:
             docker inspect aequitas-node --format '{{range .Config.Env}}{{println .}}{{end}}' 2>/dev/null \
               | grep -E "$LISTE" | sort || echo "(keiner gesetzt -- alle auf Vorgabe)"
             echo "=== Container ==="
-            docker inspect aequitas-node --format 'Start={{.State.StartedAt}} Neustarts={{.RestartCount}} CPUs={{.HostConfig.NanoCpus}} Speicher={{.HostConfig.Memory}}'
+            docker inspect aequitas-node --format 'Start={{.State.StartedAt}} Neustarts={{.RestartCount}} Neustartregel={{.HostConfig.RestartPolicy.Name}} CPUs={{.HostConfig.NanoCpus}} Speicher={{.HostConfig.Memory}}'
+            # Kommt alles nach einem Neustart der Box von selbst wieder hoch?
+            # (Anlass: C1 war am 24.09.2026 stundenlang ganz weg.)
+            echo "docker beim Booten: $(systemctl is-enabled docker 2>/dev/null)"
+            docker ps -a --format '{{.Names}} {{.Status}}' | head -12
+            for c in $(docker ps -aq); do docker inspect "$c" --format '{{.Name}} Neustartregel={{.HostConfig.RestartPolicy.Name}}'; done | head -12
+            echo "Box laeuft seit: $(uptime -s)"
+            last -x reboot shutdown 2>/dev/null | head -4
             echo "=== Maschine ==="
             echo "Kerne: $(nproc)"; free -m | head -2; uptime
