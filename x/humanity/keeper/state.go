@@ -171,6 +171,12 @@ type ChainState struct {
 	// annahme_tor.go. Gesetzt beim Bau aus ANNAHME_ROLLE, umstellbar ueber
 	// SetzeNurLesend.
 	nurLesend atomic.Bool
+	// leitung: rotierender Leiter (leitung.go); nil = aus, dann gilt allein
+	// nurLesend wie bisher.
+	leitung atomic.Pointer[Leitung]
+	// annahmenLaufend zaehlt Annahmen, die das Tor passiert haben und noch
+	// nicht fertig sind -- der Leiter uebergibt erst, wenn es 0 ist.
+	annahmenLaufend atomic.Int64
 
 	mu sync.RWMutex
 	// accounts is a *shardedAccounts (see sharded_accounts.go /
@@ -4889,9 +4895,10 @@ func (cs *ChainState) TransferAtomic(from, to string, amount float64, pendingTxT
 	// auseinander, sobald es leerlaeuft. Geprueft VOR jeder Zustandsaenderung
 	// und vor dem Zeitstempel unten, damit eine abgelehnte Ueberweisung den
 	// Ruhe-Vergleich des Divergenz-Waechters nicht stoert.
-	if err := cs.pruefeAnnahmeTor(); err != nil {
+	if err := cs.annahmeBeginnen(); err != nil {
 		return 0, 0, err
 	}
+	defer cs.annahmeEnde()
 	letzteEigeneUeberweisungNs.Store(time.Now().UnixNano())
 	// Time the whole call. Throughput has sat near 1,264/s while the node used
 	// 244% of 600% available CPU with no lock contention, no connection waits
@@ -5501,9 +5508,10 @@ func (cs *ChainState) TransferWithV7FeeAtomic(from, to string, amount float64, p
 	// Dieselbe Sperre wie in TransferAtomic -- siehe annahme_tor.go. Sie
 	// gehoert in beide Funktionen und nicht an die zwei Aufrufstellen in
 	// evm_rpc.go: so gilt sie auch fuer jeden kuenftigen Aufrufer.
-	if err := cs.pruefeAnnahmeTor(); err != nil {
+	if err := cs.annahmeBeginnen(); err != nil {
 		return 0, 0, 0, err
 	}
+	defer cs.annahmeEnde()
 	from = strings.ToLower(from)
 	to = strings.ToLower(to)
 	err = cs.runAtomicWithOutbox([]string{from, to, validatorsPoolAddr, lpPoolAddr, ubiPoolAddr, treasuryPoolAddr}, false, func(ctx context.Context) (Transaction, error) {
@@ -5700,9 +5708,10 @@ func (cs *ChainState) SwapTUSDForAEQ(address string, amountIn, minAmountOut floa
 // filled in here from the swap's actual result.
 func (cs *ChainState) SwapAtomic(address string, amountIn float64, aeqToTusd bool, minAmountOut float64, pendingTxTemplate Transaction) (amountOut, demurrageLost float64, err error) {
 	// Auch das ist eine Belastung bei der Annahme -- siehe annahme_tor.go.
-	if err := cs.pruefeAnnahmeTor(); err != nil {
+	if err := cs.annahmeBeginnen(); err != nil {
 		return 0, 0, err
 	}
+	defer cs.annahmeEnde()
 	address = strings.ToLower(address)
 	err = cs.runAtomicWithOutbox([]string{address, validatorsPoolAddr, lpPoolAddr, ubiPoolAddr, treasuryPoolAddr}, false, func(ctx context.Context) (Transaction, error) {
 		amountOut, demurrageLost, err = cs.swapLocked(ctx, address, amountIn, aeqToTusd, minAmountOut)
@@ -6305,9 +6314,10 @@ func (cs *ChainState) AddLiquidity(address string, amountAEQ, amountTUSD float64
 // have Type/Wallet/Amount(AEQ)/AmountOut(tUSD) set; LPShares and
 // FromDemurrageLost are filled in here from the operation's actual result.
 func (cs *ChainState) AddLiquidityAtomic(address string, amountAEQ, amountTUSD float64, pendingTxTemplate Transaction) (demurrageLost float64, err error) {
-	if err := cs.pruefeAnnahmeTor(); err != nil {
+	if err := cs.annahmeBeginnen(); err != nil {
 		return 0, err
 	}
+	defer cs.annahmeEnde()
 	address = strings.ToLower(address)
 	err = cs.runAtomicWithOutbox([]string{address, validatorsPoolAddr, lpPoolAddr, ubiPoolAddr, treasuryPoolAddr}, false, func(ctx context.Context) (Transaction, error) {
 		sharesBefore := 0.0
@@ -6442,9 +6452,10 @@ func (cs *ChainState) RemoveLiquidity(address string, sharesToBurn float64) (flo
 // secondary's own current pool state rather than replaying exact amounts,
 // so those aren't part of the queued Transaction either today).
 func (cs *ChainState) RemoveLiquidityAtomic(address string, sharesToBurn float64, pendingTxTemplate Transaction) (outAEQ, outTUSD, demurrageLost float64, err error) {
-	if err := cs.pruefeAnnahmeTor(); err != nil {
+	if err := cs.annahmeBeginnen(); err != nil {
 		return 0, 0, 0, err
 	}
+	defer cs.annahmeEnde()
 	address = strings.ToLower(address)
 	err = cs.runAtomicWithOutbox([]string{address, validatorsPoolAddr, lpPoolAddr, ubiPoolAddr, treasuryPoolAddr}, false, func(ctx context.Context) (Transaction, error) {
 		outAEQ, outTUSD, demurrageLost, err = cs.removeLiquidityLocked(ctx, address, sharesToBurn)
@@ -6906,9 +6917,10 @@ func (cs *ChainState) ClaimTUsdFaucet(address string) error {
 // mutation and the resulting outbox insert commit or roll back together as
 // one DB transaction — see TransferAtomic's comment.
 func (cs *ChainState) ClaimTUsdFaucetAtomic(address string, pendingTx Transaction) error {
-	if err := cs.pruefeAnnahmeTor(); err != nil {
+	if err := cs.annahmeBeginnen(); err != nil {
 		return err
 	}
+	defer cs.annahmeEnde()
 	address = strings.ToLower(address)
 	return cs.runAtomicWithOutbox([]string{address}, false, func(ctx context.Context) (Transaction, error) {
 		if err := cs.claimTUsdFaucetLocked(ctx, address); err != nil {

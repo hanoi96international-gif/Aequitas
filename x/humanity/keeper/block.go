@@ -257,6 +257,9 @@ type BlockDAG struct {
 
 	// vorlauf: der Ausgangskorb fuer den naechsten Block, siehe vorlader.go.
 	vorlauf vorlader
+	// letzterEigenerBlock: Hash des zuletzt gespeicherten eigenen Blocks --
+	// der Leiter nennt ihn bei der Uebergabe (leitung.go).
+	letzterEigenerBlock atomic.Value
 
 	// jemalsAufgeholt: hat dieser Prozess je alle Seeds sauber eingeholt?
 	// Entscheidet, ob der Notausstieg des Sync-Tors gelten darf -- siehe die
@@ -3212,6 +3215,7 @@ func (dag *BlockDAG) ProduceBlock() *Block {
 	dag.replayedMu.Lock()
 	dag.replayedBlocks[block.Hash] = true
 	dag.replayedMu.Unlock()
+	dag.letzterEigenerBlock.Store(block.Hash)
 
 	// Remove all parents from tips, add this block as new tip
 	for _, ph := range parentHashes {
