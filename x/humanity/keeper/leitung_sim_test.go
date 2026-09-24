@@ -53,6 +53,9 @@ type simNetz struct {
 	cfg     LeitKonfig
 	start   string
 	faehig  map[string]bool
+	// Mitgliedschaft: Genesis-Satz (nil = alle) und Zulassung (nil = alle).
+	genesis    []string
+	zugelassen map[string]bool
 	// Messwerte
 	zweiLeiter bool
 	leiterZeit time.Duration
@@ -83,8 +86,15 @@ func (n *simNetz) baue(i int) {
 		Speichern:  func(s LeitSpeicher) { k.gespeich = s },
 		Ueberholt:  func(uint64) { k.ueberholt++ },
 	}
+	if n.zugelassen != nil {
+		env.Zugelassen = func(a string) bool { return n.zugelassen[a] }
+	}
 	faehig := n.faehig == nil || n.faehig[k.addr]
-	k.l = NeueLeitung(k.addr, "http://"+k.addr, n.satz(), n.start, faehig, k.gespeich, n.cfg, env, n.uhr(i))
+	genesis := n.genesis
+	if genesis == nil {
+		genesis = n.satz()
+	}
+	k.l = NeueLeitung(k.addr, "http://"+k.addr, genesis, n.start, faehig, k.gespeich, n.cfg, env, n.uhr(i))
 }
 
 func neuesSimNetz(t *testing.T, anzahl int, seed int64, cfg LeitKonfig) *simNetz {

@@ -1,6 +1,7 @@
 package keeper
 
 import (
+	"os"
 	"strings"
 	"testing"
 	"time"
@@ -89,6 +90,9 @@ func TestMesseSignaturen(t *testing.T) {
 }
 
 func TestMesseCommit_RealDB(t *testing.T) {
+	if os.Getenv("DATABASE_URL") == "" {
+		t.Skip("braucht DATABASE_URL (eine Wegwerf-Postgres)")
+	}
 	cs := testKnoten(t, "unused-leistung-test.json")
 	if !cs.useDB {
 		t.Fatal("erwartet eine echte PostgreSQL-Verbindung")

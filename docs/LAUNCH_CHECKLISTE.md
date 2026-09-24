@@ -12,16 +12,24 @@
 >
 > **Belegt:** Eine Simulation prüft in jedem 50-ms-Schritt, dass nie zwei gleichzeitig annehmen. Durchgespielt werden Ausfall, Neustart, Netztrennung, nicht transitive Trennung, Stimmengleichstand, planmäßiger Wechsel, 10–30 % Nachrichtenverlust und Uhrengang, dazu 50 Zufallsläufe mit 5 Knoten, 20 davon mit wechselndem Leistungsnachweis. Jeder absichtlich eingebaute Fehler lässt die Tests rot werden: Lease ignoriert (1.103 Verstöße), Lease-Zusage ignoriert (80), kein gestaffelter Neuanlauf, keine Abgabe ohne Nachweis, kein Notbetrieb. Ein Test über echtes HTTP mit echten Signaturen und 3 Knoten übersteht den Ausfall des Leiters. Dabei gefunden und behoben: Zwei Kandidaten im Gleichschritt teilten sich endlos die Stimmen.
 >
-> **Einschalten (auf jedem Validator gleich):**
+> **Dezentral, ohne Handliste.** Welche Validatoren mitzählen, trägt niemand in eine Liste ein. Die Kette beginnt mit dem Genesis-Satz (wie jede Kette mit ihrer Genesis). Danach gilt:
+> - **Beitritt:** Wer seinen Signierschlüssel an einen registrierten Menschen bindet (`register-validator-key`) und seinen Knoten mit `AEQUITAS_LEITUNG=an` startet, meldet sich bei seinen Peers. Der amtierende Leiter nimmt ihn auf. Niemand muss zustimmen, niemand kann es verbieten.
+> - **Austritt:** Wer 30 Minuten nichts von sich hören lässt, wird entfernt, damit Ausgefallene die Mehrheit nicht unerreichbar machen. Meldet er sich wieder, kommt er wieder hinein.
+> - **Den ersten Leiter** bestimmt eine Regel (kleinste Adresse im Genesis-Satz), kein Betreiber.
+> - **Sicherheit beim Wechsel** nach dem Verfahren, mit dem Raft seine Mitgliedschaft ändert: je Änderung genau ein Validator, die nächste erst nach Bestätigung durch die Mehrheit, gewählt wird nur, wer einen mindestens so neuen Satz hat. Eine Aufnahme, die nicht binnen 30 s bestätigt wird, nimmt der Leiter zurück.
+> - **Belegt:** Simulationen für Wachstum von 1 auf 5 Validatoren, Entfernen und Rückkehr, Rücknahme einer Aufnahme ohne Annahmelücke, Netztrennung während einer Aufnahme und das Schrumpfen von 3 auf 2 unter Trennung. Dazu 30 Zufallsläufe mit 6 Knoten, Beitritten, Ausfällen, Trennungen und 294 Satzänderungen, nie zwei Annehmende. Jeder absichtlich eingebaute Fehler lässt die Tests rot werden: Wahlregel ohne Satzstand (614 Verstöße), Bestätigung mit alten Quittungen (1.953), zwei Aufnahmen auf einmal (1.562), zu zweit annehmen ohne Bestätigung (18). Über echtes HTTP mit echten Signaturen (8 von 8 unter `-race`): Die Kette startet mit **einem** Validator. Zwei weitere kennen nur dessen URL, werden aufgenommen und machen nach seinem Ausfall ohne ihn weiter. Beim Bau gefunden und behoben: Eine Konfiguration ohne Entfernungsfrist warf alle anderen sofort hinaus.
+>
+> **Einschalten:**
 > ```
-> AEQUITAS_LEITUNG=an
-> AEQUITAS_LEITUNG_VALIDATOREN=0xSignieradresseA=http://IP_A:8080,0xSignieradresseB=http://IP_B:8080,...
-> AEQUITAS_LEITUNG_START=0xSignieradresseA        # leitet Term 1
-> AEQUITAS_LEITUNG_WECHSEL_MINUTEN=60             # 0 = kein planmäßiger Wechsel
-> AEQUITAS_LEITUNG_ZWEI_WECHSELN=1                # nur bei genau zwei: planmäßig wechseln
-> AEQUITAS_LEITER_FAEHIG=ja|nein                  # optional, überstimmt die Messung
+> AEQUITAS_LEITUNG=an                                 # jeder Validator
+> AEQUITAS_LEITUNG_GENESIS=0xAdresse=http://IP:8080   # NUR die Genesis-Validatoren beim Neustart bei null
+> AEQUITAS_LEITUNG_WECHSEL_MINUTEN=60                 # 0 = kein planmäßiger Wechsel
+> AEQUITAS_LEITUNG_ZWEI_WECHSELN=1                    # optional: planmäßig wechseln auch zu zweit
+> AEQUITAS_LEITER_FAEHIG=ja|nein                      # optional, überstimmt die Messung
 > ```
-> `ANNAHME_ROLLE` wird mit eingeschalteter Leitung nicht mehr gebraucht. **Heute nicht eingeschaltet:** Es gibt nur C2. Das kommt mit dem neuen Server, zusammen mit dem Neustart bei null. Die automatische Übernahme braucht einen **dritten** Validator. Crash-Fehler sind abgedeckt, böswillige Validatoren nicht: Validatoren sind zugelassen und signieren.
+> `ANNAHME_ROLLE` wird mit eingeschalteter Leitung nicht mehr gebraucht. **Heute nicht eingeschaltet:** Es gibt nur C2. Einschalten gehört zum Neustart bei null (Genesis = C2, der neue Server tritt bei). Die automatische Übernahme braucht **drei** Validatoren, zu zweit gibt es sie nicht. Crash-Fehler sind abgedeckt, böswillige Validatoren nicht: Validatoren sind an Menschen gebunden und signieren jede Nachricht.
+>
+> **Was noch zentral ist:** Der Coordinator mit seinen Vergleichsdiensten (Quorum aus Betreibern), der Proof-Server und die Website mit DNS. Diese Dienste laufen heute auf C2. Wer registriert, prüft ein Quorum mehrerer Betreiber, aber es gibt noch keinen dritten Betreiber (Punkt 13). Die Deploy-Workflows dieses Repos sind Betriebswerkzeuge der beiden Boxen, nicht Teil des Protokolls: Ein fremder Validator braucht sie nicht.
 
 > ## 24.09.: Contabo1 abgeschaltet, C2 trägt allein
 >

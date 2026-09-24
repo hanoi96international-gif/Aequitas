@@ -24,23 +24,30 @@ import (
 // # EINSCHALTEN
 //
 // Ohne AEQUITAS_LEITUNG=an aendert sich nichts: das Annahme-Tor arbeitet wie
-// bisher allein mit ANNAHME_ROLLE. Mit ihr, auf ALLEN Validatoren gleich:
+// bisher allein mit ANNAHME_ROLLE. Mit ihr:
 //
 //	AEQUITAS_LEITUNG=an
-//	AEQUITAS_LEITUNG_VALIDATOREN=0xAdresse1=http://IP1:8080,0xAdresse2=http://IP2:8080,...
-//	AEQUITAS_LEITUNG_START=0xAdresse1          (leitet Term 1; nur beim allerersten Start)
 //	AEQUITAS_LEITUNG_WECHSEL_MINUTEN=60        (0 = kein planmaessiger Wechsel)
 //	AEQUITAS_LEITUNG_ZWEI_WECHSELN=1           (Wechsel auch bei nur zwei Validatoren)
 //
-// Die Validatorliste bestimmt die Mehrheit. Sie MUSS auf allen Knoten gleich
-// sein -- jeder Knoten prueft das ueber einen Hash in jeder Nachricht und
-// hoert Knoten mit anderer Liste nicht zu (sonst zaehlten zwei Knoten
-// verschiedene Mehrheiten). Dasselbe Vertrauensmodell wie
-// AUTHORIZED_VALIDATORS und VALIDATOR_LABELS.
+// und NUR auf den Validatoren, mit denen eine Kette beginnt (Neustart bei
+// null), gleich:
+//
+//	AEQUITAS_LEITUNG_GENESIS=0xAdresse1=http://IP1:8080,...
+//
+// Das ist der Genesis-Satz, wie jede Kette eine Genesis hat. Den ersten
+// Term leitet die kleinste Adresse darin -- eine Regel, keine Wahl eines
+// Betreibers. Danach pflegt niemand eine Liste: wer als Validator
+// registriert ist (Signierschluessel an einen registrierten Menschen
+// gebunden) und sich meldet, wird aufgenommen; wer lange schweigt, entfernt
+// (leitung.go, "Wer Mitglied ist"). Ein spaeter hinzukommender Validator
+// setzt nur AEQUITAS_LEITUNG=an: er meldet sich bei seinen Peers, erfaehrt
+// den Leiter und wird aufgenommen.
 //
 // URLs moeglichst als http://IP:8080: dann erkennt der Leiter weitergeleitete
 // Anfragen an der Absenderadresse und rechnet sie nicht auf die
-// Ratenbegrenzung eines einzelnen Menschen (siehe rpc_frei.go).
+// Ratenbegrenzung eines einzelnen Menschen (siehe rpc_frei.go). Validatoren
+// melden ihre URL selbst (SELF_URL) in jeder signierten Nachricht.
 //
 // # GRENZE: ABSTURZ, NICHT BOSHEIT
 //
@@ -50,11 +57,10 @@ import (
 // Validator, signierte Nachrichten, nachvollziehbar im Log.
 
 const (
-	leitungEnv            = "AEQUITAS_LEITUNG"
-	leitungValidatorenEnv = "AEQUITAS_LEITUNG_VALIDATOREN"
-	leitungStartEnv       = "AEQUITAS_LEITUNG_START"
-	leitungWechselEnv     = "AEQUITAS_LEITUNG_WECHSEL_MINUTEN"
-	leitungZweiEnv        = "AEQUITAS_LEITUNG_ZWEI_WECHSELN"
+	leitungEnv        = "AEQUITAS_LEITUNG"
+	leitungGenesisEnv = "AEQUITAS_LEITUNG_GENESIS"
+	leitungWechselEnv = "AEQUITAS_LEITUNG_WECHSEL_MINUTEN"
+	leitungZweiEnv    = "AEQUITAS_LEITUNG_ZWEI_WECHSELN"
 	// Wie weit die Uhr eines Absenders von der eigenen abweichen darf.
 	// Schuetzt gegen das Wiedereinspielen alter, gueltig signierter
 	// Nachrichten.
@@ -201,17 +207,18 @@ func StarteLeitung(dag *BlockDAG, cs *ChainState, selfURL string) *Leitung {
 		fmt.Println("[LEITUNG] ✗ Kein Signierschluessel -- Leitung bleibt aus")
 		return nil
 	}
-	satz, urls, err := leitungValidatorenAusUmgebung(os.Getenv(leitungValidatorenEnv))
-	if err != nil || len(satz) == 0 {
-		fmt.Printf("[LEITUNG] ✗ %s ungueltig (%v) -- Leitung bleibt aus\n", leitungValidatorenEnv, err)
+	satz, urls, err := leitungValidatorenAusUmgebung(os.Getenv(leitungGenesisEnv))
+	if err != nil {
+		fmt.Printf("[LEITUNG] ✗ %s ungueltig (%v) -- Leitung bleibt aus\n", leitungGenesisEnv, err)
 		return nil
 	}
 	ich := strings.ToLower(crypto.PubkeyToAddress(dag.signingKey.PublicKey).Hex())
 	if url, ok := urls[ich]; ok && url != "" {
 		selfURL = url
 	}
-	start := strings.ToLower(strings.TrimSpace(os.Getenv(leitungStartEnv)))
-	if start == "" {
+	// Den ersten Term leitet die kleinste Adresse des Genesis-Satzes.
+	start := ""
+	if len(satz) > 0 {
 		start = satz[0]
 	}
 	cfg := leitVorgabe()
@@ -232,28 +239,20 @@ func StarteLeitung(dag *BlockDAG, cs *ChainState, selfURL string) *Leitung {
 			// in eine eigene Goroutine.
 			SafeGoroutine("leitung-ueberholt", func() { dag.leitungUeberholt(term) })
 		},
+		Zugelassen: dag.istZugelassenerValidator,
 	}
 	faehig := !cs.nurLesend.Load() && leistungsnachweisErfuellt()
 	l := NeueLeitung(ich, selfURL, satz, start, faehig, cs.leitungLaden(), cfg, env, time.Now())
 	for a, u := range urls {
 		l.SetzeURL(a, u)
 	}
-	// Weitergeleitete Anfragen kommen von den Validatoren selbst; die
-	// Ratenbegrenzung eines einzelnen Menschen darf sie nicht treffen (der
-	// weiterleitende Knoten hat seine eigene schon angewandt).
-	var ips []string
-	for _, u := range urls {
-		if pu, err := url.Parse(u); err == nil {
-			if ip := net.ParseIP(pu.Hostname()); ip != nil {
-				ips = append(ips, ip.String())
-			}
-		}
-	}
-	rpcRateLimitFreiErgaenzen(ips)
+	validatorIPsFrei(l)
 
 	cs.leitung.Store(l)
-	fmt.Printf("[LEITUNG] ✓ an: %d Validatoren (Mehrheit %d, Wahl %v), Term %d, Leiter %s, dieser Knoten %s (leiterfaehig %v), Wechsel alle %s\n",
-		len(satz), len(satz)/2+1, len(satz) >= 3, l.Term(), func() string { a, _ := l.Leiter(); return a }(), ich, faehig, cfg.WechselAlle)
+	st := l.Stand(time.Now())
+	fmt.Printf("[LEITUNG] ✓ an: Satz %v (Version %v, %v Validatoren, Wahl %v), Term %d, Leiter %s, dieser Knoten %s (Mitglied %v, leiterfaehig %v), Wechsel alle %s\n",
+		st["satz"], st["satz_version"], st["validatoren"], st["mit_wahl"], l.Term(),
+		func() string { a, _ := l.Leiter(); return a }(), ich, st["mitglied"], faehig, cfg.WechselAlle)
 	SafeGoroutine("leitung-takt", func() { dag.leitungSchleife(l, cs) })
 	return l
 }
@@ -274,14 +273,32 @@ func (dag *BlockDAG) leitungSchleife(l *Leitung, cs *ChainState) {
 			if time.Since(letzteFaehigPruefung) > time.Minute {
 				letzteFaehigPruefung = time.Now()
 				l.SetzeFaehig(!cs.nurLesend.Load() && leistungsnachweisErfuellt())
+				validatorIPsFrei(l)
 			}
-			for _, m := range l.Takt(time.Now()) {
-				dag.signiereLeitNachricht(&m)
-				for _, u := range l.URLs() {
-					go dag.leitungSende(l, u, m)
-				}
-			}
+			dag.leitungVersenden(l, l.Takt(time.Now()), dag.leitungPeers)
 		})
+	}
+}
+
+// leitungVersenden: signieren und an die bekannten Mitglieder schicken; ein
+// Hallo zusaetzlich an alle Peers -- wer (noch) nicht dazugehoert, kennt die
+// Mitglieder nicht, und der Leiter antwortet ihm mit seiner Lease.
+func (dag *BlockDAG) leitungVersenden(l *Leitung, msgs []LeitNachricht, peers func() []string) {
+	for _, m := range msgs {
+		dag.signiereLeitNachricht(&m)
+		ziele := l.URLs()
+		if m.Art == leitArtHallo && peers != nil {
+			for _, p := range peers() {
+				ziele[p] = p
+			}
+		}
+		gesendet := map[string]bool{}
+		for _, u := range ziele {
+			if u != "" && u != l.url && !gesendet[u] {
+				gesendet[u] = true
+				go dag.leitungSende(l, u, m)
+			}
+		}
 	}
 }
 
@@ -541,4 +558,42 @@ func (cs *ChainState) LeitungStand() map[string]interface{} {
 	s["bedeutung"] = "Rotierender Leiter: genau einer nimmt an (leiter), die anderen leiten weiter. " +
 		"Ab drei Validatoren waehlt die Mehrheit bei Ausfall einen neuen (mit_wahl)."
 	return s
+}
+
+// istZugelassenerValidator: registrierter Validator -- Signierschluessel an
+// einen registrierten Menschen gebunden (register-validator-key) oder aus
+// dem Validator-Abgleich unter Peers.
+func (dag *BlockDAG) istZugelassenerValidator(addr string) bool {
+	dag.mu.RLock()
+	defer dag.mu.RUnlock()
+	return dag.authorizedValidators[strings.ToLower(addr)]
+}
+
+// leitungPeers: alle bekannten Knoten-URLs (Sync-Peers und Seeds).
+func (dag *BlockDAG) leitungPeers() []string {
+	dag.syncPeerMu.Lock()
+	defer dag.syncPeerMu.Unlock()
+	var out []string
+	for p := range dag.activeSyncPeers {
+		out = append(out, strings.TrimRight(p, "/"))
+	}
+	for p := range dag.trustedSeeds {
+		out = append(out, strings.TrimRight(p, "/"))
+	}
+	return out
+}
+
+// validatorIPsFrei: weitergeleitete Anfragen kommen von den Validatoren
+// selbst; die Ratenbegrenzung eines einzelnen Menschen darf sie nicht
+// treffen (der weiterleitende Knoten hat seine eigene schon angewandt).
+func validatorIPsFrei(l *Leitung) {
+	var ips []string
+	for _, u := range l.URLs() {
+		if pu, err := url.Parse(u); err == nil {
+			if ip := net.ParseIP(pu.Hostname()); ip != nil {
+				ips = append(ips, ip.String())
+			}
+		}
+	}
+	rpcRateLimitFreiErgaenzen(ips)
 }

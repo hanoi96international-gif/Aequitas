@@ -5,8 +5,9 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"sort"
 	"strings"
-	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -61,55 +62,78 @@ func TestLeitungValidatorenAusUmgebung(t *testing.T) {
 	}
 }
 
-// Drei Knoten mit echtem HTTP und echten Signaturen: der Startleiter nimmt
-// an, faellt aus, ein anderer uebernimmt -- und nie nehmen zwei gleichzeitig
-// an. Dazu die Weiterleitung: ein Folger schickt Annehmendes zum Leiter.
-func TestLeitung_UeberHTTP(t *testing.T) {
-	if testing.Short() {
-		t.Skip("laeuft einige Sekunden in echter Zeit")
-	}
-	cfg := LeitKonfig{Takt: 100 * time.Millisecond, LeaseDauer: 800 * time.Millisecond,
-		FolgerFrist: 1600 * time.Millisecond, Staffel: 600 * time.Millisecond, HoeheToleranz: 2}
+// httpKnoten: ein Validator mit echtem HTTP-Server und echtem Schluessel.
+type httpKnoten struct {
+	key  *ecdsa.PrivateKey
+	addr string
+	cs   *ChainState
+	dag  *BlockDAG
+	srv  *httptest.Server
+	l    *Leitung
+	aus  atomic.Bool
+}
 
-	type knoten struct {
-		key  *ecdsa.PrivateKey
-		addr string
-		cs   *ChainState
-		dag  *BlockDAG
-		srv  *httptest.Server
-		l    *Leitung
-		aus  bool
-	}
-	var ks []*knoten
-	var satz []string
-	for i := 0; i < 3; i++ {
+type httpLeitungsNetz struct {
+	t  *testing.T
+	ks []*httpKnoten
+}
+
+// neuesHTTPLeitungsNetz: n Validatoren, alle registriert. genesis waehlt aus
+// den (sortierten) Adressen den Genesis-Satz; die anderen kennen nur die
+// URLs der Genesis-Validatoren als Peers -- wie ein neuer Validator, der nur
+// seine Seeds kennt.
+func neuesHTTPLeitungsNetz(t *testing.T, n int, genesisAnzahl int, cfg LeitKonfig) *httpLeitungsNetz {
+	netz := &httpLeitungsNetz{t: t}
+	for i := 0; i < n; i++ {
 		key, _ := crypto.GenerateKey()
-		k := &knoten{key: key, addr: strings.ToLower(crypto.PubkeyToAddress(key.PublicKey).Hex())}
+		k := &httpKnoten{key: key, addr: strings.ToLower(crypto.PubkeyToAddress(key.PublicKey).Hex())}
 		k.cs = newTestState()
-		k.dag = &BlockDAG{signingKey: key, state: k.cs, blocks: map[string]*Block{}, replayedBlocks: map[string]bool{}}
+		k.dag = &BlockDAG{signingKey: key, state: k.cs, blocks: map[string]*Block{}, replayedBlocks: map[string]bool{},
+			authorizedValidators: map[string]bool{}}
 		api := &APIServer{state: k.cs, blockchain: k.dag}
 		mux := http.NewServeMux()
 		mux.HandleFunc("/api/leitung", api.handleLeitung)
+		addr := k.addr
 		mux.HandleFunc("/rpc", func(w http.ResponseWriter, r *http.Request) {
-			io.WriteString(w, `{"beim_leiter":"`+k.addr+`"}`)
+			io.WriteString(w, `{"beim_leiter":"`+addr+`"}`)
 		})
 		k.srv = httptest.NewServer(mux)
-		ks = append(ks, k)
-		satz = append(satz, k.addr)
+		netz.ks = append(netz.ks, k)
 	}
-	start := normSatz(satz)[0]
-	for _, k := range ks {
-		env := LeitUmgebung{Hoehe: func() int64 { return 10 }, Entleert: func() bool { return true }}
-		k.l = NeueLeitung(k.addr, k.srv.URL, satz, start, true, LeitSpeicher{}, cfg, env, time.Now())
-		for _, o := range ks {
-			k.l.SetzeURL(o.addr, o.srv.URL)
+	sort.Slice(netz.ks, func(i, j int) bool { return netz.ks[i].addr < netz.ks[j].addr })
+	var genesis, seeds []string
+	for i, k := range netz.ks {
+		if i < genesisAnzahl {
+			genesis = append(genesis, k.addr)
+			seeds = append(seeds, k.srv.URL)
+		}
+	}
+	for i, k := range netz.ks {
+		for _, o := range netz.ks {
+			k.dag.authorizedValidators[o.addr] = true // alle registriert
+		}
+		env := LeitUmgebung{Hoehe: func() int64 { return 10 }, Entleert: func() bool { return true },
+			Zugelassen: k.dag.istZugelassenerValidator}
+		start := ""
+		if len(genesis) > 0 {
+			start = genesis[0]
+		}
+		g := genesis
+		if i >= genesisAnzahl {
+			g = nil // spaeter Hinzukommende kennen den Genesis-Satz nicht
+		}
+		k.l = NeueLeitung(k.addr, k.srv.URL, g, start, true, LeitSpeicher{}, cfg, env, time.Now())
+		for j, o := range netz.ks {
+			if j < genesisAnzahl && i < genesisAnzahl {
+				k.l.SetzeURL(o.addr, o.srv.URL)
+			}
 		}
 		k.cs.leitung.Store(k.l)
 	}
-	// Takt-Schleifen (wie leitungSchleife, schneller).
-	var mu sync.Mutex
+	// Takt-Schleifen: wie leitungSchleife, schneller.
 	stop := make(chan struct{})
-	for _, k := range ks {
+	t.Cleanup(func() { close(stop) })
+	for _, k := range netz.ks {
 		k := k
 		go func() {
 			tk := time.NewTicker(50 * time.Millisecond)
@@ -120,51 +144,82 @@ func TestLeitung_UeberHTTP(t *testing.T) {
 					return
 				case <-tk.C:
 				}
-				mu.Lock()
-				aus := k.aus
-				mu.Unlock()
-				if aus {
+				if k.aus.Load() {
 					continue
 				}
-				for _, m := range k.l.Takt(time.Now()) {
-					k.dag.signiereLeitNachricht(&m)
-					for _, u := range k.l.URLs() {
-						go k.dag.leitungSende(k.l, u, m)
-					}
-				}
+				k.dag.leitungVersenden(k.l, k.l.Takt(time.Now()), func() []string { return seeds })
 			}
 		}()
 	}
-	defer close(stop)
+	return netz
+}
 
-	annehmende := func() []int {
-		var a []int
-		for i, k := range ks {
-			mu.Lock()
-			aus := k.aus
-			mu.Unlock()
-			if !aus && k.cs.nimmtUeberweisungenAn() {
-				a = append(a, i)
-			}
-		}
-		return a
-	}
-	beobachte := func(d time.Duration) {
-		ende := time.Now().Add(d)
-		for time.Now().Before(ende) {
-			if a := annehmende(); len(a) > 1 {
-				t.Fatalf("ZWEI nehmen gleichzeitig an: %v", a)
-			}
-			time.Sleep(20 * time.Millisecond)
+func (n *httpLeitungsNetz) annehmende() []int {
+	var a []int
+	for i, k := range n.ks {
+		if !k.aus.Load() && k.cs.nimmtUeberweisungenAn() {
+			a = append(a, i)
 		}
 	}
+	return a
+}
 
-	beobachte(2 * time.Second)
-	a := annehmende()
-	if len(a) != 1 || ks[a[0]].addr != start {
-		t.Fatalf("nach 2 s nehmen %v an, erwartet der Startleiter", a)
+// beobachte: die ganze Zeit hoechstens einer annehmend.
+func (n *httpLeitungsNetz) beobachte(d time.Duration) {
+	ende := time.Now().Add(d)
+	for time.Now().Before(ende) {
+		if a := n.annehmende(); len(a) > 1 {
+			n.t.Fatalf("ZWEI nehmen gleichzeitig an: %v", a)
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+}
+
+// bisGenau: beobachten, bis genau einer (erfuellt ok) annimmt; hoechstens d.
+func (n *httpLeitungsNetz) bisGenau(d time.Duration, ok func(i int) bool) int {
+	ende := time.Now().Add(d)
+	for time.Now().Before(ende) {
+		a := n.annehmende()
+		if len(a) > 1 {
+			n.t.Fatalf("ZWEI nehmen gleichzeitig an: %v", a)
+		}
+		if len(a) == 1 && ok(a[0]) {
+			return a[0]
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	for i, k := range n.ks {
+		n.t.Logf("%d: %v", i, k.l.Stand(time.Now()))
+	}
+	return -1
+}
+
+func (n *httpLeitungsNetz) ausfall(i int) {
+	n.ks[i].aus.Store(true)
+	n.ks[i].srv.Close()
+}
+
+func httpTestKonfig() LeitKonfig {
+	return LeitKonfig{Takt: 100 * time.Millisecond, LeaseDauer: 800 * time.Millisecond,
+		FolgerFrist: 1600 * time.Millisecond, Staffel: 600 * time.Millisecond, HoeheToleranz: 2,
+		AufnahmeFrist: 3 * time.Second, AufnahmeToleranz: 50, AufnahmeSperre: 10 * time.Second}
+}
+
+// Drei Knoten mit echtem HTTP und echten Signaturen: der Startleiter nimmt
+// an, faellt aus, ein anderer uebernimmt -- und nie nehmen zwei gleichzeitig
+// an. Dazu die Weiterleitung: ein Folger schickt Annehmendes zum Leiter.
+func TestLeitung_UeberHTTP(t *testing.T) {
+	if testing.Short() {
+		t.Skip("laeuft einige Sekunden in echter Zeit")
+	}
+	n := neuesHTTPLeitungsNetz(t, 3, 3, httpTestKonfig())
+	n.beobachte(2 * time.Second)
+	a := n.annehmende()
+	if len(a) != 1 || a[0] != 0 {
+		t.Fatalf("nach 2 s nehmen %v an, erwartet der Startleiter (kleinste Adresse)", a)
 	}
 	leiter := a[0]
+	ks := n.ks
 
 	// Weiterleitung: ein Folger schickt sendRawTransaction zum Leiter.
 	folger := (leiter + 1) % 3
@@ -184,20 +239,50 @@ func TestLeitung_UeberHTTP(t *testing.T) {
 		t.Fatal("eine schon weitergeleitete Anfrage wird erneut weitergeleitet")
 	}
 
-	// Leiter faellt aus.
-	mu.Lock()
-	ks[leiter].aus = true
-	mu.Unlock()
-	ks[leiter].srv.Close()
-	// Uebernahme: FolgerFrist + Staffel + Vorwahl + Wahl + erste Lease --
-	// hier gut 3 s; 10 s Spielraum fuer den Race-Detector.
-	beobachte(10 * time.Second)
-	a = annehmende()
-	if len(a) != 1 || a[0] == leiter {
-		for i, k := range ks {
-			t.Logf("%d: %v", i, k.l.Stand(time.Now()))
+	// Leiter faellt aus. Uebernahme: FolgerFrist + Staffel + Vorwahl + Wahl
+	// + erste Lease -- hier gut 3 s; 10 s Spielraum fuer den Race-Detector.
+	n.ausfall(leiter)
+	if n.bisGenau(10*time.Second, func(i int) bool { return i != leiter }) < 0 {
+		t.Fatalf("10 s nach dem Ausfall nimmt keiner der beiden anderen an")
+	}
+}
+
+// Dezentraler Beitritt ueber echtes HTTP: die Kette beginnt mit EINEM
+// Validator. Zwei weitere kennen nur dessen URL (ihren Seed), setzen keine
+// Liste, melden sich -- und werden aufgenommen. Danach faellt der
+// Genesis-Validator aus, und die beiden Hinzugekommenen machen ohne ihn
+// weiter.
+func TestLeitung_BeitrittUeberHTTP(t *testing.T) {
+	if testing.Short() {
+		t.Skip("laeuft einige Sekunden in echter Zeit")
+	}
+	n := neuesHTTPLeitungsNetz(t, 3, 1, httpTestKonfig())
+	ende := time.Now().Add(15 * time.Second)
+	for {
+		alle := true
+		for _, k := range n.ks {
+			st := k.l.Stand(time.Now())
+			if st["mitglied"] != true || st["validatoren"] != 3 {
+				alle = false
+			}
 		}
-		t.Fatalf("10 s nach dem Ausfall nehmen %v an, erwartet einer der beiden anderen", a)
+		if alle {
+			break
+		}
+		if time.Now().After(ende) {
+			for i, k := range n.ks {
+				t.Logf("%d: %v", i, k.l.Stand(time.Now()))
+			}
+			t.Fatal("nach 15 s nicht alle drei aufgenommen")
+		}
+		n.beobachte(100 * time.Millisecond)
+	}
+	if a := n.annehmende(); len(a) != 1 || a[0] != 0 {
+		t.Fatalf("nimmt %v an, erwartet der Genesis-Validator", a)
+	}
+	n.ausfall(0)
+	if n.bisGenau(15*time.Second, func(i int) bool { return i != 0 }) < 0 {
+		t.Fatal("ohne den Genesis-Validator uebernimmt keiner")
 	}
 }
 

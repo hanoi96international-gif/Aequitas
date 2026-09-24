@@ -3,6 +3,7 @@ package keeper
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	"fmt"
 	"sort"
 	"strings"
 	"sync"
@@ -51,6 +52,38 @@ import (
 //   - ein planmaessiger Wechsel nur, wenn ausdruecklich eingeschaltet.
 // Wirkliche Ausfallsicherheit beginnt bei drei Validatoren.
 //
+// # WER MITGLIED IST: OHNE HANDLISTE
+//
+// Die Validatoren, deren Mehrheit zaehlt (der Satz), pflegt niemand von
+// Hand. Der Satz beginnt beim Genesis-Satz -- wie jede Kette mit einer
+// Genesis beginnt -- und aendert sich danach nur ueber die Leitung selbst:
+//
+//   - Wer Validator werden will, registriert seinen Signierschluessel,
+//     gebunden an einen registrierten Menschen (register-validator-key), und
+//     meldet sich (Hallo). Der amtierende Leiter nimmt ihn auf. Niemand muss
+//     zustimmen, niemand kann es verbieten.
+//   - Wer laenger als EntfernenNach nichts von sich hoeren laesst, wird
+//     entfernt -- sonst wuerden ausgefallene Validatoren irgendwann die
+//     Mehrheit unerreichbar machen. Meldet er sich wieder, kommt er wieder
+//     hinein.
+//
+// Damit dabei nie zwei Mehrheiten entstehen, gelten die Regeln, mit denen
+// Raft seine Mitgliedschaft aendert (Ongaro, Dissertation Kap. 4, mit der
+// Korrektur von 2015):
+//   - je Aenderung genau EIN Validator mehr oder weniger: jede Mehrheit des
+//     alten und jede des neuen Satzes haben einen Knoten gemeinsam;
+//   - die naechste Aenderung erst, wenn die Mehrheit die vorige bestaetigt
+//     hat (fest), und erst, wenn der Leiter in SEINER Amtszeit bestaetigt
+//     wurde (der Stempel SatzTerm, entspricht Rafts No-op);
+//   - jeder Knoten benutzt sofort den neuesten Satz, den er kennt;
+//   - gewaehlt wird nur, wer einen mindestens so neuen Satz hat wie der
+//     Waehler (Stempel, dann Version) -- ein bestaetigter Satz geht nie
+//     verloren;
+//   - Folger uebernehmen den Satz des Leiters, dessen Lease sie annehmen.
+// Eine Aenderung, die nicht binnen AufnahmeFrist bestaetigt wird (der Neue
+// meldet sich nicht mehr), nimmt der Leiter zurueck -- wieder genau ein
+// Schritt.
+//
 // # WAS DIESE DATEI IST
 //
 // Reine Logik, ohne Netz, ohne Datenbank, mit eingespeister Uhr: damit laesst
@@ -64,6 +97,7 @@ const (
 	leitArtStimmeBitte = "stimme_bitte" // Kandidat -> alle
 	leitArtStimme      = "stimme"       // Antwort auf stimme_bitte
 	leitArtUebergabe   = "uebergabe"    // alter Leiter -> naechster
+	leitArtHallo       = "hallo"        // wer (noch) keine Lease bekommt -> alle
 )
 
 // LeitNachricht ist alles, was zwischen Validatoren fuer die Leitung
@@ -80,6 +114,14 @@ type LeitNachricht struct {
 	BlockHash string `json:"block_hash,omitempty"`
 	Faehig    bool   `json:"faehig"`
 	SatzHash  string `json:"satz_hash"`
+	// Stand des Satzes des Absenders: Stempel (Amtszeit, in der ein Leiter ihn
+	// zuletzt bestaetigt hat) und Version. Siehe "Wer Mitglied ist".
+	SatzTerm    uint64 `json:"satz_term"`
+	SatzVersion uint64 `json:"satz_version"`
+	// Nur in Leases: der Satz selbst und die bekannten Adressen der
+	// Mitglieder -- so erfaehrt jeder Folger, wen er bei einer Wahl fragt.
+	Satz []string          `json:"satz,omitempty"`
+	URLs map[string]string `json:"urls,omitempty"`
 	// Die Lease eines neuen Leiters nach planmaessigem Wechsel traegt die
 	// Uebergabe des alten mit -- der Beleg, dass der alte aufgehoert hat.
 	Uebergabe *LeitNachricht `json:"uebergabe,omitempty"`
@@ -101,6 +143,14 @@ type LeitKonfig struct {
 	ZweiWechseln bool
 	// Hoechstens so viele Bloecke darf ein Kandidat hinter dem Waehler liegen.
 	HoeheToleranz int64
+	// Mitgliedschaft: wer so lange nichts hoeren laesst, wird entfernt.
+	EntfernenNach time.Duration
+	// So lange hat eine Aenderung Zeit, bestaetigt zu werden.
+	AufnahmeFrist time.Duration
+	// So weit darf ein Neuer hinter dem Leiter liegen, um aufgenommen zu werden.
+	AufnahmeToleranz int64
+	// Zurueckgenommene Aufnahme: so lange nicht erneut versuchen.
+	AufnahmeSperre time.Duration
 }
 
 func leitVorgabe() LeitKonfig {
@@ -111,6 +161,11 @@ func leitVorgabe() LeitKonfig {
 		Staffel:       4 * time.Second,
 		WechselAlle:   60 * time.Minute,
 		HoeheToleranz: 2,
+
+		EntfernenNach:    30 * time.Minute,
+		AufnahmeFrist:    30 * time.Second,
+		AufnahmeToleranz: 50,
+		AufnahmeSperre:   10 * time.Minute,
 	}
 }
 
@@ -144,6 +199,9 @@ type LeitUmgebung struct {
 	// eigene Uebergabe verloren. Was er angenommen, aber noch nicht in
 	// Bloecken verteilt hat, kennt der neue Leiter nicht.
 	Ueberholt func(term uint64)
+	// Zugelassen: registrierter Validator (Signierschluessel an einen
+	// registrierten Menschen gebunden). nil = alle (Tests).
+	Zugelassen func(addr string) bool
 }
 
 // LeitSpeicher: was einen Neustart ueberleben muss. Ohne votedFor koennte ein
@@ -153,6 +211,35 @@ type LeitSpeicher struct {
 	Stimme    string `json:"stimme"`     // gewaehlt in Term
 	Leiter    string `json:"leiter"`     // bekannter Leiter von Term
 	WarLeiter bool   `json:"war_leiter"` // dieser Knoten leitete Term
+
+	// Der Satz. Ohne ihn zaehlte ein Knoten nach einem Neustart wieder die
+	// Mehrheit des Genesis-Satzes.
+	Satz     *LeitSatz         `json:"satz,omitempty"`
+	SatzFest bool              `json:"satz_fest,omitempty"`
+	Vorher   *LeitSatz         `json:"vorher,omitempty"` // bestaetigter Vorgaenger einer offenen Aenderung
+	URLs     map[string]string `json:"urls,omitempty"`
+}
+
+// LeitSatz: die Validatoren, deren Mehrheit zaehlt, mit Stand.
+type LeitSatz struct {
+	Mitglieder []string `json:"mitglieder"`
+	Term       uint64   `json:"term"`
+	Version    uint64   `json:"version"`
+}
+
+// neuerAls: zuerst der Stempel, dann die Version (wie Rafts "Log mindestens
+// so aktuell": erst Term, dann Index).
+func satzNeuerAls(t1, v1, t2, v2 uint64) bool {
+	if t1 != t2 {
+		return t1 > t2
+	}
+	return v1 > v2
+}
+
+type bewerberInfo struct {
+	zeit   time.Time
+	hoehe  int64
+	faehig bool
 }
 
 // Leitung ist die Zustandsmaschine eines Knotens.
@@ -169,21 +256,35 @@ type Leitung struct {
 	faehig    map[string]bool   // angekuendigte Leiterfaehigkeit
 	urls      map[string]string // Adresse -> URL, aus signierten Nachrichten
 
+	// Mitgliedschaft (siehe Kopf).
+	satzTerm        uint64
+	satzVersion     uint64
+	fest            bool     // Satz von einer Mehrheit bestaetigt
+	vorher          []string // bestaetigter Vorgaenger, solange eine Aenderung offen ist
+	vorherTerm      uint64
+	vorherVersion   uint64
+	vorschlagSeit   time.Time
+	bewerber        map[string]bewerberInfo
+	gesperrt        map[string]time.Time // zurueckgenommene Aufnahmen
+	letzteAenderung string
+
 	term      uint64
 	stimme    string
 	rolle     leitRolle
 	leiter    string
 	warLeiter bool
 
-	letzteLease time.Time            // Folger: letzte gueltige Lease
-	acks        map[string]time.Time // Leiter: Folger -> Sendezeit der bestaetigten Lease
-	gehoert     map[string]time.Time // wann zuletzt irgendeine Nachricht kam
-	stimmen     map[string]bool
-	vorStimmen  map[string]bool // laufende Vorwahl
-	vorwahlSeit time.Time
-	kandSeit    time.Time
-	leiterSeit  time.Time
-	letzterTakt time.Time
+	letzteLease  time.Time            // Folger: letzte gueltige Lease
+	acks         map[string]time.Time // Leiter: Folger -> Sendezeit der bestaetigten Lease
+	ackSatz      map[string]string    // ... und mit welchem Satz quittiert
+	gehoert      map[string]time.Time // wann zuletzt irgendeine Nachricht kam
+	stimmen      map[string]bool
+	vorStimmen   map[string]bool // laufende Vorwahl
+	vorwahlSeit  time.Time
+	kandSeit     time.Time
+	leiterSeit   time.Time
+	letzterTakt  time.Time
+	letzterHallo time.Time
 
 	// Planmaessiger Wechsel, Seite des alten Leiters.
 	abschliessen bool
@@ -207,9 +308,31 @@ type Leitung struct {
 // satzHashVon: Validatoren, die sich in der Zusammensetzung nicht einig
 // sind, zaehlen verschiedene Mehrheiten -- sie duerfen einander nicht
 // zuhoeren.
-func satzHashVon(satz []string) string {
-	h := sha256.Sum256([]byte(strings.Join(satz, ",")))
+func satzHashVon(term, version uint64, satz []string) string {
+	h := sha256.Sum256([]byte(fmt.Sprintf("%d/%d/%s", term, version, strings.Join(satz, ","))))
 	return hex.EncodeToString(h[:8])
+}
+
+// setzeSatz: neuer Satz (schon normalisiert oder nicht). Bestaetigungen von
+// Nicht-Mitgliedern verfallen.
+func (l *Leitung) setzeSatz(satz []string, term, version uint64) {
+	l.satz = normSatz(satz)
+	l.satzTerm, l.satzVersion = term, version
+	l.hash = satzHashVon(term, version, l.satz)
+	for a := range l.acks {
+		if !l.imSatz(a) {
+			delete(l.acks, a)
+		}
+	}
+}
+
+func (l *Leitung) speicherSatz() (*LeitSatz, *LeitSatz) {
+	akt := &LeitSatz{Mitglieder: append([]string(nil), l.satz...), Term: l.satzTerm, Version: l.satzVersion}
+	var vor *LeitSatz
+	if l.vorher != nil {
+		vor = &LeitSatz{Mitglieder: append([]string(nil), l.vorher...), Term: l.vorherTerm, Version: l.vorherVersion}
+	}
+	return akt, vor
 }
 
 func normSatz(satz []string) []string {
@@ -232,12 +355,27 @@ func NeueLeitung(ich, url string, satz []string, startLeiter string, faehig bool
 	gespeichert LeitSpeicher, cfg LeitKonfig, env LeitUmgebung, jetzt time.Time) *Leitung {
 	l := &Leitung{
 		cfg: cfg, ich: strings.ToLower(ich), url: url, env: env,
-		satz: normSatz(satz), ichFaehig: faehig,
-		faehig: map[string]bool{}, urls: map[string]string{},
-		acks: map[string]time.Time{}, stimmen: map[string]bool{}, gehoert: map[string]time.Time{},
+		ichFaehig: faehig,
+		faehig:    map[string]bool{}, urls: map[string]string{},
+		acks: map[string]time.Time{}, ackSatz: map[string]string{}, stimmen: map[string]bool{}, gehoert: map[string]time.Time{},
+		bewerber: map[string]bewerberInfo{}, gesperrt: map[string]time.Time{},
 		gestartet: jetzt, letzteLease: jetzt,
 	}
-	l.hash = satzHashVon(l.satz)
+	if gespeichert.Satz != nil {
+		l.setzeSatz(gespeichert.Satz.Mitglieder, gespeichert.Satz.Term, gespeichert.Satz.Version)
+		l.fest = gespeichert.SatzFest
+		if v := gespeichert.Vorher; v != nil {
+			l.vorher, l.vorherTerm, l.vorherVersion = normSatz(v.Mitglieder), v.Term, v.Version
+			l.vorschlagSeit = jetzt
+		}
+		for a, u := range gespeichert.URLs {
+			l.urls[a] = u
+		}
+	} else {
+		// Genesis: bestaetigt per Definition.
+		l.setzeSatz(satz, 0, 0)
+		l.fest = true
+	}
 	l.faehig[l.ich] = faehig
 	if url != "" {
 		l.urls[l.ich] = url
@@ -265,6 +403,11 @@ func NeueLeitung(ich, url string, satz []string, startLeiter string, faehig bool
 		l.rolle = leitLeiter
 		l.leiterSeit = jetzt
 		l.warLeiter = true
+		// Stempel dieser Amtszeit (siehe werdeLeiter). Mitglieder unveraendert.
+		l.setzeSatz(l.satz, l.term, l.satzVersion)
+		if len(l.satz) <= 1 {
+			l.fest = true
+		}
 	}
 	return l
 }
@@ -281,8 +424,20 @@ func (l *Leitung) mitWahl() bool { return len(l.satz) >= 3 }
 
 func (l *Leitung) speichern() {
 	if l.env.Speichern != nil {
-		l.env.Speichern(LeitSpeicher{Term: l.term, Stimme: l.stimme, Leiter: l.leiter, WarLeiter: l.warLeiter})
+		akt, vor := l.speicherSatz()
+		urls := map[string]string{}
+		for a, u := range l.urls {
+			if l.imSatz(a) {
+				urls[a] = u
+			}
+		}
+		l.env.Speichern(LeitSpeicher{Term: l.term, Stimme: l.stimme, Leiter: l.leiter, WarLeiter: l.warLeiter,
+			Satz: akt, SatzFest: l.fest, Vorher: vor, URLs: urls})
 	}
+}
+
+func (l *Leitung) zugelassen(addr string) bool {
+	return l.env.Zugelassen == nil || l.env.Zugelassen(addr)
 }
 
 func (l *Leitung) hoehe() int64 {
@@ -303,14 +458,18 @@ func (l *Leitung) darfAnnehmen(jetzt time.Time) bool {
 	// Der Leistungsnachweis entscheidet, wer Leiter WIRD, nicht, ob ein
 	// amtierender annimmt: haelt er ihn nicht mehr, uebergibt er (Takt) --
 	// bis dahin nimmt er weiter an, sonst stuende das Netz.
-	if l.rolle != leitLeiter || l.abschliessen || l.frischZwei {
+	if l.rolle != leitLeiter || l.abschliessen || l.frischZwei || !l.imSatz(l.ich) {
 		return false
 	}
 	if len(l.satz) <= 1 {
 		return true
 	}
 	if !l.mitWahl() {
-		return true // zwei Validatoren: siehe Kopf
+		// Zwei Validatoren, keine Wahl (siehe Kopf): annehmen ohne
+		// Bestaetigung -- aber nur, wenn feststeht, dass der andere diesen
+		// Satz hat (sonst koennte er, noch im alten Satz zu dritt, einen
+		// anderen mitwaehlen) oder der Vorgaenger selbst keine Wahl kannte.
+		return l.fest || (l.vorher != nil && len(l.vorher) <= 2)
 	}
 	// Mehrheit (ich eingeschlossen) hat eine Lease bestaetigt, die ich
 	// hoechstens LeaseDauer vor jetzt ABGESCHICKT habe.
@@ -369,14 +528,28 @@ func (l *Leitung) SetzeURL(addr, url string) {
 
 func (l *Leitung) basis(art string, jetzt time.Time) LeitNachricht {
 	return LeitNachricht{Art: art, Term: l.term, Von: l.ich, URL: l.url, ZeitMs: jetzt.UnixMilli(),
-		Hoehe: l.hoehe(), Faehig: l.ichFaehig, SatzHash: l.hash}
+		Hoehe: l.hoehe(), Faehig: l.ichFaehig, SatzHash: l.hash,
+		SatzTerm: l.satzTerm, SatzVersion: l.satzVersion}
+}
+
+// lease: die Lease traegt den Satz und die bekannten Adressen mit.
+func (l *Leitung) lease(jetzt time.Time) LeitNachricht {
+	m := l.basis(leitArtLease, jetzt)
+	m.Satz = append([]string(nil), l.satz...)
+	m.URLs = map[string]string{}
+	for a, u := range l.urls {
+		if l.imSatz(a) {
+			m.URLs[a] = u
+		}
+	}
+	return m
 }
 
 // faehigerLebt: hat dieser Knoten innerhalb der FolgerFrist von einem
 // ANDEREN leiterfaehigen Validator gehoert?
 func (l *Leitung) faehigerLebt(jetzt time.Time) bool {
 	for a, f := range l.faehig {
-		if a == l.ich || !f {
+		if a == l.ich || !f || !l.imSatz(a) {
 			continue
 		}
 		if t, ok := l.gehoert[a]; ok && jetzt.Sub(t) < l.cfg.FolgerFrist {
@@ -400,8 +573,13 @@ func (l *Leitung) notbetrieb(jetzt time.Time) bool {
 // wird immer der ECHTE Nachweis: wuerden Knoten im Notbetrieb sich als
 // leiterfaehig ausgeben, hielten die anderen den Notbetrieb fuer beendet,
 // die ersten dann auch -- und es kippte hin und her.
+//
+// Und: sein Satz ist mindestens so neu wie der eigene -- sonst koennte ein
+// Kandidat mit einem ueberholten Satz eine Mehrheit zusammenbekommen, die es
+// im bestaetigten Satz nicht gibt.
 func (l *Leitung) waehlbar(m LeitNachricht, jetzt time.Time) bool {
-	return (m.Faehig || l.notbetrieb(jetzt)) && m.Hoehe >= l.hoehe()-l.cfg.HoeheToleranz
+	return (m.Faehig || l.notbetrieb(jetzt)) && m.Hoehe >= l.hoehe()-l.cfg.HoeheToleranz &&
+		!satzNeuerAls(l.satzTerm, l.satzVersion, m.SatzTerm, m.SatzVersion)
 }
 
 // effFaehig: darf dieser Knoten JETZT Leiter werden?
@@ -469,6 +647,8 @@ func (l *Leitung) werdeFolger(term uint64, leiter string, jetzt time.Time) {
 	l.acks = map[string]time.Time{}
 	l.stimmen = map[string]bool{}
 	l.beleg = nil
+	l.vorher = nil // eine offene Aenderung entscheidet jetzt der naechste Leiter
+	l.fest = false // gilt nur fuer den Leiter, der es festgestellt hat
 	l.speichern()
 }
 
@@ -484,6 +664,16 @@ func (l *Leitung) werdeLeiter(jetzt time.Time, beleg *LeitNachricht) {
 	l.abschliessen = false
 	l.beleg = beleg
 	l.wartet = nil
+	// Stempel: dieser Satz gilt ab jetzt als "in meiner Amtszeit". Bestaetigt
+	// ist er erst, wenn eine Mehrheit ihn mit diesem Stempel quittiert hat.
+	// Die Folger uebernehmen ihn aus der Lease.
+	l.vorher = nil
+	l.setzeSatz(l.satz, l.term, l.satzVersion)
+	// Bei zwei steht nach einer Uebergabe fest, dass der andere dieselben
+	// Mitglieder hat (er hat sie mit der Uebergabe signiert).
+	if len(l.satz) <= 1 || (beleg != nil && !l.mitWahl()) {
+		l.fest = true
+	}
 	l.speichern()
 }
 
@@ -548,9 +738,10 @@ func (l *Leitung) Takt(jetzt time.Time) []LeitNachricht {
 			l.speichern()
 			return raus
 		}
+		l.mitgliedschaft(jetzt)
 		if jetzt.Sub(l.letzterTakt) >= l.cfg.Takt {
 			l.letzterTakt = jetzt
-			m := l.basis(leitArtLease, jetzt)
+			m := l.lease(jetzt)
 			m.Uebergabe = l.beleg
 			raus = append(raus, m)
 		}
@@ -559,6 +750,13 @@ func (l *Leitung) Takt(jetzt time.Time) []LeitNachricht {
 		if l.offeneUebergabe != nil && jetzt.Sub(l.letzterTakt) >= l.cfg.Takt {
 			l.letzterTakt = jetzt
 			raus = append(raus, *l.offeneUebergabe)
+		}
+		// Kein Mitglied, oder seit einer Weile keine Lease (etwa nach einem
+		// Neustart des Leiters, der die eigene Adresse nicht kennt): melden.
+		if (!l.imSatz(l.ich) || jetzt.Sub(l.letzteLease) >= 2*l.cfg.Takt) &&
+			jetzt.Sub(l.letzterHallo) >= 2*l.cfg.Takt {
+			l.letzterHallo = jetzt
+			raus = append(raus, l.basis(leitArtHallo, jetzt))
 		}
 		if !l.mitWahl() || !l.effFaehig(jetzt) || !l.imSatz(l.ich) {
 			break
@@ -630,7 +828,14 @@ func (l *Leitung) kandidieren(jetzt time.Time) []LeitNachricht {
 func (l *Leitung) Empfange(m LeitNachricht, jetzt time.Time) *LeitNachricht {
 	l.mu.Lock()
 	defer l.mu.Unlock()
-	if m.SatzHash != l.hash || !l.imSatz(m.Von) || m.Von == l.ich {
+	if m.Von == l.ich || m.Von == "" {
+		return nil
+	}
+	// Gehoert wird auf Mitglieder und registrierte Validatoren. Den Satz
+	// vergleicht jede Nachrichtenart selbst: Leases bringen ihren Satz mit,
+	// Stimmen zaehlen nur von Mitgliedern des eigenen, eine Quittung nur mit
+	// demselben Satz.
+	if !l.imSatz(m.Von) && !l.zugelassen(m.Von) {
 		return nil
 	}
 	if m.URL != "" {
@@ -638,6 +843,9 @@ func (l *Leitung) Empfange(m LeitNachricht, jetzt time.Time) *LeitNachricht {
 	}
 	l.faehig[m.Von] = m.Faehig
 	l.gehoert[m.Von] = jetzt
+	if m.Art == leitArtHallo {
+		return l.empfangeHallo(m, jetzt)
+	}
 	if l.frischZwei && m.Term <= l.term {
 		l.frischZwei = false
 	}
@@ -646,10 +854,11 @@ func (l *Leitung) Empfange(m LeitNachricht, jetzt time.Time) *LeitNachricht {
 	case leitArtLease:
 		return l.empfangeLease(m, jetzt)
 	case leitArtLeaseAck:
-		if l.rolle == leitLeiter && m.Term == l.term && m.Gewaehrt {
+		if l.rolle == leitLeiter && m.Term == l.term && m.Gewaehrt && m.SatzHash == l.hash && l.imSatz(m.Von) {
 			gesendet := time.UnixMilli(m.ZeitMs)
 			if alt, ok := l.acks[m.Von]; !ok || gesendet.After(alt) {
 				l.acks[m.Von] = gesendet
+				l.ackSatz[m.Von] = m.SatzHash
 			}
 		} else if m.Term > l.term {
 			l.werdeFolger(m.Term, "", jetzt)
@@ -665,7 +874,7 @@ func (l *Leitung) Empfange(m LeitNachricht, jetzt time.Time) *LeitNachricht {
 		if m.Vorwahl {
 			// Antwort auf die Vorwahl: gilt fuer term+1, solange nichts
 			// dazwischenkam.
-			if l.rolle == leitFolger && l.vorStimmen != nil && m.Term == l.term+1 && m.Gewaehrt {
+			if l.rolle == leitFolger && l.vorStimmen != nil && m.Term == l.term+1 && m.Gewaehrt && l.imSatz(m.Von) {
 				l.vorStimmen[m.Von] = true
 				if len(l.vorStimmen) >= l.mehrheit() {
 					return nil // Kandidatur im naechsten Takt, siehe unten
@@ -673,7 +882,7 @@ func (l *Leitung) Empfange(m LeitNachricht, jetzt time.Time) *LeitNachricht {
 			}
 			return nil
 		}
-		if l.rolle == leitKandidat && m.Term == l.term && m.Gewaehrt {
+		if l.rolle == leitKandidat && m.Term == l.term && m.Gewaehrt && l.imSatz(m.Von) {
 			l.stimmen[m.Von] = true
 			if len(l.stimmen) >= l.mehrheit() {
 				l.werdeLeiter(jetzt, nil)
@@ -684,7 +893,7 @@ func (l *Leitung) Empfange(m LeitNachricht, jetzt time.Time) *LeitNachricht {
 		// Nur vom Leiter des laufenden Terms, nur an mich. Der Absender hat
 		// seinen Term schon hochgezaehlt, als er schickte -- sein m.Term ist
 		// der ALTE (basis vor dem Hochzaehlen gebaut).
-		if m.An == l.ich && m.Term == l.term && m.Von == l.leiter && l.effFaehig(jetzt) {
+		if m.An == l.ich && m.Term == l.term && m.Von == l.leiter && m.SatzHash == l.hash && l.effFaehig(jetzt) {
 			k := m
 			l.wartet = &k
 		}
@@ -694,6 +903,16 @@ func (l *Leitung) Empfange(m LeitNachricht, jetzt time.Time) *LeitNachricht {
 }
 
 func (l *Leitung) empfangeLease(m LeitNachricht, jetzt time.Time) *LeitNachricht {
+	// Der Leiter gehoert zu seinem eigenen Satz, und der Satz passt zu
+	// seinem Hash -- sonst ist das keine Lease, auf die man sich einlaesst.
+	if len(m.Satz) > 0 {
+		if satzHashVon(m.SatzTerm, m.SatzVersion, normSatz(m.Satz)) != m.SatzHash ||
+			!l.enthaelt(normSatz(m.Satz), m.Von) {
+			return nil
+		}
+	} else if !l.imSatz(m.Von) || m.SatzHash != l.hash {
+		return nil
+	}
 	ack := l.basis(leitArtLeaseAck, jetzt)
 	// Der Leiter rechnet mit SEINER Sendezeit.
 	ack.ZeitMs = m.ZeitMs
@@ -719,6 +938,22 @@ func (l *Leitung) empfangeLease(m LeitNachricht, jetzt time.Time) *LeitNachricht
 	if l.offeneUebergabe != nil && m.Term > l.offeneUebergabe.Term {
 		l.offeneUebergabe = nil // der Neue hat uebernommen
 	}
+	// Den Satz des Leiters uebernehmen (wie Raft-Folger das Log des Leiters):
+	// er ist der neueste, den eine Mehrheit ihn hat waehlen lassen.
+	if len(m.Satz) > 0 && m.SatzHash != l.hash &&
+		satzHashVon(m.SatzTerm, m.SatzVersion, normSatz(m.Satz)) == m.SatzHash {
+		l.setzeSatz(m.Satz, m.SatzTerm, m.SatzVersion)
+		l.fest = false
+		l.vorher = nil
+		for a, u := range m.URLs {
+			if a != l.ich && u != "" {
+				l.urls[a] = u
+			}
+		}
+		l.speichern()
+	}
+	ack = l.basis(leitArtLeaseAck, jetzt)
+	ack.ZeitMs = m.ZeitMs
 	ack.Term = l.term
 	ack.Gewaehrt = true
 	return &ack
@@ -775,10 +1010,161 @@ func (l *Leitung) Stand(jetzt time.Time) map[string]interface{} {
 		"leiter_url":       l.urls[l.leiter],
 		"nimmt_an":         l.darfAnnehmen(jetzt),
 		"validatoren":      len(l.satz),
+		"satz":             l.satz,
+		"satz_version":     l.satzVersion,
+		"satz_stempel":     l.satzTerm,
+		"satz_bestaetigt":  l.fest,
+		"aenderung_offen":  l.vorher != nil,
+		"letzte_aenderung": l.letzteAenderung,
+		"bewerber":         len(l.bewerber),
+		"mitglied":         l.imSatz(l.ich),
 		"mit_wahl":         l.mitWahl(),
 		"leiterfaehig":     l.ichFaehig,
 		"notbetrieb":       l.notbetrieb(jetzt),
 		"uebergabe_laeuft": l.abschliessen || l.offeneUebergabe != nil || l.wartet != nil,
 		"satz_hash":        l.hash,
 	}
+}
+
+// empfangeHallo: ein Validator meldet sich. Der Leiter merkt ihn fuer die
+// Aufnahme vor und antwortet mit seiner Lease -- so erfaehrt der Neue den
+// Leiter und den Satz, auch wenn er noch nicht dazugehoert.
+func (l *Leitung) empfangeHallo(m LeitNachricht, jetzt time.Time) *LeitNachricht {
+	if !l.zugelassen(m.Von) {
+		return nil
+	}
+	l.bewerber[m.Von] = bewerberInfo{zeit: jetzt, hoehe: m.Hoehe, faehig: m.Faehig}
+	if l.rolle != leitLeiter {
+		return nil
+	}
+	antw := l.lease(jetzt)
+	antw.Uebergabe = l.beleg
+	return &antw
+}
+
+// quittiert: wie viele Mitglieder (ich eingeschlossen) haben eine Lease mit
+// dem aktuellen Satz innerhalb der LeaseDauer quittiert?
+func (l *Leitung) quittiert(jetzt time.Time) int {
+	n := 0
+	if l.imSatz(l.ich) {
+		n = 1
+	}
+	for a, gesendet := range l.acks {
+		if l.imSatz(a) && l.ackSatz[a] == l.hash && jetzt.Sub(gesendet) < l.cfg.LeaseDauer {
+			n++
+		}
+	}
+	return n
+}
+
+// mitgliedschaft: nur der Leiter, in jedem Takt. Bestaetigung feststellen,
+// offene Aenderung zuruecknehmen, sonst hoechstens EINE neue Aenderung.
+func (l *Leitung) mitgliedschaft(jetzt time.Time) {
+	if l.abschliessen {
+		return
+	}
+	// Quittungen zaehlen nur mit dem aktuellen Satz (und damit dem aktuellen
+	// Stempel, also in dieser Amtszeit).
+	quittiert := l.quittiert(jetzt) >= l.mehrheit()
+	if !l.fest {
+		if quittiert {
+			l.fest = true
+			l.vorher = nil
+			l.speichern()
+			return
+		}
+		frist := l.cfg.AufnahmeFrist
+		if frist <= 0 {
+			frist = leitVorgabe().AufnahmeFrist
+		}
+		if l.vorher != nil && jetzt.Sub(l.vorschlagSeit) >= frist {
+			// Nicht bestaetigt: zuruecknehmen. Neuer Stand, damit der
+			// zurueckgenommene Satz ueberall ueberholt ist.
+			for _, a := range l.satz {
+				if !l.enthaelt(l.vorher, a) {
+					l.gesperrt[a] = jetzt
+				}
+			}
+			l.letzteAenderung = fmt.Sprintf("zurueckgenommen (nicht bestaetigt binnen %s)", frist)
+			alt := l.vorher
+			l.vorher = nil
+			l.setzeSatz(alt, l.term, l.satzVersion+1)
+			l.fest = len(l.satz) <= 1
+			l.letzterTakt = time.Time{}
+			l.speichern()
+		}
+		return
+	}
+	// Bestaetigt, und zwar in dieser Amtszeit? (Rafts Korrektur von 2015:
+	// erst dann darf ein neuer Leiter den Satz aendern.)
+	if l.satzTerm != l.term || !quittiert {
+		return
+	}
+	// Ausgefallene entfernen (nie sich selbst; EntfernenNach 0 = nie).
+	for _, a := range l.satz {
+		if a == l.ich || l.cfg.EntfernenNach <= 0 {
+			continue
+		}
+		zuletzt := l.gehoert[a]
+		if zuletzt.Before(l.leiterSeit) {
+			zuletzt = l.leiterSeit
+		}
+		if jetzt.Sub(zuletzt) >= l.cfg.EntfernenNach {
+			neu := make([]string, 0, len(l.satz)-1)
+			for _, b := range l.satz {
+				if b != a {
+					neu = append(neu, b)
+				}
+			}
+			l.aendere(neu, "entfernt "+a+" (nichts gehoert seit "+l.cfg.EntfernenNach.String()+")", jetzt)
+			return
+		}
+	}
+	// Neue aufnehmen: registriert, gerade gemeldet, nicht weit zurueck.
+	var kand []string
+	for a, b := range l.bewerber {
+		if jetzt.Sub(b.zeit) >= 3*l.cfg.Takt {
+			if jetzt.Sub(b.zeit) >= l.cfg.EntfernenNach {
+				delete(l.bewerber, a)
+			}
+			continue
+		}
+		if l.imSatz(a) || !l.zugelassen(a) || b.hoehe < l.hoehe()-l.cfg.AufnahmeToleranz {
+			continue
+		}
+		if t, ok := l.gesperrt[a]; ok && jetzt.Sub(t) < l.cfg.AufnahmeSperre {
+			continue
+		}
+		kand = append(kand, a)
+	}
+	if len(kand) == 0 {
+		return
+	}
+	sort.Strings(kand)
+	l.aendere(append(append([]string(nil), l.satz...), kand[0]), "aufgenommen "+kand[0], jetzt)
+}
+
+func (l *Leitung) enthaelt(satz []string, a string) bool {
+	for _, b := range satz {
+		if b == a {
+			return true
+		}
+	}
+	return false
+}
+
+// aendere: genau ein Mitglied mehr oder weniger. Gilt sofort (wie in Raft),
+// bestaetigt erst mit der Mehrheit des NEUEN Satzes.
+func (l *Leitung) aendere(neu []string, grund string, jetzt time.Time) {
+	l.vorher = append([]string(nil), l.satz...)
+	l.vorherTerm, l.vorherVersion = l.satzTerm, l.satzVersion
+	l.vorschlagSeit = jetzt
+	l.setzeSatz(neu, l.term, l.satzVersion+1)
+	l.fest = len(l.satz) <= 1
+	if l.fest {
+		l.vorher = nil
+	}
+	l.letzteAenderung = grund
+	l.letzterTakt = time.Time{} // Lease mit dem neuen Satz sofort
+	l.speichern()
 }
