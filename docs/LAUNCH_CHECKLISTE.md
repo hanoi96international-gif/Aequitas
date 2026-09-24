@@ -25,7 +25,7 @@
 > - **Nur abgeschnitten heißt nicht ausgefallen:** Der Leiter entfernt niemanden, den ein Folger in seiner Quittung noch als lebend meldet.
 > - **Rotation alle 10 Minuten** statt stündlich: Kein Leiter entscheidet lange allein über die Reihenfolge der Überweisungen.
 > - Gegenproben: Jede der neuen Regeln einzeln entfernt lässt Tests rot werden.
-> - **Offen, deine Entscheidung:** Der Validator-Topf wird nach produzierten Blöcken verteilt. Der Leiter produziert unter Last mehr Blöcke, und leiten darf nur, wer den Leistungsnachweis hält. Starke Hardware verdient also mehr. Vorschlag: gleicher Anteil pro Menschen-Validator, gewichtet nach Erreichbarkeit.
+> - **Validator-Geld gerecht (entschieden 24.09.: „Es soll das fairste Geld sein“):** Jeder Mensch, der einen Validator betreibt, bekommt den gleichen Anteil am Validator-Topf. Gewichtet wird nur nach den Minuten des Tages, in denen sein Knoten da war. Vorher zählten die produzierten Blöcke seit der Registrierung. Damit verdienten der Leiter unter Last, also starke Hardware, und die ersten Betreiber auf Dauer mehr. Mehrere Blöcke in derselben Minute zählen einmal, und nur registrierte Menschen bekommen etwas (`validator_anwesenheit.go`, Test gegen echte Postgres).
 > - **Grenze:** Das ist Absturz-Fehlertoleranz mit Plausibilitätsprüfungen, nicht volle Byzanz-Festigkeit wie bei Tendermint oder Solana (hält, solange weniger als ein Drittel lügt). Ein Leiter kann in seinen 10 Minuten Überweisungen zurückhalten oder umordnen. Validatoren sind an Menschen gebunden, und jede Nachricht ist signiert, also nachvollziehbar.
 >
 > **Einschalten:**

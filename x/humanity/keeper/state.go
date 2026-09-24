@@ -1281,6 +1281,9 @@ transactions  TEXT NOT NULL DEFAULT '[]',
 created_at    TIMESTAMP DEFAULT NOW()
 )`)
 	dbExec(`CREATE INDEX IF NOT EXISTS idx_chain_blocks_height ON chain_blocks (height)`)
+	// Fuer die taegliche Anwesenheit der Validatoren (validator_anwesenheit.go):
+	// ein Tag Bloecke, ohne die ganze Tabelle zu lesen.
+	dbExec(`CREATE INDEX IF NOT EXISTS idx_chain_blocks_timestamp ON chain_blocks (timestamp)`)
 
 	// FIX (audit 2026-06-28 recheck 4, P1-5): notifyProofServer (register.go)
 	// used to be pure fire-and-forget — a failed call (proof server down,
@@ -3502,35 +3505,50 @@ func (cs *ChainState) distributeValidatorsPoolLocked(ctx context.Context, vertei
 		return nil, nil
 	}
 
+	// GERECHT (24.09.2026): gleicher Anteil fuer jeden Menschen, der einen
+	// Validator betreibt -- gewichtet NUR danach, wie viele Minuten des Tages
+	// sein Knoten da war (validator_anwesenheit.go). Nicht nach Bloecken:
+	// der gerade annehmende Leiter baut unter Last mehrere Bloecke je Takt,
+	// und Leiter werden darf nur, wer den Leistungsnachweis haelt -- nach
+	// Bloecken verdiente also, wer sich teure Hardware leisten kann. Und
+	// nicht nach Bloecken seit der Registrierung (blocks_produced zaehlt nie
+	// zurueck): damit verdienten die Ersten auf Dauer mehr als alle Spaeteren.
 	type nodeShare struct {
 		wallet string
-		blocks int64
+		blocks int64 // Gewicht: Minuten anwesend (oder 1, siehe unten)
 	}
+	bis := verteiltAm
+	if bis <= 0 {
+		bis = time.Now().Unix()
+	}
+	anwesend := cs.validatorAnwesenheitCtx(ctx, nodes, bis-anwesenheitsZeitraum, bis)
+	// Nur Menschen: Validator-Geld geht an registrierte Menschen, nie an eine
+	// Adresse, hinter der keiner steht.
+	cs.ensureAccountsLoadedCtx(ctx, nodes)
 	var nodeShares []nodeShare
 	var totalBlocks int64
-	if cs.db != nil {
-		rows, _ := cs.dbExecCtx(ctx).Query(`SELECT wallet_address, blocks_produced FROM registered_nodes WHERE wallet_address = ANY($1)`, pq.Array(nodes))
-		if rows != nil {
-			for rows.Next() {
-				var w string
-				var b int64
-				rows.Scan(&w, &b)
-				if b == 0 {
-					b = 1
-				} // minimum weight so new nodes still get something
-				nodeShares = append(nodeShares, nodeShare{w, b})
-				totalBlocks += b
-			}
-			rows.Close()
+	for _, w := range nodes {
+		acc, ok := cs.accounts.Get(w)
+		if !ok || !acc.IsHuman {
+			fmt.Printf("[VALIDATORS] %s ist kein registrierter Mensch -- kein Anteil\n", w)
+			continue
 		}
+		nodeShares = append(nodeShares, nodeShare{w, anwesend[w]})
+		totalBlocks += anwesend[w]
 	}
 	if len(nodeShares) == 0 {
-		for _, w := range nodes {
-			nodeShares = append(nodeShares, nodeShare{w, 1})
+		fmt.Println("[VALIDATORS] Kein Validator-Betreiber ist ein registrierter Mensch -- Topf bleibt stehen")
+		return nil, nil
+	}
+	if totalBlocks == 0 {
+		// Keine Bloecke im Zeitraum bekannt (frisch, oder nach einer
+		// Neusynchronisation fehlen sie): zu gleichen Teilen.
+		totalBlocks = 0
+		for i := range nodeShares {
+			nodeShares[i].blocks = 1
 			totalBlocks++
 		}
 	}
-
 	// FIX (Monster Audit 2026-07-12, P1): a pool address that fell out of (or
 	// never entered) the in-memory cache used to read as "not present" here,
 	// which this function treated identically to "genuinely empty" — silently
@@ -3617,7 +3635,7 @@ func (cs *ChainState) distributeValidatorsPoolLocked(ctx context.Context, vertei
 	cs.save()
 
 	cs.syncBalanceLocked(V7_CONTRACT_ADDR, append(nodes, validatorsPoolAddr)...)
-	fmt.Printf("[VALIDATORS] Distributed %.6f AEQ proportionally (%d nodes, block-weighted)\n", total, len(nodeShares))
+	fmt.Printf("[VALIDATORS] %.6f AEQ verteilt: %d Menschen, gleicher Anteil je Minute Anwesenheit\n", total, len(nodeShares))
 	return shares, nil
 }
 
