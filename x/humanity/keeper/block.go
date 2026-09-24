@@ -254,6 +254,10 @@ type BlockDAG struct {
 	evm    *EVMEngine // set by EVMRPCServer after construction; used by replayTransactions for ZK proof verification
 	nodeID string
 	height int64
+
+	// vorlauf: der Ausgangskorb fuer den naechsten Block, siehe vorlader.go.
+	vorlauf vorlader
+
 	// jemalsAufgeholt: hat dieser Prozess je alle Seeds sauber eingeholt?
 	// Entscheidet, ob der Notausstieg des Sync-Tors gelten darf -- siehe die
 	// Produktionssperre fuer frische Knoten in ProduceBlock.
@@ -2316,7 +2320,7 @@ func (dag *BlockDAG) ProduceBlock() *Block {
 	// allein nicht reicht: sie nennt die Gesamtdauer, aber nicht, wo sie
 	// bleibt, und alle naheliegenden Erklaerungen wurden einzeln gemessen und
 	// ausgeschlossen.
-	var pbLaden, pbSperren, pbDbPaar, pbBauen, pbSpeichern, pbVerteilen time.Duration
+	var pbLaden, pbSperren, pbSperrenReplay, pbDbPaar, pbBauen, pbSpeichern, pbVerteilen time.Duration
 	var pbTxAnzahl int
 	ausfaelleVorher := produktionAusfallGesamt()
 	defer func() {
@@ -2328,7 +2332,8 @@ func (dag *BlockDAG) ProduceBlock() *Block {
 			At: produceStart.UnixMilli(), Hoehe: dag.heightSchnell.Load(), Txs: pbTxAnzahl,
 			Deckel: peerLagLetzterCap.Load(), Rueckstand: peerLagLetzterLag.Load(),
 			GesamtMs: float64(d) / 1e6, LadenMs: float64(pbLaden) / 1e6, SperrenMs: float64(pbSperren) / 1e6,
-			DbPaarMs: float64(pbDbPaar) / 1e6, SpeichernMs: float64(pbSpeichern) / 1e6,
+			SperrenReplayMs: float64(pbSperrenReplay) / 1e6,
+			DbPaarMs:        float64(pbDbPaar) / 1e6, SpeichernMs: float64(pbSpeichern) / 1e6,
 		}
 		if produktionAusfallGesamt() > ausfaelleVorher {
 			e.Grund, _ = produktionLetzterGrnd.Load().(string)
@@ -2386,7 +2391,21 @@ func (dag *BlockDAG) ProduceBlock() *Block {
 			// siehe peer_lag_bremse.go. Ohne das produziert dieser Knoten
 			// dauerhaft mehr, als der andere nachvollziehen kann, und der
 			// faellt zurueck, bis er minutenlang steht.
-			dbTxs, pendingTxIDs = dag.state.LoadPendingTxsWithLimit(dag.blockTxCap())
+			deckel := dag.blockTxCap()
+			// Liegt der Korb schon bereit (vorlader.go), wird er nur noch
+			// eingeloest; sonst wie bisher selbst laden.
+			if vl := dag.vorlauf.nehmen(); vl != nil {
+				dbTxs, pendingTxIDs = vl.einloesen(deckel, dag.state.PendingTxIDsFreigeben, dag.state.LoadPendingTxsWithLimit)
+			} else {
+				dbTxs, pendingTxIDs = dag.state.LoadPendingTxsWithLimit(deckel)
+			}
+			// Voller Korb = es gibt Rueckstand: den naechsten schon jetzt
+			// laden, waehrend dieser Block gebaut wird.
+			if vorladenAn && deckel > 0 && len(pendingTxIDs) >= deckel {
+				dag.vorlauf.starten(func() ([]Transaction, []int64) {
+					return dag.state.LoadPendingTxsWithLimit(deckel)
+				})
+			}
 		}
 		pendingDur = time.Since(ladeStart)
 	})
@@ -2426,8 +2445,13 @@ func (dag *BlockDAG) ProduceBlock() *Block {
 	// bekannte Schluessel.
 	blockGespeichert := false
 	defer func() {
-		if !blockGespeichert && len(pendingTxIDs) > 0 && dag.state != nil {
-			dag.state.PendingTxIDsFreigeben(pendingTxIDs)
+		if !blockGespeichert && dag.state != nil {
+			if len(pendingTxIDs) > 0 {
+				dag.state.PendingTxIDsFreigeben(pendingTxIDs)
+			}
+			// Die Vorladung fuer den naechsten Block mit -- sie haelt die
+			// SPAETEREN Ueberweisungen derselben Absender (vorlader.go, Fall 1).
+			dag.vorlauf.verwerfen(dag.state.PendingTxIDsFreigeben)
 		}
 	}()
 
@@ -2438,6 +2462,10 @@ func (dag *BlockDAG) ProduceBlock() *Block {
 	wachhundFertig := sperrWachhundStarten("ProduceBlock")
 	dag.replayMu.Lock()
 	defer dag.replayMu.Unlock()
+	// Wer haelt uns auf -- das Nachspielen (replayMu) oder ein Leser/Schreiber
+	// der DAG (dag.mu)? Am 23.09.2026 unter 10.000/s Annahme: 450 ms Warten je
+	// Block im Mittel, und der Wachhund nannte keinen Halter.
+	pbSperrenReplay = time.Since(pbSperrenStart)
 	dag.mu.Lock()
 	defer dag.mu.Unlock()
 	wachhundFertig()

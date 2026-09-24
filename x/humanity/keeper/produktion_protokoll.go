@@ -28,17 +28,20 @@ import (
 const produktionsProtokollLaenge = 1800 // 30 Minuten bei einem Takt je Sekunde
 
 type produktionsEintrag struct {
-	At          int64   `json:"at_ms"`
-	Hoehe       int64   `json:"hoehe"`
-	Txs         int     `json:"txs"`
-	Deckel      int64   `json:"deckel"`
-	Rueckstand  int64   `json:"rueckstand"`
-	GesamtMs    float64 `json:"gesamt_ms"`
-	LadenMs     float64 `json:"laden_ms"`
-	SperrenMs   float64 `json:"sperren_ms"`
-	DbPaarMs    float64 `json:"db_paar_ms"`
-	SpeichernMs float64 `json:"speichern_ms"`
-	Grund       string  `json:"grund,omitempty"`
+	At         int64   `json:"at_ms"`
+	Hoehe      int64   `json:"hoehe"`
+	Txs        int     `json:"txs"`
+	Deckel     int64   `json:"deckel"`
+	Rueckstand int64   `json:"rueckstand"`
+	GesamtMs   float64 `json:"gesamt_ms"`
+	LadenMs    float64 `json:"laden_ms"`
+	SperrenMs  float64 `json:"sperren_ms"`
+	// Davon das Warten auf replayMu (das Nachspielen fremder Bloecke haelt
+	// sie); der Rest von sperren_ms ist das Warten auf dag.mu.
+	SperrenReplayMs float64 `json:"sperren_replay_ms"`
+	DbPaarMs        float64 `json:"db_paar_ms"`
+	SpeichernMs     float64 `json:"speichern_ms"`
+	Grund           string  `json:"grund,omitempty"`
 }
 
 var (

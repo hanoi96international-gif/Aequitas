@@ -38,6 +38,7 @@ jobs:
               block_tx_deckel: (.block_tx_deckel | if type=="object" then del(.bedeutung) else . end),
               produktion: (.produktion | if type=="object" then del(.bedeutung) else . end),
               produktion_phasen: (.produktion_phasen | if type=="object" then del(.bedeutung) else . end),
+              vorladen: (.vorladen | if type=="object" then del(.bedeutung) else . end),
               produktions_vorrang: (.produktions_vorrang | if type=="object" then del(.bedeutung) else . end),
               wal_flush: .wal_flush,
               admission: .admission,
@@ -68,17 +69,18 @@ jobs:
           for x in e:
               k = datetime.datetime.utcfromtimestamp(x["at_ms"] / 1000).strftime("%H:%M")
               m.setdefault(k, []).append(x)
-          print("Minute  Versuche Bloecke    Txs   Deckel(min/max)  gesamt_ms(mittel/max)  laden_ms(mittel/max)  sperren_ms(mittel/max)  db_paar  speichern  Gruende")
+          print("Minute  Versuche Bloecke    Txs   Deckel(min/max)  gesamt_ms(mittel/max)  laden_ms(mittel/max)  sperren_ms(mittel/max) davon_replayMu  db_paar  speichern  Gruende")
           for k, xs in m.items():
               ok = [x for x in xs if not x.get("grund")]
               txs = sum(x["txs"] for x in ok)
               dk = [x["deckel"] for x in xs] or [0]
               g = [x["gesamt_ms"] for x in xs]; s = [x["sperren_ms"] for x in xs]
               la = [x.get("laden_ms", 0) for x in xs]
+              sr = [x.get("sperren_replay_ms", 0) for x in xs]
               dp = [x["db_paar_ms"] for x in xs]; sp = [x["speichern_ms"] for x in xs]
               gr = collections.Counter(x.get("grund") for x in xs if x.get("grund"))
               mit = lambda v: sum(v) / len(v) if v else 0
               print(f"{k}   {len(xs):6d} {len(ok):7d} {txs:7d}   {min(dk):5d}/{max(dk):5d}      "
-                    f"{mit(g):7.0f}/{max(g):6.0f}          {mit(la):7.0f}/{max(la):6.0f}        {mit(s):7.0f}/{max(s):6.0f}      "
+                    f"{mit(g):7.0f}/{max(g):6.0f}          {mit(la):7.0f}/{max(la):6.0f}        {mit(s):7.0f}/{max(s):6.0f}   {mit(sr):7.0f}      "
                     f"{mit(dp):5.0f}   {mit(sp):6.0f}   {dict(gr) if gr else ''}")
           PY
