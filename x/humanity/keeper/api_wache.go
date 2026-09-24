@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 )
@@ -211,7 +212,53 @@ func coordinatorWacheStand() (string, bool) {
 	if len(body.ValidatorURLs) < body.QuorumSize || body.QuorumSize == 0 {
 		return fmt.Sprintf("Quorum %d bei %d Vergleichsdiensten", body.QuorumSize, len(body.ValidatorURLs)), false
 	}
-	return fmt.Sprintf("Quorum %d von %d", body.QuorumSize, len(body.ValidatorURLs)), true
+	// ERREICHBAR, NICHT NUR KONFIGURIERT. Am 24.09.2026 meldete diese Pruefung
+	// "Quorum 2 von 2", waehrend einer der beiden Vergleichsdienste mit
+	// Contabo1 verschwunden war -- keine Registrierung konnte das Quorum
+	// erreichen, und die Wache war gruen.
+	erreichbar := vergleichsdiensteErreichbar(body.ValidatorURLs, vergleichsdienstAntwortet)
+	if erreichbar < body.QuorumSize {
+		return fmt.Sprintf("nur %d von %d Vergleichsdiensten erreichbar, Quorum %d -- keine Registrierung moeglich",
+			erreichbar, len(body.ValidatorURLs), body.QuorumSize), false
+	}
+	return fmt.Sprintf("Quorum %d, %d von %d erreichbar", body.QuorumSize, erreichbar, len(body.ValidatorURLs)), true
+}
+
+// vergleichsdiensteErreichbar zaehlt parallel, wie viele der Adressen auf
+// /health antworten.
+func vergleichsdiensteErreichbar(urls []string, antwortet func(string) bool) int {
+	var n atomic.Int64
+	var wg sync.WaitGroup
+	for _, u := range urls {
+		wg.Add(1)
+		go func(u string) {
+			defer wg.Done()
+			if antwortet(u) {
+				n.Add(1)
+			}
+		}(u)
+	}
+	wg.Wait()
+	return int(n.Load())
+}
+
+func vergleichsdienstAntwortet(basis string) bool {
+	client := &http.Client{Timeout: 5 * time.Second}
+	resp, err := client.Get(strings.TrimRight(basis, "/") + "/health")
+	if err != nil {
+		return false
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != 200 {
+		return false
+	}
+	var h struct {
+		Status string `json:"status"`
+	}
+	if json.NewDecoder(io.LimitReader(resp.Body, 1<<16)).Decode(&h) != nil {
+		return false
+	}
+	return h.Status == "ok"
 }
 
 // proofServerQuorum liest durchsetzung.quorum (0 wenn nicht enthalten).
