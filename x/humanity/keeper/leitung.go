@@ -118,6 +118,10 @@ type LeitNachricht struct {
 	// zuletzt bestaetigt hat) und Version. Siehe "Wer Mitglied ist".
 	SatzTerm    uint64 `json:"satz_term"`
 	SatzVersion uint64 `json:"satz_version"`
+	// Nur in Quittungen: Mitglieder, von denen der Folger in der letzten
+	// halben EntfernenNach gehoert hat. Der Leiter entfernt niemanden, den
+	// ein Folger noch hoert.
+	Lebend []string `json:"lebend,omitempty"`
 	// Nur in Leases: der Satz selbst und die bekannten Adressen der
 	// Mitglieder -- so erfaehrt jeder Folger, wen er bei einer Wahl fragt.
 	Satz []string          `json:"satz,omitempty"`
@@ -151,6 +155,9 @@ type LeitKonfig struct {
 	AufnahmeToleranz int64
 	// Zurueckgenommene Aufnahme: so lange nicht erneut versuchen.
 	AufnahmeSperre time.Duration
+	// So oft meldet sich jedes Mitglied bei allen anderen (Hallo) -- damit
+	// jeder selbst beurteilen kann, ob ein Validator noch lebt.
+	LebenszeichenAlle time.Duration
 }
 
 func leitVorgabe() LeitKonfig {
@@ -159,13 +166,15 @@ func leitVorgabe() LeitKonfig {
 		LeaseDauer:    6 * time.Second,
 		FolgerFrist:   12 * time.Second,
 		Staffel:       4 * time.Second,
-		WechselAlle:   60 * time.Minute,
+		WechselAlle:   10 * time.Minute,
 		HoeheToleranz: 2,
 
 		EntfernenNach:    30 * time.Minute,
 		AufnahmeFrist:    30 * time.Second,
 		AufnahmeToleranz: 50,
 		AufnahmeSperre:   10 * time.Minute,
+
+		LebenszeichenAlle: 10 * time.Second,
 	}
 }
 
@@ -202,6 +211,13 @@ type LeitUmgebung struct {
 	// Zugelassen: registrierter Validator (Signierschluessel an einen
 	// registrierten Menschen gebunden). nil = alle (Tests).
 	Zugelassen func(addr string) bool
+	// Mensch: an welchen registrierten Menschen ist dieser Schluessel
+	// gebunden? "" = unbekannt. Ein Mensch, eine Stimme: pro Mensch hoechstens
+	// ein Mitglied. nil = jeder Schluessel ist sein eigener Mensch (Tests).
+	Mensch func(addr string) string
+	// Unbekannt: ein Leiter hat einen Validator aufgenommen, den dieser Knoten
+	// (noch) nicht kennt -- Register bei den Peers nachfragen.
+	Unbekannt func(addr string)
 }
 
 // LeitSpeicher: was einen Neustart ueberleben muss. Ohne votedFor koennte ein
@@ -277,6 +293,7 @@ type Leitung struct {
 	letzteLease  time.Time            // Folger: letzte gueltige Lease
 	acks         map[string]time.Time // Leiter: Folger -> Sendezeit der bestaetigten Lease
 	ackSatz      map[string]string    // ... und mit welchem Satz quittiert
+	lebendBei    map[string][]string  // ... und wen der Folger noch hoert
 	gehoert      map[string]time.Time // wann zuletzt irgendeine Nachricht kam
 	stimmen      map[string]bool
 	vorStimmen   map[string]bool // laufende Vorwahl
@@ -285,6 +302,12 @@ type Leitung struct {
 	leiterSeit   time.Time
 	letzterTakt  time.Time
 	letzterHallo time.Time
+
+	// Folger: der Satz, den der Leiter gesehenVon in gesehenTerm zuletzt
+	// (glaubwuerdig) gezeigt hat.
+	gesehenSatz []string
+	gesehenVon  string
+	gesehenTerm uint64
 
 	// Planmaessiger Wechsel, Seite des alten Leiters.
 	abschliessen bool
@@ -357,7 +380,7 @@ func NeueLeitung(ich, url string, satz []string, startLeiter string, faehig bool
 		cfg: cfg, ich: strings.ToLower(ich), url: url, env: env,
 		ichFaehig: faehig,
 		faehig:    map[string]bool{}, urls: map[string]string{},
-		acks: map[string]time.Time{}, ackSatz: map[string]string{}, stimmen: map[string]bool{}, gehoert: map[string]time.Time{},
+		acks: map[string]time.Time{}, ackSatz: map[string]string{}, lebendBei: map[string][]string{}, stimmen: map[string]bool{}, gehoert: map[string]time.Time{},
 		bewerber: map[string]bewerberInfo{}, gesperrt: map[string]time.Time{},
 		gestartet: jetzt, letzteLease: jetzt,
 	}
@@ -438,6 +461,85 @@ func (l *Leitung) speichern() {
 
 func (l *Leitung) zugelassen(addr string) bool {
 	return l.env.Zugelassen == nil || l.env.Zugelassen(addr)
+}
+
+func (l *Leitung) mensch(addr string) string {
+	if l.env.Mensch == nil {
+		return addr
+	}
+	return l.env.Mensch(addr)
+}
+
+// aufnehmbar: registriert, an einen bekannten Menschen gebunden, und dieser
+// Mensch hat im Satz noch kein anderes Mitglied.
+func (l *Leitung) aufnehmbar(a string, satz []string) bool {
+	if !l.zugelassen(a) {
+		return false
+	}
+	m := l.mensch(a)
+	if m == "" {
+		return false
+	}
+	for _, b := range satz {
+		if b != a && l.mensch(b) == m {
+			return false
+		}
+	}
+	return true
+}
+
+// kuerzlichGehoert: hat dieser Knoten in der letzten halben EntfernenNach von
+// a gehoert? (Seit dem eigenen Start: wer eben erst gestartet ist, weiss es
+// nicht und gibt keine Auskunft.)
+func (l *Leitung) kuerzlichGehoert(a string, jetzt time.Time) bool {
+	halb := l.cfg.EntfernenNach / 2
+	zuletzt := l.gehoert[a]
+	if zuletzt.Before(l.gestartet) {
+		zuletzt = l.gestartet
+	}
+	return jetzt.Sub(zuletzt) < halb
+}
+
+// satzwechselPlausibel: prueft ein Folger, bevor er den Satz eines Leiters
+// uebernimmt. Ein Leiter, der luegt, soll so weder Unbekannte oder einen
+// Menschen doppelt aufnehmen noch Lebende hinauswerfen koennen: uebernimmt
+// eine Mehrheit den Satz nicht, gilt er nie als bestaetigt, und der Leiter
+// nimmt ihn zurueck.
+//
+// Verglichen wird mit dem Satz, den DIESER Leiter in DIESER Amtszeit zuletzt
+// gezeigt hat -- nicht mit dem eigenen: der kann nach einer Trennung aus
+// einem anderen, nie bestaetigten Zweig stammen, und dann lehnte der Folger
+// jeden Satz ab, und die Mitgliedschaft kaeme nie wieder zusammen.
+func (l *Leitung) satzwechselPlausibel(m LeitNachricht, jetzt time.Time) bool {
+	neu := normSatz(m.Satz)
+	vorher := l.gesehenSatz
+	if l.gesehenVon != m.Von || l.gesehenTerm != m.Term {
+		vorher = nil
+	}
+	for _, a := range neu {
+		if l.imSatz(a) || l.enthaelt(vorher, a) {
+			continue
+		}
+		if !l.aufnehmbar(a, neu) {
+			if l.env.Unbekannt != nil && (!l.zugelassen(a) || l.mensch(a) == "") {
+				l.env.Unbekannt(a)
+			}
+			return false
+		}
+	}
+	for _, a := range vorher {
+		if l.enthaelt(neu, a) {
+			continue
+		}
+		// Sich selbst hinauswerfen lassen, obwohl man die Lease gerade
+		// bekommt? Nein -- fuer die Bestaetigung zaehlt man dann ohnehin
+		// nicht mehr; und wer wirklich nur einseitig abgeschnitten ist, wird
+		// nach seinem naechsten Lebenszeichen wieder aufgenommen.
+		if a == l.ich || l.kuerzlichGehoert(a, jetzt) {
+			return false
+		}
+	}
+	return true
 }
 
 func (l *Leitung) hoehe() int64 {
@@ -753,8 +855,10 @@ func (l *Leitung) Takt(jetzt time.Time) []LeitNachricht {
 		}
 		// Kein Mitglied, oder seit einer Weile keine Lease (etwa nach einem
 		// Neustart des Leiters, der die eigene Adresse nicht kennt): melden.
-		if (!l.imSatz(l.ich) || jetzt.Sub(l.letzteLease) >= 2*l.cfg.Takt) &&
-			jetzt.Sub(l.letzterHallo) >= 2*l.cfg.Takt {
+		// Mitglieder ausserdem regelmaessig: Lebenszeichen fuer alle.
+		if ((!l.imSatz(l.ich) || jetzt.Sub(l.letzteLease) >= 2*l.cfg.Takt) &&
+			jetzt.Sub(l.letzterHallo) >= 2*l.cfg.Takt) ||
+			(l.cfg.LebenszeichenAlle > 0 && jetzt.Sub(l.letzterHallo) >= l.cfg.LebenszeichenAlle) {
 			l.letzterHallo = jetzt
 			raus = append(raus, l.basis(leitArtHallo, jetzt))
 		}
@@ -854,11 +958,16 @@ func (l *Leitung) Empfange(m LeitNachricht, jetzt time.Time) *LeitNachricht {
 	case leitArtLease:
 		return l.empfangeLease(m, jetzt)
 	case leitArtLeaseAck:
-		if l.rolle == leitLeiter && m.Term == l.term && m.Gewaehrt && m.SatzHash == l.hash && l.imSatz(m.Von) {
+		// Die Lease-Zusage zaehlt unabhaengig vom Satz des Folgers (er waehlt
+		// niemand anderen, solange sie gilt) -- sonst stuende die Annahme,
+		// sobald ein Folger einen Satzwechsel ablehnt. Fuer die Bestaetigung
+		// eines Satzes zaehlt nur eine Quittung MIT diesem Satz (quittiert).
+		if l.rolle == leitLeiter && m.Term == l.term && m.Gewaehrt && l.imSatz(m.Von) {
 			gesendet := time.UnixMilli(m.ZeitMs)
 			if alt, ok := l.acks[m.Von]; !ok || gesendet.After(alt) {
 				l.acks[m.Von] = gesendet
 				l.ackSatz[m.Von] = m.SatzHash
+				l.lebendBei[m.Von] = m.Lebend
 			}
 		} else if m.Term > l.term {
 			l.werdeFolger(m.Term, "", jetzt)
@@ -940,8 +1049,19 @@ func (l *Leitung) empfangeLease(m LeitNachricht, jetzt time.Time) *LeitNachricht
 	}
 	// Den Satz des Leiters uebernehmen (wie Raft-Folger das Log des Leiters):
 	// er ist der neueste, den eine Mehrheit ihn hat waehlen lassen.
-	if len(m.Satz) > 0 && m.SatzHash != l.hash &&
-		satzHashVon(m.SatzTerm, m.SatzVersion, normSatz(m.Satz)) == m.SatzHash {
+	plausibel := len(m.Satz) > 0 && m.SatzHash != l.hash &&
+		satzHashVon(m.SatzTerm, m.SatzVersion, normSatz(m.Satz)) == m.SatzHash &&
+		l.satzwechselPlausibel(m, jetzt)
+	if len(m.Satz) > 0 {
+		// Merken, was dieser Leiter zeigt -- Massstab fuer seine naechste
+		// Aenderung. Auch wenn er abgelehnt wurde: sonst gaelte die naechste
+		// Luege wieder als "erster Satz, den ich von ihm sehe".
+		if l.gesehenVon != m.Von || l.gesehenTerm != m.Term || plausibel {
+			l.gesehenSatz = normSatz(m.Satz)
+		}
+		l.gesehenVon, l.gesehenTerm = m.Von, m.Term
+	}
+	if plausibel {
 		l.setzeSatz(m.Satz, m.SatzTerm, m.SatzVersion)
 		l.fest = false
 		l.vorher = nil
@@ -956,6 +1076,11 @@ func (l *Leitung) empfangeLease(m LeitNachricht, jetzt time.Time) *LeitNachricht
 	ack.ZeitMs = m.ZeitMs
 	ack.Term = l.term
 	ack.Gewaehrt = true
+	for _, a := range l.satz {
+		if a != l.ich && a != m.Von && l.kuerzlichGehoert(a, jetzt) {
+			ack.Lebend = append(ack.Lebend, a)
+		}
+	}
 	return &ack
 }
 
@@ -1080,8 +1205,15 @@ func (l *Leitung) mitgliedschaft(jetzt time.Time) {
 		if l.vorher != nil && jetzt.Sub(l.vorschlagSeit) >= frist {
 			// Nicht bestaetigt: zuruecknehmen. Neuer Stand, damit der
 			// zurueckgenommene Satz ueberall ueberholt ist.
+			// Beide Richtungen sperren: eine abgelehnte Aufnahme wie eine
+			// abgelehnte Entfernung nicht gleich wieder versuchen.
 			for _, a := range l.satz {
 				if !l.enthaelt(l.vorher, a) {
+					l.gesperrt[a] = jetzt
+				}
+			}
+			for _, a := range l.vorher {
+				if !l.imSatz(a) {
 					l.gesperrt[a] = jetzt
 				}
 			}
@@ -1109,7 +1241,10 @@ func (l *Leitung) mitgliedschaft(jetzt time.Time) {
 		if zuletzt.Before(l.leiterSeit) {
 			zuletzt = l.leiterSeit
 		}
-		if jetzt.Sub(zuletzt) >= l.cfg.EntfernenNach {
+		if jetzt.Sub(zuletzt) >= l.cfg.EntfernenNach && !l.hoertNochJemand(a, jetzt) {
+			if t, ok := l.gesperrt[a]; ok && jetzt.Sub(t) < l.cfg.AufnahmeSperre {
+				continue
+			}
 			neu := make([]string, 0, len(l.satz)-1)
 			for _, b := range l.satz {
 				if b != a {
@@ -1129,7 +1264,7 @@ func (l *Leitung) mitgliedschaft(jetzt time.Time) {
 			}
 			continue
 		}
-		if l.imSatz(a) || !l.zugelassen(a) || b.hoehe < l.hoehe()-l.cfg.AufnahmeToleranz {
+		if l.imSatz(a) || !l.aufnehmbar(a, l.satz) || b.hoehe < l.hoehe()-l.cfg.AufnahmeToleranz {
 			continue
 		}
 		if t, ok := l.gesperrt[a]; ok && jetzt.Sub(t) < l.cfg.AufnahmeSperre {
@@ -1142,6 +1277,20 @@ func (l *Leitung) mitgliedschaft(jetzt time.Time) {
 	}
 	sort.Strings(kand)
 	l.aendere(append(append([]string(nil), l.satz...), kand[0]), "aufgenommen "+kand[0], jetzt)
+}
+
+// hoertNochJemand: meldet ein Folger (in einer frischen Quittung), dass er a
+// noch hoert? Dann ist a nur vom Leiter abgeschnitten, nicht ausgefallen.
+func (l *Leitung) hoertNochJemand(a string, jetzt time.Time) bool {
+	for f, lebend := range l.lebendBei {
+		if t, ok := l.acks[f]; !ok || jetzt.Sub(t) >= l.cfg.LeaseDauer {
+			continue
+		}
+		if l.enthaelt(lebend, a) {
+			return true
+		}
+	}
+	return false
 }
 
 func (l *Leitung) enthaelt(satz []string, a string) bool {

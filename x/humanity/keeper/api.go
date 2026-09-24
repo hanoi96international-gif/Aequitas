@@ -2953,6 +2953,7 @@ func (a *APIServer) handleRegisterValidatorKey(w http.ResponseWriter, r *http.Re
 		return
 	}
 	a.blockchain.AddAuthorizedValidator(signingAddr)
+	a.blockchain.merkeValidatorMensch(signingAddr, humanWallet)
 	fmt.Printf("[VALIDATOR] ✓ Registered key %s for human %s\n", signingAddr, humanWallet)
 	json.NewEncoder(w).Encode(map[string]interface{}{
 		"success":         true,

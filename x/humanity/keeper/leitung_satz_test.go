@@ -320,17 +320,140 @@ func TestSatz_DreiAufZweiUnterTrennung(t *testing.T) {
 		if n.annehmender() != 0 {
 			t.Fatal("Start")
 		}
+		// 2 ist fuer beide still (sonst entfernt ihn niemand -- 1 hoert ihn
+		// ja noch) ...
 		n.gekappt[[2]int{0, 2}] = true
+		n.gekappt[[2]int{1, 2}] = true
 		for schritt := 0; schritt < 5000 && len(n.mitglieder(0)) == 3; schritt++ {
 			n.schritt()
 		}
 		if len(n.mitglieder(0)) != 2 {
 			t.Fatalf("seed %d: nicht entfernt", seed)
 		}
+		// ... und genau jetzt kommt 2 zu 1 zurueck, waehrend 0 von 1
+		// abreisst, bevor 1 den Zweier-Satz hat.
+		delete(n.gekappt, [2]int{1, 2})
 		n.gekappt[[2]int{0, 1}] = true
 		n.laufe(60 * time.Second)
 		if n.zweiLeiter {
 			t.Fatalf("seed %d: zwei Leiter", seed)
 		}
+	}
+}
+
+// Nur vom Leiter abgeschnitten ist nicht ausgefallen: solange ein Folger ihn
+// hoert, wird niemand entfernt.
+func TestSatz_LebendeWerdenNichtEntfernt(t *testing.T) {
+	n := neuesSimNetz(t, 3, 26, satzTestKonfig())
+	n.laufe(10 * time.Second)
+	n.gekappt[[2]int{0, 2}] = true
+	// In JEDEM Schritt: der Leiter schlaegt es nicht einmal vor (die Folger
+	// wuerden es ablehnen -- das ist die zweite Schicht, nicht die erste).
+	for schritt := 0; schritt < 4*60*20; schritt++ {
+		n.schritt()
+		if m := n.mitglieder(0); len(m) != 3 {
+			t.Fatalf("t=%s: Leiter hat einen lebenden Validator entfernt: %v", n.jetzt, m)
+		}
+	}
+	for i := range n.knoten {
+		if m := n.mitglieder(i); len(m) != 3 {
+			t.Fatalf("%d: %v -- ein lebender Validator wurde entfernt", i, m)
+		}
+	}
+	if n.zweiLeiter || n.annehmender() < 0 {
+		t.Fatalf("zwei Leiter %v / Annehmender %d", n.zweiLeiter, n.annehmender())
+	}
+}
+
+// Ein Mensch, eine Stimme: zwei Schluessel desselben Menschen -- nur einer
+// wird Mitglied.
+func TestSatz_EinMenschEineStimme(t *testing.T) {
+	n := neuesSimNetz(t, 4, 27, satzTestKonfig())
+	n.genesis = []string{n.knoten[0].addr}
+	mensch := map[string]string{}
+	for i, k := range n.knoten {
+		mensch[k.addr] = fmt.Sprintf("mensch-%d", i)
+	}
+	mensch[n.knoten[3].addr] = mensch[n.knoten[2].addr] // derselbe Mensch
+	for i := range n.knoten {
+		n.baue(i)
+		n.knoten[i].l.env.Mensch = func(a string) string { return mensch[a] }
+	}
+	// In JEDEM Schritt: auch der Leiter schlaegt nie beide vor (die Folger
+	// lehnten es ab -- zweite Schicht).
+	for schritt := 0; schritt < 2*60*20; schritt++ {
+		n.schritt()
+		zwei, drei := false, false
+		for _, a := range n.mitglieder(0) {
+			zwei = zwei || a == n.knoten[2].addr
+			drei = drei || a == n.knoten[3].addr
+		}
+		if zwei && drei {
+			t.Fatalf("t=%s: Leiter hat denselben Menschen zweimal im Satz", n.jetzt)
+		}
+	}
+	m := n.mitglieder(0)
+	if len(m) != 3 {
+		t.Fatalf("Satz %v -- erwartet 0, 1 und genau einer von 2/3", m)
+	}
+	zwei, drei := false, false
+	for _, a := range m {
+		zwei = zwei || a == n.knoten[2].addr
+		drei = drei || a == n.knoten[3].addr
+	}
+	if zwei == drei {
+		t.Fatalf("Satz %v -- derselbe Mensch zweimal oder gar nicht", m)
+	}
+}
+
+// Ein Leiter, der luegt: er wirft einen lebenden Validator hinaus und nimmt
+// einen nicht registrierten auf. Die Folger uebernehmen das nicht; die
+// Aenderung wird nie bestaetigt, der Leiter nimmt sie zurueck.
+func TestSatz_LuegenderLeiter(t *testing.T) {
+	n := neuesSimNetz(t, 5, 28, satzTestKonfig())
+	n.genesis = []string{n.knoten[0].addr, n.knoten[1].addr, n.knoten[2].addr}
+	// 3 ist nicht registriert; 4 ist registriert, gehoert aber demselben
+	// Menschen wie 1.
+	n.zugelassen = map[string]bool{n.knoten[0].addr: true, n.knoten[1].addr: true, n.knoten[2].addr: true, n.knoten[4].addr: true}
+	mensch := map[string]string{}
+	for i, k := range n.knoten {
+		mensch[k.addr] = fmt.Sprintf("mensch-%d", i)
+	}
+	mensch[n.knoten[4].addr] = mensch[n.knoten[1].addr]
+	for i := range n.knoten {
+		n.baue(i)
+		n.knoten[i].l.env.Mensch = func(a string) string { return mensch[a] }
+	}
+	n.knoten[3].an = false
+	n.knoten[4].an = false
+	n.laufe(20 * time.Second)
+	if n.annehmender() != 0 {
+		t.Fatal("Start")
+	}
+	for _, versuch := range []struct {
+		name string
+		satz []string
+	}{
+		{"wirft den lebenden 2 hinaus", []string{n.knoten[0].addr, n.knoten[1].addr}},
+		{"nimmt den nicht registrierten 3 auf", []string{n.knoten[0].addr, n.knoten[1].addr, n.knoten[2].addr, n.knoten[3].addr}},
+		{"nimmt 4 auf, einen zweiten Schluessel des Menschen hinter 1", []string{n.knoten[0].addr, n.knoten[1].addr, n.knoten[2].addr, n.knoten[4].addr}},
+	} {
+		l := n.knoten[0].l
+		l.mu.Lock()
+		l.aendere(versuch.satz, "Luege: "+versuch.name, n.uhr(0))
+		l.mu.Unlock()
+		n.laufe(5 * time.Second)
+		for i := 1; i <= 2; i++ {
+			if got := strings.Join(n.mitglieder(i), ","); got != strings.Join(n.satz()[:3], ",") {
+				t.Fatalf("%s: Folger %d hat uebernommen: %s", versuch.name, i, got)
+			}
+		}
+		n.laufe(30 * time.Second)
+		if m := n.mitglieder(0); len(m) != 3 {
+			t.Fatalf("%s: Leiter hat nicht zurueckgenommen: %v", versuch.name, m)
+		}
+	}
+	if n.zweiLeiter {
+		t.Fatal("zwei Leiter")
 	}
 }

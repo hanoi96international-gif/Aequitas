@@ -355,9 +355,12 @@ type BlockDAG struct {
 	signingKey           *ecdsa.PrivateKey
 	selfProposer         string          // lower-cased Ethereum address of this node's signing key
 	authorizedValidators map[string]bool // Ethereum addresses allowed to propose blocks
-	currentEpoch         *EpochCommittee // active block-producer committee for the current epoch
-	epochMu              sync.RWMutex    // guards currentEpoch
-	activeSyncPeers      map[string]bool // peers with a running syncWithNode goroutine
+	// Signierschluessel -> registrierter Mensch, nur aus geprueften Bindungen
+	// (leitung_netz.go: ein Mensch, eine Stimme in der Leitung).
+	validatorMenschen sync.Map
+	currentEpoch      *EpochCommittee // active block-producer committee for the current epoch
+	epochMu           sync.RWMutex    // guards currentEpoch
+	activeSyncPeers   map[string]bool // peers with a running syncWithNode goroutine
 	// peerSyncHeight tracks, per peer URL, the highest block height this
 	// node has actually SUCCESSFULLY imported FROM that specific peer via
 	// doSyncOnce — see that function's own FIX comment (2026-07-06) for the

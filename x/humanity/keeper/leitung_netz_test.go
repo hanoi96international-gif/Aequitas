@@ -2,6 +2,7 @@ package keeper
 
 import (
 	"crypto/ecdsa"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -109,11 +110,12 @@ func neuesHTTPLeitungsNetz(t *testing.T, n int, genesisAnzahl int, cfg LeitKonfi
 		}
 	}
 	for i, k := range netz.ks {
-		for _, o := range netz.ks {
-			k.dag.authorizedValidators[o.addr] = true // alle registriert
+		for j, o := range netz.ks {
+			k.dag.authorizedValidators[o.addr] = true // alle registriert, je ein Mensch
+			k.dag.merkeValidatorMensch(o.addr, fmt.Sprintf("0x%040d", j+1))
 		}
 		env := LeitUmgebung{Hoehe: func() int64 { return 10 }, Entleert: func() bool { return true },
-			Zugelassen: k.dag.istZugelassenerValidator}
+			Zugelassen: k.dag.istZugelassenerValidator, Mensch: k.dag.validatorMenschVon}
 		start := ""
 		if len(genesis) > 0 {
 			start = genesis[0]
@@ -376,5 +378,20 @@ func TestLeitungEntleertUndVerwerfen_RealDB(t *testing.T) {
 	}
 	if !cs.leitungEntleert() {
 		t.Fatal("nach dem Verwerfen nicht entleert")
+	}
+}
+
+func TestValidatorMensch(t *testing.T) {
+	dag := &BlockDAG{}
+	if dag.validatorMenschVon("0xAA") != "" {
+		t.Fatal("unbekannter Schluessel hat einen Menschen")
+	}
+	dag.merkeValidatorMensch("0xAA", "0xMENSCH")
+	dag.merkeValidatorMensch("0xBB", "") // ohne Menschen: nichts merken
+	if got := dag.validatorMenschVon("0xaa"); got != "0xmensch" {
+		t.Fatalf("got %q", got)
+	}
+	if dag.validatorMenschVon("0xbb") != "" {
+		t.Fatal("leere Bindung gemerkt")
 	}
 }

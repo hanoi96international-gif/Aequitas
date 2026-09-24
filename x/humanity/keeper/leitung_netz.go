@@ -27,7 +27,7 @@ import (
 // bisher allein mit ANNAHME_ROLLE. Mit ihr:
 //
 //	AEQUITAS_LEITUNG=an
-//	AEQUITAS_LEITUNG_WECHSEL_MINUTEN=60        (0 = kein planmaessiger Wechsel)
+//	AEQUITAS_LEITUNG_WECHSEL_MINUTEN=10        (Vorgabe; 0 = kein planmaessiger Wechsel)
 //	AEQUITAS_LEITUNG_ZWEI_WECHSELN=1           (Wechsel auch bei nur zwei Validatoren)
 //
 // und NUR auf den Validatoren, mit denen eine Kette beginnt (Neustart bei
@@ -240,6 +240,8 @@ func StarteLeitung(dag *BlockDAG, cs *ChainState, selfURL string) *Leitung {
 			SafeGoroutine("leitung-ueberholt", func() { dag.leitungUeberholt(term) })
 		},
 		Zugelassen: dag.istZugelassenerValidator,
+		Mensch:     dag.validatorMenschVon,
+		Unbekannt:  func(string) { dag.validatorRegisterNachfragen() },
 	}
 	faehig := !cs.nurLesend.Load() && leistungsnachweisErfuellt()
 	l := NeueLeitung(ich, selfURL, satz, start, faehig, cs.leitungLaden(), cfg, env, time.Now())
@@ -596,4 +598,48 @@ func validatorIPsFrei(l *Leitung) {
 		}
 	}
 	rpcRateLimitFreiErgaenzen(ips)
+}
+
+// merkeValidatorMensch: nur aus geprueften Bindungen (eigene Registrierung
+// oder signierte Bindung eines Peers). Ein Mensch, eine Stimme: die Leitung
+// nimmt pro Mensch hoechstens einen Schluessel auf -- auch wenn jemand auf
+// zwei Knoten zwei verschiedene Schluessel registriert hat (jeder Knoten
+// prueft UNIQUE(human_wallet) nur fuer sich).
+func (dag *BlockDAG) merkeValidatorMensch(signing, mensch string) {
+	signing, mensch = strings.ToLower(strings.TrimSpace(signing)), strings.ToLower(strings.TrimSpace(mensch))
+	if signing != "" && mensch != "" {
+		dag.validatorMenschen.Store(signing, mensch)
+	}
+}
+
+// validatorMenschVon: "" = unbekannt (dann nimmt die Leitung ihn nicht auf).
+func (dag *BlockDAG) validatorMenschVon(signing string) string {
+	signing = strings.ToLower(strings.TrimSpace(signing))
+	if v, ok := dag.validatorMenschen.Load(signing); ok {
+		return v.(string)
+	}
+	var h string
+	if dag.state == nil || dag.state.db == nil {
+		return ""
+	}
+	if err := dag.state.db.QueryRow(`SELECT human_wallet FROM validator_keys WHERE signing_address = $1`, signing).Scan(&h); err != nil {
+		return ""
+	}
+	h = strings.ToLower(h)
+	dag.merkeValidatorMensch(signing, h)
+	return h
+}
+
+var validatorRegisterZuletzt atomic.Int64
+
+// validatorRegisterNachfragen: hoechstens alle 30 s das Register bei den
+// Peers abgleichen (ein Leiter hat jemanden aufgenommen, den dieser Knoten
+// noch nicht kennt).
+func (dag *BlockDAG) validatorRegisterNachfragen() {
+	jetzt := time.Now().Unix()
+	alt := validatorRegisterZuletzt.Load()
+	if jetzt-alt < 30 || !validatorRegisterZuletzt.CompareAndSwap(alt, jetzt) {
+		return
+	}
+	SafeGoroutine("leitung-register", dag.syncValidatorsFromAllPeers)
 }
