@@ -37,7 +37,8 @@ jobs:
               || { echo "FEHLER: proof-caddy -> aequitas-node:8080"; exit 1; }
 
             if grep -E '^aequitas\.digital' "$ALT" >/dev/null 2>&1; then
-              echo "=== Apex-Block schon vorhanden ==="
+              echo "=== Apex-Block schon vorhanden — reload falls Config noch nicht aktiv ==="
+              docker exec proof-caddy caddy reload --config /etc/caddy/Caddyfile --adapter caddyfile
             else
               SICHERUNG="$ALT.bak-apex-$(date +%s)"
               cp -a "$ALT" "$SICHERUNG"
