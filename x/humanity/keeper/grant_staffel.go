@@ -57,6 +57,12 @@ const (
 	grantSofortAnteil  = 200.0 // AEQ sofort im Guthaben
 	grantStaffelAnteil = 800.0 // AEQ als Staffel
 	grantStaffelTage   = 30
+
+	// Die Zweitpruefung zaehlt erst ab Tag 7 nach der Registrierung. Sonst
+	// ist sie keine Pruefung an einem ANDEREN Tag, sondern dieselbe Sitzung
+	// zweimal -- und genau die Wiederholung ueber Tage ist es, die eine
+	// Deepfake-Farm teuer macht (docs/LEBENDIGKEIT_GEGEN_DEEPFAKES.md).
+	erneuerungMindestTage = 7
 )
 
 // stagedGrantActivationOverride: nur fuer Tests (0 = Konstante gilt).
@@ -306,9 +312,23 @@ func (a *APIServer) handleLivenessRenewal(w http.ResponseWriter, r *http.Request
 	a.state.mu.RLock()
 	acc, ok := a.state.accounts.Get(wallet)
 	offen := ok && acc.IsHuman && acc.GrantStagedRest > 0
+	var ab int64
+	if offen {
+		ab = erneuerungFruehestens(acc)
+	}
 	a.state.mu.RUnlock()
 	if !offen {
 		jsonError(w, "no staged grant on this wallet", http.StatusConflict)
+		return
+	}
+	// Nur hier, bei der Annahme -- nicht in applyLivenessRenewalDeltaLocked:
+	// das Nachspielen bestehender Bloecke darf sich nicht aendern. Der
+	// Coordinator prueft dasselbe schon vor der Aufnahme (erneuerung.py);
+	// das hier haelt auch, wenn ein Coordinator es nicht tut.
+	if now < ab {
+		w.WriteHeader(http.StatusConflict)
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"error": "second liveness check counts from day 7 after registration", "frueh_ab": ab})
 		return
 	}
 	tx := Transaction{Type: "liveness_renewal", Wallet: wallet, DistributionAt: req.IssuedAt}
@@ -322,6 +342,17 @@ func (a *APIServer) handleLivenessRenewal(w http.ResponseWriter, r *http.Request
 		return
 	}
 	json.NewEncoder(w).Encode(map[string]interface{}{"ok": true, "wallet": wallet, "renewed_at": now})
+}
+
+// erneuerungFruehestens: ab wann eine Erneuerung angenommen wird -- Tag 7
+// nach der Registrierung. Die Registrierzeit steckt in GrantStagedUntil
+// (Registrierung + 30 Tage, gesetzt in registerHumanMitKlasseLocked). Ohne
+// offene Staffel 0: dann gibt es ohnehin nichts zu erneuern.
+func erneuerungFruehestens(acc *AccountState) int64 {
+	if acc == nil || acc.GrantStagedUntil == 0 {
+		return 0
+	}
+	return acc.GrantStagedUntil - int64(grantStaffelTage-erneuerungMindestTage)*86400
 }
 
 const livenessRenewalDomain = "aequitas-liveness-renewal-v1"
