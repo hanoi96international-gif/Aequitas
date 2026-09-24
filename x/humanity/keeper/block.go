@@ -52,6 +52,12 @@ type Transaction struct {
 	// StateRoot divergence identical in kind to the swap-fee bug fixed in 8e3f675.
 	FromDemurrageLost float64 `json:"from_demurrage_lost,omitempty"`
 	ToDemurrageLost   float64 `json:"to_demurrage_lost,omitempty"`
+	// Gebuehr: bei "transfer" die Ueberweisungsgebuehr, die der Absender
+	// ZUSAETZLICH zu Amount bezahlt hat und die ans Grundeinkommen ging.
+	// Bis zum 24.09.2026 stand sie nirgends -- ein nachspielender Knoten
+	// belastete den Absender dann nur mit Amount und schrieb dem
+	// Grundeinkommen nichts gut (applyTransferDeltaLockedSammelnd).
+	Gebuehr float64 `json:"gebuehr,omitempty"`
 	// DistributionAt carries the exact Unix timestamp the primary chose for
 	// a distribution round (e.g. the new last_ubi_at) on
 	// "ubi_distribution_finalize" TXs. Audit recheck 2 (P0 #4) found the
@@ -7114,7 +7120,7 @@ func (dag *BlockDAG) replayTransactions(block *Block, force bool) (ok bool) {
 			// comment: dag.state.activeTx was already set directly above
 			// this loop, and dbExecCtx falls back to it.
 			phMarkSer := time.Now()
-			errSeriell := dag.state.applyTransferDeltaLockedSammelnd(withTx(context.Background(), dbTx), wallet, to, tx.Amount, tx.FromDemurrageLost, tx.ToDemurrageLost, block.Timestamp, kontenSammlung)
+			errSeriell := dag.state.applyTransferDeltaLockedSammelnd(withTx(context.Background(), dbTx), wallet, to, tx.Amount, tx.FromDemurrageLost, tx.ToDemurrageLost, block.Timestamp, kontenSammlung, tx.Gebuehr)
 			merkeReplaySeriellZeit(phMarkSer)
 			phBlock.seriell += time.Since(phMarkSer)
 			if err := errSeriell; err != nil {

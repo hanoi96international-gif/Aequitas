@@ -155,7 +155,7 @@ func collectDisjointTransferBatch(txs []Transaction, start int) (batch []Transac
 			}
 			break
 		}
-		if tx.FromDemurrageLost != 0 || tx.ToDemurrageLost != 0 {
+		if tx.FromDemurrageLost != 0 || tx.ToDemurrageLost != 0 || tx.Gebuehr != 0 {
 			// Nur zaehlen, wenn es die ERSTE ist: dann bleibt der Lauf leer und
 			// die Ueberweisung geht seriell. Bricht die Demurrage einen bereits
 			// laufenden Buendel ab, ist das kein Verlust -- das Buendel wird

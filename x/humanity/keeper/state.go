@@ -5553,6 +5553,10 @@ func (cs *ChainState) TransferWithV7FeeAtomic(from, to string, amount float64, p
 			return Transaction{}, err
 		}
 		pendingTxTemplate.Amount = netAmount
+		// Was der Absender ueber netAmount hinaus bezahlt hat (ans
+		// Grundeinkommen) -- ohne dieses Feld belastete ein nachspielender
+		// Knoten nur netAmount (Transaction.Gebuehr).
+		pendingTxTemplate.Gebuehr = NewDecimal(amount).Sub(NewDecimal(netAmount)).Float()
 		pendingTxTemplate.FromDemurrageLost = fromLost
 		pendingTxTemplate.ToDemurrageLost = toLost
 		return pendingTxTemplate, nil
@@ -7993,10 +7997,16 @@ func (cs *ChainState) ApplyTransferDelta(from, to string, netAmount, fromLost, t
 // aus dem Speicher. Die Pool-Schreibvorgaenge der Demurrage bleiben
 // unberuehrt an Ort und Stelle.
 func (cs *ChainState) applyTransferDeltaLocked(ctx context.Context, from, to string, netAmount, fromLost, toLost float64, activityAt int64) error {
-	return cs.applyTransferDeltaLockedSammelnd(ctx, from, to, netAmount, fromLost, toLost, activityAt, nil)
+	return cs.applyTransferDeltaLockedSammelnd(ctx, from, to, netAmount, fromLost, toLost, activityAt, nil, 0)
 }
 
-func (cs *ChainState) applyTransferDeltaLockedSammelnd(ctx context.Context, from, to string, netAmount, fromLost, toLost float64, activityAt int64, sammler *kontenSammler) error {
+// gebuehr: Ueberweisungsgebuehr, die der Absender zusaetzlich bezahlt und die
+// ins Grundeinkommen geht (Transaction.Gebuehr; 0 = keine, wie bei allen
+// Bloecken vor dem 24.09.2026).
+func (cs *ChainState) applyTransferDeltaLockedSammelnd(ctx context.Context, from, to string, netAmount, fromLost, toLost float64, activityAt int64, sammler *kontenSammler, gebuehr float64) error {
+	if gebuehr < 0 || math.IsNaN(gebuehr) || math.IsInf(gebuehr, 0) {
+		return fmt.Errorf("transfer: ungueltige Gebuehr %v: %w", gebuehr, ErrZustandLehntAb)
+	}
 	from = strings.ToLower(from)
 	to = strings.ToLower(to)
 	// FIX (Monster Audit follow-up, 2026-07-12, P0): same cold-cache pattern
@@ -8028,17 +8038,30 @@ func (cs *ChainState) applyTransferDeltaLockedSammelnd(ctx context.Context, from
 	// skipped the saveAccountToDB call below). Check against the
 	// post-decay balance FIRST, without mutating anything, so a failing
 	// transfer truly changes nothing.
-	if fromAcc.Balance.Float()-fromLost < netAmount {
+	if fromAcc.Balance.Float()-fromLost < netAmount+gebuehr {
 		// Deterministisch: derselbe Block scheitert beim tausendsten Versuch
 		// aus demselben Grund. Beim Nachspielen darf das den Block nicht
 		// toeten -- siehe zustand_ablehnung.go fuer die sechs Minuten
 		// Stillstand, die genau das am 05.09.2026 gekostet hat.
-		return fmt.Errorf("insufficient balance (have %.6f after demurrage, need %.6f): %w", fromAcc.Balance.Float()-fromLost, netAmount, ErrZustandLehntAb)
+		return fmt.Errorf("insufficient balance (have %.6f after demurrage, need %.6f): %w", fromAcc.Balance.Float()-fromLost, netAmount+gebuehr, ErrZustandLehntAb)
 	}
 	if err := cs.applyDemurrageLossLockedCtx(ctx, fromAcc, fromLost); err != nil {
 		return fmt.Errorf("transfer: could not settle sender %s demurrage: %w", from, err)
 	}
 	fromAcc.Balance = fromAcc.Balance.Sub(NewDecimal(netAmount))
+	if gebuehr > 0 {
+		fromAcc.Balance = fromAcc.Balance.Sub(NewDecimal(gebuehr))
+		cs.ensureAccountLoadedCtx(ctx, ubiPoolAddr)
+		ubiAcc, ok := cs.accounts.Get(ubiPoolAddr)
+		if !ok {
+			ubiAcc = &AccountState{Address: ubiPoolAddr}
+			cs.accounts.Set(ubiPoolAddr, ubiAcc)
+		}
+		ubiAcc.Balance = ubiAcc.Balance.Add(NewDecimal(gebuehr))
+		if err := cs.saveAccountToDBCtx(ctx, ubiAcc); err != nil {
+			return fmt.Errorf("transfer: could not credit UBI pool with fee: %w", err)
+		}
+	}
 	// FIX (audit 2026-08-15): the ingestion path this mirrors (transferLocked)
 	// calls touchActivity on BOTH sides — "sending counts as using the money",
 	// per its own comment — and every other apply*Delta counterpart in this

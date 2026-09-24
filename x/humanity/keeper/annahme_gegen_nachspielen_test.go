@@ -219,7 +219,7 @@ func TestNachspielen_SeriellUndParallelGleicheEmpfaengerUhr(t *testing.T) {
 
 	csS := bauen()
 	csS.mu.Lock()
-	err = csS.applyTransferDeltaLockedSammelnd(context.Background(), sender, empf, 600, 0, 0, t0, nil)
+	err = csS.applyTransferDeltaLockedSammelnd(context.Background(), sender, empf, 600, 0, 0, t0, nil, 0)
 	csS.mu.Unlock()
 	if err != nil {
 		t.Fatalf("serieller Pfad scheiterte: %v", err)
