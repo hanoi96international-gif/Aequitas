@@ -53,14 +53,18 @@ const (
 	// Peer IDs are NODE_KEY-derived and stable across restarts and address
 	// changes; these were read from each node's own /api/status node_id field
 	// on 2026-08-14. BOOTSTRAP_P2P_ADDR still overrides this list entirely.
-	defaultBootstrapContabo1 = "/ip4/173.249.37.118/tcp/4001/p2p/12D3KooWHfPy6g3jvyC1mvqzCHvy5QBsDmHHsvfwvwXQGrtQ2pVm"
+	//
+	// Contabo1 (173.249.37.118) ist seit dem 24.09.2026 abgeschaltet -- Abo
+	// nicht verlaengert. Seine Adresse steht hier nicht mehr: eine
+	// gekuendigte IP vergibt der Anbieter neu, und ein Bootstrap-Eintrag ist
+	// Vertrauen. Ein neuer zweiter Server kommt mit seiner Peer-ID dazu.
 	defaultBootstrapContabo2 = "/ip4/194.163.188.71/tcp/4001/p2p/12D3KooWBv34kuVcmNDxZT4kCZFvNVGhy4zgkBZDGMtp7YSx2UUN"
 )
 
 // defaultBootstrapNodes is the built-in P2P bootstrap set used when
 // BOOTSTRAP_P2P_ADDR is unset — see the constants above for why these are
-// IP-literal multiaddrs and why there are two of them.
-var defaultBootstrapNodes = []string{defaultBootstrapContabo1, defaultBootstrapContabo2}
+// IP-literal multiaddrs.
+var defaultBootstrapNodes = []string{defaultBootstrapContabo2}
 
 // p2pListenPort returns P2P_LISTEN_PORT if set to a valid port number,
 // otherwise ListenPort. See ListenPort's own comment for why this exists —
@@ -90,7 +94,7 @@ func BootstrapNode() string {
 // BootstrapNodes returns every configured P2P bootstrap multiaddr to try on
 // startup: BOOTSTRAP_P2P_ADDR (comma-separated, if set) plus the built-in
 // defaults. A single hardcoded bootstrap address has already gone stale in
-// production twice (see defaultBootstrapContabo1's comment) — at a 100-node
+// production twice (see defaultBootstrapContabo2's comment) — at a 100-node
 // target a lone bootstrap address being down (redeploy, restart, outage)
 // would strand every node that hasn't already connected, since P2P
 // connectivity (unlike HTTP peer discovery, which already supports multiple
@@ -361,7 +365,7 @@ func (n *P2PNode) Start() {
 	fmt.Println("── Connecting to Bootstrap Node(s) ──────")
 	// Try every configured bootstrap address, not just one (scale audit): a
 	// single hardcoded/fixed bootstrap address has already gone stale in
-	// production twice (see defaultBootstrapContabo1's comment) and stranded
+	// production twice (see defaultBootstrapContabo2's comment) and stranded
 	// every node dialing it. Each dial is independent, so a failure on one
 	// address doesn't affect the rest.
 	connected, skippedSelf := 0, 0

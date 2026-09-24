@@ -1,6 +1,26 @@
 # Launch-Checkliste
 
-**Stand 23.09.2026, abends. Alles auf dem Prüfstand — Befund und was behoben ist, zuerst. Der Stand vom 22.09. folgt darunter.**
+**Stand 24.09.2026, mittags. Contabo1 ist abgeschaltet — was das bedeutet und was jetzt gilt, zuerst. Der Stand vom 23.09. folgt darunter.**
+
+> ## 24.09.: Contabo1 abgeschaltet, C2 trägt allein
+>
+> **Was passiert ist.** C1 (173.249.37.118) war ab der Nacht zum 24.09. weder per SSH noch per HTTP erreichbar: Das Abo ist ausgelaufen. **Entscheidung (Betreiber): C1 wird nicht verlängert, vor dem Launch startet die Kette ohnehin bei null.** Die Wache meldete den Ausfall um 05:17 UTC. GitHub startet den „alle 10 Minuten“-Zeitplan in der Praxis nur alle paar Stunden; eine engere Überwachung übernimmt der Wachhund auf der Box (ntfy).
+>
+> **Was ich umgestellt habe (alles umkehrbar):**
+> - **C2 nimmt Überweisungen an** (`ANNAHME_ROLLE` entfernt); die Eigenlast-Bremse ist auf C2 aus, weil das beim einzigen annehmenden Knoten gemessen bremst.
+> - **Vorladen (PR #180) läuft auf C2.** C2 wurde über `deploy-contabo2-manual.yml` deployt, weil der normale Deploy richtigerweise auf einen C1-Deploy wartet, der nie mehr gelingt. `deploy-contabo.yml` (C1) läuft nicht mehr bei jedem Push.
+> - **C1 ist kein vertrauenswürdiger Seed mehr.** Eine gekündigte IP vergibt der Anbieter neu. C1 ist aus den eingebauten Seeds und Bootstrap-Adressen entfernt. Neu: `PRIMARY_NODE_URLS=keine` heißt „einziger Validator, keine Seeds“. Die Selbstheilung, der Totmann-Schalter und das Tor der täglichen Verteilung prüfen dann nicht gegen eine tote Adresse. Dieses Tor hätte die Verteilung auf C2 sonst dauerhaft gesperrt.
+> - **Wache und Prüfstand arbeiten mit einer Knotenliste.** Ein neuer Server kommt mit einer Zeile dazu. **Falsch-Grün beseitigt:** „Coordinator ok, Quorum 2“ hieß nur, dass die Konfiguration 2 sagt. Jetzt wird gezählt, wie viele Vergleichsdienste tatsächlich antworten.
+>
+> **Was deshalb gerade NICHT geht (Prüfstand, ehrlich rot):**
+>
+> | | Warum | Wer |
+> |---|---|---|
+> | **aequitas.digital** (Startseite, Hauptadresse der App, APK-Download) | DNS zeigt auf C1 | **du:** A-Eintrag von `aequitas.digital` und `www` auf `194.163.188.71`. Das Not-Frontend auf C2 ist vorbereitet (`c2-emergency-apex-prep.yml`). Danach `tls internal` entfernen, damit ein echtes Zertifikat kommt. Die App 1.7.4 weicht bis dahin auf `proof2.aequitas.digital` aus, sofern sie mit der Ausweichliste gebaut ist. |
+> | **Registrierung** | Der Coordinator auf C2 braucht 2 Vergleichsdienste, proof1 lag auf C1 | kommt mit dem zweiten Server zurück. Übergangsweise auf 1 zu senken ist deine Entscheidung (Dublettenschutz dann nur durch einen Dienst). |
+> | **Zweiter Validator** | es gibt nur C2 | **du:** neuen Server beschaffen (Empfehlung: dedizierte Kerne, ≥ 8, NVMe). Mit ihm geht `mindestBootstrapKnoten` im Test zurück auf 2. |
+>
+> **Neustart bei null (vor dem Launch):** eigener Schritt, wenn der zweite Server steht. Dazu gehören: neues `genesis_time`, `AUTHORIZED_VALIDATORS` = die beiden neuen Signieradressen, leere Kettendatenbanken, und das Löschen der Testdaten bei Proof-Server, Coordinator und Vergleichsdiensten (Nullifier, Skizzen, Widerspruchsvorgänge). Zu klären ist dabei, wie der erste Validator als registrierter Mensch gilt, wenn es noch keine Menschen gibt. Außerdem braucht es Schlüssel und `.env` beider Boxen **verschlüsselt außerhalb der Box**: Beim Ende von C1 ging sein `NODE_KEY` mit.
 
 > ## 23.09.: Prüfstand
 >
