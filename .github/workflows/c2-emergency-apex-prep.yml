@@ -1,0 +1,69 @@
+name: C2 Not-Frontend Apex-Standby (ohne DNS)
+
+# Append aequitas.digital + www to existing proof-caddy Caddyfile with tls internal.
+# A-record stays on C1. No Let's Encrypt. No public cutover.
+# Smoke: Host-Header via --resolve to 127.0.0.1 on the box.
+
+on:
+  workflow_dispatch:
+
+jobs:
+  prep:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Append apex standby + Host-Header smoke
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: 194.163.188.71
+          username: root
+          key: ${{ secrets.CONTABO2_SSH_KEY }}
+          port: 22
+          fingerprint: "SHA256:VIwj7Faxiga2n45HVHZEQFPxcbRKHgSgHoxAFsf2wto"
+          script_stop: true
+          timeout: 300s
+          command_timeout: 300s
+          script: |
+            set -euo pipefail
+            ALT=/root/caddy/Caddyfile
+            docker inspect proof-caddy >/dev/null 2>&1 || { echo "FEHLER: kein proof-caddy"; exit 1; }
+            [ -f "$ALT" ] || { echo "FEHLER: $ALT fehlt"; exit 1; }
+
+            echo "=== Mounts proof-caddy ==="
+            docker inspect proof-caddy --format '{{range .Mounts}}{{.Source}} -> {{.Destination}}{{println}}{{end}}'
+
+            echo "=== erreicht Caddy den Knoten? ==="
+            docker exec proof-caddy wget -qO- --timeout=5 http://aequitas-node:8080/api/status >/dev/null \
+              && echo "  ok aequitas-node:8080" \
+              || { echo "FEHLER: proof-caddy -> aequitas-node:8080"; exit 1; }
+
+            if grep -qE '^aequitas\.digital' "$ALT"; then
+              echo "=== Apex-Block schon vorhanden ==="
+            else
+              SICHERUNG="$ALT.bak-apex-$(date +%s)"
+              cp -a "$ALT" "$SICHERUNG"
+              echo "Sicherung: $SICHERUNG"
+              printf '\n# P0 Not-Frontend Standby (ohne DNS-Cutover). tls internal = Host-Header-Smoke ohne LE.\n# Nach Boss/D DNS-OK: tls internal entfernen, reload, echtes Zertifikat.\naequitas.digital, www.aequitas.digital {\n\ttls internal\n\treverse_proxy aequitas-node:8080\n}\n' >> "$ALT"
+              echo "=== validate ==="
+              docker cp "$ALT" proof-caddy:/tmp/Caddyfile.neu
+              docker exec proof-caddy caddy validate --config /tmp/Caddyfile.neu --adapter caddyfile
+              # If Caddyfile is bind-mounted from /root/caddy, host edit is enough.
+              # Always also docker cp into container path then reload for safety.
+              docker cp "$ALT" proof-caddy:/etc/caddy/Caddyfile
+              if ! docker exec proof-caddy caddy reload --config /etc/caddy/Caddyfile --adapter caddyfile; then
+                echo "Reload fehlgeschlagen — Rollback"
+                cp "$SICHERUNG" "$ALT"
+                docker cp "$ALT" proof-caddy:/etc/caddy/Caddyfile
+                docker exec proof-caddy caddy reload --config /etc/caddy/Caddyfile --adapter caddyfile || true
+                exit 1
+              fi
+            fi
+
+            sleep 2
+            echo "=== Host-Header Smoke ==="
+            code=$(curl -sk --max-time 20 --resolve aequitas.digital:443:127.0.0.1 \
+              -o /tmp/apex.json -w '%{http_code}' https://aequitas.digital/api/status || echo 000)
+            echo "HTTP $code"
+            head -c 600 /tmp/apex.json; echo
+            [ "$code" = "200" ] || { echo "FEHLER: apex smoke HTTP $code"; exit 1; }
+            grep -qE '"height"' /tmp/apex.json || { echo "FEHLER: kein height"; exit 1; }
+            echo "=== C2 Apex-Standby READY (DNS unveraendert auf C1) ==="
