@@ -154,7 +154,10 @@ func (cs *ChainState) transferConcurrent(from, to string, amount float64, pendin
 	if effectiveBalance(fromAcc) != fromAcc.Balance || effectiveBalance(toAcc) != toAcc.Balance {
 		return 0, 0, false, nil // demurrage would settle -> touches a pool address
 	}
-	if fromAcc.Balance.Float() < amount {
+	// Ueberweisungsgebuehr obendrauf (ueberweisungsgebuehr.go). Sie beruehrt
+	// keinen Topf: gutgeschrieben wird sie, wenn die Ueberweisung im Block steht.
+	gebuehr := ueberweisungsGebuehrFuer(amount, fromAcc.Balance.Float())
+	if fromAcc.Balance.Float() < amount+gebuehr {
 		return 0, 0, true, fmt.Errorf("insufficient balance")
 	}
 	if hasCapAmt && toAcc.Balance.Float()+amount > capAmt {
@@ -199,7 +202,7 @@ func (cs *ChainState) transferConcurrent(from, to string, amount float64, pendin
 		}
 	}
 
-	fromScratch.Balance = fromScratch.Balance.Sub(NewDecimal(amount))
+	fromScratch.Balance = fromScratch.Balance.Sub(NewDecimal(amount)).Sub(NewDecimal(gebuehr))
 	touchActivity(&fromScratch)
 	if err := cs.saveAccountToDBCtx(ctx, &fromScratch); err != nil {
 		abortWithRollback()
@@ -223,6 +226,8 @@ func (cs *ChainState) transferConcurrent(from, to string, amount float64, pendin
 
 	pendingTxTemplate.FromDemurrageLost = 0
 	pendingTxTemplate.ToDemurrageLost = 0
+	pendingTxTemplate.Amount = amount
+	pendingTxTemplate.Gebuehr = gebuehr
 	if err := savePendingTxExec(tx, pendingTxTemplate); err != nil {
 		abortWithRollback()
 		return 0, 0, true, fmt.Errorf("could not queue outbox tx: %w", err)

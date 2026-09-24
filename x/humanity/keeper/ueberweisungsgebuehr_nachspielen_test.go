@@ -44,8 +44,8 @@ func TestUeberweisungsgebuehr_NachspielenGleich_RealDB(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if net >= 100 {
-		t.Fatalf("keine Gebuehr: netto %v", net)
+	if net != 100 {
+		t.Fatalf("netto %v -- der Empfaenger bekommt den vollen Betrag, die Gebuehr zahlt der Absender obendrauf", net)
 	}
 	var roh string
 	if err := cs.db.QueryRow(`SELECT tx_json FROM pending_txs WHERE tx_json LIKE '%' || $1 || '%'`, hash).Scan(&roh); err != nil {
@@ -55,9 +55,12 @@ func TestUeberweisungsgebuehr_NachspielenGleich_RealDB(t *testing.T) {
 	if err := json.Unmarshal([]byte(roh), &tx); err != nil {
 		t.Fatal(err)
 	}
-	if tx.Amount != net || tx.Gebuehr <= 0 || NewDecimal(tx.Amount).Add(NewDecimal(tx.Gebuehr)).Float() != 100 {
-		t.Fatalf("Transaktion traegt Amount %v, Gebuehr %v -- erwartet netto %v und Gebuehr 100-netto", tx.Amount, tx.Gebuehr, net)
+	if tx.Amount != 100 || tx.Gebuehr <= 0 {
+		t.Fatalf("Transaktion traegt Amount %v, Gebuehr %v -- erwartet 100 und eine Gebuehr", tx.Amount, tx.Gebuehr)
 	}
+	// Der Erzeuger schreibt die Gebuehr gut, wenn die Ueberweisung im Block
+	// steht (ProduceBlock -> gebuehrenInsGrundeinkommen).
+	cs.gebuehrenInsGrundeinkommen(gebuehrenSumme([]Transaction{tx}))
 
 	// Ein zweiter Knoten spielt genau diese Transaktion nach.
 	nach := newTestState()

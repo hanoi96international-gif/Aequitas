@@ -184,3 +184,25 @@ func TestGrantKlasseAusHerkunft(t *testing.T) {
 		t.Fatalf("Tagesrate %v", grantStaffelTagesrate())
 	}
 }
+
+// Die Zweitpruefung zaehlt ab Tag 7 nach der Registrierung -- nicht am
+// selben Tag, nicht an Tag 6.
+func TestErneuerungFruehestensTagSieben(t *testing.T) {
+	stagedGrantActivationOverride.Store(1_000)
+	defer stagedGrantActivationOverride.Store(0)
+	cs := newTestState()
+	ctx := context.Background()
+	w := "0x00000000000000000000000000000000000000ab"
+	cs.mu.Lock()
+	defer cs.mu.Unlock()
+	const registriert = 5_000
+	if err := cs.registerHumanMitKlasseLocked(ctx, w, registriert, "gestaffelt"); err != nil {
+		t.Fatal(err)
+	}
+	if got, want := erneuerungFruehestens(acct(cs, w)), int64(registriert+7*86400); got != want {
+		t.Fatalf("fruehestens %d, erwartet %d", got, want)
+	}
+	if erneuerungFruehestens(nil) != 0 || erneuerungFruehestens(&AccountState{}) != 0 {
+		t.Fatal("ohne Staffel keine Sperrfrist")
+	}
+}

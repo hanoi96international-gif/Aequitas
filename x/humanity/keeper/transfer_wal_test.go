@@ -2,6 +2,7 @@ package keeper
 
 import (
 	"fmt"
+	"math"
 	"os"
 	"path/filepath"
 	"sync"
@@ -104,8 +105,8 @@ func TestTransferConcurrentWAL_EligibleTransferSucceeds(t *testing.T) {
 	fromAcc, _ := cs.accounts.Get(from)
 	toAcc, _ := cs.accounts.Get(to)
 	cs.mu.RUnlock()
-	if fromAcc.Balance.Float() != 70 {
-		t.Errorf("sender balance = %v, want 70", fromAcc.Balance.Float())
+	if fromAcc.Balance.Float() != nachGebuehr(100, 30) {
+		t.Errorf("sender balance = %v, want %v (70 minus Ueberweisungsgebuehr)", fromAcc.Balance.Float(), nachGebuehr(100, 30))
 	}
 	if toAcc.Balance.Float() != 30 {
 		t.Errorf("recipient balance = %v, want 30", toAcc.Balance.Float())
@@ -128,7 +129,7 @@ func TestTransferConcurrentWAL_EligibleTransferSucceeds(t *testing.T) {
 	if err := cs.db.QueryRow(`SELECT balance FROM chain_accounts WHERE lower(address) = $1`, from).Scan(&dbBalance); err != nil {
 		t.Fatalf("sender row not found in Postgres after flush: %v", err)
 	}
-	if dbBalance != 70 {
+	if dbBalance != nachGebuehr(100, 30) {
 		t.Errorf("Postgres balance AFTER flush = %v, want 70", dbBalance)
 	}
 	var dbTo float64
@@ -265,7 +266,7 @@ func TestTransferConcurrentWAL_CrashRecovery_UnflushedTransfersReconstructed(t *
 	fromAcc, _ := csB.accounts.Get(from)
 	toAcc, _ := csB.accounts.Get(to)
 	csB.mu.RUnlock()
-	if fromAcc.Balance.Float() != 850 { // 1000 - 100 - 50
+	if fromAcc.Balance.Float() != nachGebuehr(1000, 100, 50) { // 1000 - 100 - 50 - Gebuehren
 		t.Errorf("recovered sender balance = %v, want 850", fromAcc.Balance.Float())
 	}
 	if toAcc.Balance.Float() != 150 { // 0 + 100 + 50
@@ -282,7 +283,7 @@ func TestTransferConcurrentWAL_CrashRecovery_UnflushedTransfersReconstructed(t *
 	if err := csB.db.QueryRow(`SELECT balance FROM chain_accounts WHERE lower(address) = $1`, to).Scan(&dbTo); err != nil {
 		t.Fatalf("recipient row not found after recovery flush: %v", err)
 	}
-	if dbFrom != 850 || dbTo != 150 {
+	if dbFrom != nachGebuehr(1000, 100, 50) || dbTo != 150 {
 		t.Errorf("Postgres after recovery+flush = (%v, %v), want (850, 150)", dbFrom, dbTo)
 	}
 	var queuedCount int
@@ -345,7 +346,7 @@ func TestTransferConcurrentWAL_CrashRecovery_AutoFlushesWithoutManualTrigger(t *
 		if err := csB.db.QueryRow(`SELECT balance FROM chain_accounts WHERE lower(address) = $1`, from).Scan(&dbFrom); err != nil {
 			t.Fatalf("sender row not found: %v", err)
 		}
-		if dbFrom == 958 { // 1000 - 42
+		if dbFrom == nachGebuehr(1000, 42) { // 1000 - 42 - Gebuehr
 			break
 		}
 		if time.Now().After(deadline) {
@@ -390,7 +391,7 @@ func TestTransferConcurrentWAL_CrashRecovery_IdempotentOnRepeatedReplay(t *testi
 	if err := csA.db.QueryRow(`SELECT balance FROM chain_accounts WHERE lower(address) = $1`, from).Scan(&dbBalanceAfterFlush); err != nil {
 		t.Fatalf("sender row not found: %v", err)
 	}
-	if dbBalanceAfterFlush != 900 {
+	if dbBalanceAfterFlush != nachGebuehr(1000, 100) {
 		t.Fatalf("test setup bug: expected Postgres to already reflect the transfer (900), got %v", dbBalanceAfterFlush)
 	}
 
@@ -401,7 +402,7 @@ func TestTransferConcurrentWAL_CrashRecovery_IdempotentOnRepeatedReplay(t *testi
 	fromAcc, _ := csB.accounts.Get(from)
 	toAcc, _ := csB.accounts.Get(to)
 	csB.mu.RUnlock()
-	if fromAcc.Balance.Float() != 900 || toAcc.Balance.Float() != 100 {
+	if fromAcc.Balance.Float() != nachGebuehr(1000, 100) || toAcc.Balance.Float() != 100 {
 		t.Fatalf("after first restart: balances = (%v, %v), want (900, 100) — replay must be a no-op for an already-reconciled record", fromAcc.Balance.Float(), toAcc.Balance.Float())
 	}
 	csB.stopWALFlushWorkerForTest()
@@ -418,14 +419,14 @@ func TestTransferConcurrentWAL_CrashRecovery_IdempotentOnRepeatedReplay(t *testi
 	fromAcc, _ = csC.accounts.Get(from)
 	toAcc, _ = csC.accounts.Get(to)
 	csC.mu.RUnlock()
-	if fromAcc.Balance.Float() != 900 || toAcc.Balance.Float() != 100 {
+	if fromAcc.Balance.Float() != nachGebuehr(1000, 100) || toAcc.Balance.Float() != 100 {
 		t.Fatalf("after second restart: balances = (%v, %v), want (900, 100) — double-application bug", fromAcc.Balance.Float(), toAcc.Balance.Float())
 	}
 	var dbFrom float64
 	if err := csC.db.QueryRow(`SELECT balance FROM chain_accounts WHERE lower(address) = $1`, from).Scan(&dbFrom); err != nil {
 		t.Fatalf("sender row not found: %v", err)
 	}
-	if dbFrom != 900 {
+	if dbFrom != nachGebuehr(1000, 100) {
 		t.Errorf("Postgres balance after two idempotent restarts = %v, want 900 (unchanged)", dbFrom)
 	}
 	var queuedCount int
@@ -486,7 +487,7 @@ func TestTransferConcurrentWAL_ConcurrentRingTransfersConserveBalance(t *testing
 	wantXOR := referenceAccountXOR(cs)
 	cs.mu.RUnlock()
 
-	if total != float64(n)*1000 {
+	if unterwegs := gebuehrenUnterwegs(t, cs); math.Abs(total+unterwegs-float64(n)*1000) > 1e-6 {
 		t.Fatalf("total balance after %d concurrent WAL ring transfer attempts = %v, want %v", n, total, float64(n)*1000)
 	}
 	if gotXOR != wantXOR {
@@ -499,7 +500,7 @@ func TestTransferConcurrentWAL_ConcurrentRingTransfersConserveBalance(t *testing
 	}
 	for i := 0; i < n; i++ {
 		if applied[i] {
-			want[i] -= amount
+			want[i] -= amount + ueberweisungsGebuehrFuer(amount, 1000)
 			want[(i+1)%n] += amount
 		}
 	}
@@ -507,7 +508,7 @@ func TestTransferConcurrentWAL_ConcurrentRingTransfersConserveBalance(t *testing
 	defer cs.mu.RUnlock()
 	for i, addr := range addrs {
 		acc, _ := cs.accounts.Get(addr)
-		if acc.Balance.Float() != want[i] {
+		if math.Abs(acc.Balance.Float()-want[i]) > 1e-9 {
 			t.Errorf("account %s balance = %v, want %v given which ring attempts actually applied", addr, acc.Balance.Float(), want[i])
 		}
 	}
@@ -553,13 +554,15 @@ func TestTransferConcurrentWAL_ViaTransferAtomic_RingConservesBalance(t *testing
 		total += acc.Balance.Float()
 		return true
 	})
-	if total != float64(n)*1000 {
+	if unterwegs := gebuehrenUnterwegs(t, cs); math.Abs(total+unterwegs-float64(n)*1000) > 1e-6 {
 		t.Fatalf("total balance after %d concurrent TransferAtomic (WAL-enabled) ring transfers = %v, want %v", n, total, float64(n)*1000)
 	}
 	for _, addr := range addrs {
 		acc, _ := cs.accounts.Get(addr)
-		if acc.Balance.Float() != 1000 {
-			t.Errorf("account %s balance = %v, want 1000 (ring net-zero)", addr, acc.Balance.Float())
+		// Netto null im Ring -- minus die Ueberweisungsgebuehr, die jedes Konto
+		// fuer seine eigene Ueberweisung obendrauf zahlte.
+		if want := nachGebuehr(1000, 25) + 25; math.Abs(acc.Balance.Float()-want) > 1e-9 {
+			t.Errorf("account %s balance = %v, want %v (ring net-zero minus fee)", addr, acc.Balance.Float(), want)
 		}
 	}
 }

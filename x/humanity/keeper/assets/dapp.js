@@ -154,7 +154,6 @@ async function loadStatus() {
     document.getElementById('h-index').textContent   = typeof d.index === 'number' ? d.index.toFixed(1) : '—';
     document.getElementById('h-gini').textContent    = typeof d.gini === 'number' ? d.gini.toFixed(4) : '—';
     document.getElementById('h-pool-ubi').textContent        = (d.pool_ubi || '0') + ' AEQ';
-    document.getElementById('h-pool-treasury').textContent   = (d.pool_treasury || '0') + ' AEQ';
     document.getElementById('h-pool-validators').textContent = (d.pool_validators || '0') + ' AEQ';
     const phase = d.phase || 0;
     for (let i = 0; i <= 3; i++) {

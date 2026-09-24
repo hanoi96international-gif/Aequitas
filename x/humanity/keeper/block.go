@@ -3174,6 +3174,15 @@ func (dag *BlockDAG) ProduceBlock() *Block {
 	// mehr laufen -- sie wuerde Ueberweisungen freigeben, die gerade in einem
 	// Block gelandet sind, und sie ein zweites Mal in einen naechsten bringen.
 	blockGespeichert = true
+	// Ueberweisungsgebuehren dieses Blocks ans Grundeinkommen -- jetzt, wo
+	// die Ueberweisungen in einem gespeicherten Block stehen. Nachspielende
+	// Knoten schreiben sie beim Nachspielen genauso gut
+	// (applyTransferDeltaLockedSammelnd), also sind beide Block fuer Block
+	// gleich. Eigene Goroutine: dag.mu ist gehalten, die Gutschrift braucht
+	// cs.mu -- keine neue Sperrreihenfolge einfuehren.
+	if summe := gebuehrenSumme(block.Transactions); summe > 0 {
+		SafeGoroutine("gebuehren-ins-grundeinkommen", func() { dag.state.gebuehrenInsGrundeinkommen(summe) })
+	}
 	// Index this block's transactions for wallet lookups, exactly as the replay
 	// path does for peer blocks — a transaction must resolve to its real block
 	// no matter which node produced it or which node the wallet asks. See

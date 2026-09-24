@@ -95,7 +95,7 @@ UBI aus Protokoll-Ökonomie — ohne Steuern, ohne Regierung, ohne politische En
 UBI from protocol economics — no taxation, no government, no political decision required.
 
 **Quellen / Sources:**
-- Überweisungsgebühren (0,1% + Aufschlag für große Guthaben) → 100% an UBI-Pool / Transfer fees → 100% to UBI Pool
+- Überweisungsgebühren (0,1 % auf jede Überweisung, obendrauf; Aufschlag ab dem 5-/10-/20-fachen des fairen Anteils: +0,1/+0,5/+1 %) → 100% an UBI-Pool / Transfer fees (0.1% on every transfer, paid on top; surcharge from 5×/10×/20× the fair share) → 100% to UBI Pool
 - Swap-Gebühren → 30% an UBI-Pool / Swap fees → 30% to UBI Pool
 - Wealth-Cap-Überschuss → 100% an UBI-Pool / Wealth cap overflow → 100% to UBI Pool
 - Demurrage auf Überschüsse → 100% an UBI-Pool / Demurrage on excess balances → 100% to UBI Pool

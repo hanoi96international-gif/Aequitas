@@ -206,6 +206,7 @@ func (cs *ChainState) processTransferBatchConcurrent(batch []*transferBatchReque
 	}
 
 	results := make([]transferBatchResult, len(batch))
+	gebuehren := make([]float64, len(batch)) // ueberweisungsgebuehr.go
 	for i, req := range batch {
 		fromAcc := scratch[req.from]
 		toAcc := scratch[req.to]
@@ -217,14 +218,15 @@ func (cs *ChainState) processTransferBatchConcurrent(batch []*transferBatchReque
 		if effectiveBalance(fromAcc) != fromAcc.Balance || effectiveBalance(toAcc) != toAcc.Balance {
 			return false // demurrage would settle somewhere in the batch -- bail, nothing touched yet
 		}
-		if fromAcc.Balance.Float() < req.amount {
+		gebuehren[i] = ueberweisungsGebuehrFuer(req.amount, fromAcc.Balance.Float())
+		if fromAcc.Balance.Float() < req.amount+gebuehren[i] {
 			failWholeBatch(batch, fmt.Errorf("batch member %d/%d (%s -> %s) failed: insufficient balance", i+1, len(batch), req.from, req.to))
 			return true
 		}
 		if hasCapAmt && toAcc.Balance.Float()+req.amount > capAmt {
 			return false // would overflow the wealth cap somewhere in the batch -- bail, nothing touched yet
 		}
-		fromAcc.Balance = fromAcc.Balance.Sub(NewDecimal(req.amount))
+		fromAcc.Balance = fromAcc.Balance.Sub(NewDecimal(req.amount)).Sub(NewDecimal(gebuehren[i]))
 		touchActivity(fromAcc)
 		toAcc.Balance = toAcc.Balance.Add(NewDecimal(req.amount))
 		// Empfangen startet die Uhr, es setzt sie nie zurueck -- wie im
@@ -274,8 +276,10 @@ func (cs *ChainState) processTransferBatchConcurrent(batch []*transferBatchReque
 	}
 
 	pendingTxs := make([]Transaction, 0, len(batch))
-	for _, req := range batch {
+	for i, req := range batch {
 		pendingTx := req.pendingTxTemplate
+		pendingTx.Amount = req.amount
+		pendingTx.Gebuehr = gebuehren[i]
 		pendingTx.FromDemurrageLost = 0
 		pendingTx.ToDemurrageLost = 0
 		pendingTxs = append(pendingTxs, pendingTx)

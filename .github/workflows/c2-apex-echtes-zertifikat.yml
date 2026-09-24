@@ -1,0 +1,70 @@
+name: C2 aequitas.digital -- echtes Zertifikat statt tls internal
+
+# Am 24.09.2026 kam der Apex-Block auf C2 mit "tls internal" (Bereitschaft
+# ohne DNS-Umstellung, c2-emergency-apex-prep.yml). Inzwischen zeigt
+# aequitas.digital auf C2 -- jeder Browser sah das selbst ausgestellte
+# Zertifikat: NET::ERR_CERT_AUTHORITY_INVALID. Der Block sagt selbst, was
+# danach kommt: "tls internal entfernen, reload, echtes Zertifikat."
+#
+# Genau das, mit Sicherung und Rueckfall: DNS muss auf C2 zeigen (sonst
+# scheitert Let's Encrypt), validate vor reload, Rueckfall bei Fehler.
+
+on:
+  workflow_dispatch:
+  # Einmalig beim Hochladen dieser Datei (ein neuer Workflow auf einem
+  # Nebenzweig ist sonst nicht startbar). Laeuft erneut nur, wenn sich
+  # genau diese Datei aendert.
+  push:
+    branches: [claude/hier-weitermachen-xfsfqx]
+    paths: [".github/workflows/c2-apex-echtes-zertifikat.yml"]
+
+jobs:
+  fix:
+    runs-on: ubuntu-latest
+    steps:
+      - name: DNS muss auf C2 zeigen
+        run: |
+          for n in aequitas.digital www.aequitas.digital; do
+            a=$(dig +short A $n | tail -1); echo "$n -> $a"
+            [ "$a" = "194.163.188.71" ] || { echo "FEHLER: $n zeigt nicht auf C2"; exit 1; }
+          done
+      - uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: 194.163.188.71
+          username: root
+          key: ${{ secrets.CONTABO2_SSH_KEY }}
+          port: 22
+          fingerprint: "SHA256:VIwj7Faxiga2n45HVHZEQFPxcbRKHgSgHoxAFsf2wto"
+          script_stop: false
+          timeout: 300s
+          command_timeout: 300s
+          script: |
+            set -euo pipefail
+            F=/root/caddy/Caddyfile
+            grep -q '^aequitas\.digital' "$F" || { echo "FEHLER: kein Apex-Block"; exit 1; }
+            S="$F.bak-tls-$(date +%s)"; cp -a "$F" "$S"; echo "Sicherung: $S"
+            # Nur die Zeile "tls internal" innerhalb des Apex-Blocks.
+            sed '/^aequitas\.digital/,/^}/{/^[[:space:]]*tls internal[[:space:]]*$/d}' "$S" > /tmp/Caddyfile.neu
+            echo "=== Aenderung ==="; diff "$S" /tmp/Caddyfile.neu || true
+            docker cp /tmp/Caddyfile.neu proof-caddy:/tmp/Caddyfile.neu
+            docker exec proof-caddy caddy validate --config /tmp/Caddyfile.neu --adapter caddyfile
+            cat /tmp/Caddyfile.neu > "$F"
+            if ! docker exec proof-caddy caddy reload --config /etc/caddy/Caddyfile --adapter caddyfile; then
+              echo "Reload fehlgeschlagen -- Rueckfall"; cat "$S" > "$F"
+              docker exec proof-caddy caddy reload --config /etc/caddy/Caddyfile --adapter caddyfile || true
+              exit 1
+            fi
+            echo "=== warte auf Zertifikat (bis 180 s) ==="
+            ok=0
+            for i in $(seq 1 36); do
+              if curl -s --max-time 10 -o /dev/null --resolve aequitas.digital:443:127.0.0.1 https://aequitas.digital/api/status; then
+                ok=1; echo "OK: gueltiges Zertifikat nach $((i*5)) s"; break; fi
+              sleep 5
+            done
+            echo | openssl s_client -connect 127.0.0.1:443 -servername aequitas.digital 2>/dev/null | openssl x509 -noout -issuer -subject -dates || true
+            if [ "$ok" != 1 ]; then
+              echo "Noch kein gueltiges Zertifikat -- Caddy-Log:"
+              docker logs --since 5m proof-caddy 2>&1 | grep -iE 'acme|certificate|obtain|error' | tail -25
+              exit 1
+            fi
+            curl -s --max-time 10 -o /dev/null -w 'www %{http_code}\n' --resolve www.aequitas.digital:443:127.0.0.1 https://www.aequitas.digital/ || echo "www noch ohne Zertifikat"

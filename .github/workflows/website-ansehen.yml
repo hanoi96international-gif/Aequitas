@@ -1,0 +1,54 @@
+name: Website ansehen (nur lesen)
+# Rendert die oeffentlichen Seiten in Chromium, sammelt Konsolenfehler und
+# verdaechtigen Text (NaN, undefined, Treasury/Schatzkammer), speichert
+# Screenshots als Artefakt. Kein Secret, kein SSH.
+on:
+  push:
+    branches: [claude/hier-weitermachen-xfsfqx]
+    paths: [".github/workflows/website-ansehen.yml"]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  ansehen:
+    runs-on: ubuntu-latest
+    steps:
+      - name: API-Status
+        run: |
+          curl -s --max-time 20 https://aequitas.digital/api/status | python3 -m json.tool | head -80
+      - uses: actions/setup-node@v4
+        with: {node-version: "20"}
+      - run: npm i -g playwright@1 >/dev/null 2>&1 && npx playwright install --with-deps chromium >/dev/null 2>&1 && echo ok
+      - name: Seiten rendern
+        run: |
+          mkdir -p shots
+          cat > r.js <<'JS'
+          const { chromium } = require(process.env.PW);
+          (async () => {
+            const b = await chromium.launch();
+            const seiten = ['/', '/explorer', '/dapp', '/whitepaper'];
+            for (const [name, vp] of [['desktop', {width: 1366, height: 900}], ['mobil', {width: 390, height: 844}]]) {
+              for (const s of seiten) {
+                const p = await b.newPage({viewport: vp});
+                const fehler = [];
+                p.on('console', m => { if (m.type() === 'error') fehler.push(m.text()); });
+                p.on('pageerror', e => fehler.push('PAGEERROR ' + e.message));
+                let code = 0;
+                try { const r = await p.goto('https://aequitas.digital' + s, {waitUntil: 'networkidle', timeout: 45000}); code = r ? r.status() : 0; } catch (e) { fehler.push('GOTO ' + e.message); }
+                await p.waitForTimeout(3000);
+                const datei = `shots/${name}${s.replace(/\//g, '_') || '_root'}.png`;
+                await p.screenshot({path: datei, fullPage: true});
+                const text = await p.evaluate(() => document.body ? document.body.innerText : '');
+                const verdacht = text.split('\n').filter(z => /NaN|undefined|null|Infinity|treasury|schatzkammer|Treasury|Schatzkammer|40 ?\/ ?30|30 ?%|20 ?%|10 ?%|—\s*$/.test(z)).slice(0, 40);
+                console.log(`\n##### ${name} ${s} HTTP ${code}`);
+                console.log('Konsole:', fehler.length ? fehler.slice(0, 10).join(' | ') : 'keine Fehler');
+                console.log('Verdaechtige Zeilen:\n  ' + verdacht.join('\n  '));
+                await p.close();
+              }
+            }
+            await b.close();
+          })();
+          JS
+          PW=$(npm root -g)/playwright node r.js
+      - uses: actions/upload-artifact@v4
+        with: {name: screenshots, path: shots, retention-days: 3}

@@ -5019,10 +5019,13 @@ func (cs *ChainState) transferAtomicDirect(from, to string, amount float64, pend
 		// branch (see this function's own doc comment — "Used directly when
 		// there is no real DB"), which always calls fn(context.Background()),
 		// so ctx carries no transaction to lose regardless.
-		fromLost, toLost, err = cs.transferLocked(ctx, from, to, amount)
+		var gebuehr float64
+		fromLost, toLost, gebuehr, err = cs.transferLockedMitGebuehr(ctx, from, to, amount)
 		if err != nil {
 			return Transaction{}, err
 		}
+		pendingTxTemplate.Amount = amount
+		pendingTxTemplate.Gebuehr = gebuehr
 		pendingTxTemplate.FromDemurrageLost = fromLost
 		pendingTxTemplate.ToDemurrageLost = toLost
 		return pendingTxTemplate, nil
@@ -5319,7 +5322,7 @@ func (cs *ChainState) processTransferBatch(batch []*transferBatchRequest) {
 		pendingTxs := make([]Transaction, 0, len(batch))
 		var last Transaction
 		for i, req := range batch {
-			fromLost, toLost, fromAcc, toAcc, mErr := cs.transferMutateLocked(ctx, req.from, req.to, req.amount)
+			fromLost, toLost, fromAcc, toAcc, gebuehr, mErr := cs.transferMutateLocked(ctx, req.from, req.to, req.amount)
 			if mErr != nil {
 				return Transaction{}, fmt.Errorf("batch member %d/%d (%s -> %s) failed: %w", i+1, len(batch), req.from, req.to, mErr)
 			}
@@ -5327,6 +5330,8 @@ func (cs *ChainState) processTransferBatch(batch []*transferBatchRequest) {
 			touchedAccs[toAcc.Address] = toAcc
 
 			pendingTx := req.pendingTxTemplate
+			pendingTx.Amount = req.amount
+			pendingTx.Gebuehr = gebuehr
 			pendingTx.FromDemurrageLost = fromLost.Float()
 			pendingTx.ToDemurrageLost = toLost.Float()
 			results[i] = transferBatchResult{fromLost: fromLost.Float(), toLost: toLost.Float()}
@@ -5403,24 +5408,31 @@ func (cs *ChainState) processTransferBatch(batch []*transferBatchRequest) {
 // pass ctx explicitly in this same change, so no compatibility wrapper is
 // needed.
 func (cs *ChainState) transferLocked(ctx context.Context, from, to string, amount float64) (float64, float64, error) {
-	fromLost, toLost, fromAcc, toAcc, err := cs.transferMutateLocked(ctx, from, to, amount)
+	fromLost, toLost, _, err := cs.transferLockedMitGebuehr(ctx, from, to, amount)
+	return fromLost, toLost, err
+}
+
+// transferLockedMitGebuehr ist transferLocked, liefert zusaetzlich die
+// Ueberweisungsgebuehr (fuer Transaction.Gebuehr).
+func (cs *ChainState) transferLockedMitGebuehr(ctx context.Context, from, to string, amount float64) (float64, float64, float64, error) {
+	fromLost, toLost, fromAcc, toAcc, gebuehr, err := cs.transferMutateLocked(ctx, from, to, amount)
 	if err != nil {
-		return 0, 0, err
+		return 0, 0, 0, err
 	}
 	// FIX (audit3, P1 #4): saveAccountToDB now returns an error — checked here
 	// so a DB failure aborts the transfer (causing runAtomicWithOutbox to roll
 	// back) instead of returning success while the debit was never persisted.
 	if err := cs.saveAccountToDBCtx(ctx, fromAcc); err != nil {
-		return 0, 0, fmt.Errorf("could not save sender account: %w", err)
+		return 0, 0, 0, fmt.Errorf("could not save sender account: %w", err)
 	}
 	if err := cs.saveAccountToDBCtx(ctx, toAcc); err != nil {
-		return 0, 0, fmt.Errorf("could not save recipient account: %w", err)
+		return 0, 0, 0, fmt.Errorf("could not save recipient account: %w", err)
 	}
 	cs.save()
 
 	fmt.Printf("[STATE] ✓ Transfer %.2f AEQ: %s → %s\n", amount, fromAcc.Address, toAcc.Address)
 	cs.syncBalanceLocked(V7_CONTRACT_ADDR, fromAcc.Address, toAcc.Address, validatorsPoolAddr, lpPoolAddr, ubiPoolAddr, treasuryPoolAddr)
-	return fromLost.Float(), toLost.Float(), nil
+	return fromLost.Float(), toLost.Float(), gebuehr, nil
 }
 
 // transferMutateLocked is transferLocked's actual balance-mutation logic,
@@ -5433,35 +5445,40 @@ func (cs *ChainState) transferLocked(ctx context.Context, from, to string, amoun
 // dirty — every one of those is still transferLocked's job for its own
 // (single-transfer) callers, and processTransferBatch's job (once per whole
 // batch, not once per member) for the batched path.
-func (cs *ChainState) transferMutateLocked(ctx context.Context, from, to string, amount float64) (fromLost, toLost Decimal, fromAcc, toAcc *AccountState, err error) {
+//
+// gebuehr: die Ueberweisungsgebuehr (ueberweisungsgebuehr.go), die der
+// Absender zusaetzlich zu amount bezahlt; gutgeschrieben wird sie erst, wenn
+// die Ueberweisung in einem Block steht.
+func (cs *ChainState) transferMutateLocked(ctx context.Context, from, to string, amount float64) (fromLost, toLost Decimal, fromAcc, toAcc *AccountState, gebuehr float64, err error) {
 	from = strings.ToLower(from)
 	to = strings.ToLower(to)
 	// P1-FIX: reject NaN/Inf amounts — these would corrupt balances via
 	// NewDecimal which uses math.Round (NaN/Inf propagate silently).
 	if amount <= 0 || math.IsNaN(amount) || math.IsInf(amount, 0) {
-		return 0, 0, nil, nil, fmt.Errorf("invalid transfer amount: %v", amount)
+		return 0, 0, nil, nil, 0, fmt.Errorf("invalid transfer amount: %v", amount)
 	}
 	// P2-5: reject self-transfers; mirrors AequitasV7.sol behaviour and
 	// prevents double-demurrage settlement on the same account object.
 	if from == to {
-		return 0, 0, nil, nil, fmt.Errorf("self-transfer not allowed")
+		return 0, 0, nil, nil, 0, fmt.Errorf("self-transfer not allowed")
 	}
 
 	cs.ensureAccountLoadedCtx(ctx, from)
 	cs.ensureAccountLoadedCtx(ctx, to)
 	fromAcc, ok := cs.accounts.Get(from)
 	if !ok {
-		return 0, 0, nil, nil, fmt.Errorf("insufficient balance")
+		return 0, 0, nil, nil, 0, fmt.Errorf("insufficient balance")
 	}
 	fromLost, err = cs.settleDemurrageLockedCtx(ctx, fromAcc) // make sure we're checking against the real, decayed balance
 	if err != nil {
-		return 0, 0, nil, nil, fmt.Errorf("could not settle demurrage for sender: %w", err)
+		return 0, 0, nil, nil, 0, fmt.Errorf("could not settle demurrage for sender: %w", err)
 	}
-	if fromAcc.Balance.Float() < amount {
-		return 0, 0, nil, nil, fmt.Errorf("insufficient balance")
+	gebuehr = ueberweisungsGebuehrFuer(amount, fromAcc.Balance.Float())
+	if fromAcc.Balance.Float() < amount+gebuehr {
+		return 0, 0, nil, nil, 0, fmt.Errorf("insufficient balance")
 	}
 
-	fromAcc.Balance = fromAcc.Balance.Sub(NewDecimal(amount))
+	fromAcc.Balance = fromAcc.Balance.Sub(NewDecimal(amount)).Sub(NewDecimal(gebuehr))
 	touchActivity(fromAcc) // sending counts as "using" the money — resets its decay clock
 
 	toAcc, ok = cs.accounts.Get(to)
@@ -5471,16 +5488,16 @@ func (cs *ChainState) transferMutateLocked(ctx context.Context, from, to string,
 	}
 	toLost, err = cs.settleDemurrageLockedCtx(ctx, toAcc)
 	if err != nil {
-		return 0, 0, nil, nil, fmt.Errorf("could not settle demurrage for recipient: %w", err)
+		return 0, 0, nil, nil, 0, fmt.Errorf("could not settle demurrage for recipient: %w", err)
 	}
 	toAcc.Balance = toAcc.Balance.Add(NewDecimal(amount))
 	// Receiving is not the holder acting, so it does not reset the clock —
 	// only starts it if this is the first money the account has held.
 	startClockIfUnset(toAcc)
 	if err := cs.enforceWealthCapLockedCtx(ctx, toAcc); err != nil {
-		return 0, 0, nil, nil, fmt.Errorf("could not enforce wealth cap for recipient: %w", err)
+		return 0, 0, nil, nil, 0, fmt.Errorf("could not enforce wealth cap for recipient: %w", err)
 	}
-	return fromLost, toLost, fromAcc, toAcc, nil
+	return fromLost, toLost, fromAcc, toAcc, gebuehr, nil
 }
 
 // TransferWithV7Fee is used by the RPC layer when intercepting V7 ERC-20
@@ -5548,15 +5565,16 @@ func (cs *ChainState) TransferWithV7FeeAtomic(from, to string, amount float64, p
 	from = strings.ToLower(from)
 	to = strings.ToLower(to)
 	err = cs.runAtomicWithOutbox([]string{from, to, validatorsPoolAddr, lpPoolAddr, ubiPoolAddr, treasuryPoolAddr}, false, func(ctx context.Context) (Transaction, error) {
-		netAmount, fromLost, toLost, err = cs.transferWithV7FeeLocked(ctx, from, to, amount)
+		var gebuehr float64
+		netAmount, fromLost, toLost, gebuehr, err = cs.transferWithV7GebuehrLocked(ctx, from, to, amount)
 		if err != nil {
 			return Transaction{}, err
 		}
 		pendingTxTemplate.Amount = netAmount
-		// Was der Absender ueber netAmount hinaus bezahlt hat (ans
-		// Grundeinkommen) -- ohne dieses Feld belastete ein nachspielender
+		// Was der Absender ueber netAmount hinaus bezahlt (ans Grundeinkommen,
+		// mit dem Block) -- ohne dieses Feld belastete ein nachspielender
 		// Knoten nur netAmount (Transaction.Gebuehr).
-		pendingTxTemplate.Gebuehr = NewDecimal(amount).Sub(NewDecimal(netAmount)).Float()
+		pendingTxTemplate.Gebuehr = gebuehr
 		pendingTxTemplate.FromDemurrageLost = fromLost
 		pendingTxTemplate.ToDemurrageLost = toLost
 		return pendingTxTemplate, nil
@@ -5568,120 +5586,32 @@ func (cs *ChainState) TransferWithV7FeeAtomic(from, to string, amount float64, p
 // must already hold cs.mu — see transferLocked's comment for why this split
 // exists.
 func (cs *ChainState) transferWithV7FeeLocked(ctx context.Context, from, to string, amount float64) (float64, float64, float64, error) {
+	netto, fromLost, toLost, _, err := cs.transferWithV7GebuehrLocked(ctx, from, to, amount)
+	return netto, fromLost, toLost, err
+}
+
+// transferWithV7GebuehrLocked: die V7-Token-Ueberweisung ist seit dem
+// 24.09.2026 dieselbe wie jede andere (ueberweisungsgebuehr.go): der
+// Empfaenger bekommt amount, der Absender zahlt amount + Gebuehr, und die
+// Gebuehr geht ans Grundeinkommen, wenn die Ueberweisung im Block steht.
+// Vorher zog dieser Weg die Gebuehr VOM Betrag ab und schrieb sie sofort gut
+// -- als einziger; die gewoehnliche Sendung war frei.
+func (cs *ChainState) transferWithV7GebuehrLocked(ctx context.Context, from, to string, amount float64) (netto, fromLost, toLost, gebuehr float64, err error) {
 	from = strings.ToLower(from)
 	to = strings.ToLower(to)
-
-	if amount <= 0 || math.IsNaN(amount) || math.IsInf(amount, 0) {
-		return 0, 0, 0, fmt.Errorf("invalid transfer amount: %v", amount)
-	}
-
-	// Page both parties in from the DB if they're cold (beyond maxInMemAccounts):
-	// without this a returning sender hits "insufficient balance" despite a real
-	// DB balance, and a cold RECIPIENT would be recreated blank below and have
-	// its real balance overwritten on save. Matches transferLocked.
-	cs.ensureAccountLoadedCtx(ctx, from)
-	cs.ensureAccountLoadedCtx(ctx, to)
-	fromAcc, ok := cs.accounts.Get(from)
-	if !ok {
-		return 0, 0, 0, fmt.Errorf("insufficient balance")
-	}
-	fromLost, err := cs.settleDemurrageLockedCtx(ctx, fromAcc)
+	fromLost, toLost, gebuehr, err = cs.transferLockedMitGebuehr(ctx, from, to, amount)
 	if err != nil {
-		return 0, 0, 0, fmt.Errorf("could not settle demurrage for sender: %w", err)
+		return 0, 0, 0, 0, err
 	}
-	if fromAcc.Balance.Float() < amount {
-		return 0, 0, 0, fmt.Errorf("insufficient balance")
-	}
-
-	// FIX (performance audit 2026-07-06): this used to scan the entire
-	// cs.accounts map on every fee-liable transfer just to rederive
-	// TotalSupply = humans*1000, an already-documented invariant — see
-	// humanCountLocked's own comment for why it's now O(1) here without
-	// reintroducing the in-memory-cache-undercounts-at-scale risk that was
-	// already found and fixed once for accountSetXOR.
-	totalSupply := float64(cs.humanCountLocked()) * 1000.0
-	fee := calcV7Fee(fromAcc.Balance.Float(), amount, totalSupply)
-	// E1-FIX: In the Go-state ledger, AEQ cannot be burned (supply is tied
-	// to humans * 1000). Redirect 100% of fee to UBI pool instead of the
-	// V7-contract's 20%/80% split — this preserves the supply invariant
-	// and ensures all fees benefit the community rather than disappearing.
-	// E-FIX: compute net first, derive ubi as remainder - preserves supply invariant
-	netToRecipient := round6(amount - fee)
-	ubiContrib := amount - netToRecipient
-
-	fromAcc.Balance = fromAcc.Balance.Sub(NewDecimal(amount))
-	touchActivity(fromAcc)
-	if err := cs.saveAccountToDBCtx(ctx, fromAcc); err != nil {
-		return 0, 0, 0, fmt.Errorf("could not save sender account: %w", err)
-	}
-
-	toAcc, ok := cs.accounts.Get(to)
-	if !ok {
-		toAcc = &AccountState{Address: to}
-		cs.accounts.Set(to, toAcc)
-	}
-	toLost, err := cs.settleDemurrageLockedCtx(ctx, toAcc)
-	if err != nil {
-		return 0, 0, 0, fmt.Errorf("could not settle demurrage for recipient: %w", err)
-	}
-	toAcc.Balance = toAcc.Balance.Add(NewDecimal(netToRecipient))
-	// Receiving is not the holder acting, so it does not reset the clock —
-	// only starts it if this is the first money the account has held.
-	startClockIfUnset(toAcc)
-	if err := cs.enforceWealthCapLockedCtx(ctx, toAcc); err != nil {
-		return 0, 0, 0, fmt.Errorf("could not enforce wealth cap for recipient: %w", err)
-	}
-	if err := cs.saveAccountToDBCtx(ctx, toAcc); err != nil {
-		return 0, 0, 0, fmt.Errorf("could not save recipient account: %w", err)
-	}
-
-	if ubiContrib > 0 {
-		// FIX (Monster Audit 2026-07-12, P1): without this, a cold ubiPoolAddr
-		// got recreated as a blank AccountState{} here and saved with
-		// Version==0, which saveAccountToDB's Version==0 branch treats as
-		// "brand new row" and blindly overwrites any existing DB balance —
-		// silently erasing real, previously-accumulated pool funds.
-		cs.ensureAccountLoadedCtx(ctx, ubiPoolAddr)
-		ubiAcc, ok := cs.accounts.Get(ubiPoolAddr)
-		if !ok {
-			ubiAcc = &AccountState{Address: ubiPoolAddr}
-			cs.accounts.Set(ubiPoolAddr, ubiAcc)
-		}
-		ubiAcc.Balance = ubiAcc.Balance.Add(NewDecimal(ubiContrib))
-		if err := cs.saveAccountToDBCtx(ctx, ubiAcc); err != nil {
-			return 0, 0, 0, fmt.Errorf("could not save UBI pool: %w", err)
-		}
-	}
-	cs.save()
-
-	fmt.Printf("[STATE] ✓ TransferV7 %.6f AEQ (fee=%.6f → UBI): %s → %s\n",
-		amount, fee, from, to)
-	cs.syncBalanceLocked(V7_CONTRACT_ADDR, from, to, validatorsPoolAddr, lpPoolAddr, ubiPoolAddr, treasuryPoolAddr)
-	return netToRecipient, fromLost.Float(), toLost.Float(), nil
+	fmt.Printf("[STATE] ✓ TransferV7 %.6f AEQ (Gebuehr %.6f -> Grundeinkommen mit dem Block): %s → %s\n",
+		amount, gebuehr, from, to)
+	cs.syncBalanceLocked(V7_CONTRACT_ADDR, from, to)
+	return amount, fromLost, toLost, gebuehr, nil
 }
 
-// calcV7Fee is the Go ledger's own fee schedule for a real user transfer —
-// see TransferWithV7Fee's comment for why this does NOT actually mirror
-// AequitasV7.sol's _calcFee()/TX_FEE_BPS despite this function's name.
-// base = 0.1% of amount, plus a concentration surcharge based on the
-// sender's share of total supply.
-func calcV7Fee(senderBalance, amount, totalSupply float64) float64 {
-	base := amount * 10.0 / 10_000.0
-	if totalSupply <= 0 {
-		return round6(base)
-	}
-	shareBPS := (senderBalance * 10_000.0) / totalSupply
-	var extra float64
-	switch {
-	case shareBPS >= 1000:
-		extra = amount * 100.0 / 10_000.0
-	case shareBPS >= 500:
-		extra = amount * 50.0 / 10_000.0
-	case shareBPS >= 100:
-		extra = amount * 10.0 / 10_000.0
-	}
-	return round6(base + extra)
-}
+// calcV7Fee (0,1 % plus Aufschlag nach Anteil an der Geldmenge) ist am
+// 24.09.2026 in ueberweisungsGebuehrFuer aufgegangen -- siehe
+// ueberweisungsgebuehr.go fuer das Warum.
 
 // Fee recipient addresses for the four tokenomics pools (swap fees since
 // 24.09.2026: 40% validators / 30% LPs / 30% UBI / 0% treasury, see
