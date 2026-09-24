@@ -19,7 +19,7 @@ jobs:
           key: ${{ secrets.CONTABO2_SSH_KEY }}
           port: 22
           fingerprint: "SHA256:VIwj7Faxiga2n45HVHZEQFPxcbRKHgSgHoxAFsf2wto"
-          script_stop: true
+          script_stop: false
           timeout: 300s
           command_timeout: 300s
           script: |
@@ -36,7 +36,7 @@ jobs:
               && echo "  ok aequitas-node:8080" \
               || { echo "FEHLER: proof-caddy -> aequitas-node:8080"; exit 1; }
 
-            if grep -qE '^aequitas\.digital' "$ALT"; then
+            if grep -E '^aequitas\.digital' "$ALT" >/dev/null 2>&1; then
               echo "=== Apex-Block schon vorhanden ==="
             else
               SICHERUNG="$ALT.bak-apex-$(date +%s)"
