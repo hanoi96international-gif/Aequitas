@@ -1000,6 +1000,11 @@ func main() {
 	// bounded "eventually consistent" window that trade-off accepts for a
 	// genuine crash.
 	chainState.FlushPoolAccountsNow()
+	// Eine Vorladung des Ausgangskorbs (vorlader.go) zurueckgeben -- sonst
+	// laegen bei einem Redeploy unter Last bis zu einem Blockdeckel
+	// Ueberweisungen beansprucht, aber in keinem Block, bis der Aufraeumer
+	// sie nach 10 Minuten wieder oeffnet.
+	bc.VorladungFreigeben()
 	// SCALING_ARCHITECTURE.md Phase 6: same reasoning as the pool-account
 	// flush just above, for the deferred EVM-mirror sync (evm_mirror_flush.go)
 	// — a clean shutdown flushes any pending balanceOf/isHuman/activity slot

@@ -95,8 +95,14 @@ func sperrWachhundStarten(wer string) func() {
 func interessanteGoroutinen() []string {
 	puffer := make([]byte, 1<<20)
 	n := runtime.Stack(puffer, true)
+	return goroutinenAuswerten(string(puffer[:n]))
+}
+
+// goroutinenAuswerten ist die Auswahl aus einem Abzug -- getrennt, damit der
+// Test sie mit einem festen Abzug pruefen kann.
+func goroutinenAuswerten(abzug string) []string {
 	var halter, andere []string
-	for _, block := range strings.Split(string(puffer[:n]), "\n\n") {
+	for _, block := range strings.Split(abzug, "\n\n") {
 		if !strings.Contains(block, "humanity/keeper") {
 			continue
 		}
@@ -121,10 +127,8 @@ func interessanteGoroutinen() []string {
 		if len(zeilen) > 1 {
 			oberster = zeilen[1]
 		}
-		if strings.Contains(oberster, "sync.runtime_SemacquireMutex") ||
-			strings.Contains(oberster, "sync.runtime_SemacquireRWMutex") {
-			continue
-		}
+		wartetAufMutex := strings.Contains(oberster, "sync.runtime_SemacquireMutex") ||
+			strings.Contains(oberster, "sync.runtime_SemacquireRWMutex")
 		halterVerdacht := false
 		for _, f := range []string{"replayTransactions", "replayInCanonicalOrder", "AddPeerBlock",
 			"ProduceBlock", "doSyncOnce", "pruneOldDAGBlocks", "SaveBlockWithPendingTxsAtomic",
@@ -133,6 +137,17 @@ func interessanteGoroutinen() []string {
 				halterVerdacht = true
 				break
 			}
+		}
+		// WER WARTET, KANN TROTZDEM HALTEN. Der Abzug vom 23.09.2026 (C1,
+		// 10.000/s Annahme, ProduceBlock wartete ueber 1 s) nannte wieder
+		// keinen Halter: AddPeerBlock nimmt replayMu und wartet DANN auf die
+		// exklusive Zustandssperre, die die Annahme gerade haelt. Sein
+		// oberster Rahmen ist eine Mutex -- und genau solche fielen hier
+		// heraus. Ein Verdaechtiger bleibt deshalb auch dann drin; nur wer
+		// auf eine Mutex wartet und keine der haltenden Funktionen im Pfad
+		// hat, ist Rauschen.
+		if wartetAufMutex && !halterVerdacht {
+			continue
 		}
 		kurz := zeilen[0]
 		for _, z := range zeilen[1:] {
@@ -147,7 +162,9 @@ func interessanteGoroutinen() []string {
 		// Anlauf) war voll mit schlafenden Hintergrund-Goroutines, bevor die
 		// Iteration den Halter erreichte -- ein Deckel, der frueh greift, sieht
 		// ihn nie. Erst alles sichten, dann Verdaechtige zuerst, dann der Rest.
-		if halterVerdacht {
+		if halterVerdacht && wartetAufMutex {
+			halter = append(halter, "HAELT UND WARTET? "+kurz)
+		} else if halterVerdacht {
 			halter = append(halter, "HALTER? "+kurz)
 		} else {
 			andere = append(andere, kurz)

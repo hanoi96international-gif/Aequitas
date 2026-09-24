@@ -719,6 +719,7 @@ func (a *APIServer) handleCombinedHealth(w http.ResponseWriter, r *http.Request)
 		"replay_schlimmster":  ReplaySchlimmsterStand(),
 		"produktion":          ProduktionsStand(),
 		"produktion_phasen":   ProduktionsPhasenStand(),
+		"vorladen":            vorladenStand(),
 		"wal_kompaktierung":   WALKompaktierungsStand(),
 		"produktions_vorrang": ProduktionsVorrangStand(),
 		"sperr_wachhund":      SperrWachhundStand(),
