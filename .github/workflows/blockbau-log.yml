@@ -15,7 +15,7 @@ on:
     inputs:
       box:
         description: "contabo1 oder contabo2"
-        default: contabo1
+        default: contabo2
         type: choice
         options: [contabo1, contabo2]
       seit:
@@ -35,13 +35,13 @@ jobs:
       - name: Log-Ausschnitt
         uses: appleboy/ssh-action@v1.0.3
         env:
-          # Beim Push gibt es keine Eingaben: dann C1, die letzten 45 Minuten.
+          # Beim Push gibt es keine Eingaben: dann C2 (seit 24.09.2026 der annehmende Knoten), die letzten 45 Minuten.
           SEIT: ${{ inputs.seit || '45m' }}
           BIS: ${{ inputs.bis || '' }}
         with:
-          host: ${{ inputs.box == 'contabo2' && '194.163.188.71' || '173.249.37.118' }}
+          host: ${{ inputs.box == 'contabo1' && '173.249.37.118' || '194.163.188.71' }}
           username: root
-          key: ${{ inputs.box == 'contabo2' && secrets.CONTABO2_SSH_KEY || secrets.CONTABO_SSH_KEY }}
+          key: ${{ inputs.box == 'contabo1' && secrets.CONTABO_SSH_KEY || secrets.CONTABO2_SSH_KEY }}
           port: 22
           script_stop: false
           timeout: 120s

@@ -2280,13 +2280,41 @@ const defaultPublicSeed = "https://aequitas.digital"
 // are the same machine. Contabo1 and Contabo2 must therefore set
 // PRIMARY_NODE_URLS explicitly (pointing at each other), which bypasses this
 // default list entirely. See docs/MIGRATION_RAILWAY_TO_CONTABO.md.
+//
+// CONTABO1 (173.249.37.118) IST RAUS, seit dem 24.09.2026: das Abo lief aus
+// und wird nicht verlaengert. Eine gekuendigte Adresse vergibt der Anbieter
+// irgendwann neu -- wer dann dort auf :8080 antwortet, waere fuer jeden
+// frischen Knoten ein "vertrauenswuerdiger" Seed. Genau das, was die
+// Reihenfolge oben fuer DNS verhindern soll, darf eine abgelaufene IP nicht
+// durch die Hintertuer wieder einfuehren.
 var defaultPublicSeeds = []string{
-	"http://173.249.37.118:8080", // Contabo1 — verified to carry the real chain
 	"http://194.163.188.71:8080", // Contabo2 — verified to carry the real chain
 	defaultPublicSeed,            // canonical domain, consulted last (see above)
 }
 
+// keineSeeds: PRIMARY_NODE_URLS=keine (oder "none") heisst ausdruecklich
+// "dieser Knoten hat keine Seeds -- er ist der einzige Validator" (seit
+// 24.09.2026 der Fall fuer Contabo2). Ohne diesen Wert faellt ein leerer
+// Eintrag auf defaultPublicSeeds zurueck, und ein einzelner Validator
+// befragte dann tote oder fremde Adressen als Seed: /api/wache stuende auf
+// 503 ("Seed antwortet nicht"), und die Selbstheilung verglich gegen eine
+// Adresse, die jemand anderem gehoeren kann.
+//
+// Nur fuer den Knoten, der die Kette traegt. Ein FRISCHER Knoten ohne Seeds
+// produziert ab Genesis eine eigene Kette (siehe StartPeerDiscovery) -- das
+// ist hier gewollt nur, wenn er die Kette ist.
+// KeineSeeds ist keineSeeds fuer main.go (Verteilungs-Tor).
+func KeineSeeds() bool { return keineSeeds() }
+
+func keineSeeds() bool {
+	v := strings.ToLower(strings.TrimSpace(os.Getenv("PRIMARY_NODE_URLS")))
+	return v == "keine" || v == "none"
+}
+
 func seedURLs(selfURL string) []string {
+	if keineSeeds() {
+		return nil
+	}
 	seen := map[string]bool{selfURL: true}
 	var out []string
 	add := func(raw string) {

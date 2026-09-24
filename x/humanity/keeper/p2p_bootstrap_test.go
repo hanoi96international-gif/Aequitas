@@ -160,8 +160,15 @@ func TestBootstrapAddrIsSelf(t *testing.T) {
 // the HTTP seed went stale at the same time — would reach the network by no
 // transport at all.
 func TestDefaultBootstrapNodes_NoDecommissionedHosts(t *testing.T) {
-	if len(defaultBootstrapNodes) < 2 {
-		t.Fatalf("defaultBootstrapNodes has %d entr(ies) — keep at least two so one validator being down does not strand newcomers", len(defaultBootstrapNodes))
+	// ZWEI, SOBALD ES ZWEI GIBT. Seit dem 24.09.2026 laeuft genau ein
+	// Validator (Contabo1 abgeschaltet); ein zweiter Eintrag waere eine
+	// tote oder fremde Adresse -- schlechter als keiner. Die Untergrenze ist
+	// deshalb voruebergehend 1. Mit dem neuen zweiten Server kommt seine
+	// Peer-ID in defaultBootstrapNodes, und mindestBootstrapKnoten geht
+	// zurueck auf 2 -- Punkt in docs/LAUNCH_CHECKLISTE.md.
+	const mindestBootstrapKnoten = 1
+	if len(defaultBootstrapNodes) < mindestBootstrapKnoten {
+		t.Fatalf("defaultBootstrapNodes has %d entr(ies) — keep at least %d so one validator being down does not strand newcomers", len(defaultBootstrapNodes), mindestBootstrapKnoten)
 	}
 	for _, addr := range defaultBootstrapNodes {
 		for _, banned := range []string{"rlwy.net", "railway.app", "railway.com"} {
@@ -189,5 +196,41 @@ func TestBootstrapNodes_ParsesCommaSeparatedList(t *testing.T) {
 		if got[i] != want[i] {
 			t.Errorf("index %d: got %q, want %q", i, got[i], want[i])
 		}
+	}
+}
+
+// Contabo1 ist seit dem 24.09.2026 abgeschaltet. Eine gekuendigte IP vergibt
+// der Anbieter neu -- als eingebauter Seed oder Bootstrap waere sie
+// Vertrauen in einen Rechner, der jemand anderem gehoeren kann.
+func TestEingebauteSeeds_OhneAbgeschaltetesContabo1(t *testing.T) {
+	for _, s := range defaultPublicSeeds {
+		if strings.Contains(s, "173.249.37.118") {
+			t.Errorf("defaultPublicSeeds enthaelt die abgeschaltete C1-Adresse: %s", s)
+		}
+	}
+	for _, b := range defaultBootstrapNodes {
+		if strings.Contains(b, "173.249.37.118") {
+			t.Errorf("defaultBootstrapNodes enthaelt die abgeschaltete C1-Adresse: %s", b)
+		}
+	}
+}
+
+// PRIMARY_NODE_URLS=keine: der Knoten ist ausdruecklich der einzige
+// Validator. Ohne den Wert fiele er auf die eingebauten Seeds zurueck.
+func TestSeedURLs_KeineHeisstKeineSeeds(t *testing.T) {
+	for _, v := range []string{"keine", "KEINE", " none "} {
+		t.Setenv("PRIMARY_NODE_URL", "https://a.example.com")
+		t.Setenv("PRIMARY_NODE_URLS", v)
+		if got := seedURLs("https://self.example.com"); len(got) != 0 {
+			t.Errorf("PRIMARY_NODE_URLS=%q: got %v, want keine Seeds", v, got)
+		}
+		if got := PrimarySeedURL("https://self.example.com"); got != "" {
+			t.Errorf("PRIMARY_NODE_URLS=%q: PrimarySeedURL = %q, want leer", v, got)
+		}
+	}
+	t.Setenv("PRIMARY_NODE_URL", "")
+	t.Setenv("PRIMARY_NODE_URLS", "")
+	if got := seedURLs("https://self.example.com"); len(got) == 0 {
+		t.Error("leer (nicht 'keine') muss weiter auf die eingebauten Seeds zurueckfallen")
 	}
 }

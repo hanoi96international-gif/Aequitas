@@ -27,15 +27,34 @@ func TestProofServerModus(t *testing.T) {
 }
 
 func TestCoordinatorWacheStand(t *testing.T) {
-	antwort := `{"status":"ok","quorum_size":2,"validator_urls":["a","b"]}`
+	// Zwei echte Vergleichsdienste, die auf /health antworten -- und ein
+	// toter. Am 24.09.2026 stand "Quorum 2 von 2", waehrend einer der beiden
+	// mit Contabo1 verschwunden war.
+	lebend := func() string {
+		s := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Write([]byte(`{"status":"ok"}`))
+		}))
+		t.Cleanup(s.Close)
+		return s.URL
+	}
+	a, b := lebend(), lebend()
+	totSrv := httptest.NewServer(http.NotFoundHandler())
+	totURL := totSrv.URL
+	totSrv.Close()
+
+	antwort := `{"status":"ok","quorum_size":2,"validator_urls":["` + a + `","` + b + `"]}`
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte(antwort))
 	}))
 	defer srv.Close()
 	t.Setenv("AEQUITAS_WACHE_COORDINATOR_URL", srv.URL+"/health")
 
-	if stand, ok := coordinatorWacheStand(); !ok || stand != "Quorum 2 von 2" {
+	if stand, ok := coordinatorWacheStand(); !ok || stand != "Quorum 2, 2 von 2 erreichbar" {
 		t.Fatalf("gesund: got %q %v", stand, ok)
+	}
+	antwort = `{"status":"ok","quorum_size":2,"validator_urls":["` + a + `","` + totURL + `"]}`
+	if stand, ok := coordinatorWacheStand(); ok || stand != "nur 1 von 2 Vergleichsdiensten erreichbar, Quorum 2 -- keine Registrierung moeglich" {
+		t.Fatalf("konfiguriert 2, erreichbar 1 muss rot sein: got %q %v", stand, ok)
 	}
 	antwort = `{"status":"ok","quorum_size":2,"validator_urls":["a"]}`
 	if stand, ok := coordinatorWacheStand(); ok || stand == "" {

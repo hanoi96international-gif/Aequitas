@@ -1,21 +1,31 @@
 ﻿name: Deploy to Contabo VPS
 
 on:
-  push:
+  # CONTABO1 IST SEIT DEM 24.09.2026 ABGESCHALTET (Abo nicht verlaengert; die
+  # Kette startet vor dem Launch bei null). Der Push-Ausloeser ist deshalb
+  # aus: dieser Deploy schlug bei jedem Push fehl (SSH-Timeout), und
+  # deploy-contabo2.yml verweigert zu Recht den Neustart von C2, solange der
+  # C1-Deploy "failure" meldet -- ohne diesen Schritt kaeme nie wieder ein
+  # Commit auf C2. Findet deploy-contabo2.yml fuer einen Commit keinen
+  # C1-Deploy, deployt es C2 (sein bestehender Pfad "no Contabo1 deploy run
+  # found"). Ein neuer zweiter Server bekommt einen eigenen Deploy-Workflow.
+  # Die Push-Konfiguration bleibt darunter als Kommentar stehen.
+  workflow_dispatch:
+  # push:
     # main only. `master` was removed on 2026-08-15: production runs from
     # main, and the box-side script hard-resets to origin/main regardless of
     # which branch triggered the run. So a push to the long-dead master (it
     # sat 20+ commits behind) deployed main's code while the test job above
     # validated master's — shipping something no one had just pushed, past a
     # gate that had checked different code. Nothing deploys from master now.
-    branches: [main]
+  # branches: [main]
     # A deploy rebuilds the image and restarts the node. Nothing under
     # .github/ or in a Markdown file can change the binary, so a push that
     # touches only those must not take the chain down for a rebuild — which
     # it did, every time a diagnostic workflow was added during an incident.
-    paths-ignore:
-      - '.github/**'
-      - '**.md'
+  # paths-ignore:
+  #   - '.github/**'
+  #   - '**.md'
       # 2026-08-29 dazu: tools/** kann das Knoten-Abbild nicht veraendern.
       # Das Dockerfile kopiert den ganzen Baum in die Builder-Stufe,
       # uebernimmt ins Abbild aber nur /app/aequitasd -- und weder
@@ -24,7 +34,7 @@ on:
       # Fix am Lastgenerator hat an dem Abend beide Validatoren neu starten
       # wollen; einer dieser Neustarts fiel mitten in einen Lasttest und hat
       # C1 fuer Minuten aus der Kette genommen.
-      - 'tools/**'
+  #   - 'tools/**'
 
 # Deploys nacheinander, nie gleichzeitig: am 15.09.2026 liefen zwei Pushes
 # drei Minuten auseinander als zwei Deploys parallel auf dieselbe Box --

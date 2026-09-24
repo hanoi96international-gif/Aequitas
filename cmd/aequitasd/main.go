@@ -1044,7 +1044,11 @@ func distributionSyncHealthIssue(bc *keeper.BlockDAG) string {
 	// bar relative to that cadence while still giving normal transient
 	// connectivity blips (a redeploy, a brief network hiccup) comfortable
 	// room to recover on their own well before the next scheduled round.
-	if os.Getenv("PRIMARY_NODE_URL") != "" || os.Getenv("PRIMARY_NODE_URLS") != "" || os.Getenv("PEER_NODES") != "" {
+	// PRIMARY_NODE_URLS=keine: ausdruecklich der einzige Validator (seit dem
+	// 24.09.2026 Contabo2). Es gibt niemanden, mit dem er sich abgleichen
+	// koennte -- das Tor wuerde die taegliche Verteilung sonst fuer immer
+	// sperren, obwohl nichts isoliert ist.
+	if !keeper.KeineSeeds() && (os.Getenv("PRIMARY_NODE_URL") != "" || os.Getenv("PRIMARY_NODE_URLS") != "" || os.Getenv("PEER_NODES") != "") {
 		last := bc.LastSuccessfulPeerSyncAt()
 		if last == 0 {
 			return "peers are configured but this node has never successfully synced a block from any of them — its view of the chain cannot be trusted yet"

@@ -9,6 +9,10 @@ name: Knoten-Schalter lesen (Leistung, nur lesend)
 # der Blockkapazitaet schafft, gehoert dann auf C1, und ob er dort steht,
 # entscheidet ueber die Obergrenze (10.000 je Block, 1 s Takt).
 #
+# Seit dem 24.09.2026 auch die NETZ-Einstellungen (Seeds, eigene URL,
+# Validator-ADRESSEN, Proof-Server-URLs): alles oeffentliche Adressen, die
+# ohnehin in /api/status bzw. im Explorer stehen -- nie Schluessel.
+#
 # NUR EINE FESTE LISTE. Das Repository ist oeffentlich, jeder Lauf ist fuer
 # jeden lesbar. Gezeigt werden ausschliesslich die unten genannten Namen, deren
 # Werte Zahlen oder Schalter sind; alles andere -- Schluessel, Tokens,
@@ -44,7 +48,7 @@ jobs:
           timeout: 60s
           command_timeout: 60s
           script: |
-            LISTE='^(BLOCK_TIME_MS|ENABLE_MULTI_BLOCK_TICK|AEQUITAS_MAX_TXS_PER_BLOCK|AEQUITAS_WAL_ENABLED|AEQUITAS_RPC_RATE_LIMIT_MAX|AEQUITAS_RPC_RATE_LIMIT_FREI|ANNAHME_ROLLE|AEQUITAS_EIGENLAST_BREMSE|AEQUITAS_VORLADEN|AEQUITAS_COMPRESS_BLOCK_PAYLOAD|AEQUITAS_PRODUCE_WHEN_BACKLOG_SHRINKING|AEQUITAS_PEER_LAG_[A-Z_]+|AEQUITAS_INFLIGHT_[A-Z_]+|AEQUITAS_RPC_BATCH_PARALLEL|AEQUITAS_RPC_QUIET_TX|AEQUITAS_TRANSFER_BATCH_[A-Z_]+|AEQUITAS_PARALLEL_[A-Z_]+|AEQUITAS_DB_MAX_[A-Z_]+|GOMAXPROCS|GOMEMLIMIT|GOGC)='
+            LISTE='^(BLOCK_TIME_MS|ENABLE_MULTI_BLOCK_TICK|AEQUITAS_MAX_TXS_PER_BLOCK|AEQUITAS_WAL_ENABLED|AEQUITAS_RPC_RATE_LIMIT_MAX|AEQUITAS_RPC_RATE_LIMIT_FREI|ANNAHME_ROLLE|AEQUITAS_EIGENLAST_BREMSE|AEQUITAS_VORLADEN|AEQUITAS_COMPRESS_BLOCK_PAYLOAD|AEQUITAS_PRODUCE_WHEN_BACKLOG_SHRINKING|AEQUITAS_PEER_LAG_[A-Z_]+|AEQUITAS_INFLIGHT_[A-Z_]+|AEQUITAS_RPC_BATCH_PARALLEL|AEQUITAS_RPC_QUIET_TX|AEQUITAS_TRANSFER_BATCH_[A-Z_]+|AEQUITAS_PARALLEL_[A-Z_]+|AEQUITAS_DB_MAX_[A-Z_]+|GOMAXPROCS|GOMEMLIMIT|GOGC|PRIMARY_NODE_URLS?|SELF_URL|AUTHORIZED_VALIDATORS|VALIDATOR_LABELS|P2P_BOOTSTRAP[A-Z_]*|STATIC_PEERS|PROOF_SERVER_URLS|IS_PRIMARY_NODE|AUTO_HEAL_ON_DIVERGENCE|AEQUITAS_DIVERGENZ_AUTORESYNC)='
             echo "=== laufender Container: Leistungsschalter (feste Liste) ==="
             docker inspect aequitas-node --format '{{range .Config.Env}}{{println .}}{{end}}' 2>/dev/null \
               | grep -E "$LISTE" | sort || echo "(keiner gesetzt -- alle auf Vorgabe)"
