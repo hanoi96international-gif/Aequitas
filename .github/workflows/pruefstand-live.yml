@@ -48,8 +48,11 @@ jobs:
           ok()   { printf '  \033[32mOK  \033[0m  %s\n' "$1"; }
           rot()  { printf '  \033[31mROT \033[0m  %s\n' "$1"; ROT=1; }
           info() { printf '  INFO  %s\n' "$1"; }
-          get()  { curl -s --max-time 20 "$@"; }
-          code() { curl -s -o /dev/null --max-time 20 -w '%{http_code}' "$@"; }
+          # Nie mit Fehlercode zurueck: das Skript laeuft unter bash -e, und ein
+          # einziger Timeout (am 24.09.2026: aequitas.digital nach dem Ende von
+          # C1) brach den ganzen Pruefstand ab, bevor der Rest geprueft war.
+          get()  { curl -s --max-time 20 "$@" || true; }
+          code() { curl -s -o /dev/null --max-time 20 -w '%{http_code}' "$@" || true; }
           jq_() { jq -r "$1" 2>/dev/null; }
           # Nie `.x // "fehlt"` fuer Wahrheitswerte: jq behandelt false wie null,
           # und genau false ist hier der gesunde Wert (abweichend=false,
@@ -78,7 +81,7 @@ jobs:
             HOEHE[$K]=${H:-0}; COMMIT[$K]=${G:-?}
             if [ -n "$H" ]; then ok "$K ${API[$K]}/status: Hoehe $H, Commit ${G:-?}"; else rot "$K ${API[$K]}/status antwortet nicht: $(echo "$S" | head -c 120)"; fi
             W=$(code "http://${IP[$K]}:8080/api/wache")
-            [ "$W" = 200 ] && ok "$K /api/wache 200" || rot "$K /api/wache HTTP $W"
+            if [ "$W" = 200 ]; then ok "$K /api/wache 200"; else rot "$K /api/wache HTTP $W: $(get "http://${IP[$K]}:8080/api/wache" | head -c 600)"; fi
             HC=$(get "http://${IP[$K]}:8080/api/health/combined")
             DV=$(echo "$HC" | jq_ '.divergenz.abweichend | if . == null then "fehlt" else tostring end')
             [ "$DV" = false ] && ok "$K keine Kontostand-Abweichung" || rot "$K divergenz.abweichend=$DV"
@@ -160,7 +163,7 @@ jobs:
           TAG=$(echo "$REL" | jq_ '.tag_name'); SOLL=$(echo "$REL" | jq_ '.assets[] | select(.name=="app-release.apk") | .digest' | sed 's/^sha256://')
           echo "  neuestes Release: $TAG, sha256 ${SOLL:0:16}..."
           for Q in "https://aequitas.digital/download/app.apk" $(for K in $NAMEN; do echo "http://${IP[$K]}:8080/download/app.apk"; done); do
-            IST=$(curl -sL --max-time 300 "$Q" | sha256sum | cut -d' ' -f1)
+            IST=$( (curl -sL --max-time 300 "$Q" || true) | sha256sum | cut -d' ' -f1)
             [ -n "$SOLL" ] && [ "$IST" = "$SOLL" ] && ok "$Q == $TAG" || rot "$Q liefert ${IST:0:16}..., neuestes Release ($TAG) ist ${SOLL:0:16}..."
           done
 
