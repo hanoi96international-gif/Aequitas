@@ -111,10 +111,10 @@ func TestPoolFlush_PersistsAccumulatedCreditsToDB(t *testing.T) {
 	after := readPoolBalanceFromDBLocked(t, cs, ubiPoolAddr)
 	cs.mu.Unlock()
 
-	wantDelta := numCredits * feePerCredit * 0.20 // ubiPoolAddr's 20% share
+	wantDelta := numCredits * feePerCredit * 0.30 // ubiPoolAddr's 30% share (swapGebuehrAnteile)
 	gotDelta := after - before
 	if diff := gotDelta - wantDelta; diff < -1e-6 || diff > 1e-6 {
-		t.Errorf("ubi pool DB balance after flush: want delta %.6f (5 credits x 7 x 20%%), got %.6f (before=%v after=%v)", wantDelta, gotDelta, before, after)
+		t.Errorf("ubi pool DB balance after flush: want delta %.6f (5 credits x 7 x 30%%), got %.6f (before=%v after=%v)", wantDelta, gotDelta, before, after)
 	}
 }
 
@@ -160,7 +160,9 @@ func TestPoolFlush_ConcurrentCreditsNoLostUpdates(t *testing.T) {
 	}
 
 	cs.mu.Lock()
-	before := readPoolBalanceFromDBLocked(t, cs, treasuryPoolAddr)
+	// Validator-Topf statt Schatzkammer: die bekommt seit dem 24.09.2026
+	// nichts mehr (swapGebuehrAnteile) und wuerde verlorene Updates nicht zeigen.
+	before := readPoolBalanceFromDBLocked(t, cs, validatorsPoolAddr)
 	cs.mu.Unlock()
 
 	const numGoroutines = 50
@@ -182,7 +184,7 @@ func TestPoolFlush_ConcurrentCreditsNoLostUpdates(t *testing.T) {
 	cs.FlushPoolAccountsNow()
 
 	cs.mu.Lock()
-	after := readPoolBalanceFromDBLocked(t, cs, treasuryPoolAddr)
+	after := readPoolBalanceFromDBLocked(t, cs, validatorsPoolAddr)
 	full := referenceAccountXORFromRange(cs)
 	xorMatches := cs.accountSetXOR == full
 	cs.mu.Unlock()
@@ -190,10 +192,10 @@ func TestPoolFlush_ConcurrentCreditsNoLostUpdates(t *testing.T) {
 	if !xorMatches {
 		t.Error("accountSetXOR diverged from a full recompute after concurrent credits + flush")
 	}
-	wantDelta := numGoroutines * feePerCredit * 0.10 // treasuryPoolAddr's 10% share
+	wantDelta := numGoroutines * feePerCredit * 0.40 // validatorsPoolAddr's 40% share
 	gotDelta := after - before
 	if diff := gotDelta - wantDelta; diff < -1e-6 || diff > 1e-6 {
-		t.Errorf("treasury pool DB balance: want delta %.6f (%d x %v x 10%%), got %.6f -- a lost or duplicated update under concurrency", wantDelta, numGoroutines, feePerCredit, gotDelta)
+		t.Errorf("validators pool DB balance: want delta %.6f (%d x %v x 40%%), got %.6f -- a lost or duplicated update under concurrency", wantDelta, numGoroutines, feePerCredit, gotDelta)
 	}
 }
 
@@ -235,7 +237,7 @@ func TestPoolFlush_ThroughputComparisonVsSynchronous(t *testing.T) {
 		addr string
 		frac float64
 	}{
-		{validatorsPoolAddr, 0.40}, {lpPoolAddr, 0.30}, {ubiPoolAddr, 0.20}, {treasuryPoolAddr, 0.10},
+		{validatorsPoolAddr, 0.40}, {lpPoolAddr, 0.30}, {ubiPoolAddr, 0.30}, {treasuryPoolAddr, 0},
 	}
 
 	// Phase: N synchronous saves, reproducing pre-Phase-3 distributeSwapFee
