@@ -1,6 +1,85 @@
 # Launch-Checkliste
 
-**Stand 24.09.2026, mittags. Contabo1 ist abgeschaltet — was das bedeutet und was jetzt gilt, zuerst. Der Stand vom 23.09. folgt darunter.**
+**Stand 24.09.2026, nachts. Zuerst: eine Gebühr für jede Überweisung. Dann: das fairste Geld (Geldflüsse geprüft und geändert). Dann: rotierender Leiter und Leistungsnachweis (gebaut, aus). Dann: Contabo1 ist abgeschaltet, was das bedeutet und was jetzt gilt. Der Stand vom 23.09. folgt darunter.**
+
+> ## 24.09., nachts: Dieselbe Gebühr auf jeder Überweisung
+>
+> **Das Problem.** Die 0,1 %, die Website und Whitepaper nennen, zahlte nur, wer über den Token-Vertrag (V7) überwies. Die gewöhnliche Sendung, die die App benutzt, war frei. Wer den Umweg kannte, zahlte nichts; und das Grundeinkommen lebte fast nur von Swap-Gebühren.
+>
+> **Jetzt** (`ueberweisungsgebuehr.go`):
+> - **Jede Überweisung eines Menschen zahlt 0,1 %**, egal über welchen Weg (Annahme-Tor, WAL, Stapel, V7).
+> - **Obendrauf:** Der Empfänger bekommt genau den gesendeten Betrag, der Absender zahlt Betrag + Gebühr. Wer 10 AEQ verlangt, bekommt 10 AEQ.
+> - **Aufschlag nur für große Guthaben, gemessen am fairen Anteil (1.000 AEQ):** ab 5.000 AEQ +0,1 %, ab 10.000 +0,5 %, ab 20.000 +1 %. Vorher hing der Aufschlag am Anteil an der *gesamten* Geldmenge; in einem kleinen Netz hielt damit jeder „viel“ und zahlte bis zu 0,6 % auf jede gewöhnliche Sendung.
+> - **100 % ans Grundeinkommen.** Gutgeschrieben wird, wenn die Überweisung in einem gespeicherten Block steht, auf dem erzeugenden Knoten genau wie auf jedem nachspielenden. Die Transaktion trägt die Gebühr (`gebuehr`), damit jeder Knoten dasselbe abbucht.
+> - **Durchsatz:** lokal gemessen kein Unterschied (4 Lastprofile, je 2 Läufe, Abweichung im Rauschen von ±3 %).
+>
+> **Belegt:** Alle Wege buchen Betrag + Gebühr ab; die Geldmenge bleibt exakt erhalten, wenn man die Gebühren im Grundeinkommen dazuzählt (`TestSupplyConservation_*`, Ring- und Stapeltests). Ein Nachspiel-Test zeigt, dass ein Knoten ohne das Feld `gebuehr` auseinanderläuft (900 statt 901,10 AEQ) und mit ihm nicht.
+>
+> **Für die App noch nötig:** Beim Senden die Gebühr anzeigen und „Maximum senden“ um die Gebühr kürzen; sonst scheitert eine Sendung des ganzen Guthabens an „zu wenig Guthaben“.
+
+> ## 24.09., abends: „Das fairste Geld der Welt – auf alles bezogen“
+>
+> Alle Geldflüsse der Kette geprüft. Geändert (Kette, Website in 12 Sprachen, App in 12 Sprachen, README, Whitepaper):
+>
+> | Geldfluss | vorher | jetzt |
+> |---|---|---|
+> | **Demurrage** (Verfall über dem fairen Anteil) | 20 % Grundeinkommen, 40 % Validatoren, 30 % Kapitalgeber, 10 % Schatzkammer | **100 % Grundeinkommen** |
+> | **Überschuss über der Vermögensgrenze** | ebenso 20/40/30/10 | **100 % Grundeinkommen** |
+> | **Swap-Gebühr** | 40 / 30 / 20 / 10 | 40 % Validatoren / 30 % Liquiditätsgeber / **30 % Grundeinkommen / 0 % Schatzkammer** |
+> | **Validator-Topf** | nach Blöcken seit Registrierung (Leiter, starke Hardware und die Ersten verdienen mehr) | **gleich je Menschen-Validator**, nur nach Minuten online; nur an Menschen |
+> | **Überweisungsgebühr** | 100 % Grundeinkommen, aber nur über den Token-Vertrag | **auf jeder Überweisung**, 100 % Grundeinkommen (siehe oben) |
+> | **Grundeinkommen, Registrierungszuschuss** | gleich für jeden Menschen | unverändert |
+>
+> **Zwei echte Fehler gefunden und behoben:**
+> - **Die Töpfe waren Wallets mit bekanntem Schlüssel**, und nichts hinderte diesen Schlüssel daran, einen Topf leerzuräumen, auch das Grundeinkommen aller. Jetzt lehnen alle sechs Wege, auf denen Geld bewegt wird, einen Topf als Absender ab. Zusätzlich prüft `eth_sendRawTransaction` vor jeder EVM-Ausführung (`TestTopfSendetNie`).
+> - **Beim täglichen Grundeinkommen verschwand Geld:** Griff beim Auszahlen die Vermögensgrenze, floss ihr Überschuss in den UBI-Topf, und der Abschluss setzte den Topf danach auf null. Im Test waren das 65.100 AEQ. Jetzt schreibt der erzeugende Knoten den Endstand in die Abschluss-Transaktion, und jeder Knoten übernimmt genau ihn. Alte Blöcke tragen 0 und verhalten sich wie damals (`TestUBIRunde_UeberschussBleibtErhalten`, Geldmenge exakt erhalten).
+>
+> **Konsensänderung:** Die neuen Aufteilungen gelten ab dem Deploy, ohne Aktivierungszeitpunkt. Das ist vertretbar, weil C2 der einzige Validator ist und die Kette ohnehin bei null neu startet. Mit mehreren Validatoren müssen alle zugleich umgestellt werden.
+>
+> **Noch offen, deine Entscheidung:**
+> - **Schatzkammer = keine Entwicklungsfinanzierung mehr.** Ihre 10 % gehen jetzt ans Grundeinkommen. Wer das Projekt weiterentwickelt, bekommt aus dem Protokoll nichts. Umkehrbar mit einer Zeile (`swapGebuehrAnteile`).
+> - **Liquiditätsgeber bekommen 30 % der Swap-Gebühr nach eingelegtem Kapital.** Das ist bei jeder Börse so, belohnt aber Vermögen.
+> - **Verträge bereitstellen darf nur der Betreiberschlüssel** (`relayerAddressFromEnv`). Fair wäre: niemand oder jeder.
+> - **`/api/admin/pool-correction`** (Betreiber kann AMM-Reserven verbrennen, standardmäßig aus): beim Neustart bei null entfernen.
+> - **Beim Neustart bei null:** Topf-Adressen ohne bekannten Schlüssel wählen.
+
+> ## 24.09., später: Rotierender Leiter, Leistungsnachweis, Bremse nach Mehrheit (gebaut, standardmäßig AUS)
+>
+> **Warum.** Bis jetzt nimmt ein fest eingestellter Knoten alle Überweisungen an. Fällt er aus, steht die Annahme. Genau das ist am 24.09. mit C1 passiert. Jetzt wechselt der annehmende Knoten, ähnlich wie der Leader bei Solana.
+>
+> - **Rotierender Leiter** (`leitung.go`, `leitung_netz.go`): Es nimmt immer genau einer an, die anderen leiten weiter. Weitergeleitet werden `eth_sendRawTransaction`, `eth_getTransactionCount`, Swap, Liquidität und Faucet. Ab **drei** Validatoren wählt die Mehrheit bei einem Ausfall in etwa 12–20 s einen neuen Leiter. Ein vom Netz getrennter Leiter hört auf, bevor irgendwo ein neuer gewählt wird (Lease). Ein planmäßiger Wechsel (Standard: alle 10 Minuten) übergibt erst, wenn alles Angenommene geschrieben ist, und der Neue nimmt erst an, wenn er den letzten Block des Alten hat. Bei **zwei** Validatoren gibt es keine automatische Übernahme. Tot und getrennt lassen sich von außen nicht unterscheiden, zwei Annehmende würden auseinanderlaufen.
+> - **Leistungsnachweis** (`leistungsnachweis.go`): Jeder Knoten misst selbst Signaturen je Sekunde (alle Kerne), die Dauer eines Datenbank-Commits und seine Kernzahl. Vorgabe: ≥ 20.000 Signaturen/s, ≤ 20 ms, ≥ 4 Kerne. Es zählt der beste je gemessene Wert, damit Last den Nachweis nicht kostet. Ohne Nachweis wird ein Validator nur Leiter, wenn kein leiterfähiger erreichbar ist (Notbetrieb). Ein Leiter ohne Nachweis gibt ab, sobald einer lebt. **Der Nachweis entscheidet, wer leitet, nie, ob jemand annimmt.** Ergebnis in `/api/health/combined → leistungsnachweis`. Der Nachweis wird auch gemessen, wenn die Leitung aus ist, damit man sieht, ob ein Knoten Leiter sein könnte.
+> - **Peer-Lag-Bremse nach Mehrheit:** Ein einzelner langsamer Validator bremst die Annahme nicht mehr, maßgeblich ist der Rückstand der Mehrheit.
+>
+> **Belegt:** Eine Simulation prüft in jedem 50-ms-Schritt, dass nie zwei gleichzeitig annehmen. Durchgespielt werden Ausfall, Neustart, Netztrennung, nicht transitive Trennung, Stimmengleichstand, planmäßiger Wechsel, 10–30 % Nachrichtenverlust und Uhrengang, dazu 50 Zufallsläufe mit 5 Knoten, 20 davon mit wechselndem Leistungsnachweis. Jeder absichtlich eingebaute Fehler lässt die Tests rot werden: Lease ignoriert (1.103 Verstöße), Lease-Zusage ignoriert (80), kein gestaffelter Neuanlauf, keine Abgabe ohne Nachweis, kein Notbetrieb. Ein Test über echtes HTTP mit echten Signaturen und 3 Knoten übersteht den Ausfall des Leiters. Dabei gefunden und behoben: Zwei Kandidaten im Gleichschritt teilten sich endlos die Stimmen.
+>
+> **Dezentral, ohne Handliste.** Welche Validatoren mitzählen, trägt niemand in eine Liste ein. Die Kette beginnt mit dem Genesis-Satz (wie jede Kette mit ihrer Genesis). Danach gilt:
+> - **Beitritt:** Wer seinen Signierschlüssel an einen registrierten Menschen bindet (`register-validator-key`) und seinen Knoten mit `AEQUITAS_LEITUNG=an` startet, meldet sich bei seinen Peers. Der amtierende Leiter nimmt ihn auf. Niemand muss zustimmen, niemand kann es verbieten.
+> - **Austritt:** Wer 30 Minuten nichts von sich hören lässt, wird entfernt, damit Ausgefallene die Mehrheit nicht unerreichbar machen. Meldet er sich wieder, kommt er wieder hinein.
+> - **Den ersten Leiter** bestimmt eine Regel (kleinste Adresse im Genesis-Satz), kein Betreiber.
+> - **Sicherheit beim Wechsel** nach dem Verfahren, mit dem Raft seine Mitgliedschaft ändert: je Änderung genau ein Validator, die nächste erst nach Bestätigung durch die Mehrheit, gewählt wird nur, wer einen mindestens so neuen Satz hat. Eine Aufnahme, die nicht binnen 30 s bestätigt wird, nimmt der Leiter zurück.
+> - **Belegt:** Simulationen für Wachstum von 1 auf 5 Validatoren, Entfernen und Rückkehr, Rücknahme einer Aufnahme ohne Annahmelücke, Netztrennung während einer Aufnahme und das Schrumpfen von 3 auf 2 unter Trennung. Dazu 30 Zufallsläufe mit 6 Knoten, Beitritten, Ausfällen, Trennungen und 294 Satzänderungen, nie zwei Annehmende. Jeder absichtlich eingebaute Fehler lässt die Tests rot werden: Wahlregel ohne Satzstand (614 Verstöße), Bestätigung mit alten Quittungen (1.953), zwei Aufnahmen auf einmal (1.562), zu zweit annehmen ohne Bestätigung (18). Über echtes HTTP mit echten Signaturen (8 von 8 unter `-race`): Die Kette startet mit **einem** Validator. Zwei weitere kennen nur dessen URL, werden aufgenommen und machen nach seinem Ausfall ohne ihn weiter. Beim Bau gefunden und behoben: Eine Konfiguration ohne Entfernungsfrist warf alle anderen sofort hinaus.
+>
+> **Nachgeschärft nach der Frage „gerecht, korrekt, dezentral?“:**
+> - **Ein Mensch, eine Stimme:** Pro Knoten galt „ein Mensch = ein Schlüssel“, aber wer auf zwei Knoten zwei Schlüssel registrierte, bekam zwei Stimmen. Jetzt nimmt die Leitung pro Mensch höchstens einen Schlüssel auf. Geprüft wird das über die signierte Bindung, beim Leiter und bei jedem Folger.
+> - **Folger prüfen jede Änderung selbst:** Sie übernehmen keinen Satz, der einen Unregistrierten oder einen zweiten Schlüssel desselben Menschen aufnimmt. Ebenso wenig einen Satz, der einen Validator hinauswirft, den sie selbst noch hören. Dafür sendet jedes Mitglied alle 10 s ein Lebenszeichen an alle. Ohne Mehrheit gilt eine Änderung nie, und der Leiter nimmt sie zurück. Ein lügender Leiter kann die Mitgliedschaft so nicht mehr kapern (Test `TestSatz_LuegenderLeiter`).
+> - **Nur abgeschnitten heißt nicht ausgefallen:** Der Leiter entfernt niemanden, den ein Folger in seiner Quittung noch als lebend meldet.
+> - **Rotation alle 10 Minuten** statt stündlich: Kein Leiter entscheidet lange allein über die Reihenfolge der Überweisungen.
+> - Gegenproben: Jede der neuen Regeln einzeln entfernt lässt Tests rot werden.
+> - **Validator-Geld gerecht (entschieden 24.09.: „Es soll das fairste Geld sein“):** Jeder Mensch, der einen Validator betreibt, bekommt den gleichen Anteil am Validator-Topf. Gewichtet wird nur nach den Minuten des Tages, in denen sein Knoten da war. Vorher zählten die produzierten Blöcke seit der Registrierung. Damit verdienten der Leiter unter Last, also starke Hardware, und die ersten Betreiber auf Dauer mehr. Mehrere Blöcke in derselben Minute zählen einmal, und nur registrierte Menschen bekommen etwas (`validator_anwesenheit.go`, Test gegen echte Postgres).
+> - **Grenze:** Das ist Absturz-Fehlertoleranz mit Plausibilitätsprüfungen, nicht volle Byzanz-Festigkeit wie bei Tendermint oder Solana (hält, solange weniger als ein Drittel lügt). Ein Leiter kann in seinen 10 Minuten Überweisungen zurückhalten oder umordnen. Validatoren sind an Menschen gebunden, und jede Nachricht ist signiert, also nachvollziehbar.
+>
+> **Einschalten:**
+> ```
+> AEQUITAS_LEITUNG=an                                 # jeder Validator
+> AEQUITAS_LEITUNG_GENESIS=0xAdresse=http://IP:8080   # NUR die Genesis-Validatoren beim Neustart bei null
+> AEQUITAS_LEITUNG_WECHSEL_MINUTEN=10                 # Vorgabe 10; 0 = kein planmäßiger Wechsel
+> AEQUITAS_LEITUNG_ZWEI_WECHSELN=1                    # optional: planmäßig wechseln auch zu zweit
+> AEQUITAS_LEITER_FAEHIG=ja|nein                      # optional, überstimmt die Messung
+> ```
+> `ANNAHME_ROLLE` wird mit eingeschalteter Leitung nicht mehr gebraucht. **Heute nicht eingeschaltet:** Es gibt nur C2. Einschalten gehört zum Neustart bei null (Genesis = C2, der neue Server tritt bei). Die automatische Übernahme braucht **drei** Validatoren, zu zweit gibt es sie nicht. Crash-Fehler sind abgedeckt, böswillige Validatoren nicht: Validatoren sind an Menschen gebunden und signieren jede Nachricht.
+>
+> **Was noch zentral ist:** Der Coordinator mit seinen Vergleichsdiensten (Quorum aus Betreibern), der Proof-Server und die Website mit DNS. Diese Dienste laufen heute auf C2. Wer registriert, prüft ein Quorum mehrerer Betreiber, aber es gibt noch keinen dritten Betreiber (Punkt 13). Die Deploy-Workflows dieses Repos sind Betriebswerkzeuge der beiden Boxen, nicht Teil des Protokolls: Ein fremder Validator braucht sie nicht.
 
 > ## 24.09.: Contabo1 abgeschaltet, C2 trägt allein
 >

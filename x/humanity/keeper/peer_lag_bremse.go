@@ -1,6 +1,7 @@
 package keeper
 
 import (
+	"sort"
 	"sync/atomic"
 	"time"
 )
@@ -163,8 +164,19 @@ func peerLagBoden() int {
 	return peerLagBodenVorgabe
 }
 
-// groesstenFrischenRueckstand liefert den groessten Rueckstand unter den
-// Peers, von denen kuerzlich etwas kam. 0 heisst: niemand haengt.
+// groesstenFrischenRueckstand liefert den Rueckstand, den die MEHRHEIT der
+// Validatoren einhaelt -- nicht mehr den des Langsamsten.
+//
+// WARUM. Bis zum 24.09.2026 bremste der groesste Rueckstand irgendeines
+// Peers. Mit zwei eigenen Servern ist das richtig und bleibt es (siehe
+// mehrheitsRueckstand: bei einem Partner ist die Mehrheit er selbst). Mit
+// Validatoren aus der Gemeinschaft haette aber ein einziger langsamer -- oder
+// absichtlich langsamer -- Rechner die Bloecke des ganzen Netzes auf den
+// Boden gedrueckt. Wer dauerhaft hinterherhaengt, holt per Snapshot auf
+// (Selbstheilung), statt alle aufzuhalten.
+//
+// Gezaehlt werden nur Peers, von denen kuerzlich etwas kam. 0 heisst:
+// niemand haengt.
 func (dag *BlockDAG) groesstenFrischenRueckstand(_ int64) int64 {
 	// TryLock, nicht Lock. Diese Funktion laeuft unter dag.mu; eine zweite
 	// Sperre dort zu erwerben waere eine Reihenfolge-Annahme, die niemand
@@ -176,7 +188,7 @@ func (dag *BlockDAG) groesstenFrischenRueckstand(_ int64) int64 {
 	}
 	defer dag.syncPeerMu.Unlock()
 	jetzt := time.Now()
-	var groesster int64
+	var rueckstaende []int64
 	for url, hoehe := range dag.peerSyncHeight {
 		gesehen, da := dag.peerSyncSeenAt[url]
 		if !da || jetzt.Sub(gesehen) > peerLagFrische {
@@ -191,9 +203,7 @@ func (dag *BlockDAG) groesstenFrischenRueckstand(_ int64) int64 {
 		// Gegen die eigene Hoehe ZUM ZEITPUNKT DER ABFRAGE, nicht gegen die
 		// von jetzt -- siehe peerEchteHoeheEigene in peer_hoehe_echt.go.
 		if echt, eigeneDamals, ok := echteHoeheVonPeerMitEigener(url); ok {
-			if r := eigeneDamals - echt; r > groesster {
-				groesster = r
-			}
+			rueckstaende = append(rueckstaende, eigeneDamals-echt)
 			continue
 		}
 
@@ -208,11 +218,31 @@ func (dag *BlockDAG) groesstenFrischenRueckstand(_ int64) int64 {
 		if !ok {
 			continue
 		}
-		if r := damals - hoehe; r > groesster {
-			groesster = r
-		}
+		rueckstaende = append(rueckstaende, damals-hoehe)
 	}
-	return groesster
+	return mehrheitsRueckstand(rueckstaende)
+}
+
+// mehrheitsRueckstand: der kleinste Rueckstand, den eine Mehrheit aller
+// Knoten (dieser eingeschlossen, mit Rueckstand 0) einhaelt.
+//
+//	1 Partner:   Mehrheit von 2 = beide -> sein Rueckstand (wie bisher)
+//	2 Partner:   Mehrheit von 3 = 2     -> der kleinere der beiden
+//	4 Partner:   Mehrheit von 5 = 3     -> der zweitkleinste
+//
+// Negative Werte (Partner voraus) zaehlen als 0.
+func mehrheitsRueckstand(partner []int64) int64 {
+	alle := make([]int64, 0, len(partner)+1)
+	alle = append(alle, 0) // dieser Knoten
+	for _, r := range partner {
+		if r < 0 {
+			r = 0
+		}
+		alle = append(alle, r)
+	}
+	sort.Slice(alle, func(i, j int) bool { return alle[i] < alle[j] })
+	mehrheit := len(alle)/2 + 1
+	return alle[mehrheit-1]
 }
 
 // blockTxCap liefert, wie viele Ueberweisungen der naechste Block hoechstens

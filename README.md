@@ -95,9 +95,10 @@ UBI aus Protokoll-Ökonomie — ohne Steuern, ohne Regierung, ohne politische En
 UBI from protocol economics — no taxation, no government, no political decision required.
 
 **Quellen / Sources:**
-- Transaktionsgebühren 0,1% → 20% an UBI-Pool / Transaction fees → 20% to UBI Pool
-- Wealth-Cap-Überschuss → sofortige Gleichverteilung / Wealth cap overflow → equal redistribution
-- Demurrage auf Überschüsse / Demurrage on excess balances
+- Überweisungsgebühren (0,1 % auf jede Überweisung, obendrauf; Aufschlag ab dem 5-/10-/20-fachen des fairen Anteils: +0,1/+0,5/+1 %) → 100% an UBI-Pool / Transfer fees (0.1% on every transfer, paid on top; surcharge from 5×/10×/20× the fair share) → 100% to UBI Pool
+- Swap-Gebühren → 30% an UBI-Pool / Swap fees → 30% to UBI Pool
+- Wealth-Cap-Überschuss → 100% an UBI-Pool / Wealth cap overflow → 100% to UBI Pool
+- Demurrage auf Überschüsse → 100% an UBI-Pool / Demurrage on excess balances → 100% to UBI Pool
 - Inaktive Wallets nach 4 Jahren / Inactive wallet escrow after 4 years
 
 ### 3. Wealth Cap — Vermögensobergrenze
@@ -122,8 +123,8 @@ Excess flows instantly into tokenomics pools — no AEQ is destroyed.
 
 ### 4. Demurrage — Haltegebühr
 
-0,5% monatliche Gebühr (nach 3 Monaten Karenzzeit seit der letzten Aktivität) auf Guthaben **über** dem fairShare. Verteilt sich auf die vier Tokenomics-Pools (40% Validatoren / 30% LP / 20% UBI / 10% Treasury) — wird nie vernichtet.
-0.5% monthly fee (after a 3-month grace period since last activity) on any balance **above** fairShare. Split across the four tokenomics pools (40% validators / 30% LPs / 20% UBI / 10% treasury) — never destroyed.
+0,5% monatliche Gebühr (nach 3 Monaten Karenzzeit seit der letzten Aktivität) auf Guthaben **über** dem fairShare. Geht zu 100% in den UBI-Pool und damit zu gleichen Teilen an alle Menschen — wird nie vernichtet.
+0.5% monthly fee (after a 3-month grace period since last activity) on any balance **above** fairShare. Goes 100% to the UBI pool, i.e. to all humans in equal shares — never destroyed.
 
 Historisches Vorbild: Wörgl, Österreich (1932) — Demurrage-Währung reduzierte die Arbeitslosigkeit um 25% in einem Jahr.
 Historical precedent: Wörgl, Austria (1932) — demurrage currency reduced unemployment by 25% in one year.
@@ -133,7 +134,8 @@ Historical precedent: Wörgl, Austria (1932) — demurrage currency reduced unem
 Integrierter AMM-DEX (AEQ ↔ tUSD) mit automatischer Preisfindung (x·y=k Formel):
 Built-in AMM DEX (AEQ ↔ tUSD) with automatic price discovery (x·y=k formula):
 
-- 0,1% Swap-Gebühr → 40% Validatoren, 30% LPs, 20% UBI, 10% Treasury
+- 0,1% Swap-Gebühr → 40% Validatoren, 30% LPs, 30% UBI (Treasury seit 24.09.2026 0%: aus keinem Topf darf jemand auszahlen, auch nicht mit dessen Schlüssel)
+- Validator-Anteil: gleicher Anteil für jeden Menschen, der einen Validator betreibt, nur gewichtet nach Minuten online — nicht nach Hardware, nicht nach Dienstalter
 - Liquidity Provider Shares proportional zur Einlage
 - Preishistorie und Lorenz-Kurve live on-chain
 

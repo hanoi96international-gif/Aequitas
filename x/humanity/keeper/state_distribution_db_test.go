@@ -176,7 +176,9 @@ func TestRunDailyDistributionAtomic_RealDB(t *testing.T) {
 	cs.accounts.Set(lpPoolAddr, lpAcc)
 	cs.mu.Unlock()
 
-	cs.RegisterNode(distTestAddr(9))
+	// Den Knoten betreibt human1: Validator-Geld geht seit dem 24.09.2026 nur
+	// an registrierte Menschen (distributeValidatorsPoolLocked).
+	cs.RegisterNode(human1.Address)
 
 	ubiAt := time.Now().Unix()
 	if err := cs.RunDailyDistributionAtomic(ubiAt); err != nil {
@@ -190,18 +192,17 @@ func TestRunDailyDistributionAtomic_RealDB(t *testing.T) {
 	if !ok1 || !ok2 {
 		t.Fatalf("want both human accounts present after distribution, got ok1=%v ok2=%v", ok1, ok2)
 	}
-	if h1.Balance.Float() != 50 || h2.Balance.Float() != 50 {
-		t.Errorf("want both humans credited 50 AEQ via real-DB UBI distribution, got %v and %v", h1.Balance.Float(), h2.Balance.Float())
+	// human1: 50 Grundeinkommen + 50 als einziger Validator-Betreiber.
+	if h1.Balance.Float() != 100 || h2.Balance.Float() != 50 {
+		t.Errorf("want human1 100 AEQ (50 UBI + 50 validator) and human2 50 AEQ UBI, got %v and %v", h1.Balance.Float(), h2.Balance.Float())
 	}
 	if ubiPoolAcc, ok := cs.accounts.Get(ubiPoolAddr); !ok {
 		t.Error("want UBI pool account still present after real-DB finalize")
 	} else if ubiPoolAcc.Balance.Float() != 0 {
 		t.Errorf("want UBI pool zeroed via real-DB finalize, got %v", ubiPoolAcc.Balance.Float())
 	}
-	if validator, ok := cs.accounts.Get(distTestAddr(9)); !ok {
-		t.Error("want registered node account present after real-DB validator distribution")
-	} else if validator.Balance.Float() != 50 {
-		t.Errorf("want registered node credited 50 AEQ via real-DB validator distribution, got %v", validator.Balance.Float())
+	if validatorsPool, ok := cs.accounts.Get(validatorsPoolAddr); !ok || validatorsPool.Balance.Float() != 0 {
+		t.Errorf("want validators pool emptied into human1, got %v", validatorsPool)
 	}
 	if lp, ok := cs.accounts.Get(lpHolder.Address); !ok {
 		t.Error("want LP holder account present after real-DB LP distribution")

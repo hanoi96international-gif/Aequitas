@@ -52,6 +52,12 @@ type Transaction struct {
 	// StateRoot divergence identical in kind to the swap-fee bug fixed in 8e3f675.
 	FromDemurrageLost float64 `json:"from_demurrage_lost,omitempty"`
 	ToDemurrageLost   float64 `json:"to_demurrage_lost,omitempty"`
+	// Gebuehr: bei "transfer" die Ueberweisungsgebuehr, die der Absender
+	// ZUSAETZLICH zu Amount bezahlt hat und die ans Grundeinkommen ging.
+	// Bis zum 24.09.2026 stand sie nirgends -- ein nachspielender Knoten
+	// belastete den Absender dann nur mit Amount und schrieb dem
+	// Grundeinkommen nichts gut (applyTransferDeltaLockedSammelnd).
+	Gebuehr float64 `json:"gebuehr,omitempty"`
 	// DistributionAt carries the exact Unix timestamp the primary chose for
 	// a distribution round (e.g. the new last_ubi_at) on
 	// "ubi_distribution_finalize" TXs. Audit recheck 2 (P0 #4) found the
@@ -257,6 +263,9 @@ type BlockDAG struct {
 
 	// vorlauf: der Ausgangskorb fuer den naechsten Block, siehe vorlader.go.
 	vorlauf vorlader
+	// letzterEigenerBlock: Hash des zuletzt gespeicherten eigenen Blocks --
+	// der Leiter nennt ihn bei der Uebergabe (leitung.go).
+	letzterEigenerBlock atomic.Value
 
 	// jemalsAufgeholt: hat dieser Prozess je alle Seeds sauber eingeholt?
 	// Entscheidet, ob der Notausstieg des Sync-Tors gelten darf -- siehe die
@@ -352,9 +361,12 @@ type BlockDAG struct {
 	signingKey           *ecdsa.PrivateKey
 	selfProposer         string          // lower-cased Ethereum address of this node's signing key
 	authorizedValidators map[string]bool // Ethereum addresses allowed to propose blocks
-	currentEpoch         *EpochCommittee // active block-producer committee for the current epoch
-	epochMu              sync.RWMutex    // guards currentEpoch
-	activeSyncPeers      map[string]bool // peers with a running syncWithNode goroutine
+	// Signierschluessel -> registrierter Mensch, nur aus geprueften Bindungen
+	// (leitung_netz.go: ein Mensch, eine Stimme in der Leitung).
+	validatorMenschen sync.Map
+	currentEpoch      *EpochCommittee // active block-producer committee for the current epoch
+	epochMu           sync.RWMutex    // guards currentEpoch
+	activeSyncPeers   map[string]bool // peers with a running syncWithNode goroutine
 	// peerSyncHeight tracks, per peer URL, the highest block height this
 	// node has actually SUCCESSFULLY imported FROM that specific peer via
 	// doSyncOnce — see that function's own FIX comment (2026-07-06) for the
@@ -3162,6 +3174,15 @@ func (dag *BlockDAG) ProduceBlock() *Block {
 	// mehr laufen -- sie wuerde Ueberweisungen freigeben, die gerade in einem
 	// Block gelandet sind, und sie ein zweites Mal in einen naechsten bringen.
 	blockGespeichert = true
+	// Ueberweisungsgebuehren dieses Blocks ans Grundeinkommen -- jetzt, wo
+	// die Ueberweisungen in einem gespeicherten Block stehen. Nachspielende
+	// Knoten schreiben sie beim Nachspielen genauso gut
+	// (applyTransferDeltaLockedSammelnd), also sind beide Block fuer Block
+	// gleich. Eigene Goroutine: dag.mu ist gehalten, die Gutschrift braucht
+	// cs.mu -- keine neue Sperrreihenfolge einfuehren.
+	if summe := gebuehrenSumme(block.Transactions); summe > 0 {
+		SafeGoroutine("gebuehren-ins-grundeinkommen", func() { dag.state.gebuehrenInsGrundeinkommen(summe) })
+	}
 	// Index this block's transactions for wallet lookups, exactly as the replay
 	// path does for peer blocks — a transaction must resolve to its real block
 	// no matter which node produced it or which node the wallet asks. See
@@ -3212,6 +3233,7 @@ func (dag *BlockDAG) ProduceBlock() *Block {
 	dag.replayedMu.Lock()
 	dag.replayedBlocks[block.Hash] = true
 	dag.replayedMu.Unlock()
+	dag.letzterEigenerBlock.Store(block.Hash)
 
 	// Remove all parents from tips, add this block as new tip
 	for _, ph := range parentHashes {
@@ -7107,7 +7129,7 @@ func (dag *BlockDAG) replayTransactions(block *Block, force bool) (ok bool) {
 			// comment: dag.state.activeTx was already set directly above
 			// this loop, and dbExecCtx falls back to it.
 			phMarkSer := time.Now()
-			errSeriell := dag.state.applyTransferDeltaLockedSammelnd(withTx(context.Background(), dbTx), wallet, to, tx.Amount, tx.FromDemurrageLost, tx.ToDemurrageLost, block.Timestamp, kontenSammlung)
+			errSeriell := dag.state.applyTransferDeltaLockedSammelnd(withTx(context.Background(), dbTx), wallet, to, tx.Amount, tx.FromDemurrageLost, tx.ToDemurrageLost, block.Timestamp, kontenSammlung, tx.Gebuehr)
 			merkeReplaySeriellZeit(phMarkSer)
 			phBlock.seriell += time.Since(phMarkSer)
 			if err := errSeriell; err != nil {
@@ -7267,7 +7289,7 @@ func (dag *BlockDAG) replayTransactions(block *Block, force bool) (ok bool) {
 			// loop runs) — context.Background() carries no transaction of its
 			// own, so dbExecCtx falls back to that field, exactly matching
 			// pre-migration behavior. See registerHumanLocked's comment.
-			if err := dag.state.applyUBIFinalizeDeltaLocked(context.Background(), tx.DistributionAt); err != nil {
+			if err := dag.state.applyUBIFinalizeDeltaLocked(context.Background(), tx.DistributionAt, tx.Amount); err != nil {
 				fmt.Printf("[REPLAY] ✗ ubi_distribution_finalize: %v (block #%d) — rolling back whole block\n", err, block.Height)
 				hardFailure = true
 				continue

@@ -380,13 +380,24 @@ func TestSupplyConservation_V7FeeTransfer(t *testing.T) {
 	cs.humanCount = 2
 	cs.pool = &PoolState{}
 
-	assertConserved(t, cs, "V7-fee transfer", func() {
+	// Die Gebuehr zahlt der Absender sofort; dem Grundeinkommen gutgeschrieben
+	// wird sie, wenn die Ueberweisung im Block steht (ueberweisungsgebuehr.go)
+	// -- erst beides zusammen ist eine Bewegung.
+	assertConserved(t, cs, "V7-fee transfer + Block", func() {
 		cs.mu.Lock()
-		defer cs.mu.Unlock()
-		if _, _, _, err := cs.transferWithV7FeeLocked(t.Context(), "0xsender", "0xrecipient", 1000); err != nil {
+		netto, _, _, gebuehr, err := cs.transferWithV7GebuehrLocked(t.Context(), "0xsender", "0xrecipient", 1000)
+		cs.mu.Unlock()
+		if err != nil {
 			t.Fatalf("v7 fee transfer: %v", err)
 		}
+		if netto != 1000 || gebuehr <= 0 {
+			t.Fatalf("netto %v, Gebuehr %v -- erwartet: der Empfaenger bekommt 1000, der Absender zahlt obendrauf", netto, gebuehr)
+		}
+		cs.gebuehrenInsGrundeinkommen(gebuehr)
 	})
+	if got := acct(cs, "0xrecipient").Balance.Float(); got != 2000 {
+		t.Errorf("Empfaenger %v, erwartet 2000", got)
+	}
 }
 
 // The three ingestion fast paths bypass transferMutateLocked entirely. Each one
@@ -431,6 +442,22 @@ func TestSupplyConservation_FastPaths_RealDB(t *testing.T) {
 	}
 	pruefen := func(t *testing.T, cs *ChainState, adr []string, vorher float64, mitDB bool) {
 		t.Helper()
+		// Die Ueberweisungsgebuehren (ueberweisungsgebuehr.go) sind unterwegs:
+		// die Absender sind belastet, gutgeschrieben wird, wenn die
+		// Ueberweisungen im Block stehen. Das hier ist der Block: alle
+		// ausstehenden Zeilen des Ausgangskorbs (der WAL-Pfad erst nach seinem
+		// Nachschreiben dorthin) -- genau was ProduceBlock gutschreibt.
+		if cs.wal != nil {
+			cs.FlushWALNow()
+		}
+		var unterwegs float64
+		if err := cs.db.QueryRow(`SELECT COALESCE(SUM((tx_json::json->>'gebuehr')::numeric),0) FROM pending_txs`).Scan(&unterwegs); err != nil {
+			t.Fatalf("Gebuehren im Ausgangskorb: %v", err)
+		}
+		if unterwegs <= 0 {
+			t.Errorf("keine Gebuehr im Ausgangskorb -- die Ueberweisungen zahlten keine")
+		}
+		cs.gebuehrenInsGrundeinkommen(unterwegs)
 		nachher := totalAEQ(cs)
 		if math.Abs(nachher-vorher) > 1e-9 {
 			t.Errorf("Speicher: Gesamtmenge %+.6f (vorher %.6f, nachher %.6f)", nachher-vorher, vorher, nachher)
@@ -457,8 +484,9 @@ func TestSupplyConservation_FastPaths_RealDB(t *testing.T) {
 			}
 		}
 		if mitDB {
-			if db := sumDB(t, cs, adr); math.Abs(db-float64(n)*start) > 1e-6 {
-				t.Errorf("Postgres: Summe der Ringkonten %.6f, erwartet %.6f", db, float64(n)*start)
+			// Die Gebuehren haben den Ring verlassen -- ins Grundeinkommen.
+			if db := sumDB(t, cs, adr); math.Abs(db-(float64(n)*start-unterwegs)) > 1e-6 {
+				t.Errorf("Postgres: Summe der Ringkonten %.6f, erwartet %.6f - Gebuehren %.6f", db, float64(n)*start, unterwegs)
 			}
 		}
 	}

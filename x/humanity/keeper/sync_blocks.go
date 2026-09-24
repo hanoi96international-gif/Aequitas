@@ -335,6 +335,11 @@ func (dag *BlockDAG) syncValidatorsFromPeer(peerURL string) {
 			fmt.Printf("[PEERS] Auto-authorized validator from %s: %s (human: %s)\n", peerURL, signingAddr, humanWallet)
 		}
 		dag.AddAuthorizedValidator(signingAddr)
+		if vkp.OperatorBindingSignature != "" {
+			// Bindung signiert und oben geprueft: fuer "ein Mensch, eine
+			// Stimme" in der Leitung (leitung_netz.go).
+			dag.merkeValidatorMensch(signingAddr, humanWallet)
+		}
 	}
 }
 

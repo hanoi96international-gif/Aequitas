@@ -2,6 +2,7 @@ package keeper
 
 import (
 	"fmt"
+	"math"
 	"os"
 	"sync"
 	"testing"
@@ -80,8 +81,8 @@ func TestTransferConcurrent_EligibleTransferSucceeds(t *testing.T) {
 	toAcc, _ := cs.accounts.Get(to)
 	gotXOR := cs.accountSetXOR
 	cs.mu.RUnlock()
-	if fromAcc.Balance.Float() != 70 {
-		t.Errorf("sender balance = %v, want 70", fromAcc.Balance.Float())
+	if fromAcc.Balance.Float() != nachGebuehr(100, 30) {
+		t.Errorf("sender balance = %v, want %v (70 minus Ueberweisungsgebuehr)", fromAcc.Balance.Float(), nachGebuehr(100, 30))
 	}
 	if toAcc.Balance.Float() != 30 {
 		t.Errorf("recipient balance = %v, want 30", toAcc.Balance.Float())
@@ -94,7 +95,7 @@ func TestTransferConcurrent_EligibleTransferSucceeds(t *testing.T) {
 	if err := cs.db.QueryRow(`SELECT balance FROM chain_accounts WHERE lower(address) = $1`, to).Scan(&dbTo); err != nil {
 		t.Fatalf("recipient row not found in Postgres: %v", err)
 	}
-	if dbFrom != 70 || dbTo != 30 {
+	if dbFrom != nachGebuehr(100, 30) || dbTo != 30 {
 		t.Errorf("Postgres balances = (%v, %v), want (70, 30)", dbFrom, dbTo)
 	}
 
@@ -264,7 +265,7 @@ func TestTransferConcurrent_ConcurrentRingTransfersConserveBalance(t *testing.T)
 	wantXOR := referenceAccountXOR(cs)
 	cs.mu.RUnlock()
 
-	if total != float64(n)*1000 {
+	if unterwegs := gebuehrenUnterwegs(t, cs); math.Abs(total+unterwegs-float64(n)*1000) > 1e-6 {
 		t.Fatalf("total balance after %d concurrent ring transfer attempts = %v, want %v (lost update or double-spend if different)", n, total, float64(n)*1000)
 	}
 	if gotXOR != wantXOR {
@@ -281,7 +282,7 @@ func TestTransferConcurrent_ConcurrentRingTransfersConserveBalance(t *testing.T)
 	}
 	for i := 0; i < n; i++ {
 		if applied[i] {
-			want[i] -= amount
+			want[i] -= amount + ueberweisungsGebuehrFuer(amount, 1000)
 			want[(i+1)%n] += amount
 		}
 	}
@@ -289,7 +290,7 @@ func TestTransferConcurrent_ConcurrentRingTransfersConserveBalance(t *testing.T)
 	defer cs.mu.RUnlock()
 	for i, addr := range addrs {
 		acc, _ := cs.accounts.Get(addr)
-		if acc.Balance.Float() != want[i] {
+		if math.Abs(acc.Balance.Float()-want[i]) > 1e-9 {
 			t.Errorf("account %s balance = %v, want %v given which ring attempts actually applied", addr, acc.Balance.Float(), want[i])
 		}
 	}
@@ -337,14 +338,15 @@ func TestTransferConcurrent_ViaTransferAtomic_RingConservesBalance(t *testing.T)
 		total += acc.Balance.Float()
 		return true
 	})
-	if total != float64(n)*1000 {
+	if unterwegs := gebuehrenUnterwegs(t, cs); math.Abs(total+unterwegs-float64(n)*1000) > 1e-6 {
 		t.Fatalf("total balance after %d concurrent TransferAtomic ring transfers = %v, want %v", n, total, float64(n)*1000)
 	}
-	// Every account moved by exactly (+25 in, -25 out) = net 0.
+	// Every account moved by exactly (+25 in, -25 out) = net 0 -- minus the
+	// Ueberweisungsgebuehr it paid on top for its own 25 out.
 	for _, addr := range addrs {
 		acc, _ := cs.accounts.Get(addr)
-		if acc.Balance.Float() != 1000 {
-			t.Errorf("account %s balance = %v, want 1000 (ring net-zero)", addr, acc.Balance.Float())
+		if want := nachGebuehr(1000, 25) + 25; math.Abs(acc.Balance.Float()-want) > 1e-9 {
+			t.Errorf("account %s balance = %v, want %v (ring net-zero minus fee)", addr, acc.Balance.Float(), want)
 		}
 	}
 }
@@ -410,7 +412,7 @@ func TestTransferConcurrent_ConcurrentOverlappingTransfersNoDeadlockNoCorruption
 	wantXOR := referenceAccountXOR(cs)
 	cs.mu.RUnlock()
 
-	if total != float64(numAddrs)*500 {
+	if unterwegs := gebuehrenUnterwegs(t, cs); math.Abs(total+unterwegs-float64(numAddrs)*500) > 1e-6 {
 		t.Fatalf("total balance after %d concurrent overlapping transfers = %v, want %v", rounds, total, float64(numAddrs)*500)
 	}
 	if gotXOR != wantXOR {
@@ -433,7 +435,7 @@ func TestTransferConcurrent_ConcurrentOverlappingTransfersNoDeadlockNoCorruption
 		}
 		dbTotal += b
 	}
-	if dbTotal != float64(numAddrs)*500 {
+	if unterwegs := gebuehrenUnterwegs(t, cs); math.Abs(dbTotal+unterwegs-float64(numAddrs)*500) > 1e-6 {
 		t.Fatalf("total balance in Postgres = %v, want %v", dbTotal, float64(numAddrs)*500)
 	}
 }

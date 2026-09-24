@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"os"
 	"strings"
+	"sync/atomic"
 )
 
 // Freistellung einzelner Absender von der Ratenbegrenzung auf /rpc.
@@ -33,7 +34,32 @@ import (
 // bestimmten Absender.
 //
 // Leer (Vorgabe) = niemand ist freigestellt, das Verhalten ist unveraendert.
-var rpcRateLimitFreiListe = rpcRateLimitFreiAusUmgebung()
+var rpcRateLimitFreiListe atomic.Pointer[map[string]bool]
+
+func init() {
+	m := rpcRateLimitFreiAusUmgebung()
+	rpcRateLimitFreiListe.Store(&m)
+}
+
+// rpcRateLimitFreiErgaenzen stellt weitere Adressen frei -- die der anderen
+// Validatoren bei rotierendem Leiter (leitung_netz.go): sie leiten die
+// Anfragen ihrer Nutzer weiter und haben deren Ratenbegrenzung schon
+// angewandt. Nur IP-Literale; Namen werden nie aufgeloest.
+func rpcRateLimitFreiErgaenzen(ips []string) {
+	alt := rpcRateLimitFreiListe.Load()
+	neu := map[string]bool{}
+	if alt != nil {
+		for k, v := range *alt {
+			neu[k] = v
+		}
+	}
+	for _, s := range ips {
+		if ip := net.ParseIP(strings.TrimSpace(s)); ip != nil {
+			neu[ip.String()] = true
+		}
+	}
+	rpcRateLimitFreiListe.Store(&neu)
+}
 
 func rpcRateLimitFreiAusUmgebung() map[string]bool {
 	roh := strings.TrimSpace(os.Getenv("AEQUITAS_RPC_RATE_LIMIT_FREI"))
@@ -69,7 +95,11 @@ func rpcRateLimitFreiAusUmgebung() map[string]bool {
 // rpcRateLimitFrei meldet, ob diese Verbindung von einer freigestellten
 // Adresse kommt. Geprueft wird ausschliesslich r.RemoteAddr, siehe oben.
 func rpcRateLimitFrei(r *http.Request) bool {
-	return rpcRateLimitFreiFuer(rpcRateLimitFreiListe, r)
+	m := rpcRateLimitFreiListe.Load()
+	if m == nil {
+		return false
+	}
+	return rpcRateLimitFreiFuer(*m, r)
 }
 
 func rpcRateLimitFreiFuer(liste map[string]bool, r *http.Request) bool {
