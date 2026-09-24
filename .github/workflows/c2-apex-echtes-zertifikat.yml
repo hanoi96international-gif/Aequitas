@@ -11,6 +11,12 @@ name: C2 aequitas.digital -- echtes Zertifikat statt tls internal
 
 on:
   workflow_dispatch:
+  # Einmalig beim Hochladen dieser Datei (ein neuer Workflow auf einem
+  # Nebenzweig ist sonst nicht startbar). Laeuft erneut nur, wenn sich
+  # genau diese Datei aendert.
+  push:
+    branches: [claude/hier-weitermachen-xfsfqx]
+    paths: [".github/workflows/c2-apex-echtes-zertifikat.yml"]
 
 jobs:
   fix:
