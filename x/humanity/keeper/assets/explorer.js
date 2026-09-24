@@ -4774,7 +4774,7 @@ async function drawLorenzCurve() {
     // registered humans" — a claim that the chain has almost no humans, on a
     // node whose /api/status right above it reads 15. Reproduced against
     // production: two calls 0.3s apart return 200 then 429.
-    var resp = await fetch('/api/humans');
+    var resp = await fetchHumansShared();
     if (mySeq !== drawLorenzSeq) return;
     if (!resp.ok) {
       ctx.fillStyle = 'rgba(155,114,246,0.6)'; ctx.font = '13px Inter'; ctx.textAlign = 'center';
@@ -4789,8 +4789,7 @@ async function drawLorenzCurve() {
       }
       return;
     }
-    var d = await resp.json();
-    if (mySeq !== drawLorenzSeq) return;
+    var d = resp.data;
     var humans = d.humans || [];
     if (humans.length < 2) {
       ctx.fillStyle='rgba(155,114,246,0.6)'; ctx.font='13px Inter'; ctx.textAlign='center';
@@ -6054,6 +6053,27 @@ async function doRecoverEscrow() {
   } catch(e) { guardianLog('✗ ' + sanitize(e.message), 'err'); }
 }
 
+// /api/humans allows one request per 3s per IP, and this page asks for it
+// from four places: page load, the 10s poll, every new block (SSE) and the
+// Lorenz curve. Uncoordinated, they collided and the loser got a 429 (seen
+// live 2026-09-24: three 429s on every visit to /explorer). One shared fetch:
+// callers inside the window get the same answer instead of a second request.
+const HUMANS_MIN_GAP_MS = 3200;
+let humansShared = null; // {at, promise}
+function fetchHumansShared() {
+  const now = Date.now();
+  if (humansShared && now - humansShared.at < HUMANS_MIN_GAP_MS) return humansShared.promise;
+  const promise = fetch('/api/humans').then(async function (resp) {
+    const data = resp.ok ? await resp.json() : null;
+    return { ok: resp.ok, status: resp.status, data: data };
+  });
+  humansShared = { at: now, promise: promise };
+  // A failed request must not be served to the next caller as a cached answer.
+  promise.then(function (r) { if (!r.ok && humansShared && humansShared.promise === promise) humansShared = null; },
+               function () { if (humansShared && humansShared.promise === promise) humansShared = null; });
+  return promise;
+}
+
 let loadHumansSeq = 0;
 async function loadHumans() {
   const mySeq = ++loadHumansSeq;
@@ -6069,7 +6089,7 @@ async function loadHumans() {
     // negative claim about the chain: that nobody has ever registered. Reload
     // the page twice quickly, or keep a second tab open, and that is what a
     // visitor saw.
-    const resp = await fetch('/api/humans');
+    const resp = await fetchHumansShared();
     if (mySeq !== loadHumansSeq) return;
     const listEl = document.getElementById('humans-list');
     if (!resp.ok) {
@@ -6086,8 +6106,7 @@ async function loadHumans() {
       }
       return;
     }
-    const d = await resp.json();
-    if (mySeq !== loadHumansSeq) return;
+    const d = resp.data;
     document.getElementById('h-count').textContent = fmt(d.total);
     const list = listEl;
     if (!d.humans || !d.humans.length) { list.innerHTML = '<div class="empty">No humans registered yet.<br><br>Download the Aequitas Android App and be the first!</div>'; return; }
