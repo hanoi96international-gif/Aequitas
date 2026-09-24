@@ -531,7 +531,7 @@
         <span style="color:var(--teal)"><span id="depth-tusd-pct">50%</span> tUSD</span>
       </div>
     </div>
-    <div class="ic-row" style="padding-top:4px"><span class="ic-key" data-i18n="swap-fee-bps">Fee</span><span class="ic-val g" data-i18n="x-0-1-split-40-30">0.1% · split 40/30/20/10</span></div>
+    <div class="ic-row" style="padding-top:4px"><span class="ic-key" data-i18n="swap-fee-bps">Fee</span><span class="ic-val g" data-i18n="x-0-1-split-40-30">0.1% · split 40/30/30</span></div>
     <div class="amm-box">
       <div style="font-size:0.73rem;color:var(--purple);font-weight:700;letter-spacing:1.2px;text-transform:uppercase;margin-bottom:6px" data-i18n="amm-title">How the AMM works</div>
       <div class="amm-formula" data-i18n="x-aeq-reserve-tusd-reserve-k">AEQ_reserve × tUSD_reserve = k (constant)</div>
@@ -542,8 +542,8 @@
     <div class="ic-title" data-i18n="swap-pools-addr-title">Pool Addresses</div>
     <div class="ic-row"><span class="ic-key" data-i18n="swap-validators">40% Validators</span><span class="ic-val p" style="font-size:11px">0x78c1...d2bA</span></div>
     <div class="ic-row"><span class="ic-key" data-i18n="swap-lps">LP Shares</span><span class="ic-val p" style="font-size:11px">0xc181...01EB</span></div>
-    <div class="ic-row"><span class="ic-key" data-i18n="swap-ubi">20% UBI</span><span class="ic-val p" style="font-size:11px">0x4A9b...054A</span></div>
-    <div class="ic-row"><span class="ic-key" data-i18n="swap-treasury">10% Treasury</span><span class="ic-val p" style="font-size:11px">0x2273...3eb15</span></div>
+    <div class="ic-row"><span class="ic-key" data-i18n="swap-ubi">30% UBI</span><span class="ic-val p" style="font-size:11px">0x4A9b...054A</span></div>
+    <div class="ic-row"><span class="ic-key" data-i18n="swap-treasury">0% Treasury</span><span class="ic-val p" style="font-size:11px">0x2273...3eb15</span></div>
   </div>
 
 <div class="ic" style="margin-top:20px">
@@ -751,7 +751,7 @@
       <div class="ubi-src-card" style="border-color:rgba(245,166,35,0.2)">
         <div class="ubi-src-pct" style="color:var(--gold)">variable</div>
         <div class="ubi-src-name" style="color:var(--gold)" data-i18n="ubi-src-dem">variable Demurrage</div>
-        <div class="ubi-src-desc" data-i18n="ubi-src-dem-d">Idle AEQ (3+ months inactive) decays at 0.5%/month. The decayed amount enters the 40/30/20/10 split — 20% goes to UBI.</div>
+        <div class="ubi-src-desc" data-i18n="ubi-src-dem-d">Idle AEQ (3+ months inactive) decays at 0.5%/month on the part above your 1,000 AEQ fair share. 100% of the decayed amount goes to UBI.</div>
       </div>
       <div class="ubi-src-card" style="border-color:rgba(139,92,246,0.2)">
         <div class="ubi-src-pct" style="color:var(--purple)">variable</div>
@@ -819,7 +819,7 @@
       <tr><td data-i18n="dem-rate-k">Decay Rate</td><td data-i18n="dem-rate-v">0.5% per month (continuous, not stepped)</td></tr>
       <tr><td data-i18n="dem-grace-k">Grace Period</td><td data-i18n="dem-grace-v">3 months of inactivity before decay begins</td></tr>
       <tr><td data-i18n="dem-reset-k">Clock Reset</td><td data-i18n="dem-reset-v">Any transfer, swap, or liquidity action resets the timer to zero</td></tr>
-      <tr><td data-i18n="dem-dest-k">Decayed AEQ goes to</td><td data-i18n="dem-dest-v">Redistribution pools (40/30/20/10 split)</td></tr>
+      <tr><td data-i18n="dem-dest-k">Decayed AEQ goes to</td><td data-i18n="dem-dest-v">UBI pool (100%) — shared equally by all humans</td></tr>
       <tr><td data-i18n="dem-warn-k">Warning System</td><td data-i18n="dem-warn-v">14-day notice (shown once) + 7-day repeated reminder at each login</td></tr>
     </table>
   </div>
@@ -863,10 +863,10 @@
     <div class="idx">
       <div class="idx-title" data-i18n="x-the-4-redistribution-mechanisms">The 4 Redistribution Mechanisms</div>
       <div style="font-size:0.81rem;color:var(--muted);line-height:1.9">
-        <div style="padding:8px;background:rgba(4,120,87,0.06);border-radius:6px;border-left:3px solid var(--neon);margin-bottom:8px"><strong style="color:var(--neon)" data-i18n="x-ubi-pool-20">UBI Pool (20%)</strong><br>Every 24 hours, the pool divides equally among all verified humans. Funded by swap fees + demurrage + wealth cap overflows.</div>
-        <div style="padding:8px;background:rgba(107,70,193,0.06);border-radius:6px;border-left:3px solid var(--purple);margin-bottom:8px"><strong style="color:var(--purple)" data-i18n="x-validators-pool-40">Validators Pool (40%)</strong><br>Node operators earn from all protocol fees. More nodes = more decentralization.</div>
+        <div style="padding:8px;background:rgba(4,120,87,0.06);border-radius:6px;border-left:3px solid var(--neon);margin-bottom:8px"><strong style="color:var(--neon)" data-i18n="x-ubi-pool-20">UBI Pool (30%)</strong><br>Every 24 hours, the pool divides equally among all verified humans. Funded by 30% of swap fees + 100% of demurrage + 100% of wealth cap overflow.</div>
+        <div style="padding:8px;background:rgba(107,70,193,0.06);border-radius:6px;border-left:3px solid var(--purple);margin-bottom:8px"><strong style="color:var(--purple)" data-i18n="x-validators-pool-40">Validators Pool (40%)</strong><br>40% of swap fees. Every human who runs a validator gets an equal share, weighted only by the minutes their node was online — not by hardware, not by seniority.</div>
         <div style="padding:8px;background:rgba(8,145,178,0.06);border-radius:6px;border-left:3px solid var(--teal);margin-bottom:8px"><strong style="color:var(--teal)" data-i18n="x-liquidity-pool-30">Liquidity Pool (30%)</strong><br>Liquidity providers earn proportionally from all swap activity.</div>
-        <div style="padding:8px;background:rgba(146,64,14,0.06);border-radius:6px;border-left:3px solid var(--gold)"><strong style="color:var(--gold)" data-i18n="x-treasury-10">Treasury (10%)</strong><br>Protocol development. No VC allocation. No founder bonus.</div>
+        <div style="padding:8px;background:rgba(146,64,14,0.06);border-radius:6px;border-left:3px solid var(--gold)"><strong style="color:var(--gold)" data-i18n="x-treasury-10">Treasury (0%)</strong><br>No longer funded since 24 Sep 2026: nobody may pay out of any pool, not even with its key. Its former 10% goes to UBI. No VC allocation. No founder bonus.</div>
       </div>
     </div>
   </div>
@@ -1150,10 +1150,10 @@
       <line x1="320" y1="120" x2="380" y2="120" stroke="#0891B2" stroke-width="1.5" marker-end="url(#arr2)"/>
       <rect x="380" y="50" width="120" height="140" rx="8" fill="rgba(146,64,14,0.06)" stroke="#92400E" stroke-width="1.5"/>
       <text x="440" y="75" text-anchor="middle" font-size="10" font-weight="700" fill="rgba(240,180,41,0.9)" data-i18n="x-redistribution">REDISTRIBUTION</text>
-      <text x="440" y="95" text-anchor="middle" font-size="9" fill="rgba(52,211,153,0.9)" data-i18n="x-9679-ubi-pool-20">&#9679; UBI Pool 20%</text>
+      <text x="440" y="95" text-anchor="middle" font-size="9" fill="rgba(52,211,153,0.9)" data-i18n="x-9679-ubi-pool-20">&#9679; UBI Pool 30%</text>
       <text x="440" y="112" text-anchor="middle" font-size="9" fill="rgba(155,114,246,0.9)" data-i18n="x-9679-validators-40">&#9679; Validators 40%</text>
       <text x="440" y="129" text-anchor="middle" font-size="9" fill="rgba(34,211,238,0.9)" data-i18n="x-9679-liquidity-lp-30">&#9679; Liquidity LP 30%</text>
-      <text x="440" y="146" text-anchor="middle" font-size="9" fill="rgba(240,180,41,0.9)" data-i18n="x-9679-treasury-10">&#9679; Treasury 10%</text>
+      <text x="440" y="146" text-anchor="middle" font-size="9" fill="rgba(240,180,41,0.9)" data-i18n="x-9679-treasury-10">&#9679; Treasury 0%</text>
       <text x="440" y="165" text-anchor="middle" font-size="8" fill="rgba(136,146,164,0.9)" data-i18n="x-paid-out-daily">paid out daily</text>
       <text x="440" y="178" text-anchor="middle" font-size="8" fill="rgba(136,146,164,0.9)" data-i18n="x-automatic-on-chain">automatic on-chain</text>
       <path d="M500 120 Q580 120 580 200 Q580 220 320 220 Q75 220 75 155" fill="none" stroke="#047857" stroke-width="1.5" stroke-dasharray="5,3" marker-end="url(#arr3)"/>
@@ -1926,7 +1926,7 @@
   </div>
   <div class="idx" style="margin-bottom:12px">
     <div class="idx-title" data-i18n="ubi-title">5. UNIVERSAL BASIC INCOME</div>
-    <div class="hlbox" data-i18n="ubi-box">Sources: Swap fees (20%) · Wealth cap overflow · Demurrage · Inactive escrow<br><br>Daily: UBI Pool divided equally among all registered humans. Pool resets to zero after each distribution and refills continuously.</div>
+    <div class="hlbox" data-i18n="ubi-box">Sources: Swap fees (30%) · Wealth cap overflow · Demurrage · Inactive escrow<br><br>Daily: UBI Pool divided equally among all registered humans. Pool resets to zero after each distribution and refills continuously.</div>
   </div>
   <div class="idx" style="margin-bottom:12px">
     <div class="idx-title" data-i18n="inf-title">6. NO ALGORITHMIC INFLATION</div>

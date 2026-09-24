@@ -349,7 +349,7 @@ section{padding:56px 16px}
       <a class="explore-card" href="/exchange">
         <span class="explore-icon">🔄</span>
         <span class="explore-name">Exchange</span>
-        <span class="explore-desc" data-i18n="card-exchange-d">Swap, liquidity, and where every fee goes: 40 / 30 / 20 / 10.</span>
+        <span class="explore-desc" data-i18n="card-exchange-d">Swap, liquidity, and where every fee goes: 40 / 30 / 30.</span>
       </a>
       <a class="explore-card" href="#social">
         <span class="explore-icon">💬</span>

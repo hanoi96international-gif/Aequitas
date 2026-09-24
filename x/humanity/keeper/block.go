@@ -7274,7 +7274,7 @@ func (dag *BlockDAG) replayTransactions(block *Block, force bool) (ok bool) {
 			// loop runs) — context.Background() carries no transaction of its
 			// own, so dbExecCtx falls back to that field, exactly matching
 			// pre-migration behavior. See registerHumanLocked's comment.
-			if err := dag.state.applyUBIFinalizeDeltaLocked(context.Background(), tx.DistributionAt); err != nil {
+			if err := dag.state.applyUBIFinalizeDeltaLocked(context.Background(), tx.DistributionAt, tx.Amount); err != nil {
 				fmt.Printf("[REPLAY] ✗ ubi_distribution_finalize: %v (block #%d) — rolling back whole block\n", err, block.Height)
 				hardFailure = true
 				continue

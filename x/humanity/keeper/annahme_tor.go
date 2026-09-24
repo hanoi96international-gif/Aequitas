@@ -133,7 +133,10 @@ func (cs *ChainState) nimmtUeberweisungenAn() bool {
 // eine Uebergabe, sieht sie in annahmenLaufend jede Annahme, die schon
 // durch ist -- und jede spaetere prueft danach und kehrt um. Erst bei 0
 // (und leerem WAL und Ausgangskorb) wird uebergeben.
-func (cs *ChainState) annahmeBeginnen() error {
+func (cs *ChainState) annahmeBeginnen(absender string) error {
+	if err := pruefeAbsenderKeinTopf(absender); err != nil {
+		return err
+	}
 	cs.annahmenLaufend.Add(1)
 	if err := cs.pruefeAnnahmeTor(); err != nil {
 		cs.annahmenLaufend.Add(-1)
@@ -193,4 +196,25 @@ func (cs *ChainState) AnnahmeTorStand() map[string]interface{} {
 			"automatische Uebernahme koennte bei einer Netztrennung zwei Annehmende erzeugen, " +
 			"also genau den Zustand, den die Sperre beseitigt.",
 	}
+}
+
+// ErrProtokollTopf: aus den vier Toepfen (Grundeinkommen, Validatoren,
+// Liquiditaetsgeber, Schatzkammer) zahlt nur das Protokoll aus -- nach seinen
+// Regeln, an alle, die sie erfuellen. Nie ein Schluessel.
+var ErrProtokollTopf = fmt.Errorf("aus diesem Topf zahlt nur das Protokoll aus " +
+	"(Grundeinkommen, Validatoren, Liquiditaet, Schatzkammer) -- keine Ueberweisung, kein Tausch, von niemandem")
+
+// pruefeAbsenderKeinTopf: die Topf-Adressen sind gewoehnliche Adressen, und
+// fuer mindestens eine davon existiert ein privater Schluessel (state.go,
+// "real wallet addresses Daniel controls"). Bis zum 24.09.2026 haette dieser
+// Schluessel den Topf per signierter Ueberweisung leeren koennen -- das
+// Grundeinkommen aller Menschen in der Hand eines einzigen. Jetzt lehnt jeder
+// Weg, auf dem ein Mensch Geld bewegt, einen Topf als Absender ab: alle sechs
+// annehmenden Wege gehen durch annahmeBeginnen, und eth_sendRawTransaction
+// prueft zusaetzlich vor jeder EVM-Ausfuehrung.
+func pruefeAbsenderKeinTopf(absender string) error {
+	if isTokenomicsPoolAddress(strings.ToLower(strings.TrimSpace(absender))) {
+		return ErrProtokollTopf
+	}
+	return nil
 }

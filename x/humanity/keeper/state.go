@@ -3051,8 +3051,9 @@ func effectiveBalance(acc *AccountState) Decimal {
 }
 
 // settleDemurrageLocked actually writes off the decay computed by
-// effectiveBalance into acc.Balance, and distributes what was lost across
-// the four tokenomics pools — same split as the swap fee. This is called
+// effectiveBalance into acc.Balance, and gives what was lost entirely to the
+// UBI pool (umverteilenAnAlleCtx; until 24.09.2026 it used the swap fee's
+// 40/30/20/10 split). This is called
 // right before any operation that's about to read-then-modify Balance
 // (Transfer, swaps, liquidity actions), so those operations always work
 // from an up-to-date, already-settled balance instead of accidentally
@@ -3114,10 +3115,10 @@ func (cs *ChainState) settleDemurrageLockedCtx(ctx context.Context, acc *Account
 		lost = acc.Balance
 	}
 	acc.Balance = acc.Balance.Sub(lost).AtLeastZero()
-	if err := cs.distributeSwapFeeCtx(ctx, lost.Float(), true); err != nil {
+	if err := cs.umverteilenAnAlleCtx(ctx, lost.Float()); err != nil {
 		return 0, fmt.Errorf("demurrage: could not persist pool credits for %s: %w", acc.Address, err)
 	}
-	fmt.Printf("[DEMURRAGE] %s: idle balance decayed by %.6f AEQ, redistributed to pools\n", acc.Address, lost.Float())
+	fmt.Printf("[DEMURRAGE] %s: idle balance decayed by %.6f AEQ, ganz ins Grundeinkommen\n", acc.Address, lost.Float())
 	return lost, nil
 }
 
@@ -3151,7 +3152,7 @@ func (cs *ChainState) applyDemurrageLossLockedCtx(ctx context.Context, acc *Acco
 		return nil
 	}
 	acc.Balance = acc.Balance.Sub(NewDecimal(lost))
-	if err := cs.distributeSwapFeeCtx(ctx, lost, true); err != nil {
+	if err := cs.umverteilenAnAlleCtx(ctx, lost); err != nil {
 		return fmt.Errorf("could not persist pool credits for %s demurrage delta: %w", acc.Address, err)
 	}
 	return nil
@@ -3973,7 +3974,15 @@ func (cs *ChainState) distributeUBIPoolLocked(ctx context.Context, verteiltAm in
 	}
 	// Rest im Topf lassen statt vernichten -- siehe pool_remainder.go. Jeder
 	// Mensch in humanAddrs bekommt genau share, ausgezahlt ist also share*n.
-	poolAcc.Balance = NewDecimal(neuerTopfstand(total, share*float64(len(humanAddrs)), verteiltAm))
+	// Waehrend der Gutschrift kann die Vermoegensgrenze greifen; ihr
+	// Ueberschuss fliesst in DIESEN Topf (umverteilenAnAlleCtx). Den Topf
+	// danach auf "Rest von total" zu setzen, vernichtete ihn -- er bleibt fuer
+	// die naechste Runde stehen.
+	zufluss := poolAcc.Balance.Float() - total
+	if zufluss < 0 {
+		zufluss = 0
+	}
+	poolAcc.Balance = NewDecimal(neuerTopfstand(total, share*float64(len(humanAddrs)), verteiltAm) + zufluss)
 	if err := cs.saveAccountToDBCtx(ctx, poolAcc); err != nil {
 		return nil, fmt.Errorf("could not settle UBI pool: %w", err)
 	}
@@ -4198,10 +4207,10 @@ func (cs *ChainState) enforceWealthCapLockedCtx(ctx context.Context, acc *Accoun
 		excess = acc.Balance.Float()
 	}
 	acc.Balance = acc.Balance.Sub(NewDecimal(excess)).AtLeastZero()
-	if err := cs.distributeSwapFeeCtx(ctx, excess, true); err != nil {
+	if err := cs.umverteilenAnAlleCtx(ctx, excess); err != nil {
 		return fmt.Errorf("wealth cap: could not persist pool credits for %s excess: %w", acc.Address, err)
 	}
-	fmt.Printf("[WEALTH CAP] %s exceeded %.2fx average (%.2f AEQ) — %.4f AEQ excess redistributed to pools\n",
+	fmt.Printf("[WEALTH CAP] %s exceeded %.2fx average (%.2f AEQ) — %.4f AEQ excess ganz ins Grundeinkommen\n",
 		acc.Address, multiplier, wealthCapAmt, excess)
 	return nil
 }
@@ -4732,10 +4741,16 @@ func (cs *ChainState) RunDailyDistributionAtomic(ubiAt int64) error {
 			ubiTotal += s.Amount
 		}
 		if ubiTotal > 0 {
-			if err := cs.applyUBIFinalizeDeltaLocked(ctx, ubiAt); err != nil {
+			// Der Endstand des Topfs steht in der Transaktion: jeder Knoten
+			// setzt beim Nachspielen genau ihn (siehe applyUBIFinalizeDeltaLocked).
+			var rest float64
+			if ubiAcc, ok := cs.accounts.Get(ubiPoolAddr); ok {
+				rest = ubiAcc.Balance.Float()
+			}
+			if err := cs.applyUBIFinalizeDeltaLocked(ctx, ubiAt, rest); err != nil {
 				return nil, fmt.Errorf("UBI finalize failed: %w", err)
 			}
-			txs = append(txs, Transaction{Type: "ubi_distribution_finalize", DistributionAt: ubiAt})
+			txs = append(txs, Transaction{Type: "ubi_distribution_finalize", DistributionAt: ubiAt, Amount: rest})
 		}
 
 		// WP 2: Staffel-Freigaben (leer vor der Aktivierung, grant_staffel.go).
@@ -4913,7 +4928,7 @@ func (cs *ChainState) TransferAtomic(from, to string, amount float64, pendingTxT
 	// auseinander, sobald es leerlaeuft. Geprueft VOR jeder Zustandsaenderung
 	// und vor dem Zeitstempel unten, damit eine abgelehnte Ueberweisung den
 	// Ruhe-Vergleich des Divergenz-Waechters nicht stoert.
-	if err := cs.annahmeBeginnen(); err != nil {
+	if err := cs.annahmeBeginnen(from); err != nil {
 		return 0, 0, err
 	}
 	defer cs.annahmeEnde()
@@ -5526,7 +5541,7 @@ func (cs *ChainState) TransferWithV7FeeAtomic(from, to string, amount float64, p
 	// Dieselbe Sperre wie in TransferAtomic -- siehe annahme_tor.go. Sie
 	// gehoert in beide Funktionen und nicht an die zwei Aufrufstellen in
 	// evm_rpc.go: so gilt sie auch fuer jeden kuenftigen Aufrufer.
-	if err := cs.annahmeBeginnen(); err != nil {
+	if err := cs.annahmeBeginnen(from); err != nil {
 		return 0, 0, 0, err
 	}
 	defer cs.annahmeEnde()
@@ -5664,11 +5679,17 @@ func calcV7Fee(senderBalance, amount, totalSupply float64) float64 {
 	return round6(base + extra)
 }
 
-// Fee recipient addresses for the four tokenomics pools, per the original
-// design (40% validators / 30% LPs / 20% UBI / 10% treasury). These are
-// real wallet addresses Daniel controls — provided explicitly so swap
-// fees are credited somewhere actually accessible, rather than to
-// addresses with no corresponding private key.
+// Fee recipient addresses for the four tokenomics pools (swap fees since
+// 24.09.2026: 40% validators / 30% LPs / 30% UBI / 0% treasury, see
+// swapGebuehrAnteile). These are real wallet addresses Daniel controls —
+// provided explicitly so swap fees are credited somewhere actually
+// accessible, rather than to addresses with no corresponding private key.
+//
+// SEIT DEM 24.09.2026 zahlt aus ihnen NUR das Protokoll aus: jeder Weg, auf
+// dem ein Schluessel Geld bewegt, lehnt einen Topf als Absender ab
+// (pruefeAbsenderKeinTopf). Das Grundeinkommen aller Menschen liegt nicht in
+// der Hand dessen, der zufaellig den Schluessel hat. Beim Neustart bei null
+// gehoeren hierher Adressen ohne bekannten Schluessel.
 const (
 	validatorsPoolAddr = "0x78c1c143e395b181f13bcb6868ff53aa86c3d2ba"
 	lpPoolAddr         = "0xc181c3a4d09444b99089ae0f56c1e7f4c20d01eb"
@@ -5726,7 +5747,7 @@ func (cs *ChainState) SwapTUSDForAEQ(address string, amountIn, minAmountOut floa
 // filled in here from the swap's actual result.
 func (cs *ChainState) SwapAtomic(address string, amountIn float64, aeqToTusd bool, minAmountOut float64, pendingTxTemplate Transaction) (amountOut, demurrageLost float64, err error) {
 	// Auch das ist eine Belastung bei der Annahme -- siehe annahme_tor.go.
-	if err := cs.annahmeBeginnen(); err != nil {
+	if err := cs.annahmeBeginnen(address); err != nil {
 		return 0, 0, err
 	}
 	defer cs.annahmeEnde()
@@ -6101,6 +6122,37 @@ func (cs *ChainState) distributeSwapFee(fee float64, feeInAEQ bool) error {
 // distributeSwapFeeCtx is distributeSwapFee's real implementation — see
 // dbExecCtx's comment for the migration this is part of.
 func (cs *ChainState) distributeSwapFeeCtx(ctx context.Context, fee float64, feeInAEQ bool) error {
+	return cs.verteileAnTopfeCtx(ctx, fee, feeInAEQ, swapGebuehrAnteile)
+}
+
+// topfAnteile: Prozent fuer Validatoren, Liquiditaetsgeber und Grundeinkommen;
+// die Schatzkammer bekommt den Rest.
+type topfAnteile struct{ validatoren, lp, ubi int64 }
+
+var (
+	// Swap-Gebuehr: bezahlt fuer einen Dienst (Tausch), also an die, die ihn
+	// erbringen -- Validatoren und Liquiditaetsgeber -- und ans Grundeinkommen.
+	// Die Schatzkammer bekam bis zum 24.09.2026 10 %: aus ihr zahlt aber
+	// niemand aus (kein Verfahren, und seit pruefeAbsenderKeinTopf auch kein
+	// Schluessel) -- totes Geld. Ihr Anteil geht jetzt ans Grundeinkommen.
+	swapGebuehrAnteile = topfAnteile{validatoren: 40, lp: 30, ubi: 30}
+	// Umverteilung (Demurrage, Vermoegensgrenze): Geld, das jemandem
+	// genommen wird, weil er zu viel hortet, gehoert ALLEN Menschen zu
+	// gleichen Teilen -- nicht zu 40 % den Validatoren und zu 30 % denen,
+	// die Kapital in den Pool legen. Seit dem 24.09.2026 ("das fairste Geld
+	// der Welt"): zu 100 % ins Grundeinkommen.
+	umverteilungAnteile = topfAnteile{ubi: 100}
+)
+
+// umverteilenAnAlleCtx: Demurrage und Ueberschuss ueber der Vermoegensgrenze
+// -- vollstaendig ins Grundeinkommen, das jeden Tag an jeden Menschen zu
+// gleichen Teilen geht.
+func (cs *ChainState) umverteilenAnAlleCtx(ctx context.Context, betrag float64) error {
+	return cs.verteileAnTopfeCtx(ctx, betrag, true, umverteilungAnteile)
+}
+
+// verteileAnTopfeCtx: fee nach anteile auf die vier Toepfe.
+func (cs *ChainState) verteileAnTopfeCtx(ctx context.Context, fee float64, feeInAEQ bool, anteile topfAnteile) error {
 	if fee <= 0 {
 		return nil
 	}
@@ -6137,9 +6189,9 @@ func (cs *ChainState) distributeSwapFeeCtx(ctx context.Context, fee float64, fee
 	// feeMicro*40 overflows int64 only above ~2.3e11 AEQ in a single fee, which
 	// is seven orders of magnitude beyond the entire supply.
 	feeMicro := NewDecimal(fee).Micro()
-	vMicro := feeMicro * 40 / 100
-	lMicro := feeMicro * 30 / 100
-	uMicro := feeMicro * 20 / 100
+	vMicro := feeMicro * anteile.validatoren / 100
+	lMicro := feeMicro * anteile.lp / 100
+	uMicro := feeMicro * anteile.ubi / 100
 	tMicro := feeMicro - vMicro - lMicro - uMicro
 	shares := [4]struct {
 		addr   string
@@ -6205,7 +6257,11 @@ func (cs *ChainState) distributeSwapFeeCtx(ctx context.Context, fee float64, fee
 	if feeInAEQ {
 		currency = "AEQ"
 	}
-	fmt.Printf("[FEE] Swap fee %.6f %s distributed across validators/lps/ubi/treasury\n", fee, currency)
+	if anteile == umverteilungAnteile {
+		fmt.Printf("[FEE] %.6f %s umverteilt: ganz ins Grundeinkommen\n", fee, currency)
+	} else {
+		fmt.Printf("[FEE] Swap fee %.6f %s distributed across validators/lps/ubi/treasury\n", fee, currency)
+	}
 	return nil
 }
 
@@ -6332,7 +6388,7 @@ func (cs *ChainState) AddLiquidity(address string, amountAEQ, amountTUSD float64
 // have Type/Wallet/Amount(AEQ)/AmountOut(tUSD) set; LPShares and
 // FromDemurrageLost are filled in here from the operation's actual result.
 func (cs *ChainState) AddLiquidityAtomic(address string, amountAEQ, amountTUSD float64, pendingTxTemplate Transaction) (demurrageLost float64, err error) {
-	if err := cs.annahmeBeginnen(); err != nil {
+	if err := cs.annahmeBeginnen(address); err != nil {
 		return 0, err
 	}
 	defer cs.annahmeEnde()
@@ -6470,7 +6526,7 @@ func (cs *ChainState) RemoveLiquidity(address string, sharesToBurn float64) (flo
 // secondary's own current pool state rather than replaying exact amounts,
 // so those aren't part of the queued Transaction either today).
 func (cs *ChainState) RemoveLiquidityAtomic(address string, sharesToBurn float64, pendingTxTemplate Transaction) (outAEQ, outTUSD, demurrageLost float64, err error) {
-	if err := cs.annahmeBeginnen(); err != nil {
+	if err := cs.annahmeBeginnen(address); err != nil {
 		return 0, 0, 0, err
 	}
 	defer cs.annahmeEnde()
@@ -6935,7 +6991,7 @@ func (cs *ChainState) ClaimTUsdFaucet(address string) error {
 // mutation and the resulting outbox insert commit or roll back together as
 // one DB transaction — see TransferAtomic's comment.
 func (cs *ChainState) ClaimTUsdFaucetAtomic(address string, pendingTx Transaction) error {
-	if err := cs.annahmeBeginnen(); err != nil {
+	if err := cs.annahmeBeginnen(address); err != nil {
 		return err
 	}
 	defer cs.annahmeEnde()
@@ -8532,7 +8588,7 @@ func (cs *ChainState) ApplyUBIFinalizeDelta(ubiAt int64) error {
 	defer cs.mu.Unlock()
 	// cs.mu-only path, never runs inside runAtomicWithOutbox/
 	// runAtomicDistributionWithOutbox — see RegisterHuman's comment.
-	return cs.applyUBIFinalizeDeltaLocked(context.Background(), ubiAt)
+	return cs.applyUBIFinalizeDeltaLocked(context.Background(), ubiAt, 0)
 }
 
 // applyUBIFinalizeDeltaLocked is ApplyUBIFinalizeDelta's body, callable from
@@ -8545,12 +8601,21 @@ func (cs *ChainState) ApplyUBIFinalizeDelta(ubiAt int64) error {
 //
 // FIX (audit recheck2, P0 #3): used to return nothing, discarding
 // saveAccountToDB's error — see ApplyTransferDelta's comment.
-func (cs *ChainState) applyUBIFinalizeDeltaLocked(ctx context.Context, ubiAt int64) error {
+//
+// rest: der Topfstand nach der Runde, wie ihn der erzeugende Knoten
+// festgelegt hat (Transaction.Amount). Bis zum 24.09.2026 wurde hier immer
+// genullt -- auch was waehrend der Gutschrift aus der Vermoegensgrenze
+// zufloss, und der Rest, den POOL_REMAINDER_CARRY_FROM_UNIX stehen lassen
+// sollte. Alte Bloecke tragen 0 und verhalten sich wie damals.
+func (cs *ChainState) applyUBIFinalizeDeltaLocked(ctx context.Context, ubiAt int64, rest float64) error {
+	if rest < 0 || math.IsNaN(rest) || math.IsInf(rest, 0) {
+		return fmt.Errorf("ubi finalize: ungueltiger Topfstand %v", rest)
+	}
 	// FIX (Monster Audit 2026-07-12, P1): see applyUBIDeltaLocked's comment on
 	// the same pattern — a cold pool address must not silently skip zeroing.
 	cs.ensureAccountLoadedCtx(ctx, ubiPoolAddr)
 	if ubiAcc, ok := cs.accounts.Get(ubiPoolAddr); ok {
-		ubiAcc.Balance = NewDecimal(0)
+		ubiAcc.Balance = NewDecimal(rest)
 		if err := cs.saveAccountToDBCtx(ctx, ubiAcc); err != nil {
 			return fmt.Errorf("ubi finalize: could not save pool account: %w", err)
 		}

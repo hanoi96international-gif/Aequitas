@@ -1,6 +1,32 @@
 # Launch-Checkliste
 
-**Stand 24.09.2026, abends. Zuerst: rotierender Leiter und Leistungsnachweis (gebaut, aus). Dann: Contabo1 ist abgeschaltet, was das bedeutet und was jetzt gilt. Der Stand vom 23.09. folgt darunter.**
+**Stand 24.09.2026, abends. Zuerst: das fairste Geld (Geldflüsse geprüft und geändert). Dann: rotierender Leiter und Leistungsnachweis (gebaut, aus). Dann: Contabo1 ist abgeschaltet, was das bedeutet und was jetzt gilt. Der Stand vom 23.09. folgt darunter.**
+
+> ## 24.09., abends: „Das fairste Geld der Welt – auf alles bezogen“
+>
+> Alle Geldflüsse der Kette geprüft. Geändert (Kette, Website in 12 Sprachen, App in 12 Sprachen, README, Whitepaper):
+>
+> | Geldfluss | vorher | jetzt |
+> |---|---|---|
+> | **Demurrage** (Verfall über dem fairen Anteil) | 20 % Grundeinkommen, 40 % Validatoren, 30 % Kapitalgeber, 10 % Schatzkammer | **100 % Grundeinkommen** |
+> | **Überschuss über der Vermögensgrenze** | ebenso 20/40/30/10 | **100 % Grundeinkommen** |
+> | **Swap-Gebühr** | 40 / 30 / 20 / 10 | 40 % Validatoren / 30 % Liquiditätsgeber / **30 % Grundeinkommen / 0 % Schatzkammer** |
+> | **Validator-Topf** | nach Blöcken seit Registrierung (Leiter, starke Hardware und die Ersten verdienen mehr) | **gleich je Menschen-Validator**, nur nach Minuten online; nur an Menschen |
+> | **Überweisungsgebühr** | 100 % Grundeinkommen | unverändert (war schon fair) |
+> | **Grundeinkommen, Registrierungszuschuss** | gleich für jeden Menschen | unverändert |
+>
+> **Zwei echte Fehler gefunden und behoben:**
+> - **Die Töpfe waren Wallets mit bekanntem Schlüssel**, und nichts hinderte diesen Schlüssel daran, einen Topf leerzuräumen, auch das Grundeinkommen aller. Jetzt lehnen alle sechs Wege, auf denen Geld bewegt wird, einen Topf als Absender ab. Zusätzlich prüft `eth_sendRawTransaction` vor jeder EVM-Ausführung (`TestTopfSendetNie`).
+> - **Beim täglichen Grundeinkommen verschwand Geld:** Griff beim Auszahlen die Vermögensgrenze, floss ihr Überschuss in den UBI-Topf, und der Abschluss setzte den Topf danach auf null. Im Test waren das 65.100 AEQ. Jetzt schreibt der erzeugende Knoten den Endstand in die Abschluss-Transaktion, und jeder Knoten übernimmt genau ihn. Alte Blöcke tragen 0 und verhalten sich wie damals (`TestUBIRunde_UeberschussBleibtErhalten`, Geldmenge exakt erhalten).
+>
+> **Konsensänderung:** Die neuen Aufteilungen gelten ab dem Deploy, ohne Aktivierungszeitpunkt. Das ist vertretbar, weil C2 der einzige Validator ist und die Kette ohnehin bei null neu startet. Mit mehreren Validatoren müssen alle zugleich umgestellt werden.
+>
+> **Noch offen, deine Entscheidung:**
+> - **Schatzkammer = keine Entwicklungsfinanzierung mehr.** Ihre 10 % gehen jetzt ans Grundeinkommen. Wer das Projekt weiterentwickelt, bekommt aus dem Protokoll nichts. Umkehrbar mit einer Zeile (`swapGebuehrAnteile`).
+> - **Liquiditätsgeber bekommen 30 % der Swap-Gebühr nach eingelegtem Kapital.** Das ist bei jeder Börse so, belohnt aber Vermögen.
+> - **Verträge bereitstellen darf nur der Betreiberschlüssel** (`relayerAddressFromEnv`). Fair wäre: niemand oder jeder.
+> - **`/api/admin/pool-correction`** (Betreiber kann AMM-Reserven verbrennen, standardmäßig aus): beim Neustart bei null entfernen.
+> - **Beim Neustart bei null:** Topf-Adressen ohne bekannten Schlüssel wählen.
 
 > ## 24.09., später: Rotierender Leiter, Leistungsnachweis, Bremse nach Mehrheit (gebaut, standardmäßig AUS)
 >

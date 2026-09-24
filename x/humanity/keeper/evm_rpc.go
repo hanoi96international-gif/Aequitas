@@ -1182,6 +1182,11 @@ func (s *EVMRPCServer) sendRawTransaction(params []json.RawMessage, pre *precomp
 		tx = t
 		senderAddr = sender
 	}
+	// Aus einem Protokoll-Topf sendet niemand -- auch nicht ueber einen
+	// Vertragsaufruf (annahme_tor.go, pruefeAbsenderKeinTopf).
+	if err := pruefeAbsenderKeinTopf(senderAddr); err != nil {
+		return nil, &RPCError{Code: -32003, Message: err.Error()}
+	}
 	// common.Address form, needed below for DeployContract/CallContract —
 	// round-tripping through the lowercased hex is exact (common.HexToAddress
 	// is case-insensitive), same value types.Sender originally returned.
