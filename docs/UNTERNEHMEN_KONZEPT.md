@@ -42,6 +42,9 @@ andere Unternehmen.
 
 ## 3. Die Fairness-Garantie für Menschen
 
+> **Vereinfacht durch Abschnitt 14.5** (beschlossen 25.09.2026): keine
+> Gebührenstufen mehr, Umtausch 3.000 AEQ im Monat frei, egal woher.
+
 Das fairste Geld der Welt muss sich zuerst für den einzelnen Menschen fair
 anfühlen, und zwar für den mit wenig. Deshalb gelten für Menschen sechs Zusagen.
 Alle Zahlen im Rest dieses Konzepts ordnen sich ihnen unter.
@@ -138,8 +141,8 @@ sie sind Durchlauf.
 
 ### 6.2 Liegegeld statt Obergrenze: Geld hat ein Alter
 
-> Vorschlag zur Vereinfachung: Abschnitt 14 (Freibetrag nach Umsatz statt
-> Alter des Geldes).
+> **Ersetzt durch Abschnitt 14** (beschlossen 25.09.2026): Freibetrag nach
+> Umsatz statt Alter des Geldes. Dieser Abschnitt beschreibt den früheren Stand.
 
 Ein Unternehmen hat Umsatz, und Umsatz ist kein Vermögen. Eine Bäckerei mit
 40.000 AEQ Monatsumsatz würde an einer 25.000-Grenze scheitern, ohne reich zu
@@ -492,6 +495,8 @@ Grober Aufwand: Kette 1–2 Wochen, App-Kassenmodus 1 Woche.
 
 ## 13. Zu entscheiden
 
+> Stand vor dem 25.09.2026. Die beschlossenen Werte stehen in Abschnitt 14.7.
+
 | Frage | Vorschlag |
 |---|---|
 | Liegegeld Unternehmen | Geld älter als 30 Tage 1 %/Monat, älter als 90 Tage 3 %/Monat, Sockel 2.000 AEQ |
@@ -508,11 +513,13 @@ Grober Aufwand: Kette 1–2 Wochen, App-Kassenmodus 1 Woche.
 | Bezugsgröße aller Grenzen | Vielfache des fairen Anteils, keine Dollar-Kopplung (6.7) |
 | Nach der Pilotstadt | gebührenfreier Monatsbetrag = Median der echten Monatsausgaben, mind. 1×; Lohn-Freibetrag = 3× davon; Obergrenze vorgeschlagen 5× |
 
-## 14. Vorschlag: einfacher und massentauglich (Stand 25.09.2026)
+## 14. Einfacher und massentauglich (beschlossen 25.09.2026)
 
-> **Status: Vorschlag, noch nicht beschlossen und nicht auf der Kette.** Ab
-> 1. Oktober 2026 gelten die Regeln aus den Abschnitten 3 und 6. Dieser
-> Abschnitt beschreibt, was wir statt dessen vorschlagen, und warum.
+> **Status: beschlossen und auf der Kette umgesetzt** (`wirtschaft.go`). Diese
+> Regeln gelten ab dem 1. Oktober 2026 und **ersetzen** die Liegegeld-Regeln
+> aus Abschnitt 6.2 (Alter des Geldes), die Gebührenstufen und die
+> Tausch-Freibeträge aus Abschnitt 3. Die Abschnitte davor bleiben stehen,
+> damit nachvollziehbar ist, warum geändert wurde.
 
 ### 14.1 Warum überhaupt ändern
 
@@ -651,7 +658,7 @@ Rechenbeispiele aus Abschnitt 8 mit dem Vorschlag: **Anna** zahlt weiter 0 AEQ.
 **Clara** zahlt 117 statt 177 AEQ im Monat: Überweisungen 2.000 × 0,1 % = 2,
 Demurrage 15.000 × 0,5 % = 75, Umtausch (5.000 − 3.000) × 2 % = 40.
 
-### 14.6 Was an der Kette zu ändern wäre
+### 14.6 Was an der Kette geändert wurde
 
 - **Unternehmen:** Alter des Geldes und Ausgabe-Reihenfolge entfallen. Neu je
   Unternehmen: gleitende 90-Tage-Zähler für Eingänge von Menschen (je Mensch
@@ -659,21 +666,19 @@ Demurrage 15.000 × 0,5 % = 75, Umtausch (5.000 − 3.000) × 2 % = 40.
   Monatsumsatz, Freibetrag und Liegegeld im Tageslauf.
 - **Menschen:** Aufschlagstufen der Überweisungsgebühr entfallen; der
   Tausch-Freibetrag wird eine Zahl (3.000 AEQ) statt Lohn plus 1.000.
+- **Fehlende Buchführung geht zugunsten der Unternehmen aus:** Der Umsatz ist
+  Buchführung des Knotens. Hat ein Knoten für ein Unternehmen weniger als
+  30 Tage Daten (Unternehmen neu, oder der Knoten kam frisch aus einem
+  Snapshot), berechnet er kein Liegegeld.
 - **Website und App:** die Sätze aus 14.2 und 14.5 als Hauptregeln, alles
   andere im Kleingedruckten.
 
-### 14.7 Zu entscheiden, und wann
+### 14.7 Beschlossene Werte
 
-Die Regeln aus Abschnitt 6 gelten ab **1. Oktober 2026**. Regeln nach dem Start
-zu ändern ist schwerer als vorher. Deshalb die ehrliche Empfehlung:
+Entschieden am 25.09.2026, vor dem Start am 1. Oktober. Die Pilotstadt misst,
+ob die Startwerte stimmen (insbesondere 3.000 AEQ Tausch-Freibetrag).
 
-1. **Vor dem 1. Oktober entscheiden**, ob Aequitas mit diesem Vorschlag startet.
-   Die Kette startet ohnehin bei null (Abschnitt 12).
-2. Falls die Zeit nicht reicht: mit den heutigen Regeln starten, den Vorschlag
-   **in der Pilotstadt parallel mitrechnen** (was hätte jeder Betrieb bezahlt?)
-   und danach mit echten Zahlen umstellen.
-
-| Frage | Vorschlag |
+| Frage | Beschluss |
 |---|---|
 | Freibetrag Unternehmen | 1,5 × Monatsumsatz (mind. 2.000 AEQ) |
 | Liegegeld darüber | 0,5 %/Monat bis 3 × Monatsumsatz, darüber 2 %/Monat |

@@ -375,13 +375,13 @@ section{padding:56px 16px}
     <p class="section-sub" data-i18n="fb-sub">Every verified person receives a basic income every day and looks for places to spend it. Businesses that accept AEQ win these customers, pay nothing per payment and pass the money on as wages and purchases.</p>
     <div class="biz-grid">
       <div class="biz-card"><h3 data-i18n="biz-b1-h">No card fees</h3><p data-i18n="biz-b1-p">A payment costs the business nothing. Customers spend their first 1,000 AEQ each month without any fee.</p></div>
-      <div class="biz-card"><h3 data-i18n="biz-b2-h">Fee-free wages</h3><p data-i18n="biz-b2-p">Wages paid in AEQ cost nothing. Employees can exchange up to 3,000 AEQ of wages a month into euros or dollars without a levy.</p></div>
-      <div class="biz-card"><h3 data-i18n="biz-b3-h">No growth cap</h3><p data-i18n="biz-b3-p">People can hold at most 25,000 AEQ; businesses have no fixed limit. Money that moves on within 30 days never costs anything.</p></div>
+      <div class="biz-card"><h3 data-i18n="biz-b2-h">Fee-free wages</h3><p data-i18n="biz-b2-p">Wages paid in AEQ cost nothing. Everyone can exchange up to 3,000 AEQ a month into euros or dollars without a levy.</p></div>
+      <div class="biz-card"><h3 data-i18n="biz-b3-h">No growth cap</h3><p data-i18n="biz-b3-p">People can hold at most 25,000 AEQ; businesses have no fixed limit. Up to one and a half months' turnover never costs anything.</p></div>
       <div class="biz-card"><h3 data-i18n="biz-b4-h">Paid in seconds</h3><p data-i18n="biz-b4-p">Money arrives in seconds. No chargebacks, no waiting for settlement.</p></div>
     </div>
     <div class="fb-example">
       <div class="fb-ex-lbl" data-i18n="fb-ex-label">Example</div>
-      <div class="ex-card ex-inline"><h3 data-i18n="ex-cafe-h">A café</h3><p data-i18n="ex-cafe-p">It takes in 3,000 AEQ a month and pays 1,500 in wages, 800 to its supplier and 600 to the owner. The money moves on within the month, nothing gets older than 30 days, so there is no idle-money levy. Only the payment to the supplier costs 0.1 %.</p><div class="ex-r" data-i18n="ex-cafe-r">pays 0.8 AEQ a month</div></div>
+      <div class="ex-card ex-inline"><h3 data-i18n="ex-cafe-h">A café</h3><p data-i18n="ex-cafe-p">It takes in 3,000 AEQ a month and pays 1,500 in wages, 800 to its supplier and 600 to the owner. It holds far less than one and a half months' turnover, so there is no idle-money levy. Only the payment to the supplier costs 0.1 %.</p><div class="ex-r" data-i18n="ex-cafe-r">pays 0.8 AEQ a month</div></div>
     </div>
     <div class="band-btns">
       <a href="/business" class="btn-primary" data-i18n="fb-btn">Everything for businesses →</a>
@@ -537,9 +537,9 @@ section{padding:56px 16px}
         <tbody>
         <tr><th scope="row" data-i18n="cmp-r1">Basic income and vote</th><td data-i18n="cmp-yes">yes</td><td data-i18n="cmp-no">no</td><td data-i18n="cmp-no">no</td></tr>
         <tr><th scope="row" data-i18n="cmp-r2">Maximum holding</th><td data-i18n="cmp-v-25k">25,000 AEQ (25×)</td><td data-i18n="cmp-nolimit">no fixed limit</td><td data-i18n="cmp-v-1k">1,000 AEQ (1×)</td></tr>
-        <tr><th scope="row" data-i18n="cmp-r3">Idle money</th><td data-i18n="cmp-r3-p">0.5 % a month, only above 5,000 AEQ</td><td data-i18n="cmp-r3-b">money older than 30 days 1 % a month, older than 90 days 3 %; 2,000 AEQ always free</td><td data-i18n="cmp-r3-f">1 % a month</td></tr>
+        <tr><th scope="row" data-i18n="cmp-r3">Idle money</th><td data-i18n="cmp-r3-p">0.5 % a month, only above 5,000 AEQ</td><td data-i18n="cmp-r3-b">up to 1.5 months' turnover free, then 0.5 % a month; above 3 months' turnover 2 %</td><td data-i18n="cmp-r3-f">1 % a month</td></tr>
         <tr><th scope="row" data-i18n="cmp-r4">Sending money</th><td data-i18n="cmp-r4-p">first 1,000 AEQ a month free, then 0.1 %</td><td data-i18n="cmp-r4-b">to people free, otherwise 0.1 %</td><td data-i18n="cmp-r4-f">0.1 %</td></tr>
-        <tr><th scope="row" data-i18n="cmp-r5">Exchange to euro or dollar</th><td data-i18n="cmp-r5-p">wages and 1,000 AEQ a month free, then 2 %</td><td data-i18n="cmp-r5-b">2 %</td><td data-i18n="cmp-r5-b">2 %</td></tr>
+        <tr><th scope="row" data-i18n="cmp-r5">Exchange to euro or dollar</th><td data-i18n="cmp-r5-p">3,000 AEQ a month free, then 2 %</td><td data-i18n="cmp-r5-b">2 %</td><td data-i18n="cmp-r5-b">2 %</td></tr>
         <tr><th scope="row" data-i18n="cmp-r6">Who opens it</th><td data-i18n="cmp-r6-p">every verified person, once</td><td data-i18n="cmp-r6-b">one to ten verified people; at most 3 per person</td><td data-i18n="cmp-r6-f">anyone</td></tr>
         </tbody>
       </table>
@@ -578,19 +578,19 @@ section{padding:56px 16px}
     <ol class="ppl-list">
       <li data-i18n="ppl-1"><strong>Your fair share is untouchable.</strong> The first 1,000 AEQ never pay a levy.</li>
       <li data-i18n="ppl-2"><strong>Everyday life costs nothing.</strong> The first 1,000 AEQ you spend each month are free of fees.</li>
-      <li data-i18n="ppl-3"><strong>Wages are wages.</strong> Up to 3,000 AEQ of wages a month, plus 1,000 AEQ, can be exchanged without a levy.</li>
+      <li data-i18n="ppl-3"><strong>Wages are wages.</strong> Up to 3,000 AEQ a month can be exchanged into euros or dollars without a levy, whatever the money comes from.</li>
       <li data-i18n="ppl-4"><strong>Saving is allowed.</strong> Up to 5,000 AEQ your savings lose nothing.</li>
-      <li data-i18n="ppl-5"><strong>Those who have more contribute more.</strong> Fees rise only with large balances; the 25,000 AEQ limit stays.</li>
+      <li data-i18n="ppl-5"><strong>Those who have more contribute more.</strong> Savings above 5,000 AEQ pay 0.5 % a month; the 25,000 AEQ limit stays.</li>
       <li data-i18n="ppl-6"><strong>People always pay less than businesses</strong> for holding and exiting, and everything anyone pays returns to all people equally.</li>
     </ol>
     <div class="biz-rules-h" data-i18n="fee-h">Transfer fee in detail</div>
-    <div class="cmp-wrap fee-wrap"><table class="cmp-table fee-table"><thead><tr><th scope="col" data-i18n="fee-col-bal">Balance of the sender</th><th scope="col" data-i18n="fee-col-fee">Fee</th></tr></thead><tbody>
-      <tr><th scope="row" data-i18n="fee-r1">below 5,000 AEQ (5×)</th><td data-i18n="fee-r1-v">0.1 %</td></tr>
-      <tr><th scope="row" data-i18n="fee-r2">from 5,000 AEQ (5×)</th><td data-i18n="fee-r2-v">0.2 %</td></tr>
-      <tr><th scope="row" data-i18n="fee-r3">from 10,000 AEQ (10×)</th><td data-i18n="fee-r3-v">0.6 %</td></tr>
-      <tr><th scope="row" data-i18n="fee-r4">from 20,000 AEQ (20×)</th><td data-i18n="fee-r4-v">1.1 %</td></tr>
+    <div class="cmp-wrap fee-wrap"><table class="cmp-table fee-table"><thead><tr><th scope="col" data-i18n="fee-col-bal">Payment</th><th scope="col" data-i18n="fee-col-fee">Fee</th></tr></thead><tbody>
+      <tr><th scope="row" data-i18n="fee-r1">People: first 1,000 AEQ a month</th><td data-i18n="fee-r1-v">free</td></tr>
+      <tr><th scope="row" data-i18n="fee-r2">People: above that</th><td data-i18n="fee-r2-v">0.1 %</td></tr>
+      <tr><th scope="row" data-i18n="fee-r3">Businesses to people (wages)</th><td data-i18n="fee-r3-v">free</td></tr>
+      <tr><th scope="row" data-i18n="fee-r4">Between businesses, other addresses</th><td data-i18n="fee-r4-v">0.1 %</td></tr>
     </tbody></table></div>
-    <p class="note" data-i18n="fee-note">The fee is added on top: the recipient always gets the full amount, so a price of 10 AEQ brings the shop exactly 10 AEQ. From 1 October 2026 the first 1,000 AEQ a person spends each month are free, and wages from businesses to people cost nothing. Between businesses it is 0.1 % without the surcharge.</p>
+    <p class="note" data-i18n="fee-note">The fee is added on top: the recipient always gets the full amount, so a price of 10 AEQ brings the shop exactly 10 AEQ. There are no surcharges for large balances: wealth is already limited by the 25,000 AEQ cap and the levy on savings above 5,000 AEQ. These rules apply from 1 October 2026.</p>
   </div>
 </section>
 
@@ -616,9 +616,9 @@ section{padding:56px 16px}
     <p class="section-sub" data-i18n="ex-sub">Four situations, calculated with the rules that apply from 1 October 2026.</p>
     <div class="card-grid">
       <div class="ex-card"><h3 data-i18n="ex-anna-h">Anna lives on the basic income</h3><p data-i18n="ex-anna-p">She has 1,200 AEQ and spends 800 AEQ a month. No fee (below 1,000 a month), no levy (below 5,000), no exit levy.</p><div class="ex-r" data-i18n="ex-anna-r">pays 0 AEQ a month</div></div>
-      <div class="ex-card"><h3 data-i18n="ex-ben-h">Ben works in a café</h3><p data-i18n="ex-ben-p">He earns 2,000 AEQ in wages, spends 1,500 AEQ and exchanges 1,000 AEQ into euros for his rent. Fee on the 500 AEQ above his free amount: 0.5 AEQ. Normal swap fee: 1 AEQ. No exit levy, because it is his wage.</p><div class="ex-r" data-i18n="ex-ben-r">pays 1.5 AEQ a month</div></div>
-      <div class="ex-card"><h3 data-i18n="ex-clara-h">Clara has 20,000 AEQ</h3><p data-i18n="ex-clara-p">She spends 3,000 AEQ a month and exchanges 5,000 AEQ. Transfers: 2,000 × 1.1 % = 22 AEQ. Idle money: 15,000 × 0.5 % = 75 AEQ. Exchange: 4,000 × 2 % = 80 AEQ (the first 1,000 are free). All of it goes to the basic income, so also to Anna and Ben.</p><div class="ex-r" data-i18n="ex-clara-r">pays 177 AEQ a month</div></div>
-      <div class="ex-card warn"><h3 data-i18n="ex-hoard-h">Someone wants to hoard 100,000 AEQ</h3><p data-i18n="ex-hoard-p">As a person: impossible, the limit is 25,000 AEQ. On 100 other addresses of 1,000 AEQ: 1 % a month = 1,000 AEQ a month. As a “business”: 980 AEQ a month in months 2–3, then 98,000 × 3 % = 2,940 AEQ a month.</p><div class="ex-r" data-i18n="ex-hoard-r">Hoarding pays off in no form (about 35 % a year)</div></div>
+      <div class="ex-card"><h3 data-i18n="ex-ben-h">Ben works in a café</h3><p data-i18n="ex-ben-p">He earns 2,000 AEQ in wages, spends 1,500 AEQ and exchanges 1,000 AEQ into euros for his rent. Fee on the 500 AEQ above his free amount: 0.5 AEQ. Normal swap fee: 1 AEQ. No exit levy: up to 3,000 AEQ a month are free.</p><div class="ex-r" data-i18n="ex-ben-r">pays 1.5 AEQ a month</div></div>
+      <div class="ex-card"><h3 data-i18n="ex-clara-h">Clara has 20,000 AEQ</h3><p data-i18n="ex-clara-p">She spends 3,000 AEQ a month and exchanges 5,000 AEQ. Transfers: 2,000 × 0.1 % = 2 AEQ. Idle money: 15,000 × 0.5 % = 75 AEQ. Exchange: 2,000 × 2 % = 40 AEQ (the first 3,000 are free). All of it goes to the basic income, so also to Anna and Ben.</p><div class="ex-r" data-i18n="ex-clara-r">pays 117 AEQ a month</div></div>
+      <div class="ex-card warn"><h3 data-i18n="ex-hoard-h">Someone wants to hoard 100,000 AEQ</h3><p data-i18n="ex-hoard-p">As a person: impossible, the limit is 25,000 AEQ. On 100 other addresses of 1,000 AEQ: 1 % a month = 1,000 AEQ a month. As a “business” without turnover: 98,000 × 2 % = 1,960 AEQ a month.</p><div class="ex-r" data-i18n="ex-hoard-r">Hoarding pays off in no form (about 24 % a year)</div></div>
     </div>
   </div>
 </section>
@@ -630,8 +630,8 @@ section{padding:56px 16px}
     <p class="section-sub" data-i18n="biz-sub">Businesses may accept, hold and spend AEQ. The rules make money flow through them and back to people: leaving it idle costs, passing it on is free.</p>
     <div class="biz-grid">
       <div class="biz-card"><h3 data-i18n="biz-b1-h">No card fees</h3><p data-i18n="biz-b1-p">A payment costs the business nothing. Customers spend their first 1,000 AEQ each month without any fee.</p></div>
-      <div class="biz-card"><h3 data-i18n="biz-b2-h">Fee-free wages</h3><p data-i18n="biz-b2-p">Wages paid in AEQ cost nothing. Employees can exchange up to 3,000 AEQ of wages a month into euros or dollars without a levy.</p></div>
-      <div class="biz-card"><h3 data-i18n="biz-b3-h">No growth cap</h3><p data-i18n="biz-b3-p">People can hold at most 25,000 AEQ; businesses have no fixed limit. Money that moves on within 30 days never costs anything.</p></div>
+      <div class="biz-card"><h3 data-i18n="biz-b2-h">Fee-free wages</h3><p data-i18n="biz-b2-p">Wages paid in AEQ cost nothing. Everyone can exchange up to 3,000 AEQ a month into euros or dollars without a levy.</p></div>
+      <div class="biz-card"><h3 data-i18n="biz-b3-h">No growth cap</h3><p data-i18n="biz-b3-p">People can hold at most 25,000 AEQ; businesses have no fixed limit. Up to one and a half months' turnover never costs anything.</p></div>
       <div class="biz-card"><h3 data-i18n="biz-b4-h">Paid in seconds</h3><p data-i18n="biz-b4-p">Money arrives in seconds. No chargebacks, no waiting for settlement.</p></div>
     </div>
   </div>
@@ -645,7 +645,7 @@ section{padding:56px 16px}
     <div class="steps steps-4">
       <div class="step"><div class="step-num">1</div><h3 data-i18n="jn-1-h">Open a business account</h3><p data-i18n="jn-1-p">A verified person and the business wallet sign together. Up to 10 responsible people per business, at most 3 businesses per person. No registry office, no gatekeeper.</p></div>
       <div class="step"><div class="step-num">2</div><h3 data-i18n="shop-1-h">Checkout by QR code</h3><p data-i18n="shop-1-p">Enter the amount, show the QR code, the customer scans and pays, and gets a receipt. Prices can be shown in AEQ or as the euro equivalent at the current rate.</p></div>
-      <div class="step"><div class="step-num">3</div><h3 data-i18n="jn-3-h">Pass it on</h3><p data-i18n="jn-3-p">Wages to people cost nothing, payments to suppliers 0.1 %. Money that moves on within 30 days never pays a levy.</p></div>
+      <div class="step"><div class="step-num">3</div><h3 data-i18n="jn-3-h">Pass it on</h3><p data-i18n="jn-3-p">Wages to people cost nothing, payments to suppliers 0.1 %. Up to one and a half months' turnover never pays a levy.</p></div>
       <div class="step"><div class="step-num">4</div><h3 data-i18n="shop-2-h">Accounting export</h3><p data-i18n="shop-2-p">Every payment with date, amount in AEQ and euro value at the time of payment, as a CSV file for the tax adviser.</p></div>
     </div>
     <div class="sybil-blurb" data-i18n="shop-status"><strong>Status:</strong> the rules on the chain are built and apply from 1 October 2026. Checkout mode and export in the app are in progress.</div>
@@ -658,8 +658,8 @@ section{padding:56px 16px}
     <h2 data-i18n="bx-h2">What it costs a business</h2>
     <p class="section-sub" data-i18n="bx-sub">Two businesses, calculated with the rules that apply from 1 October 2026.</p>
     <div class="card-grid">
-      <div class="ex-card"><h3 data-i18n="ex-cafe-h">A café</h3><p data-i18n="ex-cafe-p">It takes in 3,000 AEQ a month and pays 1,500 in wages, 800 to its supplier and 600 to the owner. The money moves on within the month, nothing gets older than 30 days, so there is no idle-money levy. Only the payment to the supplier costs 0.1 %.</p><div class="ex-r" data-i18n="ex-cafe-r">pays 0.8 AEQ a month</div></div>
-      <div class="ex-card warn"><h3 data-i18n="ex-market-h">A supermarket that hoards</h3><p data-i18n="ex-market-p">40,000 AEQ flow through every month, but 200,000 AEQ stay in the account. The oldest money is spent first, so 40,000 AEQ are younger than 30 days, 80,000 are 30–90 days old and 80,000 are older: 80,000 × 1 % + (80,000 − 2,000) × 3 %. If it pays wages instead, the levy falls and the money reaches people directly.</p><div class="ex-r" data-i18n="ex-market-r">pays about 3,140 AEQ a month into the basic income</div></div>
+      <div class="ex-card"><h3 data-i18n="ex-cafe-h">A café</h3><p data-i18n="ex-cafe-p">It takes in 3,000 AEQ a month and pays 1,500 in wages, 800 to its supplier and 600 to the owner. It holds far less than one and a half months' turnover, so there is no idle-money levy. Only the payment to the supplier costs 0.1 %.</p><div class="ex-r" data-i18n="ex-cafe-r">pays 0.8 AEQ a month</div></div>
+      <div class="ex-card warn"><h3 data-i18n="ex-market-h">A supermarket that hoards</h3><p data-i18n="ex-market-p">40,000 AEQ of purchases every month, but 200,000 AEQ stay in the account. Free up to 60,000 (1.5 months' turnover), 0.5 % on the next 60,000 up to 3 months' turnover, 2 % on the 80,000 above. A normal reserve of two months would cost only 100 AEQ a month.</p><div class="ex-r" data-i18n="ex-market-r">pays 1,900 AEQ a month into the basic income</div></div>
     </div>
   </div>
 </section>
@@ -670,21 +670,21 @@ section{padding:56px 16px}
     <h2 data-i18n="ru-h2">The rules for business accounts</h2>
     <p class="section-sub" data-i18n="ru-sub">They apply from 1 October 2026. Every levy goes 100 % to the basic income, equally to every person.</p>
     <div class="biz-rules">
-      <div class="biz-row"><span class="biz-k" data-i18n="biz-r1-k">Idle money</span><span class="biz-v" data-i18n="biz-r1-v">Older than 30 days: 1 % per month · older than 90 days: 3 % per month · 2,000 AEQ always free</span></div>
-      <div class="biz-row"><span class="biz-k" data-i18n="biz-r2-k">Money has an age</span><span class="biz-v" data-i18n="biz-r2-v">The age travels with the money. Sending it in circles, through your own firms or through friends, does not make it new. It only becomes new after 30 days with a person.</span></div>
-      <div class="biz-row"><span class="biz-k" data-i18n="biz-r3-k">Exit to euro or dollar</span><span class="biz-v" data-i18n="biz-r3-v">2 % levy. People: wages and 1,000 AEQ a month are free</span></div>
-      <div class="biz-row"><span class="biz-k" data-i18n="biz-r4-k">Business to business</span><span class="biz-v" data-i18n="biz-r4-v">0.1 %, no surcharge</span></div>
+      <div class="biz-row"><span class="biz-k" data-i18n="biz-r1-k">Idle money</span><span class="biz-v" data-i18n="biz-r1-v">Up to 1.5 months' turnover (at least 2,000 AEQ): free · up to 3 months' turnover: 0.5 % per month on the part above · beyond that: 2 % per month</span></div>
+      <div class="biz-row"><span class="biz-k" data-i18n="biz-r2-k">What counts as turnover</span><span class="biz-v" data-i18n="biz-r2-v">The average of the last 90 days. Purchases count up to 1,000 AEQ per person and month; between businesses only the surplus counts; wages, your own payments and exchanges into AEQ do not count.</span></div>
+      <div class="biz-row"><span class="biz-k" data-i18n="biz-r3-k">Exit to euro or dollar</span><span class="biz-v" data-i18n="biz-r3-v">2 % levy. People: 3,000 AEQ a month are free</span></div>
+      <div class="biz-row"><span class="biz-k" data-i18n="biz-r4-k">Business to business</span><span class="biz-v" data-i18n="biz-r4-v">0.1 %</span></div>
       <div class="biz-row"><span class="biz-k" data-i18n="biz-r5-k">Where it goes</span><span class="biz-v" data-i18n="biz-r5-v">Every levy goes 100 % to the basic income, equally to every person</span></div>
       <div class="biz-row"><span class="biz-k" data-i18n="biz-r6-k">Public</span><span class="biz-v" data-i18n="biz-r6-v">Name, category and number of responsible people are visible in the explorer. An account can only be closed when it is empty; the balance is paid out to people beforehand, free of fees.</span></div>
     </div>
-    <details class="age-details"><summary class="biz-rules-h" data-i18n="age-h">When does money count as new?</summary>
+    <details class="age-details"><summary class="biz-rules-h" data-i18n="age-h">What counts as turnover?</summary>
     <div class="biz-rules">
-      <div class="biz-row"><span class="biz-k" data-i18n="age-r1-k">From another business or another address</span><span class="biz-v" data-i18n="age-r1-v">keeps its age</span></div>
-      <div class="biz-row"><span class="biz-k" data-i18n="age-r2-k">From a person who held it for less than 30 days</span><span class="biz-v" data-i18n="age-r2-v">keeps its age</span></div>
-      <div class="biz-row"><span class="biz-k" data-i18n="age-r3-k">From a person who held it for at least 30 days</span><span class="biz-v" data-i18n="age-r3-v">new: it really was that person's money</span></div>
-      <div class="biz-row"><span class="biz-k" data-i18n="age-r4-k">Freshly created: basic income, registration, exchange into AEQ</span><span class="biz-v" data-i18n="age-r4-v">new</span></div>
+      <div class="biz-row"><span class="biz-k" data-i18n="age-r1-k">Purchases by people</span><span class="biz-v" data-i18n="age-r1-v">up to 1,000 AEQ per person and month</span></div>
+      <div class="biz-row"><span class="biz-k" data-i18n="age-r2-k">Payments from other businesses</span><span class="biz-v" data-i18n="age-r2-v">only the surplus: income from businesses minus payments to businesses</span></div>
+      <div class="biz-row"><span class="biz-k" data-i18n="age-r3-k">Businesses with shared responsible people</span><span class="biz-v" data-i18n="age-r3-v">do not count for each other</span></div>
+      <div class="biz-row"><span class="biz-k" data-i18n="age-r4-k">Wages, withdrawals, your own payments, other addresses, exchange into AEQ</span><span class="biz-v" data-i18n="age-r4-v">do not count</span></div>
     </div>
-    <p class="note" data-i18n="age-note">A business always spends its oldest money first, the cheapest order for it. For people the age plays no role; it is only carried along so that businesses receive it correctly.</p>
+    <p class="note" data-i18n="age-note">Turnover is the average of the last 90 days. The surplus rule stops circles: if three firms send each other money, each has as much coming in as going out, and the allowance does not grow. In the first 30 days of a business there is no idle-money levy.</p>
     </details>
     <div class="biz-live"><span><span data-i18n="biz-live-from">Rules apply from</span> <strong id="biz-from">—</strong></span><span><span data-i18n="biz-live-count">Registered businesses</span>: <strong id="biz-count">—</strong></span></div>
     <a class="section-link" href="https://github.com/hanoi96international-gif/Aequitas/blob/main/docs/UNTERNEHMEN_KONZEPT.md" rel="noopener" data-i18n="biz-link">Read the full concept →</a>
@@ -698,14 +698,14 @@ section{padding:56px 16px}
     <p class="section-sub" data-i18n="lh-sub">A decentralised network cannot check whether a real company stands behind an account, and it should not have to: no registry, no authority, no gatekeeper. Instead, hoarding is expensive in every form and passing money on is cheap in every form. Registering as a business only pays off for those whose money really flows.</p>
     <details class="lh-details"><summary class="biz-rules-h" data-i18n="lh-list-h">Every workaround we found, and why it fails</summary>
     <ul class="lh-list">
-      <li data-i18n="lh-1"><strong>Registering as a business to get around the 25,000 limit.</strong> The idle-money levy of 1–3 % a month is more expensive than any other form.</li>
-      <li data-i18n="lh-2"><strong>Sending money in circles between your own or friendly firms.</strong> The age travels with the money; between businesses nothing gets younger, however long the circle.</li>
-      <li data-i18n="lh-3"><strong>Paying it back through the owner or a friend.</strong> If the money stayed with that person for less than 30 days, it keeps its age.</li>
-      <li data-i18n="lh-4"><strong>Really parking it with friends for 30 days.</strong> Every person can hold at most 25,000 AEQ and pays the surcharge both ways: about 2–2.5 % per round to save 1–3 %, at full risk.</li>
+      <li data-i18n="lh-1"><strong>Registering as a business to get around the 25,000 limit.</strong> Without real turnover a business pays 2 % a month on everything above 2,000 AEQ, four times as much as a person.</li>
+      <li data-i18n="lh-2"><strong>Sending money in circles between your own or friendly firms to inflate turnover.</strong> Between businesses only the surplus counts, and your own firms do not count for each other: a circle adds nothing.</li>
+      <li data-i18n="lh-3"><strong>Paying money in yourself or through the owner.</strong> Payments from a business's own responsible people do not count as turnover.</li>
+      <li data-i18n="lh-4"><strong>Friends who buy and get the money back.</strong> Each person counts at most 1,000 AEQ a month per business. Sheltering 150,000 AEQ would need 100 real people every month, publicly visible.</li>
       <li data-i18n="lh-5"><strong>Founding many firms for many free amounts.</strong> At most 3 business accounts per person, so at most 6,000 AEQ free.</li>
       <li data-i18n="lh-6"><strong>Paying yourself as an “employee”.</strong> Payments to responsible people count as withdrawals, not wages.</li>
-      <li data-i18n="lh-7"><strong>Fake wages to friends who exchange and hand back cash.</strong> Wages are free of the exit levy only up to 3,000 AEQ per person and month, and wage totals are public.</li>
-      <li data-i18n="lh-8"><strong>Making money “younger” through the liquidity pool.</strong> Only people can provide liquidity.</li>
+      <li data-i18n="lh-7"><strong>Fake wages to friends who exchange and hand back cash.</strong> Exchanges are free of the exit levy only up to 3,000 AEQ per person and month, and wage totals are public.</li>
+      <li data-i18n="lh-8"><strong>Parking money in the liquidity pool.</strong> Only people can provide liquidity.</li>
       <li data-i18n="lh-9"><strong>A smart contract as a hiding place.</strong> Contracts are other addresses: at most 1,000 AEQ, 1 % a month.</li>
     </ul>
     </details>
@@ -736,7 +736,7 @@ section{padding:56px 16px}
       <li data-i18n="op-2"><strong>Legal review pending.</strong> Whether AEQ and the built-in exchange fall under the EU crypto regulation MiCA must be checked before real money.</li>
       <li data-i18n="op-3"><strong>Exchange-rate risk.</strong> While AEQ is small, its price fluctuates. For cautious shops, immediate exchange is the answer.</li>
       <li data-i18n="op-4"><strong>Taxes.</strong> For businesses, AEQ income is business income at its euro value on the day of payment.</li>
-      <li data-i18n="op-5"><strong>The numbers are starting values.</strong> 2,000 AEQ free amount, 30/90 days, 1 %/3 %, 2 %, 1,000 and 3,000 a month: measured in the pilot town, then adjusted.</li>
+      <li data-i18n="op-5"><strong>The numbers are starting values.</strong> 2,000 AEQ base amount, 1.5 and 3 months' turnover, 0.5 %/2 %, 2 %, 1,000 and 3,000 a month: measured in the pilot town, then adjusted.</li>
     </ul>
     <div class="sybil-blurb" data-i18n="sybil-blurb"><strong>Sybil / protection:</strong> live face check (quorum 2 of independent matching services) + signed attestation + on-chain nullifier, spent once. Named limits: accounts from before the face check (25 Aug 2026 — nearly all of today's 18) have no face template; the matching threshold is not yet calibrated on real captures; liveness is a head-turn challenge, so advanced deepfakes remain a residual risk; the split-share mode (<code>MPC</code>) runs in shadow, each service still holds a whole encrypted template.</div>
   </div>
@@ -754,7 +754,7 @@ section{padding:56px 16px}
       <details><summary data-i18n="faq-q5">What is an “other address”?</summary><p data-i18n="faq-a5">Every address that is neither a verified person nor a business: a visitor's wallet, a tip jar, a simple contract. It may hold at most 1,000 AEQ and pays 1 % a month.</p></details>
       <details><summary data-i18n="faq-q6">Why do rules per person work here?</summary><p data-i18n="faq-a6">Every person exists exactly once at Aequitas. A free amount per person cannot be multiplied with more accounts. No other money can do that.</p></details>
       <details><summary data-i18n="faq-q7">Has money like this ever worked?</summary><p data-i18n="faq-a7">Yes. Wörgl (Austria, 1932) had money that lost 1 % a month; it circulated so fast that the town built roads and bridges with it until the national bank banned it. The Chiemgauer (Bavaria, since 2003) has a circulation levy and hundreds of shops. The WIR Bank (Switzerland, since 1934) runs settlement money between businesses.</p></details>
-      <details><summary data-i18n="faq-q8">Why aren't the limits tied to the dollar?</summary><p data-i18n="faq-a8">Because fairness is about each person's share of all the money, not about dollar amounts. The average person always holds exactly one fair share (1,000 AEQ), and every limit is a multiple of it. A dollar link would need a price source that someone could push, and a rising price would quietly tighten the limits. Only the monthly allowances depend on how much of life is paid in AEQ: after the pilot town, the fee-free monthly amount and the wage allowance are to follow what the median person really spends each month, never less than 1× the fair share.</p></details>
+      <details><summary data-i18n="faq-q8">Why aren't the limits tied to the dollar?</summary><p data-i18n="faq-a8">Because fairness is about each person's share of all the money, not about dollar amounts. The average person always holds exactly one fair share (1,000 AEQ), and every limit is a multiple of it. A dollar link would need a price source that someone could push, and a rising price would quietly tighten the limits. Only the monthly allowances depend on how much of life is paid in AEQ: after the pilot town, the fee-free monthly amount and the exchange allowance are to follow what the median person really spends each month, never less than 1× the fair share.</p></details>
     </div>
   </div>
 </section>

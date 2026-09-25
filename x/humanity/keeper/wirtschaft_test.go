@@ -206,64 +206,138 @@ func TestUnternehmenOhneVermoegensgrenze(t *testing.T) {
 	}
 }
 
-// Das Alter reist mit dem Geld: Kreise ueber Firmen und Freunde machen es
-// nicht jung. Nur 30 Tage bei einem Menschen setzen die Uhr zurueck.
-func TestAlterReistMit(t *testing.T) {
-	cs, ctx, vor := wirtschaftsTest(t)
-	eroeffne(t, cs, ctx, wFirmaA, wMensch1)
-	eroeffne(t, cs, ctx, wFirmaB, wMensch2)
-	geben(cs, wFirmaA, 20_000)
-	// Einmal buchen, damit die 20.000 ein Alter haben.
-	ueberweise(t, cs, ctx, wFirmaA, wFirmaB, 1)
-
-	vor(100 * tag)
-	// A -> B -> A: bleibt alt.
-	ueberweise(t, cs, ctx, wFirmaA, wFirmaB, 10_000)
-	ueberweise(t, cs, ctx, wFirmaB, wFirmaA, 9_900)
-	liegegeld := cs.umlaufBetrag(wFirmaA, artUnternehmen, stand(cs, wFirmaA), nowUnix(), sekundenJeMonat)
-	// (19.989 - 2.000) x 3 % grob; es darf keinesfalls null sein.
-	if liegegeld < 500 {
-		t.Fatalf("Kreis zwischen Firmen hat das Geld jung gemacht: Liegegeld %v", liegegeld)
-	}
-
-	// A -> Freund -> A am selben Tag: bleibt alt.
-	vorher := liegegeld
-	ueberweise(t, cs, ctx, wFirmaA, wMensch3, 4000)
-	ueberweise(t, cs, ctx, wMensch3, wFirmaA, 3000)
-	nachher := cs.umlaufBetrag(wFirmaA, artUnternehmen, stand(cs, wFirmaA), nowUnix(), sekundenJeMonat)
-	if nachher < vorher*0.85 {
-		t.Fatalf("ueber einen Freund gewaschen: vorher %v, nachher %v", vorher, nachher)
-	}
-
-	// Frisches Geld von einem Menschen, das dort 30 Tage lag, ist neu.
-	cs2, ctx2, vor2 := wirtschaftsTest(t)
-	eroeffne(t, cs2, ctx2, wFirmaA, wMensch1)
-	geben(cs2, wMensch2, 1000)
-	vor2(40 * tag)
-	ueberweise(t, cs2, ctx2, wMensch2, wFirmaA, 1500)
-	if lg := cs2.umlaufBetrag(wFirmaA, artUnternehmen, stand(cs2, wFirmaA), nowUnix(), sekundenJeMonat); lg != 0 {
-		t.Fatalf("Einkauf mit eigenem Geld ist neu, kein Liegegeld: %v", lg)
+// Die Rechenbeispiele aus Konzept 14.4, als feste Zahlen.
+func TestLiegegeldNachUmsatz_Rechenbeispiele(t *testing.T) {
+	for _, f := range []struct {
+		name                  string
+		stand, umsatz, erwart float64
+	}{
+		{"Cafe", 1_500, 3_000, 0},
+		{"Supermarkt mit 2 Monaten Reserve", 80_000, 40_000, 100},
+		{"Supermarkt, der hortet", 200_000, 40_000, 1_900},
+		{"Konzern mit 1,5 Monaten Reserve", 15_000_000, 10_000_000, 0},
+		{"Grosshaendler (Ueberschuss 100.000)", 250_000, 100_000, 500},
+		{"Horten ohne Umsatz", 100_000, 0, 1_960},
+		{"unter dem Sockel", 1_500, 0, 0},
+	} {
+		if g := liegegeldFuerStand(f.stand, f.umsatz); !fast(g, f.erwart) {
+			t.Errorf("%s: Liegegeld %v, erwartet %v", f.name, g, f.erwart)
+		}
 	}
 }
 
-func TestLiegegeldStufenUndSockel(t *testing.T) {
+// Ohne 30 Tage Daten kein Liegegeld -- zugunsten des Unternehmens. Danach
+// zaehlt der echte Umsatz.
+func TestLiegegeldErstNach30TagenDaten(t *testing.T) {
 	cs, ctx, vor := wirtschaftsTest(t)
 	eroeffne(t, cs, ctx, wFirmaA, wMensch1)
-	geben(cs, wFirmaA, 10_000)
+	geben(cs, wFirmaA, 100_000)
+	vor(29 * tag)
+	if lg := cs.umlaufBetrag(wFirmaA, artUnternehmen, 100_000, nowUnix(), sekundenJeMonat); lg != 0 {
+		t.Fatalf("nach 29 Tagen noch kein Liegegeld, bekommen %v", lg)
+	}
+	vor(2 * tag)
+	if lg := cs.umlaufBetrag(wFirmaA, artUnternehmen, 100_000, nowUnix(), sekundenJeMonat); !fast(lg, 1_960) {
+		t.Fatalf("ohne Umsatz: 98.000 x 2 %% = 1.960, bekommen %v", lg)
+	}
+}
+
+func umsatzVon(cs *ChainState, firma string) float64 {
+	w := cs.wirt()
+	w.mu.Lock()
+	defer w.mu.Unlock()
 	jetzt := nowUnix()
-	if lg := cs.umlaufBetrag(wFirmaA, artUnternehmen, 10_000, jetzt, sekundenJeMonat); lg != 0 {
-		t.Fatalf("junges Geld: %v", lg)
+	tage := w.datenTageLocked(w.unternehmen[firma], jetzt)
+	return w.monatsUmsatzLocked(w.kontoLocked(firma, jetzt), tage, jetzt)
+}
+
+// Einkaeufe von Menschen zaehlen je Mensch hoechstens 1.000 AEQ im Monat,
+// Zahlungen des eigenen Verantwortlichen gar nicht.
+func TestUmsatzMenschenGedeckeltEigeneZaehlenNicht(t *testing.T) {
+	cs, ctx, vor := wirtschaftsTest(t)
+	eroeffne(t, cs, ctx, wFirmaA, wMensch1)
+	vor(tag)
+	for _, m := range []string{wMensch1, wMensch2, wMensch3} {
+		acct(cs, m).Balance = NewDecimal(3000)
+		ueberweise(t, cs, ctx, m, wFirmaA, 1_500)
+		ueberweise(t, cs, ctx, m, wFirmaA, 1_000)
 	}
+	vor(30 * tag)
+	// Mensch2 und Mensch3 je 1.000, der Verantwortliche Mensch1 nichts.
+	if u := umsatzVon(cs, wFirmaA); !fast(u, 2_000*30.0/31) {
+		t.Fatalf("Monatsumsatz %v, erwartet 2.000 ueber 31 Tage", u)
+	}
+}
+
+// Drei Firmen schicken sich Geld im Kreis: der Ueberschuss ist null, der
+// Freibetrag steigt nicht. Ein echter Verkauf zaehlt.
+func TestUmsatzDreieckGewinntNichts(t *testing.T) {
+	cs, ctx, vor := wirtschaftsTest(t)
+	eroeffne(t, cs, ctx, wFirmaA, wMensch1)
+	eroeffne(t, cs, ctx, wFirmaB, wMensch2)
+	eroeffne(t, cs, ctx, wFirmaC, wMensch3)
+	geben(cs, wFirmaA, 50_000)
+	geben(cs, wFirmaB, 1_000) // fuer die Gebuehren
+	geben(cs, wFirmaC, 1_000)
+	vor(tag)
+	for i := 0; i < 5; i++ {
+		ueberweise(t, cs, ctx, wFirmaA, wFirmaB, 10_000)
+		ueberweise(t, cs, ctx, wFirmaB, wFirmaC, 10_000)
+		ueberweise(t, cs, ctx, wFirmaC, wFirmaA, 10_000)
+	}
+	vor(30 * tag)
+	for _, f := range []string{wFirmaA, wFirmaB, wFirmaC} {
+		if u := umsatzVon(cs, f); u != 0 {
+			t.Fatalf("%s: Dreieck hat Umsatz erzeugt: %v", f, u)
+		}
+	}
+	// Ein echter Einkauf: A kauft fuer 6.000 bei C.
+	ueberweise(t, cs, ctx, wFirmaA, wFirmaC, 6_000)
+	if u := umsatzVon(cs, wFirmaC); u <= 0 {
+		t.Fatalf("ein echter Verkauf muss zaehlen: %v", u)
+	}
+	if u := umsatzVon(cs, wFirmaA); u != 0 {
+		t.Fatalf("der Kaeufer gewinnt keinen Umsatz: %v", u)
+	}
+}
+
+// Firmen mit gemeinsamen Verantwortlichen zaehlen fuereinander nicht.
+func TestUmsatzGemeinsameVerantwortlicheZaehlenNicht(t *testing.T) {
+	cs, ctx, vor := wirtschaftsTest(t)
+	eroeffne(t, cs, ctx, wFirmaA, wMensch1)
+	eroeffne(t, cs, ctx, wFirmaB, wMensch1)
+	geben(cs, wFirmaA, 20_000)
+	vor(tag)
+	ueberweise(t, cs, ctx, wFirmaA, wFirmaB, 10_000)
+	vor(30 * tag)
+	if u := umsatzVon(cs, wFirmaB); u != 0 {
+		t.Fatalf("eigene Firma darf keinen Umsatz liefern: %v", u)
+	}
+}
+
+// Nach einem Snapshot fehlt die Buchfuehrung davor: 30 Tage kein Liegegeld.
+func TestSnapshotSetztBuchfuehrungNeu(t *testing.T) {
+	cs, ctx, vor := wirtschaftsTest(t)
+	eroeffne(t, cs, ctx, wFirmaA, wMensch1)
 	vor(60 * tag)
-	if lg := cs.umlaufBetrag(wFirmaA, artUnternehmen, 10_000, nowUnix(), sekundenJeMonat); !fast(lg, 80) {
-		t.Fatalf("60 Tage: (10.000 - 2.000) x 1 %% = 80, bekommen %v", lg)
+	if lg := cs.umlaufBetrag(wFirmaA, artUnternehmen, 100_000, nowUnix(), sekundenJeMonat); lg == 0 {
+		t.Fatal("vor dem Snapshot muss Liegegeld anfallen")
 	}
-	vor(40 * tag)
-	if lg := cs.umlaufBetrag(wFirmaA, artUnternehmen, 10_000, nowUnix(), sekundenJeMonat); !fast(lg, 240) {
-		t.Fatalf("100 Tage: 8.000 x 3 %% = 240, bekommen %v", lg)
+	neu := newTestState()
+	neu.unternehmenAusSnapshot(cs.unternehmenFuerSnapshot())
+	if lg := neu.umlaufBetrag(wFirmaA, artUnternehmen, 100_000, nowUnix(), sekundenJeMonat); lg != 0 {
+		t.Fatalf("frisch aus dem Snapshot: ohne Daten kein Liegegeld, bekommen %v", lg)
 	}
-	if lg := cs.umlaufBetrag(wFirmaA, artUnternehmen, 1_500, nowUnix(), sekundenJeMonat); lg != 0 {
-		t.Fatalf("unter dem Sockel: %v", lg)
+}
+
+// Ab der Aktivierung: 0,1 %% ohne Aufschlagstufen, auch bei grossem Guthaben.
+func TestGebuehrOhneAufschlagstufen(t *testing.T) {
+	cs, _, _ := wirtschaftsTest(t)
+	if g := cs.gebuehrMitWirtschaft(wMensch1, wMensch2, artMensch, artMensch, 2_000, 25_000, nowUnix()); !fast(g, 1) {
+		t.Fatalf("2.000, davon 1.000 frei, 0,1 %% -> 1 AEQ, bekommen %v", g)
+	}
+	if g := cs.gebuehrMitWirtschaft(wFrei, wMensch2, artFrei, artMensch, 500, 900, nowUnix()); !fast(g, 0.5) {
+		t.Fatalf("freie Adresse 0,1 %% -> 0,5 AEQ, bekommen %v", g)
 	}
 }
 
@@ -320,41 +394,31 @@ func TestUmlaufTageslaufUndNachspielen(t *testing.T) {
 	}
 }
 
-func TestAusstiegsAbgabeUndLohn(t *testing.T) {
+func TestAusstiegsAbgabeDreitausendFrei(t *testing.T) {
 	cs, ctx, _ := wirtschaftsTest(t)
 	eroeffne(t, cs, ctx, wFirmaA, wMensch1)
 	jetzt := nowUnix()
-	// Mensch ohne Lohn: 1.000 frei, darueber 2 %.
-	if a := cs.ausstiegsAbgabe(wMensch2, artMensch, 1000, jetzt); a != 0 {
-		t.Fatalf("1.000 frei: %v", a)
+	// Mensch: 3.000 im Monat frei, egal woher, darueber 2 %.
+	if a := cs.ausstiegsAbgabe(wMensch2, artMensch, 3000, jetzt); a != 0 {
+		t.Fatalf("3.000 frei: %v", a)
 	}
-	if a := cs.ausstiegsAbgabe(wMensch2, artMensch, 1500, jetzt); !fast(a, 10) {
-		t.Fatalf("500 ueber dem Freibetrag -> 10, bekommen %v", a)
+	if a := cs.ausstiegsAbgabe(wMensch2, artMensch, 4000, jetzt); !fast(a, 20) {
+		t.Fatalf("1.000 ueber dem Freibetrag -> 20, bekommen %v", a)
 	}
 	// Unternehmen: 2 % auf alles.
 	if a := cs.ausstiegsAbgabe(wFirmaA, artUnternehmen, 1000, jetzt); !fast(a, 20) {
 		t.Fatalf("Unternehmen 2 %%: %v", a)
 	}
-	// Lohn an einen Angestellten erhoeht seinen Freibetrag, eine Entnahme
-	// an den Verantwortlichen nicht.
+	// Lohn aendert den Freibetrag nicht mehr.
 	geben(cs, wFirmaA, 10_000)
-	ueberweise(t, cs, ctx, wFirmaA, wMensch2, 2000) // Lohn
-	ueberweise(t, cs, ctx, wFirmaA, wMensch1, 2000) // Entnahme
-	if a := cs.ausstiegsAbgabe(wMensch2, artMensch, 3000, jetzt); a != 0 {
-		t.Fatalf("Lohn 2.000 + 1.000 frei: %v", a)
-	}
-	if a := cs.ausstiegsAbgabe(wMensch1, artMensch, 3000, jetzt); !fast(a, 40) {
-		t.Fatalf("Entnahme ist kein Lohn: 2.000 x 2 %% = 40, bekommen %v", a)
-	}
-	// Lohn zaehlt hoechstens 3.000.
-	ueberweise(t, cs, ctx, wFirmaA, wMensch2, 3000)
-	if a := cs.ausstiegsAbgabe(wMensch2, artMensch, 5000, jetzt); !fast(a, 20) {
-		t.Fatalf("Lohn gedeckelt auf 3.000: (5.000 - 4.000) x 2 %% = 20, bekommen %v", a)
+	ueberweise(t, cs, ctx, wFirmaA, wMensch2, 2000)
+	if a := cs.ausstiegsAbgabe(wMensch2, artMensch, 4000, jetzt); !fast(a, 20) {
+		t.Fatalf("Lohn zaehlt nicht extra: (4.000 - 3.000) x 2 %% = 20, bekommen %v", a)
 	}
 	// Getauschtes wird abgezogen.
-	cs.nachTausch(wMensch2, 4000, jetzt)
-	if a := cs.ausstiegsAbgabe(wMensch2, artMensch, 100, jetzt); !fast(a, 2) {
-		t.Fatalf("Freibetrag verbraucht: %v", a)
+	cs.nachTausch(wMensch2, 2500, jetzt)
+	if a := cs.ausstiegsAbgabe(wMensch2, artMensch, 1000, jetzt); !fast(a, 10) {
+		t.Fatalf("500 frei uebrig: (1.000 - 500) x 2 %% = 10, bekommen %v", a)
 	}
 }
 
@@ -401,17 +465,17 @@ func TestSchnellePfadeTretenZurueck(t *testing.T) {
 func TestSwapMitAusstiegsAbgabeUndNachspielen(t *testing.T) {
 	cs, ctx, _ := wirtschaftsTest(t)
 	cs.pool = &PoolState{ReserveAEQ: NewDecimal(100_000), ReserveTUSD: NewDecimal(100_000)}
-	acct(cs, wMensch1).Balance = NewDecimal(3000)
+	acct(cs, wMensch1).Balance = NewDecimal(5000)
 	cs.mu.Lock()
-	out, _, abgabe, err := cs.swapLockedMitAbgabe(ctx, wMensch1, 2000, true, 0)
+	out, _, abgabe, err := cs.swapLockedMitAbgabe(ctx, wMensch1, 4000, true, 0)
 	cs.mu.Unlock()
 	if err != nil {
 		t.Fatal(err)
 	}
 	if !fast(abgabe, 20) {
-		t.Fatalf("2.000 AEQ, davon 1.000 frei -> 20 Abgabe, bekommen %v", abgabe)
+		t.Fatalf("4.000 AEQ, davon 3.000 frei -> 20 Abgabe, bekommen %v", abgabe)
 	}
-	if !fast(stand(cs, wMensch1), 3000-2000-20) || stand(cs, ubiPoolAddr) < 20 {
+	if !fast(stand(cs, wMensch1), 5000-4000-20) || stand(cs, ubiPoolAddr) < 20 {
 		t.Fatalf("Konto nach Tausch: %v", stand(cs, wMensch1))
 	}
 	ubiNachErzeuger := stand(cs, ubiPoolAddr)
@@ -421,9 +485,9 @@ func TestSwapMitAusstiegsAbgabeUndNachspielen(t *testing.T) {
 		addHuman(nach, m, 1000)
 	}
 	nach.pool = &PoolState{ReserveAEQ: NewDecimal(100_000), ReserveTUSD: NewDecimal(100_000)}
-	acct(nach, wMensch1).Balance = NewDecimal(3000)
+	acct(nach, wMensch1).Balance = NewDecimal(5000)
 	nach.mu.Lock()
-	err = nach.applySwapDeltaLockedMitAbgabe(ctx, wMensch1, 2000, out, true, 0, nowUnix(), abgabe)
+	err = nach.applySwapDeltaLockedMitAbgabe(ctx, wMensch1, 4000, out, true, 0, nowUnix(), abgabe)
 	nach.mu.Unlock()
 	if err != nil {
 		t.Fatal(err)
@@ -463,8 +527,7 @@ func TestWirtschaft_GrenzenSindVielfacheDesFairenAnteils(t *testing.T) {
 		frueherFest  float64
 	}{
 		{"gebuehrenfreie Ausgaben", menschFreiAusgabenMonat, 1, 1000},
-		{"Tausch frei", menschTauschFreiMonat, 1, 1000},
-		{"Lohn tauschfrei", lohnTauschFreiMonat, 3, 3000},
+		{"Tausch frei", menschTauschFreiMonat, 3, 3000},
 		{"Sparfreibetrag", menschSparFreibetrag, 5, 5000},
 		{"freie Adresse", freiGrenze, 1, 1000},
 		{"Unternehmenssockel", unternehmenSockel, 2, 2000},

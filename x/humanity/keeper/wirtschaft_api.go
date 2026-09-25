@@ -51,7 +51,6 @@ func (a *APIServer) handleWirtschaftRegeln(w http.ResponseWriter, r *http.Reques
 		"in_fairen_anteilen": map[string]interface{}{
 			"mensch_gebuehrenfreie_ausgaben_monat": menschFreiAusgabenMonat / registrationGrant,
 			"mensch_tausch_frei_monat":             menschTauschFreiMonat / registrationGrant,
-			"mensch_lohn_tausch_frei_monat":        lohnTauschFreiMonat / registrationGrant,
 			"mensch_spar_freibetrag":               menschSparFreibetrag / registrationGrant,
 			"mensch_vermoegensgrenze":              float64(wealthCapMultiplier),
 			"unternehmen_sockel":                   unternehmenSockel / registrationGrant,
@@ -60,29 +59,31 @@ func (a *APIServer) handleWirtschaftRegeln(w http.ResponseWriter, r *http.Reques
 		"mensch": map[string]interface{}{
 			"gebuehrenfreie_ausgaben_monat": menschFreiAusgabenMonat,
 			"tausch_frei_monat":             menschTauschFreiMonat,
-			"lohn_tausch_frei_monat":        lohnTauschFreiMonat,
 			"spar_freibetrag":               menschSparFreibetrag,
 			"umlauf_prozent_monat":          menschUmlaufMonat * 100,
 			"vermoegensgrenze":              registrationGrant * wealthCapMultiplier,
 		},
 		"unternehmen": map[string]interface{}{
-			"sockel":                   unternehmenSockel,
-			"liegegeld_ab_tagen":       liegeStufe1Sekunden / 86400,
-			"liegegeld_prozent_monat":  liegeRate1Monat * 100,
-			"liegegeld2_ab_tagen":      liegeStufe2Sekunden / 86400,
-			"liegegeld2_prozent_monat": liegeRate2Monat * 100,
-			"max_je_mensch":            maxUnternehmenJeMensch,
-			"max_verantwortliche":      maxVerantwortlicheJeUnt,
-			"kategorien":               sortierteKategorien(),
+			"sockel": unternehmenSockel,
+			// Freibetrag nach Umsatz (Konzept 14.2)
+			"frei_bis_monatsumsaetze":        umsatzFreiFaktor,
+			"liegegeld_prozent_monat":        liegeRate1Monat * 100,
+			"liegegeld2_ab_monatsumsaetzen":  umsatzStufe2Faktor,
+			"liegegeld2_prozent_monat":       liegeRate2Monat * 100,
+			"umsatz_fenster_tage":            umsatzFensterTage,
+			"mensch_zaehlt_hoechstens_monat": menschZaehltJeUntMonat,
+			"zwischen_unternehmen_zaehlt":    "ueberschuss",
+			"max_je_mensch":                  maxUnternehmenJeMensch,
+			"max_verantwortliche":            maxVerantwortlicheJeUnt,
+			"kategorien":                     sortierteKategorien(),
 		},
 		"frei": map[string]interface{}{
 			"grenze":               freiGrenze,
 			"umlauf_prozent_monat": freiUmlaufMonat * 100,
 		},
-		"ausstiegsabgabe_prozent":             float64(ausstiegsAbgabeBps) / 100,
-		"ueberweisung_prozent":                float64(ueberweisungsGebuehrBps) / 100,
-		"geld_wird_neu_nach_tagen_bei_mensch": menschReifSekunden / 86400,
-		"abgaben_gehen_an":                    "grundeinkommen",
+		"ausstiegsabgabe_prozent": float64(ausstiegsAbgabeBps) / 100,
+		"ueberweisung_prozent":    float64(ueberweisungsGebuehrBps) / 100,
+		"abgaben_gehen_an":        "grundeinkommen",
 	})
 }
 
@@ -124,7 +125,7 @@ func (a *APIServer) handleWirtschaftKonto(w http.ResponseWriter, r *http.Request
 	switch art {
 	case artMensch:
 		antwort["gebuehrenfrei_rest_monat"] = round6(math.Max(0, menschFreiAusgabenMonat-k.Ausgegeben))
-		antwort["tausch_frei_rest_monat"] = round6(math.Max(0, menschTauschFreiMonat+math.Min(k.Lohn, lohnTauschFreiMonat)-k.Getauscht))
+		antwort["tausch_frei_rest_monat"] = round6(math.Max(0, menschTauschFreiMonat-k.Getauscht))
 		antwort["lohn_monat"] = round6(k.Lohn)
 		antwort["unternehmen"] = wi.unternehmenVon(addr)
 	case artUnternehmen:
@@ -134,19 +135,15 @@ func (a *APIServer) handleWirtschaftKonto(w http.ResponseWriter, r *http.Request
 			antwort["kategorie"] = e.Kategorie
 			antwort["verantwortliche"] = len(e.Verantwortliche)
 		}
-		abgleichen(k, stand, false, jetzt)
-		var jung, mittel, alt float64
-		for _, p := range k.Pakete {
-			switch al := jetzt - p.Seit; {
-			case al > liegeStufe2Sekunden:
-				alt += p.Betrag
-			case al > liegeStufe1Sekunden:
-				mittel += p.Betrag
-			default:
-				jung += p.Betrag
-			}
+		tage := wi.datenTageLocked(e, jetzt)
+		umsatz := wi.monatsUmsatzLocked(k, tage, jetzt)
+		antwort["umsatz"] = map[string]interface{}{
+			"monatsumsatz":       round6(umsatz),
+			"daten_tage":         tage,
+			"frei_bis":           round6(math.Max(unternehmenSockel, umsatzFreiFaktor*umsatz)),
+			"hohe_stufe_ab":      round6(math.Max(unternehmenSockel, umsatzStufe2Faktor*umsatz)),
+			"liegegeld_ab_tagen": umsatzMindestTage,
 		}
-		antwort["alter"] = map[string]float64{"bis_30_tage": round6(jung), "30_bis_90_tage": round6(mittel), "ueber_90_tage": round6(alt)}
 		antwort["monat"] = map[string]float64{"einnahmen": round6(k.Einnahmen), "lohn_gezahlt": round6(k.LohnGezahlt), "entnahmen": round6(k.Entnahmen)}
 	case artFrei:
 		antwort["grenze"] = freiGrenze
