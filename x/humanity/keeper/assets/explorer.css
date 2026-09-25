@@ -151,8 +151,8 @@ header::before{content:'';position:absolute;top:0;left:0;right:0;height:2px;back
 .exp-search input::placeholder{color:var(--muted)}
 .exp-search button{background:var(--accent);color:#fff;border:none;border-radius:var(--radius-pill);padding:10px 20px;font-size:0.83rem;font-weight:700;cursor:pointer;letter-spacing:0.3px;white-space:nowrap;transition:opacity 0.2s}
 .exp-search button:hover{opacity:0.85}
-.exp-stats{display:grid;grid-template-columns:repeat(5,1fr);gap:1px;background:var(--border);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden;margin:16px 20px 0}
-@media(max-width:860px){.exp-stats{grid-template-columns:repeat(3,1fr)}}
+.exp-stats{display:grid;grid-template-columns:repeat(2,1fr);gap:1px;background:var(--border);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden;margin:16px 20px 0}
+@media(max-width:860px){.exp-stats{grid-template-columns:repeat(2,1fr)}}
 @media(max-width:600px){.exp-stats{grid-template-columns:repeat(2,1fr)}}
 .exp-stat{background:var(--card2);padding:16px 18px;transition:background 0.2s}
 .exp-stat:hover{background:#1C2130}

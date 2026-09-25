@@ -232,8 +232,10 @@
   <div class="stab" data-act="showStab" data-args='["tab-explorer","sep-humans"]' role="button" tabindex="0">👥 Humans</div>
 </nav>
 <div id="sep-blocks" class="stab-panel active">
-<!-- hidden elements needed by loadStatus() -->
-<span id="s-index" style="display:none"></span>
+<!-- hidden elements needed by loadStatus(). Hoehe, Menschen und Geldmenge
+     stehen sichtbar in der Live-Leiste oben (chrome-*); hier nur als Quelle
+     fuer loadStatus/Vermoegensgrenze, damit nichts doppelt erscheint. -->
+<span id="s-index" style="display:none"></span><span id="s-height" style="display:none"></span><span id="s-humans" style="display:none"></span><span id="s-supply" style="display:none"></span>
 <!-- Search bar -->
 <div class="exp-search">
   <input type="text" id="exp-search-input" placeholder="Search by Block # or Hash...">
@@ -241,21 +243,6 @@
 </div>
 <!-- Compact stats row -->
 <div class="exp-stats">
-  <div class="exp-stat">
-    <div class="exp-stat-lbl" data-i18n="s-height">Block Height</div>
-    <div class="exp-stat-val" id="s-height">—</div>
-    <div class="exp-stat-sub" id="s-height-sub" data-i18n="x-blockdag-parallel-production">BlockDAG · Parallel production</div>
-  </div>
-  <div class="exp-stat">
-    <div class="exp-stat-lbl" data-i18n="s-humans">Verified Humans</div>
-    <div class="exp-stat-val" id="s-humans">—</div>
-    <div class="exp-stat-sub" data-i18n="x-device-bound-zk-proof-one">Face-verified ZK proof · one registration per person</div>
-  </div>
-  <div class="exp-stat">
-    <div class="exp-stat-lbl" data-i18n="s-supply">Total Supply</div>
-    <div class="exp-stat-val" id="s-supply">—</div>
-    <div class="exp-stat-sub" data-i18n="s-supply-sub">Always = Humans × 1,000 AEQ</div>
-  </div>
   <div class="exp-stat">
     <div class="exp-stat-lbl" data-i18n="s-uptime">Uptime</div>
     <div class="exp-stat-val" id="s-uptime" style="font-size:0.88rem">—</div>
