@@ -95,7 +95,7 @@ func TestSwapWriteOrderIsDirectionAware(t *testing.T) {
 	}
 	content := strings.ReplaceAll(string(raw), "\r\n", "\n")
 
-	for _, fn := range []string{"swapLocked", "applySwapDeltaLocked"} {
+	for _, fn := range []string{"swapLockedMitAbgabe", "applySwapDeltaLockedMitAbgabe"} {
 		i := strings.Index(content, "func (cs *ChainState) "+fn+"(")
 		if i < 0 {
 			t.Errorf("%s not found", fn)
@@ -147,12 +147,12 @@ func TestEveryPoolWritingPathIsAccountedFor(t *testing.T) {
 	content := strings.ReplaceAll(string(src), "\r\n", "\n")
 
 	accounted := map[string]string{
-		"addLiquidityLocked":         "declared: the account loses AEQ",
-		"addLiquidityDeltaLocked":    "declared: the account loses AEQ",
-		"removeLiquidityLocked":      "declared: the pool loses AEQ",
-		"removeLiquidityDeltaLocked": "declared: the pool loses AEQ",
-		"swapLocked":                 "direction-aware, see TestSwapWriteOrderIsDirectionAware",
-		"applySwapDeltaLocked":       "direction-aware, see TestSwapWriteOrderIsDirectionAware",
+		"addLiquidityLocked":            "declared: the account loses AEQ",
+		"addLiquidityDeltaLocked":       "declared: the account loses AEQ",
+		"removeLiquidityLocked":         "declared: the pool loses AEQ",
+		"removeLiquidityDeltaLocked":    "declared: the pool loses AEQ",
+		"swapLockedMitAbgabe":           "direction-aware, see TestSwapWriteOrderIsDirectionAware (swapLocked delegates here)",
+		"applySwapDeltaLockedMitAbgabe": "direction-aware, see TestSwapWriteOrderIsDirectionAware (applySwapDeltaLocked delegates here)",
 		// Sichtbar geworden, als der Scanner unten auch die Mantel-Namen
 		// erfasste. Die Reihenfolge ist korrekt: der Topf gibt AEQ ab, also
 		// wird er zuerst geschrieben, und ein Fehlschlag dazwischen setzt die

@@ -48,7 +48,10 @@ type StateSnapshot struct {
 	NullifiersRedacted bool                      `json:"nullifiers_redacted"` // true when wallet addresses replaced with sentinel (public tier)
 	BioRegistrations   []SnapshotBioRegistration `json:"bio_registrations"`
 	ChainConfig        map[string]string         `json:"chain_config,omitempty"` // critical timing keys for secondary state sync
-	Signature          string                    `json:"signature,omitempty"`    // ECDSA over SHA256(JSON without this field)
+	// Unternehmensregister (wirtschaft.go) -- Konsens, weil es die
+	// Vermoegensgrenze entscheidet. Leer vor der Aktivierung.
+	Unternehmen []*unternehmenEintrag `json:"unternehmen,omitempty"`
+	Signature   string                `json:"signature,omitempty"` // ECDSA over SHA256(JSON without this field)
 }
 
 type SnapshotBioRegistration struct {
@@ -157,6 +160,7 @@ func (cs *ChainState) ExportSnapshot(signingKey *ecdsa.PrivateKey, height int64,
 		Pool:               &pool,
 		Nullifiers:         nullifiers,
 		NullifiersRedacted: !includeSensitive,
+		Unternehmen:        cs.unternehmenFuerSnapshot(),
 	}
 
 	// Pull bio_registrations from DB (commitment → wallet only).
@@ -468,6 +472,7 @@ func (cs *ChainState) ImportSnapshotFromURL(peerURL, expectedSignerHex string) e
 			accountsToPersist = append(accountsToPersist, acc)
 		}
 	}
+	cs.unternehmenAusSnapshot(snap.Unternehmen)
 	// FIX 11: Only import pool state on genuine cold start (no humans registered).
 	// Prevents a stale snapshot from overwriting an active pool that temporarily has
 	// zero reserves (e.g., after all liquidity was removed).
@@ -1304,6 +1309,7 @@ func (cs *ChainState) replaceInMemoryFromSnapshotLocked(snap *StateSnapshot) {
 		fresh.Set(acc.Address, acc)
 	}
 	cs.accounts = fresh
+	cs.unternehmenAusSnapshot(snap.Unternehmen)
 	if snap.Pool != nil {
 		cs.pool = snap.Pool
 	}

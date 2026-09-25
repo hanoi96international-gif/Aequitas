@@ -167,6 +167,8 @@ type PoolState struct {
 }
 
 type ChainState struct {
+	// Unternehmen, Alter des Geldes, Monatsfreibetraege (wirtschaft.go).
+	wirtschaftP atomic.Pointer[wirtschaft]
 	// Rolle dieses Knotens bei der Annahme von Ueberweisungen -- siehe
 	// annahme_tor.go. Gesetzt beim Bau aus ANNAHME_ROLLE, umstellbar ueber
 	// SetzeNurLesend.
@@ -1385,6 +1387,7 @@ blocks_produced BIGINT NOT NULL DEFAULT 0
 	// Slashing tables — safe to call repeatedly (CREATE IF NOT EXISTS / ALTER IF NOT EXISTS).
 	cs.initSlashingTables()
 	cs.backfillBioHashesOnce()
+	cs.wirtschaftInitDB()
 }
 
 // resetDBStateForBootstrap is an explicit operator escape hatch for secondary
@@ -2340,6 +2343,7 @@ func (cs *ChainState) loadFromDB() {
 	cs.rebuildStateAccumulators()
 	fmt.Printf("✓ State-root accumulators seeded (accountSetXOR=%x…, nullifierSetXOR=%x…)\n",
 		cs.accountSetXOR[:4], cs.nullifierSetXOR[:4])
+	cs.wirtschaftLaden()
 }
 
 // loadOrInitPool reads the single liquidity_pool row, creating it (at
@@ -3013,6 +3017,12 @@ func nowUnix() int64 {
 // gets written to the stored Balance field. Caller must hold at least a
 // read lock.
 func effectiveBalance(acc *AccountState) Decimal {
+	// Ab der Aktivierung ersetzt die taegliche Umlaufsicherung (wirtschaft.go,
+	// Menschen ueber 5.000 AEQ) diese Demurrage. Nur der Erzeuger rechnet sie;
+	// nachgespielt wird der getragene Betrag, daran aendert sich nichts.
+	if wirtschaftAktiv(nowUnix()) {
+		return acc.Balance
+	}
 	if acc.LastActivityAt == 0 {
 		return acc.Balance
 	}
@@ -4163,6 +4173,12 @@ func (cs *ChainState) enforceWealthCapLockedCtx(ctx context.Context, acc *Accoun
 	if isTokenomicsPoolAddress(acc.Address) {
 		return nil
 	}
+	// Unternehmen haben keine feste Obergrenze, sie zahlen Liegegeld
+	// (wirtschaft.go). Konsens: das Register entsteht auf jedem Knoten aus
+	// denselben Transaktionen, vor der Aktivierung ist es leer.
+	if cs.wirt().istUnternehmen(acc.Address) {
+		return nil
+	}
 	// Deliberately NOT gated on acc.IsHuman: capping only registered
 	// humans would let someone bypass the entire mechanism just by
 	// parking AEQ in any ordinary, unregistered address (a personal
@@ -4730,6 +4746,15 @@ func (cs *ChainState) runAtomicDistributionWithOutbox(fn func(ctx context.Contex
 func (cs *ChainState) RunDailyDistributionAtomic(ubiAt int64) error {
 	return cs.runAtomicDistributionWithOutbox(func(ctx context.Context) ([]Transaction, error) {
 		var txs []Transaction
+
+		// Umlaufsicherung, Liegegeld, freie Adressen (wirtschaft.go) --
+		// VOR dem Grundeinkommen, damit es noch am selben Tag verteilt wird.
+		// Leer vor der Aktivierung.
+		umlauf, err := cs.umlaufLocked(ctx, ubiAt)
+		if err != nil {
+			return nil, fmt.Errorf("umlauf failed: %w", err)
+		}
+		txs = append(txs, umlauf...)
 
 		ubiShares, err := cs.distributeUBIPoolLocked(ctx, ubiAt)
 		if err != nil {
@@ -5473,9 +5498,22 @@ func (cs *ChainState) transferMutateLocked(ctx context.Context, from, to string,
 	if err != nil {
 		return 0, 0, nil, nil, 0, fmt.Errorf("could not settle demurrage for sender: %w", err)
 	}
-	gebuehr = ueberweisungsGebuehrFuer(amount, fromAcc.Balance.Float())
+	// Gebuehr nach Richtung und Monatsfreibetrag (wirtschaft.go); vor der
+	// Aktivierung genau ueberweisungsGebuehrFuer.
+	jetztUnix := nowUnix()
+	vorherTo, toDa := cs.accounts.Get(to)
+	fromArt := cs.kontoartVon(from, fromAcc.IsHuman)
+	toArt := cs.kontoartVon(to, toDa && vorherTo.IsHuman)
+	gebuehr = cs.gebuehrMitWirtschaft(from, to, fromArt, toArt, amount, fromAcc.Balance.Float(), jetztUnix)
 	if fromAcc.Balance.Float() < amount+gebuehr {
 		return 0, 0, nil, nil, 0, fmt.Errorf("insufficient balance")
+	}
+	var standVorherTo float64
+	if toDa {
+		standVorherTo = vorherTo.Balance.Float()
+	}
+	if err := pruefeEmpfaengerWirtschaft(toArt, standVorherTo, amount, jetztUnix); err != nil {
+		return 0, 0, nil, nil, 0, err
 	}
 
 	fromAcc.Balance = fromAcc.Balance.Sub(NewDecimal(amount)).Sub(NewDecimal(gebuehr))
@@ -5497,6 +5535,7 @@ func (cs *ChainState) transferMutateLocked(ctx context.Context, from, to string,
 	if err := cs.enforceWealthCapLockedCtx(ctx, toAcc); err != nil {
 		return 0, 0, nil, nil, 0, fmt.Errorf("could not enforce wealth cap for recipient: %w", err)
 	}
+	cs.nachUeberweisung(from, to, fromArt, toArt, amount, gebuehr, fromAcc.Balance.Float(), toAcc.Balance.Float(), jetztUnix)
 	return fromLost, toLost, fromAcc, toAcc, gebuehr, nil
 }
 
@@ -5687,10 +5726,12 @@ func (cs *ChainState) SwapAtomic(address string, amountIn float64, aeqToTusd boo
 	defer cs.annahmeEnde()
 	address = strings.ToLower(address)
 	err = cs.runAtomicWithOutbox([]string{address, validatorsPoolAddr, lpPoolAddr, ubiPoolAddr, treasuryPoolAddr}, false, func(ctx context.Context) (Transaction, error) {
-		amountOut, demurrageLost, err = cs.swapLocked(ctx, address, amountIn, aeqToTusd, minAmountOut)
+		var abgabe float64
+		amountOut, demurrageLost, abgabe, err = cs.swapLockedMitAbgabe(ctx, address, amountIn, aeqToTusd, minAmountOut)
 		if err != nil {
 			return Transaction{}, err
 		}
+		pendingTxTemplate.Gebuehr = abgabe
 		pendingTxTemplate.AmountOut = amountOut
 		pendingTxTemplate.FromDemurrageLost = demurrageLost
 		return pendingTxTemplate, nil
@@ -5711,33 +5752,46 @@ func (cs *ChainState) SwapAtomic(address string, amountIn float64, aeqToTusd boo
 // enough callers (SwapAEQForTUSD, SwapTUSDForAEQ, SwapAtomic) to migrate
 // together in this same change.
 func (cs *ChainState) swapLocked(ctx context.Context, address string, amountIn float64, aeqToTusd bool, minAmountOut float64) (float64, float64, error) {
+	out, lost, _, err := cs.swapLockedMitAbgabe(ctx, address, amountIn, aeqToTusd, minAmountOut)
+	return out, lost, err
+}
+
+// swapLockedMitAbgabe ist swapLocked plus Ausstiegsabgabe (wirtschaft.go):
+// bei AEQ -> tUSD zahlt der Tauschende ab der Aktivierung 2 % auf den Teil
+// ueber seinem Freibetrag obendrauf, ans Grundeinkommen. Sie steht als
+// Gebuehr in der Transaktion; applySwapDeltaLocked wendet genau sie an.
+func (cs *ChainState) swapLockedMitAbgabe(ctx context.Context, address string, amountIn float64, aeqToTusd bool, minAmountOut float64) (float64, float64, float64, error) {
 	// P2-7: reload pool from DB before swap to avoid stale-memory AMM invariant violation
 	cs.reloadPoolFromDB()
 	address = strings.ToLower(address)
 	if amountIn <= 0 {
-		return 0, 0, fmt.Errorf("amount must be positive")
+		return 0, 0, 0, fmt.Errorf("amount must be positive")
 	}
 	if cs.pool == nil {
-		return 0, 0, fmt.Errorf("liquidity pool not initialized")
+		return 0, 0, 0, fmt.Errorf("liquidity pool not initialized")
 	}
 
 	cs.ensureAccountLoadedCtx(ctx, address) // page in cold accounts so swaps work beyond the in-memory cap
 	acc, ok := cs.accounts.Get(address)
 	if !ok {
-		return 0, 0, fmt.Errorf("account not found")
+		return 0, 0, 0, fmt.Errorf("account not found")
 	}
 	lost, err := cs.settleDemurrageLockedCtx(ctx, acc) // settle decay before checking/using the AEQ balance below
 	if err != nil {
-		return 0, 0, fmt.Errorf("could not settle demurrage: %w", err)
+		return 0, 0, 0, fmt.Errorf("could not settle demurrage: %w", err)
 	}
 
+	jetztUnix := nowUnix()
+	art := cs.kontoartVon(address, acc.IsHuman)
+	var abgabe float64
 	if aeqToTusd {
-		if acc.Balance.Float() < amountIn {
-			return 0, 0, fmt.Errorf("insufficient AEQ balance")
+		abgabe = cs.ausstiegsAbgabe(address, art, amountIn, jetztUnix)
+		if acc.Balance.Float() < amountIn+abgabe {
+			return 0, 0, 0, fmt.Errorf("insufficient AEQ balance")
 		}
 	} else {
 		if acc.TUsdBalance.Float() < amountIn {
-			return 0, 0, fmt.Errorf("insufficient tUSD balance")
+			return 0, 0, 0, fmt.Errorf("insufficient tUSD balance")
 		}
 	}
 
@@ -5751,10 +5805,10 @@ func (cs *ChainState) swapLocked(ctx context.Context, address string, amountIn f
 		// x*y=k: reserveAEQ * reserveTUSD = (reserveAEQ + amountInAfterFee) * (reserveTUSD - amountOut)
 		amountOut = AMMSwapOut(cs.pool.ReserveAEQ, cs.pool.ReserveTUSD, NewDecimal(amountInAfterFee)).Float()
 		if amountOut >= cs.pool.ReserveTUSD.Float() {
-			return 0, 0, fmt.Errorf("swap too large for pool liquidity")
+			return 0, 0, 0, fmt.Errorf("swap too large for pool liquidity")
 		}
 		if minAmountOut > 0 && amountOut < minAmountOut {
-			return 0, 0, fmt.Errorf("slippage: output %.6f tUSD below requested minimum %.6f", amountOut, minAmountOut)
+			return 0, 0, 0, fmt.Errorf("slippage: output %.6f tUSD below requested minimum %.6f", amountOut, minAmountOut)
 		}
 		cs.pool.ReserveAEQ = cs.pool.ReserveAEQ.Add(NewDecimal(amountInAfterFee))
 		cs.pool.ReserveTUSD = cs.pool.ReserveTUSD.Sub(NewDecimal(amountOut)).AtLeastZero()
@@ -5763,20 +5817,26 @@ func (cs *ChainState) swapLocked(ctx context.Context, address string, amountIn f
 	} else {
 		amountOut = AMMSwapOut(cs.pool.ReserveTUSD, cs.pool.ReserveAEQ, NewDecimal(amountInAfterFee)).Float()
 		if amountOut >= cs.pool.ReserveAEQ.Float() {
-			return 0, 0, fmt.Errorf("swap too large for pool liquidity")
+			return 0, 0, 0, fmt.Errorf("swap too large for pool liquidity")
 		}
 		if minAmountOut > 0 && amountOut < minAmountOut {
-			return 0, 0, fmt.Errorf("slippage: output %.6f AEQ below requested minimum %.6f", amountOut, minAmountOut)
+			return 0, 0, 0, fmt.Errorf("slippage: output %.6f AEQ below requested minimum %.6f", amountOut, minAmountOut)
+		}
+		if err := pruefeEmpfaengerWirtschaft(art, acc.Balance.Float(), amountOut, jetztUnix); err != nil {
+			return 0, 0, 0, err
 		}
 		cs.pool.ReserveTUSD = cs.pool.ReserveTUSD.Add(NewDecimal(amountInAfterFee))
 		cs.pool.ReserveAEQ = cs.pool.ReserveAEQ.Sub(NewDecimal(amountOut)).AtLeastZero()
 		acc.TUsdBalance = acc.TUsdBalance.Sub(NewDecimal(amountIn))
 		acc.Balance = acc.Balance.Add(NewDecimal(amountOut))
 	}
+	if abgabe > 0 {
+		acc.Balance = acc.Balance.Sub(NewDecimal(abgabe))
+	}
 	touchActivity(acc) // swapping (either direction) counts as using the AEQ side
 	if !aeqToTusd {
 		if err := cs.enforceWealthCapLockedCtx(ctx, acc); err != nil { // AEQ just arrived via this swap direction — check the cap
-			return 0, 0, fmt.Errorf("could not enforce wealth cap: %w", err)
+			return 0, 0, 0, fmt.Errorf("could not enforce wealth cap: %w", err)
 		}
 	}
 
@@ -5803,23 +5863,31 @@ func (cs *ChainState) swapLocked(ctx context.Context, address string, amountIn f
 	saveAccountFirst := aeqToTusd
 	if saveAccountFirst {
 		if err := cs.saveAccountToDBCtx(ctx, acc); err != nil {
-			return 0, 0, fmt.Errorf("could not save account: %w", err)
+			return 0, 0, 0, fmt.Errorf("could not save account: %w", err)
 		}
 		if err := cs.savePoolToDBCtx(ctx); err != nil {
 			fmt.Printf("[SWAP] %s was debited but the pool credit did not persist: %v (destroyed, not duplicated)\n", address, err)
-			return 0, 0, fmt.Errorf("could not save pool: %w", err)
+			return 0, 0, 0, fmt.Errorf("could not save pool: %w", err)
 		}
 	} else {
 		if err := cs.savePoolToDBCtx(ctx); err != nil {
-			return 0, 0, fmt.Errorf("could not save pool, swap not applied: %w", err)
+			return 0, 0, 0, fmt.Errorf("could not save pool, swap not applied: %w", err)
 		}
 		if err := cs.saveAccountToDBCtx(ctx, acc); err != nil {
 			fmt.Printf("[SWAP] pool debited but the credit to %s did not persist: %v (destroyed, not duplicated)\n", address, err)
-			return 0, 0, fmt.Errorf("could not save account: %w", err)
+			return 0, 0, 0, fmt.Errorf("could not save account: %w", err)
 		}
 	}
 	if err := cs.distributeSwapFeeCtx(ctx, fee, aeqToTusd); err != nil {
-		return 0, 0, fmt.Errorf("could not persist swap fee distribution: %w", err)
+		return 0, 0, 0, fmt.Errorf("could not persist swap fee distribution: %w", err)
+	}
+	if abgabe > 0 {
+		if err := cs.abgabeInsGrundeinkommen(ctx, abgabe); err != nil {
+			return 0, 0, 0, err
+		}
+	}
+	if aeqToTusd {
+		cs.nachTausch(address, amountIn, jetztUnix)
 	}
 	cs.save()
 
@@ -5828,7 +5896,7 @@ func (cs *ChainState) swapLocked(ctx context.Context, address string, amountIn f
 
 	cs.syncBalanceLocked(V7_CONTRACT_ADDR, address, validatorsPoolAddr, lpPoolAddr, ubiPoolAddr, treasuryPoolAddr)
 	SafeGoroutine("SavePriceSnapshot", cs.SavePriceSnapshot)
-	return amountOut, lost.Float(), nil
+	return amountOut, lost.Float(), abgabe, nil
 }
 
 func sideLabel(aeqToTusd, isInput bool) string {
@@ -6331,6 +6399,15 @@ func (cs *ChainState) AddLiquidityAtomic(address string, amountAEQ, amountTUSD f
 		sharesBefore := 0.0
 		if acc, ok := cs.accounts.Get(address); ok {
 			sharesBefore = acc.LPShares.Float()
+		}
+		// Ab der Aktivierung stellen nur Menschen Liquiditaet bereit
+		// (wirtschaft.go): sonst waere der Pool ein Weg, dem Alter des
+		// Geldes zu entkommen. Nur bei der Annahme.
+		if wirtschaftAktiv(nowUnix()) {
+			cs.ensureAccountLoadedCtx(ctx, address)
+			if acc, ok := cs.accounts.Get(address); !ok || !acc.IsHuman {
+				return Transaction{}, fmt.Errorf("only registered humans can provide liquidity")
+			}
 		}
 		demurrageLost, err = cs.addLiquidityLocked(ctx, address, amountAEQ, amountTUSD)
 		if err != nil {
@@ -8034,6 +8111,11 @@ func (cs *ChainState) applyTransferDeltaLockedSammelnd(ctx context.Context, from
 	if err := cs.enforceWealthCapLockedCtx(ctx, toAcc); err != nil {
 		return fmt.Errorf("transfer: could not enforce wealth cap for recipient %s: %w", to, err)
 	}
+	// Buchfuehrung mitfuehren (wirtschaft.go), damit ein Knoten, der die
+	// Erzeugung uebernimmt, dieselben Freibetraege und dasselbe Alter kennt.
+	// Kein Konsens: die Betraege stehen in der Transaktion.
+	cs.nachUeberweisung(from, to, cs.kontoartVon(from, fromAcc.IsHuman), cs.kontoartVon(to, toAcc.IsHuman),
+		netAmount, gebuehr, fromAcc.Balance.Float(), toAcc.Balance.Float(), activityAt)
 	if sammler != nil {
 		sammler.hinzufuegen(toAcc)
 		return nil
@@ -8067,6 +8149,17 @@ func (cs *ChainState) ApplySwapDelta(wallet string, amountIn, amountOut float64,
 // activityAt is the replayed block's own Timestamp — see touchActivityAt for
 // why a replay handler must not read this node's wall clock.
 func (cs *ChainState) applySwapDeltaLocked(ctx context.Context, wallet string, amountIn, amountOut float64, aeqToTusd bool, demurrageLost float64, activityAt int64) error {
+	return cs.applySwapDeltaLockedMitAbgabe(ctx, wallet, amountIn, amountOut, aeqToTusd, demurrageLost, activityAt, 0)
+}
+
+// applySwapDeltaLockedMitAbgabe: wie applySwapDeltaLocked, dazu die
+// Ausstiegsabgabe aus der Transaktion (Gebuehr, wirtschaft.go) -- bei
+// AEQ -> tUSD obendrauf vom Konto, ans Grundeinkommen. Aeltere Bloecke
+// tragen 0 und bleiben unveraendert.
+func (cs *ChainState) applySwapDeltaLockedMitAbgabe(ctx context.Context, wallet string, amountIn, amountOut float64, aeqToTusd bool, demurrageLost float64, activityAt int64, abgabe float64) error {
+	if abgabe < 0 || math.IsNaN(abgabe) || math.IsInf(abgabe, 0) || (abgabe > 0 && !aeqToTusd) {
+		return fmt.Errorf("swap: ungueltige Abgabe %v: %w", abgabe, ErrZustandLehntAb)
+	}
 	wallet = strings.ToLower(wallet)
 	cs.ensureAccountLoadedCtx(ctx, wallet)
 	acc, ok := cs.accounts.Get(wallet)
@@ -8079,7 +8172,7 @@ func (cs *ChainState) applySwapDeltaLocked(ctx context.Context, wallet string, a
 	// when the swap itself then failed. Check against the post-decay
 	// balance first.
 	if aeqToTusd {
-		if acc.Balance.Float()-demurrageLost < amountIn {
+		if acc.Balance.Float()-demurrageLost < amountIn+abgabe {
 			return fmt.Errorf("insufficient AEQ balance")
 		}
 	} else {
@@ -8094,6 +8187,13 @@ func (cs *ChainState) applySwapDeltaLocked(ctx context.Context, wallet string, a
 	if aeqToTusd {
 		acc.Balance = acc.Balance.Sub(NewDecimal(amountIn))
 		acc.TUsdBalance = acc.TUsdBalance.Add(NewDecimal(amountOut))
+		if abgabe > 0 {
+			acc.Balance = acc.Balance.Sub(NewDecimal(abgabe))
+			if err := cs.abgabeInsGrundeinkommen(ctx, abgabe); err != nil {
+				return err
+			}
+			cs.nachTausch(wallet, amountIn, activityAt)
+		}
 	} else {
 		acc.TUsdBalance = acc.TUsdBalance.Sub(NewDecimal(amountIn))
 		acc.Balance = acc.Balance.Add(NewDecimal(amountOut))

@@ -106,6 +106,12 @@ const parallelBatchPoolSize = 4
 // in the batch, the same contract processTransferBatch's own comment
 // documents.
 func (cs *ChainState) processTransferBatchConcurrent(batch []*transferBatchRequest) (handled bool) {
+	// Ab der Aktivierung der Unternehmensregeln (wirtschaft.go) laeuft jede
+	// Ueberweisung ueber transferMutateLocked -- die Regeln stehen dort und
+	// nur dort.
+	if wirtschaftAktiv(nowUnix()) {
+		return false
+	}
 	defer func() {
 		if r := recover(); r != nil {
 			fmt.Printf("[PANIC RECOVERED] processTransferBatchConcurrent: %v\n%s\n", r, debug.Stack())
