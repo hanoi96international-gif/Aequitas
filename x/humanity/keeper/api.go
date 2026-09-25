@@ -1000,10 +1000,14 @@ func (a *APIServer) buildMux() *http.ServeMux {
 		w.Header().Set("Cache-Control", "public, max-age=3600")
 		fmt.Fprint(w, "User-agent: *\nDisallow: /api/\nDisallow: /debug/\nDisallow: /rpc\nAllow: /\n")
 	})
-	mux.HandleFunc("/people", a.handleSeite(peopleHTML))
+	mux.HandleFunc("/idee", a.handleSeite(ideeHTML))
+	mux.HandleFunc("/mitmachen", a.handleSeite(mitmachenHTML))
+	mux.HandleFunc("/transparenz", a.handleSeite(transparenzHTML))
+	// alte Adressen bleiben erreichbar
+	mux.HandleFunc("/people", a.handleSeite(mitmachenHTML))
 	mux.HandleFunc("/economy", a.handleSeite(economyHTML))
 	mux.HandleFunc("/business", a.handleSeite(businessHTML))
-	mux.HandleFunc("/roadmap", a.handleSeite(roadmapHTML))
+	mux.HandleFunc("/roadmap", a.handleSeite(transparenzHTML))
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		// Root path: serve landing page; anything else falls to handleUI
 		if r.URL.Path == "/" {

@@ -9,11 +9,12 @@ import (
 )
 
 var seitenFuerTest = map[string]string{
-	"/":         landingHTML,
-	"/people":   peopleHTML,
-	"/economy":  economyHTML,
-	"/business": businessHTML,
-	"/roadmap":  roadmapHTML,
+	"/":            landingHTML,
+	"/idee":        ideeHTML,
+	"/economy":     economyHTML,
+	"/business":    businessHTML,
+	"/mitmachen":   mitmachenHTML,
+	"/transparenz": transparenzHTML,
 }
 
 // Jeder Abschnitt der Quelle landet auf genau einer Seite. Ein neuer

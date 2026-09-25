@@ -506,16 +506,58 @@ section{padding:64px 16px}
 .vision-sec{background:radial-gradient(ellipse 60% 80% at 50% 0%,rgba(91,140,255,0.16),transparent 70%)}
 @media(max-width:1000px){.big3,.fn3{grid-template-columns:1fr}.vs-head{display:none}.vs-row{grid-template-columns:1fr;gap:6px;padding:16px 18px}.vs-row .vs-old{font-size:0.88rem}}
 @media(max-width:640px){.mg-cols{grid-template-columns:1fr}.idw{flex-direction:column}}
+
+/* ── NEUORDNUNG (26.09.2026) ────────────────────────────────── */
+.pz3{display:grid;grid-template-columns:repeat(3,1fr);gap:22px;position:relative}
+.pz{position:relative;text-align:center;background:var(--card);border:1px solid var(--border);border-radius:24px;padding:36px 26px 30px;box-shadow:var(--shadow)}
+.pz-ico{width:76px;height:76px;margin:0 auto 18px;border-radius:50%;display:grid;place-items:center;background:var(--grad);color:#fff;box-shadow:0 0 40px rgba(91,140,255,0.3)}
+.pz-ico .ico{width:36px;height:36px}
+.pz-n{position:absolute;top:16px;left:20px;font-size:0.8rem;font-weight:800;color:var(--muted);letter-spacing:1px}
+.pz h3{font-size:1.2rem;margin-bottom:10px}
+.pz p{color:var(--muted);font-size:0.96rem;line-height:1.55}
+.pz3 .pz:not(:last-child)::after{content:"→";position:absolute;right:-18px;top:62px;font-size:1.4rem;color:var(--accent);z-index:1}
+.warum-sec{background:linear-gradient(180deg,rgba(91,140,255,0.06),transparent)}
+.wy6{display:grid;grid-template-columns:repeat(3,1fr);gap:18px}
+.wy{background:var(--card);border:1px solid var(--border);border-radius:22px;padding:28px 24px;box-shadow:var(--shadow);transition:border-color .2s,transform .2s}
+.wy:hover{border-color:rgba(91,140,255,0.4);transform:translateY(-3px)}
+.wy-ico{width:52px;height:52px;border-radius:15px;display:grid;place-items:center;background:rgba(91,140,255,0.13);color:var(--accent);margin-bottom:16px}
+.wy-ico .ico{width:26px;height:26px}
+.wy h3{font-size:1.1rem;margin-bottom:8px}
+.wy p{color:var(--muted);font-size:0.94rem;line-height:1.55}
+.zg4{display:grid;grid-template-columns:repeat(4,1fr);gap:18px}
+.zg{background:linear-gradient(160deg,rgba(61,220,151,0.08),var(--card) 55%);border:1px solid rgba(61,220,151,0.22);border-radius:22px;padding:26px 22px;box-shadow:var(--shadow)}
+.zg-ico{width:52px;height:52px;border-radius:15px;display:grid;place-items:center;background:rgba(61,220,151,0.14);color:var(--green);margin-bottom:16px}
+.zg-ico .ico{width:26px;height:26px}
+.zg h3{font-size:1.05rem;margin-bottom:8px}
+.zg p{color:var(--muted);font-size:0.92rem;line-height:1.55}
+.gruender-sec{background:radial-gradient(ellipse 60% 90% at 50% 50%,rgba(245,165,36,0.08),transparent 70%)}
+.letter{position:relative;max-width:820px;margin:0 auto;background:linear-gradient(160deg,var(--card2),var(--card));border:1px solid rgba(245,165,36,0.28);border-radius:28px;padding:48px 48px 40px;box-shadow:var(--shadow)}
+.letter-q{position:absolute;top:-26px;left:40px;width:52px;height:52px;border-radius:50%;display:grid;place-items:center;background:linear-gradient(135deg,#F5A524,#F57C24);color:#1a1205}
+.letter-q .ico{width:26px;height:26px;stroke-width:2.4}
+.letter .section-label{color:var(--gold)}
+.letter p{color:var(--text);font-size:1.08rem;line-height:1.75;margin-top:14px;opacity:0.92}
+.letter .letter-sig{margin-top:22px;color:var(--gold);font-weight:800;font-size:0.95rem;opacity:1}
+.letter-sig::before{content:"— "}
+.tw-live{margin:10px 0 26px}
+.tools{display:grid;grid-template-columns:repeat(5,1fr);gap:14px}
+.tool{display:block;text-decoration:none;color:inherit;background:var(--card);border:1px solid var(--border);border-radius:20px;padding:22px 18px;box-shadow:var(--shadow);transition:border-color .2s,transform .2s}
+.tool:hover{border-color:var(--accent);transform:translateY(-3px)}
+.tool-ico{width:44px;height:44px;border-radius:13px;display:grid;place-items:center;background:rgba(91,140,255,0.13);color:var(--accent);margin-bottom:14px}
+.tool h3{font-size:1rem;margin-bottom:6px}
+.tool p{color:var(--muted);font-size:0.86rem;line-height:1.5}
+@media(max-width:1100px){.tools{grid-template-columns:repeat(3,1fr)}.zg4{grid-template-columns:1fr 1fr}}
+@media(max-width:1000px){.pz3,.wy6{grid-template-columns:1fr}.pz3 .pz:not(:last-child)::after{content:"↓";right:auto;left:50%;top:auto;bottom:-24px;transform:translateX(-50%)}.pz3{gap:30px}}
+@media(max-width:640px){.zg4,.tools{grid-template-columns:1fr}.letter{padding:40px 22px 30px}.letter-q{left:22px}}
 </style>
 </head>
 <body>
-<svg width="0" height="0" style="position:absolute" aria-hidden="true"><symbol id="i-user" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 3.6-6 8-6s8 2 8 6"/></symbol><symbol id="i-users" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="8" r="3.5"/><path d="M2 20c0-3.5 3-5.5 7-5.5s7 2 7 5.5"/><circle cx="17.5" cy="9" r="2.5"/><path d="M17.5 14c2.6 0 4.5 1.6 4.5 4.5"/></symbol><symbol id="i-store" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l1.6-5h14.8L21 9"/><path d="M3 9h18v1.5a3 3 0 0 1-6 0 3 3 0 0 1-6 0 3 3 0 0 1-6 0z"/><path d="M5 13v8h14v-8"/><path d="M10 21v-5h4v5"/></symbol><symbol id="i-coins" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="9" cy="6.5" rx="6" ry="2.8"/><path d="M3 6.5v5c0 1.5 2.7 2.8 6 2.8"/><path d="M3 11.5v5c0 1.5 2.7 2.8 6 2.8"/><ellipse cx="15" cy="13.5" rx="6" ry="2.8"/><path d="M9 13.5v5c0 1.5 2.7 2.8 6 2.8s6-1.3 6-2.8v-5"/></symbol><symbol id="i-nocard" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="5" width="20" height="14" rx="2"/><path d="M2 10h20"/><path d="M3 3l18 18"/></symbol><symbol id="i-wallet" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7h15a3 3 0 0 1 3 3v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><path d="M3 7l11-4v4"/><circle cx="16.5" cy="14" r="1.4"/></symbol><symbol id="i-bolt" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2L4 14h7l-1 8 9-12h-7z"/></symbol><symbol id="i-trend" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 17l6-6 4 4 8-8"/><path d="M15 7h6v6"/></symbol><symbol id="i-scan" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 8V5a1 1 0 0 1 1-1h3"/><path d="M16 4h3a1 1 0 0 1 1 1v3"/><path d="M20 16v3a1 1 0 0 1-1 1h-3"/><path d="M8 20H5a1 1 0 0 1-1-1v-3"/><circle cx="12" cy="10" r="2.6"/><path d="M8 17c1-2 2.4-3 4-3s3 1 4 3"/></symbol><symbol id="i-shield" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6z"/><path d="M9 12l2 2 4-4"/></symbol><symbol id="i-coin" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 6.5v11"/><path d="M15 9c0-1.2-1.3-2-3-2s-3 .8-3 2 1.3 1.8 3 2.2 3 1 3 2.3-1.3 2-3 2-3-.8-3-2"/></symbol><symbol id="i-clock" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></symbol><symbol id="i-lock" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="10" width="16" height="11" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></symbol><symbol id="i-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l5 5 9-10"/></symbol><symbol id="i-code" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M8 7l-5 5 5 5"/><path d="M16 7l5 5-5 5"/></symbol><symbol id="i-bank" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 10l9-6 9 6"/><path d="M5 10v8M9.5 10v8M14.5 10v8M19 10v8"/><path d="M3 21h18"/><path d="M3 3l18 18"/></symbol><symbol id="i-chart" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20h16"/><rect x="6" y="11" width="3" height="7"/><rect x="11" y="7" width="3" height="11"/><rect x="16" y="13" width="3" height="5"/></symbol><symbol id="i-layers" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l9 5-9 5-9-5z"/><path d="M3 13l9 5 9-5"/></symbol><symbol id="i-scale" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v18M7 21h10M4 7h16"/><path d="M6 7l-3 6a3 3 0 0 0 6 0z"/><path d="M18 7l-3 6a3 3 0 0 0 6 0z"/></symbol><symbol id="i-qr" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><path d="M14 14h3v3h-3zM20 14v3M14 20h3M20 20h1"/></symbol><symbol id="i-file" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3h9l4 4v14H6z"/><path d="M14 3v5h5"/><path d="M9 13h7M9 17h5"/></symbol><symbol id="i-calendar" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/></symbol><symbol id="i-rocket" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M5 15c-1.5 1.5-2 4.5-2 6 1.5 0 4.5-.5 6-2"/><path d="M9 15l-3-3c1-4 5-9 12-9 0 7-5 11-9 12z"/><circle cx="14.5" cy="9.5" r="1.8"/></symbol><symbol id="i-globe" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18"/></symbol><symbol id="i-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></symbol><symbol id="i-refresh" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20 11a8 8 0 0 0-14.5-4.5L3 9"/><path d="M3 4v5h5"/><path d="M4 13a8 8 0 0 0 14.5 4.5L21 15"/><path d="M21 20v-5h-5"/></symbol><symbol id="i-handshake" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12l4-4 4 2 3-2 3 1 6 5"/><path d="M6 8v6l5 5c.8.8 2 .8 2.8 0L20 13"/><path d="M11 13l2 2M13.5 11l2.5 2.5"/></symbol></svg>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true"><symbol id="i-user" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 3.6-6 8-6s8 2 8 6"/></symbol><symbol id="i-users" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="8" r="3.5"/><path d="M2 20c0-3.5 3-5.5 7-5.5s7 2 7 5.5"/><circle cx="17.5" cy="9" r="2.5"/><path d="M17.5 14c2.6 0 4.5 1.6 4.5 4.5"/></symbol><symbol id="i-store" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l1.6-5h14.8L21 9"/><path d="M3 9h18v1.5a3 3 0 0 1-6 0 3 3 0 0 1-6 0 3 3 0 0 1-6 0z"/><path d="M5 13v8h14v-8"/><path d="M10 21v-5h4v5"/></symbol><symbol id="i-coins" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="9" cy="6.5" rx="6" ry="2.8"/><path d="M3 6.5v5c0 1.5 2.7 2.8 6 2.8"/><path d="M3 11.5v5c0 1.5 2.7 2.8 6 2.8"/><ellipse cx="15" cy="13.5" rx="6" ry="2.8"/><path d="M9 13.5v5c0 1.5 2.7 2.8 6 2.8s6-1.3 6-2.8v-5"/></symbol><symbol id="i-nocard" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="5" width="20" height="14" rx="2"/><path d="M2 10h20"/><path d="M3 3l18 18"/></symbol><symbol id="i-wallet" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7h15a3 3 0 0 1 3 3v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><path d="M3 7l11-4v4"/><circle cx="16.5" cy="14" r="1.4"/></symbol><symbol id="i-bolt" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2L4 14h7l-1 8 9-12h-7z"/></symbol><symbol id="i-trend" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 17l6-6 4 4 8-8"/><path d="M15 7h6v6"/></symbol><symbol id="i-scan" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 8V5a1 1 0 0 1 1-1h3"/><path d="M16 4h3a1 1 0 0 1 1 1v3"/><path d="M20 16v3a1 1 0 0 1-1 1h-3"/><path d="M8 20H5a1 1 0 0 1-1-1v-3"/><circle cx="12" cy="10" r="2.6"/><path d="M8 17c1-2 2.4-3 4-3s3 1 4 3"/></symbol><symbol id="i-shield" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6z"/><path d="M9 12l2 2 4-4"/></symbol><symbol id="i-coin" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 6.5v11"/><path d="M15 9c0-1.2-1.3-2-3-2s-3 .8-3 2 1.3 1.8 3 2.2 3 1 3 2.3-1.3 2-3 2-3-.8-3-2"/></symbol><symbol id="i-clock" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></symbol><symbol id="i-lock" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="10" width="16" height="11" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></symbol><symbol id="i-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l5 5 9-10"/></symbol><symbol id="i-code" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M8 7l-5 5 5 5"/><path d="M16 7l5 5-5 5"/></symbol><symbol id="i-bank" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 10l9-6 9 6"/><path d="M5 10v8M9.5 10v8M14.5 10v8M19 10v8"/><path d="M3 21h18"/><path d="M3 3l18 18"/></symbol><symbol id="i-chart" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20h16"/><rect x="6" y="11" width="3" height="7"/><rect x="11" y="7" width="3" height="11"/><rect x="16" y="13" width="3" height="5"/></symbol><symbol id="i-layers" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l9 5-9 5-9-5z"/><path d="M3 13l9 5 9-5"/></symbol><symbol id="i-scale" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v18M7 21h10M4 7h16"/><path d="M6 7l-3 6a3 3 0 0 0 6 0z"/><path d="M18 7l-3 6a3 3 0 0 0 6 0z"/></symbol><symbol id="i-qr" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><path d="M14 14h3v3h-3zM20 14v3M14 20h3M20 20h1"/></symbol><symbol id="i-file" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3h9l4 4v14H6z"/><path d="M14 3v5h5"/><path d="M9 13h7M9 17h5"/></symbol><symbol id="i-calendar" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/></symbol><symbol id="i-rocket" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M5 15c-1.5 1.5-2 4.5-2 6 1.5 0 4.5-.5 6-2"/><path d="M9 15l-3-3c1-4 5-9 12-9 0 7-5 11-9 12z"/><circle cx="14.5" cy="9.5" r="1.8"/></symbol><symbol id="i-globe" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18"/></symbol><symbol id="i-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></symbol><symbol id="i-refresh" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20 11a8 8 0 0 0-14.5-4.5L3 9"/><path d="M3 4v5h5"/><path d="M4 13a8 8 0 0 0 14.5 4.5L21 15"/><path d="M21 20v-5h-5"/></symbol><symbol id="i-handshake" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12l4-4 4 2 3-2 3 1 6 5"/><path d="M6 8v6l5 5c.8.8 2 .8 2.8 0L20 13"/><path d="M11 13l2 2M13.5 11l2.5 2.5"/></symbol><symbol id="i-cpu" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="6" width="12" height="12" rx="2"/><rect x="9.5" y="9.5" width="5" height="5"/><path d="M9 2v4M15 2v4M9 18v4M15 18v4M2 9h4M2 15h4M18 9h4M18 15h4"/></symbol><symbol id="i-phone" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="7" y="2" width="10" height="20" rx="2.5"/><path d="M11 18h2"/></symbol><symbol id="i-quote" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 7h4v4c0 3-1.8 5-4 6"/><path d="M14 7h4v4c0 3-1.8 5-4 6"/></symbol><symbol id="i-heart" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20s-7-4.5-7-10a4 4 0 0 1 7-2.6A4 4 0 0 1 19 10c0 5.5-7 10-7 10z"/></symbol></svg>
 
 <nav>
   <div class="nav-top">
     <a href="/" class="logo-wrap">
       <div class="logo-icon">⚖</div>
-      <div><div class="logo-text">AEQUITAS</div><div class="logo-sub" data-i18n="logo-sub">PROOF OF HUMANITY</div></div>
+      <div><div class="logo-text">AEQUITAS</div><div class="logo-sub" data-i18n="logo-sub">The fairest money in the world</div></div>
     </a>
     <select class="lang-sel" id="lang-sel" aria-label="Language">
       <option value="en">🌐 EN</option>
@@ -532,21 +574,16 @@ section{padding:64px 16px}
       <option value="tr">🌐 TR</option>
     </select>
     <div class="header-right">
-      <div class="badge badge-health badge-health-healthy" id="health-badge" title="Checking network health…">● GHOSTDAG</div>
       <a href="/register" class="nav-cta" data-i18n="nav-register">Register</a>
     </div>
   </div>
   <div class="tabs">
     <a href="/" class="tab active" data-i18n="nav-home">Home</a>
-    <a href="/people" class="tab" data-i18n="nav-people">For people</a>
-    <a href="/business" class="tab tab-biz" data-i18n="nav-biz">For businesses</a>
+    <a href="/idee" class="tab" data-i18n="nav-why">Why Aequitas</a>
     <a href="/economy" class="tab" data-i18n="nav-how">How it works</a>
-    <a href="/roadmap" class="tab" data-i18n="nav-road">Roadmap &amp; FAQ</a>
-    <span class="tab-sep" aria-hidden="true"></span>
-    <a href="/explorer" class="tab tab-tool" data-i18n="nav-explorer">Explorer</a>
-    <a href="/index/score" class="tab tab-tool" data-i18n="nav-equality">Equality</a>
-    <a href="/network" class="tab tab-tool" data-i18n="nav-network">Network</a>
-    <a href="/exchange" class="tab tab-tool" data-i18n="nav-exchange">Exchange</a>
+    <a href="/business" class="tab tab-biz" data-i18n="nav-biz">For businesses</a>
+    <a href="/mitmachen" class="tab" data-i18n="nav-join">Join</a>
+    <a href="/transparenz" class="tab" data-i18n="nav-trans">Transparency</a>
   </div>
 </nav>
 
@@ -556,7 +593,7 @@ section{padding:64px 16px}
     <div class="hero-text reveal">
       <div class="hero-badge">
         <span class="pulse"></span>
-        <span data-i18n="hero-badge">Phase 1 · Chain ID 1926</span>
+        <span data-i18n="hero-badge">Phase 1 · public test</span>
       </div>
       <h1 data-i18n="hero-h1">Money, because <span>people</span> exist.</h1>
       <p class="hero-sub" data-i18n="hero-sub">Every person receives the same share: 1,000 AEQ. Nobody can print more. Nobody is excluded. The fairest money in the world.</p>
@@ -630,6 +667,59 @@ section{padding:64px 16px}
   </div>
   <div class="stats-live"><span class="live-dot"></span><span data-i18n="ubi-pre">Next equal split in</span> <strong id="ubi-next">—</strong> <span data-i18n="ubi-mid">· the pool holds</span> <strong id="ubi-pool">—</strong> AEQ</div>
 </div>
+
+<section id="prinzip">
+  <div class="section-inner">
+    <div class="center-head reveal">
+      <div class="section-label" data-i18n="pz-label">The principle</div>
+      <h2 data-i18n="pz-h2">As simple as money should be</h2>
+      <p class="section-sub" data-i18n="pz-sub">Three rules, the same for every person on earth.</p>
+    </div>
+    <div class="pz3">
+      <div class="pz reveal"><div class="pz-ico"><svg class="ico" aria-hidden="true"><use href="#i-user"/></svg></div><div class="pz-n">1</div><h3 data-i18n="pz-1-h">One person, one account</h3><p data-i18n="pz-1-p">Every person can register exactly once. Only real people: no bots, no duplicates.</p></div>
+      <div class="pz reveal"><div class="pz-ico"><svg class="ico" aria-hidden="true"><use href="#i-coin"/></svg></div><div class="pz-n">2</div><h3 data-i18n="pz-2-h">1,000 AEQ for everyone</h3><p data-i18n="pz-2-p">Every person receives the same fair share. Apart from that, no money is ever created.</p></div>
+      <div class="pz reveal"><div class="pz-ico"><svg class="ico" aria-hidden="true"><use href="#i-coins"/></svg></div><div class="pz-n">3</div><h3 data-i18n="pz-3-h">Basic income every day</h3><p data-i18n="pz-3-p">Fees and levies flow back every day, in equal shares, to all people.</p></div>
+    </div>
+    <div class="center-head"><a class="section-link" href="/economy" data-i18n="pz-link">How it works in detail →</a></div>
+  </div>
+</section>
+
+<section id="warum" class="warum-sec">
+  <div class="section-inner">
+    <div class="center-head reveal">
+      <div class="section-label" data-i18n="wy-label">Why the world needs it</div>
+      <h2 data-i18n="wy-h2">Why Aequitas will be needed</h2>
+      <p class="section-sub" data-i18n="wy-sub">Not an idea for a moment, but an answer to where the world is heading. The more it changes, the more it needs money that belongs to people.</p>
+    </div>
+    <div class="wy6">
+      <div class="wy reveal"><span class="wy-ico"><svg class="ico" aria-hidden="true"><use href="#i-cpu"/></svg></span><h3 data-i18n="wy-1-h">Machines take over work</h3><p data-i18n="wy-1-p">Artificial intelligence and automation do more and more of the work. An income that does not depend on a job becomes essential. Aequitas pays every person a basic income every day, funded by the flow of money, not by taxes and not by printing.</p></div>
+      <div class="wy reveal"><span class="wy-ico"><svg class="ico" aria-hidden="true"><use href="#i-shield"/></svg></span><h3 data-i18n="wy-2-h">Being human becomes valuable</h3><p data-i18n="wy-2-p">In a world full of bots and AI fakes, proof that someone is a real person becomes precious. Aequitas is built on exactly that: one person, one account.</p></div>
+      <div class="wy reveal"><span class="wy-ico"><svg class="ico" aria-hidden="true"><use href="#i-trend"/></svg></span><h3 data-i18n="wy-3-h">Inequality keeps growing</h3><p data-i18n="wy-3-p">Since the 1990s the largest fortunes have grown about twice as fast as the wealth of the poorer half of humanity. Aequitas has a brake built in: hoarding costs, and everything flows back to everyone.</p></div>
+      <div class="wy reveal"><span class="wy-ico"><svg class="ico" aria-hidden="true"><use href="#i-globe"/></svg></span><h3 data-i18n="wy-4-h">Billions are left out</h3><p data-i18n="wy-4-p">1.3 billion adults have no account. With Aequitas a smartphone is enough, and later a registration station nearby.</p></div>
+      <div class="wy reveal"><span class="wy-ico"><svg class="ico" aria-hidden="true"><use href="#i-lock"/></svg></span><h3 data-i18n="wy-5-h">Money you can trust</h3><p data-i18n="wy-5-p">Governments and central banks can create money whenever they decide to. The rules of Aequitas are open, the same for everyone, and nobody can print more.</p></div>
+      <div class="wy reveal"><span class="wy-ico"><svg class="ico" aria-hidden="true"><use href="#i-heart"/></svg></span><h3 data-i18n="wy-6-h">Money that serves people</h3><p data-i18n="wy-6-p">Money should flow to where people live and work, not pile up. Circulation keeps local businesses and communities alive.</p></div>
+    </div>
+    <div class="center-head"><a class="section-link" href="/idee" data-i18n="wy-link">The whole idea behind Aequitas →</a></div>
+  </div>
+</section>
+
+<section id="zugang">
+  <div class="section-inner">
+    <div class="center-head reveal">
+      <div class="section-label" data-i18n="zg-label">Access for everyone</div>
+      <h2 data-i18n="zg-h2">Everyone has access</h2>
+      <p class="section-sub" data-i18n="zg-sub">Aequitas is for every person on earth, whatever their country, income or bank.</p>
+    </div>
+    <div class="zg4">
+      <div class="zg reveal"><span class="zg-ico"><svg class="ico" aria-hidden="true"><use href="#i-phone"/></svg></span><h3 data-i18n="zg-1-h">A smartphone is enough</h3><p data-i18n="zg-1-p">Register with a short live face check. No bank account, no paperwork.</p></div>
+      <div class="zg reveal"><span class="zg-ico"><svg class="ico" aria-hidden="true"><use href="#i-scan"/></svg></span><h3 data-i18n="zg-2-h">Stations for everyone else</h3><p data-i18n="zg-2-p">For the launch, registration stations with iris and/or palm-vein recognition are planned, depending on which proves more reliable, so that people without a smartphone can join too.</p></div>
+      <div class="zg reveal"><span class="zg-ico"><svg class="ico" aria-hidden="true"><use href="#i-bank"/></svg></span><h3 data-i18n="zg-3-h">No bank, no credit check</h3><p data-i18n="zg-3-p">No address, no credit rating, no minimum income. Being a person is enough.</p></div>
+      <div class="zg reveal"><span class="zg-ico"><svg class="ico" aria-hidden="true"><use href="#i-globe"/></svg></span><h3 data-i18n="zg-4-h">Worldwide, in 12 languages</h3><p data-i18n="zg-4-p">The same rules for every person, in every country.</p></div>
+    </div>
+    <p class="src" data-i18n="zg-note">Images are deleted after the check. The matching services keep only an encrypted template, and the chain stores only proof that you are a new person, not who you are.</p>
+    <div class="center-head"><a class="btn-primary" href="/mitmachen" data-i18n="zg-btn">How to join →</a></div>
+  </div>
+</section>
 
 <section id="problem">
   <div class="section-inner">
@@ -744,14 +834,6 @@ section{padding:64px 16px}
   </div>
 </section>
 
-<section id="kreis">
-  <div class="section-inner">
-    <div class="section-label" data-i18n="eco-label">The economy</div>
-    <h2 data-i18n="eco-h2">One cycle, three roles</h2>
-    <p class="section-sub" data-i18n="eco-sub">People receive the basic income and spend it. Businesses earn it and pass it on as wages and purchases. Whatever sits idle or leaves the network flows back into the basic income, and from there equally to everyone.</p>
-` + ecoDiagramm + `    <a class="section-link" href="/economy" data-i18n="kreis-link">How the cycle works in detail →</a>
-  </div>
-</section>
 
 <section id="forbiz" class="band-biz">
   <div class="section-inner split">
@@ -803,7 +885,7 @@ section{padding:64px 16px}
         <li><svg class="ico" aria-hidden="true"><use href="#i-check"/></svg><span data-i18n="ppl-2"><strong>Everyday life costs nothing.</strong> The first 1,000 AEQ you spend each month are free of fees.</span></li>
         <li><svg class="ico" aria-hidden="true"><use href="#i-check"/></svg><span data-i18n="ppl-4"><strong>Saving is allowed.</strong> Up to 5,000 AEQ your savings lose nothing.</span></li>
       </ul>
-      <a class="section-link" href="#people" data-i18n="fp-btn">All six promises, the basic income and examples →</a>
+      <a class="section-link" href="/economy#people" data-i18n="fp-btn">All six promises, the basic income and examples →</a>
     </div>
     <div class="tiles">
         <div class="tile reveal"><div class="tile-v" data-i18n="pn-1-v">1,000 AEQ</div><div class="tile-l" data-i18n="pn-1-l">start for every verified person</div></div>
@@ -826,10 +908,6 @@ section{padding:64px 16px}
       <div class="step reveal"><div class="step-num">2</div><div class="step-ico"><svg class="ico" aria-hidden="true"><use href="#i-shield"/></svg></div><h3 data-i18n="step2-h">Prove</h3><p data-i18n="step2-p">Zero-knowledge proof to the chain that this face-bound identity is not yet registered (nullifier). The proof server accepts it only with the matching services' signed attestation.</p></div>
       <div class="step reveal"><div class="step-num">3</div><div class="step-ico"><svg class="ico" aria-hidden="true"><use href="#i-coins"/></svg></div><h3 data-i18n="step3-h">Receive</h3><p data-i18n="step3-p">1,000 AEQ once per successful registration.</p></div>
     </div>
-    <div class="idw reveal">
-      <div class="idw-ico"><svg class="ico" aria-hidden="true"><use href="#i-globe"/></svg></div>
-      <div><h3 data-i18n="idw-h">Nobody can exclude you</h3><p data-i18n="idw-p">No bank, no credit check, no address. Today a smartphone is enough. For the launch, registration stations with iris and/or palm-vein recognition are planned, depending on which proves more reliable, so that people without a smartphone can join too. One person, one registration.</p></div>
-    </div>
     <div class="center-head"><a class="btn-primary" href="/register" data-i18n="how-link">Register and claim your 1,000 AEQ →</a></div>
   </div>
 </section>
@@ -840,7 +918,7 @@ section{padding:64px 16px}
       <div class="section-label" data-i18n="op-label">Honestly</div>
       <h2 data-i18n="st-h2">Phase 1: a public test</h2>
       <p data-i18n="st-p">Aequitas runs, but it is not finished. AEQ can only be exchanged into the test currency tUSD, the legal review under the EU crypto regulation is still pending, and the face check has named limits. The economy rules take effect on 1 October 2026.</p>
-      <a class="section-link" href="/roadmap" data-i18n="st-link">Roadmap and what is still open →</a>
+      <a class="section-link" href="#roadmap" data-i18n="st-link">Roadmap and what is still open →</a>
     </div>
   </div>
 </section>
@@ -873,7 +951,43 @@ section{padding:64px 16px}
       <article class="news-card reveal"><div class="news-top"><span class="news-d" data-i18n="nw-3-d">25 Aug 2026</span></div><h3 data-i18n="nw-3-h">Live face check for every registration</h3><p data-i18n="nw-3-p">Two independent matching services check every new person. A second phone no longer gives the same face a second account.</p></article>
       <article class="news-card reveal"><div class="news-top"><span class="news-d" data-i18n="nw-4-d">June 2026</span></div><h3 data-i18n="nw-4-h">The network starts</h3><p data-i18n="nw-4-p">Aequitas runs on its own chain (Chain ID 1926) with a daily basic income for every verified person.</p></article>
     </div>
-    <a class="section-link" href="/roadmap" data-i18n="st-link">Roadmap and what is still open →</a>
+    <a class="section-link" href="/transparenz" data-i18n="st-link">Roadmap and what is still open →</a>
+  </div>
+</section>
+
+<section id="gruender" class="gruender-sec">
+  <div class="section-inner">
+    <div class="letter reveal">
+      <div class="letter-q"><svg class="ico" aria-hidden="true"><use href="#i-quote"/></svg></div>
+      <div class="section-label" data-i18n="gr-label">Why Aequitas exists</div>
+      <h2 data-i18n="gr-h2">Made by one person, for all people</h2>
+      <p data-i18n="gr-p1">Aequitas was not founded by a bank, a corporation or investors. It was started by a single person with one simple conviction: money should exist because people exist, and every person should have the same share of it.</p>
+      <p data-i18n="gr-p2">That is why no money is created for the founder. Like everyone else, the founder receives 1,000 AEQ as a verified person. The source code is open, so anyone can check that the rules are the same for all.</p>
+      <p class="letter-sig" data-i18n="gr-sig">The founder of Aequitas</p>
+    </div>
+  </div>
+</section>
+
+<section id="werkzeuge">
+  <div class="section-inner">
+    <div class="reveal">
+      <div class="section-label" data-i18n="tw-label">Live and open</div>
+      <h2 data-i18n="tw-h2">Everything is visible</h2>
+      <p class="section-sub" data-i18n="tw-sub">Every block, every account and every rule can be checked by anyone, at any time.</p>
+    </div>
+    <div class="live-grid tw-live">
+      <div class="live-card"><div class="live-ico li-g"><svg class="ico" aria-hidden="true"><use href="#i-users"/></svg></div><div><div class="stat-num" id="tw-humans">—</div><div class="stat-lbl" data-i18n="stat-humans-lbl">Verified humans</div></div></div>
+      <div class="live-card"><div class="live-ico li-b"><svg class="ico" aria-hidden="true"><use href="#i-coin"/></svg></div><div><div class="stat-num" id="tw-supply">—</div><div class="stat-lbl" data-i18n="stat-supply-lbl">AEQ in circulation</div></div></div>
+      <div class="live-card"><div class="live-ico li-o"><svg class="ico" aria-hidden="true"><use href="#i-scale"/></svg></div><div><div class="stat-num" id="tw-gini">—</div><div class="stat-lbl" data-i18n="stat-gini-lbl">Gini</div></div></div>
+      <div class="live-card"><div class="live-ico li-m"><svg class="ico" aria-hidden="true"><use href="#i-layers"/></svg></div><div><div class="stat-num" id="tw-blocks">—</div><div class="stat-lbl" data-i18n="stat-blocks-lbl">Blocks</div></div></div>
+    </div>
+    <div class="tools">
+      <a class="tool reveal" href="/explorer"><span class="tool-ico"><svg class="ico" aria-hidden="true"><use href="#i-layers"/></svg></span><h3 data-i18n="tw-ex-h">Block explorer</h3><p data-i18n="tw-ex-p">Every block, every transfer, every account.</p></a>
+      <a class="tool reveal" href="/index/score"><span class="tool-ico"><svg class="ico" aria-hidden="true"><use href="#i-scale"/></svg></span><h3 data-i18n="tw-eq-h">Equality score</h3><p data-i18n="tw-eq-p">Gini and Lorenz curve, live from the chain.</p></a>
+      <a class="tool reveal" href="/network"><span class="tool-ico"><svg class="ico" aria-hidden="true"><use href="#i-globe"/></svg></span><h3 data-i18n="tw-nw-h">Network</h3><p data-i18n="tw-nw-p">Active nodes and how the blocks are made.</p></a>
+      <a class="tool reveal" href="/exchange"><span class="tool-ico"><svg class="ico" aria-hidden="true"><use href="#i-refresh"/></svg></span><h3 data-i18n="tw-xc-h">Exchange</h3><p data-i18n="tw-xc-p">Swap AEQ for the test currency tUSD.</p></a>
+      <a class="tool reveal" href="https://github.com/hanoi96international-gif/Aequitas" rel="noopener"><span class="tool-ico"><svg class="ico" aria-hidden="true"><use href="#i-code"/></svg></span><h3 data-i18n="tw-gh-h">Source code</h3><p data-i18n="tw-gh-p">All rules in open source.</p></a>
+    </div>
   </div>
 </section>
 
@@ -889,7 +1003,7 @@ section{padding:64px 16px}
       <details><summary data-i18n="faq-q2">What changes for me as a person on 1 October 2026?</summary><p data-i18n="faq-a2">For most people nothing, or it gets cheaper: the first 1,000 AEQ you spend each month become free of fees, and the levy on idle money applies only above 5,000 AEQ.</p></details>
       <details><summary data-i18n="faq-q7">Has money like this ever worked?</summary><p data-i18n="faq-a7">Yes. Wörgl (Austria, 1932) had money that lost 1 % a month; it circulated so fast that the town built roads and bridges with it until the national bank banned it. The Chiemgauer (Bavaria, since 2003) has a circulation levy and hundreds of shops. The WIR Bank (Switzerland, since 1934) runs settlement money between businesses.</p></details>
     </div>
-    <div class="center-head"><a class="section-link" href="/roadmap#faq" data-i18n="faq-more">All questions →</a></div>
+    <div class="center-head"><a class="section-link" href="/mitmachen#faq" data-i18n="faq-more">All questions →</a></div>
   </div>
 </section>
 
