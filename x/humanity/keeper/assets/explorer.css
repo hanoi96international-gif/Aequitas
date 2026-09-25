@@ -539,3 +539,10 @@ header .logo-wrap{text-decoration:none}
   .rhero-title{font-size:2.5rem}
   .live-chip{flex:1 1 calc(50% - 8px)}
 }
+
+/* Reiterzeile wie auf der Website (landing.go, 25.09.2026) */
+a.tab{text-decoration:none;display:inline-block}
+.tab-biz{color:var(--gold,#F5A524);border-color:rgba(245,165,36,0.35)}
+.tab-biz:hover{color:var(--gold,#F5A524);background:rgba(245,165,36,0.08)}
+.tab-sep{flex:0 0 1px;align-self:stretch;margin:6px 6px;background:var(--border)}
+.tab-tool{font-weight:500;font-size:0.76rem;padding:10px 12px}
