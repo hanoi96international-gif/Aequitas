@@ -138,6 +138,9 @@ sie sind Durchlauf.
 
 ### 6.2 Liegegeld statt Obergrenze: Geld hat ein Alter
 
+> Vorschlag zur Vereinfachung: Abschnitt 14 (Freibetrag nach Umsatz statt
+> Alter des Geldes).
+
 Ein Unternehmen hat Umsatz, und Umsatz ist kein Vermögen. Eine Bäckerei mit
 40.000 AEQ Monatsumsatz würde an einer 25.000-Grenze scheitern, ohne reich zu
 sein. Deshalb gilt für Unternehmen **keine feste Obergrenze**. Stattdessen zählt,
@@ -504,6 +507,165 @@ Grober Aufwand: Kette 1–2 Wochen, App-Kassenmodus 1 Woche.
 | **Menschen:** Umtausch ohne Abgabe | erhaltener Lohn (bis 3.000 AEQ) + 1.000 AEQ im Monat |
 | Bezugsgröße aller Grenzen | Vielfache des fairen Anteils, keine Dollar-Kopplung (6.7) |
 | Nach der Pilotstadt | gebührenfreier Monatsbetrag = Median der echten Monatsausgaben, mind. 1×; Lohn-Freibetrag = 3× davon; Obergrenze vorgeschlagen 5× |
+
+## 14. Vorschlag: einfacher und massentauglich (Stand 25.09.2026)
+
+> **Status: Vorschlag, noch nicht beschlossen und nicht auf der Kette.** Ab
+> 1. Oktober 2026 gelten die Regeln aus den Abschnitten 3 und 6. Dieser
+> Abschnitt beschreibt, was wir statt dessen vorschlagen, und warum.
+
+### 14.1 Warum überhaupt ändern
+
+Die Regeln aus Abschnitt 6 schließen Umgehungswege sehr gründlich. Für den
+Einsatz in der Breite haben sie zwei Schwächen:
+
+1. **Sie sind für echte Unternehmen zu teuer.** Liegegeld von 1 % pro Monat nach
+   30 Tagen und 3 % nach 90 Tagen entspricht 12–36 % im Jahr. Jedes Unternehmen
+   braucht Rücklagen: für Löhne, die monatlich anfallen, für Saisonschwankungen,
+   für Investitionen, für Steuern. Der Sockel von 2.000 AEQ deckt beim Café viel,
+   beim Supermarkt nicht einmal einen Tagesumsatz. Ein Konzern müsste für eine
+   ganz normale Reserve von anderthalb Monatsumsätzen jeden Monat ein halbes
+   Prozent seines Umsatzes abgeben (Rechnung in 14.4). Er würde AEQ sofort
+   tauschen, und jeder Umtausch drückt den Kurs.
+2. **Sie sind zu kompliziert.** Jedes AEQ trägt ein Alter, wird in fester
+   Reihenfolge ausgegeben und je nach Herkunft neu oder alt. Damit ist ein AEQ
+   nicht mehr wie das andere. Buchhaltung, Steuerberater, Kassensysteme und
+   ERP-Software können das nicht abbilden. Für Menschen kommen dazu vier
+   Gebührenstufen, zwei verschiedene Tausch-Freibeträge und eine Unterscheidung
+   zwischen Lohn und anderem Geld.
+
+Massentaugliches Geld braucht Regeln, die man in einem Satz sagen kann:
+
+> **Alltag kostenlos, Horten kostet, alles fließt ans Grundeinkommen.**
+
+### 14.2 Unternehmen: Freibetrag nach Umsatz statt Alter des Geldes
+
+**Die Regel für den Laden, in einem Satz:** *Bis zu anderthalb Monatsumsätze
+halten Sie kostenlos. Darüber kostet es wenig, ab drei Monatsumsätzen viel.*
+
+| Guthaben | Liegegeld pro Monat |
+|---|---|
+| bis **1,5 × Monatsumsatz** (mindestens 2.000 AEQ) | **0 %** |
+| von 1,5 × bis **3 × Monatsumsatz** | **0,5 %** auf diesen Teil |
+| über **3 × Monatsumsatz** | **2 %** auf diesen Teil |
+
+- **Monatsumsatz** = anrechenbare Eingänge (14.3) im Durchschnitt der letzten
+  90 Tage. Neue Unternehmen: Durchschnitt seit Eröffnung; bis dahin gilt der
+  Sockel von 2.000 AEQ.
+- Täglich anteilig verrechnet wie heute, **100 % ins Grundeinkommen**.
+- **Kein Alter des Geldes mehr.** Ein AEQ ist wieder wie das andere.
+- 0,5 % pro Monat liegt bei Wörgl (1 %) und Chiemgauer (≈ 0,66 %), also in der
+  erprobten Spanne. 2 % gelten nur für Geld, das weit über jeden Geschäftsbedarf
+  hinaus liegt: das ist Horten.
+
+### 14.3 Was als Umsatz zählt: die Schutzregeln
+
+Ein Freibetrag nach Umsatz lädt dazu ein, den Umsatz aufzublähen, indem man
+Geld im Kreis schickt. Genau dagegen gab es bisher das Alter des Geldes. Ohne
+Alter braucht es drei Schutzregeln:
+
+1. **Einkäufe von Menschen zählen, aber je Mensch höchstens 1 × fairer Anteil
+   (1.000 AEQ) pro Unternehmen und Monat.** Ein Supermarkt mit vielen Kundinnen
+   und Kunden kommt auf seinen echten Umsatz. Wer den Umsatz aufblähen will,
+   braucht viele echte Menschen, die mitmachen: für 150.000 AEQ geschützten
+   Hortbestand 100 Menschen, jeden Monat, öffentlich sichtbar.
+2. **Zahlungen zwischen Unternehmen zählen nur als Überschuss:** alle Eingänge
+   von Unternehmen minus alle Zahlungen an Unternehmen im selben Zeitraum,
+   mindestens null. Unternehmen mit gemeinsamen Verantwortlichen zählen
+   füreinander gar nicht.
+   *Warum nicht einfach alle Eingänge?* Nachgerechnet: Drei befreundete Firmen
+   schicken sich monatlich T AEQ im Dreieck. Jede zahlt 0,1 % von T an Gebühr,
+   gewinnt aber 1,5 × T Freibetrag und spart damit 0,75 % von T (bei 0,5 %
+   Liegegeld) oder 3 % von T (bei 2 %). Das Dreieck würde sich lohnen. Mit der
+   Überschuss-Regel hat im Dreieck jede Firma gleich viel Ein- wie Ausgang: der
+   Gewinn ist null.
+3. **Nicht als Umsatz zählen:** Löhne und Entnahmen (sonst Lohn an Freunde, die
+   ihn zurückgeben), Eingänge von freien Adressen und der Einstieg aus Euro oder
+   Dollar.
+
+**Was ehrlich bleibt:** Großhändler und Hersteller verkaufen an Unternehmen und
+kaufen von Unternehmen. Ihr anrechenbarer Umsatz ist nur ihre Marge, nicht ihr
+ganzer Umsatz. Sie zahlen darum etwas mehr als heute (Rechnung in 14.4). Und
+viele echte Menschen, die sich absprechen, können den Freibetrag immer noch
+aufblähen. Das kann kein Geldsystem verhindern. Hier kostet es die Beteiligten
+Aufwand und ist öffentlich sichtbar.
+
+### 14.4 Rechenbeispiele: heute und Vorschlag
+
+| Betrieb | Lage | Heute (Abschnitt 6.2) | Vorschlag (14.2) |
+|---|---|---|---|
+| **Café** | 3.000 AEQ Umsatz im Monat, hält rund 1.500 AEQ | 0 | **0**, frei bis 4.500 AEQ |
+| **Supermarkt, normale Reserve** | 40.000 AEQ Umsatz, hält 80.000 AEQ (2 Monate) | 38.000 AEQ sind 30–90 Tage alt: **≈ 380 AEQ/Monat** | frei bis 60.000; 20.000 × 0,5 % = **100 AEQ/Monat** |
+| **Supermarkt, der hortet** | 40.000 AEQ Umsatz, hält 200.000 AEQ | **≈ 3.140 AEQ/Monat** | 60.000 × 0,5 % + 80.000 × 2 % = **1.900 AEQ/Monat** |
+| **Konzern** | 10 Mio. AEQ Umsatz von Menschen, hält 15 Mio. AEQ (1,5 Monate) | 5 Mio. sind 30–90 Tage alt: **≈ 50.000 AEQ/Monat** (0,5 % vom Umsatz) | **0** |
+| **Großhändler** | 500.000 AEQ Eingang von Läden, 400.000 AEQ an Hersteller, hält 250.000 AEQ | Geld wird innerhalb von 30 Tagen weitergegeben: **0** | Überschuss 100.000 → frei bis 150.000; 100.000 × 0,5 % = **500 AEQ/Monat** (0,1 % vom Umsatz) |
+| **„Unternehmen“ ohne Umsatz, das 100.000 AEQ hortet** | kein Umsatz | ab dem 4. Monat **2.940 AEQ/Monat** | ab dem 1. Monat 98.000 × 2 % = **1.960 AEQ/Monat** (≈ 24 % im Jahr) |
+
+**Was das bedeutet:** Normale Unternehmen, auch Konzerne, zahlen für normale
+Reserven nichts mehr. Horten bleibt teuer: rund ein Viertel des Hortbestands pro
+Jahr. Der Großhändler zahlt etwas mehr als heute, ungefähr so viel wie eine
+niedrige Kartengebühr. Das Grundeinkommen bekommt vom einzelnen Hortenden etwas
+weniger, dafür von viel mehr Unternehmen überhaupt etwas, weil sie AEQ halten
+statt sofort zu tauschen.
+
+### 14.5 Menschen: drei Zahlen statt eines Regelwerks
+
+| | Heute (Abschnitt 3) | Vorschlag |
+|---|---|---|
+| **Ausgeben** | erste 1.000 AEQ im Monat frei, danach 0,1 %, ab 5.000 / 10.000 / 20.000 AEQ Guthaben 0,2 / 0,6 / 1,1 % | **erste 1.000 AEQ im Monat frei, danach 0,1 %.** Keine Stufen. |
+| **Sparen** | bis 5.000 AEQ frei, darüber 0,5 % im Monat, höchstens 25.000 AEQ | **unverändert** |
+| **Umtauschen in Euro/Dollar** | Lohn bis 3.000 AEQ und zusätzlich 1.000 AEQ im Monat frei, darüber 2 % | **3.000 AEQ im Monat frei, egal woher**, darüber 2 % |
+
+**Die Regel für Menschen, in einem Satz:** *1.000 AEQ im Monat kostenlos
+ausgeben, 5.000 AEQ kostenlos sparen, 3.000 AEQ im Monat kostenlos tauschen.*
+
+- **Warum die Gebührenstufen wegfallen:** Große Guthaben sind schon durch die
+  Grenze von 25.000 AEQ und die Demurrage begrenzt. Die Stufen bringen dem
+  Grundeinkommen wenig, machen aber denselben Preis für verschiedene Menschen
+  verschieden teuer.
+- **Warum Lohn nicht mehr unterschieden wird:** Die Kette müsste dafür jedes AEQ
+  nach Herkunft verfolgen. Eine Zahl für alle ist verständlich, und 3.000 AEQ
+  decken die meisten Löhne.
+- **Was ehrlich bleibt:** Menschen ohne Lohn dürfen jetzt 3.000 statt
+  1.000 AEQ im Monat abgabefrei tauschen. Das kann den Verkaufsdruck erhöhen.
+  Die Pilotstadt muss messen, ob 3.000 richtig ist oder 2.000.
+
+Rechenbeispiele aus Abschnitt 8 mit dem Vorschlag: **Anna** zahlt weiter 0 AEQ.
+**Ben** zahlt weiter 1,5 AEQ (0,5 AEQ Gebühr, 1 AEQ normale Tauschgebühr).
+**Clara** zahlt 117 statt 177 AEQ im Monat: Überweisungen 2.000 × 0,1 % = 2,
+Demurrage 15.000 × 0,5 % = 75, Umtausch (5.000 − 3.000) × 2 % = 40.
+
+### 14.6 Was an der Kette zu ändern wäre
+
+- **Unternehmen:** Alter des Geldes und Ausgabe-Reihenfolge entfallen. Neu je
+  Unternehmen: gleitende 90-Tage-Zähler für Eingänge von Menschen (je Mensch
+  gedeckelt) sowie für Eingänge von und Zahlungen an Unternehmen; daraus
+  Monatsumsatz, Freibetrag und Liegegeld im Tageslauf.
+- **Menschen:** Aufschlagstufen der Überweisungsgebühr entfallen; der
+  Tausch-Freibetrag wird eine Zahl (3.000 AEQ) statt Lohn plus 1.000.
+- **Website und App:** die Sätze aus 14.2 und 14.5 als Hauptregeln, alles
+  andere im Kleingedruckten.
+
+### 14.7 Zu entscheiden, und wann
+
+Die Regeln aus Abschnitt 6 gelten ab **1. Oktober 2026**. Regeln nach dem Start
+zu ändern ist schwerer als vorher. Deshalb die ehrliche Empfehlung:
+
+1. **Vor dem 1. Oktober entscheiden**, ob Aequitas mit diesem Vorschlag startet.
+   Die Kette startet ohnehin bei null (Abschnitt 12).
+2. Falls die Zeit nicht reicht: mit den heutigen Regeln starten, den Vorschlag
+   **in der Pilotstadt parallel mitrechnen** (was hätte jeder Betrieb bezahlt?)
+   und danach mit echten Zahlen umstellen.
+
+| Frage | Vorschlag |
+|---|---|
+| Freibetrag Unternehmen | 1,5 × Monatsumsatz (mind. 2.000 AEQ) |
+| Liegegeld darüber | 0,5 %/Monat bis 3 × Monatsumsatz, darüber 2 %/Monat |
+| Monatsumsatz | Durchschnitt 90 Tage; Menschen je 1.000 AEQ/Monat gedeckelt; Unternehmen nur Überschuss; Löhne, freie Adressen, Einstieg zählen nicht |
+| Alter des Geldes | entfällt |
+| Menschen: Überweisungsgebühr | erste 1.000 AEQ/Monat frei, danach 0,1 %, keine Stufen |
+| Menschen: Umtausch ohne Abgabe | 3.000 AEQ im Monat, egal woher |
+| Menschen: Sparen | unverändert: 5.000 AEQ frei, 0,5 %/Monat darüber, höchstens 25.000 AEQ |
 
 ## Vorbilder
 
