@@ -467,6 +467,10 @@ type ChainState struct {
 	// ceiling once flushWALBatch stopped needing cs.mu's full exclusivity.
 	walFlushSem chan struct{}
 	walFlushWG  sync.WaitGroup
+	// walFlushNowMu reiht FlushWALNow-Aufrufer hintereinander: jeder belegt
+	// ALLE walFlushSem-Plaetze, zwei gleichzeitig verklemmten sich mit je
+	// einem Teil davon.
+	walFlushNowMu sync.Mutex
 }
 
 // validatorPenalty is one cached validator_penalties row — everything
