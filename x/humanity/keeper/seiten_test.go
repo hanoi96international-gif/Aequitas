@@ -1,6 +1,7 @@
 package keeper
 
 import (
+	"net/http/httptest"
 	"regexp"
 	"sort"
 	"strings"
@@ -81,6 +82,37 @@ func TestSeiten_AlleSchluesselInAllenSprachen(t *testing.T) {
 		sort.Strings(fehlt)
 		if len(fehlt) > 0 {
 			t.Errorf("%s: fehlende Schluessel %v", lang, fehlt)
+		}
+	}
+}
+
+// Die Seiten laden landing.js (mit den Uebersetzungen) unter einer URL, die
+// sich mit dem Inhalt aendert. Unter der blanken URL hielt der Browser nach
+// einem Deploy eine Stunde lang das alte Skript, und setLang() schrieb die
+// alten Texte ueber das neue HTML (25.09.2026, nach PR #188).
+func TestSeiten_LandingJSVersioniert(t *testing.T) {
+	want := `src="/landing.js?v=` + landingJSVersion + `"`
+	for pfad, html := range seitenFuerTest {
+		if strings.Count(html, want) != 1 {
+			t.Errorf("%s: verlinkt landing.js nicht versioniert (%s)", pfad, want)
+		}
+		if strings.Contains(html, `src="/landing.js"`) {
+			t.Errorf("%s: verlinkt noch die blanke /landing.js", pfad)
+		}
+	}
+	a := &APIServer{}
+	for url, cache := range map[string]string{
+		"/landing.js?v=" + landingJSVersion: "public, max-age=31536000, immutable",
+		"/landing.js":                       "no-cache",
+		"/landing.js?v=00000000":            "no-cache",
+	} {
+		w := httptest.NewRecorder()
+		a.handleLandingJS(w, httptest.NewRequest("GET", url, nil))
+		if got := w.Header().Get("Cache-Control"); got != cache {
+			t.Errorf("%s: Cache-Control %q, erwartet %q", url, got, cache)
+		}
+		if w.Body.String() != landingJS {
+			t.Errorf("%s: liefert nicht landing.js aus", url)
 		}
 	}
 }
