@@ -3917,7 +3917,15 @@ func (a *APIServer) schreibeLandingSeite(w http.ResponseWriter, r *http.Request,
 
 func (a *APIServer) handleLandingJS(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/javascript; charset=utf-8")
-	w.Header().Set("Cache-Control", "public, max-age=3600")
+	// Die Seiten verlangen "/landing.js?v=<hash>" (landingJSVersion): diese
+	// URL aendert sich mit dem Inhalt, darf also dauerhaft im Cache liegen.
+	// Jede andere Anfrage (blanke URL, alter Hash aus einer noch offenen
+	// Seite) wird nicht gespeichert -- sonst bliebe dort der alte Stand haengen.
+	if r.URL.Query().Get("v") == landingJSVersion {
+		w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
+	} else {
+		w.Header().Set("Cache-Control", "no-cache")
+	}
 	fmt.Fprint(w, landingJS)
 }
 

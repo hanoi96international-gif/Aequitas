@@ -108,6 +108,16 @@ var coordinatorBindingJS string
 //go:embed assets/landing.js
 var landingJS string
 
+// landingJSVersion: derselbe Fingerabdruck wie bei explorer.js (oben).
+// landing.js traegt die Uebersetzungstabellen aller vier Seiten. Unter der
+// blanken URL "/landing.js" mit einer Stunde Browser-Cache hielt ein Besucher
+// nach einem Deploy das ALTE Skript, waehrend das HTML (no-cache) schon neu
+// war -- und setLang() schrieb bei gespeicherter Sprache (etwa Deutsch) die
+// alten Texte ueber das neue HTML. Die Seite sah dann unveraendert aus, obwohl
+// der Server laengst den neuen Stand lieferte (25.09.2026, nach PR #188).
+// baueSeite (seiten.go) verlinkt deshalb "/landing.js?v=<hash>".
+var landingJSVersion = fmt.Sprintf("%08x", crc32.ChecksumIEEE([]byte(landingJS)))
+
 // Brand assets. The favicon is an SVG so one file covers every size a browser
 // asks for, and it draws the balance as paths rather than the ⚖ character —
 // a glyph would render with whatever font the viewer happens to have, or not

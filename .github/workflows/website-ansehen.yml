@@ -13,6 +13,34 @@ jobs:
   ansehen:
     runs-on: ubuntu-latest
     steps:
+      - name: DNS ueber mehrere Resolver, und was jede Adresse ausliefert
+        run: |
+          sudo apt-get install -y -qq dnsutils >/dev/null 2>&1 || true
+          ns=$(dig +short NS aequitas.digital | head -1)
+          echo "Nameserver: $(dig +short NS aequitas.digital | tr '\n' ' ')"
+          ips=""
+          for h in aequitas.digital www.aequitas.digital; do
+            for t in A AAAA CNAME; do
+              for r in 8.8.8.8 1.1.1.1 9.9.9.9 ${ns%.}; do
+                a=$(dig +short "@$r" "$h" "$t" | tr '\n' ' ')
+                echo "$h $t @$r: ${a:-(leer)}"
+                for ip in $a; do case "$ip" in *[0-9a-f]:*|[0-9]*.[0-9]*) ips="$ips $ip";; esac; done
+              done
+            done
+          done
+          for ip in $(echo $ips 173.249.37.118 69.46.46.73 | tr ' ' '\n' | sort -u); do
+            case "$ip" in *:*) host="[$ip]";; *) host="$ip";; esac
+            st=$(curl -s -m 15 --resolve "aequitas.digital:443:$ip" https://aequitas.digital/api/status | python3 -c 'import sys,json;d=json.load(sys.stdin);print("commit",d.get("git_commit"),"hoehe",d.get("height"),"menschen",d.get("total_humans"))' 2>/dev/null || echo "keine Antwort")
+            neu=$(curl -s -m 15 --resolve "aequitas.digital:443:$ip" https://aequitas.digital/ | grep -c 'href="/economy' || true)
+            echo "== $ip: $st | Startseite verlinkt /economy: $neu"
+          done
+      - name: Wohin zeigt die Domain, was liefert sie aus
+        run: |
+          getent hosts aequitas.digital www.aequitas.digital || true
+          for s in / /economy /business /roadmap; do
+            echo "== $s"; curl -sS -o /tmp/s.html -D - --max-time 20 "https://aequitas.digital$s" | grep -iE '^(HTTP|server|cache-control|age|last-modified|cf-)' || true
+            echo "Bytes: $(wc -c < /tmp/s.html)  Links auf Unterseiten: $(grep -oE 'href=\"/(economy|business|roadmap)' /tmp/s.html | sort -u | tr '\n' ' ')"
+          done
       - name: API-Status
         run: |
           curl -s --max-time 20 https://aequitas.digital/api/status | python3 -m json.tool | head -80
@@ -26,7 +54,7 @@ jobs:
           const { chromium } = require(process.env.PW);
           (async () => {
             const b = await chromium.launch();
-            const seiten = ['/', '/explorer', '/dapp', '/whitepaper'];
+            const seiten = ['/', '/economy', '/business', '/roadmap', '/explorer'];
             for (const [name, vp] of [['desktop', {width: 1366, height: 900}], ['mobil', {width: 390, height: 844}]]) {
               for (const s of seiten) {
                 const p = await b.newPage({viewport: vp});
@@ -44,6 +72,8 @@ jobs:
                 console.log(`\n##### ${name} ${s} HTTP ${code}`);
                 console.log('Konsole:', fehler.length ? fehler.slice(0, 40).join(' | ') : 'keine Fehler');
                 console.log('Verdaechtige Zeilen:\n  ' + verdacht.join('\n  '));
+                const kopf = await p.evaluate(() => [...document.querySelectorAll('h1,h2')].map(h => h.tagName + ' ' + h.innerText.trim()).slice(0, 40));
+                console.log('Ueberschriften:\n  ' + kopf.join('\n  '));
                 await p.close();
               }
             }

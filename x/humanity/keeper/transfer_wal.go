@@ -1128,8 +1128,44 @@ WHERE chain_accounts.wal_seq < EXCLUDED.wal_seq`
 // FlushEVMMirrorNow/FlushPoolAccountsNow. Safe to call even if the flush
 // worker was never started or cs.wal is nil (flushWALQueue is a no-op with
 // an empty queue).
+//
+// FIX (25.09.2026): frueher ein einzelner flushWALQueue()-Aufruf. Der nahm
+// nur, was in dem Moment noch in der Schlange lag -- bis zu
+// walFlushConcurrency Hintergrund-Flushes (runWALFlushWorker) konnten ihren
+// Stapel da schon herausgenommen, aber noch nicht geschrieben haben. Wer
+// danach Postgres las, sah diese Zeilen nicht: der Erhaltungstest zaehlte
+// die Gebuehren in pending_txs zu frueh und meldete -0.36 AEQ (CI, PR #188),
+// und ein geordnetes Herunterfahren konnte vor dem Commit enden. Jetzt:
+// alle Flush-Plaetze belegen (wartet laufende Flushes ab, haelt neue fern),
+// dann die Schlange ganz leeren -- nicht nur einen Stapel von hoechstens
+// walFlushMaxBatch. Mehrere Aufrufer nacheinander (walFlushNowMu): zwei, die
+// gleichzeitig Plaetze belegen, hielten je einen Teil und warteten ewig auf
+// den Rest.
 func (cs *ChainState) FlushWALNow() {
-	cs.flushWALQueue()
+	cs.walFlushNowMu.Lock()
+	defer cs.walFlushNowMu.Unlock()
+	if sem := cs.walFlushSem; sem != nil {
+		for i := 0; i < cap(sem); i++ {
+			sem <- struct{}{}
+		}
+		defer func() {
+			for i := 0; i < cap(sem); i++ {
+				<-sem
+			}
+		}()
+	}
+	for {
+		vorher := cs.WALFlushQueueDepth()
+		if vorher == 0 {
+			return
+		}
+		cs.flushWALQueue()
+		// Ein fehlgeschlagener Flush legt seinen Stapel zurueck -- dann
+		// nicht endlos wiederholen; der Ticker versucht es weiter.
+		if cs.WALFlushQueueDepth() >= vorher {
+			return
+		}
+	}
 }
 
 // recoverFromWAL replays path (if it exists) against already-loaded

@@ -90,7 +90,7 @@ func baueSeite(pfad, titel, seitenKopf string, ids []string) string {
 		b.WriteString(s)
 		b.WriteString("\n")
 	}
-	b.WriteString(fuss)
+	b.WriteString(strings.Replace(fuss, `src="/landing.js"`, `src="/landing.js?v=`+landingJSVersion+`"`, 1))
 	return b.String()
 }
 

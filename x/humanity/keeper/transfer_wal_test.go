@@ -699,3 +699,93 @@ func TestTransferConcurrentWAL_ConcurrentMixedWithSlowPath_PostgresStaysConsiste
 		}
 	}
 }
+
+// TestWAL_FlushNowWartetAufLaufendenHintergrundFlush: FlushWALNow darf erst
+// zurueckkehren, wenn auch ein Stapel geschrieben ist, den ein
+// Hintergrund-Flush schon aus der Schlange genommen hat. Frueher kehrte es
+// bei leerer Schlange sofort zurueck -- der Erhaltungstest zaehlte dann die
+// Gebuehren in pending_txs, bevor sie dort standen (CI, PR #188: -0.36 AEQ).
+//
+// Der Test haelt pending_txs per Tabellensperre fest, damit der
+// Hintergrund-Flush genau in dem Zustand haengt, in dem er seinen Stapel
+// schon hat, aber noch nicht geschrieben.
+func TestWAL_FlushNowWartetAufLaufendenHintergrundFlush(t *testing.T) {
+	truncateDistTestTables(t)
+	cs := newWALTestState(t, filepath.Join(t.TempDir(), "test.wal"))
+	const n = 5
+	addrs := make([]string, n)
+	for i := range addrs {
+		addrs[i] = distTestAddr(1200 + i)
+		seedConcurrentTestAccount(t, cs, addrs[i], 1000, time.Now().Unix())
+	}
+
+	sperre, err := cs.db.Begin()
+	if err != nil {
+		t.Fatalf("Sperr-Transaktion: %v", err)
+	}
+	freigegeben := false
+	defer func() {
+		if !freigegeben {
+			sperre.Rollback()
+		}
+	}()
+	if _, err := sperre.Exec(`LOCK TABLE pending_txs IN SHARE MODE`); err != nil {
+		t.Fatalf("pending_txs sperren: %v", err)
+	}
+
+	angewandt := 0
+	for i := 0; i < n; i++ {
+		from, to := addrs[i], addrs[(i+1)%n]
+		_, _, ok, err := cs.transferConcurrentWAL(from, to, 10, Transaction{
+			Type: "transfer", Wallet: from, To: to, Amount: 10, TxHash: fmt.Sprintf("0xwalwarten%03d", i),
+		})
+		if err != nil {
+			t.Fatalf("Ueberweisung %d: %v", i, err)
+		}
+		if ok {
+			angewandt++
+		}
+	}
+	if angewandt == 0 {
+		t.Fatal("keine Ueberweisung lief ueber den WAL-Pfad")
+	}
+
+	// Warten, bis ein Hintergrund-Flush alles aus der Schlange genommen hat
+	// und an der Sperre haengt.
+	frist := time.Now().Add(10 * time.Second)
+	for cs.WALFlushQueueDepth() != 0 || len(cs.walFlushSem) == 0 {
+		if time.Now().After(frist) {
+			t.Fatalf("kein Hintergrund-Flush in Arbeit (Schlange %d, Plaetze belegt %d)", cs.WALFlushQueueDepth(), len(cs.walFlushSem))
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+
+	fertig := make(chan struct{})
+	go func() {
+		cs.FlushWALNow()
+		close(fertig)
+	}()
+	select {
+	case <-fertig:
+		t.Fatal("FlushWALNow kehrte zurueck, waehrend ein Hintergrund-Flush seinen Stapel noch nicht geschrieben hatte")
+	case <-time.After(300 * time.Millisecond):
+	}
+
+	if err := sperre.Commit(); err != nil {
+		t.Fatalf("Sperre freigeben: %v", err)
+	}
+	freigegeben = true
+	select {
+	case <-fertig:
+	case <-time.After(10 * time.Second):
+		t.Fatal("FlushWALNow kehrte nach Freigabe der Sperre nicht zurueck")
+	}
+
+	var zeilen int
+	if err := cs.db.QueryRow(`SELECT count(*) FROM pending_txs WHERE tx_json::text LIKE '%0xwalwarten%'`).Scan(&zeilen); err != nil {
+		t.Fatalf("pending_txs zaehlen: %v", err)
+	}
+	if zeilen != angewandt {
+		t.Fatalf("nach FlushWALNow %d Zeilen in pending_txs, erwartet %d", zeilen, angewandt)
+	}
+}
