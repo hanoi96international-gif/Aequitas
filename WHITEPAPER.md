@@ -124,7 +124,7 @@ Aequitas solves this with biometric verification and Zero-Knowledge Proofs:
 ### 3.1 Biometrisches 3-Faktor-System / 3-Factor Biometric System
 
 #### DE
-> **Ausrichtung (Stand 25.09.2026): Langfristig setzt Aequitas auf den Iris-Scan.** Nur ein Merkmal, das auch unter Milliarden Menschen unverwechselbar bleibt, kann wirklich 1 Mensch = 1 Registrierung gewährleisten, und ein Iris-Scan funktioniert auch für Menschen ohne Smartphone. Wie das umgesetzt werden kann — zuverlässig, datenschutzfreundlich, mit messbaren Fehlerraten und bezahlbarer Hardware —, daran wird derzeit gearbeitet. Hardware und Zeitplan stehen noch nicht fest. Die Live-Gesichtsprüfung auf dem Smartphone (§3.2) ist der Zwischenschritt bis dahin. Die Fingerabdruck- und Handvenen-Entwürfe unten bleiben als frühere Referenzentwürfe dokumentiert, sind aber nicht mehr der geplante Weg.
+> **Ausrichtung (Stand 25.09.2026): Langfristig setzt Aequitas auf den Iris-Scan.** Nur ein Merkmal, das auch unter Milliarden Menschen unverwechselbar bleibt, kann wirklich 1 Mensch = 1 Registrierung gewährleisten. Wie das umgesetzt werden kann — zuverlässig, datenschutzfreundlich, mit messbaren Fehlerraten und bezahlbarer Hardware —, daran wird derzeit gearbeitet. Hardware und Zeitplan stehen noch nicht fest. Die Live-Gesichtsprüfung auf dem Smartphone (§3.2) ist der Zwischenschritt bis dahin. Die Fingerabdruck- und Handvenen-Entwürfe unten bleiben als frühere Referenzentwürfe dokumentiert, sind aber nicht mehr der geplante Weg.
 
 Langfristig soll biologische Einzigartigkeit vollständig geräteunabhängig nachgewiesen werden. Die folgenden Phasen beschreiben diesen Weg. **Keine davon ist zum Start am 18.08.2026 aktiv** — was tatsächlich ausgeliefert wird, steht direkt darunter unter „Was zum Start läuft".
 
@@ -163,7 +163,7 @@ Dieses Hardware-Kit existiert als Entwurf. Es gibt kein Gerät zu kaufen, und di
 | Falsch-Positiv-Rate (globaler Vergleich) | theoretisch verschwindend klein; die reale Rate im Maßstab von Milliarden hängt an Aufnahmequalität und Schwelle und muss erst gemessen werden |
 
 #### EN
-> **Direction (as of 2026-09-25): in the long run Aequitas will rely on the iris scan.** Only a feature that stays distinctive among billions of people can truly guarantee one person = one registration, and an iris scan also works for people without a smartphone. How it can be implemented — reliably, privacy-preserving, with measured error rates and affordable hardware — is being worked on now. Hardware and timing are not decided yet. The live face check on the smartphone (§3.2) is the interim step until then. The fingerprint and hand-vein designs below remain documented as earlier reference designs but are no longer the planned path.
+> **Direction (as of 2026-09-25): in the long run Aequitas will rely on the iris scan.** Only a feature that stays distinctive among billions of people can truly guarantee one person = one registration. How it can be implemented — reliably, privacy-preserving, with measured error rates and affordable hardware — is being worked on now. Hardware and timing are not decided yet. The live face check on the smartphone (§3.2) is the interim step until then. The fingerprint and hand-vein designs below remain documented as earlier reference designs but are no longer the planned path.
 
 The long-term goal is to prove biological uniqueness fully independently of the device. The phases below describe that path. **None of them is active at the 2026-08-18 launch** — what actually ships is stated directly below, under "What runs at launch".
 
