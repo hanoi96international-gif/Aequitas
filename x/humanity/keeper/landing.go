@@ -443,7 +443,7 @@ section{padding:56px 16px}
         <thead><tr><th scope="col" data-i18n="cmp-col-rule">Rule</th><th scope="col" class="cmp-p">👤 <span data-i18n="cmp-col-person">Person</span></th><th scope="col" class="cmp-b">🏪 <span data-i18n="cmp-col-biz">Business</span></th><th scope="col" class="cmp-f">🔑 <span data-i18n="cmp-col-free">Other address</span></th></tr></thead>
         <tbody>
         <tr><th scope="row" data-i18n="cmp-r1">Basic income and vote</th><td data-i18n="cmp-yes">yes</td><td data-i18n="cmp-no">no</td><td data-i18n="cmp-no">no</td></tr>
-        <tr><th scope="row" data-i18n="cmp-r2">Maximum holding</th><td data-i18n="cmp-v-25k">25,000 AEQ</td><td data-i18n="cmp-nolimit">no fixed limit</td><td data-i18n="cmp-v-1k">1,000 AEQ</td></tr>
+        <tr><th scope="row" data-i18n="cmp-r2">Maximum holding</th><td data-i18n="cmp-v-25k">25,000 AEQ (25×)</td><td data-i18n="cmp-nolimit">no fixed limit</td><td data-i18n="cmp-v-1k">1,000 AEQ (1×)</td></tr>
         <tr><th scope="row" data-i18n="cmp-r3">Idle money</th><td data-i18n="cmp-r3-p">0.5 % a month, only above 5,000 AEQ</td><td data-i18n="cmp-r3-b">money older than 30 days 1 % a month, older than 90 days 3 %; 2,000 AEQ always free</td><td data-i18n="cmp-r3-f">1 % a month</td></tr>
         <tr><th scope="row" data-i18n="cmp-r4">Sending money</th><td data-i18n="cmp-r4-p">first 1,000 AEQ a month free, then 0.1 %</td><td data-i18n="cmp-r4-b">to people free, otherwise 0.1 %</td><td data-i18n="cmp-r4-f">0.1 %</td></tr>
         <tr><th scope="row" data-i18n="cmp-r5">Exchange to euro or dollar</th><td data-i18n="cmp-r5-p">wages and 1,000 AEQ a month free, then 2 %</td><td data-i18n="cmp-r5-b">2 %</td><td data-i18n="cmp-r5-b">2 %</td></tr>
@@ -452,6 +452,7 @@ section{padding:56px 16px}
       </table>
     </div>
     <p class="cmp-note" data-i18n="cmp-note">These rules apply from 1 October 2026. Every levy goes 100 % to the basic income.</p>
+    <div class="sybil-blurb" data-i18n="fs-note"><strong>Every limit is a multiple of the fair share.</strong> 1,000 AEQ is what the average person holds, because the money supply is always people × 1,000 AEQ. So 2,000 = 2×, 3,000 = 3×, 5,000 = 5× and 25,000 = 25× the fair share. The limits are not tied to the dollar: if AEQ gains or loses value, everyone's fair share changes with it and the limits keep their meaning.</div>
   </div>
 </section>
 
@@ -470,10 +471,10 @@ section{padding:56px 16px}
     </ol>
     <div class="biz-rules-h" data-i18n="fee-h">Transfer fee in detail</div>
     <div class="cmp-wrap fee-wrap"><table class="cmp-table fee-table"><thead><tr><th scope="col" data-i18n="fee-col-bal">Balance of the sender</th><th scope="col" data-i18n="fee-col-fee">Fee</th></tr></thead><tbody>
-      <tr><th scope="row" data-i18n="fee-r1">below 5,000 AEQ</th><td data-i18n="fee-r1-v">0.1 %</td></tr>
-      <tr><th scope="row" data-i18n="fee-r2">from 5,000 AEQ</th><td data-i18n="fee-r2-v">0.2 %</td></tr>
-      <tr><th scope="row" data-i18n="fee-r3">from 10,000 AEQ</th><td data-i18n="fee-r3-v">0.6 %</td></tr>
-      <tr><th scope="row" data-i18n="fee-r4">from 20,000 AEQ</th><td data-i18n="fee-r4-v">1.1 %</td></tr>
+      <tr><th scope="row" data-i18n="fee-r1">below 5,000 AEQ (5×)</th><td data-i18n="fee-r1-v">0.1 %</td></tr>
+      <tr><th scope="row" data-i18n="fee-r2">from 5,000 AEQ (5×)</th><td data-i18n="fee-r2-v">0.2 %</td></tr>
+      <tr><th scope="row" data-i18n="fee-r3">from 10,000 AEQ (10×)</th><td data-i18n="fee-r3-v">0.6 %</td></tr>
+      <tr><th scope="row" data-i18n="fee-r4">from 20,000 AEQ (20×)</th><td data-i18n="fee-r4-v">1.1 %</td></tr>
     </tbody></table></div>
     <p class="note" data-i18n="fee-note">The fee is added on top: the recipient always gets the full amount, so a price of 10 AEQ brings the shop exactly 10 AEQ. From 1 October 2026 the first 1,000 AEQ a person spends each month are free, and wages from businesses to people cost nothing. Between businesses it is 0.1 % without the surcharge.</p>
   </div>
@@ -654,6 +655,7 @@ section{padding:56px 16px}
       <details><summary data-i18n="faq-q5">What is an “other address”?</summary><p data-i18n="faq-a5">Every address that is neither a verified person nor a business: a visitor's wallet, a tip jar, a simple contract. It may hold at most 1,000 AEQ and pays 1 % a month.</p></details>
       <details><summary data-i18n="faq-q6">Why do rules per person work here?</summary><p data-i18n="faq-a6">Every person exists exactly once at Aequitas. A free amount per person cannot be multiplied with more accounts. No other money can do that.</p></details>
       <details><summary data-i18n="faq-q7">Has money like this ever worked?</summary><p data-i18n="faq-a7">Yes. Wörgl (Austria, 1932) had money that lost 1 % a month; it circulated so fast that the town built roads and bridges with it until the national bank banned it. The Chiemgauer (Bavaria, since 2003) has a circulation levy and hundreds of shops. The WIR Bank (Switzerland, since 1934) runs settlement money between businesses.</p></details>
+      <details><summary data-i18n="faq-q8">Why aren't the limits tied to the dollar?</summary><p data-i18n="faq-a8">Because fairness is about each person's share of all the money, not about dollar amounts. The average person always holds exactly one fair share (1,000 AEQ), and every limit is a multiple of it. A dollar link would need a price source that someone could push, and a rising price would quietly tighten the limits. Only the monthly allowances depend on how much of life is paid in AEQ: after the pilot town, the fee-free monthly amount and the wage allowance are to follow what the median person really spends each month, never less than 1× the fair share.</p></details>
     </div>
   </div>
 </section>

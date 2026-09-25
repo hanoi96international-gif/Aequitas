@@ -453,3 +453,24 @@ func TestUnternehmenDasMenschWirdBehaeltGrenze(t *testing.T) {
 		t.Fatalf("als Mensch gilt die Grenze: %v", s)
 	}
 }
+
+// Die Grenzen sind Vielfache des fairen Anteils. Die Umstellung von festen
+// Zahlen auf Vielfache darf keinen Wert veraendern (Nachspielen alter Bloecke).
+func TestWirtschaft_GrenzenSindVielfacheDesFairenAnteils(t *testing.T) {
+	for _, f := range []struct {
+		name         string
+		wert, faktor float64
+		frueherFest  float64
+	}{
+		{"gebuehrenfreie Ausgaben", menschFreiAusgabenMonat, 1, 1000},
+		{"Tausch frei", menschTauschFreiMonat, 1, 1000},
+		{"Lohn tauschfrei", lohnTauschFreiMonat, 3, 3000},
+		{"Sparfreibetrag", menschSparFreibetrag, 5, 5000},
+		{"freie Adresse", freiGrenze, 1, 1000},
+		{"Unternehmenssockel", unternehmenSockel, 2, 2000},
+	} {
+		if f.wert != f.faktor*registrationGrant || f.wert != f.frueherFest {
+			t.Errorf("%s: %v, erwartet %v x fairer Anteil = %v", f.name, f.wert, f.faktor, f.frueherFest)
+		}
+	}
+}

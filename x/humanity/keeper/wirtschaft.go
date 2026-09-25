@@ -51,20 +51,30 @@ const (
 	// 2026-10-01T00:00:00Z
 	wirtschaftAktivAbUnix int64 = 1790812800
 
+	// Alle Betraege sind Vielfache des fairen Anteils (registrationGrant),
+	// nicht feste Summen und nicht an den Dollar gekoppelt. Die Geldmenge ist
+	// Menschen x fairer Anteil, der Durchschnittsmensch haelt also immer genau
+	// einen fairen Anteil. Eine Grenze von 5x bleibt "fuenfmal so viel wie der
+	// Durchschnitt", egal ob AEQ steigt oder faellt. Eine Kopplung an den
+	// Dollar braeuchte eine Kursquelle, die jemand verschieben koennte, und
+	// wuerde die Grenzen bei steigendem Kurs still verschaerfen.
+	// (Konzept Abschnitt 6.7; der Monatsfreibetrag soll nach der Pilotstadt
+	// dem Median der echten Monatsausgaben folgen, nie unter 1x.)
+
 	// Menschen (Fairness-Garantie, Konzept Abschnitt 3)
-	menschFreiAusgabenMonat = 1000.0 // gebuehrenfreie Ausgaben je Monat
-	menschTauschFreiMonat   = 1000.0 // Umtausch ohne Abgabe je Monat
-	lohnTauschFreiMonat     = 3000.0 // erhaltener Lohn, zusaetzlich tauschbar
-	menschSparFreibetrag    = 5000.0 // darunter keine Umlaufsicherung
-	menschUmlaufMonat       = 0.005  // 0,5 %/Monat auf den Teil darueber
+	menschFreiAusgabenMonat = 1 * registrationGrant // gebuehrenfreie Ausgaben je Monat
+	menschTauschFreiMonat   = 1 * registrationGrant // Umtausch ohne Abgabe je Monat
+	lohnTauschFreiMonat     = 3 * registrationGrant // erhaltener Lohn, zusaetzlich tauschbar
+	menschSparFreibetrag    = 5 * registrationGrant // darunter keine Umlaufsicherung
+	menschUmlaufMonat       = 0.005                 // 0,5 %/Monat auf den Teil darueber
 	menschReifSekunden      = 30 * 86400
 
 	// Freie Adressen
-	freiGrenze      = 1000.0
+	freiGrenze      = 1 * registrationGrant
 	freiUmlaufMonat = 0.01
 
 	// Unternehmen
-	unternehmenSockel       = 2000.0
+	unternehmenSockel       = 2 * registrationGrant
 	liegeStufe1Sekunden     = 30 * 86400
 	liegeStufe2Sekunden     = 90 * 86400
 	liegeRate1Monat         = 0.01

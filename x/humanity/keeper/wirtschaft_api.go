@@ -46,6 +46,17 @@ func (a *APIServer) handleWirtschaftRegeln(w http.ResponseWriter, r *http.Reques
 	json.NewEncoder(w).Encode(map[string]interface{}{
 		"aktiv":    wirtschaftAktiv(time.Now().Unix()),
 		"aktiv_ab": wirtschaftAktivAbUnix,
+		// Alle Betraege unten sind Vielfache davon (siehe wirtschaft.go).
+		"fairer_anteil": registrationGrant,
+		"in_fairen_anteilen": map[string]interface{}{
+			"mensch_gebuehrenfreie_ausgaben_monat": menschFreiAusgabenMonat / registrationGrant,
+			"mensch_tausch_frei_monat":             menschTauschFreiMonat / registrationGrant,
+			"mensch_lohn_tausch_frei_monat":        lohnTauschFreiMonat / registrationGrant,
+			"mensch_spar_freibetrag":               menschSparFreibetrag / registrationGrant,
+			"mensch_vermoegensgrenze":              float64(wealthCapMultiplier),
+			"unternehmen_sockel":                   unternehmenSockel / registrationGrant,
+			"freie_adresse_grenze":                 freiGrenze / registrationGrant,
+		},
 		"mensch": map[string]interface{}{
 			"gebuehrenfreie_ausgaben_monat": menschFreiAusgabenMonat,
 			"tausch_frei_monat":             menschTauschFreiMonat,

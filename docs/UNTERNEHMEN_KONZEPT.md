@@ -285,6 +285,77 @@ findet, meldet sie, und die Regeln werden per Abstimmung angepasst.
 
 Ein Café wie im Beispiel in Abschnitt 8 zahlt im Normalbetrieb **null**.
 
+### 6.7 Warum die Zahlen am fairen Anteil hängen und nicht am Dollar
+
+AEQ ist nicht an den Dollar gekoppelt. Trotzdem müssen die Grenzen nicht
+mit dem Kurs mitlaufen, denn **alle Grenzen sind Vielfache des fairen
+Anteils** (1.000 AEQ, `registrationGrant`):
+
+| Grenze | in fairen Anteilen |
+|---|---|
+| gebührenfreie Ausgaben im Monat (Mensch) | 1× |
+| Umtausch ohne Abgabe im Monat (Mensch) | 1× |
+| Lohn, zusätzlich tauschbar (Mensch) | 3× |
+| Sparfreibetrag (Mensch) | 5× |
+| Aufschlag auf Überweisungen ab | 5× / 10× / 20× |
+| Obergrenze (Mensch) | 25× |
+| Sockel (Unternehmen) | 2× |
+| Höchstbetrag (freie Adresse) | 1× |
+
+Die Geldmenge ist immer **Menschen × fairer Anteil**. Der Durchschnittsmensch
+hält also immer genau einen fairen Anteil, egal was 1 AEQ in Dollar kostet.
+Verdreifacht sich der Kurs, ist der faire Anteil jedes Menschen dreimal so
+viel wert, und alle Grenzen wachsen im Wert mit. „25×“ bleibt „25-mal so viel
+wie der Durchschnitt“. Um diesen Anteil am Ganzen geht es bei Fairness.
+
+Eine Dollar-Kopplung wäre schlechter:
+
+- Sie **verschiebt die Fairness**: Eine Grenze von „25.000 Dollar“ wäre nach
+  einer Verdreifachung nur noch 8.333 AEQ, also 8× statt 25× der
+  Durchschnitt. Die Regel würde sich still verschärfen, ohne dass sich an der
+  Verteilung etwas geändert hat.
+- Sie braucht eine **Kursquelle**. Eine zentrale Stelle passt nicht zu einem
+  dezentralen Netz, und der interne Pool ist klein genug, dass jemand den
+  Kurs kurz verschieben und damit die Regeln für alle ändern könnte.
+- Jeder Knoten müsste beim Nachspielen denselben Kurs kennen.
+
+Alle Abgaben sind Prozentsätze und hängen vom Kurs ohnehin nicht ab.
+
+**Wo die Frage berechtigt ist: die Monatsfreibeträge.** Ob 1.000 AEQ im Monat
+„den Alltag“ abdecken, hängt nicht am Dollar, sondern daran, **wie viel vom
+Leben in AEQ bezahlt wird**. Heute ist das wenig, 1.000 im Monat sind
+großzügig. Leben viele Menschen später weitgehend in AEQ, läuft das Geld
+schneller um, und die Ausgaben je Monat steigen über den fairen Anteil.
+
+Deshalb gilt **nach der Pilotstadt** (Schritt 6 in Abschnitt 12):
+
+- **Der gebührenfreie Monatsbetrag folgt dem Median der echten
+  Monatsausgaben** der verifizierten Menschen. Gezählt wird, was ein Mensch im
+  abgelaufenen Kalendermonat an andere Menschen und Unternehmen überwiesen hat
+  (genau der Zähler, der heute schon den Freibetrag verbraucht). In den Median
+  gehen alle Menschen ein, die im Monat mindestens eine Ausgabe hatten.
+- **Untergrenze 1× fairer Anteil.** Der Freibetrag fällt nie unter 1.000 AEQ,
+  auch wenn der Median darunter liegt.
+- **Der Lohn-Freibetrag wächst mit**: immer das Dreifache des gebührenfreien
+  Monatsbetrags (heute 3×).
+- Der **Umtausch-Freibetrag** (1× im Monat) bleibt fest. Er betrifft das
+  Verlassen des Netzes, nicht den Alltag.
+- **Glättung:** Der neue Wert ändert sich je Monat um höchstens 25 % gegenüber
+  dem alten und wird auf 100 AEQ gerundet. Ein einzelner ungewöhnlicher Monat
+  verschiebt ihn nicht sprunghaft.
+- **Obergrenze** zum Schutz des Grundeinkommens (das aus den Gebühren lebt):
+  vorgeschlagen 5×, endgültig nach den Messungen der Pilotstadt per
+  Abstimmung.
+
+Warum der Median hier funktioniert, obwohl es jede andere Kette ausnutzen
+könnte: **Jeder Mensch zählt genau einmal.** Konten ohne Menschen zählen gar
+nicht, zusätzliche Konten eines Menschen gibt es nicht. Um den Median nach oben
+zu schieben, müsste sich mehr als die Hälfte aller aktiven echten Menschen
+absprechen und dafür über dem alten Freibetrag Gebühren zahlen. Nach unten
+schieben geht nicht unter die Untergrenze. Der Wert wird am Monatswechsel aus
+den Blöcken berechnet, ohne Kursquelle: Jeder Knoten kommt beim Nachspielen auf
+dieselbe Zahl.
+
 ## 7. Der Kreislauf
 
 ```mermaid
@@ -412,6 +483,9 @@ Grober Aufwand: Kette 1–2 Wochen, App-Kassenmodus 1 Woche.
    Monate, messen: Wie viel bleibt im Kreislauf, wie viel geht raus, wie viel
    landet im Grundeinkommen?
 5. **Rechtliche Prüfung** und echter Stablecoin, dann breiter öffnen.
+6. **Mitwachsende Freibeträge** (Abschnitt 6.7): Median der echten
+   Monatsausgaben, nie unter 1× fairer Anteil. Aktivierung nach den Messungen
+   der Pilotstadt, Obergrenze per Abstimmung.
 
 ## 13. Zu entscheiden
 
@@ -428,6 +502,8 @@ Grober Aufwand: Kette 1–2 Wochen, App-Kassenmodus 1 Woche.
 | **Menschen:** Sparfreibetrag (keine Demurrage) | 5.000 AEQ |
 | **Menschen:** Demurrage darüber | 0,5 %/Monat |
 | **Menschen:** Umtausch ohne Abgabe | erhaltener Lohn (bis 3.000 AEQ) + 1.000 AEQ im Monat |
+| Bezugsgröße aller Grenzen | Vielfache des fairen Anteils, keine Dollar-Kopplung (6.7) |
+| Nach der Pilotstadt | gebührenfreier Monatsbetrag = Median der echten Monatsausgaben, mind. 1×; Lohn-Freibetrag = 3× davon; Obergrenze vorgeschlagen 5× |
 
 ## Vorbilder
 
