@@ -140,9 +140,14 @@ Ein Unternehmen hat Umsatz, und Umsatz ist kein Vermögen. Eine Bäckerei mit
 sein. Deshalb gilt für Unternehmen **keine feste Obergrenze**, sondern eine
 Gebühr auf das, was *liegen bleibt*:
 
-- **Freibetrag** = größer von **5.000 AEQ** und **den Ausgaben des Vormonats**
-  (Löhne, Lieferanten, andere Unternehmen, Entnahmen). Wer viel weitergibt, darf
-  auch viel Betriebsmittel halten.
+- **Freibetrag** = **2.000 AEQ Sockel + die Netto-Ausgaben des Vormonats.**
+  Wer viel weitergibt, darf auch viel Betriebsmittel halten.
+- **Netto-Ausgaben** zählen **je Gegenüber**: was an ein Konto gezahlt wurde,
+  minus was von demselben Konto zurückkam. Geld im Kreis zu schicken
+  (A → B → A) ergibt null und erhöht den Freibetrag nicht.
+- **Nicht mit gezählt** werden Zahlungen zwischen Konten mit gemeinsamen
+  Verantwortlichen und Entnahmen an die eigenen Verantwortlichen. Man kann den
+  Freibetrag also nicht mit dem eigenen Geld aufblasen.
 - Auf den Teil **zwischen Freibetrag und 3 × Freibetrag: 1 % pro Monat.**
 - Auf den Teil **über 3 × Freibetrag: 3 % pro Monat.**
 - Läuft **sekundengenau** (wie die heutige Demurrage) und wird bei jeder Bewegung
@@ -200,6 +205,58 @@ von Aequitas: **Regeln pro Mensch sind hier wirklich durchsetzbar.**
 Richtwert: Der Chiemgauer verlangt beim Rücktausch 5 %. 2 % liegen darunter und
 im Bereich üblicher Kartengebühren für kleine Händler.
 
+### 6.5 Wer ist ein Unternehmen? Wir müssen es nicht wissen.
+
+Ein dezentrales Netz kann nicht prüfen, ob hinter einem Konto eine echte Firma
+steht, und soll es auch nicht: Kein Handelsregister, kein Amt, keine zentrale
+Stelle entscheidet. Stattdessen gilt:
+
+> **Wir prüfen nicht, was jemand ist. Wir machen Horten in jeder Form teuer
+> und Weitergeben in jeder Form billig.**
+
+Dann ist die Anmeldung als Unternehmen **selbst-selektierend**: Für einen echten
+Laden, der Geld weitergibt, ist das Unternehmenskonto günstig. Für jemanden, der
+nur horten will, ist es die teuerste aller Möglichkeiten.
+
+**Beispiel: 100.000 AEQ horten, ohne echte Ausgaben**
+
+| Weg | Kosten |
+|---|---|
+| als Mensch | **unmöglich**, Grenze 25.000 AEQ |
+| auf 100 freien Adressen à 1.000 AEQ | 1 %/Monat = **1.000 AEQ/Monat** |
+| als „Unternehmen“ (Freibetrag 2.000) | 4.000 × 1 % + 94.000 × 3 % = **2.860 AEQ/Monat ≈ 34 % im Jahr** |
+
+**Die Umgehungswege, geprüft:**
+
+| Trick | Warum er nicht funktioniert |
+|---|---|
+| Als Unternehmen anmelden, um die 25.000-Grenze zu umgehen | Über dem Freibetrag 1–3 % pro Monat, das ist teurer als jede andere Form |
+| Geld zwischen zwei eigenen Firmen hin und her schicken, um den Freibetrag aufzublasen | Netto je Gegenüber = 0, Konten mit gemeinsamen Verantwortlichen zählen gar nicht |
+| Mit einem Freund im Kreis zahlen (A → B → A) | Netto je Gegenüber = 0 |
+| Viele Firmen gründen, um viele Sockel-Freibeträge zu bekommen | höchstens 3 Konten je Mensch, also höchstens 6.000 AEQ Sockel |
+| Sich selbst als „Angestellten“ bezahlen, um die Ausstiegsabgabe zu sparen | Zahlungen an Verantwortliche sind Entnahmen, kein Lohn (6.4) |
+| Private Einkäufe über die Firma machen, um den Aufschlag für große Guthaben zu sparen | Das Geld muss erst einmal in die Firma. Wer es aus seinem Menschenkonto dorthin schickt, zahlt den Aufschlag schon dabei |
+| Riesige Ausgaben an einen Komplizen, der das Geld behält | Das Geld liegt dann beim Komplizen und unterliegt dort seiner Grenze bzw. Haltegebühr. Horten wird nur verschoben, nicht billiger |
+
+Was bleibt: Zwei Komplizen mit echtem Wechselgeschäft können sich Freibetrag
+verschaffen, aber nur so viel, wie tatsächlich dauerhaft zwischen ihnen fließt,
+und jede Zahlung kostet 0,1 %. Das ist klein, sichtbar (öffentliche
+Umsatzsummen im Explorer) und wird in der Pilotphase gemessen.
+
+### 6.6 Warum es sich für echte Unternehmen lohnt
+
+| Vorteil | |
+|---|---|
+| **Keine Kartengebühren** | Zahlungen an den Laden sind für ihn gratis. Für Kunden sind die ersten 1.000 AEQ im Monat auch gratis |
+| **Kein Wachstumsdeckel** | Anders als Menschen haben Unternehmen keine 25.000-Grenze. Wer Geld weitergibt, zahlt praktisch keine Haltegebühr |
+| **Gebührenfreie Löhne** | Löhne in AEQ kosten nichts, Angestellte können sie ohne Abgabe tauschen |
+| **Günstige Lieferketten** | 0,1 % zwischen Unternehmen, ohne Aufschlag |
+| **Sofortige Zahlung** | Geld ist in Sekunden da, keine Rückbuchungen wie bei Karten oder Lastschrift |
+| **Neue Kundschaft** | Menschen mit Grundeinkommen suchen Orte, an denen sie es ausgeben können |
+| **Sichtbarkeit** | Eintrag im öffentlichen Unternehmensregister als „Aequitas-Partner“ |
+
+Ein Café wie im Beispiel in Abschnitt 8 zahlt im Normalbetrieb **null**.
+
 ## 7. Der Kreislauf
 
 ```mermaid
@@ -241,21 +298,21 @@ Euro. Sie zahlt:
 ### Für Unternehmen
 
 **Café** – Monatsumsatz 3.000 AEQ, Löhne 1.500, Lieferant 800, Entnahme 600.
-Kontostand bleibt um 2.000 AEQ, der Freibetrag liegt bei mindestens 5.000:
-**keine Haltegebühr.** Abgaben nur, wenn es in Euro tauscht.
+Freibetrag = 2.000 + 1.500 + 800 = 4.300 AEQ (die Entnahme zählt nicht mit).
+Der Kontostand bleibt um 2.000 AEQ, also **keine Haltegebühr.** Abgaben nur, wenn es in Euro tauscht.
 
-**Supermarkt, der hortet** – Ausgaben im Vormonat 40.000 AEQ, Freibetrag
-40.000. Kontostand 200.000 AEQ:
-- 40.000 bis 120.000 → 80.000 × 1 % = 800 AEQ/Monat
-- über 120.000 → 80.000 × 3 % = 2.400 AEQ/Monat
-- zusammen **3.200 AEQ/Monat ins Grundeinkommen**, bis das Geld wieder
+**Supermarkt, der hortet** – Netto-Ausgaben im Vormonat 40.000 AEQ, Freibetrag
+2.000 + 40.000 = 42.000. Kontostand 200.000 AEQ:
+- 42.000 bis 126.000 → 84.000 × 1 % = 840 AEQ/Monat
+- über 126.000 → 74.000 × 3 % = 2.220 AEQ/Monat
+- zusammen **3.060 AEQ/Monat ins Grundeinkommen**, bis das Geld wieder
   ausgegeben ist. Zahlt er stattdessen Löhne, sinkt die Gebühr, und das Geld
   landet direkt bei Menschen.
 
-**Jemand, der Vermögen verstecken will** – 100 freie Adressen à 1.000 AEQ:
-1 %/Monat auf alles, also 1.000 AEQ im Monat. Über ein Unternehmenskonto
-mit 5.000 Freibetrag: 95.000 AEQ weit über 3 × Freibetrag, also überwiegend
-3 %/Monat. **Verstecken lohnt sich in keiner Form.**
+**Jemand, der 100.000 AEQ horten will** – siehe Abschnitt 6.5: als Mensch
+unmöglich (Grenze 25.000), auf 100 freien Adressen 1.000 AEQ im Monat, als
+„Unternehmen“ ohne echte Ausgaben rund 2.860 AEQ im Monat. **Horten lohnt sich
+in keiner Form.**
 
 ## 9. Was Läden brauchen, damit sie mitmachen
 
@@ -329,7 +386,7 @@ Grober Aufwand: Kette 1–2 Wochen, App-Kassenmodus 1 Woche.
 
 | Frage | Vorschlag |
 |---|---|
-| Freibetrag Unternehmen | größer von 5.000 AEQ und den Vormonatsausgaben |
+| Freibetrag Unternehmen | 2.000 AEQ Sockel + Netto-Ausgaben des Vormonats (je Gegenüber, ohne eigene Konten) |
 | Haltegebühr | 1 %/Monat bis 3 × Freibetrag, 3 %/Monat darüber |
 | Ausstiegsabgabe | 2 % (Menschen: erste 1.000 AEQ/Monat zu 0,1 %) |
 | Obergrenze freie Adresse | 1.000 AEQ, 1 %/Monat ab dem ersten AEQ |
