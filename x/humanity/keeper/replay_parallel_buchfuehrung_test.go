@@ -25,7 +25,7 @@ import (
 
 type buchfuehrungsWelt struct {
 	menschen, firmen, frei []string
-	inhaber               map[string]string // firma -> verantwortlicher Mensch
+	inhaber                map[string]string // firma -> verantwortlicher Mensch
 }
 
 // baueBuchfuehrungsWelt legt dieselben Menschen, Unternehmen und freien
