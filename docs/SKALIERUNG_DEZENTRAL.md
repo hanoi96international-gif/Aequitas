@@ -84,6 +84,14 @@ Heute führt nur der serielle Pfad `nachUeberweisung` (Umsatz, Freibeträge) aus
 - Phase 1 lädt alle betroffenen Konten, Phase 2 rechnet rein im Speicher, Phase 3 schreibt **eine** gebündelte Anweisung je Block. Das Muster steht schon in `replay_parallel.go` und wird auf den ganzen Block ausgedehnt, nicht nur auf disjunkte Überweisungsfolgen.
 - Überweisungen mit Konflikt (gleiches Konto) laufen nach dem Block-STM-Prinzip: optimistisch parallel, bei Konflikt nur die betroffene Transaktion erneut.
 
+**Umgesetzt (26.09.2026), erster Teil: Sammelempfänger.** Viele Zahlungen an denselben Empfänger (ein Geschäft, ein Lohnempfänger) beenden den parallelen Lauf nicht mehr (`collectDisjointTransferBatch`). Regeln:
+- Absender sind im Lauf eindeutig.
+- Ein Empfänger darf im Lauf nie senden.
+- Gutschriften werden je Empfänger in ganzen Mikro-AEQ summiert. Das ist exakt und von der Reihenfolge unabhängig.
+- Wohlstandsgrenze und Buchführung laufen in Blockreihenfolge, mit dem laufenden Stand des Empfängers.
+
+Tests: `replay_parallel_sammelempfaenger_test.go`. Er prüft gegen den seriellen Pfad Kontostände, Demurrage-Uhren, StateRoot und Buchkonten. Die Grenze reißt dabei erst mit der dritten Gutschrift. Die Gegenprobe ohne laufenden Stand schlägt fehl. Kein neuer Schalter: Der Pfad bleibt eine reine Beschleunigung, und das Ergebnis ist bitgleich mit dem seriellen. Offen bleibt der Fall, dass ein Konto im selben Block empfängt und danach sendet. Dafür kommt Block-STM.
+
 ### 1.4 Platte
 
 - Liegt eine zweite Platte vor, kommt das WAL dorthin (`AEQUITAS_WAL_PATH`). Das ist der von `WAS_DU_NOCH_TUN_MUSST.md` benannte nächste echte Schritt.
