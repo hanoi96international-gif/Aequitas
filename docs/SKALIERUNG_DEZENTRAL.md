@@ -38,6 +38,30 @@ Zwei Dinge daraus sind entscheidend:
 
 ---
 
+## Stufe 1.0 — Jede Überweisung ist von jedem Validator nachprüfbar (Voraussetzung)
+
+**Befund (25.09.2026):** Überweisungen entstehen nur aus vom Absender signierten EVM-Transaktionen (`eth_sendRawTransaction`). Der annehmende Knoten prüft die Signatur, übernimmt aber nur `Wallet`, `To`, `Amount` und `TxHash` in den Block (`evm_rpc.go`, `pendingTxTemplate`). Beim Nachspielen prüfen die anderen Validatoren nur die **Signatur des Blocks** (`block.go`, AddPeerBlock), nicht die des Absenders. Die Nonce lebt nur im RPC-Server des annehmenden Knotens, nicht im gemeinsamen Zustand.
+
+**Folge:** Wer den annehmenden Knoten kontrolliert, kann Überweisungen von fremden Konten in Blöcke schreiben, ohne dass ein anderer Validator es erkennen kann. Das ist eine zentrale Instanz. Stufe 2 würde das auf jeden Validator ausweiten. Deshalb kommt Stufe 1.0 vor allem anderen.
+
+**Lösung:**
+- **Rohform im Block:** Jede Überweisung trägt die signierte Rohtransaktion (`Transaction.Roh`, Hex).
+- **Jeder Validator prüft beim Nachspielen**, und zwar parallel vorab für den ganzen Block (das ist zugleich Stufe 1.2):
+  - Absender aus der Signatur = `Wallet`
+  - Empfänger und Betrag passen zur Rohform
+  - Chain-ID 1926
+  - `keccak(Roh)` = `TxHash`
+- **Schutz gegen Wiederholung im gemeinsamen Zustand:** Jedes Konto führt `NaechsteNonce`. Eine Überweisung braucht `nonce ≥ NaechsteNonce`, danach gilt `NaechsteNonce = nonce + 1`. Wallets, die schon Nonces über 0 haben, funktionieren unverändert weiter. Der Wert geht nur in den StateRoot ein, wenn er nicht 0 ist. Vor der Aktivierung ist er überall 0, alte Blöcke ergeben also denselben StateRoot.
+- **Annahme nach denselben Regeln:** Der annehmende Knoten lehnt ab, was die anderen ablehnen würden. So erzeugt er nie einen Block, den sie verwerfen.
+- **Ungültige Signatur oder Nonce im Block** heißt: Der ganze Block wird abgelehnt, denn der Erzeuger hat sich falsch verhalten.
+- **Snapshot:** `NaechsteNonce` reist mit, sonst ließe sich nach einem Resync eine alte Überweisung erneut einreichen.
+
+**Aktivierung:** per Blockzeit (`SIGNIERTE_UEBERWEISUNGEN_AB`). Erst wenn alle Knoten die neue Version haben, denn ältere Knoten würden Blöcke mit `Roh` am Blockhash ablehnen.
+
+**Danach dieselbe Regel für alle anderen geldbewegenden Transaktionen** (Tausch, Liquidität, Wächter und Treuhand): Jede trägt den Nachweis ihres Auftraggebers im Block.
+
+---
+
 ## Stufe 1 — Jeder Knoten effizienter
 
 Ziel: Ein günstiger Server schafft ein Vielfaches von heute. Das Vertrauensmodell ändert sich nicht, jeder Validator rechnet weiterhin alles nach.

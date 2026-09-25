@@ -65,6 +65,12 @@ type Transaction struct {
 	// kurz vor Mitternacht auf zwei Knoten in verschiedenen Tagen, Monaten
 	// oder Quartalen. Vorher 0 und nicht serialisiert.
 	BuchAt int64 `json:"buch_at,omitempty"`
+	// Roh: die vom Absender signierte EVM-Rohtransaktion (Hex), aus der diese
+	// Ueberweisung entstand. Damit kann JEDER Validator selbst pruefen, dass
+	// der Kontoinhaber sie unterschrieben hat -- nicht nur der annehmende
+	// Knoten (signierte_ueberweisung.go, Stufe 1.0). omitempty: aeltere
+	// Bloecke und andere Transaktionsarten behalten ihren Hash.
+	Roh string `json:"roh,omitempty"`
 	// DistributionAt carries the exact Unix timestamp the primary chose for
 	// a distribution round (e.g. the new last_ubi_at) on
 	// "ubi_distribution_finalize" TXs. Audit recheck 2 (P0 #4) found the
@@ -6904,6 +6910,31 @@ func (dag *BlockDAG) replayTransactions(block *Block, force bool) (ok bool) {
 	// must first give each worker its OWN database connection (or move the DB
 	// write out of the parallel phase entirely) — a local mutex around a
 	// shared *sql.Tx is provably not sufficient.
+
+	// STUFE 1.0 (signierte_ueberweisung.go): ab der Aktivierung prueft JEDER
+	// Validator jede Ueberweisung selbst gegen ihre signierte Rohform -- vorab,
+	// parallel, fuer den ganzen Block (Stufe 1.2) -- und die Nonces gegen den
+	// gemeinsamen Zustand. Ein Verstoss macht den GANZEN Block ungueltig: eine
+	// gefaelschte Ueberweisung ist kein Zustandsunterschied, den man
+	// ueberspringen koennte, sondern ein Erzeuger, der sich falsch verhaelt.
+	// Die neuen NaechsteNonce-Werte gehen ueber kontenSammlung in dieselbe
+	// Transaktion wie der Rest des Blocks und mit ihm zurueck.
+	if signierteUeberweisungenPflicht(block.Timestamp) {
+		sigCtx := withTx(context.Background(), dbTx)
+		liste, sigErr := pruefeUeberweisungenImBlock(block.Transactions)
+		var neueNoncen map[string]int64
+		if sigErr == nil {
+			neueNoncen, sigErr = dag.state.naechsteNoncenFuerBlockLocked(sigCtx, liste)
+		}
+		if sigErr == nil {
+			sigErr = dag.state.setzeNaechsteNoncenLocked(sigCtx, neueNoncen, kontenSammlung)
+		}
+		if sigErr != nil {
+			fmt.Printf("[REPLAY] ✗ Block #%d von %s: %v — Block abgelehnt\n", block.Height, block.Proposer, sigErr)
+			merkeUngueltigeSignaturBlock()
+			hardFailure = true
+		}
+	}
 
 	for txIdx := 0; txIdx < len(block.Transactions); txIdx++ {
 		tx := block.Transactions[txIdx]

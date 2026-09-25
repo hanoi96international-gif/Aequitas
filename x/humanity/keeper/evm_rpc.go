@@ -1187,6 +1187,17 @@ func (s *EVMRPCServer) sendRawTransaction(params []json.RawMessage, pre *precomp
 	if err := pruefeAbsenderKeinTopf(senderAddr); err != nil {
 		return nil, &RPCError{Code: -32003, Message: err.Error()}
 	}
+	// Stufe 1.0 (signierte_ueberweisung.go): ab dem Vorlauf der Aktivierung
+	// traegt jede Ueberweisung ihre signierte Rohform in den Block, und ihre
+	// Nonce muss gegen den GEMEINSAMEN Zustand gueltig sein -- sonst wuerde
+	// jeder andere Validator den naechsten Block dieses Knotens verwerfen.
+	// Vor der Reservierung, damit eine abgelehnte Nonce nichts verbraucht.
+	mitRoh := s.state != nil && signierteUeberweisungenAufnehmen(nowUnix())
+	if mitRoh {
+		if err := s.state.pruefeAnnahmeNonce(senderAddr, tx.Nonce()); err != nil {
+			return nil, &RPCError{Code: -32000, Message: err.Error()}
+		}
+	}
 	// common.Address form, needed below for DeployContract/CallContract —
 	// round-tripping through the lowercased hex is exact (common.HexToAddress
 	// is case-insensitive), same value types.Sender originally returned.
@@ -1310,6 +1321,9 @@ func (s *EVMRPCServer) sendRawTransaction(params []json.RawMessage, pre *precomp
 		// write could fail independently after the transfer had already
 		// committed, permanently hiding it from every other node.
 		pendingTxTemplate := Transaction{Type: "transfer", Wallet: senderAddr, To: toAddr, Amount: valueFloat, TxHash: txHash}
+		if mitRoh {
+			pendingTxTemplate.Roh = rawHex
+		}
 		_, _, err := s.state.TransferAtomic(senderAddr, toAddr, valueFloat, pendingTxTemplate)
 		if err != nil {
 			// Transfer failed — mark receipt as failed so MetaMask shows correct status.
@@ -1371,6 +1385,9 @@ func (s *EVMRPCServer) sendRawTransaction(params []json.RawMessage, pre *precomp
 		// mutation and the pending_tx outbox insert as a single DB
 		// transaction — see TransferAtomic's comment.
 		pendingTxV7Template := Transaction{Type: "transfer", Wallet: senderAddr, To: toAddr, TxHash: txHash}
+		if mitRoh {
+			pendingTxV7Template.Roh = rawHex
+		}
 		_, _, _, err := s.state.TransferWithV7FeeAtomic(senderAddr, toAddr, amountFloat, pendingTxV7Template)
 		if err != nil {
 			// Mark as failed

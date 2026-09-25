@@ -112,6 +112,13 @@ func (cs *ChainState) processTransferBatchConcurrent(batch []*transferBatchReque
 	if wirtschaftAktiv(nowUnix()) {
 		return false
 	}
+	// Signierte Ueberweisungen (Stufe 1.0) setzen NaechsteNonce nur im
+	// seriellen Stapelpfad -- dieser hier kennt das nicht.
+	for _, req := range batch {
+		if req.pendingTxTemplate.Roh != "" {
+			return false
+		}
+	}
 	defer func() {
 		if r := recover(); r != nil {
 			fmt.Printf("[PANIC RECOVERED] processTransferBatchConcurrent: %v\n%s\n", r, debug.Stack())
