@@ -439,3 +439,17 @@ func TestSwapMitAusstiegsAbgabeUndNachspielen(t *testing.T) {
 		t.Fatal("eine Abgabe beim Einstieg darf es nicht geben")
 	}
 }
+
+// Eine Unternehmensadresse, die sich spaeter als Mensch registriert, bleibt
+// ein Mensch mit Grenze -- sonst waere das ein Mensch ohne Obergrenze.
+func TestUnternehmenDasMenschWirdBehaeltGrenze(t *testing.T) {
+	cs, ctx, _ := wirtschaftsTest(t)
+	eroeffne(t, cs, ctx, wFirmaA, wMensch1)
+	addHuman(cs, wFirmaA, 1000)
+	geben(cs, wFirmaB, 20_000)
+	eroeffne(t, cs, ctx, wFirmaB, wMensch2)
+	ueberweise(t, cs, ctx, wFirmaB, wFirmaA, 15_000)
+	if s := stand(cs, wFirmaA); s > 5000+1e-6 {
+		t.Fatalf("als Mensch gilt die Grenze: %v", s)
+	}
+}

@@ -4176,7 +4176,10 @@ func (cs *ChainState) enforceWealthCapLockedCtx(ctx context.Context, acc *Accoun
 	// Unternehmen haben keine feste Obergrenze, sie zahlen Liegegeld
 	// (wirtschaft.go). Konsens: das Register entsteht auf jedem Knoten aus
 	// denselben Transaktionen, vor der Aktivierung ist es leer.
-	if cs.wirt().istUnternehmen(acc.Address) {
+	// Nur fuer Konten, die kein Mensch sind: eine Adresse, die erst als
+	// Unternehmen eroeffnet und dann als Mensch registriert wird, bleibt ein
+	// Mensch mit Grenze.
+	if !acc.IsHuman && cs.wirt().istUnternehmen(acc.Address) {
 		return nil
 	}
 	// Deliberately NOT gated on acc.IsHuman: capping only registered
