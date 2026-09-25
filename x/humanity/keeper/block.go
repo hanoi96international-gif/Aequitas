@@ -58,6 +58,13 @@ type Transaction struct {
 	// belastete den Absender dann nur mit Amount und schrieb dem
 	// Grundeinkommen nichts gut (applyTransferDeltaLockedSammelnd).
 	Gebuehr float64 `json:"gebuehr,omitempty"`
+	// BuchAt: ab der Aktivierung der Unternehmensregeln der Augenblick, zu
+	// dem der Erzeuger die Ueberweisung oder den Tausch in seiner
+	// Buchfuehrung verbucht hat (wirtschaft.go). Wer nachspielt, bucht zum
+	// selben Augenblick statt zur Blockzeit -- sonst landete eine Buchung
+	// kurz vor Mitternacht auf zwei Knoten in verschiedenen Tagen, Monaten
+	// oder Quartalen. Vorher 0 und nicht serialisiert.
+	BuchAt int64 `json:"buch_at,omitempty"`
 	// DistributionAt carries the exact Unix timestamp the primary chose for
 	// a distribution round (e.g. the new last_ubi_at) on
 	// "ubi_distribution_finalize" TXs. Audit recheck 2 (P0 #4) found the
@@ -6912,7 +6919,14 @@ func (dag *BlockDAG) replayTransactions(block *Block, force bool) (ok bool) {
 		// pairwise-disjoint transfers — a set the determinism tests already
 		// prove is order-independent. Anything else ends the run and falls
 		// through to the serial switch below, unchanged.
-		if tx.Type == "transfer" && skipDistributionRound == 0 {
+		//
+		// Ab der Aktivierung der Unternehmensregeln nicht mehr: der parallele
+		// Pfad fuehrt keine Buchfuehrung (wirtschaft.go, nachUeberweisung),
+		// und gebuehrenfreie Ueberweisungen (die ersten 1.000 AEQ eines
+		// Menschen, Unternehmen -> Mensch) kaemen sonst hierher. Umsatz und
+		// Freibetraege dieses Knotens waeren falsch, die Liegegeld-Pruefung
+		// wuerde abweichen. Wie bei der Annahme: die Regeln an einer Stelle.
+		if tx.Type == "transfer" && skipDistributionRound == 0 && !wirtschaftAktiv(block.Timestamp) {
 			if batch, _ := collectDisjointTransferBatch(block.Transactions, txIdx); len(batch) >= parallelReplayMinBatch {
 				// withTx statt des leeren ctx: JEDE Kontoaenderung dieses
 				// Replays gehoert in dbTx, sonst ueberlebt sie einen Ruecklauf.
@@ -7133,7 +7147,7 @@ func (dag *BlockDAG) replayTransactions(block *Block, force bool) (ok bool) {
 			// comment: dag.state.activeTx was already set directly above
 			// this loop, and dbExecCtx falls back to it.
 			phMarkSer := time.Now()
-			errSeriell := dag.state.applyTransferDeltaLockedSammelnd(withTx(context.Background(), dbTx), wallet, to, tx.Amount, tx.FromDemurrageLost, tx.ToDemurrageLost, block.Timestamp, kontenSammlung, tx.Gebuehr)
+			errSeriell := dag.state.applyTransferDeltaLockedSammelnd(mitBuchZeit(withTx(context.Background(), dbTx), buchZeitBeimNachspielen(tx.BuchAt, block.Timestamp)), wallet, to, tx.Amount, tx.FromDemurrageLost, tx.ToDemurrageLost, block.Timestamp, kontenSammlung, tx.Gebuehr)
 			merkeReplaySeriellZeit(phMarkSer)
 			phBlock.seriell += time.Since(phMarkSer)
 			if err := errSeriell; err != nil {
@@ -7169,7 +7183,7 @@ func (dag *BlockDAG) replayTransactions(block *Block, force bool) (ok bool) {
 			// context.Background() is correct — see registerHumanLocked's
 			// comment: dag.state.activeTx was already set directly above
 			// this loop, and dbExecCtx falls back to it.
-			if err := dag.state.applySwapDeltaLockedMitAbgabe(context.Background(), wallet, tx.Amount, tx.AmountOut, true, tx.FromDemurrageLost, block.Timestamp, tx.Gebuehr); err != nil {
+			if err := dag.state.applySwapDeltaLockedMitAbgabe(mitBuchZeit(context.Background(), buchZeitBeimNachspielen(tx.BuchAt, block.Timestamp)), wallet, tx.Amount, tx.AmountOut, true, tx.FromDemurrageLost, block.Timestamp, tx.Gebuehr); err != nil {
 				fmt.Printf("[REPLAY] ✗ swap_aeq_tusd %s: %v (block #%d) — rolling back whole block\n", wallet, err, block.Height)
 				hardFailure = true
 				continue

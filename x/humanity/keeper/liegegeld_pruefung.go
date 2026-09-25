@@ -22,13 +22,13 @@ import (
 //     unter /api/wirtschaft/regeln veroeffentlicht; der Block gilt trotzdem.
 //   - "streng": eine Abweichung lehnt den Block ab.
 //
-// Warum nicht sofort streng: die Buchfuehrung des Erzeugers entsteht bei der
-// Annahme (Annahmezeit), die des Nachspielenden aus dem Block (Blockzeit).
-// Faellt eine Ueberweisung kurz vor Mitternacht an, kann sie auf beiden
-// Knoten in verschiedenen Tagen liegen -- am Rand des 90-Tage-Fensters oder
-// an einer Quartalsgrenze gibt das eine winzige Abweichung. Erst wenn die
-// Beobachtung ueber Wochen null Abweichungen zeigt, wird umgeschaltet --
-// spaetestens bevor ein zweiter unabhaengiger Validator Bloecke erzeugt.
+// Warum nicht sofort streng: der Erzeuger schreibt seinen Buchungsaugenblick
+// in die Transaktion (Transaction.BuchAt), der Nachspielende bucht zum selben
+// Augenblick -- beide sollten also dieselben Zahlen haben. Ob sie es im
+// Betrieb wirklich haben (Neustarts, Snapshots, ein uebersehener Pfad), zeigt
+// erst die Beobachtung. Zeigt sie ueber Wochen null Abweichungen, wird
+// umgeschaltet -- spaetestens bevor ein zweiter unabhaengiger Validator
+// Bloecke erzeugt.
 //
 // Geprueft wird nur, was dieser Knoten selbst voll kennt: Unternehmen, und
 // nur wenn seine Buchfuehrung das ganze Fenster abdeckt (seit der Aktivierung

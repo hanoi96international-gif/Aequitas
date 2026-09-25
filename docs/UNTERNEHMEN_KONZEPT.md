@@ -579,8 +579,13 @@ Alter braucht es drei Schutzregeln:
    3.000 AEQ nur ein Drittel, und wer selten, aber teuer verkauft, zahlte
    Liegegeld auf Geld, das ganz normal umläuft. Wer den Umsatz aufblähen will,
    braucht weiter echte Menschen, die mitmachen: für 150.000 AEQ geschützten
-   Hortbestand rund 34 Menschen, die jedes Quartal je 9.000 AEQ einzahlen, und
-   das Zurückgeben an sie erscheint öffentlich als Lohn.
+   Hortbestand rund 34 Menschen, die jedes Quartal je 9.000 AEQ einzahlen.
+   **Was das Unternehmen demselben Menschen zurückzahlt, hebt dessen gezählte
+   Einkäufe wieder auf** (auch über einen Quartalswechsel). Einkaufen und das
+   Geld als „Lohn“ zurückbekommen bringt also nichts; das Geld müsste über
+   andere Menschen zurückfließen, öffentlich sichtbar. Rückerstattungen für
+   zurückgegebene Ware fallen genauso heraus. Kauft eine Angestellte bei ihrem
+   Arbeitgeber ein, zählt ihr Einkauf dort nicht – das kostet wenig.
 2. **Zahlungen zwischen Unternehmen zählen nur als Überschuss:** alle Eingänge
    von Unternehmen minus alle Zahlungen an Unternehmen im selben Zeitraum,
    mindestens null. Unternehmen mit gemeinsamen Verantwortlichen zählen
@@ -690,9 +695,12 @@ Demurrage 15.000 × 0,5 % = 75, Umtausch (5.000 − 3.000) × 2 % = 40.
   (`liegegeld_pruefung`). Mit `AEQUITAS_LIEGEGELD_PRUEFUNG=streng` lehnt der
   Knoten abweichende Blöcke ab. Umgeschaltet wird, wenn die Beobachtung über
   Wochen null Abweichungen zeigt, spätestens bevor ein zweiter unabhängiger
-  Validator Blöcke erzeugt. (Kleine Abweichungen sind möglich, weil der
-  Erzeuger eine Überweisung zur Annahmezeit bucht und der Nachspielende zur
-  Blockzeit; kurz vor Mitternacht kann das einen anderen Tag ergeben.)
+  Validator Blöcke erzeugt. Damit beide dieselben Zahlen haben, schreibt der
+  Erzeuger seinen Buchungsaugenblick in die Transaktion (`buch_at`), und der
+  Nachspielende bucht zum selben Augenblick statt zur Blockzeit.
+- **Nachspielen nach dem Start immer seriell.** Der parallele Nachspiel-Pfad
+  führt keine Buchführung; ab dem 1. Oktober läuft jede Überweisung über den
+  seriellen Pfad, wie bei der Annahme.
 - **Website und App:** die Sätze aus 14.2 und 14.5 als Hauptregeln, alles
   andere im Kleingedruckten.
 

@@ -39,6 +39,9 @@ package keeper
 //     Unternehmen minus alle Zahlungen an Unternehmen. Ein Dreieck, in dem
 //     drei Firmen sich Geld im Kreis schicken, gewinnt so nichts. Firmen mit
 //     gemeinsamen Verantwortlichen zaehlen fuereinander gar nicht.
+//   - Zahlt ein Unternehmen einem Menschen Geld, hebt das dessen gezaehlte
+//     Einkaeufe dort auf (rueckzahlungLocked): einkaufen und das Geld
+//     zurueckbekommen bringt nichts.
 //   - Loehne, Entnahmen, Zahlungen der eigenen Verantwortlichen, Eingaenge
 //     von freien Adressen und der Einstieg aus tUSD zaehlen nicht.
 //
@@ -202,6 +205,9 @@ type buchKonto struct {
 	// je Unternehmen schon als Umsatz gezaehlt in diesem Monat
 	Gezaehlt  map[string]float64 `json:"gz,omitempty"`
 	GzQuartal int                `json:"gq,omitempty"` // JJJJQ, Zeitraum von Gezaehlt
+	// Gezaehlt des Vorquartals: eine Rueckzahlung kurz nach dem Wechsel
+	// hebt den Einkauf von kurz davor noch auf (siehe rueckzahlungLocked).
+	GezaehltVorher map[string]float64 `json:"gzv,omitempty"`
 	// Unternehmen: Umsatz der letzten 90 Tage, je Tag
 	Tage []tagesUmsatz `json:"td,omitempty"`
 	// Unternehmen (oeffentliche Monatssummen)
@@ -405,7 +411,52 @@ func (w *wirtschaft) monatsUmsatzLocked(k *buchKonto, tage, jetzt int64) float64
 			aus += t.BAus
 		}
 	}
-	return (mensch + math.Max(0, ein-aus)) * 30 / float64(tage)
+	// mensch kann durch Rueckzahlungen (rueckzahlungLocked) unter null
+	// fallen, wenn der Einkauf schon aus dem Fenster ist.
+	return (math.Max(0, mensch) + math.Max(0, ein-aus)) * 30 / float64(tage)
+}
+
+// quartalLocked: Gezaehlt auf das laufende Quartal bringen; das eben
+// abgelaufene bleibt als GezaehltVorher. w.mu gehalten.
+func (k *buchKonto) quartalLocked(jetzt int64) {
+	q := quartalVon(jetzt)
+	if k.GzQuartal == q {
+		return
+	}
+	k.GezaehltVorher = nil
+	if naechstesQuartal(k.GzQuartal) == q {
+		k.GezaehltVorher = k.Gezaehlt
+	}
+	k.GzQuartal, k.Gezaehlt = q, nil
+}
+
+func naechstesQuartal(q int) int {
+	if q%10 == 4 {
+		return (q/10+1)*10 + 1
+	}
+	return q + 1
+}
+
+// rueckzahlungLocked: zahlt ein Unternehmen einem Menschen Geld, hebt das
+// auf, was dessen Einkaeufe dort als Umsatz gezaehlt haben (dieses und
+// voriges Quartal). Geld, das an denselben Menschen zurueckgeht, war kein
+// Umsatz: sonst kaufen Freunde ein, bekommen das Geld als "Lohn" zurueck,
+// und der Freibetrag waechst ohne einen echten Verkauf. Rueckerstattungen
+// fuer zurueckgegebene Ware fallen genauso heraus -- richtig so. Kauft eine
+// Angestellte bei ihrem Arbeitgeber ein, zaehlt ihr Einkauf dort nicht;
+// das kostet das Unternehmen wenig. w.mu gehalten.
+func rueckzahlungLocked(fk, mensch *buchKonto, firma string, amount float64, jetzt int64) {
+	mensch.quartalLocked(jetzt)
+	rest := amount
+	for _, m := range []map[string]float64{mensch.Gezaehlt, mensch.GezaehltVorher} {
+		if rest <= 0 || m == nil || m[firma] <= 0 {
+			continue
+		}
+		n := math.Min(rest, m[firma])
+		m[firma] -= n
+		rest -= n
+		fk.tagLocked(jetzt).Mensch -= n
+	}
 }
 
 // liegegeldFuerStand: Liegegeld pro Monat bei diesem Guthaben und Monatsumsatz.
@@ -482,9 +533,7 @@ func (cs *ChainState) nachUeberweisung(ctx context.Context, from, to string, fro
 	case fromArt == artMensch:
 		fk.Ausgegeben += amount
 		if toArt == artUnternehmen && !toU.istVerantwortlich(from) {
-			if q := quartalVon(jetzt); fk.GzQuartal != q {
-				fk.GzQuartal, fk.Gezaehlt = q, nil
-			}
+			fk.quartalLocked(jetzt)
 			bisher := 0.0
 			if fk.Gezaehlt != nil {
 				bisher = fk.Gezaehlt[to]
@@ -503,6 +552,7 @@ func (cs *ChainState) nachUeberweisung(ctx context.Context, from, to string, fro
 		} else {
 			fk.LohnGezahlt += amount
 			tk.Lohn += amount
+			rueckzahlungLocked(fk, tk, from, amount, jetzt)
 		}
 	case fromArt == artUnternehmen && toArt == artUnternehmen:
 		if !gemeinsameVerantwortliche(fromU, toU) {
@@ -980,6 +1030,40 @@ func (cs *ChainState) speichereBuchCtx(ctx context.Context, adressen ...string) 
 	return nil
 }
 
+type buchZeitKey struct{}
+
+// mitBuchZeit: unter ctx bucht die Buchfuehrung zu at (Transaction.BuchAt).
+func mitBuchZeit(ctx context.Context, at int64) context.Context {
+	return context.WithValue(ctx, buchZeitKey{}, at)
+}
+
+// buchZeit: der Buchungsaugenblick aus ctx, sonst sonst.
+func buchZeit(ctx context.Context, sonst int64) int64 {
+	if at, ok := ctx.Value(buchZeitKey{}).(int64); ok && at > 0 {
+		return at
+	}
+	return sonst
+}
+
+// buchStempel: was in Transaction.BuchAt kommt -- vor der Aktivierung
+// nichts, damit sich alte Transaktionen nicht aendern.
+func buchStempel(at int64) int64 {
+	if wirtschaftAktiv(at) {
+		return at
+	}
+	return 0
+}
+
+// buchZeitBeimNachspielen: BuchAt des Erzeugers, wenn plausibel -- nicht
+// nach dem Block (eine Minute Uhrenspiel) und nicht mehr als eine Woche
+// davor. Sonst die Blockzeit wie bisher.
+func buchZeitBeimNachspielen(buchAt, blockZeit int64) int64 {
+	if buchAt > 0 && wirtschaftAktiv(buchAt) && buchAt <= blockZeit+60 && buchAt >= blockZeit-7*86400 {
+		return buchAt
+	}
+	return blockZeit
+}
+
 type buchSammlerKey struct{}
 
 type buchSammler struct{ adressen map[string]bool }
@@ -1020,6 +1104,12 @@ func (k *buchKonto) kopie() *buchKonto {
 		cp.Gezaehlt = make(map[string]float64, len(k.Gezaehlt))
 		for a, v := range k.Gezaehlt {
 			cp.Gezaehlt[a] = v
+		}
+	}
+	if k.GezaehltVorher != nil {
+		cp.GezaehltVorher = make(map[string]float64, len(k.GezaehltVorher))
+		for a, v := range k.GezaehltVorher {
+			cp.GezaehltVorher[a] = v
 		}
 	}
 	cp.Tage = append([]tagesUmsatz(nil), k.Tage...)

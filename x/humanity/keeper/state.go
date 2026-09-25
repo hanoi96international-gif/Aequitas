@@ -5052,12 +5052,14 @@ func (cs *ChainState) transferAtomicDirect(from, to string, amount float64, pend
 		// there is no real DB"), which always calls fn(context.Background()),
 		// so ctx carries no transaction to lose regardless.
 		var gebuehr float64
-		fromLost, toLost, gebuehr, err = cs.transferLockedMitGebuehr(ctx, from, to, amount)
+		at := nowUnix()
+		fromLost, toLost, gebuehr, err = cs.transferLockedMitGebuehr(mitBuchZeit(ctx, at), from, to, amount)
 		if err != nil {
 			return Transaction{}, err
 		}
 		pendingTxTemplate.Amount = amount
 		pendingTxTemplate.Gebuehr = gebuehr
+		pendingTxTemplate.BuchAt = buchStempel(at)
 		pendingTxTemplate.FromDemurrageLost = fromLost
 		pendingTxTemplate.ToDemurrageLost = toLost
 		return pendingTxTemplate, nil
@@ -5356,7 +5358,8 @@ func (cs *ChainState) processTransferBatch(batch []*transferBatchRequest) {
 		// Buchfuehrung (wirtschaft.go) wie die Konten: einmal je Stapel.
 		mitgliedCtx, buch := mitBuchSammler(ctx)
 		for i, req := range batch {
-			fromLost, toLost, fromAcc, toAcc, gebuehr, mErr := cs.transferMutateLocked(mitgliedCtx, req.from, req.to, req.amount)
+			at := nowUnix()
+			fromLost, toLost, fromAcc, toAcc, gebuehr, mErr := cs.transferMutateLocked(mitBuchZeit(mitgliedCtx, at), req.from, req.to, req.amount)
 			if mErr != nil {
 				return Transaction{}, fmt.Errorf("batch member %d/%d (%s -> %s) failed: %w", i+1, len(batch), req.from, req.to, mErr)
 			}
@@ -5366,6 +5369,7 @@ func (cs *ChainState) processTransferBatch(batch []*transferBatchRequest) {
 			pendingTx := req.pendingTxTemplate
 			pendingTx.Amount = req.amount
 			pendingTx.Gebuehr = gebuehr
+			pendingTx.BuchAt = buchStempel(at)
 			pendingTx.FromDemurrageLost = fromLost.Float()
 			pendingTx.ToDemurrageLost = toLost.Float()
 			results[i] = transferBatchResult{fromLost: fromLost.Float(), toLost: toLost.Float()}
@@ -5512,7 +5516,7 @@ func (cs *ChainState) transferMutateLocked(ctx context.Context, from, to string,
 	}
 	// Gebuehr nach Richtung und Monatsfreibetrag (wirtschaft.go); vor der
 	// Aktivierung genau ueberweisungsGebuehrFuer.
-	jetztUnix := nowUnix()
+	jetztUnix := buchZeit(ctx, nowUnix())
 	vorherTo, toDa := cs.accounts.Get(to)
 	fromArt := cs.kontoartVon(from, fromAcc.IsHuman)
 	toArt := cs.kontoartVon(to, toDa && vorherTo.IsHuman)
@@ -5619,7 +5623,8 @@ func (cs *ChainState) TransferWithV7FeeAtomic(from, to string, amount float64, p
 	to = strings.ToLower(to)
 	err = cs.runAtomicWithOutbox([]string{from, to, validatorsPoolAddr, lpPoolAddr, ubiPoolAddr, treasuryPoolAddr}, false, func(ctx context.Context) (Transaction, error) {
 		var gebuehr float64
-		netAmount, fromLost, toLost, gebuehr, err = cs.transferWithV7GebuehrLocked(ctx, from, to, amount)
+		at := nowUnix()
+		netAmount, fromLost, toLost, gebuehr, err = cs.transferWithV7GebuehrLocked(mitBuchZeit(ctx, at), from, to, amount)
 		if err != nil {
 			return Transaction{}, err
 		}
@@ -5628,6 +5633,7 @@ func (cs *ChainState) TransferWithV7FeeAtomic(from, to string, amount float64, p
 		// mit dem Block) -- ohne dieses Feld belastete ein nachspielender
 		// Knoten nur netAmount (Transaction.Gebuehr).
 		pendingTxTemplate.Gebuehr = gebuehr
+		pendingTxTemplate.BuchAt = buchStempel(at)
 		pendingTxTemplate.FromDemurrageLost = fromLost
 		pendingTxTemplate.ToDemurrageLost = toLost
 		return pendingTxTemplate, nil
@@ -5741,11 +5747,15 @@ func (cs *ChainState) SwapAtomic(address string, amountIn float64, aeqToTusd boo
 	address = strings.ToLower(address)
 	err = cs.runAtomicWithOutbox([]string{address, validatorsPoolAddr, lpPoolAddr, ubiPoolAddr, treasuryPoolAddr}, false, func(ctx context.Context) (Transaction, error) {
 		var abgabe float64
-		amountOut, demurrageLost, abgabe, err = cs.swapLockedMitAbgabe(ctx, address, amountIn, aeqToTusd, minAmountOut)
+		at := nowUnix()
+		amountOut, demurrageLost, abgabe, err = cs.swapLockedMitAbgabe(mitBuchZeit(ctx, at), address, amountIn, aeqToTusd, minAmountOut)
 		if err != nil {
 			return Transaction{}, err
 		}
 		pendingTxTemplate.Gebuehr = abgabe
+		if aeqToTusd {
+			pendingTxTemplate.BuchAt = buchStempel(at)
+		}
 		pendingTxTemplate.AmountOut = amountOut
 		pendingTxTemplate.FromDemurrageLost = demurrageLost
 		return pendingTxTemplate, nil
@@ -5795,7 +5805,7 @@ func (cs *ChainState) swapLockedMitAbgabe(ctx context.Context, address string, a
 		return 0, 0, 0, fmt.Errorf("could not settle demurrage: %w", err)
 	}
 
-	jetztUnix := nowUnix()
+	jetztUnix := buchZeit(ctx, nowUnix())
 	art := cs.kontoartVon(address, acc.IsHuman)
 	var abgabe float64
 	if aeqToTusd {
@@ -8136,7 +8146,7 @@ func (cs *ChainState) applyTransferDeltaLockedSammelnd(ctx context.Context, from
 	// Erzeugung uebernimmt, dieselben Freibetraege und dasselbe Alter kennt.
 	// Kein Konsens: die Betraege stehen in der Transaktion.
 	if err := cs.nachUeberweisung(ctx, from, to, cs.kontoartVon(from, fromAcc.IsHuman), cs.kontoartVon(to, toAcc.IsHuman),
-		netAmount, gebuehr, fromAcc.Balance.Float(), toAcc.Balance.Float(), activityAt); err != nil {
+		netAmount, gebuehr, fromAcc.Balance.Float(), toAcc.Balance.Float(), buchZeit(ctx, activityAt)); err != nil {
 		return fmt.Errorf("transfer: %w", err)
 	}
 	if sammler != nil {
@@ -8219,7 +8229,7 @@ func (cs *ChainState) applySwapDeltaLockedMitAbgabe(ctx context.Context, wallet 
 		// Wie der Erzeuger (swapLocked): jeder Tausch AEQ -> Stable zaehlt,
 		// auch innerhalb des Freibetrags -- sonst kennt dieser Knoten den
 		// Freibetrag falsch, sobald er Bloecke erzeugt.
-		if err := cs.nachTausch(ctx, wallet, amountIn, activityAt); err != nil {
+		if err := cs.nachTausch(ctx, wallet, amountIn, buchZeit(ctx, activityAt)); err != nil {
 			return fmt.Errorf("swap: %w", err)
 		}
 	} else {

@@ -185,3 +185,88 @@ func TestLiegegeldPruefungNurMitVollemFenster(t *testing.T) {
 		t.Fatal("das Unternehmen muss uebersprungen werden")
 	}
 }
+
+// Freunde kaufen ein und bekommen das Geld zurueck: das hebt sich auf. Auch
+// ueber einen Quartalswechsel hinweg.
+func TestRueckzahlungHebtEinkaufAuf(t *testing.T) {
+	cs, ctx, vor := wirtschaftsTest(t) // 15.01.2027
+	eroeffne(t, cs, ctx, wFirmaA, wMensch1)
+	acct(cs, wMensch2).Balance = NewDecimal(10_000)
+	ueberweise(t, cs, ctx, wMensch2, wFirmaA, 5_000)
+	ueberweise(t, cs, ctx, wFirmaA, wMensch2, 4_000)
+	if u := umsatzVon(cs, wFirmaA); !fast(u, 1_000) {
+		t.Fatalf("5.000 gekauft, 4.000 zurueck: 1.000 zaehlen, bekommen %v", u)
+	}
+	// Ende Maerz kaufen, Anfang April zurueck.
+	vor(73 * tag) // 29.03.
+	ueberweise(t, cs, ctx, wMensch2, wFirmaA, 3_000)
+	vor(4 * tag) // 02.04., neues Quartal
+	ueberweise(t, cs, ctx, wFirmaA, wMensch2, 3_000)
+	if u := umsatzVon(cs, wFirmaA); !fast(u, 1_000*30.0/78) {
+		t.Fatalf("die Rueckzahlung im neuen Quartal hebt den Einkauf auf: bekommen %v", u)
+	}
+	// Ein Mensch, der nie gekauft hat, bekommt Lohn: nichts wird abgezogen.
+	ueberweise(t, cs, ctx, wFirmaA, wMensch3, 500)
+	if u := umsatzVon(cs, wFirmaA); !fast(u, 1_000*30.0/78) {
+		t.Fatalf("Lohn an Nicht-Kunden aendert den Umsatz nicht: %v", u)
+	}
+}
+
+// Der Erzeuger schreibt den Buchungsaugenblick in die Transaktion; wer
+// nachspielt, nimmt ihn, wenn er plausibel ist.
+func TestBuchZeitBeimNachspielen(t *testing.T) {
+	wirtschaftAn(t)
+	block := int64(1_800_000_000)
+	for _, f := range []struct {
+		buchAt, erwartet int64
+	}{
+		{0, block},
+		{block - 5, block - 5},
+		{block + 30, block + 30},
+		{block + 120, block},
+		{block - 8*86400, block},
+	} {
+		if g := buchZeitBeimNachspielen(f.buchAt, block); g != f.erwartet {
+			t.Errorf("BuchAt %d: %d, erwartet %d", f.buchAt, g, f.erwartet)
+		}
+	}
+	cs, _, _ := wirtschaftsTest(t)
+	tx := Transaction{Type: "transfer"}
+	if _, _, err := cs.transferAtomicDirect(wMensch1, wMensch2, 10, tx); err != nil {
+		t.Fatal(err)
+	}
+	// transferAtomicDirect gibt die Transaktion nicht heraus; buchStempel
+	// ist das, was dort eingetragen wird.
+	if buchStempel(nowUnix()) != nowUnix() {
+		t.Fatal("nach der Aktivierung muss BuchAt gesetzt werden")
+	}
+	wirtschaftAktivOverride.Store(nowUnix() + 1)
+	if buchStempel(nowUnix()) != 0 {
+		t.Fatal("vor der Aktivierung bleibt BuchAt leer")
+	}
+}
+
+// Nach der Aktivierung spielt jede Ueberweisung seriell nach -- mit
+// Buchfuehrung. Der parallele Pfad kannte keine und nahm gebuehrenfreie
+// Ueberweisungen (die ersten 1.000 AEQ eines Menschen).
+func TestNachspielenFuehrtBuchNachAktivierung(t *testing.T) {
+	wirtschaftAn(t)
+	uhr(t, 1_800_000_000)
+	dag, cs := newDeterminismTestDAG()
+	ctx := context.Background()
+	addHuman(cs, wMensch1, 1000)
+	addHuman(cs, wMensch2, 1000)
+	addHuman(cs, wMensch3, 1000)
+	eroeffne(t, cs, ctx, wFirmaA, wMensch1)
+	jetzt := nowUnix()
+	block := &Block{Height: 1, Hash: "wirtschaft-nachspielen", Timestamp: jetzt, Transactions: []Transaction{
+		{Type: "transfer", Wallet: wMensch2, To: wFirmaA, Amount: 400, BuchAt: jetzt - 10},
+		{Type: "transfer", Wallet: wMensch3, To: wFirmaA, Amount: 300, BuchAt: jetzt - 5},
+	}}
+	if ok := dag.replayTransactions(block, true); !ok {
+		t.Fatal("replayTransactions lehnte einen gueltigen Block ab")
+	}
+	if u := umsatzVon(cs, wFirmaA); !fast(u, 700) {
+		t.Fatalf("beide Einkaeufe muessen gebucht sein: Monatsumsatz %v, erwartet 700", u)
+	}
+}
