@@ -194,7 +194,8 @@ en:{
   'mpc-optin-title':'Optional — help check for duplicate registrations (prepared, not yet in service)',
   'mpc-optin-desc':'Prepared, but not yet in service. Later your node will be able to help verify that nobody registers twice without ever seeing anyone\'s biometric data: each participating party holds only a mathematical share of every enrolled template — noise on its own — and they compare a new capture together, so no single machine can reconstruct anything. Today this path decides nothing. The duplicate check does not run over it, and the committee is a fixed list rather than drawn automatically, so setting the three variables below changes nothing about registrations for now.',
   'mpc-optin-note':'The share file contains one-time randomness that only your node may hold — never copy it to another machine and never commit it anywhere. It currently has to come from the operator, which is the remaining central dependency. You do not need a new key: your node identifies itself to the other members with the same signing key it already uses for blocks.',
-  'logo-sub':'PROOF OF HUMANITY','live':'LIVE','phase0-badge':'Phase 1 · face check','nav-register':'Register','foot-launched':'Launched June 2026','foot-phase':'Phase 1','foot-quote':'Money exists because people exist. Nothing more, nothing less.',
+  'logo-sub':'PROOF OF HUMANITY','phase0-badge':'Phase 1 · face check','nav-register':'Register','foot-launched':'Launched June 2026','foot-phase':'Phase 1','foot-quote':'Money exists because people exist. Nothing more, nothing less.',
+  'nav-home':'Home','nav-people':'For people','nav-biz':'For businesses','nav-how':'How it works','nav-road':'Roadmap &amp; FAQ','nav-explorer':'Explorer','nav-equality':'Equality','nav-network':'Network','nav-exchange':'Exchange',
   'reg-title':'🔐 Register as a Verified Human',
   'reg-disclaimer':'<div style="font-weight:800;color:var(--gold);margin-bottom:6px;font-size:0.88rem">Phase 1 disclaimer</div>Phase 1: since 25 Aug 2026 the proof server refuses any registration without a signed attestation from the matching quorum — a second phone no longer gives the same face a second account. What is not yet true: accounts registered before that date have no face template and could in principle register again on a new wallet; error rates are not calibrated (that needs ~1,000 impostor pairs); liveness is a head-turn challenge, stronger deepfake defenses are being calibrated. Read “one human, one account” as “checked, with named limits” — not as “impossible to circumvent.”',
   'reg-sub':'Join the Aequitas network and receive your 1,000 AEQ start grant. Registration is one-time and permanent. Phase 1: a live face check by independent matching services is the gate — see the disclaimer for the named limits.',
@@ -334,8 +335,8 @@ en:{
   'swap-price-title':'AEQ / tUSD — Live Price','swap-price-desc':'Real-time price derived from pool reserves (x·y=k). Updates every 8 seconds as new pool data arrives.','swap-price-empty':'No pool data yet — add liquidity to see the price chart.',
   'node-guide-lang-note':'This inline guide is in English. A translated PDF is available in your language using the button above.',
   'k-zkp':'ZKP System','k-hash':'Hash System','k-sybil-prot':'Sybil Protection',
-  'soc-title':'💬 Social Media','soc-sub':'Announcements, the state of the chain, and the awkward questions &mdash; in public, on both.',
-  'soc-x-desc':'Announcements, and what the chain is actually doing. Short form.','soc-tg-desc':'The open group: questions, node operators, and help getting registered.',
+  
+  
   's-validators':'Active Validators',
   'expl-heading':'Block Explorer'},
 de:{
@@ -520,7 +521,8 @@ de:{
   'mpc-optin-title':'Optional — Duplikatspruefung unterstuetzen (vorbereitet, noch nicht aktiv)',
   'mpc-optin-desc':'Vorbereitet, aber noch nicht im Einsatz. Dein Node kann spaeter mithelfen zu pruefen, dass sich niemand zweimal registriert, ohne je biometrische Daten zu sehen: jede beteiligte Partei haelt nur einen mathematischen Anteil jeder Vorlage — fuer sich genommen Rauschen — und sie vergleichen eine neue Aufnahme gemeinsam, sodass keine einzelne Maschine etwas rekonstruieren kann. Heute entscheidet dieser Weg nichts. Die Duplikatspruefung laeuft nicht darueber, und das Komitee ist eine feste Liste statt automatisch gezogen; wer die drei Variablen unten setzt, aendert an Registrierungen vorerst nichts.',
   'mpc-optin-note':'Die Anteilsdatei enthaelt Einmal-Zufall, den nur Ihr Node halten darf — niemals auf eine andere Maschine kopieren und nirgends einchecken. Sie muss derzeit vom Betreiber kommen; das ist die verbleibende zentrale Abhaengigkeit. Einen neuen Schluessel brauchen Sie nicht: Ihr Node weist sich den anderen mit demselben Signierschluessel aus, den er ohnehin fuer Bloecke benutzt.',
-  'logo-sub':'MENSCHLICHKEITSNACHWEIS','live':'LIVE','phase0-badge':'Phase 1 · Gesichtsprüfung','nav-register':'Registrieren','foot-launched':'Gestartet im Juni 2026','foot-phase':'Phase 1','foot-quote':'Geld existiert, weil Menschen existieren. Nicht mehr und nicht weniger.',
+  'logo-sub':'MENSCHLICHKEITSNACHWEIS','phase0-badge':'Phase 1 · Gesichtsprüfung','nav-register':'Registrieren','foot-launched':'Gestartet im Juni 2026','foot-phase':'Phase 1','foot-quote':'Geld existiert, weil Menschen existieren. Nicht mehr und nicht weniger.',
+  'nav-home':'Start','nav-people':'Für Menschen','nav-biz':'Für Unternehmen','nav-how':'So funktioniert’s','nav-road':'Fahrplan &amp; Fragen','nav-explorer':'Explorer','nav-equality':'Gleichheit','nav-network':'Netzwerk','nav-exchange':'Umtausch',
   'reg-title':'🔐 Als verifizierter Mensch registrieren',
   'reg-disclaimer':'<div style="font-weight:800;color:var(--gold);margin-bottom:6px;font-size:0.88rem">Phase-1-Disclaimer</div>Phase 1: Seit dem 25.08.2026 weist der Proof-Server jede Registrierung ohne signierte Bescheinigung des Vergleichs-Quorums ab — ein zweites Telefon gibt demselben Gesicht kein zweites Konto mehr. Was noch nicht gilt: Konten von vor diesem Datum haben kein Gesichts-Template und könnten sich grundsätzlich auf einer neuen Wallet erneut registrieren; Fehlerraten sind nicht kalibriert (dafür braucht es ~1.000 Impostor-Paare); Lebendigkeit ist eine Kopfdreh-Aufgabe, stärkere Deepfake-Abwehr wird kalibriert. „Ein Mensch, ein Konto“ heißt „geprüft, mit benannten Grenzen“ — nicht „unumgehbar“.',
   'reg-sub':'Treten Sie dem Aequitas-Netz bei und erhalten Sie Ihren 1.000-AEQ-Startzuschuss. Die Registrierung ist einmalig und dauerhaft. Phase 1: eine Live-Gesichtsprüfung durch unabhängige Vergleichsdienste ist das Tor — die benannten Grenzen stehen im Disclaimer.',
@@ -673,8 +675,8 @@ de:{
   'swap-price-title':'AEQ / tUSD — Live-Preis','swap-price-desc':'Echtzeit-Preis aus Pool-Reserven (x·y=k). Aktualisiert alle 8 Sekunden mit neuen Pool-Daten.','swap-price-empty':'Noch keine Pool-Daten — Liquidität hinzufügen, um das Preisdiagramm zu sehen.',
   'node-guide-lang-note':'Diese Anleitung ist auf Englisch. Eine übersetzte PDF-Version ist in Ihrer Sprache über den Button oben verfügbar.',
   'k-zkp':'ZKP-System','k-hash':'Hash-System','k-sybil-prot':'Sybil-Schutz',
-  'soc-title':'💬 Soziale Medien','soc-sub':'Ankündigungen, der Zustand der Chain und die unbequemen Fragen &mdash; öffentlich, auf beiden.',
-  'soc-x-desc':'Ankündigungen und was die Chain tatsächlich tut. Kurzform.','soc-tg-desc':'Die offene Gruppe: Fragen, Node-Betreiber und Hilfe bei der Registrierung.',
+  
+  
   's-validators':'Aktive Validatoren',
   'expl-heading':'Block-Explorer'},
 es:{
@@ -859,7 +861,8 @@ es:{
   'mpc-optin-title':'Opcional — ayudar a detectar registros duplicados (preparado, aun no en servicio)',
   'mpc-optin-desc':'Preparado, pero aún no en servicio. Más adelante su nodo podrá ayudar a comprobar que nadie se registra dos veces sin ver jamás datos biométricos: cada parte participante guarda solo una porción matemática de cada plantilla — ruido por sí sola — y comparan juntas una captura nueva, de modo que ninguna máquina puede reconstruir nada. Hoy este camino no decide nada. La comprobación de duplicados no pasa por él, y el comité es una lista fija en lugar de sortearse automáticamente, así que fijar las tres variables no cambia nada por ahora.',
   'mpc-optin-note':'El archivo de porciones contiene aleatoriedad de un solo uso que solo su nodo puede guardar — nunca lo copie a otra máquina ni lo suba a ningún repositorio. Por ahora debe proporcionarlo el operador, y esa es la dependencia central que queda. No necesita una clave nueva: su nodo se identifica con la misma clave de firma que ya usa para los bloques.',
-  'logo-sub':'PRUEBA DE HUMANIDAD','live':'EN VIVO','phase0-badge':'Phase 1 · verificación facial','nav-register':'Registrarse','foot-launched':'Lanzada en junio de 2026','foot-phase':'Phase 1','foot-quote':'El dinero existe porque existen las personas. Nada más, nada menos.',
+  'logo-sub':'PRUEBA DE HUMANIDAD','phase0-badge':'Phase 1 · verificación facial','nav-register':'Registrarse','foot-launched':'Lanzada en junio de 2026','foot-phase':'Phase 1','foot-quote':'El dinero existe porque existen las personas. Nada más, nada menos.',
+  'nav-home':'Inicio','nav-people':'Para personas','nav-biz':'Para empresas','nav-how':'Cómo funciona','nav-road':'Hoja de ruta y preguntas','nav-explorer':'Explorador','nav-equality':'Igualdad','nav-network':'Red','nav-exchange':'Cambio',
   'reg-title':'🔐 Regístrate como Humano Verificado',
   'reg-disclaimer':'<div style="font-weight:800;color:var(--gold);margin-bottom:6px;font-size:0.88rem">Aviso Phase 1</div>Phase 1: desde el 25/08/2026 el servidor de pruebas rechaza todo registro sin la atestación firmada del quórum de comparación — un segundo teléfono ya no da una segunda cuenta al mismo rostro. Lo que aún no se cumple: las cuentas anteriores a esa fecha no tienen plantilla facial y en principio podrían registrarse de nuevo con otra cartera; las tasas de error no están calibradas (hacen falta ~1.000 pares de impostores); la prueba de vida es un giro de cabeza, las defensas más fuertes contra deepfakes están en calibración. Lea «un humano, una cuenta» como «verificado, con límites declarados» — no como «imposible de eludir».',
   'reg-sub':'Únase a la red Aequitas y reciba su asignación inicial de 1.000 AEQ. El registro es único y permanente. Phase 1: la puerta es una verificación facial en vivo por servicios de comparación independientes — los límites declarados están en el aviso.',
@@ -1001,8 +1004,8 @@ es:{
   'swap-price-title':'AEQ / tUSD — Precio en Vivo','swap-price-desc':'Precio en tiempo real derivado de las reservas del pool (x·y=k). Se actualiza cada 8 segundos con nuevos datos del pool.','swap-price-empty':'Sin datos del pool aún — añade liquidez para ver el gráfico de precios.',
   'node-guide-lang-note':'Esta guía está en inglés. Una traducción en PDF está disponible en su idioma con el botón de arriba.',
   'k-zkp':'Sistema ZKP','k-hash':'Sistema Hash','k-sybil-prot':'Protección Sybil',
-  'soc-title':'💬 Redes Sociales','soc-sub':'Anuncios, el estado de la cadena y las preguntas incómodas &mdash; en público, en ambas.',
-  'soc-x-desc':'Anuncios y lo que la cadena está haciendo realmente. Formato breve.','soc-tg-desc':'El grupo abierto: preguntas, operadores de nodos y ayuda para registrarse.',
+  
+  
   's-validators':'Validadores Activos',
   'expl-heading':'Explorador de Bloques'},
 ru:{
@@ -1187,7 +1190,8 @@ ru:{
   'mpc-optin-title':'Дополнительно — помощь в проверке повторных регистраций (подготовлено, ещё не работает)',
   'mpc-optin-desc':'Подготовлено, но пока не работает. Позже ваш узел сможет помогать проверять, что никто не регистрируется дважды, ни разу не видя биометрических данных: каждая сторона хранит лишь математическую долю каждого шаблона — сама по себе шум — и они сравнивают новый снимок вместе, так что ни одна машина не может ничего восстановить. Сегодня этот путь ничего не решает. Проверка на дубликаты через него не идёт, а комитет задан фиксированным списком, а не выбирается автоматически, поэтому три переменные пока ничего не меняют.',
   'mpc-optin-note':'Файл долей содержит одноразовую случайность, которую может хранить только ваш узел — никогда не копируйте его на другую машину и не помещайте в репозиторий. Пока его должен выдать оператор — это оставшаяся централизованная зависимость. Новый ключ не нужен: узел представляется остальным тем же ключом подписи, которым уже подписывает блоки.',
-  'logo-sub':'ДОКАЗАТЕЛЬСТВО ЧЕЛОВЕЧНОСТИ','live':'ОНЛАЙН','phase0-badge':'Phase 1 · проверка лица','nav-register':'Регистрация','foot-launched':'Запущена в июне 2026 года','foot-phase':'Phase 1','foot-quote':'Деньги существуют, потому что существуют люди. Не больше и не меньше.',
+  'logo-sub':'ДОКАЗАТЕЛЬСТВО ЧЕЛОВЕЧНОСТИ','phase0-badge':'Phase 1 · проверка лица','nav-register':'Регистрация','foot-launched':'Запущена в июне 2026 года','foot-phase':'Phase 1','foot-quote':'Деньги существуют, потому что существуют люди. Не больше и не меньше.',
+  'nav-home':'Главная','nav-people':'Для людей','nav-biz':'Для бизнеса','nav-how':'Как это работает','nav-road':'План и вопросы','nav-explorer':'Обозреватель','nav-equality':'Равенство','nav-network':'Сеть','nav-exchange':'Обмен',
   'reg-title':'🔐 Зарегистрируйтесь как Верифицированный Человек',
   'reg-disclaimer':'<div style="font-weight:800;color:var(--gold);margin-bottom:6px;font-size:0.88rem">Оговорка Phase 1</div>Phase 1: с 25.08.2026 сервер доказательств отклоняет любую регистрацию без подписанного подтверждения кворума сравнения — второй телефон больше не даёт тому же лицу второй счёт. Что пока не выполняется: счета, созданные до этой даты, не имеют шаблона лица и в принципе могли бы зарегистрироваться снова на новый кошелёк; частота ошибок не откалибрована (нужно ~1 000 импостор-пар); проверка живости — поворот головы, более сильная защита от дипфейков калибруется. Читайте «один человек — один счёт» как «проверено, с названными ограничениями», а не как «невозможно обойти».',
   'reg-sub':'Присоединяйтесь к сети Aequitas и получите стартовые 1 000 AEQ. Регистрация однократная и постоянная. Phase 1: пропуском служит живая проверка лица независимыми службами сравнения — названные ограничения см. в оговорке.',
@@ -1326,8 +1330,8 @@ ru:{
   'swap-price-title':'AEQ / tUSD — Живая Цена','swap-price-desc':'Цена в реальном времени из резервов пула (x·y=k). Обновляется каждые 8 секунд с новыми данными пула.','swap-price-empty':'Данных пула ещё нет — добавьте ликвидность для просмотра графика цены.',
   'node-guide-lang-note':'Это руководство на английском. Перевод доступен в PDF на вашем языке — используйте кнопку выше.',
   'k-zkp':'ZKP-Система','k-hash':'Хеш-Система','k-sybil-prot':'Защита от Sybil',
-  'soc-title':'💬 Социальные сети','soc-sub':'Объявления, состояние сети и неудобные вопросы &mdash; публично, в обеих.',
-  'soc-x-desc':'Объявления и то, чем сеть занята на самом деле. Коротко.','soc-tg-desc':'Открытая группа: вопросы, операторы узлов и помощь с регистрацией.',
+  
+  
   's-validators':'Активные валидаторы',
   'expl-heading':'Обозреватель блоков'},
 zh:{
@@ -1512,7 +1516,8 @@ zh:{
   'mpc-optin-title':'可选 — 协助检查重复注册（已准备，尚未启用）',
   'mpc-optin-desc':'已准备，但尚未启用。今后你的节点可以协助核验没有人重复注册，且从不接触任何生物特征数据：每个参与方只保存每份模板的一个数学份额（单独看只是噪声），共同比对新采集，因此没有任何一台机器能还原出内容。目前这条路径不做任何决定：重复检查并不经过它，委员会也是固定名单而非自动抽取，所以设置下面三个变量暂时不会改变注册流程。',
   'mpc-optin-note':'份额文件包含仅你的节点可持有的一次性随机数——切勿复制到其他机器，也不要提交到任何仓库。目前它必须由运营方提供，这是尚存的中心化依赖。你不需要新密钥：节点用它签名区块时已在使用的同一把密钥向其他成员表明身份。',
-  'logo-sub':'人类证明','live':'实时','phase0-badge':'Phase 1 · 人脸核验','nav-register':'注册','foot-launched':'2026 年 6 月上线','foot-phase':'Phase 1','foot-quote':'金钱之所以存在，是因为人存在。不多，也不少。',
+  'logo-sub':'人类证明','phase0-badge':'Phase 1 · 人脸核验','nav-register':'注册','foot-launched':'2026 年 6 月上线','foot-phase':'Phase 1','foot-quote':'金钱之所以存在，是因为人存在。不多，也不少。',
+  'nav-home':'首页','nav-people':'个人','nav-biz':'企业','nav-how':'运作方式','nav-road':'路线图与问答','nav-explorer':'浏览器','nav-equality':'平等','nav-network':'网络','nav-exchange':'兑换',
   'reg-title':'🔐 注册成为经过验证的人类',
   'reg-disclaimer':'<div style="font-weight:800;color:var(--gold);margin-bottom:6px;font-size:0.88rem">Phase 1 声明</div>Phase 1：自 2026-08-25 起，证明服务器拒绝任何没有比对法定多数签名证明的注册 — 换一部手机不再能让同一张脸获得第二个账户。尚未成立的部分：该日期之前注册的账户没有人脸模板，原则上可以用新钱包再次注册；错误率尚未校准（需要约 1,000 组冒名配对）；活体检测为转头指令，更强的深度伪造防御正在校准中。请将「一人一账户」理解为「已核验、并明示限制」，而非「无法绕过」。',
   'reg-sub':'加入 Aequitas 网络，领取 1,000 AEQ 起步发放。注册一次性且永久。Phase 1：门槛是独立比对服务的实时人脸核验 — 明示的限制见声明。',
@@ -1652,8 +1657,8 @@ zh:{
   'swap-price-title':'AEQ / tUSD — 实时价格','swap-price-desc':'从池储备（x·y=k）实时派生的价格。每8秒更新一次。','swap-price-empty':'暂无池数据——添加流动性以查看价格图表。',
   'node-guide-lang-note':'此内联指南为英文。您语言的翻译PDF可通过上方按钮获取。',
   'k-zkp':'ZKP系统','k-hash':'哈希系统','k-sybil-prot':'女巫攻击防护',
-  'soc-title':'💬 社交媒体','soc-sub':'公告、链的真实状态，以及那些不好回答的问题 &mdash; 两个平台，都公开。',
-  'soc-x-desc':'公告，以及链实际在做什么。短内容。','soc-tg-desc':'公开群组：提问、节点运营者，以及注册方面的帮助。',
+  
+  
   's-validators':'活跃验证者',
   'expl-heading':'区块浏览器'},
 id:{
@@ -1838,7 +1843,8 @@ id:{
   'mpc-optin-title':'Opsional — membantu memeriksa pendaftaran ganda (disiapkan, belum aktif)',
   'mpc-optin-desc':'Sudah disiapkan, tetapi belum aktif. Nanti node Anda dapat membantu memverifikasi bahwa tidak ada yang mendaftar dua kali tanpa pernah melihat data biometrik siapa pun: setiap pihak hanya memegang satu bagian matematis dari tiap templat — sekadar derau bila berdiri sendiri — dan mereka membandingkan tangkapan baru bersama-sama, sehingga tidak ada satu mesin pun yang bisa merekonstruksi apa pun. Saat ini jalur ini tidak memutuskan apa pun: pemeriksaan duplikat tidak melewatinya, dan komitenya adalah daftar tetap, bukan diundi otomatis.',
   'mpc-optin-note':'Berkas bagian berisi keacakan sekali pakai yang hanya boleh dipegang node Anda — jangan pernah menyalinnya ke mesin lain atau memasukkannya ke repositori. Saat ini berkas itu harus berasal dari operator, dan itulah ketergantungan terpusat yang tersisa. Anda tidak perlu kunci baru: node Anda mengenalkan diri dengan kunci penanda tangan yang sudah dipakai untuk blok.',
-  'logo-sub':'BUKTI KEMANUSIAAN','live':'LANGSUNG','phase0-badge':'Phase 1 · pemeriksaan wajah','nav-register':'Daftar','foot-launched':'Diluncurkan Juni 2026','foot-phase':'Phase 1','foot-quote':'Uang ada karena manusia ada. Tidak lebih, tidak kurang.',
+  'logo-sub':'BUKTI KEMANUSIAAN','phase0-badge':'Phase 1 · pemeriksaan wajah','nav-register':'Daftar','foot-launched':'Diluncurkan Juni 2026','foot-phase':'Phase 1','foot-quote':'Uang ada karena manusia ada. Tidak lebih, tidak kurang.',
+  'nav-home':'Beranda','nav-people':'Untuk orang','nav-biz':'Untuk usaha','nav-how':'Cara kerja','nav-road':'Peta jalan &amp; FAQ','nav-explorer':'Explorer','nav-equality':'Kesetaraan','nav-network':'Jaringan','nav-exchange':'Tukar',
   'reg-title':'🔐 Daftar sebagai Manusia Terverifikasi',
   'reg-disclaimer':'<div style="font-weight:800;color:var(--gold);margin-bottom:6px;font-size:0.88rem">Peringatan Phase 1</div>Phase 1: sejak 25-08-2026 server bukti menolak setiap pendaftaran tanpa atestasi bertanda tangan dari kuorum pencocokan — ponsel kedua tidak lagi memberi akun kedua untuk wajah yang sama. Yang belum berlaku: akun dari sebelum tanggal itu tidak punya templat wajah dan pada prinsipnya bisa mendaftar lagi dengan dompet baru; laju kesalahan belum dikalibrasi (perlu ~1.000 pasangan impostor); deteksi kehidupan berupa putar kepala, pertahanan deepfake yang lebih kuat sedang dikalibrasi. Bacalah “satu manusia, satu akun” sebagai “diperiksa, dengan batas yang disebutkan” — bukan “mustahil dilewati”.',
   'reg-sub':'Bergabunglah dengan jaringan Aequitas dan terima hibah awal 1.000 AEQ. Pendaftaran sekali dan permanen. Phase 1: gerbangnya adalah pemeriksaan wajah langsung oleh layanan pencocokan independen — batas yang disebutkan ada di peringatan.',
@@ -1973,8 +1979,8 @@ id:{
   'swap-price-title':'AEQ / tUSD — Harga Live','swap-price-desc':'Harga real-time dari cadangan pool (x·y=k). Diperbarui setiap 8 detik dengan data pool terbaru.','swap-price-empty':'Belum ada data pool — tambahkan likuiditas untuk melihat grafik harga.',
   'node-guide-lang-note':'Panduan inline ini dalam bahasa Inggris. PDF terjemahan tersedia dalam bahasa Anda menggunakan tombol di atas.',
   'k-zkp':'Sistem ZKP','k-hash':'Sistem Hash','k-sybil-prot':'Perlindungan Sybil',
-  'soc-title':'💬 Media Sosial','soc-sub':'Pengumuman, keadaan rantai, dan pertanyaan yang canggung &mdash; terbuka, di keduanya.',
-  'soc-x-desc':'Pengumuman, dan apa yang sebenarnya dilakukan rantai ini. Bentuk singkat.','soc-tg-desc':'Grup terbuka: pertanyaan, operator node, dan bantuan untuk mendaftar.',
+  
+  
   's-validators':'Validator Aktif',
   'expl-heading':'Penjelajah Blok'},
 it:{
@@ -2159,7 +2165,8 @@ it:{
   'mpc-optin-title':'Opzionale — aiutare a rilevare registrazioni doppie (predisposto, non ancora attivo)',
   'mpc-optin-desc':'Predisposto, ma non ancora in servizio. In futuro il Suo nodo potrà aiutare a verificare che nessuno si registri due volte senza mai vedere dati biometrici: ogni parte conserva solo una quota matematica di ciascun modello — da sola è rumore — e confrontano insieme una nuova acquisizione, così nessuna singola macchina può ricostruire alcunché. Oggi questo percorso non decide nulla: il controllo dei duplicati non passa di qui e il comitato è un elenco fisso anziché estratto automaticamente.',
   'mpc-optin-note':'Il file delle quote contiene casualità monouso che solo il Suo nodo può custodire — non lo copi mai su un\'altra macchina né lo inserisca in un repository. Al momento deve arrivare dall\'operatore, ed è la dipendenza centrale che resta. Non serve una chiave nuova: il nodo si identifica con la stessa chiave di firma che usa già per i blocchi.',
-  'logo-sub':'PROVA DI UMANITÀ','live':'LIVE','phase0-badge':'Phase 1 · verifica del volto','nav-register':'Registrarsi','foot-launched':'Lanciata a giugno 2026','foot-phase':'Phase 1','foot-quote':'Il denaro esiste perché esistono le persone. Niente di più, niente di meno.',
+  'logo-sub':'PROVA DI UMANITÀ','phase0-badge':'Phase 1 · verifica del volto','nav-register':'Registrarsi','foot-launched':'Lanciata a giugno 2026','foot-phase':'Phase 1','foot-quote':'Il denaro esiste perché esistono le persone. Niente di più, niente di meno.',
+  'nav-home':'Home','nav-people':'Per le persone','nav-biz':'Per le imprese','nav-how':'Come funziona','nav-road':'Tabella di marcia e FAQ','nav-explorer':'Explorer','nav-equality':'Uguaglianza','nav-network':'Rete','nav-exchange':'Cambio',
   'reg-title':'🔐 Registrati come Umano Verificato',
   'reg-disclaimer':'<div style="font-weight:800;color:var(--gold);margin-bottom:6px;font-size:0.88rem">Avvertenza Phase 1</div>Phase 1: dal 25/08/2026 il server delle prove rifiuta ogni registrazione senza l\'attestazione firmata del quorum di confronto — un secondo telefono non dà più un secondo account allo stesso volto. Ciò che non vale ancora: gli account precedenti a quella data non hanno un modello del volto e in linea di principio potrebbero registrarsi di nuovo con un altro wallet; i tassi di errore non sono tarati (servono ~1.000 coppie impostore); la prova di vitalità è una rotazione della testa, difese più forti contro i deepfake sono in taratura. Legga «un umano, un account» come «verificato, con limiti dichiarati» — non come «impossibile da aggirare».',
   'reg-sub':'Si unisca alla rete Aequitas e riceva il Suo accredito iniziale di 1.000 AEQ. La registrazione è unica e permanente. Phase 1: il cancello è una verifica del volto dal vivo di servizi di confronto indipendenti — i limiti dichiarati sono nell\'avvertenza.',
@@ -2295,8 +2302,8 @@ it:{
   'swap-price-title':'AEQ / tUSD — Prezzo Live','swap-price-desc':'Prezzo in tempo reale derivato dalle riserve del pool (x·y=k). Si aggiorna ogni 8 secondi con nuovi dati.','swap-price-empty':'Nessun dato del pool ancora — aggiungi liquidità per vedere il grafico dei prezzi.',
   'node-guide-lang-note':'Questa guida è in inglese. Un PDF tradotto nella Sua lingua è disponibile tramite il pulsante sopra.',
   'k-zkp':'Sistema ZKP','k-hash':'Sistema Hash','k-sybil-prot':'Protezione Sybil',
-  'soc-title':'💬 Social Media','soc-sub':'Annunci, lo stato della catena e le domande scomode &mdash; in pubblico, su entrambi.',
-  'soc-x-desc':'Annunci, e cosa sta facendo davvero la catena. Formato breve.','soc-tg-desc':'Il gruppo aperto: domande, operatori di nodi e aiuto per registrarsi.',
+  
+  
   's-validators':'Validatori Attivi',
   'expl-heading':'Esplora blocchi'},
 tr:{
@@ -2481,7 +2488,8 @@ tr:{
   'mpc-optin-title':'İsteğe bağlı — mükerrer kayıt denetimine yardım (hazır, henüz devrede değil)',
   'mpc-optin-desc':'Hazırlandı, ancak henüz devrede değil. İleride düğümünüz, kimsenin biyometrik verisini hiç görmeden mükerrer kayıt olmadığını doğrulamaya yardım edebilecek: her taraf yalnızca her şablonun matematiksel bir payını tutar — tek başına gürültüdür — ve yeni bir kaydı birlikte karşılaştırırlar, böylece tek bir makine hiçbir şeyi geri oluşturamaz. Bugün bu yol hiçbir şeye karar vermiyor: mükerrer denetimi buradan geçmiyor ve komite otomatik çekilmek yerine sabit bir liste.',
   'mpc-optin-note':'Pay dosyası yalnızca sizin düğümünüzün tutabileceği tek kullanımlık rastgelelik içerir — başka bir makineye asla kopyalamayın ve hiçbir yere eklemeyin. Şu anda operatörden gelmesi gerekiyor; kalan merkezi bağımlılık budur. Yeni bir anahtara ihtiyacınız yok: düğümünüz, blokları imzalarken kullandığı anahtarla kendini tanıtır.',
-  'logo-sub':'İNSANLIK KANITI','live':'CANLI','phase0-badge':'Phase 1 · yüz doğrulama','nav-register':'Kaydol','foot-launched':'Haziran 2026\'da başlatıldı','foot-phase':'Phase 1','foot-quote':'Para, insanlar var olduğu için vardır. Ne fazlası, ne eksiği.',
+  'logo-sub':'İNSANLIK KANITI','phase0-badge':'Phase 1 · yüz doğrulama','nav-register':'Kaydol','foot-launched':'Haziran 2026\'da başlatıldı','foot-phase':'Phase 1','foot-quote':'Para, insanlar var olduğu için vardır. Ne fazlası, ne eksiği.',
+  'nav-home':'Ana sayfa','nav-people':'Bireyler için','nav-biz':'İşletmeler için','nav-how':'Nasıl çalışır','nav-road':'Yol haritası ve SSS','nav-explorer':'Gezgin','nav-equality':'Eşitlik','nav-network':'Ağ','nav-exchange':'Takas',
   'reg-title':'🔐 Doğrulanmış İnsan Olarak Kayıt Ol',
   'reg-disclaimer':'<div style="font-weight:800;color:var(--gold);margin-bottom:6px;font-size:0.88rem">Phase 1 uyarısı</div>Phase 1: 25.08.2026\'dan beri kanıt sunucusu, eşleştirme çoğunluğunun imzalı onayı olmayan her kaydı reddeder — ikinci bir telefon aynı yüze artık ikinci bir hesap vermez. Henüz geçerli olmayan: bu tarihten önceki hesapların yüz şablonu yoktur ve ilke olarak yeni bir cüzdanla yeniden kayıt olabilirler; hata oranları ayarlanmadı (~1.000 sahte çift gerekir); canlılık kontrolü bir baş çevirmedir, daha güçlü deepfake savunmaları ayarlanıyor. “Bir insan, bir hesap”ı “doğrulandı, belirtilen sınırlarla” diye okuyun — “aşılamaz” diye değil.',
   'reg-sub':'Aequitas ağına katılın ve 1.000 AEQ başlangıç ödemenizi alın. Kayıt tek seferlik ve kalıcıdır. Phase 1: kapı, bağımsız eşleştirme servislerinin canlı yüz doğrulamasıdır — belirtilen sınırlar uyarıda.',
@@ -2623,8 +2631,8 @@ tr:{
   'swap-price-title':'AEQ / tUSD — Canlı Fiyat','swap-price-desc':'Havuz rezervlerinden gerçek zamanlı fiyat (x·y=k). Her 8 saniyede yeni havuz verileriyle güncellenir.','swap-price-empty':'Henüz havuz verisi yok — fiyat grafiğini görmek için likidite ekleyin.',
   'node-guide-lang-note':'Bu kılavuz İngilizce\'dir. Dilinizde çevrilmiş PDF yukarıdaki düğmeyle mevcuttur.',
   'k-zkp':'ZKP Sistemi','k-hash':'Hash Sistemi','k-sybil-prot':'Sybil Koruması',
-  'soc-title':'💬 Sosyal Medya','soc-sub':'Duyurular, zincirin durumu ve zor sorular &mdash; herkese açık, her ikisinde de.',
-  'soc-x-desc':'Duyurular ve zincirin gerçekte ne yaptığı. Kısa biçim.','soc-tg-desc':'Açık grup: sorular, node işletenler ve kayıt olma konusunda yardım.',
+  
+  
   's-validators':'Aktif Doğrulayıcılar',
   'expl-heading':'Blok Gezgini'},
 fr:{
@@ -2809,7 +2817,8 @@ fr:{
   'mpc-optin-title':'Optionnel — aider à détecter les inscriptions en double (prêt, pas encore en service)',
   'mpc-optin-desc':'Préparé, mais pas encore en service. Plus tard, votre nœud pourra aider à vérifier que personne ne s\'inscrit deux fois sans jamais voir de données biométriques : chaque partie ne détient qu\'une part mathématique de chaque gabarit — du bruit à elle seule — et elles comparent ensemble une nouvelle capture, si bien qu\'aucune machine ne peut rien reconstruire. Aujourd\'hui ce chemin ne décide rien : la vérification des doublons n\'y passe pas, et le comité est une liste fixe plutôt qu\'un tirage automatique.',
   'mpc-optin-note':'Le fichier de parts contient un aléa à usage unique que seul votre nœud peut détenir — ne le copiez jamais sur une autre machine et ne le versionnez nulle part. Il doit actuellement venir de l\'opérateur, ce qui reste la dépendance centrale. Vous n\'avez pas besoin d\'une nouvelle clé : votre nœud s\'identifie avec la clé de signature qu\'il utilise déjà pour les blocs.',
-  'logo-sub':'PREUVE D\'HUMANITÉ','live':'EN DIRECT','phase0-badge':'Phase 1 · contrôle du visage','nav-register':'S\'inscrire','foot-launched':'Lancée en juin 2026','foot-phase':'Phase 1','foot-quote':'L\'argent existe parce que les gens existent. Rien de plus, rien de moins.',
+  'logo-sub':'PREUVE D\'HUMANITÉ','phase0-badge':'Phase 1 · contrôle du visage','nav-register':'S\'inscrire','foot-launched':'Lancée en juin 2026','foot-phase':'Phase 1','foot-quote':'L\'argent existe parce que les gens existent. Rien de plus, rien de moins.',
+  'nav-home':'Accueil','nav-people':'Pour les personnes','nav-biz':'Pour les entreprises','nav-how':'Comment ça marche','nav-road':'Feuille de route et FAQ','nav-explorer':'Explorateur','nav-equality':'Égalité','nav-network':'Réseau','nav-exchange':'Échange',
   'reg-title':'🔐 S\'inscrire en tant qu\'humain vérifié',
   'reg-disclaimer':'<div style="font-weight:800;color:var(--gold);margin-bottom:6px;font-size:0.88rem">Avertissement Phase 1</div>Phase 1 : depuis le 25/08/2026, le serveur de preuves refuse toute inscription sans l\'attestation signée du quorum de comparaison — un second téléphone ne donne plus un second compte au même visage. Ce qui n\'est pas encore vrai : les comptes antérieurs à cette date n\'ont pas de gabarit du visage et pourraient en principe se réinscrire avec un nouveau portefeuille ; les taux d\'erreur ne sont pas étalonnés (il faut ~1 000 paires d\'imposteurs) ; la preuve de vie est un mouvement de tête, des défenses plus fortes contre les deepfakes sont en étalonnage. Lis « un humain, un compte » comme « vérifié, avec des limites nommées » — pas comme « impossible à contourner ».',
   'reg-sub':'Rejoignez le réseau Aequitas et recevez votre allocation de départ de 1 000 AEQ. L\'inscription est unique et permanente. Phase 1 : la porte est un contrôle du visage en direct par des services de comparaison indépendants — les limites nommées sont dans l\'avertissement.',
@@ -2950,8 +2959,8 @@ fr:{
   'swap-price-title':'AEQ / tUSD — Prix en Direct','swap-price-desc':'Prix en temps réel dérivé des réserves du pool (x·y=k). Mis à jour toutes les 8 secondes.','swap-price-empty':'Pas encore de données de pool — ajoutez de la liquidité pour voir le graphique de prix.',
   'node-guide-lang-note':'Ce guide en ligne est en anglais. Un PDF traduit dans votre langue est disponible via le bouton ci-dessus.',
   'k-zkp':'Système ZKP','k-hash':'Système de Hachage','k-sybil-prot':'Protection Sybil',
-  'soc-title':'💬 Réseaux sociaux','soc-sub':'Les annonces, l\'état de la chaîne et les questions qui dérangent &mdash; en public, sur les deux.',
-  'soc-x-desc':'Les annonces, et ce que la chaîne fait vraiment. Format court.','soc-tg-desc':'Le groupe ouvert : questions, opérateurs de nœuds et aide à l\'inscription.',
+  
+  
   's-validators':'Validateurs actifs',
   'expl-heading':'Explorateur de blocs'},
 pt:{
@@ -3136,7 +3145,8 @@ pt:{
   'mpc-optin-title':'Opcional — ajudar a verificar registos duplicados (preparado, ainda não ativo)',
   'mpc-optin-desc':'Preparado, mas ainda não em serviço. Mais tarde o seu nó poderá ajudar a verificar que ninguém se regista duas vezes sem nunca ver dados biométricos: cada parte guarda apenas uma parcela matemática de cada modelo — ruído por si só — e comparam em conjunto uma nova captura, pelo que nenhuma máquina consegue reconstruir nada. Hoje este caminho não decide nada: a verificação de duplicados não passa por aqui e o comité é uma lista fixa em vez de sorteado automaticamente.',
   'mpc-optin-note':'O ficheiro de parcelas contém aleatoriedade de uso único que só o seu nó pode guardar — nunca o copie para outra máquina nem o submeta a um repositório. De momento tem de vir do operador, e essa é a dependência central que resta. Não precisa de uma chave nova: o seu nó identifica-se com a mesma chave de assinatura que já usa para os blocos.',
-  'logo-sub':'PROVA DE HUMANIDADE','live':'AO VIVO','phase0-badge':'Phase 1 · verificação facial','nav-register':'Registar','foot-launched':'Lançada em junho de 2026','foot-phase':'Phase 1','foot-quote':'O dinheiro existe porque as pessoas existem. Nada mais, nada menos.',
+  'logo-sub':'PROVA DE HUMANIDADE','phase0-badge':'Phase 1 · verificação facial','nav-register':'Registar','foot-launched':'Lançada em junho de 2026','foot-phase':'Phase 1','foot-quote':'O dinheiro existe porque as pessoas existem. Nada mais, nada menos.',
+  'nav-home':'Início','nav-people':'Para pessoas','nav-biz':'Para empresas','nav-how':'Como funciona','nav-road':'Roteiro e perguntas','nav-explorer':'Explorador','nav-equality':'Igualdade','nav-network':'Rede','nav-exchange':'Câmbio',
   'reg-title':'🔐 Registrar como Humano Verificado',
   'reg-disclaimer':'<div style="font-weight:800;color:var(--gold);margin-bottom:6px;font-size:0.88rem">Aviso Phase 1</div>Phase 1: desde 25/08/2026 o servidor de provas recusa qualquer registo sem a atestação assinada do quórum de comparação — um segundo telemóvel já não dá uma segunda conta ao mesmo rosto. O que ainda não se verifica: as contas anteriores a essa data não têm modelo facial e, em princípio, poderiam registar-se de novo noutra carteira; as taxas de erro não estão calibradas (são precisos ~1.000 pares de impostores); a prova de vida é um movimento de cabeça, defesas mais fortes contra deepfakes estão em calibração. Leia «um humano, uma conta» como «verificado, com limites declarados» — não como «impossível de contornar».',
   'reg-sub':'Junte-se à rede Aequitas e receba a sua atribuição inicial de 1.000 AEQ. O registo é único e permanente. Phase 1: a porta é uma verificação facial ao vivo por serviços de comparação independentes — os limites declarados estão no aviso.',
@@ -3277,8 +3287,8 @@ pt:{
   'swap-price-title':'AEQ / tUSD — Preço ao Vivo','swap-price-desc':'Preço em tempo real derivado das reservas do pool (x·y=k). Atualizado a cada 8 segundos.','swap-price-empty':'Sem dados do pool ainda — adicione liquidez para ver o gráfico de preços.',
   'node-guide-lang-note':'Este guia inline está em inglês. Um PDF traduzido na sua língua está disponível através do botão acima.',
   'k-zkp':'Sistema ZKP','k-hash':'Sistema Hash','k-sybil-prot':'Proteção Sybil',
-  'soc-title':'💬 Redes Sociais','soc-sub':'Anúncios, o estado da cadeia e as perguntas incômodas &mdash; em público, em ambas.',
-  'soc-x-desc':'Anúncios, e o que a cadeia está realmente fazendo. Formato curto.','soc-tg-desc':'O grupo aberto: perguntas, operadores de nós e ajuda para se registrar.',
+  
+  
   's-validators':'Validadores Ativos',
   'expl-heading':'Explorador de Blocos'},
 ar:{
@@ -3463,7 +3473,8 @@ ar:{
   'mpc-optin-title':'اختياري — المساعدة في كشف التسجيلات المكررة (جاهز، لم يُفعّل بعد)',
   'mpc-optin-desc':'جاهز، لكنه لم يُفعّل بعد. لاحقاً سيتمكن نظيرك من المساعدة في التحقق من عدم تسجيل أي شخص مرتين دون أن يرى أي بيانات حيوية: كل طرف مشارك يحتفظ بحصة رياضية واحدة فقط من كل قالب — وهي بمفردها مجرد ضجيج — ويقارنون لقطة جديدة معاً، فلا تستطيع أي آلة منفردة إعادة بناء شيء. أما اليوم فهذا المسار لا يقرر شيئاً: فحص التكرار لا يمر عبره، واللجنة قائمة ثابتة وليست مسحوبة تلقائياً.',
   'mpc-optin-note':'يحتوي ملف الحصص على عشوائية تُستخدم مرة واحدة ولا يجوز أن يحتفظ بها سوى نظيرك — لا تنسخه أبداً إلى جهاز آخر ولا تودعه في أي مستودع. يجب حالياً أن يأتي من المشغّل، وهذه هي التبعية المركزية المتبقية. ولا تحتاج إلى مفتاح جديد: يعرّف نظيرك نفسه بالمفتاح ذاته الذي يوقّع به الكتل أصلاً.',
-  'logo-sub':'إثبات الإنسانية','live':'مباشر','phase0-badge':'Phase 1 · تحقق من الوجه','nav-register':'تسجيل','foot-launched':'أُطلقت في يونيو 2026','foot-phase':'Phase 1','foot-quote':'المال موجود لأن الناس موجودون. لا أكثر ولا أقل.',
+  'logo-sub':'إثبات الإنسانية','phase0-badge':'Phase 1 · تحقق من الوجه','nav-register':'تسجيل','foot-launched':'أُطلقت في يونيو 2026','foot-phase':'Phase 1','foot-quote':'المال موجود لأن الناس موجودون. لا أكثر ولا أقل.',
+  'nav-home':'الرئيسية','nav-people':'للأفراد','nav-biz':'للشركات','nav-how':'كيف يعمل','nav-road':'خارطة الطريق والأسئلة','nav-explorer':'المستكشف','nav-equality':'المساواة','nav-network':'الشبكة','nav-exchange':'التبادل',
   'reg-title':'🔐 التسجيل كإنسان موثق',
   'reg-disclaimer':'<div style="font-weight:800;color:var(--gold);margin-bottom:6px;font-size:0.88rem">تنبيه Phase 1</div>Phase 1: منذ 2026-08-25 يرفض خادم البراهين أي تسجيل بلا شهادة موقَّعة من نصاب المطابقة — لم يعد الهاتف الثاني يمنح الوجه نفسه حساباً ثانياً. ما لا يصح بعد: الحسابات السابقة لذلك التاريخ لا تملك قالب وجه ويمكنها مبدئياً التسجيل مجدداً بمحفظة جديدة؛ نسب الخطأ غير مُعايَرة (يلزم نحو 1,000 زوج منتحل)؛ فحص الحيوية هو تدوير الرأس، ودفاعات أقوى ضد التزييف العميق قيد المعايرة. اقرأ «إنسان واحد، حساب واحد» بمعنى «مُتحقَّق منه، بحدود مُعلنة» — لا بمعنى «يستحيل تجاوزه».',
   'reg-sub':'انضم إلى شبكة Aequitas واحصل على منحة البداية 1,000 AEQ. التسجيل لمرة واحدة ودائم. Phase 1: البوابة هي تحقق حي من الوجه لدى خدمات مطابقة مستقلة — الحدود المُعلنة في التنبيه.',
@@ -3602,8 +3613,8 @@ ar:{
   'swap-price-title':'AEQ / tUSD — السعر المباشر','swap-price-desc':'سعر فوري مشتق من احتياطيات المجموعة (x·y=k). يتحدث كل 8 ثوانٍ.','swap-price-empty':'لا توجد بيانات مجموعة بعد — أضف سيولة لرؤية مخطط السعر.',
   'node-guide-lang-note':'هذا الدليل المضمّن باللغة الإنجليزية. ملف PDF مترجم بلغتك متاح عبر الزر أعلاه.',
   'k-zkp':'نظام ZKP','k-hash':'نظام التجزئة','k-sybil-prot':'حماية سيبل',
-  'soc-title':'💬 وسائل التواصل الاجتماعي','soc-sub':'الإعلانات، وحالة السلسلة، والأسئلة المحرجة &mdash; علنًا، على كليهما.',
-  'soc-x-desc':'الإعلانات، وما تفعله السلسلة فعليًا. بصيغة مختصرة.','soc-tg-desc':'المجموعة المفتوحة: الأسئلة، ومشغّلو العقد، والمساعدة في التسجيل.',
+  
+  
   's-validators':'المدققون النشطون',
   'expl-heading':'مستكشف الكتل'},
 hi:{
@@ -3788,7 +3799,8 @@ hi:{
   'mpc-optin-title':'वैकल्पिक — दोहरे पंजीकरण की जाँच में सहायता (तैयार, अभी सक्रिय नहीं)',
   'mpc-optin-desc':'तैयार है, पर अभी सेवा में नहीं। आगे चलकर आपका नोड यह जाँचने में मदद कर सकेगा कि कोई दो बार पंजीकरण न करे, बिना किसी का बायोमेट्रिक डेटा देखे: हर भागीदार केवल प्रत्येक टेम्पलेट का एक गणितीय हिस्सा रखता है — अकेले में वह मात्र शोर है — और वे मिलकर नई कैप्चर की तुलना करते हैं, इसलिए कोई एक मशीन कुछ भी पुनर्निर्मित नहीं कर सकती। आज यह रास्ता कुछ तय नहीं करता: दोहराव की जाँच इससे होकर नहीं जाती, और समिति स्वतः चुनी जाने के बजाय एक निश्चित सूची है।',
   'mpc-optin-note':'हिस्सा-फ़ाइल में एक-बार-प्रयोग की यादृच्छिकता होती है जिसे केवल आपका नोड रख सकता है — इसे कभी किसी दूसरी मशीन पर न कॉपी करें और कहीं कमिट न करें। फ़िलहाल यह संचालक से ही आनी चाहिए, और यही शेष केंद्रीकृत निर्भरता है। आपको नई कुंजी की ज़रूरत नहीं: आपका नोड उसी हस्ताक्षर-कुंजी से पहचान देता है जो वह ब्लॉकों के लिए पहले से उपयोग करता है।',
-  'logo-sub':'मानवता का प्रमाण','live':'लाइव','phase0-badge':'Phase 1 · चेहरा जाँच','nav-register':'रजिस्टर','foot-launched':'जून 2026 में शुरू','foot-phase':'Phase 1','foot-quote':'पैसा इसलिए है क्योंकि लोग हैं। न इससे ज़्यादा, न इससे कम।',
+  'logo-sub':'मानवता का प्रमाण','phase0-badge':'Phase 1 · चेहरा जाँच','nav-register':'रजिस्टर','foot-launched':'जून 2026 में शुरू','foot-phase':'Phase 1','foot-quote':'पैसा इसलिए है क्योंकि लोग हैं। न इससे ज़्यादा, न इससे कम।',
+  'nav-home':'होम','nav-people':'लोगों के लिए','nav-biz':'व्यवसायों के लिए','nav-how':'यह कैसे काम करता है','nav-road':'रोडमैप और सवाल','nav-explorer':'एक्सप्लोरर','nav-equality':'समानता','nav-network':'नेटवर्क','nav-exchange':'विनिमय',
   'reg-title':'🔐 सत्यापित मानव के रूप में रजिस्टर करें',
   'reg-disclaimer':'<div style="font-weight:800;color:var(--gold);margin-bottom:6px;font-size:0.88rem">Phase 1 अस्वीकरण</div>Phase 1: 25.08.2026 से प्रूफ़ सर्वर मिलान कोरम के हस्ताक्षरित सत्यापन के बिना हर पंजीकरण अस्वीकार करता है — दूसरा फ़ोन अब उसी चेहरे को दूसरा खाता नहीं देता। जो अभी लागू नहीं है: उस तारीख़ से पहले के खातों के पास चेहरे का टेम्पलेट नहीं है और वे सिद्धांततः नए वॉलेट से दोबारा पंजीकरण कर सकते हैं; त्रुटि दरें कैलिब्रेट नहीं हैं (~1,000 इम्पोस्टर जोड़े चाहिए); जीवंतता जाँच सिर घुमाना है, मज़बूत डीपफ़ेक बचाव कैलिब्रेट हो रहे हैं। «एक इंसान, एक खाता» को «जाँचा गया, बताई गई सीमाओं के साथ» पढ़ें — «असंभव» नहीं।',
   'reg-sub':'Aequitas नेटवर्क से जुड़ें और अपना 1,000 AEQ शुरुआती अनुदान पाएँ। पंजीकरण एक बार और स्थायी है। Phase 1: द्वार स्वतंत्र मिलान सेवाओं की लाइव चेहरा जाँच है — बताई गई सीमाएँ अस्वीकरण में हैं।',
@@ -3927,8 +3939,8 @@ hi:{
   'swap-price-title':'AEQ / tUSD — लाइव मूल्य','swap-price-desc':'पूल रिज़र्व से रियल-टाइम मूल्य (x·y=k)। हर 8 सेकंड में नए पूल डेटा के साथ अपडेट।','swap-price-empty':'अभी पूल डेटा नहीं — मूल्य चार्ट देखने के लिए लिक्विडिटी जोड़ें।',
   'node-guide-lang-note':'यह इनलाइन गाइड अंग्रेज़ी में है। आपकी भाषा में PDF ऊपर के बटन से उपलब्ध है।',
   'k-zkp':'ZKP सिस्टम','k-hash':'हैश सिस्टम','k-sybil-prot':'Sybil सुरक्षा',
-  'soc-title':'💬 सोशल मीडिया','soc-sub':'घोषणाएँ, चेन की स्थिति, और असहज सवाल &mdash; सार्वजनिक रूप से, दोनों पर।',
-  'soc-x-desc':'घोषणाएँ, और चेन असल में क्या कर रही है। संक्षिप्त रूप।','soc-tg-desc':'खुला समूह: सवाल, नोड संचालक, और रजिस्टर करने में मदद।',
+  
+  
   's-validators':'सक्रिय वैलिडेटर',
   'expl-heading':'ब्लॉक एक्सप्लोरर'}
 };

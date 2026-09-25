@@ -63,25 +63,27 @@
     <option value="tr">🌐 TR</option>
   </select>
   <div class="header-right">
-    <div class="phase0-badge" data-i18n="phase0-badge">Phase 1 · face check</div>
-    <div class="badge badge-live"><span class="pulse"></span><span data-i18n="live">LIVE</span></div>
     <div class="badge badge-health badge-health-healthy" id="health-badge" title="Checking network health…">● GHOSTDAG</div>
     <div class="badge badge-dag" title="KnightDAG: each block infers its own smallest secure K instead of a fixed epoch-wide worst case — inspired by DAGKNIGHT (Sompolinsky &amp; Sutton, 2022), evolving GHOSTDAG beyond a rigid parameter.">◆ KNIGHTDAG</div>
     <a href="/register" class="nav-cta" data-i18n="nav-register">Register</a>
   </div>
   </div>
 <div class="tabs">
-  <!-- Not a tab switch but a real link: the landing page is a separate page,
-       and until now the explorer had no way back to it at all. It sits first
-       because that is where someone looks for "what is this", and it carries
-       no data-act, so showTab never tries to find a #tab-overview panel. -->
-  <a class="tab" href="/" style="text-decoration:none;display:inline-block">🏠 Overview</a>
-  <div class="tab active" data-act="showTab" data-args='["register"]' role="button" tabindex="0">🔐 Register</div>
-  <div class="tab" data-act="showTab" data-args='["explorer"]' role="button" tabindex="0">🔍 Explorer</div>
-  <div class="tab" data-act="showTab" data-args='["index"]' role="button" tabindex="0">⚖️ Equality</div>
-  <div class="tab" data-act="showTab" data-args='["network"]' role="button" tabindex="0">🌐 Network</div>
-  <div class="tab" data-act="showTabAndPriceChart" data-args='["exchange"]' role="button" tabindex="0">🔄 Exchange</div>
-  <div class="tab" data-act="showTab" data-args='["social"]' role="button" tabindex="0">💬 Social</div>
+  <!-- Dieselbe Reiterzeile wie auf der Website (landing.go): die fuenf
+       Rubriken sind echte Links auf die Inhaltsseiten, dahinter die
+       Werkzeuge dieser Seite, die per showTab umschalten. activateTabFromPath
+       sucht den Reiter ueber data-args -- "register" muss darum bleiben. -->
+  <a class="tab" href="/" data-i18n="nav-home">Home</a>
+  <a class="tab" href="/people" data-i18n="nav-people">For people</a>
+  <a class="tab tab-biz" href="/business" data-i18n="nav-biz">For businesses</a>
+  <a class="tab" href="/economy" data-i18n="nav-how">How it works</a>
+  <a class="tab" href="/roadmap" data-i18n="nav-road">Roadmap &amp; FAQ</a>
+  <span class="tab-sep" aria-hidden="true"></span>
+  <div class="tab tab-tool active" data-act="showTab" data-args='["register"]' role="button" tabindex="0" data-i18n="nav-register">Register</div>
+  <div class="tab tab-tool" data-act="showTab" data-args='["explorer"]' role="button" tabindex="0" data-i18n="nav-explorer">Explorer</div>
+  <div class="tab tab-tool" data-act="showTab" data-args='["index"]' role="button" tabindex="0" data-i18n="nav-equality">Equality</div>
+  <div class="tab tab-tool" data-act="showTab" data-args='["network"]' role="button" tabindex="0" data-i18n="nav-network">Network</div>
+  <div class="tab tab-tool" data-act="showTabAndPriceChart" data-args='["exchange"]' role="button" tabindex="0" data-i18n="nav-exchange">Exchange</div>
 </div>
 </header>
 <div class="live-strip" aria-label="Live">
@@ -1965,18 +1967,6 @@
      only structural fix needed; nothing else in the file is unbalanced. -->
 
 <!-- SOCIAL -->
-<div id="tab-social" class="tab-content">
-  <div class="rs">
-    <div class="rhero">
-      <h1 class="rhero-title" data-i18n="soc-title">💬 Social Media</h1>
-      <div class="rhero-sub" data-i18n="soc-sub">Announcements, the state of the chain, and the awkward questions &mdash; in public, on both.</div>
-    </div>
-    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:18px;max-width:720px;margin:26px auto 0">
-<a href="https://x.com/AequitasMoney" target="_blank" rel="noopener noreferrer" style="display:flex;flex-direction:column;align-items:center;text-align:center;gap:12px;text-decoration:none;background:var(--card2,#12151f);border:1px solid var(--border,rgba(255,255,255,0.08));border-radius:14px;padding:38px 26px;transition:border-color .2s,transform .2s" onmouseover="this.style.borderColor='var(--purple)';this.style.transform='translateY(-3px)'" onmouseout="this.style.borderColor='';this.style.transform=''"><svg viewBox="0 0 24 24" width="64" height="64" fill="currentColor" style="color:var(--text,#e8edf5)" aria-hidden="true"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/></svg><div style="font-size:1.17rem;font-weight:700;color:var(--text,#e8edf5)">X</div><div dir="ltr" style="font-size:0.95rem;font-weight:600;color:var(--purple)">@AequitasMoney</div><div data-i18n="soc-x-desc" style="font-size:0.86rem;color:var(--muted,#8892a4);line-height:1.7;max-width:260px">Announcements, and what the chain is actually doing. Short form.</div></a>
-<a href="https://t.me/aequitasmoney" target="_blank" rel="noopener noreferrer" style="display:flex;flex-direction:column;align-items:center;text-align:center;gap:12px;text-decoration:none;background:var(--card2,#12151f);border:1px solid var(--border,rgba(255,255,255,0.08));border-radius:14px;padding:38px 26px;transition:border-color .2s,transform .2s" onmouseover="this.style.borderColor='var(--purple)';this.style.transform='translateY(-3px)'" onmouseout="this.style.borderColor='';this.style.transform=''"><svg viewBox="0 0 24 24" width="64" height="64" fill="currentColor" style="color:var(--text,#e8edf5)" aria-hidden="true"><path d="M11.944 0A12 12 0 0 0 0 12a12 12 0 0 0 12 12 12 12 0 0 0 12-12A12 12 0 0 0 12 0a12 12 0 0 0-.056 0zm4.962 7.224c.1-.002.321.023.465.14a.506.506 0 0 1 .171.325c.016.093.036.306.02.472-.18 1.898-.962 6.502-1.36 8.627-.168.9-.499 1.201-.82 1.23-.696.065-1.225-.46-1.9-.902-1.056-.693-1.653-1.124-2.678-1.8-1.185-.78-.417-1.21.258-1.91.177-.184 3.247-2.977 3.307-3.23.007-.032.014-.15-.056-.212s-.174-.041-.249-.024c-.106.024-1.793 1.14-5.061 3.345-.48.33-.913.49-1.302.48-.428-.008-1.252-.241-1.865-.44-.752-.245-1.349-.374-1.297-.789.027-.216.325-.437.893-.663 3.498-1.524 5.83-2.529 6.998-3.014 3.332-1.386 4.025-1.627 4.476-1.635z"/></svg><div style="font-size:1.17rem;font-weight:700;color:var(--text,#e8edf5)">Telegram</div><div dir="ltr" style="font-size:0.95rem;font-weight:600;color:var(--purple)">t.me/aequitasmoney</div><div data-i18n="soc-tg-desc" style="font-size:0.86rem;color:var(--muted,#8892a4);line-height:1.7;max-width:260px">The open group: questions, node operators, and help getting registered.</div></a>
-    </div>
-  </div>
-</div>
 
 </main>
 
