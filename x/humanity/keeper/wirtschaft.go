@@ -21,14 +21,44 @@ package keeper
 // Ergebnis. Die Buchfuehrung wird auch beim Nachspielen mitgefuehrt, damit
 // ein anderer Knoten, der die Erzeugung uebernimmt, dieselben Zahlen hat.
 //
-// DAS ALTER DES GELDES. Jedes Konto fuehrt seine AEQ in Paketen: Betrag,
-// "Seit" (seit wann das Geld unterwegs ist, ohne bei einem Menschen
-// angekommen zu sein) und "Ankunft" (wann es auf diesem Konto ankam). Das
-// Alter reist mit dem Geld. Neu wird es nur, wenn es mindestens 30 Tage bei
-// einem Menschen lag oder frisch entsteht (Grundeinkommen, Registrierung,
-// Einstieg aus tUSD). Unternehmen geben das aelteste Geld zuerst aus,
-// Menschen das neueste -- so muss Geld, das ein Unternehmen ueber einen
-// Freund "waschen" will, wirklich 30 Tage bei ihm liegen.
+// FREIBETRAG NACH UMSATZ (Konzept Abschnitt 14, beschlossen 25.09.2026).
+// Unternehmen halten bis zu 1,5 Monatsumsaetze frei (mindestens den Sockel),
+// bis 3 Monatsumsaetze kostet der Teil darueber 0,5 %/Monat, alles darueber
+// 2 %/Monat. Frueher trug jedes AEQ ein Alter und wurde in fester Reihenfolge
+// ausgegeben -- gruendlich gegen Umgehung, aber fuer echte Unternehmen zu
+// teuer (12-36 %/Jahr auf ganz normale Reserven) und fuer Buchhaltung und
+// Kassen nicht abbildbar. Ein AEQ ist jetzt wieder wie das andere.
+//
+// Der Monatsumsatz ist der Durchschnitt der anrechenbaren Eingaenge der
+// letzten 90 Tage. Damit niemand ihn aufblaeht, gelten drei Schutzregeln:
+//   - Einkaeufe von Menschen zaehlen je Mensch hoechstens 9 x fairer Anteil
+//     pro Unternehmen und Quartal (Zaehler beim Menschen: Gezaehlt). Pro
+//     Quartal statt pro Monat, damit ein grosser Einkauf (Moebel, Reparatur)
+//     voll zaehlt, ohne dass das Aufblaehen leichter wird.
+//   - Zwischen Unternehmen zaehlt nur der Ueberschuss: alle Eingaenge von
+//     Unternehmen minus alle Zahlungen an Unternehmen. Ein Dreieck, in dem
+//     drei Firmen sich Geld im Kreis schicken, gewinnt so nichts. Firmen mit
+//     gemeinsamen Verantwortlichen zaehlen fuereinander gar nicht.
+//   - Zahlt ein Unternehmen einem Menschen Geld, hebt das dessen gezaehlte
+//     Einkaeufe dort auf (rueckzahlungLocked): einkaufen und das Geld
+//     zurueckbekommen bringt nichts.
+//   - Loehne, Entnahmen, Zahlungen der eigenen Verantwortlichen, Eingaenge
+//     von freien Adressen und der Einstieg aus tUSD zaehlen nicht.
+//
+// FEHLENDE BUCHFUEHRUNG GEHT ZUGUNSTEN DER KONTOINHABER AUS. Hat DIESER
+// KNOTEN weniger als 30 Tage Daten (kurz nach der Aktivierung, oder frisch aus
+// einem Snapshot: buchSeit), berechnet er kein Liegegeld -- sonst wuerde ein
+// Knoten ohne Daten jedes Unternehmen als umsatzlos behandeln. Ein NEUES
+// UNTERNEHMEN bekommt dagegen keine Schonfrist: sonst liesse sich Geld Monat
+// fuer Monat in eine frisch eroeffnete Firma schieben und nie Liegegeld
+// zahlen. Sein Umsatz wird ueber mindestens 30 Tage gemittelt, damit wenige
+// Tage nicht hochgerechnet werden.
+//
+// DIE BUCHFUEHRUNG IST ABSTURZSICHER. Sie wird in derselben
+// Datenbank-Transaktion geschrieben wie die Kontostaende (speichereBuchCtx)
+// und bei einem Abbruch mit ihnen zurueckgenommen (blockRollbackSnapshot).
+// Jeder Knoten, der dieselben Bloecke angewandt hat, hat damit dieselben
+// Zahlen -- darauf baut die Pruefung beim Nachspielen (liegegeld_pruefung.go).
 //
 // AKTIVIERUNG. Nichts davon wirkt vor wirtschaftAktivAbUnix. Danach laufen
 // alle Ueberweisungen ueber transferMutateLocked (die schnellen Pfade
@@ -63,24 +93,25 @@ const (
 
 	// Menschen (Fairness-Garantie, Konzept Abschnitt 3)
 	menschFreiAusgabenMonat = 1 * registrationGrant // gebuehrenfreie Ausgaben je Monat
-	menschTauschFreiMonat   = 1 * registrationGrant // Umtausch ohne Abgabe je Monat
-	lohnTauschFreiMonat     = 3 * registrationGrant // erhaltener Lohn, zusaetzlich tauschbar
+	menschTauschFreiMonat   = 3 * registrationGrant // Umtausch ohne Abgabe je Monat, egal woher
 	menschSparFreibetrag    = 5 * registrationGrant // darunter keine Umlaufsicherung
 	menschUmlaufMonat       = 0.005                 // 0,5 %/Monat auf den Teil darueber
-	menschReifSekunden      = 30 * 86400
 
 	// Freie Adressen
 	freiGrenze      = 1 * registrationGrant
 	freiUmlaufMonat = 0.01
 
 	// Unternehmen
-	unternehmenSockel       = 2 * registrationGrant
-	liegeStufe1Sekunden     = 30 * 86400
-	liegeStufe2Sekunden     = 90 * 86400
-	liegeRate1Monat         = 0.01
-	liegeRate2Monat         = 0.03
-	maxUnternehmenJeMensch  = 3
-	maxVerantwortlicheJeUnt = 10
+	unternehmenSockel        = 2 * registrationGrant
+	umsatzFreiFaktor         = 1.5                   // bis 1,5 Monatsumsaetze frei
+	umsatzStufe2Faktor       = 3.0                   // ab 3 Monatsumsaetzen die hohe Stufe
+	liegeRate1Monat          = 0.005                 // 0,5 %/Monat zwischen 1,5 und 3 Monatsumsaetzen
+	liegeRate2Monat          = 0.02                  // 2 %/Monat darueber
+	umsatzFensterTage        = 90                    // Durchschnitt ueber so viele Tage
+	umsatzMindestTage        = 30                    // darunter kein Liegegeld (zu wenig Daten)
+	menschZaehltJeUntQuartal = 9 * registrationGrant // je Mensch und Unternehmen und Quartal
+	maxUnternehmenJeMensch   = 3
+	maxVerantwortlicheJeUnt  = 10
 
 	// Ausstieg AEQ -> Stable
 	ausstiegsAbgabeBps = 200 // 2 %
@@ -146,6 +177,9 @@ type unternehmenEintrag struct {
 func (e *unternehmenEintrag) offen() bool { return e != nil && e.GeschlossenAm == 0 }
 
 func (e *unternehmenEintrag) istVerantwortlich(mensch string) bool {
+	if e == nil {
+		return false
+	}
 	for _, v := range e.Verantwortliche {
 		if v == mensch {
 			return true
@@ -154,19 +188,28 @@ func (e *unternehmenEintrag) istVerantwortlich(mensch string) bool {
 	return false
 }
 
-type paket struct {
-	Betrag  float64 `json:"b"`
-	Seit    int64   `json:"s"`
-	Ankunft int64   `json:"a"`
+// tagesUmsatz: anrechenbare Eingaenge eines Unternehmens an einem Tag.
+type tagesUmsatz struct {
+	Tag    int64   `json:"t"`            // Unix-Tag (unix / 86400)
+	Mensch float64 `json:"m,omitempty"`  // von Menschen, je Mensch gedeckelt
+	BEin   float64 `json:"be,omitempty"` // von anderen Unternehmen
+	BAus   float64 `json:"ba,omitempty"` // an andere Unternehmen
 }
 
 type buchKonto struct {
-	Pakete []paket `json:"p,omitempty"`
-	Monat  int     `json:"m,omitempty"` // JJJJMM der Zaehler
+	Monat int `json:"m,omitempty"` // JJJJMM der Zaehler
 	// Menschen
 	Ausgegeben float64 `json:"aus,omitempty"`
 	Getauscht  float64 `json:"tau,omitempty"`
 	Lohn       float64 `json:"lohn,omitempty"`
+	// je Unternehmen schon als Umsatz gezaehlt in diesem Monat
+	Gezaehlt  map[string]float64 `json:"gz,omitempty"`
+	GzQuartal int                `json:"gq,omitempty"` // JJJJQ, Zeitraum von Gezaehlt
+	// Gezaehlt des Vorquartals: eine Rueckzahlung kurz nach dem Wechsel
+	// hebt den Einkauf von kurz davor noch auf (siehe rueckzahlungLocked).
+	GezaehltVorher map[string]float64 `json:"gzv,omitempty"`
+	// Unternehmen: Umsatz der letzten 90 Tage, je Tag
+	Tage []tagesUmsatz `json:"td,omitempty"`
 	// Unternehmen (oeffentliche Monatssummen)
 	Einnahmen   float64 `json:"ein,omitempty"`
 	LohnGezahlt float64 `json:"lgz,omitempty"`
@@ -177,17 +220,20 @@ type wirtschaft struct {
 	mu          sync.Mutex
 	unternehmen map[string]*unternehmenEintrag
 	buch        map[string]*buchKonto
-	schmutzig   map[string]bool
 	// letzter Umlauf-Durchlauf (Blockzeit), fuer die Laenge des Zeitraums
 	letzterUmlauf int64
-	flusher       sync.Once
+	// seit wann dieser Knoten vollstaendig Buch fuehrt (0 = seit Beginn).
+	// Nach einem Snapshot-Import neu gesetzt: die Buchfuehrung davor fehlt.
+	buchSeit int64
+	// der laufende Tagesdurchlauf beim Nachspielen: sein at und das
+	// letzterUmlauf davor -- die Laenge des Zeitraums fuer die Pruefung.
+	laufAt, laufVorher int64
 }
 
 func neueWirtschaft() *wirtschaft {
 	return &wirtschaft{
 		unternehmen: map[string]*unternehmenEintrag{},
 		buch:        map[string]*buchKonto{},
-		schmutzig:   map[string]bool{},
 	}
 }
 
@@ -219,7 +265,10 @@ func (w *wirtschaft) kontoLocked(addr string, jetzt int64) *buchKonto {
 	return k
 }
 
-func (w *wirtschaft) markiere(addr string) { w.schmutzig[addr] = true }
+func quartalVon(unix int64) int {
+	t := time.Unix(unix, 0).UTC()
+	return t.Year()*10 + (int(t.Month())-1)/3 + 1
+}
 
 func (w *wirtschaft) offenesUnternehmenLocked(addr string) *unternehmenEintrag {
 	if e := w.unternehmen[addr]; e.offen() {
@@ -259,106 +308,176 @@ func (cs *ChainState) kontoartVon(addr string, istMensch bool) kontoart {
 	return artFrei
 }
 
-// ------------------------------------------------------------ Pakete
+// ------------------------------------------------------------ Umsatz
 
-func summePakete(p []paket) float64 {
-	var s float64
-	for _, x := range p {
-		s += x.Betrag
+func unixTag(unix int64) int64 { return unix / 86400 }
+
+// tagLocked: der Umsatz-Eintrag fuer heute; alte Tage fallen heraus. w.mu gehalten.
+func (k *buchKonto) tagLocked(jetzt int64) *tagesUmsatz {
+	heute := unixTag(jetzt)
+	grenze := heute - umsatzFensterTage
+	behalten := k.Tage[:0]
+	for _, t := range k.Tage {
+		if t.Tag > grenze {
+			behalten = append(behalten, t)
+		}
 	}
-	return s
+	k.Tage = behalten
+	if n := len(k.Tage); n > 0 && k.Tage[n-1].Tag == heute {
+		return &k.Tage[n-1]
+	}
+	k.Tage = append(k.Tage, tagesUmsatz{Tag: heute})
+	return &k.Tage[len(k.Tage)-1]
 }
 
-// entnehmen nimmt betrag aus den Paketen: Menschen das neueste zuerst,
-// alle anderen das aelteste zuerst. Liefert die entnommenen Stuecke.
-func entnehmen(k *buchKonto, betrag float64, mensch bool) []paket {
-	if betrag <= 0 {
-		return nil
+func gemeinsameVerantwortliche(a, b *unternehmenEintrag) bool {
+	if a == nil || b == nil {
+		return false
 	}
-	if mensch {
-		sort.SliceStable(k.Pakete, func(i, j int) bool { return k.Pakete[i].Ankunft < k.Pakete[j].Ankunft })
-	} else {
-		sort.SliceStable(k.Pakete, func(i, j int) bool { return k.Pakete[i].Seit < k.Pakete[j].Seit })
-	}
-	var out []paket
-	rest := betrag
-	for rest > 1e-9 && len(k.Pakete) > 0 {
-		idx := 0
-		if mensch {
-			idx = len(k.Pakete) - 1
+	for _, v := range a.Verantwortliche {
+		if b.istVerantwortlich(v) {
+			return true
 		}
-		p := &k.Pakete[idx]
-		n := math.Min(p.Betrag, rest)
-		out = append(out, paket{Betrag: n, Seit: p.Seit, Ankunft: p.Ankunft})
-		p.Betrag -= n
+	}
+	return false
+}
+
+func aktivAb() int64 {
+	if o := wirtschaftAktivOverride.Load(); o != 0 {
+		return o
+	}
+	return wirtschaftAktivAbUnix
+}
+
+// knotenTageLocked: seit wie vielen Tagen DIESER KNOTEN vollstaendig Buch
+// fuehrt (ab Aktivierung bzw. buchSeit). w.mu gehalten.
+func (w *wirtschaft) knotenTageLocked(jetzt int64) int64 {
+	ab := aktivAb()
+	if w.buchSeit > ab {
+		ab = w.buchSeit
+	}
+	if t := (jetzt - ab) / 86400; t > 0 {
+		return t
+	}
+	return 0
+}
+
+// mittelTageLocked: ueber wie viele Tage der Umsatz eines Unternehmens
+// gemittelt wird -- die bekannten Tage, mindestens 30 (ein neues Unternehmen
+// wird nicht aus wenigen Tagen hochgerechnet), hoechstens das Fenster.
+// w.mu gehalten.
+func (w *wirtschaft) mittelTageLocked(e *unternehmenEintrag, jetzt int64) int64 {
+	ab := aktivAb()
+	if e != nil && e.EroeffnetAm > ab {
+		ab = e.EroeffnetAm
+	}
+	if w.buchSeit > ab {
+		ab = w.buchSeit
+	}
+	// Kalendertage einschliesslich des ersten und des heutigen: sonst fiele
+	// der Umsatz des Eroeffnungstags aus dem Fenster (monatsUmsatzLocked).
+	tage := unixTag(jetzt) - unixTag(ab) + 1
+	if tage < umsatzMindestTage {
+		tage = umsatzMindestTage
+	}
+	if tage > umsatzFensterTage {
+		tage = umsatzFensterTage
+	}
+	return tage
+}
+
+// liegegeldLocked: Liegegeld pro Monat fuer ein Unternehmen bei diesem Stand.
+// Weniger als 30 Tage Daten auf diesem Knoten: 0 (siehe Kopf). w.mu gehalten.
+func (w *wirtschaft) liegegeldLocked(addr string, stand float64, jetzt int64) float64 {
+	if w.knotenTageLocked(jetzt) < umsatzMindestTage {
+		return 0
+	}
+	tage := w.mittelTageLocked(w.unternehmen[addr], jetzt)
+	return liegegeldFuerStand(stand, w.monatsUmsatzLocked(w.kontoLocked(addr, jetzt), tage, jetzt))
+}
+
+// monatsUmsatzLocked: anrechenbarer Umsatz pro Monat (30 Tage) im Durchschnitt
+// der bekannten Tage. Menschen gedeckelt, Unternehmen nur Ueberschuss. w.mu gehalten.
+func (w *wirtschaft) monatsUmsatzLocked(k *buchKonto, tage, jetzt int64) float64 {
+	if tage <= 0 {
+		return 0
+	}
+	grenze := unixTag(jetzt) - tage
+	var mensch, ein, aus float64
+	for _, t := range k.Tage {
+		if t.Tag > grenze {
+			mensch += t.Mensch
+			ein += t.BEin
+			aus += t.BAus
+		}
+	}
+	// mensch kann durch Rueckzahlungen (rueckzahlungLocked) unter null
+	// fallen, wenn der Einkauf schon aus dem Fenster ist.
+	return (math.Max(0, mensch) + math.Max(0, ein-aus)) * 30 / float64(tage)
+}
+
+// quartalLocked: Gezaehlt auf das laufende Quartal bringen; das eben
+// abgelaufene bleibt als GezaehltVorher. w.mu gehalten.
+func (k *buchKonto) quartalLocked(jetzt int64) {
+	q := quartalVon(jetzt)
+	if k.GzQuartal == q {
+		return
+	}
+	k.GezaehltVorher = nil
+	if naechstesQuartal(k.GzQuartal) == q {
+		k.GezaehltVorher = k.Gezaehlt
+	}
+	k.GzQuartal, k.Gezaehlt = q, nil
+}
+
+func naechstesQuartal(q int) int {
+	if q%10 == 4 {
+		return (q/10+1)*10 + 1
+	}
+	return q + 1
+}
+
+// rueckzahlungLocked: zahlt ein Unternehmen einem Menschen Geld, hebt das
+// auf, was dessen Einkaeufe dort als Umsatz gezaehlt haben (dieses und
+// voriges Quartal). Geld, das an denselben Menschen zurueckgeht, war kein
+// Umsatz: sonst kaufen Freunde ein, bekommen das Geld als "Lohn" zurueck,
+// und der Freibetrag waechst ohne einen echten Verkauf. Rueckerstattungen
+// fuer zurueckgegebene Ware fallen genauso heraus -- richtig so. Kauft eine
+// Angestellte bei ihrem Arbeitgeber ein, zaehlt ihr Einkauf dort nicht;
+// das kostet das Unternehmen wenig. w.mu gehalten.
+func rueckzahlungLocked(fk, mensch *buchKonto, firma string, amount float64, jetzt int64) {
+	mensch.quartalLocked(jetzt)
+	rest := amount
+	for _, m := range []map[string]float64{mensch.Gezaehlt, mensch.GezaehltVorher} {
+		if rest <= 0 || m == nil || m[firma] <= 0 {
+			continue
+		}
+		n := math.Min(rest, m[firma])
+		m[firma] -= n
 		rest -= n
-		if p.Betrag <= 1e-9 {
-			k.Pakete = append(k.Pakete[:idx], k.Pakete[idx+1:]...)
-		}
-	}
-	return out
-}
-
-// abgleichen bringt die Summe der Pakete auf den Kontostand: Zufluesse, die
-// an keiner Buchungsstelle vorbeikamen (Grundeinkommen, Registrierung,
-// Einstieg aus tUSD), sind frisch; Abfluesse ohne Buchungsstelle (Gebuehren,
-// Abgaben) gehen in der Ausgabereihenfolge ab.
-func abgleichen(k *buchKonto, stand float64, mensch bool, jetzt int64) {
-	diff := stand - summePakete(k.Pakete)
-	switch {
-	case diff > 1e-6:
-		k.Pakete = append(k.Pakete, paket{Betrag: diff, Seit: jetzt, Ankunft: jetzt})
-	case diff < -1e-6:
-		entnehmen(k, -diff, mensch)
+		fk.tagLocked(jetzt).Mensch -= n
 	}
 }
 
-// verdichten haelt die Paketliste klein: gleicher Tag (Seit, Ankunft)
-// verschmilzt; bei Unternehmen ist alles ueber 90 Tage ein Paket, bei
-// Menschen alles, was laenger als 30 Tage da ist.
-func verdichten(k *buchKonto, mensch bool, jetzt int64) {
-	type schluessel struct{ s, a int64 }
-	m := map[schluessel]*paket{}
-	var reihenfolge []schluessel
-	for _, p := range k.Pakete {
-		if p.Betrag <= 1e-9 {
-			continue
-		}
-		s := schluessel{p.Seit / 86400, p.Ankunft / 86400}
-		if mensch && jetzt-p.Ankunft >= menschReifSekunden {
-			s = schluessel{-1, -1}
-		}
-		if !mensch && jetzt-p.Seit > liegeStufe2Sekunden {
-			s = schluessel{-2, -2}
-		}
-		if q, ok := m[s]; ok {
-			q.Betrag += p.Betrag
-			if p.Seit < q.Seit {
-				q.Seit = p.Seit
-			}
-			if p.Ankunft < q.Ankunft {
-				q.Ankunft = p.Ankunft
-			}
-			continue
-		}
-		cp := p
-		m[s] = &cp
-		reihenfolge = append(reihenfolge, s)
-	}
-	k.Pakete = k.Pakete[:0]
-	for _, s := range reihenfolge {
-		k.Pakete = append(k.Pakete, *m[s])
-	}
+// liegegeldFuerStand: Liegegeld pro Monat bei diesem Guthaben und Monatsumsatz.
+func liegegeldFuerStand(stand, umsatz float64) float64 {
+	frei := math.Max(unternehmenSockel, umsatzFreiFaktor*umsatz)
+	stufe2 := math.Max(unternehmenSockel, umsatzStufe2Faktor*umsatz)
+	mittel := math.Max(0, math.Min(stand, stufe2)-frei)
+	hoch := math.Max(0, stand-stufe2)
+	return mittel*liegeRate1Monat + hoch*liegeRate2Monat
 }
 
 // ------------------------------------------------------------ Gebuehren
 
 // gebuehrMitWirtschaft ersetzt ueberweisungsGebuehrFuer ab der Aktivierung:
 //   - Mensch: die ersten 1.000 AEQ Ausgaben im Monat gebuehrenfrei, danach
-//     wie bisher (0,1 % + Aufschlag nach Guthaben).
+//     0,1 % ohne Aufschlagstufen (Konzept 14.5).
 //   - Unternehmen -> Mensch: 0 (Lohn, Entnahme, Erstattung).
-//   - Unternehmen -> sonst: 0,1 % ohne Aufschlag.
-//   - freie Adresse: wie bisher.
+//   - Unternehmen -> sonst und freie Adresse: 0,1 %.
+//
+// Vor der Aktivierung gilt die bisherige Gebuehr mit Aufschlag unveraendert --
+// sonst aendert sich das Nachspielen bestehender Bloecke.
 func (cs *ChainState) gebuehrMitWirtschaft(from, to string, fromArt, toArt kontoart, amount, guthaben float64, jetzt int64) float64 {
 	if !wirtschaftAktiv(jetzt) {
 		return ueberweisungsGebuehrFuer(amount, guthaben)
@@ -369,14 +488,21 @@ func (cs *ChainState) gebuehrMitWirtschaft(from, to string, fromArt, toArt konto
 		w.mu.Lock()
 		frei := math.Max(0, menschFreiAusgabenMonat-w.kontoLocked(from, jetzt).Ausgegeben)
 		w.mu.Unlock()
-		return ueberweisungsGebuehrFuer(math.Max(0, amount-frei), guthaben)
+		return grundGebuehr(math.Max(0, amount-frei))
 	case artUnternehmen:
 		if toArt == artMensch {
 			return 0
 		}
-		return round6(amount * float64(ueberweisungsGebuehrBps) / 10_000)
 	}
-	return ueberweisungsGebuehrFuer(amount, guthaben)
+	return grundGebuehr(amount)
+}
+
+// grundGebuehr: 0,1 % ohne Aufschlag, auf Mikro-AEQ gerundet.
+func grundGebuehr(betrag float64) float64 {
+	if betrag <= 0 || math.IsNaN(betrag) || math.IsInf(betrag, 0) {
+		return 0
+	}
+	return round6(betrag * float64(ueberweisungsGebuehrBps) / 10_000)
 }
 
 // pruefeEmpfaengerWirtschaft: eine freie Adresse haelt hoechstens 1.000 AEQ.
@@ -391,58 +517,58 @@ func pruefeEmpfaengerWirtschaft(toArt kontoart, standVorher, zufluss float64, je
 	return nil
 }
 
-// nachUeberweisung fuehrt Alter und Monatszaehler nach einer Ueberweisung.
-// Staende sind die NACH der Ueberweisung. Buchfuehrung, kein Konsens.
-func (cs *ChainState) nachUeberweisung(from, to string, fromArt, toArt kontoart, amount, gebuehr, fromNach, toNach float64, jetzt int64) {
-	if !wirtschaftAktiv(jetzt) || fromArt == artSystem || toArt == artSystem {
-		return
+// nachUeberweisung fuehrt Monatszaehler und Umsatz nach einer Ueberweisung.
+// Buchfuehrung, kein Konsens (siehe Kopf); gespeichert in der Transaktion aus ctx.
+func (cs *ChainState) nachUeberweisung(ctx context.Context, from, to string, fromArt, toArt kontoart, amount, gebuehr, fromNach, toNach float64, jetzt int64) error {
+	if !wirtschaftAktiv(jetzt) || fromArt == artSystem || toArt == artSystem || amount <= 0 {
+		return nil
 	}
 	w := cs.wirt()
 	w.mu.Lock()
-	defer w.mu.Unlock()
 	fk := w.kontoLocked(from, jetzt)
 	tk := w.kontoLocked(to, jetzt)
-	fMensch, tMensch := fromArt == artMensch, toArt == artMensch
-	abgleichen(fk, fromNach+amount+gebuehr, fMensch, jetzt)
-	abgleichen(tk, math.Max(0, toNach-amount), tMensch, jetzt)
+	fromU, toU := w.offenesUnternehmenLocked(from), w.offenesUnternehmenLocked(to)
 
-	stuecke := entnehmen(fk, amount, fMensch)
-	entnehmen(fk, gebuehr, fMensch)
-	for _, s := range stuecke {
-		if fMensch && jetzt-s.Ankunft >= menschReifSekunden {
-			s.Seit = jetzt // einen Monat beim Menschen: es war sein Geld
-		}
-		s.Ankunft = jetzt
-		tk.Pakete = append(tk.Pakete, s)
-	}
-	abgleichen(fk, fromNach, fMensch, jetzt)
-	abgleichen(tk, toNach, tMensch, jetzt)
-	verdichten(fk, fMensch, jetzt)
-	verdichten(tk, tMensch, jetzt)
-
-	if fMensch {
+	switch {
+	case fromArt == artMensch:
 		fk.Ausgegeben += amount
-	}
-	if fromArt == artUnternehmen {
-		if tMensch {
-			if e := w.unternehmen[from]; e != nil && e.istVerantwortlich(to) {
-				fk.Entnahmen += amount
-			} else {
-				fk.LohnGezahlt += amount
-				tk.Lohn += amount
+		if toArt == artUnternehmen && !toU.istVerantwortlich(from) {
+			fk.quartalLocked(jetzt)
+			bisher := 0.0
+			if fk.Gezaehlt != nil {
+				bisher = fk.Gezaehlt[to]
 			}
+			if n := math.Min(amount, math.Max(0, menschZaehltJeUntQuartal-bisher)); n > 0 {
+				if fk.Gezaehlt == nil {
+					fk.Gezaehlt = map[string]float64{}
+				}
+				fk.Gezaehlt[to] = bisher + n
+				tk.tagLocked(jetzt).Mensch += n
+			}
+		}
+	case fromArt == artUnternehmen && toArt == artMensch:
+		if fromU.istVerantwortlich(to) {
+			fk.Entnahmen += amount
+		} else {
+			fk.LohnGezahlt += amount
+			tk.Lohn += amount
+			rueckzahlungLocked(fk, tk, from, amount, jetzt)
+		}
+	case fromArt == artUnternehmen && toArt == artUnternehmen:
+		if !gemeinsameVerantwortliche(fromU, toU) {
+			fk.tagLocked(jetzt).BAus += amount
+			tk.tagLocked(jetzt).BEin += amount
 		}
 	}
 	if toArt == artUnternehmen {
 		tk.Einnahmen += amount
 	}
-	w.markiere(from)
-	w.markiere(to)
-	cs.startBuchFlusher()
+	w.mu.Unlock()
+	return cs.speichereBuchCtx(ctx, from, to)
 }
 
-// ausstiegsAbgabe: 2 % auf AEQ -> Stable. Menschen tauschen erhaltenen Lohn
-// (bis 3.000/Monat) und 1.000 AEQ im Monat ohne Abgabe.
+// ausstiegsAbgabe: 2 % auf AEQ -> Stable. Menschen tauschen 3.000 AEQ im
+// Monat ohne Abgabe, egal woher das Geld kommt (Konzept 14.5).
 func (cs *ChainState) ausstiegsAbgabe(addr string, art kontoart, amountIn float64, jetzt int64) float64 {
 	if !wirtschaftAktiv(jetzt) || amountIn <= 0 {
 		return 0
@@ -452,7 +578,7 @@ func (cs *ChainState) ausstiegsAbgabe(addr string, art kontoart, amountIn float6
 		w := cs.wirt()
 		w.mu.Lock()
 		k := w.kontoLocked(addr, jetzt)
-		frei := menschTauschFreiMonat + math.Min(k.Lohn, lohnTauschFreiMonat) - k.Getauscht
+		frei := menschTauschFreiMonat - k.Getauscht
 		w.mu.Unlock()
 		pflichtig = math.Max(0, amountIn-math.Max(0, frei))
 	}
@@ -462,16 +588,15 @@ func (cs *ChainState) ausstiegsAbgabe(addr string, art kontoart, amountIn float6
 	return round6(pflichtig * ausstiegsAbgabeBps / 10_000)
 }
 
-func (cs *ChainState) nachTausch(addr string, amountIn float64, jetzt int64) {
+func (cs *ChainState) nachTausch(ctx context.Context, addr string, amountIn float64, jetzt int64) error {
 	if !wirtschaftAktiv(jetzt) {
-		return
+		return nil
 	}
 	w := cs.wirt()
 	w.mu.Lock()
 	w.kontoLocked(addr, jetzt).Getauscht += amountIn
-	w.markiere(addr)
 	w.mu.Unlock()
-	cs.startBuchFlusher()
+	return cs.speichereBuchCtx(ctx, addr)
 }
 
 // ------------------------------------------------------------ Umlauf (taeglich)
@@ -491,31 +616,7 @@ func (cs *ChainState) umlaufBetrag(addr string, art kontoart, stand float64, jet
 		w := cs.wirt()
 		w.mu.Lock()
 		defer w.mu.Unlock()
-		k := w.kontoLocked(addr, jetzt)
-		abgleichen(k, stand, false, jetzt)
-		verdichten(k, false, jetzt)
-		p := append([]paket(nil), k.Pakete...)
-		sort.Slice(p, func(i, j int) bool { return p[i].Seit < p[j].Seit })
-		sockel := unternehmenSockel
-		var schuld float64
-		for _, x := range p {
-			b := x.Betrag
-			if sockel > 0 {
-				n := math.Min(sockel, b)
-				sockel -= n
-				b -= n
-			}
-			if b <= 0 {
-				continue
-			}
-			switch alter := jetzt - x.Seit; {
-			case alter > liegeStufe2Sekunden:
-				schuld += b * liegeRate2Monat * anteil
-			case alter > liegeStufe1Sekunden:
-				schuld += b * liegeRate1Monat * anteil
-			}
-		}
-		return round6(schuld)
+		return round6(w.liegegeldLocked(addr, stand, jetzt) * anteil)
 	}
 	return 0
 }
@@ -636,6 +737,7 @@ func (cs *ChainState) applyUmlaufDeltaLocked(ctx context.Context, wallet string,
 	w := cs.wirt()
 	w.mu.Lock()
 	if at > w.letzterUmlauf {
+		w.laufAt, w.laufVorher = at, w.letzterUmlauf
 		w.letzterUmlauf = at
 	}
 	w.mu.Unlock()
@@ -815,6 +917,18 @@ func (cs *ChainState) speichereUnternehmen(ctx context.Context, e *unternehmenEi
 	return nil
 }
 
+func (cs *ChainState) setzeBuchSeit(at int64) {
+	w := cs.wirt()
+	w.mu.Lock()
+	w.buchSeit = at
+	w.mu.Unlock()
+	if cs.db == nil {
+		return
+	}
+	cs.db.Exec(`INSERT INTO wirtschaft_meta (schluessel, wert) VALUES ('buch_seit', $1)
+		ON CONFLICT (schluessel) DO UPDATE SET wert = $1`, at)
+}
+
 func (cs *ChainState) speichereLetztenUmlauf(ctx context.Context, at int64) {
 	if cs.db == nil {
 		return
@@ -860,47 +974,207 @@ func (cs *ChainState) wirtschaftLaden() {
 	if cs.db.QueryRow(`SELECT wert FROM wirtschaft_meta WHERE schluessel = 'letzter_umlauf'`).Scan(&at) == nil && at.Valid {
 		w.letzterUmlauf = at.Int64
 	}
+	var seit sql.NullInt64
+	if cs.db.QueryRow(`SELECT wert FROM wirtschaft_meta WHERE schluessel = 'buch_seit'`).Scan(&seit) == nil && seit.Valid {
+		w.buchSeit = seit.Int64
+	}
 	fmt.Printf("✓ Wirtschaft: %d Unternehmen, %d Buchkonten\n", len(w.unternehmen), len(w.buch))
 }
 
-// startBuchFlusher schreibt die Buchfuehrung alle 10 Sekunden weg. Geht sie
-// bei einem Absturz verloren, heilt abgleichen() das beim naechsten Zugriff
-// (fehlendes Geld gilt dann als frisch -- zugunsten der Kontoinhaber).
-func (cs *ChainState) startBuchFlusher() {
+// speichereBuchCtx schreibt Buchkonten in die Transaktion aus ctx -- dieselbe
+// wie die Kontostaende. Frueher alle 10 Sekunden im Hintergrund: ein Absturz
+// verlor die letzten Sekunden, und zwei Knoten mit denselben Bloecken konnten
+// verschiedene Zahlen haben. Traegt ctx einen buchSammler (Stapel-Pfad),
+// werden die Adressen nur vorgemerkt und am Ende des Stapels in einer
+// Anweisung geschrieben -- wie die Konten dort auch.
+func (cs *ChainState) speichereBuchCtx(ctx context.Context, adressen ...string) error {
 	if cs.db == nil {
+		return nil
+	}
+	if s, _ := ctx.Value(buchSammlerKey{}).(*buchSammler); s != nil {
+		for _, a := range adressen {
+			s.adressen[a] = true
+		}
+		return nil
+	}
+	w := cs.wirt()
+	adressen = append([]string(nil), adressen...)
+	sort.Strings(adressen)
+	var werte []interface{}
+	var platz []string
+	vorige := ""
+	w.mu.Lock()
+	for _, a := range adressen {
+		if a == vorige {
+			continue
+		}
+		vorige = a
+		if k := w.buch[a]; k != nil {
+			b, err := json.Marshal(k)
+			if err != nil {
+				w.mu.Unlock()
+				return fmt.Errorf("buch %s: %w", a, err)
+			}
+			platz = append(platz, fmt.Sprintf("($%d,$%d)", len(werte)+1, len(werte)+2))
+			werte = append(werte, a, string(b))
+		}
+	}
+	w.mu.Unlock()
+	if len(platz) == 0 {
+		return nil
+	}
+	if _, err := cs.dbExecCtx(ctx).Exec(`INSERT INTO wirtschaft_buch (address, daten) VALUES `+strings.Join(platz, ",")+`
+		ON CONFLICT (address) DO UPDATE SET daten = EXCLUDED.daten`, werte...); err != nil {
+		return fmt.Errorf("buch speichern (%d Konten): %w", len(platz), err)
+	}
+	return nil
+}
+
+type buchZeitKey struct{}
+
+// mitBuchZeit: unter ctx bucht die Buchfuehrung zu at (Transaction.BuchAt).
+func mitBuchZeit(ctx context.Context, at int64) context.Context {
+	return context.WithValue(ctx, buchZeitKey{}, at)
+}
+
+// buchZeit: der Buchungsaugenblick aus ctx, sonst sonst.
+func buchZeit(ctx context.Context, sonst int64) int64 {
+	if at, ok := ctx.Value(buchZeitKey{}).(int64); ok && at > 0 {
+		return at
+	}
+	return sonst
+}
+
+// buchStempel: was in Transaction.BuchAt kommt -- vor der Aktivierung
+// nichts, damit sich alte Transaktionen nicht aendern.
+func buchStempel(at int64) int64 {
+	if wirtschaftAktiv(at) {
+		return at
+	}
+	return 0
+}
+
+// buchZeitBeimNachspielen: BuchAt des Erzeugers, wenn plausibel -- nicht
+// nach dem Block (eine Minute Uhrenspiel) und nicht mehr als eine Woche
+// davor. Sonst die Blockzeit wie bisher.
+func buchZeitBeimNachspielen(buchAt, blockZeit int64) int64 {
+	if buchAt > 0 && wirtschaftAktiv(buchAt) && buchAt <= blockZeit+60 && buchAt >= blockZeit-7*86400 {
+		return buchAt
+	}
+	return blockZeit
+}
+
+type buchSammlerKey struct{}
+
+type buchSammler struct{ adressen map[string]bool }
+
+// mitBuchSammler: speichereBuchCtx merkt unter dem zurueckgegebenen ctx nur
+// vor; schreiben() schreibt alles Vorgemerkte in die Transaktion aus basis.
+func mitBuchSammler(basis context.Context) (context.Context, *buchSammler) {
+	s := &buchSammler{adressen: map[string]bool{}}
+	return context.WithValue(basis, buchSammlerKey{}, s), s
+}
+
+func (s *buchSammler) schreiben(cs *ChainState, basis context.Context) error {
+	adressen := make([]string, 0, len(s.adressen))
+	for a := range s.adressen {
+		adressen = append(adressen, a)
+	}
+	return cs.speichereBuchCtx(basis, adressen...)
+}
+
+// buchStand: Kopie von Buchfuehrung, Register und Umlauf-Stand fuer
+// blockRollbackSnapshot -- ein abgelehnter Block darf nichts davon aendern.
+type buchStand struct {
+	voll                              bool
+	konten                            map[string]*buchKonto          // nil-Wert: gab es nicht
+	register                          map[string]*unternehmenEintrag // dito
+	letzterUmlauf, laufAt, laufVorher int64
+}
+
+func (e *unternehmenEintrag) kopie() *unternehmenEintrag {
+	cp := *e
+	cp.Verantwortliche = append([]string(nil), e.Verantwortliche...)
+	return &cp
+}
+
+func (k *buchKonto) kopie() *buchKonto {
+	cp := *k
+	if k.Gezaehlt != nil {
+		cp.Gezaehlt = make(map[string]float64, len(k.Gezaehlt))
+		for a, v := range k.Gezaehlt {
+			cp.Gezaehlt[a] = v
+		}
+	}
+	if k.GezaehltVorher != nil {
+		cp.GezaehltVorher = make(map[string]float64, len(k.GezaehltVorher))
+		for a, v := range k.GezaehltVorher {
+			cp.GezaehltVorher[a] = v
+		}
+	}
+	cp.Tage = append([]tagesUmsatz(nil), k.Tage...)
+	return &cp
+}
+
+func (cs *ChainState) buchSichern(addrs []string, voll bool) *buchStand {
+	w := cs.wirt()
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	st := &buchStand{voll: voll, letzterUmlauf: w.letzterUmlauf, laufAt: w.laufAt, laufVorher: w.laufVorher}
+	if voll {
+		st.konten = make(map[string]*buchKonto, len(w.buch))
+		for a, k := range w.buch {
+			st.konten[a] = k.kopie()
+		}
+		st.register = make(map[string]*unternehmenEintrag, len(w.unternehmen))
+		for a, e := range w.unternehmen {
+			st.register[a] = e.kopie()
+		}
+		return st
+	}
+	st.konten = make(map[string]*buchKonto, len(addrs))
+	st.register = make(map[string]*unternehmenEintrag, len(addrs))
+	for _, a := range addrs {
+		st.konten[a] = nil
+		if k := w.buch[a]; k != nil {
+			st.konten[a] = k.kopie()
+		}
+		st.register[a] = nil
+		if e := w.unternehmen[a]; e != nil {
+			st.register[a] = e.kopie()
+		}
+	}
+	return st
+}
+
+// buchZurueck: nur der Speicher -- die Zeilen in der Datenbank lagen in der
+// zurueckgerollten Transaktion.
+func (cs *ChainState) buchZurueck(st *buchStand) {
+	if st == nil {
 		return
 	}
 	w := cs.wirt()
-	w.flusher.Do(func() {
-		SafeGoroutine("WirtschaftBuchFlush", func() {
-			t := time.NewTicker(10 * time.Second)
-			defer t.Stop()
-			for range t.C {
-				cs.flushBuch()
-			}
-		})
-	})
-}
-
-func (cs *ChainState) flushBuch() {
-	w := cs.wirt()
 	w.mu.Lock()
-	daten := make(map[string]string, len(w.schmutzig))
-	for a := range w.schmutzig {
-		if k := w.buch[a]; k != nil {
-			if b, err := json.Marshal(k); err == nil {
-				daten[a] = string(b)
-			}
+	defer w.mu.Unlock()
+	if st.voll {
+		w.buch = make(map[string]*buchKonto, len(st.konten))
+		w.unternehmen = make(map[string]*unternehmenEintrag, len(st.register))
+	}
+	for a, k := range st.konten {
+		if k == nil {
+			delete(w.buch, a)
+		} else {
+			w.buch[a] = k
 		}
 	}
-	w.schmutzig = map[string]bool{}
-	w.mu.Unlock()
-	for a, d := range daten {
-		if _, err := cs.db.Exec(`INSERT INTO wirtschaft_buch (address, daten) VALUES ($1,$2)
-			ON CONFLICT (address) DO UPDATE SET daten = $2`, a, d); err != nil {
-			fmt.Printf("[WIRTSCHAFT] Buch %s: %v\n", a, err)
+	for a, e := range st.register {
+		if e == nil {
+			delete(w.unternehmen, a)
+		} else {
+			w.unternehmen[a] = e
 		}
 	}
+	w.letzterUmlauf, w.laufAt, w.laufVorher = st.letzterUmlauf, st.laufAt, st.laufVorher
 }
 
 // ------------------------------------------------------------ Snapshot
@@ -920,6 +1194,10 @@ func (cs *ChainState) unternehmenFuerSnapshot() []*unternehmenEintrag {
 }
 
 func (cs *ChainState) unternehmenAusSnapshot(liste []*unternehmenEintrag) {
+	// Nach einem Snapshot fehlt diesem Knoten die Buchfuehrung davor: der
+	// Umsatz zaehlt ab jetzt, und bis 30 Tage Daten da sind, berechnet er
+	// kein Liegegeld (zugunsten der Unternehmen, siehe Kopf).
+	cs.setzeBuchSeit(nowUnix())
 	if len(liste) == 0 {
 		return
 	}
