@@ -1000,6 +1000,9 @@ func (a *APIServer) buildMux() *http.ServeMux {
 		w.Header().Set("Cache-Control", "public, max-age=3600")
 		fmt.Fprint(w, "User-agent: *\nDisallow: /api/\nDisallow: /debug/\nDisallow: /rpc\nAllow: /\n")
 	})
+	mux.HandleFunc("/economy", a.handleSeite(economyHTML))
+	mux.HandleFunc("/business", a.handleSeite(businessHTML))
+	mux.HandleFunc("/roadmap", a.handleSeite(roadmapHTML))
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		// Root path: serve landing page; anything else falls to handleUI
 		if r.URL.Path == "/" {
@@ -3888,6 +3891,12 @@ func (a *APIServer) handleStaticDownload(w http.ResponseWriter, r *http.Request,
 }
 
 func (a *APIServer) handleLanding(w http.ResponseWriter, r *http.Request) {
+	a.schreibeLandingSeite(w, r, landingHTML)
+}
+
+// schreibeLandingSeite: Startseite und ihre Unterseiten (seiten.go) teilen
+// Kopfzeilen, CSP und Rechtslinks.
+func (a *APIServer) schreibeLandingSeite(w http.ResponseWriter, r *http.Request, html string) {
 	w.Header().Set("Content-Type", "text/html")
 	w.Header().Set("Cache-Control", "no-cache, no-store, must-revalidate")
 	// FIX (Monster Audit 2026-07-12, P1): ethers now loads from same-origin
@@ -3901,7 +3910,7 @@ func (a *APIServer) handleLanding(w http.ResponseWriter, r *http.Request) {
 	setHSTS(w, r)
 	w.Header().Set("X-Content-Type-Options", "nosniff")
 	w.Header().Set("Referrer-Policy", "strict-origin-when-cross-origin")
-	fmt.Fprint(w, mitLegalLinks(landingHTML, `
+	fmt.Fprint(w, mitLegalLinks(html, `
     <a href="/impressum">Impressum</a>
     <a href="/datenschutz">Datenschutz</a>`))
 }
