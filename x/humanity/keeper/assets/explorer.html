@@ -111,9 +111,9 @@
 <div id="tab-register" class="tab-content active">
 <div class="rs">
   <div class="rhero">
-    <div class="hero-badge"><span class="pulse"></span><span data-i18n="phase0-badge">Phase 1 · face check</span></div>
+    <div class="hero-badge"><span class="pulse"></span><span data-i18n="phase0-badge">Beta · face check</span></div>
     <h1 class="rhero-title" data-i18n="reg-title">🔐 Register as a Verified Human</h1>
-    <div class="rhero-sub" data-i18n="reg-sub">Join the Aequitas network and receive your 1,000 AEQ start grant. Registration is one-time and permanent. Phase 1: a live face check by independent matching services is the gate — see the disclaimer for the named limits.</div>
+    <div class="rhero-sub" data-i18n="reg-sub">Join the Aequitas network and receive your 1,000 AEQ start grant. Registration is one-time and permanent. Beta: a live face check by independent matching services is the gate — see the disclaimer for the named limits.</div>
     <div class="hero-btns">
       <a href="/download/app.apk" class="btn-primary">
         <span data-i18n="btn-download-app">DOWNLOAD AEQUITAS APP</span>
@@ -156,13 +156,14 @@
     <div class="rstep"><div class="snum">2</div><div class="stitle" data-i18n="s2t">Prove</div><div class="sdesc" data-i18n="s2d">A Groth16 ZK proof commits your bio_hash into commitment = keccak256(bioHash‖wallet) without revealing it. The proof server issues it only against the matching services' signed attestation, and the nullifier derived from it can be spent once — so the same face cannot count twice.</div></div>
     <div class="rstep"><div class="snum">3</div><div class="stitle" data-i18n="s3t">Receive</div><div class="sdesc" data-i18n="s3d">Registration confirmed on Aequitas BlockDAG within 1 second · 1,000 AEQ credited instantly · your identity is permanently recorded as a verified human</div></div>
   </div>
-  <div class="pbar" data-i18n="priv-bar">🔒 Phase 1 · Face check by quorum · Signed attestation required · Groth16 ZKP · Images discarded after checking</div>
+  <div class="pbar" data-i18n="priv-bar">🔒 Beta · Face check by quorum · Signed attestation required · Groth16 ZKP · Images discarded after checking</div>
   <div class="pbar" style="background:rgba(245,166,35,0.06);border:1px solid rgba(245,166,35,0.2);color:var(--gold)" data-i18n="x-metamask-mobile-if-aeq-balance">📱 MetaMask Mobile: if AEQ balance shows 0 after registration, go to Settings → Networks → delete Aequitas Chain → re-add via this website</div>
 
   <div class="phase0-disc" data-i18n="reg-disclaimer">
-    <div style="font-weight:800;color:var(--gold);margin-bottom:6px;font-size:0.88rem">Phase 1 disclaimer</div>
-    Phase 1: since 25 Aug 2026 the proof server refuses any registration without a signed attestation from the matching quorum — a second phone no longer gives the same face a second account. What is not yet true: accounts registered before that date have no face template and could in principle register again on a new wallet; error rates are not calibrated (that needs ~1,000 impostor pairs); liveness is a head-turn challenge, stronger deepfake defenses are being calibrated. Read “one human, one account” as “checked, with named limits” — not as “impossible to circumvent.”
+    <div style="font-weight:800;color:var(--gold);margin-bottom:6px;font-size:0.88rem">Beta disclaimer</div>
+    Beta: since 25 Aug 2026 the proof server refuses any registration without a signed attestation from the matching quorum — a second phone no longer gives the same face a second account. What is not yet true: accounts registered before that date have no face template and could in principle register again on a new wallet; error rates are not calibrated (that needs ~1,000 impostor pairs); liveness is a head-turn challenge, stronger deepfake defenses are being calibrated. Read “one human, one account” as “checked, with named limits” — not as “impossible to circumvent.”
   </div>
+  <div class="phase0-disc" data-i18n="beta-why"><strong>What the beta is for:</strong> it tests whether a person can be recognised again without anyone keeping their picture. The photo is deleted right after the check. The goal is that no single service ever holds a whole face template, only a share that is meaningless on its own, and that a second registration by the same person is still detected. This is the groundwork for the iris scan, which will work the same way. <strong>Where it stands today:</strong> the photo is deleted; the split comparison is built and tested but not yet active, so for now each matching service keeps a whole, encrypted template; error rates are not yet calibrated.</div>
   <div class="rcard">
     <div class="wbox" id="wbox"><div class="wlbl" data-i18n="conn-wallet">CONNECTED WALLET</div><div class="wadr" id="wadr" title="">—</div><button data-act="copyAddr" data-args='["wadr"]' style="margin-top:4px;padding:3px 10px;font-size:0.74rem;background:rgba(0,255,209,0.08);border:1px solid rgba(0,255,209,0.2);color:var(--neon);border-radius:4px;cursor:pointer">📋 Copy</button></div>
     <div id="demurrage-notice" style="display:none"></div>
@@ -171,7 +172,7 @@
     <button class="rbtn bc" id="btn-wc" data-act="connectWalletConnect" style="background:linear-gradient(135deg,#3b99fc,#1e5fd6);color:#fff" data-i18n="btn-wc">🔗 CONNECT WALLETCONNECT</button>
     <button id="btn-disconnect" data-act="disconnectWallet" style="display:none;margin-top:6px;padding:8px 16px;font-size:0.77rem;letter-spacing:1px;border:1px solid rgba(248,113,113,0.4);background:rgba(248,113,113,0.08);color:var(--red);border-radius:6px;cursor:pointer;width:100%" data-i18n="x-disconnect-wallet">⊘ DISCONNECT WALLET</button>
     <button class="rbtn br" id="btn-reg" data-act="doRegister" disabled data-i18n="btn-reg">🔐 REGISTER ON-CHAIN</button>
-    <div style="font-size:0.78rem;color:var(--gold);line-height:1.7;margin-top:8px;opacity:.95" data-i18n="reg-apk-note">Phase 1: registration needs the app with the face check (app.apk from this site, v1.6.0 or newer).</div>
+    <div style="font-size:0.78rem;color:var(--gold);line-height:1.7;margin-top:8px;opacity:.95" data-i18n="reg-apk-note">Beta: registration needs the app with the face check (app.apk from this site, v1.6.0 or newer).</div>
     <div class="rlog" id="rlog"><span class="info" data-i18n="reg-log-hint">// Open Aequitas Android App to generate your proof, then return here...</span></div>
 
     <!-- Guardian Panel — shown only when user is a registered human -->
@@ -220,7 +221,7 @@
     <div class="ic-row"><span class="ic-key" data-i18n="k-bio">Face</span><span class="ic-val g" data-i18n="never-stored">Images discarded after checking — an encrypted template is kept by each matching service</span></div>
     <div class="ic-row"><span class="ic-key" data-i18n="k-proof">Proof System</span><span class="ic-val p" data-i18n="x-groth16-zkp-zero-knowledge">Groth16 ZKP (Zero-Knowledge)</span></div>
     <div class="ic-row"><span class="ic-key" data-i18n="k-conf">Confirmation</span><span class="ic-val" data-i18n="k-conf-v">Within 1 second (1 block)</span></div>
-    <div class="ic-row"><span class="ic-key" data-i18n="k-sybil">Sybil Protection</span><span class="ic-val g" data-i18n="k-sybil-v">Phase 1: one identity per face · attestation required · threshold not yet calibrated</span></div>
+    <div class="ic-row"><span class="ic-key" data-i18n="k-sybil">Sybil Protection</span><span class="ic-val g" data-i18n="k-sybil-v">Beta: one identity per face · attestation required · threshold not yet calibrated</span></div>
   </div>
 </div>
 </div>
@@ -345,7 +346,7 @@
     <div>
       <div class="ib-icon">🫁</div>
       <div class="ib-title" data-i18n="h-bio-hw">Identity Verification Roadmap</div>
-      <div class="ib-text" data-i18n="h-bio-hw-t">Today (Phase 1): a face check across independent matching services that must agree by quorum, and a proof server that refuses registrations without their signed attestation. Its threshold has not yet been calibrated against real captures — that needs about 1000 impostor pairs before any number is quoted. Planned: that calibration, liveness beyond the head-turn (flash colours, pulse, parallax), a staged grant for uncertain captures, and a duplicate check in which no service holds a whole template. Long term, Aequitas will rely on iris scans to truly guarantee one person, one registration. How that can be implemented reliably and privacy-preserving is being worked on now; hardware and timing are not decided yet.</div>
+      <div class="ib-text" data-i18n="h-bio-hw-t">Today (Beta): a face check across independent matching services that must agree by quorum, and a proof server that refuses registrations without their signed attestation. Its threshold has not yet been calibrated against real captures — that needs about 1000 impostor pairs before any number is quoted. Planned: that calibration, liveness beyond the head-turn (flash colours, pulse, parallax), a staged grant for uncertain captures, and a duplicate check in which no service holds a whole template. Long term, Aequitas will rely on iris scans to truly guarantee one person, one registration. How that can be implemented reliably and privacy-preserving is being worked on now; hardware and timing are not decided yet.</div>
     </div>
   </div>
 </div>
@@ -625,7 +626,7 @@
     <div class="rwd-1col" style="margin-top:20px;display:grid;grid-template-columns:1fr 1fr;gap:10px">
       <div style="background:var(--card2);border:1px solid rgba(6,182,212,0.2);border-radius:var(--radius-sm);padding:16px">
         <div style="font-size:0.77rem;color:var(--teal);letter-spacing:1.5px;text-transform:uppercase;margin-bottom:10px;font-weight:600" data-i18n="gini-what-title">What is the Gini Coefficient?</div>
-        <div style="font-size:0.8rem;color:var(--muted);line-height:1.9" data-i18n="gini-what-text">Developed by Italian statistician Corrado Gini (1912). Measures wealth distribution by comparing actual balances against a hypothetical perfectly equal baseline — visualized as the Lorenz curve. Scale: 0 (everyone holds the same) to 1 (one person holds everything). Used by World Bank, OECD, UN to compare countries. Reference values: Bitcoin ≈ 0.85 · South Africa (world record) ≈ 0.63 · USA ≈ 0.41 · Germany ≈ 0.31 · Scandinavia ≈ 0.27 · Aequitas long-term target: Gini below 0.30 — comparable to Scandinavian countries, enforced by wealth cap (bootstrap: 5×→25× per human).</div>
+        <div style="font-size:0.8rem;color:var(--muted);line-height:1.9" data-i18n="gini-what-text">Developed by Italian statistician Corrado Gini (1912). Measures wealth distribution by comparing actual balances against a hypothetical perfectly equal baseline — visualized as the Lorenz curve. Scale: 0 (everyone holds the same) to 1 (one person holds everything). Used by World Bank, OECD, UN to compare countries. Reference values: Bitcoin ≈ 0.85 · South Africa (world record) ≈ 0.63 · USA ≈ 0.41 · Germany ≈ 0.31 · Scandinavia ≈ 0.27 · Aequitas long-term target: Gini below 0.30 — comparable to Scandinavian countries, enforced by wealth cap (bootstrap: 5×→25× per human). Phase 3 (maturity) is only reached with 1 million humans and a Gini below 0.30.</div>
       </div>
       <div style="background:var(--card2);border:1px solid rgba(139,92,246,0.2);border-radius:var(--radius-sm);padding:16px">
         <div style="font-size:0.77rem;color:var(--purple);letter-spacing:1.5px;text-transform:uppercase;margin-bottom:10px;font-weight:600" data-i18n="gini-calc-title">How is the Aequitas Index calculated?</div>
@@ -800,7 +801,7 @@
       <tr><td><strong style="color:var(--neon)">Phase 0</strong></td><td style="color:var(--neon)" data-i18n="p0">Bootstrap · &lt;100 humans · Wealth Cap: max(5,min(N,25))× fair share · Slides 5×→25× until 25th human · Currently active</td></tr>
       <tr><td><strong style="color:var(--blue)">Phase 1</strong></td><td style="color:var(--blue)" data-i18n="p1">Growth · 100–10,000 humans · Wealth Cap: 25× the fair share = 25,000 AEQ</td></tr>
       <tr><td><strong style="color:var(--gold)">Phase 2</strong></td><td style="color:var(--gold)" data-i18n="p2">Stability · 10,000–1M humans · Wealth Cap: 25× the fair share = 25,000 AEQ</td></tr>
-      <tr><td><strong style="color:var(--purple)">Phase 3</strong></td><td style="color:var(--purple)" data-i18n="p3">Maturity · 1M+ humans · Wealth Cap: 25× the fair share = 25,000 AEQ</td></tr>
+      <tr><td><strong style="color:var(--purple)">Phase 3</strong></td><td style="color:var(--purple)" data-i18n="p3">Maturity · 1M+ humans and Gini below 0.30 · Wealth Cap: 25× the fair share = 25,000 AEQ</td></tr>
     </table>
     <div class="hlbox" data-i18n="wealth-cap-explain">The cap for people in Phase 0 (Bootstrap) is max(5, min(N, 25))× the fair share of 1,000 AEQ, where N = registered humans. 1–4 humans: 5×. Each new human adds 1×. 25+ humans: 25× = 25,000 AEQ, permanently. Businesses have no fixed cap (they pay the idle-money levy); other addresses hold at most 1,000 AEQ.</div>
   </div>
@@ -847,9 +848,9 @@
     <div class="idx">
       <div class="idx-title" data-i18n="x-the-core-innovation">The Core Innovation</div>
       <div style="font-size:0.81rem;color:var(--muted);line-height:1.9">
-        <div style="margin-bottom:10px"><span style="color:var(--purple);font-weight:700" data-i18n="x-zk-device-key-proof">ZK Device-Key Proof</span><br>Phase 1: your face and a short liveness sequence (a random head-turn) are captured by the app and checked by two independent matching services against everyone registered since the face check began (25 Aug 2026); they must agree by quorum. The images are discarded afterwards; each service keeps an encrypted template. A Groth16 zero-knowledge proof then carries only the resulting bio_hash to the chain &#8212; no image, no template. The proof server accepts that proof only with the matching services' signed attestation, so a second device does not let the same face register again. Named limits: accounts from before the face check have no template, the threshold is not yet calibrated on real captures, and liveness is a head-turn challenge.</div>
+        <div style="margin-bottom:10px"><span style="color:var(--purple);font-weight:700" data-i18n="x-zk-device-key-proof">ZK Device-Key Proof</span><br>Beta: your face and a short liveness sequence (a random head-turn) are captured by the app and checked by two independent matching services against everyone registered since the face check began (25 Aug 2026); they must agree by quorum. The images are discarded afterwards; each service keeps an encrypted template. A Groth16 zero-knowledge proof then carries only the resulting bio_hash to the chain &#8212; no image, no template. The proof server accepts that proof only with the matching services' signed attestation, so a second device does not let the same face register again. Named limits: accounts from before the face check have no template, the threshold is not yet calibrated on real captures, and liveness is a head-turn challenge.</div>
         <div style="margin-bottom:10px"><span style="color:var(--teal);font-weight:700" data-i18n="x-no-stake-blockchain">No-Stake Blockchain</span><br>No mining. No staking. No proof-of-work. Block production is open to any node operator. Validators earn from the 40% fee pool &#8212; incentivized by fairness, not capital.</div>
-        <div><span style="color:var(--neon);font-weight:700" data-i18n="x-one-human-one-wallet-1">One Human = One Wallet = 1,000 AEQ</span><br>Supply formula: Total AEQ = Verified Humans × 1,000. No pre-mine. No contract owner-key &#8212; Phase 1 still has operator/deploy control of the Go L1 node ledger.</div>
+        <div><span style="color:var(--neon);font-weight:700" data-i18n="x-one-human-one-wallet-1">One Human = One Wallet = 1,000 AEQ</span><br>Supply formula: Total AEQ = Verified Humans × 1,000. No pre-mine. No contract owner-key &#8212; Beta still has operator/deploy control of the Go L1 node ledger.</div>
       </div>
     </div>
     <div class="idx">
@@ -875,20 +876,20 @@
       <div style="background:var(--card2);border:1px solid var(--border);border-radius:10px;padding:14px">
         <div style="font-size:0.86rem;font-weight:700;color:var(--teal);margin-bottom:6px">Phase 1</div>
         <div style="font-size:0.79rem;font-weight:600;color:var(--text);margin-bottom:6px">Growth</div>
-        <div style="font-size:0.77rem;color:var(--muted);line-height:1.75" data-i18n="x-100-8211-10-000-humans">100 &#8211; 10,000 humans. Fixed cap 25x. Open node joining.</div>
+        <div style="font-size:0.77rem;color:var(--muted);line-height:1.75" data-i18n="x-100-8211-10-000-humans">100 &#8211; 10,000 humans. Cap 25×. Goal: more independent node operators.</div>
       </div>
       <div style="background:var(--card2);border:1px solid var(--border);border-radius:10px;padding:14px">
         <div style="font-size:0.86rem;font-weight:700;color:var(--gold);margin-bottom:6px">Phase 2</div>
         <div style="font-size:0.79rem;font-weight:600;color:var(--text);margin-bottom:6px">Stability</div>
-        <div style="font-size:0.77rem;color:var(--muted);line-height:1.75" data-i18n="x-10-000-8211-1m-humans">10,000 &#8211; 1M humans. Min 10 nodes. Fully decentralized.</div>
+        <div style="font-size:0.77rem;color:var(--muted);line-height:1.75" data-i18n="x-10-000-8211-1m-humans">10,000 &#8211; 1M humans. Goal: at least 10 independent node operators.</div>
       </div>
       <div style="background:var(--card2);border:1px solid var(--border);border-radius:10px;padding:14px">
         <div style="font-size:0.86rem;font-weight:700;color:var(--neon);margin-bottom:6px">Phase 3</div>
         <div style="font-size:0.79rem;font-weight:600;color:var(--text);margin-bottom:6px">Maturity</div>
-        <div style="font-size:0.77rem;color:var(--muted);line-height:1.75" data-i18n="x-1m-humans-global-ubi-at">1M+ humans. Global UBI at scale. Gini target &lt;0.30.</div>
+        <div style="font-size:0.77rem;color:var(--muted);line-height:1.75" data-i18n="x-1m-humans-global-ubi-at">1M+ humans and a Gini below 0.30 — both must hold. Global basic income at scale.</div>
       </div>
     </div>
-    <div style="margin-top:14px;padding:12px 16px;background:rgba(107,70,193,0.05);border-radius:8px;font-size:0.79rem;color:var(--muted);line-height:1.75;border:1px solid rgba(107,70,193,0.12)" data-i18n="x-phase-transitions-are-automatic-8212">Phase transitions are automatic — triggered by human count thresholds, enforced by the protocol. No governance vote, no admin key.</div>
+    <div style="margin-top:14px;padding:12px 16px;background:rgba(107,70,193,0.05);border-radius:8px;font-size:0.79rem;color:var(--muted);line-height:1.75;border:1px solid rgba(107,70,193,0.12)" data-i18n="x-phase-transitions-are-automatic-8212">The protocol sets the phase automatically — phases 0 to 2 by the number of humans, phase 3 only when there are 1 million humans and the Gini is below 0.30. No governance vote, no admin key. The phase is a status: the wealth cap and the idle-money levy do not depend on it, and the node goals are not enforced by code yet.</div>
   </div>
 
   <!-- GUARDIAN SYSTEM -->
@@ -928,7 +929,7 @@
     <div class="rwd-1col" style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:12px">
       <div>
         <div style="font-size:0.77rem;color:var(--purple);font-weight:700;letter-spacing:1px;text-transform:uppercase;margin-bottom:8px" data-i18n="x-why-sybil-resistance">Why Sybil resistance?</div>
-        <div style="font-size:0.79rem;color:var(--muted);line-height:1.85">Sybil resistance &#8212; preventing one person from registering multiple wallets &#8212; is the core problem of fair money distribution. <strong style="color:var(--text)">Phase 1</strong>: every new registration passes a live face check by independent matching services (quorum 2), and the proof server requires their signed attestation. Named limits: accounts from before the face check (25 Aug 2026) have no face template, and <strong style="color:var(--text)" data-i18n="x-the-matching-threshold-has-not">the matching threshold has not been calibrated against real captures</strong>.</div>
+        <div style="font-size:0.79rem;color:var(--muted);line-height:1.85">Sybil resistance &#8212; preventing one person from registering multiple wallets &#8212; is the core problem of fair money distribution. <strong style="color:var(--text)">Beta</strong>: every new registration passes a live face check by independent matching services (quorum 2), and the proof server requires their signed attestation. Named limits: accounts from before the face check (25 Aug 2026) have no face template, and <strong style="color:var(--text)" data-i18n="x-the-matching-threshold-has-not">the matching threshold has not been calibrated against real captures</strong>.</div>
       </div>
       <div>
         <div style="font-size:0.77rem;color:var(--teal);font-weight:700;letter-spacing:1px;text-transform:uppercase;margin-bottom:8px" data-i18n="x-how-it-works">How It Works</div>
@@ -1893,7 +1894,7 @@
 
   <div class="idx" style="margin-bottom:12px">
     <div class="idx-title" data-i18n="ca-title">Contract Addresses</div>
-    <div style="font-size:0.81rem;color:var(--muted);line-height:1.9;margin-bottom:12px" data-i18n="ca-desc">AequitasV7 exposes the on-chain registry surface (nullifiers, registrations, wealth-cap and demurrage parameters). Balances, registration, and fees are enforced by the Go L1; the contract is the EVM interface, not the sole source of truth. Live transfers settle in the chain layer: the node intercepts the ERC-20 call before the EVM and applies it to the Go ledger — sub-second, no EVM gas, 0.1% protocol fee.<br><br>The BioVerifier contract receives Groth16 zero-knowledge proofs generated entirely on the user's Android device. It verifies mathematically on-chain in ~10 ms that the submitted nullifier was correctly derived from a secret the registrant holds, and the chain refuses any nullifier it has already seen — without ever learning their name, identity, or biometric data. That rules out a second registration from the same identity source (Phase 1: the nullifier is face-bound and the proof server requires the matching quorum's signed attestation). Registration needs no EVM gas; transfers carry a 0.1% protocol fee — the proof is what leaves the device.<br><br>What is new here: the rules and the identity-source nullifier registry sit in a contract the operator cannot casually rewrite, and the code that carries them out is open source and reproducible from this repository. All of it can be checked by anyone. What still requires trust is the operation of the nodes themselves, and the honest way to reduce that is more independent validators, not a stronger sentence here.</div>
+    <div style="font-size:0.81rem;color:var(--muted);line-height:1.9;margin-bottom:12px" data-i18n="ca-desc">AequitasV7 exposes the on-chain registry surface (nullifiers, registrations, wealth-cap and demurrage parameters). Balances, registration, and fees are enforced by the Go L1; the contract is the EVM interface, not the sole source of truth. Live transfers settle in the chain layer: the node intercepts the ERC-20 call before the EVM and applies it to the Go ledger — sub-second, no EVM gas, 0.1% protocol fee.<br><br>The BioVerifier contract receives Groth16 zero-knowledge proofs generated entirely on the user's Android device. It verifies mathematically on-chain in ~10 ms that the submitted nullifier was correctly derived from a secret the registrant holds, and the chain refuses any nullifier it has already seen — without ever learning their name, identity, or biometric data. That rules out a second registration from the same identity source (Beta: the nullifier is face-bound and the proof server requires the matching quorum's signed attestation). Registration needs no EVM gas; transfers carry a 0.1% protocol fee — the proof is what leaves the device.<br><br>What is new here: the rules and the identity-source nullifier registry sit in a contract the operator cannot casually rewrite, and the code that carries them out is open source and reproducible from this repository. All of it can be checked by anyone. What still requires trust is the operation of the nodes themselves, and the honest way to reduce that is more independent validators, not a stronger sentence here.</div>
     <div class="hlbox" data-i18n="ca-text">Chain: Aequitas Chain (Chain ID: 1926 · 0x786)<br>RPC: __RPC__<br><br>BioVerifier: 0xc369D27b49DE017d113Bbcb9A1884a9e745B6BE2<br>AequitasV7 (Main): 0x20D271028f32577FCd07b4583A8e0E4eBBdB4F78</div>
   </div>
   <div class="idx" style="margin-bottom:12px">
@@ -1939,12 +1940,12 @@
   </div>
   <div class="idx" style="margin-bottom:12px;background:linear-gradient(135deg,rgba(139,92,246,0.06),rgba(13,8,32,0.9));border-color:rgba(139,92,246,0.2)">
     <div class="idx-title" style="color:var(--purple)" data-i18n="x-node-decentralization-roadmap">Node Decentralization Roadmap</div>
-    <div style="font-size:0.79rem;color:var(--muted);line-height:1.9">Currently the network runs on 2 active validators, each on its own server with its own database, with MERGE events from both. Only registered humans can run validator nodes — this is a security requirement. Decentralization is a staged process:<br><br>
-    <span style="color:var(--neon)" data-i18n="x-phase-0-now">Phase 0 (now):</span> 2-node bootstrapping — two independent Contabo servers, each with its own database and its own proof server. Trust established through code transparency. Any registered human can join as a validator — no application, no stake.<br>
-    <span style="color:var(--blue)" data-i18n="x-phase-1-100-humans">Phase 1 (100+ humans):</span> Open node join — any registered human can run a full node and earn validator rewards from the 40% pool.<br>
-    <span style="color:var(--gold)" data-i18n="x-phase-2-1-000-humans">Phase 2 (1,000+ humans):</span> Minimum 10 independent node operators required. Node diversity enforced by smart contract.<br>
-    <span style="color:var(--purple)" data-i18n="x-phase-3-10-000-humans">Phase 3 (10,000+ humans):</span> Fully decentralized BlockDAG. No single operator can censor or halt the chain.<br><br>
-    The node operator guide (PDF) is available on the Network tab. Each new node operator earns from the 40% validator pool — the more nodes, the more resilient the network.</div>
+    <div style="font-size:0.79rem;color:var(--muted);line-height:1.9"><span data-i18n="nr-intro">Currently the network runs on 2 active validators, each on its own server with its own database, with MERGE events from both. Only registered humans can run validator nodes — this is a security requirement. The steps below are goals tied to the protocol phases: the protocol sets the phase automatically, but it does not yet enforce a minimum number of nodes.</span><br><br>
+    <span style="color:var(--neon)" data-i18n="x-phase-0-now">Phase 0 (now):</span> <span data-i18n="nr-0">Two independent Contabo servers, each with its own database and its own proof server. Trust established through code transparency. Any registered human can already join as a validator — no application, no stake.</span><br>
+    <span style="color:var(--blue)" data-i18n="x-phase-1-100-humans">Phase 1 (100+ humans):</span> <span data-i18n="nr-1">More independent node operators; each earns a share of the validator pool (40% of swap fees).</span><br>
+    <span style="color:var(--gold)" data-i18n="x-phase-2-10-000-humans">Phase 2 (10,000+ humans):</span> <span data-i18n="nr-2">Goal: at least 10 independent node operators.</span><br>
+    <span style="color:var(--purple)" data-i18n="x-phase-3-1m-humans-gini">Phase 3 (1M+ humans and Gini below 0.30):</span> <span data-i18n="nr-3">Goal: a fully decentralized BlockDAG — no single operator can censor or halt the chain.</span><br><br>
+    <span data-i18n="nr-outro">The node operator guide (PDF) is available on the Network tab. Each new node operator earns from the validator pool — the more nodes, the more resilient the network.</span></div>
   </div>
 </div>
 </div>
@@ -1970,7 +1971,7 @@
     <a href="https://x.com/AequitasMoney" target="_blank" rel="noopener noreferrer">X</a>
     <a href="https://t.me/aequitasmoney" target="_blank" rel="noopener noreferrer">Telegram</a>
   </div>
-  <p><span data-i18n="x-aequitas-chain">Aequitas Chain</span> · <span data-i18n="k-chainid">Chain ID</span> 1926 · <span>aequitas.digital</span> · <span data-i18n="foot-launched">Launched June 2026</span> · <span data-i18n="foot-phase">Phase 1</span><!--LEGAL_LINKS--></p>
+  <p><span data-i18n="x-aequitas-chain">Aequitas Chain</span> · <span data-i18n="k-chainid">Chain ID</span> 1926 · <span>aequitas.digital</span> · <span data-i18n="foot-launched">Launched June 2026</span> · <span data-i18n="foot-phase">Beta</span><!--LEGAL_LINKS--></p>
   <p class="footer-quote">"<em data-i18n="foot-quote">Money exists because people exist. Nothing more, nothing less.</em>"</p>
 </footer>
 

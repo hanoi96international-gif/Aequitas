@@ -7,7 +7,7 @@ const landingQuelle = `<!DOCTYPE html>
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <meta name="google" content="notranslate">
 <title>Aequitas — Money, because people exist</title>
-<meta name="description" content="Phase 1: one human, one account, 1,000 AEQ start — every new registration passes a live face check by independent matching services. Live Gini on chain.">
+<meta name="description" content="Beta: one human, one account, 1,000 AEQ start — every new registration passes a live face check by independent matching services. Live Gini on chain.">
 <meta name="theme-color" content="#0B0D14">
 <link rel="canonical" href="https://aequitas.digital/">
 <link rel="icon" href="/favicon.svg" type="image/svg+xml">
@@ -16,7 +16,7 @@ const landingQuelle = `<!DOCTYPE html>
 <meta property="og:site_name" content="Aequitas">
 <meta property="og:url" content="https://aequitas.digital/">
 <meta property="og:title" content="Aequitas — money that belongs to every human equally">
-<meta property="og:description" content="Phase 1: one human, one account, 1,000 AEQ start. Live face check at registration. Live on-chain Gini.">
+<meta property="og:description" content="Beta: one human, one account, 1,000 AEQ start. Live face check at registration. Live on-chain Gini.">
 <meta property="og:image" content="https://aequitas.digital/og-image.png">
 <meta property="og:image:width" content="1200">
 <meta property="og:image:height" content="630">
@@ -24,7 +24,7 @@ const landingQuelle = `<!DOCTYPE html>
 <meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:site" content="@AequitasMoney">
 <meta name="twitter:title" content="Aequitas — money that belongs to every human equally">
-<meta name="twitter:description" content="Phase 1: one human, one account, 1,000 AEQ start. Live face check at registration. Live on-chain Gini.">
+<meta name="twitter:description" content="Beta: one human, one account, 1,000 AEQ start. Live face check at registration. Live on-chain Gini.">
 <meta name="twitter:image" content="https://aequitas.digital/og-image.png">
 <link rel="preconnect" href="https://fonts.bunny.net" crossorigin="anonymous">
 <link href="https://fonts.bunny.net/css?family=inter:300,400,500,600,700,800,900&display=swap" rel="stylesheet" referrerpolicy="no-referrer" crossorigin="anonymous">
@@ -598,7 +598,7 @@ section{padding:64px 16px}
     <div class="hero-text reveal">
       <div class="hero-badge">
         <span class="pulse"></span>
-        <span data-i18n="hero-badge">Phase 1 · public test</span>
+        <span data-i18n="hero-badge">Beta · public test</span>
       </div>
       <h1 data-i18n="hero-h1">Money, because <span>people</span> exist.</h1>
       <p class="hero-sub" data-i18n="hero-sub">Every person receives the same share: 1,000 AEQ. Nobody can print more. Nobody is excluded. The fairest money in the world.</p>
@@ -905,7 +905,7 @@ section{padding:64px 16px}
   <div class="section-inner">
     <div class="center-head reveal">
       <div class="section-label" data-i18n="how-label">How it works</div>
-      <h2 data-i18n="how-h2">Three honest steps (Phase 1)</h2>
+      <h2 data-i18n="how-h2">Three honest steps (Beta)</h2>
       <p class="section-sub" data-i18n="how-sub">Wallet on your phone, a short live face capture, and a one-time grant — no bank account required.</p>
     </div>
     <div class="steps linked">
@@ -921,7 +921,7 @@ section{padding:64px 16px}
   <div class="section-inner">
     <div class="status-card">
       <div class="section-label" data-i18n="op-label">Honestly</div>
-      <h2 data-i18n="st-h2">Phase 1: a public test</h2>
+      <h2 data-i18n="st-h2">Beta: a public test</h2>
       <p data-i18n="st-p">Aequitas runs, but it is not finished. AEQ can only be exchanged into the test currency tUSD, the legal review under the EU crypto regulation is still pending, and the face check has named limits. The economy rules take effect on 1 October 2026.</p>
       <a class="section-link" href="#roadmap" data-i18n="st-link">Roadmap and what is still open →</a>
     </div>
@@ -1273,7 +1273,7 @@ section{padding:64px 16px}
     <div class="section-label" data-i18n="rm-label">Roadmap</div>
     <h2 data-i18n="rm-h2">What comes next</h2>
     <ol class="rm-list">
-      <li class="now"><h3 data-i18n="rm-1-h">Now: Phase 1</h3><p data-i18n="rm-1-p">Registration with a live face check by two independent matching services. 1,000 AEQ start, basic income every day.</p></li>
+      <li class="now"><h3 data-i18n="rm-1-h">Now: Beta</h3><p data-i18n="rm-1-p">Registration with a live face check by two independent matching services. 1,000 AEQ start, basic income every day.</p></li>
       <li><h3 data-i18n="rm-2-h">1 October 2026</h3><p data-i18n="rm-2-p">The economy rules take effect: three account types, idle-money levy, exit levy, fee-free monthly amounts for people.</p></li>
       <li><h3 data-i18n="rm-3-h">App for shops</h3><p data-i18n="rm-3-p">Checkout mode with QR code and accounting export.</p></li>
       <li><h3 data-i18n="rm-4-h">Pilot town</h3><p data-i18n="rm-4-p">5–10 shops (café, bakery, farm shop, hairdresser, workshop) for three months. Measured: how much stays in circulation, how much leaves, how much reaches the basic income.</p></li>
@@ -1318,9 +1318,10 @@ section{padding:64px 16px}
 
 <section id="disclaimer" style="padding-top:40px;padding-bottom:40px">
   <div class="disclaimer-card">
-    <h3 data-i18n="disc-title">Phase 1 disclaimer</h3>
-    <p data-i18n="disc-body">Phase 1: since 25 Aug 2026 the proof server refuses any registration without a signed attestation from the matching quorum — a second phone no longer gives the same face a second account. What is not yet true: accounts registered before that date have no face template and could in principle register again on a new wallet; error rates are not calibrated (that needs ~1,000 impostor pairs); liveness is a head-turn challenge, stronger deepfake defenses are being calibrated. Read “one human, one account” as “checked, with named limits” — not as “impossible to circumvent.” Long term, Aequitas will rely on iris scans to truly guarantee one person, one registration. How that can be implemented reliably and privacy-preserving is being worked on now; hardware and timing are not decided yet.</p>
-    <p class="oss-line" data-i18n="oss-line"><strong>Open source:</strong> Core chain public · identity/proof services partly private in Phase 1.</p>
+    <h3 data-i18n="disc-title">Beta disclaimer</h3>
+    <p data-i18n="disc-body">Beta: since 25 Aug 2026 the proof server refuses any registration without a signed attestation from the matching quorum — a second phone no longer gives the same face a second account. What is not yet true: accounts registered before that date have no face template and could in principle register again on a new wallet; error rates are not calibrated (that needs ~1,000 impostor pairs); liveness is a head-turn challenge, stronger deepfake defenses are being calibrated. Read “one human, one account” as “checked, with named limits” — not as “impossible to circumvent.” Long term, Aequitas will rely on iris scans to truly guarantee one person, one registration. How that can be implemented reliably and privacy-preserving is being worked on now; hardware and timing are not decided yet.</p>
+    <p data-i18n="beta-why"><strong>What the beta is for:</strong> it tests whether a person can be recognised again without anyone keeping their picture. The photo is deleted right after the check. The goal is that no single service ever holds a whole face template, only a share that is meaningless on its own, and that a second registration by the same person is still detected. This is the groundwork for the iris scan, which will work the same way. <strong>Where it stands today:</strong> the photo is deleted; the split comparison is built and tested but not yet active, so for now each matching service keeps a whole, encrypted template; error rates are not yet calibrated.</p>
+    <p class="oss-line" data-i18n="oss-line"><strong>Open source:</strong> Core chain public · identity/proof services partly private during the beta.</p>
   </div>
 </section>
 
@@ -1339,7 +1340,7 @@ section{padding:64px 16px}
     <a href="https://x.com/AequitasMoney" target="_blank" rel="noopener noreferrer" class="social"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/></svg>@AequitasMoney</a>
     <a href="https://t.me/aequitasmoney" target="_blank" rel="noopener noreferrer" class="social"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M11.944 0A12 12 0 0 0 0 12a12 12 0 0 0 12 12 12 12 0 0 0 12-12A12 12 0 0 0 12 0a12 12 0 0 0-.056 0zm4.962 7.224c.1-.002.321.023.465.14a.506.506 0 0 1 .171.325c.016.093.036.306.02.472-.18 1.898-.962 6.502-1.36 8.627-.168.9-.499 1.201-.82 1.23-.696.065-1.225-.46-1.9-.902-1.056-.693-1.653-1.124-2.678-1.8-1.185-.78-.417-1.21.258-1.91.177-.184 3.247-2.977 3.307-3.23.007-.032.014-.15-.056-.212s-.174-.041-.249-.024c-.106.024-1.793 1.14-5.061 3.345-.48.33-.913.49-1.302.48-.428-.008-1.252-.241-1.865-.44-.752-.245-1.349-.374-1.297-.789.027-.216.325-.437.893-.663 3.498-1.524 5.83-2.529 6.998-3.014 3.332-1.386 4.025-1.627 4.476-1.635z"/></svg>Telegram</a>
   </div>
-  <p>Aequitas Chain · Chain ID 1926 · <span>aequitas.digital</span> · <span data-i18n="foot-launched">Launched June 2026</span> · <span data-i18n="foot-phase">Phase 1</span></p>
+  <p>Aequitas Chain · Chain ID 1926 · <span>aequitas.digital</span> · <span data-i18n="foot-launched">Launched June 2026</span> · <span data-i18n="foot-phase">Beta</span></p>
   <p style="margin-top:6px">"<em data-i18n="foot-quote">Money exists because people exist. Nothing more, nothing less.</em>"</p>
 </footer>
 

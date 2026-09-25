@@ -7,7 +7,7 @@
 [![Chain ID](https://img.shields.io/badge/Chain%20ID-1926-blue)](https://aequitas.digital/rpc)
 [![EVM](https://img.shields.io/badge/EVM-Compatible-green)](https://aequitas.digital/rpc)
 [![License](https://img.shields.io/badge/License-MIT-blue)](LICENSE)
-[![Phase](https://img.shields.io/badge/Phase-1%20Live-gold)](https://aequitas.digital)
+[![Beta](https://img.shields.io/badge/Beta-Live-gold)](https://aequitas.digital)
 
 ---
 
@@ -308,5 +308,5 @@ The answer is simple: **Money exists because people exist. Therefore, every pers
 
 ---
 
-*Aequitas — gestartet Juni 2026 · Phase 1 · Chain ID 1926*
-*Aequitas — launched June 2026 · Phase 1 · Chain ID 1926*
+*Aequitas — gestartet Juni 2026 · Beta · Chain ID 1926*
+*Aequitas — launched June 2026 · Beta · Chain ID 1926*
