@@ -33,6 +33,7 @@ jobs:
                 const fehler = [];
                 p.on('console', m => { if (m.type() === 'error') fehler.push(m.text()); });
                 p.on('pageerror', e => fehler.push('PAGEERROR ' + e.message));
+                p.on('response', r => { if (r.status() >= 400) fehler.push(`HTTP ${r.status()} ${r.url()}`); });
                 let code = 0;
                 try { const r = await p.goto('https://aequitas.digital' + s, {waitUntil: 'networkidle', timeout: 45000}); code = r ? r.status() : 0; } catch (e) { fehler.push('GOTO ' + e.message); }
                 await p.waitForTimeout(3000);
@@ -41,7 +42,7 @@ jobs:
                 const text = await p.evaluate(() => document.body ? document.body.innerText : '');
                 const verdacht = text.split('\n').filter(z => /NaN|undefined|null|Infinity|treasury|schatzkammer|Treasury|Schatzkammer|40 ?\/ ?30|30 ?%|20 ?%|10 ?%|—\s*$/.test(z)).slice(0, 40);
                 console.log(`\n##### ${name} ${s} HTTP ${code}`);
-                console.log('Konsole:', fehler.length ? fehler.slice(0, 10).join(' | ') : 'keine Fehler');
+                console.log('Konsole:', fehler.length ? fehler.slice(0, 40).join(' | ') : 'keine Fehler');
                 console.log('Verdaechtige Zeilen:\n  ' + verdacht.join('\n  '));
                 await p.close();
               }
