@@ -6920,13 +6920,13 @@ func (dag *BlockDAG) replayTransactions(block *Block, force bool) (ok bool) {
 		// prove is order-independent. Anything else ends the run and falls
 		// through to the serial switch below, unchanged.
 		//
-		// Ab der Aktivierung der Unternehmensregeln nicht mehr: der parallele
-		// Pfad fuehrt keine Buchfuehrung (wirtschaft.go, nachUeberweisung),
-		// und gebuehrenfreie Ueberweisungen (die ersten 1.000 AEQ eines
-		// Menschen, Unternehmen -> Mensch) kaemen sonst hierher. Umsatz und
-		// Freibetraege dieses Knotens waeren falsch, die Liegegeld-Pruefung
-		// wuerde abweichen. Wie bei der Annahme: die Regeln an einer Stelle.
-		if tx.Type == "transfer" && skipDistributionRound == 0 && !wirtschaftAktiv(block.Timestamp) {
+		// Auch nach der Aktivierung der Unternehmensregeln: der parallele
+		// Pfad fuehrt die Buchfuehrung (nachUeberweisung) seit 25.09.2026
+		// selbst mit, in Blockreihenfolge (replay_parallel.go, Phase 2b).
+		// Vorher war er ab dem 1.10. abgeschaltet, und das Nachspielen waere
+		// mit den Wirtschaftsregeln wieder komplett seriell gelaufen.
+		// Ueberweisungen mit Gebuehr bleiben seriell (collectDisjointTransferBatch).
+		if tx.Type == "transfer" && skipDistributionRound == 0 {
 			if batch, _ := collectDisjointTransferBatch(block.Transactions, txIdx); len(batch) >= parallelReplayMinBatch {
 				// withTx statt des leeren ctx: JEDE Kontoaenderung dieses
 				// Replays gehoert in dbTx, sonst ueberlebt sie einen Ruecklauf.

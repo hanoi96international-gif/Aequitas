@@ -120,6 +120,9 @@ type replayBatchItem struct {
 	amount  float64
 	fromKey string
 	toKey   string
+	// buchAt: Buchungsaugenblick fuer die Unternehmens-Buchfuehrung, wie ihn
+	// der serielle Pfad ueber mitBuchZeit setzt (buchZeitBeimNachspielen).
+	buchAt int64
 }
 
 // collectDisjointTransferBatch walks txs starting at index start and returns
@@ -244,6 +247,7 @@ func (cs *ChainState) applyTransferBatchParallel(ctx context.Context, batch []Tr
 		}
 		items = append(items, replayBatchItem{
 			from: fromAcc, to: toAcc, amount: tx.Amount, fromKey: from, toKey: to,
+			buchAt: buchZeitBeimNachspielen(tx.BuchAt, activityAt),
 		})
 	}
 
@@ -354,6 +358,41 @@ func (cs *ChainState) applyTransferBatchParallel(ctx context.Context, batch []Tr
 		}(items[lo:hi])
 	}
 	wg.Wait()
+
+	// ---- Phase 2b (serial): Buchfuehrung, in Blockreihenfolge. ----
+	//
+	// Ab der Aktivierung der Unternehmensregeln (wirtschaft.go) fuehrt der
+	// serielle Pfad nach jeder Ueberweisung nachUeberweisung aus: Monats-
+	// zaehler, Umsatz, Freibetraege. Ohne diesen Schritt musste das parallele
+	// Nachspielen ab dem 1.10.2026 ganz abgeschaltet werden (block.go) --
+	// die Kette waere mit dem Start der Wirtschaftsregeln langsamer geworden.
+	//
+	// Warum das hier richtig ist: nachUeberweisung beruehrt nur die
+	// Buchkonten von Sender und Empfaenger (dazu lesend das Register). Das
+	// Buendel ist paarweise disjunkt, also sind es auch diese Buchkonten --
+	// die Reihenfolge im Buendel kann das Ergebnis nicht aendern. Wir nehmen
+	// trotzdem die Blockreihenfolge, damit dieselben Aufrufe mit denselben
+	// Werten in derselben Folge laufen wie im seriellen Pfad. Die Gebuehr ist
+	// hier immer 0: Ueberweisungen mit Gebuehr kommen nicht ins Buendel
+	// (collectDisjointTransferBatch).
+	//
+	// Der Speicher ist bereits mutiert. Ein Fehler hier ist deshalb ein
+	// harter Blockfehler (Rueckgabe mit err), nie ein Rueckfall auf den
+	// seriellen Pfad -- sonst wuerde das Buendel doppelt angewandt. Die
+	// Buchkonten werden gesammelt und einmal fuer das Buendel in dieselbe
+	// Transaktion geschrieben (ctx); den Rueckbau im Speicher macht
+	// blockRollbackSnapshot (buchStand).
+	buchCtx, buch := mitBuchSammler(ctx)
+	for _, it := range items {
+		if err := cs.nachUeberweisung(mitBuchZeit(buchCtx, it.buchAt), it.fromKey, it.toKey,
+			cs.kontoartVon(it.fromKey, it.from.IsHuman), cs.kontoartVon(it.toKey, it.to.IsHuman),
+			it.amount, 0, it.from.Balance.Float(), it.to.Balance.Float(), it.buchAt); err != nil {
+			return 0, fmt.Errorf("parallel transfer batch: Buchfuehrung: %w", err)
+		}
+	}
+	if err := buch.schreiben(cs, ctx); err != nil {
+		return 0, fmt.Errorf("parallel transfer batch: Buchfuehrung speichern: %w", err)
+	}
 
 	// ---- Phase 3 (serial): ONE batched write for everything touched. ----
 	seen := make(map[string]bool, len(items)*2)
