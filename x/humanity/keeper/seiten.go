@@ -23,7 +23,7 @@ import (
 
 var (
 	landingHTML = baueSeite("/", "", "", []string{
-		"forbiz", "forppl", "how", "status", "social"})
+		"kreis", "forbiz", "forppl", "how", "news", "faqkurz", "status", "cta"})
 	peopleHTML = baueSeite("/people", "Aequitas — For people", seitenKopfPpl, []string{
 		"people", "ubi", "examples"})
 	economyHTML = baueSeite("/economy", "Aequitas — How it works", seitenKopfEco, []string{
@@ -31,7 +31,7 @@ var (
 	businessHTML = baueSeite("/business", "Aequitas — For businesses", seitenKopfBiz, []string{
 		"business", "join", "bexamples", "rules", "loopholes"})
 	roadmapHTML = baueSeite("/roadmap", "Aequitas — Roadmap and questions", seitenKopfRoad, []string{
-		"roadmap", "open", "faq", "disclaimer"})
+		"roadmap", "open", "faq", "social", "disclaimer"})
 )
 
 // landingTeile zerlegt landingQuelle in Kopf, Hero (alles vor dem ersten
@@ -89,7 +89,9 @@ func baueSeite(pfad, titel, seitenKopf string, ids []string) string {
 	}
 	for n, id := range ids {
 		s := landingAbschnitt(id)
-		if n%2 == 1 {
+		// Abschnitte mit eigener Klasse (Baender wie "band-biz") behalten
+		// ihren Hintergrund.
+		if n%2 == 1 && !strings.Contains(s[:strings.Index(s, ">")], "class=") {
 			s = strings.Replace(s, `<section id="`+id+`"`, `<section id="`+id+`" class="alt"`, 1)
 		}
 		b.WriteString(s)
@@ -109,6 +111,7 @@ func (a *APIServer) handleSeite(html string) http.HandlerFunc {
 
 const seitenKopfPpl = `<section class="page-head">
   <div class="section-inner">
+    <div class="pg-art pa-b" aria-hidden="true"><svg class="ico"><use href="#i-users"/></svg></div>
     <a href="/" class="pg-back" data-i18n="pg-back">← Back to the overview</a>
     <h1 data-i18n="pg-ppl-h1">For people</h1>
     <p class="section-sub" data-i18n="pg-ppl-sub">What Aequitas promises every person, how the daily basic income works and what you pay, with worked examples.</p>
@@ -120,6 +123,7 @@ const seitenKopfPpl = `<section class="page-head">
 
 const seitenKopfEco = `<section class="page-head">
   <div class="section-inner">
+    <div class="pg-art pa-g" aria-hidden="true"><svg class="ico"><use href="#i-refresh"/></svg></div>
     <a href="/" class="pg-back" data-i18n="pg-back">← Back to the overview</a>
     <h1 data-i18n="pg-eco-h1">How it works</h1>
     <p class="section-sub" data-i18n="pg-eco-sub">One cycle, three kinds of account, one set of rules, and why the money stays fair.</p>
@@ -130,6 +134,7 @@ const seitenKopfEco = `<section class="page-head">
 
 const seitenKopfBiz = `<section class="page-head page-biz">
   <div class="section-inner">
+    <div class="pg-art pa-o" aria-hidden="true"><svg class="ico"><use href="#i-store"/></svg></div>
     <a href="/" class="pg-back" data-i18n="pg-back">← Back to the overview</a>
     <h1 data-i18n="pg-biz-h1">Aequitas for businesses</h1>
     <p class="section-sub" data-i18n="pg-biz-sub">Take payments without card fees, pay wages free of charge and pass the money on. Only money left idle costs.</p>
@@ -141,6 +146,7 @@ const seitenKopfBiz = `<section class="page-head page-biz">
 
 const seitenKopfRoad = `<section class="page-head">
   <div class="section-inner">
+    <div class="pg-art pa-b" aria-hidden="true"><svg class="ico"><use href="#i-rocket"/></svg></div>
     <a href="/" class="pg-back" data-i18n="pg-back">← Back to the overview</a>
     <h1 data-i18n="pg-road-h1">Roadmap and questions</h1>
     <p class="section-sub" data-i18n="pg-road-sub">Where Aequitas stands, what comes next, and what is honestly still open.</p>
