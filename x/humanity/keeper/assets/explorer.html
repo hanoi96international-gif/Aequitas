@@ -335,7 +335,7 @@
     <div>
       <div class="ib-icon">🛡</div>
       <div class="ib-title" data-i18n="h-sybil">Sybil Resistance — Current State</div>
-      <div class="ib-text" data-i18n="h-sybil-t">Since 25 Aug 2026 the nullifier is derived from the bio_hash of your face and the proof server refuses a registration without the matching quorum's signed attestation — so the same face cannot be registered twice, across devices as well, which a device key never could. Two named limits: accounts registered before that date have no face template (nearly all of today's 18 — a known, bounded exception), and the matching threshold has not been calibrated against real captures: the cryptography is exact, the biometrics underneath it is a measurement whose error rate has not been quantified. Liveness today is a random head-turn challenge; stronger deepfake defenses are being calibrated.</div>
+      <div class="ib-text" data-i18n="h-sybil-t">Since 25 Aug 2026 the nullifier is derived from the bio_hash of your face and the proof server refuses a registration without the matching quorum's signed attestation — so the same face cannot be registered twice, across devices as well, which a device key never could. Two named limits: accounts registered before that date have no face template (a known, bounded exception), and the matching threshold has not been calibrated against real captures: the cryptography is exact, the biometrics underneath it is a measurement whose error rate has not been quantified. Liveness today is a random head-turn challenge; stronger deepfake defenses are being calibrated.</div>
     </div>
     <div>
       <div class="ib-icon">🌍</div>
@@ -345,7 +345,7 @@
     <div>
       <div class="ib-icon">🫁</div>
       <div class="ib-title" data-i18n="h-bio-hw">Identity Verification Roadmap</div>
-      <div class="ib-text" data-i18n="h-bio-hw-t">Today (Phase 1): a face check across independent matching services that must agree by quorum, and a proof server that refuses registrations without their signed attestation. Its threshold has not yet been calibrated against real captures — that needs about 1000 impostor pairs before any number is quoted. Planned: that calibration, liveness beyond the head-turn (flash colours, pulse, parallax), a staged grant for uncertain captures, and a duplicate check in which no service holds a whole template.</div>
+      <div class="ib-text" data-i18n="h-bio-hw-t">Today (Phase 1): a face check across independent matching services that must agree by quorum, and a proof server that refuses registrations without their signed attestation. Its threshold has not yet been calibrated against real captures — that needs about 1000 impostor pairs before any number is quoted. Planned: that calibration, liveness beyond the head-turn (flash colours, pulse, parallax), a staged grant for uncertain captures, and a duplicate check in which no service holds a whole template. Long term, Aequitas will rely on iris scans to truly guarantee one person, one registration. How that can be implemented — reliable, privacy-preserving and available without a smartphone — is being worked on now; hardware and timing are not decided yet.</div>
     </div>
   </div>
 </div>
@@ -372,11 +372,11 @@
       <div style="font-size:0.79rem;color:var(--text);padding:8px 0;border-bottom:1px solid var(--border);font-weight:600" data-i18n="faq-q1">Is my biometric data safe?</div>
       <div style="font-size:0.79rem;color:var(--muted);padding:6px 0 10px;border-bottom:1px solid var(--border);line-height:1.7" data-i18n="faq-a1">Your face is captured and sent to independent matching services — that is the only way "one person, one account" can be checked at all. The images are processed and then discarded; they are not stored. What is kept is a mathematical template: encrypted, and split into shares across separately operated validators, so no validator ever holds a whole one. One honest limit, stated rather than hidden: the service that runs the comparison does still hold templates, because comparing needs them.</div>
       <div style="font-size:0.79rem;color:var(--text);padding:8px 0;border-bottom:1px solid var(--border);font-weight:600" data-i18n="faq-q1b">Does registration prove I am a unique real person?</div>
-      <div style="font-size:0.79rem;color:var(--muted);padding:6px 0 10px;border-bottom:1px solid var(--border);line-height:1.7" data-i18n="faq-a1b">Better than a device key ever could, and not yet provable as a number. The face is compared against every existing registration by independent services that must agree, so the same person on a second phone is caught — which a device key never could. What is not yet established is the error rate: the matching threshold has not been calibrated against real captures, and that needs about 1000 impostor pairs before anyone quotes a figure.</div>
+      <div style="font-size:0.79rem;color:var(--muted);padding:6px 0 10px;border-bottom:1px solid var(--border);line-height:1.7" data-i18n="faq-a1b">Better than a device key ever could, and not yet provable as a number. Since 25 Aug 2026 the face is compared against every registration made since then by independent services that must agree, and the proof server refuses a registration without their signed attestation — so the same person on a second phone is caught, which a device key never could. Two named limits: accounts registered before that date have no face template (a known, bounded exception), and the error rate is not established: the threshold has not been calibrated on real captures, which needs about 1,000 impostor pairs. Liveness today is a random head-turn challenge; stronger deepfake defenses are being calibrated. Long term, Aequitas will rely on iris scans to truly guarantee one person, one registration. How that can be implemented — reliable, privacy-preserving and available without a smartphone — is being worked on now; hardware and timing are not decided yet.</div>
       <div style="font-size:0.79rem;color:var(--text);padding:8px 0;border-bottom:1px solid var(--border);font-weight:600" data-i18n="faq-q2">Can I register with a different wallet later?</div>
       <div style="font-size:0.79rem;color:var(--muted);padding:6px 0 10px;border-bottom:1px solid var(--border);line-height:1.7" data-i18n="faq-a2">No. A registration is permanently bound to one wallet address. That is deliberate: the nullifier derived from your face is spent once, so registering again to a different wallet would be a second identity for the same person.</div>
       <div style="font-size:0.79rem;color:var(--text);padding:8px 0;border-bottom:1px solid var(--border);font-weight:600" data-i18n="faq-q3">What happens if I lose my phone?</div>
-      <div style="font-size:0.79rem;color:var(--muted);padding:6px 0 10px;line-height:1.7" data-i18n="faq-a3">Your AEQ remains in your wallet — it is tied to your private key, not your phone. You can still access your wallet via MetaMask with your seed phrase. Wallet recovery is independent of the device-key registration.</div>
+      <div style="font-size:0.79rem;color:var(--muted);padding:6px 0 10px;line-height:1.7" data-i18n="faq-a3">Your AEQ remains in your wallet — it is tied to your private key, not your phone. You can still access your wallet via MetaMask with your seed phrase. Your registration is tied to your face, not to the device, so a new phone does not cost you your registration.</div>
     </div>
   </div>
 </div>
@@ -630,29 +630,29 @@
       <div style="background:var(--card2);border:1px solid rgba(139,92,246,0.2);border-radius:var(--radius-sm);padding:16px">
         <div style="font-size:0.77rem;color:var(--purple);letter-spacing:1.5px;text-transform:uppercase;margin-bottom:10px;font-weight:600" data-i18n="gini-calc-title">How is the Aequitas Index calculated?</div>
         <div style="font-size:0.79rem;color:var(--purple);font-family:var(--font-mono);text-align:center;margin:8px 0;padding:10px;background:rgba(139,92,246,0.08);border-radius:6px;border:1px solid rgba(139,92,246,0.15)">G = Σ|xi − xj| / (2 × n² × x̄)<br><span style="color:var(--muted);font-size:0.76rem" data-i18n="x-aequitas-index-g-100">Aequitas Index = G × 100</span></div>
-        <div style="font-size:0.8rem;color:var(--muted);line-height:1.9;margin-top:8px" data-i18n="gini-calc-text">All AEQ balances of verified humans are collected. The formula computes the mean absolute difference between every possible pair of balances, normalized by population squared (n²) and the mean balance (x̄). Result 0–1 multiplied by 100 = Aequitas Index. Updated on-chain after every registration, monthly demurrage run, pool payout, and wealth cap event — via keeper calling updateGini().</div>
+        <div style="font-size:0.8rem;color:var(--muted);line-height:1.9;margin-top:8px" data-i18n="gini-calc-text">All AEQ balances of verified humans are collected. The formula computes the mean absolute difference between every possible pair of balances, normalized by population squared (n²) and the mean balance (x̄). Result 0–1 multiplied by 100 = Aequitas Index. The node computes it from the live balances; after every daily basic-income payout a snapshot is stored for the history chart.</div>
       </div>
     </div>
     <div class="idx-grade-grid" style="margin-top:10px;display:grid;grid-template-columns:repeat(4,1fr);gap:8px">
       <div style="background:rgba(0,255,209,0.06);border:1px solid rgba(0,255,209,0.25);border-radius:var(--radius-sm);padding:14px;text-align:center">
         <div style="font-size:1.1rem;font-weight:700;color:var(--neon);font-family:var(--font-display)">0 – 35</div>
         <div style="font-size:0.77rem;color:var(--neon);margin-top:5px;font-weight:700;letter-spacing:0.5px">IDEAL</div>
-        <div style="font-size:0.74rem;color:var(--muted);margin-top:5px;line-height:1.7" data-i18n="x-healthier-than-most-nations-on">Healthier than most nations on Earth. Comparable to Scandinavia (0.27) and Germany (0.31). Wealth cap and demurrage successfully maintaining fair distribution.</div>
+        <div style="font-size:0.74rem;color:var(--muted);margin-top:5px;line-height:1.7" data-i18n="x-healthier-than-most-nations-on">Healthier than most nations on Earth. Comparable to Scandinavia (~0.27) and Germany (~0.31).</div>
       </div>
       <div style="background:rgba(96,165,250,0.06);border:1px solid rgba(96,165,250,0.25);border-radius:var(--radius-sm);padding:14px;text-align:center">
         <div style="font-size:1.1rem;font-weight:700;color:var(--blue);font-family:var(--font-display)">35 – 50</div>
         <div style="font-size:0.77rem;color:var(--blue);margin-top:5px;font-weight:700;letter-spacing:0.5px">GOOD</div>
-        <div style="font-size:0.74rem;color:var(--muted);margin-top:5px;line-height:1.7" data-i18n="x-comparable-to-the-usa-0">Comparable to the USA (0.41) or France (0.32). Within the range of most developed economies. Redistribution mechanisms actively flattening the curve.</div>
+        <div style="font-size:0.74rem;color:var(--muted);margin-top:5px;line-height:1.7" data-i18n="x-comparable-to-the-usa-0">Comparable to the USA (~0.41) or France (~0.32). Within the range of most developed economies.</div>
       </div>
       <div style="background:rgba(245,166,35,0.06);border:1px solid rgba(245,166,35,0.25);border-radius:var(--radius-sm);padding:14px;text-align:center">
         <div style="font-size:1.1rem;font-weight:700;color:var(--gold);font-family:var(--font-display)">50 – 70</div>
         <div style="font-size:0.77rem;color:var(--gold);margin-top:5px;font-weight:700;letter-spacing:0.5px">WARNING</div>
-        <div style="font-size:0.74rem;color:var(--muted);margin-top:5px;line-height:1.7" data-i18n="x-higher-than-most-european-nations">Higher than most European nations — comparable to Brazil (0.53) or Russia. Protocol redistribution at elevated intensity.</div>
+        <div style="font-size:0.74rem;color:var(--muted);margin-top:5px;line-height:1.7" data-i18n="x-higher-than-most-european-nations">Higher than most European nations — comparable to Brazil (~0.53). The rules do not change with the index; the idle-money levy and the wealth cap work continuously.</div>
       </div>
       <div style="background:rgba(248,113,113,0.06);border:1px solid rgba(248,113,113,0.25);border-radius:var(--radius-sm);padding:14px;text-align:center">
         <div style="font-size:1.1rem;font-weight:700;color:var(--red);font-family:var(--font-display)">70 – 100</div>
         <div style="font-size:0.77rem;color:var(--red);margin-top:5px;font-weight:700;letter-spacing:0.5px">CRITICAL</div>
-        <div style="font-size:0.74rem;color:var(--muted);margin-top:5px;line-height:1.7" data-i18n="x-worse-than-any-country-on">Worse than any country on Earth (South Africa record: 0.63). Approaching Bitcoin (0.85). Protocol at maximum intervention — wealth cap and redistribution at full force.</div>
+        <div style="font-size:0.74rem;color:var(--muted);margin-top:5px;line-height:1.7" data-i18n="x-worse-than-any-country-on">Worse than any country on Earth (South Africa record: ~0.63). Approaching Bitcoin (~0.85). With few registered humans this happens quickly; the rules stay the same.</div>
       </div>
     </div>
     <div id="wealth-cap-info" style="margin-top:10px;background:var(--card2);border:1px solid rgba(0,255,209,0.2);border-radius:var(--radius-sm);padding:12px 16px;font-size:0.79rem;color:var(--muted);line-height:1.8">
@@ -667,7 +667,7 @@
     </div>
     <div style="margin-top:10px;background:rgba(245,166,35,0.04);border:1px solid rgba(245,166,35,0.15);border-radius:var(--radius-sm);padding:16px">
       <div style="font-size:0.77rem;color:var(--gold);letter-spacing:1.5px;text-transform:uppercase;margin-bottom:10px;font-weight:600" data-i18n="gini-why-title">Why Gini — and not a simpler metric?</div>
-      <div style="font-size:0.79rem;color:var(--muted);line-height:1.9" data-i18n="gini-why-text">A simple richest-vs-poorest ratio is easy to game: 10,000 wallets could show a low spread but 90% of AEQ concentrated in 100 hands — Gini detects this, a ratio does not. The coefficient captures the complete distribution across all verified humans in one auditable number. Aequitas publishes this on-chain — transparent, tamper-evident, globally verifiable. It is the primary signal for automatic phase transitions, wealth cap calibration, and redistribution intensity. No human can override the index reading or the mechanisms it triggers.</div>
+      <div style="font-size:0.79rem;color:var(--muted);line-height:1.9" data-i18n="gini-why-text">A simple richest-vs-poorest ratio is easy to game: 10,000 wallets could show a low spread while 90% of AEQ sits in 100 hands — the Gini detects this, a ratio does not. It captures the complete distribution across all verified humans in one number that anyone can recompute. It is a measurement, not a control lever: phases and the wealth cap follow the number of registered humans, and the redistribution rules are fixed in the protocol. Nobody can adjust the reading.</div>
     </div>
   </div>
   <div class="idx" style="grid-column:1/-1">
@@ -751,7 +751,7 @@
       <div class="ubi-src-card" style="border-color:rgba(139,92,246,0.2)">
         <div class="ubi-src-pct" style="color:var(--purple)">100%</div>
         <div class="ubi-src-name" style="color:var(--purple)" data-i18n="ubi-src-cap">Wealth cap overflow</div>
-        <div class="ubi-src-desc" data-i18n="ubi-src-cap-d">People above the cap (25× the fair share, 25,000 AEQ) have the excess redistributed instantly. 100% flows to UBI. Businesses have no fixed cap.</div>
+        <div class="ubi-src-desc" data-i18n="ubi-src-cap-d">People above the cap (25× the fair share = 25,000 AEQ; lower while fewer than 25 humans are registered: 1,000 AEQ per human, at least 5,000) have the excess redistributed instantly. 100% flows to UBI. Businesses have no fixed cap.</div>
       </div>
       <div class="ubi-src-card" style="border-color:rgba(236,72,153,0.2)">
         <div class="ubi-src-pct" style="color:#ec4899">100%</div>
@@ -837,7 +837,7 @@
         <em style="color:var(--gold);font-size:0.95rem" data-i18n="x-what-would-a-cryptocurrency-look">"What would a cryptocurrency look like if designed from first principles to be fair to every human being?"</em>
       </div>
       <p>The answer: <strong style="color:var(--text)" data-i18n="x-money-exists-because-people-exist">Money exists because people exist. Therefore every person should have an equal share of money simply by virtue of being human.</strong></p>
-      <p data-i18n="x-aequitas-implements-this-mathematically-ever">Aequitas implements this mathematically. Every verified human receives exactly 1,000 AEQ &#8212; billionaire or subsistence farmer, no exceptions. Four redistribution mechanisms ensure inequality cannot accumulate indefinitely. The Gini coefficient is tracked on-chain in real time.</p>
+      <p data-i18n="x-aequitas-implements-this-mathematically-ever">Aequitas implements this mathematically. Every verified human receives exactly 1,000 AEQ — billionaire or subsistence farmer, no exceptions. Fixed rules — the idle-money levy, the wealth cap and the daily basic income — keep inequality from accumulating indefinitely. The Gini coefficient is computed from the live balances and can be checked by anyone.</p>
       <p><em style="color:var(--gold)" data-i18n="x-money-exists-because-people-exist-2">"Money exists because people exist. Nothing more, nothing less."</em></p>
     </div>
   </div>
@@ -888,7 +888,7 @@
         <div style="font-size:0.77rem;color:var(--muted);line-height:1.75" data-i18n="x-1m-humans-global-ubi-at">1M+ humans. Global UBI at scale. Gini target &lt;0.30.</div>
       </div>
     </div>
-    <div style="margin-top:14px;padding:12px 16px;background:rgba(107,70,193,0.05);border-radius:8px;font-size:0.79rem;color:var(--muted);line-height:1.75;border:1px solid rgba(107,70,193,0.12)" data-i18n="x-phase-transitions-are-automatic-8212">Phase transitions are automatic &#8212; triggered by human count thresholds. Rules are reflected in the contract surface; balances/fees are enforced by the Go L1. No governance vote; Phase 1 is not fully trustless admin-free.</div>
+    <div style="margin-top:14px;padding:12px 16px;background:rgba(107,70,193,0.05);border-radius:8px;font-size:0.79rem;color:var(--muted);line-height:1.75;border:1px solid rgba(107,70,193,0.12)" data-i18n="x-phase-transitions-are-automatic-8212">Phase transitions are automatic — triggered by human count thresholds, enforced by the protocol. No governance vote, no admin key.</div>
   </div>
 
   <!-- GUARDIAN SYSTEM -->
@@ -1104,7 +1104,7 @@
         <div style="font-size:1.5rem;margin-bottom:10px">&#128100;</div>
         <div style="font-size:0.86rem;font-weight:700;color:var(--text);margin-bottom:8px" data-i18n="path-human-title">I am a Human</div>
         <div style="font-size:0.79rem;color:var(--muted);line-height:1.75;margin-bottom:14px" data-i18n="path-human-desc">I want to register, receive 1,000 AEQ, and join the basic income network.</div>
-        <div style="font-size:0.77rem;color:var(--purple);font-weight:600;line-height:1.9" data-i18n="path-human-steps">1. Download the Aequitas Android App<br>2. Unlock with your device's screen-lock (fingerprint/face/PIN)<br>3. Connect MetaMask<br>4. Receive 1,000 AEQ instantly</div>
+        <div style="font-size:0.77rem;color:var(--purple);font-weight:600;line-height:1.9" data-i18n="path-human-steps">1. Download the Aequitas Android App<br>2. Take the short live face check in the app<br>3. Connect MetaMask<br>4. Receive 1,000 AEQ once the check passes</div>
       </div>
       <div style="background:var(--card2);border:1px solid var(--border);border-radius:var(--radius);padding:20px;box-shadow:var(--shadow)">
         <div style="font-size:1.5rem;margin-bottom:10px">&#128421;&#65039;</div>
@@ -1135,7 +1135,7 @@
       <rect x="175" y="70" width="170" height="100" rx="8" fill="rgba(8,145,178,0.08)" stroke="#0891B2" stroke-width="1.5"/>
       <text x="260" y="95" text-anchor="middle" font-size="11" font-weight="700" fill="rgba(34,211,238,0.9)" data-i18n="x-aeq-activity">AEQ ACTIVITY</text>
       <text x="260" y="112" text-anchor="middle" font-size="9" fill="rgba(136,146,164,0.9)" data-i18n="x-swap-fees-0-1">Swap fees (0.1%)</text>
-      <text x="260" y="126" text-anchor="middle" font-size="9" fill="rgba(136,146,164,0.9)" data-i18n="x-demurrage-0-5-mo">Idle-money levy (0.5–3%/mo)</text>
+      <text x="260" y="126" text-anchor="middle" font-size="9" fill="rgba(136,146,164,0.9)" data-i18n="x-demurrage-0-5-mo">Idle-money levy (0.5–2%/mo)</text>
       <text x="260" y="140" text-anchor="middle" font-size="9" fill="rgba(136,146,164,0.9)" data-i18n="x-wealth-cap-overflow">Wealth cap overflow</text>
       <text x="260" y="154" text-anchor="middle" font-size="9" fill="rgba(136,146,164,0.9)" data-i18n="x-inactive-escrow">Inactive escrow</text>
       <line x1="345" y1="120" x2="375" y2="120" stroke="#0891B2" stroke-width="1.5" marker-end="url(#arr2)"/>
@@ -1175,7 +1175,7 @@
 <div class="ns" style="grid-template-columns:1fr">
 <div class="nc" style="grid-column:1/-1;background:linear-gradient(135deg,rgba(245,166,35,0.06),rgba(13,8,32,0.9));border-color:rgba(245,166,35,0.2)">
     <div id="guide-node" class="nc-title" style="color:var(--gold);scroll-margin-top:80px" data-i18n="run-node-title">Run Your Own Node — Help Secure the Network</div>
-    <div style="font-size:0.82rem;color:var(--muted);line-height:1.9;margin-bottom:16px" data-i18n="run-node-desc">Registered humans can run an Aequitas validator node — no stake, no application required, but <strong style="color:var(--gold)" data-i18n="x-node-operator-wallet-must-be">NODE_OPERATOR_WALLET must be a registered Aequitas human</strong> (this is a protocol security requirement). Nodes participate in block production, validate the human registry, and synchronize the BlockDAG. Node operators earn a share of protocol fees via the Validators Pool (40% of all protocol fees, distributed daily). The more nodes that run, the more decentralized and resilient the network becomes.</div>
+    <div style="font-size:0.82rem;color:var(--muted);line-height:1.9;margin-bottom:16px" data-i18n="run-node-desc">Registered humans can run an Aequitas validator node — no stake, no application required, but <strong style="color:var(--gold)" data-i18n="x-node-operator-wallet-must-be">NODE_OPERATOR_WALLET must be a registered Aequitas human</strong> (this is a protocol security requirement). Nodes participate in block production, validate the human registry, and synchronize the BlockDAG. Node operators earn a share of the Validators Pool (40% of all swap fees, distributed daily). The more nodes that run, the more decentralized and resilient the network becomes.</div>
     <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:16px">
       <a id="node-guide-pdf-btn" class="hover-fade" href="/download/node-guide-en.pdf" download style="display:inline-flex;align-items:center;gap:8px;background:var(--gold);color:#06091A;padding:12px 20px;border-radius:8px;font-size:0.84rem;font-weight:700;text-decoration:none" data-i18n="x-node-operator-guide-pdf">
         📄 Node Operator Guide (PDF)
@@ -1283,7 +1283,7 @@
         <tr style="border-bottom:1px solid rgba(139,92,246,0.08);background:rgba(0,0,0,0.1)">
           <td style="font-size:0.78rem;font-family:var(--font-mono);color:var(--neon);padding:8px">NODE_OPERATOR_WALLET</td>
           <td style="font-size:0.77rem;color:var(--teal);padding:8px">For rewards</td>
-          <td style="font-size:0.78rem;color:var(--muted);padding:8px">Your Aequitas human wallet address &mdash; the one you registered with via the Android app. This wallet receives your daily validator rewards (40% of all protocol fees). Must be a registered human on Aequitas. Find it in the app under your profile.</td>
+          <td style="font-size:0.78rem;color:var(--muted);padding:8px">Your Aequitas human wallet address &mdash; the one you registered with via the Android app. This wallet receives your daily validator rewards (an equal share of the Validators Pool, which gets 40% of all swap fees). Must be a registered human on Aequitas. Find it in the app under your profile.</td>
         </tr>
         <tr style="border-bottom:1px solid rgba(139,92,246,0.08)">
           <td style="font-size:0.78rem;font-family:var(--font-mono);color:var(--neon);padding:8px">PEER_SECRET</td>
@@ -1520,7 +1520,7 @@
 
       <!-- Step 7: Rewards -->
       <div style="font-size:0.76rem;color:var(--gold);font-weight:700;letter-spacing:1px;text-transform:uppercase;margin-bottom:10px;border-bottom:1px solid rgba(245,166,35,0.2);padding-bottom:6px">Step 7 &mdash; Earning Validator Rewards</div>
-      <div style="background:rgba(245,166,35,0.05);border:1px solid rgba(245,166,35,0.2);border-radius:6px;padding:12px 14px;margin-bottom:12px;font-size:0.79rem;color:var(--muted);line-height:1.9">The Validators Pool collects 40% of all protocol fees (swap fees, demurrage, wealth cap overflow). Every day at <strong style="color:var(--gold)">20:00 Berlin time</strong> (CEST/CET, handles DST automatically) the primary node distributes the pool balance to all registered node operator wallets proportionally. The more consistently your node runs, the larger your share.</div>
+      <div style="background:rgba(245,166,35,0.05);border:1px solid rgba(245,166,35,0.2);border-radius:6px;padding:12px 14px;margin-bottom:12px;font-size:0.79rem;color:var(--muted);line-height:1.9">The Validators Pool collects 40% of all swap fees; transfer fees, the idle-money levy and cap overflow go entirely to the basic income. Every day at <strong style="color:var(--gold)">20:00 Berlin time</strong> (CEST/CET, handles DST automatically) the pool is split equally among all node operators who are registered humans, weighted only by the minutes each node was online that day — not by blocks, so expensive hardware earns no more. The more consistently your node runs, the larger your share.</div>
       <div style="font-size:0.79rem;color:var(--muted);line-height:2.2;margin-bottom:18px">
         <div style="display:flex;align-items:flex-start;gap:10px;margin-bottom:4px"><span style="color:var(--gold);font-weight:700;min-width:16px">1.</span><span>Make sure you are registered as a human on Aequitas. If not: install the Android app and complete biometric registration first. You will receive a wallet address and 1,000 AEQ.</span></div>
         <div style="display:flex;align-items:flex-start;gap:10px;margin-bottom:4px"><span style="color:var(--gold);font-weight:700;min-width:16px">2.</span><span>Set <span style="font-family:var(--font-mono);color:var(--neon)">NODE_OPERATOR_WALLET</span> = your Aequitas human wallet address in your node's environment</span></div>

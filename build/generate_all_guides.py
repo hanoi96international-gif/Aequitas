@@ -244,11 +244,11 @@ mm_rows  = [
 ],
 
 rewards_title = 'Step 5 — Validator Rewards',
-rewards_box   = 'The validators pool collects 40% of all protocol fees (swap fees, demurrage, wealth-cap overflow). Every day at 20:00 Berlin time the pool is distributed to the registered validators in proportion to the blocks they produced. Nothing to do beyond keeping the node running.',
+rewards_box   = 'The validators pool collects 40% of all swap fees. Every day at 20:00 Berlin time it is split equally among all validators run by registered humans, weighted only by the minutes each node was online that day — not by blocks, so expensive hardware earns no more. Transfer fees, the idle-money levy and cap overflow go entirely to the basic income, not to validators. Nothing to do beyond keeping the node running.',
 rewards_steps = [
     'NODE_OPERATOR_WALLET must be a registered human — otherwise the network rejects the registration (log: <font name="Courier">NODE_OPERATOR_WALLET is not a registered human</font>).',
     'Confirm in the log: <font name="Courier" color="#0F766E">[PEERS] Auto-authorized validator … (wallet: 0x…)</font> on a founder node, and <font name="Courier">[Block #…]</font> lines on yours.',
-    'A node that is down produces no blocks and therefore earns nothing for that time — restarts are harmless, the node catches up on its own.',
+    'A node that is down earns nothing for that time: the share counts only the minutes your node was online. Restarts are harmless, the node catches up on its own.',
     'What a validator does NOT do without extra software: accept new human registrations (those endpoints answer 503). Transfers, blocks and rewards work without it.',
 ],
 
@@ -359,11 +359,11 @@ mm_rows  = [
 ],
 
 rewards_title = 'Schritt 5 — Validator-Belohnungen',
-rewards_box   = 'Der Validatoren-Pool sammelt 40 % aller Protokollgebühren (Swap-Gebühren, Demurrage, Vermögensdeckel-Überschuss). Täglich um 20:00 Uhr Berliner Zeit wird der Pool an die registrierten Validatoren im Verhältnis ihrer produzierten Blöcke verteilt. Außer den Knoten laufen zu lassen ist nichts zu tun.',
+rewards_box   = 'Der Validatoren-Pool erhält 40 % aller Swap-Gebühren. Täglich um 20:00 Uhr Berliner Zeit wird er zu gleichen Teilen an alle Validatoren verteilt, die registrierte Menschen betreiben — gewichtet nur nach den Minuten, die der Knoten an dem Tag online war, nicht nach Blöcken; teure Hardware bringt also nicht mehr. Transfergebühren, Liegegeld und Deckel-Überschuss gehen vollständig ins Grundeinkommen, nicht an Validatoren. Außer den Knoten laufen zu lassen, ist nichts zu tun.',
 rewards_steps = [
     'NODE_OPERATOR_WALLET muss ein registrierter Mensch sein — sonst lehnt das Netz die Anmeldung ab (Log: <font name="Courier">NODE_OPERATOR_WALLET is not a registered human</font>).',
     'Im Log bestätigen: <font name="Courier" color="#0F766E">[PEERS] Auto-authorized validator … (wallet: 0x…)</font> auf einem Gründerknoten und <font name="Courier">[Block #…]</font>-Zeilen auf deinem.',
-    'Ein Knoten, der nicht läuft, produziert keine Blöcke und verdient in dieser Zeit nichts — Neustarts sind harmlos, der Knoten holt von allein auf.',
+    'Ein Knoten, der nicht läuft, verdient in dieser Zeit nichts: Der Anteil zählt nur die Minuten, in denen Ihr Knoten online war. Neustarts sind harmlos, der Knoten holt von allein auf.',
     'Was ein Validator ohne zusätzliche Software NICHT tut: neue Menschen registrieren (diese Endpunkte antworten 503). Überweisungen, Blöcke und Belohnungen funktionieren ohne das.',
 ],
 
@@ -648,17 +648,13 @@ ES = {'title': 'GUÍA DEL OPERADOR DE NODO AEQUITAS',
              ('Decimales', '18'),
              ('Explorador de bloques', 'https://aequitas.digital')],
  'rewards_title': 'Paso 5 — Recompensas de validador',
- 'rewards_box': 'El fondo de validadores recoge el 40 % de todas las comisiones del protocolo (comisiones de '
-                'swap, demurrage, exceso del tope de riqueza). Cada día a las 20:00 hora de Berlín el fondo '
-                'se reparte entre los validadores registrados en proporción a los bloques que produjeron. No '
-                'hay que hacer nada más que mantener el nodo en marcha.',
+ 'rewards_box': 'El fondo de validadores recibe el 40 % de todas las comisiones de swap. Cada día a las 20:00 hora de Berlín se reparte a partes iguales entre todos los validadores operados por humanos registrados, ponderado solo por los minutos que cada nodo estuvo en línea ese día — no por bloques, así que un hardware caro no gana más. Las comisiones de transferencia, la tasa sobre dinero inmóvil y el exceso del tope van íntegramente a la renta básica, no a los validadores. No hay que hacer nada más que mantener el nodo en marcha.',
  'rewards_steps': ['NODE_OPERATOR_WALLET debe ser un humano registrado — si no, la red rechaza el registro '
                    '(registro: <font name="Courier">NODE_OPERATOR_WALLET is not a registered human</font>).',
                    'Confirma en el registro: <font name="Courier" color="#0F766E">[PEERS] Auto-authorized '
                    'validator … (wallet: 0x…)</font> en un nodo fundador, y líneas <font '
                    'name="Courier">[Block #…]</font> en el tuyo.',
-                   'Un nodo apagado no produce bloques y por tanto no gana nada durante ese tiempo — los '
-                   'reinicios son inofensivos, el nodo se pone al día solo.',
+                   'Un nodo caído no gana nada durante ese tiempo: la parte cuenta solo los minutos en que su nodo estuvo en línea. Los reinicios son inofensivos; el nodo se pone al día solo.',
                    'Lo que un validador NO hace sin software adicional: aceptar nuevos registros de humanos '
                    '(esos endpoints responden 503). Las transferencias, los bloques y las recompensas '
                    'funcionan sin él.'],
@@ -833,18 +829,14 @@ FR = {'title': "GUIDE DE L'OPÉRATEUR DE NŒUD AEQUITAS",
              ('Décimales', '18'),
              ('Explorateur de blocs', 'https://aequitas.digital')],
  'rewards_title': 'Étape 5 — Récompenses de validateur',
- 'rewards_box': 'Le fonds des validateurs collecte 40 % de tous les frais du protocole (frais de swap, '
-                'démurrage, dépassement du plafond de richesse). Chaque jour à 20 h heure de Berlin, le '
-                'fonds est réparti entre les validateurs enregistrés au prorata des blocs produits. Rien à '
-                'faire sinon garder le nœud en marche.',
+ 'rewards_box': 'Le fonds des validateurs reçoit 40 % de tous les frais de swap. Chaque jour à 20h00, heure de Berlin, il est réparti à parts égales entre tous les validateurs exploités par des humains enregistrés, pondéré uniquement par les minutes pendant lesquelles chaque nœud était en ligne ce jour-là — pas par blocs, un matériel coûteux ne rapporte donc pas plus. Les frais de transfert, la taxe sur l’argent dormant et le dépassement du plafond vont entièrement au revenu de base, pas aux validateurs. Il suffit de laisser le nœud tourner.',
  'rewards_steps': ['NODE_OPERATOR_WALLET doit être un humain enregistré — sinon le réseau refuse '
                    'l\'enregistrement (journal : <font name="Courier">NODE_OPERATOR_WALLET is not a '
                    'registered human</font>).',
                    'Confirmez dans le journal : <font name="Courier" color="#0F766E">[PEERS] Auto-authorized '
                    'validator … (wallet: 0x…)</font> sur un nœud fondateur, et des lignes <font '
                    'name="Courier">[Block #…]</font> sur le vôtre.',
-                   'Un nœud arrêté ne produit pas de blocs et ne gagne donc rien pendant ce temps — les '
-                   'redémarrages sont sans danger, le nœud rattrape seul.',
+                   'Un nœud arrêté ne gagne rien pendant ce temps : la part ne compte que les minutes où votre nœud était en ligne. Les redémarrages sont sans danger, le nœud se resynchronise seul.',
                    "Ce qu'un validateur NE fait PAS sans logiciel supplémentaire : accepter de nouveaux "
                    "enregistrements d'humains (ces endpoints répondent 503). Transferts, blocs et "
                    'récompenses fonctionnent sans.'],
@@ -1018,18 +1010,14 @@ IT = {'title': "GUIDA PER L'OPERATORE DI NODO AEQUITAS",
              ('Decimali', '18'),
              ('Block explorer', 'https://aequitas.digital')],
  'rewards_title': 'Passo 5 — Ricompense del validatore',
- 'rewards_box': 'Il fondo dei validatori raccoglie il 40 % di tutte le commissioni del protocollo '
-                '(commissioni di swap, demurrage, eccedenza del tetto di ricchezza). Ogni giorno alle 20:00 '
-                'ora di Berlino il fondo viene distribuito ai validatori registrati in proporzione ai '
-                "blocchi prodotti. Non c'è nulla da fare se non tenere il nodo acceso.",
+ 'rewards_box': 'Il fondo dei validatori riceve il 40 % di tutte le commissioni di swap. Ogni giorno alle 20:00 ora di Berlino viene ripartito in parti uguali tra tutti i validatori gestiti da umani registrati, ponderato solo per i minuti in cui ciascun nodo è stato online quel giorno — non per blocchi, quindi un hardware costoso non guadagna di più. Commissioni di trasferimento, prelievo sul denaro inattivo ed eccedenza del tetto vanno interamente al reddito di base, non ai validatori. Basta tenere il nodo in funzione.',
  'rewards_steps': ['NODE_OPERATOR_WALLET deve essere un umano registrato — altrimenti la rete rifiuta la '
                    'registrazione (log: <font name="Courier">NODE_OPERATOR_WALLET is not a registered '
                    'human</font>).',
                    'Conferma nel log: <font name="Courier" color="#0F766E">[PEERS] Auto-authorized validator '
                    '… (wallet: 0x…)</font> su un nodo fondatore, e righe <font name="Courier">[Block '
                    '#…]</font> sul tuo.',
-                   'Un nodo spento non produce blocchi e quindi non guadagna nulla in quel periodo — i '
-                   'riavvii sono innocui, il nodo si riallinea da solo.',
+                   'Un nodo spento non guadagna nulla in quel periodo: la quota conta solo i minuti in cui il suo nodo era online. I riavvii sono innocui, il nodo si rimette in pari da solo.',
                    'Cosa un validatore NON fa senza software aggiuntivo: accettare nuove registrazioni di '
                    'umani (quegli endpoint rispondono 503). Trasferimenti, blocchi e ricompense funzionano '
                    'senza.'],
@@ -1198,17 +1186,13 @@ PT = {'title': 'GUIA DO OPERADOR DE NÓ AEQUITAS',
              ('Decimais', '18'),
              ('Explorador de blocos', 'https://aequitas.digital')],
  'rewards_title': 'Passo 5 — Recompensas de validador',
- 'rewards_box': 'O fundo dos validadores recolhe 40 % de todas as taxas do protocolo (taxas de swap, '
-                'demurrage, excedente do teto de riqueza). Todos os dias às 20:00, hora de Berlim, o fundo é '
-                'distribuído pelos validadores registados em proporção aos blocos produzidos. Não há nada a '
-                'fazer além de manter o nó a correr.',
+ 'rewards_box': 'O fundo dos validadores recebe 40 % de todas as taxas de swap. Todos os dias às 20:00, hora de Berlim, é repartido em partes iguais por todos os validadores operados por humanos registados, ponderado apenas pelos minutos em que cada nó esteve online nesse dia — não por blocos, por isso hardware caro não ganha mais. As taxas de transferência, a taxa sobre dinheiro parado e o excedente do limite vão inteiramente para o rendimento básico, não para os validadores. Basta manter o nó a funcionar.',
  'rewards_steps': ['NODE_OPERATOR_WALLET tem de ser um humano registado — senão a rede recusa o registo '
                    '(log: <font name="Courier">NODE_OPERATOR_WALLET is not a registered human</font>).',
                    'Confirme no log: <font name="Courier" color="#0F766E">[PEERS] Auto-authorized validator '
                    '… (wallet: 0x…)</font> num nó fundador, e linhas <font name="Courier">[Block #…]</font> '
                    'no seu.',
-                   'Um nó desligado não produz blocos e por isso não ganha nada nesse período — os reinícios '
-                   'são inofensivos, o nó recupera sozinho.',
+                   'Um nó parado não ganha nada durante esse tempo: a quota conta apenas os minutos em que o seu nó esteve online. Reinícios são inofensivos; o nó recupera sozinho.',
                    'O que um validador NÃO faz sem software adicional: aceitar novos registos de humanos '
                    '(esses endpoints respondem 503). Transferências, blocos e recompensas funcionam sem '
                    'ele.'],
@@ -1375,17 +1359,13 @@ TR = {'title': 'AEQUITAS DÜĞÜM OPERATÖRÜ KILAVUZU',
              ('Ondalık', '18'),
              ('Blok gezgini', 'https://aequitas.digital')],
  'rewards_title': 'Adım 5 — Doğrulayıcı ödülleri',
- 'rewards_box': "Doğrulayıcı havuzu tüm protokol ücretlerinin %40'ını toplar (takas ücretleri, demurrage, "
-                "servet tavanı fazlası). Her gün Berlin saatiyle 20:00'de havuz, ürettikleri bloklarla "
-                'orantılı olarak kayıtlı doğrulayıcılara dağıtılır. Düğümü çalışır tutmaktan başka yapacak '
-                'bir şey yok.',
+ 'rewards_box': "Doğrulayıcı havuzu tüm takas ücretlerinin %40'ını alır. Her gün Berlin saatiyle 20:00'de, kayıtlı insanların çalıştırdığı tüm doğrulayıcılar arasında eşit olarak paylaştırılır; tek ağırlık, düğümün o gün çevrimiçi olduğu dakikalardır — bloklar değil, yani pahalı donanım daha fazla kazandırmaz. Transfer ücretleri, atıl para kesintisi ve tavan fazlası tamamen temel gelire gider, doğrulayıcılara değil. Düğümü çalışır tutmak dışında yapılacak bir şey yoktur.",
  'rewards_steps': ['NODE_OPERATOR_WALLET kayıtlı bir insan olmalı — aksi halde ağ kaydı reddeder (günlük: '
                    '<font name="Courier">NODE_OPERATOR_WALLET is not a registered human</font>).',
                    'Günlükte doğrulayın: bir kurucu düğümde <font name="Courier" color="#0F766E">[PEERS] '
                    'Auto-authorized validator … (wallet: 0x…)</font>, sizinkinde <font name="Courier">[Block '
                    '#…]</font> satırları.',
-                   'Kapalı bir düğüm blok üretmez ve o sürede hiçbir şey kazanmaz — yeniden başlatmalar '
-                   'zararsızdır, düğüm kendi kendine yetişir.',
+                   'Çalışmayan bir düğüm o süre boyunca hiçbir şey kazanmaz: pay yalnızca düğümünüzün çevrimiçi olduğu dakikaları sayar. Yeniden başlatmalar zararsızdır, düğüm kendiliğinden yetişir.',
                    'Bir doğrulayıcının ek yazılım olmadan YAPMADIĞI şey: yeni insan kayıtlarını kabul etmek '
                    '(bu uç noktalar 503 döner). Transferler, bloklar ve ödüller onsuz çalışır.'],
  'trouble_title': 'Sorun giderme',
@@ -1556,17 +1536,13 @@ ID = {'title': 'PANDUAN OPERATOR NODE AEQUITAS',
              ('Desimal', '18'),
              ('Block explorer', 'https://aequitas.digital')],
  'rewards_title': 'Langkah 5 — Imbalan validator',
- 'rewards_box': 'Kolam validator mengumpulkan 40 % dari semua biaya protokol (biaya swap, demurrage, '
-                'kelebihan batas kekayaan). Setiap hari pukul 20:00 waktu Berlin kolam dibagikan ke '
-                'validator terdaftar sebanding dengan blok yang diproduksi. Tidak ada yang perlu dilakukan '
-                'selain menjaga node tetap berjalan.',
+ 'rewards_box': 'Kolam validator menerima 40 % dari semua biaya swap. Setiap hari pukul 20:00 waktu Berlin kolam dibagi rata kepada semua validator yang dijalankan manusia terdaftar, hanya ditimbang menurut menit node tersebut online pada hari itu — bukan menurut blok, jadi perangkat keras mahal tidak menghasilkan lebih banyak. Biaya transfer, pungutan uang menganggur, dan kelebihan batas seluruhnya masuk ke pendapatan dasar, bukan ke validator. Cukup biarkan node tetap berjalan.',
  'rewards_steps': ['NODE_OPERATOR_WALLET harus manusia terdaftar — jika tidak, jaringan menolak pendaftaran '
                    '(log: <font name="Courier">NODE_OPERATOR_WALLET is not a registered human</font>).',
                    'Pastikan di log: <font name="Courier" color="#0F766E">[PEERS] Auto-authorized validator '
                    '… (wallet: 0x…)</font> di node pendiri, dan baris <font name="Courier">[Block #…]</font> '
                    'di node Anda.',
-                   'Node yang mati tidak memproduksi blok sehingga tidak mendapat apa-apa selama itu — '
-                   'memulai ulang tidak berbahaya, node mengejar sendiri.',
+                   'Node yang mati tidak mendapat apa pun selama waktu itu: bagian hanya menghitung menit node Anda online. Restart tidak berbahaya, node mengejar ketertinggalan sendiri.',
                    'Yang TIDAK dilakukan validator tanpa perangkat lunak tambahan: menerima pendaftaran '
                    'manusia baru (endpoint tersebut menjawab 503). Transfer, blok, dan imbalan berjalan '
                    'tanpanya.'],
@@ -1734,18 +1710,14 @@ RU = {'title': 'РУКОВОДСТВО ОПЕРАТОРА УЗЛА AEQUITAS',
              ('Десятичные', '18'),
              ('Обозреватель блоков', 'https://aequitas.digital')],
  'rewards_title': 'Шаг 5 — Вознаграждения валидатора',
- 'rewards_box': 'Пул валидаторов собирает 40 % всех комиссий протокола (комиссии обмена, демерредж, '
-                'превышение потолка богатства). Ежедневно в 20:00 по берлинскому времени пул распределяется '
-                'между зарегистрированными валидаторами пропорционально произведённым блокам. Делать ничего '
-                'не нужно — только держать узел включённым.',
+ 'rewards_box': 'Пул валидаторов получает 40 % всех комиссий обмена. Каждый день в 20:00 по берлинскому времени он делится поровну между всеми валидаторами, которыми управляют зарегистрированные люди, с весом только по минутам, которые узел был онлайн в этот день — не по блокам, поэтому дорогое оборудование не приносит больше. Комиссии за переводы, сбор с простаивающих денег и превышение лимита полностью идут в базовый доход, а не валидаторам. Достаточно держать узел запущенным.',
  'rewards_steps': ['NODE_OPERATOR_WALLET должен быть зарегистрированным человеком — иначе сеть отклонит '
                    'регистрацию (журнал: <font name="Courier">NODE_OPERATOR_WALLET is not a registered '
                    'human</font>).',
                    'Проверьте в журнале: <font name="Courier" color="#0F766E">[PEERS] Auto-authorized '
                    'validator … (wallet: 0x…)</font> на узле-основателе и строки <font name="Courier">[Block '
                    '#…]</font> на вашем.',
-                   'Выключенный узел не производит блоки и ничего не зарабатывает в это время — перезапуски '
-                   'безопасны, узел догоняет сам.',
+                   'Выключенный узел за это время ничего не зарабатывает: доля учитывает только минуты, когда ваш узел был онлайн. Перезапуски безвредны, узел догоняет сам.',
                    'Чего валидатор НЕ делает без дополнительного ПО: не принимает новые регистрации людей '
                    '(эти конечные точки отвечают 503). Переводы, блоки и вознаграждения работают без этого.'],
  'trouble_title': 'Устранение неполадок',
@@ -1873,12 +1845,12 @@ ZH = {'title': 'AEQUITAS 节点运营者指南',
              ('小数位', '18'),
              ('区块浏览器', 'https://aequitas.digital')],
  'rewards_title': '第 5 步 — 验证节点奖励',
- 'rewards_box': '验证节点池收取全部协议费用的 40%（兑换费、滞留费、财富上限溢出）。每天柏林时间 20:00，池按各已注册验证节点产出的区块比例分配。除了保持节点运行，无需做任何事。',
+ 'rewards_box': '验证节点池获得全部兑换费的 40%。每天柏林时间 20:00，池内余额在所有由已注册真人运行的验证节点之间平均分配，唯一的权重是节点当天在线的分钟数——而不是区块数，因此昂贵的硬件不会多赚。转账费、闲置资金费和上限溢出全部进入基本收入，不给验证节点。除了保持节点运行，无需做任何事。',
  'rewards_steps': ['NODE_OPERATOR_WALLET 必须是已注册真人 — 否则网络拒绝注册（日志：<font name="Courier">NODE_OPERATOR_WALLET is '
                    'not a registered human</font>）。',
                    '在日志中确认：创始节点上出现 <font name="Courier" color="#0F766E">[PEERS] Auto-authorized validator … '
                    '(wallet: 0x…)</font>，你的节点上出现 <font name="Courier">[Block #…]</font> 行。',
-                   '离线的节点不产出区块，因此那段时间没有收益 — 重启无害，节点会自行追上。',
+                   '节点停机期间没有收益：份额只计算您的节点在线的分钟数。重启无害，节点会自行追上。',
                    '验证节点在没有额外软件时不会做的事：接受新的真人注册（这些接口返回 503）。转账、区块和奖励不依赖它。'],
  'trouble_title': '故障排除',
  'trouble_cols': ['现象', '可能原因', '解决办法'],
@@ -2026,16 +1998,13 @@ AR = {'title': 'دليل مشغّل عقدة AEQUITAS',
              ('الخانات العشرية', '18'),
              ('مستكشف الكتل', 'https://aequitas.digital')],
  'rewards_title': 'الخطوة 5 — مكافآت المدقّق',
- 'rewards_box': 'يجمع صندوق المدقّقين 40% من جميع رسوم البروتوكول (رسوم المبادلة، رسم الاحتفاظ، فائض سقف '
-                'الثروة). كل يوم في الساعة 20:00 بتوقيت برلين يُوزَّع الصندوق على المدقّقين المسجَّلين بنسبة '
-                'الكتل التي أنتجوها. لا شيء يلزم فعله سوى إبقاء العقدة تعمل.',
+ 'rewards_box': 'يحصل صندوق المدقّقين على 40% من جميع رسوم المبادلة. كل يوم في الساعة 20:00 بتوقيت برلين يُقسَّم بالتساوي بين جميع المدقّقين الذين يشغّلهم بشر مسجَّلون، ويُوزَن فقط بعدد الدقائق التي كانت فيها العقدة متصلة في ذلك اليوم — لا بعدد الكتل، فالعتاد الباهظ لا يربح أكثر. رسوم التحويل ورسم المال الراكد وفائض السقف تذهب كلها إلى الدخل الأساسي، لا إلى المدقّقين. لا شيء عليك سوى إبقاء العقدة تعمل.',
  'rewards_steps': ['يجب أن يكون NODE_OPERATOR_WALLET إنسانًا مسجَّلًا — وإلا ترفض الشبكة التسجيل (السجل: '
                    '<font name="Courier">NODE_OPERATOR_WALLET is not a registered human</font>).',
                    'تأكد في السجل: <font name="Courier" color="#0F766E">[PEERS] Auto-authorized validator … '
                    '(wallet: 0x…)</font> على عقدة مؤسِّسة، وأسطر <font name="Courier">[Block #…]</font> على '
                    'عقدتك.',
-                   'العقدة المتوقفة لا تنتج كتلًا ولا تكسب شيئًا في تلك المدة — إعادة التشغيل غير ضارة، '
-                   'والعقدة تلحق بنفسها.',
+                   'العقدة المتوقفة لا تربح شيئًا خلال تلك المدة: الحصة تحتسب فقط الدقائق التي كانت فيها عقدتك متصلة. إعادة التشغيل غير ضارة، والعقدة تلحق بالشبكة وحدها.',
                    'ما لا يفعله المدقّق دون برمجيات إضافية: قبول تسجيلات بشر جدد (تلك النقاط تجيب بـ 503). '
                    'التحويلات والكتل والمكافآت تعمل بدونه.'],
  'trouble_title': 'استكشاف الأخطاء',
@@ -2197,16 +2166,13 @@ HI = {'title': 'AEQUITAS नोड ऑपरेटर गाइड',
              ('दशमलव', '18'),
              ('ब्लॉक एक्सप्लोरर', 'https://aequitas.digital')],
  'rewards_title': 'चरण 5 — वैलिडेटर पुरस्कार',
- 'rewards_box': 'वैलिडेटर पूल सभी प्रोटोकॉल शुल्कों का 40% एकत्र करता है (स्वैप शुल्क, डिमरेज, धन-सीमा '
-                'अधिशेष)। हर दिन बर्लिन समय 20:00 पर पूल पंजीकृत वैलिडेटरों में उनके बनाए ब्लॉकों के अनुपात '
-                'में बाँटा जाता है। नोड चालू रखने के अलावा कुछ नहीं करना है।',
+ 'rewards_box': 'वैलिडेटर पूल को सभी स्वैप शुल्कों का 40% मिलता है। हर दिन बर्लिन समय 20:00 बजे इसे पंजीकृत मनुष्यों द्वारा चलाए जा रहे सभी वैलिडेटरों में बराबर बाँटा जाता है — भार केवल इस बात का कि नोड उस दिन कितने मिनट ऑनलाइन रहा, ब्लॉकों का नहीं; इसलिए महँगा हार्डवेयर अधिक नहीं कमाता। ट्रांसफ़र शुल्क, निष्क्रिय धन शुल्क और सीमा से अधिक राशि पूरी तरह मूल आय में जाती है, वैलिडेटरों को नहीं। नोड को चलते रहने देने के अलावा कुछ नहीं करना है।',
  'rewards_steps': ['NODE_OPERATOR_WALLET पंजीकृत मानव होना चाहिए — वरना नेटवर्क पंजीकरण अस्वीकार करता है '
                    '(लॉग: <font name="Courier">NODE_OPERATOR_WALLET is not a registered human</font>)।',
                    'लॉग में पुष्टि करें: किसी संस्थापक नोड पर <font name="Courier" color="#0F766E">[PEERS] '
                    'Auto-authorized validator … (wallet: 0x…)</font>, और आपके नोड पर <font '
                    'name="Courier">[Block #…]</font> पंक्तियाँ।',
-                   'बंद नोड ब्लॉक नहीं बनाता, इसलिए उस समय कुछ नहीं कमाता — पुनः आरंभ हानिरहित है, नोड स्वयं '
-                   'बराबरी कर लेता है।',
+                   'बंद नोड उस दौरान कुछ नहीं कमाता: हिस्से में केवल वे मिनट गिने जाते हैं जब आपका नोड ऑनलाइन था। रीस्टार्ट हानिरहित हैं, नोड अपने आप बराबर आ जाता है।',
                    'अतिरिक्त सॉफ़्टवेयर के बिना वैलिडेटर जो नहीं करता: नए मानव पंजीकरण स्वीकार करना (वे '
                    'एंडपॉइंट 503 देते हैं)। ट्रांसफ़र, ब्लॉक और पुरस्कार इसके बिना काम करते हैं।'],
  'trouble_title': 'समस्या निवारण',

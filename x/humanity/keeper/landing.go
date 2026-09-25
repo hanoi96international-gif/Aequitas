@@ -700,7 +700,7 @@ section{padding:64px 16px}
       <div class="wy reveal"><span class="wy-ico"><svg class="ico" aria-hidden="true"><use href="#i-cpu"/></svg></span><h3 data-i18n="wy-1-h">Machines take over work</h3><p data-i18n="wy-1-p">Artificial intelligence and automation do more and more of the work. An income that does not depend on a job becomes essential. Aequitas pays every person a basic income every day, funded by the flow of money, not by taxes and not by printing.</p></div>
       <div class="wy reveal"><span class="wy-ico"><svg class="ico" aria-hidden="true"><use href="#i-shield"/></svg></span><h3 data-i18n="wy-2-h">Being human becomes valuable</h3><p data-i18n="wy-2-p">In a world full of bots and AI fakes, proof that someone is a real person becomes precious. Aequitas is built on exactly that: one person, one account.</p></div>
       <div class="wy reveal"><span class="wy-ico"><svg class="ico" aria-hidden="true"><use href="#i-trend"/></svg></span><h3 data-i18n="wy-3-h">Inequality keeps growing</h3><p data-i18n="wy-3-p">Since the 1990s the largest fortunes have grown about twice as fast as the wealth of the poorer half of humanity. Aequitas has a brake built in: hoarding costs, and everything flows back to everyone.</p></div>
-      <div class="wy reveal"><span class="wy-ico"><svg class="ico" aria-hidden="true"><use href="#i-globe"/></svg></span><h3 data-i18n="wy-4-h">Billions are left out</h3><p data-i18n="wy-4-p">1.3 billion adults have no account. With Aequitas a smartphone is enough, and later a registration station nearby.</p></div>
+      <div class="wy reveal"><span class="wy-ico"><svg class="ico" aria-hidden="true"><use href="#i-globe"/></svg></span><h3 data-i18n="wy-4-h">Billions are left out</h3><p data-i18n="wy-4-p">1.3 billion adults have no account. With Aequitas a smartphone is enough today; in the long run, registration by iris scan is meant to work without one.</p></div>
       <div class="wy reveal"><span class="wy-ico"><svg class="ico" aria-hidden="true"><use href="#i-lock"/></svg></span><h3 data-i18n="wy-5-h">Money you can trust</h3><p data-i18n="wy-5-p">Governments and central banks can create money whenever they decide to. The rules of Aequitas are open, the same for everyone, and nobody can print more.</p></div>
       <div class="wy reveal"><span class="wy-ico"><svg class="ico" aria-hidden="true"><use href="#i-heart"/></svg></span><h3 data-i18n="wy-6-h">Money that serves people</h3><p data-i18n="wy-6-p">Money should flow to where people live and work, not pile up. Circulation keeps local businesses and communities alive.</p></div>
     </div>
@@ -717,7 +717,7 @@ section{padding:64px 16px}
     </div>
     <div class="zg4">
       <div class="zg reveal"><span class="zg-ico"><svg class="ico" aria-hidden="true"><use href="#i-phone"/></svg></span><h3 data-i18n="zg-1-h">A smartphone is enough</h3><p data-i18n="zg-1-p">Register with a short live face check. No bank account, no paperwork.</p></div>
-      <div class="zg reveal"><span class="zg-ico"><svg class="ico" aria-hidden="true"><use href="#i-scan"/></svg></span><h3 data-i18n="zg-2-h">Stations for everyone else</h3><p data-i18n="zg-2-p">For the launch, registration stations with iris and/or palm-vein recognition are planned, depending on which proves more reliable, so that people without a smartphone can join too.</p></div>
+      <div class="zg reveal"><span class="zg-ico"><svg class="ico" aria-hidden="true"><use href="#i-scan"/></svg></span><h3 data-i18n="zg-2-h">Long term: the iris scan</h3><p data-i18n="zg-2-p">In the long run Aequitas will rely on the iris scan. The iris is among the most distinctive features of a person, even among billions, which makes it the path to truly guaranteeing 1 person = 1 registration, and it works without a smartphone. How it can be implemented reliably and privacy-friendly is being worked on right now; hardware and timing are not decided yet.</p></div>
       <div class="zg reveal"><span class="zg-ico"><svg class="ico" aria-hidden="true"><use href="#i-bank"/></svg></span><h3 data-i18n="zg-3-h">No bank, no credit check</h3><p data-i18n="zg-3-p">No address, no credit rating, no minimum income. Being a person is enough.</p></div>
       <div class="zg reveal"><span class="zg-ico"><svg class="ico" aria-hidden="true"><use href="#i-globe"/></svg></span><h3 data-i18n="zg-4-h">Worldwide, in 12 languages</h3><p data-i18n="zg-4-p">The same rules for every person, in every country.</p></div>
     </div>
@@ -1081,7 +1081,7 @@ section{padding:64px 16px}
       </table>
     </div>
     <p class="cmp-note" data-i18n="cmp-note">These rules apply from 1 October 2026. Every levy goes 100 % to the basic income.</p>
-    <div class="sybil-blurb" data-i18n="fs-note"><strong>Every limit is a multiple of the fair share.</strong> 1,000 AEQ is what the average person holds, because the money supply is always people × 1,000 AEQ. So 2,000 = 2×, 3,000 = 3×, 5,000 = 5× and 25,000 = 25× the fair share. The limits are not tied to the dollar: if AEQ gains or loses value, everyone's fair share changes with it and the limits keep their meaning.</div>
+    <div class="sybil-blurb" data-i18n="fs-note"><strong>Every limit is a multiple of the fair share.</strong> 1,000 AEQ is what the average person holds, because the money supply is always people × 1,000 AEQ. So 2,000 = 2×, 3,000 = 3×, 5,000 = 5× and 25,000 = 25× the fair share. The limits are not tied to the dollar: if AEQ gains or loses value, everyone's fair share changes with it and the limits keep their meaning. While fewer than 25 people are registered, the cap for people is lower: 1,000 AEQ per registered person, at least 5,000 AEQ.</div>
   </div>
 </section>
 
@@ -1278,6 +1278,7 @@ section{padding:64px 16px}
       <li><h3 data-i18n="rm-3-h">App for shops</h3><p data-i18n="rm-3-p">Checkout mode with QR code and accounting export.</p></li>
       <li><h3 data-i18n="rm-4-h">Pilot town</h3><p data-i18n="rm-4-p">5–10 shops (café, bakery, farm shop, hairdresser, workshop) for three months. Measured: how much stays in circulation, how much leaves, how much reaches the basic income.</p></li>
       <li><h3 data-i18n="rm-5-h">Legal review and real stable coin</h3><p data-i18n="rm-5-p">Before real money: review under the EU crypto regulation (MiCA) and a regulated euro stable coin instead of the test currency tUSD. Only then open more widely.</p></li>
+      <li><h3 data-i18n="rm-6-h">Long term: iris scan</h3><p data-i18n="rm-6-p">To truly guarantee 1 person = 1 registration, Aequitas will rely on the iris scan, also for people without a smartphone. How it can be implemented is being worked on now; no date is promised.</p></li>
     </ol>
   </div>
 </section>
@@ -1292,8 +1293,9 @@ section{padding:64px 16px}
       <li data-i18n="op-3"><strong>Exchange-rate risk.</strong> While AEQ is small, its price fluctuates. For cautious shops, immediate exchange is the answer.</li>
       <li data-i18n="op-4"><strong>Taxes.</strong> For businesses, AEQ income is business income at its euro value on the day of payment.</li>
       <li data-i18n="op-5"><strong>The numbers are starting values.</strong> 2,000 AEQ base amount, 1.5 and 3 months' turnover, 0.5 %/2 %, 2 %, 1,000 and 3,000 a month: measured in the pilot town, then adjusted.</li>
+      <li data-i18n="op-6"><strong>The face check is an interim step.</strong> A live face check on the phone makes duplicates much harder, but it cannot yet prove 1 person = 1 registration beyond doubt. That is why we are working on the iris scan; how exactly it will be implemented is still open.</li>
     </ul>
-    <div class="sybil-blurb" data-i18n="sybil-blurb"><strong>Sybil / protection:</strong> live face check (quorum 2 of independent matching services) + signed attestation + on-chain nullifier, spent once. Named limits: accounts from before the face check (25 Aug 2026 — nearly all of today's 18) have no face template; the matching threshold is not yet calibrated on real captures; liveness is a head-turn challenge, so advanced deepfakes remain a residual risk; the split-share mode (<code>MPC</code>) runs in shadow, each service still holds a whole encrypted template.</div>
+    <div class="sybil-blurb" data-i18n="sybil-blurb"><strong>Sybil / protection:</strong> live face check (quorum 2 of independent matching services) + signed attestation + on-chain nullifier, spent once. Named limits: accounts from before the face check (25 Aug 2026) have no face template; the matching threshold is not yet calibrated on real captures; liveness is a head-turn challenge, so advanced deepfakes remain a residual risk; the split-share mode (<code>MPC</code>) runs in shadow, each service still holds a whole encrypted template. Long term, Aequitas will rely on iris scans to truly guarantee one person, one registration. How that can be implemented — reliable, privacy-preserving and available without a smartphone — is being worked on now; hardware and timing are not decided yet.</div>
   </div>
 </section>
 
@@ -1317,7 +1319,7 @@ section{padding:64px 16px}
 <section id="disclaimer" style="padding-top:40px;padding-bottom:40px">
   <div class="disclaimer-card">
     <h3 data-i18n="disc-title">Phase 1 disclaimer</h3>
-    <p data-i18n="disc-body">Phase 1: since 25 Aug 2026 the proof server refuses any registration without a signed attestation from the matching quorum — a second phone no longer gives the same face a second account. What is not yet true: accounts registered before that date have no face template and could in principle register again on a new wallet; error rates are not calibrated (that needs ~1,000 impostor pairs); liveness is a head-turn challenge, stronger deepfake defenses are being calibrated. Read “one human, one account” as “checked, with named limits” — not as “impossible to circumvent.”</p>
+    <p data-i18n="disc-body">Phase 1: since 25 Aug 2026 the proof server refuses any registration without a signed attestation from the matching quorum — a second phone no longer gives the same face a second account. What is not yet true: accounts registered before that date have no face template and could in principle register again on a new wallet; error rates are not calibrated (that needs ~1,000 impostor pairs); liveness is a head-turn challenge, stronger deepfake defenses are being calibrated. Read “one human, one account” as “checked, with named limits” — not as “impossible to circumvent.” Long term, Aequitas will rely on iris scans to truly guarantee one person, one registration. How that can be implemented — reliable, privacy-preserving and available without a smartphone — is being worked on now; hardware and timing are not decided yet.</p>
     <p class="oss-line" data-i18n="oss-line"><strong>Open source:</strong> Core chain public · identity/proof services partly private in Phase 1.</p>
   </div>
 </section>

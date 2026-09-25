@@ -3,7 +3,7 @@
 **Proof of Humanity Chain — Eine faire Währung für alle Menschen**
 **Proof of Humanity Chain — A Fair Currency for All of Humanity**
 
-*Version 2.0 · Juni / June 2026*
+*Version 2.0 · Stand / as of 25.09.2026*
 *Chain ID 1926 · aequitas.digital*
 
 ---
@@ -124,6 +124,8 @@ Aequitas solves this with biometric verification and Zero-Knowledge Proofs:
 ### 3.1 Biometrisches 3-Faktor-System / 3-Factor Biometric System
 
 #### DE
+> **Ausrichtung (Stand 25.09.2026): Langfristig setzt Aequitas auf den Iris-Scan.** Nur ein Merkmal, das auch unter Milliarden Menschen unverwechselbar bleibt, kann wirklich 1 Mensch = 1 Registrierung gewährleisten, und ein Iris-Scan funktioniert auch für Menschen ohne Smartphone. Wie das umgesetzt werden kann — zuverlässig, datenschutzfreundlich, mit messbaren Fehlerraten und bezahlbarer Hardware —, daran wird derzeit gearbeitet. Hardware und Zeitplan stehen noch nicht fest. Die Live-Gesichtsprüfung auf dem Smartphone (§3.2) ist der Zwischenschritt bis dahin. Die Fingerabdruck- und Handvenen-Entwürfe unten bleiben als frühere Referenzentwürfe dokumentiert, sind aber nicht mehr der geplante Weg.
+
 Langfristig soll biologische Einzigartigkeit vollständig geräteunabhängig nachgewiesen werden. Die folgenden Phasen beschreiben diesen Weg. **Keine davon ist zum Start am 18.08.2026 aktiv** — was tatsächlich ausgeliefert wird, steht direkt darunter unter „Was zum Start läuft".
 
 **Phase 1 — Alle 10 Fingerabdrücke + Lebenderkennung** *(Referenzdesign, nicht ausgeliefert)*
@@ -138,7 +140,7 @@ Dieses Hardware-Kit existiert als Entwurf. Es gibt kein Gerät zu kaufen, und di
 | Alle 10 Finger kombiniert | 1 von 10⁹⁰ (theoretisch) |
 | Liveness-Nachweis | PPG-Pulssignal (MAX30102) |
 
-**Phase 2 — Handvenen-Muster** *(geplant)*
+**Phase 2 — Handvenen-Muster** *(früherer Entwurf, nicht mehr geplant)*
 - **ESP32-CAM + IR-LED (850 nm)**: Infrarot-Durchleuchtung der Hand erzeugt ein eindeutiges Venenmuster aus dem Inneren des Körpers — nicht kopierbar, nicht hinterlegbar, unveränderlich über das gesamte Leben.
 - Das Venenmuster wird als zweiter biometrischer Hash `vein_hash` in das ZK-Commitment einbezogen.
 
@@ -149,18 +151,20 @@ Dieses Hardware-Kit existiert als Entwurf. Es gibt kein Gerät zu kaufen, und di
 | Unveränderlich über das Leben | ✅ |
 | Unkopierbares Merkmal (innen) | ✅ |
 
-**Phase 3 — Iris** *(geplant)*
+**Phase 3 — Iris** *(langfristiges Ziel — Umsetzung in Arbeit)*
 - **IR-Iris-Modul**: Die menschliche Iris ist der Goldstandard biometrischer Einzigartigkeit — 240+ unabhängige Freiheitsgrade, Kollisionswahrscheinlichkeit 1 von 10⁷⁸. Absolut verschieden bei eineiigen Zwillingen, unveränderlich von Geburt an.
 - Der Iris-Hash wird in den Nullifier einbezogen — damit ist die Identität rein körpergebunden, nicht gerätegebunden.
 
 | Eigenschaft | Wert |
 |------------|------|
-| Einzigartigkeit Iris | 1 von 10⁷⁸ |
+| Einzigartigkeit Iris (theoretisch) | 1 von 10⁷⁸ |
 | Eineiige Zwillinge: identisch? | ❌ (absolut verschieden) |
 | Gerätunabhängig | ✅ |
-| Falsch-Positiv-Rate (globaler Vergleich) | < 10⁻⁷⁸ |
+| Falsch-Positiv-Rate (globaler Vergleich) | theoretisch verschwindend klein; die reale Rate im Maßstab von Milliarden hängt an Aufnahmequalität und Schwelle und muss erst gemessen werden |
 
 #### EN
+> **Direction (as of 2026-09-25): in the long run Aequitas will rely on the iris scan.** Only a feature that stays distinctive among billions of people can truly guarantee one person = one registration, and an iris scan also works for people without a smartphone. How it can be implemented — reliably, privacy-preserving, with measured error rates and affordable hardware — is being worked on now. Hardware and timing are not decided yet. The live face check on the smartphone (§3.2) is the interim step until then. The fingerprint and hand-vein designs below remain documented as earlier reference designs but are no longer the planned path.
+
 The long-term goal is to prove biological uniqueness fully independently of the device. The phases below describe that path. **None of them is active at the 2026-08-18 launch** — what actually ships is stated directly below, under "What runs at launch".
 
 **Phase 1 — All 10 Fingerprints + Liveness** *(reference design, not shipped)*
@@ -175,7 +179,7 @@ This hardware kit exists as a design. There is no device to buy, and the shipped
 | All 10 fingers combined | 1 in 10⁹⁰ (theoretical) |
 | Liveness proof | PPG pulse signal (MAX30102) |
 
-**Phase 2 — Hand Vein Pattern** *(planned)*
+**Phase 2 — Hand Vein Pattern** *(earlier design, no longer planned)*
 - **ESP32-CAM + 850 nm IR LED**: Infrared illumination of the hand produces a unique vein pattern from inside the body — uncopyable, unstorable, immutable over a lifetime.
 - The vein pattern is added as a second biometric hash `vein_hash` to the ZK commitment.
 
@@ -186,16 +190,16 @@ This hardware kit exists as a design. There is no device to buy, and the shipped
 | Immutable over lifetime | ✅ |
 | Uncopyable (internal feature) | ✅ |
 
-**Phase 3 — Iris** *(planned)*
+**Phase 3 — Iris** *(long-term goal — implementation in progress)*
 - **IR iris module**: The human iris is the gold standard of biometric uniqueness — 240+ independent degrees of freedom, collision probability 1 in 10⁷⁸. Completely different even in identical twins, immutable from birth.
 - The iris hash is incorporated into the nullifier — making identity purely body-bound, not device-bound.
 
 | Property | Value |
 |----------|-------|
-| Iris uniqueness | 1 in 10⁷⁸ |
+| Iris uniqueness (theoretical) | 1 in 10⁷⁸ |
 | Identical twins: same? | ❌ (absolutely different) |
 | Device-independent | ✅ |
-| False-match rate (global comparison) | < 10⁻⁷⁸ |
+| False-match rate (global comparison) | theoretically negligible; the real rate at the scale of billions depends on capture quality and threshold and still has to be measured |
 
 ---
 
@@ -523,22 +527,20 @@ Aequitas nutzt Groth16-Proofs auf der BN128-Kurve — eines der effizientesten Z
 
 > **Was das nicht heißt.** Eine frühere Fassung dieses Absatzes schrieb, Sybil-Angriffe seien „mathematisch ausgeschlossen". Das ist falsch und wird hier korrigiert. Der Nullifier schließt lückenlos aus, dass *dieselbe Identitätsquelle* zweimal zählt — er sagt nichts darüber, ob zwei Aufnahmen desselben Menschen zum selben `bio_hash` führen. Das entscheidet der Gesichtsabgleich, mit einer Schwelle, die noch nicht gegen eigene Aufnahmen kalibriert ist (§3.2). Die Kryptografie ist hier scharf; die Biometrie darunter ist eine Messung mit einer Fehlerrate, die noch nicht beziffert ist.
 
-**Multi-Faktor ZK-Commitment (Phase 3 Zielarchitektur):**
+**ZK-Commitment der Zielarchitektur (Iris, langfristig):**
 ```
-fingers_hash = keccak256(f₁ ‖ f₂ ‖ … ‖ f₁₀)   -- alle 10 Fingerabdrücke
-commitment   = keccak256(iris_hash ‖ vein_hash ‖ fingers_hash ‖ wallet_address)
-nullifier    = keccak256(iris_hash ‖ vein_hash ‖ domain_separator)
+commitment   = Poseidon(iris_merkmal, wallet_address, salt)   -- Skizze, nicht festgelegt
+nullifier    = Poseidon(iris_merkmal)
 ```
 
 **In dieser Zielarchitektur** wäre der Nullifier ausschließlich an physische Körpermerkmale gebunden — kein Gerät, keine SIM-Karte, kein Betriebssystem; wer sein Telefon verliert, verifiziert sich mit denselben Merkmalen neu, ohne eine zweite Identität zu erzeugen.
 
-**Heute (23.08.2026)** ist davon das Gesicht umgesetzt, und zwar allein: kein Iris-Hash, kein Venen-Hash, keine Fingerabdrücke — die dafür nötige Hardware existiert nicht (§3.1). Wer sein Telefon verliert, kommt über eine erneute Gesichtsaufnahme zurück; ob das gelingt, hängt an derselben unkalibrierten Schwelle wie alles andere.
+**Heute (23.08.2026)** ist davon das Gesicht umgesetzt, und zwar allein: kein Iris-Merkmal — wie der Iris-Scan umgesetzt wird, daran wird gearbeitet (§3.1). Wer sein Telefon verliert, kommt über eine erneute Gesichtsaufnahme zurück; ob das gelingt, hängt an derselben unkalibrierten Schwelle wie alles andere.
 
 | Phase | Commitment-Faktoren | Nullifier-Faktoren |
 |-------|--------------------|--------------------|
-| 1 (aktiv) | fingers_hash + wallet | fingers_hash + domain |
-| 2 (geplant) | vein_hash + fingers_hash + wallet | vein_hash + fingers_hash + domain |
-| 3 (geplant) | iris_hash + vein_hash + fingers_hash + wallet | iris_hash + vein_hash + domain |
+| 1 (aktiv) | bio_hash (Gesicht) + wallet + deviceSalt | bio_hash (Gesicht) |
+| Ziel (langfristig) | Iris-Merkmal + wallet | Iris-Merkmal — genaue Konstruktion Teil der laufenden Arbeit |
 
 **Was gespeichert wird:**
 - ✅ `commitment` — kryptographischer Hash (nicht rückführbar auf Biometrie)
@@ -556,22 +558,20 @@ Aequitas uses Groth16 proofs on the BN128 curve — one of the most efficient ZK
 
 > **What that does not mean.** An earlier version of this paragraph said Sybil attacks were "mathematically impossible". That is wrong and is corrected here. The nullifier airtightly prevents *the same identity source* from counting twice — it says nothing about whether two captures of the same human produce the same `bio_hash`. That is decided by the face match, with a threshold not yet calibrated against our own captures (§3.2). The cryptography here is exact; the biometrics underneath it is a measurement with an error rate that has not yet been quantified.
 
-**Multi-Factor ZK Commitment (Phase 3 target architecture):**
+**ZK commitment of the target architecture (iris, long term):**
 ```
-fingers_hash = keccak256(f₁ ‖ f₂ ‖ … ‖ f₁₀)   -- all 10 fingerprints
-commitment   = keccak256(iris_hash ‖ vein_hash ‖ fingers_hash ‖ wallet_address)
-nullifier    = keccak256(iris_hash ‖ vein_hash ‖ domain_separator)
+commitment   = Poseidon(iris_feature, wallet_address, salt)   -- sketch, not fixed
+nullifier    = Poseidon(iris_feature)
 ```
 
 **In that target architecture** the nullifier would be bound exclusively to physical body features — no device, no SIM card, no OS; someone who loses their phone re-verifies with the same traits without creating a second identity.
 
-**Today (2026-08-23)** the face is the only part of this that exists, on its own: no iris hash, no vein hash, no fingerprints — the hardware for those does not exist (§3.1). Someone who loses their phone returns through another face capture; whether that succeeds rests on the same uncalibrated threshold as everything else.
+**Today (2026-08-23)** the face is the only part of this that exists, on its own: no iris feature — how the iris scan will be implemented is being worked on (§3.1). Someone who loses their phone returns through another face capture; whether that succeeds rests on the same uncalibrated threshold as everything else.
 
 | Phase | Commitment factors | Nullifier factors |
 |-------|--------------------|-------------------|
-| 1 (active) | fingers_hash + wallet | fingers_hash + domain |
-| 2 (planned) | vein_hash + fingers_hash + wallet | vein_hash + fingers_hash + domain |
-| 3 (planned) | iris_hash + vein_hash + fingers_hash + wallet | iris_hash + vein_hash + domain |
+| 1 (active) | bio_hash (face) + wallet + deviceSalt | bio_hash (face) |
+| Goal (long term) | iris feature + wallet | iris feature — exact construction part of the ongoing work |
 
 **What is stored:**
 - ✅ `commitment` — cryptographic hash (not traceable to biometrics)
@@ -685,6 +685,7 @@ Aequitas is in Phase 0 with two operated nodes. The protocol is designed for any
 | V7 | ✅ | EVM · Dual-Ledger · Exchange/AMM · UBI · Demurrage · Wealth Cap · Lorenz/Gini | EVM · Dual-Ledger · Exchange/AMM · UBI · Demurrage · Wealth Cap · Lorenz/Gini |
 | V7.x | ✅ | Proof of Alive · Guardian-System (Eskrow + UBI-Freigabe) live | Proof of Alive · Guardian System (escrow + UBI release) live |
 | 1 | 🔄 | APK-Veröffentlichung · Community-Aufbau · Grant-Anträge · Mehr-Knoten-Skalierung | APK Release · Community Growth · Grant Applications · Multi-Node Scaling |
+| Iris | 🔄 | Iris-Scan, damit wirklich 1 Mensch = 1 Registrierung gilt — Umsetzung in Arbeit, kein Datum | Iris scan so that one person = one registration truly holds — implementation in progress, no date |
 | 2 | ⬜ | iOS App | iOS App |
 | 3 | ⬜ | Cross-Chain Bridges · Externe DEX-Integration | Cross-Chain Bridges · External DEX Integration |
 | 4 | ⬜ | Vollständige Dezentralisierung · Community Governance | Full Decentralization · Community Governance |
@@ -698,17 +699,17 @@ Aequitas ist kein weiteres Experiment in Kryptospekulation. Es ist ein ernsthaft
 
 Die mathematische Garantie ist simpel und radikal zugleich: Solange Menschen existieren, existiert AEQ. Kein Zentralstaat, keine Bank, kein Algorithmus kann das Grundeinkommen entziehen oder die Gleichheit untergraben — es ist Code.
 
-Der Gini-Koeffizient von Aequitas liegt heute bei ~0,08. Bitcoin liegt bei ~0,85. Der Unterschied ist nicht zufällig — er ist das Ergebnis des Designs.
+Der Gini-Koeffizient von Aequitas wird live gemessen und im Explorer angezeigt (Gleichheit). Bitcoin liegt bei ~0,85. Jeder Mensch startet mit genau demselben Anteil — das ist kein Zufall, sondern das Design.
 
 ### EN
 Aequitas is not another experiment in crypto speculation. It is a serious attempt to rethink money — from first principles, for all people, fairly.
 
 The mathematical guarantee is simple and radical at once: as long as humans exist, AEQ exists. No central state, no bank, no algorithm can remove the basic income or undermine the equality — it is code.
 
-Aequitas's Gini coefficient today is ~0.08. Bitcoin's is ~0.85. The difference is not coincidence — it is the result of design.
+Aequitas's Gini coefficient is measured live and shown in the explorer (Equality). Bitcoin's is ~0.85. Every person starts with exactly the same share — not by coincidence, but by design.
 
 ---
 
 *Aequitas · Chain ID 1926 · aequitas.digital*
-*Version 2.0 · Juni / June 2026*
+*Version 2.0 · Stand / as of 25.09.2026*
 *Lizenz / License: MIT · Open Source: github.com/hanoi96international-gif/Aequitas*
