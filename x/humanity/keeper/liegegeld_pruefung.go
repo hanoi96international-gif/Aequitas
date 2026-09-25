@@ -32,7 +32,7 @@ import (
 //
 // Geprueft wird nur, was dieser Knoten selbst voll kennt: Unternehmen, und
 // nur wenn seine Buchfuehrung das ganze Fenster abdeckt (seit der Aktivierung
-// oder mindestens 90 Tage seit buchSeit). Menschen und freie Adressen
+// oder mindestens ein Jahr seit buchSeit). Menschen und freie Adressen
 // brauchen keine Buchfuehrung und werden immer geprueft.
 
 const liegegeldToleranz = 2e-6
@@ -112,7 +112,7 @@ func (w *wirtschaft) fensterVollLocked(jetzt int64) bool {
 	if w.buchSeit <= aktivAb() {
 		return true
 	}
-	return jetzt-w.buchSeit >= umsatzFensterTage*86400
+	return jetzt-w.buchSeit >= umsatzJahrTage*86400
 }
 
 func liegegeldPruefungStand() map[string]interface{} {

@@ -226,15 +226,36 @@ func TestLiegegeldNachUmsatz_Rechenbeispiele(t *testing.T) {
 	}
 }
 
-// Ein neues Unternehmen hat keine Schonfrist: wer Geld in eine frisch
-// eroeffnete Firma schiebt, zahlt ab dem ersten Tag Liegegeld. (Frueher
-// 30 Tage frei -- jeden Monat eine neue Firma, und Horten waere umsonst.)
-func TestNeuesUnternehmenOhneSchonfrist(t *testing.T) {
+// Ein neues Unternehmen hat keine Schonfrist, wird aber im ersten halben
+// Jahr wie ein Mensch behandelt: 5.000 frei, darueber 0,5 % -- bis zur
+// Grenze fuer Menschen (25.000), darueber die Regeln fuer Unternehmen.
+// Danach die normalen Regeln. Einmal je Mensch in zwoelf Monaten.
+func TestGruendungWieEinMensch(t *testing.T) {
 	cs, ctx, vor := wirtschaftsTest(t)
 	eroeffne(t, cs, ctx, wFirmaA, wMensch1)
 	vor(tag)
-	if lg := cs.umlaufBetrag(wFirmaA, artUnternehmen, 100_000, nowUnix(), sekundenJeMonat); !fast(lg, 1_960) {
-		t.Fatalf("neue Firma ohne Umsatz: 98.000 x 2 %% = 1.960 ab Tag 1, bekommen %v", lg)
+	lg := func(firma string, stand float64) float64 {
+		return cs.umlaufBetrag(firma, artUnternehmen, stand, nowUnix(), sekundenJeMonat)
+	}
+	if g := lg(wFirmaA, 20_000); !fast(g, 75) {
+		t.Fatalf("Startkapital 20.000: wie ein Mensch 15.000 x 0,5 %% = 75, bekommen %v", g)
+	}
+	if g := lg(wFirmaA, 1_000_000); !fast(g, 100+19_960-460) {
+		t.Fatalf("1 Mio. geparkt: nur bis 25.000 wie ein Mensch, bekommen %v", g)
+	}
+	// Zweite Firma desselben Menschen innerhalb eines Jahres: keine Gruendungsphase.
+	eroeffne(t, cs, ctx, wFirmaB, wMensch1)
+	if g := lg(wFirmaB, 20_000); !fast(g, 360) {
+		t.Fatalf("zweite Gruendung im selben Jahr: normale Regeln 18.000 x 2 %% = 360, bekommen %v", g)
+	}
+	// Ein anderer Mensch gruendet: eigene Phase.
+	eroeffne(t, cs, ctx, wFirmaC, wMensch2)
+	if g := lg(wFirmaC, 20_000); !fast(g, 75) {
+		t.Fatalf("anderer Gruender: wie ein Mensch, bekommen %v", g)
+	}
+	vor(182 * tag)
+	if g := lg(wFirmaA, 20_000); !fast(g, 360) {
+		t.Fatalf("nach einem halben Jahr normale Regeln, bekommen %v", g)
 	}
 }
 
@@ -263,8 +284,9 @@ func TestLiegegeldErstNach30TagenKnotenDaten(t *testing.T) {
 		t.Fatalf("Knoten hat erst 29 Tage Daten: kein Liegegeld, bekommen %v", lg)
 	}
 	vor(2 * tag)
-	if lg := cs.umlaufBetrag(wFirmaA, artUnternehmen, 100_000, nowUnix(), sekundenJeMonat); !fast(lg, 1_960) {
-		t.Fatalf("ohne Umsatz: 98.000 x 2 %% = 1.960, bekommen %v", lg)
+	// In der Gruendungsphase: bis 25.000 wie ein Mensch (100), darueber 2 %.
+	if lg := cs.umlaufBetrag(wFirmaA, artUnternehmen, 100_000, nowUnix(), sekundenJeMonat); !fast(lg, 100+1_960-460) {
+		t.Fatalf("ohne Umsatz, in der Gruendung: bekommen %v", lg)
 	}
 }
 
@@ -273,8 +295,7 @@ func umsatzVon(cs *ChainState, firma string) float64 {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 	jetzt := nowUnix()
-	tage := w.mittelTageLocked(w.unternehmen[firma], jetzt)
-	return w.monatsUmsatzLocked(w.kontoLocked(firma, jetzt), tage, jetzt)
+	return w.umsatzLocked(firma, jetzt)
 }
 
 // Einkaeufe von Menschen zaehlen je Mensch hoechstens 9.000 AEQ im Quartal,

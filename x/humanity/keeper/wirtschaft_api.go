@@ -71,6 +71,10 @@ func (a *APIServer) handleWirtschaftRegeln(w http.ResponseWriter, r *http.Reques
 			"liegegeld2_ab_monatsumsaetzen":    umsatzStufe2Faktor,
 			"liegegeld2_prozent_monat":         liegeRate2Monat * 100,
 			"umsatz_fenster_tage":              umsatzFensterTage,
+			"umsatz_jahr_tage":                 umsatzJahrTage,
+			"gruendung_tage":                   gruendungTage,
+			"gruendung_einmal_je_mensch_tage":  gruendungAbstandTage,
+			"eigene_einlage_abgabefrei":        true,
 			"mensch_zaehlt_hoechstens_quartal": menschZaehltJeUntQuartal,
 			"liegegeld_pruefung":               liegegeldPruefungStand(),
 			"zwischen_unternehmen_zaehlt":      "ueberschuss",
@@ -127,6 +131,7 @@ func (a *APIServer) handleWirtschaftKonto(w http.ResponseWriter, r *http.Request
 	case artMensch:
 		antwort["gebuehrenfrei_rest_monat"] = round6(math.Max(0, menschFreiAusgabenMonat-k.Ausgegeben))
 		antwort["tausch_frei_rest_monat"] = round6(math.Max(0, menschTauschFreiMonat-k.Getauscht))
+		antwort["eigene_einlage_abgabefrei"] = round6(k.Eingezahlt)
 		antwort["lohn_monat"] = round6(k.Lohn)
 		antwort["unternehmen"] = wi.unternehmenVon(addr)
 	case artUnternehmen:
@@ -136,16 +141,18 @@ func (a *APIServer) handleWirtschaftKonto(w http.ResponseWriter, r *http.Request
 			antwort["kategorie"] = e.Kategorie
 			antwort["verantwortliche"] = len(e.Verantwortliche)
 		}
-		tage := wi.mittelTageLocked(e, jetzt)
-		umsatz := wi.monatsUmsatzLocked(k, tage, jetzt)
+		umsatz := wi.umsatzLocked(addr, jetzt)
 		antwort["umsatz"] = map[string]interface{}{
 			"monatsumsatz":                    round6(umsatz),
-			"gemittelt_ueber_tage":            tage,
+			"monatsumsatz_90_tage":            round6(wi.monatsUmsatzLocked(k, wi.mittelTageLocked(e, jetzt, umsatzFensterTage), jetzt)),
+			"monatsumsatz_jahr":               round6(wi.monatsUmsatzLocked(k, wi.mittelTageLocked(e, jetzt, umsatzJahrTage), jetzt)),
+			"in_gruendung":                    wi.inGruendungLocked(e, jetzt),
 			"knoten_daten_tage":               wi.knotenTageLocked(jetzt),
 			"frei_bis":                        round6(math.Max(unternehmenSockel, umsatzFreiFaktor*umsatz)),
 			"hohe_stufe_ab":                   round6(math.Max(unternehmenSockel, umsatzStufe2Faktor*umsatz)),
 			"mindestens_gemittelt_ueber_tage": umsatzMindestTage,
 		}
+		antwort["eigene_einlage_abgabefrei"] = round6(k.Eingezahlt)
 		antwort["monat"] = map[string]float64{"einnahmen": round6(k.Einnahmen), "lohn_gezahlt": round6(k.LohnGezahlt), "entnahmen": round6(k.Entnahmen)}
 	case artFrei:
 		antwort["grenze"] = freiGrenze

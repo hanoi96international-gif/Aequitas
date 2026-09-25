@@ -13,7 +13,7 @@ function activeProvider() { return wcProvider || window.ethereum; }
 
 const T = {
 en:{
-  'ubi-src-exit':'Exit levy','ubi-src-exit-d':'2% when AEQ is exchanged into a stable coin. People: 3,000 AEQ a month are free. 100% goes to UBI. From 1 Oct 2026.',  'ubi-src-tx':'Transfer fees','ubi-src-tx-d':'Every AEQ transfer pays 0.1% on top. People spend their first 1,000 AEQ a month free; businesses pay nothing on wages. The full fee goes here.','pool-badge-v':'40% of swap fees','pool-badge-l':'30% of swap fees','pool-badge-u':'all redistribution','pool-next':'⏰ Next:','treasury-retired':'The former treasury is retired since 24 Sep 2026: it receives nothing and nobody can pay out of it. Remaining balance:','x-flow-1':'● Transfer fee → 100% UBI','x-flow-2':'● Idle money, exit, cap → 100% UBI','x-flow-3':'● Swap fee → 30% UBI','x-flow-4':'40% validators · 30% LP',
+  'ubi-src-exit':'Exit levy','ubi-src-exit-d':'2% when AEQ is exchanged into a stable coin. What you paid in yourself goes back free; people also exchange 3,000 AEQ a month free. 100% goes to UBI. From 1 Oct 2026.',  'ubi-src-tx':'Transfer fees','ubi-src-tx-d':'Every AEQ transfer pays 0.1% on top. People spend their first 1,000 AEQ a month free; businesses pay nothing on wages. The full fee goes here.','pool-badge-v':'40% of swap fees','pool-badge-l':'30% of swap fees','pool-badge-u':'all redistribution','pool-next':'⏰ Next:','treasury-retired':'The former treasury is retired since 24 Sep 2026: it receives nothing and nobody can pay out of it. Remaining balance:','x-flow-1':'● Transfer fee → 100% UBI','x-flow-2':'● Idle money, exit, cap → 100% UBI','x-flow-3':'● Swap fee → 30% UBI','x-flow-4':'40% validators · 30% LP',
   'x-consensus-ghostdag-knightdag':'◆ Consensus: GHOSTDAG + KNIGHTDAG',
   'x-contract-code':'Contract Code',
   
@@ -258,8 +258,8 @@ en:{
   'demurrage-title':'Idle-money levy: an incentive to circulate',
   'demurrage-desc':'From 1 October 2026 money that sits idle pays a small levy that depends on the account type. Everyday life and normal saving stay untouched, and the levy goes 100% to the basic income.',
   'dem-rate-k':'Rates','dem-rate-v':'People: 0.5%/month above 5,000 AEQ · Businesses: 0.5%/month above 1.5 months\' turnover, 2% above 3 months\' turnover · Other addresses: 1%/month',
-  'dem-grace-k':'Free amounts','dem-grace-v':'People: 5,000 AEQ of savings · Businesses: 1.5 months\' turnover, at least 2,000 AEQ; no grace period for new businesses, turnover averaged over at least 30 days',
-  'dem-reset-k':'Turnover','dem-reset-v':'Average of the last 90 days. Purchases count up to 9,000 AEQ per person and quarter; between businesses only the surplus counts, so circles add nothing; wages, own payments and exchanges into AEQ do not count',
+  'dem-grace-k':'Free amounts','dem-grace-v':'People: 5,000 AEQ of savings · Businesses: 1.5 months\' turnover, at least 2,000 AEQ; in the first six months never more than a person (up to 25,000 AEQ), once per person a year',
+  'dem-reset-k':'Turnover','dem-reset-v':'Average of the last 90 days, or of the last 12 months if higher (seasonal businesses). Purchases count up to 9,000 AEQ per person and quarter; between businesses only the surplus counts, so circles add nothing; wages, own payments and exchanges into AEQ do not count',
   'dem-dest-k':'Decayed AEQ goes to','dem-dest-v':'UBI pool (100%) — shared equally by all humans',
   'dem-warn-k':'Transparency','dem-warn-v':'The expected levy per month is shown for every address (/api/wirtschaft/konto); it is settled once a day, before the basic income is paid out',
   'story-title':'The Story of Aequitas — Why This Exists',
@@ -340,7 +340,7 @@ en:{
   's-validators':'Active Validators',
   'expl-heading':'Block Explorer'},
 de:{
-  'ubi-src-exit':'Ausstiegsabgabe','ubi-src-exit-d':'2 %, wenn AEQ in einen Stablecoin getauscht wird. Menschen: 3.000 AEQ im Monat sind frei. 100 % gehen ins UBI. Ab 1. Okt. 2026.',  'ubi-src-tx':'Überweisungsgebühren','ubi-src-tx-d':'Jede AEQ-Überweisung zahlt 0,1 % obendrauf. Menschen geben die ersten 1.000 AEQ im Monat gebührenfrei aus; Unternehmen zahlen auf Löhne nichts. Die ganze Gebühr geht hierher.','pool-badge-v':'40 % der Swap-Gebühren','pool-badge-l':'30 % der Swap-Gebühren','pool-badge-u':'alle Umverteilung','pool-next':'⏰ Nächste:','treasury-retired':'Die frühere Schatzkammer ist seit dem 24.09.2026 stillgelegt: Sie bekommt nichts mehr, und niemand kann aus ihr auszahlen. Restbestand:','x-flow-1':'● Überweisung → 100 % UBI','x-flow-2':'● Liegendes Geld, Ausstieg, Grenze → 100 % UBI','x-flow-3':'● Swap → 30 % UBI','x-flow-4':'40 % Validatoren · 30 % LP',
+  'ubi-src-exit':'Ausstiegsabgabe','ubi-src-exit-d':'2 % beim Tausch von AEQ in einen Stable Coin. Was Sie selbst eingezahlt haben, geht frei zurück; Menschen tauschen zusätzlich 3.000 AEQ im Monat frei. 100 % gehen ins Grundeinkommen. Ab 1. Okt. 2026.',  'ubi-src-tx':'Überweisungsgebühren','ubi-src-tx-d':'Jede AEQ-Überweisung zahlt 0,1 % obendrauf. Menschen geben die ersten 1.000 AEQ im Monat gebührenfrei aus; Unternehmen zahlen auf Löhne nichts. Die ganze Gebühr geht hierher.','pool-badge-v':'40 % der Swap-Gebühren','pool-badge-l':'30 % der Swap-Gebühren','pool-badge-u':'alle Umverteilung','pool-next':'⏰ Nächste:','treasury-retired':'Die frühere Schatzkammer ist seit dem 24.09.2026 stillgelegt: Sie bekommt nichts mehr, und niemand kann aus ihr auszahlen. Restbestand:','x-flow-1':'● Überweisung → 100 % UBI','x-flow-2':'● Liegendes Geld, Ausstieg, Grenze → 100 % UBI','x-flow-3':'● Swap → 30 % UBI','x-flow-4':'40 % Validatoren · 30 % LP',
   'x-consensus-ghostdag-knightdag':'◆ Konsens: GHOSTDAG + KNIGHTDAG',
   'x-contract-code':'Vertragscode',
   
@@ -584,8 +584,8 @@ de:{
   'demurrage-title':'Liegegeld: ein Anreiz zum Umlauf',
   'demurrage-desc':'Ab 1. Oktober 2026 zahlt Geld, das liegen bleibt, eine kleine Abgabe, die von der Kontoart abhängt. Alltag und normales Sparen bleiben unberührt, und die Abgabe geht zu 100 % ins Grundeinkommen.',
   'dem-rate-k':'Sätze','dem-rate-v':'Menschen: 0,5 %/Monat über 5.000 AEQ · Unternehmen: 0,5 %/Monat über 1,5 Monatsumsätzen, 2 % über 3 Monatsumsätzen · Sonstige Adressen: 1 %/Monat',
-  'dem-grace-k':'Freibeträge','dem-grace-v':'Menschen: 5.000 AEQ Erspartes · Unternehmen: 1,5 Monatsumsätze, mindestens 2.000 AEQ; keine Schonfrist für neue Unternehmen, Umsatz über mindestens 30 Tage gemittelt',
-  'dem-reset-k':'Umsatz','dem-reset-v':'Durchschnitt der letzten 90 Tage. Einkäufe zählen bis 9.000 AEQ je Mensch und Quartal; zwischen Unternehmen zählt nur der Überschuss, Kreise bringen also nichts; Löhne, eigene Einzahlungen und Umtausch in AEQ zählen nicht',
+  'dem-grace-k':'Freibeträge','dem-grace-v':'Menschen: 5.000 AEQ Erspartes · Unternehmen: 1,5 Monatsumsätze, mindestens 2.000 AEQ; im ersten halben Jahr nie mehr als ein Mensch (bis 25.000 AEQ), einmal je Mensch im Jahr',
+  'dem-reset-k':'Umsatz','dem-reset-v':'Durchschnitt der letzten 90 Tage oder der letzten 12 Monate, wenn der höher ist (Saisonbetriebe). Einkäufe zählen bis 9.000 AEQ je Mensch und Quartal; zwischen Unternehmen zählt nur der Überschuss, Kreise bringen also nichts; Löhne, eigene Einzahlungen und Umtausch in AEQ zählen nicht',
   'dem-dest-k':'Verfallenes AEQ geht an','dem-dest-v':'Grundeinkommens-Topf (100%) — gleich verteilt an alle Menschen',
   'dem-warn-k':'Transparenz','dem-warn-v':'Die erwartete Abgabe pro Monat wird für jede Adresse angezeigt (/api/wirtschaft/konto); verrechnet wird einmal am Tag, vor der Ausschüttung des Grundeinkommens',
   'story-title':'Die Geschichte von Aequitas — Warum es das gibt',
@@ -680,7 +680,7 @@ de:{
   's-validators':'Aktive Validatoren',
   'expl-heading':'Block-Explorer'},
 es:{
-  'ubi-src-exit':'Gravamen de salida','ubi-src-exit-d':'2 % cuando se cambian AEQ por una stablecoin. Personas: 3.000 AEQ al mes libres. El 100 % va a la renta básica. Desde el 1 oct. 2026.',  'ubi-src-tx':'Comisiones de transferencia','ubi-src-tx-d':'Cada transferencia de AEQ paga un 0,1 % adicional. Las personas gastan sus primeros 1.000 AEQ al mes sin comisión; las empresas no pagan nada por los salarios. La comisión completa va aquí.','pool-badge-v':'40 % del swap','pool-badge-l':'30 % del swap','pool-badge-u':'toda la redistribución','pool-next':'⏰ Próximo:','treasury-retired':'La antigua tesorería está retirada desde el 24/09/2026: no recibe nada y nadie puede pagar desde ella. Saldo restante:','x-flow-1':'● Transferencia → 100 % UBI','x-flow-2':'● Dinero parado, salida, límite → 100 % UBI','x-flow-3':'● Swap → 30 % UBI','x-flow-4':'40 % validadores · 30 % LP',
+  'ubi-src-exit':'Gravamen de salida','ubi-src-exit-d':'2 % al cambiar AEQ a una stablecoin. Lo que usted mismo ingresó vuelve libre; las personas cambian además 3.000 AEQ al mes sin gravamen. El 100 % va a la renta básica. Desde el 1 oct. 2026.',  'ubi-src-tx':'Comisiones de transferencia','ubi-src-tx-d':'Cada transferencia de AEQ paga un 0,1 % adicional. Las personas gastan sus primeros 1.000 AEQ al mes sin comisión; las empresas no pagan nada por los salarios. La comisión completa va aquí.','pool-badge-v':'40 % del swap','pool-badge-l':'30 % del swap','pool-badge-u':'toda la redistribución','pool-next':'⏰ Próximo:','treasury-retired':'La antigua tesorería está retirada desde el 24/09/2026: no recibe nada y nadie puede pagar desde ella. Saldo restante:','x-flow-1':'● Transferencia → 100 % UBI','x-flow-2':'● Dinero parado, salida, límite → 100 % UBI','x-flow-3':'● Swap → 30 % UBI','x-flow-4':'40 % validadores · 30 % LP',
   'x-consensus-ghostdag-knightdag':'◆ Consenso: GHOSTDAG + KNIGHTDAG',
   'x-contract-code':'Código del contrato',
   
@@ -959,8 +959,8 @@ es:{
   'demurrage-title':'Gravamen por dinero parado: un incentivo para circular',
   'demurrage-desc':'Desde el 1 de octubre de 2026 el dinero que se queda parado paga un pequeño gravamen según el tipo de cuenta. La vida diaria y el ahorro normal no se tocan, y el gravamen va 100 % a la renta básica.',
   'dem-rate-k':'Tasas','dem-rate-v':'Personas: 0,5 %/mes por encima de 5.000 AEQ · Empresas: 0,5 %/mes por encima de 1,5 meses de facturación, 2 % por encima de 3 meses · Otras direcciones: 1 %/mes',
-  'dem-grace-k':'Importes libres','dem-grace-v':'Personas: 5.000 AEQ de ahorros · Empresas: 1,5 meses de facturación, mínimo 2.000 AEQ; sin periodo de gracia para empresas nuevas, facturación promediada sobre al menos 30 días',
-  'dem-reset-k':'Facturación','dem-reset-v':'Media de los últimos 90 días. Las compras cuentan hasta 9.000 AEQ por persona y trimestre; entre empresas solo cuenta el excedente, así que los círculos no suman nada; salarios, ingresos propios y cambio a AEQ no cuentan',
+  'dem-grace-k':'Importes libres','dem-grace-v':'Personas: 5.000 AEQ de ahorros · Empresas: 1,5 meses de facturación, mínimo 2.000 AEQ; en los primeros seis meses nunca más que una persona (hasta 25.000 AEQ), una vez por persona al año',
+  'dem-reset-k':'Facturación','dem-reset-v':'Media de los últimos 90 días, o de los últimos 12 meses si es mayor (negocios de temporada). Las compras cuentan hasta 9.000 AEQ por persona y trimestre; entre empresas solo cuenta el excedente, así que los círculos no suman nada; salarios, ingresos propios y cambio a AEQ no cuentan',
   'dem-dest-k':'AEQ decaído va a','dem-dest-v':'Pool de UBI (100%) — repartido por igual entre todas las personas',
   'dem-warn-k':'Transparencia','dem-warn-v':'El gravamen esperado por mes se muestra para cada dirección (/api/wirtschaft/konto); se liquida una vez al día, antes de pagar la renta básica',
   'story-title':'La Historia de Aequitas',
@@ -1009,7 +1009,7 @@ es:{
   's-validators':'Validadores Activos',
   'expl-heading':'Explorador de Bloques'},
 ru:{
-  'ubi-src-exit':'Сбор за выход','ubi-src-exit-d':'2 % при обмене AEQ на стейблкоин. Люди: 3 000 AEQ в месяц бесплатно. 100 % идёт в базовый доход. С 1 окт. 2026.',  'ubi-src-tx':'Комиссии за переводы','ubi-src-tx-d':'Каждый перевод AEQ платит 0,1 % сверху. Люди тратят первые 1 000 AEQ в месяц без комиссии; бизнес ничего не платит с зарплат. Вся комиссия идёт сюда.','pool-badge-v':'40% комиссий свопа','pool-badge-l':'30% комиссий свопа','pool-badge-u':'всё перераспределение','pool-next':'⏰ Далее:','treasury-retired':'Бывшее казначейство выведено из работы с 24.09.2026: оно ничего не получает, и никто не может из него платить. Остаток:','x-flow-1':'● Переводы → 100% UBI','x-flow-2':'● Лежащие деньги, выход, предел → 100 % UBI','x-flow-3':'● Своп → 30% UBI','x-flow-4':'40% валидаторам · 30% LP',
+  'ubi-src-exit':'Сбор за выход','ubi-src-exit-d':'2 % при обмене AEQ на стейблкоин. То, что вы внесли сами, возвращается бесплатно; люди дополнительно обменивают 3 000 AEQ в месяц без сбора. 100 % идёт в базовый доход. С 1 окт. 2026.',  'ubi-src-tx':'Комиссии за переводы','ubi-src-tx-d':'Каждый перевод AEQ платит 0,1 % сверху. Люди тратят первые 1 000 AEQ в месяц без комиссии; бизнес ничего не платит с зарплат. Вся комиссия идёт сюда.','pool-badge-v':'40% комиссий свопа','pool-badge-l':'30% комиссий свопа','pool-badge-u':'всё перераспределение','pool-next':'⏰ Далее:','treasury-retired':'Бывшее казначейство выведено из работы с 24.09.2026: оно ничего не получает, и никто не может из него платить. Остаток:','x-flow-1':'● Переводы → 100% UBI','x-flow-2':'● Лежащие деньги, выход, предел → 100 % UBI','x-flow-3':'● Своп → 30% UBI','x-flow-4':'40% валидаторам · 30% LP',
   'x-consensus-ghostdag-knightdag':'◆ Консенсус: GHOSTDAG + KNIGHTDAG',
   'x-contract-code':'Код контракта',
   
@@ -1246,8 +1246,8 @@ ru:{
   'demurrage-title':'Сбор за лежащие деньги: стимул к обороту',
   'demurrage-desc':'С 1 октября 2026 года деньги, которые лежат без движения, платят небольшой сбор, зависящий от типа счёта. Повседневная жизнь и обычные сбережения не затрагиваются, а сбор на 100 % идёт в базовый доход.',
   'dem-rate-k':'Ставки','dem-rate-v':'Люди: 0,5 %/мес. сверх 5 000 AEQ · Бизнес: 0,5 %/мес. сверх 1,5 месячного оборота, 2 % сверх 3 месячных оборотов · Прочие адреса: 1 %/мес.',
-  'dem-grace-k':'Бесплатные суммы','dem-grace-v':'Люди: 5 000 AEQ сбережений · Бизнес: 1,5 месячного оборота, не меньше 2 000 AEQ; без льготного периода для новых компаний, оборот усредняется минимум за 30 дней',
-  'dem-reset-k':'Оборот','dem-reset-v':'Среднее за последние 90 дней. Покупки учитываются до 9 000 AEQ на человека в квартал; между компаниями — только превышение, поэтому круги ничего не дают; зарплаты, собственные взносы и обмен в AEQ не учитываются',
+  'dem-grace-k':'Бесплатные суммы','dem-grace-v':'Люди: 5 000 AEQ сбережений · Бизнес: 1,5 месячного оборота, не меньше 2 000 AEQ; первые полгода никогда больше, чем человек (до 25 000 AEQ), раз в год на человека',
+  'dem-reset-k':'Оборот','dem-reset-v':'Среднее за последние 90 дней или за 12 месяцев, если оно выше (сезонный бизнес). Покупки учитываются до 9 000 AEQ на человека в квартал; между компаниями — только превышение, поэтому круги ничего не дают; зарплаты, собственные взносы и обмен в AEQ не учитываются',
   'dem-dest-k':'Распавшийся AEQ идёт в','dem-dest-v':'Пул UBI (100%) — поровну всем людям',
   'dem-warn-k':'Прозрачность','dem-warn-v':'Ожидаемый сбор в месяц показывается для каждого адреса (/api/wirtschaft/konto); расчёт раз в день, перед выплатой базового дохода',
   'story-title':'История Aequitas — Почему это существует',
@@ -1335,7 +1335,7 @@ ru:{
   's-validators':'Активные валидаторы',
   'expl-heading':'Обозреватель блоков'},
 zh:{
-  'ubi-src-exit':'退出费','ubi-src-exit-d':'AEQ 兑换成稳定币时收 2%。个人：每月 3,000 AEQ 免费。100% 进入基本收入。自 2026 年 10 月 1 日起。',  'ubi-src-tx':'转账手续费','ubi-src-tx-d':'每笔 AEQ 转账额外支付 0.1%。个人每月前 1,000 AEQ 的支出免手续费；企业发工资不收费。全部手续费进入这里。','pool-badge-v':'兑换费 40%','pool-badge-l':'兑换费 30%','pool-badge-u':'全部再分配','pool-next':'⏰ 下次：','treasury-retired':'原国库自 2026年9月24日起已停用：不再接收任何资金，任何人都无法从中支出。剩余余额：','x-flow-1':'● 转账费 → 100% UBI','x-flow-2':'● 闲置资金、退出、上限 → 100% UBI','x-flow-3':'● 兑换费 → 30% UBI','x-flow-4':'40% 验证者 · 30% LP',
+  'ubi-src-exit':'退出费','ubi-src-exit-d':'将 AEQ 兑换为稳定币时收取 2%。您自己存入的部分可免费换回；个人另可每月免费兑换 3,000 AEQ。100% 进入基本收入。自 2026 年 10 月 1 日起。',  'ubi-src-tx':'转账手续费','ubi-src-tx-d':'每笔 AEQ 转账额外支付 0.1%。个人每月前 1,000 AEQ 的支出免手续费；企业发工资不收费。全部手续费进入这里。','pool-badge-v':'兑换费 40%','pool-badge-l':'兑换费 30%','pool-badge-u':'全部再分配','pool-next':'⏰ 下次：','treasury-retired':'原国库自 2026年9月24日起已停用：不再接收任何资金，任何人都无法从中支出。剩余余额：','x-flow-1':'● 转账费 → 100% UBI','x-flow-2':'● 闲置资金、退出、上限 → 100% UBI','x-flow-3':'● 兑换费 → 30% UBI','x-flow-4':'40% 验证者 · 30% LP',
   'x-consensus-ghostdag-knightdag':'◆ 共识：GHOSTDAG + KNIGHTDAG',
   'x-contract-code':'合约代码',
   
@@ -1572,8 +1572,8 @@ zh:{
   'demurrage-title':'闲置资金费：促进流通的激励',
   'demurrage-desc':'自 2026 年 10 月 1 日起，闲置的资金根据账户类型缴纳少量费用。日常生活和正常储蓄不受影响，费用 100% 进入基本收入。',
   'dem-rate-k':'费率','dem-rate-v':'个人：超过 5,000 AEQ 的部分每月 0.5% · 企业：超过 1.5 个月营业额的部分每月 0.5%，超过 3 个月营业额的部分 2% · 其他地址：每月 1%',
-  'dem-grace-k':'免征额','dem-grace-v':'个人：5,000 AEQ 储蓄 · 企业：1.5 个月营业额，至少 2,000 AEQ；新企业没有宽限期，营业额至少按 30 天平均',
-  'dem-reset-k':'营业额','dem-reset-v':'最近 90 天的平均值。个人消费每人每季度最多计入 9,000 AEQ；企业之间只计净额，兜圈毫无作用；工资、自有资金注入和兑换成 AEQ 不计入',
+  'dem-grace-k':'免征额','dem-grace-v':'个人：5,000 AEQ 储蓄 · 企业：1.5 个月营业额，至少 2,000 AEQ；头六个月绝不超过个人（至 25,000 AEQ），每人每年一次',
+  'dem-reset-k':'营业额','dem-reset-v':'最近 90 天的平均值，若最近 12 个月更高则取后者（季节性企业）。个人消费每人每季度最多计入 9,000 AEQ；企业之间只计净额，兜圈毫无作用；工资、自有资金注入和兑换成 AEQ 不计入',
   'dem-dest-k':'衰减的AEQ去往','dem-dest-v':'UBI池（100%）— 平均分给所有人',
   'dem-warn-k':'透明度','dem-warn-v':'每个地址都会显示预计每月费用（/api/wirtschaft/konto）；每天结算一次，在发放基本收入之前',
   'story-title':'Aequitas的故事——为何而生',
@@ -1662,7 +1662,7 @@ zh:{
   's-validators':'活跃验证者',
   'expl-heading':'区块浏览器'},
 id:{
-  'ubi-src-exit':'Pungutan keluar','ubi-src-exit-d':'2% saat AEQ ditukar ke stablecoin. Orang: 3.000 AEQ per bulan bebas. 100% masuk ke pendapatan dasar. Mulai 1 Okt 2026.',  'ubi-src-tx':'Biaya transfer','ubi-src-tx-d':'Setiap transfer AEQ membayar 0,1% di atasnya. Orang membelanjakan 1.000 AEQ pertama per bulan tanpa biaya; usaha tidak membayar apa pun atas gaji. Seluruh biaya masuk ke sini.','pool-badge-v':'40% biaya swap','pool-badge-l':'30% biaya swap','pool-badge-u':'semua redistribusi','pool-next':'⏰ Berikutnya:','treasury-retired':'Bekas perbendaharaan dinonaktifkan sejak 24.09.2026: tidak menerima apa pun dan tidak ada yang bisa membayar darinya. Saldo tersisa:','x-flow-1':'● Transfer → 100% UBI','x-flow-2':'● Uang mengendap, keluar, batas → 100% UBI','x-flow-3':'● Swap → 30% UBI','x-flow-4':'40% validator · 30% LP',
+  'ubi-src-exit':'Pungutan keluar','ubi-src-exit-d':'2 % saat AEQ ditukar ke stablecoin. Yang Anda setorkan sendiri kembali bebas; orang juga menukar 3.000 AEQ per bulan tanpa pungutan. 100 % masuk ke pendapatan dasar. Mulai 1 Okt 2026.',  'ubi-src-tx':'Biaya transfer','ubi-src-tx-d':'Setiap transfer AEQ membayar 0,1% di atasnya. Orang membelanjakan 1.000 AEQ pertama per bulan tanpa biaya; usaha tidak membayar apa pun atas gaji. Seluruh biaya masuk ke sini.','pool-badge-v':'40% biaya swap','pool-badge-l':'30% biaya swap','pool-badge-u':'semua redistribusi','pool-next':'⏰ Berikutnya:','treasury-retired':'Bekas perbendaharaan dinonaktifkan sejak 24.09.2026: tidak menerima apa pun dan tidak ada yang bisa membayar darinya. Saldo tersisa:','x-flow-1':'● Transfer → 100% UBI','x-flow-2':'● Uang mengendap, keluar, batas → 100% UBI','x-flow-3':'● Swap → 30% UBI','x-flow-4':'40% validator · 30% LP',
   'x-consensus-ghostdag-knightdag':'◆ Konsensus: GHOSTDAG + KNIGHTDAG',
   'x-contract-code':'Kode kontrak',
   
@@ -1895,8 +1895,8 @@ id:{
   'demurrage-title':'Pungutan uang mengendap: dorongan untuk berputar',
   'demurrage-desc':'Mulai 1 Oktober 2026 uang yang mengendap membayar pungutan kecil menurut jenis akun. Kehidupan sehari-hari dan tabungan biasa tidak tersentuh, dan pungutannya 100% masuk ke pendapatan dasar.',
   'dem-rate-k':'Tarif','dem-rate-v':'Orang: 0,5%/bulan di atas 5.000 AEQ · Usaha: 0,5%/bulan di atas 1,5 bulan omzet, 2% di atas 3 bulan omzet · Alamat lain: 1%/bulan',
-  'dem-grace-k':'Jumlah bebas','dem-grace-v':'Orang: tabungan 5.000 AEQ · Usaha: 1,5 bulan omzet, minimal 2.000 AEQ; tanpa masa tenggang untuk usaha baru, omzet dirata-ratakan atas minimal 30 hari',
-  'dem-reset-k':'Omzet','dem-reset-v':'Rata-rata 90 hari terakhir. Pembelian dihitung hingga 9.000 AEQ per orang per kuartal; antarusaha hanya surplus yang dihitung, jadi putaran tidak menambah apa pun; upah, setoran sendiri, dan penukaran ke AEQ tidak dihitung',
+  'dem-grace-k':'Jumlah bebas','dem-grace-v':'Orang: tabungan 5.000 AEQ · Usaha: 1,5 bulan omzet, minimal 2.000 AEQ; enam bulan pertama tidak pernah lebih dari seorang manusia (hingga 25.000 AEQ), sekali per orang setahun',
+  'dem-reset-k':'Omzet','dem-reset-v':'Rata-rata 90 hari terakhir, atau 12 bulan terakhir bila lebih tinggi (usaha musiman). Pembelian dihitung hingga 9.000 AEQ per orang per kuartal; antarusaha hanya surplus yang dihitung, jadi putaran tidak menambah apa pun; upah, setoran sendiri, dan penukaran ke AEQ tidak dihitung',
   'dem-dest-k':'AEQ yang meluruh pergi ke','dem-dest-v':'Pool UBI (100%) — dibagi rata untuk semua manusia',
   'dem-warn-k':'Transparansi','dem-warn-v':'Perkiraan pungutan per bulan ditampilkan untuk setiap alamat (/api/wirtschaft/konto); diselesaikan sekali sehari, sebelum pendapatan dasar dibayarkan',
   'story-title':'Kisah Aequitas — Mengapa Ini Ada',
@@ -1984,7 +1984,7 @@ id:{
   's-validators':'Validator Aktif',
   'expl-heading':'Penjelajah Blok'},
 it:{
-  'ubi-src-exit':'Prelievo di uscita','ubi-src-exit-d':'2 % quando gli AEQ vengono cambiati in una stablecoin. Persone: 3.000 AEQ al mese gratis. Il 100 % va al reddito di base. Dal 1° ott. 2026.',  'ubi-src-tx':'Commissioni di trasferimento','ubi-src-tx-d':'Ogni bonifico in AEQ paga lo 0,1 % in più. Le persone spendono i primi 1.000 AEQ al mese senza commissioni; le imprese non pagano nulla sugli stipendi. L’intera commissione va qui.','pool-badge-v':'40% dello swap','pool-badge-l':'30% dello swap','pool-badge-u':'tutta la redistribuzione','pool-next':'⏰ Prossimo:','treasury-retired':'L’ex tesoreria è dismessa dal 24/09/2026: non riceve nulla e nessuno può pagare da essa. Saldo residuo:','x-flow-1':'● Trasferimenti → 100% UBI','x-flow-2':'● Denaro fermo, uscita, limite → 100% UBI','x-flow-3':'● Swap → 30% UBI','x-flow-4':'40% validatori · 30% LP',
+  'ubi-src-exit':'Prelievo di uscita','ubi-src-exit-d':'2 % quando si cambiano AEQ in una stablecoin. Ciò che ha versato Lei stesso torna libero; le persone cambiano inoltre 3.000 AEQ al mese senza prelievo. Il 100 % va al reddito di base. Dal 1° ott 2026.',  'ubi-src-tx':'Commissioni di trasferimento','ubi-src-tx-d':'Ogni bonifico in AEQ paga lo 0,1 % in più. Le persone spendono i primi 1.000 AEQ al mese senza commissioni; le imprese non pagano nulla sugli stipendi. L’intera commissione va qui.','pool-badge-v':'40% dello swap','pool-badge-l':'30% dello swap','pool-badge-u':'tutta la redistribuzione','pool-next':'⏰ Prossimo:','treasury-retired':'L’ex tesoreria è dismessa dal 24/09/2026: non riceve nulla e nessuno può pagare da essa. Saldo residuo:','x-flow-1':'● Trasferimenti → 100% UBI','x-flow-2':'● Denaro fermo, uscita, limite → 100% UBI','x-flow-3':'● Swap → 30% UBI','x-flow-4':'40% validatori · 30% LP',
   'x-consensus-ghostdag-knightdag':'◆ Consenso: GHOSTDAG + KNIGHTDAG',
   'x-contract-code':'Codice del contratto',
   
@@ -2217,8 +2217,8 @@ it:{
   'demurrage-title':'Prelievo sul denaro fermo: un incentivo a circolare',
   'demurrage-desc':'Dal 1° ottobre 2026 il denaro che resta fermo paga un piccolo prelievo che dipende dal tipo di conto. La vita quotidiana e il normale risparmio restano intatti, e il prelievo va al 100% al reddito di base.',
   'dem-rate-k':'Aliquote','dem-rate-v':'Persone: 0,5 %/mese oltre 5.000 AEQ · Imprese: 0,5 %/mese oltre 1,5 mesi di fatturato, 2 % oltre 3 mesi · Altri indirizzi: 1 %/mese',
-  'dem-grace-k':'Importi liberi','dem-grace-v':'Persone: 5.000 AEQ di risparmi · Imprese: 1,5 mesi di fatturato, almeno 2.000 AEQ; nessun periodo di grazia per le imprese nuove, fatturato mediato su almeno 30 giorni',
-  'dem-reset-k':'Fatturato','dem-reset-v':'Media degli ultimi 90 giorni. Gli acquisti contano fino a 9.000 AEQ per persona e trimestre; tra imprese conta solo l’eccedenza, quindi i giri non aggiungono nulla; salari, versamenti propri e cambio in AEQ non contano',
+  'dem-grace-k':'Importi liberi','dem-grace-v':'Persone: 5.000 AEQ di risparmi · Imprese: 1,5 mesi di fatturato, almeno 2.000 AEQ; nei primi sei mesi mai più di una persona (fino a 25.000 AEQ), una volta per persona all’anno',
+  'dem-reset-k':'Fatturato','dem-reset-v':'Media degli ultimi 90 giorni, o degli ultimi 12 mesi se è più alta (attività stagionali). Gli acquisti contano fino a 9.000 AEQ per persona e trimestre; tra imprese conta solo l’eccedenza, quindi i giri non aggiungono nulla; salari, versamenti propri e cambio in AEQ non contano',
   'dem-dest-k':'AEQ decaduto va a','dem-dest-v':'Pool UBI (100%) — diviso in parti uguali tra tutte le persone',
   'dem-warn-k':'Trasparenza','dem-warn-v':'Il prelievo previsto al mese è mostrato per ogni indirizzo (/api/wirtschaft/konto); viene liquidato una volta al giorno, prima di pagare il reddito di base',
   'story-title':'La Storia di Aequitas — Perché Esiste',
@@ -2307,7 +2307,7 @@ it:{
   's-validators':'Validatori Attivi',
   'expl-heading':'Esplora blocchi'},
 tr:{
-  'ubi-src-exit':'Çıkış kesintisi','ubi-src-exit-d':'AEQ bir stablecoine çevrildiğinde %2. İnsanlar: ayda 3.000 AEQ ücretsiz. %100 temel gelire gider. 1 Ekim 2026\'dan itibaren.',  'ubi-src-tx':'Transfer ücretleri','ubi-src-tx-d':'Her AEQ transferi üstüne %0,1 öder. İnsanlar ayın ilk 1.000 AEQ\'sunu ücretsiz harcar; işletmeler maaşlarda hiçbir şey ödemez. Ücretin tamamı buraya gelir.','pool-badge-v':'takas ücretinin %40','pool-badge-l':'takas ücretinin %30','pool-badge-u':'tüm yeniden dağıtım','pool-next':'⏰ Sonraki:','treasury-retired':'Eski hazine 24.09.2026 tarihinden beri devre dışı: hiçbir şey almaz ve kimse ondan ödeme yapamaz. Kalan bakiye:','x-flow-1':'● Transfer → %100 UBI','x-flow-2':'● Bekleyen para, çıkış, sınır → %100 UBI','x-flow-3':'● Takas → %30 UBI','x-flow-4':'%40 validator · %30 LP',
+  'ubi-src-exit':'Çıkış kesintisi','ubi-src-exit-d':'AEQ bir stablecoin\'e çevrilirken %2. Kendi yatırdığınız tutar ücretsiz geri döner; insanlar ayrıca ayda 3.000 AEQ\'yu kesintisiz çevirir. %100\'ü temel gelire gider. 1 Eki 2026\'dan itibaren.',  'ubi-src-tx':'Transfer ücretleri','ubi-src-tx-d':'Her AEQ transferi üstüne %0,1 öder. İnsanlar ayın ilk 1.000 AEQ\'sunu ücretsiz harcar; işletmeler maaşlarda hiçbir şey ödemez. Ücretin tamamı buraya gelir.','pool-badge-v':'takas ücretinin %40','pool-badge-l':'takas ücretinin %30','pool-badge-u':'tüm yeniden dağıtım','pool-next':'⏰ Sonraki:','treasury-retired':'Eski hazine 24.09.2026 tarihinden beri devre dışı: hiçbir şey almaz ve kimse ondan ödeme yapamaz. Kalan bakiye:','x-flow-1':'● Transfer → %100 UBI','x-flow-2':'● Bekleyen para, çıkış, sınır → %100 UBI','x-flow-3':'● Takas → %30 UBI','x-flow-4':'%40 validator · %30 LP',
   'x-consensus-ghostdag-knightdag':'◆ Uzlaşı: GHOSTDAG + KNIGHTDAG',
   'x-contract-code':'Sözleşme kodu',
   
@@ -2553,8 +2553,8 @@ tr:{
   'demurrage-title':'Bekleyen para kesintisi: dolaşım için bir teşvik',
   'demurrage-desc':'1 Ekim 2026\'dan itibaren bekleyen para, hesap türüne bağlı küçük bir kesinti öder. Günlük hayat ve normal birikim etkilenmez ve kesinti %100 temel gelire gider.',
   'dem-rate-k':'Oranlar','dem-rate-v':'İnsanlar: 5.000 AEQ üzeri ayda %0,5 · İşletmeler: 1,5 aylık ciro üzeri ayda %0,5, 3 aylık ciro üzeri %2 · Diğer adresler: ayda %1',
-  'dem-grace-k':'Muaf tutarlar','dem-grace-v':'İnsanlar: 5.000 AEQ birikim · İşletmeler: 1,5 aylık ciro, en az 2.000 AEQ; yeni işletmelere muafiyet süresi yok, ciro en az 30 gün üzerinden ortalanır',
-  'dem-reset-k':'Ciro','dem-reset-v':'Son 90 günün ortalaması. Alışverişler kişi ve çeyrek başına 9.000 AEQ\'ya kadar sayılır; işletmeler arasında yalnızca fazla sayılır, bu yüzden döngüler hiçbir şey katmaz; ücretler, kendi ödemeler ve AEQ\'ya dönüşüm sayılmaz',
+  'dem-grace-k':'Muaf tutarlar','dem-grace-v':'İnsanlar: 5.000 AEQ birikim · İşletmeler: 1,5 aylık ciro, en az 2.000 AEQ; ilk altı ay asla bir insandan fazla değil (25.000 AEQ\'ya kadar), kişi başına yılda bir kez',
+  'dem-reset-k':'Ciro','dem-reset-v':'Son 90 günün ya da daha yüksekse son 12 ayın ortalaması (mevsimlik işletmeler). Alışverişler kişi ve çeyrek başına 9.000 AEQ\'ya kadar sayılır; işletmeler arasında yalnızca fazla sayılır, bu yüzden döngüler hiçbir şey katmaz; ücretler, kendi ödemeler ve AEQ\'ya dönüşüm sayılmaz',
   'dem-dest-k':'Bozunan AEQ şuraya gider','dem-dest-v':'UBI havuzu (%100) — tüm insanlara eşit dağıtılır',
   'dem-warn-k':'Şeffaflık','dem-warn-v':'Beklenen aylık kesinti her adres için gösterilir (/api/wirtschaft/konto); günde bir kez, temel gelir ödenmeden önce hesaplanır',
   'story-title':'Aequitas\'ın Hikayesi — Neden Var Olduğu',
@@ -2636,7 +2636,7 @@ tr:{
   's-validators':'Aktif Doğrulayıcılar',
   'expl-heading':'Blok Gezgini'},
 fr:{
-  'ubi-src-exit':'Prélèvement de sortie','ubi-src-exit-d':'2 % lorsque des AEQ sont échangés contre un stablecoin. Personnes : 3 000 AEQ par mois sans frais. 100 % vont au revenu de base. À partir du 1er oct. 2026.',  'ubi-src-tx':'Frais de virement','ubi-src-tx-d':'Chaque virement d’AEQ paie 0,1 % en plus. Les personnes dépensent leurs 1 000 premiers AEQ du mois sans frais ; les entreprises ne paient rien sur les salaires. Les frais vont entièrement ici.','pool-badge-v':'40 % des frais de swap','pool-badge-l':'30 % des frais de swap','pool-badge-u':'toute la redistribution','pool-next':'⏰ Prochain :','treasury-retired':'L’ancienne trésorerie est retirée depuis le 24/09/2026 : elle ne reçoit plus rien et personne ne peut payer depuis elle. Solde restant :','x-flow-1':'● Virements → 100 % UBI','x-flow-2':'● Argent dormant, sortie, plafond → 100 % UBI','x-flow-3':'● Swap → 30 % UBI','x-flow-4':'40 % validateurs · 30 % LP',
+  'ubi-src-exit':'Prélèvement de sortie','ubi-src-exit-d':'2 % lors du change d’AEQ en stablecoin. Ce que vous avez versé vous-même revient librement ; les personnes changent en plus 3 000 AEQ par mois sans prélèvement. 100 % vont au revenu de base. Dès le 1er oct. 2026.',  'ubi-src-tx':'Frais de virement','ubi-src-tx-d':'Chaque virement d’AEQ paie 0,1 % en plus. Les personnes dépensent leurs 1 000 premiers AEQ du mois sans frais ; les entreprises ne paient rien sur les salaires. Les frais vont entièrement ici.','pool-badge-v':'40 % des frais de swap','pool-badge-l':'30 % des frais de swap','pool-badge-u':'toute la redistribution','pool-next':'⏰ Prochain :','treasury-retired':'L’ancienne trésorerie est retirée depuis le 24/09/2026 : elle ne reçoit plus rien et personne ne peut payer depuis elle. Solde restant :','x-flow-1':'● Virements → 100 % UBI','x-flow-2':'● Argent dormant, sortie, plafond → 100 % UBI','x-flow-3':'● Swap → 30 % UBI','x-flow-4':'40 % validateurs · 30 % LP',
   'x-consensus-ghostdag-knightdag':'◆ Consensus : GHOSTDAG + KNIGHTDAG',
   'x-contract-code':'Code du contrat',
   
@@ -2881,8 +2881,8 @@ fr:{
   'demurrage-title':'Prélèvement sur l’argent dormant : une incitation à circuler',
   'demurrage-desc':'À partir du 1er octobre 2026, l’argent qui dort paie un petit prélèvement qui dépend du type de compte. La vie quotidienne et l’épargne normale ne sont pas touchées, et le prélèvement va à 100 % au revenu de base.',
   'dem-rate-k':'Taux','dem-rate-v':'Personnes : 0,5 %/mois au-delà de 5 000 AEQ · Entreprises : 0,5 %/mois au-delà de 1,5 mois de chiffre d’affaires, 2 % au-delà de 3 mois · Autres adresses : 1 %/mois',
-  'dem-grace-k':'Montants libres','dem-grace-v':'Personnes : 5 000 AEQ d’épargne · Entreprises : 1,5 mois de chiffre d’affaires, au moins 2 000 AEQ ; pas de période de grâce pour les nouvelles entreprises, chiffre d’affaires moyenné sur au moins 30 jours',
-  'dem-reset-k':'Chiffre d’affaires','dem-reset-v':'Moyenne des 90 derniers jours. Les achats comptent jusqu’à 9 000 AEQ par personne et par trimestre ; entre entreprises, seul l’excédent compte, les circuits n’apportent donc rien ; salaires, versements propres et change en AEQ ne comptent pas',
+  'dem-grace-k':'Montants libres','dem-grace-v':'Personnes : 5 000 AEQ d’épargne · Entreprises : 1,5 mois de chiffre d’affaires, au moins 2 000 AEQ ; les six premiers mois jamais plus qu’une personne (jusqu’à 25 000 AEQ), une fois par personne et par an',
+  'dem-reset-k':'Chiffre d’affaires','dem-reset-v':'Moyenne des 90 derniers jours, ou des 12 derniers mois si elle est plus élevée (activités saisonnières). Les achats comptent jusqu’à 9 000 AEQ par personne et par trimestre ; entre entreprises, seul l’excédent compte, les circuits n’apportent donc rien ; salaires, versements propres et change en AEQ ne comptent pas',
   'dem-dest-k':'L\'AEQ décroissant va vers','dem-dest-v':'Pool UBI (100%) — partagé à parts égales entre tous les humains',
   'dem-warn-k':'Transparence','dem-warn-v':'Le prélèvement mensuel attendu est affiché pour chaque adresse (/api/wirtschaft/konto) ; il est réglé une fois par jour, avant le versement du revenu de base',
   'story-title':'L\'histoire d\'Aequitas',
@@ -2964,7 +2964,7 @@ fr:{
   's-validators':'Validateurs actifs',
   'expl-heading':'Explorateur de blocs'},
 pt:{
-  'ubi-src-exit':'Encargo de saída','ubi-src-exit-d':'2 % quando AEQ é trocado por uma stablecoin. Pessoas: 3.000 AEQ por mês livres. 100 % vai para a renda básica. A partir de 1 out. 2026.',  'ubi-src-tx':'Taxas de transferência','ubi-src-tx-d':'Cada transferência de AEQ paga 0,1 % por cima. As pessoas gastam os primeiros 1.000 AEQ do mês sem taxa; as empresas não pagam nada sobre salários. A taxa inteira vem para aqui.','pool-badge-v':'40% do swap','pool-badge-l':'30% do swap','pool-badge-u':'toda a redistribuição','pool-next':'⏰ Próximo:','treasury-retired':'A antiga tesouraria está desativada desde 24/09/2026: não recebe nada e ninguém pode pagar a partir dela. Saldo restante:','x-flow-1':'● Transferências → 100% UBI','x-flow-2':'● Dinheiro parado, saída, teto → 100% UBI','x-flow-3':'● Swap → 30% UBI','x-flow-4':'40% validadores · 30% LP',
+  'ubi-src-exit':'Encargo de saída','ubi-src-exit-d':'2 % ao trocar AEQ por uma stablecoin. O que você mesmo depositou volta livre; as pessoas trocam ainda 3.000 AEQ por mês sem taxa. 100 % vai para o rendimento básico. A partir de 1 out. 2026.',  'ubi-src-tx':'Taxas de transferência','ubi-src-tx-d':'Cada transferência de AEQ paga 0,1 % por cima. As pessoas gastam os primeiros 1.000 AEQ do mês sem taxa; as empresas não pagam nada sobre salários. A taxa inteira vem para aqui.','pool-badge-v':'40% do swap','pool-badge-l':'30% do swap','pool-badge-u':'toda a redistribuição','pool-next':'⏰ Próximo:','treasury-retired':'A antiga tesouraria está desativada desde 24/09/2026: não recebe nada e ninguém pode pagar a partir dela. Saldo restante:','x-flow-1':'● Transferências → 100% UBI','x-flow-2':'● Dinheiro parado, saída, teto → 100% UBI','x-flow-3':'● Swap → 30% UBI','x-flow-4':'40% validadores · 30% LP',
   'x-consensus-ghostdag-knightdag':'◆ Consenso: GHOSTDAG + KNIGHTDAG',
   'x-contract-code':'Código do contrato',
   
@@ -3209,8 +3209,8 @@ pt:{
   'demurrage-title':'Encargo sobre dinheiro parado: um incentivo à circulação',
   'demurrage-desc':'A partir de 1º de outubro de 2026, o dinheiro que fica parado paga um pequeno encargo que depende do tipo de conta. O dia a dia e a poupança normal ficam intocados, e o encargo vai 100% para a renda básica.',
   'dem-rate-k':'Taxas','dem-rate-v':'Pessoas: 0,5 %/mês acima de 5.000 AEQ · Empresas: 0,5 %/mês acima de 1,5 mês de faturação, 2 % acima de 3 meses · Outros endereços: 1 %/mês',
-  'dem-grace-k':'Valores livres','dem-grace-v':'Pessoas: 5.000 AEQ de poupança · Empresas: 1,5 mês de faturação, no mínimo 2.000 AEQ; sem período de carência para empresas novas, faturação calculada sobre pelo menos 30 dias',
-  'dem-reset-k':'Faturação','dem-reset-v':'Média dos últimos 90 dias. As compras contam até 9.000 AEQ por pessoa e trimestre; entre empresas só conta o excedente, por isso os círculos não somam nada; salários, entradas próprias e câmbio para AEQ não contam',
+  'dem-grace-k':'Valores livres','dem-grace-v':'Pessoas: 5.000 AEQ de poupança · Empresas: 1,5 mês de faturação, no mínimo 2.000 AEQ; nos primeiros seis meses nunca mais do que uma pessoa (até 25.000 AEQ), uma vez por pessoa por ano',
+  'dem-reset-k':'Faturação','dem-reset-v':'Média dos últimos 90 dias, ou dos últimos 12 meses se for maior (negócios sazonais). As compras contam até 9.000 AEQ por pessoa e trimestre; entre empresas só conta o excedente, por isso os círculos não somam nada; salários, entradas próprias e câmbio para AEQ não contam',
   'dem-dest-k':'AEQ decaído vai para','dem-dest-v':'Pool de UBI (100%) — dividido igualmente entre todas as pessoas',
   'dem-warn-k':'Transparência','dem-warn-v':'O encargo mensal esperado é mostrado para cada endereço (/api/wirtschaft/konto); é liquidado uma vez por dia, antes do pagamento da renda básica',
   'story-title':'A História da Aequitas',
@@ -3292,7 +3292,7 @@ pt:{
   's-validators':'Validadores Ativos',
   'expl-heading':'Explorador de Blocos'},
 ar:{
-  'ubi-src-exit':'اقتطاع الخروج','ubi-src-exit-d':'2% عند استبدال AEQ بعملة مستقرة. الأفراد: 3,000 AEQ شهريًا مجانًا. 100% تذهب إلى الدخل الأساسي. اعتبارًا من 1 أكتوبر 2026.',  'ubi-src-tx':'رسوم التحويل','ubi-src-tx-d':'كل تحويل AEQ يدفع 0.1% فوق المبلغ. ينفق الأفراد أول 1,000 AEQ شهريًا دون رسوم؛ ولا تدفع الشركات شيئًا على الأجور. الرسوم كلها تذهب إلى هنا.','pool-badge-v':'40٪ من رسوم المبادلة','pool-badge-l':'30٪ من رسوم المبادلة','pool-badge-u':'كل إعادة التوزيع','pool-next':'⏰ التالي:','treasury-retired':'الخزانة السابقة متوقفة منذ 24/09/2026: لا تتلقى شيئًا ولا يمكن لأحد الدفع منها. الرصيد المتبقي:','x-flow-1':'● التحويل → 100٪ UBI','x-flow-2':'● مال راكد، خروج، حد ← 100% للدخل الأساسي','x-flow-3':'● المبادلة → 30٪ UBI','x-flow-4':'40٪ للمدققين · 30٪ LP',
+  'ubi-src-exit':'اقتطاع الخروج','ubi-src-exit-d':'2 % عند تحويل AEQ إلى عملة مستقرة. ما أودعتموه بأنفسكم يعود مجانًا؛ ويحوّل الأفراد إضافةً إلى ذلك 3,000 AEQ شهريًا بلا رسم. 100 % يذهب إلى الدخل الأساسي. اعتبارًا من 1 أكتوبر 2026.',  'ubi-src-tx':'رسوم التحويل','ubi-src-tx-d':'كل تحويل AEQ يدفع 0.1% فوق المبلغ. ينفق الأفراد أول 1,000 AEQ شهريًا دون رسوم؛ ولا تدفع الشركات شيئًا على الأجور. الرسوم كلها تذهب إلى هنا.','pool-badge-v':'40٪ من رسوم المبادلة','pool-badge-l':'30٪ من رسوم المبادلة','pool-badge-u':'كل إعادة التوزيع','pool-next':'⏰ التالي:','treasury-retired':'الخزانة السابقة متوقفة منذ 24/09/2026: لا تتلقى شيئًا ولا يمكن لأحد الدفع منها. الرصيد المتبقي:','x-flow-1':'● التحويل → 100٪ UBI','x-flow-2':'● مال راكد، خروج، حد ← 100% للدخل الأساسي','x-flow-3':'● المبادلة → 30٪ UBI','x-flow-4':'40٪ للمدققين · 30٪ LP',
   'x-consensus-ghostdag-knightdag':'◆ التوافق: GHOSTDAG + KNIGHTDAG',
   'x-contract-code':'شِفرة العقد',
   
@@ -3535,8 +3535,8 @@ ar:{
   'demurrage-title':'اقتطاع المال الراكد: حافز على التداول',
   'demurrage-desc':'اعتبارًا من 1 أكتوبر 2026 يدفع المال الراكد اقتطاعًا صغيرًا يعتمد على نوع الحساب. الحياة اليومية والادخار العادي لا يُمسّان، ويذهب الاقتطاع بنسبة 100% إلى الدخل الأساسي.',
   'dem-rate-k':'النسب','dem-rate-v':'الأفراد: 0.5%/شهريًا فوق 5,000 AEQ · الشركات: 0.5%/شهريًا فوق 1.5 شهر من المبيعات، و2% فوق 3 أشهر · العناوين الأخرى: 1%/شهريًا',
-  'dem-grace-k':'المبالغ المعفاة','dem-grace-v':'الأفراد: 5,000 AEQ من المدخرات · الشركات: 1.5 شهر من المبيعات، 2,000 AEQ على الأقل؛ لا فترة سماح للشركات الجديدة، ويُحسب متوسط المبيعات على 30 يومًا على الأقل',
-  'dem-reset-k':'المبيعات','dem-reset-v':'متوسط آخر 90 يومًا. تُحتسب المشتريات حتى 9,000 AEQ لكل شخص في كل ربع سنة؛ وبين الشركات يُحتسب الفائض فقط، فلا تضيف الدوائر شيئًا؛ ولا تُحتسب الأجور والمدفوعات الخاصة والتحويل إلى AEQ',
+  'dem-grace-k':'المبالغ المعفاة','dem-grace-v':'الأفراد: 5,000 AEQ من المدخرات · الشركات: مبيعات 1.5 شهر، 2,000 AEQ على الأقل؛ في الأشهر الستة الأولى لا أكثر أبدًا من شخص (حتى 25,000 AEQ)، مرة لكل شخص في السنة',
+  'dem-reset-k':'المبيعات','dem-reset-v':'متوسط آخر 90 يومًا، أو آخر 12 شهرًا إن كان أعلى (الأعمال الموسمية). تُحتسب المشتريات حتى 9,000 AEQ لكل شخص في كل ربع سنة؛ وبين الشركات يُحتسب الفائض فقط، فلا تضيف الدوائر شيئًا؛ ولا تُحتسب الأجور والمدفوعات الخاصة والتحويل إلى AEQ',
   'dem-dest-k':'AEQ المتلاشي يذهب إلى','dem-dest-v':'مجمع UBI (100%) — يُوزَّع بالتساوي على جميع البشر',
   'dem-warn-k':'الشفافية','dem-warn-v':'يُعرض الاقتطاع الشهري المتوقع لكل عنوان (/api/wirtschaft/konto)؛ ويُسوّى مرة يوميًا قبل صرف الدخل الأساسي',
   'story-title':'قصة Aequitas',
@@ -3618,7 +3618,7 @@ ar:{
   's-validators':'المدققون النشطون',
   'expl-heading':'مستكشف الكتل'},
 hi:{
-  'ubi-src-exit':'निकासी कटौती','ubi-src-exit-d':'AEQ को स्टेबलकॉइन में बदलने पर 2%। लोग: हर महीने 3,000 AEQ मुफ़्त। 100% बुनियादी आय में जाता है। 1 अक्टूबर 2026 से।',  'ubi-src-tx':'ट्रांसफ़र शुल्क','ubi-src-tx-d':'हर AEQ ट्रांसफ़र ऊपर से 0.1% देता है। लोग हर महीने पहले 1,000 AEQ मुफ़्त ख़र्च करते हैं; व्यवसाय वेतन पर कुछ नहीं देते। पूरा शुल्क यहीं आता है।','pool-badge-v':'स्वैप शुल्क का 40%','pool-badge-l':'स्वैप शुल्क का 30%','pool-badge-u':'पूरा पुनर्वितरण','pool-next':'⏰ अगला:','treasury-retired':'पुराना ख़ज़ाना 24.09.2026 से बंद है: उसे कुछ नहीं मिलता और कोई उससे भुगतान नहीं कर सकता। शेष राशि:','x-flow-1':'● ट्रांसफ़र → 100% UBI','x-flow-2':'● रुका पैसा, निकासी, सीमा → 100% UBI','x-flow-3':'● स्वैप → 30% UBI','x-flow-4':'40% वैलिडेटर · 30% LP',
+  'ubi-src-exit':'निकासी कटौती','ubi-src-exit-d':'AEQ को स्टेबलकॉइन में बदलने पर 2 %। जो आपने ख़ुद जमा किया, वह मुफ़्त वापस जाता है; लोग इसके अलावा हर महीने 3,000 AEQ बिना शुल्क बदलते हैं। 100 % बुनियादी आय में जाता है। 1 अक्टू. 2026 से।',  'ubi-src-tx':'ट्रांसफ़र शुल्क','ubi-src-tx-d':'हर AEQ ट्रांसफ़र ऊपर से 0.1% देता है। लोग हर महीने पहले 1,000 AEQ मुफ़्त ख़र्च करते हैं; व्यवसाय वेतन पर कुछ नहीं देते। पूरा शुल्क यहीं आता है।','pool-badge-v':'स्वैप शुल्क का 40%','pool-badge-l':'स्वैप शुल्क का 30%','pool-badge-u':'पूरा पुनर्वितरण','pool-next':'⏰ अगला:','treasury-retired':'पुराना ख़ज़ाना 24.09.2026 से बंद है: उसे कुछ नहीं मिलता और कोई उससे भुगतान नहीं कर सकता। शेष राशि:','x-flow-1':'● ट्रांसफ़र → 100% UBI','x-flow-2':'● रुका पैसा, निकासी, सीमा → 100% UBI','x-flow-3':'● स्वैप → 30% UBI','x-flow-4':'40% वैलिडेटर · 30% LP',
   'x-consensus-ghostdag-knightdag':'◆ सर्वसम्मति: GHOSTDAG + KNIGHTDAG',
   'x-contract-code':'अनुबंध कोड',
   
@@ -3861,8 +3861,8 @@ hi:{
   'demurrage-title':'रुके पैसे की कटौती: प्रवाह के लिए प्रोत्साहन',
   'demurrage-desc':'1 अक्टूबर 2026 से रुका हुआ पैसा खाते के प्रकार के अनुसार एक छोटी कटौती देता है। रोज़मर्रा की ज़िंदगी और सामान्य बचत अछूती रहती है, और कटौती 100% बुनियादी आय में जाती है।',
   'dem-rate-k':'दरें','dem-rate-v':'लोग: 5,000 AEQ से ऊपर 0.5%/महीना · व्यवसाय: 1.5 महीने के कारोबार से ऊपर 0.5%/महीना, 3 महीने के कारोबार से ऊपर 2% · अन्य पते: 1%/महीना',
-  'dem-grace-k':'मुक्त राशि','dem-grace-v':'लोग: 5,000 AEQ बचत · व्यवसाय: 1.5 महीने का कारोबार, कम से कम 2,000 AEQ; नए व्यवसायों के लिए कोई छूट अवधि नहीं, कारोबार कम से कम 30 दिनों पर औसत',
-  'dem-reset-k':'कारोबार','dem-reset-v':'पिछले 90 दिनों का औसत। ख़रीदारी प्रति व्यक्ति प्रति तिमाही 9,000 AEQ तक गिनी जाती है; व्यवसायों के बीच केवल अधिशेष गिना जाता है, इसलिए घुमावदार लेन-देन से कुछ नहीं मिलता; वेतन, अपने भुगतान और AEQ में विनिमय नहीं गिने जाते',
+  'dem-grace-k':'मुक्त राशि','dem-grace-v':'लोग: 5,000 AEQ बचत · व्यवसाय: 1.5 महीने का कारोबार, कम से कम 2,000 AEQ; पहले छह महीनों में कभी भी किसी व्यक्ति से ज़्यादा नहीं (25,000 AEQ तक), हर व्यक्ति के लिए साल में एक बार',
+  'dem-reset-k':'कारोबार','dem-reset-v':'पिछले 90 दिनों का औसत, या पिछले 12 महीनों का, अगर वह ज़्यादा हो (मौसमी व्यवसाय)। ख़रीदारी प्रति व्यक्ति प्रति तिमाही 9,000 AEQ तक गिनी जाती है; व्यवसायों के बीच केवल अधिशेष गिना जाता है, इसलिए घुमावदार लेन-देन से कुछ नहीं मिलता; वेतन, अपने भुगतान और AEQ में विनिमय नहीं गिने जाते',
   'dem-dest-k':'क्षयित AEQ जाता है','dem-dest-v':'UBI पूल (100%) — सभी मनुष्यों में बराबर बँटता है',
   'dem-warn-k':'पारदर्शिता','dem-warn-v':'हर पते के लिए अनुमानित मासिक कटौती दिखाई जाती है (/api/wirtschaft/konto); इसे दिन में एक बार, बुनियादी आय देने से पहले निपटाया जाता है',
   'story-title':'Aequitas की कहानी',
