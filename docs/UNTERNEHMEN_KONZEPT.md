@@ -580,8 +580,24 @@ Alter braucht es drei Schutzregeln:
    Überschuss-Regel hat im Dreieck jede Firma gleich viel Ein- wie Ausgang: der
    Gewinn ist null.
 3. **Nicht als Umsatz zählen:** Löhne und Entnahmen (sonst Lohn an Freunde, die
-   ihn zurückgeben), Eingänge von freien Adressen und der Einstieg aus Euro oder
-   Dollar.
+   ihn zurückgeben), Zahlungen der eigenen Verantwortlichen an ihr Unternehmen,
+   Eingänge von freien Adressen und der Einstieg aus Euro oder Dollar.
+
+**Ein Mensch, viele Unternehmen?** Wer als Mensch der Demurrage entgehen will,
+indem er sein Geld auf eigene Unternehmen verteilt, stößt an drei Grenzen:
+
+- Ein Mensch kann für **höchstens 3 Unternehmen** verantwortlich sein. Die Kette
+  lehnt ein viertes ab (`maxUnternehmenJeMensch` in `wirtschaft.go`). 1.000
+  Unternehmen sind also nicht möglich.
+- Jedes dieser Unternehmen ohne echten Umsatz hat nur den Sockel von 2.000 AEQ
+  frei. Darüber kostet es 2 % im Monat, viermal so viel wie die Demurrage für
+  Menschen. Geschützt werden können so höchstens 3 × 2.000 = 6.000 AEQ; das
+  spart bei 0,5 % Demurrage rund 30 AEQ im Monat.
+- Zahlungen der eigenen Verantwortlichen zählen nicht als Umsatz (Regel 3). Man
+  kann sich also keinen Freibetrag selbst „einkaufen“.
+
+Auf freie Adressen auszuweichen hilft ebenfalls nicht: jede darf höchstens
+1.000 AEQ halten und zahlt 1 % im Monat, doppelt so viel wie ein Mensch.
 
 **Was ehrlich bleibt:** Großhändler und Hersteller verkaufen an Unternehmen und
 kaufen von Unternehmen. Ihr anrechenbarer Umsatz ist nur ihre Marge, nicht ihr
