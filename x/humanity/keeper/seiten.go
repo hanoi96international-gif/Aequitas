@@ -23,13 +23,15 @@ import (
 
 var (
 	landingHTML = baueSeite("/", "", "", []string{
-		"overview", "how", "fairness", "disclaimer", "rest", "social"})
-	economyHTML = baueSeite("/economy", "Aequitas — The economy", seitenKopfEco, []string{
-		"economy", "ubi", "compare", "people", "examples"})
-	businessHTML = baueSeite("/business", "Aequitas — Businesses and shops", seitenKopfBiz, []string{
-		"business", "shops", "loopholes"})
+		"forbiz", "forppl", "how", "status", "social"})
+	peopleHTML = baueSeite("/people", "Aequitas — For people", seitenKopfPpl, []string{
+		"people", "ubi", "examples"})
+	economyHTML = baueSeite("/economy", "Aequitas — How it works", seitenKopfEco, []string{
+		"economy", "compare", "fairness"})
+	businessHTML = baueSeite("/business", "Aequitas — For businesses", seitenKopfBiz, []string{
+		"business", "join", "bexamples", "rules", "loopholes"})
 	roadmapHTML = baueSeite("/roadmap", "Aequitas — Roadmap and questions", seitenKopfRoad, []string{
-		"roadmap", "open", "faq"})
+		"roadmap", "open", "faq", "disclaimer"})
 )
 
 // landingTeile zerlegt landingQuelle in Kopf, Hero (alles vor dem ersten
@@ -74,8 +76,11 @@ func baueSeite(pfad, titel, seitenKopf string, ids []string) string {
 		b.WriteString(kopf)
 		b.WriteString(hero)
 	} else {
-		kopf = strings.Replace(kopf, `<a href="/" class="tab active">`, `<a href="/" class="tab">`, 1)
-		kopf = strings.Replace(kopf, `<a href="`+pfad+`" class="tab">`, `<a href="`+pfad+`" class="tab active">`, 1)
+		// Reiter koennen weitere Klassen tragen ("tab tab-biz"), darum wird
+		// "active" in die Klassenliste eingefuegt statt ein festes Muster
+		// ersetzt.
+		kopf = strings.Replace(kopf, `<a href="/" class="tab active"`, `<a href="/" class="tab"`, 1)
+		kopf = strings.Replace(kopf, `<a href="`+pfad+`" class="tab`, `<a href="`+pfad+`" class="tab active`, 1)
 		if a, e := strings.Index(kopf, "<title>"), strings.Index(kopf, "</title>"); a >= 0 && e > a {
 			kopf = kopf[:a] + "<title>" + titel + kopf[e:]
 		}
@@ -102,26 +107,36 @@ func (a *APIServer) handleSeite(html string) http.HandlerFunc {
 	}
 }
 
+const seitenKopfPpl = `<section class="page-head">
+  <div class="section-inner">
+    <a href="/" class="pg-back" data-i18n="pg-back">← Back to the overview</a>
+    <h1 data-i18n="pg-ppl-h1">For people</h1>
+    <p class="section-sub" data-i18n="pg-ppl-sub">What Aequitas promises every person, how the daily basic income works and what you pay, with worked examples.</p>
+    <div class="pg-btns"><a href="/register" class="btn-primary" data-i18n="how-link">Register and claim your 1,000 AEQ →</a></div>
+    <div class="toc" role="navigation" aria-label="On this page"><span class="toc-lbl" data-i18n="toc-label">On this page</span><a href="#people" data-i18n="toc-prom">Promises</a><a href="#ubi" data-i18n="toc-ubi">Basic income</a><a href="#examples" data-i18n="toc-ex">Examples</a></div>
+  </div>
+</section>
+`
+
 const seitenKopfEco = `<section class="page-head">
   <div class="section-inner">
     <a href="/" class="pg-back" data-i18n="pg-back">← Back to the overview</a>
-    <h1 data-i18n="pg-eco-h1">The economy</h1>
-    <p class="section-sub" data-i18n="pg-eco-sub">One cycle for everyone: people receive the basic income, businesses pass money on, and whatever sits idle returns to all.</p>
-    <div class="toc" role="navigation" aria-label="On this page"><span class="toc-lbl" data-i18n="toc-label">On this page</span><a href="#economy" data-i18n="toc-eco">Economy</a><a href="#ubi" data-i18n="toc-ubi">Basic income</a><a href="#compare" data-i18n="toc-cmp">Account types</a><a href="#people" data-i18n="toc-ppl">For people</a><a href="#examples" data-i18n="toc-ex">Examples</a></div>
+    <h1 data-i18n="pg-eco-h1">How it works</h1>
+    <p class="section-sub" data-i18n="pg-eco-sub">One cycle, three kinds of account, one set of rules, and why the money stays fair.</p>
+    <div class="toc" role="navigation" aria-label="On this page"><span class="toc-lbl" data-i18n="toc-label">On this page</span><a href="#economy" data-i18n="toc-eco">Economy</a><a href="#compare" data-i18n="toc-cmp">Account types</a><a href="#fairness" data-i18n="toc-fair">Fairness</a></div>
   </div>
 </section>
-
 `
 
-const seitenKopfBiz = `<section class="page-head">
+const seitenKopfBiz = `<section class="page-head page-biz">
   <div class="section-inner">
     <a href="/" class="pg-back" data-i18n="pg-back">← Back to the overview</a>
-    <h1 data-i18n="pg-biz-h1">Businesses and shops</h1>
-    <p class="section-sub" data-i18n="pg-biz-sub">Businesses may accept, hold and spend AEQ. Passing it on is free, leaving it idle costs.</p>
-    <div class="toc" role="navigation" aria-label="On this page"><span class="toc-lbl" data-i18n="toc-label">On this page</span><a href="#business" data-i18n="toc-biz">For businesses</a><a href="#shops" data-i18n="toc-shop">For shops</a><a href="#loopholes" data-i18n="toc-lh">Protection against abuse</a></div>
+    <h1 data-i18n="pg-biz-h1">Aequitas for businesses</h1>
+    <p class="section-sub" data-i18n="pg-biz-sub">Take payments without card fees, pay wages free of charge and pass the money on. Only money left idle costs.</p>
+    <div class="pg-btns"><a href="https://t.me/aequitasmoney" class="btn-primary" rel="noopener noreferrer" target="_blank" data-i18n="pg-biz-cta">Join the pilot</a><a href="https://github.com/hanoi96international-gif/Aequitas/blob/main/docs/UNTERNEHMEN_KONZEPT.md" class="btn-secondary" rel="noopener" data-i18n="biz-link">Read the full concept →</a></div>
+    <div class="toc" role="navigation" aria-label="On this page"><span class="toc-lbl" data-i18n="toc-label">On this page</span><a href="#business" data-i18n="toc-adv">Advantages</a><a href="#join" data-i18n="toc-join">Taking part</a><a href="#bexamples" data-i18n="toc-bex">Costs</a><a href="#rules" data-i18n="toc-rules">Rules</a><a href="#loopholes" data-i18n="toc-lh">Protection against abuse</a></div>
   </div>
 </section>
-
 `
 
 const seitenKopfRoad = `<section class="page-head">
@@ -132,5 +147,4 @@ const seitenKopfRoad = `<section class="page-head">
     <div class="toc" role="navigation" aria-label="On this page"><span class="toc-lbl" data-i18n="toc-label">On this page</span><a href="#roadmap" data-i18n="toc-road">Roadmap</a><a href="#open" data-i18n="toc-open">Open points</a><a href="#faq" data-i18n="toc-faq">Questions</a></div>
   </div>
 </section>
-
 `

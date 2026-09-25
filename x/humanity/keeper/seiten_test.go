@@ -10,6 +10,7 @@ import (
 
 var seitenFuerTest = map[string]string{
 	"/":         landingHTML,
+	"/people":   peopleHTML,
 	"/economy":  economyHTML,
 	"/business": businessHTML,
 	"/roadmap":  roadmapHTML,
@@ -33,6 +34,8 @@ func TestSeiten_JederAbschnittGenauEinmal(t *testing.T) {
 
 // Jede Seite hat genau eine Hauptueberschrift, ein <main> und markiert ihren
 // eigenen Reiter als aktiv.
+var aktiverReiter = regexp.MustCompile(`class="tab active[ "]`)
+
 func TestSeiten_Grundgeruest(t *testing.T) {
 	for pfad, html := range seitenFuerTest {
 		if c := strings.Count(html, "<h1"); c != 1 {
@@ -41,10 +44,10 @@ func TestSeiten_Grundgeruest(t *testing.T) {
 		if !strings.Contains(html, "<main>") || !strings.Contains(html, "</main>") {
 			t.Errorf("%s: <main> fehlt", pfad)
 		}
-		if c := strings.Count(html, `class="tab active"`); c != 1 {
+		if c := len(aktiverReiter.FindAllString(html, -1)); c != 1 {
 			t.Errorf("%s: %d aktive Reiter", pfad, c)
 		}
-		if !strings.Contains(html, `<a href="`+pfad+`" class="tab active">`) {
+		if !strings.Contains(html, `<a href="`+pfad+`" class="tab active`) {
 			t.Errorf("%s: eigener Reiter nicht aktiv", pfad)
 		}
 	}
