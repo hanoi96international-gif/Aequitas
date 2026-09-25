@@ -1,6 +1,6 @@
 # Aequitas für Unternehmen – Konzept
 
-Stand: 25.09.2026 · Status: **Entwurf zur Entscheidung** (nichts davon ist gebaut)
+Stand: 25.09.2026 · Status: **beschlossen und gebaut**, aktiv ab 01.10.2026 (`x/humanity/keeper/wirtschaft.go`)
 
 ## In einem Satz
 
@@ -127,12 +127,14 @@ sie sind Durchlauf.
 - **Grenze:** Jeder Mensch ist für **höchstens 3 Unternehmenskonten**
   verantwortlich. Das verhindert, dass jemand den Sockel (6.2) über viele Konten
   vervielfacht.
-- **Schließen:** Das Restguthaben geht zu gleichen Teilen an die
-  Verantwortlichen (gebührenfrei, aber unter ihrer 25.000-Grenze). Was darüber
-  liegt, geht ins Grundeinkommen.
+- **Schließen:** nur mit leerem Konto. Das Restguthaben zahlen die
+  Verantwortlichen vorher aus (an Menschen gebührenfrei). Danach ist die
+  Adresse wieder eine freie Adresse.
 - **Öffentlich im Explorer:** Anzeigename, Kategorie, Zahl der Verantwortlichen,
-  Umsatz- und Lohnsummen je Monat. **Nicht öffentlich:** welche Menschen dahinter
-  stehen (nur „verifiziert: ja, Anzahl: 2“).
+  Umsatz- und Lohnsummen je Monat. Website und App zeigen nur die **Zahl** der
+  Verantwortlichen. Ehrlich dazu: Auf der Kette ist die Eröffnungstransaktion wie
+  jede Transaktion einsehbar, wer genau hinschaut, sieht also die Wallet des
+  Verantwortlichen (nicht seinen Namen).
 
 ### 6.2 Liegegeld statt Obergrenze: Geld hat ein Alter
 
@@ -150,8 +152,9 @@ sein. Deshalb gilt für Unternehmen **keine feste Obergrenze**. Stattdessen zäh
 - **Sockel:** 2.000 AEQ je Unternehmen sind immer frei, egal wie alt.
 - Ausgegeben wird **immer das älteste Geld zuerst**, die günstigste Reihenfolge
   für das Unternehmen.
-- Läuft **sekundengenau**, Aktivität setzt nichts zurück. Die Einnahmen gehen
-  **zu 100 % ins Grundeinkommen.**
+- Wird **täglich verrechnet** (Tageslauf vor dem Grundeinkommen, Transaktion
+  `umlauf`), Aktivität setzt nichts zurück. Die Einnahmen gehen **zu 100 % ins
+  Grundeinkommen.**
 
 **Das Alter reist mit dem Geld.** Das ist der Kern, der die Umgehungswege
 schließt (6.5):
@@ -257,6 +260,7 @@ horten will, ist sie der teuerste aller Wege.
 | 8 | Scheinlöhne an Freunde, die in Euro tauschen und das Bargeld zurückgeben | Lohn ist nur bis **3.000 AEQ je Mensch und Monat** abgabefrei. Die Ersparnis (2 %) ist kleiner als das Risiko, und die Lohnsummen sind öffentlich |
 | 9 | Zwei Inhaber stellen sich gegenseitig an | wie 8: höchstens 3.000 AEQ im Monat je Mensch, Ersparnis höchstens 60 AEQ |
 | 10 | Private Einkäufe über die Firma, um den Aufschlag für große Guthaben zu sparen | Das Geld muss erst in die Firma. Wer es vom Menschenkonto schickt, zahlt den Aufschlag schon dabei |
+| 10a | Geld über den Liquiditätspool „verjüngen“ | Liquidität stellen nur Menschen bereit |
 | 11 | Ein Vertrag (Smart Contract) als Versteck | Verträge sind freie Adressen: höchstens 1.000 AEQ. Braucht ein Vertrag mehr, wird er als Unternehmenskonto mit verantwortlichem Menschen geführt und zahlt Liegegeld |
 | 12 | Das eigene Menschenkonto voll (25.000) und zusätzlich Geld „frisch“ in der eigenen Firma halten | geht nur mit Geld, das einen Monat beim Menschen lag, also höchstens 25.000 zusätzlich je Monat und mit Aufschlag bei jeder Runde. Das ist die Größenordnung der Grenze selbst, kein Schlupfloch nach oben |
 
