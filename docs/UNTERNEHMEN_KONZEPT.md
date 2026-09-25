@@ -571,11 +571,16 @@ Ein Freibetrag nach Umsatz lädt dazu ein, den Umsatz aufzublähen, indem man
 Geld im Kreis schickt. Genau dagegen gab es bisher das Alter des Geldes. Ohne
 Alter braucht es drei Schutzregeln:
 
-1. **Einkäufe von Menschen zählen, aber je Mensch höchstens 1 × fairer Anteil
-   (1.000 AEQ) pro Unternehmen und Monat.** Ein Supermarkt mit vielen Kundinnen
-   und Kunden kommt auf seinen echten Umsatz. Wer den Umsatz aufblähen will,
-   braucht viele echte Menschen, die mitmachen: für 150.000 AEQ geschützten
-   Hortbestand 100 Menschen, jeden Monat, öffentlich sichtbar.
+1. **Einkäufe von Menschen zählen, aber je Mensch höchstens 9 × fairer Anteil
+   (9.000 AEQ) pro Unternehmen und Quartal.** Ein Supermarkt mit vielen
+   Kundinnen und Kunden kommt auf seinen echten Umsatz. Pro Quartal statt pro
+   Monat (zunächst waren 1.000 AEQ im Monat vorgesehen): sonst zählte bei einem
+   Möbelhaus, einer Werkstatt oder einer Zahnärztin von einem Einkauf über
+   3.000 AEQ nur ein Drittel, und wer selten, aber teuer verkauft, zahlte
+   Liegegeld auf Geld, das ganz normal umläuft. Wer den Umsatz aufblähen will,
+   braucht weiter echte Menschen, die mitmachen: für 150.000 AEQ geschützten
+   Hortbestand rund 34 Menschen, die jedes Quartal je 9.000 AEQ einzahlen, und
+   das Zurückgeben an sie erscheint öffentlich als Lohn.
 2. **Zahlungen zwischen Unternehmen zählen nur als Überschuss:** alle Eingänge
    von Unternehmen minus alle Zahlungen an Unternehmen im selben Zeitraum,
    mindestens null. Unternehmen mit gemeinsamen Verantwortlichen zählen
@@ -666,10 +671,28 @@ Demurrage 15.000 × 0,5 % = 75, Umtausch (5.000 − 3.000) × 2 % = 40.
   Monatsumsatz, Freibetrag und Liegegeld im Tageslauf.
 - **Menschen:** Aufschlagstufen der Überweisungsgebühr entfallen; der
   Tausch-Freibetrag wird eine Zahl (3.000 AEQ) statt Lohn plus 1.000.
-- **Fehlende Buchführung geht zugunsten der Unternehmen aus:** Der Umsatz ist
-  Buchführung des Knotens. Hat ein Knoten für ein Unternehmen weniger als
-  30 Tage Daten (Unternehmen neu, oder der Knoten kam frisch aus einem
+- **Fehlende Buchführung geht zugunsten der Unternehmen aus:** Hat ein Knoten
+  weniger als 30 Tage Daten (kurz nach dem Start, oder er kam frisch aus einem
   Snapshot), berechnet er kein Liegegeld.
+- **Keine Schonfrist für neue Unternehmen.** Zunächst waren die ersten 30 Tage
+  eines Unternehmens frei. Das war eine Lücke: jeden Monat eine neue Firma
+  eröffnen, das Geld hinüberschieben, und Horten wäre nie etwas wert gewesen.
+  Jetzt zahlt eine Firma ohne Umsatz ab dem ersten Tag. Damit ein junges
+  Unternehmen mit wenigen guten Tagen nicht zu gut dasteht, wird sein Umsatz
+  über mindestens 30 Tage gemittelt.
+- **Die Buchführung ist absturzsicher** und liegt in derselben
+  Datenbank-Transaktion wie die Kontostände; ein abgebrochener Vorgang nimmt
+  sie mit zurück.
+- **Jeder Knoten rechnet das Liegegeld nach.** Der erzeugende Knoten schreibt
+  die Beträge in den Block. Wer nachspielt, rechnet sie nach, sofern er die
+  Buchführung des ganzen 90-Tage-Fensters hat. Zuerst wird nur beobachtet:
+  Abweichungen werden gezählt und unter `/api/wirtschaft/regeln` veröffentlicht
+  (`liegegeld_pruefung`). Mit `AEQUITAS_LIEGEGELD_PRUEFUNG=streng` lehnt der
+  Knoten abweichende Blöcke ab. Umgeschaltet wird, wenn die Beobachtung über
+  Wochen null Abweichungen zeigt, spätestens bevor ein zweiter unabhängiger
+  Validator Blöcke erzeugt. (Kleine Abweichungen sind möglich, weil der
+  Erzeuger eine Überweisung zur Annahmezeit bucht und der Nachspielende zur
+  Blockzeit; kurz vor Mitternacht kann das einen anderen Tag ergeben.)
 - **Website und App:** die Sätze aus 14.2 und 14.5 als Hauptregeln, alles
   andere im Kleingedruckten.
 
@@ -682,7 +705,7 @@ ob die Startwerte stimmen (insbesondere 3.000 AEQ Tausch-Freibetrag).
 |---|---|
 | Freibetrag Unternehmen | 1,5 × Monatsumsatz (mind. 2.000 AEQ) |
 | Liegegeld darüber | 0,5 %/Monat bis 3 × Monatsumsatz, darüber 2 %/Monat |
-| Monatsumsatz | Durchschnitt 90 Tage; Menschen je 1.000 AEQ/Monat gedeckelt; Unternehmen nur Überschuss; Löhne, freie Adressen, Einstieg zählen nicht |
+| Monatsumsatz | Durchschnitt 90 Tage, bei neuen Unternehmen über mindestens 30 Tage; Menschen je 9.000 AEQ/Quartal gedeckelt; Unternehmen nur Überschuss; Löhne, freie Adressen, Einstieg zählen nicht |
 | Alter des Geldes | entfällt |
 | Menschen: Überweisungsgebühr | erste 1.000 AEQ/Monat frei, danach 0,1 %, keine Stufen |
 | Menschen: Umtausch ohne Abgabe | 3.000 AEQ im Monat, egal woher |

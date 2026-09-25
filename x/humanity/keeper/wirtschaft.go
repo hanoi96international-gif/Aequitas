@@ -31,8 +31,10 @@ package keeper
 //
 // Der Monatsumsatz ist der Durchschnitt der anrechenbaren Eingaenge der
 // letzten 90 Tage. Damit niemand ihn aufblaeht, gelten drei Schutzregeln:
-//   - Einkaeufe von Menschen zaehlen je Mensch hoechstens 1 x fairer Anteil
-//     pro Unternehmen und Monat (Zaehler beim Menschen: Gezaehlt).
+//   - Einkaeufe von Menschen zaehlen je Mensch hoechstens 9 x fairer Anteil
+//     pro Unternehmen und Quartal (Zaehler beim Menschen: Gezaehlt). Pro
+//     Quartal statt pro Monat, damit ein grosser Einkauf (Moebel, Reparatur)
+//     voll zaehlt, ohne dass das Aufblaehen leichter wird.
 //   - Zwischen Unternehmen zaehlt nur der Ueberschuss: alle Eingaenge von
 //     Unternehmen minus alle Zahlungen an Unternehmen. Ein Dreieck, in dem
 //     drei Firmen sich Geld im Kreis schicken, gewinnt so nichts. Firmen mit
@@ -40,11 +42,20 @@ package keeper
 //   - Loehne, Entnahmen, Zahlungen der eigenen Verantwortlichen, Eingaenge
 //     von freien Adressen und der Einstieg aus tUSD zaehlen nicht.
 //
-// FEHLENDE BUCHFUEHRUNG GEHT ZUGUNSTEN DER KONTOINHABER AUS. Der Umsatz ist
-// Buchfuehrung dieses Knotens. Hat er fuer ein Unternehmen weniger als 30 Tage
-// Daten (Unternehmen neu, oder der Knoten kam frisch aus einem Snapshot:
-// buchSeit), berechnet er kein Liegegeld -- sonst wuerde ein Knoten ohne
-// Daten jedes Unternehmen als umsatzlos behandeln.
+// FEHLENDE BUCHFUEHRUNG GEHT ZUGUNSTEN DER KONTOINHABER AUS. Hat DIESER
+// KNOTEN weniger als 30 Tage Daten (kurz nach der Aktivierung, oder frisch aus
+// einem Snapshot: buchSeit), berechnet er kein Liegegeld -- sonst wuerde ein
+// Knoten ohne Daten jedes Unternehmen als umsatzlos behandeln. Ein NEUES
+// UNTERNEHMEN bekommt dagegen keine Schonfrist: sonst liesse sich Geld Monat
+// fuer Monat in eine frisch eroeffnete Firma schieben und nie Liegegeld
+// zahlen. Sein Umsatz wird ueber mindestens 30 Tage gemittelt, damit wenige
+// Tage nicht hochgerechnet werden.
+//
+// DIE BUCHFUEHRUNG IST ABSTURZSICHER. Sie wird in derselben
+// Datenbank-Transaktion geschrieben wie die Kontostaende (speichereBuchCtx)
+// und bei einem Abbruch mit ihnen zurueckgenommen (blockRollbackSnapshot).
+// Jeder Knoten, der dieselben Bloecke angewandt hat, hat damit dieselben
+// Zahlen -- darauf baut die Pruefung beim Nachspielen (liegegeld_pruefung.go).
 //
 // AKTIVIERUNG. Nichts davon wirkt vor wirtschaftAktivAbUnix. Danach laufen
 // alle Ueberweisungen ueber transferMutateLocked (die schnellen Pfade
@@ -88,16 +99,16 @@ const (
 	freiUmlaufMonat = 0.01
 
 	// Unternehmen
-	unternehmenSockel       = 2 * registrationGrant
-	umsatzFreiFaktor        = 1.5                   // bis 1,5 Monatsumsaetze frei
-	umsatzStufe2Faktor      = 3.0                   // ab 3 Monatsumsaetzen die hohe Stufe
-	liegeRate1Monat         = 0.005                 // 0,5 %/Monat zwischen 1,5 und 3 Monatsumsaetzen
-	liegeRate2Monat         = 0.02                  // 2 %/Monat darueber
-	umsatzFensterTage       = 90                    // Durchschnitt ueber so viele Tage
-	umsatzMindestTage       = 30                    // darunter kein Liegegeld (zu wenig Daten)
-	menschZaehltJeUntMonat  = 1 * registrationGrant // je Mensch und Unternehmen und Monat
-	maxUnternehmenJeMensch  = 3
-	maxVerantwortlicheJeUnt = 10
+	unternehmenSockel        = 2 * registrationGrant
+	umsatzFreiFaktor         = 1.5                   // bis 1,5 Monatsumsaetze frei
+	umsatzStufe2Faktor       = 3.0                   // ab 3 Monatsumsaetzen die hohe Stufe
+	liegeRate1Monat          = 0.005                 // 0,5 %/Monat zwischen 1,5 und 3 Monatsumsaetzen
+	liegeRate2Monat          = 0.02                  // 2 %/Monat darueber
+	umsatzFensterTage        = 90                    // Durchschnitt ueber so viele Tage
+	umsatzMindestTage        = 30                    // darunter kein Liegegeld (zu wenig Daten)
+	menschZaehltJeUntQuartal = 9 * registrationGrant // je Mensch und Unternehmen und Quartal
+	maxUnternehmenJeMensch   = 3
+	maxVerantwortlicheJeUnt  = 10
 
 	// Ausstieg AEQ -> Stable
 	ausstiegsAbgabeBps = 200 // 2 %
@@ -189,7 +200,8 @@ type buchKonto struct {
 	Getauscht  float64 `json:"tau,omitempty"`
 	Lohn       float64 `json:"lohn,omitempty"`
 	// je Unternehmen schon als Umsatz gezaehlt in diesem Monat
-	Gezaehlt map[string]float64 `json:"gz,omitempty"`
+	Gezaehlt  map[string]float64 `json:"gz,omitempty"`
+	GzQuartal int                `json:"gq,omitempty"` // JJJJQ, Zeitraum von Gezaehlt
 	// Unternehmen: Umsatz der letzten 90 Tage, je Tag
 	Tage []tagesUmsatz `json:"td,omitempty"`
 	// Unternehmen (oeffentliche Monatssummen)
@@ -202,20 +214,20 @@ type wirtschaft struct {
 	mu          sync.Mutex
 	unternehmen map[string]*unternehmenEintrag
 	buch        map[string]*buchKonto
-	schmutzig   map[string]bool
 	// letzter Umlauf-Durchlauf (Blockzeit), fuer die Laenge des Zeitraums
 	letzterUmlauf int64
 	// seit wann dieser Knoten vollstaendig Buch fuehrt (0 = seit Beginn).
 	// Nach einem Snapshot-Import neu gesetzt: die Buchfuehrung davor fehlt.
 	buchSeit int64
-	flusher  sync.Once
+	// der laufende Tagesdurchlauf beim Nachspielen: sein at und das
+	// letzterUmlauf davor -- die Laenge des Zeitraums fuer die Pruefung.
+	laufAt, laufVorher int64
 }
 
 func neueWirtschaft() *wirtschaft {
 	return &wirtschaft{
 		unternehmen: map[string]*unternehmenEintrag{},
 		buch:        map[string]*buchKonto{},
-		schmutzig:   map[string]bool{},
 	}
 }
 
@@ -242,13 +254,15 @@ func (w *wirtschaft) kontoLocked(addr string, jetzt int64) *buchKonto {
 	if m := monatVon(jetzt); k.Monat != m {
 		k.Monat = m
 		k.Ausgegeben, k.Getauscht, k.Lohn = 0, 0, 0
-		k.Gezaehlt = nil
 		k.Einnahmen, k.LohnGezahlt, k.Entnahmen = 0, 0, 0
 	}
 	return k
 }
 
-func (w *wirtschaft) markiere(addr string) { w.schmutzig[addr] = true }
+func quartalVon(unix int64) int {
+	t := time.Unix(unix, 0).UTC()
+	return t.Year()*10 + (int(t.Month())-1)/3 + 1
+}
 
 func (w *wirtschaft) offenesUnternehmenLocked(addr string) *unternehmenEintrag {
 	if e := w.unternehmen[addr]; e.offen() {
@@ -322,28 +336,58 @@ func gemeinsameVerantwortliche(a, b *unternehmenEintrag) bool {
 	return false
 }
 
-// datenTageLocked: fuer wie viele Tage dieser Knoten den Umsatz des
-// Unternehmens kennt -- ab Eroeffnung, Aktivierung und buchSeit, hoechstens
-// das Fenster. w.mu gehalten.
-func (w *wirtschaft) datenTageLocked(e *unternehmenEintrag, jetzt int64) int64 {
-	ab := wirtschaftAktivAbUnix
+func aktivAb() int64 {
 	if o := wirtschaftAktivOverride.Load(); o != 0 {
-		ab = o
+		return o
 	}
+	return wirtschaftAktivAbUnix
+}
+
+// knotenTageLocked: seit wie vielen Tagen DIESER KNOTEN vollstaendig Buch
+// fuehrt (ab Aktivierung bzw. buchSeit). w.mu gehalten.
+func (w *wirtschaft) knotenTageLocked(jetzt int64) int64 {
+	ab := aktivAb()
+	if w.buchSeit > ab {
+		ab = w.buchSeit
+	}
+	if t := (jetzt - ab) / 86400; t > 0 {
+		return t
+	}
+	return 0
+}
+
+// mittelTageLocked: ueber wie viele Tage der Umsatz eines Unternehmens
+// gemittelt wird -- die bekannten Tage, mindestens 30 (ein neues Unternehmen
+// wird nicht aus wenigen Tagen hochgerechnet), hoechstens das Fenster.
+// w.mu gehalten.
+func (w *wirtschaft) mittelTageLocked(e *unternehmenEintrag, jetzt int64) int64 {
+	ab := aktivAb()
 	if e != nil && e.EroeffnetAm > ab {
 		ab = e.EroeffnetAm
 	}
 	if w.buchSeit > ab {
 		ab = w.buchSeit
 	}
-	tage := (jetzt - ab) / 86400
+	// Kalendertage einschliesslich des ersten und des heutigen: sonst fiele
+	// der Umsatz des Eroeffnungstags aus dem Fenster (monatsUmsatzLocked).
+	tage := unixTag(jetzt) - unixTag(ab) + 1
+	if tage < umsatzMindestTage {
+		tage = umsatzMindestTage
+	}
 	if tage > umsatzFensterTage {
 		tage = umsatzFensterTage
 	}
-	if tage < 0 {
-		tage = 0
-	}
 	return tage
+}
+
+// liegegeldLocked: Liegegeld pro Monat fuer ein Unternehmen bei diesem Stand.
+// Weniger als 30 Tage Daten auf diesem Knoten: 0 (siehe Kopf). w.mu gehalten.
+func (w *wirtschaft) liegegeldLocked(addr string, stand float64, jetzt int64) float64 {
+	if w.knotenTageLocked(jetzt) < umsatzMindestTage {
+		return 0
+	}
+	tage := w.mittelTageLocked(w.unternehmen[addr], jetzt)
+	return liegegeldFuerStand(stand, w.monatsUmsatzLocked(w.kontoLocked(addr, jetzt), tage, jetzt))
 }
 
 // monatsUmsatzLocked: anrechenbarer Umsatz pro Monat (30 Tage) im Durchschnitt
@@ -423,14 +467,13 @@ func pruefeEmpfaengerWirtschaft(toArt kontoart, standVorher, zufluss float64, je
 }
 
 // nachUeberweisung fuehrt Monatszaehler und Umsatz nach einer Ueberweisung.
-// Buchfuehrung, kein Konsens (siehe Kopf).
-func (cs *ChainState) nachUeberweisung(from, to string, fromArt, toArt kontoart, amount, gebuehr, fromNach, toNach float64, jetzt int64) {
+// Buchfuehrung, kein Konsens (siehe Kopf); gespeichert in der Transaktion aus ctx.
+func (cs *ChainState) nachUeberweisung(ctx context.Context, from, to string, fromArt, toArt kontoart, amount, gebuehr, fromNach, toNach float64, jetzt int64) error {
 	if !wirtschaftAktiv(jetzt) || fromArt == artSystem || toArt == artSystem || amount <= 0 {
-		return
+		return nil
 	}
 	w := cs.wirt()
 	w.mu.Lock()
-	defer w.mu.Unlock()
 	fk := w.kontoLocked(from, jetzt)
 	tk := w.kontoLocked(to, jetzt)
 	fromU, toU := w.offenesUnternehmenLocked(from), w.offenesUnternehmenLocked(to)
@@ -439,11 +482,14 @@ func (cs *ChainState) nachUeberweisung(from, to string, fromArt, toArt kontoart,
 	case fromArt == artMensch:
 		fk.Ausgegeben += amount
 		if toArt == artUnternehmen && !toU.istVerantwortlich(from) {
+			if q := quartalVon(jetzt); fk.GzQuartal != q {
+				fk.GzQuartal, fk.Gezaehlt = q, nil
+			}
 			bisher := 0.0
 			if fk.Gezaehlt != nil {
 				bisher = fk.Gezaehlt[to]
 			}
-			if n := math.Min(amount, math.Max(0, menschZaehltJeUntMonat-bisher)); n > 0 {
+			if n := math.Min(amount, math.Max(0, menschZaehltJeUntQuartal-bisher)); n > 0 {
 				if fk.Gezaehlt == nil {
 					fk.Gezaehlt = map[string]float64{}
 				}
@@ -467,9 +513,8 @@ func (cs *ChainState) nachUeberweisung(from, to string, fromArt, toArt kontoart,
 	if toArt == artUnternehmen {
 		tk.Einnahmen += amount
 	}
-	w.markiere(from)
-	w.markiere(to)
-	cs.startBuchFlusher()
+	w.mu.Unlock()
+	return cs.speichereBuchCtx(ctx, from, to)
 }
 
 // ausstiegsAbgabe: 2 % auf AEQ -> Stable. Menschen tauschen 3.000 AEQ im
@@ -493,16 +538,15 @@ func (cs *ChainState) ausstiegsAbgabe(addr string, art kontoart, amountIn float6
 	return round6(pflichtig * ausstiegsAbgabeBps / 10_000)
 }
 
-func (cs *ChainState) nachTausch(addr string, amountIn float64, jetzt int64) {
+func (cs *ChainState) nachTausch(ctx context.Context, addr string, amountIn float64, jetzt int64) error {
 	if !wirtschaftAktiv(jetzt) {
-		return
+		return nil
 	}
 	w := cs.wirt()
 	w.mu.Lock()
 	w.kontoLocked(addr, jetzt).Getauscht += amountIn
-	w.markiere(addr)
 	w.mu.Unlock()
-	cs.startBuchFlusher()
+	return cs.speichereBuchCtx(ctx, addr)
 }
 
 // ------------------------------------------------------------ Umlauf (taeglich)
@@ -522,12 +566,7 @@ func (cs *ChainState) umlaufBetrag(addr string, art kontoart, stand float64, jet
 		w := cs.wirt()
 		w.mu.Lock()
 		defer w.mu.Unlock()
-		tage := w.datenTageLocked(w.unternehmen[addr], jetzt)
-		if tage < umsatzMindestTage {
-			return 0 // zu wenig Daten: zugunsten des Unternehmens (siehe Kopf)
-		}
-		umsatz := w.monatsUmsatzLocked(w.kontoLocked(addr, jetzt), tage, jetzt)
-		return round6(liegegeldFuerStand(stand, umsatz) * anteil)
+		return round6(w.liegegeldLocked(addr, stand, jetzt) * anteil)
 	}
 	return 0
 }
@@ -648,6 +687,7 @@ func (cs *ChainState) applyUmlaufDeltaLocked(ctx context.Context, wallet string,
 	w := cs.wirt()
 	w.mu.Lock()
 	if at > w.letzterUmlauf {
+		w.laufAt, w.laufVorher = at, w.letzterUmlauf
 		w.letzterUmlauf = at
 	}
 	w.mu.Unlock()
@@ -891,44 +931,160 @@ func (cs *ChainState) wirtschaftLaden() {
 	fmt.Printf("✓ Wirtschaft: %d Unternehmen, %d Buchkonten\n", len(w.unternehmen), len(w.buch))
 }
 
-// startBuchFlusher schreibt die Buchfuehrung alle 10 Sekunden weg. Geht sie
-// bei einem Absturz verloren, heilt abgleichen() das beim naechsten Zugriff
-// (fehlendes Geld gilt dann als frisch -- zugunsten der Kontoinhaber).
-func (cs *ChainState) startBuchFlusher() {
+// speichereBuchCtx schreibt Buchkonten in die Transaktion aus ctx -- dieselbe
+// wie die Kontostaende. Frueher alle 10 Sekunden im Hintergrund: ein Absturz
+// verlor die letzten Sekunden, und zwei Knoten mit denselben Bloecken konnten
+// verschiedene Zahlen haben. Traegt ctx einen buchSammler (Stapel-Pfad),
+// werden die Adressen nur vorgemerkt und am Ende des Stapels in einer
+// Anweisung geschrieben -- wie die Konten dort auch.
+func (cs *ChainState) speichereBuchCtx(ctx context.Context, adressen ...string) error {
 	if cs.db == nil {
+		return nil
+	}
+	if s, _ := ctx.Value(buchSammlerKey{}).(*buchSammler); s != nil {
+		for _, a := range adressen {
+			s.adressen[a] = true
+		}
+		return nil
+	}
+	w := cs.wirt()
+	adressen = append([]string(nil), adressen...)
+	sort.Strings(adressen)
+	var werte []interface{}
+	var platz []string
+	vorige := ""
+	w.mu.Lock()
+	for _, a := range adressen {
+		if a == vorige {
+			continue
+		}
+		vorige = a
+		if k := w.buch[a]; k != nil {
+			b, err := json.Marshal(k)
+			if err != nil {
+				w.mu.Unlock()
+				return fmt.Errorf("buch %s: %w", a, err)
+			}
+			platz = append(platz, fmt.Sprintf("($%d,$%d)", len(werte)+1, len(werte)+2))
+			werte = append(werte, a, string(b))
+		}
+	}
+	w.mu.Unlock()
+	if len(platz) == 0 {
+		return nil
+	}
+	if _, err := cs.dbExecCtx(ctx).Exec(`INSERT INTO wirtschaft_buch (address, daten) VALUES `+strings.Join(platz, ",")+`
+		ON CONFLICT (address) DO UPDATE SET daten = EXCLUDED.daten`, werte...); err != nil {
+		return fmt.Errorf("buch speichern (%d Konten): %w", len(platz), err)
+	}
+	return nil
+}
+
+type buchSammlerKey struct{}
+
+type buchSammler struct{ adressen map[string]bool }
+
+// mitBuchSammler: speichereBuchCtx merkt unter dem zurueckgegebenen ctx nur
+// vor; schreiben() schreibt alles Vorgemerkte in die Transaktion aus basis.
+func mitBuchSammler(basis context.Context) (context.Context, *buchSammler) {
+	s := &buchSammler{adressen: map[string]bool{}}
+	return context.WithValue(basis, buchSammlerKey{}, s), s
+}
+
+func (s *buchSammler) schreiben(cs *ChainState, basis context.Context) error {
+	adressen := make([]string, 0, len(s.adressen))
+	for a := range s.adressen {
+		adressen = append(adressen, a)
+	}
+	return cs.speichereBuchCtx(basis, adressen...)
+}
+
+// buchStand: Kopie von Buchfuehrung, Register und Umlauf-Stand fuer
+// blockRollbackSnapshot -- ein abgelehnter Block darf nichts davon aendern.
+type buchStand struct {
+	voll                              bool
+	konten                            map[string]*buchKonto          // nil-Wert: gab es nicht
+	register                          map[string]*unternehmenEintrag // dito
+	letzterUmlauf, laufAt, laufVorher int64
+}
+
+func (e *unternehmenEintrag) kopie() *unternehmenEintrag {
+	cp := *e
+	cp.Verantwortliche = append([]string(nil), e.Verantwortliche...)
+	return &cp
+}
+
+func (k *buchKonto) kopie() *buchKonto {
+	cp := *k
+	if k.Gezaehlt != nil {
+		cp.Gezaehlt = make(map[string]float64, len(k.Gezaehlt))
+		for a, v := range k.Gezaehlt {
+			cp.Gezaehlt[a] = v
+		}
+	}
+	cp.Tage = append([]tagesUmsatz(nil), k.Tage...)
+	return &cp
+}
+
+func (cs *ChainState) buchSichern(addrs []string, voll bool) *buchStand {
+	w := cs.wirt()
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	st := &buchStand{voll: voll, letzterUmlauf: w.letzterUmlauf, laufAt: w.laufAt, laufVorher: w.laufVorher}
+	if voll {
+		st.konten = make(map[string]*buchKonto, len(w.buch))
+		for a, k := range w.buch {
+			st.konten[a] = k.kopie()
+		}
+		st.register = make(map[string]*unternehmenEintrag, len(w.unternehmen))
+		for a, e := range w.unternehmen {
+			st.register[a] = e.kopie()
+		}
+		return st
+	}
+	st.konten = make(map[string]*buchKonto, len(addrs))
+	st.register = make(map[string]*unternehmenEintrag, len(addrs))
+	for _, a := range addrs {
+		st.konten[a] = nil
+		if k := w.buch[a]; k != nil {
+			st.konten[a] = k.kopie()
+		}
+		st.register[a] = nil
+		if e := w.unternehmen[a]; e != nil {
+			st.register[a] = e.kopie()
+		}
+	}
+	return st
+}
+
+// buchZurueck: nur der Speicher -- die Zeilen in der Datenbank lagen in der
+// zurueckgerollten Transaktion.
+func (cs *ChainState) buchZurueck(st *buchStand) {
+	if st == nil {
 		return
 	}
 	w := cs.wirt()
-	w.flusher.Do(func() {
-		SafeGoroutine("WirtschaftBuchFlush", func() {
-			t := time.NewTicker(10 * time.Second)
-			defer t.Stop()
-			for range t.C {
-				cs.flushBuch()
-			}
-		})
-	})
-}
-
-func (cs *ChainState) flushBuch() {
-	w := cs.wirt()
 	w.mu.Lock()
-	daten := make(map[string]string, len(w.schmutzig))
-	for a := range w.schmutzig {
-		if k := w.buch[a]; k != nil {
-			if b, err := json.Marshal(k); err == nil {
-				daten[a] = string(b)
-			}
+	defer w.mu.Unlock()
+	if st.voll {
+		w.buch = make(map[string]*buchKonto, len(st.konten))
+		w.unternehmen = make(map[string]*unternehmenEintrag, len(st.register))
+	}
+	for a, k := range st.konten {
+		if k == nil {
+			delete(w.buch, a)
+		} else {
+			w.buch[a] = k
 		}
 	}
-	w.schmutzig = map[string]bool{}
-	w.mu.Unlock()
-	for a, d := range daten {
-		if _, err := cs.db.Exec(`INSERT INTO wirtschaft_buch (address, daten) VALUES ($1,$2)
-			ON CONFLICT (address) DO UPDATE SET daten = $2`, a, d); err != nil {
-			fmt.Printf("[WIRTSCHAFT] Buch %s: %v\n", a, err)
+	for a, e := range st.register {
+		if e == nil {
+			delete(w.unternehmen, a)
+		} else {
+			w.unternehmen[a] = e
 		}
 	}
+	w.letzterUmlauf, w.laufAt, w.laufVorher = st.letzterUmlauf, st.laufAt, st.laufVorher
 }
 
 // ------------------------------------------------------------ Snapshot

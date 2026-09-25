@@ -226,15 +226,41 @@ func TestLiegegeldNachUmsatz_Rechenbeispiele(t *testing.T) {
 	}
 }
 
-// Ohne 30 Tage Daten kein Liegegeld -- zugunsten des Unternehmens. Danach
-// zaehlt der echte Umsatz.
-func TestLiegegeldErstNach30TagenDaten(t *testing.T) {
+// Ein neues Unternehmen hat keine Schonfrist: wer Geld in eine frisch
+// eroeffnete Firma schiebt, zahlt ab dem ersten Tag Liegegeld. (Frueher
+// 30 Tage frei -- jeden Monat eine neue Firma, und Horten waere umsonst.)
+func TestNeuesUnternehmenOhneSchonfrist(t *testing.T) {
 	cs, ctx, vor := wirtschaftsTest(t)
 	eroeffne(t, cs, ctx, wFirmaA, wMensch1)
-	geben(cs, wFirmaA, 100_000)
+	vor(tag)
+	if lg := cs.umlaufBetrag(wFirmaA, artUnternehmen, 100_000, nowUnix(), sekundenJeMonat); !fast(lg, 1_960) {
+		t.Fatalf("neue Firma ohne Umsatz: 98.000 x 2 %% = 1.960 ab Tag 1, bekommen %v", lg)
+	}
+}
+
+// Wenige Tage Umsatz werden nicht hochgerechnet: gemittelt wird ueber
+// mindestens 30 Tage.
+func TestNeuesUnternehmenUmsatzUeberMindestens30Tage(t *testing.T) {
+	cs, ctx, vor := wirtschaftsTest(t)
+	eroeffne(t, cs, ctx, wFirmaA, wMensch1)
+	vor(tag)
+	acct(cs, wMensch2).Balance = NewDecimal(4000)
+	ueberweise(t, cs, ctx, wMensch2, wFirmaA, 3_000)
+	vor(4 * tag)
+	if u := umsatzVon(cs, wFirmaA); !fast(u, 3_000) {
+		t.Fatalf("3.000 in 5 Tagen: Monatsumsatz 3.000 (nicht 18.000), bekommen %v", u)
+	}
+}
+
+// Die Schonfrist gibt es nur, wenn DIESEM KNOTEN Daten fehlen: in den ersten
+// 30 Tagen nach der Aktivierung.
+func TestLiegegeldErstNach30TagenKnotenDaten(t *testing.T) {
+	cs, ctx, vor := wirtschaftsTest(t)
+	wirtschaftAktivOverride.Store(nowUnix())
+	eroeffne(t, cs, ctx, wFirmaA, wMensch1)
 	vor(29 * tag)
 	if lg := cs.umlaufBetrag(wFirmaA, artUnternehmen, 100_000, nowUnix(), sekundenJeMonat); lg != 0 {
-		t.Fatalf("nach 29 Tagen noch kein Liegegeld, bekommen %v", lg)
+		t.Fatalf("Knoten hat erst 29 Tage Daten: kein Liegegeld, bekommen %v", lg)
 	}
 	vor(2 * tag)
 	if lg := cs.umlaufBetrag(wFirmaA, artUnternehmen, 100_000, nowUnix(), sekundenJeMonat); !fast(lg, 1_960) {
@@ -247,11 +273,11 @@ func umsatzVon(cs *ChainState, firma string) float64 {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 	jetzt := nowUnix()
-	tage := w.datenTageLocked(w.unternehmen[firma], jetzt)
+	tage := w.mittelTageLocked(w.unternehmen[firma], jetzt)
 	return w.monatsUmsatzLocked(w.kontoLocked(firma, jetzt), tage, jetzt)
 }
 
-// Einkaeufe von Menschen zaehlen je Mensch hoechstens 1.000 AEQ im Monat,
+// Einkaeufe von Menschen zaehlen je Mensch hoechstens 9.000 AEQ im Quartal,
 // Zahlungen des eigenen Verantwortlichen gar nicht.
 func TestUmsatzMenschenGedeckeltEigeneZaehlenNicht(t *testing.T) {
 	cs, ctx, vor := wirtschaftsTest(t)
@@ -263,9 +289,9 @@ func TestUmsatzMenschenGedeckeltEigeneZaehlenNicht(t *testing.T) {
 		ueberweise(t, cs, ctx, m, wFirmaA, 1_000)
 	}
 	vor(30 * tag)
-	// Mensch2 und Mensch3 je 1.000, der Verantwortliche Mensch1 nichts.
-	if u := umsatzVon(cs, wFirmaA); !fast(u, 2_000*30.0/31) {
-		t.Fatalf("Monatsumsatz %v, erwartet 2.000 ueber 31 Tage", u)
+	// Mensch2 und Mensch3 je 2.500, der Verantwortliche Mensch1 nichts.
+	if u := umsatzVon(cs, wFirmaA); !fast(u, 5_000*30.0/32) {
+		t.Fatalf("Monatsumsatz %v, erwartet 5.000 ueber 32 Kalendertage", u)
 	}
 }
 
@@ -416,7 +442,9 @@ func TestAusstiegsAbgabeDreitausendFrei(t *testing.T) {
 		t.Fatalf("Lohn zaehlt nicht extra: (4.000 - 3.000) x 2 %% = 20, bekommen %v", a)
 	}
 	// Getauschtes wird abgezogen.
-	cs.nachTausch(wMensch2, 2500, jetzt)
+	if err := cs.nachTausch(ctx, wMensch2, 2500, jetzt); err != nil {
+		t.Fatal(err)
+	}
 	if a := cs.ausstiegsAbgabe(wMensch2, artMensch, 1000, jetzt); !fast(a, 10) {
 		t.Fatalf("500 frei uebrig: (1.000 - 500) x 2 %% = 10, bekommen %v", a)
 	}

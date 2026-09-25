@@ -671,7 +671,7 @@ section{padding:56px 16px}
     <p class="section-sub" data-i18n="ru-sub">They apply from 1 October 2026. Every levy goes 100 % to the basic income, equally to every person.</p>
     <div class="biz-rules">
       <div class="biz-row"><span class="biz-k" data-i18n="biz-r1-k">Idle money</span><span class="biz-v" data-i18n="biz-r1-v">Up to 1.5 months' turnover (at least 2,000 AEQ): free · up to 3 months' turnover: 0.5 % per month on the part above · beyond that: 2 % per month</span></div>
-      <div class="biz-row"><span class="biz-k" data-i18n="biz-r2-k">What counts as turnover</span><span class="biz-v" data-i18n="biz-r2-v">The average of the last 90 days. Purchases count up to 1,000 AEQ per person and month; between businesses only the surplus counts; wages, your own payments and exchanges into AEQ do not count.</span></div>
+      <div class="biz-row"><span class="biz-k" data-i18n="biz-r2-k">What counts as turnover</span><span class="biz-v" data-i18n="biz-r2-v">The average of the last 90 days. Purchases count up to 9,000 AEQ per person and quarter; between businesses only the surplus counts; wages, your own payments and exchanges into AEQ do not count.</span></div>
       <div class="biz-row"><span class="biz-k" data-i18n="biz-r3-k">Exit to euro or dollar</span><span class="biz-v" data-i18n="biz-r3-v">2 % levy. People: 3,000 AEQ a month are free</span></div>
       <div class="biz-row"><span class="biz-k" data-i18n="biz-r4-k">Business to business</span><span class="biz-v" data-i18n="biz-r4-v">0.1 %</span></div>
       <div class="biz-row"><span class="biz-k" data-i18n="biz-r5-k">Where it goes</span><span class="biz-v" data-i18n="biz-r5-v">Every levy goes 100 % to the basic income, equally to every person</span></div>
@@ -679,12 +679,12 @@ section{padding:56px 16px}
     </div>
     <details class="age-details"><summary class="biz-rules-h" data-i18n="age-h">What counts as turnover?</summary>
     <div class="biz-rules">
-      <div class="biz-row"><span class="biz-k" data-i18n="age-r1-k">Purchases by people</span><span class="biz-v" data-i18n="age-r1-v">up to 1,000 AEQ per person and month</span></div>
+      <div class="biz-row"><span class="biz-k" data-i18n="age-r1-k">Purchases by people</span><span class="biz-v" data-i18n="age-r1-v">up to 9,000 AEQ per person and quarter</span></div>
       <div class="biz-row"><span class="biz-k" data-i18n="age-r2-k">Payments from other businesses</span><span class="biz-v" data-i18n="age-r2-v">only the surplus: income from businesses minus payments to businesses</span></div>
       <div class="biz-row"><span class="biz-k" data-i18n="age-r3-k">Businesses with shared responsible people</span><span class="biz-v" data-i18n="age-r3-v">do not count for each other</span></div>
       <div class="biz-row"><span class="biz-k" data-i18n="age-r4-k">Wages, withdrawals, your own payments, other addresses, exchange into AEQ</span><span class="biz-v" data-i18n="age-r4-v">do not count</span></div>
     </div>
-    <p class="note" data-i18n="age-note">Turnover is the average of the last 90 days. The surplus rule stops circles: if three firms send each other money, each has as much coming in as going out, and the allowance does not grow. In the first 30 days of a business there is no idle-money levy.</p>
+    <p class="note" data-i18n="age-note">Turnover is the average of the last 90 days. The surplus rule stops circles: if three firms send each other money, each has as much coming in as going out, and the allowance does not grow. A new business has no grace period; its turnover is averaged over at least 30 days, so a few good days are not projected onto a whole month.</p>
     </details>
     <div class="biz-live"><span><span data-i18n="biz-live-from">Rules apply from</span> <strong id="biz-from">—</strong></span><span><span data-i18n="biz-live-count">Registered businesses</span>: <strong id="biz-count">—</strong></span></div>
     <a class="section-link" href="https://github.com/hanoi96international-gif/Aequitas/blob/main/docs/UNTERNEHMEN_KONZEPT.md" rel="noopener" data-i18n="biz-link">Read the full concept →</a>
@@ -701,7 +701,7 @@ section{padding:56px 16px}
       <li data-i18n="lh-1"><strong>Registering as a business to get around the 25,000 limit.</strong> Without real turnover a business pays 2 % a month on everything above 2,000 AEQ, four times as much as a person.</li>
       <li data-i18n="lh-2"><strong>Sending money in circles between your own or friendly firms to inflate turnover.</strong> Between businesses only the surplus counts, and your own firms do not count for each other: a circle adds nothing.</li>
       <li data-i18n="lh-3"><strong>Paying money in yourself or through the owner.</strong> Payments from a business's own responsible people do not count as turnover.</li>
-      <li data-i18n="lh-4"><strong>Friends who buy and get the money back.</strong> Each person counts at most 1,000 AEQ a month per business. Sheltering 150,000 AEQ would need 100 real people every month, publicly visible.</li>
+      <li data-i18n="lh-4"><strong>Friends who buy and get the money back.</strong> Each person counts at most 9,000 AEQ per quarter per business, and paying the money back to them shows up as wages, publicly. Sheltering 150,000 AEQ would need about 34 real people, each moving 9,000 AEQ every quarter.</li>
       <li data-i18n="lh-5"><strong>Founding many firms for many free amounts.</strong> At most 3 business accounts per person, so at most 6,000 AEQ free.</li>
       <li data-i18n="lh-6"><strong>Paying yourself as an “employee”.</strong> Payments to responsible people count as withdrawals, not wages.</li>
       <li data-i18n="lh-7"><strong>Fake wages to friends who exchange and hand back cash.</strong> Exchanges are free of the exit levy only up to 3,000 AEQ per person and month, and wage totals are public.</li>

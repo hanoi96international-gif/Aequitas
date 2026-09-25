@@ -5353,8 +5353,10 @@ func (cs *ChainState) processTransferBatch(batch []*transferBatchRequest) {
 		touchedAccs := make(map[string]*AccountState, len(batch)*2)
 		pendingTxs := make([]Transaction, 0, len(batch))
 		var last Transaction
+		// Buchfuehrung (wirtschaft.go) wie die Konten: einmal je Stapel.
+		mitgliedCtx, buch := mitBuchSammler(ctx)
 		for i, req := range batch {
-			fromLost, toLost, fromAcc, toAcc, gebuehr, mErr := cs.transferMutateLocked(ctx, req.from, req.to, req.amount)
+			fromLost, toLost, fromAcc, toAcc, gebuehr, mErr := cs.transferMutateLocked(mitgliedCtx, req.from, req.to, req.amount)
 			if mErr != nil {
 				return Transaction{}, fmt.Errorf("batch member %d/%d (%s -> %s) failed: %w", i+1, len(batch), req.from, req.to, mErr)
 			}
@@ -5387,6 +5389,9 @@ func (cs *ChainState) processTransferBatch(batch []*transferBatchRequest) {
 		}
 		if err := savePendingTxsBatchExec(cs.dbExecCtx(ctx), pendingTxs); err != nil {
 			return Transaction{}, fmt.Errorf("could not batch-insert %d outbox row(s): %w", len(pendingTxs), err)
+		}
+		if err := buch.schreiben(cs, ctx); err != nil {
+			return Transaction{}, err
 		}
 
 		touchedAddrs := make([]string, 0, len(touchedAccs)+4)
@@ -5542,7 +5547,9 @@ func (cs *ChainState) transferMutateLocked(ctx context.Context, from, to string,
 	if err := cs.enforceWealthCapLockedCtx(ctx, toAcc); err != nil {
 		return 0, 0, nil, nil, 0, fmt.Errorf("could not enforce wealth cap for recipient: %w", err)
 	}
-	cs.nachUeberweisung(from, to, fromArt, toArt, amount, gebuehr, fromAcc.Balance.Float(), toAcc.Balance.Float(), jetztUnix)
+	if err := cs.nachUeberweisung(ctx, from, to, fromArt, toArt, amount, gebuehr, fromAcc.Balance.Float(), toAcc.Balance.Float(), jetztUnix); err != nil {
+		return 0, 0, nil, nil, 0, err
+	}
 	return fromLost, toLost, fromAcc, toAcc, gebuehr, nil
 }
 
@@ -5894,7 +5901,9 @@ func (cs *ChainState) swapLockedMitAbgabe(ctx context.Context, address string, a
 		}
 	}
 	if aeqToTusd {
-		cs.nachTausch(address, amountIn, jetztUnix)
+		if err := cs.nachTausch(ctx, address, amountIn, jetztUnix); err != nil {
+			return 0, 0, 0, err
+		}
 	}
 	cs.save()
 
@@ -7664,6 +7673,9 @@ type blockRollbackSnapshot struct {
 	// would survive its own rejection and permanently skew every later root.
 	accountSetXOR   [32]byte
 	nullifierSetXOR [32]byte
+	// buch: Buchfuehrung der Unternehmensregeln (wirtschaft.go). Sie wird in
+	// derselben Transaktion gespeichert und muss mit ihr zurueck.
+	buch *buchStand
 }
 
 type configValueSnapshot struct {
@@ -7806,6 +7818,7 @@ func (cs *ChainState) snapshotForRollbackLocked(addrs []string, full bool, chain
 	snap.chainConfig = chainConfig
 	snap.accountSetXOR = cs.accountSetXOR
 	snap.nullifierSetXOR = cs.nullifierSetXOR
+	snap.buch = cs.buchSichern(addrs, full)
 	return snap
 }
 
@@ -7868,6 +7881,7 @@ func (cs *ChainState) restoreFromRollbackLocked(snap *blockRollbackSnapshot) err
 // sie im Aufruf selbst -- wer hier eine Transaktion hineingibt, tut es
 // sichtbar und nicht aus Versehen.
 func (cs *ChainState) restoreFromRollbackLockedCtx(ctx context.Context, snap *blockRollbackSnapshot) error {
+	cs.buchZurueck(snap.buch)
 	var toDelete []string
 	for _, s := range snap.accounts {
 		if s.existed {
@@ -8121,8 +8135,10 @@ func (cs *ChainState) applyTransferDeltaLockedSammelnd(ctx context.Context, from
 	// Buchfuehrung mitfuehren (wirtschaft.go), damit ein Knoten, der die
 	// Erzeugung uebernimmt, dieselben Freibetraege und dasselbe Alter kennt.
 	// Kein Konsens: die Betraege stehen in der Transaktion.
-	cs.nachUeberweisung(from, to, cs.kontoartVon(from, fromAcc.IsHuman), cs.kontoartVon(to, toAcc.IsHuman),
-		netAmount, gebuehr, fromAcc.Balance.Float(), toAcc.Balance.Float(), activityAt)
+	if err := cs.nachUeberweisung(ctx, from, to, cs.kontoartVon(from, fromAcc.IsHuman), cs.kontoartVon(to, toAcc.IsHuman),
+		netAmount, gebuehr, fromAcc.Balance.Float(), toAcc.Balance.Float(), activityAt); err != nil {
+		return fmt.Errorf("transfer: %w", err)
+	}
 	if sammler != nil {
 		sammler.hinzufuegen(toAcc)
 		return nil
@@ -8199,7 +8215,12 @@ func (cs *ChainState) applySwapDeltaLockedMitAbgabe(ctx context.Context, wallet 
 			if err := cs.abgabeInsGrundeinkommen(ctx, abgabe); err != nil {
 				return err
 			}
-			cs.nachTausch(wallet, amountIn, activityAt)
+		}
+		// Wie der Erzeuger (swapLocked): jeder Tausch AEQ -> Stable zaehlt,
+		// auch innerhalb des Freibetrags -- sonst kennt dieser Knoten den
+		// Freibetrag falsch, sobald er Bloecke erzeugt.
+		if err := cs.nachTausch(ctx, wallet, amountIn, activityAt); err != nil {
+			return fmt.Errorf("swap: %w", err)
 		}
 	} else {
 		acc.TUsdBalance = acc.TUsdBalance.Sub(NewDecimal(amountIn))

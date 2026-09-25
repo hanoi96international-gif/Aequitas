@@ -7290,7 +7290,13 @@ func (dag *BlockDAG) replayTransactions(block *Block, force bool) (ok bool) {
 			}
 		case "umlauf":
 			// wirtschaft.go: taegliche Umlaufsicherung / Liegegeld, Betrag vom
-			// Erzeuger berechnet, hier genau so angewandt.
+			// Erzeuger berechnet, hier nachgerechnet (liegegeld_pruefung.go)
+			// und angewandt.
+			if err := dag.state.pruefeUmlaufLocked(wallet, tx.Amount, tx.DistributionAt); err != nil {
+				fmt.Printf("[REPLAY] ✗ %v (block #%d) — rolling back whole block\n", err, block.Height)
+				hardFailure = true
+				continue
+			}
 			if err := dag.state.applyUmlaufDeltaLocked(context.Background(), wallet, tx.Amount, tx.DistributionAt); err != nil {
 				fmt.Printf("[REPLAY] ✗ umlauf %s: %v (block #%d) — rolling back whole block\n", wallet, err, block.Height)
 				hardFailure = true
