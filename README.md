@@ -79,10 +79,11 @@ Jeder AEQ-Halter muss nachweisen, dass er ein einzigartiger lebender Mensch ist 
 
 Every AEQ holder must prove they are a unique living human through biometric verification and Zero-Knowledge Proofs.
 
-- 📱 **Android App** → kurze Live-Gesichtsprüfung (zufällige Kopfdrehung) / short live face check (random head turn)
-- 🧑‍⚖️ Unabhängige Vergleichsdienste prüfen, dass das Gesicht noch nicht registriert ist, und müssen per Quorum zustimmen / independent matching services check the face is not yet registered and must agree by quorum
-- 🔒 Bilder werden nach der Prüfung gelöscht; die Vergleichsdienste behalten nur ein verschlüsseltes Template / images are deleted after the check; the matching services keep only an encrypted template
-- 🔐 Groth16 ZKP auf dem Proof-Server, nur gegen die signierte Bescheinigung des Quorums / Groth16 ZKP on the proof server, only against the quorum's signed attestation
+- 📱 **Android App** → kurze Live-Gesichtsprüfung: Blinzeln, Blick zu einer zufälligen Seite, Farbblitze; nur das Gesicht, kein Fingerabdruck, kein Ausweis / short live face check: blink, glance to a random side, colour flashes; face only, no fingerprint, no ID
+- 🧑‍⚖️ Zwei unabhängige Vergleichsdienste (verschiedene Eigentümer) prüfen, dass das Gesicht noch nicht registriert ist; beide müssen zustimmen / two independent matching services (different owners) check the face is not yet registered; both must agree
+- 🔒 Foto und Template werden nach Sekunden gelöscht; die Vergleichsdienste behalten nur einen 64-Byte-Auszug, aus dem sich das Gesicht nicht rekonstruieren lässt / photo and template are deleted within seconds; the matching services keep only a 64-byte sketch from which the face cannot be reconstructed
+- 🔐 Groth16 ZKP auf dem Proof-Server, nur gegen Wallet-Bindung + 2 signierte Bescheinigungen / Groth16 ZKP on the proof server, only against the wallet binding + 2 signed attestations
+- ⚖️ Abgewiesen? Kennung `W-…` in der App, Widerspruch binnen 90 Tagen, ein Mensch prüft / Rejected? Identifier `W-…` in the app, objection within 90 days, a human reviews
 - ⛓ Commitment-Hash dauerhaft on-chain gespeichert / Commitment stored permanently on-chain
 - 👤 **Ein Mensch, eine Wallet, für immer / One human, one wallet, forever**
 - 👁 **Langfristig: Iris-Scan.** Um wirklich 1 Mensch = 1 Registrierung zu gewährleisten, setzt Aequitas langfristig auf den Iris-Scan. Wie das umgesetzt werden kann, daran wird derzeit gearbeitet; Hardware und Zeitplan stehen noch nicht fest. Die Gesichtsprüfung ist der Zwischenschritt, mit benannten Grenzen (Schwelle noch nicht an echten Aufnahmen kalibriert). / **Long term: iris scan.** To truly guarantee one person = one registration, Aequitas will rely on the iris scan in the long run. How it can be implemented is being worked on now; hardware and timing are not decided. The face check is the interim step, with named limits (threshold not yet calibrated on real captures).
@@ -154,7 +155,7 @@ No mining. No staking. No protocol emissions.
 ┌─────────────────────────────────────────────────────────┐
 │                  Android App                            │
 │    Live-Gesichtsprüfung → unabhängige Vergleichsdienste │
-│    Quorum → bio_hash + signierte Bescheinigung          │
+│    2 von 2 → bio_hash + signierte Bescheinigungen       │
 └──────────────────────┬──────────────────────────────────┘
                        │ biometric hash
 ┌──────────────────────▼──────────────────────────────────┐
@@ -249,12 +250,12 @@ aequitas-chain/
 ## Registrierungsablauf / Registration Flow
 
 ```
-1. App          → Live-Gesichtsaufnahme mit Lebendigkeitsprüfung (Kopfdrehung)
-2. Vergleich    → Unabhängige Vergleichsdienste prüfen auf Duplikate, Quorum stellt bio_hash + signierte Bescheinigung aus
-3. App          → Proof Server erzeugt Groth16 ZKP nur gegen diese Bescheinigung
+1. App          → Live-Gesichtsaufnahme mit Lebendigkeitsprüfung (Blinzeln, Blick zur Seite, Farbblitze)
+2. Vergleich    → Zwei unabhängige Vergleichsdienste prüfen auf Duplikate (beide müssen zustimmen); Coordinator stellt bio_hash + Wallet-Bindung aus, die Dienste bescheinigen
+3. App          → Proof Server erzeugt Groth16 ZKP nur gegen Wallet-Bindung + 2 Bescheinigungen
 4. Proof Server → Gibt pubSignals (commitment, nullifier) zurück
-5. App          → Öffnet MetaMask-Verbindung auf aequitas.digital
-6. Website      → Sendet /api/register mit ZKP-Proof
+5. App          → Signiert mit der Wallet in der App (kein MetaMask nötig)
+6. App          → Sendet /api/register mit ZKP-Proof an den Knoten, der den Beweis ausgestellt hat
 7. Node         → Verifiziert ZKP → Prüft Nullifier on-chain (Replay-Schutz)
 8. Node         → Ruft AequitasV7 auf → Synchronisiert Dual-Ledger
 9. Wallet       → Empfängt 1.000 AEQ · App zeigt Bestätigung

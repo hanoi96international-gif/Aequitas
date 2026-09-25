@@ -1,6 +1,8 @@
 # Teil 2: Einzigartigkeitsmerkmale gegen die realen Fähigkeiten des Smartphones
 
 Stand: 2026-07-29 · Fortsetzung von `BIOMETRIE_ANALYSE.md` · Methodische Tiefenprüfung
+> **Historisches Dokument (Analyse vom 29.07.2026).** Es bewertet Entwürfe, die inzwischen verworfen sind (Fingerabdruck-Kit, Handvenen, Handfläche, Fingerkuppe, Ohr). Der aktuelle Stand steht in [`WHITEPAPER.md` §3](WHITEPAPER.md#3-proof-of-humanity): heute Live-Gesichtsprüfung, langfristig Iris.
+
 
 ---
 
