@@ -74,10 +74,11 @@
        Werkzeuge dieser Seite, die per showTab umschalten. activateTabFromPath
        sucht den Reiter ueber data-args -- "register" muss darum bleiben. -->
   <a class="tab" href="/" data-i18n="nav-home">Home</a>
-  <a class="tab" href="/people" data-i18n="nav-people">For people</a>
-  <a class="tab tab-biz" href="/business" data-i18n="nav-biz">For businesses</a>
+  <a class="tab" href="/idee" data-i18n="nav-why">Why Aequitas</a>
   <a class="tab" href="/economy" data-i18n="nav-how">How it works</a>
-  <a class="tab" href="/roadmap" data-i18n="nav-road">Roadmap &amp; FAQ</a>
+  <a class="tab tab-biz" href="/business" data-i18n="nav-biz">For businesses</a>
+  <a class="tab" href="/mitmachen" data-i18n="nav-join">Join</a>
+  <a class="tab" href="/transparenz" data-i18n="nav-trans">Transparency</a>
   <span class="tab-sep" aria-hidden="true"></span>
   <div class="tab tab-tool active" data-act="showTab" data-args='["register"]' role="button" tabindex="0" data-i18n="nav-register">Register</div>
   <div class="tab tab-tool" data-act="showTab" data-args='["explorer"]' role="button" tabindex="0" data-i18n="nav-explorer">Explorer</div>
@@ -755,7 +756,7 @@
       <div class="ubi-src-card" style="border-color:rgba(236,72,153,0.2)">
         <div class="ubi-src-pct" style="color:#ec4899">100%</div>
         <div class="ubi-src-name" style="color:#ec4899" data-i18n="ubi-src-exit">Exit levy</div>
-        <div class="ubi-src-desc" data-i18n="ubi-src-exit-d">2% when AEQ is exchanged into a stable coin. People: 3,000 AEQ a month are free. 100% goes to UBI. From 1 Oct 2026.</div>
+        <div class="ubi-src-desc" data-i18n="ubi-src-exit-d">2% when AEQ is exchanged into a stable coin. What you paid in yourself goes back free; people also exchange 3,000 AEQ a month free. 100% goes to UBI. From 1 Oct 2026.</div>
       </div>
     </div>
 
@@ -808,8 +809,8 @@
     <div class="idx-desc" data-i18n="demurrage-desc">From 1 October 2026 money that sits idle pays a small levy that depends on the account type. Everyday life and normal saving stay untouched, and the levy goes 100% to the basic income.</div>
     <table class="spect">
       <tr><td data-i18n="dem-rate-k">Rates</td><td data-i18n="dem-rate-v">People: 0.5%/month above 5,000 AEQ · Businesses: 0.5%/month above 1.5 months' turnover, 2% above 3 months' turnover · Other addresses: 1%/month</td></tr>
-      <tr><td data-i18n="dem-grace-k">Free amounts</td><td data-i18n="dem-grace-v">People: 5,000 AEQ of savings · Businesses: 1.5 months' turnover, at least 2,000 AEQ; no grace period for new businesses, turnover averaged over at least 30 days</td></tr>
-      <tr><td data-i18n="dem-reset-k">Turnover</td><td data-i18n="dem-reset-v">Average of the last 90 days. Purchases count up to 9,000 AEQ per person and quarter; between businesses only the surplus counts, so circles add nothing; wages, own payments and exchanges into AEQ do not count</td></tr>
+      <tr><td data-i18n="dem-grace-k">Free amounts</td><td data-i18n="dem-grace-v">People: 5,000 AEQ of savings · Businesses: 1.5 months' turnover, at least 2,000 AEQ; in the first six months never more than a person (up to 25,000 AEQ), once per person a year</td></tr>
+      <tr><td data-i18n="dem-reset-k">Turnover</td><td data-i18n="dem-reset-v">Average of the last 90 days, or of the last 12 months if higher (seasonal businesses). Purchases count up to 9,000 AEQ per person and quarter; between businesses only the surplus counts, so circles add nothing; wages, own payments and exchanges into AEQ do not count</td></tr>
       <tr><td data-i18n="dem-dest-k">Decayed AEQ goes to</td><td data-i18n="dem-dest-v">UBI pool (100%) — shared equally by all humans</td></tr>
       <tr><td data-i18n="dem-warn-k">Transparency</td><td data-i18n="dem-warn-v">The expected levy per month is shown for every address (/api/wirtschaft/konto); it is settled once a day, before the basic income is paid out</td></tr>
     </table>

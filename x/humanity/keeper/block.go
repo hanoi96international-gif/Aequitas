@@ -7198,7 +7198,7 @@ func (dag *BlockDAG) replayTransactions(block *Block, force bool) (ok bool) {
 			// context.Background() is correct — see registerHumanLocked's
 			// comment: dag.state.activeTx was already set directly above
 			// this loop, and dbExecCtx falls back to it.
-			if err := dag.state.applySwapDeltaLockedMitAbgabe(context.Background(), wallet, tx.Amount, tx.AmountOut, false, tx.FromDemurrageLost, block.Timestamp, tx.Gebuehr); err != nil {
+			if err := dag.state.applySwapDeltaLockedMitAbgabe(mitBuchZeit(context.Background(), buchZeitBeimNachspielen(tx.BuchAt, block.Timestamp)), wallet, tx.Amount, tx.AmountOut, false, tx.FromDemurrageLost, block.Timestamp, tx.Gebuehr); err != nil {
 				fmt.Printf("[REPLAY] ✗ swap_tusd_aeq %s: %v (block #%d) — rolling back whole block\n", wallet, err, block.Height)
 				hardFailure = true
 				continue

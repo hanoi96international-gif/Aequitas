@@ -684,7 +684,8 @@ Demurrage 15.000 × 0,5 % = 75, Umtausch (5.000 − 3.000) × 2 % = 40.
   eröffnen, das Geld hinüberschieben, und Horten wäre nie etwas wert gewesen.
   Jetzt zahlt eine Firma ohne Umsatz ab dem ersten Tag. Damit ein junges
   Unternehmen mit wenigen guten Tagen nicht zu gut dasteht, wird sein Umsatz
-  über mindestens 30 Tage gemittelt.
+  über mindestens 30 Tage gemittelt. Seit 26.09.2026 gilt dazu die
+  Gründungsphase aus 14.8: im ersten halben Jahr nie mehr als ein Mensch.
 - **Die Buchführung ist absturzsicher** und liegt in derselben
   Datenbank-Transaktion wie die Kontostände; ein abgebrochener Vorgang nimmt
   sie mit zurück.
@@ -713,11 +714,56 @@ ob die Startwerte stimmen (insbesondere 3.000 AEQ Tausch-Freibetrag).
 |---|---|
 | Freibetrag Unternehmen | 1,5 × Monatsumsatz (mind. 2.000 AEQ) |
 | Liegegeld darüber | 0,5 %/Monat bis 3 × Monatsumsatz, darüber 2 %/Monat |
-| Monatsumsatz | Durchschnitt 90 Tage, bei neuen Unternehmen über mindestens 30 Tage; Menschen je 9.000 AEQ/Quartal gedeckelt; Unternehmen nur Überschuss; Löhne, freie Adressen, Einstieg zählen nicht |
+| Gründungsphase | erstes halbes Jahr: Gründerin und Firma zusammen wie ein Mensch (gemeinsamer Freibetrag 5.000 AEQ, gemeinsame Grenze 25.000 AEQ; darüber Unternehmensregeln); einmal je Mensch in 12 Monaten |
+| Monatsumsatz | der höhere Wert aus 90-Tage- und 12-Monats-Durchschnitt, bei neuen Unternehmen über mindestens 30 Tage; Menschen je 9.000 AEQ/Quartal gedeckelt; Unternehmen nur Überschuss; Löhne, freie Adressen, Einstieg zählen nicht |
 | Alter des Geldes | entfällt |
 | Menschen: Überweisungsgebühr | erste 1.000 AEQ/Monat frei, danach 0,1 %, keine Stufen |
 | Menschen: Umtausch ohne Abgabe | 3.000 AEQ im Monat, egal woher |
+| Alle: eigene Einlage | was ein Konto selbst von Stable in AEQ getauscht hat, geht ohne Abgabe zurück |
+| Unternehmen: Umtausch | 2 % (außer eigene Einlage) |
 | Menschen: Sparen | unverändert: 5.000 AEQ frei, 0,5 %/Monat darüber, höchstens 25.000 AEQ |
+
+### 14.8 Attraktiv für Unternehmen, ohne vom Kern abzuweichen (26.09.2026)
+
+Maßstab bleibt: das fairste Geld der Welt. Kein Vorrecht für niemanden,
+aber auch keine Strafe für ehrliches Wirtschaften.
+
+**Was die Vorbilder zeigen.**
+- **Chiemgauer:** Unternehmen zahlen beim Rücktausch in Euro 5 %, dazu
+  kommen 6 % Umlaufsicherung im Jahr. Knapp 400 Unternehmen machen seit 2003
+  trotzdem mit, weil sie das Geld in der Region weitergeben können.
+- **Bristol Pound:** 2021 gescheitert, vor allem weil die Läden es kaum
+  weitergeben konnten.
+- **Sardex und WIR:** Verrechnungsnetze zwischen Firmen. Sardex begrenzt
+  Guthaben auf etwa 10 % des Jahresumsatzes.
+- **Kartenzahlung:** kostet Händler in der EU etwa 0,2 bis 1,5 %.
+- **Rücklagen:** Die übliche Faustregel für Unternehmen sind 3 Monate
+  Fixkosten; Saisonbetriebe brauchen mehr.
+
+**Folgerung.** Die Ausstiegsabgabe von 2 % bleibt. Sie gehört zum Kern:
+Wer Geld aus dem Netz zieht, gibt allen etwas zurück. Sie ist weniger als
+halb so hoch wie beim Chiemgauer. Der eigentliche Hebel ist, dass Unternehmen
+AEQ weitergeben können, an Lieferanten, Angestellte und andere Betriebe.
+Deshalb wird der Pilot als Kette aufgebaut (Bäckerei, Mühle, Hof, Café) und
+nicht aus einzelnen Läden.
+
+**Drei Regeln, die niemandem einen Vorteil geben:**
+1. **Gründungsphase.** Im ersten halben Jahr werden Gründerin und Firma
+   zusammen nie besser gestellt als ein Mensch. Das Geld in der Firma kostet
+   genau so viel, wie es zusätzlich kosten würde, läge es noch bei der
+   Gründerin. Beide teilen sich den Sparfreibetrag (5.000 AEQ) und die Grenze
+   für Menschen (25.000 AEQ); was darüber liegt, zahlt nach den Regeln für
+   Unternehmen. Es gilt einmal je Mensch in 12 Monaten (maßgeblich ist, wer
+   eröffnet hat). Startkapital kostet in der Firma also nicht mehr als in der
+   eigenen Tasche. Eine Scheinfirma verdoppelt die Grenze nicht, und die
+   Lücke „jeden Monat eine neue Firma“ bleibt geschlossen.
+2. **Saisonbetriebe.** Es zählt der höhere Wert aus dem 90-Tage- und dem
+   12-Monats-Durchschnitt. Ein Skiverleih behält seine Rücklage nach der
+   Saison. Gemessen wird in beiden Fällen echter Umsatz.
+3. **Eigene Einlage.** Was ein Konto selbst von Stable in AEQ getauscht hat,
+   geht ohne Abgabe zurück. Das gilt für Menschen, Unternehmen und sonstige
+   Adressen gleich. Wer Geld einzahlt und wieder abhebt, gewinnt nichts und
+   nimmt niemandem etwas.
 
 ## Vorbilder
 

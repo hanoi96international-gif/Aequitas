@@ -108,6 +108,9 @@ const (
 	liegeRate1Monat          = 0.005                 // 0,5 %/Monat zwischen 1,5 und 3 Monatsumsaetzen
 	liegeRate2Monat          = 0.02                  // 2 %/Monat darueber
 	umsatzFensterTage        = 90                    // Durchschnitt ueber so viele Tage
+	umsatzJahrTage           = 365                   // ... oder ueber das Jahr, wenn das mehr ist (Saison)
+	gruendungTage            = 182                   // erstes halbes Jahr: wie ein Mensch behandelt
+	gruendungAbstandTage     = 365                   // hoechstens einmal je Mensch in dieser Zeit
 	umsatzMindestTage        = 30                    // darunter kein Liegegeld (zu wenig Daten)
 	menschZaehltJeUntQuartal = 9 * registrationGrant // je Mensch und Unternehmen und Quartal
 	maxUnternehmenJeMensch   = 3
@@ -214,6 +217,9 @@ type buchKonto struct {
 	Einnahmen   float64 `json:"ein,omitempty"`
 	LohnGezahlt float64 `json:"lgz,omitempty"`
 	Entnahmen   float64 `json:"ent,omitempty"`
+	// alle Kontoarten: selbst von Stable in AEQ getauscht und noch nicht
+	// zurueckgetauscht -- geht ohne Ausstiegsabgabe zurueck (nicht monatlich)
+	Eingezahlt float64 `json:"ez,omitempty"`
 }
 
 type wirtschaft struct {
@@ -315,7 +321,7 @@ func unixTag(unix int64) int64 { return unix / 86400 }
 // tagLocked: der Umsatz-Eintrag fuer heute; alte Tage fallen heraus. w.mu gehalten.
 func (k *buchKonto) tagLocked(jetzt int64) *tagesUmsatz {
 	heute := unixTag(jetzt)
-	grenze := heute - umsatzFensterTage
+	grenze := heute - umsatzJahrTage
 	behalten := k.Tage[:0]
 	for _, t := range k.Tage {
 		if t.Tag > grenze {
@@ -364,9 +370,9 @@ func (w *wirtschaft) knotenTageLocked(jetzt int64) int64 {
 
 // mittelTageLocked: ueber wie viele Tage der Umsatz eines Unternehmens
 // gemittelt wird -- die bekannten Tage, mindestens 30 (ein neues Unternehmen
-// wird nicht aus wenigen Tagen hochgerechnet), hoechstens das Fenster.
+// wird nicht aus wenigen Tagen hochgerechnet), hoechstens fenster.
 // w.mu gehalten.
-func (w *wirtschaft) mittelTageLocked(e *unternehmenEintrag, jetzt int64) int64 {
+func (w *wirtschaft) mittelTageLocked(e *unternehmenEintrag, jetzt, fenster int64) int64 {
 	ab := aktivAb()
 	if e != nil && e.EroeffnetAm > ab {
 		ab = e.EroeffnetAm
@@ -380,20 +386,82 @@ func (w *wirtschaft) mittelTageLocked(e *unternehmenEintrag, jetzt int64) int64 
 	if tage < umsatzMindestTage {
 		tage = umsatzMindestTage
 	}
-	if tage > umsatzFensterTage {
-		tage = umsatzFensterTage
+	if tage > fenster {
+		tage = fenster
 	}
 	return tage
 }
 
+// umsatzLocked: der Monatsumsatz, der zaehlt -- der hoehere aus dem
+// 90-Tage-Durchschnitt und dem Jahresdurchschnitt. Ein Saisonbetrieb
+// (Skiverleih, Hofladen, Weihnachtsgeschaeft) verdient in wenigen Monaten
+// und braucht danach seine Ruecklage; der 90-Tage-Durchschnitt allein
+// wuerde sie nach der Saison als Horten behandeln. Gemessen wird in beiden
+// Faellen echter Umsatz, niemand bekommt einen Vorteil. w.mu gehalten.
+func (w *wirtschaft) umsatzLocked(addr string, jetzt int64) float64 {
+	e := w.unternehmen[addr]
+	k := w.kontoLocked(addr, jetzt)
+	u90 := w.monatsUmsatzLocked(k, w.mittelTageLocked(e, jetzt, umsatzFensterTage), jetzt)
+	uJahr := w.monatsUmsatzLocked(k, w.mittelTageLocked(e, jetzt, umsatzJahrTage), jetzt)
+	return math.Max(u90, uJahr)
+}
+
+// inGruendungLocked: ist das Unternehmen in seinem ersten halben Jahr, und
+// hat die Person, die es eroeffnet hat, in den zwoelf Monaten davor kein
+// anderes eroeffnet? Folgt allein aus dem Register (Konsens). w.mu gehalten.
+func (w *wirtschaft) inGruendungLocked(e *unternehmenEintrag, jetzt int64) bool {
+	if e == nil || len(e.Verantwortliche) == 0 || jetzt-e.EroeffnetAm >= gruendungTage*86400 {
+		return false
+	}
+	gruender := e.Verantwortliche[0]
+	for _, x := range w.unternehmen {
+		if x == e || len(x.Verantwortliche) == 0 || x.Verantwortliche[0] != gruender {
+			continue
+		}
+		if x.EroeffnetAm < e.EroeffnetAm && e.EroeffnetAm-x.EroeffnetAm < gruendungAbstandTage*86400 {
+			return false
+		}
+		// gleiche Sekunde: das mit der kleineren Adresse gilt als erstes
+		if x.EroeffnetAm == e.EroeffnetAm && x.Adresse < e.Adresse {
+			return false
+		}
+	}
+	return true
+}
+
+// menschUmlaufFuer: was ein Mensch mit diesem Guthaben im Monat zahlt --
+// bis zur Vermoegensgrenze, die fuer Menschen gilt.
+func menschUmlaufFuer(stand float64) float64 {
+	return math.Max(0, stand-menschSparFreibetrag) * menschUmlaufMonat
+}
+
 // liegegeldLocked: Liegegeld pro Monat fuer ein Unternehmen bei diesem Stand.
-// Weniger als 30 Tage Daten auf diesem Knoten: 0 (siehe Kopf). w.mu gehalten.
-func (w *wirtschaft) liegegeldLocked(addr string, stand float64, jetzt int64) float64 {
+// Weniger als 30 Tage Daten auf diesem Knoten: 0 (siehe Kopf).
+//
+// GRUENDUNG. Im ersten halben Jahr werden Gruenderin und Firma zusammen nie
+// besser gestellt als ein Mensch: Das Geld in der Firma kostet genau so viel,
+// wie es zusaetzlich kosten wuerde, laege es noch bei der Gruenderin
+// (gruenderStand). Beide teilen sich den Sparfreibetrag und die Grenze fuer
+// Menschen (25.000 AEQ); was darueber liegt, zahlt nach den Regeln fuer
+// Unternehmen. Kein Vorrecht und keine Luecke (eine Scheinfirma verdoppelt
+// die Grenze nicht), aber auch kein Nachteil: Startkapital kostet in der
+// Firma nicht mehr als in der eigenen Tasche. Einmal je Mensch in zwoelf
+// Monaten (inGruendungLocked). w.mu gehalten.
+func (w *wirtschaft) liegegeldLocked(addr string, stand, gruenderStand float64, jetzt int64) float64 {
 	if w.knotenTageLocked(jetzt) < umsatzMindestTage {
 		return 0
 	}
-	tage := w.mittelTageLocked(w.unternehmen[addr], jetzt)
-	return liegegeldFuerStand(stand, w.monatsUmsatzLocked(w.kontoLocked(addr, jetzt), tage, jetzt))
+	umsatz := w.umsatzLocked(addr, jetzt)
+	normal := liegegeldFuerStand(stand, umsatz)
+	if !w.inGruendungLocked(w.unternehmen[addr], jetzt) {
+		return normal
+	}
+	g := math.Max(0, gruenderStand)
+	platz := math.Max(0, registrationGrant*wealthCapMultiplier-g)
+	unten := math.Min(stand, platz)
+	wieMensch := menschUmlaufFuer(g+unten) - menschUmlaufFuer(g) +
+		liegegeldFuerStand(stand, umsatz) - liegegeldFuerStand(unten, umsatz)
+	return math.Min(normal, wieMensch)
 }
 
 // monatsUmsatzLocked: anrechenbarer Umsatz pro Monat (30 Tage) im Durchschnitt
@@ -567,39 +635,78 @@ func (cs *ChainState) nachUeberweisung(ctx context.Context, from, to string, fro
 	return cs.speichereBuchCtx(ctx, from, to)
 }
 
-// ausstiegsAbgabe: 2 % auf AEQ -> Stable. Menschen tauschen 3.000 AEQ im
-// Monat ohne Abgabe, egal woher das Geld kommt (Konzept 14.5).
+// ausstiegsAbgabe: 2 % auf AEQ -> Stable. Abgabefrei ist, was das Konto
+// selbst von Stable in AEQ getauscht hat (Eingezahlt): wer Geld einzahlt und
+// wieder abhebt, gewinnt nichts und nimmt niemandem etwas. Menschen tauschen
+// darueber hinaus 3.000 AEQ im Monat ohne Abgabe, egal woher (Konzept 14.5).
 func (cs *ChainState) ausstiegsAbgabe(addr string, art kontoart, amountIn float64, jetzt int64) float64 {
-	if !wirtschaftAktiv(jetzt) || amountIn <= 0 {
+	if !wirtschaftAktiv(jetzt) || amountIn <= 0 || art == artSystem {
 		return 0
 	}
-	pflichtig := amountIn
+	w := cs.wirt()
+	w.mu.Lock()
+	k := w.kontoLocked(addr, jetzt)
+	rest := amountIn - math.Min(amountIn, math.Max(0, k.Eingezahlt))
+	frei := 0.0
 	if art == artMensch {
-		w := cs.wirt()
-		w.mu.Lock()
-		k := w.kontoLocked(addr, jetzt)
-		frei := menschTauschFreiMonat - k.Getauscht
-		w.mu.Unlock()
-		pflichtig = math.Max(0, amountIn-math.Max(0, frei))
+		frei = math.Max(0, menschTauschFreiMonat-k.Getauscht)
 	}
-	if art == artSystem {
-		return 0
-	}
-	return round6(pflichtig * ausstiegsAbgabeBps / 10_000)
+	w.mu.Unlock()
+	return round6(math.Max(0, rest-frei) * ausstiegsAbgabeBps / 10_000)
 }
 
+// nachTausch: AEQ -> Stable verbucht. Zuerst wird die eigene Einlage
+// aufgebraucht, der Rest zaehlt gegen den Monatsfreibetrag.
 func (cs *ChainState) nachTausch(ctx context.Context, addr string, amountIn float64, jetzt int64) error {
 	if !wirtschaftAktiv(jetzt) {
 		return nil
 	}
 	w := cs.wirt()
 	w.mu.Lock()
-	w.kontoLocked(addr, jetzt).Getauscht += amountIn
+	k := w.kontoLocked(addr, jetzt)
+	aus := math.Min(amountIn, math.Max(0, k.Eingezahlt))
+	k.Eingezahlt = round6(k.Eingezahlt - aus)
+	k.Getauscht += amountIn - aus
+	w.mu.Unlock()
+	return cs.speichereBuchCtx(ctx, addr)
+}
+
+// nachEinzahlung: Stable -> AEQ verbucht (aeqErhalten).
+func (cs *ChainState) nachEinzahlung(ctx context.Context, addr string, aeqErhalten float64, jetzt int64) error {
+	if !wirtschaftAktiv(jetzt) || aeqErhalten <= 0 {
+		return nil
+	}
+	w := cs.wirt()
+	w.mu.Lock()
+	k := w.kontoLocked(addr, jetzt)
+	k.Eingezahlt = round6(k.Eingezahlt + aeqErhalten)
 	w.mu.Unlock()
 	return cs.speichereBuchCtx(ctx, addr)
 }
 
 // ------------------------------------------------------------ Umlauf (taeglich)
+
+// gruenderStand: Guthaben der Person, die das Unternehmen eroeffnet hat
+// (fuer die Gruendungsphase, liegegeldLocked). Im Tagesdurchlauf in derselben
+// Reihenfolge gelesen wie beim Nachspielen -- deterministisch.
+func (cs *ChainState) gruenderStand(unternehmen string) float64 {
+	w := cs.wirt()
+	w.mu.Lock()
+	e := w.unternehmen[unternehmen]
+	gruender := ""
+	if e != nil && len(e.Verantwortliche) > 0 {
+		gruender = e.Verantwortliche[0]
+	}
+	w.mu.Unlock()
+	if gruender == "" {
+		return 0
+	}
+	cs.ensureAccountLoadedCtx(context.Background(), gruender)
+	if acc, ok := cs.accounts.Get(gruender); ok {
+		return acc.Balance.Float()
+	}
+	return 0
+}
 
 // umlaufBetrag: was ein Konto fuer den Zeitraum sekunden schuldet.
 func (cs *ChainState) umlaufBetrag(addr string, art kontoart, stand float64, jetzt, sekunden int64) float64 {
@@ -613,10 +720,11 @@ func (cs *ChainState) umlaufBetrag(addr string, art kontoart, stand float64, jet
 	case artFrei:
 		return round6(stand * freiUmlaufMonat * anteil)
 	case artUnternehmen:
+		g := cs.gruenderStand(addr)
 		w := cs.wirt()
 		w.mu.Lock()
 		defer w.mu.Unlock()
-		return round6(w.liegegeldLocked(addr, stand, jetzt) * anteil)
+		return round6(w.liegegeldLocked(addr, stand, g, jetzt) * anteil)
 	}
 	return 0
 }

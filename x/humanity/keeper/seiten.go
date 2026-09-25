@@ -23,15 +23,17 @@ import (
 
 var (
 	landingHTML = baueSeite("/", "", "", []string{
-		"kreis", "forbiz", "forppl", "how", "news", "faqkurz", "status", "cta"})
-	peopleHTML = baueSeite("/people", "Aequitas — For people", seitenKopfPpl, []string{
-		"people", "ubi", "examples"})
+		"prinzip", "warum", "vergleich", "zugang", "forbiz", "news", "gruender", "faqkurz", "cta"})
+	ideeHTML = baueSeite("/idee", "Aequitas — Why Aequitas", seitenKopfIdee, []string{
+		"problem", "funktionen", "menge", "vision"})
 	economyHTML = baueSeite("/economy", "Aequitas — How it works", seitenKopfEco, []string{
-		"economy", "compare", "fairness"})
+		"economy", "people", "ubi", "umlauf", "compare", "examples", "fairness"})
 	businessHTML = baueSeite("/business", "Aequitas — For businesses", seitenKopfBiz, []string{
 		"business", "join", "bexamples", "rules", "loopholes"})
-	roadmapHTML = baueSeite("/roadmap", "Aequitas — Roadmap and questions", seitenKopfRoad, []string{
-		"roadmap", "open", "faq", "social", "disclaimer"})
+	mitmachenHTML = baueSeite("/mitmachen", "Aequitas — Join", seitenKopfJoin, []string{
+		"how", "forppl", "faq", "social"})
+	transparenzHTML = baueSeite("/transparenz", "Aequitas — Transparency", seitenKopfTrans, []string{
+		"werkzeuge", "status", "roadmap", "open", "disclaimer"})
 )
 
 // landingTeile zerlegt landingQuelle in Kopf, Hero (alles vor dem ersten
@@ -109,14 +111,13 @@ func (a *APIServer) handleSeite(html string) http.HandlerFunc {
 	}
 }
 
-const seitenKopfPpl = `<section class="page-head">
+const seitenKopfIdee = `<section class="page-head">
   <div class="section-inner">
-    <div class="pg-art pa-b" aria-hidden="true"><svg class="ico"><use href="#i-users"/></svg></div>
+    <div class="pg-art pa-b" aria-hidden="true"><svg class="ico"><use href="#i-heart"/></svg></div>
     <a href="/" class="pg-back" data-i18n="pg-back">← Back to the overview</a>
-    <h1 data-i18n="pg-ppl-h1">For people</h1>
-    <p class="section-sub" data-i18n="pg-ppl-sub">What Aequitas promises every person, how the daily basic income works and what you pay, with worked examples.</p>
-    <div class="pg-btns"><a href="/register" class="btn-primary" data-i18n="how-link">Register and claim your 1,000 AEQ →</a></div>
-    <div class="toc" role="navigation" aria-label="On this page"><span class="toc-lbl" data-i18n="toc-label">On this page</span><a href="#people" data-i18n="toc-prom">Promises</a><a href="#ubi" data-i18n="toc-ubi">Basic income</a><a href="#examples" data-i18n="toc-ex">Examples</a></div>
+    <h1 data-i18n="pg-why-h1">Why Aequitas</h1>
+    <p class="section-sub" data-i18n="pg-why-sub">What is wrong with today's money, what money has to do, and why a money that belongs to every person equally is the answer.</p>
+    <div class="toc" role="navigation" aria-label="On this page"><span class="toc-lbl" data-i18n="toc-label">On this page</span><a href="#problem" data-i18n="toc-problem">The problem</a><a href="#funktionen" data-i18n="toc-fn">Functions of money</a><a href="#menge" data-i18n="toc-mg">Money supply</a><a href="#vision" data-i18n="toc-vi">Vision</a></div>
   </div>
 </section>
 `
@@ -144,13 +145,24 @@ const seitenKopfBiz = `<section class="page-head page-biz">
 </section>
 `
 
-const seitenKopfRoad = `<section class="page-head">
+const seitenKopfJoin = `<section class="page-head">
   <div class="section-inner">
-    <div class="pg-art pa-b" aria-hidden="true"><svg class="ico"><use href="#i-rocket"/></svg></div>
+    <div class="pg-art pa-g" aria-hidden="true"><svg class="ico"><use href="#i-users"/></svg></div>
     <a href="/" class="pg-back" data-i18n="pg-back">← Back to the overview</a>
-    <h1 data-i18n="pg-road-h1">Roadmap and questions</h1>
-    <p class="section-sub" data-i18n="pg-road-sub">Where Aequitas stands, what comes next, and what is honestly still open.</p>
-    <div class="toc" role="navigation" aria-label="On this page"><span class="toc-lbl" data-i18n="toc-label">On this page</span><a href="#roadmap" data-i18n="toc-road">Roadmap</a><a href="#open" data-i18n="toc-open">Open points</a><a href="#faq" data-i18n="toc-faq">Questions</a></div>
+    <h1 data-i18n="pg-join-h1">Join</h1>
+    <p class="section-sub" data-i18n="pg-join-sub">Register in three steps, receive your 1,000 AEQ and a basic income every day. No bank account needed.</p>
+    <div class="toc" role="navigation" aria-label="On this page"><span class="toc-lbl" data-i18n="toc-label">On this page</span><a href="#how" data-i18n="toc-steps">Three steps</a><a href="#forppl" data-i18n="toc-share">Your share</a><a href="#faq" data-i18n="toc-faq">Questions</a></div>
+  </div>
+</section>
+`
+
+const seitenKopfTrans = `<section class="page-head">
+  <div class="section-inner">
+    <div class="pg-art pa-b" aria-hidden="true"><svg class="ico"><use href="#i-scale"/></svg></div>
+    <a href="/" class="pg-back" data-i18n="pg-back">← Back to the overview</a>
+    <h1 data-i18n="pg-trans-h1">Transparency</h1>
+    <p class="section-sub" data-i18n="pg-trans-sub">Live figures from the chain, the open tools, where Aequitas stands, and what is honestly still open.</p>
+    <div class="toc" role="navigation" aria-label="On this page"><span class="toc-lbl" data-i18n="toc-label">On this page</span><a href="#werkzeuge" data-i18n="toc-live">Live</a><a href="#status" data-i18n="toc-status">Status</a><a href="#roadmap" data-i18n="toc-road">Roadmap</a><a href="#open" data-i18n="toc-open">Open points</a></div>
   </div>
 </section>
 `

@@ -5753,9 +5753,7 @@ func (cs *ChainState) SwapAtomic(address string, amountIn float64, aeqToTusd boo
 			return Transaction{}, err
 		}
 		pendingTxTemplate.Gebuehr = abgabe
-		if aeqToTusd {
-			pendingTxTemplate.BuchAt = buchStempel(at)
-		}
+		pendingTxTemplate.BuchAt = buchStempel(at)
 		pendingTxTemplate.AmountOut = amountOut
 		pendingTxTemplate.FromDemurrageLost = demurrageLost
 		return pendingTxTemplate, nil
@@ -5914,6 +5912,8 @@ func (cs *ChainState) swapLockedMitAbgabe(ctx context.Context, address string, a
 		if err := cs.nachTausch(ctx, address, amountIn, jetztUnix); err != nil {
 			return 0, 0, 0, err
 		}
+	} else if err := cs.nachEinzahlung(ctx, address, amountOut, jetztUnix); err != nil {
+		return 0, 0, 0, err
 	}
 	cs.save()
 
@@ -8235,6 +8235,10 @@ func (cs *ChainState) applySwapDeltaLockedMitAbgabe(ctx context.Context, wallet 
 	} else {
 		acc.TUsdBalance = acc.TUsdBalance.Sub(NewDecimal(amountIn))
 		acc.Balance = acc.Balance.Add(NewDecimal(amountOut))
+		// Wie der Erzeuger: die eigene Einlage geht spaeter abgabefrei zurueck.
+		if err := cs.nachEinzahlung(ctx, wallet, amountOut, buchZeit(ctx, activityAt)); err != nil {
+			return fmt.Errorf("swap: %w", err)
+		}
 	}
 	// FIX (P0, 2026-07-04 brutal audit): swapLocked (primary path) calls
 	// touchActivity unconditionally right here, then enforceWealthCapLocked
